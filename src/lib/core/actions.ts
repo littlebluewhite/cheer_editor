@@ -41,11 +41,12 @@ export interface Action {
 
 export type NewActionInput = Omit<Action, 'id'>;
 
-export function addAction(flow: Flow, input: NewActionInput): CommandResult {
+/** 新增動作，回傳新動作的 id。 */
+export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
 	const action = normalize({ id: nextId('x', flow.actions.map((a) => a.id)), ...input });
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
-	return ok({ ...flow, actions: [...flow.actions, action] });
+	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, action] }, id: action.id };
 }
 
 /** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件。 */

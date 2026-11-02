@@ -7,6 +7,7 @@ import {
 	formationAt,
 	formationTimes,
 	insertFormation,
+	moveMembers,
 	positionsAt,
 	setPositions,
 	updateSegment,
@@ -180,6 +181,10 @@ describe('站位的時間', () => {
 			['f3', expect.closeTo(30, 9)]
 		]);
 	});
+
+	it('哪幾張可以刪：開頭那張不行（縮圖不畫 ✕）', () => {
+		expect(formationTimes(walking()).map((t) => t.deletable)).toEqual([false, true, true]);
+	});
 });
 
 describe('插站位', () => {
@@ -229,5 +234,34 @@ describe('插站位', () => {
 		const flow = okFlow(insertFormation(withSegments(), 8.2));
 		expect(insertFormation(flow, 8.3)).toEqual({ kind: 'blocked', message: '這一拍已經有站位' });
 		expect(insertFormation(flow, 0.1).kind).toBe('blocked');
+	});
+});
+
+describe('在播放頭拖人', () => {
+	it('播放頭在站位上：改那張，不插新的；回傳那張的秒數', () => {
+		const before = walking();
+		const r = moveMembers(before, 20.1, { [B]: [1, 1] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.inserted).toBe(false);
+		expect(r.sec).toBeCloseTo(20, 9);
+		expect(r.flow.formations.map((f) => f.id)).toEqual(['f1', 'f2', 'f3']);
+		expect(r.flow.formations[1].pos[B]).toEqual([1, 1]);
+	});
+
+	it('播放頭不在站位上：在這一拍插一張（其他人帶入那一刻的位置）再改；回傳這一拍開始的秒數', () => {
+		const r = moveMembers(walking(), 5.05, { [B]: [-3, 3] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.inserted).toBe(true);
+		expect(r.sec).toBeCloseTo(5, 9);
+		const f = r.flow.formations[1];
+		expect(f.pos[A]).toEqual([1, 0]);
+		expect(f.pos[B]).toEqual([-3, 3]);
+	});
+
+	it('位置被擋就什麼都不改（也不插站位）', () => {
+		expect(moveMembers(walking(), 5, { [B]: [0, 99] })).toEqual({
+			kind: 'blocked',
+			message: '只能站到墊子外 1 m 以內'
+		});
 	});
 });

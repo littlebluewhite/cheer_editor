@@ -2,9 +2,9 @@
 
 import type { Flow } from './flow';
 
-export type CommandResult =
-	/** 成功：新的流程。 */
-	| { kind: 'ok'; flow: Flow }
+export type CommandResult<Extra extends object = object> =
+	/** 成功：新的流程。有些指令多帶一點結果（例：新加的那一筆的 id），寫在 Extra。 */
+	| ({ kind: 'ok'; flow: Flow } & Extra)
 	/** 被擋：流程沒變，message 是給教練看的原因。 */
 	| { kind: 'blocked'; message: string }
 	/**
@@ -20,7 +20,7 @@ export interface ConfirmOption {
 }
 
 export const ok = (flow: Flow): CommandResult => ({ kind: 'ok', flow });
-export const blocked = (message: string): CommandResult => ({ kind: 'blocked', message });
+export const blocked = (message: string): CommandResult<never> => ({ kind: 'blocked', message });
 export const needsConfirm = (message: string, items: string[]): CommandResult => ({
 	kind: 'confirm',
 	message,

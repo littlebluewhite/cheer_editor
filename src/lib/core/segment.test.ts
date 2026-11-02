@@ -37,6 +37,11 @@ describe('加段', () => {
 		addSegment(flow, 'music');
 		expect(flow.segments).toEqual([]);
 	});
+
+	it('回傳新段的 id（畫面用來打開段設定）', () => {
+		const r = addSegment(flowOf(addSegment(newFlow(), 'music')), 'chant');
+		expect(r.kind === 'ok' && r.id).toBe('s2');
+	});
 });
 
 describe('改音樂段', () => {
@@ -57,6 +62,11 @@ describe('改音樂段', () => {
 	it('BPM 60 和 170 都可以', () => {
 		expect(updateSegment(withMusic(), 's1', { bpm: 60 }).kind).toBe('ok');
 		expect(updateSegment(withMusic(), 's1', { bpm: 170 }).kind).toBe('ok');
+	});
+
+	it('第一拍最細 0.01 秒（例：在波形上點的位置）', () => {
+		const flow = flowOf(updateSegment(withMusic(), 's1', { firstBeatSec: 1.40625 }));
+		expect(flow.segments[0]).toMatchObject({ firstBeatSec: 1.41 });
 	});
 
 	it('第一拍不能是負的', () => {
@@ -146,6 +156,12 @@ describe('音樂檔', () => {
 		expect(flow.segments[0]).toMatchObject({ audioId: 'a1' });
 		expect(loadSegmentAudio(twoMusic(), 's1', 'x.m4a').kind).toBe('ok');
 		expect(loadSegmentAudio(twoMusic(), 's1', 'x.wav').kind).toBe('ok');
+	});
+
+	it('回傳新音樂檔的 id（畫面用它對應解碼好的音樂）', () => {
+		const flow = flowOf(loadSegmentAudio(twoMusic(), 's1', 'a.mp3'));
+		const r = loadSegmentAudio(flow, 's2', 'b.mp3');
+		expect(r.kind === 'ok' && r.audioId).toBe('a2');
 	});
 
 	it('其他格式擋下', () => {

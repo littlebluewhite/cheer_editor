@@ -3,7 +3,7 @@
 
 import type { Flow } from './flow';
 import type { MusicSegment } from './segment';
-import { segmentSpans } from './time';
+import { segmentSpans, totalSeconds } from './time';
 
 /** 一段要播的音樂：流程第 sec 秒開始，從音樂檔第 fileSec 秒播 durationSec 秒。 */
 export interface PlaybackClip {
@@ -27,6 +27,14 @@ export interface PlaybackPlan {
 }
 
 const EPS = 1e-6;
+
+/** 播完停下時播放頭可能差結尾一點點；差不到這麼多秒就算播完了。 */
+const AT_END_SEC = 0.01;
+
+/** 按播放時從哪一秒開始：從播放頭（sec）開始；已經播完就從頭。 */
+export function playStartSec(flow: Flow, sec: number): number {
+	return sec >= totalSeconds(flow) - AT_END_SEC ? 0 : sec;
+}
 
 /** 從流程第 fromSec 秒開始播。口號段沒有音樂也沒有節拍器，時間照走。 */
 export function playbackPlan(flow: Flow, fromSec: number): PlaybackPlan {

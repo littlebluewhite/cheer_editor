@@ -23,7 +23,7 @@
 <div class="row film">
 	<div class="lab">站位</div>
 	<div class="trk" style:width={`${width}px`}>
-		{#each items as { formation, sec }, i (formation.id)}
+		{#each items as { formation, sec, deletable }, i (formation.id)}
 			<div class="th" class:on={selectedId === formation.id} style:left={`${sec * pxPerSec}px`}>
 				<button
 					type="button"
@@ -46,7 +46,7 @@
 					</svg>
 					<span>{i + 1}</span>
 				</button>
-				{#if i > 0}
+				{#if deletable}
 					<button
 						type="button"
 						class="del"

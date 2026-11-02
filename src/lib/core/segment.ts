@@ -101,6 +101,7 @@ export function beatLines(input: BeatTiming & { windowSec: number }): BeatLine[]
 export interface SegmentPatch {
 	/** 音樂段 */
 	bpm?: number;
+	/** 最細 0.01 秒 */
 	firstBeatSec?: number;
 	eights?: number;
 	lastBeats?: number;
@@ -127,7 +128,9 @@ export function updateSegment(
 	if (old.kind === 'music') {
 		const bpm = patch.bpm ?? old.bpm;
 		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(`BPM 要在 ${MIN_BPM}–${MAX_BPM} 之間`);
-		const firstBeatSec = patch.firstBeatSec ?? old.firstBeatSec;
+		// 第一拍最細 0.01 秒，也比較好讀。
+		const firstBeatSec =
+			patch.firstBeatSec === undefined ? old.firstBeatSec : Math.round(patch.firstBeatSec * 100) / 100;
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
 			return blocked('第一拍要是 0 秒以上');
 		}
@@ -177,7 +180,11 @@ export function updateSegment(
  * 音樂段載入一個新的音樂檔：流程記一筆音樂檔，這一段指過去。
  * 位元組由呼叫端自己留著，用這一段新的 audioId 對應。
  */
-export function loadSegmentAudio(flow: Flow, segmentId: string, fileName: string): CommandResult {
+export function loadSegmentAudio(
+	flow: Flow,
+	segmentId: string,
+	fileName: string
+): CommandResult<{ audioId: string }> {
 	const segment = flow.segments.find((s) => s.id === segmentId);
 	if (!segment) return blocked('找不到這一段');
 	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
@@ -187,7 +194,8 @@ export function loadSegmentAudio(flow: Flow, segmentId: string, fileName: string
 	}
 	const id = nextId('a', flow.audio.map((a) => a.id));
 	const audio = [...flow.audio, { id, file: `audio/${id}.${ext}`, name: fileName }];
-	return updateSegment({ ...flow, audio }, segmentId, { audioId: id });
+	const r = updateSegment({ ...flow, audio }, segmentId, { audioId: id });
+	return r.kind === 'ok' ? { ...r, audioId: id } : r;
 }
 
 /** 存檔只帶用到的音樂，所以沒有段在用的音樂檔直接拿掉。 */
@@ -203,8 +211,8 @@ function pick<T extends object, K extends keyof T>(obj: T, ...keys: K[]): Partia
 	return out;
 }
 
-/** 在最後加一段。新段的 id 就是 flow.segments 最後一筆。 */
-export function addSegment(flow: Flow, kind: SegmentKind): CommandResult {
+/** 在最後加一段，回傳新段的 id。 */
+export function addSegment(flow: Flow, kind: SegmentKind): CommandResult<{ id: string }> {
 	const id = nextId('s', flow.segments.map((s) => s.id));
 	const segment: Segment =
 		kind === 'music'
@@ -215,5 +223,5 @@ export function addSegment(flow: Flow, kind: SegmentKind): CommandResult {
 		flow.segments.length === 0
 			? flow.formations.with(0, { ...flow.formations[0], segmentId: id, at: 0 })
 			: flow.formations;
-	return ok({ ...flow, segments: [...flow.segments, segment], formations });
+	return { kind: 'ok', flow: { ...flow, segments: [...flow.segments, segment], formations }, id };
 }

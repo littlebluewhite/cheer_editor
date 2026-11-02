@@ -4,6 +4,7 @@
 	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
 	import ConfirmList from './ConfirmList.svelte';
 	import {
+		AUDIO_EXTENSIONS,
 		MAX_BPM,
 		MIN_BPM,
 		beatLines,
@@ -123,18 +124,12 @@
 		}
 		// 解碼要一點時間，用那時候的流程再送一次指令。
 		const r = loadSegmentAudio(flow, segmentId, file.name);
-		if (r.kind === 'ok') {
-			const loaded = r.flow.segments.find((s) => s.id === segmentId);
-			if (loaded?.kind === 'music' && loaded.audioId) {
-				onaudioload(loaded.audioId, { bytes, ...decoded });
-			}
-		}
+		if (r.kind === 'ok') onaudioload(r.audioId, { bytes, ...decoded });
 		apply(r);
 	}
 
 	function clickWave(e: MouseEvent) {
-		// 點的精度到 0.01 秒就夠了，也比較好讀。
-		update({ firstBeatSec: Math.round(waveXToSec(e) * 100) / 100 });
+		update({ firstBeatSec: waveXToSec(e) });
 	}
 
 	function fitToAudio() {
@@ -163,7 +158,7 @@
 		{#key fieldsKey}
 		{#if music && length}
 			<div class="row">
-				<label>載入音樂檔 <input type="file" accept=".mp3,.m4a,.wav" onchange={load} /></label>
+				<label>載入音樂檔 <input type="file" accept={AUDIO_EXTENSIONS.map((x) => `.${x}`).join(',')} onchange={load} /></label>
 				<span class="muted">
 					{audioName
 						? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : '（找不到音樂，請重新選檔）'}`
@@ -247,7 +242,7 @@
 						type="number"
 						step="0.1"
 						min="0.1"
-						value={segment.tenths / 10}
+						value={span?.durationSec}
 						onchange={(e) => update({ seconds: num(e) })}
 					/>
 				</label>

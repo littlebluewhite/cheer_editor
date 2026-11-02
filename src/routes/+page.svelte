@@ -4,16 +4,14 @@
 		deleteAction,
 		deleteFormation,
 		firstBeatPreview,
-		formationAt,
-		formationTimes,
-		insertFormation,
+		moveMembers,
 		playbackPlan,
+		playStartSec,
 		positionText,
 		positionsAt,
 		raisedAt,
 		readFlowFile,
 		segmentsMissingAudio,
-		setPositions,
 		timeRuleWarnings,
 		totalSeconds,
 		writeFlowFile,
@@ -146,7 +144,7 @@
 
 	/** 從播放頭開始播；已經播完就從頭。一定由按鈕或空白鍵觸發。 */
 	function play(f: Flow) {
-		if (playheadSec >= totalSeconds(f) - 0.01) playheadSec = 0;
+		playheadSec = playStartSec(f, playheadSec);
 		getPlayer().start(playbackPlan(f, playheadSec), { fromSec: playheadSec, metronome });
 		if (!playing) {
 			playing = true;
@@ -310,26 +308,17 @@
 		const r = addSegment(f, kind);
 		if (r.kind !== 'ok') return;
 		change(r.flow);
-		openSegmentId = r.flow.segments.at(-1)!.id;
+		openSegmentId = r.id;
 	}
 
-	/** 拖人：改播放頭所在那張站位；播放頭不在站位上就先在這一拍插一張。播放頭停到那張站位上。 */
+	/** 拖人：改播放頭這一拍的站位（沒有就插一張）。播放頭停到那張站位上，場上才是剛放的位置。 */
 	function move(moves: Record<string, Position>) {
 		if (!flow) return;
-		let f = flow;
-		let message = '';
-		if (!formationAt(f, playheadSec)) {
-			const r = insertFormation(f, playheadSec);
-			if (r.kind !== 'ok') return void (notice = r.message);
-			f = r.flow;
-			message = '插了一張站位，大家的位置自動帶入';
-		}
-		const target = formationAt(f, playheadSec)!;
-		const r = setPositions(f, target.id, moves);
+		const r = moveMembers(flow, playheadSec, moves);
 		if (r.kind !== 'ok') return void (notice = r.message);
 		change(r.flow);
-		notice = message;
-		playheadSec = formationTimes(r.flow).find((t) => t.formation.id === target.id)!.sec;
+		notice = r.inserted ? '插了一張站位，大家的位置自動帶入' : '';
+		playheadSec = r.sec;
 	}
 
 	function removeFormation(id: string) {

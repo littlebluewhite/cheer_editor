@@ -77,6 +77,12 @@ describe('新增動作', () => {
 		]);
 	});
 
+	it('回傳新動作的 id（畫面用來選它）', () => {
+		const flow = flowOf(addAction(sample(), lib()));
+		const r = addAction(flow, lib({ start: 16, members: [{ memberId: 'm3', role: null }] }));
+		expect(r.kind === 'ok' && r.id).toBe('x2');
+	});
+
 	it('動作不能跨段：超出段尾就擋下，剛好到段尾可以', () => {
 		const flow = sample();
 		expect(addAction(flow, lib({ start: 20, length: 13 }))).toEqual({

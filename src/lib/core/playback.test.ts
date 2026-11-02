@@ -5,6 +5,7 @@ import {
 	firstBeatPreview,
 	loadSegmentAudio,
 	playbackPlan,
+	playStartSec,
 	updateSegment,
 	type CommandResult,
 	type Flow
@@ -83,6 +84,16 @@ describe('從某一刻播放', () => {
 		expect(plan.clips).toEqual([]);
 		expect(plan.clicks).toHaveLength(64);
 		expect(plan.endSec).toBeCloseTo(25.6, 9);
+	});
+});
+
+describe('按播放從哪裡開始', () => {
+	it('從播放頭開始；已經播完（在結尾或差不到 0.01 秒）就從頭', () => {
+		const flow = sample(); // 共 6.7 秒
+		expect(playStartSec(flow, 2.5)).toBe(2.5);
+		expect(playStartSec(flow, 6.68)).toBe(6.68);
+		expect(playStartSec(flow, 6.695)).toBe(0);
+		expect(playStartSec(flow, 6.7)).toBe(0);
 	});
 });
 

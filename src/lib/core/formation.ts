@@ -44,17 +44,48 @@ export function setPositions(
 	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });
 }
 
+/**
+ * 在播放頭（全域秒數）拖人：改這一拍的站位；這一拍沒有站位就先插一張（位置帶入那一刻大家走到的地方）。
+ * 被擋就什麼都不改。inserted = 有插新的站位；sec = 改到的那張站位的全域秒數（這一拍開始的時間）。
+ */
+export function moveMembers(
+	flow: Flow,
+	sec: number,
+	moves: Record<string, Position>
+): CommandResult<{ inserted: boolean; sec: number }> {
+	let f = flow;
+	const inserted = !formationAt(f, sec);
+	if (inserted) {
+		const r = insertFormation(f, sec);
+		if (r.kind !== 'ok') return r;
+		f = r.flow;
+	}
+	const target = formationAt(f, sec)!;
+	const r = setPositions(f, target.id, moves);
+	if (r.kind !== 'ok') return r;
+	return { ...r, inserted, sec: formationSec(r.flow, target) };
+}
+
+/** 開頭那張（formations[0]）不能刪。 */
+const deletable = (index: number) => index > 0;
+
 /** 刪一張站位。開頭那張不能刪。 */
 export function deleteFormation(flow: Flow, formationId: string): CommandResult {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
 	if (index === -1) return blocked('找不到這張站位');
-	if (index === 0) return blocked('流程開頭一定有一張站位，不能刪');
+	if (!deletable(index)) return blocked('流程開頭一定有一張站位，不能刪');
 	return ok({ ...flow, formations: flow.formations.toSpliced(index, 1) });
 }
 
-/** 每張站位和它的全域秒數，照時間排。 */
-export function formationTimes(flow: Flow): { formation: Formation; sec: number }[] {
-	return flow.formations.map((formation) => ({ formation, sec: formationSec(flow, formation) }));
+/** 每張站位、它的全域秒數、能不能刪，照時間排。 */
+export function formationTimes(
+	flow: Flow
+): { formation: Formation; sec: number; deletable: boolean }[] {
+	return flow.formations.map((formation, i) => ({
+		formation,
+		sec: formationSec(flow, formation),
+		deletable: deletable(i)
+	}));
 }
 
 /** 站位的全域秒數。開頭那張還沒有段時是 0。 */

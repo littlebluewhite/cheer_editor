@@ -163,7 +163,7 @@
 		}
 		error = '';
 		onchange(r.flow);
-		onselect(r.flow.actions.at(-1)!.id);
+		onselect(r.id);
 	}
 
 	/** 改選到的動作：馬上送給流程核心；被擋就還原。新增時什麼都不做（等按「新增動作」）。 */
