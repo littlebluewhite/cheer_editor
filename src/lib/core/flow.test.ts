@@ -6,7 +6,13 @@ describe('建立流程', () => {
 		const r = createFlow({ name: '2027 全國賽', field: { strips: 5, layout: 'horizontal' } });
 		expect(r).toMatchObject({
 			kind: 'ok',
-			flow: { name: '2027 全國賽', field: { strips: 5, layout: 'horizontal' } }
+			flow: {
+				name: '2027 全國賽',
+				field: { strips: 5, layout: 'horizontal' },
+				timeRules: { on: true, minChantSec: 30, maxMusicSec: 120, maxTotalSec: 180 },
+				audio: [],
+				segments: []
+			}
 		});
 	});
 

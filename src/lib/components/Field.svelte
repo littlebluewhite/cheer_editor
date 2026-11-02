@@ -3,7 +3,7 @@
 	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
 	import {
 		fieldGeometry,
-		positionText,
+		fieldPositionText,
 		snapPointsNear,
 		snapPosition,
 		type FieldConfig,
@@ -81,7 +81,7 @@
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
 		const name = members.find((m) => m.id === drag!.id)?.name ?? '';
-		return `${name}　${positionText(field, drag.cur)}`;
+		return `${name}　${fieldPositionText(field, drag.cur)}`;
 	});
 
 	function clamp(v: number, lo: number, hi: number) {

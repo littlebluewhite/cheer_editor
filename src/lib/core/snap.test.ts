@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { positionText, snapPointsNear, snapPosition, type FieldConfig, type Position } from './index';
+import {
+	fieldPositionText,
+	snapPointsNear,
+	snapPosition,
+	type FieldConfig,
+	type Position
+} from './index';
 
 const nine: FieldConfig = { strips: 9, layout: 'vertical' };
 const five: FieldConfig = { strips: 5, layout: 'horizontal' };
@@ -61,31 +67,31 @@ describe('吸附', () => {
 
 describe('位置文字', () => {
 	it('直放：第幾條左起幾分之幾｜前起第幾格幾分之幾', () => {
-		expect(positionText(nine, [-4.1148, 3.6576])).toBe('第 3 條 左起 1/4｜前起第 2 格 1/2');
-		expect(positionText(nine, [0, 0])).toBe('第 5 條 左起 1/2｜前起第 4 格 1/2');
+		expect(fieldPositionText(nine, [-4.1148, 3.6576])).toBe('第 3 條 左起 1/4｜前起第 2 格 1/2');
+		expect(fieldPositionText(nine, [0, 0])).toBe('第 5 條 左起 1/2｜前起第 4 格 1/2');
 	});
 
 	it('在格線上寫「線上」；八等分照寫', () => {
-		expect(positionText(nine, [-4.572, 2.7432])).toBe('第 3 條 左起 線上｜前起第 3 格 線上');
-		expect(positionText(nine, [-4.3434, 3.8862])).toBe('第 3 條 左起 1/8｜前起第 2 格 3/8');
+		expect(fieldPositionText(nine, [-4.572, 2.7432])).toBe('第 3 條 左起 線上｜前起第 3 格 線上');
+		expect(fieldPositionText(nine, [-4.3434, 3.8862])).toBe('第 3 條 左起 1/8｜前起第 2 格 3/8');
 	});
 
 	it('墊子右邊和後面的邊線', () => {
-		expect(positionText(nine, [8.2296, -6.4008])).toBe('第 9 條 右邊線上｜前起第 7 格 後邊線上');
+		expect(fieldPositionText(nine, [8.2296, -6.4008])).toBe('第 9 條 右邊線上｜前起第 7 格 後邊線上');
 	});
 
 	it('墊子外寫在哪一邊外面幾格', () => {
-		expect(positionText(nine, [-8.2296, 6.858])).toBe('第 1 條 左起 線上｜墊子外前面 1/4 格');
-		expect(positionText(nine, [-9.144, -6.858])).toBe('墊子外左邊 1/2 格｜墊子外後面 1/4 格');
-		expect(positionText(nine, [8.6868, 0])).toBe('墊子外右邊 1/4 格｜前起第 4 格 1/2');
+		expect(fieldPositionText(nine, [-8.2296, 6.858])).toBe('第 1 條 左起 線上｜墊子外前面 1/4 格');
+		expect(fieldPositionText(nine, [-9.144, -6.858])).toBe('墊子外左邊 1/2 格｜墊子外後面 1/4 格');
+		expect(fieldPositionText(nine, [8.6868, 0])).toBe('墊子外右邊 1/4 格｜前起第 4 格 1/2');
 	});
 
 	it('橫放：第幾條前起幾分之幾｜左起第幾格幾分之幾（第 1 條最靠近裁判）', () => {
-		expect(positionText(five, [-5.9436, 0])).toBe('第 3 條 前起 1/2｜左起第 1 格 1/4');
+		expect(fieldPositionText(five, [-5.9436, 0])).toBe('第 3 條 前起 1/2｜左起第 1 格 1/4');
 	});
 
 	it('沒在吸附點上（例如舊檔）就寫百分比', () => {
-		expect(positionText(nine, [-4.572 + 0.3 * 1.8288, 3.6576])).toBe(
+		expect(fieldPositionText(nine, [-4.572 + 0.3 * 1.8288, 3.6576])).toBe(
 			'第 3 條 左起 30%｜前起第 2 格 1/2'
 		);
 	});

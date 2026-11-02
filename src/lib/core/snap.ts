@@ -34,7 +34,7 @@ export function snapPointsNear(field: FieldConfig, [x, y]: Position, zoom: numbe
  * 「第 3 條 左起 1/4｜前起第 2 格 1/2」這種位置文字。
  * 直放：條是左右數、格是從正面往後數；橫放：條是從正面往後數（第 1 條最靠近裁判）、格是左右數。
  */
-export function positionText(field: FieldConfig, [x, y]: Position): string {
+export function fieldPositionText(field: FieldConfig, [x, y]: Position): string {
 	const { mat, cols, rows } = fieldGeometry(field);
 	const vertical = field.layout === 'vertical';
 	const across = {
