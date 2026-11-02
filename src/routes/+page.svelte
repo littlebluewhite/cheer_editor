@@ -27,6 +27,7 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
+	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 
@@ -44,6 +45,8 @@
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
+	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
+	let printOpen = $state(false);
 	let notice = $state('');
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	let selectedFormationId = $state<string | null>(null);
@@ -147,7 +150,8 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		if (!flow) return;
+		// 八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
+		if (!flow || printOpen) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
 		if (e.key === ' ') {
 			if (e.repeat) return;
@@ -186,7 +190,7 @@
 <svelte:window {onkeydown} />
 
 {#if flow}
-	<div class="editor">
+	<div class="editor" class:print-hidden={printOpen}>
 		<header class="topbar">
 			<b>{flow.name}</b>
 			<button
@@ -218,6 +222,7 @@
 			</span>
 			{#if notice}<span class="notice" role="status">{notice}</span>{/if}
 			<button type="button" onclick={() => (settingsOpen = true)}>流程設定</button>
+			<button type="button" class="print" onclick={() => (printOpen = true)}>八拍表</button>
 		</header>
 		<main class="field-host">
 			<Field
@@ -271,6 +276,9 @@
 	{#if settingsOpen}
 		<FlowSettings {flow} onchange={(f) => (flow = f)} onclose={() => (settingsOpen = false)} />
 	{/if}
+	{#if printOpen}
+		<PrintSheet {flow} onclose={() => (printOpen = false)} />
+	{/if}
 {:else}
 	<NewFlowForm oncreate={(f) => (flow = f)} />
 {/if}
@@ -323,6 +331,14 @@
 	}
 	.topbar button {
 		margin-left: auto;
+	}
+	.topbar .print {
+		margin-left: 0;
+	}
+	@media print {
+		.print-hidden {
+			display: none;
+		}
 	}
 	.field-host {
 		min-height: 0;

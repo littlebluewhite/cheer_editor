@@ -23,6 +23,9 @@ export {
 } from './actions';
 export type { Action, ActionCategory, ActionMember, NewActionInput } from './actions';
 
+export { eightCountRows } from './eight-count';
+export type { EightCountAction, EightCountFormation, EightCountRow } from './eight-count';
+
 export { addCustomRole, roleGlossary } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
