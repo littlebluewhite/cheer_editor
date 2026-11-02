@@ -1190,6 +1190,18 @@
 		}
 	}
 
+	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行 */
+	@media (max-width: 1100px) {
+		.topbar {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.transport {
+			grid-row: 2;
+			grid-column: 1 / -1;
+			justify-content: center;
+		}
+	}
+
 	/* ---------- 首頁 ---------- */
 	.home {
 		position: relative;
