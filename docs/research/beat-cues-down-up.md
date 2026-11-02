@@ -111,6 +111,13 @@
 5. 紙本上 2 拍的 down 你怎麼寫：只寫第 1 格、兩格都寫，還是畫線？
 6. 在平板上，你比較想點組合（例如「2+1」），還是用手指在格子上拉？
 
+### 教練回覆（2026-11-03）
+
+- 第 1 題：「down 2 拍」是**兩拍都在往下**，所以畫成一條跨兩格的長條是對的。
+- 第 2 題前半：down 和 up 中間**沒有空拍**，up 緊接在 down 後面。
+- 第 3 題：**不用半拍**，只要整拍。
+- 第 2 題後半（hold 要不要標長度）、第 4～6 題：還沒問。
+
 ## 來源
 
 - 啦啦隊：[Varsity Stunting Basics][v-cradle]、[Varsity Coed Toss Drill][v-coed]、[Varsity Elite Stunts][v-elite]（經摘要工具）；[Varsity 2013 教練研習講義][v-2013]、[USASF 規則][usasf]、[GHSA][ghsa]（下載 PDF 讀文字）；[ICU 名詞表][icu-g]（經摘要工具）。
