@@ -1,7 +1,9 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）、八拍尺（點或拖＝移動播放頭）、
-	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小。
+	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
+	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪或觸控板捏合以滑鼠為準）。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
+	import { tick, untrack } from 'svelte';
 	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
@@ -55,10 +57,13 @@
 
 	/** 左邊名字欄的寬度（px）；泳道和站位列用同一個 CSS 變數。 */
 	const LABEL_W = 148;
-	const ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6];
+	const ZOOMS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+	/** 滾輪累積這麼多才算一格放大縮小（觸控板捏合一次會送很多小事件）。 */
+	const WHEEL_STEP = 40;
 
 	let menuOpen = $state(false);
-	let zoomIndex = $state(2);
+	let zoomIndex = $state(ZOOMS.indexOf(1));
+	let wheelAcc = 0;
 	let scroller: HTMLDivElement;
 	/** 正在八拍尺上拖：這時不自動捲（一捲尺就跟著跑，滑鼠換算的秒數會亂跳）。 */
 	let scrubbing = false;
@@ -67,8 +72,31 @@
 	const marks = $derived(rulerMarks(flow));
 	const width = $derived(totalSeconds(flow) * px);
 
-	function zoomBy(step: number) {
-		zoomIndex = Math.min(Math.max(zoomIndex + step, 0), ZOOMS.length - 1);
+	/** 放大縮小一格；anchor 是不動的那一點，離時間軸左緣幾 px（含名字欄）。 */
+	async function zoomBy(step: number, anchor: number) {
+		const next = Math.min(Math.max(zoomIndex + step, 0), ZOOMS.length - 1);
+		if (next === zoomIndex) return;
+		const sec = (scroller.scrollLeft + anchor - LABEL_W) / px;
+		zoomIndex = next;
+		await tick();
+		scroller.scrollLeft = Math.max(0, LABEL_W + sec * px - anchor);
+	}
+
+	/** 按鈕：播放頭在畫面上就讓它不動，不在就以看得到的範圍中間為準。 */
+	function zoomButton(step: number) {
+		const head = LABEL_W + playheadSec * px - scroller.scrollLeft;
+		const inView = head >= LABEL_W && head <= scroller.clientWidth;
+		zoomBy(step, inView ? head : (LABEL_W + scroller.clientWidth) / 2);
+	}
+
+	function onwheel(e: WheelEvent) {
+		if (!e.ctrlKey && !e.metaKey) return;
+		e.preventDefault();
+		wheelAcc += e.deltaY;
+		if (Math.abs(wheelAcc) < WHEEL_STEP) return;
+		const step = wheelAcc < 0 ? 1 : -1;
+		wheelAcc = 0;
+		zoomBy(step, e.clientX - scroller.getBoundingClientRect().left);
 	}
 
 	function add(kind: SegmentKind) {
@@ -89,8 +117,9 @@
 	}
 
 	// 播放頭跑出畫面（播放中、或從別的地方跳過去）就捲過去，放在看得到的範圍的左邊四分之一。
+	// 只跟著播放頭；放大縮小自己管捲動，不然用滾輪放大時會被拉回播放頭。
 	$effect(() => {
-		const x = playheadSec * px;
+		const x = playheadSec * untrack(() => px);
 		if (scrubbing || !scroller || scroller.clientWidth === 0) return;
 		const view = scroller.clientWidth - LABEL_W;
 		const left = scroller.scrollLeft;
@@ -98,7 +127,7 @@
 	});
 </script>
 
-<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`}>
+<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel}>
 	<div class="inner" style:width={`${width + LABEL_W + 200}px`}>
 		<div class="row segs">
 			<div class="lab">
@@ -146,20 +175,21 @@
 		<div class="row ruler-row">
 			<div class="lab zoom">
 				<span>八拍</span>
-				<span class="zoom-btns">
+				<span class="zoom-btns" title="Ctrl／⌘＋滾輪、或觸控板兩指捏合，也可以放大縮小">
 					<button
 						type="button"
 						class="ghost"
 						aria-label="時間軸縮小"
 						disabled={zoomIndex === 0}
-						onclick={() => zoomBy(-1)}><Icon name="minus" size={13} /></button
+						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
 					>
+					<span class="zoom-val">×{ZOOMS[zoomIndex]}</span>
 					<button
 						type="button"
 						class="ghost"
 						aria-label="時間軸放大"
 						disabled={zoomIndex === ZOOMS.length - 1}
-						onclick={() => zoomBy(1)}><Icon name="plus" size={13} /></button
+						onclick={() => zoomButton(1)}><Icon name="plus" size={13} /></button
 					>
 				</span>
 			</div>
@@ -279,6 +309,13 @@
 	.zoom-btns {
 		margin-left: auto;
 		display: flex;
+		align-items: center;
+	}
+	.zoom-val {
+		min-width: 30px;
+		text-align: center;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
 	}
 	.zoom-btns button {
 		width: 22px;
