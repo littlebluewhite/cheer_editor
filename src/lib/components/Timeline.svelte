@@ -1,7 +1,8 @@
 <script lang="ts">
-	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）和八拍尺（點或拖＝移動播放頭）。
-	// 泳道、站位縮圖列由之後的票加在八拍尺下面。
+	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）、八拍尺（點或拖＝移動播放頭）、
+	// 站位縮圖列。泳道由之後的票加在下面。
 	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
+	import FormationRow from './FormationRow.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -12,9 +13,24 @@
 		onseek: (sec: number) => void;
 		onaddsegment: (kind: SegmentKind) => void;
 		onopensegment: (segmentId: string) => void;
+		/** 選到的站位。 */
+		selectedFormationId?: string | null;
+		/** 點縮圖：選這張站位，sec 是它的全域秒數。 */
+		onselectformation?: (formationId: string, sec: number) => void;
+		ondeleteformation?: (formationId: string) => void;
 	}
 
-	let { flow, playheadSec, pxPerSec = 16, onseek, onaddsegment, onopensegment }: Props = $props();
+	let {
+		flow,
+		playheadSec,
+		pxPerSec = 16,
+		onseek,
+		onaddsegment,
+		onopensegment,
+		selectedFormationId = null,
+		onselectformation = () => {},
+		ondeleteformation = () => {}
+	}: Props = $props();
 
 	let menuOpen = $state(false);
 	const spans = $derived(segmentSpans(flow));
@@ -85,6 +101,13 @@
 				{/each}
 			</div>
 		</div>
+		<FormationRow
+			{flow}
+			{pxPerSec}
+			selectedId={selectedFormationId}
+			onselect={onselectformation}
+			ondelete={ondeleteformation}
+		/>
 		<div class="ph" style:left={`${120 + playheadSec * pxPerSec}px`}></div>
 	</div>
 </div>

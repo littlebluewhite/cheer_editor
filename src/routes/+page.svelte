@@ -1,7 +1,12 @@
 <script lang="ts">
 	import {
 		addSegment,
+		deleteFormation,
+		formationAt,
+		formationTimes,
+		insertFormation,
 		positionText,
+		positionsAt,
 		setPositions,
 		timeRuleWarnings,
 		totalSeconds,
@@ -25,9 +30,8 @@
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let notice = $state('');
-
-	/** 開頭那張站位；站位與走位的票會換成播放頭那張。 */
-	const formation = $derived(flow?.formations[0]);
+	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
+	let selectedFormationId = $state<string | null>(null);
 
 	function seek(f: Flow, sec: number) {
 		playheadSec = Math.min(Math.max(sec, 0), totalSeconds(f));
@@ -40,17 +44,49 @@
 		openSegmentId = r.flow.segments.at(-1)!.id;
 	}
 
+	/** 拖人：改播放頭所在那張站位；播放頭不在站位上就先在這一拍插一張。播放頭停到那張站位上。 */
 	function move(moves: Record<string, Position>) {
-		if (!flow || !formation) return;
-		const r = setPositions(flow, formation.id, moves);
-		if (r.kind === 'ok') flow = r.flow;
-		notice = r.kind === 'blocked' ? r.message : '';
+		if (!flow) return;
+		let f = flow;
+		let message = '';
+		if (!formationAt(f, playheadSec)) {
+			const r = insertFormation(f, playheadSec);
+			if (r.kind === 'blocked') return void (notice = r.message);
+			f = r.flow;
+			message = '插了一張站位，大家的位置自動帶入';
+		}
+		const target = formationAt(f, playheadSec)!;
+		const r = setPositions(f, target.id, moves);
+		if (r.kind === 'blocked') return void (notice = r.message);
+		flow = r.flow;
+		notice = message;
+		playheadSec = formationTimes(r.flow).find((t) => t.formation.id === target.id)!.sec;
+	}
+
+	function removeFormation(id: string) {
+		if (!flow) return;
+		const r = deleteFormation(flow, id);
+		if (r.kind === 'blocked') return void (notice = r.message);
+		flow = r.flow;
+		notice = '';
+		if (selectedFormationId === id) selectedFormationId = null;
+	}
+
+	function onkeydown(e: KeyboardEvent) {
+		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+		if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFormationId) {
+			e.preventDefault();
+			removeFormation(selectedFormationId);
+		} else if (e.key === 'Escape') {
+			selectedFormationId = null;
+		}
 	}
 </script>
 
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
 </svelte:head>
+<svelte:window {onkeydown} />
 
 {#if flow}
 	<div class="editor">
@@ -67,7 +103,7 @@
 			<Field
 				field={flow.field}
 				members={flow.members}
-				positions={formation?.pos}
+				positions={positionsAt(flow, playheadSec)}
 				onmove={move}
 			/>
 		</main>
@@ -81,6 +117,12 @@
 				onseek={(sec) => flow && seek(flow, sec)}
 				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
+				{selectedFormationId}
+				onselectformation={(id, sec) => {
+					selectedFormationId = id;
+					playheadSec = sec;
+				}}
+				ondeleteformation={removeFormation}
 			/>
 		</div>
 	</div>

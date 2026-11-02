@@ -19,7 +19,7 @@ export interface Flow {
 	audio: AudioRef[];
 	/** 一串緊接的段，順序就是播放順序。 */
 	segments: Segment[];
-	/** 第一張是流程開頭那張，一定在、不能刪。 */
+	/** 照時間排。第一張是流程開頭那張（第一段的時間 0），一定在、不能刪。 */
 	formations: Formation[];
 }
 
@@ -42,6 +42,6 @@ export function createFlow(input: NewFlowInput): CommandResult {
 		members: [],
 		audio: [],
 		segments: [],
-		formations: [{ id: 'f1', pos: {} }]
+		formations: [{ id: 'f1', segmentId: null, at: 0, pos: {} }]
 	});
 }

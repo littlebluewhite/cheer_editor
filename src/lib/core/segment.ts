@@ -39,7 +39,8 @@ export const MAX_BPM = 170;
 export const DEFAULT_BPM = 150;
 export const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'wav'] as const;
 
-function nextId(prefix: string, ids: string[]): string {
+/** 下一個沒用過的編號 id，例：s3、f2。 */
+export function nextId(prefix: string, ids: string[]): string {
 	let n = 0;
 	for (const id of ids) {
 		const m = id.startsWith(prefix) ? Number(id.slice(prefix.length)) : Number.NaN;
@@ -181,5 +182,10 @@ export function addSegment(flow: Flow, kind: SegmentKind): CommandResult {
 		kind === 'music'
 			? { id, kind, audioId: null, bpm: DEFAULT_BPM, firstBeatSec: 0, halfBeats: 8 * 8 * 2 }
 			: { id, kind, tenths: 100 };
-	return ok({ ...flow, segments: [...flow.segments, segment] });
+	// 開頭站位在第一段的時間 0：加第一段時把它指過去。
+	const formations =
+		flow.segments.length === 0
+			? flow.formations.with(0, { ...flow.formations[0], segmentId: id, at: 0 })
+			: flow.formations;
+	return ok({ ...flow, segments: [...flow.segments, segment], formations });
 }
