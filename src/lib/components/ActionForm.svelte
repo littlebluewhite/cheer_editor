@@ -230,6 +230,11 @@
 	const nameOf = (id: string) => memberName(flow, id);
 </script>
 
+<!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
+{#if action}
+	<button type="button" class="new" onclick={() => onselect(null)}><Icon name="plus" size={14} />新增動作</button>
+{/if}
+
 <section class="action-form" class:editing={action} style:--cat={CATEGORY_COLORS[draft.category]}>
 	<header>
 		<h3>
@@ -237,7 +242,6 @@
 			{action ? '動作' : '在播放頭新增動作'}
 		</h3>
 		{#if action}
-			<button type="button" class="link back" onclick={() => onselect(null)}>改成新增</button>
 			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
 		{/if}
 	</header>
@@ -365,8 +369,10 @@
 		border-radius: 3px;
 		background: var(--cat);
 	}
-	.back {
-		font-size: 12px;
+	.new {
+		width: 100%;
+		justify-content: center;
+		border-style: dashed;
 	}
 	.danger {
 		padding: 3px 8px;

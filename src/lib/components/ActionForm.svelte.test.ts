@@ -128,6 +128,14 @@ describe('動作表單：改選到的動作', () => {
 		expect(onchange.mock.calls[0][0].actions.map((a: { id: string }) => a.id)).toEqual(['x1']);
 		expect(onselect).toHaveBeenCalledWith(null);
 	});
+
+	it('卡片外面的「＋ 新增動作」取消選取，回到新增', async () => {
+		const { onselect } = setup(withTwo(), 'x1');
+		const button = screen.getByRole('button', { name: '新增動作' });
+		expect(button.closest('section')).toBeNull();
+		await fireEvent.click(button);
+		expect(onselect).toHaveBeenCalledWith(null);
+	});
 });
 
 describe('動作表單：選人', () => {
