@@ -133,6 +133,33 @@ export function parseAt(segment: Segment, text: string): number | null {
 	return ((Number(m[1]) - 1) * 8 + Number(m[2]) - 1) * 2 + (m[3] ? 1 : 0);
 }
 
+/**
+ * 出發和到達這類時間點的文字：在 homeSegmentId 那一段裡只寫段內時間（「2-5」、口號段「12.3」），
+ * 在別的段前面加段名，跟上方列一樣（「口號 1 12.3」）。
+ */
+export function timeText(flow: Flow, homeSegmentId: string, p: TimePosition): string {
+	const span = segmentSpans(flow).find((s) => s.segment.id === p.segmentId);
+	if (!span) return '';
+	const at = atText(span.segment, p.at);
+	return p.segmentId === homeSegmentId ? at : `${span.label} ${at}`;
+}
+
+/**
+ * timeText 的反向：只有段內時間就是 homeSegmentId 那一段；前面有段名（可以帶上方列的「秒」）就是那一段。
+ * 看不懂或沒有這一段是 null。不檢查有沒有超出段（指令會擋）。
+ */
+export function parseTime(flow: Flow, homeSegmentId: string, text: string): TimePosition | null {
+	const m = /^(?:(音樂|口號)\s*(\d+)\s+)?(.+?)\s*秒?$/.exec(text.trim());
+	if (!m) return null;
+	const spans = segmentSpans(flow);
+	const span = m[1]
+		? spans.find((s) => s.label === `${m[1]} ${Number(m[2])}`)
+		: spans.find((s) => s.segment.id === homeSegmentId);
+	if (!span) return null;
+	const at = parseAt(span.segment, m[3]);
+	return at === null ? null : { segmentId: span.segment.id, at };
+}
+
 /** 長度給教練看的樣子：音樂段幾拍（可以 .5），口號段幾秒（到 0.1）。 */
 export function lengthText(segment: Segment, length: number): string {
 	return segment.kind === 'music' ? String(length / 2) : (length / 10).toFixed(1);

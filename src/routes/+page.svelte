@@ -42,6 +42,7 @@
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
+	import WalkForm from '#lib/components/WalkForm.svelte';
 
 	interface Props {
 		/** 音訊引擎；測試換成假的（jsdom 沒有 Web Audio）。第一次播放時才建立。 */
@@ -619,6 +620,7 @@
 			</div>
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
 				<MemberPicker {flow} {playheadSec} selected={selectedMemberIds} onselect={selectMembers} />
+				<WalkForm {flow} {playheadSec} {selectedMemberIds} onchange={change} />
 				<ActionForm
 					{flow}
 					{playheadSec}
