@@ -264,6 +264,35 @@ describe('站位與走位', () => {
 		expect(line()).toBe('拖人會在 2-3 插一張新站位');
 	});
 
+	it('跟上一張一樣：沒選人、在開頭那張時按不下去並說原因；在站位上改成上一張的位置；不在站位上先插一張', async () => {
+		const button = () => screen.getByRole('button', { name: '跟上一張一樣' }) as HTMLButtonElement;
+		const at = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');
+		await setup();
+		const start = at('m1');
+		expect(button().disabled).toBe(true);
+		expect(screen.getByText('先選人')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		expect(button().disabled).toBe(true);
+		expect(screen.getByText('開頭那張前面沒有站位')).toBeTruthy();
+
+		await seek(8.25);
+		await fireEvent.click(screen.getByRole('button', { name: '清除' }));
+		await dragFirstMember(); // 插站位 2，小A 換位置
+		expect(at('m1')).not.toBe(start);
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		expect(button().disabled).toBe(false);
+		await fireEvent.click(button());
+		expect(at('m1')).toBe(start);
+		expect(thumbs()).toHaveLength(2);
+		expect(screen.queryByRole('status')).toBeNull();
+
+		await seek(4);
+		await fireEvent.click(button());
+		expect(thumbs()).toHaveLength(3);
+		expect(screen.getByRole('status').textContent).toBe('插了一張站位，大家的位置自動帶入');
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-3');
+	});
+
 	it('點縮圖跳到那一拍；✕ 刪掉站位；開頭那張沒有 ✕', async () => {
 		await setup();
 		await seek(8.25);
