@@ -62,6 +62,9 @@
 									{a.members.map((m) => (m.role ? `${m.name}（${m.role}）` : m.name)).join('、')}
 								</div>
 							{/each}
+							{#each row.walks as w, j (j)}
+								<div>{w}</div>
+							{/each}
 						</td>
 						<td>
 							{#each row.formations as f (f.number)}
