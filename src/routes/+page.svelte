@@ -216,6 +216,8 @@
 	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}) {
 		pause();
 		flow = f;
+		undoStack = [];
+		redoStack = [];
 		saver = createSaver();
 		audios = loaded;
 		openError = '';
@@ -231,8 +233,49 @@
 		inspectorTab = f.members.length ? 'action' : 'members';
 	}
 
-	/** 指令改好的流程。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
+	/** 復原紀錄：改之前的流程（最舊的在前）。指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。 */
+	let undoStack = $state.raw<Flow[]>([]);
+	/** 重做紀錄：復原掉的流程（最近復原的在後）。做了新的一步就清掉。 */
+	let redoStack = $state.raw<Flow[]>([]);
+	const UNDO_LIMIT = 100;
+
+	/**
+	 * 改流程的唯一入口：每次流程換成新的就算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。
+	 * 換成另一支流程（開檔、新建、救回草稿）不走這裡，走 startFlow。
+	 */
 	function change(f: Flow) {
+		if (!flow || f === flow) return;
+		undoStack = [...undoStack, flow].slice(-UNDO_LIMIT);
+		redoStack = [];
+		show(f);
+	}
+
+	function undo() {
+		const prev = undoStack.at(-1);
+		if (!flow || !prev) return;
+		redoStack = [...redoStack, flow];
+		undoStack = undoStack.slice(0, -1);
+		restore(prev);
+	}
+
+	function redo() {
+		const next = redoStack.at(-1);
+		if (!flow || !next) return;
+		undoStack = [...undoStack, flow];
+		redoStack = redoStack.slice(0, -1);
+		restore(next);
+	}
+
+	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
+	function restore(f: Flow) {
+		show(f);
+		notice = '';
+		playheadSec = Math.min(playheadSec, totalSeconds(f));
+		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) openSegmentId = null;
+	}
+
+	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
+	function show(f: Flow) {
 		flow = f;
 		if (selectedFormationId && !f.formations.some((x) => x.id === selectedFormationId)) {
 			selectedFormationId = null;
@@ -376,7 +419,12 @@
 		// 八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
 		if (!flow || printOpen) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
-		if (e.key === ' ') {
+		const key = e.key.toLowerCase();
+		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
+			e.preventDefault();
+			if (key === 'z' && !e.shiftKey) undo();
+			else redo();
+		} else if (e.key === ' ') {
 			if (e.repeat) return;
 			// 不讓焦點所在的按鈕也被空白鍵按到
 			e.preventDefault();
@@ -467,6 +515,17 @@
 			</div>
 
 			<div class="actions">
+				<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!undoStack.length} onclick={undo}
+					><Icon name="undo" /><span class="narrow-hide">復原</span></button
+				>
+				<button
+					type="button"
+					class="ghost"
+					title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
+					disabled={!redoStack.length}
+					onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+				>
+				<span class="sep" aria-hidden="true"></span>
 				<button type="button" class="ghost" onclick={() => (printOpen = true)}><Icon name="print" />八拍表</button>
 				<button type="button" class="ghost" onclick={() => (settingsOpen = true)}
 					><Icon name="settings" />流程設定</button
@@ -1050,6 +1109,15 @@
 		}
 		.latency input {
 			width: 56px;
+		}
+		/* 復原、重做只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		.narrow-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
 		}
 		.topbar {
 			grid-template-columns: auto auto minmax(0, 1fr);
