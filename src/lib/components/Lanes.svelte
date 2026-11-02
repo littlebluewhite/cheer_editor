@@ -4,9 +4,11 @@
 	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點多選。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
+	// 走太快的走位條標紅（見 formationWalks）。
 	import {
 		actionLabel,
 		actionSeconds,
+		formationWalks,
 		idleAt,
 		memberWalk,
 		moveAction,
@@ -85,25 +87,17 @@
 		dx: number;
 	} | null>(null);
 
-	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數。 */
+	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快。 */
 	const walks = $derived.by(() => {
-		const byMember: Record<string, { formationId: string; departSec: number; arriveSec: number }[]> =
-			{};
-		flow.formations.forEach((b, i) => {
-			const a = flow.formations[i - 1];
-			if (!a) return;
-			for (const m of flow.members) {
-				const [ax, ay] = a.pos[m.id] ?? [];
-				const [bx, by] = b.pos[m.id] ?? [];
-				const walk = ax === bx && ay === by ? null : memberWalk(flow, b.id, m.id);
-				if (!walk) continue;
-				(byMember[m.id] ??= []).push({
-					formationId: b.id,
-					departSec: toSeconds(flow, walk.depart),
-					arriveSec: toSeconds(flow, walk.arrive)
-				});
+		const byMember: Record<
+			string,
+			{ formationId: string; departSec: number; arriveSec: number; tooFast: boolean }[]
+		> = {};
+		for (const b of flow.formations) {
+			for (const { memberId, departSec, arriveSec, tooFast } of formationWalks(flow, b.id)) {
+				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast });
 			}
-		});
+		}
 		return byMember;
 	});
 
@@ -240,6 +234,7 @@
 					type="button"
 					class="walk"
 					class:dragging={d !== null}
+					class:fast={w.tooFast}
 					data-walk={w.formationId}
 					style:left={`${w.departSec * pxPerSec + dl}px`}
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
@@ -400,6 +395,11 @@
 	.walk:hover,
 	.walk.dragging {
 		opacity: 0.85;
+	}
+	/* 走太快：紅色，跟場地上的線一樣。 */
+	.walk.fast {
+		background: var(--now, #f2542d);
+		opacity: 0.9;
 	}
 	.walk.dragging {
 		cursor: grabbing;

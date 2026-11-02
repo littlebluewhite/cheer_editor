@@ -293,6 +293,30 @@ describe('站位與走位', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-3');
 	});
 
+	it('影子和走位線：在站位上畫上一張的影子和線、在兩張中間只畫線、有選人只畫選到的人', async () => {
+		const marked = (attr: string) =>
+			[...document.querySelectorAll(`.field [${attr}]`)].map((el) => el.getAttribute(attr));
+		await setup();
+		expect(marked('data-ghost')).toEqual([]);
+		expect(marked('data-walk-line')).toEqual([]);
+
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2，小A 換位置
+		expect(marked('data-ghost')).toEqual(['m1', 'm2']);
+		expect(marked('data-walk-line')).toEqual(['m1']);
+
+		await seek(4);
+		expect(marked('data-ghost')).toEqual([]);
+		expect(marked('data-walk-line')).toEqual(['m1']);
+
+		await seek(8.25);
+		const dot = document.querySelector('[data-member-id="m2"]')!;
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(dot, { clientX: 0, clientY: 0 });
+		expect(marked('data-ghost')).toEqual(['m2']);
+		expect(marked('data-walk-line')).toEqual([]);
+	});
+
 	it('點縮圖跳到那一拍；✕ 刪掉站位；開頭那張沒有 ✕', async () => {
 		await setup();
 		await seek(8.25);

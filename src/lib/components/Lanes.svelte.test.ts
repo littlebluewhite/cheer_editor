@@ -5,6 +5,7 @@ import {
 	createFlow,
 	insertFormation,
 	setPositions,
+	setWalks,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -225,6 +226,22 @@ describe('走位條', () => {
 		expect(walkBar(0).style.left).toBe('16px');
 		expect(parseFloat(walkBar(0).style.width)).toBeCloseTo(32, 6);
 		expect(walkBar(0).dataset.actionId).toBeUndefined();
+	});
+
+	it('走太快的走位條標紅', () => {
+		let flow = walking();
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0] }));
+		flow = flowOf(setPositions(flow, f2, { m1: [4, 0] }));
+		// 小A 4 公尺 0.2 秒（第 23 到 24 個半拍）。
+		flow = flowOf(
+			setWalks(flow, f2, {
+				m1: { depart: { segmentId: 's1', at: 23 }, arrive: { segmentId: 's1', at: 24 } }
+			})
+		);
+		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn() });
+		expect(walkBar(0).classList.contains('fast')).toBe(true);
+		expect(walkBar(1).classList.contains('fast')).toBe(false);
 	});
 
 	it('拖左端改出發，吸到最近的半拍；只改這個人', async () => {
