@@ -23,7 +23,16 @@
 		name = '';
 		meaning = '';
 	}
+
+	// Esc 關掉對照表。用捕獲階段先攔下來，底下的編輯畫面就不會把 Esc 當成「清除選取」。
+	function onkeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		e.stopPropagation();
+		onclose();
+	}
 </script>
+
+<svelte:window onkeydowncapture={onkeydown} />
 
 <div class="backdrop">
 	<div class="dialog glossary" role="dialog" aria-label="名詞對照表">

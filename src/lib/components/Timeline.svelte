@@ -60,6 +60,8 @@
 	let menuOpen = $state(false);
 	let zoomIndex = $state(2);
 	let scroller: HTMLDivElement;
+	/** 正在八拍尺上拖：這時不自動捲（一捲尺就跟著跑，滑鼠換算的秒數會亂跳）。 */
+	let scrubbing = false;
 	const px = $derived(pxPerSec * ZOOMS[zoomIndex]);
 	const spans = $derived(segmentSpans(flow));
 	const marks = $derived(rulerMarks(flow));
@@ -78,14 +80,18 @@
 		if (e.button !== 0) return;
 		const ruler = e.currentTarget as HTMLElement;
 		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
+		scrubbing = true;
 		onseek(toSec(e));
-		followPointer((ev) => onseek(toSec(ev)));
+		followPointer(
+			(ev) => onseek(toSec(ev)),
+			() => (scrubbing = false)
+		);
 	}
 
 	// 播放頭跑出畫面（播放中、或從別的地方跳過去）就捲過去，放在看得到的範圍的左邊四分之一。
 	$effect(() => {
 		const x = playheadSec * px;
-		if (!scroller || scroller.clientWidth === 0) return;
+		if (scrubbing || !scroller || scroller.clientWidth === 0) return;
 		const view = scroller.clientWidth - LABEL_W;
 		const left = scroller.scrollLeft;
 		if (x < left || x > left + view - 24) scroller.scrollLeft = Math.max(0, x - view / 4);

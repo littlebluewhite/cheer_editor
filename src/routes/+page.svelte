@@ -443,7 +443,7 @@
 					<Icon name="metronome" />節拍器
 				</label>
 				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
-					延遲校正（毫秒）
+					<span class="latency-text">延遲校正（毫秒）</span>
 					<input
 						type="number"
 						step="10"
@@ -994,9 +994,22 @@
 		}
 	}
 
+	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。 */
 	@media (max-width: 1180px) {
-		.latency {
-			display: none;
+		.latency-text {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		.latency::before {
+			/* 只給眼睛看的短名字；讀屏還是讀完整的「延遲校正（毫秒）」 */
+			content: '延遲' / '';
+		}
+		.latency input {
+			width: 56px;
 		}
 		.topbar {
 			grid-template-columns: auto auto minmax(0, 1fr);

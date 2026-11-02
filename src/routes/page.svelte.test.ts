@@ -41,6 +41,23 @@ describe('段、八拍尺、上方列', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 1-5');
 	});
 
+	it('在八拍尺上拖到右邊緣時時間軸不自己捲走（不然尺跟著滑鼠跑，播放頭會亂跳）', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		const timeline = document.querySelector('.timeline') as HTMLElement;
+		// jsdom 沒有排版：假裝時間軸看得到 400 px（扣掉名字欄 148 px，剩 252 px）
+		Object.defineProperty(timeline, 'clientWidth', { value: 400 });
+		const ruler = document.querySelector('[data-ruler]')!;
+		await fireEvent.pointerDown(ruler, { clientX: 0, button: 0 });
+		// 1 秒 = 16 px；拖到 15 秒（240 px），已經在右邊緣附近
+		await fireEvent.pointerMove(window, { clientX: 15 * 16 });
+		await tick();
+		expect(timeline.scrollLeft).toBe(0);
+		await fireEvent.pointerUp(window);
+	});
+
 	it('超過時間規則時上方列提醒；流程設定可以關掉或改數字', async () => {
 		await newFlow();
 		expect(screen.getByText(/口號段共 0.0 秒，少於 30 秒/)).toBeTruthy();
@@ -105,6 +122,15 @@ describe('動作', () => {
 		expect(screen.getByRole('button', { name: '新增動作' })).toBeTruthy();
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(bar()).toBeTruthy();
+	});
+
+	it('名詞對照表開著時按 Esc 只關掉它，不清除選到的動作', async () => {
+		await withAction();
+		await fireEvent.click(screen.getByRole('button', { name: '名詞對照表' }));
+		expect(screen.getByRole('dialog', { name: '名詞對照表' })).toBeTruthy();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.queryByRole('dialog', { name: '名詞對照表' })).toBeNull();
+		expect(bar()?.classList.contains('selected')).toBe(true);
 	});
 
 	it('點色條選動作，按 Delete 刪掉；在輸入框裡按 Delete 不刪', async () => {
