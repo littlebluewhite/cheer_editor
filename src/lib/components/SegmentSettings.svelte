@@ -3,6 +3,7 @@
 	// 每改一個欄位就送一個流程核心指令；被擋就顯示原因，流程不變。
 	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
 	import ConfirmList from './ConfirmList.svelte';
+	import { applyResult, numberValue } from './form';
 	import {
 		AUDIO_EXTENSIONS,
 		MAX_BPM,
@@ -75,12 +76,7 @@
 	});
 
 	function apply(r: CommandResult) {
-		if (r.kind === 'ok') {
-			error = '';
-			onchange(r.flow);
-		} else {
-			error = r.message;
-		}
+		error = applyResult(r, onchange);
 	}
 
 	/** 段縮短會刪掉東西時，等教練確認的改法和流程核心給的清單。 */
@@ -104,7 +100,6 @@
 		pending = null;
 		fieldsKey += 1;
 	}
-	const num = (e: Event) => (e.currentTarget as HTMLInputElement).valueAsNumber;
 
 	async function load(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
@@ -182,7 +177,7 @@
 			<div class="row">
 				<label>
 					BPM
-					<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => update({ bpm: num(e) })} />
+					<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => update({ bpm: numberValue(e) })} />
 				</label>
 				<span class="muted">{MIN_BPM}–{MAX_BPM}</span>
 				<label>
@@ -192,7 +187,7 @@
 						step="0.01"
 						min="0"
 						value={music.firstBeatSec}
-						onchange={(e) => update({ firstBeatSec: num(e) })}
+						onchange={(e) => update({ firstBeatSec: numberValue(e) })}
 					/>
 				</label>
 				<button type="button" onclick={() => onpreview(segmentId)}>▶ 從第一拍聽 2 個八拍</button>
@@ -219,7 +214,7 @@
 			<div class="row">
 				<label>
 					八拍數
-					<input type="number" min="1" step="1" value={length.eights} onchange={(e) => update({ eights: num(e) })} />
+					<input type="number" min="1" step="1" value={length.eights} onchange={(e) => update({ eights: numberValue(e) })} />
 				</label>
 				<label>
 					最後一個八拍有幾拍
@@ -229,7 +224,7 @@
 						max="8"
 						step="1"
 						value={length.lastBeats}
-						onchange={(e) => update({ lastBeats: num(e) })}
+						onchange={(e) => update({ lastBeats: numberValue(e) })}
 					/>
 				</label>
 				<button type="button" onclick={fitToAudio}>照音樂長度算</button>
@@ -243,7 +238,7 @@
 						step="0.1"
 						min="0.1"
 						value={span?.durationSec}
-						onchange={(e) => update({ seconds: num(e) })}
+						onchange={(e) => update({ seconds: numberValue(e) })}
 					/>
 				</label>
 				<span class="muted">口號段只計秒數，最細 0.1 秒</span>

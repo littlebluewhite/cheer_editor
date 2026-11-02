@@ -2,7 +2,14 @@
 	// 選人：一鍵選全隊、全部底層、全部上層、這一拍沒在動作裡的人、清除；
 	// 「沿用上一個動作的人」取播放頭以前最晚結束的動作，再按一次換更早的。
 	// 選到的人是在播放頭新增動作的人，也是場上整組拖的那一組。
-	import { actionLabel, memberGroup, previousActions, type Flow, type MemberGroup } from '#lib/core';
+	import {
+		actionLabel,
+		memberGroup,
+		memberName,
+		previousActions,
+		type Flow,
+		type MemberGroup
+	} from '#lib/core';
 
 	interface Props {
 		flow: Flow;
@@ -25,9 +32,7 @@
 	let cycle = { sec: NaN, index: 0 };
 	let message = $state('');
 
-	const names = $derived(
-		selected.map((id) => flow.members.find((m) => m.id === id)?.name).filter(Boolean)
-	);
+	const names = $derived(selected.map((id) => memberName(flow, id)).filter(Boolean));
 
 	function previous() {
 		const candidates = previousActions(flow, playheadSec);

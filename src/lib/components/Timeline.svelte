@@ -4,6 +4,7 @@
 	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
 	import FormationRow from './FormationRow.svelte';
 	import Lanes from './Lanes.svelte';
+	import { followPointer } from './pointer';
 
 	interface Props {
 		flow: Flow;
@@ -66,13 +67,7 @@
 		const toSec = (ev: PointerEvent) =>
 			(ev.clientX - ruler.getBoundingClientRect().left) / pxPerSec;
 		onseek(toSec(e));
-		const move = (ev: PointerEvent) => onseek(toSec(ev));
-		const up = () => {
-			window.removeEventListener('pointermove', move);
-			window.removeEventListener('pointerup', up);
-		};
-		window.addEventListener('pointermove', move);
-		window.addEventListener('pointerup', up);
+		followPointer((ev) => onseek(toSec(ev)));
 	}
 </script>
 

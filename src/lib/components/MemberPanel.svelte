@@ -2,12 +2,15 @@
 	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
 	// 刪隊員先顯示流程核心給的「要確認」說明，按確定才刪。
 	import ConfirmList from './ConfirmList.svelte';
+	import { applyResult } from './form';
 	import {
+		GENDERS,
+		GLOBAL_ROLES,
 		MAX_MEMBERS,
 		addMembers,
 		deleteMember,
+		memberName,
 		updateMember,
-		type CommandResult,
 		type Flow,
 		type Gender,
 		type GlobalRole,
@@ -16,29 +19,10 @@
 
 	let { flow, onchange }: { flow: Flow; onchange: (flow: Flow) => void } = $props();
 
-	const GENDERS: [Gender, string][] = [
-		['F', '女'],
-		['M', '男']
-	];
-	const ROLES: [GlobalRole, string][] = [
-		['base', '底層'],
-		['top', '上層']
-	];
-
 	let names = $state('');
 	let gender = $state<Gender | ''>('');
 	let globalRole = $state<GlobalRole | ''>('');
 	let error = $state('');
-
-	function apply(r: CommandResult): boolean {
-		if (r.kind === 'ok') {
-			error = '';
-			onchange(r.flow);
-			return true;
-		}
-		error = r.message;
-		return false;
-	}
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -48,13 +32,14 @@
 			gender: gender || null,
 			globalRole: globalRole || null
 		}));
-		if (apply(addMembers(flow, inputs))) names = '';
+		error = applyResult(addMembers(flow, inputs), onchange);
+		if (!error) names = '';
 	}
 
 	function edit(id: string, changes: MemberChanges, input?: HTMLInputElement) {
-		const done = apply(updateMember(flow, id, changes));
+		error = applyResult(updateMember(flow, id, changes), onchange);
 		// 被擋下時把輸入框還原成原本的名字。
-		if (!done && input) input.value = flow.members.find((m) => m.id === id)?.name ?? '';
+		if (error && input) input.value = memberName(flow, id);
 	}
 
 	/** 等教練確認要刪的隊員和流程核心給的說明。 */
@@ -63,12 +48,12 @@
 	function remove(id: string) {
 		const r = deleteMember(flow, id);
 		if (r.kind === 'confirm') pending = { id, message: r.message, items: r.items };
-		else apply(r);
+		else error = applyResult(r, onchange);
 	}
 
 	function confirmRemove() {
 		if (!pending) return;
-		apply(deleteMember(flow, pending.id, { confirmed: true }));
+		error = applyResult(deleteMember(flow, pending.id, { confirmed: true }), onchange);
 		pending = null;
 	}
 </script>
@@ -90,14 +75,14 @@
 					value={m.gender}
 					onchange={(e) => edit(m.id, { gender: e.currentTarget.value as Gender })}
 				>
-					{#each GENDERS as [v, label] (v)}<option value={v}>{label}</option>{/each}
+					{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
 				</select>
 				<select
 					aria-label="第 {i + 1} 位隊員的全局角色"
 					value={m.globalRole}
 					onchange={(e) => edit(m.id, { globalRole: e.currentTarget.value as GlobalRole })}
 				>
-					{#each ROLES as [v, label] (v)}<option value={v}>{label}</option>{/each}
+					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
 				</select>
 				<button type="button" class="remove" aria-label="刪除第 {i + 1} 位隊員" onclick={() => remove(m.id)}
 					>✕</button
@@ -125,14 +110,14 @@
 			性別
 			<select bind:value={gender}>
 				<option value="">請選</option>
-				{#each GENDERS as [v, label] (v)}<option value={v}>{label}</option>{/each}
+				{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
 			</select>
 		</label>
 		<label>
 			全局角色
 			<select bind:value={globalRole}>
 				<option value="">請選</option>
-				{#each ROLES as [v, label] (v)}<option value={v}>{label}</option>{/each}
+				{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
 			</select>
 		</label>
 		<button type="submit">加隊員</button>

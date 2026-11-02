@@ -12,6 +12,7 @@
 		atText,
 		deleteAction,
 		lengthText,
+		memberName,
 		parseAt,
 		parseLength,
 		positionText,
@@ -225,7 +226,7 @@
 		membersChanged();
 	}
 
-	const nameOf = (id: string) => flow.members.find((m) => m.id === id)?.name ?? id;
+	const nameOf = (id: string) => memberName(flow, id);
 </script>
 
 <section class="action-form">

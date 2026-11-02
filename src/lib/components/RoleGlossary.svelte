@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加自訂角色。
 	import { addCustomRole, roleGlossary, type Flow } from '#lib/core';
+	import { applyResult } from './form';
 
 	interface Props {
 		flow: Flow;
@@ -16,15 +17,10 @@
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
-		const r = addCustomRole(flow, { name, meaning });
-		if (r.kind !== 'ok') {
-			error = r.message;
-			return;
-		}
-		error = '';
+		error = applyResult(addCustomRole(flow, { name, meaning }), onchange);
+		if (error) return;
 		name = '';
 		meaning = '';
-		onchange(r.flow);
 	}
 </script>
 

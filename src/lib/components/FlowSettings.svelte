@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 流程設定：流程名字、規則警告的開關和三個數字。被擋就顯示流程核心給的原因。
-	import { renameFlow, updateTimeRules, type CommandResult, type Flow, type TimeRules } from '#lib/core';
+	import { renameFlow, updateTimeRules, type Flow, type TimeRules } from '#lib/core';
+	import { applyResult, numberValue } from './form';
 
 	interface Props {
 		flow: Flow;
@@ -11,26 +12,16 @@
 	let { flow, onchange, onclose }: Props = $props();
 	let error = $state('');
 
-	function apply(r: CommandResult): boolean {
-		if (r.kind === 'ok') {
-			error = '';
-			onchange(r.flow);
-			return true;
-		}
-		error = r.message;
-		return false;
-	}
-
 	function update(patch: Partial<TimeRules>) {
-		apply(updateTimeRules(flow, patch));
+		error = applyResult(updateTimeRules(flow, patch), onchange);
 	}
 
 	function rename(input: HTMLInputElement) {
+		error = applyResult(renameFlow(flow, input.value), onchange);
 		// 被擋下時把輸入框還原成原本的名字。
-		if (!apply(renameFlow(flow, input.value))) input.value = flow.name;
+		if (error) input.value = flow.name;
 	}
 
-	const num = (e: Event) => (e.currentTarget as HTMLInputElement).valueAsNumber;
 	const fields = [
 		['minChantSec', '口號段最少（秒）'],
 		['maxMusicSec', '音樂段加起來最多（秒）'],
@@ -63,7 +54,7 @@
 					type="number"
 					min="0"
 					value={flow.timeRules[key]}
-					onchange={(e) => update({ [key]: num(e) })}
+					onchange={(e) => update({ [key]: numberValue(e) })}
 				/>
 			</label>
 		{/each}

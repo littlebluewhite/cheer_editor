@@ -12,6 +12,7 @@
 		type Flow
 	} from '#lib/core';
 	import { CATEGORY_COLORS } from './category-colors';
+	import { followPointer } from './pointer';
 
 	interface Props {
 		flow: Flow;
@@ -68,17 +69,15 @@
 		if (e.button !== 0) return;
 		const mode = (e.target as Element).closest('[data-resize]') ? 'resize' : 'move';
 		drag = { id, mode, x0: e.clientX, dx: 0 };
-		const move = (ev: PointerEvent) => {
-			if (drag) drag.dx = ev.clientX - drag.x0;
-		};
-		const up = () => {
-			window.removeEventListener('pointermove', move);
-			window.removeEventListener('pointerup', up);
-			if (drag) drop(drag.id, drag.mode, drag.dx);
-			drag = null;
-		};
-		window.addEventListener('pointermove', move);
-		window.addEventListener('pointerup', up);
+		followPointer(
+			(ev) => {
+				if (drag) drag.dx = ev.clientX - drag.x0;
+			},
+			() => {
+				if (drag) drop(drag.id, drag.mode, drag.dx);
+				drag = null;
+			}
+		);
 	}
 
 	function drop(id: string, mode: 'move' | 'resize', dx: number) {
