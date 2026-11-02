@@ -2,7 +2,9 @@
 // zip 裡是 flow.json（{ formatVersion, flow }）和 flow.audio 列出的音樂檔（audio/a1.mp3 …）。
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
+import { ACTION_CATEGORIES } from './actions';
 import type { Flow } from './flow';
+import { GENDERS, GLOBAL_ROLES } from './members';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
 export const FORMAT_VERSION = 1;
@@ -83,16 +85,74 @@ function isDocument(doc: unknown): doc is FlowDocument {
 	return isObject(doc) && Number.isInteger(doc.formatVersion) && isObject(doc.flow);
 }
 
-/** 流程的外層長得對：名字、場地、時間規則，和每份清單都是物件陣列，而且有開頭那張站位。裡面的欄位不逐一檢查。 */
-function isFlow(flow: unknown): flow is Flow {
-	if (!isObject(flow)) return false;
-	const lists = ['members', 'audio', 'segments', 'formations', 'customRoles', 'actions'];
+/** 檢查一個值長得對不對。 */
+type Check = (v: unknown) => boolean;
+const str: Check = (v) => typeof v === 'string';
+const num: Check = (v) => typeof v === 'number' && Number.isFinite(v);
+const int: Check = (v) => Number.isInteger(v);
+const bool: Check = (v) => typeof v === 'boolean';
+const oneOf = (keys: readonly unknown[]): Check => (v) => keys.includes(v);
+const nullOr = (c: Check): Check => (v) => v === null || c(v);
+const listOf = (c: Check): Check => (v) => Array.isArray(v) && v.every(c);
+const shape = (fields: Record<string, Check>): Check => (v) =>
+	isObject(v) && Object.entries(fields).every(([k, c]) => c(v[k]));
+const position: Check = (v) => Array.isArray(v) && v.length === 2 && v.every(num);
+
+const flowShape = shape({
+	name: str,
+	field: shape({ strips: int, layout: oneOf(['vertical', 'horizontal']) }),
+	timeRules: shape({ on: bool, minChantSec: num, maxMusicSec: num, maxTotalSec: num }),
+	members: listOf(
+		shape({
+			id: str,
+			name: str,
+			gender: oneOf(GENDERS.map((g) => g.key)),
+			globalRole: oneOf(GLOBAL_ROLES.map((r) => r.key))
+		})
+	),
+	audio: listOf(shape({ id: str, file: str, name: str })),
+	segments: listOf(
+		(v) =>
+			shape({ id: str, kind: oneOf(['music']), audioId: nullOr(str), bpm: num, firstBeatSec: num, halfBeats: int })(v) ||
+			shape({ id: str, kind: oneOf(['chant']), tenths: int })(v)
+	),
+	formations: listOf(
+		shape({
+			id: str,
+			segmentId: nullOr(str),
+			at: int,
+			pos: (v) => isObject(v) && Object.values(v).every(position)
+		})
+	),
+	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
+	actions: listOf(
+		shape({
+			id: str,
+			segmentId: str,
+			category: oneOf(ACTION_CATEGORIES.map((c) => c.key)),
+			name: str,
+			start: int,
+			length: int,
+			note: str,
+			members: listOf(shape({ memberId: str, role: nullOr(str) }))
+		})
+	)
+});
+
+/** 每個欄位的型別都對、指到的段／音樂檔／隊員都在，而且有開頭那張站位。 */
+function isFlow(v: unknown): v is Flow {
+	if (!flowShape(v)) return false;
+	const flow = v as Flow;
+	const segmentIds = new Set(flow.segments.map((s) => s.id));
+	const audioIds = new Set(flow.audio.map((a) => a.id));
+	const memberIds = new Set(flow.members.map((m) => m.id));
 	return (
-		typeof flow.name === 'string' &&
-		isObject(flow.field) &&
-		isObject(flow.timeRules) &&
-		lists.every((k) => Array.isArray(flow[k]) && flow[k].every(isObject)) &&
-		(flow.formations as unknown[]).length > 0
+		flow.formations.length > 0 &&
+		flow.segments.every((s) => s.kind !== 'music' || s.audioId === null || audioIds.has(s.audioId)) &&
+		flow.formations.every((f) => f.segmentId === null || segmentIds.has(f.segmentId)) &&
+		flow.actions.every(
+			(a) => segmentIds.has(a.segmentId) && a.members.every((m) => memberIds.has(m.memberId))
+		)
 	);
 }
 

@@ -109,6 +109,36 @@ describe('流程檔：版本', () => {
 		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
 	});
 
+	/** sample() 存成 JSON 再手動改壞一個地方（模擬有人手改 flow.json）。 */
+	function broken(edit: (flow: any) => void): Uint8Array {
+		const flow = JSON.parse(JSON.stringify(sample()));
+		edit(flow);
+		return zipOf({ formatVersion: 1, flow });
+	}
+
+	it.each([
+		['站位的 pos 是 null', broken((f) => (f.formations[0].pos = null))],
+		['位置不是兩個數字', broken((f) => (f.formations[1].pos.m1 = [1]))],
+		['站位的時間不是整數', broken((f) => (f.formations[1].at = 1.5))],
+		['站位指到沒有的段', broken((f) => (f.formations[1].segmentId = 'zz'))],
+		['隊員的名字不是字', broken((f) => (f.members[0].name = 1))],
+		['隊員的性別不對', broken((f) => (f.members[0].gender = 'X'))],
+		['段的種類不對', broken((f) => (f.segments[0].kind = 'dance'))],
+		['音樂段的 BPM 不是數字', broken((f) => (f.segments[0].bpm = '144'))],
+		['口號段沒有長度', broken((f) => delete f.segments[1].tenths)],
+		['音樂段指到沒有的音樂檔', broken((f) => (f.segments[0].audioId = 'zz'))],
+		['音樂檔沒有路徑', broken((f) => (f.audio[0].file = null))],
+		['場地的放法不對', broken((f) => (f.field.layout = 'diagonal'))],
+		['時間規則的開關不是是非', broken((f) => (f.timeRules.on = 'yes'))],
+		['自訂角色沒有名字', broken((f) => (f.customRoles[0].name = null))],
+		['動作的分類不對', broken((f) => (f.actions[0].category = 'x'))],
+		['動作的隊員不是陣列', broken((f) => (f.actions[0].members = null))],
+		['動作指到沒有的段', broken((f) => (f.actions[0].segmentId = 'zz'))],
+		['動作指到沒有的隊員', broken((f) => (f.actions[0].members[0].memberId = 'zz'))]
+	])('欄位壞掉（%s）：不是流程檔', (_, file) => {
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+	});
+
 	// 現在只有第 1 版。用假想的舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
 	// 第 0 版補了 customRoles，第 1 版補了 actions。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
