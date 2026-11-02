@@ -52,7 +52,7 @@ export {
 	positionsAt,
 	setPositions
 } from './formation';
-export type { Formation, Position } from './formation';
+export type { Formation, Position, Walk } from './formation';
 
 export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';

@@ -109,7 +109,10 @@ export function deleteMember(
 		formations: flow.formations.map((f) => {
 			const pos = { ...f.pos };
 			delete pos[id];
-			return { ...f, pos };
+			const { walks, ...rest } = f;
+			if (!walks) return { ...rest, pos };
+			const { [id]: _, ...others } = walks;
+			return Object.keys(others).length ? { ...rest, pos, walks: others } : { ...rest, pos };
 		}),
 		actions: flow.actions
 			.filter((a) => !emptied.includes(a))

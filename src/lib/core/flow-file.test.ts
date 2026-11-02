@@ -61,6 +61,13 @@ function sample(): Flow {
 	return flow;
 }
 
+/** sample() 再幫小A 在第二張站位設出發和到達（出發在音樂 1，到達在口號 1）。 */
+function withWalks(): Flow {
+	const flow = sample();
+	const walks = { m1: { depart: { segmentId: 's1', at: 1 }, arrive: { segmentId: 's1', at: 4 } } };
+	return { ...flow, formations: flow.formations.with(1, { ...flow.formations[1], walks }) };
+}
+
 const bytes = (...values: number[]) => new Uint8Array(values);
 
 describe('流程檔：存了再開', () => {
@@ -71,7 +78,13 @@ describe('流程檔：存了再開', () => {
 		expect(r).toEqual({ kind: 'ok', flow, audio, missingSegmentIds: [] });
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 1 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('出發和到達設定存了再開也一樣', () => {
+		const flow = withWalks();
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+	});
+
+	it('zip 裡是一份 flow.json（formatVersion 2 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -79,7 +92,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(1);
+		expect(json.formatVersion).toBe(2);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -91,7 +104,7 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 2, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 3, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '這個流程檔是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -107,6 +120,12 @@ describe('流程檔：版本', () => {
 		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } })]
 	])('%s：不是流程檔', (_, file) => {
 		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+	});
+
+	/** 一筆走位設定，段和時間可以換成壞的。 */
+	const walk = (segmentId = 's1', at = 1) => ({
+		depart: { segmentId, at },
+		arrive: { segmentId: 's1', at: 4 }
 	});
 
 	/** sample() 存成 JSON 再手動改壞一個地方（模擬有人手改 flow.json）。 */
@@ -134,17 +153,31 @@ describe('流程檔：版本', () => {
 		['動作的分類不對', broken((f) => (f.actions[0].category = 'x'))],
 		['動作的隊員不是陣列', broken((f) => (f.actions[0].members = null))],
 		['動作指到沒有的段', broken((f) => (f.actions[0].segmentId = 'zz'))],
-		['動作指到沒有的隊員', broken((f) => (f.actions[0].members[0].memberId = 'zz'))]
+		['動作指到沒有的隊員', broken((f) => (f.actions[0].members[0].memberId = 'zz'))],
+		['走位不是物件', broken((f) => (f.formations[1].walks = []))],
+		['走位指到沒有的隊員', broken((f) => (f.formations[1].walks = { zz: walk() }))],
+		['走位指到沒有的段', broken((f) => (f.formations[1].walks = { m1: walk('zz') }))],
+		['走位的時間不是整數', broken((f) => (f.formations[1].walks = { m1: walk('s1', 1.5) }))],
+		['走位的時間是負的', broken((f) => (f.formations[1].walks = { m1: walk('s1', -1) }))],
+		['走位沒有到達', broken((f) => (f.formations[1].walks = { m1: { depart: walk().depart } }))],
+		['開頭那張有走位', broken((f) => (f.formations[0].walks = { m1: walk() }))]
 	])('欄位壞掉（%s）：不是流程檔', (_, file) => {
 		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
 	});
 
-	// 現在只有第 1 版。用假想的舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions。
+	it('第 1 版的檔：資料不用動，每張站位的位置都一樣', () => {
+		const flow = sample();
+		const r = readFlowFile(zipOf({ formatVersion: 1, flow }));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+	});
+
+	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
-		0: (doc: FlowDocument) => ({ formatVersion: 1, flow: { ...(doc.flow as object), actions: [] } })
+		0: (doc: FlowDocument) => ({ formatVersion: 1, flow: { ...(doc.flow as object), actions: [] } }),
+		1: (doc: FlowDocument) => ({ formatVersion: 2, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {
