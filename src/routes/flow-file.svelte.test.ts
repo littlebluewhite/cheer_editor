@@ -164,6 +164,13 @@ describe('開檔', () => {
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
+	it('flow.json 壞掉（例：flow 只有名字）：提示「這不是流程檔」，留在首頁', async () => {
+		setup();
+		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 1, flow: { name: '壞' } })) }));
+		expect(screen.getByRole('alert').textContent).toContain('這不是流程檔');
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
 	it('缺音樂檔照開：那段標紅「找不到音樂」，點開重新選檔就好了；動作和站位都還在', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), {}));

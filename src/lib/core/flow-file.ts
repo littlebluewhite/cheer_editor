@@ -72,21 +72,32 @@ export function readFlowFile(
 		if (!upgrade) return { kind: 'error', message: NOT_A_FLOW_FILE };
 		doc = upgrade(doc);
 	}
-	const flow = doc.flow as Flow;
+	if (!isFlow(doc.flow)) return { kind: 'error', message: NOT_A_FLOW_FILE };
+	const flow = doc.flow;
 	const audio: AudioBytes = {};
 	for (const ref of flow.audio) if (files[ref.file]) audio[ref.id] = files[ref.file];
 	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
 }
 
 function isDocument(doc: unknown): doc is FlowDocument {
-	const d = doc as Partial<FlowDocument> | null;
+	return isObject(doc) && Number.isInteger(doc.formatVersion) && isObject(doc.flow);
+}
+
+/** 流程的外層長得對：名字、場地、時間規則，和每份清單都是物件陣列，而且有開頭那張站位。裡面的欄位不逐一檢查。 */
+function isFlow(flow: unknown): flow is Flow {
+	if (!isObject(flow)) return false;
+	const lists = ['members', 'audio', 'segments', 'formations', 'customRoles', 'actions'];
 	return (
-		typeof d === 'object' &&
-		d !== null &&
-		Number.isInteger(d.formatVersion) &&
-		typeof d.flow === 'object' &&
-		d.flow !== null
+		typeof flow.name === 'string' &&
+		isObject(flow.field) &&
+		isObject(flow.timeRules) &&
+		lists.every((k) => Array.isArray(flow[k]) && flow[k].every(isObject)) &&
+		(flow.formations as unknown[]).length > 0
 	);
+}
+
+function isObject(v: unknown): v is Record<string, unknown> {
+	return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 /** 有指到音樂檔、但那個檔的位元組不在手上的音樂段（畫面標紅「找不到音樂」）。 */

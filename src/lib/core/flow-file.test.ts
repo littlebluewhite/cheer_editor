@@ -100,7 +100,11 @@ describe('流程檔：版本', () => {
 		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') })],
 		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') })],
 		['沒有 formatVersion', zipOf({ flow: sample() })],
-		['沒有 flow', zipOf({ formatVersion: 1 })]
+		['沒有 flow', zipOf({ formatVersion: 1 })],
+		['flow 只有名字', zipOf({ formatVersion: 1, flow: { name: '壞掉的' } })],
+		['flow 的清單不是陣列', zipOf({ formatVersion: 1, flow: { ...sample(), audio: {} } })],
+		['清單裡有不是物件的東西', zipOf({ formatVersion: 1, flow: { ...sample(), segments: [null] } })],
+		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } })]
 	])('%s：不是流程檔', (_, file) => {
 		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
 	});
