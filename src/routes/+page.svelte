@@ -22,6 +22,7 @@
 		writeFlowFile,
 		type Flow,
 		type FormationWalk,
+		type MoveResult,
 		type Position,
 		type SegmentKind
 	} from '#lib/core';
@@ -407,13 +408,7 @@
 		if (!flow) return;
 		const r = moveMembers(flow, playheadSec, moves);
 		if (r.kind !== 'ok') return void (notice = r.message);
-		change(r.flow);
-		const said = [
-			r.inserted && '插了一張站位，大家的位置自動帶入',
-			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
-		];
-		notice = said.filter(Boolean).join('；');
-		playheadSec = r.sec;
+		moved(r);
 	}
 
 	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示跟拖人一樣。 */
@@ -421,6 +416,11 @@
 		if (!flow) return;
 		const r = matchPrevious(flow, playheadSec, selectedMemberIds);
 		if (r.kind !== 'ok') return void (notice = r.message);
+		moved(r);
+	}
+
+	/** 拖人、跟上一張一樣改好之後：換流程、說插了站位或往後帶了幾張、播放頭停到改的那張。 */
+	function moved(r: { flow: Flow } & MoveResult) {
 		change(r.flow);
 		const said = [
 			r.inserted && '插了一張站位，大家的位置自動帶入',
@@ -506,11 +506,8 @@
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
-	{@const matchBlocked = !selectedMemberIds.length
-		? '先選人'
-		: formationAt(flow, playheadSec) === flow.formations[0]
-			? '開頭那張前面沒有站位'
-			: ''}
+	{@const match = matchPrevious(flow, playheadSec, selectedMemberIds)}
+	{@const matchBlocked = match.kind === 'blocked' ? match.message : ''}
 	<div class="editor" class:print-hidden={printOpen}>
 		<header class="topbar">
 			<div class="title">

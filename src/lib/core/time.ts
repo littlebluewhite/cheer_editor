@@ -144,6 +144,12 @@ export function timeText(flow: Flow, homeSegmentId: string, p: TimePosition): st
 	return p.segmentId === homeSegmentId ? at : `${span.label} ${at}`;
 }
 
+/** timeText，口號段後面再加「 秒」（例：「2-5」、「12.3 秒」、「口號 1 12.3 秒」）。 */
+export function timeTextWithUnit(flow: Flow, homeSegmentId: string, p: TimePosition): string {
+	const kind = flow.segments.find((s) => s.id === p.segmentId)?.kind;
+	return timeText(flow, homeSegmentId, p) + (kind === 'chant' ? ' 秒' : '');
+}
+
 /**
  * timeText 的反向：只有段內時間就是 homeSegmentId 那一段；前面有段名（可以帶上方列的「秒」）就是那一段。
  * 看不懂或沒有這一段是 null。不檢查有沒有超出段（指令會擋）。

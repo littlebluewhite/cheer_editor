@@ -59,7 +59,7 @@ export {
 	setPositions,
 	setWalks
 } from './formation';
-export type { Formation, FormationWalk, Position, Walk } from './formation';
+export type { Formation, FormationWalk, MoveResult, Position, Walk } from './formation';
 
 export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';

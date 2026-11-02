@@ -3,7 +3,7 @@
 import { actionLabel } from './actions';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
-import type { Position } from './formation';
+import { withWalks, type Position } from './formation';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { atText, segmentSpans } from './time';
 
@@ -109,10 +109,8 @@ export function deleteMember(
 		formations: flow.formations.map((f) => {
 			const pos = { ...f.pos };
 			delete pos[id];
-			const { walks, ...rest } = f;
-			if (!walks) return { ...rest, pos };
-			const { [id]: _, ...others } = walks;
-			return Object.keys(others).length ? { ...rest, pos, walks: others } : { ...rest, pos };
+			const { [id]: _, ...walks } = f.walks ?? {};
+			return withWalks({ ...f, pos }, walks);
 		}),
 		actions: flow.actions
 			.filter((a) => !emptied.includes(a))

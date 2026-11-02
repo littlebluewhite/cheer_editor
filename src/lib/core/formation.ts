@@ -10,7 +10,7 @@ import { nextId } from './ids';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
-	atText,
+	timeTextWithUnit,
 	toPosition,
 	toSeconds,
 	unitSec,
@@ -37,6 +37,13 @@ export interface Formation {
 export interface Walk {
 	depart: TimePosition;
 	arrive: TimePosition;
+}
+
+/** moveMembers、matchPrevious 多帶的結果，見 moveMembers。 */
+export interface MoveResult {
+	inserted: boolean;
+	sec: number;
+	carried: number;
 }
 
 /** 改一張站位裡一個或多個隊員的位置。位置可以在墊子外 1 m 以內。 */
@@ -71,7 +78,7 @@ export function moveMembers(
 	flow: Flow,
 	sec: number,
 	moves: Record<string, Position>
-): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
+): CommandResult<MoveResult> {
 	return moveAt(flow, sec, () => moves);
 }
 
@@ -84,7 +91,7 @@ export function matchPrevious(
 	flow: Flow,
 	sec: number,
 	memberIds: string[]
-): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
+): CommandResult<MoveResult> {
 	if (memberIds.length === 0) return blocked('先選人');
 	if (formationAt(flow, sec) === flow.formations[0]) return blocked('開頭那張前面沒有站位');
 	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
@@ -99,7 +106,7 @@ function moveAt(
 	flow: Flow,
 	sec: number,
 	movesFor: (flow: Flow, target: Formation) => Record<string, Position>
-): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
+): CommandResult<MoveResult> {
 	let f = flow;
 	const inserted = !formationAt(f, sec);
 	if (inserted) {
@@ -112,11 +119,11 @@ function moveAt(
 	const r = setPositions(f, target.id, moves);
 	if (r.kind !== 'ok') return r;
 	const { flow: carriedFlow, carried } = carryForward(r.flow, target, moves);
-	return { kind: 'ok', flow: carriedFlow, inserted, sec: formationSec(r.flow, target), carried };
+	return ok(carriedFlow, { inserted, sec: formationSec(r.flow, target), carried });
 }
 
 /**
- * 往後帶：每個被改的人，記下他在 from 這張的舊位置 p；往後一張一張看，他在那張也在 p（容許 1e-9）
+ * 往後帶：每個被改的人，記下他在 from 這張的舊位置 p；往後一張一張看，他在那張也在 p（見 samePos）
  * 就一起改成新位置，遇到第一張不在 p 的就停。flow 是已經改好 from 的流程；from 是改之前的那張。
  * carried = 被改到的站位張數（不含 from）。
  */
@@ -125,16 +132,14 @@ function carryForward(
 	from: Formation,
 	moves: Record<string, Position>
 ): { flow: Flow; carried: number } {
-	const eps = 1e-9;
-	const same = (p: Position | undefined, q: Position) =>
-		!!p && Math.abs(p[0] - q[0]) <= eps && Math.abs(p[1] - q[1]) <= eps;
 	const start = flow.formations.findIndex((f) => f.id === from.id) + 1;
 	const formations = [...flow.formations];
 	const touched = new Set<number>();
 	for (const [id, to] of Object.entries(moves)) {
 		const old = from.pos[id];
-		if (!old || same(old, to)) continue;
-		for (let i = start; i < formations.length && same(formations[i].pos[id], old); i++) {
+		if (!old || samePos(old, to)) continue;
+		const at = (i: number) => formations[i].pos[id];
+		for (let i = start; i < formations.length && at(i) && samePos(at(i), old); i++) {
 			formations[i] = { ...formations[i], pos: { ...formations[i].pos, [id]: to } };
 			touched.add(i);
 		}
@@ -151,16 +156,13 @@ export function moveTargetText(flow: Flow, sec: number): string {
 	if (target) {
 		const index = flow.formations.indexOf(target);
 		// 只有開頭那張的 segmentId 可能是 null。
-		const when = index === 0 ? '開頭' : beatText(flow, target as TimePosition);
+		const t = target as TimePosition;
+		const when = index === 0 ? '開頭' : timeTextWithUnit(flow, t.segmentId, t);
 		return `拖人會改：站位 ${index + 1}（${when}）`;
 	}
 	// 不在站位上表示已經有段，toPosition 一定有值。
-	return `拖人會在 ${beatText(flow, toPosition(flow, sec)!)} 插一張新站位`;
-}
-
-function beatText(flow: Flow, { segmentId, at }: TimePosition): string {
-	const segment = flow.segments.find((s) => s.id === segmentId)!;
-	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
+	const p = toPosition(flow, sec)!;
+	return `拖人會在 ${timeTextWithUnit(flow, p.segmentId, p)} 插一張新站位`;
 }
 
 /** 開頭那張（formations[0]）不能刪。 */
@@ -409,11 +411,12 @@ export function insertFormation(flow: Flow, sec: number): CommandResult {
 }
 
 /** 換掉站位的 walks；沒有人就拿掉這個欄位。 */
-function withWalks(f: Formation, walks: Record<string, Walk>): Formation {
+export function withWalks(f: Formation, walks: Record<string, Walk>): Formation {
 	const { walks: _, ...rest } = f;
 	return Object.keys(walks).length ? { ...rest, walks } : rest;
 }
 
+/** 兩個位置是不是同一個點：x、y 都差不到 1e-9 公尺（浮點數誤差）。 */
 export function samePos(a: Position, b: Position): boolean {
 	return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
 }

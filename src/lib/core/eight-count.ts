@@ -3,12 +3,12 @@
 
 import { ACTION_CATEGORIES, type ActionCategory } from './actions';
 import { memberName, type Flow } from './flow';
-import { memberWalk, samePos, type Position, type Walk } from './formation';
+import { formationWalks, memberWalk, type Position, type Walk } from './formation';
 import {
 	HALF_BEATS_PER_EIGHT,
 	atText,
 	segmentSpans,
-	timeText,
+	timeTextWithUnit,
 	toSeconds,
 	units,
 	type TimePosition
@@ -98,10 +98,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							depart.segmentId === segment.id && depart.at >= from && depart.at < to
 					)
 					.map(({ number, walk }) => {
-						const time = (p: TimePosition) => {
-							const kind = flow.segments.find((s) => s.id === p.segmentId)?.kind;
-							return timeText(flow, segment.id, p) + (kind === 'chant' ? ' 秒' : '');
-						};
+						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
 						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到）`;
 					})
 			};
@@ -119,12 +116,11 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 
 /** 一個隊員的每一次走位（A、B 位置不一樣才算），number 是到達那張站位的號碼。 */
 function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk }[] {
-	return flow.formations.flatMap((b, i) => {
-		const a = flow.formations[i - 1];
-		if (!a || samePos(a.pos[memberId], b.pos[memberId] ?? a.pos[memberId])) return [];
-		const walk = memberWalk(flow, b.id, memberId);
-		return walk ? [{ number: i + 1, walk }] : [];
-	});
+	return flow.formations.flatMap((b, i) =>
+		formationWalks(flow, b.id).some((w) => w.memberId === memberId)
+			? [{ number: i + 1, walk: memberWalk(flow, b.id, memberId)! }]
+			: []
+	);
 }
 
 /** 八拍裡的第幾拍：「3」，半拍「3 的 &」。 */

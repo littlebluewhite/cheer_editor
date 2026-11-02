@@ -292,6 +292,19 @@ describe('走位條', () => {
 		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
 	});
 
+	it('前一張在流程開頭時，出發拖到流程開頭之前也還原，說原因', async () => {
+		const { onchange, onblocked } = setupWalks();
+		// 往左 20 px = 2 秒：出發 -0.4 秒，在流程開頭之前
+		await dragBy(end(0, 'depart'), -20);
+		await dragBy(walkBar(0), -20);
+		expect(onchange).not.toHaveBeenCalled();
+		expect(onblocked.mock.calls).toEqual([
+			['出發和到達要在前一張和這一張站位之間'],
+			['出發和到達要在前一張和這一張站位之間']
+		]);
+		expect(walkBar(0).style.left).toBe('16px');
+	});
+
 	it('出發拖到到達之後就還原，說原因', async () => {
 		const { onchange, onblocked } = setupWalks();
 		await dragBy(end(0, 'depart'), 40);
