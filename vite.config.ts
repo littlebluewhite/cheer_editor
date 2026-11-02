@@ -1,18 +1,35 @@
 import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
-import { sveltekit } from '@sveltejs/kit/vite';
+import { withPwa } from '@vite-pwa/sveltekit';
 import { svelteTesting } from '@testing-library/svelte/vite';
 
 export default defineConfig({
 	plugins: [
-		sveltekit({
-			compilerOptions: {
-				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
-				runes: ({ filename }) =>
-					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
+		// withPwa 包住 sveltekit()：產生 service worker（可離線）和 manifest。
+		withPwa(
+			{
+				compilerOptions: {
+					// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
+					runes: ({ filename }) =>
+						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
+				},
+				adapter: adapter(),
+				// GitHub Pages 放在 /cheer_editor/ 底下；部署時由 BASE_PATH 帶入，本機開發是 /。
+				paths: { base: base() }
 			},
-			adapter: adapter()
-		})
+			{
+				// 新版部署後，使用者重新整理：新 service worker 裝好就自動再載入一次，拿到新版。
+				registerType: 'autoUpdate',
+				manifest: {
+					name: '競技啦啦隊流程編輯器',
+					short_name: '流程編輯器',
+					lang: 'zh-Hant-TW',
+					display: 'standalone',
+					theme_color: '#ffffff',
+					background_color: '#ffffff'
+				}
+			}
+		)
 	],
 	test: {
 		expect: { requireAssertions: true },
@@ -40,3 +57,9 @@ export default defineConfig({
 		]
 	}
 });
+
+function base(): '' | `/${string}` {
+	const value = process.env.BASE_PATH ?? '';
+	if (value !== '' && !value.startsWith('/')) throw new Error(`BASE_PATH 要以 / 開頭：${value}`);
+	return value as '' | `/${string}`;
+}
