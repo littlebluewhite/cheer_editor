@@ -24,7 +24,9 @@
 	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 	import { createPlayer, type Player } from '#lib/audio/player.js';
+	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
+	import { onMount } from 'svelte';
 	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -44,12 +46,15 @@
 		createSaver?: () => FileSaver;
 		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
 		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
+		/** 草稿存在哪裡（預設 IndexedDB）；測試換成假的（jsdom 沒有 IndexedDB）。 */
+		draftStore?: DraftStore;
 	}
 
 	let {
 		createEngine = createWebAudioEngine,
 		createSaver = createBrowserSaver,
-		decode = decodeAudio
+		decode = decodeAudio,
+		draftStore = createIndexedDbDraftStore()
 	}: Props = $props();
 
 	let flow = $state<Flow | null>(null);
@@ -61,6 +66,50 @@
 	let saving = false;
 	/** 首頁開檔失敗的原因（編輯中失敗就放在上方列的 notice）。 */
 	let openError = $state('');
+	/** 打開時找到的草稿，等教練選救回或丟掉。 */
+	let draftOffer = $state.raw<{ bytes: Uint8Array; name: string } | null>(null);
+
+	/** 讀過草稿了：在這之前不自動存，免得蓋掉還沒問過的草稿。 */
+	let draftChecked = $state(false);
+
+	onMount(async () => {
+		let bytes: Uint8Array | null = null;
+		try {
+			bytes = await draftStore.load();
+		} catch {
+			// 讀不到草稿就當作沒有
+		}
+		const r = bytes && readFlowFile(bytes);
+		// 等讀草稿的時候教練已經開始編了：不打斷他
+		if (bytes && r && r.kind === 'ok' && !flow) draftOffer = { bytes, name: r.flow.name };
+		draftChecked = true;
+	});
+
+	/**
+	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。
+	 * 存成流程檔或剛開流程檔（沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
+	 */
+	const DRAFT_DELAY_MS = 1000;
+	$effect(() => {
+		if (!draftChecked || !flow) return;
+		const f = flow;
+		const keep = unsaved;
+		const timer = setTimeout(() => {
+			const done = keep ? draftStore.save(writeFlowFile(f, audioBytes(f))) : draftStore.clear();
+			done.catch(() => {});
+		}, DRAFT_DELAY_MS);
+		return () => clearTimeout(timer);
+	});
+
+	async function restoreDraft(bytes: Uint8Array) {
+		draftOffer = null;
+		await openBytes(bytes, false);
+	}
+
+	function discardDraft() {
+		draftOffer = null;
+		draftStore.clear().catch(() => {});
+	}
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
 	let audios = $state<Record<string, LoadedAudio>>({});
 	const missingSegmentIds = $derived(flow ? segmentsMissingAudio(flow, Object.keys(audios)) : []);
@@ -144,15 +193,20 @@
 		saver = createSaver();
 	}
 
+	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
+	function audioBytes(f: Flow): Record<string, Uint8Array> {
+		const audio: Record<string, Uint8Array> = {};
+		for (const a of f.audio) if (audios[a.id]) audio[a.id] = new Uint8Array(audios[a.id].bytes);
+		return audio;
+	}
+
 	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；其他瀏覽器下載新檔。 */
 	async function save() {
 		if (!flow || !saver || saving) return;
 		const f = flow;
-		const audio: Record<string, Uint8Array> = {};
-		for (const a of f.audio) if (audios[a.id]) audio[a.id] = new Uint8Array(audios[a.id].bytes);
 		saving = true;
 		try {
-			const outcome = await saver.save(writeFlowFile(f, audio), `${f.name}.zip`);
+			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), `${f.name}.zip`);
 			if (outcome === 'cancelled') return;
 			savedFlow = f;
 			notice =
@@ -172,7 +226,12 @@
 		const file = input.files?.[0];
 		input.value = '';
 		if (!file) return;
-		const r = readFlowFile(new Uint8Array(await file.arrayBuffer()));
+		await openBytes(new Uint8Array(await file.arrayBuffer()), true);
+	}
+
+	/** 打開流程檔的位元組。fromFile = 從檔案開（算已存）；草稿救回來的還算未存。 */
+	async function openBytes(bytes: Uint8Array, fromFile: boolean) {
+		const r = readFlowFile(bytes);
 		if (r.kind === 'error') {
 			if (flow) notice = r.message;
 			else openError = r.message;
@@ -200,7 +259,7 @@
 		selectedActionId = null;
 		audios = loaded;
 		startFlow(r.flow);
-		savedFlow = flow;
+		savedFlow = fromFile ? flow : null;
 		notice = r.missingSegmentIds.length
 			? '有段找不到音樂：點紅色的段重新選檔'
 			: unreadable
@@ -401,6 +460,12 @@
 	{#if printOpen}
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
 	{/if}
+{:else if draftOffer}
+	<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
+		<p id="draft-offer-text">上次編的「{draftOffer.name}」還沒存，要救回嗎？</p>
+		<button type="button" onclick={() => draftOffer && restoreDraft(draftOffer.bytes)}>救回</button>
+		<button type="button" onclick={discardDraft}>丟掉</button>
+	</div>
 {:else}
 	<NewFlowForm oncreate={startFlow} />
 	<p class="home-open">
@@ -481,6 +546,15 @@
 	}
 	.home-open {
 		text-align: center;
+	}
+	.draft-offer {
+		max-width: 420px;
+		margin: 80px auto;
+		padding: 16px 20px;
+		text-align: center;
+		background: #fff;
+		border: 1px solid #dde1ea;
+		border-radius: 6px;
 	}
 	.topbar .print {
 		margin-left: 0;
