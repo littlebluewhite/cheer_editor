@@ -174,6 +174,10 @@
 		gap: 4px;
 		white-space: nowrap;
 	}
+	/* 「＋」的選單往下蓋到下面幾列的名字欄和播放頭，要疊在它們上面。 */
+	.segs .lab {
+		z-index: 6;
+	}
 	.lab button {
 		padding: 0 5px;
 		font-size: 11px;

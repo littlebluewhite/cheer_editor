@@ -334,6 +334,8 @@
 	}
 	.dot {
 		cursor: grab;
+		/* 點了會拿到焦點；瀏覽器的焦點框用 SVG 的單位（公尺）畫，會變成蓋住場地的大圈。選取已經有 .ring。 */
+		outline: none;
 	}
 	.dot.dragging {
 		cursor: grabbing;
