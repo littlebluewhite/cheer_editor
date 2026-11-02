@@ -125,13 +125,13 @@
 		let message = '';
 		if (!formationAt(f, playheadSec)) {
 			const r = insertFormation(f, playheadSec);
-			if (r.kind === 'blocked') return void (notice = r.message);
+			if (r.kind !== 'ok') return void (notice = r.message);
 			f = r.flow;
 			message = '插了一張站位，大家的位置自動帶入';
 		}
 		const target = formationAt(f, playheadSec)!;
 		const r = setPositions(f, target.id, moves);
-		if (r.kind === 'blocked') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (notice = r.message);
 		flow = r.flow;
 		notice = message;
 		playheadSec = formationTimes(r.flow).find((t) => t.formation.id === target.id)!.sec;
@@ -140,7 +140,7 @@
 	function removeFormation(id: string) {
 		if (!flow) return;
 		const r = deleteFormation(flow, id);
-		if (r.kind === 'blocked') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (notice = r.message);
 		flow = r.flow;
 		notice = '';
 		if (selectedFormationId === id) selectedFormationId = null;

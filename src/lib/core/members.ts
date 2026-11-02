@@ -1,9 +1,11 @@
-// 隊員名單：加隊員、改隊員。
+// 隊員名單：加隊員、改隊員、刪隊員。
 
+import { actionLabel } from './actions';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import type { Position } from './formation';
-import { blocked, ok, type CommandResult } from './result';
+import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
 export const MAX_MEMBERS = 40;
@@ -64,6 +66,43 @@ export function updateMember(flow: Flow, id: string, changes: MemberChanges): Co
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
 	if (!updated.name) return blocked('請填隊員名字');
 	return ok({ ...flow, members: flow.members.map((m) => (m.id === id ? updated : m)) });
+}
+
+/**
+ * 刪隊員。一定先回「要確認」：「他在 N 個動作裡，其中 M 個會被整個刪掉」，清單是那 M 個動作；
+ * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉。
+ */
+export function deleteMember(
+	flow: Flow,
+	id: string,
+	{ confirmed = false }: ConfirmOption = {}
+): CommandResult {
+	const member = flow.members.find((m) => m.id === id);
+	if (!member) return blocked('找不到這個隊員');
+	const inActions = flow.actions.filter((a) => a.members.some((m) => m.memberId === id));
+	const emptied = inActions.filter((a) => a.members.length === 1);
+	if (!confirmed) {
+		const spans = segmentSpans(flow);
+		return needsConfirm(
+			`${member.name} 在 ${inActions.length} 個動作裡，其中 ${emptied.length} 個會被整個刪掉`,
+			emptied.map((a) => {
+				const span = spans.find((s) => s.segment.id === a.segmentId)!;
+				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）`;
+			})
+		);
+	}
+	return ok({
+		...flow,
+		members: flow.members.filter((m) => m !== member),
+		formations: flow.formations.map((f) => {
+			const pos = { ...f.pos };
+			delete pos[id];
+			return { ...f, pos };
+		}),
+		actions: flow.actions
+			.filter((a) => !emptied.includes(a))
+			.map((a) => ({ ...a, members: a.members.filter((m) => m.memberId !== id) }))
+	});
 }
 
 /**
