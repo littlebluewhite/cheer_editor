@@ -70,6 +70,34 @@ export function moveMembers(
 	sec: number,
 	moves: Record<string, Position>
 ): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
+	return moveAt(flow, sec, () => moves);
+}
+
+/**
+ * 跟上一張一樣：選到的人在播放頭這一拍的站位，改成上一張站位的位置；這一拍沒有站位就先插一張
+ * （跟拖人一樣），效果就是「他們到這一拍都還站著」。改完往後帶。回傳跟 moveMembers 一樣。
+ * 沒選人、播放頭在開頭那張，就擋下。
+ */
+export function matchPrevious(
+	flow: Flow,
+	sec: number,
+	memberIds: string[]
+): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
+	if (memberIds.length === 0) return blocked('先選人');
+	if (formationAt(flow, sec) === flow.formations[0]) return blocked('開頭那張前面沒有站位');
+	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
+	return moveAt(flow, sec, (f, target) => {
+		const previous = f.formations[f.formations.indexOf(target) - 1];
+		return Object.fromEntries(memberIds.map((id) => [id, previous.pos[id]]));
+	});
+}
+
+/** moveMembers 和 matchPrevious 共用：插站位（需要時）、改位置、往後帶。movesFor 拿到插好站位的流程和要改的那張。 */
+function moveAt(
+	flow: Flow,
+	sec: number,
+	movesFor: (flow: Flow, target: Formation) => Record<string, Position>
+): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
 	let f = flow;
 	const inserted = !formationAt(f, sec);
 	if (inserted) {
@@ -78,6 +106,7 @@ export function moveMembers(
 		f = r.flow;
 	}
 	const target = formationAt(f, sec)!;
+	const moves = movesFor(f, target);
 	const r = setPositions(f, target.id, moves);
 	if (r.kind !== 'ok') return r;
 	const { flow: carriedFlow, carried } = carryForward(r.flow, target, moves);

@@ -7,6 +7,7 @@ import {
 	formationAt,
 	formationTimes,
 	insertFormation,
+	matchPrevious,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
@@ -539,5 +540,61 @@ describe('拖人之前的那一行字', () => {
 	it('不在站位上：在這一拍插一張新站位', () => {
 		expect(moveTargetText(walking(), 5.05)).toBe('拖人會在 2-5& 插一張新站位');
 		expect(moveTargetText(walking(), 27.31)).toBe('拖人會在 1.7 秒 插一張新站位');
+	});
+});
+
+describe('跟上一張一樣', () => {
+	it('播放頭在站位上：選到的人改成上一張的位置，沒選到的人不動', () => {
+		const flow = okFlow(setPositions(walking(), 'f2', { [B]: [1, 1] }));
+		const r = matchPrevious(flow, 20.1, [A]);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations[1].pos).toEqual({ [A]: [0, 0], [B]: [1, 1] });
+		expect(r.inserted).toBe(false);
+		expect(r.sec).toBe(20);
+		expect(r.carried).toBe(0);
+	});
+
+	it('播放頭不在站位上：先插一張（大家帶入走到的地方），選到的人改成上一張的位置', () => {
+		// 小A 16.8 秒（最後一個八拍）才出發，18 秒正走到一半。
+		const r = matchPrevious(walking(), 18.05, [A]);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.inserted).toBe(true);
+		expect(r.flow.formations.map((f) => f.pos[A])).toEqual([
+			[0, 0],
+			[0, 0],
+			[4, 0],
+			[4, 5]
+		]);
+		// 小A 到這一拍都還站著，之後才走到原本的下一張。
+		expect(r.sec).toBe(18);
+		expectAt(r.flow, 17.6, A, [0, 0]);
+		expectAt(r.flow, 18, A, [0, 0]);
+		expectAt(r.flow, 20, A, [4, 0]);
+	});
+
+	it('改完往後帶，回傳往後帶到幾張', () => {
+		const flow = okFlow(setPositions(walking(), 'f3', { [A]: [4, 0] }));
+		const r = matchPrevious(flow, 20, [A]);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations.map((f) => f.pos[A])).toEqual([
+			[0, 0],
+			[0, 0],
+			[0, 0]
+		]);
+		expect(r.carried).toBe(1);
+	});
+
+	it('沒選人就擋下：先選人', () => {
+		expect(matchPrevious(walking(), 20, [])).toEqual({ kind: 'blocked', message: '先選人' });
+	});
+
+	it('播放頭在開頭那張就擋下：開頭那張前面沒有站位', () => {
+		const blocked = { kind: 'blocked', message: '開頭那張前面沒有站位' };
+		expect(matchPrevious(walking(), 0.1, [A])).toEqual(blocked);
+		expect(matchPrevious(twoMembers(), 0, [twoMembers().members[0].id])).toEqual(blocked);
+	});
+
+	it('找不到隊員就擋下', () => {
+		expect(matchPrevious(walking(), 20, ['nobody']).kind).toBe('blocked');
 	});
 });
