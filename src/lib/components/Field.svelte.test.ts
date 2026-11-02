@@ -203,3 +203,66 @@ describe('在場上選人、整組拖', () => {
 		expect(Object.keys(onmove.mock.calls[0][0])).toEqual(['m3']);
 	});
 });
+
+describe('影子和走位線', () => {
+	const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const walk = (memberId: string, from: Position, to: Position, tooFast = false) => ({
+		memberId,
+		from,
+		to,
+		departSec: 0,
+		arriveSec: 1,
+		speed: 1,
+		tooFast
+	});
+
+	function setup(selected: string[]) {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			positions: { m1: [1, 0], m2: [2, 0], m3: [3, 0] },
+			selected,
+			ghosts: { m1: [0, 0], m2: [0, 1], m3: [3, 0] },
+			walks: [walk('m1', [0, 0], [1, 0]), walk('m2', [0, 1], [2, 0], true)]
+		});
+		const ids = (key: 'ghost' | 'walkLine') =>
+			[...document.querySelectorAll<SVGElement>('svg *')].flatMap((el) => el.dataset[key] ?? []);
+		return { ghosts: () => ids('ghost'), lines: () => ids('walkLine') };
+	}
+
+	it('沒選人：畫全隊的影子和走位線', () => {
+		const { ghosts, lines } = setup([]);
+		expect(ghosts()).toEqual(['m1', 'm2', 'm3']);
+		expect(lines()).toEqual(['m1', 'm2']);
+	});
+
+	it('有選人：只畫選到的人', () => {
+		const { ghosts, lines } = setup(['m2', 'm3']);
+		expect(ghosts()).toEqual(['m2', 'm3']);
+		expect(lines()).toEqual(['m2']);
+	});
+
+	it('線從起點畫到終點；太快的線標紅', () => {
+		setup([]);
+		const line = document.querySelector('[data-walk-line="m2"]')!;
+		expect([line.getAttribute('x1'), line.getAttribute('y1')]).toEqual(['0', '1']);
+		expect([line.getAttribute('x2'), line.getAttribute('y2')]).toEqual(['2', '0']);
+		expect(line.classList.contains('fast')).toBe(true);
+		const slow = document.querySelector('[data-walk-line="m1"]')!;
+		expect(slow.classList.contains('fast')).toBe(false);
+	});
+
+	it('沒給影子和走位（八拍表的小站位圖）就不畫', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			positions: { m1: [1, 0] }
+		});
+		expect(document.querySelector('[data-ghost], [data-walk-line]')).toBeNull();
+	});
+});

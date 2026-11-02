@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+	TOO_FAST_MPS,
+	addAction,
 	addMembers,
 	addSegment,
 	clearWalks,
@@ -7,6 +9,7 @@ import {
 	deleteFormation,
 	formationAt,
 	formationTimes,
+	formationWalks,
 	insertFormation,
 	matchPrevious,
 	memberWalk,
@@ -721,5 +724,90 @@ describe('跟上一張一樣', () => {
 
 	it('找不到隊員就擋下', () => {
 		expect(matchPrevious(walking(), 20, ['nobody']).kind).toBe('blocked');
+	});
+});
+
+describe('這段的走位', () => {
+	/** walking() 再把小A 的 f1→f2 設成 19.6 秒（第 98 個半拍）出發、20 秒到：4 公尺 0.4 秒，每秒 10 公尺。 */
+	function rushed(): Flow {
+		return okFlow(
+			setWalks(walking(), 'f2', {
+				[A]: { depart: { segmentId: 's1', at: 98 }, arrive: { segmentId: 's1', at: 100 } }
+			})
+		);
+	}
+
+	/** 在音樂 1 從第 start 個半拍開始、長 4 個半拍，加一個只有 memberId 的動作。 */
+	function withAction(flow: Flow, memberId: string, category: 'tumbling' | 'dance', start: number) {
+		return okFlow(
+			addAction(flow, {
+				segmentId: 's1',
+				category,
+				name: '',
+				start,
+				length: 4,
+				note: '',
+				members: [{ memberId, role: null }]
+			})
+		);
+	}
+
+	it('列出位置有變的人：起點、終點、出發和到達、速度', () => {
+		const walks = formationWalks(walking(), 'f2');
+		expect(walks).toHaveLength(1);
+		const [w] = walks;
+		expect(w.memberId).toBe(A);
+		expect(w.from).toEqual([0, 0]);
+		expect(w.to).toEqual([4, 0]);
+		expect(w.departSec).toBeCloseTo(16.8, 9);
+		expect(w.arriveSec).toBeCloseTo(20, 9);
+		// 4 公尺 3.2 秒。
+		expect(w.speed).toBeCloseTo(1.25, 9);
+		expect(w.tooFast).toBe(false);
+	});
+
+	it('位置一樣的人不算走位，就算 walks 裡有他的設定', () => {
+		const flow = withWalk(walking(), 'f2', B, {
+			depart: { segmentId: 's1', at: 90 },
+			arrive: { segmentId: 's1', at: 100 }
+		});
+		expect(formationWalks(flow, 'f2').map((w) => w.memberId)).toEqual([A]);
+	});
+
+	it('每秒超過 4 公尺就是太快', () => {
+		expect(TOO_FAST_MPS).toBe(4);
+		const [w] = formationWalks(rushed(), 'f2');
+		expect(w.speed).toBeCloseTo(10, 9);
+		expect(w.tooFast).toBe(true);
+	});
+
+	it('剛好每秒 4 公尺不算太快', () => {
+		// 第 95 到 100 個半拍是 1 秒，走 4 公尺。
+		const flow = okFlow(
+			setWalks(walking(), 'f2', {
+				[A]: { depart: { segmentId: 's1', at: 95 }, arrive: { segmentId: 's1', at: 100 } }
+			})
+		);
+		const [w] = formationWalks(flow, 'f2');
+		expect(w.speed).toBeCloseTo(4, 9);
+		expect(w.tooFast).toBe(false);
+	});
+
+	it('走位時間跟自己的騰翻動作重疊，就不算太快', () => {
+		// 騰翻在第 96–100 個半拍（19.2–20 秒），跟 19.6–20 秒重疊。
+		const [w] = formationWalks(withAction(rushed(), A, 'tumbling', 96), 'f2');
+		expect(w.tooFast).toBe(false);
+	});
+
+	it('別人的騰翻、自己的別種動作、時間沒重疊的騰翻，都還是太快', () => {
+		expect(formationWalks(withAction(rushed(), B, 'tumbling', 96), 'f2')[0].tooFast).toBe(true);
+		expect(formationWalks(withAction(rushed(), A, 'dance', 96), 'f2')[0].tooFast).toBe(true);
+		// 第 94–98 個半拍（18.8–19.6 秒）剛好在出發時結束，不算重疊。
+		expect(formationWalks(withAction(rushed(), A, 'tumbling', 94), 'f2')[0].tooFast).toBe(true);
+	});
+
+	it('開頭那張或找不到站位：沒有走位', () => {
+		expect(formationWalks(walking(), 'f1')).toEqual([]);
+		expect(formationWalks(walking(), 'nope')).toEqual([]);
 	});
 });

@@ -44,10 +44,12 @@ export { addCustomRole, roleGlossary } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {
+	TOO_FAST_MPS,
 	clearWalks,
 	deleteFormation,
 	formationAt,
 	formationTimes,
+	formationWalks,
 	insertFormation,
 	matchPrevious,
 	memberWalk,
@@ -57,7 +59,7 @@ export {
 	setPositions,
 	setWalks
 } from './formation';
-export type { Formation, Position, Walk } from './formation';
+export type { Formation, FormationWalk, Position, Walk } from './formation';
 
 export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';

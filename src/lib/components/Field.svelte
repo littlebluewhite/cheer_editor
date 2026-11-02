@@ -2,12 +2,14 @@
 	// 場地：SVG 的使用者座標就是流程核心的公尺座標（原點中心 X，y 往正面＝畫面下面）。
 	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
 	// 選人：點人（Shift＋點多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
+	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	import {
 		fieldGeometry,
 		fieldPositionText,
 		snapPointsNear,
 		snapPosition,
 		type FieldConfig,
+		type FormationWalk,
 		type Member,
 		type Position
 	} from '#lib/core';
@@ -33,7 +35,9 @@
 		onmove,
 		onselect,
 		toMeters = screenCtmToMeters,
-		controls = true
+		controls = true,
+		ghosts = {},
+		walks = []
 	}: {
 		field: FieldConfig;
 		/** 照名單順序；點上寫的號碼是名單裡第幾個。 */
@@ -49,6 +53,10 @@
 		toMeters?: ToMeters;
 		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
 		controls?: boolean;
+		/** 上一張站位的位置，畫成淡淡的影子點。有選人時只畫選到的人。 */
+		ghosts?: Record<string, Position>;
+		/** 走位線，從起點畫到終點；太快的標紅。有選人時只畫選到的人。 */
+		walks?: FormationWalk[];
 	} = $props();
 
 	const ZOOM_STEP = 1.25;
@@ -119,6 +127,12 @@
 			// SVG 後畫的蓋在上面：上層、中層排最後。
 			.sort((a, b) => Number(a.up) - Number(b.up))
 	);
+	/** 有選人時只畫選到的人的影子和線；沒選人時畫全隊。 */
+	const shown = (id: string) => selected.length === 0 || selected.includes(id);
+	const ghostDots = $derived(
+		members.flatMap((m) => (ghosts[m.id] && shown(m.id) ? [{ id: m.id, p: ghosts[m.id] }] : []))
+	);
+	const walkLines = $derived(walks.filter((w) => shown(w.memberId)));
 	const snapDots = $derived(drag?.cur ? snapPointsNear(field, drag.cur, zoom) : []);
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
@@ -237,6 +251,20 @@
 			>
 		{/each}
 		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
+		{#each ghostDots as { id, p } (id)}
+			<circle data-ghost={id} class="ghost" cx={p[0]} cy={p[1]} r="0.3" />
+		{/each}
+		{#each walkLines as w (w.memberId)}
+			<line
+				data-walk-line={w.memberId}
+				class="walk-line"
+				class:fast={w.tooFast}
+				x1={w.from[0]}
+				y1={w.from[1]}
+				x2={w.to[0]}
+				y2={w.to[1]}
+			/>
+		{/each}
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
@@ -335,6 +363,28 @@
 		fill: var(--now, #f2542d);
 		font-weight: 700;
 		letter-spacing: 0.08px;
+	}
+	/* 影子和走位線：淡淡的，不擋點，也不吃滑鼠（點人、拖人、框選照舊）。 */
+	.ghost {
+		fill: #fff;
+		fill-opacity: 0.22;
+		stroke: #fff;
+		stroke-opacity: 0.6;
+		stroke-width: 0.03;
+		stroke-dasharray: 0.08 0.06;
+		pointer-events: none;
+	}
+	.walk-line {
+		stroke: #fff;
+		stroke-opacity: 0.55;
+		stroke-width: 0.06;
+		stroke-linecap: round;
+		pointer-events: none;
+	}
+	.walk-line.fast {
+		stroke: var(--now, #f2542d);
+		stroke-opacity: 0.9;
+		stroke-width: 0.08;
 	}
 	.snap {
 		fill: #ffe27a;

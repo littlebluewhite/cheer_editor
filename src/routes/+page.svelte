@@ -5,6 +5,8 @@
 		deleteFormation,
 		firstBeatPreview,
 		formationAt,
+		formationTimes,
+		formationWalks,
 		matchPrevious,
 		moveMembers,
 		moveTargetText,
@@ -19,6 +21,7 @@
 		totalSeconds,
 		writeFlowFile,
 		type Flow,
+		type FormationWalk,
 		type Position,
 		type SegmentKind
 	} from '#lib/core';
@@ -136,6 +139,24 @@
 	let selectedMemberIds = $state<string[]>([]);
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
+
+	/**
+	 * 場上的影子和走位線：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線；
+	 * 在兩張站位中間只畫這段的走位線；開頭那張、最後一張之後都不畫。
+	 */
+	const trail = $derived.by(() => {
+		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[] };
+		if (!flow) return none;
+		const on = formationAt(flow, playheadSec);
+		const i = on
+			? flow.formations.indexOf(on)
+			: formationTimes(flow).findIndex((t) => t.sec > playheadSec);
+		if (i <= 0) return none;
+		return {
+			ghosts: on ? flow.formations[i - 1].pos : none.ghosts,
+			walks: formationWalks(flow, flow.formations[i].id)
+		};
+	});
 
 	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字。 */
 	const position = $derived.by(() => {
@@ -566,6 +587,8 @@
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
 				selected={selectedMemberIds}
+				ghosts={trail.ghosts}
+				walks={trail.walks}
 				onmove={move}
 				onselect={selectMembers}
 			/>

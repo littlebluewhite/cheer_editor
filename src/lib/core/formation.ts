@@ -2,6 +2,7 @@
 // 站位記「哪個段 ＋ 段內時間」（音樂段第幾個半拍、口號段第幾個 0.1 秒），flow.formations 照時間排。
 // 開頭那張（formations[0]）一定在第一段的時間 0；還沒有段時 segmentId 是 null。
 
+import { actionSeconds } from './actions';
 import { fieldGeometry } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
@@ -258,6 +259,56 @@ export function memberWalk(flow: Flow, formationId: string, memberId: string): W
 	const { depart, arrive } = walkTimes(flow, index, memberId);
 	// A、B 和設定都在格子上，所以換回段內時間不會偏；剛好在交界時算後面那一段，秒數一樣。
 	return { depart: toPosition(flow, depart)!, arrive: toPosition(flow, arrive)! };
+}
+
+/** 走太快：每秒超過這麼多公尺。這個數字是猜的，還沒跟教練確認過，之後可能要改。 */
+export const TOO_FAST_MPS = 4;
+
+/** 一個人 A→B 的走位：起點、終點、出發和到達（全域秒數）、速度（公尺／秒）、是不是太快。 */
+export interface FormationWalk {
+	memberId: string;
+	from: Position;
+	to: Position;
+	departSec: number;
+	arriveSec: number;
+	speed: number;
+	tooFast: boolean;
+}
+
+/**
+ * 這段的走位：走到 formationId（B）這張時，位置有變的人，照名單順序。
+ * 只看位置，不看 walks（位置一樣的人就算有設定也站著不動）。開頭那張或找不到站位是空的。
+ * 太快：速度超過 TOO_FAST_MPS；但走位期間跟他自己參加的騰翻動作時間重疊，就不算太快。
+ */
+export function formationWalks(flow: Flow, formationId: string): FormationWalk[] {
+	const index = walkFormationIndex(flow, formationId);
+	if (typeof index === 'string') return [];
+	const a = flow.formations[index - 1];
+	const b = flow.formations[index];
+	const tumbling = flow.actions
+		.filter((x) => x.category === 'tumbling')
+		.map((x) => ({ ...actionSeconds(flow, x), ids: x.members.map((m) => m.memberId) }));
+	const out: FormationWalk[] = [];
+	for (const { id } of flow.members) {
+		const from = a.pos[id];
+		const to = b.pos[id];
+		if (!from || !to || samePos(from, to)) continue;
+		const { depart, arrive } = walkTimes(flow, index, id);
+		const speed = Math.hypot(to[0] - from[0], to[1] - from[1]) / (arrive - depart);
+		const tumbles = tumbling.some(
+			(t) => t.ids.includes(id) && t.startSec < arrive - EPS && depart < t.endSec - EPS
+		);
+		out.push({
+			memberId: id,
+			from,
+			to,
+			departSec: depart,
+			arriveSec: arrive,
+			speed,
+			tooFast: speed > TOO_FAST_MPS + EPS && !tumbles
+		});
+	}
+	return out;
 }
 
 /** 能設出發和到達的站位在 formations 裡的位置；不能設時回原因。 */
