@@ -1,7 +1,7 @@
 // 頁面：存檔、開檔、Ctrl+S、缺音樂。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { zipSync, strToU8 } from 'fflate';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	addAction,
 	addMembers,
@@ -96,6 +96,72 @@ describe('存檔', () => {
 		await fireEvent.keyDown(screen.getByLabelText(/^名字/), { key: 's', metaKey: true });
 		await settle();
 		expect(saves).toHaveLength(1);
+	});
+
+	it('打字打到一半按 Ctrl+S：先送出那個欄位，存的檔有剛打的字', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
+		// 瀏覽器在欄位失去焦點時送 change；jsdom 不會，這裡補上。
+		name.addEventListener('blur', () => name.dispatchEvent(new Event('change', { bubbles: true })));
+		name.focus();
+		await fireEvent.input(name, { target: { value: '縣賽' } });
+		await ctrlS(name);
+		await settle();
+		const r = readFlowFile(saves[0].bytes);
+		expect(r.kind === 'ok' && r.flow.name).toBe('縣賽');
+		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('音樂檔還在解碼時關掉段設定、新增別段：解碼完不會放進新的那段，也不會弄丟新段', async () => {
+		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
+		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
+		const { saver, saves } = fakeSaver();
+		render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode });
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		const file = new File([new Uint8Array([1])], '主歌.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await vi.waitFor(() => expect(finish).toBeDefined());
+		await fireEvent.click(within(screen.getByRole('dialog', { name: /設定/ })).getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		finish!({ durationSec: 30, peaks: [] });
+		await settle();
+		await ctrlS();
+		await settle();
+		const r = readFlowFile(saves[0].bytes);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.segments).toHaveLength(2);
+		expect(r.flow.segments[1]).toMatchObject({ audioId: null });
+	});
+
+	it('音樂檔還在解碼時開了別的流程檔：解碼完不會放進新流程', async () => {
+		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
+		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
+		const { saver, saves } = fakeSaver();
+		render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode });
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		const file = new File([new Uint8Array([1])], '別首.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await vi.waitFor(() => expect(finish).toBeDefined());
+		const pendingDecode = finish!;
+		await fireEvent.click(within(screen.getByRole('dialog', { name: /設定/ })).getByRole('button', { name: '關閉' }));
+		await openFile(writeFlowFile(sampleFlow(), {}), '開啟');
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		pendingDecode({ durationSec: 30, peaks: [] });
+		await settle();
+		await ctrlS();
+		await settle();
+		const r = readFlowFile(saves.at(-1)!.bytes);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.name).toBe('練習用');
+		expect(r.flow.audio.map((a) => a.name)).toEqual(['主歌.mp3']);
 	});
 
 	it('按「存檔」也可以；存了就沒有未存的修改，改了又有', async () => {

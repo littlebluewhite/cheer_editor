@@ -162,6 +162,14 @@ describe('段縮短', () => {
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect((screen.getByLabelText('八拍數') as HTMLInputElement).value).toBe('8');
 	});
+
+	it('還沒按確定就改回原本的長度：舊的確認清單收掉，按不到「確定刪除」', async () => {
+		const { onchange } = setup(withLateAction());
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '4' } });
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '8' } });
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(onchange.mock.calls.every(([f]) => f.actions.length === 1)).toBe(true);
+	});
 });
 
 describe('口號段設定', () => {

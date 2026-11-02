@@ -45,12 +45,14 @@ export function createPlayer(engine: AudioEngine): Player {
 		tick(latencyMs) {
 			if (!session) return 0;
 			const { t0, fromSec, endSec } = session;
-			const sec = fromSec + engine.audibleTime() - t0 - latencyMs / 1000;
-			if (sec >= endSec) {
+			// 聲音播完、畫面上的播放頭（扣掉延遲校正）也走到結尾，才停；不切掉聲音，也不跳過最後一段。
+			const sec = fromSec + engine.audibleTime() - t0;
+			const shown = sec - latencyMs / 1000;
+			if (Math.min(sec, shown) >= endSec) {
 				stop();
 				return endSec;
 			}
-			return Math.max(sec, fromSec);
+			return Math.min(Math.max(shown, fromSec), endSec);
 		}
 	};
 }

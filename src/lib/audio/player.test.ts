@@ -73,6 +73,28 @@ describe('播放器', () => {
 		expect(player.tick(200)).toBeCloseTo(1.8, 9);
 	});
 
+	it('延遲校正是負的（畫面提早）：音樂還是播到最後才停', () => {
+		const engine = createFakeEngine();
+		const player = createPlayer(engine);
+		player.start(plan, { fromSec: 0, metronome: false });
+		engine.audible = engine.clips[0].when + 6.6; // 喇叭還在播最後 0.1 秒
+		expect(player.tick(-200)).toBeLessThanOrEqual(6.7);
+		expect(player.playing).toBe(true);
+		expect(engine.clips).toHaveLength(2);
+	});
+
+	it('延遲校正是正的（畫面晚一點）：播放頭也走完最後那一小段才停', () => {
+		const engine = createFakeEngine();
+		const player = createPlayer(engine);
+		player.start(plan, { fromSec: 0, metronome: false });
+		engine.audible = engine.clips[0].when + 6.8; // 聲音播完了，畫面還差 0.1 秒
+		expect(player.tick(200)).toBeCloseTo(6.6, 9);
+		expect(player.playing).toBe(true);
+		engine.audible = engine.clips[0].when + 6.9;
+		expect(player.tick(200)).toBe(6.7);
+		expect(player.playing).toBe(false);
+	});
+
 	it('播到最後自己停，播放頭停在結尾', () => {
 		const engine = createFakeEngine();
 		const player = createPlayer(engine);

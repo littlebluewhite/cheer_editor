@@ -71,6 +71,7 @@
 		z-index: 3;
 		width: 120px;
 		flex: none;
+		box-sizing: border-box;
 		background: #fafbfd;
 		border-right: 1px solid #dde1ea;
 		padding: 0 4px;

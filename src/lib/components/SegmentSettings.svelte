@@ -86,8 +86,9 @@
 
 	function update(patch: SegmentPatch) {
 		const r = updateSegment(flow, segmentId, patch);
-		if (r.kind === 'confirm') pending = { patch, message: r.message, items: r.items };
-		else apply(r);
+		// 新的改法取代還沒確認的舊清單
+		pending = r.kind === 'confirm' ? { patch, message: r.message, items: r.items } : null;
+		if (r.kind !== 'confirm') apply(r);
 	}
 
 	function confirmUpdate() {
@@ -100,6 +101,12 @@
 		pending = null;
 		fieldsKey += 1;
 	}
+
+	/** 設定關掉了沒（音樂檔解碼完時用）。 */
+	let closed = false;
+	$effect(() => () => {
+		closed = true;
+	});
 
 	async function load(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
@@ -117,6 +124,8 @@
 			error = '這個音樂檔讀不出來';
 			return;
 		}
+		// 解碼時設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
+		if (closed) return;
 		// 解碼要一點時間，用那時候的流程再送一次指令。
 		const r = loadSegmentAudio(flow, segmentId, file.name);
 		if (r.kind === 'ok') onaudioload(r.audioId, { bytes, ...decoded });
