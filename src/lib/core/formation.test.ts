@@ -8,6 +8,7 @@ import {
 	formationTimes,
 	insertFormation,
 	moveMembers,
+	moveTargetText,
 	positionsAt,
 	setPositions,
 	updateSegment,
@@ -444,5 +445,99 @@ describe('插站位時，每個人每一刻的位置都不變', () => {
 	it('沒有走位的人不寫出發和到達', () => {
 		const after = okFlow(insertFormation(walking(), 18.4));
 		for (const f of after.formations) expect(f.walks?.[B]).toBeUndefined();
+	});
+});
+
+describe('往後帶', () => {
+	it('後面還站在舊位置的站位一起改，回傳往後帶到幾張', () => {
+		const r = moveMembers(walking(), 0, { [B]: [1, 1] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations.map((f) => f.pos[B])).toEqual([
+			[1, 1],
+			[1, 1],
+			[1, 1]
+		]);
+		expect(r.carried).toBe(2);
+	});
+
+	it('遇到第一張他不在舊位置的就停，後面都不動', () => {
+		let flow = okFlow(setPositions(walking(), 'f2', { [B]: [5, 5] }));
+		flow = okFlow(setPositions(flow, 'f3', { [B]: [-2, 0] }));
+		const r = moveMembers(flow, 0, { [B]: [1, 1] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations.map((f) => f.pos[B])).toEqual([
+			[1, 1],
+			[5, 5],
+			[-2, 0]
+		]);
+		expect(r.carried).toBe(0);
+	});
+
+	it('舊位置容許 1e-9 誤差', () => {
+		const flow = okFlow(setPositions(walking(), 'f2', { [B]: [-2 + 1e-10, 0] }));
+		const r = moveMembers(flow, 0, { [B]: [1, 1] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations[1].pos[B]).toEqual([1, 1]);
+		expect(r.carried).toBe(2);
+	});
+
+	it('好幾個人一起改：每人各自往後帶，N 是被改到的站位張數', () => {
+		// 小A 在 f2 已經不在 [0, 0]，不往後帶；小B 帶到 f2、f3。
+		const r = moveMembers(walking(), 0, { [A]: [1, 0], [B]: [1, 1] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations[1].pos[A]).toEqual([4, 0]);
+		expect(r.flow.formations[2].pos[B]).toEqual([1, 1]);
+		expect(r.carried).toBe(2);
+	});
+
+	it('插站位時也往後帶', () => {
+		const r = moveMembers(walking(), 5.05, { [B]: [-3, 3] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.inserted).toBe(true);
+		expect(r.flow.formations.map((f) => f.pos[B])).toEqual([
+			[-2, 0],
+			[-3, 3],
+			[-3, 3],
+			[-3, 3]
+		]);
+		expect(r.carried).toBe(2);
+	});
+
+	it('往後帶不動被改的那張前面的站位', () => {
+		const r = moveMembers(walking(), 20, { [B]: [1, 1] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations.map((f) => f.pos[B])).toEqual([
+			[-2, 0],
+			[1, 1],
+			[1, 1]
+		]);
+		expect(r.carried).toBe(1);
+	});
+
+	it('位置沒變（拖了又放回原處）不算往後帶', () => {
+		const r = moveMembers(walking(), 0, { [B]: [-2, 0] });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.carried).toBe(0);
+	});
+});
+
+describe('拖人之前的那一行字', () => {
+	it('在開頭那張：站位 1（開頭）', () => {
+		expect(moveTargetText(walking(), 0.1)).toBe('拖人會改：站位 1（開頭）');
+		expect(moveTargetText(twoMembers(), 0)).toBe('拖人會改：站位 1（開頭）');
+	});
+
+	it('在站位上：站位編號跟縮圖列一樣照時間排，拍子用八拍寫法；口號段寫秒數', () => {
+		// f2 在音樂 1 第 100 個半拍（7-3），f3 在口號 1 4.4 秒。
+		expect(moveTargetText(walking(), 20.1)).toBe('拖人會改：站位 2（7-3）');
+		expect(moveTargetText(walking(), 30)).toBe('拖人會改：站位 3（4.4 秒）');
+		// 後插的站位 id 比較大，但時間比較前，編號照時間。
+		const flow = okFlow(insertFormation(walking(), 5));
+		expect(moveTargetText(flow, 20)).toBe('拖人會改：站位 3（7-3）');
+	});
+
+	it('不在站位上：在這一拍插一張新站位', () => {
+		expect(moveTargetText(walking(), 5.05)).toBe('拖人會在 2-5& 插一張新站位');
+		expect(moveTargetText(walking(), 27.31)).toBe('拖人會在 1.7 秒 插一張新站位');
 	});
 });

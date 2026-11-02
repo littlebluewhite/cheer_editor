@@ -291,6 +291,43 @@ describe('新建', () => {
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
+	it('開檔清空復原紀錄', async () => {
+		setup();
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		expect((screen.getByRole('button', { name: '復原' }) as HTMLButtonElement).disabled).toBe(false);
+		await openFile(writeFlowFile(sampleFlow(), {}), '開啟');
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		expect(screen.getByText('練習用')).toBeTruthy();
+		expect((screen.getByRole('button', { name: '復原' }) as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it('選音樂檔後復原再重做：解碼過的音樂還在，照樣能播', async () => {
+		const engine = createFakeEngine();
+		let getBuffer: (id: string) => AudioBuffer | undefined = () => undefined;
+		const buffer = {} as AudioBuffer;
+		render(Page, {
+			createEngine: (get) => ((getBuffer = get), engine),
+			createSaver: () => fakeSaver().saver,
+			decode: async () => ({ durationSec: 30, peaks: [], buffer })
+		});
+		await openFile(writeFlowFile(sampleFlow(), {}));
+		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
+		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await settle();
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).toContain('找不到音樂');
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		expect(engine.clips).toHaveLength(1);
+		expect(getBuffer(engine.clips[0].audioId)).toStrictEqual(buffer);
+	});
+
 	it('缺音樂檔照開：那段標紅「找不到音樂」，點開重新選檔就好了；動作和站位都還在', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), {}));
