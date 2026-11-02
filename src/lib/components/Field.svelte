@@ -31,7 +31,8 @@
 		selected = [],
 		onmove,
 		onselect,
-		toMeters = screenCtmToMeters
+		toMeters = screenCtmToMeters,
+		controls = true
 	}: {
 		field: FieldConfig;
 		/** 照名單順序；點上寫的號碼是名單裡第幾個。 */
@@ -45,6 +46,8 @@
 		/** 點人、框選、點空白處（清除）時送出新的選取。 */
 		onselect?: (memberIds: string[]) => void;
 		toMeters?: ToMeters;
+		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
+		controls?: boolean;
 	} = $props();
 
 	const ZOOM_STEP = 1.25;
@@ -258,12 +261,14 @@
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
 		{/if}
 	</svg>
-	<div class="tools">
-		<button type="button" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}>－</button>
-		<span>×{zoom.toFixed(1)}</span>
-		<button type="button" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}>＋</button>
-		<button type="button" onclick={() => setZoom(1)}>全場</button>
-	</div>
+	{#if controls}
+		<div class="tools">
+			<button type="button" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}>－</button>
+			<span>×{zoom.toFixed(1)}</span>
+			<button type="button" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}>＋</button>
+			<button type="button" onclick={() => setZoom(1)}>全場</button>
+		</div>
+	{/if}
 	{#if readout}<div class="readout">{readout}</div>{/if}
 </div>
 

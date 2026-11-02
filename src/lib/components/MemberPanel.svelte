@@ -1,8 +1,11 @@
 <script lang="ts">
-	// 隊員名單：加隊員、改隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
+	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
+	// 刪隊員先顯示流程核心給的「要確認」說明，按確定才刪。
+	import ConfirmList from './ConfirmList.svelte';
 	import {
 		MAX_MEMBERS,
 		addMembers,
+		deleteMember,
 		updateMember,
 		type CommandResult,
 		type Flow,
@@ -53,6 +56,21 @@
 		// 被擋下時把輸入框還原成原本的名字。
 		if (!done && input) input.value = flow.members.find((m) => m.id === id)?.name ?? '';
 	}
+
+	/** 等教練確認要刪的隊員和流程核心給的說明。 */
+	let pending = $state<{ id: string; message: string; items: string[] } | null>(null);
+
+	function remove(id: string) {
+		const r = deleteMember(flow, id);
+		if (r.kind === 'confirm') pending = { id, message: r.message, items: r.items };
+		else apply(r);
+	}
+
+	function confirmRemove() {
+		if (!pending) return;
+		apply(deleteMember(flow, pending.id, { confirmed: true }));
+		pending = null;
+	}
 </script>
 
 <section class="members">
@@ -81,9 +99,21 @@
 				>
 					{#each ROLES as [v, label] (v)}<option value={v}>{label}</option>{/each}
 				</select>
+				<button type="button" class="remove" aria-label="刪除第 {i + 1} 位隊員" onclick={() => remove(m.id)}
+					>✕</button
+				>
 			</li>
 		{/each}
 	</ol>
+
+	{#if pending}
+		<ConfirmList
+			message={pending.message}
+			items={pending.items}
+			onconfirm={confirmRemove}
+			oncancel={() => (pending = null)}
+		/>
+	{/if}
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
 	<form class="add" novalidate onsubmit={add}>
@@ -132,7 +162,7 @@
 	}
 	li {
 		display: grid;
-		grid-template-columns: 2em minmax(0, 1fr) auto auto;
+		grid-template-columns: 2em minmax(0, 1fr) auto auto auto;
 		gap: 4px;
 		align-items: center;
 	}

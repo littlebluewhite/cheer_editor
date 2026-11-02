@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import {
+	addAction,
+	addMembers,
 	addSegment,
 	createFlow,
 	loadSegmentAudio,
@@ -118,6 +120,47 @@ describe('音樂段設定', () => {
 		const { onchange } = setup(flow, { a1: loaded(30) }, 's2');
 		await fireEvent.change(screen.getByLabelText('用已載入的音樂'), { target: { value: 'a1' } });
 		expect(onchange.mock.calls[0][0].segments[1]).toMatchObject({ audioId: 'a1' });
+	});
+});
+
+describe('段縮短', () => {
+	/** 音樂 1 有 8 個八拍；一個動作從 5-1 開始。 */
+	function withLateAction(): Flow {
+		let flow = flowOf(
+			addMembers(musicFlow(), [{ name: '小A', gender: 'F', globalRole: 'top' }])
+		);
+		return flowOf(
+			addAction(flow, {
+				segmentId: 's1',
+				category: 'jump',
+				name: 'T',
+				start: 64,
+				length: 16,
+				note: '',
+				members: [{ memberId: 'm1', role: null }]
+			})
+		);
+	}
+
+	it('有東西會掉出段外時先列出清單，按確定才改', async () => {
+		const { onchange } = setup(withLateAction());
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '4' } });
+		expect(onchange).not.toHaveBeenCalled();
+		expect(screen.getByRole('alertdialog').textContent).toContain('動作「跳躍·T」（5-1 起）');
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		const flow = onchange.mock.calls[0][0];
+		expect(flow.segments[0]).toMatchObject({ halfBeats: 64 });
+		expect(flow.actions).toEqual([]);
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+	});
+
+	it('按取消就不改，欄位回到原本的值', async () => {
+		const { onchange } = setup(withLateAction());
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '4' } });
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(onchange).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect((screen.getByLabelText('八拍數') as HTMLInputElement).value).toBe('8');
 	});
 });
 

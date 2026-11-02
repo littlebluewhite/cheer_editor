@@ -1,6 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { addMembers, createFlow, type CommandResult, type Flow } from '#lib/core';
+import {
+	addAction,
+	addMembers,
+	addSegment,
+	createFlow,
+	type CommandResult,
+	type Flow
+} from '#lib/core';
 import MemberPanel from './MemberPanel.svelte';
 
 function okFlow(r: CommandResult): Flow {
@@ -74,5 +81,51 @@ describe('隊員名單', () => {
 		await fillNew('小A', 'F', 'base');
 		expect(onchange).not.toHaveBeenCalled();
 		expect(screen.getByRole('alert').textContent).toBe('一支流程最多 40 人');
+	});
+});
+
+describe('刪隊員', () => {
+	/** 小A 和小B；小A 一個人做一個動作。 */
+	function twoWithAction(): Flow {
+		let flow = okFlow(
+			addMembers(empty, [
+				{ name: '小A', gender: 'F', globalRole: 'top' },
+				{ name: '小B', gender: 'M', globalRole: 'base' }
+			])
+		);
+		flow = okFlow(addSegment(flow, 'music'));
+		return okFlow(
+			addAction(flow, {
+				segmentId: 's1',
+				category: 'jump',
+				name: 'T',
+				start: 0,
+				length: 16,
+				note: '',
+				members: [{ memberId: 'm1', role: null }]
+			})
+		);
+	}
+
+	it('按刪除先列出「他在 N 個動作裡，其中 M 個會被整個刪掉」，按確定才刪', async () => {
+		const { onchange } = setup(twoWithAction());
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
+		expect(onchange).not.toHaveBeenCalled();
+		const box = screen.getByRole('alertdialog');
+		expect(box.textContent).toContain('小A 在 1 個動作裡，其中 1 個會被整個刪掉');
+		expect(box.textContent).toContain('動作「跳躍·T」（音樂 1 1-1 起）');
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		const flow = onchange.mock.calls[0][0];
+		expect(flow.members.map((m) => m.name)).toEqual(['小B']);
+		expect(flow.actions).toEqual([]);
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+	});
+
+	it('按取消就不刪', async () => {
+		const { onchange } = setup(twoWithAction());
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 2 位隊員' }));
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(onchange).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 	});
 });
