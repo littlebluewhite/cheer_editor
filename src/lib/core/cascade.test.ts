@@ -6,13 +6,15 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	deleteFormation,
 	deleteMember,
 	formationTimes,
 	insertFormation,
 	updateSegment,
 	type CommandResult,
 	type Flow,
-	type NewActionInput
+	type NewActionInput,
+	type Walk
 } from './index';
 
 function flowOf(r: CommandResult): Flow {
@@ -65,6 +67,25 @@ function sample(): Flow {
 	return flow;
 }
 
+/** sample() 再幫小A、小B 在 f2、f3 設出發和到達。 */
+function withWalks(): Flow {
+	const walk = (depart: number, arrive: number): Walk => ({
+		depart: { segmentId: 's1', at: depart },
+		arrive: { segmentId: 's1', at: arrive }
+	});
+	const flow = sample();
+	return {
+		...flow,
+		formations: flow.formations.map((f) =>
+			f.id === 'f2'
+				? { ...f, walks: { m1: walk(2, 8), m2: walk(4, 10) } }
+				: f.id === 'f3'
+					? { ...f, walks: { m1: walk(20, 30) } }
+					: f
+		)
+	};
+}
+
 describe('改 BPM', () => {
 	it('動作和站位的拍不變，秒數重算', () => {
 		const before = sample();
@@ -99,6 +120,16 @@ describe('段縮短', () => {
 		expect(after.segments[0]).toMatchObject({ halfBeats: 40 });
 		expect(after.actions.map((a) => a.id)).toEqual(['x1']);
 		expect(after.formations.map((f) => f.id)).toEqual(['f1', 'f2']);
+	});
+
+	it('連帶刪掉的站位，出發和到達設定跟著一起刪', () => {
+		const after = flowOf(
+			updateSegment(withWalks(), 's1', { eights: 3, lastBeats: 4 }, { confirmed: true })
+		);
+		expect(after.formations.map((f) => [f.id, Object.keys(f.walks ?? {})])).toEqual([
+			['f1', []],
+			['f2', ['m1', 'm2']]
+		]);
 	});
 
 	it('剛好在段尾結束的動作放得下；段尾那一刻的站位已經是下一段，放不下', () => {
@@ -152,7 +183,25 @@ describe('刪隊員', () => {
 		]);
 	});
 
+	it('每張站位裡他的出發和到達設定一起清掉', () => {
+		const after = flowOf(deleteMember(withWalks(), 'm1', { confirmed: true }));
+		expect(after.formations.map((f) => f.walks)).toEqual([
+			undefined,
+			{ m2: { depart: { segmentId: 's1', at: 4 }, arrive: { segmentId: 's1', at: 10 } } },
+			undefined
+		]);
+	});
+
 	it('找不到這個隊員就擋下', () => {
 		expect(deleteMember(sample(), 'm9')).toEqual({ kind: 'blocked', message: '找不到這個隊員' });
+	});
+});
+
+describe('刪站位', () => {
+	it('它的出發和到達設定一起刪；後面那張的設定留著', () => {
+		const flow = withWalks();
+		const after = flowOf(deleteFormation(flow, 'f2'));
+		expect(after.formations.map((f) => f.id)).toEqual(['f1', 'f3']);
+		expect(after.formations[1].walks).toEqual(flow.formations[2].walks);
 	});
 });

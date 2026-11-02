@@ -19,7 +19,11 @@ export interface ConfirmOption {
 	confirmed?: boolean;
 }
 
-export const ok = (flow: Flow): CommandResult => ({ kind: 'ok', flow });
+/** 成功；extra 是指令多帶的結果（見 CommandResult）。 */
+export const ok = <Extra extends object = object>(
+	flow: Flow,
+	extra?: Extra
+): CommandResult<Extra> => ({ kind: 'ok', flow, ...(extra as Extra) });
 export const blocked = (message: string): CommandResult<never> => ({ kind: 'blocked', message });
 export const needsConfirm = (message: string, items: string[]): CommandResult => ({
 	kind: 'confirm',

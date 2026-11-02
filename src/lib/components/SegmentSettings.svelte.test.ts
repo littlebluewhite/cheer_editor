@@ -114,6 +114,16 @@ describe('音樂段設定', () => {
 		});
 	});
 
+	it('流程已經不用、但復原還會用到的音樂檔，id 不給新載入的檔', async () => {
+		// a1 不在流程裡（換掉了），解碼好的音樂還留著給復原用
+		const { onchange, onaudioload } = setup(musicFlow(), { a1: loaded(30) });
+		const file = new File([new Uint8Array([1, 2, 3])], '新歌.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await vi.waitFor(() => expect(onchange).toHaveBeenCalled());
+		expect(onaudioload.mock.calls[0][0]).not.toBe('a1');
+		expect(onchange.mock.calls[0][0].audio.map((a) => a.id)).not.toContain('a1');
+	});
+
 	it('第二個音樂段可以選用已經載入的音樂檔（變速切段）', async () => {
 		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
 		flow = flowOf(addSegment(flow, 'music'));

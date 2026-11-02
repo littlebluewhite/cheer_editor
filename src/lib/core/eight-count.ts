@@ -3,8 +3,16 @@
 
 import { ACTION_CATEGORIES, type ActionCategory } from './actions';
 import { memberName, type Flow } from './flow';
-import type { Position } from './formation';
-import { HALF_BEATS_PER_EIGHT, atText, segmentSpans, toSeconds, units } from './time';
+import { formationWalks, memberWalk, type Position, type Walk } from './formation';
+import {
+	HALF_BEATS_PER_EIGHT,
+	atText,
+	segmentSpans,
+	timeTextWithUnit,
+	toSeconds,
+	units,
+	type TimePosition
+} from './time';
 
 /** 八拍表一列裡的一個動作（這一列開始的）。 */
 export interface EightCountAction {
@@ -36,6 +44,8 @@ export interface EightCountRow {
 	durationSec: number;
 	actions: EightCountAction[];
 	formations: EightCountFormation[];
+	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到）」。全隊是空的。 */
+	walks: string[];
 }
 
 /**
@@ -44,6 +54,7 @@ export interface EightCountRow {
  */
 export function eightCountRows(flow: Flow, memberId: string | null): EightCountRow[] {
 	const rows: EightCountRow[] = [];
+	const walks = memberId === null ? [] : memberWalks(flow, memberId);
 	for (const { segment, label } of segmentSpans(flow)) {
 		const inSegment = flow.actions
 			.filter((a) => a.segmentId === segment.id)
@@ -80,7 +91,16 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					f.segmentId === segment.id && f.at >= from && f.at < to
 						? [{ number: i + 1, at: at(f.at), pos: f.pos }]
 						: []
-				)
+				),
+				walks: walks
+					.filter(
+						({ walk: { depart } }) =>
+							depart.segmentId === segment.id && depart.at >= from && depart.at < to
+					)
+					.map(({ number, walk }) => {
+						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
+						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到）`;
+					})
 			};
 		};
 		if (segment.kind === 'music') {
@@ -92,6 +112,15 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 		}
 	}
 	return rows;
+}
+
+/** 一個隊員的每一次走位（A、B 位置不一樣才算），number 是到達那張站位的號碼。 */
+function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk }[] {
+	return flow.formations.flatMap((b, i) =>
+		formationWalks(flow, b.id).some((w) => w.memberId === memberId)
+			? [{ number: i + 1, walk: memberWalk(flow, b.id, memberId)! }]
+			: []
+	);
 }
 
 /** 八拍裡的第幾拍：「3」，半拍「3 的 &」。 */

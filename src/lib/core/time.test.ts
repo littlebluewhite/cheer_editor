@@ -6,9 +6,11 @@ import {
 	lengthText,
 	parseAt,
 	parseLength,
+	parseTime,
 	positionText,
 	rulerMarks,
 	segmentSpans,
+	timeText,
 	toPosition,
 	toSeconds,
 	totalSeconds,
@@ -162,5 +164,43 @@ describe('段內時間的文字（動作表單）', () => {
 		expect(parseLength(music(), '4.5')).toBe(9);
 		expect(parseLength(chant(), '2.5')).toBe(25);
 		expect(parseLength(chant(), '')).toBeNull();
+	});
+});
+
+describe('出發和到達的時間文字', () => {
+	// sample()：s1 = 音樂 1，s2 = 口號 1，s3 = 音樂 2
+
+	it('在這一段裡只寫段內時間：音樂段八拍-拍，口號段秒數', () => {
+		const flow = sample();
+		expect(timeText(flow, 's1', { segmentId: 's1', at: 41 })).toBe('3-5&');
+		expect(timeText(flow, 's2', { segmentId: 's2', at: 123 })).toBe('12.3');
+	});
+
+	it('在別的段前面加段名，跟上方列一樣', () => {
+		const flow = sample();
+		expect(timeText(flow, 's3', { segmentId: 's2', at: 123 })).toBe('口號 1 12.3');
+		expect(timeText(flow, 's2', { segmentId: 's1', at: 41 })).toBe('音樂 1 3-5&');
+	});
+
+	it('解析：只有段內時間就是這一段；前面有段名就是那一段', () => {
+		const flow = sample();
+		expect(parseTime(flow, 's1', '2-5')).toEqual({ segmentId: 's1', at: 24 });
+		expect(parseTime(flow, 's2', ' 12.3 ')).toEqual({ segmentId: 's2', at: 123 });
+		expect(parseTime(flow, 's3', '口號 1 12.3')).toEqual({ segmentId: 's2', at: 123 });
+		expect(parseTime(flow, 's2', '音樂 1 3-5&')).toEqual({ segmentId: 's1', at: 41 });
+		expect(parseTime(flow, 's2', '音樂 2 1-1')).toEqual({ segmentId: 's3', at: 0 });
+	});
+
+	it('從上方列抄來的「秒」也看得懂', () => {
+		expect(parseTime(sample(), 's3', '口號 1 12.3 秒')).toEqual({ segmentId: 's2', at: 123 });
+	});
+
+	it('看不懂是 null：寫法不對、沒有這一段', () => {
+		const flow = sample();
+		expect(parseTime(flow, 's1', '')).toBeNull();
+		expect(parseTime(flow, 's1', '12.3')).toBeNull();
+		expect(parseTime(flow, 's1', '口號 1 2-5')).toBeNull();
+		expect(parseTime(flow, 's1', '口號 9 1.0')).toBeNull();
+		expect(parseTime(flow, 's1', '音樂 2-5')).toBeNull();
 	});
 });
