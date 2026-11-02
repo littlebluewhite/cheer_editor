@@ -4,6 +4,7 @@ import {
 	addSegment,
 	createFlow,
 	insertFormation,
+	setPositions,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -94,6 +95,18 @@ describe('八拍表列印', () => {
 		expect(first).not.toContain('小A');
 		expect(first).not.toContain('跳躍');
 		expect(screen.getByRole('heading').textContent).toContain('小B');
+	});
+
+	it('選一個隊員時，他出發的那一列在動作下面多寫一行走位；全隊不寫', async () => {
+		let flow = sample();
+		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		expect(screen.queryByText(/出發/)).toBeNull();
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
+		const first = actionsCell(bodyRows()[0]);
+		expect(first).toContain('Lib');
+		expect(first).toContain('1-1 出發 → 站位 2（2-1 到）');
+		expect(actionsCell(bodyRows()[1])).not.toContain('出發');
 	});
 
 	it('按「列印」叫瀏覽器列印；「關閉」關掉', async () => {
