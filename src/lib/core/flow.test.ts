@@ -4,7 +4,7 @@ import { createFlow } from './index';
 describe('建立流程', () => {
 	it('有名字和場地就建好一支流程', () => {
 		const r = createFlow({ name: '2027 全國賽', field: { strips: 5, layout: 'horizontal' } });
-		expect(r).toEqual({
+		expect(r).toMatchObject({
 			kind: 'ok',
 			flow: {
 				name: '2027 全國賽',

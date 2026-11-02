@@ -4,9 +4,11 @@
 		firstBeatPreview,
 		playbackPlan,
 		positionText,
+		setPositions,
 		timeRuleWarnings,
 		totalSeconds,
 		type Flow,
+		type Position,
 		type SegmentKind
 	} from '#lib/core';
 	import type { LoadedAudio } from '#lib/audio/decode.js';
@@ -15,6 +17,7 @@
 	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
+	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
@@ -33,6 +36,10 @@
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
+	let notice = $state('');
+
+	/** 開頭那張站位；站位與走位的票會換成播放頭那張。 */
+	const formation = $derived(flow?.formations[0]);
 
 	let playing = $state(false);
 	let metronome = $state(true);
@@ -108,6 +115,13 @@
 		flow = r.flow;
 		openSegmentId = r.flow.segments.at(-1)!.id;
 	}
+
+	function move(moves: Record<string, Position>) {
+		if (!flow || !formation) return;
+		const r = setPositions(flow, formation.id, moves);
+		if (r.kind === 'ok') flow = r.flow;
+		notice = r.kind === 'blocked' ? r.message : '';
+	}
 </script>
 
 <svelte:head>
@@ -147,18 +161,29 @@
 			<span class="warn">
 				{#each timeRuleWarnings(flow) as w (w)}<span>⚠ {w}</span>{/each}
 			</span>
+			{#if notice}<span class="notice" role="status">{notice}</span>{/if}
 			<button type="button" onclick={() => (settingsOpen = true)}>流程設定</button>
 		</header>
 		<main class="field-host">
-			<Field field={flow.field} />
+			<Field
+				field={flow.field}
+				members={flow.members}
+				positions={formation?.pos}
+				onmove={move}
+			/>
 		</main>
-		<Timeline
-			{flow}
-			{playheadSec}
-			onseek={(sec) => flow && seek(flow, sec)}
-			onaddsegment={(kind) => flow && add(flow, kind)}
-			onopensegment={(id) => (openSegmentId = id)}
-		/>
+		<aside class="inspector">
+			<MemberPanel {flow} onchange={(f) => (flow = f)} />
+		</aside>
+		<div class="timeline-host">
+			<Timeline
+				{flow}
+				{playheadSec}
+				onseek={(sec) => flow && seek(flow, sec)}
+				onaddsegment={(kind) => flow && add(flow, kind)}
+				onopensegment={(id) => (openSegmentId = id)}
+			/>
+		</div>
 	</div>
 	{#if openSegmentId}
 		<SegmentSettings
@@ -189,8 +214,10 @@
 		height: 100vh;
 		display: grid;
 		grid-template-rows: auto minmax(0, 1fr) 30vh;
+		grid-template-columns: minmax(0, 1fr) 340px;
 	}
 	.topbar {
+		grid-column: 1 / -1;
 		display: flex;
 		gap: 12px;
 		align-items: center;
@@ -219,6 +246,9 @@
 		gap: 10px;
 		color: #b5651d;
 	}
+	.notice {
+		color: #c0392b;
+	}
 	.topbar button {
 		margin-left: auto;
 	}
@@ -226,5 +256,19 @@
 		min-height: 0;
 		background: #dfe3ea;
 		padding: 8px;
+	}
+	.inspector {
+		min-height: 0;
+		overflow-y: auto;
+		padding: 10px 12px;
+		background: #fff;
+		border-left: 1px solid #dde1ea;
+	}
+	/* 讓時間軸撐滿這一列、自己捲動。 */
+	.timeline-host {
+		grid-column: 1 / -1;
+		min-height: 0;
+		display: grid;
+		grid-template-rows: minmax(0, 1fr);
 	}
 </style>

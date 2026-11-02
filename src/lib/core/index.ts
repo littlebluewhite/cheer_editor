@@ -6,6 +6,15 @@ export type { CommandResult } from './result';
 export { createFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
+export { MAX_MEMBERS, addMembers, updateMember } from './members';
+export type { Gender, GlobalRole, Member, MemberChanges, NewMemberInput } from './members';
+
+export { setPositions } from './formation';
+export type { Formation, Position } from './formation';
+
+export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
+export type { SnapPoint } from './snap';
+
 export {
 	AUDIO_EXTENSIONS,
 	DEFAULT_BPM,

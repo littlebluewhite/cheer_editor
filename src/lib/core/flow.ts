@@ -1,7 +1,9 @@
 // 流程資料和建立流程的指令。
-// 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加隊員、段、動作、站位等。
+// 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加段、動作等。
 
 import { MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
+import type { Formation } from './formation';
+import type { Member } from './members';
 import { blocked, ok, type CommandResult } from './result';
 import type { AudioRef, Segment } from './segment';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
@@ -11,10 +13,14 @@ export interface Flow {
 	/** 建好之後不能換。 */
 	field: FieldConfig;
 	timeRules: TimeRules;
+	/** 名單順序 = 泳道順序。 */
+	members: Member[];
 	/** 用到的音樂檔清單（只有參照，位元組另外放）。 */
 	audio: AudioRef[];
 	/** 一串緊接的段，順序就是播放順序。 */
 	segments: Segment[];
+	/** 第一張是流程開頭那張，一定在、不能刪。 */
+	formations: Formation[];
 }
 
 export interface NewFlowInput {
@@ -33,7 +39,9 @@ export function createFlow(input: NewFlowInput): CommandResult {
 		name,
 		field: { ...input.field },
 		timeRules: { ...DEFAULT_TIME_RULES },
+		members: [],
 		audio: [],
-		segments: []
+		segments: [],
+		formations: [{ id: 'f1', pos: {} }]
 	});
 }
