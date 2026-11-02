@@ -1,6 +1,62 @@
 # 流程檔格式
 
-分層照規格（#15）的「流程檔格式」。完整欄位由做存檔、開檔的票補上；這裡先寫已經定下來的部分。
+分層照規格（#15）的「流程檔格式」。讀寫都在流程核心：`writeFlowFile(flow, 音樂位元組)`、`readFlowFile(zip 位元組)`
+（`src/lib/core/flow-file.ts`）。範例：`docs/samples/sample-flow.zip`（只用假名）。
+
+## zip 裡有什麼
+
+存成 `流程名.zip`：
+
+```
+flow.json        { "formatVersion": 1, "flow": { … } }
+audio/a1.mp3     flow.audio 列出的音樂檔，原封不動（zip 裡不再壓縮）
+audio/a2.m4a
+```
+
+- `flow.json` 只有 `formatVersion` 和 `flow` 兩層。延遲校正之類的本機設定不進檔。
+- `flow` 的欄位：`name`、`field`（`strips`、`layout`: `vertical`／`horizontal`）、`timeRules`、`members`、
+  `audio`、`segments`、`formations`、`customRoles`、`actions`，下面各節逐一說明。
+
+## 版本（formatVersion）
+
+- 現在是第 1 版。改了 `flow.json` 的格式就把 `FORMAT_VERSION` 加 1，並在 `UPGRADES` 補一步「第 n 版 → 第 n + 1 版」。
+- 開舊版檔：一步一步升到現在的版本再打開；存檔一律存現在的版本。
+- 開比編輯器新的檔：不打開，提示「這個流程檔是新版編輯器存的，請重新整理，更新編輯器」。
+- 不是 zip、沒有 `flow.json`、JSON 壞掉、沒有 `formatVersion` 或 `flow`、舊版號但沒有升級步驟：提示「這不是流程檔」。
+
+## 音樂檔
+
+```json
+"audio": [{ "id": "a1", "file": "audio/a1.mp3", "name": "第一首.mp3" }]
+```
+
+- `file` 是 zip 裡的路徑，`name` 是教練載入時的原始檔名（只給畫面顯示）。
+- 只列有段在用的音樂檔；兩個音樂段可以指同一個（變速切段）。
+- **缺音樂檔**（`file` 不在 zip 裡）照樣打開：指到它的音樂段標紅「找不到音樂」，點開段設定重新選檔；
+  動作和站位都不動。缺的檔下次存檔也不會出現在 zip 裡。
+
+## 段
+
+```json
+{ "id": "s1", "kind": "music", "audioId": "a1", "bpm": 150, "firstBeatSec": 0.42, "halfBeats": 192 }
+{ "id": "s2", "kind": "chant", "tenths": 300 }
+```
+
+- 音樂段：`audioId` 還沒載入音樂時是 `null`；`firstBeatSec` 是第一拍在音樂檔的第幾秒；長度存半拍數。
+- 口號段：長度存 0.1 秒數。
+
+## 時間規則、自訂任務角色、動作
+
+```json
+"timeRules": { "on": true, "minChantSec": 30, "maxMusicSec": 120, "maxTotalSec": 180 },
+"customRoles": [{ "id": "r1", "name": "飛人", "meaning": "…" }],
+"actions": [{ "id": "x1", "segmentId": "s1", "category": "stunt", "name": "Lib", "start": 16, "length": 16,
+              "note": "", "members": [{ "memberId": "m1", "role": "上層" }] }]
+```
+
+- 固定的 11 個任務角色不存，只存這支流程自己加的。
+- 動作的 `category`：`stunt` `pyramid` `toss` `tumbling` `jump` `dance` `other`。
+- `start`、`length` 是段內整數時間（音樂段半拍、口號段 0.1 秒）；`role` 存角色名稱，沒掛角色是 `null`。
 
 ## 位置座標
 

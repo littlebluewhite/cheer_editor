@@ -6,6 +6,9 @@ export type { CommandResult } from './result';
 export { createFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
+export { readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
+export type { AudioBytes, ReadFlowFileResult } from './flow-file';
+
 export { MAX_MEMBERS, addMembers, updateMember } from './members';
 export type { Gender, GlobalRole, Member, MemberChanges, NewMemberInput } from './members';
 

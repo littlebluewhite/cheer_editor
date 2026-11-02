@@ -31,5 +31,8 @@
 	"imports": {
 		"#lib/core": "./src/lib/core/index.js",
 		"#lib/*": "./src/lib/*"
+	},
+	"dependencies": {
+		"fflate": "^0.8.3"
 	}
 }

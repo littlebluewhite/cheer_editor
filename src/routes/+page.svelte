@@ -11,17 +11,22 @@
 		positionText,
 		positionsAt,
 		raisedAt,
+		readFlowFile,
+		segmentsMissingAudio,
 		setPositions,
 		timeRuleWarnings,
 		totalSeconds,
+		writeFlowFile,
 		type Flow,
 		type Position,
 		type SegmentKind
 	} from '#lib/core';
-	import type { LoadedAudio } from '#lib/audio/decode.js';
+	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 	import { createPlayer, type Player } from '#lib/audio/player.js';
+	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
+	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
@@ -33,13 +38,30 @@
 	interface Props {
 		/** 音訊引擎；測試換成假的（jsdom 沒有 Web Audio）。第一次播放時才建立。 */
 		createEngine?: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
+		/** 存檔薄層，一支流程一個（記得存到哪個檔）；測試換成假的。 */
+		createSaver?: () => FileSaver;
+		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
+		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 	}
 
-	let { createEngine = createWebAudioEngine }: Props = $props();
+	let {
+		createEngine = createWebAudioEngine,
+		createSaver = createBrowserSaver,
+		decode = decodeAudio
+	}: Props = $props();
 
 	let flow = $state<Flow | null>(null);
+	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
+	let savedFlow = $state.raw<Flow | null>(null);
+	const unsaved = $derived(flow !== null && flow !== savedFlow);
+	$effect(() => setUnsavedChanges(unsaved));
+	let saver: FileSaver | null = null;
+	let saving = false;
+	/** 首頁開檔失敗的原因（編輯中失敗就放在上方列的 notice）。 */
+	let openError = $state('');
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
 	let audios = $state<Record<string, LoadedAudio>>({});
+	const missingSegmentIds = $derived(flow ? segmentsMissingAudio(flow, Object.keys(audios)) : []);
 	/** 播放頭，全域秒數。 */
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
@@ -111,6 +133,74 @@
 	}
 
 
+	function startFlow(f: Flow) {
+		flow = f;
+		saver = createSaver();
+	}
+
+	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；其他瀏覽器下載新檔。 */
+	async function save() {
+		if (!flow || !saver || saving) return;
+		const f = flow;
+		const audio: Record<string, Uint8Array> = {};
+		for (const a of f.audio) if (audios[a.id]) audio[a.id] = new Uint8Array(audios[a.id].bytes);
+		saving = true;
+		try {
+			const outcome = await saver.save(writeFlowFile(f, audio), `${f.name}.zip`);
+			if (outcome === 'cancelled') return;
+			savedFlow = f;
+			notice =
+				outcome === 'downloaded'
+					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${f.name}.zip」；用 Chrome 或 Edge 才能直接存回原檔。`
+					: '';
+		} catch {
+			notice = '存檔失敗，請再試一次';
+		} finally {
+			saving = false;
+		}
+	}
+
+	/** 開檔：四家瀏覽器都用選檔。缺的音樂照開，那一段標紅。 */
+	async function open(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		const r = readFlowFile(new Uint8Array(await file.arrayBuffer()));
+		if (r.kind === 'error') {
+			if (flow) notice = r.message;
+			else openError = r.message;
+			return;
+		}
+		const loaded: Record<string, LoadedAudio> = {};
+		let unreadable = false;
+		for (const [id, bytes] of Object.entries(r.audio)) {
+			const buffer = bytes.slice().buffer;
+			try {
+				loaded[id] = { bytes: buffer, ...(await decode(buffer)) };
+			} catch {
+				// 這個瀏覽器解不開（例：Firefox 沒有 AAC）：位元組留著，存檔時照樣存回去，只是不出聲。
+				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [] };
+				unreadable = true;
+			}
+		}
+		pause();
+		openError = '';
+		playheadSec = 0;
+		openSegmentId = null;
+		settingsOpen = false;
+		selectedFormationId = null;
+		selectedActionId = null;
+		audios = loaded;
+		startFlow(r.flow);
+		savedFlow = flow;
+		notice = r.missingSegmentIds.length
+			? '有段找不到音樂：點紅色的段重新選檔'
+			: unreadable
+				? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
+				: '';
+	}
+
 	function add(f: Flow, kind: SegmentKind) {
 		const r = addSegment(f, kind);
 		if (r.kind !== 'ok') return;
@@ -147,6 +237,12 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
+		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
+		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+			e.preventDefault();
+			void save();
+			return;
+		}
 		if (!flow) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
 		if (e.key === ' ') {
@@ -189,6 +285,7 @@
 	<div class="editor">
 		<header class="topbar">
 			<b>{flow.name}</b>
+			{#if unsaved}<span class="muted">未存</span>{/if}
 			<button
 				type="button"
 				class="play"
@@ -217,7 +314,9 @@
 				{#each timeRuleWarnings(flow) as w (w)}<span>⚠ {w}</span>{/each}
 			</span>
 			{#if notice}<span class="notice" role="status">{notice}</span>{/if}
-			<button type="button" onclick={() => (settingsOpen = true)}>流程設定</button>
+			<button type="button" class="settings" onclick={() => (settingsOpen = true)}>流程設定</button>
+			<button type="button" onclick={save}>存檔</button>
+			<label class="open">開啟<input type="file" accept=".zip" onchange={open} /></label>
 		</header>
 		<main class="field-host">
 			<Field
@@ -245,6 +344,7 @@
 				onseek={(sec) => flow && seek(flow, sec)}
 				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
+				{missingSegmentIds}
 				{selectedFormationId}
 				onselectformation={(id, sec) => {
 					selectedFormationId = id;
@@ -262,6 +362,7 @@
 			{flow}
 			segmentId={openSegmentId}
 			{audios}
+			{decode}
 			onchange={(f) => (flow = f)}
 			onaudioload={(id, audio) => (audios[id] = audio)}
 			onpreview={(id) => flow && preview(flow, id)}
@@ -272,7 +373,11 @@
 		<FlowSettings {flow} onchange={(f) => (flow = f)} onclose={() => (settingsOpen = false)} />
 	{/if}
 {:else}
-	<NewFlowForm oncreate={(f) => (flow = f)} />
+	<NewFlowForm oncreate={startFlow} />
+	<p class="home-open">
+		<label class="open">開啟流程檔<input type="file" accept=".zip" onchange={open} /></label>
+		{#if openError}<span class="notice" role="alert">{openError}</span>{/if}
+	</p>
 {/if}
 
 <style>
@@ -321,8 +426,32 @@
 	.notice {
 		color: #c0392b;
 	}
-	.topbar button {
+	.topbar .settings {
 		margin-left: auto;
+	}
+	.muted {
+		color: #7a8296;
+		font-size: 12px;
+	}
+	/* 選檔用的 input 藏起來，外面的 label 看起來像按鈕。 */
+	.open {
+		cursor: pointer;
+		padding: 1px 6px;
+		border: 1px solid #c5cad6;
+		border-radius: 4px;
+		background: #fff;
+	}
+	.open:focus-within {
+		outline: 2px solid #5167a8;
+	}
+	.open input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+	}
+	.home-open {
+		text-align: center;
 	}
 	.field-host {
 		min-height: 0;

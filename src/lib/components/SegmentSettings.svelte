@@ -143,7 +143,7 @@
 				<label>載入音樂檔 <input type="file" accept=".mp3,.m4a,.wav" onchange={load} /></label>
 				<span class="muted">
 					{audioName
-						? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : ''}`
+						? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : '（找不到音樂，請重新選檔）'}`
 						: '還沒載入'}
 				</span>
 			</div>

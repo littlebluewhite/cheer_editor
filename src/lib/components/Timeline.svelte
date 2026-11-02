@@ -14,6 +14,8 @@
 		onseek: (sec: number) => void;
 		onaddsegment: (kind: SegmentKind) => void;
 		onopensegment: (segmentId: string) => void;
+		/** 找不到音樂檔的音樂段：標紅，點開段設定重新選檔。 */
+		missingSegmentIds?: string[];
 		/** 選到的站位。 */
 		selectedFormationId?: string | null;
 		/** 點縮圖：選這張站位，sec 是它的全域秒數。 */
@@ -30,6 +32,7 @@
 		onseek,
 		onaddsegment,
 		onopensegment,
+		missingSegmentIds = [],
 		selectedFormationId = null,
 		onselectformation = () => {},
 		ondeleteformation = () => {},
@@ -81,12 +84,14 @@
 					<button
 						type="button"
 						class="seg {span.segment.kind}"
+						class:missing={missingSegmentIds.includes(span.segment.id)}
 						style:left={`${span.startSec * pxPerSec}px`}
 						style:width={`${Math.max(span.durationSec * pxPerSec - 2, 4)}px`}
 						title="點一下設定"
 						onclick={() => onopensegment(span.segment.id)}
 					>
 						{span.label} ·
+						{#if missingSegmentIds.includes(span.segment.id)}找不到音樂 ·{/if}
 						{span.segment.kind === 'music'
 							? `${span.segment.bpm} BPM`
 							: `${span.durationSec.toFixed(1)} 秒`}
@@ -191,6 +196,9 @@
 	}
 	.seg.music {
 		background: #5167a8;
+	}
+	.seg.missing {
+		background: #c0392b;
 	}
 	.seg.chant {
 		background: #9a6b2f;

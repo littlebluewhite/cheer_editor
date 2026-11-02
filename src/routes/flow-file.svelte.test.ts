@@ -1,0 +1,183 @@
+// 頁面：存檔、開檔、Ctrl+S、缺音樂。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { zipSync, strToU8 } from 'fflate';
+import { describe, expect, it } from 'vitest';
+import {
+	addAction,
+	addMembers,
+	addSegment,
+	createFlow,
+	insertFormation,
+	loadSegmentAudio,
+	readFlowFile,
+	writeFlowFile,
+	type CommandResult,
+	type Flow
+} from '#lib/core';
+import { createFakeEngine } from '#lib/audio/fake-engine.js';
+import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
+import { hasUnsavedChanges } from '#lib/unsaved.js';
+import Page from './+page.svelte';
+
+function fakeSaver(outcome: SaveOutcome = 'saved') {
+	const saves: { bytes: Uint8Array; fileName: string }[] = [];
+	const saver: FileSaver = {
+		async save(bytes, fileName) {
+			saves.push({ bytes, fileName });
+			return outcome;
+		}
+	};
+	return { saver, saves };
+}
+
+const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
+
+function setup(saver: FileSaver = fakeSaver().saver) {
+	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
+}
+
+async function newFlow() {
+	await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
+	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+}
+
+const ctrlS = (target: Element | Window = window) => fireEvent.keyDown(target, { key: 's', ctrlKey: true });
+
+/** 等 async 的存檔／開檔（讀檔、解碼）跑完。 */
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+function flowOf(r: CommandResult): Flow {
+	if (r.kind !== 'ok') throw new Error(r.message);
+	return r.flow;
+}
+
+/** 音樂 1（a1.mp3）；小A 在一個動作裡；第 2 張站位在 1 秒。 */
+function sampleFlow(): Flow {
+	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
+	flow = flowOf(addMembers(flow, [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+	flow = flowOf(addSegment(flow, 'music'));
+	flow = flowOf(loadSegmentAudio(flow, 's1', '主歌.mp3'));
+	flow = flowOf(
+		addAction(flow, {
+			segmentId: 's1',
+			category: 'stunt',
+			name: 'Lib',
+			start: 0,
+			length: 16,
+			note: '',
+			members: [{ memberId: 'm1', role: '上層' }]
+		})
+	);
+	return flowOf(insertFormation(flow, 1));
+}
+
+async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
+	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
+	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
+	await settle();
+}
+
+describe('存檔', () => {
+	it('Ctrl+S 存成「流程名.zip」，存的就是這支流程', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await newFlow();
+		await ctrlS();
+		await settle();
+		expect(saves.map((s) => s.fileName)).toEqual(['全國賽.zip']);
+		const r = readFlowFile(saves[0].bytes);
+		expect(r.kind === 'ok' && r.flow.name).toBe('全國賽');
+	});
+
+	it('焦點在輸入框裡也能 Ctrl+S（Mac 是 ⌘S）', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await newFlow();
+		await fireEvent.keyDown(screen.getByLabelText(/^名字/), { key: 's', metaKey: true });
+		await settle();
+		expect(saves).toHaveLength(1);
+	});
+
+	it('按「存檔」也可以；存了就沒有未存的修改，改了又有', async () => {
+		setup();
+		await newFlow();
+		expect(hasUnsavedChanges()).toBe(true);
+		expect(screen.getByText('未存')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await settle();
+		expect(hasUnsavedChanges()).toBe(false);
+		expect(screen.queryByText('未存')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		expect(hasUnsavedChanges()).toBe(true);
+	});
+
+	it('在存檔對話框按取消：還是未存', async () => {
+		setup(fakeSaver('cancelled').saver);
+		await newFlow();
+		await ctrlS();
+		await settle();
+		expect(hasUnsavedChanges()).toBe(true);
+	});
+
+	it('Safari、Firefox 下載新檔時，寫一行說明', async () => {
+		setup(fakeSaver('downloaded').saver);
+		await newFlow();
+		await ctrlS();
+		await settle();
+		expect(screen.getByRole('status').textContent).toContain('這個瀏覽器不能存回原檔');
+		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('音樂資料也存進去', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([7, 7, 7]) }));
+		await ctrlS();
+		await settle();
+		const r = readFlowFile(saves[0].bytes);
+		expect(r.kind === 'ok' && r.audio).toEqual({ a1: new Uint8Array([7, 7, 7]) });
+	});
+});
+
+describe('開檔', () => {
+	it('首頁可以選流程檔打開；打開後沒有未存的修改', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		expect(screen.getByText('練習用')).toBeTruthy();
+		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
+		expect(screen.queryByText(/找不到音樂/)).toBeNull();
+		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('編輯中也可以從上方列開別的檔', async () => {
+		setup();
+		await newFlow();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }), '開啟');
+		expect(screen.getByText('練習用')).toBeTruthy();
+	});
+
+	it('比編輯器新的檔不打開，提示重新整理', async () => {
+		setup();
+		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
+		expect(screen.getByRole('alert').textContent).toContain('請重新整理，更新編輯器');
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it('缺音樂檔照開：那段標紅「找不到音樂」，點開重新選檔就好了；動作和站位都還在', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), {}));
+		const seg = screen.getByRole('button', { name: /音樂 1/ });
+		expect(seg.textContent).toContain('找不到音樂');
+		expect(seg.classList.contains('missing')).toBe(true);
+		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
+		await fireEvent.click(seg);
+		expect(screen.getByRole('dialog').textContent).toContain('找不到音樂');
+		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await settle();
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
+		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
+	});
+});
