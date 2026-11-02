@@ -13,7 +13,8 @@ import {
 	setPositions,
 	updateSegment,
 	type CommandResult,
-	type Flow
+	type Flow,
+	type Walk
 } from './index';
 
 function okFlow(r: CommandResult): Flow {
@@ -124,11 +125,14 @@ function expectAt(flow: Flow, sec: number, id: string, [x, y]: [number, number])
 }
 
 describe('走位', () => {
-	it('兩張站位之間每人走直線、速度不變', () => {
+	it('沒設的人先站著，最後一個八拍才走：直線、速度不變', () => {
 		const flow = walking();
+		// 150 BPM：一個八拍 3.2 秒，所以 16.8 秒出發、20 秒到。
 		expectAt(flow, 0, A, [0, 0]);
-		expectAt(flow, 5, A, [1, 0]);
-		expectAt(flow, 10, A, [2, 0]);
+		expectAt(flow, 10, A, [0, 0]);
+		expectAt(flow, 16.8, A, [0, 0]);
+		expectAt(flow, 17.6, A, [1, 0]);
+		expectAt(flow, 18.4, A, [2, 0]);
 		expectAt(flow, 20, A, [4, 0]);
 		expectAt(flow, 10, B, [-2, 0]);
 	});
@@ -148,9 +152,10 @@ describe('走位', () => {
 
 	it('改 BPM 後站位還在同一拍，秒數跟著變', () => {
 		const flow = okFlow(updateSegment(walking(), 's1', { bpm: 120 }));
-		// 120 BPM：第 100 個半拍在 25 秒
+		// 120 BPM：第 100 個半拍在 25 秒，一個八拍 4 秒，所以 21 秒出發
 		expectAt(flow, 25, A, [4, 0]);
-		expectAt(flow, 12.5, A, [2, 0]);
+		expectAt(flow, 21, A, [0, 0]);
+		expectAt(flow, 23, A, [2, 0]);
 	});
 });
 
@@ -219,16 +224,17 @@ describe('插站位', () => {
 
 	it('插的站位帶入那一刻大家走到的位置，所以其他人的走法不變', () => {
 		const before = walking();
-		const samples = [0, 2.5, 5, 7.5, 12.3, 20, 23, 30, 40];
-		const inserted = okFlow(insertFormation(before, 5));
+		const samples = [0, 2.5, 5, 7.5, 12.3, 17, 18.4, 19.5, 20, 23, 30, 40];
+		// 18.4 秒：小A 正在走（16.8 秒出發、20 秒到），走到一半
+		const inserted = okFlow(insertFormation(before, 18.4));
 		const f = inserted.formations[1];
-		expect(f.pos[A]).toEqual([1, 0]);
+		expect(f.pos[A][0]).toBeCloseTo(2, 9);
 		const moved = okFlow(setPositions(inserted, f.id, { [B]: [-3, 3] }));
 		for (const t of samples) {
 			expect(positionsAt(moved, t)[A][0]).toBeCloseTo(positionsAt(before, t)[A][0], 9);
 			expect(positionsAt(moved, t)[A][1]).toBeCloseTo(positionsAt(before, t)[A][1], 9);
 		}
-		expect(positionsAt(moved, 5)[B]).toEqual([-3, 3]);
+		expectAt(moved, 18.4, B, [-3, 3]);
 	});
 
 	it('那一拍已經有站位就擋下', () => {
@@ -250,12 +256,12 @@ describe('在播放頭拖人', () => {
 	});
 
 	it('播放頭不在站位上：在這一拍插一張（其他人帶入那一刻的位置）再改；回傳這一拍開始的秒數', () => {
-		const r = moveMembers(walking(), 5.05, { [B]: [-3, 3] });
+		const r = moveMembers(walking(), 18.45, { [B]: [-3, 3] });
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.inserted).toBe(true);
-		expect(r.sec).toBeCloseTo(5, 9);
+		expect(r.sec).toBeCloseTo(18.4, 9);
 		const f = r.flow.formations[1];
-		expect(f.pos[A]).toEqual([1, 0]);
+		expect(f.pos[A][0]).toBeCloseTo(2, 9);
 		expect(f.pos[B]).toEqual([-3, 3]);
 	});
 
@@ -264,6 +270,181 @@ describe('在播放頭拖人', () => {
 			kind: 'blocked',
 			message: '只能站到墊子外 1 m 以內'
 		});
+	});
+});
+
+/** 在一張站位上幫一個人設出發和到達（還沒有設定指令，直接改資料）。 */
+function withWalk(flow: Flow, formationId: string, id: string, walk: Walk): Flow {
+	return {
+		...flow,
+		formations: flow.formations.map((f) =>
+			f.id === formationId ? { ...f, walks: { ...f.walks, [id]: walk } } : f
+		)
+	};
+}
+
+/** 0 到 45 秒每 0.05 秒，再加上幾個交界旁邊的時間點，每個人的位置都一樣。 */
+function expectSamePositions(before: Flow, after: Flow) {
+	const samples = [
+		...Array.from({ length: 901 }, (_, i) => i * 0.05),
+		1e-7,
+		16.8 - 1e-7,
+		20 - 1e-7,
+		25.6 + 1e-7
+	];
+	for (const t of samples) {
+		const p = positionsAt(before, t);
+		const q = positionsAt(after, t);
+		for (const id of Object.keys(p)) {
+			expect(q[id][0], `${id} @ ${t}`).toBeCloseTo(p[id][0], 9);
+			expect(q[id][1], `${id} @ ${t}`).toBeCloseTo(p[id][1], 9);
+		}
+	}
+}
+
+/**
+ * 口號 1（10 秒）→ 音樂 1（150 BPM）。小A 從 [0, 0] 走到 11.6 秒（音樂 1 第 8 個半拍）的 [4, 0]，
+ * 預設 8.4 秒出發（在口號 1 裡）；小B 自己設口號 1 的 3 秒出發、音樂 1 第 4 個半拍（10.8 秒）到。
+ */
+function chantThenMusic(): Flow {
+	let flow = twoMembers();
+	flow = okFlow(addSegment(flow, 'chant'));
+	flow = okFlow(addSegment(flow, 'music'));
+	flow = okFlow(setPositions(flow, 'f1', { [A]: [0, 0], [B]: [1, 1] }));
+	flow = okFlow(insertFormation(flow, 11.6));
+	flow = okFlow(setPositions(flow, 'f2', { [A]: [4, 0], [B]: [1, -3] }));
+	return withWalk(flow, 'f2', B, {
+		depart: { segmentId: 's1', at: 30 },
+		arrive: { segmentId: 's2', at: 4 }
+	});
+}
+
+describe('走位的時間', () => {
+	it('兩張站位的位置一樣：整段站著不動', () => {
+		const flow = walking();
+		for (const t of [0, 10, 18, 20, 25]) expectAt(flow, t, B, [-2, 0]);
+	});
+
+	it('兩張之間不到一個八拍：整段走', () => {
+		let flow = withSegments();
+		flow = okFlow(setPositions(flow, 'f1', { [A]: [0, 0] }));
+		flow = okFlow(insertFormation(flow, 2));
+		flow = okFlow(setPositions(flow, 'f2', { [A]: [4, 0] }));
+		expectAt(flow, 0.5, A, [1, 0]);
+		expectAt(flow, 1, A, [2, 0]);
+	});
+
+	it('後一張在口號段：整段走', () => {
+		// 20 秒 → 30 秒（口號 1），整段 10 秒走 5 m
+		expectAt(walking(), 21, A, [4, 0.5]);
+	});
+
+	it('出發落進前一段：用後一張那段的 BPM 往前 8 拍', () => {
+		const flow = chantThenMusic();
+		expectAt(flow, 8.4, A, [0, 0]);
+		expectAt(flow, 10, A, [2, 0]);
+		expectAt(flow, 11.6, A, [4, 0]);
+	});
+
+	it('出發落進前一段、不在那一段的格子上：往前取到那一段的 0.1 秒', () => {
+		// 口號 1（10 秒）→ 音樂 1（140 BPM，一個半拍 3/14 秒）
+		let flow = twoMembers();
+		flow = okFlow(addSegment(flow, 'chant'));
+		flow = okFlow(addSegment(flow, 'music'));
+		flow = okFlow(updateSegment(flow, 's2', { bpm: 140 }));
+		flow = okFlow(setPositions(flow, 'f1', { [A]: [0, 0] }));
+		// 音樂 1 第 8 個半拍：10 + 12/7 ≈ 11.714 秒；往前 8 拍 ≈ 8.286 秒，取到 8.2 秒
+		const arrive = 10 + 12 / 7;
+		flow = okFlow(insertFormation(flow, arrive + 0.01));
+		flow = okFlow(setPositions(flow, 'f2', { [A]: [4, 0] }));
+		expectAt(flow, 8.2, A, [0, 0]);
+		expectAt(flow, (8.2 + arrive) / 2, A, [2, 0]);
+		expectAt(flow, arrive, A, [4, 0]);
+	});
+
+	it('自己設的：照設的出發和到達走，早到的人站著等', () => {
+		// 4 秒（第 20 個半拍）出發，10 秒（第 50 個半拍）到
+		const flow = withWalk(walking(), 'f2', A, {
+			depart: { segmentId: 's1', at: 20 },
+			arrive: { segmentId: 's1', at: 50 }
+		});
+		expectAt(flow, 4, A, [0, 0]);
+		expectAt(flow, 7, A, [2, 0]);
+		expectAt(flow, 10, A, [4, 0]);
+		expectAt(flow, 15, A, [4, 0]);
+	});
+
+	it('自己設的可以跨段', () => {
+		const flow = chantThenMusic();
+		expectAt(flow, 3, B, [1, 1]);
+		expectAt(flow, 6.9, B, [1, -1]);
+		expectAt(flow, 10.8, B, [1, -3]);
+	});
+
+	it('自己設的時間超出兩張之間：夾回來', () => {
+		// 到達設在口號 1 的 2 秒（27.6 秒），夾回 20 秒；出發 10 秒
+		const flow = withWalk(walking(), 'f2', A, {
+			depart: { segmentId: 's1', at: 50 },
+			arrive: { segmentId: 's2', at: 20 }
+		});
+		expectAt(flow, 15, A, [2, 0]);
+		expectAt(flow, 20, A, [4, 0]);
+	});
+
+	it('夾完出發不早於到達：當作沒設，用預設', () => {
+		// 出發和到達都在 f2 之後，夾完都是 20 秒
+		const flow = withWalk(walking(), 'f2', A, {
+			depart: { segmentId: 's2', at: 10 },
+			arrive: { segmentId: 's2', at: 20 }
+		});
+		expectAt(flow, 16.8, A, [0, 0]);
+		expectAt(flow, 18.4, A, [2, 0]);
+	});
+});
+
+describe('插站位時，每個人每一刻的位置都不變', () => {
+	it('插在還沒出發的時候', () => {
+		const before = walking();
+		expectSamePositions(before, okFlow(insertFormation(before, 10)));
+	});
+
+	it('插在正在走的時候', () => {
+		const before = walking();
+		expectSamePositions(before, okFlow(insertFormation(before, 18.4)));
+		expectSamePositions(before, okFlow(insertFormation(before, 19.8)));
+	});
+
+	it('插在口號段、跨段走到一半', () => {
+		const before = walking();
+		expectSamePositions(before, okFlow(insertFormation(before, 27.3)));
+	});
+
+	it('插在早到的人已經到之後、正在走、還沒出發', () => {
+		const before = withWalk(walking(), 'f2', A, {
+			depart: { segmentId: 's1', at: 20 },
+			arrive: { segmentId: 's1', at: 50 }
+		});
+		for (const t of [2, 7, 12]) expectSamePositions(before, okFlow(insertFormation(before, t)));
+	});
+
+	it('跨段的走位，插在前一段和後一段', () => {
+		const before = chantThenMusic();
+		for (const t of [2, 3, 8.5, 9.95, 10, 10.4, 11, 11.4]) {
+			expectSamePositions(before, okFlow(insertFormation(before, t)));
+		}
+	});
+
+	it('插了之後再插（被切開的走位再切一次）', () => {
+		const before = walking();
+		let after = okFlow(insertFormation(before, 18));
+		after = okFlow(insertFormation(after, 19.2));
+		after = okFlow(insertFormation(after, 17.2));
+		expectSamePositions(before, after);
+	});
+
+	it('沒有走位的人不寫出發和到達', () => {
+		const after = okFlow(insertFormation(walking(), 18.4));
+		for (const f of after.formations) expect(f.walks?.[B]).toBeUndefined();
 	});
 });
 

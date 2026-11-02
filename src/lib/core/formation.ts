@@ -6,7 +6,15 @@ import { fieldGeometry } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { nextId } from './ids';
-import { atText, toPosition, toSeconds, type TimePosition } from './time';
+import {
+	EPS,
+	HALF_BEATS_PER_EIGHT,
+	atText,
+	toPosition,
+	toSeconds,
+	unitSec,
+	type TimePosition
+} from './time';
 
 /** 公尺座標 [x, y]，方向見 docs/flow-file-format.md 的「位置座標」。存真正的值，不四捨五入。 */
 export type Position = [number, number];
@@ -19,6 +27,14 @@ export interface Formation {
 	at: number;
 	/** 隊員 id → 位置。 */
 	pos: Record<string, Position>;
+	/** 隊員 id → 從前一張走到這張的出發和到達。只有自己設過的人才有；開頭那張沒有。 */
+	walks?: Record<string, Walk>;
+}
+
+/** 一個人兩張站位之間的走位：出發和到達，跟站位一樣記「哪個段 ＋ 段內時間」。 */
+export interface Walk {
+	depart: TimePosition;
+	arrive: TimePosition;
 }
 
 /** 改一張站位裡一個或多個隊員的位置。位置可以在墊子外 1 m 以內。 */
@@ -144,7 +160,8 @@ function formationSec(flow: Flow, f: Formation): number {
 }
 
 /**
- * 這一刻（全域秒數）每個人站在哪：兩張站位之間每人直線等速（可以跨段），
+ * 這一刻（全域秒數）每個人站在哪：兩張站位之間，每人照自己的走位時間走（見 walkTimes），
+ * 出發前在前一張的位置，出發到到達之間直線等速（可以跨段），到達後在後一張的位置。
  * 最後一張之後站著不動。
  */
 export function positionsAt(flow: Flow, sec: number): Record<string, Position> {
@@ -154,13 +171,46 @@ export function positionsAt(flow: Flow, sec: number): Record<string, Position> {
 	if (next === 0) return flow.formations[0].pos;
 	const a = flow.formations[next - 1];
 	const b = flow.formations[next];
-	const k = (sec - times[next - 1]) / (times[next] - times[next - 1]);
 	const out: Record<string, Position> = {};
 	for (const [id, [ax, ay]] of Object.entries(a.pos)) {
 		const [bx, by] = b.pos[id] ?? [ax, ay];
+		const { depart, arrive } = walkTimes(flow, next, id);
+		const k = Math.min(Math.max((sec - depart) / (arrive - depart), 0), 1);
 		out[id] = [ax + (bx - ax) * k, ay + (by - ay) * k];
 	}
 	return out;
+}
+
+/**
+ * 一個人在 formations[index - 1]（A）→ formations[index]（B）的出發和到達（全域秒數）。
+ * 自己設的（B 的 walks）夾在 A、B 之間；夾完出發不早於到達就當沒設。
+ * 預設：到達 = B；出發 = B 往前一個八拍（用 B 所在音樂段的 BPM），落進前一段時往前取到那一段的格子上。
+ * B 在口號段，或 A、B 之間不到一個八拍：整段走（出發 = A）。
+ */
+function walkTimes(flow: Flow, index: number, memberId: string): { depart: number; arrive: number } {
+	const b = flow.formations[index];
+	const custom = b.walks?.[memberId];
+	if (custom) {
+		const aSec = formationSec(flow, flow.formations[index - 1]);
+		const bSec = formationSec(flow, b);
+		const clamp = (p: TimePosition) => Math.min(Math.max(toSeconds(flow, p), aSec), bSec);
+		const depart = clamp(custom.depart);
+		const arrive = clamp(custom.arrive);
+		if (depart < arrive - EPS) return { depart, arrive };
+	}
+	return defaultWalk(flow, index);
+}
+
+/** 沒設的人在 formations[index - 1] → formations[index] 的出發和到達（見 walkTimes）。 */
+function defaultWalk(flow: Flow, index: number): { depart: number; arrive: number } {
+	const aSec = formationSec(flow, flow.formations[index - 1]);
+	const b = flow.formations[index];
+	const arrive = formationSec(flow, b);
+	const segment = flow.segments.find((s) => s.id === b.segmentId);
+	if (segment?.kind !== 'music') return { depart: aSec, arrive };
+	const depart = arrive - HALF_BEATS_PER_EIGHT * unitSec(segment);
+	if (depart <= aSec + EPS) return { depart: aSec, arrive };
+	return { depart: toSeconds(flow, toPosition(flow, depart)!), arrive };
 }
 
 /**
@@ -173,22 +223,59 @@ export function formationAt(flow: Flow, sec: number): Formation | undefined {
 	return flow.formations.find((f) => f.segmentId === p.segmentId && f.at === p.at);
 }
 
-/** 在播放頭所在的那一拍插一張站位，位置帶入那一刻大家走到的地方，所以其他人的走法不變。 */
+/**
+ * 在播放頭所在的那一拍插一張站位，位置帶入那一刻大家走到的地方。
+ * 插之前和插之後，每個人每一刻的位置都一樣：插在 t，對原本 A→B 有走位（出發 s、到達 e）的人，
+ * 還沒出發（t ≤ s）的人 B 記 [s, e]；正在走的人新站位記 [s, t]、B 記 [t, e]；已經到的人新站位記 [s, e]。
+ * 只在預設會算出不一樣時才寫。
+ */
 export function insertFormation(flow: Flow, sec: number): CommandResult {
 	const p = toPosition(flow, sec);
 	if (!p) return blocked('請先加一段');
 	if (formationAt(flow, sec)) return blocked('這一拍已經有站位');
-	const sec0 = toSeconds(flow, p);
+	const t = toSeconds(flow, p);
 	const formation: Formation = {
 		id: nextId('f', flow.formations.map((f) => f.id)),
 		...p,
-		pos: { ...positionsAt(flow, sec0) }
+		pos: { ...positionsAt(flow, t) }
 	};
-	const index = flow.formations.findIndex((f) => formationSec(flow, f) > sec0);
-	const formations = flow.formations.toSpliced(
-		index === -1 ? flow.formations.length : index,
-		0,
-		formation
+	const bIndex = flow.formations.findIndex((f) => formationSec(flow, f) > t);
+	if (bIndex === -1) return ok({ ...flow, formations: [...flow.formations, formation] });
+	const a = flow.formations[bIndex - 1];
+	const b = flow.formations[bIndex];
+	const before = Object.fromEntries(
+		Object.keys(a.pos).map((id) => [id, walkTimes(flow, bIndex, id)] as const)
 	);
-	return ok({ ...flow, formations });
+	let after: Flow = { ...flow, formations: flow.formations.toSpliced(bIndex, 0, formation) };
+	const walks: Record<'inserted' | 'b', Record<string, Walk>> = { inserted: {}, b: { ...b.walks } };
+	for (const [id, { depart: s, arrive: e }] of Object.entries(before)) {
+		if (samePos(a.pos[id], b.pos[id] ?? a.pos[id])) continue;
+		const mine = t <= s ? null : t < e ? [s, t] : [s, e];
+		const next = t <= s ? [s, e] : t < e ? [t, e] : null;
+		const set = (into: Record<string, Walk>, index: number, w: number[] | null) => {
+			const d = defaultWalk(after, index);
+			if (!w || (Math.abs(d.depart - w[0]) < EPS && Math.abs(d.arrive - w[1]) < EPS)) delete into[id];
+			else into[id] = { depart: toPosition(after, w[0])!, arrive: toPosition(after, w[1])! };
+		};
+		set(walks.inserted, bIndex, mine);
+		set(walks.b, bIndex + 1, next);
+	}
+	after = {
+		...after,
+		formations: after.formations.with(bIndex, withWalks(formation, walks.inserted)).with(
+			bIndex + 1,
+			withWalks(b, walks.b)
+		)
+	};
+	return ok(after);
+}
+
+/** 換掉站位的 walks；沒有人就拿掉這個欄位。 */
+function withWalks(f: Formation, walks: Record<string, Walk>): Formation {
+	const { walks: _, ...rest } = f;
+	return Object.keys(walks).length ? { ...rest, walks } : rest;
+}
+
+function samePos(a: Position, b: Position): boolean {
+	return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
 }
