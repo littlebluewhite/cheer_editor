@@ -363,6 +363,6 @@ function withWalks(f: Formation, walks: Record<string, Walk>): Formation {
 	return Object.keys(walks).length ? { ...rest, walks } : rest;
 }
 
-function samePos(a: Position, b: Position): boolean {
+export function samePos(a: Position, b: Position): boolean {
 	return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
 }
