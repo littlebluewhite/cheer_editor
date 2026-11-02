@@ -601,6 +601,22 @@ describe('復原和重做', () => {
 		expect(redoButton().disabled).toBe(true);
 	});
 
+	it('跟上一張一樣（自動插站位）算一步：按一次「復原」整個回去', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2
+		await seek(4);
+		const before = dotAt();
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		await fireEvent.click(screen.getByRole('button', { name: '跟上一張一樣' }));
+		expect(thumbs()).toHaveLength(3);
+		expect(dotAt()).not.toBe(before);
+
+		await fireEvent.click(undoButton());
+		expect(thumbs()).toHaveLength(2);
+		expect(dotAt()).toBe(before);
+	});
+
 	it('一路復原到流程剛建立的樣子：隊員、段都回去；再重做回來', async () => {
 		await setup();
 		await fireEvent.click(undoButton());
