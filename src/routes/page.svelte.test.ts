@@ -474,3 +474,173 @@ describe('播放', () => {
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
 	});
 });
+
+describe('復原和重做', () => {
+	// jsdom 不算 SVG 座標：把場地預設的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。
+	beforeEach(() => {
+		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
+		proto.getScreenCTM = () => ({ inverse: () => ({}) });
+		proto.createSVGPoint = () => {
+			const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x / 100, y: p.y / 100 }) };
+			return p;
+		};
+	});
+	afterEach(() => {
+		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
+		delete proto.getScreenCTM;
+		delete proto.createSVGPoint;
+	});
+
+	const undoButton = () => screen.getByRole('button', { name: '復原' }) as HTMLButtonElement;
+	const redoButton = () => screen.getByRole('button', { name: '重做' }) as HTMLButtonElement;
+	const thumbs = () => screen.queryAllByRole('button', { name: /^站位 \d+$/ });
+	const dotAt = () => document.querySelector('[data-member-id="m1"]')!.getAttribute('transform');
+
+	/** 新流程、一個音樂段、兩個隊員：三步。 */
+	async function setup() {
+		await newFlow();
+		await addSegment('＋音樂段');
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '小A\n小B' } });
+		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'top' } });
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		await tab('動作');
+	}
+
+	async function seek(sec: number) {
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: sec * 16, button: 0 });
+		await fireEvent.pointerUp(window);
+	}
+
+	async function dragFirstMember() {
+		const dot = document.querySelector('[data-member-id="m1"]')!;
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: -200, clientY: -300 });
+		await fireEvent.pointerUp(dot, { clientX: -200, clientY: -300 });
+	}
+
+	it('新流程沒東西可以復原或重做：兩個按鈕按不下去', async () => {
+		await newFlow();
+		expect(undoButton().disabled).toBe(true);
+		expect(redoButton().disabled).toBe(true);
+	});
+
+	it('拖人（自動插站位）算一步：按「復原」整個回去，按「重做」再回來', async () => {
+		await setup();
+		await seek(8.25);
+		const before = dotAt();
+		await dragFirstMember();
+		expect(thumbs()).toHaveLength(2);
+		const after = dotAt();
+		expect(after).not.toBe(before);
+
+		await fireEvent.click(undoButton());
+		expect(thumbs()).toHaveLength(1);
+		expect(dotAt()).toBe(before);
+		expect(redoButton().disabled).toBe(false);
+
+		await fireEvent.click(redoButton());
+		expect(thumbs()).toHaveLength(2);
+		expect(dotAt()).toBe(after);
+		expect(redoButton().disabled).toBe(true);
+	});
+
+	it('一路復原到流程剛建立的樣子：隊員、段都回去；再重做回來', async () => {
+		await setup();
+		await fireEvent.click(undoButton());
+		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(0);
+		await fireEvent.click(undoButton());
+		expect(screen.queryByRole('button', { name: /^音樂 1/ })).toBeNull();
+		expect(undoButton().disabled).toBe(true);
+		await fireEvent.click(redoButton());
+		await fireEvent.click(redoButton());
+		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(2);
+	});
+
+	it('⌘/Ctrl+Z 復原；⌘/Ctrl+Shift+Z 和 Ctrl+Y 重做', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+		expect(thumbs()).toHaveLength(1);
+		await fireEvent.keyDown(window, { key: 'Z', metaKey: true, shiftKey: true });
+		expect(thumbs()).toHaveLength(2);
+		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
+		expect(thumbs()).toHaveLength(1);
+		await fireEvent.keyDown(window, { key: 'y', ctrlKey: true });
+		expect(thumbs()).toHaveLength(2);
+	});
+
+	it('焦點在文字框或下拉選單裡時不攔，讓瀏覽器復原打的字', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		const z = { key: 'z', ctrlKey: true };
+		// fireEvent 回傳 false 表示被 preventDefault（瀏覽器自己的復原不會跑）
+		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), z)).toBe(true);
+		expect(thumbs()).toHaveLength(2);
+		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(true);
+		expect(thumbs()).toHaveLength(2);
+		expect(await fireEvent.keyDown(window, z)).toBe(false);
+		expect(thumbs()).toHaveLength(1);
+	});
+
+	it('做了新的一步，重做的紀錄就清掉', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.click(undoButton());
+		expect(redoButton().disabled).toBe(false);
+		await dragFirstMember();
+		expect(redoButton().disabled).toBe(true);
+	});
+
+	it('最多記 100 步', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		const min = () => screen.getByLabelText('口號段最少（秒）') as HTMLInputElement;
+		for (let i = 1; i <= 105; i++) await fireEvent.change(min(), { target: { value: String(i) } });
+		for (let i = 0; i < 100; i++) await fireEvent.click(undoButton());
+		expect(undoButton().disabled).toBe(true);
+		expect(min().value).toBe('5');
+	});
+
+	it('復原後，選到的人、站位、動作已經不存在就清掉', async () => {
+		await setup();
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '上層' } });
+		await fireEvent.change(screen.getByLabelText('小B 的任務角色'), { target: { value: '上層' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		const bar = () => document.querySelector('[data-lane="m1"] [data-action-id]');
+		expect(bar()?.classList.contains('selected')).toBe(true);
+		await fireEvent.click(undoButton());
+		expect(bar()).toBeNull();
+		await fireEvent.click(redoButton());
+		// 動作回來了，但沒有選著（id 會重用，不一定是同一個）
+		expect(bar()?.classList.contains('selected')).toBe(false);
+
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		await fireEvent.click(undoButton());
+		await fireEvent.click(redoButton());
+		expect(screen.getByRole('button', { name: '站位 2' }).getAttribute('aria-pressed')).toBe('false');
+
+		// 復原到還沒有隊員：選到的人也清掉
+		for (let i = 0; i < 3; i++) await fireEvent.click(undoButton());
+		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(0);
+		await fireEvent.click(redoButton());
+		expect(screen.getByText('已選 0 人')).toBeTruthy();
+	});
+
+	it('新建別的流程時清空復原紀錄', async () => {
+		await setup();
+		expect(undoButton().disabled).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '第二支' } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		expect(undoButton().disabled).toBe(true);
+		expect(redoButton().disabled).toBe(true);
+	});
+});
