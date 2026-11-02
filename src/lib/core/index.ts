@@ -49,6 +49,7 @@ export {
 	formationTimes,
 	insertFormation,
 	moveMembers,
+	moveTargetText,
 	positionsAt,
 	setPositions
 } from './formation';

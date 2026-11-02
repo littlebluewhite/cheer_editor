@@ -6,7 +6,7 @@ import { fieldGeometry } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { nextId } from './ids';
-import { toPosition, toSeconds } from './time';
+import { atText, toPosition, toSeconds, type TimePosition } from './time';
 
 /** 公尺座標 [x, y]，方向見 docs/flow-file-format.md 的「位置座標」。存真正的值，不四捨五入。 */
 export type Position = [number, number];
@@ -46,13 +46,14 @@ export function setPositions(
 
 /**
  * 在播放頭（全域秒數）拖人：改這一拍的站位；這一拍沒有站位就先插一張（位置帶入那一刻大家走到的地方）。
- * 被擋就什麼都不改。inserted = 有插新的站位；sec = 改到的那張站位的全域秒數（這一拍開始的時間）。
+ * 改完往後帶（見 carryForward）。被擋就什麼都不改。
+ * inserted = 有插新的站位；sec = 改到的那張站位的全域秒數（這一拍開始的時間）；carried = 往後帶到幾張站位。
  */
 export function moveMembers(
 	flow: Flow,
 	sec: number,
 	moves: Record<string, Position>
-): CommandResult<{ inserted: boolean; sec: number }> {
+): CommandResult<{ inserted: boolean; sec: number; carried: number }> {
 	let f = flow;
 	const inserted = !formationAt(f, sec);
 	if (inserted) {
@@ -63,7 +64,56 @@ export function moveMembers(
 	const target = formationAt(f, sec)!;
 	const r = setPositions(f, target.id, moves);
 	if (r.kind !== 'ok') return r;
-	return { ...r, inserted, sec: formationSec(r.flow, target) };
+	const { flow: carriedFlow, carried } = carryForward(r.flow, target, moves);
+	return { kind: 'ok', flow: carriedFlow, inserted, sec: formationSec(r.flow, target), carried };
+}
+
+/**
+ * 往後帶：每個被改的人，記下他在 from 這張的舊位置 p；往後一張一張看，他在那張也在 p（容許 1e-9）
+ * 就一起改成新位置，遇到第一張不在 p 的就停。flow 是已經改好 from 的流程；from 是改之前的那張。
+ * carried = 被改到的站位張數（不含 from）。
+ */
+function carryForward(
+	flow: Flow,
+	from: Formation,
+	moves: Record<string, Position>
+): { flow: Flow; carried: number } {
+	const eps = 1e-9;
+	const same = (p: Position | undefined, q: Position) =>
+		!!p && Math.abs(p[0] - q[0]) <= eps && Math.abs(p[1] - q[1]) <= eps;
+	const start = flow.formations.findIndex((f) => f.id === from.id) + 1;
+	const formations = [...flow.formations];
+	const touched = new Set<number>();
+	for (const [id, to] of Object.entries(moves)) {
+		const old = from.pos[id];
+		if (!old || same(old, to)) continue;
+		for (let i = start; i < formations.length && same(formations[i].pos[id], old); i++) {
+			formations[i] = { ...formations[i], pos: { ...formations[i].pos, [id]: to } };
+			touched.add(i);
+		}
+	}
+	return { flow: { ...flow, formations }, carried: touched.size };
+}
+
+/**
+ * 場地旁邊那一行字，告訴教練在播放頭拖人會改哪一張站位，還是會插一張新的。
+ * 站位編號照時間排，跟站位縮圖列一樣；拍子音樂段寫「3-5&」，口號段寫「12.3 秒」。
+ */
+export function moveTargetText(flow: Flow, sec: number): string {
+	const target = formationAt(flow, sec);
+	if (target) {
+		const index = flow.formations.indexOf(target);
+		// 只有開頭那張的 segmentId 可能是 null。
+		const when = index === 0 ? '開頭' : beatText(flow, target as TimePosition);
+		return `拖人會改：站位 ${index + 1}（${when}）`;
+	}
+	// 不在站位上表示已經有段，toPosition 一定有值。
+	return `拖人會在 ${beatText(flow, toPosition(flow, sec)!)} 插一張新站位`;
+}
+
+function beatText(flow: Flow, { segmentId, at }: TimePosition): string {
+	const segment = flow.segments.find((s) => s.id === segmentId)!;
+	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
 }
 
 /** 開頭那張（formations[0]）不能刪。 */
