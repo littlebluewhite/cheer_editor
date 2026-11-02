@@ -43,6 +43,7 @@ function setup(flow: Flow, audios: Record<string, LoadedAudio> = {}, segmentId =
 		audios,
 		onchange,
 		onaudioload,
+		onpreview: () => {},
 		onclose: () => {},
 		decode,
 		waveXToSec

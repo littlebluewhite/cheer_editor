@@ -2,7 +2,14 @@
 	import {
 		addSegment,
 		deleteAction,
+		deleteFormation,
+		firstBeatPreview,
+		formationAt,
+		formationTimes,
+		insertFormation,
+		playbackPlan,
 		positionText,
+		positionsAt,
 		raisedAt,
 		setPositions,
 		timeRuleWarnings,
@@ -12,6 +19,9 @@
 		type SegmentKind
 	} from '#lib/core';
 	import type { LoadedAudio } from '#lib/audio/decode.js';
+	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
+	import { createPlayer, type Player } from '#lib/audio/player.js';
+	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
@@ -19,6 +29,13 @@
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
+
+	interface Props {
+		/** 音訊引擎；測試換成假的（jsdom 沒有 Web Audio）。第一次播放時才建立。 */
+		createEngine?: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
+	}
+
+	let { createEngine = createWebAudioEngine }: Props = $props();
 
 	let flow = $state<Flow | null>(null);
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
@@ -28,15 +45,71 @@
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let notice = $state('');
-	/** 選到的動作（Delete 刪掉、Esc 清除）。 */
+	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
+	let selectedFormationId = $state<string | null>(null);
+	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */
 	let selectedActionId = $state<string | null>(null);
 
-	/** 開頭那張站位；站位與走位的票會換成播放頭那張。 */
-	const formation = $derived(flow?.formations[0]);
+	let playing = $state(false);
+	let metronome = $state(true);
+	/** 延遲校正（毫秒）：存在瀏覽器，不進流程檔。 */
+	let latencyMs = $state(loadLatencyMs());
+	let player: Player | null = null;
+
+	function getPlayer(): Player {
+		player ??= createPlayer(createEngine((id) => audios[id]?.buffer));
+		return player;
+	}
 
 	function seek(f: Flow, sec: number) {
 		playheadSec = Math.min(Math.max(sec, 0), totalSeconds(f));
+		if (playing) play(f);
 	}
+
+	/** 從播放頭開始播；已經播完就從頭。一定由按鈕或空白鍵觸發。 */
+	function play(f: Flow) {
+		if (playheadSec >= totalSeconds(f) - 0.01) playheadSec = 0;
+		getPlayer().start(playbackPlan(f, playheadSec), { fromSec: playheadSec, metronome });
+		if (!playing) {
+			playing = true;
+			requestAnimationFrame(frame);
+		}
+	}
+
+	function pause() {
+		playing = false;
+		player?.stop();
+	}
+
+	function togglePlay(f: Flow) {
+		if (playing) pause();
+		else play(f);
+	}
+
+	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
+	function frame() {
+		if (!playing || !player) return;
+		playheadSec = player.tick(latencyMs);
+		if (!player.playing) playing = false;
+		else requestAnimationFrame(frame);
+	}
+
+	function preview(f: Flow, segmentId: string) {
+		pause();
+		getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
+	}
+
+	function setMetronome(f: Flow, on: boolean) {
+		metronome = on;
+		if (playing) play(f);
+	}
+
+	function setLatency(ms: number) {
+		if (!Number.isFinite(ms)) return;
+		latencyMs = ms;
+		saveLatencyMs(ms);
+	}
+
 
 	function add(f: Flow, kind: SegmentKind) {
 		const r = addSegment(f, kind);
@@ -45,42 +118,101 @@
 		openSegmentId = r.flow.segments.at(-1)!.id;
 	}
 
+	/** 拖人：改播放頭所在那張站位；播放頭不在站位上就先在這一拍插一張。播放頭停到那張站位上。 */
 	function move(moves: Record<string, Position>) {
-		if (!flow || !formation) return;
-		const r = setPositions(flow, formation.id, moves);
-		if (r.kind === 'ok') flow = r.flow;
-		notice = r.kind === 'blocked' ? r.message : '';
+		if (!flow) return;
+		let f = flow;
+		let message = '';
+		if (!formationAt(f, playheadSec)) {
+			const r = insertFormation(f, playheadSec);
+			if (r.kind === 'blocked') return void (notice = r.message);
+			f = r.flow;
+			message = '插了一張站位，大家的位置自動帶入';
+		}
+		const target = formationAt(f, playheadSec)!;
+		const r = setPositions(f, target.id, moves);
+		if (r.kind === 'blocked') return void (notice = r.message);
+		flow = r.flow;
+		notice = message;
+		playheadSec = formationTimes(r.flow).find((t) => t.formation.id === target.id)!.sec;
 	}
 
-	/** Delete（Mac 的 delete 鍵是 Backspace）刪選到的動作；Esc 清除選取。在輸入框裡打字時不攔。 */
+	function removeFormation(id: string) {
+		if (!flow) return;
+		const r = deleteFormation(flow, id);
+		if (r.kind === 'blocked') return void (notice = r.message);
+		flow = r.flow;
+		notice = '';
+		if (selectedFormationId === id) selectedFormationId = null;
+	}
+
 	function onkeydown(e: KeyboardEvent) {
 		if (!flow) return;
-		if (e.key === 'Escape') {
+		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+		if (e.key === ' ') {
+			if (e.repeat) return;
+			// 不讓焦點所在的按鈕也被空白鍵按到
+			e.preventDefault();
+			togglePlay(flow);
+		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFormationId) {
+			e.preventDefault();
+			removeFormation(selectedFormationId);
+		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedActionId) {
+			// Mac 的 delete 鍵送的是 Backspace
+			e.preventDefault();
+			removeAction(selectedActionId);
+		} else if (e.key === 'Escape') {
+			selectedFormationId = null;
 			selectedActionId = null;
-			return;
 		}
-		if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-		const t = e.target as HTMLElement | null;
-		if (t?.closest?.('input, textarea, select, [contenteditable]')) return;
-		if (!selectedActionId) return;
-		const r = deleteAction(flow, selectedActionId);
+	}
+
+	function removeAction(id: string) {
+		if (!flow) return;
+		const r = deleteAction(flow, id);
 		if (r.kind === 'ok') flow = r.flow;
 		selectedActionId = null;
-		e.preventDefault();
+	}
+
+	function selectAction(id: string | null) {
+		selectedActionId = id;
+		if (id) selectedFormationId = null;
 	}
 </script>
-
-<svelte:window {onkeydown} />
 
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
 </svelte:head>
+<svelte:window {onkeydown} />
 
 {#if flow}
 	<div class="editor">
 		<header class="topbar">
 			<b>{flow.name}</b>
+			<button
+				type="button"
+				class="play"
+				aria-label={playing ? '暫停' : '播放'}
+				onclick={() => flow && togglePlay(flow)}>{playing ? '❚❚' : '▶'}</button
+			>
 			<span class="pos" aria-label="目前位置">{positionText(flow, playheadSec)}</span>
+			<label>
+				<input
+					type="checkbox"
+					checked={metronome}
+					onchange={(e) => flow && setMetronome(flow, e.currentTarget.checked)}
+				/>節拍器
+			</label>
+			<label title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
+				延遲校正（毫秒）
+				<input
+					type="number"
+					step="10"
+					class="latency"
+					value={latencyMs}
+					onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
+				/>
+			</label>
 			<span class="warn">
 				{#each timeRuleWarnings(flow) as w (w)}<span>⚠ {w}</span>{/each}
 			</span>
@@ -91,7 +223,7 @@
 			<Field
 				field={flow.field}
 				members={flow.members}
-				positions={formation?.pos}
+				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
 				onmove={move}
 			/>
@@ -102,7 +234,7 @@
 				{playheadSec}
 				actionId={selectedActionId}
 				onchange={(f) => (flow = f)}
-				onselect={(id) => (selectedActionId = id)}
+				onselect={selectAction}
 			/>
 			<MemberPanel {flow} onchange={(f) => (flow = f)} />
 		</aside>
@@ -113,8 +245,15 @@
 				onseek={(sec) => flow && seek(flow, sec)}
 				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
+				{selectedFormationId}
+				onselectformation={(id, sec) => {
+					selectedFormationId = id;
+					selectedActionId = null;
+					if (flow) seek(flow, sec);
+				}}
+				ondeleteformation={removeFormation}
 				{selectedActionId}
-				onselectaction={(id) => (selectedActionId = id)}
+				onselectaction={selectAction}
 			/>
 		</div>
 	</div>
@@ -125,6 +264,7 @@
 			{audios}
 			onchange={(f) => (flow = f)}
 			onaudioload={(id, audio) => (audios[id] = audio)}
+			onpreview={(id) => flow && preview(flow, id)}
 			onclose={() => (openSegmentId = null)}
 		/>
 	{/if}
@@ -160,6 +300,18 @@
 	.pos {
 		font-variant-numeric: tabular-nums;
 		min-width: 9em;
+	}
+	.topbar .play {
+		width: 40px;
+		margin-left: 0;
+	}
+	.topbar label {
+		display: flex;
+		gap: 4px;
+		align-items: center;
+	}
+	.latency {
+		width: 5em;
 	}
 	.warn {
 		display: flex;

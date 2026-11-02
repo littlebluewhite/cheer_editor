@@ -26,7 +26,14 @@ export type { Action, ActionCategory, ActionMember, NewActionInput } from './act
 export { addCustomRole, roleGlossary } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
-export { setPositions } from './formation';
+export {
+	deleteFormation,
+	formationAt,
+	formationTimes,
+	insertFormation,
+	positionsAt,
+	setPositions
+} from './formation';
 export type { Formation, Position } from './formation';
 
 export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
@@ -69,6 +76,9 @@ export {
 	totalSeconds
 } from './time';
 export type { RulerMark, SegmentSpan, TimePosition } from './time';
+
+export { firstBeatPreview, playbackPlan } from './playback';
+export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules } from './time-rules';
