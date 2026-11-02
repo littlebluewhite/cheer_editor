@@ -1,9 +1,12 @@
 <script lang="ts">
 	// 動作表單：沒選動作時是「在播放頭新增動作」；選了動作時改那個動作，改了馬上生效。
 	// 規則（跨段、重疊、至少 1 人、角色存在）都交給流程核心判斷；被擋就顯示原因並還原。
+	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色一起帶。
 	import { untrack } from 'svelte';
 	import {
 		ACTION_CATEGORIES,
+		actionLabel,
+		actionSeconds,
 		actionSlotAt,
 		addAction,
 		atText,
@@ -11,6 +14,7 @@
 		lengthText,
 		parseAt,
 		parseLength,
+		positionText,
 		roleGlossary,
 		segmentSpans,
 		updateAction,
@@ -31,9 +35,20 @@
 		actionId: string | null;
 		onchange: (flow: Flow) => void;
 		onselect: (actionId: string | null) => void;
+		/** 選到的人；新增時就是新動作的人。 */
+		selectedMemberIds?: string[];
+		onselectmembers?: (memberIds: string[]) => void;
 	}
 
-	let { flow, playheadSec, actionId, onchange, onselect }: Props = $props();
+	let {
+		flow,
+		playheadSec,
+		actionId,
+		onchange,
+		onselect,
+		selectedMemberIds = [],
+		onselectmembers = () => {}
+	}: Props = $props();
 
 	interface Draft {
 		category: ActionCategory;
@@ -61,13 +76,32 @@
 	const others = $derived(
 		flow.members.filter((m) => !draft.members.some((d) => d.memberId === m.id))
 	);
+	/** 「從別的動作複製人」的選項：其他動作，照時間排。 */
+	const copySources = $derived(
+		flow.actions
+			.filter((a) => a.id !== action?.id)
+			.map((a) => ({ a, sec: actionSeconds(flow, a).startSec }))
+			.sort((x, y) => x.sec - y.sec)
+			.map(({ a, sec }) => ({
+				id: a.id,
+				label: `${positionText(flow, sec)}　${actionLabel(a)}（${a.members.length} 人）`
+			}))
+	);
 
 	let draft = $state<Draft>(blank());
 	let error = $state('');
 	let glossaryOpen = $state(false);
 
 	function blank(): Draft {
-		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members: [] };
+		const members = untrack(() => fromSelection([]));
+		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members };
+	}
+
+	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色。 */
+	function fromSelection(current: ActionMember[]): ActionMember[] {
+		return selectedMemberIds
+			.filter((id) => flow.members.some((m) => m.id === id))
+			.map((id) => current.find((m) => m.memberId === id) ?? { memberId: id, role: null });
 	}
 
 	function fromAction(a: Action): Draft {
@@ -89,6 +123,13 @@
 			draft = a ? fromAction(a) : blank();
 			error = '';
 		});
+	});
+
+	// 新增時，人跟著選取。
+	$effect(() => {
+		void selectedMemberIds;
+		if (action) return;
+		untrack(() => (draft.members = fromSelection(draft.members)));
 	});
 
 	// 新增時，開始和長度跟著播放頭。
@@ -157,16 +198,31 @@
 		changed();
 	}
 
+	/** 人改了：改動作就馬上生效；新增時改選取。 */
+	function membersChanged() {
+		if (action) changed();
+		else onselectmembers(draft.members.map((m) => m.memberId));
+	}
+
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
 		draft.members.push({ memberId: select.value, role: null });
 		select.value = '';
-		changed();
+		membersChanged();
 	}
 
 	function removeMember(i: number) {
 		draft.members.splice(i, 1);
-		changed();
+		membersChanged();
+	}
+
+	/** 把別的動作的人連任務角色一起換進來。 */
+	function copyFrom(select: HTMLSelectElement) {
+		const source = flow.actions.find((a) => a.id === select.value);
+		select.value = '';
+		if (!source) return;
+		draft.members = source.members.map((m) => ({ ...m }));
+		membersChanged();
 	}
 
 	const nameOf = (id: string) => flow.members.find((m) => m.id === id)?.name ?? id;
@@ -239,6 +295,12 @@
 				<option value="">＋加人…</option>
 				{#each others as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
 			</select>
+			{#if copySources.length}
+				<select aria-label="從別的動作複製人" onchange={(e) => copyFrom(e.currentTarget)}>
+					<option value="">從別的動作複製人（連任務角色）…</option>
+					{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
+				</select>
+			{/if}
 		</div>
 
 		<label>備註 <textarea rows="2" bind:value={draft.note} onchange={changed}></textarea></label>

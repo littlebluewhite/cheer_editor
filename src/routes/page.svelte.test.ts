@@ -100,6 +100,28 @@ describe('動作', () => {
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(bar()).toBeNull();
 	});
+
+	it('選人：一鍵全隊、點泳道上的名字，場上的點有記號；Esc 清除', async () => {
+		await withAction();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(dot().classList.contains('selected')).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		expect(dot().classList.contains('selected')).toBe(true);
+		expect(screen.getByText('已選 1 人：小A')).toBeTruthy();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(dot().classList.contains('selected')).toBe(false);
+		await fireEvent.click(document.querySelector('[data-lane="m1"] .lab')!);
+		expect(dot().classList.contains('selected')).toBe(true);
+	});
+
+	it('拖色條被擋就還原，上方列說原因', async () => {
+		await withAction();
+		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 84 });
+		await fireEvent.pointerUp(window, { clientX: 84 });
+		expect(screen.getByRole('status').textContent).toBe('開始時間不能在段之前，已還原');
+		expect((bar() as HTMLElement).style.left).toBe('0px');
+	});
 });
 
 describe('站位與走位', () => {

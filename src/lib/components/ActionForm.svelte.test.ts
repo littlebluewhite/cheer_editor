@@ -116,3 +116,93 @@ describe('動作表單：改選到的動作', () => {
 		expect(onselect).toHaveBeenCalledWith(null);
 	});
 });
+
+describe('動作表單：選人', () => {
+	/** Lib：小A 上層、小B 主底，0–1.6 秒。 */
+	function withLib(): Flow {
+		return flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'stunt',
+				name: 'Lib',
+				note: '',
+				start: 0,
+				length: 8,
+				members: [
+					{ memberId: 'm1', role: '上層' },
+					{ memberId: 'm2', role: '主底' }
+				]
+			})
+		);
+	}
+
+	function setupSel(
+		flow: Flow,
+		actionId: string | null,
+		selectedMemberIds: string[],
+		playheadSec = 0
+	) {
+		const onchange = vi.fn();
+		const onselect = vi.fn();
+		const onselectmembers = vi.fn<(ids: string[]) => void>();
+		render(ActionForm, {
+			flow,
+			playheadSec,
+			actionId,
+			onchange,
+			onselect,
+			selectedMemberIds,
+			onselectmembers
+		});
+		return { onchange, onselect, onselectmembers };
+	}
+
+	const people = () =>
+		[...document.querySelectorAll('.people li > span')].map((el) => el.textContent);
+
+	it('在播放頭新增動作時，人就是選到的人；加人、移出也改選取', async () => {
+		const { onchange, onselectmembers } = setupSel(sample(), null, ['m2']);
+		expect(people()).toEqual(['小B']);
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
+		expect(onselectmembers).toHaveBeenLastCalledWith(['m2', 'm1']);
+		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
+		expect(onselectmembers).toHaveBeenLastCalledWith(['m1']);
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(onchange.mock.calls[0][0].actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+	});
+
+	it('新增時「從別的動作複製人」連任務角色一起帶，也改選取', async () => {
+		const { onchange, onselectmembers } = setupSel(withLib(), null, [], 2);
+		await fireEvent.change(screen.getByLabelText('從別的動作複製人'), { target: { value: 'x1' } });
+		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm2']);
+		expect((screen.getByLabelText('小B 的任務角色') as HTMLSelectElement).value).toBe('主底');
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(onchange.mock.calls[0][0].actions[1].members).toEqual([
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		]);
+	});
+
+	it('改動作時「從別的動作複製人」連任務角色一起換掉，馬上生效；選單裡沒有自己', async () => {
+		let flow = withLib();
+		flow = flowOf(
+			addAction(flow, {
+				segmentId: 's1',
+				category: 'jump',
+				name: '',
+				note: '',
+				start: 16,
+				length: 8,
+				members: [{ memberId: 'm2', role: null }]
+			})
+		);
+		const { onchange } = setupSel(flow, 'x2', []);
+		const copy = screen.getByLabelText('從別的動作複製人') as HTMLSelectElement;
+		expect([...copy.options].map((o) => o.value)).toEqual(['', 'x1']);
+		await fireEvent.change(copy, { target: { value: 'x1' } });
+		expect(onchange.mock.calls[0][0].actions[1].members).toEqual([
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		]);
+	});
+});

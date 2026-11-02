@@ -26,6 +26,7 @@
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
+	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
@@ -49,6 +50,8 @@
 	let selectedFormationId = $state<string | null>(null);
 	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */
 	let selectedActionId = $state<string | null>(null);
+	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
+	let selectedMemberIds = $state<string[]>([]);
 
 	let playing = $state(false);
 	let metronome = $state(true);
@@ -164,6 +167,7 @@
 		} else if (e.key === 'Escape') {
 			selectedFormationId = null;
 			selectedActionId = null;
+			selectedMemberIds = [];
 		}
 	}
 
@@ -177,6 +181,10 @@
 	function selectAction(id: string | null) {
 		selectedActionId = id;
 		if (id) selectedFormationId = null;
+	}
+
+	function selectMembers(ids: string[]) {
+		selectedMemberIds = ids;
 	}
 </script>
 
@@ -225,16 +233,21 @@
 				members={flow.members}
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
+				selected={selectedMemberIds}
 				onmove={move}
+				onselect={selectMembers}
 			/>
 		</main>
 		<aside class="inspector">
+			<MemberPicker {flow} {playheadSec} selected={selectedMemberIds} onselect={selectMembers} />
 			<ActionForm
 				{flow}
 				{playheadSec}
 				actionId={selectedActionId}
 				onchange={(f) => (flow = f)}
 				onselect={selectAction}
+				{selectedMemberIds}
+				onselectmembers={selectMembers}
 			/>
 			<MemberPanel {flow} onchange={(f) => (flow = f)} />
 		</aside>
@@ -254,6 +267,13 @@
 				ondeleteformation={removeFormation}
 				{selectedActionId}
 				onselectaction={selectAction}
+				onchange={(f) => {
+					flow = f;
+					notice = '';
+				}}
+				onblocked={(message) => (notice = `${message}，已還原`)}
+				{selectedMemberIds}
+				onselectmembers={selectMembers}
 			/>
 		</div>
 	</div>

@@ -18,10 +18,14 @@ export {
 	deleteAction,
 	idleAt,
 	memberActionAt,
+	memberGroup,
+	moveAction,
+	previousActions,
 	raisedAt,
+	resizeAction,
 	updateAction
 } from './actions';
-export type { Action, ActionCategory, ActionMember, NewActionInput } from './actions';
+export type { Action, ActionCategory, ActionMember, MemberGroup, NewActionInput } from './actions';
 
 export { addCustomRole, roleGlossary } from './roles';
 export type { CustomRole, RoleEntry } from './roles';

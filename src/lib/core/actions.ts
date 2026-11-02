@@ -5,7 +5,7 @@ import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { roleGlossary } from './roles';
 import { nextId } from './segment';
-import { toPosition, toSeconds, units } from './time';
+import { toPosition, toSeconds, unitSec, units } from './time';
 
 /** 大類，固定 7 個，不能自訂。流程檔存英文代號。 */
 export type ActionCategory = 'stunt' | 'pyramid' | 'toss' | 'tumbling' | 'jump' | 'dance' | 'other';
@@ -65,6 +65,30 @@ export function updateAction(
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
+}
+
+/** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。 */
+export function moveAction(flow: Flow, id: string, startSec: number): CommandResult {
+	const at = unitAt(flow, id, startSec);
+	return at === null ? blocked('找不到這個動作') : updateAction(flow, id, { start: at });
+}
+
+/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格；太短、超出段尾、撞到人就擋。 */
+export function resizeAction(flow: Flow, id: string, endSec: number): CommandResult {
+	const at = unitAt(flow, id, endSec);
+	const action = flow.actions.find((a) => a.id === id);
+	return at === null || !action
+		? blocked('找不到這個動作')
+		: updateAction(flow, id, { length: at - action.start });
+}
+
+/** 全域秒數在動作那一段裡最近的整數時間（可以落在段外，交給檢查擋）。 */
+function unitAt(flow: Flow, id: string, sec: number): number | null {
+	const action = flow.actions.find((a) => a.id === id);
+	const segment = action && flow.segments.find((s) => s.id === action.segmentId);
+	if (!action || !segment) return null;
+	const segStart = toSeconds(flow, { segmentId: segment.id, at: 0 });
+	return Math.round((sec - segStart) / unitSec(segment));
 }
 
 export function deleteAction(flow: Flow, id: string): CommandResult {
@@ -150,6 +174,24 @@ export function memberActionAt(
 /** 這一刻沒在任何動作裡的隊員 id，照名單順序。 */
 export function idleAt(flow: Flow, sec: number): string[] {
 	return flow.members.filter((m) => !memberActionAt(flow, m.id, sec)).map((m) => m.id);
+}
+
+/** 「沿用上一個動作的人」的候選：播放頭以前（含剛好在播放頭）結束的動作，越晚結束越前面；同時結束的，晚開始的在前。 */
+export function previousActions(flow: Flow, sec: number): Action[] {
+	return flow.actions
+		.map((action) => ({ action, ...actionSeconds(flow, action) }))
+		.filter((a) => a.endSec <= sec + 1e-6)
+		.sort((a, b) => b.endSec - a.endSec || b.startSec - a.startSec)
+		.map((a) => a.action);
+}
+
+/** 一鍵選人的組：全隊、全部底層、全部上層（看全局角色）、這一拍沒在動作裡的人。 */
+export type MemberGroup = 'all' | 'base' | 'top' | 'idle';
+
+/** 一鍵選人：那一組的隊員 id，照名單順序。sec 只有「這一拍沒在動作裡的人」用到。 */
+export function memberGroup(flow: Flow, group: MemberGroup, sec: number): string[] {
+	if (group === 'idle') return idleAt(flow, sec);
+	return flow.members.filter((m) => group === 'all' || m.globalRole === group).map((m) => m.id);
 }
 
 /** 場上要畫在最上面的任務角色。 */

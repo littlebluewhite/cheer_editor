@@ -23,7 +23,7 @@ export interface SegmentSpan {
 const EPS = 1e-6;
 
 /** 段內時間一格是幾秒：音樂段一個半拍，口號段 0.1 秒。 */
-function unitSec(segment: Segment): number {
+export function unitSec(segment: Segment): number {
 	return segment.kind === 'music' ? 30 / segment.bpm : 0.1;
 }
 
