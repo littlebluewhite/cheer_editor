@@ -220,6 +220,26 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(1);
 		expect(screen.getByRole('status').textContent).toBe('流程開頭一定有一張站位，不能刪');
 	});
+
+	async function setEights(eights: string, confirm: boolean) {
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: eights } });
+		if (confirm) await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+	}
+
+	it('段縮短連帶刪掉選到的站位：選取跟著清掉，之後再插的站位（id 重用）不會是選到的', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		await setEights('1', true);
+		expect(thumbs()).toHaveLength(1);
+		await setEights('8', false);
+		await seek(8.25);
+		await dragFirstMember();
+		expect(screen.getByRole('button', { name: '站位 2' }).getAttribute('aria-pressed')).toBe('false');
+	});
 });
 
 describe('八拍表', () => {
@@ -263,6 +283,24 @@ describe('編輯器首頁', () => {
 
 		expect((screen.getByLabelText('第 2 位隊員的名字') as HTMLInputElement).value).toBe('小B');
 		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(2);
+	});
+
+	it('刪掉選到的人：選取跟著清掉，之後加的新人（id 重用）不會被選到', async () => {
+		await newFlow();
+		const addOne = async (name: string) => {
+			await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: name } });
+			await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+			await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'top' } });
+			await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		};
+		await addOne('小A');
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		expect(screen.getByText('已選 1 人：小A')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		await addOne('小B');
+		expect(screen.getByText('已選 0 人')).toBeTruthy();
+		expect(document.querySelector('[data-member-id].selected')).toBeNull();
 	});
 });
 

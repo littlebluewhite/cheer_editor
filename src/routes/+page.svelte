@@ -188,9 +188,25 @@
 	}
 
 
+	/** 換成另一支流程（新建、開檔、救回草稿）：id 會跟上一支重複，所以選取全部清掉。 */
 	function startFlow(f: Flow) {
 		flow = f;
 		saver = createSaver();
+		selectedFormationId = null;
+		selectedActionId = null;
+		selectedMemberIds = [];
+	}
+
+	/** 指令改好的流程。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
+	function change(f: Flow) {
+		flow = f;
+		if (selectedFormationId && !f.formations.some((x) => x.id === selectedFormationId)) {
+			selectedFormationId = null;
+		}
+		if (selectedActionId && !f.actions.some((a) => a.id === selectedActionId)) selectedActionId = null;
+		if (selectedMemberIds.some((id) => !f.members.some((m) => m.id === id))) {
+			selectedMemberIds = selectedMemberIds.filter((id) => f.members.some((m) => m.id === id));
+		}
 	}
 
 	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
@@ -255,8 +271,6 @@
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
-		selectedFormationId = null;
-		selectedActionId = null;
 		audios = loaded;
 		startFlow(r.flow);
 		savedFlow = fromFile ? flow : null;
@@ -270,7 +284,7 @@
 	function add(f: Flow, kind: SegmentKind) {
 		const r = addSegment(f, kind);
 		if (r.kind !== 'ok') return;
-		flow = r.flow;
+		change(r.flow);
 		openSegmentId = r.flow.segments.at(-1)!.id;
 	}
 
@@ -288,7 +302,7 @@
 		const target = formationAt(f, playheadSec)!;
 		const r = setPositions(f, target.id, moves);
 		if (r.kind !== 'ok') return void (notice = r.message);
-		flow = r.flow;
+		change(r.flow);
 		notice = message;
 		playheadSec = formationTimes(r.flow).find((t) => t.formation.id === target.id)!.sec;
 	}
@@ -297,9 +311,8 @@
 		if (!flow) return;
 		const r = deleteFormation(flow, id);
 		if (r.kind !== 'ok') return void (notice = r.message);
-		flow = r.flow;
+		change(r.flow);
 		notice = '';
-		if (selectedFormationId === id) selectedFormationId = null;
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -334,8 +347,9 @@
 	function removeAction(id: string) {
 		if (!flow) return;
 		const r = deleteAction(flow, id);
-		if (r.kind === 'ok') flow = r.flow;
-		selectedActionId = null;
+		if (r.kind !== 'ok') return void (notice = r.message);
+		change(r.flow);
+		notice = '';
 	}
 
 	function selectAction(id: string | null) {
@@ -408,12 +422,12 @@
 				{flow}
 				{playheadSec}
 				actionId={selectedActionId}
-				onchange={(f) => (flow = f)}
+				onchange={change}
 				onselect={selectAction}
 				{selectedMemberIds}
 				onselectmembers={selectMembers}
 			/>
-			<MemberPanel {flow} onchange={(f) => (flow = f)} />
+			<MemberPanel {flow} onchange={change} />
 		</aside>
 		<div class="timeline-host">
 			<Timeline
@@ -433,7 +447,7 @@
 				{selectedActionId}
 				onselectaction={selectAction}
 				onchange={(f) => {
-					flow = f;
+					change(f);
 					notice = '';
 				}}
 				onblocked={(message) => (notice = `${message}，已還原`)}
@@ -448,14 +462,14 @@
 			segmentId={openSegmentId}
 			{audios}
 			{decode}
-			onchange={(f) => (flow = f)}
+			onchange={change}
 			onaudioload={(id, audio) => (audios[id] = audio)}
 			onpreview={(id) => flow && preview(flow, id)}
 			onclose={() => (openSegmentId = null)}
 		/>
 	{/if}
 	{#if settingsOpen}
-		<FlowSettings {flow} onchange={(f) => (flow = f)} onclose={() => (settingsOpen = false)} />
+		<FlowSettings {flow} onchange={change} onclose={() => (settingsOpen = false)} />
 	{/if}
 	{#if printOpen}
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />

@@ -157,6 +157,18 @@ describe('開檔', () => {
 		expect(screen.getByText('練習用')).toBeTruthy();
 	});
 
+	it('開別的檔：選到的人和動作都清掉（另一支流程的 m1 是另一個人）', async () => {
+		setup();
+		const file = writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) });
+		await openFile(file);
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id]')!);
+		expect(screen.getByText('已選 1 人：小A')).toBeTruthy();
+		await openFile(file, '開啟');
+		expect(screen.getByText('已選 0 人')).toBeTruthy();
+		expect(document.querySelector('.bar.selected')).toBeNull();
+	});
+
 	it('比編輯器新的檔不打開，提示重新整理', async () => {
 		setup();
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
