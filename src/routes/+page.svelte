@@ -2,9 +2,11 @@
 	import {
 		addSegment,
 		deleteFormation,
+		firstBeatPreview,
 		formationAt,
 		formationTimes,
 		insertFormation,
+		playbackPlan,
 		positionText,
 		positionsAt,
 		setPositions,
@@ -15,12 +17,22 @@
 		type SegmentKind
 	} from '#lib/core';
 	import type { LoadedAudio } from '#lib/audio/decode.js';
+	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
+	import { createPlayer, type Player } from '#lib/audio/player.js';
+	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
+
+	interface Props {
+		/** 音訊引擎；測試換成假的（jsdom 沒有 Web Audio）。第一次播放時才建立。 */
+		createEngine?: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
+	}
+
+	let { createEngine = createWebAudioEngine }: Props = $props();
 
 	let flow = $state<Flow | null>(null);
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
@@ -33,9 +45,66 @@
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	let selectedFormationId = $state<string | null>(null);
 
+	let playing = $state(false);
+	let metronome = $state(true);
+	/** 延遲校正（毫秒）：存在瀏覽器，不進流程檔。 */
+	let latencyMs = $state(loadLatencyMs());
+	let player: Player | null = null;
+
+	function getPlayer(): Player {
+		player ??= createPlayer(createEngine((id) => audios[id]?.buffer));
+		return player;
+	}
+
 	function seek(f: Flow, sec: number) {
 		playheadSec = Math.min(Math.max(sec, 0), totalSeconds(f));
+		if (playing) play(f);
 	}
+
+	/** 從播放頭開始播；已經播完就從頭。一定由按鈕或空白鍵觸發。 */
+	function play(f: Flow) {
+		if (playheadSec >= totalSeconds(f) - 0.01) playheadSec = 0;
+		getPlayer().start(playbackPlan(f, playheadSec), { fromSec: playheadSec, metronome });
+		if (!playing) {
+			playing = true;
+			requestAnimationFrame(frame);
+		}
+	}
+
+	function pause() {
+		playing = false;
+		player?.stop();
+	}
+
+	function togglePlay(f: Flow) {
+		if (playing) pause();
+		else play(f);
+	}
+
+	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
+	function frame() {
+		if (!playing || !player) return;
+		playheadSec = player.tick(latencyMs);
+		if (!player.playing) playing = false;
+		else requestAnimationFrame(frame);
+	}
+
+	function preview(f: Flow, segmentId: string) {
+		pause();
+		getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
+	}
+
+	function setMetronome(f: Flow, on: boolean) {
+		metronome = on;
+		if (playing) play(f);
+	}
+
+	function setLatency(ms: number) {
+		if (!Number.isFinite(ms)) return;
+		latencyMs = ms;
+		saveLatencyMs(ms);
+	}
+
 
 	function add(f: Flow, kind: SegmentKind) {
 		const r = addSegment(f, kind);
@@ -73,8 +142,14 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
+		if (!flow) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
-		if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFormationId) {
+		if (e.key === ' ') {
+			if (e.repeat) return;
+			// 不讓焦點所在的按鈕也被空白鍵按到
+			e.preventDefault();
+			togglePlay(flow);
+		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFormationId) {
 			e.preventDefault();
 			removeFormation(selectedFormationId);
 		} else if (e.key === 'Escape') {
@@ -92,7 +167,30 @@
 	<div class="editor">
 		<header class="topbar">
 			<b>{flow.name}</b>
+			<button
+				type="button"
+				class="play"
+				aria-label={playing ? '暫停' : '播放'}
+				onclick={() => flow && togglePlay(flow)}>{playing ? '❚❚' : '▶'}</button
+			>
 			<span class="pos" aria-label="目前位置">{positionText(flow, playheadSec)}</span>
+			<label>
+				<input
+					type="checkbox"
+					checked={metronome}
+					onchange={(e) => flow && setMetronome(flow, e.currentTarget.checked)}
+				/>節拍器
+			</label>
+			<label title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
+				延遲校正（毫秒）
+				<input
+					type="number"
+					step="10"
+					class="latency"
+					value={latencyMs}
+					onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
+				/>
+			</label>
 			<span class="warn">
 				{#each timeRuleWarnings(flow) as w (w)}<span>⚠ {w}</span>{/each}
 			</span>
@@ -120,7 +218,7 @@
 				{selectedFormationId}
 				onselectformation={(id, sec) => {
 					selectedFormationId = id;
-					playheadSec = sec;
+					if (flow) seek(flow, sec);
 				}}
 				ondeleteformation={removeFormation}
 			/>
@@ -133,6 +231,7 @@
 			{audios}
 			onchange={(f) => (flow = f)}
 			onaudioload={(id, audio) => (audios[id] = audio)}
+			onpreview={(id) => flow && preview(flow, id)}
 			onclose={() => (openSegmentId = null)}
 		/>
 	{/if}
@@ -168,6 +267,18 @@
 	.pos {
 		font-variant-numeric: tabular-nums;
 		min-width: 9em;
+	}
+	.topbar .play {
+		width: 40px;
+		margin-left: 0;
+	}
+	.topbar label {
+		display: flex;
+		gap: 4px;
+		align-items: center;
+	}
+	.latency {
+		width: 5em;
 	}
 	.warn {
 		display: flex;

@@ -28,6 +28,8 @@
 		audios: Record<string, LoadedAudio>;
 		onchange: (flow: Flow) => void;
 		onaudioload: (audioId: string, audio: LoadedAudio) => void;
+		/** 「▶ 從第一拍聽 2 個八拍」：音訊在頁面那一層。 */
+		onpreview: (segmentId: string) => void;
 		onclose: () => void;
 		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
 		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
@@ -41,6 +43,7 @@
 		audios,
 		onchange,
 		onaudioload,
+		onpreview,
 		onclose,
 		decode = decodeAudio,
 		waveXToSec = defaultWaveXToSec
@@ -174,6 +177,7 @@
 						onchange={(e) => update({ firstBeatSec: num(e) })}
 					/>
 				</label>
+				<button type="button" onclick={() => onpreview(segmentId)}>▶ 從第一拍聽 2 個八拍</button>
 			</div>
 			<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->

@@ -56,6 +56,9 @@ export {
 } from './time';
 export type { RulerMark, SegmentSpan, TimePosition } from './time';
 
+export { firstBeatPreview, playbackPlan } from './playback';
+export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
+
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules } from './time-rules';
 
