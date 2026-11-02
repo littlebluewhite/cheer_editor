@@ -392,10 +392,15 @@ export function insertFormation(flow: Flow, sec: number): CommandResult {
 		if (samePos(a.pos[id], b.pos[id] ?? a.pos[id])) continue;
 		const mine = t <= s ? null : t < e ? [s, t] : [s, e];
 		const next = t <= s ? [s, e] : t < e ? [t, e] : null;
+		// 段改短後，自己設的出發／到達可能不在格子上：時間沒變就照原本記的寫回去，不吸到格子
+		const custom = b.walks?.[id];
+		const at = (sec: number) =>
+			[custom?.depart, custom?.arrive].find((q) => q && Math.abs(toSeconds(flow, q) - sec) < EPS) ??
+			toPosition(after, sec)!;
 		const set = (into: Record<string, Walk>, index: number, w: number[] | null) => {
 			const d = defaultWalk(after, index);
 			if (!w || (Math.abs(d.depart - w[0]) < EPS && Math.abs(d.arrive - w[1]) < EPS)) delete into[id];
-			else into[id] = { depart: toPosition(after, w[0])!, arrive: toPosition(after, w[1])! };
+			else into[id] = { depart: at(w[0]), arrive: at(w[1]) };
 		};
 		set(walks.inserted, bIndex, mine);
 		set(walks.b, bIndex + 1, next);

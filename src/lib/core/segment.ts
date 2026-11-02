@@ -170,11 +170,13 @@ export function updateSegment(
 /**
  * 音樂段載入一個新的音樂檔：流程記一筆音樂檔，這一段指過去。
  * 位元組由呼叫端自己留著，用這一段新的 audioId 對應。
+ * heldIds：呼叫端還留著位元組的 id（流程不用了、復原還會用到），不拿來給新的檔。
  */
 export function loadSegmentAudio(
 	flow: Flow,
 	segmentId: string,
-	fileName: string
+	fileName: string,
+	heldIds: readonly string[] = []
 ): CommandResult<{ audioId: string }> {
 	const segment = flow.segments.find((s) => s.id === segmentId);
 	if (!segment) return blocked('找不到這一段');
@@ -183,7 +185,7 @@ export function loadSegmentAudio(
 	if (!(AUDIO_EXTENSIONS as readonly string[]).includes(ext) || !fileName.includes('.')) {
 		return blocked(`只能載入 ${AUDIO_EXTENSIONS.join('、')}`);
 	}
-	const id = nextId('a', flow.audio.map((a) => a.id));
+	const id = nextId('a', [...flow.audio.map((a) => a.id), ...heldIds]);
 	const audio = [...flow.audio, { id, file: `audio/${id}.${ext}`, name: fileName }];
 	const r = updateSegment({ ...flow, audio }, segmentId, { audioId: id });
 	return r.kind === 'ok' ? { ...r, audioId: id } : r;

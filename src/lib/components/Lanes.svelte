@@ -172,14 +172,14 @@
 	}
 
 	/**
-	 * 全域秒數最近的那一格（音樂段半拍、口號段 0.1 秒）。流程開頭之前不夾回 0，
-	 * 照樣往前數成負的格子，交給 setWalks 擋下。
+	 * 全域秒數最近的那一格（音樂段半拍、口號段 0.1 秒）。流程開頭之前、結尾之後不夾回來，
+	 * 照樣往外數成超出的格子，交給 setWalks 擋下。
 	 */
 	function nearest(sec: number): TimePosition {
 		const p = toPosition(flow, sec)!;
 		const lo = toSeconds(flow, p);
 		const hi = toSeconds(flow, { ...p, at: p.at + 1 });
-		if (sec < lo) return { ...p, at: p.at - Math.round((lo - sec) / (hi - lo)) };
+		if (sec < lo || sec >= hi) return { ...p, at: p.at + Math.round((sec - lo) / (hi - lo)) };
 		return sec - lo > (hi - lo) / 2 ? toPosition(flow, hi)! : p;
 	}
 

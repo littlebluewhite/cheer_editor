@@ -112,7 +112,7 @@
 	async function load(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
 		if (!file) return;
-		const check = loadSegmentAudio(flow, segmentId, file.name);
+		const check = loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios));
 		if (check.kind === 'blocked') {
 			error = check.message;
 			return;
@@ -128,7 +128,7 @@
 		// 解碼時設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
 		if (closed) return;
 		// 解碼要一點時間，用那時候的流程再送一次指令。
-		const r = loadSegmentAudio(flow, segmentId, file.name);
+		const r = loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios));
 		if (r.kind === 'ok') onaudioload(r.audioId, { bytes, ...decoded });
 		apply(r);
 	}

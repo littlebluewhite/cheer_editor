@@ -441,6 +441,24 @@ describe('插站位時，每個人每一刻的位置都不變', () => {
 		}
 	});
 
+	it('前一段改短後，出發落到後一段的格子之間：插了也不挪', () => {
+		let before = twoMembers();
+		before = okFlow(addSegment(before, 'chant'));
+		before = okFlow(addSegment(before, 'music'));
+		before = okFlow(updateSegment(before, 's2', { bpm: 140 }));
+		before = okFlow(setPositions(before, 'f1', { [A]: [0, 0], [B]: [0, 0] }));
+		// f2 在音樂段第 80 個半拍
+		before = okFlow(insertFormation(before, 10 + (80 * 60) / 140 / 2));
+		before = okFlow(setPositions(before, 'f2', { [B]: [4, 0] }));
+		before = withWalk(before, 'f2', B, {
+			depart: { segmentId: 's1', at: 90 },
+			arrive: { segmentId: 's2', at: 40 }
+		});
+		// 口號段改成 5 秒：出發還記第 90 個 0.1 秒（9 秒），在音樂段的兩個半拍之間
+		before = okFlow(updateSegment(before, 's1', { seconds: 5 }));
+		expectSamePositions(before, okFlow(insertFormation(before, 15)));
+	});
+
 	it('插了之後再插（被切開的走位再切一次）', () => {
 		const before = walking();
 		let after = okFlow(insertFormation(before, 18));

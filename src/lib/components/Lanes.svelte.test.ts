@@ -305,6 +305,27 @@ describe('走位條', () => {
 		expect(walkBar(0).style.left).toBe('16px');
 	});
 
+	it('這一張在流程最後一格時，拖中間拖過流程結尾也還原，不偷偷縮短', async () => {
+		// f2 在最後一個半拍（第 127 個，25.4 秒），預設走位 22.4 → 25.4 秒
+		let flow = flowOf(insertFormation(sample(), 25.4));
+		const f2 = flow.formations[1];
+		flow = flowOf(setPositions(flow, f2.id, { m1: f2.pos.m2, m2: f2.pos.m1 }));
+		const onchange = vi.fn<(flow: Flow) => void>();
+		const onblocked = vi.fn<(message: string) => void>();
+		render(Lanes, {
+			flow,
+			playheadSec: 0,
+			pxPerSec: 10,
+			selectedActionId: null,
+			onselectaction: vi.fn(),
+			onchange,
+			onblocked
+		});
+		await dragBy(walkBar(0), 10);
+		expect(onchange).not.toHaveBeenCalled();
+		expect(onblocked).toHaveBeenCalledWith('出發和到達要在前一張和這一張站位之間');
+	});
+
 	it('出發拖到到達之後就還原，說原因', async () => {
 		const { onchange, onblocked } = setupWalks();
 		await dragBy(end(0, 'depart'), 40);
