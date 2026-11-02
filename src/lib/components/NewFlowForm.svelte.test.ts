@@ -21,10 +21,10 @@ describe('新建流程', () => {
 		const { oncreate } = setup();
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '2027 全國賽' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		expect(oncreate).toHaveBeenCalledWith({
+		expect(oncreate).toHaveBeenCalledWith(expect.objectContaining({
 			name: '2027 全國賽',
 			field: { strips: 9, layout: 'vertical' }
-		});
+		}));
 	});
 
 	it('選 5 條橫放', async () => {
@@ -32,10 +32,10 @@ describe('新建流程', () => {
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		expect(oncreate).toHaveBeenCalledWith({
+		expect(oncreate).toHaveBeenCalledWith(expect.objectContaining({
 			name: '臺灣盃',
 			field: { strips: 5, layout: 'horizontal' }
-		});
+		}));
 	});
 
 	it('自訂條數和鋪向', async () => {
@@ -45,10 +45,10 @@ describe('新建流程', () => {
 		await fireEvent.input(screen.getByLabelText('條數'), { target: { value: '7' } });
 		await fireEvent.click(screen.getByRole('radio', { name: '橫放' }));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		expect(oncreate).toHaveBeenCalledWith({
+		expect(oncreate).toHaveBeenCalledWith(expect.objectContaining({
 			name: '校內賽',
 			field: { strips: 7, layout: 'horizontal' }
-		});
+		}));
 	});
 
 	it('流程核心擋下時顯示原因，不建立', async () => {

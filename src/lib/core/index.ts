@@ -6,6 +6,43 @@ export type { CommandResult } from './result';
 export { createFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
+export {
+	AUDIO_EXTENSIONS,
+	DEFAULT_BPM,
+	MAX_BPM,
+	MIN_BPM,
+	addSegment,
+	beatLines,
+	loadSegmentAudio,
+	musicLength,
+	musicLengthFromAudio,
+	updateSegment
+} from './segment';
+export type {
+	AudioRef,
+	BeatLine,
+	BeatTiming,
+	ChantSegment,
+	MusicLength,
+	MusicSegment,
+	Segment,
+	SegmentKind,
+	SegmentPatch
+} from './segment';
+
+export {
+	positionText,
+	rulerMarks,
+	segmentSpans,
+	toPosition,
+	toSeconds,
+	totalSeconds
+} from './time';
+export type { RulerMark, SegmentSpan, TimePosition } from './time';
+
+export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
+export type { TimeRules } from './time-rules';
+
 export { FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
 export type {
 	FieldConfig,

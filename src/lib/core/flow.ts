@@ -3,11 +3,18 @@
 
 import { MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import { blocked, ok, type CommandResult } from './result';
+import type { AudioRef, Segment } from './segment';
+import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
 
 export interface Flow {
 	name: string;
 	/** 建好之後不能換。 */
 	field: FieldConfig;
+	timeRules: TimeRules;
+	/** 用到的音樂檔清單（只有參照，位元組另外放）。 */
+	audio: AudioRef[];
+	/** 一串緊接的段，順序就是播放順序。 */
+	segments: Segment[];
 }
 
 export interface NewFlowInput {
@@ -22,5 +29,11 @@ export function createFlow(input: NewFlowInput): CommandResult {
 	if (!Number.isInteger(strips) || strips < MIN_STRIPS || strips > MAX_STRIPS) {
 		return blocked(`條數要是 ${MIN_STRIPS}–${MAX_STRIPS} 的整數`);
 	}
-	return ok({ name, field: { ...input.field } });
+	return ok({
+		name,
+		field: { ...input.field },
+		timeRules: { ...DEFAULT_TIME_RULES },
+		audio: [],
+		segments: []
+	});
 }
