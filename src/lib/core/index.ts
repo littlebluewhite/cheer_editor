@@ -44,14 +44,17 @@ export { addCustomRole, roleGlossary } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {
+	clearWalks,
 	deleteFormation,
 	formationAt,
 	formationTimes,
 	insertFormation,
+	memberWalk,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
-	setPositions
+	setPositions,
+	setWalks
 } from './formation';
 export type { Formation, Position, Walk } from './formation';
 
@@ -87,9 +90,11 @@ export {
 	lengthText,
 	parseAt,
 	parseLength,
+	parseTime,
 	positionText,
 	rulerMarks,
 	segmentSpans,
+	timeText,
 	toPosition,
 	toSeconds,
 	totalSeconds

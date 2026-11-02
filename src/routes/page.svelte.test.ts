@@ -292,6 +292,82 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('status').textContent).toBe('流程開頭一定有一張站位，不能刪');
 	});
 
+	const depart = () => screen.queryByLabelText<HTMLInputElement>('出發');
+	const arrive = () => screen.getByLabelText<HTMLInputElement>('到達');
+	const dotAt = (id = 'm1') => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');
+
+	async function setWalk(d: string, a: string) {
+		await fireEvent.input(depart()!, { target: { value: d } });
+		await fireEvent.input(arrive(), { target: { value: a } });
+		await fireEvent.click(screen.getByRole('button', { name: '套用' }));
+	}
+
+	it('出發和到達的表單：只在播放頭停在站位上、不是開頭那張時出現，顯示現在的走法', async () => {
+		await setup();
+		expect(depart()).toBeNull();
+		await seek(8.25);
+		expect(depart()).toBeNull();
+		await dragFirstMember();
+		// 預設：最後一個八拍才走
+		expect(depart()!.value).toBe('2-5&');
+		expect(arrive().value).toBe('3-5&');
+		await seek(0);
+		expect(depart()).toBeNull();
+	});
+
+	it('沒選人時套用到全隊；按「用預設」清掉，回到最後一個八拍才走', async () => {
+		await setup();
+		const start = dotAt();
+		await seek(8.25);
+		await dragFirstMember();
+		const end = dotAt();
+		await setWalk('1-1', '2-1');
+		await seek(3.25);
+		expect(dotAt()).toBe(end);
+
+		await seek(8.25);
+		expect(depart()!.value).toBe('1-1');
+		expect(arrive().value).toBe('2-1');
+		await fireEvent.click(screen.getByRole('button', { name: '用預設' }));
+		expect(depart()!.value).toBe('2-5&');
+		await seek(3.25);
+		expect(dotAt()).toBe(start);
+
+		// 一次套用算復原的一步
+		await seek(8.25);
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(depart()!.value).toBe('1-1');
+	});
+
+	it('有選人時只改選到的人；選到的人走法不一樣時欄位空白', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.click(document.querySelector('[data-lane="m1"] .lab')!);
+		await setWalk('1-1', '2-1');
+		expect(depart()!.value).toBe('1-1');
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(depart()!.value).toBe('');
+		expect(depart()!.placeholder).toBe('每人不一樣');
+		expect(arrive().value).toBe('');
+	});
+
+	it('打的時間不合理或看不懂：擋下來說原因，流程不改', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		const alert = () => screen.getByRole('alert').textContent;
+		await setWalk('3-1', '2-1');
+		expect(alert()).toBe('出發要早於到達');
+		await setWalk('1-1', '4-1');
+		expect(alert()).toBe('出發和到達要在前一張和這一張站位之間');
+		await setWalk('abc', '2-1');
+		expect(alert()).toMatch(/^出發看不懂/);
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		// 復原的是拖人，表單跟著消失：被擋的那幾次沒有改流程
+		expect(depart()).toBeNull();
+	});
+
 	async function setEights(eights: string, confirm: boolean) {
 		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
 		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: eights } });

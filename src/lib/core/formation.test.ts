@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
 	addMembers,
 	addSegment,
+	clearWalks,
 	createFlow,
 	deleteFormation,
 	formationAt,
 	formationTimes,
 	insertFormation,
+	memberWalk,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
 	setPositions,
+	setWalks,
 	updateSegment,
 	type CommandResult,
 	type Flow,
@@ -539,5 +542,127 @@ describe('拖人之前的那一行字', () => {
 	it('不在站位上：在這一拍插一張新站位', () => {
 		expect(moveTargetText(walking(), 5.05)).toBe('拖人會在 2-5& 插一張新站位');
 		expect(moveTargetText(walking(), 27.31)).toBe('拖人會在 1.7 秒 插一張新站位');
+	});
+});
+
+const at = (segmentId: string, at: number) => ({ segmentId, at });
+
+describe('設出發和到達', () => {
+	// walking()：f1 開頭 → f2 在 20 秒（音樂 1 第 100 個半拍）→ f3 在 30 秒（口號 1 第 44 個 0.1 秒）
+
+	it('每個人可以設不一樣的出發和到達，照設的走', () => {
+		const flow = okFlow(
+			setWalks(walking(), 'f2', {
+				[A]: { depart: at('s1', 20), arrive: at('s1', 50) },
+				[B]: { depart: at('s1', 60), arrive: at('s1', 80) }
+			})
+		);
+		expect(flow.formations[1].walks).toEqual({
+			[A]: { depart: at('s1', 20), arrive: at('s1', 50) },
+			[B]: { depart: at('s1', 60), arrive: at('s1', 80) }
+		});
+		expectAt(flow, 7, A, [2, 0]);
+		expectAt(flow, 10, A, [4, 0]);
+		expect(memberWalk(flow, 'f2', B)).toEqual({ depart: at('s1', 60), arrive: at('s1', 80) });
+	});
+
+	it('出發可以是前一張、到達可以是這一張，可以跨段', () => {
+		const flow = okFlow(
+			setWalks(walking(), 'f3', { [A]: { depart: at('s1', 100), arrive: at('s2', 44) } })
+		);
+		expectAt(flow, 25, A, [4, 2.5]);
+	});
+
+	it('沒設的人照預設：最後一個八拍才走', () => {
+		expect(memberWalk(walking(), 'f2', A)).toEqual({ depart: at('s1', 84), arrive: at('s1', 100) });
+		expect(memberWalk(walking(), 'f3', A)).toEqual({ depart: at('s1', 100), arrive: at('s2', 44) });
+	});
+
+	it('清掉設定：回到預設，沒清的人留著', () => {
+		const set = okFlow(
+			setWalks(walking(), 'f2', {
+				[A]: { depart: at('s1', 20), arrive: at('s1', 50) },
+				[B]: { depart: at('s1', 20), arrive: at('s1', 50) }
+			})
+		);
+		const cleared = okFlow(clearWalks(set, 'f2', [A]));
+		expect(cleared.formations[1].walks).toEqual({ [B]: { depart: at('s1', 20), arrive: at('s1', 50) } });
+		expectAt(cleared, 16.8, A, [0, 0]);
+		const all = okFlow(clearWalks(cleared, 'f2', [B]));
+		expect(all.formations[1]).not.toHaveProperty('walks');
+	});
+
+	it('擋下來，流程不改：出發不早於到達', () => {
+		const flow = walking();
+		const r = setWalks(flow, 'f2', { [A]: { depart: at('s1', 50), arrive: at('s1', 50) } });
+		expect(r).toEqual({ kind: 'blocked', message: '出發要早於到達' });
+		expect(setWalks(flow, 'f2', { [A]: { depart: at('s1', 60), arrive: at('s1', 50) } }).kind).toBe(
+			'blocked'
+		);
+	});
+
+	it('擋下來：時間不在前一張和這一張之間', () => {
+		const flow = walking();
+		const message = '出發和到達要在前一張和這一張站位之間';
+		// f3 前一張是 20 秒，19.8 秒太早
+		expect(setWalks(flow, 'f3', { [A]: { depart: at('s1', 99), arrive: at('s2', 10) } })).toEqual({
+			kind: 'blocked',
+			message
+		});
+		expect(setWalks(flow, 'f2', { [A]: { depart: at('s1', 20), arrive: at('s1', 101) } })).toEqual({
+			kind: 'blocked',
+			message
+		});
+		// 超出那一段的格子（音樂 1 只有 128 個半拍）
+		expect(setWalks(flow, 'f3', { [A]: { depart: at('s1', 100), arrive: at('s1', 130) } })).toEqual({
+			kind: 'blocked',
+			message
+		});
+	});
+
+	it('擋下來：開頭那張、找不到站位或隊員', () => {
+		const flow = walking();
+		const w = { depart: at('s1', 0), arrive: at('s1', 10) };
+		expect(setWalks(flow, 'f1', { [A]: w })).toEqual({
+			kind: 'blocked',
+			message: '開頭那張前面沒有站位，不能設出發和到達'
+		});
+		expect(setWalks(flow, 'nope', { [A]: w }).kind).toBe('blocked');
+		expect(setWalks(flow, 'f2', { nobody: w }).kind).toBe('blocked');
+		expect(clearWalks(flow, 'f1', [A]).kind).toBe('blocked');
+	});
+
+	it('例子：1–5 號照預設，6–10 號 2-1 出發 3-1 到，跑翻 10、9、8 號一個接一個', () => {
+		// 音樂 1（150 BPM，一個半拍 0.2 秒）；開頭 → 4-1（第 48 個半拍，9.6 秒）
+		let flow = okFlow(createFlow({ name: '例子', field: { strips: 9, layout: 'vertical' } }));
+		flow = okFlow(
+			addMembers(
+				flow,
+				Array.from({ length: 10 }, (_, i) => ({ name: `${i + 1}`, gender: 'F', globalRole: 'top' }) as const)
+			)
+		);
+		flow = okFlow(addSegment(flow, 'music'));
+		const ids = flow.members.map((m) => m.id);
+		flow = okFlow(setPositions(flow, 'f1', Object.fromEntries(ids.map((id, i) => [id, [i - 5, 0]]))));
+		flow = okFlow(insertFormation(flow, 9.6));
+		flow = okFlow(setPositions(flow, 'f2', Object.fromEntries(ids.map((id, i) => [id, [i - 5, 4]]))));
+		const w = (d: number, a: number) => ({ depart: at('s1', d), arrive: at('s1', a) });
+		flow = okFlow(setWalks(flow, 'f2', Object.fromEntries(ids.slice(5).map((id) => [id, w(16, 32)]))));
+		flow = okFlow(setWalks(flow, 'f2', { [ids[9]]: w(16, 22), [ids[8]]: w(20, 26), [ids[7]]: w(24, 30) }));
+
+		const y = (sec: number, i: number) => positionsAt(flow, sec)[ids[i]][1];
+		// 2-1（3.2 秒）：大家都還在原地
+		for (let i = 0; i < 10; i++) expect(y(3.2, i)).toBeCloseTo(0, 9);
+		// 2-4（4.4 秒）：10 號到了；9 號走了 1/3；8 號、6–7 號還在路上，1–5 號沒動
+		expect(y(4.4, 9)).toBeCloseTo(4, 9);
+		expect(y(4.4, 8)).toBeCloseTo(4 / 3, 9);
+		expect(y(4.4, 7)).toBeCloseTo(0, 9);
+		expect(y(4.4, 5)).toBeCloseTo(1.5, 9);
+		expect(y(4.4, 0)).toBeCloseTo(0, 9);
+		// 3-1（6.4 秒）：6–10 號都到了，1–5 號這時才出發
+		for (let i = 5; i < 10; i++) expect(y(6.4, i)).toBeCloseTo(4, 9);
+		for (let i = 0; i < 5; i++) expect(y(6.4, i)).toBeCloseTo(0, 9);
+		expect(y(8, 0)).toBeCloseTo(2, 9);
+		expect(y(9.6, 0)).toBeCloseTo(4, 9);
 	});
 });

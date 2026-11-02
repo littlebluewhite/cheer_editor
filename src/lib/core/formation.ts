@@ -13,6 +13,7 @@ import {
 	toPosition,
 	toSeconds,
 	unitSec,
+	units,
 	type TimePosition
 } from './time';
 
@@ -179,6 +180,63 @@ export function positionsAt(flow: Flow, sec: number): Record<string, Position> {
 		out[id] = [ax + (bx - ax) * k, ay + (by - ay) * k];
 	}
 	return out;
+}
+
+/**
+ * 設出發和到達：formationId 是 B（走到的那一張），walks 是隊員 id → 出發、到達，每個人可以不一樣。
+ * 寫進去的就是自己設的，跟預設一樣也寫。擋下：開頭那張、出發不早於到達、時間不在 A 和 B 之間。
+ */
+export function setWalks(flow: Flow, formationId: string, walks: Record<string, Walk>): CommandResult {
+	const index = walkFormationIndex(flow, formationId);
+	if (typeof index === 'string') return blocked(index);
+	const aSec = formationSec(flow, flow.formations[index - 1]);
+	const bSec = formationSec(flow, flow.formations[index]);
+	const inGrid = ({ segmentId, at }: TimePosition) => {
+		const segment = flow.segments.find((s) => s.id === segmentId);
+		return !!segment && Number.isInteger(at) && at >= 0 && at < units(segment);
+	};
+	for (const [id, { depart, arrive }] of Object.entries(walks)) {
+		if (!flow.members.some((m) => m.id === id)) return blocked('找不到這個隊員');
+		const d = toSeconds(flow, depart);
+		const a = toSeconds(flow, arrive);
+		if (!inGrid(depart) || !inGrid(arrive) || d < aSec - EPS || a > bSec + EPS) {
+			return blocked('出發和到達要在前一張和這一張站位之間');
+		}
+		if (d >= a - EPS) return blocked('出發要早於到達');
+	}
+	const b = flow.formations[index];
+	const updated = withWalks(b, { ...b.walks, ...walks });
+	return ok({ ...flow, formations: flow.formations.with(index, updated) });
+}
+
+/** 清掉 formationId（B）上這些人的出發和到達設定，回到預設。 */
+export function clearWalks(flow: Flow, formationId: string, memberIds: string[]): CommandResult {
+	const index = walkFormationIndex(flow, formationId);
+	if (typeof index === 'string') return blocked(index);
+	const b = flow.formations[index];
+	const walks = { ...b.walks };
+	for (const id of memberIds) delete walks[id];
+	return ok({ ...flow, formations: flow.formations.with(index, withWalks(b, walks)) });
+}
+
+/**
+ * 一個人走到 formationId（B）這張的出發和到達（自己設的夾過、或預設），給表單顯示。
+ * 開頭那張或找不到站位是 null。
+ */
+export function memberWalk(flow: Flow, formationId: string, memberId: string): Walk | null {
+	const index = walkFormationIndex(flow, formationId);
+	if (typeof index === 'string') return null;
+	const { depart, arrive } = walkTimes(flow, index, memberId);
+	// A、B 和設定都在格子上，所以換回段內時間不會偏；剛好在交界時算後面那一段，秒數一樣。
+	return { depart: toPosition(flow, depart)!, arrive: toPosition(flow, arrive)! };
+}
+
+/** 能設出發和到達的站位在 formations 裡的位置；不能設時回原因。 */
+function walkFormationIndex(flow: Flow, formationId: string): number | string {
+	const index = flow.formations.findIndex((f) => f.id === formationId);
+	if (index === -1) return '找不到這張站位';
+	if (index === 0) return '開頭那張前面沒有站位，不能設出發和到達';
+	return index;
 }
 
 /**
