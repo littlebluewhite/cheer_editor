@@ -5,6 +5,7 @@
 		deleteFormation,
 		firstBeatPreview,
 		moveMembers,
+		moveTargetText,
 		playbackPlan,
 		playStartSec,
 		positionText,
@@ -383,7 +384,11 @@
 		const r = moveMembers(flow, playheadSec, moves);
 		if (r.kind !== 'ok') return void (notice = r.message);
 		change(r.flow);
-		notice = r.inserted ? '插了一張站位，大家的位置自動帶入' : '';
+		const said = [
+			r.inserted && '插了一張站位，大家的位置自動帶入',
+			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
+		];
+		notice = said.filter(Boolean).join('；');
 		playheadSec = r.sec;
 	}
 
@@ -542,6 +547,9 @@
 				onmove={move}
 				onselect={selectMembers}
 			/>
+			{#if flow.members.length}
+				<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+			{/if}
 			{#if warnings.length}
 				<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
 					<Icon name="warn" />
@@ -906,6 +914,20 @@
 		color: var(--warn-text);
 		font-size: 12px;
 		font-weight: 500;
+	}
+	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
+	.move-target {
+		position: absolute;
+		left: 16px;
+		bottom: 16px;
+		z-index: 2;
+		margin: 0;
+		padding: 4px 10px;
+		border-radius: 8px;
+		background: var(--surface, #fff);
+		color: var(--muted);
+		font-size: 12px;
+		pointer-events: none;
 	}
 	.warn span + span::before {
 		content: '／';

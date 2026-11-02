@@ -214,8 +214,8 @@ describe('站位與走位', () => {
 		await fireEvent.pointerUp(window);
 	}
 
-	async function dragFirstMember() {
-		const dot = document.querySelector('[data-member-id="m1"]')!;
+	async function dragFirstMember(id = 'm1') {
+		const dot = document.querySelector(`[data-member-id="${id}"]`)!;
 		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
 		await fireEvent.pointerMove(dot, { clientX: -200, clientY: -300 });
 		await fireEvent.pointerUp(dot, { clientX: -200, clientY: -300 });
@@ -235,6 +235,33 @@ describe('站位與走位', () => {
 		await dragFirstMember();
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.queryByRole('status')).toBeNull();
+	});
+
+	it('拖人之後，後面還站在舊位置的站位跟著改，提示往後帶到幾張；同時插站位就合成一則', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2；小B 在站位 1、2 都站在原地
+		await seek(0);
+		await dragFirstMember('m2');
+		expect(screen.getByRole('status').textContent).toBe('後面 1 張站位也跟著改了');
+
+		await seek(4);
+		await dragFirstMember('m2');
+		expect(screen.getByRole('status').textContent).toBe(
+			'插了一張站位，大家的位置自動帶入；後面 1 張站位也跟著改了'
+		);
+	});
+
+	it('場地旁邊那一行字跟著播放頭變：會改哪一張站位，還是會插一張新的', async () => {
+		const line = () => screen.getByText(/^拖人會/).textContent;
+		await setup();
+		expect(line()).toBe('拖人會改：站位 1（開頭）');
+		await seek(8.25);
+		expect(line()).toBe('拖人會在 3-5& 插一張新站位');
+		await dragFirstMember();
+		expect(line()).toBe('拖人會改：站位 2（3-5&）');
+		await seek(4);
+		expect(line()).toBe('拖人會在 2-3 插一張新站位');
 	});
 
 	it('點縮圖跳到那一拍；✕ 刪掉站位；開頭那張沒有 ✕', async () => {
