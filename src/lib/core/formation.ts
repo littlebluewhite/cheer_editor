@@ -5,7 +5,7 @@
 import { fieldGeometry } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
-import { nextId } from './segment';
+import { nextId } from './ids';
 import { toPosition, toSeconds } from './time';
 
 /** 公尺座標 [x, y]，方向見 docs/flow-file-format.md 的「位置座標」。存真正的值，不四捨五入。 */

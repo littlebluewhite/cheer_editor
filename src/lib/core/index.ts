@@ -3,13 +3,20 @@
 
 export type { CommandResult, ConfirmOption } from './result';
 
-export { createFlow, renameFlow } from './flow';
+export { createFlow, memberName, renameFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
 export { readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
 export type { AudioBytes, ReadFlowFileResult } from './flow-file';
 
-export { MAX_MEMBERS, addMembers, deleteMember, updateMember } from './members';
+export {
+	GENDERS,
+	GLOBAL_ROLES,
+	MAX_MEMBERS,
+	addMembers,
+	deleteMember,
+	updateMember
+} from './members';
 export type { Gender, GlobalRole, Member, MemberChanges, NewMemberInput } from './members';
 
 export {

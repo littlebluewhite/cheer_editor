@@ -4,6 +4,7 @@
 
 import { actionLabel } from './actions';
 import type { Flow } from './flow';
+import { nextId } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { atText, segmentSpans, units } from './time';
 
@@ -40,16 +41,6 @@ export const MIN_BPM = 60;
 export const MAX_BPM = 170;
 export const DEFAULT_BPM = 150;
 export const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'wav'] as const;
-
-/** 下一個沒用過的編號 id，例：s3、f2。 */
-export function nextId(prefix: string, ids: string[]): string {
-	let n = 0;
-	for (const id of ids) {
-		const m = id.startsWith(prefix) ? Number(id.slice(prefix.length)) : Number.NaN;
-		if (Number.isInteger(m) && m > n) n = m;
-	}
-	return `${prefix}${n + 1}`;
-}
 
 /** 音樂段長度給教練看的樣子：幾個八拍、最後一個八拍幾拍（1–8）。 */
 export interface MusicLength {

@@ -2,9 +2,9 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列）；口號段一整段一列，時間寫秒數。
 
 import { ACTION_CATEGORIES, type ActionCategory } from './actions';
-import type { Flow } from './flow';
+import { memberName, type Flow } from './flow';
 import type { Position } from './formation';
-import { segmentSpans, toSeconds, units } from './time';
+import { HALF_BEATS_PER_EIGHT, atText, segmentSpans, toSeconds, units } from './time';
 
 /** 八拍表一列裡的一個動作（這一列開始的）。 */
 export interface EightCountAction {
@@ -38,9 +38,6 @@ export interface EightCountRow {
 	formations: EightCountFormation[];
 }
 
-/** 一個八拍是幾個半拍。 */
-const EIGHT = 16;
-
 /**
  * 八拍表的列。memberId 是 null 印全隊；給一個隊員就只列他參加的動作和他的任務角色
  * （列還是每個八拍都有，站位也照樣附）。動作和站位只寫在它開始的那一列。
@@ -57,7 +54,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			.filter((a) => a.members.length > 0)
 			.toSorted((a, b) => a.start - b.start);
 		const at = (u: number) =>
-			segment.kind === 'music' ? beatText(u) : `${(u / 10).toFixed(1)} 秒`;
+			segment.kind === 'music' ? beatText(u) : `${atText(segment, u)} 秒`;
 		const rowOf = (from: number, to: number, eight: number | null): EightCountRow => {
 			const sec = toSeconds(flow, { segmentId: segment.id, at: from });
 			const end = Math.min(to, units(segment));
@@ -75,7 +72,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 						name: a.name,
 						members: a.members.map((m) => ({
 							memberId: m.memberId,
-							name: flow.members.find((x) => x.id === m.memberId)?.name ?? '',
+							name: memberName(flow, m.memberId),
 							role: m.role
 						}))
 					})),
@@ -87,8 +84,8 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			};
 		};
 		if (segment.kind === 'music') {
-			for (let from = 0; from < segment.halfBeats; from += EIGHT) {
-				rows.push(rowOf(from, from + EIGHT, from / EIGHT + 1));
+			for (let from = 0; from < segment.halfBeats; from += HALF_BEATS_PER_EIGHT) {
+				rows.push(rowOf(from, from + HALF_BEATS_PER_EIGHT, from / HALF_BEATS_PER_EIGHT + 1));
 			}
 		} else {
 			rows.push(rowOf(0, segment.tenths, null));

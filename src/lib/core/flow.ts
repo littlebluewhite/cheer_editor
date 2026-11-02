@@ -55,6 +55,11 @@ export function createFlow(input: NewFlowInput): CommandResult {
 	});
 }
 
+/** 隊員的名字；找不到這個人是空字串。 */
+export function memberName(flow: Flow, id: string): string {
+	return flow.members.find((m) => m.id === id)?.name ?? '';
+}
+
 /** 流程設定：改流程名字。存檔的檔名跟著變。 */
 export function renameFlow(flow: Flow, name: string): CommandResult {
 	const trimmed = name.trim();

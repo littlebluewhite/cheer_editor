@@ -3,7 +3,7 @@
 
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
-import { nextId } from './segment';
+import { nextId } from './ids';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
 export interface CustomRole {

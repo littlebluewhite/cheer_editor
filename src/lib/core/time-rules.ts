@@ -2,7 +2,7 @@
 
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
-import { segmentSpans } from './time';
+import { EPS, segmentSpans } from './time';
 
 export interface TimeRules {
 	on: boolean;
@@ -17,9 +17,6 @@ export const DEFAULT_TIME_RULES: TimeRules = {
 	maxMusicSec: 120,
 	maxTotalSec: 180
 };
-
-/** 剛好等於限制不算超過；這點誤差是浮點數算秒數留下的。 */
-const EPS = 1e-6;
 
 /** 流程設定：改規則警告的開關和三個數字。 */
 export function updateTimeRules(flow: Flow, patch: Partial<TimeRules>): CommandResult {

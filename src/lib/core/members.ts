@@ -14,6 +14,18 @@ export type Gender = 'F' | 'M';
 /** 全局角色：底層或上層，教練自己選，不依性別帶入。 */
 export type GlobalRole = 'base' | 'top';
 
+/** 性別，流程檔存英文代號。 */
+export const GENDERS: { key: Gender; label: string }[] = [
+	{ key: 'F', label: '女' },
+	{ key: 'M', label: '男' }
+];
+
+/** 全局角色，流程檔存英文代號。 */
+export const GLOBAL_ROLES: { key: GlobalRole; label: string }[] = [
+	{ key: 'base', label: '底層' },
+	{ key: 'top', label: '上層' }
+];
+
 export interface Member {
 	id: string;
 	/** 名字、暱稱或背號。候補上場就改名字。 */

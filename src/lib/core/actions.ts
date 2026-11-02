@@ -1,11 +1,11 @@
 // 動作：一組隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
-import type { Flow } from './flow';
+import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { roleGlossary } from './roles';
-import { nextId } from './segment';
-import { toPosition, toSeconds, unitSec, units } from './time';
+import { nextId } from './ids';
+import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 大類，固定 7 個，不能自訂。流程檔存英文代號。 */
 export type ActionCategory = 'stunt' | 'pyramid' | 'toss' | 'tumbling' | 'jump' | 'dance' | 'other';
@@ -122,8 +122,7 @@ function check(flow: Flow, action: Action): string | null {
 		if (other.id === action.id || !overlaps(other, action)) continue;
 		const shared = action.members.find((m) => other.members.some((o) => o.memberId === m.memberId));
 		if (shared) {
-			const name = flow.members.find((m) => m.id === shared.memberId)?.name ?? shared.memberId;
-			return `${name} 同一時間已經在「${actionLabel(other)}」裡`;
+			return `${memberName(flow, shared.memberId)} 同一時間已經在「${actionLabel(other)}」裡`;
 		}
 	}
 	return null;
@@ -142,7 +141,7 @@ export function actionSlotAt(
 	const pos = toPosition(flow, sec);
 	const segment = pos && flow.segments.find((s) => s.id === pos.segmentId);
 	if (!pos || !segment) return null;
-	const wanted = segment.kind === 'music' ? 16 : 30;
+	const wanted = segment.kind === 'music' ? HALF_BEATS_PER_EIGHT : 30;
 	return { segmentId: pos.segmentId, start: pos.at, length: Math.min(wanted, units(segment) - pos.at) };
 }
 
@@ -181,7 +180,7 @@ export function idleAt(flow: Flow, sec: number): string[] {
 export function previousActions(flow: Flow, sec: number): Action[] {
 	return flow.actions
 		.map((action) => ({ action, ...actionSeconds(flow, action) }))
-		.filter((a) => a.endSec <= sec + 1e-6)
+		.filter((a) => a.endSec <= sec + EPS)
 		.sort((a, b) => b.endSec - a.endSec || b.startSec - a.startSec)
 		.map((a) => a.action);
 }

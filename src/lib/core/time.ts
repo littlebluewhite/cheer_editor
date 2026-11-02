@@ -19,8 +19,11 @@ export interface SegmentSpan {
 	durationSec: number;
 }
 
-/** 浮點數誤差的容許值：算段內時間時，差這麼一點點不算掉到前一格。 */
-const EPS = 1e-6;
+/** 秒數的浮點數誤差容許值：差這麼一點點當成同一刻（例：算段內時間時不算掉到前一格）。 */
+export const EPS = 1e-6;
+
+/** 一個八拍是幾個半拍。 */
+export const HALF_BEATS_PER_EIGHT = 16;
 
 /** 段內時間一格是幾秒：音樂段一個半拍，口號段 0.1 秒。 */
 export function unitSec(segment: Segment): number {
