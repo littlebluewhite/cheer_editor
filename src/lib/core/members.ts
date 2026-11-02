@@ -106,19 +106,23 @@ export function deleteMember(
 }
 
 /**
- * 新人等著被擺好的位置：正面那邊墊子外 1/4 格，從墊子左邊開始每半格一個，排成一排。
- * 都在吸附點上；半格（0.91 m）夠寬，點不會疊在一起。
+ * 新人等著被擺好的位置：墊子外半格、每 1/4 格一個，排成一排。從正面左邊的角開始往右排到墊子右邊外，
+ * 排滿了從那個角沿著左邊往後排。都在吸附點上、在墊子外 1 m 以內。
+ * 最小的場地（1 條）也有 4 ×（左右格數 ＋ 前後格數）＋ 9 = 41 個位置，比 40 人多，所以一定有空位。
  */
 function waitingSpots(field: FieldConfig): Position[] {
-	const { mat, cols } = fieldGeometry(field);
-	const y = mat.y + mat.height + CELL_M / 4;
-	return Array.from({ length: 2 * cols + 1 }, (_, j): Position => [mat.x + (j * CELL_M) / 2, y]);
+	const { mat, cols, rows } = fieldGeometry(field);
+	const step = CELL_M / 4;
+	const left = mat.x - 2 * step;
+	const front = mat.y + mat.height + 2 * step;
+	const alongFront = Array.from({ length: 4 * cols + 5 }, (_, j): Position => [left + j * step, front]);
+	const upLeft = Array.from({ length: 4 * rows + 4 }, (_, j): Position => [left, front - (j + 1) * step]);
+	return [...alongFront, ...upLeft];
 }
 
-/** 第一個沒人站的位置；全滿了就從頭疊上去。 */
+/** 第一個沒人站的位置。最多 40 人、位置至少 41 個，所以一定找得到。 */
 function freeSpot(spots: Position[], taken: Position[]): Position {
-	const free = spots.find((s) => !taken.some((t) => samePlace(s, t)));
-	return free ?? spots[taken.length % spots.length];
+	return spots.find((s) => !taken.some((t) => samePlace(s, t)))!;
 }
 
 function samePlace(a: Position, b: Position): boolean {

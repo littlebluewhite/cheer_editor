@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { addMembers, createFlow, updateMember, type Flow, type NewMemberInput } from './index';
+import {
+	addMembers,
+	createFlow,
+	fieldGeometry,
+	setPositions,
+	updateMember,
+	type Flow,
+	type NewMemberInput
+} from './index';
 
 function newFlow(): Flow {
 	const r = createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } });
@@ -53,20 +61,21 @@ describe('加隊員', () => {
 	it('新人出現在開頭站位，站在正面左邊、墊子外那 1 m 裡', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
 		const [x, y] = flow.formations[0].pos[flow.members[0].id];
-		// 9 條直放：墊子左邊 x = -8.23，正面 y = 6.40，外圍到 7.40。
-		expect(x).toBeCloseTo(-8.23, 2);
+		// 9 條直放：墊子左邊 x = -8.23，正面 y = 6.40，外圍到 -9.23、7.40。
+		expect(x).toBeLessThan(-8.23);
+		expect(x).toBeGreaterThanOrEqual(-9.23);
 		expect(y).toBeGreaterThan(6.4);
 		expect(y).toBeLessThanOrEqual(7.4);
 	});
 
-	it('一次加多人排成一排，從左往右，不疊在一起', () => {
+	it('一次加多人排成一排，從左往右每 1/4 格一個', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA, xiaoA]));
 		const ps = flow.members.map((m) => flow.formations[0].pos[m.id]);
 		expect(ps.map((p) => p[1])).toEqual([ps[0][1], ps[0][1], ps[0][1]]);
 		expect(ps.map((p) => p[0])).toEqual([
-			expect.closeTo(-8.23, 2),
-			expect.closeTo(-7.32, 2),
-			expect.closeTo(-6.4, 2)
+			expect.closeTo(-9.14, 2),
+			expect.closeTo(-8.69, 2),
+			expect.closeTo(-8.23, 2)
 		]);
 	});
 
@@ -74,16 +83,58 @@ describe('加隊員', () => {
 		let flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA]));
 		flow = okFlow(addMembers(flow, [xiaoA]));
 		const pos = flow.formations[0].pos;
-		expect(pos[flow.members[2].id][0]).toBeCloseTo(-6.4, 2);
+		expect(pos[flow.members[2].id][0]).toBeCloseTo(-8.23, 2);
 	});
 
 	it('橫放場地也是正面左邊墊子外', () => {
 		const r = createFlow({ name: '臺灣盃', field: { strips: 5, layout: 'horizontal' } });
 		const flow = okFlow(addMembers(okFlow(r), [xiaoA]));
 		const [x, y] = flow.formations[0].pos[flow.members[0].id];
-		expect(x).toBeCloseTo(-6.4, 2);
+		expect(x).toBeLessThan(-6.4);
+		expect(x).toBeGreaterThanOrEqual(-7.4);
 		expect(y).toBeGreaterThan(4.57);
 		expect(y).toBeLessThanOrEqual(5.57);
+	});
+
+	const fields = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].flatMap((strips) =>
+		(['vertical', 'horizontal'] as const).map((layout) => ({ strips, layout }))
+	);
+	const forty = Array.from({ length: 40 }, (_, i) => ({ ...xiaoA, name: `隊員${i + 1}` }));
+
+	it.each(fields)('$strips 條 $layout：40 人一次加或一個一個加，都在墊子外 1 m 內、不疊在一起', (field) => {
+		const empty = okFlow(createFlow({ name: '測試', field }));
+		const atOnce = okFlow(addMembers(empty, forty));
+		const oneByOne = forty.reduce((f, m) => okFlow(addMembers(f, [m])), empty);
+		const { mat, outer } = fieldGeometry(field);
+		for (const flow of [atOnce, oneByOne]) {
+			const ps = Object.values(flow.formations[0].pos);
+			expect(ps).toHaveLength(40);
+			const keys = new Set(ps.map(([x, y]) => `${x.toFixed(6)},${y.toFixed(6)}`));
+			expect(keys.size).toBe(40);
+			for (const [x, y] of ps) {
+				expect(x).toBeGreaterThanOrEqual(outer.x - 1e-9);
+				expect(x).toBeLessThanOrEqual(outer.x + outer.width + 1e-9);
+				expect(y).toBeGreaterThanOrEqual(outer.y - 1e-9);
+				expect(y).toBeLessThanOrEqual(outer.y + outer.height + 1e-9);
+				const onMat = x > mat.x && x < mat.x + mat.width && y > mat.y && y < mat.y + mat.height;
+				expect(onMat).toBe(false);
+			}
+			// 第一個人在正面左邊的墊子外
+			const [x0, y0] = flow.formations[0].pos[flow.members[0].id];
+			expect(x0).toBeLessThan(mat.x);
+			expect(y0).toBeGreaterThan(mat.y + mat.height);
+		}
+	});
+
+	it('有人已經站在等待的位置上：新人跳過那裡，不疊上去', () => {
+		let flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA]));
+		const [first, second] = flow.members.map((m) => flow.formations[0].pos[m.id]);
+		// 把第一個人移走、第二個人留著；新人補第一個位置，再來的人跳過第二個位置
+		flow = okFlow(setPositions(flow, 'f1', { [flow.members[0].id]: [0, 0] }));
+		flow = okFlow(addMembers(flow, [xiaoA, xiaoA]));
+		const pos = flow.formations[0].pos;
+		expect(pos[flow.members[2].id]).toEqual(first);
+		expect(pos[flow.members[3].id]).not.toEqual(second);
 	});
 
 	it('改名字（候補上場）：同一個人、位置不變、名單順序不變', () => {
