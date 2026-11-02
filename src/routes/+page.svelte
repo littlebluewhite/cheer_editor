@@ -962,11 +962,12 @@
 		font-size: 12px;
 		font-weight: 500;
 	}
-	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
+	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。
+	   疊在場地左下角的圖例（底層／上層／正在上面）上面，不蓋住它。 */
 	.move-target {
 		position: absolute;
 		left: 16px;
-		bottom: 16px;
+		bottom: 52px;
 		z-index: 2;
 		margin: 0;
 		padding: 4px 10px;
@@ -980,13 +981,19 @@
 	.match-prev {
 		position: absolute;
 		left: 16px;
-		bottom: 48px;
+		bottom: 84px;
 		z-index: 2;
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		font-size: 12px;
 		color: var(--muted);
+	}
+	/* 按不下去的原因會疊到場地上，給它底色才看得清楚。 */
+	.match-prev span {
+		padding: 4px 10px;
+		border-radius: 8px;
+		background: var(--surface, #fff);
 	}
 	.warn span + span::before {
 		content: '／';
