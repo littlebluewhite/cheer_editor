@@ -3,6 +3,8 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	insertFormation,
+	setPositions,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -175,6 +177,117 @@ describe('點泳道上的名字選人', () => {
 		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
 		await fireEvent.click(name(0), { shiftKey: true });
 		expect(onselectmembers).toHaveBeenLastCalledWith([]);
+	});
+});
+
+describe('走位條', () => {
+	/** 再插一張站位 f2 在 4.8 秒（第 24 個半拍），小A、小B 換位置，小C 不動。預設走位：出發 1.6 秒、到達 4.8 秒。 */
+	function walking(): Flow {
+		let flow = flowOf(insertFormation(sample(), 4.8));
+		const f2 = flow.formations[1];
+		flow = flowOf(setPositions(flow, f2.id, { m1: f2.pos.m2, m2: f2.pos.m1 }));
+		return flow;
+	}
+
+	function setupWalks(selectedMemberIds: string[] = []) {
+		const flow = walking();
+		const onchange = vi.fn<(flow: Flow) => void>();
+		const onblocked = vi.fn<(message: string) => void>();
+		render(Lanes, {
+			flow,
+			playheadSec: 0,
+			pxPerSec: 10,
+			selectedActionId: null,
+			onselectaction: vi.fn(),
+			onchange,
+			onblocked,
+			selectedMemberIds
+		});
+		return { onchange, onblocked, f2: flow.formations[1].id };
+	}
+
+	const walkBars = (lane: HTMLElement) => [...lane.querySelectorAll<HTMLElement>('[data-walk]')];
+	const walkBar = (i: number) => walkBars(lanes()[i])[0];
+	const end = (i: number, which: 'depart' | 'arrive') =>
+		walkBar(i).querySelector<HTMLElement>(`[data-end="${which}"]`)!;
+
+	async function dragBy(el: Element, dx: number) {
+		await fireEvent.pointerDown(el, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 100 + dx });
+		await fireEvent.pointerUp(window, { clientX: 100 + dx });
+	}
+
+	it('有走位的人才有走位條，從出發畫到到達，跟動作色條分開', () => {
+		setupWalks();
+		expect(walkBars(lanes()[0])).toHaveLength(1);
+		expect(walkBars(lanes()[1])).toHaveLength(1);
+		expect(walkBars(lanes()[2])).toHaveLength(0);
+		expect(walkBar(0).style.left).toBe('16px');
+		expect(parseFloat(walkBar(0).style.width)).toBeCloseTo(32, 6);
+		expect(walkBar(0).dataset.actionId).toBeUndefined();
+	});
+
+	it('拖左端改出發，吸到最近的半拍；只改這個人', async () => {
+		const { onchange, onblocked, f2 } = setupWalks();
+		// 往右 4 px = 0.4 秒：出發 2.0 秒 = 第 10 個半拍
+		await dragBy(end(0, 'depart'), 4);
+		expect(onblocked).not.toHaveBeenCalled();
+		const walks = onchange.mock.calls[0][0].formations[1].walks;
+		expect(walks).toEqual({
+			m1: { depart: { segmentId: 's1', at: 10 }, arrive: { segmentId: 's1', at: 24 } }
+		});
+		expect(onchange.mock.calls[0][0].formations[1].id).toBe(f2);
+	});
+
+	it('拖中間兩端一起挪；拖的時候走位條跟著走', async () => {
+		const { onchange } = setupWalks();
+		await fireEvent.pointerDown(walkBar(0), { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 96 });
+		expect(walkBar(0).style.left).toBe('12px');
+		await fireEvent.pointerUp(window, { clientX: 96 });
+		expect(onchange.mock.calls[0][0].formations[1].walks).toEqual({
+			m1: { depart: { segmentId: 's1', at: 6 }, arrive: { segmentId: 's1', at: 22 } }
+		});
+	});
+
+	it('被拖的人在選取裡：選到、同一個間隔有走位的人一起挪一樣多', async () => {
+		const { onchange } = setupWalks(['m1', 'm2', 'm3']);
+		await dragBy(walkBar(1), -4);
+		expect(onchange).toHaveBeenCalledOnce();
+		expect(onchange.mock.calls[0][0].formations[1].walks).toEqual({
+			m1: { depart: { segmentId: 's1', at: 6 }, arrive: { segmentId: 's1', at: 22 } },
+			m2: { depart: { segmentId: 's1', at: 6 }, arrive: { segmentId: 's1', at: 22 } }
+		});
+	});
+
+	it('被拖的人不在選取裡：只挪他自己', async () => {
+		const { onchange } = setupWalks(['m2']);
+		await dragBy(walkBar(0), -4);
+		expect(Object.keys(onchange.mock.calls[0][0].formations[1].walks!)).toEqual(['m1']);
+	});
+
+	it('拖出前後兩張站位之間就還原，說原因；整組也一樣', async () => {
+		const { onchange, onblocked } = setupWalks(['m1', 'm2']);
+		await dragBy(end(1, 'arrive'), 4);
+		expect(onchange).not.toHaveBeenCalled();
+		expect(onblocked).toHaveBeenCalledWith('出發和到達要在前一張和這一張站位之間');
+		expect(walkBar(0).style.left).toBe('16px');
+		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
+	});
+
+	it('出發拖到到達之後就還原，說原因', async () => {
+		const { onchange, onblocked } = setupWalks();
+		await dragBy(end(0, 'depart'), 40);
+		expect(onchange).not.toHaveBeenCalled();
+		expect(onblocked).toHaveBeenCalledWith('出發要早於到達');
+		expect(walkBar(0).style.left).toBe('16px');
+	});
+
+	it('只是點一下，不改流程', async () => {
+		const { onchange, onblocked } = setupWalks();
+		await dragBy(walkBar(0), 1);
+		expect(onchange).not.toHaveBeenCalled();
+		expect(onblocked).not.toHaveBeenCalled();
 	});
 });
 
