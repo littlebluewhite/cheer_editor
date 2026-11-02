@@ -1,0 +1,1000 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主畫面原型</title>
+<!--
+  PROTOTYPE（丟棄式原型）— 回答「主畫面長什麼樣」(littlebluewhite/cheer_editor#9)。
+  三種版面，同一個檔案，用 ?variant=A|B|C 切換（下面中間的黑條，或鍵盤 ← →）。
+  資料只在記憶體裡，重新整理就回到假資料。不放選手真名。
+  A 泳道：一人一條時間線。B 動作軌道＋名單：站位要先選才能改。C 八拍表：像紙本八拍表，一行一個八拍。
+-->
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,sans-serif;font-size:13px;color:#1d2330;background:#eef0f4;overflow:hidden}
+button{font:inherit;cursor:pointer;border:1px solid #c5cad6;background:#fff;border-radius:6px;padding:2px 8px}
+button:hover{background:#f3f5fa}
+button.primary{background:#2f5bd3;color:#fff;border-color:#2f5bd3}
+button.danger{color:#c0392b;border-color:#e3b4ae}
+button.link{border:none;background:none;color:#2f5bd3;padding:0;text-decoration:underline}
+button:disabled{opacity:.4;cursor:default}
+input,select,textarea{font:inherit;border:1px solid #c5cad6;border-radius:5px;padding:2px 5px;background:#fff}
+#app{height:100vh;display:grid;min-height:0}
+/* header */
+.hd{display:flex;gap:10px;align-items:center;padding:6px 10px;background:#1d2330;color:#fff;flex-wrap:wrap}
+.hd button{background:#2b3345;color:#fff;border-color:#47506a}
+.hd .play{width:40px;font-size:15px}
+.hd .time{font-variant-numeric:tabular-nums;min-width:300px}
+.hd .warn{color:#ffcf6b}
+.hd .knobs{margin-left:auto;border:1px dashed #6b7591;border-radius:6px;padding:2px 8px;color:#aab3c8;font-size:12px}
+.hd .knobs input{width:46px}
+.hd label{display:flex;gap:4px;align-items:center}
+/* field */
+.fieldhost{position:relative;min-height:0;min-width:0;background:#dfe3ea;overflow:hidden}
+.fieldhost svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;user-select:none}
+.field .margin{fill:#e9ecf1;stroke:#c9ced8;stroke-width:.03;stroke-dasharray:.2 .15}
+.field .mat{fill:#3f6fb6;stroke:#1f3f78;stroke-width:.06}
+.field .grid{stroke:#ffffff;stroke-opacity:.18;stroke-width:.025}
+.field .seam{stroke:#0f2550;stroke-width:.07}
+.field .cx{stroke:#fff;stroke-width:.09;fill:none}
+.field text{font-family:inherit;text-anchor:middle;pointer-events:none}
+.field .num{font-size:.42px;fill:#56607a;font-weight:600}
+.field .front{font-size:.5px;fill:#c0392b;font-weight:700}
+.field .dot .body{stroke:#fff;stroke-width:.05}
+.field .dot .base{fill:#2c3e66}
+.field .dot .top{fill:#e0664f}
+.field .dot.idle .body{fill:#fff;stroke-width:.08}
+.field .dot.idle .base{stroke:#2c3e66}
+.field .dot.idle .top{stroke:#e0664f}
+.field .dot text{font-size:.3px;fill:#fff;font-weight:700}
+.field .dot.idle text{fill:#1d2330}
+.field .dot .role{font-size:.24px;fill:#10162a;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:.08}
+.field .dot.fly{filter:drop-shadow(0 .06px .08px rgba(0,0,0,.6))}
+.field .dot.fly .body{stroke:#ffe27a;stroke-width:.08}
+.field .dot.sel .body{stroke:#ffd400;stroke-width:.12}
+.field .dot{cursor:grab}
+.field .hl{fill:none;stroke-width:.07;stroke-dasharray:.15 .08}
+.field .sp{fill:#ffe9a8}
+.field .sp.fine{fill:#7df0c9}
+.field .path{stroke:#ffe27a;stroke-width:.04;stroke-dasharray:.12 .1;opacity:.85}
+.field .lasso{fill:rgba(255,212,0,.15);stroke:#ffd400;stroke-width:.04}
+.ftools{position:absolute;right:8px;top:8px;display:flex;gap:4px;align-items:center;background:rgba(255,255,255,.9);padding:3px 6px;border-radius:8px;font-size:12px}
+.fread{position:absolute;left:8px;bottom:8px;background:rgba(29,35,48,.85);color:#fff;padding:3px 8px;border-radius:6px;font-size:12px;pointer-events:none}
+.fread:empty{display:none}
+.fbanner{position:absolute;left:8px;top:8px;right:220px;background:#fff8dc;border:1px solid #e7d48a;padding:4px 8px;border-radius:6px;font-size:12px}
+.flegend{position:absolute;left:8px;top:8px;background:rgba(255,255,255,.9);padding:3px 8px;border-radius:6px;font-size:12px}
+/* timeline (A/B) */
+.tl{overflow:auto;background:#fff;border-top:2px solid #c5cad6;position:relative;min-height:0}
+.tl-in{position:relative}
+.row{display:flex;height:16px;border-bottom:1px solid #f0f1f5}
+.row .lab{position:sticky;left:0;z-index:3;width:120px;flex:none;background:#fafbfd;border-right:1px solid #dde1ea;padding:0 4px;font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden}
+.row .lab button{padding:0 5px;font-size:11px;line-height:14px}
+.row .trk{position:relative;flex:none;height:100%}
+.row.hd1,.row.hd2,.row.hd3{position:sticky;z-index:4;background:#fff}
+.row.hd1{top:0;height:24px}.row.hd2{top:24px;height:20px}.row.hd3{top:44px;height:22px}
+.row.hd1 .trk,.row.hd2 .trk,.row.hd3 .trk{background:#fff}
+.segb{position:absolute;top:2px;bottom:2px;border-radius:4px;padding:0 6px;font-size:11px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;border:1px solid rgba(0,0,0,.15)}
+.segb.music{background:#5167a8}.segb.chant{background:#9a6b2f}
+.ruler{cursor:ew-resize}
+.tk{position:absolute;bottom:0;width:1px;height:5px;background:#b9bfcc}
+.tk.big{height:12px;background:#59627a}
+.tk span{position:absolute;left:2px;top:-4px;font-size:10px;color:#3b4358}
+.dia{position:absolute;top:2px;transform:translateX(-50%);color:#7a54c7;font-size:15px;line-height:16px;cursor:pointer}
+.dia.on{color:#ff8a00;text-shadow:0 0 3px #ffc46b}
+.dia.first{color:#3a2a63}
+.ph{position:absolute;top:0;bottom:0;width:2px;background:#e8452c;z-index:5;pointer-events:none}
+.lane .trk{background:repeating-linear-gradient(90deg,transparent 0 6px,#f6f7fa 6px 7px)}
+.lane.sel .lab{background:#fff3b8}
+.lane .lab .idl{display:none;color:#9aa1b2;font-style:italic}
+.lane .lab.idle-now .idl{display:inline}
+.lane .lab.idle-now b{color:#9aa1b2}
+.gr{font-style:normal;font-size:10px;border-radius:3px;padding:0 3px;color:#fff}
+.gr.base{background:#2c3e66}.gr.top{background:#e0664f}
+.bar{position:absolute;top:1px;bottom:1px;border-radius:3px;color:#fff;font-size:10px;line-height:13px;padding:0 4px;overflow:hidden;white-space:nowrap;cursor:grab;opacity:.88}
+.bar.on{outline:2px solid #1d2330;opacity:1}
+.bar .rz{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:ew-resize;background:rgba(0,0,0,.15)}
+/* A */
+.va{grid-template-rows:auto minmax(0,1fr) 42vh}
+.va-main{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0}
+.va-insp{background:#fff;border-left:1px solid #d5d9e2;overflow:auto;padding:10px}
+.va-insp h3{margin:4px 0 6px;font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.muted{color:#7a8296}
+/* action form */
+.aform label{display:flex;gap:6px;align-items:center;margin:5px 0}
+.aform label>input,.aform label>select{flex:1;min-width:0}
+.aform textarea{flex:1}
+.af-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:4px}
+.af-row{display:flex;gap:6px;margin:5px 0}
+.af-people{border:1px solid #e3e6ee;border-radius:6px;padding:6px;margin:6px 0}
+.af-ph{font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between}
+.pp{display:flex;gap:4px;align-items:center;margin:2px 0}
+.pp span{width:80px}
+.pp select{flex:1}
+.pp button{padding:0 5px}
+/* B */
+.vb{grid-template-rows:auto minmax(0,1fr) 40vh}
+.vb-main{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:0}
+.vb-roster{background:#fff;border-right:1px solid #d5d9e2;display:flex;flex-direction:column;min-height:0}
+.ro-top{padding:6px;border-bottom:1px solid #e3e6ee;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.ro-top .idlec{font-weight:700;color:#b5651d;width:100%}
+.ro-list{overflow:auto;flex:1}
+.ro{display:flex;gap:5px;align-items:center;padding:2px 6px;border-bottom:1px solid #f2f3f6;cursor:pointer}
+.ro.sel{background:#fff3b8}
+.ro .st{margin-left:auto;font-size:11px;color:#3b4358;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.ro .st.idle{color:#b5651d;font-style:italic}
+.row.film{height:78px}
+.th{position:absolute;top:3px;width:84px;height:70px;border:2px solid #cfd3de;border-radius:6px;background:#fff;cursor:pointer;overflow:hidden}
+.th.on{border-color:#ff8a00;box-shadow:0 0 0 2px #ffd9a8}
+.th svg{width:100%;height:100%}
+.th span{position:absolute;left:3px;top:1px;font-size:10px;font-weight:700;background:#fff;border-radius:3px;padding:0 2px}
+.th button{position:absolute;right:1px;top:1px;padding:0 4px;font-size:10px;display:none}
+.th:hover button{display:block}
+.row.alane{height:24px}
+.row.alane .bar{line-height:20px;font-size:11px}
+.vb-drawer{position:fixed;right:12px;bottom:56px;width:360px;max-height:70vh;overflow:auto;background:#fff;border:1px solid #c5cad6;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:10px;z-index:20}
+.copy{margin-top:6px;padding-top:6px;border-top:1px dashed #d5d9e2;display:flex;flex-direction:column;gap:4px}
+/* C */
+.vc{grid-template-rows:auto minmax(0,1fr) 46vh}
+.vc-top{display:grid;grid-template-columns:minmax(0,1fr) 230px;min-height:0}
+.vc-forms{background:#fff;border-left:1px solid #d5d9e2;overflow:auto;padding:6px}
+.fc{display:grid;grid-template-columns:70px 1fr;gap:2px 6px;border:2px solid #e3e6ee;border-radius:8px;padding:4px;margin-bottom:5px;cursor:pointer;position:relative}
+.fc.on{border-color:#ff8a00}
+.fc svg{grid-row:span 2;width:70px;height:56px}
+.fc button{position:absolute;right:3px;top:3px;padding:0 4px;font-size:10px}
+.vc-bot{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr);min-height:0;border-top:2px solid #c5cad6;background:#fff}
+.vc-tool{grid-column:1/3;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 8px;background:#f6f7fa;border-bottom:1px solid #dde1ea}
+.vc-tool .sep{width:1px;height:18px;background:#cfd3de}
+.vc-sheet{overflow:auto;padding:0 6px 40px}
+.vc-edit{border-left:1px solid #d5d9e2;overflow:auto;padding:10px}
+.sg-h{position:sticky;top:0;z-index:3;background:#e9edf7;padding:4px 6px;font-weight:700;margin-top:6px;display:flex;gap:8px;align-items:center}
+.sg-h.chant{background:#f6ecdf}
+.srow{display:grid;grid-template-columns:44px minmax(0,1fr) 120px;border-bottom:1px solid #e9ebf1}
+.srow .c8{font-weight:700;color:#3b4358;display:flex;align-items:flex-start;justify-content:center;padding-top:3px}
+.srow .cells{position:relative;min-height:24px}
+.cell{position:absolute;top:0;bottom:0;border-left:1px solid #eef0f5;cursor:pointer}
+.cell.beat{border-left-color:#cfd4df}
+.cell:hover{background:#f3f6ff}
+.cell.dis{background:repeating-linear-gradient(45deg,#f5f5f5 0 4px,#ececec 4px 8px);cursor:default}
+.cell i{position:absolute;left:2px;top:1px;font-size:10px;color:#a0a7b8;font-style:normal}
+.pc{position:absolute;height:15px;border-radius:3px;color:#fff;font-size:10px;line-height:15px;padding:0 4px;white-space:nowrap;overflow:hidden;cursor:pointer;opacity:.9}
+.pc.on{outline:2px solid #1d2330;opacity:1}
+.fd{position:absolute;top:0;transform:translateX(-50%);color:#7a54c7;font-size:12px;font-weight:700;pointer-events:none;z-index:2}
+.now{position:absolute;top:0;bottom:0;width:2px;background:#e8452c;display:none;pointer-events:none;z-index:2}
+.srow .idle{font-size:11px;color:#b5651d;padding:3px 4px}
+.addseg{margin:10px 0;display:flex;gap:6px}
+/* modal, toast, switcher */
+.ov{position:fixed;inset:0;background:rgba(15,20,35,.45);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:#fff;border-radius:10px;min-width:420px;max-width:720px;max-height:86vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.mh{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #e3e6ee;position:sticky;top:0;background:#fff}
+.mb{padding:12px}
+.mb label{display:flex;gap:8px;align-items:center;margin:6px 0}
+table.gl{border-collapse:collapse;width:100%}
+table.gl td,table.gl th{border:1px solid #e3e6ee;padding:4px 6px;text-align:left;vertical-align:top}
+table.gl th{background:#f6f7fa}
+.wave{border:1px solid #c5cad6;border-radius:6px;cursor:crosshair;display:block;margin:4px 0}
+.impact{background:#fff4f2;border:1px solid #f0c4bb;border-radius:6px;padding:6px;margin-top:8px}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#1d2330;color:#fff;padding:8px 14px;border-radius:8px;z-index:60;display:none;max-width:70vw}
+#switcher{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#000;color:#fff;border-radius:999px;padding:5px 8px;z-index:40;box-shadow:0 4px 18px rgba(0,0,0,.45);font-size:13px}
+#switcher button{background:#222;color:#fff;border-color:#444;border-radius:999px;width:30px}
+#switcher .vl{min-width:210px;text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<div id="switcher"><button data-sw="-1">◀</button><span class="vl"></span><button data-sw="1">▶</button></div>
+<script>
+'use strict';
+/* ============ 常數 ============ */
+const CELL = 1.83, MARGIN = 1;
+const FIELDS = { '9直': { cols: 9, rows: 7, orient: '直', label: '9 條直放' }, '5橫': { cols: 7, rows: 5, orient: '橫', label: '5 條橫放' } };
+const CATS = [['技巧', '#d9603b'], ['金字塔', '#7d55c7'], ['拋投', '#c28e0e'], ['騰翻', '#2e8b57'], ['跳躍', '#1f84d6'], ['舞蹈', '#d1468c'], ['其他', '#6b7280']];
+const catColor = c => (CATS.find(x => x[0] === c) || CATS[6])[1];
+// 規則叫法欄：原型暫填，定案前要對過研究筆記
+const ROLES = [
+  { name: '底層', mean: '在下面撐住別人的人。不分主底、側底時用。', rule: '底層人員' },
+  { name: '主底', mean: '主要撐住上層腳的底層。單底層技巧的那位底層。', rule: '底層人員' },
+  { name: '側底', mean: '多底層技巧裡，在主底旁邊一起撐的底層。', rule: '底層人員' },
+  { name: '上層', mean: '被撐在最上面的人。', rule: '上層人員' },
+  { name: '中層', mean: '金字塔裡站在底層身上、又撐住上面的人的人。', rule: '中層人員' },
+  { name: '保護', mean: '站在旁邊保護上層，可扶腳踝、小腿、膝蓋，不能撐腳底。', rule: '保護人員' },
+  { name: '前保', mean: '站在上層前方的保護。', rule: '保護人員（前方）' },
+  { name: '後保', mean: '站在上層背後的人，技巧和籃型拋投都是。', rule: '保護人員／輔助人員（籃拋）' },
+  { name: '接者', mean: '接住落下或被拋的上層的人。', rule: '接者' },
+  { name: '支撐', mean: '金字塔裡穩住別的上層的人。', rule: '—' },
+  { name: '騰翻', mean: '做騰翻的人。', rule: '騰翻' },
+];
+// 格內切點：四等分平常就吸；八等分放大才出現（使用者在 #9 改的，取代 #8 的 1/3、1/5）
+const COARSE = [0, 1 / 4, 1 / 2, 3 / 4, 1], FINE = [1 / 8, 3 / 8, 5 / 8, 7 / 8];
+const FRAC_NAMES = [[0, '線上'], [1 / 8, '1/8'], [1 / 4, '1/4'], [3 / 8, '3/8'], [1 / 2, '1/2'], [5 / 8, '5/8'], [3 / 4, '3/4'], [7 / 8, '7/8'], [1, '線上']];
+
+/* ============ 狀態（假資料，不放真名） ============ */
+const S = {
+  field: '9直', members: [], segs: [], actions: [], forms: [], customRoles: [],
+  t: 0, playing: false, sel: new Set(), selAction: null, selForm: null,
+  zoom: 1, pan: { x: 0, y: 0 }, fineAt: 2, metro: true,
+  rulesOn: true, rules: { chantMin: 30, musicMax: 120, totalMax: 180 },
+};
+let uid = 100; const nid = p => p + (uid++);
+for (let i = 1; i <= 20; i++) S.members.push({ id: i, name: '隊員' + String(i).padStart(2, '0'), gender: i <= 12 ? '男' : '女', role: i <= 14 ? '底層' : '上層' });
+S.segs = [
+  { id: 's1', type: 'chant', dur: 28 },
+  { id: 's2', type: 'music', name: '音樂 1', bpm: 150, firstBeat: 0.4, counts8: 16, lastBeats: 8, buffer: null, fileName: '' },
+  { id: 's3', type: 'music', name: '音樂 2', bpm: 140, firstBeat: 0, counts8: 10, lastBeats: 4, buffer: null, fileName: '' },
+];
+(function seed() {
+  const C = CELL, mk = fn => { const o = {}; S.members.forEach(m => o[m.id] = fn(m.id)); return o; };
+  const lines = id => { const i = id - 1, r = Math.floor(i / 5), c = i % 5; return [(c - 2) * 2 * C, (r - 1.5) * C]; };
+  const groupsAt = (gx, extra) => id => {
+    if (id <= 12) { const g = Math.floor((id - 1) / 3), k = (id - 1) % 3, x = gx[g]; return k === 0 ? [x + C / 4, 0] : k === 1 ? [x - C / 4, 0] : [x, -C / 4]; }
+    if (id >= 15 && id <= 18) return [gx[id - 15], 0];
+    return extra[id];
+  };
+  const groups = groupsAt([-3 * C, -C, C, 3 * C], { 13: [-4 * C, 2.5 * C], 14: [4 * C, 2.5 * C], 19: [-C, -2.5 * C], 20: [C, -2.5 * C] });
+  const pyr = groupsAt([-1.5 * C, -.5 * C, .5 * C, 1.5 * C], { 13: [-2.5 * C, -C / 2], 14: [2.5 * C, -C / 2], 19: [-C / 2, 1.5 * C], 20: [C / 2, 1.5 * C] });
+  const wedge = id => { const i = id - 1, r = Math.floor(i / 4), c = i % 4; return [(c - 1.5) * C * (r / 2 + 1), (r - 2) * C]; };
+  const fin = id => [(((id - 1) % 10) - 4.5) * C * .8, id <= 10 ? C : -C];
+  const F = (seg, at, fn) => S.forms.push({ id: nid('f'), pos: { seg, at }, xy: mk(fn) });
+  F('s1', 0, lines); F('s2', 16, groups); F('s2', 56, groups); F('s2', 64, pyr); F('s2', 96, pyr); F('s2', 104, lines); F('s3', 0, wedge); F('s3', 40, fin);
+  const grp = (ids, roles) => ids.map((m, i) => ({ m, role: roles[i] || null }));
+  const stunt = gs => gs.flatMap(g => grp([1 + 3 * g, 2 + 3 * g, 3 + 3 * g, 15 + g], ['主底', '側底', '後保', '上層']));
+  const all = S.members.map(m => ({ m: m.id, role: null }));
+  const A = (cat, name, seg, start, len, people) => S.actions.push({ id: nid('a'), cat, name, seg, start, len, people, note: '' });
+  A('技巧', '口號延伸', 's1', 10, 8, stunt([0, 1]));
+  A('騰翻', '後手翻', 's2', 0, 8, grp([13, 14], ['騰翻', '騰翻']));
+  A('舞蹈', '開場舞', 's2', 0, 16, all.filter(p => p.m !== 13 && p.m !== 14).map(p => ({ ...p })));
+  A('技巧', 'Lib 組 A', 's2', 24, 32, stunt([0, 1]));
+  A('技巧', 'Lib 組 B', 's2', 26, 30, stunt([2, 3]));
+  A('金字塔', '收尾金字塔', 's2', 64, 32, [...stunt([0, 1, 2, 3]), ...grp([13, 14, 19, 20], ['支撐', '支撐', '前保', '前保'])]);
+  A('跳躍', 'T 跳 + toe touch', 's2', 104, 8, all.map(p => ({ ...p })));
+  A('騰翻', '站立後空翻', 's3', 0, 16, grp([13, 14, 19, 20], ['騰翻', '騰翻', '騰翻', '騰翻']));
+  A('拋投', '籃拋', 's3', 16, 16, grp([1, 2, 3, 15, 7, 8, 9, 17], ['底層', '底層', '後保', '上層', '底層', '底層', '後保', '上層']));
+  A('舞蹈', '結尾舞', 's3', 40, 36, all.map(p => ({ ...p })));
+})();
+
+/* ============ 小工具 ============ */
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function h(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
+let toastTimer; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 2600); }
+const mem = id => S.members.find(m => m.id === +id);
+const F = () => { const f = FIELDS[S.field]; return { ...f, W: f.cols * CELL, H: f.rows * CELL }; };
+
+/* ============ 時間 ============ */
+const seg = id => S.segs.find(s => s.id === id);
+const isMusic = s => s.type === 'music';
+const segBeats = s => (s.counts8 - 1) * 8 + s.lastBeats;
+const segLen = s => isMusic(s) ? segBeats(s) : s.dur;
+const unit = s => isMusic(s) ? 60 / s.bpm : 1;
+const step = s => isMusic(s) ? .5 : .1;
+const segDur = s => segLen(s) * unit(s);
+const segName = s => isMusic(s) ? s.name : '口號';
+function segStart(id) { let t = 0; for (const s of S.segs) { if (s.id === id) return t; t += segDur(s); } return t; }
+const total = () => S.segs.reduce((a, s) => a + segDur(s), 0);
+const posSec = p => segStart(p.seg) + p.at * unit(seg(p.seg));
+function secPos(t, floor) {
+  let acc = 0;
+  for (let i = 0; i < S.segs.length; i++) {
+    const s = S.segs[i], d = segDur(s);
+    if (t < acc + d - 1e-9 || i === S.segs.length - 1) {
+      const st = step(s), raw = (t - acc) / unit(s) / st;
+      let at = (floor ? Math.floor(raw + 1e-6) : Math.round(raw)) * st;
+      at = clamp(at, 0, segLen(s));
+      return { seg: s.id, at: +at.toFixed(3) };
+    }
+    acc += d;
+  }
+}
+function fmtAt(s, at) { if (!isMusic(s)) return at.toFixed(1) + 's'; const c8 = Math.floor(at / 8) + 1, b = Math.floor(at % 8) + 1; return `${c8}-${b}${at % 1 ? '&' : ''}`; }
+const fmtPos = p => `${segName(seg(p.seg))} ${fmtAt(seg(p.seg), p.at)}`;
+function fmtSec(t) { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; }
+function parseCount(str) { const m = /^\s*(\d+)\s*-\s*([1-8])\s*(&)?\s*$/.exec(str); if (!m) return null; return (+m[1] - 1) * 8 + (+m[2] - 1) + (m[3] ? .5 : 0); }
+
+/* ============ 動作 ============ */
+const aStart = a => posSec({ seg: a.seg, at: a.start });
+const aEnd = a => aStart(a) + a.len * unit(seg(a.seg));
+const aLabel = a => a.cat + (a.name ? '·' + a.name : '');
+const actionOf = (mid, t) => S.actions.find(a => a.people.some(p => p.m === mid) && t >= aStart(a) - 1e-6 && t < aEnd(a) - 1e-6);
+const roleAt = (mid, t) => { const a = actionOf(mid, t); return a ? a.people.find(p => p.m === mid).role : null; };
+const idleAt = t => S.members.filter(m => !actionOf(m.id, t));
+const allRoles = () => ROLES.concat(S.customRoles);
+function conflicts(a) {
+  const s = aStart(a), e = aEnd(a), out = [];
+  for (const b of S.actions) { if (b === a) continue; if (aStart(b) < e - 1e-6 && s < aEnd(b) - 1e-6) for (const p of a.people) if (b.people.some(q => q.m === p.m)) out.push(`#${p.m} 同一時間已經在「${aLabel(b)}」裡`); }
+  return out;
+}
+function validate(a) {
+  const s = seg(a.seg);
+  if (a.people.length < 1) return '一個動作至少要有 1 個人';
+  if (a.start < -1e-9 || a.len < step(s) - 1e-9 || a.start + a.len > segLen(s) + 1e-9) return '動作不能跨段（超出這一段了）';
+  const c = conflicts(a); return c.length ? c[0] : null;
+}
+function tryChange(a, fn) {
+  const snap = JSON.stringify(a);
+  let err = null;
+  try { fn(); } catch (e) { err = String(e); }
+  if (!err) err = validate(a);
+  if (err) { Object.assign(a, JSON.parse(snap)); toast(err + '，已還原'); }
+  rerender(); return !err;
+}
+function newActionFromSel() {
+  if (!S.sel.size) { toast('先選人（點場上的點）'); return; }
+  const p = secPos(S.t), s = seg(p.seg);
+  const len = Math.min(isMusic(s) ? 8 : 3, segLen(s) - p.at);
+  if (len < step(s)) { toast('這一段已經到尾巴了'); return; }
+  const a = { id: nid('a'), cat: '技巧', name: '', seg: s.id, start: p.at, len: +len.toFixed(2), people: [...S.sel].map(m => ({ m, role: null })), note: '' };
+  const err = validate(a); if (err) { toast(err); return; }
+  S.actions.push(a); S.selAction = a.id; S.selForm = null; rerender();
+}
+function deleteAction(a) { S.actions = S.actions.filter(x => x !== a); S.selAction = null; rerender(); }
+// 上一個動作：在播放頭以前結束的動作，越晚結束越前面
+function prevCands() { return S.actions.filter(a => aEnd(a) <= S.t + 1e-6).sort((a, b) => aEnd(b) - aEnd(a) || aStart(b) - aStart(a)); }
+
+/* ============ 站位 ============ */
+const formsSorted = () => S.forms.map(f => ({ f, t: posSec(f.pos) })).sort((a, b) => a.t - b.t);
+function posAt(t) {
+  const fs = formsSorted(); if (!fs.length) return {};
+  const i = fs.findIndex(x => x.t > t + 1e-9);
+  if (i === -1) return fs[fs.length - 1].f.xy; if (i === 0) return fs[0].f.xy;
+  const A = fs[i - 1], B = fs[i], k = (t - A.t) / (B.t - A.t), o = {};
+  for (const m of S.members) { const a = A.f.xy[m.id], b = B.f.xy[m.id]; o[m.id] = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]; }
+  return o;
+}
+const formAtT = t => S.forms.find(f => Math.abs(posSec(f.pos) - t) < 1e-3);
+const nextForm = t => { const x = formsSorted().find(x => x.t > t + 1e-6); return x && x.f; };
+const formIdx = f => formsSorted().findIndex(x => x.f === f) + 1;
+const isFirst = f => formsSorted()[0].f === f;
+function insertForm() {
+  const p = secPos(S.t), t = posSec(p); let f = formAtT(t);
+  if (!f) { f = { id: nid('f'), pos: p, xy: JSON.parse(JSON.stringify(posAt(t))) }; S.forms.push(f); toast(`插了一張站位（${fmtPos(p)}），大家的位置自動帶入`); }
+  S.t = t; S.selForm = f.id; return f;
+}
+function deleteForm(f) {
+  if (isFirst(f)) { toast('流程開頭一定有一張站位，不能刪'); return false; }
+  S.forms = S.forms.filter(x => x !== f); if (S.selForm === f.id) S.selForm = null; rerender(); return true;
+}
+
+/* ============ 規則警告 ============ */
+function ruleWarnings() {
+  if (!S.rulesOn) return [];
+  let chant = 0, music = 0; S.segs.forEach(s => isMusic(s) ? music += segDur(s) : chant += segDur(s));
+  const w = [];
+  if (S.segs.some(s => !isMusic(s)) && chant < S.rules.chantMin) w.push(`口號段共 ${chant.toFixed(1)} 秒，少於 ${S.rules.chantMin} 秒`);
+  if (music > S.rules.musicMax) w.push(`音樂段共 ${music.toFixed(1)} 秒，超過 ${S.rules.musicMax} 秒`);
+  if (total() > S.rules.totalMax) w.push(`整支 ${total().toFixed(1)} 秒，超過 ${S.rules.totalMax} 秒`);
+  return w;
+}
+
+/* ============ 播放 ============ */
+let AC = null, nodes = [], playCtx0 = 0, playT0 = 0;
+const ac = () => (AC = AC || new (window.AudioContext || window.webkitAudioContext)());
+function beep(when, accent) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.frequency.value = accent ? 1500 : 900;
+  g.gain.setValueAtTime(.0001, when); g.gain.exponentialRampToValueAtTime(accent ? .45 : .2, when + .003); g.gain.exponentialRampToValueAtTime(.0001, when + .05);
+  o.connect(g).connect(AC.destination); o.start(when); o.stop(when + .06); nodes.push(o);
+}
+function play() {
+  ac().resume(); if (S.t >= total() - .01) S.t = 0;
+  S.playing = true; playCtx0 = AC.currentTime + .08; playT0 = S.t;
+  for (const s of S.segs) {
+    if (!isMusic(s)) continue;
+    const st = segStart(s.id), d = segDur(s); if (st + d <= S.t) continue;
+    const off = Math.max(0, S.t - st), when = playCtx0 + Math.max(0, st - S.t);
+    if (s.buffer) { const src = AC.createBufferSource(); src.buffer = s.buffer; src.connect(AC.destination); src.start(when, s.firstBeat + off, d - off); nodes.push(src); }
+    if (S.metro || !s.buffer) { const u = unit(s); for (let b = Math.ceil(off / u - 1e-6); b < segLen(s); b++) beep(playCtx0 + (st + b * u - S.t), b % 8 === 0); }
+  }
+  loop();
+}
+function pause() { S.playing = false; nodes.forEach(n => { try { n.stop(); } catch (e) { } }); nodes = []; V.tick(); }
+function loop() {
+  if (!S.playing) return;
+  S.t = Math.max(playT0, playT0 + (AC.currentTime - playCtx0));
+  if (S.t >= total()) { S.t = total(); pause(); return; }
+  V.tick(); requestAnimationFrame(loop);
+}
+function seek(t) { S.t = clamp(t, 0, total()); if (S.playing) { pause(); play(); } else V.tick(); }
+const togglePlay = () => S.playing ? pause() : play();
+
+/* ============ 共用：上方列 ============ */
+function headerHTML() {
+  return `<header class="hd">
+  <button class="play" data-act="play"></button>
+  <span class="time"></span>
+  <label title="沒有音樂檔時一定會響"><input type="checkbox" data-act="metro" ${S.metro ? 'checked' : ''}>節拍器</label>
+  <span class="warn"></span>
+  <button data-act="settings">流程設定</button>
+  <button data-act="gloss">名詞對照表</button>
+  <span class="knobs" title="原型專用，不是設計的一部分">原型旋鈕：場地 <select data-knob="field">${Object.entries(FIELDS).map(([k, v]) => `<option value="${k}" ${k === S.field ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
+   細切點從 ×<input data-knob="fine" type="number" min="1" max="8" step=".5" value="${S.fineAt}"> 起出現</span>
+  </header>`;
+}
+function bindHeader(root) {
+  const hd = $('.hd', root);
+  hd.addEventListener('click', e => {
+    const a = e.target.closest('[data-act]')?.dataset.act;
+    if (a === 'play') togglePlay(); else if (a === 'settings') openSettings(); else if (a === 'gloss') openGlossary();
+  });
+  hd.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.act === 'metro') S.metro = t.checked;
+    if (t.dataset.knob === 'field') { S.field = t.value; S.zoom = 1; S.pan = { x: 0, y: 0 }; rerender(); }
+    if (t.dataset.knob === 'fine') { S.fineAt = +t.value || 2; V.tick(); }
+  });
+}
+function tickHeader(root) {
+  const p = secPos(S.t, true);
+  $('.hd .play', root).textContent = S.playing ? '❚❚' : '▶';
+  $('.hd .time', root).textContent = `${fmtPos(p)}　·　${fmtSec(S.t)} / ${fmtSec(total())}`;
+  const w = ruleWarnings(); $('.hd .warn', root).textContent = w.length ? '⚠ ' + w.join('；') : '';
+}
+
+/* ============ 共用：場地 ============ */
+function fracName(f) { for (const [v, n] of FRAC_NAMES) if (Math.abs(f - v) < .006) return n; return Math.round(f * 100) + '%'; }
+function describe(x, y) {
+  const { cols, rows, orient, W, H } = F();
+  const u = (x + W / 2) / CELL, v = (H / 2 - y) / CELL;
+  const out = u < -1e-6 || u > cols + 1e-6 || v < -1e-6 || v > rows + 1e-6;
+  const col = Math.floor(u + 1e-6) + 1, fu = u - Math.floor(u + 1e-6), row = Math.floor(v + 1e-6) + 1, fv = v - Math.floor(v + 1e-6);
+  const pre = out ? '墊子外・' : '';
+  return orient === '直' ? `${pre}第 ${col} 條 左起 ${fracName(fu)}｜前起第 ${row} 格 ${fracName(fv)}`
+    : `${pre}第 ${row} 條 前起 ${fracName(fv)}｜左起第 ${col} 格 ${fracName(fu)}`;
+}
+function snapAxis(v, half, rad, fine) {
+  const u = (v + half) / CELL, k = Math.floor(u), f = u - k, fr = fine ? COARSE.concat(FINE) : COARSE;
+  let best = 0, bd = 1e9; for (const a of fr) { const d = Math.abs(f - a) * CELL; if (d < bd) { bd = d; best = a; } }
+  return bd <= rad ? -half + (k + best) * CELL : v;
+}
+function miniField(xy, opts = {}) {
+  const { W, H } = F(), hx = W / 2 + MARGIN, hy = H / 2 + MARGIN;
+  let s = `<svg viewBox="${-hx} ${-hy} ${2 * hx} ${2 * hy}" preserveAspectRatio="xMidYMid meet"><rect x="${-hx}" y="${-hy}" width="${2 * hx}" height="${2 * hy}" fill="#eef0f4"/><rect x="${-W / 2}" y="${-H / 2}" width="${W}" height="${H}" fill="#3f6fb6"/>`;
+  for (const m of S.members) { const p = xy[m.id]; if (p) s += `<circle cx="${p[0]}" cy="${p[1]}" r=".5" fill="${m.role === '上層' ? '#e0664f' : '#fff'}"/>`; }
+  return s + '</svg>';
+}
+/* opts: autoInsert, canEdit(), lockMsg, lasso, hollowIdle, paths(), banner(), legend */
+function createField(host, opts) {
+  host.classList.add('fieldhost');
+  host.innerHTML = `<svg class="field"></svg><div class="ftools"><button data-z="-">－</button><span class="zl"></span><button data-z="+">＋</button><button data-z="0">全場</button></div><div class="fread"></div>${opts.banner ? '<div class="fbanner"></div>' : ''}${opts.legend ? `<div class="flegend">${opts.legend}</div>` : ''}`;
+  const svg = $('svg', host), zl = $('.zl', host), rd = $('.fread', host), bn = $('.fbanner', host);
+  let drag = null, lasso = null, pan = null;
+  function box() {
+    const { W, H } = F(), hx = W / 2 + MARGIN, hy = H / 2 + MARGIN, bw = 2 * hx + .6, bh = 2 * hy + 1.6, vw = bw / S.zoom, vh = bh / S.zoom;
+    S.pan.x = clamp(S.pan.x, -hx + vw / 2 - .3, hx - vw / 2 + .3 || 0); S.pan.y = clamp(S.pan.y, -hy + vh / 2 - .3, hy - vh / 2 + 1.3 || 0);
+    if (S.zoom <= 1) S.pan = { x: 0, y: 0 };
+    return { x: S.pan.x - vw / 2, y: S.pan.y + .4 - vh / 2, w: vw, h: vh, hx, hy };
+  }
+  const ppm = () => { const b = box(), r = svg.getBoundingClientRect(); return Math.min(r.width / b.w, r.height / b.h) || 20; };
+  const fine = () => S.zoom >= S.fineAt - 1e-9;
+  function toM(e) { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const p = pt.matrixTransform(svg.getScreenCTM().inverse()); return [p.x, p.y]; }
+  function draw() {
+    const b = box(), { W, H, cols, rows, orient } = F();
+    svg.setAttribute('viewBox', `${b.x} ${b.y} ${b.w} ${b.h}`);
+    let s = `<rect class="margin" x="${-b.hx}" y="${-b.hy}" width="${2 * b.hx}" height="${2 * b.hy}"/><rect class="mat" x="${-W / 2}" y="${-H / 2}" width="${W}" height="${H}"/>`;
+    for (let k = 1; k < cols; k++) { const x = -W / 2 + k * CELL; s += `<line class="${orient === '直' ? 'seam' : 'grid'}" x1="${x}" y1="${-H / 2}" x2="${x}" y2="${H / 2}"/>`; }
+    for (let k = 1; k < rows; k++) { const y = -H / 2 + k * CELL; s += `<line class="${orient === '橫' ? 'seam' : 'grid'}" x1="${-W / 2}" y1="${y}" x2="${W / 2}" y2="${y}"/>`; }
+    s += `<path class="cx" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35"/>`;
+    if (orient === '直') for (let k = 0; k < cols; k++) s += `<text class="num" x="${-W / 2 + (k + .5) * CELL}" y="${-H / 2 - .3}">${k + 1}</text>`;
+    else for (let k = 0; k < rows; k++) s += `<text class="num" x="${-W / 2 - .5}" y="${H / 2 - (k + .5) * CELL + .14}">${k + 1}</text>`;
+    s += `<text class="front" x="0" y="${b.hy + .7}">▼ 正面／裁判 ▼</text>`;
+    // 拖的時候：附近的切點
+    if (drag && drag.moved) {
+      const [px, py] = drag.cur, cu = Math.floor((px + W / 2) / CELL), cv = Math.floor((py + H / 2) / CELL);
+      const fr = COARSE.concat(fine() ? FINE : []);
+      for (let i = cu - 1; i <= cu + 1; i++) for (let j = cv - 1; j <= cv + 1; j++) for (const fx of fr) for (const fy of fr) {
+        const x = -W / 2 + (i + fx) * CELL, y = -H / 2 + (j + fy) * CELL; if (Math.abs(x) > b.hx || Math.abs(y) > b.hy) continue;
+        const isF = FINE.includes(fx) || FINE.includes(fy); s += `<circle class="sp ${isF ? 'fine' : ''}" cx="${x}" cy="${y}" r="${isF ? .035 : .05}"/>`;
+      }
+    }
+    const pos = posAt(S.t);
+    if (opts.paths && opts.paths()) { const nf = nextForm(S.t); if (nf) for (const m of S.members) { const a = pos[m.id], c = nf.xy[m.id]; if (Math.hypot(a[0] - c[0], a[1] - c[1]) > .05) s += `<line class="path" x1="${a[0]}" y1="${a[1]}" x2="${c[0]}" y2="${c[1]}"/>`; } }
+    const selA = S.actions.find(a => a.id === S.selAction), hl = new Set(selA ? selA.people.map(p => p.m) : []);
+    const items = S.members.map(m => { const r = roleAt(m.id, S.t); return { m, r, fly: r === '上層' || r === '中層', idle: !actionOf(m.id, S.t) }; }).sort((a, b) => a.fly - b.fly);
+    for (const { m, r, fly, idle } of items) {
+      const [x, y] = pos[m.id];
+      s += `<g data-m="${m.id}" class="dot ${fly ? 'fly' : ''} ${idle && opts.hollowIdle ? 'idle' : ''} ${S.sel.has(m.id) ? 'sel' : ''}" transform="translate(${x},${y})">`
+        + (hl.has(m.id) ? `<circle class="hl" r=".5" stroke="${catColor(selA.cat)}"/>` : '')
+        + `<circle class="body ${m.role === '上層' ? 'top' : 'base'}" r="${fly ? .36 : .3}"/><text y=".11">${m.id}</text>`
+        + (r ? `<text class="role" y="${fly ? .66 : .58}">${esc(r)}</text>` : '') + '</g>';
+    }
+    if (lasso && lasso.moved) { const [a, c] = [lasso.a, lasso.b]; s += `<rect class="lasso" x="${Math.min(a[0], c[0])}" y="${Math.min(a[1], c[1])}" width="${Math.abs(a[0] - c[0])}" height="${Math.abs(a[1] - c[1])}"/>`; }
+    svg.innerHTML = s;
+    zl.textContent = `×${S.zoom.toFixed(1)}${fine() ? ' 細切點' : ''}`;
+    if (drag && drag.moved) { const p = drag.form.xy[drag.id]; rd.textContent = `#${drag.id}　${describe(p[0], p[1])}`; }
+    else if (S.sel.size === 1) { const id = [...S.sel][0], p = pos[id]; rd.textContent = `#${id}　${describe(p[0], p[1])}`; }
+    else rd.textContent = S.sel.size ? `已選 ${S.sel.size} 人` : '';
+    if (bn) bn.innerHTML = opts.banner();
+  }
+  host.addEventListener('click', e => {
+    const z = e.target.closest('[data-z]')?.dataset.z; if (!z) return;
+    S.zoom = z === '0' ? 1 : clamp(z === '+' ? S.zoom * 1.25 : S.zoom / 1.25, 1, 8); if (z === '0') S.pan = { x: 0, y: 0 }; draw();
+  });
+  svg.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), 1, 8); draw(); }, { passive: false });
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return; if (S.playing) pause();
+    svg.setPointerCapture(e.pointerId);
+    const id = e.target.closest('[data-m]')?.dataset.m, p = toM(e);
+    if (id) drag = { id: +id, start: p, cur: p, moved: false, shift: e.shiftKey, sx: e.clientX, sy: e.clientY };
+    else if (opts.lasso && !e.altKey) lasso = { a: p, b: p, moved: false, shift: e.shiftKey, sx: e.clientX, sy: e.clientY };
+    else pan = { sx: e.clientX, sy: e.clientY, p0: { ...S.pan }, moved: false };
+  });
+  svg.addEventListener('pointermove', e => {
+    if (drag) {
+      if (!drag.moved) {
+        if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+        if (!opts.canEdit()) { toast(opts.lockMsg); drag = null; return; }
+        drag.form = opts.autoInsert ? insertForm() : formAtT(S.t);
+        drag.ids = S.sel.has(drag.id) && S.sel.size > 1 ? [...S.sel] : [drag.id];
+        drag.orig = Object.fromEntries(drag.ids.map(i => [i, [...drag.form.xy[i]]]));
+        drag.moved = true;
+      }
+      const p = toM(e), o = drag.orig[drag.id], { W, H } = F(), rad = 10 / ppm();
+      drag.cur = p;
+      const tx = snapAxis(o[0] + p[0] - drag.start[0], W / 2, rad, fine()), ty = snapAxis(o[1] + p[1] - drag.start[1], H / 2, rad, fine());
+      const dx = tx - o[0], dy = ty - o[1];
+      for (const i of drag.ids) drag.form.xy[i] = [clamp(drag.orig[i][0] + dx, -W / 2 - MARGIN, W / 2 + MARGIN), clamp(drag.orig[i][1] + dy, -H / 2 - MARGIN, H / 2 + MARGIN)];
+      draw();
+    } else if (lasso) {
+      lasso.b = toM(e); if (Math.hypot(e.clientX - lasso.sx, e.clientY - lasso.sy) > 4) lasso.moved = true; draw();
+    } else if (pan) {
+      const k = 1 / ppm(); if (Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy) > 4) pan.moved = true;
+      S.pan = { x: pan.p0.x - (e.clientX - pan.sx) * k, y: pan.p0.y - (e.clientY - pan.sy) * k }; draw();
+    }
+  });
+  svg.addEventListener('pointerup', () => {
+    if (drag) {
+      if (!drag.moved) {
+        const id = drag.id;
+        if (drag.shift) S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id);
+        else if (S.sel.has(id) && S.sel.size === 1) S.sel.clear(); else S.sel = new Set([id]);
+      }
+      drag = null; rerender();
+    } else if (lasso) {
+      if (lasso.moved) {
+        const pos = posAt(S.t), [a, c] = [lasso.a, lasso.b]; if (!lasso.shift) S.sel.clear();
+        S.members.forEach(m => { const p = pos[m.id]; if (p[0] >= Math.min(a[0], c[0]) && p[0] <= Math.max(a[0], c[0]) && p[1] >= Math.min(a[1], c[1]) && p[1] <= Math.max(a[1], c[1])) S.sel.add(m.id); });
+      } else S.sel.clear();
+      lasso = null; rerender();
+    } else if (pan) { if (!pan.moved) { S.sel.clear(); rerender(); } pan = null; }
+  });
+  return { draw };
+}
+
+/* ============ 共用：動作表單 ============ */
+function roleOptions(cur) {
+  return `<option value="">（沒有任務）</option>${allRoles().map(r => `<option ${r.name === cur ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}<option value="__new">＋自訂角色…</option>`;
+}
+function actionFormEl(a, extraHTML = '') {
+  const s = seg(a.seg), music = isMusic(s);
+  const el = h(`<div class="aform">
+    <div class="af-h"><span><b style="color:${catColor(a.cat)}">●</b> 動作</span><button data-x="del" class="danger">刪除動作</button></div>
+    <label>大類 <select data-f="cat">${CATS.map(c => `<option ${c[0] === a.cat ? 'selected' : ''}>${c[0]}</option>`).join('')}</select></label>
+    <label>名稱 <input data-f="name" value="${esc(a.name)}" placeholder="例如：Lib、籃拋"></label>
+    <div class="af-row"><span>段</span><b>${esc(segName(s))}</b><span class="muted">（動作不能跨段）</span></div>
+    <label>開始 <input data-f="start" value="${music ? fmtAt(s, a.start) : a.start.toFixed(1)}"><small class="muted">${music ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small></label>
+    <label>長度 <input data-f="len" type="number" step="${step(s)}" min="${step(s)}" value="${a.len}"><small class="muted">${music ? '拍（8 拍＝1 個八拍）' : '秒'}</small></label>
+    <div class="af-people"><div class="af-ph"><span>人（${a.people.length}）＋任務角色</span><button data-x="gloss" class="link">名詞對照表</button></div>
+      ${a.people.map(p => `<div class="pp"><span>#${p.m} ${esc(mem(p.m).name)}</span><select data-role="${p.m}">${roleOptions(p.role)}</select><button data-rm="${p.m}" title="移出這個動作">✕</button></div>`).join('')}
+      <div class="pp"><select data-add><option value="">＋加人…</option>${S.members.filter(m => !a.people.some(p => p.m === m.id)).map(m => `<option value="${m.id}">#${m.id} ${esc(m.name)}</option>`).join('')}</select></div>
+      ${extraHTML}
+    </div>
+    <label>備註 <textarea data-f="note" rows="2">${esc(a.note)}</textarea></label>
+  </div>`);
+  el.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.f) {
+      const f = t.dataset.f;
+      tryChange(a, () => {
+        if (f === 'start') { const v = music ? parseCount(t.value) : Math.round(+t.value * 10) / 10; if (v == null || isNaN(v)) throw '開始時間看不懂'; a.start = v; }
+        else if (f === 'len') a.len = +(Math.round(+t.value / step(s)) * step(s)).toFixed(2);
+        else a[f] = t.value;
+      });
+    } else if (t.dataset.role) {
+      if (t.value === '__new') { openGlossary(true); rerender(); return; }
+      a.people.find(p => p.m === +t.dataset.role).role = t.value || null; rerender();
+    } else if ('add' in t.dataset && t.value) tryChange(a, () => a.people.push({ m: +t.value, role: null }));
+  });
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.x === 'del') deleteAction(a);
+    else if (b.dataset.x === 'gloss') openGlossary();
+    else if (b.dataset.rm) tryChange(a, () => { a.people = a.people.filter(p => p.m !== +b.dataset.rm); });
+  });
+  return el;
+}
+
+/* ============ 共用：對話框 ============ */
+function openModal(title, body) {
+  closeModal();
+  const ov = h(`<div class="ov"><div class="modal"><div class="mh"><b>${title}</b><button class="x">✕</button></div><div class="mb"></div></div></div>`);
+  $('.mb', ov).append(body);
+  ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('.x')) closeModal(); });
+  document.body.append(ov);
+}
+const closeModal = () => document.querySelector('.ov')?.remove();
+function openGlossary(focusAdd) {
+  const el = h(`<div><table class="gl"><tr><th>名稱</th><th>意思</th><th>規則上的叫法</th></tr>
+    ${allRoles().map(r => `<tr><td><b>${esc(r.name)}</b>${r.custom ? ' <small class="muted">自訂</small>' : ''}</td><td>${esc(r.mean)}</td><td>${esc(r.rule)}</td></tr>`).join('')}</table>
+    <p class="muted">「規則上的叫法」是原型暫填的，定案時要對過研究筆記。</p>
+    <div style="display:flex;gap:6px;align-items:center"><b>新增自訂角色</b><input data-n placeholder="名稱"><input data-d placeholder="意思" style="flex:1"><button class="primary" data-add>新增</button></div>
+    <p class="muted">自訂角色只存在這一支流程裡。</p></div>`);
+  $('[data-add]', el).onclick = () => {
+    const n = $('[data-n]', el).value.trim(); if (!n) return;
+    if (allRoles().some(r => r.name === n)) { toast('已經有這個角色了'); return; }
+    S.customRoles.push({ name: n, mean: $('[data-d]', el).value.trim() || '（教練自訂）', rule: '—', custom: true });
+    openGlossary(); rerender();
+  };
+  openModal('名詞對照表：任務角色', el);
+  if (focusAdd) $('[data-n]', el).focus();
+}
+function openSettings() {
+  const el = h(`<div>
+    <label><input type="checkbox" data-k="on" ${S.rulesOn ? 'checked' : ''}> 規則警告（只提醒，不擋）</label>
+    <label>口號段最少 <input type="number" data-k="chantMin" value="${S.rules.chantMin}" style="width:70px"> 秒</label>
+    <label>音樂段加起來最多 <input type="number" data-k="musicMax" value="${S.rules.musicMax}" style="width:70px"> 秒</label>
+    <label>整支流程最多 <input type="number" data-k="totalMax" value="${S.rules.totalMax}" style="width:70px"> 秒</label>
+    <p class="muted">場地：${F().label}（建好後不能換）</p></div>`);
+  el.addEventListener('change', e => { const k = e.target.dataset.k; if (k === 'on') S.rulesOn = e.target.checked; else if (k) S.rules[k] = +e.target.value; V.tick(); });
+  openModal('流程設定', el);
+}
+function addSeg(type) {
+  const n = S.segs.filter(isMusic).length + 1;
+  const s = type === 'music' ? { id: nid('s'), type, name: '音樂 ' + n, bpm: 150, firstBeat: 0, counts8: 8, lastBeats: 8, buffer: null, fileName: '' } : { id: nid('s'), type, dur: 10 };
+  S.segs.push(s); rerender(); openSegDialog(s);
+}
+function deleteSeg(s) {
+  if (S.segs.length === 1) { toast('至少要有一段'); return; }
+  const xy0 = JSON.parse(JSON.stringify(formsSorted()[0].f.xy));
+  S.segs = S.segs.filter(x => x !== s); S.actions = S.actions.filter(a => a.seg !== s.id); S.forms = S.forms.filter(f => f.pos.seg !== s.id);
+  const fs = formsSorted();
+  if (!fs.length || fs[0].t > 1e-6) S.forms.push({ id: nid('f'), pos: { seg: S.segs[0].id, at: 0 }, xy: fs.length ? JSON.parse(JSON.stringify(fs[0].f.xy)) : xy0 });
+  S.t = clamp(S.t, 0, total()); closeModal(); rerender();
+}
+function openSegDialog(s) {
+  const d = { ...s }, music = isMusic(s);
+  const el = h(`<div style="width:600px">
+    ${music ? `
+    <label>名稱 <input data-k="name" value="${esc(d.name)}"></label>
+    <label>音樂檔 <input type="file" accept="audio/*" data-file> <span class="muted fname">${esc(d.fileName || '（還沒載入，先用節拍器代替）')}</span></label>
+    <label>BPM <input type="number" min="60" max="170" data-k="bpm" value="${d.bpm}" style="width:80px"> <span class="muted">60–170</span></label>
+    <label>第一拍 <input type="number" step=".01" min="0" data-k="firstBeat" value="${d.firstBeat}" style="width:90px"> 秒 <button data-x="hear">▶ 從第一拍聽 2 個八拍</button></label>
+    <canvas class="wave" width="580" height="90"></canvas>
+    <div class="muted">在波形上點一下＝把第一拍放在那裡。細線是照 BPM 算出來的拍子，對準鼓點就對了。只顯示前 20 秒。</div>
+    <label>八拍數 <input type="number" min="1" data-k="counts8" value="${d.counts8}" style="width:70px"> 最後一個八拍有 <input type="number" min="1" max="8" data-k="lastBeats" value="${d.lastBeats}" style="width:55px"> 拍 <button data-x="auto">照音樂長度算</button></label>`
+      : `<label>口號段長度 <input type="number" step=".1" min=".1" data-k="dur" value="${d.dur}" style="width:90px"> 秒</label>`}
+    <div class="impact" style="display:none"></div>
+    <div style="display:flex;gap:6px;margin-top:10px"><button class="primary" data-x="ok">套用</button><button data-x="del" class="danger">刪掉這一段</button></div></div>`);
+  const cv = $('canvas', el), imp = $('.impact', el);
+  function lost() {
+    const len = isMusic(d) ? (d.counts8 - 1) * 8 + d.lastBeats : d.dur;
+    return { acts: S.actions.filter(a => a.seg === s.id && a.start + a.len > len + 1e-9), forms: S.forms.filter(f => f.pos.seg === s.id && f.pos.at > len + 1e-9) };
+  }
+  function refresh() {
+    const l = lost();
+    imp.style.display = l.acts.length || l.forms.length ? 'block' : 'none';
+    imp.innerHTML = `<b>套用後會刪掉：</b>${l.acts.map(a => `<div>動作「${esc(aLabel(a))}」</div>`).join('')}${l.forms.map(f => `<div>站位 ${formIdx(f)}</div>`).join('')}`;
+    if (cv) drawWave();
+  }
+  function drawWave() {
+    const g = cv.getContext('2d'), Wd = cv.width, Hd = cv.height, win = 20; g.clearRect(0, 0, Wd, Hd); g.fillStyle = '#f6f7fa'; g.fillRect(0, 0, Wd, Hd);
+    if (d.buffer) {
+      const ch = d.buffer.getChannelData(0), sr = d.buffer.sampleRate; g.fillStyle = '#7d8bb5';
+      for (let x = 0; x < Wd; x++) { const a = Math.floor(x / Wd * win * sr), b = Math.floor((x + 1) / Wd * win * sr); let mx = 0; for (let i = a; i < b && i < ch.length; i += 8) mx = Math.max(mx, Math.abs(ch[i])); g.fillRect(x, Hd / 2 - mx * Hd / 2, 1, mx * Hd); }
+    } else { g.fillStyle = '#9aa1b2'; g.font = '12px sans-serif'; g.fillText('沒有音樂檔：載入後會畫出波形', 10, Hd / 2); }
+    const spb = 60 / d.bpm;
+    for (let b = 0, t = d.firstBeat; t < win; b++, t += spb) { const x = t / win * Wd; g.fillStyle = b === 0 ? '#e8452c' : (b % 8 === 0 ? '#1d2330' : 'rgba(29,35,48,.25)'); g.fillRect(x, 0, b === 0 ? 2 : 1, Hd); }
+  }
+  el.addEventListener('input', e => { const k = e.target.dataset.k; if (k) { d[k] = k === 'name' ? e.target.value : +e.target.value; refresh(); } });
+  if (cv) cv.addEventListener('click', e => { const r = cv.getBoundingClientRect(); d.firstBeat = +((e.clientX - r.left) / r.width * 20).toFixed(2); $('[data-k=firstBeat]', el).value = d.firstBeat; refresh(); });
+  const fileIn = $('[data-file]', el);
+  if (fileIn) fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; if (!f) return;
+    try { d.buffer = await ac().decodeAudioData(await f.arrayBuffer()); d.fileName = f.name; $('.fname', el).textContent = `${f.name}（${d.buffer.duration.toFixed(1)} 秒）`; refresh(); }
+    catch (err) { toast('這個檔案放不出來：' + err.message); }
+  });
+  el.addEventListener('click', e => {
+    const x = e.target.closest('[data-x]')?.dataset.x;
+    if (x === 'auto') { if (!d.buffer) { toast('先載入音樂檔'); return; } const beats = Math.floor((d.buffer.duration - d.firstBeat) * d.bpm / 60); d.counts8 = Math.max(1, Math.ceil(beats / 8)); d.lastBeats = beats - (d.counts8 - 1) * 8 || 8; $('[data-k=counts8]', el).value = d.counts8; $('[data-k=lastBeats]', el).value = d.lastBeats; refresh(); }
+    if (x === 'hear') { if (S.playing) pause(); ac().resume(); const t0 = AC.currentTime + .1, spb = 60 / d.bpm; if (d.buffer) { const src = AC.createBufferSource(); src.buffer = d.buffer; src.connect(AC.destination); src.start(t0, d.firstBeat, spb * 16); nodes.push(src); } for (let b = 0; b < 16; b++) beep(t0 + b * spb, b % 8 === 0); }
+    if (x === 'del') deleteSeg(s);
+    if (x === 'ok') {
+      if (music && (d.bpm < 60 || d.bpm > 170)) { toast('BPM 要在 60–170'); return; }
+      const l = lost(); S.actions = S.actions.filter(a => !l.acts.includes(a)); S.forms = S.forms.filter(f => !l.forms.includes(f));
+      Object.assign(s, d); S.t = clamp(S.t, 0, total()); closeModal(); rerender();
+    }
+  });
+  openModal(music ? '音樂段設定' : '口號段設定', el); refresh();
+}
+
+/* ============ 共用：時間軸零件（A、B） ============ */
+const LW = 120;
+function segBlocks(pps) { return S.segs.map(s => `<div class="segb ${s.type}" data-seg="${s.id}" style="left:${segStart(s.id) * pps}px;width:${segDur(s) * pps - 2}px" title="點一下設定">${esc(segName(s))}${isMusic(s) ? ` · ${s.bpm} BPM` : ` · ${s.dur.toFixed(1)} 秒`}</div>`).join(''); }
+function rulerTicks(pps) {
+  let o = '';
+  for (const s of S.segs) {
+    const st = segStart(s.id);
+    if (isMusic(s)) for (let b = 0; b < segLen(s); b++) { const x = (st + b * unit(s)) * pps; o += b % 8 === 0 ? `<div class="tk big" style="left:${x}px"><span>${b / 8 + 1}</span></div>` : (pps * unit(s) > 4 ? `<div class="tk" style="left:${x}px"></div>` : ''); }
+    else for (let k = 0; k < s.dur; k++) { const x = (st + k) * pps; o += k % 5 === 0 ? `<div class="tk big" style="left:${x}px"><span>${k}s</span></div>` : `<div class="tk" style="left:${x}px"></div>`; }
+  }
+  return o;
+}
+function bindTimeline(root, sc, pps) {
+  const xToT = e => { const r = $('.tl-in', root).getBoundingClientRect(); return (e.clientX - r.left - LW) / pps; };
+  sc.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const bar = e.target.closest('[data-a]'), ru = e.target.closest('.ruler'), dia = e.target.closest('[data-f]');
+    if (bar && !e.target.closest('button')) { barDrag(e, S.actions.find(a => a.id === bar.dataset.a), e.target.classList.contains('rz') ? 'rz' : 'move', pps); }
+    else if (ru) { if (S.playing) pause(); seek(xToT(e)); const mv = ev => seek(xToT(ev)), up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); }; addEventListener('pointermove', mv); addEventListener('pointerup', up); }
+    else if (dia && dia.classList.contains('dia')) formDrag(e, S.forms.find(f => f.id === dia.dataset.f), pps);
+  });
+  sc.addEventListener('click', e => { const sg = e.target.closest('[data-seg]'); if (sg) openSegDialog(seg(sg.dataset.seg)); });
+}
+function barDrag(e, a, mode, pps) {
+  e.preventDefault(); if (S.playing) pause();
+  const s = seg(a.seg), u = unit(s), st = step(s), x0 = e.clientX, orig = { start: a.start, len: a.len }; let moved = false;
+  const mv = ev => {
+    if (Math.abs(ev.clientX - x0) > 3) moved = true; if (!moved) return;
+    const dq = Math.round((ev.clientX - x0) / pps / u / st) * st;
+    if (mode === 'move') a.start = +clamp(orig.start + dq, 0, segLen(s) - a.len).toFixed(3);
+    else a.len = +clamp(orig.len + dq, st, segLen(s) - a.start).toFixed(3);
+    V.render();
+  };
+  const up = () => {
+    removeEventListener('pointermove', mv); removeEventListener('pointerup', up);
+    if (moved) { const err = validate(a); if (err) { Object.assign(a, orig); toast(err + '，已還原'); } }
+    else { S.selAction = a.id; S.selForm = null; }
+    rerender();
+  };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+}
+function formDrag(e, f, pps) {
+  e.preventDefault(); if (S.playing) pause();
+  const x0 = e.clientX, t0 = posSec(f.pos); let moved = false;
+  const mv = ev => {
+    if (Math.abs(ev.clientX - x0) > 3) moved = true; if (!moved || isFirst(f)) return;
+    const p = secPos(t0 + (ev.clientX - x0) / pps), t = posSec(p);
+    if (t <= formsSorted()[0].t + 1e-6 || S.forms.some(g => g !== f && Math.abs(posSec(g.pos) - t) < 1e-3)) return;
+    f.pos = p; S.t = t; V.render();
+  };
+  const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); if (moved && isFirst(f)) toast('開頭那張站位不能移'); S.selForm = f.id; S.selAction = null; S.t = posSec(f.pos); rerender(); };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+}
+function freshRoot(cls) {
+  const old = $('#app'), keep = {};
+  old.querySelectorAll('[data-keep]').forEach(e => keep[e.dataset.keep] = [e.scrollLeft, e.scrollTop]);
+  const r = document.createElement('div'); r.id = 'app'; r.className = cls; old.replaceWith(r); r._keep = keep; return r;
+}
+const restoreScroll = r => r.querySelectorAll('[data-keep]').forEach(e => { const k = r._keep[e.dataset.keep]; if (k) { e.scrollLeft = k[0]; e.scrollTop = k[1]; } });
+function follow(sc, x) { if (S.playing && (x < sc.scrollLeft + LW || x > sc.scrollLeft + sc.clientWidth - 40)) sc.scrollLeft = x - LW - 60; }
+function pick(kind, self) {
+  if (kind === 'all') S.sel = new Set(S.members.map(m => m.id));
+  else if (kind === 'base') S.sel = new Set(S.members.filter(m => m.role === '底層').map(m => m.id));
+  else if (kind === 'top') S.sel = new Set(S.members.filter(m => m.role === '上層').map(m => m.id));
+  else if (kind === 'idle') S.sel = new Set(idleAt(S.t).map(m => m.id));
+  else if (kind === 'none') S.sel.clear();
+  else if (kind === 'prev') {
+    const c = prevCands(); if (!c.length) { toast('播放頭前面還沒有動作'); return; }
+    if (self.candT !== S.t) { self.candT = S.t; self.cand = 0; }
+    const a = c[self.cand % c.length]; self.cand++;
+    S.sel = new Set(a.people.map(p => p.m));
+    toast(`選了「${aLabel(a)}」的 ${a.people.length} 人${c.length > 1 ? '（再按一次換更早的動作）' : ''}`);
+  }
+  rerender();
+}
+
+/* ============ 版面 A：泳道 ============ */
+const VA = {
+  key: 'A', label: '泳道（一人一條）', pps: 16, cand: 0, candT: -1,
+  render() {
+    const root = freshRoot('va'), pps = this.pps, CW = LW + total() * pps + 80;
+    const lane = m => `<div class="row lane ${S.sel.has(m.id) ? 'sel' : ''}"><div class="lab" data-ml="${m.id}" title="點一下選這個人"><b>#${m.id}</b>${esc(m.name)}<i class="gr ${m.role === '上層' ? 'top' : 'base'}">${m.role === '上層' ? '上' : '底'}</i><span class="idl">閒</span></div><div class="trk" style="width:${total() * pps}px">${S.actions.filter(a => a.people.some(p => p.m === m.id)).map(a => {
+      const p = a.people.find(p => p.m === m.id), first = a.people[0].m === m.id;
+      return `<div class="bar ${S.selAction === a.id ? 'on' : ''}" data-a="${a.id}" style="left:${aStart(a) * pps}px;width:${(aEnd(a) - aStart(a)) * pps}px;background:${catColor(a.cat)}" title="${esc(aLabel(a))}${p.role ? '（' + esc(p.role) + '）' : ''}">${first ? `<b>${esc(aLabel(a))}</b> ` : ''}${esc(p.role || '')}<i class="rz"></i></div>`;
+    }).join('')}</div></div>`;
+    root.innerHTML = headerHTML() + `<div class="va-main"><div class="va-field"></div><aside class="va-insp"></aside></div>
+      <div class="tl va-tl" data-keep="tl"><div class="tl-in" style="width:${CW}px">
+        <div class="row hd1"><div class="lab">段 <button data-act="addseg" title="在最後加一段">＋</button></div><div class="trk" style="width:${total() * pps}px">${segBlocks(pps)}</div></div>
+        <div class="row hd2"><div class="lab">八拍 <button data-tz="-1">－</button><button data-tz="1">＋</button></div><div class="trk ruler" style="width:${total() * pps}px">${rulerTicks(pps)}</div></div>
+        <div class="row hd3"><div class="lab">站位 <button data-act="addform" title="在播放頭插一張">＋</button></div><div class="trk" style="width:${total() * pps}px">${formsSorted().map(({ f, t }, i) => `<div class="dia ${S.selForm === f.id ? 'on' : ''} ${i === 0 ? 'first' : ''}" data-f="${f.id}" style="left:${t * pps}px" title="站位 ${i + 1}：${fmtPos(f.pos)}（拖可以移）">◆</div>`).join('')}</div></div>
+        ${S.members.map(lane).join('')}
+        <div class="ph"></div></div></div>`;
+    bindHeader(root);
+    this.field = createField($('.va-field', root), { autoInsert: true, canEdit: () => true, hollowIdle: false, lasso: false });
+    this.renderInsp(root);
+    const sc = $('.tl', root); bindTimeline(root, sc, pps);
+    sc.addEventListener('click', e => {
+      const ml = e.target.closest('[data-ml]'); if (ml) { const id = +ml.dataset.ml; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); rerender(); return; }
+      const tz = e.target.closest('[data-tz]'); if (tz) { this.pps = clamp(this.pps * (tz.dataset.tz > 0 ? 1.4 : 1 / 1.4), 4, 80); rerender(); return; }
+      const ac = e.target.closest('[data-act]')?.dataset.act;
+      if (ac === 'addform') { insertForm(); S.selAction = null; rerender(); }
+      if (ac === 'addseg') this.segMenu();
+    });
+    restoreScroll(root); this.root = root; this.tick();
+  },
+  segMenu() { const el = h(`<div style="display:flex;gap:8px"><button data-t="music">＋音樂段</button><button data-t="chant">＋口號段</button></div>`); el.onclick = e => { const t = e.target.dataset.t; if (t) { closeModal(); addSeg(t); } }; openModal('在最後加一段', el); },
+  renderInsp(root) {
+    const ins = $('.va-insp', root), a = S.actions.find(x => x.id === S.selAction), f = S.forms.find(x => x.id === S.selForm);
+    ins.innerHTML = `<h3>選人</h3><div class="chips">
+      <button data-pick="prev">沿用上一個動作的人</button><button data-pick="all">全隊</button><button data-pick="base">全部底層</button><button data-pick="top">全部上層</button><button data-pick="idle">這一拍沒在動作裡的人</button><button data-pick="none">清除</button></div>
+      <div class="muted">場上點人、按住 Shift 多選；或點下面名字。已選 <b>${S.sel.size}</b> 人${S.sel.size ? '：' + [...S.sel].sort((x, y) => x - y).map(i => '#' + i).join(' ') : ''}</div>
+      <p><button class="primary" data-new ${S.sel.size ? '' : 'disabled'}>在播放頭新增動作（用已選的人）</button></p><hr>`;
+    if (a) ins.append(actionFormEl(a, S.sel.size ? `<button data-x="addsel" style="margin-top:4px">＋把已選的 ${S.sel.size} 人加進來</button>` : ''));
+    else if (f) ins.append(h(`<div><h3>站位 ${formIdx(f)}</h3><p>${fmtPos(f.pos)}</p><p class="muted">拖場上的點就是改這張站位。拖上面的 ◆ 可以改時間。</p>${isFirst(f) ? '<p class="muted">開頭那張不能刪。</p>' : '<button class="danger" data-delf>刪掉這張站位</button>'}</div>`));
+    else ins.append(h(`<div class="muted"><p>點下面的色條＝選動作（拖可以移、拉右邊可以改長度）。</p><p>灰條紋＝沒動作，就是站著或在走位。名字變灰寫「閒」＝播放頭這一拍沒在動作裡。</p><p>播放頭不在站位上時拖人，會自動在這一拍插一張站位。</p></div>`));
+    ins.addEventListener('click', e => {
+      const p = e.target.closest('[data-pick]'); if (p) return pick(p.dataset.pick, this);
+      if (e.target.closest('[data-new]')) newActionFromSel();
+      if (e.target.closest('[data-delf]')) deleteForm(f);
+      if (e.target.closest('[data-x=addsel]')) tryChange(a, () => S.sel.forEach(m => { if (!a.people.some(p => p.m === m)) a.people.push({ m, role: null }); }));
+    });
+  },
+  tick() {
+    const r = this.root; if (!r) return;
+    tickHeader(r); this.field.draw();
+    const x = LW + S.t * this.pps; $('.ph', r).style.left = x + 'px'; follow($('.tl', r), x);
+    r.querySelectorAll('[data-ml]').forEach(l => l.classList.toggle('idle-now', !actionOf(+l.dataset.ml, S.t)));
+    r.querySelectorAll('.dia').forEach(d => d.classList.toggle('on', d.dataset.f === S.selForm || formAtT(S.t)?.id === d.dataset.f));
+  },
+};
+
+/* ============ 版面 B：動作軌道＋名單 ============ */
+const VB = {
+  key: 'B', label: '動作軌道＋名單', pps: 16,
+  render() {
+    const root = freshRoot('vb'), pps = this.pps, CW = LW + total() * pps + 80, tw = total() * pps;
+    const acts = [...S.actions].sort((a, b) => aStart(a) - aStart(b)), ends = [], lane = {};
+    for (const a of acts) { let i = ends.findIndex(e => e <= aStart(a) + 1e-6); if (i < 0) { i = ends.length; ends.push(0); } ends[i] = aEnd(a); lane[a.id] = i; }
+    const nl = ends.length + 1;
+    let lanes = '';
+    for (let i = 0; i < nl; i++) lanes += `<div class="row alane"><div class="lab">${i === 0 ? '動作 <button data-act="newact">＋用勾選的人</button>' : ''}</div><div class="trk" style="width:${tw}px">${acts.filter(a => lane[a.id] === i).map(a => `<div class="bar ${S.selAction === a.id ? 'on' : ''}" data-a="${a.id}" style="left:${aStart(a) * pps}px;width:${(aEnd(a) - aStart(a)) * pps}px;background:${catColor(a.cat)}">${esc(aLabel(a))} · ${a.people.length}人<i class="rz"></i></div>`).join('')}</div></div>`;
+    root.innerHTML = headerHTML() + `<div class="vb-main"><aside class="vb-roster">
+        <div class="ro-top"><span class="idlec"></span><button data-pick="idle">選他們</button><button data-pick="all">全選</button><button data-pick="none">清除</button></div>
+        <div class="ro-list">${S.members.map(m => `<label class="ro ${S.sel.has(m.id) ? 'sel' : ''}"><input type="checkbox" data-m="${m.id}" ${S.sel.has(m.id) ? 'checked' : ''}><b>#${m.id}</b><i class="gr ${m.role === '上層' ? 'top' : 'base'}">${m.role === '上層' ? '上' : '底'}</i><span class="st" data-st="${m.id}"></span></label>`).join('')}</div>
+      </aside><div class="vb-field"></div></div>
+      <div class="tl vb-tl" data-keep="tl"><div class="tl-in" style="width:${CW}px">
+        <div class="row hd1"><div class="lab">段 <button data-act="addseg">＋</button></div><div class="trk" style="width:${tw}px">${segBlocks(pps)}</div></div>
+        <div class="row hd2"><div class="lab">八拍 <button data-tz="-1">－</button><button data-tz="1">＋</button></div><div class="trk ruler" style="width:${tw}px">${rulerTicks(pps)}</div></div>
+        <div class="row film"><div class="lab">站位 <button data-act="addform">＋在播放頭</button></div><div class="trk" style="width:${tw}px">${formsSorted().map(({ f, t }, i) => `<div class="th" data-th="${f.id}" style="left:${t * pps - 42}px" title="站位 ${i + 1}：${fmtPos(f.pos)}">${miniField(f.xy)}<span>${i + 1}</span>${i ? `<button data-delf="${f.id}">✕</button>` : ''}</div>`).join('')}</div></div>
+        ${lanes}<div class="ph"></div></div></div>
+      ${S.selAction ? '<div class="vb-drawer"></div>' : ''}`;
+    bindHeader(root);
+    this.field = createField($('.vb-field', root), {
+      autoInsert: false, canEdit: () => !!formAtT(S.t), lockMsg: '現在在兩張站位中間。先點下面一張站位，或按「＋在播放頭」。', hollowIdle: false, lasso: false,
+      paths: () => !!formAtT(S.t),
+      banner: () => { const f = formAtT(S.t); return f ? `✏️ 正在改：<b>站位 ${formIdx(f)}</b>（${fmtPos(f.pos)}）。黃虛線＝走到下一張站位的路線。` : '🔒 現在在兩張站位中間（大家在走位）。要改位置：點下面一張站位，或按「＋在播放頭」。'; },
+    });
+    const sc = $('.tl', root); bindTimeline(root, sc, pps);
+    sc.addEventListener('click', e => {
+      const df = e.target.closest('[data-delf]'); if (df) { deleteForm(S.forms.find(f => f.id === df.dataset.delf)); return; }
+      const th = e.target.closest('[data-th]'); if (th) { const f = S.forms.find(f => f.id === th.dataset.th); S.selForm = f.id; S.selAction = null; seek(posSec(f.pos)); return; }
+      const tz = e.target.closest('[data-tz]'); if (tz) { this.pps = clamp(this.pps * (tz.dataset.tz > 0 ? 1.4 : 1 / 1.4), 4, 80); rerender(); return; }
+      const ac = e.target.closest('[data-act]')?.dataset.act;
+      if (ac === 'addform') { insertForm(); S.selAction = null; rerender(); }
+      if (ac === 'newact') newActionFromSel();
+      if (ac === 'addseg') VA.segMenu();
+    });
+    const ro = $('.vb-roster', root);
+    ro.addEventListener('change', e => { const id = +e.target.dataset.m; if (id) { e.target.checked ? S.sel.add(id) : S.sel.delete(id); rerender(); } });
+    ro.addEventListener('click', e => { const p = e.target.closest('[data-pick]'); if (p) pick(p.dataset.pick, this); });
+    const dr = $('.vb-drawer', root);
+    if (dr) {
+      const a = S.actions.find(x => x.id === S.selAction), others = S.actions.filter(b => b !== a).sort((x, y) => aStart(x) - aStart(y));
+      dr.append(h(`<div style="text-align:right"><button data-close>關閉 ✕</button></div>`));
+      dr.append(actionFormEl(a, `<div class="copy"><span>從別的動作複製人（連角色一起）：</span><select data-copy><option value="">選一個動作…</option>${others.map(b => `<option value="${b.id}">${fmtPos({ seg: b.seg, at: b.start })}　${esc(aLabel(b))}（${b.people.length}人）</option>`).join('')}</select>
+        <button data-addchk ${S.sel.size ? '' : 'disabled'}>＋加入左邊勾選的 ${S.sel.size} 人</button></div>`));
+      dr.addEventListener('click', e => {
+        if (e.target.closest('[data-close]')) { S.selAction = null; rerender(); }
+        if (e.target.closest('[data-addchk]')) tryChange(a, () => S.sel.forEach(m => { if (!a.people.some(p => p.m === m)) a.people.push({ m, role: null }); }));
+      });
+      dr.addEventListener('change', e => { if (e.target.dataset.copy !== undefined && e.target.value) { const b = S.actions.find(x => x.id === e.target.value); tryChange(a, () => b.people.forEach(p => { if (!a.people.some(q => q.m === p.m)) a.people.push({ ...p }); })); } });
+    }
+    restoreScroll(root); this.root = root; this.tick();
+  },
+  tick() {
+    const r = this.root; if (!r) return;
+    tickHeader(r); this.field.draw();
+    const x = LW + S.t * this.pps; $('.ph', r).style.left = x + 'px'; follow($('.tl', r), x);
+    let idle = 0;
+    r.querySelectorAll('[data-st]').forEach(el => { const id = +el.dataset.st, a = actionOf(id, S.t); if (!a) idle++; el.classList.toggle('idle', !a); el.textContent = a ? `${aLabel(a)}${roleAt(id, S.t) ? '（' + roleAt(id, S.t) + '）' : ''}` : '沒在動作裡'; });
+    $('.idlec', r).textContent = `這一拍沒在動作裡：${idle} 人`;
+    const cf = formAtT(S.t); r.querySelectorAll('[data-th]').forEach(t => t.classList.toggle('on', cf?.id === t.dataset.th));
+  },
+};
+
+/* ============ 版面 C：八拍表 ============ */
+const VC = {
+  key: 'C', label: '八拍表（一行一個八拍）', cand: 0, candT: -1,
+  rowHTML(s, r0, span, ncell, valid, label) {
+    const cw = span / ncell;
+    const pcs = S.actions.filter(a => a.seg === s.id && a.start < r0 + span - 1e-9 && a.start + a.len > r0 + 1e-9).sort((a, b) => a.start - b.start);
+    const ends = [], ln = {}; for (const a of pcs) { let i = ends.findIndex(e => e <= a.start + 1e-9); if (i < 0) { i = ends.length; ends.push(0); } ends[i] = a.start + a.len; ln[a.id] = i; }
+    const fs = S.forms.filter(f => f.pos.seg === s.id && f.pos.at >= r0 - 1e-9 && f.pos.at < r0 + span - 1e-9);
+    const idle = idleAt(posSec({ seg: s.id, at: r0 })).map(m => m.id);
+    let cells = '';
+    for (let i = 0; i < ncell; i++) { const at = +(r0 + i * cw).toFixed(3), dis = at >= valid - 1e-9; const whole = isMusic(s) ? at % 1 === 0 : at % 1 === 0; cells += `<div class="cell ${dis ? 'dis' : ''} ${whole ? 'beat' : ''}" ${dis ? '' : `data-cs="${s.id}" data-at="${at}"`} style="left:${i / ncell * 100}%;width:${100 / ncell}%">${whole && !dis ? `<i>${isMusic(s) ? (at % 8) + 1 : at + 's'}</i>` : ''}</div>`; }
+    const pieces = pcs.map(a => { const from = Math.max(a.start, r0), to = Math.min(a.start + a.len, r0 + span); return `<div class="pc ${S.selAction === a.id ? 'on' : ''}" data-a="${a.id}" style="left:${(from - r0) / span * 100}%;width:calc(${(to - from) / span * 100}% - 2px);top:${16 + ln[a.id] * 17}px;background:${catColor(a.cat)}" title="${esc(aLabel(a))}">${a.start < r0 ? '… ' : ''}${esc(aLabel(a))} <small>${a.people.length}人</small></div>`; }).join('');
+    const dias = fs.map(f => `<div class="fd" style="left:${(f.pos.at - r0) / span * 100}%">◆${formIdx(f)}</div>`).join('');
+    return `<div class="srow" data-row="${s.id}:${r0}" data-span="${span}"><div class="c8">${label}</div><div class="cells" style="height:${20 + Math.max(ends.length, 1) * 17}px">${cells}${pieces}${dias}<div class="now"></div></div><div class="idle" title="${idle.map(i => '#' + i).join(' ')}">${!idle.length ? '' : idle.length > 6 ? `閒 ${idle.length} 人` : '閒 ' + idle.map(i => '#' + i).join(' ')}</div></div>`;
+  },
+  sheetHTML() {
+    let o = '';
+    for (const s of S.segs) {
+      o += `<div class="sg-h ${s.type}">${esc(segName(s))}　${isMusic(s) ? `${s.bpm} BPM · 第一拍 ${s.firstBeat.toFixed(2)}s · ${s.counts8} 個八拍` : `${s.dur.toFixed(1)} 秒（只計秒）`} <button data-segset="${s.id}">設定</button></div>`;
+      if (isMusic(s)) for (let c = 0; c < s.counts8; c++) o += this.rowHTML(s, c * 8, 8, 16, c === s.counts8 - 1 ? c * 8 + s.lastBeats : c * 8 + 8, c + 1);
+      else for (let r0 = 0; r0 < s.dur - 1e-9; r0 += 5) o += this.rowHTML(s, r0, 5, 10, s.dur, `${r0}s`);
+    }
+    return o + `<div class="addseg"><button data-add="music">＋音樂段</button><button data-add="chant">＋口號段</button></div>`;
+  },
+  render() {
+    const root = freshRoot('vc');
+    root.innerHTML = headerHTML() + `<div class="vc-top"><div class="vc-field"></div><aside class="vc-forms"><b>站位</b>${formsSorted().map(({ f }, i) => `<div class="fc" data-fc="${f.id}">${miniField(f.xy)}<b>站位 ${i + 1}</b><span class="muted">${fmtPos(f.pos)}</span>${i ? `<button data-delf="${f.id}">✕</button>` : ''}</div>`).join('')}</aside></div>
+      <div class="vc-bot"><div class="vc-tool">
+        <b class="cur"></b><span class="sep"></span>
+        <button data-act="addform">在這拍插站位</button><button data-act="delform">刪掉這拍的站位</button><span class="sep"></span>
+        已選 <b>${S.sel.size}</b> 人 <button data-pick="prev">上一個動作的人</button><button data-pick="all">全隊</button><button data-pick="none">清除</button>
+        <button class="primary" data-act="newact" ${S.sel.size ? '' : 'disabled'}>從這拍新增動作</button><span class="muted">在場上拖一個框來選人</span>
+      </div><div class="vc-sheet" data-keep="sheet">${this.sheetHTML()}</div><aside class="vc-edit"></aside></div>`;
+    bindHeader(root);
+    this.field = createField($('.vc-field', root), { autoInsert: true, canEdit: () => true, hollowIdle: true, lasso: true, legend: '空心點＝這一拍沒在動作裡　拖空白處＝框選（按 Alt 拖＝移動畫面）' });
+    const ed = $('.vc-edit', root), a = S.actions.find(x => x.id === S.selAction);
+    if (a) ed.append(actionFormEl(a, S.sel.size ? `<button data-x="addsel" style="margin-top:4px">＋把已選的 ${S.sel.size} 人加進來</button>` : ''));
+    else ed.innerHTML = `<div class="muted"><p>點表上的格子＝把播放頭移到那一拍。</p><p>點色條＝改那個動作。一個動作跨好幾行時，後面幾行開頭有「…」。</p><p>右邊「閒」＝那個八拍第一拍沒在動作裡的人。</p><p>◆＝站位。播放頭不在站位上時拖人，會自動插一張。</p></div>`;
+    ed.addEventListener('click', e => { if (e.target.closest('[data-x=addsel]')) tryChange(a, () => S.sel.forEach(m => { if (!a.people.some(p => p.m === m)) a.people.push({ m, role: null }); })); });
+    root.addEventListener('click', e => {
+      const t = e.target;
+      const pc = t.closest('[data-a]'); if (pc && !t.closest('.vc-edit')) { S.selAction = pc.dataset.a; S.selForm = null; rerender(); return; }
+      const cell = t.closest('[data-cs]'); if (cell) { seek(posSec({ seg: cell.dataset.cs, at: +cell.dataset.at })); return; }
+      const df = t.closest('[data-delf]'); if (df) { deleteForm(S.forms.find(f => f.id === df.dataset.delf)); return; }
+      const fc = t.closest('[data-fc]'); if (fc) { S.selForm = fc.dataset.fc; seek(posSec(S.forms.find(f => f.id === fc.dataset.fc).pos)); return; }
+      const ss = t.closest('[data-segset]'); if (ss) { openSegDialog(seg(ss.dataset.segset)); return; }
+      const ad = t.closest('[data-add]'); if (ad && ad.closest('.addseg')) { addSeg(ad.dataset.add); return; }
+      const pk = t.closest('[data-pick]'); if (pk) { pick(pk.dataset.pick, this); return; }
+      const act = t.closest('[data-act]')?.dataset.act;
+      if (act === 'addform') { insertForm(); rerender(); }
+      if (act === 'delform') { const f = formAtT(S.t); if (f) deleteForm(f); }
+      if (act === 'newact') newActionFromSel();
+    });
+    restoreScroll(root); this.root = root; this.tick();
+  },
+  tick() {
+    const r = this.root; if (!r) return;
+    tickHeader(r); this.field.draw();
+    const p = secPos(S.t, true), s = seg(p.seg), span = isMusic(s) ? 8 : 5, r0 = Math.floor(p.at / span + 1e-9) * span;
+    r.querySelectorAll('.now').forEach(n => n.style.display = 'none');
+    const row = r.querySelector(`[data-row="${p.seg}:${r0}"]`);
+    if (row) { const n = $('.now', row); n.style.display = 'block'; n.style.left = ((S.t - posSec({ seg: p.seg, at: r0 })) / unit(s) / span * 100) + '%'; if (S.playing) row.scrollIntoView({ block: 'nearest' }); }
+    const f = formAtT(S.t);
+    $('.cur', r).textContent = `播放頭：${fmtPos(p)}${f ? `（站位 ${formIdx(f)}）` : ''}`;
+    $('[data-act=delform]', r).disabled = !f || isFirst(f);
+    r.querySelectorAll('[data-fc]').forEach(c => c.classList.toggle('on', f?.id === c.dataset.fc));
+  },
+};
+
+/* ============ 切換器 ============ */
+const VARS = [VA, VB, VC];
+let V = VARS.find(v => v.key === new URLSearchParams(location.search).get('variant')) || VA;
+function rerender() { V.render(); $('#switcher .vl').textContent = `${V.key}（${V.label}）`; }
+function switchVar(d) {
+  V = VARS[(VARS.indexOf(V) + d + VARS.length) % VARS.length];
+  const u = new URL(location.href); u.searchParams.set('variant', V.key); history.replaceState(null, '', u);
+  rerender();
+}
+$('#switcher').addEventListener('click', e => { const d = e.target.dataset.sw; if (d) switchVar(+d); });
+addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea,select,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') switchVar(-1);
+  else if (e.key === 'ArrowRight') switchVar(1);
+  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'Escape') { if ($('.ov')) closeModal(); else { S.sel.clear(); S.selAction = null; S.selForm = null; rerender(); } }
+  else if (e.key === 'Delete' || e.key === 'Backspace') {
+    const a = S.actions.find(x => x.id === S.selAction), f = S.forms.find(x => x.id === S.selForm);
+    if (a) deleteAction(a); else if (f) deleteForm(f);
+  }
+});
+addEventListener('resize', () => V.tick());
+rerender();
+</script>
+</body>
+</html>
