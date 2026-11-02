@@ -3,7 +3,7 @@
 
 export type { CommandResult, ConfirmOption } from './result';
 
-export { createFlow } from './flow';
+export { createFlow, renameFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
 export { readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';

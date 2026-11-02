@@ -49,6 +49,18 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
 		expect(screen.queryByText(/口號段共/)).toBeNull();
 	});
+
+	it('流程設定可以改流程名字；空白會被擋，欄位還原', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
+		await fireEvent.change(name, { target: { value: ' 臺灣盃 ' } });
+		expect(document.querySelector('.topbar b')?.textContent).toBe('臺灣盃');
+		await fireEvent.change(name, { target: { value: ' ' } });
+		expect(screen.getByRole('alert').textContent).toContain('請幫流程取名字');
+		expect(name.value).toBe('臺灣盃');
+		expect(document.querySelector('.topbar b')?.textContent).toBe('臺灣盃');
+	});
 });
 
 describe('動作', () => {

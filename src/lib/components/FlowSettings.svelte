@@ -1,6 +1,6 @@
 <script lang="ts">
-	// 流程設定：規則警告的開關和三個數字。被擋就顯示流程核心給的原因。
-	import { updateTimeRules, type Flow, type TimeRules } from '#lib/core';
+	// 流程設定：流程名字、規則警告的開關和三個數字。被擋就顯示流程核心給的原因。
+	import { renameFlow, updateTimeRules, type CommandResult, type Flow, type TimeRules } from '#lib/core';
 
 	interface Props {
 		flow: Flow;
@@ -11,14 +11,23 @@
 	let { flow, onchange, onclose }: Props = $props();
 	let error = $state('');
 
-	function update(patch: Partial<TimeRules>) {
-		const r = updateTimeRules(flow, patch);
+	function apply(r: CommandResult): boolean {
 		if (r.kind === 'ok') {
 			error = '';
 			onchange(r.flow);
-		} else {
-			error = r.message;
+			return true;
 		}
+		error = r.message;
+		return false;
+	}
+
+	function update(patch: Partial<TimeRules>) {
+		apply(updateTimeRules(flow, patch));
+	}
+
+	function rename(input: HTMLInputElement) {
+		// 被擋下時把輸入框還原成原本的名字。
+		if (!apply(renameFlow(flow, input.value))) input.value = flow.name;
 	}
 
 	const num = (e: Event) => (e.currentTarget as HTMLInputElement).valueAsNumber;
@@ -35,6 +44,10 @@
 			<b>流程設定</b>
 			<button type="button" onclick={onclose}>關閉</button>
 		</header>
+		<label>
+			流程名字
+			<input value={flow.name} onchange={(e) => rename(e.currentTarget)} />
+		</label>
 		<label>
 			<input
 				type="checkbox"

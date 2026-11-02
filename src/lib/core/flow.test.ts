@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFlow } from './index';
+import { createFlow, renameFlow, type Flow } from './index';
 
 describe('建立流程', () => {
 	it('有名字和場地就建好一支流程', () => {
@@ -36,5 +36,23 @@ describe('建立流程', () => {
 		});
 		const r = createFlow({ name: ' 臺灣盃 ', field });
 		expect(r.kind === 'ok' && r.flow.name).toBe('臺灣盃');
+	});
+});
+
+describe('改流程名字', () => {
+	function flow(): Flow {
+		const r = createFlow({ name: '舊名字', field: { strips: 9, layout: 'vertical' } });
+		if (r.kind !== 'ok') throw new Error(r.message);
+		return r.flow;
+	}
+
+	it('改成新名字，前後空白去掉；其他都不變', () => {
+		const before = flow();
+		const r = renameFlow(before, ' 2027 全國賽 ');
+		expect(r).toEqual({ kind: 'ok', flow: { ...before, name: '2027 全國賽' } });
+	});
+
+	it('空白名字擋下', () => {
+		expect(renameFlow(flow(), '  ')).toEqual({ kind: 'blocked', message: '請幫流程取名字' });
 	});
 });

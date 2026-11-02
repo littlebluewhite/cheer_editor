@@ -33,9 +33,11 @@ export interface NewFlowInput {
 	field: FieldConfig;
 }
 
+const NO_NAME = '請幫流程取名字';
+
 export function createFlow(input: NewFlowInput): CommandResult {
 	const name = input.name.trim();
-	if (!name) return blocked('請幫流程取名字');
+	if (!name) return blocked(NO_NAME);
 	const { strips } = input.field;
 	if (!Number.isInteger(strips) || strips < MIN_STRIPS || strips > MAX_STRIPS) {
 		return blocked(`條數要是 ${MIN_STRIPS}–${MAX_STRIPS} 的整數`);
@@ -51,4 +53,11 @@ export function createFlow(input: NewFlowInput): CommandResult {
 		customRoles: [],
 		actions: []
 	});
+}
+
+/** 流程設定：改流程名字。存檔的檔名跟著變。 */
+export function renameFlow(flow: Flow, name: string): CommandResult {
+	const trimmed = name.trim();
+	if (!trimmed) return blocked(NO_NAME);
+	return ok({ ...flow, name: trimmed });
 }
