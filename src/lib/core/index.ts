@@ -7,7 +7,7 @@ export { createFlow, memberName, renameFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
 export { readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
-export type { AudioBytes, ReadFlowFileResult } from './flow-file';
+export type { AudioBytes, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
 
 export {
 	GENDERS,

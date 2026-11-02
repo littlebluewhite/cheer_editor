@@ -15,9 +15,9 @@ import {
 	updateTimeRules,
 	writeFlowFile,
 	type CommandResult,
-	type Flow
+	type Flow,
+	type FlowDocument
 } from './index';
-import type { FlowDocument } from './flow-file';
 
 function flowOf(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);

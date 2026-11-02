@@ -49,7 +49,7 @@ audio/a2.m4a
 
 ```json
 "timeRules": { "on": true, "minChantSec": 30, "maxMusicSec": 120, "maxTotalSec": 180 },
-"customRoles": [{ "id": "r1", "name": "飛人", "meaning": "…" }],
+"customRoles": [{ "id": "r1", "name": "旗手", "meaning": "拿隊旗跑場的人" }],
 "actions": [{ "id": "x1", "segmentId": "s1", "category": "stunt", "name": "Lib", "start": 16, "length": 16,
               "note": "", "members": [{ "memberId": "m1", "role": "上層" }] }]
 ```

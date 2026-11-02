@@ -41,7 +41,7 @@ export function fieldPositionText(field: FieldConfig, [x, y]: Position): string 
 		u: (x - mat.x) / CELL_M,
 		n: cols,
 		start: '左起',
-		endLine: '右邊線上',
+		endLine: '場地右緣',
 		near: '左邊',
 		far: '右邊'
 	};
@@ -49,7 +49,7 @@ export function fieldPositionText(field: FieldConfig, [x, y]: Position): string 
 		u: (mat.y + mat.height - y) / CELL_M,
 		n: rows,
 		start: '前起',
-		endLine: '後邊線上',
+		endLine: '場地後緣',
 		near: '前面',
 		far: '後面'
 	};

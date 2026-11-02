@@ -76,8 +76,8 @@ describe('位置文字', () => {
 		expect(fieldPositionText(nine, [-4.3434, 3.8862])).toBe('第 3 條 左起 1/8｜前起第 2 格 3/8');
 	});
 
-	it('墊子右邊和後面的邊線', () => {
-		expect(fieldPositionText(nine, [8.2296, -6.4008])).toBe('第 9 條 右邊線上｜前起第 7 格 後邊線上');
+	it('墊子右邊和後面的邊上（不叫「邊線」：那是接縫的 Avoid 詞）', () => {
+		expect(fieldPositionText(nine, [8.2296, -6.4008])).toBe('第 9 條 場地右緣｜前起第 7 格 場地後緣');
 	});
 
 	it('墊子外寫在哪一邊外面幾格', () => {
