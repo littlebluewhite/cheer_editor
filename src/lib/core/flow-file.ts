@@ -7,7 +7,7 @@ import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -23,9 +23,11 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
 
 /**
  * 升級鏈：key 是「從第幾版升上來」。開舊版檔時一步一步升到 FORMAT_VERSION。
- * 現在只有第 1 版，所以是空的；格式改成第 2 版時加 `1: (doc) => ({ formatVersion: 2, flow: … })`。
+ * 第 2 版：站位多了可有可無的 walks（出發和到達），沒有就是全部用預設，所以資料不用動。
  */
-const UPGRADES: Record<number, Upgrade> = {};
+const UPGRADES: Record<number, Upgrade> = {
+	1: (doc) => ({ formatVersion: 2, flow: doc.flow })
+};
 
 /** 音樂檔的位元組，用 flow.audio 的 id 對應。 */
 export type AudioBytes = Record<string, Uint8Array>;
@@ -51,7 +53,7 @@ export function writeFlowFile(flow: Flow, audio: AudioBytes): Uint8Array {
 
 /**
  * 流程檔（zip 位元組）→ 流程 ＋ 音樂資料。舊版自動升級，比編輯器新的不打開。
- * upgrades 只有測試會換（現在沒有舊版可以升）。
+ * upgrades 只有測試會換。
  */
 export function readFlowFile(
 	bytes: Uint8Array,
@@ -97,6 +99,10 @@ const listOf = (c: Check): Check => (v) => Array.isArray(v) && v.every(c);
 const shape = (fields: Record<string, Check>): Check => (v) =>
 	isObject(v) && Object.entries(fields).every(([k, c]) => c(v[k]));
 const position: Check = (v) => Array.isArray(v) && v.length === 2 && v.every(num);
+const timePosition = shape({ segmentId: str, at: (v) => int(v) && (v as number) >= 0 });
+const walks: Check = (v) =>
+	v === undefined ||
+	(isObject(v) && Object.values(v).every(shape({ depart: timePosition, arrive: timePosition })));
 
 const flowShape = shape({
 	name: str,
@@ -121,7 +127,8 @@ const flowShape = shape({
 			id: str,
 			segmentId: nullOr(str),
 			at: int,
-			pos: (v) => isObject(v) && Object.values(v).every(position)
+			pos: (v) => isObject(v) && Object.values(v).every(position),
+			walks
 		})
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
@@ -139,7 +146,7 @@ const flowShape = shape({
 	)
 });
 
-/** 每個欄位的型別都對、指到的段／音樂檔／隊員都在，而且有開頭那張站位。 */
+/** 每個欄位的型別都對、指到的段／音樂檔／隊員都在，而且有開頭那張站位（它沒有走位）。 */
 function isFlow(v: unknown): v is Flow {
 	if (!flowShape(v)) return false;
 	const flow = v as Flow;
@@ -150,6 +157,13 @@ function isFlow(v: unknown): v is Flow {
 		flow.formations.length > 0 &&
 		flow.segments.every((s) => s.kind !== 'music' || s.audioId === null || audioIds.has(s.audioId)) &&
 		flow.formations.every((f) => f.segmentId === null || segmentIds.has(f.segmentId)) &&
+		flow.formations[0].walks === undefined &&
+		flow.formations.every((f) =>
+			Object.entries(f.walks ?? {}).every(
+				([id, w]) =>
+					memberIds.has(id) && segmentIds.has(w.depart.segmentId) && segmentIds.has(w.arrive.segmentId)
+			)
+		) &&
 		flow.actions.every(
 			(a) => segmentIds.has(a.segmentId) && a.members.every((m) => memberIds.has(m.memberId))
 		)
