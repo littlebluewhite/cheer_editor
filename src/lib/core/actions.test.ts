@@ -1,0 +1,251 @@
+import { describe, expect, it } from 'vitest';
+import {
+	actionSeconds,
+	actionSlotAt,
+	addAction,
+	addMembers,
+	deleteAction,
+	idleAt,
+	memberActionAt,
+	raisedAt,
+	updateAction,
+	addSegment,
+	createFlow,
+	updateSegment,
+	type CommandResult,
+	type Flow,
+	type NewActionInput
+} from './index';
+
+function flowOf(r: CommandResult): Flow {
+	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
+	return r.flow;
+}
+
+/** 音樂 1（150 BPM、2 個八拍 = 32 個半拍）→ 口號 1（10 秒 = 100 個 0.1 秒）；隊員 m1–m3。 */
+function sample(): Flow {
+	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
+	flow = flowOf(
+		addMembers(flow, [
+			{ name: '小A', gender: 'F', globalRole: 'top' },
+			{ name: '小B', gender: 'M', globalRole: 'base' },
+			{ name: '小C', gender: 'M', globalRole: 'base' }
+		])
+	);
+	flow = flowOf(addSegment(flow, 'music'));
+	flow = flowOf(updateSegment(flow, 's1', { eights: 2, lastBeats: 8 }));
+	flow = flowOf(addSegment(flow, 'chant'));
+	flow = flowOf(updateSegment(flow, 's2', { seconds: 10 }));
+	return flow;
+}
+
+const lib = (overrides: Partial<NewActionInput> = {}): NewActionInput => ({
+	segmentId: 's1',
+	category: 'stunt',
+	name: 'Lib',
+	start: 0,
+	length: 16,
+	note: '',
+	members: [
+		{ memberId: 'm1', role: '上層' },
+		{ memberId: 'm2', role: '主底' }
+	],
+	...overrides
+});
+
+describe('新增動作', () => {
+	it('動作存段 ＋ 段內整數時間、大類、名稱、備註和每人的任務角色', () => {
+		const flow = flowOf(addAction(sample(), lib({ name: ' Lib ', start: 3, note: '注意手' })));
+		expect(flow.actions).toEqual([
+			{
+				id: 'x1',
+				segmentId: 's1',
+				category: 'stunt',
+				name: 'Lib',
+				start: 3,
+				length: 16,
+				note: '注意手',
+				members: [
+					{ memberId: 'm1', role: '上層' },
+					{ memberId: 'm2', role: '主底' }
+				]
+			}
+		]);
+	});
+
+	it('動作不能跨段：超出段尾就擋下，剛好到段尾可以', () => {
+		const flow = sample();
+		expect(addAction(flow, lib({ start: 20, length: 13 }))).toEqual({
+			kind: 'blocked',
+			message: '動作不能跨段，要跨就拆成兩個'
+		});
+		expect(addAction(flow, lib({ start: 20, length: 12 })).kind).toBe('ok');
+		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 6 })).kind).toBe('blocked');
+		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 5 })).kind).toBe('ok');
+	});
+
+	it('同一個隊員同一時間只能在一個動作裡，重疊就擋下', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 16 })));
+		const jump = (start: number, memberId: string) =>
+			lib({ category: 'jump', name: '跳', start, length: 4, members: [{ memberId, role: null }] });
+		expect(addAction(flow, jump(14, 'm2'))).toEqual({
+			kind: 'blocked',
+			message: '小B 同一時間已經在「技巧·Lib」裡'
+		});
+		// 接在後面、或別人同一時間做別的動作，都可以
+		expect(addAction(flow, jump(16, 'm2')).kind).toBe('ok');
+		expect(addAction(flow, jump(14, 'm3')).kind).toBe('ok');
+		// 不同段的同一個段內時間不算重疊
+		expect(addAction(flow, lib({ segmentId: 's2', start: 0, length: 10 })).kind).toBe('ok');
+	});
+
+	it.each([
+		['沒有人', lib({ members: [] }), '一個動作至少要有 1 個人'],
+		['同一個人放兩次', lib({ members: [{ memberId: 'm1', role: null }, { memberId: 'm1', role: '上層' }] }), '同一個人只能放一次'],
+		['不在名單上的人', lib({ members: [{ memberId: 'm9', role: null }] }), '找不到這個隊員'],
+		['不存在的任務角色', lib({ members: [{ memberId: 'm1', role: '飛人' }] }), '沒有「飛人」這個任務角色'],
+		['不存在的段', lib({ segmentId: 's9' }), '找不到這一段'],
+		['長度 0', lib({ length: 0 }), '動作長度至少要半拍'],
+		['開始在段之前', lib({ start: -1 }), '開始時間不能在段之前'],
+		['不在半拍上的時間', lib({ start: 1.5 }), '音樂段的時間要落在半拍上'],
+		['大類不在 7 個裡面', lib({ category: 'chant' as never }), '請選大類']
+	])('%s就擋下', (_, input, message) => {
+		expect(addAction(sample(), input)).toEqual({ kind: 'blocked', message });
+	});
+
+	it('口號段的長度單位是 0.1 秒，太短的提示寫 0.1 秒', () => {
+		expect(addAction(sample(), lib({ segmentId: 's2', length: 0 }))).toEqual({
+			kind: 'blocked',
+			message: '動作長度至少要 0.1 秒'
+		});
+	});
+
+	it('全局角色和任務角色互不影響：全局底層的人可以當上層，全局上層的人可以當底層', () => {
+		const r = addAction(
+			sample(),
+			lib({
+				members: [
+					{ memberId: 'm1', role: '底層' },
+					{ memberId: 'm2', role: '上層' },
+					{ memberId: 'm3', role: '中層' }
+				]
+			})
+		);
+		expect(r.kind).toBe('ok');
+	});
+});
+
+describe('某一刻誰在做什麼、誰閒著', () => {
+	/** 音樂 1 一個半拍 0.2 秒：Lib（小A 上層、小B 主底）在 0–3.2 秒；口號 1 從 6.4 秒開始，小C 騰翻在 7.4–8.4 秒。 */
+	function busy(): Flow {
+		let flow = flowOf(addAction(sample(), lib()));
+		flow = flowOf(
+			addAction(
+				flow,
+				lib({
+					segmentId: 's2',
+					category: 'tumbling',
+					name: '',
+					start: 10,
+					length: 10,
+					members: [{ memberId: 'm3', role: null }]
+				})
+			)
+		);
+		return flow;
+	}
+
+	it('動作的開始和結束秒數', () => {
+		const [libAction, tumble] = busy().actions;
+		expect(actionSeconds(busy(), libAction)).toEqual({ startSec: 0, endSec: 3.2 });
+		const s = actionSeconds(busy(), tumble);
+		expect(s.startSec).toBeCloseTo(7.4, 9);
+		expect(s.endSec).toBeCloseTo(8.4, 9);
+	});
+
+	it('某個人在某一刻的動作和任務角色；動作結束那一刻就不算了', () => {
+		const flow = busy();
+		expect(memberActionAt(flow, 'm1', 1)).toMatchObject({ action: { id: 'x1' }, role: '上層' });
+		expect(memberActionAt(flow, 'm3', 7.4)).toMatchObject({ action: { id: 'x2' }, role: null });
+		expect(memberActionAt(flow, 'm1', 3.2)).toBeNull();
+		expect(memberActionAt(flow, 'm3', 1)).toBeNull();
+	});
+
+	it('某一刻誰閒著（照名單順序）', () => {
+		const flow = busy();
+		expect(idleAt(flow, 0)).toEqual(['m3']);
+		expect(idleAt(flow, 3.19)).toEqual(['m3']);
+		expect(idleAt(flow, 3.2)).toEqual(['m1', 'm2', 'm3']);
+		expect(idleAt(flow, 8)).toEqual(['m1', 'm2']);
+	});
+
+	it('沒有段時大家都閒著', () => {
+		let flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addMembers(flow, [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+		expect(idleAt(flow, 0)).toEqual(['m1']);
+	});
+
+	it('某一刻任務角色是上層或中層的人（畫在最上面），跟全局角色無關', () => {
+		let flow = sample();
+		flow = flowOf(
+			addAction(
+				flow,
+				lib({
+					category: 'pyramid',
+					members: [
+						{ memberId: 'm1', role: '底層' },
+						{ memberId: 'm2', role: '中層' },
+						{ memberId: 'm3', role: '上層' }
+					]
+				})
+			)
+		);
+		expect(raisedAt(flow, 1)).toEqual(['m2', 'm3']);
+		expect(raisedAt(flow, 4)).toEqual([]);
+	});
+});
+
+describe('新動作預設的時間', () => {
+	it('從播放頭那一格開始，音樂段一個八拍、口號段 3 秒，不超出段尾', () => {
+		const flow = sample();
+		expect(actionSlotAt(flow, 1)).toEqual({ segmentId: 's1', start: 5, length: 16 });
+		expect(actionSlotAt(flow, 6)).toEqual({ segmentId: 's1', start: 30, length: 2 });
+		expect(actionSlotAt(flow, 6.4)).toEqual({ segmentId: 's2', start: 0, length: 30 });
+	});
+
+	it('沒有段時是 null', () => {
+		const flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
+		expect(actionSlotAt(flow, 0)).toBeNull();
+	});
+});
+
+describe('改動作、刪動作', () => {
+	it('改動作照新增的規則檢查：改到跟別的動作重疊就擋下', () => {
+		let flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
+		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 8, length: 8 })));
+		expect(updateAction(flow, 'x2', { start: 6 })).toEqual({
+			kind: 'blocked',
+			message: '小A 同一時間已經在「技巧·Lib」裡'
+		});
+		const moved = flowOf(updateAction(flow, 'x2', { start: 10, note: '慢一點' }));
+		expect(moved.actions[1]).toMatchObject({ id: 'x2', start: 10, length: 8, note: '慢一點' });
+		// 自己跟自己不算重疊
+		expect(updateAction(moved, 'x2', { length: 6 }).kind).toBe('ok');
+	});
+
+	it('改人和任務角色；改到沒人就擋下', () => {
+		const flow = flowOf(addAction(sample(), lib()));
+		const r = flowOf(updateAction(flow, 'x1', { members: [{ memberId: 'm3', role: '騰翻' }] }));
+		expect(r.actions[0].members).toEqual([{ memberId: 'm3', role: '騰翻' }]);
+		expect(updateAction(flow, 'x1', { members: [] })).toEqual({
+			kind: 'blocked',
+			message: '一個動作至少要有 1 個人'
+		});
+	});
+
+	it('刪掉動作', () => {
+		const flow = flowOf(addAction(sample(), lib()));
+		expect(flowOf(deleteAction(flow, 'x1')).actions).toEqual([]);
+		expect(deleteAction(flow, 'x9')).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+	});
+});

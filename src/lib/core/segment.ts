@@ -39,7 +39,7 @@ export const MAX_BPM = 170;
 export const DEFAULT_BPM = 150;
 export const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'wav'] as const;
 
-function nextId(prefix: string, ids: string[]): string {
+export function nextId(prefix: string, ids: string[]): string {
 	let n = 0;
 	for (const id of ids) {
 		const m = id.startsWith(prefix) ? Number(id.slice(prefix.length)) : Number.NaN;

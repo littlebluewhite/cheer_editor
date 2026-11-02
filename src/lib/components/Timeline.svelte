@@ -1,7 +1,8 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）和八拍尺（點或拖＝移動播放頭）。
-	// 泳道、站位縮圖列由之後的票加在八拍尺下面。
+	// 八拍尺下面是一人一條的泳道（Lanes）；站位縮圖列由之後的票加在八拍尺和泳道之間。
 	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
+	import Lanes from './Lanes.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -12,9 +13,20 @@
 		onseek: (sec: number) => void;
 		onaddsegment: (kind: SegmentKind) => void;
 		onopensegment: (segmentId: string) => void;
+		selectedActionId?: string | null;
+		onselectaction?: (actionId: string) => void;
 	}
 
-	let { flow, playheadSec, pxPerSec = 16, onseek, onaddsegment, onopensegment }: Props = $props();
+	let {
+		flow,
+		playheadSec,
+		pxPerSec = 16,
+		onseek,
+		onaddsegment,
+		onopensegment,
+		selectedActionId = null,
+		onselectaction = () => {}
+	}: Props = $props();
 
 	let menuOpen = $state(false);
 	const spans = $derived(segmentSpans(flow));
@@ -85,6 +97,7 @@
 				{/each}
 			</div>
 		</div>
+		<Lanes {flow} {playheadSec} {pxPerSec} {selectedActionId} {onselectaction} />
 		<div class="ph" style:left={`${120 + playheadSec * pxPerSec}px`}></div>
 	</div>
 </div>

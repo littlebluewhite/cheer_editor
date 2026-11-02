@@ -1,7 +1,9 @@
 <script lang="ts">
 	import {
 		addSegment,
+		deleteAction,
 		positionText,
+		raisedAt,
 		setPositions,
 		timeRuleWarnings,
 		totalSeconds,
@@ -10,6 +12,7 @@
 		type SegmentKind
 	} from '#lib/core';
 	import type { LoadedAudio } from '#lib/audio/decode.js';
+	import ActionForm from '#lib/components/ActionForm.svelte';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
@@ -25,6 +28,8 @@
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let notice = $state('');
+	/** 選到的動作（Delete 刪掉、Esc 清除）。 */
+	let selectedActionId = $state<string | null>(null);
 
 	/** 開頭那張站位；站位與走位的票會換成播放頭那張。 */
 	const formation = $derived(flow?.formations[0]);
@@ -46,7 +51,26 @@
 		if (r.kind === 'ok') flow = r.flow;
 		notice = r.kind === 'blocked' ? r.message : '';
 	}
+
+	/** Delete（Mac 的 delete 鍵是 Backspace）刪選到的動作；Esc 清除選取。在輸入框裡打字時不攔。 */
+	function onkeydown(e: KeyboardEvent) {
+		if (!flow) return;
+		if (e.key === 'Escape') {
+			selectedActionId = null;
+			return;
+		}
+		if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+		const t = e.target as HTMLElement | null;
+		if (t?.closest?.('input, textarea, select, [contenteditable]')) return;
+		if (!selectedActionId) return;
+		const r = deleteAction(flow, selectedActionId);
+		if (r.kind === 'ok') flow = r.flow;
+		selectedActionId = null;
+		e.preventDefault();
+	}
 </script>
+
+<svelte:window {onkeydown} />
 
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
@@ -68,10 +92,18 @@
 				field={flow.field}
 				members={flow.members}
 				positions={formation?.pos}
+				raised={raisedAt(flow, playheadSec)}
 				onmove={move}
 			/>
 		</main>
 		<aside class="inspector">
+			<ActionForm
+				{flow}
+				{playheadSec}
+				actionId={selectedActionId}
+				onchange={(f) => (flow = f)}
+				onselect={(id) => (selectedActionId = id)}
+			/>
 			<MemberPanel {flow} onchange={(f) => (flow = f)} />
 		</aside>
 		<div class="timeline-host">
@@ -81,6 +113,8 @@
 				onseek={(sec) => flow && seek(flow, sec)}
 				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
+				{selectedActionId}
+				onselectaction={(id) => (selectedActionId = id)}
 			/>
 		</div>
 	</div>

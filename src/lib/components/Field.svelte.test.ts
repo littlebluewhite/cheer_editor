@@ -25,6 +25,26 @@ describe('場地', () => {
 	});
 });
 
+describe('上層、中層畫在最上面', () => {
+	it('raised 裡的人最後畫（蓋在別人上面），有黃框和陰影的樣式', () => {
+		const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
+			id: `m${i + 1}`,
+			name,
+			gender: 'F',
+			globalRole: 'base'
+		}));
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			positions: { m1: [0, 0], m2: [0, 0], m3: [1, 0] },
+			raised: ['m1']
+		});
+		const dots = [...document.querySelectorAll<SVGGElement>('[data-member-id]')];
+		expect(dots.map((d) => d.dataset.memberId)).toEqual(['m2', 'm3', 'm1']);
+		expect(dots.map((d) => d.classList.contains('raised'))).toEqual([false, false, true]);
+	});
+});
+
 describe('在場上拖人', () => {
 	const members: Member[] = [{ id: 'm1', name: '小A', gender: 'F', globalRole: 'top' }];
 	/** 假的螢幕座標換算：1 px = 1 cm，原點對齊中心 X。 */

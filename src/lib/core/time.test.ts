@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	addSegment,
+	atText,
 	createFlow,
+	lengthText,
+	parseAt,
+	parseLength,
 	positionText,
 	rulerMarks,
 	segmentSpans,
@@ -129,5 +133,34 @@ describe('目前位置文字', () => {
 
 	it('沒有段時是空字串', () => {
 		expect(positionText(empty(), 0)).toBe('');
+	});
+});
+
+describe('段內時間的文字（動作表單）', () => {
+	const music = () => sample().segments[0];
+	const chant = () => sample().segments[1];
+
+	it('音樂段的時間點寫「第幾個八拍-第幾拍」，半拍加 &；口號段寫秒數', () => {
+		expect(atText(music(), 0)).toBe('1-1');
+		expect(atText(music(), 41)).toBe('3-5&');
+		expect(atText(chant(), 123)).toBe('12.3');
+	});
+
+	it('把教練打的時間點換回段內整數時間；看不懂是 null', () => {
+		expect(parseAt(music(), '3-5&')).toBe(41);
+		expect(parseAt(music(), ' 1-1 ')).toBe(0);
+		expect(parseAt(music(), '1-9')).toBeNull();
+		expect(parseAt(music(), 'abc')).toBeNull();
+		expect(parseAt(chant(), '12.3')).toBe(123);
+		expect(parseAt(chant(), '-1')).toBeNull();
+	});
+
+	it('長度：音樂段用拍（可以半拍），口號段用秒（到 0.1 秒）', () => {
+		expect(lengthText(music(), 16)).toBe('8');
+		expect(lengthText(music(), 9)).toBe('4.5');
+		expect(lengthText(chant(), 30)).toBe('3.0');
+		expect(parseLength(music(), '4.5')).toBe(9);
+		expect(parseLength(chant(), '2.5')).toBe(25);
+		expect(parseLength(chant(), '')).toBeNull();
 	});
 });

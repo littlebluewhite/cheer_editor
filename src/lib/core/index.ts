@@ -9,6 +9,23 @@ export type { Flow, NewFlowInput } from './flow';
 export { MAX_MEMBERS, addMembers, updateMember } from './members';
 export type { Gender, GlobalRole, Member, MemberChanges, NewMemberInput } from './members';
 
+export {
+	ACTION_CATEGORIES,
+	actionLabel,
+	actionSeconds,
+	actionSlotAt,
+	addAction,
+	deleteAction,
+	idleAt,
+	memberActionAt,
+	raisedAt,
+	updateAction
+} from './actions';
+export type { Action, ActionCategory, ActionMember, NewActionInput } from './actions';
+
+export { addCustomRole, roleGlossary } from './roles';
+export type { CustomRole, RoleEntry } from './roles';
+
 export { setPositions } from './formation';
 export type { Formation, Position } from './formation';
 
@@ -40,6 +57,10 @@ export type {
 } from './segment';
 
 export {
+	atText,
+	lengthText,
+	parseAt,
+	parseLength,
 	positionText,
 	rulerMarks,
 	segmentSpans,

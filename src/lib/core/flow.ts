@@ -1,10 +1,12 @@
 // 流程資料和建立流程的指令。
 // 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加段、動作等。
 
+import type { Action } from './actions';
 import { MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import type { Formation } from './formation';
 import type { Member } from './members';
 import { blocked, ok, type CommandResult } from './result';
+import type { CustomRole } from './roles';
 import type { AudioRef, Segment } from './segment';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
 
@@ -21,6 +23,9 @@ export interface Flow {
 	segments: Segment[];
 	/** 第一張是流程開頭那張，一定在、不能刪。 */
 	formations: Formation[];
+	/** 這支流程自己加的任務角色（固定的 11 個不存）。 */
+	customRoles: CustomRole[];
+	actions: Action[];
 }
 
 export interface NewFlowInput {
@@ -42,6 +47,8 @@ export function createFlow(input: NewFlowInput): CommandResult {
 		members: [],
 		audio: [],
 		segments: [],
-		formations: [{ id: 'f1', pos: {} }]
+		formations: [{ id: 'f1', pos: {} }],
+		customRoles: [],
+		actions: []
 	});
 }

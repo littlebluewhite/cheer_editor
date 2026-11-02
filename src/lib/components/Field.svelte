@@ -26,6 +26,7 @@
 		field,
 		members = [],
 		positions = {},
+		raised = [],
 		onmove,
 		toMeters = screenCtmToMeters
 	}: {
@@ -33,6 +34,8 @@
 		/** 照名單順序；點上寫的號碼是名單裡第幾個。 */
 		members?: Member[];
 		positions?: Record<string, Position>;
+		/** 這一刻任務角色是上層或中層的人：畫在最上面，黃框加陰影。 */
+		raised?: string[];
 		onmove?: (moves: Record<string, Position>) => void;
 		toMeters?: ToMeters;
 	} = $props();
@@ -72,10 +75,13 @@
 	} | null>(null);
 
 	const dots = $derived(
-		members.flatMap((m, i) => {
-			const p = drag?.id === m.id && drag.cur ? drag.cur : positions[m.id];
-			return p ? [{ m, number: i + 1, p }] : [];
-		})
+		members
+			.flatMap((m, i) => {
+				const p = drag?.id === m.id && drag.cur ? drag.cur : positions[m.id];
+				return p ? [{ m, number: i + 1, p, up: raised.includes(m.id) }] : [];
+			})
+			// SVG 後畫的蓋在上面：上層、中層排最後。
+			.sort((a, b) => Number(a.up) - Number(b.up))
 	);
 	const snapDots = $derived(drag?.cur ? snapPointsNear(field, drag.cur, zoom) : []);
 	const readout = $derived.by(() => {
@@ -157,9 +163,10 @@
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
-		{#each dots as { m, number, p } (m.id)}
+		{#each dots as { m, number, p, up } (m.id)}
 			<g
 				class="dot"
+				class:raised={up}
 				class:dragging={drag?.id === m.id}
 				data-member-id={m.id}
 				role="button"
@@ -258,6 +265,13 @@
 	}
 	.dot circle.top {
 		fill: #e0664f;
+	}
+	.dot.raised {
+		filter: drop-shadow(0 0.06px 0.08px rgba(0, 0, 0, 0.6));
+	}
+	.dot.raised circle {
+		stroke: #ffd400;
+		stroke-width: 0.08;
 	}
 	.dot text {
 		font-size: 0.3px;
