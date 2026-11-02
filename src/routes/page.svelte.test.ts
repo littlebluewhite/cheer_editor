@@ -10,6 +10,9 @@ async function newFlow(engine: FakeEngine = createFakeEngine()) {
 	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 }
 
+/** 右邊欄換頁：「動作」或「隊員」。 */
+const tab = (name: '動作' | '隊員') => fireEvent.click(screen.getByRole('tab', { name: new RegExp(`^${name}`) }));
+
 describe('段、八拍尺、上方列', () => {
 	it('「＋」在最後加音樂段，打開段設定；關掉後點段可以再打開', async () => {
 		await newFlow();
@@ -70,6 +73,7 @@ describe('動作', () => {
 		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
 		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'base' } });
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		await tab('動作');
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
@@ -162,6 +166,7 @@ describe('站位與走位', () => {
 		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
 		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'top' } });
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		await tab('動作');
 	}
 
 	async function seek(sec: number) {
@@ -294,8 +299,10 @@ describe('編輯器首頁', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
 		};
 		await addOne('小A');
+		await tab('動作');
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		expect(screen.getByText('已選 1 人：小A')).toBeTruthy();
+		await tab('隊員');
 		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
 		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
 		await addOne('小B');

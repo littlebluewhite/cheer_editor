@@ -1,0 +1,257 @@
+/*
+ * 全站的顏色、字和基本元件（按鈕、輸入框、對話框）。
+ * 主色就是場地墊子的藍；選取一律用青色；播放頭和「現在」用朱紅。
+ */
+:root {
+	--ink: #16213a;
+	--ink-2: #24304c;
+	--ink-3: #3a4766;
+	--paper: #eceff5;
+	--surface: #ffffff;
+	--surface-2: #f6f8fb;
+	--line: #d8dee9;
+	--line-soft: #e8ecf3;
+	--text: #1a2238;
+	--muted: #66718a;
+
+	--mat: #2f66b8;
+	--mat-deep: #1d4489;
+	--mat-soft: #e3ecf9;
+
+	--now: #f2542d;
+	--sel: #19b4d8;
+	--sel-soft: #dcf4fa;
+	--warn-bg: #fff3d1;
+	--warn-text: #7a5200;
+	--danger: #c8372d;
+	--danger-soft: #fdecea;
+
+	--top: #e0664f;
+	--base: #2c3e66;
+
+	--radius: 8px;
+	--radius-sm: 6px;
+	--shadow-pop: 0 10px 30px rgba(22, 33, 58, 0.18), 0 2px 6px rgba(22, 33, 58, 0.08);
+
+	color-scheme: light;
+	font-family:
+		system-ui,
+		-apple-system,
+		'PingFang TC',
+		'Noto Sans TC',
+		'Microsoft JhengHei',
+		sans-serif;
+	font-size: 14px;
+	line-height: 1.45;
+	color: var(--text);
+	background: var(--paper);
+	-webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--paper);
+}
+
+h1,
+h2,
+h3,
+p {
+	margin: 0;
+}
+
+/* ---------- 按鈕 ---------- */
+button,
+.btn {
+	font: inherit;
+	font-size: 13px;
+	line-height: 20px;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	padding: 4px 10px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	white-space: nowrap;
+	transition:
+		background-color 0.12s,
+		border-color 0.12s,
+		color 0.12s;
+}
+button:hover,
+.btn:hover {
+	background: var(--surface-2);
+	border-color: #c3ccdb;
+}
+button:active {
+	transform: translateY(0.5px);
+}
+button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+button.primary,
+.btn.primary {
+	background: var(--mat);
+	border-color: var(--mat);
+	color: #fff;
+	font-weight: 600;
+}
+button.primary:hover,
+.btn.primary:hover {
+	background: var(--mat-deep);
+	border-color: var(--mat-deep);
+}
+button.danger {
+	color: var(--danger);
+	border-color: #ecc3be;
+}
+button.danger:hover {
+	background: var(--danger-soft);
+}
+button.ghost,
+.btn.ghost {
+	background: transparent;
+	border-color: transparent;
+}
+button.ghost:hover,
+.btn.ghost:hover {
+	background: rgba(22, 33, 58, 0.06);
+	border-color: transparent;
+}
+button.icon {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	font-size: 14px;
+}
+button.link {
+	border: none;
+	background: none;
+	color: var(--mat);
+	padding: 0;
+	font-weight: 500;
+}
+button.link:hover {
+	text-decoration: underline;
+	background: none;
+}
+
+:focus-visible {
+	outline: 2px solid var(--sel);
+	outline-offset: 2px;
+}
+
+/* ---------- 輸入框 ---------- */
+/* :where 讓特異度降到最低，元件裡的 class 一定蓋得過。 */
+input:where(:not([type='checkbox'], [type='radio'], [type='file'])),
+select,
+textarea {
+	font: inherit;
+	font-size: 13px;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	padding: 5px 8px;
+	min-width: 0;
+	transition: border-color 0.12s, box-shadow 0.12s;
+}
+select {
+	padding-right: 24px;
+	appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2366718a' stroke-width='1.5'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	cursor: pointer;
+}
+textarea {
+	resize: vertical;
+}
+input:where(:not([type='checkbox'], [type='radio'], [type='file'])):focus,
+select:focus,
+textarea:focus {
+	outline: none;
+	border-color: var(--sel);
+	box-shadow: 0 0 0 3px var(--sel-soft);
+}
+input::placeholder,
+textarea::placeholder {
+	color: #a3abbd;
+}
+input[type='checkbox'],
+input[type='radio'] {
+	accent-color: var(--mat);
+	margin: 0;
+}
+
+/* ---------- 對話框 ---------- */
+.backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(16, 24, 44, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 50;
+	padding: 16px;
+}
+.dialog {
+	background: var(--surface);
+	border-radius: 12px;
+	box-shadow: var(--shadow-pop);
+	max-height: calc(100vh - 32px);
+	overflow: auto;
+	display: grid;
+	align-content: start;
+	gap: 14px;
+	padding: 0 20px 20px;
+}
+.dialog-head {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0 -20px;
+	padding: 14px 14px 12px 20px;
+	background: var(--surface);
+	border-bottom: 1px solid var(--line-soft);
+}
+.dialog-head h2 {
+	font-size: 16px;
+	font-weight: 700;
+}
+.dialog-head .close {
+	margin-left: auto;
+}
+
+/* 小字說明 */
+.hint {
+	color: var(--muted);
+	font-size: 12px;
+}
+.error {
+	color: var(--danger);
+	font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition: none !important;
+		animation: none !important;
+	}
+}

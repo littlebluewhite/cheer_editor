@@ -26,6 +26,7 @@
 		type NewActionInput
 	} from '#lib/core';
 	import { CATEGORY_COLORS } from './category-colors';
+	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 
 	interface Props {
@@ -229,84 +230,102 @@
 	const nameOf = (id: string) => memberName(flow, id);
 </script>
 
-<section class="action-form">
+<section class="action-form" class:editing={action} style:--cat={CATEGORY_COLORS[draft.category]}>
 	<header>
 		<h3>
-			<span class="dot" style:color={CATEGORY_COLORS[draft.category]}>●</span>
+			<span class="dot"></span>
 			{action ? '動作' : '在播放頭新增動作'}
 		</h3>
-		{#if action}<button type="button" class="danger" onclick={remove}>刪除動作</button>{/if}
+		{#if action}
+			<button type="button" class="link back" onclick={() => onselect(null)}>改成新增</button>
+			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
+		{/if}
 	</header>
 
 	{#if !segment}
-		<p class="muted">先加一段才能加動作。</p>
+		<p class="empty">先加一段才能加動作：在下面的時間軸按「＋」。</p>
 	{:else}
-		<p class="seg">段 <b>{segmentLabel}</b> <span class="muted">（動作不能跨段）</span></p>
-		<label>
-			大類
-			<select
-				value={draft.category}
-				onchange={(e) => {
-					draft.category = e.currentTarget.value as ActionCategory;
-					changed();
-				}}
-			>
-				{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
-			</select>
-		</label>
-		<label>名稱 <input bind:value={draft.name} onchange={changed} placeholder="例如：Lib、籃拋" /></label>
-		<label>
-			開始
-			<input aria-label="開始" bind:value={draft.startText} onchange={changed} />
-			<small class="muted">{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
-		</label>
-		<label>
-			長度
-			<input aria-label="長度" bind:value={draft.lengthText} onchange={changed} />
-			<small class="muted">{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
-		</label>
+		<p class="seg">在 <b>{segmentLabel}</b> 裡<span class="muted">（動作不能跨段）</span></p>
+		<div class="grid">
+			<label class="wide">
+				<span class="cap">大類</span>
+				<select
+					value={draft.category}
+					onchange={(e) => {
+						draft.category = e.currentTarget.value as ActionCategory;
+						changed();
+					}}
+				>
+					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
+				</select>
+			</label>
+			<label class="wide">
+				<span class="cap">名稱</span>
+				<input bind:value={draft.name} onchange={changed} placeholder="例如：Lib、籃拋" />
+			</label>
+			<div class="field">
+				<span class="cap" aria-hidden="true">開始</span>
+				<input aria-label="開始" bind:value={draft.startText} onchange={changed} />
+				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
+			</div>
+			<div class="field">
+				<span class="cap" aria-hidden="true">長度</span>
+				<input aria-label="長度" bind:value={draft.lengthText} onchange={changed} />
+				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
+			</div>
+		</div>
 
 		<div class="people">
 			<div class="people-head">
-				<span>人（{draft.members.length}）＋任務角色</span>
+				<span class="cap">人（{draft.members.length}）＋任務角色</span>
 				<button type="button" class="link" onclick={() => (glossaryOpen = true)}>名詞對照表</button>
 			</div>
-			<ul>
-				{#each draft.members as m, i (m.memberId)}
-					<li>
-						<span>{nameOf(m.memberId)}</span>
-						<select
-							aria-label="{nameOf(m.memberId)} 的任務角色"
-							value={m.role ?? ''}
-							onchange={(e) => setRole(i, e.currentTarget)}
-						>
-							<option value="">（沒有任務）</option>
-							{#each roles as r (r.name)}<option value={r.name}>{r.name}</option>{/each}
-							<option value={NEW_ROLE}>＋自訂角色…</option>
-						</select>
-						<button
-							type="button"
-							aria-label="把 {nameOf(m.memberId)} 移出這個動作"
-							onclick={() => removeMember(i)}>✕</button
-						>
-					</li>
-				{/each}
-			</ul>
-			<select aria-label="加人" onchange={(e) => addMember(e.currentTarget)}>
-				<option value="">＋加人…</option>
-				{#each others as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
-			</select>
-			{#if copySources.length}
-				<select aria-label="從別的動作複製人" onchange={(e) => copyFrom(e.currentTarget)}>
-					<option value="">從別的動作複製人（連任務角色）…</option>
-					{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
-				</select>
+			{#if draft.members.length}
+				<ul>
+					{#each draft.members as m, i (m.memberId)}
+						<li>
+							<span>{nameOf(m.memberId)}</span>
+							<select
+								aria-label="{nameOf(m.memberId)} 的任務角色"
+								value={m.role ?? ''}
+								onchange={(e) => setRole(i, e.currentTarget)}
+							>
+								<option value="">（沒有任務）</option>
+								{#each roles as r (r.name)}<option value={r.name}>{r.name}</option>{/each}
+								<option value={NEW_ROLE}>＋自訂角色…</option>
+							</select>
+							<button
+								type="button"
+								class="ghost icon"
+								aria-label="把 {nameOf(m.memberId)} 移出這個動作"
+								onclick={() => removeMember(i)}><Icon name="close" size={14} /></button
+							>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="muted none">還沒有人：用上面的「選人」，或在場上點人。</p>
 			{/if}
+			<div class="adders">
+				<select aria-label="加人" onchange={(e) => addMember(e.currentTarget)}>
+					<option value="">＋加人…</option>
+					{#each others as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+				</select>
+				{#if copySources.length}
+					<select aria-label="從別的動作複製人" onchange={(e) => copyFrom(e.currentTarget)}>
+						<option value="">從別的動作複製人（連任務角色）…</option>
+						{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
+					</select>
+				{/if}
+			</div>
 		</div>
 
-		<label>備註 <textarea rows="2" bind:value={draft.note} onchange={changed}></textarea></label>
+		<label class="note">
+			<span class="cap">備註</span>
+			<textarea rows="2" bind:value={draft.note} onchange={changed}></textarea>
+		</label>
 
-		{#if !action}<button type="button" class="primary" onclick={add}>新增動作</button>{/if}
+		{#if !action}<button type="button" class="primary add" onclick={add}>新增動作</button>{/if}
 	{/if}
 
 	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
@@ -320,72 +339,149 @@
 <style>
 	.action-form {
 		display: grid;
-		gap: 6px;
+		gap: 12px;
 		font-size: 13px;
-		padding-bottom: 10px;
-		margin-bottom: 10px;
-		border-bottom: 1px solid #dde1ea;
+		padding: 14px;
+		border-radius: 12px;
+		background: var(--surface-2, #f6f8fb);
+		border: 1px solid var(--line-soft, #e8ecf3);
 	}
 	header {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
+		gap: 10px;
 	}
 	h3 {
-		margin: 0;
+		margin: 0 auto 0 0;
 		font-size: 14px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 3px;
+		background: var(--cat);
+	}
+	.back {
+		font-size: 12px;
+	}
+	.danger {
+		padding: 3px 8px;
+		font-size: 12px;
 	}
 	p {
 		margin: 0;
 	}
-	label {
+	.seg {
+		color: var(--text, #1a2238);
+	}
+	.grid {
 		display: grid;
-		grid-template-columns: 3em minmax(0, 1fr);
-		gap: 2px 6px;
-		align-items: center;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
 	}
-	label small {
-		grid-column: 2;
-	}
-	.muted {
-		color: #7a8296;
-	}
-	.people {
-		border: 1px solid #e3e6ee;
-		border-radius: 6px;
-		padding: 6px;
+	.grid label,
+	.field,
+	.note {
 		display: grid;
 		gap: 4px;
+		align-content: start;
+	}
+	.wide {
+		grid-column: 1 / -1;
+	}
+	.cap {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--muted, #66718a);
+	}
+	small {
+		font-size: 11px;
+		color: var(--muted, #66718a);
+	}
+	.grid input,
+	.grid select,
+	.note textarea {
+		width: 100%;
+	}
+	.field input {
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+	}
+	.muted {
+		color: var(--muted, #66718a);
+	}
+	.empty {
+		padding: 12px;
+		border-radius: 8px;
+		border: 1px dashed var(--line, #d8dee9);
+		color: var(--muted, #66718a);
+		text-align: center;
+	}
+	.people {
+		background: var(--surface, #fff);
+		border: 1px solid var(--line-soft, #e8ecf3);
+		border-radius: 10px;
+		padding: 10px;
+		display: grid;
+		gap: 8px;
 	}
 	.people-head {
 		display: flex;
 		justify-content: space-between;
+		align-items: center;
+	}
+	.people-head .link {
+		font-size: 12px;
+	}
+	.none {
+		font-size: 12px;
 	}
 	ul {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: 2px;
+		gap: 4px;
 	}
 	li {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto auto;
-		gap: 4px;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto;
+		gap: 6px;
 		align-items: center;
 	}
-	.link {
-		border: none;
-		background: none;
-		color: #2f5bd3;
-		padding: 0;
-		text-decoration: underline;
-		cursor: pointer;
+	li > span {
+		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.danger {
-		color: #c0392b;
+	li .icon {
+		width: 26px;
+		height: 26px;
+		color: var(--muted, #66718a);
+	}
+	.adders {
+		display: grid;
+		gap: 6px;
+	}
+	.adders select {
+		width: 100%;
+		background-color: var(--surface-2, #f6f8fb);
+		border-style: dashed;
+	}
+	.add {
+		width: 100%;
+		padding: 8px 12px;
+		font-size: 14px;
 	}
 	.error {
-		color: #c0392b;
+		padding: 8px 10px;
+		border-radius: 8px;
+		background: var(--danger-soft, #fdecea);
+		color: var(--danger, #c8372d);
 	}
 </style>

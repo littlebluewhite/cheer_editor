@@ -11,6 +11,7 @@
 		type Member,
 		type Position
 	} from '#lib/core';
+	import Icon from './Icon.svelte';
 
 	/** 螢幕座標 → 場地公尺座標。測試換成假的（見 docs/adr/0002-component-tests-jsdom.md）。 */
 	type ToMeters = (e: { clientX: number; clientY: number }, svg: SVGSVGElement) => Position;
@@ -263,10 +264,19 @@
 	</svg>
 	{#if controls}
 		<div class="tools">
-			<button type="button" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}>－</button>
-			<span>×{zoom.toFixed(1)}</span>
-			<button type="button" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}>＋</button>
-			<button type="button" onclick={() => setZoom(1)}>全場</button>
+			<button type="button" class="ghost icon" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}
+				><Icon name="minus" /></button
+			>
+			<span class="zoom">×{zoom.toFixed(1)}</span>
+			<button type="button" class="ghost icon" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}
+				><Icon name="plus" /></button
+			>
+			<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}><Icon name="fit" />全場</button>
+		</div>
+		<div class="legend" aria-hidden="true">
+			<span><i class="base"></i>底層</span>
+			<span><i class="top"></i>上層</span>
+			<span><i class="up"></i>正在上面</span>
 		</div>
 	{/if}
 	{#if readout}<div class="readout">{readout}</div>{/if}
@@ -286,28 +296,29 @@
 		touch-action: none;
 	}
 	.margin {
-		fill: #e9ecf1;
-		stroke: #c9ced8;
+		fill: #e4e8ef;
+		stroke: #c3cad7;
 		stroke-width: 0.03;
 		stroke-dasharray: 0.2 0.15;
 	}
 	.mat {
-		fill: #3f6fb6;
-		stroke: #1f3f78;
+		fill: var(--mat, #2f66b8);
+		stroke: var(--mat-deep, #1d4489);
 		stroke-width: 0.06;
 	}
 	.grid {
 		stroke: #fff;
-		stroke-opacity: 0.18;
+		stroke-opacity: 0.16;
 		stroke-width: 0.025;
 	}
 	.seam {
-		stroke: #0f2550;
+		stroke: #12306a;
 		stroke-width: 0.07;
 	}
 	.center {
 		stroke: #fff;
-		stroke-width: 0.09;
+		stroke-opacity: 0.85;
+		stroke-width: 0.08;
 		fill: none;
 	}
 	text {
@@ -315,22 +326,24 @@
 		font-family: inherit;
 	}
 	.num {
-		font-size: 0.42px;
-		fill: #56607a;
-		font-weight: 600;
-	}
-	.front {
-		font-size: 0.5px;
-		fill: #c0392b;
+		font-size: 0.4px;
+		fill: #66718a;
 		font-weight: 700;
 	}
+	.front {
+		font-size: 0.42px;
+		fill: var(--now, #f2542d);
+		font-weight: 700;
+		letter-spacing: 0.08px;
+	}
 	.snap {
-		fill: #ffd84d;
-		opacity: 0.85;
+		fill: #ffe27a;
+		opacity: 0.9;
 		pointer-events: none;
 	}
 	.snap.fine {
-		opacity: 0.6;
+		fill: #9ff3d6;
+		opacity: 0.75;
 	}
 	.dot {
 		cursor: grab;
@@ -341,28 +354,29 @@
 		cursor: grabbing;
 	}
 	.dot circle {
-		stroke: #1d2330;
+		stroke: #16213a;
 		stroke-width: 0.04;
 	}
 	.dot.selected circle.ring {
-		fill: none;
-		stroke: #2f5bd3;
+		fill: rgba(25, 180, 216, 0.25);
+		stroke: #7fe6ff;
 		stroke-width: 0.07;
 	}
 	.lasso {
-		fill: rgba(47, 91, 211, 0.12);
-		stroke: #2f5bd3;
+		fill: rgba(127, 230, 255, 0.16);
+		stroke: #7fe6ff;
 		stroke-width: 0.04;
+		stroke-dasharray: 0.15 0.08;
 		pointer-events: none;
 	}
 	.dot circle.base {
 		fill: #fff;
 	}
 	.dot circle.top {
-		fill: #e0664f;
+		fill: var(--top, #e0664f);
 	}
 	.dot.raised {
-		filter: drop-shadow(0 0.06px 0.08px rgba(0, 0, 0, 0.6));
+		filter: drop-shadow(0 0.08px 0.1px rgba(0, 0, 0, 0.55));
 	}
 	.dot.raised circle {
 		stroke: #ffd400;
@@ -371,30 +385,81 @@
 	.dot text {
 		font-size: 0.3px;
 		font-weight: 700;
-		fill: #1d2330;
+		fill: #16213a;
 		pointer-events: none;
+	}
+	.dot circle.top + text {
+		fill: #fff;
 	}
 	.tools {
 		position: absolute;
-		top: 6px;
-		right: 6px;
+		top: 4px;
+		right: 4px;
 		display: flex;
-		gap: 4px;
+		gap: 2px;
 		align-items: center;
-		background: #fffc;
-		border-radius: 6px;
-		padding: 2px 4px;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		padding: 3px;
+		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
+	}
+	.tools button {
+		height: 28px;
 		font-size: 12px;
+	}
+	.zoom {
+		min-width: 3.2em;
+		text-align: center;
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+		color: var(--muted, #66718a);
+	}
+	.legend {
+		position: absolute;
+		left: 4px;
+		bottom: 4px;
+		display: flex;
+		gap: 12px;
+		padding: 5px 10px;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
+		font-size: 12px;
+		color: var(--muted, #66718a);
+		pointer-events: none;
+	}
+	.legend span {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+	.legend i {
+		width: 11px;
+		height: 11px;
+		border-radius: 50%;
+		border: 1.5px solid #16213a;
+	}
+	.legend .base {
+		background: #fff;
+	}
+	.legend .top {
+		background: var(--top, #e0664f);
+	}
+	.legend .up {
+		background: #fff;
+		border: 2px solid #ffd400;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 	}
 	.readout {
 		position: absolute;
-		left: 8px;
-		bottom: 8px;
-		padding: 3px 8px;
-		background: #1d2330e0;
+		left: 4px;
+		top: 4px;
+		padding: 5px 10px;
+		background: rgba(22, 33, 58, 0.92);
 		color: #fff;
-		border-radius: 4px;
+		border-radius: 8px;
 		font-size: 13px;
+		font-variant-numeric: tabular-nums;
 		pointer-events: none;
 	}
 </style>

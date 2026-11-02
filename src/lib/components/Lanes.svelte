@@ -112,9 +112,8 @@
 			title="點一下選這個人，Shift＋點多選"
 			onclick={(e) => pick(e, m.id)}
 		>
-			<b>{i + 1}</b>
+			<b class="no gr {m.globalRole}" title={m.globalRole === 'top' ? '上層' : '底層'}>{i + 1}</b>
 			<span class="name">{m.name}</span>
-			<i class="gr {m.globalRole}">{m.globalRole === 'top' ? '上' : '底'}</i>
 			{#if idle.has(m.id)}<span class="idle-tag">閒</span>{/if}
 		</button>
 		<div class="trk" style:width={`${width}px`}>
@@ -136,7 +135,7 @@
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
 						{#if p.action.members[0].memberId === m.id}<b>{p.label}</b>{/if}
-						{member.role ?? ''}
+						{#if member.role}<span class="role">{member.role}</span>{/if}
 						<span class="rz" data-resize title="拉這裡改長度"></span>
 					</button>
 				{/if}
@@ -148,85 +147,118 @@
 <style>
 	.row {
 		display: flex;
-		height: 16px;
-		border-bottom: 1px solid #f0f1f5;
+		height: 26px;
+		border-bottom: 1px solid var(--line-soft, #e8ecf3);
 	}
+	.row:hover .trk {
+		background-color: rgba(47, 102, 184, 0.03);
+	}
+	/* 名字欄疊在播放頭（z 5）上面，橫向捲動時播放頭從名字底下過去。 */
 	.lab {
 		position: sticky;
 		left: 0;
-		z-index: 3;
-		width: 120px;
+		z-index: 6;
+		width: var(--lab-w, 120px);
 		flex: none;
-		box-sizing: border-box;
-		background: #fafbfd;
+		justify-content: flex-start;
+		gap: 8px;
+		background: var(--surface-2, #f6f8fb);
 		border: none;
-		border-right: 1px solid #dde1ea;
-		padding: 0 4px;
-		font: inherit;
+		border-right: 1px solid var(--line, #d8dee9);
+		border-radius: 0;
+		padding: 0 8px 0 10px;
+		font-size: 12px;
 		text-align: left;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		gap: 4px;
 		white-space: nowrap;
 		overflow: hidden;
 	}
+	.lab:hover {
+		background: #eef2f8;
+	}
 	.lab.selected {
-		background: #fff3b8;
+		background: var(--sel-soft, #dcf4fa);
+		box-shadow: inset 3px 0 0 var(--sel, #19b4d8);
 	}
-	.lab b {
-		color: #6b7280;
-		font-weight: 600;
-	}
-	.lab.idle .name {
-		color: #9aa1b2;
-	}
-	.idle-tag {
-		color: #9aa1b2;
-		font-style: italic;
-	}
-	.gr {
-		font-style: normal;
-		font-size: 9px;
-		color: #fff;
-		border-radius: 3px;
-		padding: 0 3px;
+	/* 號碼圓圈：顏色照全局角色，跟場上的點一樣。 */
+	.no {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		display: inline-grid;
+		place-items: center;
+		font-size: 10px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+		border: 1.5px solid #16213a;
 	}
 	.gr.base {
-		background: #2c3e66;
+		background: #fff;
+		color: #16213a;
 	}
 	.gr.top {
-		background: #e0664f;
+		background: var(--top, #e0664f);
+		color: #fff;
+	}
+	.name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-weight: 500;
+	}
+	.lab.idle .name {
+		color: #9aa3b5;
+	}
+	.idle-tag {
+		margin-left: auto;
+		flex: none;
+		padding: 0 5px;
+		border-radius: 4px;
+		background: var(--line-soft, #e8ecf3);
+		color: var(--muted, #66718a);
+		font-size: 11px;
 	}
 	/* 灰條紋 = 沒在動作裡（站著或走位）；色條蓋在上面。 */
 	.trk {
 		position: relative;
 		flex: none;
 		height: 100%;
-		background: repeating-linear-gradient(90deg, transparent 0 6px, #eceef3 6px 7px);
+		background-image: repeating-linear-gradient(
+			135deg,
+			transparent 0 5px,
+			rgba(102, 113, 138, 0.07) 5px 6px
+		);
 	}
 	.bar {
 		position: absolute;
-		top: 1px;
-		bottom: 1px;
+		top: 3px;
+		bottom: 3px;
+		justify-content: flex-start;
+		gap: 6px;
 		border: none;
-		border-radius: 3px;
+		border-radius: 5px;
 		color: #fff;
-		font: inherit;
-		font-size: 10px;
-		line-height: 13px;
-		padding: 0 4px;
+		font-size: 11px;
+		line-height: 1;
+		padding: 0 6px;
 		text-align: left;
 		overflow: hidden;
 		white-space: nowrap;
 		cursor: grab;
-		opacity: 0.88;
 		touch-action: none;
 		user-select: none;
+		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.14);
+	}
+	.bar:hover {
+		filter: brightness(1.06);
+	}
+	.role {
+		opacity: 0.9;
 	}
 	.bar.dragging {
 		cursor: grabbing;
 		z-index: 2;
+		box-shadow: 0 4px 10px rgba(22, 33, 58, 0.3);
 	}
 	/* 色條右邊的把手：拉它改長度。 */
 	.rz {
@@ -234,11 +266,15 @@
 		top: 0;
 		right: 0;
 		bottom: 0;
-		width: 5px;
+		width: 6px;
 		cursor: ew-resize;
 	}
+	.bar:hover .rz {
+		background: rgba(255, 255, 255, 0.35);
+	}
 	.bar.selected {
-		outline: 2px solid #1d2330;
-		opacity: 1;
+		outline: 2px solid var(--ink, #16213a);
+		outline-offset: 1px;
+		z-index: 1;
 	}
 </style>

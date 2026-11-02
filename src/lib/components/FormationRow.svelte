@@ -2,6 +2,7 @@
 	// 站位縮圖列：每張站位一個小站位圖，放在它的時間點上。
 	// 點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。
 	import { fieldGeometry, formationTimes, type Flow } from '#lib/core';
+	import Icon from './Icon.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -14,7 +15,7 @@
 
 	let { flow, pxPerSec, selectedId, onselect, ondelete }: Props = $props();
 
-	const THUMB_W = 84;
+	const THUMB_W = 80;
 	const g = $derived(fieldGeometry(flow.field));
 	const items = $derived(formationTimes(flow));
 	const width = $derived(Math.max(0, ...items.map((i) => i.sec)) * pxPerSec + THUMB_W);
@@ -51,7 +52,7 @@
 						type="button"
 						class="del"
 						aria-label={`刪掉站位 ${i + 1}`}
-						onclick={() => ondelete(formation.id)}>✕</button
+						onclick={() => ondelete(formation.id)}><Icon name="close" size={11} /></button
 					>
 				{/if}
 			</div>
@@ -62,21 +63,22 @@
 <style>
 	.row {
 		display: flex;
-		height: 78px;
-		border-bottom: 1px solid #f0f1f5;
+		height: 76px;
+		border-bottom: 1px solid var(--line-soft, #e8ecf3);
 	}
 	.lab {
 		position: sticky;
 		left: 0;
-		z-index: 3;
-		width: 120px;
+		z-index: 6;
+		width: var(--lab-w, 120px);
 		flex: none;
-		box-sizing: border-box;
-		background: #fafbfd;
-		border-right: 1px solid #dde1ea;
-		padding: 0 4px;
+		background: var(--surface-2, #f6f8fb);
+		border-right: 1px solid var(--line, #d8dee9);
+		padding: 0 8px 0 12px;
 		display: flex;
 		align-items: center;
+		font-weight: 600;
+		color: var(--muted, #66718a);
 	}
 	.trk {
 		position: relative;
@@ -86,24 +88,37 @@
 	/* 縮圖的左邊對齊站位的時間點。 */
 	.th {
 		position: absolute;
-		top: 3px;
-		width: 84px;
-		height: 70px;
+		top: 6px;
+		width: 80px;
+		height: 64px;
+	}
+	.th::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: -6px;
+		height: 6px;
+		width: 2px;
+		background: #9aa6bf;
 	}
 	.pick {
 		position: relative;
+		display: block;
 		width: 100%;
 		height: 100%;
 		padding: 0;
-		border: 2px solid #cfd3de;
-		border-radius: 6px;
-		background: #fff;
-		cursor: pointer;
+		border: 2px solid var(--line, #d8dee9);
+		border-radius: 8px;
+		background: #e4e8ef;
 		overflow: hidden;
 	}
+	.pick:hover {
+		border-color: #a9b5cc;
+		background: #e4e8ef;
+	}
 	.th.on .pick {
-		border-color: #ff8a00;
-		box-shadow: 0 0 0 2px #ffd9a8;
+		border-color: var(--sel, #19b4d8);
+		box-shadow: 0 0 0 3px var(--sel-soft, #dcf4fa);
 	}
 	svg {
 		display: block;
@@ -111,38 +126,47 @@
 		height: 100%;
 	}
 	.margin {
-		fill: #eef0f4;
+		fill: #e4e8ef;
 	}
 	.mat {
-		fill: #3f6fb6;
+		fill: var(--mat, #2f66b8);
 	}
 	circle {
-		stroke: #1d2330;
+		stroke: #16213a;
 		stroke-width: 0.08;
 	}
 	circle.base {
 		fill: #fff;
 	}
 	circle.top {
-		fill: #e0664f;
+		fill: var(--top, #e0664f);
 	}
 	.pick span {
 		position: absolute;
 		left: 3px;
-		top: 1px;
+		top: 3px;
+		min-width: 16px;
 		font-size: 10px;
+		line-height: 15px;
 		font-weight: 700;
-		background: #fff;
-		border-radius: 3px;
-		padding: 0 2px;
+		text-align: center;
+		color: #fff;
+		background: var(--ink, #16213a);
+		border-radius: 4px;
+		padding: 0 3px;
 	}
 	.del {
 		position: absolute;
-		right: 2px;
-		top: 2px;
-		padding: 0 4px;
-		font-size: 10px;
+		right: 3px;
+		top: 3px;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border-radius: 4px;
 		opacity: 0;
+	}
+	.del:hover {
+		color: var(--danger, #c8372d);
 	}
 	.th:hover .del,
 	.del:focus-visible {

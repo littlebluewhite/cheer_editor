@@ -50,33 +50,39 @@
 </script>
 
 <section class="picker">
-	<h3>選人</h3>
+	<header>
+		<h3>選人</h3>
+		{#if names.length}<button type="button" class="link" onclick={() => onselect([])}>清除</button>{/if}
+	</header>
 	<div class="chips">
-		<button type="button" onclick={previous}>沿用上一個動作的人</button>
 		{#each GROUPS as g (g.group)}
 			<button type="button" onclick={() => onselect(memberGroup(flow, g.group, playheadSec))}
 				>{g.label}</button
 			>
 		{/each}
-		<button type="button" onclick={() => onselect([])}>清除</button>
+		<button type="button" onclick={previous}>沿用上一個動作的人</button>
 	</div>
 	{#if message}<p class="muted" role="status">{message}</p>{/if}
-	<p class="picked">已選 {names.length} 人{names.length ? `：${names.join('、')}` : ''}</p>
+	<p class="picked" class:none={!names.length}>已選 {names.length} 人{names.length ? `：${names.join('、')}` : ''}</p>
 	<p class="muted">場上點人、Shift＋點多選、拖空白處框選；或點泳道上的名字。</p>
 </section>
 
 <style>
 	.picker {
 		display: grid;
-		gap: 6px;
+		gap: 8px;
 		font-size: 13px;
-		padding-bottom: 10px;
-		margin-bottom: 10px;
-		border-bottom: 1px solid #dde1ea;
+	}
+	header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 22px;
 	}
 	h3 {
 		margin: 0;
 		font-size: 14px;
+		font-weight: 700;
 	}
 	p {
 		margin: 0;
@@ -84,12 +90,28 @@
 	.chips {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 4px;
+		gap: 6px;
 	}
 	.chips button {
 		font-size: 12px;
+		padding: 3px 10px;
+		border-radius: 999px;
+	}
+	.picked {
+		padding: 7px 10px;
+		border-radius: 8px;
+		background: var(--sel-soft, #dcf4fa);
+		box-shadow: inset 3px 0 0 var(--sel, #19b4d8);
+		font-weight: 500;
+	}
+	.picked.none {
+		background: var(--surface-2, #f6f8fb);
+		box-shadow: inset 3px 0 0 var(--line, #d8dee9);
+		color: var(--muted, #66718a);
+		font-weight: 400;
 	}
 	.muted {
-		color: #7a8296;
+		color: var(--muted, #66718a);
+		font-size: 12px;
 	}
 </style>

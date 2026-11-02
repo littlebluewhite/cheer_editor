@@ -1,8 +1,10 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）、八拍尺（點或拖＝移動播放頭）、
-	// 站位縮圖列、一人一條的泳道（Lanes）。
+	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小。
+	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
 	import FormationRow from './FormationRow.svelte';
+	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
 	import { followPointer } from './pointer';
 
@@ -10,7 +12,7 @@
 		flow: Flow;
 		/** 播放頭，全域秒數。 */
 		playheadSec: number;
-		/** 時間軸 1 秒幾 px。 */
+		/** 放大 ×1 時，時間軸 1 秒幾 px。 */
 		pxPerSec?: number;
 		onseek: (sec: number) => void;
 		onaddsegment: (kind: SegmentKind) => void;
@@ -51,10 +53,21 @@
 		onselectmembers = () => {}
 	}: Props = $props();
 
+	/** 左邊名字欄的寬度（px）；泳道和站位列用同一個 CSS 變數。 */
+	const LABEL_W = 148;
+	const ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6];
+
 	let menuOpen = $state(false);
+	let zoomIndex = $state(2);
+	let scroller: HTMLDivElement;
+	const px = $derived(pxPerSec * ZOOMS[zoomIndex]);
 	const spans = $derived(segmentSpans(flow));
 	const marks = $derived(rulerMarks(flow));
-	const width = $derived(totalSeconds(flow) * pxPerSec);
+	const width = $derived(totalSeconds(flow) * px);
+
+	function zoomBy(step: number) {
+		zoomIndex = Math.min(Math.max(zoomIndex + step, 0), ZOOMS.length - 1);
+	}
 
 	function add(kind: SegmentKind) {
 		menuOpen = false;
@@ -64,19 +77,33 @@
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const ruler = e.currentTarget as HTMLElement;
-		const toSec = (ev: PointerEvent) =>
-			(ev.clientX - ruler.getBoundingClientRect().left) / pxPerSec;
+		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
 		onseek(toSec(e));
 		followPointer((ev) => onseek(toSec(ev)));
 	}
+
+	// 播放頭跑出畫面（播放中、或從別的地方跳過去）就捲過去，放在看得到的範圍的左邊四分之一。
+	$effect(() => {
+		const x = playheadSec * px;
+		if (!scroller || scroller.clientWidth === 0) return;
+		const view = scroller.clientWidth - LABEL_W;
+		const left = scroller.scrollLeft;
+		if (x < left || x > left + view - 24) scroller.scrollLeft = Math.max(0, x - view / 4);
+	});
 </script>
 
-<div class="timeline">
-	<div class="inner" style:width={`${width + 200}px`}>
+<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`}>
+	<div class="inner" style:width={`${width + LABEL_W + 200}px`}>
 		<div class="row segs">
 			<div class="lab">
-				段
-				<button type="button" aria-label="在最後加一段" onclick={() => (menuOpen = !menuOpen)}>＋</button>
+				<span>段</span>
+				<button
+					type="button"
+					class="add"
+					aria-label="在最後加一段"
+					aria-expanded={menuOpen}
+					onclick={() => (menuOpen = !menuOpen)}><Icon name="plus" size={14} /></button
+				>
 				{#if menuOpen}
 					<span class="menu">
 						<button type="button" onclick={() => add('music')}>＋音樂段</button>
@@ -86,39 +113,64 @@
 			</div>
 			<div class="trk" style:width={`${width}px`}>
 				{#each spans as span (span.segment.id)}
+					{@const missing = missingSegmentIds.includes(span.segment.id)}
 					<button
 						type="button"
 						class="seg {span.segment.kind}"
-						class:missing={missingSegmentIds.includes(span.segment.id)}
-						style:left={`${span.startSec * pxPerSec}px`}
-						style:width={`${Math.max(span.durationSec * pxPerSec - 2, 4)}px`}
+						class:missing
+						style:left={`${span.startSec * px}px`}
+						style:width={`${Math.max(span.durationSec * px - 2, 4)}px`}
 						title="點一下設定"
 						onclick={() => onopensegment(span.segment.id)}
 					>
-						{span.label} ·
-						{#if missingSegmentIds.includes(span.segment.id)}找不到音樂 ·{/if}
-						{span.segment.kind === 'music'
-							? `${span.segment.bpm} BPM`
-							: `${span.durationSec.toFixed(1)} 秒`}
+						<b>{span.label}</b>
+						{#if missing}<span class="flag">找不到音樂</span>{/if}
+						<span class="meta"
+							>{span.segment.kind === 'music'
+								? `${span.segment.bpm} BPM`
+								: `${span.durationSec.toFixed(1)} 秒`}</span
+						>
 					</button>
 				{/each}
+				{#if spans.length === 0}
+					<span class="empty">按左邊的 ＋ 加第一段：跟著音樂的「音樂段」，或喊口號的「口號段」。</span>
+				{/if}
 			</div>
 		</div>
 		<div class="row ruler-row">
-			<div class="lab">八拍</div>
+			<div class="lab zoom">
+				<span>八拍</span>
+				<span class="zoom-btns">
+					<button
+						type="button"
+						class="ghost"
+						aria-label="時間軸縮小"
+						disabled={zoomIndex === 0}
+						onclick={() => zoomBy(-1)}><Icon name="minus" size={13} /></button
+					>
+					<button
+						type="button"
+						class="ghost"
+						aria-label="時間軸放大"
+						disabled={zoomIndex === ZOOMS.length - 1}
+						onclick={() => zoomBy(1)}><Icon name="plus" size={13} /></button
+					>
+				</span>
+			</div>
 			<!-- 用滑鼠點或拖移動播放頭；鍵盤操作之後跟播放（空白鍵）一起做。 -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="trk ruler" data-ruler style:width={`${width}px`} onpointerdown={startSeek}>
 				{#each marks as mark (mark.sec)}
-					<div class="tk" class:big={mark.major} style:left={`${mark.sec * pxPerSec}px`}>
+					<div class="tk" class:big={mark.major} style:left={`${mark.sec * px}px`}>
 						{#if mark.label}<span>{mark.label}</span>{/if}
 					</div>
 				{/each}
+				<div class="ph-head" style:left={`${playheadSec * px}px`}></div>
 			</div>
 		</div>
 		<FormationRow
 			{flow}
-			{pxPerSec}
+			pxPerSec={px}
 			selectedId={selectedFormationId}
 			onselect={onselectformation}
 			ondelete={ondeleteformation}
@@ -126,7 +178,7 @@
 		<Lanes
 			{flow}
 			{playheadSec}
-			{pxPerSec}
+			pxPerSec={px}
 			{selectedActionId}
 			{onselectaction}
 			{onchange}
@@ -134,66 +186,99 @@
 			{selectedMemberIds}
 			{onselectmembers}
 		/>
-		<div class="ph" style:left={`${120 + playheadSec * pxPerSec}px`}></div>
+		{#if flow.members.length === 0}
+			<div class="row lanes-empty">
+				<div class="lab"></div>
+				<span>還沒有隊員。到右邊的「隊員」加人，每個人會有一條自己的泳道。</span>
+			</div>
+		{/if}
+		<div class="ph" style:left={`${LABEL_W + playheadSec * px}px`}></div>
 	</div>
 </div>
 
 <style>
 	.timeline {
 		overflow: auto;
-		background: #fff;
-		border-top: 2px solid #c5cad6;
+		background: var(--surface, #fff);
+		border-top: 1px solid var(--line, #d8dee9);
+		box-shadow: 0 -1px 0 rgba(22, 33, 58, 0.03);
 		min-height: 0;
-		font-size: 11px;
+		font-size: 12px;
 	}
 	.inner {
 		position: relative;
+		min-height: 100%;
 	}
 	.row {
 		display: flex;
-		border-bottom: 1px solid #f0f1f5;
+		border-bottom: 1px solid var(--line-soft, #e8ecf3);
+	}
+	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 5）上面。 */
+	.segs,
+	.ruler-row {
+		position: sticky;
+		z-index: 7;
+		background: var(--surface, #fff);
 	}
 	.segs {
-		height: 24px;
+		top: 0;
+		height: 32px;
+		z-index: 8;
 	}
 	.ruler-row {
-		height: 20px;
+		top: 32px;
+		height: 26px;
 	}
 	.lab {
 		position: sticky;
 		left: 0;
 		z-index: 3;
-		width: 120px;
+		width: var(--lab-w);
 		flex: none;
-		box-sizing: border-box;
-		background: #fafbfd;
-		border-right: 1px solid #dde1ea;
-		padding: 0 4px;
+		background: var(--surface-2, #f6f8fb);
+		border-right: 1px solid var(--line, #d8dee9);
+		padding: 0 8px 0 12px;
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
 		white-space: nowrap;
+		font-weight: 600;
+		color: var(--muted, #66718a);
 	}
-	/* 「＋」的選單往下蓋到下面幾列的名字欄和播放頭，要疊在它們上面。 */
-	.segs .lab {
-		z-index: 6;
-	}
-	.lab button {
-		padding: 0 5px;
-		font-size: 11px;
-		line-height: 14px;
+	.add {
+		margin-left: auto;
+		width: 24px;
+		height: 22px;
+		padding: 0;
+		color: var(--mat, #2f66b8);
 	}
 	.menu {
 		position: absolute;
-		left: 40px;
-		top: 22px;
-		display: flex;
-		gap: 4px;
-		background: #fff;
-		border: 1px solid #c5cad6;
-		border-radius: 6px;
+		left: 12px;
+		top: 30px;
+		display: grid;
+		gap: 2px;
+		min-width: 130px;
+		background: var(--surface, #fff);
+		border: 1px solid var(--line, #d8dee9);
+		border-radius: 10px;
 		padding: 4px;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		box-shadow: var(--shadow-pop);
+	}
+	.menu button {
+		justify-content: flex-start;
+		border: none;
+		padding: 6px 10px;
+	}
+	.zoom-btns {
+		margin-left: auto;
+		display: flex;
+	}
+	.zoom-btns button {
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		color: var(--muted, #66718a);
 	}
 	.trk {
 		position: relative;
@@ -202,26 +287,64 @@
 	}
 	.seg {
 		position: absolute;
-		top: 2px;
-		bottom: 2px;
-		border-radius: 4px;
-		padding: 0 6px;
-		font-size: 11px;
+		top: 4px;
+		bottom: 4px;
+		border-radius: 6px;
+		padding: 0 8px;
+		justify-content: flex-start;
+		gap: 8px;
+		font-size: 12px;
+		line-height: 1;
 		color: #fff;
 		overflow: hidden;
 		white-space: nowrap;
-		text-align: left;
-		cursor: pointer;
-		border: 1px solid rgba(0, 0, 0, 0.15);
+		border: none;
+		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+	}
+	.seg .meta {
+		opacity: 0.8;
+		font-variant-numeric: tabular-nums;
 	}
 	.seg.music {
-		background: #5167a8;
+		background: var(--mat, #2f66b8);
 	}
-	.seg.missing {
-		background: #c0392b;
+	.seg.music:hover {
+		background: var(--mat-deep, #1d4489);
 	}
 	.seg.chant {
-		background: #9a6b2f;
+		background: #a26a22;
+	}
+	.seg.chant:hover {
+		background: #87581a;
+	}
+	.seg.missing,
+	.seg.missing:hover {
+		background: var(--danger, #c8372d);
+	}
+	.flag {
+		padding: 1px 5px;
+		border-radius: 4px;
+		background: #fff;
+		color: var(--danger, #c8372d);
+		font-weight: 700;
+		font-size: 11px;
+	}
+	.empty,
+	.lanes-empty span {
+		position: absolute;
+		left: 12px;
+		top: 50%;
+		transform: translateY(-50%);
+		white-space: nowrap;
+		color: var(--muted, #66718a);
+	}
+	.lanes-empty {
+		position: relative;
+		height: 44px;
+		border-bottom: none;
+	}
+	.lanes-empty span {
+		left: calc(var(--lab-w) + 12px);
 	}
 	.ruler {
 		cursor: ew-resize;
@@ -233,25 +356,47 @@
 		bottom: 0;
 		width: 1px;
 		height: 5px;
-		background: #b9bfcc;
+		background: #c3cad7;
 	}
 	.tk.big {
-		height: 12px;
-		background: #59627a;
+		height: 14px;
+		background: #4a5675;
 	}
 	.tk span {
 		position: absolute;
-		left: 2px;
-		top: -4px;
-		font-size: 10px;
-		color: #3b4358;
+		left: 4px;
+		top: -7px;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--text, #1a2238);
+		font-variant-numeric: tabular-nums;
+	}
+	/* 播放頭：八拍尺上的三角形，和往下貫穿整個時間軸的線。 */
+	.ph-head {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		margin-left: -1px;
+		background: var(--now, #f2542d);
+		pointer-events: none;
+	}
+	.ph-head::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -5px;
+		border: 6px solid transparent;
+		border-top: 8px solid var(--now, #f2542d);
+		border-bottom: none;
 	}
 	.ph {
 		position: absolute;
 		top: 0;
 		bottom: 0;
 		width: 2px;
-		background: #e8452c;
+		margin-left: -1px;
+		background: var(--now, #f2542d);
 		z-index: 5;
 		pointer-events: none;
 	}

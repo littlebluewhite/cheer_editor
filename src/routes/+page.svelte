@@ -31,6 +31,7 @@
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
+	import Icon from '#lib/components/Icon.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
@@ -125,6 +126,22 @@
 	let selectedActionId = $state<string | null>(null);
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
 	let selectedMemberIds = $state<string[]>([]);
+	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
+	let inspectorTab = $state<'action' | 'members'>('action');
+
+	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字。 */
+	const position = $derived.by(() => {
+		const text = flow ? positionText(flow, playheadSec) : '';
+		const cut = text.indexOf(' ', text.indexOf(' ') + 1);
+		return cut === -1 ? null : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
+	});
+
+	/** 秒數寫成「1:05.3」。 */
+	function clock(sec: number): string {
+		const m = Math.floor(sec / 60);
+		const s = (sec - m * 60).toFixed(1).padStart(4, '0');
+		return `${m}:${s}`;
+	}
 
 	let playing = $state(false);
 	let metronome = $state(true);
@@ -205,6 +222,8 @@
 		selectedFormationId = null;
 		selectedActionId = null;
 		selectedMemberIds = [];
+		// 還沒有隊員的流程先開名單，有人了才開動作
+		inspectorTab = f.members.length ? 'action' : 'members';
 	}
 
 	/** 指令改好的流程。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
@@ -338,6 +357,13 @@
 			void save();
 			return;
 		}
+		// Esc 先關掉開著的段設定、流程設定、八拍表
+		if (e.key === 'Escape' && (openSegmentId || settingsOpen || printOpen)) {
+			openSegmentId = null;
+			settingsOpen = false;
+			printOpen = false;
+			return;
+		}
 		// 八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
 		if (!flow || printOpen) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
@@ -384,44 +410,61 @@
 <svelte:window {onkeydown} />
 
 {#if flow}
+	{@const warnings = timeRuleWarnings(flow)}
 	<div class="editor" class:print-hidden={printOpen}>
 		<header class="topbar">
-			<b>{flow.name}</b>
-			{#if unsaved}<span class="muted">未存</span>{/if}
-			<button
-				type="button"
-				class="play"
-				aria-label={playing ? '暫停' : '播放'}
-				onclick={() => flow && togglePlay(flow)}>{playing ? '❚❚' : '▶'}</button
-			>
-			<span class="pos" aria-label="目前位置">{positionText(flow, playheadSec)}</span>
-			<label>
-				<input
-					type="checkbox"
-					checked={metronome}
-					onchange={(e) => flow && setMetronome(flow, e.currentTarget.checked)}
-				/>節拍器
-			</label>
-			<label title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
-				延遲校正（毫秒）
-				<input
-					type="number"
-					step="10"
-					class="latency"
-					value={latencyMs}
-					onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
-				/>
-			</label>
-			<span class="warn">
-				{#each timeRuleWarnings(flow) as w (w)}<span>⚠ {w}</span>{/each}
-			</span>
-			{#if notice}<span class="notice" role="status">{notice}</span>{/if}
-			<button type="button" class="settings" onclick={() => (settingsOpen = true)}>流程設定</button>
-			<button type="button" class="print" onclick={() => (printOpen = true)}>八拍表</button>
-			<button type="button" onclick={save}>存檔</button>
-			<button type="button" onclick={startNew}>新建</button>
-			<label class="open">開啟<input type="file" accept=".zip" onchange={open} /></label>
+			<div class="title">
+				<b>{flow.name}</b>
+				{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}
+			</div>
+
+			<div class="transport">
+				<button
+					type="button"
+					class="play"
+					class:on={playing}
+					aria-label={playing ? '暫停' : '播放'}
+					title="空白鍵也可以播放／暫停"
+					onclick={() => flow && togglePlay(flow)}><Icon name={playing ? 'pause' : 'play'} size={18} /></button
+				>
+				<div class="board">
+					<span class="pos" aria-label="目前位置"
+						>{#if position}<span class="pos-seg">{position.segment}</span>
+							<span class="pos-at">{position.at}</span>{:else}<span class="pos-seg">還沒有段</span>{/if}</span
+					>
+					<span class="clock">{clock(playheadSec)} <i>/ {clock(totalSeconds(flow))}</i></span>
+				</div>
+				<label class="toggle" title="播放時每拍響一聲">
+					<input
+						type="checkbox"
+						checked={metronome}
+						onchange={(e) => flow && setMetronome(flow, e.currentTarget.checked)}
+					/>
+					<Icon name="metronome" />節拍器
+				</label>
+				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
+					延遲校正（毫秒）
+					<input
+						type="number"
+						step="10"
+						value={latencyMs}
+						onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
+					/>
+				</label>
+			</div>
+
+			<div class="actions">
+				<button type="button" class="ghost" onclick={() => (printOpen = true)}><Icon name="print" />八拍表</button>
+				<button type="button" class="ghost" onclick={() => (settingsOpen = true)}
+					><Icon name="settings" />流程設定</button
+				>
+				<span class="sep" aria-hidden="true"></span>
+				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onchange={open} /></label>
+				<button type="button" class="ghost" onclick={startNew}><Icon name="new" />新建</button>
+				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={save}><Icon name="save" />存檔</button>
+			</div>
 		</header>
+
 		<main class="field-host">
 			<Field
 				field={flow.field}
@@ -432,20 +475,65 @@
 				onmove={move}
 				onselect={selectMembers}
 			/>
+			{#if warnings.length}
+				<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
+					<Icon name="warn" />
+					{#each warnings as w (w)}<span>{w}</span>{/each}
+				</div>
+			{/if}
+			{#if flow.members.length === 0}
+				<div class="field-empty">
+					<b>場上還沒有人</b>
+					<span>到右邊的「隊員」加人，他們會出現在場上，可以直接拖。</span>
+				</div>
+			{/if}
+			{#if notice}
+				<div class="toast">
+					<span role="status">{notice}</span>
+					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (notice = '')}
+						><Icon name="close" size={14} /></button
+					>
+				</div>
+			{/if}
 		</main>
+
 		<aside class="inspector">
-			<MemberPicker {flow} {playheadSec} selected={selectedMemberIds} onselect={selectMembers} />
-			<ActionForm
-				{flow}
-				{playheadSec}
-				actionId={selectedActionId}
-				onchange={change}
-				onselect={selectAction}
-				{selectedMemberIds}
-				onselectmembers={selectMembers}
-			/>
-			<MemberPanel {flow} onchange={change} />
+			<div class="tabs" role="tablist" aria-label="右邊欄">
+				<button
+					type="button"
+					role="tab"
+					id="tab-action"
+					aria-selected={inspectorTab === 'action'}
+					aria-controls="panel-action"
+					onclick={() => (inspectorTab = 'action')}><Icon name="bolt" />動作</button
+				>
+				<button
+					type="button"
+					role="tab"
+					id="tab-members"
+					aria-selected={inspectorTab === 'members'}
+					aria-controls="panel-members"
+					onclick={() => (inspectorTab = 'members')}
+					><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
+				>
+			</div>
+			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
+				<MemberPicker {flow} {playheadSec} selected={selectedMemberIds} onselect={selectMembers} />
+				<ActionForm
+					{flow}
+					{playheadSec}
+					actionId={selectedActionId}
+					onchange={change}
+					onselect={selectAction}
+					{selectedMemberIds}
+					onselectmembers={selectMembers}
+				/>
+			</div>
+			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
+				<MemberPanel {flow} onchange={change} />
+			</div>
 		</aside>
+
 		<div class="timeline-host">
 			<Timeline
 				{flow}
@@ -462,7 +550,10 @@
 				}}
 				ondeleteformation={removeFormation}
 				{selectedActionId}
-				onselectaction={selectAction}
+				onselectaction={(id) => {
+					selectAction(id);
+					inspectorTab = 'action';
+				}}
 				onchange={(f) => {
 					change(f);
 					notice = '';
@@ -492,149 +583,511 @@
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
 	{/if}
 	{#if discardPending}
-		<div class="discard">
-			<ConfirmList
-				message={`「${flow.name}」還沒存，改的東西會不見。`}
-				items={[]}
-				confirmLabel="不存了，繼續"
-				onconfirm={() => {
-					const then = discardPending?.then;
-					discardPending = null;
-					then?.();
-				}}
-				oncancel={() => (discardPending = null)}
-			/>
+		<div class="backdrop discard">
+			<div class="discard-box">
+				<ConfirmList
+					message={`「${flow.name}」還沒存，改的東西會不見。`}
+					items={[]}
+					confirmLabel="不存了，繼續"
+					onconfirm={() => {
+						const then = discardPending?.then;
+						discardPending = null;
+						then?.();
+					}}
+					oncancel={() => (discardPending = null)}
+				/>
+			</div>
 		</div>
 	{/if}
-{:else if draftOffer}
-	<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
-		<p id="draft-offer-text">上次編的「{draftOffer.name}」還沒存，要救回嗎？</p>
-		<button type="button" onclick={() => draftOffer && restoreDraft(draftOffer.bytes)}>救回</button>
-		<button type="button" onclick={discardDraft}>丟掉</button>
-	</div>
 {:else}
-	<NewFlowForm oncreate={startFlow} />
-	<p class="home-open">
-		<label class="open">開啟流程檔<input type="file" accept=".zip" onchange={open} /></label>
-		{#if openError}<span class="notice" role="alert">{openError}</span>{/if}
-	</p>
+	<div class="home">
+		<section class="intro">
+			<svg class="intro-mat" viewBox="0 0 90 70" aria-hidden="true">
+				{#each Array.from({ length: 9 }, (_, i) => i) as i (i)}
+					<rect x={i * 10} y="0" width="9.4" height="70" rx="0.6" />
+				{/each}
+				<circle class="b" cx="25" cy="44" r="3.2" />
+				<circle class="t" cx="35" cy="30" r="3.2" />
+				<circle class="b" cx="45" cy="44" r="3.2" />
+				<circle class="t" cx="55" cy="30" r="3.2" />
+				<circle class="b" cx="65" cy="44" r="3.2" />
+			</svg>
+			<h1>競技啦啦隊<br />流程編輯器</h1>
+			<p>
+				音樂、八拍、站位和每個人的角色，排在同一條時間軸上。存成一個流程檔，傳給隊員用同一個編輯器打開。
+			</p>
+		</section>
+
+		<section class="start">
+			{#if draftOffer}
+				<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
+					<p id="draft-offer-text">上次編的「{draftOffer.name}」還沒存，要救回嗎？</p>
+					<div class="row">
+						<button type="button" class="primary" onclick={() => draftOffer && restoreDraft(draftOffer.bytes)}
+							>救回</button
+						>
+						<button type="button" onclick={discardDraft}>丟掉</button>
+					</div>
+				</div>
+			{:else}
+				<NewFlowForm oncreate={startFlow} />
+				<div class="home-open">
+					<span>已經有流程檔？</span>
+					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onchange={open} /></label>
+				</div>
+				{#if openError}<p class="error" role="alert">{openError}</p>{/if}
+			{/if}
+		</section>
+	</div>
 {/if}
 
 <style>
-	:global(body) {
-		margin: 0;
-		font-family: system-ui, -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-		color: #1d2330;
-		background: #f2f4f8;
-	}
+	/* ---------- 編輯畫面的大格子 ---------- */
 	.editor {
 		height: 100vh;
 		display: grid;
-		grid-template-rows: auto minmax(0, 1fr) 30vh;
-		grid-template-columns: minmax(0, 1fr) 340px;
+		grid-template-rows: auto minmax(0, 1fr) minmax(200px, 34vh);
+		grid-template-columns: minmax(0, 1fr) 360px;
+		background: var(--paper);
 	}
+
+	/* ---------- 上方列：深藍底，像記分板 ---------- */
 	.topbar {
 		grid-column: 1 / -1;
-		display: flex;
-		gap: 12px;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 		align-items: center;
-		padding: 6px 12px;
+		gap: 16px;
+		padding: 8px 12px 8px 16px;
+		background: var(--ink);
+		color: #e8ecf5;
+	}
+	.title {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		min-width: 0;
+	}
+	.title b {
+		font-size: 16px;
+		font-weight: 700;
+		color: #fff;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.unsaved {
+		flex: none;
+		font-size: 12px;
+		color: #ffd27a;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+	.unsaved::before {
+		content: '';
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+
+	.transport {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.play {
+		width: 40px;
+		height: 40px;
+		padding: 0;
+		border-radius: 50%;
+		background: var(--now);
+		border-color: var(--now);
+		color: #fff;
+	}
+	.play:hover {
+		background: #ff6a45;
+		border-color: #ff6a45;
+	}
+	.play.on {
 		background: #fff;
-		border-bottom: 1px solid #dde1ea;
+		border-color: #fff;
+		color: var(--ink);
+	}
+	.board {
+		display: grid;
+		grid-template-columns: auto;
+		min-width: 168px;
+		padding: 3px 12px 4px;
+		border-radius: var(--radius);
+		background: #0c1426;
+		box-shadow: inset 0 0 0 1px #2b3754;
+		font-variant-numeric: tabular-nums;
+		line-height: 1.2;
 	}
 	.pos {
-		font-variant-numeric: tabular-nums;
-		min-width: 9em;
-	}
-	.topbar .play {
-		width: 40px;
-		margin-left: 0;
-	}
-	.topbar label {
 		display: flex;
-		gap: 4px;
-		align-items: center;
+		align-items: baseline;
+		gap: 8px;
+		white-space: nowrap;
 	}
+	.pos-seg {
+		font-size: 12px;
+		color: #9fb0d4;
+	}
+	.pos-at {
+		font-size: 20px;
+		font-weight: 700;
+		color: #fff;
+		letter-spacing: 0.02em;
+	}
+	.clock {
+		font-size: 11px;
+		color: #8b99b8;
+	}
+	.clock i {
+		font-style: normal;
+		color: #5d6a88;
+	}
+	.toggle,
 	.latency {
-		width: 5em;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: #c9d2e6;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.toggle {
+		padding: 5px 10px;
+		border-radius: 999px;
+		border: 1px solid #36425f;
+	}
+	.toggle:has(input:checked) {
+		background: #24304c;
+		border-color: #4a5a80;
+		color: #fff;
+	}
+	.toggle input {
+		position: absolute;
+		opacity: 0;
+		width: 1px;
+		height: 1px;
+	}
+	.toggle:focus-within {
+		outline: 2px solid var(--sel);
+		outline-offset: 2px;
+	}
+	.latency input {
+		width: 64px;
+		background: #0c1426;
+		color: #fff;
+		border-color: #36425f;
+		padding: 3px 6px;
+	}
+
+	.actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 4px;
+		min-width: 0;
+	}
+	.actions :global(button.ghost),
+	.actions .btn.ghost {
+		color: #d6ddec;
+	}
+	.actions :global(button.ghost:hover),
+	.actions .btn.ghost:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
+	}
+	.actions .save {
+		margin-left: 4px;
+	}
+	.sep {
+		width: 1px;
+		height: 20px;
+		background: #36425f;
+		margin: 0 4px;
 	}
 	.warn {
+		position: absolute;
+		right: 16px;
+		bottom: 16px;
+		z-index: 2;
 		display: flex;
-		gap: 10px;
-		color: #b5651d;
-	}
-	.notice {
-		color: #c0392b;
-	}
-	.topbar .settings {
-		margin-left: auto;
-	}
-	.muted {
-		color: #7a8296;
+		align-items: center;
+		gap: 6px;
+		max-width: calc(100% - 32px);
+		padding: 6px 12px;
+		border-radius: 10px;
+		background: var(--warn-bg);
+		border: 1px solid #f0d488;
+		color: var(--warn-text);
 		font-size: 12px;
+		font-weight: 500;
 	}
+	.warn span + span::before {
+		content: '／';
+		margin-right: 6px;
+	}
+
 	/* 選檔用的 input 藏起來，外面的 label 看起來像按鈕。 */
 	.open {
-		cursor: pointer;
-		padding: 1px 6px;
-		border: 1px solid #c5cad6;
-		border-radius: 4px;
-		background: #fff;
+		position: relative;
 	}
 	.open:focus-within {
-		outline: 2px solid #5167a8;
+		outline: 2px solid var(--sel);
+		outline-offset: 2px;
 	}
 	.open input {
 		position: absolute;
 		width: 1px;
 		height: 1px;
 		opacity: 0;
+		pointer-events: none;
 	}
-	.home-open {
+
+	/* ---------- 場地 ---------- */
+	.field-host {
+		position: relative;
+		min-height: 0;
+		padding: 12px;
+	}
+	.field-empty {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		display: grid;
+		gap: 4px;
+		max-width: 300px;
+		padding: 14px 18px;
 		text-align: center;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		box-shadow: var(--shadow-pop);
+		font-size: 13px;
+		color: var(--muted);
+		pointer-events: none;
 	}
-	.draft-offer {
-		max-width: 420px;
-		margin: 80px auto;
-		padding: 16px 20px;
-		text-align: center;
-		background: #fff;
-		border: 1px solid #dde1ea;
-		border-radius: 6px;
+	.field-empty b {
+		color: var(--text);
+		font-size: 14px;
 	}
-	.topbar .print {
-		margin-left: 0;
-	}
-	.discard {
-		position: fixed;
-		top: 48px;
+	.toast {
+		position: absolute;
+		top: 14px;
 		left: 50%;
 		transform: translateX(-50%);
-		z-index: 60;
-		max-width: 420px;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		max-width: min(560px, calc(100% - 32px));
+		padding: 6px 6px 6px 14px;
+		border-radius: 10px;
+		background: var(--ink);
+		color: #fff;
+		font-size: 13px;
+		box-shadow: var(--shadow-pop);
+		animation: drop 0.18s ease-out;
 	}
-	@media print {
-		.print-hidden {
-			display: none;
+	.toast button {
+		color: #b8c3da;
+		width: 24px;
+		height: 24px;
+	}
+	.toast button:hover {
+		background: rgba(255, 255, 255, 0.12);
+		color: #fff;
+	}
+	@keyframes drop {
+		from {
+			opacity: 0;
+			transform: translate(-50%, -6px);
 		}
 	}
-	.field-host {
-		min-height: 0;
-		background: #dfe3ea;
-		padding: 8px;
-	}
+
+	/* ---------- 右邊欄 ---------- */
 	.inspector {
 		min-height: 0;
-		overflow-y: auto;
-		padding: 10px 12px;
-		background: #fff;
-		border-left: 1px solid #dde1ea;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		background: var(--surface);
+		border-left: 1px solid var(--line);
 	}
+	.tabs {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		padding: 8px 10px 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.tabs button {
+		border: none;
+		border-bottom: 2px solid transparent;
+		border-radius: 6px 6px 0 0;
+		padding: 8px 10px 9px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--muted);
+		background: none;
+	}
+	.tabs button:hover {
+		color: var(--text);
+		background: var(--surface-2);
+	}
+	.tabs button[aria-selected='true'] {
+		color: var(--mat);
+		border-bottom-color: var(--mat);
+	}
+	.count {
+		min-width: 20px;
+		padding: 0 6px;
+		border-radius: 999px;
+		background: var(--line-soft);
+		color: var(--muted);
+		font-size: 11px;
+		line-height: 18px;
+	}
+	.tabs button[aria-selected='true'] .count {
+		background: var(--mat-soft);
+		color: var(--mat);
+	}
+	.panel {
+		min-height: 0;
+		overflow-y: auto;
+		padding: 14px 16px 24px;
+		display: grid;
+		align-content: start;
+		gap: 18px;
+	}
+	.panel[hidden] {
+		display: none;
+	}
+
 	/* 讓時間軸撐滿這一列、自己捲動。 */
 	.timeline-host {
 		grid-column: 1 / -1;
 		min-height: 0;
 		display: grid;
 		grid-template-rows: minmax(0, 1fr);
+	}
+
+	.discard {
+		align-items: flex-start;
+		padding-top: 72px;
+	}
+	.discard-box {
+		width: min(420px, 100%);
+		box-shadow: var(--shadow-pop);
+		border-radius: 10px;
+	}
+
+	@media print {
+		.print-hidden {
+			display: none;
+		}
+	}
+
+	@media (max-width: 1180px) {
+		.latency {
+			display: none;
+		}
+		.topbar {
+			grid-template-columns: auto auto minmax(0, 1fr);
+		}
+	}
+
+	/* ---------- 首頁 ---------- */
+	.home {
+		min-height: 100vh;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+		gap: 56px;
+		align-items: center;
+		max-width: 1040px;
+		margin: 0 auto;
+		padding: 48px 32px;
+	}
+	.intro {
+		display: grid;
+		gap: 20px;
+		align-content: center;
+	}
+	.intro-mat {
+		width: 180px;
+		height: auto;
+	}
+	.intro-mat rect {
+		fill: var(--mat);
+	}
+	.intro-mat rect:nth-child(odd) {
+		fill: #3570c4;
+	}
+	.intro-mat circle {
+		stroke: var(--ink);
+		stroke-width: 0.8;
+	}
+	.intro-mat .b {
+		fill: #fff;
+	}
+	.intro-mat .t {
+		fill: var(--top);
+	}
+	.intro h1 {
+		font-size: 40px;
+		line-height: 1.15;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		color: var(--ink);
+	}
+	.intro p {
+		max-width: 26em;
+		font-size: 15px;
+		line-height: 1.7;
+		color: var(--muted);
+	}
+	.start {
+		display: grid;
+		gap: 14px;
+	}
+	.home-open {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		color: var(--muted);
+		font-size: 13px;
+	}
+	.home .error {
+		text-align: center;
+	}
+	.draft-offer {
+		display: grid;
+		gap: 16px;
+		padding: 24px;
+		background: var(--surface);
+		border-radius: 14px;
+		box-shadow: var(--shadow-pop);
+		font-size: 15px;
+	}
+	.draft-offer .row {
+		display: flex;
+		gap: 8px;
+	}
+	@media (max-width: 760px) {
+		.home {
+			grid-template-columns: 1fr;
+			gap: 28px;
+			padding: 32px 16px;
+		}
+		.intro h1 {
+			font-size: 30px;
+		}
 	}
 </style>

@@ -2,6 +2,7 @@
 	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
 	// 刪隊員先顯示流程核心給的「要確認」說明，按確定才刪。
 	import ConfirmList from './ConfirmList.svelte';
+	import Icon from './Icon.svelte';
 	import { applyResult } from './form';
 	import {
 		GENDERS,
@@ -59,37 +60,45 @@
 </script>
 
 <section class="members">
-	<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
+	<header>
+		<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
+		<span class="hint">名單順序就是場上的號碼和泳道順序</span>
+	</header>
 
-	<ol>
-		{#each flow.members as m, i (m.id)}
-			<li>
-				<span class="no">{i + 1}</span>
-				<input
-					aria-label="第 {i + 1} 位隊員的名字"
-					value={m.name}
-					onchange={(e) => edit(m.id, { name: e.currentTarget.value }, e.currentTarget)}
-				/>
-				<select
-					aria-label="第 {i + 1} 位隊員的性別"
-					value={m.gender}
-					onchange={(e) => edit(m.id, { gender: e.currentTarget.value as Gender })}
-				>
-					{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
-				</select>
-				<select
-					aria-label="第 {i + 1} 位隊員的全局角色"
-					value={m.globalRole}
-					onchange={(e) => edit(m.id, { globalRole: e.currentTarget.value as GlobalRole })}
-				>
-					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
-				</select>
-				<button type="button" class="remove" aria-label="刪除第 {i + 1} 位隊員" onclick={() => remove(m.id)}
-					>✕</button
-				>
-			</li>
-		{/each}
-	</ol>
+	{#if flow.members.length}
+		<ol>
+			{#each flow.members as m, i (m.id)}
+				<li>
+					<span class="no {m.globalRole}">{i + 1}</span>
+					<input
+						aria-label="第 {i + 1} 位隊員的名字"
+						value={m.name}
+						onchange={(e) => edit(m.id, { name: e.currentTarget.value }, e.currentTarget)}
+					/>
+					<select
+						aria-label="第 {i + 1} 位隊員的性別"
+						value={m.gender}
+						onchange={(e) => edit(m.id, { gender: e.currentTarget.value as Gender })}
+					>
+						{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
+					</select>
+					<select
+						aria-label="第 {i + 1} 位隊員的全局角色"
+						value={m.globalRole}
+						onchange={(e) => edit(m.id, { globalRole: e.currentTarget.value as GlobalRole })}
+					>
+						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
+					</select>
+					<button
+						type="button"
+						class="ghost icon remove"
+						aria-label="刪除第 {i + 1} 位隊員"
+						onclick={() => remove(m.id)}><Icon name="trash" size={14} /></button
+					>
+				</li>
+			{/each}
+		</ol>
+	{/if}
 
 	{#if pending}
 		<ConfirmList
@@ -102,25 +111,28 @@
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
 	<form class="add" novalidate onsubmit={add}>
+		<b class="add-title">加隊員</b>
 		<label class="names">
 			名字（一次加多人：一行一個）
-			<textarea rows="2" bind:value={names} placeholder="暱稱或背號"></textarea>
+			<textarea rows="3" bind:value={names} placeholder="暱稱或背號"></textarea>
 		</label>
-		<label>
-			性別
-			<select bind:value={gender}>
-				<option value="">請選</option>
-				{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
-			</select>
-		</label>
-		<label>
-			全局角色
-			<select bind:value={globalRole}>
-				<option value="">請選</option>
-				{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
-			</select>
-		</label>
-		<button type="submit">加隊員</button>
+		<div class="pair">
+			<label>
+				性別
+				<select bind:value={gender}>
+					<option value="">請選</option>
+					{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
+				</select>
+			</label>
+			<label>
+				全局角色
+				<select bind:value={globalRole}>
+					<option value="">請選</option>
+					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
+				</select>
+			</label>
+		</div>
+		<button type="submit" class="primary">加隊員</button>
 	</form>
 
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -129,49 +141,99 @@
 <style>
 	.members {
 		display: grid;
-		gap: 8px;
+		gap: 12px;
 		font-size: 13px;
+	}
+	header {
+		display: grid;
+		gap: 2px;
 	}
 	h3 {
 		margin: 0;
 		font-size: 14px;
+		font-weight: 700;
+	}
+	.hint {
+		font-size: 12px;
+		color: var(--muted, #66718a);
 	}
 	ol {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: 2px;
-		max-height: 40vh;
-		overflow-y: auto;
+		gap: 4px;
 	}
 	li {
 		display: grid;
-		grid-template-columns: 2em minmax(0, 1fr) auto auto auto;
-		gap: 4px;
+		grid-template-columns: 22px minmax(0, 1fr) 58px 72px 28px;
+		gap: 6px;
 		align-items: center;
 	}
 	.no {
-		color: #6b7280;
-		text-align: right;
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font-size: 11px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+		border: 1.5px solid #16213a;
+		background: #fff;
+	}
+	.no.top {
+		background: var(--top, #e0664f);
+		color: #fff;
+	}
+	li input,
+	li select {
+		width: 100%;
+	}
+	.remove {
+		color: var(--muted, #66718a);
+	}
+	.remove:hover {
+		color: var(--danger, #c8372d);
 	}
 	.add {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		align-items: end;
-		padding-top: 6px;
-		border-top: 1px solid #dde1ea;
+		display: grid;
+		gap: 10px;
+		padding: 14px;
+		border-radius: 12px;
+		background: var(--surface-2, #f6f8fb);
+		border: 1px solid var(--line-soft, #e8ecf3);
+	}
+	.add-title {
+		font-size: 13px;
 	}
 	.add label {
 		display: grid;
-		gap: 2px;
+		gap: 4px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--muted, #66718a);
 	}
-	.names {
-		flex: 1 1 100%;
+	.add textarea,
+	.add select {
+		width: 100%;
+		font-weight: 400;
+	}
+	.pair {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
+	.add button {
+		width: 100%;
+		padding: 7px 12px;
 	}
 	.error {
 		margin: 0;
-		color: #c0392b;
+		padding: 8px 10px;
+		border-radius: 8px;
+		background: var(--danger-soft, #fdecea);
+		color: var(--danger, #c8372d);
 	}
 </style>

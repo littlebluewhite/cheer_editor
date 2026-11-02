@@ -3,6 +3,7 @@
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
 	import { eightCountRows, type Flow } from '#lib/core';
 	import Field from './Field.svelte';
+	import Icon from './Icon.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -25,6 +26,7 @@
 
 <div class="print-sheet" role="dialog" aria-label="八拍表">
 	<div class="toolbar">
+		<b class="tool-title">八拍表</b>
 		<label>
 			印誰
 			<select bind:value={memberId}>
@@ -34,45 +36,48 @@
 				{/each}
 			</select>
 		</label>
-		<button type="button" onclick={print}>列印</button>
-		<button type="button" onclick={onclose}>關閉</button>
 		<span class="muted">用瀏覽器列印（Ctrl+P），也可以存成 PDF。</span>
+		<span class="grow"></span>
+		<button type="button" class="primary" onclick={print}><Icon name="print" />列印</button>
+		<button type="button" onclick={onclose}>關閉</button>
 	</div>
 
-	<h1>{flow.name}　八拍表　{who}</h1>
-	<table>
-		<thead>
-			<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>動作</th><th>站位</th></tr>
-		</thead>
-		<tbody>
-			{#each rows as row, i (i)}
-				<tr>
-					<td>{row.segmentLabel}</td>
-					<td>{row.eight ?? `整段 ${row.durationSec.toFixed(1)} 秒`}</td>
-					<td class="num">{row.startSec.toFixed(1)}</td>
-					<td>
-						{#each row.actions as a, j (j)}
-							<div class="action">
-								<b class="at">{a.at}</b>
-								{a.categoryLabel}{#if a.name}·{a.name}{/if}：
-								{a.members.map((m) => (m.role ? `${m.name}（${m.role}）` : m.name)).join('、')}
-							</div>
-						{/each}
-					</td>
-					<td>
-						{#each row.formations as f (f.number)}
-							<figure>
-								<div class="mini">
-									<Field field={flow.field} members={flow.members} positions={f.pos} controls={false} />
+	<div class="page">
+		<h1>{flow.name}　八拍表　{who}</h1>
+		<table>
+			<thead>
+				<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>動作</th><th>站位</th></tr>
+			</thead>
+			<tbody>
+				{#each rows as row, i (i)}
+					<tr>
+						<td>{row.segmentLabel}</td>
+						<td>{row.eight ?? `整段 ${row.durationSec.toFixed(1)} 秒`}</td>
+						<td class="num">{row.startSec.toFixed(1)}</td>
+						<td>
+							{#each row.actions as a, j (j)}
+								<div class="action">
+									<b class="at">{a.at}</b>
+									{a.categoryLabel}{#if a.name}·{a.name}{/if}：
+									{a.members.map((m) => (m.role ? `${m.name}（${m.role}）` : m.name)).join('、')}
 								</div>
-								<figcaption>站位 {f.number}　{f.at}</figcaption>
-							</figure>
-						{/each}
-					</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+							{/each}
+						</td>
+						<td>
+							{#each row.formations as f (f.number)}
+								<figure>
+									<div class="mini">
+										<Field field={flow.field} members={flow.members} positions={f.pos} controls={false} />
+									</div>
+									<figcaption>站位 {f.number}　{f.at}</figcaption>
+								</figure>
+							{/each}
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 </div>
 
 <style>
@@ -81,19 +86,47 @@
 		inset: 0;
 		z-index: 60;
 		overflow: auto;
-		background: #fff;
-		padding: 12px 20px;
+		background: var(--paper, #eceff5);
 		font-size: 13px;
 	}
 	.toolbar {
+		position: sticky;
+		top: 0;
+		z-index: 1;
 		display: flex;
+		gap: 12px;
+		align-items: center;
+		padding: 10px 20px;
+		background: var(--ink, #16213a);
+		color: #e8ecf5;
+	}
+	.tool-title {
+		font-size: 15px;
+		color: #fff;
+	}
+	.toolbar label {
+		display: inline-flex;
 		gap: 8px;
 		align-items: center;
-		margin-bottom: 8px;
+	}
+	.toolbar .muted {
+		color: #9fb0d4;
+		font-size: 12px;
+	}
+	.grow {
+		flex: 1;
+	}
+	.page {
+		max-width: 1000px;
+		margin: 24px auto 48px;
+		padding: 28px 32px;
+		background: #fff;
+		border-radius: 4px;
+		box-shadow: 0 2px 14px rgba(22, 33, 58, 0.12);
 	}
 	h1 {
-		font-size: 16px;
-		margin: 4px 0 8px;
+		font-size: 18px;
+		margin: 0 0 14px;
 	}
 	table {
 		border-collapse: collapse;
@@ -102,12 +135,13 @@
 	th,
 	td {
 		border: 1px solid #c9ced8;
-		padding: 3px 6px;
+		padding: 5px 8px;
 		text-align: left;
 		vertical-align: top;
 	}
 	th {
-		background: #f6f7fa;
+		background: #f2f4f8;
+		font-size: 12px;
 	}
 	tr {
 		break-inside: avoid;
@@ -118,6 +152,7 @@
 	.at {
 		display: inline-block;
 		min-width: 3.5em;
+		font-variant-numeric: tabular-nums;
 	}
 	figure {
 		margin: 0 0 4px;
@@ -138,7 +173,13 @@
 		.print-sheet {
 			position: static;
 			overflow: visible;
+			background: #fff;
+		}
+		.page {
+			margin: 0;
 			padding: 0;
+			box-shadow: none;
+			max-width: none;
 		}
 		.toolbar {
 			display: none;

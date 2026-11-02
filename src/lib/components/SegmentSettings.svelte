@@ -3,6 +3,7 @@
 	// 每改一個欄位就送一個流程核心指令；被擋就顯示原因，流程不變。
 	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
 	import ConfirmList from './ConfirmList.svelte';
+	import Icon from './Icon.svelte';
 	import { applyResult, numberValue } from './form';
 	import {
 		AUDIO_EXTENSIONS,
@@ -152,106 +153,125 @@
 </script>
 
 <div class="backdrop">
-	<div class="dialog" role="dialog" aria-label={`${span?.label ?? ''} 設定`}>
-		<header>
-			<b>{span?.label} 設定</b>
-			{#if span}<span class="muted">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
-			<button type="button" onclick={onclose}>關閉</button>
+	<div class="dialog seg-dialog" role="dialog" aria-label={`${span?.label ?? ''} 設定`}>
+		<header class="dialog-head">
+			<h2>{span?.label} 設定</h2>
+			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
+			<button type="button" class="ghost icon close" aria-label="關閉" onclick={onclose}><Icon name="close" /></button>
 		</header>
 
 		{#key fieldsKey}
 		{#if music && length}
-			<div class="row">
-				<label>載入音樂檔 <input type="file" accept={AUDIO_EXTENSIONS.map((x) => `.${x}`).join(',')} onchange={load} /></label>
-				<span class="muted">
-					{audioName
-						? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : '（找不到音樂，請重新選檔）'}`
-						: '還沒載入'}
-				</span>
-			</div>
-			{#if otherAudio.length}
+			<section>
+				<h3>音樂檔</h3>
 				<div class="row">
-					<label>
-						用已載入的音樂
-						<select onchange={(e) => update({ audioId: e.currentTarget.value })}>
-							<option value="" selected>選一個…</option>
-							{#each otherAudio as a (a.id)}
-								<option value={a.id}>{a.name}</option>
-							{/each}
-						</select>
+					<label class="file btn">
+						載入音樂檔
+						<input type="file" accept={AUDIO_EXTENSIONS.map((x) => `.${x}`).join(',')} onchange={load} />
 					</label>
-					<span class="muted">歌中途變速時，兩個音樂段用同一個檔</span>
+					<span class="audio" class:missing={audioName && !audio}>
+						{audioName
+							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : '（找不到音樂，請重新選檔）'}`
+							: '還沒載入'}
+					</span>
 				</div>
-			{/if}
-			<div class="row">
-				<label>
-					BPM
-					<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => update({ bpm: numberValue(e) })} />
-				</label>
-				<span class="muted">{MIN_BPM}–{MAX_BPM}</span>
-				<label>
-					第一拍（秒）
-					<input
-						type="number"
-						step="0.01"
-						min="0"
-						value={music.firstBeatSec}
-						onchange={(e) => update({ firstBeatSec: numberValue(e) })}
-					/>
-				</label>
-				<button type="button" onclick={() => onpreview(segmentId)}>▶ 從第一拍聽 2 個八拍</button>
-			</div>
-			<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-			<svg
-				class="wave"
-				role="img"
-				aria-label="波形"
-				viewBox={`0 0 ${WAVE_WINDOW_SEC} 2`}
-				preserveAspectRatio="none"
-				onclick={clickWave}
-			>
-				<path class="peaks" d={wavePath} />
-				{#each lines as line (line.sec)}
-					<line class={line.kind} x1={line.sec} x2={line.sec} y1="0" y2="2" />
-				{/each}
-			</svg>
-			<p class="muted hint">
-				{audio ? '' : '沒有音樂檔：載入後會畫出波形。'}在波形上點一下＝把第一拍放在那裡。細線是照 BPM
-				算的拍子，對準鼓點就對了。只顯示前 {WAVE_WINDOW_SEC} 秒。
-			</p>
-			<div class="row">
-				<label>
-					八拍數
-					<input type="number" min="1" step="1" value={length.eights} onchange={(e) => update({ eights: numberValue(e) })} />
-				</label>
-				<label>
-					最後一個八拍有幾拍
-					<input
-						type="number"
-						min="1"
-						max="8"
-						step="1"
-						value={length.lastBeats}
-						onchange={(e) => update({ lastBeats: numberValue(e) })}
-					/>
-				</label>
-				<button type="button" onclick={fitToAudio}>照音樂長度算</button>
-			</div>
+				{#if otherAudio.length}
+					<div class="row">
+						<label class="inline">
+							用已載入的音樂
+							<select onchange={(e) => update({ audioId: e.currentTarget.value })}>
+								<option value="" selected>選一個…</option>
+								{#each otherAudio as a (a.id)}
+									<option value={a.id}>{a.name}</option>
+								{/each}
+							</select>
+						</label>
+						<span class="hint">歌中途變速時，兩個音樂段用同一個檔</span>
+					</div>
+				{/if}
+			</section>
+
+			<section>
+				<h3>拍子</h3>
+				<div class="row">
+					<label class="inline">
+						BPM
+						<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => update({ bpm: numberValue(e) })} />
+					</label>
+					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
+					<label class="inline">
+						第一拍（秒）
+						<input
+							type="number"
+							step="0.01"
+							min="0"
+							value={music.firstBeatSec}
+							onchange={(e) => update({ firstBeatSec: numberValue(e) })}
+						/>
+					</label>
+					<button type="button" class="listen" onclick={() => onpreview(segmentId)}
+						>▶ 從第一拍聽 2 個八拍</button
+					>
+				</div>
+				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+				<svg
+					class="wave"
+					role="img"
+					aria-label="波形"
+					viewBox={`0 0 ${WAVE_WINDOW_SEC} 2`}
+					preserveAspectRatio="none"
+					onclick={clickWave}
+				>
+					<line class="mid" x1="0" x2={WAVE_WINDOW_SEC} y1="1" y2="1" />
+					<path class="peaks" d={wavePath} />
+					{#each lines as line (line.sec)}
+						<line class={line.kind} x1={line.sec} x2={line.sec} y1="0" y2="2" />
+					{/each}
+				</svg>
+				<p class="hint">
+					{audio ? '' : '沒有音樂檔：載入後會畫出波形。'}在波形上點一下＝把第一拍放在那裡。細線是照 BPM
+					算的拍子，對準鼓點就對了。只顯示前 {WAVE_WINDOW_SEC} 秒。
+				</p>
+			</section>
+
+			<section>
+				<h3>長度</h3>
+				<div class="row">
+					<label class="inline">
+						八拍數
+						<input type="number" min="1" step="1" value={length.eights} onchange={(e) => update({ eights: numberValue(e) })} />
+					</label>
+					<label class="inline">
+						最後一個八拍有幾拍
+						<input
+							type="number"
+							min="1"
+							max="8"
+							step="1"
+							value={length.lastBeats}
+							onchange={(e) => update({ lastBeats: numberValue(e) })}
+						/>
+					</label>
+					<button type="button" onclick={fitToAudio}>照音樂長度算</button>
+				</div>
+			</section>
 		{:else if segment?.kind === 'chant'}
-			<div class="row">
-				<label>
-					長度（秒）
-					<input
-						type="number"
-						step="0.1"
-						min="0.1"
-						value={span?.durationSec}
-						onchange={(e) => update({ seconds: numberValue(e) })}
-					/>
-				</label>
-				<span class="muted">口號段只計秒數，最細 0.1 秒</span>
-			</div>
+			<section>
+				<div class="row">
+					<label class="inline">
+						長度（秒）
+						<input
+							type="number"
+							step="0.1"
+							min="0.1"
+							value={span?.durationSec}
+							onchange={(e) => update({ seconds: numberValue(e) })}
+						/>
+					</label>
+					<span class="hint">口號段只計秒數，最細 0.1 秒</span>
+				</div>
+			</section>
 		{/if}
 		{/key}
 
@@ -269,77 +289,95 @@
 </div>
 
 <style>
-	.backdrop {
-		position: fixed;
-		inset: 0;
-		background: rgba(15, 20, 35, 0.45);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 50;
+	.seg-dialog {
+		width: min(680px, 100%);
 	}
-	.dialog {
-		background: #fff;
-		border-radius: 10px;
-		padding: 12px 16px;
-		width: min(640px, 94vw);
+	section {
 		display: grid;
-		gap: 8px;
-	}
-	header {
-		display: flex;
 		gap: 10px;
-		align-items: baseline;
 	}
-	header button {
-		margin-left: auto;
+	section + section {
+		padding-top: 14px;
+		border-top: 1px solid var(--line-soft, #e8ecf3);
+	}
+	h3 {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 700;
 	}
 	.row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
+		gap: 10px 14px;
 		align-items: center;
 	}
-	.row label {
-		display: flex;
-		gap: 6px;
+	.inline {
+		display: inline-flex;
+		gap: 8px;
 		align-items: center;
+		font-size: 13px;
 	}
 	input[type='number'] {
-		width: 6em;
+		width: 6.5em;
+		font-variant-numeric: tabular-nums;
 	}
-	.muted {
-		color: #7a8296;
-		font-size: 12px;
+	.file {
+		position: relative;
+	}
+	.file:focus-within {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: 2px;
+	}
+	.file input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.audio {
+		font-size: 13px;
+		color: var(--muted, #66718a);
+	}
+	.audio.missing {
+		color: var(--danger, #c8372d);
+	}
+	.listen {
+		margin-left: auto;
 	}
 	.hint {
 		margin: 0;
 	}
 	.wave {
 		width: 100%;
-		height: 90px;
-		background: #f6f7fa;
-		border: 1px solid #c5cad6;
-		border-radius: 6px;
+		height: 100px;
+		background: #0f1830;
+		border-radius: 8px;
 		cursor: crosshair;
 	}
 	.peaks {
-		fill: #7d8bb5;
+		fill: #6f97dc;
 	}
 	line {
 		vector-effect: non-scaling-stroke;
-		stroke: rgba(29, 35, 48, 0.25);
+		stroke: rgba(255, 255, 255, 0.18);
 		stroke-width: 1;
 	}
+	line.mid {
+		stroke: rgba(255, 255, 255, 0.08);
+	}
 	line.eight {
-		stroke: #1d2330;
+		stroke: rgba(255, 255, 255, 0.6);
 	}
 	line.first {
-		stroke: #e8452c;
+		stroke: var(--now, #f2542d);
 		stroke-width: 2;
 	}
 	.error {
 		margin: 0;
-		color: #c0392b;
+		padding: 8px 10px;
+		border-radius: 8px;
+		background: var(--danger-soft, #fdecea);
+		color: var(--danger, #c8372d);
 	}
 </style>

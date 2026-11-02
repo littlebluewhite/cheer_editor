@@ -2,6 +2,7 @@
 	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加自訂角色。
 	import { addCustomRole, roleGlossary, type Flow } from '#lib/core';
 	import { applyResult } from './form';
+	import Icon from './Icon.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -25,10 +26,10 @@
 </script>
 
 <div class="backdrop">
-	<div class="dialog" role="dialog" aria-label="名詞對照表">
-		<header>
-			<b>名詞對照表：任務角色</b>
-			<button type="button" onclick={onclose}>關閉</button>
+	<div class="dialog glossary" role="dialog" aria-label="名詞對照表">
+		<header class="dialog-head">
+			<h2>名詞對照表：任務角色</h2>
+			<button type="button" class="ghost icon close" aria-label="關閉" onclick={onclose}><Icon name="close" /></button>
 		</header>
 		<table>
 			<thead>
@@ -37,7 +38,7 @@
 			<tbody>
 				{#each roleGlossary(flow) as r (r.name)}
 					<tr>
-						<td><b>{r.name}</b>{#if r.custom}<small> 自訂</small>{/if}</td>
+						<td><b>{r.name}</b>{#if r.custom}<small class="tag">自訂</small>{/if}</td>
 						<td>{r.meaning}</td>
 						<td>{r.ruleName || '—'}</td>
 					</tr>
@@ -47,68 +48,76 @@
 		<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
 		<form novalidate onsubmit={add}>
 			<b>新增自訂角色</b>
-			<label>角色名稱 <input bind:value={name} /></label>
-			<label>意思 <input bind:value={meaning} /></label>
-			<button type="submit">新增角色</button>
+			<div class="fields">
+				<label>角色名稱 <input bind:value={name} /></label>
+				<label>意思 <input bind:value={meaning} /></label>
+				<button type="submit" class="primary">新增角色</button>
+			</div>
+			<p class="muted">自訂角色只存在這一支流程裡。</p>
 		</form>
-		<p class="muted">自訂角色只存在這一支流程裡。</p>
 		{#if error}<p class="error" role="alert">{error}</p>{/if}
 	</div>
 </div>
 
 <style>
-	.backdrop {
-		position: fixed;
-		inset: 0;
-		background: rgba(15, 20, 35, 0.45);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 50;
-	}
-	.dialog {
-		background: #fff;
-		border-radius: 10px;
-		padding: 12px 16px;
-		max-width: 760px;
-		max-height: 86vh;
-		overflow: auto;
-		display: grid;
-		gap: 8px;
+	.glossary {
+		width: min(760px, 100%);
 		font-size: 13px;
-	}
-	header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
 	}
 	table {
 		border-collapse: collapse;
+		width: 100%;
 	}
 	th,
 	td {
-		border: 1px solid #e3e6ee;
-		padding: 4px 6px;
+		border-bottom: 1px solid var(--line-soft, #e8ecf3);
+		padding: 7px 8px;
 		text-align: left;
 		vertical-align: top;
 	}
 	th {
-		background: #f6f7fa;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--muted, #66718a);
+		border-bottom-color: var(--line, #d8dee9);
 	}
-	small,
-	.muted {
-		color: #7a8296;
+	td:first-child {
+		white-space: nowrap;
+	}
+	.tag {
+		margin-left: 6px;
+		padding: 1px 5px;
+		border-radius: 4px;
+		background: var(--mat-soft, #e3ecf9);
+		color: var(--mat, #2f66b8);
+		font-size: 11px;
 	}
 	form {
+		display: grid;
+		gap: 8px;
+		padding: 12px 14px;
+		border-radius: 10px;
+		background: var(--surface-2, #f6f8fb);
+	}
+	.fields {
 		display: flex;
 		flex-wrap: wrap;
+		gap: 10px;
+		align-items: center;
+	}
+	.fields label {
+		display: inline-flex;
 		gap: 6px;
 		align-items: center;
+	}
+	.muted {
+		color: var(--muted, #66718a);
+		font-size: 12px;
 	}
 	p {
 		margin: 0;
 	}
 	.error {
-		color: #c0392b;
+		color: var(--danger, #c8372d);
 	}
 </style>

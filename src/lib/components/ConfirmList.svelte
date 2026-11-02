@@ -20,35 +20,44 @@
 		</ul>
 	{/if}
 	<div class="buttons">
-		<button type="button" class="danger" onclick={onconfirm}>{confirmLabel}</button>
+		<button type="button" class="confirm-btn" onclick={onconfirm}>{confirmLabel}</button>
 		<button type="button" onclick={oncancel}>取消</button>
 	</div>
 </div>
 
 <style>
 	.confirm {
-		border: 1px solid #e0a39b;
-		background: #fdf3f1;
-		border-radius: 6px;
-		padding: 8px 10px;
+		border: 1px solid #efc7c1;
+		background: #fff7f5;
+		border-radius: 10px;
+		padding: 12px 14px;
 		display: grid;
-		gap: 6px;
+		gap: 10px;
+		font-size: 13px;
 	}
 	p,
 	ul {
 		margin: 0;
 	}
+	p {
+		font-weight: 600;
+	}
 	ul {
 		padding-left: 1.2em;
+		color: var(--text, #1a2238);
 	}
 	.buttons {
 		display: flex;
-		gap: 6px;
+		gap: 8px;
 	}
-	.danger {
+	.confirm-btn {
 		color: #fff;
-		background: #c0392b;
-		border: 1px solid #a93226;
-		border-radius: 4px;
+		background: var(--danger, #c8372d);
+		border-color: var(--danger, #c8372d);
+		font-weight: 600;
+	}
+	.confirm-btn:hover {
+		background: #a92c23;
+		border-color: #a92c23;
 	}
 </style>
