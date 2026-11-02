@@ -116,7 +116,7 @@
 	function add() {
 		const input = toInput();
 		const r = typeof input === 'string' ? null : addAction(flow, input);
-		if (!r || r.kind === 'blocked') {
+		if (!r || r.kind !== 'ok') {
 			error = r?.message ?? (input as string);
 			return;
 		}
