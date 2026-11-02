@@ -11,6 +11,12 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ActionForm from './ActionForm.svelte';
 
+// jsdom 沒有 scrollIntoView：記下被捲過去的元素。
+const scrolled: Element[] = [];
+Element.prototype.scrollIntoView = function () {
+	scrolled.push(this);
+};
+
 function flowOf(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
 	return r.flow;
@@ -71,6 +77,13 @@ describe('動作表單：新增', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(screen.getByRole('alert').textContent).toBe('一個動作至少要有 1 個人');
 		expect(onchange).not.toHaveBeenCalled();
+	});
+
+	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
+		scrolled.length = 0;
+		setup(sample(), null);
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(scrolled).toEqual([screen.getByRole('alert')]);
 	});
 
 	it('還沒有段時不能加動作', () => {

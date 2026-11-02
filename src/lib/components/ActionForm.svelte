@@ -309,7 +309,8 @@
 		{#if !action}<button type="button" class="primary" onclick={add}>新增動作</button>{/if}
 	{/if}
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
+	{#if error}<p class="error" role="alert" {@attach (p) => p.scrollIntoView({ block: 'nearest' })}>{error}</p>{/if}
 </section>
 
 {#if glossaryOpen}
