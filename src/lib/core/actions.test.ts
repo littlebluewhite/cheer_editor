@@ -7,7 +7,11 @@ import {
 	deleteAction,
 	idleAt,
 	memberActionAt,
+	memberGroup,
+	moveAction,
+	previousActions,
 	raisedAt,
+	resizeAction,
 	updateAction,
 	addSegment,
 	createFlow,
@@ -247,5 +251,79 @@ describe('改動作、刪動作', () => {
 		const flow = flowOf(addAction(sample(), lib()));
 		expect(flowOf(deleteAction(flow, 'x1')).actions).toEqual([]);
 		expect(deleteAction(flow, 'x9')).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+	});
+});
+
+describe('拖色條：移動、改長度', () => {
+	it('移到最近的半拍；動作還是在原來那一段', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
+		// 一個半拍 0.2 秒：1.05 秒最近的是第 5 個半拍（1.0 秒）
+		const moved = flowOf(moveAction(flow, 'x1', 1.05));
+		expect(moved.actions[0]).toMatchObject({ segmentId: 's1', start: 5, length: 8 });
+	});
+
+	it('口號段移到最近的 0.1 秒', () => {
+		const flow = flowOf(addAction(sample(), lib({ segmentId: 's2', start: 0, length: 30 })));
+		// 口號 1 從 6.4 秒開始
+		expect(flowOf(moveAction(flow, 'x1', 7.66)).actions[0].start).toBe(13);
+	});
+
+	it('拖到段外（跨段、段之前）或撞到同一人就擋下', () => {
+		let flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
+		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 16, length: 8 })));
+		expect(moveAction(flow, 'x1', 6)).toEqual({
+			kind: 'blocked',
+			message: '動作不能跨段，要跨就拆成兩個'
+		});
+		expect(moveAction(flow, 'x1', -0.4)).toEqual({
+			kind: 'blocked',
+			message: '開始時間不能在段之前'
+		});
+		expect(moveAction(flow, 'x1', 2.2)).toEqual({
+			kind: 'blocked',
+			message: '小A 同一時間已經在「技巧·Ext」裡'
+		});
+	});
+
+	it('拉右邊改長度：結束吸到最近的半拍；拉到 0 或超出段尾就擋下', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 4, length: 8 })));
+		// 開始 0.8 秒；結束拉到 3.25 秒 → 長度 12 個半拍（結束 3.2 秒）
+		expect(flowOf(resizeAction(flow, 'x1', 3.25)).actions[0]).toMatchObject({ start: 4, length: 12 });
+		expect(resizeAction(flow, 'x1', 0.81)).toEqual({
+			kind: 'blocked',
+			message: '動作長度至少要半拍'
+		});
+		expect(resizeAction(flow, 'x1', 7).kind).toBe('blocked');
+	});
+
+	it('找不到動作就擋下', () => {
+		expect(moveAction(sample(), 'x9', 0)).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+		expect(resizeAction(sample(), 'x9', 0)).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+	});
+});
+
+describe('選人捷徑', () => {
+	it('上一個動作：播放頭以前結束的動作，越晚結束越前面；同時結束的，晚開始的在前；還沒做完的不算', () => {
+		let flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 }))); // x1 結束 1.6 秒
+		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 8, length: 8 }))); // x2 結束 3.2 秒
+		flow = flowOf(
+			addAction(flow, lib({ name: '跳', start: 12, length: 4, members: [{ memberId: 'm3', role: null }] }))
+		); // x3 也結束 3.2 秒，晚開始
+		flow = flowOf(
+			addAction(flow, lib({ name: '翻', start: 16, length: 8, members: [{ memberId: 'm3', role: null }] }))
+		); // x4 3.2–4.8 秒
+		expect(previousActions(flow, 4).map((a) => a.id)).toEqual(['x3', 'x2', 'x1']);
+		expect(previousActions(flow, 3.2).map((a) => a.id)).toEqual(['x3', 'x2', 'x1']);
+		expect(previousActions(flow, 3.1).map((a) => a.id)).toEqual(['x1']);
+		expect(previousActions(flow, 0)).toEqual([]);
+	});
+
+	it('全隊、全部底層、全部上層（看全局角色）、這一拍沒在動作裡的人，照名單順序', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
+		expect(memberGroup(flow, 'all', 0)).toEqual(['m1', 'm2', 'm3']);
+		expect(memberGroup(flow, 'base', 0)).toEqual(['m2', 'm3']);
+		expect(memberGroup(flow, 'top', 0)).toEqual(['m1']);
+		expect(memberGroup(flow, 'idle', 0)).toEqual(['m3']);
+		expect(memberGroup(flow, 'idle', 2)).toEqual(['m1', 'm2', 'm3']);
 	});
 });

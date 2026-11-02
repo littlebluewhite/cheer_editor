@@ -23,6 +23,12 @@
 		ondeleteformation?: (formationId: string) => void;
 		selectedActionId?: string | null;
 		onselectaction?: (actionId: string) => void;
+		/** 拖色條改好的流程。 */
+		onchange?: (flow: Flow) => void;
+		/** 拖色條被擋（已還原）的原因。 */
+		onblocked?: (message: string) => void;
+		selectedMemberIds?: string[];
+		onselectmembers?: (memberIds: string[]) => void;
 	}
 
 	let {
@@ -37,7 +43,11 @@
 		onselectformation = () => {},
 		ondeleteformation = () => {},
 		selectedActionId = null,
-		onselectaction = () => {}
+		onselectaction = () => {},
+		onchange = () => {},
+		onblocked = () => {},
+		selectedMemberIds = [],
+		onselectmembers = () => {}
 	}: Props = $props();
 
 	let menuOpen = $state(false);
@@ -118,7 +128,17 @@
 			onselect={onselectformation}
 			ondelete={ondeleteformation}
 		/>
-		<Lanes {flow} {playheadSec} {pxPerSec} {selectedActionId} {onselectaction} />
+		<Lanes
+			{flow}
+			{playheadSec}
+			{pxPerSec}
+			{selectedActionId}
+			{onselectaction}
+			{onchange}
+			{onblocked}
+			{selectedMemberIds}
+			{onselectmembers}
+		/>
 		<div class="ph" style:left={`${120 + playheadSec * pxPerSec}px`}></div>
 	</div>
 </div>
