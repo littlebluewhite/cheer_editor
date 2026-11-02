@@ -17,7 +17,7 @@
 	function add(e: SubmitEvent) {
 		e.preventDefault();
 		const r = addCustomRole(flow, { name, meaning });
-		if (r.kind === 'blocked') {
+		if (r.kind !== 'ok') {
 			error = r.message;
 			return;
 		}

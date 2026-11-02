@@ -1,7 +1,7 @@
 // 流程核心的對外介面。畫面只從這裡 import，不碰 core 裡的其他檔案。
 // 這一層是純 TypeScript：不碰 DOM、Svelte、Web Audio、檔案對話框。
 
-export type { CommandResult } from './result';
+export type { CommandResult, ConfirmOption } from './result';
 
 export { createFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
@@ -9,7 +9,7 @@ export type { Flow, NewFlowInput } from './flow';
 export { readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
 export type { AudioBytes, ReadFlowFileResult } from './flow-file';
 
-export { MAX_MEMBERS, addMembers, updateMember } from './members';
+export { MAX_MEMBERS, addMembers, deleteMember, updateMember } from './members';
 export type { Gender, GlobalRole, Member, MemberChanges, NewMemberInput } from './members';
 
 export {
@@ -25,6 +25,9 @@ export {
 	updateAction
 } from './actions';
 export type { Action, ActionCategory, ActionMember, NewActionInput } from './actions';
+
+export { eightCountRows } from './eight-count';
+export type { EightCountAction, EightCountFormation, EightCountRow } from './eight-count';
 
 export { addCustomRole, roleGlossary } from './roles';
 export type { CustomRole, RoleEntry } from './roles';

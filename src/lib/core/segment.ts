@@ -2,8 +2,10 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
+import { actionLabel } from './actions';
 import type { Flow } from './flow';
-import { blocked, ok, type CommandResult } from './result';
+import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { atText, segmentSpans, units } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -108,7 +110,16 @@ export interface SegmentPatch {
 	seconds?: number;
 }
 
-export function updateSegment(flow: Flow, segmentId: string, patch: SegmentPatch): CommandResult {
+/**
+ * 改段。改 BPM 時動作和站位存的是拍，所以拍不變、秒數跟著變。
+ * 段縮短、有動作或站位放不進段裡時回「要確認」並列出清單；帶 { confirmed: true } 再送一次才刪。
+ */
+export function updateSegment(
+	flow: Flow,
+	segmentId: string,
+	patch: SegmentPatch,
+	{ confirmed = false }: ConfirmOption = {}
+): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
 	if (index === -1) return blocked('找不到這一段');
 	const old = flow.segments[index];
@@ -142,7 +153,24 @@ export function updateSegment(flow: Flow, segmentId: string, patch: SegmentPatch
 		if (!(tenths >= 1)) return blocked('口號段至少 0.1 秒');
 		next = { ...old, tenths };
 	}
-	return ok(withoutUnusedAudio({ ...flow, segments: flow.segments.with(index, next) }));
+	// 段縮短：動作要整個放得進段裡；站位的時間點要在段裡（段尾那一刻已經是下一段）。
+	const end = units(next);
+	const actions = flow.actions.filter((a) => a.segmentId !== segmentId || a.start + a.length <= end);
+	const formations = flow.formations.filter((f) => f.segmentId !== segmentId || f.at < end);
+	const droppedActions = flow.actions.filter((a) => !actions.includes(a));
+	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
+	if (!confirmed && (droppedActions.length || droppedFormations.length)) {
+		const label = segmentSpans(flow)[index].label;
+		return needsConfirm(`${label} 縮短後，下面這些放不進段裡，確定就刪掉`, [
+			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${atText(old, a.start)} 起）`),
+			...droppedFormations.map(
+				(f) => `站位 ${flow.formations.indexOf(f) + 1}（${atText(old, f.at)}）`
+			)
+		]);
+	}
+	return ok(
+		withoutUnusedAudio({ ...flow, segments: flow.segments.with(index, next), actions, formations })
+	);
 }
 
 /**

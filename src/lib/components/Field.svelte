@@ -28,7 +28,8 @@
 		positions = {},
 		raised = [],
 		onmove,
-		toMeters = screenCtmToMeters
+		toMeters = screenCtmToMeters,
+		controls = true
 	}: {
 		field: FieldConfig;
 		/** 照名單順序；點上寫的號碼是名單裡第幾個。 */
@@ -38,6 +39,8 @@
 		raised?: string[];
 		onmove?: (moves: Record<string, Position>) => void;
 		toMeters?: ToMeters;
+		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
+		controls?: boolean;
 	} = $props();
 
 	const ZOOM_STEP = 1.25;
@@ -181,12 +184,14 @@
 			</g>
 		{/each}
 	</svg>
-	<div class="tools">
-		<button type="button" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}>－</button>
-		<span>×{zoom.toFixed(1)}</span>
-		<button type="button" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}>＋</button>
-		<button type="button" onclick={() => setZoom(1)}>全場</button>
-	</div>
+	{#if controls}
+		<div class="tools">
+			<button type="button" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}>－</button>
+			<span>×{zoom.toFixed(1)}</span>
+			<button type="button" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}>＋</button>
+			<button type="button" onclick={() => setZoom(1)}>全場</button>
+		</div>
+	{/if}
 	{#if readout}<div class="readout">{readout}</div>{/if}
 </div>
 

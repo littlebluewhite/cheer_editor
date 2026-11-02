@@ -1,6 +1,8 @@
 <script lang="ts">
 	// 段設定：音樂段（音樂檔、BPM、第一拍、波形、長度）或口號段（秒數）。
 	// 每改一個欄位就送一個流程核心指令；被擋就顯示原因，流程不變。
+	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
+	import ConfirmList from './ConfirmList.svelte';
 	import {
 		MAX_BPM,
 		MIN_BPM,
@@ -80,7 +82,27 @@
 		}
 	}
 
-	const update = (patch: SegmentPatch) => apply(updateSegment(flow, segmentId, patch));
+	/** 段縮短會刪掉東西時，等教練確認的改法和流程核心給的清單。 */
+	let pending = $state<{ patch: SegmentPatch; message: string; items: string[] } | null>(null);
+	/** 取消時換一個值，讓欄位照流程重畫，回到原本的值。 */
+	let fieldsKey = $state(0);
+
+	function update(patch: SegmentPatch) {
+		const r = updateSegment(flow, segmentId, patch);
+		if (r.kind === 'confirm') pending = { patch, message: r.message, items: r.items };
+		else apply(r);
+	}
+
+	function confirmUpdate() {
+		if (!pending) return;
+		apply(updateSegment(flow, segmentId, pending.patch, { confirmed: true }));
+		pending = null;
+	}
+
+	function cancelUpdate() {
+		pending = null;
+		fieldsKey += 1;
+	}
 	const num = (e: Event) => (e.currentTarget as HTMLInputElement).valueAsNumber;
 
 	async function load(e: Event) {
@@ -138,6 +160,7 @@
 			<button type="button" onclick={onclose}>關閉</button>
 		</header>
 
+		{#key fieldsKey}
 		{#if music && length}
 			<div class="row">
 				<label>載入音樂檔 <input type="file" accept=".mp3,.m4a,.wav" onchange={load} /></label>
@@ -230,6 +253,16 @@
 				</label>
 				<span class="muted">口號段只計秒數，最細 0.1 秒</span>
 			</div>
+		{/if}
+		{/key}
+
+		{#if pending}
+			<ConfirmList
+				message={pending.message}
+				items={pending.items}
+				onconfirm={confirmUpdate}
+				oncancel={cancelUpdate}
+			/>
 		{/if}
 
 		{#if error}<p class="error" role="alert">{error}</p>{/if}

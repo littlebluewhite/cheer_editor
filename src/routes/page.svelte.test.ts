@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
@@ -185,6 +185,22 @@ describe('站位與走位', () => {
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(thumbs()).toHaveLength(1);
 		expect(screen.getByRole('status').textContent).toBe('流程開頭一定有一張站位，不能刪');
+	});
+});
+
+describe('八拍表', () => {
+	it('上方列「八拍表」打開列印畫面；關閉回到編輯，流程和播放頭照舊', async () => {
+		await newFlow();
+		await addSegment('＋音樂段');
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 8.2 * 16, button: 0 });
+		await fireEvent.pointerUp(window);
+		await fireEvent.click(screen.getByRole('button', { name: '八拍表' }));
+		const sheet = screen.getByRole('dialog', { name: '八拍表' });
+		expect(within(sheet).getByRole('heading').textContent).toContain('全國賽');
+		expect(within(sheet).getAllByRole('row')).toHaveLength(9);
+		await fireEvent.click(within(sheet).getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '八拍表' })).toBeNull();
+		expect(position()).toBe('音樂 1 3-5&');
 	});
 });
 

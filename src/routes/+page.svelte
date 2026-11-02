@@ -32,6 +32,7 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
+	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 
@@ -66,6 +67,8 @@
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
+	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
+	let printOpen = $state(false);
 	let notice = $state('');
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	let selectedFormationId = $state<string | null>(null);
@@ -189,6 +192,7 @@
 		playheadSec = 0;
 		openSegmentId = null;
 		settingsOpen = false;
+		printOpen = false;
 		selectedFormationId = null;
 		selectedActionId = null;
 		audios = loaded;
@@ -215,13 +219,13 @@
 		let message = '';
 		if (!formationAt(f, playheadSec)) {
 			const r = insertFormation(f, playheadSec);
-			if (r.kind === 'blocked') return void (notice = r.message);
+			if (r.kind !== 'ok') return void (notice = r.message);
 			f = r.flow;
 			message = '插了一張站位，大家的位置自動帶入';
 		}
 		const target = formationAt(f, playheadSec)!;
 		const r = setPositions(f, target.id, moves);
-		if (r.kind === 'blocked') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (notice = r.message);
 		flow = r.flow;
 		notice = message;
 		playheadSec = formationTimes(r.flow).find((t) => t.formation.id === target.id)!.sec;
@@ -230,7 +234,7 @@
 	function removeFormation(id: string) {
 		if (!flow) return;
 		const r = deleteFormation(flow, id);
-		if (r.kind === 'blocked') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (notice = r.message);
 		flow = r.flow;
 		notice = '';
 		if (selectedFormationId === id) selectedFormationId = null;
@@ -243,7 +247,8 @@
 			void save();
 			return;
 		}
-		if (!flow) return;
+		// 八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
+		if (!flow || printOpen) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
 		if (e.key === ' ') {
 			if (e.repeat) return;
@@ -282,7 +287,7 @@
 <svelte:window {onkeydown} />
 
 {#if flow}
-	<div class="editor">
+	<div class="editor" class:print-hidden={printOpen}>
 		<header class="topbar">
 			<b>{flow.name}</b>
 			{#if unsaved}<span class="muted">未存</span>{/if}
@@ -315,6 +320,7 @@
 			</span>
 			{#if notice}<span class="notice" role="status">{notice}</span>{/if}
 			<button type="button" class="settings" onclick={() => (settingsOpen = true)}>流程設定</button>
+			<button type="button" class="print" onclick={() => (printOpen = true)}>八拍表</button>
 			<button type="button" onclick={save}>存檔</button>
 			<label class="open">開啟<input type="file" accept=".zip" onchange={open} /></label>
 		</header>
@@ -371,6 +377,9 @@
 	{/if}
 	{#if settingsOpen}
 		<FlowSettings {flow} onchange={(f) => (flow = f)} onclose={() => (settingsOpen = false)} />
+	{/if}
+	{#if printOpen}
+		<PrintSheet {flow} onclose={() => (printOpen = false)} />
 	{/if}
 {:else}
 	<NewFlowForm oncreate={startFlow} />
@@ -452,6 +461,14 @@
 	}
 	.home-open {
 		text-align: center;
+	}
+	.topbar .print {
+		margin-left: 0;
+	}
+	@media print {
+		.print-hidden {
+			display: none;
+		}
 	}
 	.field-host {
 		min-height: 0;
