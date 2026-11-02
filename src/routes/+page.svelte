@@ -566,9 +566,11 @@
 					onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
 				>
 				<span class="sep" aria-hidden="true"></span>
-				<button type="button" class="ghost" onclick={() => (printOpen = true)}><Icon name="print" />八拍表</button>
-				<button type="button" class="ghost" onclick={() => (settingsOpen = true)}
-					><Icon name="settings" />流程設定</button
+				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
+					><Icon name="print" /><span class="narrow-hide">八拍表</span></button
+				>
+				<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
+					><Icon name="settings" /><span class="narrow-hide">流程設定</span></button
 				>
 				<span class="sep" aria-hidden="true"></span>
 				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onchange={open} /></label>
@@ -778,7 +780,8 @@
 	.topbar {
 		grid-column: 1 / -1;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+		/* 播放區放中間；右邊的按鈕不夠放時，播放區往左讓，按鈕不疊上去 */
+		grid-template-columns: minmax(min-content, 1fr) auto minmax(max-content, 1fr);
 		align-items: center;
 		gap: 16px;
 		padding: 8px 12px 8px 16px;
@@ -1160,7 +1163,7 @@
 	}
 
 	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。 */
-	@media (max-width: 1180px) {
+	@media (max-width: 1360px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1176,7 +1179,7 @@
 		.latency input {
 			width: 56px;
 		}
-		/* 復原、重做只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		/* 復原、重做、八拍表、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;
 			width: 1px;
@@ -1184,9 +1187,6 @@
 			overflow: hidden;
 			clip-path: inset(50%);
 			white-space: nowrap;
-		}
-		.topbar {
-			grid-template-columns: auto auto minmax(0, 1fr);
 		}
 	}
 
