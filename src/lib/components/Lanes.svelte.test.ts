@@ -100,6 +100,16 @@ describe('泳道', () => {
 		expect(a.style.background).not.toBe(c.style.background);
 	});
 
+	it('每個人的色條都寫動作名稱，不寫大類（顏色就是大類）；沒取名才寫大類', () => {
+		setup(0);
+		const name = (el: HTMLElement) => el.querySelector('b')?.textContent;
+		// Lib 裡的小A、小B 都寫
+		expect(name(bars(lanes()[0])[0])).toBe('Lib');
+		expect(name(bars(lanes()[1])[0])).toBe('Lib');
+		// 小C 的跳躍沒取名
+		expect(name(bars(lanes()[2])[1])).toBe('跳躍');
+	});
+
 	it('播放頭那一拍沒在動作裡的人名字變灰、標「閒」', () => {
 		setup(0.5);
 		const idle = lanes().map((l) => l.querySelector('.idle-tag') !== null);

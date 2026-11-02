@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，寫那個人的任務角色），
+	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
 	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點多選。
 	import {
@@ -58,6 +58,8 @@
 			return {
 				action,
 				label: actionLabel(action),
+				/** 色條上的字：顏色已經是大類，只寫名稱；沒取名才寫大類。 */
+				name: action.name || actionLabel(action),
 				left: startSec * pxPerSec,
 				width: (endSec - startSec) * pxPerSec
 			};
@@ -134,7 +136,7 @@
 						onclick={() => onselectaction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
-						{#if p.action.members[0].memberId === m.id}<b>{p.label}</b>{/if}
+						<b>{p.name}</b>
 						{#if member.role}<span class="role">{member.role}</span>{/if}
 						<span class="rz" data-resize title="拉這裡改長度"></span>
 					</button>
