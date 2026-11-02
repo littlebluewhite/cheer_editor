@@ -605,7 +605,7 @@ describe('復原和重做', () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember(); // 插站位 2
-		await seek(4);
+		await seek(7); // 小A 正走向站位 2（最後一個八拍才走）
 		const before = dotAt();
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.click(screen.getByRole('button', { name: '跟上一張一樣' }));
