@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "width": 960,
+  "height": 440,
+  "title": "從零到一支流程：八個步驟",
+  "subtitle": "照數字做；播放檢查發現不對，回到之前的步驟改",
+  "nodes": [
+    {
+      "id": "new",
+      "kind": "rect",
+      "x": 40,
+      "y": 120,
+      "width": 190,
+      "height": 66,
+      "label": "1 新建流程",
+      "sublabel": "取名字、選場地",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "members",
+      "kind": "rect",
+      "x": 270,
+      "y": 120,
+      "width": 190,
+      "height": 66,
+      "label": "2 加隊員",
+      "sublabel": "名字、性別、全局角色",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "segments",
+      "kind": "rect",
+      "x": 500,
+      "y": 120,
+      "width": 190,
+      "height": 66,
+      "label": "3 加段",
+      "sublabel": "音樂段或口號段",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "formations",
+      "kind": "rect",
+      "x": 730,
+      "y": 120,
+      "width": 190,
+      "height": 66,
+      "label": "4 排站位",
+      "sublabel": "在場地上拖隊員",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "actions",
+      "kind": "rect",
+      "x": 730,
+      "y": 290,
+      "width": 190,
+      "height": 66,
+      "label": "5 加動作",
+      "sublabel": "選人、大類、任務角色",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "play",
+      "kind": "rect",
+      "x": 500,
+      "y": 290,
+      "width": 190,
+      "height": 66,
+      "label": "6 播放檢查",
+      "sublabel": "邊聽邊看場地和泳道",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "save",
+      "kind": "rect",
+      "x": 270,
+      "y": 290,
+      "width": 190,
+      "height": 66,
+      "label": "7 存檔",
+      "sublabel": "得到一個流程檔",
+      "fill": "#f0fdf4",
+      "stroke": "#16a34a",
+      "flat": true
+    },
+    {
+      "id": "share",
+      "kind": "rect",
+      "x": 40,
+      "y": 290,
+      "width": 190,
+      "height": 66,
+      "label": "8 分享",
+      "sublabel": "傳流程檔、印八拍表",
+      "fill": "#f0fdf4",
+      "stroke": "#16a34a",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "a1",
+      "source": "new",
+      "target": "members",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "a2",
+      "source": "members",
+      "target": "segments",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "a3",
+      "source": "segments",
+      "target": "formations",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "a4",
+      "source": "formations",
+      "target": "actions",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control"
+    },
+    {
+      "id": "a5",
+      "source": "actions",
+      "target": "play",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control"
+    },
+    {
+      "id": "a6",
+      "source": "play",
+      "target": "save",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control"
+    },
+    {
+      "id": "a7",
+      "source": "save",
+      "target": "share",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "data"
+    },
+    {
+      "id": "back",
+      "source": "play",
+      "target": "segments",
+      "source_port": "top",
+      "target_port": "bottom",
+      "flow": "feedback",
+      "dashed": true,
+      "label": "不對就回去改"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 40,
+  "legend_y": 395,
+  "legend": [
+    {
+      "flow": "control",
+      "label": "下一步"
+    },
+    {
+      "flow": "feedback",
+      "label": "回頭修改"
+    },
+    {
+      "flow": "data",
+      "label": "交出檔案"
+    }
+  ]
+}

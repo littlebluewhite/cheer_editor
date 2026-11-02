@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "style": 1,
+  "text_policy": "strict",
+  "width": 960,
+  "mode": "data-flow",
+  "height": 520,
+  "title": "存檔、草稿、分享",
+  "subtitle": "存檔得到流程檔；草稿是這台電腦自動留的備份，不是流程檔",
+  "nodes": [
+    {
+      "id": "edit",
+      "kind": "rect",
+      "x": 30,
+      "y": 220,
+      "width": 190,
+      "height": 70,
+      "label": "正在編的流程",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true,
+      "sublabel": "畫面上看到的一切"
+    },
+    {
+      "id": "draft",
+      "kind": "rect",
+      "x": 300,
+      "y": 110,
+      "width": 220,
+      "height": 70,
+      "label": "草稿",
+      "fill": "#fefce8",
+      "stroke": "#eab308",
+      "flat": true,
+      "sublabel": "停手 1 秒自動存在這台電腦"
+    },
+    {
+      "id": "file",
+      "kind": "rect",
+      "x": 300,
+      "y": 220,
+      "width": 220,
+      "height": 70,
+      "label": "流程檔（流程名字.zip）",
+      "fill": "#f0fdf4",
+      "stroke": "#16a34a",
+      "flat": true,
+      "sublabel": "按「存檔」才有，裝著音樂檔"
+    },
+    {
+      "id": "sheet",
+      "kind": "rect",
+      "x": 300,
+      "y": 330,
+      "width": 220,
+      "height": 70,
+      "label": "八拍表",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true,
+      "sublabel": "按「八拍表」，可列印或存 PDF"
+    },
+    {
+      "id": "restore",
+      "kind": "rect",
+      "x": 600,
+      "y": 110,
+      "width": 330,
+      "height": 70,
+      "label": "下次打開首頁",
+      "fill": "#fefce8",
+      "stroke": "#eab308",
+      "flat": true,
+      "sublabel": "問你要「救回」還是「丟掉」"
+    },
+    {
+      "id": "member",
+      "kind": "rect",
+      "x": 600,
+      "y": 220,
+      "width": 330,
+      "height": 70,
+      "label": "傳給隊員",
+      "fill": "#f0fdf4",
+      "stroke": "#16a34a",
+      "flat": true,
+      "sublabel": "隊員按「開啟流程檔」就看得到"
+    },
+    {
+      "id": "paper",
+      "kind": "rect",
+      "x": 600,
+      "y": 330,
+      "width": 330,
+      "height": 70,
+      "label": "紙本或 PDF",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true,
+      "sublabel": "給隊員對八拍"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "e-d",
+      "source": "edit",
+      "target": "draft",
+      "source_port": "top",
+      "target_port": "left",
+      "flow": "feedback",
+      "label": "自動",
+      "dashed": true
+    },
+    {
+      "id": "e-f",
+      "source": "edit",
+      "target": "file",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "data",
+      "label": "存檔"
+    },
+    {
+      "id": "e-s",
+      "source": "edit",
+      "target": "sheet",
+      "source_port": "bottom",
+      "target_port": "left",
+      "flow": "control",
+      "label": "列印"
+    },
+    {
+      "id": "d-r",
+      "source": "draft",
+      "target": "restore",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "feedback",
+      "dashed": true
+    },
+    {
+      "id": "f-m",
+      "source": "file",
+      "target": "member",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "data"
+    },
+    {
+      "id": "s-p",
+      "source": "sheet",
+      "target": "paper",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 30,
+  "legend_y": 450,
+  "legend": [
+    {
+      "flow": "data",
+      "label": "你按存檔"
+    },
+    {
+      "flow": "feedback",
+      "label": "自動發生"
+    },
+    {
+      "flow": "control",
+      "label": "你按列印"
+    }
+  ]
+}

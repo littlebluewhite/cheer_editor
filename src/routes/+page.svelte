@@ -25,6 +25,7 @@
 	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -56,6 +57,9 @@
 		decode = decodeAudio,
 		draftStore = createIndexedDbDraftStore()
 	}: Props = $props();
+
+	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
+	const guideHref = resolve('/guide');
 
 	let flow = $state<Flow | null>(null);
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
@@ -416,6 +420,10 @@
 			<div class="title">
 				<b>{flow.name}</b>
 				{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}
+				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
+				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener"
+					><Icon name="help" />使用說明</a
+				>
 			</div>
 
 			<div class="transport">
@@ -601,6 +609,7 @@
 	{/if}
 {:else}
 	<div class="home">
+		<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
 		<section class="intro">
 			<svg class="intro-mat" viewBox="0 0 90 70" aria-hidden="true">
 				{#each Array.from({ length: 9 }, (_, i) => i) as i (i)}
@@ -806,6 +815,15 @@
 	}
 	.actions .save {
 		margin-left: 4px;
+	}
+	.guide-link {
+		flex: none;
+		color: #d6ddec;
+		text-decoration: none;
+	}
+	.guide-link:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
 	}
 	.sep {
 		width: 1px;
@@ -1018,6 +1036,7 @@
 
 	/* ---------- 首頁 ---------- */
 	.home {
+		position: relative;
 		min-height: 100vh;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
@@ -1026,6 +1045,12 @@
 		max-width: 1040px;
 		margin: 0 auto;
 		padding: 48px 32px;
+	}
+	.home-guide {
+		position: absolute;
+		top: 16px;
+		right: 16px;
+		text-decoration: none;
 	}
 	.intro {
 		display: grid;

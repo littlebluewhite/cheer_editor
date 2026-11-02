@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "width": 960,
+  "height": 560,
+  "title": "時間怎麼算",
+  "subtitle": "流程由段接成；音樂段數八拍，口號段只算秒數",
+  "nodes": [
+    {
+      "id": "flow",
+      "kind": "rect",
+      "x": 370,
+      "y": 110,
+      "width": 220,
+      "height": 62,
+      "label": "流程",
+      "sublabel": "從開始到結束的完整編排",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "music",
+      "kind": "rect",
+      "x": 150,
+      "y": 230,
+      "width": 250,
+      "height": 62,
+      "label": "音樂段",
+      "sublabel": "跟著音樂檔，有 BPM 和第一拍",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "chant",
+      "kind": "rect",
+      "x": 560,
+      "y": 230,
+      "width": 250,
+      "height": 62,
+      "label": "口號段",
+      "sublabel": "沒有音樂，隊員喊出口號",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "eight",
+      "kind": "rect",
+      "x": 150,
+      "y": 350,
+      "width": 250,
+      "height": 62,
+      "label": "八拍",
+      "sublabel": "連續 8 拍算 1 個八拍",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "beat",
+      "kind": "rect",
+      "x": 150,
+      "y": 460,
+      "width": 250,
+      "height": 62,
+      "label": "拍",
+      "sublabel": "最細到半拍，半拍寫成 &",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "sec",
+      "kind": "rect",
+      "x": 560,
+      "y": 350,
+      "width": 250,
+      "height": 62,
+      "label": "秒",
+      "sublabel": "最細到 0.1 秒",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "example",
+      "kind": "rect",
+      "x": 470,
+      "y": 460,
+      "width": 430,
+      "height": 62,
+      "label": "例：「音樂 1 3-5&」",
+      "sublabel": "第 1 個音樂段、第 3 個八拍、第 5 拍再過半拍",
+      "fill": "#f8fafc",
+      "stroke": "#cbd5e1",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "f-m",
+      "source": "flow",
+      "target": "music",
+      "source_port": "left",
+      "target_port": "top",
+      "flow": "control",
+      "label": "一種段"
+    },
+    {
+      "id": "f-c",
+      "source": "flow",
+      "target": "chant",
+      "source_port": "right",
+      "target_port": "top",
+      "flow": "control",
+      "label": "另一種段"
+    },
+    {
+      "id": "m-e",
+      "source": "music",
+      "target": "eight",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "切成幾個八拍"
+    },
+    {
+      "id": "e-b",
+      "source": "eight",
+      "target": "beat",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "每個 8 拍"
+    },
+    {
+      "id": "c-s",
+      "source": "chant",
+      "target": "sec",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "只算長度"
+    }
+  ]
+}

@@ -18,7 +18,8 @@
 		trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
 		people:
 			'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1M16 3.1a4 4 0 0 1 0 7.8M22 21v-1a6 6 0 0 0-4-5.6',
-		bolt: 'M13 2L4 14h7l-1 8 9-12h-7z'
+		bolt: 'M13 2L4 14h7l-1 8 9-12h-7z',
+		help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.4v.6M12 17v.01'
 	} as const;
 	export type IconName = keyof typeof PATHS;
 </script>

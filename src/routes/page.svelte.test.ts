@@ -70,6 +70,19 @@ describe('段、八拍尺、上方列', () => {
 		expect(screen.queryByText(/口號段共/)).toBeNull();
 	});
 
+	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
+		render(Page, { createEngine: () => createFakeEngine() });
+		const check = () => {
+			const link = screen.getByRole('link', { name: '使用說明' }) as HTMLAnchorElement;
+			expect(link.getAttribute('href')).toMatch(/\/guide$/);
+			expect(link.target).toBe('_blank');
+		};
+		check();
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		check();
+	});
+
 	it('流程設定可以改流程名字；空白會被擋，欄位還原', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));

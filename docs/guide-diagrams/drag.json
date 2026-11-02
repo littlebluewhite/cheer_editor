@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "style": 1,
+  "text_policy": "strict",
+  "width": 960,
+  "mode": "flowchart",
+  "height": 390,
+  "title": "在場地上拖隊員時發生什麼",
+  "subtitle": "站位跟著播放頭：拖之前先把播放頭移到你要的那一拍",
+  "nodes": [
+    {
+      "id": "drag",
+      "kind": "rect",
+      "x": 30,
+      "y": 190,
+      "width": 190,
+      "height": 66,
+      "label": "拖隊員，放開",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true,
+      "sublabel": "可以一次拖一組人"
+    },
+    {
+      "id": "ask",
+      "kind": "rect",
+      "x": 270,
+      "y": 190,
+      "width": 210,
+      "height": 66,
+      "label": "這一拍有站位嗎？",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true,
+      "sublabel": "看播放頭所在的那一拍"
+    },
+    {
+      "id": "edit",
+      "kind": "rect",
+      "x": 540,
+      "y": 110,
+      "width": 200,
+      "height": 66,
+      "label": "改那張站位",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true,
+      "sublabel": "只動你拖的人"
+    },
+    {
+      "id": "insert",
+      "kind": "rect",
+      "x": 540,
+      "y": 280,
+      "width": 200,
+      "height": 66,
+      "label": "插一張新站位",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true,
+      "sublabel": "其他人照原本走到的位置"
+    },
+    {
+      "id": "done",
+      "kind": "rect",
+      "x": 790,
+      "y": 190,
+      "width": 150,
+      "height": 66,
+      "label": "存進站位",
+      "fill": "#f0fdf4",
+      "stroke": "#16a34a",
+      "flat": true,
+      "sublabel": "播放頭停在這張"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "d-a",
+      "source": "drag",
+      "target": "ask",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "a-e",
+      "source": "ask",
+      "target": "edit",
+      "source_port": "top",
+      "target_port": "left",
+      "flow": "control",
+      "label": "有"
+    },
+    {
+      "id": "a-i",
+      "source": "ask",
+      "target": "insert",
+      "source_port": "bottom",
+      "target_port": "left",
+      "flow": "control",
+      "label": "沒有"
+    },
+    {
+      "id": "e-d",
+      "source": "edit",
+      "target": "done",
+      "source_port": "right",
+      "target_port": "top",
+      "flow": "control"
+    },
+    {
+      "id": "i-d",
+      "source": "insert",
+      "target": "done",
+      "source_port": "right",
+      "target_port": "bottom",
+      "flow": "control"
+    }
+  ]
+}

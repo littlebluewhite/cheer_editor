@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "style": 1,
+  "text_policy": "strict",
+  "width": 960,
+  "height": 640,
+  "title": "編輯畫面的四個區域",
+  "subtitle": "上方列、場地、右邊欄、時間軸；每個區域管不同的事",
+  "containers": [
+    { "id": "c-top", "x": 30, "y": 96, "width": 900, "height": 104, "label": "上方列" },
+    { "id": "c-field", "x": 30, "y": 220, "width": 580, "height": 190, "label": "場地" },
+    { "id": "c-side", "x": 630, "y": 220, "width": 300, "height": 190, "label": "右邊欄" },
+    { "id": "c-time", "x": 30, "y": 430, "width": 900, "height": 180, "label": "時間軸" }
+  ],
+  "nodes": [
+    { "id": "t-name", "parent": "c-top", "kind": "rect", "x": 50, "y": 128, "width": 200, "height": 56, "label": "流程名字、使用說明", "sublabel": "有「未存」就是還沒存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "t-play", "parent": "c-top", "kind": "rect", "x": 270, "y": 128, "width": 300, "height": 56, "label": "播放鍵、目前位置", "sublabel": "節拍器、延遲校正", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "t-btns", "parent": "c-top", "kind": "rect", "x": 590, "y": 128, "width": 320, "height": 56, "label": "按鈕", "sublabel": "八拍表、流程設定、開啟、新建、存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+
+    { "id": "f-members", "parent": "c-field", "kind": "rect", "x": 50, "y": 254, "width": 260, "height": 64, "label": "隊員圓點", "sublabel": "拖人＝改站位；點、框選＝選人", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "f-zoom", "parent": "c-field", "kind": "rect", "x": 330, "y": 254, "width": 260, "height": 64, "label": "放大、縮小、全場", "sublabel": "放大才吸得到更細的點", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "f-notes", "parent": "c-field", "kind": "rect", "x": 50, "y": 334, "width": 540, "height": 56, "label": "提示", "sublabel": "上面中間：剛剛發生什麼事；右下黃色：規則警告", "fill": "#fefce8", "stroke": "#eab308", "flat": true },
+
+    { "id": "s-action", "parent": "c-side", "kind": "rect", "x": 650, "y": 254, "width": 260, "height": 64, "label": "「動作」分頁", "sublabel": "選人、新增或修改動作", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "s-members", "parent": "c-side", "kind": "rect", "x": 650, "y": 334, "width": 260, "height": 56, "label": "「隊員」分頁", "sublabel": "隊員名單、加隊員", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+
+    { "id": "r-seg", "parent": "c-time", "kind": "rect", "x": 50, "y": 466, "width": 200, "height": 60, "label": "段列", "sublabel": "＋加段；點段打開段設定", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "r-ruler", "parent": "c-time", "kind": "rect", "x": 270, "y": 466, "width": 200, "height": 60, "label": "八拍尺", "sublabel": "點或拖＝移動播放頭", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "r-film", "parent": "c-time", "kind": "rect", "x": 490, "y": 466, "width": 200, "height": 60, "label": "站位列", "sublabel": "每張站位一個小圖", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "r-lanes", "parent": "c-time", "kind": "rect", "x": 710, "y": 466, "width": 200, "height": 60, "label": "泳道", "sublabel": "每個隊員一條泳道，動作是色條", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "r-note", "parent": "c-time", "kind": "rect", "x": 50, "y": 540, "width": 860, "height": 50, "label": "四列由上往下排，左右是時間；橘紅色直線是播放頭", "fill": "#f8fafc", "stroke": "#e2e8f0", "flat": true }
+  ],
+  "arrows": []
+}
