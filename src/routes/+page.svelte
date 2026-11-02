@@ -30,6 +30,7 @@
 	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
+	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
@@ -188,10 +189,21 @@
 	}
 
 
-	/** 換成另一支流程（新建、開檔、救回草稿）：id 會跟上一支重複，所以選取全部清掉。 */
-	function startFlow(f: Flow) {
+	/**
+	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
+	 * id 會跟上一支重複，所以選取全部清掉。
+	 */
+	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}) {
+		pause();
 		flow = f;
 		saver = createSaver();
+		audios = loaded;
+		openError = '';
+		notice = '';
+		playheadSec = 0;
+		openSegmentId = null;
+		settingsOpen = false;
+		printOpen = false;
 		selectedFormationId = null;
 		selectedActionId = null;
 		selectedMemberIds = [];
@@ -265,20 +277,33 @@
 				unreadable = true;
 			}
 		}
-		pause();
-		openError = '';
-		playheadSec = 0;
-		openSegmentId = null;
-		settingsOpen = false;
-		printOpen = false;
-		audios = loaded;
-		startFlow(r.flow);
-		savedFlow = fromFile ? flow : null;
-		notice = r.missingSegmentIds.length
-			? '有段找不到音樂：點紅色的段重新選檔'
-			: unreadable
-				? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
-				: '';
+		unlessUnsaved(() => {
+			startFlow(r.flow, loaded);
+			savedFlow = fromFile ? flow : null;
+			notice = r.missingSegmentIds.length
+				? '有段找不到音樂：點紅色的段重新選檔'
+				: unreadable
+					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
+					: '';
+		});
+	}
+
+	/** 等教練決定要不要丟掉還沒存的修改：確定就做 then。 */
+	let discardPending = $state.raw<{ then: () => void } | null>(null);
+
+	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
+	function unlessUnsaved(then: () => void) {
+		if (unsaved) discardPending = { then };
+		else then();
+	}
+
+	/** 上方列「新建」：回到新建流程的畫面。 */
+	function startNew() {
+		unlessUnsaved(() => {
+			pause();
+			flow = null;
+			savedFlow = null;
+		});
 	}
 
 	function add(f: Flow, kind: SegmentKind) {
@@ -403,6 +428,7 @@
 			<button type="button" class="settings" onclick={() => (settingsOpen = true)}>流程設定</button>
 			<button type="button" class="print" onclick={() => (printOpen = true)}>八拍表</button>
 			<button type="button" onclick={save}>存檔</button>
+			<button type="button" onclick={startNew}>新建</button>
 			<label class="open">開啟<input type="file" accept=".zip" onchange={open} /></label>
 		</header>
 		<main class="field-host">
@@ -473,6 +499,21 @@
 	{/if}
 	{#if printOpen}
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
+	{/if}
+	{#if discardPending}
+		<div class="discard">
+			<ConfirmList
+				message={`「${flow.name}」還沒存，改的東西會不見。`}
+				items={[]}
+				confirmLabel="不存了，繼續"
+				onconfirm={() => {
+					const then = discardPending?.then;
+					discardPending = null;
+					then?.();
+				}}
+				oncancel={() => (discardPending = null)}
+			/>
+		</div>
 	{/if}
 {:else if draftOffer}
 	<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
@@ -572,6 +613,14 @@
 	}
 	.topbar .print {
 		margin-left: 0;
+	}
+	.discard {
+		position: fixed;
+		top: 48px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 60;
+		max-width: 420px;
 	}
 	@media print {
 		.print-hidden {

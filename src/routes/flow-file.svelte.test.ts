@@ -150,11 +150,53 @@ describe('開檔', () => {
 		expect(hasUnsavedChanges()).toBe(false);
 	});
 
-	it('編輯中也可以從上方列開別的檔', async () => {
+	it('編輯中也可以從上方列開別的檔；沒有未存的修改就不問', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
+		await openFile(writeFlowFile(other, {}), '開啟');
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(screen.getByText('另一支')).toBeTruthy();
+	});
+
+	it('有未存的修改時開別的檔先問；取消就留在原本的流程，確定才打開', async () => {
 		setup();
 		await newFlow();
-		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }), '開啟');
+		const file = writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) });
+		await openFile(file, '開啟');
+		expect(screen.getByRole('alertdialog').textContent).toContain('「全國賽」還沒存');
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(screen.getByText('全國賽')).toBeTruthy();
+
+		await openFile(file, '開啟');
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		await settle();
 		expect(screen.getByText('練習用')).toBeTruthy();
+	});
+});
+
+describe('新建', () => {
+	it('上方列「新建」：沒有未存的修改就直接回到新建流程', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+		await newFlow();
+		expect(screen.getByText('全國賽')).toBeTruthy();
+		expect(screen.getByText('已選 0 人')).toBeTruthy();
+	});
+
+	it('有未存的修改先問；取消就留著，確定才回到新建流程', async () => {
+		setup();
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		expect(screen.getByRole('alertdialog').textContent).toContain('「全國賽」還沒存');
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(screen.getByText('全國賽')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
 	it('開別的檔：選到的人和動作都清掉（另一支流程的 m1 是另一個人）', async () => {
