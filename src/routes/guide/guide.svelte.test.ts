@@ -18,7 +18,7 @@ describe('使用說明', () => {
 	it('每張圖都有替代文字', () => {
 		render(Guide);
 		const images = document.querySelectorAll('img');
-		expect(images.length).toBe(6);
+		expect(images.length).toBe(14);
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
 	});
 });

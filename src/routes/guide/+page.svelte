@@ -9,6 +9,15 @@
 	import dragSvg from '#lib/guide/drag.svg';
 	import walkSvg from '#lib/guide/walk.svg';
 	import filesSvg from '#lib/guide/files.svg';
+	// 畫面截圖：npm run guide:shots 重拍（scripts/guide-screenshots.mjs）
+	import homeShot from '#lib/guide/shots/home.webp';
+	import editorShot from '#lib/guide/shots/editor.webp';
+	import membersShot from '#lib/guide/shots/members.webp';
+	import segmentShot from '#lib/guide/shots/segment.webp';
+	import timelineShot from '#lib/guide/shots/timeline.webp';
+	import dragShot from '#lib/guide/shots/drag.webp';
+	import actionShot from '#lib/guide/shots/action.webp';
+	import printShot from '#lib/guide/shots/print.webp';
 
 	const editorHref = resolve('/');
 	/** 編輯器的完整網址：部署在哪就寫哪，所以等到瀏覽器裡才算。 */
@@ -177,7 +186,13 @@
 					<a href={screenMapSvg} target="_blank" rel="noopener"
 						><img src={screenMapSvg} alt="編輯畫面的四個區域：上方列（流程名字和使用說明、播放鍵和目前位置、按鈕）、場地（隊員圓點、放大縮小、提示）、右邊欄（動作分頁、隊員分頁）、時間軸（段列、八拍尺、站位列、泳道）。" /></a
 					>
-					<figcaption>圖 2　編輯畫面的四個區域。下面的表是每個區域裡的名稱；第 4 章每一節開頭都會說在哪個區域操作。</figcaption>
+					<figcaption>圖 2　編輯畫面的四個區域。圖 3 是真的畫面；下面的表是每個區域裡的名稱；第 4 章每一節開頭都會說在哪個區域操作。</figcaption>
+				</figure>
+				<figure class="diagram shot">
+					<a href={editorShot} target="_blank" rel="noopener"
+						><img src={editorShot} style:max-width="820px" alt="真的編輯畫面，第 5 章試跑做完的樣子：1 上方列、2 場地、3 右邊欄、4 時間軸，各用紅框圈起來。" /></a
+					>
+					<figcaption>圖 3　真的編輯畫面（第 5 章試跑做完的樣子）。① 上方列　② 場地　③ 右邊欄　④ 時間軸。</figcaption>
 				</figure>
 				<div class="table-wrap">
 					<table>
@@ -220,7 +235,7 @@
 					<a href={workflowSvg} target="_blank" rel="noopener"
 						><img src={workflowSvg} alt="從零到一支流程的八個步驟：1 新建流程、2 加隊員、3 加段、4 排站位、5 加動作、6 播放檢查、7 存檔、8 分享。播放檢查發現不對，就回到之前的步驟改。" /></a
 					>
-					<figcaption>圖 3　八個步驟。播放檢查發現不對，就回去改。</figcaption>
+					<figcaption>圖 4　八個步驟。播放檢查發現不對，就回去改。</figcaption>
 				</figure>
 				<ol class="steps">
 					<li><b>新建流程：</b>取名字，選場地（幾條、直放或橫放）。場地<b>建好之後不能換</b>，先確認比賽用哪種。</li>
@@ -243,6 +258,12 @@
 			<section id="start">
 				<h3 class="sec">4.1 開始一支流程</h3>
 				<p class="where">在<b>首頁</b>操作。三種開始的方法，選一種。在編輯畫面按上方列的「新建」，會回到首頁。</p>
+				<figure class="diagram shot">
+					<a href={homeShot} target="_blank" rel="noopener"
+						><img src={homeShot} style:max-width="820px" alt="首頁：1 新建流程（流程名字、場地、建立）、2 開啟流程檔、3 右上角的使用說明。" /></a
+					>
+					<figcaption>圖 5　首頁。① 新建流程　② 開啟流程檔　③ 使用說明。</figcaption>
+				</figure>
 
 				<h4>新建流程</h4>
 				<p class="purpose">從零開始排一支新的流程。</p>
@@ -276,6 +297,12 @@
 			<section id="members">
 				<h3 class="sec">4.2 隊員</h3>
 				<p class="where">在<b>右邊欄的「隊員」分頁</b>操作。新流程打開時就在這一頁。</p>
+				<figure class="diagram shot">
+					<a href={membersShot} target="_blank" rel="noopener"
+						><img src={membersShot} style:max-width="360px" alt="右邊欄的隊員分頁：1 名字欄（一行一個）、2 性別和全局角色、3 加隊員按鈕、4 名單。" /></a
+					>
+					<figcaption>圖 6　「隊員」分頁。① 名字（一次加多人：一行一個）　② 性別、全局角色　③ 「加隊員」　④ 名單。</figcaption>
+				</figure>
 
 				<h4>加隊員</h4>
 				<p class="purpose">把會上場的人放進名單。</p>
@@ -315,6 +342,12 @@
 
 				<h4>設定音樂段</h4>
 				<p class="purpose">讓編輯器知道音樂從哪一刻開始數「1」、多快，這樣八拍尺、節拍器、動作的時間才會對到音樂。</p>
+				<figure class="diagram shot">
+					<a href={segmentShot} target="_blank" rel="noopener"
+						><img src={segmentShot} style:max-width="680px" alt="音樂段的段設定：1 載入音樂檔、2 BPM、3 第一拍（秒）、4 波形（粗線是第一拍，細線是每一拍）、5 試聽按鈕、6 長度。" /></a
+					>
+					<figcaption>圖 7　音樂段的段設定。① 「載入音樂檔」　② BPM　③ 第一拍（秒）　④ 波形：橘紅粗線是第一拍，細線是每一拍，細線對準鼓點就對了　⑤ 試聽　⑥ 長度。</figcaption>
+				</figure>
 				<ol class="steps">
 					<li><b>打開段設定：</b>點段列上那一段。</li>
 					<li><b>載入音樂檔：</b>按「載入音樂檔」，選 mp3、m4a 或 wav。載入後會畫出前 20 秒的波形。</li>
@@ -351,6 +384,12 @@
 				<p>
 					<b>播放頭</b>是整個編輯器的「現在」：場地顯示播放頭這一刻的站位，新動作從播放頭開始，拖人改的是播放頭這一拍的站位。所以多數操作前，先把播放頭移到對的地方。
 				</p>
+				<figure class="diagram shot">
+					<a href={timelineShot} target="_blank" rel="noopener"
+						><img src={timelineShot} style:max-width="760px" alt="時間軸：1 段列、2 八拍尺、3 站位列、4 泳道、5 播放頭（橘紅色直線）。" /></a
+					>
+					<figcaption>圖 8　時間軸。① 段列　② 八拍尺　③ 站位列　④ 泳道　⑤ 播放頭。</figcaption>
+				</figure>
 
 				<h4>移動播放頭</h4>
 				<ol class="steps">
@@ -387,7 +426,7 @@
 					<a href={walkSvg} target="_blank" rel="noopener"
 						><img src={walkSvg} alt="站位和走位：站位 1 在流程開頭，一定有、不能刪；站位 1 走位到站位 2，站位 2 走位到站位 3；最後一張之後站著不動。" /></a
 					>
-					<figcaption>圖 4　站位和走位。</figcaption>
+					<figcaption>圖 9　站位和走位。</figcaption>
 				</figure>
 
 				<h4>拖人（排站位）</h4>
@@ -400,13 +439,19 @@
 					<a href={dragSvg} target="_blank" rel="noopener"
 						><img src={dragSvg} alt="在場地上拖隊員時：放開後，看播放頭這一拍有沒有站位；有就改那張站位，只動你拖的人；沒有就插一張新站位，其他人照原本走到的位置；最後播放頭停在這張站位。" /></a
 					>
-					<figcaption>圖 5　拖人時，編輯器怎麼決定改哪一張站位。</figcaption>
+					<figcaption>圖 10　拖人時，編輯器怎麼決定改哪一張站位。</figcaption>
 				</figure>
 				<p class="note">
 					<b>拖的時候會寫他在哪</b>，例如「第 5 條 左起 1/2｜前起第 4 格 1/2」：在第 5 條、這條從左邊算起一半的地方；從正面往後數第 4 格、這格一半的地方。<br />
 					<b>吸附：</b>放開時，隊員會自動對齊到最近的點：格子的線、1/4、1/2、3/4 格。拖的時候看得到這些小點。場地放大到 ×2 以上，還會多出 1/8 格的點。<br />
 					<b>能站的範圍：</b>場地外 1 公尺以內。拖太遠會被擋，提示寫「只能站到墊子外 1 m 以內」（這裡的墊子就是場地）。
 				</p>
+				<figure class="diagram shot">
+					<a href={dragShot} target="_blank" rel="noopener"
+						><img src={dragShot} style:max-width="820px" alt="在場地上拖小美的時候：1 正在拖的隊員，旁邊的黃色小點是吸附的點；2 左上角寫著他在第幾條、第幾格。" /></a
+					>
+					<figcaption>圖 11　拖人的時候。① 正在拖的隊員，黃色小點是吸附的點　② 他在哪：第幾條、第幾格。</figcaption>
+				</figure>
 
 				<h4>選取隊員、一次拖一組人</h4>
 				<ol class="steps">
@@ -434,6 +479,12 @@
 
 				<h4>新增動作</h4>
 				<p class="purpose">記下「誰、在哪一拍、做什麼、各自負責什麼」。</p>
+				<figure class="diagram shot">
+					<a href={actionShot} target="_blank" rel="noopener"
+						><img src={actionShot} style:max-width="360px" alt="右邊欄的動作分頁：1 動作分頁、2 選人、3 大類和名稱、4 開始和長度、5 人和任務角色、6 新增動作按鈕。" /></a
+					>
+					<figcaption>圖 12　「動作」分頁。① 「動作」分頁　② 選人　③ 大類、名稱　④ 開始、長度　⑤ 人＋任務角色　⑥ 「新增動作」。</figcaption>
+				</figure>
 				<ol class="steps">
 					<li><b>移播放頭：</b>移到動作開始的那一拍。動作表單的標題寫「在播放頭新增動作」，下面寫這個動作在哪一段。</li>
 					<li>
@@ -502,7 +553,7 @@
 					<a href={filesSvg} target="_blank" rel="noopener"
 						><img src={filesSvg} alt="存檔、草稿、分享：正在編的流程，停手 1 秒自動存成草稿在這台電腦，下次打開首頁會問你救回或丟掉；按存檔得到流程檔（流程名字.zip，裝著音樂檔），傳給隊員，隊員按開啟流程檔就看得到；按八拍表可以列印或存 PDF。" /></a
 					>
-					<figcaption>圖 6　流程檔、草稿、八拍表三樣東西的差別。</figcaption>
+					<figcaption>圖 13　流程檔、草稿、八拍表三樣東西的差別。</figcaption>
 				</figure>
 
 				<h4>存檔</h4>
@@ -533,6 +584,12 @@
 					<li>按「列印」。在列印視窗可以選印表機，或存成 PDF。</li>
 					<li>按「關閉」回到編輯畫面。</li>
 				</ol>
+				<figure class="diagram shot">
+					<a href={printShot} target="_blank" rel="noopener"
+						><img src={printShot} style:max-width="820px" alt="八拍表：1 印誰、2 列印按鈕、3 第 4 個八拍那一列的動作、4 小站位圖。" /></a
+					>
+					<figcaption>圖 14　八拍表。① 印誰　② 「列印」　③ 動作：大類·名稱，後面是每個人和任務角色　④ 小站位圖。</figcaption>
+				</figure>
 			</section>
 
 			<section id="keys">
@@ -913,6 +970,9 @@
 		border-radius: 10px;
 		border: 1px solid var(--line);
 		background: #fff;
+	}
+	.shot img {
+		box-shadow: 0 2px 10px rgba(22, 33, 58, 0.12);
 	}
 	.diagram figcaption {
 		font-size: 13px;

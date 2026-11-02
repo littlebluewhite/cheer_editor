@@ -19,3 +19,15 @@ python3 "$F" check src/lib/guide/time.svg
 ```
 
 圖上的字跟說明一樣，只用 `GLOSSARY.md` 的詞和畫面上的字。
+
+## 畫面截圖
+
+說明裡另外有 8 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
+改了編輯器的畫面之後，重拍一次：
+
+```sh
+npm run guide:shots
+```
+
+腳本是 `scripts/guide-screenshots.mjs`：自己開 `vite dev` 和 headless Chrome，照第 5 章「新手試跑」點一次，邊做邊拍。
+Chrome 不在 macOS 預設位置時，加 `CHROME=/path/to/chrome`。重拍後看一下圖，紅框有沒有框對地方。
