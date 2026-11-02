@@ -4,6 +4,8 @@
 		deleteAction,
 		deleteFormation,
 		firstBeatPreview,
+		formationAt,
+		matchPrevious,
 		moveMembers,
 		moveTargetText,
 		playbackPlan,
@@ -393,6 +395,20 @@
 		playheadSec = r.sec;
 	}
 
+	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示跟拖人一樣。 */
+	function matchPrev() {
+		if (!flow) return;
+		const r = matchPrevious(flow, playheadSec, selectedMemberIds);
+		if (r.kind !== 'ok') return void (notice = r.message);
+		change(r.flow);
+		const said = [
+			r.inserted && '插了一張站位，大家的位置自動帶入',
+			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
+		];
+		notice = said.filter(Boolean).join('；');
+		playheadSec = r.sec;
+	}
+
 	function removeFormation(id: string) {
 		if (!flow) return;
 		const r = deleteFormation(flow, id);
@@ -469,6 +485,11 @@
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
+	{@const matchBlocked = !selectedMemberIds.length
+		? '先選人'
+		: formationAt(flow, playheadSec) === flow.formations[0]
+			? '開頭那張前面沒有站位'
+			: ''}
 	<div class="editor" class:print-hidden={printOpen}>
 		<header class="topbar">
 			<div class="title">
@@ -550,6 +571,10 @@
 			/>
 			{#if flow.members.length}
 				<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+				<div class="match-prev">
+					<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
+					{#if matchBlocked}<span>{matchBlocked}</span>{/if}
+				</div>
 			{/if}
 			{#if warnings.length}
 				<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
@@ -930,6 +955,18 @@
 		color: var(--muted);
 		font-size: 12px;
 		pointer-events: none;
+	}
+	/* ① 跟上一張一樣：疊在「拖人會改」那一行上面。 */
+	.match-prev {
+		position: absolute;
+		left: 16px;
+		bottom: 48px;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		color: var(--muted);
 	}
 	.warn span + span::before {
 		content: '／';

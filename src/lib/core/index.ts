@@ -49,6 +49,7 @@ export {
 	formationAt,
 	formationTimes,
 	insertFormation,
+	matchPrevious,
 	memberWalk,
 	moveMembers,
 	moveTargetText,
