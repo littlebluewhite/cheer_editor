@@ -287,6 +287,22 @@ describe('走位條', () => {
 		expect(walkBar(1).classList.contains('fast')).toBe(false);
 	});
 
+	it('很喘的走位條標橘', () => {
+		let flow = walking();
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0] }));
+		flow = flowOf(setPositions(flow, f2, { m1: [4, 0] }));
+		// 小A 4 公尺 1.2 秒（第 18 到 24 個半拍），每秒 3.3 公尺。
+		flow = flowOf(
+			setWalks(flow, f2, {
+				m1: { depart: { segmentId: 's1', at: 18 }, arrive: { segmentId: 's1', at: 24 } }
+			})
+		);
+		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn() });
+		expect(walkBar(0).classList.contains('tiring')).toBe(true);
+		expect(walkBar(0).classList.contains('fast')).toBe(false);
+	});
+
 	it('拖左端改出發，吸到最近的半拍；只改這個人', async () => {
 		const { onchange, onblocked, f2 } = setupWalks();
 		// 往右 4 px = 0.4 秒：出發 2.0 秒 = 第 10 個半拍

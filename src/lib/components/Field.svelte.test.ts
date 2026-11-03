@@ -229,14 +229,15 @@ describe('影子和走位線', () => {
 		gender: 'F',
 		globalRole: 'base'
 	}));
-	const walk = (memberId: string, from: Position, to: Position, tooFast = false) => ({
+	const walk = (memberId: string, from: Position, to: Position, tooFast = false, tiring = false) => ({
 		memberId,
 		from,
 		to,
 		departSec: 0,
 		arriveSec: 1,
 		speed: 1,
-		tooFast
+		tooFast,
+		tiring
 	});
 
 	function setup(selected: string[]) {
@@ -245,8 +246,12 @@ describe('影子和走位線', () => {
 			members,
 			positions: { m1: [1, 0], m2: [2, 0], m3: [3, 0] },
 			selected,
-			ghosts: { m1: [0, 0], m2: [0, 1], m3: [3, 0] },
-			walks: [walk('m1', [0, 0], [1, 0]), walk('m2', [0, 1], [2, 0], true)]
+			ghosts: { m1: [0, 0], m2: [0, 1], m3: [3, 1] },
+			walks: [
+				walk('m1', [0, 0], [1, 0]),
+				walk('m2', [0, 1], [2, 0], true),
+				walk('m3', [3, 1], [3, 0], false, true)
+			]
 		});
 		const ids = (key: 'ghost' | 'walkLine') =>
 			[...document.querySelectorAll<SVGElement>('svg *')].flatMap((el) => el.dataset[key] ?? []);
@@ -256,13 +261,13 @@ describe('影子和走位線', () => {
 	it('沒選人：畫全隊的影子和走位線', () => {
 		const { ghosts, lines } = setup([]);
 		expect(ghosts()).toEqual(['m1', 'm2', 'm3']);
-		expect(lines()).toEqual(['m1', 'm2']);
+		expect(lines()).toEqual(['m1', 'm2', 'm3']);
 	});
 
 	it('有選人：只畫選到的人', () => {
 		const { ghosts, lines } = setup(['m2', 'm3']);
 		expect(ghosts()).toEqual(['m2', 'm3']);
-		expect(lines()).toEqual(['m2']);
+		expect(lines()).toEqual(['m2', 'm3']);
 	});
 
 	it('線從起點畫到終點；太快的線標紅', () => {
@@ -273,6 +278,27 @@ describe('影子和走位線', () => {
 		expect(line.classList.contains('fast')).toBe(true);
 		const slow = document.querySelector('[data-walk-line="m1"]')!;
 		expect(slow.classList.contains('fast')).toBe(false);
+		expect(slow.classList.contains('tiring')).toBe(false);
+	});
+
+	it('很喘的線標橘', () => {
+		setup([]);
+		const line = document.querySelector('[data-walk-line="m3"]')!;
+		expect(line.classList.contains('tiring')).toBe(true);
+		expect(line.classList.contains('fast')).toBe(false);
+	});
+
+	it('按「只看橘紅走位線」：白線藏起來，紅、橘照畫；再按一次全部回來', async () => {
+		const { ghosts, lines } = setup([]);
+		const toggle = screen.getByRole('button', { name: '只看橘紅走位線' });
+		expect(toggle.getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(toggle);
+		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+		expect(lines()).toEqual(['m2', 'm3']);
+		// 影子不受影響。
+		expect(ghosts()).toEqual(['m1', 'm2', 'm3']);
+		await fireEvent.click(toggle);
+		expect(lines()).toEqual(['m1', 'm2', 'm3']);
 	});
 
 	it('沒給影子和走位（八拍表的小站位圖）就不畫', () => {

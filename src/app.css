@@ -25,6 +25,9 @@
 	--warn-text: #7a5200;
 	--danger: #c8372d;
 	--danger-soft: #fdecea;
+	/* 走位的速度（場地上的走位線、泳道的走位條）：太快正紅、很喘橘色，要跟朱紅的播放頭分得開。 */
+	--walk-fast: #e5202e;
+	--walk-tiring: #ff9500;
 	/* 還沒加進去的新動作（動作表單在新增時的底色和框）。 */
 	--new-bg: #eef8f1;
 	--new-line: #3f9a5f;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	TOO_FAST_MPS,
+	TIRING_MPS,
 	addAction,
 	addMembers,
 	addSegment,
@@ -821,6 +822,7 @@ describe('這段的走位', () => {
 		// 4 公尺 3.2 秒。
 		expect(w.speed).toBeCloseTo(1.25, 9);
 		expect(w.tooFast).toBe(false);
+		expect(w.tiring).toBe(false);
 	});
 
 	it('位置一樣的人不算走位，就算 walks 裡有他的設定', () => {
@@ -836,6 +838,8 @@ describe('這段的走位', () => {
 		const [w] = formationWalks(rushed(), 'f2');
 		expect(w.speed).toBeCloseTo(10, 9);
 		expect(w.tooFast).toBe(true);
+		// 太快就只算太快，不另外算很喘。
+		expect(w.tiring).toBe(false);
 	});
 
 	it('剛好每秒 4 公尺不算太快', () => {
@@ -848,12 +852,33 @@ describe('這段的走位', () => {
 		const [w] = formationWalks(flow, 'f2');
 		expect(w.speed).toBeCloseTo(4, 9);
 		expect(w.tooFast).toBe(false);
+		expect(w.tiring).toBe(true);
+	});
+
+	it('每秒超過 2.5 公尺、沒到 4 公尺就是很喘；剛好 2.5 不算', () => {
+		expect(TIRING_MPS).toBe(2.5);
+		const walk = (depart: number) =>
+			formationWalks(
+				okFlow(
+					setWalks(walking(), 'f2', {
+						[A]: { depart: { segmentId: 's1', at: depart }, arrive: { segmentId: 's1', at: 100 } }
+					})
+				),
+				'f2'
+			)[0];
+		// 第 94 到 100 個半拍是 1.2 秒，走 4 公尺。
+		expect(walk(94).speed).toBeCloseTo(4 / 1.2, 9);
+		expect(walk(94)).toMatchObject({ tooFast: false, tiring: true });
+		// 第 92 到 100 個半拍是 1.6 秒，剛好每秒 2.5 公尺。
+		expect(walk(92).speed).toBeCloseTo(2.5, 9);
+		expect(walk(92).tiring).toBe(false);
 	});
 
 	it('走位時間跟自己的騰翻動作重疊，就不算太快', () => {
 		// 騰翻在第 96–100 個半拍（19.2–20 秒），跟 19.6–20 秒重疊。
 		const [w] = formationWalks(withAction(rushed(), A, 'tumbling', 96), 'f2');
 		expect(w.tooFast).toBe(false);
+		expect(w.tiring).toBe(false);
 	});
 
 	it('別人的騰翻、自己的別種動作、時間沒重疊的騰翻，都還是太快', () => {

@@ -70,6 +70,7 @@ export type { CustomRole, RoleEntry } from './roles';
 
 export {
 	TOO_FAST_MPS,
+	TIRING_MPS,
 	clearWalks,
 	currentFormation,
 	deleteFormation,

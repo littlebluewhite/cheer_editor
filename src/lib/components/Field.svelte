@@ -73,7 +73,7 @@
 		controls?: boolean;
 		/** 上一張站位的位置，畫成淡淡的影子點。有選人時只畫選到的人。 */
 		ghosts?: Record<string, Position>;
-		/** 走位線，從起點畫到終點；太快的標紅。有選人時只畫選到的人。 */
+		/** 走位線，從起點畫到終點；太快的標紅、很喘的標橘。有選人時只畫選到的人。 */
 		walks?: FormationWalk[];
 		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
 		railTop?: Snippet;
@@ -150,7 +150,11 @@
 	const ghostDots = $derived(
 		members.flatMap((m) => (ghosts[m.id] && shown(m.id) ? [{ id: m.id, p: ghosts[m.id] }] : []))
 	);
-	const walkLines = $derived(walks.filter((w) => shown(w.memberId)));
+	/** false：只畫太快和很喘的走位線，正常的白線藏起來，場地比較乾淨。 */
+	let allWalkLines = $state(true);
+	const walkLines = $derived(
+		walks.filter((w) => shown(w.memberId) && (allWalkLines || w.tooFast || w.tiring))
+	);
 	const snapDots = $derived(drag?.cur ? snapPointsNear(field, drag.cur, zoom) : []);
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
@@ -252,6 +256,17 @@
 			{@render railTop?.()}
 			<div class="rail-gap"></div>
 			{@render railBottom?.()}
+			<div class="walk-tools">
+				<button
+					type="button"
+					class="ghost"
+					aria-pressed={!allWalkLines}
+					title="打開時，正常的白色走位線藏起來，只畫很喘（橘）和太快（紅）的線"
+					onclick={() => (allWalkLines = !allWalkLines)}>只看橘紅走位線</button
+				>
+				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
+				<span aria-hidden="true"><i class="fast"></i>太快</span>
+			</div>
 			<div class="legend" aria-hidden="true">
 				<span><i class="base"></i>底層</span>
 				<span><i class="top"></i>上層</span>
@@ -302,6 +317,7 @@
 				data-walk-line={w.memberId}
 				class="walk-line"
 				class:fast={w.tooFast}
+				class:tiring={w.tiring}
 				x1={w.from[0]}
 				y1={w.from[1]}
 				x2={w.to[0]}
@@ -437,7 +453,12 @@
 		pointer-events: none;
 	}
 	.walk-line.fast {
-		stroke: var(--now, #f2542d);
+		stroke: var(--walk-fast, #e5202e);
+		stroke-opacity: 0.9;
+		stroke-width: 0.08;
+	}
+	.walk-line.tiring {
+		stroke: var(--walk-tiring, #ff9500);
 		stroke-opacity: 0.9;
 		stroke-width: 0.08;
 	}
@@ -518,6 +539,42 @@
 		font-size: 12px;
 		font-variant-numeric: tabular-nums;
 		color: var(--muted, #66718a);
+	}
+	.walk-tools {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		align-items: center;
+		padding: 3px 10px 3px 3px;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	.walk-tools button {
+		height: 28px;
+		font-size: 12px;
+	}
+	.walk-tools button[aria-pressed='true'] {
+		background: var(--sel-soft, #dcf4fa);
+		color: var(--ink, #16213a);
+	}
+	.walk-tools span {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+	.walk-tools i {
+		width: 14px;
+		height: 3px;
+		border-radius: 2px;
+	}
+	.walk-tools .tiring {
+		background: var(--walk-tiring, #ff9500);
+	}
+	.walk-tools .fast {
+		background: var(--walk-fast, #e5202e);
 	}
 	.legend {
 		display: flex;

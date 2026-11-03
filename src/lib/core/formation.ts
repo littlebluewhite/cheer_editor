@@ -274,7 +274,10 @@ export function memberWalk(flow: Flow, formationId: string, memberId: string): W
 /** 走太快：每秒超過這麼多公尺。這個數字是猜的，還沒跟教練確認過，之後可能要改。 */
 export const TOO_FAST_MPS = 4;
 
-/** 一個人 A→B 的走位：起點、終點、出發和到達（全域秒數）、速度（公尺／秒）、是不是太快。 */
+/** 很喘：每秒超過這麼多公尺，跑得到但很累。也是猜的，還沒跟教練確認過。 */
+export const TIRING_MPS = 2.5;
+
+/** 一個人 A→B 的走位：起點、終點、出發和到達（全域秒數）、速度（公尺／秒）、是不是太快、是不是很喘。 */
 export interface FormationWalk {
 	memberId: string;
 	from: Position;
@@ -283,12 +286,15 @@ export interface FormationWalk {
 	arriveSec: number;
 	speed: number;
 	tooFast: boolean;
+	/** 跑得到但很喘：速度超過 TIRING_MPS、沒超過 TOO_FAST_MPS。太快的人這裡是 false。 */
+	tiring: boolean;
 }
 
 /**
  * 這段的走位：走到 formationId（B）這張時，位置有變的人，照名單順序。
  * 只看位置，不看 walks（位置一樣的人就算有設定也站著不動）。開頭那張或找不到站位是空的。
- * 太快：速度超過 TOO_FAST_MPS；但走位期間跟他自己參加的騰翻動作時間重疊，就不算太快。
+ * 太快：速度超過 TOO_FAST_MPS；很喘：超過 TIRING_MPS 但沒到太快。
+ * 走位期間跟他自己參加的騰翻動作時間重疊，就兩個都不算。
  */
 export function formationWalks(flow: Flow, formationId: string): FormationWalk[] {
 	const index = walkFormationIndex(flow, formationId);
@@ -308,6 +314,7 @@ export function formationWalks(flow: Flow, formationId: string): FormationWalk[]
 		const tumbles = tumbling.some(
 			(t) => t.ids.includes(id) && t.startSec < arrive - EPS && depart < t.endSec - EPS
 		);
+		const tooFast = speed > TOO_FAST_MPS + EPS && !tumbles;
 		out.push({
 			memberId: id,
 			from,
@@ -315,7 +322,8 @@ export function formationWalks(flow: Flow, formationId: string): FormationWalk[]
 			departSec: depart,
 			arriveSec: arrive,
 			speed,
-			tooFast: speed > TOO_FAST_MPS + EPS && !tumbles
+			tooFast,
+			tiring: speed > TIRING_MPS + EPS && !tumbles && !tooFast
 		});
 	}
 	return out;
