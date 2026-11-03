@@ -2,14 +2,24 @@
 // 存在動作裡、從動作開始算半拍，所以拖動作、改 BPM 時跟著走；刪動作時一起刪。
 
 import type { Action } from './actions';
-import type { Flow } from './flow';
+import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
-import { atText, EPS, HALF_BEATS_PER_EIGHT, toSeconds, unitSec } from './time';
+import {
+	atText,
+	EPS,
+	HALF_BEATS_PER_BEAT as BEAT,
+	HALF_BEATS_PER_EIGHT,
+	toSeconds,
+	unitSec
+} from './time';
 
 /** 拍子、步驟、手位。 */
 export type CueKind = 'count' | 'step' | 'motion';
 export const CUE_KINDS: CueKind[] = ['count', 'step', 'motion'];
+
+/** 給教練看的種類名稱。 */
+export const CUE_KIND_LABELS: Record<CueKind, string> = { count: '拍子', step: '步驟', motion: '手位' };
 
 /** 給誰：null = 動作裡全部的人；role = 某個任務角色的人；member = 某一個隊員。 */
 export type Who = null | { role: string } | { member: string };
@@ -62,9 +72,6 @@ export function dropOrphanCues(action: Action): Action {
 function givenToSomeone(cue: Cue, action: Action): boolean {
 	return action.members.some((m) => cueForMember(cue, action, m.memberId));
 }
-
-/** 一拍幾個半拍。 */
-const BEAT = 2;
 
 /** 拍點排的順序：步驟、拍子、手位。 */
 const KIND_ORDER: CueKind[] = ['step', 'count', 'motion'];
@@ -161,9 +168,6 @@ export function clearCues(
 	return withCues(flow, found.action, cut(found.action.cues ?? [], kind, from, to, () => true));
 }
 
-/** 給教練看的種類名稱。 */
-const KIND_LABELS: Record<CueKind, string> = { count: '拍子', step: '步驟', motion: '手位' };
-
 /**
  * 改動作會動到的拍點：換到口號段全部拿掉；給的人或角色已經不在動作裡的拿掉（orphaned 算這種有幾個）；
  * 變短時跨出去的切短（取到整拍，不到一拍拿掉）、整個在外面的拿掉。
@@ -174,14 +178,14 @@ export function cueFallout(
 	to: Segment,
 	before: Action,
 	after: Action,
-	memberName: (id: string) => string
+	flow: Flow
 ): { cues: Cue[]; removed: number; cut: number; orphaned: number; items: string[] } | null {
 	const kept: Cue[] = [];
 	const items: string[] = [];
 	let removed = 0;
 	let orphaned = 0;
 	for (const c of before.cues ?? []) {
-		const text = cueText(from, before, c) + whoText(c.who, memberName);
+		const text = cueText(c.kind, c.word, rangeText(from, before, c.at, c.len), whoName(flow, c.who));
 		if (to.kind === 'music' && !givenToSomeone(c, after)) {
 			removed++;
 			orphaned++;
@@ -203,15 +207,14 @@ export function cueFallout(
 	return items.length ? { cues: kept, removed, cut: items.length - removed, orphaned, items } : null;
 }
 
-/** 給全部的不寫；不然「・給上層」「・給小A」。 */
-function whoText(who: Who, memberName: (id: string) => string): string {
-	if (who === null) return '';
-	return `・給${'role' in who ? who.role : memberName(who.member)}`;
+/** 給誰的名字：角色名或隊員名；給全部的是空字串。 */
+export function whoName(flow: Flow, who: Who): string {
+	return who === null ? '' : 'role' in who ? who.role : memberName(flow, who.member);
 }
 
-/** 「拍子 down 1-3 到 1-4」。 */
-function cueText(segment: Segment, action: Action, c: Cue): string {
-	return `${KIND_LABELS[c.kind]} ${c.word} ${rangeText(segment, action, c.at, c.len)}`;
+/** 「拍子 down 1-3 到 1-4」；span 是時間那段的字，who 是給誰的名字（空的不寫），有就接「・給上層」。 */
+export function cueText(kind: CueKind, word: string, span: string, who: string): string {
+	return `${CUE_KIND_LABELS[kind]} ${word} ${span}${who ? `・給${who}` : ''}`;
 }
 
 /** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
@@ -247,6 +250,7 @@ function cut(cues: Cue[], kind: CueKind, from: number, to: number, hit: (c: Cue)
 	});
 }
 
-function sameWho(a: Who, b: Who): boolean {
+/** 給的是不是同一群人。 */
+export function sameWho(a: Who, b: Who): boolean {
 	return JSON.stringify(a) === JSON.stringify(b);
 }

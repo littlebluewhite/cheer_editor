@@ -2,10 +2,11 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列）；口號段一整段一列，時間寫秒數。
 
 import { ACTION_CATEGORIES, type Action, type ActionCategory } from './actions';
-import { cueForMember, type Cue, type CueKind } from './cues';
+import { cueForMember, whoName, type Cue, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
 import {
+	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
 	segmentSpans,
@@ -163,14 +164,13 @@ function cueInRow(flow: Flow, action: Action, cue: Cue, from: number, withWho: b
 	const start = Math.max(action.start + cue.at, from) - from;
 	const end = Math.min(action.start + cue.at + cue.len, from + HALF_BEATS_PER_EIGHT) - from;
 	if (start >= end) return [];
-	const who = cue.who;
 	return [
 		{
 			kind: cue.kind,
-			from: Math.floor(start / 2) + 1,
-			to: Math.ceil(end / 2),
+			from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
+			to: Math.ceil(end / HALF_BEATS_PER_BEAT),
 			word: cue.word,
-			who: !withWho || who === null ? null : 'role' in who ? who.role : memberName(flow, who.member)
+			who: withWho ? whoName(flow, cue.who) || null : null
 		}
 	];
 }

@@ -74,7 +74,7 @@ export function updateAction(
 	let action = normalize({ ...old, ...changes, id });
 	const from = flow.segments.find((s) => s.id === old.segmentId);
 	const to = flow.segments.find((s) => s.id === action.segmentId);
-	const fallout = from && to ? cueFallout(from, to, old, action, (m) => memberName(flow, m)) : null;
+	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);

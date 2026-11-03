@@ -9,13 +9,20 @@
 	import { untrack } from 'svelte';
 	import {
 		COUNT_WORDS,
+		CUE_KIND_LABELS,
+		CUE_KINDS,
+		HALF_BEATS_PER_BEAT as BEAT,
+		HALF_BEATS_PER_EIGHT as EIGHT,
 		MOTION_WORDS,
 		STEP_WORDS,
 		atText,
 		clearCues,
+		cueText,
 		memberName,
 		placeCue,
+		sameWho,
 		usedWords,
+		whoName,
 		type Action,
 		type CommandResult,
 		type Cue,
@@ -34,24 +41,17 @@
 
 	let { flow, action, onchange, cellAt = nearestCell }: Props = $props();
 
-	/** 一拍幾個半拍；一個八拍幾個半拍。 */
-	const BEAT = 2;
-	const EIGHT = 16;
 	const cols = Array.from({ length: 8 }, (_, c) => c);
 	/** 三條由上往下，排在每個八拍的數字格下面。 */
-	const LANES: { kind: CueKind; label: string }[] = [
-		{ kind: 'count', label: '拍子' },
-		{ kind: 'step', label: '步驟' },
-		{ kind: 'motion', label: '手位' }
-	];
+	const LANES = CUE_KINDS.map((kind) => ({ kind, label: CUE_KIND_LABELS[kind] }));
 
 	const segment = $derived(flow.segments.find((s) => s.id === action.segmentId) ?? null);
 	/** 步驟、手位的按鈕：內建的字，加上這支流程用過的字（打開別人的流程檔也看得到）。 */
 	const wordRows = $derived.by(() => {
 		const used = usedWords(flow);
 		return [
-			{ kind: 'step' as const, label: '步驟', words: [...STEP_WORDS, ...used.step], tip: '自己打，例：抬腳' },
-			{ kind: 'motion' as const, label: '手位', words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
+			{ kind: 'step' as const, label: CUE_KIND_LABELS.step, words: [...STEP_WORDS, ...used.step], tip: '自己打，例：抬腳' },
+			{ kind: 'motion' as const, label: CUE_KIND_LABELS.motion, words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
 		];
 	});
 	/** 「給誰」的按鈕：全部、動作裡出現的任務角色、動作裡的隊員。 */
@@ -65,9 +65,6 @@
 	});
 	/** 放拍點時給誰；預設全部。 */
 	let who = $state<Who>(null);
-	const sameWho = (a: Who, b: Who) => JSON.stringify(a) === JSON.stringify(b);
-	/** 拍點下面寫的給誰；給全部的不寫。 */
-	const whoText = (w: Who) => (w === null ? '' : 'role' in w ? w.role : memberName(flow, w.member));
 
 	/** 自己打的字，步驟和手位各一格。 */
 	let custom = $state({ step: '', motion: '' });
@@ -305,7 +302,7 @@
 					{/each}
 					{#each lanes as lane (lane.kind)}
 						{#each lane.pieces as p}
-							{@const to = whoText(p.cue.who)}
+							{@const to = whoName(flow, p.cue.who)}
 							<button
 								type="button"
 								class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
@@ -313,7 +310,7 @@
 								class:more={!p.last}
 								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
 								style:grid-row={lane.row + p.track}
-								aria-label="{lane.label} {p.cue.word} {spanText(p.cue.at, p.cue.len)}{to ? `・給${to}` : ''}"
+								aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}
 								onclick={() => pick(p.cue)}

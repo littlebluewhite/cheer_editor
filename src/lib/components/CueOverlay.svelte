@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 場地左上角的大字：播放頭在有拍點的動作裡（或開始前一個八拍）時，每個動作一張卡，
 	// 寫現在這拍的步驟、拍子、手位（有長度的寫走到第幾拍），下面預告下一個。不吃滑鼠。
-	import { actionLabel, cuesAt, memberName, type Cue, type Flow, type Who } from '#lib/core';
+	import { actionLabel, cuesAt, whoName, type Cue, type Flow } from '#lib/core';
 
 	interface Props {
 		flow: Flow;
@@ -10,9 +10,8 @@
 	let { flow, playheadSec }: Props = $props();
 
 	const live = $derived(cuesAt(flow, playheadSec));
-	const whoText = (w: Who) => (w === null ? '' : 'role' in w ? w.role : memberName(flow, w.member));
 	/** 「high V（上層）」；給全部的只寫字。 */
-	const nextText = (c: Cue) => (c.who ? `${c.word}（${whoText(c.who)}）` : c.word);
+	const nextText = (c: Cue) => (c.who ? `${c.word}（${whoName(flow, c.who)}）` : c.word);
 </script>
 
 {#if live.length}
@@ -23,7 +22,7 @@
 				{#if l.now.length}
 					<span class="now">
 						{#each l.now as n, i (i)}
-							{@const to = whoText(n.cue.who)}
+							{@const to = whoName(flow, n.cue.who)}
 							<b class="{n.cue.kind} {n.cue.kind === 'count' ? n.cue.word : ''}"
 								>{#if to}<i>{to}</i>{' '}{/if}{n.cue.word}{#if n.beats > 1}{' '}<small
 										>{n.beat}/{n.beats}</small

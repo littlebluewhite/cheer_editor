@@ -22,6 +22,9 @@ export interface SegmentSpan {
 /** 秒數的浮點數誤差容許值：差這麼一點點當成同一刻（例：算段內時間時不算掉到前一格）。 */
 export const EPS = 1e-6;
 
+/** 一拍是幾個半拍。 */
+export const HALF_BEATS_PER_BEAT = 2;
+
 /** 一個八拍是幾個半拍。 */
 export const HALF_BEATS_PER_EIGHT = 16;
 

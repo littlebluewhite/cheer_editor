@@ -39,14 +39,18 @@ export type { Action, ActionCategory, ActionMember, MemberGroup, NewActionInput 
 
 export {
 	COUNT_WORDS,
+	CUE_KIND_LABELS,
 	CUE_KINDS,
 	MOTION_WORDS,
 	STEP_WORDS,
 	clearCues,
 	cueForMember,
 	cuesAt,
+	cueText,
 	placeCue,
-	usedWords
+	sameWho,
+	usedWords,
+	whoName
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
@@ -108,6 +112,8 @@ export type {
 } from './segment';
 
 export {
+	HALF_BEATS_PER_BEAT,
+	HALF_BEATS_PER_EIGHT,
 	atText,
 	lengthText,
 	parseAt,

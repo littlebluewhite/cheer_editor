@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 八拍表列印：蓋在編輯畫面上，選全隊或一個隊員，按「列印」用瀏覽器列印（可存 PDF）。
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
-	import { eightCountRows, type EightCountCue, type Flow } from '#lib/core';
+	import { cueText, eightCountRows, type EightCountCue, type Flow } from '#lib/core';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 
@@ -23,12 +23,10 @@
 		return i === -1 ? '全隊' : `${flow.members[i].name}（場上 ${i + 1} 號）`;
 	});
 
-	const KIND_LABELS = { count: '拍子', step: '步驟', motion: '手位' };
-
 	/** 「拍子 down 1-6 到 1-7」「手位 high V 1-8・給上層」。 */
 	function cueLabel(eight: number | null, c: EightCountCue): string {
 		const span = c.to > c.from ? `${eight}-${c.from} 到 ${eight}-${c.to}` : `${eight}-${c.from}`;
-		return `${KIND_LABELS[c.kind]} ${c.word} ${span}${c.who ? `・給${c.who}` : ''}`;
+		return cueText(c.kind, c.word, span, c.who ?? '');
 	}
 </script>
 
