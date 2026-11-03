@@ -44,6 +44,22 @@ describe('時間軸放大縮小', () => {
 		expect(screen.getByText('×0.75')).toBeTruthy();
 	});
 
+	it('iPad 兩指捏合（Safari 的 gesturechange）放大縮小時間軸，不放大整頁', async () => {
+		const timeline = setup();
+		const gesture = async (type: string, scale: number) => {
+			const e = Object.assign(new Event(type, { cancelable: true }), { scale, clientX: 300 });
+			await fireEvent(timeline, e);
+			return e;
+		};
+		expect((await gesture('gesturestart', 1)).defaultPrevented).toBe(true);
+		await gesture('gesturechange', 1.1);
+		expect(screen.getByText('×1')).toBeTruthy();
+		expect((await gesture('gesturechange', 1.4)).defaultPrevented).toBe(true);
+		expect(screen.getByText('×1.5')).toBeTruthy();
+		await gesture('gesturechange', 1.4 / 1.3 / 1.3 / 1.01);
+		expect(screen.getByText('×1')).toBeTruthy();
+	});
+
 	it('觸控板捏合的小事件累積夠了才動一格', async () => {
 		const timeline = setup();
 		await fireEvent.wheel(timeline, { deltaY: -15, ctrlKey: true });

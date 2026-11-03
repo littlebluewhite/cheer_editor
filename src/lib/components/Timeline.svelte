@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）、八拍尺（點或拖＝移動播放頭）、
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
-	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪或觸控板捏合以滑鼠為準）。
+	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準）。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	import { tick, untrack } from 'svelte';
 	import {
@@ -116,6 +116,36 @@
 		zoomBy(step, e.clientX - scroller.getBoundingClientRect().left);
 	}
 
+	/** 捏合一次放大到這麼多倍（或縮到幾分之一）才算一格。 */
+	const PINCH_STEP = 1.3;
+
+	/**
+	 * iPad 兩指捏合：Safari 送 gesturechange（scale 是跟開始時比），只放大縮小時間軸，不放大整頁。
+	 * 以兩指中間為準，跟 Ctrl＋滾輪一樣。
+	 */
+	function pinchZoom(el: HTMLElement) {
+		type Gesture = Event & { scale: number; clientX: number };
+		let last = 1;
+		const start = (e: Event) => {
+			e.preventDefault();
+			last = 1;
+		};
+		const change = (e: Event) => {
+			e.preventDefault();
+			const { scale, clientX } = e as Gesture;
+			const ratio = scale / last;
+			if (ratio < PINCH_STEP && ratio > 1 / PINCH_STEP) return;
+			last = scale;
+			zoomBy(ratio > 1 ? 1 : -1, clientX - el.getBoundingClientRect().left);
+		};
+		el.addEventListener('gesturestart', start);
+		el.addEventListener('gesturechange', change);
+		return () => {
+			el.removeEventListener('gesturestart', start);
+			el.removeEventListener('gesturechange', change);
+		};
+	}
+
 	function add(kind: SegmentKind) {
 		menuOpen = false;
 		onaddsegment(kind);
@@ -146,7 +176,7 @@
 	});
 </script>
 
-<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel}>
+<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel} {@attach pinchZoom}>
 	<div class="inner" style:width={`${width + LABEL_W + 200}px`}>
 		<div class="row segs">
 			<div class="lab">
@@ -194,7 +224,7 @@
 		<div class="row ruler-row">
 			<div class="lab zoom">
 				<span>八拍</span>
-				<span class="zoom-btns" title="Ctrl／⌘＋滾輪、或觸控板兩指捏合，也可以放大縮小">
+				<span class="zoom-btns" title="Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合，也可以放大縮小">
 					<button
 						type="button"
 						class="ghost"

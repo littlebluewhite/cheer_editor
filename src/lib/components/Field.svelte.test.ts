@@ -209,6 +209,38 @@ describe('在場上選人、整組拖', () => {
 		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm2']);
 	});
 
+	it('兩根手指：捏合放大、一起拖移動畫面；不會選人、拖人', async () => {
+		const { onselect, onmove, dot, svg } = setup();
+		const finger = (id: number, x: number, y: number) => ({
+			pointerType: 'touch',
+			pointerId: id,
+			button: 0,
+			clientX: x,
+			clientY: y
+		});
+		const zoomText = () => document.querySelector('.zoom')!.textContent;
+		await fireEvent.pointerDown(dot('m1'), finger(1, 0, 0));
+		await fireEvent.pointerDown(svg, finger(2, 100, 0));
+		await fireEvent.pointerMove(svg, finger(2, 200, 0));
+		expect(zoomText()).toBe('×2.0');
+		const viewX = () => Number(svg.getAttribute('viewBox')!.split(' ')[0]);
+		const before = viewX();
+		// 兩指一起往右 50 px：畫面往左挪（看到更左邊）
+		await fireEvent.pointerMove(svg, finger(1, 50, 0));
+		await fireEvent.pointerMove(svg, finger(2, 250, 0));
+		expect(viewX()).toBeLessThan(before);
+		await fireEvent.pointerUp(svg, finger(2, 250, 0));
+		// 剩一根手指也不接著拖人
+		await fireEvent.pointerMove(svg, finger(1, 300, 0));
+		await fireEvent.pointerUp(svg, finger(1, 300, 0));
+		expect(onmove).not.toHaveBeenCalled();
+		expect(onselect).not.toHaveBeenCalled();
+		// 都放開了，一根手指又能點人
+		await fireEvent.pointerDown(dot('m2'), finger(3, 100, 0));
+		await fireEvent.pointerUp(svg, finger(3, 100, 0));
+		expect(onselect).toHaveBeenLastCalledWith(['m2']);
+	});
+
 	it('點空白處清除選取', async () => {
 		const { onselect, svg } = setup(['m1']);
 		await dragFrom(svg, [500, 500], [500, 500]);

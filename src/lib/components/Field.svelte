@@ -11,6 +11,7 @@
 <script lang="ts">
 	// 場地：SVG 的使用者座標就是流程核心的公尺座標（原點中心 X，y 往正面＝畫面下面）。
 	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
+	// 放大縮小：按鈕、滾輪、兩指捏合；兩指一起拖是移動畫面。
 	// 選人：點人（Shift＋點或開著 multi 時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
@@ -169,15 +170,51 @@
 		return Math.min(Math.max(v, lo), hi);
 	}
 
-	function setZoom(next: number, anchor?: Position) {
+	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
 		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
-		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）。
-		center = anchor
+		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
+		const [cx, cy] = anchor
 			? [anchor[0] + ((c[0] - anchor[0]) * zoom) / z, anchor[1] + ((c[1] - anchor[1]) * zoom) / z]
 			: c;
+		// 中心夾在畫面不超出全場的範圍裡，挪過頭再挪回來才不會卡住。
+		const [w, h] = [full.width / z, full.height / z];
+		center = [
+			clamp(cx - pan[0], full.x + w / 2, full.x + full.width - w / 2),
+			clamp(cy - pan[1], full.y + h / 2, full.y + full.height - h / 2)
+		];
 		zoom = z;
 		if (z === 1) center = null;
+	}
+
+	// ---------- 兩根手指：捏合放大縮小、一起拖移動畫面（iPad）。只有一根時照舊點人、拖人、框選。 ----------
+	/** 按在場上的每根手指（pointerId → 螢幕座標）。 */
+	const fingers = new Map<number, [number, number]>();
+	/** 兩指操作中；放開到一根也不接著拖人，要全部放開。 */
+	let pinching = false;
+
+	function midAndSpan(): { mid: [number, number]; span: number } {
+		const [[ax, ay], [bx, by]] = [...fingers.values()];
+		return { mid: [(ax + bx) / 2, (ay + by) / 2], span: Math.hypot(ax - bx, ay - by) };
+	}
+
+	/** 第二根手指移動：照兩指距離縮放（兩指中間那一點不動），再照中點移了多少挪畫面。 */
+	function pinchMove(e: PointerEvent) {
+		const before = midAndSpan();
+		fingers.set(e.pointerId, [e.clientX, e.clientY]);
+		const after = midAndSpan();
+		if (before.span === 0) return;
+		const anchor = toMeters({ clientX: before.mid[0], clientY: before.mid[1] }, svg);
+		const next = clamp((zoom * after.span) / before.span, 1, MAX_ZOOM);
+		// 螢幕 1 px 是幾公尺（縮放後）。
+		const [x1] = toMeters({ clientX: before.mid[0] + 1, clientY: before.mid[1] }, svg);
+		const perPx = ((x1 - anchor[0]) * zoom) / next;
+		setZoom(next, anchor, [(after.mid[0] - before.mid[0]) * perPx, (after.mid[1] - before.mid[1]) * perPx]);
+	}
+
+	function liftFinger(e: PointerEvent) {
+		fingers.delete(e.pointerId);
+		if (fingers.size === 0) pinching = false;
 	}
 
 	function onwheel(e: WheelEvent) {
@@ -187,6 +224,17 @@
 
 	function down(e: PointerEvent) {
 		if (e.button !== 0) return;
+		if (e.pointerType === 'touch' && controls) {
+			fingers.set(e.pointerId, [e.clientX, e.clientY]);
+			if (fingers.size >= 2 || pinching) {
+				// 第二根手指：不拖人、不框選，改成捏合。
+				pinching = true;
+				drag = null;
+				box = null;
+				svg.setPointerCapture?.(e.pointerId);
+				return;
+			}
+		}
 		const id = (e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id');
 		const client: [number, number] = [e.clientX, e.clientY];
 		if (id && positions[id] && (onmove || onselect)) {
@@ -205,6 +253,10 @@
 	}
 
 	function move(e: PointerEvent) {
+		if (pinching) {
+			if (fingers.size === 2 && fingers.has(e.pointerId)) pinchMove(e);
+			return;
+		}
 		if (drag && onmove && (drag.cur || !still(e, drag.client))) {
 			const [px, py] = toMeters(e, svg);
 			const o = drag.orig[drag.id];
@@ -214,7 +266,8 @@
 		}
 	}
 
-	function up() {
+	function up(e: PointerEvent) {
+		liftFinger(e);
 		if (drag?.cur) onmove?.(dragged);
 		else if (drag) onselect?.(pick(drag.id, drag.shift));
 		else if (box) onselect?.(box.b ? inBox(box.a, box.b, box.shift) : []);
@@ -285,7 +338,8 @@
 		onpointerdown={down}
 		onpointermove={move}
 		onpointerup={up}
-		onpointercancel={() => {
+		onpointercancel={(e) => {
+			liftFinger(e);
 			drag = null;
 			box = null;
 		}}
