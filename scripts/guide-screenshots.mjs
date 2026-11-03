@@ -254,7 +254,10 @@ await js(`
 	const form = q('.action-form');
 	$set(form.querySelector('header .title'), 'Lib');
 	for (const [who, role] of [['阿明', '主底'], ['阿強', '側底'], ['小美', '上層']]) {
-		$set(form.querySelector('select[aria-label="' + who + ' 的任務角色"]'), role, 'change');
+		form.querySelector('[role="combobox"][aria-label="' + who + ' 的任務角色"]').click();
+		await new Promise((x) => setTimeout(x, 50));
+		[...form.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim().startsWith(role)).click();
+		await new Promise((x) => setTimeout(x, 50));
 	}`);
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
 await sleep(300);
@@ -307,7 +310,7 @@ await shot('print', [
 	[4, `q('.print-sheet .mini')`]
 ], `[q('.print-sheet .toolbar'), q('.print-sheet .page')]`);
 
-// 9 拍點格子：在 Lib 放 down 2 拍、up 1 拍、下手 4 拍，給上層的 high V 在 4-7，最後選 4-5 到 4-6
+// 9 拍點格子：在 Lib 放 down 2 拍、up 1 拍、下手 4 拍，給上層的 high V 在 4-7，最後選 4-5 到 4-6，拍點小窗開著
 await js(`$btn('關閉', q('.print-sheet')).click();`);
 await waitFor(() => js(`return !!q('.cues .sheet')`));
 await js(`
@@ -318,24 +321,30 @@ await js(`
 	await tap(cell('4-1')); await tap(more()); await tap($btn('down', g));
 	await tap($btn('up', g));
 	await tap(cell('4-1')); for (let i = 0; i < 3; i++) await tap(more()); await tap($btn('下手', g));
-	await tap($btn('上層', g.querySelector('[aria-label="給誰"]')));
+	const who = g.querySelector('.pop select');
+	who.value = String([...who.options].findIndex((o) => o.textContent === '上層'));
+	who.dispatchEvent(new Event('change', { bubbles: true }));
 	await tap(cell('4-7')); await tap($btn('high V', g));
-	await tap(cell('4-5')); await tap(more());`);
+`);
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
 await sleep(300);
-await js(`q('.cues').scrollIntoView();`);
+// 先捲好再選 4-5 到 4-6：拍點小窗照捲好的畫面決定放在格子上面還是下面。
+await js(`const panel = q('.cues').closest('.panel'); panel.scrollTop = panel.scrollHeight; await new Promise((x) => setTimeout(x, 100));
+	q('.cues .cell[aria-label="4-5"]').click(); await new Promise((x) => setTimeout(x, 50));
+	q('.cues [aria-label="多選一拍"]').click();`);
 await sleep(200);
 await shot(
 	'cues',
 	[
 		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.5, y: 0 }],
 		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
-		[3, `q('.cues .whorow')`],
-		[4, `q('.cues .selbar')`, { x: 0.6, y: 0.5 }],
-		[5, `[...document.querySelectorAll('.cues .kindrow .words')]`, { x: 0, y: 0 }],
-		[6, `[...document.querySelectorAll('.cues .kindrow .clear')]`, { x: 1, y: 0 }]
+		[3, `q('.cues .pop')`, { x: 1, y: 1 }],
+		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 1, y: 0.5 }],
+		[5, `q('.cues .who-sel')`, { x: 0.5, y: 0 }],
+		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0, y: 0 }],
+		[7, `[...document.querySelectorAll('.cues .pop-row .clear')]`, { x: 1, y: 1 }]
 	],
-	`q('.cues')`
+	`[q('.cues .pop'), q('.cues .sheet')]`
 );
 
 stop(0);

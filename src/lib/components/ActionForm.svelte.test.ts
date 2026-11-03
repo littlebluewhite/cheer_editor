@@ -338,6 +338,7 @@ describe('動作表單：拍點格子', () => {
 			.filter((b) => !(b as HTMLButtonElement).disabled)
 			.map((b) => b.getAttribute('aria-label'));
 		expect(enabled).toEqual(['1-3']);
+		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
 		expect(grid.getByText(/^選了/).textContent).toBe('選了 1-3・1 拍');
 		// 再多選一拍就超出動作，選不到。
 		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
@@ -348,19 +349,20 @@ describe('動作表單：拍點格子', () => {
 		]);
 	});
 
-	it('流程裡別的動作用過的字（例如打開別人的流程檔）也是按鈕', () => {
+	it('流程裡別的動作用過的字（例如打開別人的流程檔）也是按鈕', async () => {
 		let flow = flowOf(addAction(sample(), { ...base, segmentId: 's1', start: 0, length: 4 }));
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's1', start: 8, length: 4 }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '抬腳' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: '拳頭' }));
 		setup(flow, 'x2');
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-5' }));
 		const words = (lane: string) =>
 			within(grid.getByRole('group', { name: lane }))
 				.getAllByRole('button')
 				.map((b) => b.textContent);
-		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '抬腳', '加入', '清掉步驟']);
-		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏', '拳頭', '加入', '清掉手位']);
+		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '抬腳', '加入', '清掉']);
+		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏', '拳頭', '加入', '清掉']);
 	});
 
 	it('變短要先問；等確認時流程變了、按確定被擋：顯示原因並還原', async () => {

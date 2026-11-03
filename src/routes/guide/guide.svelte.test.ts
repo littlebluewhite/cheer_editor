@@ -22,14 +22,14 @@ describe('使用說明', () => {
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
 	});
 
-	it('有一節講拍點：怎麼放、怎麼清、哪些情況會拿掉、在哪裡看到', () => {
+	it('有一節講拍點：怎麼選、在拍點小窗怎麼放、怎麼清、哪些情況會拿掉、在哪裡看到', () => {
 		render(Guide);
 		const toc = screen.getByRole('navigation', { name: '目錄' });
 		const link = [...toc.querySelectorAll('a')].find((a) => a.textContent === '4.7 拍點');
 		expect(link?.getAttribute('href')).toBe('#cues');
 		const section = document.getElementById('cues')!;
 		const text = section.textContent!;
-		for (const words of ['拍子', '步驟', '手位', '給誰', '清掉拍子', '清掉步驟', '清掉手位', '口號段', '八拍表', '大字']) {
+		for (const words of ['拍子', '步驟', '手位', '給誰', '拍點小窗', 'Shift', '清掉', '口號段', '八拍表', '大字']) {
 			expect(text, words).toContain(words);
 		}
 		expect(section.querySelector('img')?.alt).toContain('拍點');

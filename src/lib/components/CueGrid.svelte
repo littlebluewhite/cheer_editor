@@ -1,12 +1,14 @@
 <script lang="ts">
 	// 拍點格子：像紙本八拍表，動作碰到的每個八拍一排 8 個數字格，下面是拍子、步驟、手位三條。
-	// 點一格選一拍，用 ＋、－ 多選或少選；也可以在數字格或拍點條的空格上按住拖過幾拍。
+	// 點一格選一拍；按住 Shift 點另一格選一段；也可以在數字格或拍點條的空格上按住拖過幾拍。
+	// 選好就在選的拍旁邊跳出拍點小窗，裡面有給誰、＋、－ 和三種拍點的按鈕。
 	// 點 down、up 就放滿選到的拍，選取跳到下一拍。
 	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	import { untrack } from 'svelte';
+	import { placeCuePop } from '#lib/cue-pop.js';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -81,6 +83,20 @@
 	let sel = $state({ from: 0, to: 0 });
 	let error = $state('');
 
+	/** 拍點小窗開著沒；拖的時候先收起來，放開才跳出來。 */
+	let pop = $state(false);
+	let dragging = $state(false);
+	let wrapEl = $state<HTMLElement>();
+	let popEl = $state<HTMLElement>();
+	let popPos = $state({ top: 0, left: 0, arrow: 0, above: false });
+	/** 格子下面一直留著的空位（小窗最高那次的高度）：只長不縮，關掉小窗時捲動長度不會變短，畫面不會跳。 */
+	let reserve = $state(0);
+	/** 放完 down／up 自動跳到下一拍時才可以捲；自己點選的時候畫面不動。 */
+	let follow = false;
+	/** 按的是小窗裡的按鈕（＋－、放拍點）：小窗留在原地，按鈕不會從滑鼠下面跑掉。 */
+	let hold = false;
+	const whoIndex = $derived(Math.max(0, whoOptions.findIndex((o) => sameWho(o.who, who))));
+
 	/** 這一格（從 at 開始的一拍）整個在動作裡。 */
 	const inAction = (at: number) => at >= 0 && at + BEAT <= action.length;
 	const hasCells = $derived(inAction(firstCell));
@@ -100,6 +116,7 @@
 			error = '';
 			sel = { from: firstCell, to: firstCell };
 			who = null;
+			pop = false;
 		});
 	});
 
@@ -132,6 +149,7 @@
 	}
 
 	function apply(r: CommandResult): boolean {
+		hold = pop;
 		if (r.kind !== 'ok') {
 			error = r.kind === 'blocked' ? r.message : '';
 			return false;
@@ -143,6 +161,21 @@
 
 	const selectOne = (at: number) => (sel = { from: at, to: at });
 
+	/** 選取固定的那一端：上次沒按 Shift 點的那一格。 */
+	let pivot = 0;
+	/** 點一格選一拍；按住 Shift 點，就從上次點的那一格選到這一格。 */
+	function selectTo(at: number, shift: boolean) {
+		// 選取被別的地方換掉了（放完拍子跳下一拍、點拍點），就從選取的開頭算。
+		const keep = !shift ? at : sel.from === pivot || sel.to === pivot ? pivot : sel.from;
+		pivot = keep;
+		sel = { from: Math.min(keep, at), to: Math.max(keep, at) };
+	}
+
+	function openPop() {
+		hold = false;
+		pop = true;
+	}
+
 	/** 拖拉選拍：按下那一格；pointer 按下過、還沒收到 click（點一下時 pointerdown 已經選好，click 不用再選）。 */
 	let anchor: number | null = null;
 	let pointerSel = false;
@@ -152,9 +185,10 @@
 		const el = (e.target as Element).closest<HTMLElement>('[data-at]');
 		const at = Number(el?.dataset.at);
 		if (!el || !inAction(at)) return;
-		anchor = at;
 		pointerSel = true;
-		selectOne(at);
+		selectTo(at, e.shiftKey);
+		anchor = pivot;
+		dragging = true;
 		// 抓住指標：拖過變淡（disabled）的格子、拖出格子外都收得到。
 		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
 	}
@@ -167,9 +201,17 @@
 		sel = { from: Math.min(anchor, at), to: Math.max(anchor, at) };
 	}
 
-	const dragEnd = () => (anchor = null);
+	function dragEnd() {
+		if (anchor !== null) openPop();
+		dragCancel();
+	}
+	function dragCancel() {
+		anchor = null;
+		dragging = false;
+	}
 
 	function grow(step: number) {
+		hold = pop;
 		const to = sel.to + step * BEAT;
 		if (to >= sel.from && inAction(to)) sel = { from: sel.from, to };
 	}
@@ -178,7 +220,10 @@
 	function place(kind: CueKind, word: string): boolean {
 		const len = kind === 'motion' ? BEAT : selLen;
 		const placed = apply(placeCue(flow, action.id, { kind, at: sel.from, len, word, who }));
-		if (placed && kind === 'count' && inAction(sel.to + BEAT)) selectOne(sel.to + BEAT);
+		if (placed && kind === 'count' && inAction(sel.to + BEAT)) {
+			selectOne(sel.to + BEAT);
+			follow = pop;
+		}
 		return placed;
 	}
 
@@ -204,7 +249,78 @@
 		const from = Math.max(cellOf(c.at), firstCell);
 		let to = cellOf(c.at + c.len - 1);
 		while (to > from && !inAction(to)) to -= BEAT;
-		if (inAction(from)) sel = { from, to };
+		if (inAction(from)) {
+			sel = { from, to };
+			openPop();
+		}
+	}
+
+	/** 往上找會捲動的那一層（編輯頁右邊欄）。 */
+	function scrollBox(el: HTMLElement): HTMLElement {
+		let p = el.parentElement;
+		while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement;
+		return p ?? document.documentElement;
+	}
+
+	// 拍點小窗放在選的拍下面（手位那條下面），畫面下面放不下就放上面；點選的時候不捲動畫面。
+	// 按小窗裡的按鈕時小窗不動，只有尖角跟著選取（規則在 placeCuePop）。
+	$effect(() => {
+		if (!pop || dragging || !wrapEl || !popEl) return;
+		void flow;
+		void error;
+		const held = hold;
+		hold = false;
+		const q = (s: string) => wrapEl!.querySelector<HTMLElement>(s);
+		const head = q(`.cell[data-at="${sel.from}"]`);
+		const a = q(`.slot.motion[data-at="${sel.from}"]`);
+		const b = q(`.slot.motion[data-at="${sel.to}"]`);
+		if (!head || !a || !b) return;
+		const h = popEl.offsetHeight;
+		untrack(() => {
+			if (h + 8 > reserve) reserve = h + 8;
+		});
+		const box = scrollBox(wrapEl);
+		// 自動跳到的下一拍在畫面下面看不到：往下捲剛好看得到那一排就好。
+		let scrolled = false;
+		if (follow) {
+			follow = false;
+			const view = box.getBoundingClientRect();
+			const over = b.getBoundingClientRect().bottom - view.bottom;
+			if (over > 0) {
+				box.scrollTop += Math.min(over + 8, head.getBoundingClientRect().top - view.top);
+				scrolled = true;
+			}
+		}
+		const wrap = wrapEl.getBoundingClientRect();
+		const view = box.getBoundingClientRect();
+		const rect = (el: HTMLElement) => {
+			const r = el.getBoundingClientRect();
+			return { top: r.top - wrap.top, bottom: r.bottom - wrap.top, left: r.left - wrap.left, right: r.right - wrap.left };
+		};
+		const [ra, rb, rh] = [rect(a), rect(b), rect(head)];
+		const sameRow = ra.top === rb.top;
+		const mid = (ra.left + rb.right) / 2;
+		popPos = placeCuePop({
+			sel: { top: rh.top, bottom: rb.bottom, left: sameRow ? ra.left : 0, right: sameRow ? rb.right : wrap.width },
+			arrowAbove: sameRow ? mid : (ra.left + ra.right) / 2,
+			arrowBelow: sameRow ? mid : (rb.left + rb.right) / 2,
+			pop: { w: popEl.offsetWidth, h },
+			wrapW: wrapEl.clientWidth,
+			view: { top: view.top - wrap.top, bottom: view.bottom - wrap.top },
+			rowH: (head.parentElement as HTMLElement).offsetHeight + 10,
+			cur: held && !scrolled ? untrack(() => popPos) : null
+		});
+	});
+
+	function outside(e: PointerEvent) {
+		if (pop && !wrapEl?.contains(e.target as Node)) pop = false;
+	}
+
+	/** Esc 只關小窗（不讓編輯頁把動作也取消選）。 */
+	function popKeys(e: KeyboardEvent) {
+		if (!pop || e.key !== 'Escape') return;
+		e.stopPropagation();
+		pop = false;
 	}
 
 	/** 範圍 [lo, hi] 離 v 多遠（在裡面是 0）。 */
@@ -260,129 +376,142 @@
 	{:else if !hasCells}
 		<p class="muted">動作不到一拍，不能放拍點</p>
 	{:else}
-		<div
-			class="sheet"
-			role="presentation"
-			onpointerdown={dragStart}
-			onpointermove={dragMove}
-			onpointerup={dragEnd}
-			onpointercancel={dragEnd}
-			onclick={() => (pointerSel = false)}
-		>
-			{#each eights as e (e)}
-				{@const lanes = layout(e)}
-				<div class="row">
-					<span class="eight" aria-hidden="true">{e + 1}</span>
-					{#each lanes as lane (lane.kind)}
-						<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
-					{/each}
-					{#each cols as c (c)}
-						{@const at = (e * 8 + c) * BEAT - action.start}
-						<button
-							type="button"
-							class="cell"
-							data-at={at}
-							style:grid-column={c + 2}
-							class:sel={inAction(at) && isSel(at)}
-							aria-label="{e + 1}-{c + 1}"
-							aria-pressed={inAction(at) && isSel(at)}
-							disabled={!inAction(at)}
-							onclick={() => pointerSel || selectOne(at)}>{c + 1}</button
-						>
+		<p class="hint">在格子上點或拖，選好拍就會跳出拍點小窗。點一格，再按住 Shift 點另一格，也能選一整段。</p>
+		<div class="sheet-wrap" bind:this={wrapEl} style:padding-bottom={reserve ? `${reserve}px` : undefined}>
+			<div
+				class="sheet"
+				role="presentation"
+				onpointerdown={dragStart}
+				onpointermove={dragMove}
+				onpointerup={dragEnd}
+				onpointercancel={dragCancel}
+				onclick={() => (pointerSel = false)}
+			>
+				{#each eights as e (e)}
+					{@const lanes = layout(e)}
+					<div class="row">
+						<span class="eight" aria-hidden="true">{e + 1}</span>
 						{#each lanes as lane (lane.kind)}
-							<span
-								class="slot {lane.kind}"
-								data-at={at}
-								class:out={!inAction(at)}
-								class:sel={inAction(at) && isSel(at)}
-								style:grid-column={c + 2}
-								style:grid-row="{lane.row} / span {lane.tracks}"
-							></span>
+							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
-					{/each}
-					{#each lanes as lane (lane.kind)}
-						{#each lane.pieces as p}
-							{@const to = whoName(flow, p.cue.who)}
+						{#each cols as c (c)}
+							{@const at = (e * 8 + c) * BEAT - action.start}
 							<button
 								type="button"
-								class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
-								class:cont={!p.first}
-								class:more={!p.last}
-								class:end={p.c0 === 7}
-								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
-								style:grid-row={lane.row + p.track}
-								aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
-								aria-hidden={!p.first || undefined}
-								tabindex={p.first ? undefined : -1}
-								onclick={() => pick(p.cue)}
-								>{p.first ? p.cue.word : `…${p.cue.word}`}{#if to}<small class="who">{to}</small>{/if}</button
+								class="cell"
+								data-at={at}
+								style:grid-column={c + 2}
+								class:sel={inAction(at) && isSel(at)}
+								aria-label="{e + 1}-{c + 1}"
+								aria-pressed={inAction(at) && isSel(at)}
+								disabled={!inAction(at)}
+								onclick={(ev) => {
+								if (pointerSel) return;
+								selectTo(at, ev.shiftKey);
+								openPop();
+							}}>{c + 1}</button
 							>
+							{#each lanes as lane (lane.kind)}
+								<span
+									class="slot {lane.kind}"
+									data-at={at}
+									class:out={!inAction(at)}
+									class:sel={inAction(at) && isSel(at)}
+									style:grid-column={c + 2}
+									style:grid-row="{lane.row} / span {lane.tracks}"
+								></span>
+							{/each}
 						{/each}
-					{/each}
-				</div>
-			{/each}
-		</div>
-
-		<div class="whorow" role="group" aria-label="給誰">
-			<span class="lbl">給誰</span>
-			<div class="words">
-				{#each whoOptions as o (JSON.stringify(o.who))}
-					<button
-						type="button"
-						class="who-btn"
-						aria-pressed={sameWho(o.who, who)}
-						onclick={() => (who = o.who)}>{o.label}</button
-					>
+						{#each lanes as lane (lane.kind)}
+							{#each lane.pieces as p}
+								{@const to = whoName(flow, p.cue.who)}
+								<button
+									type="button"
+									class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
+									class:cont={!p.first}
+									class:more={!p.last}
+									class:end={p.c0 === 7}
+									style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+									style:grid-row={lane.row + p.track}
+									aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
+									aria-hidden={!p.first || undefined}
+									tabindex={p.first ? undefined : -1}
+									onclick={() => pick(p.cue)}
+									>{p.first ? p.cue.word : `…${p.cue.word}`}{#if to}<small class="who">{to}</small>{/if}</button
+								>
+							{/each}
+						{/each}
+					</div>
 				{/each}
 			</div>
-		</div>
 
-		<div class="selbar">
-			<span>選了 {spanText(sel.from, selLen)}</span>
-			<button type="button" class="pm" aria-label="少選一拍" onclick={() => grow(-1)}>－</button>
-			<button type="button" class="pm" aria-label="多選一拍" onclick={() => grow(1)}>＋</button>
-		</div>
-
-		<div class="kindrow count" role="group" aria-label="拍子">
-			<span class="lbl">拍子</span>
-			<div class="words">
-				{#each COUNT_WORDS as w (w)}
-					<button type="button" class="word {w}" onclick={() => place('count', w)}>{w}</button>
-				{/each}
-			</div>
-			<button type="button" class="clear" onclick={() => clear('count')}>清掉拍子</button>
-		</div>
-
-		{#each wordRows as row (row.kind)}
-			<div class="kindrow {row.kind}" role="group" aria-label={row.label}>
-				<span class="lbl">{row.label}</span>
-				<div class="words">
-					{#each row.words as w (w)}
-						<button type="button" class="word" onclick={() => place(row.kind, w)}>{w}</button>
+			{#if pop && !dragging}
+				<div
+					class="pop"
+					class:above={popPos.above}
+					bind:this={popEl}
+					style:top="{popPos.top}px"
+					style:left="{popPos.left}px"
+					style:--arrow="{popPos.arrow}px"
+					role="dialog"
+					aria-label="拍點小窗"
+				>
+					<div class="pop-head">
+						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
+						<button type="button" class="pm" aria-label="少選一拍" onclick={() => grow(-1)}>－</button>
+						<button type="button" class="pm" aria-label="多選一拍" onclick={() => grow(1)}>＋</button>
+						<label class="who-sel">
+							<span>給誰</span>
+							<select value={whoIndex} onchange={(e) => (who = whoOptions[Number(e.currentTarget.value)].who)}>
+								{#each whoOptions as o, i (i)}<option value={i}>{o.label}</option>{/each}
+							</select>
+						</label>
+						<button type="button" class="x" aria-label="關掉" onclick={() => (pop = false)}>✕</button>
+					</div>
+					<div class="pop-row count" role="group" aria-label="拍子">
+						<span class="lbl">拍子</span>
+						<div class="words">
+							{#each COUNT_WORDS as w (w)}
+								<button type="button" class="word {w}" onclick={() => place('count', w)}>{w}</button>
+							{/each}
+						</div>
+						<button type="button" class="clear" aria-label="清掉拍子" onclick={() => clear('count')}>清掉</button>
+					</div>
+					{#each wordRows as row (row.kind)}
+						<div class="pop-row {row.kind}" role="group" aria-label={row.label}>
+							<span class="lbl">{row.label}</span>
+							<div class="words">
+								{#each row.words as w (w)}
+									<button type="button" class="word" onclick={() => place(row.kind, w)}>{w}</button>
+								{/each}
+								<span class="own">
+									<input
+										class="custom"
+										aria-label="自己打{row.label}"
+										placeholder={row.tip}
+										bind:value={custom[row.kind]}
+										onkeydown={(e) => onCustomKey(e, row.kind)}
+									/>
+									<button
+										type="button"
+										class="word"
+										aria-label="加入{row.label}"
+										disabled={!custom[row.kind].trim()}
+										onclick={() => addCustom(row.kind)}>加入</button
+									>
+								</span>
+							</div>
+							<button type="button" class="clear" aria-label="清掉{row.label}" onclick={() => clear(row.kind)}>清掉</button>
+						</div>
 					{/each}
-					<span class="own">
-						<input
-							class="custom"
-							aria-label="自己打{row.label}"
-							placeholder={row.tip}
-							bind:value={custom[row.kind]}
-							onkeydown={(e) => onCustomKey(e, row.kind)}
-						/>
-						<button
-							type="button"
-							class="word"
-							aria-label="加入{row.label}"
-							disabled={!custom[row.kind].trim()}
-							onclick={() => addCustom(row.kind)}>加入</button
-						>
-					</span>
+					{#if error}<p class="error" role="alert">{error}</p>{/if}
 				</div>
-				<button type="button" class="clear" onclick={() => clear(row.kind)}>清掉{row.label}</button>
-			</div>
-		{/each}
+			{/if}
+		</div>
 	{/if}
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
+
+<svelte:window onpointerdown={outside} onkeydowncapture={popKeys} />
 
 <style>
 	.cues {
@@ -552,18 +681,6 @@
 		border-top-right-radius: 0;
 		border-bottom-right-radius: 0;
 	}
-	.selbar {
-		display: flex;
-		gap: 6px;
-		align-items: center;
-		padding-top: 6px;
-		border-top: 1px solid var(--line-soft, #e8ecf3);
-		font-weight: 700;
-		font-variant-numeric: tabular-nums;
-	}
-	.selbar span {
-		margin-right: auto;
-	}
 	.pm {
 		width: 28px;
 		height: 28px;
@@ -571,41 +688,21 @@
 		justify-content: center;
 		font-size: 14px;
 	}
-	.whorow {
+	.pop-row {
 		display: grid;
-		grid-template-columns: 34px minmax(0, 1fr);
+		grid-template-columns: 30px minmax(0, 1fr) auto;
 		gap: 6px;
 		align-items: center;
-	}
-	.whorow .lbl {
-		color: var(--muted, #66718a);
-	}
-	.who-btn {
-		min-height: 24px;
-		padding: 2px 10px;
-		border-radius: 999px;
-		font-size: 12px;
-	}
-	.who-btn[aria-pressed='true'] {
-		background: var(--text, #1a2238);
-		border-color: var(--text, #1a2238);
-		color: #fff;
-	}
-	.kindrow {
-		display: grid;
-		grid-template-columns: 34px minmax(0, 1fr) auto;
-		gap: 6px;
-		align-items: center;
-		padding: 6px 6px 6px 8px;
+		padding: 5px 6px;
 		border-radius: 8px;
 		border-left: 4px solid var(--cue-down);
 		background: #f6f9ff;
 	}
-	.kindrow.step {
+	.pop-row.step {
 		border-left-color: var(--cue-step-line);
 		background: #fffaf4;
 	}
-	.kindrow.motion {
+	.pop-row.motion {
 		border-left-color: var(--cue-motion-line);
 		background: #fff7fb;
 	}
@@ -614,10 +711,10 @@
 		font-weight: 700;
 		color: var(--cue-down);
 	}
-	.kindrow.step .lbl {
+	.pop-row.step .lbl {
 		color: var(--cue-step-ink);
 	}
-	.kindrow.motion .lbl {
+	.pop-row.motion .lbl {
 		color: var(--cue-motion-ink);
 	}
 	.own {
@@ -626,7 +723,7 @@
 	}
 	.custom {
 		width: 9em;
-		min-height: 28px;
+		min-height: 26px;
 		padding: 2px 8px;
 		border-radius: 999px;
 		border: 1px solid var(--line, #d8dee9);
@@ -635,14 +732,14 @@
 	.words {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: 4px;
 	}
 	.word {
-		min-height: 28px;
-		padding: 4px 16px;
+		min-height: 26px;
+		padding: 3px 10px;
 		border-radius: 999px;
 		border: 0;
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 700;
 	}
 	.clear {
@@ -654,6 +751,82 @@
 		background: transparent;
 		border: 1px solid currentColor;
 		white-space: nowrap;
+	}
+	.hint {
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	/* 拍點小窗疊在格子上面，所以格子框要當它的定位基準。 */
+	.sheet-wrap {
+		position: relative;
+	}
+	/* 拍點小窗：白底、陰影、一個小尖角指著選的拍。 */
+	.pop {
+		position: absolute;
+		z-index: 5;
+		width: min(480px, 100%);
+		display: grid;
+		gap: 6px;
+		padding: 8px;
+		border-radius: 12px;
+		border: 1px solid var(--line, #d8dee9);
+		background: var(--surface, #fff);
+		box-shadow: 0 10px 28px rgba(22, 33, 58, 0.22);
+	}
+	.pop::before {
+		content: '';
+		position: absolute;
+		top: -7px;
+		left: calc(var(--arrow) - 6px);
+		width: 12px;
+		height: 12px;
+		background: inherit;
+		border-left: 1px solid var(--line, #d8dee9);
+		border-top: 1px solid var(--line, #d8dee9);
+		transform: rotate(45deg);
+	}
+	/* 放在選取上面時，小尖角在下面往下指。 */
+	.pop.above::before {
+		top: auto;
+		bottom: -7px;
+		border: 0;
+		border-right: 1px solid var(--line, #d8dee9);
+		border-bottom: 1px solid var(--line, #d8dee9);
+	}
+	/* 右邊欄窄的時候「給誰」換到下一行，不擠成直的。 */
+	.pop-head {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		align-items: center;
+	}
+	.sel-text {
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.who-sel {
+		display: inline-flex;
+		gap: 4px;
+		align-items: center;
+		margin-left: auto;
+		white-space: nowrap;
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	.who-sel select {
+		min-height: 28px;
+		max-width: 9em;
+		font-size: 13px;
+	}
+	.x {
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		justify-content: center;
+		border: 0;
+		background: transparent;
+		color: var(--muted, #66718a);
 	}
 	.error {
 		padding: 6px 8px;

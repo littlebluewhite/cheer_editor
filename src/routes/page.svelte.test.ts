@@ -241,6 +241,13 @@ describe('動作', () => {
 		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '拍子 up 1-5・1 拍']);
 	});
 
+	/** 拍點小窗開著時，在「給誰」選一個。 */
+	async function pickWho(label: string) {
+		const who = screen.getByRole('combobox', { name: '給誰' }) as HTMLSelectElement;
+		const i = [...who.options].findIndex((o) => o.textContent === label);
+		await fireEvent.change(who, { target: { value: String(i) } });
+	}
+
 	/** 在動作上放 down 1-1 到 1-2、up 1-3。 */
 	async function withCounts() {
 		await withAction();
@@ -306,13 +313,13 @@ describe('動作', () => {
 	it('步驟和手位：點按鈕放好；自己打字加入後變成按鈕；三個清除鈕各清各的', async () => {
 		await withAction();
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
-		const steps = within(grid.getByRole('group', { name: '步驟' }));
-		const motions = within(grid.getByRole('group', { name: '手位' }));
 		const placed = () =>
 			grid.queryAllByRole('button', { name: /^(拍子|步驟|手位) / }).map((b) => b.getAttribute('aria-label'));
 
 		// 選 1-3 到 1-4，點「下手」放滿兩拍；手位只放在第一拍。
 		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+		const steps = within(grid.getByRole('group', { name: '步驟' }));
+		const motions = within(grid.getByRole('group', { name: '手位' }));
 		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
 		await fireEvent.click(steps.getByRole('button', { name: '下手' }));
 		await fireEvent.click(motions.getByRole('button', { name: 'high V' }));
@@ -356,17 +363,16 @@ describe('動作', () => {
 	it('給誰：預設全部；選「上層」再點 high V，它下面寫「上層」，跟全部的手位疊在同一拍', async () => {
 		await withAction();
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
-		const who = within(grid.getByRole('group', { name: '給誰' }));
-		const pressed = () =>
-			who.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent);
-		expect(who.getAllByRole('button').map((b) => b.textContent)).toEqual(['全部', '上層', '小A']);
-		expect(pressed()).toEqual(['全部']);
+		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
+		const who = grid.getByRole('combobox', { name: '給誰' }) as HTMLSelectElement;
+		const chosen = () => who.selectedOptions[0].textContent;
+		expect([...who.options].map((o) => o.textContent)).toEqual(['全部', '上層', '小A']);
+		expect(chosen()).toBe('全部');
 
 		const motions = within(grid.getByRole('group', { name: '手位' }));
-		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
 		await fireEvent.click(motions.getByRole('button', { name: 'T' }));
-		await fireEvent.click(who.getByRole('button', { name: '上層' }));
-		expect(pressed()).toEqual(['上層']);
+		await pickWho('上層');
+		expect(chosen()).toBe('上層');
 		await fireEvent.click(motions.getByRole('button', { name: 'high V' }));
 
 		const highV = grid.getByRole('button', { name: '手位 high V 1-7・1 拍・給上層' });
@@ -389,7 +395,7 @@ describe('動作', () => {
 		await more(1);
 		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
 		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
-		await fireEvent.click(within(grid.getByRole('group', { name: '給誰' })).getByRole('button', { name: '上層' }));
+		await pickWho('上層');
 		await fireEvent.click(within(grid.getByRole('group', { name: '手位' })).getByRole('button', { name: 'high V' }));
 
 		// 播放頭在 1-1：還沒有拍點亮，先預告 1-3 的兩個。
@@ -431,9 +437,8 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
-		const who = within(grid.getByRole('group', { name: '給誰' }));
 		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
-		await fireEvent.click(who.getByRole('button', { name: '上層' }));
+		await pickWho('上層');
 		await fireEvent.click(within(grid.getByRole('group', { name: '手位' })).getByRole('button', { name: 'high V' }));
 		const placed = () =>
 			within(screen.getByRole('group', { name: '拍點' }))

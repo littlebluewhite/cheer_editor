@@ -42,8 +42,9 @@ function setup() {
 	const onchange = vi.fn();
 	render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
 	const grid = within(screen.getByRole('group', { name: '拍點' }));
-	const selText = () => grid.getByText(/^選了/).textContent;
-	return { grid, onchange, selText };
+	const pop = () => grid.queryByRole('dialog', { name: '拍點小窗' });
+	const selText = () => within(grid.getByRole('dialog', { name: '拍點小窗' })).getByText(/^選了/).textContent;
+	return { grid, onchange, selText, pop };
 }
 
 /** 照畫面順序第幾格（3-1 是 0）。 */
@@ -102,11 +103,12 @@ describe('拍點格子：拖拉選拍', () => {
 		expect(selText()).toBe('選了 3-3 到 3-5・3 拍');
 	});
 
-	it('從動作外面（變淡的格子）按下不會開始選', async () => {
-		const { selText } = setup();
+	it('從動作外面（變淡的格子）按下不會開始選，也不會跳出拍點小窗', async () => {
+		const { grid, pop } = setup();
 		const slot = screen.getByRole('group', { name: '拍點' }).querySelectorAll('.slot.count')[idx('4-5')];
 		await drag(slot, idx('4-5'), idx('3-6'), 1);
-		expect(selText()).toBe('選了 3-3・1 拍');
+		expect(pop()).toBeNull();
+		expect(grid.getByRole('button', { name: '3-6' }).getAttribute('aria-pressed')).toBe('false');
 	});
 
 	it('不能拖的人照樣用點一格加 ＋、－', async () => {
@@ -116,5 +118,87 @@ describe('拍點格子：拖拉選拍', () => {
 		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
 		await fireEvent.click(grid.getByRole('button', { name: '少選一拍' }));
 		expect(selText()).toBe('選了 3-5 到 3-6・2 拍');
+	});
+});
+
+describe('拍點格子：拍點小窗', () => {
+	it('還沒選拍時看不到小窗，格子下面也沒有放拍點的按鈕；點一格就跳出小窗', async () => {
+		const { grid, pop, selText } = setup();
+		expect(pop()).toBeNull();
+		expect(grid.queryByRole('button', { name: 'down' })).toBeNull();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		expect(selText()).toBe('選了 3-5・1 拍');
+		expect(within(pop()!).getByRole('button', { name: 'down' })).toBeTruthy();
+	});
+
+	it('拖拉選拍，放開才跳出小窗', async () => {
+		const { grid, pop } = setup();
+		const cell = grid.getByRole('button', { name: '3-5' });
+		await fireEvent.pointerDown(cell, { clientX: idx('3-5'), clientY: 0, button: 0, pointerId: 1 });
+		await fireEvent.pointerMove(cell, { clientX: idx('3-7'), clientY: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+		await fireEvent.pointerUp(cell, { clientX: idx('3-7'), clientY: 0, pointerId: 1 });
+		expect(pop()).not.toBeNull();
+	});
+
+	it('點一格，再按住 Shift 點另一格，選一整段（往前點也可以）', async () => {
+		const { grid, selText } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.click(grid.getByRole('button', { name: '4-1' }), { shiftKey: true });
+		expect(selText()).toBe('選了 3-5 到 4-1・5 拍');
+		await fireEvent.click(grid.getByRole('button', { name: '3-3' }), { shiftKey: true });
+		expect(selText()).toBe('選了 3-3 到 3-5・3 拍');
+	});
+
+	it('Shift 按著拖，也是從上次點的那一格選起', async () => {
+		const { grid, selText } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-4' }));
+		const cell = grid.getByRole('button', { name: '3-7' });
+		await fireEvent.pointerDown(cell, { clientX: idx('3-7'), clientY: 0, button: 0, pointerId: 1, shiftKey: true });
+		await fireEvent.pointerUp(cell, { clientX: idx('3-7'), clientY: 0, pointerId: 1 });
+		expect(selText()).toBe('選了 3-4 到 3-7・4 拍');
+	});
+
+	it('按 Esc 或 ✕ 關掉小窗；Esc 不會傳出去', async () => {
+		const { grid, pop } = setup();
+		const outer = vi.fn();
+		window.addEventListener('keydown', outer);
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.keyDown(document.body, { key: 'Escape' });
+		expect(pop()).toBeNull();
+		expect(outer).not.toHaveBeenCalled();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.click(within(pop()!).getByRole('button', { name: '關掉' }));
+		expect(pop()).toBeNull();
+		window.removeEventListener('keydown', outer);
+	});
+
+	it('在格子外面按一下，小窗關掉；在小窗裡按不會關', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(within(pop()!).getByRole('button', { name: '多選一拍' }));
+		expect(pop()).not.toBeNull();
+		await fireEvent.pointerDown(document.body);
+		expect(pop()).toBeNull();
+	});
+
+	it('點一個已經放好的拍點，選回它佔的拍，也跳出小窗', async () => {
+		const flow = sample();
+		const action = { ...flow.actions[0], cues: [{ kind: 'count' as const, at: 4, len: 4, word: 'down', who: null }] };
+		render(CueGrid, { flow: { ...flow, actions: [action] }, action, onchange: vi.fn(), cellAt });
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: /^拍子 down/ }));
+		const pop = grid.getByRole('dialog', { name: '拍點小窗' });
+		expect(within(pop).getByText(/^選了/).textContent).toBe('選了 3-5 到 3-6・2 拍');
+	});
+
+	it('給誰在小窗裡選：選了隊員再放，拍點給那個人', async () => {
+		const { grid, onchange } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.change(grid.getByRole('combobox', { name: '給誰' }), { target: { value: '1' } });
+		await fireEvent.click(grid.getByRole('button', { name: 'up' }));
+		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
+			{ kind: 'count', at: 4, len: 2, word: 'up', who: { member: 'm1' } }
+		]);
 	});
 });
