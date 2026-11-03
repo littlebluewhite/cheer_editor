@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 動作表單：沒選動作時是「在播放頭新增動作」；選了動作時改那個動作，改了馬上生效。
 	// 規則（跨段、重疊、至少 1 人、角色存在）都交給流程核心判斷；被擋就顯示原因並還原。
+	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色一起帶。
 	import { untrack } from 'svelte';
 	import {
@@ -26,6 +27,7 @@
 		type NewActionInput
 	} from '#lib/core';
 	import { CATEGORY_COLORS } from './category-colors';
+	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
@@ -93,6 +95,8 @@
 
 	let draft = $state<Draft>(blank());
 	let error = $state('');
+	/** 等教練確認的改動（會切短或拿掉拍點）。 */
+	let pending = $state<{ input: NewActionInput; message: string; items: string[] } | null>(null);
 	let glossaryOpen = $state(false);
 
 	function blank(): Draft {
@@ -125,6 +129,7 @@
 		untrack(() => {
 			draft = a ? fromAction(a) : blank();
 			error = '';
+			pending = null;
 		});
 	});
 
@@ -174,13 +179,32 @@
 		if (!action) return;
 		const input = toInput();
 		const r = typeof input === 'string' ? null : updateAction(flow, action.id, input);
+		pending = null;
 		if (r?.kind === 'ok') {
 			error = '';
 			onchange(r.flow);
 			return;
 		}
+		if (r?.kind === 'confirm' && typeof input !== 'string') {
+			error = '';
+			pending = { input, message: r.message, items: r.items };
+			return;
+		}
 		error = `${r?.message ?? input}，已還原`;
 		draft = fromAction(action);
+	}
+
+	function confirmChange() {
+		if (!action || !pending) return;
+		const r = updateAction(flow, action.id, pending.input, { confirmed: true });
+		pending = null;
+		if (r.kind === 'ok') onchange(r.flow);
+		else cancelChange();
+	}
+
+	function cancelChange() {
+		pending = null;
+		if (action) draft = fromAction(action);
 	}
 
 	function remove() {
@@ -335,6 +359,16 @@
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
 		{/if}
+	{/if}
+
+	{#if pending}
+		<ConfirmList
+			message={pending.message}
+			items={pending.items}
+			confirmLabel="確定"
+			onconfirm={confirmChange}
+			oncancel={cancelChange}
+		/>
 	{/if}
 
 	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->

@@ -1,10 +1,11 @@
 // 動作：一組隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
-import { cueProblem, type Cue } from './cues';
+import { cueFallout, cueProblem, type Cue } from './cues';
 import { memberName, type Flow } from './flow';
-import { blocked, ok, type CommandResult } from './result';
+import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
+import type { Segment } from './segment';
 import { nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
@@ -57,18 +58,39 @@ function normalize(action: Action): Action {
 	return { ...action, name: action.name.trim(), members: action.members.map((m) => ({ ...m })) };
 }
 
-/** 改動作的任何欄位（含換段、換人），照新增的規則檢查。 */
+/**
+ * 改動作的任何欄位（含換段、換人），照新增的規則檢查。
+ * 變短會切到拍點、或有拍點的動作換到口號段時回「要確認」並列出那些拍點；帶 { confirmed: true } 再送一次才切短、拿掉。
+ */
 export function updateAction(
 	flow: Flow,
 	id: string,
-	changes: Partial<NewActionInput>
+	changes: Partial<NewActionInput>,
+	{ confirmed = false }: ConfirmOption = {}
 ): CommandResult {
 	const old = flow.actions.find((a) => a.id === id);
 	if (!old) return blocked('找不到這個動作');
-	const action = normalize({ ...old, ...changes, id });
+	let action = normalize({ ...old, ...changes, id });
+	const from = flow.segments.find((s) => s.id === old.segmentId);
+	const to = flow.segments.find((s) => s.id === action.segmentId);
+	const fallout = from && to ? cueFallout(from, to, old, action) : null;
+	if (fallout) action = { ...action, cues: fallout.cues };
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
+	if (fallout && !confirmed) return needsConfirm(falloutMessage(action, to!, fallout), fallout.items);
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
+}
+
+/** 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。 */
+function falloutMessage(
+	action: Action,
+	to: Segment,
+	{ removed, cut }: { removed: number; cut: number }
+): string {
+	const label = `動作「${actionLabel(action)}」`;
+	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${removed} 個拍點`;
+	const parts = [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean);
+	return `${label}變短，會${parts.join('、')}拍點`;
 }
 
 /** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。 */
@@ -77,13 +99,18 @@ export function moveAction(flow: Flow, id: string, startSec: number): CommandRes
 	return at === null ? blocked('找不到這個動作') : updateAction(flow, id, { start: at });
 }
 
-/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格；太短、超出段尾、撞到人就擋。 */
-export function resizeAction(flow: Flow, id: string, endSec: number): CommandResult {
+/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格；太短、超出段尾、撞到人就擋。會切到拍點時跟 updateAction 一樣先問。 */
+export function resizeAction(
+	flow: Flow,
+	id: string,
+	endSec: number,
+	options: ConfirmOption = {}
+): CommandResult {
 	const at = unitAt(flow, id, endSec);
 	const action = flow.actions.find((a) => a.id === id);
 	return at === null || !action
 		? blocked('找不到這個動作')
-		: updateAction(flow, id, { length: at - action.start });
+		: updateAction(flow, id, { length: at - action.start }, options);
 }
 
 /** 全域秒數在動作那一段裡最近的整數時間（可以落在段外，交給檢查擋）。 */

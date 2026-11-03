@@ -32,6 +32,8 @@
 		onchange?: (flow: Flow) => void;
 		/** 拖色條被擋（已還原）的原因。 */
 		onblocked?: (message: string) => void;
+		/** 拉色條會切到拍點，要教練確認。 */
+		onconfirm?: (ask: { message: string; items: string[]; confirm: () => void }) => void;
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
 	}
@@ -51,6 +53,7 @@
 		onselectaction = () => {},
 		onchange = () => {},
 		onblocked = () => {},
+		onconfirm = () => {},
 		selectedMemberIds = [],
 		onselectmembers = () => {}
 	}: Props = $props();
@@ -219,6 +222,7 @@
 			{onselectaction}
 			{onchange}
 			{onblocked}
+			{onconfirm}
 			{selectedMemberIds}
 			{onselectmembers}
 		/>

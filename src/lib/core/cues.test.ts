@@ -5,8 +5,10 @@ import {
 	addSegment,
 	createFlow,
 	clearCues,
+	deleteAction,
 	moveAction,
 	placeCue,
+	resizeAction,
 	updateAction,
 	updateSegment,
 	type CommandResult,
@@ -114,17 +116,95 @@ describe('拍點跟著動作', () => {
 		expect(cuesOf(flow)).toEqual([count(0, 4, 'down'), count(4, 2, 'up')]);
 	});
 
-	it('動作變短、會切到拍點：先擋下來（之後的單改成先問）', () => {
-		expect(updateAction(withDownUp(), 'x1', { length: 4 })).toEqual({
-			kind: 'blocked',
-			message: '拍點要在動作裡面'
+	it('改 BPM：拍點還在同一拍', () => {
+		const flow = flowOf(updateSegment(withDownUp(), 's1', { bpm: 120 }));
+		expect(flow.actions[0].start).toBe(4);
+		expect(cuesOf(flow)).toEqual([count(0, 4, 'down'), count(4, 2, 'up')]);
+	});
+
+	/** x1 從 1-3 開始 4 拍：down 1-3 到 1-4、up 1-5、down 1-6。 */
+	const withThree = () => flowOf(placeCue(withDownUp(), 'x1', { kind: 'count', at: 6, len: 2, word: 'down' }));
+
+	it('動作變短、會切到拍點：先問，列出會拿掉和切短的拍點，流程不變', () => {
+		expect(updateAction(withThree(), 'x1', { length: 2 })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短，會拿掉 2 個、切短 1 個拍點',
+			items: ['切短：拍子 down 1-3 到 1-4 → 1-3', '拿掉：拍子 up 1-5', '拿掉：拍子 down 1-6']
 		});
 	});
 
-	it('有拍點的動作不能換到口號段', () => {
-		expect(updateAction(withDownUp(), 'x1', { segmentId: 's2', start: 40 })).toEqual({
-			kind: 'blocked',
-			message: '口號段不數拍，不能放拍點'
+	it('按確定：跨出去的切短、整個在外面的拿掉', () => {
+		const flow = flowOf(updateAction(withThree(), 'x1', { length: 2 }, { confirmed: true }));
+		expect(flow.actions[0].length).toBe(2);
+		expect(cuesOf(flow)).toEqual([count(0, 2, 'down')]);
+	});
+
+	it('切完不到一拍的拿掉', () => {
+		const r = updateAction(withThree(), 'x1', { length: 3 });
+		expect(r).toMatchObject({ message: '動作「技巧·Lib」變短，會拿掉 2 個、切短 1 個拍點' });
+		const flow = flowOf(updateAction(withThree(), 'x1', { length: 3 }, { confirmed: true }));
+		expect(cuesOf(flow)).toEqual([count(0, 2, 'down')]);
+	});
+
+	it('只切短沒拿掉時，訊息只寫切短', () => {
+		expect(updateAction(withDownUp(), 'x1', { length: 2 })).toMatchObject({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點'
 		});
+		const flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
+		expect(updateAction(flow, 'x1', { length: 4 })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短，會切短 1 個拍點',
+			items: ['切短：拍子 down 1-3 到 1-6 → 1-3 到 1-4']
+		});
+	});
+
+	it('動作變短但沒切到拍點：不問，直接改', () => {
+		const flow = flowOf(updateAction(withDownUp(), 'x1', { length: 6 }));
+		expect(cuesOf(flow)).toEqual([count(0, 4, 'down'), count(4, 2, 'up')]);
+	});
+
+	it('拉色條變短也一樣先問；按確定才切', () => {
+		// 150 BPM：一個半拍 0.2 秒；拉到段內第 6 個半拍（動作長 2 個半拍）。
+		expect(resizeAction(withDownUp(), 'x1', 1.2)).toMatchObject({ kind: 'confirm' });
+		const flow = flowOf(resizeAction(withDownUp(), 'x1', 1.2, { confirmed: true }));
+		expect(cuesOf(flow)).toEqual([count(0, 2, 'down')]);
+	});
+
+	it('拖半拍後再變短：清單的時間寫在 & 上', () => {
+		const moved = flowOf(moveAction(withDownUp(), 'x1', 1));
+		expect(updateAction(moved, 'x1', { length: 4 })).toMatchObject({
+			items: ['拿掉：拍子 up 1-5&']
+		});
+	});
+
+	it('變短又被別的規則擋：照樣擋，不先問', () => {
+		expect(updateAction(withDownUp(), 'x1', { length: 2, members: [] })).toEqual({
+			kind: 'blocked',
+			message: '一個動作至少要有 1 個人'
+		});
+	});
+
+	it('有拍點的動作換到口號段：先問會拿掉幾個，按確定才換，拍點全部拿掉', () => {
+		expect(updateAction(withDownUp(), 'x1', { segmentId: 's2', start: 40 })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」換到口號段，會拿掉 2 個拍點',
+			items: ['拿掉：拍子 down 1-3 到 1-4', '拿掉：拍子 up 1-5']
+		});
+		const flow = flowOf(
+			updateAction(withDownUp(), 'x1', { segmentId: 's2', start: 40 }, { confirmed: true })
+		);
+		expect(flow.actions[0].segmentId).toBe('s2');
+		expect(cuesOf(flow)).toEqual([]);
+	});
+
+	it('刪動作：拍點跟著刪', () => {
+		const flow = flowOf(deleteAction(withDownUp(), 'x1'));
+		expect(flow.actions.some((a) => a.cues?.length)).toBe(false);
+	});
+
+	it('段縮短連帶刪動作：拍點跟著動作一起刪', () => {
+		const flow = flowOf(updateSegment(withDownUp(), 's1', { eights: 1, lastBeats: 4 }, { confirmed: true }));
+		expect(flow.actions.map((a) => a.id)).toEqual(['x2']);
 	});
 });

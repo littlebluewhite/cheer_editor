@@ -132,6 +132,8 @@
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
 	let notice = $state('');
+	/** 拉色條會切到拍點，等教練確認（跟 notice 放同一區）。 */
+	let resizePending = $state<{ message: string; items: string[]; confirm: () => void } | null>(null);
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	let selectedFormationId = $state<string | null>(null);
 	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */
@@ -270,6 +272,7 @@
 	 */
 	function change(f: Flow) {
 		if (!flow || f === flow) return;
+		resizePending = null;
 		undoStack = [...undoStack, flow].slice(-UNDO_LIMIT);
 		redoStack = [];
 		show(f);
@@ -294,6 +297,7 @@
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
 	function restore(f: Flow) {
 		show(f);
+		resizePending = null;
 		notice = '';
 		playheadSec = Math.min(playheadSec, totalSeconds(f));
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) openSegmentId = null;
@@ -610,6 +614,21 @@
 					<span>到右邊的「隊員」加人，他們會出現在場上，可以直接拖。</span>
 				</div>
 			{/if}
+			{#if resizePending}
+				<div class="toast-confirm">
+					<ConfirmList
+						message={resizePending.message}
+						items={resizePending.items}
+						confirmLabel="確定"
+						onconfirm={() => {
+							const ask = resizePending;
+							resizePending = null;
+							ask?.confirm();
+						}}
+						oncancel={() => (resizePending = null)}
+					/>
+				</div>
+			{/if}
 			{#if notice}
 				<div class="toast">
 					<span role="status">{notice}</span>
@@ -683,6 +702,10 @@
 					notice = '';
 				}}
 				onblocked={(message) => (notice = `${message}，已還原`)}
+				onconfirm={(ask) => {
+					notice = '';
+					resizePending = ask;
+				}}
 				{selectedMemberIds}
 				onselectmembers={selectMembers}
 			/>
@@ -1063,6 +1086,16 @@
 		font-size: 13px;
 		box-shadow: var(--shadow-pop);
 		animation: drop 0.18s ease-out;
+	}
+	.toast-confirm {
+		position: absolute;
+		top: 14px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 10;
+		width: min(420px, calc(100% - 32px));
+		box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+		border-radius: 10px;
 	}
 	.toast button {
 		color: #b8c3da;

@@ -5,6 +5,7 @@ import type { Action } from './actions';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
+import { atText } from './time';
 
 /** 拍子、步驟、手位。 */
 export type CueKind = 'count' | 'step' | 'motion';
@@ -82,6 +83,49 @@ export function clearCues(
 	const found = find(flow, actionId);
 	if (!found) return blocked('找不到這個動作');
 	return withCues(flow, found.action, cut(found.action.cues ?? [], kind, from, to, () => true));
+}
+
+/** 給教練看的種類名稱。 */
+const KIND_LABELS: Record<CueKind, string> = { count: '拍子', step: '步驟', motion: '手位' };
+
+/**
+ * 改動作會動到的拍點：換到口號段全部拿掉；變短時跨出去的切短（取到整拍，不到一拍拿掉）、整個在外面的拿掉。
+ * 沒動到任何拍點是 null；不然回傳剩下的拍點、拿掉和切短幾個，和給教練確認的清單（時間照改之前的位置寫）。
+ */
+export function cueFallout(
+	from: Segment,
+	to: Segment,
+	before: Action,
+	after: Action
+): { cues: Cue[]; removed: number; cut: number; items: string[] } | null {
+	const kept: Cue[] = [];
+	const items: string[] = [];
+	let removed = 0;
+	for (const c of before.cues ?? []) {
+		const len = to.kind === 'music' ? Math.min(c.len, after.length - c.at) : 0;
+		const fitted = len - (len % BEAT);
+		if (fitted === c.len) {
+			kept.push(c);
+		} else if (fitted >= BEAT) {
+			kept.push({ ...c, len: fitted });
+			items.push(`切短：${cueText(from, before, c)} → ${rangeText(from, before, c.at, fitted)}`);
+		} else {
+			removed++;
+			items.push(`拿掉：${cueText(from, before, c)}`);
+		}
+	}
+	return items.length ? { cues: kept, removed, cut: items.length - removed, items } : null;
+}
+
+/** 「拍子 down 1-3 到 1-4」。 */
+function cueText(segment: Segment, action: Action, c: Cue): string {
+	return `${KIND_LABELS[c.kind]} ${c.word} ${rangeText(segment, action, c.at, c.len)}`;
+}
+
+/** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
+function rangeText(segment: Segment, action: Action, at: number, len: number): string {
+	const first = atText(segment, action.start + at);
+	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
 }
 
 function find(flow: Flow, actionId: string): { action: Action; segment: Segment } | null {

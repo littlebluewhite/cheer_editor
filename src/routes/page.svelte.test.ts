@@ -195,6 +195,68 @@ describe('動作', () => {
 		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '拍子 up 1-5・1 拍']);
 	});
 
+	/** 在動作上放 down 1-1 到 1-2、up 1-3。 */
+	async function withCounts() {
+		await withAction();
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-1' }));
+		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
+		await fireEvent.click(grid.getByRole('button', { name: 'up' }));
+	}
+	const placedCues = () =>
+		within(screen.getByRole('group', { name: '拍點' }))
+			.queryAllByRole('button', { name: /^拍子 / })
+			.map((b) => b.getAttribute('aria-label'));
+
+	it('在表單把動作改短、會切到拍點：先問；取消就還原，確定才切', async () => {
+		await withCounts();
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '1' } });
+		await fireEvent.change(length);
+		const dialog = within(screen.getByRole('alertdialog'));
+		expect(dialog.getByText('動作「技巧」變短，會拿掉 1 個、切短 1 個拍點')).toBeTruthy();
+		expect(dialog.getByText('切短：拍子 down 1-1 到 1-2 → 1-1')).toBeTruthy();
+		expect(dialog.getByText('拿掉：拍子 up 1-3')).toBeTruthy();
+
+		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(length.value).toBe('8');
+		expect(placedCues()).toEqual(['拍子 down 1-1 到 1-2・2 拍', '拍子 up 1-3・1 拍']);
+
+		await fireEvent.input(length, { target: { value: '1' } });
+		await fireEvent.change(length);
+		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '確定' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(length.value).toBe('1');
+		expect(placedCues()).toEqual(['拍子 down 1-1・1 拍']);
+	});
+
+	it('在泳道上拉色條變短、會切到拍點：放開後在上方列問；取消就回到原來的長度', async () => {
+		await withCounts();
+		const handle = () => bar()!.querySelector('[data-resize]')!;
+		const width = () => (bar() as HTMLElement).style.width;
+		const before = width();
+		// 1 秒 16 px，一個半拍 0.2 秒：往左拉 38.4 px = 12 個半拍，剩 2 拍。
+		const shrink = async () => {
+			await fireEvent.pointerDown(handle(), { clientX: 51, button: 0 });
+			await fireEvent.pointerMove(window, { clientX: 51 - 38.4 });
+			await fireEvent.pointerUp(window, { clientX: 51 - 38.4 });
+		};
+		await shrink();
+		const dialog = within(screen.getByRole('alertdialog'));
+		expect(dialog.getByText('動作「技巧」變短，會拿掉 1 個拍點')).toBeTruthy();
+		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(width()).toBe(before);
+
+		await shrink();
+		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '確定' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(width()).not.toBe(before);
+		expect(placedCues()).toEqual(['拍子 down 1-1 到 1-2・2 拍']);
+	});
+
 	it('拖色條被擋就還原，上方列說原因', async () => {
 		await withAction();
 		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });

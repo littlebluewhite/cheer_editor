@@ -2,6 +2,7 @@
 	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
 	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點多選。
+	// 拉短會切到拍點時先不改，交給 onconfirm 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 走太快的走位條標紅（見 formationWalks）。
@@ -17,6 +18,7 @@
 		toPosition,
 		toSeconds,
 		totalSeconds,
+		type CommandResult,
 		type Flow,
 		type FormationWalk,
 		type TimePosition,
@@ -37,6 +39,8 @@
 		onchange?: (flow: Flow) => void;
 		/** 拖色條被流程核心擋下（已還原），給教練看的原因。 */
 		onblocked?: (message: string) => void;
+		/** 拉色條會切短或拿掉拍點：給教練看的訊息、清單，按確定就呼叫 confirm。 */
+		onconfirm?: (ask: { message: string; items: string[]; confirm: () => void }) => void;
 		/** 選到的人。 */
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
@@ -50,6 +54,7 @@
 		onselectaction,
 		onchange = () => {},
 		onblocked = () => {},
+		onconfirm = () => {},
 		selectedMemberIds = [],
 		onselectmembers = () => {}
 	}: Props = $props();
@@ -128,6 +133,13 @@
 			mode === 'move'
 				? moveAction(flow, id, startSec + dSec)
 				: resizeAction(flow, id, endSec + dSec);
+		if (r.kind !== 'confirm') return settle(r);
+		const { message, items } = r;
+		const confirm = () => settle(resizeAction(flow, id, endSec + dSec, { confirmed: true }));
+		onconfirm({ message, items, confirm });
+	}
+
+	function settle(r: CommandResult) {
 		if (r.kind === 'ok') onchange(r.flow);
 		else onblocked(r.message);
 	}
