@@ -26,6 +26,7 @@
 		type NewActionInput
 	} from '#lib/core';
 	import { CATEGORY_COLORS } from './category-colors';
+	import CueGrid from './CueGrid.svelte';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 
@@ -329,7 +330,11 @@
 			<textarea rows="2" bind:value={draft.note} onchange={changed}></textarea>
 		</label>
 
-		{#if !action}<button type="button" class="primary add" onclick={add}>新增動作</button>{/if}
+		{#if action}
+			<CueGrid {flow} {action} {onchange} />
+		{:else}
+			<button type="button" class="primary add" onclick={add}>新增動作</button>
+		{/if}
 	{/if}
 
 	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->

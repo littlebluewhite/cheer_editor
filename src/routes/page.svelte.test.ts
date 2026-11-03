@@ -169,6 +169,32 @@ describe('動作', () => {
 		expect(dot().classList.contains('selected')).toBe(true);
 	});
 
+	it('拍子：點格子、按 ＋、點 down 和 up，拍子出現在格子裡；可以復原', async () => {
+		await withAction();
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const selection = () => grid.getByText(/^選了/).textContent;
+		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+		expect(selection()).toBe('選了 1-3・1 拍');
+		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+		expect(selection()).toBe('選了 1-3 到 1-4・2 拍');
+		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
+		// 放完跳到下一拍，直接點 up 就接上。
+		expect(selection()).toBe('選了 1-5・1 拍');
+		await fireEvent.click(grid.getByRole('button', { name: 'up' }));
+		const placed = () => grid.queryAllByRole('button', { name: /^拍子 / }).map((b) => b.getAttribute('aria-label'));
+		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '拍子 up 1-5・1 拍']);
+
+		// 點放好的拍子，選回它佔的那幾拍；清掉拍子只清選到的。
+		await fireEvent.click(grid.getByRole('button', { name: '拍子 down 1-3 到 1-4・2 拍' }));
+		expect(selection()).toBe('選了 1-3 到 1-4・2 拍');
+		await fireEvent.click(grid.getByRole('button', { name: '少選一拍' }));
+		await fireEvent.click(grid.getByRole('button', { name: '清掉拍子' }));
+		expect(placed()).toEqual(['拍子 down 1-4・1 拍', '拍子 up 1-5・1 拍']);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '拍子 up 1-5・1 拍']);
+	});
+
 	it('拖色條被擋就還原，上方列說原因', async () => {
 		await withAction();
 		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });

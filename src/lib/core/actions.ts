@@ -1,6 +1,7 @@
 // 動作：一組隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
+import { cueProblem, type Cue } from './cues';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { roleGlossary } from './roles';
@@ -37,6 +38,8 @@ export interface Action {
 	length: number;
 	note: string;
 	members: ActionMember[];
+	/** 這個動作的拍點；沒有就是空的（舊流程檔沒有這個欄位）。 */
+	cues?: Cue[];
 }
 
 export type NewActionInput = Omit<Action, 'id'>;
@@ -110,6 +113,10 @@ function check(flow: Flow, action: Action): string | null {
 	if (action.length < 1) return music ? '動作長度至少要半拍' : '動作長度至少要 0.1 秒';
 	if (action.start + action.length > units(segment)) return '動作不能跨段，要跨就拆成兩個';
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';
+	for (const cue of action.cues ?? []) {
+		const problem = cueProblem(segment, action, cue);
+		if (problem) return problem;
+	}
 	const roles = roleGlossary(flow).map((r) => r.name);
 	const seen = new Set<string>();
 	for (const { memberId, role } of action.members) {

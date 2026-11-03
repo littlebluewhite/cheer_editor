@@ -7,7 +7,7 @@ import {
 	type CommandResult,
 	type Flow
 } from '#lib/core';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ActionForm from './ActionForm.svelte';
 
@@ -225,5 +225,37 @@ describe('動作表單：選人', () => {
 			{ memberId: 'm1', role: '上層' },
 			{ memberId: 'm2', role: '主底' }
 		]);
+	});
+});
+
+describe('動作表單：拍點格子', () => {
+	const base = { category: 'stunt' as const, name: '', note: '', members: [{ memberId: 'm1', role: null }] };
+
+	it('格子對齊音樂的整拍：動作從 1-2& 開始、2 拍，只有 1-3 整拍在動作裡；放的 down 從 1-3 開始', async () => {
+		const flow = flowOf(addAction(sample(), { ...base, segmentId: 's1', start: 3, length: 4 }));
+		const { onchange } = setup(flow, 'x1');
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const enabled = grid
+			.getAllByRole('button', { name: /^1-\d$/ })
+			.filter((b) => !(b as HTMLButtonElement).disabled)
+			.map((b) => b.getAttribute('aria-label'));
+		expect(enabled).toEqual(['1-3']);
+		expect(grid.getByText(/^選了/).textContent).toBe('選了 1-3・1 拍');
+		// 再多選一拍就超出動作，選不到。
+		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+		expect(grid.getByText(/^選了/).textContent).toBe('選了 1-3・1 拍');
+		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
+		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
+			{ kind: 'count', at: 1, len: 2, word: 'down', who: null }
+		]);
+	});
+
+	it('口號段的動作沒有格子，只寫一句', () => {
+		let flow = flowOf(addSegment(sample(), 'chant'));
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
+		setup(flow, 'x1');
+		const group = screen.getByRole('group', { name: '拍點' });
+		expect(group.textContent).toContain('口號段不數拍，不能放拍點');
+		expect(within(group).queryByRole('button')).toBeNull();
 	});
 });
