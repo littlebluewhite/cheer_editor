@@ -125,7 +125,7 @@ describe('步驟和手位', () => {
 
 describe('這支流程用過的字', () => {
 	it('內建的步驟和手位', () => {
-		expect(STEP_WORDS).toEqual(['下手', '落地', '放', '上', '直下']);
+		expect(STEP_WORDS).toEqual(['下手', '落地', '放', '上', '直下', '跳']);
 		expect(MOTION_WORDS).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏']);
 	});
 

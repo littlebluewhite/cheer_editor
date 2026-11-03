@@ -359,7 +359,7 @@ describe('動作表單：拍點格子', () => {
 			within(grid.getByRole('group', { name: lane }))
 				.getAllByRole('button')
 				.map((b) => b.textContent);
-		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '抬腳', '加入', '清掉步驟']);
+		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '抬腳', '加入', '清掉步驟']);
 		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏', '拳頭', '加入', '清掉手位']);
 	});
 

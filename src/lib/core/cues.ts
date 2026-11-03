@@ -37,7 +37,7 @@ export interface Cue {
 /** 拍子只有這兩個字，不能自己打。 */
 export const COUNT_WORDS = ['down', 'up'];
 /** 內建的步驟；也可以自己打字。 */
-export const STEP_WORDS = ['下手', '落地', '放', '上', '直下'];
+export const STEP_WORDS = ['下手', '落地', '放', '上', '直下', '跳'];
 /** 內建的手位；也可以自己打字。 */
 export const MOTION_WORDS = ['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏'];
 
