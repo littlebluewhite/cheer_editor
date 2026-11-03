@@ -6,6 +6,7 @@ import {
 	createFlow,
 	clearCues,
 	cueForMember,
+	cuesAt,
 	deleteAction,
 	deleteMember,
 	moveAction,
@@ -329,6 +330,65 @@ describe('給誰', () => {
 		expect(of({ member: 'm2' })).toEqual(['m2']);
 	});
 
+	const m2Only = [{ memberId: 'm2', role: '底層' }];
+
+	it('從動作拿掉隊員、有拍點給他：先問並列出那些拍點，按確定才拿掉', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm1' } }));
+		expect(updateAction(flow, 'x1', { members: m2Only })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」換了人或任務角色，會拿掉 1 個拍點',
+			items: ['拿掉：手位 K 1-3・給小A']
+		});
+		const after = flowOf(updateAction(flow, 'x1', { members: m2Only }, { confirmed: true }));
+		expect(after.actions[0].members).toEqual(m2Only);
+		expect(cuesOf(after)).toEqual([count(0, 4, 'down')]);
+	});
+
+	it('改任務角色、動作裡沒人是那個角色了：先問，按確定拿掉給那個角色的拍點', () => {
+		const flow = flowOf(placeCue(sample(), 'x1', { kind: 'motion', at: 6, len: 2, word: 'high V', who: top }));
+		const members = [
+			{ memberId: 'm1', role: '底層' },
+			{ memberId: 'm2', role: '底層' }
+		];
+		expect(updateAction(flow, 'x1', { members })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」換了人或任務角色，會拿掉 1 個拍點',
+			items: ['拿掉：手位 high V 1-6・給上層']
+		});
+		expect(cuesOf(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })))).toEqual([]);
+	});
+
+	it('同時變短又拿掉人：合成一次確認，清單都列出來', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
+		expect(updateAction(flow, 'x1', { length: 4, members: m2Only })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短、換了人或任務角色，會拿掉 1 個、切短 1 個拍點',
+			items: ['切短：拍子 down 1-3 到 1-6 → 1-3 到 1-4', '拿掉：手位 high V 1-3・給上層']
+		});
+		const after = flowOf(updateAction(flow, 'x1', { length: 4, members: m2Only }, { confirmed: true }));
+		expect(cuesOf(after)).toEqual([count(0, 4, 'down')]);
+	});
+
+	it('拿掉人但沒有拍點給他：不問，直接改', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: { role: '底層' } }));
+		const after = flowOf(updateAction(flow, 'x1', { members: m2Only }));
+		expect(cuesOf(after)).toEqual(cuesOf(flow));
+	});
+
+	it('刪隊員：確認訊息寫會一起拿掉幾個給他的拍點；沒有就不寫', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉' });
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: 'K', who: { member: 'm1' } }));
+		expect(deleteMember(flow, 'm1')).toMatchObject({
+			kind: 'confirm',
+			message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉，會一起拿掉 2 個給他的拍點'
+		});
+	});
+
 	it('刪隊員：給他的拍點、給動作裡已經沒人做的角色的拍點一起拿掉，流程還是對的', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
@@ -337,5 +397,59 @@ describe('給誰', () => {
 		flow = flowOf(deleteMember(flow, 'm1', { confirmed: true }));
 		expect(cuesOf(flow)).toEqual([who('count', 0, 4, 'down', null), who('motion', 0, 2, 'T', { role: '底層' })]);
 		expect(updateAction(flow, 'x1', { name: 'Cradle' }).kind).toBe('ok');
+	});
+});
+
+describe('這一刻的拍點', () => {
+	const top = { role: '上層' };
+	const cue = (kind: Cue['kind'], at: number, len: number, word: string, w: Cue['who'] = null): Cue => ({
+		kind,
+		at,
+		len,
+		word,
+		who: w
+	});
+
+	/** BPM 120（半拍 0.25 秒），x1 從 2-3 開始（5 秒）、4 拍到 7 秒。下手 4 拍；down 2 拍、up 1 拍；上層 2-6 high V。 */
+	function cued(): Flow {
+		let flow = flowOf(updateSegment(sample(), 's1', { bpm: 120 }));
+		flow = flowOf(moveAction(flow, 'x1', 5));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 8, word: '下手' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 2, word: 'up' }));
+		return flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 6, len: 2, word: 'high V', who: top }));
+	}
+	const summary = (flow: Flow, sec: number) =>
+		cuesAt(flow, sec).map((c) => ({
+			action: c.action.id,
+			now: c.now.map((n) => `${n.cue.word} ${n.beat}/${n.beats}`),
+			next: c.next && { at: c.next.at, words: c.next.cues.map((n) => n.word) }
+		}));
+
+	it('現在亮的拍點依步驟、拍子、手位排，寫走到第幾拍，和下一個在哪一拍', () => {
+		expect(summary(cued(), 5.6)).toEqual([
+			{ action: 'x1', now: ['下手 2/4', 'down 2/2'], next: { at: '2-5', words: ['up'] } }
+		]);
+		expect(summary(cued(), 6.6)).toEqual([{ action: 'x1', now: ['下手 4/4', 'high V 1/1'], next: null }]);
+	});
+
+	it('回傳的是拍點本身，給誰也在裡面', () => {
+		const [live] = cuesAt(cued(), 6.6);
+		expect(live.now.map((n) => n.cue)).toEqual([cue('step', 0, 8, '下手'), cue('motion', 6, 2, 'high V', top)]);
+	});
+
+	it('動作開始前一個八拍就預告第一個拍點；再早就沒有', () => {
+		expect(summary(cued(), 1)).toEqual([{ action: 'x1', now: [], next: { at: '2-3', words: ['下手', 'down'] } }]);
+		expect(summary(cued(), 0.9)).toEqual([]);
+	});
+
+	it('動作結束後不再出現', () => {
+		expect(summary(cued(), 6.99)).toHaveLength(1);
+		expect(summary(cued(), 7)).toEqual([]);
+	});
+
+	it('沒有拍點的動作、口號段的動作都沒有', () => {
+		expect(summary(sample(), 1.5)).toEqual([]);
+		expect(summary(cued(), 32 * 0.25 + 1)).toEqual([]);
 	});
 });
