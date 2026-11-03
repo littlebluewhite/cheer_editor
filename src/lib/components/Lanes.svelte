@@ -6,6 +6,7 @@
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）。
+	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
 	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
 	import {
@@ -34,7 +35,7 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import type { PendingConfirm } from './form';
 	import { isLongMarker } from './marker';
-	import { followPointer } from './pointer';
+	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
 		flow: Flow;
@@ -146,17 +147,19 @@
 	});
 
 	function startDrag(e: PointerEvent, id: string) {
-		if (e.button !== 0) return;
+		if (e.button !== 0 || touchOnUnpicked(e, id === selectedActionId)) return;
 		const mode = (e.target as Element).closest('[data-resize]') ? 'resize' : 'move';
 		drag = { id, mode, x0: e.clientX, dx: 0 };
 		followPointer(
+			e,
 			(ev) => {
 				if (drag) drag.dx = ev.clientX - drag.x0;
 			},
 			() => {
 				if (drag) drop(drag.id, drag.mode, drag.dx);
 				drag = null;
-			}
+			},
+			() => (drag = null)
 		);
 	}
 
@@ -180,8 +183,12 @@
 		else onblocked(r.message);
 	}
 
+	/** 上一次按下走位條的是不是手指：手指點沒選到的人的走位條＝選他。 */
+	let walkTouch = false;
+
 	function startWalkDrag(e: PointerEvent, formationId: string, memberId: string) {
-		if (e.button !== 0) return;
+		walkTouch = e.pointerType === 'touch';
+		if (e.button !== 0 || touchOnUnpicked(e, selected.has(memberId))) return;
 		const end = (e.target as Element).closest<HTMLElement>('[data-end]')?.dataset.end;
 		const mode: WalkEnd = end === 'depart' || end === 'arrive' ? end : 'move';
 		const ids = selected.has(memberId)
@@ -189,14 +196,20 @@
 			: [memberId];
 		walkDrag = { formationId, memberId, ids, mode, x0: e.clientX, dx: 0 };
 		followPointer(
+			e,
 			(ev) => {
 				if (walkDrag) walkDrag.dx = ev.clientX - walkDrag.x0;
 			},
 			() => {
 				if (walkDrag && Math.abs(walkDrag.dx) >= DRAG_PX) dropWalk(walkDrag);
 				walkDrag = null;
-			}
+			},
+			() => (walkDrag = null)
 		);
+	}
+
+	function tapWalk(memberId: string) {
+		if (walkTouch && !selected.has(memberId)) pick(memberId, false);
 	}
 
 	/** 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多；一起交給 setWalks，被擋就整組還原。 */
@@ -221,8 +234,8 @@
 		else onblocked(r.message);
 	}
 
-	function pick(e: MouseEvent, id: string) {
-		if (!e.shiftKey && !multi) return onselectmembers([id]);
+	function pick(id: string, shift: boolean) {
+		if (!shift && !multi) return onselectmembers([id]);
 		onselectmembers(
 			selected.has(id) ? selectedMemberIds.filter((x) => x !== id) : [...selectedMemberIds, id]
 		);
@@ -245,7 +258,7 @@
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
 			title="點一下選這個人；多選開著或 Shift＋點，可以選好幾個"
-			onclick={(e) => pick(e, m.id)}
+			onclick={(e) => pick(m.id, e.shiftKey)}
 		>
 			<b
 				class="no gr {m.globalRole}"
@@ -306,6 +319,7 @@
 				<button
 					type="button"
 					class="walk"
+					class:picked={selected.has(m.id)}
 					class:dragging={d !== null}
 					class:fast={w.tooFast}
 					class:tiring={w.tiring}
@@ -314,6 +328,7 @@
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
 					title="走位：拖左端改出發、拖右端改到達、拖中間一起挪"
 					onpointerdown={(e) => startWalkDrag(e, w.formationId, m.id)}
+					onclick={() => tapWalk(m.id)}
 				>
 					<span class="end l" data-end="depart"></span>
 					<span class="end r" data-end="arrive"></span>
@@ -428,9 +443,12 @@
 		overflow: hidden;
 		white-space: nowrap;
 		cursor: grab;
-		touch-action: none;
 		user-select: none;
 		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.14);
+	}
+	/* 選中的才不讓手指捲畫面（手指拖得動）；沒選中的手指一滑是捲動。 */
+	.bar.selected {
+		touch-action: none;
 	}
 	.bar:hover {
 		filter: brightness(1.06);
@@ -514,8 +532,10 @@
 		background: var(--ink, #16213a);
 		opacity: 0.55;
 		cursor: grab;
-		touch-action: none;
 		user-select: none;
+	}
+	.walk.picked {
+		touch-action: none;
 	}
 	.walk:hover,
 	.walk.dragging {

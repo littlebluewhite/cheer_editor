@@ -111,6 +111,33 @@ describe('拍點格子：拖拉選拍', () => {
 		expect(grid.getByRole('button', { name: '3-6' }).getAttribute('aria-pressed')).toBe('false');
 	});
 
+	it('手指：在沒選到的格子上滑是捲畫面，不選；放開才選這一拍', async () => {
+		const { grid, selText, pop } = setup();
+		const cell = grid.getByRole('button', { name: '3-5' });
+		const touch = { button: 0, pointerType: 'touch', pointerId: 4, clientY: 0 };
+		await fireEvent.pointerDown(cell, { ...touch, clientX: idx('3-5') });
+		await fireEvent.pointerCancel(cell, touch);
+		expect(pop()).toBeNull();
+		expect(cell.getAttribute('aria-pressed')).toBe('false');
+
+		await fireEvent.pointerDown(cell, { ...touch, clientX: idx('3-5') });
+		await fireEvent.pointerUp(cell, { ...touch, clientX: idx('3-5') });
+		await fireEvent.click(cell);
+		expect(selText()).toBe('選了 3-5・1 拍');
+	});
+
+	it('手指：從選到的格子拖過去，選一整段', async () => {
+		const { grid, selText } = setup();
+		const cell = grid.getByRole('button', { name: '3-5' });
+		await fireEvent.click(cell);
+		const touch = { button: 0, pointerType: 'touch', pointerId: 4, clientY: 0 };
+		await fireEvent.pointerDown(cell, { ...touch, clientX: idx('3-5') });
+		await fireEvent.pointerMove(cell, { ...touch, clientX: idx('3-7') });
+		await fireEvent.pointerUp(cell, { ...touch, clientX: idx('3-7') });
+		await fireEvent.click(cell);
+		expect(selText()).toBe('選了 3-5 到 3-7・3 拍');
+	});
+
 	it('不能拖的人照樣用點一格加 ＋、－', async () => {
 		const { grid, selText } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));

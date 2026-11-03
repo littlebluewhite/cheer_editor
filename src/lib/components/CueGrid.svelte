@@ -9,6 +9,7 @@
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
+	import { touchOnUnpicked } from './pointer';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -182,12 +183,20 @@
 	let anchor: number | null = null;
 	let pointerSel = false;
 
+	/** 手指按在沒選到的格子上：先不選（可能是要捲畫面）；放開了才選這一拍，被系統打斷（捲動了）就不選。 */
+	let tapAt: number | null = null;
+
 	function dragStart(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const el = (e.target as Element).closest<HTMLElement>('[data-at]');
 		const at = Number(el?.dataset.at);
 		if (!el || !inAction(at)) return;
 		pointerSel = true;
+		// 手指：選到的格子上才拖得動（拖過幾拍）；沒選到的一滑是捲動（docs/adr/0005-ipad-touch.md）。
+		if (touchOnUnpicked(e, isSel(at))) {
+			tapAt = at;
+			return;
+		}
 		selectTo(at, e.shiftKey);
 		anchor = pivot;
 		dragging = true;
@@ -204,11 +213,13 @@
 	}
 
 	function dragEnd() {
-		if (anchor !== null) openPop();
+		if (tapAt !== null) selectTo(tapAt, false);
+		if (anchor !== null || tapAt !== null) openPop();
 		dragCancel();
 	}
 	function dragCancel() {
 		anchor = null;
+		tapAt = null;
 		dragging = false;
 	}
 
@@ -388,7 +399,11 @@
 				onpointerdown={dragStart}
 				onpointermove={dragMove}
 				onpointerup={dragEnd}
-				onpointercancel={dragCancel}
+				onpointercancel={() => {
+					// 被系統打斷（手指捲動了）就不會有 click，下一次點格子要照常選。
+					pointerSel = false;
+					dragCancel();
+				}}
 				onclick={() => (pointerSel = false)}
 			>
 				{#each eights as e (e)}
@@ -545,8 +560,9 @@
 		user-select: none;
 		-webkit-user-select: none;
 	}
-	.cell,
-	.slot {
+	/* 選到的格子上手指拖是拖拉選拍；沒選到的一滑是捲右邊欄。 */
+	.cell.sel,
+	.slot.sel {
 		touch-action: none;
 	}
 	.row {

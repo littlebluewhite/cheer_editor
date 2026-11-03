@@ -128,7 +128,9 @@
 		scrubbing = true;
 		onseek(toSec(e));
 		followPointer(
+			e,
 			(ev) => onseek(toSec(ev)),
+			() => (scrubbing = false),
 			() => (scrubbing = false)
 		);
 	}

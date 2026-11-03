@@ -708,6 +708,25 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
 	});
 
+	it('手指：沒選中的縮圖拖不動（留給時間軸捲動），點一下選中了才拖得動', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await seek(0);
+		const thumb = screen.getByRole('button', { name: '站位 2' });
+		const touch = { button: 0, pointerType: 'touch', pointerId: 5 };
+		const drag = async () => {
+			await fireEvent.pointerDown(thumb, { ...touch, clientX: 300 });
+			await fireEvent.pointerMove(window, { ...touch, clientX: 248 });
+			await fireEvent.pointerUp(window, { ...touch, clientX: 248 });
+		};
+		await drag();
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		await fireEvent.click(thumb);
+		await drag();
+		expect(thumbLeft(2)).toBeCloseTo(80);
+	});
+
 	it('拖縮圖被擋就彈回去，上方說原因；開頭那張拖不動', async () => {
 		await setup();
 		await seek(8.25);

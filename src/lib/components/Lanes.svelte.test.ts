@@ -199,6 +199,46 @@ describe('拖色條', () => {
 	});
 });
 
+describe('手指拖色條（docs/adr/0005-ipad-touch.md）', () => {
+	const tumble = () => bars(lanes()[2])[0];
+	const touch = { button: 0, pointerType: 'touch', pointerId: 7 };
+
+	it('沒選中的色條：手指拖不動（留給畫面捲動），點一下選中', async () => {
+		const { onchange, onselectaction } = setup(0);
+		expect(tumble().classList.contains('selected')).toBe(false);
+		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
+		expect(tumble().style.left).toBe('16px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
+		expect(onchange).not.toHaveBeenCalled();
+		await fireEvent.click(tumble());
+		expect(onselectaction).toHaveBeenCalledWith('x2');
+	});
+
+	it('選中的色條：手指拖得動', async () => {
+		const { onchange } = setup(0, 'x2');
+		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
+		expect(tumble().style.left).toBe('11px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
+		expect(onchange.mock.calls[0][0].actions[1]).toMatchObject({ id: 'x2', start: 6 });
+	});
+
+	it('拖的時候多放一根手指，不會把色條搶走；系統打斷就還原', async () => {
+		const { onchange } = setup(0, 'x2');
+		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, pointerId: 8, clientX: 300 });
+		await fireEvent.pointerUp(window, { ...touch, pointerId: 8, clientX: 300 });
+		expect(tumble().style.left).toBe('16px');
+		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
+		expect(tumble().style.left).toBe('11px');
+		await fireEvent.pointerCancel(window, { ...touch });
+		expect(tumble().style.left).toBe('16px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
+		expect(onchange).not.toHaveBeenCalled();
+	});
+});
+
 describe('點泳道上的名字選人', () => {
 	const name = (i: number) => lanes()[i].querySelector<HTMLElement>('.lab')!;
 
@@ -270,6 +310,35 @@ describe('走位條', () => {
 		await fireEvent.pointerMove(window, { clientX: 100 + dx });
 		await fireEvent.pointerUp(window, { clientX: 100 + dx });
 	}
+
+	it('手指：沒選到的人的走位條拖不動，點一下選他；選到了才拖得動', async () => {
+		const onselectmembers = vi.fn();
+		const onchange = vi.fn();
+		const touch = { button: 0, pointerType: 'touch', pointerId: 3 };
+		const { rerender } = render(Lanes, {
+			flow: walking(),
+			playheadSec: 0,
+			pxPerSec: 10,
+			selectedActionId: null,
+			onselectaction: vi.fn(),
+			onchange,
+			onselectmembers
+		});
+		await fireEvent.pointerDown(walkBar(0), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 120 });
+		expect(walkBar(0).style.left).toBe('16px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 120 });
+		await fireEvent.click(walkBar(0));
+		expect(onselectmembers).toHaveBeenCalledWith(['m1']);
+		expect(onchange).not.toHaveBeenCalled();
+
+		await rerender({ selectedMemberIds: ['m1'] });
+		await fireEvent.pointerDown(walkBar(0), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 96 });
+		expect(walkBar(0).style.left).toBe('12px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 96 });
+		expect(onchange).toHaveBeenCalledOnce();
+	});
 
 	it('有走位的人才有走位條，從出發畫到到達，跟動作色條分開', () => {
 		setupWalks();
