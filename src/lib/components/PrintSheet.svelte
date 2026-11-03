@@ -78,7 +78,7 @@
 									<div class="mini">
 										<Field field={flow.field} members={flow.members} positions={f.pos} controls={false} />
 									</div>
-									<figcaption>站位 {f.number}　{f.at}</figcaption>
+									<figcaption>站位 {f.number}{f.name ? ` ${f.name}` : ''}　{f.at}</figcaption>
 								</figure>
 							{/each}
 						</td>

@@ -79,6 +79,7 @@ export {
 	moveMembers,
 	moveTargetText,
 	positionsAt,
+	renameFormation,
 	setPositions,
 	setWalks
 } from './formation';

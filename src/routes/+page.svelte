@@ -16,6 +16,7 @@
 		positionsAt,
 		raisedAt,
 		readFlowFile,
+		renameFormation,
 		segmentsMissingAudio,
 		timeRuleWarnings,
 		totalSeconds,
@@ -462,6 +463,16 @@
 		moved(r);
 	}
 
+	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。 */
+	function renameHere(formationId: string, name: string) {
+		if (!flow) return;
+		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
+		if (name.trim() === before) return;
+		const r = renameFormation(flow, formationId, name);
+		if (r.kind !== 'ok') return void (notice = r.message);
+		change(r.flow);
+	}
+
 	/** 拖人、跟上一張一樣改好之後：換流程、說插了站位或往後帶了幾張、播放頭停到改的那張。 */
 	function moved(r: { flow: Flow } & MoveResult) {
 		change(r.flow);
@@ -653,7 +664,28 @@
 							<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
 							{#if matchBlocked}<span>{matchBlocked}</span>{/if}
 						</div>
-						<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+						{@const here = formationAt(flow, playheadSec)}
+						<div class="here" class:on={!!here}>
+							<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+							{#if here}
+								{#key here.id}
+									<input
+										class="formation-name"
+										aria-label="站位名稱"
+										placeholder="幫這張站位取名（可不填）"
+										value={here.name ?? ''}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') e.currentTarget.blur();
+											if (e.key === 'Escape') {
+												e.currentTarget.value = here.name ?? '';
+												e.currentTarget.blur();
+											}
+										}}
+										onchange={(e) => renameHere(here.id, e.currentTarget.value)}
+									/>
+								{/key}
+							{/if}
+						</div>
 					{/if}
 				{/snippet}
 			{#if flow.members.length === 0}
@@ -1087,6 +1119,25 @@
 	.warn :global(svg) {
 		flex: none;
 		margin-top: 1px;
+	}
+	/* 播放頭停在站位上：「拖人會改」那行和站位名稱合成一張卡。 */
+	.here.on {
+		align-self: stretch;
+		display: grid;
+		gap: 6px;
+		padding: 8px;
+		border-radius: 10px;
+		background: var(--surface, #fff);
+		border: 1px solid var(--line, #d8dee9);
+		border-left: 4px solid var(--sel, #19b4d8);
+	}
+	.here.on .move-target {
+		padding: 0 2px;
+	}
+	.formation-name {
+		width: 100%;
+		font-size: 14px;
+		font-weight: 600;
 	}
 	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
 	.move-target {

@@ -26,7 +26,8 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 升級鏈：key 是「從第幾版升上來」。開舊版檔時一步一步升到 FORMAT_VERSION。
  * 第 2 版：站位多了可有可無的 walks（出發和到達），沒有就是全部用預設，所以資料不用動。
  * 第 3 版：動作多了可有可無的 cues（拍點），沒有就是沒有拍點，所以資料不用動。
- * 第 4 版：動作多了可有可無的 color（辨識色），沒有就是用大類的顏色，所以資料不用動。
+ * 第 4 版：動作多了可有可無的 color（辨識色），沒有就是用大類的顏色；站位多了可有可無的 name（站位名稱），
+ *   沒有就是只顯示號碼。所以資料不用動。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -140,7 +141,8 @@ const flowShape = shape({
 			segmentId: nullOr(str),
 			at: int,
 			pos: (v) => isObject(v) && Object.values(v).every(position),
-			walks
+			walks,
+			name: (v) => v === undefined || str(v)
 		})
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),

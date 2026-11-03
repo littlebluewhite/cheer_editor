@@ -31,6 +31,8 @@ export interface EightCountAction {
 export interface EightCountFormation {
 	/** 第幾張站位（跟時間軸縮圖上的號碼一樣）。 */
 	number: number;
+	/** 站位名稱，沒取就沒有。 */
+	name?: string;
 	at: string;
 	pos: Record<string, Position>;
 }
@@ -111,7 +113,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					})),
 				formations: flow.formations.flatMap((f, i) =>
 					f.segmentId === segment.id && f.at >= from && f.at < to
-						? [{ number: i + 1, at: at(f.at), pos: f.pos }]
+						? [{ number: i + 1, name: f.name, at: at(f.at), pos: f.pos }]
 						: []
 				),
 				walks: walks

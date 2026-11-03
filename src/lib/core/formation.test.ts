@@ -16,6 +16,7 @@ import {
 	moveMembers,
 	moveTargetText,
 	positionsAt,
+	renameFormation,
 	setPositions,
 	setWalks,
 	updateSegment,
@@ -163,6 +164,24 @@ describe('走位', () => {
 		expectAt(flow, 25, A, [4, 0]);
 		expectAt(flow, 21, A, [0, 0]);
 		expectAt(flow, 23, A, [2, 0]);
+	});
+});
+
+describe('站位名稱', () => {
+	it('取名字：存去頭尾空白的名字，其他不動', () => {
+		const flow = okFlow(renameFormation(walking(), 'f2', '  高低兩排 '));
+		expect(flow.formations[1].name).toBe('高低兩排');
+		expect({ ...flow.formations[1], name: undefined }).toEqual({ ...walking().formations[1], name: undefined });
+	});
+
+	it('清成空白：拿掉名字，只顯示號碼', () => {
+		const named = okFlow(renameFormation(walking(), 'f1', '開場'));
+		const flow = okFlow(renameFormation(named, 'f1', '   '));
+		expect('name' in flow.formations[0]).toBe(false);
+	});
+
+	it('找不到站位：擋下', () => {
+		expect(renameFormation(walking(), 'nope', 'x').kind).toBe('blocked');
 	});
 });
 

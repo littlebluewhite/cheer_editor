@@ -511,6 +511,23 @@ describe('站位與走位', () => {
 		expect(line()).toBe('拖人會在 2-3 插一張新站位');
 	});
 
+	it('站位名稱：播放頭在站位上才能取名；縮圖跟著寫名字；可以復原；不在站位上沒有名稱欄', async () => {
+		const nameBox = () => screen.queryByLabelText('站位名稱') as HTMLInputElement | null;
+		await setup();
+		await fireEvent.change(nameBox()!, { target: { value: '  開場 ' } });
+		expect(screen.getByRole('button', { name: '站位 1 開場' }).textContent).toContain('開場');
+		expect(nameBox()!.value).toBe('開場');
+
+		await seek(8.25);
+		expect(nameBox()).toBeNull();
+		await dragFirstMember();
+		expect(nameBox()!.value).toBe('');
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(screen.getByRole('button', { name: '站位 1' })).toBeTruthy();
+	});
+
 	it('跟上一張一樣：沒選人、在開頭那張時按不下去並說原因；在站位上改成上一張的位置；不在站位上先插一張', async () => {
 		const button = () => screen.getByRole('button', { name: '跟上一張一樣' }) as HTMLButtonElement;
 		const at = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');

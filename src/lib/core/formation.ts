@@ -29,6 +29,8 @@ export interface Formation {
 	at: number;
 	/** 隊員 id → 位置。 */
 	pos: Record<string, Position>;
+	/** 站位名稱（可有可無），例：開場、金字塔。沒有就只叫「站位 3」。 */
+	name?: string;
 	/** 隊員 id → 從前一張走到這張的出發和到達。只有自己設過的人才有；開頭那張沒有。 */
 	walks?: Record<string, Walk>;
 }
@@ -163,6 +165,16 @@ export function moveTargetText(flow: Flow, sec: number): string {
 	// 不在站位上表示已經有段，toPosition 一定有值。
 	const p = toPosition(flow, sec)!;
 	return `拖人會在 ${timeTextWithUnit(flow, p.segmentId, p)} 插一張新站位`;
+}
+
+/** 幫一張站位取名。清成空白就拿掉名字，只顯示號碼。 */
+export function renameFormation(flow: Flow, formationId: string, name: string): CommandResult {
+	const formation = flow.formations.find((f) => f.id === formationId);
+	if (!formation) return blocked('找不到這張站位');
+	const { name: _, ...rest } = formation;
+	const trimmed = name.trim();
+	const updated: Formation = { ...rest, ...(trimmed ? { name: trimmed } : {}) };
+	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });
 }
 
 /** 開頭那張（formations[0]）不能刪。 */

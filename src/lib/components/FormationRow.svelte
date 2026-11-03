@@ -29,7 +29,8 @@
 				<button
 					type="button"
 					class="pick"
-					aria-label={`站位 ${i + 1}`}
+					aria-label={formation.name ? `站位 ${i + 1} ${formation.name}` : `站位 ${i + 1}`}
+					title={formation.name ? `站位 ${i + 1} ${formation.name}` : undefined}
 					aria-pressed={selectedId === formation.id}
 					onclick={() => onselect(formation.id, sec)}
 				>
@@ -46,6 +47,7 @@
 						{/each}
 					</svg>
 					<span>{i + 1}</span>
+					{#if formation.name}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
 				</button>
 				{#if deletable}
 					<button
@@ -154,6 +156,24 @@
 		background: var(--ink, #16213a);
 		border-radius: 4px;
 		padding: 0 3px;
+	}
+	/* 站位名稱：縮圖底下一條，太長就切掉，滑鼠停上去看全名。 */
+	.name {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		padding: 1px 4px;
+		font-size: 10px;
+		font-style: normal;
+		font-weight: 700;
+		line-height: 14px;
+		text-align: left;
+		color: #fff;
+		background: rgb(22 33 58 / 0.82);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.del {
 		position: absolute;

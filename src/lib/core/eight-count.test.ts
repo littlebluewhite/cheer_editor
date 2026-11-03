@@ -7,6 +7,7 @@ import {
 	eightCountRows,
 	insertFormation,
 	placeCue,
+	renameFormation,
 	setPositions,
 	updateSegment,
 	type CommandResult,
@@ -151,6 +152,14 @@ describe('八拍表的列：站位', () => {
 			[[3, '2.5 秒']]
 		]);
 		expect(rows[1].formations[0].pos.m1).toEqual([1, 2]);
+	});
+
+	it('站位有名稱就帶上', () => {
+		let flow = flowOf(insertFormation(sample(), 4.8));
+		flow = flowOf(renameFormation(flow, flow.formations[1].id, '金字塔'));
+		const rows = eightCountRows(flow, null);
+		expect(rows[1].formations[0].name).toBe('金字塔');
+		expect(rows[0].formations[0].name).toBeUndefined();
 	});
 });
 

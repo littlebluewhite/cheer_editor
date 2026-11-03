@@ -105,6 +105,13 @@ describe('流程檔：存了再開', () => {
 		expect(r.kind === 'ok' && r.flow.actions[0].color).toBe('#1565c0');
 	});
 
+	it('站位名稱存了再開也一樣', () => {
+		const flow = sample();
+		flow.formations[0].name = '開場';
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
+	});
+
 	it('zip 裡是一份 flow.json（formatVersion 4 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
@@ -185,6 +192,7 @@ describe('流程檔：版本', () => {
 		['走位的時間是負的', broken((f) => (f.formations[1].walks = { m1: walk('s1', -1) }))],
 		['走位沒有到達', broken((f) => (f.formations[1].walks = { m1: { depart: walk().depart } }))],
 		['開頭那張有走位', broken((f) => (f.formations[0].walks = { m1: walk() }))],
+		['站位名稱不是字串', broken((f) => (f.formations[0].name = 3))],
 		['辨識色不是 #rrggbb', broken((f) => (f.actions[0].color = 'blue'))],
 		['拍點不是陣列', broken((f) => (f.actions[0].cues = {}))],
 		['拍點的種類不對', broken((f) => (f.actions[0].cues = [cue({ kind: 'move' })]))],
@@ -221,11 +229,12 @@ describe('流程檔：版本', () => {
 		expect(r.kind === 'ok' && r.flow.actions[0].cues).toBeUndefined();
 	});
 
-	it('第 3 版的檔：資料不用動，動作沒有辨識色', () => {
+	it('第 3 版的檔：資料不用動，動作沒有辨識色，站位沒有名稱', () => {
 		const flow = withCues();
 		const r = readFlowFile(zipOf({ formatVersion: 3, flow }));
 		expect(r.kind === 'ok' && r.flow).toEqual(flow);
 		expect(r.kind === 'ok' && r.flow.actions[0].color).toBeUndefined();
+		expect(r.kind === 'ok' && r.flow.formations.every((f) => f.name === undefined)).toBe(true);
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
