@@ -79,6 +79,11 @@ body {
 	background: var(--paper);
 }
 
+/* iPad：連點兩下不放大整頁（按鈕連按才不會跳）。兩指捏合放大整頁在 hooks.client.ts 擋掉。 */
+html {
+	touch-action: manipulation;
+}
+
 h1,
 h2,
 h3,
@@ -230,7 +235,7 @@ input[type='radio'] {
 	background: var(--surface);
 	border-radius: 12px;
 	box-shadow: var(--shadow-pop);
-	max-height: calc(100vh - 32px);
+	max-height: calc(100dvh - 32px);
 	overflow: auto;
 	display: grid;
 	align-content: start;

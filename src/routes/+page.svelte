@@ -671,7 +671,7 @@
 	<div
 		class="editor"
 		class:print-hidden={printOpen}
-		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100vh - ${FIELD_KEEP_PX}px))`}
+		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
 		<header class="topbar">
@@ -1037,7 +1037,8 @@
 <style>
 	/* ---------- 編輯畫面的大格子 ---------- */
 	.editor {
-		height: 100vh;
+		/* dvh：iPad Safari 的網址列不會擋到下面的時間軸。 */
+		height: 100dvh;
 		display: grid;
 		/* 上方列｜場地＋右邊欄｜分界｜時間軸。時間軸預設 30vh，拖分界改的高度放在 --timeline-h。 */
 		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(200px, 30vh));
@@ -1642,7 +1643,7 @@
 	/* ---------- 首頁 ---------- */
 	.home {
 		position: relative;
-		min-height: 100vh;
+		min-height: 100dvh;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
 		gap: 56px;

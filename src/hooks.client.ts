@@ -11,3 +11,7 @@ registerSW({
 		if (!hasUnsavedChanges()) window.location.reload();
 	}
 });
+
+// iPad Safari：兩指捏合不放大整頁（畫面會跑掉，還要再捏回來）。場地、時間軸自己處理捏合。
+// 打字時的自動放大由 app.html 的 maximum-scale=1 擋掉。
+document.addEventListener('gesturestart', (e) => e.preventDefault());

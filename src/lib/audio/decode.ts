@@ -23,6 +23,9 @@ let context: AudioContext | null = null;
 
 /** 解碼和播放共用一個 AudioContext。 */
 export function sharedAudioContext(): AudioContext {
+	// iPad、iPhone 開了靜音時，網頁的聲音預設也會靜音；設成 playback 才照樣出聲（Safari 16.4 起才有）。
+	const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+	if (session) session.type = 'playback';
 	context ??= new AudioContext();
 	return context;
 }
