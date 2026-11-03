@@ -6,6 +6,7 @@ import {
 	createFlow,
 	eightCountRows,
 	insertFormation,
+	placeCue,
 	setPositions,
 	updateSegment,
 	type CommandResult,
@@ -191,5 +192,90 @@ describe('八拍表的列：走位', () => {
 		const row = eightCountRows(flow, 'm1')[1];
 		expect(row.actions.map((a) => a.name)).toEqual(['Lib']);
 		expect(row.walks).toEqual(['2-1 出發 → 站位 2（3-1 到）']);
+	});
+});
+
+describe('八拍表的列：拍點', () => {
+	/** 第 2 個八拍的 Cradle（小A 上層、小B 主底）：2-5 下手、2-6 down、2-7 up、2-8 上層 high V。 */
+	function cradle(): Flow {
+		let flow = flowOf(addAction(sample(), action({ name: 'Cradle', start: 16, length: 16 })));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 8, len: 2, word: '下手' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 10, len: 2, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 12, len: 2, word: 'up' }));
+		return flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 14, len: 2, word: 'high V', who: { role: '上層' } }));
+	}
+
+	it('有拍點的動作在它那一列多一排：動作名字，每個拍點寫第幾格到第幾格、字和給誰', () => {
+		const rows = eightCountRows(cradle(), null);
+		expect(rows[1].cues).toEqual([
+			{
+				categoryLabel: '技巧',
+				name: 'Cradle',
+				cues: [
+					{ kind: 'step', from: 5, to: 5, word: '下手', who: null },
+					{ kind: 'count', from: 6, to: 6, word: 'down', who: null },
+					{ kind: 'count', from: 7, to: 7, word: 'up', who: null },
+					{ kind: 'motion', from: 8, to: 8, word: 'high V', who: '上層' }
+				]
+			}
+		]);
+		expect(rows[0].cues).toEqual([]);
+	});
+
+	it('跨到下一列的拍點，兩列各畫自己那一段，字兩列都寫', () => {
+		// 1-5 開始的動作，down 從 1-7 佔 4 拍到 2-2
+		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 8, word: 'down' }));
+		const rows = eightCountRows(flow, null);
+		expect(rows[0].cues[0].cues).toEqual([{ kind: 'count', from: 7, to: 8, word: 'down', who: null }]);
+		expect(rows[1].cues).toEqual([
+			{ categoryLabel: '技巧', name: 'Lib', cues: [{ kind: 'count', from: 1, to: 2, word: 'down', who: null }] }
+		]);
+		// 動作名字還是只在開始那一列的動作欄
+		expect(rows[1].actions).toEqual([]);
+	});
+
+	it('動作被拖半拍、拍點落在 & 上時，碰到的格子都算', () => {
+		let flow = flowOf(addAction(sample(), action({ start: 0, length: 16 })));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 2, len: 4, word: '下手' }));
+		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 1 })) };
+		// 下手從 2 的 & 到 4 的 &
+		expect(eightCountRows(flow, null)[0].cues[0].cues).toEqual([
+			{ kind: 'step', from: 2, to: 4, word: '下手', who: null }
+		]);
+	});
+
+	it('全隊表給隊員的寫他的名字；個人表只列給他的拍點，不寫給誰', () => {
+		let flow = cradle();
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '放', who: { member: 'm2' } }));
+		expect(eightCountRows(flow, null)[1].cues[0].cues.map((c) => [c.word, c.who])).toEqual([
+			['放', '小B'],
+			['下手', null],
+			['down', null],
+			['up', null],
+			['high V', '上層']
+		]);
+		const words = (memberId: string) =>
+			eightCountRows(flow, memberId)[1].cues.flatMap((l) => l.cues.map((c) => [c.word, c.who]));
+		expect(words('m1')).toEqual([
+			['下手', null],
+			['down', null],
+			['up', null],
+			['high V', null]
+		]);
+		expect(words('m2')).toEqual([
+			['放', null],
+			['下手', null],
+			['down', null],
+			['up', null]
+		]);
+		// 不在動作裡的人沒有這一排
+		expect(eightCountRows(flow, 'm3')[1].cues).toEqual([]);
+	});
+
+	it('沒有拍點的動作不多一排，列跟原本一樣', () => {
+		const flow = flowOf(addAction(sample(), action({ start: 16, length: 8 })));
+		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
+		expect(eightCountRows(flow, 'm1').map((r) => r.cues)).toEqual([[], [], [], []]);
 	});
 });

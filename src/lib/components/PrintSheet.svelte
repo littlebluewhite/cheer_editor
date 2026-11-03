@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 八拍表列印：蓋在編輯畫面上，選全隊或一個隊員，按「列印」用瀏覽器列印（可存 PDF）。
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
-	import { eightCountRows, type Flow } from '#lib/core';
+	import { eightCountRows, type EightCountCue, type Flow } from '#lib/core';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 
@@ -22,6 +22,14 @@
 		const i = flow.members.findIndex((m) => m.id === memberId);
 		return i === -1 ? '全隊' : `${flow.members[i].name}（場上 ${i + 1} 號）`;
 	});
+
+	const KIND_LABELS = { count: '拍子', step: '步驟', motion: '手位' };
+
+	/** 「拍子 down 1-6 到 1-7」「手位 high V 1-8・給上層」。 */
+	function cueLabel(eight: number | null, c: EightCountCue): string {
+		const span = c.to > c.from ? `${eight}-${c.from} 到 ${eight}-${c.to}` : `${eight}-${c.from}`;
+		return `${KIND_LABELS[c.kind]} ${c.word} ${span}${c.who ? `・給${c.who}` : ''}`;
+	}
 </script>
 
 <div class="print-sheet" role="dialog" aria-label="八拍表">
@@ -48,8 +56,8 @@
 			<thead>
 				<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>動作</th><th>站位</th></tr>
 			</thead>
-			<tbody>
-				{#each rows as row, i (i)}
+			{#each rows as row, i (i)}
+				<tbody>
 					<tr>
 						<td>{row.segmentLabel}</td>
 						<td>{row.eight ?? `整段 ${row.durationSec.toFixed(1)} 秒`}</td>
@@ -77,8 +85,33 @@
 							{/each}
 						</td>
 					</tr>
-				{/each}
-			</tbody>
+					{#if row.cues.length}
+						<tr class="cue-row">
+							<td colspan="5">
+								{#each row.cues as line, j (j)}
+									{@const name = `${line.categoryLabel}${line.name ? `·${line.name}` : ''}`}
+									<div class="cue-line" role="group" aria-label="{name} 的拍點">
+										<span class="cue-name">{name}</span>
+										<div class="cells">
+											{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
+												<span class="n" style:grid-column={n}>{n}</span>
+											{/each}
+											{#each line.cues as c, k (k)}
+												<span
+													class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
+													style:grid-column="{c.from} / {c.to + 1}"
+													aria-label={cueLabel(row.eight, c)}
+													>{c.word}{#if c.who}<small>{c.who}</small>{/if}</span
+												>
+											{/each}
+										</div>
+									</div>
+								{/each}
+							</td>
+						</tr>
+					{/if}
+				</tbody>
+			{/each}
 		</table>
 	</div>
 </div>
@@ -146,8 +179,80 @@
 		background: #f2f4f8;
 		font-size: 12px;
 	}
-	tr {
+	tbody {
 		break-inside: avoid;
+	}
+	/* 拍點：一排 8 格，字寫在佔的格子裡。黑白印也分得出：拍子實心、步驟左邊粗線、手位圓角虛線小牌子。 */
+	.cue-row td {
+		padding: 4px 8px 6px;
+	}
+	.cue-line {
+		display: flex;
+		gap: 8px;
+		align-items: start;
+		margin: 2px 0;
+	}
+	.cue-name {
+		flex: 0 0 9em;
+		font-size: 12px;
+		font-weight: 600;
+		padding-top: 2px;
+	}
+	.cells {
+		flex: 1;
+		display: grid;
+		grid-template-columns: repeat(8, 1fr);
+		grid-auto-flow: row dense;
+		gap: 2px 0;
+		padding-bottom: 2px;
+		border: 1px solid #c9ced8;
+		background: linear-gradient(to right, #c9ced8 1px, transparent 1px) 0 0 / 12.5% 100%;
+		print-color-adjust: exact;
+		-webkit-print-color-adjust: exact;
+	}
+	.n {
+		grid-row: 1;
+		padding: 0 4px;
+		font-size: 10px;
+		color: #7a8296;
+		border-bottom: 1px solid #c9ced8;
+	}
+	.cue {
+		margin: 0 2px;
+		padding: 1px 4px;
+		font-size: 12px;
+		line-height: 1.3;
+		border-radius: 2px;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	.cue small {
+		margin-left: 4px;
+		font-size: 10px;
+	}
+	.cue.down {
+		background: #1f5fbf;
+		color: #fff;
+		font-weight: 600;
+	}
+	.cue.up {
+		background: #2b7a2f;
+		color: #fff;
+		font-weight: 600;
+	}
+	.cue.step {
+		background: #fff1e2;
+		border: 1px solid #e08a2e;
+		border-left-width: 4px;
+		color: #8a4a12;
+	}
+	.cue.motion {
+		justify-self: start;
+		background: #ffe3f0;
+		border: 1px dashed #d6589a;
+		border-radius: 999px;
+		color: #9c1d5c;
 	}
 	.num {
 		font-variant-numeric: tabular-nums;
