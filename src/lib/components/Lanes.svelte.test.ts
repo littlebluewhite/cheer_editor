@@ -4,6 +4,7 @@ import {
 	addSegment,
 	createFlow,
 	insertFormation,
+	placeCue,
 	setPositions,
 	setWalks,
 	type CommandResult,
@@ -349,6 +350,92 @@ describe('走位條', () => {
 		await dragBy(walkBar(0), 1);
 		expect(onchange).not.toHaveBeenCalled();
 		expect(onblocked).not.toHaveBeenCalled();
+	});
+});
+
+describe('色條上的拍點', () => {
+	/** Lib（0–3.2 秒 = 0–32 px，一個半拍 2 px）：down 1-1 到 1-2、步驟下手 1-3 到 1-4 給全部，手位 high V 1-5 只給上層。 */
+	function cued(): Flow {
+		let flow = sample();
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 4, len: 4, word: '下手' }));
+		return flowOf(
+			placeCue(flow, 'x1', { kind: 'motion', at: 8, len: 2, word: 'high V', who: { role: '上層' } })
+		);
+	}
+
+	function setupCues() {
+		const onchange = vi.fn<(flow: Flow) => void>();
+		const onselectaction = vi.fn();
+		render(Lanes, { flow: cued(), playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction, onchange });
+		return { onchange, onselectaction };
+	}
+
+	/** 色條上的拍點：種類、字、位置（px，從色條左邊算）、長度。 */
+	const cuesOn = (bar: HTMLElement) =>
+		[...bar.querySelectorAll<HTMLElement>('[data-cue]')].map((c) => ({
+			kind: c.dataset.cue,
+			word: c.textContent?.trim(),
+			left: c.style.left,
+			width: c.style.width || `≥${c.style.minWidth}`
+		}));
+
+	it('每個人的色條只畫給他的拍點：步驟和拍子佔幾拍畫多長，手位寫小字（至少一拍寬，字長就撐開）', () => {
+		setupCues();
+		const down = { kind: 'count', word: 'down', left: '0px', width: '8px' };
+		const step = { kind: 'step', word: '下手', left: '8px', width: '8px' };
+		expect(cuesOn(bars(lanes()[0])[0])).toEqual([
+			down,
+			step,
+			{ kind: 'motion', word: 'high V', left: '16px', width: '≥4px' }
+		]);
+		// 小B 沒任務：沒有給上層的 high V
+		expect(cuesOn(bars(lanes()[1])[0])).toEqual([down, step]);
+		// 小C 的動作沒有拍點
+		expect(bars(lanes()[2]).map(cuesOn)).toEqual([[], []]);
+	});
+
+	it('有拍點的色條：名稱和任務角色在上半，拍點在下半，一種一條；提示照舊', () => {
+		setupCues();
+		const [a] = bars(lanes()[0]);
+		const top = (kind: string) => a.querySelector<HTMLElement>(`[data-cue="${kind}"]`)!.style.top;
+		expect(new Set(['count', 'step', 'motion'].map(top)).size).toBe(3);
+		expect(a.classList.contains('has-cues')).toBe(true);
+		expect(a.querySelector('b')?.textContent).toBe('Lib');
+		expect(a.querySelector('.role')?.textContent).toBe('上層');
+		expect(a.title).toBe('技巧·Lib（上層）');
+		expect(bars(lanes()[2])[0].classList.contains('has-cues')).toBe(false);
+		// 有拍點的人泳道變高，放得下每一種；小B 只有兩種，比小A 矮；沒拍點的小C 不變
+		const h = lanes().map((l) => parseFloat(l.style.height) || 0);
+		expect(h[0]).toBeGreaterThan(h[1]);
+		expect(h[1]).toBeGreaterThan(26);
+		expect(h[2]).toBe(0);
+	});
+
+	it('拍點讓開泳道下緣 5 px 的走位條', () => {
+		setupCues();
+		for (const lane of lanes().slice(0, 2)) {
+			const bar = bars(lane)[0];
+			const bottoms = [...bar.querySelectorAll<HTMLElement>('[data-cue]')].map(
+				// 色條離泳道上緣 3 px
+				(c) => 3 + parseFloat(c.style.top) + parseFloat(c.style.height)
+			);
+			expect(Math.max(...bottoms)).toBeLessThanOrEqual(parseFloat(lane.style.height) - 5);
+		}
+	});
+
+	it('按在拍點上照樣能拖色條、點色條', async () => {
+		const { onchange, onselectaction } = setupCues();
+		const cue = bars(lanes()[0])[0].querySelector('[data-cue="step"]')!;
+		await fireEvent.click(cue);
+		expect(onselectaction).toHaveBeenCalledWith('x1');
+		await fireEvent.pointerDown(cue, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 104 });
+		expect(bars(lanes()[0])[0].style.left).toBe('4px');
+		await fireEvent.pointerUp(window, { clientX: 104 });
+		// 往右 4 px = 0.4 秒 = 2 個半拍；拍點跟著動作走
+		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
+		expect(onchange.mock.calls[0][0].actions[0].cues).toHaveLength(3);
 	});
 });
 

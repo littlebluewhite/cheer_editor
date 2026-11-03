@@ -6,9 +6,13 @@
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 走太快的走位條標紅（見 formationWalks）。
+	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
+	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
 	import {
 		actionLabel,
 		actionSeconds,
+		CUE_KINDS,
+		cueForMember,
 		formationWalks,
 		idleAt,
 		memberWalk,
@@ -19,6 +23,8 @@
 		toSeconds,
 		totalSeconds,
 		type CommandResult,
+		type Cue,
+		type CueKind,
 		type Flow,
 		type FormationWalk,
 		type TimePosition,
@@ -77,11 +83,34 @@
 				/** 色條上的字：顏色已經是大類，只寫名稱；沒取名才寫大類。 */
 				name: action.name || actionLabel(action),
 				left: startSec * pxPerSec,
-				width: (endSec - startSec) * pxPerSec
+				width: (endSec - startSec) * pxPerSec,
+				/** 一個半拍幾 px（拍點用；只有音樂段有拍點）。 */
+				halfPx: ((endSec - startSec) * pxPerSec) / action.length
 			};
 		})
 	);
 	const selected = $derived(new Set(selectedMemberIds));
+
+	/** 色條離泳道上緣、名稱那一行、一條拍點的高度、泳道下緣留給走位條（px）。 */
+	const BAR_TOP = 3;
+	const NAME_H = 12;
+	const TRACK_H = 10;
+	const WALK_H = 5;
+
+	/** 每個人：每個動作裡給他的拍點，和他用到哪幾種（照拍子、步驟、手位排，一種一條）。 */
+	const cues = $derived.by(() => {
+		const byMember: Record<string, { mine: Record<string, Cue[]>; kinds: CueKind[] }> = {};
+		for (const m of flow.members) {
+			const mine: Record<string, Cue[]> = {};
+			for (const a of flow.actions) {
+				const given = (a.cues ?? []).filter((c) => cueForMember(c, a, m.id));
+				if (given.length) mine[a.id] = given;
+			}
+			const used = new Set(Object.values(mine).flatMap((cs) => cs.map((c) => c.kind)));
+			byMember[m.id] = { mine, kinds: CUE_KINDS.filter((k) => used.has(k)) };
+		}
+		return byMember;
+	});
 
 	/** 走位條拖哪裡：depart = 左端、arrive = 右端、move = 中間。 */
 	type WalkEnd = 'depart' | 'arrive' | 'move';
@@ -206,7 +235,14 @@
 </script>
 
 {#each flow.members as m, i (m.id)}
-	<div class="row" data-lane={m.id}>
+	{@const kinds = cues[m.id].kinds}
+	<div
+		class="row"
+		data-lane={m.id}
+		style:height={kinds.length
+			? `${BAR_TOP + NAME_H + kinds.length * TRACK_H + WALK_H}px`
+			: undefined}
+	>
 		<button
 			type="button"
 			class="lab"
@@ -225,12 +261,14 @@
 				{@const member = p.action.members.find((x) => x.memberId === m.id)}
 				{#if member}
 					{@const d = drag?.id === p.action.id ? drag : null}
+					{@const mine = cues[m.id].mine[p.action.id] ?? []}
 					<button
 						type="button"
 						class="bar"
 						class:selected={p.action.id === selectedActionId}
 						data-action-id={p.action.id}
 						class:dragging={d !== null}
+						class:has-cues={mine.length > 0}
 						style:left={`${p.left + (d?.mode === 'move' ? d.dx : 0)}px`}
 						style:width={`${Math.max(p.width + (d?.mode === 'resize' ? d.dx : 0), 2)}px`}
 						style:background={CATEGORY_COLORS[p.action.category]}
@@ -240,6 +278,18 @@
 					>
 						<b>{p.name}</b>
 						{#if member.role}<span class="role">{member.role}</span>{/if}
+						{#each mine as c, j (j)}
+							<span
+								class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
+								data-cue={c.kind}
+								aria-hidden="true"
+								style:left={`${c.at * p.halfPx}px`}
+								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
+								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
+								style:top={`${NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
+								style:height={`${TRACK_H - 1}px`}>{c.word}</span
+							>
+						{/each}
 						<span class="rz" data-resize title="拉這裡改長度"></span>
 					</button>
 				{/if}
@@ -378,6 +428,49 @@
 	}
 	.role {
 		opacity: 0.9;
+	}
+	/* 有拍點：名稱和任務角色擠到上半那一行，拍點畫在下面。 */
+	.bar.has-cues {
+		align-items: flex-start;
+		padding-top: 1px;
+		font-size: 10px;
+	}
+	/* 拍點：不吃滑鼠，按下去還是按在色條上。down 藍、up 綠實心；步驟淡橘、左邊粗線；手位粉紅小字（跟拍點表單同色）。 */
+	.cue {
+		position: absolute;
+		display: flex;
+		align-items: center;
+		box-sizing: border-box;
+		padding: 0 2px;
+		border-radius: 2px;
+		font-size: 9px;
+		font-weight: 700;
+		line-height: 1;
+		overflow: hidden;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	.cue.down,
+	.cue.up {
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+		color: #fff;
+	}
+	.cue.down {
+		background: #1f5fbf;
+	}
+	.cue.up {
+		background: #2b7a2f;
+	}
+	.cue.step {
+		background: #fff1e2;
+		border-left: 3px solid #e08a2e;
+		color: #8a4a12;
+	}
+	/* 手位只佔一拍，字常比一拍長：寬度跟著字撐開，色條右邊照樣切掉。 */
+	.cue.motion {
+		background: #ffe3f0;
+		color: #9c1d5c;
+		font-weight: 600;
 	}
 	.bar.dragging {
 		cursor: grabbing;
