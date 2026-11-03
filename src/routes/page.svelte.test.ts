@@ -116,7 +116,7 @@ describe('段、八拍尺、上方列', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		const dialog = screen.getByRole('dialog', { name: '流程設定' });
-		await fireEvent.click(within(dialog).getByLabelText('名字開頭的字'));
+		await fireEvent.click(within(dialog).getByLabelText('開頭字（名字的第一個字）'));
 		// 預覽：每個人的標記和名字
 		expect(within(dialog).getByText('王小明').previousElementSibling?.textContent).toBe('王小');
 		expect(dots()).toEqual(['王小', '王大', '李']);
@@ -469,7 +469,7 @@ describe('動作', () => {
 		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });
 		await fireEvent.pointerMove(window, { clientX: 84 });
 		await fireEvent.pointerUp(window, { clientX: 84 });
-		expect(screen.getByRole('status').textContent).toBe('開始時間不能在段之前，已還原');
+		expect(screen.getByRole('status').textContent).toBe('動作的開始不能在段之前，已還原');
 		expect((bar() as HTMLElement).style.left).toBe('0px');
 	});
 });
@@ -600,7 +600,7 @@ describe('站位與走位', () => {
 		expect(screen.getByText('開頭那張前面沒有站位')).toBeTruthy();
 
 		await seek(8.25);
-		await fireEvent.click(screen.getByRole('button', { name: '清除' }));
+		await fireEvent.click(screen.getByRole('button', { name: '取消選取' }));
 		await dragFirstMember(); // 插站位 2，小A 換位置
 		expect(at('m1')).not.toBe(start);
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
@@ -641,7 +641,7 @@ describe('站位與走位', () => {
 		expect(marked('data-walk-line')).toEqual([]);
 	});
 
-	it('點縮圖跳到那一拍；✕ 刪掉站位；開頭那張沒有 ✕', async () => {
+	it('點縮圖跳到那一拍；✕ 刪除站位；開頭那張沒有 ✕', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
@@ -650,8 +650,8 @@ describe('站位與走位', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 
-		expect(screen.queryByRole('button', { name: '刪掉站位 1' })).toBeNull();
-		await fireEvent.click(screen.getByRole('button', { name: '刪掉站位 2' }));
+		expect(screen.queryByRole('button', { name: '刪除站位 1' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
 		expect(thumbs()).toHaveLength(1);
 	});
 

@@ -58,7 +58,7 @@
       "fill": "#eff6ff",
       "stroke": "#3b82f6",
       "flat": true,
-      "sublabel": "其他人照原本走到的位置"
+      "sublabel": "其他人站在那一拍本來的位置"
     },
     {
       "id": "done",

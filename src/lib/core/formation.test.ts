@@ -65,7 +65,7 @@ describe('改位置', () => {
 		expect(setPositions(flow, 'f1', { [a.id]: [-9.2, 7.39] }).kind).toBe('ok');
 		expect(setPositions(flow, 'f1', { [a.id]: [-9.3, 0] })).toEqual({
 			kind: 'blocked',
-			message: '只能站到墊子外 1 m 以內'
+			message: '只能站到場地外 1 公尺以內'
 		});
 		expect(setPositions(flow, 'f1', { [a.id]: [0, 7.5] }).kind).toBe('blocked');
 	});
@@ -298,7 +298,7 @@ describe('在播放頭拖人', () => {
 	it('位置被擋就什麼都不改（也不插站位）', () => {
 		expect(moveMembers(walking(), 5, { [B]: [0, 99] })).toEqual({
 			kind: 'blocked',
-			message: '只能站到墊子外 1 m 以內'
+			message: '只能站到場地外 1 公尺以內'
 		});
 	});
 });

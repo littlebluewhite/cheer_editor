@@ -154,7 +154,7 @@ function check(flow: Flow, action: Action): string | null {
 	if (!Number.isInteger(action.start) || !Number.isInteger(action.length)) {
 		return music ? '音樂段的時間要落在半拍上' : '口號段的時間最細 0.1 秒';
 	}
-	if (action.start < 0) return '開始時間不能在段之前';
+	if (action.start < 0) return '動作的開始不能在段之前';
 	if (action.length < 1) return music ? '動作長度至少要半拍' : '動作長度至少要 0.1 秒';
 	if (action.start + action.length > units(segment)) return '動作不能跨段，要跨就拆成兩個';
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';

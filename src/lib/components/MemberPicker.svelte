@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 選人：一鍵選全隊、全部底層、全部上層、這一拍沒在動作裡的人、清除；
+	// 選人：一鍵選全隊、全部底層、全部上層、這一拍沒在動作裡的人、取消選取；
 	// 「沿用上一個動作的人」取播放頭以前最晚結束的動作，再按一次換更早的。
 	// 選到的人是在播放頭新增動作的人，也是場上整組拖的那一組。
 	import {
@@ -52,7 +52,7 @@
 <section class="picker">
 	<header>
 		<h3>選人</h3>
-		{#if names.length}<button type="button" class="link" onclick={() => onselect([])}>清除</button>{/if}
+		{#if names.length}<button type="button" class="link" onclick={() => onselect([])}>取消選取</button>{/if}
 	</header>
 	<div class="chips">
 		{#each GROUPS as g (g.group)}

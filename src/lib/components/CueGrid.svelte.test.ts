@@ -168,7 +168,7 @@ describe('拍點格子：拍點小窗', () => {
 		expect(pop()).toBeNull();
 		expect(outer).not.toHaveBeenCalled();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
-		await fireEvent.click(within(pop()!).getByRole('button', { name: '關掉' }));
+		await fireEvent.click(within(pop()!).getByRole('button', { name: '關閉' }));
 		expect(pop()).toBeNull();
 		window.removeEventListener('keydown', outer);
 	});

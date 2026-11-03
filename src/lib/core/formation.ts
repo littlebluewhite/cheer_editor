@@ -48,7 +48,7 @@ export interface MoveResult {
 	carried: number;
 }
 
-/** 改一張站位裡一個或多個隊員的位置。位置可以在墊子外 1 m 以內。 */
+/** 改一張站位裡一個或多個隊員的位置。位置可以在場地外 1 m 以內。 */
 export function setPositions(
 	flow: Flow,
 	formationId: string,
@@ -65,7 +65,7 @@ export function setPositions(
 			x <= outer.x + outer.width + eps &&
 			y >= outer.y - eps &&
 			y <= outer.y + outer.height + eps;
-		if (!inside) return blocked('只能站到墊子外 1 m 以內');
+		if (!inside) return blocked('只能站到場地外 1 公尺以內');
 	}
 	const updated = { ...formation, pos: { ...formation.pos, ...moves } };
 	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });

@@ -158,7 +158,7 @@
 		if (!segment) return '找不到這一段';
 		const start = parseAt(segment, draft.startText);
 		if (start === null) {
-			return segment.kind === 'music' ? '開始時間看不懂，例：3-5&' : '開始時間看不懂，請打秒數';
+			return segment.kind === 'music' ? '開始看不懂，例：3-5&' : '開始看不懂，請打秒數';
 		}
 		const length = parseLength(segment, draft.lengthText);
 		if (length === null) return '長度看不懂';
@@ -269,7 +269,7 @@
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
-	<button type="button" class="new" onclick={() => onselect(null)}><Icon name="plus" size={14} />新增動作</button>
+	<button type="button" class="new" onclick={() => onselect(null)}><Icon name="plus" size={14} />開新的動作表單</button>
 {/if}
 
 <section class="action-form" class:creating={!action} style:--cat={actionColor(draft)}>

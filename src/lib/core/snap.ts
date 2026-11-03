@@ -31,7 +31,7 @@ export function snapPointsNear(field: FieldConfig, [x, y]: Position, zoom: numbe
 }
 
 /**
- * 「第 3 條 左起 1/4｜前起第 2 格 1/2」這種位置文字。
+ * 「第 3 條 左起 1/4｜正面起第 2 格 1/2」這種位置文字。
  * 直放：條是左右數、格是從正面往後數；橫放：條是從正面往後數（第 1 條最靠近裁判）、格是左右數。
  */
 export function fieldPositionText(field: FieldConfig, [x, y]: Position): string {
@@ -48,9 +48,9 @@ export function fieldPositionText(field: FieldConfig, [x, y]: Position): string 
 	const fromFront = {
 		u: (mat.y + mat.height - y) / CELL_M,
 		n: rows,
-		start: '前起',
+		start: '正面起',
 		endLine: '場地後緣',
-		near: '前面',
+		near: '正面那邊',
 		far: '後面'
 	};
 	return vertical
@@ -110,8 +110,8 @@ interface TextAxis {
 }
 
 function axisText(a: TextAxis, kind: 'strip' | 'cell'): string {
-	if (a.u < -EPS) return `墊子外${a.near} ${fracName(-a.u)} 格`;
-	if (a.u > a.n + EPS) return `墊子外${a.far} ${fracName(a.u - a.n)} 格`;
+	if (a.u < -EPS) return `場地外${a.near} ${fracName(-a.u)} 格`;
+	if (a.u > a.n + EPS) return `場地外${a.far} ${fracName(a.u - a.n)} 格`;
 	const i = Math.min(Math.floor(a.u + EPS), a.n - 1);
 	const f = a.u - i;
 	const atEnd = f > 1 - EPS;

@@ -164,14 +164,14 @@ describe('八拍表的列：站位', () => {
 });
 
 describe('八拍表的列：走位', () => {
-	it('一個隊員每走位一次，在出發那一拍所在的列寫「出發 → 站位 N（幾拍到）」；全隊和沒動的人不寫', () => {
+	it('一個隊員每走位一次，在出發那一拍所在的列寫「出發 → 站位 N（幾拍到達）」；全隊和沒動的人不寫', () => {
 		let flow = sample();
 		// 第 3 個八拍開頭（6.4 秒）插站位 2，小A 換位置；預設往前一個八拍出發（2-1）
 		flow = flowOf(insertFormation(flow, 6.4));
 		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
 		expect(eightCountRows(flow, 'm1').map((r) => r.walks)).toEqual([
 			[],
-			['2-1 出發 → 站位 2（3-1 到）'],
+			['2-1 出發 → 站位 2（3-1 到達）'],
 			[],
 			[]
 		]);
@@ -188,7 +188,7 @@ describe('八拍表的列：走位', () => {
 		expect(eightCountRows(flow, 'm1').map((r) => r.walks)).toEqual([
 			[],
 			[],
-			['3-1 出發 → 站位 3（口號 1 2.5 秒 到）'],
+			['3-1 出發 → 站位 3（口號 1 2.5 秒 到達）'],
 			[]
 		]);
 	});
@@ -200,7 +200,7 @@ describe('八拍表的列：走位', () => {
 		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
 		const row = eightCountRows(flow, 'm1')[1];
 		expect(row.actions.map((a) => a.name)).toEqual(['Lib']);
-		expect(row.walks).toEqual(['2-1 出發 → 站位 2（3-1 到）']);
+		expect(row.walks).toEqual(['2-1 出發 → 站位 2（3-1 到達）']);
 	});
 });
 

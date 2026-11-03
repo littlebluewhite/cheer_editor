@@ -509,14 +509,14 @@
 		border: none;
 		border-radius: 3px;
 		background: var(--ink, #16213a);
-		opacity: 0.55;
+		opacity: 0.8;
 		cursor: grab;
 		touch-action: none;
 		user-select: none;
 	}
 	.walk:hover,
 	.walk.dragging {
-		opacity: 0.85;
+		opacity: 1;
 	}
 	/* 走太快：紅色；很喘：橘色。跟場地上的線一樣。 */
 	.walk.fast {

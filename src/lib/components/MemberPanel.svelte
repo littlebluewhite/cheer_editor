@@ -65,7 +65,7 @@
 <section class="members">
 	<header>
 		<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
-		<span class="hint">名單順序就是泳道順序和場上的號碼；在「流程設定」可以把號碼換成名字開頭的字</span>
+		<span class="hint">名單順序就是泳道順序和場上的號碼；在「流程設定」可以把號碼換成開頭字（名字的第一個字）</span>
 	</header>
 
 	{#if flow.members.length}
@@ -117,7 +117,7 @@
 		<b class="add-title">加隊員</b>
 		<label class="names">
 			名字（一次加多人：一行一個）
-			<textarea rows="3" bind:value={names} placeholder="暱稱或背號"></textarea>
+			<textarea rows="3" bind:value={names} placeholder="名字或暱稱"></textarea>
 		</label>
 		<div class="pair">
 			<label>

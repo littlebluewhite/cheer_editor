@@ -35,7 +35,7 @@
 	const markers = $derived(memberMarkers(flow));
 	const MARKER_STYLES: { key: MarkerStyle; label: string }[] = [
 		{ key: 'number', label: '號碼（名單第幾個）' },
-		{ key: 'initial', label: '名字開頭的字' }
+		{ key: 'initial', label: '開頭字（名字的第一個字）' }
 	];
 
 	const fields = [

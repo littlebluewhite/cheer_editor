@@ -66,7 +66,7 @@ export interface EightCountRow {
 	durationSec: number;
 	actions: EightCountAction[];
 	formations: EightCountFormation[];
-	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到）」。全隊是空的。 */
+	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到達）」。全隊是空的。 */
 	walks: string[];
 	/** 這一列的拍點：每個在這一列有拍點的動作一排；跨列的拍點兩列各寫自己那一段。 */
 	cues: EightCountCueLine[];
@@ -123,7 +123,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					)
 					.map(({ number, walk }) => {
 						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
-						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到）`;
+						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到達）`;
 					}),
 				cues: inSegment.flatMap((a) => {
 					const cues = (a.cues ?? []).flatMap((c) =>

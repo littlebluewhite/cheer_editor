@@ -257,11 +257,11 @@
 			<div class="rail-gap"></div>
 			{@render railBottom?.()}
 			<div class="walk-tools">
-				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和太快（紅）的線">
+				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
 					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
 				</label>
 				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
-				<span aria-hidden="true"><i class="fast"></i>太快</span>
+				<span aria-hidden="true"><i class="fast"></i>走太快</span>
 			</div>
 			<div class="legend" aria-hidden="true">
 				<span><i class="base"></i>底層</span>

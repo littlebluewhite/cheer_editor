@@ -186,13 +186,13 @@ describe('動作表單：改選到的動作', () => {
 		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
 	});
 
-	it('任務角色選單用滑鼠點也可以；最後一項是自訂角色', async () => {
+	it('任務角色選單用滑鼠點也可以；最後一項是自訂任務角色', async () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
 		const { onchange } = setup(flow, 'x1');
 		await pickRole('小A', '主底');
 		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '主底' });
 		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
-		await fireEvent.click(screen.getByRole('option', { name: '＋自訂角色…' }));
+		await fireEvent.click(screen.getByRole('option', { name: '＋自訂任務角色…' }));
 		expect(screen.getByRole('dialog')).toBeTruthy();
 	});
 
@@ -227,9 +227,9 @@ describe('動作表單：改選到的動作', () => {
 		expect(onselect).toHaveBeenCalledWith(null);
 	});
 
-	it('卡片外面的「＋ 新增動作」取消選取，回到新增', async () => {
+	it('卡片外面的「＋ 開新的動作表單」取消選取，回到新增', async () => {
 		const { onselect } = setup(withTwo(), 'x1');
-		const button = screen.getByRole('button', { name: '新增動作' });
+		const button = screen.getByRole('button', { name: '開新的動作表單' });
 		expect(button.closest('section')).toBeNull();
 		await fireEvent.click(button);
 		expect(onselect).toHaveBeenCalledWith(null);

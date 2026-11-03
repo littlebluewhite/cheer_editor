@@ -186,13 +186,13 @@
 								{/each}
 							</select>
 						</label>
-						<span class="hint">歌中途變速時，兩個音樂段用同一個檔</span>
+						<span class="hint">音樂中途變速時，兩個音樂段用同一個檔</span>
 					</div>
 				{/if}
 			</section>
 
 			<section>
-				<h3>拍子</h3>
+				<h3>速度和第一拍</h3>
 				<div class="row">
 					<label class="inline">
 						BPM
@@ -231,7 +231,7 @@
 				</svg>
 				<p class="hint">
 					{audio ? '' : '沒有音樂檔：載入後會畫出波形。'}在波形上點一下＝把第一拍放在那裡。細線是照 BPM
-					算的拍子，對準鼓點就對了。只顯示前 {WAVE_WINDOW_SEC} 秒。
+					算出的每一拍，對準鼓點就對了。只顯示前 {WAVE_WINDOW_SEC} 秒。
 				</p>
 			</section>
 

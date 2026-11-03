@@ -46,11 +46,11 @@ describe('任務角色', () => {
 		const flow = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
 		expect(addCustomRole(flow, { name: ' ', meaning: '' })).toEqual({
 			kind: 'blocked',
-			message: '請填角色名稱'
+			message: '請填任務角色名稱'
 		});
 		expect(addCustomRole(flow, { name: '丟人的', meaning: '' })).toEqual({
 			kind: 'blocked',
-			message: '已經有「丟人的」這個角色了'
+			message: '已經有「丟人的」這個任務角色了'
 		});
 		expect(addCustomRole(flow, { name: '後保', meaning: '' }).kind).toBe('blocked');
 	});

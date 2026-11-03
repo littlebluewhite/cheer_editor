@@ -174,21 +174,25 @@ function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<str
 }
 
 /**
- * 新人等著被擺好的位置：墊子外半格、每 1/4 格一個，排成一排。從正面左邊的角開始往右排到墊子右邊外，
- * 排滿了從那個角沿著左邊往後排。都在吸附點上、在墊子外 1 m 以內。
- * 最小的場地（1 條）也有 4 ×（左右格數 ＋ 前後格數）＋ 9 = 41 個位置，比 40 人多，所以一定有空位。
+ * 新人等著被擺好的位置：場地外半格、每 1/2 格一個（圓點不會疊在一起），繞著場地排一圈。
+ * 從正面左邊的角開始往右排到場地右邊外，再從那個角沿著左邊往後，再沿著右邊往後，最後排後面。
+ * 都在吸附點上、在場地外 1 m 以內。
+ * 一共 4 ×（左右格數 ＋ 前後格數）＋ 8 個位置；最小的場地（1 條，1 × 7 格）剛好 40 個，所以一定有空位。
  */
 function waitingSpots(field: FieldConfig): Position[] {
 	const { mat, cols, rows } = fieldGeometry(field);
-	const step = CELL_M / 4;
-	const left = mat.x - 2 * step;
-	const front = mat.y + mat.height + 2 * step;
-	const alongFront = Array.from({ length: 4 * cols + 5 }, (_, j): Position => [left + j * step, front]);
-	const upLeft = Array.from({ length: 4 * rows + 4 }, (_, j): Position => [left, front - (j + 1) * step]);
-	return [...alongFront, ...upLeft];
+	const step = CELL_M / 2;
+	const left = mat.x - step;
+	const right = mat.x + mat.width + step;
+	const front = mat.y + mat.height + step;
+	const back = mat.y - step;
+	const alongFront = Array.from({ length: 2 * cols + 3 }, (_, j): Position => [left + j * step, front]);
+	const side = (x: number) => Array.from({ length: 2 * rows + 2 }, (_, j): Position => [x, front - (j + 1) * step]);
+	const alongBack = Array.from({ length: 2 * cols + 1 }, (_, j): Position => [left + (j + 1) * step, back]);
+	return [...alongFront, ...side(left), ...side(right), ...alongBack];
 }
 
-/** 第一個沒人站的位置。最多 40 人、位置至少 41 個，所以一定找得到。 */
+/** 第一個沒人站的位置。最多 40 人、位置至少 40 個，所以一定找得到。 */
 function freeSpot(spots: Position[], taken: Position[]): Position {
 	return spots.find((s) => !taken.some((t) => samePlace(s, t)))!;
 }

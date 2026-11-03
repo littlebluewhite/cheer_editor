@@ -39,8 +39,8 @@ export const FIXED_ROLES: readonly RoleEntry[] = [
 /** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複。 */
 export function addCustomRole(flow: Flow, input: { name: string; meaning: string }): CommandResult {
 	const name = input.name.trim();
-	if (!name) return blocked('請填角色名稱');
-	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個角色了`);
+	if (!name) return blocked('請填任務角色名稱');
+	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個任務角色了`);
 	const id = nextId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
 	return ok({ ...flow, customRoles: [...flow.customRoles, role] });

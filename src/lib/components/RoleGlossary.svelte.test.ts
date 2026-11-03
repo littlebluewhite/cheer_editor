@@ -25,18 +25,18 @@ describe('名詞對照表', () => {
 		expect(rows[11].textContent).toContain('自訂');
 	});
 
-	it('新增自訂角色；名稱重複時顯示原因', async () => {
+	it('新增自訂任務角色；名稱重複時顯示原因', async () => {
 		const onchange = vi.fn();
 		render(RoleGlossary, { flow: empty(), onchange, onclose: vi.fn() });
 
-		await fireEvent.input(screen.getByLabelText('角色名稱'), { target: { value: '丟人的' } });
+		await fireEvent.input(screen.getByLabelText('任務角色名稱'), { target: { value: '丟人的' } });
 		await fireEvent.input(screen.getByLabelText('意思'), { target: { value: '把上層丟上去' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增角色' }));
+		await fireEvent.click(screen.getByRole('button', { name: '新增任務角色' }));
 		expect(onchange).toHaveBeenCalledOnce();
 		expect(onchange.mock.calls[0][0].customRoles).toMatchObject([{ name: '丟人的' }]);
 
-		await fireEvent.input(screen.getByLabelText('角色名稱'), { target: { value: '上層' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增角色' }));
-		expect(screen.getByRole('alert').textContent).toBe('已經有「上層」這個角色了');
+		await fireEvent.input(screen.getByLabelText('任務角色名稱'), { target: { value: '上層' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新增任務角色' }));
+		expect(screen.getByRole('alert').textContent).toBe('已經有「上層」這個任務角色了');
 	});
 });

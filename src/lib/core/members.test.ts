@@ -60,24 +60,24 @@ describe('加隊員', () => {
 		expect(new Set(flow.members.map((m) => m.id)).size).toBe(3);
 	});
 
-	it('新人出現在開頭站位，站在正面左邊、墊子外那 1 m 裡', () => {
+	it('新人出現在開頭站位，站在正面左邊、場地外那 1 m 裡', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
 		const [x, y] = flow.formations[0].pos[flow.members[0].id];
-		// 9 條直放：墊子左邊 x = -8.23，正面 y = 6.40，外圍到 -9.23、7.40。
+		// 9 條直放：場地左邊 x = -8.23，正面 y = 6.40，外圍到 -9.23、7.40。
 		expect(x).toBeLessThan(-8.23);
 		expect(x).toBeGreaterThanOrEqual(-9.23);
 		expect(y).toBeGreaterThan(6.4);
 		expect(y).toBeLessThanOrEqual(7.4);
 	});
 
-	it('一次加多人排成一排，從左往右每 1/4 格一個', () => {
+	it('一次加多人排成一排，從左往右每 1/2 格一個，圓點不會疊在一起', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA, xiaoA]));
 		const ps = flow.members.map((m) => flow.formations[0].pos[m.id]);
 		expect(ps.map((p) => p[1])).toEqual([ps[0][1], ps[0][1], ps[0][1]]);
 		expect(ps.map((p) => p[0])).toEqual([
 			expect.closeTo(-9.14, 2),
-			expect.closeTo(-8.69, 2),
-			expect.closeTo(-8.23, 2)
+			expect.closeTo(-8.23, 2),
+			expect.closeTo(-7.32, 2)
 		]);
 	});
 
@@ -85,10 +85,10 @@ describe('加隊員', () => {
 		let flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA]));
 		flow = okFlow(addMembers(flow, [xiaoA]));
 		const pos = flow.formations[0].pos;
-		expect(pos[flow.members[2].id][0]).toBeCloseTo(-8.23, 2);
+		expect(pos[flow.members[2].id][0]).toBeCloseTo(-7.32, 2);
 	});
 
-	it('橫放場地也是正面左邊墊子外', () => {
+	it('橫放場地也是正面左邊場地外', () => {
 		const r = createFlow({ name: '臺灣盃', field: { strips: 5, layout: 'horizontal' } });
 		const flow = okFlow(addMembers(okFlow(r), [xiaoA]));
 		const [x, y] = flow.formations[0].pos[flow.members[0].id];
@@ -103,7 +103,7 @@ describe('加隊員', () => {
 	);
 	const forty = Array.from({ length: 40 }, (_, i) => ({ ...xiaoA, name: `隊員${i + 1}` }));
 
-	it.each(fields)('$strips 條 $layout：40 人一次加或一個一個加，都在墊子外 1 m 內、不疊在一起', (field) => {
+	it.each(fields)('$strips 條 $layout：40 人一次加或一個一個加，都在場地外 1 m 內、圓點不疊在一起', (field) => {
 		const empty = okFlow(createFlow({ name: '測試', field }));
 		const atOnce = okFlow(addMembers(empty, forty));
 		const oneByOne = forty.reduce((f, m) => okFlow(addMembers(f, [m])), empty);
@@ -111,8 +111,9 @@ describe('加隊員', () => {
 		for (const flow of [atOnce, oneByOne]) {
 			const ps = Object.values(flow.formations[0].pos);
 			expect(ps).toHaveLength(40);
-			const keys = new Set(ps.map(([x, y]) => `${x.toFixed(6)},${y.toFixed(6)}`));
-			expect(keys.size).toBe(40);
+			// 圓點半徑 0.3 m：兩人中心至少差 0.6 m 才不會疊到。
+			for (const [i, [x1, y1]] of ps.entries())
+				for (const [x2, y2] of ps.slice(i + 1)) expect(Math.hypot(x1 - x2, y1 - y2)).toBeGreaterThanOrEqual(0.6);
 			for (const [x, y] of ps) {
 				expect(x).toBeGreaterThanOrEqual(outer.x - 1e-9);
 				expect(x).toBeLessThanOrEqual(outer.x + outer.width + 1e-9);
@@ -121,7 +122,7 @@ describe('加隊員', () => {
 				const onMat = x > mat.x && x < mat.x + mat.width && y > mat.y && y < mat.y + mat.height;
 				expect(onMat).toBe(false);
 			}
-			// 第一個人在正面左邊的墊子外
+			// 第一個人在正面左邊的場地外
 			const [x0, y0] = flow.formations[0].pos[flow.members[0].id];
 			expect(x0).toBeLessThan(mat.x);
 			expect(y0).toBeGreaterThan(mat.y + mat.height);

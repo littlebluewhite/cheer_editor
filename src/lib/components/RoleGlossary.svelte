@@ -56,13 +56,13 @@
 		</table>
 		<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
 		<form novalidate onsubmit={add}>
-			<b>新增自訂角色</b>
+			<b>新增自訂任務角色</b>
 			<div class="fields">
-				<label>角色名稱 <input bind:value={name} /></label>
+				<label>任務角色名稱 <input bind:value={name} /></label>
 				<label>意思 <input bind:value={meaning} /></label>
-				<button type="submit" class="primary">新增角色</button>
+				<button type="submit" class="primary">新增任務角色</button>
 			</div>
-			<p class="muted">自訂角色只存在這一支流程裡。</p>
+			<p class="muted">自訂任務角色只存在這一支流程裡。</p>
 		</form>
 		{#if error}<p class="error" role="alert">{error}</p>{/if}
 	</div>

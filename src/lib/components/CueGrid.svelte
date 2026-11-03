@@ -380,7 +380,7 @@
 	{:else if !hasCells}
 		<p class="muted">動作不到一拍，不能放拍點</p>
 	{:else}
-		<p class="hint">在格子上點或拖，選好拍就會跳出拍點小窗。點一格，再按住 Shift 點另一格，也能選一整段。</p>
+		<p class="hint">在數字格上點或拖，選好拍就會跳出拍點小窗。點一拍，再按住 Shift 點另一拍，也能選連續好幾拍。</p>
 		<div class="sheet-wrap" bind:this={wrapEl} style:padding-bottom={reserve ? `${reserve}px` : undefined}>
 			<div
 				class="sheet"
@@ -471,7 +471,7 @@
 								{#each whoOptions as o, i (i)}<option value={i}>{o.label}</option>{/each}
 							</select>
 						</label>
-						<button type="button" class="x" aria-label="關掉" onclick={() => (pop = false)}>✕</button>
+						<button type="button" class="x" aria-label="關閉" onclick={() => (pop = false)}>✕</button>
 					</div>
 					<div class="pop-row count" role="group" aria-label="拍子">
 						<span class="lbl">拍子</span>

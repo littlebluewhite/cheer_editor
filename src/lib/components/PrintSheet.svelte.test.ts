@@ -121,7 +121,7 @@ describe('八拍表列印', () => {
 		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
 		const first = actionsCell(bodyRows()[0]);
 		expect(first).toContain('Lib');
-		expect(first).toContain('1-1 出發 → 站位 2（2-1 到）');
+		expect(first).toContain('1-1 出發 → 站位 2（2-1 到達）');
 		expect(actionsCell(bodyRows()[1])).not.toContain('出發');
 	});
 

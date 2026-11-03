@@ -92,7 +92,7 @@
 		<small class="muted">這一段打「2-5」，口號段打秒數；別的段前面加段名，例：口號 1 12.3</small>
 		<div class="buttons">
 			<button type="button" class="primary" onclick={apply}>套用</button>
-			<button type="button" onclick={useDefault} title="清掉設定：最後一個八拍才走">用預設</button>
+			<button type="button" onclick={useDefault} title="清掉設定：最後一個八拍才出發">用預設</button>
 		</div>
 		{#if error}<p class="error" role="alert">{error}</p>{/if}
 	</section>

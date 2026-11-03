@@ -116,7 +116,7 @@ describe('新增動作', () => {
 		['不存在的任務角色', lib({ members: [{ memberId: 'm1', role: '飛人' }] }), '沒有「飛人」這個任務角色'],
 		['不存在的段', lib({ segmentId: 's9' }), '找不到這一段'],
 		['長度 0', lib({ length: 0 }), '動作長度至少要半拍'],
-		['開始在段之前', lib({ start: -1 }), '開始時間不能在段之前'],
+		['開始在段之前', lib({ start: -1 }), '動作的開始不能在段之前'],
 		['不在半拍上的時間', lib({ start: 1.5 }), '音樂段的時間要落在半拍上'],
 		['大類不在 7 個裡面', lib({ category: 'chant' as never }), '請選大類']
 	])('%s就擋下', (_, input, message) => {
@@ -292,7 +292,7 @@ describe('拖色條：移動、改長度', () => {
 		});
 		expect(moveAction(flow, 'x1', -0.4)).toEqual({
 			kind: 'blocked',
-			message: '開始時間不能在段之前'
+			message: '動作的開始不能在段之前'
 		});
 		expect(moveAction(flow, 'x1', 2.2)).toEqual({
 			kind: 'blocked',

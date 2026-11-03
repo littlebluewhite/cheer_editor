@@ -69,7 +69,7 @@
   <g id="node-insert" data-graph-role="node" data-node-id="insert" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="540,280,740,346">
   <rect x="540.0" y="280.0" width="200.0" height="66.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>
   <text data-text-role="title" data-full-text="插一張新站位" data-text-max-width="176.0" x="640.0" y="313.0" text-anchor="middle" class="node-title" font-size="18">插一張新站位</text>
-  <text data-text-role="subtitle" data-full-text="其他人照原本走到的位置" data-text-max-width="176.0" x="640.0" y="335.0" text-anchor="middle" class="node-sub" font-size="12">其他人照原本走到的位置</text>
+  <text data-text-role="subtitle" data-full-text="其他人站在那一拍本來的位置" data-text-max-width="176.0" x="640.0" y="335.0" text-anchor="middle" class="node-sub" font-size="12">其他人站在那一拍本來的位置</text>
   </g>
   <g id="node-done" data-graph-role="node" data-node-id="done" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="790,190,940,256">
   <rect x="790.0" y="190.0" width="150.0" height="66.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>

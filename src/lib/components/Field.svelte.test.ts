@@ -100,7 +100,7 @@ describe('在場上拖人', () => {
 		expect(document.querySelectorAll('[data-snap-point]')).toHaveLength(0);
 		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
 		await fireEvent.pointerMove(dot, { clientX: 46, clientY: 3 });
-		expect(screen.getByText(/^小A\s第 5 條 左起 3\/4｜前起第 4 格 1\/2$/)).toBeTruthy();
+		expect(screen.getByText(/^小A\s第 5 條 左起 3\/4｜正面起第 4 格 1\/2$/)).toBeTruthy();
 		expect(document.querySelectorAll('[data-snap-point]').length).toBeGreaterThan(0);
 		await fireEvent.pointerUp(dot, { clientX: 46, clientY: 3 });
 		expect(screen.queryByText(/第 5 條/)).toBeNull();

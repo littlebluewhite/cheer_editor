@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 站位縮圖列：每張站位一個小站位圖，放在它的站位時間上。
-	// 點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。
+	// 點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。跟下一張靠太近的縮圖變窄，不蓋到下一張。
 	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才交給 onmove，被擋就彈回原位。開頭那張拖不動。
 	import {
 		fieldGeometry,
@@ -29,11 +29,20 @@
 	let { flow, pxPerSec, selectedId, onselect, ondelete, onmove }: Props = $props();
 
 	const THUMB_W = 80;
+	/** 縮圖最窄：號碼和 ✕ 還放得下。 */
+	const MIN_THUMB_W = 44;
 	/** 拖超過這麼多 px 才算拖；沒超過就是點一下（手抖不會挪到）。 */
 	const DRAG_PX = 4;
 	const g = $derived(fieldGeometry(flow.field));
 	const items = $derived(formationTimes(flow));
 	const width = $derived(Math.max(0, ...items.map((i) => i.sec)) * pxPerSec + THUMB_W);
+	/** 每張縮圖的寬：跟下一張站位靠太近時變窄，不蓋到下一張；再近也不窄過 MIN_THUMB_W。 */
+	const widths = $derived(
+		items.map(({ sec }, i) => {
+			const next = items[i + 1];
+			return next ? Math.min(THUMB_W, Math.max(MIN_THUMB_W, (next.sec - sec) * pxPerSec - 4)) : THUMB_W;
+		})
+	);
 
 	/** 正在拖的那張和吸到的那一格；還沒拖超過 DRAG_PX 時 to 是 null。 */
 	let drag = $state<{ id: string; to: TimePosition | null } | null>(null);
@@ -83,6 +92,7 @@
 				class:movable={deletable}
 				class:dragging={!!to}
 				style:left={`${(to ? toSeconds(flow, to) : sec) * pxPerSec}px`}
+				style:width={`${to ? THUMB_W : widths[i]}px`}
 			>
 				<button
 					type="button"
@@ -117,7 +127,7 @@
 					<button
 						type="button"
 						class="del"
-						aria-label={`刪掉站位 ${i + 1}`}
+						aria-label={`刪除站位 ${i + 1}`}
 						onclick={() => ondelete(formation.id)}><Icon name="close" size={11} /></button
 					>
 				{/if}
@@ -194,6 +204,10 @@
 	}
 	.th.dragging {
 		z-index: 5;
+	}
+	/* 拉得很近還是疊到時，選到的那張蓋在上面。 */
+	.th.on {
+		z-index: 4;
 	}
 	.th.dragging .pick {
 		cursor: grabbing;

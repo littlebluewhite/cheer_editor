@@ -2,7 +2,7 @@
 	/** 任務角色的快捷鍵，照名詞對照表的順序；超過的角色沒有快捷鍵。 */
 	const ROLE_KEYS = '1234567890qwertyuiop';
 	export const roleKey = (i: number) => ROLE_KEYS[i] ?? '';
-	/** 選單裡「＋自訂角色…」那一項。 */
+	/** 選單裡「＋自訂任務角色…」那一項。 */
 	const NEW: unique symbol = Symbol('new');
 </script>
 
@@ -17,7 +17,7 @@
 		names: string[];
 		/** byKey：是按快捷鍵選的（外面可以跳到下一個人）。 */
 		onpick: (role: string | null, byKey: boolean) => void;
-		/** 選了「＋自訂角色…」。 */
+		/** 選了「＋自訂任務角色…」。 */
 		onnew: () => void;
 	}
 
@@ -93,7 +93,7 @@
 					onclick={() => choose(item)}
 					onmouseenter={() => (active = k)}
 				>
-					{#if item === NEW}＋自訂角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roleKey(k - 1)}<kbd>{roleKey(k - 1)}</kbd>{/if}{/if}
+					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roleKey(k - 1)}<kbd>{roleKey(k - 1)}</kbd>{/if}{/if}
 				</li>
 			{/each}
 		</ul>
