@@ -97,8 +97,8 @@ describe('段、八拍尺、上方列', () => {
 });
 
 describe('動作', () => {
-	async function withAction() {
-		await newFlow();
+	async function withAction(engine?: FakeEngine) {
+		await newFlow(engine);
 		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '小A' } });
 		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
 		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'base' } });
@@ -327,6 +327,44 @@ describe('動作', () => {
 		expect(highV.textContent).toContain('上層');
 		const t = grid.getByRole('button', { name: '手位 T 1-7・1 拍' });
 		expect(t.textContent?.trim()).toBe('T');
+	});
+
+	it('播放到拍點上：場地左上角大字寫現在的步驟、拍子和走到第幾拍，下面預告下一個', async () => {
+		const engine = createFakeEngine();
+		await withAction(engine);
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const more = async (n: number) => {
+			for (let i = 0; i < n; i++) await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+		};
+		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+		await more(3);
+		await fireEvent.click(within(grid.getByRole('group', { name: '步驟' })).getByRole('button', { name: '下手' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+		await more(1);
+		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
+		await fireEvent.click(within(grid.getByRole('group', { name: '給誰' })).getByRole('button', { name: '上層' }));
+		await fireEvent.click(within(grid.getByRole('group', { name: '手位' })).getByRole('button', { name: 'high V' }));
+
+		// 播放頭在 1-1：還沒有拍點亮，先預告 1-3 的兩個。
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 0, button: 0 });
+		await fireEvent.pointerUp(window);
+		const card = () => screen.getByRole('region', { name: '這一拍' }).textContent!.replace(/\s+/g, ' ');
+		expect(card()).toContain('技巧');
+		expect(card()).toContain('下一個 1-3：下手、down');
+
+		// 播到 1-4（150 BPM 一拍 0.4 秒，1-4 在 1.2 秒）。
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		engine.audible = engine.clicks[0].when + 1.3;
+		await nextFrame();
+		expect(card()).toContain('下手 2/4');
+		expect(card()).toContain('down 2/2');
+		expect(card()).toContain('下一個 1-7：high V（上層）');
+
+		engine.audible = engine.clicks[0].when + 2.5;
+		await nextFrame();
+		expect(card()).toContain('上層 high V');
+		expect(screen.getByRole('region', { name: '這一拍' }).getAttribute('aria-live')).toBe('polite');
 	});
 
 	it('拖色條被擋就還原，上方列說原因', async () => {

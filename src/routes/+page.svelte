@@ -37,6 +37,7 @@
 	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
+	import CueOverlay from '#lib/components/CueOverlay.svelte';
 	import Field from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -595,6 +596,7 @@
 				onmove={move}
 				onselect={selectMembers}
 			/>
+			<CueOverlay {flow} {playheadSec} />
 			{#if flow.members.length}
 				<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
 				<div class="match-prev">

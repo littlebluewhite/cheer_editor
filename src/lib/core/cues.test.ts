@@ -6,6 +6,7 @@ import {
 	createFlow,
 	clearCues,
 	cueForMember,
+	cuesAt,
 	deleteAction,
 	deleteMember,
 	moveAction,
@@ -337,5 +338,59 @@ describe('給誰', () => {
 		flow = flowOf(deleteMember(flow, 'm1', { confirmed: true }));
 		expect(cuesOf(flow)).toEqual([who('count', 0, 4, 'down', null), who('motion', 0, 2, 'T', { role: '底層' })]);
 		expect(updateAction(flow, 'x1', { name: 'Cradle' }).kind).toBe('ok');
+	});
+});
+
+describe('這一刻的拍點', () => {
+	const top = { role: '上層' };
+	const cue = (kind: Cue['kind'], at: number, len: number, word: string, w: Cue['who'] = null): Cue => ({
+		kind,
+		at,
+		len,
+		word,
+		who: w
+	});
+
+	/** BPM 120（半拍 0.25 秒），x1 從 2-3 開始（5 秒）、4 拍到 7 秒。下手 4 拍；down 2 拍、up 1 拍；上層 2-6 high V。 */
+	function cued(): Flow {
+		let flow = flowOf(updateSegment(sample(), 's1', { bpm: 120 }));
+		flow = flowOf(moveAction(flow, 'x1', 5));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 8, word: '下手' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 2, word: 'up' }));
+		return flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 6, len: 2, word: 'high V', who: top }));
+	}
+	const summary = (flow: Flow, sec: number) =>
+		cuesAt(flow, sec).map((c) => ({
+			action: c.action.id,
+			now: c.now.map((n) => `${n.cue.word} ${n.beat}/${n.beats}`),
+			next: c.next && { at: c.next.at, words: c.next.cues.map((n) => n.word) }
+		}));
+
+	it('現在亮的拍點依步驟、拍子、手位排，寫走到第幾拍，和下一個在哪一拍', () => {
+		expect(summary(cued(), 5.6)).toEqual([
+			{ action: 'x1', now: ['下手 2/4', 'down 2/2'], next: { at: '2-5', words: ['up'] } }
+		]);
+		expect(summary(cued(), 6.6)).toEqual([{ action: 'x1', now: ['下手 4/4', 'high V 1/1'], next: null }]);
+	});
+
+	it('回傳的是拍點本身，給誰也在裡面', () => {
+		const [live] = cuesAt(cued(), 6.6);
+		expect(live.now.map((n) => n.cue)).toEqual([cue('step', 0, 8, '下手'), cue('motion', 6, 2, 'high V', top)]);
+	});
+
+	it('動作開始前一個八拍就預告第一個拍點；再早就沒有', () => {
+		expect(summary(cued(), 1)).toEqual([{ action: 'x1', now: [], next: { at: '2-3', words: ['下手', 'down'] } }]);
+		expect(summary(cued(), 0.9)).toEqual([]);
+	});
+
+	it('動作結束後不再出現', () => {
+		expect(summary(cued(), 6.99)).toHaveLength(1);
+		expect(summary(cued(), 7)).toEqual([]);
+	});
+
+	it('沒有拍點的動作、口號段的動作都沒有', () => {
+		expect(summary(sample(), 1.5)).toEqual([]);
+		expect(summary(cued(), 32 * 0.25 + 1)).toEqual([]);
 	});
 });

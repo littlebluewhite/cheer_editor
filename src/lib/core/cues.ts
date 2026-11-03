@@ -5,7 +5,7 @@ import type { Action } from './actions';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
-import { atText } from './time';
+import { atText, EPS, HALF_BEATS_PER_EIGHT, toSeconds, unitSec } from './time';
 
 /** 拍子、步驟、手位。 */
 export type CueKind = 'count' | 'step' | 'motion';
@@ -61,6 +61,45 @@ export function dropOrphanCues(action: Action): Action {
 
 /** 一拍幾個半拍。 */
 const BEAT = 2;
+
+/** 拍點排的順序：步驟、拍子、手位。 */
+const KIND_ORDER: CueKind[] = ['step', 'count', 'motion'];
+
+export interface LiveCues {
+	action: Action;
+	/** 現在亮著的拍點，和走到第幾拍（從 1 起）、一共幾拍。依步驟、拍子、手位排。 */
+	now: { cue: Cue; beat: number; beats: number }[];
+	/** 下一個拍點在哪一拍（例：「3-7」）；同一拍開始的都在 cues 裡。沒有了是 null。 */
+	next: { at: string; cues: Cue[] } | null;
+}
+
+/**
+ * 這一刻（全域秒數）的拍點：每個有拍點的動作一份，現在亮哪些、下一個是什麼。
+ * 動作開始前一個八拍就開始預告；動作結束那一刻起不再出現。口號段沒有拍點。場地的大字用它。
+ */
+export function cuesAt(flow: Flow, sec: number): LiveCues[] {
+	const byKind = (a: Cue, b: Cue) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
+	return flow.actions.flatMap((action) => {
+		const segment = flow.segments.find((s) => s.id === action.segmentId);
+		if (!segment || segment.kind !== 'music' || !action.cues?.length) return [];
+		// 從動作開始算第幾個半拍（可以是小數、可以是負的）。
+		const rel = (sec - toSeconds(flow, { segmentId: segment.id, at: action.start })) / unitSec(segment) + EPS;
+		if (rel < -HALF_BEATS_PER_EIGHT || rel >= action.length) return [];
+		const now = action.cues
+			.filter((c) => c.at <= rel && rel < c.at + c.len)
+			.toSorted(byKind)
+			.map((cue) => ({ cue, beat: Math.floor((rel - cue.at) / BEAT) + 1, beats: cue.len / BEAT }));
+		const nextAt = action.cues.find((c) => c.at > rel)?.at;
+		const next =
+			nextAt === undefined
+				? null
+				: {
+						at: atText(segment, action.start + nextAt),
+						cues: action.cues.filter((c) => c.at === nextAt).toSorted(byKind)
+					};
+		return now.length || next ? [{ action, now, next }] : [];
+	});
+}
 
 /** 拍點哪裡不守規則（給教練看的原因）；沒問題是 null。不要求在整拍上（動作被拖半拍時拍點跟著落在 &）。 */
 export function cueProblem(segment: Segment, action: Action, cue: Cue): string | null {

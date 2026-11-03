@@ -44,10 +44,11 @@ export {
 	STEP_WORDS,
 	clearCues,
 	cueForMember,
+	cuesAt,
 	placeCue,
 	usedWords
 } from './cues';
-export type { Cue, CueKind, NewCueInput, Who } from './cues';
+export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
 export { eightCountRows } from './eight-count';
 export type { EightCountAction, EightCountFormation, EightCountRow } from './eight-count';
