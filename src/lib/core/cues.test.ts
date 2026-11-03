@@ -329,6 +329,65 @@ describe('給誰', () => {
 		expect(of({ member: 'm2' })).toEqual(['m2']);
 	});
 
+	const m2Only = [{ memberId: 'm2', role: '底層' }];
+
+	it('從動作拿掉隊員、有拍點給他：先問並列出那些拍點，按確定才拿掉', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm1' } }));
+		expect(updateAction(flow, 'x1', { members: m2Only })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」換了人或任務角色，會拿掉 1 個拍點',
+			items: ['拿掉：手位 K 1-3・給小A']
+		});
+		const after = flowOf(updateAction(flow, 'x1', { members: m2Only }, { confirmed: true }));
+		expect(after.actions[0].members).toEqual(m2Only);
+		expect(cuesOf(after)).toEqual([count(0, 4, 'down')]);
+	});
+
+	it('改任務角色、動作裡沒人是那個角色了：先問，按確定拿掉給那個角色的拍點', () => {
+		const flow = flowOf(placeCue(sample(), 'x1', { kind: 'motion', at: 6, len: 2, word: 'high V', who: top }));
+		const members = [
+			{ memberId: 'm1', role: '底層' },
+			{ memberId: 'm2', role: '底層' }
+		];
+		expect(updateAction(flow, 'x1', { members })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」換了人或任務角色，會拿掉 1 個拍點',
+			items: ['拿掉：手位 high V 1-6・給上層']
+		});
+		expect(cuesOf(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })))).toEqual([]);
+	});
+
+	it('同時變短又拿掉人：合成一次確認，清單都列出來', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
+		expect(updateAction(flow, 'x1', { length: 4, members: m2Only })).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短、換了人或任務角色，會拿掉 1 個、切短 1 個拍點',
+			items: ['切短：拍子 down 1-3 到 1-6 → 1-3 到 1-4', '拿掉：手位 high V 1-3・給上層']
+		});
+		const after = flowOf(updateAction(flow, 'x1', { length: 4, members: m2Only }, { confirmed: true }));
+		expect(cuesOf(after)).toEqual([count(0, 4, 'down')]);
+	});
+
+	it('拿掉人但沒有拍點給他：不問，直接改', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: { role: '底層' } }));
+		const after = flowOf(updateAction(flow, 'x1', { members: m2Only }));
+		expect(cuesOf(after)).toEqual(cuesOf(flow));
+	});
+
+	it('刪隊員：確認訊息寫會一起拿掉幾個給他的拍點；沒有就不寫', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉' });
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: 'K', who: { member: 'm1' } }));
+		expect(deleteMember(flow, 'm1')).toMatchObject({
+			kind: 'confirm',
+			message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉，會一起拿掉 2 個給他的拍點'
+		});
+	});
+
 	it('刪隊員：給他的拍點、給動作裡已經沒人做的角色的拍點一起拿掉，流程還是對的', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));

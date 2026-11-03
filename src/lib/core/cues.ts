@@ -55,8 +55,12 @@ export function cueForMember(cue: Cue, action: Action, memberId: string): boolea
 /** 拿掉給到沒人的拍點（給的隊員不在動作裡、動作裡沒人是那個角色），例如刪隊員之後。 */
 export function dropOrphanCues(action: Action): Action {
 	if (!action.cues) return action;
-	const given = (c: Cue) => action.members.some((m) => cueForMember(c, action, m.memberId));
-	return { ...action, cues: action.cues.filter(given) };
+	return { ...action, cues: action.cues.filter((c) => givenToSomeone(c, action)) };
+}
+
+/** 動作裡有沒有人要做這個拍點。 */
+function givenToSomeone(cue: Cue, action: Action): boolean {
+	return action.members.some((m) => cueForMember(cue, action, m.memberId));
 }
 
 /** 一拍幾個半拍。 */
@@ -121,32 +125,48 @@ export function clearCues(
 const KIND_LABELS: Record<CueKind, string> = { count: '拍子', step: '步驟', motion: '手位' };
 
 /**
- * 改動作會動到的拍點：換到口號段全部拿掉；變短時跨出去的切短（取到整拍，不到一拍拿掉）、整個在外面的拿掉。
+ * 改動作會動到的拍點：換到口號段全部拿掉；給的人或角色已經不在動作裡的拿掉（orphaned 算這種有幾個）；
+ * 變短時跨出去的切短（取到整拍，不到一拍拿掉）、整個在外面的拿掉。
  * 沒動到任何拍點是 null；不然回傳剩下的拍點、拿掉和切短幾個，和給教練確認的清單（時間照改之前的位置寫）。
  */
 export function cueFallout(
 	from: Segment,
 	to: Segment,
 	before: Action,
-	after: Action
-): { cues: Cue[]; removed: number; cut: number; items: string[] } | null {
+	after: Action,
+	memberName: (id: string) => string
+): { cues: Cue[]; removed: number; cut: number; orphaned: number; items: string[] } | null {
 	const kept: Cue[] = [];
 	const items: string[] = [];
 	let removed = 0;
+	let orphaned = 0;
 	for (const c of before.cues ?? []) {
+		const text = cueText(from, before, c) + whoText(c.who, memberName);
+		if (to.kind === 'music' && !givenToSomeone(c, after)) {
+			removed++;
+			orphaned++;
+			items.push(`拿掉：${text}`);
+			continue;
+		}
 		const len = to.kind === 'music' ? Math.min(c.len, after.length - c.at) : 0;
 		const fitted = len - (len % BEAT);
 		if (fitted === c.len) {
 			kept.push(c);
 		} else if (fitted >= BEAT) {
 			kept.push({ ...c, len: fitted });
-			items.push(`切短：${cueText(from, before, c)} → ${rangeText(from, before, c.at, fitted)}`);
+			items.push(`切短：${text} → ${rangeText(from, before, c.at, fitted)}`);
 		} else {
 			removed++;
-			items.push(`拿掉：${cueText(from, before, c)}`);
+			items.push(`拿掉：${text}`);
 		}
 	}
-	return items.length ? { cues: kept, removed, cut: items.length - removed, items } : null;
+	return items.length ? { cues: kept, removed, cut: items.length - removed, orphaned, items } : null;
+}
+
+/** 給全部的不寫；不然「・給上層」「・給小A」。 */
+function whoText(who: Who, memberName: (id: string) => string): string {
+	if (who === null) return '';
+	return `・給${'role' in who ? who.role : memberName(who.member)}`;
 }
 
 /** 「拍子 down 1-3 到 1-4」。 */
