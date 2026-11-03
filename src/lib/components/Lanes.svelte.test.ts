@@ -409,6 +409,22 @@ describe('色條上的拍點', () => {
 		expect(last.style.minWidth).toBe('4px');
 	});
 
+	it('拉色條右邊時，最後一拍的手位留在它那一拍，不跟著把手跑', async () => {
+		const flow = flowOf(
+			placeCue(cued(), 'x1', { kind: 'motion', at: 14, len: 2, word: 'T', who: null })
+		);
+		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), onchange: vi.fn() });
+		const bar = bars(lanes()[0])[0];
+		const last = () => [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-cue="motion"]')][1];
+		await fireEvent.pointerDown(bar.querySelector('[data-resize]')!, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 106 });
+		// 色條拉長 6 px，T 的右邊還是在原本的第 32 px
+		expect(bars(lanes()[0])[0].style.width).toBe('38px');
+		expect(last().style.right).toBe('6px');
+		await fireEvent.pointerMove(window, { clientX: 96 });
+		expect(last().style.right).toBe('-4px');
+	});
+
 	it('有拍點的色條：名稱和任務角色在上半，拍點在下半，一種一條；提示照舊', () => {
 		setupCues();
 		const [a] = bars(lanes()[0]);
