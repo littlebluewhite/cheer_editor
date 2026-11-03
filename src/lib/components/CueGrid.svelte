@@ -4,7 +4,8 @@
 	// 點 down、up 就放滿選到的拍，選取跳到下一拍。
 	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
-	// 規則（在動作裡、整數拍、只有 down／up）都交給流程核心；被擋就顯示原因。
+	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
+	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	import { untrack } from 'svelte';
 	import {
 		COUNT_WORDS,
@@ -12,13 +13,15 @@
 		STEP_WORDS,
 		atText,
 		clearCues,
+		memberName,
 		placeCue,
 		usedWords,
 		type Action,
 		type CommandResult,
 		type Cue,
 		type CueKind,
-		type Flow
+		type Flow,
+		type Who
 	} from '#lib/core';
 
 	interface Props {
@@ -35,11 +38,11 @@
 	const BEAT = 2;
 	const EIGHT = 16;
 	const cols = Array.from({ length: 8 }, (_, c) => c);
-	/** 三條由上往下；row 是在每個八拍裡的第幾列（第 1 列是數字格）。 */
-	const LANES: { kind: CueKind; label: string; row: number }[] = [
-		{ kind: 'count', label: '拍子', row: 2 },
-		{ kind: 'step', label: '步驟', row: 3 },
-		{ kind: 'motion', label: '手位', row: 4 }
+	/** 三條由上往下，排在每個八拍的數字格下面。 */
+	const LANES: { kind: CueKind; label: string }[] = [
+		{ kind: 'count', label: '拍子' },
+		{ kind: 'step', label: '步驟' },
+		{ kind: 'motion', label: '手位' }
 	];
 
 	const segment = $derived(flow.segments.find((s) => s.id === action.segmentId) ?? null);
@@ -51,6 +54,21 @@
 			{ kind: 'motion' as const, label: '手位', words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
 		];
 	});
+	/** 「給誰」的按鈕：全部、動作裡出現的任務角色、動作裡的隊員。 */
+	const whoOptions = $derived.by(() => {
+		const roles = [...new Set(action.members.flatMap((m) => (m.role === null ? [] : [m.role])))];
+		return [
+			{ label: '全部', who: null as Who },
+			...roles.map((role) => ({ label: role, who: { role } as Who })),
+			...action.members.map((m) => ({ label: memberName(flow, m.memberId), who: { member: m.memberId } as Who }))
+		];
+	});
+	/** 放拍點時給誰；預設全部。 */
+	let who = $state<Who>(null);
+	const sameWho = (a: Who, b: Who) => JSON.stringify(a) === JSON.stringify(b);
+	/** 拍點下面寫的給誰；給全部的不寫。 */
+	const whoText = (w: Who) => (w === null ? '' : 'role' in w ? w.role : memberName(flow, w.member));
+
 	/** 自己打的字，步驟和手位各一格。 */
 	let custom = $state({ step: '', motion: '' });
 	/** 動作碰到的八拍（從 0 起）。 */
@@ -84,6 +102,15 @@
 		untrack(() => {
 			error = '';
 			sel = { from: firstCell, to: firstCell };
+			who = null;
+		});
+	});
+
+	// 選到的人或角色不在動作裡了，就回到全部。
+	$effect(() => {
+		const options = whoOptions;
+		untrack(() => {
+			if (!options.some((o) => sameWho(o.who, who))) who = null;
 		});
 	});
 
@@ -153,7 +180,7 @@
 	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。拍子放完選取跳到下一拍。 */
 	function place(kind: CueKind, word: string): boolean {
 		const len = kind === 'motion' ? BEAT : selLen;
-		const placed = apply(placeCue(flow, action.id, { kind, at: sel.from, len, word }));
+		const placed = apply(placeCue(flow, action.id, { kind, at: sel.from, len, word, who }));
 		if (placed && kind === 'count' && inAction(sel.to + BEAT)) selectOne(sel.to + BEAT);
 		return placed;
 	}
@@ -198,17 +225,33 @@
 		return nearest([...row.querySelectorAll<HTMLElement>('.cell')], (r) => [r.left, r.right], x);
 	}
 
-	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）。 */
+	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）；疊在一起的放到下一軌。 */
 	function pieces(e: number, kind: CueKind) {
 		const lo = e * EIGHT;
 		const hi = lo + EIGHT;
+		const ends: number[] = [];
 		return (action.cues ?? []).filter((c) => c.kind === kind).flatMap((cue) => {
 			const s = action.start + cue.at;
 			const end = s + cue.len;
 			if (end <= lo || s >= hi) return [];
 			const c0 = Math.floor((Math.max(s, lo) - lo) / BEAT);
 			const c1 = Math.ceil((Math.min(end, hi) - lo) / BEAT);
-			return [{ cue, c0, c1, first: s >= lo, last: end <= hi }];
+			let track = ends.findIndex((x) => x <= c0);
+			if (track < 0) track = ends.length;
+			ends[track] = c1;
+			return [{ cue, c0, c1, track, first: s >= lo, last: end <= hi }];
+		});
+	}
+
+	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格。 */
+	function layout(e: number) {
+		let row = 2;
+		return LANES.map((lane) => {
+			const ps = pieces(e, lane.kind);
+			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
+			const placed = { ...lane, row, tracks, pieces: ps };
+			row += tracks;
+			return placed;
 		});
 	}
 </script>
@@ -230,10 +273,11 @@
 			onclick={() => (pointerSel = false)}
 		>
 			{#each eights as e (e)}
+				{@const lanes = layout(e)}
 				<div class="row">
 					<span class="eight" aria-hidden="true">{e + 1}</span>
-					{#each LANES as lane (lane.kind)}
-						<span class="lane-lbl {lane.kind}" style:grid-row={lane.row}>{lane.label}</span>
+					{#each lanes as lane (lane.kind)}
+						<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 					{/each}
 					{#each cols as c (c)}
 						{@const at = (e * 8 + c) * BEAT - action.start}
@@ -248,35 +292,51 @@
 							disabled={!inAction(at)}
 							onclick={() => pointerSel || selectOne(at)}>{c + 1}</button
 						>
-						{#each LANES as lane (lane.kind)}
+						{#each lanes as lane (lane.kind)}
 							<span
 								class="slot {lane.kind}"
 								data-at={at}
 								class:out={!inAction(at)}
 								class:sel={inAction(at) && isSel(at)}
 								style:grid-column={c + 2}
-								style:grid-row={lane.row}
+								style:grid-row="{lane.row} / span {lane.tracks}"
 							></span>
 						{/each}
 					{/each}
-					{#each LANES as lane (lane.kind)}
-						{#each pieces(e, lane.kind) as p}
+					{#each lanes as lane (lane.kind)}
+						{#each lane.pieces as p}
+							{@const to = whoText(p.cue.who)}
 							<button
 								type="button"
 								class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
 								class:cont={!p.first}
 								class:more={!p.last}
 								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
-								style:grid-row={lane.row}
-								aria-label="{lane.label} {p.cue.word} {spanText(p.cue.at, p.cue.len)}"
+								style:grid-row={lane.row + p.track}
+								aria-label="{lane.label} {p.cue.word} {spanText(p.cue.at, p.cue.len)}{to ? `・給${to}` : ''}"
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}
-								onclick={() => pick(p.cue)}>{p.first ? p.cue.word : `…${p.cue.word}`}</button
+								onclick={() => pick(p.cue)}
+								>{p.first ? p.cue.word : `…${p.cue.word}`}{#if to}<small class="who">{to}</small>{/if}</button
 							>
 						{/each}
 					{/each}
 				</div>
 			{/each}
+		</div>
+
+		<div class="whorow" role="group" aria-label="給誰">
+			<span class="lbl">給誰</span>
+			<div class="words">
+				{#each whoOptions as o (JSON.stringify(o.who))}
+					<button
+						type="button"
+						class="who-btn"
+						aria-pressed={sameWho(o.who, who)}
+						onclick={() => (who = o.who)}>{o.label}</button
+					>
+				{/each}
+			</div>
 		</div>
 
 		<div class="selbar">
@@ -370,7 +430,8 @@
 	.row {
 		display: grid;
 		grid-template-columns: 34px repeat(8, minmax(0, 1fr));
-		grid-template-rows: auto repeat(3, 24px);
+		grid-template-rows: auto;
+		grid-auto-rows: minmax(24px, auto);
 		column-gap: 3px;
 		row-gap: 3px;
 	}
@@ -476,6 +537,17 @@
 		font-size: 10px;
 		justify-content: center;
 	}
+	/* 給誰寫在字下面。 */
+	.item:has(.who) {
+		flex-direction: column;
+		gap: 0;
+		line-height: 1.15;
+		padding-block: 2px;
+	}
+	.who {
+		font-size: 9px;
+		font-weight: 600;
+	}
 	.item.cont {
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
@@ -502,6 +574,26 @@
 		padding: 0;
 		justify-content: center;
 		font-size: 14px;
+	}
+	.whorow {
+		display: grid;
+		grid-template-columns: 34px minmax(0, 1fr);
+		gap: 6px;
+		align-items: center;
+	}
+	.whorow .lbl {
+		color: var(--muted, #66718a);
+	}
+	.who-btn {
+		min-height: 24px;
+		padding: 2px 10px;
+		border-radius: 999px;
+		font-size: 12px;
+	}
+	.who-btn[aria-pressed='true'] {
+		background: var(--text, #1a2238);
+		border-color: var(--text, #1a2238);
+		color: #fff;
 	}
 	.kindrow {
 		display: grid;

@@ -5,7 +5,9 @@ import {
 	addSegment,
 	createFlow,
 	clearCues,
+	cueForMember,
 	deleteAction,
+	deleteMember,
 	moveAction,
 	MOTION_WORDS,
 	placeCue,
@@ -266,5 +268,74 @@ describe('拍點跟著動作', () => {
 	it('段縮短連帶刪動作：拍點跟著動作一起刪', () => {
 		const flow = flowOf(updateSegment(withDownUp(), 's1', { eights: 1, lastBeats: 4 }, { confirmed: true }));
 		expect(flow.actions.map((a) => a.id)).toEqual(['x2']);
+	});
+});
+
+describe('給誰', () => {
+	const top = { role: '上層' };
+	const who = (kind: 'count' | 'motion', at: number, len: number, word: string, w: Cue['who']): Cue => ({
+		kind,
+		at,
+		len,
+		word,
+		who: w
+	});
+
+	it('給不同人的拍點可以疊在同一拍：全部 down、上層 high V、小B 一個 down', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 2, len: 2, word: 'up', who: top }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 2, len: 4, word: 'down', who: { member: 'm2' } }));
+		expect(cuesOf(flow)).toEqual([
+			who('count', 0, 8, 'down', null),
+			who('count', 2, 2, 'up', top),
+			who('count', 2, 4, 'down', { member: 'm2' })
+		]);
+	});
+
+	it('只切同一個給誰被蓋到的拍點', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 8, word: 'down', who: top }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 4, word: 'up', who: top }));
+		expect(cuesOf(flow)).toEqual([
+			who('count', 0, 8, 'down', null),
+			who('count', 0, 4, 'down', top),
+			who('count', 4, 4, 'up', top)
+		]);
+	});
+
+	it('清拍點不管給誰，全部清', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'motion', at: 0, len: 2, word: 'T' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm1' } }));
+		expect(cuesOf(flowOf(clearCues(flow, 'x1', 'motion', 0, 2)))).toEqual([]);
+	});
+
+	it.each([
+		['動作裡沒人是這個角色', { role: '保護' }, '動作裡沒有人是「保護」'],
+		['隊員不在動作裡', { member: 'm9' }, '這個隊員不在動作裡']
+	])('給不對的人被擋（%s）', (_, w, message) => {
+		expect(placeCue(sample(), 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: w })).toEqual({
+			kind: 'blocked',
+			message
+		});
+	});
+
+	it('拍點給不給這個人：全部每個人都算；角色算動作裡是這個角色的人；隊員只算那個人', () => {
+		const action = sample().actions[0];
+		const of = (w: Cue['who']) =>
+			['m1', 'm2', 'm3'].filter((m) => cueForMember(who('motion', 0, 2, 'T', w), action, m));
+		expect(of(null)).toEqual(['m1', 'm2']);
+		expect(of(top)).toEqual(['m1']);
+		expect(of({ member: 'm2' })).toEqual(['m2']);
+	});
+
+	it('刪隊員：給他的拍點、給動作裡已經沒人做的角色的拍點一起拿掉，流程還是對的', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm1' } }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: { role: '底層' } }));
+		flow = flowOf(deleteMember(flow, 'm1', { confirmed: true }));
+		expect(cuesOf(flow)).toEqual([who('count', 0, 4, 'down', null), who('motion', 0, 2, 'T', { role: '底層' })]);
+		expect(updateAction(flow, 'x1', { name: 'Cradle' }).kind).toBe('ok');
 	});
 });

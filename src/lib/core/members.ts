@@ -1,6 +1,7 @@
 // 隊員名單：加隊員、改隊員、刪隊員。
 
 import { actionLabel } from './actions';
+import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
@@ -82,7 +83,8 @@ export function updateMember(flow: Flow, id: string, changes: MemberChanges): Co
 
 /**
  * 刪隊員。一定先回「要確認」：「他在 N 個動作裡，其中 M 個會被整個刪掉」，清單是那 M 個動作；
- * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉。
+ * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉，
+ * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。
  */
 export function deleteMember(
 	flow: Flow,
@@ -114,7 +116,7 @@ export function deleteMember(
 		}),
 		actions: flow.actions
 			.filter((a) => !emptied.includes(a))
-			.map((a) => ({ ...a, members: a.members.filter((m) => m.memberId !== id) }))
+			.map((a) => dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) }))
 	});
 }
 

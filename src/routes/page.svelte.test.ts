@@ -307,6 +307,28 @@ describe('動作', () => {
 		expect(placed()).toEqual([]);
 	});
 
+	it('給誰：預設全部；選「上層」再點 high V，它下面寫「上層」，跟全部的手位疊在同一拍', async () => {
+		await withAction();
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const who = within(grid.getByRole('group', { name: '給誰' }));
+		const pressed = () =>
+			who.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent);
+		expect(who.getAllByRole('button').map((b) => b.textContent)).toEqual(['全部', '上層', '小A']);
+		expect(pressed()).toEqual(['全部']);
+
+		const motions = within(grid.getByRole('group', { name: '手位' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
+		await fireEvent.click(motions.getByRole('button', { name: 'T' }));
+		await fireEvent.click(who.getByRole('button', { name: '上層' }));
+		expect(pressed()).toEqual(['上層']);
+		await fireEvent.click(motions.getByRole('button', { name: 'high V' }));
+
+		const highV = grid.getByRole('button', { name: '手位 high V 1-7・1 拍・給上層' });
+		expect(highV.textContent).toContain('上層');
+		const t = grid.getByRole('button', { name: '手位 T 1-7・1 拍' });
+		expect(t.textContent?.trim()).toBe('T');
+	});
+
 	it('拖色條被擋就還原，上方列說原因', async () => {
 		await withAction();
 		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });

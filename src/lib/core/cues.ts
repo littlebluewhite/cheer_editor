@@ -43,6 +43,22 @@ export function usedWords(flow: Flow): { step: string[]; motion: string[] } {
 	return { step: words('step', STEP_WORDS), motion: words('motion', MOTION_WORDS) };
 }
 
+/** 拍點給不給這個人：給全部的，動作裡每個人都算；給角色的，算動作裡是這個角色的人；給隊員的，只算那個人。 */
+export function cueForMember(cue: Cue, action: Action, memberId: string): boolean {
+	const member = action.members.find((m) => m.memberId === memberId);
+	if (!member) return false;
+	const who = cue.who;
+	if (who === null) return true;
+	return 'role' in who ? member.role === who.role : who.member === memberId;
+}
+
+/** 拿掉給到沒人的拍點（給的隊員不在動作裡、動作裡沒人是那個角色），例如刪隊員之後。 */
+export function dropOrphanCues(action: Action): Action {
+	if (!action.cues) return action;
+	const given = (c: Cue) => action.members.some((m) => cueForMember(c, action, m.memberId));
+	return { ...action, cues: action.cues.filter(given) };
+}
+
 /** 一拍幾個半拍。 */
 const BEAT = 2;
 

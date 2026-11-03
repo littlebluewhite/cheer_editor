@@ -43,6 +43,7 @@ export {
 	MOTION_WORDS,
 	STEP_WORDS,
 	clearCues,
+	cueForMember,
 	placeCue,
 	usedWords
 } from './cues';
