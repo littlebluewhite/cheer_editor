@@ -7,10 +7,13 @@ import {
 	clearCues,
 	deleteAction,
 	moveAction,
+	MOTION_WORDS,
 	placeCue,
 	resizeAction,
+	STEP_WORDS,
 	updateAction,
 	updateSegment,
+	usedWords,
 	type CommandResult,
 	type Cue,
 	type Flow
@@ -86,6 +89,63 @@ describe('放拍點', () => {
 			kind: 'blocked',
 			message: '口號段不數拍，不能放拍點'
 		});
+	});
+});
+
+describe('步驟和手位', () => {
+	const step = (at: number, len: number, word: string): Cue => ({ kind: 'step', at, len, word, who: null });
+	const motion = (at: number, word: string): Cue => ({ kind: 'motion', at, len: 2, word, who: null });
+
+	it('步驟放滿選到的拍；手位放一拍；跟拍子各放各的', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 8, word: '下手' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 4, len: 2, word: ' high V ' }));
+		expect(cuesOf(flow)).toEqual([count(0, 8, 'down'), step(0, 8, '下手'), motion(4, 'high V')]);
+	});
+
+	it.each([
+		['步驟是空白', { kind: 'step' as const, at: 0, len: 2, word: '  ' }, '請寫拍點的字'],
+		['手位是空的', { kind: 'motion' as const, at: 0, len: 2, word: '' }, '請寫拍點的字'],
+		['手位佔兩拍', { kind: 'motion' as const, at: 0, len: 4, word: 'T' }, '手位只佔一拍']
+	])('不合規則被擋（%s）', (_, input, message) => {
+		expect(placeCue(sample(), 'x1', input)).toEqual({ kind: 'blocked', message });
+	});
+
+	it('清掉步驟不動拍子和手位', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 4, word: '落地' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'T' }));
+		flow = flowOf(clearCues(flow, 'x1', 'step', 0, 8));
+		expect(cuesOf(flow)).toEqual([count(0, 4, 'down'), motion(0, 'T')]);
+	});
+});
+
+describe('這支流程用過的字', () => {
+	it('內建的步驟和手位', () => {
+		expect(STEP_WORDS).toEqual(['下手', '落地', '放']);
+		expect(MOTION_WORDS).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal']);
+	});
+
+	it('步驟、手位各一份，扣掉內建的字，不重複', () => {
+		const member = [{ memberId: 'm1', role: null }];
+		let flow = flowOf(
+			addAction(sample(), { category: 'stunt', name: 'B', note: '', segmentId: 's1', start: 16, length: 8, members: member })
+		);
+		const placed: [string, 'step' | 'motion', number, string][] = [
+			['x1', 'step', 0, '下手'],
+			['x1', 'step', 2, '抬腳'],
+			['x1', 'motion', 0, 'high V'],
+			['x1', 'motion', 2, '拳頭'],
+			['x3', 'step', 0, '抬腳'],
+			['x3', 'step', 2, '轉身'],
+			['x3', 'motion', 0, '拳頭']
+		];
+		for (const [id, kind, at, word] of placed) flow = flowOf(placeCue(flow, id, { kind, at, len: 2, word }));
+		expect(usedWords(flow)).toEqual({ step: ['抬腳', '轉身'], motion: ['拳頭'] });
+	});
+
+	it('沒有拍點就都是空的', () => {
+		expect(usedWords(sample())).toEqual({ step: [], motion: [] });
 	});
 });
 

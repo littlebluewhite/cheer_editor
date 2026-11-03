@@ -26,6 +26,22 @@ export interface Cue {
 
 /** 拍子只有這兩個字，不能自己打。 */
 export const COUNT_WORDS = ['down', 'up'];
+/** 內建的步驟；也可以自己打字。 */
+export const STEP_WORDS = ['下手', '落地', '放'];
+/** 內建的手位；也可以自己打字。 */
+export const MOTION_WORDS = ['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal'];
+
+/** 這支流程用過、不是內建的步驟和手位（照第一次出現的順序），表單把它們變成按鈕。 */
+export function usedWords(flow: Flow): { step: string[]; motion: string[] } {
+	const words = (kind: CueKind, builtIn: string[]) => [
+		...new Set(
+			flow.actions.flatMap((a) =>
+				(a.cues ?? []).filter((c) => c.kind === kind && !builtIn.includes(c.word)).map((c) => c.word)
+			)
+		)
+	];
+	return { step: words('step', STEP_WORDS), motion: words('motion', MOTION_WORDS) };
+}
 
 /** 一拍幾個半拍。 */
 const BEAT = 2;

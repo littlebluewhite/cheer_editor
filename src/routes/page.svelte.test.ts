@@ -257,6 +257,56 @@ describe('動作', () => {
 		expect(placedCues()).toEqual(['拍子 down 1-1 到 1-2・2 拍']);
 	});
 
+	it('步驟和手位：點按鈕放好；自己打字加入後變成按鈕；三個清除鈕各清各的', async () => {
+		await withAction();
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const steps = within(grid.getByRole('group', { name: '步驟' }));
+		const motions = within(grid.getByRole('group', { name: '手位' }));
+		const placed = () =>
+			grid.queryAllByRole('button', { name: /^(拍子|步驟|手位) / }).map((b) => b.getAttribute('aria-label'));
+
+		// 選 1-3 到 1-4，點「下手」放滿兩拍；手位只放在第一拍。
+		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+		await fireEvent.click(steps.getByRole('button', { name: '下手' }));
+		await fireEvent.click(motions.getByRole('button', { name: 'high V' }));
+		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
+		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '步驟 下手 1-3 到 1-4・2 拍', '手位 high V 1-3・1 拍']);
+
+		// 自己打步驟：空著時「加入」按不下去；中文輸入法選字時的 Enter 不算；Enter 才加入。
+		const stepInput = steps.getByRole('textbox', { name: '自己打步驟' });
+		const addStep = steps.getByRole('button', { name: '加入步驟' }) as HTMLButtonElement;
+		expect(stepInput.getAttribute('placeholder')).not.toMatch(/cradle/i);
+		expect(addStep.disabled).toBe(true);
+		await fireEvent.click(grid.getByRole('button', { name: '1-4' }));
+		await fireEvent.input(stepInput, { target: { value: ' 抬腳 ' } });
+		expect(addStep.disabled).toBe(false);
+		await fireEvent.keyDown(stepInput, { key: 'Enter', isComposing: true });
+		expect(placed()).toContain('步驟 下手 1-3 到 1-4・2 拍');
+		await fireEvent.keyDown(stepInput, { key: 'Enter' });
+		expect(placed()).toContain('步驟 抬腳 1-4・1 拍');
+		expect((stepInput as HTMLInputElement).value).toBe('');
+		expect(steps.getByRole('button', { name: '抬腳' })).toBeTruthy();
+
+		// 自己打手位，按「加入」。
+		await fireEvent.input(motions.getByRole('textbox', { name: '自己打手位' }), { target: { value: '拳頭' } });
+		await fireEvent.click(motions.getByRole('button', { name: '加入手位' }));
+		expect(placed()).toContain('手位 拳頭 1-4・1 拍');
+		expect(motions.getByRole('button', { name: '拳頭' })).toBeTruthy();
+
+		// 點放好的步驟，選回它佔的拍。
+		await fireEvent.click(grid.getByRole('button', { name: '步驟 下手 1-3・1 拍' }));
+		expect(grid.getByText(/^選了/).textContent).toBe('選了 1-3・1 拍');
+		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+
+		await fireEvent.click(grid.getByRole('button', { name: '清掉步驟' }));
+		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '手位 high V 1-3・1 拍', '手位 拳頭 1-4・1 拍']);
+		await fireEvent.click(grid.getByRole('button', { name: '清掉手位' }));
+		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍']);
+		await fireEvent.click(grid.getByRole('button', { name: '清掉拍子' }));
+		expect(placed()).toEqual([]);
+	});
+
 	it('拖色條被擋就還原，上方列說原因', async () => {
 		await withAction();
 		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });

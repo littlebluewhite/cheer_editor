@@ -37,7 +37,15 @@ export {
 } from './actions';
 export type { Action, ActionCategory, ActionMember, MemberGroup, NewActionInput } from './actions';
 
-export { COUNT_WORDS, CUE_KINDS, clearCues, placeCue } from './cues';
+export {
+	COUNT_WORDS,
+	CUE_KINDS,
+	MOTION_WORDS,
+	STEP_WORDS,
+	clearCues,
+	placeCue,
+	usedWords
+} from './cues';
 export type { Cue, CueKind, NewCueInput, Who } from './cues';
 
 export { eightCountRows } from './eight-count';
