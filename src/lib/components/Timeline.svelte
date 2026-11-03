@@ -5,6 +5,7 @@
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	import { tick, untrack } from 'svelte';
 	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
+	import type { PendingConfirm } from './form';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
@@ -33,7 +34,7 @@
 		/** 拖色條被擋（已還原）的原因。 */
 		onblocked?: (message: string) => void;
 		/** 拉色條會切到拍點，要教練確認。 */
-		onconfirm?: (ask: { message: string; items: string[]; confirm: () => void }) => void;
+		onconfirm?: (ask: PendingConfirm) => void;
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
 	}

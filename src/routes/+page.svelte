@@ -39,6 +39,7 @@
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
 	import Field from '#lib/components/Field.svelte';
+	import type { PendingConfirm } from '#lib/components/form.js';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
@@ -134,7 +135,7 @@
 	let printOpen = $state(false);
 	let notice = $state('');
 	/** 拉色條會切到拍點，等教練確認（跟 notice 放同一區）。 */
-	let resizePending = $state<{ message: string; items: string[]; confirm: () => void } | null>(null);
+	let resizePending = $state<PendingConfirm | null>(null);
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	let selectedFormationId = $state<string | null>(null);
 	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */

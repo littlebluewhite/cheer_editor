@@ -198,8 +198,13 @@
 		if (!action || !pending) return;
 		const r = updateAction(flow, action.id, pending.input, { confirmed: true });
 		pending = null;
-		if (r.kind === 'ok') onchange(r.flow);
-		else cancelChange();
+		if (r.kind === 'ok') {
+			onchange(r.flow);
+			return;
+		}
+		// 等確認的時候流程變了、再送一次被擋：跟別的被擋一樣寫原因再還原。
+		error = `${r.message}，已還原`;
+		draft = fromAction(action);
 	}
 
 	function cancelChange() {

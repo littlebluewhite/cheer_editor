@@ -23,6 +23,7 @@
 		toSeconds,
 		totalSeconds,
 		type CommandResult,
+		type ConfirmOption,
 		type Cue,
 		type CueKind,
 		type Flow,
@@ -31,6 +32,7 @@
 		type Walk
 	} from '#lib/core';
 	import { CATEGORY_COLORS } from './category-colors';
+	import type { PendingConfirm } from './form';
 	import { followPointer } from './pointer';
 
 	interface Props {
@@ -46,7 +48,7 @@
 		/** 拖色條被流程核心擋下（已還原），給教練看的原因。 */
 		onblocked?: (message: string) => void;
 		/** 拉色條會切短或拿掉拍點：給教練看的訊息、清單，按確定就呼叫 confirm。 */
-		onconfirm?: (ask: { message: string; items: string[]; confirm: () => void }) => void;
+		onconfirm?: (ask: PendingConfirm) => void;
 		/** 選到的人。 */
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
@@ -158,14 +160,14 @@
 		if (!action || Math.abs(dx) < DRAG_PX) return;
 		const { startSec, endSec } = actionSeconds(flow, action);
 		const dSec = dx / pxPerSec;
-		const r =
+		const run = (options?: ConfirmOption) =>
 			mode === 'move'
-				? moveAction(flow, id, startSec + dSec)
-				: resizeAction(flow, id, endSec + dSec);
+				? moveAction(flow, id, startSec + dSec, options)
+				: resizeAction(flow, id, endSec + dSec, options);
+		const r = run();
 		if (r.kind !== 'confirm') return settle(r);
 		const { message, items } = r;
-		const confirm = () => settle(resizeAction(flow, id, endSec + dSec, { confirmed: true }));
-		onconfirm({ message, items, confirm });
+		onconfirm({ message, items, confirm: () => settle(run({ confirmed: true })) });
 	}
 
 	function settle(r: CommandResult) {

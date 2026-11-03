@@ -9,5 +9,12 @@ export function applyResult(r: CommandResult, onchange: (flow: Flow) => void): s
 	return '';
 }
 
+/** 等教練確認的改動：給他看的訊息、清單，按確定就呼叫 confirm（帶 confirmed 再送一次同一個指令）。 */
+export interface PendingConfirm {
+	message: string;
+	items: string[];
+	confirm: () => void;
+}
+
 /** 數字欄位 onchange 時的值（空白或看不懂是 NaN，交給流程核心擋）。 */
 export const numberValue = (e: Event) => (e.currentTarget as HTMLInputElement).valueAsNumber;

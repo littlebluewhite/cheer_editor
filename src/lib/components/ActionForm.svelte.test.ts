@@ -266,6 +266,27 @@ describe('動作表單：拍點格子', () => {
 		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '拳頭', '加入', '清掉手位']);
 	});
 
+	it('變短要先問；等確認時流程變了、按確定被擋：顯示原因並還原', async () => {
+		let flow = flowOf(addAction(sample(), { ...base, segmentId: 's1', start: 0, length: 8 }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 4, word: 'down' }));
+		const onchange = vi.fn();
+		const { rerender } = render(ActionForm, { flow, playheadSec: 0, actionId: 'x1', onchange, onselect: vi.fn() });
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '2' } });
+		await fireEvent.change(length);
+		expect(screen.getByRole('alertdialog').textContent).toContain('會拿掉 1 個拍點');
+
+		// 等的時候別的地方把小A 放進 1-2 開始的另一個動作。
+		const other = { ...flow.actions[0], id: 'x2', name: 'B', start: 2, length: 4, cues: [] };
+		await rerender({ flow: { ...flow, actions: [...flow.actions, other] } });
+		await fireEvent.click(screen.getByRole('button', { name: '確定' }));
+
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡，已還原');
+		expect(length.value).toBe('4');
+		expect(onchange).not.toHaveBeenCalled();
+	});
+
 	it('口號段的動作沒有格子，只寫一句', () => {
 		let flow = flowOf(addSegment(sample(), 'chant'));
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));

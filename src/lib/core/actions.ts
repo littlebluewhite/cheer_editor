@@ -99,10 +99,15 @@ function falloutMessage(
 	return `${label}${why.join('、')}，會${parts.join('、')}拍點`;
 }
 
-/** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。 */
-export function moveAction(flow: Flow, id: string, startSec: number): CommandResult {
+/** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。要確認時跟 updateAction 一樣。 */
+export function moveAction(
+	flow: Flow,
+	id: string,
+	startSec: number,
+	options: ConfirmOption = {}
+): CommandResult {
 	const at = unitAt(flow, id, startSec);
-	return at === null ? blocked('找不到這個動作') : updateAction(flow, id, { start: at });
+	return at === null ? blocked('找不到這個動作') : updateAction(flow, id, { start: at }, options);
 }
 
 /** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格；太短、超出段尾、撞到人就擋。會切到拍點時跟 updateAction 一樣先問。 */
