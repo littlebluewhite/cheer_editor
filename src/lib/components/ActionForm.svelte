@@ -81,6 +81,11 @@
 	/** 播放頭換格才變，用來在新增時把開始、長度跟上播放頭。 */
 	const slotKey = $derived(slot ? `${slot.segmentId}:${slot.start}:${slot.length}` : '');
 	const roles = $derived(roleGlossary(flow));
+	/** 任務角色的快捷鍵，照名詞對照表的順序；超過的角色沒有快捷鍵。 */
+	const ROLE_KEYS = '1234567890qwertyuiop';
+	const roleKey = (i: number) => ROLE_KEYS[i] ?? '';
+	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
+	const roleSelects: HTMLSelectElement[] = $state([]);
 	const others = $derived(
 		flow.members.filter((m) => !draft.members.some((d) => d.memberId === m.id))
 	);
@@ -234,6 +239,22 @@
 		changed();
 	}
 
+	/** 選單上按快捷鍵：直接選那個角色（Backspace、Delete 是沒有任務），再跳到下一個人。 */
+	function roleShortcut(i: number, e: KeyboardEvent) {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		let role: string | null;
+		if (e.key === 'Backspace' || e.key === 'Delete') role = null;
+		else {
+			const at = ROLE_KEYS.indexOf(e.key.toLowerCase());
+			if (at < 0 || at >= roles.length) return;
+			role = roles[at].name;
+		}
+		e.preventDefault();
+		draft.members[i].role = role;
+		changed();
+		roleSelects[i + 1]?.focus();
+	}
+
 	/** 人改了：改動作就馬上生效；新增時改選取。 */
 	function membersChanged() {
 		if (action) changed();
@@ -267,6 +288,7 @@
 	}
 
 	const nameOf = (id: string) => memberName(flow, id);
+	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
@@ -346,20 +368,40 @@
 		<div class="people">
 			<div class="people-head">
 				<span class="cap">人（{draft.members.length}）＋任務角色</span>
+				<span class="legend">
+					<button type="button" class="ghost bang" aria-label="顏色和快捷鍵說明" aria-describedby="people-legend">!</button>
+					<span class="tip" id="people-legend" role="tooltip">
+						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
+						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
+						<span>點任務角色選單後按鍵就選好，跳到下一個人：</span>
+						<span class="keys">
+							{#each roles as r, k (r.name)}{#if roleKey(k)}<kbd>{roleKey(k)} {r.name}</kbd>{/if}{/each}
+							<kbd>Backspace 沒有任務</kbd>
+						</span>
+					</span>
+				</span>
 				<button type="button" class="link" onclick={() => (glossaryOpen = true)}>名詞對照表</button>
 			</div>
 			{#if draft.members.length}
 				<ul>
 					{#each draft.members as m, i (m.memberId)}
+						{@const who = memberOf(m.memberId)}
 						<li>
-							<span>{nameOf(m.memberId)}</span>
+							<span class="who">
+								{#if who}<i class="gr {who.globalRole}">{who.globalRole === 'top' ? '上' : '底'}</i>{/if}
+								<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
+							</span>
 							<select
 								aria-label="{nameOf(m.memberId)} 的任務角色"
 								value={m.role ?? ''}
+								bind:this={roleSelects[i]}
 								onchange={(e) => setRole(i, e.currentTarget)}
+								onkeydown={(e) => roleShortcut(i, e)}
 							>
 								<option value="">（沒有任務）</option>
-								{#each roles as r (r.name)}<option value={r.name}>{r.name}</option>{/each}
+								{#each roles as r, k (r.name)}<option value={r.name}
+										>{roleKey(k) ? `${roleKey(k)} ` : ''}{r.name}</option
+									>{/each}
 								<option value={NEW_ROLE}>＋自訂角色…</option>
 							</select>
 							<button
@@ -625,11 +667,97 @@
 		gap: 6px;
 		align-items: center;
 	}
-	li > span {
+	.who {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+	.name {
 		font-weight: 500;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		padding: 1px 8px;
+		border-radius: 999px;
+	}
+	.name.F {
+		background: var(--female-bg, #ffe0ea);
+	}
+	.name.M {
+		background: var(--male-bg, #dcebff);
+	}
+	.gr {
+		flex: none;
+		width: 20px;
+		height: 20px;
+		border-radius: 50%;
+		display: inline-grid;
+		place-items: center;
+		font-size: 11px;
+		font-style: normal;
+		font-weight: 700;
+		color: #fff;
+	}
+	.gr.base {
+		background: var(--base, #2c3e66);
+	}
+	.gr.top {
+		background: var(--top, #e0664f);
+	}
+	.people-head .cap {
+		margin-right: auto;
+	}
+	.legend {
+		position: relative;
+		margin-right: 8px;
+	}
+	.bang {
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		border-radius: 50%;
+		border: 1.5px solid var(--muted, #66718a);
+		color: var(--muted, #66718a);
+		font-size: 12px;
+		font-weight: 700;
+		line-height: 1;
+	}
+	.tip {
+		display: none;
+		position: absolute;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 10;
+		width: max-content;
+		max-width: min(320px, 80vw);
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: var(--surface, #fff);
+		box-shadow: var(--shadow-pop);
+		font-size: 12px;
+		gap: 6px;
+	}
+	.legend:hover .tip,
+	.bang:focus-visible + .tip {
+		display: grid;
+	}
+	.tip > span {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px;
+	}
+	.tip .name {
+		font-weight: 600;
+	}
+	kbd {
+		font-family: inherit;
+		font-size: 11px;
+		padding: 1px 6px;
+		border: 1px solid var(--line, #d8dee9);
+		border-radius: 4px;
+		background: var(--surface-2, #f6f8fb);
 	}
 	li .icon {
 		width: 26px;

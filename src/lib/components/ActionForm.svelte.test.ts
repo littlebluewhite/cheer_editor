@@ -141,6 +141,40 @@ describe('動作表單：改選到的動作', () => {
 		expect(onchange.mock.calls[0][0].actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
+	it('名字底色照性別、旁邊標底層或上層；驚嘆號說明顏色和快捷鍵', () => {
+		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
+		setup(flow, 'x1');
+		const rowA = screen.getByLabelText('小A 的任務角色').closest('li')!;
+		const rowB = screen.getByLabelText('小B 的任務角色').closest('li')!;
+		expect(rowA.querySelector('.name.F')?.textContent).toBe('小A');
+		expect(rowB.querySelector('.name.M')?.textContent).toBe('小B');
+		expect(rowA.querySelector('.gr.top')?.textContent).toBe('上');
+		expect(rowB.querySelector('.gr.base')?.textContent).toBe('底');
+		const legend = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
+		const tip = document.getElementById(legend.getAttribute('aria-describedby')!)!;
+		expect(tip.textContent).toContain('女');
+		expect(tip.textContent).toContain('男');
+		expect(tip.textContent).toContain('底層');
+		expect(tip.textContent).toContain('上層');
+		expect(tip.textContent).toContain('1 底層');
+	});
+
+	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
+		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
+		const { onchange } = setup(flow, 'x1');
+		const selA = screen.getByLabelText('小A 的任務角色') as HTMLSelectElement;
+		const selB = screen.getByLabelText('小B 的任務角色') as HTMLSelectElement;
+		expect([...selA.options].map((o) => o.textContent)).toContain('4 上層');
+		selA.focus();
+		await fireEvent.keyDown(selA, { key: '4' });
+		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
+		expect(document.activeElement).toBe(selB);
+		await fireEvent.keyDown(selB, { key: '1' });
+		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: '底層' });
+		await fireEvent.keyDown(selB, { key: 'Backspace' });
+		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+	});
+
 	it('標題是動作的名稱，可以直接改', async () => {
 		const { onchange } = setup(withTwo(), 'x2');
 		const name = screen.getByLabelText('名稱') as HTMLInputElement;
@@ -222,7 +256,7 @@ describe('動作表單：選人', () => {
 	}
 
 	const people = () =>
-		[...document.querySelectorAll('.people li > span')].map((el) => el.textContent);
+		[...document.querySelectorAll('.people li .who > .name')].map((el) => el.textContent);
 
 	it('在播放頭新增動作時，人就是選到的人；加人、移出也改選取', async () => {
 		const { onchange, onselectmembers } = setupSel(sample(), null, ['m2']);
@@ -304,8 +338,8 @@ describe('動作表單：拍點格子', () => {
 			within(grid.getByRole('group', { name: lane }))
 				.getAllByRole('button')
 				.map((b) => b.textContent);
-		expect(words('步驟')).toEqual(['下手', '落地', '放', '抬腳', '加入', '清掉步驟']);
-		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '拳頭', '加入', '清掉手位']);
+		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '抬腳', '加入', '清掉步驟']);
+		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏', '拳頭', '加入', '清掉手位']);
 	});
 
 	it('變短要先問；等確認時流程變了、按確定被擋：顯示原因並還原', async () => {

@@ -37,9 +37,9 @@ export interface Cue {
 /** 拍子只有這兩個字，不能自己打。 */
 export const COUNT_WORDS = ['down', 'up'];
 /** 內建的步驟；也可以自己打字。 */
-export const STEP_WORDS = ['下手', '落地', '放'];
+export const STEP_WORDS = ['下手', '落地', '放', '上', '直下'];
 /** 內建的手位；也可以自己打字。 */
-export const MOTION_WORDS = ['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal'];
+export const MOTION_WORDS = ['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏'];
 
 /** 這支流程用過、不是內建的步驟和手位（照第一次出現的順序），表單把它們變成按鈕。 */
 export function usedWords(flow: Flow): { step: string[]; motion: string[] } {
