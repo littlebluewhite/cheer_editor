@@ -95,6 +95,8 @@
 	let follow = false;
 	/** 按的是小窗裡的按鈕（＋－、放拍點）：小窗留在原地，按鈕不會從滑鼠下面跑掉。 */
 	let hold = false;
+	/** 視窗多寬；變了小窗就重新放。 */
+	let winW = $state(0);
 	const whoIndex = $derived(Math.max(0, whoOptions.findIndex((o) => sameWho(o.who, who))));
 
 	/** 這一格（從 at 開始的一拍）整個在動作裡。 */
@@ -268,6 +270,7 @@
 		if (!pop || dragging || !wrapEl || !popEl) return;
 		void flow;
 		void error;
+		void winW; // 視窗變寬變窄，小窗也重新放
 		const held = hold;
 		hold = false;
 		const q = (s: string) => wrapEl!.querySelector<HTMLElement>(s);
@@ -318,7 +321,8 @@
 
 	/** Esc 只關小窗（不讓編輯頁把動作也取消選）。 */
 	function popKeys(e: KeyboardEvent) {
-		if (!pop || e.key !== 'Escape') return;
+		// 中文輸入法選字時的 Esc 是取消選字，不關小窗（Safari 選字時 keyCode 是 229）。
+		if (!pop || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
 		e.stopPropagation();
 		pop = false;
 	}
@@ -457,9 +461,10 @@
 					aria-label="拍點小窗"
 				>
 					<div class="pop-head">
-						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
+						<!-- －／＋ 放在字前面：字會變長，放後面按鈕就會被擠走 -->
 						<button type="button" class="pm" aria-label="少選一拍" onclick={() => grow(-1)}>－</button>
 						<button type="button" class="pm" aria-label="多選一拍" onclick={() => grow(1)}>＋</button>
+						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
 						<label class="who-sel">
 							<span>給誰</span>
 							<select value={whoIndex} onchange={(e) => (who = whoOptions[Number(e.currentTarget.value)].who)}>
@@ -511,7 +516,7 @@
 	{/if}
 </div>
 
-<svelte:window onpointerdown={outside} onkeydowncapture={popKeys} />
+<svelte:window bind:innerWidth={winW} onpointerdown={outside} onkeydowncapture={popKeys} />
 
 <style>
 	.cues {

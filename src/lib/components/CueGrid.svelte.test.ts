@@ -173,6 +173,15 @@ describe('拍點格子：拍點小窗', () => {
 		window.removeEventListener('keydown', outer);
 	});
 
+	it('中文輸入法還在選字時按 Esc，只取消選字，小窗不關', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		const input = within(pop()!).getByRole('textbox', { name: '自己打步驟' });
+		await fireEvent.keyDown(input, { key: 'Escape', isComposing: true });
+		await fireEvent.keyDown(input, { key: 'Escape', keyCode: 229 });
+		expect(pop()).not.toBeNull();
+	});
+
 	it('在格子外面按一下，小窗關掉；在小窗裡按不會關', async () => {
 		const { grid, pop } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));

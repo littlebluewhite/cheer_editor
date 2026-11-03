@@ -339,7 +339,7 @@ await shot(
 		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.5, y: 0 }],
 		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
 		[3, `q('.cues .pop')`, { x: 1, y: 1 }],
-		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 1, y: 0.5 }],
+		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 0, y: 1 }],
 		[5, `q('.cues .who-sel')`, { x: 0.5, y: 0 }],
 		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0, y: 0 }],
 		[7, `[...document.querySelectorAll('.cues .pop-row .clear')]`, { x: 1, y: 1 }]
