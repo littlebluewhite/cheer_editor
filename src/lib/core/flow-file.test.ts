@@ -188,6 +188,7 @@ describe('流程檔：版本', () => {
 		['拍點在動作之前', broken((f) => (f.actions[0].cues = [cue({ at: -2 })]))],
 		['拍子用了別的字', broken((f) => (f.actions[0].cues = [cue({ word: 'ready' })]))],
 		['步驟是空的', broken((f) => (f.actions[0].cues = [cue({ kind: 'step', word: '  ' })]))],
+		['手位是空的', broken((f) => (f.actions[0].cues = [cue({ kind: 'motion', word: '' })]))],
 		['拍點沒有給誰', broken((f) => (f.actions[0].cues = [cue({ who: undefined })]))],
 		['給動作裡沒有的角色', broken((f) => (f.actions[0].cues = [cue({ who: { role: '上層' } })]))],
 		['給不在動作裡的隊員', broken((f) => (f.actions[0].cues = [cue({ who: { member: 'zz' } })]))],

@@ -1,17 +1,22 @@
 <script lang="ts">
-	// 拍點格子：像紙本八拍表，動作碰到的每個八拍一排 8 個數字格，下面是「拍子」這一條。
+	// 拍點格子：像紙本八拍表，動作碰到的每個八拍一排 8 個數字格，下面是拍子、步驟、手位三條。
 	// 點一格選一拍，用 ＋、－ 多選或少選；點 down、up 就放滿選到的拍，選取跳到下一拍。
+	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 規則（在動作裡、整數拍、只有 down／up）都交給流程核心；被擋就顯示原因。
 	import { untrack } from 'svelte';
 	import {
 		COUNT_WORDS,
+		MOTION_WORDS,
+		STEP_WORDS,
 		atText,
 		clearCues,
 		placeCue,
+		usedWords,
 		type Action,
 		type CommandResult,
 		type Cue,
+		type CueKind,
 		type Flow
 	} from '#lib/core';
 
@@ -27,9 +32,24 @@
 	const BEAT = 2;
 	const EIGHT = 16;
 	const cols = Array.from({ length: 8 }, (_, c) => c);
+	/** 三條由上往下；row 是在每個八拍裡的第幾列（第 1 列是數字格）。 */
+	const LANES: { kind: CueKind; label: string; row: number }[] = [
+		{ kind: 'count', label: '拍子', row: 2 },
+		{ kind: 'step', label: '步驟', row: 3 },
+		{ kind: 'motion', label: '手位', row: 4 }
+	];
 
 	const segment = $derived(flow.segments.find((s) => s.id === action.segmentId) ?? null);
-	const counts = $derived((action.cues ?? []).filter((c) => c.kind === 'count'));
+	/** 步驟、手位的按鈕：內建的字，加上這支流程用過的字（打開別人的流程檔也看得到）。 */
+	const wordRows = $derived.by(() => {
+		const used = usedWords(flow);
+		return [
+			{ kind: 'step' as const, label: '步驟', words: [...STEP_WORDS, ...used.step], tip: '自己打，例：抬腳' },
+			{ kind: 'motion' as const, label: '手位', words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
+		];
+	});
+	/** 自己打的字，步驟和手位各一格。 */
+	let custom = $state({ step: '', motion: '' });
 	/** 動作碰到的八拍（從 0 起）。 */
 	const eights = $derived.by(() => {
 		const first = Math.floor(action.start / EIGHT);
@@ -99,13 +119,28 @@
 		if (to >= sel.from && inAction(to)) sel = { from: sel.from, to };
 	}
 
-	function placeCount(word: string) {
-		const r = placeCue(flow, action.id, { kind: 'count', at: sel.from, len: selLen, word });
-		if (apply(r) && inAction(sel.to + BEAT)) selectOne(sel.to + BEAT);
+	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。拍子放完選取跳到下一拍。 */
+	function place(kind: CueKind, word: string): boolean {
+		const len = kind === 'motion' ? BEAT : selLen;
+		const placed = apply(placeCue(flow, action.id, { kind, at: sel.from, len, word }));
+		if (placed && kind === 'count' && inAction(sel.to + BEAT)) selectOne(sel.to + BEAT);
+		return placed;
 	}
 
-	function clearCounts() {
-		apply(clearCues(flow, action.id, 'count', sel.from, sel.to + BEAT));
+	function addCustom(kind: 'step' | 'motion') {
+		const word = custom[kind].trim();
+		if (word && place(kind, word)) custom[kind] = '';
+	}
+
+	/** Enter 也能加入；中文輸入法還在選字時按的 Enter 不算（Safari 選字時 keyCode 是 229）。 */
+	function onCustomKey(e: KeyboardEvent, kind: 'step' | 'motion') {
+		if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+		e.preventDefault();
+		addCustom(kind);
+	}
+
+	function clear(kind: CueKind) {
+		apply(clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
 	}
 
 	/** 點一個拍點：選回它佔的那幾格（動作被拖半拍時，取碰到的整拍格，不超出動作）。 */
@@ -117,11 +152,11 @@
 		if (inAction(from)) sel = { from, to };
 	}
 
-	/** 每個拍點在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）。 */
-	function pieces(e: number) {
+	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）。 */
+	function pieces(e: number, kind: CueKind) {
 		const lo = e * EIGHT;
 		const hi = lo + EIGHT;
-		return counts.flatMap((cue) => {
+		return (action.cues ?? []).filter((c) => c.kind === kind).flatMap((cue) => {
 			const s = action.start + cue.at;
 			const end = s + cue.len;
 			if (end <= lo || s >= hi) return [];
@@ -143,7 +178,9 @@
 			{#each eights as e (e)}
 				<div class="row">
 					<span class="eight" aria-hidden="true">{e + 1}</span>
-					<span class="lane-lbl">拍子</span>
+					{#each LANES as lane (lane.kind)}
+						<span class="lane-lbl {lane.kind}" style:grid-row={lane.row}>{lane.label}</span>
+					{/each}
 					{#each cols as c (c)}
 						{@const at = (e * 8 + c) * BEAT - action.start}
 						<button
@@ -156,21 +193,31 @@
 							disabled={!inAction(at)}
 							onclick={() => selectOne(at)}>{c + 1}</button
 						>
-						<span class="slot" class:out={!inAction(at)} class:sel={inAction(at) && isSel(at)} style:grid-column={c + 2}
-						></span>
+						{#each LANES as lane (lane.kind)}
+							<span
+								class="slot {lane.kind}"
+								class:out={!inAction(at)}
+								class:sel={inAction(at) && isSel(at)}
+								style:grid-column={c + 2}
+								style:grid-row={lane.row}
+							></span>
+						{/each}
 					{/each}
-					{#each pieces(e) as p}
-						<button
-							type="button"
-							class="item {p.cue.word}"
-							class:cont={!p.first}
-							class:more={!p.last}
-							style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
-							aria-label="拍子 {p.cue.word} {spanText(p.cue.at, p.cue.len)}"
-							aria-hidden={!p.first || undefined}
-							tabindex={p.first ? undefined : -1}
-							onclick={() => pick(p.cue)}>{p.first ? p.cue.word : `…${p.cue.word}`}</button
-						>
+					{#each LANES as lane (lane.kind)}
+						{#each pieces(e, lane.kind) as p}
+							<button
+								type="button"
+								class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
+								class:cont={!p.first}
+								class:more={!p.last}
+								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+								style:grid-row={lane.row}
+								aria-label="{lane.label} {p.cue.word} {spanText(p.cue.at, p.cue.len)}"
+								aria-hidden={!p.first || undefined}
+								tabindex={p.first ? undefined : -1}
+								onclick={() => pick(p.cue)}>{p.first ? p.cue.word : `…${p.cue.word}`}</button
+							>
+						{/each}
 					{/each}
 				</div>
 			{/each}
@@ -182,15 +229,43 @@
 			<button type="button" class="pm" aria-label="多選一拍" onclick={() => grow(1)}>＋</button>
 		</div>
 
-		<div class="kindrow">
+		<div class="kindrow count" role="group" aria-label="拍子">
 			<span class="lbl">拍子</span>
 			<div class="words">
 				{#each COUNT_WORDS as w (w)}
-					<button type="button" class="word {w}" onclick={() => placeCount(w)}>{w}</button>
+					<button type="button" class="word {w}" onclick={() => place('count', w)}>{w}</button>
 				{/each}
 			</div>
-			<button type="button" class="clear" onclick={clearCounts}>清掉拍子</button>
+			<button type="button" class="clear" onclick={() => clear('count')}>清掉拍子</button>
 		</div>
+
+		{#each wordRows as row (row.kind)}
+			<div class="kindrow {row.kind}" role="group" aria-label={row.label}>
+				<span class="lbl">{row.label}</span>
+				<div class="words">
+					{#each row.words as w (w)}
+						<button type="button" class="word" onclick={() => place(row.kind, w)}>{w}</button>
+					{/each}
+					<span class="own">
+						<input
+							class="custom"
+							aria-label="自己打{row.label}"
+							placeholder={row.tip}
+							bind:value={custom[row.kind]}
+							onkeydown={(e) => onCustomKey(e, row.kind)}
+						/>
+						<button
+							type="button"
+							class="word"
+							aria-label="加入{row.label}"
+							disabled={!custom[row.kind].trim()}
+							onclick={() => addCustom(row.kind)}>加入</button
+						>
+					</span>
+				</div>
+				<button type="button" class="clear" onclick={() => clear(row.kind)}>清掉{row.label}</button>
+			</div>
+		{/each}
 	{/if}
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
@@ -206,6 +281,13 @@
 		/* down 藍、up 綠：實心，白字（對比 4.5 以上）。 */
 		--down: #1f5fbf;
 		--up: #2b7a2f;
+		/* 步驟：橘色框加左邊粗線；手位：粉紅小牌子。字用深色（對比 4.5 以上）。 */
+		--step-bg: #fff1e2;
+		--step-line: #e08a2e;
+		--step-ink: #8a4a12;
+		--motion-bg: #ffe3f0;
+		--motion-line: #d6589a;
+		--motion-ink: #9c1d5c;
 	}
 	.cap {
 		font-size: 12px;
@@ -225,7 +307,7 @@
 	.row {
 		display: grid;
 		grid-template-columns: 34px repeat(8, minmax(0, 1fr));
-		grid-template-rows: auto 24px;
+		grid-template-rows: auto repeat(3, 24px);
 		column-gap: 3px;
 		row-gap: 3px;
 	}
@@ -263,17 +345,27 @@
 	}
 	.lane-lbl {
 		grid-column: 1;
-		grid-row: 2;
 		align-self: center;
 		font-size: 11px;
 		font-weight: 700;
 		text-align: center;
 		color: var(--down);
 	}
+	.lane-lbl.step {
+		color: var(--step-ink);
+	}
+	.lane-lbl.motion {
+		color: var(--motion-ink);
+	}
 	.slot {
-		grid-row: 2;
 		border-radius: 4px;
 		background: #f2f6fd;
+	}
+	.slot.step {
+		background: #fdf7f0;
+	}
+	.slot.motion {
+		background: #fdf3f8;
 	}
 	.slot.out {
 		background: transparent;
@@ -282,7 +374,6 @@
 		background: var(--sel-soft, #dcf4fa);
 	}
 	.item {
-		grid-row: 2;
 		z-index: 1;
 		min-width: 0;
 		padding: 0 4px;
@@ -303,6 +394,24 @@
 	.word.up {
 		background: var(--up);
 		color: #fff;
+	}
+	/* 步驟：淡橘底、橘框、左邊粗線，像一個括號。 */
+	.item.step {
+		background: var(--step-bg);
+		border: 1px solid var(--step-line);
+		border-left-width: 4px;
+		color: var(--step-ink);
+	}
+	/* 手位：一拍的粉紅小牌子。 */
+	.item.motion {
+		margin: 1px;
+		padding: 0 2px;
+		border-radius: 8px;
+		border: 1px solid var(--motion-line);
+		background: var(--motion-bg);
+		color: var(--motion-ink);
+		font-size: 10px;
+		justify-content: center;
 	}
 	.item.cont {
 		border-top-left-radius: 0;
@@ -341,10 +450,36 @@
 		border-left: 4px solid var(--down);
 		background: #f6f9ff;
 	}
+	.kindrow.step {
+		border-left-color: var(--step-line);
+		background: #fffaf4;
+	}
+	.kindrow.motion {
+		border-left-color: var(--motion-line);
+		background: #fff7fb;
+	}
 	.lbl {
 		font-size: 11px;
 		font-weight: 700;
 		color: var(--down);
+	}
+	.kindrow.step .lbl {
+		color: var(--step-ink);
+	}
+	.kindrow.motion .lbl {
+		color: var(--motion-ink);
+	}
+	.own {
+		display: inline-flex;
+		gap: 4px;
+	}
+	.custom {
+		width: 9em;
+		min-height: 28px;
+		padding: 2px 8px;
+		border-radius: 999px;
+		border: 1px solid var(--line, #d8dee9);
+		font-size: 13px;
 	}
 	.words {
 		display: flex;

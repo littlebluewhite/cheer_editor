@@ -3,6 +3,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	placeCue,
 	updateSegment,
 	type CommandResult,
 	type Flow
@@ -248,6 +249,21 @@ describe('動作表單：拍點格子', () => {
 		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
 			{ kind: 'count', at: 1, len: 2, word: 'down', who: null }
 		]);
+	});
+
+	it('流程裡別的動作用過的字（例如打開別人的流程檔）也是按鈕', () => {
+		let flow = flowOf(addAction(sample(), { ...base, segmentId: 's1', start: 0, length: 4 }));
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's1', start: 8, length: 4 }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '抬腳' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: '拳頭' }));
+		setup(flow, 'x2');
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const words = (lane: string) =>
+			within(grid.getByRole('group', { name: lane }))
+				.getAllByRole('button')
+				.map((b) => b.textContent);
+		expect(words('步驟')).toEqual(['下手', '落地', '放', '抬腳', '加入', '清掉步驟']);
+		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '拳頭', '加入', '清掉手位']);
 	});
 
 	it('口號段的動作沒有格子，只寫一句', () => {
