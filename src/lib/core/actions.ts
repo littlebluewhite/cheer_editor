@@ -60,7 +60,8 @@ function normalize(action: Action): Action {
 
 /**
  * 改動作的任何欄位（含換段、換人），照新增的規則檢查。
- * 變短會切到拍點、或有拍點的動作換到口號段時回「要確認」並列出那些拍點；帶 { confirmed: true } 再送一次才切短、拿掉。
+ * 變短會切到拍點、有拍點的動作換到口號段、或拿掉的人（任務角色）有拍點給他時，回「要確認」並列出那些拍點；
+ * 帶 { confirmed: true } 再送一次才切短、拿掉。
  */
 export function updateAction(
 	flow: Flow,
@@ -73,7 +74,7 @@ export function updateAction(
 	let action = normalize({ ...old, ...changes, id });
 	const from = flow.segments.find((s) => s.id === old.segmentId);
 	const to = flow.segments.find((s) => s.id === action.segmentId);
-	const fallout = from && to ? cueFallout(from, to, old, action) : null;
+	const fallout = from && to ? cueFallout(from, to, old, action, (m) => memberName(flow, m)) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
@@ -81,16 +82,20 @@ export function updateAction(
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
 }
 
-/** 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。 */
+/**
+ * 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換了人或任務角色是「…換了人或任務角色，會拿掉 N 個拍點」，
+ * 兩個都有就「…變短、換了人或任務角色，…」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。
+ */
 function falloutMessage(
 	action: Action,
 	to: Segment,
-	{ removed, cut }: { removed: number; cut: number }
+	{ removed, cut, orphaned }: { removed: number; cut: number; orphaned: number }
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
 	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${removed} 個拍點`;
+	const why = [removed > orphaned || cut ? '變短' : '', orphaned ? '換了人或任務角色' : ''].filter(Boolean);
 	const parts = [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean);
-	return `${label}變短，會${parts.join('、')}拍點`;
+	return `${label}${why.join('、')}，會${parts.join('、')}拍點`;
 }
 
 /** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。 */

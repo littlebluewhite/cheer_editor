@@ -4,6 +4,7 @@ import {
 	addSegment,
 	createFlow,
 	insertFormation,
+	placeCue,
 	setPositions,
 	type CommandResult,
 	type Flow
@@ -117,5 +118,52 @@ describe('八拍表列印', () => {
 		expect(print).toHaveBeenCalledOnce();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(onclose).toHaveBeenCalledOnce();
+	});
+
+	describe('拍點', () => {
+		/** Lib（小A 上層、小B 主底）：1-5 下手、1-6 到 1-7 down、1-8 上層 high V。 */
+		function cued(): Flow {
+			let flow = sample();
+			flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 8, len: 2, word: '下手' }));
+			flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 10, len: 4, word: 'down' }));
+			return flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 14, len: 2, word: 'high V', who: { role: '上層' } }));
+		}
+
+		it('有拍點的列下面多一排：動作名字和 8 格，拍點的字寫在它佔的格子裡', () => {
+			render(PrintSheet, { flow: cued(), onclose: vi.fn(), print: vi.fn() });
+			const line = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
+			expect(line.textContent).toContain('技巧·Lib');
+			expect(within(line).getAllByText(/^[1-8]$/).map((c) => c.textContent)).toEqual([
+				'1', '2', '3', '4', '5', '6', '7', '8'
+			]);
+			const step = within(line).getByLabelText('步驟 下手 1-5');
+			expect(step.textContent).toBe('下手');
+			expect(step.style.gridColumn).toBe('5 / 6');
+			const down = within(line).getByLabelText('拍子 down 1-6 到 1-7');
+			expect(down.textContent).toBe('down');
+			expect(down.style.gridColumn).toBe('6 / 8');
+			const motion = within(line).getByLabelText('手位 high V 1-8・給上層');
+			expect(motion.textContent).toContain('high V');
+			expect(motion.textContent).toContain('上層');
+			expect(motion.style.gridColumn).toBe('8 / 9');
+		});
+
+		it('沒有拍點的八拍表跟原本一樣，不多印格子', () => {
+			render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+			expect(bodyRows()).toHaveLength(8);
+			expect(screen.queryByRole('group', { name: /的拍點$/ })).toBeNull();
+		});
+
+		it('印一個隊員時只印給他的拍點，不寫給誰', async () => {
+			render(PrintSheet, { flow: cued(), onclose: vi.fn(), print: vi.fn() });
+			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+			const line = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
+			expect(within(line).getByLabelText('拍子 down 1-6 到 1-7')).toBeTruthy();
+			expect(line.textContent).not.toContain('high V');
+			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
+			const mine = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
+			const motion = within(mine).getByLabelText('手位 high V 1-8');
+			expect(motion.textContent).toBe('high V');
+		});
 	});
 });

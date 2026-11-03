@@ -1,7 +1,8 @@
 // 八拍表：把流程照八拍一列一列寫下來，給列印用。
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列）；口號段一整段一列，時間寫秒數。
 
-import { ACTION_CATEGORIES, type ActionCategory } from './actions';
+import { ACTION_CATEGORIES, type Action, type ActionCategory } from './actions';
+import { cueForMember, type Cue, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
 import {
@@ -33,6 +34,24 @@ export interface EightCountFormation {
 	pos: Record<string, Position>;
 }
 
+/** 八拍表一列裡的一個拍點（只算落在這一列的那一段）。 */
+export interface EightCountCue {
+	kind: CueKind;
+	/** 這一列的第幾格到第幾格（1–8）。 */
+	from: number;
+	to: number;
+	word: string;
+	/** 給誰：任務角色或隊員名字；給全部的和個人表是 null。 */
+	who: string | null;
+}
+
+/** 八拍表一列裡、一個有拍點的動作那一排 8 格。 */
+export interface EightCountCueLine {
+	categoryLabel: string;
+	name: string;
+	cues: EightCountCue[];
+}
+
 export interface EightCountRow {
 	/** 段名：音樂 1、口號 1… */
 	segmentLabel: string;
@@ -46,6 +65,8 @@ export interface EightCountRow {
 	formations: EightCountFormation[];
 	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到）」。全隊是空的。 */
 	walks: string[];
+	/** 這一列的拍點：每個在這一列有拍點的動作一排；跨列的拍點兩列各寫自己那一段。 */
+	cues: EightCountCueLine[];
 }
 
 /**
@@ -79,7 +100,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					.map((a) => ({
 						at: at(a.start),
 						category: a.category,
-						categoryLabel: ACTION_CATEGORIES.find((c) => c.key === a.category)?.label ?? '',
+						categoryLabel: categoryLabel(a.category),
 						name: a.name,
 						members: a.members.map((m) => ({
 							memberId: m.memberId,
@@ -100,7 +121,17 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					.map(({ number, walk }) => {
 						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
 						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到）`;
-					})
+					}),
+				cues: inSegment.flatMap((a) => {
+					const cues = (a.cues ?? []).flatMap((c) =>
+						memberId === null || cueForMember(c, a, memberId)
+							? cueInRow(flow, a, c, from, memberId === null)
+							: []
+					);
+					return cues.length
+						? [{ categoryLabel: categoryLabel(a.category), name: a.name, cues }]
+						: [];
+				})
 			};
 		};
 		if (segment.kind === 'music') {
@@ -121,6 +152,27 @@ function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk
 			? [{ number: i + 1, walk: memberWalk(flow, b.id, memberId)! }]
 			: []
 	);
+}
+
+function categoryLabel(category: ActionCategory): string {
+	return ACTION_CATEGORIES.find((c) => c.key === category)?.label ?? '';
+}
+
+/** 拍點落在從 from 半拍開始那一列的那一段（佔到的格子都算，落在 & 的也是）；沒落在這一列是空的。 */
+function cueInRow(flow: Flow, action: Action, cue: Cue, from: number, withWho: boolean): EightCountCue[] {
+	const start = Math.max(action.start + cue.at, from) - from;
+	const end = Math.min(action.start + cue.at + cue.len, from + HALF_BEATS_PER_EIGHT) - from;
+	if (start >= end) return [];
+	const who = cue.who;
+	return [
+		{
+			kind: cue.kind,
+			from: Math.floor(start / 2) + 1,
+			to: Math.ceil(end / 2),
+			word: cue.word,
+			who: !withWho || who === null ? null : 'role' in who ? who.role : memberName(flow, who.member)
+		}
+	];
 }
 
 /** 八拍裡的第幾拍：「3」，半拍「3 的 &」。 */
