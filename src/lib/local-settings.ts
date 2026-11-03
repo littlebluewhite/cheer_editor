@@ -41,3 +41,24 @@ export function saveTimelineHeight(px: number | null): void {
 		// 存不了就只在這次用
 	}
 }
+
+const INSPECTOR_KEY = 'cheer-editor:inspectorWidthPx';
+
+/** 右邊欄的寬度（px，拖場地和右邊欄中間的分界改的）；null = 自動。 */
+export function loadInspectorWidth(): number | null {
+	try {
+		const px = Number(localStorage.getItem(INSPECTOR_KEY));
+		return Number.isFinite(px) && px > 0 ? px : null;
+	} catch {
+		return null;
+	}
+}
+
+export function saveInspectorWidth(px: number | null): void {
+	try {
+		if (px === null) localStorage.removeItem(INSPECTOR_KEY);
+		else localStorage.setItem(INSPECTOR_KEY, String(px));
+	} catch {
+		// 存不了就只在這次用
+	}
+}

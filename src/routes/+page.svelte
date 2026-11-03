@@ -34,12 +34,20 @@
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { loadLatencyMs, loadTimelineHeight, saveLatencyMs, saveTimelineHeight } from '#lib/local-settings.js';
+	import {
+		loadInspectorWidth,
+		loadLatencyMs,
+		loadTimelineHeight,
+		saveInspectorWidth,
+		saveLatencyMs,
+		saveTimelineHeight
+	} from '#lib/local-settings.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
-	import Field from '#lib/components/Field.svelte';
+	import Field, { fullView } from '#lib/components/Field.svelte';
 	import type { PendingConfirm } from '#lib/components/form.js';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -273,6 +281,55 @@
 		if (!step) return;
 		e.preventDefault();
 		setTimelineH(currentTimelineH() + step);
+	}
+
+	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
+	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
+	let inspectorW = $state<number | null>(loadInspectorWidth());
+	let windowW = $state(0);
+	let fieldHostH = $state(0);
+	let colSplit: { x: number; w: number } | null = null;
+
+	const fieldAspect = $derived.by(() => {
+		if (!flow) return 1;
+		const v = fullView(flow.field);
+		return v.width / v.height;
+	});
+	/** 右邊欄現在多寬。 */
+	const inspectorPx = $derived(
+		inspectorW === null
+			? autoInspectorWidth(windowW, fieldHostH, fieldAspect)
+			: clampInspectorWidth(inspectorW, windowW)
+	);
+
+	/** 量場地那一欄多高（視窗或時間軸變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
+	function watchFieldHostH(el: HTMLElement) {
+		if (typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(() => (fieldHostH = el.clientHeight));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}
+
+	function setInspectorW(px: number | null) {
+		inspectorW = px === null ? null : clampInspectorWidth(px, window.innerWidth);
+		saveInspectorWidth(inspectorW);
+	}
+
+	function colSplitDown(e: PointerEvent) {
+		if (e.button !== 0) return;
+		colSplit = { x: e.clientX, w: inspectorPx };
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+	}
+
+	function colSplitMove(e: PointerEvent) {
+		if (colSplit) setInspectorW(colSplit.w + colSplit.x - e.clientX);
+	}
+
+	function colSplitKey(e: KeyboardEvent) {
+		const step = { ArrowLeft: 24, ArrowRight: -24 }[e.key];
+		if (!step) return;
+		e.preventDefault();
+		setInspectorW(inspectorPx + step);
 	}
 
 
@@ -556,7 +613,7 @@
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
 </svelte:head>
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} bind:innerWidth={windowW} />
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
@@ -566,6 +623,7 @@
 		class="editor"
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100vh - ${FIELD_KEEP_PX}px))`}
+		style:--inspector-w="{inspectorPx}px"
 	>
 		<header class="topbar">
 			<div class="title">
@@ -637,7 +695,7 @@
 			</div>
 		</header>
 
-		<main class="field-host">
+		<main class="field-host" {@attach watchFieldHostH}>
 			<Field
 				field={flow.field}
 				members={flow.members}
@@ -721,6 +779,23 @@
 		</main>
 
 		<aside class="inspector">
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+			<div
+				class="col-split"
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="場地和右邊欄的分界"
+				aria-valuenow={inspectorPx}
+				aria-valuemin={INSPECTOR_MIN_PX}
+				tabindex="0"
+				title="拖這裡調整右邊欄的寬度（雙擊回到自動）"
+				onpointerdown={colSplitDown}
+				onpointermove={colSplitMove}
+				onpointerup={() => (colSplit = null)}
+				onpointercancel={() => (colSplit = null)}
+				onkeydown={colSplitKey}
+				ondblclick={() => setInspectorW(null)}
+			></div>
 			<div class="tabs" role="tablist" aria-label="右邊欄">
 				<button
 					type="button"
@@ -895,7 +970,8 @@
 		display: grid;
 		/* 上方列｜場地＋右邊欄｜分界｜時間軸。時間軸預設 30vh，拖分界改的高度放在 --timeline-h。 */
 		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(200px, 30vh));
-		grid-template-columns: minmax(0, 1fr) 360px;
+		/* 場地｜右邊欄。右邊欄的寬度放在 --inspector-w（沒拖過時照螢幕大小自動分）。 */
+		grid-template-columns: minmax(0, 1fr) var(--inspector-w, 360px);
 		background: var(--paper);
 	}
 	.split {
@@ -1257,11 +1333,45 @@
 
 	/* ---------- 右邊欄 ---------- */
 	.inspector {
+		position: relative;
 		min-height: 0;
 		display: grid;
 		grid-template-rows: auto minmax(0, 1fr);
 		background: var(--surface);
 		border-left: 1px solid var(--line);
+	}
+	/* 右邊欄左邊緣上一條看不太出來的細條，滑過去才亮，拖它改寬度。 */
+	.col-split {
+		position: absolute;
+		left: -4px;
+		top: 0;
+		bottom: 0;
+		z-index: 5;
+		width: 8px;
+		cursor: col-resize;
+		touch-action: none;
+	}
+	.col-split::after {
+		content: '';
+		position: absolute;
+		left: 2px;
+		top: 50%;
+		width: 3px;
+		height: 36px;
+		margin-top: -18px;
+		border-radius: 2px;
+		background: var(--muted);
+		opacity: 0.45;
+	}
+	.col-split:hover,
+	.col-split:focus-visible {
+		background: var(--sel-soft);
+		outline: none;
+	}
+	.col-split:hover::after,
+	.col-split:focus-visible::after {
+		background: var(--sel);
+		opacity: 1;
 	}
 	.tabs {
 		display: grid;
@@ -1302,6 +1412,8 @@
 		color: var(--mat);
 	}
 	.panel {
+		/* 右邊欄變寬時，裡面的表單看自己有多寬排版（@container） */
+		container-type: inline-size;
 		min-height: 0;
 		overflow-y: auto;
 		padding: 14px 16px 24px;

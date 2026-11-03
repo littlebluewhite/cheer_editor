@@ -1,3 +1,13 @@
+<script lang="ts" module>
+	import { fieldGeometry, type FieldConfig } from '#lib/core';
+
+	/** 全場的畫面範圍（公尺）：外圍以外再留給「正面／裁判」字樣的空間。編輯頁拿它的長寬比分配右邊欄的寬度。 */
+	export function fullView(field: FieldConfig) {
+		const { outer } = fieldGeometry(field);
+		return { x: outer.x - 0.3, y: outer.y - 0.3, width: outer.width + 0.6, height: outer.height + 1.3 };
+	}
+</script>
+
 <script lang="ts">
 	// 場地：SVG 的使用者座標就是流程核心的公尺座標（原點中心 X，y 往正面＝畫面下面）。
 	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
@@ -7,11 +17,9 @@
 	// children 疊在場地上（置中的提示、確認框）。
 	import type { Snippet } from 'svelte';
 	import {
-		fieldGeometry,
 		fieldPositionText,
 		snapPointsNear,
 		snapPosition,
-		type FieldConfig,
 		type FormationWalk,
 		type Member,
 		type Position
@@ -78,13 +86,7 @@
 
 	const g = $derived(fieldGeometry(field));
 	const vertical = $derived(field.layout === 'vertical');
-	/** 全場的畫面範圍：外圍以外再留給「正面／裁判」字樣的空間。 */
-	const full = $derived({
-		x: g.outer.x - 0.3,
-		y: g.outer.y - 0.3,
-		width: g.outer.width + 0.6,
-		height: g.outer.height + 1.3
-	});
+	const full = $derived(fullView(field));
 
 	let svg: SVGSVGElement;
 	let zoom = $state(1);

@@ -650,6 +650,29 @@
 		padding: 8px 12px;
 		font-size: 14px;
 	}
+	/* 右邊欄夠寬時：大類、開始、長度排一列，辨識色在下一列；人分兩欄。少捲一點。 */
+	@container (min-width: 600px) {
+		.grid {
+			grid-template-columns: 2fr 1fr 1fr;
+		}
+		.grid > label.wide {
+			grid-column: 1;
+			grid-row: 1;
+		}
+		.grid > .field {
+			grid-row: 1;
+		}
+		.grid > .colors {
+			grid-row: 2;
+		}
+		ul {
+			grid-template-columns: 1fr 1fr;
+			column-gap: 16px;
+		}
+		.adders {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
 	.error {
 		padding: 8px 10px;
 		border-radius: 8px;

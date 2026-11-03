@@ -37,11 +37,12 @@ export default defineConfig({
 			{
 				// 流程核心：純 TypeScript，在 Node 跑，碰不到 DOM。
 				// 音訊薄層的播放器也在這裡測（Web Audio 換成假的，見 src/lib/audio/player.ts）。
+				// src/lib 底下其他不碰 DOM 的小模組（例：編輯頁左右怎麼分）也在這裡測。
 				extends: './vite.config.ts',
 				test: {
 					name: 'core',
 					environment: 'node',
-					include: ['src/lib/core/**/*.test.ts', 'src/lib/audio/**/*.test.ts']
+					include: ['src/lib/core/**/*.test.ts', 'src/lib/audio/**/*.test.ts', 'src/lib/*.test.ts']
 				}
 			},
 			{

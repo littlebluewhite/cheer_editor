@@ -1119,3 +1119,50 @@ describe('場地和時間軸的分界', () => {
 		expect(height()).toBe(before + 60);
 	});
 });
+
+describe('場地和右邊欄的分界', () => {
+	const realWidth = window.innerWidth;
+	beforeEach(() => {
+		localStorage.clear();
+		Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true });
+	});
+	afterEach(() => Object.defineProperty(window, 'innerWidth', { value: realWidth, configurable: true }));
+
+	const bar = () => screen.getByRole('separator', { name: '場地和右邊欄的分界' });
+	const width = () => Number(bar().getAttribute('aria-valuenow'));
+	const editorVar = () => (document.querySelector('.editor') as HTMLElement).style.getPropertyValue('--inspector-w');
+
+	it('沒拖過時照螢幕自動分；← 變寬、→ 變窄；存在瀏覽器，下次打開一樣；雙擊回到自動', async () => {
+		await newFlow();
+		const auto = width();
+		expect(auto).toBeGreaterThan(360);
+		expect(editorVar()).toBe(`${auto}px`);
+		await fireEvent.keyDown(bar(), { key: 'ArrowLeft' });
+		expect(width()).toBe(auto + 24);
+		expect(editorVar()).toBe(`${auto + 24}px`);
+		await fireEvent.keyDown(bar(), { key: 'ArrowRight' });
+		await fireEvent.keyDown(bar(), { key: 'ArrowRight' });
+		expect(width()).toBe(auto - 24);
+
+		cleanup();
+		await newFlow();
+		expect(width()).toBe(auto - 24);
+
+		await fireEvent.dblClick(bar());
+		expect(width()).toBe(auto);
+		cleanup();
+		await newFlow();
+		expect(width()).toBe(auto);
+	});
+
+	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {
+		await newFlow();
+		const before = width();
+		await fireEvent.pointerDown(bar(), { clientX: 900, button: 0 });
+		await fireEvent.pointerMove(bar(), { clientX: 860 });
+		expect(width()).toBe(before + 40);
+		await fireEvent.pointerMove(bar(), { clientX: 0 });
+		await fireEvent.pointerUp(bar(), { clientX: 0 });
+		expect(width()).toBe(1600 - 560);
+	});
+});
