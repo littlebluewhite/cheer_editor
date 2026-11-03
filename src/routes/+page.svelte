@@ -735,6 +735,8 @@
 										placeholder="幫這張站位取名（可不填）"
 										value={here.name ?? ''}
 										onkeydown={(e) => {
+											// 中文輸入法還在選字時按的 Enter / Esc 是給輸入法的；這時離開輸入框，字會重複（Safari 選字時 keyCode 是 229）。
+											if (e.isComposing || e.keyCode === 229) return;
 											if (e.key === 'Enter') e.currentTarget.blur();
 											if (e.key === 'Escape') {
 												e.currentTarget.value = here.name ?? '';

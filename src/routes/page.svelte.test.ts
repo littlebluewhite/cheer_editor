@@ -556,6 +556,18 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('button', { name: '站位 1' })).toBeTruthy();
 	});
 
+	it('站位名稱：中文輸入法選字時按的 Enter 不離開輸入框（不然字會重複），選完再按 Enter 才離開', async () => {
+		await setup();
+		const box = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		box.focus();
+		await fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+		expect(document.activeElement).toBe(box);
+		await fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 });
+		expect(document.activeElement).toBe(box);
+		await fireEvent.keyDown(box, { key: 'Enter' });
+		expect(document.activeElement).not.toBe(box);
+	});
+
 	it('跟上一張一樣：沒選人、在開頭那張時按不下去並說原因；在站位上改成上一張的位置；不在站位上先插一張', async () => {
 		const button = () => screen.getByRole('button', { name: '跟上一張一樣' }) as HTMLButtonElement;
 		const at = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');
