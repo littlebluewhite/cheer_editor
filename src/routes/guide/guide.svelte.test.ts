@@ -18,7 +18,20 @@ describe('使用說明', () => {
 	it('每張圖都有替代文字', () => {
 		render(Guide);
 		const images = document.querySelectorAll('img');
-		expect(images.length).toBe(14);
+		expect(images.length).toBe(15);
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
+	});
+
+	it('有一節講拍點：怎麼放、怎麼清、哪些情況會拿掉、在哪裡看到', () => {
+		render(Guide);
+		const toc = screen.getByRole('navigation', { name: '目錄' });
+		const link = [...toc.querySelectorAll('a')].find((a) => a.textContent === '4.7 拍點');
+		expect(link?.getAttribute('href')).toBe('#cues');
+		const section = document.getElementById('cues')!;
+		const text = section.textContent!;
+		for (const words of ['拍子', '步驟', '手位', '給誰', '清掉拍子', '清掉步驟', '清掉手位', '口號段', '八拍表', '大字']) {
+			expect(text, words).toContain(words);
+		}
+		expect(section.querySelector('img')?.alt).toContain('拍點');
 	});
 });

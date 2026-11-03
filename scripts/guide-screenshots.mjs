@@ -307,4 +307,35 @@ await shot('print', [
 	[4, `q('.print-sheet .mini')`]
 ], `[q('.print-sheet .toolbar'), q('.print-sheet .page')]`);
 
+// 9 拍點格子：在 Lib 放 down 2 拍、up 1 拍、下手 4 拍，給上層的 high V 在 4-7，最後選 4-5 到 4-6
+await js(`$btn('關閉', q('.print-sheet')).click();`);
+await waitFor(() => js(`return !!q('.cues .sheet')`));
+await js(`
+	const g = q('.cues');
+	const tap = async (el) => { el.click(); await new Promise((x) => setTimeout(x, 50)); };
+	const cell = (n) => g.querySelector('.cell[aria-label="' + n + '"]');
+	const more = () => g.querySelector('[aria-label="多選一拍"]');
+	await tap(cell('4-1')); await tap(more()); await tap($btn('down', g));
+	await tap($btn('up', g));
+	await tap(cell('4-1')); for (let i = 0; i < 3; i++) await tap(more()); await tap($btn('下手', g));
+	await tap($btn('上層', g.querySelector('[aria-label="給誰"]')));
+	await tap(cell('4-7')); await tap($btn('high V', g));
+	await tap(cell('4-5')); await tap(more());`);
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+await js(`q('.cues').scrollIntoView();`);
+await sleep(200);
+await shot(
+	'cues',
+	[
+		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.5, y: 0 }],
+		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
+		[3, `q('.cues .whorow')`],
+		[4, `q('.cues .selbar')`, { x: 0.6, y: 0.5 }],
+		[5, `[...document.querySelectorAll('.cues .kindrow .words')]`, { x: 0, y: 0 }],
+		[6, `[...document.querySelectorAll('.cues .kindrow .clear')]`, { x: 1, y: 0 }]
+	],
+	`q('.cues')`
+);
+
 stop(0);
