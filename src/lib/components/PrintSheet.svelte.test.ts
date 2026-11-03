@@ -5,6 +5,7 @@ import {
 	createFlow,
 	insertFormation,
 	placeCue,
+	setMarkers,
 	setPositions,
 	type CommandResult,
 	type Flow
@@ -86,6 +87,20 @@ describe('八拍表列印', () => {
 		expect(within(rows[2]).queryByRole('img', { name: '場地' })).toBeNull();
 		// 小圖只是看的：沒有放大縮小的按鈕
 		expect(within(rows[0]).queryByRole('button', { name: '放大' })).toBeNull();
+	});
+
+	it('小站位圖和標題寫的標記跟編輯畫面一樣', async () => {
+		render(PrintSheet, { flow: flowOf(setMarkers(sample(), 'initial')), onclose: vi.fn(), print: vi.fn() });
+		const dots = [...bodyRows()[0].querySelectorAll('[data-member-id] text')].map((t) => t.textContent);
+		expect(dots).toEqual(['小A', '小B', '小C']);
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+		expect(screen.getByRole('heading').textContent).toContain('小B（場上寫「小B」）');
+	});
+
+	it('號碼標記的標題寫「場上 2 號」', async () => {
+		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+		expect(screen.getByRole('heading').textContent).toContain('小B（場上 2 號）');
 	});
 
 	it('選一個隊員時只列他參加的動作和他的任務角色', async () => {

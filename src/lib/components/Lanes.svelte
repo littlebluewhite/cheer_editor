@@ -15,6 +15,7 @@
 		cueForMember,
 		formationWalks,
 		idleAt,
+		memberMarkers,
 		memberWalk,
 		moveAction,
 		resizeAction,
@@ -33,6 +34,7 @@
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import type { PendingConfirm } from './form';
+	import { isLongMarker } from './marker';
 	import { followPointer } from './pointer';
 
 	interface Props {
@@ -75,6 +77,7 @@
 
 	const width = $derived(totalSeconds(flow) * pxPerSec);
 	const idle = $derived(new Set(idleAt(flow, playheadSec)));
+	const markers = $derived(memberMarkers(flow));
 	/** 每個動作的位置（px），一個動作算一次，泳道共用。 */
 	const placed = $derived(
 		flow.actions.map((action) => {
@@ -254,7 +257,11 @@
 			title="點一下選這個人，Shift＋點多選"
 			onclick={(e) => pick(e, m.id)}
 		>
-			<b class="no gr {m.globalRole}" title={m.globalRole === 'top' ? '上層' : '底層'}>{i + 1}</b>
+			<b
+				class="no gr {m.globalRole}"
+				class:long={isLongMarker(markers[m.id])}
+				title={m.globalRole === 'top' ? '上層' : '底層'}>{markers[m.id]}</b
+			>
 			<span class="name">{m.name}</span>
 			{#if idle.has(m.id)}<span class="idle-tag">閒</span>{/if}
 		</button>
@@ -360,7 +367,11 @@
 		background: var(--sel-soft, #dcf4fa);
 		box-shadow: inset 3px 0 0 var(--sel, #19b4d8);
 	}
-	/* 號碼圓圈：顏色照全局角色，跟場上的點一樣。 */
+	/* 標記圓圈：顏色照全局角色，跟場上的點一樣。 */
+	.no.long {
+		font-size: 7px;
+		letter-spacing: -0.3px;
+	}
 	.no {
 		flex: none;
 		width: 18px;

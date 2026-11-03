@@ -15,9 +15,11 @@ export {
 	MAX_MEMBERS,
 	addMembers,
 	deleteMember,
+	memberMarkers,
+	setMarkers,
 	updateMember
 } from './members';
-export type { Gender, GlobalRole, Member, MemberChanges, NewMemberInput } from './members';
+export type { Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
 
 export {
 	ACTION_CATEGORIES,

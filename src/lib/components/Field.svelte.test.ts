@@ -26,6 +26,24 @@ describe('場地', () => {
 });
 
 describe('上層、中層畫在最上面', () => {
+	it('點上寫標記；兩個字的標記字小一點', () => {
+		const members: Member[] = ['王小明', '李美'].map((name, i) => ({
+			id: `m${i + 1}`,
+			name,
+			gender: 'F',
+			globalRole: 'base'
+		}));
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			markers: { m1: '王明', m2: '李' },
+			positions: { m1: [0, 0], m2: [1, 0] }
+		});
+		const texts = [...document.querySelectorAll('[data-member-id] text')];
+		expect(texts.map((t) => t.textContent)).toEqual(['王明', '李']);
+		expect(texts.map((t) => t.classList.contains('long'))).toEqual([true, false]);
+	});
+
 	it('raised 裡的人最後畫（蓋在別人上面），有黃框和陰影的樣式', () => {
 		const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
 			id: `m${i + 1}`,

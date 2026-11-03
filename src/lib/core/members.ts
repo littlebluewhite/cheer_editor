@@ -124,6 +124,42 @@ export function deleteMember(
 	});
 }
 
+/** 標記用什麼：號碼（名單第幾個）或開頭字（名字的第一個字）。 */
+export type MarkerStyle = 'number' | 'initial';
+
+/** 換標記。 */
+export function setMarkers(flow: Flow, markers: MarkerStyle): CommandResult {
+	return ok({ ...flow, markers });
+}
+
+/** 每個隊員的標記（場上圓點、泳道、名單上寫的字）：隊員 id → 字。 */
+export function memberMarkers(flow: Flow): Record<string, string> {
+	if (flow.markers !== 'initial') {
+		return Object.fromEntries(flow.members.map((m, i) => [m.id, String(i + 1)]));
+	}
+	const chars = new Map(flow.members.map((m) => [m.id, Array.from(m.name)]));
+	const initial = (m: Member) => chars.get(m.id)![0].toUpperCase();
+	return Object.fromEntries(
+		flow.members.map((m) => {
+			const group = flow.members.filter((o) => initial(o) === initial(m));
+			return [m.id, group.length === 1 ? initial(m) : clashMarker(m, group, chars)];
+		})
+	);
+}
+
+/**
+ * 開頭字撞在一起的人：開頭字再帶名字裡第 k 個字，k 從第二個字往後找，找到同一群裡沒有別人第 k 個字一樣的
+ * （王小明、王大華、王小美 → 王明、王大、王美）。找不到（同名、名字只有一個字）就在開頭字後面加他在這群裡排第幾。
+ */
+function clashMarker(m: Member, group: Member[], chars: Map<string, string[]>): string {
+	const mine = chars.get(m.id)!;
+	const initial = mine[0].toUpperCase();
+	for (let k = 1; k < mine.length; k++) {
+		if (group.every((o) => o === m || chars.get(o.id)![k] !== mine[k])) return initial + mine[k];
+	}
+	return initial + (group.indexOf(m) + 1);
+}
+
 /**
  * 新人等著被擺好的位置：墊子外半格、每 1/4 格一個，排成一排。從正面左邊的角開始往右排到墊子右邊外，
  * 排滿了從那個角沿著左邊往後排。都在吸附點上、在墊子外 1 m 以內。

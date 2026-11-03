@@ -4,12 +4,14 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { applyResult } from './form';
+	import { isLongMarker } from './marker';
 	import {
 		GENDERS,
 		GLOBAL_ROLES,
 		MAX_MEMBERS,
 		addMembers,
 		deleteMember,
+		memberMarkers,
 		memberName,
 		updateMember,
 		type Flow,
@@ -24,6 +26,7 @@
 	let gender = $state<Gender | ''>('');
 	let globalRole = $state<GlobalRole | ''>('');
 	let error = $state('');
+	const markers = $derived(memberMarkers(flow));
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -62,14 +65,14 @@
 <section class="members">
 	<header>
 		<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
-		<span class="hint">名單順序就是場上的號碼和泳道順序</span>
+		<span class="hint">名單順序就是泳道順序和場上的號碼；在「流程設定」可以把號碼換成名字開頭的字</span>
 	</header>
 
 	{#if flow.members.length}
 		<ol>
 			{#each flow.members as m, i (m.id)}
 				<li>
-					<span class="no {m.globalRole}">{i + 1}</span>
+					<span class="no {m.globalRole}" class:long={isLongMarker(markers[m.id])}>{markers[m.id]}</span>
 					<input
 						aria-label="第 {i + 1} 位隊員的名字"
 						value={m.name}
@@ -182,6 +185,10 @@
 		line-height: 1;
 		border: 1.5px solid #16213a;
 		background: #fff;
+	}
+	.no.long {
+		font-size: 8px;
+		letter-spacing: -0.3px;
 	}
 	.no.top {
 		background: var(--top, #e0664f);

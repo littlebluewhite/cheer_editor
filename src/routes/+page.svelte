@@ -8,6 +8,7 @@
 		formationTimes,
 		formationWalks,
 		matchPrevious,
+		memberMarkers,
 		moveMembers,
 		moveTargetText,
 		playbackPlan,
@@ -699,6 +700,7 @@
 			<Field
 				field={flow.field}
 				members={flow.members}
+				markers={memberMarkers(flow)}
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
 				selected={selectedMemberIds}

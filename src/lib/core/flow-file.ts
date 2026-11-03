@@ -8,7 +8,7 @@ import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 4;
+export const FORMAT_VERSION = 5;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -28,11 +28,13 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 第 3 版：動作多了可有可無的 cues（拍點），沒有就是沒有拍點，所以資料不用動。
  * 第 4 版：動作多了可有可無的 color（辨識色），沒有就是用大類的顏色；站位多了可有可無的 name（站位名稱），
  *   沒有就是只顯示號碼。所以資料不用動。
+ * 第 5 版：流程多了可有可無的 markers（標記用號碼還是開頭字），沒有就是號碼，所以資料不用動。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
 	2: (doc) => ({ formatVersion: 3, flow: doc.flow }),
-	3: (doc) => ({ formatVersion: 4, flow: doc.flow })
+	3: (doc) => ({ formatVersion: 4, flow: doc.flow }),
+	4: (doc) => ({ formatVersion: 5, flow: doc.flow })
 };
 
 /** 音樂檔的位元組，用 flow.audio 的 id 對應。 */
@@ -146,6 +148,7 @@ const flowShape = shape({
 		})
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
+	markers: (v) => v === undefined || oneOf(['number', 'initial'])(v),
 	actions: listOf(
 		shape({
 			id: str,

@@ -97,6 +97,34 @@ describe('段、八拍尺、上方列', () => {
 		expect(name.value).toBe('臺灣盃');
 		expect(document.querySelector('.topbar b')?.textContent).toBe('臺灣盃');
 	});
+
+	it('流程設定可以把標記換成開頭字：場上、泳道、名單都跟著換，可以復原', async () => {
+		await newFlow();
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '王小明\n王大華\n李美' } });
+		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'base' } });
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		const dots = () => [...document.querySelectorAll('[data-member-id] text')].map((t) => t.textContent);
+		const lanes = () => [...document.querySelectorAll('[data-lane] .no')].map((el) => el.textContent);
+		expect(dots()).toEqual(['1', '2', '3']);
+
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		const dialog = screen.getByRole('dialog', { name: '流程設定' });
+		await fireEvent.click(within(dialog).getByLabelText('名字開頭的字'));
+		// 預覽：每個人的標記和名字
+		expect(within(dialog).getByText('王小明').previousElementSibling?.textContent).toBe('王小');
+		expect(dots()).toEqual(['王小', '王大', '李']);
+		expect(lanes()).toEqual(['王小', '王大', '李']);
+		expect([...document.querySelectorAll('.members li .no')].map((el) => el.textContent)).toEqual([
+			'王小',
+			'王大',
+			'李'
+		]);
+
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: /復原/ }));
+		expect(dots()).toEqual(['1', '2', '3']);
+	});
 });
 
 describe('動作', () => {

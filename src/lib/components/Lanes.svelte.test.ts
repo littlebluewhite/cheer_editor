@@ -5,6 +5,7 @@ import {
 	createFlow,
 	insertFormation,
 	placeCue,
+	setMarkers,
 	setPositions,
 	setWalks,
 	type CommandResult,
@@ -198,6 +199,18 @@ describe('拖色條', () => {
 
 describe('點泳道上的名字選人', () => {
 	const name = (i: number) => lanes()[i].querySelector<HTMLElement>('.lab')!;
+
+	it('名字前面的圓圈寫標記：號碼或開頭字', () => {
+		render(Lanes, {
+			flow: flowOf(setMarkers(sample(), 'initial')),
+			playheadSec: 0,
+			pxPerSec: 10,
+			selectedActionId: null,
+			onselectaction: vi.fn()
+		});
+		const marks = [...document.querySelectorAll('[data-lane] .no')].map((el) => el.textContent);
+		expect(marks).toEqual(['小A', '小B', '小C']);
+	});
 
 	it('點名字只選這個人；Shift＋點加進來或拿掉', async () => {
 		const { onselectmembers } = setup(0, null, ['m1']);

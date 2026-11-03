@@ -4,7 +4,7 @@
 import type { Action } from './actions';
 import { MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import type { Formation } from './formation';
-import type { Member } from './members';
+import type { MarkerStyle, Member } from './members';
 import { blocked, ok, type CommandResult } from './result';
 import type { CustomRole } from './roles';
 import type { AudioRef, Segment } from './segment';
@@ -26,6 +26,8 @@ export interface Flow {
 	/** 這支流程自己加的任務角色（固定的 11 個不存）。 */
 	customRoles: CustomRole[];
 	actions: Action[];
+	/** 隊員的標記用號碼還是開頭字；沒有就是號碼。 */
+	markers?: MarkerStyle;
 }
 
 export interface NewFlowInput {

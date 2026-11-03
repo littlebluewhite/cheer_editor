@@ -25,6 +25,7 @@
 		type Position
 	} from '#lib/core';
 	import Icon from './Icon.svelte';
+	import { isLongMarker } from './marker';
 
 	/** 螢幕座標 → 場地公尺座標。測試換成假的（見 docs/adr/0002-component-tests-jsdom.md）。 */
 	type ToMeters = (e: { clientX: number; clientY: number }, svg: SVGSVGElement) => Position;
@@ -40,6 +41,7 @@
 	let {
 		field,
 		members = [],
+		markers = {},
 		positions = {},
 		raised = [],
 		selected = [],
@@ -54,8 +56,10 @@
 		children
 	}: {
 		field: FieldConfig;
-		/** 照名單順序；點上寫的號碼是名單裡第幾個。 */
+		/** 照名單順序。 */
 		members?: Member[];
+		/** 點上寫的標記（隊員 id → 字）；沒給的人寫名單裡第幾個。 */
+		markers?: Record<string, string>;
 		positions?: Record<string, Position>;
 		/** 這一刻任務角色是上層或中層的人：畫在最上面，黃框加陰影。 */
 		raised?: string[];
@@ -135,7 +139,7 @@
 			.flatMap((m, i) => {
 				const p = dragged[m.id] ?? positions[m.id];
 				return p
-					? [{ m, number: i + 1, p, up: raised.includes(m.id), sel: selected.includes(m.id) }]
+					? [{ m, mark: markers[m.id] ?? String(i + 1), p, up: raised.includes(m.id), sel: selected.includes(m.id) }]
 					: [];
 			})
 			// SVG 後畫的蓋在上面：上層、中層排最後。
@@ -307,7 +311,7 @@
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
-		{#each dots as { m, number, p, up, sel } (m.id)}
+		{#each dots as { m, mark, p, up, sel } (m.id)}
 			<g
 				class="dot"
 				class:raised={up}
@@ -322,7 +326,7 @@
 				<title>{m.name}</title>
 				{#if sel}<circle class="ring" r="0.42" />{/if}
 				<circle class={m.globalRole} r="0.3" />
-				<text y="0.11">{number}</text>
+				<text y={isLongMarker(mark) ? 0.08 : 0.11} class:long={isLongMarker(mark)}>{mark}</text>
 			</g>
 		{/each}
 		{#if lasso}
@@ -488,6 +492,9 @@
 		font-weight: 700;
 		fill: #16213a;
 		pointer-events: none;
+	}
+	.dot text.long {
+		font-size: 0.2px;
 	}
 	.dot circle.top + text {
 		fill: #fff;

@@ -5,6 +5,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	setMarkers,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -54,6 +55,17 @@ describe('隊員名單', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
 		expect(onchange).not.toHaveBeenCalled();
 		expect(screen.getByRole('alert').textContent).toBe('請選全局角色');
+	});
+
+	it('名單上的圓圈寫標記，跟場上一樣', () => {
+		const flow = okFlow(
+			addMembers(empty, [
+				{ name: '王小明', gender: 'F', globalRole: 'top' },
+				{ name: '李美', gender: 'M', globalRole: 'base' }
+			])
+		);
+		setup(okFlow(setMarkers(flow, 'initial')));
+		expect([...document.querySelectorAll('li .no')].map((el) => el.textContent)).toEqual(['王', '李']);
 	});
 
 	it('名單照順序列出，可以改名字', async () => {

@@ -3,6 +3,8 @@ import {
 	addMembers,
 	createFlow,
 	fieldGeometry,
+	memberMarkers,
+	setMarkers,
 	setPositions,
 	updateMember,
 	type Flow,
@@ -173,5 +175,41 @@ describe('加隊員', () => {
 
 		const thirtyNine = okFlow(addMembers(newFlow(), forty.slice(1)));
 		expect(addMembers(thirtyNine, [xiaoA, xiaoA]).kind).toBe('blocked');
+	});
+});
+
+describe('標記', () => {
+	const people = (...names: string[]) =>
+		okFlow(addMembers(newFlow(), names.map((name) => ({ ...xiaoA, name }))));
+
+	it('新流程用號碼：名單第幾個就是幾號', () => {
+		const flow = people('王小明', '李大華', '陳美');
+		expect(memberMarkers(flow)).toEqual({ m1: '1', m2: '2', m3: '3' });
+	});
+
+	it('改成開頭字：每人寫名字的第一個字，英文寫大寫', () => {
+		const flow = okFlow(setMarkers(people('王小明', '李大華', 'amy'), 'initial'));
+		expect(flow.markers).toBe('initial');
+		expect(memberMarkers(flow)).toEqual({ m1: '王', m2: '李', m3: 'A' });
+	});
+
+	it('開頭字撞在一起：再帶名字裡第一個不一樣的字，其他人照舊一個字', () => {
+		const flow = okFlow(setMarkers(people('王小明', '王大華', '李美', '王小美'), 'initial'));
+		expect(memberMarkers(flow)).toEqual({ m1: '王明', m2: '王大', m3: '李', m4: '王美' });
+	});
+
+	it('暱稱都是「小」開頭：小A、小B 整個名字當標記', () => {
+		const flow = okFlow(setMarkers(people('小A', '小B'), 'initial'));
+		expect(memberMarkers(flow)).toEqual({ m1: '小A', m2: '小B' });
+	});
+
+	it('分不出來（同名、或一個名字只有一個字）：開頭字後面加第幾個', () => {
+		const flow = okFlow(setMarkers(people('王', '王', '王美'), 'initial'));
+		expect(memberMarkers(flow)).toEqual({ m1: '王1', m2: '王2', m3: '王美' });
+	});
+
+	it('可以改回號碼', () => {
+		const flow = okFlow(setMarkers(okFlow(setMarkers(people('王小明'), 'initial')), 'number'));
+		expect(memberMarkers(flow)).toEqual({ m1: '1' });
 	});
 });
