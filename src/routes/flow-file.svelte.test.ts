@@ -115,6 +115,20 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(false);
 	});
 
+	it('打字打到一半按存檔按鈕（iPad 點按鈕不一定會讓輸入框失去焦點）：一樣先送出那個欄位', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await openFile(writeFlowFile(sampleFlow(), {}));
+		const name = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		name.addEventListener('blur', () => name.dispatchEvent(new Event('change', { bubbles: true })));
+		name.focus();
+		await fireEvent.input(name, { target: { value: '開場' } });
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await settle();
+		const r = readFlowFile(saves[0].bytes);
+		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
+	});
+
 	it('音樂檔還在解碼時關掉段設定、新增別段：解碼完不會放進新的那段，也不會弄丟新段', async () => {
 		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
 		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
@@ -193,6 +207,15 @@ describe('存檔', () => {
 		await settle();
 		expect(screen.getByRole('status').textContent).toContain('這個瀏覽器不能存回原檔');
 		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('iPad 交給分享選單：算存好了，不寫說明', async () => {
+		setup(fakeSaver('shared').saver);
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await settle();
+		expect(hasUnsavedChanges()).toBe(false);
+		expect(screen.queryByRole('status')).toBeNull();
 	});
 
 	it('音樂資料也存進去', async () => {

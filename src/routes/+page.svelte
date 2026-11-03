@@ -430,9 +430,11 @@
 		return audio;
 	}
 
-	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；其他瀏覽器下載新檔。 */
+	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；iPad 開分享選單；其他瀏覽器下載新檔。 */
 	async function save() {
 		if (!flow || !saver || saving) return;
+		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
+		(document.activeElement as HTMLElement | null)?.blur();
 		const f = flow;
 		saving = true;
 		try {
@@ -605,8 +607,6 @@
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字。
-			(document.activeElement as HTMLElement | null)?.blur();
 			void save();
 			return;
 		}
