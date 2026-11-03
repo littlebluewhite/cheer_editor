@@ -12,6 +12,12 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ActionForm from './ActionForm.svelte';
 
+/** 打開某個人的任務角色選單，點一個角色（空字串是沒有任務）。 */
+async function pickRole(who: string, role: string) {
+	await fireEvent.click(screen.getByRole('combobox', { name: `${who} 的任務角色` }));
+	await fireEvent.click(screen.getByRole('option', { name: new RegExp(`^${role || '（沒有任務）'}`) }));
+}
+
 // jsdom 沒有 scrollIntoView：記下被捲過去的元素。
 const scrolled: Element[] = [];
 Element.prototype.scrollIntoView = function () {
@@ -53,7 +59,7 @@ describe('動作表單：新增', () => {
 		await fireEvent.input(screen.getByLabelText('名稱'), { target: { value: '收尾' } });
 		await fireEvent.input(screen.getByLabelText('長度'), { target: { value: '4.5' } });
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
-		await fireEvent.change(screen.getByLabelText('小B 的任務角色'), { target: { value: '中層' } });
+		await pickRole('小B', '中層');
 		await fireEvent.input(screen.getByLabelText('備註'), { target: { value: '慢' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 
@@ -137,7 +143,7 @@ describe('動作表單：改選到的動作', () => {
 		expect(length.value).toBe('4');
 		expect(onchange).not.toHaveBeenCalled();
 
-		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '' } });
+		await pickRole('小A', '');
 		expect(onchange.mock.calls[0][0].actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
@@ -162,17 +168,32 @@ describe('動作表單：改選到的動作', () => {
 	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
 		const { onchange } = setup(flow, 'x1');
-		const selA = screen.getByLabelText('小A 的任務角色') as HTMLSelectElement;
-		const selB = screen.getByLabelText('小B 的任務角色') as HTMLSelectElement;
-		expect([...selA.options].map((o) => o.textContent)).toContain('4 上層');
-		selA.focus();
-		await fireEvent.keyDown(selA, { key: '4' });
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		const pickB = screen.getByRole('combobox', { name: '小B 的任務角色' });
+		// 選單打開時按鍵也是直接選好、關掉選單，不用再按確認。
+		await fireEvent.click(pickA);
+		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4');
+		pickA.focus();
+		await fireEvent.keyDown(pickA, { key: '4' });
 		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
-		expect(document.activeElement).toBe(selB);
-		await fireEvent.keyDown(selB, { key: '1' });
+		expect(screen.queryByRole('listbox')).toBeNull();
+		expect(pickA.textContent).toBe('上層');
+		expect(document.activeElement).toBe(pickB);
+		// 選單關著也可以。
+		await fireEvent.keyDown(pickB, { key: '1' });
 		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: '底層' });
-		await fireEvent.keyDown(selB, { key: 'Backspace' });
+		await fireEvent.keyDown(pickB, { key: 'Backspace' });
 		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+	});
+
+	it('任務角色選單用滑鼠點也可以；最後一項是自訂角色', async () => {
+		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		const { onchange } = setup(flow, 'x1');
+		await pickRole('小A', '主底');
+		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '主底' });
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		await fireEvent.click(screen.getByRole('option', { name: '＋自訂角色…' }));
+		expect(screen.getByRole('dialog')).toBeTruthy();
 	});
 
 	it('標題是動作的名稱，可以直接改', async () => {
@@ -273,7 +294,7 @@ describe('動作表單：選人', () => {
 		const { onchange, onselectmembers } = setupSel(withLib(), null, [], 2);
 		await fireEvent.change(screen.getByLabelText('從別的動作複製人'), { target: { value: 'x1' } });
 		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm2']);
-		expect((screen.getByLabelText('小B 的任務角色') as HTMLSelectElement).value).toBe('主底');
+		expect(screen.getByRole('combobox', { name: '小B 的任務角色' }).textContent).toBe('主底');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(onchange.mock.calls[0][0].actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層' },

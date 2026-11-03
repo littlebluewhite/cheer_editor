@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import Page from './+page.svelte';
 
+/** 打開某個人的任務角色選單，點一個角色（空字串是沒有任務）。 */
+async function pickRole(who: string, role: string) {
+	await fireEvent.click(screen.getByRole('combobox', { name: `${who} 的任務角色` }));
+	await fireEvent.click(screen.getByRole('option', { name: new RegExp(`^${role || '（沒有任務）'}`) }));
+}
+
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
 
@@ -139,12 +145,21 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
-		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '上層' } });
+		await pickRole('小A', '上層');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 	}
 
 	const bar = () => document.querySelector('[data-lane="m1"] [data-action-id]');
 	const dot = () => document.querySelector('[data-member-id="m1"]')!;
+
+	it('在任務角色選單上按 Backspace 只是改成沒有任務，不會刪掉選到的動作', async () => {
+		await withAction();
+		const picker = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		picker.focus();
+		await fireEvent.keyDown(picker, { key: 'Backspace' });
+		expect(bar()).not.toBeNull();
+		expect(screen.getByRole('combobox', { name: '小A 的任務角色' }).textContent).toBe('（沒有任務）');
+	});
 
 	it('新增的動作出現在泳道上；任務角色是上層的人在場上畫在最上面；閒著的人標「閒」', async () => {
 		await withAction();
@@ -412,7 +427,7 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
-		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '上層' } });
+		await pickRole('小A', '上層');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
@@ -1084,8 +1099,8 @@ describe('復原和重做', () => {
 	it('復原後，選到的人、站位、動作已經不存在就清掉', async () => {
 		await setup();
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '上層' } });
-		await fireEvent.change(screen.getByLabelText('小B 的任務角色'), { target: { value: '上層' } });
+		await pickRole('小A', '上層');
+		await pickRole('小B', '上層');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		const bar = () => document.querySelector('[data-lane="m1"] [data-action-id]');
 		expect(bar()?.classList.contains('selected')).toBe(true);

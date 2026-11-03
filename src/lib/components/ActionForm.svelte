@@ -32,6 +32,7 @@
 	import CueGrid from './CueGrid.svelte';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
+	import RolePicker, { roleKey } from './RolePicker.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -67,9 +68,6 @@
 		color: string | undefined;
 	}
 
-	/** 角色下拉選單裡「＋自訂角色…」的值。 */
-	const NEW_ROLE = '\u0000new';
-
 	const action = $derived(actionId ? (flow.actions.find((a) => a.id === actionId) ?? null) : null);
 	const slot = $derived(action ? null : actionSlotAt(flow, playheadSec));
 	const segment = $derived(
@@ -81,11 +79,8 @@
 	/** 播放頭換格才變，用來在新增時把開始、長度跟上播放頭。 */
 	const slotKey = $derived(slot ? `${slot.segmentId}:${slot.start}:${slot.length}` : '');
 	const roles = $derived(roleGlossary(flow));
-	/** 任務角色的快捷鍵，照名詞對照表的順序；超過的角色沒有快捷鍵。 */
-	const ROLE_KEYS = '1234567890qwertyuiop';
-	const roleKey = (i: number) => ROLE_KEYS[i] ?? '';
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
-	const roleSelects: HTMLSelectElement[] = $state([]);
+	const rolePickers: RolePicker[] = $state([]);
 	const others = $derived(
 		flow.members.filter((m) => !draft.members.some((d) => d.memberId === m.id))
 	);
@@ -229,30 +224,11 @@
 		onselect(null);
 	}
 
-	function setRole(i: number, select: HTMLSelectElement) {
-		if (select.value === NEW_ROLE) {
-			select.value = draft.members[i].role ?? '';
-			glossaryOpen = true;
-			return;
-		}
-		draft.members[i].role = select.value || null;
-		changed();
-	}
-
-	/** 選單上按快捷鍵：直接選那個角色（Backspace、Delete 是沒有任務），再跳到下一個人。 */
-	function roleShortcut(i: number, e: KeyboardEvent) {
-		if (e.ctrlKey || e.metaKey || e.altKey) return;
-		let role: string | null;
-		if (e.key === 'Backspace' || e.key === 'Delete') role = null;
-		else {
-			const at = ROLE_KEYS.indexOf(e.key.toLowerCase());
-			if (at < 0 || at >= roles.length) return;
-			role = roles[at].name;
-		}
-		e.preventDefault();
+	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
+	function setRole(i: number, role: string | null, byKey: boolean) {
 		draft.members[i].role = role;
 		changed();
-		roleSelects[i + 1]?.focus();
+		if (byKey) rolePickers[i + 1]?.focus();
 	}
 
 	/** 人改了：改動作就馬上生效；新增時改選取。 */
@@ -391,19 +367,14 @@
 								{#if who}<i class="gr {who.globalRole}">{who.globalRole === 'top' ? '上' : '底'}</i>{/if}
 								<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
 							</span>
-							<select
-								aria-label="{nameOf(m.memberId)} 的任務角色"
-								value={m.role ?? ''}
-								bind:this={roleSelects[i]}
-								onchange={(e) => setRole(i, e.currentTarget)}
-								onkeydown={(e) => roleShortcut(i, e)}
-							>
-								<option value="">（沒有任務）</option>
-								{#each roles as r, k (r.name)}<option value={r.name}
-										>{roleKey(k) ? `${roleKey(k)} ` : ''}{r.name}</option
-									>{/each}
-								<option value={NEW_ROLE}>＋自訂角色…</option>
-							</select>
+							<RolePicker
+								bind:this={rolePickers[i]}
+								label="{nameOf(m.memberId)} 的任務角色"
+								value={m.role}
+								names={roles.map((r) => r.name)}
+								onpick={(role, byKey) => setRole(i, role, byKey)}
+								onnew={() => (glossaryOpen = true)}
+							/>
 							<button
 								type="button"
 								class="ghost icon"
