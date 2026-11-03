@@ -18,9 +18,9 @@
 		memberMarkers,
 		memberWalk,
 		moveAction,
+		nearestPosition,
 		resizeAction,
 		setWalks,
-		toPosition,
 		toSeconds,
 		totalSeconds,
 		type CommandResult,
@@ -29,7 +29,6 @@
 		type CueKind,
 		type Flow,
 		type FormationWalk,
-		type TimePosition,
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
@@ -205,30 +204,18 @@
 		};
 		const own = seconds(d.memberId);
 		const from = d.mode === 'arrive' ? own.arrive : own.depart;
-		const shift = toSeconds(flow, nearest(from + d.dx / pxPerSec)) - from;
+		const shift = toSeconds(flow, nearestPosition(flow, from + d.dx / pxPerSec)) - from;
 		const next: Record<string, Walk> = {};
 		for (const id of d.ids) {
 			const { depart, arrive } = seconds(id);
 			next[id] = {
-				depart: nearest(d.mode === 'arrive' ? depart : depart + shift),
-				arrive: nearest(d.mode === 'depart' ? arrive : arrive + shift)
+				depart: nearestPosition(flow, d.mode === 'arrive' ? depart : depart + shift),
+				arrive: nearestPosition(flow, d.mode === 'depart' ? arrive : arrive + shift)
 			};
 		}
 		const r = setWalks(flow, d.formationId, next);
 		if (r.kind === 'ok') onchange(r.flow);
 		else onblocked(r.message);
-	}
-
-	/**
-	 * 全域秒數最近的那一格（音樂段半拍、口號段 0.1 秒）。流程開頭之前、結尾之後不夾回來，
-	 * 照樣往外數成超出的格子，交給 setWalks 擋下。
-	 */
-	function nearest(sec: number): TimePosition {
-		const p = toPosition(flow, sec)!;
-		const lo = toSeconds(flow, p);
-		const hi = toSeconds(flow, { ...p, at: p.at + 1 });
-		if (sec < lo || sec >= hi) return { ...p, at: p.at + Math.round((sec - lo) / (hi - lo)) };
-		return sec - lo > (hi - lo) / 2 ? toPosition(flow, hi)! : p;
 	}
 
 	function pick(e: MouseEvent, id: string) {

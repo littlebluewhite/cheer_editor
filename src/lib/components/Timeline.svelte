@@ -4,7 +4,14 @@
 	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪或觸控板捏合以滑鼠為準）。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	import { tick, untrack } from 'svelte';
-	import { rulerMarks, segmentSpans, totalSeconds, type Flow, type SegmentKind } from '#lib/core';
+	import {
+		rulerMarks,
+		segmentSpans,
+		totalSeconds,
+		type Flow,
+		type SegmentKind,
+		type TimePosition
+	} from '#lib/core';
 	import type { PendingConfirm } from './form';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
@@ -27,6 +34,8 @@
 		/** 點縮圖：選這張站位，sec 是它的全域秒數。 */
 		onselectformation?: (formationId: string, sec: number) => void;
 		ondeleteformation?: (formationId: string) => void;
+		/** 拖縮圖放開：把這張站位挪到 to。 */
+		onmoveformation?: (formationId: string, to: TimePosition) => void;
 		selectedActionId?: string | null;
 		onselectaction?: (actionId: string) => void;
 		/** 拖色條改好的流程。 */
@@ -50,6 +59,7 @@
 		selectedFormationId = null,
 		onselectformation = () => {},
 		ondeleteformation = () => {},
+		onmoveformation = () => {},
 		selectedActionId = null,
 		onselectaction = () => {},
 		onchange = () => {},
@@ -214,6 +224,7 @@
 			selectedId={selectedFormationId}
 			onselect={onselectformation}
 			ondelete={ondeleteformation}
+			onmove={onmoveformation}
 		/>
 		<Lanes
 			{flow}

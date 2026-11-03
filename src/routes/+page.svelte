@@ -10,8 +10,11 @@
 		formationWalks,
 		matchPrevious,
 		memberMarkers,
+		moveFormation,
+		moveFormationHint,
 		moveMembers,
 		moveTargetText,
+		parseTime,
 		playbackPlan,
 		playStartSec,
 		positionText,
@@ -21,13 +24,16 @@
 		renameFormation,
 		segmentsMissingAudio,
 		timeRuleWarnings,
+		timeText,
 		totalSeconds,
 		writeFlowFile,
 		type Flow,
+		type Formation,
 		type FormationWalk,
 		type MoveResult,
 		type Position,
-		type SegmentKind
+		type SegmentKind,
+		type TimePosition
 	} from '#lib/core';
 	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
@@ -543,6 +549,47 @@
 		playheadSec = r.sec;
 	}
 
+	/**
+	 * 挪站位（拖縮圖、打站位時間）：被擋就說原因。挪了就提示走位被壓短的人數，
+	 * 選著這張、播放頭跳到新的站位時間（左邊欄的站位時間框還在）。
+	 */
+	function shiftFormation(id: string, to: TimePosition) {
+		if (!flow) return;
+		const r = moveFormation(flow, id, to);
+		if (r.kind !== 'ok') return void (notice = r.message);
+		change(r.flow);
+		notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
+		selectedFormationId = id;
+		selectedActionId = null;
+		seek(r.flow, r.sec);
+	}
+
+	/**
+	 * 左邊欄「站位時間」框改了：寫法跟出發、到達一樣，看得懂就挪過去。
+	 * 框先變回原本的 text：挪成功時跟著流程換成新的站位時間，看不懂或被擋就留在原本的。
+	 */
+	function retimeHere(box: HTMLInputElement, formation: Formation, text: string) {
+		if (!flow) return;
+		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
+		const to = parseTime(flow, formation.segmentId!, box.value);
+		box.value = text;
+		if (!to) return void (notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
+		shiftFormation(formation.id, to);
+	}
+
+	/**
+	 * 左邊欄名稱框、站位時間框的按鍵：Enter 離開框（送出），Esc 變回 original 再離開。
+	 * 中文輸入法還在選字時按的 Enter / Esc 是給輸入法的；這時離開輸入框，字會重複（Safari 選字時 keyCode 是 229）。
+	 */
+	function railBoxKey(e: KeyboardEvent & { currentTarget: HTMLInputElement }, original: string) {
+		if (e.isComposing || e.keyCode === 229) return;
+		if (e.key === 'Enter') e.currentTarget.blur();
+		if (e.key === 'Escape') {
+			e.currentTarget.value = original;
+			e.currentTarget.blur();
+		}
+	}
+
 	function removeFormation(id: string) {
 		if (!flow) return;
 		const r = deleteFormation(flow, id);
@@ -740,6 +787,8 @@
 							{#if matchBlocked}<span>{matchBlocked}</span>{/if}
 						</div>
 						{@const here = formationAt(flow, playheadSec)}
+						<!-- 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。 -->
+						{@const hereTime = here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : ''}
 						<div class="here" class:on={!!here}>
 							<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
 							{#if here}
@@ -749,17 +798,19 @@
 										aria-label="站位名稱"
 										placeholder="幫這張站位取名（可不填）"
 										value={here.name ?? ''}
-										onkeydown={(e) => {
-											// 中文輸入法還在選字時按的 Enter / Esc 是給輸入法的；這時離開輸入框，字會重複（Safari 選字時 keyCode 是 229）。
-											if (e.isComposing || e.keyCode === 229) return;
-											if (e.key === 'Enter') e.currentTarget.blur();
-											if (e.key === 'Escape') {
-												e.currentTarget.value = here.name ?? '';
-												e.currentTarget.blur();
-											}
-										}}
+										onkeydown={(e) => railBoxKey(e, here.name ?? '')}
 										onchange={(e) => renameHere(here.id, e.currentTarget.value)}
 									/>
+									<label class="formation-time">
+										<span>站位時間</span>
+										<input
+											value={hereTime}
+											disabled={here === flow.formations[0]}
+											onkeydown={(e) => railBoxKey(e, hereTime)}
+											onchange={(e) => retimeHere(e.currentTarget, here, hereTime)}
+										/>
+									</label>
+									<p class="time-hint">{moveFormationHint(flow, here.id)}</p>
 								{/key}
 							{/if}
 						</div>
@@ -885,6 +936,7 @@
 					if (flow) seek(flow, sec);
 				}}
 				ondeleteformation={removeFormation}
+				onmoveformation={shiftFormation}
 				{selectedActionId}
 				onselectaction={(id) => {
 					selectAction(id);
@@ -1282,6 +1334,36 @@
 		width: 100%;
 		font-size: 14px;
 		font-weight: 600;
+	}
+	/* 站位時間：小標在左、拍子框在右；下面一行寫能挪到哪。 */
+	.formation-time {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 0 2px;
+		font-size: 12px;
+		color: var(--muted);
+	}
+	.formation-time input {
+		width: 96px;
+		font-size: 14px;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+	}
+	/* 開頭那張不能挪：框變灰。 */
+	.formation-time input:disabled {
+		background: var(--surface-2);
+		border-color: var(--line-soft);
+		color: var(--muted);
+	}
+	.time-hint {
+		margin: -2px 0 0;
+		padding: 0 2px;
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--muted);
 	}
 	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
 	.move-target {

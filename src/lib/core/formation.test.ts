@@ -14,6 +14,8 @@ import {
 	insertFormation,
 	matchPrevious,
 	memberWalk,
+	moveFormation,
+	moveFormationHint,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
@@ -864,5 +866,120 @@ describe('這段的走位', () => {
 	it('開頭那張或找不到站位：沒有走位', () => {
 		expect(formationWalks(walking(), 'f1')).toEqual([]);
 		expect(formationWalks(walking(), 'nope')).toEqual([]);
+	});
+});
+
+describe('挪站位', () => {
+	// walking()：f1 開頭 → f2 在 20 秒（音樂 1 第 100 個半拍，7-3）→ f3 在 30 秒（口號 1 第 44 個 0.1 秒）。
+	// 音樂 1 是 150 BPM：一個半拍 0.2 秒，一個八拍 3.2 秒。
+
+	it('站位時間改到那一拍，位置不變；沒設的人照預設跟著挪', () => {
+		const r = moveFormation(walking(), 'f2', at('s1', 84));
+		if (r.kind !== 'ok') throw new Error('擋下來了');
+		expect(r.flow.formations[1]).toMatchObject({ id: 'f2', segmentId: 's1', at: 84 });
+		expect(r.flow.formations[1].pos).toEqual(walking().formations[1].pos);
+		expect(r.sec).toBeCloseTo(16.8, 9);
+		// 小A 沒設：最後一個八拍才走，13.6 秒出發、16.8 秒到。
+		expectAt(r.flow, 13.6, A, [0, 0]);
+		expectAt(r.flow, 15.2, A, [2, 0]);
+		expectAt(r.flow, 16.8, A, [4, 0]);
+		expectAt(r.flow, 16.8, B, [-2, 0]);
+	});
+
+	it('要在前一張之後、後一張之前；開頭那張不能挪', () => {
+		const flow = walking();
+		const between = '站位 2 要挪到站位 1（1-1）之後、站位 3（口號 1 4.4 秒）之前';
+		const blocked = (message: string) => ({ kind: 'blocked', message });
+		expect(moveFormation(flow, 'f2', at('s1', 0))).toEqual(blocked(between));
+		expect(moveFormation(flow, 'f2', at('s2', 44))).toEqual(blocked(between));
+		expect(moveFormation(flow, 'f2', at('s2', 50))).toEqual(blocked(between));
+		// 段外面的格子（音樂 1 只有 128 個半拍）
+		expect(moveFormation(flow, 'f2', at('s1', 200))).toEqual(blocked(between));
+		// 最後一張：後面是流程結尾（口號 1 只有 100 個 0.1 秒）
+		const last = '站位 3 要挪到站位 2（音樂 1 7-3）之後、流程結尾之前';
+		expect(moveFormation(flow, 'f3', at('s1', 100))).toEqual(blocked(last));
+		expect(moveFormation(flow, 'f3', at('s2', 100))).toEqual(blocked(last));
+		expect(moveFormation(flow, 'f1', at('s1', 4))).toEqual(blocked('開頭那張不能挪'));
+		expect(moveFormation(flow, 'nope', at('s1', 4))).toEqual(blocked('找不到這張站位'));
+	});
+
+	it('挪到原本那一拍：流程不變（不算一步復原）', () => {
+		const flow = walking();
+		const r = moveFormation(flow, 'f2', at('s1', 100));
+		if (r.kind !== 'ok') throw new Error('擋下來了');
+		expect(r.flow).toBe(flow);
+		expect(r.sec).toBeCloseTo(20, 9);
+	});
+
+	/** walking()，小A 在 f2 自己設：第 50 個半拍（10 秒）出發、第 80 個（16 秒）到，比 f2 早 4 秒到。 */
+	const early = () =>
+		okFlow(setWalks(walking(), 'f2', { [A]: { depart: at('s1', 50), arrive: at('s1', 80) } }));
+
+	it('這張上自己設的出發和到達跟著挪一樣多，走的速度不變', () => {
+		// 往前挪一個八拍（16 個半拍）
+		const sooner = okFlow(moveFormation(early(), 'f2', at('s1', 84)));
+		expect(memberWalk(sooner, 'f2', A)).toEqual({ depart: at('s1', 34), arrive: at('s1', 64) });
+		expectAt(sooner, 9.8, A, [2, 0]);
+		// 往後挪 10 個半拍
+		const later = okFlow(moveFormation(early(), 'f2', at('s1', 110)));
+		expect(memberWalk(later, 'f2', A)).toEqual({ depart: at('s1', 60), arrive: at('s1', 90) });
+	});
+
+	it('挪完碰到前一張就夾在前一張；夾完出發不早於到達就當沒設', () => {
+		// 往前挪 60 個半拍到第 40 個（8 秒）：出發夾在開頭，到達是第 20 個（4 秒）
+		const squeezed = okFlow(moveFormation(early(), 'f2', at('s1', 40)));
+		expect(memberWalk(squeezed, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 20) });
+		// 挪到第 4 個：出發、到達都夾在開頭，當沒設；不到一個八拍，整段走
+		const gone = okFlow(moveFormation(early(), 'f2', at('s1', 4)));
+		expect(gone.formations[1].walks).toBeUndefined();
+		expect(memberWalk(gone, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 4) });
+	});
+
+	it('跟著挪完不在格子上（跨到別段）就往前取', () => {
+		// 口號 1（10 秒）→ 音樂 1；小B 9.9 秒出發、10.8 秒到 f2（11.6 秒）。f2 往後挪 0.2 秒：
+		// 出發 10.1 秒在音樂 1 的格子中間，往前取到 10 秒；到達 11 秒剛好在格子上。
+		const flow = okFlow(
+			setWalks(chantThenMusic(), 'f2', { [B]: { depart: at('s1', 99), arrive: at('s2', 4) } })
+		);
+		const after = okFlow(moveFormation(flow, 'f2', at('s2', 9)));
+		expect(memberWalk(after, 'f2', B)).toEqual({ depart: at('s2', 0), arrive: at('s2', 5) });
+	});
+
+	it('可以挪到別段：到口號段，沒設的人照口號段的預設整段走', () => {
+		const after = okFlow(moveFormation(chantThenMusic(), 'f2', at('s1', 50)));
+		expect(after.formations[1]).toMatchObject({ segmentId: 's1', at: 50 });
+		expect(memberWalk(after, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 50) });
+	});
+
+	it('下一張的設定不改；走位比挪之前短的人數（兩段都算，一人算一次）是 squeezed', () => {
+		// 小A 走到 f3：自己設 22 秒出發、27.6 秒（口號 1 第 20 個 0.1 秒）到。
+		const flow = okFlow(
+			setWalks(walking(), 'f3', { [A]: { depart: at('s1', 110), arrive: at('s2', 20) } })
+		);
+		// f2 往後挪到 24 秒：f3 那段的出發被夾到 24 秒，走的時間從 5.6 秒變 3.6 秒。
+		const r = moveFormation(flow, 'f2', at('s1', 120));
+		if (r.kind !== 'ok') throw new Error('擋下來了');
+		expect(r.flow.formations[2]).toBe(flow.formations[2]);
+		expect(memberWalk(r.flow, 'f3', A)).toEqual({ depart: at('s1', 120), arrive: at('s2', 20) });
+		expect(r.squeezed).toBe(1);
+		// 往前挪、速度不變：沒人被壓短；碰到前一張被夾：壓短
+		expect(moveFormation(early(), 'f2', at('s1', 84))).toMatchObject({ squeezed: 0 });
+		expect(moveFormation(early(), 'f2', at('s1', 40))).toMatchObject({ squeezed: 1 });
+	});
+
+	it('前一張以前、後一張以後，每個人每一刻的位置都不變', () => {
+		let flow = okFlow(insertFormation(early(), 34));
+		flow = okFlow(setPositions(flow, 'f4', { [A]: [0, 5] }));
+		const after = okFlow(moveFormation(flow, 'f2', at('s1', 84)));
+		for (const t of [0, 30, 31, 32.5, 34, 40]) {
+			for (const id of [A, B]) expect(positionsAt(after, t)[id]).toEqual(positionsAt(flow, t)[id]);
+		}
+	});
+
+	it('能挪的範圍：前一張和後一張的站位時間，在別段就加段名', () => {
+		const flow = walking();
+		expect(moveFormationHint(flow, 'f2')).toBe('可以挪到 1-1 之後、口號 1 4.4 秒 之前');
+		expect(moveFormationHint(flow, 'f3')).toBe('可以挪到 音樂 1 7-3 之後');
+		expect(moveFormationHint(flow, 'f1')).toBe('開頭那張不能挪');
 	});
 });

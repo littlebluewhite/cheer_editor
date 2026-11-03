@@ -235,15 +235,11 @@ export function setWalks(flow: Flow, formationId: string, walks: Record<string, 
 	if (typeof index === 'string') return blocked(index);
 	const aSec = formationSec(flow, flow.formations[index - 1]);
 	const bSec = formationSec(flow, flow.formations[index]);
-	const inGrid = ({ segmentId, at }: TimePosition) => {
-		const segment = flow.segments.find((s) => s.id === segmentId);
-		return !!segment && Number.isInteger(at) && at >= 0 && at < units(segment);
-	};
 	for (const [id, { depart, arrive }] of Object.entries(walks)) {
 		if (!flow.members.some((m) => m.id === id)) return blocked('找不到這個隊員');
 		const d = toSeconds(flow, depart);
 		const a = toSeconds(flow, arrive);
-		if (!inGrid(depart) || !inGrid(arrive) || d < aSec - EPS || a > bSec + EPS) {
+		if (!inGrid(flow, depart) || !inGrid(flow, arrive) || d < aSec - EPS || a > bSec + EPS) {
 			return blocked('出發和到達要在前一張和這一張站位之間');
 		}
 		if (d >= a - EPS) return blocked('出發要早於到達');
@@ -340,17 +336,24 @@ function walkFormationIndex(flow: Flow, formationId: string): number | string {
  * B 在口號段，或 A、B 之間不到一個八拍：整段走（出發 = A）。
  */
 function walkTimes(flow: Flow, index: number, memberId: string): { depart: number; arrive: number } {
+	return customWalk(flow, index, memberId) ?? defaultWalk(flow, index);
+}
+
+/** 自己設的出發和到達（全域秒數），夾在 A、B 之間；沒設、或夾完出發不早於到達是 null（見 walkTimes）。 */
+function customWalk(
+	flow: Flow,
+	index: number,
+	memberId: string
+): { depart: number; arrive: number } | null {
 	const b = flow.formations[index];
 	const custom = b.walks?.[memberId];
-	if (custom) {
-		const aSec = formationSec(flow, flow.formations[index - 1]);
-		const bSec = formationSec(flow, b);
-		const clamp = (p: TimePosition) => Math.min(Math.max(toSeconds(flow, p), aSec), bSec);
-		const depart = clamp(custom.depart);
-		const arrive = clamp(custom.arrive);
-		if (depart < arrive - EPS) return { depart, arrive };
-	}
-	return defaultWalk(flow, index);
+	if (!custom) return null;
+	const aSec = formationSec(flow, flow.formations[index - 1]);
+	const bSec = formationSec(flow, b);
+	const clamp = (p: TimePosition) => Math.min(Math.max(toSeconds(flow, p), aSec), bSec);
+	const depart = clamp(custom.depart);
+	const arrive = clamp(custom.arrive);
+	return depart < arrive - EPS ? { depart, arrive } : null;
 }
 
 /** 沒設的人在 formations[index - 1] → formations[index] 的出發和到達（見 walkTimes）。 */
@@ -365,7 +368,7 @@ function defaultWalk(flow: Flow, index: number): { depart: number; arrive: numbe
 	return { depart: toSeconds(flow, toPosition(flow, depart)!), arrive };
 }
 
-/** 播放頭這一刻用的站位：開始時間不晚於播放頭的最後一張。number 照時間排，跟站位縮圖列一樣。 */
+/** 播放頭這一刻用的站位：站位時間不晚於播放頭的最後一張。number 照時間排，跟站位縮圖列一樣。 */
 export function currentFormation(flow: Flow, sec: number): { formation: Formation; number: number } {
 	const next = flow.formations.findIndex((f) => formationSec(flow, f) > sec + EPS);
 	const index = next === -1 ? flow.formations.length - 1 : Math.max(next - 1, 0);
@@ -432,6 +435,89 @@ export function insertFormation(flow: Flow, sec: number): CommandResult {
 		)
 	};
 	return ok(after);
+}
+
+/**
+ * 挪站位：把站位時間改到 to，隊員的位置不變。sec = 新的站位時間（全域秒數）。
+ * 擋下：開頭那張、to 不在段的格子上、不在前一張之後和後一張（最後一張是流程結尾）之前。
+ */
+export function moveFormation(
+	flow: Flow,
+	formationId: string,
+	to: TimePosition
+): CommandResult<{ sec: number; squeezed: number }> {
+	const index = flow.formations.findIndex((f) => f.id === formationId);
+	if (index === -1) return blocked('找不到這張站位');
+	if (index === 0) return blocked('開頭那張不能挪');
+	const sec = toSeconds(flow, to);
+	const [a, b, c] = [-1, 0, 1].map((i) => flow.formations[index + i]);
+	const inside =
+		inGrid(flow, to) &&
+		sec > formationSec(flow, a) + EPS &&
+		(!c || sec < formationSec(flow, c) - EPS);
+	if (!inside) {
+		const { before, after } = neighbourTimes(flow, index);
+		const end = after ? `站位 ${index + 2}（${after}）` : '流程結尾';
+		return blocked(`站位 ${index + 1} 要挪到站位 ${index}（${before}）之後、${end}之前`);
+	}
+	const shift = sec - formationSec(flow, b);
+	if (Math.abs(shift) < EPS) return ok(flow, { sec, squeezed: 0 });
+	// 這張上自己設的出發和到達跟著挪一樣多秒，夾在前一張和新的站位時間之間，
+	// 不在格子上就往前取（跟插站位一樣）；夾完出發不早於到達就當沒設。
+	const aSec = formationSec(flow, a);
+	const walks: Record<string, Walk> = {};
+	for (const id of Object.keys(b.walks ?? {})) {
+		const w = customWalk(flow, index, id);
+		if (!w) continue;
+		const moved = (t: number) => toPosition(flow, Math.min(Math.max(t + shift, aSec), sec))!;
+		const depart = moved(w.depart);
+		const arrive = moved(w.arrive);
+		if (toSeconds(flow, depart) < toSeconds(flow, arrive) - EPS) walks[id] = { depart, arrive };
+	}
+	const formation = withWalks({ ...b, ...to }, walks);
+	const after = { ...flow, formations: flow.formations.with(index, formation) };
+	return ok(after, { sec, squeezed: shortened(flow, after, c ? [b.id, c.id] : [b.id]) });
+}
+
+/** 左邊欄「站位時間」框下面那一行：能挪到哪。開頭那張不能挪；找不到站位是空字串。 */
+export function moveFormationHint(flow: Flow, formationId: string): string {
+	const index = flow.formations.findIndex((f) => f.id === formationId);
+	if (index === -1) return '';
+	if (index === 0) return '開頭那張不能挪';
+	const { before, after } = neighbourTimes(flow, index);
+	return after ? `可以挪到 ${before} 之後、${after} 之前` : `可以挪到 ${before} 之後`;
+}
+
+/**
+ * 挪 formations[index]（不是開頭那張）時，前一張和後一張的站位時間給教練看：
+ * 在這張那一段只寫段內時間，別段前面加段名。沒有後一張是 null。
+ */
+function neighbourTimes(flow: Flow, index: number): { before: string; after: string | null } {
+	// 有前一張表示已經有段，segmentId 一定有值。
+	const home = flow.formations[index].segmentId!;
+	const text = (f: Formation) => timeTextWithUnit(flow, home, f as TimePosition);
+	const c = flow.formations[index + 1];
+	return { before: text(flow.formations[index - 1]), after: c ? text(c) : null };
+}
+
+/** 走到 formationIds 這幾張的走位，after 比 before 短的人數（一人只算一次）。 */
+function shortened(before: Flow, after: Flow, formationIds: string[]): number {
+	const lengths = (flow: Flow, id: string) =>
+		new Map(formationWalks(flow, id).map((w) => [w.memberId, w.arriveSec - w.departSec]));
+	const out = new Set<string>();
+	for (const id of formationIds) {
+		const was = lengths(before, id);
+		for (const [memberId, now] of lengths(after, id)) {
+			if (now < was.get(memberId)! - EPS) out.add(memberId);
+		}
+	}
+	return out.size;
+}
+
+/** 段內時間在不在那一段的格子上（音樂段半拍、口號段 0.1 秒，不超出段）。 */
+function inGrid(flow: Flow, { segmentId, at }: TimePosition): boolean {
+	const segment = flow.segments.find((s) => s.id === segmentId);
+	return !!segment && Number.isInteger(at) && at >= 0 && at < units(segment);
 }
 
 /** 換掉站位的 walks；沒有人就拿掉這個欄位。 */

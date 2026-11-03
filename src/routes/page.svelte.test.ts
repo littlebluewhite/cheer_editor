@@ -664,6 +664,86 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('status').textContent).toBe('流程開頭一定有一張站位，不能刪');
 	});
 
+	/** 第 n 張站位縮圖的左邊在時間軸上幾 px（1 秒 16 px）。 */
+	const thumbLeft = (n: number) =>
+		parseFloat((screen.getByRole('button', { name: `站位 ${n}` }).parentElement as HTMLElement).style.left);
+
+	async function dragThumb(n: number, dx: number) {
+		const thumb = screen.getByRole('button', { name: `站位 ${n}` });
+		await fireEvent.pointerDown(thumb, { clientX: 300, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 300 + dx });
+		await fireEvent.pointerUp(window, { clientX: 300 + dx });
+	}
+
+	it('拖縮圖挪站位：吸到最近一格，播放頭跟過去；算一步復原；手抖一下不算拖', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 站位 2 在 3-5&（8.2 秒）
+		await seek(0);
+		await dragThumb(2, -3);
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		// 往左 52 px（3.25 秒），吸到 5 秒的 2-5&
+		await dragThumb(2, -52);
+		expect(thumbLeft(2)).toBeCloseTo(80);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-5&');
+		expect(screen.getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（2-5&）');
+		expect(screen.queryByRole('status')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+	});
+
+	it('拖縮圖被擋就彈回去，上方說原因；開頭那張拖不動', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await dragThumb(2, -200);
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		expect(screen.getByRole('status').textContent).toBe(
+			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前'
+		);
+		await dragThumb(1, 50);
+		expect(thumbLeft(1)).toBe(0);
+	});
+
+	it('站位時間框：打拍子挪站位，下面寫能挪的範圍；看不懂、被擋或按 Esc 就變回原本的', async () => {
+		const box = () => screen.queryByLabelText<HTMLInputElement>('站位時間');
+		await setup();
+		expect(box()!.disabled).toBe(true);
+		expect(screen.getByText('開頭那張不能挪')).toBeTruthy();
+		await seek(4);
+		expect(box()).toBeNull();
+
+		await seek(8.25);
+		await dragFirstMember(); // 站位 2 在 3-5&
+		expect(box()!.value).toBe('3-5&');
+		expect(screen.getByText('可以挪到 1-1 之後')).toBeTruthy();
+
+		await fireEvent.change(box()!, { target: { value: '2-5' } });
+		expect(box()!.value).toBe('2-5');
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-5');
+		expect(thumbLeft(2)).toBeCloseTo(76.8);
+
+		await fireEvent.change(box()!, { target: { value: 'abc' } });
+		expect(screen.getByRole('status').textContent).toBe(
+			'站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
+		);
+		expect(box()!.value).toBe('2-5');
+
+		await fireEvent.change(box()!, { target: { value: '1-1' } });
+		expect(screen.getByRole('status').textContent).toBe(
+			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前'
+		);
+		expect(box()!.value).toBe('2-5');
+
+		await fireEvent.input(box()!, { target: { value: '9-9' } });
+		await fireEvent.keyDown(box()!, { key: 'Escape' });
+		expect(box()!.value).toBe('2-5');
+
+		// 小A 本來最後一個八拍才走（3.2 秒），挪到 1-2（0.4 秒）只剩 0.4 秒
+		await fireEvent.change(box()!, { target: { value: '1-2' } });
+		expect(screen.getByRole('status').textContent).toBe('有 1 人的走位被壓短');
+	});
+
 	const depart = () => screen.queryByLabelText<HTMLInputElement>('出發');
 	const arrive = () => screen.getByLabelText<HTMLInputElement>('到達');
 	const dotAt = (id = 'm1') => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');

@@ -1,8 +1,19 @@
 <script lang="ts">
-	// 站位縮圖列：每張站位一個小站位圖，放在它的時間點上。
+	// 站位縮圖列：每張站位一個小站位圖，放在它的站位時間上。
 	// 點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。
-	import { fieldGeometry, formationTimes, type Flow } from '#lib/core';
+	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才交給 onmove，被擋就彈回原位。開頭那張拖不動。
+	import {
+		fieldGeometry,
+		formationTimes,
+		nearestPosition,
+		timeTextWithUnit,
+		toSeconds,
+		totalSeconds,
+		type Flow,
+		type TimePosition
+	} from '#lib/core';
 	import Icon from './Icon.svelte';
+	import { followPointer } from './pointer';
 
 	interface Props {
 		flow: Flow;
@@ -11,28 +22,77 @@
 		selectedId: string | null;
 		onselect: (formationId: string, sec: number) => void;
 		ondelete: (formationId: string) => void;
+		/** 拖縮圖放開：把這張挪到 to。 */
+		onmove: (formationId: string, to: TimePosition) => void;
 	}
 
-	let { flow, pxPerSec, selectedId, onselect, ondelete }: Props = $props();
+	let { flow, pxPerSec, selectedId, onselect, ondelete, onmove }: Props = $props();
 
 	const THUMB_W = 80;
+	/** 拖超過這麼多 px 才算拖；沒超過就是點一下（手抖不會挪到）。 */
+	const DRAG_PX = 4;
 	const g = $derived(fieldGeometry(flow.field));
 	const items = $derived(formationTimes(flow));
 	const width = $derived(Math.max(0, ...items.map((i) => i.sec)) * pxPerSec + THUMB_W);
+
+	/** 正在拖的那張和吸到的那一格；還沒拖超過 DRAG_PX 時 to 是 null。 */
+	let drag = $state<{ id: string; to: TimePosition | null } | null>(null);
+	/** 剛拖完：放開後瀏覽器接著送的 click 不算點縮圖。 */
+	let dragged = false;
+
+	function startDrag(e: PointerEvent, id: string, sec: number) {
+		if (e.button !== 0) return;
+		const x = e.clientX;
+		drag = { id, to: null };
+		followPointer(
+			(m) => {
+				if (drag && (drag.to || Math.abs(m.clientX - x) > DRAG_PX)) {
+					drag.to = nearestPosition(flow, sec + (m.clientX - x) / pxPerSec);
+				}
+			},
+			() => {
+				const to = drag?.to;
+				drag = null;
+				if (!to) return;
+				dragged = true;
+				setTimeout(() => (dragged = false));
+				onmove(id, to);
+			}
+		);
+	}
+
+	/**
+	 * 拖的時候縮圖上寫的新站位時間；home 是這張原本的段（拖得動的不是開頭那張，一定有段）。
+	 * 拖出流程頭尾就不寫（放開會被擋）。
+	 */
+	function dragText(home: string, to: TimePosition): string {
+		const sec = toSeconds(flow, to);
+		return sec >= 0 && sec < totalSeconds(flow) ? timeTextWithUnit(flow, home, to) : '';
+	}
 </script>
 
 <div class="row film">
 	<div class="lab">站位</div>
 	<div class="trk" style:width={`${width}px`}>
 		{#each items as { formation, sec, deletable }, i (formation.id)}
-			<div class="th" class:on={selectedId === formation.id} style:left={`${sec * pxPerSec}px`}>
+			{@const to = drag?.id === formation.id ? drag.to : null}
+			<div
+				class="th"
+				class:on={selectedId === formation.id}
+				class:movable={deletable}
+				class:dragging={!!to}
+				style:left={`${(to ? toSeconds(flow, to) : sec) * pxPerSec}px`}
+			>
 				<button
 					type="button"
 					class="pick"
 					aria-label={formation.name ? `站位 ${i + 1} ${formation.name}` : `站位 ${i + 1}`}
 					title={formation.name ? `站位 ${i + 1} ${formation.name}` : undefined}
 					aria-pressed={selectedId === formation.id}
-					onclick={() => onselect(formation.id, sec)}
+					onclick={() => {
+						if (!dragged) onselect(formation.id, sec);
+					}}
+					onpointerdown={deletable ? (e) => startDrag(e, formation.id, sec) : undefined}
 				>
 					<svg
 						viewBox="{g.outer.x} {g.outer.y} {g.outer.width} {g.outer.height}"
@@ -47,7 +107,10 @@
 						{/each}
 					</svg>
 					<span>{i + 1}</span>
-					{#if formation.name}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
+					{#if to}
+						{@const text = dragText(formation.segmentId!, to)}
+						{#if text}<em class="name when" aria-hidden="true">{text}</em>{/if}
+					{:else if formation.name}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
 				</button>
 				{#if deletable}
 					<button
@@ -122,6 +185,23 @@
 		border-color: var(--sel, #19b4d8);
 		box-shadow: 0 0 0 3px var(--sel-soft, #dcf4fa);
 	}
+	/* 挪站位：拖得動的縮圖是手掌游標；拖的時候浮起來、蓋在別張上面，✕ 先藏起來。 */
+	.th.movable .pick {
+		cursor: grab;
+	}
+	.th.dragging {
+		z-index: 5;
+	}
+	.th.dragging .pick {
+		cursor: grabbing;
+		border-color: var(--sel, #19b4d8);
+		box-shadow:
+			0 0 0 3px var(--sel-soft, #dcf4fa),
+			0 6px 14px rgb(22 33 58 / 0.28);
+	}
+	.th.dragging .del {
+		display: none;
+	}
 	svg {
 		display: block;
 		width: 100%;
@@ -174,6 +254,12 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	/* 拖的時候換成新的站位時間，置中、深底白字。 */
+	.name.when {
+		text-align: center;
+		font-variant-numeric: tabular-nums;
+		background: var(--ink, #16213a);
 	}
 	.del {
 		position: absolute;

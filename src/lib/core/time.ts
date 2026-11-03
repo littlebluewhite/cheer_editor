@@ -84,6 +84,18 @@ export function toPosition(flow: Flow, sec: number): TimePosition | null {
 	return found && { segmentId: found.span.segment.id, at: found.at };
 }
 
+/**
+ * 全域秒數最近的那一格（音樂段半拍、口號段 0.1 秒），給拖東西時吸附用。流程開頭之前、結尾之後不夾回來，
+ * 照樣往外數成超出的格子，交給指令擋下。要先有段。
+ */
+export function nearestPosition(flow: Flow, sec: number): TimePosition {
+	const p = toPosition(flow, sec)!;
+	const lo = toSeconds(flow, p);
+	const hi = toSeconds(flow, { ...p, at: p.at + 1 });
+	if (sec < lo || sec >= hi) return { ...p, at: p.at + Math.round((sec - lo) / (hi - lo)) };
+	return sec - lo > (hi - lo) / 2 ? toPosition(flow, hi)! : p;
+}
+
 /** 八拍尺上的一個刻度（全域秒數）。大刻度有字。 */
 export interface RulerMark {
 	sec: number;
