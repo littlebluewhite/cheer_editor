@@ -16,11 +16,12 @@
   "nodes": [
     { "id": "t-name", "parent": "c-top", "kind": "rect", "x": 50, "y": 128, "width": 200, "height": 56, "label": "流程名字、使用說明", "sublabel": "有「未存」就是還沒存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
     { "id": "t-play", "parent": "c-top", "kind": "rect", "x": 270, "y": 128, "width": 300, "height": 56, "label": "播放鍵、目前位置", "sublabel": "節拍器、延遲校正", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
-    { "id": "t-btns", "parent": "c-top", "kind": "rect", "x": 590, "y": 128, "width": 320, "height": 56, "label": "按鈕", "sublabel": "八拍表、流程設定、開啟、新建、存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "t-btns", "parent": "c-top", "kind": "rect", "x": 590, "y": 128, "width": 320, "height": 56, "label": "按鈕", "sublabel": "復原、重做、八拍表、流程設定、開啟、新建、存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
 
     { "id": "f-members", "parent": "c-field", "kind": "rect", "x": 50, "y": 254, "width": 260, "height": 64, "label": "隊員圓點", "sublabel": "拖人＝改站位；點、框選＝選人", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
-    { "id": "f-zoom", "parent": "c-field", "kind": "rect", "x": 330, "y": 254, "width": 260, "height": 64, "label": "放大、縮小、全場", "sublabel": "放大才吸得到更細的點", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
-    { "id": "f-notes", "parent": "c-field", "kind": "rect", "x": 50, "y": 334, "width": 540, "height": 56, "label": "提示", "sublabel": "上面中間：剛剛發生什麼事；右下黃色：規則警告", "fill": "#fefce8", "stroke": "#eab308", "flat": true },
+    { "id": "f-zoom", "parent": "c-field", "kind": "rect", "x": 330, "y": 254, "width": 260, "height": 64, "label": "左邊欄", "sublabel": "放大縮小、現在站位、站位時間", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "f-notes", "parent": "c-field", "kind": "rect", "x": 50, "y": 334, "width": 260, "height": 56, "label": "提示", "sublabel": "場地上面中間：剛剛發生什麼事", "fill": "#fefce8", "stroke": "#eab308", "flat": true },
+    { "id": "f-warn", "parent": "c-field", "kind": "rect", "x": 330, "y": 334, "width": 260, "height": 56, "label": "規則警告", "sublabel": "左邊欄的黃色小框，只提醒", "fill": "#fefce8", "stroke": "#eab308", "flat": true },
 
     { "id": "s-action", "parent": "c-side", "kind": "rect", "x": 650, "y": 254, "width": 260, "height": 64, "label": "「動作」分頁", "sublabel": "選人、新增或修改動作", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
     { "id": "s-members", "parent": "c-side", "kind": "rect", "x": 650, "y": 334, "width": 260, "height": 56, "label": "「隊員」分頁", "sublabel": "隊員名單、加隊員", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },

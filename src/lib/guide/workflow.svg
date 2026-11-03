@@ -44,8 +44,8 @@
     </style>
   </defs>
   <rect data-graph-role="background" width="960.0" height="440.0" fill="#ffffff"/>
-  <text x="480.0" y="56" text-anchor="middle" class="title">從零到一支流程：八個步驟</text>
-  <text x="480.0" y="82" text-anchor="middle" class="subtitle">照數字做；播放檢查發現不對，回到之前的步驟改</text>
+  <text x="480.0" y="56" text-anchor="middle" class="title">從零到一支流程：八步</text>
+  <text x="480.0" y="82" text-anchor="middle" class="subtitle">第一次照數字做；播放檢查發現不對，回到前面改</text>
   <path id="a1" data-graph-role="edge" data-edge-id="a1" data-source="new" data-target="members" data-edge-kind="flow" data-topic-id="" data-flow="control" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 230,153 L 270,153" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
   <path id="a2" data-graph-role="edge" data-edge-id="a2" data-source="members" data-target="segments" data-edge-kind="flow" data-topic-id="" data-flow="control" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 460,153 L 500,153" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
   <path id="a3" data-graph-role="edge" data-edge-id="a3" data-source="segments" data-target="formations" data-edge-kind="flow" data-topic-id="" data-flow="control" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 690,153 L 730,153" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>

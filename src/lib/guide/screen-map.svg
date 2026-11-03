@@ -79,7 +79,7 @@
   <g id="node-t-btns" data-graph-role="node" data-node-id="t-btns" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-top" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="590,128,910,184">
   <rect x="590.0" y="128.0" width="320.0" height="56.0" rx="10.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.8"/>
   <text data-text-role="title" data-full-text="按鈕" data-text-max-width="296.0" x="750.0" y="156.0" text-anchor="middle" class="node-title" font-size="18">按鈕</text>
-  <text data-text-role="subtitle" data-full-text="八拍表、流程設定、開啟、新建、存檔" data-text-max-width="296.0" x="750.0" y="178.0" text-anchor="middle" class="node-sub" font-size="12">八拍表、流程設定、開啟、新建、存檔</text>
+  <text data-text-role="subtitle" data-full-text="復原、重做、八拍表、流程設定、開啟、新建、存檔" data-text-max-width="296.0" x="750.0" y="178.0" text-anchor="middle" class="node-sub" font-size="11.91">復原、重做、八拍表、流程設定、開啟、新建、存檔</text>
   </g>
   <g id="node-f-members" data-graph-role="node" data-node-id="f-members" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-field" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,254,310,318">
   <rect x="50.0" y="254.0" width="260.0" height="64.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>
@@ -88,13 +88,18 @@
   </g>
   <g id="node-f-zoom" data-graph-role="node" data-node-id="f-zoom" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-field" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="330,254,590,318">
   <rect x="330.0" y="254.0" width="260.0" height="64.0" rx="10.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.8"/>
-  <text data-text-role="title" data-full-text="放大、縮小、全場" data-text-max-width="236.0" x="460.0" y="286.0" text-anchor="middle" class="node-title" font-size="18">放大、縮小、全場</text>
-  <text data-text-role="subtitle" data-full-text="放大才吸得到更細的點" data-text-max-width="236.0" x="460.0" y="308.0" text-anchor="middle" class="node-sub" font-size="12">放大才吸得到更細的點</text>
+  <text data-text-role="title" data-full-text="左邊欄" data-text-max-width="236.0" x="460.0" y="286.0" text-anchor="middle" class="node-title" font-size="18">左邊欄</text>
+  <text data-text-role="subtitle" data-full-text="放大縮小、現在站位、站位時間" data-text-max-width="236.0" x="460.0" y="308.0" text-anchor="middle" class="node-sub" font-size="12">放大縮小、現在站位、站位時間</text>
   </g>
-  <g id="node-f-notes" data-graph-role="node" data-node-id="f-notes" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-field" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,334,590,390">
-  <rect x="50.0" y="334.0" width="540.0" height="56.0" rx="10.0" fill="#fefce8" stroke="#eab308" stroke-width="1.8"/>
-  <text data-text-role="title" data-full-text="提示" data-text-max-width="516.0" x="320.0" y="362.0" text-anchor="middle" class="node-title" font-size="18">提示</text>
-  <text data-text-role="subtitle" data-full-text="上面中間：剛剛發生什麼事；左欄黃色：規則警告" data-text-max-width="516.0" x="320.0" y="384.0" text-anchor="middle" class="node-sub" font-size="12">上面中間：剛剛發生什麼事；左欄黃色：規則警告</text>
+  <g id="node-f-notes" data-graph-role="node" data-node-id="f-notes" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-field" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,334,310,390">
+  <rect x="50.0" y="334.0" width="260.0" height="56.0" rx="10.0" fill="#fefce8" stroke="#eab308" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="提示" data-text-max-width="236.0" x="180.0" y="362.0" text-anchor="middle" class="node-title" font-size="18">提示</text>
+  <text data-text-role="subtitle" data-full-text="場地上面中間：剛剛發生什麼事" data-text-max-width="236.0" x="180.0" y="384.0" text-anchor="middle" class="node-sub" font-size="12">場地上面中間：剛剛發生什麼事</text>
+  </g>
+  <g id="node-f-warn" data-graph-role="node" data-node-id="f-warn" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-field" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="330,334,590,390">
+  <rect x="330.0" y="334.0" width="260.0" height="56.0" rx="10.0" fill="#fefce8" stroke="#eab308" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="規則警告" data-text-max-width="236.0" x="460.0" y="362.0" text-anchor="middle" class="node-title" font-size="18">規則警告</text>
+  <text data-text-role="subtitle" data-full-text="左邊欄的黃色小框，只提醒" data-text-max-width="236.0" x="460.0" y="384.0" text-anchor="middle" class="node-sub" font-size="12">左邊欄的黃色小框，只提醒</text>
   </g>
   <g id="node-s-action" data-graph-role="node" data-node-id="s-action" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-side" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="650,254,910,318">
   <rect x="650.0" y="254.0" width="260.0" height="64.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>

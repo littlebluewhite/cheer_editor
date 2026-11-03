@@ -5,7 +5,7 @@ import Guide from './+page.svelte';
 describe('使用說明', () => {
 	it('有五章，目錄每一項都連到頁面裡的一節', () => {
 		render(Guide);
-		for (const name of ['1 這是什麼', '2 先認識幾個詞', '3 排一支流程的八個步驟', '4 每個功能，一步一步', '5 新手試跑']) {
+		for (const name of ['1 這是什麼', '2 先認識幾個詞', '3 排一支流程的八步', '4 每個功能，一步一步', '5 新手試跑']) {
 			expect(screen.getByRole('heading', { level: 2, name })).toBeTruthy();
 		}
 		const toc = screen.getByRole('navigation', { name: '目錄' });
@@ -18,7 +18,7 @@ describe('使用說明', () => {
 	it('每張圖都有替代文字', () => {
 		render(Guide);
 		const images = document.querySelectorAll('img');
-		expect(images.length).toBe(15);
+		expect(images.length).toBe(16);
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
 	});
 

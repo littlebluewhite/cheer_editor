@@ -169,8 +169,13 @@ await shot('home', [
 ]);
 
 // 2 新建流程，加兩個底層；拍「隊員」分頁時，小美已經打好還沒按
-await js(`$set(q('.home .start form input'), '練習'); $btn('建立').click();`);
-await waitFor(() => js(`return !!q('form.add')`));
+// 第一次開 vite dev 時，它整理好套件會重新載入頁面，按鈕可能還沒接上：沒進到編輯畫面就再按一次。
+await waitFor(async () => {
+	await js(helpers);
+	await js(`$set(q('.home .start form input'), '練習'); $btn('建立').click();`);
+	await sleep(500);
+	return js(`return !!q('form.add')`);
+});
 const addMembers = (names, gender, role) =>
 	js(`
 		const f = q('form.add');
@@ -245,6 +250,34 @@ await click(t3.l + 2, ruler.y);
 	await sleep(300);
 }
 
+// 4.5 挪站位：點第 2 張小圖，在左邊欄「站位時間」打 2-1。播放頭停在站位 2，拍場地和左邊欄（看得到影子和走位線）。
+await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+await waitFor(() => js(`return !!q('.formation-time input')`));
+await js(`$set(q('.formation-time input'), '2-1')`);
+await waitFor(() => js(`return q('.pos .pos-at')?.textContent.trim() === '2-1'`));
+await js(`q('button[aria-label="收起提示"]')?.click();`);
+await sleep(200);
+await shot(
+	'rail',
+	[
+		[1, `q('.rail .tools')`],
+		[2, `q('.now-formation')`],
+		[3, `q('.rail .warn')`],
+		[4, `q('.match-prev')`],
+		[5, `q('.here')`],
+		[6, `q('.walk-tools')`],
+		[7, `q('.rail .legend')`],
+		// 只框小美：她的走位線，和線上那個影子（另外兩人沒動，影子在自己的點底下）
+		[8, `(() => {
+			const lines = [...document.querySelectorAll('.walk-line')];
+			const r = lines[0].getBoundingClientRect();
+			const near = (g) => { const b = g.getBoundingClientRect(); return b.right > r.left - 2 && b.left < r.right + 2; };
+			return [...lines, ...[...document.querySelectorAll('[data-ghost]')].filter(near)];
+		})()`]
+	],
+	`q('.field-host')`
+);
+
 // 5 到 4-1 填動作：按「新增動作」之前拍
 const t4 = await js(`return $tick('4')`);
 await click(t4.l + 2, ruler.y);
@@ -295,7 +328,8 @@ await shot(
 		[2, `q('.row.ruler-row')`, { x: 1, y: 0.5 }],
 		[3, `q('.row.film')`, { x: 1, y: 0.5 }],
 		[4, `[...document.querySelectorAll('[data-lane]')]`, { x: 1, y: 0.5 }],
-		[5, `q('.timeline-host .ph')`]
+		[5, `q('.timeline-host .ph')`],
+		[6, `q('.walk[data-walk]')`, { x: 0, y: 1 }]
 	],
 	`[q('.row.segs'), ...document.querySelectorAll('[data-lane]')]`
 );
@@ -336,9 +370,9 @@ await sleep(200);
 await shot(
 	'cues',
 	[
-		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.5, y: 0 }],
+		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.55, y: 1 }],
 		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
-		[3, `q('.cues .pop')`, { x: 1, y: 1 }],
+		[3, `q('.cues .pop')`, { x: 0, y: 0.9 }],
 		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 0, y: 1 }],
 		[5, `q('.cues .who-sel')`, { x: 0.5, y: 0 }],
 		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0, y: 0 }],

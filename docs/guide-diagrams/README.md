@@ -7,10 +7,10 @@
 | --- | --- | --- |
 | `time.json` | `flowchart` | 2 先認識幾個詞：時間怎麼算 |
 | `screen-map.json` | `architecture` | 2.2 畫面上的名稱：編輯畫面的四個區域 |
-| `workflow.json` | `flowchart` | 3 排一支流程的八個步驟 |
+| `workflow.json` | `flowchart` | 3 排一支流程的八步 |
 | `walk.json` | `flowchart` | 4.5 站位：站位和走位 |
 | `drag.json` | `flowchart` | 4.5 站位：拖人時改哪一張站位 |
-| `files.json` | `data-flow` | 4.8 存檔、分享、列印 |
+| `files.json` | `data-flow` | 4.9 復原、存檔、分享、列印 |
 
 ```sh
 F=~/.claude/skills/fireworks-tech-graph/scripts/fireworks.py
@@ -22,7 +22,7 @@ python3 "$F" check src/lib/guide/time.svg
 
 ## 畫面截圖
 
-說明裡另外有 8 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
+說明裡另外有 10 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
 改了編輯器的畫面之後，重拍一次：
 
 ```sh
