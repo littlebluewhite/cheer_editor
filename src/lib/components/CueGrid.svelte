@@ -8,7 +8,7 @@
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	import { untrack } from 'svelte';
-	import { placeCuePop } from '#lib/cue-pop.js';
+	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -277,7 +277,7 @@
 		if (!head || !a || !b) return;
 		const h = popEl.offsetHeight;
 		untrack(() => {
-			if (h + 8 > reserve) reserve = h + 8;
+			if (h + GAP > reserve) reserve = h + GAP;
 		});
 		const box = scrollBox(wrapEl);
 		// 自動跳到的下一拍在畫面下面看不到：往下捲剛好看得到那一排就好。
@@ -287,7 +287,7 @@
 			const view = box.getBoundingClientRect();
 			const over = b.getBoundingClientRect().bottom - view.bottom;
 			if (over > 0) {
-				box.scrollTop += Math.min(over + 8, head.getBoundingClientRect().top - view.top);
+				box.scrollTop += Math.min(over + GAP, head.getBoundingClientRect().top - view.top);
 				scrolled = true;
 			}
 		}

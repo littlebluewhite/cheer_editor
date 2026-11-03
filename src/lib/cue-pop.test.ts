@@ -53,9 +53,17 @@ describe('拍點小窗放哪裡', () => {
 		expect(q.top).toBe(218);
 	});
 
-	it('按小窗裡的按鈕：選取離小窗超過一個八拍，就搬回選取旁邊', () => {
+	it('＋ 跨到下一個八拍、小窗搬到下一排下面後，再按 － 回到上一排：小窗不搬回去', () => {
+		// 小窗在第二排下面（218），選取回到第一排（0–100）：中間隔一排加空隙，還算近。
+		const cur = { top: 218, left: 0, arrow: 150, above: false };
+		const p = placeCuePop(input({ cur }));
+		expect(p).toEqual(cur);
+	});
+
+	it('按小窗裡的按鈕：選取離小窗超過一個八拍，就搬到選取旁邊離原本近的那邊', () => {
 		const cur = { top: 108, left: 0, arrow: 150, above: false };
+		// 選到第五排（440–540），上面 312、下面 548 都放得下；312 離 108 比較近。
 		const p = placeCuePop(input({ cur, sel: { top: 440, bottom: 540, left: 100, right: 200 }, view: { top: 0, bottom: 900 } }));
-		expect(p.top).toBe(548);
+		expect(p).toEqual({ top: 312, left: 0, arrow: 150, above: true });
 	});
 });

@@ -28,33 +28,32 @@ export interface CuePopInput {
 }
 
 /** 小窗跟選取中間留的空隙。 */
-const GAP = 8;
+export const GAP = 8;
 /** 尖角離小窗左右邊至少多遠（圓角那裡放不下）。 */
 const ARROW_EDGE = 14;
 
-export function placeCuePop(i: CuePopInput): CuePopPos {
-	const { sel, pop, cur } = i;
-	let movedFrom: CuePopPos | null = null;
+export function placeCuePop(input: CuePopInput): CuePopPos {
+	const { sel, pop, cur } = input;
 	if (cur) {
-		// 按小窗裡的按鈕：選取沒被蓋住、也還在一個八拍以內，小窗就不動，只有尖角跟著。
+		// 按小窗裡的按鈕：選取沒被蓋住、也只隔一個八拍以內，小窗就不動，只有尖角跟著
+		// （＋－跨過八拍來回按，小窗也不會跟著跳）。
 		const covered = sel.top < cur.top + pop.h && sel.bottom > cur.top && sel.left < cur.left + pop.w && sel.right > cur.left;
 		const gap = Math.max(sel.top - (cur.top + pop.h), cur.top - sel.bottom);
-		if (!covered && gap <= i.rowH) {
-			const x = cur.above ? i.arrowAbove : i.arrowBelow;
+		if (!covered && gap <= input.rowH + GAP) {
+			const x = cur.above ? input.arrowAbove : input.arrowBelow;
 			return { ...cur, arrow: Math.min(Math.max(x - cur.left, ARROW_EDGE), pop.w - ARROW_EDGE) };
 		}
-		if (covered) movedFrom = cur;
 	}
 	const belowTop = sel.bottom + GAP;
 	const aboveTop = sel.top - GAP - pop.h;
-	const roomBelow = i.view.bottom - sel.bottom - GAP;
-	const roomAbove = sel.top - i.view.top - GAP;
-	// 被蓋住一定要搬時，上下都放得下就挑離原本近的，移動最少；不然下面放得下就放下面。
+	const roomBelow = input.view.bottom - sel.bottom - GAP;
+	const roomAbove = sel.top - input.view.top - GAP;
+	// 按小窗裡的按鈕又一定要搬時，上下都放得下就挑離原本近的，移動最少；不然下面放得下就放下面。
 	const above =
-		movedFrom && roomBelow >= pop.h && roomAbove >= pop.h
-			? Math.abs(aboveTop - movedFrom.top) < Math.abs(belowTop - movedFrom.top)
+		cur && roomBelow >= pop.h && roomAbove >= pop.h
+			? Math.abs(aboveTop - cur.top) < Math.abs(belowTop - cur.top)
 			: roomBelow < pop.h && roomAbove > roomBelow;
-	const x = above ? i.arrowAbove : i.arrowBelow;
-	const left = Math.max(0, Math.min(x - pop.w / 2, i.wrapW - pop.w));
+	const x = above ? input.arrowAbove : input.arrowBelow;
+	const left = Math.max(0, Math.min(x - pop.w / 2, input.wrapW - pop.w));
 	return { top: above ? aboveTop : belowTop, left, arrow: x - left, above };
 }
