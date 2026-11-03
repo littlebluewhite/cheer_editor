@@ -8,7 +8,7 @@ import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -26,10 +26,12 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 升級鏈：key 是「從第幾版升上來」。開舊版檔時一步一步升到 FORMAT_VERSION。
  * 第 2 版：站位多了可有可無的 walks（出發和到達），沒有就是全部用預設，所以資料不用動。
  * 第 3 版：動作多了可有可無的 cues（拍點），沒有就是沒有拍點，所以資料不用動。
+ * 第 4 版：動作多了可有可無的 color（辨識色），沒有就是用大類的顏色，所以資料不用動。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
-	2: (doc) => ({ formatVersion: 3, flow: doc.flow })
+	2: (doc) => ({ formatVersion: 3, flow: doc.flow }),
+	3: (doc) => ({ formatVersion: 4, flow: doc.flow })
 };
 
 /** 音樂檔的位元組，用 flow.audio 的 id 對應。 */
@@ -112,6 +114,8 @@ const cues: Check = (v) =>
 	v === undefined ||
 	listOf(shape({ kind: oneOf(CUE_KINDS), at: int, len: int, word: str, who }))(v);
 
+const color: Check = (v) => v === undefined || (str(v) && /^#[0-9a-f]{6}$/i.test(v as string));
+
 const flowShape = shape({
 	name: str,
 	field: shape({ strips: int, layout: oneOf(['vertical', 'horizontal']) }),
@@ -150,6 +154,7 @@ const flowShape = shape({
 			length: int,
 			note: str,
 			members: listOf(shape({ memberId: str, role: nullOr(str) })),
+			color,
 			cues
 		})
 	)

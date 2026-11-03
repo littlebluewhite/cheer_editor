@@ -1,5 +1,6 @@
 <script lang="ts">
-	// 動作表單：沒選動作時是「在播放頭新增動作」；選了動作時改那個動作，改了馬上生效。
+	// 動作表單：沒選動作時是新增（卡片標「新動作」、換底色，開始跟著播放頭）；選了動作時改那個動作，改了馬上生效。
+	// 卡片的標題就是名稱輸入框；辨識色沒挑就用大類的顏色。
 	// 規則（跨段、重疊、至少 1 人、角色存在）都交給流程核心判斷；被擋就顯示原因並還原。
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色一起帶。
@@ -26,7 +27,7 @@
 		type Flow,
 		type NewActionInput
 	} from '#lib/core';
-	import { CATEGORY_COLORS } from './category-colors';
+	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import Icon from './Icon.svelte';
@@ -62,6 +63,8 @@
 		lengthText: string;
 		note: string;
 		members: ActionMember[];
+		/** 辨識色；undefined = 用大類的顏色。 */
+		color: string | undefined;
 	}
 
 	/** 角色下拉選單裡「＋自訂角色…」的值。 */
@@ -101,7 +104,7 @@
 
 	function blank(): Draft {
 		const members = untrack(() => fromSelection([]));
-		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members };
+		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members, color: undefined };
 	}
 
 	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色。 */
@@ -119,7 +122,8 @@
 			startText: atText(seg, a.start),
 			lengthText: lengthText(seg, a.length),
 			note: a.note,
-			members: a.members.map((m) => ({ ...m }))
+			members: a.members.map((m) => ({ ...m })),
+			color: a.color
 		};
 	}
 
@@ -158,8 +162,8 @@
 		}
 		const length = parseLength(segment, draft.lengthText);
 		if (length === null) return '長度看不懂';
-		const { category, name, note, members } = draft;
-		return { segmentId: segment.id, category, name, start, length, note, members };
+		const { category, name, note, members, color } = draft;
+		return { segmentId: segment.id, category, name, start, length, note, members, color };
 	}
 
 	function add() {
@@ -257,6 +261,11 @@
 		membersChanged();
 	}
 
+	function setColor(color: string | undefined) {
+		draft.color = color;
+		changed();
+	}
+
 	const nameOf = (id: string) => memberName(flow, id);
 </script>
 
@@ -265,14 +274,20 @@
 	<button type="button" class="new" onclick={() => onselect(null)}><Icon name="plus" size={14} />新增動作</button>
 {/if}
 
-<section class="action-form" class:editing={action} style:--cat={CATEGORY_COLORS[draft.category]}>
+<section class="action-form" class:creating={!action} style:--cat={actionColor(draft)}>
 	<header>
-		<h3>
-			<span class="dot"></span>
-			{action ? '動作' : '在播放頭新增動作'}
-		</h3>
+		<span class="dot"></span>
+		<input
+			class="title"
+			aria-label="名稱"
+			bind:value={draft.name}
+			onchange={changed}
+			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
+		/>
 		{#if action}
 			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
+		{:else}
+			<span class="badge">新動作</span>
 		{/if}
 	</header>
 
@@ -293,10 +308,29 @@
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
 			</label>
-			<label class="wide">
-				<span class="cap">名稱</span>
-				<input bind:value={draft.name} onchange={changed} placeholder="例如：Lib、籃拋" />
-			</label>
+			<fieldset class="wide colors">
+				<legend class="cap">辨識色</legend>
+				<label class="swatch auto" title="大類的顏色" style:--c={CATEGORY_COLORS[draft.category]}>
+					<input
+						type="radio"
+						name="action-color"
+						aria-label="大類的顏色"
+						checked={!draft.color}
+						onchange={() => setColor(undefined)}
+					/>照大類
+				</label>
+				{#each ACTION_COLORS as c (c.value)}
+					<label class="swatch" title={c.label} style:--c={c.value}>
+						<input
+							type="radio"
+							name="action-color"
+							aria-label={c.label}
+							checked={draft.color === c.value}
+							onchange={() => setColor(c.value)}
+						/>
+					</label>
+				{/each}
+			</fieldset>
 			<div class="field">
 				<span class="cap" aria-hidden="true">開始</span>
 				<input aria-label="開始" bind:value={draft.startText} onchange={changed} />
@@ -390,31 +424,65 @@
 <style>
 	.action-form {
 		display: grid;
+		/* 標題的名稱輸入框不撐寬右邊欄 */
+		grid-template-columns: minmax(0, 1fr);
 		gap: 12px;
 		font-size: 13px;
 		padding: 14px;
 		border-radius: 12px;
 		background: var(--surface-2, #f6f8fb);
 		border: 1px solid var(--line-soft, #e8ecf3);
+		/* 左邊一條動作的顏色（辨識色或大類），跟泳道上的色條對得起來。 */
+		border-left: 4px solid var(--cat);
+	}
+	/* 新增：換成淡綠底、虛線框，一眼看得出是還沒加進去的新動作。 */
+	.action-form.creating {
+		background: var(--new-bg);
+		border: 1px dashed var(--new-line);
+		border-left: 4px solid var(--cat);
 	}
 	header {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-	h3 {
-		margin: 0 auto 0 0;
-		font-size: 14px;
-		font-weight: 700;
 		display: flex;
 		align-items: center;
 		gap: 8px;
 	}
 	.dot {
-		width: 10px;
-		height: 10px;
+		flex: none;
+		width: 12px;
+		height: 12px;
 		border-radius: 3px;
 		background: var(--cat);
+	}
+	/* 名稱就是標題：平常看起來像字，滑過去、點進去才像輸入框。 */
+	.title {
+		flex: 1;
+		min-width: 0;
+		padding: 4px 6px;
+		margin-left: -2px;
+		font-size: 16px;
+		font-weight: 700;
+		color: var(--text, #1a2238);
+		background: transparent;
+		border-color: transparent;
+	}
+	.title:hover {
+		border-color: var(--line, #d8dee9);
+	}
+	.title:focus {
+		background: var(--surface, #fff);
+	}
+	.title::placeholder {
+		font-size: 14px;
+		font-weight: 500;
+	}
+	.badge {
+		flex: none;
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: var(--new-line);
+		color: #fff;
+		font-size: 12px;
+		font-weight: 700;
 	}
 	.new {
 		width: 100%;
@@ -445,6 +513,57 @@
 	}
 	.wide {
 		grid-column: 1 / -1;
+	}
+	.colors {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 5px;
+		margin: 0;
+		padding: 0;
+		border: none;
+		min-width: 0;
+	}
+	.colors legend {
+		float: left;
+		width: 100%;
+		margin-bottom: 4px;
+		padding: 0;
+	}
+	.swatch {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		border-radius: 50%;
+		background: var(--c);
+		cursor: pointer;
+	}
+	.swatch.auto {
+		width: auto;
+		padding: 0 8px;
+		border-radius: 999px;
+		color: #fff;
+		font-size: 11px;
+		font-weight: 600;
+	}
+	.swatch input {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.swatch:has(input:checked) {
+		box-shadow:
+			0 0 0 2px var(--surface, #fff),
+			0 0 0 4px var(--ink, #16213a);
+	}
+	.swatch:has(input:focus-visible) {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: 4px;
 	}
 	.cap {
 		font-size: 12px;

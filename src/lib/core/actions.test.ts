@@ -253,6 +253,15 @@ describe('改動作、刪動作', () => {
 		});
 	});
 
+	it('辨識色：挑了就存；拿掉（空的）就回到用大類的顏色，不留欄位', () => {
+		const flow = flowOf(addAction(sample(), lib({ color: '#1565c0' })));
+		expect(flow.actions[0].color).toBe('#1565c0');
+		const cleared = flowOf(updateAction(flow, 'x1', { color: undefined }));
+		expect('color' in cleared.actions[0]).toBe(false);
+		const blank = flowOf(addAction(sample(), lib({ color: '' })));
+		expect('color' in blank.actions[0]).toBe(false);
+	});
+
 	it('刪掉動作', () => {
 		const flow = flowOf(addAction(sample(), lib()));
 		expect(flowOf(deleteAction(flow, 'x1')).actions).toEqual([]);

@@ -135,7 +135,7 @@ describe('在場上選人、整組拖', () => {
 			onselect,
 			toMeters
 		});
-		const svg = document.querySelector('svg')!;
+		const svg = screen.getByRole('img', { name: '場地' }) as unknown as SVGSVGElement;
 		const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
 		return { onmove, onselect, svg, dot };
 	}

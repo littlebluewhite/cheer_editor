@@ -20,3 +20,24 @@ export function saveLatencyMs(ms: number): void {
 		// 存不了就只在這次用
 	}
 }
+
+const TIMELINE_KEY = 'cheer-editor:timelineHeightPx';
+
+/** 時間軸的高度（px，拖場地和時間軸中間的分界改的）；null = 預設。 */
+export function loadTimelineHeight(): number | null {
+	try {
+		const px = Number(localStorage.getItem(TIMELINE_KEY));
+		return Number.isFinite(px) && px > 0 ? px : null;
+	} catch {
+		return null;
+	}
+}
+
+export function saveTimelineHeight(px: number | null): void {
+	try {
+		if (px === null) localStorage.removeItem(TIMELINE_KEY);
+		else localStorage.setItem(TIMELINE_KEY, String(px));
+	} catch {
+		// 存不了就只在這次用
+	}
+}

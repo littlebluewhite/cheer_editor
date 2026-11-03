@@ -33,7 +33,7 @@
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
+	import { loadLatencyMs, loadTimelineHeight, saveLatencyMs, saveTimelineHeight } from '#lib/local-settings.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -235,6 +235,43 @@
 		if (!Number.isFinite(ms)) return;
 		latencyMs = ms;
 		saveLatencyMs(ms);
+	}
+
+	// ---------- 場地和時間軸的分界：拖它（或 ↑↓）改時間軸多高，存在這台電腦；雙擊回到預設 ----------
+	const TIMELINE_MIN_PX = 160;
+	/** 場地和上方列至少留這麼高。 */
+	const FIELD_KEEP_PX = 300;
+	let timelineH = $state<number | null>(loadTimelineHeight());
+	let timelineHost = $state<HTMLElement>();
+	let split: { y: number; h: number } | null = null;
+
+	/** 時間軸現在多高：拖過就是拖的高度，沒拖過量畫面（量不到用預設的 30vh）。 */
+	function currentTimelineH(): number {
+		if (timelineH !== null) return timelineH;
+		return Math.round(timelineHost?.getBoundingClientRect().height || Math.max(200, window.innerHeight * 0.3));
+	}
+
+	function setTimelineH(px: number | null) {
+		timelineH =
+			px === null ? null : Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX));
+		saveTimelineHeight(timelineH);
+	}
+
+	function splitDown(e: PointerEvent) {
+		if (e.button !== 0) return;
+		split = { y: e.clientY, h: currentTimelineH() };
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+	}
+
+	function splitMove(e: PointerEvent) {
+		if (split) setTimelineH(split.h + split.y - e.clientY);
+	}
+
+	function splitKey(e: KeyboardEvent) {
+		const step = { ArrowUp: 24, ArrowDown: -24 }[e.key];
+		if (!step) return;
+		e.preventDefault();
+		setTimelineH(currentTimelineH() + step);
 	}
 
 
@@ -514,7 +551,11 @@
 	{@const warnings = timeRuleWarnings(flow)}
 	{@const match = matchPrevious(flow, playheadSec, selectedMemberIds)}
 	{@const matchBlocked = match.kind === 'blocked' ? match.message : ''}
-	<div class="editor" class:print-hidden={printOpen}>
+	<div
+		class="editor"
+		class:print-hidden={printOpen}
+		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100vh - ${FIELD_KEEP_PX}px))`}
+	>
 		<header class="topbar">
 			<div class="title">
 				<b>{flow.name}</b>
@@ -596,21 +637,25 @@
 				walks={trail.walks}
 				onmove={move}
 				onselect={selectMembers}
-			/>
-			<CueOverlay {flow} {playheadSec} />
-			{#if flow.members.length}
-				<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
-				<div class="match-prev">
-					<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
-					{#if matchBlocked}<span>{matchBlocked}</span>{/if}
-				</div>
-			{/if}
-			{#if warnings.length}
-				<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
-					<Icon name="warn" />
-					{#each warnings as w (w)}<span>{w}</span>{/each}
-				</div>
-			{/if}
+			>
+				{#snippet railTop()}
+					{#if warnings.length}
+						<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
+							<Icon name="warn" />
+							<span class="warn-text">{#each warnings as w (w)}<span>{w}</span>{/each}</span>
+						</div>
+					{/if}
+					{#if flow}<CueOverlay {flow} {playheadSec} />{/if}
+				{/snippet}
+				{#snippet railBottom()}
+					{#if flow?.members.length}
+						<div class="match-prev">
+							<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
+							{#if matchBlocked}<span>{matchBlocked}</span>{/if}
+						</div>
+						<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+					{/if}
+				{/snippet}
 			{#if flow.members.length === 0}
 				<div class="field-empty">
 					<b>場上還沒有人</b>
@@ -640,6 +685,7 @@
 					>
 				</div>
 			{/if}
+			</Field>
 		</main>
 
 		<aside class="inspector">
@@ -680,7 +726,25 @@
 			</div>
 		</aside>
 
-		<div class="timeline-host">
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+		<div
+			class="split"
+			role="separator"
+			aria-orientation="horizontal"
+			aria-label="場地和時間軸的分界"
+			aria-valuenow={timelineH ?? currentTimelineH()}
+			aria-valuemin={TIMELINE_MIN_PX}
+			tabindex="0"
+			title="拖這裡調整場地和時間軸的高度（雙擊回到預設）"
+			onpointerdown={splitDown}
+			onpointermove={splitMove}
+			onpointerup={() => (split = null)}
+			onpointercancel={() => (split = null)}
+			onkeydown={splitKey}
+			ondblclick={() => setTimelineH(null)}
+		></div>
+
+		<div class="timeline-host" bind:this={timelineHost}>
 			<Timeline
 				{flow}
 				{playheadSec}
@@ -797,9 +861,42 @@
 	.editor {
 		height: 100vh;
 		display: grid;
-		grid-template-rows: auto minmax(0, 1fr) minmax(200px, 34vh);
+		/* 上方列｜場地＋右邊欄｜分界｜時間軸。時間軸預設 30vh，拖分界改的高度放在 --timeline-h。 */
+		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(200px, 30vh));
 		grid-template-columns: minmax(0, 1fr) 360px;
 		background: var(--paper);
+	}
+	.split {
+		grid-column: 1 / -1;
+		position: relative;
+		height: 7px;
+		cursor: row-resize;
+		touch-action: none;
+		background: var(--line-soft);
+		border-top: 1px solid var(--line);
+	}
+	/* 中間一小條把手，看得出可以拖。 */
+	.split::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 2px;
+		width: 36px;
+		height: 3px;
+		margin-left: -18px;
+		border-radius: 2px;
+		background: var(--muted);
+		opacity: 0.45;
+	}
+	.split:hover,
+	.split:focus-visible {
+		background: var(--sel-soft);
+		outline: none;
+	}
+	.split:hover::after,
+	.split:focus-visible::after {
+		background: var(--sel);
+		opacity: 1;
 	}
 
 	/* ---------- 上方列：深藍底，像記分板 ---------- */
@@ -974,15 +1071,11 @@
 		background: #36425f;
 		margin: 0 4px;
 	}
+	/* 左欄（場地左邊）的東西：警告、跟上一張一樣、拖人會改。 */
 	.warn {
-		position: absolute;
-		right: 16px;
-		bottom: 16px;
-		z-index: 2;
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 6px;
-		max-width: calc(100% - 32px);
 		padding: 6px 12px;
 		border-radius: 10px;
 		background: var(--warn-bg);
@@ -991,13 +1084,12 @@
 		font-size: 12px;
 		font-weight: 500;
 	}
-	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。
-	   疊在場地左下角的圖例（底層／上層／正在上面）上面，不蓋住它。 */
+	.warn :global(svg) {
+		flex: none;
+		margin-top: 1px;
+	}
+	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
 	.move-target {
-		position: absolute;
-		left: 16px;
-		bottom: 52px;
-		z-index: 2;
 		margin: 0;
 		padding: 4px 10px;
 		border-radius: 8px;
@@ -1006,19 +1098,15 @@
 		font-size: 12px;
 		pointer-events: none;
 	}
-	/* ① 跟上一張一樣：疊在「拖人會改」那一行上面。 */
+	/* ① 跟上一張一樣：在「拖人會改」那一行上面。 */
 	.match-prev {
-		position: absolute;
-		left: 16px;
-		bottom: 84px;
-		z-index: 2;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
 		font-size: 12px;
 		color: var(--muted);
 	}
-	/* 按不下去的原因會疊到場地上，給它底色才看得清楚。 */
 	.match-prev span {
 		padding: 4px 10px;
 		border-radius: 8px;

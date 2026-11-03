@@ -73,6 +73,24 @@ describe('動作表單：新增', () => {
 		expect(onselect).toHaveBeenCalledWith('x1');
 	});
 
+	it('卡片標「新動作」、換了底色；標題就是名稱輸入框', () => {
+		setup(sample(), null);
+		const card = document.querySelector('section.action-form')!;
+		expect(card.classList.contains('creating')).toBe(true);
+		const header = card.querySelector('header')!;
+		expect(within(header as HTMLElement).getByText('新動作')).toBeTruthy();
+		expect(header.contains(screen.getByLabelText('名稱'))).toBe(true);
+		expect(screen.queryByText('在播放頭新增動作')).toBeNull();
+	});
+
+	it('新增時挑辨識色，新動作帶著它', async () => {
+		const { onchange } = setup(sample(), null);
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
+		await fireEvent.click(screen.getByRole('radio', { name: '藍' }));
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(onchange.mock.calls[0][0].actions[0].color).toBe('#1565c0');
+	});
+
 	it('沒有人就被流程核心擋下，顯示原因', async () => {
 		const { onchange } = setup(sample(), null);
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
@@ -121,6 +139,30 @@ describe('動作表單：改選到的動作', () => {
 
 		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '' } });
 		expect(onchange.mock.calls[0][0].actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+	});
+
+	it('標題是動作的名稱，可以直接改', async () => {
+		const { onchange } = setup(withTwo(), 'x2');
+		const name = screen.getByLabelText('名稱') as HTMLInputElement;
+		expect(name.value).toBe('B');
+		expect(name.closest('header')).not.toBeNull();
+		await fireEvent.input(name, { target: { value: 'Ext' } });
+		await fireEvent.change(name);
+		expect(onchange.mock.calls[0][0].actions[1].name).toBe('Ext');
+	});
+
+	it('挑辨識色馬上生效；挑「大類的顏色」就拿掉', async () => {
+		const { onchange } = setup(withTwo(), 'x1');
+		expect((screen.getByRole('radio', { name: '大類的顏色' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('radio', { name: '紫' }));
+		const colored = onchange.mock.calls[0][0];
+		expect(colored.actions[0].color).toBe('#7b1fa2');
+
+		document.body.innerHTML = '';
+		const again = setup(colored, 'x1');
+		expect((screen.getByRole('radio', { name: '紫' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('radio', { name: '大類的顏色' }));
+		expect('color' in again.onchange.mock.calls[0][0].actions[0]).toBe(false);
 	});
 
 	it('刪除動作', async () => {

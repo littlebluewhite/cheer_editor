@@ -104,6 +104,25 @@ describe('泳道', () => {
 		expect(a.style.background).not.toBe(c.style.background);
 	});
 
+	it('有辨識色的色條塗辨識色，左邊留一條大類的顏色', () => {
+		const flow = sample();
+		flow.actions[0].color = '#1565c0';
+		render(Lanes, {
+			flow,
+			playheadSec: 0,
+			pxPerSec: 10,
+			selectedActionId: null,
+			onselectaction: vi.fn(),
+			onchange: vi.fn(),
+			onblocked: vi.fn()
+		});
+		const [a] = bars(lanes()[0]);
+		expect(a.style.background).toBe('rgb(21, 101, 192)');
+		expect(a.style.boxShadow).toContain('#d9603b');
+		// 沒挑辨識色的照大類塗，不加左邊那條
+		expect(bars(lanes()[2])[0].style.boxShadow).toBe('');
+	});
+
 	it('每個人的色條都寫動作名稱，不寫大類（顏色就是大類）；沒取名才寫大類', () => {
 		setup(0);
 		const name = (el: HTMLElement) => el.querySelector('b')?.textContent;

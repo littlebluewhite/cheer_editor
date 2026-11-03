@@ -1063,3 +1063,42 @@ describe('復原和重做', () => {
 		expect(redoButton().disabled).toBe(true);
 	});
 });
+
+describe('場地和時間軸的分界', () => {
+	beforeEach(() => localStorage.clear());
+
+	const bar = () => screen.getByRole('separator', { name: '場地和時間軸的分界' });
+	const height = () => Number(bar().getAttribute('aria-valuenow'));
+	const editorVar = () => (document.querySelector('.editor') as HTMLElement).style.getPropertyValue('--timeline-h');
+
+	it('↑ 時間軸變高、↓ 變矮；存在瀏覽器，下次打開一樣；雙擊回到預設', async () => {
+		await newFlow();
+		expect(editorVar()).toBe('');
+		const before = height();
+		await fireEvent.keyDown(bar(), { key: 'ArrowUp' });
+		expect(height()).toBe(before + 24);
+		expect(editorVar()).toContain(`${before + 24}px`);
+		await fireEvent.keyDown(bar(), { key: 'ArrowDown' });
+		await fireEvent.keyDown(bar(), { key: 'ArrowDown' });
+		expect(height()).toBe(before - 24);
+
+		cleanup();
+		await newFlow();
+		expect(height()).toBe(before - 24);
+
+		await fireEvent.dblClick(bar());
+		expect(editorVar()).toBe('');
+		cleanup();
+		await newFlow();
+		expect(editorVar()).toBe('');
+	});
+
+	it('拖分界：往上拖時間軸變高', async () => {
+		await newFlow();
+		const before = height();
+		await fireEvent.pointerDown(bar(), { clientY: 500, button: 0 });
+		await fireEvent.pointerMove(bar(), { clientY: 440 });
+		await fireEvent.pointerUp(bar(), { clientY: 440 });
+		expect(height()).toBe(before + 60);
+	});
+});

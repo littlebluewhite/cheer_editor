@@ -94,7 +94,7 @@
   <g id="node-f-notes" data-graph-role="node" data-node-id="f-notes" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-field" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,334,590,390">
   <rect x="50.0" y="334.0" width="540.0" height="56.0" rx="10.0" fill="#fefce8" stroke="#eab308" stroke-width="1.8"/>
   <text data-text-role="title" data-full-text="提示" data-text-max-width="516.0" x="320.0" y="362.0" text-anchor="middle" class="node-title" font-size="18">提示</text>
-  <text data-text-role="subtitle" data-full-text="上面中間：剛剛發生什麼事；右下黃色：規則警告" data-text-max-width="516.0" x="320.0" y="384.0" text-anchor="middle" class="node-sub" font-size="12">上面中間：剛剛發生什麼事；右下黃色：規則警告</text>
+  <text data-text-role="subtitle" data-full-text="上面中間：剛剛發生什麼事；左欄黃色：規則警告" data-text-max-width="516.0" x="320.0" y="384.0" text-anchor="middle" class="node-sub" font-size="12">上面中間：剛剛發生什麼事；左欄黃色：規則警告</text>
   </g>
   <g id="node-s-action" data-graph-role="node" data-node-id="s-action" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="c-side" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="650,254,910,318">
   <rect x="650.0" y="254.0" width="260.0" height="64.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>

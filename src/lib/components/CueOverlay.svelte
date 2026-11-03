@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 場地左上角的大字：播放頭在有拍點的動作裡（或開始前一個八拍）時，每個動作一張卡，
+	// 場地左邊那一欄的大字：播放頭在有拍點的動作裡（或開始前一個八拍）時，每個動作一張卡，
 	// 寫現在這拍的步驟、拍子、手位（有長度的寫走到第幾拍），下面預告下一個。不吃滑鼠。
 	import { actionLabel, cuesAt, whoName, type Cue, type Flow } from '#lib/core';
 
@@ -40,16 +40,14 @@
 {/if}
 
 <style>
-	/* 疊在場地左上角，讓出最上面一行給拖人時的座標提示（Field 的 .readout），兩個都看得到。 */
+	/* 放在場地左邊那一欄（放大縮小下面），不蓋到場地。 */
 	.cues-now {
-		position: absolute;
-		top: 52px;
-		left: 16px;
-		z-index: 3;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		max-width: calc(100% - 32px);
+		max-width: 100%;
+		min-height: 0;
+		overflow: hidden;
 		pointer-events: none;
 	}
 	.card {

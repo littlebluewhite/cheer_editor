@@ -252,7 +252,7 @@ await js(`q('#tab-action').click(); await new Promise((x) => setTimeout(x, 50));
 await sleep(200);
 await js(`
 	const form = q('.action-form');
-	$set([...form.querySelectorAll('input')].find((i) => i.placeholder?.startsWith('例如')), 'Lib');
+	$set(form.querySelector('header .title'), 'Lib');
 	for (const [who, role] of [['阿明', '主底'], ['阿強', '側底'], ['小美', '上層']]) {
 		$set(form.querySelector('select[aria-label="' + who + ' 的任務角色"]'), role, 'change');
 	}`);
@@ -263,7 +263,7 @@ await shot(
 	[
 		[1, `q('#tab-action')`],
 		[2, `q('.picker')`, { x: 0.5, y: 0 }],
-		[3, `[...document.querySelectorAll('.action-form .grid label.wide')]`],
+		[3, `[q('.action-form header .title'), ...document.querySelectorAll('.action-form .grid .wide')]`],
 		[4, `[...document.querySelectorAll('.action-form .grid .field')]`],
 		[5, `q('.action-form .people')`, { x: 0.5, y: 0 }],
 		[6, `q('.action-form button.add')`]

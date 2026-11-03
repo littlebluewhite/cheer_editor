@@ -39,6 +39,8 @@ export interface Action {
 	length: number;
 	note: string;
 	members: ActionMember[];
+	/** 辨識色（#rrggbb）：教練自己挑來認動作的顏色；沒有就用大類的顏色（舊流程檔沒有這個欄位）。 */
+	color?: string;
 	/** 這個動作的拍點；沒有就是空的（舊流程檔沒有這個欄位）。 */
 	cues?: Cue[];
 }
@@ -53,9 +55,14 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, action] }, id: action.id };
 }
 
-/** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件。 */
-function normalize(action: Action): Action {
-	return { ...action, name: action.name.trim(), members: action.members.map((m) => ({ ...m })) };
+/** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。 */
+function normalize({ color, ...action }: Action): Action {
+	return {
+		...action,
+		...(color ? { color } : {}),
+		name: action.name.trim(),
+		members: action.members.map((m) => ({ ...m }))
+	};
 }
 
 /**

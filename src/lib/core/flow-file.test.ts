@@ -98,7 +98,14 @@ describe('流程檔：存了再開', () => {
 		expect(r.kind === 'ok' && r.flow.actions[0].cues?.map((c) => c.word)).toEqual(['down', 'up']);
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 3 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('辨識色存了再開也一樣', () => {
+		const flow = sample();
+		flow.actions[0].color = '#1565c0';
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow.actions[0].color).toBe('#1565c0');
+	});
+
+	it('zip 裡是一份 flow.json（formatVersion 4 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -106,7 +113,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(3);
+		expect(json.formatVersion).toBe(4);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -118,7 +125,7 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 4, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 5, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '這個流程檔是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -178,6 +185,7 @@ describe('流程檔：版本', () => {
 		['走位的時間是負的', broken((f) => (f.formations[1].walks = { m1: walk('s1', -1) }))],
 		['走位沒有到達', broken((f) => (f.formations[1].walks = { m1: { depart: walk().depart } }))],
 		['開頭那張有走位', broken((f) => (f.formations[0].walks = { m1: walk() }))],
+		['辨識色不是 #rrggbb', broken((f) => (f.actions[0].color = 'blue'))],
 		['拍點不是陣列', broken((f) => (f.actions[0].cues = {}))],
 		['拍點的種類不對', broken((f) => (f.actions[0].cues = [cue({ kind: 'move' })]))],
 		['拍點的 at 不是整數', broken((f) => (f.actions[0].cues = [cue({ at: 1.5 })]))],
@@ -213,14 +221,22 @@ describe('流程檔：版本', () => {
 		expect(r.kind === 'ok' && r.flow.actions[0].cues).toBeUndefined();
 	});
 
+	it('第 3 版的檔：資料不用動，動作沒有辨識色', () => {
+		const flow = withCues();
+		const r = readFlowFile(zipOf({ formatVersion: 3, flow }));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		expect(r.kind === 'ok' && r.flow.actions[0].color).toBeUndefined();
+	});
+
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2、3 版資料不用動。
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2、3、4 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
 		0: (doc: FlowDocument) => ({ formatVersion: 1, flow: { ...(doc.flow as object), actions: [] } }),
 		1: (doc: FlowDocument) => ({ formatVersion: 2, flow: doc.flow }),
-		2: (doc: FlowDocument) => ({ formatVersion: 3, flow: doc.flow })
+		2: (doc: FlowDocument) => ({ formatVersion: 3, flow: doc.flow }),
+		3: (doc: FlowDocument) => ({ formatVersion: 4, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {

@@ -3,6 +3,9 @@
 	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
 	// 選人：點人（Shift＋點多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
+	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
+	// children 疊在場地上（置中的提示、確認框）。
+	import type { Snippet } from 'svelte';
 	import {
 		fieldGeometry,
 		fieldPositionText,
@@ -37,7 +40,10 @@
 		toMeters = screenCtmToMeters,
 		controls = true,
 		ghosts = {},
-		walks = []
+		walks = [],
+		railTop,
+		railBottom,
+		children
 	}: {
 		field: FieldConfig;
 		/** 照名單順序；點上寫的號碼是名單裡第幾個。 */
@@ -57,6 +63,12 @@
 		ghosts?: Record<string, Position>;
 		/** 走位線，從起點畫到終點；太快的標紅。有選人時只畫選到的人。 */
 		walks?: FormationWalk[];
+		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
+		railTop?: Snippet;
+		/** 左欄圖例上面的東西（跟上一張一樣、拖人會改）。 */
+		railBottom?: Snippet;
+		/** 疊在場地上的東西。 */
+		children?: Snippet;
 	} = $props();
 
 	const ZOOM_STEP = 1.25;
@@ -216,7 +228,32 @@
 	}
 </script>
 
-<div class="field-wrap">
+<div class="field-wrap" class:with-rail={controls}>
+	{#if controls}
+		<div class="rail">
+			<div class="tools">
+				<button type="button" class="ghost icon" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}
+					><Icon name="minus" /></button
+				>
+				<span class="zoom">×{zoom.toFixed(1)}</span>
+				<button type="button" class="ghost icon" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}
+					><Icon name="plus" /></button
+				>
+				<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
+					><Icon name="fit" />全場</button
+				>
+			</div>
+			{@render railTop?.()}
+			<div class="rail-gap"></div>
+			{@render railBottom?.()}
+			<div class="legend" aria-hidden="true">
+				<span><i class="base"></i>底層</span>
+				<span><i class="top"></i>上層</span>
+				<span><i class="up"></i>正在上面</span>
+			</div>
+		</div>
+	{/if}
+	<div class="stage">
 	<svg
 		bind:this={svg}
 		class="field"
@@ -290,24 +327,9 @@
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
 		{/if}
 	</svg>
-	{#if controls}
-		<div class="tools">
-			<button type="button" class="ghost icon" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}
-				><Icon name="minus" /></button
-			>
-			<span class="zoom">×{zoom.toFixed(1)}</span>
-			<button type="button" class="ghost icon" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}
-				><Icon name="plus" /></button
-			>
-			<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}><Icon name="fit" />全場</button>
-		</div>
-		<div class="legend" aria-hidden="true">
-			<span><i class="base"></i>底層</span>
-			<span><i class="top"></i>上層</span>
-			<span><i class="up"></i>正在上面</span>
-		</div>
-	{/if}
 	{#if readout}<div class="readout">{readout}</div>{/if}
+	{@render children?.()}
+	</div>
 </div>
 
 <style>
@@ -315,6 +337,33 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
+	}
+	.field-wrap.with-rail {
+		display: grid;
+		grid-template-columns: 236px minmax(0, 1fr);
+		gap: 12px;
+	}
+	.stage {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		min-width: 0;
+		min-height: 0;
+	}
+	/* 左欄：上面是放大縮小和提示，下面是跟上一張一樣、拖人會改、圖例。 */
+	.rail {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.rail > :global(*) {
+		max-width: 100%;
+	}
+	.rail-gap {
+		flex: 1;
 	}
 	.field {
 		display: block;
@@ -442,9 +491,6 @@
 		fill: #fff;
 	}
 	.tools {
-		position: absolute;
-		top: 4px;
-		right: 4px;
 		display: flex;
 		gap: 2px;
 		align-items: center;
@@ -465,9 +511,6 @@
 		color: var(--muted, #66718a);
 	}
 	.legend {
-		position: absolute;
-		left: 4px;
-		bottom: 4px;
 		display: flex;
 		gap: 12px;
 		padding: 5px 10px;

@@ -25,6 +25,9 @@
 	--warn-text: #7a5200;
 	--danger: #c8372d;
 	--danger-soft: #fdecea;
+	/* 還沒加進去的新動作（動作表單在新增時的底色和框）。 */
+	--new-bg: #eef8f1;
+	--new-line: #3f9a5f;
 
 	--top: #e0664f;
 	--base: #2c3e66;

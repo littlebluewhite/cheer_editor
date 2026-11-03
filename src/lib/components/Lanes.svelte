@@ -31,7 +31,7 @@
 		type TimePosition,
 		type Walk
 	} from '#lib/core';
-	import { CATEGORY_COLORS } from './category-colors';
+	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import type { PendingConfirm } from './form';
 	import { followPointer } from './pointer';
 
@@ -271,9 +271,11 @@
 						data-action-id={p.action.id}
 						class:dragging={d !== null}
 						class:has-cues={mine.length > 0}
+						class:tinted={!!p.action.color}
 						style:left={`${p.left + (d?.mode === 'move' ? d.dx : 0)}px`}
 						style:width={`${Math.max(p.width + (d?.mode === 'resize' ? d.dx : 0), 2)}px`}
-						style:background={CATEGORY_COLORS[p.action.category]}
+						style:background={actionColor(p.action)}
+						style:box-shadow={p.action.color ? `inset 4px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
 						onclick={() => onselectaction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
@@ -430,6 +432,10 @@
 	}
 	.bar:hover {
 		filter: brightness(1.06);
+	}
+	/* 有辨識色：左邊 4px 是大類的顏色，字往右讓一點。 */
+	.bar.tinted {
+		padding-left: 9px;
 	}
 	.role {
 		opacity: 0.9;
