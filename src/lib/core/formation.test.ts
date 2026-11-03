@@ -6,6 +6,7 @@ import {
 	addSegment,
 	clearWalks,
 	createFlow,
+	currentFormation,
 	deleteFormation,
 	formationAt,
 	formationTimes,
@@ -583,6 +584,23 @@ describe('拖人之前的那一行字', () => {
 	it('不在站位上：在這一拍插一張新站位', () => {
 		expect(moveTargetText(walking(), 5.05)).toBe('拖人會在 2-5& 插一張新站位');
 		expect(moveTargetText(walking(), 27.31)).toBe('拖人會在 1.7 秒 插一張新站位');
+	});
+});
+
+describe('現在的站位', () => {
+	// walking()：f1 開頭 → f2 在 20 秒 → f3 在 30 秒。
+
+	it('播放頭在哪張之後、下一張之前，就是那張；編號照時間排', () => {
+		const flow = walking();
+		expect(currentFormation(flow, 0)).toMatchObject({ formation: { id: 'f1' }, number: 1 });
+		expect(currentFormation(flow, 19.9)).toMatchObject({ formation: { id: 'f1' }, number: 1 });
+		expect(currentFormation(flow, 20)).toMatchObject({ formation: { id: 'f2' }, number: 2 });
+		expect(currentFormation(flow, 25)).toMatchObject({ formation: { id: 'f2' }, number: 2 });
+		expect(currentFormation(flow, 99)).toMatchObject({ formation: { id: 'f3' }, number: 3 });
+	});
+
+	it('還沒有段：開頭那張', () => {
+		expect(currentFormation(twoMembers(), 0)).toMatchObject({ formation: { id: 'f1' }, number: 1 });
 	});
 });
 

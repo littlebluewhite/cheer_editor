@@ -365,6 +365,13 @@ function defaultWalk(flow: Flow, index: number): { depart: number; arrive: numbe
 	return { depart: toSeconds(flow, toPosition(flow, depart)!), arrive };
 }
 
+/** 播放頭這一刻用的站位：開始時間不晚於播放頭的最後一張。number 照時間排，跟站位縮圖列一樣。 */
+export function currentFormation(flow: Flow, sec: number): { formation: Formation; number: number } {
+	const next = flow.formations.findIndex((f) => formationSec(flow, f) > sec + EPS);
+	const index = next === -1 ? flow.formations.length - 1 : Math.max(next - 1, 0);
+	return { formation: flow.formations[index], number: index + 1 };
+}
+
 /**
  * 播放頭這一刻所在的那一拍（音樂段的半拍、口號段的 0.1 秒）上的站位；不在站位上是 undefined。
  * 還沒有段時，播放頭一定在開頭那張上。

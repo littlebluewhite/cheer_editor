@@ -71,6 +71,7 @@ export type { CustomRole, RoleEntry } from './roles';
 export {
 	TOO_FAST_MPS,
 	clearWalks,
+	currentFormation,
 	deleteFormation,
 	formationAt,
 	formationTimes,

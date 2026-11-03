@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		addSegment,
+		currentFormation,
 		deleteAction,
 		deleteFormation,
 		firstBeatPreview,
@@ -710,6 +711,20 @@
 				onselect={selectMembers}
 			>
 				{#snippet railTop()}
+					{#if flow}
+						{@const now = currentFormation(flow, playheadSec)}
+						<div class="now-formation" aria-label="現在的站位">
+							<span class="now-label">現在站位</span>
+							<div class="now-row">
+								<span class="now-no">{now.number}</span>
+								{#if now.formation.name}
+									<strong class="now-name" title={now.formation.name}>{now.formation.name}</strong>
+								{:else}
+									<span class="now-name unnamed">站位 {now.number}</span>
+								{/if}
+							</div>
+						</div>
+					{/if}
 					{#if warnings.length}
 						<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
 							<Icon name="warn" />
@@ -1195,6 +1210,55 @@
 		color: var(--warn-text);
 		font-size: 12px;
 		font-weight: 500;
+	}
+	/* 左欄最上面：播放頭這一刻用的站位。號碼跟站位縮圖列一樣是深色小方塊，左邊一條墊子藍。 */
+	.now-formation {
+		align-self: stretch;
+		display: grid;
+		gap: 4px;
+		padding: 8px 12px 10px;
+		border-radius: 10px;
+		background: var(--surface, #fff);
+		border: 1px solid var(--line, #d8dee9);
+		border-left: 4px solid var(--mat, #2f66b8);
+		box-shadow: 0 1px 2px rgba(22, 33, 58, 0.06);
+	}
+	.now-label {
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--muted);
+	}
+	.now-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+	.now-no {
+		flex: none;
+		min-width: 22px;
+		padding: 0 5px;
+		border-radius: 5px;
+		background: var(--ink, #16213a);
+		color: #fff;
+		font-size: 12px;
+		font-weight: 700;
+		line-height: 22px;
+		text-align: center;
+	}
+	.now-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 18px;
+		font-weight: 700;
+		color: var(--ink, #16213a);
+	}
+	.now-name.unnamed {
+		font-weight: 600;
+		color: var(--muted);
 	}
 	.warn :global(svg) {
 		flex: none;
