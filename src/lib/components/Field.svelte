@@ -257,13 +257,9 @@
 			<div class="rail-gap"></div>
 			{@render railBottom?.()}
 			<div class="walk-tools">
-				<button
-					type="button"
-					class="ghost"
-					aria-pressed={!allWalkLines}
-					title="打開時，正常的白色走位線藏起來，只畫很喘（橘）和太快（紅）的線"
-					onclick={() => (allWalkLines = !allWalkLines)}>只看橘紅走位線</button
-				>
+				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和太快（紅）的線">
+					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
+				</label>
 				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
 				<span aria-hidden="true"><i class="fast"></i>太快</span>
 			</div>
@@ -545,20 +541,22 @@
 		flex-wrap: wrap;
 		gap: 4px 10px;
 		align-items: center;
-		padding: 3px 10px 3px 3px;
+		padding: 5px 10px;
 		background: rgba(255, 255, 255, 0.94);
 		border-radius: 10px;
 		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
 		font-size: 12px;
 		color: var(--muted, #66718a);
 	}
-	.walk-tools button {
-		height: 28px;
-		font-size: 12px;
+	.walk-tools label {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		color: var(--text, #1a2238);
+		cursor: pointer;
 	}
-	.walk-tools button[aria-pressed='true'] {
-		background: var(--sel-soft, #dcf4fa);
-		color: var(--ink, #16213a);
+	.walk-tools input {
+		margin: 0;
 	}
 	.walk-tools span {
 		display: inline-flex;
