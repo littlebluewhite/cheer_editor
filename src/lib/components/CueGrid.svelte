@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 拍點格子：像紙本八拍表，動作碰到的每個八拍一排 8 個數字格，下面是拍子、步驟、手位三條。
-	// 點一格選一拍，用 ＋、－ 多選或少選；點 down、up 就放滿選到的拍，選取跳到下一拍。
+	// 點一格選一拍，用 ＋、－ 多選或少選；也可以在數字格或拍點條的空格上按住拖過幾拍。
+	// 點 down、up 就放滿選到的拍，選取跳到下一拍。
 	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 規則（在動作裡、整數拍、只有 down／up）都交給流程核心；被擋就顯示原因。
@@ -24,9 +25,11 @@
 		flow: Flow;
 		action: Action;
 		onchange: (flow: Flow) => void;
+		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
+		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
 	}
 
-	let { flow, action, onchange }: Props = $props();
+	let { flow, action, onchange, cellAt = nearestCell }: Props = $props();
 
 	/** 一拍幾個半拍；一個八拍幾個半拍。 */
 	const BEAT = 2;
@@ -66,6 +69,8 @@
 	/** 這一格（從 at 開始的一拍）整個在動作裡。 */
 	const inAction = (at: number) => at >= 0 && at + BEAT <= action.length;
 	const hasCells = $derived(inAction(firstCell));
+	/** 動作裡最後一格。 */
+	const lastCell = $derived(firstCell + (Math.floor((action.length - firstCell) / BEAT) - 1) * BEAT);
 	const isSel = (at: number) => at >= sel.from && at <= sel.to;
 	const selLen = $derived(sel.to - sel.from + BEAT);
 
@@ -114,6 +119,32 @@
 
 	const selectOne = (at: number) => (sel = { from: at, to: at });
 
+	/** 拖拉選拍：按下那一格；pointer 按下過、還沒收到 click（點一下時 pointerdown 已經選好，click 不用再選）。 */
+	let anchor: number | null = null;
+	let pointerSel = false;
+
+	function dragStart(e: PointerEvent) {
+		if (e.button !== 0) return;
+		const el = (e.target as Element).closest<HTMLElement>('[data-at]');
+		const at = Number(el?.dataset.at);
+		if (!el || !inAction(at)) return;
+		anchor = at;
+		pointerSel = true;
+		selectOne(at);
+		// 抓住指標：拖過變淡（disabled）的格子、拖出格子外都收得到。
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+	}
+
+	function dragMove(e: PointerEvent) {
+		if (anchor === null) return;
+		const el = cellAt(e.currentTarget as HTMLElement, e.clientX, e.clientY);
+		// 拖到動作外面時停在動作的第一拍或最後一拍。
+		const at = Math.min(Math.max(Number(el.dataset.at), firstCell), lastCell);
+		sel = { from: Math.min(anchor, at), to: Math.max(anchor, at) };
+	}
+
+	const dragEnd = () => (anchor = null);
+
 	function grow(step: number) {
 		const to = sel.to + step * BEAT;
 		if (to >= sel.from && inAction(to)) sel = { from: sel.from, to };
@@ -152,6 +183,21 @@
 		if (inAction(from)) sel = { from, to };
 	}
 
+	/** 範圍 [lo, hi] 離 v 多遠（在裡面是 0）。 */
+	const dist = ([lo, hi]: [number, number], v: number) => (v < lo ? lo - v : v > hi ? v - hi : 0);
+	function nearest(els: HTMLElement[], span: (r: DOMRect) => [number, number], v: number) {
+		let best = els[0];
+		for (const el of els) {
+			if (dist(span(el.getBoundingClientRect()), v) < dist(span(best.getBoundingClientRect()), v)) best = el;
+		}
+		return best;
+	}
+	/** 先找 y 最近的那個八拍，再找那一排 x 最近的數字格。 */
+	function nearestCell(sheet: HTMLElement, x: number, y: number): HTMLElement {
+		const row = nearest([...sheet.querySelectorAll<HTMLElement>('.row')], (r) => [r.top, r.bottom], y);
+		return nearest([...row.querySelectorAll<HTMLElement>('.cell')], (r) => [r.left, r.right], x);
+	}
+
 	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）。 */
 	function pieces(e: number, kind: CueKind) {
 		const lo = e * EIGHT;
@@ -174,7 +220,15 @@
 	{:else if !hasCells}
 		<p class="muted">動作不到一拍，不能放拍點</p>
 	{:else}
-		<div class="sheet">
+		<div
+			class="sheet"
+			role="presentation"
+			onpointerdown={dragStart}
+			onpointermove={dragMove}
+			onpointerup={dragEnd}
+			onpointercancel={dragEnd}
+			onclick={() => (pointerSel = false)}
+		>
 			{#each eights as e (e)}
 				<div class="row">
 					<span class="eight" aria-hidden="true">{e + 1}</span>
@@ -186,16 +240,18 @@
 						<button
 							type="button"
 							class="cell"
+							data-at={at}
 							style:grid-column={c + 2}
 							class:sel={inAction(at) && isSel(at)}
 							aria-label="{e + 1}-{c + 1}"
 							aria-pressed={inAction(at) && isSel(at)}
 							disabled={!inAction(at)}
-							onclick={() => selectOne(at)}>{c + 1}</button
+							onclick={() => pointerSel || selectOne(at)}>{c + 1}</button
 						>
 						{#each LANES as lane (lane.kind)}
 							<span
 								class="slot {lane.kind}"
+								data-at={at}
 								class:out={!inAction(at)}
 								class:sel={inAction(at) && isSel(at)}
 								style:grid-column={c + 2}
@@ -303,6 +359,13 @@
 	.sheet {
 		display: grid;
 		gap: 10px;
+		/* 拖拉選拍時不選到文字、畫面不捲動（觸控也一樣）。 */
+		user-select: none;
+		-webkit-user-select: none;
+	}
+	.cell,
+	.slot {
+		touch-action: none;
 	}
 	.row {
 		display: grid;
