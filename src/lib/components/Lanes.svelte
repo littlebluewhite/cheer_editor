@@ -281,14 +281,14 @@
 						<b>{p.name}</b>
 						{#if member.role}<span class="role">{member.role}</span>{/if}
 						{#each mine as c, j (j)}
-							<!-- 最後一拍的手位靠右往左撐開，字才不會被色條右邊切掉；拉右邊時讓開拉的距離，留在原本那一拍 -->
+							<!-- 最後一拍的手位右邊對齊那一拍的結尾、往左撐開，字才不會被色條右邊切掉；跟色條多寬無關，拉右邊時也不會跑 -->
 							{@const atEnd = c.kind === 'motion' && c.at + c.len >= p.action.length}
 							<span
 								class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
 								data-cue={c.kind}
 								aria-hidden="true"
-								style:left={atEnd ? undefined : `${c.at * p.halfPx}px`}
-								style:right={atEnd ? `${d?.mode === 'resize' ? d.dx : 0}px` : undefined}
+								style:left={`${(atEnd ? c.at + c.len : c.at) * p.halfPx}px`}
+								style:transform={atEnd ? 'translateX(-100%)' : undefined}
 								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
 								style:top={`${NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}

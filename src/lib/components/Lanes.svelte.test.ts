@@ -402,10 +402,11 @@ describe('色條上的拍點', () => {
 		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), onchange: vi.fn() });
 		const [highV, last] = [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-cue="motion"]')];
 		expect(highV.style.left).toBe('16px');
-		expect(highV.style.right).toBe('');
+		expect(highV.style.transform).toBe('');
 		expect(last.textContent?.trim()).toBe('T');
-		expect(last.style.left).toBe('');
-		expect(last.style.right).toBe('0px');
+		// 右邊對齊第 32 px（最後一拍的結尾），往左撐開
+		expect(last.style.left).toBe('32px');
+		expect(last.style.transform).toBe('translateX(-100%)');
 		expect(last.style.minWidth).toBe('4px');
 	});
 
@@ -420,9 +421,9 @@ describe('色條上的拍點', () => {
 		await fireEvent.pointerMove(window, { clientX: 106 });
 		// 色條拉長 6 px，T 的右邊還是在原本的第 32 px
 		expect(bars(lanes()[0])[0].style.width).toBe('38px');
-		expect(last().style.right).toBe('6px');
+		expect(last().style.left).toBe('32px');
 		await fireEvent.pointerMove(window, { clientX: 96 });
-		expect(last().style.right).toBe('-4px');
+		expect(last().style.left).toBe('32px');
 	});
 
 	it('有拍點的色條：名稱和任務角色在上半，拍點在下半，一種一條；提示照舊', () => {
