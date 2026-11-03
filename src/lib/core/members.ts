@@ -137,27 +137,40 @@ export function memberMarkers(flow: Flow): Record<string, string> {
 	if (flow.markers !== 'initial') {
 		return Object.fromEntries(flow.members.map((m, i) => [m.id, String(i + 1)]));
 	}
-	const chars = new Map(flow.members.map((m) => [m.id, Array.from(m.name)]));
+	// 名字是空的（手改過的檔案）就當成「?」，不讓畫面當掉。
+	const chars = new Map(flow.members.map((m) => [m.id, Array.from(m.name.trim() || '?')]));
 	const initial = (m: Member) => chars.get(m.id)![0].toUpperCase();
-	return Object.fromEntries(
-		flow.members.map((m) => {
-			const group = flow.members.filter((o) => initial(o) === initial(m));
-			return [m.id, group.length === 1 ? initial(m) : clashMarker(m, group, chars)];
-		})
-	);
+	const markers: Record<string, string> = {};
+	for (const m of flow.members) {
+		const group = flow.members.filter((o) => initial(o) === initial(m));
+		if (group.length === 1) markers[m.id] = initial(m);
+		else if (m === group[0]) Object.assign(markers, clashMarkers(group, chars));
+	}
+	return markers;
 }
 
 /**
- * 開頭字撞在一起的人：開頭字再帶名字裡第 k 個字，k 從第二個字往後找，找到同一群裡沒有別人第 k 個字一樣的
- * （王小明、王大華、王小美 → 王明、王大、王美）。找不到（同名、名字只有一個字）就在開頭字後面加他在這群裡排第幾。
+ * 開頭字撞在一起的一群人：每人開頭字再帶名字後面第一個「群裡別人名字後面都沒有」的字
+ * （王小明、王大華、王小美 → 王明、王大、王美），所以不會兩個人帶到同一個字。
+ * 找不到（同名、名字只有一個字）就在開頭字後面加 1、2、3…，跳過已經被用掉的。
  */
-function clashMarker(m: Member, group: Member[], chars: Map<string, string[]>): string {
-	const mine = chars.get(m.id)!;
-	const initial = mine[0].toUpperCase();
-	for (let k = 1; k < mine.length; k++) {
-		if (group.every((o) => o === m || chars.get(o.id)![k] !== mine[k])) return initial + mine[k];
+function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<string, string> {
+	const head = chars.get(group[0].id)![0].toUpperCase();
+	const rest = (m: Member) => chars.get(m.id)!.slice(1);
+	const markers: Record<string, string> = {};
+	const left: Member[] = [];
+	for (const m of group) {
+		const c = rest(m).find((c) => group.every((o) => o === m || !rest(o).includes(c)));
+		if (c) markers[m.id] = head + c;
+		else left.push(m);
 	}
-	return initial + (group.indexOf(m) + 1);
+	const used = new Set(Object.values(markers));
+	let n = 1;
+	for (const m of left) {
+		while (used.has(head + n)) n++;
+		markers[m.id] = head + n++;
+	}
+	return markers;
 }
 
 /**

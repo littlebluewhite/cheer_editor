@@ -208,6 +208,26 @@ describe('標記', () => {
 		expect(memberMarkers(flow)).toEqual({ m1: '王1', m2: '王2', m3: '王美' });
 	});
 
+	it('多帶的字只在一個人名字裡出現才用，不會兩個人帶到同一個字', () => {
+		const flow = okFlow(setMarkers(people('王世傑', '王志世', '王志明'), 'initial'));
+		expect(memberMarkers(flow)).toEqual({ m1: '王傑', m2: '王1', m3: '王明' });
+	});
+
+	it('加第幾個時跳過別人已經用掉的標記', () => {
+		const flow = okFlow(setMarkers(people('王', '王1'), 'initial'));
+		expect(memberMarkers(flow)).toEqual({ m1: '王2', m2: '王1' });
+	});
+
+	it('檔案裡的名字是空的：標記寫問號，不會當掉', () => {
+		const base = people('王小明', '李美');
+		const flow: Flow = {
+			...base,
+			markers: 'initial',
+			members: base.members.map((m, i) => (i === 0 ? { ...m, name: '' } : m))
+		};
+		expect(memberMarkers(flow)).toEqual({ m1: '?', m2: '李' });
+	});
+
 	it('可以改回號碼', () => {
 		const flow = okFlow(setMarkers(okFlow(setMarkers(people('王小明'), 'initial')), 'number'));
 		expect(memberMarkers(flow)).toEqual({ m1: '1' });
