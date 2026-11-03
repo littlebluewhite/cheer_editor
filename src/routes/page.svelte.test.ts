@@ -367,6 +367,52 @@ describe('動作', () => {
 		expect(screen.getByRole('region', { name: '這一拍' }).getAttribute('aria-live')).toBe('polite');
 	});
 
+	it('從動作拿掉隊員、有拍點給他：先問並列出拍點；取消就留著，確定才拿掉人和拍點', async () => {
+		await newFlow();
+		for (const name of ['小A', '小B']) {
+			await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: name } });
+			await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+			await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'base' } });
+			await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		}
+		await tab('動作');
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		await fireEvent.change(screen.getByLabelText('小A 的任務角色'), { target: { value: '上層' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const who = within(grid.getByRole('group', { name: '給誰' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
+		await fireEvent.click(who.getByRole('button', { name: '上層' }));
+		await fireEvent.click(within(grid.getByRole('group', { name: '手位' })).getByRole('button', { name: 'high V' }));
+		const placed = () =>
+			within(screen.getByRole('group', { name: '拍點' }))
+				.queryAllByRole('button', { name: /^手位 / })
+				.map((b) => b.getAttribute('aria-label'));
+		expect(placed()).toEqual(['手位 high V 1-7・1 拍・給上層']);
+
+		const removeA = () => screen.getByRole('button', { name: '把 小A 移出這個動作' });
+		await fireEvent.click(removeA());
+		const dialog = within(screen.getByRole('alertdialog'));
+		expect(dialog.getByText('動作「技巧」換了人或任務角色，會拿掉 1 個拍點')).toBeTruthy();
+		expect(dialog.getByText('拿掉：手位 high V 1-7・給上層')).toBeTruthy();
+
+		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(screen.getByLabelText('小A 的任務角色')).toBeTruthy();
+		expect(placed()).toEqual(['手位 high V 1-7・1 拍・給上層']);
+
+		await fireEvent.click(removeA());
+		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '確定' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(screen.queryByLabelText('小A 的任務角色')).toBeNull();
+		expect(placed()).toEqual([]);
+	});
+
 	it('拖色條被擋就還原，上方列說原因', async () => {
 		await withAction();
 		await fireEvent.pointerDown(bar()!, { clientX: 100, button: 0 });
