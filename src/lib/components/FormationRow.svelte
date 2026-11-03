@@ -272,13 +272,8 @@
 		height: 18px;
 		padding: 0;
 		border-radius: 4px;
-		opacity: 0;
 	}
 	.del:hover {
 		color: var(--danger, #c8372d);
-	}
-	.th:hover .del,
-	.del:focus-visible {
-		opacity: 1;
 	}
 </style>

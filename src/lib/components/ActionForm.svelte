@@ -101,6 +101,8 @@
 	/** 等教練確認的改動（會切短或拿掉拍點）。 */
 	let pending = $state<{ input: NewActionInput; message: string; items: string[] } | null>(null);
 	let glossaryOpen = $state(false);
+	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
+	let legendOpen = $state(false);
 
 	function blank(): Draft {
 		const members = untrack(() => fromSelection([]));
@@ -345,7 +347,15 @@
 			<div class="people-head">
 				<span class="cap">人（{draft.members.length}）＋任務角色</span>
 				<span class="legend">
-					<button type="button" class="ghost bang" aria-label="顏色和快捷鍵說明" aria-describedby="people-legend">!</button>
+					<button
+						type="button"
+						class="ghost bang"
+						aria-label="顏色和快捷鍵說明"
+						aria-describedby="people-legend"
+						aria-expanded={legendOpen}
+						onclick={() => (legendOpen = !legendOpen)}
+						onfocusout={() => (legendOpen = false)}>!</button
+					>
 					<span class="tip" id="people-legend" role="tooltip">
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
@@ -710,7 +720,8 @@
 		gap: 6px;
 	}
 	.legend:hover .tip,
-	.bang:focus-visible + .tip {
+	.bang:focus-visible + .tip,
+	.bang[aria-expanded='true'] + .tip {
 		display: grid;
 	}
 	.tip > span {

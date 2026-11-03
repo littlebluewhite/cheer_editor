@@ -159,6 +159,9 @@
 	let selectedActionId = $state<string | null>(null);
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
 	let selectedMemberIds = $state<string[]>([]);
+	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+	let multiSelect = $state(false);
+	const anySelected = $derived(!!selectedFormationId || !!selectedActionId || selectedMemberIds.length > 0);
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
 
@@ -635,10 +638,21 @@
 			e.preventDefault();
 			removeAction(selectedActionId);
 		} else if (e.key === 'Escape') {
-			selectedFormationId = null;
-			selectedActionId = null;
-			selectedMemberIds = [];
+			clearSelection();
 		}
+	}
+
+	/** 站位、動作、人的選取都清掉（Esc 或「取消選取」）。 */
+	function clearSelection() {
+		selectedFormationId = null;
+		selectedActionId = null;
+		selectedMemberIds = [];
+	}
+
+	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
+	function resetLayout() {
+		setTimelineH(null);
+		setInspectorW(null);
 	}
 
 	function removeAction(id: string) {
@@ -752,12 +766,22 @@
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
 				selected={selectedMemberIds}
+				multi={multiSelect}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
 				onmove={move}
 				onselect={selectMembers}
 			>
 				{#snippet railTop()}
+					<div class="select-tools">
+						<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
+							<input type="checkbox" bind:checked={multiSelect} />多選
+						</label>
+						<button type="button" disabled={!anySelected} onclick={clearSelection}>取消選取</button>
+						{#if timelineH !== null || inspectorW !== null}
+							<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
+						{/if}
+					</div>
 					{#if flow}
 						{@const now = currentFormation(flow, playheadSec)}
 						<div class="now-formation" aria-label="現在的站位">
@@ -858,7 +882,7 @@
 				aria-valuenow={inspectorPx}
 				aria-valuemin={INSPECTOR_MIN_PX}
 				tabindex="0"
-				title="拖這裡調整右邊欄的寬度（雙擊回到自動）"
+				title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
 				onpointerdown={colSplitDown}
 				onpointermove={colSplitMove}
 				onpointerup={() => (colSplit = null)}
@@ -912,7 +936,7 @@
 			aria-valuenow={timelineH ?? currentTimelineH()}
 			aria-valuemin={TIMELINE_MIN_PX}
 			tabindex="0"
-			title="拖這裡調整場地和時間軸的高度（雙擊回到預設）"
+			title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
 			onpointerdown={splitDown}
 			onpointermove={splitMove}
 			onpointerup={() => (split = null)}
@@ -953,6 +977,7 @@
 				}}
 				{selectedMemberIds}
 				onselectmembers={selectMembers}
+				multi={multiSelect}
 			/>
 		</div>
 	</div>
@@ -1250,6 +1275,41 @@
 		height: 20px;
 		background: #36425f;
 		margin: 0 4px;
+	}
+	/* 左欄：多選、取消選取、版面回原狀（iPad 沒有 Shift、Esc，也不好雙擊分界）。 */
+	.select-tools {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.toggle-btn {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--surface);
+		font-size: 13px;
+		line-height: 20px;
+		cursor: pointer;
+		user-select: none;
+	}
+	.toggle-btn:has(input:checked) {
+		background: var(--sel);
+		border-color: var(--sel);
+		color: #fff;
+		font-weight: 600;
+	}
+	.toggle-btn:focus-within {
+		outline: 2px solid var(--sel);
+		outline-offset: 2px;
+	}
+	.toggle-btn input {
+		position: absolute;
+		opacity: 0;
+		width: 1px;
+		height: 1px;
 	}
 	/* 左欄（場地左邊）的東西：警告、跟上一張一樣、拖人會改。 */
 	.warn {

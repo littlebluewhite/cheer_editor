@@ -66,7 +66,8 @@ function sample(): Flow {
 function setup(
 	playheadSec: number,
 	selectedActionId: string | null = null,
-	selectedMemberIds: string[] = []
+	selectedMemberIds: string[] = [],
+	multi = false
 ) {
 	const onselectaction = vi.fn();
 	const onchange = vi.fn<(flow: Flow) => void>();
@@ -81,7 +82,8 @@ function setup(
 		onchange,
 		onblocked,
 		selectedMemberIds,
-		onselectmembers
+		onselectmembers,
+		multi
 	});
 	return { onselectaction, onchange, onblocked, onselectmembers };
 }
@@ -220,6 +222,14 @@ describe('點泳道上的名字選人', () => {
 		await fireEvent.click(name(2), { shiftKey: true });
 		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
 		await fireEvent.click(name(0), { shiftKey: true });
+		expect(onselectmembers).toHaveBeenLastCalledWith([]);
+	});
+
+	it('多選開著：不按 Shift 點名字也是加進來或拿掉', async () => {
+		const { onselectmembers } = setup(0, null, ['m1'], true);
+		await fireEvent.click(name(2));
+		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
+		await fireEvent.click(name(0));
 		expect(onselectmembers).toHaveBeenLastCalledWith([]);
 	});
 });

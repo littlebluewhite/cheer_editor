@@ -183,6 +183,17 @@ describe('動作', () => {
 		expect(bar()).toBeTruthy();
 	});
 
+	it('「取消選取」跟 Esc 一樣，動作和人的選取都清掉；沒有選東西時按不了', async () => {
+		await withAction();
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		const clear = () => screen.getByRole('button', { name: '取消選取' }) as HTMLButtonElement;
+		expect(clear().disabled).toBe(false);
+		await fireEvent.click(clear());
+		expect(bar()?.classList.contains('selected')).toBe(false);
+		expect(dot().classList.contains('selected')).toBe(false);
+		expect(clear().disabled).toBe(true);
+	});
+
 	it('名詞對照表開著時按 Esc 只關掉它，不清除選到的動作', async () => {
 		await withAction();
 		await fireEvent.click(screen.getByRole('button', { name: '名詞對照表' }));
@@ -1309,6 +1320,20 @@ describe('場地和右邊欄的分界', () => {
 		cleanup();
 		await newFlow();
 		expect(width()).toBe(auto);
+	});
+
+	it('「版面回原狀」兩條分界都回到預設；沒改過就不出現', async () => {
+		await newFlow();
+		const reset = () => screen.queryByRole('button', { name: '版面回原狀' });
+		expect(reset()).toBeNull();
+		const auto = width();
+		await fireEvent.keyDown(bar(), { key: 'ArrowLeft' });
+		const rows = screen.getByRole('separator', { name: '場地和時間軸的分界' });
+		await fireEvent.keyDown(rows, { key: 'ArrowUp' });
+		await fireEvent.click(reset()!);
+		expect(width()).toBe(auto);
+		expect((document.querySelector('.editor') as HTMLElement).style.getPropertyValue('--timeline-h')).toBe('');
+		expect(reset()).toBeNull();
 	});
 
 	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {

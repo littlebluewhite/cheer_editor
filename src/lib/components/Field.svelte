@@ -11,7 +11,7 @@
 <script lang="ts">
 	// 場地：SVG 的使用者座標就是流程核心的公尺座標（原點中心 X，y 往正面＝畫面下面）。
 	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
-	// 選人：點人（Shift＋點多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
+	// 選人：點人（Shift＋點或開著 multi 時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
 	// children 疊在場地上（置中的提示、確認框）。
@@ -45,6 +45,7 @@
 		positions = {},
 		raised = [],
 		selected = [],
+		multi = false,
 		onmove,
 		onselect,
 		toMeters = screenCtmToMeters,
@@ -65,6 +66,8 @@
 		raised?: string[];
 		/** 選到的人。 */
 		selected?: string[];
+		/** 多選開著：點人、框選都跟按著 Shift 一樣，加進來或拿掉（iPad 沒有 Shift）。 */
+		multi?: boolean;
 		onmove?: (moves: Record<string, Position>) => void;
 		/** 點人、框選、點空白處（清除）時送出新的選取。 */
 		onselect?: (memberIds: string[]) => void;
@@ -189,9 +192,9 @@
 		if (id && positions[id] && (onmove || onselect)) {
 			const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
 			const orig = Object.fromEntries(ids.map((i) => [i, positions[i]]));
-			drag = { id, ids, client, shift: e.shiftKey, start: toMeters(e, svg), orig, cur: null };
+			drag = { id, ids, client, shift: e.shiftKey || multi, start: toMeters(e, svg), orig, cur: null };
 		} else if (!id && onselect) {
-			box = { client, shift: e.shiftKey, a: toMeters(e, svg), b: null };
+			box = { client, shift: e.shiftKey || multi, a: toMeters(e, svg), b: null };
 		} else return;
 		svg.setPointerCapture?.(e.pointerId);
 	}

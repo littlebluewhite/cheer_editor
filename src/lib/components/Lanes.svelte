@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
-	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點多選。
+	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點（或開著 multi 時點）多選。
 	// 拉短會切到拍點時先不改，交給 onconfirm 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
@@ -53,6 +53,8 @@
 		/** 選到的人。 */
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
+		/** 多選開著：點名字跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+		multi?: boolean;
 	}
 
 	let {
@@ -65,7 +67,8 @@
 		onblocked = () => {},
 		onconfirm = () => {},
 		selectedMemberIds = [],
-		onselectmembers = () => {}
+		onselectmembers = () => {},
+		multi = false
 	}: Props = $props();
 
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
@@ -219,7 +222,7 @@
 	}
 
 	function pick(e: MouseEvent, id: string) {
-		if (!e.shiftKey) return onselectmembers([id]);
+		if (!e.shiftKey && !multi) return onselectmembers([id]);
 		onselectmembers(
 			selected.has(id) ? selectedMemberIds.filter((x) => x !== id) : [...selectedMemberIds, id]
 		);
@@ -241,7 +244,7 @@
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
-			title="點一下選這個人，Shift＋點多選"
+			title="點一下選這個人；多選開著或 Shift＋點，可以選好幾個"
 			onclick={(e) => pick(e, m.id)}
 		>
 			<b

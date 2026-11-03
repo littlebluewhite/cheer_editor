@@ -141,7 +141,7 @@ describe('在場上選人、整組拖', () => {
 		e.clientY / 100
 	];
 
-	function setup(selected: string[] = []) {
+	function setup(selected: string[] = [], multi = false) {
 		const onmove = vi.fn<(moves: Record<string, Position>) => void>();
 		const onselect = vi.fn<(ids: string[]) => void>();
 		render(Field, {
@@ -149,6 +149,7 @@ describe('在場上選人、整組拖', () => {
 			members,
 			positions: { m1: [0, 0], m2: [1, 0], m3: [3, 3] },
 			selected,
+			multi,
 			onmove,
 			onselect,
 			toMeters
@@ -196,6 +197,16 @@ describe('在場上選人、整組拖', () => {
 
 		await dragFrom(svg, [50, 50], [-50, -50], true);
 		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm3']);
+	});
+
+	it('多選開著：不按 Shift，點人、框選也是加進來或拿掉（iPad 沒有 Shift）', async () => {
+		const { onselect, dot, svg } = setup(['m1'], true);
+		await dragFrom(dot('m3'), [300, 300], [300, 300]);
+		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm3']);
+		await dragFrom(dot('m1'), [0, 0], [0, 0]);
+		expect(onselect).toHaveBeenLastCalledWith([]);
+		await dragFrom(svg, [50, 50], [150, -50]);
+		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm2']);
 	});
 
 	it('點空白處清除選取', async () => {

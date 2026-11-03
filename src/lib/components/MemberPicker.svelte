@@ -64,7 +64,7 @@
 	</div>
 	{#if message}<p class="muted" role="status">{message}</p>{/if}
 	<p class="picked" class:none={!names.length}>已選 {names.length} 人{names.length ? `：${names.join('、')}` : ''}</p>
-	<p class="muted">場上點人、Shift＋點多選、拖空白處框選；或點泳道上的名字。</p>
+	<p class="muted">場上點人、拖空白處框選，或點泳道上的名字。要選好幾個人：打開場地左邊的「多選」，或按住 Shift 點。</p>
 </section>
 
 <style>

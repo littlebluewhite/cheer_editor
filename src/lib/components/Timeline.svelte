@@ -46,6 +46,8 @@
 		onconfirm?: (ask: PendingConfirm) => void;
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
+		/** 多選開著（點泳道名字是加選）。 */
+		multi?: boolean;
 	}
 
 	let {
@@ -66,7 +68,8 @@
 		onblocked = () => {},
 		onconfirm = () => {},
 		selectedMemberIds = [],
-		onselectmembers = () => {}
+		onselectmembers = () => {},
+		multi = false
 	}: Props = $props();
 
 	/** 左邊名字欄的寬度（px）；泳道和站位列用同一個 CSS 變數。 */
@@ -237,6 +240,7 @@
 			{onconfirm}
 			{selectedMemberIds}
 			{onselectmembers}
+			{multi}
 		/>
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
