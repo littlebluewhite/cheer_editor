@@ -375,6 +375,19 @@
 		padding: 0;
 		color: var(--muted, #66718a);
 	}
+	/* 手指：「＋」和放大縮小點得到的範圍變大，看起來不變。 */
+	@media (pointer: coarse) {
+		.add,
+		.zoom-btns button {
+			position: relative;
+		}
+		.add::after,
+		.zoom-btns button::after {
+			content: '';
+			position: absolute;
+			inset: -6px;
+		}
+	}
 	.trk {
 		position: relative;
 		flex: none;

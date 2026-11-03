@@ -520,6 +520,22 @@
 	.bar:hover .rz {
 		background: rgba(255, 255, 255, 0.35);
 	}
+	/* 手指：拉長短的把手、走位條和兩端點得到的範圍變大，看起來不變。 */
+	@media (pointer: coarse) {
+		.rz {
+			width: min(16px, 40%);
+		}
+		.walk::before {
+			content: '';
+			position: absolute;
+			inset: -5px 0 -4px;
+		}
+		.end {
+			top: -5px;
+			bottom: -4px;
+			width: min(16px, 40%);
+		}
+	}
 	/* 走位條：細條貼在泳道下緣，蓋在色條上面；兩端是把手。 */
 	.walk {
 		position: absolute;

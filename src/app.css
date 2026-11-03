@@ -280,3 +280,13 @@ input[type='radio'] {
 		animation: none !important;
 	}
 }
+
+/* ---------- 觸控螢幕（iPad）：手指點的地方變大，電腦上看起來不變（docs/adr/0005-ipad-touch.md） ---------- */
+@media (pointer: coarse) {
+	/* 上方列、場地左欄、右邊欄、對話框、提示、首頁的按鈕至少 40px。
+	   拍點格子、色條這類排在格子裡的不加大（會撐亂版面），它們另外在元件裡放大點得到的範圍。 */
+	:is(.topbar, .rail, .panel, .dialog, .toast, .home, .backdrop) :is(button, .btn):not(.cell, .item, .link, .bang) {
+		min-height: 40px;
+		min-width: 40px;
+	}
+}

@@ -281,4 +281,12 @@
 	.del:hover {
 		color: var(--danger, #c8372d);
 	}
+	/* 手指：✕ 點得到的範圍變大，看起來不變。 */
+	@media (pointer: coarse) {
+		.del::after {
+			content: '';
+			position: absolute;
+			inset: -8px;
+		}
+	}
 </style>

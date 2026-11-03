@@ -241,6 +241,17 @@ describe('在場上選人、整組拖', () => {
 		expect(onselect).toHaveBeenLastCalledWith(['m2']);
 	});
 
+	it('手指沒剛好按在點上：22 px 以內最近的人也算按到；再遠就是框選或清除', async () => {
+		const { onselect, svg } = setup();
+		const touch = { pointerType: 'touch', pointerId: 1, button: 0 };
+		await fireEvent.pointerDown(svg, { ...touch, clientX: 115, clientY: 10 });
+		await fireEvent.pointerUp(svg, { ...touch, clientX: 115, clientY: 10 });
+		expect(onselect).toHaveBeenLastCalledWith(['m2']);
+		await fireEvent.pointerDown(svg, { ...touch, clientX: 150, clientY: 0 });
+		await fireEvent.pointerUp(svg, { ...touch, clientX: 150, clientY: 0 });
+		expect(onselect).toHaveBeenLastCalledWith([]);
+	});
+
 	it('點空白處清除選取', async () => {
 		const { onselect, svg } = setup(['m1']);
 		await dragFrom(svg, [500, 500], [500, 500]);

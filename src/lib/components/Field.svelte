@@ -235,7 +235,9 @@
 				return;
 			}
 		}
-		const id = (e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id');
+		const id =
+			(e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
+			(e.pointerType === 'touch' ? nearestDot(e) : null);
 		const client: [number, number] = [e.clientX, e.clientY];
 		if (id && positions[id] && (onmove || onselect)) {
 			const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
@@ -245,6 +247,22 @@
 			box = { client, shift: e.shiftKey || multi, a: toMeters(e, svg), b: null };
 		} else return;
 		svg.setPointerCapture?.(e.pointerId);
+	}
+
+	/** 手指沒剛好按在點上時，離手指這麼多 px 以內最近的人也算按到（點看起來不變）。 */
+	const FINGER_PX = 22;
+
+	function nearestDot(e: PointerEvent): string | null {
+		const [x, y] = toMeters(e, svg);
+		const [x1] = toMeters({ clientX: e.clientX + 1, clientY: e.clientY }, svg);
+		let best: string | null = null;
+		let bestD = FINGER_PX * Math.abs(x1 - x);
+		for (const m of members) {
+			const p = positions[m.id];
+			const d = p ? Math.hypot(p[0] - x, p[1] - y) : Infinity;
+			if (d <= bestD) [best, bestD] = [m.id, d];
+		}
+		return best;
 	}
 
 	/** 還在「點一下」的範圍內（還沒開始拖）。 */

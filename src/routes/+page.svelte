@@ -981,6 +981,12 @@
 			/>
 		</div>
 	</div>
+	<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
+	<div class="rotate-hint">
+		<Icon name="fit" size={28} />
+		<b>請把 iPad 轉成橫的</b>
+		<span>編輯畫面要橫著放，場地和時間軸才放得下。</span>
+	</div>
 	{#if openSegmentId}
 		<SegmentSettings
 			{flow}
@@ -1102,6 +1108,24 @@
 	.split:focus-visible::after {
 		background: var(--sel);
 		opacity: 1;
+	}
+	/* 手指：兩條分界點得到的範圍變大（蓋到旁邊一點），看起來不變。 */
+	@media (pointer: coarse) {
+		.split {
+			z-index: 9;
+		}
+		.split::before {
+			content: '';
+			position: absolute;
+			inset: -9px 0;
+		}
+		.col-split {
+			left: -12px;
+			width: 24px;
+		}
+		.col-split::after {
+			left: 10px;
+		}
 	}
 
 	/* ---------- 上方列：深藍底，像記分板 ---------- */
@@ -1657,6 +1681,32 @@
 	@media print {
 		.print-hidden {
 			display: none;
+		}
+	}
+
+	/* 觸控螢幕拿直的（iPad 直放）：蓋住編輯畫面，請教練轉成橫的。 */
+	.rotate-hint {
+		display: none;
+	}
+	/* screen：列印八拍表時（紙是直的）不能印到它。 */
+	@media screen and (pointer: coarse) and (orientation: portrait) {
+		.rotate-hint {
+			position: fixed;
+			inset: 0;
+			z-index: 100;
+			display: grid;
+			place-content: center;
+			justify-items: center;
+			gap: 10px;
+			padding: 24px;
+			text-align: center;
+			background: var(--ink);
+			color: #c9d2e6;
+			font-size: 15px;
+		}
+		.rotate-hint b {
+			color: #fff;
+			font-size: 22px;
 		}
 	}
 
