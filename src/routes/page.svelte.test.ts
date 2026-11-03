@@ -705,6 +705,22 @@ describe('站位與走位', () => {
 		expect(thumbLeft(1)).toBe(0);
 	});
 
+	it('拖縮圖被系統打斷（pointercancel）就彈回去，之後別處放開也不會挪', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await seek(0);
+		const thumb = screen.getByRole('button', { name: '站位 2' });
+		await fireEvent.pointerDown(thumb, { clientX: 300, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 248 });
+		expect(thumbLeft(2)).toBeCloseTo(80);
+		await fireEvent.pointerCancel(window);
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		await fireEvent.pointerUp(window, { clientX: 248 });
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 1-1');
+	});
+
 	it('站位時間框：打拍子挪站位，下面寫能挪的範圍；看不懂、被擋或按 Esc 就變回原本的', async () => {
 		const box = () => screen.queryByLabelText<HTMLInputElement>('站位時間');
 		await setup();

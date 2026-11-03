@@ -57,7 +57,8 @@
 				dragged = true;
 				setTimeout(() => (dragged = false));
 				onmove(id, to);
-			}
+			},
+			() => (drag = null)
 		);
 	}
 
