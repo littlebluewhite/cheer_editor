@@ -40,10 +40,10 @@
 {/if}
 
 <style>
-	/* 疊在場地左上角；拖人時的座標提示也在左上角，但那時大家看的是人，先不避開。 */
+	/* 疊在場地左上角，讓出最上面一行給拖人時的座標提示（Field 的 .readout），兩個都看得到。 */
 	.cues-now {
 		position: absolute;
-		top: 16px;
+		top: 52px;
 		left: 16px;
 		z-index: 3;
 		display: flex;

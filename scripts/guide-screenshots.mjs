@@ -278,7 +278,7 @@ await sleep(200);
 
 // 6 整個編輯畫面
 await shot('editor', [
-	[1, `q('.topbar')`, { x: 0.27, y: 0.5 }],
+	[1, `q('.topbar')`, { x: 0.185, y: 0.5 }],
 	[2, `q('.field-host')`, { x: 0, y: 0 }],
 	[3, `q('.inspector')`, { x: 0, y: 0 }],
 	[4, `q('.timeline-host')`]

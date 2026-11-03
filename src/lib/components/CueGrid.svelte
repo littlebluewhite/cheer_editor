@@ -308,6 +308,7 @@
 								class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
 								class:cont={!p.first}
 								class:more={!p.last}
+								class:end={p.c0 === 7}
 								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
 								style:grid-row={lane.row + p.track}
 								aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
@@ -513,8 +514,12 @@
 		border-left-width: 4px;
 		color: var(--cue-step-ink);
 	}
-	/* 手位：一拍的粉紅小牌子。 */
+	/* 手位：一拍的粉紅小牌子；字比一拍寬時撐開蓋到右邊（最多三格），跟泳道的手位一樣。 */
 	.item.motion {
+		justify-self: start;
+		width: max-content;
+		min-width: calc(100% - 2px);
+		max-width: calc(300% + 4px);
 		margin: 1px;
 		padding: 0 2px;
 		border-radius: 8px;
@@ -523,6 +528,10 @@
 		color: var(--cue-motion-ink);
 		font-size: 10px;
 		justify-content: center;
+	}
+	/* 最後一格的往左撐，不超出格子。 */
+	.item.motion.end {
+		justify-self: end;
 	}
 	/* 給誰寫在字下面。 */
 	.item:has(.who) {
