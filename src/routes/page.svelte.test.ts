@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import Page from './+page.svelte';
 
+// jsdom 沒有 scrollIntoView。
+Element.prototype.scrollIntoView = () => {};
+
 async function newFlow(engine: FakeEngine = createFakeEngine()) {
 	render(Page, { createEngine: () => engine });
 	await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });

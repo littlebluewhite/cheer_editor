@@ -395,6 +395,20 @@ describe('色條上的拍點', () => {
 		expect(bars(lanes()[2]).map(cuesOn)).toEqual([[], []]);
 	});
 
+	it('最後一拍的手位靠色條右邊往左撐開，字不會被色條右邊切掉', () => {
+		const flow = flowOf(
+			placeCue(cued(), 'x1', { kind: 'motion', at: 14, len: 2, word: 'T', who: null })
+		);
+		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), onchange: vi.fn() });
+		const [highV, last] = [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-cue="motion"]')];
+		expect(highV.style.left).toBe('16px');
+		expect(highV.style.right).toBe('');
+		expect(last.textContent?.trim()).toBe('T');
+		expect(last.style.left).toBe('');
+		expect(last.style.right).toBe('0px');
+		expect(last.style.minWidth).toBe('4px');
+	});
+
 	it('有拍點的色條：名稱和任務角色在上半，拍點在下半，一種一條；提示照舊', () => {
 		setupCues();
 		const [a] = bars(lanes()[0]);

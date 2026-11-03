@@ -281,11 +281,14 @@
 						<b>{p.name}</b>
 						{#if member.role}<span class="role">{member.role}</span>{/if}
 						{#each mine as c, j (j)}
+							<!-- 最後一拍的手位靠右往左撐開，字才不會被色條右邊切掉 -->
+							{@const atEnd = c.kind === 'motion' && c.at + c.len >= p.action.length}
 							<span
 								class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
 								data-cue={c.kind}
 								aria-hidden="true"
-								style:left={`${c.at * p.halfPx}px`}
+								style:left={atEnd ? undefined : `${c.at * p.halfPx}px`}
+								style:right={atEnd ? '0px' : undefined}
 								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
 								style:top={`${NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
@@ -468,7 +471,7 @@
 		border-left: 3px solid var(--cue-step-line);
 		color: var(--cue-step-ink);
 	}
-	/* 手位只佔一拍，字常比一拍長：寬度跟著字撐開，色條右邊照樣切掉。 */
+	/* 手位只佔一拍，字常比一拍長：寬度跟著字撐開；最後一拍的往左撐。 */
 	.cue.motion {
 		background: var(--cue-motion-bg);
 		color: var(--cue-motion-ink);

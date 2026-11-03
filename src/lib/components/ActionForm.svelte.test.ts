@@ -272,9 +272,13 @@ describe('動作表單：拍點格子', () => {
 		const onchange = vi.fn();
 		const { rerender } = render(ActionForm, { flow, playheadSec: 0, actionId: 'x1', onchange, onselect: vi.fn() });
 		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		scrolled.length = 0;
 		await fireEvent.input(length, { target: { value: '2' } });
 		await fireEvent.change(length);
 		expect(screen.getByRole('alertdialog').textContent).toContain('會拿掉 1 個拍點');
+		// 問句在拍點格子下面，右邊欄看不到：出現時捲過去
+		expect(scrolled).toHaveLength(1);
+		expect(scrolled[0].contains(screen.getByRole('alertdialog'))).toBe(true);
 
 		// 等的時候別的地方把小A 放進 1-2 開始的另一個動作。
 		const other = { ...flow.actions[0], id: 'x2', name: 'B', start: 2, length: 4, cues: [] };

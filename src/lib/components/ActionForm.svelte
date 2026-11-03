@@ -366,14 +366,17 @@
 		{/if}
 	{/if}
 
+	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->
 	{#if pending}
-		<ConfirmList
-			message={pending.message}
-			items={pending.items}
-			confirmLabel="確定"
-			onconfirm={confirmChange}
-			oncancel={cancelChange}
-		/>
+		<div {@attach (d) => d.scrollIntoView({ block: 'nearest' })}>
+			<ConfirmList
+				message={pending.message}
+				items={pending.items}
+				confirmLabel="確定"
+				onconfirm={confirmChange}
+				oncancel={cancelChange}
+			/>
+		</div>
 	{/if}
 
 	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
