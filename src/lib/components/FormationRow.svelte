@@ -188,6 +188,8 @@
 	/* 挪站位：拖得動的縮圖是手掌游標；拖的時候浮起來、蓋在別張上面，✕ 先藏起來。 */
 	.th.movable .pick {
 		cursor: grab;
+		touch-action: none;
+		user-select: none;
 	}
 	.th.dragging {
 		z-index: 5;

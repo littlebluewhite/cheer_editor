@@ -451,10 +451,9 @@ export function moveFormation(
 	if (index === 0) return blocked('開頭那張不能挪');
 	const sec = toSeconds(flow, to);
 	const [a, b, c] = [-1, 0, 1].map((i) => flow.formations[index + i]);
+	const aSec = formationSec(flow, a);
 	const inside =
-		inGrid(flow, to) &&
-		sec > formationSec(flow, a) + EPS &&
-		(!c || sec < formationSec(flow, c) - EPS);
+		inGrid(flow, to) && sec > aSec + EPS && (!c || sec < formationSec(flow, c) - EPS);
 	if (!inside) {
 		const { before, after } = neighbourTimes(flow, index);
 		const end = after ? `站位 ${index + 2}（${after}）` : '流程結尾';
@@ -464,12 +463,11 @@ export function moveFormation(
 	if (Math.abs(shift) < EPS) return ok(flow, { sec, squeezed: 0 });
 	// 這張上自己設的出發和到達跟著挪一樣多秒，夾在前一張和新的站位時間之間，
 	// 不在格子上就往前取（跟插站位一樣）；夾完出發不早於到達就當沒設。
-	const aSec = formationSec(flow, a);
+	const moved = (t: number) => toPosition(flow, Math.min(Math.max(t + shift, aSec), sec))!;
 	const walks: Record<string, Walk> = {};
 	for (const id of Object.keys(b.walks ?? {})) {
 		const w = customWalk(flow, index, id);
 		if (!w) continue;
-		const moved = (t: number) => toPosition(flow, Math.min(Math.max(t + shift, aSec), sec))!;
 		const depart = moved(w.depart);
 		const arrive = moved(w.arrive);
 		if (toSeconds(flow, depart) < toSeconds(flow, arrive) - EPS) walks[id] = { depart, arrive };

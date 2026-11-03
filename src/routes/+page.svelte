@@ -553,10 +553,10 @@
 	 * 挪站位（拖縮圖、打站位時間）：被擋就說原因。挪了就提示走位被壓短的人數，
 	 * 選著這張、播放頭跳到新的站位時間（左邊欄的站位時間框還在）。
 	 */
-	function shiftFormation(id: string, to: TimePosition) {
+	function moveFormationTo(id: string, to: TimePosition) {
 		if (!flow) return;
 		const r = moveFormation(flow, id, to);
-		if (r.kind !== 'ok') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (notice = `${r.message}，已還原`);
 		change(r.flow);
 		notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
 		selectedFormationId = id;
@@ -574,14 +574,14 @@
 		const to = parseTime(flow, formation.segmentId!, box.value);
 		box.value = text;
 		if (!to) return void (notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
-		shiftFormation(formation.id, to);
+		moveFormationTo(formation.id, to);
 	}
 
 	/**
 	 * 左邊欄名稱框、站位時間框的按鍵：Enter 離開框（送出），Esc 變回 original 再離開。
 	 * 中文輸入法還在選字時按的 Enter / Esc 是給輸入法的；這時離開輸入框，字會重複（Safari 選字時 keyCode 是 229）。
 	 */
-	function railBoxKey(e: KeyboardEvent & { currentTarget: HTMLInputElement }, original: string) {
+	function railBoxKeydown(e: KeyboardEvent & { currentTarget: HTMLInputElement }, original: string) {
 		if (e.isComposing || e.keyCode === 229) return;
 		if (e.key === 'Enter') e.currentTarget.blur();
 		if (e.key === 'Escape') {
@@ -798,7 +798,7 @@
 										aria-label="站位名稱"
 										placeholder="幫這張站位取名（可不填）"
 										value={here.name ?? ''}
-										onkeydown={(e) => railBoxKey(e, here.name ?? '')}
+										onkeydown={(e) => railBoxKeydown(e, here.name ?? '')}
 										onchange={(e) => renameHere(here.id, e.currentTarget.value)}
 									/>
 									<label class="formation-time">
@@ -806,7 +806,7 @@
 										<input
 											value={hereTime}
 											disabled={here === flow.formations[0]}
-											onkeydown={(e) => railBoxKey(e, hereTime)}
+											onkeydown={(e) => railBoxKeydown(e, hereTime)}
 											onchange={(e) => retimeHere(e.currentTarget, here, hereTime)}
 										/>
 									</label>
@@ -936,7 +936,7 @@
 					if (flow) seek(flow, sec);
 				}}
 				ondeleteformation={removeFormation}
-				onmoveformation={shiftFormation}
+				onmoveformation={moveFormationTo}
 				{selectedActionId}
 				onselectaction={(id) => {
 					selectAction(id);

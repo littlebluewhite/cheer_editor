@@ -699,7 +699,7 @@ describe('站位與走位', () => {
 		await dragThumb(2, -200);
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
 		expect(screen.getByRole('status').textContent).toBe(
-			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前'
+			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前，已還原'
 		);
 		await dragThumb(1, 50);
 		expect(thumbLeft(1)).toBe(0);
@@ -731,7 +731,7 @@ describe('站位與走位', () => {
 
 		await fireEvent.change(box()!, { target: { value: '1-1' } });
 		expect(screen.getByRole('status').textContent).toBe(
-			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前'
+			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前，已還原'
 		);
 		expect(box()!.value).toBe('2-5');
 
