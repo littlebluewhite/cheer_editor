@@ -230,27 +230,27 @@
 		font-size: 10px;
 	}
 	.cue.down {
-		background: #1f5fbf;
+		background: var(--cue-down);
 		color: #fff;
 		font-weight: 600;
 	}
 	.cue.up {
-		background: #2b7a2f;
+		background: var(--cue-up);
 		color: #fff;
 		font-weight: 600;
 	}
 	.cue.step {
-		background: #fff1e2;
-		border: 1px solid #e08a2e;
+		background: var(--cue-step-bg);
+		border: 1px solid var(--cue-step-line);
 		border-left-width: 4px;
-		color: #8a4a12;
+		color: var(--cue-step-ink);
 	}
 	.cue.motion {
 		justify-self: start;
-		background: #ffe3f0;
-		border: 1px dashed #d6589a;
+		background: var(--cue-motion-bg);
+		border: 1px dashed var(--cue-motion-line);
 		border-radius: 999px;
-		color: #9c1d5c;
+		color: var(--cue-motion-ink);
 	}
 	.num {
 		font-variant-numeric: tabular-nums;

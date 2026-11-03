@@ -458,20 +458,20 @@
 		color: #fff;
 	}
 	.cue.down {
-		background: #1f5fbf;
+		background: var(--cue-down);
 	}
 	.cue.up {
-		background: #2b7a2f;
+		background: var(--cue-up);
 	}
 	.cue.step {
-		background: #fff1e2;
-		border-left: 3px solid #e08a2e;
-		color: #8a4a12;
+		background: var(--cue-step-bg);
+		border-left: 3px solid var(--cue-step-line);
+		color: var(--cue-step-ink);
 	}
 	/* 手位只佔一拍，字常比一拍長：寬度跟著字撐開，色條右邊照樣切掉。 */
 	.cue.motion {
-		background: #ffe3f0;
-		color: #9c1d5c;
+		background: var(--cue-motion-bg);
+		color: var(--cue-motion-ink);
 		font-weight: 600;
 	}
 	.bar.dragging {

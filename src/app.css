@@ -29,6 +29,17 @@
 	--top: #e0664f;
 	--base: #2c3e66;
 
+	/* 拍點（動作表單的格子、場地的大字、泳道、八拍表共用）：down 藍、up 綠，實心白字（對比 4.5 以上）；
+	   步驟橘色框加左邊粗線、手位粉紅小牌子，字用深色（對比 4.5 以上）。 */
+	--cue-down: #1f5fbf;
+	--cue-up: #2b7a2f;
+	--cue-step-bg: #fff1e2;
+	--cue-step-line: #e08a2e;
+	--cue-step-ink: #8a4a12;
+	--cue-motion-bg: #ffe3f0;
+	--cue-motion-line: #d6589a;
+	--cue-motion-ink: #9c1d5c;
+
 	--radius: 8px;
 	--radius-sm: 6px;
 	--shadow-pop: 0 10px 30px rgba(22, 33, 58, 0.18), 0 2px 6px rgba(22, 33, 58, 0.08);

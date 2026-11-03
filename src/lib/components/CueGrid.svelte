@@ -391,16 +391,6 @@
 		border: 1px solid var(--line-soft, #e8ecf3);
 		border-radius: 10px;
 		padding: 10px;
-		/* down 藍、up 綠：實心，白字（對比 4.5 以上）。 */
-		--down: #1f5fbf;
-		--up: #2b7a2f;
-		/* 步驟：橘色框加左邊粗線；手位：粉紅小牌子。字用深色（對比 4.5 以上）。 */
-		--step-bg: #fff1e2;
-		--step-line: #e08a2e;
-		--step-ink: #8a4a12;
-		--motion-bg: #ffe3f0;
-		--motion-line: #d6589a;
-		--motion-ink: #9c1d5c;
 	}
 	.cap {
 		font-size: 12px;
@@ -470,13 +460,13 @@
 		font-size: 11px;
 		font-weight: 700;
 		text-align: center;
-		color: var(--down);
+		color: var(--cue-down);
 	}
 	.lane-lbl.step {
-		color: var(--step-ink);
+		color: var(--cue-step-ink);
 	}
 	.lane-lbl.motion {
-		color: var(--motion-ink);
+		color: var(--cue-motion-ink);
 	}
 	.slot {
 		border-radius: 4px;
@@ -508,29 +498,29 @@
 	}
 	.item.down,
 	.word.down {
-		background: var(--down);
+		background: var(--cue-down);
 		color: #fff;
 	}
 	.item.up,
 	.word.up {
-		background: var(--up);
+		background: var(--cue-up);
 		color: #fff;
 	}
 	/* 步驟：淡橘底、橘框、左邊粗線，像一個括號。 */
 	.item.step {
-		background: var(--step-bg);
-		border: 1px solid var(--step-line);
+		background: var(--cue-step-bg);
+		border: 1px solid var(--cue-step-line);
 		border-left-width: 4px;
-		color: var(--step-ink);
+		color: var(--cue-step-ink);
 	}
 	/* 手位：一拍的粉紅小牌子。 */
 	.item.motion {
 		margin: 1px;
 		padding: 0 2px;
 		border-radius: 8px;
-		border: 1px solid var(--motion-line);
-		background: var(--motion-bg);
-		color: var(--motion-ink);
+		border: 1px solid var(--cue-motion-line);
+		background: var(--cue-motion-bg);
+		color: var(--cue-motion-ink);
 		font-size: 10px;
 		justify-content: center;
 	}
@@ -599,27 +589,27 @@
 		align-items: center;
 		padding: 6px 6px 6px 8px;
 		border-radius: 8px;
-		border-left: 4px solid var(--down);
+		border-left: 4px solid var(--cue-down);
 		background: #f6f9ff;
 	}
 	.kindrow.step {
-		border-left-color: var(--step-line);
+		border-left-color: var(--cue-step-line);
 		background: #fffaf4;
 	}
 	.kindrow.motion {
-		border-left-color: var(--motion-line);
+		border-left-color: var(--cue-motion-line);
 		background: #fff7fb;
 	}
 	.lbl {
 		font-size: 11px;
 		font-weight: 700;
-		color: var(--down);
+		color: var(--cue-down);
 	}
 	.kindrow.step .lbl {
-		color: var(--step-ink);
+		color: var(--cue-step-ink);
 	}
 	.kindrow.motion .lbl {
-		color: var(--motion-ink);
+		color: var(--cue-motion-ink);
 	}
 	.own {
 		display: inline-flex;

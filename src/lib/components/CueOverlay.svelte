@@ -51,15 +51,6 @@
 		gap: 8px;
 		max-width: calc(100% - 32px);
 		pointer-events: none;
-		/* 跟動作表單的拍點格子同一套顏色。 */
-		--down: #1f5fbf;
-		--up: #2b7a2f;
-		--step-bg: #fff1e2;
-		--step-line: #e08a2e;
-		--step-ink: #8a4a12;
-		--motion-bg: #ffe3f0;
-		--motion-line: #d6589a;
-		--motion-ink: #9c1d5c;
 	}
 	.card {
 		display: grid;
@@ -97,25 +88,25 @@
 		font-weight: 600;
 	}
 	.down {
-		background: var(--down);
+		background: var(--cue-down);
 		color: #fff;
 	}
 	.up {
-		background: var(--up);
+		background: var(--cue-up);
 		color: #fff;
 	}
 	/* 步驟：淡橘底、橘框、左邊粗線；手位：粉紅圓角小牌子。 */
 	.step {
-		background: var(--step-bg);
-		border: 1px solid var(--step-line);
+		background: var(--cue-step-bg);
+		border: 1px solid var(--cue-step-line);
 		border-left-width: 5px;
-		color: var(--step-ink);
+		color: var(--cue-step-ink);
 	}
 	.motion {
-		background: var(--motion-bg);
-		border: 1px solid var(--motion-line);
+		background: var(--cue-motion-bg);
+		border: 1px solid var(--cue-motion-line);
 		border-radius: 14px;
-		color: var(--motion-ink);
+		color: var(--cue-motion-ink);
 	}
 	.next {
 		font-size: 13px;
