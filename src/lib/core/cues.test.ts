@@ -371,6 +371,14 @@ describe('給誰', () => {
 		expect(cuesOf(after)).toEqual([count(0, 4, 'down')]);
 	});
 
+	it('變短又拿掉人、拿掉的拍點兩個原因都有：兩個都寫', () => {
+		const flow = flowOf(placeCue(sample(), 'x1', { kind: 'motion', at: 4, len: 2, word: 'K', who: { member: 'm1' } }));
+		expect(updateAction(flow, 'x1', { length: 4, members: m2Only })).toMatchObject({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短、換了人或任務角色，會拿掉 1 個拍點'
+		});
+	});
+
 	it('拿掉人但沒有拍點給他：不問，直接改', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: { role: '底層' } }));
@@ -378,14 +386,14 @@ describe('給誰', () => {
 		expect(cuesOf(after)).toEqual(cuesOf(flow));
 	});
 
-	it('刪隊員：確認訊息寫會一起拿掉幾個給他的拍點；沒有就不寫', () => {
+	it('刪隊員：確認訊息寫會一起拿掉幾個拍點（給他的、和他是最後一個的角色的）；沒有就不寫', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
 		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉' });
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: 'K', who: { member: 'm1' } }));
 		expect(deleteMember(flow, 'm1')).toMatchObject({
 			kind: 'confirm',
-			message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉，會一起拿掉 2 個給他的拍點'
+			message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉，會一起拿掉 2 個拍點'
 		});
 	});
 
@@ -446,6 +454,18 @@ describe('這一刻的拍點', () => {
 	it('動作結束後不再出現', () => {
 		expect(summary(cued(), 6.99)).toHaveLength(1);
 		expect(summary(cued(), 7)).toEqual([]);
+	});
+
+	it('檔案裡的拍點沒照時間排，下一個還是最近的那個', () => {
+		const flow = cued();
+		const shuffled: Flow = {
+			...flow,
+			actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, cues: a.cues!.toReversed() } : a))
+		};
+		expect(summary(shuffled, 5.6)).toEqual([
+			{ action: 'x1', now: ['下手 2/4', 'down 2/2'], next: { at: '2-5', words: ['up'] } }
+		]);
+		expect(summary(shuffled, 1)).toEqual([{ action: 'x1', now: [], next: { at: '2-3', words: ['下手', 'down'] } }]);
 	});
 
 	it('沒有拍點的動作、口號段的動作都沒有', () => {

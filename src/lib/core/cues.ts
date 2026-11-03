@@ -93,7 +93,8 @@ export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 			.filter((c) => c.at <= rel && rel < c.at + c.len)
 			.toSorted(byKind)
 			.map((cue) => ({ cue, beat: Math.floor((rel - cue.at) / BEAT) + 1, beats: cue.len / BEAT }));
-		const nextAt = action.cues.find((c) => c.at > rel)?.at;
+		const later = action.cues.filter((c) => c.at > rel).map((c) => c.at);
+		const nextAt = later.length ? Math.min(...later) : undefined;
 		const next =
 			nextAt === undefined
 				? null

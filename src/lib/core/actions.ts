@@ -78,7 +78,7 @@ export function updateAction(
 	if (fallout) action = { ...action, cues: fallout.cues };
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
-	if (fallout && !confirmed) return needsConfirm(falloutMessage(action, to!, fallout), fallout.items);
+	if (fallout && !confirmed) return needsConfirm(falloutMessage(old, action, to!, fallout), fallout.items);
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
 }
 
@@ -87,13 +87,14 @@ export function updateAction(
  * 兩個都有就「…變短、換了人或任務角色，…」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。
  */
 function falloutMessage(
+	old: Action,
 	action: Action,
 	to: Segment,
 	{ removed, cut, orphaned }: { removed: number; cut: number; orphaned: number }
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
 	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${removed} 個拍點`;
-	const why = [removed > orphaned || cut ? '變短' : '', orphaned ? '換了人或任務角色' : ''].filter(Boolean);
+	const why = [action.length < old.length ? '變短' : '', orphaned ? '換了人或任務角色' : ''].filter(Boolean);
 	const parts = [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean);
 	return `${label}${why.join('、')}，會${parts.join('、')}拍點`;
 }
