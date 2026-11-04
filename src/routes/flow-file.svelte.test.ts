@@ -16,22 +16,10 @@ import {
 	type Flow
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
+import type { FileSaver } from '#lib/file/save.js';
+import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
-
-function fakeSaver(outcome: SaveOutcome = 'saved') {
-	const saves: { bytes: Uint8Array; fileName: string }[] = [];
-	const saver: FileSaver = {
-		async save(bytes, fileName) {
-			saves.push({ bytes, fileName });
-			return outcome;
-		}
-	};
-	return { saver, saves };
-}
-
-const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
 
 function setup(saver: FileSaver = fakeSaver().saver) {
 	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
@@ -80,13 +68,13 @@ async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 
 describe('存檔', () => {
 	it('Ctrl+S 存成「流程名.zip」，存的就是這支流程', async () => {
-		const { saver, saves } = fakeSaver();
+		const { saver, saves, fileNames } = fakeSaver();
 		setup(saver);
 		await newFlow();
 		await ctrlS();
 		await settle();
-		expect(saves.map((s) => s.fileName)).toEqual(['全國賽.zip']);
-		const r = readFlowFile(saves[0].bytes);
+		expect(fileNames).toEqual(['全國賽.zip']);
+		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.name).toBe('全國賽');
 	});
 
@@ -111,7 +99,7 @@ describe('存檔', () => {
 		await fireEvent.input(name, { target: { value: '縣賽' } });
 		await ctrlS(name);
 		await settle();
-		const r = readFlowFile(saves[0].bytes);
+		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.name).toBe('縣賽');
 		expect(hasUnsavedChanges()).toBe(false);
 	});
@@ -126,7 +114,7 @@ describe('存檔', () => {
 		await fireEvent.input(name, { target: { value: '開場' } });
 		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
 		await settle();
-		const r = readFlowFile(saves[0].bytes);
+		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
 	});
 
@@ -148,7 +136,7 @@ describe('存檔', () => {
 		await settle();
 		await ctrlS();
 		await settle();
-		const r = readFlowFile(saves[0].bytes);
+		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.flow.segments).toHaveLength(2);
 		expect(r.flow.segments[1]).toMatchObject({ audioId: null });
@@ -173,7 +161,7 @@ describe('存檔', () => {
 		await settle();
 		await ctrlS();
 		await settle();
-		const r = readFlowFile(saves.at(-1)!.bytes);
+		const r = readFlowFile(saves.at(-1)!);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.flow.name).toBe('練習用');
 		expect(r.flow.audio.map((a) => a.name)).toEqual(['主歌.mp3']);
@@ -225,7 +213,7 @@ describe('存檔', () => {
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([7, 7, 7]) }));
 		await ctrlS();
 		await settle();
-		const r = readFlowFile(saves[0].bytes);
+		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.audio).toEqual({ a1: new Uint8Array([7, 7, 7]) });
 	});
 });
@@ -323,7 +311,7 @@ describe('新建', () => {
 		expect(screen.getByText('練習用')).toBeTruthy();
 		await ctrlS();
 		await settle();
-		const json = JSON.parse(new TextDecoder().decode(unzipSync(saves[0].bytes)['flow.json']));
+		const json = JSON.parse(new TextDecoder().decode(unzipSync(saves[0])['flow.json']));
 		expect(json.formatVersion).toBe(7);
 		const saved = json.flow.actions[0];
 		expect(saved.successRate.phases.map((p: { id: string }) => p.id)).toEqual(['p1']);
