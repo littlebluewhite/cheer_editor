@@ -4,7 +4,7 @@
 // - 整次成功率 = 整個做的次裡，打的記號全是 ✓ 的次 ÷ 整個做的次。只練幾個環節的次不算；中途 ✗、後面空著的也算。
 // - 合計把次數加起來再算，不是把每組的百分比平均。
 
-import type { Action } from './actions';
+import type { Action } from './action-types';
 import type { Flow } from './flow';
 import { attemptWhos } from './records';
 import type { Attempt, Mark, Phase, PracticeKind } from './success-rate';

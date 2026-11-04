@@ -130,7 +130,7 @@ describe('最弱的環節', () => {
 	});
 
 	it('一樣低就取前面的：上法、中段都是 50%', () => {
-		const r = weakestPhase(lib(attempt('✓✗·'), attempt('✗✓·', { whole: false })), '2026-11-04');
+		const r = weakestPhase(lib(attempt('✓✗·'), attempt('✗··', { whole: false }), attempt('·✓·', { whole: false })), '2026-11-04');
 		expect(r?.phase.id).toBe('p1');
 	});
 
