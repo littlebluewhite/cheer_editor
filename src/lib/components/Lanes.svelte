@@ -283,7 +283,7 @@
 						style:background={actionColor(p.action)}
 						style:box-shadow={p.action.color ? `inset 4px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
-						onclick={() => session.selectAction(p.action.id)}
+						onclick={() => session.pickAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
 						{#each phaseBars[p.action.id] as ph (ph.id)}

@@ -152,6 +152,22 @@ describe('編輯 session：選取', () => {
 		expect(s.selectedMemberIds).toEqual(['m1']);
 	});
 
+	it('點色條選動作：選它，每點一次都留一份新的（再點選著的那條也算）', () => {
+		const s = new EditorSession(libSample());
+		expect(s.pickedAction).toBeNull();
+		s.selectFormation('f1');
+		s.pickAction('x1');
+		expect(s.selectedActionId).toBe('x1');
+		expect(s.selectedFormationId).toBeNull();
+		const first = s.pickedAction;
+		expect(first).toEqual({ id: 'x1' });
+		s.pickAction('x1');
+		expect(s.pickedAction).not.toBe(first);
+		// 別的地方選動作（動作設定）不算點色條
+		s.selectAction(null);
+		expect(s.pickedAction).toEqual({ id: 'x1' });
+	});
+
 	it('取消選動作不動站位；全部取消', () => {
 		const s = new EditorSession(libSample());
 		s.selectFormation('f1');

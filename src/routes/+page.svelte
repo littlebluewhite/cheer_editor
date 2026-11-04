@@ -383,14 +383,6 @@
 		inspectorTab = f.members.length ? 'action' : 'members';
 	}
 
-	/**
-	 * 改流程的唯一入口：交給 session 的「改」，算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。
-	 * 換成另一支流程（開檔、新建、救回草稿）不走這裡，走 startFlow。
-	 */
-	function change(f: Flow) {
-		session.change(f);
-	}
-
 	function undo() {
 		if (session.undo()) restore(session.flow!);
 	}
@@ -507,7 +499,7 @@
 		if (name.trim() === before) return;
 		const r = renameFormation(flow, formationId, name);
 		if (r.kind !== 'ok') return void (session.notice = r.message);
-		change(r.flow);
+		session.change(r.flow);
 	}
 
 	// 改完要動播放頭的改動（拖人插站位、跟上一張一樣、挪站位）：session 說跳到哪，這裡跳。
@@ -521,9 +513,9 @@
 		});
 	});
 
-	// 點色條選了動作：右邊欄翻到「動作」那一頁。
+	// 在時間軸點了色條（再點選著的那條也算）：右邊欄翻到「動作」那一頁。
 	$effect(() => {
-		if (session.selectedActionId) untrack(() => (inspectorTab = 'action'));
+		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
 	});
 
 	/**
@@ -621,8 +613,6 @@
 		// 按確定時用那時候的流程再送一次。
 		session.ask.send((o: ConfirmOption = {}) => deleteAction(flow ?? f, id, o));
 	}
-
-	const selectMembers = (ids: string[]) => session.selectMembers(ids);
 </script>
 
 <svelte:head>

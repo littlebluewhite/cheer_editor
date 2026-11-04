@@ -211,6 +211,15 @@ export class EditorSession {
 		if (id) this.#formationId = null;
 	}
 
+	/** 上一次在時間軸點的色條。每點一次都是新的一份，頁面看到就把右邊欄翻到「動作」（再點選著的那條也算）。 */
+	pickedAction = $state.raw<{ id: string } | null>(null);
+
+	/** 點色條：選這個動作，留下 pickedAction。 */
+	pickAction(id: string) {
+		this.selectAction(id);
+		this.pickedAction = { id };
+	}
+
 	selectMembers(ids: string[]) {
 		this.#memberIds = ids;
 	}
