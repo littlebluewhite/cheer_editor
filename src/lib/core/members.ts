@@ -6,7 +6,8 @@ import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { compactSquads, fitRecords, memberRecords, recordItems, withoutRecords } from './success-rate';
+import { settle } from './settle';
+import { memberRecords, recordItems } from './success-rate';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -96,9 +97,23 @@ export function updateMember(
 			mine.flatMap((a) => recordItems(flow, a, memberRecords(a, id), `動作「${actionLabel(a)}」`))
 		);
 	}
-	const actions =
-		options.records === 'clear' ? flow.actions.map((a) => withoutRecords(a, memberRecords(a, id))) : flow.actions;
+	const actions = options.records === 'clear' ? flow.actions.map((a) => replaced(flow, a, id)) : flow.actions;
 	return ok({ ...flow, members: flow.members.map((m) => (m.id === id ? updated : m)), actions });
+}
+
+/**
+ * 改名字選清掉重算：當成動作裡的這個人換成別人（同一個位置、任務角色、組）走收尾，回答是清掉重算，
+ * 所以他在的組和他自己的紀錄清掉；收好之後換回他的 id。
+ */
+function replaced(flow: Flow, action: Action, id: string): Action {
+	if (!action.members.some((m) => m.memberId === id)) return action;
+	const stranger = `${id}?`;
+	const swap = (a: Action, from: string, to: string) => ({
+		...a,
+		members: a.members.map((m) => (m.memberId === from ? { ...m, memberId: to } : m))
+	});
+	const settled = settle(flow, action, swap(action, id, stranger), { records: 'clear' });
+	return settled.kind === 'ok' ? swap(settled.action, stranger, id) : action;
 }
 
 /**
@@ -116,11 +131,13 @@ export function deleteMember(
 	if (!member) return blocked('找不到這個隊員');
 	const inActions = flow.actions.filter((a) => a.members.some((m) => m.memberId === id));
 	const emptied = inActions.filter((a) => a.members.length === 1);
+	// 刪隊員當成真的換人：每個留下來的動作走收尾，回答固定是清掉重算。
 	const actions = flow.actions
 		.filter((a) => !emptied.includes(a))
 		.map((a) => {
-			const left = withoutRecords(a, memberRecords(a, id));
-			return compactSquads(fitRecords(dropOrphanCues({ ...left, members: a.members.filter((m) => m.memberId !== id) })));
+			const after = dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) });
+			const settled = settle(flow, a, after, { records: 'clear' });
+			return settled.kind === 'ok' ? settled.action : after;
 		});
 	if (!answered(options)) {
 		const spans = segmentSpans(flow);
