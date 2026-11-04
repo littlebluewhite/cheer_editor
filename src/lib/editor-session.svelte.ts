@@ -17,7 +17,7 @@ import { Ask } from '#lib/components/ask.svelte.js';
 const UNDO_LIMIT = 100;
 
 export class EditorSession {
-	#flow = $state<Flow | null>(null);
+	#flow = $state.raw<Flow | null>(null);
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
 	/** 復原紀錄：改之前的流程（最舊的在前）。指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。 */

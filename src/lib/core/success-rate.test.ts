@@ -6,7 +6,7 @@ import {
 	createFlow,
 	clearPhaseBeats,
 	attemptWhos,
-	markPhaseBeats,
+	addPhase,
 	phaseColor,
 	setSquad,
 	squadName,
@@ -42,7 +42,7 @@ function sample(category: ActionCategory = 'stunt'): Flow {
 const actionOf = (flow: Flow, id = 'x1') => flow.actions.find((a) => a.id === id)!;
 
 /** x1 加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
-const rated = (flow: Flow, id = 'x1') => flowOf(markPhaseBeats(flow, id, { kind: 'whole', name: '' }, 0, 16));
+const rated = (flow: Flow, id = 'x1') => flowOf(addPhase(flow, id, { kind: 'whole', name: '', beats: { at: 0, len: 16 } }));
 
 describe('環節的 id', () => {
 	it('刪掉的環節的 id 不重用：清光再加，是新的 id', () => {

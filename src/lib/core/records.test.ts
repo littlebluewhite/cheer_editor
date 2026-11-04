@@ -9,7 +9,7 @@ import {
 	deleteLastAttempt,
 	deleteMember,
 	keptAttempt,
-	markPhaseBeats,
+	addPhase,
 	readFlowFile,
 	recordableActions,
 	recordAttempt,
@@ -118,7 +118,7 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 	it('讀流程檔不套這兩條：後來加在前面的環節，舊的一次照樣打得開、還是整個做', () => {
 		let flow = flowOf(clearPhaseBeats(sample(), 'x1', 0, 4));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓', p3: '✓' })));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 4));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }));
 		const r = readFlowFile(writeFlowFile(flow, {}));
 		if (r.kind !== 'ok') throw new Error(JSON.stringify(r));
 		expect(r.flow.actions[0].successRate!.phases[0].id).toBe('p5');
@@ -223,7 +223,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	it('換上的流程有、現在沒有的紀錄不會回來', () => {
 		const current = recorded();
 		const off = flowOf(clearPhaseBeats(current, 'x2', 0, 999, { confirmed: true }));
-		const cleared = flowOf(markPhaseBeats(off, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
+		const cleared = flowOf(addPhase(off, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
 		const carried = carryRecords(current, cleared);
 		expect(recordsOf(carried, 'x2')).toEqual([]);
 	});
@@ -247,10 +247,10 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 			note: '',
 			members: [{ memberId, role: null }]
 		});
-		let older = flowOf(markPhaseBeats(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'whole', name: '拋投' }, 0, 8));
+		let older = flowOf(addPhase(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
 		older = flowOf(setSquad(older, 'x3', ['m3'], 1));
 		let current = flowOf(deleteAction(older, 'x3'));
-		current = flowOf(markPhaseBeats(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投' }, 0, 8));
+		current = flowOf(addPhase(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
 		current = flowOf(setSquad(current, 'x3', ['m4'], 1));
 		const phase = current.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id;
 		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' })));
@@ -276,6 +276,15 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 3 })));
 
 		expect(recordsOf(carryRecords(before, after))).toEqual([]);
+	});
+
+	it('組裡的人變了再復原：紀錄還是留在那一組，不問', () => {
+		const before = flowOf(setSquad(sample(), 'x1', ['m1'], null));
+		let after = flowOf(setSquad(before, 'x1', ['m1'], 2));
+		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 2 })));
+		const t = recordsOf(after)[0].id;
+
+		expect(recordsOf(carryRecords(before, after)).map((r) => [r.id, r.who])).toEqual([[t, 2]]);
 	});
 
 	it('沒有紀錄要帶：換上的流程原封不動', () => {
@@ -349,7 +358,7 @@ describe('記錄頁要的清單', () => {
 					members: [{ memberId, role: null }]
 				})
 			);
-		flow = flowOf(markPhaseBeats(add('toss', 16, 'm1'), 'x3', { kind: 'whole', name: '拋投' }, 0, 4));
+		flow = flowOf(addPhase(add('toss', 16, 'm1'), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 4 } }));
 		flow = add('jump', 20, 'm2'); // 跳躍：沒有環節
 		flow = add('dance', 24, 'm3'); // 沒打開
 		expect(recordableActions(flow).map((a) => a.id)).toEqual(['x1', 'x3', 'x2']);

@@ -5,8 +5,7 @@ import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-ty
 import { cueForMember, whoName, type Cue, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
-import { phaseLabel } from './phases';
-import { phaseColor, type Phase } from './success-rate';
+import { phaseColor, phaseLabel, type Phase } from './phase-types';
 import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,

@@ -19,7 +19,7 @@ import { flowOf, ratedSample } from './test-flows';
 function sample(): Flow {
 	let flow = ratedSample();
 	for (const [phaseId, at, len] of [['p1', 0, 2], ['p2', 2, 4], ['p3', 6, 2]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId }, at, len));
+		flow = flowOf(markPhaseBeats(flow, 'x1', phaseId, at, len));
 	}
 	return flow;
 }
@@ -210,6 +210,17 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 		const cleared = flowOf(updateMember(flow, 'm1', { name: '小芳芳' }, { records: 'clear' }));
 		expect(cleared.members[0].name).toBe('小芳芳');
 		expect([ids(cleared, 'x1'), ids(cleared, 'x2')]).toEqual([['t2'], ['t5']]);
+	});
+});
+
+describe('改隊員名字：他在動作裡沒分組', () => {
+	it('只有一組的動作：不算他的紀錄，清掉重算也不會把他放進那一組', () => {
+		let flow = flowOf(setSquad(recorded(), 'x1', ['m3', 'm4'], 1, { records: 'keep' }));
+		flow = flowOf(setSquad(flow, 'x1', ['m1'], null, { records: 'keep' }));
+		const r = updateMember(flow, 'm1', { name: '小芳芳' });
+		expect(r.kind === 'choose' && r.items).toEqual(['動作「騰翻」小美：1 次']);
+		const cleared = flowOf(updateMember(flow, 'm1', { name: '小芳芳' }, { records: 'clear' }));
+		expect(action(cleared, 'x1')).toEqual(action(flow, 'x1'));
 	});
 });
 

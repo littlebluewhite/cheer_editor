@@ -9,7 +9,6 @@ import {
 	addPhase,
 	addSegment,
 	createFlow,
-	markPhaseBeats,
 	placeCue,
 	readFlowFile,
 	recordAttempt,
@@ -29,9 +28,9 @@ Element.prototype.scrollIntoView = () => {};
  * 2-5 到 2-8 下法「搖籃」（p3）；步驟「上」1-3 到 1-5；小美、小A 第 1 組。
  */
 function libFlow(): Flow {
-	let flow = flowOf(markPhaseBeats(plainFlow(), 'x1', { kind: 'load', name: '延伸' }, 0, 6));
-	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 6, 16));
-	return flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '搖籃' }, 24, 8));
+	let flow = flowOf(addPhase(plainFlow(), 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 6 } }));
+	flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 6, len: 16 } }));
+	return flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '搖籃', beats: { at: 24, len: 8 } }));
 }
 
 /** 跟 libFlow 一樣，但 Lib 還沒有環節（不記成功率、沒分組）。 */
@@ -124,7 +123,7 @@ describe('拍點格子上標環節', () => {
 		await select('2-5', '2-8');
 		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
 		const dialog = within(screen.getByRole('alertdialog'));
-		expect(dialog.getByText('拍清光的環節會刪掉，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
+		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
 		expect(dialog.getByText('刪掉：環節 下法 搖籃')).toBeTruthy();
 
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
@@ -326,7 +325,7 @@ describe('口號段的環節（不用標拍）', () => {
 		await fireEvent.click(row().getByRole('button', { name: '環節 整體' }));
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		const dialog = within(screen.getByRole('alertdialog'));
-		expect(dialog.getByText('整體 有紀錄，刪掉會清掉 1 次的記號，確定就刪掉')).toBeTruthy();
+		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
 
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
 		expect(screen.queryByRole('alertdialog')).toBeNull();

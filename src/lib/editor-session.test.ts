@@ -5,8 +5,8 @@ import {
 	addSegment,
 	createFlow,
 	deleteAction,
+	addPhase,
 	insertFormation,
-	markPhaseBeats,
 	moveFormation,
 	moveMembers,
 	recordAttempt,
@@ -26,7 +26,7 @@ function sampleFlow(): Flow {
 	flow = flowOf(addSegment(flow, 'music'));
 	const members = [{ memberId: 'm1', role: '上層' }];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 8, note: '', members }));
-	return flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 4));
+	return flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }));
 }
 
 const rename = (s: EditorSession, name: string) => s.change(flowOf(renameFlow(s.flow!, name)));

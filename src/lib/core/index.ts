@@ -22,7 +22,7 @@ export {
 export type { Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
 
 export { ACTION_CATEGORIES, actionLabel, actionSeconds } from './action-types';
-export type { Action, ActionCategory, ActionMember, NewActionInput } from './action-types';
+export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
 export {
 	actionSlotAt,
 	addAction,
@@ -56,18 +56,8 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export {
-	groupsPeople,
-	keptAttempt,
-	MARKS,
-	PHASE_KIND_COLORS,
-	PHASE_KINDS,
-	perPerson,
-	phaseColor,
-	squadName,
-	squadsOf
-} from './success-rate';
-export type { Attempt, Mark, NewAttempt, Phase, PhaseKind, PracticeKind, SuccessRate } from './success-rate';
+export { groupsPeople, keptAttempt, MARKS, perPerson, squadName, squadsOf } from './success-rate';
+export type { Attempt, Mark, NewAttempt, PracticeKind, SuccessRate } from './success-rate';
 
 export {
 	attemptText,
@@ -80,11 +70,11 @@ export {
 } from './records';
 export type { RunThroughMarks } from './records';
 
-export { addPhase, deletePhase, phaseLabel, updatePhase } from './phases';
+export { PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
+export type { Phase, PhaseKind } from './phase-types';
+export { addPhase, clearPhaseBeats, deletePhase, markPhaseBeats, updatePhase } from './phases';
+export type { NewPhaseInput, PhaseChange } from './phases';
 export { ACTION_COLORS, NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
-export type { PhaseChange } from './phases';
-export { clearPhaseBeats, markPhaseBeats } from './phase-beats';
-export type { BeatsTarget } from './phase-beats';
 
 export {
 	cellDetail,

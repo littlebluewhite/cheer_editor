@@ -6,42 +6,7 @@ import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
 import { PHASE_COLORS } from './colors';
-
-/** 環節的種類：上法、中段、轉接、下法、整體。流程檔存英文代號。 */
-export type PhaseKind = 'load' | 'hold' | 'transition' | 'dismount' | 'whole';
-
-export const PHASE_KINDS: { key: PhaseKind; label: string }[] = [
-	{ key: 'load', label: '上法' },
-	{ key: 'hold', label: '中段' },
-	{ key: 'transition', label: '轉接' },
-	{ key: 'dismount', label: '下法' },
-	{ key: 'whole', label: '整體' }
-];
-
-/**
- * 種類的顏色（環節沒挑辨識色時用）：上法青、中段石板灰、轉接金、下法紫、整體灰。
- * 避開拍子 down 的藍（#1f5fbf）、up 的綠（#2b7a2f），環節和拍子畫在一起時才分得出來。
- */
-export const PHASE_KIND_COLORS: Record<PhaseKind, string> = {
-	load: '#00796b',
-	hold: '#475569',
-	transition: '#8d6200',
-	dismount: '#7b1fa2',
-	whole: '#6b7280'
-};
-
-/** 環節：動作裡要分開算成功率的一部分。 */
-export interface Phase {
-	/** 整個流程裡不重複，刪了也不重用（紀錄跨復原時靠 id 對回環節），例：p3。 */
-	id: string;
-	kind: PhaseKind;
-	/** 教練取的名字，例：延伸；可以是空的。 */
-	name: string;
-	/** 辨識色（#rrggbb）；沒有就用種類的顏色。 */
-	color?: string;
-	/** 標的拍：跟拍點一樣，從動作開始算第幾個半拍、幾個半拍長。沒有就是沒標拍。 */
-	beats?: { at: number; len: number };
-}
+import { PHASE_KINDS, type Phase } from './phase-types';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
@@ -85,11 +50,6 @@ export interface SuccessRate {
 	records: Attempt[];
 }
 
-/** 環節在畫面上的顏色：挑了辨識色用辨識色，沒有就用種類的顏色。 */
-export function phaseColor(phase: Phase): string {
-	return phase.color ?? PHASE_KIND_COLORS[phase.kind];
-}
-
 /** 騰翻、跳躍是自己做的：不分組，每個人自己算。 */
 const PER_PERSON = new Set<ActionCategory>(['tumbling', 'jump']);
 
@@ -101,11 +61,6 @@ export function perPerson(category: ActionCategory): boolean {
 /** 這個動作要分組：有環節，而且不是騰翻、跳躍。 */
 export function groupsPeople(action: Action): boolean {
 	return !!action.successRate?.phases.length && !perPerson(action.category);
-}
-
-/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。已經記成功率的動作不動。 */
-export function firstSquad(action: Action): Action {
-	return action.successRate || perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
 }
 
 /** 動作裡現在有人的組，照號碼排。 */
@@ -135,20 +90,13 @@ export function markedCount(action: Action, phases: Phase[]): number {
  * 先拿掉對不上的紀錄（fitRecords）、問完紀錄（見 settle.ts，照舊的號碼比）再補號。沒得補就回傳原來的動作。
  */
 export function compactSquads(action: Action): Action {
-	const renumber = new Map(squadsOf(action).map((n, i) => [n, i + 1]));
+	// 不是正整數的組號不動，留給成功率規則擋。
+	const renumber = new Map(squadsOf(action).filter(isSquad).map((n, i) => [n, i + 1]));
 	if ([...renumber].every(([from, to]) => from === to)) return action;
-	const members = action.members.map((m) => (m.squad === undefined ? m : { ...m, squad: renumber.get(m.squad)! }));
+	const members = action.members.map((m) => (m.squad === undefined ? m : { ...m, squad: renumber.get(m.squad) ?? m.squad }));
 	const rate = action.successRate;
 	const records = rate?.records.map((r) => (typeof r.who === 'number' ? { ...r, who: renumber.get(r.who) ?? r.who } : r));
 	return { ...action, members, ...(rate && { successRate: { ...rate, records: records! } }) };
-}
-
-/** 隊員在這個動作裡的紀錄：他在的組的（騰翻、跳躍是他自己的）。 */
-export function memberRecords(action: Action, memberId: string): Attempt[] {
-	const member = action.members.find((m) => m.memberId === memberId);
-	const who = perPerson(action.category) ? memberId : member?.squad;
-	if (!member || who === undefined) return [];
-	return action.successRate?.records.filter((r) => r.who === who) ?? [];
 }
 
 /** 拿掉動作裡的這幾次紀錄；沒有要拿就回傳原來的動作。 */
@@ -181,8 +129,30 @@ export function squadProblem(action: Action, squad: number): string | null {
 	return null;
 }
 
-/** 動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。指令和讀流程檔都照這個檢查。 */
+/**
+ * 成功率規則（只有這一份）：動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。
+ * 收尾最後照這個檢查，讀流程檔也照這個檢查。第 6 版就有的規則（v6RateProblem）再加：
+ * 有成功率設定就至少一個環節；音樂段的環節一定有標的拍、照拍的先後排；組號從 1 連續。
+ */
 export function successRateProblem(segment: Segment, action: Action): string | null {
+	const problem = v6RateProblem(segment, action);
+	if (problem) return problem;
+	const phases = action.successRate?.phases;
+	if (phases && !phases.length) return '記成功率的動作至少要有一個環節';
+	if (segment.kind === 'music' && phases) {
+		if (phases.some((p) => !p.beats)) return '音樂段的環節要選拍標';
+		if (phases.some((p, i) => i > 0 && p.beats!.at < phases[i - 1].beats!.at)) return '環節要照標的拍的先後排';
+	}
+	const squads = squadsOf(action);
+	if (squads.some((n, i) => n !== i + 1)) return '組號要從 1 連續';
+	return null;
+}
+
+/**
+ * 第 6 版流程檔就有的成功率規則（成功率規則的一部分）。第 6 → 7 版整理舊檔前先看它：本來就不守的檔不整理。
+ * 組號是正整數、只在分組的動作裡；環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。
+ */
+export function v6RateProblem(segment: Segment, action: Action): string | null {
 	for (const { squad } of action.members) {
 		const problem = squad === undefined ? null : squadProblem(action, squad);
 		if (problem) return problem;
@@ -284,7 +254,7 @@ function isDate(text: string): boolean {
 }
 
 /** 環節標的拍的規則：只有音樂段能標、從音樂的整拍開始、佔整數拍（至少 1 拍）、在動作裡面（動作被拖半拍時，標的拍跟著挪去對齊整拍）。 */
-function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
+export function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
 	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
 	if (!Number.isInteger(at) || !Number.isInteger(len)) return '環節要落在半拍上';
 	if ((action.start + at) % HALF_BEATS_PER_BEAT !== 0) return '環節要標在整拍上';

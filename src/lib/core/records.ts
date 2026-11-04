@@ -5,9 +5,9 @@ import { actionLabel, actionSeconds, replaceAction, type Action } from './action
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, ok, type CommandResult } from './result';
+import { settle } from './settle';
 import {
 	attemptProblem,
-	fitRecords,
 	keptAttempt,
 	perPerson,
 	squadName,
@@ -96,7 +96,9 @@ export function carryRecords(next: Flow, current: Flow): Flow {
 		if (records === own || (records.length === 0 && own.length === 0)) return a;
 		changed = true;
 		const followed = records.map((r) => (typeof r.who === 'number' ? { ...r, who: followSquad(from!, a, r.who) } : r));
-		return fitRecords({ ...a, successRate: { ...a.successRate, records: followed } });
+		// 不問、不換組：組裡的人變了紀錄還是留在那一組；對不上的由收尾拿掉。
+		const settled = settle(next, a, { ...a, successRate: { ...a.successRate, records: followed } }, { records: 'keep' });
+		return settled.kind === 'ok' ? settled.action : a;
 	});
 	return changed ? { ...next, actions, ...(lastIds && { lastIds }) } : next;
 }

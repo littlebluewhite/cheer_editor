@@ -1,6 +1,14 @@
 // 動作的指令：加、改、拖、拉、刪、檢查。動作的型別和小工具在 action-types.ts。
 
-import { ACTION_CATEGORIES, actionLabel, actionSeconds, replaceAction, type Action, type NewActionInput } from './action-types';
+import {
+	ACTION_CATEGORIES,
+	actionLabel,
+	actionSeconds,
+	replaceAction,
+	type Action,
+	type ActionChanges,
+	type NewActionInput
+} from './action-types';
 import { cueFallout, cueProblem } from './cues';
 import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
@@ -13,7 +21,8 @@ import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from
 /** 新增動作，回傳新動作的 id。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
 	const id = nextId('x', flow.actions.map((a) => a.id));
-	const settled = checked(flow, undefined, normalize({ id, ...input }), {});
+	const members = input.members.map(({ memberId, role }) => ({ memberId, role }));
+	const settled = checked(flow, undefined, normalize({ id, ...input, members }), {});
 	if (settled.kind === 'blocked') return settled;
 	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, settled.action] }, id };
 }
@@ -38,7 +47,7 @@ function normalize({ color, ...action }: Action): Action {
 export function updateAction(
 	flow: Flow,
 	id: string,
-	changes: Partial<NewActionInput>,
+	changes: ActionChanges,
 	options: ConfirmOption = {}
 ): CommandResult {
 	const old = flow.actions.find((a) => a.id === id);

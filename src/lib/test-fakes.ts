@@ -10,7 +10,7 @@ import {
 	addSegment,
 	createFlow,
 	loadSegmentAudio,
-	markPhaseBeats,
+	addPhase,
 	recordAttempt,
 	setSquad,
 	updateSegment,
@@ -146,7 +146,7 @@ export function teamFlow(): Flow {
 export function phasedFlow(): Flow {
 	let flow = teamFlow();
 	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+		flow = flowOf(addPhase(flow, 'x1', { kind, name: '', beats: { at: at, len: len } }));
 	}
 	return flow;
 }
@@ -184,5 +184,5 @@ export function practiceFlow(): Flow {
 		{ memberId: 'm2', role: '騰翻' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members: tumbling }));
-	return flowOf(markPhaseBeats(flow, 'x3', { kind: 'whole', name: '騰翻' }, 0, 16));
+	return flowOf(addPhase(flow, 'x3', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
 }

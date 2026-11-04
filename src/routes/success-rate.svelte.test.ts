@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	addAction,
 	addMembers,
-	markPhaseBeats,
+	addPhase,
 	setSquad,
 	readFlowFile
 } from '#lib/core';
@@ -131,7 +131,7 @@ describe('分組浮動列', () => {
 		flow = flowOf(
 			addAction(flow, { segmentId: 's1', category, name: '', start: 16, length: 8, note: '', members: [{ memberId: 'm1', role: null }] })
 		);
-		flow = flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '' }, 0, 8));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
 		render(Page, editorPage(flow).props);
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x2"]')!);
 		expect(bar()).toBeNull();

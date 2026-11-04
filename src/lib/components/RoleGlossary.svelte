@@ -1,21 +1,23 @@
 <script lang="ts">
 	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加自訂角色。
-	import { addCustomRole, roleGlossary, type Flow } from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { addCustomRole, roleGlossary } from '#lib/core';
 	import { Ask } from './ask.svelte';
 	import Icon from './Icon.svelte';
 
 	interface Props {
-		flow: Flow;
-		onchange: (flow: Flow) => void;
 		onclose: () => void;
 	}
 
-	let { flow, onchange, onclose }: Props = $props();
+	let { onclose }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	let name = $state('');
 	let meaning = $state('');
 	/** 被擋的原因。 */
-	const ask = new Ask((f) => onchange(f));
+	const ask = new Ask((f) => session.change(f));
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();

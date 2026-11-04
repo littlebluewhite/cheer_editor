@@ -15,6 +15,7 @@
 	// 點一個環節選它，可以改名字、種類、顏色，或按清掉刪掉它（有記號先問）。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { Ask } from './ask.svelte';
 	import { touchOnUnpicked } from './pointer';
@@ -56,14 +57,15 @@
 	} from '#lib/core';
 
 	interface Props {
-		flow: Flow;
 		action: Action;
-		onchange: (flow: Flow) => void;
 		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
 		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
 	}
 
-	let { flow, action, onchange, cellAt = nearestCell }: Props = $props();
+	let { action, cellAt = nearestCell }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	const cols = Array.from({ length: 8 }, (_, c) => c);
 	/** 三條由上往下，排在每個八拍的數字格下面。 */
@@ -114,7 +116,7 @@
 	const ask = new Ask(
 		(f) => {
 			hold = pop;
-			onchange(f);
+			session.change(f);
 		},
 		{ confirmLabel: '確定刪除' }
 	);
@@ -290,12 +292,11 @@
 		addCustom(kind);
 	}
 
-	/** 把選的拍標給現有的環節，或標給新的環節（種類、名字）。 */
-	function markPhase(target: { phaseId: string } | { kind: PhaseKind; name: string }) {
+	/** 把選的拍標給現有的環節。 */
+	function markPhase(phaseId: string) {
 		const { from } = sel;
 		const len = selLen;
-		const after = 'phaseId' in target ? undefined : () => (phaseName = '');
-		send((o) => markPhaseBeats(flow, action.id, target, from, len, o), after);
+		send((o) => markPhaseBeats(flow, action.id, phaseId, from, len, o));
 	}
 
 	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
@@ -304,10 +305,11 @@
 		send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
-	/** 口號段加環節（種類、名字），加在最後。 */
-	function addChantPhase() {
+	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。 */
+	function addNewPhase() {
+		const beats = segment?.kind === 'music' ? { at: sel.from, len: selLen } : undefined;
 		send(
-			() => addPhase(flow, action.id, { kind: phaseKind, name: phaseName }),
+			(o) => addPhase(flow, action.id, { kind: phaseKind, name: phaseName, beats }, o),
 			() => (phaseName = '')
 		);
 	}
@@ -491,7 +493,7 @@
 						onclick={() => (chosen = chosen === p.id ? null : p.id)}>{phaseLabel(p)}</button
 					>
 				{/each}
-				{@render adder(addChantPhase)}
+				{@render adder(addNewPhase)}
 			</div>
 			<button type="button" class="clear" aria-label="清掉環節" disabled={!editing} onclick={deleteChosen}>清掉</button>
 			{#if editing}{@render edit(editing)}{/if}
@@ -679,10 +681,10 @@
 									class="word phase"
 									style:--c={phaseColor(p)}
 									aria-label="把這幾拍標給 {phaseLabel(p)}"
-									onclick={() => markPhase({ phaseId: p.id })}>{phaseLabel(p)}</button
+									onclick={() => markPhase(p.id)}>{phaseLabel(p)}</button
 								>
 							{/each}
-							{@render adder(() => markPhase({ kind: phaseKind, name: phaseName }))}
+							{@render adder(addNewPhase)}
 						</div>
 						<button
 							type="button"
