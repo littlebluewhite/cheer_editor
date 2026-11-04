@@ -208,7 +208,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 
 	it('換上的流程有、現在沒有的紀錄不會回來', () => {
 		const current = recorded();
-		const cleared = flowOf(enableSuccessRate(flowOf(disableSuccessRate(current, 'x2')), 'x2'));
+		const cleared = flowOf(enableSuccessRate(flowOf(disableSuccessRate(current, 'x2', { confirmed: true })), 'x2'));
 		const carried = carryRecords(current, cleared);
 		expect(recordsOf(carried, 'x2')).toEqual([]);
 	});
@@ -267,34 +267,34 @@ describe('改編排後對不上的紀錄拿掉，流程檔照樣打得開', () =
 	const ids = (flow: Flow, id: string) => recordsOf(flow, id).map((r) => r.id);
 
 	it('組裡的人都換到別組：這組的紀錄拿掉', () => {
-		let flow = flowOf(setSquad(recorded(), 'x1', 'm3', 1));
-		flow = flowOf(setSquad(flow, 'x1', 'm4', null));
+		let flow = flowOf(setSquad(recorded(), 'x1', 'm3', 1, { records: 'keep' }));
+		flow = flowOf(setSquad(flow, 'x1', 'm4', null, { confirmed: true }));
 		expect(ids(flow, 'x1')).toEqual(['t1']);
 		expect(reopened(flow)).toEqual(flow);
 	});
 
 	it('組裡的人都移出動作：這組的紀錄拿掉；組還有人就留著', () => {
 		const members = sample().actions[0].members.filter((m) => m.memberId !== 'm3' && m.memberId !== 'm4');
-		const flow = flowOf(updateAction(recorded(), 'x1', { members }));
+		const flow = flowOf(updateAction(recorded(), 'x1', { members }, { confirmed: true }));
 		expect(ids(flow, 'x1')).toEqual(['t1']);
 		expect(reopened(flow)).toEqual(flow);
 	});
 
 	it('騰翻的動作移出一個人：他的紀錄拿掉', () => {
-		const flow = flowOf(updateAction(recorded(), 'x2', { members: [{ memberId: 'm1', role: '騰翻' }] }));
+		const flow = flowOf(updateAction(recorded(), 'x2', { members: [{ memberId: 'm1', role: '騰翻' }] }, { confirmed: true }));
 		expect(ids(flow, 'x2')).toEqual(['t3']);
 		expect(reopened(flow)).toEqual(flow);
 	});
 
 	it('大類從技巧換成騰翻：組的紀錄都拿掉', () => {
-		const flow = flowOf(updateAction(recorded(), 'x1', { category: 'tumbling' }));
+		const flow = flowOf(updateAction(recorded(), 'x1', { category: 'tumbling' }, { confirmed: true }));
 		expect(ids(flow, 'x1')).toEqual([]);
 		expect(reopened(flow)).toEqual(flow);
 	});
 
-	it('刪隊員：他自己的紀錄拿掉；他在的組還有人就留著', () => {
+	it('刪隊員：他自己的紀錄、他在的組的紀錄都拿掉', () => {
 		const flow = flowOf(deleteMember(recorded(), 'm2', { confirmed: true }));
-		expect(ids(flow, 'x1')).toEqual(['t1', 't2']);
+		expect(ids(flow, 'x1')).toEqual(['t2']);
 		expect(ids(flow, 'x2')).toEqual(['t3']);
 		expect(reopened(flow)).toEqual(flow);
 	});

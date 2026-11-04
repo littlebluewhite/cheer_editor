@@ -5,8 +5,8 @@ import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
-import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { fitRecords } from './success-rate';
+import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { fitRecords, memberRecords, recordItems, withoutRecords } from './success-rate';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -73,19 +73,39 @@ export interface MemberChanges {
 	globalRole?: GlobalRole;
 }
 
-/** 改名字、性別或全局角色。id 不變，所以站位和動作都跟著這個人。 */
-export function updateMember(flow: Flow, id: string, changes: MemberChanges): CommandResult {
+/**
+ * 改名字、性別或全局角色。id 不變，所以站位和動作都跟著這個人。
+ * 改名字（候補上場）而他有紀錄：先問保留還是清掉。帶 { records: 'keep' } 只改名字（改錯字）；
+ * 帶 { records: 'clear' } 是真的換人了，連他在的每一組的紀錄（騰翻、跳躍是他自己的）一起清掉。
+ */
+export function updateMember(
+	flow: Flow,
+	id: string,
+	changes: MemberChanges,
+	options: ConfirmOption = {}
+): CommandResult {
 	const member = flow.members.find((m) => m.id === id);
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
 	if (!updated.name) return blocked('請填隊員名字');
-	return ok({ ...flow, members: flow.members.map((m) => (m.id === id ? updated : m)) });
+	const mine = updated.name === member.name ? [] : flow.actions.filter((a) => memberRecords(a, id).length);
+	if (mine.length && !answered(options)) {
+		const count = mine.reduce((n, a) => n + memberRecords(a, id).length, 0);
+		return needsChoice(
+			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算`,
+			mine.flatMap((a) => recordItems(flow, a, memberRecords(a, id), `動作「${actionLabel(a)}」`))
+		);
+	}
+	const actions =
+		options.records === 'clear' ? flow.actions.map((a) => withoutRecords(a, memberRecords(a, id))) : flow.actions;
+	return ok({ ...flow, members: flow.members.map((m) => (m.id === id ? updated : m)), actions });
 }
 
 /**
  * 刪隊員。一定先回「要確認」：「他在 N 個動作裡，其中 M 個會被整個刪掉」（有拍點會拿掉——給他的、和只剩他是那個角色的——再加「會一起拿掉 K 個拍點」），清單是那 M 個動作；
  * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉，
- * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉；他自己的紀錄、和他走了就沒人的組的紀錄也拿掉。
+ * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。刪隊員當成真的換人：他在的每一組和他自己的紀錄都清掉，
+ * 確認訊息寫會清掉幾次。
  */
 export function deleteMember(
 	flow: Flow,
@@ -98,14 +118,20 @@ export function deleteMember(
 	const emptied = inActions.filter((a) => a.members.length === 1);
 	const actions = flow.actions
 		.filter((a) => !emptied.includes(a))
-		.map((a) => fitRecords(dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) })));
+		.map((a) => {
+			const left = withoutRecords(a, memberRecords(a, id));
+			return fitRecords(dropOrphanCues({ ...left, members: a.members.filter((m) => m.memberId !== id) }));
+		});
 	if (!confirmed) {
 		const spans = segmentSpans(flow);
 		const cueCount = (list: Action[]) => list.reduce((n, a) => n + (a.cues?.length ?? 0), 0);
 		const dropped = cueCount(flow.actions.filter((a) => !emptied.includes(a))) - cueCount(actions);
+		const records = (list: Action[]) => list.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
+		const cleared = records(flow.actions) - records(actions);
 		return needsConfirm(
 			`${member.name} 在 ${inActions.length} 個動作裡，其中 ${emptied.length} 個會被整個刪掉` +
-				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : ''),
+				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
+				(cleared ? `，會清掉 ${cleared} 次紀錄` : ''),
 			emptied.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）`;

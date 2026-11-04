@@ -155,7 +155,9 @@ export function updateSegment(
 	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
 	if (!confirmed && (droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
-		return needsConfirm(`${label} 縮短後，下面這些放不進段裡，確定就刪掉`, [
+		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
+		const cleared = records ? `，會一起清掉 ${records} 次紀錄` : '';
+		return needsConfirm(`${label} 縮短後，下面這些放不進段裡，確定就刪掉${cleared}`, [
 			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${atText(old, a.start)} 起）`),
 			...droppedFormations.map(
 				(f) => `站位 ${flow.formations.indexOf(f) + 1}（${atText(old, f.at)}）`
