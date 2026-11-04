@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		addSegment,
-		carryRecords,
 		currentFormation,
 		deleteAction,
 		deleteFormation,
@@ -45,6 +44,7 @@
 	import { createPlayer, type Player } from '#lib/audio/player.js';
 	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
+	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
@@ -84,23 +84,28 @@
 		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 		/** 草稿存在哪裡（預設 IndexedDB）；測試換成假的（jsdom 沒有 IndexedDB）。 */
 		draftStore?: DraftStore;
+		/** 編輯 session（流程和復原）；測試放一個帶好流程的進來，再讀它的流程。沒給就自己建。 */
+		session?: EditorSession;
 	}
 
 	let {
 		createEngine = createWebAudioEngine,
 		createSaver = createBrowserSaver,
 		decode = decodeAudio,
-		draftStore = createIndexedDbDraftStore()
+		draftStore = createIndexedDbDraftStore(),
+		session = new EditorSession()
 	}: Props = $props();
+	// session 一開始給了就不換：放進 context 的就是這一個。
+	// svelte-ignore state_referenced_locally
+	setEditorSession(session);
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
 
-	let flow = $state<Flow | null>(null);
-	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
-	let savedFlow = $state.raw<Flow | null>(null);
-	const unsaved = $derived(flow !== null && flow !== savedFlow);
+	const flow = $derived(session.flow);
+	const unsaved = $derived(session.unsaved);
 	$effect(() => setUnsavedChanges(unsaved));
+	/** 存檔薄層，一支流程一個（記得存到哪個檔）：第一次存檔才建，換流程就丟掉。 */
 	let saver: FileSaver | null = null;
 	let saving = false;
 	/** 首頁開檔失敗的原因（編輯中失敗就放在上方列的 notice）。 */
@@ -385,13 +390,11 @@
 	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
 	 * id 會跟上一支重複，所以選取全部清掉。
 	 */
-	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}) {
+	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}, saved = false) {
 		pause();
-		flow = f;
+		session.open(f, saved);
 		opened++;
-		undoStack = [];
-		redoStack = [];
-		saver = createSaver();
+		saver = null;
 		audios = loaded;
 		openError = '';
 		notice = '';
@@ -406,51 +409,32 @@
 		inspectorTab = f.members.length ? 'action' : 'members';
 	}
 
-	/** 復原紀錄：改之前的流程（最舊的在前）。指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。 */
-	let undoStack = $state.raw<Flow[]>([]);
-	/** 重做紀錄：復原掉的流程（最近復原的在後）。做了新的一步就清掉。 */
-	let redoStack = $state.raw<Flow[]>([]);
-	const UNDO_LIMIT = 100;
-
 	/**
-	 * 改流程的唯一入口：每次流程換成新的就算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。
+	 * 改流程的唯一入口：交給 session 的「改」，算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。
 	 * 換成另一支流程（開檔、新建、救回草稿）不走這裡，走 startFlow。
 	 */
 	function change(f: Flow) {
-		if (!flow || f === flow) return;
+		if (!session.change(f)) return;
 		resizePending = null;
-		undoStack = [...undoStack, flow].slice(-UNDO_LIMIT);
-		redoStack = [];
-		show(f);
+		trimSelection(f);
 	}
 
-	/**
-	 * 紀錄改了（記一次、刪掉上一次）：不算復原的一步，所以不推進復原紀錄、也不清掉重做。草稿照樣自動存。
-	 * 復原、重做換上的流程都經過 carryRecords，紀錄維持現在的樣子。
-	 */
+	/** 紀錄改了（記一次、刪掉上一次）：交給 session 的「記」，不算復原的一步。草稿照樣自動存。 */
 	function record(f: Flow) {
-		if (flow) flow = f;
+		session.record(f);
 	}
 
 	function undo() {
-		const prev = undoStack.at(-1);
-		if (!flow || !prev) return;
-		redoStack = [...redoStack, flow];
-		undoStack = undoStack.slice(0, -1);
-		restore(carryRecords(prev, flow));
+		if (session.undo()) restore(session.flow!);
 	}
 
 	function redo() {
-		const next = redoStack.at(-1);
-		if (!flow || !next) return;
-		undoStack = [...undoStack, flow];
-		redoStack = redoStack.slice(0, -1);
-		restore(carryRecords(next, flow));
+		if (session.redo()) restore(session.flow!);
 	}
 
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
 	function restore(f: Flow) {
-		show(f);
+		trimSelection(f);
 		resizePending = null;
 		notice = '';
 		playheadSec = Math.min(playheadSec, totalSeconds(f));
@@ -458,8 +442,7 @@
 	}
 
 	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
-	function show(f: Flow) {
-		flow = f;
+	function trimSelection(f: Flow) {
 		if (selectedFormationId && !f.formations.some((x) => x.id === selectedFormationId)) {
 			selectedFormationId = null;
 		}
@@ -478,15 +461,16 @@
 
 	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；iPad 開分享選單；其他瀏覽器下載新檔。 */
 	async function save() {
-		if (!flow || !saver || saving) return;
+		if (!flow || saving) return;
 		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
 		(document.activeElement as HTMLElement | null)?.blur();
 		const f = flow;
 		saving = true;
+		saver ??= createSaver();
 		try {
 			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), `${f.name}.zip`);
 			if (outcome === 'cancelled') return;
-			savedFlow = f;
+			session.markSaved(f);
 			notice =
 				outcome === 'downloaded'
 					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${f.name}.zip」；用 Chrome 或 Edge 才能直接存回原檔。`
@@ -528,8 +512,7 @@
 			}
 		}
 		unlessUnsaved(() => {
-			startFlow(r.flow, loaded);
-			savedFlow = fromFile ? flow : null;
+			startFlow(r.flow, loaded, fromFile);
 			notice = r.missingSegmentIds.length
 				? '有段找不到音樂：點紅色的段重新選檔'
 				: unreadable
@@ -551,8 +534,7 @@
 	function startNew() {
 		unlessUnsaved(() => {
 			pause();
-			flow = null;
-			savedFlow = null;
+			session.open(null);
 		});
 	}
 
@@ -809,14 +791,14 @@
 			</div>
 
 			<div class="actions">
-				<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!undoStack.length} onclick={undo}
+				<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
 					><Icon name="undo" /><span class="narrow-hide">復原</span></button
 				>
 				<button
 					type="button"
 					class="ghost"
 					title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
-					disabled={!redoStack.length}
+					disabled={!session.canRedo}
 					onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
 				>
 				<span class="sep" aria-hidden="true"></span>
