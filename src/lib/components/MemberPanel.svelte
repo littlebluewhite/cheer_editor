@@ -2,6 +2,7 @@
 	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
 	// 刪隊員先顯示流程核心給的「要確認」說明，按確定才刪。
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { Ask } from './ask.svelte';
@@ -16,13 +17,13 @@
 		memberName,
 		updateMember,
 		type ConfirmOption,
-		type Flow,
 		type Gender,
 		type GlobalRole,
 		type MemberChanges
 	} from '#lib/core';
 
-	let { flow, onchange }: { flow: Flow; onchange: (flow: Flow) => void } = $props();
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	let names = $state('');
 	let gender = $state<Gender | ''>('');
@@ -30,7 +31,7 @@
 	/**
 	 * 等教練回答的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
 	 */
-	const ask = new Ask((f) => onchange(f), { confirmLabel: '確定刪除' });
+	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
 	const markers = $derived(memberMarkers(flow));
 
 	function add(e: SubmitEvent) {

@@ -2,6 +2,7 @@
 	// 出發和到達：播放頭停在站位上（不是開頭那張）時，替選到的人（沒選人就是全隊）設走到這張的出發和到達。
 	// 時間的寫法照流程核心：這一段只打段內時間，別的段前面加段名。規則都交給流程核心判斷；被擋就說原因。
 	import { untrack } from 'svelte';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		clearWalks,
 		formationAt,
@@ -9,21 +10,21 @@
 		parseTime,
 		setWalks,
 		timeText,
-		type Flow,
 		type Walk
 	} from '#lib/core';
 	import { Ask } from './ask.svelte';
 
 	interface Props {
-		flow: Flow;
 		/** 播放頭，全域秒數。 */
 		playheadSec: number;
-		/** 選到的人；沒選人就是全隊。 */
-		selectedMemberIds?: string[];
-		onchange: (flow: Flow) => void;
 	}
 
-	let { flow, playheadSec, selectedMemberIds = [], onchange }: Props = $props();
+	let { playheadSec }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
+	/** 選到的人；沒選人就是全隊。 */
+	const selectedMemberIds = $derived(session.selectedMemberIds);
 
 	const formation = $derived.by(() => {
 		const f = formationAt(flow, playheadSec);
@@ -47,7 +48,7 @@
 	let departText = $state('');
 	let arriveText = $state('');
 	/** 被擋的原因（出發、到達看不懂也算）。 */
-	const ask = new Ask((f) => onchange(f));
+	const ask = new Ask((f) => session.change(f));
 
 	// 換站位、換選取、流程改了：欄位回到現在的走法。
 	$effect(() => {

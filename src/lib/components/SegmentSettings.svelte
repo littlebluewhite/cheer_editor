@@ -2,6 +2,7 @@
 	// 段設定：音樂段（音樂檔、BPM、第一拍、波形、長度）或口號段（秒數）。
 	// 每改一個欄位就送一個流程核心指令；被擋就顯示原因，流程不變。
 	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { Ask } from './ask.svelte';
@@ -17,7 +18,6 @@
 		segmentSpans,
 		updateSegment,
 		type ConfirmOption,
-		type Flow,
 		type SegmentPatch
 	} from '#lib/core';
 	import {
@@ -28,11 +28,9 @@
 	} from '#lib/audio/decode.js';
 
 	interface Props {
-		flow: Flow;
 		segmentId: string;
 		/** 已經解碼的音樂檔，用 audioId 對應。位元組不放在流程裡。 */
 		audios: Record<string, LoadedAudio>;
-		onchange: (flow: Flow) => void;
 		onaudioload: (audioId: string, audio: LoadedAudio) => void;
 		/** 「▶ 從第一拍聽 2 個八拍」：音訊在頁面那一層。 */
 		onpreview: (segmentId: string) => void;
@@ -44,10 +42,8 @@
 	}
 
 	let {
-		flow,
 		segmentId,
 		audios,
-		onchange,
 		onaudioload,
 		onpreview,
 		onclose,
@@ -55,13 +51,16 @@
 		waveXToSec = defaultWaveXToSec
 	}: Props = $props();
 
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
+
 	function defaultWaveXToSec(e: MouseEvent): number {
 		const r = (e.currentTarget as Element).getBoundingClientRect();
 		return ((e.clientX - r.left) / r.width) * WAVE_WINDOW_SEC;
 	}
 
 	/** 被擋的原因，和段縮短會刪掉東西時等教練確認的清單（流程核心給的）。 */
-	const ask = new Ask((f) => onchange(f), { confirmLabel: '確定刪除' });
+	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
 	const span = $derived(segmentSpans(flow).find((s) => s.segment.id === segmentId));
 	const segment = $derived(span?.segment);
 	const music = $derived(segment?.kind === 'music' ? segment : null);
