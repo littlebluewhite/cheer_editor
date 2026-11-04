@@ -29,13 +29,13 @@
 		type Action,
 		type ActionCategory,
 		type ActionMember,
-		type CommandResult,
 		type ConfirmOption,
 		type Flow,
 		type NewActionInput
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
+	import { Ask } from './ask.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
@@ -107,18 +107,8 @@
 	const grouped = $derived(!!action && groupsPeople(action));
 
 	let draft = $state<Draft>(blank());
-	let error = $state('');
-	/**
-	 * 等教練確認的改動（會切短或拿掉拍點、會清掉紀錄）。send 帶著教練的回答再送一次同一個指令，成功後跑 after；
-	 * choose 是兩個選擇的確認（保留舊紀錄／清掉重算）。
-	 */
-	let pending = $state<{
-		message: string;
-		items: string[];
-		choose: boolean;
-		send: (options: ConfirmOption) => CommandResult;
-		after?: () => void;
-	} | null>(null);
+	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
+	const ask = new Ask((f) => onchange(f));
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -153,8 +143,7 @@
 		const a = action;
 		untrack(() => {
 			draft = a ? fromAction(a) : blank();
-			error = '';
-			pending = null;
+			ask.clear();
 		});
 	});
 
@@ -187,71 +176,31 @@
 		return { segmentId: segment.id, category, name, start, length, note, members, color };
 	}
 
+	/** 開始、長度看不懂：跟核心擋下來一樣，交給問教練留下原因。 */
+	const notParsed = (message: string) => ({ kind: 'blocked', message }) as const;
+
 	function add() {
 		const input = toInput();
-		const r = typeof input === 'string' ? null : addAction(flow, input);
-		if (!r || r.kind !== 'ok') {
-			error = r?.message ?? (input as string);
-			return;
-		}
-		error = '';
-		onchange(r.flow);
-		onselect(r.id);
+		ask.send(() => (typeof input === 'string' ? notParsed(input) : addAction(flow, input)), {
+			done: (r) => onselect(r.id)
+		});
 	}
 
-	/** 改選到的動作：馬上送給流程核心；被擋就還原。新增時什麼都不做（等按「新增動作」）。 */
+	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
 	function changed() {
 		if (!action) return;
 		const id = action.id;
 		const input = toInput();
-		const r = typeof input === 'string' ? null : updateAction(flow, id, input);
-		pending = null;
-		if (r?.kind === 'ok') {
-			error = '';
-			onchange(r.flow);
-			return;
-		}
-		if (r && typeof input !== 'string' && ask(r, (o) => updateAction(flow, id, input, o))) return;
-		error = `${r?.message ?? input}，已還原`;
-		draft = fromAction(action);
-	}
-
-	/** 核心要確認（或要選保留／清掉）就先問，回 true；send 是帶著回答再送一次。 */
-	function ask(r: CommandResult, send: (options: ConfirmOption) => CommandResult, after?: () => void): boolean {
-		if (r.kind !== 'confirm' && r.kind !== 'choose') return false;
-		error = '';
-		pending = { message: r.message, items: r.items, choose: r.kind === 'choose', send, after };
-		return true;
-	}
-
-	function confirmChange(options: ConfirmOption) {
-		if (!action || !pending) return;
-		const { send, after } = pending;
-		const r = send(options);
-		pending = null;
-		if (r.kind === 'ok') {
-			onchange(r.flow);
-			after?.();
-			return;
-		}
-		// 等確認的時候流程變了、再送一次被擋：跟別的被擋一樣寫原因再還原。
-		error = `${r.message}，已還原`;
-		draft = fromAction(action);
-	}
-
-	function cancelChange() {
-		pending = null;
-		if (action) draft = fromAction(action);
+		ask.send(
+			(o: ConfirmOption = {}) => (typeof input === 'string' ? notParsed(input) : updateAction(flow, id, input, o)),
+			{ revert: () => action && (draft = fromAction(action)) }
+		);
 	}
 
 	function remove() {
 		if (!action) return;
 		const id = action.id;
-		const send = (o: ConfirmOption = {}) => deleteAction(flow, id, o);
-		const r = send();
-		if (r.kind !== 'ok') return void ask(r, send, () => onselect(null));
-		onchange(r.flow);
-		onselect(null);
+		ask.send((o: ConfirmOption = {}) => deleteAction(flow, id, o), { done: () => onselect(null) });
 	}
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
@@ -456,21 +405,14 @@
 	{/if}
 
 	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->
-	{#if pending}
+	{#if ask.question}
 		<div {@attach (d) => d.scrollIntoView({ block: 'nearest' })}>
-			<ConfirmList
-				message={pending.message}
-				items={pending.items}
-				confirmLabel={pending.choose ? '清掉重算' : '確定'}
-				onconfirm={() => confirmChange(pending?.choose ? { records: 'clear' } : { confirmed: true })}
-				onkeep={pending.choose ? () => confirmChange({ records: 'keep' }) : undefined}
-				oncancel={cancelChange}
-			/>
+			<ConfirmList {ask} />
 		</div>
 	{/if}
 
 	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
-	{#if error}<p class="error" role="alert" {@attach (p) => p.scrollIntoView({ block: 'nearest' })}>{error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert" {@attach (p) => p.scrollIntoView({ block: 'nearest' })}>{ask.error}</p>{/if}
 </section>
 
 {#if glossaryOpen}

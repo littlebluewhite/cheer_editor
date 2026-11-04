@@ -1,7 +1,7 @@
 // 八拍表：把流程照八拍一列一列寫下來，給列印用。
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列）；口號段一整段一列，時間寫秒數。
 
-import { ACTION_CATEGORIES, type Action, type ActionCategory } from './actions';
+import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
 import { cueForMember, whoName, type Cue, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';

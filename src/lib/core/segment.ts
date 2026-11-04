@@ -2,7 +2,7 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
-import { actionLabel } from './actions';
+import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { nextId } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';

@@ -7,14 +7,9 @@ import {
 	playbackPlan,
 	playStartSec,
 	updateSegment,
-	type CommandResult,
 	type Flow
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 /**
  * 音樂 1（a1，150 BPM、第一拍 0.42 秒、1 個八拍 = 3.2 秒）→ 口號 2 秒 →

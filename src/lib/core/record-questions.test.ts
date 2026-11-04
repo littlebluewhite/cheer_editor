@@ -1,10 +1,7 @@
 // 會清掉紀錄的改動先問：刪動作、段縮短、換大類、組換了人、騰翻跳躍拿掉人、改隊員名字、刪隊員。
 import { describe, expect, it } from 'vitest';
 import {
-	addAction,
 	addMembers,
-	addSegment,
-	createFlow,
 	deleteAction,
 	deleteMember,
 	markPhaseBeats,
@@ -13,61 +10,18 @@ import {
 	updateAction,
 	updateMember,
 	updateSegment,
-	type CommandResult,
 	type Flow,
 	type NewAttempt
 } from './index';
+import { flowOf, ratedSample } from './test-flows';
 
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
-
-/**
- * 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。
- * x1：Lib（技巧，第 1 個八拍），環節 p1 上法 1-1、p2 中段 1-2 到 1-3、p3 下法 1-4（都在前 4 拍，動作變短到 4 拍也切不到）；小美、小A 第 1 組，小B、小芳 第 2 組。
- * x2：騰翻（第 3 個八拍），環節 p4 整體「騰翻」整個動作；小美、小A 在裡面。
- */
+/** 共用的 ratedSample，x1 的環節挪到前 4 拍（p1 上法 1-1、p2 中段 1-2 到 1-3、p3 下法 1-4），動作變短到 4 拍也切不到。 */
 function sample(): Flow {
-	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
-	flow = flowOf(
-		addMembers(flow, [
-			{ name: '小美', gender: 'F', globalRole: 'top' },
-			{ name: '小A', gender: 'M', globalRole: 'base' },
-			{ name: '小B', gender: 'M', globalRole: 'base' },
-			{ name: '小芳', gender: 'F', globalRole: 'top' }
-		])
-	);
-	flow = flowOf(addSegment(flow, 'music'));
-	flow = flowOf(updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
-	const members = [
-		{ memberId: 'm1', role: '上層' },
-		{ memberId: 'm2', role: '主底' },
-		{ memberId: 'm3', role: '主底' },
-		{ memberId: 'm4', role: '上層' }
-	];
-	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	for (const [kind, at, len] of [['load', 0, 2], ['hold', 2, 4], ['dismount', 6, 2]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	let flow = ratedSample();
+	for (const [phaseId, at, len] of [['p1', 0, 2], ['p2', 2, 4], ['p3', 6, 2]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId }, at, len));
 	}
-	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', [id], squad));
-	}
-	flow = flowOf(
-		addAction(flow, {
-			segmentId: 's1',
-			category: 'tumbling',
-			name: '',
-			start: 32,
-			length: 16,
-			note: '',
-			members: [
-				{ memberId: 'm1', role: '騰翻' },
-				{ memberId: 'm2', role: '騰翻' }
-			]
-		})
-	);
-	return flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
+	return flow;
 }
 
 const drill = (who: number | string, marks: NewAttempt['marks']): NewAttempt => ({

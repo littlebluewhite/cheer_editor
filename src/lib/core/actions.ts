@@ -1,7 +1,7 @@
-// 動作：一群隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
-// （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
+// 動作的指令：加、改、拖、拉、刪、檢查。動作的型別和小工具在 action-types.ts。
 
-import { cueFallout, cueProblem, type Cue } from './cues';
+import { ACTION_CATEGORIES, actionLabel, actionSeconds, type Action, type NewActionInput } from './action-types';
+import { cueFallout, cueProblem } from './cues';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
@@ -14,53 +14,10 @@ import {
 	groupsPeople,
 	replacePhases,
 	settleRecords,
-	successRateProblem,
-	type SuccessRate
+	successRateProblem
 } from './success-rate';
 import { nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
-
-/** 大類，固定 7 個，不能自訂。流程檔存英文代號。 */
-export type ActionCategory = 'stunt' | 'pyramid' | 'toss' | 'tumbling' | 'jump' | 'dance' | 'other';
-
-export const ACTION_CATEGORIES: { key: ActionCategory; label: string }[] = [
-	{ key: 'stunt', label: '技巧' },
-	{ key: 'pyramid', label: '金字塔' },
-	{ key: 'toss', label: '拋投' },
-	{ key: 'tumbling', label: '騰翻' },
-	{ key: 'jump', label: '跳躍' },
-	{ key: 'dance', label: '舞蹈' },
-	{ key: 'other', label: '其他' }
-];
-
-export interface ActionMember {
-	memberId: string;
-	/** 任務角色的名稱（固定或自訂）；沒掛是 null。 */
-	role: string | null;
-	/** 第幾組（1 起）；沒有就是沒分組（舊流程檔沒有這個欄位）。 */
-	squad?: number;
-}
-
-export interface Action {
-	id: string;
-	segmentId: string;
-	category: ActionCategory;
-	name: string;
-	/** 段內第幾個半拍／0.1 秒開始。 */
-	start: number;
-	/** 幾個半拍／0.1 秒。 */
-	length: number;
-	note: string;
-	members: ActionMember[];
-	/** 辨識色（#rrggbb）：教練自己挑來認動作的顏色；沒有就用大類的顏色（舊流程檔沒有這個欄位）。 */
-	color?: string;
-	/** 這個動作的拍點；沒有就是空的（舊流程檔沒有這個欄位）。 */
-	cues?: Cue[];
-	/** 成功率的設定：有環節才有；沒有就是不記成功率（舊流程檔沒有這個欄位）。 */
-	successRate?: SuccessRate;
-}
-
-export type NewActionInput = Omit<Action, 'id'>;
 
 /** 新增動作，回傳新動作的 id。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -253,15 +210,6 @@ export function actionSlotAt(
 	return { segmentId: pos.segmentId, start: pos.at, length: Math.min(wanted, units(segment) - pos.at) };
 }
 
-/** 動作在全域秒數上的開始和結束（結束那一刻不算在動作裡）。 */
-export function actionSeconds(flow: Flow, action: Action): { startSec: number; endSec: number } {
-	const { segmentId, start, length } = action;
-	return {
-		startSec: toSeconds(flow, { segmentId, at: start }),
-		endSec: toSeconds(flow, { segmentId, at: start + length })
-	};
-}
-
 /** 某個隊員在這一刻（全域秒數）在哪個動作裡、任務角色是什麼；沒在動作裡是 null。 */
 export function memberActionAt(
 	flow: Flow,
@@ -310,15 +258,4 @@ export function raisedAt(flow: Flow, sec: number): string[] {
 	return flow.members
 		.filter((m) => RAISED_ROLES.includes(memberActionAt(flow, m.id, sec)?.role ?? ''))
 		.map((m) => m.id);
-}
-
-/** 流程裡換掉這個動作（照 id 找）。 */
-export function replaceAction(flow: Flow, action: Action): Flow {
-	return { ...flow, actions: flow.actions.map((a) => (a.id === action.id ? action : a)) };
-}
-
-/** 給教練看的動作名字：「技巧·Lib」；沒取名就只有大類。 */
-export function actionLabel(action: Action): string {
-	const category = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label ?? '';
-	return action.name ? `${category}·${action.name}` : category;
 }

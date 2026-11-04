@@ -3,59 +3,20 @@ import {
 	ACTION_COLORS,
 	PHASE_COLORS,
 	addAction,
-	addMembers,
 	addPhase,
 	addSegment,
 	attemptText,
 	carryRecords,
-	createFlow,
 	deletePhase,
 	markPhaseBeats,
 	recordAttempt,
-	setSquad,
 	updatePhase,
-	updateSegment,
-	type CommandResult,
 	type Flow,
 	type NewAttempt
 } from './index';
+import { flowOf, libSample } from './test-flows';
 
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
-
-/**
- * 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。
- * x1：Lib（技巧，第 1 個八拍），環節 p1 上法 1-1 到 1-2、p2 中段 1-3 到 1-6、p3 下法 1-7 到 1-8；小美、小A 第 1 組，小B、小芳 第 2 組。
- */
-function sample(): Flow {
-	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
-	flow = flowOf(
-		addMembers(flow, [
-			{ name: '小美', gender: 'F', globalRole: 'top' },
-			{ name: '小A', gender: 'M', globalRole: 'base' },
-			{ name: '小B', gender: 'M', globalRole: 'base' },
-			{ name: '小芳', gender: 'F', globalRole: 'top' }
-		])
-	);
-	flow = flowOf(addSegment(flow, 'music'));
-	flow = flowOf(updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
-	const members = [
-		{ memberId: 'm1', role: '上層' },
-		{ memberId: 'm2', role: '主底' },
-		{ memberId: 'm3', role: '主底' },
-		{ memberId: 'm4', role: '上層' }
-	];
-	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
-	}
-	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', [id], squad));
-	}
-	return flow;
-}
+const sample = libSample;
 
 const lib = (flow: Flow) => flow.actions.find((a) => a.id === 'x1')!;
 const phasesOf = (flow: Flow) => lib(flow).successRate!.phases;

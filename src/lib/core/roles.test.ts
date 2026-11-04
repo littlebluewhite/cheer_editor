@@ -5,15 +5,9 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	roleGlossary,
-	type CommandResult,
-	type Flow
+	roleGlossary
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 const empty = () => flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
 

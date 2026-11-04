@@ -1,7 +1,7 @@
 // 拍點：動作裡從某一拍開始、佔幾拍的提示，分拍子、步驟、手位三種。
 // 存在動作裡、從動作開始算半拍，所以拖動作、改 BPM 時跟著走；刪動作時一起刪。
 
-import type { Action } from './actions';
+import { replaceAction, type Action } from './action-types';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
@@ -231,7 +231,7 @@ function find(flow: Flow, actionId: string): { action: Action; segment: Segment 
 
 function withCues(flow: Flow, action: Action, cues: Cue[]): CommandResult {
 	const sorted = cues.toSorted((a, b) => a.at - b.at);
-	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === action.id ? { ...a, cues: sorted } : a)) });
+	return ok(replaceAction(flow, { ...action, cues: sorted }));
 }
 
 /**
