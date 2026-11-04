@@ -83,7 +83,7 @@ export function movePhase(flow: Flow, actionId: string, phaseId: string, to: num
 }
 
 /** 環節的名字：種類加名字，例：上法 延伸；沒名字就是種類。 */
-function phaseLabel(phase: Phase): string {
+export function phaseLabel(phase: Phase): string {
 	const kind = PHASE_KINDS.find((k) => k.key === phase.kind)?.label ?? '';
 	return phase.name ? `${kind} ${phase.name}` : kind;
 }

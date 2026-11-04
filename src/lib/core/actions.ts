@@ -2,6 +2,7 @@
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
 import { cueFallout, cueProblem, type Cue } from './cues';
+import { phaseFallout, phaseFalloutText } from './phase-beats';
 import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
@@ -102,33 +103,41 @@ export function updateAction(
 	const to = flow.segments.find((s) => s.id === action.segmentId);
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
+	const marked = from && to ? phaseFallout(from, to, old, action) : null;
+	if (marked) action = { ...action, successRate: { ...action.successRate!, phases: marked.phases } };
+	const asked = fallout || marked ? falloutMessage(old, action, to!, fallout, marked) : null;
+	const items = [...(fallout?.items ?? []), ...(marked?.items ?? [])];
 	const settled = settleRecords(flow, old, action, options.records);
 	action = settled.action;
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
 	if (!answered(options) && settled.ask) {
-		const head = fallout ? `${falloutMessage(old, action, to!, fallout)}；` : `動作「${actionLabel(old)}」`;
-		return askRecords(head, { ...settled.ask, items: [...(fallout?.items ?? []), ...settled.ask.items] });
+		const head = asked ? `${asked}；` : `動作「${actionLabel(old)}」`;
+		return askRecords(head, { ...settled.ask, items: [...items, ...settled.ask.items] });
 	}
-	if (fallout && !answered(options)) return needsConfirm(falloutMessage(old, action, to!, fallout), fallout.items);
+	if (asked && !answered(options)) return needsConfirm(asked, items);
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
 }
 
 /**
  * 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換了人或任務角色是「…換了人或任務角色，會拿掉 N 個拍點」，
  * 兩個都有就「…變短、換了人或任務角色，…」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。
+ * 也動到環節標的拍時接在後面：「…拍點，讓 1 個環節變沒標拍」；只動到標的拍是「…變短，會切短 1 個環節標的拍」。
  */
 function falloutMessage(
 	old: Action,
 	action: Action,
 	to: Segment,
-	{ removed, cut, orphaned }: { removed: number; cut: number; orphaned: number }
+	cues: { removed: number; cut: number; orphaned: number } | null,
+	phases: { cut: number; unmarked: number } | null
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
-	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${removed} 個拍點`;
-	const why = [action.length < old.length ? '變短' : '', orphaned ? '換了人或任務角色' : ''].filter(Boolean);
-	const parts = [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean);
-	return `${label}${why.join('、')}，會${parts.join('、')}拍點`;
+	if (!cues) return `${label}${to.kind !== 'music' ? '換到口號段' : '變短'}，會${phaseFalloutText(phases!)}`;
+	const more = phases ? `，${phaseFalloutText(phases)}` : '';
+	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${cues.removed} 個拍點${more}`;
+	const why = [action.length < old.length ? '變短' : '', cues.orphaned ? '換了人或任務角色' : ''].filter(Boolean);
+	const parts = [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean);
+	return `${label}${why.join('、')}，會${parts.join('、')}拍點${more}`;
 }
 
 /** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。要確認時跟 updateAction 一樣。 */

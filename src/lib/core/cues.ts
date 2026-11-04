@@ -218,7 +218,7 @@ export function cueText(kind: CueKind, word: string, span: string, who: string):
 }
 
 /** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
-function rangeText(segment: Segment, action: Action, at: number, len: number): string {
+export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
 	const first = atText(segment, action.start + at);
 	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
 }

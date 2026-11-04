@@ -81,6 +81,8 @@ export {
 export { addPhase, deletePhase, movePhase, updatePhase } from './phases';
 export { ACTION_COLORS, PHASE_COLORS } from './colors';
 export type { PhaseChange } from './phases';
+export { clearPhaseBeats, markPhaseBeats, phaseSpan } from './phase-beats';
+export type { BeatsTarget } from './phase-beats';
 
 export { completionPercent, dailyTable, percent, rateCounts, successPercent, weakestPhase } from './rates';
 export type { DailyTable, RateCounts, Tally, WholeTally } from './rates';
