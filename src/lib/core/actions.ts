@@ -296,6 +296,11 @@ export function raisedAt(flow: Flow, sec: number): string[] {
 		.map((m) => m.id);
 }
 
+/** 流程裡換掉這個動作（照 id 找）。 */
+export function replaceAction(flow: Flow, action: Action): Flow {
+	return { ...flow, actions: flow.actions.map((a) => (a.id === action.id ? action : a)) };
+}
+
 /** 給教練看的動作名字：「技巧·Lib」；沒取名就只有大類。 */
 export function actionLabel(action: Action): string {
 	const category = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label ?? '';

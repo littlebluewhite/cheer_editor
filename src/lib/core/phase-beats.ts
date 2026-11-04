@@ -1,7 +1,7 @@
 // 環節標的拍：在拍點格子選幾拍標給一個環節（標拍）、拿掉一段拍裡的標的拍（清標的拍）。
 // 標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走。環節之間不能重疊；標拍、清標的拍都不動拍點和紀錄。
 
-import type { Action } from './actions';
+import { replaceAction, type Action } from './actions';
 import { rangeText, type Cue } from './cues';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
@@ -140,5 +140,5 @@ function withPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult 
 	const changed = fitRecords({ ...action, successRate: { ...action.successRate!, phases: ordered(phases) } });
 	const problem = successRateProblem(segment, changed);
 	if (problem) return blocked(problem);
-	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === action.id ? changed : a)) });
+	return ok(replaceAction(flow, changed));
 }

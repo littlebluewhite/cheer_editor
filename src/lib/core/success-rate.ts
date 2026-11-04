@@ -1,7 +1,7 @@
 // 成功率：動作打開「記成功率」後，分成幾個環節（上法、中段…），動作裡的人分組。
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad）。
 
-import { ACTION_CATEGORIES, actionLabel, type Action, type ActionCategory } from './actions';
+import { ACTION_CATEGORIES, actionLabel, replaceAction, type Action, type ActionCategory } from './actions';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
@@ -137,9 +137,11 @@ export function enableSuccessRate(flow: Flow, actionId: string): CommandResult {
 	const phases = prefill.map((p, i) => ({ id: issued.ids[i], ...p }));
 	const members =
 		action.category === 'pyramid' ? action.members.map((m) => ({ ...m, squad: 1 })) : action.members;
-	return withAction(
-		{ ...flow, lastIds: issued.lastIds },
-		{ ...action, members, successRate: { phases, records: [] } }
+	return ok(
+		replaceAction(
+			{ ...flow, lastIds: issued.lastIds },
+			{ ...action, members, successRate: { phases, records: [] } }
+		)
 	);
 }
 
@@ -152,7 +154,7 @@ export function disableSuccessRate(flow: Flow, actionId: string, options: Confir
 		return needsConfirm(`關掉記成功率會清掉動作「${actionLabel(action)}」的 ${count} 次紀錄`, []);
 	}
 	const { successRate: _, ...rest } = action;
-	return withAction(flow, { ...rest, members: action.members.map(({ squad: _, ...m }) => m) });
+	return ok(replaceAction(flow, { ...rest, members: action.members.map(({ squad: _, ...m }) => m) }));
 }
 
 /**
@@ -179,7 +181,7 @@ export function setSquad(
 	const problem = successRateProblem(segment, settled.action);
 	if (problem) return blocked(problem);
 	if (settled.ask && !answered(options)) return askRecords(`動作「${actionLabel(action)}」`, settled.ask);
-	return withAction(flow, settled.action);
+	return ok(replaceAction(flow, settled.action));
 }
 
 /** 改動作會動到紀錄時要問教練的事。message 前面還要接「動作「…」」；choose 是有得選保留或清掉。 */
@@ -370,8 +372,4 @@ export function squadName(flow: Flow, action: Action, squad: number): string {
 /** 流程裡全部環節的 id（發新 id 時用）。 */
 export function allPhaseIds(flow: Flow): string[] {
 	return flow.actions.flatMap((a) => a.successRate?.phases.map((p) => p.id) ?? []);
-}
-
-function withAction(flow: Flow, action: Action): CommandResult {
-	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === action.id ? action : a)) });
 }

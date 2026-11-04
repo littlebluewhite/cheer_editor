@@ -1,7 +1,7 @@
 // 改環節清單：加環節、改環節、刪環節、換順序（成功率區的環節清單用）。
 // 環節存在動作的成功率設定裡（Action.successRate.phases），有順序；標了拍的照時間排在前面，沒標拍的才能換順序。
 
-import type { Action } from './actions';
+import { replaceAction, type Action } from './actions';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
@@ -103,5 +103,5 @@ function withPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult 
 	const changed = fitRecords({ ...action, successRate: { ...action.successRate!, phases } });
 	const problem = successRateProblem(segment, changed);
 	if (problem) return blocked(problem);
-	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === action.id ? changed : a)) });
+	return ok(replaceAction(flow, changed));
 }
