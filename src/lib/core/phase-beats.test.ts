@@ -14,15 +14,10 @@ import {
 	updateAction,
 	updateSegment,
 	type ActionCategory,
-	type CommandResult,
 	type Flow,
 	type Phase
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 /**
  * 音樂 s1（4 個八拍）、口號段 s2；隊員小美（上層）、小A。

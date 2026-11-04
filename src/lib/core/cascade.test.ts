@@ -11,16 +11,11 @@ import {
 	formationTimes,
 	insertFormation,
 	updateSegment,
-	type CommandResult,
 	type Flow,
 	type NewActionInput,
 	type Walk
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 /**
  * 音樂 1（150 BPM、4 個八拍 = 64 個半拍，一個半拍 0.2 秒）→ 口號 1（10 秒）；隊員小A、小B、小C。

@@ -1,20 +1,17 @@
 <script lang="ts">
 	// 練習畫面（上方列切到「練習」時蓋掉編排）：上面選頁和日期，下面是那一頁。
 	// 兩頁「記錄」「總表」共用日期；日期由編輯頁管（切回編排再切回來還在，不存進流程檔）。
-	import type { Flow } from '#lib/core';
+	// 流程從 session 拿；記一次、刪掉上一次、記一次全上交給 session 的「記」（不算復原的一步）。
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
 
 	interface Props {
-		flow: Flow;
 		/** 記在哪一天（YYYY-MM-DD），預設今天；可以改（練完補打）。 */
 		date: string;
 		ondate: (date: string) => void;
-		/** 紀錄改了（記一次、刪掉上一次）：不算復原的一步。 */
-		onrecord: (flow: Flow) => void;
 	}
 
-	let { flow, date, ondate, onrecord }: Props = $props();
+	let { date, ondate }: Props = $props();
 
 	const PAGES = [
 		{ key: 'record', label: '記錄' },
@@ -39,9 +36,9 @@
 		<label class="date">日期<input type="date" value={date} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
 	{#if page === 'record'}
-		<RecordPage {flow} {date} {onrecord} />
+		<RecordPage {date} />
 	{:else}
-		<SummaryPage {flow} {date} {onrecord} />
+		<SummaryPage {date} />
 	{/if}
 </section>
 

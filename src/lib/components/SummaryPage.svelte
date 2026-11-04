@@ -19,21 +19,21 @@
 		type Period,
 		type PracticeKind,
 		type RateCounts,
-		type Tally,
-		type Flow
+		type Tally
 	} from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 
 	interface Props {
-		flow: Flow;
 		/** 選的日期（YYYY-MM-DD），跟記錄頁共用；期間從這天往回算。 */
 		date: string;
-		/** 記了一次全上：不算復原的一步。 */
-		onrecord: (flow: Flow) => void;
 	}
 
-	let { flow, date, onrecord }: Props = $props();
+	let { date }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
@@ -87,7 +87,7 @@
 
 <div class="summary">
 	{#if recording}
-		<RunThroughSheet {flow} {date} {onrecord} onclose={() => (recording = false)} />
+		<RunThroughSheet {date} onclose={() => (recording = false)} />
 	{:else}
 		<div class="filters">
 			<div class="seg" role="group" aria-label="期間">

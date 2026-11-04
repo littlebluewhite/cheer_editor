@@ -14,25 +14,15 @@ import {
 	type Flow
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import type { FileSaver } from '#lib/file/save.js';
+import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
 
 function setup() {
-	const saves: Uint8Array[] = [];
-	const saver: FileSaver = {
-		async save(bytes) {
-			saves.push(bytes);
-			return 'saved';
-		}
-	};
-	render(Page, {
-		createEngine: () => createFakeEngine(),
-		createSaver: () => saver,
-		decode: async () => ({ durationSec: 30, peaks: [] })
-	});
+	const { saver, saves } = fakeSaver();
+	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
 	return saves;
 }
 

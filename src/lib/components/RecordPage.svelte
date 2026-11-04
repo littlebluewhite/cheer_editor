@@ -10,23 +10,23 @@
 		recordableActions,
 		successPercent,
 		weakestPhase,
-		type Action,
-		type Flow
+		type Action
 	} from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
-		flow: Flow;
 		/** 記在哪一天（YYYY-MM-DD）。 */
 		date: string;
-		/** 紀錄改了：不算復原的一步。 */
-		onrecord: (flow: Flow) => void;
 	}
 
-	let { flow, date, onrecord }: Props = $props();
+	let { date }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	const actions = $derived(recordableActions(flow));
 	/** 選到的動作；沒選過、或它不在清單上了（復原掉了）就是第一個。 */
@@ -44,7 +44,7 @@
 </script>
 
 {#if recording}
-	<RunThroughSheet {flow} {date} {onrecord} onclose={() => (recording = false)} />
+	<RunThroughSheet {date} onclose={() => (recording = false)} />
 {:else if action}
 	<button type="button" class="primary run" onclick={() => (recording = true)}>＋ 記一次全上</button>
 	<div class="record">
@@ -64,7 +64,7 @@
 		<div class="cards">
 			{#key action.id}
 				{#each attemptWhos(flow, action) as w (w.who)}
-					<AttemptCard {flow} {action} who={w.who} name={w.name} {date} {onrecord} />
+					<AttemptCard {action} who={w.who} name={w.name} {date} />
 				{:else}
 					<p class="empty">這個動作還沒有分組：到編排選這個動作，在場上選人，用場地下面的分組浮動列分組。</p>
 				{/each}
@@ -72,7 +72,7 @@
 		</div>
 		<div class="rates">
 			{#key action.id}
-				<DailyRates {flow} {action} />
+				<DailyRates {action} />
 			{/key}
 		</div>
 	</div>
