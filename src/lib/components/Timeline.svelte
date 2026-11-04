@@ -12,7 +12,7 @@
 		type SegmentKind,
 		type TimePosition
 	} from '#lib/core';
-	import type { PendingConfirm } from './form';
+	import type { Ask } from './ask.svelte';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
@@ -38,12 +38,8 @@
 		onmoveformation?: (formationId: string, to: TimePosition) => void;
 		selectedActionId?: string | null;
 		onselectaction?: (actionId: string) => void;
-		/** 拖色條改好的流程。 */
-		onchange?: (flow: Flow) => void;
-		/** 拖色條被擋（已還原）的原因。 */
-		onblocked?: (message: string) => void;
-		/** 拉色條會切到拍點，要教練確認。 */
-		onconfirm?: (ask: PendingConfirm) => void;
+		/** 拖色條、走位條送指令的地方（頁面那一個問題）。 */
+		ask: Ask;
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
 		/** 多選開著（點泳道名字是加選）。 */
@@ -64,9 +60,7 @@
 		onmoveformation = () => {},
 		selectedActionId = null,
 		onselectaction = () => {},
-		onchange = () => {},
-		onblocked = () => {},
-		onconfirm = () => {},
+		ask,
 		selectedMemberIds = [],
 		onselectmembers = () => {},
 		multi = false
@@ -267,9 +261,7 @@
 			pxPerSec={px}
 			{selectedActionId}
 			{onselectaction}
-			{onchange}
-			{onblocked}
-			{onconfirm}
+			{ask}
 			{selectedMemberIds}
 			{onselectmembers}
 			{multi}

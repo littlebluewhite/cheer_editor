@@ -1,8 +1,7 @@
 <script lang="ts">
 	// 問教練 module 的畫法：給 ask（一個問題實例）就畫它的問題。要確認是「確定／取消」，
 	// 要選是「保留舊紀錄／清掉重算／取消」；按了交給 ask 帶著回答再送一次。
-	// 還沒換上問教練的地方（和「還沒存，要丟掉嗎」：清單是空的，確定鈕換字）先用舊的寫法：
-	// 給 message、items、onconfirm、oncancel，給了 onkeep 就是兩個選擇的確認。
+	// 「還沒存，要丟掉嗎」不是流程核心的問題：直接給 message、items、確定鈕的字、onconfirm、oncancel。
 	import type { Ask } from './ask.svelte';
 
 	type Props =
@@ -13,14 +12,13 @@
 				items: string[];
 				onconfirm: () => void;
 				oncancel: () => void;
-				confirmLabel?: string;
-				onkeep?: () => void;
+				confirmLabel: string;
 			};
 
 	let props: Props = $props();
 
 	const view = $derived.by(() => {
-		if (!props.ask) return { ...props, confirmLabel: props.confirmLabel ?? '確定刪除' };
+		if (!props.ask) return { ...props, onkeep: undefined };
 		const ask = props.ask;
 		const q = ask.question;
 		return {
