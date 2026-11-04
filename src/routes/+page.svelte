@@ -40,7 +40,7 @@
 	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
 		loadInspectorWidth,
@@ -55,6 +55,7 @@
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
+	import type CueGrid from '#lib/components/CueGrid.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
 	import Field, { fullView } from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
@@ -80,6 +81,13 @@
 		draftStore?: DraftStore;
 		/** 編輯 session（流程和復原）；測試放一個帶好流程的進來，再讀它的流程。沒給就自己建。 */
 		session?: EditorSession;
+		// 螢幕座標換算（ADR 0002）：預設用瀏覽器算；jsdom 不算版面，測試換成假的。往下傳給場地、拍點格子、段設定的波形。
+		/** 場地：指標位置換成場地公尺。 */
+		toMeters?: ComponentProps<typeof Field>['toMeters'];
+		/** 拍點格子：指標位置對到的格子。 */
+		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
+		/** 段設定的波形：滑鼠位置換成音樂檔的秒數。 */
+		waveXToSec?: ComponentProps<typeof SegmentSettings>['waveXToSec'];
 	}
 
 	let {
@@ -87,7 +95,10 @@
 		createSaver = createBrowserSaver,
 		decode = decodeAudio,
 		draftStore = createIndexedDbDraftStore(),
-		session = new EditorSession()
+		session = new EditorSession(),
+		toMeters,
+		cellAt,
+		waveXToSec
 	}: Props = $props();
 	// session 一開始給了就不換：放進 context 的就是這一個。
 	// svelte-ignore state_referenced_locally
@@ -726,6 +737,7 @@
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
 				{playheadSec}
+				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
 				badges={squadBadges}
@@ -862,7 +874,7 @@
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
 				<MemberPicker {playheadSec} />
 				<WalkForm {playheadSec} />
-				<ActionForm {playheadSec} />
+				<ActionForm {playheadSec} {cellAt} />
 			</div>
 			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
 				<MemberPanel />
@@ -917,6 +929,7 @@
 			segmentId={openSegmentId}
 			{audios}
 			{decode}
+			{waveXToSec}
 			onaudioload={(id, audio) => (audios[id] = audio)}
 			onpreview={(id) => flow && preview(flow, id)}
 			onclose={() => (openSegmentId = null)}

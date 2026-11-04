@@ -102,6 +102,17 @@ describe('拍點格子上標環節', () => {
 		expect(gridPhases()).toEqual(['環節 上法 延伸 1-1 到 1-5', '環節 下法 搖籃 2-5 到 2-8']);
 	});
 
+	it('在格子上按住拖過幾拍選好，再加環節', async () => {
+		await open(plainFlow());
+		// 換掉的座標換算（editorPage 給的）：clientX 是第幾格，1-1 是 0。
+		const cell = grid().getByRole('button', { name: '2-5' });
+		await fireEvent.pointerDown(cell, { clientX: 12, clientY: 0, button: 0, pointerId: 1 });
+		await fireEvent.pointerMove(cell, { clientX: 15, clientY: 0, pointerId: 1 });
+		await fireEvent.pointerUp(cell, { clientX: 15, clientY: 0, pointerId: 1 });
+		await addNew('dismount', '搖籃');
+		expect(gridPhases()).toEqual(['環節 下法 搖籃 2-5 到 2-8']);
+	});
+
 	it('清掉：只清到一部分的變短；拍清光的環節不見了', async () => {
 		await open();
 		await select('2-1', '2-8');
