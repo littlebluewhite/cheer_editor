@@ -278,6 +278,7 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
 	for (const p of phases) {
 		if (!PHASE_KINDS.some((k) => k.key === p.kind)) return '沒有這種環節';
+		if (p.name !== p.name.trim()) return '環節的名字頭尾不能有空白';
 		if (p.color !== undefined && !PHASE_COLORS.some((c) => c.value === p.color)) {
 			return '環節的顏色只能挑辨識色或石板灰';
 		}
@@ -311,6 +312,7 @@ export function attemptProblem(action: Action, attempt: NewAttempt): string | nu
 	if (!isDate(attempt.date)) return '日期要寫成 2026-11-04 這樣';
 	if (!PRACTICE_KINDS.includes(attempt.practice)) return '沒有這種練法';
 	if ((attempt.practice === 'runThrough') !== (attempt.runThroughId !== undefined)) return '全上要帶同一次全上的 id';
+	if (attempt.practice === 'runThrough' && !attempt.whole) return '全上記的每一次都算整個做';
 	return null;
 }
 
