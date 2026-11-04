@@ -1,4 +1,4 @@
-// 環節標的拍：在拍點格子選幾拍標給一個環節（標拍）、拿掉一段拍裡的環節標記（清標的拍）。
+// 環節標的拍：在拍點格子選幾拍標給一個環節（標拍）、拿掉一段拍裡的標的拍（清標的拍）。
 // 標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走。環節之間不能重疊；標拍、清標的拍都不動拍點和紀錄。
 
 import type { Action } from './actions';
@@ -47,7 +47,7 @@ export function markPhaseBeats(
 	return r.kind === 'ok' ? { ...r, id } : r;
 }
 
-/** 清標的拍：拿掉 [from, to) 半拍裡的環節標記，被切到的照標拍的規則切短。環節和紀錄留著。 */
+/** 清標的拍：拿掉 [from, to) 半拍裡的標的拍，被切到的照標拍的規則切短。環節和紀錄留著。 */
 export function clearPhaseBeats(flow: Flow, actionId: string, from: number, to: number): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
 	if (!action) return blocked('找不到這個動作');

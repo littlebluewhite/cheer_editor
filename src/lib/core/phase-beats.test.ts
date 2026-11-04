@@ -160,7 +160,7 @@ describe('標拍擋下來的情況', () => {
 });
 
 describe('清標的拍', () => {
-	it('拿掉那段拍裡的環節標記，被切到的切短；環節和紀錄留著', () => {
+	it('拿掉那段拍裡的標的拍，被切到的切短；環節和紀錄留著', () => {
 		const attempt = { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks: { p5: '✗' } } as const;
 		let flow = flowOf(recordAttempt(example(), 'x1', attempt));
 		flow = flowOf(clearPhaseBeats(flow, 'x1', 16, 28));
