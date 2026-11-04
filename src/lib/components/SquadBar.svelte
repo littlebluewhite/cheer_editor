@@ -2,58 +2,41 @@
 	// 分組浮動列：選到有環節、要分組的動作時，在場地下面（「正面／裁判」那一排）出現。只在編排畫面。
 	// 有選人：按號碼放進那一組、「＋」放進新的一組、「✕」拿出組；選的人一次改好，是一個復原步驟。
 	// 沒選人：按號碼把那一組的人全選起來。「n 人沒分組」把沒分組的人選起來。
-	// 電腦上選好人按數字鍵 1–9、0 也一樣（頁面收鍵盤，呼叫 press）。
-	import { setSquad, squadColor, squadsOf, type Action, type ConfirmOption, type Flow } from '#lib/core';
+	// 電腦上選好人按數字鍵 1–9、0 也一樣：都叫 session 的 squadKey（頁面收鍵盤）。
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { squadColor, squadsOf, type Action } from '#lib/core';
 	import ConfirmList from './ConfirmList.svelte';
-	import { Ask } from './ask.svelte';
 
 	interface Props {
-		flow: Flow;
+		/** 選到的、要分組的動作（session.groupingAction）。 */
 		action: Action;
-		/** 選到的人（可能有不在這個動作裡的人）。 */
-		selected: string[];
-		onchange: (flow: Flow) => void;
-		onselectmembers: (ids: string[]) => void;
 	}
 
-	let { flow, action, selected, onchange, onselectmembers }: Props = $props();
+	let { action }: Props = $props();
+
+	const session = getEditorSession();
+	/** 換組會動到紀錄時，等教練回答（保留舊紀錄／清掉重算，或確定）。 */
+	const ask = session.squadAsk;
 
 	/** 現在有的組，1 到 n 不跳號（核心會補號）。 */
 	const groups = $derived(squadsOf(action));
 	const next = $derived(groups.length + 1);
+	const selected = $derived(session.selectedMemberIds);
 	const picked = $derived(selected.filter((id) => action.members.some((m) => m.memberId === id)));
 	const outside = $derived(selected.length - picked.length);
 	const loose = $derived(action.members.filter((m) => m.squad === undefined).map((m) => m.memberId));
 	const outsideText = $derived(outside ? `另外 ${outside} 人不在這個動作，不算` : '');
 
-	/** 換組會動到紀錄時，等教練回答（保留舊紀錄／清掉重算，或確定）。 */
-	const ask = new Ask((f) => onchange(f));
-
-	// 換動作時，沒回答的問題和原因收掉。
+	// 換動作時（和剛出現時），沒回答的問題和原因收掉。
 	$effect(() => {
 		void action.id;
 		ask.clear();
 	});
 
-	/** 把選的人放進第 n 組（null = 拿出組）。 */
-	function assign(squad: number | null) {
-		if (!picked.length) return;
-		const ids = picked;
-		const id = action.id;
-		ask.send((o: ConfirmOption = {}) => setSquad(flow, id, ids, squad, o));
-	}
-
 	/** 號碼：有選人是放進那一組；沒選人是把那一組的人選起來。 */
 	function number(n: number) {
-		if (picked.length) assign(n);
-		else onselectmembers(action.members.filter((m) => m.squad === n).map((m) => m.memberId));
-	}
-
-	/** 數字鍵：1–9 放進那一組（最多到新的一組），0 拿出組。沒選人不算。回傳有沒有用掉這個鍵。 */
-	export function press(n: number): boolean {
-		if (!picked.length || n > next) return false;
-		assign(n === 0 ? null : n);
-		return true;
+		if (picked.length) session.squadKey(n);
+		else session.selectMembers(action.members.filter((m) => m.squad === n).map((m) => m.memberId));
 	}
 </script>
 
@@ -77,12 +60,12 @@
 			onclick={() => number(n)}>{n}</button
 		>
 	{/each}
-	<button type="button" class="num new" aria-label="放進新的一組" disabled={!picked.length} onclick={() => assign(next)}
+	<button type="button" class="num new" aria-label="放進新的一組" disabled={!picked.length} onclick={() => session.squadKey(next)}
 		>＋</button
 	>
-	<button type="button" class="num out" aria-label="拿出組" disabled={!picked.length} onclick={() => assign(null)}>✕</button>
+	<button type="button" class="num out" aria-label="拿出組" disabled={!picked.length} onclick={() => session.squadKey(0)}>✕</button>
 	{#if loose.length}
-		<button type="button" class="link" onclick={() => onselectmembers(loose)}>{loose.length} 人沒分組</button>
+		<button type="button" class="link" onclick={() => session.selectMembers(loose)}>{loose.length} 人沒分組</button>
 	{/if}
 	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 </div>
