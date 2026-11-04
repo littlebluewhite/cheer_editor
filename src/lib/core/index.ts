@@ -78,8 +78,19 @@ export {
 	recordAttempt
 } from './records';
 
-export { completionPercent, dailyTable, percent, rateCounts, successPercent, weakestPhase } from './rates';
-export type { DailyTable, RateCounts, Tally, WholeTally } from './rates';
+export {
+	cellDetail,
+	completionPercent,
+	dailyTable,
+	percent,
+	periodRange,
+	rateBand,
+	rateCounts,
+	rateTable,
+	successPercent,
+	weakestPhase
+} from './rates';
+export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
 
 export { eightCountRows } from './eight-count';
 export type {
