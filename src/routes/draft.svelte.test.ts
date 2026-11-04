@@ -14,31 +14,14 @@ import {
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { DraftStore } from '#lib/file/draft.js';
+import { fakeDecode, fakeDraftStore, fakeSaver } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
-
-function fakeDraftStore(initial: Uint8Array | null = null) {
-	const state = { bytes: initial };
-	const store: DraftStore = {
-		async load() {
-			return state.bytes;
-		},
-		async save(bytes) {
-			state.bytes = bytes;
-		},
-		async clear() {
-			state.bytes = null;
-		}
-	};
-	return { store, state };
-}
-
-const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
 
 function setup(draftStore: DraftStore) {
 	render(Page, {
 		createEngine: () => createFakeEngine(),
-		createSaver: () => ({ save: async () => 'saved' as const }),
+		createSaver: () => fakeSaver().saver,
 		decode: fakeDecode,
 		draftStore
 	});
