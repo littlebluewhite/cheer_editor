@@ -1,7 +1,7 @@
 // 成功率的紀錄：記一次、刪掉上一次，和復原、重做時把現在的紀錄帶過去。
 // 紀錄存在動作的成功率設定裡（Action.successRate.records），一次一筆，照記的先後排。
 
-import { actionSeconds, type Action } from './actions';
+import { actionLabel, actionSeconds, type Action } from './actions';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, ok, type CommandResult } from './result';
@@ -11,6 +11,7 @@ import {
 	perPerson,
 	squadName,
 	type Attempt,
+	type Mark,
 	type NewAttempt
 } from './success-rate';
 
@@ -29,6 +30,37 @@ export function recordAttempt(
 	const attempt = { id: issued.ids[0], ...input };
 	const records = [...action.successRate.records, attempt];
 	return { kind: 'ok', flow: withRecords({ ...flow, lastIds: issued.lastIds }, action, records), id: attempt.id };
+}
+
+/** 記一次全上裡的一格：一個動作、一組（騰翻、跳躍是一個人）的記號。 */
+export interface RunThroughMarks {
+	actionId: string;
+	who: number | string;
+	marks: Record<string, Mark>;
+}
+
+/**
+ * 記一次全上：給日期和每個動作、每組的記號（按了「沒做」的動作不給），一次存成很多次，
+ * 都標成全上、帶同一個全上 id（刪了也不重用，例：r2）、都是整個做。每一次照記一次的規則檢查，有一次不對就一次都不存。
+ */
+export function recordRunThrough(
+	flow: Flow,
+	date: string,
+	entries: RunThroughMarks[]
+): CommandResult<{ runThroughId: string }> {
+	if (entries.length === 0) return blocked('每個動作都沒做，沒有要存的');
+	const runIds = flow.actions.flatMap((a) => a.successRate?.records.flatMap((r) => r.runThroughId ?? []) ?? []);
+	const run = freshIds('r', 1, flow.lastIds, runIds);
+	const runThroughId = run.ids[0];
+	let next: Flow = { ...flow, lastIds: run.lastIds };
+	for (const { actionId, who, marks } of entries) {
+		const action = next.actions.find((a) => a.id === actionId);
+		if (!action) return blocked('找不到這個動作');
+		const r = recordAttempt(next, actionId, { date, who, practice: 'runThrough', runThroughId, whole: true, marks });
+		if (r.kind !== 'ok') return blocked(`${actionLabel(action)}：${r.message}`);
+		next = r.flow;
+	}
+	return { kind: 'ok', flow: next, runThroughId };
 }
 
 /** 刪掉上一次：拿掉這組（騰翻、跳躍是這個人）在這一天最後記的一次。 */

@@ -7,7 +7,11 @@ import {
 	createFlow,
 	dailyTable,
 	enableSuccessRate,
+	cellDetail,
 	percent,
+	periodRange,
+	rateBand,
+	rateTable,
 	recordAttempt,
 	setSquad,
 	successPercent,
@@ -186,5 +190,129 @@ describe('最弱的環節', () => {
 
 	it('那天沒紀錄就沒有', () => {
 		expect(weakestPhase(lib(attempt('✗··')), '2026-11-05')).toBeNull();
+	});
+});
+
+/** 照順序記好這些次，回傳整個流程（總表要組的名字）。 */
+function recorded(...attempts: NewAttempt[]): Flow {
+	let flow = sample();
+	for (const a of attempts) flow = flowOf(recordAttempt(flow, 'x1', a));
+	return flow;
+}
+const x1 = (flow: Flow) => flow.actions.find((a) => a.id === 'x1')!;
+const runThrough = (id: string) => ({ practice: 'runThrough' as const, runThroughId: id });
+
+describe('成功率表', () => {
+	it('一欄一組（寫組的名字），每格是這組這個環節的次數；合計把每組的次數加起來', () => {
+		const flow = recorded(attempt('✓✓△'), attempt('✓✗·'), attempt('✗··', { who: 2 }), attempt('✓✓✓', { who: 2 }));
+		const table = rateTable(flow, x1(flow));
+		expect(table.columns.map((c) => [c.who, c.name])).toEqual([
+			[1, '第 1 組 小美'],
+			[2, '第 2 組 小芳']
+		]);
+		expect(table.columns[0].phases).toEqual({ p1: tally(2, 0, 0), p2: tally(1, 0, 1), p3: tally(0, 1, 0) });
+		expect(table.columns[0].whole).toEqual({ clean: 0, whole: 2 });
+		expect(table.columns[1].phases).toEqual({ p1: tally(1, 0, 1), p2: tally(1, 0, 0), p3: tally(1, 0, 0) });
+		expect(table.columns[1].whole).toEqual({ clean: 1, whole: 2 });
+		expect(table.total.phases).toEqual({ p1: tally(3, 0, 1), p2: tally(2, 0, 1), p3: tally(1, 1, 0) });
+		expect(table.total.whole).toEqual({ clean: 1, whole: 4 });
+	});
+
+	it('合計加次數、不平均百分比：第 1 組 1 次 ✓、第 2 組 3 次 ✗ → 25%', () => {
+		const flow = recorded(attempt('✓··'), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }));
+		expect(successPercent(rateTable(flow, x1(flow)).total.phases.p1)).toBe(25);
+	});
+
+	it('日期範圍：from 到 to（都算進去）以外的天不算', () => {
+		const flow = recorded(
+			attempt('✗··', { date: '2026-10-28' }),
+			attempt('✓··', { date: '2026-10-29' }),
+			attempt('✓··', { date: '2026-11-04' }),
+			attempt('✗··', { date: '2026-11-05' })
+		);
+		const table = rateTable(flow, x1(flow), { from: '2026-10-29', to: '2026-11-04' });
+		expect(table.total.phases.p1).toEqual(tally(2, 0, 0));
+		expect(rateTable(flow, x1(flow)).total.phases.p1).toEqual(tally(2, 0, 2));
+	});
+
+	it('練法：只看分段練、只看全上', () => {
+		const flow = recorded(attempt('✓··'), attempt('✗✗✗', runThrough('r1')), attempt('△✓✓', runThrough('r2')));
+		expect(rateTable(flow, x1(flow), { practice: 'drill' }).total.phases.p1).toEqual(tally(1, 0, 0));
+		const run = rateTable(flow, x1(flow), { practice: 'runThrough' }).total;
+		expect(run.phases.p1).toEqual(tally(0, 1, 1));
+		expect(run.whole).toEqual({ clean: 0, whole: 2 });
+	});
+
+	it('騰翻、跳躍是一欄一個人（照名單順序）', () => {
+		let flow = sample();
+		const members = [
+			{ memberId: 'm3', role: '騰翻' },
+			{ memberId: 'm1', role: '騰翻' }
+		];
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members }));
+		flow = flowOf(enableSuccessRate(flow, 'x2'));
+		const tumbling = () => flow.actions.find((a) => a.id === 'x2')!;
+		const phase = tumbling().successRate!.phases[0].id;
+		const mark = (who: string, m: Mark): NewAttempt => ({ date: '2026-11-04', who, practice: 'drill', whole: true, marks: { [phase]: m } });
+		for (const a of [mark('m1', '✓'), mark('m3', '✗'), mark('m3', '✓')]) flow = flowOf(recordAttempt(flow, 'x2', a));
+		const table = rateTable(flow, tumbling());
+		expect(table.columns.map((c) => [c.who, c.name])).toEqual([
+			['m1', '小美'],
+			['m3', '小B']
+		]);
+		expect(table.columns[1].phases[phase]).toEqual(tally(1, 0, 1));
+		expect(table.total.phases[phase]).toEqual(tally(2, 0, 1));
+	});
+
+	it('沒有紀錄：每格都是 0 次', () => {
+		const flow = recorded();
+		const table = rateTable(flow, x1(flow));
+		expect(table.columns[0].phases.p1).toEqual(none);
+		expect(table.total.whole).toEqual({ clean: 0, whole: 0 });
+	});
+});
+
+describe('期間', () => {
+	it('今天：只有選的那天', () => {
+		expect(periodRange('2026-11-04', 'today')).toEqual({ from: '2026-11-04', to: '2026-11-04' });
+	});
+
+	it('最近 7 天：從選的日期往回算，連那天共 7 天（跨月、跨年）', () => {
+		expect(periodRange('2026-11-04', 'week')).toEqual({ from: '2026-10-29', to: '2026-11-04' });
+		expect(periodRange('2027-01-03', 'week')).toEqual({ from: '2026-12-28', to: '2027-01-03' });
+	});
+
+	it('全部：不限日期', () => {
+		expect(periodRange('2026-11-04', 'all')).toEqual({});
+	});
+});
+
+describe('一格的明細', () => {
+	it('這組、這個環節每天的每一次記號，照日期排，標出全上的那幾次；別組、沒打這個環節的不算', () => {
+		const flow = recorded(
+			attempt('✓✓✗', { date: '2026-11-05' }),
+			attempt('✓✗·', { date: '2026-11-04' }),
+			attempt('✗··', { date: '2026-11-04', who: 2 }),
+			attempt('✓✓△', { date: '2026-11-04', ...runThrough('r1') }),
+			attempt('✓··', { date: '2026-11-04', whole: false })
+		);
+		expect(cellDetail(x1(flow), 1, 'p3')).toEqual([
+			{ date: '2026-11-04', marks: [{ mark: '△', runThrough: true }] },
+			{ date: '2026-11-05', marks: [{ mark: '✗', runThrough: false }] }
+		]);
+		expect(cellDetail(x1(flow), 1, 'p1').map((d) => d.marks.map((m) => m.mark).join(''))).toEqual(['✓✓✓', '✓']);
+		expect(cellDetail(x1(flow), 2, 'p2')).toEqual([]);
+	});
+});
+
+describe('格子的顏色', () => {
+	it('90% 以上綠、75–89% 黃、75% 以下紅；沒有紀錄沒有顏色', () => {
+		expect(rateBand(100)).toBe('good');
+		expect(rateBand(90)).toBe('good');
+		expect(rateBand(89)).toBe('fair');
+		expect(rateBand(75)).toBe('fair');
+		expect(rateBand(74)).toBe('poor');
+		expect(rateBand(0)).toBe('poor');
+		expect(rateBand(null)).toBeNull();
 	});
 });

@@ -1,8 +1,9 @@
 <script lang="ts">
 	// 練習畫面（上方列切到「練習」時蓋掉編排）：上面選頁和日期，下面是那一頁。
-	// 現在只有「記錄」一頁；日期由編輯頁管（切回編排再切回來還在，不存進流程檔）。
+	// 兩頁「記錄」「總表」共用日期；日期由編輯頁管（切回編排再切回來還在，不存進流程檔）。
 	import type { Flow } from '#lib/core';
 	import RecordPage from './RecordPage.svelte';
+	import SummaryPage from './SummaryPage.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -15,7 +16,10 @@
 
 	let { flow, date, ondate, onrecord }: Props = $props();
 
-	const PAGES = [{ key: 'record', label: '記錄' }] as const;
+	const PAGES = [
+		{ key: 'record', label: '記錄' },
+		{ key: 'summary', label: '總表' }
+	] as const;
 	let page = $state<(typeof PAGES)[number]['key']>('record');
 
 	/** 日期框清空了就回到原來的日期（一次一定要有日期）。 */
@@ -36,6 +40,8 @@
 	</header>
 	{#if page === 'record'}
 		<RecordPage {flow} {date} {onrecord} />
+	{:else}
+		<SummaryPage {flow} {date} {onrecord} />
 	{/if}
 </section>
 
