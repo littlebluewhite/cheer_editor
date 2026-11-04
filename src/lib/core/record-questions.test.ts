@@ -19,7 +19,7 @@ import { flowOf, ratedSample } from './test-flows';
 function sample(): Flow {
 	let flow = ratedSample();
 	for (const [phaseId, at, len] of [['p1', 0, 2], ['p2', 2, 4], ['p3', 6, 2]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId }, at, len));
+		flow = flowOf(markPhaseBeats(flow, 'x1', phaseId, at, len));
 	}
 	return flow;
 }

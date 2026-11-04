@@ -7,7 +7,8 @@ import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
-import { PHASE_KINDS, PRACTICE_KINDS, successRateProblem, v6RateProblem } from './success-rate';
+import { PHASE_KINDS } from './phase-types';
+import { PRACTICE_KINDS, successRateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
 export const FORMAT_VERSION = 7;

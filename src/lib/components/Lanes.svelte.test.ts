@@ -5,7 +5,7 @@ import {
 	clearPhaseBeats,
 	createFlow,
 	insertFormation,
-	markPhaseBeats,
+	addPhase,
 	placeCue,
 	setMarkers,
 	setPositions,
@@ -597,9 +597,9 @@ describe('色條上的環節', () => {
 	 * 下法（標了 1-7 到 1-8 再清掉，沒標拍）。withCues 時再放 1-1 到 1-2 的 down。
 	 */
 	function phased(withCues = false): Flow {
-		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '延伸' }, 0, 6));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 6, 6));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4));
+		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 6 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 6, len: 6 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '', beats: { at: 12, len: 4 } }));
 		flow = flowOf(clearPhaseBeats(flow, 'x1', 12, 16));
 		return withCues ? flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' })) : flow;
 	}

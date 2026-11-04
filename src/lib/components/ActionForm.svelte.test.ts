@@ -3,7 +3,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	markPhaseBeats,
+	addPhase,
 	placeCue,
 	setSquad,
 	updateSegment,
@@ -402,7 +402,7 @@ describe('動作表單：成功率', () => {
 
 	/** 動作加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
 	const rated = (flow: Flow, actionId = 'x1') =>
-		flowOf(markPhaseBeats(flow, actionId, { kind: 'whole', name: '' }, 0, 8));
+		flowOf(addPhase(flow, actionId, { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
 
 	/** 畫面跟著 session 的流程更新，像在編輯頁裡一樣。 */
 	const live = (flow: Flow, actionId: string | null) => setup(flow, actionId);

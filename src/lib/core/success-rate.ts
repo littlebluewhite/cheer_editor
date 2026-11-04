@@ -6,42 +6,7 @@ import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
 import { PHASE_COLORS } from './colors';
-
-/** 環節的種類：上法、中段、轉接、下法、整體。流程檔存英文代號。 */
-export type PhaseKind = 'load' | 'hold' | 'transition' | 'dismount' | 'whole';
-
-export const PHASE_KINDS: { key: PhaseKind; label: string }[] = [
-	{ key: 'load', label: '上法' },
-	{ key: 'hold', label: '中段' },
-	{ key: 'transition', label: '轉接' },
-	{ key: 'dismount', label: '下法' },
-	{ key: 'whole', label: '整體' }
-];
-
-/**
- * 種類的顏色（環節沒挑辨識色時用）：上法青、中段石板灰、轉接金、下法紫、整體灰。
- * 避開拍子 down 的藍（#1f5fbf）、up 的綠（#2b7a2f），環節和拍子畫在一起時才分得出來。
- */
-export const PHASE_KIND_COLORS: Record<PhaseKind, string> = {
-	load: '#00796b',
-	hold: '#475569',
-	transition: '#8d6200',
-	dismount: '#7b1fa2',
-	whole: '#6b7280'
-};
-
-/** 環節：動作裡要分開算成功率的一部分。 */
-export interface Phase {
-	/** 整個流程裡不重複，刪了也不重用（紀錄跨復原時靠 id 對回環節），例：p3。 */
-	id: string;
-	kind: PhaseKind;
-	/** 教練取的名字，例：延伸；可以是空的。 */
-	name: string;
-	/** 辨識色（#rrggbb）；沒有就用種類的顏色。 */
-	color?: string;
-	/** 標的拍：跟拍點一樣，從動作開始算第幾個半拍、幾個半拍長。沒有就是沒標拍。 */
-	beats?: { at: number; len: number };
-}
+import { PHASE_KINDS, type Phase } from './phase-types';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
@@ -85,11 +50,6 @@ export interface SuccessRate {
 	records: Attempt[];
 }
 
-/** 環節在畫面上的顏色：挑了辨識色用辨識色，沒有就用種類的顏色。 */
-export function phaseColor(phase: Phase): string {
-	return phase.color ?? PHASE_KIND_COLORS[phase.kind];
-}
-
 /** 騰翻、跳躍是自己做的：不分組，每個人自己算。 */
 const PER_PERSON = new Set<ActionCategory>(['tumbling', 'jump']);
 
@@ -101,11 +61,6 @@ export function perPerson(category: ActionCategory): boolean {
 /** 這個動作要分組：有環節，而且不是騰翻、跳躍。 */
 export function groupsPeople(action: Action): boolean {
 	return !!action.successRate?.phases.length && !perPerson(action.category);
-}
-
-/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。已經記成功率的動作不動。 */
-export function firstSquad(action: Action): Action {
-	return action.successRate || perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
 }
 
 /** 動作裡現在有人的組，照號碼排。 */
@@ -299,7 +254,7 @@ function isDate(text: string): boolean {
 }
 
 /** 環節標的拍的規則：只有音樂段能標、從音樂的整拍開始、佔整數拍（至少 1 拍）、在動作裡面（動作被拖半拍時，標的拍跟著挪去對齊整拍）。 */
-function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
+export function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
 	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
 	if (!Number.isInteger(at) || !Number.isInteger(len)) return '環節要落在半拍上';
 	if ((action.start + at) % HALF_BEATS_PER_BEAT !== 0) return '環節要標在整拍上';
