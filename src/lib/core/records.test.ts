@@ -23,7 +23,8 @@ import {
 	writeFlowFile,
 	type CommandResult,
 	type Flow,
-	type NewAttempt
+	type NewAttempt,
+	type RunThroughMarks
 } from './index';
 
 function flowOf(r: CommandResult): Flow {
@@ -397,11 +398,11 @@ describe('記一次：擋下來的情況', () => {
 describe('記一次全上', () => {
 	const date = '2026-11-04';
 	/** Lib 第 1 組全 ✓、第 2 組下法 ✗；騰翻小美 ✓、小A ✗。 */
-	const sheet = () => [
-		{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✓', p3: '✓' } as const },
-		{ actionId: 'x1', who: 2, marks: { p1: '✓', p2: '△', p3: '✗' } as const },
-		{ actionId: 'x2', who: 'm1', marks: { p4: '✓' } as const },
-		{ actionId: 'x2', who: 'm2', marks: { p4: '✗' } as const }
+	const sheet = (): RunThroughMarks[] => [
+		{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✓', p3: '✓' } },
+		{ actionId: 'x1', who: 2, marks: { p1: '✓', p2: '△', p3: '✗' } },
+		{ actionId: 'x2', who: 'm1', marks: { p4: '✓' } },
+		{ actionId: 'x2', who: 'm2', marks: { p4: '✗' } }
 	];
 
 	it('一次存成很多次：都標成全上、帶同一個全上 id、整個做，日期是給的那天', () => {
@@ -435,7 +436,7 @@ describe('記一次全上', () => {
 	});
 
 	it('有一次不守記一次的規則：擋下來寫出是哪個動作，一次都不存', () => {
-		const bad = [...sheet().slice(0, 1), { actionId: 'x2', who: 'm3', marks: { p4: '✓' } as const }];
+		const bad = [...sheet().slice(0, 1), { actionId: 'x2', who: 'm3', marks: { p4: '✓' } } as const];
 		expect(recordRunThrough(sample(), date, bad)).toEqual({ kind: 'blocked', message: '騰翻：這個隊員不在動作裡' });
 		expect(recordRunThrough(sample(), '11/4', sheet())).toMatchObject({ kind: 'blocked' });
 		expect(recordRunThrough(sample(), date, [{ actionId: 'x9', who: 1, marks: { p1: '✓' } }])).toMatchObject({
