@@ -64,7 +64,8 @@ export {
 	perPerson,
 	phaseColor,
 	setSquad,
-	squadName
+	squadName,
+	squadsOf
 } from './success-rate';
 export type { Attempt, Mark, NewAttempt, Phase, PhaseKind, PracticeKind, SuccessRate } from './success-rate';
 

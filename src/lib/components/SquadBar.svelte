@@ -3,7 +3,7 @@
 	// 有選人：按號碼放進那一組、「＋」放進新的一組、「✕」拿出組；選的人一次改好，是一個復原步驟。
 	// 沒選人：按號碼把那一組的人全選起來。「n 人沒分組」把沒分組的人選起來。
 	// 電腦上選好人按數字鍵 1–9、0 也一樣（頁面收鍵盤，呼叫 press）。
-	import { setSquad, squadColor, type Action, type CommandResult, type ConfirmOption, type Flow } from '#lib/core';
+	import { setSquad, squadColor, squadsOf, type Action, type CommandResult, type ConfirmOption, type Flow } from '#lib/core';
 	import ConfirmList from './ConfirmList.svelte';
 
 	interface Props {
@@ -18,9 +18,7 @@
 	let { flow, action, selected, onchange, onselectmembers }: Props = $props();
 
 	/** 現在有的組，1 到 n 不跳號（核心會補號）。 */
-	const groups = $derived(
-		[...new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])))].sort((a, b) => a - b)
-	);
+	const groups = $derived(squadsOf(action));
 	const next = $derived(groups.length + 1);
 	const picked = $derived(selected.filter((id) => action.members.some((m) => m.memberId === id)));
 	const outside = $derived(selected.length - picked.length);
