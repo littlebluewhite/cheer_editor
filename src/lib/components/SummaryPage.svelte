@@ -11,6 +11,7 @@
 		completionPercent,
 		percent,
 		periodRange,
+		phaseLabel,
 		rateBand,
 		rateTable,
 		recordableActions,
@@ -22,7 +23,6 @@
 		type Flow
 	} from '#lib/core';
 	import { actionColor } from './category-colors.js';
-	import { phaseLabel } from './phase-label.js';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 
 	interface Props {

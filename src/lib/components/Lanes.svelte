@@ -23,6 +23,7 @@
 		moveAction,
 		nearestPosition,
 		phaseColor,
+		phaseLabel,
 		resizeAction,
 		setWalks,
 		toSeconds,
@@ -38,7 +39,6 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import type { PendingConfirm } from './form';
 	import { isLongMarker } from './marker';
-	import { phaseLabel } from './phase-label';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {

@@ -7,11 +7,11 @@
 		dailyTable,
 		percent,
 		perPerson,
+		phaseLabel,
 		successPercent,
 		type Action,
 		type Flow
 	} from '#lib/core';
-	import { phaseLabel } from './phase-label.js';
 
 	interface Props {
 		flow: Flow;

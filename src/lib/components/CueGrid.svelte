@@ -12,7 +12,6 @@
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { touchOnUnpicked } from './pointer';
-	import { phaseLabel } from './phase-label';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -21,6 +20,7 @@
 		HALF_BEATS_PER_EIGHT as EIGHT,
 		MOTION_WORDS,
 		PHASE_KINDS,
+		phaseLabel,
 		STEP_WORDS,
 		atText,
 		clearCues,

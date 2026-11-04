@@ -11,6 +11,7 @@
 		deletePhase,
 		movePhase,
 		phaseColor,
+		phaseLabel,
 		phaseSpan,
 		updatePhase,
 		type Action,
@@ -21,7 +22,6 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import { applyResult } from './form';
 	import Icon from './Icon.svelte';
-	import { phaseLabel } from './phase-label';
 
 	interface Props {
 		flow: Flow;

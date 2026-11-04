@@ -80,7 +80,7 @@ export {
 } from './records';
 export type { RunThroughMarks } from './records';
 
-export { addPhase, deletePhase, movePhase, updatePhase } from './phases';
+export { addPhase, deletePhase, movePhase, phaseLabel, updatePhase } from './phases';
 export { ACTION_COLORS, PHASE_COLORS } from './colors';
 export type { PhaseChange } from './phases';
 export { clearPhaseBeats, markPhaseBeats, phaseSpan } from './phase-beats';

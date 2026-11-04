@@ -7,6 +7,7 @@
 		actionLabel,
 		attemptWhos,
 		MARKS,
+		phaseLabel,
 		recordableActions,
 		recordRunThrough,
 		type Flow,
@@ -14,7 +15,6 @@
 		type RunThroughMarks
 	} from '#lib/core';
 	import { actionColor } from './category-colors.js';
-	import { phaseLabel } from './phase-label.js';
 
 	interface Props {
 		flow: Flow;

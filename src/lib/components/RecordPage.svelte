@@ -5,6 +5,7 @@
 	import {
 		actionLabel,
 		attemptWhos,
+		phaseLabel,
 		recordableActions,
 		successPercent,
 		weakestPhase,
@@ -14,7 +15,6 @@
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import { actionColor } from './category-colors.js';
-	import { phaseLabel } from './phase-label.js';
 
 	interface Props {
 		flow: Flow;

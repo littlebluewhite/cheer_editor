@@ -4,15 +4,14 @@
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。
 	import {
 		MARKS,
-		PHASE_KINDS,
 		attemptText,
 		deleteLastAttempt,
 		phaseColor,
+		phaseLabel,
 		recordAttempt,
 		type Action,
 		type Flow,
-		type Mark,
-		type Phase
+		type Mark
 	} from '#lib/core';
 
 	interface Props {
@@ -44,11 +43,6 @@
 	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
 	/** 這組在這一天的每一次，照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
-
-	const phaseLabel = (p: Phase) => {
-		const kind = PHASE_KINDS.find((k) => k.key === p.kind)?.label ?? '';
-		return p.name ? `${kind} ${p.name}` : kind;
-	};
 
 	function setWhole(value: boolean) {
 		whole = value;
