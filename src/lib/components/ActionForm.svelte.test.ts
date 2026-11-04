@@ -11,8 +11,12 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/core/test-flows.js';
+import { EditorSession } from '#lib/editor-session.svelte.js';
+import { recordedFlow } from '#lib/test-fakes.js';
+import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { describe, expect, it } from 'vitest';
 import ActionForm from './ActionForm.svelte';
 
 /** 打開某個人的任務角色選單，點一個角色（空字串是沒有任務）。 */
@@ -40,16 +44,18 @@ function sample(): Flow {
 	return flowOf(updateSegment(flow, 's1', { eights: 2, lastBeats: 8 }));
 }
 
-function setup(flow: Flow, actionId: string | null, playheadSec = 0) {
-	const onchange = vi.fn();
-	const onselect = vi.fn();
-	render(ActionForm, { flow, playheadSec, actionId, onchange, onselect });
-	return { onchange, onselect };
+/** 放一個帶著 flow 的 session（選了 actionId 和 selected 的人）進 context，畫動作表單；回傳 session。 */
+function setup(flow: Flow, actionId: string | null, playheadSec = 0, selected: string[] = []) {
+	const session = new EditorSession(flow);
+	session.selectAction(actionId);
+	session.selectMembers(selected);
+	render(TestSession, { props: { session, component: ActionForm, props: { playheadSec } } });
+	return session;
 }
 
 describe('動作表單：新增', () => {
 	it('從播放頭開始，填大類、名稱、長度、人和任務角色、備註，按新增', async () => {
-		const { onchange, onselect } = setup(sample(), null, 1);
+		const session = setup(sample(), null, 1);
 		const start = screen.getByLabelText('開始') as HTMLInputElement;
 		expect(start.value).toBe('1-3&');
 
@@ -61,8 +67,8 @@ describe('動作表單：新增', () => {
 		await fireEvent.input(screen.getByLabelText('備註'), { target: { value: '慢' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 
-		expect(onchange).toHaveBeenCalledOnce();
-		expect(onchange.mock.calls[0][0].actions).toEqual([
+		expect(session.canUndo).toBe(true);
+		expect(session.flow!.actions).toEqual([
 			{
 				id: 'x1',
 				segmentId: 's1',
@@ -74,7 +80,7 @@ describe('動作表單：新增', () => {
 				members: [{ memberId: 'm2', role: '中層' }]
 			}
 		]);
-		expect(onselect).toHaveBeenCalledWith('x1');
+		expect(session.selectedActionId).toBe('x1');
 	});
 
 	it('卡片標「新動作」、換了底色；標題就是名稱輸入框', () => {
@@ -88,18 +94,18 @@ describe('動作表單：新增', () => {
 	});
 
 	it('新增時挑辨識色，新動作帶著它', async () => {
-		const { onchange } = setup(sample(), null);
+		const session = setup(sample(), null);
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.click(screen.getByRole('radio', { name: '藍' }));
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(onchange.mock.calls[0][0].actions[0].color).toBe('#1565c0');
+		expect(session.flow!.actions[0].color).toBe('#1565c0');
 	});
 
 	it('沒有人就被流程核心擋下，顯示原因', async () => {
-		const { onchange } = setup(sample(), null);
+		const session = setup(sample(), null);
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(screen.getByRole('alert').textContent).toBe('一個動作至少要有 1 個人');
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 	});
 
 	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
@@ -131,7 +137,7 @@ describe('動作表單：改選到的動作', () => {
 	}
 
 	it('改了馬上生效；撞到同一個人就顯示原因並還原', async () => {
-		const { onchange } = setup(withTwo(), 'x1');
+		const session = setup(withTwo(), 'x1');
 		const length = screen.getByLabelText('長度') as HTMLInputElement;
 		expect(length.value).toBe('4');
 
@@ -139,10 +145,10 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.change(length);
 		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡，已還原');
 		expect(length.value).toBe('4');
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 
 		await pickRole('小A', '');
-		expect(onchange.mock.calls[0][0].actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
 	it('名字底色照性別、旁邊標底層或上層；驚嘆號說明顏色和快捷鍵', () => {
@@ -165,7 +171,7 @@ describe('動作表單：改選到的動作', () => {
 
 	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
-		const { onchange } = setup(flow, 'x1');
+		const session = setup(flow, 'x1');
 		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
 		const pickB = screen.getByRole('combobox', { name: '小B 的任務角色' });
 		// 選單打開時按鍵也是直接選好、關掉選單，不用再按確認。
@@ -173,64 +179,64 @@ describe('動作表單：改選到的動作', () => {
 		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4');
 		pickA.focus();
 		await fireEvent.keyDown(pickA, { key: '4' });
-		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
+		expect(session.flow!.actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
 		expect(screen.queryByRole('listbox')).toBeNull();
 		expect(pickA.textContent).toBe('上層');
 		expect(document.activeElement).toBe(pickB);
 		// 選單關著也可以。
 		await fireEvent.keyDown(pickB, { key: '1' });
-		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: '底層' });
+		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: '底層' });
 		await fireEvent.keyDown(pickB, { key: 'Backspace' });
-		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
 	});
 
 	it('任務角色選單用滑鼠點也可以；最後一項是自訂任務角色', async () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
-		const { onchange } = setup(flow, 'x1');
+		const session = setup(flow, 'x1');
 		await pickRole('小A', '主底');
-		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '主底' });
+		expect(session.flow!.actions[0].members[0]).toEqual({ memberId: 'm1', role: '主底' });
 		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
 		await fireEvent.click(screen.getByRole('option', { name: '＋自訂任務角色…' }));
 		expect(screen.getByRole('dialog')).toBeTruthy();
 	});
 
 	it('標題是動作的名稱，可以直接改', async () => {
-		const { onchange } = setup(withTwo(), 'x2');
+		const session = setup(withTwo(), 'x2');
 		const name = screen.getByLabelText('名稱') as HTMLInputElement;
 		expect(name.value).toBe('B');
 		expect(name.closest('header')).not.toBeNull();
 		await fireEvent.input(name, { target: { value: 'Ext' } });
 		await fireEvent.change(name);
-		expect(onchange.mock.calls[0][0].actions[1].name).toBe('Ext');
+		expect(session.flow!.actions[1].name).toBe('Ext');
 	});
 
 	it('挑辨識色馬上生效；挑「大類的顏色」就拿掉', async () => {
-		const { onchange } = setup(withTwo(), 'x1');
+		const session = setup(withTwo(), 'x1');
 		expect((screen.getByRole('radio', { name: '大類的顏色' }) as HTMLInputElement).checked).toBe(true);
 		await fireEvent.click(screen.getByRole('radio', { name: '紫' }));
-		const colored = onchange.mock.calls[0][0];
+		const colored = session.flow!;
 		expect(colored.actions[0].color).toBe('#7b1fa2');
 
 		document.body.innerHTML = '';
 		const again = setup(colored, 'x1');
 		expect((screen.getByRole('radio', { name: '紫' }) as HTMLInputElement).checked).toBe(true);
 		await fireEvent.click(screen.getByRole('radio', { name: '大類的顏色' }));
-		expect('color' in again.onchange.mock.calls[0][0].actions[0]).toBe(false);
+		expect('color' in again.flow!.actions[0]).toBe(false);
 	});
 
 	it('刪除動作', async () => {
-		const { onchange, onselect } = setup(withTwo(), 'x2');
+		const session = setup(withTwo(), 'x2');
 		await fireEvent.click(screen.getByRole('button', { name: '刪除動作' }));
-		expect(onchange.mock.calls[0][0].actions.map((a: { id: string }) => a.id)).toEqual(['x1']);
-		expect(onselect).toHaveBeenCalledWith(null);
+		expect(session.flow!.actions.map((a) => a.id)).toEqual(['x1']);
+		expect(session.selectedActionId).toBe(null);
 	});
 
 	it('卡片外面的「＋ 開新的動作表單」取消選取，回到新增', async () => {
-		const { onselect } = setup(withTwo(), 'x1');
+		const session = setup(withTwo(), 'x1');
 		const button = screen.getByRole('button', { name: '開新的動作表單' });
 		expect(button.closest('section')).toBeNull();
 		await fireEvent.click(button);
-		expect(onselect).toHaveBeenCalledWith(null);
+		expect(session.selectedActionId).toBe(null);
 	});
 });
 
@@ -253,48 +259,27 @@ describe('動作表單：選人', () => {
 		);
 	}
 
-	function setupSel(
-		flow: Flow,
-		actionId: string | null,
-		selectedMemberIds: string[],
-		playheadSec = 0
-	) {
-		const onchange = vi.fn();
-		const onselect = vi.fn();
-		const onselectmembers = vi.fn<(ids: string[]) => void>();
-		render(ActionForm, {
-			flow,
-			playheadSec,
-			actionId,
-			onchange,
-			onselect,
-			selectedMemberIds,
-			onselectmembers
-		});
-		return { onchange, onselect, onselectmembers };
-	}
-
 	const people = () =>
 		[...document.querySelectorAll('.people li .who > .name')].map((el) => el.textContent);
 
 	it('在播放頭新增動作時，人就是選到的人；加人、移出也改選取', async () => {
-		const { onchange, onselectmembers } = setupSel(sample(), null, ['m2']);
+		const session = setup(sample(), null, 0, ['m2']);
 		expect(people()).toEqual(['小B']);
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
-		expect(onselectmembers).toHaveBeenLastCalledWith(['m2', 'm1']);
+		expect(session.selectedMemberIds).toEqual(['m2', 'm1']);
 		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
-		expect(onselectmembers).toHaveBeenLastCalledWith(['m1']);
+		expect(session.selectedMemberIds).toEqual(['m1']);
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(onchange.mock.calls[0][0].actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
 	it('新增時「從別的動作複製人」連任務角色一起帶，也改選取', async () => {
-		const { onchange, onselectmembers } = setupSel(withLib(), null, [], 2);
+		const session = setup(withLib(), null, 2);
 		await fireEvent.change(screen.getByLabelText('從別的動作複製人'), { target: { value: 'x1' } });
-		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm2']);
+		expect(session.selectedMemberIds).toEqual(['m1', 'm2']);
 		expect(screen.getByRole('combobox', { name: '小B 的任務角色' }).textContent).toBe('主底');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(onchange.mock.calls[0][0].actions[1].members).toEqual([
+		expect(session.flow!.actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層' },
 			{ memberId: 'm2', role: '主底' }
 		]);
@@ -313,11 +298,11 @@ describe('動作表單：選人', () => {
 				members: [{ memberId: 'm2', role: null }]
 			})
 		);
-		const { onchange } = setupSel(flow, 'x2', []);
+		const session = setup(flow, 'x2');
 		const copy = screen.getByLabelText('從別的動作複製人') as HTMLSelectElement;
 		expect([...copy.options].map((o) => o.value)).toEqual(['', 'x1']);
 		await fireEvent.change(copy, { target: { value: 'x1' } });
-		expect(onchange.mock.calls[0][0].actions[1].members).toEqual([
+		expect(session.flow!.actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層' },
 			{ memberId: 'm2', role: '主底' }
 		]);
@@ -329,7 +314,7 @@ describe('動作表單：拍點格子', () => {
 
 	it('格子對齊音樂的整拍：動作從 1-2& 開始、2 拍，只有 1-3 整拍在動作裡；放的 down 從 1-3 開始', async () => {
 		const flow = flowOf(addAction(sample(), { ...base, segmentId: 's1', start: 3, length: 4 }));
-		const { onchange } = setup(flow, 'x1');
+		const session = setup(flow, 'x1');
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
 		const enabled = grid
 			.getAllByRole('button', { name: /^1-\d$/ })
@@ -342,7 +327,7 @@ describe('動作表單：拍點格子', () => {
 		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
 		expect(grid.getByText(/^選了/).textContent).toBe('選了 1-3・1 拍');
 		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
-		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
+		expect(session.flow!.actions[0].cues).toEqual([
 			{ kind: 'count', at: 1, len: 2, word: 'down', who: null }
 		]);
 	});
@@ -366,8 +351,7 @@ describe('動作表單：拍點格子', () => {
 	it('變短要先問；等確認時流程變了、按確定被擋：顯示原因並還原', async () => {
 		let flow = flowOf(addAction(sample(), { ...base, segmentId: 's1', start: 0, length: 8 }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 4, word: 'down' }));
-		const onchange = vi.fn();
-		const { rerender } = render(ActionForm, { flow, playheadSec: 0, actionId: 'x1', onchange, onselect: vi.fn() });
+		const session = setup(flow, 'x1');
 		const length = screen.getByLabelText('長度') as HTMLInputElement;
 		scrolled.length = 0;
 		await fireEvent.input(length, { target: { value: '2' } });
@@ -379,13 +363,15 @@ describe('動作表單：拍點格子', () => {
 
 		// 等的時候別的地方把小A 放進 1-2 開始的另一個動作。
 		const other = { ...flow.actions[0], id: 'x2', name: 'B', start: 2, length: 4, cues: [] };
-		await rerender({ flow: { ...flow, actions: [...flow.actions, other] } });
+		const changed = { ...flow, actions: [...flow.actions, other] };
+		session.change(changed);
+		await tick();
 		await fireEvent.click(screen.getByRole('button', { name: '確定' }));
 
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡，已還原');
 		expect(length.value).toBe('4');
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.flow).toBe(changed);
 	});
 
 	it('口號段的動作沒有格子：寫一句，只有環節那一列', () => {
@@ -418,13 +404,8 @@ describe('動作表單：成功率', () => {
 	const rated = (flow: Flow, actionId = 'x1') =>
 		flowOf(markPhaseBeats(flow, actionId, { kind: 'whole', name: '' }, 0, 8));
 
-	/** 畫面跟著 onchange 送出的流程更新，像在編輯頁裡一樣。 */
-	function live(flow: Flow, actionId: string | null) {
-		const onchange = vi.fn();
-		const { rerender } = render(ActionForm, { flow, playheadSec: 0, actionId, onchange, onselect: vi.fn() });
-		onchange.mockImplementation((f: Flow) => rerender({ flow: f }));
-		return onchange;
-	}
+	/** 畫面跟著 session 的流程更新，像在編輯頁裡一樣。 */
+	const live = (flow: Flow, actionId: string | null) => setup(flow, actionId);
 
 	/** 每個人旁邊的唯讀組標籤（沒有標籤是 null）。 */
 	const squadTags = () =>
@@ -454,9 +435,9 @@ describe('動作表單：成功率', () => {
 	});
 
 	it('「＋加人…」：動作只有一組，新的人進第 1 組（核心放的），旁邊寫「第 1 組」', async () => {
-		const onchange = live(rated(withLib(), 'x2'), 'x2');
+		const session = live(rated(withLib(), 'x2'), 'x2');
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
-		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
+		expect(session.flow!.actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層', squad: 1 },
 			{ memberId: 'm2', role: null, squad: 1 }
 		]);
@@ -466,14 +447,51 @@ describe('動作表單：成功率', () => {
 	it('「從別的動作複製人（連任務角色和組）」連組一起帶', async () => {
 		let flow = flowOf(setSquad(rated(withLib()), 'x1', ['m2'], 2));
 		flow = rated(flow, 'x2');
-		const onchange = live(flow, 'x2');
+		const session = live(flow, 'x2');
 		const copy = screen.getByLabelText('從別的動作複製人') as HTMLSelectElement;
 		expect(copy.options[0].text).toBe('從別的動作複製人（連任務角色和組）…');
 		await fireEvent.change(copy, { target: { value: 'x1' } });
-		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
+		expect(session.flow!.actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層', squad: 1 },
 			{ memberId: 'm2', role: '主底', squad: 2 }
 		]);
 		expect(squadTags()).toEqual(['第 1 組', '第 2 組']);
+	});
+});
+
+describe('動作表單：改人會動到紀錄時（真的 session，好幾步）', () => {
+	/** Lib 有環節：小美、小A 第 1 組（記了 2 次），小芳、小B 第 2 組（記了 1 次）。 */
+	const records = (flow: Flow) => flow.actions[0].successRate!.records.map((t) => t.who);
+	const people = (session: EditorSession) => session.flow!.actions[0].members.map((m) => m.memberId);
+	const dialog = () => screen.getByRole('alertdialog');
+	const press = (name: string) => fireEvent.click(within(dialog()).getByRole('button', { name }));
+
+	it('移出小美：先問，按取消什麼都沒改；再移出一次，選保留舊紀錄，人少了、紀錄留著；可以復原', async () => {
+		const flow = recordedFlow();
+		const session = setup(flow, 'x1');
+
+		await fireEvent.click(screen.getByRole('button', { name: '把 小美 移出這個動作' }));
+		expect(within(dialog()).getAllByRole('button').map((b) => b.textContent)).toEqual(['保留舊紀錄', '清掉重算', '取消']);
+		await press('取消');
+		expect(session.flow).toBe(flow);
+		expect(screen.getByRole('button', { name: '把 小美 移出這個動作' })).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '把 小美 移出這個動作' }));
+		await press('保留舊紀錄');
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(people(session)).toEqual(['m2', 'm3', 'm4']);
+		expect(records(session.flow!)).toEqual(records(flow));
+		expect(screen.queryByRole('button', { name: '把 小美 移出這個動作' })).toBeNull();
+
+		session.undo();
+		expect(people(session)).toEqual(['m1', 'm2', 'm3', 'm4']);
+	});
+
+	it('移出小美選清掉重算：第 1 組的紀錄清掉，第 2 組的留著', async () => {
+		const session = setup(recordedFlow(), 'x1');
+		await fireEvent.click(screen.getByRole('button', { name: '把 小美 移出這個動作' }));
+		await press('清掉重算');
+		expect(people(session)).toEqual(['m2', 'm3', 'm4']);
+		expect(records(session.flow!)).toHaveLength(1);
 	});
 });

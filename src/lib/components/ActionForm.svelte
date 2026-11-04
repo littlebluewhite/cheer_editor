@@ -7,6 +7,7 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	import { untrack } from 'svelte';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		ACTION_CATEGORIES,
 		actionLabel,
@@ -29,7 +30,6 @@
 		type ActionCategory,
 		type ActionMember,
 		type ConfirmOption,
-		type Flow,
 		type NewActionInput
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
@@ -41,27 +41,17 @@
 	import RolePicker, { roleKey } from './RolePicker.svelte';
 
 	interface Props {
-		flow: Flow;
 		/** 播放頭，全域秒數。新動作從這裡開始。 */
 		playheadSec: number;
-		/** 選到的動作；null = 新增。 */
-		actionId: string | null;
-		onchange: (flow: Flow) => void;
-		onselect: (actionId: string | null) => void;
-		/** 選到的人；新增時就是新動作的人。 */
-		selectedMemberIds?: string[];
-		onselectmembers?: (memberIds: string[]) => void;
 	}
 
-	let {
-		flow,
-		playheadSec,
-		actionId,
-		onchange,
-		onselect,
-		selectedMemberIds = [],
-		onselectmembers = () => {}
-	}: Props = $props();
+	let { playheadSec }: Props = $props();
+
+	// 流程、選到的動作（null = 新增）、選到的人（新增時就是新動作的人）都從 session 拿。
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
+	const actionId = $derived(session.selectedActionId);
+	const selectedMemberIds = $derived(session.selectedMemberIds);
 
 	interface Draft {
 		category: ActionCategory;
@@ -107,7 +97,7 @@
 
 	let draft = $state<Draft>(blank());
 	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
-	const ask = new Ask((f) => onchange(f));
+	const ask = new Ask((f) => session.change(f));
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -181,7 +171,7 @@
 	function add() {
 		const input = toInput();
 		ask.send(() => (typeof input === 'string' ? notParsed(input) : addAction(flow, input)), {
-			done: (r) => onselect(r.id)
+			done: (r) => session.selectAction(r.id)
 		});
 	}
 
@@ -199,7 +189,7 @@
 	function remove() {
 		if (!action) return;
 		const id = action.id;
-		ask.send((o: ConfirmOption = {}) => deleteAction(flow, id, o), { done: () => onselect(null) });
+		ask.send((o: ConfirmOption = {}) => deleteAction(flow, id, o), { done: () => session.selectAction(null) });
 	}
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
@@ -212,7 +202,7 @@
 	/** 人改了：改動作就馬上生效；新增時改選取。 */
 	function membersChanged() {
 		if (action) changed();
-		else onselectmembers(draft.members.map((m) => m.memberId));
+		else session.selectMembers(draft.members.map((m) => m.memberId));
 	}
 
 	function addMember(select: HTMLSelectElement) {
@@ -247,7 +237,7 @@
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
-	<button type="button" class="new" onclick={() => onselect(null)}><Icon name="plus" size={14} />開新的動作表單</button>
+	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
 {/if}
 
 <section class="action-form" class:creating={!action} style:--cat={actionColor(draft)}>
@@ -397,7 +387,7 @@
 		</label>
 
 		{#if action}
-			<CueGrid {flow} {action} {onchange} />
+			<CueGrid {action} />
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
 		{/if}
@@ -415,7 +405,7 @@
 </section>
 
 {#if glossaryOpen}
-	<RoleGlossary {flow} {onchange} onclose={() => (glossaryOpen = false)} />
+	<RoleGlossary onclose={() => (glossaryOpen = false)} />
 {/if}
 
 <style>

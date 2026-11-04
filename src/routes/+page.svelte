@@ -904,15 +904,7 @@
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
 				<MemberPicker {flow} {playheadSec} selected={session.selectedMemberIds} onselect={selectMembers} />
 				<WalkForm {flow} {playheadSec} selectedMemberIds={session.selectedMemberIds} onchange={change} />
-				<ActionForm
-					{flow}
-					{playheadSec}
-					actionId={session.selectedActionId}
-					onchange={change}
-					onselect={(id) => session.selectAction(id)}
-					selectedMemberIds={session.selectedMemberIds}
-					onselectmembers={selectMembers}
-				/>
+				<ActionForm {playheadSec} />
 			</div>
 			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
 				<MemberPanel {flow} onchange={change} />
