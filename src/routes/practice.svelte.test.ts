@@ -1,4 +1,4 @@
-// 頁面：練習畫面的「記錄」頁（記分段練）。流程在核心裡做好再開檔（同 success-rate.svelte.test.ts）。
+// 頁面：練習畫面的「記錄」頁（記分段練）。流程在核心裡做好，放一個帶著它的 session 進頁面，再讀 session 的流程。
 // 之後的票（每天的表、總表…）可以在這個檔再加 describe，用一樣的 practiceFlow() 和小工具。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -18,23 +18,12 @@ import {
 	type Mark,
 	type NewAttempt
 } from '#lib/core';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
+import { editorPage, openFile, settle } from '#lib/test-fakes.js';
 import { localDate } from '#lib/local-date.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-/** 開編輯頁（假的音訊引擎、假的存檔），回傳存下來的檔。 */
-function setup() {
-	const { saver, saves } = fakeSaver();
-	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
-	return saves;
-}
-
-/** 等 async 的存檔／開檔跑完。 */
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 function flowOf(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(r.message);
@@ -82,18 +71,12 @@ function practiceFlow(): Flow {
 	return flowOf(markPhaseBeats(flow, 'x3', { kind: 'whole', name: '騰翻' }, 0, 16));
 }
 
-async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
-	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
-	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
-	await settle();
-}
-
-/** 開編輯頁、開 practiceFlow()、切到練習。回傳存下來的檔。 */
+/** 開編輯頁、放 practiceFlow()、切到練習。回傳 session 和存下來的檔。 */
 async function practice() {
-	const saves = setup();
-	await openFile(writeFlowFile(practiceFlow(), {}));
+	const page = editorPage(practiceFlow());
+	render(Page, page.props);
 	await toPractice();
-	return saves;
+	return page;
 }
 
 const toPractice = () => fireEvent.click(screen.getByRole('button', { name: '練習' }));
@@ -111,15 +94,6 @@ function dayRow(who: string): (string | undefined)[] {
 	return list ? within(list).getAllByRole('listitem').map((li) => li.textContent?.trim()) : [];
 }
 const disabled = (button: HTMLElement) => (button as HTMLButtonElement).disabled;
-
-/** 存檔，讀回存下來的流程。 */
-async function saved(saves: Uint8Array[]): Promise<Flow> {
-	await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-	await settle();
-	const r = readFlowFile(saves.at(-1)!);
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
 
 describe('練習：記錄頁記分段練', () => {
 	it('點 ✓ ✓ △ 自動存成一次，卡片下面出現 ✓✓△', async () => {
@@ -151,10 +125,10 @@ describe('練習：記錄頁記分段練', () => {
 	});
 
 	it('整個做卻跳過前面的環節：存成只練幾個環節，不算進整次', async () => {
-		const saves = await practice();
+		const { session } = await practice();
 		await tap('第 1 組 小美', '下法', '成功');
 		expect(dayRow('第 1 組 小美')).toEqual(['··✓']);
-		const flow = await saved(saves);
+		const flow = session.flow!;
 		expect(flow.actions[0].successRate?.records.map((r) => [r.whole, r.marks])).toEqual([[false, { p3: '✓' }]]);
 	});
 
@@ -168,7 +142,7 @@ describe('練習：記錄頁記分段練', () => {
 	});
 
 	it('只練幾個環節：點選要練的，沒選的按鈕變灰；點完選的就存', async () => {
-		const saves = await practice();
+		const { session } = await practice();
 		const who = '第 1 組 小美';
 		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
 		await fireEvent.click(card(who).getByRole('checkbox', { name: '上法' }));
@@ -183,7 +157,7 @@ describe('練習：記錄頁記分段練', () => {
 		await tap(who, '上法', '失敗');
 		expect(dayRow(who)).toEqual(['✓·△', '✗··']);
 
-		const flow = await saved(saves);
+		const flow = session.flow!;
 		expect(flow.actions[0].successRate?.records.map((r) => [r.whole, r.marks])).toEqual([
 			[false, { p1: '✓', p3: '△' }],
 			[false, { p1: '✗' }]
@@ -246,12 +220,16 @@ describe('練習：記錄頁記分段練', () => {
 	});
 
 	it('存檔再打開，紀錄還在；日期是今天', async () => {
-		const saves = await practice();
+		const { saves } = await practice();
 		await tap('第 1 組 小美', '上法', '成功');
 		await tap('第 1 組 小美', '中段', '成功');
 		await tap('第 1 組 小美', '下法', '小失誤');
 
-		const flow = await saved(saves);
+		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+		await settle();
+		const r = readFlowFile(saves[0]);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		const flow = r.flow;
 		expect(flow.actions[0].successRate?.records).toEqual([
 			{ id: 't1', date: localDate(), who: 1, practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
 		]);
@@ -267,7 +245,7 @@ describe('練習：記錄頁記分段練', () => {
 	});
 
 	it('日期可以改（練完補打），記在那一天；切到編排再回來還在', async () => {
-		const saves = await practice();
+		const { session } = await practice();
 		await tap('第 1 組 小美', '上法', '失敗');
 		const date = () => screen.getByLabelText('日期') as HTMLInputElement;
 		expect(date().value).toBe(localDate());
@@ -281,7 +259,7 @@ describe('練習：記錄頁記分段練', () => {
 		expect(date().value).toBe('2026-11-01');
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✗·']);
 
-		const flow = await saved(saves);
+		const flow = session.flow!;
 		expect(flow.actions[0].successRate?.records.map((r) => r.date)).toEqual([localDate(), '2026-11-01']);
 	});
 });
@@ -289,8 +267,7 @@ describe('練習：記錄頁記分段練', () => {
 describe('練習：紀錄不進復原', () => {
 	/** 在編排幫拋投的拍點格子選 2-1 到 2-4 加環節「整體 拋投」（復原紀錄多一步），再切到練習。 */
 	async function withOneStep() {
-		const saves = setup();
-		await openFile(writeFlowFile(practiceFlow(), {}));
+		render(Page, editorPage(practiceFlow()).props);
 		await fireEvent.click(document.querySelector('[data-lane="m3"] [data-action-id="x2"]')!);
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
 		await fireEvent.click(grid.getByRole('button', { name: '2-1' }));
@@ -300,7 +277,6 @@ describe('練習：紀錄不進復原', () => {
 		await fireEvent.input(phase.getByRole('textbox', { name: '環節的名字' }), { target: { value: '拋投' } });
 		await fireEvent.click(phase.getByRole('button', { name: '加入環節' }));
 		await toPractice();
-		return saves;
 	}
 	const listed = () =>
 		within(screen.getByRole('list', { name: '記成功率的動作' }))
@@ -338,8 +314,7 @@ describe('練習：紀錄不進復原', () => {
 	});
 
 	it('練習時按 Delete 不會刪掉編排裡選到的動作', async () => {
-		setup();
-		await openFile(writeFlowFile(practiceFlow(), {}));
+		render(Page, editorPage(practiceFlow()).props);
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
 		await toPractice();
 		await fireEvent.keyDown(window, { key: 'Delete' });
@@ -445,8 +420,7 @@ describe('練習：總表', () => {
 
 	/** 開 summaryFlow()、切到練習、日期改成 2026-11-04、切到總表。 */
 	async function summary() {
-		setup();
-		await openFile(writeFlowFile(summaryFlow(), {}));
+		render(Page, editorPage(summaryFlow()).props);
 		await toPractice();
 		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: '2026-11-04' } });
 		await fireEvent.click(screen.getByRole('button', { name: '總表' }));

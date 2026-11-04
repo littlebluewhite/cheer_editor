@@ -1,4 +1,4 @@
-// 頁面：在場上幫有環節的動作分組（組號小圓、分組浮動列、數字鍵），存檔再打開還在。流程在核心裡做好再開檔（同 flow-file.svelte.test.ts）。
+// 頁面：在場上幫有環節的動作分組（組號小圓、分組浮動列、數字鍵），存檔再打開還在。流程在核心裡做好，放一個帶著它的 session 進頁面。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import {
@@ -9,25 +9,14 @@ import {
 	markPhaseBeats,
 	setSquad,
 	readFlowFile,
-	writeFlowFile,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
+import { editorPage, openFile, settle } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-function setup() {
-	const { saver, saves } = fakeSaver();
-	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
-	return saves;
-}
-
-/** 等 async 的存檔／開檔跑完。 */
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 function flowOf(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(r.message);
@@ -66,12 +55,6 @@ function phasedFlow(): Flow {
 	return flow;
 }
 
-async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
-	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
-	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
-	await settle();
-}
-
 /** 點泳道上 Lib 的色條，選到它。 */
 const selectLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
 const NAMES = ['小美', '小A', '小芳', '小B'];
@@ -94,9 +77,10 @@ const tagOf = (who: string) =>
 const tags = () => NAMES.map(tagOf);
 const badge = (who: string) => document.querySelector(`[data-member-id="${ids([who])[0]}"] .badge`);
 
+/** 開編輯頁放 flow、選到 Lib；回傳存下來的檔。 */
 async function openPhased(flow = phasedFlow()) {
-	const saves = setup();
-	await openFile(writeFlowFile(flow, {}));
+	const { saves, props } = editorPage(flow);
+	render(Page, props);
 	await selectLib();
 	return saves;
 }
@@ -188,8 +172,7 @@ describe('分組浮動列', () => {
 			addAction(flow, { segmentId: 's1', category, name: '', start: 16, length: 8, note: '', members: [{ memberId: 'm1', role: null }] })
 		);
 		flow = flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '' }, 0, 8));
-		setup();
-		await openFile(writeFlowFile(flow, {}));
+		render(Page, editorPage(flow).props);
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x2"]')!);
 		expect(bar()).toBeNull();
 		expect(badge('小美')).toBeNull();
