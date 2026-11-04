@@ -902,20 +902,12 @@
 				>
 			</div>
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
-				<MemberPicker {flow} {playheadSec} selected={session.selectedMemberIds} onselect={selectMembers} />
-				<WalkForm {flow} {playheadSec} selectedMemberIds={session.selectedMemberIds} onchange={change} />
-				<ActionForm
-					{flow}
-					{playheadSec}
-					actionId={session.selectedActionId}
-					onchange={change}
-					onselect={(id) => session.selectAction(id)}
-					selectedMemberIds={session.selectedMemberIds}
-					onselectmembers={selectMembers}
-				/>
+				<MemberPicker {playheadSec} />
+				<WalkForm {playheadSec} />
+				<ActionForm {playheadSec} />
 			</div>
 			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
-				<MemberPanel {flow} onchange={change} />
+				<MemberPanel />
 			</div>
 		</aside>
 
@@ -982,18 +974,16 @@
 	</div>
 	{#if openSegmentId}
 		<SegmentSettings
-			{flow}
 			segmentId={openSegmentId}
 			{audios}
 			{decode}
-			onchange={change}
 			onaudioload={(id, audio) => (audios[id] = audio)}
 			onpreview={(id) => flow && preview(flow, id)}
 			onclose={() => (openSegmentId = null)}
 		/>
 	{/if}
 	{#if settingsOpen}
-		<FlowSettings {flow} onchange={change} onclose={() => (settingsOpen = false)} />
+		<FlowSettings onclose={() => (settingsOpen = false)} />
 	{/if}
 	{#if printOpen}
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
