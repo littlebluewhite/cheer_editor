@@ -4,6 +4,7 @@
 	// 一欄一組（騰翻、跳躍一欄一個人），最後一欄「合計」。
 	// 格子大字是選的比例（成功率或完成率；整次一律是整次成功率），小字是次數；顏色照 rateBand，數字一定寫出來。
 	// 點一組的格子，右邊滑出這組、這個環節每天的每一次（全上的那幾次有標出來）。
+	// 「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表。
 	import {
 		actionLabel,
 		cellDetail,
@@ -22,14 +23,20 @@
 	} from '#lib/core';
 	import { actionColor } from './category-colors.js';
 	import { phaseLabel } from './phase-label.js';
+	import RunThroughSheet from './RunThroughSheet.svelte';
 
 	interface Props {
 		flow: Flow;
 		/** 選的日期（YYYY-MM-DD），跟記錄頁共用；期間從這天往回算。 */
 		date: string;
+		/** 記了一次全上：不算復原的一步。 */
+		onrecord: (flow: Flow) => void;
 	}
 
-	let { flow, date }: Props = $props();
+	let { flow, date, onrecord }: Props = $props();
+
+	/** 記全上的表打開著。 */
+	let recording = $state(false);
 
 	const PERIODS: { key: Period; label: string }[] = [
 		{ key: 'today', label: '今天' },
@@ -79,79 +86,84 @@
 {/snippet}
 
 <div class="summary">
-	<div class="filters">
-		<div class="seg" role="group" aria-label="期間">
-			<span>期間</span>
-			{#each PERIODS as p (p.key)}
-				<button type="button" aria-pressed={period === p.key} onclick={() => (period = p.key)}>{p.label}</button>
-			{/each}
-		</div>
-		<div class="seg" role="group" aria-label="練法">
-			<span>練法</span>
-			{#each PRACTICES as p (p.key)}
-				<button type="button" aria-pressed={practice === p.key} onclick={() => (practice = p.key)}>{p.label}</button>
-			{/each}
-		</div>
-		<div class="seg" role="group" aria-label="大字看">
-			<span>大字看</span>
-			{#each RATES as r (r.key)}
-				<button type="button" aria-pressed={rate === r.key} onclick={() => (rate = r.key)}>{r.label}</button>
-			{/each}
-		</div>
-	</div>
-
-	{#each blocks as { action, table } (action.id)}
-		{@const phases = action.successRate?.phases ?? []}
-		{@const wholeTotal = wholeCell(table.total)}
-		<section class="block" aria-label={actionLabel(action)}>
-			<h3><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h3>
-			<div class="scroll">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">環節</th>
-							{#each table.columns as col (col.who)}
-								<th scope="col">{col.name}</th>
-							{/each}
-							<th scope="col">合計</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each phases as p (p.id)}
-							{@const total = phaseCell(table.total.phases[p.id])}
-							<tr>
-								<th scope="row">{phaseLabel(p)}</th>
-								{#each table.columns as col (col.who)}
-									{@const c = phaseCell(col.phases[p.id])}
-									<td class={rateBand(c.pct)}>
-										<button
-											type="button"
-											class="cell"
-											aria-label="{col.name} {phaseLabel(p)} {cellText(c)}"
-											aria-pressed={open?.actionId === action.id && open.who === col.who && open.phaseId === p.id}
-											onclick={() => (open = { actionId: action.id, who: col.who, phaseId: p.id })}
-											>{@render number(c)}</button
-										>
-									</td>
-								{/each}
-								<td class="total {rateBand(total.pct) ?? ''}">{@render number(total)}</td>
-							</tr>
-						{/each}
-						<tr class="whole">
-							<th scope="row">整次</th>
-							{#each table.columns as col (col.who)}
-								{@const c = wholeCell(col)}
-								<td class={rateBand(c.pct)}>{@render number(c)}</td>
-							{/each}
-							<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>
-		</section>
+	{#if recording}
+		<RunThroughSheet {flow} {date} {onrecord} onclose={() => (recording = false)} />
 	{:else}
-		<p class="empty">還沒有要記的動作：到編排的動作表單打開「記成功率」，而且至少要有一個環節。</p>
-	{/each}
+		<div class="filters">
+			<div class="seg" role="group" aria-label="期間">
+				<span>期間</span>
+				{#each PERIODS as p (p.key)}
+					<button type="button" aria-pressed={period === p.key} onclick={() => (period = p.key)}>{p.label}</button>
+				{/each}
+			</div>
+			<div class="seg" role="group" aria-label="練法">
+				<span>練法</span>
+				{#each PRACTICES as p (p.key)}
+					<button type="button" aria-pressed={practice === p.key} onclick={() => (practice = p.key)}>{p.label}</button>
+				{/each}
+			</div>
+			<div class="seg" role="group" aria-label="大字看">
+				<span>大字看</span>
+				{#each RATES as r (r.key)}
+					<button type="button" aria-pressed={rate === r.key} onclick={() => (rate = r.key)}>{r.label}</button>
+				{/each}
+			</div>
+			<button type="button" class="primary" onclick={() => ((recording = true), (open = null))}>＋ 記一次全上</button>
+		</div>
+
+		{#each blocks as { action, table } (action.id)}
+			{@const phases = action.successRate?.phases ?? []}
+			{@const wholeTotal = wholeCell(table.total)}
+			<section class="block" aria-label={actionLabel(action)}>
+				<h3><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h3>
+				<div class="scroll">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">環節</th>
+								{#each table.columns as col (col.who)}
+									<th scope="col">{col.name}</th>
+								{/each}
+								<th scope="col">合計</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each phases as p (p.id)}
+								{@const total = phaseCell(table.total.phases[p.id])}
+								<tr>
+									<th scope="row">{phaseLabel(p)}</th>
+									{#each table.columns as col (col.who)}
+										{@const c = phaseCell(col.phases[p.id])}
+										<td class={rateBand(c.pct)}>
+											<button
+												type="button"
+												class="cell"
+												aria-label="{col.name} {phaseLabel(p)} {cellText(c)}"
+												aria-pressed={open?.actionId === action.id && open.who === col.who && open.phaseId === p.id}
+												onclick={() => (open = { actionId: action.id, who: col.who, phaseId: p.id })}
+												>{@render number(c)}</button
+											>
+										</td>
+									{/each}
+									<td class="total {rateBand(total.pct) ?? ''}">{@render number(total)}</td>
+								</tr>
+							{/each}
+							<tr class="whole">
+								<th scope="row">整次</th>
+								{#each table.columns as col (col.who)}
+									{@const c = wholeCell(col)}
+									<td class={rateBand(c.pct)}>{@render number(c)}</td>
+								{/each}
+								<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+		{:else}
+			<p class="empty">還沒有要記的動作：到編排的動作表單打開「記成功率」，而且至少要有一個環節。</p>
+		{/each}
+	{/if}
 </div>
 
 {#if detail}

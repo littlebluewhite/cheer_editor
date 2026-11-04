@@ -41,7 +41,7 @@
 	{#if page === 'record'}
 		<RecordPage {flow} {date} {onrecord} />
 	{:else}
-		<SummaryPage {flow} {date} />
+		<SummaryPage {flow} {date} {onrecord} />
 	{/if}
 </section>
 
