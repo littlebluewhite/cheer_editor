@@ -13,7 +13,7 @@ import {
 	type Flow,
 	type NewAttempt
 } from './index';
-import { flowOf, libSample, squadNumbers } from './test-flows';
+import { flowOf, libSample, squadNumbers } from '../test-flows';
 
 const sample = libSample;
 

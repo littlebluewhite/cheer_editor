@@ -9,7 +9,7 @@ import {
 	updateSegment,
 	type Flow
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /**
  * 音樂 1（a1，150 BPM、第一拍 0.42 秒、1 個八拍 = 3.2 秒）→ 口號 2 秒 →

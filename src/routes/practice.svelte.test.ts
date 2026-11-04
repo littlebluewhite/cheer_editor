@@ -10,7 +10,7 @@ import {
 	type Mark,
 	type NewAttempt
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { editorPage, openFile, practiceFlow, settle } from '#lib/test-fakes.js';
 import { localDate } from '#lib/local-date.js';
 import Page from './+page.svelte';

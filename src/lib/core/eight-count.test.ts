@@ -16,7 +16,7 @@ import {
 	type Flow,
 	type NewActionInput
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /** 音樂 1（150 BPM，一個八拍 3.2 秒；2 個整八拍 ＋ 4 拍）→ 口號 1（10 秒）；隊員 小A、小B、小C。 */
 function sample(): Flow {

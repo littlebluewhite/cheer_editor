@@ -1,7 +1,7 @@
 // 記一次全上的表：放一個真的 session 進去，點格子、存，讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { ratedSample } from '#lib/core/test-flows.js';
+import { ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
 import RunThroughSheet from './RunThroughSheet.svelte';

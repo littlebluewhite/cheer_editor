@@ -15,7 +15,7 @@ import {
 	updateSegment,
 	type Flow
 } from '#lib/core';
-import { flowOf, squadNumbers } from '#lib/core/test-flows.js';
+import { flowOf, squadNumbers } from '#lib/test-flows.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { editorPage, openFile, settle } from '#lib/test-fakes.js';
 import Page from './+page.svelte';

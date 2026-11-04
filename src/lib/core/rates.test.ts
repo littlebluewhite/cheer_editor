@@ -17,7 +17,7 @@ import {
 	type Mark,
 	type NewAttempt
 } from './index';
-import { flowOf, libSample } from './test-flows';
+import { flowOf, libSample } from '../test-flows';
 
 const sample = libSample;
 

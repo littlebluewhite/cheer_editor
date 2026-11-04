@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { attemptWhos } from '#lib/core';
-import { libSample } from '#lib/core/test-flows.js';
+import { libSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
 import AttemptCard from './AttemptCard.svelte';

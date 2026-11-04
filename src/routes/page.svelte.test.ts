@@ -3,7 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import { createFlow, renameFlow } from '#lib/core';
-import { flowOf, libSample } from '#lib/core/test-flows.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { fakeToMeters } from '#lib/test-fakes.js';
 import Page from './+page.svelte';

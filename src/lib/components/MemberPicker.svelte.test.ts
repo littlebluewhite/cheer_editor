@@ -5,7 +5,7 @@ import {
 	createFlow,
 	type Flow
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { EditorSession } from '#lib/editor-session.svelte.js';

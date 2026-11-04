@@ -20,7 +20,7 @@ import {
 	type Cue,
 	type Flow
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /** 音樂 1（2 個八拍）→ 口號 1。x1：音樂 1 的 1-3 開始、4 拍（半拍 4–12）；x2：口號 1 裡。 */
 function sample(): Flow {

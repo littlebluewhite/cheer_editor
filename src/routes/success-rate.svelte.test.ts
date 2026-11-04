@@ -8,7 +8,7 @@ import {
 	setSquad,
 	readFlowFile
 } from '#lib/core';
-import { flowOf, squadNumbers } from '#lib/core/test-flows.js';
+import { flowOf, squadNumbers } from '#lib/test-flows.js';
 import { editorPage, openFile, phasedFlow, settle, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 

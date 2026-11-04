@@ -9,7 +9,7 @@ import {
 	readFlowFile,
 	writeFlowFile
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
 import { audioFlow, fakeDecode, fakeSaver, openFile, settle } from '#lib/test-fakes.js';

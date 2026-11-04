@@ -12,7 +12,7 @@ import {
 	setWalks,
 	type Flow
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';

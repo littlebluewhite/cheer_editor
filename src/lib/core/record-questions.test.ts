@@ -14,7 +14,7 @@ import {
 	type Flow,
 	type NewAttempt
 } from './index';
-import { flowOf, ratedSample, squadNumbers } from './test-flows';
+import { flowOf, ratedSample, squadNumbers } from '../test-flows';
 
 /** 共用的 ratedSample，x1 的環節挪到前 4 拍（p1 上法 1-1、p2 中段 1-2 到 1-3、p3 下法 1-4），動作變短到 4 拍也切不到。 */
 function sample(): Flow {

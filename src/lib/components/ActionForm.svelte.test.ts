@@ -10,7 +10,7 @@ import {
 	type ActionCategory,
 	type Flow
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { recordedFlow } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';

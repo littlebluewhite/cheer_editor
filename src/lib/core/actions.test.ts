@@ -19,7 +19,7 @@ import {
 	type Flow,
 	type NewActionInput
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /** 音樂 1（150 BPM、2 個八拍 = 32 個半拍）→ 口號 1（10 秒 = 100 個 0.1 秒）；隊員 m1–m3。 */
 function sample(): Flow {

@@ -1,4 +1,4 @@
-// 核心測試共用的小工具和範例流程。只給測試 import，畫面不用。
+// 測試共用的小工具和範例流程。只給測試 import，畫面不用。
 
 import {
 	addAction,
@@ -12,7 +12,7 @@ import {
 	type Action,
 	type CommandResult,
 	type Flow
-} from './index';
+} from '#lib/core';
 
 /** 拿出成功的流程；不是成功就讓測試失敗。 */
 export function flowOf(r: CommandResult): Flow {

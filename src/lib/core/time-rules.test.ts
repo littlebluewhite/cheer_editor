@@ -7,7 +7,7 @@ import {
 	updateTimeRules,
 	type Flow
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /** 一個 120 BPM 的音樂段（beats 拍）加一個口號段（chantSec 秒）。 */
 function routine(beats: number, chantSec: number): Flow {

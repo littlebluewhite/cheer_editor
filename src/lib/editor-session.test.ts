@@ -16,7 +16,7 @@ import {
 	type ConfirmOption,
 	type Flow
 } from '#lib/core';
-import { flowOf, libSample, squadNumbers } from '#lib/core/test-flows.js';
+import { flowOf, libSample, squadNumbers } from '#lib/test-flows.js';
 import { EditorSession } from './editor-session.svelte.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */

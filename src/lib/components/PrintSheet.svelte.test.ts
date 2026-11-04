@@ -12,7 +12,7 @@ import {
 	setPositions,
 	type Flow
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import PrintSheet from './PrintSheet.svelte';

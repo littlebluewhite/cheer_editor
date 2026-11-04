@@ -18,7 +18,7 @@ import {
 	type Flow,
 	type Phase
 } from './index';
-import { flowOf, squadNumbers } from './test-flows';
+import { flowOf, squadNumbers } from '../test-flows';
 
 /**
  * 音樂 s1（4 個八拍）、口號段 s2；隊員小美（上層）、小A。

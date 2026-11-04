@@ -16,7 +16,7 @@ import {
 	type ActionCategory,
 	type Flow
 } from './index';
-import { flowOf, squadNumbers } from './test-flows';
+import { flowOf, squadNumbers } from '../test-flows';
 
 /** 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。x1：Lib（技巧），四個人都在裡面。 */
 function sample(category: ActionCategory = 'stunt'): Flow {

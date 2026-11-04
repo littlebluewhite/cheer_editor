@@ -17,7 +17,7 @@ import {
 	type ConfirmOption,
 	type Flow
 } from './index';
-import { flowOf, ratedSample } from './test-flows';
+import { flowOf, ratedSample } from '../test-flows';
 
 /** ratedSample 的 x1 第 1 組記一次（三個環節都有記號）。 */
 function base(): Flow {

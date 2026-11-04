@@ -17,7 +17,7 @@ import {
 	updateSegment,
 	type Flow
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /** 音樂 1（150 BPM、8 個八拍）→ 口號 32.4 秒 → 音樂 2（120 BPM、1 個八拍）。 */
 function sample(): Flow {

@@ -15,7 +15,7 @@ import {
 	type NewActionInput,
 	type Walk
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 /**
  * 音樂 1（150 BPM、4 個八拍 = 64 個半拍，一個半拍 0.2 秒）→ 口號 1（10 秒）；隊員小A、小B、小C。

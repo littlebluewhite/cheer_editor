@@ -1,5 +1,5 @@
 // 畫面測試共用的假 adapter：存檔、草稿、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
-// 放好流程的編輯頁、開檔這些小工具，和頁面測試常用的範例流程。flowOf 用核心測試那份（#lib/core/test-flows.js）。
+// 放好流程的編輯頁、開檔這些小工具，和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。
 // 只給測試用，頁面不 import。
 import { fireEvent, screen } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
@@ -16,7 +16,7 @@ import {
 	type Flow,
 	type Position
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';

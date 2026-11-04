@@ -10,7 +10,7 @@ import {
 	type Flow,
 	type MusicSegment
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf } from '#lib/test-flows.js';
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';

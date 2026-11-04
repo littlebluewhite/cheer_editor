@@ -24,7 +24,7 @@ import {
 	type NewAttempt,
 	type RunThroughMarks
 } from './index';
-import { flowOf, ratedSample } from './test-flows';
+import { flowOf, ratedSample } from '../test-flows';
 
 const sample = ratedSample;
 

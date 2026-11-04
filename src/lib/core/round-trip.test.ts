@@ -45,7 +45,7 @@ import {
 	type Flow,
 	type NewAttempt
 } from './index';
-import { flowOf, ratedSample } from './test-flows';
+import { flowOf, ratedSample } from '../test-flows';
 
 const date = '2026-11-04';
 const drill: NewAttempt = { date, who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '△', p3: '✗' } };

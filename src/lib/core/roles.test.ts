@@ -7,7 +7,7 @@ import {
 	createFlow,
 	roleGlossary
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf } from '../test-flows';
 
 const empty = () => flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
 

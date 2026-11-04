@@ -25,7 +25,7 @@ import {
 	type FlowDocument,
 	type NewAttempt
 } from './index';
-import { flowOf, squadNumbers } from './test-flows';
+import { flowOf, squadNumbers } from '../test-flows';
 import {
 	attemptWhos,
 	perPerson,
