@@ -159,6 +159,9 @@ await send('DOM.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: false });
 await send('Page.navigate', { url: `http://localhost:${PORT}/` });
 await waitFor(() => js(`return !!document.querySelector('.home .start form')`));
+// 畫面先由伺服器畫好，Svelte 接手之前按「建立」會變成一般的表單送出；等 Svelte 載入再開始點。
+await waitFor(() => js(`return !!window.__svelte`));
+await sleep(500);
 await js(helpers);
 
 // 1 首頁
@@ -346,5 +349,120 @@ await shot(
 	],
 	`[q('.cues .pop'), q('.cues .sheet')]`
 );
+
+// 10 成功率：多加三個人當第 2 組，Lib 打開記成功率、分兩組，上法取名「延伸」、標在 4-1 到 4-4
+const esc = `document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise((x) => setTimeout(x, 100));`;
+await js(esc);
+await js(`q('#tab-members').click();`);
+await waitFor(() => js(`return !!q('form.add')`));
+await addMembers('阿華\n阿偉', 'M', 'base');
+await js(`q('form.add button[type=submit]').click();`);
+await sleep(300);
+await addMembers('小芳', 'F', 'top');
+await js(`q('form.add button[type=submit]').click();`);
+await sleep(300);
+await js(`q('#tab-action').click();`);
+await waitFor(() => js(`return !!q('.action-form select[aria-label="加人"]')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	const form = q('.action-form');
+	for (const [who, role] of [['阿華', '主底'], ['阿偉', '側底'], ['小芳', '上層']]) {
+		const add = form.querySelector('select[aria-label="加人"]');
+		$set(add, [...add.options].find((o) => o.textContent === who).value);
+		await wait();
+		form.querySelector('[role="combobox"][aria-label="' + who + ' 的任務角色"]').click();
+		await wait();
+		[...form.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim().startsWith(role)).click();
+		await wait();
+	}
+	form.querySelector('.rate input[type=checkbox]').click();
+	await wait();
+	for (const [who, squad] of [['阿明', 1], ['阿強', 1], ['小美', 1], ['阿華', 2], ['阿偉', 2], ['小芳', 2]]) {
+		$set(form.querySelector('select[aria-label="' + who + ' 的組"]'), String(squad));
+		await wait();
+	}
+	$set(form.querySelector('input[aria-label="上法 的名字"]'), '延伸');
+	await wait();
+	const g = q('.cues');
+	g.querySelector('.cell[aria-label="4-1"]').click(); await wait();
+	for (let i = 0; i < 3; i++) { g.querySelector('[aria-label="多選一拍"]').click(); await wait(); }
+	g.querySelector('[aria-label="把這幾拍標給 上法 延伸"]').click(); await wait();
+`);
+await js(esc);
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+await js(`q('.action-form .people').scrollIntoView({ block: 'start' }); await new Promise((x) => setTimeout(x, 100));`);
+await shot(
+	'rate',
+	[
+		[1, `q('.action-form .rate .switch')`, { x: 0, y: 0 }],
+		[2, `[...document.querySelectorAll('.action-form select.squad')]`],
+		[3, `q('.action-form .rate ol.phases')`, { x: 0, y: 0.5 }],
+		[4, `q('.action-form .rate .adder')`]
+	],
+	`[q('.action-form .people'), q('.action-form .rate')]`
+);
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+
+// 11 記錄頁：昨天和今天各記幾次（第 2 組今天還有一次只練下法）
+await js(`$btn('練習').click();`);
+await waitFor(() => js(`return !!q('.practice .card')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 60));
+	const day = (back) => { const d = new Date(); d.setDate(d.getDate() - back); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+	const date = q('.practice input[type=date]');
+	const NAMES = { '✓': '成功', '△': '小失誤', '✗': '失敗' };
+	const PHASES = ['上法 延伸', '中段', '下法'];
+	const tap = async (card, marks) => {
+		for (const [i, m] of [...marks].entries()) {
+			q('button[aria-label="' + card + ' ' + PHASES[i] + ' ' + NAMES[m] + '"]').click();
+			await wait();
+		}
+	};
+	const one = '第 1 組 小美', two = '第 2 組 小芳';
+	$set(date, day(1)); await wait();
+	for (const m of ['✓✓✓', '✓✗', '✓✓△']) await tap(one, m);
+	for (const m of ['✗', '✓△✓', '✓✓✓']) await tap(two, m);
+	$set(date, day(0)); await wait();
+	for (const m of ['✓✓✓', '✓✓✓', '✓△✓', '✓✓✗']) await tap(one, m);
+	for (const m of ['✓✗', '✓✓✓', '✗']) await tap(two, m);
+	const card = [...document.querySelectorAll('.practice .card')].find((c) => c.getAttribute('aria-label') === two);
+	card.querySelectorAll('.scope input')[1].click(); await wait();
+	[...card.querySelectorAll('.phase-name')].find((l) => l.textContent.trim() === '下法').querySelector('input').click(); await wait();
+	q('button[aria-label="' + two + ' 下法 成功"]').click(); await wait();
+`);
+await sleep(300);
+await shot('record', [
+	[1, `q('.topbar .view')`],
+	[2, `[q('.practice .pages'), q('.practice .date')]`],
+	[3, `q('.record .list')`],
+	[4, `q('.practice .card')`],
+	[5, `q('.practice .card footer')`, { x: 1, y: 1 }],
+	[6, `q('.practice .daily')`]
+], `[q('.topbar'), q('.practice .daily')]`);
+
+// 12 總表：記一次全上（第 1 組中段 △），看最近 7 天，打開第 2 組下法的明細
+await js(`$btn('總表').click();`);
+await waitFor(() => js(`return !!q('.summary .filters')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	$btn('＋ 記一次全上').click(); await wait();
+	q('button[aria-label="第 1 組 小美 中段 成功"]').click(); await wait();
+	$btn('存這次全上').click(); await wait();
+	$btn('最近 7 天').click(); await wait();
+	[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).click(); await wait();
+`);
+// 表只有一個動作：畫面矮一點，下面才不會一大片空白（明細貼著右邊、跟畫面一樣高）
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 640, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+await shot('summary', [
+	[1, `[...document.querySelectorAll('.summary .filters .seg')]`],
+	[2, `q('.summary .filters button.primary')`],
+	[3, `[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).closest('td')`],
+	[4, `[...document.querySelectorAll('.summary td.total')]`, { x: 1, y: 1 }],
+	[5, `q('.summary tr.whole')`, { x: 0, y: 1 }],
+	[6, `q('aside.detail')`, { x: 0, y: 0 }]
+]);
 
 stop(0);
