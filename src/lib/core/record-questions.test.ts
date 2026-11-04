@@ -213,6 +213,17 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 	});
 });
 
+describe('改隊員名字：他在動作裡沒分組', () => {
+	it('只有一組的動作：不算他的紀錄，清掉重算也不會把他放進那一組', () => {
+		let flow = flowOf(setSquad(recorded(), 'x1', ['m3', 'm4'], 1, { records: 'keep' }));
+		flow = flowOf(setSquad(flow, 'x1', ['m1'], null, { records: 'keep' }));
+		const r = updateMember(flow, 'm1', { name: '小芳芳' });
+		expect(r.kind === 'choose' && r.items).toEqual(['動作「騰翻」小美：1 次']);
+		const cleared = flowOf(updateMember(flow, 'm1', { name: '小芳芳' }, { records: 'clear' }));
+		expect(action(cleared, 'x1')).toEqual(action(flow, 'x1'));
+	});
+});
+
 describe('刪隊員：當成真的換人', () => {
 	it('確認訊息加上會清掉幾次紀錄；確定後清掉他在的每一組和他自己的紀錄', () => {
 		const flow = recorded();

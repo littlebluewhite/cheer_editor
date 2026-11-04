@@ -6,7 +6,8 @@ import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { compactSquads, fitRecords, memberRecords, recordItems, withoutRecords } from './success-rate';
+import { settle } from './settle';
+import { perPerson, recordItems, type Attempt } from './success-rate';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -88,17 +89,37 @@ export function updateMember(
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
 	if (!updated.name) return blocked('請填隊員名字');
-	const mine = updated.name === member.name ? [] : flow.actions.filter((a) => memberRecords(a, id).length);
+	// 改名字當成可能換了人：先照「換人」走收尾，看會動到哪些紀錄（他在的組的、他自己的）。
+	const swapped = updated.name === member.name ? [] : flow.actions.map((a) => replaced(flow, a, id));
+	const mine = swapped.filter((s) => s.records.length);
 	if (mine.length && !answered(options)) {
-		const count = mine.reduce((n, a) => n + memberRecords(a, id).length, 0);
+		const count = mine.reduce((n, s) => n + s.records.length, 0);
 		return needsChoice(
 			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算`,
-			mine.flatMap((a) => recordItems(flow, a, memberRecords(a, id), `動作「${actionLabel(a)}」`))
+			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
 		);
 	}
-	const actions =
-		options.records === 'clear' ? flow.actions.map((a) => withoutRecords(a, memberRecords(a, id))) : flow.actions;
+	const actions = options.records === 'clear' ? swapped.map((s) => s.action) : flow.actions;
 	return ok({ ...flow, members: flow.members.map((m) => (m.id === id ? updated : m)), actions });
+}
+
+/**
+ * 動作裡的這個人換成別人（同一個位置、任務角色、組）走收尾，回答是清掉重算：
+ * records 是會清掉的紀錄（他在的組的、騰翻跳躍是他自己的），action 是清掉之後（換回他的 id）。
+ */
+function replaced(flow: Flow, before: Action, id: string): { before: Action; action: Action; records: Attempt[] } {
+	// 不在動作裡、或在分組的動作裡沒分到組：沒有他的紀錄（換成別人也不能讓收尾當成新進的人放進組）。
+	const member = before.members.find((m) => m.memberId === id);
+	if (!member || (member.squad === undefined && !perPerson(before.category))) return { before, action: before, records: [] };
+	const stranger = `${id}?`;
+	const swap = (a: Action, from: string, to: string) => ({
+		...a,
+		members: a.members.map((m) => (m.memberId === from ? { ...m, memberId: to } : m))
+	});
+	const settled = settle(flow, before, swap(before, id, stranger), { records: 'clear' });
+	if (settled.kind !== 'ok') return { before, action: before, records: [] };
+	const { lost, changed } = settled.fallout;
+	return { before, action: swap(settled.action, stranger, id), records: [...lost, ...changed] };
 }
 
 /**
@@ -110,19 +131,21 @@ export function updateMember(
 export function deleteMember(
 	flow: Flow,
 	id: string,
-	{ confirmed = false }: ConfirmOption = {}
+	options: ConfirmOption = {}
 ): CommandResult {
 	const member = flow.members.find((m) => m.id === id);
 	if (!member) return blocked('找不到這個隊員');
 	const inActions = flow.actions.filter((a) => a.members.some((m) => m.memberId === id));
 	const emptied = inActions.filter((a) => a.members.length === 1);
+	// 刪隊員當成真的換人：每個留下來的動作走收尾，回答固定是清掉重算。
 	const actions = flow.actions
 		.filter((a) => !emptied.includes(a))
 		.map((a) => {
-			const left = withoutRecords(a, memberRecords(a, id));
-			return compactSquads(fitRecords(dropOrphanCues({ ...left, members: a.members.filter((m) => m.memberId !== id) })));
+			const after = dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) });
+			const settled = settle(flow, a, after, { records: 'clear' });
+			return settled.kind === 'ok' ? settled.action : after;
 		});
-	if (!confirmed) {
+	if (!answered(options)) {
 		const spans = segmentSpans(flow);
 		const cueCount = (list: Action[]) => list.reduce((n, a) => n + (a.cues?.length ?? 0), 0);
 		const dropped = cueCount(flow.actions.filter((a) => !emptied.includes(a))) - cueCount(actions);

@@ -55,11 +55,14 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const { lost, changed } = before ? recordsFallout(before, fitted) : { lost: [], changed: [] };
 	const settled = answer.records === 'clear' ? withoutRecords(fitted, changed) : fitted;
 	const phases = before && from ? phaseFallout(from, to, before, settled) : null;
-	const grouped = ungroup(phases ? replacePhases(settled, phases.phases) : settled);
-	// 補號之前檢查：0、負數、小數的組號要擋，不能被補號蓋掉。合法的組號補完還是合法。
+	// 換上新的環節：一個都不剩就不記成功率（例：舊檔記成功率卻沒有環節）。
+	const rate = settled.successRate;
+	const phased = rate ? replacePhases(settled, phases?.phases ?? rate.phases) : settled;
+	// 補號不動 0、負數、小數的組號，留給成功率規則擋。
+	const grouped = compactSquads(ungroup(phased));
 	const problem = successRateProblem(to, grouped);
 	if (problem) return { kind: 'blocked', message: problem };
-	return { kind: 'ok', action: compactSquads(grouped), fallout: { phases, lost, changed } };
+	return { kind: 'ok', action: grouped, fallout: { phases, lost, changed } };
 }
 
 /**
