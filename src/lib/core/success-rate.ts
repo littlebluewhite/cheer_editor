@@ -3,8 +3,6 @@
 
 import {
 	ACTION_CATEGORIES,
-	actionLabel,
-	replaceAction,
 	type Action,
 	type ActionCategory,
 	type ActionMember
@@ -13,16 +11,6 @@ import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
 import { PHASE_COLORS } from './colors';
-import {
-	answered,
-	blocked,
-	needsChoice,
-	needsConfirm,
-	ok,
-	type CommandResult,
-	type ConfirmOption,
-	type RecordsChoice
-} from './result';
 
 /** 環節的種類：上法、中段、轉接、下法、整體。流程檔存英文代號。 */
 export type PhaseKind = 'load' | 'hold' | 'transition' | 'dismount' | 'whole';
@@ -148,36 +136,8 @@ export function markedCount(action: Action, phases: Phase[]): number {
 }
 
 /**
- * 設組：給動作裡的隊員（可以一次好幾個）第幾組（1 起）；null 是沒分組。一次給好幾個人也是一個指令（復原一步）。
- * 做完組號補成 1、2、3 不跳號（見 compactSquads）。
- * 有紀錄的組換了人，先問保留舊紀錄還是清掉重算；組裡的人都換走了，只問會清掉幾次（見 settleRecords）。
- */
-export function setSquad(
-	flow: Flow,
-	actionId: string,
-	memberIds: string[],
-	squad: number | null,
-	options: ConfirmOption = {}
-): CommandResult {
-	const action = flow.actions.find((a) => a.id === actionId);
-	const segment = action && flow.segments.find((s) => s.id === action.segmentId);
-	if (!action || !segment) return blocked('找不到這個動作');
-	if (memberIds.some((id) => !action.members.some((m) => m.memberId === id))) return blocked('這個隊員不在動作裡');
-	const members = action.members.map((m) => {
-		if (!memberIds.includes(m.memberId)) return m;
-		const { squad: _, ...rest } = m;
-		return squad === null ? rest : { ...rest, squad };
-	});
-	const settled = settleRecords(flow, action, fitRecords({ ...action, members }), options.records);
-	const problem = successRateProblem(segment, settled.action);
-	if (problem) return blocked(problem);
-	if (settled.ask && !answered(options)) return askRecords(`動作「${actionLabel(action)}」`, settled.ask);
-	return ok(replaceAction(flow, compactSquads(settled.action)));
-}
-
-/**
  * 組號補成 1、2、3 不跳號：空掉的組拿掉，後面的組照原來的先後往前補；那一組的紀錄跟著換成新的號碼。
- * 先拿掉對不上的紀錄（fitRecords）、問完紀錄（settleRecords，照舊的號碼比）再補號。沒得補就回傳原來的動作。
+ * 先拿掉對不上的紀錄（fitRecords）、問完紀錄（見 settle.ts，照舊的號碼比）再補號。沒得補就回傳原來的動作。
  */
 export function compactSquads(action: Action): Action {
 	const renumber = new Map(squadsOf(action).map((n, i) => [n, i + 1]));
@@ -191,62 +151,6 @@ export function compactSquads(action: Action): Action {
 /** 動作後來加進來的人（「＋加人…」）：有環節的分組動作只有一組，就進第 1 組；有好幾組（或還沒分組）就先沒有組。 */
 export function newActionMember(action: Action, memberId: string): ActionMember {
 	return squadsOf(action).length === 1 ? { memberId, role: null, squad: 1 } : { memberId, role: null };
-}
-
-/** 改動作會動到紀錄時要問教練的事。message 前面還要接「動作「…」」；choose 是有得選保留或清掉。 */
-export interface RecordsAsk {
-	message: string;
-	items: string[];
-	choose: boolean;
-}
-
-/**
- * 改動作（換人、換組、換大類）時紀錄怎麼辦。next 是改好、已經拿掉對不上的紀錄（fitRecords）的動作。
- * 拿掉的那些（組沒人了、騰翻跳躍的人移出、算法從一組一起變成每個人自己算或反過來）沒得保留，只問會清掉幾次；
- * 組還有人、但換了人的組，問保留舊紀錄還是清掉重算，選了清掉就拿掉那組的紀錄。沒有紀錄會被動到，ask 是 null。
- */
-export function settleRecords(
-	flow: Flow,
-	old: Action,
-	next: Action,
-	choice?: RecordsChoice
-): { action: Action; ask: RecordsAsk | null } {
-	const kept = new Set(next.successRate?.records.map((r) => r.id));
-	const lost = (old.successRate?.records ?? []).filter((r) => !kept.has(r.id));
-	const changed = perPerson(next.category)
-		? []
-		: (next.successRate?.records ?? []).filter((r) => !sameSquad(old, next, r.who));
-	const action = choice === 'clear' ? withoutRecords(next, changed) : next;
-	if (!lost.length && !changed.length) return { action, ask: null };
-	const category = ACTION_CATEGORIES.find((c) => c.key === next.category)?.label ?? '';
-	const why =
-		perPerson(old.category) === perPerson(next.category)
-			? '換了人'
-			: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
-	const message = [
-		lost.length ? `${why}，會清掉 ${lost.length} 次紀錄` : '',
-		changed.length ? '有紀錄的組換了人：保留舊紀錄，還是清掉重算？' : ''
-	]
-		.filter(Boolean)
-		.join('；');
-	const items = [...recordItems(flow, old, lost), ...recordItems(flow, old, changed)];
-	return { action, ask: { message, items, choose: changed.length > 0 } };
-}
-
-/** 照 settleRecords 的問題回「要確認」或「要選保留還是清掉」；head 接在訊息前面。 */
-export function askRecords(head: string, { message, items, choose }: RecordsAsk): CommandResult {
-	return (choose ? needsChoice : needsConfirm)(head + message, items);
-}
-
-/** 這一組在改之前、改之後是不是同一群人。 */
-function sameSquad(old: Action, next: Action, who: number | string): boolean {
-	const ids = (a: Action) =>
-		a.members
-			.filter((m) => m.squad === who)
-			.map((m) => m.memberId)
-			.sort()
-			.join();
-	return ids(old) === ids(next);
 }
 
 /** 隊員在這個動作裡的紀錄：他在的組的（騰翻、跳躍是他自己的）。 */
@@ -276,16 +180,22 @@ export function recordItems(flow: Flow, action: Action, records: Attempt[], head
 
 const isSquad = (n: number) => Number.isInteger(n) && n >= 1;
 
+/** 動作裡的人能不能在第 squad 組（給教練看的原因）；可以是 null。 */
+export function squadProblem(action: Action, squad: number): string | null {
+	if (!isSquad(squad)) return '組要是正整數';
+	if (!action.successRate) return '動作有環節才能分組';
+	if (perPerson(action.category)) {
+		const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
+		return `${label}的動作不分組，每個人自己算`;
+	}
+	return null;
+}
+
 /** 動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。指令和讀流程檔都照這個檢查。 */
 export function successRateProblem(segment: Segment, action: Action): string | null {
 	for (const { squad } of action.members) {
-		if (squad === undefined) continue;
-		if (!isSquad(squad)) return '組要是正整數';
-		if (!action.successRate) return '動作有環節才能分組';
-		if (perPerson(action.category)) {
-			const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
-			return `${label}的動作不分組，每個人自己算`;
-		}
+		const problem = squad === undefined ? null : squadProblem(action, squad);
+		if (problem) return problem;
 	}
 	const phases = action.successRate?.phases ?? [];
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';

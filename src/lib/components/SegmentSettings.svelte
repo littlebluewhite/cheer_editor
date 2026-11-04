@@ -4,7 +4,8 @@
 	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
-	import { applyResult, numberValue } from './form';
+	import { Ask } from './ask.svelte';
+	import { numberValue } from './form';
 	import {
 		AUDIO_EXTENSIONS,
 		MAX_BPM,
@@ -15,7 +16,7 @@
 		musicLengthFromAudio,
 		segmentSpans,
 		updateSegment,
-		type CommandResult,
+		type ConfirmOption,
 		type Flow,
 		type SegmentPatch
 	} from '#lib/core';
@@ -59,7 +60,8 @@
 		return ((e.clientX - r.left) / r.width) * WAVE_WINDOW_SEC;
 	}
 
-	let error = $state('');
+	/** 被擋的原因，和段縮短會刪掉東西時等教練確認的清單（流程核心給的）。 */
+	const ask = new Ask((f) => onchange(f), { confirmLabel: '確定刪除' });
 	const span = $derived(segmentSpans(flow).find((s) => s.segment.id === segmentId));
 	const segment = $derived(span?.segment);
 	const music = $derived(segment?.kind === 'music' ? segment : null);
@@ -76,32 +78,18 @@
 		return peaks.map((p, i) => `M${i * w} ${1 - p}h${w}v${2 * p}h${-w}z`).join('');
 	});
 
-	function apply(r: CommandResult) {
-		error = applyResult(r, onchange);
-	}
-
-	/** 段縮短會刪掉東西時，等教練確認的改法和流程核心給的清單。 */
-	let pending = $state<{ patch: SegmentPatch; message: string; items: string[] } | null>(null);
 	/** 取消時換一個值，讓欄位照流程重畫，回到原本的值。 */
 	let fieldsKey = $state(0);
 
+	/** 新的改法取代還沒確認的舊清單。 */
 	function update(patch: SegmentPatch) {
-		const r = updateSegment(flow, segmentId, patch);
-		// 新的改法取代還沒確認的舊清單
-		pending = r.kind === 'confirm' ? { patch, message: r.message, items: r.items } : null;
-		if (r.kind !== 'confirm') apply(r);
+		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o), {
+			cancel: () => (fieldsKey += 1)
+		});
 	}
 
-	function confirmUpdate() {
-		if (!pending) return;
-		apply(updateSegment(flow, segmentId, pending.patch, { confirmed: true }));
-		pending = null;
-	}
-
-	function cancelUpdate() {
-		pending = null;
-		fieldsKey += 1;
-	}
+	/** 不是流程核心擋的（檔案讀不出來、還沒載入）：跟核心擋下來一樣，交給問教練留下原因。 */
+	const blocked = (message: string) => void ask.send(() => ({ kind: 'blocked', message }) as const);
 
 	/** 設定關掉了沒（音樂檔解碼完時用）。 */
 	let closed = false;
@@ -113,24 +101,20 @@
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
 		if (!file) return;
 		const check = loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios));
-		if (check.kind === 'blocked') {
-			error = check.message;
-			return;
-		}
+		if (check.kind === 'blocked') return blocked(check.message);
 		const bytes = await file.arrayBuffer();
 		let decoded: DecodedAudio;
 		try {
 			decoded = await decode(bytes);
 		} catch {
-			error = '這個音樂檔讀不出來';
-			return;
+			return blocked('這個音樂檔讀不出來');
 		}
 		// 解碼時設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
 		if (closed) return;
 		// 解碼要一點時間，用那時候的流程再送一次指令。
-		const r = loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios));
-		if (r.kind === 'ok') onaudioload(r.audioId, { bytes, ...decoded });
-		apply(r);
+		ask.send(() => loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios)), {
+			done: (r) => onaudioload(r.audioId, { bytes, ...decoded })
+		});
 	}
 
 	function clickWave(e: MouseEvent) {
@@ -138,10 +122,7 @@
 	}
 
 	function fitToAudio() {
-		if (!music || !audio) {
-			error = '先載入音樂檔';
-			return;
-		}
+		if (!music || !audio) return blocked('先載入音樂檔');
 		update(
 			musicLengthFromAudio({
 				durationSec: audio.durationSec,
@@ -275,16 +256,9 @@
 		{/if}
 		{/key}
 
-		{#if pending}
-			<ConfirmList
-				message={pending.message}
-				items={pending.items}
-				onconfirm={confirmUpdate}
-				oncancel={cancelUpdate}
-			/>
-		{/if}
+		{#if ask.question}<ConfirmList {ask} />{/if}
 
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	</div>
 </div>
 

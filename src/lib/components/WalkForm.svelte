@@ -12,7 +12,7 @@
 		type Flow,
 		type Walk
 	} from '#lib/core';
-	import { applyResult } from './form';
+	import { Ask } from './ask.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -46,7 +46,8 @@
 
 	let departText = $state('');
 	let arriveText = $state('');
-	let error = $state('');
+	/** 被擋的原因（出發、到達看不懂也算）。 */
+	const ask = new Ask((f) => onchange(f));
 
 	// 換站位、換選取、流程改了：欄位回到現在的走法。
 	$effect(() => {
@@ -54,9 +55,12 @@
 		untrack(() => {
 			departText = c?.depart ?? '';
 			arriveText = c?.arrive ?? '';
-			error = '';
+			ask.clear();
 		});
 	});
+
+	/** 看不懂：跟核心擋下來一樣，交給問教練留下原因。 */
+	const notParsed = (message: string) => ask.send(() => ({ kind: 'blocked', message }) as const);
 
 	function apply() {
 		if (!formation) return;
@@ -64,15 +68,17 @@
 		const depart = parseTime(flow, home, departText);
 		const arrive = parseTime(flow, home, arriveText);
 		const hint = '，例：2-5（別的段前面加段名，例：口號 1 12.3）';
-		if (!depart) return void (error = `出發看不懂${hint}`);
-		if (!arrive) return void (error = `到達看不懂${hint}`);
+		if (!depart) return void notParsed(`出發看不懂${hint}`);
+		if (!arrive) return void notParsed(`到達看不懂${hint}`);
 		const walk: Walk = { depart, arrive };
-		error = applyResult(setWalks(flow, formation.id, Object.fromEntries(memberIds.map((id) => [id, walk]))), onchange);
+		const id = formation.id;
+		ask.send(() => setWalks(flow, id, Object.fromEntries(memberIds.map((m) => [m, walk]))));
 	}
 
 	function useDefault() {
 		if (!formation) return;
-		error = applyResult(clearWalks(flow, formation.id, memberIds), onchange);
+		const id = formation.id;
+		ask.send(() => clearWalks(flow, id, memberIds));
 	}
 </script>
 
@@ -94,7 +100,7 @@
 			<button type="button" class="primary" onclick={apply}>套用</button>
 			<button type="button" onclick={useDefault} title="清掉設定：最後一個八拍才出發">用預設</button>
 		</div>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	</section>
 {/if}
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加自訂角色。
 	import { addCustomRole, roleGlossary, type Flow } from '#lib/core';
-	import { applyResult } from './form';
+	import { Ask } from './ask.svelte';
 	import Icon from './Icon.svelte';
 
 	interface Props {
@@ -14,14 +14,17 @@
 
 	let name = $state('');
 	let meaning = $state('');
-	let error = $state('');
+	/** 被擋的原因。 */
+	const ask = new Ask((f) => onchange(f));
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
-		error = applyResult(addCustomRole(flow, { name, meaning }), onchange);
-		if (error) return;
-		name = '';
-		meaning = '';
+		ask.send(() => addCustomRole(flow, { name, meaning }), {
+			done: () => {
+				name = '';
+				meaning = '';
+			}
+		});
 	}
 
 	// Esc 關掉對照表。用捕獲階段先攔下來，底下的編輯畫面就不會把 Esc 當成「清除選取」。
@@ -64,7 +67,7 @@
 			</div>
 			<p class="muted">自訂任務角色只存在這一支流程裡。</p>
 		</form>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	</div>
 </div>
 

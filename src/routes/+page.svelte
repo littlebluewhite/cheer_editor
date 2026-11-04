@@ -60,9 +60,9 @@
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
+	import { Ask } from '#lib/components/ask.svelte.js';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
 	import Field, { fullView } from '#lib/components/Field.svelte';
-	import type { PendingConfirm } from '#lib/components/form.js';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
@@ -164,8 +164,21 @@
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
 	let notice = $state('');
-	/** 拉色條會切到拍點，等教練確認（跟 notice 放同一區）。 */
-	let resizePending = $state<PendingConfirm | null>(null);
+	/**
+	 * 場上那一個問題：拖色條、走位條、挪站位、Delete 刪動作都送到這裡。要問就畫在場上，
+	 * 被擋的原因（拖的加「，已還原」）跟別的提示放同一區。
+	 */
+	const fieldAsk = new Ask(
+		(f) => {
+			change(f);
+			notice = '';
+		},
+		{ confirmLabel: '確定' }
+	);
+	$effect(() => {
+		const { error, question } = fieldAsk;
+		if (error || question) notice = error;
+	});
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	let selectedFormationId = $state<string | null>(null);
 	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */
@@ -415,7 +428,7 @@
 	 */
 	function change(f: Flow) {
 		if (!session.change(f)) return;
-		resizePending = null;
+		fieldAsk.clear();
 		trimSelection(f);
 	}
 
@@ -430,7 +443,7 @@
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
 	function restore(f: Flow) {
 		trimSelection(f);
-		resizePending = null;
+		fieldAsk.clear();
 		notice = '';
 		playheadSec = Math.min(playheadSec, totalSeconds(f));
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) openSegmentId = null;
@@ -582,14 +595,18 @@
 	 * 選著這張、播放頭跳到新的站位時間（左邊欄的站位時間框還在）。
 	 */
 	function moveFormationTo(id: string, to: TimePosition) {
-		if (!flow) return;
-		const r = moveFormation(flow, id, to);
-		if (r.kind !== 'ok') return void (notice = `${r.message}，已還原`);
-		change(r.flow);
-		notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
-		selectedFormationId = id;
-		selectedActionId = null;
-		seek(r.flow, r.sec);
+		const f = flow;
+		if (!f) return;
+		// 被擋時縮圖已經彈回原位，還原不用再做什麼。
+		fieldAsk.send(() => moveFormation(f, id, to), {
+			revert: () => {},
+			done: (r) => {
+				notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
+				selectedFormationId = id;
+				selectedActionId = null;
+				seek(r.flow, r.sec);
+			}
+		});
 	}
 
 	/**
@@ -686,17 +703,11 @@
 	}
 
 	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
-	function removeAction(id: string, options: ConfirmOption = {}) {
-		if (!flow) return;
-		const r = deleteAction(flow, id, options);
-		if (r.kind === 'confirm') {
-			notice = '';
-			resizePending = { message: r.message, items: r.items, confirm: () => removeAction(id, { confirmed: true }) };
-			return;
-		}
-		if (r.kind !== 'ok') return void (notice = r.message);
-		change(r.flow);
-		notice = '';
+	function removeAction(id: string) {
+		const f = flow;
+		if (!f) return;
+		// 按確定時用那時候的流程再送一次。
+		fieldAsk.send((o: ConfirmOption = {}) => deleteAction(flow ?? f, id, o));
 	}
 
 	function selectAction(id: string | null) {
@@ -917,19 +928,9 @@
 					<span>到右邊的「隊員」加人，他們會出現在場上，可以直接拖。</span>
 				</div>
 			{/if}
-			{#if resizePending}
+			{#if fieldAsk.question}
 				<div class="toast-confirm">
-					<ConfirmList
-						message={resizePending.message}
-						items={resizePending.items}
-						confirmLabel="確定"
-						onconfirm={() => {
-							const ask = resizePending;
-							resizePending = null;
-							ask?.confirm();
-						}}
-						oncancel={() => (resizePending = null)}
-					/>
+					<ConfirmList ask={fieldAsk} />
 				</div>
 			{/if}
 			{@render noticeToast()}
@@ -1031,15 +1032,7 @@
 					selectAction(id);
 					inspectorTab = 'action';
 				}}
-				onchange={(f) => {
-					change(f);
-					notice = '';
-				}}
-				onblocked={(message) => (notice = `${message}，已還原`)}
-				onconfirm={(ask) => {
-					notice = '';
-					resizePending = ask;
-				}}
+				ask={fieldAsk}
 				{selectedMemberIds}
 				onselectmembers={selectMembers}
 				multi={multiSelect}

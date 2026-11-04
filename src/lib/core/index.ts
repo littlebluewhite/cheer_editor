@@ -34,6 +34,7 @@ export {
 	previousActions,
 	raisedAt,
 	resizeAction,
+	setSquad,
 	updateAction
 } from './actions';
 export type { MemberGroup } from './actions';
@@ -64,7 +65,6 @@ export {
 	PHASE_KINDS,
 	perPerson,
 	phaseColor,
-	setSquad,
 	squadName,
 	squadsOf
 } from './success-rate';
