@@ -14,7 +14,7 @@
 		type Mark,
 		type RunThroughMarks
 	} from '#lib/core';
-	import { actionColor } from './category-colors.js';
+	import { actionColor } from './category-colors';
 
 	interface Props {
 		flow: Flow;

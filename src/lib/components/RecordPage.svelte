@@ -14,7 +14,7 @@
 	} from '#lib/core';
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
-	import { actionColor } from './category-colors.js';
+	import { actionColor } from './category-colors';
 
 	interface Props {
 		flow: Flow;

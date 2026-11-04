@@ -22,7 +22,7 @@
 		type Tally,
 		type Flow
 	} from '#lib/core';
-	import { actionColor } from './category-colors.js';
+	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 
 	interface Props {
