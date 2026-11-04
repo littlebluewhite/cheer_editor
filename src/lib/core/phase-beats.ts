@@ -66,35 +66,53 @@ export function phaseSpan(flow: Flow, action: Action, phase: Phase): { range: st
 
 /**
  * 改動作會動到的標的拍（跟拍點的 cueFallout 一起問）：換到口號段全部拿掉；變短時跨出去的切短（取到整拍），
- * 不到一拍的變沒標拍。環節本身和紀錄都留著。拖動作、改 BPM 不會動到（標的拍從動作開始算）。
- * 沒動到是 null；不然回傳新的環節清單、切短和變沒標拍各幾個，和給教練確認的清單（時間照改之前的位置寫）。
+ * 不到一拍的變沒標拍。拖到半拍上時，標的拍一起挪半拍、對齊音樂的整拍（往後挪，會切到比較多才往前），
+ * 挪了跑出動作的一樣切短。環節本身和紀錄都留著。拖動作（整拍）、改 BPM 不會動到（標的拍從動作開始算）。
+ * 沒動到是 null；不然回傳新的環節清單、切短和變沒標拍各幾個、是不是挪了半拍，
+ * 和給教練確認的清單（只挪沒切到的不列；時間照改之前的位置寫，切短後的照改之後的）。
  */
 export function phaseFallout(
 	from: Segment,
 	to: Segment,
 	before: Action,
 	after: Action
-): { phases: Phase[]; cut: number; unmarked: number; items: string[] } | null {
+): { phases: Phase[]; cut: number; unmarked: number; shifted: boolean; items: string[] } | null {
+	const old = after.successRate?.phases ?? [];
+	const music = to.kind === 'music';
+	const offBeat = (p: Phase) => !!p.beats && (after.start + p.beats.at) % BEAT !== 0;
+	const shifted = music && old.some(offBeat);
+	/** 挪 by 個半拍（落在 & 的才挪）、留在動作裡、取到整拍後的標的拍；不到一拍是 undefined。 */
+	const place = (p: Phase, by: number) => {
+		const { at, len } = p.beats!;
+		if (!music) return undefined;
+		const moved = offBeat(p) ? at + by : at;
+		const start = moved < 0 ? moved + BEAT : moved;
+		const fit = Math.min(moved + len, after.length) - start;
+		const fitted = fit - (fit % BEAT);
+		return fitted >= BEAT ? { at: start, len: fitted } : undefined;
+	};
+	const kept = (by: number) => old.filter((p) => p.beats && place(p, by)?.len === p.beats.len).length;
+	const by = shifted && kept(-1) > kept(1) ? -1 : 1;
 	const items: string[] = [];
 	let cut = 0;
 	let unmarked = 0;
-	const phases = (after.successRate?.phases ?? []).map((p) => {
+	const phases = old.map((p) => {
 		if (!p.beats) return p;
 		const { at, len } = p.beats;
-		const fit = to.kind === 'music' ? Math.min(len, after.length - at) : 0;
-		const fitted = fit - (fit % BEAT);
-		if (fitted === len) return p;
+		const beats = place(p, by);
+		if (beats?.at === at && beats.len === len) return p;
 		const text = `環節 ${phaseLabel(p)} ${rangeText(from, before, at, len)}`;
-		if (fitted >= BEAT) {
+		if (beats?.len === len) return withBeats(p, beats);
+		if (beats) {
 			cut++;
-			items.push(`切短：${text} → ${rangeText(from, before, at, fitted)}`);
-			return withBeats(p, { at, len: fitted });
+			items.push(`切短：${text} → ${rangeText(to, after, beats.at, beats.len)}`);
+			return withBeats(p, beats);
 		}
 		unmarked++;
 		items.push(`變沒標拍：${text}`);
 		return withBeats(p);
 	});
-	return items.length ? { phases: ordered(phases), cut, unmarked, items } : null;
+	return phases.some((p, i) => p !== old[i]) ? { phases: ordered(phases), cut, unmarked, shifted, items } : null;
 }
 
 /** 「切短 1 個環節標的拍、讓 1 個環節變沒標拍」（確認訊息裡標的拍那一段）。 */

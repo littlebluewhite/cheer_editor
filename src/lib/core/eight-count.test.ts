@@ -12,6 +12,7 @@ import {
 	placeCue,
 	renameFormation,
 	setPositions,
+	updateAction,
 	updateSegment,
 	type CommandResult,
 	type Flow,
@@ -339,11 +340,11 @@ describe('八拍表的列：環節', () => {
 		flow = flowOf(enableSuccessRate(flow, 'x1'));
 		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
 		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
-		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 9 })) };
+		flow = flowOf(updateAction(flow, 'x1', { start: 9 }));
 		const [first] = eightCountRows(flow, null);
 		expect(first.cues[0].phases.map((p) => [p.from, p.to])).toEqual([
-			[5, 5],
-			[6, 6]
+			[6, 6],
+			[7, 7]
 		]);
 	});
 

@@ -81,13 +81,13 @@ function withCues(): Flow {
 	return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 5, len: 2, word: 'up' }));
 }
 
-/** sample() 再幫 Lib 打開記成功率（上法、中段、下法），小A 第 1 組、小B 第 2 組；上法標 1-2 到 1-3、挑紅色，下法取名「搖籃」。 */
+/** sample() 再幫 Lib 打開記成功率（上法、中段、下法），小A 第 1 組、小B 第 2 組；上法標 1-3 到 1-4（動作從 1-2& 開始，標的拍從整拍開始）、挑紅色，下法取名「搖籃」。 */
 function withSuccessRate(): Flow {
 	let flow = flowOf(enableSuccessRate(sample(), 'x1'));
 	flow = flowOf(setSquad(flow, 'x1', 'm1', 1));
 	flow = flowOf(setSquad(flow, 'x1', 'm2', 2));
 	const [load, hold, dismount] = flow.actions[0].successRate!.phases;
-	const phases = [{ ...load, color: '#c62828', beats: { at: 0, len: 4 } }, hold, { ...dismount, name: '搖籃' }];
+	const phases = [{ ...load, color: '#c62828', beats: { at: 1, len: 4 } }, hold, { ...dismount, name: '搖籃' }];
 	return { ...flow, actions: [{ ...flow.actions[0], successRate: { phases, records: [] } }] };
 }
 
@@ -311,6 +311,7 @@ describe('流程檔：版本', () => {
 		['環節的顏色不在辨識色和石板灰裡', brokenRate((_, sr) => (sr.phases[1].color = '#123456'))],
 		['環節標的拍不是整數', brokenRate((_, sr) => (sr.phases[1].beats = { at: 4.5, len: 2 }))],
 		['環節標的拍不是整拍', brokenRate((_, sr) => (sr.phases[1].beats = { at: 4, len: 3 }))],
+		['環節標的拍不在整拍上', brokenRate((_, sr) => (sr.phases[0].beats = { at: 0, len: 4 }))],
 		['環節標的拍不到一拍', brokenRate((_, sr) => (sr.phases[1].beats = { at: 4, len: 0 }))],
 		['環節標的拍超出動作', brokenRate((_, sr) => (sr.phases[1].beats = { at: 14, len: 4 }))],
 		['環節標的拍在動作之前', brokenRate((_, sr) => (sr.phases[1].beats = { at: -2, len: 2 }))],

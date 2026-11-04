@@ -354,10 +354,11 @@ function isDate(text: string): boolean {
 	return date.getMonth() === mo - 1 && date.getDate() === d;
 }
 
-/** 環節標的拍守拍點的規則：只有音樂段能標、佔整數拍（至少 1 拍）、在動作裡面。開始不用在整拍上（動作被拖半拍時跟著落在 &）。 */
+/** 環節標的拍的規則：只有音樂段能標、從音樂的整拍開始、佔整數拍（至少 1 拍）、在動作裡面（動作被拖半拍時，標的拍跟著挪去對齊整拍）。 */
 function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
 	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
 	if (!Number.isInteger(at) || !Number.isInteger(len)) return '環節要落在半拍上';
+	if ((action.start + at) % HALF_BEATS_PER_BEAT !== 0) return '環節要標在整拍上';
 	if (len < HALF_BEATS_PER_BEAT || len % HALF_BEATS_PER_BEAT !== 0) return '環節要佔整數拍，至少 1 拍';
 	if (at < 0 || at + len > action.length) return '環節要在動作裡面';
 	return null;

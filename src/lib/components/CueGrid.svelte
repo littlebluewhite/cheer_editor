@@ -401,8 +401,7 @@
 		const hi = lo + EIGHT;
 		return phases.flatMap((phase) => {
 			if (!phase.beats) return [];
-			// 動作拖到半拍上時，往前對齊到整拍（長度是整拍），相鄰的環節才不會擠進同一格。
-			const s = Math.floor((action.start + phase.beats.at) / BEAT) * BEAT;
+			const s = action.start + phase.beats.at;
 			const end = s + phase.beats.len;
 			if (end <= lo || s >= hi) return [];
 			const c0 = Math.floor((Math.max(s, lo) - lo) / BEAT);

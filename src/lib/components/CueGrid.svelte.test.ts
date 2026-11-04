@@ -5,6 +5,7 @@ import {
 	createFlow,
 	enableSuccessRate,
 	markPhaseBeats,
+	updateAction,
 	updateSegment,
 	type CommandResult,
 	type Flow
@@ -246,9 +247,29 @@ describe('環節那一列', () => {
 		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
 		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
 		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
-		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 37 })) };
+		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
 		render(CueGrid, { flow, action: flow.actions[0], onchange: vi.fn(), cellAt });
 		const columns = [...document.querySelectorAll<HTMLElement>('.item.phase')].map((b) => b.style.gridColumn);
-		expect(columns).toEqual(['4 / 5', '5 / 6']);
+		expect(columns).toEqual(['5 / 6', '6 / 7']);
+	});
+
+	it('動作拖到半拍上：點環節選回它那一格，清掉只清它，隔壁的環節還在', async () => {
+		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
+		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
+		const onchange = vi.fn();
+		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法/ }));
+		const pop = within(grid.getByRole('dialog', { name: '拍點小窗' }));
+		expect(pop.getByText(/^選了/).textContent).toBe('選了 3-4・1 拍');
+		await fireEvent.click(pop.getByRole('button', { name: '清掉環節' }));
+		const phases = onchange.mock.calls[0][0].actions[0].successRate.phases;
+		expect(phases.map((p: { id: string; beats?: object }) => [p.id, p.beats])).toEqual([
+			['p2', { at: 3, len: 2 }],
+			['p1', undefined],
+			['p3', undefined]
+		]);
 	});
 });

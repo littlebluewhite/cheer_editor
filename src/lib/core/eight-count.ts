@@ -196,10 +196,8 @@ function cueInRow(flow: Flow, action: Action, cue: Cue, from: number, withWho: b
 /** 環節標的拍落在從 from 半拍開始那一列的那一段；沒標拍、沒落在這一列是空的。 */
 function phaseInRow(action: Action, phase: Phase, from: number): EightCountPhase[] {
 	if (!phase.beats) return [];
-	// 動作拖到半拍上時，往前對齊到整拍（長度是整拍），相鄰的環節才不會擠進同一格。
-	const at = Math.floor((action.start + phase.beats.at) / HALF_BEATS_PER_BEAT) * HALF_BEATS_PER_BEAT;
-	const start = Math.max(at, from) - from;
-	const end = Math.min(at + phase.beats.len, from + HALF_BEATS_PER_EIGHT) - from;
+	const start = Math.max(action.start + phase.beats.at, from) - from;
+	const end = Math.min(action.start + phase.beats.at + phase.beats.len, from + HALF_BEATS_PER_EIGHT) - from;
 	if (start >= end) return [];
 	return [
 		{

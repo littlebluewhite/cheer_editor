@@ -103,8 +103,10 @@ export function updateAction(
 	const to = flow.segments.find((s) => s.id === action.segmentId);
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
-	const marked = from && to ? phaseFallout(from, to, old, action) : null;
-	if (marked) action = { ...action, successRate: { ...action.successRate!, phases: marked.phases } };
+	const realigned = from && to ? phaseFallout(from, to, old, action) : null;
+	if (realigned) action = { ...action, successRate: { ...action.successRate!, phases: realigned.phases } };
+	// 只挪半拍、沒切到的標的拍不用問。
+	const marked = realigned?.items.length ? realigned : null;
 	const asked = fallout || marked ? falloutMessage(old, action, to!, fallout, marked) : null;
 	const items = [...(fallout?.items ?? []), ...(marked?.items ?? [])];
 	const settled = settleRecords(flow, old, action, options.records);
@@ -122,20 +124,26 @@ export function updateAction(
 /**
  * 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換了人或任務角色是「…換了人或任務角色，會拿掉 N 個拍點」，
  * 兩個都有就「…變短、換了人或任務角色，…」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。
- * 也動到環節標的拍時接在後面：「…拍點，讓 1 個環節變沒標拍」；只動到標的拍是「…變短，會切短 1 個環節標的拍」。
+ * 也動到環節標的拍時接在後面：「…拍點，讓 1 個環節變沒標拍」；只動到標的拍是「…變短，會切短 1 個環節標的拍」，
+ * 拖到半拍上、標的拍對齊整拍時切到是「…拖到半拍上，會切短 1 個環節標的拍」。
  */
 function falloutMessage(
 	old: Action,
 	action: Action,
 	to: Segment,
 	cues: { removed: number; cut: number; orphaned: number } | null,
-	phases: { cut: number; unmarked: number } | null
+	phases: { cut: number; unmarked: number; shifted: boolean } | null
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
-	if (!cues) return `${label}${to.kind !== 'music' ? '換到口號段' : '變短'}，會${phaseFalloutText(phases!)}`;
+	const shorter = action.length < old.length ? '變短' : '';
+	const offBeat = phases?.shifted ? '拖到半拍上' : '';
+	if (!cues) {
+		const why = to.kind !== 'music' ? '換到口號段' : [shorter, offBeat].filter(Boolean).join('、');
+		return `${label}${why}，會${phaseFalloutText(phases!)}`;
+	}
 	const more = phases ? `，${phaseFalloutText(phases)}` : '';
 	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${cues.removed} 個拍點${more}`;
-	const why = [action.length < old.length ? '變短' : '', cues.orphaned ? '換了人或任務角色' : ''].filter(Boolean);
+	const why = [shorter, cues.orphaned ? '換了人或任務角色' : '', offBeat].filter(Boolean);
 	const parts = [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean);
 	return `${label}${why.join('、')}，會${parts.join('、')}拍點${more}`;
 }

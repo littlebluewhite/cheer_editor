@@ -182,6 +182,28 @@ describe('標的拍跟著動作', () => {
 		expect(brief(flow)).toEqual(['p4 0+6', 'p2 6+14', 'p5 24+8', 'p1', 'p3']);
 	});
 
+	it('拖到半拍上：標的拍往後對齊整拍；沒切到就不問', () => {
+		// 拖到段內第 1 個半拍（1-1&）：標的拍 0+6 會落在 &，往後半拍對齊到 1-2。
+		const flow = flowOf(moveAction(flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p1' }, 0, 6)), 'x1', 0.2));
+		expect(lib(flow).start).toBe(1);
+		expect(brief(flow)).toEqual(['p1 1+6', 'p2', 'p3']);
+	});
+
+	it('拖到半拍上、往後對齊會超出動作：改往前對齊', () => {
+		const flow = flowOf(moveAction(flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p1' }, 2, 30)), 'x1', 0.2));
+		expect(brief(flow)).toEqual(['p1 1+30', 'p2', 'p3']);
+	});
+
+	it('拖到半拍上、往前往後都會切到：先問；確定後往後對齊、切短最後那個環節', () => {
+		expect(moveAction(example(), 'x1', 0.2)).toEqual({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」拖到半拍上，會切短 1 個環節標的拍',
+			items: ['切短：環節 下法 搖籃 2-5 到 2-8 → 2-6 到 2-8']
+		});
+		const flow = flowOf(moveAction(example(), 'x1', 0.2, { confirmed: true }));
+		expect(brief(flow)).toEqual(['p4 1+6', 'p2 7+14', 'p5 25+6', 'p1', 'p3']);
+	});
+
 	it('改 BPM：標的拍還在同一拍', () => {
 		const flow = flowOf(updateSegment(example(), 's1', { bpm: 120 }));
 		expect(brief(flow)).toEqual(['p4 0+6', 'p2 6+14', 'p5 24+8', 'p1', 'p3']);
