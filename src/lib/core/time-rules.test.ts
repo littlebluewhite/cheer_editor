@@ -5,14 +5,9 @@ import {
 	timeRuleWarnings,
 	updateSegment,
 	updateTimeRules,
-	type CommandResult,
 	type Flow
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 /** 一個 120 BPM 的音樂段（beats 拍）加一個口號段（chantSec 秒）。 */
 function routine(beats: number, chantSec: number): Flow {

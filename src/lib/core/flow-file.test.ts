@@ -22,16 +22,11 @@ import {
 	updateSegment,
 	updateTimeRules,
 	writeFlowFile,
-	type CommandResult,
 	type Flow,
 	type FlowDocument,
 	type NewAttempt
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 /** 音樂 1（a1.mp3）→ 口號 1 → 音樂 2（a2.m4a）；兩個隊員、一個自訂角色、一個動作、兩張站位。 */
 function sample(): Flow {
