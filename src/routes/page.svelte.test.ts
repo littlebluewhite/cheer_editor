@@ -1258,8 +1258,10 @@ describe('復原和重做', () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		const min = () => screen.getByLabelText('口號段最少（秒）') as HTMLInputElement;
-		for (let i = 1; i <= 105; i++) await fireEvent.change(min(), { target: { value: String(i) } });
-		for (let i = 0; i < 100; i++) await fireEvent.click(undoButton());
+		const input = min();
+		for (let i = 1; i <= 105; i++) await fireEvent.change(input, { target: { value: String(i) } });
+		const undo = undoButton();
+		for (let i = 0; i < 100; i++) await fireEvent.click(undo);
 		expect(undoButton().disabled).toBe(true);
 		expect(min().value).toBe('5');
 	});
