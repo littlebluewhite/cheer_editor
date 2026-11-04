@@ -99,7 +99,7 @@ export function updateMember(
 			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
 		);
 	}
-	const actions = options.records === 'clear' ? swapped.map((s) => s.action) : flow.actions;
+	const actions = options.records === 'clear' && mine.length ? swapped.map((s) => s.action) : flow.actions;
 	return ok({ ...flow, members: flow.members.map((m) => (m.id === id ? updated : m)), actions });
 }
 

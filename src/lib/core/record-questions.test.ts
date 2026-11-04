@@ -212,6 +212,12 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 		expect(cleared.members[0].name).toBe('小芳芳');
 		expect([ids(cleared, 'x1'), ids(cleared, 'x2')]).toEqual([['t2'], ['t5']]);
 	});
+
+	it('名字其實沒變（問完之前按了復原）還回答清掉：動作和紀錄都不動', () => {
+		const flow = recorded();
+		const same = flowOf(updateMember(flow, 'm1', { name: '小美' }, { records: 'clear' }));
+		expect(same.actions).toEqual(flow.actions);
+	});
 });
 
 describe('改隊員名字：他在動作裡沒分組', () => {
