@@ -5,7 +5,9 @@
 // - 合計把次數加起來再算，不是把每組的百分比平均。
 
 import type { Action } from './actions';
-import type { Attempt, Phase } from './success-rate';
+import type { Flow } from './flow';
+import { attemptWhos } from './records';
+import type { Attempt, Mark, Phase, PracticeKind } from './success-rate';
 
 /** 一個環節的次數：✓、△、✗ 各幾次，和有打記號的次數（空的不算）。 */
 export interface Tally {
@@ -102,4 +104,73 @@ export function weakestPhase(action: Action, date: string): { phase: Phase; tall
 		}
 	}
 	return weakest;
+}
+
+/** 總表的篩選：日期範圍（YYYY-MM-DD，兩頭都算；沒給就不限），練法（沒給就是全部）。 */
+export interface RateFilter {
+	from?: string;
+	to?: string;
+	practice?: PracticeKind;
+}
+
+/** 成功率表：一欄一組（騰翻、跳躍一欄一個人），每欄是每個環節和整次的次數；加上合計。 */
+export interface RateTable {
+	columns: ({ who: number | string; name: string } & RateCounts)[];
+	total: RateCounts;
+}
+
+/**
+ * 成功率表（總表的一塊）：這個動作每組 × 每個環節的次數，加上整次和合計。
+ * 欄是現在有人的組（騰翻、跳躍是動作裡的人，照名單順序）。
+ */
+export function rateTable(flow: Flow, action: Action, filter: RateFilter = {}): RateTable {
+	const phases = action.successRate?.phases ?? [];
+	const records = (action.successRate?.records ?? []).filter(
+		(r) =>
+			(filter.from === undefined || r.date >= filter.from) &&
+			(filter.to === undefined || r.date <= filter.to) &&
+			(filter.practice === undefined || r.practice === filter.practice)
+	);
+	return {
+		columns: attemptWhos(flow, action).map((w) => ({ ...w, ...rateCounts(phases, records.filter((r) => r.who === w.who)) })),
+		total: rateCounts(phases, records)
+	};
+}
+
+/** 總表的期間：今天、最近 7 天（連選的那天）、全部。 */
+export type Period = 'today' | 'week' | 'all';
+
+/** 期間換成日期範圍，從選的日期（YYYY-MM-DD）往回算；全部是不限日期。 */
+export function periodRange(date: string, period: Period): { from?: string; to?: string } {
+	if (period === 'all') return {};
+	if (period === 'today') return { from: date, to: date };
+	const [y, m, d] = date.split('-').map(Number);
+	// 只做日曆的加減，用 UTC 免得碰到夏令時間。
+	const from = new Date(Date.UTC(y, m - 1, d - 6));
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return { from: `${from.getUTCFullYear()}-${pad(from.getUTCMonth() + 1)}-${pad(from.getUTCDate())}`, to: date };
+}
+
+/** 一格的明細的一天：那天的每一次記號（照記的先後），標出哪幾次是全上。 */
+export interface DetailDay {
+	date: string;
+	marks: { mark: Mark; runThrough: boolean }[];
+}
+
+/** 一格的明細：這組（騰翻、跳躍是這個人）、這個環節每天的每一次記號，照日期排。空的不列。 */
+export function cellDetail(action: Action, who: number | string, phaseId: string): DetailDay[] {
+	const days = new Map<string, DetailDay['marks']>();
+	for (const r of action.successRate?.records ?? []) {
+		const mark = r.marks[phaseId];
+		if (r.who !== who || !mark) continue;
+		if (!days.has(r.date)) days.set(r.date, []);
+		days.get(r.date)!.push({ mark, runThrough: r.practice === 'runThrough' });
+	}
+	return [...days].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, marks]) => ({ date, marks }));
+}
+
+/** 格子的顏色：90% 以上 good（綠）、75–89% fair（黃）、75% 以下 poor（紅）；沒有紀錄是 null。用顯示的整數 %。 */
+export function rateBand(pct: number | null): 'good' | 'fair' | 'poor' | null {
+	if (pct === null) return null;
+	return pct >= 90 ? 'good' : pct >= 75 ? 'fair' : 'poor';
 }
