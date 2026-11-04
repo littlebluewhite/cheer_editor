@@ -334,6 +334,19 @@ describe('八拍表的列：環節', () => {
 		]);
 	});
 
+	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
+		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
+		flow = flowOf(enableSuccessRate(flow, 'x1'));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
+		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 9 })) };
+		const [first] = eightCountRows(flow, null);
+		expect(first.cues[0].phases.map((p) => [p.from, p.to])).toEqual([
+			[5, 5],
+			[6, 6]
+		]);
+	});
+
 	it('沒標拍的環節不印；只有沒標拍的環節、也沒拍點的動作不多一排', () => {
 		const rows = eightCountRows(phased(), null);
 		expect(rows.flatMap((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)))).not.toContain('下法');

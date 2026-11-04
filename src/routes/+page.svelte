@@ -172,6 +172,8 @@
 	let view = $state<'edit' | 'practice'>('edit');
 	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
 	let practiceDate = $state(localDate());
+	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；練習畫面照這個重開。 */
+	let opened = $state(0);
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
@@ -365,6 +367,7 @@
 	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}) {
 		pause();
 		flow = f;
+		opened++;
 		undoStack = [];
 		redoStack = [];
 		saver = createSaver();
@@ -1025,7 +1028,10 @@
 		</div>
 		{#if view === 'practice'}
 			<div class="practice-host">
-				<Practice {flow} date={practiceDate} ondate={(d) => (practiceDate = d)} onrecord={record} />
+				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
+				{#key opened}
+					<Practice {flow} date={practiceDate} ondate={(d) => (practiceDate = d)} onrecord={record} />
+				{/key}
 				{@render noticeToast()}
 			</div>
 		{/if}

@@ -3,6 +3,8 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	enableSuccessRate,
+	markPhaseBeats,
 	updateSegment,
 	type CommandResult,
 	type Flow
@@ -236,5 +238,17 @@ describe('拍點格子：拍點小窗', () => {
 		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
 			{ kind: 'count', at: 4, len: 2, word: 'up', who: { member: 'm1' } }
 		]);
+	});
+});
+
+describe('環節那一列', () => {
+	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
+		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
+		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 37 })) };
+		render(CueGrid, { flow, action: flow.actions[0], onchange: vi.fn(), cellAt });
+		const columns = [...document.querySelectorAll<HTMLElement>('.item.phase')].map((b) => b.style.gridColumn);
+		expect(columns).toEqual(['4 / 5', '5 / 6']);
 	});
 });

@@ -69,7 +69,8 @@
 			date,
 			who,
 			practice: 'drill',
-			whole,
+			// 整個做卻跳過前面的環節：算只練幾個環節，不算進整次成功率。
+			whole: whole && kept.every((id) => next[id]),
 			marks: Object.fromEntries(kept.filter((id) => next[id]).map((id) => [id, next[id]]))
 		});
 		if (r.kind !== 'ok') return void (error = r.message);

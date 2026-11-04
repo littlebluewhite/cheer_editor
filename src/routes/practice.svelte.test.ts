@@ -158,6 +158,23 @@ describe('練習：記錄頁記分段練', () => {
 		expect(dayRow('第 1 組 小美')).toEqual(['·✓△', '··✓']);
 	});
 
+	it('整個做卻跳過前面的環節：存成只練幾個環節，不算進整次', async () => {
+		const saves = await practice();
+		await tap('第 1 組 小美', '下法', '成功');
+		expect(dayRow('第 1 組 小美')).toEqual(['··✓']);
+		const flow = await saved(saves);
+		expect(flow.actions[0].successRate?.records.map((r) => [r.whole, r.marks])).toEqual([[false, { p3: '✓' }]]);
+	});
+
+	it('開另一個檔：點了還沒存的記號不帶過去', async () => {
+		await practice();
+		await tap('第 1 組 小美', '上法', '成功');
+		const pressed = () => screen.getByRole('button', { name: '第 1 組 小美 上法 成功' }).getAttribute('aria-pressed');
+		expect(pressed()).toBe('true');
+		await openFile(writeFlowFile(practiceFlow(), {}), '開啟');
+		expect(pressed()).toBe('false');
+	});
+
 	it('只練幾個環節：點選要練的，沒選的按鈕變灰；點完選的就存', async () => {
 		const saves = await practice();
 		const who = '第 1 組 小美';
