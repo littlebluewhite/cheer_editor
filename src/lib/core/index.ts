@@ -106,6 +106,7 @@ export type {
 	EightCountCue,
 	EightCountCueLine,
 	EightCountFormation,
+	EightCountPhase,
 	EightCountRow
 } from './eight-count';
 
