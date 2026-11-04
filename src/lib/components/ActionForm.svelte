@@ -3,6 +3,7 @@
 	// 卡片的標題就是名稱輸入框；辨識色沒挑就用大類的顏色。
 	// 規則（跨段、重疊、至少 1 人、角色存在）都交給流程核心判斷；被擋就顯示原因並還原。
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
+	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 改動作時多一區「成功率」：開關記成功率、列出環節；打開後（騰翻、跳躍除外）每個人旁邊選第幾組。
 	import { untrack } from 'svelte';
@@ -31,6 +32,8 @@
 		type Action,
 		type ActionCategory,
 		type ActionMember,
+		type CommandResult,
+		type ConfirmOption,
 		type Flow,
 		type NewActionInput,
 		type PhaseKind
@@ -114,8 +117,17 @@
 
 	let draft = $state<Draft>(blank());
 	let error = $state('');
-	/** 等教練確認的改動（會切短或拿掉拍點）。 */
-	let pending = $state<{ input: NewActionInput; message: string; items: string[] } | null>(null);
+	/**
+	 * 等教練確認的改動（會切短或拿掉拍點、會清掉紀錄）。send 帶著教練的回答再送一次同一個指令，成功後跑 after；
+	 * choose 是兩個選擇的確認（保留舊紀錄／清掉重算）。
+	 */
+	let pending = $state<{
+		message: string;
+		items: string[];
+		choose: boolean;
+		send: (options: ConfirmOption) => CommandResult;
+		after?: () => void;
+	} | null>(null);
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -199,29 +211,36 @@
 	/** 改選到的動作：馬上送給流程核心；被擋就還原。新增時什麼都不做（等按「新增動作」）。 */
 	function changed() {
 		if (!action) return;
+		const id = action.id;
 		const input = toInput();
-		const r = typeof input === 'string' ? null : updateAction(flow, action.id, input);
+		const r = typeof input === 'string' ? null : updateAction(flow, id, input);
 		pending = null;
 		if (r?.kind === 'ok') {
 			error = '';
 			onchange(r.flow);
 			return;
 		}
-		if (r?.kind === 'confirm' && typeof input !== 'string') {
-			error = '';
-			pending = { input, message: r.message, items: r.items };
-			return;
-		}
+		if (r && typeof input !== 'string' && ask(r, (o) => updateAction(flow, id, input, o))) return;
 		error = `${r?.message ?? input}，已還原`;
 		draft = fromAction(action);
 	}
 
-	function confirmChange() {
+	/** 核心要確認（或要選保留／清掉）就先問，回 true；send 是帶著回答再送一次。 */
+	function ask(r: CommandResult, send: (options: ConfirmOption) => CommandResult, after?: () => void): boolean {
+		if (r.kind !== 'confirm' && r.kind !== 'choose') return false;
+		error = '';
+		pending = { message: r.message, items: r.items, choose: r.kind === 'choose', send, after };
+		return true;
+	}
+
+	function confirmChange(options: ConfirmOption) {
 		if (!action || !pending) return;
-		const r = updateAction(flow, action.id, pending.input, { confirmed: true });
+		const { send, after } = pending;
+		const r = send(options);
 		pending = null;
 		if (r.kind === 'ok') {
 			onchange(r.flow);
+			after?.();
 			return;
 		}
 		// 等確認的時候流程變了、再送一次被擋：跟別的被擋一樣寫原因再還原。
@@ -236,8 +255,10 @@
 
 	function remove() {
 		if (!action) return;
-		const r = deleteAction(flow, action.id);
-		if (r.kind !== 'ok') return;
+		const id = action.id;
+		const send = (o: ConfirmOption = {}) => deleteAction(flow, id, o);
+		const r = send();
+		if (r.kind !== 'ok') return void ask(r, send, () => onselect(null));
 		onchange(r.flow);
 		onselect(null);
 	}
@@ -281,15 +302,26 @@
 		changed();
 	}
 
-	function toggleSuccessRate(on: boolean) {
+	/** 要問或被擋時，開關先回到原來的樣子（確定了才關）。 */
+	function toggleSuccessRate(box: HTMLInputElement) {
 		if (!action) return;
-		error = applyResult((on ? enableSuccessRate : disableSuccessRate)(flow, action.id), onchange);
+		const id = action.id;
+		const on = box.checked;
+		const send = (o: ConfirmOption = {}) => (on ? enableSuccessRate(flow, id) : disableSuccessRate(flow, id, o));
+		const r = send();
+		if (r.kind !== 'ok') box.checked = !on;
+		if (!ask(r, send)) error = applyResult(r, onchange);
 	}
 
-	/** value 是選單的值：空字串是沒分組。 */
-	function pickSquad(memberId: string, value: string) {
+	/** 選單的值：空字串是沒分組。要問或被擋時，選單先回到原來的組。 */
+	function pickSquad(memberId: string, select: HTMLSelectElement) {
 		if (!action) return;
-		error = applyResult(setSquad(flow, action.id, memberId, value ? Number(value) : null), onchange);
+		const id = action.id;
+		const squad = select.value ? Number(select.value) : null;
+		const send = (o: ConfirmOption = {}) => setSquad(flow, id, memberId, squad, o);
+		const r = send();
+		if (r.kind !== 'ok') select.value = String(action.members.find((m) => m.memberId === memberId)?.squad ?? '');
+		if (!ask(r, send)) error = applyResult(r, onchange);
 	}
 
 	const kindLabel = (kind: PhaseKind) => PHASE_KINDS.find((k) => k.key === kind)?.label ?? '';
@@ -418,7 +450,7 @@
 									class="squad"
 									aria-label="{nameOf(m.memberId)} 的組"
 									value={m.squad ?? ''}
-									onchange={(e) => pickSquad(m.memberId, e.currentTarget.value)}
+									onchange={(e) => pickSquad(m.memberId, e.currentTarget)}
 								>
 									<option value="">沒有</option>
 									{#each squadChoices as n (n)}<option value={n}>第 {n} 組</option>{/each}
@@ -463,7 +495,7 @@
 						<input
 							type="checkbox"
 							checked={!!action.successRate}
-							onchange={(e) => toggleSuccessRate(e.currentTarget.checked)}
+							onchange={(e) => toggleSuccessRate(e.currentTarget)}
 						/>記成功率
 					</label>
 				</div>
@@ -495,8 +527,9 @@
 			<ConfirmList
 				message={pending.message}
 				items={pending.items}
-				confirmLabel="確定"
-				onconfirm={confirmChange}
+				confirmLabel={pending.choose ? '清掉重算' : '確定'}
+				onconfirm={() => confirmChange(pending?.choose ? { records: 'clear' } : { confirmed: true })}
+				onkeep={pending.choose ? () => confirmChange({ records: 'keep' }) : undefined}
 				oncancel={cancelChange}
 			/>
 		</div>

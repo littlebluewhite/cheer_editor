@@ -28,6 +28,7 @@
 		timeText,
 		totalSeconds,
 		writeFlowFile,
+		type ConfirmOption,
 		type Flow,
 		type Formation,
 		type FormationWalk,
@@ -679,9 +680,15 @@
 		setInspectorW(null);
 	}
 
-	function removeAction(id: string) {
+	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
+	function removeAction(id: string, options: ConfirmOption = {}) {
 		if (!flow) return;
-		const r = deleteAction(flow, id);
+		const r = deleteAction(flow, id, options);
+		if (r.kind === 'confirm') {
+			notice = '';
+			resizePending = { message: r.message, items: r.items, confirm: () => removeAction(id, { confirmed: true }) };
+			return;
+		}
 		if (r.kind !== 'ok') return void (notice = r.message);
 		change(r.flow);
 		notice = '';
