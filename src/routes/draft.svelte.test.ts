@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFlowFile, writeFlowFile } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { DraftStore } from '#lib/file/draft.js';
-import { audioFlow, fakeDecode, fakeDraftStore, fakeSaver, settle } from '#lib/test-fakes.js';
+import { audioFlow, fakeDecode, fakeDraftStore, fakeSaver, flush } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -21,10 +21,10 @@ describe('打開時救回草稿', () => {
 	it('有草稿就問；按「救回」打開草稿（含動作、音樂），還算未存', async () => {
 		const { store } = fakeDraftStore(writeFlowFile(audioFlow(), { a1: new Uint8Array([1]) }));
 		setup(store);
-		await settle();
+		await flush();
 		expect(screen.getByRole('alertdialog').textContent).toContain('練習用');
 		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
-		await settle();
+		await flush();
 		expect(screen.getByText('練習用')).toBeTruthy();
 		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
 		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
@@ -35,9 +35,9 @@ describe('打開時救回草稿', () => {
 	it('按「丟掉」：草稿刪掉，回到新建流程', async () => {
 		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), {}));
 		setup(drafts.store);
-		await settle();
+		await flush();
 		await fireEvent.click(screen.getByRole('button', { name: '丟掉' }));
-		await settle();
+		await flush();
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 		expect(drafts.state.bytes).toBeNull();
@@ -45,7 +45,7 @@ describe('打開時救回草稿', () => {
 
 	it('沒有草稿就不問', async () => {
 		setup(fakeDraftStore().store);
-		await settle();
+		await flush();
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
@@ -73,7 +73,7 @@ describe('編輯時自動存草稿', () => {
 	it('改了停 1 秒就存；連續改只存最後的樣子', async () => {
 		const drafts = fakeDraftStore();
 		setup(drafts.store);
-		await settle();
+		await flush();
 		vi.useFakeTimers();
 		await newFlow();
 		await vi.advanceTimersByTimeAsync(500);
@@ -90,9 +90,9 @@ describe('編輯時自動存草稿', () => {
 	it('草稿裡有音樂', async () => {
 		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), { a1: new Uint8Array([7, 7]) }));
 		setup(drafts.store);
-		await settle();
+		await flush();
 		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
-		await settle();
+		await flush();
 		vi.useFakeTimers();
 		await addChant();
 		await vi.advanceTimersByTimeAsync(1000);
@@ -104,7 +104,7 @@ describe('編輯時自動存草稿', () => {
 	it('Ctrl+S 存成流程檔後草稿就丟掉；再改又存', async () => {
 		const drafts = fakeDraftStore();
 		setup(drafts.store);
-		await settle();
+		await flush();
 		vi.useFakeTimers();
 		await newFlow();
 		await vi.advanceTimersByTimeAsync(1000);
@@ -120,9 +120,9 @@ describe('編輯時自動存草稿', () => {
 	it('救回草稿時清空復原紀錄；復原後草稿照常存（存的是復原後的流程，音樂還在）', async () => {
 		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), { a1: new Uint8Array([7, 7]) }));
 		setup(drafts.store);
-		await settle();
+		await flush();
 		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
-		await settle();
+		await flush();
 		expect((screen.getByRole('button', { name: '復原' }) as HTMLButtonElement).disabled).toBe(true);
 		vi.useFakeTimers();
 		await addChant();
@@ -139,7 +139,7 @@ describe('編輯時自動存草稿', () => {
 	it('剛開的流程檔沒改過，不存草稿', async () => {
 		const drafts = fakeDraftStore();
 		setup(drafts.store);
-		await settle();
+		await flush();
 		vi.useFakeTimers();
 		const file = new File([writeFlowFile(audioFlow(), {}) as Uint8Array<ArrayBuffer>], '練習用.zip');
 		await fireEvent.change(screen.getByLabelText('開啟流程檔'), { target: { files: [file] } });

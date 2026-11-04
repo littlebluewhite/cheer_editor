@@ -12,7 +12,7 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
-import { audioFlow, fakeDecode, fakeSaver, openFile, settle } from '#lib/test-fakes.js';
+import { audioFlow, fakeDecode, fakeSaver, openFile, flush } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -36,7 +36,7 @@ describe('存檔', () => {
 		setup(saver);
 		await newFlow();
 		await ctrlS();
-		await settle();
+		await flush();
 		expect(fileNames).toEqual(['全國賽.zip']);
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.name).toBe('全國賽');
@@ -47,7 +47,7 @@ describe('存檔', () => {
 		setup(saver);
 		await newFlow();
 		await fireEvent.keyDown(screen.getByLabelText(/^名字/), { key: 's', metaKey: true });
-		await settle();
+		await flush();
 		expect(saves).toHaveLength(1);
 	});
 
@@ -62,7 +62,7 @@ describe('存檔', () => {
 		name.focus();
 		await fireEvent.input(name, { target: { value: '縣賽' } });
 		await ctrlS(name);
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.name).toBe('縣賽');
 		expect(hasUnsavedChanges()).toBe(false);
@@ -77,7 +77,7 @@ describe('存檔', () => {
 		name.focus();
 		await fireEvent.input(name, { target: { value: '開場' } });
 		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
 	});
@@ -97,9 +97,9 @@ describe('存檔', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		finish!({ durationSec: 30, peaks: [] });
-		await settle();
+		await flush();
 		await ctrlS();
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.flow.segments).toHaveLength(2);
@@ -122,9 +122,9 @@ describe('存檔', () => {
 		await openFile(writeFlowFile(sampleFlow(), {}), '開啟');
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		pendingDecode({ durationSec: 30, peaks: [] });
-		await settle();
+		await flush();
 		await ctrlS();
-		await settle();
+		await flush();
 		const r = readFlowFile(saves.at(-1)!);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.flow.name).toBe('練習用');
@@ -137,7 +137,7 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(true);
 		expect(screen.getByText('未存')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
-		await settle();
+		await flush();
 		expect(hasUnsavedChanges()).toBe(false);
 		expect(screen.queryByText('未存')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
@@ -149,7 +149,7 @@ describe('存檔', () => {
 		setup(fakeSaver('cancelled').saver);
 		await newFlow();
 		await ctrlS();
-		await settle();
+		await flush();
 		expect(hasUnsavedChanges()).toBe(true);
 	});
 
@@ -157,7 +157,7 @@ describe('存檔', () => {
 		setup(fakeSaver('downloaded').saver);
 		await newFlow();
 		await ctrlS();
-		await settle();
+		await flush();
 		expect(screen.getByRole('status').textContent).toContain('這個瀏覽器不能存回原檔');
 		expect(hasUnsavedChanges()).toBe(false);
 	});
@@ -166,7 +166,7 @@ describe('存檔', () => {
 		setup(fakeSaver('shared').saver);
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
-		await settle();
+		await flush();
 		expect(hasUnsavedChanges()).toBe(false);
 		expect(screen.queryByRole('status')).toBeNull();
 	});
@@ -176,7 +176,7 @@ describe('存檔', () => {
 		setup(saver);
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([7, 7, 7]) }));
 		await ctrlS();
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.audio).toEqual({ a1: new Uint8Array([7, 7, 7]) });
 	});
@@ -213,7 +213,7 @@ describe('開檔', () => {
 
 		await openFile(file, '開啟');
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
-		await settle();
+		await flush();
 		expect(screen.getByText('練習用')).toBeTruthy();
 	});
 });
@@ -275,7 +275,7 @@ describe('新建', () => {
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 6, flow })) }));
 		expect(screen.getByText('練習用')).toBeTruthy();
 		await ctrlS();
-		await settle();
+		await flush();
 		const json = JSON.parse(new TextDecoder().decode(unzipSync(saves[0])['flow.json']));
 		expect(json.formatVersion).toBe(8);
 		const saved = json.flow.actions[0];
@@ -328,7 +328,7 @@ describe('新建', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
 		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await settle();
+		await flush();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).toContain('找不到音樂');
@@ -350,7 +350,7 @@ describe('新建', () => {
 		expect(screen.getByRole('dialog').textContent).toContain('找不到音樂');
 		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await settle();
+		await flush();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
 		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();

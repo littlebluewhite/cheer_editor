@@ -17,7 +17,7 @@ import {
 } from '#lib/core';
 import { flowOf, squadNumbers } from '#lib/test-flows.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
-import { editorPage, openFile, settle } from '#lib/test-fakes.js';
+import { editorPage, openFile, flush } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -225,7 +225,7 @@ describe('沒記成功率的動作也能加環節', () => {
 		expect([squad('小美'), squad('小A')]).toEqual(['1', '1']);
 
 		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.flow.actions[0].successRate?.phases).toEqual([

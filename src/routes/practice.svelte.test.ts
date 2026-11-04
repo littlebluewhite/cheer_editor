@@ -11,7 +11,7 @@ import {
 	type NewAttempt
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { editorPage, openFile, practiceFlow, settle } from '#lib/test-fakes.js';
+import { editorPage, openFile, practiceFlow, flush } from '#lib/test-fakes.js';
 import { localDate } from '#lib/local-date.js';
 import Page from './+page.svelte';
 
@@ -173,7 +173,7 @@ describe('練習：記錄頁記分段練', () => {
 		await tap('第 1 組 小美', '下法', '小失誤');
 
 		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		const flow = r.flow;

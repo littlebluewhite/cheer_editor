@@ -56,13 +56,13 @@ export function fakeDraftStore(initial: Uint8Array | null = null) {
 export const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
 
 /** 等 async 的存檔、開檔跑完。 */
-export const settle = () => new Promise((r) => setTimeout(r, 0));
+export const flush = () => new Promise((r) => setTimeout(r, 0));
 
 /** 從「開啟流程檔」（首頁）或「開啟」（上方列）開一個檔：只有測檔案本身才用，其他測試用 editorPage 放流程。 */
 export async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
 	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
-	await settle();
+	await flush();
 }
 
 /**

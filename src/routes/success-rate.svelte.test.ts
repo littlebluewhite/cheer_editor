@@ -9,7 +9,7 @@ import {
 	readFlowFile
 } from '#lib/core';
 import { flowOf, squadNumbers } from '#lib/test-flows.js';
-import { editorPage, openFile, phasedFlow, settle, teamFlow } from '#lib/test-fakes.js';
+import { editorPage, openFile, phasedFlow, flush, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -117,7 +117,7 @@ describe('分組浮動列', () => {
 		await pick('小芳', '小B');
 		await tap('放進新的一組');
 		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-		await settle();
+		await flush();
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1, 2, 2]);
