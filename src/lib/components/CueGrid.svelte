@@ -290,12 +290,11 @@
 		addCustom(kind);
 	}
 
-	/** 把選的拍標給現有的環節，或標給新的環節（種類、名字）。 */
-	function markPhase(target: { phaseId: string } | { kind: PhaseKind; name: string }) {
+	/** 把選的拍標給現有的環節。 */
+	function markPhase(phaseId: string) {
 		const { from } = sel;
 		const len = selLen;
-		const after = 'phaseId' in target ? undefined : () => (phaseName = '');
-		send((o) => markPhaseBeats(flow, action.id, target, from, len, o), after);
+		send((o) => markPhaseBeats(flow, action.id, phaseId, from, len, o));
 	}
 
 	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
@@ -304,10 +303,11 @@
 		send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
-	/** 口號段加環節（種類、名字），加在最後。 */
-	function addChantPhase() {
+	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。 */
+	function addNewPhase() {
+		const beats = segment?.kind === 'music' ? { at: sel.from, len: selLen } : undefined;
 		send(
-			() => addPhase(flow, action.id, { kind: phaseKind, name: phaseName }),
+			(o) => addPhase(flow, action.id, { kind: phaseKind, name: phaseName, beats }, o),
 			() => (phaseName = '')
 		);
 	}
@@ -491,7 +491,7 @@
 						onclick={() => (chosen = chosen === p.id ? null : p.id)}>{phaseLabel(p)}</button
 					>
 				{/each}
-				{@render adder(addChantPhase)}
+				{@render adder(addNewPhase)}
 			</div>
 			<button type="button" class="clear" aria-label="清掉環節" disabled={!editing} onclick={deleteChosen}>清掉</button>
 			{#if editing}{@render edit(editing)}{/if}
@@ -679,10 +679,10 @@
 									class="word phase"
 									style:--c={phaseColor(p)}
 									aria-label="把這幾拍標給 {phaseLabel(p)}"
-									onclick={() => markPhase({ phaseId: p.id })}>{phaseLabel(p)}</button
+									onclick={() => markPhase(p.id)}>{phaseLabel(p)}</button
 								>
 							{/each}
-							{@render adder(() => markPhase({ kind: phaseKind, name: phaseName }))}
+							{@render adder(addNewPhase)}
 						</div>
 						<button
 							type="button"

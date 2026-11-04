@@ -3,7 +3,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	markPhaseBeats,
+	addPhase,
 	PHASE_COLORS,
 	updateAction,
 	updatePhase,
@@ -240,8 +240,8 @@ describe('拍點格子：拍點小窗', () => {
 
 describe('環節那一列', () => {
 	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
-		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '' }, 0, 2));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
+		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 2, len: 2 } }));
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
 		render(CueGrid, { flow, action: flow.actions[0], onchange: vi.fn(), cellAt });
 		const columns = [...document.querySelectorAll<HTMLElement>('.item.phase')].map((b) => b.style.gridColumn);
@@ -249,8 +249,8 @@ describe('環節那一列', () => {
 	});
 
 	it('動作拖到半拍上：點環節選回它那一格，清掉就刪掉它，隔壁的環節還在', async () => {
-		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '' }, 0, 2));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
+		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 2, len: 2 } }));
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
 		const onchange = vi.fn();
 		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
@@ -267,9 +267,9 @@ describe('環節那一列', () => {
 describe('改環節', () => {
 	/** 3-3 到 3-4 上法「延伸」（紅色）、3-5 到 3-6 中段。 */
 	function phased() {
-		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '延伸' }, 0, 4));
+		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 4 } }));
 		flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: '#c62828' }));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 4, 4));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 4, len: 4 } }));
 		const onchange = vi.fn();
 		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
 		const grid = within(screen.getByRole('group', { name: '拍點' }));

@@ -5,7 +5,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	markPhaseBeats,
+	addPhase,
 	setSquad,
 	updateSegment,
 	type CommandResult,
@@ -43,7 +43,7 @@ export function libSample(): Flow {
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
 	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+		flow = flowOf(addPhase(flow, 'x1', { kind, name: '', beats: { at: at, len: len } }));
 	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', [id], squad));
@@ -70,5 +70,5 @@ export function ratedSample(): Flow {
 			]
 		})
 	);
-	return flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
+	return flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
 }

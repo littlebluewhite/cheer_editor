@@ -5,6 +5,7 @@ import {
 	addSegment,
 	createFlow,
 	clearPhaseBeats,
+	addPhase,
 	markPhaseBeats,
 	moveAction,
 	placeCue,
@@ -40,9 +41,9 @@ function sample(): Flow {
 		{ memberId: 'm2', role: '主底' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 32, note: '', members }));
-	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '延伸' }, 0, 6));
-	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 6, 14));
-	return flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '搖籃' }, 24, 8));
+	flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 6 } }));
+	flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 6, len: 14 } }));
+	return flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '搖籃', beats: { at: 24, len: 8 } }));
 }
 
 /** sample 只留 p1（1-1 到 1-3）。 */
@@ -64,7 +65,7 @@ const expectUnrated = (flow: Flow) => {
 
 describe('標拍', () => {
 	it('標給新的環節：給種類和名字，發新的 id，標上那幾拍，照拍的先後排', () => {
-		const r = markPhaseBeats(sample(), 'x1', { kind: 'load', name: ' 起 ' }, 20, 4);
+		const r = addPhase(sample(), 'x1', { kind: 'load', name: ' 起 ', beats: { at: 20, len: 4 } });
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
 		expect(r.id).toBe('p4');
@@ -73,7 +74,7 @@ describe('標拍', () => {
 	});
 
 	it('標給現有的環節：換掉它原來的拍', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p2' }, 6, 12));
+		const flow = flowOf(markPhaseBeats(sample(), 'x1', 'p2', 6, 12));
 		expect(phasesOf(flow).find((p) => p.id === 'p2')).toEqual({ id: 'p2', kind: 'hold', name: '', beats: { at: 6, len: 12 } });
 	});
 });
@@ -84,50 +85,61 @@ describe('順序', () => {
 	});
 
 	it('後標的拍比較早：排到前面', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p3' }, 0, 4));
+		const flow = flowOf(markPhaseBeats(sample(), 'x1', 'p3', 0, 4));
 		expect(brief(flow)).toEqual(['p3 0+4', 'p1 4+2', 'p2 6+14']);
 	});
 });
 
 describe('蓋到別的環節', () => {
 	it('被蓋到的部分拿掉：蓋到後面，留前面', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p3' }, 16, 4));
+		const flow = flowOf(markPhaseBeats(sample(), 'x1', 'p3', 16, 4));
 		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+10', 'p3 16+4']);
 	});
 
 	it('蓋到前面，留後面', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p3' }, 4, 4));
+		const flow = flowOf(markPhaseBeats(sample(), 'x1', 'p3', 4, 4));
 		expect(brief(flow)).toEqual(['p1 0+4', 'p3 4+4', 'p2 8+12']);
 	});
 
 	it('從中間切成兩段：留前面那段', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p3' }, 10, 2));
+		const flow = flowOf(markPhaseBeats(sample(), 'x1', 'p3', 10, 2));
 		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+4', 'p3 10+2']);
 	});
 
 	it('被切短的環節，紀錄留著', () => {
-		const flow = flowOf(markPhaseBeats(record(sample(), { p2: '△' }), 'x1', { phaseId: 'p3' }, 16, 4));
+		const flow = flowOf(markPhaseBeats(record(sample(), { p2: '△' }), 'x1', 'p3', 16, 4));
 		expect(lib(flow).successRate!.records[0].marks).toEqual({ p2: '△' });
 	});
 
 	it('整個蓋住：原來那個環節自動刪掉', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'whole', name: '' }, 24, 8));
+		const flow = flowOf(addPhase(sample(), 'x1', { kind: 'whole', name: '', beats: { at: 24, len: 8 } }));
 		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+14', 'p4 24+8']);
 	});
 
+	it('加新的環節蓋掉有記號的環節：一樣先問，確定後才加', () => {
+		const recorded = record(sample(), { p3: '✓' });
+		const add = (o = {}) => addPhase(recorded, 'x1', { kind: 'whole', name: '', beats: { at: 24, len: 8 } }, o);
+		expect(add()).toEqual({
+			kind: 'confirm',
+			message: '會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉',
+			items: ['刪掉：環節 下法 搖籃']
+		});
+		expect(brief(flowOf(add({ confirmed: true })))).toEqual(['p1 0+6', 'p2 6+14', 'p4 24+8']);
+	});
+
 	it('把一個環節的拍全部標給別的環節：原來那個自動刪掉', () => {
-		const flow = flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p1' }, 0, 20));
+		const flow = flowOf(markPhaseBeats(sample(), 'x1', 'p1', 0, 20));
 		expect(brief(flow)).toEqual(['p1 0+20', 'p3 24+8']);
 	});
 
-	it('要刪的環節有記號：先問，說會清掉幾次的記號；確定後刪掉環節和它的記號', () => {
+	it('要刪的環節有記號：先問，說會刪掉幾個環節、清掉幾次的記號；確定後刪掉環節和它的記號', () => {
 		const recorded = record(sample(), { p1: '✓', p2: '△' });
-		expect(markPhaseBeats(recorded, 'x1', { phaseId: 'p2' }, 0, 20)).toEqual({
+		expect(markPhaseBeats(recorded, 'x1', 'p2', 0, 20)).toEqual({
 			kind: 'confirm',
-			message: '拍清光的環節會刪掉，清掉 1 次的記號，確定就刪掉',
+			message: '會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉',
 			items: ['刪掉：環節 上法 延伸']
 		});
-		const flow = flowOf(markPhaseBeats(recorded, 'x1', { phaseId: 'p2' }, 0, 20, { confirmed: true }));
+		const flow = flowOf(markPhaseBeats(recorded, 'x1', 'p2', 0, 20, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p2 0+20', 'p3 24+8']);
 		expect(lib(flow).successRate!.records[0].marks).toEqual({ p2: '△' });
 	});
@@ -146,13 +158,13 @@ describe('標拍擋下來的情況', () => {
 		['超出動作', sample, 'x1', 30, 4, '環節要在動作裡面'],
 		['在動作之前', sample, 'x1', -2, 4, '環節要在動作裡面']
 	])('%s', (_, make, id, at, len, message) => {
-		expect(markPhaseBeats(make(), id, { kind: 'whole', name: '' }, at, len)).toEqual({ kind: 'blocked', message });
+		expect(addPhase(make(), id, { kind: 'whole', name: '', beats: { at, len } })).toEqual({ kind: 'blocked', message });
 	});
 
 	it('動作被拖半拍後：要對齊音樂的整拍', () => {
 		const flow = flowOf(updateAction(onlyP1(), 'x1', { start: 1, length: 30 }));
-		expect(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2)).toEqual({ kind: 'blocked', message: '環節要標在整拍上' });
-		expect(brief(flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 1, 2)))).toEqual(['p1 1+2']);
+		expect(markPhaseBeats(flow, 'x1', 'p1', 0, 2)).toEqual({ kind: 'blocked', message: '環節要標在整拍上' });
+		expect(brief(flowOf(markPhaseBeats(flow, 'x1', 'p1', 1, 2)))).toEqual(['p1 1+2']);
 	});
 });
 
@@ -168,7 +180,7 @@ describe('沒記成功率的動作標拍加環節', () => {
 	const x2 = (flow: Flow) => flow.actions.find((a) => a.id === 'x2')!;
 
 	it('動作開始記成功率，只有這一個環節', () => {
-		const flow = flowOf(markPhaseBeats(unrated('stunt'), 'x2', { kind: 'load', name: '延伸' }, 0, 4));
+		const flow = flowOf(addPhase(unrated('stunt'), 'x2', { kind: 'load', name: '延伸', beats: { at: 0, len: 4 } }));
 		expect(x2(flow).successRate).toEqual({
 			phases: [{ id: 'p4', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } }],
 			records: []
@@ -184,18 +196,18 @@ describe('沒記成功率的動作標拍加環節', () => {
 		['tumbling', [undefined, undefined]],
 		['jump', [undefined, undefined]]
 	] as const)('%s：分組的大類全部的人進第 1 組；騰翻、跳躍不分組', (category, squads) => {
-		const flow = flowOf(markPhaseBeats(unrated(category), 'x2', { kind: 'whole', name: '' }, 0, 4));
+		const flow = flowOf(addPhase(unrated(category), 'x2', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }));
 		expect(x2(flow).members.map((m) => m.squad)).toEqual(squads);
 	});
 
 	it('已經記成功率的動作加環節：組不動', () => {
 		const split = flowOf(setSquad(sample(), 'x1', ['m2'], 2));
-		const flow = flowOf(markPhaseBeats(split, 'x1', { kind: 'whole', name: '' }, 8, 4));
+		const flow = flowOf(addPhase(split, 'x1', { kind: 'whole', name: '', beats: { at: 8, len: 4 } }));
 		expect(lib(flow).members.map((m) => m.squad)).toEqual([1, 2]);
 	});
 
 	it('還沒有環節，不能標給現有的環節', () => {
-		expect(markPhaseBeats(unrated('stunt'), 'x2', { phaseId: 'p1' }, 0, 4)).toEqual({ kind: 'blocked', message: '找不到這個環節' });
+		expect(markPhaseBeats(unrated('stunt'), 'x2', 'p1', 0, 4)).toEqual({ kind: 'blocked', message: '找不到這個環節' });
 	});
 });
 
@@ -216,7 +228,7 @@ describe('清標的拍', () => {
 		const recorded = record(sample(), { p1: '✓', p2: '△' });
 		expect(clearPhaseBeats(recorded, 'x1', 0, 6)).toEqual({
 			kind: 'confirm',
-			message: '拍清光的環節會刪掉，清掉 1 次的記號，確定就刪掉',
+			message: '會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉',
 			items: ['刪掉：環節 上法 延伸']
 		});
 		const flow = flowOf(clearPhaseBeats(recorded, 'x1', 0, 6, { confirmed: true }));
@@ -232,7 +244,7 @@ describe('清標的拍', () => {
 		const recorded = record(record(sample(), { p1: '✓' }), { p3: '✗' });
 		expect(clearPhaseBeats(recorded, 'x1', 0, 32)).toEqual({
 			kind: 'confirm',
-			message: '拍清光的環節會刪掉，清掉 2 次的記號；動作沒有環節了，不再記成功率，確定就刪掉',
+			message: '會刪掉 3 個環節，清掉 2 次的記號；動作沒有環節了，不再記成功率，確定就刪掉',
 			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段', '刪掉：環節 下法 搖籃']
 		});
 		expectUnrated(flowOf(clearPhaseBeats(recorded, 'x1', 0, 32, { confirmed: true })));
@@ -255,7 +267,7 @@ describe('標的拍跟著動作', () => {
 	});
 
 	it('拖到半拍上、往後對齊會超出動作：改往前對齊', () => {
-		const flow = flowOf(moveAction(flowOf(markPhaseBeats(sample(), 'x1', { phaseId: 'p1' }, 2, 30)), 'x1', 0.2));
+		const flow = flowOf(moveAction(flowOf(markPhaseBeats(sample(), 'x1', 'p1', 2, 30)), 'x1', 0.2));
 		expect(brief(flow)).toEqual(['p1 1+30']);
 	});
 
@@ -345,8 +357,8 @@ describe('標的拍跟著動作', () => {
 	it('換到口號段：環節照原本拍的先後排，不是照加的先後', () => {
 		// 先加的 p4 在後面（2-5 起），後加的 p5 在前面（1-1 起）。
 		let flow = flowOf(clearPhaseBeats(sample(), 'x1', 0, 32, { confirmed: true }));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 24, 8));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 6));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '', beats: { at: 24, len: 8 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 6 } }));
 		flow = flowOf(updateAction(flow, 'x1', { segmentId: 's2', start: 0, length: 30 }, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p5', 'p4']);
 	});
@@ -366,7 +378,7 @@ describe('不動拍點', () => {
 	it('標拍、清標的拍，拍點都不變；拍點可以超出環節', () => {
 		const cues = flowOf(placeCue(sample(), 'x1', { kind: 'step', at: 4, len: 6, word: '上' }));
 		const before = lib(cues).cues;
-		let flow = flowOf(markPhaseBeats(cues, 'x1', { kind: 'load', name: '延伸' }, 0, 6));
+		let flow = flowOf(addPhase(cues, 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 6 } }));
 		expect(lib(flow).cues).toEqual(before);
 		flow = flowOf(clearPhaseBeats(flow, 'x1', 0, 32));
 		expect(lib(flow).cues).toEqual(before);

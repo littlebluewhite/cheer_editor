@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	createFlow,
 	insertFormation,
-	markPhaseBeats,
+	addPhase,
 	readFlowFile,
 	writeFlowFile
 } from '#lib/core';
@@ -263,7 +263,7 @@ describe('新建', () => {
 	it('開第 6 版的檔：音樂段沒標拍的環節和它的記號拿掉、組號補成第 1 組，存出來是第 7 版', async () => {
 		const { saver, saves } = fakeSaver();
 		setup(saver);
-		const flow = JSON.parse(JSON.stringify(flowOf(markPhaseBeats(sampleFlow(), 'x1', { kind: 'load', name: '' }, 0, 4))));
+		const flow = JSON.parse(JSON.stringify(flowOf(addPhase(sampleFlow(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }))));
 		const action = flow.actions[0];
 		action.successRate.phases.push({ id: 'p2', kind: 'dismount', name: '' });
 		action.members[0].squad = 3;
@@ -287,7 +287,7 @@ describe('新建', () => {
 
 	it('第 7 版的檔裡音樂段的環節沒標拍：提示「這不是流程檔」，留在首頁', async () => {
 		setup();
-		const flow = JSON.parse(JSON.stringify(flowOf(markPhaseBeats(sampleFlow(), 'x1', { kind: 'load', name: '' }, 0, 4))));
+		const flow = JSON.parse(JSON.stringify(flowOf(addPhase(sampleFlow(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }))));
 		delete flow.actions[0].successRate.phases[0].beats;
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 7, flow })) }));
 		expect(screen.getByRole('alert').textContent).toContain('這不是流程檔');

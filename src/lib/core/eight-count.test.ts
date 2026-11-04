@@ -6,7 +6,7 @@ import {
 	createFlow,
 	eightCountRows,
 	clearPhaseBeats,
-	markPhaseBeats,
+	addPhase,
 	insertFormation,
 	placeCue,
 	renameFormation,
@@ -295,9 +295,9 @@ describe('八拍表的列：環節', () => {
 	 */
 	function phased(): Flow {
 		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '延伸' }, 0, 4));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 4, 8));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 4 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 4, len: 8 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '', beats: { at: 12, len: 4 } }));
 		flow = flowOf(clearPhaseBeats(flow, 'x1', 12, 16));
 		return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 6, len: 2, word: 'down' }));
 	}
@@ -331,8 +331,8 @@ describe('八拍表的列：環節', () => {
 
 	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
 		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 2));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 2, len: 2 } }));
 		flow = flowOf(updateAction(flow, 'x1', { start: 9 }));
 		const [first] = eightCountRows(flow, null);
 		expect(first.cues[0].phases.map((p) => [p.from, p.to])).toEqual([
@@ -345,7 +345,7 @@ describe('八拍表的列：環節', () => {
 		const rows = eightCountRows(phased(), null);
 		expect(rows.flatMap((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)))).not.toContain('下法');
 		let flow = flowOf(addAction(sample(), action({ start: 16, length: 8 })));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 8));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 8 } }));
 		flow = flowOf(clearPhaseBeats(flow, 'x1', 0, 8));
 		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
 	});

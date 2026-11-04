@@ -4,7 +4,7 @@ import {
 	completionPercent,
 	dailyTable,
 	cellDetail,
-	markPhaseBeats,
+	addPhase,
 	percent,
 	periodRange,
 	rateBand,
@@ -212,7 +212,7 @@ describe('成功率表', () => {
 			{ memberId: 'm1', role: '騰翻' }
 		];
 		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members }));
-		flow = flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
 		const tumbling = () => flow.actions.find((a) => a.id === 'x2')!;
 		const phase = tumbling().successRate!.phases[0].id;
 		const mark = (who: string, m: Mark): NewAttempt => ({ date: '2026-11-04', who, practice: 'drill', whole: true, marks: { [phase]: m } });

@@ -10,7 +10,6 @@ import {
 	createFlow,
 	insertFormation,
 	loadSegmentAudio,
-	markPhaseBeats,
 	memberMarkers,
 	placeCue,
 	readFlowFile,
@@ -83,9 +82,9 @@ function withCues(): Flow {
  * 下法「搖籃」1-7 到 1-8；小A 第 1 組、小B 第 2 組。
  */
 function withSuccessRate(): Flow {
-	let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '' }, 1, 4));
-	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 5, 4));
-	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '搖籃' }, 9, 4));
+	let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 1, len: 4 } }));
+	flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 5, len: 4 } }));
+	flow = flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '搖籃', beats: { at: 9, len: 4 } }));
 	flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: '#c62828' }));
 	return flowOf(setSquad(flow, 'x1', ['m2'], 2));
 }
