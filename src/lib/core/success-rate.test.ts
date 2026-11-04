@@ -5,6 +5,7 @@ import {
 	addSegment,
 	createFlow,
 	clearPhaseBeats,
+	attemptWhos,
 	markPhaseBeats,
 	newActionMember,
 	phaseColor,
@@ -140,6 +141,14 @@ describe('組的名字', () => {
 	it('沒有上層就只叫第 n 組', () => {
 		const flow = grouped([['m2', 3], ['m3', 3]]);
 		expect(squadName(flow, actionOf(flow), 3)).toBe('第 3 組');
+	});
+});
+
+describe('開始分組：動作裡的人全部進第 1 組', () => {
+	it('有一個環節的騰翻（四個人）換成技巧並帶「確定」：每個人在第 1 組，記錄頁的「誰」是一組', () => {
+		const flow = flowOf(updateAction(rated(sample('tumbling')), 'x1', { category: 'stunt' }, { confirmed: true }));
+		expect(actionOf(flow).members.map((m) => m.squad)).toEqual([1, 1, 1, 1]);
+		expect(attemptWhos(flow, actionOf(flow))).toEqual([{ who: 1, name: '第 1 組 小美' }]);
 	});
 });
 
