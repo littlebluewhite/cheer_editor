@@ -18,7 +18,7 @@ import {
 	type Flow,
 	type Phase
 } from './index';
-import { flowOf } from './test-flows';
+import { flowOf, squadNumbers } from './test-flows';
 
 /**
  * 音樂 s1（4 個八拍）、口號段 s2；隊員小美（上層）、小A。
@@ -56,11 +56,11 @@ const brief = (flow: Flow) =>
 	phasesOf(flow).map((p) => (p.beats ? `${p.id} ${p.beats.at}+${p.beats.len}` : p.id));
 /** 第 1 組記一次，打這些記號。 */
 const record = (flow: Flow, marks: Record<string, '✓' | '△' | '✗'>) =>
-	flowOf(recordAttempt(flow, 'x1', { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks }));
+	flowOf(recordAttempt(flow, 'x1', { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks }));
 /** 動作不記成功率了：沒有成功率設定，也沒有組。 */
 const expectUnrated = (flow: Flow) => {
 	expect(lib(flow).successRate).toBeUndefined();
-	expect(lib(flow).members.map((m) => m.squad)).toEqual([undefined, undefined]);
+	expect(squadNumbers(lib(flow))).toEqual([undefined, undefined]);
 };
 
 describe('標拍', () => {
@@ -197,13 +197,13 @@ describe('沒記成功率的動作標拍加環節', () => {
 		['jump', [undefined, undefined]]
 	] as const)('%s：分組的大類全部的人進第 1 組；騰翻、跳躍不分組', (category, squads) => {
 		const flow = flowOf(addPhase(unrated(category), 'x2', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }));
-		expect(x2(flow).members.map((m) => m.squad)).toEqual(squads);
+		expect(squadNumbers(x2(flow))).toEqual(squads);
 	});
 
 	it('已經記成功率的動作加環節：組不動', () => {
 		const split = flowOf(setSquad(sample(), 'x1', ['m2'], 2));
 		const flow = flowOf(addPhase(split, 'x1', { kind: 'whole', name: '', beats: { at: 8, len: 4 } }));
-		expect(lib(flow).members.map((m) => m.squad)).toEqual([1, 2]);
+		expect(squadNumbers(lib(flow))).toEqual([1, 2]);
 	});
 
 	it('還沒有環節，不能標給現有的環節', () => {

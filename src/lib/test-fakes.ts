@@ -163,7 +163,7 @@ function squadFlow(): Flow {
 /** squadFlow 加上紀錄（11/4 分段練，上法 ✓）：第 1 組記了 2 次，第 2 組記了 1 次。 */
 export function recordedFlow(): Flow {
 	let flow = squadFlow();
-	for (const who of [1, 1, 2]) {
+	for (const who of ['g1', 'g1', 'g2']) {
 		const attempt = { date: '2026-11-04', who, practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } };
 		flow = flowOf(recordAttempt(flow, 'x1', attempt));
 	}

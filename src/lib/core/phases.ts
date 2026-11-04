@@ -148,5 +148,5 @@ function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[
 	}
 	const after: Action = { ...action, successRate: { records: action.successRate?.records ?? [], phases: ordered(kept) } };
 	const settled = settle(flow, action, after, options);
-	return settled.kind === 'blocked' ? settled : ok(replaceAction(flow, settled.action));
+	return settled.kind === 'blocked' ? settled : ok(replaceAction(settled.flow, settled.action));
 }

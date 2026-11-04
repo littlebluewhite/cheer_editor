@@ -56,7 +56,7 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { groupsPeople, keptAttempt, MARKS, perPerson, squadName, squadsOf } from './success-rate';
+export { groupsPeople, keptAttempt, MARKS, perPerson, squadName, squadNumber, squadsOf } from './success-rate';
 export type { Attempt, Mark, NewAttempt, PracticeKind, SuccessRate } from './success-rate';
 
 export {

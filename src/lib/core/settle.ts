@@ -4,15 +4,17 @@
 
 import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
 import type { Flow } from './flow';
+import { freshIds } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import {
-	compactSquads,
+	allSquadIds,
 	fitRecords,
 	groupsPeople,
 	perPerson,
 	recordItems,
+	squadNumber,
 	squadsOf,
 	replacePhases,
 	successRateProblem,
@@ -38,48 +40,77 @@ export interface CueFallout {
 	items: string[];
 }
 
-export type Settled = { kind: 'ok'; action: Action; fallout: Fallout } | { kind: 'blocked'; message: string };
+/** 收好了：action 是收好的動作；flow 是發過新的組 id 之後的流程（記上發到第幾號，動作還沒換上）。 */
+export type Settled =
+	| { kind: 'ok'; action: Action; flow: Flow; fallout: Fallout }
+	| { kind: 'blocked'; message: string };
 
 /**
  * 收尾：before 是改之前的動作（加動作時沒有），after 是指令改好的動作（人、大類、段、拍點都改好了）。
  * 照回答清掉換了人的組的紀錄（選了清掉才清；一定清掉的不管回答都拿掉）；動作變短、拖到半拍、換段時標的拍跟著切短或刪掉；
- * 開始分組時全部的人進第 1 組，只有一組時新進、沒帶組的人進那一組（見 squadRules）；
- * 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉；組號補成 1、2、3 不跳號，紀錄跟著換號。
+ * 開始分組時全部的人進新的一組（第 1 組），只有一組時新進、沒帶組的人進那一組，從別的動作帶組進來的人照號碼對（見 squadRules）；
+ * 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉。組號不存（見 squadsOf），組空掉後面的自然往前補，紀錄不用換號。
  * 回收好的動作和後果；不守成功率規則就擋。要不要問、怎麼問由 falloutQuestion 決定。
  */
 export function settle(flow: Flow, before: Action | undefined, after: Action, answer: ConfirmOption = {}): Settled {
 	const to = flow.segments.find((s) => s.id === after.segmentId);
 	if (!to) return { kind: 'blocked', message: '找不到這一段' };
 	const from = before && flow.segments.find((s) => s.id === before.segmentId);
-	const fitted = fitRecords(squadRules(before, after));
+	const grouped = squadRules(flow, before, after);
+	const fitted = fitRecords(grouped.action);
 	const { lost, changed } = before ? recordsFallout(before, fitted) : { lost: [], changed: [] };
 	const settled = answer.records === 'clear' ? withoutRecords(fitted, changed) : fitted;
 	const phases = before && from ? phaseFallout(from, to, before, settled) : null;
 	// 換上新的環節：一個都不剩就不記成功率（例：舊檔記成功率卻沒有環節）。
 	const rate = settled.successRate;
 	const phased = rate ? replacePhases(settled, phases?.phases ?? rate.phases) : settled;
-	// 補號不動 0、負數、小數的組號，留給成功率規則擋。
-	const grouped = compactSquads(ungroup(phased));
-	const problem = successRateProblem(to, grouped);
+	const action = ungroup(phased);
+	const problem = successRateProblem(to, action);
 	if (problem) return { kind: 'blocked', message: problem };
-	return { kind: 'ok', action: grouped, fallout: { phases, lost, changed } };
+	return { kind: 'ok', action, flow: grouped.flow, fallout: { phases, lost, changed } };
 }
 
 /**
  * 組的規則（先放好組，再算紀錄的後果，所以換了人的組照樣會問）：
- * 開始分組（改之前不分組、改之後分組：加了第一個環節，或大類從騰翻、跳躍換成要分組的）時，動作裡的人全部進第 1 組；
- * 新進動作、沒帶組的人，動作只有一組就進那一組，有好幾組或還沒有組就沒有組。帶著組進來的人照號碼對（補號時跟著補）。
+ * 開始分組（改之前不分組、改之後分組：加了第一個環節，或大類從騰翻、跳躍換成要分組的）時，動作裡的人全部進新的一組（第 1 組）；
+ * 帶著別的動作的組 id 進來的人（從別的動作複製）照號碼對：那邊的第 n 組對到這邊的第 n 組，這邊沒有就是新的一組，
+ * 所以兩個動作不會共用同一組；新進動作、沒帶組的人，動作只有一組就進那一組，有好幾組或還沒有組就沒有組。
+ * 新的組 id 從流程發（刪了不重用），回傳記上發到第幾號的流程。
  */
-function squadRules(before: Action | undefined, after: Action): Action {
-	if (!groupsPeople(after)) return after;
+function squadRules(flow: Flow, before: Action | undefined, after: Action): { action: Action; flow: Flow } {
+	if (!groupsPeople(after)) return { action: after, flow };
+	let lastIds = flow.lastIds;
+	const issue = () => {
+		const issued = freshIds('g', 1, lastIds, allSquadIds(flow));
+		lastIds = issued.lastIds;
+		return issued.ids[0];
+	};
+	const done = (action: Action) => ({ action, flow: lastIds === flow.lastIds ? flow : { ...flow, lastIds } });
 	if (before && !groupsPeople(before)) {
-		return { ...after, members: after.members.map((m) => ({ ...m, squad: 1 })) };
+		const squad = issue();
+		return done({ ...after, members: after.members.map((m) => ({ ...m, squad })) });
 	}
-	const squads = squadsOf(after);
+	const own = before ? squadsOf(before) : [];
+	// 別的動作的組 id 換成它在那邊是第幾組（設組剛發的新組不是別的動作的，照原樣）。
+	const numberOf = (squad: string | undefined): number => {
+		if (squad === undefined || own.includes(squad)) return 0;
+		const owner = flow.actions.find((a) => a.id !== after.id && a.members.some((m) => m.squad === squad));
+		return owner ? squadNumber(owner, squad) : 0;
+	};
+	// 這邊沒有的號碼照號碼的先後發新的組 id，排在這邊的組後面。
+	const missing = [...new Set(after.members.map((m) => numberOf(m.squad)))].filter((n) => n > own.length).sort((a, b) => a - b);
+	const fresh = new Map(missing.map((n) => [n, issue()]));
+	let members = after.members.map((m) => {
+		const n = numberOf(m.squad);
+		return n ? { ...m, squad: own[n - 1] ?? fresh.get(n)! } : m;
+	});
+	const squads = squadsOf({ ...after, members });
 	const isNew = (memberId: string) => !before?.members.some((m) => m.memberId === memberId);
-	if (squads.length !== 1 || !after.members.some((m) => m.squad === undefined && isNew(m.memberId))) return after;
-	const members = after.members.map((m) => (m.squad === undefined && isNew(m.memberId) ? { ...m, squad: squads[0] } : m));
-	return { ...after, members };
+	if (squads.length === 1) {
+		members = members.map((m) => (m.squad === undefined && isNew(m.memberId) ? { ...m, squad: squads[0] } : m));
+	}
+	const same = members.every((m, i) => m === after.members[i]);
+	return done(same ? after : { ...after, members });
 }
 
 /** 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。 */
@@ -99,7 +130,7 @@ function recordsFallout(old: Action, next: Action): { lost: Attempt[]; changed: 
 }
 
 /** 這一組在改之前、改之後是不是同一群人。 */
-function sameSquad(old: Action, next: Action, who: number | string): boolean {
+function sameSquad(old: Action, next: Action, who: string): boolean {
 	const ids = (a: Action) =>
 		a.members
 			.filter((m) => m.squad === who)

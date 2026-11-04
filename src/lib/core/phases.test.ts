@@ -13,7 +13,7 @@ import {
 	type Flow,
 	type NewAttempt
 } from './index';
-import { flowOf, libSample } from './test-flows';
+import { flowOf, libSample, squadNumbers } from './test-flows';
 
 const sample = libSample;
 
@@ -23,14 +23,14 @@ const phasesOf = (flow: Flow) => lib(flow).successRate!.phases;
 /** 第 1 組在 2026-11-04 分段練、整個做。 */
 const drill = (marks: NewAttempt['marks'], more: Partial<NewAttempt> = {}): NewAttempt => ({
 	date: '2026-11-04',
-	who: 1,
+	who: 'g1',
 	practice: 'drill',
 	whole: true,
 	marks,
 	...more
 });
 
-/** sample 加口號段 s2 和裡面的 x2：Toss（拋投，小美、小A），還沒有環節。 */
+/** sample 加口號段 s2 和裡面的 x2：Toss（拋投，小美、小A），還沒有環節（加了環節，兩個人進新的一組 g3）。 */
 function chant(): Flow {
 	let flow = flowOf(addSegment(sample(), 'chant'));
 	const members = [
@@ -58,7 +58,7 @@ describe('口號段加環節（不標拍）', () => {
 	it('加第一個環節就開始記成功率，動作裡的人全部進第 1 組', () => {
 		const flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
 		expect(toss(flow).successRate!.records).toEqual([]);
-		expect(toss(flow).members.map((m) => m.squad)).toEqual([1, 1]);
+		expect(squadNumbers(toss(flow))).toEqual([1, 1]);
 	});
 
 	it('騰翻、跳躍不分組', () => {
@@ -83,7 +83,7 @@ describe('口號段加環節（不標拍）', () => {
 
 	it('後來才加的環節：之前記的那幾次，這一格是空的', () => {
 		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
-		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' })));
+		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' }, { who: 'g3' })));
 		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '二層' }));
 		const [attempt] = toss(flow).successRate!.records;
 		expect(attempt.marks).toEqual({ p4: '✓' });
@@ -144,7 +144,7 @@ describe('刪環節', () => {
 
 	it('有紀錄：回傳要確認，訊息寫會刪掉幾個環節、清掉幾次的記號，清單列要刪的環節；流程不變', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✗' })));
-		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓', p2: '△', p3: '✓' }, { who: 2 })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓', p2: '△', p3: '✓' }, { who: 'g2' })));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✗' })));
 		expect(deletePhase(flow, 'x1', 'p2')).toEqual({
 			kind: 'confirm',
@@ -199,7 +199,7 @@ describe('口號段刪環節', () => {
 
 	it('有記號先問；刪掉最後一個時也說動作不再記成功率，確定後組和紀錄一起拿掉', () => {
 		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
-		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' })));
+		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' }, { who: 'g3' })));
 		expect(deletePhase(flow, 'x2', 'p4')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，清掉 1 次的記號；動作沒有環節了，不再記成功率，確定就刪掉',
@@ -223,7 +223,7 @@ describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流�
 	it('加了環節、記了一次再復原：環節拿掉，那一次只留還在的環節的記號', () => {
 		const before = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
 		let after = flowOf(addPhase(before, 'x2', { kind: 'load', name: '二層' }));
-		after = flowOf(recordAttempt(after, 'x2', drill({ p4: '✓', p5: '✗' })));
+		after = flowOf(recordAttempt(after, 'x2', drill({ p4: '✓', p5: '✗' }, { who: 'g3' })));
 		const undone = carryRecords(before, after);
 		expect(toss(undone).successRate!.phases.map((p) => p.id)).toEqual(['p4']);
 		expect(toss(undone).successRate!.records.map((r) => r.marks)).toEqual([{ p4: '✓' }]);

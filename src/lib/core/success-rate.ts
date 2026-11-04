@@ -1,5 +1,6 @@
 // 成功率：動作有環節（上法、中段…）就記成功率，動作裡的人分組。
-// 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad）。
+// 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad，組 id）。
+// 組號（第 n 組）不存：動作裡現在有人的組照 id 發出的先後排，第一個是第 1 組（見 squadsOf）。
 
 import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
 import { memberName, type Flow } from './flow';
@@ -28,8 +29,8 @@ export interface Attempt {
 	id: string;
 	/** 裝置的當地日期，例：2026-11-04。 */
 	date: string;
-	/** 誰：第幾組；騰翻、跳躍的動作是隊員 id。 */
-	who: number | string;
+	/** 誰：組 id；騰翻、跳躍的動作是隊員 id。 */
+	who: string;
 	practice: PracticeKind;
 	/** 全上才有：同一次全上記的都帶一樣的 id。 */
 	runThroughId?: string;
@@ -63,9 +64,27 @@ export function groupsPeople(action: Action): boolean {
 	return !!action.successRate?.phases.length && !perPerson(action.category);
 }
 
-/** 動作裡現在有人的組，照號碼排。 */
-export function squadsOf(action: Action): number[] {
-	return [...new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])))].sort((a, b) => a - b);
+/** 動作裡現在有人的組的 id，照 id 發出的先後排：第一個是第 1 組。 */
+export function squadsOf(action: Action): string[] {
+	const ids = new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])));
+	return [...ids].sort((a, b) => idNumber(a) - idNumber(b));
+}
+
+/** 這一組是第幾組（1 起），照 squadsOf 算；動作裡沒有人在這一組是 0。 */
+export function squadNumber(action: Action, squad: string): number {
+	return squadsOf(action).indexOf(squad) + 1;
+}
+
+/** 組 id 的寫法：g 加編號（g1、g2…），由流程的 id 發號，刪了不重用。 */
+export function isSquadId(v: unknown): v is string {
+	return typeof v === 'string' && /^g[1-9]\d*$/.test(v);
+}
+
+const idNumber = (id: string) => Number(String(id).slice(1));
+
+/** 流程裡全部的組 id（發新的組 id 時用）。 */
+export function allSquadIds(flow: Flow): string[] {
+	return flow.actions.flatMap((a) => squadsOf(a));
 }
 
 /**
@@ -85,20 +104,6 @@ export function markedCount(action: Action, phases: Phase[]): number {
 	return (action.successRate?.records ?? []).filter((r) => phases.some((p) => p.id in r.marks)).length;
 }
 
-/**
- * 組號補成 1、2、3 不跳號：空掉的組拿掉，後面的組照原來的先後往前補；那一組的紀錄跟著換成新的號碼。
- * 先拿掉對不上的紀錄（fitRecords）、問完紀錄（見 settle.ts，照舊的號碼比）再補號。沒得補就回傳原來的動作。
- */
-export function compactSquads(action: Action): Action {
-	// 不是正整數的組號不動，留給成功率規則擋。
-	const renumber = new Map(squadsOf(action).filter(isSquad).map((n, i) => [n, i + 1]));
-	if ([...renumber].every(([from, to]) => from === to)) return action;
-	const members = action.members.map((m) => (m.squad === undefined ? m : { ...m, squad: renumber.get(m.squad) ?? m.squad }));
-	const rate = action.successRate;
-	const records = rate?.records.map((r) => (typeof r.who === 'number' ? { ...r, who: renumber.get(r.who) ?? r.who } : r));
-	return { ...action, members, ...(rate && { successRate: { ...rate, records: records! } }) };
-}
-
 /** 拿掉動作裡的這幾次紀錄；沒有要拿就回傳原來的動作。 */
 export function withoutRecords(action: Action, drop: Attempt[]): Action {
 	if (!drop.length || !action.successRate) return action;
@@ -108,19 +113,23 @@ export function withoutRecords(action: Action, drop: Attempt[]): Action {
 
 /** 紀錄照誰數幾次，給教練看：「第 1 組 小美：2 次」，騰翻、跳躍是「小美：1 次」；照第一次記的先後排，前面接 head。 */
 export function recordItems(flow: Flow, action: Action, records: Attempt[], head = ''): string[] {
-	const counts = new Map<number | string, number>();
+	const counts = new Map<string, number>();
 	for (const r of records) counts.set(r.who, (counts.get(r.who) ?? 0) + 1);
 	return [...counts].map(([who, n]) => {
-		const name = typeof who === 'number' ? squadName(flow, action, who) : memberName(flow, who);
+		const name = perPerson(action.category) ? memberName(flow, who) : squadName(flow, action, who);
 		return `${head}${name}：${n} 次`;
 	});
 }
 
 const isSquad = (n: number) => Number.isInteger(n) && n >= 1;
 
-/** 動作裡的人能不能在第 squad 組（給教練看的原因）；可以是 null。 */
+/** 動作裡的人能不能放進第 squad 組（給教練看的原因）；可以是 null。 */
 export function squadProblem(action: Action, squad: number): string | null {
-	if (!isSquad(squad)) return '組要是正整數';
+	return isSquad(squad) ? groupingProblem(action) : '組要是正整數';
+}
+
+/** 動作能不能分組（給教練看的原因）；可以是 null。 */
+function groupingProblem(action: Action): string | null {
 	if (!action.successRate) return '動作有環節才能分組';
 	if (perPerson(action.category)) {
 		const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
@@ -132,7 +141,7 @@ export function squadProblem(action: Action, squad: number): string | null {
 /**
  * 成功率規則（只有這一份）：動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。
  * 收尾最後照這個檢查，讀流程檔也照這個檢查。第 6 版就有的規則（v6RateProblem）再加：
- * 有成功率設定就至少一個環節；音樂段的環節一定有標的拍、照拍的先後排；組號從 1 連續。
+ * 有成功率設定就至少一個環節；音樂段的環節一定有標的拍、照拍的先後排；組 id 是 g 加編號。
  */
 export function successRateProblem(segment: Segment, action: Action): string | null {
 	const problem = v6RateProblem(segment, action);
@@ -143,18 +152,17 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 		if (phases.some((p) => !p.beats)) return '音樂段的環節要選拍標';
 		if (phases.some((p, i) => i > 0 && p.beats!.at < phases[i - 1].beats!.at)) return '環節要照標的拍的先後排';
 	}
-	const squads = squadsOf(action);
-	if (squads.some((n, i) => n !== i + 1)) return '組號要從 1 連續';
+	if (action.members.some((m) => m.squad !== undefined && !isSquadId(m.squad))) return '組的 id 不對';
 	return null;
 }
 
 /**
  * 第 6 版流程檔就有的成功率規則（成功率規則的一部分）。第 6 → 7 版整理舊檔前先看它：本來就不守的檔不整理。
- * 組號是正整數、只在分組的動作裡；環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。
+ * 組只在分組的動作裡；環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。
  */
 export function v6RateProblem(segment: Segment, action: Action): string | null {
-	for (const { squad } of action.members) {
-		const problem = squad === undefined ? null : squadProblem(action, squad);
+	if (action.members.some((m) => m.squad !== undefined)) {
+		const problem = groupingProblem(action);
 		if (problem) return problem;
 	}
 	const phases = action.successRate?.phases ?? [];
@@ -238,7 +246,7 @@ export function fitRecords(action: Action): Action {
 }
 
 /** 誰對得上這個動作：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。 */
-function whoFits(action: Action, who: number | string): boolean {
+function whoFits(action: Action, who: string): boolean {
 	return perPerson(action.category)
 		? action.members.some((m) => m.memberId === who)
 		: action.members.some((m) => m.squad === who);
@@ -264,11 +272,12 @@ export function beatsProblem(segment: Segment, action: Action, { at, len }: { at
 }
 
 /** 組的名字：「第 1 組 小美」，後面是組裡任務角色是上層的人（好幾個就用名單上第一個）；沒有上層就只叫「第 1 組」。 */
-export function squadName(flow: Flow, action: Action, squad: number): string {
+export function squadName(flow: Flow, action: Action, squad: string): string {
 	const top = flow.members.find((member) =>
 		action.members.some((m) => m.memberId === member.id && m.squad === squad && m.role === '上層')
 	);
-	return top ? `第 ${squad} 組 ${top.name}` : `第 ${squad} 組`;
+	const n = squadNumber(action, squad);
+	return top ? `第 ${n} 組 ${top.name}` : `第 ${n} 組`;
 }
 
 /** 流程裡全部環節的 id（發新 id 時用）。 */

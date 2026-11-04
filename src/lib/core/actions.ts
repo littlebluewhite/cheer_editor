@@ -14,8 +14,8 @@ import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
-import { squadProblem } from './success-rate';
-import { nextId } from './ids';
+import { allSquadIds, squadProblem, squadsOf } from './success-rate';
+import { freshIds, nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。 */
@@ -24,7 +24,7 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 	const members = input.members.map(({ memberId, role }) => ({ memberId, role }));
 	const settled = checked(flow, undefined, normalize({ id, ...input, members }), {});
 	if (settled.kind === 'blocked') return settled;
-	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, settled.action] }, id };
+	return { kind: 'ok', flow: { ...settled.flow, actions: [...flow.actions, settled.action] }, id };
 }
 
 /** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。組和紀錄交給收尾（settle）。 */
@@ -61,7 +61,7 @@ export function updateAction(
 	if (settled.kind === 'blocked') return settled;
 	return (
 		falloutQuestion(flow, old, settled.action, cues, settled.fallout, options) ??
-		ok(replaceAction(flow, settled.action))
+		ok(replaceAction(settled.flow, settled.action))
 	);
 }
 
@@ -109,8 +109,9 @@ export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}
 }
 
 /**
- * 設組：給動作裡的隊員（可以一次好幾個）第幾組（1 起）；null 是沒分組。一次給好幾個人也是一個指令（復原一步）。
- * 做完組號補成 1、2、3 不跳號。有紀錄的組換了人，先問保留舊紀錄還是清掉重算；組裡的人都換走了，只問會清掉幾次（見 settle）。
+ * 設組：給動作裡的隊員（可以一次好幾個）第幾組（1 起，照現在算的組號）；比現有的組多就是新的一組（發新的組 id）；null 是沒分組。
+ * 一次給好幾個人也是一個指令（復原一步）。組空掉，後面的組號自然往前補，紀錄還是指到原來的組 id。
+ * 有紀錄的組換了人，先問保留舊紀錄還是清掉重算；組裡的人都換走了，只問會清掉幾次（見 settle）。
  */
 export function setSquad(
 	flow: Flow,
@@ -124,16 +125,19 @@ export function setSquad(
 	if (memberIds.some((id) => !action.members.some((m) => m.memberId === id))) return blocked('這個隊員不在動作裡');
 	const problem = squad === null ? null : squadProblem(action, squad);
 	if (problem) return blocked(problem);
+	const own = squadsOf(action);
+	const issued = squad === null || squad <= own.length ? null : freshIds('g', 1, flow.lastIds, allSquadIds(flow));
+	const id = squad === null ? null : (own[squad - 1] ?? issued!.ids[0]);
 	const members = action.members.map((m) => {
 		if (!memberIds.includes(m.memberId)) return m;
 		const { squad: _, ...rest } = m;
-		return squad === null ? rest : { ...rest, squad };
+		return id === null ? rest : { ...rest, squad: id };
 	});
-	const settled = settle(flow, action, { ...action, members }, options);
+	const settled = settle(issued ? { ...flow, lastIds: issued.lastIds } : flow, action, { ...action, members }, options);
 	if (settled.kind === 'blocked') return settled;
 	return (
 		falloutQuestion(flow, action, settled.action, null, settled.fallout, options) ??
-		ok(replaceAction(flow, settled.action))
+		ok(replaceAction(settled.flow, settled.action))
 	);
 }
 

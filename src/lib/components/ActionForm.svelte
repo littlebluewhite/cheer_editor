@@ -25,6 +25,7 @@
 		roleGlossary,
 		segmentSpans,
 		squadColor,
+		squadNumber,
 		updateAction,
 		type Action,
 		type ActionCategory,
@@ -352,7 +353,8 @@
 								onnew={() => (glossaryOpen = true)}
 							/>
 							{#if grouped}
-								{#if m.squad}<span class="squad-tag" style:--c={squadColor(m.squad)}>第 {m.squad} 組</span>
+								{@const n = action && m.squad ? squadNumber(action, m.squad) : 0}
+								{#if n}<span class="squad-tag" style:--c={squadColor(n)}>第 {n} 組</span>
 								{:else}<span class="squad-tag none">沒分組</span>{/if}
 							{/if}
 							<button

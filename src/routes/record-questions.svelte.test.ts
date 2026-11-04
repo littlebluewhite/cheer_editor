@@ -2,6 +2,7 @@
 // 流程在核心裡做好（含紀錄），放一個帶著它的 session 進頁面，再讀 session 的流程看紀錄。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
+import { squadNumber } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { editorPage, recordedFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
@@ -16,10 +17,12 @@ function openRecorded() {
 	return session;
 }
 
-/** session 現在的流程、Lib 和紀錄是哪一組的。 */
+/** session 現在的流程、Lib、小美在第幾組和紀錄是第幾組的。 */
 function libOf(session: EditorSession) {
 	const flow = session.flow!;
-	return { flow, lib: flow.actions[0], records: flow.actions[0].successRate?.records.map((t) => t.who) };
+	const lib = flow.actions[0];
+	const mei = squadNumber(lib, lib.members[0].squad!);
+	return { flow, lib, mei, records: lib.successRate?.records.map((t) => squadNumber(lib, t.who)) };
 }
 
 const selectLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
@@ -45,8 +48,8 @@ describe('換組時問保留舊紀錄還是清掉重算', () => {
 
 		await press('保留舊紀錄');
 		expect(screen.queryByRole('alertdialog')).toBeNull();
-		const { lib, records } = libOf(session);
-		expect(lib.members[0].squad).toBe(2);
+		const { mei, records } = libOf(session);
+		expect(mei).toBe(2);
 		expect(records).toEqual([1, 1, 2]);
 	});
 
@@ -55,8 +58,8 @@ describe('換組時問保留舊紀錄還是清掉重算', () => {
 		await selectLib();
 		await moveMeiTo2();
 		await press('清掉重算');
-		const { lib, records } = libOf(session);
-		expect(lib.members[0].squad).toBe(2);
+		const { mei, records } = libOf(session);
+		expect(mei).toBe(2);
 		expect(records).toEqual([]);
 	});
 
@@ -66,8 +69,8 @@ describe('換組時問保留舊紀錄還是清掉重算', () => {
 		await moveMeiTo2();
 		await press('取消');
 		expect(document.querySelector('[data-member-id="m1"] .badge')?.textContent).toBe('1');
-		const { lib, records } = libOf(session);
-		expect(lib.members[0].squad).toBe(1);
+		const { mei, records } = libOf(session);
+		expect(mei).toBe(1);
 		expect(records).toEqual([1, 1, 2]);
 	});
 });

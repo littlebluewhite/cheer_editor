@@ -12,7 +12,7 @@ import {
 	type ConfirmOption,
 	type Flow
 } from '#lib/core';
-import { flowOf, libSample } from '#lib/core/test-flows.js';
+import { flowOf, libSample, squadNumbers } from '#lib/core/test-flows.js';
 import { EditorSession } from './editor-session.svelte.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
@@ -27,7 +27,7 @@ function sampleFlow(): Flow {
 
 const rename = (s: EditorSession, name: string) => s.change(flowOf(renameFlow(s.flow!, name)));
 const recordOnce = (s: EditorSession) =>
-	s.record(flowOf(recordAttempt(s.flow!, 'x1', { date: '2026-11-05', who: 1, practice: 'drill', whole: true, marks: { p1: '✓' } })));
+	s.record(flowOf(recordAttempt(s.flow!, 'x1', { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } })));
 const records = (s: EditorSession) => s.flow!.actions[0].successRate?.records.length ?? 0;
 
 describe('編輯 session：流程和復原', () => {
@@ -224,7 +224,7 @@ describe('編輯 session：頁面層級的問題', () => {
 
 	it('要確認：提示收掉、留下問題；確定才改', () => {
 		const s = new EditorSession(libSample());
-		const attempt = { date: '2026-11-05', who: 1, practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
+		const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
 		s.record(flowOf(recordAttempt(s.flow!, 'x1', attempt)));
 		s.notice = '舊的提示';
 		s.ask.send((o) => deleteAction(s.flow!, 'x1', o));
@@ -284,7 +284,7 @@ describe('編輯 session：分組數字鍵', () => {
 		s.selectMembers(ids);
 		return s;
 	}
-	const squads = (s: EditorSession) => s.flow!.actions[0].members.map((m) => m.squad);
+	const squads = (s: EditorSession) => squadNumbers(s.flow!.actions[0]);
 
 	it('選到要分組的動作才有分組', () => {
 		const s = new EditorSession(libSample());

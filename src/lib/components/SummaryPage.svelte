@@ -68,7 +68,7 @@
 	const cellText = (c: { pct: number | null; count: number }) => (c.pct === null ? '—' : `${c.pct}% ${c.count} 次`);
 
 	/** 打開的明細：哪個動作、誰、哪個環節。 */
-	let open = $state<{ actionId: string; who: number | string; phaseId: string } | null>(null);
+	let open = $state<{ actionId: string; who: string; phaseId: string } | null>(null);
 	/** 明細的內容；動作、組或環節不在了就關掉。 */
 	const detail = $derived.by(() => {
 		if (!open) return null;

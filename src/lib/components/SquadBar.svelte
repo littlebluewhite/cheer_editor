@@ -18,8 +18,9 @@
 	/** 換組會動到紀錄時，等教練回答（保留舊紀錄／清掉重算，或確定）。 */
 	const ask = session.squadAsk;
 
-	/** 現在有的組，1 到 n 不跳號（核心會補號）。 */
-	const groups = $derived(squadsOf(action));
+	/** 現在有的組號，1 到 n 不跳號（組號照組 id 的先後算）。 */
+	const squads = $derived(squadsOf(action));
+	const groups = $derived(squads.map((_, i) => i + 1));
 	const next = $derived(groups.length + 1);
 	const selected = $derived(session.selectedMemberIds);
 	const picked = $derived(selected.filter((id) => action.members.some((m) => m.memberId === id)));
@@ -36,7 +37,7 @@
 	/** 號碼：有選人是放進那一組；沒選人是把那一組的人選起來。 */
 	function number(n: number) {
 		if (picked.length) session.squadKey(n);
-		else session.selectMembers(action.members.filter((m) => m.squad === n).map((m) => m.memberId));
+		else session.selectMembers(action.members.filter((m) => m.squad === squads[n - 1]).map((m) => m.memberId));
 	}
 </script>
 

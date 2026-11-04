@@ -22,7 +22,7 @@ import { flowOf, ratedSample } from './test-flows';
 /** ratedSample 的 x1 第 1 組記一次（三個環節都有記號）。 */
 function base(): Flow {
 	const marks = { p1: '✓', p2: '△', p3: '✗' } as const;
-	return flowOf(recordAttempt(ratedSample(), 'x1', { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks }));
+	return flowOf(recordAttempt(ratedSample(), 'x1', { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks }));
 }
 
 /** 每個會問的指令，各一個會問的情境。 */

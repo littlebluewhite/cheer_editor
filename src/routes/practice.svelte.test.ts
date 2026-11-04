@@ -178,7 +178,7 @@ describe('練習：記錄頁記分段練', () => {
 		if (r.kind !== 'ok') throw new Error(r.message);
 		const flow = r.flow;
 		expect(flow.actions[0].successRate?.records).toEqual([
-			{ id: 't1', date: localDate(), who: 1, practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
+			{ id: 't1', date: localDate(), who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
 		]);
 
 		await openFile(saves[0], '開啟');
@@ -319,7 +319,7 @@ describe('練習：每天的表和最弱的環節', () => {
 		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '第 1 組 小美', '第 2 組 小芳']);
 		expect(tableRows()[1].slice(1, 2)).toEqual(['75% 完成率 75%・4 次']);
 
-		await fireEvent.change(pick, { target: { value: '2' } });
+		await fireEvent.change(pick, { target: { value: 'g2' } });
 		expect(tableRows()).toEqual([
 			['日期', '上法', '中段', '下法', '整次'],
 			[localDate(), '0% 完成率 0%・1 次', '—', '—', '0% 1 次'],
@@ -345,7 +345,7 @@ describe('練習：總表', () => {
 		[...text].forEach((m, i) => {
 			if (m !== '·') marks[`p${i + 1}`] = m as Mark;
 		});
-		return { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks, ...more };
+		return { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks, ...more };
 	}
 	/**
 	 * practiceFlow() 加上紀錄：
@@ -355,7 +355,7 @@ describe('練習：總表', () => {
 	function summaryFlow(): Flow {
 		let flow = practiceFlow();
 		const attempts = [
-			...['✓✓✓', '✓✓✓', '✓✓✓', '✓✓✗', '✓✓✗'].map((t) => lib(t, { who: 2 })),
+			...['✓✓✓', '✓✓✓', '✓✓✓', '✓✓✗', '✓✓✗'].map((t) => lib(t, { who: 'g2' })),
 			lib('✓✓△', { practice: 'runThrough', runThroughId: 'r1' }),
 			lib('✗··', { date: '2026-11-01' })
 		];

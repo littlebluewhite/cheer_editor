@@ -27,7 +27,7 @@ function attempt(text: string, more: Partial<NewAttempt> = {}): NewAttempt {
 	[...text].forEach((m, i) => {
 		if (m !== '·') marks[`p${i + 1}`] = m as Mark;
 	});
-	return { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks, ...more };
+	return { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks, ...more };
 }
 
 /** 照順序記好這些次，回傳 Lib。 */
@@ -92,16 +92,16 @@ describe('每天的表', () => {
 
 	it('合計加次數、不平均百分比：第 1 組 1 次 ✓、第 2 組 3 次 ✗ → 25%，不是 50%', () => {
 		const table = dailyTable(
-			lib(attempt('✓··'), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }))
+			lib(attempt('✓··'), attempt('✗··', { who: 'g2' }), attempt('✗··', { who: 'g2' }), attempt('✗··', { who: 'g2' }))
 		);
 		expect(table.total.phases.p1).toEqual(tally(1, 0, 3));
 		expect(successPercent(table.total.phases.p1)).toBe(25);
 	});
 
 	it('只看某一組', () => {
-		const action = lib(attempt('✓✓✓'), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }));
-		expect(dailyTable(action, 2).total.phases.p1).toEqual(tally(0, 0, 2));
-		expect(dailyTable(action, 1).total.whole).toEqual({ clean: 1, whole: 1 });
+		const action = lib(attempt('✓✓✓'), attempt('✗··', { who: 'g2' }), attempt('✗··', { who: 'g2' }));
+		expect(dailyTable(action, 'g2').total.phases.p1).toEqual(tally(0, 0, 2));
+		expect(dailyTable(action, 'g1').total.whole).toEqual({ clean: 1, whole: 1 });
 		expect(dailyTable(action).total.phases.p1).toEqual(tally(1, 0, 2));
 	});
 
@@ -166,11 +166,11 @@ const runThrough = (id: string) => ({ practice: 'runThrough' as const, runThroug
 
 describe('成功率表', () => {
 	it('一欄一組（寫組的名字），每格是這組這個環節的次數；合計把每組的次數加起來', () => {
-		const flow = recorded(attempt('✓✓△'), attempt('✓✗·'), attempt('✗··', { who: 2 }), attempt('✓✓✓', { who: 2 }));
+		const flow = recorded(attempt('✓✓△'), attempt('✓✗·'), attempt('✗··', { who: 'g2' }), attempt('✓✓✓', { who: 'g2' }));
 		const table = rateTable(flow, x1(flow));
 		expect(table.columns.map((c) => [c.who, c.name])).toEqual([
-			[1, '第 1 組 小美'],
-			[2, '第 2 組 小芳']
+			['g1', '第 1 組 小美'],
+			['g2', '第 2 組 小芳']
 		]);
 		expect(table.columns[0].phases).toEqual({ p1: tally(2, 0, 0), p2: tally(1, 0, 1), p3: tally(0, 1, 0) });
 		expect(table.columns[0].whole).toEqual({ clean: 0, whole: 2 });
@@ -181,7 +181,7 @@ describe('成功率表', () => {
 	});
 
 	it('合計加次數、不平均百分比：第 1 組 1 次 ✓、第 2 組 3 次 ✗ → 25%', () => {
-		const flow = recorded(attempt('✓··'), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }), attempt('✗··', { who: 2 }));
+		const flow = recorded(attempt('✓··'), attempt('✗··', { who: 'g2' }), attempt('✗··', { who: 'g2' }), attempt('✗··', { who: 'g2' }));
 		expect(successPercent(rateTable(flow, x1(flow)).total.phases.p1)).toBe(25);
 	});
 
@@ -254,16 +254,16 @@ describe('一格的明細', () => {
 		const flow = recorded(
 			attempt('✓✓✗', { date: '2026-11-05' }),
 			attempt('✓✗·', { date: '2026-11-04' }),
-			attempt('✗··', { date: '2026-11-04', who: 2 }),
+			attempt('✗··', { date: '2026-11-04', who: 'g2' }),
 			attempt('✓✓△', { date: '2026-11-04', ...runThrough('r1') }),
 			attempt('✓··', { date: '2026-11-04', whole: false })
 		);
-		expect(cellDetail(x1(flow), 1, 'p3')).toEqual([
+		expect(cellDetail(x1(flow), 'g1', 'p3')).toEqual([
 			{ date: '2026-11-04', marks: [{ mark: '△', runThrough: true }] },
 			{ date: '2026-11-05', marks: [{ mark: '✗', runThrough: false }] }
 		]);
-		expect(cellDetail(x1(flow), 1, 'p1').map((d) => d.marks.map((m) => m.mark).join(''))).toEqual(['✓✓✓', '✓']);
-		expect(cellDetail(x1(flow), 2, 'p2')).toEqual([]);
+		expect(cellDetail(x1(flow), 'g1', 'p1').map((d) => d.marks.map((m) => m.mark).join(''))).toEqual(['✓✓✓', '✓']);
+		expect(cellDetail(x1(flow), 'g2', 'p2')).toEqual([]);
 	});
 });
 
