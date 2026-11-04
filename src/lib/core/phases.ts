@@ -5,7 +5,7 @@ import type { Action } from './actions';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { fitRecords, PHASE_KINDS, successRateProblem, type Phase, type PhaseKind } from './success-rate';
+import { allPhaseIds, fitRecords, PHASE_KINDS, successRateProblem, type Phase, type PhaseKind } from './success-rate';
 
 /** 改環節要改的東西；沒給的不動。color 給 null 是回到種類的顏色。 */
 export interface PhaseChange {
@@ -104,9 +104,4 @@ function withPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult 
 	const problem = successRateProblem(segment, changed);
 	if (problem) return blocked(problem);
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === action.id ? changed : a)) });
-}
-
-/** 流程裡全部環節的 id（發新 id 時用）。 */
-function allPhaseIds(flow: Flow): string[] {
-	return flow.actions.flatMap((a) => a.successRate?.phases.map((p) => p.id) ?? []);
 }

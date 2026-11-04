@@ -8,7 +8,7 @@ import { freshIds } from './ids';
 import { phaseLabel } from './phases';
 import type { Segment } from './segment';
 import { blocked, ok, type CommandResult } from './result';
-import { fitRecords, successRateProblem, type Phase, type PhaseKind } from './success-rate';
+import { allPhaseIds, fitRecords, successRateProblem, type Phase, type PhaseKind } from './success-rate';
 import { HALF_BEATS_PER_BEAT as BEAT } from './time';
 
 /** 標給誰：現有的環節，或新的環節（給種類和名字）。 */
@@ -131,11 +131,6 @@ function withBeats({ beats: _, ...p }: Phase, beats?: { at: number; len: number 
 function ordered(phases: Phase[]): Phase[] {
 	const marked = phases.filter((p) => p.beats).sort((a, b) => a.beats!.at - b.beats!.at);
 	return [...marked, ...phases.filter((p) => !p.beats)];
-}
-
-/** 流程裡全部環節的 id（發新 id 時用）。 */
-function allPhaseIds(flow: Flow): string[] {
-	return flow.actions.flatMap((a) => a.successRate?.phases.map((p) => p.id) ?? []);
 }
 
 /** 換掉動作的環節清單；不守規則就擋下來。 */

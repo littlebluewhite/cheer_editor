@@ -133,7 +133,7 @@ export function enableSuccessRate(flow: Flow, actionId: string): CommandResult {
 	if (!action) return blocked('找不到這個動作');
 	if (action.successRate) return ok(flow);
 	const prefill = PREFILL[action.category];
-	const issued = freshIds('p', prefill.length, flow.lastIds, phaseIds(flow));
+	const issued = freshIds('p', prefill.length, flow.lastIds, allPhaseIds(flow));
 	const phases = prefill.map((p, i) => ({ id: issued.ids[i], ...p }));
 	const members =
 		action.category === 'pyramid' ? action.members.map((m) => ({ ...m, squad: 1 })) : action.members;
@@ -367,8 +367,8 @@ export function squadName(flow: Flow, action: Action, squad: number): string {
 	return top ? `第 ${squad} 組 ${top.name}` : `第 ${squad} 組`;
 }
 
-/** 流程裡全部環節的 id。 */
-function phaseIds(flow: Flow): string[] {
+/** 流程裡全部環節的 id（發新 id 時用）。 */
+export function allPhaseIds(flow: Flow): string[] {
 	return flow.actions.flatMap((a) => a.successRate?.phases.map((p) => p.id) ?? []);
 }
 
