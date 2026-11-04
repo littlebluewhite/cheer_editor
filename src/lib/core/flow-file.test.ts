@@ -306,6 +306,7 @@ describe('流程檔：版本', () => {
 		['環節的 id 重複', brokenRate((_, sr) => (sr.phases[1].id = sr.phases[0].id))],
 		['環節的名字不是字', brokenRate((_, sr) => (sr.phases[1].name = null))],
 		['環節的顏色不是 #rrggbb', brokenRate((_, sr) => (sr.phases[1].color = 'red'))],
+		['環節的顏色不在辨識色和石板灰裡', brokenRate((_, sr) => (sr.phases[1].color = '#123456'))],
 		['環節標的拍不是整數', brokenRate((_, sr) => (sr.phases[1].beats = { at: 4.5, len: 2 }))],
 		['環節標的拍不是整拍', brokenRate((_, sr) => (sr.phases[1].beats = { at: 4, len: 3 }))],
 		['環節標的拍不到一拍', brokenRate((_, sr) => (sr.phases[1].beats = { at: 4, len: 0 }))],

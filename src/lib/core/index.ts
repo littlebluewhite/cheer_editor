@@ -78,6 +78,10 @@ export {
 	recordAttempt
 } from './records';
 
+export { addPhase, deletePhase, movePhase, updatePhase } from './phases';
+export { ACTION_COLORS, PHASE_COLORS } from './colors';
+export type { PhaseChange } from './phases';
+
 export { eightCountRows } from './eight-count';
 export type {
 	EightCountAction,
