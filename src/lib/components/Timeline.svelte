@@ -3,68 +3,33 @@
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
 	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準）。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
+	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
 	import { tick, untrack } from 'svelte';
-	import {
-		rulerMarks,
-		segmentSpans,
-		totalSeconds,
-		type Flow,
-		type SegmentKind,
-		type TimePosition
-	} from '#lib/core';
-	import type { Ask } from './ask.svelte';
+	import { addSegment, rulerMarks, segmentSpans, totalSeconds, type SegmentKind } from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
 	import { followPointer } from './pointer';
 
 	interface Props {
-		flow: Flow;
 		/** 播放頭，全域秒數。 */
 		playheadSec: number;
 		/** 放大 ×1 時，時間軸 1 秒幾 px。 */
 		pxPerSec?: number;
+		/** 點或拖八拍尺、點站位縮圖：播放頭移到這裡。 */
 		onseek: (sec: number) => void;
-		onaddsegment: (kind: SegmentKind) => void;
+		/** 點段、加好一段：打開這一段的段設定。 */
 		onopensegment: (segmentId: string) => void;
 		/** 找不到音樂檔的音樂段：標紅，點開段設定重新選檔。 */
 		missingSegmentIds?: string[];
-		/** 選到的站位。 */
-		selectedFormationId?: string | null;
-		/** 點縮圖：選這張站位，sec 是它的全域秒數。 */
-		onselectformation?: (formationId: string, sec: number) => void;
-		ondeleteformation?: (formationId: string) => void;
-		/** 拖縮圖放開：把這張站位挪到 to。 */
-		onmoveformation?: (formationId: string, to: TimePosition) => void;
-		selectedActionId?: string | null;
-		onselectaction?: (actionId: string) => void;
-		/** 拖色條、走位條送指令的地方（頁面那一個問題）。 */
-		ask: Ask;
-		selectedMemberIds?: string[];
-		onselectmembers?: (memberIds: string[]) => void;
-		/** 多選開著（點泳道名字是加選）。 */
-		multi?: boolean;
 	}
 
-	let {
-		flow,
-		playheadSec,
-		pxPerSec = 16,
-		onseek,
-		onaddsegment,
-		onopensegment,
-		missingSegmentIds = [],
-		selectedFormationId = null,
-		onselectformation = () => {},
-		ondeleteformation = () => {},
-		onmoveformation = () => {},
-		selectedActionId = null,
-		onselectaction = () => {},
-		ask,
-		selectedMemberIds = [],
-		onselectmembers = () => {},
-		multi = false
-	}: Props = $props();
+	let { playheadSec, pxPerSec = 16, onseek, onopensegment, missingSegmentIds = [] }: Props = $props();
+
+	const session = getEditorSession();
+	// 頁面只在有流程時畫時間軸。
+	const flow = $derived(session.flow!);
 
 	/** 左邊名字欄的寬度（px）；泳道和站位列用同一個 CSS 變數。 */
 	const LABEL_W = 148;
@@ -140,9 +105,10 @@
 		};
 	}
 
+	/** 在最後加一段，加好就打開它的段設定。 */
 	function add(kind: SegmentKind) {
 		menuOpen = false;
-		onaddsegment(kind);
+		session.ask.send(() => addSegment(flow, kind), { done: (r) => onopensegment(r.id) });
 	}
 
 	function startSeek(e: PointerEvent) {
@@ -247,25 +213,8 @@
 				<div class="ph-head" style:left={`${playheadSec * px}px`}></div>
 			</div>
 		</div>
-		<FormationRow
-			{flow}
-			pxPerSec={px}
-			selectedId={selectedFormationId}
-			onselect={onselectformation}
-			ondelete={ondeleteformation}
-			onmove={onmoveformation}
-		/>
-		<Lanes
-			{flow}
-			{playheadSec}
-			pxPerSec={px}
-			{selectedActionId}
-			{onselectaction}
-			{ask}
-			{selectedMemberIds}
-			{onselectmembers}
-			{multi}
-		/>
+		<FormationRow pxPerSec={px} {onseek} />
+		<Lanes {playheadSec} pxPerSec={px} />
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
 				<div class="lab"></div>

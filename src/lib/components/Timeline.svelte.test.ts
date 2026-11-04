@@ -2,20 +2,20 @@ import { addSegment, createFlow } from '#lib/core';
 import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
+import { EditorSession } from '#lib/editor-session.svelte.js';
+import TestSession from '#lib/TestSession.svelte';
 import Timeline from './Timeline.svelte';
-import { Ask } from './ask.svelte';
 
 function setup() {
 	const flow = flowOf(
 		addSegment(flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } })), 'music')
 	);
-	const { container } = render(Timeline, {
-		flow,
-		playheadSec: 0,
-		onseek: () => {},
-		onaddsegment: () => {},
-		onopensegment: () => {},
-		ask: new Ask(() => {})
+	const { container } = render(TestSession, {
+		props: {
+			session: new EditorSession(flow),
+			component: Timeline,
+			props: { playheadSec: 0, onseek: () => {}, onopensegment: () => {} }
+		}
 	});
 	return container.querySelector('.timeline') as HTMLElement;
 }

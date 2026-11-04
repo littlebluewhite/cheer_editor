@@ -14,9 +14,11 @@ import {
 } from '#lib/core';
 import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { describe, expect, it } from 'vitest';
+import { EditorSession } from '#lib/editor-session.svelte.js';
+import TestSession from '#lib/TestSession.svelte';
 import Lanes from './Lanes.svelte';
-import { Ask } from './ask.svelte';
 
 /** 音樂 1（150 BPM，一個半拍 0.2 秒）：Lib（小A 上層、小B 沒任務）0–3.2 秒，小C 騰翻 1.6–2.4 秒、跳躍 3.2–4.0 秒。 */
 function sample(): Flow {
@@ -61,28 +63,31 @@ function sample(): Flow {
 	);
 }
 
+/** 把流程放進 session、選好東西，畫泳道；操作後讀 session。 */
+function renderLanes(
+	flow: Flow,
+	{
+		playheadSec = 0,
+		selectedActionId = null,
+		selectedMemberIds = [],
+		multi = false
+	}: { playheadSec?: number; selectedActionId?: string | null; selectedMemberIds?: string[]; multi?: boolean } = {}
+) {
+	const session = new EditorSession(flow);
+	session.selectAction(selectedActionId);
+	session.selectMembers(selectedMemberIds);
+	session.multiSelect = multi;
+	render(TestSession, { props: { session, component: Lanes, props: { playheadSec, pxPerSec: 10 } } });
+	return { session, ask: session.ask };
+}
+
 function setup(
 	playheadSec: number,
 	selectedActionId: string | null = null,
 	selectedMemberIds: string[] = [],
 	multi = false
 ) {
-	const onselectaction = vi.fn();
-	const onchange = vi.fn<(flow: Flow) => void>();
-	const ask = new Ask(onchange);
-	const onselectmembers = vi.fn<(ids: string[]) => void>();
-	render(Lanes, {
-		flow: sample(),
-		playheadSec,
-		pxPerSec: 10,
-		selectedActionId,
-		onselectaction,
-		ask,
-		selectedMemberIds,
-		onselectmembers,
-		multi
-	});
-	return { onselectaction, onchange, ask, onselectmembers };
+	return renderLanes(sample(), { playheadSec, selectedActionId, selectedMemberIds, multi });
 }
 
 const lanes = () => [...document.querySelectorAll<HTMLElement>('[data-lane]')];
@@ -107,14 +112,7 @@ describe('泳道', () => {
 	it('有辨識色的色條塗辨識色，左邊留一條大類的顏色', () => {
 		const flow = sample();
 		flow.actions[0].color = '#1565c0';
-		render(Lanes, {
-			flow,
-			playheadSec: 0,
-			pxPerSec: 10,
-			selectedActionId: null,
-			onselectaction: vi.fn(),
-			ask: new Ask(vi.fn())
-		});
+		renderLanes(flow);
 		const [a] = bars(lanes()[0]);
 		expect(a.style.background).toBe('rgb(21, 101, 192)');
 		expect(a.style.boxShadow).toContain('#d9603b');
@@ -139,10 +137,12 @@ describe('泳道', () => {
 	});
 
 	it('點色條選這個動作；選到的色條有框', async () => {
-		const { onselectaction } = setup(0, 'x1');
-		await fireEvent.click(bars(lanes()[2])[0]);
-		expect(onselectaction).toHaveBeenCalledWith('x2');
+		const { session } = setup(0, 'x1');
 		expect(bars(lanes()[0])[0].classList.contains('selected')).toBe(true);
+		await fireEvent.click(bars(lanes()[2])[0]);
+		expect(session.selectedActionId).toBe('x2');
+		expect(bars(lanes()[0])[0].classList.contains('selected')).toBe(false);
+		expect(bars(lanes()[2])[0].classList.contains('selected')).toBe(true);
 	});
 });
 
@@ -157,40 +157,41 @@ describe('拖色條', () => {
 	}
 
 	it('拖色條移動動作，吸到最近的半拍；拖的時候色條跟著走', async () => {
-		const { onchange, ask } = setup(0);
+		const { session, ask } = setup(0);
 		await fireEvent.pointerDown(tumble(), { clientX: 100, button: 0 });
 		await fireEvent.pointerMove(window, { clientX: 95 });
 		expect(tumble().style.left).toBe('11px');
 		await fireEvent.pointerUp(window, { clientX: 95 });
 		// 往左 5 px = 0.5 秒：1.1 秒最近的是第 6 個半拍
-		expect(onchange).toHaveBeenCalledOnce();
-		expect(onchange.mock.calls[0][0].actions[1]).toMatchObject({ id: 'x2', start: 6, length: 4 });
+		expect(session.canUndo).toBe(true);
+		expect(session.flow!.actions[1]).toMatchObject({ id: 'x2', start: 6, length: 4 });
 		expect(ask.error).toBe('');
 	});
 
 	it('撞到同一人就還原，說原因', async () => {
-		const { onchange, ask } = setup(0);
+		const { session, ask } = setup(0);
 		await dragBy(tumble(), 10);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡，已還原');
 		expect(tumble().style.left).toBe('16px');
 	});
 
 	it('拉右邊改長度；撞到同一人就還原', async () => {
-		const { onchange, ask } = setup(0);
-		const handle = tumble().querySelector('[data-resize]')!;
+		const { session, ask } = setup(0);
+		const handle = () => tumble().querySelector('[data-resize]')!;
 		// 往右 6 px = 0.6 秒：結束 3.0 秒 = 第 15 個半拍
-		await dragBy(handle, 6);
-		expect(onchange.mock.calls[0][0].actions[1]).toMatchObject({ id: 'x2', start: 8, length: 7 });
-		await dragBy(handle, 10);
+		await dragBy(handle(), 6);
+		expect(session.flow!.actions[1]).toMatchObject({ id: 'x2', start: 8, length: 7 });
+		expect(parseFloat(tumble().style.width)).toBeCloseTo(14, 6);
+		await dragBy(handle(), 10);
 		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡，已還原');
-		expect(parseFloat(tumble().style.width)).toBeCloseTo(8, 6);
+		expect(parseFloat(tumble().style.width)).toBeCloseTo(14, 6);
 	});
 
 	it('只是點一下，不改動作', async () => {
-		const { onchange, ask } = setup(0);
+		const { session, ask } = setup(0);
 		await dragBy(tumble(), 1);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('');
 	});
 });
@@ -200,28 +201,28 @@ describe('手指拖色條（docs/adr/0005-ipad-touch.md）', () => {
 	const touch = { button: 0, pointerType: 'touch', pointerId: 7 };
 
 	it('沒選中的色條：手指拖不動（留給畫面捲動），點一下選中', async () => {
-		const { onchange, onselectaction } = setup(0);
+		const { session } = setup(0);
 		expect(tumble().classList.contains('selected')).toBe(false);
 		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
 		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
 		expect(tumble().style.left).toBe('16px');
 		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		await fireEvent.click(tumble());
-		expect(onselectaction).toHaveBeenCalledWith('x2');
+		expect(session.selectedActionId).toBe('x2');
 	});
 
 	it('選中的色條：手指拖得動', async () => {
-		const { onchange } = setup(0, 'x2');
+		const { session } = setup(0, 'x2');
 		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
 		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
 		expect(tumble().style.left).toBe('11px');
 		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
-		expect(onchange.mock.calls[0][0].actions[1]).toMatchObject({ id: 'x2', start: 6 });
+		expect(session.flow!.actions[1]).toMatchObject({ id: 'x2', start: 6 });
 	});
 
 	it('拖的時候多放一根手指，不會把色條搶走；系統打斷就還原', async () => {
-		const { onchange } = setup(0, 'x2');
+		const { session } = setup(0, 'x2');
 		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
 		await fireEvent.pointerMove(window, { ...touch, pointerId: 8, clientX: 300 });
 		await fireEvent.pointerUp(window, { ...touch, pointerId: 8, clientX: 300 });
@@ -231,7 +232,7 @@ describe('手指拖色條（docs/adr/0005-ipad-touch.md）', () => {
 		await fireEvent.pointerCancel(window, { ...touch });
 		expect(tumble().style.left).toBe('16px');
 		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 	});
 });
 
@@ -239,35 +240,29 @@ describe('點泳道上的名字選人', () => {
 	const name = (i: number) => lanes()[i].querySelector<HTMLElement>('.lab')!;
 
 	it('名字前面的圓圈寫標記：號碼或開頭字', () => {
-		render(Lanes, {
-			flow: flowOf(setMarkers(sample(), 'initial')),
-			playheadSec: 0,
-			pxPerSec: 10,
-			selectedActionId: null,
-			onselectaction: vi.fn(),
-			ask: new Ask(vi.fn())
-		});
+		renderLanes(flowOf(setMarkers(sample(), 'initial')));
 		const marks = [...document.querySelectorAll('[data-lane] .no')].map((el) => el.textContent);
 		expect(marks).toEqual(['小A', '小B', '小C']);
 	});
 
 	it('點名字只選這個人；Shift＋點加進來或拿掉', async () => {
-		const { onselectmembers } = setup(0, null, ['m1']);
+		const { session } = setup(0, null, ['m1']);
 		expect(name(0).classList.contains('selected')).toBe(true);
 		await fireEvent.click(name(1));
-		expect(onselectmembers).toHaveBeenLastCalledWith(['m2']);
+		expect(session.selectedMemberIds).toEqual(['m2']);
 		await fireEvent.click(name(2), { shiftKey: true });
-		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
-		await fireEvent.click(name(0), { shiftKey: true });
-		expect(onselectmembers).toHaveBeenLastCalledWith([]);
+		expect(session.selectedMemberIds).toEqual(['m2', 'm3']);
+		await fireEvent.click(name(1), { shiftKey: true });
+		expect(session.selectedMemberIds).toEqual(['m3']);
+		expect(name(2).classList.contains('selected')).toBe(true);
 	});
 
 	it('多選開著：不按 Shift 點名字也是加進來或拿掉', async () => {
-		const { onselectmembers } = setup(0, null, ['m1'], true);
+		const { session } = setup(0, null, ['m1'], true);
 		await fireEvent.click(name(2));
-		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
+		expect(session.selectedMemberIds).toEqual(['m1', 'm3']);
 		await fireEvent.click(name(0));
-		expect(onselectmembers).toHaveBeenLastCalledWith([]);
+		expect(session.selectedMemberIds).toEqual(['m3']);
 	});
 });
 
@@ -282,18 +277,7 @@ describe('走位條', () => {
 
 	function setupWalks(selectedMemberIds: string[] = []) {
 		const flow = walking();
-		const onchange = vi.fn<(flow: Flow) => void>();
-		const ask = new Ask(onchange);
-		render(Lanes, {
-			flow,
-			playheadSec: 0,
-			pxPerSec: 10,
-			selectedActionId: null,
-			onselectaction: vi.fn(),
-			ask,
-			selectedMemberIds
-		});
-		return { onchange, ask, f2: flow.formations[1].id };
+		return { ...renderLanes(flow, { selectedMemberIds }), f2: flow.formations[1].id };
 	}
 
 	const walkBars = (lane: HTMLElement) => [...lane.querySelectorAll<HTMLElement>('[data-walk]')];
@@ -308,32 +292,21 @@ describe('走位條', () => {
 	}
 
 	it('手指：沒選到的人的走位條拖不動，點一下選他；選到了才拖得動', async () => {
-		const onselectmembers = vi.fn();
-		const onchange = vi.fn();
 		const touch = { button: 0, pointerType: 'touch', pointerId: 3 };
-		const { rerender } = render(Lanes, {
-			flow: walking(),
-			playheadSec: 0,
-			pxPerSec: 10,
-			selectedActionId: null,
-			onselectaction: vi.fn(),
-			ask: new Ask(onchange),
-			onselectmembers
-		});
+		const { session } = renderLanes(walking());
 		await fireEvent.pointerDown(walkBar(0), { ...touch, clientX: 100 });
 		await fireEvent.pointerMove(window, { ...touch, clientX: 120 });
 		expect(walkBar(0).style.left).toBe('16px');
 		await fireEvent.pointerUp(window, { ...touch, clientX: 120 });
 		await fireEvent.click(walkBar(0));
-		expect(onselectmembers).toHaveBeenCalledWith(['m1']);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		expect(session.canUndo).toBe(false);
 
-		await rerender({ selectedMemberIds: ['m1'] });
 		await fireEvent.pointerDown(walkBar(0), { ...touch, clientX: 100 });
 		await fireEvent.pointerMove(window, { ...touch, clientX: 96 });
 		expect(walkBar(0).style.left).toBe('12px');
 		await fireEvent.pointerUp(window, { ...touch, clientX: 96 });
-		expect(onchange).toHaveBeenCalledOnce();
+		expect(session.canUndo).toBe(true);
 	});
 
 	it('有走位的人才有走位條，從出發畫到到達，跟動作色條分開', () => {
@@ -357,7 +330,7 @@ describe('走位條', () => {
 				m1: { depart: { segmentId: 's1', at: 23 }, arrive: { segmentId: 's1', at: 24 } }
 			})
 		);
-		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), ask: new Ask(vi.fn()) });
+		renderLanes(flow);
 		expect(walkBar(0).classList.contains('fast')).toBe(true);
 		expect(walkBar(1).classList.contains('fast')).toBe(false);
 	});
@@ -373,67 +346,67 @@ describe('走位條', () => {
 				m1: { depart: { segmentId: 's1', at: 18 }, arrive: { segmentId: 's1', at: 24 } }
 			})
 		);
-		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), ask: new Ask(vi.fn()) });
+		renderLanes(flow);
 		expect(walkBar(0).classList.contains('tiring')).toBe(true);
 		expect(walkBar(0).classList.contains('fast')).toBe(false);
 	});
 
 	it('拖左端改出發，吸到最近的半拍；只改這個人', async () => {
-		const { onchange, ask, f2 } = setupWalks();
+		const { session, ask, f2 } = setupWalks();
 		// 往右 4 px = 0.4 秒：出發 2.0 秒 = 第 10 個半拍
 		await dragBy(end(0, 'depart'), 4);
 		expect(ask.error).toBe('');
-		const walks = onchange.mock.calls[0][0].formations[1].walks;
+		const walks = session.flow!.formations[1].walks;
 		expect(walks).toEqual({
 			m1: { depart: { segmentId: 's1', at: 10 }, arrive: { segmentId: 's1', at: 24 } }
 		});
-		expect(onchange.mock.calls[0][0].formations[1].id).toBe(f2);
+		expect(session.flow!.formations[1].id).toBe(f2);
 	});
 
 	it('拖中間兩端一起挪；拖的時候走位條跟著走', async () => {
-		const { onchange } = setupWalks();
+		const { session } = setupWalks();
 		await fireEvent.pointerDown(walkBar(0), { clientX: 100, button: 0 });
 		await fireEvent.pointerMove(window, { clientX: 96 });
 		expect(walkBar(0).style.left).toBe('12px');
 		await fireEvent.pointerUp(window, { clientX: 96 });
-		expect(onchange.mock.calls[0][0].formations[1].walks).toEqual({
+		expect(session.flow!.formations[1].walks).toEqual({
 			m1: { depart: { segmentId: 's1', at: 6 }, arrive: { segmentId: 's1', at: 22 } }
 		});
 	});
 
 	it('被拖的人在選取裡：選到、同一個間隔有走位的人一起挪一樣多', async () => {
-		const { onchange } = setupWalks(['m1', 'm2', 'm3']);
+		const { session } = setupWalks(['m1', 'm2', 'm3']);
 		await dragBy(walkBar(1), -4);
-		expect(onchange).toHaveBeenCalledOnce();
-		expect(onchange.mock.calls[0][0].formations[1].walks).toEqual({
+		expect(session.canUndo).toBe(true);
+		expect(session.flow!.formations[1].walks).toEqual({
 			m1: { depart: { segmentId: 's1', at: 6 }, arrive: { segmentId: 's1', at: 22 } },
 			m2: { depart: { segmentId: 's1', at: 6 }, arrive: { segmentId: 's1', at: 22 } }
 		});
 	});
 
 	it('被拖的人不在選取裡：只挪他自己', async () => {
-		const { onchange } = setupWalks(['m2']);
+		const { session } = setupWalks(['m2']);
 		await dragBy(walkBar(0), -4);
-		expect(Object.keys(onchange.mock.calls[0][0].formations[1].walks!)).toEqual(['m1']);
+		expect(Object.keys(session.flow!.formations[1].walks!)).toEqual(['m1']);
 	});
 
 	it('拖出前後兩張站位之間就還原，說原因；整組也一樣', async () => {
-		const { onchange, ask } = setupWalks(['m1', 'm2']);
+		const { session, ask } = setupWalks(['m1', 'm2']);
 		await dragBy(end(1, 'arrive'), 4);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
 		expect(walkBar(0).style.left).toBe('16px');
 		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
 	});
 
 	it('前一張在流程開頭時，出發拖到流程開頭之前也還原，說原因', async () => {
-		const { onchange, ask } = setupWalks();
+		const { session, ask } = setupWalks();
 		// 往左 20 px = 2 秒：出發 -0.4 秒，在流程開頭之前
 		await dragBy(end(0, 'depart'), -20);
 		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
 		ask.clear();
 		await dragBy(walkBar(0), -20);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
 		expect(walkBar(0).style.left).toBe('16px');
 	});
@@ -443,33 +416,24 @@ describe('走位條', () => {
 		let flow = flowOf(insertFormation(sample(), 25.4));
 		const f2 = flow.formations[1];
 		flow = flowOf(setPositions(flow, f2.id, { m1: f2.pos.m2, m2: f2.pos.m1 }));
-		const onchange = vi.fn<(flow: Flow) => void>();
-		const ask = new Ask(onchange);
-		render(Lanes, {
-			flow,
-			playheadSec: 0,
-			pxPerSec: 10,
-			selectedActionId: null,
-			onselectaction: vi.fn(),
-			ask
-		});
+		const { session, ask } = renderLanes(flow);
 		await dragBy(walkBar(0), 10);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
 	});
 
 	it('出發拖到到達之後就還原，說原因', async () => {
-		const { onchange, ask } = setupWalks();
+		const { session, ask } = setupWalks();
 		await dragBy(end(0, 'depart'), 40);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('出發要早於到達，已還原');
 		expect(walkBar(0).style.left).toBe('16px');
 	});
 
 	it('只是點一下，不改流程', async () => {
-		const { onchange, ask } = setupWalks();
+		const { session, ask } = setupWalks();
 		await dragBy(walkBar(0), 1);
-		expect(onchange).not.toHaveBeenCalled();
+		expect(session.canUndo).toBe(false);
 		expect(ask.error).toBe('');
 	});
 });
@@ -486,10 +450,7 @@ describe('色條上的拍點', () => {
 	}
 
 	function setupCues() {
-		const onchange = vi.fn<(flow: Flow) => void>();
-		const onselectaction = vi.fn();
-		render(Lanes, { flow: cued(), playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction, ask: new Ask(onchange) });
-		return { onchange, onselectaction };
+		return renderLanes(cued());
 	}
 
 	/** 色條上的拍點：種類、字、位置（px，從色條左邊算）、長度。 */
@@ -520,7 +481,7 @@ describe('色條上的拍點', () => {
 		const flow = flowOf(
 			placeCue(cued(), 'x1', { kind: 'motion', at: 14, len: 2, word: 'T', who: null })
 		);
-		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), ask: new Ask(vi.fn()) });
+		renderLanes(flow);
 		const [highV, last] = [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-cue="motion"]')];
 		expect(highV.style.left).toBe('16px');
 		expect(highV.style.transform).toBe('');
@@ -535,7 +496,7 @@ describe('色條上的拍點', () => {
 		const flow = flowOf(
 			placeCue(cued(), 'x1', { kind: 'motion', at: 14, len: 2, word: 'T', who: null })
 		);
-		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), ask: new Ask(vi.fn()) });
+		renderLanes(flow);
 		const bar = bars(lanes()[0])[0];
 		const last = () => [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-cue="motion"]')][1];
 		await fireEvent.pointerDown(bar.querySelector('[data-resize]')!, { clientX: 100, button: 0 });
@@ -576,18 +537,51 @@ describe('色條上的拍點', () => {
 		}
 	});
 
+	it('拉短會切到拍點：先問，流程還沒變；按確定才改短，算一步', async () => {
+		const { session, ask } = setupCues();
+		const before = session.flow;
+		// 往左 20 px = 2 秒：Lib 剩 1.2 秒（6 個半拍），切到 1-3 開始的步驟和 1-5 的手位
+		await fireEvent.pointerDown(bars(lanes()[0])[0].querySelector('[data-resize]')!, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 80 });
+		await fireEvent.pointerUp(window, { clientX: 80 });
+		expect(ask.question).not.toBeNull();
+		expect(session.flow).toBe(before);
+		expect(bars(lanes()[0])[0].style.width).toBe('32px');
+
+		ask.answer('confirm');
+		await tick();
+		expect(ask.question).toBeNull();
+		expect(session.flow!.actions[0]).toMatchObject({ id: 'x1', length: 6 });
+		expect(session.canUndo).toBe(true);
+		expect(parseFloat(bars(lanes()[0])[0].style.width)).toBeCloseTo(12, 6);
+	});
+
+	it('拉短要問時按取消：流程不變，色條留在原來的長度', async () => {
+		const { session, ask } = setupCues();
+		const before = session.flow;
+		await fireEvent.pointerDown(bars(lanes()[0])[0].querySelector('[data-resize]')!, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 80 });
+		await fireEvent.pointerUp(window, { clientX: 80 });
+		ask.answer('cancel');
+		await tick();
+		expect(ask.question).toBeNull();
+		expect(session.flow).toBe(before);
+		expect(session.canUndo).toBe(false);
+		expect(bars(lanes()[0])[0].style.width).toBe('32px');
+	});
+
 	it('按在拍點上照樣能拖色條、點色條', async () => {
-		const { onchange, onselectaction } = setupCues();
+		const { session } = setupCues();
 		const cue = bars(lanes()[0])[0].querySelector('[data-cue="step"]')!;
 		await fireEvent.click(cue);
-		expect(onselectaction).toHaveBeenCalledWith('x1');
+		expect(session.selectedActionId).toBe('x1');
 		await fireEvent.pointerDown(cue, { clientX: 100, button: 0 });
 		await fireEvent.pointerMove(window, { clientX: 104 });
 		expect(bars(lanes()[0])[0].style.left).toBe('4px');
 		await fireEvent.pointerUp(window, { clientX: 104 });
 		// 往右 4 px = 0.4 秒 = 2 個半拍；拍點跟著動作走
-		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
-		expect(onchange.mock.calls[0][0].actions[0].cues).toHaveLength(3);
+		expect(session.flow!.actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
+		expect(session.flow!.actions[0].cues).toHaveLength(3);
 	});
 });
 
@@ -605,10 +599,7 @@ describe('色條上的環節', () => {
 	}
 
 	function setupPhases(flow: Flow) {
-		const onchange = vi.fn<(flow: Flow) => void>();
-		const onselectaction = vi.fn();
-		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction, ask: new Ask(onchange) });
-		return { onchange, onselectaction };
+		return renderLanes(flow);
 	}
 
 	/** 色條上的環節細條：名字、位置、寬度、顏色。 */
@@ -656,17 +647,17 @@ describe('色條上的環節', () => {
 	});
 
 	it('按在環節上照樣能拖色條、拉長度、點色條', async () => {
-		const { onchange, onselectaction } = setupPhases(phased());
+		const { session } = setupPhases(phased());
 		const strip = () => bars(lanes()[0])[0].querySelector('[data-phase]')!;
 		await fireEvent.click(strip());
-		expect(onselectaction).toHaveBeenCalledWith('x1');
+		expect(session.selectedActionId).toBe('x1');
 		await fireEvent.pointerDown(strip(), { clientX: 100, button: 0 });
 		await fireEvent.pointerMove(window, { clientX: 104 });
 		expect(bars(lanes()[0])[0].style.left).toBe('4px');
 		await fireEvent.pointerUp(window, { clientX: 104 });
 		// 往右 4 px = 2 個半拍；環節標的拍跟著動作走
-		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
-		expect(onchange.mock.calls[0][0].actions[0].successRate?.phases[0].beats).toEqual({ at: 0, len: 6 });
+		expect(session.flow!.actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
+		expect(session.flow!.actions[0].successRate?.phases[0].beats).toEqual({ at: 0, len: 6 });
 		// 拉長度的把手還在
 		await fireEvent.pointerDown(bars(lanes()[0])[0].querySelector('[data-resize]')!, { clientX: 100, button: 0 });
 		await fireEvent.pointerMove(window, { clientX: 104 });
@@ -676,7 +667,7 @@ describe('色條上的環節', () => {
 
 it('沒有人時沒有泳道', () => {
 	const flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
-	render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction: vi.fn(), ask: new Ask(vi.fn()) });
+	renderLanes(flow);
 	expect(screen.queryAllByRole('button')).toHaveLength(0);
 	expect(lanes()).toHaveLength(0);
 });
