@@ -106,7 +106,7 @@ export function updateAction(
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
 	const realigned = from && to ? phaseFallout(from, to, old, action) : null;
-	// 只挪半拍、沒切到的標的拍不用問。
+	// 只挪半拍、沒切到的標的拍不用問；換到口號段拿掉標的拍也不用問。
 	const marked = realigned?.items.length ? realigned : null;
 	const asked = fallout || marked ? falloutMessage(old, action, from!, to!, fallout, marked) : null;
 	const items = [...(fallout?.items ?? []), ...(marked?.items ?? [])];

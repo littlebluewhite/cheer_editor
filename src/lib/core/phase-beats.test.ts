@@ -340,18 +340,11 @@ describe('標的拍跟著動作', () => {
 		expect(brief(flowOf(updateAction(onlyP1(), 'x1', { length: 6 })))).toEqual(['p1 0+6']);
 	});
 
-	it('換到口號段：先問；確定後標的拍全部拿掉，環節留著', () => {
-		expect(updateAction(sample(), 'x1', { segmentId: 's2', start: 0, length: 30 })).toEqual({
-			kind: 'confirm',
-			message: '動作「技巧·Lib」換到口號段，會讓 3 個環節變沒標拍',
-			items: [
-				'變沒標拍：環節 上法 延伸 1-1 到 1-3',
-				'變沒標拍：環節 中段 1-4 到 2-2',
-				'變沒標拍：環節 下法 搖籃 2-5 到 2-8'
-			]
-		});
-		const flow = flowOf(updateAction(sample(), 'x1', { segmentId: 's2', start: 0, length: 30 }, { confirmed: true }));
+	it('換到口號段：不問，標的拍全部拿掉，環節和記號留著', () => {
+		const marked = record(sample(), { p1: '✓', p2: '△', p3: '✗' });
+		const flow = flowOf(updateAction(marked, 'x1', { segmentId: 's2', start: 0, length: 30 }));
 		expect(brief(flow)).toEqual(['p1', 'p2', 'p3']);
+		expect(lib(flow).successRate!.records[0].marks).toEqual({ p1: '✓', p2: '△', p3: '✗' });
 	});
 
 	it('換到口號段：環節照原本拍的先後排，不是照加的先後', () => {
