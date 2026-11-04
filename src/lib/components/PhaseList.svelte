@@ -2,6 +2,7 @@
 	// 環節清單（動作表單的成功率區）：每一列有色塊、種類、名字，可以改名、換種類、換色、刪、換順序；最下面「＋ 加環節」。
 	// 沒標拍的環節可以拖著換順序，也可以按上移、下移；標了拍的照時間排在前面，不能換。
 	// 刪有紀錄的環節時核心回「要確認」：照現有的確認樣子顯示訊息，按確定才刪。
+	// 每一列底下寫標的拍（照八拍寫）和範圍裡的拍點；點它，拍點格子裡那幾拍就亮起來。
 	import {
 		PHASE_COLORS,
 		PHASE_KINDS,
@@ -9,6 +10,7 @@
 		deletePhase,
 		movePhase,
 		phaseColor,
+		phaseSpan,
 		updatePhase,
 		type Action,
 		type Flow,
@@ -25,11 +27,17 @@
 		/** 有記成功率的動作。 */
 		action: Action;
 		onchange: (flow: Flow) => void;
+		/** 亮著的環節 id（拍點格子裡它那幾拍亮起來）。 */
+		lit?: string | null;
+		/** 點了某個環節的拍。 */
+		onlight?: (phaseId: string) => void;
 	}
 
-	let { flow, action, onchange }: Props = $props();
+	let { flow, action, onchange, lit = null, onlight }: Props = $props();
 
 	const phases = $derived(action.successRate?.phases ?? []);
+	/** 每個環節標的拍和範圍裡的拍點；沒標拍是 null。 */
+	const spans = $derived(phases.map((p) => phaseSpan(flow, action, p)));
 	let newKind = $state<PhaseKind>('load');
 	let newName = $state('');
 	let error = $state('');
@@ -151,6 +159,20 @@
 				<button type="button" class="ghost icon" aria-label="刪掉 {phaseLabel(p)}" onclick={() => remove(p.id)}
 					><Icon name="trash" size={14} /></button
 				>
+				{#if spans[i]}
+					<button
+						type="button"
+						class="span"
+						aria-pressed={lit === p.id}
+						title="點一下，拍點格子裡這幾拍會亮起來"
+						onclick={() => onlight?.(p.id)}
+						><span class="range">{spans[i]!.range}</span>{#each spans[i]!.cues as c, j (j)}<span
+								class="cue {c.kind} {c.kind === 'count' ? c.word : ''}">{c.word}</span
+							>{/each}</button
+					>
+				{:else}
+					<span class="span none">沒標拍</span>
+				{/if}
 			</li>
 		{/each}
 	</ol>
@@ -203,6 +225,61 @@
 		gap: 6px;
 		align-items: center;
 		border-radius: 6px;
+	}
+	/* 第二行：標的拍和範圍裡的拍點，從種類那一欄排到最後 */
+	.span {
+		grid-column: 3 / -1;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		align-items: center;
+		justify-content: flex-start;
+		min-height: 24px;
+		padding: 2px 6px;
+		border: 1px solid var(--line-soft, #e8ecf3);
+		border-radius: 6px;
+		background: transparent;
+		font-size: 12px;
+		font-weight: 400;
+		text-align: left;
+	}
+	.span[aria-pressed='true'] {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: -1px;
+		background: var(--sel-soft, #dcf4fa);
+	}
+	.span.none {
+		border-style: dashed;
+		color: var(--muted, #66718a);
+	}
+	.range {
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+	.cue {
+		padding: 0 6px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 700;
+	}
+	.cue.down {
+		background: var(--cue-down);
+		color: #fff;
+	}
+	.cue.up {
+		background: var(--cue-up);
+		color: #fff;
+	}
+	.cue.step {
+		background: var(--cue-step-bg);
+		color: var(--cue-step-ink);
+		border-left: 3px solid var(--cue-step-line);
+		border-radius: 4px;
+	}
+	.cue.motion {
+		background: var(--cue-motion-bg);
+		color: var(--cue-motion-ink);
+		border: 1px solid var(--cue-motion-line);
 	}
 	.phases li.dragging {
 		opacity: 0.5;

@@ -7,9 +7,12 @@
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
+	// 記成功率的動作：拍子那條上面多一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
+	// 小窗多一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { touchOnUnpicked } from './pointer';
+	import { phaseLabel } from './phase-label';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -17,11 +20,15 @@
 		HALF_BEATS_PER_BEAT as BEAT,
 		HALF_BEATS_PER_EIGHT as EIGHT,
 		MOTION_WORDS,
+		PHASE_KINDS,
 		STEP_WORDS,
 		atText,
 		clearCues,
+		clearPhaseBeats,
 		cueText,
+		markPhaseBeats,
 		memberName,
+		phaseColor,
 		placeCue,
 		sameWho,
 		usedWords,
@@ -31,6 +38,8 @@
 		type Cue,
 		type CueKind,
 		type Flow,
+		type Phase,
+		type PhaseKind,
 		type Who
 	} from '#lib/core';
 
@@ -40,9 +49,11 @@
 		onchange: (flow: Flow) => void;
 		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
 		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
+		/** 亮著的環節 id（成功率區的環節清單點到的）：它那幾拍的淡底變深。 */
+		lit?: string | null;
 	}
 
-	let { flow, action, onchange, cellAt = nearestCell }: Props = $props();
+	let { flow, action, onchange, cellAt = nearestCell, lit = null }: Props = $props();
 
 	const cols = Array.from({ length: 8 }, (_, c) => c);
 	/** 三條由上往下，排在每個八拍的數字格下面。 */
@@ -68,6 +79,13 @@
 	});
 	/** 放拍點時給誰；預設全部。 */
 	let who = $state<Who>(null);
+
+	/** 記成功率的動作才有「環節」那一條和小窗的環節列。 */
+	const rated = $derived(!!action.successRate);
+	const phases = $derived(action.successRate?.phases ?? []);
+	/** 小窗裡加新環節的種類和名字。 */
+	let phaseKind = $state<PhaseKind>('load');
+	let phaseName = $state('');
 
 	/** 自己打的字，步驟和手位各一格。 */
 	let custom = $state({ step: '', motion: '' });
@@ -252,6 +270,12 @@
 		addCustom(kind);
 	}
 
+	/** 把選的拍標給現有的環節，或標給新的環節（種類、名字）。 */
+	function markPhase(target: { phaseId: string } | { kind: PhaseKind; name: string }) {
+		const placed = apply(markPhaseBeats(flow, action.id, target, sel.from, selLen));
+		if (placed && !('phaseId' in target)) phaseName = '';
+	}
+
 	function clear(kind: CueKind) {
 		apply(clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
 	}
@@ -371,9 +395,27 @@
 		});
 	}
 
-	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格。 */
+	/** 每個標了拍的環節在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）。 */
+	function phasePieces(e: number) {
+		const lo = e * EIGHT;
+		const hi = lo + EIGHT;
+		return phases.flatMap((phase) => {
+			if (!phase.beats) return [];
+			const s = action.start + phase.beats.at;
+			const end = s + phase.beats.len;
+			if (end <= lo || s >= hi) return [];
+			const c0 = Math.floor((Math.max(s, lo) - lo) / BEAT);
+			const c1 = Math.ceil((Math.min(end, hi) - lo) / BEAT);
+			return [{ phase, beats: phase.beats, c0, c1, first: s >= lo, last: end <= hi }];
+		});
+	}
+
+	/** 「1-1 到 1-3」：spanText 去掉後面的拍數。 */
+	const rangeOf = (at: number, len: number) => spanText(at, len).replace(/・.*$/, '');
+
+	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，記成功率的動作第 2 列是環節。 */
 	function layout(e: number) {
-		let row = 2;
+		let row = rated ? 3 : 2;
 		return LANES.map((lane) => {
 			const ps = pieces(e, lane.kind);
 			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
@@ -408,8 +450,10 @@
 			>
 				{#each eights as e (e)}
 					{@const lanes = layout(e)}
+					{@const bottom = lanes[lanes.length - 1].row + lanes[lanes.length - 1].tracks}
 					<div class="row">
 						<span class="eight" aria-hidden="true">{e + 1}</span>
+						{#if rated}<span class="lane-lbl phase" style:grid-row="2">環節</span>{/if}
 						{#each lanes as lane (lane.kind)}
 							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
@@ -430,6 +474,16 @@
 								openPop();
 							}}>{c + 1}</button
 							>
+							{#if rated}
+								<span
+									class="slot phase"
+									data-at={at}
+									class:out={!inAction(at)}
+									class:sel={inAction(at) && isSel(at)}
+									style:grid-column={c + 2}
+									style:grid-row="2"
+								></span>
+							{/if}
 							{#each lanes as lane (lane.kind)}
 								<span
 									class="slot {lane.kind}"
@@ -440,6 +494,34 @@
 									style:grid-row="{lane.row} / span {lane.tracks}"
 								></span>
 							{/each}
+						{/each}
+						{#each phasePieces(e) as p (p.phase.id)}
+							{@const label = phaseLabel(p.phase)}
+							<!-- 淡底：從數字格鋪到最後一條，左右畫線；疊在格子上面、字的下面，點得穿 -->
+							<span
+								class="zone"
+								class:cont={!p.first}
+								class:more={!p.last}
+								class:lit={lit === p.phase.id}
+								data-phase={p.phase.id}
+								style:--c={phaseColor(p.phase)}
+								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+								style:grid-row="1 / {bottom}"
+							></span>
+							<button
+								type="button"
+								class="item phase"
+								class:cont={!p.first}
+								class:more={!p.last}
+								style:--c={phaseColor(p.phase)}
+								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+								style:grid-row="2"
+								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
+								aria-hidden={!p.first || undefined}
+								tabindex={p.first ? undefined : -1}
+								onclick={() => pick({ kind: 'step', ...p.beats, word: '', who: null })}
+								>{p.first ? label : `…${label}`}</button
+							>
 						{/each}
 						{#each lanes as lane (lane.kind)}
 							{#each lane.pieces as p}
@@ -524,6 +606,40 @@
 							<button type="button" class="clear" aria-label="清掉{row.label}" onclick={() => clear(row.kind)}>清掉</button>
 						</div>
 					{/each}
+					{#if rated}
+						<div class="pop-row phase" role="group" aria-label="環節">
+							<span class="lbl">環節</span>
+							<div class="words">
+								{#each phases as p (p.id)}
+									<button
+										type="button"
+										class="word phase"
+										style:--c={phaseColor(p)}
+										aria-label="把這幾拍標給 {phaseLabel(p)}"
+										onclick={() => markPhase({ phaseId: p.id })}>{phaseLabel(p)}</button
+									>
+								{/each}
+								<span class="own">
+									<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
+										{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
+									</select>
+									<input class="custom" aria-label="環節的名字" placeholder="名字，例：延伸" bind:value={phaseName} />
+									<button
+										type="button"
+										class="word"
+										aria-label="加入環節"
+										onclick={() => markPhase({ kind: phaseKind, name: phaseName })}>加入</button
+									>
+								</span>
+							</div>
+							<button
+								type="button"
+								class="clear"
+								aria-label="清掉環節"
+								onclick={() => apply(clearPhaseBeats(flow, action.id, sel.from, sel.to + BEAT))}>清掉</button
+							>
+						</div>
+					{/if}
 					{#if error}<p class="error" role="alert">{error}</p>{/if}
 				</div>
 			{/if}
@@ -613,6 +729,9 @@
 		text-align: center;
 		color: var(--cue-down);
 	}
+	.lane-lbl.phase {
+		color: var(--text, #1a2238);
+	}
 	.lane-lbl.step {
 		color: var(--cue-step-ink);
 	}
@@ -628,6 +747,9 @@
 	}
 	.slot.motion {
 		background: #fdf3f8;
+	}
+	.slot.phase {
+		background: #f4f5f7;
 	}
 	.slot.out {
 		background: transparent;
@@ -646,6 +768,34 @@
 		color: #fff;
 		white-space: nowrap;
 		overflow: hidden;
+	}
+	/* 環節：淡底疊在格子上（字和拍點在上面），左右兩條環節顏色的線；亮著的底色深一點、框起來。 */
+	.zone {
+		z-index: 0;
+		pointer-events: none;
+		border-left: 2px solid var(--c);
+		border-right: 2px solid var(--c);
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--c) 10%, transparent);
+	}
+	.zone.cont {
+		border-left: 0;
+		border-top-left-radius: 0;
+		border-bottom-left-radius: 0;
+	}
+	.zone.more {
+		border-right: 0;
+		border-top-right-radius: 0;
+		border-bottom-right-radius: 0;
+	}
+	.zone.lit {
+		background: color-mix(in srgb, var(--c) 24%, transparent);
+		box-shadow: 0 0 0 2px var(--sel, #19b4d8);
+	}
+	.item.phase,
+	.word.phase {
+		background: var(--c);
+		color: #fff;
 	}
 	.item.down,
 	.word.down {
@@ -734,6 +884,17 @@
 	}
 	.pop-row.step .lbl {
 		color: var(--cue-step-ink);
+	}
+	.pop-row.phase {
+		border-left-color: var(--text, #1a2238);
+		background: #f6f7f9;
+	}
+	.pop-row.phase .lbl {
+		color: var(--text, #1a2238);
+	}
+	.kind {
+		min-height: 26px;
+		font-size: 12px;
 	}
 	.pop-row.motion .lbl {
 		color: var(--cue-motion-ink);

@@ -106,6 +106,9 @@
 			}))
 	);
 
+	/** 環節清單點到的環節（拍點格子裡它那幾拍亮起來）；再點一次就不亮。 */
+	let litPhase = $state<string | null>(null);
+
 	/** 「第幾組」選單的組：1 到現在最大的組再多一組。沒打開記成功率、或騰翻跳躍（不分組）是空的，不顯示選單。 */
 	const squadChoices = $derived.by(() => {
 		if (!action?.successRate || perPerson(action.category)) return [];
@@ -497,10 +500,10 @@
 					</label>
 				</div>
 				{#if action.successRate}
-					<PhaseList {flow} {action} {onchange} />
+					<PhaseList {flow} {action} {onchange} lit={litPhase} onlight={(id) => (litPhase = litPhase === id ? null : id)} />
 				{/if}
 			</div>
-			<CueGrid {flow} {action} {onchange} />
+			<CueGrid {flow} {action} {onchange} lit={litPhase} />
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
 		{/if}
