@@ -72,6 +72,17 @@ export function clearPhaseBeats(
 	return withPhases(flow, action, cut(action.successRate.phases, from, to), options);
 }
 
+/** 改動作動到的標的拍：見 phaseFallout。 */
+export interface PhaseFallout {
+	phases: Phase[];
+	cut: number;
+	dropped: number;
+	marked: number;
+	empty: boolean;
+	shifted: boolean;
+	items: string[];
+}
+
 /**
  * 改動作會動到的標的拍（跟拍點的 cueFallout 一起問）：換到口號段全部拿掉、環節照原本的先後留著，不用問；
  * 變短時跨出去的切短（取到整拍），不到一拍的刪掉。拖到半拍上時，標的拍一起挪半拍、對齊音樂的整拍
@@ -85,15 +96,7 @@ export function phaseFallout(
 	to: Segment,
 	before: Action,
 	after: Action
-): {
-	phases: Phase[];
-	cut: number;
-	dropped: number;
-	marked: number;
-	empty: boolean;
-	shifted: boolean;
-	items: string[];
-} | null {
+): PhaseFallout | null {
 	const old = after.successRate?.phases ?? [];
 	const music = to.kind === 'music';
 	const offBeat = (p: Phase) => !!p.beats && (after.start + p.beats.at) % BEAT !== 0;
@@ -148,17 +151,7 @@ export function phaseFallout(
 }
 
 /** 「切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號），動作不再記成功率」（確認訊息裡標的拍那一段）。 */
-export function phaseFalloutText({
-	cut,
-	dropped,
-	marked,
-	empty
-}: {
-	cut: number;
-	dropped: number;
-	marked: number;
-	empty: boolean;
-}): string {
+export function phaseFalloutText({ cut, dropped, marked, empty }: PhaseFallout): string {
 	const parts = [
 		cut ? `切短 ${cut} 個環節標的拍` : '',
 		dropped ? `刪掉 ${dropped} 個環節${marked ? `（清掉 ${marked} 次的記號）` : ''}` : ''

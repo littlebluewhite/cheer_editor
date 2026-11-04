@@ -2,7 +2,7 @@
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
 import { cueFallout, cueProblem, type Cue } from './cues';
-import { phaseFallout, phaseFalloutText } from './phase-beats';
+import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
@@ -135,7 +135,7 @@ function falloutMessage(
 	from: Segment,
 	to: Segment,
 	cues: { removed: number; cut: number; orphaned: number } | null,
-	phases: Parameters<typeof phaseFalloutText>[0] & { shifted: boolean } | null
+	phases: PhaseFallout | null
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
 	const shorter = action.length < old.length ? '變短' : '';
