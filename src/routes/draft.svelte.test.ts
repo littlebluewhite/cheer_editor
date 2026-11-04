@@ -14,7 +14,7 @@ import {
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { DraftStore } from '#lib/file/draft.js';
-import { fakeDecode, fakeDraftStore, fakeSaver } from '#lib/test-fakes.js';
+import { fakeDecode, fakeDraftStore, fakeSaver, settle } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -26,9 +26,6 @@ function setup(draftStore: DraftStore) {
 		draftStore
 	});
 }
-
-/** 等 async 的讀草稿、解碼跑完。 */
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 function flowOf(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(r.message);

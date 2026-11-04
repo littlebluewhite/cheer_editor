@@ -17,7 +17,7 @@ import {
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
-import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
+import { fakeDecode, fakeSaver, openFile, settle } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -31,9 +31,6 @@ async function newFlow() {
 }
 
 const ctrlS = (target: Element | Window = window) => fireEvent.keyDown(target, { key: 's', ctrlKey: true });
-
-/** 等 async 的存檔／開檔（讀檔、解碼）跑完。 */
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 function flowOf(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(r.message);
@@ -58,12 +55,6 @@ function sampleFlow(): Flow {
 		})
 	);
 	return flowOf(insertFormation(flow, 1));
-}
-
-async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
-	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
-	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
-	await settle();
 }
 
 describe('存檔', () => {
