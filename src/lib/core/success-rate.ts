@@ -4,6 +4,7 @@
 import type { Action, ActionCategory } from './actions';
 import type { Flow } from './flow';
 import type { Segment } from './segment';
+import { HALF_BEATS_PER_BEAT } from './time';
 import { freshIds } from './ids';
 import { blocked, ok, type CommandResult } from './result';
 
@@ -138,6 +139,26 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 		const label = PER_PERSON[action.category];
 		if (label) return `${label}的動作不分組，每個人自己算`;
 	}
+	const phases = action.successRate?.phases ?? [];
+	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
+	for (const p of phases) {
+		if (!PHASE_KINDS.some((k) => k.key === p.kind)) return '沒有這種環節';
+		const problem = p.beats ? beatsProblem(segment, action, p.beats) : null;
+		if (problem) return problem;
+	}
+	const marked = phases.flatMap((p) => (p.beats ? [p.beats] : [])).sort((a, b) => a.at - b.at);
+	if (marked.some((b, i) => i > 0 && b.at < marked[i - 1].at + marked[i - 1].len)) {
+		return '環節標的拍不能重疊';
+	}
+	return null;
+}
+
+/** 環節標的拍守拍點的規則：只有音樂段能標、佔整數拍（至少 1 拍）、在動作裡面。開始不用在整拍上（動作被拖半拍時跟著落在 &）。 */
+function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
+	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
+	if (!Number.isInteger(at) || !Number.isInteger(len)) return '環節要落在半拍上';
+	if (len < HALF_BEATS_PER_BEAT || len % HALF_BEATS_PER_BEAT !== 0) return '環節要佔整數拍，至少 1 拍';
+	if (at < 0 || at + len > action.length) return '環節要在動作裡面';
 	return null;
 }
 

@@ -8,18 +8,18 @@
 存成 `流程名.zip`：
 
 ```
-flow.json        { "formatVersion": 5, "flow": { … } }
+flow.json        { "formatVersion": 6, "flow": { … } }
 audio/a1.mp3     flow.audio 列出的音樂檔，原封不動（zip 裡不再壓縮）
 audio/a2.m4a
 ```
 
 - `flow.json` 只有 `formatVersion` 和 `flow` 兩層。延遲校正之類的本機設定不進檔。
 - `flow` 的欄位：`name`、`field`（`strips`、`layout`: `vertical`／`horizontal`）、`timeRules`、`members`、
-  `audio`、`segments`、`formations`、`customRoles`、`actions`，可有可無的 `markers`，下面各節逐一說明。
+  `audio`、`segments`、`formations`、`customRoles`、`actions`，可有可無的 `markers`、`lastIds`，下面各節逐一說明。
 
 ## 版本（formatVersion）
 
-- 現在是第 5 版。改了 `flow.json` 的格式就把 `FORMAT_VERSION` 加 1，並在 `UPGRADES` 補一步「第 n 版 → 第 n + 1 版」。
+- 現在是第 6 版。改了 `flow.json` 的格式就把 `FORMAT_VERSION` 加 1，並在 `UPGRADES` 補一步「第 n 版 → 第 n + 1 版」。
 - 開舊版檔：一步一步升到現在的版本再打開；存檔一律存現在的版本。
   - 第 1 版 → 第 2 版：站位多了可有可無的 `walks`（見「站位」）。資料不用動，沒有 `walks` 就是全部用預設，
     所以每張站位裡的位置不變；但什麼時候走會照新的預設（先站著，最後一個八拍才走）。
@@ -27,6 +27,8 @@ audio/a2.m4a
   - 第 3 版 → 第 4 版：動作多了可有可無的 `color`（辨識色），站位多了可有可無的 `name`（站位名稱）。
     資料不用動，沒有 `color` 就是用大類的顏色，沒有 `name` 就是只顯示號碼。
   - 第 4 版 → 第 5 版：流程多了可有可無的 `markers`（見「隊員」）。資料不用動，沒有 `markers` 就是用號碼。
+  - 第 5 版 → 第 6 版：動作多了可有可無的 `successRate`，動作裡的人多了可有可無的 `squad`，流程多了可有可無的
+    `lastIds`（見「動作的成功率設定和組」）。資料不用動，沒有 `successRate` 就是沒打開記成功率，沒有 `squad` 就是沒分組。
 - 開比編輯器新的檔：不打開，提示「這個流程檔是新版編輯器存的，請重新整理，更新編輯器」。
 - 不是 zip、沒有 `flow.json`、JSON 壞掉、沒有 `formatVersion` 或 `flow`、舊版號但沒有升級步驟：提示「這不是流程檔」。
 - `flow` 裡任何一個欄位的型別不對（例如位置不是 `[x, y]`、分類不在清單裡），或指到不存在的段、音樂檔、隊員：
@@ -86,6 +88,41 @@ audio/a2.m4a
   - 只有音樂段的動作可以有拍點。
   - `who` 指到的任務角色要有人在這個動作裡掛著，隊員要在這個動作裡。
   - 不要求在整拍上：放的時候對齊音樂的整拍，但動作之後被拖半拍時，拍點跟著落在 &。
+
+### 動作的成功率設定和組（successRate、squad）
+
+`successRate`（可有可無，沒有就是沒打開「記成功率」）：這個動作分成哪幾個環節、記了哪些次。
+動作裡的人可以多一個 `squad`（第幾組，可有可無，沒有就是沒分組）：
+
+```json
+"members": [{ "memberId": "m1", "role": "上層", "squad": 1 },
+            { "memberId": "m2", "role": "主底", "squad": 1 },
+            { "memberId": "m3", "role": "上層", "squad": 2 }],
+"successRate": {
+  "phases": [{ "id": "p1", "kind": "load", "name": "延伸", "beats": { "at": 0, "len": 4 } },
+             { "id": "p2", "kind": "hold", "name": "" },
+             { "id": "p3", "kind": "dismount", "name": "搖籃", "color": "#c62828" }],
+  "records": []
+}
+```
+
+- `phases`：環節，有順序。
+  - `kind`：`load`（上法）、`hold`（中段）、`transition`（轉接）、`dismount`（下法）、`whole`（整體）。
+  - `name`：教練取的名字，可以是空字串。
+  - `color`（可有可無）：辨識色，`#rrggbb`。沒有就用種類的顏色：上法青、中段石板灰、轉接金、下法紫、整體灰。
+  - `beats`（可有可無，沒有就是沒標拍）：標的拍，跟拍點一樣：`at` 從動作開始算第幾個半拍，`len` 幾個半拍長。
+  - `id`：整個流程裡不重複，刪了也不再用（紀錄靠它對回環節）。
+- `records`：紀錄，一次一筆。現在還不能記，一定是空的 `[]`。
+- `squad`：正整數。組的名字是「第 1 組」加上組裡任務角色是上層的人（好幾個就用名單上第一個），不存。
+- 打開記成功率時照大類先填環節：技巧是上法、中段、下法；金字塔是上法、下法，而且動作裡全部的人放第 1 組；
+  拋投是整體「拋投」；騰翻是整體「騰翻」；跳躍、舞蹈、其他是空的。關掉時 `successRate` 和每個人的 `squad` 都拿掉。
+- `lastIds`（在 `flow` 上，可有可無）：刪了也不重用的 id 已經發到第幾號，例：`{ "p": 3 }` 是環節發到 `p3`。
+  新的環節從這個號碼和流程裡現有的環節 id 裡最大的那個往下發。
+- 檢查（不對就是「這不是流程檔」）：
+  - `kind` 在上面五種裡；同一個動作裡環節的 `id` 不重複。
+  - `beats`：只有音樂段的動作可以標；`at`、`len` 是整數，`len` 是 2 的倍數、至少 2（整拍），`0 ≤ at`、`at + len ≤ length`；
+    環節之間不能重疊。跟拍點一樣不要求開始在整拍上。
+  - `squad` 是正整數；沒打開記成功率的動作、大類是騰翻或跳躍的動作（每個人自己算，不分組）不能有 `squad`。
 
 ## 位置座標
 

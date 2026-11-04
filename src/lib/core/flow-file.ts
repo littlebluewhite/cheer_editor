@@ -6,9 +6,10 @@ import { ACTION_CATEGORIES } from './actions';
 import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
+import { PHASE_KINDS, successRateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 5;
+export const FORMAT_VERSION = 6;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -29,12 +30,15 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 第 4 版：動作多了可有可無的 color（辨識色），沒有就是用大類的顏色；站位多了可有可無的 name（站位名稱），
  *   沒有就是只顯示號碼。所以資料不用動。
  * 第 5 版：流程多了可有可無的 markers（標記用號碼還是開頭字），沒有就是號碼，所以資料不用動。
+ * 第 6 版：動作多了可有可無的 successRate（記成功率的設定），沒有就是沒打開；動作裡的人多了可有可無的 squad（第幾組），
+ *   沒有就是沒分組；流程多了可有可無的 lastIds（不重用的 id 發到第幾號）。所以資料不用動。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
 	2: (doc) => ({ formatVersion: 3, flow: doc.flow }),
 	3: (doc) => ({ formatVersion: 4, flow: doc.flow }),
-	4: (doc) => ({ formatVersion: 5, flow: doc.flow })
+	4: (doc) => ({ formatVersion: 5, flow: doc.flow }),
+	5: (doc) => ({ formatVersion: 6, flow: doc.flow })
 };
 
 /** 音樂檔的位元組，用 flow.audio 的 id 對應。 */
@@ -119,6 +123,18 @@ const cues: Check = (v) =>
 
 const color: Check = (v) => v === undefined || (str(v) && /^#[0-9a-f]{6}$/i.test(v as string));
 
+const phase = shape({
+	id: str,
+	kind: oneOf(PHASE_KINDS.map((k) => k.key)),
+	name: str,
+	color,
+	beats: (v) => v === undefined || shape({ at: int, len: int })(v)
+});
+const successRate: Check = (v) =>
+	v === undefined ||
+	// 還沒有記一次的指令，紀錄一定是空的。
+	shape({ phases: listOf(phase), records: (r) => Array.isArray(r) && r.length === 0 })(v);
+
 const flowShape = shape({
 	name: str,
 	field: shape({ strips: int, layout: oneOf(['vertical', 'horizontal']) }),
@@ -149,6 +165,7 @@ const flowShape = shape({
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
 	markers: (v) => v === undefined || oneOf(['number', 'initial'])(v),
+	lastIds: (v) => v === undefined || (isObject(v) && Object.values(v).every(int)),
 	actions: listOf(
 		shape({
 			id: str,
@@ -158,14 +175,15 @@ const flowShape = shape({
 			start: int,
 			length: int,
 			note: str,
-			members: listOf(shape({ memberId: str, role: nullOr(str) })),
+			members: listOf(shape({ memberId: str, role: nullOr(str), squad: (v) => v === undefined || int(v) })),
 			color,
-			cues
+			cues,
+			successRate
 		})
 	)
 });
 
-/** 每個欄位的型別都對、指到的段／音樂檔／隊員都在、拍點守規則，而且有開頭那張站位（它沒有走位）。 */
+/** 每個欄位的型別都對、指到的段／音樂檔／隊員都在、拍點和成功率設定守規則，而且有開頭那張站位（它沒有走位）。 */
 function isFlow(v: unknown): v is Flow {
 	if (!flowShape(v)) return false;
 	const flow = v as Flow;
@@ -188,7 +206,10 @@ function isFlow(v: unknown): v is Flow {
 		) &&
 		flow.actions.every((a) => {
 			const segment = flow.segments.find((s) => s.id === a.segmentId)!;
-			return (a.cues ?? []).every((c) => cueProblem(segment, a, c) === null);
+			return (
+				(a.cues ?? []).every((c) => cueProblem(segment, a, c) === null) &&
+				successRateProblem(segment, a) === null
+			);
 		})
 	);
 }
