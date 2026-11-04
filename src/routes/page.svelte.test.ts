@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import { createFlow, renameFlow, type CommandResult, type Flow } from '#lib/core';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { useFakeSvgCoordinates } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 function flowOf(r: CommandResult): Flow {
@@ -534,19 +535,7 @@ describe('動作', () => {
 
 describe('站位與走位', () => {
 	// jsdom 不算 SVG 座標：把場地預設的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。
-	beforeEach(() => {
-		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
-		proto.getScreenCTM = () => ({ inverse: () => ({}) });
-		proto.createSVGPoint = () => {
-			const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x / 100, y: p.y / 100 }) };
-			return p;
-		};
-	});
-	afterEach(() => {
-		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
-		delete proto.getScreenCTM;
-		delete proto.createSVGPoint;
-	});
+	useFakeSvgCoordinates();
 
 	/** 新流程、一個音樂段（150 BPM）、兩個隊員。 */
 	async function setup() {
@@ -1130,19 +1119,7 @@ describe('播放', () => {
 
 describe('復原和重做', () => {
 	// jsdom 不算 SVG 座標：把場地預設的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。
-	beforeEach(() => {
-		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
-		proto.getScreenCTM = () => ({ inverse: () => ({}) });
-		proto.createSVGPoint = () => {
-			const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x / 100, y: p.y / 100 }) };
-			return p;
-		};
-	});
-	afterEach(() => {
-		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
-		delete proto.getScreenCTM;
-		delete proto.createSVGPoint;
-	});
+	useFakeSvgCoordinates();
 
 	const undoButton = () => screen.getByRole('button', { name: '復原' }) as HTMLButtonElement;
 	const redoButton = () => screen.getByRole('button', { name: '重做' }) as HTMLButtonElement;
