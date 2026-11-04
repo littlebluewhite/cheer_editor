@@ -2,19 +2,17 @@
 // 標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走。環節之間不能重疊；標拍、清標的拍都不動拍點。
 // 音樂段的環節一定有拍：拍清光的環節自動刪掉（有記號先問），環節照拍的先後排；一個都不剩就不記成功率。
 
-import { replaceAction, type Action } from './actions';
+import type { Action } from './actions';
 import { rangeText } from './cues';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
-import { phaseLabel } from './phases';
+import { applyPhases, NO_PHASES_LEFT, phaseLabel } from './phases';
 import type { Segment } from './segment';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import {
 	allPhaseIds,
 	firstSquad,
 	markedCount,
-	replacePhases,
-	successRateProblem,
 	type Phase,
 	type PhaseKind
 } from './success-rate';
@@ -53,8 +51,7 @@ export function markPhaseBeats(
 		phases = [...phases, { id, kind: target.kind, name: target.name.trim() }];
 	}
 	phases = cut(phases, at, at + len).map((p) => (p.id === id ? { ...p, beats: { at, len } } : p));
-	const base = action.successRate ? action : firstSquad(action);
-	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, base, phases, options);
+	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, firstSquad(action), phases, options);
 	return r.kind === 'ok' ? { ...r, id } : r;
 }
 
@@ -209,14 +206,11 @@ function withPhases(flow: Flow, action: Action, phases: Phase[], { confirmed = f
 	const gone = phases.filter((p) => !kept.includes(p));
 	const marked = markedCount(action, gone);
 	if (marked && !confirmed) {
-		const empty = kept.length ? '' : '；動作沒有環節了，不再記成功率';
+		const empty = kept.length ? '' : NO_PHASES_LEFT;
 		return needsConfirm(
 			`拍清光的環節會刪掉，清掉 ${marked} 次的記號${empty}，確定就刪掉`,
 			gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`)
 		);
 	}
-	const changed = replacePhases(action, ordered(kept));
-	const problem = successRateProblem(segment, changed);
-	if (problem) return blocked(problem);
-	return ok(replaceAction(flow, changed));
+	return applyPhases(flow, action, ordered(kept));
 }

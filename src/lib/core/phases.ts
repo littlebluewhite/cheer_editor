@@ -30,8 +30,7 @@ export function addPhase(
 	const issued = freshIds('p', 1, flow.lastIds, allPhaseIds(flow));
 	const phase: Phase = { id: issued.ids[0], kind: input.kind, name: input.name.trim() };
 	const phases = [...(action.successRate?.phases ?? []), phase];
-	const base = action.successRate ? action : firstSquad(action);
-	const r = withPhases({ ...flow, lastIds: issued.lastIds }, base, phases);
+	const r = applyPhases({ ...flow, lastIds: issued.lastIds }, firstSquad(action), phases);
 	return r.kind === 'ok' ? { ...r, id: phase.id } : r;
 }
 
@@ -48,7 +47,7 @@ export function updatePhase(flow: Flow, actionId: string, phaseId: string, chang
 		...(change.name !== undefined && { name: change.name.trim() }),
 		...(color !== undefined && { color })
 	};
-	return withPhases(flow, action, action.successRate!.phases.map((p) => (p.id === phaseId ? next : p)));
+	return applyPhases(flow, action, action.successRate!.phases.map((p) => (p.id === phaseId ? next : p)));
 }
 
 /**
@@ -67,11 +66,14 @@ export function deletePhase(
 	const marked = action.successRate!.records.filter((r) => phaseId in r.marks).length;
 	const phases = action.successRate!.phases.filter((p) => p.id !== phaseId);
 	if (marked && !confirmed) {
-		const empty = phases.length ? '' : '；動作沒有環節了，不再記成功率';
+		const empty = phases.length ? '' : NO_PHASES_LEFT;
 		return needsConfirm(`${phaseLabel(phase)} 有紀錄，刪掉會清掉 ${marked} 次的記號${empty}，確定就刪掉`, []);
 	}
-	return withPhases(flow, action, phases);
+	return applyPhases(flow, action, phases);
 }
+
+/** 確認訊息裡刪光環節時接的那一句。 */
+export const NO_PHASES_LEFT = '；動作沒有環節了，不再記成功率';
 
 /** 環節的名字：種類加名字，例：上法 延伸；沒名字就是種類。 */
 export function phaseLabel(phase: Phase): string {
@@ -88,7 +90,7 @@ function findPhase(flow: Flow, actionId: string, phaseId: string): { action: Act
 }
 
 /** 換掉動作的環節清單，紀錄裡對不上的記號跟著拿掉，一個都不剩就不記成功率；不守規則就擋下來。 */
-function withPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult {
+export function applyPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult {
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
 	if (!segment) return blocked('找不到這一段');
 	const changed = replacePhases(action, phases);
