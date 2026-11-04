@@ -101,12 +101,12 @@ export function phaseColor(phase: Phase): string {
 	return phase.color ?? PHASE_KIND_COLORS[phase.kind];
 }
 
-/** 騰翻、跳躍是自己做的：不分組，每個人自己算。值是大類的名字（給教練看的原因用）。 */
-const PER_PERSON: Partial<Record<ActionCategory, string>> = { tumbling: '騰翻', jump: '跳躍' };
+/** 騰翻、跳躍是自己做的：不分組，每個人自己算。 */
+const PER_PERSON = new Set<ActionCategory>(['tumbling', 'jump']);
 
 /** 這個大類的動作是不是每個人自己算（不分組）。 */
 export function perPerson(category: ActionCategory): boolean {
-	return category in PER_PERSON;
+	return PER_PERSON.has(category);
 }
 
 /** 打開記成功率時先填的環節（照大類）。 */
@@ -273,8 +273,10 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 		if (squad === undefined) continue;
 		if (!isSquad(squad)) return '組要是正整數';
 		if (!action.successRate) return '先打開記成功率才能分組';
-		const label = PER_PERSON[action.category];
-		if (label) return `${label}的動作不分組，每個人自己算`;
+		if (perPerson(action.category)) {
+			const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
+			return `${label}的動作不分組，每個人自己算`;
+		}
 	}
 	const phases = action.successRate?.phases ?? [];
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
