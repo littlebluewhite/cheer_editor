@@ -6,6 +6,7 @@ import {
 	createFlow,
 	clearPhaseBeats,
 	markPhaseBeats,
+	newActionMember,
 	phaseColor,
 	setSquad,
 	squadName,
@@ -62,10 +63,10 @@ describe('設組', () => {
 	const squads = (flow: Flow) => actionOf(flow).members.map((m) => m.squad);
 
 	it('給隊員第幾組；給 null 就是沒分組', () => {
-		let flow = flowOf(setSquad(on(), 'x1', 'm1', 1));
-		flow = flowOf(setSquad(flow, 'x1', 'm2', 2));
+		let flow = flowOf(setSquad(on(), 'x1', ['m1'], 1));
+		flow = flowOf(setSquad(flow, 'x1', ['m2'], 2));
 		expect(squads(flow)).toEqual([1, 2, 1, 1]);
-		flow = flowOf(setSquad(flow, 'x1', 'm1', null));
+		flow = flowOf(setSquad(flow, 'x1', ['m1'], null));
 		expect(squads(flow)).toEqual([undefined, 2, 1, 1]);
 		expect('squad' in actionOf(flow).members[0]).toBe(false);
 	});
@@ -74,25 +75,48 @@ describe('設組', () => {
 		['tumbling', '騰翻'],
 		['jump', '跳躍']
 	] as const)('%s 的動作不分組，擋下來並說原因', (category, label) => {
-		expect(setSquad(on(category), 'x1', 'm1', 1)).toEqual({
+		expect(setSquad(on(category), 'x1', ['m1'], 1)).toEqual({
 			kind: 'blocked',
 			message: `${label}的動作不分組，每個人自己算`
 		});
 	});
 
 	it('沒有環節不能分組', () => {
-		expect(setSquad(sample(), 'x1', 'm1', 1)).toEqual({ kind: 'blocked', message: '動作有環節才能分組' });
+		expect(setSquad(sample(), 'x1', ['m1'], 1)).toEqual({ kind: 'blocked', message: '動作有環節才能分組' });
 	});
 
 	it.each([0, -1, 1.5])('組要是正整數（%s 被擋）', (squad) => {
-		expect(setSquad(on(), 'x1', 'm1', squad)).toEqual({ kind: 'blocked', message: '組要是正整數' });
+		expect(setSquad(on(), 'x1', ['m1'], squad)).toEqual({ kind: 'blocked', message: '組要是正整數' });
+	});
+
+	it('一次給好幾個人同一組（一個指令，復原一步）', () => {
+		const flow = flowOf(setSquad(on(), 'x1', ['m2', 'm3'], 2));
+		expect(squads(flow)).toEqual([1, 2, 2, 1]);
+		expect(squads(flowOf(setSquad(flow, 'x1', ['m1', 'm2'], null)))).toEqual([undefined, undefined, 2, 1]);
+	});
+
+	it('一次給好幾個人：有一個不在動作裡就整個擋下來', () => {
+		expect(setSquad(on(), 'x1', ['m2', 'm9'], 2)).toEqual({ kind: 'blocked', message: '這個隊員不在動作裡' });
+	});
+
+	it('組空掉了，後面的組往前補號', () => {
+		let flow = flowOf(setSquad(on(), 'x1', ['m2'], 2));
+		flow = flowOf(setSquad(flow, 'x1', ['m3'], 3));
+		expect(squads(flow)).toEqual([1, 2, 3, 1]);
+		flow = flowOf(setSquad(flow, 'x1', ['m2'], 1));
+		expect(squads(flow)).toEqual([1, 1, 2, 1]);
+	});
+
+	it('給的組號跳號，補成下一組', () => {
+		const flow = flowOf(setSquad(on(), 'x1', ['m2'], 16));
+		expect(squads(flow)).toEqual([1, 2, 1, 1]);
 	});
 
 	it('隊員不在動作裡被擋', () => {
 		const flow = flowOf(
 			addMembers(on(), [{ name: '小D', gender: 'F', globalRole: 'top' }])
 		);
-		expect(setSquad(flow, 'x1', 'm5', 1)).toEqual({ kind: 'blocked', message: '這個隊員不在動作裡' });
+		expect(setSquad(flow, 'x1', ['m5'], 1)).toEqual({ kind: 'blocked', message: '這個隊員不在動作裡' });
 	});
 });
 
@@ -100,7 +124,7 @@ describe('組的名字', () => {
 	/** x1 加一個環節（全部的人先進第 1 組），再照給的 [隊員, 第幾組] 分組。 */
 	function grouped(pairs: [string, number][], flow = sample()): Flow {
 		flow = rated(flow);
-		for (const [memberId, squad] of pairs) flow = flowOf(setSquad(flow, 'x1', memberId, squad));
+		for (const [memberId, squad] of pairs) flow = flowOf(setSquad(flow, 'x1', [memberId], squad));
 		return flow;
 	}
 
@@ -129,7 +153,7 @@ describe('組跟著改動作', () => {
 	function twoActions(category: ActionCategory, on: boolean): Flow {
 		let flow = rated(sample());
 		for (const [memberId, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-			flow = flowOf(setSquad(flow, 'x1', memberId, squad));
+			flow = flowOf(setSquad(flow, 'x1', [memberId], squad));
 		}
 		flow = flowOf(
 			addAction(flow, {
@@ -147,6 +171,30 @@ describe('組跟著改動作', () => {
 	const copyPeople = (flow: Flow) =>
 		flowOf(updateAction(flow, 'x2', { members: actionOf(flow, 'x1').members.map((m) => ({ ...m })) }));
 	const squads = (flow: Flow, id: string) => actionOf(flow, id).members.map((m) => m.squad);
+
+	describe('加人：動作只有一組就進第 1 組，好幾組就先沒有組', () => {
+		/** x2 加小A 進來（「＋加人…」）。 */
+		const addOne = (flow: Flow) => {
+			const x2 = actionOf(flow, 'x2');
+			return flowOf(updateAction(flow, 'x2', { members: [...x2.members, newActionMember(x2, 'm2')] }));
+		};
+
+		it('只有一組：新的人在第 1 組', () => {
+			expect(squads(addOne(twoActions('stunt', true)), 'x2')).toEqual([1, 1]);
+		});
+
+		it('好幾組：新的人沒有組', () => {
+			let flow = twoActions('stunt', true);
+			const members = [...actionOf(flow, 'x2').members, { memberId: 'm3', role: null, squad: 2 }];
+			flow = flowOf(updateAction(flow, 'x2', { members }));
+			expect(squads(addOne(flow), 'x2')).toEqual([1, 2, undefined]);
+		});
+
+		it('沒有環節、騰翻跳躍：新的人沒有組', () => {
+			expect(newActionMember(actionOf(twoActions('stunt', false), 'x2'), 'm2')).toEqual({ memberId: 'm2', role: null });
+			expect(newActionMember(actionOf(twoActions('jump', true), 'x2'), 'm2')).toEqual({ memberId: 'm2', role: null });
+		});
+	});
 
 	it('從別的動作複製人：連組一起帶', () => {
 		const flow = copyPeople(twoActions('stunt', true));

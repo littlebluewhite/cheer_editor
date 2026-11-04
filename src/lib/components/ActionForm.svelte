@@ -17,6 +17,7 @@
 		deleteAction,
 		lengthText,
 		memberName,
+		newActionMember,
 		parseAt,
 		parseLength,
 		perPerson,
@@ -273,7 +274,7 @@
 
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
-		draft.members.push({ memberId: select.value, role: null });
+		draft.members.push(action ? newActionMember(action, select.value) : { memberId: select.value, role: null });
 		select.value = '';
 		membersChanged();
 	}
@@ -302,7 +303,7 @@
 		if (!action) return;
 		const id = action.id;
 		const squad = select.value ? Number(select.value) : null;
-		const send = (o: ConfirmOption = {}) => setSquad(flow, id, memberId, squad, o);
+		const send = (o: ConfirmOption = {}) => setSquad(flow, id, [memberId], squad, o);
 		const r = send();
 		if (r.kind !== 'ok') select.value = String(action.members.find((m) => m.memberId === memberId)?.squad ?? '');
 		if (!ask(r, send)) error = applyResult(r, onchange);
