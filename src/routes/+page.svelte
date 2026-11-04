@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		addSegment,
+		carryRecords,
 		currentFormation,
 		deleteAction,
 		deleteFormation,
@@ -52,6 +53,7 @@
 	} from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
+	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
@@ -62,6 +64,7 @@
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
+	import Practice from '#lib/components/Practice.svelte';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
@@ -164,6 +167,16 @@
 	const anySelected = $derived(!!selectedFormationId || !!selectedActionId || selectedMemberIds.length > 0);
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
+	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
+	let view = $state<'edit' | 'practice'>('edit');
+	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
+	let practiceDate = $state(localDate());
+
+	/** 切到編排或練習。練習時不放音樂，先停下來。 */
+	function setView(next: 'edit' | 'practice') {
+		if (next === 'practice') pause();
+		view = next;
+	}
 
 	/**
 	 * 場上的影子和走位線：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線；
@@ -386,12 +399,20 @@
 		show(f);
 	}
 
+	/**
+	 * 紀錄改了（記一次、刪掉上一次）：不算復原的一步，所以不推進復原紀錄、也不清掉重做。草稿照樣自動存。
+	 * 復原、重做換上的流程都經過 carryRecords，紀錄維持現在的樣子。
+	 */
+	function record(f: Flow) {
+		if (flow) flow = f;
+	}
+
 	function undo() {
 		const prev = undoStack.at(-1);
 		if (!flow || !prev) return;
 		redoStack = [...redoStack, flow];
 		undoStack = undoStack.slice(0, -1);
-		restore(prev);
+		restore(carryRecords(prev, flow));
 	}
 
 	function redo() {
@@ -399,7 +420,7 @@
 		if (!flow || !next) return;
 		undoStack = [...undoStack, flow];
 		redoStack = redoStack.slice(0, -1);
-		restore(next);
+		restore(carryRecords(next, flow));
 	}
 
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
@@ -625,6 +646,9 @@
 			e.preventDefault();
 			if (key === 'z' && !e.shiftKey) undo();
 			else redo();
+		} else if (view === 'practice') {
+			// 練習時只留存檔、復原、重做：空白鍵留給記號按鈕，Delete 不能刪到藏起來的動作、站位
+			return;
 		} else if (e.key === ' ') {
 			if (e.repeat) return;
 			// 不讓焦點所在的按鈕也被空白鍵按到
@@ -684,21 +708,37 @@
 	{@const matchBlocked = match.kind === 'blocked' ? match.message : ''}
 	<div
 		class="editor"
+		class:practicing={view === 'practice'}
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
+		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
+		{#snippet noticeToast()}
+			{#if notice}
+				<div class="toast">
+					<span role="status">{notice}</span>
+					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (notice = '')}
+						><Icon name="close" size={14} /></button
+					>
+				</div>
+			{/if}
+		{/snippet}
 		<header class="topbar">
 			<div class="title">
 				<b>{flow.name}</b>
 				{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}
+				<div class="view" role="group" aria-label="編排｜練習">
+					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
+					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
+				</div>
 				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
-				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener"
-					><Icon name="help" />使用說明</a
+				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
+					><Icon name="help" /><span class="narrow-hide">使用說明</span></a
 				>
 			</div>
 
-			<div class="transport">
+			<div class="transport" hidden={view === 'practice'}>
 				<button
 					type="button"
 					class="play"
@@ -748,9 +788,11 @@
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" /><span class="narrow-hide">八拍表</span></button
 				>
-				<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
-					><Icon name="settings" /><span class="narrow-hide">流程設定</span></button
-				>
+				{#if view === 'edit'}
+					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
+						><Icon name="settings" /><span class="narrow-hide">流程設定</span></button
+					>
+				{/if}
 				<span class="sep" aria-hidden="true"></span>
 				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onchange={open} /></label>
 				<button type="button" class="ghost" onclick={startNew}><Icon name="new" />新建</button>
@@ -758,7 +800,7 @@
 			</div>
 		</header>
 
-		<main class="field-host" {@attach watchFieldHostH}>
+		<main class="field-host" hidden={view === 'practice'} {@attach watchFieldHostH}>
 			<Field
 				field={flow.field}
 				members={flow.members}
@@ -861,18 +903,11 @@
 					/>
 				</div>
 			{/if}
-			{#if notice}
-				<div class="toast">
-					<span role="status">{notice}</span>
-					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (notice = '')}
-						><Icon name="close" size={14} /></button
-					>
-				</div>
-			{/if}
+			{@render noticeToast()}
 			</Field>
 		</main>
 
-		<aside class="inspector">
+		<aside class="inspector" hidden={view === 'practice'}>
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 			<div
 				class="col-split"
@@ -930,6 +965,7 @@
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 		<div
 			class="split"
+			hidden={view === 'practice'}
 			role="separator"
 			aria-orientation="horizontal"
 			aria-label="場地和時間軸的分界"
@@ -945,7 +981,7 @@
 			ondblclick={() => setTimelineH(null)}
 		></div>
 
-		<div class="timeline-host" bind:this={timelineHost}>
+		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
 			<Timeline
 				{flow}
 				{playheadSec}
@@ -980,6 +1016,12 @@
 				multi={multiSelect}
 			/>
 		</div>
+		{#if view === 'practice'}
+			<div class="practice-host">
+				<Practice {flow} date={practiceDate} ondate={(d) => (practiceDate = d)} onrecord={record} />
+				{@render noticeToast()}
+			</div>
+		{/if}
 	</div>
 	<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
 	<div class="rotate-hint">
@@ -1077,6 +1119,20 @@
 		grid-template-columns: minmax(0, 1fr) var(--inspector-w, 360px);
 		background: var(--paper);
 	}
+	/* 練習：主畫面換成練習畫面，編排的東西藏起來（不拆掉：場地、時間軸的縮放還在） */
+	.editor.practicing {
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	.editor > [hidden],
+	.topbar > [hidden] {
+		display: none;
+	}
+	.practice-host {
+		position: relative;
+		grid-column: 1 / -1;
+		min-height: 0;
+		display: grid;
+	}
 	.split {
 		grid-column: 1 / -1;
 		position: relative;
@@ -1168,6 +1224,31 @@
 		height: 7px;
 		border-radius: 50%;
 		background: currentColor;
+	}
+	/* 編排｜練習 */
+	.view {
+		flex: none;
+		align-self: center;
+		display: inline-flex;
+		padding: 3px;
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.12);
+	}
+	.view button {
+		border: 0;
+		border-radius: 6px;
+		padding: 3px 12px;
+		background: none;
+		color: #cbd5e1;
+	}
+	.view button:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
+	}
+	.view button[aria-pressed='true'] {
+		background: #fff;
+		color: var(--ink);
+		font-weight: 700;
 	}
 
 	.transport {
@@ -1267,6 +1348,8 @@
 	}
 
 	.actions {
+		/* 一定在最右邊那一欄（練習時播放區藏起來，也不會跑到中間） */
+		grid-column: -2 / -1;
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
@@ -1710,8 +1793,9 @@
 		}
 	}
 
-	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。 */
-	@media (max-width: 1360px) {
+	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。
+	   上方列多了「編排｜練習」，所以從 1440px 就開始收。 */
+	@media (max-width: 1440px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1727,7 +1811,7 @@
 		.latency input {
 			width: 56px;
 		}
-		/* 復原、重做、八拍表、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		/* 使用說明、復原、重做、八拍表、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;
 			width: 1px;
@@ -1739,7 +1823,7 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行 */
-	@media (max-width: 1100px) {
+	@media (max-width: 1140px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
