@@ -9,11 +9,14 @@ import {
 	createFlow,
 	enableSuccessRate,
 	readFlowFile,
+	recordAttempt,
 	setSquad,
 	updateSegment,
 	writeFlowFile,
 	type CommandResult,
-	type Flow
+	type Flow,
+	type Mark,
+	type NewAttempt
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
@@ -386,5 +389,123 @@ describe('練習：每天的表和最弱的環節', () => {
 		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '小美', '小A']);
 		await fireEvent.change(pick, { target: { value: 'm1' } });
 		expect(tableRows().at(-1)).toEqual(['合計', '—', '—']);
+	});
+});
+
+describe('練習：總表', () => {
+	/** 一次寫成 '✓✓✗'（照上法、中段、下法；Lib 的環節是 p1 p2 p3）。 */
+	function lib(text: string, more: Partial<NewAttempt> = {}): NewAttempt {
+		const marks: Record<string, Mark> = {};
+		[...text].forEach((m, i) => {
+			if (m !== '·') marks[`p${i + 1}`] = m as Mark;
+		});
+		return { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks, ...more };
+	}
+	/**
+	 * practiceFlow() 加上紀錄：
+	 * Lib 第 2 組 11/4 分段練 ✓✓✓ ×3、✓✓✗ ×2（下法 60%）；第 1 組 11/4 全上 ✓✓△、11/1 分段練 ✗··。
+	 * 騰翻 小美 11/4 ✓。
+	 */
+	function summaryFlow(): Flow {
+		let flow = practiceFlow();
+		const attempts = [
+			...['✓✓✓', '✓✓✓', '✓✓✓', '✓✓✗', '✓✓✗'].map((t) => lib(t, { who: 2 })),
+			lib('✓✓△', { practice: 'runThrough', runThroughId: 'r1' }),
+			lib('✗··', { date: '2026-11-01' })
+		];
+		for (const a of attempts) flow = flowOf(recordAttempt(flow, 'x1', a));
+		const tumbling = flow.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id;
+		const marks = { [tumbling]: '✓' as const };
+		return flowOf(recordAttempt(flow, 'x3', { date: '2026-11-04', who: 'm1', practice: 'drill', whole: true, marks }));
+	}
+
+	/** 開 summaryFlow()、切到練習、日期改成 2026-11-04、切到總表。 */
+	async function summary() {
+		setup();
+		await openFile(writeFlowFile(summaryFlow(), {}));
+		await toPractice();
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: '2026-11-04' } });
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+	}
+
+	/** 一個動作那一塊的表：每一列的格子（字擠成一行）。 */
+	function blockCells(label: string): Element[][] {
+		const table = within(screen.getByRole('region', { name: label })).getByRole('table');
+		return within(table)
+			.getAllByRole('row')
+			.map((row) => Array.from(row.children));
+	}
+	const blockRows = (label: string) => blockCells(label).map((row) => row.map((c) => c.textContent?.replace(/\s+/g, ' ').trim() ?? ''));
+	/** 格子的顏色（class 是 good、fair、poor；沒有紀錄沒有）。 */
+	const band = (label: string, row: number, col: number) =>
+		['good', 'fair', 'poor'].find((b) => blockCells(label)[row][col].classList.contains(b)) ?? null;
+	const cell = (who: string, phase: string) => screen.getByRole('button', { name: new RegExp(`^${who} ${phase} `) });
+	const filter = (group: string, option: string) =>
+		fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name: option }));
+
+	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次，一欄一組加合計', async () => {
+		await summary();
+		const blocks = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+		expect(blocks.filter((b) => b !== '練習')).toEqual(['技巧·Lib', '騰翻']);
+		expect(blockRows('技巧·Lib')).toEqual([
+			['環節', '第 1 組 小美', '第 2 組 小芳', '合計'],
+			['上法', '100% 1 次', '100% 5 次', '100% 6 次'],
+			['中段', '100% 1 次', '100% 5 次', '100% 6 次'],
+			['下法', '0% 1 次', '60% 5 次', '50% 6 次'],
+			['整次', '0% 1 次', '60% 5 次', '50% 6 次']
+		]);
+		expect(blockRows('騰翻')).toEqual([
+			['環節', '小美', '小A', '合計'],
+			['整體 騰翻', '100% 1 次', '—', '100% 1 次'],
+			['整次', '100% 1 次', '—', '100% 1 次']
+		]);
+	});
+
+	it('格子的顏色：90% 以上綠、75–89% 黃、75% 以下紅；沒有紀錄沒有顏色', async () => {
+		await summary();
+		expect(band('技巧·Lib', 3, 2)).toBe('poor'); // 第 2 組下法 60%
+		expect(band('技巧·Lib', 1, 2)).toBe('good'); // 第 2 組上法 100%
+		expect(band('技巧·Lib', 4, 3)).toBe('poor'); // 整次合計 50%
+		expect(band('騰翻', 1, 2)).toBeNull(); // 小A 沒有紀錄
+		await filter('期間', '全部');
+		expect(blockRows('技巧·Lib')[1][3]).toBe('86% 7 次');
+		expect(band('技巧·Lib', 1, 3)).toBe('fair');
+	});
+
+	it('換篩選，數字跟著變：期間、練法、大字看完成率', async () => {
+		await summary();
+		expect(blockRows('技巧·Lib')[1][1]).toBe('100% 1 次');
+		await filter('期間', '最近 7 天');
+		expect(blockRows('技巧·Lib')[1][1]).toBe('50% 2 次');
+		await filter('期間', '今天');
+		await filter('練法', '只看全上');
+		expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '0% 1 次', '—', '0% 1 次']);
+		await filter('練法', '只看分段練');
+		expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '—', '60% 5 次', '60% 5 次']);
+		await filter('練法', '全部');
+		await filter('大字看', '完成率');
+		expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '100% 1 次', '60% 5 次', '67% 6 次']);
+		expect(blockRows('技巧·Lib')[4]).toEqual(['整次', '0% 1 次', '60% 5 次', '50% 6 次']);
+	});
+
+	it('點格子：右邊滑出這組、這個環節每天的每一次，全上的有標出來；可以關掉', async () => {
+		await summary();
+		await fireEvent.click(cell('第 1 組 小美', '上法'));
+		const detail = within(screen.getByRole('complementary', { name: '明細' }));
+		expect(detail.getByRole('heading').textContent).toBe('第 1 組 小美 上法');
+		const days = detail.getAllByRole('listitem').filter((li) => li.querySelector('time'));
+		expect(days.map((li) => li.textContent?.replace(/\s+/g, ''))).toEqual(['2026-11-01✗', '2026-11-04✓全上']);
+
+		await fireEvent.click(cell('第 2 組 小芳', '下法'));
+		expect(within(screen.getByRole('complementary', { name: '明細' })).getByRole('heading').textContent).toBe('第 2 組 小芳 下法');
+
+		await fireEvent.click(screen.getByRole('button', { name: '關掉' }));
+		expect(screen.queryByRole('complementary', { name: '明細' })).toBeNull();
+	});
+
+	it('總表跟記錄共用日期', async () => {
+		await summary();
+		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+		expect((screen.getByLabelText('日期') as HTMLInputElement).value).toBe('2026-11-04');
 	});
 });
