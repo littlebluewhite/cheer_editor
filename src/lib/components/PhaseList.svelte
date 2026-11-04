@@ -12,13 +12,13 @@
 		updatePhase,
 		type Action,
 		type Flow,
-		type Phase,
 		type PhaseChange,
 		type PhaseKind
 	} from '#lib/core';
 	import ConfirmList from './ConfirmList.svelte';
 	import { applyResult } from './form';
 	import Icon from './Icon.svelte';
+	import { phaseLabel } from './phase-label';
 
 	interface Props {
 		flow: Flow;
@@ -45,8 +45,6 @@
 		error = '';
 	});
 
-	const kindLabel = (kind: PhaseKind) => PHASE_KINDS.find((k) => k.key === kind)?.label ?? '';
-	const label = (p: Phase) => (p.name ? `${kindLabel(p.kind)} ${p.name}` : kindLabel(p.kind));
 	/** 第 i 列能不能跟第 j 列換：兩列都在、都沒標拍。 */
 	const canSwap = (i: number, j: number) => j >= 0 && j < phases.length && !phases[i].beats && !phases[j].beats;
 
@@ -92,7 +90,7 @@
 	<ol class="phases" aria-label="環節">
 		{#each phases as p, i (p.id)}
 			<li
-				aria-label={label(p)}
+				aria-label={phaseLabel(p)}
 				class:marked={!!p.beats}
 				class:dragging={dragging === p.id}
 				draggable={!p.beats}
@@ -113,7 +111,7 @@
 				<!-- 色塊就是換色的選單：選單疊在色塊上、看不見，點色塊就跳出顏色 -->
 				<span class="chip" style:--c={phaseColor(p)} title="換顏色">
 					<select
-						aria-label="{label(p)} 的顏色"
+						aria-label="{phaseLabel(p)} 的顏色"
 						value={p.color ?? ''}
 						onchange={(e) => update(p.id, { color: e.currentTarget.value || null })}
 					>
@@ -123,7 +121,7 @@
 				</span>
 				<select
 					class="kind"
-					aria-label="{label(p)} 的種類"
+					aria-label="{phaseLabel(p)} 的種類"
 					value={p.kind}
 					onchange={(e) => update(p.id, { kind: e.currentTarget.value as PhaseKind })}
 				>
@@ -131,7 +129,7 @@
 				</select>
 				<input
 					class="name"
-					aria-label="{label(p)} 的名字"
+					aria-label="{phaseLabel(p)} 的名字"
 					value={p.name}
 					placeholder="名字（可空）"
 					onchange={(e) => update(p.id, { name: e.currentTarget.value })}
@@ -139,18 +137,18 @@
 				<button
 					type="button"
 					class="ghost icon"
-					aria-label="把 {label(p)} 上移"
+					aria-label="把 {phaseLabel(p)} 上移"
 					disabled={!canSwap(i, i - 1)}
 					onclick={() => move(p.id, i - 1)}>↑</button
 				>
 				<button
 					type="button"
 					class="ghost icon"
-					aria-label="把 {label(p)} 下移"
+					aria-label="把 {phaseLabel(p)} 下移"
 					disabled={!canSwap(i, i + 1)}
 					onclick={() => move(p.id, i + 1)}>↓</button
 				>
-				<button type="button" class="ghost icon" aria-label="刪掉 {label(p)}" onclick={() => remove(p.id)}
+				<button type="button" class="ghost icon" aria-label="刪掉 {phaseLabel(p)}" onclick={() => remove(p.id)}
 					><Icon name="trash" size={14} /></button
 				>
 			</li>

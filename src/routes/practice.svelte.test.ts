@@ -322,3 +322,69 @@ describe('練習：紀錄不進復原', () => {
 		expect(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')).not.toBeNull();
 	});
 });
+
+describe('練習：每天的表和最弱的環節', () => {
+	/** 每天的表：每一列的格子（字擠成一行）。 */
+	function tableRows(): string[][] {
+		const table = screen.getByRole('table', { name: '每天的成功率' });
+		return within(table)
+			.getAllByRole('row')
+			.map((row) => Array.from(row.children).map((c) => c.textContent?.replace(/\s+/g, ' ').trim() ?? ''));
+	}
+	/** 第 1 組記 ✓✓△、✓✗·、✓✓✓。 */
+	async function threeAttempts() {
+		const who = '第 1 組 小美';
+		await tap(who, '上法', '成功');
+		await tap(who, '中段', '成功');
+		await tap(who, '下法', '小失誤');
+		await tap(who, '上法', '成功');
+		await tap(who, '中段', '失敗');
+		await tap(who, '上法', '成功');
+		await tap(who, '中段', '成功');
+		await tap(who, '下法', '成功');
+	}
+
+	it('記三次後：今天那一列上法 100%、中段 67%、下法 50%（完成率 100%，2 次），整次 33%；左邊寫最弱的環節', async () => {
+		await practice();
+		await threeAttempts();
+		expect(tableRows()).toEqual([
+			['日期', '上法', '中段', '下法', '整次'],
+			[localDate(), '100% 完成率 100%・3 次', '67% 完成率 67%・3 次', '50% 完成率 100%・2 次', '33% 3 次'],
+			['合計', '100% 完成率 100%・3 次', '67% 完成率 67%・3 次', '50% 完成率 100%・2 次', '33% 3 次']
+		]);
+		const list = within(screen.getByRole('list', { name: '記成功率的動作' }));
+		expect(list.getByRole('button', { name: /^技巧·Lib/ }).textContent).toContain('最弱：下法 50%');
+		expect(list.getByRole('button', { name: /^騰翻/ }).textContent).not.toContain('最弱');
+	});
+
+	it('沒有紀錄的格子寫「—」；可以只看某一組', async () => {
+		await practice();
+		expect(tableRows()).toEqual([
+			['日期', '上法', '中段', '下法', '整次'],
+			['合計', '—', '—', '—', '—']
+		]);
+		await threeAttempts();
+		await tap('第 2 組 小芳', '上法', '失敗');
+
+		const pick = screen.getByLabelText('看哪一組') as HTMLSelectElement;
+		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '第 1 組 小美', '第 2 組 小芳']);
+		expect(tableRows()[1].slice(1, 2)).toEqual(['75% 完成率 75%・4 次']);
+
+		await fireEvent.change(pick, { target: { value: '2' } });
+		expect(tableRows()).toEqual([
+			['日期', '上法', '中段', '下法', '整次'],
+			[localDate(), '0% 完成率 0%・1 次', '—', '—', '0% 1 次'],
+			['合計', '0% 完成率 0%・1 次', '—', '—', '0% 1 次']
+		]);
+	});
+
+	it('騰翻的動作：可以只看某一個人', async () => {
+		await practice();
+		await pickAction('騰翻');
+		await tap('小A', '整體 騰翻', '成功');
+		const pick = screen.getByLabelText('看哪一個人') as HTMLSelectElement;
+		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '小美', '小A']);
+		await fireEvent.change(pick, { target: { value: 'm1' } });
+		expect(tableRows().at(-1)).toEqual(['合計', '—', '—']);
+	});
+});
