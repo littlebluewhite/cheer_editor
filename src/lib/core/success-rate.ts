@@ -154,14 +154,6 @@ export function newActionMember(action: Action, memberId: string): ActionMember 
 	return squadsOf(action).length === 1 ? { memberId, role: null, squad: 1 } : { memberId, role: null };
 }
 
-/** 隊員在這個動作裡的紀錄：他在的組的（騰翻、跳躍是他自己的）。 */
-export function memberRecords(action: Action, memberId: string): Attempt[] {
-	const member = action.members.find((m) => m.memberId === memberId);
-	const who = perPerson(action.category) ? memberId : member?.squad;
-	if (!member || who === undefined) return [];
-	return action.successRate?.records.filter((r) => r.who === who) ?? [];
-}
-
 /** 拿掉動作裡的這幾次紀錄；沒有要拿就回傳原來的動作。 */
 export function withoutRecords(action: Action, drop: Attempt[]): Action {
 	if (!drop.length || !action.successRate) return action;
