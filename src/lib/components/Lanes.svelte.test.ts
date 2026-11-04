@@ -3,11 +3,14 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	enableSuccessRate,
 	insertFormation,
+	markPhaseBeats,
 	placeCue,
 	setMarkers,
 	setPositions,
 	setWalks,
+	updatePhase,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -594,6 +597,89 @@ describe('色條上的拍點', () => {
 		// 往右 4 px = 0.4 秒 = 2 個半拍；拍點跟著動作走
 		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
 		expect(onchange.mock.calls[0][0].actions[0].cues).toHaveLength(3);
+	});
+});
+
+describe('色條上的環節', () => {
+	/**
+	 * Lib（0–3.2 秒 = 0–32 px，一個半拍 2 px）記成功率：上法「延伸」1-1 到 1-3、中段 1-4 到 1-6、下法沒標拍。
+	 * withCues 時再放 1-1 到 1-2 的 down。
+	 */
+	function phased(withCues = false): Flow {
+		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
+		flow = flowOf(updatePhase(flow, 'x1', 'p1', { name: '延伸' }));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 6));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 6, 6));
+		return withCues ? flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' })) : flow;
+	}
+
+	function setupPhases(flow: Flow) {
+		const onchange = vi.fn<(flow: Flow) => void>();
+		const onselectaction = vi.fn();
+		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction, onchange });
+		return { onchange, onselectaction };
+	}
+
+	/** 色條上的環節細條：名字、位置、寬度、顏色。 */
+	const strips = (bar: HTMLElement) =>
+		[...bar.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => ({
+			phase: p.dataset.phase,
+			left: p.style.left,
+			width: p.style.width,
+			color: p.style.background
+		}));
+
+	it('動作裡每個人的色條上都有一條細細的環節（環節的顏色），底下鋪同色淡底；沒標拍的不畫', () => {
+		setupPhases(phased());
+		const want = [
+			{ phase: '上法 延伸', left: '0px', width: '12px', color: 'rgb(0, 121, 107)' },
+			{ phase: '中段', left: '12px', width: '12px', color: 'rgb(71, 85, 105)' }
+		];
+		expect(strips(bars(lanes()[0])[0])).toEqual(want);
+		expect(strips(bars(lanes()[1])[0])).toEqual(want);
+		const tints = [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-phase-tint]')];
+		expect(tints.map((t) => [t.style.left, t.style.width, t.style.background])).toEqual([
+			['0px', '12px', 'rgb(0, 121, 107)'],
+			['12px', '12px', 'rgb(71, 85, 105)']
+		]);
+		// 小C 的動作沒記成功率
+		expect(bars(lanes()[2]).map(strips)).toEqual([[], []]);
+		// 名稱和提示照舊
+		expect(bars(lanes()[0])[0].querySelector('b')?.textContent).toBe('Lib');
+		expect(bars(lanes()[0])[0].title).toBe('技巧·Lib（上層）');
+	});
+
+	it('有拍點時環節細條在名稱上面，拍點往下讓開，泳道變高放得下，最下面還是留給走位條', () => {
+		setupPhases(phased(true));
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		const strip = bar.querySelector<HTMLElement>('[data-phase]')!;
+		const cue = bar.querySelector<HTMLElement>('[data-cue]')!;
+		expect(parseFloat(strip.style.top) + parseFloat(strip.style.height)).toBeLessThanOrEqual(3);
+		// 名稱那一行（12 px）從細條底下開始，拍點在名稱下面
+		expect(parseFloat(cue.style.top)).toBeGreaterThanOrEqual(3 + 12);
+		expect(3 + parseFloat(cue.style.top) + parseFloat(cue.style.height)).toBeLessThanOrEqual(
+			parseFloat(lane.style.height) - 5
+		);
+		expect(bar.classList.contains('has-phases')).toBe(true);
+	});
+
+	it('按在環節上照樣能拖色條、拉長度、點色條', async () => {
+		const { onchange, onselectaction } = setupPhases(phased());
+		const strip = () => bars(lanes()[0])[0].querySelector('[data-phase]')!;
+		await fireEvent.click(strip());
+		expect(onselectaction).toHaveBeenCalledWith('x1');
+		await fireEvent.pointerDown(strip(), { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 104 });
+		expect(bars(lanes()[0])[0].style.left).toBe('4px');
+		await fireEvent.pointerUp(window, { clientX: 104 });
+		// 往右 4 px = 2 個半拍；環節標的拍跟著動作走
+		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
+		expect(onchange.mock.calls[0][0].actions[0].successRate?.phases[0].beats).toEqual({ at: 0, len: 6 });
+		// 拉長度的把手還在
+		await fireEvent.pointerDown(bars(lanes()[0])[0].querySelector('[data-resize]')!, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 104 });
+		expect(bars(lanes()[0])[0].style.width).toBe('36px');
 	});
 });
 
