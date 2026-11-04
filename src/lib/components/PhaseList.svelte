@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 環節清單（動作表單的成功率區）：每一列有色塊、種類、名字，可以改名、換種類、換色、刪、換順序；最下面「＋ 加環節」。
-	// 沒標拍的環節可以拖著換順序，也可以按上移、下移；標了拍的照時間排在前面，不能換。
+	// 沒標拍的環節可以按上移、下移換順序，用滑鼠也可以拖；標了拍的照時間排在前面，不能換。
+	// 手指不拖（ADR 0005 不用長按拖），只用上移、下移。
 	// 刪有紀錄的環節時核心回「要確認」：照現有的確認樣子顯示訊息，按確定才刪。
 	// 每一列底下寫標的拍（照八拍寫）和範圍裡的拍點；點它，拍點格子裡那幾拍就亮起來。
 	import {
@@ -45,6 +46,8 @@
 	let pending = $state<{ phaseId: string; message: string } | null>(null);
 	/** 拖著的環節 id。 */
 	let dragging = $state<string | null>(null);
+	/** 用滑鼠（不是手指）：才能拖著換順序。 */
+	const mouse = typeof matchMedia !== 'function' || matchMedia('(pointer: fine)').matches;
 
 	// 換動作時清掉還沒確認的刪除和原因。
 	$effect(() => {
@@ -101,8 +104,9 @@
 				aria-label={phaseLabel(p)}
 				class:marked={!!p.beats}
 				class:dragging={dragging === p.id}
-				draggable={!p.beats}
+				draggable={mouse && !p.beats}
 				ondragstart={(e) => {
+					if (!mouse) return;
 					dragging = p.id;
 					e.dataTransfer?.setData('text/plain', p.id);
 				}}
@@ -115,7 +119,7 @@
 					drop(i);
 				}}
 			>
-				<span class="grip" aria-hidden="true">{p.beats ? '' : '⋮⋮'}</span>
+				<span class="grip" aria-hidden="true">{mouse && !p.beats ? '⋮⋮' : ''}</span>
 				<!-- 色塊就是換色的選單：選單疊在色塊上、看不見，點色塊就跳出顏色 -->
 				<span class="chip" style:--c={phaseColor(p)} title="換顏色">
 					<select

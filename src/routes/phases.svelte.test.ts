@@ -1,7 +1,7 @@
 // 頁面：在動作表單的成功率區改環節清單（加、改名、換色、刪、換順序），記錄頁的卡片跟著變。
 // 流程在核心裡做好再開檔（同 practice.svelte.test.ts）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	addAction,
 	addMembers,
@@ -142,6 +142,21 @@ describe('改環節清單', () => {
 		await fireEvent.dragOver(row('上法'));
 		await fireEvent.drop(row('上法'));
 		expect(rows()).toEqual(['下法', '上法', '中段']);
+	});
+
+	describe('手指', () => {
+		afterEach(() => vi.unstubAllGlobals());
+
+		it('不能拖（ADR 0005 不用長按拖），用上移、下移換順序', async () => {
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+			await open();
+			const row = screen.getByRole('listitem', { name: '下法' });
+			expect(row.getAttribute('draggable')).toBe('false');
+			await fireEvent.dragStart(row);
+			await fireEvent.dragOver(screen.getByRole('listitem', { name: '上法' }));
+			await fireEvent.drop(screen.getByRole('listitem', { name: '上法' }));
+			expect(rows()).toEqual(['上法', '中段', '下法']);
+		});
 	});
 
 	it('刪有紀錄的環節：先問會清掉幾次的記號；取消就留著，確定就拿掉，卡片也跟著', async () => {
