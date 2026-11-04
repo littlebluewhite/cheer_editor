@@ -5,9 +5,8 @@ import {
 	addSegment,
 	createFlow,
 	eightCountRows,
-	enableSuccessRate,
+	clearPhaseBeats,
 	markPhaseBeats,
-	updatePhase,
 	insertFormation,
 	placeCue,
 	renameFormation,
@@ -296,15 +295,15 @@ describe('八拍表的列：拍點', () => {
 
 describe('八拍表的列：環節', () => {
 	/**
-	 * 1-5 開始的 Lib（小A 上層、小B 主底，到 2-4），記成功率：
-	 * p1 上法「延伸」1-5 到 1-6、p2 中段 1-7 到 2-2（跨列）、p3 下法沒標拍。1-8 有一個 down。
+	 * 1-5 開始的 Lib（小A 上層、小B 主底，到 2-4），環節：
+	 * p1 上法「延伸」1-5 到 1-6、p2 中段 1-7 到 2-2（跨列）、p3 下法（標了 2-3 到 2-4 再清掉，沒標拍）。1-8 有一個 down。
 	 */
 	function phased(): Flow {
 		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
-		flow = flowOf(enableSuccessRate(flow, 'x1'));
-		flow = flowOf(updatePhase(flow, 'x1', 'p1', { name: '延伸' }));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 4));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 4, 8));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '延伸' }, 0, 4));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 4, 8));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4));
+		flow = flowOf(clearPhaseBeats(flow, 'x1', 12, 16));
 		return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 6, len: 2, word: 'down' }));
 	}
 
@@ -337,9 +336,8 @@ describe('八拍表的列：環節', () => {
 
 	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
 		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
-		flow = flowOf(enableSuccessRate(flow, 'x1'));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
 		flow = flowOf(updateAction(flow, 'x1', { start: 9 }));
 		const [first] = eightCountRows(flow, null);
 		expect(first.cues[0].phases.map((p) => [p.from, p.to])).toEqual([
@@ -352,7 +350,8 @@ describe('八拍表的列：環節', () => {
 		const rows = eightCountRows(phased(), null);
 		expect(rows.flatMap((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)))).not.toContain('下法');
 		let flow = flowOf(addAction(sample(), action({ start: 16, length: 8 })));
-		flow = flowOf(enableSuccessRate(flow, 'x1'));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 8));
+		flow = flowOf(clearPhaseBeats(flow, 'x1', 0, 8));
 		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
 	});
 

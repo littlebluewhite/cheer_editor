@@ -3,7 +3,6 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	enableSuccessRate,
 	markPhaseBeats,
 	updateAction,
 	updateSegment,
@@ -244,9 +243,8 @@ describe('拍點格子：拍點小窗', () => {
 
 describe('環節那一列', () => {
 	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
-		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
+		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
 		render(CueGrid, { flow, action: flow.actions[0], onchange: vi.fn(), cellAt });
 		const columns = [...document.querySelectorAll<HTMLElement>('.item.phase')].map((b) => b.style.gridColumn);
@@ -254,9 +252,8 @@ describe('環節那一列', () => {
 	});
 
 	it('動作拖到半拍上：點環節選回它那一格，清掉只清它，隔壁的環節還在', async () => {
-		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 2, 2));
+		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
 		const onchange = vi.fn();
 		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
@@ -268,8 +265,7 @@ describe('環節那一列', () => {
 		const phases = onchange.mock.calls[0][0].actions[0].successRate.phases;
 		expect(phases.map((p: { id: string; beats?: object }) => [p.id, p.beats])).toEqual([
 			['p2', { at: 3, len: 2 }],
-			['p1', undefined],
-			['p3', undefined]
+			['p1', undefined]
 		]);
 	});
 });

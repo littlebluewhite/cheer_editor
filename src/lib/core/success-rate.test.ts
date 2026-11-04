@@ -6,6 +6,7 @@ import {
 	createFlow,
 	disableSuccessRate,
 	enableSuccessRate,
+	markPhaseBeats,
 	phaseColor,
 	setSquad,
 	squadName,
@@ -117,16 +118,19 @@ describe('關掉記成功率', () => {
 	});
 });
 
+/** x1 加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
+const rated = (flow: Flow, id = 'x1') => flowOf(markPhaseBeats(flow, id, { kind: 'whole', name: '' }, 0, 16));
+
 describe('設組', () => {
-	const on = (category: ActionCategory = 'stunt') => flowOf(enableSuccessRate(sample(category), 'x1'));
+	const on = (category: ActionCategory = 'stunt') => rated(sample(category));
 	const squads = (flow: Flow) => actionOf(flow).members.map((m) => m.squad);
 
 	it('給隊員第幾組；給 null 就是沒分組', () => {
 		let flow = flowOf(setSquad(on(), 'x1', 'm1', 1));
 		flow = flowOf(setSquad(flow, 'x1', 'm2', 2));
-		expect(squads(flow)).toEqual([1, 2, undefined, undefined]);
+		expect(squads(flow)).toEqual([1, 2, 1, 1]);
 		flow = flowOf(setSquad(flow, 'x1', 'm1', null));
-		expect(squads(flow)).toEqual([undefined, 2, undefined, undefined]);
+		expect(squads(flow)).toEqual([undefined, 2, 1, 1]);
 		expect('squad' in actionOf(flow).members[0]).toBe(false);
 	});
 
@@ -157,9 +161,9 @@ describe('設組', () => {
 });
 
 describe('組的名字', () => {
-	/** x1 打開記成功率，照給的 [隊員, 第幾組] 分組。 */
+	/** x1 加一個環節（全部的人先進第 1 組），再照給的 [隊員, 第幾組] 分組。 */
 	function grouped(pairs: [string, number][], flow = sample()): Flow {
-		flow = flowOf(enableSuccessRate(flow, 'x1'));
+		flow = rated(flow);
 		for (const [memberId, squad] of pairs) flow = flowOf(setSquad(flow, 'x1', memberId, squad));
 		return flow;
 	}
@@ -185,9 +189,9 @@ describe('組的名字', () => {
 });
 
 describe('組跟著改動作', () => {
-	/** x1 打開、分成兩組（小美、小A 第 1 組；小B、小芳 第 2 組）；x2 是後面的另一個動作（大類照給的），只有小美。 */
+	/** x1 有環節、分成兩組（小美、小A 第 1 組；小B、小芳 第 2 組）；x2 是後面的另一個動作（大類照給的），只有小美，on 就加一個環節。 */
 	function twoActions(category: ActionCategory, on: boolean): Flow {
-		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
+		let flow = rated(sample());
 		for (const [memberId, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 			flow = flowOf(setSquad(flow, 'x1', memberId, squad));
 		}
@@ -202,7 +206,7 @@ describe('組跟著改動作', () => {
 				members: [{ memberId: 'm1', role: null }]
 			})
 		);
-		return on ? flowOf(enableSuccessRate(flow, 'x2')) : flow;
+		return on ? rated(flow, 'x2') : flow;
 	}
 	const copyPeople = (flow: Flow) =>
 		flowOf(updateAction(flow, 'x2', { members: actionOf(flow, 'x1').members.map((m) => ({ ...m })) }));

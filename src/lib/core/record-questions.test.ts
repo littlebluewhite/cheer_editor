@@ -8,7 +8,7 @@ import {
 	deleteAction,
 	deleteMember,
 	disableSuccessRate,
-	enableSuccessRate,
+	markPhaseBeats,
 	recordAttempt,
 	setSquad,
 	updateAction,
@@ -26,8 +26,8 @@ function flowOf(r: CommandResult): Flow {
 
 /**
  * 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。
- * x1：Lib（技巧，第 1 個八拍），記成功率；小美、小A 第 1 組，小B、小芳 第 2 組。
- * x2：騰翻（第 3 個八拍），記成功率；小美、小A 在裡面。
+ * x1：Lib（技巧，第 1 個八拍），環節 p1 上法 1-1、p2 中段 1-2 到 1-3、p3 下法 1-4（都在前 4 拍，動作變短到 4 拍也切不到）；小美、小A 第 1 組，小B、小芳 第 2 組。
+ * x2：騰翻（第 3 個八拍），環節 p4 整體「騰翻」整個動作；小美、小A 在裡面。
  */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -48,7 +48,9 @@ function sample(): Flow {
 		{ memberId: 'm4', role: '上層' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
+	for (const [kind, at, len] of [['load', 0, 2], ['hold', 2, 4], ['dismount', 6, 2]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', id, squad));
 	}
@@ -66,7 +68,7 @@ function sample(): Flow {
 			]
 		})
 	);
-	return flowOf(enableSuccessRate(flow, 'x2'));
+	return flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
 }
 
 const drill = (who: number | string, marks: NewAttempt['marks']): NewAttempt => ({

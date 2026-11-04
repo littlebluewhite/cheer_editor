@@ -7,7 +7,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	enableSuccessRate,
+	markPhaseBeats,
 	readFlowFile,
 	recordAttempt,
 	setSquad,
@@ -53,9 +53,9 @@ function flowOf(r: CommandResult): Flow {
 
 /**
  * 音樂 1（4 個八拍）；小美、小芳是上層，小A、小B 是底層。
- * x1：Lib（技巧，第 1 個八拍），記成功率（上法、中段、下法）；小美、小A 第 1 組，小芳、小B 第 2 組。
- * x2：拋投（第 2 個八拍），還沒打開記成功率；小芳。
- * x3：騰翻（第 3 個八拍），記成功率（整體「騰翻」）；小美、小A。
+ * x1：Lib（技巧，第 1 個八拍），環節上法 1-1 到 1-2、中段 1-3 到 1-6、下法 1-7 到 1-8；小美、小A 第 1 組，小芳、小B 第 2 組。
+ * x2：拋投（第 2 個八拍的前 4 拍），還沒有環節；小芳。
+ * x3：騰翻（第 3 個八拍），環節整體「騰翻」整個動作；小美、小A。
  */
 function practiceFlow(): Flow {
 	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
@@ -76,7 +76,9 @@ function practiceFlow(): Flow {
 		{ memberId: 'm4', role: '主底' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members: lib }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
+	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', id, squad));
 	}
@@ -87,7 +89,7 @@ function practiceFlow(): Flow {
 		{ memberId: 'm2', role: '騰翻' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members: tumbling }));
-	return flowOf(enableSuccessRate(flow, 'x3'));
+	return flowOf(markPhaseBeats(flow, 'x3', { kind: 'whole', name: '騰翻' }, 0, 16));
 }
 
 async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
@@ -295,12 +297,18 @@ describe('練習：記錄頁記分段練', () => {
 });
 
 describe('練習：紀錄不進復原', () => {
-	/** 在編排幫拋投打開記成功率（復原紀錄多一步），再切到練習。 */
+	/** 在編排幫拋投的拍點格子選 2-1 到 2-4 加環節「整體 拋投」（復原紀錄多一步），再切到練習。 */
 	async function withOneStep() {
 		const saves = setup();
 		await openFile(writeFlowFile(practiceFlow(), {}));
 		await fireEvent.click(document.querySelector('[data-lane="m3"] [data-action-id="x2"]')!);
-		await fireEvent.click(screen.getByRole('checkbox', { name: '記成功率' }));
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: '2-1' }));
+		await fireEvent.click(grid.getByRole('button', { name: '2-4' }), { shiftKey: true });
+		const phase = within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
+		await fireEvent.change(phase.getByRole('combobox', { name: '環節的種類' }), { target: { value: 'whole' } });
+		await fireEvent.input(phase.getByRole('textbox', { name: '環節的名字' }), { target: { value: '拋投' } });
+		await fireEvent.click(phase.getByRole('button', { name: '加入環節' }));
 		await toPractice();
 		return saves;
 	}

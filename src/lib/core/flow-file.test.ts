@@ -7,9 +7,9 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	enableSuccessRate,
 	insertFormation,
 	loadSegmentAudio,
+	markPhaseBeats,
 	memberMarkers,
 	placeCue,
 	readFlowFile,
@@ -17,6 +17,7 @@ import {
 	setMarkers,
 	setPositions,
 	setSquad,
+	updatePhase,
 	updateSegment,
 	updateTimeRules,
 	writeFlowFile,
@@ -81,14 +82,16 @@ function withCues(): Flow {
 	return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 5, len: 2, word: 'up' }));
 }
 
-/** sample() 再幫 Lib 打開記成功率（上法、中段、下法），小A 第 1 組、小B 第 2 組；上法標 1-3 到 1-4（動作從 1-2& 開始，標的拍從整拍開始）、挑紅色，下法取名「搖籃」。 */
+/**
+ * sample() 再幫 Lib 加環節：上法 1-3 到 1-4（動作從 1-2& 開始，標的拍從整拍開始）、挑紅色，中段 1-5 到 1-6，
+ * 下法「搖籃」1-7 到 1-8；小A 第 1 組、小B 第 2 組。
+ */
 function withSuccessRate(): Flow {
-	let flow = flowOf(enableSuccessRate(sample(), 'x1'));
-	flow = flowOf(setSquad(flow, 'x1', 'm1', 1));
-	flow = flowOf(setSquad(flow, 'x1', 'm2', 2));
-	const [load, hold, dismount] = flow.actions[0].successRate!.phases;
-	const phases = [{ ...load, color: '#c62828', beats: { at: 1, len: 4 } }, hold, { ...dismount, name: '搖籃' }];
-	return { ...flow, actions: [{ ...flow.actions[0], successRate: { phases, records: [] } }] };
+	let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '' }, 1, 4));
+	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 5, 4));
+	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '搖籃' }, 9, 4));
+	flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: '#c62828' }));
+	return flowOf(setSquad(flow, 'x1', 'm2', 2));
 }
 
 /** withSuccessRate() 再記三次：第 1 組分段練整個做 ✓✓△、第 2 組只練上法 ✗、第 1 組全上 ✓✓✓。 */

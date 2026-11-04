@@ -6,6 +6,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	markPhaseBeats,
 	readFlowFile,
 	writeFlowFile,
 	type CommandResult,
@@ -65,6 +66,15 @@ function sampleFlow(): Flow {
 	);
 }
 
+/** sampleFlow 的 Lib 加上環節：上法 1-1 到 1-2、中段 1-3 到 1-6、下法 1-7 到 1-8（全部的人先在第 1 組）。 */
+function phasedFlow(): Flow {
+	let flow = sampleFlow();
+	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
+	return flow;
+}
+
 async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
 	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
@@ -81,13 +91,10 @@ const phases = () =>
 const squadOf = (who: string) => screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement;
 
 describe('記成功率的開關和組', () => {
-	it('打開記成功率看到上法、中段、下法，幫人分組；存檔再打開還在', async () => {
+	it('有上法、中段、下法的動作，幫人分組；存檔再打開還在', async () => {
 		const saves = setup();
-		await openFile(writeFlowFile(sampleFlow(), {}));
+		await openFile(writeFlowFile(phasedFlow(), {}));
 		await selectLib();
-		expect(toggle().checked).toBe(false);
-
-		await fireEvent.click(toggle());
 		expect(phases()).toEqual(['上法', '中段', '下法']);
 		for (const [who, squad] of [['小美', '1'], ['小A', '1'], ['小芳', '2'], ['小B', '2']]) {
 			await fireEvent.change(squadOf(who), { target: { value: squad } });
@@ -102,7 +109,6 @@ describe('記成功率的開關和組', () => {
 
 		await openFile(saves[0], '開啟');
 		await selectLib();
-		expect(toggle().checked).toBe(true);
 		expect(phases()).toEqual(['上法', '中段', '下法']);
 		expect(['小美', '小A', '小芳', '小B'].map((who) => squadOf(who).value)).toEqual(['1', '1', '2', '2']);
 	});

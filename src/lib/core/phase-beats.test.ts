@@ -6,7 +6,6 @@ import {
 	addSegment,
 	createFlow,
 	clearPhaseBeats,
-	enableSuccessRate,
 	markPhaseBeats,
 	moveAction,
 	phaseSpan,
@@ -29,7 +28,7 @@ function flowOf(r: CommandResult): Flow {
 
 /**
  * 音樂 s1（4 個八拍）、口號段 s2；隊員小美（上層）、小A。
- * x1：Lib（技巧，1-1 起兩個八拍），記成功率（p1 上法、p2 中段、p3 下法，都沒標拍）；兩個人第 1 組。
+ * x1：Lib（技巧，1-1 起兩個八拍），環節 p1 上法、p2 中段、p3 下法（標了 1-1 到 1-3 再清掉，都沒標拍）；兩個人第 1 組。
  */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -47,9 +46,10 @@ function sample(): Flow {
 		{ memberId: 'm2', role: '主底' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 32, note: '', members }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
-	flow = flowOf(setSquad(flow, 'x1', 'm1', 1));
-	return flowOf(setSquad(flow, 'x1', 'm2', 1));
+	for (const [i, kind] of (['load', 'hold', 'dismount'] as const).entries()) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, i * 2, 2));
+	}
+	return flowOf(clearPhaseBeats(flow, 'x1', 0, 6));
 }
 
 const lib = (flow: Flow) => flow.actions.find((a) => a.id === 'x1')!;
@@ -133,8 +133,7 @@ describe('蓋到別的環節', () => {
 
 describe('標拍擋下來的情況', () => {
 	const chant = () => {
-		const flow = flowOf(addAction(sample(), { segmentId: 's2', category: 'toss', name: '', start: 0, length: 30, note: '', members: [{ memberId: 'm1', role: '上層' }] }));
-		return flowOf(enableSuccessRate(flow, 'x2'));
+		return flowOf(addAction(sample(), { segmentId: 's2', category: 'toss', name: '', start: 0, length: 30, note: '', members: [{ memberId: 'm1', role: '上層' }] }));
 	};
 
 	it.each([
