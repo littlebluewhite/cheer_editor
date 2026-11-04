@@ -10,6 +10,7 @@ import {
 	fitRecords,
 	perPerson,
 	squadName,
+	squadsOf,
 	type Attempt,
 	type Mark,
 	type NewAttempt
@@ -105,7 +106,7 @@ function higherIds(
 	return higher.length ? { ...a, ...Object.fromEntries(higher) } : a;
 }
 
-/** 練習畫面要記的動作：有打開記成功率、而且至少有一個環節的，照流程順序（開始的時間）排。 */
+/** 練習畫面要記的動作：有環節的，照流程順序（開始的時間）排。 */
 export function recordableActions(flow: Flow): Action[] {
 	return flow.actions
 		.filter((a) => a.successRate?.phases.length)
@@ -124,8 +125,7 @@ export function attemptWhos(flow: Flow, action: Action): { who: number | string;
 			.filter((m) => action.members.some((am) => am.memberId === m.id))
 			.map((m) => ({ who: m.id, name: m.name }));
 	}
-	const squads = [...new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])))];
-	return squads.sort((a, b) => a - b).map((squad) => ({ who: squad, name: squadName(flow, action, squad) }));
+	return squadsOf(action).map((squad) => ({ who: squad, name: squadName(flow, action, squad) }));
 }
 
 /** 一次寫成一排記號，照環節順序，空的寫「·」，例：✓✓△、✗··。 */

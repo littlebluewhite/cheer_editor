@@ -2,7 +2,7 @@
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
 import { cueFallout, cueProblem, type Cue } from './cues';
-import { phaseFallout, phaseFalloutText } from './phase-beats';
+import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
@@ -11,7 +11,7 @@ import {
 	askRecords,
 	compactSquads,
 	fitRecords,
-	perPerson,
+	groupsPeople,
 	replacePhases,
 	settleRecords,
 	successRateProblem,
@@ -76,7 +76,7 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
  * 對不上的紀錄也拿掉（組沒人了、人移出動作、大類換成騰翻或換掉騰翻）。
  */
 function normalize({ color, ...action }: Action): Action {
-	const grouped = !!action.successRate && !perPerson(action.category);
+	const grouped = groupsPeople(action);
 	return fitRecords({
 		...action,
 		...(color ? { color } : {}),
@@ -106,7 +106,7 @@ export function updateAction(
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
 	const realigned = from && to ? phaseFallout(from, to, old, action) : null;
-	// 只挪半拍、沒切到的標的拍不用問。
+	// 只挪半拍、沒切到的標的拍不用問；換到口號段拿掉標的拍也不用問。
 	const marked = realigned?.items.length ? realigned : null;
 	const asked = fallout || marked ? falloutMessage(old, action, from!, to!, fallout, marked) : null;
 	const items = [...(fallout?.items ?? []), ...(marked?.items ?? [])];
@@ -135,7 +135,7 @@ function falloutMessage(
 	from: Segment,
 	to: Segment,
 	cues: { removed: number; cut: number; orphaned: number } | null,
-	phases: Parameters<typeof phaseFalloutText>[0] & { shifted: boolean } | null
+	phases: PhaseFallout | null
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
 	const shorter = action.length < old.length ? '變短' : '';

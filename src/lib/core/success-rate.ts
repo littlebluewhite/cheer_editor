@@ -115,9 +115,19 @@ export function perPerson(category: ActionCategory): boolean {
 	return PER_PERSON.has(category);
 }
 
-/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。 */
+/** 這個動作要分組：有環節，而且不是騰翻、跳躍。 */
+export function groupsPeople(action: Action): boolean {
+	return !!action.successRate?.phases.length && !perPerson(action.category);
+}
+
+/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。已經記成功率的動作不動。 */
 export function firstSquad(action: Action): Action {
-	return perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
+	return action.successRate || perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
+}
+
+/** 動作裡現在有人的組，照號碼排。 */
+export function squadsOf(action: Action): number[] {
+	return [...new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])))].sort((a, b) => a - b);
 }
 
 /**
@@ -170,8 +180,7 @@ export function setSquad(
  * 先拿掉對不上的紀錄（fitRecords）、問完紀錄（settleRecords，照舊的號碼比）再補號。沒得補就回傳原來的動作。
  */
 export function compactSquads(action: Action): Action {
-	const used = [...new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])))];
-	const renumber = new Map(used.sort((a, b) => a - b).map((n, i) => [n, i + 1]));
+	const renumber = new Map(squadsOf(action).map((n, i) => [n, i + 1]));
 	if ([...renumber].every(([from, to]) => from === to)) return action;
 	const members = action.members.map((m) => (m.squad === undefined ? m : { ...m, squad: renumber.get(m.squad)! }));
 	const rate = action.successRate;
@@ -181,8 +190,7 @@ export function compactSquads(action: Action): Action {
 
 /** 動作後來加進來的人（「＋加人…」）：有環節的分組動作只有一組，就進第 1 組；有好幾組（或還沒分組）就先沒有組。 */
 export function newActionMember(action: Action, memberId: string): ActionMember {
-	const squads = new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])));
-	return squads.size === 1 ? { memberId, role: null, squad: 1 } : { memberId, role: null };
+	return squadsOf(action).length === 1 ? { memberId, role: null, squad: 1 } : { memberId, role: null };
 }
 
 /** 改動作會動到紀錄時要問教練的事。message 前面還要接「動作「…」」；choose 是有得選保留或清掉。 */

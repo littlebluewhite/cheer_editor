@@ -2,19 +2,17 @@
 // 標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走。環節之間不能重疊；標拍、清標的拍都不動拍點。
 // 音樂段的環節一定有拍：拍清光的環節自動刪掉（有記號先問），環節照拍的先後排；一個都不剩就不記成功率。
 
-import { replaceAction, type Action } from './actions';
+import type { Action } from './actions';
 import { rangeText } from './cues';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
-import { phaseLabel } from './phases';
+import { applyPhases, NO_PHASES_LEFT, phaseLabel } from './phases';
 import type { Segment } from './segment';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import {
 	allPhaseIds,
 	firstSquad,
 	markedCount,
-	replacePhases,
-	successRateProblem,
 	type Phase,
 	type PhaseKind
 } from './success-rate';
@@ -53,8 +51,7 @@ export function markPhaseBeats(
 		phases = [...phases, { id, kind: target.kind, name: target.name.trim() }];
 	}
 	phases = cut(phases, at, at + len).map((p) => (p.id === id ? { ...p, beats: { at, len } } : p));
-	const base = action.successRate ? action : firstSquad(action);
-	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, base, phases, options);
+	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, firstSquad(action), phases, options);
 	return r.kind === 'ok' ? { ...r, id } : r;
 }
 
@@ -75,12 +72,23 @@ export function clearPhaseBeats(
 	return withPhases(flow, action, cut(action.successRate.phases, from, to), options);
 }
 
+/** 改動作動到的標的拍：見 phaseFallout。 */
+export interface PhaseFallout {
+	phases: Phase[];
+	cut: number;
+	dropped: number;
+	marked: number;
+	empty: boolean;
+	shifted: boolean;
+	items: string[];
+}
+
 /**
- * 改動作會動到的標的拍（跟拍點的 cueFallout 一起問）：換到口號段全部拿掉（環節留著、變沒標拍）；
+ * 改動作會動到的標的拍（跟拍點的 cueFallout 一起問）：換到口號段全部拿掉、環節照原本的先後留著，不用問；
  * 變短時跨出去的切短（取到整拍），不到一拍的刪掉。拖到半拍上時，標的拍一起挪半拍、對齊音樂的整拍
  * （往後挪，會切到比較多才往前），挪了跑出動作的一樣切短或刪掉。換到音樂段時沒標拍的環節刪掉。
  * 拖動作（整拍）、改 BPM 不會動到（標的拍從動作開始算）。
- * 沒動到是 null；不然回傳留下的環節（照拍排）、切短、變沒標拍、刪掉各幾個、刪掉的有幾次記號、
+ * 沒動到是 null；不然回傳留下的環節（照拍排）、切短、刪掉各幾個、刪掉的有幾次記號、
  * 是不是刪光了、是不是挪了半拍，和給教練確認的清單（只挪沒切到的不列；時間照改之前的位置寫，切短後的照改之後的）。
  */
 export function phaseFallout(
@@ -88,16 +96,7 @@ export function phaseFallout(
 	to: Segment,
 	before: Action,
 	after: Action
-): {
-	phases: Phase[];
-	cut: number;
-	unmarked: number;
-	dropped: number;
-	marked: number;
-	empty: boolean;
-	shifted: boolean;
-	items: string[];
-} | null {
+): PhaseFallout | null {
 	const old = after.successRate?.phases ?? [];
 	const music = to.kind === 'music';
 	const offBeat = (p: Phase) => !!p.beats && (after.start + p.beats.at) % BEAT !== 0;
@@ -117,7 +116,6 @@ export function phaseFallout(
 	const items: string[] = [];
 	const gone: Phase[] = [];
 	let cut = 0;
-	let unmarked = 0;
 	const phases = old.flatMap((p) => {
 		if (!p.beats) {
 			if (!music) return [p];
@@ -135,20 +133,15 @@ export function phaseFallout(
 			items.push(`切短：${text} → ${rangeText(to, after, beats.at, beats.len)}`);
 			return [withBeats(p, beats)];
 		}
-		if (music) {
-			gone.push(p);
-			items.push(`刪掉：${text}`);
-			return [];
-		}
-		unmarked++;
-		items.push(`變沒標拍：${text}`);
-		return [withBeats(p)];
+		if (!music) return [withBeats(p)];
+		gone.push(p);
+		items.push(`刪掉：${text}`);
+		return [];
 	});
 	if (!gone.length && phases.every((p, i) => p === old[i])) return null;
 	return {
 		phases: ordered(phases),
 		cut,
-		unmarked,
 		dropped: gone.length,
 		marked: markedCount(after, gone),
 		empty: !phases.length,
@@ -158,22 +151,9 @@ export function phaseFallout(
 }
 
 /** 「切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號），動作不再記成功率」（確認訊息裡標的拍那一段）。 */
-export function phaseFalloutText({
-	cut,
-	unmarked,
-	dropped,
-	marked,
-	empty
-}: {
-	cut: number;
-	unmarked: number;
-	dropped: number;
-	marked: number;
-	empty: boolean;
-}): string {
+export function phaseFalloutText({ cut, dropped, marked, empty }: PhaseFallout): string {
 	const parts = [
 		cut ? `切短 ${cut} 個環節標的拍` : '',
-		unmarked ? `讓 ${unmarked} 個環節變沒標拍` : '',
 		dropped ? `刪掉 ${dropped} 個環節${marked ? `（清掉 ${marked} 次的記號）` : ''}` : ''
 	];
 	return parts.filter(Boolean).join('、') + (empty ? '，動作不再記成功率' : '');
@@ -219,14 +199,11 @@ function withPhases(flow: Flow, action: Action, phases: Phase[], { confirmed = f
 	const gone = phases.filter((p) => !kept.includes(p));
 	const marked = markedCount(action, gone);
 	if (marked && !confirmed) {
-		const empty = kept.length ? '' : '；動作沒有環節了，不再記成功率';
+		const empty = kept.length ? '' : NO_PHASES_LEFT;
 		return needsConfirm(
 			`拍清光的環節會刪掉，清掉 ${marked} 次的記號${empty}，確定就刪掉`,
 			gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`)
 		);
 	}
-	const changed = replacePhases(action, ordered(kept));
-	const problem = successRateProblem(segment, changed);
-	if (problem) return blocked(problem);
-	return ok(replaceAction(flow, changed));
+	return applyPhases(flow, action, ordered(kept));
 }

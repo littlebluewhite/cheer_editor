@@ -57,6 +57,7 @@ export {
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
 export {
+	groupsPeople,
 	MARKS,
 	newActionMember,
 	PHASE_KIND_COLORS,
@@ -64,7 +65,8 @@ export {
 	perPerson,
 	phaseColor,
 	setSquad,
-	squadName
+	squadName,
+	squadsOf
 } from './success-rate';
 export type { Attempt, Mark, NewAttempt, Phase, PhaseKind, PracticeKind, SuccessRate } from './success-rate';
 

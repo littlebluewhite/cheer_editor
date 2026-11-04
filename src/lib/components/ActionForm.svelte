@@ -15,12 +15,12 @@
 		addAction,
 		atText,
 		deleteAction,
+		groupsPeople,
 		lengthText,
 		memberName,
 		newActionMember,
 		parseAt,
 		parseLength,
-		perPerson,
 		positionText,
 		roleGlossary,
 		segmentSpans,
@@ -104,7 +104,7 @@
 	);
 
 	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
-	const grouped = $derived(!!action?.successRate && !perPerson(action.category));
+	const grouped = $derived(!!action && groupsPeople(action));
 
 	let draft = $state<Draft>(blank());
 	let error = $state('');

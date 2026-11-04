@@ -7,7 +7,7 @@ import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import type { Segment } from './segment';
-import { compactSquads, PHASE_KINDS, PRACTICE_KINDS, replacePhases, successRateProblem } from './success-rate';
+import { compactSquads, PHASE_KINDS, PRACTICE_KINDS, replacePhases, squadsOf, successRateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
 export const FORMAT_VERSION = 7;
@@ -247,8 +247,8 @@ function isFlow(v: unknown): v is Flow {
 function phasesAndSquadsOk(segment: Segment, action: Action): boolean {
 	const phases = action.successRate?.phases;
 	if (phases && (!phases.length || (segment.kind === 'music' && phases.some((p) => !p.beats)))) return false;
-	const squads = new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])));
-	return [...squads].every((n) => n <= squads.size);
+	const squads = squadsOf(action);
+	return squads.every((n) => n <= squads.length);
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
