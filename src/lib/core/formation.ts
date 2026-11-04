@@ -2,7 +2,7 @@
 // 站位記「哪個段 ＋ 段內時間」（音樂段第幾個半拍、口號段第幾個 0.1 秒），flow.formations 照時間排。
 // 開頭那張（formations[0]）一定在第一段的時間 0；還沒有段時 segmentId 是 null。
 
-import { actionSeconds } from './actions';
+import { actionSeconds } from './action-types';
 import { fieldGeometry } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';

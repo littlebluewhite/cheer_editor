@@ -1,6 +1,6 @@
 // 隊員名單：加隊員、改隊員、刪隊員。
 
-import { actionLabel, type Action } from './actions';
+import { actionLabel, type Action } from './action-types';
 import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';

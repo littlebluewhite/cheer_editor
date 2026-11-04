@@ -2,7 +2,7 @@
 // 環節存在動作的成功率設定裡（Action.successRate.phases），有順序；音樂段照標的拍的先後排（見 phase-beats），
 // 口號段不標拍、照加的先後排。
 
-import { replaceAction, type Action } from './actions';
+import { replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
