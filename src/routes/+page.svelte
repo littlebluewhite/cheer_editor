@@ -165,6 +165,8 @@
 	let selectedMemberIds = $state<string[]>([]);
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	let multiSelect = $state(false);
+	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 	const anySelected = $derived(!!selectedFormationId || !!selectedActionId || selectedMemberIds.length > 0);
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
@@ -825,15 +827,19 @@
 				onselect={selectMembers}
 			>
 				{#snippet railTop()}
-					<div class="select-tools">
-						<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
-							<input type="checkbox" bind:checked={multiSelect} />多選
-						</label>
-						<button type="button" disabled={!anySelected} onclick={clearSelection}>取消選取</button>
-						{#if timelineH !== null || inspectorW !== null}
-							<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
-						{/if}
-					</div>
+					{#if touchScreen || timelineH !== null || inspectorW !== null}
+						<div class="select-tools">
+							{#if touchScreen}
+								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
+									<input type="checkbox" bind:checked={multiSelect} />多選
+								</label>
+								<button type="button" disabled={!anySelected} onclick={clearSelection}>取消選取</button>
+							{/if}
+							{#if timelineH !== null || inspectorW !== null}
+								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
+							{/if}
+						</div>
+					{/if}
 					{#if flow}
 						{@const now = currentFormation(flow, playheadSec)}
 						<div class="now-formation" aria-label="現在的站位">
