@@ -2,7 +2,17 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
+import { createFlow, renameFlow, type CommandResult, type Flow } from '#lib/core';
+import { EditorSession } from '#lib/editor-session.svelte.js';
 import Page from './+page.svelte';
+
+function flowOf(r: CommandResult): Flow {
+	if (r.kind !== 'ok') throw new Error(r.message);
+	return r.flow;
+}
+
+/** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
+const sessionFlow = () => flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));
 
 /** 打開某個人的任務角色選單，點一個角色（空字串是沒有任務）。 */
 async function pickRole(who: string, role: string) {
@@ -1254,14 +1264,19 @@ describe('復原和重做', () => {
 		expect(redoButton().disabled).toBe(true);
 	});
 
-	it('最多記 100 步', async () => {
-		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		const min = () => screen.getByLabelText('口號段最少（秒）') as HTMLInputElement;
-		for (let i = 1; i <= 105; i++) await fireEvent.change(min(), { target: { value: String(i) } });
-		for (let i = 0; i < 100; i++) await fireEvent.click(undoButton());
+	// 最多記 100 步在 session 測（src/lib/editor-session.test.ts）；這裡只看按鈕接到 session 的復原、重做。
+	it('復原、重做按鈕接到 session：session 裡有幾步就能按幾次', async () => {
+		const session = new EditorSession(sessionFlow());
+		session.change(flowOf(renameFlow(session.flow!, 'A')));
+		session.change(flowOf(renameFlow(session.flow!, 'B')));
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		await fireEvent.click(undoButton());
+		await fireEvent.click(undoButton());
 		expect(undoButton().disabled).toBe(true);
-		expect(min().value).toBe('5');
+		expect(session.flow!.name).toBe('全國賽');
+		await fireEvent.click(redoButton());
+		expect(session.flow!.name).toBe('A');
+		expect(document.querySelector('.topbar b')?.textContent).toBe('A');
 	});
 
 	it('復原後，選到的人、站位、動作已經不存在就清掉', async () => {
@@ -1301,6 +1316,18 @@ describe('復原和重做', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 		expect(undoButton().disabled).toBe(true);
 		expect(redoButton().disabled).toBe(true);
+	});
+});
+
+describe('放一個帶好流程的 session 進頁面', () => {
+	it('頁面畫 session 的流程；操作後讀 session 的流程', async () => {
+		const session = new EditorSession(sessionFlow());
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		expect(document.querySelector('.topbar b')?.textContent).toBe('全國賽');
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
+		expect(session.flow!.name).toBe('臺灣盃');
+		expect(session.unsaved).toBe(true);
 	});
 });
 
