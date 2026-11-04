@@ -427,7 +427,7 @@ describe('動作表單：成功率', () => {
 	const phaseRows = () =>
 		within(screen.getByRole('list', { name: '環節' }))
 			.getAllByRole('listitem')
-			.map((li) => li.textContent?.trim());
+			.map((li) => li.getAttribute('aria-label'));
 	const squadOptions = (who: string) =>
 		[...(screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement).options].map((o) => o.text);
 
