@@ -149,6 +149,15 @@ describe('練習：記錄頁記分段練', () => {
 		expect(dayRow('第 2 組 小芳')).toEqual(['✓✗·', '✗··']);
 	});
 
+	it('點到最後一個環節就存，前面沒點的空著', async () => {
+		await practice();
+		await tap('第 1 組 小美', '中段', '成功');
+		await tap('第 1 組 小美', '下法', '小失誤');
+		expect(dayRow('第 1 組 小美')).toEqual(['·✓△']);
+		await tap('第 1 組 小美', '下法', '成功');
+		expect(dayRow('第 1 組 小美')).toEqual(['·✓△', '··✓']);
+	});
+
 	it('只練幾個環節：點選要練的，沒選的按鈕變灰；點完選的就存', async () => {
 		const saves = await practice();
 		const who = '第 1 組 小美';
@@ -213,7 +222,7 @@ describe('練習：記錄頁記分段練', () => {
 		await pickAction('技巧·Lib');
 		expect(card(who).getByRole('button', { name: `${who} 上法 成功` }).getAttribute('aria-pressed')).toBe('false');
 		await tap(who, '下法', '成功');
-		expect(dayRow(who)).toEqual([]);
+		expect(dayRow(who)).toEqual(['··✓']);
 	});
 
 	it('點到一半就換到編排：這一次不存', async () => {
@@ -224,7 +233,7 @@ describe('練習：記錄頁記分段練', () => {
 		await toArrange();
 		await toPractice();
 		await tap(who, '下法', '成功');
-		expect(dayRow(who)).toEqual([]);
+		expect(dayRow(who)).toEqual(['··✓']);
 	});
 
 	it('存檔再打開，紀錄還在；日期是今天', async () => {

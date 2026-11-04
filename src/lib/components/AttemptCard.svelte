@@ -60,11 +60,11 @@
 		marks = {};
 	}
 
-	/** 點一個記號：要練的環節都點了、或點了 ✗，就存成一次（✗ 後面的環節空著）。 */
+	/** 點一個記號：點到最後一個要練的環節、或點了 ✗，就存成一次（沒點的環節空著）。 */
 	function tap(phaseId: string, mark: Mark) {
 		const next = { ...marks, [phaseId]: mark };
 		const plan = planned.map((p) => p.id);
-		if (mark !== '✗' && !plan.every((id) => next[id])) {
+		if (mark !== '✗' && phaseId !== plan.at(-1)) {
 			marks = next;
 			return;
 		}
