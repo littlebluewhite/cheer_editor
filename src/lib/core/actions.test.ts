@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
 	actionSeconds,
 	actionSlotAt,
@@ -53,6 +53,14 @@ const lib = (overrides: Partial<NewActionInput> = {}): NewActionInput => ({
 });
 
 describe('新增動作', () => {
+	it('輸入不收成功率設定，人身上也不收組（新動作一定沒有環節）', () => {
+		expectTypeOf<NewActionInput>().not.toHaveProperty('successRate');
+		expectTypeOf<NewActionInput['members'][number]>().not.toHaveProperty('squad');
+		// 從別處拿來的人帶著組也不收。
+		const members = [{ memberId: 'm1', role: null, squad: 1 }];
+		expect(flowOf(addAction(sample(), lib({ members }))).actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+	});
+
 	it('動作存段 ＋ 段內整數時間、大類、名稱、備註和每人的任務角色', () => {
 		const flow = flowOf(addAction(sample(), lib({ name: ' Lib ', start: 3, note: '注意手' })));
 		expect(flow.actions).toEqual([

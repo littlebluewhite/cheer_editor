@@ -22,7 +22,7 @@ export {
 export type { Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
 
 export { ACTION_CATEGORIES, actionLabel, actionSeconds } from './action-types';
-export type { Action, ActionCategory, ActionMember, NewActionInput } from './action-types';
+export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
 export {
 	actionSlotAt,
 	addAction,
