@@ -18,7 +18,7 @@ describe('使用說明', () => {
 	it('每張圖都有替代文字', () => {
 		render(Guide);
 		const images = document.querySelectorAll('img');
-		expect(images.length).toBe(15);
+		expect(images.length).toBe(18);
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
 	});
 
@@ -33,5 +33,35 @@ describe('使用說明', () => {
 			expect(text, words).toContain(words);
 		}
 		expect(section.querySelector('img')?.alt).toContain('拍點');
+	});
+
+	it('有一節講練習：怎麼打開記成功率、記錄頁、總表、怎麼算、會清掉紀錄的情況', () => {
+		render(Guide);
+		const toc = screen.getByRole('navigation', { name: '目錄' });
+		const link = [...toc.querySelectorAll('a')].find((a) => a.textContent === '4.10 練習');
+		expect(link?.getAttribute('href')).toBe('#practice');
+		const section = document.getElementById('practice')!;
+		const text = section.textContent!;
+		for (const words of [
+			'記成功率', '環節', '上法', '中段', '轉接', '下法', '整體', '標拍', '組', '每個人自己算',
+			'記號', '成功', '小失誤', '失敗', '整個', '只練幾個環節', '刪掉上一次', '復原',
+			'總表', '期間', '練法', '大字看', '明細', '記一次全上', '沒做（停了）', '全上', '分段練',
+			'成功率', '完成率', '整次成功率', '保留舊紀錄', '清掉重算'
+		]) {
+			expect(text, words).toContain(words);
+		}
+		// 記號不叫「標記」（標記是圓點上的字）
+		expect(text).not.toContain('標記');
+		const alts = [...section.querySelectorAll('img')].map((img) => img.alt);
+		expect(alts.some((a) => a.includes('記錄頁'))).toBe(true);
+		expect(alts.some((a) => a.includes('總表'))).toBe(true);
+	});
+
+	it('「組」只用在成功率：動作是一群隊員，複製人照新的選項文字', () => {
+		render(Guide);
+		const text = document.body.textContent!;
+		expect(text).not.toContain('一組隊員');
+		expect(text).not.toContain('整組帶進來');
+		expect(text).toContain('從別的動作複製人（連任務角色和組）…');
 	});
 });

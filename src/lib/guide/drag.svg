@@ -54,7 +54,7 @@
   <g id="node-drag" data-graph-role="node" data-node-id="drag" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="30,190,220,256">
   <rect x="30.0" y="190.0" width="190.0" height="66.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>
   <text data-text-role="title" data-full-text="拖隊員，放開" data-text-max-width="166.0" x="125.0" y="223.0" text-anchor="middle" class="node-title" font-size="18">拖隊員，放開</text>
-  <text data-text-role="subtitle" data-full-text="可以一次拖一組人" data-text-max-width="166.0" x="125.0" y="245.0" text-anchor="middle" class="node-sub" font-size="12">可以一次拖一組人</text>
+  <text data-text-role="subtitle" data-full-text="可以一次拖好幾個人" data-text-max-width="166.0" x="125.0" y="245.0" text-anchor="middle" class="node-sub" font-size="12">可以一次拖好幾個人</text>
   </g>
   <g id="node-ask" data-graph-role="node" data-node-id="ask" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="270,190,480,256">
   <rect x="270.0" y="190.0" width="210.0" height="66.0" rx="10.0" fill="#fff7ed" stroke="#f97316" stroke-width="1.8"/>
