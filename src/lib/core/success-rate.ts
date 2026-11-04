@@ -219,14 +219,14 @@ export function fitRecords(action: Action): Action {
 	const rate = action.successRate;
 	if (!rate) return action;
 	const phaseIds = new Set(rate.phases.map((p) => p.id));
-	let changed = false;
 	const records = rate.records.flatMap((r) => {
+		if (!whoFits(action, r.who)) return [];
 		const marks = Object.entries(r.marks).filter(([id]) => phaseIds.has(id));
-		if (whoFits(action, r.who) && marks.length === Object.keys(r.marks).length) return [r];
-		changed = true;
-		return whoFits(action, r.who) && marks.length ? [{ ...r, marks: Object.fromEntries(marks) }] : [];
+		if (marks.length === Object.keys(r.marks).length) return [r];
+		return marks.length ? [{ ...r, marks: Object.fromEntries(marks) }] : [];
 	});
-	return changed ? { ...action, successRate: { ...rate, records } } : action;
+	const same = records.length === rate.records.length && records.every((r, i) => r === rate.records[i]);
+	return same ? action : { ...action, successRate: { ...rate, records } };
 }
 
 /** 誰對得上這個動作：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。 */

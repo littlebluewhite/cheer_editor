@@ -222,6 +222,28 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		expect(recordsOf(again, 'x2').map((r) => r.id)).toEqual(['t5']);
 	});
 
+	it('動作的 id 刪了又用：舊的那個動作不會拿到新動作的紀錄（環節的 id 不重用）', () => {
+		const toss = (memberId: string) => ({
+			segmentId: 's1',
+			category: 'toss' as const,
+			name: '',
+			start: 16,
+			length: 8,
+			note: '',
+			members: [{ memberId, role: null }]
+		});
+		let older = flowOf(enableSuccessRate(flowOf(addAction(sample(), toss('m3'))), 'x3'));
+		older = flowOf(setSquad(older, 'x3', 'm3', 1));
+		let current = flowOf(deleteAction(older, 'x3'));
+		current = flowOf(enableSuccessRate(flowOf(addAction(current, toss('m4'))), 'x3'));
+		current = flowOf(setSquad(current, 'x3', 'm4', 1));
+		const phase = current.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id;
+		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' })));
+
+		expect(phase).not.toBe(older.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id);
+		expect(recordsOf(carryRecords(older, current), 'x3')).toEqual([]);
+	});
+
 	it('沒有紀錄要帶：換上的流程原封不動', () => {
 		const older = flowOf(updateAction(sample(), 'x1', { name: '舊的名字' }));
 		const current = flowOf(updateAction(older, 'x1', { name: '新的名字' }));

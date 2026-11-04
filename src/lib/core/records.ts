@@ -61,7 +61,7 @@ export function carryRecords(next: Flow, current: Flow): Flow {
 		changed = true;
 		return fitRecords({ ...a, successRate: { ...a.successRate, records } });
 	});
-	return changed ? { ...next, actions, lastIds } : next;
+	return changed ? { ...next, actions, ...(lastIds && { lastIds }) } : next;
 }
 
 /** 兩份「id 發到第幾號」取大的；跟 a 一樣就回傳 a。 */
