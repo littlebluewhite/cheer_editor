@@ -2,7 +2,6 @@
 // 放好流程的編輯頁、開檔這些小工具，和頁面測試常用的範例流程。flowOf 用核心測試那份（#lib/core/test-flows.js）。
 // 只給測試用，頁面不 import。
 import { fireEvent, screen } from '@testing-library/svelte';
-import { afterEach, beforeEach } from 'vitest';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
@@ -14,7 +13,8 @@ import {
 	recordAttempt,
 	setSquad,
 	updateSegment,
-	type Flow
+	type Flow,
+	type Position
 } from '#lib/core';
 import { flowOf } from '#lib/core/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
@@ -66,34 +66,33 @@ export async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 }
 
 /**
- * 編輯頁放一個帶好流程的 session（算存過的，跟剛開檔一樣），其他 adapter 都是假的：`render(Page, page.props)`。
+ * 編輯頁放一個帶好流程的 session（算存過的，跟剛開檔一樣），其他 adapter（含座標換算）都是假的：`render(Page, page.props)`。
  * 測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
  */
 export function editorPage(flow: Flow | null = null) {
 	const session = new EditorSession(flow);
 	const { saver, saves } = fakeSaver();
-	const props = { session, createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode };
+	const props = {
+		session,
+		createEngine: () => createFakeEngine(),
+		createSaver: () => saver,
+		decode: fakeDecode,
+		toMeters: fakeToMeters,
+		cellAt: fakeCellAt
+	};
 	return { session, saves, props };
 }
 
+/** 假的座標換算：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */
+export const fakeToMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
+
 /**
- * 假的座標換算：把場地預設的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。在 describe 裡呼叫，每個測試前裝上、測完拿掉。
- * 頁面還不能收座標換算的 prop，所以先換掉 SVG 的 getScreenCTM、createSVGPoint。
+ * 假的「指標位置 → 拍點格子」（jsdom 不算版面，見 ADR 0002）：
+ * clientX 是第幾個格子（照畫面順序），clientY 是第幾條（0 數字格、1 拍子、2 步驟、3 手位）。
  */
-export function useFakeSvgCoordinates() {
-	beforeEach(() => {
-		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
-		proto.getScreenCTM = () => ({ inverse: () => ({}) });
-		proto.createSVGPoint = () => {
-			const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x / 100, y: p.y / 100 }) };
-			return p;
-		};
-	});
-	afterEach(() => {
-		const proto = SVGSVGElement.prototype as unknown as Record<string, unknown>;
-		delete proto.getScreenCTM;
-		delete proto.createSVGPoint;
-	});
+export function fakeCellAt(sheet: HTMLElement, x: number, y: number): HTMLElement {
+	const kind = ['.cell', '.slot.count', '.slot.step', '.slot.motion'][y];
+	return sheet.querySelectorAll<HTMLElement>(kind)[x];
 }
 
 // 頁面測試常用的範例流程。都叫「練習用」。

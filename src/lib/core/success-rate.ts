@@ -5,7 +5,7 @@
 import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
-import { HALF_BEATS_PER_BEAT } from './time';
+import { rangeProblem, type BeatRange } from './beat-range';
 import { PHASE_COLORS } from './colors';
 import { PHASE_KINDS, type Phase } from './phase-types';
 
@@ -261,14 +261,10 @@ function isDate(text: string): boolean {
 	return date.getMonth() === mo - 1 && date.getDate() === d;
 }
 
-/** 環節標的拍的規則：只有音樂段能標、從音樂的整拍開始、佔整數拍（至少 1 拍）、在動作裡面（動作被拖半拍時，標的拍跟著挪去對齊整拍）。 */
-export function beatsProblem(segment: Segment, action: Action, { at, len }: { at: number; len: number }): string | null {
+/** 環節標的拍的規則：只有音樂段能標；其他（整拍、整數拍、在動作裡面）在 beat-range。 */
+export function beatsProblem(segment: Segment, action: Action, beats: BeatRange): string | null {
 	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
-	if (!Number.isInteger(at) || !Number.isInteger(len)) return '環節要落在半拍上';
-	if ((action.start + at) % HALF_BEATS_PER_BEAT !== 0) return '環節要標在整拍上';
-	if (len < HALF_BEATS_PER_BEAT || len % HALF_BEATS_PER_BEAT !== 0) return '環節要佔整數拍，至少 1 拍';
-	if (at < 0 || at + len > action.length) return '環節要在動作裡面';
-	return null;
+	return rangeProblem('phase', action, beats);
 }
 
 /** 組的名字：「第 1 組 小美」，後面是組裡任務角色是上層的人（好幾個就用名單上第一個）；沒有上層就只叫「第 1 組」。 */

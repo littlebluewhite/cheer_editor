@@ -10,21 +10,25 @@
 
 <script lang="ts">
 	// 場地：SVG 的使用者座標就是流程核心的公尺座標（原點中心 X，y 往正面＝畫面下面）。
-	// 拖人：吸附和位置文字都問流程核心；放開時用 onmove 把新位置（公尺）交出去。
+	// 編輯頁（有 session、有按鈕）才能選人、拖人，選取從 session 拿；八拍表的小站位圖只畫。
+	// 拖人：吸附和位置文字都問流程核心；放開時把新位置（公尺）改進播放頭這一拍的站位，送到 session 的 ask，
+	// 改好了 session 說插了站位或往後帶了幾張、播放頭停到那張（session.moved）。
 	// 放大縮小：按鈕、滾輪、兩指捏合；兩指一起拖是移動畫面。
-	// 選人：點人（Shift＋點或開著 multi 時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
+	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
 	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
 		fieldPositionText,
+		moveMembers,
 		snapPointsNear,
 		snapPosition,
 		type FormationWalk,
 		type Member,
 		type Position
 	} from '#lib/core';
+	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from './marker';
 
@@ -45,10 +49,7 @@
 		markers = {},
 		positions = {},
 		raised = [],
-		selected = [],
-		multi = false,
-		onmove,
-		onselect,
+		playheadSec = 0,
 		toMeters = screenCtmToMeters,
 		controls = true,
 		ghosts = {},
@@ -67,13 +68,8 @@
 		positions?: Record<string, Position>;
 		/** 這一刻任務角色是上層或中層的人：畫在最上面，黃框加陰影。 */
 		raised?: string[];
-		/** 選到的人。 */
-		selected?: string[];
-		/** 多選開著：點人、框選都跟按著 Shift 一樣，加進來或拿掉（iPad 沒有 Shift）。 */
-		multi?: boolean;
-		onmove?: (moves: Record<string, Position>) => void;
-		/** 點人、框選、點空白處（清除）時送出新的選取。 */
-		onselect?: (memberIds: string[]) => void;
+		/** 播放頭（全域秒數）：拖人改這一拍的站位。 */
+		playheadSec?: number;
 		toMeters?: ToMeters;
 		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
 		controls?: boolean;
@@ -92,6 +88,12 @@
 		/** 點右上角的小圓（隊員 id → 字和顏色），分組時寫組號。 */
 		badges?: Record<string, { text: string; color: string }>;
 	} = $props();
+
+	// controls 一開始給了就不換（編輯頁或八拍表）。
+	// svelte-ignore state_referenced_locally
+	const session = controls && hasEditorSession() ? getEditorSession() : null;
+	/** 選到的人。 */
+	const selected = $derived(session?.selectedMemberIds ?? []);
 
 	const ZOOM_STEP = 1.25;
 	/** 按下後移動不到這麼多 px 算點一下。 */
@@ -245,12 +247,13 @@
 			(e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
 			(e.pointerType === 'touch' ? nearestDot(e) : null);
 		const client: [number, number] = [e.clientX, e.clientY];
-		if (id && positions[id] && (onmove || onselect)) {
+		if (!session) return;
+		if (id && positions[id]) {
 			const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
 			const orig = Object.fromEntries(ids.map((i) => [i, positions[i]]));
-			drag = { id, ids, client, shift: e.shiftKey || multi, start: toMeters(e, svg), orig, cur: null };
-		} else if (!id && onselect) {
-			box = { client, shift: e.shiftKey || multi, a: toMeters(e, svg), b: null };
+			drag = { id, ids, client, shift: e.shiftKey, start: toMeters(e, svg), orig, cur: null };
+		} else if (!id) {
+			box = { client, shift: e.shiftKey || session.multiSelect, a: toMeters(e, svg), b: null };
 		} else return;
 		svg.setPointerCapture?.(e.pointerId);
 	}
@@ -281,7 +284,7 @@
 			if (fingers.size === 2 && fingers.has(e.pointerId)) pinchMove(e);
 			return;
 		}
-		if (drag && onmove && (drag.cur || !still(e, drag.client))) {
+		if (drag && (drag.cur || !still(e, drag.client))) {
 			const [px, py] = toMeters(e, svg);
 			const o = drag.orig[drag.id];
 			drag.cur = snapPosition(field, [o[0] + px - drag.start[0], o[1] + py - drag.start[1]], zoom);
@@ -292,17 +295,18 @@
 
 	function up(e: PointerEvent) {
 		liftFinger(e);
-		if (drag?.cur) onmove?.(dragged);
-		else if (drag) onselect?.(pick(drag.id, drag.shift));
-		else if (box) onselect?.(box.b ? inBox(box.a, box.b, box.shift) : []);
+		if (drag?.cur) drop(dragged);
+		else if (drag) session?.pickMember(drag.id, drag.shift);
+		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
 		box = null;
 	}
 
-	/** 點人：只選他；Shift＋點是加進來或拿掉。 */
-	function pick(id: string, shift: boolean): string[] {
-		if (!shift) return [id];
-		return selected.includes(id) ? selected.filter((i) => i !== id) : [...selected, id];
+	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）。 */
+	function drop(moves: Record<string, Position>) {
+		const s = session!;
+		const sec = playheadSec;
+		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
 	}
 
 	/** 框裡的人（Shift 時加上原本選的），照名單順序。 */

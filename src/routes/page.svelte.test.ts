@@ -3,9 +3,9 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import { createFlow, renameFlow } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf, libSample } from '#lib/core/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
-import { useFakeSvgCoordinates } from '#lib/test-fakes.js';
+import { fakeToMeters } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 /** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
@@ -20,8 +20,9 @@ async function pickRole(who: string, role: string) {
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
 
+/** 新建一個流程。jsdom 不算 SVG 座標：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */
 async function newFlow(engine: FakeEngine = createFakeEngine()) {
-	render(Page, { createEngine: () => engine });
+	render(Page, { createEngine: () => engine, toMeters: fakeToMeters });
 	await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 }
@@ -530,9 +531,6 @@ describe('動作', () => {
 });
 
 describe('站位與走位', () => {
-	// jsdom 不算 SVG 座標：把場地預設的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。
-	useFakeSvgCoordinates();
-
 	/** 新流程、一個音樂段（150 BPM）、兩個隊員。 */
 	async function setup() {
 		await newFlow();
@@ -1114,9 +1112,6 @@ describe('播放', () => {
 });
 
 describe('復原和重做', () => {
-	// jsdom 不算 SVG 座標：把場地預設的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。
-	useFakeSvgCoordinates();
-
 	const undoButton = () => screen.getByRole('button', { name: '復原' }) as HTMLButtonElement;
 	const redoButton = () => screen.getByRole('button', { name: '重做' }) as HTMLButtonElement;
 	const thumbs = () => screen.queryAllByRole('button', { name: /^站位 \d+$/ });
@@ -1301,6 +1296,20 @@ describe('放一個帶好流程的 session 進頁面', () => {
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		expect(session.flow!.name).toBe('臺灣盃');
 		expect(session.unsaved).toBe(true);
+	});
+
+	it('在「隊員」頁點色條（再點選著的那條也一樣）：右邊欄翻到「動作」', async () => {
+		const session = new EditorSession(libSample());
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		const actionTab = () => screen.getByRole('tab', { name: /^動作/ });
+		const bar = () => document.querySelector<HTMLElement>('[data-lane="m1"] [data-action-id="x1"]')!;
+		await tab('隊員');
+		await fireEvent.click(bar());
+		expect(session.selectedActionId).toBe('x1');
+		expect(actionTab().getAttribute('aria-selected')).toBe('true');
+		await tab('隊員');
+		await fireEvent.click(bar());
+		expect(actionTab().getAttribute('aria-selected')).toBe('true');
 	});
 });
 

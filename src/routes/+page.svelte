@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		addSegment,
 		currentFormation,
 		deleteAction,
 		deleteFormation,
@@ -8,13 +7,7 @@
 		formationAt,
 		formationTimes,
 		formationWalks,
-		matchPrevious,
 		memberMarkers,
-		moveFormation,
-		moveFormationHint,
-		moveMembers,
-		moveTargetText,
-		parseTime,
 		playbackPlan,
 		playStartSec,
 		NO_SQUAD_COLOR,
@@ -22,22 +15,16 @@
 		positionsAt,
 		raisedAt,
 		readFlowFile,
-		renameFormation,
 		segmentsMissingAudio,
 		squadColor,
 		squadNumber,
 		timeRuleWarnings,
-		timeText,
 		totalSeconds,
 		writeFlowFile,
 		type ConfirmOption,
 		type Flow,
-		type Formation,
 		type FormationWalk,
-		type MoveResult,
-		type Position,
-		type SegmentKind,
-		type TimePosition
+		type Position
 	} from '#lib/core';
 	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
@@ -45,7 +32,7 @@
 	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
-	import { onMount } from 'svelte';
+	import { onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
 		loadInspectorWidth,
@@ -60,9 +47,11 @@
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
+	import type CueGrid from '#lib/components/CueGrid.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
 	import Field, { fullView } from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
+	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
@@ -85,6 +74,13 @@
 		draftStore?: DraftStore;
 		/** 編輯 session（流程和復原）；測試放一個帶好流程的進來，再讀它的流程。沒給就自己建。 */
 		session?: EditorSession;
+		// 螢幕座標換算（ADR 0002）：預設用瀏覽器算；jsdom 不算版面，測試換成假的。往下傳給場地、拍點格子、段設定的波形。
+		/** 場地：指標位置換成場地公尺。 */
+		toMeters?: ComponentProps<typeof Field>['toMeters'];
+		/** 拍點格子：指標位置對到的格子。 */
+		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
+		/** 段設定的波形：滑鼠位置換成音樂檔的秒數。 */
+		waveXToSec?: ComponentProps<typeof SegmentSettings>['waveXToSec'];
 	}
 
 	let {
@@ -92,7 +88,10 @@
 		createSaver = createBrowserSaver,
 		decode = decodeAudio,
 		draftStore = createIndexedDbDraftStore(),
-		session = new EditorSession()
+		session = new EditorSession(),
+		toMeters,
+		cellAt,
+		waveXToSec
 	}: Props = $props();
 	// session 一開始給了就不換：放進 context 的就是這一個。
 	// svelte-ignore state_referenced_locally
@@ -388,14 +387,6 @@
 		inspectorTab = f.members.length ? 'action' : 'members';
 	}
 
-	/**
-	 * 改流程的唯一入口：交給 session 的「改」，算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。
-	 * 換成另一支流程（開檔、新建、救回草稿）不走這裡，走 startFlow。
-	 */
-	function change(f: Flow) {
-		session.change(f);
-	}
-
 	function undo() {
 		if (session.undo()) restore(session.flow!);
 	}
@@ -496,100 +487,26 @@
 		});
 	}
 
-	function add(f: Flow, kind: SegmentKind) {
-		const r = addSegment(f, kind);
-		if (r.kind !== 'ok') return;
-		change(r.flow);
-		openSegmentId = r.id;
-	}
-
-	/** 拖人：改播放頭這一拍的站位（沒有就插一張）。播放頭停到那張站位上，場上才是剛放的位置。 */
-	function move(moves: Record<string, Position>) {
-		if (!flow) return;
-		const r = moveMembers(flow, playheadSec, moves);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		moved(r);
-	}
-
-	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示跟拖人一樣。 */
-	function matchPrev() {
-		if (!flow) return;
-		const r = matchPrevious(flow, playheadSec, session.selectedMemberIds);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		moved(r);
-	}
-
-	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。 */
-	function renameHere(formationId: string, name: string) {
-		if (!flow) return;
-		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
-		if (name.trim() === before) return;
-		const r = renameFormation(flow, formationId, name);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		change(r.flow);
-	}
-
-	/** 拖人、跟上一張一樣改好之後：換流程、說插了站位或往後帶了幾張、播放頭停到改的那張。 */
-	function moved(r: { flow: Flow } & MoveResult) {
-		change(r.flow);
-		const said = [
-			r.inserted && '插了一張站位，大家的位置自動帶入',
-			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
-		];
-		session.notice = said.filter(Boolean).join('；');
-		playheadSec = r.sec;
-	}
-
-	/**
-	 * 挪站位（拖縮圖、打站位時間）：被擋就說原因。挪了就提示走位被壓短的人數，
-	 * 選著這張、播放頭跳到新的站位時間（左邊欄的站位時間框還在）。
-	 */
-	function moveFormationTo(id: string, to: TimePosition) {
-		const f = flow;
-		if (!f) return;
-		// 被擋時縮圖已經彈回原位，還原不用再做什麼。
-		session.ask.send(() => moveFormation(f, id, to), {
-			revert: () => {},
-			done: (r) => {
-				session.notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
-				session.selectFormation(id);
-				seek(r.flow, r.sec);
-			}
+	// 改完要動播放頭的改動（拖人插站位、跟上一張一樣、挪站位）：session 說跳到哪，這裡跳。
+	// 拖人那種直接停到那張（播放中照樣跟著音樂走）；挪站位跟點八拍尺一樣，播放中從那裡重播。
+	$effect(() => {
+		const jump = session.jump;
+		if (!jump) return;
+		untrack(() => {
+			if (!jump.replay) playheadSec = jump.sec;
+			else if (flow) seek(flow, jump.sec);
 		});
-	}
+	});
 
-	/**
-	 * 左邊欄「站位時間」框改了：寫法跟出發、到達一樣，看得懂就挪過去。
-	 * 框先變回原本的 text：挪成功時跟著流程換成新的站位時間，看不懂或被擋就留在原本的。
-	 */
-	function retimeHere(box: HTMLInputElement, formation: Formation, text: string) {
-		if (!flow) return;
-		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
-		const to = parseTime(flow, formation.segmentId!, box.value);
-		box.value = text;
-		if (!to) return void (session.notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
-		moveFormationTo(formation.id, to);
-	}
-
-	/**
-	 * 左邊欄名稱框、站位時間框的按鍵：Enter 離開框（送出），Esc 變回 original 再離開。
-	 * 中文輸入法還在選字時按的 Enter / Esc 是給輸入法的；這時離開輸入框，字會重複（Safari 選字時 keyCode 是 229）。
-	 */
-	function railBoxKeydown(e: KeyboardEvent & { currentTarget: HTMLInputElement }, original: string) {
-		if (e.isComposing || e.keyCode === 229) return;
-		if (e.key === 'Enter') e.currentTarget.blur();
-		if (e.key === 'Escape') {
-			e.currentTarget.value = original;
-			e.currentTarget.blur();
-		}
-	}
+	// 在時間軸點了色條（再點選著的那條也算）：右邊欄翻到「動作」那一頁。
+	$effect(() => {
+		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
+	});
 
 	function removeFormation(id: string) {
-		if (!flow) return;
-		const r = deleteFormation(flow, id);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		change(r.flow);
-		session.notice = '';
+		const f = flow;
+		if (!f) return;
+		session.ask.send(() => deleteFormation(f, id));
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -651,8 +568,6 @@
 		// 按確定時用那時候的流程再送一次。
 		session.ask.send((o: ConfirmOption = {}) => deleteAction(flow ?? f, id, o));
 	}
-
-	const selectMembers = (ids: string[]) => session.selectMembers(ids);
 </script>
 
 <svelte:head>
@@ -662,8 +577,6 @@
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
-	{@const match = matchPrevious(flow, playheadSec, session.selectedMemberIds)}
-	{@const matchBlocked = match.kind === 'blocked' ? match.message : ''}
 	<div
 		class="editor"
 		class:practicing={view === 'practice'}
@@ -765,12 +678,10 @@
 				markers={memberMarkers(flow)}
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
-				selected={session.selectedMemberIds}
-				multi={session.multiSelect}
+				{playheadSec}
+				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
-				onmove={move}
-				onselect={selectMembers}
 				badges={squadBadges}
 			>
 				{#snippet below()}
@@ -816,38 +727,7 @@
 				{/snippet}
 				{#snippet railBottom()}
 					{#if flow?.members.length}
-						<div class="match-prev">
-							<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
-							{#if matchBlocked}<span>{matchBlocked}</span>{/if}
-						</div>
-						{@const here = formationAt(flow, playheadSec)}
-						<!-- 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。 -->
-						{@const hereTime = here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : ''}
-						<div class="here" class:on={!!here}>
-							<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
-							{#if here}
-								{#key here.id}
-									<input
-										class="formation-name"
-										aria-label="站位名稱"
-										placeholder="幫這張站位取名（可不填）"
-										value={here.name ?? ''}
-										onkeydown={(e) => railBoxKeydown(e, here.name ?? '')}
-										onchange={(e) => renameHere(here.id, e.currentTarget.value)}
-									/>
-									<label class="formation-time">
-										<span>站位時間</span>
-										<input
-											value={hereTime}
-											disabled={here === flow.formations[0]}
-											onkeydown={(e) => railBoxKeydown(e, hereTime)}
-											onchange={(e) => retimeHere(e.currentTarget, here, hereTime)}
-										/>
-									</label>
-									<p class="time-hint">{moveFormationHint(flow, here.id)}</p>
-								{/key}
-							{/if}
-						</div>
+						<FormationEditor {playheadSec} />
 					{/if}
 				{/snippet}
 			{#if flow.members.length === 0}
@@ -905,7 +785,7 @@
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
 				<MemberPicker {playheadSec} />
 				<WalkForm {playheadSec} />
-				<ActionForm {playheadSec} />
+				<ActionForm {playheadSec} {cellAt} />
 			</div>
 			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
 				<MemberPanel />
@@ -933,28 +813,10 @@
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
 			<Timeline
-				{flow}
 				{playheadSec}
 				onseek={(sec) => flow && seek(flow, sec)}
-				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
 				{missingSegmentIds}
-				selectedFormationId={session.selectedFormationId}
-				onselectformation={(id, sec) => {
-					session.selectFormation(id);
-					if (flow) seek(flow, sec);
-				}}
-				ondeleteformation={removeFormation}
-				onmoveformation={moveFormationTo}
-				selectedActionId={session.selectedActionId}
-				onselectaction={(id) => {
-					session.selectAction(id);
-					inspectorTab = 'action';
-				}}
-				ask={session.ask}
-				selectedMemberIds={session.selectedMemberIds}
-				onselectmembers={selectMembers}
-				multi={session.multiSelect}
 			/>
 		</div>
 		{#if view === 'practice'}
@@ -978,6 +840,7 @@
 			segmentId={openSegmentId}
 			{audios}
 			{decode}
+			{waveXToSec}
 			onaudioload={(id, audio) => (audios[id] = audio)}
 			onpreview={(id) => flow && preview(flow, id)}
 			onclose={() => (openSegmentId = null)}
@@ -1425,79 +1288,6 @@
 	.warn :global(svg) {
 		flex: none;
 		margin-top: 1px;
-	}
-	/* 播放頭停在站位上：「拖人會改」那行和站位名稱合成一張卡。 */
-	.here.on {
-		align-self: stretch;
-		display: grid;
-		gap: 6px;
-		padding: 8px;
-		border-radius: 10px;
-		background: var(--surface, #fff);
-		border: 1px solid var(--line, #d8dee9);
-		border-left: 4px solid var(--sel, #19b4d8);
-	}
-	.here.on .move-target {
-		padding: 0 2px;
-	}
-	.formation-name {
-		width: 100%;
-		font-size: 14px;
-		font-weight: 600;
-	}
-	/* 站位時間：小標在左、拍子框在右；下面一行寫能挪到哪。 */
-	.formation-time {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 0 2px;
-		font-size: 12px;
-		color: var(--muted);
-	}
-	.formation-time input {
-		width: 96px;
-		font-size: 14px;
-		font-weight: 600;
-		font-variant-numeric: tabular-nums;
-		text-align: center;
-	}
-	/* 開頭那張不能挪：框變灰。 */
-	.formation-time input:disabled {
-		background: var(--surface-2);
-		border-color: var(--line-soft);
-		color: var(--muted);
-	}
-	.time-hint {
-		margin: -2px 0 0;
-		padding: 0 2px;
-		font-size: 11px;
-		line-height: 1.4;
-		color: var(--muted);
-	}
-	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
-	.move-target {
-		margin: 0;
-		padding: 4px 10px;
-		border-radius: 8px;
-		background: var(--surface, #fff);
-		color: var(--muted);
-		font-size: 12px;
-		pointer-events: none;
-	}
-	/* ① 跟上一張一樣：在「拖人會改」那一行上面。 */
-	.match-prev {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
-		font-size: 12px;
-		color: var(--muted);
-	}
-	.match-prev span {
-		padding: 4px 10px;
-		border-radius: 8px;
-		background: var(--surface, #fff);
 	}
 	.warn span + span::before {
 		content: '／';

@@ -1,32 +1,36 @@
 <script lang="ts">
 	// 站位縮圖列：每張站位一個小站位圖，放在它的站位時間上。
-	// 點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。跟下一張靠太近的縮圖變窄，不蓋到下一張。
-	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才交給 onmove，被擋就彈回原位。開頭那張拖不動。
+	// 流程和選取從 session 拿。點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。跟下一張靠太近的縮圖變窄，不蓋到下一張。
+	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才送到 session 的 ask，被擋就彈回原位。開頭那張拖不動。
+	// 刪掉、挪好都算一步；挪好了選著這張，播放頭跳到新的站位時間（session.formationMoved）。
 	import {
+		deleteFormation,
 		fieldGeometry,
 		formationTimes,
+		moveFormation,
 		nearestPosition,
 		timeTextWithUnit,
 		toSeconds,
 		totalSeconds,
-		type Flow,
 		type TimePosition
 	} from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
-		flow: Flow;
 		/** 時間軸 1 秒幾 px。 */
 		pxPerSec: number;
-		selectedId: string | null;
-		onselect: (formationId: string, sec: number) => void;
-		ondelete: (formationId: string) => void;
-		/** 拖縮圖放開：把這張挪到 to。 */
-		onmove: (formationId: string, to: TimePosition) => void;
+		/** 點縮圖：播放頭跳到這張的站位時間（全域秒數）。 */
+		onseek: (sec: number) => void;
 	}
 
-	let { flow, pxPerSec, selectedId, onselect, ondelete, onmove }: Props = $props();
+	let { pxPerSec, onseek }: Props = $props();
+
+	const session = getEditorSession();
+	// 時間軸只在有流程時畫。
+	const flow = $derived(session.flow!);
+	const selectedId = $derived(session.selectedFormationId);
 
 	const THUMB_W = 80;
 	/** 縮圖最窄：號碼和 ✕ 還放得下。 */
@@ -67,7 +71,11 @@
 				if (!to) return;
 				dragged = true;
 				setTimeout(() => (dragged = false));
-				onmove(id, to);
+				// 被擋時縮圖已經彈回原位，還原不用再做什麼。
+				session.ask.send(() => moveFormation(flow, id, to), {
+					revert: () => {},
+					done: (r) => session.formationMoved(id, r)
+				});
 			},
 			() => (drag = null)
 		);
@@ -103,7 +111,9 @@
 					title={formation.name ? `站位 ${i + 1} ${formation.name}` : undefined}
 					aria-pressed={selectedId === formation.id}
 					onclick={() => {
-						if (!dragged) onselect(formation.id, sec);
+						if (dragged) return;
+						session.selectFormation(formation.id);
+						onseek(sec);
 					}}
 					onpointerdown={deletable ? (e) => startDrag(e, formation.id, sec) : undefined}
 				>
@@ -130,7 +140,7 @@
 						type="button"
 						class="del"
 						aria-label={`刪除站位 ${i + 1}`}
-						onclick={() => ondelete(formation.id)}><Icon name="close" size={11} /></button
+						onclick={() => session.ask.send(() => deleteFormation(flow, formation.id))}><Icon name="close" size={11} /></button
 					>
 				{/if}
 			</div>
