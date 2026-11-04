@@ -11,7 +11,6 @@ import {
 	createFlow,
 	deletePhase,
 	markPhaseBeats,
-	movePhase,
 	recordAttempt,
 	setSquad,
 	updatePhase,
@@ -192,6 +191,13 @@ describe('刪環節', () => {
 	it('找不到環節：擋下來', () => {
 		expect(deletePhase(sample(), 'x1', 'p9')).toEqual({ kind: 'blocked', message: '找不到這個環節' });
 	});
+
+	it('刪掉最後一個環節：動作不記成功率了，組一起拿掉', () => {
+		let flow = sample();
+		for (const id of ['p1', 'p2', 'p3']) flow = flowOf(deletePhase(flow, 'x1', id));
+		expect(lib(flow).successRate).toBeUndefined();
+		expect(lib(flow).members.some((m) => 'squad' in m)).toBe(false);
+	});
 });
 
 describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流程上」', () => {
@@ -210,45 +216,5 @@ describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流�
 		const undone = carryRecords(before, after);
 		expect(phasesOf(undone).map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
 		expect(lib(undone).successRate!.records.map((r) => r.marks)).toEqual([{ p1: '✓' }]);
-	});
-});
-
-describe('換順序', () => {
-	const ids = (flow: Flow) => phasesOf(flow).map((p) => p.id);
-	/** sample 的環節都拿掉標的拍；給了 marked 的那個留著（只有沒標拍的能換順序，這裡直接改資料）。 */
-	function unmarked(marked?: string): Flow {
-		const flow = sample();
-		const action = lib(flow);
-		const phases = action.successRate!.phases.map(({ beats, ...p }) => (p.id === marked ? { ...p, beats } : p));
-		return { ...flow, actions: [{ ...action, successRate: { ...action.successRate!, phases } }] };
-	}
-	/** p1 標了第 1–2 拍，其他沒標拍。 */
-	const withMarked = () => unmarked('p1');
-
-	it('把環節換到第幾個（0 起）', () => {
-		let flow = flowOf(movePhase(unmarked(), 'x1', 'p3', 0));
-		expect(ids(flow)).toEqual(['p3', 'p1', 'p2']);
-		flow = flowOf(movePhase(flow, 'x1', 'p3', 2));
-		expect(ids(flow)).toEqual(['p1', 'p2', 'p3']);
-	});
-
-	it('換順序不動紀錄', () => {
-		const flow = flowOf(recordAttempt(unmarked(), 'x1', drill({ p1: '✓', p2: '△' })));
-		const moved = flowOf(movePhase(flow, 'x1', 'p2', 0));
-		expect(lib(moved).successRate!.records).toEqual(lib(flow).successRate!.records);
-		expect(attemptText(lib(moved), lib(moved).successRate!.records[0])).toBe('△✓·');
-	});
-
-	it('標了拍的環節不能換；也不能換到標了拍的前面', () => {
-		const flow = withMarked();
-		const message = '標了拍的環節照時間排，只有沒標拍的能換順序';
-		expect(movePhase(flow, 'x1', 'p1', 1)).toEqual({ kind: 'blocked', message });
-		expect(movePhase(flow, 'x1', 'p3', 0)).toEqual({ kind: 'blocked', message });
-		expect(ids(flowOf(movePhase(flow, 'x1', 'p3', 1)))).toEqual(['p1', 'p3', 'p2']);
-	});
-
-	it('換到清單外面：擋下來', () => {
-		expect(movePhase(unmarked(), 'x1', 'p1', 3)).toEqual({ kind: 'blocked', message: '環節換不到那裡' });
-		expect(movePhase(unmarked(), 'x1', 'p1', -1)).toEqual({ kind: 'blocked', message: '環節換不到那裡' });
 	});
 });

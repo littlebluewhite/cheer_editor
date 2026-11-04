@@ -6,11 +6,11 @@ import {
 	attemptText,
 	attemptWhos,
 	carryRecords,
+	clearPhaseBeats,
 	createFlow,
 	deleteAction,
 	deleteLastAttempt,
 	deleteMember,
-	disableSuccessRate,
 	markPhaseBeats,
 	readFlowFile,
 	recordableActions,
@@ -205,15 +205,15 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		expect(recordsOf(carried, 'x2')).toEqual([]);
 	});
 
-	it('指到不在的動作、或換上的動作沒打開記成功率：紀錄丟掉', () => {
-		const older = flowOf(disableSuccessRate(flowOf(deleteAction(sample(), 'x2')), 'x1'));
+	it('指到不在的動作、或換上的動作不記成功率：紀錄丟掉', () => {
+		const older = flowOf(clearPhaseBeats(flowOf(deleteAction(sample(), 'x2')), 'x1', 0, 999));
 		const carried = carryRecords(older, recorded());
 		expect(carried.actions.map((a) => [a.id, a.successRate])).toEqual([['x1', undefined]]);
 	});
 
 	it('換上的流程有、現在沒有的紀錄不會回來', () => {
 		const current = recorded();
-		const off = flowOf(disableSuccessRate(current, 'x2', { confirmed: true }));
+		const off = flowOf(clearPhaseBeats(current, 'x2', 0, 999, { confirmed: true }));
 		const cleared = flowOf(markPhaseBeats(off, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
 		const carried = carryRecords(current, cleared);
 		expect(recordsOf(carried, 'x2')).toEqual([]);

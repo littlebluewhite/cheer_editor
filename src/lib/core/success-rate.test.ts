@@ -4,8 +4,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	disableSuccessRate,
-	enableSuccessRate,
+	clearPhaseBeats,
 	markPhaseBeats,
 	phaseColor,
 	setSquad,
@@ -46,80 +45,17 @@ function sample(category: ActionCategory = 'stunt'): Flow {
 
 const actionOf = (flow: Flow, id = 'x1') => flow.actions.find((a) => a.id === id)!;
 
-describe('打開記成功率', () => {
-	it('技巧：先填上法、中段、下法，紀錄是空的', () => {
-		const flow = flowOf(enableSuccessRate(sample('stunt'), 'x1'));
-		expect(actionOf(flow).successRate).toEqual({
-			phases: [
-				{ id: 'p1', kind: 'load', name: '' },
-				{ id: 'p2', kind: 'hold', name: '' },
-				{ id: 'p3', kind: 'dismount', name: '' }
-			],
-			records: []
-		});
-	});
-
-	const kindsAndNames = (flow: Flow) =>
-		actionOf(flow).successRate?.phases.map((p) => [p.kind, p.name]);
-
-	it.each([
-		['pyramid', [['load', ''], ['dismount', '']]],
-		['toss', [['whole', '拋投']]],
-		['tumbling', [['whole', '騰翻']]],
-		['jump', []],
-		['dance', []],
-		['other', []]
-	] as const)('大類 %s：先填的環節照大類', (category, expected) => {
-		const flow = flowOf(enableSuccessRate(sample(category), 'x1'));
-		expect(kindsAndNames(flow)).toEqual(expected);
-		expect(actionOf(flow).successRate?.records).toEqual([]);
-	});
-
-	it('金字塔：動作裡全部的人放第 1 組', () => {
-		const flow = flowOf(enableSuccessRate(sample('pyramid'), 'x1'));
-		expect(actionOf(flow).members.map((m) => m.squad)).toEqual([1, 1, 1, 1]);
-	});
-
-	it('別的大類：沒有人分組', () => {
-		const flow = flowOf(enableSuccessRate(sample('stunt'), 'x1'));
-		expect(actionOf(flow).members.map((m) => m.squad)).toEqual([undefined, undefined, undefined, undefined]);
-	});
-
-	it('環節的 id 在流程裡不重用：別的動作打開、關掉再打開，都是新的 id', () => {
-		let flow = flowOf(
-			addAction(sample(), {
-				segmentId: 's1',
-				category: 'toss',
-				name: '籃拋',
-				start: 32,
-				length: 16,
-				note: '',
-				members: [{ memberId: 'm1', role: null }]
-			})
-		);
-		flow = flowOf(enableSuccessRate(flow, 'x1'));
-		flow = flowOf(enableSuccessRate(flow, 'x2'));
-		flow = flowOf(disableSuccessRate(flow, 'x1'));
-		flow = flowOf(disableSuccessRate(flow, 'x2'));
-		flow = flowOf(enableSuccessRate(flow, 'x1'));
-		const ids = (id: string) => actionOf(flow, id).successRate?.phases.map((p) => p.id);
-		expect(ids('x1')).toEqual(['p5', 'p6', 'p7']);
-	});
-});
-
-describe('關掉記成功率', () => {
-	it('環節、組、紀錄都拿掉，動作回到沒打開的樣子', () => {
-		const before = sample('pyramid');
-		const on = flowOf(enableSuccessRate(before, 'x1'));
-		const off = flowOf(disableSuccessRate(on, 'x1'));
-		expect(actionOf(off)).toEqual(actionOf(before));
-		expect('successRate' in actionOf(off)).toBe(false);
-		expect(actionOf(off).members.some((m) => 'squad' in m)).toBe(false);
-	});
-});
-
 /** x1 加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
 const rated = (flow: Flow, id = 'x1') => flowOf(markPhaseBeats(flow, id, { kind: 'whole', name: '' }, 0, 16));
+
+describe('環節的 id', () => {
+	it('刪掉的環節的 id 不重用：清光再加，是新的 id', () => {
+		let flow = flowOf(clearPhaseBeats(rated(sample()), 'x1', 0, 16));
+		expect(actionOf(flow).successRate).toBeUndefined();
+		flow = rated(flow);
+		expect(actionOf(flow).successRate?.phases.map((p) => p.id)).toEqual(['p2']);
+	});
+});
 
 describe('設組', () => {
 	const on = (category: ActionCategory = 'stunt') => rated(sample(category));
@@ -144,8 +80,8 @@ describe('設組', () => {
 		});
 	});
 
-	it('沒打開記成功率不能分組', () => {
-		expect(setSquad(sample(), 'x1', 'm1', 1)).toEqual({ kind: 'blocked', message: '先打開記成功率才能分組' });
+	it('沒有環節不能分組', () => {
+		expect(setSquad(sample(), 'x1', 'm1', 1)).toEqual({ kind: 'blocked', message: '動作有環節才能分組' });
 	});
 
 	it.each([0, -1, 1.5])('組要是正整數（%s 被擋）', (squad) => {

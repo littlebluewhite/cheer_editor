@@ -60,8 +60,6 @@ export {
 	MARKS,
 	PHASE_KIND_COLORS,
 	PHASE_KINDS,
-	disableSuccessRate,
-	enableSuccessRate,
 	perPerson,
 	phaseColor,
 	setSquad,
@@ -80,10 +78,10 @@ export {
 } from './records';
 export type { RunThroughMarks } from './records';
 
-export { addPhase, deletePhase, movePhase, phaseLabel, updatePhase } from './phases';
+export { addPhase, deletePhase, phaseLabel, updatePhase } from './phases';
 export { ACTION_COLORS, PHASE_COLORS } from './colors';
 export type { PhaseChange } from './phases';
-export { clearPhaseBeats, markPhaseBeats, phaseSpan } from './phase-beats';
+export { clearPhaseBeats, markPhaseBeats } from './phase-beats';
 export type { BeatsTarget } from './phase-beats';
 
 export {

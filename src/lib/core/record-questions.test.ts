@@ -1,4 +1,4 @@
-// 會清掉紀錄的改動先問：關掉記成功率、刪動作、段縮短、換大類、組換了人、騰翻跳躍拿掉人、改隊員名字、刪隊員。
+// 會清掉紀錄的改動先問：刪動作、段縮短、換大類、組換了人、騰翻跳躍拿掉人、改隊員名字、刪隊員。
 import { describe, expect, it } from 'vitest';
 import {
 	addAction,
@@ -7,7 +7,6 @@ import {
 	createFlow,
 	deleteAction,
 	deleteMember,
-	disableSuccessRate,
 	markPhaseBeats,
 	recordAttempt,
 	setSquad,
@@ -95,7 +94,6 @@ const x1Members = () => sample().actions[0].members;
 
 describe('沒有紀錄會被動到：不問，跟以前一樣', () => {
 	it.each([
-		['關掉記成功率', (f: Flow) => disableSuccessRate(f, 'x1')],
 		['刪動作', (f: Flow) => deleteAction(f, 'x1')],
 		['換大類', (f: Flow) => updateAction(f, 'x1', { category: 'tumbling' })],
 		['設組換到別組', (f: Flow) => setSquad(f, 'x1', 'm1', 2)],
@@ -111,19 +109,6 @@ describe('沒有紀錄會被動到：不問，跟以前一樣', () => {
 		expect(updateAction(flow, 'x1', { members: roles }).kind).toBe('ok');
 		expect(updateMember(flow, 'm1', { gender: 'M' }).kind).toBe('ok');
 		expect(updateMember(flow, 'm1', { name: ' 小美 ' }).kind).toBe('ok');
-	});
-});
-
-describe('關掉記成功率', () => {
-	it('有紀錄：要確認，寫會清掉幾次；確定後清掉', () => {
-		const flow = recorded();
-		expect(disableSuccessRate(flow, 'x1')).toEqual({
-			kind: 'confirm',
-			message: '關掉記成功率會清掉動作「技巧·Lib」的 3 次紀錄',
-			items: []
-		});
-		const off = flowOf(disableSuccessRate(flow, 'x1', { confirmed: true }));
-		expect(action(off, 'x1').successRate).toBeUndefined();
 	});
 });
 
