@@ -8,7 +8,7 @@ import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { applyPhases, NO_PHASES_LEFT, phaseLabel } from './phases';
 import type { Segment } from './segment';
-import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import {
 	allPhaseIds,
 	firstSquad,
@@ -192,13 +192,13 @@ function ordered(phases: Phase[]): Phase[] {
  * 換掉動作的環節清單；不守規則就擋下來。音樂段沒標拍的環節刪掉：有記號先回「要確認」，
  * 寫會清掉幾次的記號（刪光了也說動作不再記成功率），帶 { confirmed: true } 再送一次才刪。
  */
-function withPhases(flow: Flow, action: Action, phases: Phase[], { confirmed = false }: ConfirmOption): CommandResult {
+function withPhases(flow: Flow, action: Action, phases: Phase[], options: ConfirmOption): CommandResult {
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
 	if (!segment) return blocked('找不到這一段');
 	const kept = segment.kind === 'music' ? phases.filter((p) => p.beats) : phases;
 	const gone = phases.filter((p) => !kept.includes(p));
 	const marked = markedCount(action, gone);
-	if (marked && !confirmed) {
+	if (marked && !answered(options)) {
 		const empty = kept.length ? '' : NO_PHASES_LEFT;
 		return needsConfirm(
 			`拍清光的環節會刪掉，清掉 ${marked} 次的記號${empty}，確定就刪掉`,

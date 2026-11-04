@@ -5,7 +5,7 @@
 import { replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
-import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { allPhaseIds, firstSquad, PHASE_KINDS, replacePhases, successRateProblem, type Phase, type PhaseKind } from './success-rate';
 
 /** 改環節要改的東西；沒給的不動。color 給 null 是回到種類的顏色。 */
@@ -58,14 +58,14 @@ export function deletePhase(
 	flow: Flow,
 	actionId: string,
 	phaseId: string,
-	{ confirmed = false }: ConfirmOption = {}
+	options: ConfirmOption = {}
 ): CommandResult {
 	const found = findPhase(flow, actionId, phaseId);
 	if (typeof found === 'string') return blocked(found);
 	const { action, phase } = found;
 	const marked = action.successRate!.records.filter((r) => phaseId in r.marks).length;
 	const phases = action.successRate!.phases.filter((p) => p.id !== phaseId);
-	if (marked && !confirmed) {
+	if (marked && !answered(options)) {
 		const empty = phases.length ? '' : NO_PHASES_LEFT;
 		return needsConfirm(`${phaseLabel(phase)} 有紀錄，刪掉會清掉 ${marked} 次的記號${empty}，確定就刪掉`, []);
 	}

@@ -110,7 +110,7 @@ export function updateMember(
 export function deleteMember(
 	flow: Flow,
 	id: string,
-	{ confirmed = false }: ConfirmOption = {}
+	options: ConfirmOption = {}
 ): CommandResult {
 	const member = flow.members.find((m) => m.id === id);
 	if (!member) return blocked('找不到這個隊員');
@@ -122,7 +122,7 @@ export function deleteMember(
 			const left = withoutRecords(a, memberRecords(a, id));
 			return compactSquads(fitRecords(dropOrphanCues({ ...left, members: a.members.filter((m) => m.memberId !== id) })));
 		});
-	if (!confirmed) {
+	if (!answered(options)) {
 		const spans = segmentSpans(flow);
 		const cueCount = (list: Action[]) => list.reduce((n, a) => n + (a.cues?.length ?? 0), 0);
 		const dropped = cueCount(flow.actions.filter((a) => !emptied.includes(a))) - cueCount(actions);
