@@ -16,6 +16,7 @@ import {
 	setSquad,
 	updateAction,
 	updateSegment,
+	type ActionCategory,
 	type CommandResult,
 	type Flow,
 	type Phase
@@ -147,15 +148,54 @@ describe('標拍擋下來的情況', () => {
 		expect(markPhaseBeats(make(), id, { kind: 'whole', name: '' }, at, len)).toEqual({ kind: 'blocked', message });
 	});
 
-	it('沒打開記成功率', () => {
-		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'jump', name: '', start: 32, length: 16, note: '', members: [{ memberId: 'm1', role: null }] }));
-		expect(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '' }, 0, 2)).toEqual({ kind: 'blocked', message: '先打開記成功率才能標拍' });
-	});
 
 	it('動作被拖半拍後：要對齊音樂的整拍', () => {
 		const flow = flowOf(updateAction(sample(), 'x1', { start: 1, length: 30 }));
 		expect(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 2)).toEqual({ kind: 'blocked', message: '環節要標在整拍上' });
 		expect(brief(flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 1, 2)))).toEqual(['p1 1+2', 'p2', 'p3']);
+	});
+});
+
+describe('沒記成功率的動作標拍加環節', () => {
+	/** sample 再加 x2：2-1 起一個八拍、小美和小A，還沒記成功率。 */
+	const unrated = (category: ActionCategory) => {
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		return flowOf(addAction(sample(), { segmentId: 's1', category, name: '', start: 32, length: 16, note: '', members }));
+	};
+	const x2 = (flow: Flow) => flow.actions.find((a) => a.id === 'x2')!;
+
+	it('動作開始記成功率，只有這一個環節', () => {
+		const flow = flowOf(markPhaseBeats(unrated('stunt'), 'x2', { kind: 'load', name: '延伸' }, 0, 4));
+		expect(x2(flow).successRate).toEqual({
+			phases: [{ id: 'p4', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } }],
+			records: []
+		});
+	});
+
+	it.each([
+		['stunt', [1, 1]],
+		['pyramid', [1, 1]],
+		['toss', [1, 1]],
+		['dance', [1, 1]],
+		['other', [1, 1]],
+		['tumbling', [undefined, undefined]],
+		['jump', [undefined, undefined]]
+	] as const)('%s：分組的大類全部的人進第 1 組；騰翻、跳躍不分組', (category, squads) => {
+		const flow = flowOf(markPhaseBeats(unrated(category), 'x2', { kind: 'whole', name: '' }, 0, 4));
+		expect(x2(flow).members.map((m) => m.squad)).toEqual(squads);
+	});
+
+	it('已經記成功率的動作加環節：組不動', () => {
+		const split = flowOf(setSquad(sample(), 'x1', 'm2', 2));
+		const flow = flowOf(markPhaseBeats(split, 'x1', { kind: 'whole', name: '' }, 0, 4));
+		expect(lib(flow).members.map((m) => m.squad)).toEqual([1, 2]);
+	});
+
+	it('還沒有環節，不能標給現有的環節', () => {
+		expect(markPhaseBeats(unrated('stunt'), 'x2', { phaseId: 'p1' }, 0, 4)).toEqual({ kind: 'blocked', message: '找不到這個環節' });
 	});
 });
 
