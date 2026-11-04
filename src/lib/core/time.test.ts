@@ -15,14 +15,9 @@ import {
 	toSeconds,
 	totalSeconds,
 	updateSegment,
-	type CommandResult,
 	type Flow
 } from './index';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
+import { flowOf } from './test-flows';
 
 /** 音樂 1（150 BPM、8 個八拍）→ 口號 32.4 秒 → 音樂 2（120 BPM、1 個八拍）。 */
 function sample(): Flow {
