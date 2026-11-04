@@ -3,7 +3,8 @@
 	// 卡片的標題就是名稱輸入框；辨識色沒挑就用大類的顏色。
 	// 規則（跨段、重疊、至少 1 人、角色存在）都交給流程核心判斷；被擋就顯示原因並還原。
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
-	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色一起帶。
+	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
+	// 改動作時多一區「成功率」：開關記成功率、列出環節；打開後（騰翻、跳躍除外）每個人旁邊選第幾組。
 	import { untrack } from 'svelte';
 	import {
 		ACTION_CATEGORIES,
@@ -13,23 +14,31 @@
 		addAction,
 		atText,
 		deleteAction,
+		disableSuccessRate,
+		enableSuccessRate,
 		lengthText,
 		memberName,
 		parseAt,
 		parseLength,
+		perPerson,
+		PHASE_KINDS,
+		phaseColor,
 		positionText,
 		roleGlossary,
 		segmentSpans,
+		setSquad,
 		updateAction,
 		type Action,
 		type ActionCategory,
 		type ActionMember,
 		type Flow,
-		type NewActionInput
+		type NewActionInput,
+		type PhaseKind
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
+	import { applyResult } from './form';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 	import RolePicker, { roleKey } from './RolePicker.svelte';
@@ -95,6 +104,13 @@
 				label: `${positionText(flow, sec)}　${actionLabel(a)}（${a.members.length} 人）`
 			}))
 	);
+
+	/** 「第幾組」選單的組：1 到現在最大的組再多一組。沒打開記成功率、或騰翻跳躍（不分組）是空的，不顯示選單。 */
+	const squadChoices = $derived.by(() => {
+		if (!action?.successRate || perPerson(action.category)) return [];
+		const max = Math.max(0, ...action.members.map((m) => m.squad ?? 0));
+		return Array.from({ length: max + 1 }, (_, i) => i + 1);
+	});
 
 	let draft = $state<Draft>(blank());
 	let error = $state('');
@@ -265,6 +281,18 @@
 		changed();
 	}
 
+	function toggleSuccessRate(on: boolean) {
+		if (!action) return;
+		error = applyResult((on ? enableSuccessRate : disableSuccessRate)(flow, action.id), onchange);
+	}
+
+	/** value 是選單的值：空字串是沒分組。 */
+	function pickSquad(memberId: string, value: string) {
+		if (!action) return;
+		error = applyResult(setSquad(flow, action.id, memberId, value ? Number(value) : null), onchange);
+	}
+
+	const kindLabel = (kind: PhaseKind) => PHASE_KINDS.find((k) => k.key === kind)?.label ?? '';
 	const nameOf = (id: string) => memberName(flow, id);
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
@@ -369,7 +397,7 @@
 				<button type="button" class="link" onclick={() => (glossaryOpen = true)}>名詞對照表</button>
 			</div>
 			{#if draft.members.length}
-				<ul>
+				<ul class:grouped={squadChoices.length > 0}>
 					{#each draft.members as m, i (m.memberId)}
 						{@const who = memberOf(m.memberId)}
 						<li>
@@ -385,6 +413,17 @@
 								onpick={(role, byKey) => setRole(i, role, byKey)}
 								onnew={() => (glossaryOpen = true)}
 							/>
+							{#if squadChoices.length}
+								<select
+									class="squad"
+									aria-label="{nameOf(m.memberId)} 的組"
+									value={m.squad ?? ''}
+									onchange={(e) => pickSquad(m.memberId, e.currentTarget.value)}
+								>
+									<option value="">沒有</option>
+									{#each squadChoices as n (n)}<option value={n}>第 {n} 組</option>{/each}
+								</select>
+							{/if}
 							<button
 								type="button"
 								class="ghost icon"
@@ -404,7 +443,7 @@
 				</select>
 				{#if copySources.length}
 					<select aria-label="從別的動作複製人" onchange={(e) => copyFrom(e.currentTarget)}>
-						<option value="">從別的動作複製人（連任務角色）…</option>
+						<option value="">從別的動作複製人（連任務角色和組）…</option>
 						{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
 					</select>
 				{/if}
@@ -417,6 +456,33 @@
 		</label>
 
 		{#if action}
+			<div class="rate" role="group" aria-label="成功率">
+				<div class="rate-head">
+					<span class="cap">成功率</span>
+					<label class="switch">
+						<input
+							type="checkbox"
+							checked={!!action.successRate}
+							onchange={(e) => toggleSuccessRate(e.currentTarget.checked)}
+						/>記成功率
+					</label>
+				</div>
+				{#if action.successRate}
+					{#if action.successRate.phases.length}
+						<ol class="phases" aria-label="環節">
+							{#each action.successRate.phases as p (p.id)}
+								<li>
+									<span class="chip" style:--c={phaseColor(p)}></span>
+									<b>{kindLabel(p.kind)}</b>
+									{#if p.name}<span class="phase-name">{p.name}</span>{/if}
+								</li>
+							{/each}
+						</ol>
+					{:else}
+						<p class="muted none">還沒有環節</p>
+					{/if}
+				{/if}
+			</div>
 			<CueGrid {flow} {action} {onchange} />
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
@@ -745,6 +811,58 @@
 		width: 26px;
 		height: 26px;
 		color: var(--muted, #66718a);
+	}
+	/* 打開記成功率：任務角色和移出鈕中間多一個「第幾組」選單 */
+	ul.grouped li {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
+	}
+	.squad {
+		padding-inline: 4px;
+		font-size: 12px;
+	}
+	.rate {
+		background: var(--surface, #fff);
+		border: 1px solid var(--line-soft, #e8ecf3);
+		border-radius: 10px;
+		padding: 10px;
+		display: grid;
+		gap: 8px;
+	}
+	.rate-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	.switch {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.phases {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 4px;
+	}
+	.phases li {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.chip {
+		flex: none;
+		width: 12px;
+		height: 12px;
+		border-radius: 3px;
+		background: var(--c);
+	}
+	.phase-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.adders {
 		display: grid;

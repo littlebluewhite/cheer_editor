@@ -3,8 +3,11 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	enableSuccessRate,
 	placeCue,
+	setSquad,
 	updateSegment,
+	type ActionCategory,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -397,5 +400,106 @@ describe('動作表單：拍點格子', () => {
 		const group = screen.getByRole('group', { name: '拍點' });
 		expect(group.textContent).toContain('口號段不數拍，不能放拍點');
 		expect(within(group).queryByRole('button')).toBeNull();
+	});
+});
+
+describe('動作表單：成功率', () => {
+	/** 小A（上層）、小B 做的 Lib，大類照給的；x2 是後面另一個動作，只有小A。 */
+	function withLib(category: ActionCategory = 'stunt'): Flow {
+		const base = { segmentId: 's1', name: '', note: '', length: 8 };
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		let flow = flowOf(addAction(sample(), { ...base, category, name: 'Lib', start: 0, members }));
+		return flowOf(addAction(flow, { ...base, category: 'stunt', start: 16, members: [members[0]] }));
+	}
+
+	/** 畫面跟著 onchange 送出的流程更新，像在編輯頁裡一樣。 */
+	function live(flow: Flow, actionId: string | null) {
+		const onchange = vi.fn();
+		const { rerender } = render(ActionForm, { flow, playheadSec: 0, actionId, onchange, onselect: vi.fn() });
+		onchange.mockImplementation((f: Flow) => rerender({ flow: f }));
+		return onchange;
+	}
+
+	const toggle = () => screen.getByRole('checkbox', { name: '記成功率' }) as HTMLInputElement;
+	const phaseRows = () =>
+		within(screen.getByRole('list', { name: '環節' }))
+			.getAllByRole('listitem')
+			.map((li) => li.textContent?.trim());
+	const squadOptions = (who: string) =>
+		[...(screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement).options].map((o) => o.text);
+
+	it('開關預設關；打開後列出照大類先填的環節（色塊、種類、名字）；關掉就收起來', async () => {
+		const onchange = live(withLib('toss'), 'x1');
+		const section = screen.getByRole('group', { name: '成功率' });
+		expect(toggle().checked).toBe(false);
+		expect(within(section).queryByRole('list')).toBeNull();
+
+		await fireEvent.click(toggle());
+		expect(onchange.mock.calls.at(-1)![0].actions[0].successRate.phases).toHaveLength(1);
+		expect(toggle().checked).toBe(true);
+		expect(phaseRows()).toEqual(['整體 拋投']);
+		const chip = within(section).getByRole('listitem').querySelector('.chip') as HTMLElement;
+		expect(chip.style.getPropertyValue('--c')).toBe('#6b7280');
+
+		await fireEvent.click(toggle());
+		expect('successRate' in onchange.mock.calls.at(-1)![0].actions[0]).toBe(false);
+		expect(within(section).queryByRole('list')).toBeNull();
+	});
+
+	it('技巧打開：上法、中段、下法；跳躍打開：還沒有環節', async () => {
+		live(withLib('stunt'), 'x1');
+		await fireEvent.click(toggle());
+		expect(phaseRows()).toEqual(['上法', '中段', '下法']);
+
+		document.body.innerHTML = '';
+		live(withLib('jump'), 'x1');
+		await fireEvent.click(toggle());
+		expect(screen.getByRole('group', { name: '成功率' }).textContent).toContain('還沒有環節');
+	});
+
+	it('新增動作時沒有成功率區', () => {
+		live(withLib(), null);
+		expect(screen.queryByRole('group', { name: '成功率' })).toBeNull();
+	});
+
+	it('打開後每個人旁邊選第幾組：沒有、第 1 組…，最多比現在最大的組多一組', async () => {
+		const onchange = live(withLib(), 'x1');
+		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
+		await fireEvent.click(toggle());
+		expect(squadOptions('小A')).toEqual(['沒有', '第 1 組']);
+
+		await fireEvent.change(screen.getByRole('combobox', { name: '小A 的組' }), { target: { value: '1' } });
+		expect(onchange.mock.calls.at(-1)![0].actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層', squad: 1 });
+		expect(squadOptions('小B')).toEqual(['沒有', '第 1 組', '第 2 組']);
+
+		await fireEvent.change(screen.getByRole('combobox', { name: '小B 的組' }), { target: { value: '2' } });
+		expect(squadOptions('小A')).toEqual(['沒有', '第 1 組', '第 2 組', '第 3 組']);
+		await fireEvent.change(screen.getByRole('combobox', { name: '小A 的組' }), { target: { value: '' } });
+		expect('squad' in onchange.mock.calls.at(-1)![0].actions[0].members[0]).toBe(false);
+	});
+
+	it.each([['tumbling'], ['jump']] as const)('%s 的動作打開記成功率也不分組', async (category) => {
+		live(withLib(category), 'x1');
+		await fireEvent.click(toggle());
+		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
+	});
+
+	it('「從別的動作複製人（連任務角色和組）」連組一起帶', async () => {
+		let flow = flowOf(enableSuccessRate(withLib(), 'x1'));
+		flow = flowOf(setSquad(flow, 'x1', 'm1', 1));
+		flow = flowOf(setSquad(flow, 'x1', 'm2', 2));
+		flow = flowOf(enableSuccessRate(flow, 'x2'));
+		const onchange = live(flow, 'x2');
+		const copy = screen.getByLabelText('從別的動作複製人') as HTMLSelectElement;
+		expect(copy.options[0].text).toBe('從別的動作複製人（連任務角色和組）…');
+		await fireEvent.change(copy, { target: { value: 'x1' } });
+		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
+			{ memberId: 'm1', role: '上層', squad: 1 },
+			{ memberId: 'm2', role: '主底', squad: 2 }
+		]);
+		expect((screen.getByRole('combobox', { name: '小B 的組' }) as HTMLSelectElement).value).toBe('2');
 	});
 });
