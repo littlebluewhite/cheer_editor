@@ -9,16 +9,18 @@
 		perPerson,
 		phaseLabel,
 		successPercent,
-		type Action,
-		type Flow
+		type Action
 	} from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 
 	interface Props {
-		flow: Flow;
 		action: Action;
 	}
 
-	let { flow, action }: Props = $props();
+	let { action }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	const whos = $derived(attemptWhos(flow, action));
 	/** 選的組（或人），存成 select 的值；空字串是全部。 */

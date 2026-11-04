@@ -419,11 +419,6 @@
 		trimSelection(f);
 	}
 
-	/** 紀錄改了（記一次、刪掉上一次）：交給 session 的「記」，不算復原的一步。草稿照樣自動存。 */
-	function record(f: Flow) {
-		session.record(f);
-	}
-
 	function undo() {
 		if (session.undo()) restore(session.flow!);
 	}
@@ -1054,7 +1049,7 @@
 			<div class="practice-host">
 				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
 				{#key opened}
-					<Practice {flow} date={practiceDate} ondate={(d) => (practiceDate = d)} onrecord={record} />
+					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} />
 				{/key}
 				{@render noticeToast()}
 			</div>

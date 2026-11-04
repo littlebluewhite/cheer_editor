@@ -12,23 +12,26 @@
 		recordableActions,
 		recordRunThrough,
 		type Action,
-		type Flow,
 		type Mark,
 		type RunThroughMarks
 	} from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { Ask } from './ask.svelte.js';
 	import { actionColor } from './category-colors';
 
 	interface Props {
-		flow: Flow;
 		/** 記在哪一天（練習畫面選的日期）。 */
 		date: string;
-		/** 存好了：新的流程（紀錄不算復原的一步）。 */
-		onrecord: (flow: Flow) => void;
 		/** 存好或取消後關掉這張表。 */
 		onclose: () => void;
 	}
 
-	let { flow, date, onrecord, onclose }: Props = $props();
+	let { date, onclose }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
+	/** 存好了交給 session 的「記」（紀錄不算復原的一步）。 */
+	const ask = new Ask((f) => session.record(f));
 
 	const NEXT: Record<Mark, Mark> = { '✓': '△', '△': '✗', '✗': '✓' };
 
@@ -38,7 +41,6 @@
 	let picked = $state<Record<string, Mark>>({});
 	/** 按了「沒做（停了）」的動作。 */
 	let skipped = $state<string[]>([]);
-	let error = $state('');
 
 	const key = (actionId: string, who: number | string, phaseId: string) => `${actionId}|${who}|${phaseId}`;
 
@@ -70,10 +72,7 @@
 		const entries: RunThroughMarks[] = blocks
 			.filter(({ action }) => !skipped.includes(action.id))
 			.flatMap(({ action, whos }) => whos.map(({ who }) => ({ actionId: action.id, who, marks: tapped(action, who) })));
-		const r = recordRunThrough(flow, date, entries);
-		if (r.kind !== 'ok') return void (error = r.message);
-		onrecord(r.flow);
-		onclose();
+		ask.send(() => recordRunThrough(flow, date, entries), { done: onclose });
 	}
 
 	const markLabel = (m: Mark | null) => MARKS.find((x) => x.key === m)?.label ?? '空的';
@@ -129,7 +128,7 @@
 		</section>
 	{/each}
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 
 	<footer>
 		<button type="button" class="primary" onclick={save}>存這次全上</button>
