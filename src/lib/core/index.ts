@@ -57,6 +57,7 @@ export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
 export {
 	groupsPeople,
+	keptAttempt,
 	MARKS,
 	newActionMember,
 	PHASE_KIND_COLORS,

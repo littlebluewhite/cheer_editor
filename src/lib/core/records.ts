@@ -8,6 +8,7 @@ import { blocked, ok, type CommandResult } from './result';
 import {
 	attemptProblem,
 	fitRecords,
+	keptAttempt,
 	perPerson,
 	squadName,
 	squadsOf,
@@ -16,7 +17,7 @@ import {
 	type NewAttempt
 } from './success-rate';
 
-/** 記一次：給動作、誰、日期、練法、整個做或只練幾個環節、記號。回傳新的一次的 id。 */
+/** 記一次：給動作、誰、日期、練法、整個做或只練幾個環節、記號（存成 keptAttempt 給的樣子）。回傳新的一次的 id。 */
 export function recordAttempt(
 	flow: Flow,
 	actionId: string,
@@ -25,10 +26,11 @@ export function recordAttempt(
 	const action = flow.actions.find((a) => a.id === actionId);
 	if (!action) return blocked('找不到這個動作');
 	if (!action.successRate) return blocked('這個動作沒有記成功率');
-	const problem = attemptProblem(action, input);
+	const kept = { ...input, ...keptAttempt(action, input.whole, input.marks) };
+	const problem = attemptProblem(action, kept);
 	if (problem) return blocked(problem);
 	const issued = freshIds('t', 1, flow.lastIds, attemptIds(flow));
-	const attempt = { id: issued.ids[0], ...input };
+	const attempt = { id: issued.ids[0], ...kept };
 	const records = [...action.successRate.records, attempt];
 	return { kind: 'ok', flow: withRecords({ ...flow, lastIds: issued.lastIds }, action, records), id: attempt.id };
 }

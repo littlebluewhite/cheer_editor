@@ -11,6 +11,7 @@ import {
 	deleteAction,
 	deleteLastAttempt,
 	deleteMember,
+	keptAttempt,
 	markPhaseBeats,
 	readFlowFile,
 	recordableActions,
@@ -114,6 +115,68 @@ describe('記一次', () => {
 	it('騰翻的動作：誰是隊員 id', () => {
 		const flow = flowOf(recordAttempt(sample(), 'x2', drill({ p4: '✓' }, { who: 'm2' })));
 		expect(recordsOf(flow, 'x2').map((r) => r.who)).toEqual(['m2']);
+	});
+});
+
+describe('記一次：留哪些記號、算不算整個做', () => {
+	it('✗ 後面的記號不存', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✗', p3: '✓' })));
+		expect(recordsOf(flow)[0]).toMatchObject({ whole: true, marks: { p1: '✓', p2: '✗' } });
+	});
+
+	it('整個做卻跳過前面的環節：存成只練幾個環節', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p3: '✓' })));
+		expect(recordsOf(flow)[0]).toMatchObject({ whole: false, marks: { p1: '✓', p3: '✓' } });
+	});
+
+	it('整個做、✗ 前面都點了：✗ 後面空著仍然是整個做', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✗' })));
+		expect(recordsOf(flow)[0]).toMatchObject({ whole: true, marks: { p1: '✓', p2: '✗' } });
+	});
+
+	it('整個做、✗ 前面有沒點的：存成只練幾個環節', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p2: '✗', p3: '✓' })));
+		expect(recordsOf(flow)[0]).toMatchObject({ whole: false, marks: { p2: '✗' } });
+	});
+
+	it('只練幾個環節：還是只練幾個環節，✗ 後面一樣不存', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✗', p3: '✓' }, { whole: false })));
+		expect(recordsOf(flow)[0]).toMatchObject({ whole: false, marks: { p1: '✗' } });
+	});
+
+	it('全上裡 ✗ 後面空著，仍然是整個做；✗ 後面給了記號也不存', () => {
+		const flow = flowOf(
+			recordRunThrough(sample(), '2026-11-04', [
+				{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✗' } },
+				{ actionId: 'x1', who: 2, marks: { p1: '✗', p2: '✓', p3: '✓' } }
+			])
+		);
+		expect(recordsOf(flow).map((r) => [r.whole, r.marks])).toEqual([
+			[true, { p1: '✓', p2: '✗' }],
+			[true, { p1: '✗' }]
+		]);
+	});
+
+	it.each([
+		['全部點了', true, { p1: '✓', p2: '△', p3: '✓' }],
+		['✗ 後面有記號', true, { p1: '✓', p2: '✗', p3: '✓' }],
+		['跳過前面的環節', true, { p2: '✓', p3: '✓' }],
+		['✗ 前面有沒點的', true, { p2: '✗', p3: '△' }],
+		['只練幾個環節', false, { p1: '✗', p3: '✓' }]
+	] as const)('查詢給的結果跟記一次存下來的一樣：%s', (_, whole, marks) => {
+		const flow = sample();
+		const saved = recordsOf(flowOf(recordAttempt(flow, 'x1', drill(marks, { whole }))))[0];
+		expect(keptAttempt(flow.actions[0], whole, marks)).toEqual({ whole: saved.whole, marks: saved.marks });
+	});
+
+	it('讀流程檔不套這兩條：後來加在前面的環節，舊的一次照樣打得開、還是整個做', () => {
+		let flow = flowOf(clearPhaseBeats(sample(), 'x1', 0, 4));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓', p3: '✓' })));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 4));
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		if (r.kind !== 'ok') throw new Error(JSON.stringify(r));
+		expect(r.flow.actions[0].successRate!.phases[0].id).toBe('p5');
+		expect(recordsOf(r.flow)).toEqual([expect.objectContaining({ whole: true, marks: { p2: '✓', p3: '✓' } })]);
 	});
 });
 

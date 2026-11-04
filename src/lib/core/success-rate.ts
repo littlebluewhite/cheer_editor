@@ -330,6 +330,26 @@ export function attemptProblem(action: Action, attempt: NewAttempt): string | nu
 }
 
 /**
+ * 記一次會存下來的樣子：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回會存的記號和算不算整個做。
+ * 照環節的順序，第一個 ✗ 後面的記號不存；整個做卻有環節沒點（有 ✗ 時看 ✗ 和它前面的，沒有 ✗ 時看全部），算只練幾個環節。
+ * 只在記的時候套，讀流程檔不檢查：之後才加的環節、標拍換了順序，會讓舊的一次看起來不合。不是環節的記號原樣留著，交給 attemptProblem 擋。
+ */
+export function keptAttempt(
+	action: Action,
+	whole: boolean,
+	marks: Record<string, Mark>
+): { whole: boolean; marks: Record<string, Mark> } {
+	const phaseIds = action.successRate?.phases.map((p) => p.id) ?? [];
+	const fail = phaseIds.findIndex((id) => marks[id] === '✗');
+	const after = new Set(fail < 0 ? [] : phaseIds.slice(fail + 1));
+	const counted = fail < 0 ? phaseIds : phaseIds.slice(0, fail + 1);
+	return {
+		whole: whole && counted.every((id) => marks[id]),
+		marks: Object.fromEntries(Object.entries(marks).filter(([id]) => !after.has(id)))
+	};
+}
+
+/**
  * 動作的紀錄裡對不上現在的環節、組、隊員的拿掉：指到不在的環節的記號丟掉，丟到一個記號都沒有的那一次整筆拿掉；
  * 誰對不上（組沒人了、人不在動作裡、大類換成騰翻或換掉騰翻）的那一次也拿掉。都對得上就回傳原來的動作。
  */

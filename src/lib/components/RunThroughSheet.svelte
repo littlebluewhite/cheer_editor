@@ -6,10 +6,12 @@
 	import {
 		actionLabel,
 		attemptWhos,
+		keptAttempt,
 		MARKS,
 		phaseLabel,
 		recordableActions,
 		recordRunThrough,
+		type Action,
 		type Flow,
 		type Mark,
 		type RunThroughMarks
@@ -40,16 +42,17 @@
 
 	const key = (actionId: string, who: number | string, phaseId: string) => `${actionId}|${who}|${phaseId}`;
 
-	/** 一組在一個動作的記號，照環節順序；✗ 後面的、沒做的動作是空的（null）。 */
-	function column(actionId: string, phaseIds: string[], who: number | string): (Mark | null)[] {
-		if (skipped.includes(actionId)) return phaseIds.map(() => null);
-		let failed = false;
-		return phaseIds.map((id) => {
-			if (failed) return null;
-			const mark = picked[key(actionId, who, id)] ?? '✓';
-			failed = mark === '✗';
-			return mark;
-		});
+	/** 一組在一個動作點過的記號，每個環節都有（沒點過的是 ✓）。 */
+	function tapped(action: Action, who: number | string): Record<string, Mark> {
+		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, picked[key(action.id, who, p.id)] ?? '✓']));
+	}
+
+	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（核心 keptAttempt）：✗ 後面的、沒做的動作是空的（null）。 */
+	function column(action: Action, who: number | string): (Mark | null)[] {
+		const phaseIds = action.successRate!.phases.map((p) => p.id);
+		if (skipped.includes(action.id)) return phaseIds.map(() => null);
+		const kept = keptAttempt(action, true, tapped(action, who)).marks;
+		return phaseIds.map((id) => kept[id] ?? null);
 	}
 
 	/** 點一格換下一個記號；變 ✗ 就把同一組後面點過的清掉（改回來時後面是 ✓）。 */
@@ -66,14 +69,7 @@
 	function save() {
 		const entries: RunThroughMarks[] = blocks
 			.filter(({ action }) => !skipped.includes(action.id))
-			.flatMap(({ action, whos }) => {
-				const phaseIds = action.successRate!.phases.map((p) => p.id);
-				return whos.map(({ who }) => {
-					const marks: Record<string, Mark> = {};
-					column(action.id, phaseIds, who).forEach((m, i) => m && (marks[phaseIds[i]] = m));
-					return { actionId: action.id, who, marks };
-				});
-			});
+			.flatMap(({ action, whos }) => whos.map(({ who }) => ({ actionId: action.id, who, marks: tapped(action, who) })));
 		const r = recordRunThrough(flow, date, entries);
 		if (r.kind !== 'ok') return void (error = r.message);
 		onrecord(r.flow);
@@ -93,7 +89,7 @@
 		{@const phases = action.successRate?.phases ?? []}
 		{@const phaseIds = phases.map((p) => p.id)}
 		{@const off = skipped.includes(action.id)}
-		{@const columns = whos.map((w) => ({ ...w, marks: column(action.id, phaseIds, w.who) }))}
+		{@const columns = whos.map((w) => ({ ...w, marks: column(action, w.who) }))}
 		<section class="block" class:off aria-label={actionLabel(action)}>
 			<div class="head">
 				<h4><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h4>
