@@ -16,6 +16,7 @@
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import ConfirmList from './ConfirmList.svelte';
+	import { Ask } from './ask.svelte';
 	import { touchOnUnpicked } from './pointer';
 	import {
 		COUNT_WORDS,
@@ -109,14 +110,14 @@
 
 	/** 選到的拍：從 from 那一格到 to 那一格（都是格子開頭、從動作開始算的半拍）。 */
 	let sel = $state({ from: 0, to: 0 });
-	let error = $state('');
-	/** 等教練確認的環節改動（會刪掉有記號的環節）：send 帶著 { confirmed: true } 再送一次，成功後跑 after。 */
-	let pending = $state<{
-		message: string;
-		items: string[];
-		send: (options: ConfirmOption) => CommandResult;
-		after?: () => void;
-	} | null>(null);
+	/** 被擋的原因，和等教練回答的環節改動（會刪掉有記號的環節）。 */
+	const ask = new Ask(
+		(f) => {
+			hold = pop;
+			onchange(f);
+		},
+		{ confirmLabel: '確定刪除' }
+	);
 
 	/** 拍點小窗開著沒；拖的時候先收起來，放開才跳出來。 */
 	let pop = $state(false);
@@ -156,8 +157,7 @@
 	$effect(() => {
 		void actionId;
 		untrack(() => {
-			error = '';
-			pending = null;
+			ask.clear();
 			sel = { from: firstCell, to: firstCell };
 			who = null;
 			pop = false;
@@ -193,16 +193,10 @@
 		return `${range}・${len / BEAT} 拍`;
 	}
 
-	function apply(r: CommandResult): boolean {
+	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
+	function send(cmd: (o?: ConfirmOption) => CommandResult, after?: () => void): boolean {
 		hold = pop;
-		pending = null;
-		if (r.kind !== 'ok') {
-			error = r.kind === 'blocked' ? r.message : '';
-			return false;
-		}
-		error = '';
-		onchange(r.flow);
-		return true;
+		return ask.send(cmd, { done: () => after?.() }).kind === 'ok';
 	}
 
 	const selectOne = (at: number) => (sel = { from: at, to: at });
@@ -219,7 +213,7 @@
 
 	function openPop() {
 		hold = false;
-		pending = null;
+		ask.clear();
 		pop = true;
 	}
 
@@ -276,7 +270,7 @@
 	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。拍子放完選取跳到下一拍。 */
 	function place(kind: CueKind, word: string): boolean {
 		const len = kind === 'motion' ? BEAT : selLen;
-		const placed = apply(placeCue(flow, action.id, { kind, at: sel.from, len, word, who }));
+		const placed = send(() => placeCue(flow, action.id, { kind, at: sel.from, len, word, who }));
 		if (placed && kind === 'count' && inAction(sel.to + BEAT)) {
 			selectOne(sel.to + BEAT);
 			follow = pop;
@@ -296,54 +290,41 @@
 		addCustom(kind);
 	}
 
-	/** 送環節的指令；要確認（會刪掉有記號的環節）就在小窗裡先問，確定了才再送一次。 */
-	function sendPhases(send: (options: ConfirmOption) => CommandResult, after?: () => void) {
-		const r = send({});
-		if (r.kind === 'confirm') {
-			hold = pop;
-			error = '';
-			pending = { message: r.message, items: r.items, send, after };
-		} else if (apply(r)) after?.();
-	}
-
-	function confirmPhases() {
-		if (!pending) return;
-		const { send, after } = pending;
-		if (apply(send({ confirmed: true }))) after?.();
-	}
-
 	/** 把選的拍標給現有的環節，或標給新的環節（種類、名字）。 */
 	function markPhase(target: { phaseId: string } | { kind: PhaseKind; name: string }) {
 		const { from } = sel;
 		const len = selLen;
 		const after = 'phaseId' in target ? undefined : () => (phaseName = '');
-		sendPhases((o) => markPhaseBeats(flow, action.id, target, from, len, o), after);
+		send((o) => markPhaseBeats(flow, action.id, target, from, len, o), after);
 	}
 
 	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
 	function clearPhases() {
 		const { from, to } = sel;
-		sendPhases((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
+		send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
 	/** 口號段加環節（種類、名字），加在最後。 */
 	function addChantPhase() {
-		if (apply(addPhase(flow, action.id, { kind: phaseKind, name: phaseName }))) phaseName = '';
+		send(
+			() => addPhase(flow, action.id, { kind: phaseKind, name: phaseName }),
+			() => (phaseName = '')
+		);
 	}
 
 	/** 口號段刪掉點選的環節。 */
 	function deleteChosen() {
 		const id = chosen;
-		if (id) sendPhases((o) => deletePhase(flow, action.id, id, o));
+		if (id) send((o) => deletePhase(flow, action.id, id, o));
 	}
 
 	/** 改環節的名字、種類、顏色。 */
 	function editPhase(id: string, change: PhaseChange) {
-		apply(updatePhase(flow, action.id, id, change));
+		send(() => updatePhase(flow, action.id, id, change));
 	}
 
 	function clear(kind: CueKind) {
-		apply(clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
+		send(() => clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
 	}
 
 	/** 點一個拍點：選回它佔的那幾格（動作被拖半拍時，取碰到的整拍格，不超出動作）。 */
@@ -370,8 +351,8 @@
 	$effect(() => {
 		if (!pop || dragging || !wrapEl || !popEl) return;
 		void flow;
-		void error;
-		void pending;
+		void ask.error;
+		void ask.question;
 		void winW; // 視窗變寬變窄，小窗也重新放
 		const held = hold;
 		hold = false;
@@ -764,15 +745,8 @@
 
 <!-- 等確認的環節改動、被擋的原因。 -->
 {#snippet asks()}
-	{#if pending}
-		<ConfirmList
-			message={pending.message}
-			items={pending.items}
-			onconfirm={confirmPhases}
-			oncancel={() => (pending = null)}
-		/>
-	{/if}
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if ask.question}<ConfirmList {ask} />{/if}
+	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 {/snippet}
 
 <svelte:window bind:innerWidth={winW} onpointerdown={outside} onkeydowncapture={popKeys} />

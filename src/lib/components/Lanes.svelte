@@ -1,8 +1,8 @@
 <script lang="ts">
 	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
-	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點（或開著 multi 時點）多選。
-	// 拉短會切到拍點時先不改，交給 onconfirm 問教練；按確定才改，按取消色條就留在原來的長度。
+	// 拖色條移動、拉右邊改長度：放開時交給 ask（頁面那一個問題），被擋就還原。點名字選人，Shift＋點（或開著 multi 時點）多選。
+	// 拉短會切到拍點時先不改，ask 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）。
@@ -28,7 +28,6 @@
 		setWalks,
 		toSeconds,
 		totalSeconds,
-		type CommandResult,
 		type ConfirmOption,
 		type Cue,
 		type CueKind,
@@ -37,7 +36,7 @@
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
-	import type { PendingConfirm } from './form';
+	import type { Ask } from './ask.svelte';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
@@ -49,12 +48,8 @@
 		pxPerSec: number;
 		selectedActionId: string | null;
 		onselectaction: (actionId: string) => void;
-		/** 拖色條改好的流程。 */
-		onchange?: (flow: Flow) => void;
-		/** 拖色條被流程核心擋下（已還原），給教練看的原因。 */
-		onblocked?: (message: string) => void;
-		/** 拉色條會切短或拿掉拍點：給教練看的訊息、清單，按確定就呼叫 confirm。 */
-		onconfirm?: (ask: PendingConfirm) => void;
+		/** 拖色條、走位條放開時送指令的地方（頁面那一個問題）：改好、被擋（已還原）、要問都交給它。 */
+		ask: Ask;
 		/** 選到的人。 */
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
@@ -68,9 +63,7 @@
 		pxPerSec,
 		selectedActionId,
 		onselectaction,
-		onchange = () => {},
-		onblocked = () => {},
-		onconfirm = () => {},
+		ask,
 		selectedMemberIds = [],
 		onselectmembers = () => {},
 		multi = false
@@ -203,15 +196,8 @@
 			mode === 'move'
 				? moveAction(flow, id, startSec + dSec, options)
 				: resizeAction(flow, id, endSec + dSec, options);
-		const r = run();
-		if (r.kind !== 'confirm') return settle(r);
-		const { message, items } = r;
-		onconfirm({ message, items, confirm: () => settle(run({ confirmed: true })) });
-	}
-
-	function settle(r: CommandResult) {
-		if (r.kind === 'ok') onchange(r.flow);
-		else onblocked(r.message);
+		// 放開時色條已經彈回原位，還原不用再做什麼。
+		ask.send(run, { revert: () => {} });
 	}
 
 	/** 上一次按下走位條的是不是手指：手指點沒選到的人的走位條＝選他。 */
@@ -260,9 +246,7 @@
 				arrive: nearestPosition(flow, d.mode === 'depart' ? arrive : arrive + shift)
 			};
 		}
-		const r = setWalks(flow, d.formationId, next);
-		if (r.kind === 'ok') onchange(r.flow);
-		else onblocked(r.message);
+		ask.send(() => setWalks(flow, d.formationId, next), { revert: () => {} });
 	}
 
 	function pick(id: string, shift: boolean) {
