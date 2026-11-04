@@ -2,6 +2,7 @@
 // 存在動作裡、從動作開始算半拍，所以拖動作、改 BPM 時跟著走；刪動作時一起刪。
 
 import { replaceAction, type Action } from './action-types';
+import { cutOut, fitRange, onBeat, rangeProblem, rangeText } from './beat-range';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
@@ -113,14 +114,13 @@ export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 	});
 }
 
-/** 拍點哪裡不守規則（給教練看的原因）；沒問題是 null。不要求在整拍上（動作被拖半拍時拍點跟著落在 &）。 */
+/** 拍點哪裡不守規則（給教練看的原因）；沒問題是 null。不要求在整拍上（拍的範圍的規則在 beat-range）。 */
 export function cueProblem(segment: Segment, action: Action, cue: Cue): string | null {
 	if (segment.kind !== 'music') return '口號段不數拍，不能放拍點';
 	if (!CUE_KINDS.includes(cue.kind)) return '沒有這種拍點';
-	if (!Number.isInteger(cue.at) || !Number.isInteger(cue.len)) return '拍點要落在半拍上';
-	if (cue.len < BEAT || cue.len % BEAT !== 0) return '拍點要佔整數拍，至少 1 拍';
+	const problem = rangeProblem('cue', action, cue);
+	if (problem) return problem;
 	if (cue.kind === 'motion' && cue.len !== BEAT) return '手位只佔一拍';
-	if (cue.at < 0 || cue.at + cue.len > action.length) return '拍點要在動作裡面';
 	if (cue.kind === 'count' && !COUNT_WORDS.includes(cue.word)) return '拍子只能是 down 或 up';
 	if (!cue.word.trim()) return '請寫拍點的字';
 	const who = cue.who;
@@ -150,7 +150,7 @@ export function placeCue(flow: Flow, actionId: string, input: NewCueInput): Comm
 	const cue: Cue = { ...input, word: input.word.trim(), who: input.who ?? null };
 	const problem = cueProblem(segment, action, cue);
 	if (problem) return blocked(problem);
-	if ((action.start + cue.at) % BEAT !== 0) return blocked('拍點要放在整拍上');
+	if (!onBeat(action, cue.at)) return blocked('拍點要放在整拍上');
 	const kept = cut(action.cues ?? [], cue.kind, cue.at, cue.at + cue.len, (c) => sameWho(c.who, cue.who));
 	return withCues(flow, action, [...kept, cue]);
 }
@@ -192,11 +192,10 @@ export function cueFallout(
 			items.push(`拿掉：${text}`);
 			continue;
 		}
-		const len = to.kind === 'music' ? Math.min(c.len, after.length - c.at) : 0;
-		const fitted = len - (len % BEAT);
+		const fitted = to.kind === 'music' ? fitRange('cue', after, c)?.len : undefined;
 		if (fitted === c.len) {
 			kept.push(c);
-		} else if (fitted >= BEAT) {
+		} else if (fitted) {
 			kept.push({ ...c, len: fitted });
 			items.push(`切短：${text} → ${rangeText(from, before, c.at, fitted)}`);
 		} else {
@@ -217,12 +216,6 @@ export function cueText(kind: CueKind, word: string, span: string, who: string):
 	return `${CUE_KIND_LABELS[kind]} ${word} ${span}${who ? `・給${who}` : ''}`;
 }
 
-/** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
-export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
-	const first = atText(segment, action.start + at);
-	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
-}
-
 function find(flow: Flow, actionId: string): { action: Action; segment: Segment } | null {
 	const action = flow.actions.find((a) => a.id === actionId);
 	const segment = action && flow.segments.find((s) => s.id === action.segmentId);
@@ -234,19 +227,11 @@ function withCues(flow: Flow, action: Action, cues: Cue[]): CommandResult {
 	return ok(replaceAction(flow, { ...action, cues: sorted }));
 }
 
-/**
- * 把 [from, to) 裡、那一種而且 hit 的拍點切掉；兩邊露出來的留著。
- * 露出來的長度取到整拍（動作被拖半拍後，新舊拍點可能差半拍），不到一拍就拿掉。
- */
+/** 把 [from, to) 裡、那一種而且 hit 的拍點切掉；兩邊露出來的都留著（取到整拍，見 cutOut）。 */
 function cut(cues: Cue[], kind: CueKind, from: number, to: number, hit: (c: Cue) => boolean): Cue[] {
 	return cues.flatMap((c) => {
-		if (c.kind !== kind || !hit(c) || c.at >= to || c.at + c.len <= from) return [c];
-		const pieces: Cue[] = [];
-		if (c.at < from) pieces.push({ ...c, len: from - c.at });
-		if (c.at + c.len > to) pieces.push({ ...c, at: to, len: c.at + c.len - to });
-		return pieces
-			.map((p) => ({ ...p, len: p.len - (p.len % BEAT) }))
-			.filter((p) => p.len >= BEAT);
+		const pieces = c.kind === kind && hit(c) ? cutOut(c, from, to) : null;
+		return pieces ? pieces.map((p) => ({ ...c, ...p })) : [c];
 	});
 }
 

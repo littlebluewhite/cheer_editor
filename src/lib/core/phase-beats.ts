@@ -2,11 +2,10 @@
 // 標拍、清標的拍時從別的環節切掉一段（cut），照拍的先後排（ordered）。環節的指令在 phases.ts。
 
 import type { Action } from './action-types';
-import { rangeText } from './cues';
+import { cutOut, fitRange, onBeat, rangeText, type BeatRange } from './beat-range';
 import { phaseLabel, type Phase } from './phase-types';
 import type { Segment } from './segment';
 import { markedCount } from './success-rate';
-import { HALF_BEATS_PER_BEAT as BEAT } from './time';
 
 /** 改動作動到的標的拍：見 phaseFallout。 */
 export interface PhaseFallout {
@@ -35,19 +34,10 @@ export function phaseFallout(
 ): PhaseFallout | null {
 	const old = after.successRate?.phases ?? [];
 	const music = to.kind === 'music';
-	const offBeat = (p: Phase) => !!p.beats && (after.start + p.beats.at) % BEAT !== 0;
-	const shifted = music && old.some(offBeat);
+	const shifted = music && old.some((p) => p.beats && !onBeat(after, p.beats.at));
 	/** 挪 by 個半拍（落在 & 的才挪）、留在動作裡、取到整拍後的標的拍；不到一拍是 undefined。 */
-	const place = (p: Phase, by: number) => {
-		const { at, len } = p.beats!;
-		if (!music) return undefined;
-		const moved = offBeat(p) ? at + by : at;
-		const start = moved < 0 ? moved + BEAT : moved;
-		const fit = Math.min(moved + len, after.length) - start;
-		const fitted = fit - (fit % BEAT);
-		return fitted >= BEAT ? { at: start, len: fitted } : undefined;
-	};
-	const kept = (by: number) => old.filter((p) => p.beats && place(p, by)?.len === p.beats.len).length;
+	const place = (p: Phase, by: 1 | -1) => (music ? fitRange('phase', after, p.beats!, by) : undefined);
+	const kept = (by: 1 | -1) => old.filter((p) => p.beats && place(p, by)?.len === p.beats.len).length;
 	const by = shifted && kept(-1) > kept(1) ? -1 : 1;
 	const items: string[] = [];
 	const gone: Phase[] = [];
@@ -101,20 +91,13 @@ export function phaseFalloutText({ cut, dropped, marked, empty }: PhaseFallout):
  */
 export function cut(phases: Phase[], from: number, to: number): Phase[] {
 	return phases.map((p) => {
-		const b = p.beats;
-		if (!b || b.at >= to || b.at + b.len <= from) return p;
-		const pieces = [
-			...(b.at < from ? [{ at: b.at, len: from - b.at }] : []),
-			...(b.at + b.len > to ? [{ at: to, len: b.at + b.len - to }] : [])
-		]
-			.map((x) => ({ ...x, len: x.len - (x.len % BEAT) }))
-			.filter((x) => x.len >= BEAT);
-		return withBeats(p, pieces[0]);
+		const pieces = p.beats && cutOut(p.beats, from, to);
+		return pieces ? withBeats(p, pieces[0]) : p;
 	});
 }
 
 /** 換掉環節標的拍；沒給就是沒標拍（拿掉欄位）。 */
-function withBeats({ beats: _, ...p }: Phase, beats?: { at: number; len: number }): Phase {
+function withBeats({ beats: _, ...p }: Phase, beats?: BeatRange): Phase {
 	return beats ? { ...p, beats } : p;
 }
 
