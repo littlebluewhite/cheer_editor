@@ -34,10 +34,16 @@ export class Ask {
 	/** 要確認時確定鈕的字。 */
 	readonly confirmLabel: string;
 	#onchange: (flow: Flow) => void;
+	#onfail: ((error: string) => void) | undefined;
 	#pending: { send: (o: ConfirmOption) => CommandResult; handlers: Handlers<CommandResult> } | null = null;
 
-	constructor(onchange: (flow: Flow) => void, { confirmLabel = '確定' }: { confirmLabel?: string } = {}) {
+	/** onfail：沒成功（被擋、要問）之後呼叫，給 error（要問時是空的）。 */
+	constructor(
+		onchange: (flow: Flow) => void,
+		{ confirmLabel = '確定', onfail }: { confirmLabel?: string; onfail?: (error: string) => void } = {}
+	) {
 		this.#onchange = onchange;
+		this.#onfail = onfail;
 		this.confirmLabel = confirmLabel;
 	}
 
@@ -79,5 +85,6 @@ export class Ask {
 			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose' };
 			this.#pending = { send, handlers };
 		}
+		if (r.kind !== 'ok') this.#onfail?.(this.error);
 	}
 }
