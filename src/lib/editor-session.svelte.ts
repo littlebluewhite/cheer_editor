@@ -2,7 +2,16 @@
 // 測試可以自己建一個放進頁面。不碰瀏覽器（開檔、存檔、草稿、播放留在頁面），所以在 Node 就測得到。
 
 import { createContext } from 'svelte';
-import { carryRecords, groupsPeople, setSquad, squadsOf, type Action, type ConfirmOption, type Flow } from '#lib/core';
+import {
+	carryRecords,
+	groupsPeople,
+	setSquad,
+	squadsOf,
+	type Action,
+	type ConfirmOption,
+	type Flow,
+	type MoveResult
+} from '#lib/core';
 import { Ask } from '#lib/components/ask.svelte.js';
 
 const UNDO_LIMIT = 100;
@@ -39,6 +48,12 @@ export class EditorSession {
 		},
 		{ confirmLabel: '確定', onfail: (error) => (this.notice = error) }
 	);
+
+	/**
+	 * 改完要跳播放頭（拖人插站位、挪站位）：跳到哪一秒、播放中要不要從那裡重播。頁面看到就跳。
+	 * 每次都是新的一份，跳到同一秒頁面也看得到。
+	 */
+	jump = $state.raw<{ sec: number; replay: boolean } | null>(null);
 
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
 	readonly squadAsk = new Ask((f) => this.change(f));
@@ -144,6 +159,28 @@ export class EditorSession {
 		}
 	}
 
+	// ---------- 改完跳播放頭 ----------
+
+	/** 拖人、跟上一張一樣改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。 */
+	moved(r: MoveResult) {
+		const said = [
+			r.inserted && '插了一張站位，大家的位置自動帶入',
+			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
+		];
+		this.notice = said.filter(Boolean).join('；');
+		this.jump = { sec: r.sec, replay: false };
+	}
+
+	/**
+	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示走位被壓短的人數，
+	 * 選著這張，播放頭跳到新的站位時間。
+	 */
+	formationMoved(formationId: string, r: { sec: number; squeezed: number }) {
+		this.notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
+		this.selectFormation(formationId);
+		this.jump = { sec: r.sec, replay: true };
+	}
+
 	// ---------- 選取 ----------
 
 	get selectedFormationId(): string | null {
@@ -220,5 +257,5 @@ export class EditorSession {
 	}
 }
 
-/** 頁面放進 context、元件拿出來用的 session。 */
-export const [getEditorSession, setEditorSession] = createContext<EditorSession>();
+/** 頁面放進 context、元件拿出來用的 session。has：有沒有放（場地在八拍表上只畫、不編）。 */
+export const [getEditorSession, setEditorSession, hasEditorSession] = createContext<EditorSession>();

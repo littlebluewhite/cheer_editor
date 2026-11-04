@@ -5,9 +5,13 @@ import {
 	addSegment,
 	createFlow,
 	deleteAction,
+	insertFormation,
 	markPhaseBeats,
+	moveFormation,
+	moveMembers,
 	recordAttempt,
 	renameFlow,
+	toSeconds,
 	type CommandResult,
 	type ConfirmOption,
 	type Flow
@@ -325,5 +329,43 @@ describe('編輯 session：分組數字鍵', () => {
 
 	it('選的人只算動作裡的', () => {
 		expect(grouping(['m1', 'm9']).squadPicked).toEqual(['m1']);
+	});
+});
+
+describe('編輯 session：改完跳播放頭', () => {
+	it('拖人插了站位：提示說插了一張，播放頭停到那張（播放中不重播）', () => {
+		const s = new EditorSession(libSample());
+		s.ask.send(() => moveMembers(s.flow!, 2, { m1: [1, 1] }), { done: (r) => s.moved(r) });
+		expect(s.flow!.formations).toHaveLength(2);
+		expect(s.canUndo).toBe(true);
+		expect(s.notice).toBe('插了一張站位，大家的位置自動帶入');
+		expect(s.jump).toEqual({ sec: 2, replay: false });
+	});
+
+	it('拖人改到現有的站位、往後帶：提示說帶了幾張', () => {
+		const s = new EditorSession(flowOf(insertFormation(libSample(), 2)));
+		s.notice = '舊的提示';
+		s.ask.send(() => moveMembers(s.flow!, 0, { m1: [1, 1] }), { done: (r) => s.moved(r) });
+		expect(s.notice).toBe('後面 1 張站位也跟著改了');
+		expect(s.jump).toEqual({ sec: 0, replay: false });
+	});
+
+	it('挪站位：提示收掉、選著這張，播放頭跳到新的站位時間（播放中從那裡重播）', () => {
+		const s = new EditorSession(flowOf(insertFormation(libSample(), 2)));
+		s.notice = '舊的提示';
+		const id = s.flow!.formations[1].id;
+		const to = { segmentId: 's1', at: 16 };
+		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
+		expect(s.selectedFormationId).toBe(id);
+		expect(s.notice).toBe('');
+		expect(s.jump).toEqual({ sec: toSeconds(s.flow!, to), replay: true });
+	});
+
+	it('每次跳都是新的一份（跳到同一秒，頁面也看得到）', () => {
+		const s = new EditorSession(libSample());
+		s.moved({ inserted: false, sec: 0, carried: 0 });
+		const first = s.jump;
+		s.moved({ inserted: false, sec: 0, carried: 0 });
+		expect(s.jump).not.toBe(first);
 	});
 });
