@@ -7,7 +7,9 @@ import {
 	createFlow,
 	addPhase,
 	setSquad,
+	squadNumber,
 	updateSegment,
+	type Action,
 	type CommandResult,
 	type Flow
 } from './index';
@@ -71,4 +73,9 @@ export function ratedSample(): Flow {
 		})
 	);
 	return flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
+}
+
+/** 動作裡每個人的組號（照組 id 的先後算，見 squadNumber）；沒分組是 undefined。 */
+export function squadNumbers(action: Action): (number | undefined)[] {
+	return action.members.map((m) => (m.squad === undefined ? undefined : squadNumber(action, m.squad)));
 }

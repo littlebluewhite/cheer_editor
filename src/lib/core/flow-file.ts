@@ -2,16 +2,17 @@
 // zip 裡是 flow.json（{ formatVersion, flow }）和 flow.audio 列出的音樂檔（audio/a1.mp3 …）。
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
-import { ACTION_CATEGORIES } from './action-types';
+import { ACTION_CATEGORIES, type Action } from './action-types';
 import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { PHASE_KINDS } from './phase-types';
-import { PRACTICE_KINDS, successRateProblem, v6RateProblem } from './success-rate';
+import { freshIds } from './ids';
+import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 7;
+export const FORMAT_VERSION = 8;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -35,6 +36,8 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 第 6 版：動作多了可有可無的 successRate（記成功率的設定），沒有就是沒打開；動作裡的人多了可有可無的 squad（第幾組），
  *   沒有就是沒分組；流程多了可有可無的 lastIds（不重用的 id 發到第幾號）。所以資料不用動。
  * 第 7 版：記成功率的動作至少有一個環節、音樂段的環節一定有拍、組號從 1 連續。升級時整理環節和組（見 tidySuccessRate）。
+ * 第 8 版：人身上的組從第幾組（數字）換成組 id（g1、g2…，字串），分組動作的紀錄的「誰」也換成組 id；組號照 id 發出的先後算，
+ *   不存。升級時每個動作的組照號碼順序發組 id，流程的 lastIds 記上 g（見 squadIds）。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -42,7 +45,8 @@ const UPGRADES: Record<number, Upgrade> = {
 	3: (doc) => ({ formatVersion: 4, flow: doc.flow }),
 	4: (doc) => ({ formatVersion: 5, flow: doc.flow }),
 	5: (doc) => ({ formatVersion: 6, flow: doc.flow }),
-	6: (doc) => ({ formatVersion: 7, flow: tidySuccessRate(doc.flow) })
+	6: (doc) => ({ formatVersion: 7, flow: tidySuccessRate(doc.flow) }),
+	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) })
 };
 
 /**
@@ -55,11 +59,52 @@ function tidySuccessRate(v: unknown): unknown {
 	const flow = v as Flow;
 	const actions = flow.actions.map((a) => {
 		const segment = flow.segments.find((s) => s.id === a.segmentId);
-		if (!a.successRate || !segment || v6RateProblem(segment, a) !== null) return a;
-		const settled = settle(flow, a, a, { records: 'keep' });
-		return settled.kind === 'ok' ? settled.action : a;
+		// 收尾認的是組 id：先照號碼排出暫時的組 id，收完再照組號換回數字。號碼不是正整數的不整理。
+		const numbers = squadNumbers(a);
+		if (!a.successRate || !segment || !numbers) return a;
+		const ids = renameSquads(a, (n) => `g${numbers.indexOf(n as number) + 1}`);
+		if (v6RateProblem(segment, ids) !== null) return a;
+		const settled = settle(flow, ids, ids, { records: 'keep' });
+		if (settled.kind !== 'ok') return a;
+		const squads = squadsOf(settled.action);
+		return renameSquads(settled.action, (id) => squads.indexOf(id as string) + 1);
 	});
 	return { ...flow, actions };
+}
+
+/**
+ * 第 7 → 8 版：每個動作的組照號碼順序發組 id（刪了不重用的 g，照動作的順序一直往下發），分組動作的紀錄的「誰」跟著換成那一組的 id；
+ * 流程的 lastIds 記上 g。組號不是 1、2、3 連續的動作不換（數字留著，交給 isFlow 擋下來）。
+ */
+function squadIds(v: unknown): unknown {
+	if (!flowShape(v)) return v;
+	const flow = v as Flow;
+	let lastIds = flow.lastIds;
+	const actions = flow.actions.map((a) => {
+		const numbers = squadNumbers(a);
+		if (!numbers?.length || numbers.some((n, i) => n !== i + 1)) return a;
+		const issued = freshIds('g', numbers.length, lastIds, []);
+		lastIds = issued.lastIds;
+		return renameSquads(a, (n) => issued.ids[(n as number) - 1] ?? n);
+	});
+	return lastIds === flow.lastIds ? flow : { ...flow, actions, lastIds };
+}
+
+/** 舊版檔（第 7 版以前）動作裡的組號，由小到大不重複；有不是正整數的組號是 null。 */
+function squadNumbers(action: Action): number[] | null {
+	const numbers = action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad as unknown]));
+	if (numbers.some((n) => !Number.isInteger(n) || (n as number) < 1)) return null;
+	return [...new Set(numbers as number[])].sort((a, b) => a - b);
+}
+
+/** 換掉動作裡的組：人身上的組，和分組動作的紀錄的「誰」（騰翻、跳躍的「誰」是隊員，不動）。舊版的組是數字，所以兩種都收。 */
+function renameSquads(action: Action, rename: (squad: string | number) => string | number): Action {
+	const to = (squad: string) => rename(squad) as string;
+	const members = action.members.map((m) => (m.squad === undefined ? m : { ...m, squad: to(m.squad) }));
+	const rate = action.successRate;
+	if (!rate || perPerson(action.category)) return { ...action, members };
+	const records = rate.records.map((r) => ({ ...r, who: to(r.who) }));
+	return { ...action, members, successRate: { ...rate, records } };
 }
 
 /** 音樂檔的位元組，用 flow.audio 的 id 對應。 */
@@ -203,7 +248,8 @@ const flowShape = shape({
 			start: int,
 			length: int,
 			note: str,
-			members: listOf(shape({ memberId: str, role: nullOr(str), squad: (v) => v === undefined || int(v) })),
+			// 組：第 8 版是組 id（字串，見 successRateProblem）；舊版是第幾組（數字），升級時換掉。
+			members: listOf(shape({ memberId: str, role: nullOr(str), squad: (v) => v === undefined || int(v) || str(v) })),
 			color,
 			cues,
 			successRate

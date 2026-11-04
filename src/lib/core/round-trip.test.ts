@@ -48,7 +48,7 @@ import {
 import { flowOf, ratedSample } from './test-flows';
 
 const date = '2026-11-04';
-const drill: NewAttempt = { date, who: 1, practice: 'drill', whole: true, marks: { p1: '✓', p2: '△', p3: '✗' } };
+const drill: NewAttempt = { date, who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '△', p3: '✗' } };
 const walk = { depart: { segmentId: 's1', at: 1 }, arrive: { segmentId: 's1', at: 4 } };
 const down = (at: number) => ({ kind: 'count' as const, at, len: 2, word: 'down' });
 
@@ -102,10 +102,10 @@ const commands: [string, (flow: Flow) => CommandResult | Flow][] = [
 		(f) => clearCues(flowOf(placeCue(flowOf(placeCue(f, 'x1', down(0))), 'x1', down(8))), 'x1', 'count', 0, 4)
 	],
 	['setSquad', (f) => setSquad(f, 'x1', ['m1'], 2, { records: 'keep' })],
-	['recordAttempt', (f) => recordAttempt(f, 'x1', { ...drill, who: 2 })],
-	['recordRunThrough', (f) => recordRunThrough(f, date, [{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✓', p3: '✓' } }])],
-	['deleteLastAttempt', (f) => deleteLastAttempt(f, 'x1', 1, date)],
-	['carryRecords', (f) => carryRecords(f, flowOf(recordAttempt(f, 'x1', { ...drill, who: 2 })))],
+	['recordAttempt', (f) => recordAttempt(f, 'x1', { ...drill, who: 'g2' })],
+	['recordRunThrough', (f) => recordRunThrough(f, date, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }])],
+	['deleteLastAttempt', (f) => deleteLastAttempt(f, 'x1', 'g1', date)],
+	['carryRecords', (f) => carryRecords(f, flowOf(recordAttempt(f, 'x1', { ...drill, who: 'g2' })))],
 	['addPhase', (f) => addPhase(f, 'x3', { kind: 'whole', name: '拋' })],
 	['addPhase（音樂段標拍）', (f) => addPhase(f, 'x1', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }, { confirmed: true })],
 	['updatePhase', (f) => updatePhase(f, 'x1', 'p2', { name: '撐住', color: PHASE_COLORS[0].value })],

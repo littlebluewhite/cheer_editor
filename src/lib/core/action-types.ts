@@ -25,8 +25,8 @@ export interface ActionMember {
 	memberId: string;
 	/** 任務角色的名稱（固定或自訂）；沒掛是 null。 */
 	role: string | null;
-	/** 第幾組（1 起）；沒有就是沒分組（舊流程檔沒有這個欄位）。 */
-	squad?: number;
+	/** 組 id（g1、g2…，只在這個動作裡有意義；第幾組照 squadsOf 算）；沒有就是沒分組（舊流程檔沒有這個欄位）。 */
+	squad?: string;
 }
 
 export interface Action {

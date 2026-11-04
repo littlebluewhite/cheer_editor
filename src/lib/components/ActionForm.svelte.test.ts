@@ -438,8 +438,8 @@ describe('動作表單：成功率', () => {
 		const session = live(rated(withLib(), 'x2'), 'x2');
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		expect(session.flow!.actions[1].members).toEqual([
-			{ memberId: 'm1', role: '上層', squad: 1 },
-			{ memberId: 'm2', role: null, squad: 1 }
+			{ memberId: 'm1', role: '上層', squad: 'g1' },
+			{ memberId: 'm2', role: null, squad: 'g1' }
 		]);
 		expect(squadTags()).toEqual(['第 1 組', '第 1 組']);
 	});
@@ -452,8 +452,9 @@ describe('動作表單：成功率', () => {
 		expect(copy.options[0].text).toBe('從別的動作複製人（連任務角色和組）…');
 		await fireEvent.change(copy, { target: { value: 'x1' } });
 		expect(session.flow!.actions[1].members).toEqual([
-			{ memberId: 'm1', role: '上層', squad: 1 },
-			{ memberId: 'm2', role: '主底', squad: 2 }
+			// 照號碼對：x1 的第 1 組對到 x2 本來的那一組（g3），第 2 組是新發的組 id。
+			{ memberId: 'm1', role: '上層', squad: 'g3' },
+			{ memberId: 'm2', role: '主底', squad: 'g4' }
 		]);
 		expect(squadTags()).toEqual(['第 1 組', '第 2 組']);
 	});

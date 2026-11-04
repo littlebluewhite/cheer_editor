@@ -17,6 +17,7 @@
 		readFlowFile,
 		segmentsMissingAudio,
 		squadColor,
+		squadNumber,
 		timeRuleWarnings,
 		totalSeconds,
 		writeFlowFile,
@@ -167,10 +168,10 @@
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
 	const squadBadges = $derived(
 		Object.fromEntries(
-			(groupingAction?.members ?? []).map((m) => [
-				m.memberId,
-				m.squad ? { text: String(m.squad), color: squadColor(m.squad) } : { text: '?', color: NO_SQUAD_COLOR }
-			])
+			(groupingAction?.members ?? []).map((m) => {
+				const n = m.squad ? squadNumber(groupingAction!, m.squad) : 0;
+				return [m.memberId, n ? { text: String(n), color: squadColor(n) } : { text: '?', color: NO_SQUAD_COLOR }];
+			})
 		)
 	);
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */

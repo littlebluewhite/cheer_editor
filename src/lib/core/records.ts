@@ -38,7 +38,7 @@ export function recordAttempt(
 /** 記一次全上裡的一格：一個動作、一組（騰翻、跳躍是一個人）的記號。 */
 export interface RunThroughMarks {
 	actionId: string;
-	who: number | string;
+	who: string;
 	marks: Record<string, Mark>;
 }
 
@@ -70,7 +70,7 @@ export function recordRunThrough(
 export function deleteLastAttempt(
 	flow: Flow,
 	actionId: string,
-	who: number | string,
+	who: string,
 	date: string
 ): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
@@ -82,7 +82,7 @@ export function deleteLastAttempt(
 
 /**
  * 把現在的紀錄帶到這份流程上：復原、重做換上 next 時用。紀錄不算復原的一步，所以每個動作的紀錄用 current 的；
- * 指到 next 裡已經不在的動作、環節、組、隊員的紀錄或記號丟掉，丟到一個記號都沒有的那一次整筆拿掉（重做也救不回）。
+ * 指到 next 裡已經不在的動作、環節、組 id、隊員的紀錄或記號丟掉，丟到一個記號都沒有的那一次整筆拿掉（重做也救不回）。
  * 發過的 id 號碼也帶過來，免得換上舊的流程後又發一次。沒有東西要帶就回傳 next 本身。
  */
 export function carryRecords(next: Flow, current: Flow): Flow {
@@ -95,27 +95,11 @@ export function carryRecords(next: Flow, current: Flow): Flow {
 		const own = a.successRate.records;
 		if (records === own || (records.length === 0 && own.length === 0)) return a;
 		changed = true;
-		const followed = records.map((r) => (typeof r.who === 'number' ? { ...r, who: followSquad(from!, a, r.who) } : r));
-		// 不問、不換組：組裡的人變了紀錄還是留在那一組；對不上的由收尾拿掉。
-		const settled = settle(next, a, { ...a, successRate: { ...a.successRate, records: followed } }, { records: 'keep' });
+		// 照組 id 帶，不問、不換組：組裡的人變了紀錄還是留在那個組 id 上；組 id 不在了等對不上的由收尾拿掉。
+		const settled = settle(next, a, { ...a, successRate: { ...a.successRate, records } }, { records: 'keep' });
 		return settled.kind === 'ok' ? settled.action : a;
 	});
 	return changed ? { ...next, actions, ...(lastIds && { lastIds }) } : next;
-}
-
-/**
- * 組號補過號（見 compactSquads）後，同一組在兩份流程裡號碼可能不一樣：to 裡有一組剛好是同一群人，就換成那組的號碼；
- * 沒有（組換了人）就用原來的號碼。
- */
-function followSquad(from: Action, to: Action, squad: number): number {
-	const people = (a: Action, n: number) =>
-		a.members
-			.filter((m) => m.squad === n)
-			.map((m) => m.memberId)
-			.sort()
-			.join();
-	const same = squadsOf(to).find((n) => people(to, n) === people(from, squad));
-	return same ?? squad;
 }
 
 /** 兩份「id 發到第幾號」取大的；跟 a 一樣就回傳 a。 */
@@ -137,10 +121,10 @@ export function recordableActions(flow: Flow): Action[] {
 }
 
 /**
- * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組，照號碼排，名字是「第 1 組 小美」；
+ * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組（who 是組 id），照組號排，名字是「第 1 組 小美」；
  * 騰翻、跳躍是動作裡的每個人，照名單順序。沒分到組的人不算。
  */
-export function attemptWhos(flow: Flow, action: Action): { who: number | string; name: string }[] {
+export function attemptWhos(flow: Flow, action: Action): { who: string; name: string }[] {
 	if (perPerson(action.category)) {
 		return flow.members
 			.filter((m) => action.members.some((am) => am.memberId === m.id))

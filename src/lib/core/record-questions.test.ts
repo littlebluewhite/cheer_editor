@@ -7,13 +7,14 @@ import {
 	markPhaseBeats,
 	recordAttempt,
 	setSquad,
+	squadNumber,
 	updateAction,
 	updateMember,
 	updateSegment,
 	type Flow,
 	type NewAttempt
 } from './index';
-import { flowOf, ratedSample } from './test-flows';
+import { flowOf, ratedSample, squadNumbers } from './test-flows';
 
 /** 共用的 ratedSample，x1 的環節挪到前 4 拍（p1 上法 1-1、p2 中段 1-2 到 1-3、p3 下法 1-4），動作變短到 4 拍也切不到。 */
 function sample(): Flow {
@@ -24,7 +25,7 @@ function sample(): Flow {
 	return flow;
 }
 
-const drill = (who: number | string, marks: NewAttempt['marks']): NewAttempt => ({
+const drill = (who: string, marks: NewAttempt['marks']): NewAttempt => ({
 	date: '2026-11-04',
 	who,
 	practice: 'drill',
@@ -35,9 +36,9 @@ const drill = (who: number | string, marks: NewAttempt['marks']): NewAttempt => 
 /** x1：t1 第 1 組、t2 第 2 組、t3 第 1 組；x2：t4 小美、t5 小A。 */
 function recorded(): Flow {
 	let flow = sample();
-	flow = flowOf(recordAttempt(flow, 'x1', drill(1, { p1: '✓' })));
-	flow = flowOf(recordAttempt(flow, 'x1', drill(2, { p1: '✓' })));
-	flow = flowOf(recordAttempt(flow, 'x1', drill(1, { p2: '✗' })));
+	flow = flowOf(recordAttempt(flow, 'x1', drill('g1', { p1: '✓' })));
+	flow = flowOf(recordAttempt(flow, 'x1', drill('g2', { p1: '✓' })));
+	flow = flowOf(recordAttempt(flow, 'x1', drill('g1', { p2: '✗' })));
 	flow = flowOf(recordAttempt(flow, 'x2', drill('m1', { p4: '✓' })));
 	return flowOf(recordAttempt(flow, 'x2', drill('m2', { p4: '✗' })));
 }
@@ -103,7 +104,7 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄');
 		const changed = flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true }));
 		expect(ids(changed, 'x2')).toEqual([]);
-		expect(action(changed, 'x2').members.map((m) => m.squad)).toEqual([1, 1]);
+		expect(squadNumbers(action(changed, 'x2'))).toEqual([1, 1]);
 	});
 
 	it('一組一起算的大類之間換（技巧換成金字塔）：不問，紀錄留著', () => {
@@ -148,7 +149,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 
 	it('加人到有紀錄的組（從別的動作複製人也一樣是換整份人）：問保留還是清掉', () => {
 		const flow = flowOf(addMembers(recorded(), [{ name: '小C', gender: 'M', globalRole: 'base' }]));
-		const members = [...action(flow, 'x1').members, { memberId: 'm5', role: '側底', squad: 2 }];
+		const members = [...action(flow, 'x1').members, { memberId: 'm5', role: '側底', squad: 'g2' }];
 		expect(updateAction(flow, 'x1', { members }).kind).toBe('choose');
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'keep' })), 'x1')).toEqual(['t1', 't2', 't3']);
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'clear' })), 'x1')).toEqual(['t1', 't3']);
@@ -239,15 +240,23 @@ describe('刪隊員：當成真的換人', () => {
 	});
 });
 
-describe('組空掉補號：後面那組的紀錄跟著改號，還是那群人的', () => {
-	const whos = (flow: Flow) => action(flow, 'x1').successRate!.records.map((r) => [r.id, r.who]);
-	const squads = (flow: Flow) => action(flow, 'x1').members.map((m) => [m.memberId, m.squad]);
+describe('組空掉補號：後面那組往前補號，紀錄還是指到那一組（組 id 不換），還是那群人的', () => {
+	/** 每一次：[id, 誰（組 id）, 現在是第幾組]。 */
+	const whos = (flow: Flow) => {
+		const x1 = action(flow, 'x1');
+		return x1.successRate!.records.map((r) => [r.id, r.who, squadNumber(x1, r.who)]);
+	};
+	/** 每個人：[隊員, 第幾組]。 */
+	const squads = (flow: Flow) => {
+		const x1 = action(flow, 'x1');
+		return x1.members.map((m) => [m.memberId, m.squad && squadNumber(x1, m.squad)]);
+	};
 
 	it('拿掉第 1 組的人：第 2 組變第 1 組，紀錄也是', () => {
 		const members = x1Members().filter((m) => m.memberId !== 'm1' && m.memberId !== 'm2');
 		const flow = flowOf(updateAction(recorded(), 'x1', { members }, { confirmed: true }));
 		expect(squads(flow)).toEqual([['m3', 1], ['m4', 1]]);
-		expect(whos(flow)).toEqual([['t2', 1]]);
+		expect(whos(flow)).toEqual([['t2', 'g2', 1]]);
 	});
 
 	it('設組讓第 1 組空掉：第 2 組補成第 1 組，紀錄跟著換號', () => {
@@ -255,7 +264,7 @@ describe('組空掉補號：後面那組的紀錄跟著改號，還是那群人�
 		expect(squads(flow)).toEqual([['m1', 3], ['m2', 1], ['m3', 2], ['m4', 2]]);
 		const emptied = flowOf(setSquad(flow, 'x1', ['m2'], 3, { confirmed: true }));
 		expect(squads(emptied)).toEqual([['m1', 2], ['m2', 2], ['m3', 1], ['m4', 1]]);
-		expect(whos(emptied)).toEqual([['t2', 1]]);
+		expect(whos(emptied)).toEqual([['t2', 'g2', 1]]);
 	});
 
 	it('刪隊員讓第 1 組空掉：第 2 組補成第 1 組，紀錄跟著換號', () => {
@@ -263,6 +272,6 @@ describe('組空掉補號：後面那組的紀錄跟著改號，還是那群人�
 		let flow = flowOf(updateAction(recorded(), 'x1', { members }, { records: 'keep' }));
 		flow = flowOf(deleteMember(flow, 'm1', { confirmed: true }));
 		expect(squads(flow)).toEqual([['m3', 1], ['m4', 1]]);
-		expect(whos(flow)).toEqual([['t2', 1]]);
+		expect(whos(flow)).toEqual([['t2', 'g2', 1]]);
 	});
 });

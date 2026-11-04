@@ -26,7 +26,7 @@
 	/** 選的組（或人），存成 select 的值；空字串是全部。 */
 	let picked = $state('');
 	/** 選的組不在了（例如復原掉了）就看全部。 */
-	const who = $derived(whos.find((w) => String(w.who) === picked)?.who);
+	const who = $derived(whos.find((w) => w.who === picked)?.who);
 	const phases = $derived(action.successRate?.phases ?? []);
 	const table = $derived(dailyTable(action, who));
 	const rows = $derived([...table.days.map((d) => ({ label: d.date, ...d })), { label: '合計', ...table.total }]);
@@ -41,7 +41,7 @@
 			<select bind:value={picked}>
 				<option value="">全部</option>
 				{#each whos as w (w.who)}
-					<option value={String(w.who)}>{w.name}</option>
+					<option value={w.who}>{w.name}</option>
 				{/each}
 			</select>
 		</label>

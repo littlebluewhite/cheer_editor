@@ -77,9 +77,9 @@ export function rateCounts(phases: Phase[], attempts: Attempt[]): RateCounts {
 
 /**
  * 每天的表：動作每天、每個環節的次數，加上整次和合計。分段練和全上都算。
- * who 是要看哪一組（騰翻、跳躍是隊員 id）；沒給就是全部。
+ * who 是要看哪一組的組 id（騰翻、跳躍是隊員 id）；沒給就是全部。
  */
-export function dailyTable(action: Action, who?: number | string): DailyTable {
+export function dailyTable(action: Action, who?: string): DailyTable {
 	const phases = action.successRate?.phases ?? [];
 	const records = (action.successRate?.records ?? []).filter((r) => who === undefined || r.who === who);
 	const dates = [...new Set(records.map((r) => r.date))].sort();
@@ -116,7 +116,7 @@ export interface RateFilter {
 
 /** 成功率表：一欄一組（騰翻、跳躍一欄一個人），每欄是每個環節和整次的次數；加上合計。 */
 export interface RateTable {
-	columns: ({ who: number | string; name: string } & RateCounts)[];
+	columns: ({ who: string; name: string } & RateCounts)[];
 	total: RateCounts;
 }
 
@@ -159,7 +159,7 @@ export interface DetailDay {
 }
 
 /** 一格的明細：這組（騰翻、跳躍是這個人）、這個環節每天的每一次記號，照日期排。空的不列。 */
-export function cellDetail(action: Action, who: number | string, phaseId: string): DetailDay[] {
+export function cellDetail(action: Action, who: string, phaseId: string): DetailDay[] {
 	const days = new Map<string, DetailDay['marks']>();
 	for (const r of action.successRate?.records ?? []) {
 		const mark = r.marks[phaseId];

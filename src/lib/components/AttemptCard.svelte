@@ -19,8 +19,8 @@
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
 		action: Action;
-		/** 第幾組；騰翻、跳躍的動作是隊員 id。 */
-		who: number | string;
+		/** 組 id；騰翻、跳躍的動作是隊員 id。 */
+		who: string;
 		/** 卡上寫的名字：「第 1 組 小美」或隊員名字。 */
 		name: string;
 		/** 記在哪一天（YYYY-MM-DD）。 */

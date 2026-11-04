@@ -15,7 +15,7 @@ import {
 	updateSegment,
 	type Flow
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf, squadNumbers } from '#lib/core/test-flows.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { editorPage, openFile, settle } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
@@ -129,7 +129,7 @@ describe('拍點格子上標環節', () => {
 	});
 
 	it('要刪的環節有記號：先問會清掉幾次的記號；取消什麼都不變，確定才刪', async () => {
-		const marks = { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks: { p3: '✗' } } as const;
+		const marks = { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p3: '✗' } } as const;
 		await open(flowOf(recordAttempt(libFlow(), 'x1', marks)));
 		await select('2-5', '2-8');
 		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
@@ -231,7 +231,7 @@ describe('沒記成功率的動作也能加環節', () => {
 		expect(r.flow.actions[0].successRate?.phases).toEqual([
 			{ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 6 } }
 		]);
-		expect(r.flow.actions[0].members.map((m) => m.squad)).toEqual([1, 1]);
+		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1]);
 
 		await openFile(saves[0], '開啟');
 		await selectLib();
@@ -293,7 +293,7 @@ describe('口號段的環節（不用標拍）', () => {
 			{ id: 'p1', kind: 'whole', name: '' },
 			{ id: 'p2', kind: 'load', name: '延伸' }
 		]);
-		expect(toss.members.map((m) => m.squad)).toEqual([1, 1]);
+		expect(squadNumbers(toss)).toEqual([1, 1]);
 	});
 
 	it('點一個環節選它，改名字、種類、顏色', async () => {
@@ -331,7 +331,7 @@ describe('口號段的環節（不用標拍）', () => {
 	it('要刪的環節有記號：先問；取消什麼都不變，確定才刪', async () => {
 		let flow = flowOf(addPhase(chantFlow(), 'x2', { kind: 'whole', name: '' }));
 		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '' }));
-		const attempt = { date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
+		const attempt = { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
 		await openChant(flowOf(recordAttempt(flow, 'x2', attempt)));
 		await fireEvent.click(row().getByRole('button', { name: '環節 整體' }));
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));

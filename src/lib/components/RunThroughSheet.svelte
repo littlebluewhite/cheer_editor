@@ -42,15 +42,15 @@
 	/** 按了「沒做（停了）」的動作。 */
 	let skipped = $state<string[]>([]);
 
-	const key = (actionId: string, who: number | string, phaseId: string) => `${actionId}|${who}|${phaseId}`;
+	const key = (actionId: string, who: string, phaseId: string) => `${actionId}|${who}|${phaseId}`;
 
 	/** 一組在一個動作點過的記號，每個環節都有（沒點過的是 ✓）。 */
-	function tapped(action: Action, who: number | string): Record<string, Mark> {
+	function tapped(action: Action, who: string): Record<string, Mark> {
 		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, picked[key(action.id, who, p.id)] ?? '✓']));
 	}
 
 	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（核心 keptAttempt）：✗ 後面的、沒做的動作是空的（null）。 */
-	function column(action: Action, who: number | string): (Mark | null)[] {
+	function column(action: Action, who: string): (Mark | null)[] {
 		const phaseIds = action.successRate!.phases.map((p) => p.id);
 		if (skipped.includes(action.id)) return phaseIds.map(() => null);
 		const kept = keptAttempt(action, true, tapped(action, who)).marks;
@@ -58,7 +58,7 @@
 	}
 
 	/** 點一格換下一個記號；變 ✗ 就把同一組後面點過的清掉（改回來時後面是 ✓）。 */
-	function tap(actionId: string, phaseIds: string[], who: number | string, index: number, mark: Mark) {
+	function tap(actionId: string, phaseIds: string[], who: string, index: number, mark: Mark) {
 		const next = NEXT[mark];
 		picked[key(actionId, who, phaseIds[index])] = next;
 		if (next === '✗') for (const id of phaseIds.slice(index + 1)) delete picked[key(actionId, who, id)];

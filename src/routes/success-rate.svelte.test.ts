@@ -8,7 +8,7 @@ import {
 	setSquad,
 	readFlowFile
 } from '#lib/core';
-import { flowOf } from '#lib/core/test-flows.js';
+import { flowOf, squadNumbers } from '#lib/core/test-flows.js';
 import { editorPage, openFile, phasedFlow, settle, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
@@ -120,7 +120,7 @@ describe('分組浮動列', () => {
 		await settle();
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
-		expect(r.flow.actions[0].members.map((m) => m.squad)).toEqual([1, 1, 2, 2]);
+		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1, 2, 2]);
 		await openFile(saves[0], '開啟');
 		await selectLib();
 		expect(tags()).toEqual(['第 1 組', '第 1 組', '第 2 組', '第 2 組']);

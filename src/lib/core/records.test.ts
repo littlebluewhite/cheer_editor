@@ -16,6 +16,8 @@ import {
 	recordRunThrough,
 	rateTable,
 	setSquad,
+	squadName,
+	squadsOf,
 	updateAction,
 	writeFlowFile,
 	type Flow,
@@ -31,7 +33,7 @@ const recordsOf = (flow: Flow, id = 'x1') => flow.actions.find((a) => a.id === i
 /** 第 1 組在 2026-11-04 分段練、整個做。 */
 const drill = (marks: NewAttempt['marks'], more: Partial<NewAttempt> = {}): NewAttempt => ({
 	date: '2026-11-04',
-	who: 1,
+	who: 'g1',
 	practice: 'drill',
 	whole: true,
 	marks,
@@ -44,17 +46,17 @@ describe('記一次', () => {
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
 		expect(recordsOf(r.flow)).toEqual([
-			{ id: 't1', date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
+			{ id: 't1', date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
 		]);
 		expect(r.id).toBe('t1');
 	});
 
 	it('第二次排在後面，id 往下發', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' }, { whole: false })));
-		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✗' }, { who: 2 })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✗' }, { who: 'g2' })));
 		expect(recordsOf(flow).map((r) => [r.id, r.who, r.marks])).toEqual([
-			['t1', 1, { p1: '✓' }],
-			['t2', 2, { p1: '✗' }]
+			['t1', 'g1', { p1: '✓' }],
+			['t2', 'g2', { p1: '✗' }]
 		]);
 	});
 
@@ -93,8 +95,8 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 	it('全上裡 ✗ 後面空著，仍然是整個做；✗ 後面給了記號也不存', () => {
 		const flow = flowOf(
 			recordRunThrough(sample(), '2026-11-04', [
-				{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✗' } },
-				{ actionId: 'x1', who: 2, marks: { p1: '✗', p2: '✓', p3: '✓' } }
+				{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } },
+				{ actionId: 'x1', who: 'g2', marks: { p1: '✗', p2: '✓', p3: '✓' } }
 			])
 		);
 		expect(recordsOf(flow).map((r) => [r.whole, r.marks])).toEqual([
@@ -132,7 +134,7 @@ describe('刪掉上一次', () => {
 		let flow = sample();
 		for (const input of [
 			drill({ p1: '✓' }),
-			drill({ p1: '✓' }, { who: 2 }),
+			drill({ p1: '✓' }, { who: 'g2' }),
 			drill({ p1: '✗' }),
 			drill({ p1: '△' }, { date: '2026-11-05' })
 		]) {
@@ -142,21 +144,21 @@ describe('刪掉上一次', () => {
 	}
 
 	it('拿掉這組在那天最後記的一次，別組、別天的不動', () => {
-		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 1, '2026-11-04'));
+		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-04'));
 		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't4']);
-		flow = flowOf(deleteLastAttempt(flow, 'x1', 1, '2026-11-04'));
+		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', '2026-11-04'));
 		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t2', 't4']);
 	});
 
 	it('那天這組沒有紀錄就擋下來', () => {
-		expect(deleteLastAttempt(recorded(), 'x1', 2, '2026-11-05')).toEqual({
+		expect(deleteLastAttempt(recorded(), 'x1', 'g2', '2026-11-05')).toEqual({
 			kind: 'blocked',
 			message: '這一天還沒有紀錄'
 		});
 	});
 
 	it('刪掉的 id 不再發', () => {
-		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 1, '2026-11-05'));
+		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-05'));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' })));
 		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't5']);
 	});
@@ -167,7 +169,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	function recorded(base = sample()): Flow {
 		let flow = base;
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓', p2: '✓', p3: '△' })));
-		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓' }, { who: 2, whole: false })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓' }, { who: 'g2', whole: false })));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p3: '✗' }, { whole: false })));
 		return flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' }, { who: 'm2' })));
 	}
@@ -184,7 +186,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	it('換上的流程比較新（重做），紀錄一樣用現在的', () => {
 		const current = recorded();
 		const newer = flowOf(updateAction(current, 'x1', { name: '新的名字' }));
-		const fewer = flowOf(deleteLastAttempt(current, 'x1', 1, '2026-11-04'));
+		const fewer = flowOf(deleteLastAttempt(current, 'x1', 'g1', '2026-11-04'));
 		const carried = carryRecords(newer, fewer);
 		expect(carried.actions[0].name).toBe('新的名字');
 		expect(recordsOf(carried).map((r) => r.id)).toEqual(['t1', 't2']);
@@ -252,28 +254,32 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		let current = flowOf(deleteAction(older, 'x3'));
 		current = flowOf(addPhase(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
 		current = flowOf(setSquad(current, 'x3', ['m4'], 1));
-		const phase = current.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id;
-		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' })));
+		const x3 = current.actions.find((a) => a.id === 'x3')!;
+		const phase = x3.successRate!.phases[0].id;
+		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' }, { who: squadsOf(x3)[0] })));
 
 		expect(phase).not.toBe(older.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id);
 		expect(recordsOf(carryRecords(older, current), 'x3')).toEqual([]);
 	});
 
-	it('組號補過號再復原：紀錄跟著人回到原來的組，不會算到別組頭上', () => {
+	it('組空掉、後面的組號往前補再復原：紀錄還是指到同一個組，不會算到別組頭上', () => {
 		const before = recorded();
 		const after = flowOf(setSquad(before, 'x1', ['m1', 'm2'], null, { confirmed: true }));
-		expect(recordsOf(after).map((r) => [r.id, r.who])).toEqual([['t2', 1]]);
+		const x1 = (flow: Flow) => flow.actions.find((a) => a.id === 'x1')!;
+		expect(recordsOf(after).map((r) => [r.id, r.who])).toEqual([['t2', 'g2']]);
+		expect(squadName(after, x1(after), 'g2')).toBe('第 1 組 小芳');
 
 		const undone = carryRecords(before, after);
-		expect(recordsOf(undone).map((r) => [r.id, r.who])).toEqual([['t2', 2]]);
+		expect(recordsOf(undone).map((r) => [r.id, r.who])).toEqual([['t2', 'g2']]);
+		expect(squadName(undone, x1(undone), 'g2')).toBe('第 2 組 小芳');
 		const redone = carryRecords(after, undone);
-		expect(recordsOf(redone).map((r) => [r.id, r.who])).toEqual([['t2', 1]]);
+		expect(recordsOf(redone).map((r) => [r.id, r.who])).toEqual([['t2', 'g2']]);
 	});
 
 	it('新分出來的組有紀錄再復原：紀錄丟掉，不會混進那個人原來的組', () => {
 		const before = sample();
 		let after = flowOf(setSquad(before, 'x1', ['m1'], 3));
-		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 3 })));
+		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 'g3' })));
 
 		expect(recordsOf(carryRecords(before, after))).toEqual([]);
 	});
@@ -281,10 +287,10 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	it('組裡的人變了再復原：紀錄還是留在那一組，不問', () => {
 		const before = flowOf(setSquad(sample(), 'x1', ['m1'], null));
 		let after = flowOf(setSquad(before, 'x1', ['m1'], 2));
-		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 2 })));
+		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 'g2' })));
 		const t = recordsOf(after)[0].id;
 
-		expect(recordsOf(carryRecords(before, after)).map((r) => [r.id, r.who])).toEqual([[t, 2]]);
+		expect(recordsOf(carryRecords(before, after)).map((r) => [r.id, r.who])).toEqual([[t, 'g2']]);
 	});
 
 	it('沒有紀錄要帶：換上的流程原封不動', () => {
@@ -299,7 +305,7 @@ describe('改編排後對不上的紀錄拿掉，流程檔照樣打得開', () =
 	function recorded(): Flow {
 		let flow = sample();
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓' })));
-		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓' }, { who: 2 })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓' }, { who: 'g2' })));
 		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' }, { who: 'm1' })));
 		return flowOf(recordAttempt(flow, 'x2', drill({ p4: '✗' }, { who: 'm2' })));
 	}
@@ -369,8 +375,8 @@ describe('記錄頁要的清單', () => {
 		flow = flowOf(setSquad(flow, 'x1', ['m2'], null));
 		const x1 = flow.actions.find((a) => a.id === 'x1')!;
 		expect(attemptWhos(flow, x1)).toEqual([
-			{ who: 1, name: '第 1 組 小芳' },
-			{ who: 2, name: '第 2 組 小美' }
+			{ who: 'g2', name: '第 1 組 小芳' },
+			{ who: 'g3', name: '第 2 組 小美' }
 		]);
 	});
 
@@ -405,10 +411,10 @@ describe('記一次：擋下來的情況', () => {
 		['記號指到別的動作的環節', 'x1', drill({ p4: '✓' }), '記號要打在這個動作的環節上'],
 		['記號不是 ✓ △ ✗', 'x1', drill({ p1: 'O' as never }), '記號只能是 ✓、△、✗'],
 		['一個記號都沒有', 'x1', drill({}), '一次至少要有一個記號'],
-		['沒有人的組', 'x1', drill({ p1: '✓' }, { who: 3 }), '這一組沒有人'],
+		['沒有人的組', 'x1', drill({ p1: '✓' }, { who: 'g3' }), '這一組沒有人'],
 		['分組的動作給了隊員', 'x1', drill({ p1: '✓' }, { who: 'm1' }), '這一組沒有人'],
 		['騰翻的動作給了不在動作裡的隊員', 'x2', drill({ p4: '✓' }, { who: 'm3' }), '這個隊員不在動作裡'],
-		['騰翻的動作給了組', 'x2', drill({ p4: '✓' }, { who: 1 }), '這個隊員不在動作裡'],
+		['騰翻的動作給了組', 'x2', drill({ p4: '✓' }, { who: 'g1' }), '這個隊員不在動作裡'],
 		['日期寫錯', 'x1', drill({ p1: '✓' }, { date: '2026/11/4' }), '日期要寫成 2026-11-04 這樣'],
 		['全上沒帶全上的 id', 'x1', drill({ p1: '✓' }, { practice: 'runThrough' }), '全上要帶同一次全上的 id'],
 		['分段練帶了全上的 id', 'x1', drill({ p1: '✓' }, { runThroughId: 'u1' }), '全上要帶同一次全上的 id']
@@ -439,8 +445,8 @@ describe('記一次全上', () => {
 	const date = '2026-11-04';
 	/** Lib 第 1 組全 ✓、第 2 組下法 ✗；騰翻小美 ✓、小A ✗。 */
 	const sheet = (): RunThroughMarks[] => [
-		{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✓', p3: '✓' } },
-		{ actionId: 'x1', who: 2, marks: { p1: '✓', p2: '△', p3: '✗' } },
+		{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } },
+		{ actionId: 'x1', who: 'g2', marks: { p1: '✓', p2: '△', p3: '✗' } },
 		{ actionId: 'x2', who: 'm1', marks: { p4: '✓' } },
 		{ actionId: 'x2', who: 'm2', marks: { p4: '✗' } }
 	];
@@ -460,7 +466,7 @@ describe('記一次全上', () => {
 
 	it('第二次全上帶新的全上 id；刪掉了也不重用', () => {
 		let flow = flowOf(recordRunThrough(sample(), date, sheet().slice(0, 1)));
-		flow = flowOf(deleteLastAttempt(flow, 'x1', 1, date));
+		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', date));
 		const r = recordRunThrough(flow, date, sheet().slice(0, 1));
 		expect(r.kind === 'ok' && r.runThroughId).toBe('r2');
 	});
@@ -479,17 +485,17 @@ describe('記一次全上', () => {
 		const bad = [...sheet().slice(0, 1), { actionId: 'x2', who: 'm3', marks: { p4: '✓' } } as const];
 		expect(recordRunThrough(sample(), date, bad)).toEqual({ kind: 'blocked', message: '騰翻：這個隊員不在動作裡' });
 		expect(recordRunThrough(sample(), '11/4', sheet())).toMatchObject({ kind: 'blocked' });
-		expect(recordRunThrough(sample(), date, [{ actionId: 'x9', who: 1, marks: { p1: '✓' } }])).toMatchObject({
+		expect(recordRunThrough(sample(), date, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toMatchObject({
 			kind: 'blocked'
 		});
 	});
 
 	it('算進整次成功率；練法篩選分得開全上和分段練', () => {
-		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' }, { who: 2 })));
+		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' }, { who: 'g2' })));
 		flow = flowOf(recordRunThrough(flow, date, sheet()));
 		const lib = flow.actions[0];
 		const squad2 = (practice?: 'drill' | 'runThrough') =>
-			rateTable(flow, lib, { practice }).columns.find((c) => c.who === 2)!;
+			rateTable(flow, lib, { practice }).columns.find((c) => c.who === 'g2')!;
 		expect(squad2().whole).toEqual({ whole: 2, clean: 1 });
 		expect(squad2('runThrough').whole).toEqual({ whole: 1, clean: 0 });
 		expect(squad2('runThrough').phases.p3).toMatchObject({ fail: 1, marked: 1 });

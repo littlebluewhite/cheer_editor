@@ -260,7 +260,7 @@ describe('新建', () => {
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
-	it('開第 6 版的檔：音樂段沒標拍的環節和它的記號拿掉、組號補成第 1 組，存出來是第 7 版', async () => {
+	it('開第 6 版的檔：音樂段沒標拍的環節和它的記號拿掉、組號補成第 1 組，存出來是第 8 版（組是組 id）', async () => {
 		const { saver, saves } = fakeSaver();
 		setup(saver);
 		const flow = JSON.parse(JSON.stringify(flowOf(addPhase(sampleFlow(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }))));
@@ -271,18 +271,19 @@ describe('新建', () => {
 			{ id: 't1', date: '2026-11-04', who: 3, practice: 'drill', whole: true, marks: { p1: '✓', p2: '✗' } },
 			{ id: 't2', date: '2026-11-04', who: 3, practice: 'drill', whole: false, marks: { p2: '✓' } }
 		];
+		delete flow.lastIds.g;
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 6, flow })) }));
 		expect(screen.getByText('練習用')).toBeTruthy();
 		await ctrlS();
 		await settle();
 		const json = JSON.parse(new TextDecoder().decode(unzipSync(saves[0])['flow.json']));
-		expect(json.formatVersion).toBe(7);
+		expect(json.formatVersion).toBe(8);
 		const saved = json.flow.actions[0];
 		expect(saved.successRate.phases.map((p: { id: string }) => p.id)).toEqual(['p1']);
 		expect(saved.successRate.records).toEqual([
-			{ id: 't1', date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks: { p1: '✓' } }
+			{ id: 't1', date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } }
 		]);
-		expect(saved.members[0].squad).toBe(1);
+		expect(saved.members[0].squad).toBe('g1');
 	});
 
 	it('第 7 版的檔裡音樂段的環節沒標拍：提示「這不是流程檔」，留在首頁', async () => {
