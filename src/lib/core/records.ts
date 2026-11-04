@@ -1,7 +1,7 @@
 // 成功率的紀錄：記一次、刪掉上一次，和復原、重做時把現在的紀錄帶過去。
 // 紀錄存在動作的成功率設定裡（Action.successRate.records），一次一筆，照記的先後排。
 
-import { actionLabel, actionSeconds, replaceAction, type Action } from './actions';
+import { actionLabel, actionSeconds, replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, ok, type CommandResult } from './result';

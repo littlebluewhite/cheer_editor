@@ -1,7 +1,7 @@
 // 流程資料和建立流程的指令。
 // 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加段、動作等。
 
-import type { Action } from './actions';
+import type { Action } from './action-types';
 import { MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import type { Formation } from './formation';
 import type { MarkerStyle, Member } from './members';

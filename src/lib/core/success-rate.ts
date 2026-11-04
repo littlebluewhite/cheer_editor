@@ -8,7 +8,7 @@ import {
 	type Action,
 	type ActionCategory,
 	type ActionMember
-} from './actions';
+} from './action-types';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';

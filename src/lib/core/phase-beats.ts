@@ -2,7 +2,7 @@
 // 標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走。環節之間不能重疊；標拍、清標的拍都不動拍點。
 // 音樂段的環節一定有拍：拍清光的環節自動刪掉（有記號先問），環節照拍的先後排；一個都不剩就不記成功率。
 
-import type { Action } from './actions';
+import type { Action } from './action-types';
 import { rangeText } from './cues';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
