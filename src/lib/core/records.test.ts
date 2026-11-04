@@ -250,6 +250,25 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		expect(recordsOf(carryRecords(older, current), 'x3')).toEqual([]);
 	});
 
+	it('組號補過號再復原：紀錄跟著人回到原來的組，不會算到別組頭上', () => {
+		const before = recorded();
+		const after = flowOf(setSquad(before, 'x1', ['m1', 'm2'], null, { confirmed: true }));
+		expect(recordsOf(after).map((r) => [r.id, r.who])).toEqual([['t2', 1]]);
+
+		const undone = carryRecords(before, after);
+		expect(recordsOf(undone).map((r) => [r.id, r.who])).toEqual([['t2', 2]]);
+		const redone = carryRecords(after, undone);
+		expect(recordsOf(redone).map((r) => [r.id, r.who])).toEqual([['t2', 1]]);
+	});
+
+	it('新分出來的組有紀錄再復原：紀錄丟掉，不會混進那個人原來的組', () => {
+		const before = sample();
+		let after = flowOf(setSquad(before, 'x1', ['m1'], 3));
+		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 3 })));
+
+		expect(recordsOf(carryRecords(before, after))).toEqual([]);
+	});
+
 	it('沒有紀錄要帶：換上的流程原封不動', () => {
 		const older = flowOf(updateAction(sample(), 'x1', { name: '舊的名字' }));
 		const current = flowOf(updateAction(older, 'x1', { name: '新的名字' }));

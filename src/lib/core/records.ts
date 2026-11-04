@@ -88,13 +88,30 @@ export function carryRecords(next: Flow, current: Flow): Flow {
 	let changed = lastIds !== next.lastIds;
 	const actions = next.actions.map((a) => {
 		if (!a.successRate) return a;
-		const records = current.actions.find((c) => c.id === a.id)?.successRate?.records ?? [];
+		const from = current.actions.find((c) => c.id === a.id);
+		const records = from?.successRate?.records ?? [];
 		const own = a.successRate.records;
 		if (records === own || (records.length === 0 && own.length === 0)) return a;
 		changed = true;
-		return fitRecords({ ...a, successRate: { ...a.successRate, records } });
+		const followed = records.map((r) => (typeof r.who === 'number' ? { ...r, who: followSquad(from!, a, r.who) } : r));
+		return fitRecords({ ...a, successRate: { ...a.successRate, records: followed } });
 	});
 	return changed ? { ...next, actions, ...(lastIds && { lastIds }) } : next;
+}
+
+/**
+ * 組號補過號（見 compactSquads）後，同一組在兩份流程裡號碼可能不一樣：to 裡有一組剛好是同一群人，就換成那組的號碼；
+ * 沒有（組換了人）就用原來的號碼。
+ */
+function followSquad(from: Action, to: Action, squad: number): number {
+	const people = (a: Action, n: number) =>
+		a.members
+			.filter((m) => m.squad === n)
+			.map((m) => m.memberId)
+			.sort()
+			.join();
+	const same = squadsOf(to).find((n) => people(to, n) === people(from, squad));
+	return same ?? squad;
 }
 
 /** 兩份「id 發到第幾號」取大的；跟 a 一樣就回傳 a。 */
