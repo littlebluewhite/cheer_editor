@@ -1,6 +1,6 @@
 // 頁面：在拍點格子選幾拍標成環節，格子裡多一列環節；拍清光的環節自動刪掉（有記號先問），
 // 刪掉最後一個就不記成功率；把動作改短切到環節時先問。口號段的動作直接一列環節，不用標拍。
-// 流程在核心裡做好再開檔。
+// 流程在核心裡做好，放一個帶著它的 session 進頁面，再讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import {
@@ -14,30 +14,15 @@ import {
 	readFlowFile,
 	recordAttempt,
 	updateSegment,
-	writeFlowFile,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
+import { flowOf } from '#lib/core/test-flows.js';
+import type { EditorSession } from '#lib/editor-session.svelte.js';
+import { editorPage, openFile, settle } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-function setup() {
-	const { saver, saves } = fakeSaver();
-	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
-	return saves;
-}
-
-/** 等 async 的開檔跑完。 */
-const settle = () => new Promise((r) => setTimeout(r, 0));
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
 
 /**
  * 音樂 1；Lib（技巧，1-1 起兩個八拍）的環節：1-1 到 1-3 上法「延伸」（p1）、1-4 到 2-3 中段（p2）、
@@ -68,19 +53,15 @@ function plainFlow(): Flow {
 	return flowOf(placeCue(flow, 'x1', { kind: 'step', at: 4, len: 6, word: '上' }));
 }
 
-/** 開檔、點泳道上 Lib 的色條選到它；回傳存過的檔。 */
+/** 開編輯頁放 flow、點泳道上 Lib 的色條選到它；回傳 session 和存下來的檔。 */
 async function open(flow = libFlow()) {
-	const saves = setup();
-	await openFile(writeFlowFile(flow, {}), '開啟流程檔');
-	return saves;
+	const page = editorPage(flow);
+	render(Page, page.props);
+	await selectLib();
+	return page;
 }
 
-async function openFile(bytes: Uint8Array, label: string) {
-	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip');
-	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
-	await settle();
-	await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
-}
+const selectLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
 
 const grid = () => within(screen.getByRole('group', { name: '拍點' }));
 /** 格子裡環節那一列的環節（每個環節一個；跨八拍的後半段不算）。 */
@@ -156,18 +137,13 @@ describe('拍點格子上標環節', () => {
 	});
 
 	it('刪掉最後一個環節：動作不記成功率了，人員清單的組標籤也不見', async () => {
-		const saves = await open();
+		const { session } = await open();
 		expect(squad('小美')).toBe('1');
 		await select('1-1', '2-8');
 		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
 		expect(gridPhases()).toEqual([]);
 		expect(squad('小美')).toBeNull();
-
-		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-		await settle();
-		const r = readFlowFile(saves[0]);
-		if (r.kind !== 'ok') throw new Error(r.message);
-		expect(r.flow.actions[0].successRate).toBeUndefined();
+		expect(session.flow!.actions[0].successRate).toBeUndefined();
 	});
 
 	it('在表單把動作改短、切到環節：先問；取消就還原，確定才刪掉', async () => {
@@ -229,7 +205,7 @@ describe('點環節的色條改它', () => {
 
 describe('沒記成功率的動作也能加環節', () => {
 	it('格子有環節那一列；選拍加入就開始記成功率，只有這個環節，全部的人第 1 組；存檔再開還在', async () => {
-		const saves = await open(plainFlow());
+		const { saves } = await open(plainFlow());
 		expect(squad('小美')).toBeNull();
 		expect(grid().getAllByText('環節')).toHaveLength(2);
 
@@ -248,6 +224,7 @@ describe('沒記成功率的動作也能加環節', () => {
 		expect(r.flow.actions[0].members.map((m) => m.squad)).toEqual([1, 1]);
 
 		await openFile(saves[0], '開啟');
+		await selectLib();
 		expect(gridPhases()).toEqual(['環節 上法 延伸 1-1 到 1-3']);
 	});
 
@@ -275,14 +252,12 @@ describe('口號段的環節（不用標拍）', () => {
 		return flowOf(addAction(flow, { segmentId: 's2', category: 'toss', name: 'Toss', start: 0, length: 30, note: '', members }));
 	}
 
-	/** 開檔、點泳道上 Toss 的色條；回傳存過的檔。 */
+	/** 開編輯頁放 flow、點泳道上 Toss 的色條；回傳 session。 */
 	async function openChant(flow = chantFlow()) {
-		const saves = setup();
-		const file = new File([writeFlowFile(flow, {}) as Uint8Array<ArrayBuffer>], '練習用.zip');
-		await fireEvent.change(screen.getByLabelText('開啟流程檔'), { target: { files: [file] } });
-		await settle();
+		const { session, props } = editorPage(flow);
+		render(Page, props);
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x2"]')!);
-		return saves;
+		return session;
 	}
 
 	/** 拍點那一區的「環節」列（口號段沒有小窗，直接在那一區）。 */
@@ -294,21 +269,16 @@ describe('口號段的環節（不用標拍）', () => {
 		await fireEvent.click(row().getByRole('button', { name: '加入環節' }));
 	}
 
-	async function saved(saves: Uint8Array[]) {
-		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-		await settle();
-		const r = readFlowFile(saves.at(-1)!);
-		if (r.kind !== 'ok') throw new Error(r.message);
-		return r.flow.actions.find((a) => a.id === 'x2')!;
-	}
+	/** session 現在的 Toss。 */
+	const tossOf = (session: EditorSession) => session.flow!.actions.find((a) => a.id === 'x2')!;
 
 	it('加環節：照加的先後排；加第一個就開始記成功率，全部的人第 1 組；存檔不標拍', async () => {
-		const saves = await openChant();
+		const session = await openChant();
 		await add('whole', '');
 		await add('load', '延伸');
 		expect(gridPhases()).toEqual(['環節 整體', '環節 上法 延伸']);
 
-		const toss = await saved(saves);
+		const toss = tossOf(session);
 		expect(toss.successRate?.phases).toEqual([
 			{ id: 'p1', kind: 'whole', name: '' },
 			{ id: 'p2', kind: 'load', name: '延伸' }
@@ -328,7 +298,7 @@ describe('口號段的環節（不用標拍）', () => {
 	});
 
 	it('選一個環節按清掉就刪掉；刪光就不記成功率；可以復原、重做', async () => {
-		const saves = await openChant();
+		const session = await openChant();
 		await add('whole', '');
 		await add('load', '');
 		expect(row().getByRole('button', { name: '清掉環節' }).hasAttribute('disabled')).toBe(true);
@@ -338,7 +308,7 @@ describe('口號段的環節（不用標拍）', () => {
 		await fireEvent.click(row().getByRole('button', { name: '環節 上法' }));
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		expect(gridPhases()).toEqual([]);
-		expect((await saved(saves)).successRate).toBeUndefined();
+		expect(tossOf(session).successRate).toBeUndefined();
 
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(gridPhases()).toEqual(['環節 上法']);

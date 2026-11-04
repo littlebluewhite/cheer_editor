@@ -8,9 +8,9 @@ import {
 	setSquad,
 	updateSegment,
 	type ActionCategory,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ActionForm from './ActionForm.svelte';
@@ -26,11 +26,6 @@ const scrolled: Element[] = [];
 Element.prototype.scrollIntoView = function () {
 	scrolled.push(this);
 };
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 /** 音樂 1（150 BPM、2 個八拍，一個半拍 0.2 秒）；隊員小A、小B。 */
 function sample(): Flow {

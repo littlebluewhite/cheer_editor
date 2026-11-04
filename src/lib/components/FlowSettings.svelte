@@ -9,7 +9,8 @@
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
-	import { applyResult, numberValue } from './form';
+	import { Ask } from './ask.svelte';
+	import { numberValue } from './form';
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from './marker';
 
@@ -20,16 +21,17 @@
 	}
 
 	let { flow, onchange, onclose }: Props = $props();
-	let error = $state('');
+	/** 被擋的原因。 */
+	const ask = new Ask((f) => onchange(f));
 
 	function update(patch: Partial<TimeRules>) {
-		error = applyResult(updateTimeRules(flow, patch), onchange);
+		ask.send(() => updateTimeRules(flow, patch));
 	}
 
 	function rename(input: HTMLInputElement) {
-		error = applyResult(renameFlow(flow, input.value), onchange);
+		const r = ask.send(() => renameFlow(flow, input.value));
 		// 被擋下時把輸入框還原成原本的名字。
-		if (error) input.value = flow.name;
+		if (r.kind !== 'ok') input.value = flow.name;
 	}
 
 	const markers = $derived(memberMarkers(flow));
@@ -84,7 +86,7 @@
 						type="radio"
 						name="markers"
 						checked={(flow.markers ?? 'number') === s.key}
-						onchange={() => (error = applyResult(setMarkers(flow, s.key), onchange))}
+						onchange={() => ask.send(() => setMarkers(flow, s.key))}
 					/>
 					{s.label}
 				</label>
@@ -104,7 +106,7 @@
 				</ul>
 			{/if}
 		</section>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	</div>
 </div>
 

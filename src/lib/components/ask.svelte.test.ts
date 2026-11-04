@@ -119,6 +119,17 @@ describe('回答', () => {
 		expect(ask.error).toBe('');
 	});
 
+	it('給了 cancel：按取消才呼叫，被擋不呼叫、原因不加「，已還原」', () => {
+		const cancel = vi.fn();
+		const ask = new Ask(vi.fn());
+		ask.send(command(blocked('BPM 不對')).send, { cancel });
+		expect(ask.error).toBe('BPM 不對');
+		expect(cancel).not.toHaveBeenCalled();
+		ask.send(command(confirm('要確認')).send, { cancel });
+		ask.answer('cancel');
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
 	it('回答後被擋：留下原因，加「，已還原」並還原', () => {
 		const revert = vi.fn();
 		const ask = new Ask(vi.fn());
