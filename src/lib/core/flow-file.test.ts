@@ -13,6 +13,7 @@ import {
 	memberMarkers,
 	placeCue,
 	readFlowFile,
+	recordAttempt,
 	setMarkers,
 	setPositions,
 	setSquad,
@@ -21,7 +22,8 @@ import {
 	writeFlowFile,
 	type CommandResult,
 	type Flow,
-	type FlowDocument
+	type FlowDocument,
+	type NewAttempt
 } from './index';
 
 function flowOf(r: CommandResult): Flow {
@@ -89,6 +91,21 @@ function withSuccessRate(): Flow {
 	return { ...flow, actions: [{ ...flow.actions[0], successRate: { phases, records: [] } }] };
 }
 
+/** withSuccessRate() 再記三次：第 1 組分段練整個做 ✓✓△、第 2 組只練上法 ✗、第 1 組全上 ✓✓✓。 */
+function withRecords(): Flow {
+	let flow = withSuccessRate();
+	const date = '2026-11-04';
+	const attempts: Omit<NewAttempt, 'date'>[] = [
+		{ who: 1, practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } },
+		{ who: 2, practice: 'drill', whole: false, marks: { p1: '✗' } },
+		{ who: 1, practice: 'runThrough', runThroughId: 'u1', whole: true, marks: { p1: '✓', p2: '✓', p3: '✓' } }
+	];
+	for (const input of attempts) {
+		flow = flowOf(recordAttempt(flow, 'x1', { date, ...input }));
+	}
+	return flow;
+}
+
 const bytes = (...values: number[]) => new Uint8Array(values);
 
 describe('流程檔：存了再開', () => {
@@ -137,6 +154,17 @@ describe('流程檔：存了再開', () => {
 			'dismount'
 		]);
 		expect(r.kind === 'ok' && r.flow.lastIds).toEqual({ p: 3 });
+	});
+
+	it('紀錄存了再開也一樣', () => {
+		const flow = withRecords();
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		expect(r.kind === 'ok' && r.flow.actions[0].successRate?.records.map((a) => a.marks)).toEqual([
+			{ p1: '✓', p2: '✓', p3: '△' },
+			{ p1: '✗' },
+			{ p1: '✓', p2: '✓', p3: '✓' }
+		]);
 	});
 
 	it('標記用開頭字，存了再開也一樣', () => {
@@ -203,6 +231,10 @@ describe('流程檔：版本', () => {
 	const brokenRate = (edit: (flow: any, sr: any) => void) =>
 		broken((f) => edit(f, f.actions[0].successRate), withSuccessRate);
 
+	/** withRecords() 改壞一個地方；r 是 Lib 的第一次（第 1 組 ✓✓△），records 是全部的紀錄。 */
+	const brokenRecord = (edit: (r: any, records: any[]) => void) =>
+		broken((f) => edit(f.actions[0].successRate.records[0], f.actions[0].successRate.records), withRecords);
+
 	it.each([
 		['站位的 pos 是 null', broken((f) => (f.formations[0].pos = null))],
 		['位置不是兩個數字', broken((f) => (f.formations[1].pos.m1 = [1]))],
@@ -253,7 +285,22 @@ describe('流程檔：版本', () => {
 		['成功率設定不是物件', brokenRate((f) => (f.actions[0].successRate = []))],
 		['沒有環節清單', brokenRate((_, sr) => delete sr.phases)],
 		['紀錄不是陣列', brokenRate((_, sr) => (sr.records = {}))],
-		['紀錄不是空的（還不能記一次）', brokenRate((_, sr) => (sr.records = [{}]))],
+		['一次不是物件', brokenRate((_, sr) => (sr.records = [1]))],
+		['一次沒有 id', brokenRecord((r) => delete r.id)],
+		['一次的 id 重複', brokenRecord((r, records) => (r.id = records[1].id))],
+		['日期不是字', brokenRecord((r) => (r.date = 20261104))],
+		['日期寫錯', brokenRecord((r) => (r.date = '2026-13-04'))],
+		['誰不是組也不是隊員', brokenRecord((r) => (r.who = true))],
+		['沒有人的組', brokenRecord((r) => (r.who = 3))],
+		['分組的動作給了隊員', brokenRecord((r) => (r.who = 'm1'))],
+		['練法不對', brokenRecord((r) => (r.practice = 'game'))],
+		['全上沒帶全上的 id', brokenRecord((r) => (r.practice = 'runThrough'))],
+		['全上的 id 不是字', brokenRecord((_, records) => (records[2].runThroughId = 1))],
+		['整個做不是是非', brokenRecord((r) => (r.whole = 'yes'))],
+		['記號不是物件', brokenRecord((r) => (r.marks = ['✓']))],
+		['記號指到不在的環節', brokenRecord((r) => (r.marks.p9 = '✓'))],
+		['記號不是 ✓ △ ✗', brokenRecord((r) => (r.marks.p1 = 'O'))],
+		['一個記號都沒有', brokenRecord((r) => (r.marks = {}))],
 		['環節種類不在五種裡', brokenRate((_, sr) => (sr.phases[1].kind = 'other'))],
 		['環節沒有 id', brokenRate((_, sr) => delete sr.phases[1].id)],
 		['環節的 id 重複', brokenRate((_, sr) => (sr.phases[1].id = sr.phases[0].id))],

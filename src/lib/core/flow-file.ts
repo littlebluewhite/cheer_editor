@@ -6,7 +6,7 @@ import { ACTION_CATEGORIES } from './actions';
 import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
-import { PHASE_KINDS, successRateProblem } from './success-rate';
+import { PHASE_KINDS, PRACTICE_KINDS, successRateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
 export const FORMAT_VERSION = 6;
@@ -130,10 +130,17 @@ const phase = shape({
 	color,
 	beats: (v) => v === undefined || shape({ at: int, len: int })(v)
 });
+const attempt = shape({
+	id: str,
+	date: str,
+	who: (v) => int(v) || str(v),
+	practice: oneOf(PRACTICE_KINDS),
+	runThroughId: (v) => v === undefined || str(v),
+	whole: bool,
+	marks: isObject
+});
 const successRate: Check = (v) =>
-	v === undefined ||
-	// 還沒有記一次的指令，紀錄一定是空的。
-	shape({ phases: listOf(phase), records: (r) => Array.isArray(r) && r.length === 0 })(v);
+	v === undefined || shape({ phases: listOf(phase), records: listOf(attempt) })(v);
 
 const flowShape = shape({
 	name: str,

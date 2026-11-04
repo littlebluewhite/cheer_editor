@@ -6,6 +6,7 @@ import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { fitRecords } from './success-rate';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -84,7 +85,7 @@ export function updateMember(flow: Flow, id: string, changes: MemberChanges): Co
 /**
  * 刪隊員。一定先回「要確認」：「他在 N 個動作裡，其中 M 個會被整個刪掉」（有拍點會拿掉——給他的、和只剩他是那個角色的——再加「會一起拿掉 K 個拍點」），清單是那 M 個動作；
  * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉，
- * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。
+ * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉；他自己的紀錄、和他走了就沒人的組的紀錄也拿掉。
  */
 export function deleteMember(
 	flow: Flow,
@@ -97,7 +98,7 @@ export function deleteMember(
 	const emptied = inActions.filter((a) => a.members.length === 1);
 	const actions = flow.actions
 		.filter((a) => !emptied.includes(a))
-		.map((a) => dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) }));
+		.map((a) => fitRecords(dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) })));
 	if (!confirmed) {
 		const spans = segmentSpans(flow);
 		const cueCount = (list: Action[]) => list.reduce((n, a) => n + (a.cues?.length ?? 0), 0);

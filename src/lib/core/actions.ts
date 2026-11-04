@@ -6,7 +6,7 @@ import { memberName, type Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import type { Segment } from './segment';
-import { perPerson, successRateProblem, type SuccessRate } from './success-rate';
+import { fitRecords, perPerson, successRateProblem, type SuccessRate } from './success-rate';
 import { nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
@@ -63,15 +63,16 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 /**
  * 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。
  * 沒打開記成功率、或騰翻跳躍（不分組）的動作，人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。
+ * 對不上的紀錄也拿掉（組沒人了、人移出動作、大類換成騰翻或換掉騰翻）。
  */
 function normalize({ color, ...action }: Action): Action {
 	const grouped = !!action.successRate && !perPerson(action.category);
-	return {
+	return fitRecords({
 		...action,
 		...(color ? { color } : {}),
 		name: action.name.trim(),
 		members: action.members.map(({ squad, ...m }) => (grouped && squad !== undefined ? { ...m, squad } : m))
-	};
+	});
 }
 
 /**

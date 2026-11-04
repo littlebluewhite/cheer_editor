@@ -57,6 +57,7 @@ export {
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
 export {
+	MARKS,
 	PHASE_KIND_COLORS,
 	PHASE_KINDS,
 	disableSuccessRate,
@@ -66,7 +67,16 @@ export {
 	setSquad,
 	squadName
 } from './success-rate';
-export type { Phase, PhaseKind, SuccessRate } from './success-rate';
+export type { Attempt, Mark, NewAttempt, Phase, PhaseKind, PracticeKind, SuccessRate } from './success-rate';
+
+export {
+	attemptText,
+	attemptWhos,
+	carryRecords,
+	deleteLastAttempt,
+	recordableActions,
+	recordAttempt
+} from './records';
 
 export { eightCountRows } from './eight-count';
 export type {

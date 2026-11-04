@@ -44,12 +44,46 @@ export interface Phase {
 	beats?: { at: number; len: number };
 }
 
+/** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
+export type Mark = '✓' | '△' | '✗';
+
+export const MARKS: { key: Mark; label: string }[] = [
+	{ key: '✓', label: '成功' },
+	{ key: '△', label: '小失誤' },
+	{ key: '✗', label: '失敗' }
+];
+
+/** 練法：分段練（drill）或全上（runThrough）。 */
+export type PracticeKind = 'drill' | 'runThrough';
+
+export const PRACTICE_KINDS: PracticeKind[] = ['drill', 'runThrough'];
+
+/** 一次：一組（騰翻、跳躍的動作是一個人）把動作做一遍的紀錄。 */
+export interface Attempt {
+	/** 整個流程裡不重複，刪了也不重用，例：t3。 */
+	id: string;
+	/** 裝置的當地日期，例：2026-11-04。 */
+	date: string;
+	/** 誰：第幾組；騰翻、跳躍的動作是隊員 id。 */
+	who: number | string;
+	practice: PracticeKind;
+	/** 全上才有：同一次全上記的都帶一樣的 id。 */
+	runThroughId?: string;
+	/** 整個做；false 是只練幾個環節。 */
+	whole: boolean;
+	/** 每個環節的記號，key 是環節 id；沒有就是空的（沒做到、沒練）。 */
+	marks: Record<string, Mark>;
+}
+
+/** 記一次要給的東西（id 由指令發）。 */
+export type NewAttempt = Omit<Attempt, 'id'>;
+
 /** 動作的「記成功率」設定。動作沒有這個欄位就是沒打開。 */
 export interface SuccessRate {
 	/** 環節，有順序。 */
 	phases: Phase[];
-	/** 紀錄，一次一筆。還沒有「記一次」，所以一定是空的。 */
-	records: never[];
+	/** 紀錄，一次一筆，照記的先後排。 */
+	records: Attempt[];
 }
 
 /** 環節在畫面上的顏色：挑了辨識色用辨識色，沒有就用種類的顏色。 */
@@ -107,7 +141,7 @@ export function disableSuccessRate(flow: Flow, actionId: string): CommandResult 
 	return withAction(flow, { ...rest, members: action.members.map(({ squad: _, ...m }) => m) });
 }
 
-/** 設組：給動作裡一個隊員第幾組（1 起）；null 是沒分組。 */
+/** 設組：給動作裡一個隊員第幾組（1 起）；null 是沒分組。組裡的人都換走了，那組的紀錄拿掉。 */
 export function setSquad(
 	flow: Flow,
 	actionId: string,
@@ -123,14 +157,15 @@ export function setSquad(
 		const { squad: _, ...rest } = m;
 		return squad === null ? rest : { ...rest, squad };
 	});
-	const changed = { ...action, members };
+	// 組沒人了，那組的紀錄拿掉
+	const changed = fitRecords({ ...action, members });
 	const problem = successRateProblem(segment, changed);
 	return problem ? blocked(problem) : withAction(flow, changed);
 }
 
 const isSquad = (n: number) => Number.isInteger(n) && n >= 1;
 
-/** 動作的成功率設定和組哪裡不守規則（給教練看的原因）；沒問題是 null。指令和讀流程檔都照這個檢查。 */
+/** 動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。指令和讀流程檔都照這個檢查。 */
 export function successRateProblem(segment: Segment, action: Action): string | null {
 	for (const { squad } of action.members) {
 		if (squad === undefined) continue;
@@ -150,7 +185,64 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 	if (marked.some((b, i) => i > 0 && b.at < marked[i - 1].at + marked[i - 1].len)) {
 		return '環節標的拍不能重疊';
 	}
+	const records = action.successRate?.records ?? [];
+	if (new Set(records.map((r) => r.id)).size !== records.length) return '一次的 id 重複了';
+	for (const r of records) {
+		const problem = attemptProblem(action, r);
+		if (problem) return problem;
+	}
 	return null;
+}
+
+/**
+ * 一次哪裡不守規則（給教練看的原因）；沒問題是 null。記一次和讀流程檔都照這個檢查。
+ * 記號只能打在動作現在的環節上、只能是 ✓ △ ✗、至少一個；誰要對得上：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。
+ */
+export function attemptProblem(action: Action, attempt: NewAttempt): string | null {
+	const phaseIds = new Set(action.successRate?.phases.map((p) => p.id));
+	const marks = Object.entries(attempt.marks);
+	if (marks.some(([id]) => !phaseIds.has(id))) return '記號要打在這個動作的環節上';
+	if (marks.some(([, mark]) => !MARKS.some((m) => m.key === mark))) return '記號只能是 ✓、△、✗';
+	if (marks.length === 0) return '一次至少要有一個記號';
+	if (!whoFits(action, attempt.who)) return perPerson(action.category) ? '這個隊員不在動作裡' : '這一組沒有人';
+	if (!isDate(attempt.date)) return '日期要寫成 2026-11-04 這樣';
+	if (!PRACTICE_KINDS.includes(attempt.practice)) return '沒有這種練法';
+	if ((attempt.practice === 'runThrough') !== (attempt.runThroughId !== undefined)) return '全上要帶同一次全上的 id';
+	return null;
+}
+
+/**
+ * 動作的紀錄裡對不上現在的環節、組、隊員的拿掉：指到不在的環節的記號丟掉，丟到一個記號都沒有的那一次整筆拿掉；
+ * 誰對不上（組沒人了、人不在動作裡、大類換成騰翻或換掉騰翻）的那一次也拿掉。都對得上就回傳原來的動作。
+ */
+export function fitRecords(action: Action): Action {
+	const rate = action.successRate;
+	if (!rate) return action;
+	const phaseIds = new Set(rate.phases.map((p) => p.id));
+	let changed = false;
+	const records = rate.records.flatMap((r) => {
+		const marks = Object.entries(r.marks).filter(([id]) => phaseIds.has(id));
+		if (whoFits(action, r.who) && marks.length === Object.keys(r.marks).length) return [r];
+		changed = true;
+		return whoFits(action, r.who) && marks.length ? [{ ...r, marks: Object.fromEntries(marks) }] : [];
+	});
+	return changed ? { ...action, successRate: { ...rate, records } } : action;
+}
+
+/** 誰對得上這個動作：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。 */
+function whoFits(action: Action, who: number | string): boolean {
+	return perPerson(action.category)
+		? action.members.some((m) => m.memberId === who)
+		: action.members.some((m) => m.squad === who);
+}
+
+/** 真的有這一天的「2026-11-04」。 */
+function isDate(text: string): boolean {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+	if (!m) return false;
+	const [y, mo, d] = m.slice(1).map(Number);
+	const date = new Date(y, mo - 1, d);
+	return date.getMonth() === mo - 1 && date.getDate() === d;
 }
 
 /** 環節標的拍守拍點的規則：只有音樂段能標、佔整數拍（至少 1 拍）、在動作裡面。開始不用在整拍上（動作被拖半拍時跟著落在 &）。 */
