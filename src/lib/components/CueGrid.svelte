@@ -11,6 +11,8 @@
 	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
 	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
 	// 選的拍剛好是一個環節的拍（例：點環節的色條）時，環節列多出改它名字、種類、顏色的地方。
+	// 口號段不數拍、沒有格子：直接一列「環節」，環節按鈕照加的先後排、種類、名字、加入；
+	// 點一個環節選它，可以改名字、種類、顏色，或按清掉刪掉它（有記號先問）。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import ConfirmList from './ConfirmList.svelte';
@@ -26,10 +28,12 @@
 		PHASE_KINDS,
 		phaseLabel,
 		STEP_WORDS,
+		addPhase,
 		atText,
 		clearCues,
 		clearPhaseBeats,
 		cueText,
+		deletePhase,
 		markPhaseBeats,
 		memberName,
 		phaseColor,
@@ -89,6 +93,8 @@
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
 	let phaseName = $state('');
+	/** 口號段點選的環節 id。 */
+	let chosen = $state<string | null>(null);
 
 	/** 自己打的字，步驟和手位各一格。 */
 	let custom = $state({ step: '', motion: '' });
@@ -135,8 +141,12 @@
 	const lastCell = $derived(firstCell + (Math.floor((action.length - firstCell) / BEAT) - 1) * BEAT);
 	const isSel = (at: number) => at >= sel.from && at <= sel.to;
 	const selLen = $derived(sel.to - sel.from + BEAT);
-	/** 選的拍剛好是它的拍的環節（可以改它）；不是就 null。 */
-	const editing = $derived(phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen) ?? null);
+	/** 可以改的環節：音樂段是選的拍剛好是它的拍的那個，口號段是點選的那個；沒有就 null。 */
+	const editing = $derived(
+		(segment?.kind === 'music'
+			? phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen)
+			: phases.find((p) => p.id === chosen)) ?? null
+	);
 
 	// 只在值變了才通知（action 每次改流程都是新物件）。
 	const actionId = $derived(action.id);
@@ -151,6 +161,7 @@
 			sel = { from: firstCell, to: firstCell };
 			who = null;
 			pop = false;
+			chosen = null;
 		});
 	});
 
@@ -315,6 +326,17 @@
 		sendPhases((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
+	/** 口號段加環節（種類、名字），加在最後。 */
+	function addChantPhase() {
+		if (apply(addPhase(flow, action.id, { kind: phaseKind, name: phaseName }))) phaseName = '';
+	}
+
+	/** 口號段刪掉點選的環節。 */
+	function deleteChosen() {
+		const id = chosen;
+		if (id) sendPhases((o) => deletePhase(flow, action.id, id, o));
+	}
+
 	/** 改環節的名字、種類、顏色。 */
 	function editPhase(id: string, change: PhaseChange) {
 		apply(updatePhase(flow, action.id, id, change));
@@ -475,6 +497,25 @@
 	<span class="cap">拍點</span>
 	{#if segment?.kind !== 'music'}
 		<p class="muted">口號段不數拍，不能放拍點</p>
+		<div class="pop-row phase" role="group" aria-label="環節">
+			<span class="lbl">環節</span>
+			<div class="words">
+				{#each phases as p (p.id)}
+					<button
+						type="button"
+						class="word phase"
+						style:--c={phaseColor(p)}
+						aria-label="環節 {phaseLabel(p)}"
+						aria-pressed={p.id === chosen}
+						onclick={() => (chosen = chosen === p.id ? null : p.id)}>{phaseLabel(p)}</button
+					>
+				{/each}
+				{@render adder(addChantPhase)}
+			</div>
+			<button type="button" class="clear" aria-label="清掉環節" disabled={!editing} onclick={deleteChosen}>清掉</button>
+			{#if editing}{@render edit(editing)}{/if}
+		</div>
+		{@render asks()}
 	{:else if !hasCells}
 		<p class="muted">動作不到一拍，不能放拍點</p>
 	{:else}
@@ -660,18 +701,7 @@
 									onclick={() => markPhase({ phaseId: p.id })}>{phaseLabel(p)}</button
 								>
 							{/each}
-							<span class="own">
-								<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
-									{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-								</select>
-								<input class="custom" aria-label="環節的名字" placeholder="名字，例：延伸" bind:value={phaseName} />
-								<button
-									type="button"
-									class="word"
-									aria-label="加入環節"
-									onclick={() => markPhase({ kind: phaseKind, name: phaseName })}>加入</button
-								>
-							</span>
+							{@render adder(() => markPhase({ kind: phaseKind, name: phaseName }))}
 						</div>
 						<button
 							type="button"
@@ -679,53 +709,71 @@
 							aria-label="清掉環節"
 							onclick={clearPhases}>清掉</button
 						>
-						{#if editing}
-							{@const p = editing}
-							<div class="edit" role="group" aria-label="改環節">
-								<span class="hint">改 {phaseLabel(p)}</span>
-								<!-- 色塊就是換色的選單：選單疊在色塊上、看不見，點色塊就跳出顏色 -->
-								<span class="chip" style:--c={phaseColor(p)} title="換顏色">
-									<select
-										aria-label="這個環節的顏色"
-										value={p.color ?? ''}
-										onchange={(e) => editPhase(p.id, { color: e.currentTarget.value || null })}
-									>
-										<option value="">照種類</option>
-										{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
-									</select>
-								</span>
-								<select
-									class="kind"
-									aria-label="這個環節的種類"
-									value={p.kind}
-									onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
-								>
-									{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-								</select>
-								<input
-									class="custom"
-									aria-label="這個環節的名字"
-									placeholder="名字（可空）"
-									value={p.name}
-									onchange={(e) => editPhase(p.id, { name: e.currentTarget.value })}
-								/>
-							</div>
-						{/if}
+						{#if editing}{@render edit(editing)}{/if}
 					</div>
-					{#if pending}
-						<ConfirmList
-							message={pending.message}
-							items={pending.items}
-							onconfirm={confirmPhases}
-							oncancel={() => (pending = null)}
-						/>
-					{/if}
-					{#if error}<p class="error" role="alert">{error}</p>{/if}
+					{@render asks()}
 				</div>
 			{/if}
 		</div>
 	{/if}
 </div>
+
+<!-- 加新環節：種類、名字、加入。 -->
+{#snippet adder(add: () => void)}
+	<span class="own">
+		<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
+			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
+		</select>
+		<input class="custom" aria-label="環節的名字" placeholder="名字，例：延伸" bind:value={phaseName} />
+		<button type="button" class="word" aria-label="加入環節" onclick={add}>加入</button>
+	</span>
+{/snippet}
+
+<!-- 改環節：名字、種類、顏色。 -->
+{#snippet edit(p: Phase)}
+	<div class="edit" role="group" aria-label="改環節">
+		<span class="hint">改 {phaseLabel(p)}</span>
+		<!-- 色塊就是換色的選單：選單疊在色塊上、看不見，點色塊就跳出顏色 -->
+		<span class="chip" style:--c={phaseColor(p)} title="換顏色">
+			<select
+				aria-label="這個環節的顏色"
+				value={p.color ?? ''}
+				onchange={(e) => editPhase(p.id, { color: e.currentTarget.value || null })}
+			>
+				<option value="">照種類</option>
+				{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
+			</select>
+		</span>
+		<select
+			class="kind"
+			aria-label="這個環節的種類"
+			value={p.kind}
+			onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
+		>
+			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
+		</select>
+		<input
+			class="custom"
+			aria-label="這個環節的名字"
+			placeholder="名字（可空）"
+			value={p.name}
+			onchange={(e) => editPhase(p.id, { name: e.currentTarget.value })}
+		/>
+	</div>
+{/snippet}
+
+<!-- 等確認的環節改動、被擋的原因。 -->
+{#snippet asks()}
+	{#if pending}
+		<ConfirmList
+			message={pending.message}
+			items={pending.items}
+			onconfirm={confirmPhases}
+			oncancel={() => (pending = null)}
+		/>
+	{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
+{/snippet}
 
 <svelte:window bind:innerWidth={winW} onpointerdown={outside} onkeydowncapture={popKeys} />
 
@@ -967,6 +1015,14 @@
 	}
 	.pop-row.phase .lbl {
 		color: var(--text, #1a2238);
+	}
+	/* 口號段點選的環節。 */
+	.word.phase[aria-pressed='true'] {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: 2px;
+	}
+	.clear:disabled {
+		opacity: 0.4;
 	}
 	.kind {
 		min-height: 26px;

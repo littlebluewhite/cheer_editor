@@ -70,40 +70,64 @@ const drill = (marks: NewAttempt['marks'], more: Partial<NewAttempt> = {}): NewA
 	...more
 });
 
-describe('加環節', () => {
-	it('給種類和名字，加在最後；名字去掉頭尾空白；回傳新的 id', () => {
-		const r = addPhase(sample(), 'x1', { kind: 'load', name: '  二層 ' });
+/** sample 加口號段 s2 和裡面的 x2：Toss（拋投，小美、小A），還沒有環節。 */
+function chant(): Flow {
+	let flow = flowOf(addSegment(sample(), 'chant'));
+	const members = [
+		{ memberId: 'm1', role: '上層' },
+		{ memberId: 'm2', role: '主底' }
+	];
+	return flowOf(addAction(flow, { segmentId: 's2', category: 'toss', name: 'Toss', start: 0, length: 30, note: '', members }));
+}
+
+const toss = (flow: Flow) => flow.actions.find((a) => a.id === 'x2')!;
+
+describe('口號段加環節（不標拍）', () => {
+	it('給種類和名字，加在最後、不標拍；名字去掉頭尾空白；回傳新的 id', () => {
+		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		const r = addPhase(flow, 'x2', { kind: 'load', name: '  二層 ' });
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
-		expect(r.id).toBe('p4');
-		expect(phasesOf(r.flow).at(-1)).toEqual({ id: 'p4', kind: 'load', name: '二層' });
+		expect(r.id).toBe('p5');
+		expect(toss(r.flow).successRate!.phases).toEqual([
+			{ id: 'p4', kind: 'whole', name: '' },
+			{ id: 'p5', kind: 'load', name: '二層' }
+		]);
 	});
 
-	it('名字可以空', () => {
-		const flow = flowOf(addPhase(sample(), 'x1', { kind: 'transition', name: '   ' }));
-		expect(phasesOf(flow).at(-1)).toEqual({ id: 'p4', kind: 'transition', name: '' });
+	it('加第一個環節就開始記成功率，動作裡的人全部進第 1 組', () => {
+		const flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		expect(toss(flow).successRate!.records).toEqual([]);
+		expect(toss(flow).members.map((m) => m.squad)).toEqual([1, 1]);
+	});
+
+	it('騰翻、跳躍不分組', () => {
+		let flow = flowOf(addSegment(sample(), 'chant'));
+		flow = flowOf(addAction(flow, { segmentId: 's2', category: 'tumbling', name: '', start: 0, length: 30, note: '', members: [{ memberId: 'm2', role: null }] }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '' }));
+		expect(toss(flow).successRate!.phases).toHaveLength(1);
+		expect(toss(flow).members.some((m) => 'squad' in m)).toBe(false);
 	});
 
 	it('種類只能五種', () => {
-		const r = addPhase(sample(), 'x1', { kind: 'stand' as never, name: '' });
+		const r = addPhase(chant(), 'x2', { kind: 'stand' as never, name: '' });
 		expect(r).toEqual({ kind: 'blocked', message: '沒有這種環節' });
 	});
 
-	it('沒打開記成功率不能加', () => {
-		let flow = sample();
-		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'toss', name: '', start: 16, length: 8, note: '', members: [{ memberId: 'm4', role: '上層' }] }));
-		expect(addPhase(flow, 'x2', { kind: 'whole', name: '' })).toEqual({
+	it('音樂段的環節要在拍點格子選拍標，不能這樣加', () => {
+		expect(addPhase(sample(), 'x1', { kind: 'load', name: '' })).toEqual({
 			kind: 'blocked',
-			message: '先打開記成功率才能加環節'
+			message: '音樂段的環節要選拍標'
 		});
 	});
 
 	it('後來才加的環節：之前記的那幾次，這一格是空的', () => {
-		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '△' })));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '二層' }));
-		const [attempt] = lib(flow).successRate!.records;
-		expect(attempt.marks).toEqual({ p1: '✓', p2: '✓', p3: '△' });
-		expect(attemptText(lib(flow), attempt)).toBe('✓✓△·');
+		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' })));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '二層' }));
+		const [attempt] = toss(flow).successRate!.records;
+		expect(attempt.marks).toEqual({ p4: '✓' });
+		expect(attemptText(toss(flow), attempt)).toBe('✓·');
 	});
 });
 
@@ -184,7 +208,7 @@ describe('刪環節', () => {
 
 	it('刪了的環節 id 不再發', () => {
 		let flow = flowOf(deletePhase(sample(), 'x1', 'p3'));
-		const r = addPhase(flow, 'x1', { kind: 'dismount', name: '' });
+		const r = markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4);
 		expect(r.kind === 'ok' && r.id).toBe('p4');
 	});
 
@@ -200,6 +224,32 @@ describe('刪環節', () => {
 	});
 });
 
+describe('口號段刪環節', () => {
+	/** chant 的 x2 加了 p4 整體、p5 上法。 */
+	const two = () => {
+		const flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		return flowOf(addPhase(flow, 'x2', { kind: 'load', name: '' }));
+	};
+
+	it('沒紀錄就直接刪，剩下的照加的先後', () => {
+		const flow = flowOf(deletePhase(two(), 'x2', 'p4'));
+		expect(toss(flow).successRate!.phases).toEqual([{ id: 'p5', kind: 'load', name: '' }]);
+	});
+
+	it('有記號先問；刪掉最後一個時也說動作不再記成功率，確定後組和紀錄一起拿掉', () => {
+		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' })));
+		expect(deletePhase(flow, 'x2', 'p4')).toEqual({
+			kind: 'confirm',
+			message: '整體 有紀錄，刪掉會清掉 1 次的記號；動作沒有環節了，不再記成功率，確定就刪掉',
+			items: []
+		});
+		flow = flowOf(deletePhase(flow, 'x2', 'p4', { confirmed: true }));
+		expect(toss(flow).successRate).toBeUndefined();
+		expect(toss(flow).members.some((m) => 'squad' in m)).toBe(false);
+	});
+});
+
 describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流程上」', () => {
 	it('刪了有紀錄的環節再復原：環節回來，它的記號已經清掉了', () => {
 		const before = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '△' })));
@@ -210,11 +260,11 @@ describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流�
 	});
 
 	it('加了環節、記了一次再復原：環節拿掉，那一次只留還在的環節的記號', () => {
-		const before = sample();
-		let after = flowOf(addPhase(before, 'x1', { kind: 'load', name: '二層' }));
-		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓', p4: '✗' })));
+		const before = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		let after = flowOf(addPhase(before, 'x2', { kind: 'load', name: '二層' }));
+		after = flowOf(recordAttempt(after, 'x2', drill({ p4: '✓', p5: '✗' })));
 		const undone = carryRecords(before, after);
-		expect(phasesOf(undone).map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
-		expect(lib(undone).successRate!.records.map((r) => r.marks)).toEqual([{ p1: '✓' }]);
+		expect(toss(undone).successRate!.phases.map((p) => p.id)).toEqual(['p4']);
+		expect(toss(undone).successRate!.records.map((r) => r.marks)).toEqual([{ p4: '✓' }]);
 	});
 });
