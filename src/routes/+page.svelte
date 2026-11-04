@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		addSegment,
 		currentFormation,
 		deleteAction,
 		deleteFormation,
@@ -12,7 +11,6 @@
 		memberMarkers,
 		moveFormation,
 		moveFormationHint,
-		moveMembers,
 		moveTargetText,
 		parseTime,
 		playbackPlan,
@@ -33,9 +31,7 @@
 		type Flow,
 		type Formation,
 		type FormationWalk,
-		type MoveResult,
 		type Position,
-		type SegmentKind,
 		type TimePosition
 	} from '#lib/core';
 	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
@@ -44,7 +40,7 @@
 	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
 	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
 		loadInspectorWidth,
@@ -495,27 +491,13 @@
 		});
 	}
 
-	function add(f: Flow, kind: SegmentKind) {
-		const r = addSegment(f, kind);
-		if (r.kind !== 'ok') return;
-		change(r.flow);
-		openSegmentId = r.id;
-	}
-
-	/** 拖人：改播放頭這一拍的站位（沒有就插一張）。播放頭停到那張站位上，場上才是剛放的位置。 */
-	function move(moves: Record<string, Position>) {
-		if (!flow) return;
-		const r = moveMembers(flow, playheadSec, moves);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		moved(r);
-	}
-
-	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示跟拖人一樣。 */
+	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示和播放頭跟拖人一樣。 */
 	function matchPrev() {
-		if (!flow) return;
-		const r = matchPrevious(flow, playheadSec, session.selectedMemberIds);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		moved(r);
+		const f = flow;
+		if (!f) return;
+		const sec = playheadSec;
+		const ids = session.selectedMemberIds;
+		session.ask.send(() => matchPrevious(f, sec, ids), { done: (r) => session.moved(r) });
 	}
 
 	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。 */
@@ -528,34 +510,21 @@
 		change(r.flow);
 	}
 
-	/** 拖人、跟上一張一樣改好之後：換流程、說插了站位或往後帶了幾張、播放頭停到改的那張。 */
-	function moved(r: { flow: Flow } & MoveResult) {
-		change(r.flow);
-		const said = [
-			r.inserted && '插了一張站位，大家的位置自動帶入',
-			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
-		];
-		session.notice = said.filter(Boolean).join('；');
-		playheadSec = r.sec;
-	}
-
-	/**
-	 * 挪站位（拖縮圖、打站位時間）：被擋就說原因。挪了就提示走位被壓短的人數，
-	 * 選著這張、播放頭跳到新的站位時間（左邊欄的站位時間框還在）。
-	 */
-	function moveFormationTo(id: string, to: TimePosition) {
-		const f = flow;
-		if (!f) return;
-		// 被擋時縮圖已經彈回原位，還原不用再做什麼。
-		session.ask.send(() => moveFormation(f, id, to), {
-			revert: () => {},
-			done: (r) => {
-				session.notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
-				session.selectFormation(id);
-				seek(r.flow, r.sec);
-			}
+	// 改完要動播放頭的改動（拖人插站位、跟上一張一樣、挪站位）：session 說跳到哪，這裡跳。
+	// 拖人那種直接停到那張（播放中照樣跟著音樂走）；挪站位跟點八拍尺一樣，播放中從那裡重播。
+	$effect(() => {
+		const jump = session.jump;
+		if (!jump) return;
+		untrack(() => {
+			if (!jump.replay) playheadSec = jump.sec;
+			else if (flow) seek(flow, jump.sec);
 		});
-	}
+	});
+
+	// 點色條選了動作：右邊欄翻到「動作」那一頁。
+	$effect(() => {
+		if (session.selectedActionId) untrack(() => (inspectorTab = 'action'));
+	});
 
 	/**
 	 * 左邊欄「站位時間」框改了：寫法跟出發、到達一樣，看得懂就挪過去。
@@ -567,7 +536,11 @@
 		const to = parseTime(flow, formation.segmentId!, box.value);
 		box.value = text;
 		if (!to) return void (session.notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
-		moveFormationTo(formation.id, to);
+		const f = flow;
+		session.ask.send(() => moveFormation(f, formation.id, to), {
+			revert: () => {},
+			done: (r) => session.formationMoved(formation.id, r)
+		});
 	}
 
 	/**
@@ -584,11 +557,9 @@
 	}
 
 	function removeFormation(id: string) {
-		if (!flow) return;
-		const r = deleteFormation(flow, id);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		change(r.flow);
-		session.notice = '';
+		const f = flow;
+		if (!f) return;
+		session.ask.send(() => deleteFormation(f, id));
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -764,12 +735,9 @@
 				markers={memberMarkers(flow)}
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
-				selected={session.selectedMemberIds}
-				multi={session.multiSelect}
+				{playheadSec}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
-				onmove={move}
-				onselect={selectMembers}
 				badges={squadBadges}
 			>
 				{#snippet below()}
@@ -940,28 +908,10 @@
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
 			<Timeline
-				{flow}
 				{playheadSec}
 				onseek={(sec) => flow && seek(flow, sec)}
-				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
 				{missingSegmentIds}
-				selectedFormationId={session.selectedFormationId}
-				onselectformation={(id, sec) => {
-					session.selectFormation(id);
-					if (flow) seek(flow, sec);
-				}}
-				ondeleteformation={removeFormation}
-				onmoveformation={moveFormationTo}
-				selectedActionId={session.selectedActionId}
-				onselectaction={(id) => {
-					session.selectAction(id);
-					inspectorTab = 'action';
-				}}
-				ask={session.ask}
-				selectedMemberIds={session.selectedMemberIds}
-				onselectmembers={selectMembers}
-				multi={session.multiSelect}
 			/>
 		</div>
 		{#if view === 'practice'}

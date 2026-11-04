@@ -1,7 +1,8 @@
 <script lang="ts">
 	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
-	// 拖色條移動、拉右邊改長度：放開時交給 ask（頁面那一個問題），被擋就還原。點名字選人，Shift＋點（或開著 multi 時點）多選。
+	// 流程和選取從 session 拿。拖色條移動、拉右邊改長度：放開時送到 session 的 ask（場上那一個問題），被擋就還原。
+	// 點名字選人，Shift＋點（或開著多選時點）多選。
 	// 拉短會切到拍點時先不改，ask 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
@@ -36,38 +37,24 @@
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
-	import type { Ask } from './ask.svelte';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
-		flow: Flow;
 		/** 播放頭，全域秒數。 */
 		playheadSec: number;
 		/** 時間軸 1 秒幾 px。 */
 		pxPerSec: number;
-		selectedActionId: string | null;
-		onselectaction: (actionId: string) => void;
-		/** 拖色條、走位條放開時送指令的地方（頁面那一個問題）：改好、被擋（已還原）、要問都交給它。 */
-		ask: Ask;
-		/** 選到的人。 */
-		selectedMemberIds?: string[];
-		onselectmembers?: (memberIds: string[]) => void;
-		/** 多選開著：點名字跟按著 Shift 一樣（iPad 沒有 Shift）。 */
-		multi?: boolean;
 	}
 
-	let {
-		flow,
-		playheadSec,
-		pxPerSec,
-		selectedActionId,
-		onselectaction,
-		ask,
-		selectedMemberIds = [],
-		onselectmembers = () => {},
-		multi = false
-	}: Props = $props();
+	let { playheadSec, pxPerSec }: Props = $props();
+
+	const session = getEditorSession();
+	// 時間軸只在有流程時畫。
+	const flow = $derived(session.flow!);
+	const selectedActionId = $derived(session.selectedActionId);
+	const selectedMemberIds = $derived(session.selectedMemberIds);
 
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
 	const DRAG_PX = 3;
@@ -197,7 +184,7 @@
 				? moveAction(flow, id, startSec + dSec, options)
 				: resizeAction(flow, id, endSec + dSec, options);
 		// 放開時色條已經彈回原位，還原不用再做什麼。
-		ask.send(run, { revert: () => {} });
+		session.ask.send(run, { revert: () => {} });
 	}
 
 	/** 上一次按下走位條的是不是手指：手指點沒選到的人的走位條＝選他。 */
@@ -226,7 +213,7 @@
 	}
 
 	function tapWalk(memberId: string) {
-		if (walkTouch && !selected.has(memberId)) pick(memberId, false);
+		if (walkTouch && !selected.has(memberId)) session.pickMember(memberId, false);
 	}
 
 	/** 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多；一起交給 setWalks，被擋就整組還原。 */
@@ -246,14 +233,7 @@
 				arrive: nearestPosition(flow, d.mode === 'depart' ? arrive : arrive + shift)
 			};
 		}
-		ask.send(() => setWalks(flow, d.formationId, next), { revert: () => {} });
-	}
-
-	function pick(id: string, shift: boolean) {
-		if (!shift && !multi) return onselectmembers([id]);
-		onselectmembers(
-			selected.has(id) ? selectedMemberIds.filter((x) => x !== id) : [...selectedMemberIds, id]
-		);
+		session.ask.send(() => setWalks(flow, d.formationId, next), { revert: () => {} });
 	}
 </script>
 
@@ -273,7 +253,7 @@
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
 			title="點一下選這個人；多選開著或 Shift＋點，可以選好幾個"
-			onclick={(e) => pick(m.id, e.shiftKey)}
+			onclick={(e) => session.pickMember(m.id, e.shiftKey)}
 		>
 			<b
 				class="no gr {m.globalRole}"
@@ -303,7 +283,7 @@
 						style:background={actionColor(p.action)}
 						style:box-shadow={p.action.color ? `inset 4px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
-						onclick={() => onselectaction(p.action.id)}
+						onclick={() => session.selectAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
 						{#each phaseBars[p.action.id] as ph (ph.id)}
