@@ -3,8 +3,9 @@
 	// 有選人：按號碼放進那一組、「＋」放進新的一組、「✕」拿出組；選的人一次改好，是一個復原步驟。
 	// 沒選人：按號碼把那一組的人全選起來。「n 人沒分組」把沒分組的人選起來。
 	// 電腦上選好人按數字鍵 1–9、0 也一樣（頁面收鍵盤，呼叫 press）。
-	import { setSquad, squadColor, squadsOf, type Action, type CommandResult, type ConfirmOption, type Flow } from '#lib/core';
+	import { setSquad, squadColor, squadsOf, type Action, type ConfirmOption, type Flow } from '#lib/core';
 	import ConfirmList from './ConfirmList.svelte';
+	import { Ask } from './ask.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -26,19 +27,12 @@
 	const outsideText = $derived(outside ? `另外 ${outside} 人不在這個動作，不算` : '');
 
 	/** 換組會動到紀錄時，等教練回答（保留舊紀錄／清掉重算，或確定）。 */
-	let pending = $state<{
-		message: string;
-		items: string[];
-		choose: boolean;
-		send: (o: ConfirmOption) => CommandResult;
-	} | null>(null);
-	let error = $state('');
+	const ask = new Ask((f) => onchange(f));
 
 	// 換動作時，沒回答的問題和原因收掉。
 	$effect(() => {
 		void action.id;
-		pending = null;
-		error = '';
+		ask.clear();
 	});
 
 	/** 把選的人放進第 n 組（null = 拿出組）。 */
@@ -46,16 +40,7 @@
 		if (!picked.length) return;
 		const ids = picked;
 		const id = action.id;
-		const send = (o: ConfirmOption = {}) => setSquad(flow, id, ids, squad, o);
-		settle(send(), send);
-	}
-
-	function settle(r: CommandResult, send: (o: ConfirmOption) => CommandResult) {
-		pending = null;
-		error = '';
-		if (r.kind === 'ok') return onchange(r.flow);
-		if (r.kind === 'blocked') return void (error = r.message);
-		pending = { message: r.message, items: r.items, choose: r.kind === 'choose', send };
+		ask.send((o: ConfirmOption = {}) => setSquad(flow, id, ids, squad, o));
 	}
 
 	/** 號碼：有選人是放進那一組；沒選人是把那一組的人選起來。 */
@@ -73,16 +58,9 @@
 </script>
 
 <div class="squad-bar" role="group" aria-label="分組">
-	{#if pending}
+	{#if ask.question}
 		<div class="ask">
-			<ConfirmList
-				message={pending.message}
-				items={pending.items}
-				confirmLabel={pending.choose ? '清掉重算' : '確定'}
-				onconfirm={() => pending && settle(pending.send(pending.choose ? { records: 'clear' } : { confirmed: true }), pending.send)}
-				onkeep={pending.choose ? () => pending && settle(pending.send({ records: 'keep' }), pending.send) : undefined}
-				oncancel={() => (pending = null)}
-			/>
+			<ConfirmList {ask} />
 		</div>
 	{/if}
 	<span class="who">
@@ -106,7 +84,7 @@
 	{#if loose.length}
 		<button type="button" class="link" onclick={() => onselectmembers(loose)}>{loose.length} 人沒分組</button>
 	{/if}
-	{#if error}<span class="error" role="alert">{error}</span>{/if}
+	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 </div>
 
 <style>
