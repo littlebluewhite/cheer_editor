@@ -641,3 +641,42 @@ describe('練習：總表', () => {
 		});
 	});
 });
+
+describe('練習：記錄頁記一次全上', () => {
+	const sheet = () => within(screen.getByRole('region', { name: '記一次全上' }));
+	/** 點表上的一格 times 次（✓ → △ → ✗）。 */
+	async function tapSlot(who: string, phase: string, times: number) {
+		for (let i = 0; i < times; i++) await fireEvent.click(sheet().getByRole('button', { name: new RegExp(`^${who} ${phase} `) }));
+	}
+	/** 總表上一格的讀屏文字（誰 環節 比例 次數）。 */
+	const summaryCell = (who: string, phase: string) =>
+		screen.getByRole('button', { name: new RegExp(`^${who} ${phase} `) }).getAttribute('aria-label');
+
+	it('記錄頁按「＋ 記一次全上」打開全上表；存好回到記錄頁，記錄頁和總表都看得到這次全上', async () => {
+		await practice();
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
+		await tapSlot('第 2 組 小芳', '下法', 2);
+		await fireEvent.click(within(sheet().getByRole('region', { name: '騰翻' })).getByRole('button', { name: '沒做（停了）' }));
+		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
+
+		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
+		expect(dayRow('第 1 組 小美')).toEqual(['✓✓✓']);
+		expect(dayRow('第 2 組 小芳')).toEqual(['✓✓✗']);
+
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		await fireEvent.click(within(screen.getByRole('group', { name: '練法' })).getByRole('button', { name: '只看全上' }));
+		expect(summaryCell('第 1 組 小美', '下法')).toBe('第 1 組 小美 下法 100% 1 次');
+		expect(summaryCell('第 2 組 小芳', '下法')).toBe('第 2 組 小芳 下法 0% 1 次');
+	});
+
+	it('取消：什麼都不存，回到記錄頁', async () => {
+		await practice();
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
+		await tapSlot('第 2 組 小芳', '下法', 2);
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
+		expect(dayRow('第 1 組 小美')).toEqual([]);
+		expect(dayRow('第 2 組 小芳')).toEqual([]);
+	});
+});
