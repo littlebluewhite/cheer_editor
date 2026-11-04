@@ -6,7 +6,7 @@
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
-	import { untrack } from 'svelte';
+	import { untrack, type ComponentProps } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		ACTION_CATEGORIES,
@@ -43,9 +43,11 @@
 	interface Props {
 		/** 播放頭，全域秒數。新動作從這裡開始。 */
 		playheadSec: number;
+		/** 拍點格子的「指標位置 → 格子」；沒給用格子預設的（ADR 0002）。 */
+		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
 	}
 
-	let { playheadSec }: Props = $props();
+	let { playheadSec, cellAt }: Props = $props();
 
 	// 流程、選到的動作（null = 新增）、選到的人（新增時就是新動作的人）都從 session 拿。
 	const session = getEditorSession();
@@ -387,7 +389,7 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} />
+			<CueGrid {action} {cellAt} />
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
 		{/if}

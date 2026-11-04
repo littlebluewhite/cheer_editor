@@ -13,6 +13,7 @@ import {
 import { flowOf } from '#lib/core/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
+import { fakeCellAt } from '#lib/test-fakes.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import CueGrid from './CueGrid.svelte';
@@ -29,19 +30,10 @@ function sample(): Flow {
 	);
 }
 
-/**
- * jsdom 不算版面（ADR 0002），所以換一個假的「指標位置 → 格子」：
- * clientX 是第幾個格子（照畫面順序：3-1…3-8、4-1…4-8），clientY 是第幾條（0 數字格、1 拍子、2 步驟、3 手位）。
- */
-function cellAt(sheet: HTMLElement, x: number, y: number): HTMLElement {
-	const kind = ['.cell', '.slot.count', '.slot.step', '.slot.motion'][y];
-	return sheet.querySelectorAll<HTMLElement>(kind)[x];
-}
-
 /** 放一個帶著 flow 的 session 進 context，畫第一個動作的拍點格子；回傳 session。 */
 function renderGrid(flow: Flow) {
 	const session = new EditorSession(flow);
-	render(TestSession, { props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt } } });
+	render(TestSession, { props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt } } });
 	return session;
 }
 
