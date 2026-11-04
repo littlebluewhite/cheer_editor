@@ -8,7 +8,7 @@ import { freshIds } from './ids';
 import { phaseLabel } from './phases';
 import type { Segment } from './segment';
 import { blocked, ok, type CommandResult } from './result';
-import { allPhaseIds, fitRecords, successRateProblem, type Phase, type PhaseKind } from './success-rate';
+import { allPhaseIds, fitRecords, perPerson, successRateProblem, type Phase, type PhaseKind } from './success-rate';
 import { HALF_BEATS_PER_BEAT as BEAT } from './time';
 
 /** 標給誰：現有的環節，或新的環節（給種類和名字）。 */
@@ -17,6 +17,7 @@ export type BeatsTarget = { phaseId: string } | { kind: PhaseKind; name: string 
 /**
  * 標拍：把從 at 起 len 個半拍標給一個環節。新的環節發新 id；現有的換掉它原來的拍。
  * 蓋到別的環節的部分從那個環節拿掉（剩兩段留前面那段，不到一拍就變沒標拍）。回傳環節的 id。
+ * 動作還沒記成功率時，加的這個環節就是第一個：動作開始記成功率，只有這一個環節（見 firstSquad）。
  */
 export function markPhaseBeats(
 	flow: Flow,
@@ -27,10 +28,9 @@ export function markPhaseBeats(
 ): CommandResult<{ id: string }> {
 	const action = flow.actions.find((a) => a.id === actionId);
 	if (!action) return blocked('找不到這個動作');
-	if (!action.successRate) return blocked('先打開記成功率才能標拍');
 	const music = flow.segments.find((s) => s.id === action.segmentId)?.kind === 'music';
 	if (music && (action.start + at) % BEAT !== 0) return blocked('環節要標在整拍上');
-	let phases = action.successRate.phases;
+	let phases = action.successRate?.phases ?? [];
 	let lastIds = flow.lastIds;
 	let id: string;
 	if ('phaseId' in target) {
@@ -43,8 +43,14 @@ export function markPhaseBeats(
 		phases = [...phases, { id, kind: target.kind, name: target.name.trim() }];
 	}
 	phases = cut(phases, at, at + len).map((p) => (p.id === id ? { ...p, beats: { at, len } } : p));
-	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, action, phases);
+	const base = action.successRate ? action : firstSquad(action);
+	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, base, phases);
 	return r.kind === 'ok' ? { ...r, id } : r;
+}
+
+/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。 */
+function firstSquad(action: Action): Action {
+	return perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
 }
 
 /** 清標的拍：拿掉 [from, to) 半拍裡的標的拍，被切到的照標拍的規則切短。環節和紀錄留著。 */
@@ -155,7 +161,8 @@ function ordered(phases: Phase[]): Phase[] {
 function withPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult {
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
 	if (!segment) return blocked('找不到這一段');
-	const changed = fitRecords({ ...action, successRate: { ...action.successRate!, phases: ordered(phases) } });
+	const records = action.successRate?.records ?? [];
+	const changed = fitRecords({ ...action, successRate: { records, phases: ordered(phases) } });
 	const problem = successRateProblem(segment, changed);
 	if (problem) return blocked(problem);
 	return ok(replaceAction(flow, changed));

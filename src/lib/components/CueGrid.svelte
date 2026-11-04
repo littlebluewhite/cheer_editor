@@ -7,8 +7,9 @@
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
-	// 記成功率的動作：拍子那條上面多一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
-	// 小窗多一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
+	// 拍子那條上面一直有一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
+	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
+	// 還沒記成功率的動作加第一個環節，就開始記成功率（規則在流程核心）。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { touchOnUnpicked } from './pointer';
@@ -80,8 +81,6 @@
 	/** 放拍點時給誰；預設全部。 */
 	let who = $state<Who>(null);
 
-	/** 記成功率的動作才有「環節」那一條和小窗的環節列。 */
-	const rated = $derived(!!action.successRate);
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
@@ -413,9 +412,9 @@
 	/** 「1-1 到 1-3」：spanText 去掉後面的拍數。 */
 	const rangeOf = (at: number, len: number) => spanText(at, len).replace(/・.*$/, '');
 
-	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，記成功率的動作第 2 列是環節。 */
+	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，第 2 列是環節。 */
 	function layout(e: number) {
-		let row = rated ? 3 : 2;
+		let row = 3;
 		return LANES.map((lane) => {
 			const ps = pieces(e, lane.kind);
 			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
@@ -453,7 +452,7 @@
 					{@const bottom = lanes[lanes.length - 1].row + lanes[lanes.length - 1].tracks}
 					<div class="row">
 						<span class="eight" aria-hidden="true">{e + 1}</span>
-						{#if rated}<span class="lane-lbl phase" style:grid-row="2">環節</span>{/if}
+						<span class="lane-lbl phase" style:grid-row="2">環節</span>
 						{#each lanes as lane (lane.kind)}
 							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
@@ -474,16 +473,14 @@
 								openPop();
 							}}>{c + 1}</button
 							>
-							{#if rated}
-								<span
-									class="slot phase"
-									data-at={at}
-									class:out={!inAction(at)}
-									class:sel={inAction(at) && isSel(at)}
-									style:grid-column={c + 2}
-									style:grid-row="2"
-								></span>
-							{/if}
+							<span
+								class="slot phase"
+								data-at={at}
+								class:out={!inAction(at)}
+								class:sel={inAction(at) && isSel(at)}
+								style:grid-column={c + 2}
+								style:grid-row="2"
+							></span>
 							{#each lanes as lane (lane.kind)}
 								<span
 									class="slot {lane.kind}"
@@ -606,40 +603,38 @@
 							<button type="button" class="clear" aria-label="清掉{row.label}" onclick={() => clear(row.kind)}>清掉</button>
 						</div>
 					{/each}
-					{#if rated}
-						<div class="pop-row phase" role="group" aria-label="環節">
-							<span class="lbl">環節</span>
-							<div class="words">
-								{#each phases as p (p.id)}
-									<button
-										type="button"
-										class="word phase"
-										style:--c={phaseColor(p)}
-										aria-label="把這幾拍標給 {phaseLabel(p)}"
-										onclick={() => markPhase({ phaseId: p.id })}>{phaseLabel(p)}</button
-									>
-								{/each}
-								<span class="own">
-									<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
-										{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-									</select>
-									<input class="custom" aria-label="環節的名字" placeholder="名字，例：延伸" bind:value={phaseName} />
-									<button
-										type="button"
-										class="word"
-										aria-label="加入環節"
-										onclick={() => markPhase({ kind: phaseKind, name: phaseName })}>加入</button
-									>
-								</span>
-							</div>
-							<button
-								type="button"
-								class="clear"
-								aria-label="清掉環節"
-								onclick={() => apply(clearPhaseBeats(flow, action.id, sel.from, sel.to + BEAT))}>清掉</button
-							>
+					<div class="pop-row phase" role="group" aria-label="環節">
+						<span class="lbl">環節</span>
+						<div class="words">
+							{#each phases as p (p.id)}
+								<button
+									type="button"
+									class="word phase"
+									style:--c={phaseColor(p)}
+									aria-label="把這幾拍標給 {phaseLabel(p)}"
+									onclick={() => markPhase({ phaseId: p.id })}>{phaseLabel(p)}</button
+								>
+							{/each}
+							<span class="own">
+								<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
+									{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
+								</select>
+								<input class="custom" aria-label="環節的名字" placeholder="名字，例：延伸" bind:value={phaseName} />
+								<button
+									type="button"
+									class="word"
+									aria-label="加入環節"
+									onclick={() => markPhase({ kind: phaseKind, name: phaseName })}>加入</button
+								>
+							</span>
 						</div>
-					{/if}
+						<button
+							type="button"
+							class="clear"
+							aria-label="清掉環節"
+							onclick={() => apply(clearPhaseBeats(flow, action.id, sel.from, sel.to + BEAT))}>清掉</button
+						>
+					</div>
 					{#if error}<p class="error" role="alert">{error}</p>{/if}
 				</div>
 			{/if}
