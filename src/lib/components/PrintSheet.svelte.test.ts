@@ -3,10 +3,14 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	enableSuccessRate,
 	insertFormation,
+	markPhaseBeats,
+	resizeAction,
 	placeCue,
 	setMarkers,
 	setPositions,
+	updatePhase,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -179,6 +183,52 @@ describe('八拍表列印', () => {
 			const mine = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
 			const motion = within(mine).getByLabelText('手位 high V 1-8');
 			expect(motion.textContent).toBe('high V');
+		});
+	});
+
+	describe('環節', () => {
+		/** Lib 拉長到 2-2、記成功率：上法「延伸」1-1 到 1-3、中段 1-4 到 2-2（跨列）、下法沒標拍；1-6 到 1-7 down。 */
+		function phased(): Flow {
+			let flow = flowOf(resizeAction(sample(), 'x1', 4));
+			flow = flowOf(enableSuccessRate(flow, 'x1'));
+			flow = flowOf(updatePhase(flow, 'x1', 'p1', { name: '延伸' }));
+			flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 6));
+			flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 6, 14));
+			return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 10, len: 4, word: 'down' }));
+		}
+		const lines = () => screen.getAllByRole('group', { name: '技巧·Lib 的拍點' });
+		const phasesIn = (line: HTMLElement) =>
+			[...line.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => [
+				p.getAttribute('aria-label'),
+				p.textContent?.trim(),
+				p.style.gridColumn
+			]);
+
+		it('拍點上面多一行環節：寫種類和名字，框出它佔的格子；沒標拍的不印', () => {
+			render(PrintSheet, { flow: phased(), onclose: vi.fn(), print: vi.fn() });
+			const [first] = lines();
+			expect(phasesIn(first)).toEqual([
+				['環節 上法 延伸 1-1 到 1-3', '上法 延伸', '1 / 4'],
+				['環節 中段 1-4 到 1-8', '中段', '4 / 9']
+			]);
+			// 環節那一行在拍點那一排上面
+			const phaseRow = first.querySelector('[data-phase]')!.parentElement!;
+			const down = within(first).getByLabelText('拍子 down 1-6 到 1-7');
+			expect(phaseRow.compareDocumentPosition(down) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			expect(document.body.textContent).not.toContain('下法');
+		});
+
+		it('跨到下一列的環節兩列各畫自己那一段，名字兩列都寫', () => {
+			render(PrintSheet, { flow: phased(), onclose: vi.fn(), print: vi.fn() });
+			expect(lines().map(phasesIn)[1]).toEqual([['環節 中段 2-1 到 2-2', '中段', '1 / 3']]);
+		});
+
+		it('個人表也印環節', async () => {
+			render(PrintSheet, { flow: phased(), onclose: vi.fn(), print: vi.fn() });
+			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+			expect(lines().map((l) => phasesIn(l).map(([, text]) => text))).toEqual([['上法 延伸', '中段'], ['中段']]);
+			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm3' } });
+			expect(screen.queryAllByRole('group', { name: '技巧·Lib 的拍點' })).toHaveLength(0);
 		});
 	});
 });
