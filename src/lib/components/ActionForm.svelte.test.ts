@@ -3,8 +3,11 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	markPhaseBeats,
 	placeCue,
+	setSquad,
 	updateSegment,
+	type ActionCategory,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -390,12 +393,91 @@ describe('動作表單：拍點格子', () => {
 		expect(onchange).not.toHaveBeenCalled();
 	});
 
-	it('口號段的動作沒有格子，只寫一句', () => {
+	it('口號段的動作沒有格子：寫一句，只有環節那一列', () => {
 		let flow = flowOf(addSegment(sample(), 'chant'));
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
 		setup(flow, 'x1');
 		const group = screen.getByRole('group', { name: '拍點' });
 		expect(group.textContent).toContain('口號段不數拍，不能放拍點');
-		expect(within(group).queryByRole('button')).toBeNull();
+		expect(within(group).queryByRole('button', { name: '1-1' })).toBeNull();
+		expect(within(group).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+			'加入環節',
+			'清掉環節'
+		]);
+	});
+});
+
+describe('動作表單：成功率', () => {
+	/** 小A（上層）、小B 做的 Lib，大類照給的；x2 是後面另一個動作，只有小A。 */
+	function withLib(category: ActionCategory = 'stunt'): Flow {
+		const base = { segmentId: 's1', name: '', note: '', length: 8 };
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		let flow = flowOf(addAction(sample(), { ...base, category, name: 'Lib', start: 0, members }));
+		return flowOf(addAction(flow, { ...base, category: 'stunt', start: 16, members: [members[0]] }));
+	}
+
+	/** 動作加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
+	const rated = (flow: Flow, actionId = 'x1') =>
+		flowOf(markPhaseBeats(flow, actionId, { kind: 'whole', name: '' }, 0, 8));
+
+	/** 畫面跟著 onchange 送出的流程更新，像在編輯頁裡一樣。 */
+	function live(flow: Flow, actionId: string | null) {
+		const onchange = vi.fn();
+		const { rerender } = render(ActionForm, { flow, playheadSec: 0, actionId, onchange, onselect: vi.fn() });
+		onchange.mockImplementation((f: Flow) => rerender({ flow: f }));
+		return onchange;
+	}
+
+	/** 每個人旁邊的唯讀組標籤（沒有標籤是 null）。 */
+	const squadTags = () =>
+		[...document.querySelectorAll('.people li')].map((li) => li.querySelector('.squad-tag')?.textContent ?? null);
+
+	it('沒有「記成功率」勾勾、沒有環節清單：環節在拍點格子上', () => {
+		live(rated(withLib()), 'x1');
+		expect(screen.queryByRole('checkbox', { name: '記成功率' })).toBeNull();
+		expect(screen.queryByRole('group', { name: '成功率' })).toBeNull();
+		expect(screen.queryByRole('list', { name: '環節' })).toBeNull();
+		expect(screen.getByRole('button', { name: /^環節 整體/ })).toBeTruthy();
+	});
+
+	it('有環節後每個人旁邊寫第幾組（唯讀，沒有選單）；沒分組寫「沒分組」', () => {
+		live(withLib(), 'x1');
+		expect(squadTags()).toEqual([null, null]);
+
+		document.body.innerHTML = '';
+		live(flowOf(setSquad(rated(withLib()), 'x1', ['m2'], null)), 'x1');
+		expect(squadTags()).toEqual(['第 1 組', '沒分組']);
+		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
+	});
+
+	it.each([['tumbling'], ['jump']] as const)('%s 的動作有環節也不分組', (category) => {
+		live(rated(withLib(category)), 'x1');
+		expect(squadTags()).toEqual([null, null]);
+	});
+
+	it('「＋加人…」：動作只有一組，新的人進第 1 組', async () => {
+		const onchange = live(rated(withLib(), 'x2'), 'x2');
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
+			{ memberId: 'm1', role: '上層', squad: 1 },
+			{ memberId: 'm2', role: null, squad: 1 }
+		]);
+	});
+
+	it('「從別的動作複製人（連任務角色和組）」連組一起帶', async () => {
+		let flow = flowOf(setSquad(rated(withLib()), 'x1', ['m2'], 2));
+		flow = rated(flow, 'x2');
+		const onchange = live(flow, 'x2');
+		const copy = screen.getByLabelText('從別的動作複製人') as HTMLSelectElement;
+		expect(copy.options[0].text).toBe('從別的動作複製人（連任務角色和組）…');
+		await fireEvent.change(copy, { target: { value: 'x1' } });
+		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
+			{ memberId: 'm1', role: '上層', squad: 1 },
+			{ memberId: 'm2', role: '主底', squad: 2 }
+		]);
+		expect(squadTags()).toEqual(['第 1 組', '第 2 組']);
 	});
 });

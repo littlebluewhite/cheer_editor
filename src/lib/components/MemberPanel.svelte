@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
 	// 刪隊員先顯示流程核心給的「要確認」說明，按確定才刪。
+	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { applyResult } from './form';
@@ -14,6 +15,8 @@
 		memberMarkers,
 		memberName,
 		updateMember,
+		type CommandResult,
+		type ConfirmOption,
 		type Flow,
 		type Gender,
 		type GlobalRole,
@@ -41,23 +44,35 @@
 	}
 
 	function edit(id: string, changes: MemberChanges, input?: HTMLInputElement) {
-		error = applyResult(updateMember(flow, id, changes), onchange);
-		// 被擋下時把輸入框還原成原本的名字。
-		if (error && input) input.value = memberName(flow, id);
-	}
-
-	/** 等教練確認要刪的隊員和流程核心給的說明。 */
-	let pending = $state<{ id: string; message: string; items: string[] } | null>(null);
-
-	function remove(id: string) {
-		const r = deleteMember(flow, id);
-		if (r.kind === 'confirm') pending = { id, message: r.message, items: r.items };
+		const send = (o: ConfirmOption = {}) => updateMember(flow, id, changes, o);
+		const r = send();
+		// 被擋下（或要問）時把輸入框還原成原本的名字；選好了核心改的名字會再畫上去。
+		if (r.kind !== 'ok' && input) input.value = memberName(flow, id);
+		if (r.kind === 'choose') pending = { message: r.message, items: r.items, choose: true, send };
 		else error = applyResult(r, onchange);
 	}
 
-	function confirmRemove() {
+	/**
+	 * 等教練確認的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
+	 * send 帶著回答再送一次同一個指令。
+	 */
+	let pending = $state<{
+		message: string;
+		items: string[];
+		choose: boolean;
+		send: (options: ConfirmOption) => CommandResult;
+	} | null>(null);
+
+	function remove(id: string) {
+		const send = (o: ConfirmOption = {}) => deleteMember(flow, id, o);
+		const r = send();
+		if (r.kind === 'confirm') pending = { message: r.message, items: r.items, choose: false, send };
+		else error = applyResult(r, onchange);
+	}
+
+	function answer(options: ConfirmOption) {
 		if (!pending) return;
-		error = applyResult(deleteMember(flow, pending.id, { confirmed: true }), onchange);
+		error = applyResult(pending.send(options), onchange);
 		pending = null;
 	}
 </script>
@@ -107,7 +122,9 @@
 		<ConfirmList
 			message={pending.message}
 			items={pending.items}
-			onconfirm={confirmRemove}
+			confirmLabel={pending.choose ? '清掉重算' : undefined}
+			onconfirm={() => answer(pending?.choose ? { records: 'clear' } : { confirmed: true })}
+			onkeep={pending.choose ? () => answer({ records: 'keep' }) : undefined}
 			oncancel={() => (pending = null)}
 		/>
 	{/if}

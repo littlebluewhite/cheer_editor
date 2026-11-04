@@ -5,6 +5,8 @@ import { ACTION_CATEGORIES, type Action, type ActionCategory } from './actions';
 import { cueForMember, whoName, type Cue, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
+import { phaseLabel } from './phases';
+import { phaseColor, type Phase } from './success-rate';
 import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
@@ -48,11 +50,24 @@ export interface EightCountCue {
 	who: string | null;
 }
 
-/** 八拍表一列裡、一個有拍點的動作那一排 8 格。 */
+/** 八拍表一列裡的一個環節（只算落在這一列的那一段；跨列的兩列都寫名字）。 */
+export interface EightCountPhase {
+	/** 種類和名字：「上法 延伸」，沒取名字就只有種類。 */
+	label: string;
+	/** 這一列的第幾格到第幾格（1–8）。 */
+	from: number;
+	to: number;
+	/** 環節的顏色（畫面上用；黑白印靠框線和字）。 */
+	color: string;
+}
+
+/** 八拍表一列裡、一個有拍點或標了拍的環節的動作那一排 8 格。 */
 export interface EightCountCueLine {
 	categoryLabel: string;
 	name: string;
 	cues: EightCountCue[];
+	/** 這一列的環節，畫在拍點上面一行；環節不分給誰，個人表也一樣。沒標拍的不印。 */
+	phases: EightCountPhase[];
 }
 
 export interface EightCountRow {
@@ -131,8 +146,9 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							? cueInRow(flow, a, c, from, memberId === null)
 							: []
 					);
-					return cues.length
-						? [{ categoryLabel: categoryLabel(a.category), name: a.name, cues }]
+					const phases = (a.successRate?.phases ?? []).flatMap((p) => phaseInRow(a, p, from));
+					return cues.length || phases.length
+						? [{ categoryLabel: categoryLabel(a.category), name: a.name, cues, phases }]
 						: [];
 				})
 			};
@@ -173,6 +189,22 @@ function cueInRow(flow: Flow, action: Action, cue: Cue, from: number, withWho: b
 			to: Math.ceil(end / HALF_BEATS_PER_BEAT),
 			word: cue.word,
 			who: withWho ? whoName(flow, cue.who) || null : null
+		}
+	];
+}
+
+/** 環節標的拍落在從 from 半拍開始那一列的那一段；沒標拍、沒落在這一列是空的。 */
+function phaseInRow(action: Action, phase: Phase, from: number): EightCountPhase[] {
+	if (!phase.beats) return [];
+	const start = Math.max(action.start + phase.beats.at, from) - from;
+	const end = Math.min(action.start + phase.beats.at + phase.beats.len, from + HALF_BEATS_PER_EIGHT) - from;
+	if (start >= end) return [];
+	return [
+		{
+			label: phaseLabel(phase),
+			from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
+			to: Math.ceil(end / HALF_BEATS_PER_BEAT),
+			color: phaseColor(phase)
 		}
 	];
 }

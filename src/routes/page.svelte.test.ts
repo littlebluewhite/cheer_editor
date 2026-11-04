@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import Page from './+page.svelte';
 
@@ -181,6 +181,54 @@ describe('動作', () => {
 		expect(screen.getByRole('button', { name: '新增動作' })).toBeTruthy();
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(bar()).toBeTruthy();
+	});
+
+	describe('場地左邊的「多選」「取消選取」只在觸控螢幕上有（docs/adr/0005-ipad-touch.md）', () => {
+		afterEach(() => vi.unstubAllGlobals());
+
+		const touchScreen = () =>
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+		const multi = () => screen.queryByRole('checkbox', { name: '多選' }) as HTMLInputElement | null;
+		const clear = () => screen.queryByRole('button', { name: '取消選取' }) as HTMLButtonElement | null;
+		const name = () => document.querySelector('[data-lane="m1"] .lab')!;
+
+		it('電腦上沒有；Shift＋點、Esc 照舊', async () => {
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: fine)' }));
+			await withAction();
+			expect(multi()).toBeNull();
+			expect(clear()).toBeNull();
+
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			await fireEvent.click(name());
+			expect(dot().classList.contains('selected')).toBe(true);
+			await fireEvent.click(name(), { shiftKey: true });
+			expect(dot().classList.contains('selected')).toBe(false);
+			await fireEvent.click(name());
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			expect(dot().classList.contains('selected')).toBe(false);
+		});
+
+		it('觸控螢幕：「取消選取」跟 Esc 一樣，動作和人的選取都清掉；沒有選東西時按不了', async () => {
+			touchScreen();
+			await withAction();
+			await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+			expect(clear()!.disabled).toBe(false);
+			await fireEvent.click(clear()!);
+			expect(bar()?.classList.contains('selected')).toBe(false);
+			expect(dot().classList.contains('selected')).toBe(false);
+			expect(clear()!.disabled).toBe(true);
+		});
+
+		it('觸控螢幕：打開「多選」，不按 Shift 點泳道名字也是加進來或拿掉', async () => {
+			touchScreen();
+			await withAction();
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			await fireEvent.click(multi()!);
+			await fireEvent.click(name());
+			expect(dot().classList.contains('selected')).toBe(true);
+			await fireEvent.click(name());
+			expect(dot().classList.contains('selected')).toBe(false);
+		});
 	});
 
 	it('名詞對照表開著時按 Esc 只關掉它，不清除選到的動作', async () => {
@@ -600,7 +648,7 @@ describe('站位與走位', () => {
 		expect(screen.getByText('開頭那張前面沒有站位')).toBeTruthy();
 
 		await seek(8.25);
-		await fireEvent.click(screen.getByRole('button', { name: '取消選取' }));
+		await fireEvent.click(screen.getByRole('button', { name: '不選人' }));
 		await dragFirstMember(); // 插站位 2，小A 換位置
 		expect(at('m1')).not.toBe(start);
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
@@ -695,6 +743,25 @@ describe('站位與走位', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
+	});
+
+	it('手指：沒選中的縮圖拖不動（留給時間軸捲動），點一下選中了才拖得動', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await seek(0);
+		const thumb = screen.getByRole('button', { name: '站位 2' });
+		const touch = { button: 0, pointerType: 'touch', pointerId: 5 };
+		const drag = async () => {
+			await fireEvent.pointerDown(thumb, { ...touch, clientX: 300 });
+			await fireEvent.pointerMove(window, { ...touch, clientX: 248 });
+			await fireEvent.pointerUp(window, { ...touch, clientX: 248 });
+		};
+		await drag();
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		await fireEvent.click(thumb);
+		await drag();
+		expect(thumbLeft(2)).toBeCloseTo(80);
 	});
 
 	it('拖縮圖被擋就彈回去，上方說原因；開頭那張拖不動', async () => {
@@ -1309,6 +1376,20 @@ describe('場地和右邊欄的分界', () => {
 		cleanup();
 		await newFlow();
 		expect(width()).toBe(auto);
+	});
+
+	it('「版面回原狀」兩條分界都回到預設；沒改過就不出現', async () => {
+		await newFlow();
+		const reset = () => screen.queryByRole('button', { name: '版面回原狀' });
+		expect(reset()).toBeNull();
+		const auto = width();
+		await fireEvent.keyDown(bar(), { key: 'ArrowLeft' });
+		const rows = screen.getByRole('separator', { name: '場地和時間軸的分界' });
+		await fireEvent.keyDown(rows, { key: 'ArrowUp' });
+		await fireEvent.click(reset()!);
+		expect(width()).toBe(auto);
+		expect((document.querySelector('.editor') as HTMLElement).style.getPropertyValue('--timeline-h')).toBe('');
+		expect(reset()).toBeNull();
 	});
 
 	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {

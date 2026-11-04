@@ -11,18 +11,8 @@ export const CATEGORY_COLORS: Record<ActionCategory, string> = {
 	other: '#6b7280'
 };
 
-/** 辨識色可以挑的顏色：色條上是白字，每個對白字的對比都在 4.5 以上。 */
-export const ACTION_COLORS: { value: string; label: string }[] = [
-	{ value: '#c62828', label: '紅' },
-	{ value: '#c24400', label: '橘' },
-	{ value: '#8d6200', label: '金' },
-	{ value: '#2e7d32', label: '綠' },
-	{ value: '#00796b', label: '青' },
-	{ value: '#1565c0', label: '藍' },
-	{ value: '#3949ab', label: '靛' },
-	{ value: '#7b1fa2', label: '紫' },
-	{ value: '#ad1457', label: '粉' }
-];
+/** 辨識色可以挑的顏色（在流程核心裡，環節的顏色也照這個）。 */
+export { ACTION_COLORS } from '#lib/core';
 
 /** 動作在畫面上的顏色：有辨識色用辨識色，沒有就用大類的顏色。 */
 export function actionColor(action: Pick<Action, 'category' | 'color'>): string {

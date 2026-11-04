@@ -1,7 +1,7 @@
 // 流程核心的對外介面。畫面只從這裡 import，不碰 core 裡的其他檔案。
 // 這一層是純 TypeScript：不碰 DOM、Svelte、Web Audio、檔案對話框。
 
-export type { CommandResult, ConfirmOption } from './result';
+export type { CommandResult, ConfirmOption, RecordsChoice } from './result';
 
 export { createFlow, memberName, renameFlow } from './flow';
 export type { Flow, NewFlowInput } from './flow';
@@ -56,12 +56,58 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
+export {
+	groupsPeople,
+	MARKS,
+	newActionMember,
+	PHASE_KIND_COLORS,
+	PHASE_KINDS,
+	perPerson,
+	phaseColor,
+	setSquad,
+	squadName,
+	squadsOf
+} from './success-rate';
+export type { Attempt, Mark, NewAttempt, Phase, PhaseKind, PracticeKind, SuccessRate } from './success-rate';
+
+export {
+	attemptText,
+	attemptWhos,
+	carryRecords,
+	deleteLastAttempt,
+	recordableActions,
+	recordAttempt,
+	recordRunThrough
+} from './records';
+export type { RunThroughMarks } from './records';
+
+export { addPhase, deletePhase, phaseLabel, updatePhase } from './phases';
+export { ACTION_COLORS, NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
+export type { PhaseChange } from './phases';
+export { clearPhaseBeats, markPhaseBeats } from './phase-beats';
+export type { BeatsTarget } from './phase-beats';
+
+export {
+	cellDetail,
+	completionPercent,
+	dailyTable,
+	percent,
+	periodRange,
+	rateBand,
+	rateCounts,
+	rateTable,
+	successPercent,
+	weakestPhase
+} from './rates';
+export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
+
 export { eightCountRows } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,
 	EightCountCueLine,
 	EightCountFormation,
+	EightCountPhase,
 	EightCountRow
 } from './eight-count';
 

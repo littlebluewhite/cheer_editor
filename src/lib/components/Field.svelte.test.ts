@@ -63,6 +63,34 @@ describe('上層、中層畫在最上面', () => {
 	});
 });
 
+describe('組號小圓', () => {
+	const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const badge = (id: string) => document.querySelector(`[data-member-id="${id}"] .badge`);
+
+	it('給了組號的人頭上有小圓，寫號碼、塗組色；沒給的人沒有', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			positions: { m1: [0, 0], m2: [1, 0], m3: [2, 0] },
+			badges: { m1: { text: '1', color: '#2563eb' }, m2: { text: '?', color: '#9ca3af' } }
+		});
+		expect(badge('m1')?.textContent).toBe('1');
+		expect(badge('m1')?.querySelector('circle')?.style.fill).toBe('rgb(37, 99, 235)');
+		expect(badge('m2')?.textContent).toBe('?');
+		expect(badge('m3')).toBeNull();
+	});
+
+	it('沒給組號就都沒有小圓', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0] } });
+		expect(badge('m1')).toBeNull();
+	});
+});
+
 describe('在場上拖人', () => {
 	const members: Member[] = [{ id: 'm1', name: '小A', gender: 'F', globalRole: 'top' }];
 	/** 假的螢幕座標換算：1 px = 1 cm，原點對齊中心 X。 */
@@ -141,7 +169,7 @@ describe('在場上選人、整組拖', () => {
 		e.clientY / 100
 	];
 
-	function setup(selected: string[] = []) {
+	function setup(selected: string[] = [], multi = false) {
 		const onmove = vi.fn<(moves: Record<string, Position>) => void>();
 		const onselect = vi.fn<(ids: string[]) => void>();
 		render(Field, {
@@ -149,6 +177,7 @@ describe('在場上選人、整組拖', () => {
 			members,
 			positions: { m1: [0, 0], m2: [1, 0], m3: [3, 3] },
 			selected,
+			multi,
 			onmove,
 			onselect,
 			toMeters
@@ -196,6 +225,59 @@ describe('在場上選人、整組拖', () => {
 
 		await dragFrom(svg, [50, 50], [-50, -50], true);
 		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm3']);
+	});
+
+	it('多選開著：不按 Shift，點人、框選也是加進來或拿掉（iPad 沒有 Shift）', async () => {
+		const { onselect, dot, svg } = setup(['m1'], true);
+		await dragFrom(dot('m3'), [300, 300], [300, 300]);
+		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm3']);
+		await dragFrom(dot('m1'), [0, 0], [0, 0]);
+		expect(onselect).toHaveBeenLastCalledWith([]);
+		await dragFrom(svg, [50, 50], [150, -50]);
+		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm2']);
+	});
+
+	it('兩根手指：捏合放大、一起拖移動畫面；不會選人、拖人', async () => {
+		const { onselect, onmove, dot, svg } = setup();
+		const finger = (id: number, x: number, y: number) => ({
+			pointerType: 'touch',
+			pointerId: id,
+			button: 0,
+			clientX: x,
+			clientY: y
+		});
+		const zoomText = () => document.querySelector('.zoom')!.textContent;
+		await fireEvent.pointerDown(dot('m1'), finger(1, 0, 0));
+		await fireEvent.pointerDown(svg, finger(2, 100, 0));
+		await fireEvent.pointerMove(svg, finger(2, 200, 0));
+		expect(zoomText()).toBe('×2.0');
+		const viewX = () => Number(svg.getAttribute('viewBox')!.split(' ')[0]);
+		const before = viewX();
+		// 兩指一起往右 50 px：畫面往左挪（看到更左邊）
+		await fireEvent.pointerMove(svg, finger(1, 50, 0));
+		await fireEvent.pointerMove(svg, finger(2, 250, 0));
+		expect(viewX()).toBeLessThan(before);
+		await fireEvent.pointerUp(svg, finger(2, 250, 0));
+		// 剩一根手指也不接著拖人
+		await fireEvent.pointerMove(svg, finger(1, 300, 0));
+		await fireEvent.pointerUp(svg, finger(1, 300, 0));
+		expect(onmove).not.toHaveBeenCalled();
+		expect(onselect).not.toHaveBeenCalled();
+		// 都放開了，一根手指又能點人
+		await fireEvent.pointerDown(dot('m2'), finger(3, 100, 0));
+		await fireEvent.pointerUp(svg, finger(3, 100, 0));
+		expect(onselect).toHaveBeenLastCalledWith(['m2']);
+	});
+
+	it('手指沒剛好按在點上：22 px 以內最近的人也算按到；再遠就是框選或清除', async () => {
+		const { onselect, svg } = setup();
+		const touch = { pointerType: 'touch', pointerId: 1, button: 0 };
+		await fireEvent.pointerDown(svg, { ...touch, clientX: 115, clientY: 10 });
+		await fireEvent.pointerUp(svg, { ...touch, clientX: 115, clientY: 10 });
+		expect(onselect).toHaveBeenLastCalledWith(['m2']);
+		await fireEvent.pointerDown(svg, { ...touch, clientX: 150, clientY: 0 });
+		await fireEvent.pointerUp(svg, { ...touch, clientX: 150, clientY: 0 });
+		expect(onselect).toHaveBeenLastCalledWith([]);
 	});
 
 	it('點空白處清除選取', async () => {

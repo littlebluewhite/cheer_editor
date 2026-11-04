@@ -1,13 +1,16 @@
 <script lang="ts">
 	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
-	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點多選。
+	// 拖色條移動、拉右邊改長度：放開時交給流程核心，被擋就還原。點名字選人，Shift＋點（或開著 multi 時點）多選。
 	// 拉短會切到拍點時先不改，交給 onconfirm 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）。
+	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
 	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
+	// 環節：標了拍的環節在色條最上緣畫一條細條（環節的顏色），那幾拍鋪同色淡底；不吃滑鼠，名稱、拍點畫在上面。
+	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
 	import {
 		actionLabel,
 		actionSeconds,
@@ -19,6 +22,8 @@
 		memberWalk,
 		moveAction,
 		nearestPosition,
+		phaseColor,
+		phaseLabel,
 		resizeAction,
 		setWalks,
 		toSeconds,
@@ -34,7 +39,7 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import type { PendingConfirm } from './form';
 	import { isLongMarker } from './marker';
-	import { followPointer } from './pointer';
+	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
 		flow: Flow;
@@ -53,6 +58,8 @@
 		/** 選到的人。 */
 		selectedMemberIds?: string[];
 		onselectmembers?: (memberIds: string[]) => void;
+		/** 多選開著：點名字跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+		multi?: boolean;
 	}
 
 	let {
@@ -65,7 +72,8 @@
 		onblocked = () => {},
 		onconfirm = () => {},
 		selectedMemberIds = [],
-		onselectmembers = () => {}
+		onselectmembers = () => {},
+		multi = false
 	}: Props = $props();
 
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
@@ -100,6 +108,33 @@
 	const NAME_H = 12;
 	const TRACK_H = 10;
 	const WALK_H = 5;
+	/** 環節細條的高度（px）。 */
+	const PHASE_H = 3;
+
+	/** 每個動作標了拍的環節：名字、顏色、從動作開始第幾個半拍、幾個半拍長。 */
+	const phaseBars = $derived(
+		Object.fromEntries(
+			flow.actions.map((a) => [
+				a.id,
+				(a.successRate?.phases ?? []).flatMap((p) =>
+					p.beats ? [{ id: p.id, label: phaseLabel(p), color: phaseColor(p), ...p.beats }] : []
+				)
+			])
+		)
+	);
+
+	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px）。 */
+	const lift = $derived(
+		Object.fromEntries(
+			flow.members.map((m) => [
+				m.id,
+				cues[m.id].kinds.length &&
+				flow.actions.some((a) => phaseBars[a.id].length && a.members.some((x) => x.memberId === m.id))
+					? PHASE_H
+					: 0
+			])
+		)
+	);
 
 	/** 每個人：每個動作裡給他的拍點，和他用到哪幾種（照拍子、步驟、手位排，一種一條）。 */
 	const cues = $derived.by(() => {
@@ -143,17 +178,19 @@
 	});
 
 	function startDrag(e: PointerEvent, id: string) {
-		if (e.button !== 0) return;
+		if (e.button !== 0 || touchOnUnpicked(e, id === selectedActionId)) return;
 		const mode = (e.target as Element).closest('[data-resize]') ? 'resize' : 'move';
 		drag = { id, mode, x0: e.clientX, dx: 0 };
 		followPointer(
+			e,
 			(ev) => {
 				if (drag) drag.dx = ev.clientX - drag.x0;
 			},
 			() => {
 				if (drag) drop(drag.id, drag.mode, drag.dx);
 				drag = null;
-			}
+			},
+			() => (drag = null)
 		);
 	}
 
@@ -177,8 +214,12 @@
 		else onblocked(r.message);
 	}
 
+	/** 上一次按下走位條的是不是手指：手指點沒選到的人的走位條＝選他。 */
+	let walkTouch = false;
+
 	function startWalkDrag(e: PointerEvent, formationId: string, memberId: string) {
-		if (e.button !== 0) return;
+		walkTouch = e.pointerType === 'touch';
+		if (e.button !== 0 || touchOnUnpicked(e, selected.has(memberId))) return;
 		const end = (e.target as Element).closest<HTMLElement>('[data-end]')?.dataset.end;
 		const mode: WalkEnd = end === 'depart' || end === 'arrive' ? end : 'move';
 		const ids = selected.has(memberId)
@@ -186,14 +227,20 @@
 			: [memberId];
 		walkDrag = { formationId, memberId, ids, mode, x0: e.clientX, dx: 0 };
 		followPointer(
+			e,
 			(ev) => {
 				if (walkDrag) walkDrag.dx = ev.clientX - walkDrag.x0;
 			},
 			() => {
 				if (walkDrag && Math.abs(walkDrag.dx) >= DRAG_PX) dropWalk(walkDrag);
 				walkDrag = null;
-			}
+			},
+			() => (walkDrag = null)
 		);
+	}
+
+	function tapWalk(memberId: string) {
+		if (walkTouch && !selected.has(memberId)) pick(memberId, false);
 	}
 
 	/** 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多；一起交給 setWalks，被擋就整組還原。 */
@@ -218,8 +265,8 @@
 		else onblocked(r.message);
 	}
 
-	function pick(e: MouseEvent, id: string) {
-		if (!e.shiftKey) return onselectmembers([id]);
+	function pick(id: string, shift: boolean) {
+		if (!shift && !multi) return onselectmembers([id]);
 		onselectmembers(
 			selected.has(id) ? selectedMemberIds.filter((x) => x !== id) : [...selectedMemberIds, id]
 		);
@@ -232,7 +279,7 @@
 		class="row"
 		data-lane={m.id}
 		style:height={kinds.length
-			? `${BAR_TOP + NAME_H + kinds.length * TRACK_H + WALK_H}px`
+			? `${BAR_TOP + lift[m.id] + NAME_H + kinds.length * TRACK_H + WALK_H}px`
 			: undefined}
 	>
 		<button
@@ -241,8 +288,8 @@
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
-			title="點一下選這個人，Shift＋點多選"
-			onclick={(e) => pick(e, m.id)}
+			title="點一下選這個人；多選開著或 Shift＋點，可以選好幾個"
+			onclick={(e) => pick(m.id, e.shiftKey)}
 		>
 			<b
 				class="no gr {m.globalRole}"
@@ -265,6 +312,7 @@
 						data-action-id={p.action.id}
 						class:dragging={d !== null}
 						class:has-cues={mine.length > 0}
+						class:has-phases={phaseBars[p.action.id].length > 0}
 						class:tinted={!!p.action.color}
 						style:left={`${p.left + (d?.mode === 'move' ? d.dx : 0)}px`}
 						style:width={`${Math.max(p.width + (d?.mode === 'resize' ? d.dx : 0), 2)}px`}
@@ -274,6 +322,26 @@
 						onclick={() => onselectaction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
+						{#each phaseBars[p.action.id] as ph (ph.id)}
+							<span
+								class="phase-tint"
+								data-phase-tint
+								aria-hidden="true"
+								style:left={`${ph.at * p.halfPx}px`}
+								style:width={`${ph.len * p.halfPx}px`}
+								style:background={ph.color}
+							></span>
+							<span
+								class="phase"
+								data-phase={ph.label}
+								aria-hidden="true"
+								style:left={`${ph.at * p.halfPx}px`}
+								style:width={`${ph.len * p.halfPx}px`}
+								style:top="0px"
+								style:height={`${PHASE_H}px`}
+								style:background={ph.color}
+							></span>
+						{/each}
 						<b>{p.name}</b>
 						{#if member.role}<span class="role">{member.role}</span>{/if}
 						{#each mine as c, j (j)}
@@ -287,7 +355,7 @@
 								style:transform={atEnd ? 'translateX(-100%)' : undefined}
 								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
-								style:top={`${NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
+								style:top={`${lift[m.id] + NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
 								style:height={`${TRACK_H - 1}px`}>{c.word}</span
 							>
 						{/each}
@@ -303,6 +371,7 @@
 				<button
 					type="button"
 					class="walk"
+					class:picked={selected.has(m.id)}
 					class:dragging={d !== null}
 					class:fast={w.tooFast}
 					class:tiring={w.tiring}
@@ -311,6 +380,7 @@
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
 					title="走位：拖左端改出發、拖右端改到達、拖中間一起挪"
 					onpointerdown={(e) => startWalkDrag(e, w.formationId, m.id)}
+					onclick={() => tapWalk(m.id)}
 				>
 					<span class="end l" data-end="depart"></span>
 					<span class="end r" data-end="arrive"></span>
@@ -425,9 +495,12 @@
 		overflow: hidden;
 		white-space: nowrap;
 		cursor: grab;
-		touch-action: none;
 		user-select: none;
 		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.14);
+	}
+	/* 選中的才不讓手指捲畫面（手指拖得動）；沒選中的手指一滑是捲動。 */
+	.bar.selected {
+		touch-action: none;
 	}
 	.bar:hover {
 		filter: brightness(1.06);
@@ -444,6 +517,27 @@
 		align-items: flex-start;
 		padding-top: 1px;
 		font-size: 10px;
+	}
+	/* 環節：最上緣的細條和那幾拍的淡底，不吃滑鼠，按下去還是按在色條上。名稱、任務角色疊在淡底上面。 */
+	.phase,
+	.phase-tint {
+		position: absolute;
+		pointer-events: none;
+	}
+	.phase-tint {
+		top: 0;
+		bottom: 0;
+		opacity: 0.28;
+	}
+	.phase {
+		box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.8);
+	}
+	.bar > b,
+	.role {
+		position: relative;
+	}
+	.bar.has-cues.has-phases {
+		padding-top: 4px;
 	}
 	/* 拍點：不吃滑鼠，按下去還是按在色條上。down 藍、up 綠實心；步驟淡橘、左邊粗線；手位粉紅小字（跟拍點表單同色）。 */
 	.cue {
@@ -499,6 +593,22 @@
 	.bar:hover .rz {
 		background: rgba(255, 255, 255, 0.35);
 	}
+	/* 手指：拉長短的把手、走位條和兩端點得到的範圍變大，看起來不變。 */
+	@media (pointer: coarse) {
+		.rz {
+			width: min(16px, 40%);
+		}
+		.walk::before {
+			content: '';
+			position: absolute;
+			inset: -5px 0 -4px;
+		}
+		.end {
+			top: -5px;
+			bottom: -4px;
+			width: min(16px, 40%);
+		}
+	}
 	/* 走位條：細條貼在泳道下緣，蓋在色條上面；兩端是把手。 */
 	.walk {
 		position: absolute;
@@ -511,8 +621,10 @@
 		background: var(--ink, #16213a);
 		opacity: 0.8;
 		cursor: grab;
-		touch-action: none;
 		user-select: none;
+	}
+	.walk.picked {
+		touch-action: none;
 	}
 	.walk:hover,
 	.walk.dragging {

@@ -2,8 +2,10 @@ import {
 	addAction,
 	addMembers,
 	addSegment,
+	clearPhaseBeats,
 	createFlow,
 	insertFormation,
+	markPhaseBeats,
 	placeCue,
 	setMarkers,
 	setPositions,
@@ -66,7 +68,8 @@ function sample(): Flow {
 function setup(
 	playheadSec: number,
 	selectedActionId: string | null = null,
-	selectedMemberIds: string[] = []
+	selectedMemberIds: string[] = [],
+	multi = false
 ) {
 	const onselectaction = vi.fn();
 	const onchange = vi.fn<(flow: Flow) => void>();
@@ -81,7 +84,8 @@ function setup(
 		onchange,
 		onblocked,
 		selectedMemberIds,
-		onselectmembers
+		onselectmembers,
+		multi
 	});
 	return { onselectaction, onchange, onblocked, onselectmembers };
 }
@@ -197,6 +201,46 @@ describe('拖色條', () => {
 	});
 });
 
+describe('手指拖色條（docs/adr/0005-ipad-touch.md）', () => {
+	const tumble = () => bars(lanes()[2])[0];
+	const touch = { button: 0, pointerType: 'touch', pointerId: 7 };
+
+	it('沒選中的色條：手指拖不動（留給畫面捲動），點一下選中', async () => {
+		const { onchange, onselectaction } = setup(0);
+		expect(tumble().classList.contains('selected')).toBe(false);
+		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
+		expect(tumble().style.left).toBe('16px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
+		expect(onchange).not.toHaveBeenCalled();
+		await fireEvent.click(tumble());
+		expect(onselectaction).toHaveBeenCalledWith('x2');
+	});
+
+	it('選中的色條：手指拖得動', async () => {
+		const { onchange } = setup(0, 'x2');
+		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
+		expect(tumble().style.left).toBe('11px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
+		expect(onchange.mock.calls[0][0].actions[1]).toMatchObject({ id: 'x2', start: 6 });
+	});
+
+	it('拖的時候多放一根手指，不會把色條搶走；系統打斷就還原', async () => {
+		const { onchange } = setup(0, 'x2');
+		await fireEvent.pointerDown(tumble(), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, pointerId: 8, clientX: 300 });
+		await fireEvent.pointerUp(window, { ...touch, pointerId: 8, clientX: 300 });
+		expect(tumble().style.left).toBe('16px');
+		await fireEvent.pointerMove(window, { ...touch, clientX: 95 });
+		expect(tumble().style.left).toBe('11px');
+		await fireEvent.pointerCancel(window, { ...touch });
+		expect(tumble().style.left).toBe('16px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 95 });
+		expect(onchange).not.toHaveBeenCalled();
+	});
+});
+
 describe('點泳道上的名字選人', () => {
 	const name = (i: number) => lanes()[i].querySelector<HTMLElement>('.lab')!;
 
@@ -220,6 +264,14 @@ describe('點泳道上的名字選人', () => {
 		await fireEvent.click(name(2), { shiftKey: true });
 		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
 		await fireEvent.click(name(0), { shiftKey: true });
+		expect(onselectmembers).toHaveBeenLastCalledWith([]);
+	});
+
+	it('多選開著：不按 Shift 點名字也是加進來或拿掉', async () => {
+		const { onselectmembers } = setup(0, null, ['m1'], true);
+		await fireEvent.click(name(2));
+		expect(onselectmembers).toHaveBeenLastCalledWith(['m1', 'm3']);
+		await fireEvent.click(name(0));
 		expect(onselectmembers).toHaveBeenLastCalledWith([]);
 	});
 });
@@ -260,6 +312,35 @@ describe('走位條', () => {
 		await fireEvent.pointerMove(window, { clientX: 100 + dx });
 		await fireEvent.pointerUp(window, { clientX: 100 + dx });
 	}
+
+	it('手指：沒選到的人的走位條拖不動，點一下選他；選到了才拖得動', async () => {
+		const onselectmembers = vi.fn();
+		const onchange = vi.fn();
+		const touch = { button: 0, pointerType: 'touch', pointerId: 3 };
+		const { rerender } = render(Lanes, {
+			flow: walking(),
+			playheadSec: 0,
+			pxPerSec: 10,
+			selectedActionId: null,
+			onselectaction: vi.fn(),
+			onchange,
+			onselectmembers
+		});
+		await fireEvent.pointerDown(walkBar(0), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 120 });
+		expect(walkBar(0).style.left).toBe('16px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 120 });
+		await fireEvent.click(walkBar(0));
+		expect(onselectmembers).toHaveBeenCalledWith(['m1']);
+		expect(onchange).not.toHaveBeenCalled();
+
+		await rerender({ selectedMemberIds: ['m1'] });
+		await fireEvent.pointerDown(walkBar(0), { ...touch, clientX: 100 });
+		await fireEvent.pointerMove(window, { ...touch, clientX: 96 });
+		expect(walkBar(0).style.left).toBe('12px');
+		await fireEvent.pointerUp(window, { ...touch, clientX: 96 });
+		expect(onchange).toHaveBeenCalledOnce();
+	});
 
 	it('有走位的人才有走位條，從出發畫到到達，跟動作色條分開', () => {
 		setupWalks();
@@ -515,6 +596,89 @@ describe('色條上的拍點', () => {
 		// 往右 4 px = 0.4 秒 = 2 個半拍；拍點跟著動作走
 		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
 		expect(onchange.mock.calls[0][0].actions[0].cues).toHaveLength(3);
+	});
+});
+
+describe('色條上的環節', () => {
+	/**
+	 * Lib（0–3.2 秒 = 0–32 px，一個半拍 2 px）的環節：上法「延伸」1-1 到 1-3、中段 1-4 到 1-6、
+	 * 下法（標了 1-7 到 1-8 再清掉，沒標拍）。withCues 時再放 1-1 到 1-2 的 down。
+	 */
+	function phased(withCues = false): Flow {
+		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '延伸' }, 0, 6));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 6, 6));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4));
+		flow = flowOf(clearPhaseBeats(flow, 'x1', 12, 16));
+		return withCues ? flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' })) : flow;
+	}
+
+	function setupPhases(flow: Flow) {
+		const onchange = vi.fn<(flow: Flow) => void>();
+		const onselectaction = vi.fn();
+		render(Lanes, { flow, playheadSec: 0, pxPerSec: 10, selectedActionId: null, onselectaction, onchange });
+		return { onchange, onselectaction };
+	}
+
+	/** 色條上的環節細條：名字、位置、寬度、顏色。 */
+	const strips = (bar: HTMLElement) =>
+		[...bar.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => ({
+			phase: p.dataset.phase,
+			left: p.style.left,
+			width: p.style.width,
+			color: p.style.background
+		}));
+
+	it('動作裡每個人的色條上都有一條細細的環節（環節的顏色），底下鋪同色淡底；沒標拍的不畫', () => {
+		setupPhases(phased());
+		const want = [
+			{ phase: '上法 延伸', left: '0px', width: '12px', color: 'rgb(0, 121, 107)' },
+			{ phase: '中段', left: '12px', width: '12px', color: 'rgb(71, 85, 105)' }
+		];
+		expect(strips(bars(lanes()[0])[0])).toEqual(want);
+		expect(strips(bars(lanes()[1])[0])).toEqual(want);
+		const tints = [...bars(lanes()[0])[0].querySelectorAll<HTMLElement>('[data-phase-tint]')];
+		expect(tints.map((t) => [t.style.left, t.style.width, t.style.background])).toEqual([
+			['0px', '12px', 'rgb(0, 121, 107)'],
+			['12px', '12px', 'rgb(71, 85, 105)']
+		]);
+		// 小C 的動作沒記成功率
+		expect(bars(lanes()[2]).map(strips)).toEqual([[], []]);
+		// 名稱和提示照舊
+		expect(bars(lanes()[0])[0].querySelector('b')?.textContent).toBe('Lib');
+		expect(bars(lanes()[0])[0].title).toBe('技巧·Lib（上層）');
+	});
+
+	it('有拍點時環節細條在名稱上面，拍點往下讓開，泳道變高放得下，最下面還是留給走位條', () => {
+		setupPhases(phased(true));
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		const strip = bar.querySelector<HTMLElement>('[data-phase]')!;
+		const cue = bar.querySelector<HTMLElement>('[data-cue]')!;
+		expect(parseFloat(strip.style.top) + parseFloat(strip.style.height)).toBeLessThanOrEqual(3);
+		// 名稱那一行（12 px）從細條底下開始，拍點在名稱下面
+		expect(parseFloat(cue.style.top)).toBeGreaterThanOrEqual(3 + 12);
+		expect(3 + parseFloat(cue.style.top) + parseFloat(cue.style.height)).toBeLessThanOrEqual(
+			parseFloat(lane.style.height) - 5
+		);
+		expect(bar.classList.contains('has-phases')).toBe(true);
+	});
+
+	it('按在環節上照樣能拖色條、拉長度、點色條', async () => {
+		const { onchange, onselectaction } = setupPhases(phased());
+		const strip = () => bars(lanes()[0])[0].querySelector('[data-phase]')!;
+		await fireEvent.click(strip());
+		expect(onselectaction).toHaveBeenCalledWith('x1');
+		await fireEvent.pointerDown(strip(), { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 104 });
+		expect(bars(lanes()[0])[0].style.left).toBe('4px');
+		await fireEvent.pointerUp(window, { clientX: 104 });
+		// 往右 4 px = 2 個半拍；環節標的拍跟著動作走
+		expect(onchange.mock.calls[0][0].actions[0]).toMatchObject({ id: 'x1', start: 2, length: 16 });
+		expect(onchange.mock.calls[0][0].actions[0].successRate?.phases[0].beats).toEqual({ at: 0, len: 6 });
+		// 拉長度的把手還在
+		await fireEvent.pointerDown(bars(lanes()[0])[0].querySelector('[data-resize]')!, { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 104 });
+		expect(bars(lanes()[0])[0].style.width).toBe('36px');
 	});
 });
 

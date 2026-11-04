@@ -1,11 +1,22 @@
-// 動作：一組隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
+// 動作：一群隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
 import { cueFallout, cueProblem, type Cue } from './cues';
+import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { memberName, type Flow } from './flow';
-import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import type { Segment } from './segment';
+import {
+	askRecords,
+	compactSquads,
+	fitRecords,
+	groupsPeople,
+	replacePhases,
+	settleRecords,
+	successRateProblem,
+	type SuccessRate
+} from './success-rate';
 import { nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
@@ -26,6 +37,8 @@ export interface ActionMember {
 	memberId: string;
 	/** 任務角色的名稱（固定或自訂）；沒掛是 null。 */
 	role: string | null;
+	/** 第幾組（1 起）；沒有就是沒分組（舊流程檔沒有這個欄位）。 */
+	squad?: number;
 }
 
 export interface Action {
@@ -43,6 +56,8 @@ export interface Action {
 	color?: string;
 	/** 這個動作的拍點；沒有就是空的（舊流程檔沒有這個欄位）。 */
 	cues?: Cue[];
+	/** 成功率的設定：有環節才有；沒有就是不記成功率（舊流程檔沒有這個欄位）。 */
+	successRate?: SuccessRate;
 }
 
 export type NewActionInput = Omit<Action, 'id'>;
@@ -55,26 +70,33 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, action] }, id: action.id };
 }
 
-/** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。 */
+/**
+ * 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。
+ * 不記成功率（沒有環節）、或騰翻跳躍（不分組）的動作，人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。
+ * 對不上的紀錄也拿掉（組沒人了、人移出動作、大類換成騰翻或換掉騰翻）。
+ */
 function normalize({ color, ...action }: Action): Action {
-	return {
+	const grouped = groupsPeople(action);
+	return fitRecords({
 		...action,
 		...(color ? { color } : {}),
 		name: action.name.trim(),
-		members: action.members.map((m) => ({ ...m }))
-	};
+		members: action.members.map(({ squad, ...m }) => (grouped && squad !== undefined ? { ...m, squad } : m))
+	});
 }
 
 /**
  * 改動作的任何欄位（含換段、換人），照新增的規則檢查。
  * 變短會切到拍點、有拍點的動作換到口號段、或拿掉的人（任務角色）有拍點給他時，回「要確認」並列出那些拍點；
  * 帶 { confirmed: true } 再送一次才切短、拿掉。
+ * 會動到紀錄時也先問（換大類讓算法變了、組沒人了、騰翻跳躍拿掉人：要確認；有紀錄的組換了人：選保留舊紀錄或清掉重算），
+ * 跟拍點一起問；帶 { confirmed: true } 或 { records } 再送一次。做完組號補成不跳號（見 compactSquads）。
  */
 export function updateAction(
 	flow: Flow,
 	id: string,
 	changes: Partial<NewActionInput>,
-	{ confirmed = false }: ConfirmOption = {}
+	options: ConfirmOption = {}
 ): CommandResult {
 	const old = flow.actions.find((a) => a.id === id);
 	if (!old) return blocked('找不到這個動作');
@@ -83,27 +105,55 @@ export function updateAction(
 	const to = flow.segments.find((s) => s.id === action.segmentId);
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
+	const realigned = from && to ? phaseFallout(from, to, old, action) : null;
+	// 只挪半拍、沒切到的標的拍不用問；換到口號段拿掉標的拍也不用問。
+	const marked = realigned?.items.length ? realigned : null;
+	const asked = fallout || marked ? falloutMessage(old, action, from!, to!, fallout, marked) : null;
+	const items = [...(fallout?.items ?? []), ...(marked?.items ?? [])];
+	// 刪掉的環節的記號在上面問過了：換環節放在紀錄問完之後，不再算成「換了人」清掉的。
+	const settled = settleRecords(flow, old, action, options.records);
+	action = realigned ? replacePhases(settled.action, realigned.phases) : settled.action;
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
-	if (fallout && !confirmed) return needsConfirm(falloutMessage(old, action, to!, fallout), fallout.items);
-	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
+	if (!answered(options) && settled.ask) {
+		const head = asked ? `${asked}；` : `動作「${actionLabel(old)}」`;
+		return askRecords(head, { ...settled.ask, items: [...items, ...settled.ask.items] });
+	}
+	if (asked && !answered(options)) return needsConfirm(asked, items);
+	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? compactSquads(action) : a)) });
 }
 
 /**
  * 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換了人或任務角色是「…換了人或任務角色，會拿掉 N 個拍點」，
  * 兩個都有就「…變短、換了人或任務角色，…」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。
+ * 也動到環節標的拍時接在後面：「…拍點，刪掉 1 個環節」；只動到標的拍是「…變短，會切短 1 個環節標的拍」，
+ * 拖到半拍上、標的拍對齊整拍時切到是「…拖到半拍上，會切短 1 個環節標的拍」。
  */
 function falloutMessage(
 	old: Action,
 	action: Action,
+	from: Segment,
 	to: Segment,
-	{ removed, cut, orphaned }: { removed: number; cut: number; orphaned: number }
+	cues: { removed: number; cut: number; orphaned: number } | null,
+	phases: PhaseFallout | null
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
-	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${removed} 個拍點`;
-	const why = [action.length < old.length ? '變短' : '', orphaned ? '換了人或任務角色' : ''].filter(Boolean);
-	const parts = [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean);
-	return `${label}${why.join('、')}，會${parts.join('、')}拍點`;
+	const shorter = action.length < old.length ? '變短' : '';
+	const offBeat = phases?.shifted ? '拖到半拍上' : '';
+	if (!cues) {
+		const why =
+			to.kind !== 'music'
+				? '換到口號段'
+				: from.kind !== 'music'
+					? '換到音樂段'
+					: [shorter, offBeat].filter(Boolean).join('、');
+		return `${label}${why}，會${phaseFalloutText(phases!)}`;
+	}
+	const more = phases ? `，${phaseFalloutText(phases)}` : '';
+	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${cues.removed} 個拍點${more}`;
+	const why = [shorter, cues.orphaned ? '換了人或任務角色' : '', offBeat].filter(Boolean);
+	const parts = [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean);
+	return `${label}${why.join('、')}，會${parts.join('、')}拍點${more}`;
 }
 
 /** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。要確認時跟 updateAction 一樣。 */
@@ -140,8 +190,12 @@ function unitAt(flow: Flow, id: string, sec: number): number | null {
 	return Math.round((sec - segStart) / unitSec(segment));
 }
 
-export function deleteAction(flow: Flow, id: string): CommandResult {
-	if (!flow.actions.some((a) => a.id === id)) return blocked('找不到這個動作');
+/** 刪動作。有紀錄先回「要確認」，寫會清掉幾次；帶 { confirmed: true } 再送一次才刪。 */
+export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}): CommandResult {
+	const action = flow.actions.find((a) => a.id === id);
+	if (!action) return blocked('找不到這個動作');
+	const count = action.successRate?.records.length ?? 0;
+	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄`, []);
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 
@@ -162,6 +216,8 @@ function check(flow: Flow, action: Action): string | null {
 		const problem = cueProblem(segment, action, cue);
 		if (problem) return problem;
 	}
+	const successRate = successRateProblem(segment, action);
+	if (successRate) return successRate;
 	const roles = roleGlossary(flow).map((r) => r.name);
 	const seen = new Set<string>();
 	for (const { memberId, role } of action.members) {
@@ -254,6 +310,11 @@ export function raisedAt(flow: Flow, sec: number): string[] {
 	return flow.members
 		.filter((m) => RAISED_ROLES.includes(memberActionAt(flow, m.id, sec)?.role ?? ''))
 		.map((m) => m.id);
+}
+
+/** 流程裡換掉這個動作（照 id 找）。 */
+export function replaceAction(flow: Flow, action: Action): Flow {
+	return { ...flow, actions: flow.actions.map((a) => (a.id === action.id ? action : a)) };
 }
 
 /** 給教練看的動作名字：「技巧·Lib」；沒取名就只有大類。 */

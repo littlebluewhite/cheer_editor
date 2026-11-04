@@ -1,6 +1,6 @@
 // 頁面：存檔、開檔、Ctrl+S、缺音樂。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { zipSync, strToU8 } from 'fflate';
+import { unzipSync, zipSync, strToU8 } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	addAction,
@@ -9,6 +9,7 @@ import {
 	createFlow,
 	insertFormation,
 	loadSegmentAudio,
+	markPhaseBeats,
 	readFlowFile,
 	writeFlowFile,
 	type CommandResult,
@@ -115,6 +116,20 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(false);
 	});
 
+	it('打字打到一半按存檔按鈕（iPad 點按鈕不一定會讓輸入框失去焦點）：一樣先送出那個欄位', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await openFile(writeFlowFile(sampleFlow(), {}));
+		const name = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		name.addEventListener('blur', () => name.dispatchEvent(new Event('change', { bubbles: true })));
+		name.focus();
+		await fireEvent.input(name, { target: { value: '開場' } });
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await settle();
+		const r = readFlowFile(saves[0].bytes);
+		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
+	});
+
 	it('音樂檔還在解碼時關掉段設定、新增別段：解碼完不會放進新的那段，也不會弄丟新段', async () => {
 		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
 		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
@@ -193,6 +208,15 @@ describe('存檔', () => {
 		await settle();
 		expect(screen.getByRole('status').textContent).toContain('這個瀏覽器不能存回原檔');
 		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('iPad 交給分享選單：算存好了，不寫說明', async () => {
+		setup(fakeSaver('shared').saver);
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await settle();
+		expect(hasUnsavedChanges()).toBe(false);
+		expect(screen.queryByRole('status')).toBeNull();
 	});
 
 	it('音樂資料也存進去', async () => {
@@ -281,6 +305,40 @@ describe('新建', () => {
 		setup();
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
 		expect(screen.getByRole('alert').textContent).toContain('請重新整理，更新編輯器');
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it('開第 6 版的檔：音樂段沒標拍的環節和它的記號拿掉、組號補成第 1 組，存出來是第 7 版', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		const flow = JSON.parse(JSON.stringify(flowOf(markPhaseBeats(sampleFlow(), 'x1', { kind: 'load', name: '' }, 0, 4))));
+		const action = flow.actions[0];
+		action.successRate.phases.push({ id: 'p2', kind: 'dismount', name: '' });
+		action.members[0].squad = 3;
+		action.successRate.records = [
+			{ id: 't1', date: '2026-11-04', who: 3, practice: 'drill', whole: true, marks: { p1: '✓', p2: '✗' } },
+			{ id: 't2', date: '2026-11-04', who: 3, practice: 'drill', whole: false, marks: { p2: '✓' } }
+		];
+		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 6, flow })) }));
+		expect(screen.getByText('練習用')).toBeTruthy();
+		await ctrlS();
+		await settle();
+		const json = JSON.parse(new TextDecoder().decode(unzipSync(saves[0].bytes)['flow.json']));
+		expect(json.formatVersion).toBe(7);
+		const saved = json.flow.actions[0];
+		expect(saved.successRate.phases.map((p: { id: string }) => p.id)).toEqual(['p1']);
+		expect(saved.successRate.records).toEqual([
+			{ id: 't1', date: '2026-11-04', who: 1, practice: 'drill', whole: true, marks: { p1: '✓' } }
+		]);
+		expect(saved.members[0].squad).toBe(1);
+	});
+
+	it('第 7 版的檔裡音樂段的環節沒標拍：提示「這不是流程檔」，留在首頁', async () => {
+		setup();
+		const flow = JSON.parse(JSON.stringify(flowOf(markPhaseBeats(sampleFlow(), 'x1', { kind: 'load', name: '' }, 0, 4))));
+		delete flow.actions[0].successRate.phases[0].beats;
+		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 7, flow })) }));
+		expect(screen.getByRole('alert').textContent).toContain('這不是流程檔');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 

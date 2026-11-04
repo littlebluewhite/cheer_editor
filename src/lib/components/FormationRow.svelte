@@ -13,7 +13,7 @@
 		type TimePosition
 	} from '#lib/core';
 	import Icon from './Icon.svelte';
-	import { followPointer } from './pointer';
+	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
 		flow: Flow;
@@ -50,10 +50,12 @@
 	let dragged = false;
 
 	function startDrag(e: PointerEvent, id: string, sec: number) {
-		if (e.button !== 0) return;
+		// 手指按在沒選中的縮圖上：一滑是捲時間軸，點一下選中才拖得動（docs/adr/0005-ipad-touch.md）。
+		if (e.button !== 0 || touchOnUnpicked(e, id === selectedId)) return;
 		const x = e.clientX;
 		drag = { id, to: null };
 		followPointer(
+			e,
 			(m) => {
 				if (drag && (drag.to || Math.abs(m.clientX - x) > DRAG_PX)) {
 					drag.to = nearestPosition(flow, sec + (m.clientX - x) / pxPerSec);
@@ -199,8 +201,11 @@
 	/* 挪站位：拖得動的縮圖是手掌游標；拖的時候浮起來、蓋在別張上面，✕ 先藏起來。 */
 	.th.movable .pick {
 		cursor: grab;
-		touch-action: none;
 		user-select: none;
+	}
+	/* 選中的才不讓手指捲畫面（手指拖得動）。 */
+	.th.on.movable .pick {
+		touch-action: none;
 	}
 	.th.dragging {
 		z-index: 5;
@@ -286,13 +291,16 @@
 		height: 18px;
 		padding: 0;
 		border-radius: 4px;
-		opacity: 0;
 	}
 	.del:hover {
 		color: var(--danger, #c8372d);
 	}
-	.th:hover .del,
-	.del:focus-visible {
-		opacity: 1;
+	/* 手指：✕ 點得到的範圍變大，看起來不變。 */
+	@media (pointer: coarse) {
+		.del::after {
+			content: '';
+			position: absolute;
+			inset: -8px;
+		}
 	}
 </style>

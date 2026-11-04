@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		addSegment,
+		carryRecords,
 		currentFormation,
 		deleteAction,
 		deleteFormation,
@@ -8,6 +9,7 @@
 		formationAt,
 		formationTimes,
 		formationWalks,
+		groupsPeople,
 		matchPrevious,
 		memberMarkers,
 		moveFormation,
@@ -17,16 +19,19 @@
 		parseTime,
 		playbackPlan,
 		playStartSec,
+		NO_SQUAD_COLOR,
 		positionText,
 		positionsAt,
 		raisedAt,
 		readFlowFile,
 		renameFormation,
 		segmentsMissingAudio,
+		squadColor,
 		timeRuleWarnings,
 		timeText,
 		totalSeconds,
 		writeFlowFile,
+		type ConfirmOption,
 		type Flow,
 		type Formation,
 		type FormationWalk,
@@ -52,6 +57,7 @@
 	} from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
+	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
@@ -62,8 +68,10 @@
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
+	import Practice from '#lib/components/Practice.svelte';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
+	import SquadBar from '#lib/components/SquadBar.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import WalkForm from '#lib/components/WalkForm.svelte';
 
@@ -159,8 +167,40 @@
 	let selectedActionId = $state<string | null>(null);
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
 	let selectedMemberIds = $state<string[]>([]);
+	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+	let multiSelect = $state(false);
+	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const anySelected = $derived(!!selectedFormationId || !!selectedActionId || selectedMemberIds.length > 0);
+	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
+	const groupingAction = $derived.by(() => {
+		const a = flow && selectedActionId ? flow.actions.find((x) => x.id === selectedActionId) : undefined;
+		return a && groupsPeople(a) ? a : null;
+	});
+	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
+	const squadBadges = $derived(
+		Object.fromEntries(
+			(groupingAction?.members ?? []).map((m) => [
+				m.memberId,
+				m.squad ? { text: String(m.squad), color: squadColor(m.squad) } : { text: '?', color: NO_SQUAD_COLOR }
+			])
+		)
+	);
+	let squadBar = $state<SquadBar>();
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
+	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
+	let view = $state<'edit' | 'practice'>('edit');
+	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
+	let practiceDate = $state(localDate());
+	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；練習畫面照這個重開。 */
+	let opened = $state(0);
+
+	/** 切到編排或練習。練習時不放音樂，先停下來。 */
+	function setView(next: 'edit' | 'practice') {
+		if (next === 'practice') pause();
+		view = next;
+	}
 
 	/**
 	 * 場上的影子和走位線：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線；
@@ -348,6 +388,7 @@
 	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}) {
 		pause();
 		flow = f;
+		opened++;
 		undoStack = [];
 		redoStack = [];
 		saver = createSaver();
@@ -383,12 +424,20 @@
 		show(f);
 	}
 
+	/**
+	 * 紀錄改了（記一次、刪掉上一次）：不算復原的一步，所以不推進復原紀錄、也不清掉重做。草稿照樣自動存。
+	 * 復原、重做換上的流程都經過 carryRecords，紀錄維持現在的樣子。
+	 */
+	function record(f: Flow) {
+		if (flow) flow = f;
+	}
+
 	function undo() {
 		const prev = undoStack.at(-1);
 		if (!flow || !prev) return;
 		redoStack = [...redoStack, flow];
 		undoStack = undoStack.slice(0, -1);
-		restore(prev);
+		restore(carryRecords(prev, flow));
 	}
 
 	function redo() {
@@ -396,7 +445,7 @@
 		if (!flow || !next) return;
 		undoStack = [...undoStack, flow];
 		redoStack = redoStack.slice(0, -1);
-		restore(next);
+		restore(carryRecords(next, flow));
 	}
 
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
@@ -427,9 +476,11 @@
 		return audio;
 	}
 
-	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；其他瀏覽器下載新檔。 */
+	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；iPad 開分享選單；其他瀏覽器下載新檔。 */
 	async function save() {
 		if (!flow || !saver || saving) return;
+		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
+		(document.activeElement as HTMLElement | null)?.blur();
 		const f = flow;
 		saving = true;
 		try {
@@ -602,8 +653,6 @@
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字。
-			(document.activeElement as HTMLElement | null)?.blur();
 			void save();
 			return;
 		}
@@ -622,6 +671,9 @@
 			e.preventDefault();
 			if (key === 'z' && !e.shiftKey) undo();
 			else redo();
+		} else if (view === 'practice') {
+			// 練習時只留存檔、復原、重做：空白鍵留給記號按鈕，Delete 不能刪到藏起來的動作、站位
+			return;
 		} else if (e.key === ' ') {
 			if (e.repeat) return;
 			// 不讓焦點所在的按鈕也被空白鍵按到
@@ -635,15 +687,36 @@
 			e.preventDefault();
 			removeAction(selectedActionId);
 		} else if (e.key === 'Escape') {
-			selectedFormationId = null;
-			selectedActionId = null;
-			selectedMemberIds = [];
+			clearSelection();
+		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			// 分組：選好人按 1–9 放進那組、0 拿出組。任務角色選單也用數字鍵，焦點在那裡不算。
+			if ((e.target as Element | null)?.closest?.('[role="combobox"]')) return;
+			if (squadBar?.press(Number(e.key))) e.preventDefault();
 		}
 	}
 
-	function removeAction(id: string) {
+	/** 站位、動作、人的選取都清掉（Esc 或「取消選取」）。 */
+	function clearSelection() {
+		selectedFormationId = null;
+		selectedActionId = null;
+		selectedMemberIds = [];
+	}
+
+	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
+	function resetLayout() {
+		setTimelineH(null);
+		setInspectorW(null);
+	}
+
+	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
+	function removeAction(id: string, options: ConfirmOption = {}) {
 		if (!flow) return;
-		const r = deleteAction(flow, id);
+		const r = deleteAction(flow, id, options);
+		if (r.kind === 'confirm') {
+			notice = '';
+			resizePending = { message: r.message, items: r.items, confirm: () => removeAction(id, { confirmed: true }) };
+			return;
+		}
 		if (r.kind !== 'ok') return void (notice = r.message);
 		change(r.flow);
 		notice = '';
@@ -670,21 +743,37 @@
 	{@const matchBlocked = match.kind === 'blocked' ? match.message : ''}
 	<div
 		class="editor"
+		class:practicing={view === 'practice'}
 		class:print-hidden={printOpen}
-		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100vh - ${FIELD_KEEP_PX}px))`}
+		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
+		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
+		{#snippet noticeToast()}
+			{#if notice}
+				<div class="toast">
+					<span role="status">{notice}</span>
+					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (notice = '')}
+						><Icon name="close" size={14} /></button
+					>
+				</div>
+			{/if}
+		{/snippet}
 		<header class="topbar">
 			<div class="title">
 				<b>{flow.name}</b>
 				{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}
+				<div class="view" role="group" aria-label="編排｜練習">
+					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
+					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
+				</div>
 				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
-				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener"
-					><Icon name="help" />使用說明</a
+				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
+					><Icon name="help" /><span class="narrow-hide">使用說明</span></a
 				>
 			</div>
 
-			<div class="transport">
+			<div class="transport" hidden={view === 'practice'}>
 				<button
 					type="button"
 					class="play"
@@ -734,9 +823,11 @@
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" /><span class="narrow-hide">八拍表</span></button
 				>
-				<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
-					><Icon name="settings" /><span class="narrow-hide">流程設定</span></button
-				>
+				{#if view === 'edit'}
+					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
+						><Icon name="settings" /><span class="narrow-hide">流程設定</span></button
+					>
+				{/if}
 				<span class="sep" aria-hidden="true"></span>
 				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onchange={open} /></label>
 				<button type="button" class="ghost" onclick={startNew}><Icon name="new" />新建</button>
@@ -744,7 +835,7 @@
 			</div>
 		</header>
 
-		<main class="field-host" {@attach watchFieldHostH}>
+		<main class="field-host" hidden={view === 'practice'} {@attach watchFieldHostH}>
 			<Field
 				field={flow.field}
 				members={flow.members}
@@ -752,12 +843,39 @@
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
 				selected={selectedMemberIds}
+				multi={multiSelect}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
 				onmove={move}
 				onselect={selectMembers}
+				badges={squadBadges}
 			>
+				{#snippet below()}
+					{#if groupingAction && flow}
+						<SquadBar
+							bind:this={squadBar}
+							{flow}
+							action={groupingAction}
+							selected={selectedMemberIds}
+							onchange={change}
+							onselectmembers={selectMembers}
+						/>
+					{/if}
+				{/snippet}
 				{#snippet railTop()}
+					{#if touchScreen || timelineH !== null || inspectorW !== null}
+						<div class="select-tools">
+							{#if touchScreen}
+								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
+									<input type="checkbox" bind:checked={multiSelect} />多選
+								</label>
+								<button type="button" disabled={!anySelected} onclick={clearSelection}>取消選取</button>
+							{/if}
+							{#if timelineH !== null || inspectorW !== null}
+								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
+							{/if}
+						</div>
+					{/if}
 					{#if flow}
 						{@const now = currentFormation(flow, playheadSec)}
 						<div class="now-formation" aria-label="現在的站位">
@@ -837,18 +955,11 @@
 					/>
 				</div>
 			{/if}
-			{#if notice}
-				<div class="toast">
-					<span role="status">{notice}</span>
-					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (notice = '')}
-						><Icon name="close" size={14} /></button
-					>
-				</div>
-			{/if}
+			{@render noticeToast()}
 			</Field>
 		</main>
 
-		<aside class="inspector">
+		<aside class="inspector" hidden={view === 'practice'}>
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 			<div
 				class="col-split"
@@ -858,7 +969,7 @@
 				aria-valuenow={inspectorPx}
 				aria-valuemin={INSPECTOR_MIN_PX}
 				tabindex="0"
-				title="拖這裡調整右邊欄的寬度（雙擊回到自動）"
+				title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
 				onpointerdown={colSplitDown}
 				onpointermove={colSplitMove}
 				onpointerup={() => (colSplit = null)}
@@ -906,13 +1017,14 @@
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 		<div
 			class="split"
+			hidden={view === 'practice'}
 			role="separator"
 			aria-orientation="horizontal"
 			aria-label="場地和時間軸的分界"
 			aria-valuenow={timelineH ?? currentTimelineH()}
 			aria-valuemin={TIMELINE_MIN_PX}
 			tabindex="0"
-			title="拖這裡調整場地和時間軸的高度（雙擊回到預設）"
+			title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
 			onpointerdown={splitDown}
 			onpointermove={splitMove}
 			onpointerup={() => (split = null)}
@@ -921,7 +1033,7 @@
 			ondblclick={() => setTimelineH(null)}
 		></div>
 
-		<div class="timeline-host" bind:this={timelineHost}>
+		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
 			<Timeline
 				{flow}
 				{playheadSec}
@@ -953,8 +1065,24 @@
 				}}
 				{selectedMemberIds}
 				onselectmembers={selectMembers}
+				multi={multiSelect}
 			/>
 		</div>
+		{#if view === 'practice'}
+			<div class="practice-host">
+				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
+				{#key opened}
+					<Practice {flow} date={practiceDate} ondate={(d) => (practiceDate = d)} onrecord={record} />
+				{/key}
+				{@render noticeToast()}
+			</div>
+		{/if}
+	</div>
+	<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
+	<div class="rotate-hint">
+		<Icon name="fit" size={28} />
+		<b>請把 iPad 轉成橫的</b>
+		<span>編輯畫面要橫著放，場地和時間軸才放得下。</span>
 	</div>
 	{#if openSegmentId}
 		<SegmentSettings
@@ -1037,13 +1165,28 @@
 <style>
 	/* ---------- 編輯畫面的大格子 ---------- */
 	.editor {
-		height: 100vh;
+		/* dvh：iPad Safari 的網址列不會擋到下面的時間軸。 */
+		height: 100dvh;
 		display: grid;
 		/* 上方列｜場地＋右邊欄｜分界｜時間軸。時間軸預設 30vh，拖分界改的高度放在 --timeline-h。 */
 		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(200px, 30vh));
 		/* 場地｜右邊欄。右邊欄的寬度放在 --inspector-w（沒拖過時照螢幕大小自動分）。 */
 		grid-template-columns: minmax(0, 1fr) var(--inspector-w, 360px);
 		background: var(--paper);
+	}
+	/* 練習：主畫面換成練習畫面，編排的東西藏起來（不拆掉：場地、時間軸的縮放還在） */
+	.editor.practicing {
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	.editor > [hidden],
+	.topbar > [hidden] {
+		display: none;
+	}
+	.practice-host {
+		position: relative;
+		grid-column: 1 / -1;
+		min-height: 0;
+		display: grid;
 	}
 	.split {
 		grid-column: 1 / -1;
@@ -1076,6 +1219,24 @@
 	.split:focus-visible::after {
 		background: var(--sel);
 		opacity: 1;
+	}
+	/* 手指：兩條分界點得到的範圍變大（蓋到旁邊一點），看起來不變。 */
+	@media (pointer: coarse) {
+		.split {
+			z-index: 9;
+		}
+		.split::before {
+			content: '';
+			position: absolute;
+			inset: -9px 0;
+		}
+		.col-split {
+			left: -12px;
+			width: 24px;
+		}
+		.col-split::after {
+			left: 10px;
+		}
 	}
 
 	/* ---------- 上方列：深藍底，像記分板 ---------- */
@@ -1118,6 +1279,31 @@
 		height: 7px;
 		border-radius: 50%;
 		background: currentColor;
+	}
+	/* 編排｜練習 */
+	.view {
+		flex: none;
+		align-self: center;
+		display: inline-flex;
+		padding: 3px;
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.12);
+	}
+	.view button {
+		border: 0;
+		border-radius: 6px;
+		padding: 3px 12px;
+		background: none;
+		color: #cbd5e1;
+	}
+	.view button:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
+	}
+	.view button[aria-pressed='true'] {
+		background: #fff;
+		color: var(--ink);
+		font-weight: 700;
 	}
 
 	.transport {
@@ -1217,6 +1403,8 @@
 	}
 
 	.actions {
+		/* 一定在最右邊那一欄（練習時播放區藏起來，也不會跑到中間） */
+		grid-column: -2 / -1;
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
@@ -1249,6 +1437,41 @@
 		height: 20px;
 		background: #36425f;
 		margin: 0 4px;
+	}
+	/* 左欄：多選、取消選取、版面回原狀（iPad 沒有 Shift、Esc，也不好雙擊分界）。 */
+	.select-tools {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.toggle-btn {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--surface);
+		font-size: 13px;
+		line-height: 20px;
+		cursor: pointer;
+		user-select: none;
+	}
+	.toggle-btn:has(input:checked) {
+		background: var(--sel);
+		border-color: var(--sel);
+		color: #fff;
+		font-weight: 600;
+	}
+	.toggle-btn:focus-within {
+		outline: 2px solid var(--sel);
+		outline-offset: 2px;
+	}
+	.toggle-btn input {
+		position: absolute;
+		opacity: 0;
+		width: 1px;
+		height: 1px;
 	}
 	/* 左欄（場地左邊）的東西：警告、跟上一張一樣、拖人會改。 */
 	.warn {
@@ -1599,8 +1822,35 @@
 		}
 	}
 
-	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。 */
-	@media (max-width: 1360px) {
+	/* 觸控螢幕拿直的（iPad 直放）：蓋住編輯畫面，請教練轉成橫的。 */
+	.rotate-hint {
+		display: none;
+	}
+	/* screen：列印八拍表時（紙是直的）不能印到它。 */
+	@media screen and (pointer: coarse) and (orientation: portrait) {
+		.rotate-hint {
+			position: fixed;
+			inset: 0;
+			z-index: 100;
+			display: grid;
+			place-content: center;
+			justify-items: center;
+			gap: 10px;
+			padding: 24px;
+			text-align: center;
+			background: var(--ink);
+			color: #c9d2e6;
+			font-size: 15px;
+		}
+		.rotate-hint b {
+			color: #fff;
+			font-size: 22px;
+		}
+	}
+
+	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。
+	   上方列多了「編排｜練習」，所以從 1440px 就開始收。 */
+	@media (max-width: 1440px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1616,7 +1866,7 @@
 		.latency input {
 			width: 56px;
 		}
-		/* 復原、重做、八拍表、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		/* 使用說明、復原、重做、八拍表、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;
 			width: 1px;
@@ -1628,7 +1878,7 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行 */
-	@media (max-width: 1100px) {
+	@media (max-width: 1140px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
@@ -1642,7 +1892,7 @@
 	/* ---------- 首頁 ---------- */
 	.home {
 		position: relative;
-		min-height: 100vh;
+		min-height: 100dvh;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
 		gap: 56px;

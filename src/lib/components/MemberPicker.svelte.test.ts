@@ -63,7 +63,7 @@ function setup(playheadSec: number, selected: string[] = []) {
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 
 describe('選人捷徑', () => {
-	it('全隊、全部底層、全部上層、這一拍沒在動作裡的人、取消選取', async () => {
+	it('全隊、全部底層、全部上層、這一拍沒在動作裡的人、不選人', async () => {
 		const { onselect } = setup(0.5, ['m1']);
 		await click('全隊');
 		expect(onselect).toHaveBeenLastCalledWith(['m1', 'm2', 'm3']);
@@ -73,7 +73,7 @@ describe('選人捷徑', () => {
 		expect(onselect).toHaveBeenLastCalledWith(['m1']);
 		await click('這一拍沒在動作裡的人');
 		expect(onselect).toHaveBeenLastCalledWith(['m3']);
-		await click('取消選取');
+		await click('不選人');
 		expect(onselect).toHaveBeenLastCalledWith([]);
 	});
 

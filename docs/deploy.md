@@ -20,7 +20,7 @@ BASE_PATH=/cheer_editor npm run build
 BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_editor/
 ```
 
-程式裡的連結和檔案路徑不要寫死 `/`：用 `$app/paths` 的 `resolve()`／`asset()`，或用相對路徑。
+程式裡的連結和檔案路徑用 `$app/paths` 的 `resolve()`／`asset()`，或用相對路徑，部署到 `/cheer_editor/` 底下才找得到。
 
 ## 離線
 

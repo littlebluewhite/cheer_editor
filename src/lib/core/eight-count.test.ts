@@ -5,10 +5,13 @@ import {
 	addSegment,
 	createFlow,
 	eightCountRows,
+	clearPhaseBeats,
+	markPhaseBeats,
 	insertFormation,
 	placeCue,
 	renameFormation,
 	setPositions,
+	updateAction,
 	updateSegment,
 	type CommandResult,
 	type Flow,
@@ -225,7 +228,8 @@ describe('八拍表的列：拍點', () => {
 					{ kind: 'count', from: 6, to: 6, word: 'down', who: null },
 					{ kind: 'count', from: 7, to: 7, word: 'up', who: null },
 					{ kind: 'motion', from: 8, to: 8, word: 'high V', who: '上層' }
-				]
+				],
+				phases: []
 			}
 		]);
 		expect(rows[0].cues).toEqual([]);
@@ -238,7 +242,7 @@ describe('八拍表的列：拍點', () => {
 		const rows = eightCountRows(flow, null);
 		expect(rows[0].cues[0].cues).toEqual([{ kind: 'count', from: 7, to: 8, word: 'down', who: null }]);
 		expect(rows[1].cues).toEqual([
-			{ categoryLabel: '技巧', name: 'Lib', cues: [{ kind: 'count', from: 1, to: 2, word: 'down', who: null }] }
+			{ categoryLabel: '技巧', name: 'Lib', cues: [{ kind: 'count', from: 1, to: 2, word: 'down', who: null }], phases: [] }
 		]);
 		// 動作名字還是只在開始那一列的動作欄
 		expect(rows[1].actions).toEqual([]);
@@ -286,5 +290,75 @@ describe('八拍表的列：拍點', () => {
 		const flow = flowOf(addAction(sample(), action({ start: 16, length: 8 })));
 		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
 		expect(eightCountRows(flow, 'm1').map((r) => r.cues)).toEqual([[], [], [], []]);
+	});
+});
+
+describe('八拍表的列：環節', () => {
+	/**
+	 * 1-5 開始的 Lib（小A 上層、小B 主底，到 2-4），環節：
+	 * p1 上法「延伸」1-5 到 1-6、p2 中段 1-7 到 2-2（跨列）、p3 下法（標了 2-3 到 2-4 再清掉，沒標拍）。1-8 有一個 down。
+	 */
+	function phased(): Flow {
+		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '延伸' }, 0, 4));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 4, 8));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4));
+		flow = flowOf(clearPhaseBeats(flow, 'x1', 12, 16));
+		return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 6, len: 2, word: 'down' }));
+	}
+
+	it('有標拍環節的動作，那一排多寫環節：種類和名字、第幾格到第幾格、顏色', () => {
+		const [first] = eightCountRows(phased(), null);
+		expect(first.cues).toEqual([
+			{
+				categoryLabel: '技巧',
+				name: 'Lib',
+				cues: [{ kind: 'count', from: 8, to: 8, word: 'down', who: null }],
+				phases: [
+					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b' },
+					{ label: '中段', from: 7, to: 8, color: '#475569' }
+				]
+			}
+		]);
+	});
+
+	it('跨到下一列的環節兩列各畫自己那一段，名字兩列都寫；那一列沒拍點也有這一排', () => {
+		const second = eightCountRows(phased(), null)[1];
+		expect(second.cues).toEqual([
+			{
+				categoryLabel: '技巧',
+				name: 'Lib',
+				cues: [],
+				phases: [{ label: '中段', from: 1, to: 2, color: '#475569' }]
+			}
+		]);
+	});
+
+	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
+		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 2));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 2, 2));
+		flow = flowOf(updateAction(flow, 'x1', { start: 9 }));
+		const [first] = eightCountRows(flow, null);
+		expect(first.cues[0].phases.map((p) => [p.from, p.to])).toEqual([
+			[6, 6],
+			[7, 7]
+		]);
+	});
+
+	it('沒標拍的環節不印；只有沒標拍的環節、也沒拍點的動作不多一排', () => {
+		const rows = eightCountRows(phased(), null);
+		expect(rows.flatMap((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)))).not.toContain('下法');
+		let flow = flowOf(addAction(sample(), action({ start: 16, length: 8 })));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 8));
+		flow = flowOf(clearPhaseBeats(flow, 'x1', 0, 8));
+		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
+	});
+
+	it('個人表也印環節（環節不分給誰）；不在動作裡的人沒有', () => {
+		const labels = (memberId: string) =>
+			eightCountRows(phased(), memberId).map((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)));
+		expect(labels('m2')).toEqual([['上法 延伸', '中段'], ['中段'], [], []]);
+		expect(labels('m3')).toEqual([[], [], [], []]);
 	});
 });

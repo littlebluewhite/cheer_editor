@@ -159,6 +159,9 @@ await send('DOM.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: false });
 await send('Page.navigate', { url: `http://localhost:${PORT}/` });
 await waitFor(() => js(`return !!document.querySelector('.home .start form')`));
+// 畫面先由伺服器畫好，Svelte 接手之前按「建立」會變成一般的表單送出；等 Svelte 載入再開始點。
+await waitFor(() => js(`return !!window.__svelte`));
+await sleep(500);
 await js(helpers);
 
 // 1 首頁
@@ -380,5 +383,156 @@ await shot(
 	],
 	`[q('.cues .pop'), q('.cues .sheet')]`
 );
+
+// 10 成功率：多加三個人，在 Lib 的拍點格子加三個環節（4-1 到 4-4 上法「延伸」、4-5 到 4-6 中段、4-7 到 4-8 下法），
+// 全部的人先在第 1 組；在場上選後加的三個人，放進新的一組（第 2 組）
+const esc = `document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise((x) => setTimeout(x, 100));`;
+await js(esc);
+await js(`q('#tab-members').click();`);
+await waitFor(() => js(`return !!q('form.add')`));
+await addMembers('阿華\n阿偉', 'M', 'base');
+await js(`q('form.add button[type=submit]').click();`);
+await sleep(300);
+await addMembers('小芳', 'F', 'top');
+await js(`q('form.add button[type=submit]').click();`);
+await sleep(300);
+await js(`q('#tab-action').click();`);
+await waitFor(() => js(`return !!q('.action-form select[aria-label="加人"]')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	const form = q('.action-form');
+	for (const [who, role] of [['阿華', '主底'], ['阿偉', '側底'], ['小芳', '上層']]) {
+		const add = form.querySelector('select[aria-label="加人"]');
+		$set(add, [...add.options].find((o) => o.textContent === who).value);
+		await wait();
+		form.querySelector('[role="combobox"][aria-label="' + who + ' 的任務角色"]').click();
+		await wait();
+		[...form.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim().startsWith(role)).click();
+		await wait();
+	}
+	const g = q('.cues');
+	for (const [from, more, kind, name] of [['4-1', 3, '上法', '延伸'], ['4-5', 1, '中段', ''], ['4-7', 1, '下法', '']]) {
+		g.querySelector('.cell[aria-label="' + from + '"]').click(); await wait();
+		for (let i = 0; i < more; i++) { g.querySelector('[aria-label="多選一拍"]').click(); await wait(); }
+		const k = g.querySelector('select[aria-label="環節的種類"]');
+		$set(k, [...k.options].find((o) => o.textContent === kind).value, 'change');
+		$set(g.querySelector('input[aria-label="環節的名字"]'), name);
+		g.querySelector('[aria-label="加入環節"]').click(); await wait();
+	}
+`);
+await js(esc);
+// 後加的三個人擠在場地外面：到開頭那張站位，拖到第 1 組後面（版面變過，位置重新量），再回到 4-1
+{
+	const r = await js(`return $rect(q('[data-ruler]'))`);
+	await click(r.l + 2, r.y);
+	const f = await js(`return $rect(q('svg[aria-label="場地"]'))`);
+	for (const [name, dx, dy] of [['小芳', 0, 70], ['阿偉', 60, 110], ['阿華', -60, 110]]) {
+		const d = await js(`return $dot('${name}')`);
+		await drag(d.x, d.y, f.x + dx, f.y + dy);
+	}
+	const t = await js(`return $tick('4')`);
+	await click(t.l + 2, r.y);
+	await js(`q('button[aria-label="收起提示"]')?.click();`);
+}
+// 場上選阿華、阿偉、小芳（點泳道上的名字，Shift 加選），按「＋」放進新的一組
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	const lab = (who) => [...document.querySelectorAll('[data-lane] button.lab')].find((b) => b.querySelector('.name')?.textContent.trim() === who);
+	for (const [i, who] of ['阿華', '阿偉', '小芳'].entries()) {
+		lab(who).dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: i > 0 })); await wait();
+	}
+	q('.squad-bar [aria-label="放進新的一組"]').click(); await wait();
+`);
+await sleep(300);
+await shot(
+	'squads',
+	[
+		[6, `[...document.querySelectorAll('svg[aria-label="場地"] .badge')]`],
+		[7, `q('.squad-bar .who')`, { x: 0, y: 0 }],
+		[8, `[...document.querySelectorAll('.squad-bar .num:not(.new):not(.out)')]`, { x: 0.5, y: 0 }],
+		[9, `[q('.squad-bar .num.new'), q('.squad-bar .num.out')]`]
+	],
+	`q('.field-host')`
+);
+// 點環節那一條上的「上法 延伸」：選到它的拍，拍點小窗的環節列多出改環節
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+await js(`const panel = q('.cues').closest('.panel'); panel.scrollTop = panel.scrollHeight; await new Promise((x) => setTimeout(x, 100));
+	q('.cues .item.phase[aria-label^="環節 上法 延伸"]').click(); await new Promise((x) => setTimeout(x, 100));`);
+await sleep(200);
+await shot(
+	'rate',
+	[
+		[1, `[q('.cues .lane-lbl.phase'), ...document.querySelectorAll('.cues .item.phase')]`, { x: 1, y: 0.5 }],
+		[2, `[...document.querySelectorAll('.cues .pop [aria-label^="把這幾拍標給"]')]`, { x: 0, y: 0 }],
+		[3, `[...document.querySelectorAll('.cues .pop [aria-label="環節的種類"], .cues .pop [aria-label="環節的名字"], .cues .pop [aria-label="加入環節"]')]`, { x: 0, y: 0.5 }],
+		[4, `q('.cues .pop [aria-label="清掉環節"]')`, { x: 1, y: 0 }],
+		[5, `q('.cues .pop .edit')`, { x: 1, y: 1 }]
+	],
+	`[q('.cues .pop'), q('.cues .sheet')]`
+);
+await js(esc);
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+
+// 11 記錄頁：昨天和今天各記幾次（第 2 組今天還有一次只練下法）
+await js(`$btn('練習').click();`);
+await waitFor(() => js(`return !!q('.practice .card')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 60));
+	const day = (back) => { const d = new Date(); d.setDate(d.getDate() - back); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+	const date = q('.practice input[type=date]');
+	const NAMES = { '✓': '成功', '△': '小失誤', '✗': '失敗' };
+	const PHASES = ['上法 延伸', '中段', '下法'];
+	const tap = async (card, marks) => {
+		for (const [i, m] of [...marks].entries()) {
+			q('button[aria-label="' + card + ' ' + PHASES[i] + ' ' + NAMES[m] + '"]').click();
+			await wait();
+		}
+	};
+	const one = '第 1 組 小美', two = '第 2 組 小芳';
+	$set(date, day(1)); await wait();
+	for (const m of ['✓✓✓', '✓✗', '✓✓△']) await tap(one, m);
+	for (const m of ['✗', '✓△✓', '✓✓✓']) await tap(two, m);
+	$set(date, day(0)); await wait();
+	for (const m of ['✓✓✓', '✓✓✓', '✓△✓', '✓✓✗']) await tap(one, m);
+	for (const m of ['✓✗', '✓✓✓', '✗']) await tap(two, m);
+	const card = [...document.querySelectorAll('.practice .card')].find((c) => c.getAttribute('aria-label') === two);
+	card.querySelectorAll('.scope input')[1].click(); await wait();
+	[...card.querySelectorAll('.phase-name')].find((l) => l.textContent.trim() === '下法').querySelector('input').click(); await wait();
+	q('button[aria-label="' + two + ' 下法 成功"]').click(); await wait();
+`);
+await sleep(300);
+await shot('record', [
+	[1, `q('.topbar .view')`],
+	[2, `[q('.practice .pages'), q('.practice .date')]`],
+	[3, `q('.record .list')`],
+	[4, `q('.practice .card')`],
+	[5, `q('.practice .card footer')`, { x: 1, y: 1 }],
+	[6, `q('.practice .daily')`]
+], `[q('.topbar'), q('.practice .daily')]`);
+
+// 12 總表：記一次全上（第 1 組中段 △），看最近 7 天，打開第 2 組下法的明細
+await js(`$btn('總表').click();`);
+await waitFor(() => js(`return !!q('.summary .filters')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	$btn('＋ 記一次全上').click(); await wait();
+	q('button[aria-label="第 1 組 小美 中段 成功"]').click(); await wait();
+	$btn('存這次全上').click(); await wait();
+	$btn('最近 7 天').click(); await wait();
+	[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).click(); await wait();
+`);
+// 表只有一個動作：畫面矮一點，下面才不會一大片空白（明細貼著右邊、跟畫面一樣高）
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 640, deviceScaleFactor: 2, mobile: false });
+await sleep(300);
+await shot('summary', [
+	[1, `[...document.querySelectorAll('.summary .filters .seg')]`],
+	[2, `q('.summary .filters button.primary')`],
+	[3, `[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).closest('td')`],
+	[4, `[...document.querySelectorAll('.summary td.total')]`, { x: 1, y: 1 }],
+	[5, `q('.summary tr.whole')`, { x: 0, y: 1 }],
+	[6, `q('aside.detail')`, { x: 0, y: 0 }]
+]);
 
 stop(0);

@@ -1,7 +1,14 @@
 <script lang="ts">
 	// 八拍表列印：蓋在編輯畫面上，選全隊或一個隊員，按「列印」用瀏覽器列印（可存 PDF）。
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
-	import { cueText, eightCountRows, memberMarkers, type EightCountCue, type Flow } from '#lib/core';
+	import {
+		cueText,
+		eightCountRows,
+		memberMarkers,
+		type EightCountCue,
+		type EightCountPhase,
+		type Flow
+	} from '#lib/core';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 
@@ -31,6 +38,12 @@
 	function cueLabel(eight: number | null, c: EightCountCue): string {
 		const span = c.to > c.from ? `${eight}-${c.from} 到 ${eight}-${c.to}` : `${eight}-${c.from}`;
 		return cueText(c.kind, c.word, span, c.who ?? '');
+	}
+
+	/** 「環節 上法 延伸 1-1 到 1-3」。 */
+	function phaseAria(eight: number | null, p: EightCountPhase): string {
+		const span = p.to > p.from ? `${eight}-${p.from} 到 ${eight}-${p.to}` : `${eight}-${p.from}`;
+		return `環節 ${p.label} ${span}`;
 	}
 </script>
 
@@ -94,18 +107,33 @@
 									{@const name = `${line.categoryLabel}${line.name ? `·${line.name}` : ''}`}
 									<div class="cue-line" role="group" aria-label="{name} 的拍點">
 										<span class="cue-name">{name}</span>
-										<div class="cells">
-											{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-												<span class="n" style:grid-column={n}>{n}</span>
-											{/each}
-											{#each line.cues as c, k (k)}
-												<span
-													class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
-													style:grid-column="{c.from} / {c.to + 1}"
-													aria-label={cueLabel(row.eight, c)}
-													>{c.word}{#if c.who}<small>{c.who}</small>{/if}</span
-												>
-											{/each}
+										<div class="beats">
+											{#if line.phases.length}
+												<div class="phases">
+													{#each line.phases as p, k (k)}
+														<span
+															class="phase"
+															data-phase
+															style:grid-column="{p.from} / {p.to + 1}"
+															style:border-top-color={p.color}
+															aria-label={phaseAria(row.eight, p)}>{p.label}</span
+														>
+													{/each}
+												</div>
+											{/if}
+											<div class="cells">
+												{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
+													<span class="n" style:grid-column={n}>{n}</span>
+												{/each}
+												{#each line.cues as c, k (k)}
+													<span
+														class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
+														style:grid-column="{c.from} / {c.to + 1}"
+														aria-label={cueLabel(row.eight, c)}
+														>{c.word}{#if c.who}<small>{c.who}</small>{/if}</span
+													>
+												{/each}
+											</div>
 										</div>
 									</div>
 								{/each}
@@ -200,8 +228,33 @@
 		font-weight: 600;
 		padding-top: 2px;
 	}
-	.cells {
+	.beats {
 		flex: 1;
+		min-width: 0;
+	}
+	/* 環節：拍點上面一行，左右直線框出範圍、上緣是環節的顏色，寫種類和名字（黑白印靠線和字）。 */
+	.phases {
+		display: grid;
+		grid-template-columns: repeat(8, 1fr);
+		margin-bottom: 2px;
+	}
+	.phase {
+		grid-row: 1;
+		margin: 0 1px;
+		padding: 1px 4px;
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 1.3;
+		border: 1.5px solid #16213a;
+		border-top-width: 3px;
+		border-bottom: none;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		print-color-adjust: exact;
+		-webkit-print-color-adjust: exact;
+	}
+	.cells {
 		display: grid;
 		grid-template-columns: repeat(8, 1fr);
 		grid-auto-flow: row dense;

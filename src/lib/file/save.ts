@@ -1,10 +1,11 @@
 // 存檔薄層：把流程檔的位元組寫到教練的電腦。
 // Chrome、Edge 有 File System Access：第一次跳存檔對話框，之後蓋回同一個檔。
 // Safari、Firefox 沒有（見 docs/research/browser-capabilities.md），每次都下載一個新檔。
+// iPad（觸控螢幕、能分享檔案）改開分享選單：存到「檔案」App，或直接用 LINE 傳給隊員（docs/adr/0005-ipad-touch.md）。
 // 這一層不寫自動測試，改用手動檢查（規格的 Testing Decisions）；頁面測試換成假的 FileSaver。
 
-/** saved = 寫進檔案了；downloaded = 下載了一個新檔；cancelled = 教練在存檔對話框按了取消。 */
-export type SaveOutcome = 'saved' | 'downloaded' | 'cancelled';
+/** saved = 寫進檔案了；shared = 交給分享選單了；downloaded = 下載了一個新檔；cancelled = 教練在存檔對話框或分享選單按了取消。 */
+export type SaveOutcome = 'saved' | 'shared' | 'downloaded' | 'cancelled';
 
 /** 一支流程一個：記得上次存到哪個檔，下次存回同一個。開別的流程時換一個新的。 */
 export interface FileSaver {
@@ -24,6 +25,16 @@ export function createBrowserSaver(): FileSaver {
 	return {
 		async save(bytes, fileName) {
 			if (!('showSaveFilePicker' in window)) {
+				const file = new File([bytes as Uint8Array<ArrayBuffer>], fileName, { type: 'application/zip' });
+				if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+					try {
+						await navigator.share({ files: [file] });
+						return 'shared';
+					} catch (e) {
+						if (e instanceof DOMException && e.name === 'AbortError') return 'cancelled';
+						throw e;
+					}
+				}
 				download(bytes, fileName);
 				return 'downloaded';
 			}
