@@ -18,12 +18,15 @@
 		parseTime,
 		playbackPlan,
 		playStartSec,
+		NO_SQUAD_COLOR,
+		perPerson,
 		positionText,
 		positionsAt,
 		raisedAt,
 		readFlowFile,
 		renameFormation,
 		segmentsMissingAudio,
+		squadColor,
 		timeRuleWarnings,
 		timeText,
 		totalSeconds,
@@ -68,6 +71,7 @@
 	import Practice from '#lib/components/Practice.svelte';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
+	import SquadBar from '#lib/components/SquadBar.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import WalkForm from '#lib/components/WalkForm.svelte';
 
@@ -168,6 +172,21 @@
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 	const anySelected = $derived(!!selectedFormationId || !!selectedActionId || selectedMemberIds.length > 0);
+	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
+	const groupingAction = $derived.by(() => {
+		const a = flow && selectedActionId ? flow.actions.find((x) => x.id === selectedActionId) : undefined;
+		return a?.successRate?.phases.length && !perPerson(a.category) ? a : null;
+	});
+	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
+	const squadBadges = $derived(
+		Object.fromEntries(
+			(groupingAction?.members ?? []).map((m) => [
+				m.memberId,
+				m.squad ? { text: String(m.squad), color: squadColor(m.squad) } : { text: '?', color: NO_SQUAD_COLOR }
+			])
+		)
+	);
+	let squadBar = $state<SquadBar>();
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
 	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
@@ -669,6 +688,10 @@
 			removeAction(selectedActionId);
 		} else if (e.key === 'Escape') {
 			clearSelection();
+		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			// 分組：選好人按 1–9 放進那組、0 拿出組。任務角色選單也用數字鍵，焦點在那裡不算。
+			if ((e.target as Element | null)?.closest?.('[role="combobox"]')) return;
+			if (squadBar?.press(Number(e.key))) e.preventDefault();
 		}
 	}
 
@@ -825,7 +848,20 @@
 				walks={trail.walks}
 				onmove={move}
 				onselect={selectMembers}
+				badges={squadBadges}
 			>
+				{#snippet below()}
+					{#if groupingAction && flow}
+						<SquadBar
+							bind:this={squadBar}
+							{flow}
+							action={groupingAction}
+							selected={selectedMemberIds}
+							onchange={change}
+							onselectmembers={selectMembers}
+						/>
+					{/if}
+				{/snippet}
 				{#snippet railTop()}
 					{#if touchScreen || timelineH !== null || inspectorW !== null}
 						<div class="select-tools">

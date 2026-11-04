@@ -95,9 +95,13 @@ const grid = () => within(screen.getByRole('group', { name: '拍點' }));
 const gridPhases = () => grid().queryAllByRole('button', { name: /^環節 / }).map((b) => b.getAttribute('aria-label'));
 /** 拍點小窗裡的「環節」那一列。 */
 const popPhase = () => within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
-/** 人員清單上某個人的組（沒有選單是 null）。 */
-const squad = (who: string) =>
-	(screen.queryByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement | null)?.value ?? null;
+/** 人員清單上某個人的組標籤寫的號碼（沒有標籤是 null，沒分組是 ''）。 */
+const squad = (who: string) => {
+	const tag = [...document.querySelectorAll('.action-form .people li')]
+		.find((li) => li.querySelector('.name')?.textContent === who)
+		?.querySelector('.squad-tag')?.textContent;
+	return tag === undefined ? null : (tag.match(/\d+/)?.[0] ?? '');
+};
 /** 三個環節都在。 */
 const ALL = ['環節 上法 延伸 1-1 到 1-3', '環節 中段 1-4 到 2-3', '環節 下法 搖籃 2-5 到 2-8'];
 
@@ -159,7 +163,7 @@ describe('拍點格子上標環節', () => {
 		expect(gridPhases()).toEqual(ALL.slice(0, 2));
 	});
 
-	it('刪掉最後一個環節：動作不記成功率了，人員清單的組選單也不見', async () => {
+	it('刪掉最後一個環節：動作不記成功率了，人員清單的組標籤也不見', async () => {
 		const saves = await open();
 		expect(squad('小美')).toBe('1');
 		await select('1-1', '2-8');

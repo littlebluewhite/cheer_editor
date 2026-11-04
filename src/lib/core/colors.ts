@@ -18,3 +18,9 @@ export const PHASE_COLORS: { value: string; label: string }[] = [
 	...ACTION_COLORS,
 	{ value: '#475569', label: '石板灰' }
 ];
+
+/** 組的顏色（場上的組號小圓、分組浮動列、人員清單的組標籤），照組號輪流用；上面是白字，對白字的對比都在 4.5 以上。 */
+export const SQUAD_COLORS = ['#1d4ed8', '#be185d', '#047857', '#b45309', '#6d28d9', '#0e7490', '#b91c1c', '#4d7c0f'];
+export const squadColor = (squad: number) => SQUAD_COLORS[(squad - 1) % SQUAD_COLORS.length];
+/** 沒分組的人：灰色「?」。 */
+export const NO_SQUAD_COLOR = '#6b7280';

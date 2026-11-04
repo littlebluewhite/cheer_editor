@@ -96,7 +96,11 @@ async function savedLib(saves: Uint8Array[]) {
 }
 
 const selectLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
-const squadOf = (who: string) => screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement;
+/** 在場上的分組浮動列把小美（m1）放進第 2 組。 */
+async function moveMeiTo2() {
+	await fireEvent.click(document.querySelector('[data-lane="m1"] .lab')!);
+	await fireEvent.click(within(screen.getByRole('group', { name: '分組' })).getByRole('button', { name: '放進第 2 組' }));
+}
 const dialog = () => screen.getByRole('alertdialog');
 const press = (name: string) => fireEvent.click(within(dialog()).getByRole('button', { name }));
 
@@ -104,7 +108,7 @@ describe('換組時問保留舊紀錄還是清掉重算', () => {
 	it('把小美換到第 2 組：跳出保留舊紀錄、清掉重算、取消；按保留，紀錄都留著', async () => {
 		const saves = await openRecorded();
 		await selectLib();
-		await fireEvent.change(squadOf('小美'), { target: { value: '2' } });
+		await moveMeiTo2();
 		expect(dialog().textContent).toContain('有紀錄的組換了人');
 		expect(within(dialog()).getAllByRole('button').map((b) => b.textContent)).toEqual([
 			'保留舊紀錄',
@@ -122,19 +126,19 @@ describe('換組時問保留舊紀錄還是清掉重算', () => {
 	it('按清掉重算：兩組的紀錄都清掉', async () => {
 		const saves = await openRecorded();
 		await selectLib();
-		await fireEvent.change(squadOf('小美'), { target: { value: '2' } });
+		await moveMeiTo2();
 		await press('清掉重算');
 		const { lib, records } = await savedLib(saves);
 		expect(lib.members[0].squad).toBe(2);
 		expect(records).toEqual([]);
 	});
 
-	it('按取消：組不變，選單回到原來的組', async () => {
+	it('按取消：組不變', async () => {
 		const saves = await openRecorded();
 		await selectLib();
-		await fireEvent.change(squadOf('小美'), { target: { value: '2' } });
+		await moveMeiTo2();
 		await press('取消');
-		expect(squadOf('小美').value).toBe('1');
+		expect(document.querySelector('[data-member-id="m1"] .badge')?.textContent).toBe('1');
 		const { lib, records } = await savedLib(saves);
 		expect(lib.members[0].squad).toBe(1);
 		expect(records).toEqual([1, 1, 2]);
