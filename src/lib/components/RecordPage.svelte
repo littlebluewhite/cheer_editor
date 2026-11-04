@@ -2,6 +2,7 @@
 	// 練習畫面的「記錄」頁：記分段練。
 	// 左邊：有記成功率、有環節的動作，照流程順序，每個寫這天記了幾次和最弱的環節。
 	// 右邊：選到的動作每組一張卡（騰翻、跳躍每人一張），下面是這個動作每天的成功率。
+	// 最上面的「＋ 記一次全上」打開跟總表一樣的全上表（RunThroughSheet），存好或取消再回到記錄頁。
 	import {
 		actionLabel,
 		attemptWhos,
@@ -14,6 +15,7 @@
 	} from '#lib/core';
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
+	import RunThroughSheet from './RunThroughSheet.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -30,6 +32,8 @@
 	/** 選到的動作；沒選過、或它不在清單上了（復原掉了）就是第一個。 */
 	let chosenId = $state<string | null>(null);
 	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
+	/** 記全上的表打開著。 */
+	let recording = $state(false);
 
 	const countOn = (records: { date: string }[]) => records.filter((r) => r.date === date).length;
 	/** 這天最弱的環節，例：最弱：下法 50%；這天沒紀錄就是空的。 */
@@ -39,7 +43,10 @@
 	}
 </script>
 
-{#if action}
+{#if recording}
+	<RunThroughSheet {flow} {date} {onrecord} onclose={() => (recording = false)} />
+{:else if action}
+	<button type="button" class="primary run" onclick={() => (recording = true)}>＋ 記一次全上</button>
 	<div class="record">
 		<ul class="list" aria-label="記成功率的動作">
 			{#each actions as a (a.id)}
@@ -74,6 +81,9 @@
 {/if}
 
 <style>
+	.run {
+		justify-self: start;
+	}
 	.record {
 		display: grid;
 		grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
