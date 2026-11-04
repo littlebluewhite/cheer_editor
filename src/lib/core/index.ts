@@ -60,7 +60,6 @@ export {
 	groupsPeople,
 	keptAttempt,
 	MARKS,
-	newActionMember,
 	PHASE_KIND_COLORS,
 	PHASE_KINDS,
 	perPerson,

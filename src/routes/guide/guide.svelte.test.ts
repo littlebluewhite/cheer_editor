@@ -66,12 +66,13 @@ describe('使用說明', () => {
 		expect(alts.some((a) => a.includes('分組浮動列'))).toBe(true);
 	});
 
-	it('名詞對照表的「組」「環節」跟名詞表一樣：組號不跳號、加第一個環節全部進第 1 組、口號段的環節不標拍', () => {
+	it('名詞對照表的「組」「環節」跟名詞表一樣：組號不跳號、開始分組全部進第 1 組、只有一組時新人進第 1 組、口號段的環節不標拍', () => {
 		render(Guide);
 		const row = (word: string) =>
 			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
 		expect(row('組')).toContain('組號從 1 連續往下排，不跳號');
-		expect(row('組')).toContain('加第一個環節時，全部的人先在第 1 組');
+		expect(row('組')).toContain('加第一個環節時，全部的人先在第 1 組；大類從騰翻、跳躍換成要分組的大類時也一樣');
+		expect(row('組')).toContain('動作只有一組時，新加進來、沒帶組的人進第 1 組');
 		expect(row('環節')).toContain('在口號段不數拍，環節不標拍');
 		expect(row('環節')).toContain('拍被清光，環節就沒了');
 	});

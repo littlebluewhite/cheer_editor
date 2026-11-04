@@ -18,7 +18,6 @@
 		groupsPeople,
 		lengthText,
 		memberName,
-		newActionMember,
 		parseAt,
 		parseLength,
 		positionText,
@@ -218,7 +217,7 @@
 
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
-		draft.members.push(action ? newActionMember(action, select.value) : { memberId: select.value, role: null });
+		draft.members.push({ memberId: select.value, role: null });
 		select.value = '';
 		membersChanged();
 	}
