@@ -1,11 +1,10 @@
-// 成功率：動作打開「記成功率」後，分成幾個環節（上法、中段…），動作裡的人分組。
+// 成功率：動作有環節（上法、中段…）就記成功率，動作裡的人分組。
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad）。
 
 import { ACTION_CATEGORIES, actionLabel, replaceAction, type Action, type ActionCategory } from './actions';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
-import { freshIds } from './ids';
 import { PHASE_COLORS } from './colors';
 import {
 	answered,
@@ -88,7 +87,7 @@ export interface Attempt {
 /** 記一次要給的東西（id 由指令發）。 */
 export type NewAttempt = Omit<Attempt, 'id'>;
 
-/** 動作的「記成功率」設定。動作沒有這個欄位就是沒打開。 */
+/** 動作的成功率設定。動作有環節才有這個欄位（至少一個環節）；沒有就是不記成功率。 */
 export interface SuccessRate {
 	/** 環節，有順序。 */
 	phases: Phase[];
@@ -109,52 +108,21 @@ export function perPerson(category: ActionCategory): boolean {
 	return PER_PERSON.has(category);
 }
 
-/** 打開記成功率時先填的環節（照大類）。 */
-const PREFILL: Record<ActionCategory, { kind: PhaseKind; name: string }[]> = {
-	stunt: [
-		{ kind: 'load', name: '' },
-		{ kind: 'hold', name: '' },
-		{ kind: 'dismount', name: '' }
-	],
-	pyramid: [
-		{ kind: 'load', name: '' },
-		{ kind: 'dismount', name: '' }
-	],
-	toss: [{ kind: 'whole', name: '拋投' }],
-	tumbling: [{ kind: 'whole', name: '騰翻' }],
-	jump: [],
-	dance: [],
-	other: []
-};
-
-/** 打開記成功率：照大類先填環節；金字塔通常整個一起算，所以全部的人先放第 1 組。已經打開就不動。 */
-export function enableSuccessRate(flow: Flow, actionId: string): CommandResult {
-	const action = flow.actions.find((a) => a.id === actionId);
-	if (!action) return blocked('找不到這個動作');
-	if (action.successRate) return ok(flow);
-	const prefill = PREFILL[action.category];
-	const issued = freshIds('p', prefill.length, flow.lastIds, allPhaseIds(flow));
-	const phases = prefill.map((p, i) => ({ id: issued.ids[i], ...p }));
-	const members =
-		action.category === 'pyramid' ? action.members.map((m) => ({ ...m, squad: 1 })) : action.members;
-	return ok(
-		replaceAction(
-			{ ...flow, lastIds: issued.lastIds },
-			{ ...action, members, successRate: { phases, records: [] } }
-		)
-	);
+/**
+ * 換掉動作的環節清單，紀錄裡對不上的記號跟著拿掉（記號清光的那一次整筆拿掉）。
+ * 一個環節都不剩就不記成功率：成功率設定和每個人的組一起拿掉。
+ */
+export function replacePhases(action: Action, phases: Phase[]): Action {
+	if (!phases.length) {
+		const { successRate: _, ...rest } = action;
+		return { ...rest, members: action.members.map(({ squad: _, ...m }) => m) };
+	}
+	return fitRecords({ ...action, successRate: { records: action.successRate?.records ?? [], phases } });
 }
 
-/** 關掉記成功率：環節、組、紀錄都拿掉。有紀錄先回「要確認」，帶 { confirmed: true } 再送一次才關。 */
-export function disableSuccessRate(flow: Flow, actionId: string, options: ConfirmOption = {}): CommandResult {
-	const action = flow.actions.find((a) => a.id === actionId);
-	if (!action) return blocked('找不到這個動作');
-	const count = action.successRate?.records.length ?? 0;
-	if (count && !answered(options)) {
-		return needsConfirm(`關掉記成功率會清掉動作「${actionLabel(action)}」的 ${count} 次紀錄`, []);
-	}
-	const { successRate: _, ...rest } = action;
-	return ok(replaceAction(flow, { ...rest, members: action.members.map(({ squad: _, ...m }) => m) }));
+/** 有幾次打了這些環節的記號。 */
+export function markedCount(action: Action, phases: Phase[]): number {
+	return (action.successRate?.records ?? []).filter((r) => phases.some((p) => p.id in r.marks)).length;
 }
 
 /**
@@ -272,7 +240,7 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 	for (const { squad } of action.members) {
 		if (squad === undefined) continue;
 		if (!isSquad(squad)) return '組要是正整數';
-		if (!action.successRate) return '先打開記成功率才能分組';
+		if (!action.successRate) return '動作有環節才能分組';
 		if (perPerson(action.category)) {
 			const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
 			return `${label}的動作不分組，每個人自己算`;

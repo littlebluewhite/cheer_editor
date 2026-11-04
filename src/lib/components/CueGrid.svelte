@@ -9,9 +9,10 @@
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	// 拍子那條上面一直有一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
 	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
-	// 還沒記成功率的動作加第一個環節，就開始記成功率（規則在流程核心）。
+	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
+	import ConfirmList from './ConfirmList.svelte';
 	import { touchOnUnpicked } from './pointer';
 	import {
 		COUNT_WORDS,
@@ -36,6 +37,7 @@
 		whoName,
 		type Action,
 		type CommandResult,
+		type ConfirmOption,
 		type Cue,
 		type CueKind,
 		type Flow,
@@ -50,11 +52,9 @@
 		onchange: (flow: Flow) => void;
 		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
 		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
-		/** 亮著的環節 id（成功率區的環節清單點到的）：它那幾拍的淡底變深。 */
-		lit?: string | null;
 	}
 
-	let { flow, action, onchange, cellAt = nearestCell, lit = null }: Props = $props();
+	let { flow, action, onchange, cellAt = nearestCell }: Props = $props();
 
 	const cols = Array.from({ length: 8 }, (_, c) => c);
 	/** 三條由上往下，排在每個八拍的數字格下面。 */
@@ -100,6 +100,13 @@
 	/** 選到的拍：從 from 那一格到 to 那一格（都是格子開頭、從動作開始算的半拍）。 */
 	let sel = $state({ from: 0, to: 0 });
 	let error = $state('');
+	/** 等教練確認的環節改動（會刪掉有記號的環節）：send 帶著 { confirmed: true } 再送一次，成功後跑 after。 */
+	let pending = $state<{
+		message: string;
+		items: string[];
+		send: (options: ConfirmOption) => CommandResult;
+		after?: () => void;
+	} | null>(null);
 
 	/** 拍點小窗開著沒；拖的時候先收起來，放開才跳出來。 */
 	let pop = $state(false);
@@ -134,6 +141,7 @@
 		void actionId;
 		untrack(() => {
 			error = '';
+			pending = null;
 			sel = { from: firstCell, to: firstCell };
 			who = null;
 			pop = false;
@@ -170,6 +178,7 @@
 
 	function apply(r: CommandResult): boolean {
 		hold = pop;
+		pending = null;
 		if (r.kind !== 'ok') {
 			error = r.kind === 'blocked' ? r.message : '';
 			return false;
@@ -193,6 +202,7 @@
 
 	function openPop() {
 		hold = false;
+		pending = null;
 		pop = true;
 	}
 
@@ -269,10 +279,34 @@
 		addCustom(kind);
 	}
 
+	/** 送環節的指令；要確認（會刪掉有記號的環節）就在小窗裡先問，確定了才再送一次。 */
+	function sendPhases(send: (options: ConfirmOption) => CommandResult, after?: () => void) {
+		const r = send({});
+		if (r.kind === 'confirm') {
+			hold = pop;
+			error = '';
+			pending = { message: r.message, items: r.items, send, after };
+		} else if (apply(r)) after?.();
+	}
+
+	function confirmPhases() {
+		if (!pending) return;
+		const { send, after } = pending;
+		if (apply(send({ confirmed: true }))) after?.();
+	}
+
 	/** 把選的拍標給現有的環節，或標給新的環節（種類、名字）。 */
 	function markPhase(target: { phaseId: string } | { kind: PhaseKind; name: string }) {
-		const placed = apply(markPhaseBeats(flow, action.id, target, sel.from, selLen));
-		if (placed && !('phaseId' in target)) phaseName = '';
+		const { from } = sel;
+		const len = selLen;
+		const after = 'phaseId' in target ? undefined : () => (phaseName = '');
+		sendPhases((o) => markPhaseBeats(flow, action.id, target, from, len, o), after);
+	}
+
+	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
+	function clearPhases() {
+		const { from, to } = sel;
+		sendPhases((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
 	function clear(kind: CueKind) {
@@ -304,6 +338,7 @@
 		if (!pop || dragging || !wrapEl || !popEl) return;
 		void flow;
 		void error;
+		void pending;
 		void winW; // 視窗變寬變窄，小窗也重新放
 		const held = hold;
 		hold = false;
@@ -499,7 +534,6 @@
 								class="zone"
 								class:cont={!p.first}
 								class:more={!p.last}
-								class:lit={lit === p.phase.id}
 								data-phase={p.phase.id}
 								style:--c={phaseColor(p.phase)}
 								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
@@ -632,9 +666,17 @@
 							type="button"
 							class="clear"
 							aria-label="清掉環節"
-							onclick={() => apply(clearPhaseBeats(flow, action.id, sel.from, sel.to + BEAT))}>清掉</button
+							onclick={clearPhases}>清掉</button
 						>
 					</div>
+					{#if pending}
+						<ConfirmList
+							message={pending.message}
+							items={pending.items}
+							onconfirm={confirmPhases}
+							oncancel={() => (pending = null)}
+						/>
+					{/if}
 					{#if error}<p class="error" role="alert">{error}</p>{/if}
 				</div>
 			{/if}
@@ -782,10 +824,6 @@
 		border-right: 0;
 		border-top-right-radius: 0;
 		border-bottom-right-radius: 0;
-	}
-	.zone.lit {
-		background: color-mix(in srgb, var(--c) 24%, transparent);
-		box-shadow: 0 0 0 2px var(--sel, #19b4d8);
 	}
 	.item.phase,
 	.word.phase {

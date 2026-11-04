@@ -427,46 +427,15 @@ describe('動作表單：成功率', () => {
 		return onchange;
 	}
 
-	const toggle = () => screen.getByRole('checkbox', { name: '記成功率' }) as HTMLInputElement;
-	const phaseRows = () =>
-		within(screen.getByRole('list', { name: '環節' }))
-			.getAllByRole('listitem')
-			.map((li) => li.getAttribute('aria-label'));
 	const squadOptions = (who: string) =>
 		[...(screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement).options].map((o) => o.text);
 
-	it('開關預設關；打開後列出照大類先填的環節（色塊、種類、名字）；關掉就收起來', async () => {
-		const onchange = live(withLib('toss'), 'x1');
-		const section = screen.getByRole('group', { name: '成功率' });
-		expect(toggle().checked).toBe(false);
-		expect(within(section).queryByRole('list')).toBeNull();
-
-		await fireEvent.click(toggle());
-		expect(onchange.mock.calls.at(-1)![0].actions[0].successRate.phases).toHaveLength(1);
-		expect(toggle().checked).toBe(true);
-		expect(phaseRows()).toEqual(['整體 拋投']);
-		const chip = within(section).getByRole('listitem').querySelector('.chip') as HTMLElement;
-		expect(chip.style.getPropertyValue('--c')).toBe('#6b7280');
-
-		await fireEvent.click(toggle());
-		expect('successRate' in onchange.mock.calls.at(-1)![0].actions[0]).toBe(false);
-		expect(within(section).queryByRole('list')).toBeNull();
-	});
-
-	it('技巧打開：上法、中段、下法；跳躍打開：還沒有環節', async () => {
-		live(withLib('stunt'), 'x1');
-		await fireEvent.click(toggle());
-		expect(phaseRows()).toEqual(['上法', '中段', '下法']);
-
-		document.body.innerHTML = '';
-		live(withLib('jump'), 'x1');
-		await fireEvent.click(toggle());
-		expect(screen.getByRole('group', { name: '成功率' }).textContent).toContain('還沒有環節');
-	});
-
-	it('新增動作時沒有成功率區', () => {
-		live(withLib(), null);
+	it('沒有「記成功率」勾勾、沒有環節清單：環節在拍點格子上', () => {
+		live(rated(withLib()), 'x1');
+		expect(screen.queryByRole('checkbox', { name: '記成功率' })).toBeNull();
 		expect(screen.queryByRole('group', { name: '成功率' })).toBeNull();
+		expect(screen.queryByRole('list', { name: '環節' })).toBeNull();
+		expect(screen.getByRole('button', { name: /^環節 整體/ })).toBeTruthy();
 	});
 
 	it('有環節後每個人旁邊選第幾組：沒有、第 1 組…，最多比現在最大的組多一組', async () => {

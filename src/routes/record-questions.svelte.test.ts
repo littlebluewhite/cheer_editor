@@ -1,4 +1,4 @@
-// 頁面：會清掉紀錄的改動先問。換組、改隊員名字時選保留舊紀錄或清掉重算；關掉記成功率要確認。
+// 頁面：會清掉紀錄的改動先問。換組、改隊員名字時選保留舊紀錄或清掉重算。
 // 流程在核心裡做好（含紀錄）再開檔，存檔後讀回來看紀錄（同 success-rate.svelte.test.ts）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -173,25 +173,6 @@ describe('改隊員名字時問保留還是清掉', () => {
 		await press('取消');
 		expect(nameBox().value).toBe('小美');
 	});
-});
-
-describe('關掉記成功率', () => {
-	it('有紀錄：先看到確認，寫會清掉幾次；取消還開著，確定才關', async () => {
-		const saves = await openRecorded();
-		await selectLib();
-		const toggle = () => screen.getByRole('checkbox', { name: '記成功率' }) as HTMLInputElement;
-		await fireEvent.click(toggle());
-		expect(dialog().textContent).toContain('關掉記成功率會清掉動作「技巧·Lib」的 3 次紀錄');
-		await press('取消');
-		expect(toggle().checked).toBe(true);
-
-		await fireEvent.click(toggle());
-		await press('確定');
-		expect(toggle().checked).toBe(false);
-		const { lib } = await savedLib(saves);
-		expect(lib.successRate).toBeUndefined();
-	});
-
 });
 
 describe('刪動作', () => {

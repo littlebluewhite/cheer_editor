@@ -5,7 +5,7 @@
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
-	// 改動作時多一區「成功率」：開關記成功率、環節清單（PhaseList）；打開後（騰翻、跳躍除外）每個人旁邊選第幾組。
+	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊選第幾組。
 	import { untrack } from 'svelte';
 	import {
 		ACTION_CATEGORIES,
@@ -15,8 +15,6 @@
 		addAction,
 		atText,
 		deleteAction,
-		disableSuccessRate,
-		enableSuccessRate,
 		lengthText,
 		memberName,
 		parseAt,
@@ -40,7 +38,6 @@
 	import CueGrid from './CueGrid.svelte';
 	import { applyResult } from './form';
 	import Icon from './Icon.svelte';
-	import PhaseList from './PhaseList.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 	import RolePicker, { roleKey } from './RolePicker.svelte';
 
@@ -106,10 +103,7 @@
 			}))
 	);
 
-	/** 環節清單點到的環節（拍點格子裡它那幾拍亮起來）；再點一次就不亮。 */
-	let litPhase = $state<string | null>(null);
-
-	/** 「第幾組」選單的組：1 到現在最大的組再多一組。沒打開記成功率、或騰翻跳躍（不分組）是空的，不顯示選單。 */
+	/** 「第幾組」選單的組：1 到現在最大的組再多一組。動作沒有環節、或騰翻跳躍（不分組）是空的，不顯示選單。 */
 	const squadChoices = $derived.by(() => {
 		if (!action?.successRate || perPerson(action.category)) return [];
 		const max = Math.max(0, ...action.members.map((m) => m.squad ?? 0));
@@ -303,17 +297,6 @@
 		changed();
 	}
 
-	/** 要問或被擋時，開關先回到原來的樣子（確定了才關）。 */
-	function toggleSuccessRate(box: HTMLInputElement) {
-		if (!action) return;
-		const id = action.id;
-		const on = box.checked;
-		const send = (o: ConfirmOption = {}) => (on ? enableSuccessRate(flow, id) : disableSuccessRate(flow, id, o));
-		const r = send();
-		if (r.kind !== 'ok') box.checked = !on;
-		if (!ask(r, send)) error = applyResult(r, onchange);
-	}
-
 	/** 選單的值：空字串是沒分組。要問或被擋時，選單先回到原來的組。 */
 	function pickSquad(memberId: string, select: HTMLSelectElement) {
 		if (!action) return;
@@ -488,22 +471,7 @@
 		</label>
 
 		{#if action}
-			<div class="rate" role="group" aria-label="成功率">
-				<div class="rate-head">
-					<span class="cap">成功率</span>
-					<label class="switch">
-						<input
-							type="checkbox"
-							checked={!!action.successRate}
-							onchange={(e) => toggleSuccessRate(e.currentTarget)}
-						/>記成功率
-					</label>
-				</div>
-				{#if action.successRate}
-					<PhaseList {flow} {action} {onchange} lit={litPhase} onlight={(id) => (litPhase = litPhase === id ? null : id)} />
-				{/if}
-			</div>
-			<CueGrid {flow} {action} {onchange} lit={litPhase} />
+			<CueGrid {flow} {action} {onchange} />
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
 		{/if}
@@ -833,33 +801,13 @@
 		height: 26px;
 		color: var(--muted, #66718a);
 	}
-	/* 打開記成功率：任務角色和移出鈕中間多一個「第幾組」選單 */
+	/* 動作有環節時：任務角色和移出鈕中間多一個「第幾組」選單 */
 	ul.grouped li {
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
 	}
 	.squad {
 		padding-inline: 4px;
 		font-size: 12px;
-	}
-	.rate {
-		background: var(--surface, #fff);
-		border: 1px solid var(--line-soft, #e8ecf3);
-		border-radius: 10px;
-		padding: 10px;
-		display: grid;
-		gap: 8px;
-	}
-	.rate-head {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-	.switch {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-weight: 600;
-		cursor: pointer;
 	}
 	.adders {
 		display: grid;

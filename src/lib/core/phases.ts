@@ -1,11 +1,11 @@
-// 改環節清單：加環節、改環節、刪環節、換順序（成功率區的環節清單用）。
-// 環節存在動作的成功率設定裡（Action.successRate.phases），有順序；標了拍的照時間排在前面，沒標拍的才能換順序。
+// 改環節：加環節、改環節、刪環節。
+// 環節存在動作的成功率設定裡（Action.successRate.phases），有順序；音樂段照標的拍的先後排（見 phase-beats）。
 
 import { replaceAction, type Action } from './actions';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { allPhaseIds, fitRecords, PHASE_KINDS, successRateProblem, type Phase, type PhaseKind } from './success-rate';
+import { allPhaseIds, PHASE_KINDS, replacePhases, successRateProblem, type Phase, type PhaseKind } from './success-rate';
 
 /** 改環節要改的東西；沒給的不動。color 給 null 是回到種類的顏色。 */
 export interface PhaseChange {
@@ -66,22 +66,6 @@ export function deletePhase(
 	return withPhases(flow, action, action.successRate!.phases.filter((p) => p.id !== phaseId));
 }
 
-/** 換順序：把沒標拍的環節換到第 to 個（0 起）。標了拍的照時間排在前面，不能換，也不能被越過。 */
-export function movePhase(flow: Flow, actionId: string, phaseId: string, to: number): CommandResult {
-	const found = findPhase(flow, actionId, phaseId);
-	if (typeof found === 'string') return blocked(found);
-	const { action } = found;
-	const phases = action.successRate!.phases;
-	const from = phases.findIndex((p) => p.id === phaseId);
-	if (!Number.isInteger(to) || to < 0 || to >= phases.length) return blocked('環節換不到那裡');
-	const passed = phases.slice(Math.min(from, to), Math.max(from, to) + 1);
-	if (passed.some((p) => p.beats)) return blocked('標了拍的環節照時間排，只有沒標拍的能換順序');
-	if (from === to) return ok(flow);
-	const next = phases.filter((p) => p.id !== phaseId);
-	next.splice(to, 0, phases[from]);
-	return withPhases(flow, action, next);
-}
-
 /** 環節的名字：種類加名字，例：上法 延伸；沒名字就是種類。 */
 export function phaseLabel(phase: Phase): string {
 	const kind = PHASE_KINDS.find((k) => k.key === phase.kind)?.label ?? '';
@@ -96,11 +80,11 @@ function findPhase(flow: Flow, actionId: string, phaseId: string): { action: Act
 	return phase ? { action, phase } : '找不到這個環節';
 }
 
-/** 換掉動作的環節清單，紀錄裡對不上的記號跟著拿掉；不守規則就擋下來。 */
+/** 換掉動作的環節清單，紀錄裡對不上的記號跟著拿掉，一個都不剩就不記成功率；不守規則就擋下來。 */
 function withPhases(flow: Flow, action: Action, phases: Phase[]): CommandResult {
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
 	if (!segment) return blocked('找不到這一段');
-	const changed = fitRecords({ ...action, successRate: { ...action.successRate!, phases } });
+	const changed = replacePhases(action, phases);
 	const problem = successRateProblem(segment, changed);
 	if (problem) return blocked(problem);
 	return ok(replaceAction(flow, changed));

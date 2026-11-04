@@ -11,6 +11,7 @@ import {
 	askRecords,
 	fitRecords,
 	perPerson,
+	replacePhases,
 	settleRecords,
 	successRateProblem,
 	type SuccessRate
@@ -54,7 +55,7 @@ export interface Action {
 	color?: string;
 	/** 這個動作的拍點；沒有就是空的（舊流程檔沒有這個欄位）。 */
 	cues?: Cue[];
-	/** 記成功率的設定；沒有就是沒打開（舊流程檔沒有這個欄位）。 */
+	/** 成功率的設定：有環節才有；沒有就是不記成功率（舊流程檔沒有這個欄位）。 */
 	successRate?: SuccessRate;
 }
 
@@ -70,7 +71,7 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 
 /**
  * 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。
- * 沒打開記成功率、或騰翻跳躍（不分組）的動作，人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。
+ * 不記成功率（沒有環節）、或騰翻跳躍（不分組）的動作，人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。
  * 對不上的紀錄也拿掉（組沒人了、人移出動作、大類換成騰翻或換掉騰翻）。
  */
 function normalize({ color, ...action }: Action): Action {
@@ -104,13 +105,13 @@ export function updateAction(
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
 	const realigned = from && to ? phaseFallout(from, to, old, action) : null;
-	if (realigned) action = { ...action, successRate: { ...action.successRate!, phases: realigned.phases } };
 	// 只挪半拍、沒切到的標的拍不用問。
 	const marked = realigned?.items.length ? realigned : null;
-	const asked = fallout || marked ? falloutMessage(old, action, to!, fallout, marked) : null;
+	const asked = fallout || marked ? falloutMessage(old, action, from!, to!, fallout, marked) : null;
 	const items = [...(fallout?.items ?? []), ...(marked?.items ?? [])];
+	// 刪掉的環節的記號在上面問過了：換環節放在紀錄問完之後，不再算成「換了人」清掉的。
 	const settled = settleRecords(flow, old, action, options.records);
-	action = settled.action;
+	action = realigned ? replacePhases(settled.action, realigned.phases) : settled.action;
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
 	if (!answered(options) && settled.ask) {
@@ -124,21 +125,27 @@ export function updateAction(
 /**
  * 「動作「技巧·Lib」變短，會拿掉 1 個、切短 1 個拍點」；換了人或任務角色是「…換了人或任務角色，會拿掉 N 個拍點」，
  * 兩個都有就「…變短、換了人或任務角色，…」；換到口號段是「…換到口號段，會拿掉 N 個拍點」。
- * 也動到環節標的拍時接在後面：「…拍點，讓 1 個環節變沒標拍」；只動到標的拍是「…變短，會切短 1 個環節標的拍」，
+ * 也動到環節標的拍時接在後面：「…拍點，刪掉 1 個環節」；只動到標的拍是「…變短，會切短 1 個環節標的拍」，
  * 拖到半拍上、標的拍對齊整拍時切到是「…拖到半拍上，會切短 1 個環節標的拍」。
  */
 function falloutMessage(
 	old: Action,
 	action: Action,
+	from: Segment,
 	to: Segment,
 	cues: { removed: number; cut: number; orphaned: number } | null,
-	phases: { cut: number; unmarked: number; shifted: boolean } | null
+	phases: Parameters<typeof phaseFalloutText>[0] & { shifted: boolean } | null
 ): string {
 	const label = `動作「${actionLabel(action)}」`;
 	const shorter = action.length < old.length ? '變短' : '';
 	const offBeat = phases?.shifted ? '拖到半拍上' : '';
 	if (!cues) {
-		const why = to.kind !== 'music' ? '換到口號段' : [shorter, offBeat].filter(Boolean).join('、');
+		const why =
+			to.kind !== 'music'
+				? '換到口號段'
+				: from.kind !== 'music'
+					? '換到音樂段'
+					: [shorter, offBeat].filter(Boolean).join('、');
 		return `${label}${why}，會${phaseFalloutText(phases!)}`;
 	}
 	const more = phases ? `，${phaseFalloutText(phases)}` : '';

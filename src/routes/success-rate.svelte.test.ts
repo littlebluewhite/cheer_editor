@@ -1,5 +1,5 @@
-// 頁面：在動作表單打開記成功率、幫人分組，存檔再打開還在。流程在核心裡做好再開檔（同 flow-file.svelte.test.ts）。
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+// 頁面：在有環節的動作幫人分組，存檔再打開還在。流程在核心裡做好再開檔（同 flow-file.svelte.test.ts）。
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import {
 	addAction,
@@ -83,19 +83,13 @@ async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 
 /** 點泳道上 Lib 的色條，選到它。 */
 const selectLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
-const toggle = () => screen.getByRole('checkbox', { name: '記成功率' }) as HTMLInputElement;
-const phases = () =>
-	within(screen.getByRole('list', { name: '環節' }))
-		.getAllByRole('listitem')
-		.map((li) => li.getAttribute('aria-label'));
 const squadOf = (who: string) => screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement;
 
-describe('記成功率的開關和組', () => {
+describe('有環節的動作分組', () => {
 	it('有上法、中段、下法的動作，幫人分組；存檔再打開還在', async () => {
 		const saves = setup();
 		await openFile(writeFlowFile(phasedFlow(), {}));
 		await selectLib();
-		expect(phases()).toEqual(['上法', '中段', '下法']);
 		for (const [who, squad] of [['小美', '1'], ['小A', '1'], ['小芳', '2'], ['小B', '2']]) {
 			await fireEvent.change(squadOf(who), { target: { value: squad } });
 		}
@@ -109,18 +103,6 @@ describe('記成功率的開關和組', () => {
 
 		await openFile(saves[0], '開啟');
 		await selectLib();
-		expect(phases()).toEqual(['上法', '中段', '下法']);
 		expect(['小美', '小A', '小芳', '小B'].map((who) => squadOf(who).value)).toEqual(['1', '1', '2', '2']);
-	});
-
-	it('打開記成功率可以復原', async () => {
-		setup();
-		await openFile(writeFlowFile(sampleFlow(), {}));
-		await selectLib();
-		await fireEvent.click(toggle());
-		expect(toggle().checked).toBe(true);
-		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
-		expect(toggle().checked).toBe(false);
-		expect(screen.queryByRole('list', { name: '環節' })).toBeNull();
 	});
 });
