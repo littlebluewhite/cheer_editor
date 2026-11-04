@@ -7,7 +7,7 @@ import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { settle } from './settle';
-import { recordItems, type Attempt } from './success-rate';
+import { perPerson, recordItems, type Attempt } from './success-rate';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -108,6 +108,9 @@ export function updateMember(
  * records 是會清掉的紀錄（他在的組的、騰翻跳躍是他自己的），action 是清掉之後（換回他的 id）。
  */
 function replaced(flow: Flow, before: Action, id: string): { before: Action; action: Action; records: Attempt[] } {
+	// 不在動作裡、或在分組的動作裡沒分到組：沒有他的紀錄（換成別人也不能讓收尾當成新進的人放進組）。
+	const member = before.members.find((m) => m.memberId === id);
+	if (!member || (member.squad === undefined && !perPerson(before.category))) return { before, action: before, records: [] };
 	const stranger = `${id}?`;
 	const swap = (a: Action, from: string, to: string) => ({
 		...a,

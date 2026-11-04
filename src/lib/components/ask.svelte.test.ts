@@ -72,6 +72,17 @@ describe('送指令', () => {
 		expect(ask.question).toBeNull();
 	});
 
+	it('給了 onfail：被擋、要問時呼叫（給原因，要問時是空的），成功不呼叫', () => {
+		const onfail = vi.fn();
+		const ask = new Ask(vi.fn(), { onfail });
+		ask.send(command(blocked('不行')).send, { revert: () => {} });
+		expect(onfail).toHaveBeenLastCalledWith('不行，已還原');
+		ask.send(command(confirm('要確認')).send);
+		expect(onfail).toHaveBeenLastCalledWith('');
+		ask.send(command(ok(flowA)).send);
+		expect(onfail).toHaveBeenCalledTimes(2);
+	});
+
 	it('回傳第一次送出的結果', () => {
 		const ask = new Ask(vi.fn());
 		expect(ask.send(command(choose('換了人')).send).kind).toBe('choose');
@@ -117,6 +128,17 @@ describe('回答', () => {
 		expect(ask.question).toBeNull();
 		expect(revert).toHaveBeenCalledOnce();
 		expect(ask.error).toBe('');
+	});
+
+	it('給了 cancel：按取消才呼叫，被擋不呼叫、原因不加「，已還原」', () => {
+		const cancel = vi.fn();
+		const ask = new Ask(vi.fn());
+		ask.send(command(blocked('BPM 不對')).send, { cancel });
+		expect(ask.error).toBe('BPM 不對');
+		expect(cancel).not.toHaveBeenCalled();
+		ask.send(command(confirm('要確認')).send, { cancel });
+		ask.answer('cancel');
+		expect(cancel).toHaveBeenCalledOnce();
 	});
 
 	it('回答後被擋：留下原因，加「，已還原」並還原', () => {

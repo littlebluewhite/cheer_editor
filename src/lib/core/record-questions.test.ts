@@ -97,11 +97,13 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		expect(changed.members.some((m) => 'squad' in m)).toBe(false);
 	});
 
-	it('騰翻換成技巧：要確認；確定後清掉紀錄', () => {
+	it('騰翻換成技巧：要確認；確定後清掉紀錄，動作裡的人全部進第 1 組', () => {
 		const flow = recorded();
 		const r = updateAction(flow, 'x2', { category: 'stunt' });
 		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄');
-		expect(ids(flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true })), 'x2')).toEqual([]);
+		const changed = flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true }));
+		expect(ids(changed, 'x2')).toEqual([]);
+		expect(action(changed, 'x2').members.map((m) => m.squad)).toEqual([1, 1]);
 	});
 
 	it('一組一起算的大類之間換（技巧換成金字塔）：不問，紀錄留著', () => {
@@ -208,6 +210,17 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 		const cleared = flowOf(updateMember(flow, 'm1', { name: '小芳芳' }, { records: 'clear' }));
 		expect(cleared.members[0].name).toBe('小芳芳');
 		expect([ids(cleared, 'x1'), ids(cleared, 'x2')]).toEqual([['t2'], ['t5']]);
+	});
+});
+
+describe('改隊員名字：他在動作裡沒分組', () => {
+	it('只有一組的動作：不算他的紀錄，清掉重算也不會把他放進那一組', () => {
+		let flow = flowOf(setSquad(recorded(), 'x1', ['m3', 'm4'], 1, { records: 'keep' }));
+		flow = flowOf(setSquad(flow, 'x1', ['m1'], null, { records: 'keep' }));
+		const r = updateMember(flow, 'm1', { name: '小芳芳' });
+		expect(r.kind === 'choose' && r.items).toEqual(['動作「騰翻」小美：1 次']);
+		const cleared = flowOf(updateMember(flow, 'm1', { name: '小芳芳' }, { records: 'clear' }));
+		expect(action(cleared, 'x1')).toEqual(action(flow, 'x1'));
 	});
 });
 

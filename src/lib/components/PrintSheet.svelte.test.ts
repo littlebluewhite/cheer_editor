@@ -10,17 +10,12 @@ import {
 	placeCue,
 	setMarkers,
 	setPositions,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import PrintSheet from './PrintSheet.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 /** 音樂 1（150 BPM、8 個八拍），第 2 個八拍有一張站位；第 1 個八拍 小A 上層、小B 主底做 Lib，第 3 拍後半拍 小C 跳。 */
 function sample(): Flow {

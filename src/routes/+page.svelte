@@ -8,7 +8,6 @@
 		formationAt,
 		formationTimes,
 		formationWalks,
-		groupsPeople,
 		matchPrevious,
 		memberMarkers,
 		moveFormation,
@@ -62,7 +61,6 @@
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
 	import Field, { fullView } from '#lib/components/Field.svelte';
-	import type { PendingConfirm } from '#lib/components/form.js';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
@@ -163,25 +161,10 @@
 	let settingsOpen = $state(false);
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
-	let notice = $state('');
-	/** 拉色條會切到拍點，等教練確認（跟 notice 放同一區）。 */
-	let resizePending = $state<PendingConfirm | null>(null);
-	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
-	let selectedFormationId = $state<string | null>(null);
-	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */
-	let selectedActionId = $state<string | null>(null);
-	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
-	let selectedMemberIds = $state<string[]>([]);
-	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
-	let multiSelect = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-	const anySelected = $derived(!!selectedFormationId || !!selectedActionId || selectedMemberIds.length > 0);
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
-	const groupingAction = $derived.by(() => {
-		const a = flow && selectedActionId ? flow.actions.find((x) => x.id === selectedActionId) : undefined;
-		return a && groupsPeople(a) ? a : null;
-	});
+	const groupingAction = $derived(session.groupingAction);
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
 	const squadBadges = $derived(
 		Object.fromEntries(
@@ -191,7 +174,6 @@
 			])
 		)
 	);
-	let squadBar = $state<SquadBar>();
 	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	let inspectorTab = $state<'action' | 'members'>('action');
 	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
@@ -388,7 +370,7 @@
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
-	 * id 會跟上一支重複，所以選取全部清掉。
+	 * 選取、提示由 session 清掉。
 	 */
 	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}, saved = false) {
 		pause();
@@ -397,14 +379,10 @@
 		saver = null;
 		audios = loaded;
 		openError = '';
-		notice = '';
 		playheadSec = 0;
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
-		selectedFormationId = null;
-		selectedActionId = null;
-		selectedMemberIds = [];
 		// 還沒有隊員的流程先開名單，有人了才開動作
 		inspectorTab = f.members.length ? 'action' : 'members';
 	}
@@ -414,9 +392,7 @@
 	 * 換成另一支流程（開檔、新建、救回草稿）不走這裡，走 startFlow。
 	 */
 	function change(f: Flow) {
-		if (!session.change(f)) return;
-		resizePending = null;
-		trimSelection(f);
+		session.change(f);
 	}
 
 	function undo() {
@@ -427,24 +403,10 @@
 		if (session.redo()) restore(session.flow!);
 	}
 
-	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段。 */
+	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段（選取、提示由 session 處理）。 */
 	function restore(f: Flow) {
-		trimSelection(f);
-		resizePending = null;
-		notice = '';
 		playheadSec = Math.min(playheadSec, totalSeconds(f));
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) openSegmentId = null;
-	}
-
-	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
-	function trimSelection(f: Flow) {
-		if (selectedFormationId && !f.formations.some((x) => x.id === selectedFormationId)) {
-			selectedFormationId = null;
-		}
-		if (selectedActionId && !f.actions.some((a) => a.id === selectedActionId)) selectedActionId = null;
-		if (selectedMemberIds.some((id) => !f.members.some((m) => m.id === id))) {
-			selectedMemberIds = selectedMemberIds.filter((id) => f.members.some((m) => m.id === id));
-		}
 	}
 
 	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
@@ -466,12 +428,12 @@
 			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), `${f.name}.zip`);
 			if (outcome === 'cancelled') return;
 			session.markSaved(f);
-			notice =
+			session.notice =
 				outcome === 'downloaded'
 					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${f.name}.zip」；用 Chrome 或 Edge 才能直接存回原檔。`
 					: '';
 		} catch {
-			notice = '存檔失敗，請再試一次';
+			session.notice = '存檔失敗，請再試一次';
 		} finally {
 			saving = false;
 		}
@@ -490,7 +452,7 @@
 	async function openBytes(bytes: Uint8Array, fromFile: boolean) {
 		const r = readFlowFile(bytes);
 		if (r.kind === 'error') {
-			if (flow) notice = r.message;
+			if (flow) session.notice = r.message;
 			else openError = r.message;
 			return;
 		}
@@ -508,7 +470,7 @@
 		}
 		unlessUnsaved(() => {
 			startFlow(r.flow, loaded, fromFile);
-			notice = r.missingSegmentIds.length
+			session.notice = r.missingSegmentIds.length
 				? '有段找不到音樂：點紅色的段重新選檔'
 				: unreadable
 					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
@@ -544,15 +506,15 @@
 	function move(moves: Record<string, Position>) {
 		if (!flow) return;
 		const r = moveMembers(flow, playheadSec, moves);
-		if (r.kind !== 'ok') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (session.notice = r.message);
 		moved(r);
 	}
 
 	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示跟拖人一樣。 */
 	function matchPrev() {
 		if (!flow) return;
-		const r = matchPrevious(flow, playheadSec, selectedMemberIds);
-		if (r.kind !== 'ok') return void (notice = r.message);
+		const r = matchPrevious(flow, playheadSec, session.selectedMemberIds);
+		if (r.kind !== 'ok') return void (session.notice = r.message);
 		moved(r);
 	}
 
@@ -562,7 +524,7 @@
 		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
 		if (name.trim() === before) return;
 		const r = renameFormation(flow, formationId, name);
-		if (r.kind !== 'ok') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (session.notice = r.message);
 		change(r.flow);
 	}
 
@@ -573,7 +535,7 @@
 			r.inserted && '插了一張站位，大家的位置自動帶入',
 			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
 		];
-		notice = said.filter(Boolean).join('；');
+		session.notice = said.filter(Boolean).join('；');
 		playheadSec = r.sec;
 	}
 
@@ -582,14 +544,17 @@
 	 * 選著這張、播放頭跳到新的站位時間（左邊欄的站位時間框還在）。
 	 */
 	function moveFormationTo(id: string, to: TimePosition) {
-		if (!flow) return;
-		const r = moveFormation(flow, id, to);
-		if (r.kind !== 'ok') return void (notice = `${r.message}，已還原`);
-		change(r.flow);
-		notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
-		selectedFormationId = id;
-		selectedActionId = null;
-		seek(r.flow, r.sec);
+		const f = flow;
+		if (!f) return;
+		// 被擋時縮圖已經彈回原位，還原不用再做什麼。
+		session.ask.send(() => moveFormation(f, id, to), {
+			revert: () => {},
+			done: (r) => {
+				session.notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
+				session.selectFormation(id);
+				seek(r.flow, r.sec);
+			}
+		});
 	}
 
 	/**
@@ -601,7 +566,7 @@
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
 		const to = parseTime(flow, formation.segmentId!, box.value);
 		box.value = text;
-		if (!to) return void (notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
+		if (!to) return void (session.notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
 		moveFormationTo(formation.id, to);
 	}
 
@@ -621,9 +586,9 @@
 	function removeFormation(id: string) {
 		if (!flow) return;
 		const r = deleteFormation(flow, id);
-		if (r.kind !== 'ok') return void (notice = r.message);
+		if (r.kind !== 'ok') return void (session.notice = r.message);
 		change(r.flow);
-		notice = '';
+		session.notice = '';
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -656,27 +621,20 @@
 			// 不讓焦點所在的按鈕也被空白鍵按到
 			e.preventDefault();
 			togglePlay(flow);
-		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFormationId) {
+		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
 			e.preventDefault();
-			removeFormation(selectedFormationId);
-		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedActionId) {
+			removeFormation(session.selectedFormationId);
+		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedActionId) {
 			// Mac 的 delete 鍵送的是 Backspace
 			e.preventDefault();
-			removeAction(selectedActionId);
+			removeAction(session.selectedActionId);
 		} else if (e.key === 'Escape') {
-			clearSelection();
+			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
 			// 分組：選好人按 1–9 放進那組、0 拿出組。任務角色選單也用數字鍵，焦點在那裡不算。
 			if ((e.target as Element | null)?.closest?.('[role="combobox"]')) return;
-			if (squadBar?.press(Number(e.key))) e.preventDefault();
+			if (session.squadKey(Number(e.key))) e.preventDefault();
 		}
-	}
-
-	/** 站位、動作、人的選取都清掉（Esc 或「取消選取」）。 */
-	function clearSelection() {
-		selectedFormationId = null;
-		selectedActionId = null;
-		selectedMemberIds = [];
 	}
 
 	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
@@ -686,27 +644,14 @@
 	}
 
 	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
-	function removeAction(id: string, options: ConfirmOption = {}) {
-		if (!flow) return;
-		const r = deleteAction(flow, id, options);
-		if (r.kind === 'confirm') {
-			notice = '';
-			resizePending = { message: r.message, items: r.items, confirm: () => removeAction(id, { confirmed: true }) };
-			return;
-		}
-		if (r.kind !== 'ok') return void (notice = r.message);
-		change(r.flow);
-		notice = '';
+	function removeAction(id: string) {
+		const f = flow;
+		if (!f) return;
+		// 按確定時用那時候的流程再送一次。
+		session.ask.send((o: ConfirmOption = {}) => deleteAction(flow ?? f, id, o));
 	}
 
-	function selectAction(id: string | null) {
-		selectedActionId = id;
-		if (id) selectedFormationId = null;
-	}
-
-	function selectMembers(ids: string[]) {
-		selectedMemberIds = ids;
-	}
+	const selectMembers = (ids: string[]) => session.selectMembers(ids);
 </script>
 
 <svelte:head>
@@ -716,7 +661,7 @@
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
-	{@const match = matchPrevious(flow, playheadSec, selectedMemberIds)}
+	{@const match = matchPrevious(flow, playheadSec, session.selectedMemberIds)}
 	{@const matchBlocked = match.kind === 'blocked' ? match.message : ''}
 	<div
 		class="editor"
@@ -727,10 +672,10 @@
 	>
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
 		{#snippet noticeToast()}
-			{#if notice}
+			{#if session.notice}
 				<div class="toast">
-					<span role="status">{notice}</span>
-					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (notice = '')}
+					<span role="status">{session.notice}</span>
+					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (session.notice = '')}
 						><Icon name="close" size={14} /></button
 					>
 				</div>
@@ -819,8 +764,8 @@
 				markers={memberMarkers(flow)}
 				positions={positionsAt(flow, playheadSec)}
 				raised={raisedAt(flow, playheadSec)}
-				selected={selectedMemberIds}
-				multi={multiSelect}
+				selected={session.selectedMemberIds}
+				multi={session.multiSelect}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
 				onmove={move}
@@ -829,14 +774,7 @@
 			>
 				{#snippet below()}
 					{#if groupingAction && flow}
-						<SquadBar
-							bind:this={squadBar}
-							{flow}
-							action={groupingAction}
-							selected={selectedMemberIds}
-							onchange={change}
-							onselectmembers={selectMembers}
-						/>
+						<SquadBar action={groupingAction} />
 					{/if}
 				{/snippet}
 				{#snippet railTop()}
@@ -844,9 +782,9 @@
 						<div class="select-tools">
 							{#if touchScreen}
 								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
-									<input type="checkbox" bind:checked={multiSelect} />多選
+									<input type="checkbox" bind:checked={session.multiSelect} />多選
 								</label>
-								<button type="button" disabled={!anySelected} onclick={clearSelection}>取消選取</button>
+								<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
 							{/if}
 							{#if timelineH !== null || inspectorW !== null}
 								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
@@ -917,19 +855,9 @@
 					<span>到右邊的「隊員」加人，他們會出現在場上，可以直接拖。</span>
 				</div>
 			{/if}
-			{#if resizePending}
+			{#if session.ask.question}
 				<div class="toast-confirm">
-					<ConfirmList
-						message={resizePending.message}
-						items={resizePending.items}
-						confirmLabel="確定"
-						onconfirm={() => {
-							const ask = resizePending;
-							resizePending = null;
-							ask?.confirm();
-						}}
-						oncancel={() => (resizePending = null)}
-					/>
+					<ConfirmList ask={session.ask} />
 				</div>
 			{/if}
 			{@render noticeToast()}
@@ -974,15 +902,15 @@
 				>
 			</div>
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
-				<MemberPicker {flow} {playheadSec} selected={selectedMemberIds} onselect={selectMembers} />
-				<WalkForm {flow} {playheadSec} {selectedMemberIds} onchange={change} />
+				<MemberPicker {flow} {playheadSec} selected={session.selectedMemberIds} onselect={selectMembers} />
+				<WalkForm {flow} {playheadSec} selectedMemberIds={session.selectedMemberIds} onchange={change} />
 				<ActionForm
 					{flow}
 					{playheadSec}
-					actionId={selectedActionId}
+					actionId={session.selectedActionId}
 					onchange={change}
-					onselect={selectAction}
-					{selectedMemberIds}
+					onselect={(id) => session.selectAction(id)}
+					selectedMemberIds={session.selectedMemberIds}
 					onselectmembers={selectMembers}
 				/>
 			</div>
@@ -1018,31 +946,22 @@
 				onaddsegment={(kind) => flow && add(flow, kind)}
 				onopensegment={(id) => (openSegmentId = id)}
 				{missingSegmentIds}
-				{selectedFormationId}
+				selectedFormationId={session.selectedFormationId}
 				onselectformation={(id, sec) => {
-					selectedFormationId = id;
-					selectedActionId = null;
+					session.selectFormation(id);
 					if (flow) seek(flow, sec);
 				}}
 				ondeleteformation={removeFormation}
 				onmoveformation={moveFormationTo}
-				{selectedActionId}
+				selectedActionId={session.selectedActionId}
 				onselectaction={(id) => {
-					selectAction(id);
+					session.selectAction(id);
 					inspectorTab = 'action';
 				}}
-				onchange={(f) => {
-					change(f);
-					notice = '';
-				}}
-				onblocked={(message) => (notice = `${message}，已還原`)}
-				onconfirm={(ask) => {
-					notice = '';
-					resizePending = ask;
-				}}
-				{selectedMemberIds}
+				ask={session.ask}
+				selectedMemberIds={session.selectedMemberIds}
 				onselectmembers={selectMembers}
-				multi={multiSelect}
+				multi={session.multiSelect}
 			/>
 		</div>
 		{#if view === 'practice'}

@@ -1,12 +1,7 @@
 // 成功率：動作有環節（上法、中段…）就記成功率，動作裡的人分組。
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad）。
 
-import {
-	ACTION_CATEGORIES,
-	type Action,
-	type ActionCategory,
-	type ActionMember
-} from './action-types';
+import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
@@ -147,11 +142,6 @@ export function compactSquads(action: Action): Action {
 	const rate = action.successRate;
 	const records = rate?.records.map((r) => (typeof r.who === 'number' ? { ...r, who: renumber.get(r.who) ?? r.who } : r));
 	return { ...action, members, ...(rate && { successRate: { ...rate, records: records! } }) };
-}
-
-/** 動作後來加進來的人（「＋加人…」）：有環節的分組動作只有一組，就進第 1 組；有好幾組（或還沒分組）就先沒有組。 */
-export function newActionMember(action: Action, memberId: string): ActionMember {
-	return squadsOf(action).length === 1 ? { memberId, role: null, squad: 1 } : { memberId, role: null };
 }
 
 /** 拿掉動作裡的這幾次紀錄；沒有要拿就回傳原來的動作。 */
