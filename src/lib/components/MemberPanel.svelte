@@ -4,7 +4,7 @@
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
-	import { applyResult } from './form';
+	import { Ask } from './ask.svelte';
 	import { isLongMarker } from './marker';
 	import {
 		GENDERS,
@@ -15,7 +15,6 @@
 		memberMarkers,
 		memberName,
 		updateMember,
-		type CommandResult,
 		type ConfirmOption,
 		type Flow,
 		type Gender,
@@ -28,7 +27,10 @@
 	let names = $state('');
 	let gender = $state<Gender | ''>('');
 	let globalRole = $state<GlobalRole | ''>('');
-	let error = $state('');
+	/**
+	 * 等教練回答的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
+	 */
+	const ask = new Ask((f) => onchange(f), { confirmLabel: '確定刪除' });
 	const markers = $derived(memberMarkers(flow));
 
 	function add(e: SubmitEvent) {
@@ -39,41 +41,17 @@
 			gender: gender || null,
 			globalRole: globalRole || null
 		}));
-		error = applyResult(addMembers(flow, inputs), onchange);
-		if (!error) names = '';
+		ask.send(() => addMembers(flow, inputs), { done: () => (names = '') });
 	}
 
 	function edit(id: string, changes: MemberChanges, input?: HTMLInputElement) {
-		const send = (o: ConfirmOption = {}) => updateMember(flow, id, changes, o);
-		const r = send();
+		const r = ask.send((o: ConfirmOption = {}) => updateMember(flow, id, changes, o));
 		// 被擋下（或要問）時把輸入框還原成原本的名字；選好了核心改的名字會再畫上去。
 		if (r.kind !== 'ok' && input) input.value = memberName(flow, id);
-		if (r.kind === 'choose') pending = { message: r.message, items: r.items, choose: true, send };
-		else error = applyResult(r, onchange);
 	}
-
-	/**
-	 * 等教練確認的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
-	 * send 帶著回答再送一次同一個指令。
-	 */
-	let pending = $state<{
-		message: string;
-		items: string[];
-		choose: boolean;
-		send: (options: ConfirmOption) => CommandResult;
-	} | null>(null);
 
 	function remove(id: string) {
-		const send = (o: ConfirmOption = {}) => deleteMember(flow, id, o);
-		const r = send();
-		if (r.kind === 'confirm') pending = { message: r.message, items: r.items, choose: false, send };
-		else error = applyResult(r, onchange);
-	}
-
-	function answer(options: ConfirmOption) {
-		if (!pending) return;
-		error = applyResult(pending.send(options), onchange);
-		pending = null;
+		ask.send((o: ConfirmOption = {}) => deleteMember(flow, id, o));
 	}
 </script>
 
@@ -118,15 +96,8 @@
 		</ol>
 	{/if}
 
-	{#if pending}
-		<ConfirmList
-			message={pending.message}
-			items={pending.items}
-			confirmLabel={pending.choose ? '清掉重算' : undefined}
-			onconfirm={() => answer(pending?.choose ? { records: 'clear' } : { confirmed: true })}
-			onkeep={pending.choose ? () => answer({ records: 'keep' }) : undefined}
-			oncancel={() => (pending = null)}
-		/>
+	{#if ask.question}
+		<ConfirmList {ask} />
 	{/if}
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
@@ -155,7 +126,7 @@
 		<button type="submit" class="primary">加隊員</button>
 	</form>
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 </section>
 
 <style>
