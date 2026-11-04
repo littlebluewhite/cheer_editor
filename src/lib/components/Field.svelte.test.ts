@@ -63,6 +63,34 @@ describe('上層、中層畫在最上面', () => {
 	});
 });
 
+describe('組號小圓', () => {
+	const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const badge = (id: string) => document.querySelector(`[data-member-id="${id}"] .badge`);
+
+	it('給了組號的人頭上有小圓，寫號碼、塗組色；沒給的人沒有', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			positions: { m1: [0, 0], m2: [1, 0], m3: [2, 0] },
+			badges: { m1: { text: '1', color: '#2563eb' }, m2: { text: '?', color: '#9ca3af' } }
+		});
+		expect(badge('m1')?.textContent).toBe('1');
+		expect(badge('m1')?.querySelector('circle')?.style.fill).toBe('rgb(37, 99, 235)');
+		expect(badge('m2')?.textContent).toBe('?');
+		expect(badge('m3')).toBeNull();
+	});
+
+	it('沒給組號就都沒有小圓', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0] } });
+		expect(badge('m1')).toBeNull();
+	});
+});
+
 describe('在場上拖人', () => {
 	const members: Member[] = [{ id: 'm1', name: '小A', gender: 'F', globalRole: 'top' }];
 	/** 假的螢幕座標換算：1 px = 1 cm，原點對齊中心 X。 */

@@ -431,8 +431,9 @@ describe('動作表單：成功率', () => {
 		return onchange;
 	}
 
-	const squadOptions = (who: string) =>
-		[...(screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement).options].map((o) => o.text);
+	/** 每個人旁邊的唯讀組標籤（沒有標籤是 null）。 */
+	const squadTags = () =>
+		[...document.querySelectorAll('.people li')].map((li) => li.querySelector('.squad-tag')?.textContent ?? null);
 
 	it('沒有「記成功率」勾勾、沒有環節清單：環節在拍點格子上', () => {
 		live(rated(withLib()), 'x1');
@@ -442,25 +443,19 @@ describe('動作表單：成功率', () => {
 		expect(screen.getByRole('button', { name: /^環節 整體/ })).toBeTruthy();
 	});
 
-	it('有環節後每個人旁邊選第幾組：沒有、第 1 組…，最多比現在最大的組多一組', async () => {
+	it('有環節後每個人旁邊寫第幾組（唯讀，沒有選單）；沒分組寫「沒分組」', () => {
 		live(withLib(), 'x1');
-		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
+		expect(squadTags()).toEqual([null, null]);
 
 		document.body.innerHTML = '';
-		const onchange = live(rated(withLib()), 'x1');
-		expect(squadOptions('小A')).toEqual(['沒有', '第 1 組', '第 2 組']);
-		expect((screen.getByRole('combobox', { name: '小A 的組' }) as HTMLSelectElement).value).toBe('1');
-
-		await fireEvent.change(screen.getByRole('combobox', { name: '小B 的組' }), { target: { value: '2' } });
-		expect(onchange.mock.calls.at(-1)![0].actions[0].members[1]).toEqual({ memberId: 'm2', role: '主底', squad: 2 });
-		expect(squadOptions('小A')).toEqual(['沒有', '第 1 組', '第 2 組', '第 3 組']);
-		await fireEvent.change(screen.getByRole('combobox', { name: '小A 的組' }), { target: { value: '' } });
-		expect('squad' in onchange.mock.calls.at(-1)![0].actions[0].members[0]).toBe(false);
+		live(flowOf(setSquad(rated(withLib()), 'x1', ['m2'], null)), 'x1');
+		expect(squadTags()).toEqual(['第 1 組', '沒分組']);
+		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
 	});
 
 	it.each([['tumbling'], ['jump']] as const)('%s 的動作有環節也不分組', (category) => {
 		live(rated(withLib(category)), 'x1');
-		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
+		expect(squadTags()).toEqual([null, null]);
 	});
 
 	it('「＋加人…」：動作只有一組，新的人進第 1 組', async () => {
@@ -483,6 +478,6 @@ describe('動作表單：成功率', () => {
 			{ memberId: 'm1', role: '上層', squad: 1 },
 			{ memberId: 'm2', role: '主底', squad: 2 }
 		]);
-		expect((screen.getByRole('combobox', { name: '小B 的組' }) as HTMLSelectElement).value).toBe('2');
+		expect(squadTags()).toEqual(['第 1 組', '第 2 組']);
 	});
 });
