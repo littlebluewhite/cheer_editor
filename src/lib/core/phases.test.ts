@@ -10,7 +10,7 @@ import {
 	carryRecords,
 	createFlow,
 	deletePhase,
-	enableSuccessRate,
+	markPhaseBeats,
 	movePhase,
 	recordAttempt,
 	setSquad,
@@ -28,7 +28,7 @@ function flowOf(r: CommandResult): Flow {
 
 /**
  * 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。
- * x1：Lib（技巧，第 1 個八拍），記成功率（p1 上法、p2 中段、p3 下法）；小美、小A 第 1 組，小B、小芳 第 2 組。
+ * x1：Lib（技巧，第 1 個八拍），環節 p1 上法 1-1 到 1-2、p2 中段 1-3 到 1-6、p3 下法 1-7 到 1-8；小美、小A 第 1 組，小B、小芳 第 2 組。
  */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -49,7 +49,9 @@ function sample(): Flow {
 		{ memberId: 'm4', role: '上層' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
+	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', id, squad));
 	}
@@ -109,16 +111,22 @@ describe('加環節', () => {
 describe('改環節', () => {
 	it('改種類、名字（去掉頭尾空白）、顏色；沒給的不動', () => {
 		let flow = flowOf(updatePhase(sample(), 'x1', 'p1', { name: ' 延伸 ' }));
-		expect(phasesOf(flow)[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸' });
+		expect(phasesOf(flow)[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } });
 		flow = flowOf(updatePhase(flow, 'x1', 'p1', { kind: 'transition', color: '#c62828' }));
-		expect(phasesOf(flow)[0]).toEqual({ id: 'p1', kind: 'transition', name: '延伸', color: '#c62828' });
+		expect(phasesOf(flow)[0]).toEqual({
+			id: 'p1',
+			kind: 'transition',
+			name: '延伸',
+			color: '#c62828',
+			beats: { at: 0, len: 4 }
+		});
 	});
 
 	it('顏色可以是石板灰；給 null 回到種類的顏色', () => {
 		let flow = flowOf(updatePhase(sample(), 'x1', 'p1', { color: '#475569' }));
 		expect(phasesOf(flow)[0].color).toBe('#475569');
 		flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: null }));
-		expect(phasesOf(flow)[0]).toEqual({ id: 'p1', kind: 'load', name: '' });
+		expect(phasesOf(flow)[0]).toEqual({ id: 'p1', kind: 'load', name: '', beats: { at: 0, len: 4 } });
 	});
 
 	it('顏色不在辨識色 9 色和石板灰裡：擋下來', () => {
@@ -207,23 +215,25 @@ describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流�
 
 describe('換順序', () => {
 	const ids = (flow: Flow) => phasesOf(flow).map((p) => p.id);
-	/** p1 標了第 1–2 拍，其他沒標拍（標拍的指令在 #55，這裡直接改資料）。 */
-	function withMarked(): Flow {
+	/** sample 的環節都拿掉標的拍；給了 marked 的那個留著（只有沒標拍的能換順序，這裡直接改資料）。 */
+	function unmarked(marked?: string): Flow {
 		const flow = sample();
 		const action = lib(flow);
-		const phases = action.successRate!.phases.map((p) => (p.id === 'p1' ? { ...p, beats: { at: 0, len: 4 } } : p));
+		const phases = action.successRate!.phases.map(({ beats, ...p }) => (p.id === marked ? { ...p, beats } : p));
 		return { ...flow, actions: [{ ...action, successRate: { ...action.successRate!, phases } }] };
 	}
+	/** p1 標了第 1–2 拍，其他沒標拍。 */
+	const withMarked = () => unmarked('p1');
 
 	it('把環節換到第幾個（0 起）', () => {
-		let flow = flowOf(movePhase(sample(), 'x1', 'p3', 0));
+		let flow = flowOf(movePhase(unmarked(), 'x1', 'p3', 0));
 		expect(ids(flow)).toEqual(['p3', 'p1', 'p2']);
 		flow = flowOf(movePhase(flow, 'x1', 'p3', 2));
 		expect(ids(flow)).toEqual(['p1', 'p2', 'p3']);
 	});
 
 	it('換順序不動紀錄', () => {
-		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '△' })));
+		const flow = flowOf(recordAttempt(unmarked(), 'x1', drill({ p1: '✓', p2: '△' })));
 		const moved = flowOf(movePhase(flow, 'x1', 'p2', 0));
 		expect(lib(moved).successRate!.records).toEqual(lib(flow).successRate!.records);
 		expect(attemptText(lib(moved), lib(moved).successRate!.records[0])).toBe('△✓·');
@@ -238,7 +248,7 @@ describe('換順序', () => {
 	});
 
 	it('換到清單外面：擋下來', () => {
-		expect(movePhase(sample(), 'x1', 'p1', 3)).toEqual({ kind: 'blocked', message: '環節換不到那裡' });
-		expect(movePhase(sample(), 'x1', 'p1', -1)).toEqual({ kind: 'blocked', message: '環節換不到那裡' });
+		expect(movePhase(unmarked(), 'x1', 'p1', 3)).toEqual({ kind: 'blocked', message: '環節換不到那裡' });
+		expect(movePhase(unmarked(), 'x1', 'p1', -1)).toEqual({ kind: 'blocked', message: '環節換不到那裡' });
 	});
 });

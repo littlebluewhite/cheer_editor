@@ -6,8 +6,8 @@ import {
 	completionPercent,
 	createFlow,
 	dailyTable,
-	enableSuccessRate,
 	cellDetail,
+	markPhaseBeats,
 	percent,
 	periodRange,
 	rateBand,
@@ -31,7 +31,7 @@ function flowOf(r: CommandResult): Flow {
 
 /**
  * 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。
- * x1：Lib（技巧），記成功率（p1 上法、p2 中段、p3 下法）；小美、小A 第 1 組，小B、小芳 第 2 組。
+ * x1：Lib（技巧），環節 p1 上法 1-1 到 1-2、p2 中段 1-3 到 1-6、p3 下法 1-7 到 1-8；小美、小A 第 1 組，小B、小芳 第 2 組。
  */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -52,7 +52,9 @@ function sample(): Flow {
 		{ memberId: 'm4', role: '上層' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
+	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', id, squad));
 	}
@@ -250,7 +252,7 @@ describe('成功率表', () => {
 			{ memberId: 'm1', role: '騰翻' }
 		];
 		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members }));
-		flow = flowOf(enableSuccessRate(flow, 'x2'));
+		flow = flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
 		const tumbling = () => flow.actions.find((a) => a.id === 'x2')!;
 		const phase = tumbling().successRate!.phases[0].id;
 		const mark = (who: string, m: Mark): NewAttempt => ({ date: '2026-11-04', who, practice: 'drill', whole: true, marks: { [phase]: m } });

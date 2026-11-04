@@ -11,7 +11,7 @@ import {
 	deleteLastAttempt,
 	deleteMember,
 	disableSuccessRate,
-	enableSuccessRate,
+	markPhaseBeats,
 	readFlowFile,
 	recordableActions,
 	recordAttempt,
@@ -34,8 +34,8 @@ function flowOf(r: CommandResult): Flow {
 
 /**
  * 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。
- * x1：Lib（技巧，第 1 個八拍），記成功率（p1 上法、p2 中段、p3 下法）；小美、小A 第 1 組，小B、小芳 第 2 組。
- * x2：騰翻（第 3 個八拍），記成功率（p4 整體「騰翻」）；小美、小A 在裡面。
+ * x1：Lib（技巧，第 1 個八拍），環節 p1 上法 1-1 到 1-2、p2 中段 1-3 到 1-6、p3 下法 1-7 到 1-8；小美、小A 第 1 組，小B、小芳 第 2 組。
+ * x2：騰翻（第 3 個八拍），環節 p4 整體「騰翻」整個動作；小美、小A 在裡面。
  */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -56,7 +56,9 @@ function sample(): Flow {
 		{ memberId: 'm4', role: '上層' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
+	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', id, squad));
 	}
@@ -74,7 +76,7 @@ function sample(): Flow {
 			]
 		})
 	);
-	return flowOf(enableSuccessRate(flow, 'x2'));
+	return flowOf(markPhaseBeats(flow, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
 }
 
 const recordsOf = (flow: Flow, id = 'x1') => flow.actions.find((a) => a.id === id)!.successRate!.records;
@@ -211,7 +213,8 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 
 	it('換上的流程有、現在沒有的紀錄不會回來', () => {
 		const current = recorded();
-		const cleared = flowOf(enableSuccessRate(flowOf(disableSuccessRate(current, 'x2', { confirmed: true })), 'x2'));
+		const off = flowOf(disableSuccessRate(current, 'x2', { confirmed: true }));
+		const cleared = flowOf(markPhaseBeats(off, 'x2', { kind: 'whole', name: '騰翻' }, 0, 16));
 		const carried = carryRecords(current, cleared);
 		expect(recordsOf(carried, 'x2')).toEqual([]);
 	});
@@ -235,10 +238,10 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 			note: '',
 			members: [{ memberId, role: null }]
 		});
-		let older = flowOf(enableSuccessRate(flowOf(addAction(sample(), toss('m3'))), 'x3'));
+		let older = flowOf(markPhaseBeats(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'whole', name: '拋投' }, 0, 8));
 		older = flowOf(setSquad(older, 'x3', 'm3', 1));
 		let current = flowOf(deleteAction(older, 'x3'));
-		current = flowOf(enableSuccessRate(flowOf(addAction(current, toss('m4'))), 'x3'));
+		current = flowOf(markPhaseBeats(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投' }, 0, 8));
 		current = flowOf(setSquad(current, 'x3', 'm4', 1));
 		const phase = current.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id;
 		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' })));
@@ -318,8 +321,8 @@ describe('記錄頁要的清單', () => {
 					members: [{ memberId, role: null }]
 				})
 			);
-		flow = flowOf(enableSuccessRate(add('toss', 16, 'm1'), 'x3')); // 拋投：整體「拋投」
-		flow = flowOf(enableSuccessRate(add('jump', 20, 'm2'), 'x4')); // 跳躍：沒有環節
+		flow = flowOf(markPhaseBeats(add('toss', 16, 'm1'), 'x3', { kind: 'whole', name: '拋投' }, 0, 4));
+		flow = add('jump', 20, 'm2'); // 跳躍：沒有環節
 		flow = add('dance', 24, 'm3'); // 沒打開
 		expect(recordableActions(flow).map((a) => a.id)).toEqual(['x1', 'x3', 'x2']);
 	});
