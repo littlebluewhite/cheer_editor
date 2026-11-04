@@ -7,7 +7,6 @@ import {
 	clearPhaseBeats,
 	attemptWhos,
 	markPhaseBeats,
-	newActionMember,
 	phaseColor,
 	setSquad,
 	squadName,
@@ -177,10 +176,10 @@ describe('組跟著改動作', () => {
 	const squads = (flow: Flow, id: string) => actionOf(flow, id).members.map((m) => m.squad);
 
 	describe('加人：動作只有一組就進第 1 組，好幾組就先沒有組', () => {
-		/** x2 加小A 進來（「＋加人…」）。 */
+		/** x2 加小A 進來，沒帶組（「＋加人…」只送人，組由核心決定）。 */
 		const addOne = (flow: Flow) => {
-			const x2 = actionOf(flow, 'x2');
-			return flowOf(updateAction(flow, 'x2', { members: [...x2.members, newActionMember(x2, 'm2')] }));
+			const members = [...actionOf(flow, 'x2').members, { memberId: 'm2', role: null }];
+			return flowOf(updateAction(flow, 'x2', { members }));
 		};
 
 		it('只有一組：新的人在第 1 組', () => {
@@ -195,8 +194,9 @@ describe('組跟著改動作', () => {
 		});
 
 		it('沒有環節、騰翻跳躍：新的人沒有組', () => {
-			expect(newActionMember(actionOf(twoActions('stunt', false), 'x2'), 'm2')).toEqual({ memberId: 'm2', role: null });
-			expect(newActionMember(actionOf(twoActions('jump', true), 'x2'), 'm2')).toEqual({ memberId: 'm2', role: null });
+			expect(squads(addOne(twoActions('stunt', false)), 'x2')).toEqual([undefined, undefined]);
+			expect(squads(addOne(twoActions('jump', true)), 'x2')).toEqual([undefined, undefined]);
+
 		});
 	});
 
