@@ -15,7 +15,7 @@
 	// 選人：點人（Shift＋點或開著 multi 時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
-	// children 疊在場地上（置中的提示、確認框）；below 是場地下面另外一排（分組浮動列），不蓋到場地。
+	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
 		fieldPositionText,
@@ -434,8 +434,8 @@
 	</svg>
 	{#if readout}<div class="readout">{readout}</div>{/if}
 	{@render children?.()}
+	<div class="below">{@render below?.()}</div>
 	</div>
-	{@render below?.()}
 </div>
 
 <style>
@@ -447,12 +447,7 @@
 	.field-wrap.with-rail {
 		display: grid;
 		grid-template-columns: 236px minmax(0, 1fr);
-		/* 第二排是 below（分組浮動列）：沒東西時高度 0，場地照舊佔滿。 */
-		grid-template-rows: minmax(0, 1fr) auto;
 		gap: 0 12px;
-	}
-	.with-rail > .rail {
-		grid-row: 1 / -1;
 	}
 	.stage {
 		position: relative;
@@ -707,6 +702,19 @@
 		background: #fff;
 		border: 2px solid #ffd400;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+	}
+	/* 「正面／裁判」那一排在畫面最下面（見 fullView）：浮動列貼著它置中。 */
+	.below {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 4px;
+		display: flex;
+		justify-content: center;
+		pointer-events: none;
+	}
+	.below > :global(*) {
+		pointer-events: auto;
 	}
 	.readout {
 		position: absolute;

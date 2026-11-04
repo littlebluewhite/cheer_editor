@@ -114,13 +114,11 @@
 <style>
 	.squad-bar {
 		position: relative;
-		justify-self: center;
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
 		align-items: center;
 		gap: 6px;
-		margin-top: 6px;
 		padding: 4px 10px;
 		background: var(--surface, #fff);
 		border: 1px solid var(--line);
