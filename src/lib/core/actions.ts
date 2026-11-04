@@ -11,7 +11,7 @@ import {
 	askRecords,
 	compactSquads,
 	fitRecords,
-	perPerson,
+	groupsPeople,
 	replacePhases,
 	settleRecords,
 	successRateProblem,
@@ -76,7 +76,7 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
  * 對不上的紀錄也拿掉（組沒人了、人移出動作、大類換成騰翻或換掉騰翻）。
  */
 function normalize({ color, ...action }: Action): Action {
-	const grouped = !!action.successRate && !perPerson(action.category);
+	const grouped = groupsPeople(action);
 	return fitRecords({
 		...action,
 		...(color ? { color } : {}),

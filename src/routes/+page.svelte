@@ -9,6 +9,7 @@
 		formationAt,
 		formationTimes,
 		formationWalks,
+		groupsPeople,
 		matchPrevious,
 		memberMarkers,
 		moveFormation,
@@ -19,7 +20,6 @@
 		playbackPlan,
 		playStartSec,
 		NO_SQUAD_COLOR,
-		perPerson,
 		positionText,
 		positionsAt,
 		raisedAt,
@@ -175,7 +175,7 @@
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived.by(() => {
 		const a = flow && selectedActionId ? flow.actions.find((x) => x.id === selectedActionId) : undefined;
-		return a?.successRate?.phases.length && !perPerson(a.category) ? a : null;
+		return a && groupsPeople(a) ? a : null;
 	});
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
 	const squadBadges = $derived(

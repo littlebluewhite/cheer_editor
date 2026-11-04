@@ -115,6 +115,11 @@ export function perPerson(category: ActionCategory): boolean {
 	return PER_PERSON.has(category);
 }
 
+/** 這個動作要分組：有環節，而且不是騰翻、跳躍。 */
+export function groupsPeople(action: Action): boolean {
+	return !!action.successRate?.phases.length && !perPerson(action.category);
+}
+
 /** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。 */
 export function firstSquad(action: Action): Action {
 	return perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
