@@ -52,7 +52,7 @@ function sample(): Flow {
 		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
 	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', id, squad));
+		flow = flowOf(setSquad(flow, 'x1', [id], squad));
 	}
 	return flow;
 }

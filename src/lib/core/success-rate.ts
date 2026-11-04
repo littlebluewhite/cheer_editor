@@ -1,7 +1,14 @@
 // 成功率：動作有環節（上法、中段…）就記成功率，動作裡的人分組。
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad）。
 
-import { ACTION_CATEGORIES, actionLabel, replaceAction, type Action, type ActionCategory } from './actions';
+import {
+	ACTION_CATEGORIES,
+	actionLabel,
+	replaceAction,
+	type Action,
+	type ActionCategory,
+	type ActionMember
+} from './actions';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
@@ -131,22 +138,23 @@ export function markedCount(action: Action, phases: Phase[]): number {
 }
 
 /**
- * 設組：給動作裡一個隊員第幾組（1 起）；null 是沒分組。
+ * 設組：給動作裡的隊員（可以一次好幾個）第幾組（1 起）；null 是沒分組。一次給好幾個人也是一個指令（復原一步）。
+ * 做完組號補成 1、2、3 不跳號（見 compactSquads）。
  * 有紀錄的組換了人，先問保留舊紀錄還是清掉重算；組裡的人都換走了，只問會清掉幾次（見 settleRecords）。
  */
 export function setSquad(
 	flow: Flow,
 	actionId: string,
-	memberId: string,
+	memberIds: string[],
 	squad: number | null,
 	options: ConfirmOption = {}
 ): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
 	const segment = action && flow.segments.find((s) => s.id === action.segmentId);
 	if (!action || !segment) return blocked('找不到這個動作');
-	if (!action.members.some((m) => m.memberId === memberId)) return blocked('這個隊員不在動作裡');
+	if (memberIds.some((id) => !action.members.some((m) => m.memberId === id))) return blocked('這個隊員不在動作裡');
 	const members = action.members.map((m) => {
-		if (m.memberId !== memberId) return m;
+		if (!memberIds.includes(m.memberId)) return m;
 		const { squad: _, ...rest } = m;
 		return squad === null ? rest : { ...rest, squad };
 	});
@@ -154,7 +162,27 @@ export function setSquad(
 	const problem = successRateProblem(segment, settled.action);
 	if (problem) return blocked(problem);
 	if (settled.ask && !answered(options)) return askRecords(`動作「${actionLabel(action)}」`, settled.ask);
-	return ok(replaceAction(flow, settled.action));
+	return ok(replaceAction(flow, compactSquads(settled.action)));
+}
+
+/**
+ * 組號補成 1、2、3 不跳號：空掉的組拿掉，後面的組照原來的先後往前補；那一組的紀錄跟著換成新的號碼。
+ * 先拿掉對不上的紀錄（fitRecords）、問完紀錄（settleRecords，照舊的號碼比）再補號。沒得補就回傳原來的動作。
+ */
+export function compactSquads(action: Action): Action {
+	const used = [...new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])))];
+	const renumber = new Map(used.sort((a, b) => a - b).map((n, i) => [n, i + 1]));
+	if ([...renumber].every(([from, to]) => from === to)) return action;
+	const members = action.members.map((m) => (m.squad === undefined ? m : { ...m, squad: renumber.get(m.squad)! }));
+	const rate = action.successRate;
+	const records = rate?.records.map((r) => (typeof r.who === 'number' ? { ...r, who: renumber.get(r.who) ?? r.who } : r));
+	return { ...action, members, ...(rate && { successRate: { ...rate, records: records! } }) };
+}
+
+/** 動作後來加進來的人（「＋加人…」）：有環節的分組動作只有一組，就進第 1 組；有好幾組（或還沒分組）就先沒有組。 */
+export function newActionMember(action: Action, memberId: string): ActionMember {
+	const squads = new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])));
+	return squads.size === 1 ? { memberId, role: null, squad: 1 } : { memberId, role: null };
 }
 
 /** 改動作會動到紀錄時要問教練的事。message 前面還要接「動作「…」」；choose 是有得選保留或清掉。 */

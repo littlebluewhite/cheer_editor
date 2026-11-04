@@ -463,8 +463,17 @@ describe('動作表單：成功率', () => {
 		expect(screen.queryByRole('combobox', { name: '小A 的組' })).toBeNull();
 	});
 
+	it('「＋加人…」：動作只有一組，新的人進第 1 組', async () => {
+		const onchange = live(rated(withLib(), 'x2'), 'x2');
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
+			{ memberId: 'm1', role: '上層', squad: 1 },
+			{ memberId: 'm2', role: null, squad: 1 }
+		]);
+	});
+
 	it('「從別的動作複製人（連任務角色和組）」連組一起帶', async () => {
-		let flow = flowOf(setSquad(rated(withLib()), 'x1', 'm2', 2));
+		let flow = flowOf(setSquad(rated(withLib()), 'x1', ['m2'], 2));
 		flow = rated(flow, 'x2');
 		const onchange = live(flow, 'x2');
 		const copy = screen.getByLabelText('從別的動作複製人') as HTMLSelectElement;
