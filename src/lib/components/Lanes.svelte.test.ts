@@ -2,15 +2,14 @@ import {
 	addAction,
 	addMembers,
 	addSegment,
+	clearPhaseBeats,
 	createFlow,
-	enableSuccessRate,
 	insertFormation,
 	markPhaseBeats,
 	placeCue,
 	setMarkers,
 	setPositions,
 	setWalks,
-	updatePhase,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -602,14 +601,14 @@ describe('色條上的拍點', () => {
 
 describe('色條上的環節', () => {
 	/**
-	 * Lib（0–3.2 秒 = 0–32 px，一個半拍 2 px）記成功率：上法「延伸」1-1 到 1-3、中段 1-4 到 1-6、下法沒標拍。
-	 * withCues 時再放 1-1 到 1-2 的 down。
+	 * Lib（0–3.2 秒 = 0–32 px，一個半拍 2 px）的環節：上法「延伸」1-1 到 1-3、中段 1-4 到 1-6、
+	 * 下法（標了 1-7 到 1-8 再清掉，沒標拍）。withCues 時再放 1-1 到 1-2 的 down。
 	 */
 	function phased(withCues = false): Flow {
-		let flow = flowOf(enableSuccessRate(sample(), 'x1'));
-		flow = flowOf(updatePhase(flow, 'x1', 'p1', { name: '延伸' }));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 6));
-		flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 6, 6));
+		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '延伸' }, 0, 6));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 6, 6));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 12, 4));
+		flow = flowOf(clearPhaseBeats(flow, 'x1', 12, 16));
 		return withCues ? flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down' })) : flow;
 	}
 

@@ -7,7 +7,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	enableSuccessRate,
+	markPhaseBeats,
 	readFlowFile,
 	recordAttempt,
 	setSquad,
@@ -46,7 +46,7 @@ function flowOf(r: CommandResult): Flow {
 	return r.flow;
 }
 
-/** Lib（技巧）記成功率：小美、小A 第 1 組（記了 2 次），小芳、小B 第 2 組（記了 1 次）。 */
+/** Lib（技巧）的環節上法 1-1 到 1-2、中段 1-3 到 1-6、下法 1-7 到 1-8：小美、小A 第 1 組（記了 2 次），小芳、小B 第 2 組（記了 1 次）。 */
 function recordedFlow(): Flow {
 	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
 	flow = flowOf(
@@ -65,7 +65,9 @@ function recordedFlow(): Flow {
 		{ memberId: 'm4', role: '主底' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	flow = flowOf(enableSuccessRate(flow, 'x1'));
+	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
+	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
 		flow = flowOf(setSquad(flow, 'x1', id, squad));
 	}

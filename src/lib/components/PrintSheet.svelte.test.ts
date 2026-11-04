@@ -2,15 +2,14 @@ import {
 	addAction,
 	addMembers,
 	addSegment,
+	clearPhaseBeats,
 	createFlow,
-	enableSuccessRate,
 	insertFormation,
 	markPhaseBeats,
 	resizeAction,
 	placeCue,
 	setMarkers,
 	setPositions,
-	updatePhase,
 	type CommandResult,
 	type Flow
 } from '#lib/core';
@@ -187,13 +186,13 @@ describe('八拍表列印', () => {
 	});
 
 	describe('環節', () => {
-		/** Lib 拉長到 2-2、記成功率：上法「延伸」1-1 到 1-3、中段 1-4 到 2-2（跨列）、下法沒標拍；1-6 到 1-7 down。 */
+		/** Lib 拉長到 2-2，環節：下法（標了 1-1 再清掉，沒標拍）、上法「延伸」1-1 到 1-3、中段 1-4 到 2-2（跨列）；1-6 到 1-7 down。 */
 		function phased(): Flow {
 			let flow = flowOf(resizeAction(sample(), 'x1', 4));
-			flow = flowOf(enableSuccessRate(flow, 'x1'));
-			flow = flowOf(updatePhase(flow, 'x1', 'p1', { name: '延伸' }));
-			flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p1' }, 0, 6));
-			flow = flowOf(markPhaseBeats(flow, 'x1', { phaseId: 'p2' }, 6, 14));
+			flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 0, 2));
+			flow = flowOf(clearPhaseBeats(flow, 'x1', 0, 2));
+			flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '延伸' }, 0, 6));
+			flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 6, 14));
 			return flowOf(placeCue(flow, 'x1', { kind: 'count', at: 10, len: 4, word: 'down' }));
 		}
 		const lines = () => screen.getAllByRole('group', { name: '技巧·Lib 的拍點' });
