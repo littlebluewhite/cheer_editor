@@ -11,12 +11,12 @@
 		phaseLabel,
 		recordAttempt,
 		type Action,
-		type Flow,
 		type Mark
 	} from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { Ask } from './ask.svelte.js';
 
 	interface Props {
-		flow: Flow;
 		/** 有記成功率、至少一個環節的動作。 */
 		action: Action;
 		/** 第幾組；騰翻、跳躍的動作是隊員 id。 */
@@ -25,11 +25,14 @@
 		name: string;
 		/** 記在哪一天（YYYY-MM-DD）。 */
 		date: string;
-		/** 紀錄改了（記一次、刪掉上一次）：不算復原的一步。 */
-		onrecord: (flow: Flow) => void;
 	}
 
-	let { flow, action, who, name, date, onrecord }: Props = $props();
+	let { action, who, name, date }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
+	/** 記一次、刪掉上一次：紀錄改了交給 session 的「記」（不算復原的一步）。 */
+	const ask = new Ask((f) => session.record(f));
 
 	/** 這次練：整個（true）或只練幾個環節（false）。換下一次也留著。 */
 	let whole = $state(true);
@@ -37,7 +40,6 @@
 	let picked = $state<string[]>([]);
 	/** 這一次已經點的記號（還沒存）。 */
 	let marks = $state<Record<string, Mark>>({});
-	let error = $state('');
 
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 這一次要練的環節，照順序。 */
@@ -65,17 +67,11 @@
 			return;
 		}
 		marks = {};
-		const r = recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next });
-		if (r.kind !== 'ok') return void (error = r.message);
-		error = '';
-		onrecord(r.flow);
+		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }));
 	}
 
 	function removeLast() {
-		const r = deleteLastAttempt(flow, action.id, who, date);
-		if (r.kind !== 'ok') return void (error = r.message);
-		error = '';
-		onrecord(r.flow);
+		ask.send(() => deleteLastAttempt(flow, action.id, who, date));
 	}
 </script>
 
@@ -119,7 +115,7 @@
 		{/each}
 	</div>
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 
 	<footer>
 		{#if today.length}
