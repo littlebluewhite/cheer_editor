@@ -75,8 +75,10 @@ export {
 	carryRecords,
 	deleteLastAttempt,
 	recordableActions,
-	recordAttempt
+	recordAttempt,
+	recordRunThrough
 } from './records';
+export type { RunThroughMarks } from './records';
 
 export { addPhase, deletePhase, movePhase, updatePhase } from './phases';
 export { ACTION_COLORS, PHASE_COLORS } from './colors';

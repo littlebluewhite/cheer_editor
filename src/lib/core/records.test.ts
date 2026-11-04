@@ -15,6 +15,8 @@ import {
 	readFlowFile,
 	recordableActions,
 	recordAttempt,
+	recordRunThrough,
+	rateTable,
 	setSquad,
 	updateAction,
 	updateSegment,
@@ -389,5 +391,68 @@ describe('記一次：擋下來的情況', () => {
 			kind: 'blocked',
 			message: '這個動作沒有記成功率'
 		});
+	});
+});
+
+describe('記一次全上', () => {
+	const date = '2026-11-04';
+	/** Lib 第 1 組全 ✓、第 2 組下法 ✗；騰翻小美 ✓、小A ✗。 */
+	const sheet = () => [
+		{ actionId: 'x1', who: 1, marks: { p1: '✓', p2: '✓', p3: '✓' } as const },
+		{ actionId: 'x1', who: 2, marks: { p1: '✓', p2: '△', p3: '✗' } as const },
+		{ actionId: 'x2', who: 'm1', marks: { p4: '✓' } as const },
+		{ actionId: 'x2', who: 'm2', marks: { p4: '✗' } as const }
+	];
+
+	it('一次存成很多次：都標成全上、帶同一個全上 id、整個做，日期是給的那天', () => {
+		const r = recordRunThrough(sample(), date, sheet());
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.runThroughId).toBe('r1');
+		const all = [...recordsOf(r.flow), ...recordsOf(r.flow, 'x2')];
+		expect(all.map((a) => [a.who, a.marks])).toEqual(sheet().map((e) => [e.who, e.marks]));
+		for (const a of all) {
+			expect(a).toMatchObject({ date, practice: 'runThrough', runThroughId: 'r1', whole: true });
+		}
+		expect(new Set(all.map((a) => a.id)).size).toBe(4);
+	});
+
+	it('第二次全上帶新的全上 id；刪掉了也不重用', () => {
+		let flow = flowOf(recordRunThrough(sample(), date, sheet().slice(0, 1)));
+		flow = flowOf(deleteLastAttempt(flow, 'x1', 1, date));
+		const r = recordRunThrough(flow, date, sheet().slice(0, 1));
+		expect(r.kind === 'ok' && r.runThroughId).toBe('r2');
+	});
+
+	it('沒做的動作（沒給）沒有紀錄', () => {
+		const flow = flowOf(recordRunThrough(sample(), date, sheet().slice(0, 2)));
+		expect(recordsOf(flow)).toHaveLength(2);
+		expect(recordsOf(flow, 'x2')).toEqual([]);
+	});
+
+	it('每個動作都沒做：擋下來，什麼都不存', () => {
+		expect(recordRunThrough(sample(), date, [])).toMatchObject({ kind: 'blocked' });
+	});
+
+	it('有一次不守記一次的規則：擋下來寫出是哪個動作，一次都不存', () => {
+		const bad = [...sheet().slice(0, 1), { actionId: 'x2', who: 'm3', marks: { p4: '✓' } as const }];
+		expect(recordRunThrough(sample(), date, bad)).toEqual({ kind: 'blocked', message: '騰翻：這個隊員不在動作裡' });
+		expect(recordRunThrough(sample(), '11/4', sheet())).toMatchObject({ kind: 'blocked' });
+		expect(recordRunThrough(sample(), date, [{ actionId: 'x9', who: 1, marks: { p1: '✓' } }])).toMatchObject({
+			kind: 'blocked'
+		});
+	});
+
+	it('算進整次成功率；練法篩選分得開全上和分段練', () => {
+		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' }, { who: 2 })));
+		flow = flowOf(recordRunThrough(flow, date, sheet()));
+		const lib = flow.actions[0];
+		const squad2 = (practice?: 'drill' | 'runThrough') =>
+			rateTable(flow, lib, { practice }).columns.find((c) => c.who === 2)!;
+		expect(squad2().whole).toEqual({ whole: 2, clean: 1 });
+		expect(squad2('runThrough').whole).toEqual({ whole: 1, clean: 0 });
+		expect(squad2('runThrough').phases.p3).toMatchObject({ fail: 1, marked: 1 });
+		expect(squad2('drill').whole).toEqual({ whole: 1, clean: 1 });
+		expect(squad2('drill').phases.p3).toMatchObject({ fail: 0, marked: 1 });
 	});
 });
