@@ -440,6 +440,7 @@ describe('流程檔：版本', () => {
 	it.each([
 		['記成功率卻一個環節都沒有', v7((f) => (f.actions[0].successRate = { phases: [], records: [] }))],
 		['音樂段的環節沒標拍', v7((_, sr) => delete sr.phases[1].beats)],
+		['音樂段的環節沒照拍的先後排', v7((_, sr) => sr.phases.reverse())],
 		['口號段的環節有拍', v7((f) => (f.actions[0].segmentId = 's2'))],
 		['組號跳號', v7((f, sr) => {
 			f.actions[0].members[1].squad = 3;

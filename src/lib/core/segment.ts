@@ -5,7 +5,7 @@
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { nextId } from './ids';
-import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { atText, segmentSpans, units } from './time';
 
 export interface MusicSegment {
@@ -110,7 +110,7 @@ export function updateSegment(
 	flow: Flow,
 	segmentId: string,
 	patch: SegmentPatch,
-	{ confirmed = false }: ConfirmOption = {}
+	options: ConfirmOption = {}
 ): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
 	if (index === -1) return blocked('找不到這一段');
@@ -153,7 +153,7 @@ export function updateSegment(
 	const formations = flow.formations.filter((f) => f.segmentId !== segmentId || f.at < end);
 	const droppedActions = flow.actions.filter((a) => !actions.includes(a));
 	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
-	if (!confirmed && (droppedActions.length || droppedFormations.length)) {
+	if (!answered(options) && (droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
 		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
 		const cleared = records ? `，會一起清掉 ${records} 次紀錄` : '';

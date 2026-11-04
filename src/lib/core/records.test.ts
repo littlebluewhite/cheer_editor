@@ -278,6 +278,15 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		expect(recordsOf(carryRecords(before, after))).toEqual([]);
 	});
 
+	it('組裡的人變了再復原：紀錄還是留在那一組，不問', () => {
+		const before = flowOf(setSquad(sample(), 'x1', ['m1'], null));
+		let after = flowOf(setSquad(before, 'x1', ['m1'], 2));
+		after = flowOf(recordAttempt(after, 'x1', drill({ p1: '✓' }, { who: 2 })));
+		const t = recordsOf(after)[0].id;
+
+		expect(recordsOf(carryRecords(before, after)).map((r) => [r.id, r.who])).toEqual([[t, 2]]);
+	});
+
 	it('沒有紀錄要帶：換上的流程原封不動', () => {
 		const older = flowOf(updateAction(sample(), 'x1', { name: '舊的名字' }));
 		const current = flowOf(updateAction(older, 'x1', { name: '新的名字' }));
