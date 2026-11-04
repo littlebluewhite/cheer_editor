@@ -77,7 +77,7 @@ const toggle = () => screen.getByRole('checkbox', { name: '記成功率' }) as H
 const phases = () =>
 	within(screen.getByRole('list', { name: '環節' }))
 		.getAllByRole('listitem')
-		.map((li) => li.textContent?.trim());
+		.map((li) => li.getAttribute('aria-label'));
 const squadOf = (who: string) => screen.getByRole('combobox', { name: `${who} 的組` }) as HTMLSelectElement;
 
 describe('記成功率的開關和組', () => {

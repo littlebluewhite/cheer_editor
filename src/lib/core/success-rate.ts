@@ -6,6 +6,7 @@ import type { Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
 import { freshIds } from './ids';
+import { PHASE_COLORS } from './colors';
 import { blocked, ok, type CommandResult } from './result';
 
 /** 環節的種類：上法、中段、轉接、下法、整體。流程檔存英文代號。 */
@@ -178,6 +179,9 @@ export function successRateProblem(segment: Segment, action: Action): string | n
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
 	for (const p of phases) {
 		if (!PHASE_KINDS.some((k) => k.key === p.kind)) return '沒有這種環節';
+		if (p.color !== undefined && !PHASE_COLORS.some((c) => c.value === p.color)) {
+			return '環節的顏色只能挑辨識色或石板灰';
+		}
 		const problem = p.beats ? beatsProblem(segment, action, p.beats) : null;
 		if (problem) return problem;
 	}
