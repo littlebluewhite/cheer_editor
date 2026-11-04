@@ -1,4 +1,4 @@
-// 動作：一組隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
+// 動作：一群隊員在一個段裡一起做的一件事。時間存段 ＋ 段內整數時間
 // （音樂段是第幾個半拍，口號段是第幾個 0.1 秒），不存全域秒數。
 
 import { cueFallout, cueProblem, type Cue } from './cues';
@@ -6,6 +6,7 @@ import { memberName, type Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import type { Segment } from './segment';
+import { perPerson, successRateProblem, type SuccessRate } from './success-rate';
 import { nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
@@ -26,6 +27,8 @@ export interface ActionMember {
 	memberId: string;
 	/** 任務角色的名稱（固定或自訂）；沒掛是 null。 */
 	role: string | null;
+	/** 第幾組（1 起）；沒有就是沒分組（舊流程檔沒有這個欄位）。 */
+	squad?: number;
 }
 
 export interface Action {
@@ -43,6 +46,8 @@ export interface Action {
 	color?: string;
 	/** 這個動作的拍點；沒有就是空的（舊流程檔沒有這個欄位）。 */
 	cues?: Cue[];
+	/** 記成功率的設定；沒有就是沒打開（舊流程檔沒有這個欄位）。 */
+	successRate?: SuccessRate;
 }
 
 export type NewActionInput = Omit<Action, 'id'>;
@@ -55,13 +60,17 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, action] }, id: action.id };
 }
 
-/** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。 */
+/**
+ * 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。
+ * 沒打開記成功率、或騰翻跳躍（不分組）的動作，人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。
+ */
 function normalize({ color, ...action }: Action): Action {
+	const grouped = !!action.successRate && !perPerson(action.category);
 	return {
 		...action,
 		...(color ? { color } : {}),
 		name: action.name.trim(),
-		members: action.members.map((m) => ({ ...m }))
+		members: action.members.map(({ squad, ...m }) => (grouped && squad !== undefined ? { ...m, squad } : m))
 	};
 }
 
@@ -162,6 +171,8 @@ function check(flow: Flow, action: Action): string | null {
 		const problem = cueProblem(segment, action, cue);
 		if (problem) return problem;
 	}
+	const successRate = successRateProblem(segment, action);
+	if (successRate) return successRate;
 	const roles = roleGlossary(flow).map((r) => r.name);
 	const seen = new Set<string>();
 	for (const { memberId, role } of action.members) {

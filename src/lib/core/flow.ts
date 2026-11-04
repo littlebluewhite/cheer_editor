@@ -28,6 +28,8 @@ export interface Flow {
 	actions: Action[];
 	/** 隊員的標記用號碼還是開頭字；沒有就是號碼。 */
 	markers?: MarkerStyle;
+	/** 刪了也不重用的 id 已經發到第幾號，key 是 id 的字母（p：環節）；沒有就是還沒發過。 */
+	lastIds?: Record<string, number>;
 }
 
 export interface NewFlowInput {
