@@ -10,6 +10,7 @@
 	// 拍子那條上面一直有一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
 	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
 	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
+	// 選的拍剛好是一個環節的拍（例：點環節的色條）時，環節列多出改它名字、種類、顏色的地方。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import ConfirmList from './ConfirmList.svelte';
@@ -21,6 +22,7 @@
 		HALF_BEATS_PER_BEAT as BEAT,
 		HALF_BEATS_PER_EIGHT as EIGHT,
 		MOTION_WORDS,
+		PHASE_COLORS,
 		PHASE_KINDS,
 		phaseLabel,
 		STEP_WORDS,
@@ -33,6 +35,7 @@
 		phaseColor,
 		placeCue,
 		sameWho,
+		updatePhase,
 		usedWords,
 		whoName,
 		type Action,
@@ -42,6 +45,7 @@
 		type CueKind,
 		type Flow,
 		type Phase,
+		type PhaseChange,
 		type PhaseKind,
 		type Who
 	} from '#lib/core';
@@ -131,6 +135,8 @@
 	const lastCell = $derived(firstCell + (Math.floor((action.length - firstCell) / BEAT) - 1) * BEAT);
 	const isSel = (at: number) => at >= sel.from && at <= sel.to;
 	const selLen = $derived(sel.to - sel.from + BEAT);
+	/** 選的拍剛好是它的拍的環節（可以改它）；不是就 null。 */
+	const editing = $derived(phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen) ?? null);
 
 	// 只在值變了才通知（action 每次改流程都是新物件）。
 	const actionId = $derived(action.id);
@@ -307,6 +313,11 @@
 	function clearPhases() {
 		const { from, to } = sel;
 		sendPhases((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
+	}
+
+	/** 改環節的名字、種類、顏色。 */
+	function editPhase(id: string, change: PhaseChange) {
+		apply(updatePhase(flow, action.id, id, change));
 	}
 
 	function clear(kind: CueKind) {
@@ -668,6 +679,38 @@
 							aria-label="清掉環節"
 							onclick={clearPhases}>清掉</button
 						>
+						{#if editing}
+							{@const p = editing}
+							<div class="edit" role="group" aria-label="改環節">
+								<span class="hint">改 {phaseLabel(p)}</span>
+								<!-- 色塊就是換色的選單：選單疊在色塊上、看不見，點色塊就跳出顏色 -->
+								<span class="chip" style:--c={phaseColor(p)} title="換顏色">
+									<select
+										aria-label="這個環節的顏色"
+										value={p.color ?? ''}
+										onchange={(e) => editPhase(p.id, { color: e.currentTarget.value || null })}
+									>
+										<option value="">照種類</option>
+										{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
+									</select>
+								</span>
+								<select
+									class="kind"
+									aria-label="這個環節的種類"
+									value={p.kind}
+									onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
+								>
+									{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
+								</select>
+								<input
+									class="custom"
+									aria-label="這個環節的名字"
+									placeholder="名字（可空）"
+									value={p.name}
+									onchange={(e) => editPhase(p.id, { name: e.currentTarget.value })}
+								/>
+							</div>
+						{/if}
 					</div>
 					{#if pending}
 						<ConfirmList
@@ -928,6 +971,36 @@
 	.kind {
 		min-height: 26px;
 		font-size: 12px;
+	}
+	/* 改環節：在環節列下面另起一行，跟按鈕那一欄對齊。 */
+	.edit {
+		grid-column: 2 / -1;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		align-items: center;
+	}
+	.chip {
+		position: relative;
+		width: 22px;
+		height: 22px;
+		border-radius: 5px;
+		background: var(--c);
+		cursor: pointer;
+	}
+	.chip select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.chip:has(select:focus-visible) {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: 2px;
 	}
 	.pop-row.motion .lbl {
 		color: var(--cue-motion-ink);

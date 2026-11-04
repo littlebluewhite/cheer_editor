@@ -4,7 +4,9 @@ import {
 	addSegment,
 	createFlow,
 	markPhaseBeats,
+	PHASE_COLORS,
 	updateAction,
+	updatePhase,
 	updateSegment,
 	type CommandResult,
 	type Flow
@@ -264,5 +266,77 @@ describe('環節那一列', () => {
 		await fireEvent.click(pop.getByRole('button', { name: '清掉環節' }));
 		const phases = onchange.mock.calls[0][0].actions[0].successRate.phases;
 		expect(phases.map((p: { id: string; beats?: object }) => [p.id, p.beats])).toEqual([['p2', { at: 3, len: 2 }]]);
+	});
+});
+
+describe('改環節', () => {
+	/** 3-3 到 3-4 上法「延伸」（紅色）、3-5 到 3-6 中段。 */
+	function phased() {
+		let flow = flowOf(markPhaseBeats(sample(), 'x1', { kind: 'load', name: '延伸' }, 0, 4));
+		flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: '#c62828' }));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 4, 4));
+		const onchange = vi.fn();
+		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const edit = () => within(grid.getByRole('dialog', { name: '拍點小窗' })).queryByRole('group', { name: '改環節' });
+		/** onchange 收到的第 n 個流程裡的環節。 */
+		const sent = (n = 0) => onchange.mock.calls[n][0].actions[0].successRate.phases;
+		return { grid, edit, sent };
+	}
+
+	it('點環節的色條：小窗看得到它現在的名字、種類、顏色', async () => {
+		const { grid, edit } = phased();
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法 延伸/ }));
+		const box = within(edit()!);
+		expect((box.getByRole('textbox', { name: '這個環節的名字' }) as HTMLInputElement).value).toBe('延伸');
+		expect((box.getByRole('combobox', { name: '這個環節的種類' }) as HTMLSelectElement).value).toBe('load');
+		expect((box.getByRole('combobox', { name: '這個環節的顏色' }) as HTMLSelectElement).value).toBe('#c62828');
+	});
+
+	it('改名字（頭尾空白去掉）', async () => {
+		const { grid, edit, sent } = phased();
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法 延伸/ }));
+		await fireEvent.change(within(edit()!).getByRole('textbox', { name: '這個環節的名字' }), {
+			target: { value: '  撐高 ' }
+		});
+		expect(sent()[0]).toEqual({ id: 'p1', kind: 'load', name: '撐高', color: '#c62828', beats: { at: 0, len: 4 } });
+	});
+
+	it('改種類', async () => {
+		const { grid, edit, sent } = phased();
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 中段/ }));
+		await fireEvent.change(within(edit()!).getByRole('combobox', { name: '這個環節的種類' }), {
+			target: { value: 'dismount' }
+		});
+		expect(sent()[1]).toEqual({ id: 'p2', kind: 'dismount', name: '', beats: { at: 4, len: 4 } });
+	});
+
+	it('顏色只能挑照種類、辨識色或石板灰；挑照種類就回到種類的顏色', async () => {
+		const { grid, edit, sent } = phased();
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 中段/ }));
+		const color = within(edit()!).getByRole('combobox', { name: '這個環節的顏色' }) as HTMLSelectElement;
+		expect([...color.options].map((o) => o.value)).toEqual(['', ...PHASE_COLORS.map((c) => c.value)]);
+		expect(color.value).toBe('');
+		await fireEvent.change(color, { target: { value: '#475569' } });
+		expect(sent()[1].color).toBe('#475569');
+
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法 延伸/ }));
+		await fireEvent.change(within(edit()!).getByRole('combobox', { name: '這個環節的顏色' }), {
+			target: { value: '' }
+		});
+		expect(sent(1)[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } });
+	});
+
+	it('選的拍不是剛好一個環節時，不出現改的地方', async () => {
+		const { grid, edit } = phased();
+		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
+		expect(edit()).toBeNull();
+		await fireEvent.click(grid.getByRole('button', { name: '3-6' }), { shiftKey: true });
+		expect(edit()).toBeNull();
+		await fireEvent.click(grid.getByRole('button', { name: '3-7' }));
+		expect(edit()).toBeNull();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.click(grid.getByRole('button', { name: '3-6' }), { shiftKey: true });
+		expect(edit()).not.toBeNull();
 	});
 });

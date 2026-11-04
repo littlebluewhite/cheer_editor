@@ -195,6 +195,42 @@ describe('拍點格子上標環節', () => {
 	});
 });
 
+describe('點環節的色條改它', () => {
+	/** 泳道上小美那條 Lib 的環節細條。 */
+	const lanePhases = () =>
+		[...document.querySelectorAll<HTMLElement>('[data-lane="m1"] [data-phase]')].map((el) => el.dataset.phase);
+
+	it('改名字、種類：拍點格子和泳道都跟著變；可以復原、重做', async () => {
+		await open();
+		await fireEvent.click(grid().getByRole('button', { name: '環節 中段 1-4 到 2-3' }));
+		await fireEvent.change(popPhase().getByRole('combobox', { name: '這個環節的種類' }), { target: { value: 'dismount' } });
+		await fireEvent.change(popPhase().getByRole('textbox', { name: '這個環節的名字' }), { target: { value: '轉身' } });
+		const renamed = ['環節 上法 延伸 1-1 到 1-3', '環節 下法 轉身 1-4 到 2-3', '環節 下法 搖籃 2-5 到 2-8'];
+		expect(gridPhases()).toEqual(renamed);
+		expect(lanePhases()).toEqual(['上法 延伸', '下法 轉身', '下法 搖籃']);
+		expect(popPhase().getByRole('button', { name: '把這幾拍標給 下法 轉身' })).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(gridPhases()).toEqual([ALL[0], '環節 下法 1-4 到 2-3', ALL[2]]);
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(gridPhases()).toEqual(ALL);
+		expect(lanePhases()).toEqual(['上法 延伸', '中段', '下法 搖籃']);
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		expect(gridPhases()).toEqual(renamed);
+	});
+
+	it('改顏色：格子和泳道換成那個顏色', async () => {
+		await open();
+		await fireEvent.click(grid().getByRole('button', { name: '環節 上法 延伸 1-1 到 1-3' }));
+		await fireEvent.change(popPhase().getByRole('combobox', { name: '這個環節的顏色' }), { target: { value: '#475569' } });
+		const bar = grid().getByRole('button', { name: '環節 上法 延伸 1-1 到 1-3' });
+		expect(bar.style.getPropertyValue('--c')).toBe('#475569');
+		const lane = document.querySelector<HTMLElement>('[data-lane="m1"] [data-phase="上法 延伸"]')!;
+		expect(lane.style.background).toBe('rgb(71, 85, 105)');
+	});
+});
+
 describe('沒記成功率的動作也能加環節', () => {
 	it('格子有環節那一列；選拍加入就開始記成功率，只有這個環節，全部的人第 1 組；存檔再開還在', async () => {
 		const saves = await open(plainFlow());
