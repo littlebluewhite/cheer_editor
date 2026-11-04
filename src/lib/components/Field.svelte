@@ -15,7 +15,7 @@
 	// 選人：點人（Shift＋點或開著 multi 時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
-	// children 疊在場地上（置中的提示、確認框）。
+	// children 疊在場地上（置中的提示、確認框）；below 是場地下面另外一排（分組浮動列），不蓋到場地。
 	import type { Snippet } from 'svelte';
 	import {
 		fieldPositionText,
@@ -55,7 +55,9 @@
 		walks = [],
 		railTop,
 		railBottom,
-		children
+		children,
+		below,
+		badges = {}
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -85,6 +87,10 @@
 		railBottom?: Snippet;
 		/** 疊在場地上的東西。 */
 		children?: Snippet;
+		/** 場地下面另外一排的東西（分組浮動列）：佔自己的位置，不蓋到場地。 */
+		below?: Snippet;
+		/** 點右上角的小圓（隊員 id → 字和顏色），分組時寫組號。 */
+		badges?: Record<string, { text: string; color: string }>;
 	} = $props();
 
 	const ZOOM_STEP = 1.25;
@@ -414,6 +420,12 @@
 				{#if sel}<circle class="ring" r="0.42" />{/if}
 				<circle class={m.globalRole} r="0.3" />
 				<text y={isLongMarker(mark) ? 0.08 : 0.11} class:long={isLongMarker(mark)}>{mark}</text>
+				{#if badges[m.id]}
+					<g class="badge" transform="translate(0.27,-0.27)">
+						<circle r="0.17" style:fill={badges[m.id].color} />
+						<text y="0.065">{badges[m.id].text}</text>
+					</g>
+				{/if}
 			</g>
 		{/each}
 		{#if lasso}
@@ -423,6 +435,7 @@
 	{#if readout}<div class="readout">{readout}</div>{/if}
 	{@render children?.()}
 	</div>
+	{@render below?.()}
 </div>
 
 <style>
@@ -434,7 +447,12 @@
 	.field-wrap.with-rail {
 		display: grid;
 		grid-template-columns: 236px minmax(0, 1fr);
-		gap: 12px;
+		/* 第二排是 below（分組浮動列）：沒東西時高度 0，場地照舊佔滿。 */
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: 0 12px;
+	}
+	.with-rail > .rail {
+		grid-row: 1 / -1;
 	}
 	.stage {
 		position: relative;
@@ -587,6 +605,14 @@
 	}
 	.dot text.long {
 		font-size: 0.2px;
+	}
+	.dot .badge circle {
+		stroke: #fff;
+		stroke-width: 0.03;
+	}
+	.dot .badge text {
+		font-size: 0.2px;
+		fill: #fff;
 	}
 	.dot circle.top + text {
 		fill: #fff;

@@ -5,7 +5,7 @@
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
-	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊選第幾組。
+	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	import { untrack } from 'svelte';
 	import {
 		ACTION_CATEGORIES,
@@ -24,7 +24,7 @@
 		positionText,
 		roleGlossary,
 		segmentSpans,
-		setSquad,
+		squadColor,
 		updateAction,
 		type Action,
 		type ActionCategory,
@@ -37,7 +37,6 @@
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
-	import { applyResult } from './form';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 	import RolePicker, { roleKey } from './RolePicker.svelte';
@@ -104,12 +103,8 @@
 			}))
 	);
 
-	/** 「第幾組」選單的組：1 到現在最大的組再多一組。動作沒有環節、或騰翻跳躍（不分組）是空的，不顯示選單。 */
-	const squadChoices = $derived.by(() => {
-		if (!action?.successRate || perPerson(action.category)) return [];
-		const max = Math.max(0, ...action.members.map((m) => m.squad ?? 0));
-		return Array.from({ length: max + 1 }, (_, i) => i + 1);
-	});
+	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
+	const grouped = $derived(!!action?.successRate && !perPerson(action.category));
 
 	let draft = $state<Draft>(blank());
 	let error = $state('');
@@ -298,17 +293,6 @@
 		changed();
 	}
 
-	/** 選單的值：空字串是沒分組。要問或被擋時，選單先回到原來的組。 */
-	function pickSquad(memberId: string, select: HTMLSelectElement) {
-		if (!action) return;
-		const id = action.id;
-		const squad = select.value ? Number(select.value) : null;
-		const send = (o: ConfirmOption = {}) => setSquad(flow, id, [memberId], squad, o);
-		const r = send();
-		if (r.kind !== 'ok') select.value = String(action.members.find((m) => m.memberId === memberId)?.squad ?? '');
-		if (!ask(r, send)) error = applyResult(r, onchange);
-	}
-
 	const nameOf = (id: string) => memberName(flow, id);
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
@@ -413,7 +397,7 @@
 				<button type="button" class="link" onclick={() => (glossaryOpen = true)}>名詞對照表</button>
 			</div>
 			{#if draft.members.length}
-				<ul class:grouped={squadChoices.length > 0}>
+				<ul class:grouped>
 					{#each draft.members as m, i (m.memberId)}
 						{@const who = memberOf(m.memberId)}
 						<li>
@@ -429,16 +413,9 @@
 								onpick={(role, byKey) => setRole(i, role, byKey)}
 								onnew={() => (glossaryOpen = true)}
 							/>
-							{#if squadChoices.length}
-								<select
-									class="squad"
-									aria-label="{nameOf(m.memberId)} 的組"
-									value={m.squad ?? ''}
-									onchange={(e) => pickSquad(m.memberId, e.currentTarget)}
-								>
-									<option value="">沒有</option>
-									{#each squadChoices as n (n)}<option value={n}>第 {n} 組</option>{/each}
-								</select>
+							{#if grouped}
+								{#if m.squad}<span class="squad-tag" style:--c={squadColor(m.squad)}>第 {m.squad} 組</span>
+								{:else}<span class="squad-tag none">沒分組</span>{/if}
 							{/if}
 							<button
 								type="button"
@@ -802,13 +779,24 @@
 		height: 26px;
 		color: var(--muted, #66718a);
 	}
-	/* 動作有環節時：任務角色和移出鈕中間多一個「第幾組」選單 */
+	/* 動作有環節時：任務角色和移出鈕中間多一個唯讀的「第 n 組」標籤 */
 	ul.grouped li {
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
 	}
-	.squad {
-		padding-inline: 4px;
+	.squad-tag {
 		font-size: 12px;
+		font-weight: 700;
+		color: #fff;
+		background: var(--c);
+		border-radius: 999px;
+		padding: 1px 8px;
+		white-space: nowrap;
+	}
+	.squad-tag.none {
+		color: var(--muted, #66718a);
+		background: none;
+		font-weight: 400;
+		padding-inline: 0;
 	}
 	.adders {
 		display: grid;
