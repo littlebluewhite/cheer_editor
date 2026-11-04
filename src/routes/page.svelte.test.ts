@@ -2,15 +2,11 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
-import { createFlow, renameFlow, type CommandResult, type Flow } from '#lib/core';
+import { createFlow, renameFlow } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { useFakeSvgCoordinates } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
 
 /** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
 const sessionFlow = () => flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));

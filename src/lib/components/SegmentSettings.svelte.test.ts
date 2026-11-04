@@ -7,17 +7,12 @@ import {
 	createFlow,
 	loadSegmentAudio,
 	updateSegment,
-	type CommandResult,
 	type Flow,
 	type MusicSegment
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
 import SegmentSettings from './SegmentSettings.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 function musicFlow(): Flow {
 	const flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));

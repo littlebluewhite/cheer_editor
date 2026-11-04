@@ -3,21 +3,16 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { unzipSync, zipSync, strToU8 } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import {
-	addAction,
-	addMembers,
-	addSegment,
 	createFlow,
 	insertFormation,
-	loadSegmentAudio,
 	markPhaseBeats,
 	readFlowFile,
-	writeFlowFile,
-	type CommandResult,
-	type Flow
+	writeFlowFile
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
-import { fakeDecode, fakeSaver } from '#lib/test-fakes.js';
+import { audioFlow, fakeDecode, fakeSaver, openFile, settle } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -32,39 +27,8 @@ async function newFlow() {
 
 const ctrlS = (target: Element | Window = window) => fireEvent.keyDown(target, { key: 's', ctrlKey: true });
 
-/** 等 async 的存檔／開檔（讀檔、解碼）跑完。 */
-const settle = () => new Promise((r) => setTimeout(r, 0));
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
-
-/** 音樂 1（a1.mp3）；小A 在一個動作裡；第 2 張站位在 1 秒。 */
-function sampleFlow(): Flow {
-	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
-	flow = flowOf(addMembers(flow, [{ name: '小A', gender: 'F', globalRole: 'top' }]));
-	flow = flowOf(addSegment(flow, 'music'));
-	flow = flowOf(loadSegmentAudio(flow, 's1', '主歌.mp3'));
-	flow = flowOf(
-		addAction(flow, {
-			segmentId: 's1',
-			category: 'stunt',
-			name: 'Lib',
-			start: 0,
-			length: 16,
-			note: '',
-			members: [{ memberId: 'm1', role: '上層' }]
-		})
-	);
-	return flowOf(insertFormation(flow, 1));
-}
-
-async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
-	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
-	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
-	await settle();
-}
+/** audioFlow 再加第 2 張站位在 1 秒。 */
+const sampleFlow = () => flowOf(insertFormation(audioFlow(), 1));
 
 describe('存檔', () => {
 	it('Ctrl+S 存成「流程名.zip」，存的就是這支流程', async () => {

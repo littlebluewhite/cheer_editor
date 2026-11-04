@@ -1,12 +1,8 @@
-import { addCustomRole, createFlow, type CommandResult, type Flow } from '#lib/core';
+import { addCustomRole, createFlow } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import RoleGlossary from './RoleGlossary.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 const empty = () => flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
 
