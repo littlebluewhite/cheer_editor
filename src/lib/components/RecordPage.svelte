@@ -66,7 +66,7 @@
 				{#each attemptWhos(flow, action) as w (w.who)}
 					<AttemptCard {flow} {action} who={w.who} name={w.name} {date} {onrecord} />
 				{:else}
-					<p class="empty">這個動作還沒有分組：到編排的動作表單，幫人選「第幾組」。</p>
+					<p class="empty">這個動作還沒有分組：到編排選這個動作，在場上選人，用場地下面的分組浮動列分組。</p>
 				{/each}
 			{/key}
 		</div>
