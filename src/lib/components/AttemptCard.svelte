@@ -1,11 +1,12 @@
 <script lang="ts">
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
-	// 每個環節三顆大按鈕 ✓ △ ✗；照順序點，點到最後一個要練的環節、或點了 ✗，就自動存成一次（✗ 後面空著）。
+	// 每個環節三顆大按鈕 ✓ △ ✗；照順序點，點到最後一個要練的環節、或點了 ✗，就自動存成一次（存成核心 keptAttempt 給的樣子：✗ 後面空著）。
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。
 	import {
 		MARKS,
 		attemptText,
 		deleteLastAttempt,
+		keptAttempt,
 		phaseColor,
 		phaseLabel,
 		recordAttempt,
@@ -41,6 +42,8 @@
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 這一次要練的環節，照順序。 */
 	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
+	/** 卡上亮的記號：會存下來的樣子。 */
+	const shown = $derived(keptAttempt(action, whole, marks).marks);
 	/** 這組在這一天的每一次，照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
@@ -54,25 +57,15 @@
 		marks = {};
 	}
 
-	/** 點一個記號：點到最後一個要練的環節、或點了 ✗，就存成一次（沒點的環節空著）。 */
+	/** 點一個記號：點到最後一個要練的環節、或點了 ✗，就存成一次（留哪些記號、算不算整個做由核心決定）。 */
 	function tap(phaseId: string, mark: Mark) {
 		const next = { ...marks, [phaseId]: mark };
-		const plan = planned.map((p) => p.id);
-		if (mark !== '✗' && phaseId !== plan.at(-1)) {
+		if (mark !== '✗' && phaseId !== planned.at(-1)?.id) {
 			marks = next;
 			return;
 		}
-		const fail = plan.indexOf(phaseId);
-		const kept = mark === '✗' ? plan.slice(0, fail + 1) : plan;
 		marks = {};
-		const r = recordAttempt(flow, action.id, {
-			date,
-			who,
-			practice: 'drill',
-			// 整個做卻跳過前面的環節：算只練幾個環節，不算進整次成功率。
-			whole: whole && kept.every((id) => next[id]),
-			marks: Object.fromEntries(kept.filter((id) => next[id]).map((id) => [id, next[id]]))
-		});
+		const r = recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next });
 		if (r.kind !== 'ok') return void (error = r.message);
 		error = '';
 		onrecord(r.flow);
@@ -116,7 +109,7 @@
 							type="button"
 							class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
 							aria-label="{name} {phaseLabel(p)} {m.label}"
-							aria-pressed={marks[p.id] === m.key}
+							aria-pressed={shown[p.id] === m.key}
 							disabled={!on}
 							onclick={() => tap(p.id, m.key)}>{m.key}</button
 						>
