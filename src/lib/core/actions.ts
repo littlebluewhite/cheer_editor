@@ -3,10 +3,17 @@
 
 import { cueFallout, cueProblem, type Cue } from './cues';
 import { memberName, type Flow } from './flow';
-import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import type { Segment } from './segment';
-import { fitRecords, perPerson, successRateProblem, type SuccessRate } from './success-rate';
+import {
+	askRecords,
+	fitRecords,
+	perPerson,
+	settleRecords,
+	successRateProblem,
+	type SuccessRate
+} from './success-rate';
 import { nextId } from './ids';
 import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
 
@@ -79,12 +86,14 @@ function normalize({ color, ...action }: Action): Action {
  * 改動作的任何欄位（含換段、換人），照新增的規則檢查。
  * 變短會切到拍點、有拍點的動作換到口號段、或拿掉的人（任務角色）有拍點給他時，回「要確認」並列出那些拍點；
  * 帶 { confirmed: true } 再送一次才切短、拿掉。
+ * 會動到紀錄時也先問（換大類讓算法變了、組沒人了、騰翻跳躍拿掉人：要確認；有紀錄的組換了人：選保留舊紀錄或清掉重算），
+ * 跟拍點一起問；帶 { confirmed: true } 或 { records } 再送一次。
  */
 export function updateAction(
 	flow: Flow,
 	id: string,
 	changes: Partial<NewActionInput>,
-	{ confirmed = false }: ConfirmOption = {}
+	options: ConfirmOption = {}
 ): CommandResult {
 	const old = flow.actions.find((a) => a.id === id);
 	if (!old) return blocked('找不到這個動作');
@@ -93,9 +102,15 @@ export function updateAction(
 	const to = flow.segments.find((s) => s.id === action.segmentId);
 	const fallout = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (fallout) action = { ...action, cues: fallout.cues };
+	const settled = settleRecords(flow, old, action, options.records);
+	action = settled.action;
 	const problem = check(flow, action);
 	if (problem) return blocked(problem);
-	if (fallout && !confirmed) return needsConfirm(falloutMessage(old, action, to!, fallout), fallout.items);
+	if (!answered(options) && settled.ask) {
+		const head = fallout ? `${falloutMessage(old, action, to!, fallout)}；` : `動作「${actionLabel(old)}」`;
+		return askRecords(head, { ...settled.ask, items: [...(fallout?.items ?? []), ...settled.ask.items] });
+	}
+	if (fallout && !answered(options)) return needsConfirm(falloutMessage(old, action, to!, fallout), fallout.items);
 	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
 }
 
@@ -150,8 +165,12 @@ function unitAt(flow: Flow, id: string, sec: number): number | null {
 	return Math.round((sec - segStart) / unitSec(segment));
 }
 
-export function deleteAction(flow: Flow, id: string): CommandResult {
-	if (!flow.actions.some((a) => a.id === id)) return blocked('找不到這個動作');
+/** 刪動作。有紀錄先回「要確認」，寫會清掉幾次；帶 { confirmed: true } 再送一次才刪。 */
+export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}): CommandResult {
+	const action = flow.actions.find((a) => a.id === id);
+	if (!action) return blocked('找不到這個動作');
+	const count = action.successRate?.records.length ?? 0;
+	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄`, []);
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 

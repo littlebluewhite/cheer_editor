@@ -1,15 +1,17 @@
 <script lang="ts">
 	// 流程核心回「要確認」時顯示的說明和會被刪掉的清單；按確定由呼叫端帶 confirmed 再送一次指令。
 	// 也用在「還沒存，要丟掉嗎」（清單是空的，確定鈕換字）。
+	// 給了 onkeep 就是兩個選擇的確認：多一個「保留舊紀錄」，確定鈕當「清掉重算」。
 	interface Props {
 		message: string;
 		items: string[];
 		onconfirm: () => void;
 		oncancel: () => void;
 		confirmLabel?: string;
+		onkeep?: () => void;
 	}
 
-	let { message, items, onconfirm, oncancel, confirmLabel = '確定刪除' }: Props = $props();
+	let { message, items, onconfirm, oncancel, confirmLabel = '確定刪除', onkeep }: Props = $props();
 </script>
 
 <div class="confirm" role="alertdialog" aria-label={confirmLabel}>
@@ -20,6 +22,7 @@
 		</ul>
 	{/if}
 	<div class="buttons">
+		{#if onkeep}<button type="button" onclick={onkeep}>保留舊紀錄</button>{/if}
 		<button type="button" class="confirm-btn" onclick={onconfirm}>{confirmLabel}</button>
 		<button type="button" onclick={oncancel}>取消</button>
 	</div>

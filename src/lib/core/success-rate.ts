@@ -1,13 +1,22 @@
 // 成功率：動作打開「記成功率」後，分成幾個環節（上法、中段…），動作裡的人分組。
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad）。
 
-import type { Action, ActionCategory } from './actions';
-import type { Flow } from './flow';
+import { ACTION_CATEGORIES, actionLabel, type Action, type ActionCategory } from './actions';
+import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { HALF_BEATS_PER_BEAT } from './time';
 import { freshIds } from './ids';
 import { PHASE_COLORS } from './colors';
-import { blocked, ok, type CommandResult } from './result';
+import {
+	answered,
+	blocked,
+	needsChoice,
+	needsConfirm,
+	ok,
+	type CommandResult,
+	type ConfirmOption,
+	type RecordsChoice
+} from './result';
 
 /** 環節的種類：上法、中段、轉接、下法、整體。流程檔存英文代號。 */
 export type PhaseKind = 'load' | 'hold' | 'transition' | 'dismount' | 'whole';
@@ -134,20 +143,28 @@ export function enableSuccessRate(flow: Flow, actionId: string): CommandResult {
 	);
 }
 
-/** 關掉記成功率：環節、組、紀錄都拿掉。 */
-export function disableSuccessRate(flow: Flow, actionId: string): CommandResult {
+/** 關掉記成功率：環節、組、紀錄都拿掉。有紀錄先回「要確認」，帶 { confirmed: true } 再送一次才關。 */
+export function disableSuccessRate(flow: Flow, actionId: string, options: ConfirmOption = {}): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
 	if (!action) return blocked('找不到這個動作');
+	const count = action.successRate?.records.length ?? 0;
+	if (count && !answered(options)) {
+		return needsConfirm(`關掉記成功率會清掉動作「${actionLabel(action)}」的 ${count} 次紀錄`, []);
+	}
 	const { successRate: _, ...rest } = action;
 	return withAction(flow, { ...rest, members: action.members.map(({ squad: _, ...m }) => m) });
 }
 
-/** 設組：給動作裡一個隊員第幾組（1 起）；null 是沒分組。組裡的人都換走了，那組的紀錄拿掉。 */
+/**
+ * 設組：給動作裡一個隊員第幾組（1 起）；null 是沒分組。
+ * 有紀錄的組換了人，先問保留舊紀錄還是清掉重算；組裡的人都換走了，只問會清掉幾次（見 settleRecords）。
+ */
 export function setSquad(
 	flow: Flow,
 	actionId: string,
 	memberId: string,
-	squad: number | null
+	squad: number | null,
+	options: ConfirmOption = {}
 ): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
 	const segment = action && flow.segments.find((s) => s.id === action.segmentId);
@@ -158,10 +175,92 @@ export function setSquad(
 		const { squad: _, ...rest } = m;
 		return squad === null ? rest : { ...rest, squad };
 	});
-	// 組沒人了，那組的紀錄拿掉
-	const changed = fitRecords({ ...action, members });
-	const problem = successRateProblem(segment, changed);
-	return problem ? blocked(problem) : withAction(flow, changed);
+	const settled = settleRecords(flow, action, fitRecords({ ...action, members }), options.records);
+	const problem = successRateProblem(segment, settled.action);
+	if (problem) return blocked(problem);
+	if (settled.ask && !answered(options)) return askRecords(`動作「${actionLabel(action)}」`, settled.ask);
+	return withAction(flow, settled.action);
+}
+
+/** 改動作會動到紀錄時要問教練的事。message 前面還要接「動作「…」」；choose 是有得選保留或清掉。 */
+export interface RecordsAsk {
+	message: string;
+	items: string[];
+	choose: boolean;
+}
+
+/**
+ * 改動作（換人、換組、換大類）時紀錄怎麼辦。next 是改好、已經拿掉對不上的紀錄（fitRecords）的動作。
+ * 拿掉的那些（組沒人了、騰翻跳躍的人移出、算法從一組一起變成每個人自己算或反過來）沒得保留，只問會清掉幾次；
+ * 組還有人、但換了人的組，問保留舊紀錄還是清掉重算，選了清掉就拿掉那組的紀錄。沒有紀錄會被動到，ask 是 null。
+ */
+export function settleRecords(
+	flow: Flow,
+	old: Action,
+	next: Action,
+	choice?: RecordsChoice
+): { action: Action; ask: RecordsAsk | null } {
+	const kept = new Set(next.successRate?.records.map((r) => r.id));
+	const lost = (old.successRate?.records ?? []).filter((r) => !kept.has(r.id));
+	const changed = perPerson(next.category)
+		? []
+		: (next.successRate?.records ?? []).filter((r) => !sameSquad(old, next, r.who));
+	const action = choice === 'clear' ? withoutRecords(next, changed) : next;
+	if (!lost.length && !changed.length) return { action, ask: null };
+	const category = ACTION_CATEGORIES.find((c) => c.key === next.category)?.label ?? '';
+	const why =
+		perPerson(old.category) === perPerson(next.category)
+			? '換了人'
+			: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
+	const message = [
+		lost.length ? `${why}，會清掉 ${lost.length} 次紀錄` : '',
+		changed.length ? '有紀錄的組換了人：保留舊紀錄，還是清掉重算？' : ''
+	]
+		.filter(Boolean)
+		.join('；');
+	const items = [...recordItems(flow, old, lost), ...recordItems(flow, old, changed)];
+	return { action, ask: { message, items, choose: changed.length > 0 } };
+}
+
+/** 照 settleRecords 的問題回「要確認」或「要選保留還是清掉」；head 接在訊息前面。 */
+export function askRecords(head: string, { message, items, choose }: RecordsAsk): CommandResult {
+	return (choose ? needsChoice : needsConfirm)(head + message, items);
+}
+
+/** 這一組在改之前、改之後是不是同一群人。 */
+function sameSquad(old: Action, next: Action, who: number | string): boolean {
+	const ids = (a: Action) =>
+		a.members
+			.filter((m) => m.squad === who)
+			.map((m) => m.memberId)
+			.sort()
+			.join();
+	return ids(old) === ids(next);
+}
+
+/** 隊員在這個動作裡的紀錄：他在的組的（騰翻、跳躍是他自己的）。 */
+export function memberRecords(action: Action, memberId: string): Attempt[] {
+	const member = action.members.find((m) => m.memberId === memberId);
+	const who = perPerson(action.category) ? memberId : member?.squad;
+	if (!member || who === undefined) return [];
+	return action.successRate?.records.filter((r) => r.who === who) ?? [];
+}
+
+/** 拿掉動作裡的這幾次紀錄；沒有要拿就回傳原來的動作。 */
+export function withoutRecords(action: Action, drop: Attempt[]): Action {
+	if (!drop.length || !action.successRate) return action;
+	const records = action.successRate.records.filter((r) => !drop.includes(r));
+	return { ...action, successRate: { ...action.successRate, records } };
+}
+
+/** 紀錄照誰數幾次，給教練看：「第 1 組 小美：2 次」，騰翻、跳躍是「小美：1 次」；照第一次記的先後排，前面接 head。 */
+export function recordItems(flow: Flow, action: Action, records: Attempt[], head = ''): string[] {
+	const counts = new Map<number | string, number>();
+	for (const r of records) counts.set(r.who, (counts.get(r.who) ?? 0) + 1);
+	return [...counts].map(([who, n]) => {
+		const name = typeof who === 'number' ? squadName(flow, action, who) : memberName(flow, who);
+		return `${head}${name}：${n} 次`;
+	});
 }
 
 const isSquad = (n: number) => Number.isInteger(n) && n >= 1;
