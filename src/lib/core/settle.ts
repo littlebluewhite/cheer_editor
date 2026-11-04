@@ -13,6 +13,7 @@ import {
 	groupsPeople,
 	perPerson,
 	recordItems,
+	squadsOf,
 	replacePhases,
 	successRateProblem,
 	withoutRecords,
@@ -42,6 +43,7 @@ export type Settled = { kind: 'ok'; action: Action; fallout: Fallout } | { kind:
 /**
  * 收尾：before 是改之前的動作（加動作時沒有），after 是指令改好的動作（人、大類、段、拍點都改好了）。
  * 照回答清掉換了人的組的紀錄（選了清掉才清；一定清掉的不管回答都拿掉）；動作變短、拖到半拍、換段時標的拍跟著切短或刪掉；
+ * 開始分組時全部的人進第 1 組，只有一組時新進、沒帶組的人進那一組（見 squadRules）；
  * 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉；組號補成 1、2、3 不跳號，紀錄跟著換號。
  * 回收好的動作和後果；不守成功率規則就擋。要不要問、怎麼問由 falloutQuestion 決定。
  */
@@ -49,7 +51,7 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const to = flow.segments.find((s) => s.id === after.segmentId);
 	if (!to) return { kind: 'blocked', message: '找不到這一段' };
 	const from = before && flow.segments.find((s) => s.id === before.segmentId);
-	const fitted = fitRecords(after);
+	const fitted = fitRecords(squadRules(before, after));
 	const { lost, changed } = before ? recordsFallout(before, fitted) : { lost: [], changed: [] };
 	const settled = answer.records === 'clear' ? withoutRecords(fitted, changed) : fitted;
 	const phases = before && from ? phaseFallout(from, to, before, settled) : null;
@@ -58,6 +60,23 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const problem = successRateProblem(to, grouped);
 	if (problem) return { kind: 'blocked', message: problem };
 	return { kind: 'ok', action: compactSquads(grouped), fallout: { phases, lost, changed } };
+}
+
+/**
+ * 組的規則（先放好組，再算紀錄的後果，所以換了人的組照樣會問）：
+ * 開始分組（改之前不分組、改之後分組：加了第一個環節，或大類從騰翻、跳躍換成要分組的）時，動作裡的人全部進第 1 組；
+ * 新進動作、沒帶組的人，動作只有一組就進那一組，有好幾組或還沒有組就沒有組。帶著組進來的人照號碼對（補號時跟著補）。
+ */
+function squadRules(before: Action | undefined, after: Action): Action {
+	if (!groupsPeople(after)) return after;
+	if (before && !groupsPeople(before)) {
+		return { ...after, members: after.members.map((m) => ({ ...m, squad: 1 })) };
+	}
+	const squads = squadsOf(after);
+	const isNew = (memberId: string) => !before?.members.some((m) => m.memberId === memberId);
+	if (squads.length !== 1 || !after.members.some((m) => m.squad === undefined && isNew(m.memberId))) return after;
+	const members = after.members.map((m) => (m.squad === undefined && isNew(m.memberId) ? { ...m, squad: squads[0] } : m));
+	return { ...after, members };
 }
 
 /** 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。 */

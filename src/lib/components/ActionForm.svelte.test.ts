@@ -8,9 +8,9 @@ import {
 	setSquad,
 	updateSegment,
 	type ActionCategory,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ActionForm from './ActionForm.svelte';
@@ -26,11 +26,6 @@ const scrolled: Element[] = [];
 Element.prototype.scrollIntoView = function () {
 	scrolled.push(this);
 };
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 /** 音樂 1（150 BPM、2 個八拍，一個半拍 0.2 秒）；隊員小A、小B。 */
 function sample(): Flow {
@@ -458,13 +453,14 @@ describe('動作表單：成功率', () => {
 		expect(squadTags()).toEqual([null, null]);
 	});
 
-	it('「＋加人…」：動作只有一組，新的人進第 1 組', async () => {
+	it('「＋加人…」：動作只有一組，新的人進第 1 組（核心放的），旁邊寫「第 1 組」', async () => {
 		const onchange = live(rated(withLib(), 'x2'), 'x2');
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		expect(onchange.mock.calls.at(-1)![0].actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層', squad: 1 },
 			{ memberId: 'm2', role: null, squad: 1 }
 		]);
+		expect(squadTags()).toEqual(['第 1 組', '第 1 組']);
 	});
 
 	it('「從別的動作複製人（連任務角色和組）」連組一起帶', async () => {

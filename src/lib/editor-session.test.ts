@@ -12,13 +12,8 @@ import {
 	type ConfirmOption,
 	type Flow
 } from '#lib/core';
-import { libSample } from '#lib/core/test-flows.js';
+import { flowOf, libSample } from '#lib/core/test-flows.js';
 import { EditorSession } from './editor-session.svelte.js';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
 function sampleFlow(): Flow {
