@@ -1,11 +1,11 @@
 <script lang="ts">
 	// 流程設定：流程名字、規則警告的開關和三個數字、標記用號碼還是開頭字。被擋就顯示流程核心給的原因。
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		memberMarkers,
 		renameFlow,
 		setMarkers,
 		updateTimeRules,
-		type Flow,
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
@@ -15,14 +15,15 @@
 	import { isLongMarker } from './marker';
 
 	interface Props {
-		flow: Flow;
-		onchange: (flow: Flow) => void;
 		onclose: () => void;
 	}
 
-	let { flow, onchange, onclose }: Props = $props();
+	let { onclose }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 	/** 被擋的原因。 */
-	const ask = new Ask((f) => onchange(f));
+	const ask = new Ask((f) => session.change(f));
 
 	function update(patch: Partial<TimeRules>) {
 		ask.send(() => updateTimeRules(flow, patch));

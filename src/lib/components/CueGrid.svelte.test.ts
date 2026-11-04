@@ -11,6 +11,8 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/core/test-flows.js';
+import { EditorSession } from '#lib/editor-session.svelte.js';
+import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import CueGrid from './CueGrid.svelte';
@@ -36,14 +38,19 @@ function cellAt(sheet: HTMLElement, x: number, y: number): HTMLElement {
 	return sheet.querySelectorAll<HTMLElement>(kind)[x];
 }
 
+/** 放一個帶著 flow 的 session 進 context，畫第一個動作的拍點格子；回傳 session。 */
+function renderGrid(flow: Flow) {
+	const session = new EditorSession(flow);
+	render(TestSession, { props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt } } });
+	return session;
+}
+
 function setup() {
-	const flow = sample();
-	const onchange = vi.fn();
-	render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
+	const session = renderGrid(sample());
 	const grid = within(screen.getByRole('group', { name: '拍點' }));
 	const pop = () => grid.queryByRole('dialog', { name: '拍點小窗' });
 	const selText = () => within(grid.getByRole('dialog', { name: '拍點小窗' })).getByText(/^選了/).textContent;
-	return { grid, onchange, selText, pop };
+	return { grid, session, selText, pop };
 }
 
 /** 照畫面順序第幾格（3-1 是 0）。 */
@@ -60,11 +67,11 @@ async function drag(el: Element, from: number, to: number, y = 0) {
 
 describe('拍點格子：拖拉選拍', () => {
 	it('在 3-5 按住拖到 3-6，選了 2 拍；點 down 就放好 2 拍', async () => {
-		const { grid, onchange, selText } = setup();
+		const { grid, session, selText } = setup();
 		await drag(grid.getByRole('button', { name: '3-5' }), idx('3-5'), idx('3-6'));
 		expect(selText()).toBe('選了 3-5 到 3-6・2 拍');
 		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
-		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
+		expect(session.flow!.actions[0].cues).toEqual([
 			{ kind: 'count', at: 4, len: 4, word: 'down', who: null }
 		]);
 	});
@@ -220,7 +227,7 @@ describe('拍點格子：拍點小窗', () => {
 	it('點一個已經放好的拍點，選回它佔的拍，也跳出小窗', async () => {
 		const flow = sample();
 		const action = { ...flow.actions[0], cues: [{ kind: 'count' as const, at: 4, len: 4, word: 'down', who: null }] };
-		render(CueGrid, { flow: { ...flow, actions: [action] }, action, onchange: vi.fn(), cellAt });
+		renderGrid({ ...flow, actions: [action] });
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
 		await fireEvent.click(grid.getByRole('button', { name: /^拍子 down/ }));
 		const pop = grid.getByRole('dialog', { name: '拍點小窗' });
@@ -228,11 +235,11 @@ describe('拍點格子：拍點小窗', () => {
 	});
 
 	it('給誰在小窗裡選：選了隊員再放，拍點給那個人', async () => {
-		const { grid, onchange } = setup();
+		const { grid, session } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
 		await fireEvent.change(grid.getByRole('combobox', { name: '給誰' }), { target: { value: '1' } });
 		await fireEvent.click(grid.getByRole('button', { name: 'up' }));
-		expect(onchange.mock.calls[0][0].actions[0].cues).toEqual([
+		expect(session.flow!.actions[0].cues).toEqual([
 			{ kind: 'count', at: 4, len: 2, word: 'up', who: { member: 'm1' } }
 		]);
 	});
@@ -243,7 +250,7 @@ describe('環節那一列', () => {
 		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } }));
 		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 2, len: 2 } }));
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
-		render(CueGrid, { flow, action: flow.actions[0], onchange: vi.fn(), cellAt });
+		renderGrid(flow);
 		const columns = [...document.querySelectorAll<HTMLElement>('.item.phase')].map((b) => b.style.gridColumn);
 		expect(columns).toEqual(['5 / 6', '6 / 7']);
 	});
@@ -252,15 +259,14 @@ describe('環節那一列', () => {
 		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } }));
 		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 2, len: 2 } }));
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
-		const onchange = vi.fn();
-		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
+		const session = renderGrid(flow);
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
 		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法/ }));
 		const pop = within(grid.getByRole('dialog', { name: '拍點小窗' }));
 		expect(pop.getByText(/^選了/).textContent).toBe('選了 3-4・1 拍');
 		await fireEvent.click(pop.getByRole('button', { name: '清掉環節' }));
-		const phases = onchange.mock.calls[0][0].actions[0].successRate.phases;
-		expect(phases.map((p: { id: string; beats?: object }) => [p.id, p.beats])).toEqual([['p2', { at: 3, len: 2 }]]);
+		const phases = session.flow!.actions[0].successRate!.phases;
+		expect(phases.map((p) => [p.id, p.beats])).toEqual([['p2', { at: 3, len: 2 }]]);
 	});
 });
 
@@ -270,12 +276,11 @@ describe('改環節', () => {
 		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '延伸', beats: { at: 0, len: 4 } }));
 		flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: '#c62828' }));
 		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 4, len: 4 } }));
-		const onchange = vi.fn();
-		render(CueGrid, { flow, action: flow.actions[0], onchange, cellAt });
+		const session = renderGrid(flow);
 		const grid = within(screen.getByRole('group', { name: '拍點' }));
 		const edit = () => within(grid.getByRole('dialog', { name: '拍點小窗' })).queryByRole('group', { name: '改環節' });
-		/** onchange 收到的第 n 個流程裡的環節。 */
-		const sent = (n = 0) => onchange.mock.calls[n][0].actions[0].successRate.phases;
+		/** session 現在的流程裡的環節。 */
+		const sent = () => session.flow!.actions[0].successRate!.phases;
 		return { grid, edit, sent };
 	}
 
@@ -319,7 +324,7 @@ describe('改環節', () => {
 		await fireEvent.change(within(edit()!).getByRole('combobox', { name: '這個環節的顏色' }), {
 			target: { value: '' }
 		});
-		expect(sent(1)[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } });
+		expect(sent()[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } });
 	});
 
 	it('選的拍不是剛好一個環節時，不出現改的地方', async () => {

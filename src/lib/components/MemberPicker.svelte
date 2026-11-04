@@ -2,24 +2,26 @@
 	// 選人：一鍵選全隊、全部底層、全部上層、這一拍沒在動作裡的人、不選人；
 	// 「沿用上一個動作的人」取播放頭以前最晚結束的動作，再按一次換更早的。
 	// 選到的人是在播放頭新增動作的人，也是場上整組拖的那一組。
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		actionLabel,
 		memberGroup,
 		memberName,
 		previousActions,
-		type Flow,
 		type MemberGroup
 	} from '#lib/core';
 
 	interface Props {
-		flow: Flow;
 		/** 播放頭，全域秒數。 */
 		playheadSec: number;
-		selected: string[];
-		onselect: (memberIds: string[]) => void;
 	}
 
-	let { flow, playheadSec, selected, onselect }: Props = $props();
+	let { playheadSec }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
+	const selected = $derived(session.selectedMemberIds);
+	const select = (ids: string[]) => session.selectMembers(ids);
 
 	const GROUPS: { group: MemberGroup; label: string }[] = [
 		{ group: 'all', label: '全隊' },
@@ -43,7 +45,7 @@
 		if (cycle.sec !== playheadSec) cycle = { sec: playheadSec, index: 0 };
 		const action = candidates[cycle.index % candidates.length];
 		cycle.index += 1;
-		onselect(action.members.map((m) => m.memberId));
+		select(action.members.map((m) => m.memberId));
 		const more = candidates.length > 1 ? '（再按一次換更早的動作）' : '';
 		message = `選了「${actionLabel(action)}」的 ${action.members.length} 人${more}`;
 	}
@@ -52,11 +54,11 @@
 <section class="picker">
 	<header>
 		<h3>選人</h3>
-		{#if names.length}<button type="button" class="link" onclick={() => onselect([])}>不選人</button>{/if}
+		{#if names.length}<button type="button" class="link" onclick={() => select([])}>不選人</button>{/if}
 	</header>
 	<div class="chips">
 		{#each GROUPS as g (g.group)}
-			<button type="button" onclick={() => onselect(memberGroup(flow, g.group, playheadSec))}
+			<button type="button" onclick={() => select(memberGroup(flow, g.group, playheadSec))}
 				>{g.label}</button
 			>
 		{/each}

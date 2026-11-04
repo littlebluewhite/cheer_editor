@@ -15,6 +15,7 @@
 	// 點一個環節選它，可以改名字、種類、顏色，或按清掉刪掉它（有記號先問）。
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { Ask } from './ask.svelte';
 	import { touchOnUnpicked } from './pointer';
@@ -56,14 +57,15 @@
 	} from '#lib/core';
 
 	interface Props {
-		flow: Flow;
 		action: Action;
-		onchange: (flow: Flow) => void;
 		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
 		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
 	}
 
-	let { flow, action, onchange, cellAt = nearestCell }: Props = $props();
+	let { action, cellAt = nearestCell }: Props = $props();
+
+	const session = getEditorSession();
+	const flow = $derived(session.flow!);
 
 	const cols = Array.from({ length: 8 }, (_, c) => c);
 	/** 三條由上往下，排在每個八拍的數字格下面。 */
@@ -114,7 +116,7 @@
 	const ask = new Ask(
 		(f) => {
 			hold = pop;
-			onchange(f);
+			session.change(f);
 		},
 		{ confirmLabel: '確定刪除' }
 	);
