@@ -9,6 +9,7 @@ import { roleGlossary } from './roles';
 import type { Segment } from './segment';
 import {
 	askRecords,
+	compactSquads,
 	fitRecords,
 	perPerson,
 	replacePhases,
@@ -89,7 +90,7 @@ function normalize({ color, ...action }: Action): Action {
  * 變短會切到拍點、有拍點的動作換到口號段、或拿掉的人（任務角色）有拍點給他時，回「要確認」並列出那些拍點；
  * 帶 { confirmed: true } 再送一次才切短、拿掉。
  * 會動到紀錄時也先問（換大類讓算法變了、組沒人了、騰翻跳躍拿掉人：要確認；有紀錄的組換了人：選保留舊紀錄或清掉重算），
- * 跟拍點一起問；帶 { confirmed: true } 或 { records } 再送一次。
+ * 跟拍點一起問；帶 { confirmed: true } 或 { records } 再送一次。做完組號補成不跳號（見 compactSquads）。
  */
 export function updateAction(
 	flow: Flow,
@@ -119,7 +120,7 @@ export function updateAction(
 		return askRecords(head, { ...settled.ask, items: [...items, ...settled.ask.items] });
 	}
 	if (asked && !answered(options)) return needsConfirm(asked, items);
-	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? action : a)) });
+	return ok({ ...flow, actions: flow.actions.map((a) => (a.id === id ? compactSquads(action) : a)) });
 }
 
 /**

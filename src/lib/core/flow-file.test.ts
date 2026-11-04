@@ -91,7 +91,7 @@ function withSuccessRate(): Flow {
 	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'hold', name: '' }, 5, 4));
 	flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '搖籃' }, 9, 4));
 	flow = flowOf(updatePhase(flow, 'x1', 'p1', { color: '#c62828' }));
-	return flowOf(setSquad(flow, 'x1', 'm2', 2));
+	return flowOf(setSquad(flow, 'x1', ['m2'], 2));
 }
 
 /** withSuccessRate() 再記三次：第 1 組分段練整個做 ✓✓△、第 2 組只練上法 ✗、第 1 組全上 ✓✓✓。 */

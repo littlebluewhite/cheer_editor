@@ -194,7 +194,7 @@ describe('沒記成功率的動作標拍加環節', () => {
 	});
 
 	it('已經記成功率的動作加環節：組不動', () => {
-		const split = flowOf(setSquad(sample(), 'x1', 'm2', 2));
+		const split = flowOf(setSquad(sample(), 'x1', ['m2'], 2));
 		const flow = flowOf(markPhaseBeats(split, 'x1', { kind: 'whole', name: '' }, 8, 4));
 		expect(lib(flow).members.map((m) => m.squad)).toEqual([1, 2]);
 	});

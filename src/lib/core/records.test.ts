@@ -60,7 +60,7 @@ function sample(): Flow {
 		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
 	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', id, squad));
+		flow = flowOf(setSquad(flow, 'x1', [id], squad));
 	}
 	flow = flowOf(
 		addAction(flow, {
@@ -197,8 +197,8 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	});
 
 	it('指到沒有人的組、不在動作裡的隊員的紀錄丟掉', () => {
-		let older = flowOf(setSquad(sample(), 'x1', 'm3', null));
-		older = flowOf(setSquad(older, 'x1', 'm4', null));
+		let older = flowOf(setSquad(sample(), 'x1', ['m3'], null));
+		older = flowOf(setSquad(older, 'x1', ['m4'], null));
 		older = flowOf(updateAction(older, 'x2', { members: [{ memberId: 'm1', role: '騰翻' }] }));
 		const carried = carryRecords(older, recorded());
 		expect(recordsOf(carried).map((r) => r.id)).toEqual(['t1', 't3']);
@@ -239,10 +239,10 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 			members: [{ memberId, role: null }]
 		});
 		let older = flowOf(markPhaseBeats(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'whole', name: '拋投' }, 0, 8));
-		older = flowOf(setSquad(older, 'x3', 'm3', 1));
+		older = flowOf(setSquad(older, 'x3', ['m3'], 1));
 		let current = flowOf(deleteAction(older, 'x3'));
 		current = flowOf(markPhaseBeats(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投' }, 0, 8));
-		current = flowOf(setSquad(current, 'x3', 'm4', 1));
+		current = flowOf(setSquad(current, 'x3', ['m4'], 1));
 		const phase = current.actions.find((a) => a.id === 'x3')!.successRate!.phases[0].id;
 		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' })));
 
@@ -273,8 +273,8 @@ describe('改編排後對不上的紀錄拿掉，流程檔照樣打得開', () =
 	const ids = (flow: Flow, id: string) => recordsOf(flow, id).map((r) => r.id);
 
 	it('組裡的人都換到別組：這組的紀錄拿掉', () => {
-		let flow = flowOf(setSquad(recorded(), 'x1', 'm3', 1, { records: 'keep' }));
-		flow = flowOf(setSquad(flow, 'x1', 'm4', null, { confirmed: true }));
+		let flow = flowOf(setSquad(recorded(), 'x1', ['m3'], 1, { records: 'keep' }));
+		flow = flowOf(setSquad(flow, 'x1', ['m4'], null, { confirmed: true }));
 		expect(ids(flow, 'x1')).toEqual(['t1']);
 		expect(reopened(flow)).toEqual(flow);
 	});
@@ -328,12 +328,12 @@ describe('記錄頁要的清單', () => {
 	});
 
 	it('每組一張卡：組照號碼排，名字是「第 n 組」加上層；沒分到組的人不出現', () => {
-		let flow = flowOf(setSquad(sample(), 'x1', 'm1', 3));
-		flow = flowOf(setSquad(flow, 'x1', 'm2', null));
+		let flow = flowOf(setSquad(sample(), 'x1', ['m1'], 3));
+		flow = flowOf(setSquad(flow, 'x1', ['m2'], null));
 		const x1 = flow.actions.find((a) => a.id === 'x1')!;
 		expect(attemptWhos(flow, x1)).toEqual([
-			{ who: 2, name: '第 2 組 小芳' },
-			{ who: 3, name: '第 3 組 小美' }
+			{ who: 1, name: '第 1 組 小芳' },
+			{ who: 2, name: '第 2 組 小美' }
 		]);
 	});
 

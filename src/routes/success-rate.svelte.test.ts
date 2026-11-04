@@ -105,4 +105,22 @@ describe('有環節的動作分組', () => {
 		await selectLib();
 		expect(['小美', '小A', '小芳', '小B'].map((who) => squadOf(who).value)).toEqual(['1', '1', '2', '2']);
 	});
+
+	it('用組選單讓第 1 組空掉：後面的組往前補號；存檔再打開還在', async () => {
+		const saves = setup();
+		await openFile(writeFlowFile(phasedFlow(), {}));
+		await selectLib();
+		for (const [who, squad] of [['小芳', '2'], ['小B', '3']]) {
+			await fireEvent.change(squadOf(who), { target: { value: squad } });
+		}
+		for (const who of ['小美', '小A']) await fireEvent.change(squadOf(who), { target: { value: '' } });
+		expect(['小美', '小A', '小芳', '小B'].map((who) => squadOf(who).value)).toEqual(['', '', '1', '2']);
+		expect([...squadOf('小美').options].map((o) => o.text)).toEqual(['沒有', '第 1 組', '第 2 組', '第 3 組']);
+
+		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+		await settle();
+		await openFile(saves[0], '開啟');
+		await selectLib();
+		expect(['小美', '小A', '小芳', '小B'].map((who) => squadOf(who).value)).toEqual(['', '', '1', '2']);
+	});
 });

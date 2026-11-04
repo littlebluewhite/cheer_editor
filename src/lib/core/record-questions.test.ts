@@ -51,7 +51,7 @@ function sample(): Flow {
 		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
 	}
 	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', id, squad));
+		flow = flowOf(setSquad(flow, 'x1', [id], squad));
 	}
 	flow = flowOf(
 		addAction(flow, {
@@ -96,7 +96,7 @@ describe('沒有紀錄會被動到：不問，跟以前一樣', () => {
 	it.each([
 		['刪動作', (f: Flow) => deleteAction(f, 'x1')],
 		['換大類', (f: Flow) => updateAction(f, 'x1', { category: 'tumbling' })],
-		['設組換到別組', (f: Flow) => setSquad(f, 'x1', 'm1', 2)],
+		['設組換到別組', (f: Flow) => setSquad(f, 'x1', ['m1'], 2)],
 		['騰翻拿掉人', (f: Flow) => updateAction(f, 'x2', { members: [{ memberId: 'm1', role: '騰翻' }] })],
 		['改隊員名字', (f: Flow) => updateMember(f, 'm1', { name: '小芳芳' })]
 	])('%s', (_, run) => {
@@ -157,7 +157,7 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 
 describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重算', () => {
 	it('設組把小美換到第 3 組：問保留還是清掉，列出那組幾次', () => {
-		expect(setSquad(recorded(), 'x1', 'm1', 3)).toEqual({
+		expect(setSquad(recorded(), 'x1', ['m1'], 3)).toEqual({
 			kind: 'choose',
 			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？',
 			items: ['第 1 組 小美：2 次']
@@ -166,15 +166,20 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 
 	it('保留：紀錄留著；清掉：那組的紀錄清掉，別組的不動', () => {
 		const flow = recorded();
-		expect(ids(flowOf(setSquad(flow, 'x1', 'm1', 3, { records: 'keep' })), 'x1')).toEqual(['t1', 't2', 't3']);
-		expect(ids(flowOf(setSquad(flow, 'x1', 'm1', 3, { records: 'clear' })), 'x1')).toEqual(['t2']);
+		expect(ids(flowOf(setSquad(flow, 'x1', ['m1'], 3, { records: 'keep' })), 'x1')).toEqual(['t1', 't2', 't3']);
+		expect(ids(flowOf(setSquad(flow, 'x1', ['m1'], 3, { records: 'clear' })), 'x1')).toEqual(['t2']);
 	});
 
 	it('小美從第 1 組換到第 2 組：兩組都換了人，清掉就兩組都清', () => {
 		const flow = recorded();
-		const r = setSquad(flow, 'x1', 'm1', 2);
+		const r = setSquad(flow, 'x1', ['m1'], 2);
 		expect(r.kind === 'choose' && r.items).toEqual(['第 1 組 小美：2 次', '第 2 組 小芳：1 次']);
-		expect(ids(flowOf(setSquad(flow, 'x1', 'm1', 2, { records: 'clear' })), 'x1')).toEqual([]);
+		expect(ids(flowOf(setSquad(flow, 'x1', ['m1'], 2, { records: 'clear' })), 'x1')).toEqual([]);
+	});
+
+	it('一次換好幾個人的組：只問一次，列出每個換了人的組', () => {
+		const r = setSquad(recorded(), 'x1', ['m1', 'm3'], 3);
+		expect(r.kind === 'choose' && r.items).toEqual(['第 1 組 小美：2 次', '第 2 組 小芳：1 次']);
 	});
 
 	it('拿掉人（組還有人）：問保留還是清掉', () => {
@@ -264,5 +269,33 @@ describe('刪隊員：當成真的換人', () => {
 	it('沒有紀錄：訊息跟以前一樣', () => {
 		const r = deleteMember(sample(), 'm2');
 		expect(r.kind === 'confirm' && r.message).toBe('小A 在 2 個動作裡，其中 0 個會被整個刪掉');
+	});
+});
+
+describe('組空掉補號：後面那組的紀錄跟著改號，還是那群人的', () => {
+	const whos = (flow: Flow) => action(flow, 'x1').successRate!.records.map((r) => [r.id, r.who]);
+	const squads = (flow: Flow) => action(flow, 'x1').members.map((m) => [m.memberId, m.squad]);
+
+	it('拿掉第 1 組的人：第 2 組變第 1 組，紀錄也是', () => {
+		const members = x1Members().filter((m) => m.memberId !== 'm1' && m.memberId !== 'm2');
+		const flow = flowOf(updateAction(recorded(), 'x1', { members }, { confirmed: true }));
+		expect(squads(flow)).toEqual([['m3', 1], ['m4', 1]]);
+		expect(whos(flow)).toEqual([['t2', 1]]);
+	});
+
+	it('設組讓第 1 組空掉：第 2 組補成第 1 組，紀錄跟著換號', () => {
+		const flow = flowOf(setSquad(recorded(), 'x1', ['m1'], 3, { records: 'keep' }));
+		expect(squads(flow)).toEqual([['m1', 3], ['m2', 1], ['m3', 2], ['m4', 2]]);
+		const emptied = flowOf(setSquad(flow, 'x1', ['m2'], 3, { confirmed: true }));
+		expect(squads(emptied)).toEqual([['m1', 2], ['m2', 2], ['m3', 1], ['m4', 1]]);
+		expect(whos(emptied)).toEqual([['t2', 1]]);
+	});
+
+	it('刪隊員讓第 1 組空掉：第 2 組補成第 1 組，紀錄跟著換號', () => {
+		const members = x1Members().filter((m) => m.memberId !== 'm2');
+		let flow = flowOf(updateAction(recorded(), 'x1', { members }, { records: 'keep' }));
+		flow = flowOf(deleteMember(flow, 'm1', { confirmed: true }));
+		expect(squads(flow)).toEqual([['m3', 1], ['m4', 1]]);
+		expect(whos(flow)).toEqual([['t2', 1]]);
 	});
 });
