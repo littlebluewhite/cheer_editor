@@ -393,13 +393,17 @@ describe('動作表單：拍點格子', () => {
 		expect(onchange).not.toHaveBeenCalled();
 	});
 
-	it('口號段的動作沒有格子，只寫一句', () => {
+	it('口號段的動作沒有格子：寫一句，只有環節那一列', () => {
 		let flow = flowOf(addSegment(sample(), 'chant'));
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
 		setup(flow, 'x1');
 		const group = screen.getByRole('group', { name: '拍點' });
 		expect(group.textContent).toContain('口號段不數拍，不能放拍點');
-		expect(within(group).queryByRole('button')).toBeNull();
+		expect(within(group).queryByRole('button', { name: '1-1' })).toBeNull();
+		expect(within(group).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+			'加入環節',
+			'清掉環節'
+		]);
 	});
 });
 

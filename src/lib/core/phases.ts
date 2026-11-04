@@ -1,11 +1,12 @@
 // 改環節：加環節、改環節、刪環節。
-// 環節存在動作的成功率設定裡（Action.successRate.phases），有順序；音樂段照標的拍的先後排（見 phase-beats）。
+// 環節存在動作的成功率設定裡（Action.successRate.phases），有順序；音樂段照標的拍的先後排（見 phase-beats），
+// 口號段不標拍、照加的先後排。
 
 import { replaceAction, type Action } from './actions';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { allPhaseIds, PHASE_KINDS, replacePhases, successRateProblem, type Phase, type PhaseKind } from './success-rate';
+import { allPhaseIds, firstSquad, PHASE_KINDS, replacePhases, successRateProblem, type Phase, type PhaseKind } from './success-rate';
 
 /** 改環節要改的東西；沒給的不動。color 給 null 是回到種類的顏色。 */
 export interface PhaseChange {
@@ -14,7 +15,10 @@ export interface PhaseChange {
 	color?: string | null;
 }
 
-/** 加環節：給種類和名字（名字去掉頭尾空白，可以空），加在最後、不標拍。回傳新環節的 id。 */
+/**
+ * 口號段加環節：給種類和名字（名字去掉頭尾空白，可以空），加在最後、不標拍。回傳新環節的 id。
+ * 動作還沒記成功率時，這就是第一個環節：動作開始記成功率（見 firstSquad）。音樂段的環節要選拍標（markPhaseBeats）。
+ */
 export function addPhase(
 	flow: Flow,
 	actionId: string,
@@ -22,11 +26,12 @@ export function addPhase(
 ): CommandResult<{ id: string }> {
 	const action = flow.actions.find((a) => a.id === actionId);
 	if (!action) return blocked('找不到這個動作');
-	if (!action.successRate) return blocked('先打開記成功率才能加環節');
+	if (flow.segments.find((s) => s.id === action.segmentId)?.kind === 'music') return blocked('音樂段的環節要選拍標');
 	const issued = freshIds('p', 1, flow.lastIds, allPhaseIds(flow));
 	const phase: Phase = { id: issued.ids[0], kind: input.kind, name: input.name.trim() };
-	const phases = [...action.successRate.phases, phase];
-	const r = withPhases({ ...flow, lastIds: issued.lastIds }, action, phases);
+	const phases = [...(action.successRate?.phases ?? []), phase];
+	const base = action.successRate ? action : firstSquad(action);
+	const r = withPhases({ ...flow, lastIds: issued.lastIds }, base, phases);
 	return r.kind === 'ok' ? { ...r, id: phase.id } : r;
 }
 
@@ -60,10 +65,12 @@ export function deletePhase(
 	if (typeof found === 'string') return blocked(found);
 	const { action, phase } = found;
 	const marked = action.successRate!.records.filter((r) => phaseId in r.marks).length;
+	const phases = action.successRate!.phases.filter((p) => p.id !== phaseId);
 	if (marked && !confirmed) {
-		return needsConfirm(`${phaseLabel(phase)} 有紀錄，刪掉會清掉 ${marked} 次的記號，確定就刪掉`, []);
+		const empty = phases.length ? '' : '；動作沒有環節了，不再記成功率';
+		return needsConfirm(`${phaseLabel(phase)} 有紀錄，刪掉會清掉 ${marked} 次的記號${empty}，確定就刪掉`, []);
 	}
-	return withPhases(flow, action, action.successRate!.phases.filter((p) => p.id !== phaseId));
+	return withPhases(flow, action, phases);
 }
 
 /** 環節的名字：種類加名字，例：上法 延伸；沒名字就是種類。 */
