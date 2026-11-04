@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import Page from './+page.svelte';
 
@@ -183,15 +183,52 @@ describe('動作', () => {
 		expect(bar()).toBeTruthy();
 	});
 
-	it('「取消選取」跟 Esc 一樣，動作和人的選取都清掉；沒有選東西時按不了', async () => {
-		await withAction();
-		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		const clear = () => screen.getByRole('button', { name: '取消選取' }) as HTMLButtonElement;
-		expect(clear().disabled).toBe(false);
-		await fireEvent.click(clear());
-		expect(bar()?.classList.contains('selected')).toBe(false);
-		expect(dot().classList.contains('selected')).toBe(false);
-		expect(clear().disabled).toBe(true);
+	describe('場地左邊的「多選」「取消選取」只在觸控螢幕上有（docs/adr/0005-ipad-touch.md）', () => {
+		afterEach(() => vi.unstubAllGlobals());
+
+		const touchScreen = () =>
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+		const multi = () => screen.queryByRole('checkbox', { name: '多選' }) as HTMLInputElement | null;
+		const clear = () => screen.queryByRole('button', { name: '取消選取' }) as HTMLButtonElement | null;
+		const name = () => document.querySelector('[data-lane="m1"] .lab')!;
+
+		it('電腦上沒有；Shift＋點、Esc 照舊', async () => {
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: fine)' }));
+			await withAction();
+			expect(multi()).toBeNull();
+			expect(clear()).toBeNull();
+
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			await fireEvent.click(name());
+			expect(dot().classList.contains('selected')).toBe(true);
+			await fireEvent.click(name(), { shiftKey: true });
+			expect(dot().classList.contains('selected')).toBe(false);
+			await fireEvent.click(name());
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			expect(dot().classList.contains('selected')).toBe(false);
+		});
+
+		it('觸控螢幕：「取消選取」跟 Esc 一樣，動作和人的選取都清掉；沒有選東西時按不了', async () => {
+			touchScreen();
+			await withAction();
+			await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+			expect(clear()!.disabled).toBe(false);
+			await fireEvent.click(clear()!);
+			expect(bar()?.classList.contains('selected')).toBe(false);
+			expect(dot().classList.contains('selected')).toBe(false);
+			expect(clear()!.disabled).toBe(true);
+		});
+
+		it('觸控螢幕：打開「多選」，不按 Shift 點泳道名字也是加進來或拿掉', async () => {
+			touchScreen();
+			await withAction();
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			await fireEvent.click(multi()!);
+			await fireEvent.click(name());
+			expect(dot().classList.contains('selected')).toBe(true);
+			await fireEvent.click(name());
+			expect(dot().classList.contains('selected')).toBe(false);
+		});
 	});
 
 	it('名詞對照表開著時按 Esc 只關掉它，不清除選到的動作', async () => {
