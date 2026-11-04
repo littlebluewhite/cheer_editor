@@ -14,20 +14,15 @@ import {
 	readFlowFile,
 	recordAttempt,
 	updateSegment,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { editorPage, openFile, settle } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
 
 /**
  * 音樂 1；Lib（技巧，1-1 起兩個八拍）的環節：1-1 到 1-3 上法「延伸」（p1）、1-4 到 2-3 中段（p2）、

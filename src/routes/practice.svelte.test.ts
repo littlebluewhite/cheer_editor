@@ -3,73 +3,20 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import {
-	addAction,
-	addMembers,
-	addSegment,
-	createFlow,
-	markPhaseBeats,
 	readFlowFile,
 	recordAttempt,
-	setSquad,
-	updateSegment,
 	writeFlowFile,
-	type CommandResult,
 	type Flow,
 	type Mark,
 	type NewAttempt
 } from '#lib/core';
-import { editorPage, openFile, settle } from '#lib/test-fakes.js';
+import { flowOf } from '#lib/core/test-flows.js';
+import { editorPage, openFile, practiceFlow, settle } from '#lib/test-fakes.js';
 import { localDate } from '#lib/local-date.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
-
-/**
- * 音樂 1（4 個八拍）；小美、小芳是上層，小A、小B 是底層。
- * x1：Lib（技巧，第 1 個八拍），環節上法 1-1 到 1-2、中段 1-3 到 1-6、下法 1-7 到 1-8；小美、小A 第 1 組，小芳、小B 第 2 組。
- * x2：拋投（第 2 個八拍的前 4 拍），還沒有環節；小芳。
- * x3：騰翻（第 3 個八拍），環節整體「騰翻」整個動作；小美、小A。
- */
-function practiceFlow(): Flow {
-	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
-	flow = flowOf(
-		addMembers(flow, [
-			{ name: '小美', gender: 'F', globalRole: 'top' },
-			{ name: '小A', gender: 'M', globalRole: 'base' },
-			{ name: '小芳', gender: 'F', globalRole: 'top' },
-			{ name: '小B', gender: 'M', globalRole: 'base' }
-		])
-	);
-	flow = flowOf(addSegment(flow, 'music'));
-	flow = flowOf(updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
-	const lib = [
-		{ memberId: 'm1', role: '上層' },
-		{ memberId: 'm2', role: '主底' },
-		{ memberId: 'm3', role: '上層' },
-		{ memberId: 'm4', role: '主底' }
-	];
-	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members: lib }));
-	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
-	}
-	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', [id], squad));
-	}
-	const toss = [{ memberId: 'm3', role: '上層' }];
-	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'toss', name: '', start: 16, length: 8, note: '', members: toss }));
-	const tumbling = [
-		{ memberId: 'm1', role: '騰翻' },
-		{ memberId: 'm2', role: '騰翻' }
-	];
-	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members: tumbling }));
-	return flowOf(markPhaseBeats(flow, 'x3', { kind: 'whole', name: '騰翻' }, 0, 16));
-}
 
 /** 開編輯頁、放 practiceFlow()、切到練習。回傳 session 和存下來的檔。 */
 async function practice() {

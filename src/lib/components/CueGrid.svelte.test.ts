@@ -8,17 +8,12 @@ import {
 	updateAction,
 	updatePhase,
 	updateSegment,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import CueGrid from './CueGrid.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 /** 音樂 1（4 個八拍）；動作從 3-3 到 4-2（8 拍）。 */
 function sample(): Flow {

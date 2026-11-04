@@ -3,17 +3,12 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import MemberPicker from './MemberPicker.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 /**
  * 音樂 1（150 BPM，一個半拍 0.2 秒）；小A 上、小B 底、小C 底。

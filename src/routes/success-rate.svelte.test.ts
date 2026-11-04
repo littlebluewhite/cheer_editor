@@ -4,56 +4,16 @@ import { describe, expect, it } from 'vitest';
 import {
 	addAction,
 	addMembers,
-	addSegment,
-	createFlow,
 	markPhaseBeats,
 	setSquad,
-	readFlowFile,
-	type CommandResult,
-	type Flow
+	readFlowFile
 } from '#lib/core';
-import { editorPage, openFile, settle } from '#lib/test-fakes.js';
+import { flowOf } from '#lib/core/test-flows.js';
+import { editorPage, openFile, phasedFlow, settle, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
-
-/** 音樂 1；小美、小芳是上層，小A、小B 是底層，四個人做 Lib（技巧）。 */
-function sampleFlow(): Flow {
-	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
-	flow = flowOf(
-		addMembers(flow, [
-			{ name: '小美', gender: 'F', globalRole: 'top' },
-			{ name: '小A', gender: 'M', globalRole: 'base' },
-			{ name: '小芳', gender: 'F', globalRole: 'top' },
-			{ name: '小B', gender: 'M', globalRole: 'base' }
-		])
-	);
-	flow = flowOf(addSegment(flow, 'music'));
-	const members = [
-		{ memberId: 'm1', role: '上層' },
-		{ memberId: 'm2', role: '主底' },
-		{ memberId: 'm3', role: '上層' },
-		{ memberId: 'm4', role: '主底' }
-	];
-	return flowOf(
-		addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members })
-	);
-}
-
-/** sampleFlow 的 Lib 加上環節：上法 1-1 到 1-2、中段 1-3 到 1-6、下法 1-7 到 1-8（全部的人先在第 1 組）。 */
-function phasedFlow(): Flow {
-	let flow = sampleFlow();
-	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
-	}
-	return flow;
-}
 
 /** 點泳道上 Lib 的色條，選到它。 */
 const selectLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
@@ -167,7 +127,7 @@ describe('分組浮動列', () => {
 	});
 
 	it.each([['tumbling'], ['jump']] as const)('%s 的動作有環節也沒有組號小圓和浮動列', async (category) => {
-		let flow = sampleFlow();
+		let flow = teamFlow();
 		flow = flowOf(
 			addAction(flow, { segmentId: 's1', category, name: '', start: 16, length: 8, note: '', members: [{ memberId: 'm1', role: null }] })
 		);
@@ -179,7 +139,7 @@ describe('分組浮動列', () => {
 	});
 
 	it('動作沒有環節：沒有組號小圓和浮動列', async () => {
-		await openPhased(sampleFlow());
+		await openPhased(teamFlow());
 		expect(bar()).toBeNull();
 		expect(badge('小美')).toBeNull();
 	});

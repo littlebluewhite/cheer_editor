@@ -1,12 +1,8 @@
-import { addSegment, createFlow, type CommandResult, type Flow } from '#lib/core';
+import { addSegment, createFlow } from '#lib/core';
+import { flowOf } from '#lib/core/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import Timeline from './Timeline.svelte';
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(r)}`);
-	return r.flow;
-}
 
 function setup() {
 	const flow = flowOf(

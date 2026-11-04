@@ -2,60 +2,12 @@
 // 流程在核心裡做好（含紀錄），放一個帶著它的 session 進頁面，再讀 session 的流程看紀錄。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import {
-	addAction,
-	addMembers,
-	addSegment,
-	createFlow,
-	markPhaseBeats,
-	recordAttempt,
-	setSquad,
-	type CommandResult,
-	type Flow
-} from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, recordedFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
-
-function flowOf(r: CommandResult): Flow {
-	if (r.kind !== 'ok') throw new Error(r.message);
-	return r.flow;
-}
-
-/** Lib（技巧）的環節上法 1-1 到 1-2、中段 1-3 到 1-6、下法 1-7 到 1-8：小美、小A 第 1 組（記了 2 次），小芳、小B 第 2 組（記了 1 次）。 */
-function recordedFlow(): Flow {
-	let flow = flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }));
-	flow = flowOf(
-		addMembers(flow, [
-			{ name: '小美', gender: 'F', globalRole: 'top' },
-			{ name: '小A', gender: 'M', globalRole: 'base' },
-			{ name: '小芳', gender: 'F', globalRole: 'top' },
-			{ name: '小B', gender: 'M', globalRole: 'base' }
-		])
-	);
-	flow = flowOf(addSegment(flow, 'music'));
-	const members = [
-		{ memberId: 'm1', role: '上層' },
-		{ memberId: 'm2', role: '主底' },
-		{ memberId: 'm3', role: '上層' },
-		{ memberId: 'm4', role: '主底' }
-	];
-	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 0, length: 16, note: '', members }));
-	for (const [kind, at, len] of [['load', 0, 4], ['hold', 4, 8], ['dismount', 12, 4]] as const) {
-		flow = flowOf(markPhaseBeats(flow, 'x1', { kind, name: '' }, at, len));
-	}
-	for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 2]] as const) {
-		flow = flowOf(setSquad(flow, 'x1', [id], squad));
-	}
-	for (const who of [1, 1, 2]) {
-		const attempt = { date: '2026-11-04', who, practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } };
-		flow = flowOf(recordAttempt(flow, 'x1', attempt));
-	}
-	return flow;
-}
 
 /** 開編輯頁、放 recordedFlow()；回傳 session。 */
 function openRecorded() {
