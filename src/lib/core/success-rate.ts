@@ -115,6 +115,11 @@ export function perPerson(category: ActionCategory): boolean {
 	return PER_PERSON.has(category);
 }
 
+/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。 */
+export function firstSquad(action: Action): Action {
+	return perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
+}
+
 /**
  * 換掉動作的環節清單，紀錄裡對不上的記號跟著拿掉（記號清光的那一次整筆拿掉）。
  * 一個環節都不剩就不記成功率：成功率設定和每個人的組一起拿掉。

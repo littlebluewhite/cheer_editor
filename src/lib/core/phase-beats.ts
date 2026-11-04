@@ -11,8 +11,8 @@ import type { Segment } from './segment';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import {
 	allPhaseIds,
+	firstSquad,
 	markedCount,
-	perPerson,
 	replacePhases,
 	successRateProblem,
 	type Phase,
@@ -56,11 +56,6 @@ export function markPhaseBeats(
 	const base = action.successRate ? action : firstSquad(action);
 	const r = withPhases({ ...flow, ...(lastIds && { lastIds }) }, base, phases, options);
 	return r.kind === 'ok' ? { ...r, id } : r;
-}
-
-/** 動作加第一個環節（開始記成功率）時：分組的大類把動作裡的人全部放進第 1 組；騰翻、跳躍不分組。 */
-function firstSquad(action: Action): Action {
-	return perPerson(action.category) ? action : { ...action, members: action.members.map((m) => ({ ...m, squad: 1 })) };
 }
 
 /**

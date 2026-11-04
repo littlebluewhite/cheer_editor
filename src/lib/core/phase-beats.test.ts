@@ -354,6 +354,15 @@ describe('標的拍跟著動作', () => {
 		expect(brief(flow)).toEqual(['p1', 'p2', 'p3']);
 	});
 
+	it('換到口號段：環節照原本拍的先後排，不是照加的先後', () => {
+		// 先加的 p4 在後面（2-5 起），後加的 p5 在前面（1-1 起）。
+		let flow = flowOf(clearPhaseBeats(sample(), 'x1', 0, 32, { confirmed: true }));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'dismount', name: '' }, 24, 8));
+		flow = flowOf(markPhaseBeats(flow, 'x1', { kind: 'load', name: '' }, 0, 6));
+		flow = flowOf(updateAction(flow, 'x1', { segmentId: 's2', start: 0, length: 30 }, { confirmed: true }));
+		expect(brief(flow)).toEqual(['p5', 'p4']);
+	});
+
 	it('從口號段換回音樂段：沒拍的環節刪掉（先問），刪光就不記成功率', () => {
 		const chant = flowOf(updateAction(onlyP1(), 'x1', { segmentId: 's2', start: 0, length: 30 }, { confirmed: true }));
 		expect(updateAction(chant, 'x1', { segmentId: 's1', start: 0, length: 32 })).toEqual({
