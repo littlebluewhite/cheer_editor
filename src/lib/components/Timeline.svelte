@@ -6,15 +6,23 @@
 	// 「符合寬度」讓整支流程剛好放滿現在的寬度（連最後一張站位的縮圖），換視窗大小也維持放滿，直到自己按「＋」「−」。
 	// 流程比畫面短時，開檔、加段後自動放滿（比畫面長時維持 ×1，不自動縮小）。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
+	// 「段」那一格的「插入八拍」：在播放頭空出幾個八拍（或幾拍，口號段幾秒），這段後面的東西一起往後延。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
 	import { tick, untrack } from 'svelte';
 	import {
+		HALF_BEATS_PER_BEAT,
+		HALF_BEATS_PER_EIGHT,
 		addSegment,
+		atText,
 		formationTimes,
+		insertBeats,
+		lengthText,
+		readLength,
 		rulerMarks,
 		segmentSpans,
 		snapPlayhead,
 		spacedLabels,
+		toPosition,
 		totalSeconds,
 		type Clash,
 		type SegmentKind
@@ -204,6 +212,41 @@
 		});
 	}
 
+	/** 插入八拍的小窗開著：anchor 是打開它的鈕。 */
+	let inserting = $state<{ anchor: HTMLElement } | null>(null);
+	let insertCount = $state('1');
+	let insertUnit = $state<'eight' | 'beat'>('eight');
+	/** 插入八拍被擋的原因畫在小窗裡。 */
+	const insertAsk = session.changeAsk();
+	/** 播放頭在哪一段的哪一格（插在這裡）。 */
+	const insertAt = $derived(toPosition(flow, playback.sec));
+	const insertSpan = $derived(spans.find((s) => s.segment.id === insertAt?.segmentId));
+
+	function toggleInsert(e: MouseEvent) {
+		const anchor = e.currentTarget as HTMLElement;
+		insertAsk.clear();
+		inserting = inserting ? null : { anchor };
+	}
+
+	/** 插入：數字乘上單位換成段內的格數（音樂段半拍、口號段 0.1 秒），交給核心。 */
+	function insert() {
+		const at = insertAt;
+		const span = insertSpan;
+		if (!at || !span) return;
+		const music = span.segment.kind === 'music';
+		// 讀成幾拍（口號段幾秒）再換成格數；八拍是 8 拍
+		const read = readLength(span.segment, insertCount);
+		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
+		const length = read.kind === 'ok' ? read.value * scale : 0;
+		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : `${lengthText(span.segment, length)} ${music ? '拍' : '秒'}`;
+		insertAsk.send(() => (read.kind === 'ok' ? insertBeats(flow, at, length) : read), {
+			done: () => {
+				inserting = null;
+				session.notice = `在${span.label} ${atText(span.segment, at.at)} 插入了 ${amount}，後面的站位和動作往後延`;
+			}
+		});
+	}
+
 	/** 在八拍尺上、或在播放頭那條線上按下去：點或拖移動播放頭。 */
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
@@ -247,6 +290,14 @@
 		<div class="row segs">
 			<div class="lab">
 				<span>段</span>
+				<button
+					type="button"
+					class="insert"
+					aria-expanded={!!inserting}
+					disabled={spans.length === 0}
+					title="在播放頭空出時間，這段後面的站位、動作一起往後延"
+					onclick={toggleInsert}>插入八拍</button
+				>
 				<button
 					type="button"
 					class="add"
@@ -365,6 +416,38 @@
 	</div>
 {/if}
 
+{#if inserting && insertSpan && insertAt}
+	{@const music = insertSpan.segment.kind === 'music'}
+	<!-- 插入八拍的小窗：放在鈕下面；點外面、按 Esc 就收 -->
+	<form
+		class="menu insert-pop"
+		{@attach popover({
+			place: below(inserting.anchor, { gap: 4, align: 'left', flip: false }),
+			close: () => (inserting = null),
+			inside: [inserting.anchor]
+		})}
+		onsubmit={(e) => {
+			e.preventDefault();
+			insert();
+		}}
+	>
+		<span class="menu-title">在{insertSpan.label} {atText(insertSpan.segment, insertAt.at)}{music ? '' : ' 秒'} 插入</span>
+		<div class="insert-row">
+			<input aria-label="插入幾個" inputmode="decimal" bind:value={insertCount} />
+			{#if music}
+				<select aria-label="單位" bind:value={insertUnit}>
+					<option value="eight">個八拍</option>
+					<option value="beat">拍</option>
+				</select>
+			{:else}
+				<span>秒</span>
+			{/if}
+			<button type="submit" class="primary">插入</button>
+		</div>
+		{#if insertAsk.error}<p class="error" role="alert">{insertAsk.error}</p>{/if}
+	</form>
+{/if}
+
 <style>
 	.timeline {
 		overflow: auto;
@@ -448,6 +531,32 @@
 		border: none;
 		padding: 6px 10px;
 	}
+	.insert {
+		margin-left: auto;
+		height: 22px;
+		padding: 0 6px;
+		font-size: 11px;
+	}
+	.insert + .add {
+		margin-left: 0;
+	}
+	.insert-pop {
+		padding: 4px 8px 8px;
+		max-width: 260px;
+	}
+	.insert-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.insert-row input {
+		width: 48px;
+	}
+	.insert-pop .error {
+		margin: 4px 2px 0;
+		font-size: 12px;
+		color: var(--danger, #c0392b);
+	}
 	.zoom-btns {
 		margin-left: auto;
 		display: flex;
@@ -490,8 +599,15 @@
 			height: 34px;
 		}
 		.add,
+		.insert,
 		.zoom-btns button {
 			position: relative;
+		}
+		/* 「插入八拍」夠寬，只往上下加高；跟「＋」一樣往下多一點，不超出段列 */
+		.insert::after {
+			content: '';
+			position: absolute;
+			inset: -6px 0 -10px;
 		}
 		.add-after::after {
 			content: '';
