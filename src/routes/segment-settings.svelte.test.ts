@@ -108,6 +108,19 @@ describe('段設定的波形', () => {
 	});
 });
 
+describe('從播放頭切段（#167）', () => {
+	it('播放頭在 5-3 按「從播放頭這個八拍切成兩段」：多一段，各 4 個八拍', async () => {
+		const { editor, session } = await open(oneMusic(), 30);
+		// 150 BPM：5-3 = 34 拍 × 0.4 秒
+		editor.playback.seek(13.6);
+		const dialog = await settings('音樂 1');
+		await fireEvent.click(dialog.getByRole('button', { name: '從播放頭這個八拍切成兩段' }));
+		expect(session.flow!.segments.map((s) => s.kind === 'music' && s.halfBeats)).toEqual([64, 64]);
+		expect(field(dialog, '八拍數').value).toBe('4');
+		expect(screen.getByRole('button', { name: /^音樂 2/ })).toBeTruthy();
+	});
+});
+
 describe('延遲校正', () => {
 	it('打 5000 按 Enter：夾到 1000，提示範圍；欄位旁看得到「毫秒」', async () => {
 		await open(oneMusic(), 30);
