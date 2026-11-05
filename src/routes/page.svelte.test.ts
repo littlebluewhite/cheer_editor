@@ -1431,6 +1431,27 @@ describe('編輯器首頁', () => {
 		expect(screen.queryByText(/場地/, { selector: 'button' })).toBeNull();
 	});
 
+	it('新建表單名字、條數都錯：兩個欄位都標紅，下面各寫自己的錯；改好名字只收名字的', async () => {
+		render(Page);
+		await fireEvent.click(screen.getByRole('radio', { name: /自訂/ }));
+		await fireEvent.input(screen.getByLabelText('條數'), { target: { value: '13' } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		const name = screen.getByLabelText('流程名字');
+		const strips = screen.getByLabelText('條數');
+		/** 欄位標的錯誤訊息（aria-errormessage 指到的那一段）。 */
+		const errorOf = (input: HTMLElement) =>
+			input.getAttribute('aria-invalid') === 'true'
+				? document.getElementById(input.getAttribute('aria-errormessage') ?? '')?.textContent
+				: null;
+		expect(errorOf(name)).toBe('請幫流程取名字');
+		expect(errorOf(strips)).toBe('條數要是 1–12 的整數');
+		expect(screen.getAllByRole('alert')).toHaveLength(2);
+
+		await fireEvent.input(name, { target: { value: '校內賽' } });
+		expect(errorOf(name)).toBeNull();
+		expect(errorOf(strips)).toBe('條數要是 1–12 的整數');
+	});
+
 	it('加的隊員出現在名單上，也在場上（開頭站位）', async () => {
 		render(Page);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
@@ -1457,7 +1478,7 @@ describe('編輯器首頁', () => {
 			target: { value: '王小明\t男\t底層\n李美\t女\t上層\n阿強\t男\t中層' }
 		});
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
-		expect(screen.getByRole('alert').textContent).toBe('第 3 行「阿強」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」');
+		expect(screen.getByRole('alert').textContent).toBe('「阿強」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」');
 		// 9 條直放：格點是每一格的正中間；先排正中心，再排正面那一格（差一格 1.8288 m）。
 		const at = (id: string) =>
 			document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);

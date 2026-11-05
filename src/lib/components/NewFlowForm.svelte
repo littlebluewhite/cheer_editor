@@ -6,6 +6,7 @@
 		MIN_STRIPS,
 		createFlow,
 		fieldGeometry,
+		flowNameProblem,
 		stripsProblem,
 		type FieldConfig,
 		type FieldLayout,
@@ -22,10 +23,13 @@
 	let choice = $state<number | 'custom'>(0);
 	let customStrips = $state<number | null>(9);
 	let customLayout = $state<FieldLayout>('vertical');
-	/** 建立被擋下的原因（名字空的、條數不對）。 */
+	/** 建立被擋下的原因（兩格都先查過，這裡是流程核心另外擋的）。 */
 	const ask = new Ask((flow) => oncreate(flow));
 	/** 自訂條數不對（超出範圍、不是整數）：不畫預覽，馬上說原因，不用等按建立。 */
 	const customError = $derived(choice === 'custom' ? stripsProblem(customStrips ?? Number.NaN) : null);
+	/** 按建立時名字不行的原因：寫在名字下面，改了名字就收掉。 */
+	let nameError = $state('');
+	const uid = $props.id();
 
 	function submit(e: SubmitEvent) {
 		e.preventDefault();
@@ -33,6 +37,9 @@
 			choice === 'custom'
 				? { strips: customStrips ?? Number.NaN, layout: customLayout }
 				: FIELD_TEMPLATES[choice].field;
+		// 兩格各自查：都錯時兩個錯一起出現，不用按兩次才知道
+		nameError = flowNameProblem(name) ?? '';
+		if (nameError || customError) return;
 		ask.send(() => createFlow({ name, field }));
 	}
 
@@ -64,10 +71,20 @@
 <form class="new-flow" novalidate onsubmit={submit} oninput={() => ask.edited()} onchange={() => ask.edited()}>
 	<h2>新建流程</h2>
 
-	<label class="name">
-		<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={name} /></span>
-		<input aria-label="流程名字" bind:value={name} bind:this={nameInput} placeholder="例：2027 全國賽" />
-	</label>
+	<div class="name">
+		<label class="head" for="{uid}-name">流程名字<CharCount field="flowName" input={nameInput} value={name} /></label>
+		<input
+			id="{uid}-name"
+			aria-label="流程名字"
+			aria-invalid={nameError ? 'true' : undefined}
+			aria-errormessage={nameError ? `${uid}-name-error` : undefined}
+			bind:value={name}
+			bind:this={nameInput}
+			oninput={() => (nameError = '')}
+			placeholder="例：2027 全國賽"
+		/>
+		{#if nameError}<p class="error" id="{uid}-name-error" role="alert">{nameError}</p>{/if}
+	</div>
 
 	<fieldset>
 		<legend>場地</legend>
@@ -97,18 +114,27 @@
 			<div class="custom">
 				<label>
 					條數
-					<input type="number" min={MIN_STRIPS} max={MAX_STRIPS} step="1" bind:value={customStrips} />
+					<input
+						type="number"
+						min={MIN_STRIPS}
+						max={MAX_STRIPS}
+						step="1"
+						aria-invalid={customError ? 'true' : undefined}
+						aria-errormessage={customError ? `${uid}-strips-error` : undefined}
+						bind:value={customStrips}
+					/>
 				</label>
 				<span class="layout">
 					鋪向
 					<label><input type="radio" name="layout" value="vertical" bind:group={customLayout} />直放</label>
 					<label><input type="radio" name="layout" value="horizontal" bind:group={customLayout} />橫放</label>
 				</span>
+				{#if customError}<p class="error" id="{uid}-strips-error" role="alert">{customError}</p>{/if}
 			</div>
 		{/if}
 	</fieldset>
 
-	{#if customError || ask.error}<p class="error" role="alert">{customError || ask.error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 
 	<button type="submit" class="primary">建立</button>
 </form>
@@ -208,6 +234,8 @@
 		color: var(--muted);
 		font-size: 11px;
 		line-height: 1.4;
+		/* 換行時兩行差不多長，不會斷出一個孤字（「大專」只剩「專」） */
+		text-wrap: balance;
 	}
 	.custom {
 		display: flex;
@@ -234,6 +262,10 @@
 	.error {
 		margin: 0;
 		color: var(--danger, #c0392b);
+	}
+	/* 條數的錯：在條數那一排下面自己一行 */
+	.custom .error {
+		flex-basis: 100%;
 	}
 	button {
 		justify-self: stretch;

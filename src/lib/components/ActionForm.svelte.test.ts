@@ -98,6 +98,13 @@ describe('動作表單：新增', () => {
 		expect(screen.queryByText('在播放頭新增動作')).toBeNull();
 	});
 
+	it('人那一區的小標寫「人（n）・任務角色」，不像新增按鈕', async () => {
+		setup(sample(), null);
+		expect(screen.getByText('人（0）・任務角色')).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
+		expect(screen.getByText('人（1）・任務角色')).toBeTruthy();
+	});
+
 	it('新增時挑辨識色，新動作帶著它', async () => {
 		const session = setup(sample(), null);
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });

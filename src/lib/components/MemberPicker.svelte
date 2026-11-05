@@ -71,8 +71,11 @@
 		{/each}
 		<button type="button" onclick={previous}>沿用上一個動作的人</button>
 	</div>
-	{#if message}<p class="muted" role="status">{message}</p>{/if}
-	<p class="picked" class:none={!names.length}>已選 {names.length} 人{names.length ? `：${names.join('、')}` : ''}</p>
+	<!-- 說明和選人摘要各固定一行（太長用…，滑鼠移上去看全部）：按了鈕不會把下面的表單往下推 -->
+	<div class="said">{#if message}<p class="muted" role="status" title={message}>{message}</p>{/if}</div>
+	<p class="picked" class:none={!names.length} title={names.join('、')}>
+		已選 {names.length} 人{names.length ? `：${names.join('、')}` : ''}
+	</p>
 	<p class="muted">
 		場上點人、拖空白處框選，或點泳道上的名字。要選好幾個人：{touchScreen ? '打開場地左邊的「多選」再點' : '按住 Shift 點'}。
 	</p>
@@ -107,6 +110,16 @@
 		font-size: 12px;
 		padding: 3px 10px;
 		border-radius: 999px;
+	}
+	.said,
+	.said p,
+	.picked {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.said {
+		min-height: 1.5em;
 	}
 	.picked {
 		padding: 7px 10px;

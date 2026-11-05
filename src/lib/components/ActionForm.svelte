@@ -340,7 +340,7 @@
 
 		<div class="people">
 			<div class="people-head">
-				<span class="cap">人（{draft.members.length}）＋任務角色</span>
+				<span class="cap">人（{draft.members.length}）・任務角色</span>
 				<span class="legend">
 					<button
 						type="button"
