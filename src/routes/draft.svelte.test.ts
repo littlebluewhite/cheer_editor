@@ -109,17 +109,19 @@ describe('編輯時自動存草稿', () => {
 		const drafts = fakeDraftStore();
 		setup(drafts.store);
 		await flush();
-		vi.useFakeTimers();
 		await newFlow();
-		await vi.advanceTimersByTimeAsync(500);
-		expect(drafts.state.bytes).toBeNull();
+		await flush();
+		vi.useFakeTimers();
 		await addChant();
 		await vi.advanceTimersByTimeAsync(500);
-		expect(drafts.state.bytes).toBeNull();
+		expect(draftFlow(drafts.state.bytes).flow.segments).toEqual([]);
+		await addChant();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(draftFlow(drafts.state.bytes).flow.segments).toEqual([]);
 		await vi.advanceTimersByTimeAsync(500);
 		const r = draftFlow(drafts.state.bytes);
 		expect(r.flow.name).toBe('全國賽');
-		expect(r.flow.segments.map((s) => s.kind)).toEqual(['chant']);
+		expect(r.flow.segments.map((s) => s.kind)).toEqual(['chant', 'chant']);
 	});
 
 	it('草稿裡有音樂', async () => {
@@ -172,14 +174,12 @@ describe('編輯時自動存草稿', () => {
 		expect(r.audio).toEqual({ a1: new Uint8Array([7, 7]) });
 	});
 
-	it('剛建好、還沒改的流程也存草稿，重新整理救得回來', async () => {
+	it('剛建好的流程當下就存草稿（不等 1 秒，手機上被擋住也不會丟），重新整理救得回來', async () => {
 		const drafts = fakeDraftStore();
 		const first = setup(drafts.store);
 		await flush();
-		vi.useFakeTimers();
 		await newFlow();
-		await vi.advanceTimersByTimeAsync(1000);
-		vi.useRealTimers();
+		await flush();
 		first.unmount();
 		setup(drafts.store);
 		await flush();
