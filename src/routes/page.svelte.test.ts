@@ -703,8 +703,8 @@ describe('動作', () => {
 
 describe('站位與走位', () => {
 	/** 新流程、一個音樂段（150 BPM）、兩個隊員。 */
-	async function setup() {
-		await newFlow();
+	async function setup(engine?: FakeEngine) {
+		await newFlow(engine);
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
@@ -743,6 +743,25 @@ describe('站位與走位', () => {
 		await dragFirstMember();
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.queryByRole('status')).toBeNull();
+	});
+
+	it('播放中一開始拖人就先暫停，播放頭停到最近的整拍：新站位插在整拍上，不插在半拍', async () => {
+		const engine = createFakeEngine();
+		await setup(engine);
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		// 播到 8.3 秒：3-5& 和 3-6（8.4 秒）中間
+		engine.audible = engine.clicks[0].when + 8.3;
+		await nextFrame();
+		const dot = document.querySelector('[data-member-id="m1"]')!;
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: -200, clientY: -300 });
+		expect(screen.queryByRole('button', { name: '暫停' })).toBeNull();
+		// 暫停之後聲音停了，播放頭不再跟著走
+		engine.audible += 20;
+		await nextFrame();
+		await fireEvent.pointerUp(dot, { clientX: -200, clientY: -300 });
+		expect(thumbs()).toHaveLength(2);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-6');
 	});
 
 	it('尺上點：一小段距離內先停到站位（不吸到旁邊的整拍）；停在站位上拖人改的是那張', async () => {
