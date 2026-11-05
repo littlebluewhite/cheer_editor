@@ -103,7 +103,7 @@ describe('流程檔：開檔', () => {
 		expect(editor.file.openError).toBe('打不開「練習用.zip」：是新版編輯器存的，請重新整理，更新編輯器');
 		expect(session.notice).toBe('');
 		await editor.file.open(new File([new TextEncoder().encode('不是 zip')], '亂丟.zip'));
-		expect(editor.file.openError).toBe('打不開「亂丟.zip」：不是 zip 檔');
+		expect(editor.file.openError).toBe('打不開「亂丟.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 		await editor.file.open(zip(audioFlow()));
 		expect(session.flow!.name).toBe('練習用');
 		expect(editor.file.openError).toBe('');
@@ -114,7 +114,7 @@ describe('流程檔：開檔', () => {
 		const { editor, session } = testEditor(flow);
 		await editor.file.open(new File([new TextEncoder().encode('不是 zip')], '練習用.zip'));
 		expect(session.flow).toBe(flow);
-		expect(session.notice).toBe('打不開「練習用.zip」：不是 zip 檔');
+		expect(session.notice).toBe('打不開「練習用.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 		expect(editor.file.openError).toBe('');
 	});
 
@@ -167,24 +167,55 @@ describe('流程檔：存檔', () => {
 		expect(session.notice).toBe('');
 	});
 
-	it('Safari、Firefox 下載新檔：算存好了，寫一行說明；檔名不能用的字照瀏覽器的規則換成「_」，提示的檔名跟存下來的一樣', async () => {
+	it('存回檔案（Chrome、Edge）：提示寫存到的那個檔（教練在存檔對話框改過名字的話是改過的）', async () => {
+		const { saver } = fakeSaver();
+		const named = { save: saver.save, fileName: '縣賽 第二版.zip' };
+		const { editor, session } = testEditor(newFlow('練習用'), { createSaver: () => named });
+		session.change(flowOf(renameFlow(session.flow!, '縣賽')));
+		await editor.file.save();
+		expect(session.notice).toBe('已存到「縣賽 第二版.zip」');
+	});
+
+	it('Safari、Firefox 新的流程第一次存：下載，算存好了，說每次都下載新檔（沒有原檔可以存回）；檔名不能用的字照瀏覽器的規則換成「_」', async () => {
 		const made = savers('downloaded');
-		const { editor, session } = testEditor(newFlow('練習用'), { createSaver: made.create });
-		session.change(flowOf(renameFlow(session.flow!, '縣賽: A/B?')));
+		const { editor, session } = testEditor(null, { createSaver: made.create });
+		editor.file.create(newFlow('縣賽: A/B?'));
 		await editor.file.save();
 		expect(session.unsaved).toBe(false);
 		expect(made.all[0].fileNames).toEqual(['縣賽_ A_B_.zip']);
-		expect(session.notice).toBe(
-			'這個瀏覽器不能存回原檔，所以下載了一個新的「縣賽_ A_B_.zip」；用 Chrome 或 Edge 才能直接存回原檔。'
-		);
+		expect(session.notice).toBe('已下載「縣賽_ A_B_.zip」；這個瀏覽器每次存檔都下載一個新檔');
+		session.change(flowOf(renameFlow(session.flow!, '縣賽')));
+		await editor.file.save();
+		expect(session.notice).toBe('已下載新的「縣賽.zip」');
 	});
 
-	it('iPad 交給分享選單：算存好了，不寫說明', async () => {
+	it('Safari、Firefox 從檔案開的第一次存：下載新檔，電腦上說用 Chrome 或 Edge 才能存回原檔；之後只寫檔名', async () => {
+		const made = savers('downloaded');
+		const { editor, session } = testEditor(null, { createSaver: made.create });
+		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([1]) }));
+		await editor.file.save();
+		expect(session.notice).toBe(
+			'已下載新的「練習用.zip」；這個瀏覽器不能改原本開的檔，用電腦上的 Chrome 或 Edge 開檔，存檔才會存回原檔'
+		);
+		await editor.file.save();
+		expect(session.notice).toBe('已下載新的「練習用.zip」');
+	});
+
+	it('手機、平板下載新檔：不叫教練換瀏覽器，只說原本的檔沒改', async () => {
+		const { saver } = fakeSaver('downloaded');
+		const phone = { save: saver.save, touch: true };
+		const { editor, session } = testEditor(null, { createSaver: () => phone });
+		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([1]) }));
+		await editor.file.save();
+		expect(session.notice).toBe('已下載新的「練習用.zip」；原本開的檔沒有改');
+	});
+
+	it('iPad 交給分享選單：算存好了，提示寫檔名', async () => {
 		const { editor, session } = testEditor(newFlow('練習用'), { createSaver: savers('shared').create });
 		session.change(flowOf(renameFlow(session.flow!, '全國賽')));
 		await editor.file.save();
 		expect(session.unsaved).toBe(false);
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已分享「全國賽.zip」');
 	});
 
 	it('存失敗：還是沒存，提示再試一次；再按一次存檔照樣存', async () => {
@@ -323,14 +354,14 @@ describe('流程檔：缺音樂、壞音樂', () => {
 		expect(session.notice).toBe('');
 	});
 
-	it('存檔時有段找不到音樂：照樣存，提示存出來的檔裡沒有那些音樂（跟下載的說明接在一起）；那段補好音樂，提示自己收掉', async () => {
+	it('存檔時有段找不到音樂：照樣存，提示存出來的檔裡沒有那些音樂（接在存好的提示後面）；那段補好音樂，提示自己收掉', async () => {
 		const made = savers('downloaded');
 		const { editor, session } = testEditor(audioFlow(), { createSaver: made.create });
 		await editor.file.save();
 		expect(made.all[0].saves).toHaveLength(1);
 		expect(session.notice).toBe(
-			'這個瀏覽器不能存回原檔，所以下載了一個新的「練習用.zip」；用 Chrome 或 Edge 才能直接存回原檔。；' +
-				'存好了，但有 1 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次'
+			'已下載新的「練習用.zip」；這個瀏覽器不能改原本開的檔，用電腦上的 Chrome 或 Edge 開檔，存檔才會存回原檔；' +
+				'有 1 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次'
 		);
 		await editor.music.pick('s1', mp3(), session.changeAsk());
 		expect(session.notice).toBe('');
@@ -351,12 +382,12 @@ describe('流程檔：缺音樂、壞音樂', () => {
 		expect(session.notice).toBe('已刪掉站位 2');
 	});
 
-	it('音樂都在：存檔不提示，音樂照樣存進去', async () => {
+	it('音樂都在：開好、存好的提示只寫檔名，音樂照樣存進去', async () => {
 		const { editor, session, saves } = testEditor();
 		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([7, 7, 7]) }));
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已開啟「練習用.zip」');
 		await editor.file.save();
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已存到「練習用.zip」');
 		expect(read(saves[0]).audio).toEqual({ a1: new Uint8Array([7, 7, 7]) });
 	});
 
@@ -365,7 +396,7 @@ describe('流程檔：缺音樂、壞音樂', () => {
 		const { editor, session } = testEditor(null, { decode });
 		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([1]) }));
 		expect(session.flow!.name).toBe('練習用');
-		expect(session.notice).toBe('有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音');
+		expect(session.notice).toBe('已開啟「練習用.zip」；有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音');
 	});
 });
 

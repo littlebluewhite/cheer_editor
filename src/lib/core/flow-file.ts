@@ -126,7 +126,7 @@ export type ReadFlowFileResult =
 	| { kind: 'error'; message: string };
 
 // 打不開的原因（頁面前面加上檔名）。
-const NOT_A_ZIP = '不是 zip 檔';
+const NOT_A_ZIP = '檔案壞掉了，或不是這個編輯器存的流程檔';
 const NO_JSON = `zip 裡沒有 ${JSON_FILE}`;
 const BROKEN = `${JSON_FILE} 壞掉了`;
 

@@ -611,6 +611,18 @@ await check('768×1024 的桌面視窗算窄：編排是手機的檢視畫面，
 	return phoneView();
 });
 
+for (const [w, h] of [[320, 640], [390, 844]]) {
+	// 手機的版面寬會跟著撐寬的內容變大（innerWidth 也跟著變），所以跟設定的螢幕寬比
+	await check(`${w}×${h}（觸控）：手機的檢視畫面不把頁面撐寬（不能往右拖）`, async () => {
+		await setTouchViewport(w, h);
+		await openSample();
+		const phone = await phoneView();
+		if (!phone.ok) return phone;
+		const v = await js(`return { 頁寬: document.scrollingElement.scrollWidth, 版面寬: innerWidth }`);
+		return { ok: v.頁寬 <= w && v.版面寬 <= w, value: { 螢幕寬: w, ...v } };
+	});
+}
+
 for (const [w, h] of [[390, 844], [820, 1180]]) {
 	await check(`${w}×${h}（觸控）：開檔直接是檢視畫面（不溢出、播放鈕和上方列點得到）；切到「練習」能記一次，不溢出`, async () => {
 		await setTouchViewport(w, h);

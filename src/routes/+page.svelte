@@ -232,10 +232,16 @@
 	}
 
 
+	/** 右邊欄的兩頁（動作、隊員）：換流程時捲回最上面。 */
+	let actionPanel = $state<HTMLElement>();
+	let membersPanel = $state<HTMLElement>();
+
 	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
 	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
+		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
+		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
 		me = session.flow ? loadMe(session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
@@ -697,12 +703,12 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
+				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 					<MemberPanel />
 				</div>
 			</aside>
@@ -880,9 +886,10 @@
 	.editor.practicing {
 		grid-template-rows: auto minmax(0, 1fr);
 	}
-	/* 窄螢幕：上方列下面整塊是手機的檢視畫面（或練習畫面） */
+	/* 窄螢幕：上方列下面整塊是手機的檢視畫面（或練習畫面）。沒有右邊欄，只留一欄：不然右邊欄那欄 360px 把 320 寬的手機撐寬 */
 	.editor.narrow {
 		grid-template-rows: auto minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr);
 	}
 	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲） */
 	.phone-view {

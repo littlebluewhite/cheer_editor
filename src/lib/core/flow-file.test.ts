@@ -219,7 +219,7 @@ describe('流程檔：版本', () => {
 	});
 
 	it.each([
-		['不是 zip', bytes(1, 2, 3), '不是 zip 檔'],
+		['不是 zip', bytes(1, 2, 3), '檔案壞掉了，或不是這個編輯器存的流程檔'],
 		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') }), 'zip 裡沒有 flow.json'],
 		['flow.json 在兩層資料夾裡', zipSync({ 'a/b/flow.json': strToU8('{}') }), 'zip 裡沒有 flow.json'],
 		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') }), 'flow.json 壞掉了'],

@@ -103,7 +103,7 @@ describe('練習：記錄頁記分段練', () => {
 	it('練習時開檔、存檔照舊，提示也看得到', async () => {
 		await practice();
 		await openFile(new TextEncoder().encode('不是 zip'), '開啟');
-		expect(screen.getByRole('status').textContent).toBe('打不開「練習用.zip」：不是 zip 檔');
+		expect(screen.getByRole('status').textContent).toBe('打不開「練習用.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 	});
 
 	it('日期可以改（練完補打），記在那一天；切到編排再回來還在', async () => {
