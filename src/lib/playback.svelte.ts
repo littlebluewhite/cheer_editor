@@ -18,9 +18,10 @@ export class Playback implements SessionPlayback {
 	readonly #flow: () => Flow | null;
 	readonly #createEngine: () => AudioEngine;
 	readonly #nextFrame: NextFrame;
+	readonly #moved: () => void;
 	#player: Player | null = null;
 
-	#sec = $state(0);
+	#at = $state(0);
 	#playing = $state(false);
 	#metronome = $state(true);
 	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
@@ -28,11 +29,25 @@ export class Playback implements SessionPlayback {
 	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
 	#latencyMs = $state(loadLatencyMs());
 
-	/** flow：現在的流程；createEngine：建音訊引擎（第一次播放時才建）。 */
-	constructor(flow: () => Flow | null, createEngine: () => AudioEngine, nextFrame: NextFrame) {
+	/**
+	 * flow：現在的流程；createEngine：建音訊引擎（第一次播放時才建）。
+	 * moved：播放頭動了要叫的（編輯器 module 接上：動作表單的草稿跟著播放頭）。
+	 */
+	constructor(flow: () => Flow | null, createEngine: () => AudioEngine, nextFrame: NextFrame, moved: () => void) {
 		this.#flow = flow;
 		this.#createEngine = createEngine;
 		this.#nextFrame = nextFrame;
+		this.#moved = moved;
+	}
+
+	/** 播放頭（全域秒數）；每次改都叫 moved。 */
+	get #sec(): number {
+		return this.#at;
+	}
+
+	set #sec(sec: number) {
+		this.#at = sec;
+		this.#moved();
 	}
 
 	/** 播放頭，全域秒數。 */

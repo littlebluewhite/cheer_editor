@@ -7,7 +7,8 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
-	import { untrack, type ComponentProps } from 'svelte';
+	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
+	import type { ComponentProps } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { below, popover } from '#lib/popover.svelte.js';
@@ -16,27 +17,15 @@
 		actionHints,
 		actionLabel,
 		actionSeconds,
-		actionSlotAt,
-		addAction,
-		atText,
-		defaultRoles,
 		deleteAction,
 		groupsPeople,
-		lengthText,
 		memberName,
 		positionText,
-		readLength,
-		readStart,
 		roleGlossary,
 		segmentSpans,
 		squadBadge,
-		updateAction,
-		type Action,
 		type ActionCategory,
-		type ActionMember,
-		type ConfirmOption,
-		type NewActionInput,
-		type ReadResult
+		type ConfirmOption
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
@@ -53,35 +42,16 @@
 
 	let { cellAt }: Props = $props();
 
-	// 流程、選到的動作（null = 新增）、選到的人（新增時就是新動作的人）都從 session 拿。
+	// 流程從 session 拿；表單上的草稿（選到的動作，或跟著選的人、播放頭的新動作）在編輯器 module。
 	const session = getEditorSession();
+	const draft = getEditor().actionDraft;
 	const flow = $derived(session.flow!);
-	const actionId = $derived(session.selectedActionId);
-	const selectedMemberIds = $derived(session.selectedMemberIds);
-	/** 播放頭從編輯器 module 的播放拿：新動作從這裡開始。 */
-	const { playback } = getEditor();
-
-	interface Draft {
-		category: ActionCategory;
-		name: string;
-		startText: string;
-		lengthText: string;
-		note: string;
-		members: ActionMember[];
-		/** 辨識色；undefined = 用大類的顏色。 */
-		color: string | undefined;
-	}
-
-	const action = $derived(actionId ? (flow.actions.find((a) => a.id === actionId) ?? null) : null);
-	const slot = $derived(action ? null : actionSlotAt(flow, playback.sec));
-	const segment = $derived(
-		flow.segments.find((s) => s.id === (action?.segmentId ?? slot?.segmentId)) ?? null
-	);
+	/** 選到的動作；null = 新增。 */
+	const action = $derived(draft.action);
+	const segment = $derived(draft.segment);
 	const segmentLabel = $derived(
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
-	/** 播放頭換格才變，用來在新增時把開始、長度跟上播放頭。 */
-	const slotKey = $derived(slot ? `${slot.segmentId}:${slot.start}:${slot.length}` : '');
 	const roles = $derived(roleGlossary(flow));
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
@@ -103,9 +73,8 @@
 	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
 	const grouped = $derived(!!action && groupsPeople(action));
 
-	let draft = $state<Draft>(blank());
-	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
-	const ask = session.changeAsk();
+	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
+	const ask = draft.ask;
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -119,107 +88,6 @@
 		legendPeek = false;
 	}
 
-	function blank(): Draft {
-		const members = untrack(() => fromSelection([], 'stunt'));
-		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members, color: undefined };
-	}
-
-	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色，新來的照大類先填。 */
-	function fromSelection(current: ActionMember[], category: ActionCategory): ActionMember[] {
-		return selectedMemberIds
-			.filter((id) => flow.members.some((m) => m.id === id))
-			.map((id) => current.find((m) => m.memberId === id) ?? joined(id, category));
-	}
-
-	/** 剛加進動作的人：任務角色照大類和全局角色先填。 */
-	function joined(memberId: string, category: ActionCategory): ActionMember {
-		return defaultRoles(flow, category, [{ memberId, role: null }])[0];
-	}
-
-	function fromAction(a: Action): Draft {
-		const seg = flow.segments.find((s) => s.id === a.segmentId)!;
-		return {
-			category: a.category,
-			name: a.name,
-			startText: atText(seg, a.start),
-			lengthText: lengthText(seg, a.length),
-			note: a.note,
-			members: a.members.map((m) => ({ ...m })),
-			color: a.color
-		};
-	}
-
-	// 新增時改了表單（人、開始、長度…，也包括跟著選取、播放頭改的）就告訴 Ask，收掉上次被擋的原因：
-	// 可能已經不對了，按新增會再檢查一次。改動作時不說：改了馬上生效，原因是那一下被擋、已還原的說明。
-	// 草稿還在這裡、很多地方會改它，所以先用 $effect 看它有沒有變；草稿搬進編輯器 module（#126）後由它告訴 Ask。
-	$effect(() => {
-		if (action) return;
-		JSON.stringify(draft);
-		untrack(() => ask.edited());
-	});
-
-	// 新增到一半在名詞對照表改名、刪掉自訂角色：表單裡的人跟著換名字，刪掉的變成沒有任務。
-	// （改動作時表單照動作重設，動作裡的人核心已經改好了。）
-	let customNames = untrack(() => new Map(flow.customRoles.map((r) => [r.id, r.name])));
-	$effect(() => {
-		const now = new Map(flow.customRoles.map((r) => [r.id, r.name]));
-		untrack(() => {
-			const changed = new Map<string, string | null>();
-			for (const [id, name] of customNames) if (now.get(id) !== name) changed.set(name, now.get(id) ?? null);
-			customNames = now;
-			if (action || !changed.size) return;
-			draft.members = draft.members.map((m) =>
-				m.role !== null && changed.has(m.role) ? { ...m, role: changed.get(m.role)! } : m
-			);
-		});
-	});
-
-	// 換選到的動作（或回到新增）時重設表單。
-	$effect(() => {
-		const a = action;
-		untrack(() => {
-			draft = a ? fromAction(a) : blank();
-			ask.clear();
-		});
-	});
-
-	// 新增時，人跟著選取。
-	$effect(() => {
-		void selectedMemberIds;
-		if (action) return;
-		untrack(() => (draft.members = fromSelection(draft.members, draft.category)));
-	});
-
-	// 新增時，開始和長度跟著播放頭。
-	$effect(() => {
-		if (!slotKey) return;
-		untrack(() => {
-			if (!slot || !segment) return;
-			draft.startText = atText(segment, slot.start);
-			draft.lengthText = lengthText(segment, slot.length);
-		});
-	});
-
-	/** 表單讀成動作：開始、長度由核心讀，看不懂就是被擋（原因交給問教練）。 */
-	function toInput(): ReadResult<NewActionInput> {
-		// 沒有段時沒有「新增動作」鈕；選到的動作一定在某一段裡。
-		const seg = segment!;
-		const start = readStart(seg, draft.startText);
-		if (start.kind === 'blocked') return start;
-		const length = readLength(seg, draft.lengthText);
-		if (length.kind === 'blocked') return length;
-		const { category, name, note, members, color } = draft;
-		const value = { segmentId: seg.id, category, name, start: start.value, length: length.value, note, members, color };
-		return { kind: 'ok', value };
-	}
-
-	function add() {
-		const input = toInput();
-		ask.send(() => (input.kind === 'blocked' ? input : addAction(flow, input.value)), {
-			done: (r) => session.selectAction(r.id)
-		});
-	}
-
 	/** 問句是改長度問的：畫在長度欄位旁邊。 */
 	let askAtLength = $state(false);
 
@@ -228,16 +96,10 @@
 		askAtLength = !!ask.question;
 	}
 
-	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
+	/** 改了表單：改選到的動作就馬上送出（草稿的 update）；新增時什麼都不做（等按「新增動作」）。 */
 	function changed() {
 		askAtLength = false;
-		if (!action) return;
-		const id = action.id;
-		const input = toInput();
-		ask.send(
-			(o: ConfirmOption = {}) => (input.kind === 'blocked' ? input : updateAction(flow, id, input.value, o)),
-			{ revert: () => action && (draft = fromAction(action)) }
-		);
+		draft.update();
 	}
 
 	function remove() {
@@ -249,27 +111,21 @@
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
 	function setRole(i: number, role: string | null, byKey: boolean) {
-		draft.members[i].role = role;
+		draft.setRole(i, role);
 		changed();
 		if (byKey) rolePickers[i + 1]?.focus();
 	}
 
-	/** 人改了：改動作就馬上生效；新增時改選取。 */
-	function membersChanged() {
-		if (action) changed();
-		else session.selectMembers(draft.members.map((m) => m.memberId));
-	}
-
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
-		draft.members.push(joined(select.value, draft.category));
+		draft.addMember(select.value);
 		select.value = '';
-		membersChanged();
+		changed();
 	}
 
 	function removeMember(i: number) {
-		draft.members.splice(i, 1);
-		membersChanged();
+		draft.removeMember(i);
+		changed();
 	}
 
 	/** 把別的動作的人連任務角色一起換進來。 */
@@ -277,19 +133,17 @@
 		const source = flow.actions.find((a) => a.id === select.value);
 		select.value = '';
 		if (!source) return;
-		draft.members = source.members.map((m) => ({ ...m }));
-		membersChanged();
+		draft.copyMembers(source);
+		changed();
 	}
 
-	/** 換大類；新增時任務角色還是舊大類預設值的人跟著換。 */
 	function setCategory(category: ActionCategory) {
-		if (!action) draft.members = defaultRoles(flow, category, draft.members, draft.category);
-		draft.category = category;
+		draft.setCategory(category);
 		changed();
 	}
 
 	function setColor(color: string | undefined) {
-		draft.color = color;
+		draft.setColor(color);
 		changed();
 	}
 
@@ -480,7 +334,7 @@
 				class="primary add"
 				disabled={!draft.members.length}
 				aria-describedby={draft.members.length ? undefined : 'add-why'}
-				onclick={add}>新增動作</button
+				onclick={() => draft.add()}>新增動作</button
 			>
 			{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 		{/if}

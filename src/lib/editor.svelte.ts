@@ -2,12 +2,13 @@
 // 元件從 context 拿要用的那一部分。它握著編輯 session 和碰瀏覽器的 adapter，所以頁面只剩畫面和接線，
 // 規則在 Node 就測得到（測試用 #lib/test-fakes.js 的 testEditor 一行建好帶著假 adapter 的）。
 //
-// 每一部分是它的一個屬性（session、播放、流程檔、音樂檔庫、右邊欄翻到哪一頁…），之後搬進來的新動作草稿也一樣。
+// 每一部分是它的一個屬性（session、播放、流程檔、音樂檔庫、動作表單的草稿、右邊欄翻到哪一頁…）。
 // 音樂檔庫一支流程一個：換流程時換一個新的（readMusic、switchMusic），所以元件每次用都從 editor.music 拿。
 // 每個 adapter 都有真的（browserAdapters）和假的（testEditor）兩種；加一個 adapter 時兩邊都加。
 
 import { createContext } from 'svelte';
 import type { AudioBytes, Flow } from '#lib/core';
+import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
@@ -60,6 +61,8 @@ export class Editor {
 	readonly adapters: EditorAdapters;
 	/** 播放：播放頭、在不在播、節拍器、延遲校正、試聽。 */
 	readonly playback: Playback;
+	/** 動作表單的草稿：跟著選的人、播放頭、自訂任務角色。 */
+	readonly actionDraft: ActionDraft;
 	/** 右邊欄翻到哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	inspectorTab = $state<'action' | 'members'>('action');
 	/** 流程檔：開檔、存檔、新建、回首頁、草稿、「沒存先問」。 */
@@ -69,14 +72,18 @@ export class Editor {
 	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
 		this.adapters = adapters;
+		// 建 session 時（開給的流程）草稿還沒建：它建好時自己跟上一次。
+		const follow = () => this.actionDraft?.follow();
 		this.playback = new Playback(
 			() => this.session.flow,
 			() => adapters.createEngine((id) => this.music.buffer(id)),
-			adapters.nextFrame
+			adapters.nextFrame,
+			follow
 		);
-		this.session = new EditorSession(flow, this.playback);
+		this.session = new EditorSession(flow, this.playback, follow);
 		this.#music = $state.raw(this.#newMusic());
 		this.file = new FlowFile(this);
+		this.actionDraft = new ActionDraft(this.session, () => this.playback.sec);
 	}
 
 	/** 音樂檔庫：這支流程用到的音樂檔。一支流程一個，換流程就換一個新的（switchMusic）。 */
