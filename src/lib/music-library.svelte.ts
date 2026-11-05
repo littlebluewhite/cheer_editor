@@ -11,6 +11,7 @@ import type { EditorSession } from '#lib/editor-session.svelte.js';
 export class MusicLibrary {
 	readonly #session: EditorSession;
 	readonly #decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
+	readonly #onpicked: () => void;
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
 	#audios = $state.raw<Record<string, LoadedAudio>>({});
 	/** 還在解碼、解完還要的選檔（每次選一個記號）；段設定關了、換了流程就清掉，解完就丟掉結果。 */
@@ -19,9 +20,11 @@ export class MusicLibrary {
 	/** 有指到音樂檔、但手上沒有那個檔的音樂段（時間軸標紅「找不到音樂」）。 */
 	readonly missingSegmentIds: string[];
 
-	constructor(session: EditorSession, decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>) {
+	/** onpicked：給一段選好了音樂檔、放進來之後（流程檔收掉「找不到音樂」的提示）。 */
+	constructor(session: EditorSession, decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>, onpicked = () => {}) {
 		this.#session = session;
 		this.#decode = decode;
+		this.#onpicked = onpicked;
 		this.missingSegmentIds = $derived(session.flow ? segmentsMissingAudio(session.flow, Object.keys(this.#audios)) : []);
 	}
 
@@ -88,7 +91,10 @@ export class MusicLibrary {
 		if (!this.#picks.delete(pick)) return;
 		// 解碼要一點時間，用那時候的流程再送一次指令。
 		ask.send(() => loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds), {
-			done: (r) => (this.#audios = { ...this.#audios, [r.audioId]: { bytes, ...decoded } })
+			done: (r) => {
+				this.#audios = { ...this.#audios, [r.audioId]: { bytes, ...decoded } };
+				this.#onpicked();
+			}
 		});
 	}
 

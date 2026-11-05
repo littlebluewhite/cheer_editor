@@ -1,6 +1,6 @@
 // 音樂檔庫（編輯器 module 的 music）：在 Node 測，解碼換成假的。
 import { describe, expect, it } from 'vitest';
-import { addSegment, createFlow, loadSegmentAudio, updateSegment, type Flow, type MusicSegment } from '#lib/core';
+import { addSegment, createFlow, loadSegmentAudio, renameFlow, updateSegment, writeFlowFile, type Flow, type MusicSegment } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { flowOf } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
@@ -63,14 +63,11 @@ describe('音樂檔庫：給一段選音樂檔', () => {
 		const { editor, session } = testEditor(musicFlow(), { decode: slow.decode });
 		const picking = editor.music.pick('s1', mp3('別首.mp3'), changeAsk(session));
 		await slow.started;
-		// 開檔（頁面做的）：檔案裡的音樂解碼好、換上流程和它的音樂檔庫
-		const other = musicFlow();
-		const music = editor.readMusic({});
-		session.open(other, true);
-		editor.switchMusic(await music);
+		// 開檔：檔案裡的音樂解碼好、換上流程和它的音樂檔庫
+		await editor.file.open(new File([writeFlowFile(flowOf(renameFlow(musicFlow(), '別支')), {}) as Uint8Array<ArrayBuffer>], '別支.zip'));
 		slow.finish();
 		await picking;
-		expect(session.flow).toBe(other);
+		expect(session.flow!.name).toBe('別支');
 		expect(session.unsaved).toBe(false);
 		expect(editor.music.get('a1')).toBeUndefined();
 	});
