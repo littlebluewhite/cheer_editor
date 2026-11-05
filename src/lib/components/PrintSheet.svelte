@@ -5,6 +5,7 @@
 	import {
 		GLOBAL_ROLES,
 		actionLabel,
+		charCount,
 		eightCountRows,
 		memberMarkers,
 		type EightCountRow,
@@ -58,10 +59,10 @@
 	 */
 	const PAGE_PX = 1000;
 	function fitsPage(row: EightCountRow): boolean {
-		const lines = (text: string) => Math.ceil(text.length / 18);
+		const lines = (text: string) => Math.ceil(charCount(text) / 18);
 		const text =
 			row.actions.reduce(
-				(h, a) => h + 20 * lines(`${a.at}${a.categoryLabel}${a.name}${a.who}`) + 18 * lines(a.note),
+				(h, a) => h + 20 * lines(`${a.at}${actionLabel(a)}${a.who}`) + 18 * lines(a.note),
 				0
 			) +
 			20 * (row.continuing.length + row.walks.length);

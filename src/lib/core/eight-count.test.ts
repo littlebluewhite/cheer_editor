@@ -112,7 +112,6 @@ describe('八拍表的列：全隊', () => {
 			{
 				at: '1-1 到 3-4・20 拍',
 				category: 'stunt',
-				categoryLabel: '技巧',
 				name: 'Lib',
 				members: [
 					{ memberId: 'm1', name: '小A', role: '上層' },
@@ -126,7 +125,6 @@ describe('八拍表的列：全隊', () => {
 			{
 				at: '2-1 到 2-2・2 拍',
 				category: 'jump',
-				categoryLabel: '跳躍',
 				name: '',
 				members: [{ memberId: 'm3', name: '小C', role: null }],
 				who: '小C',
@@ -193,7 +191,6 @@ describe('八拍表的列：一個隊員', () => {
 			{
 				at: '1-1 到 1-4・4 拍',
 				category: 'stunt',
-				categoryLabel: '技巧',
 				name: 'Lib',
 				members: [{ memberId: 'm2', name: '小B', role: '主底' }],
 				who: '主底',

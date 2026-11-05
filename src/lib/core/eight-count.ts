@@ -25,7 +25,6 @@ export interface EightCountAction {
 	/** 什麼時候：音樂段跟拍點小窗一樣寫「1-3& 到 2-2&・8 拍」；口號段段內秒數「12.3 秒」。 */
 	at: string;
 	category: ActionCategory;
-	categoryLabel: string;
 	name: string;
 	/** 選一個人時只有他自己。 */
 	members: { memberId: string; name: string; role: string | null }[];
@@ -150,7 +149,6 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 						return {
 							at: segment.kind === 'music' ? beatSpanText(segment, a.start, a.length) : at(a.start),
 							category: a.category,
-							categoryLabel: categoryLabel(a.category),
 							name: a.name,
 							members,
 							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId),
