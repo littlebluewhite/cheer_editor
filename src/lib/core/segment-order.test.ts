@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+	actionSeconds,
 	addAction,
 	addMembers,
 	addSegment,
+	audioOverlaps,
 	createFlow,
 	deleteSegment,
+	loadSegmentAudio,
 	moveSegment,
 	readFlowFile,
+	splitSegment,
+	toSeconds,
 	updateSegment,
 	writeFlowFile,
 	type Flow,
@@ -149,5 +154,77 @@ describe('調段順序', () => {
 		expect(back.segments.map((s) => s.id)).toEqual(['s1', 's2']);
 		expect(back.formations[0].segmentId).toBe('s1');
 		expect(back.formations[0].at).toBe(0);
+	});
+});
+
+describe('從播放頭切段（#167）', () => {
+	/**
+	 * 音樂 1（s1，a1、120 BPM、第一拍 1.5 秒、8 個八拍 = 32 秒）→ 口號 1（s2，5 秒）。小A（m1）。
+	 * 站位：f1 開頭、f2 在 3-1（8 秒）、f3 在 5-1（16 秒，切點那一刻）、f4 在 6-3（21 秒，從 5-5 走到 6-3）。
+	 * 動作：x1 在 2-1 起 4 拍、x2 在 6-1 起 8 拍。
+	 */
+	function long(): Flow {
+		let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addMembers(flow, [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(addSegment(flow, 'chant'));
+		flow = flowOf(loadSegmentAudio(flow, 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { bpm: 120, firstBeatSec: 1.5, eights: 8 }));
+		flow = flowOf(updateSegment(flow, 's2', { seconds: 5 }));
+		const formations: Formation[] = [
+			{ id: 'f1', segmentId: 's1', at: 0, pos: { m1: [0, 0] } },
+			{ id: 'f2', segmentId: 's1', at: 32, pos: { m1: [1, 0] } },
+			{ id: 'f3', segmentId: 's1', at: 64, pos: { m1: [1, 0] } },
+			{
+				id: 'f4',
+				segmentId: 's1',
+				at: 84,
+				pos: { m1: [2, 0] },
+				walks: { m1: { depart: { segmentId: 's1', at: 72 }, arrive: { segmentId: 's1', at: 84 } } }
+			}
+		];
+		flow = { ...flow, formations };
+		const base = { note: '', members: [{ memberId: 'm1', role: null }] };
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's1', start: 16, length: 8, category: 'stunt', name: 'Lib' }));
+		return flowOf(addAction(flow, { ...base, segmentId: 's1', start: 80, length: 16, category: 'dance', name: '喊' }));
+	}
+
+	const times = (flow: Flow) => ({
+		formations: flow.formations.map((f) => toSeconds(flow, { segmentId: f.segmentId!, at: f.at })),
+		actions: flow.actions.map((a) => actionSeconds(flow, a))
+	});
+
+	it('播放頭在 5-3（17 秒）：從 5-1 切開，兩段長度、BPM、第一拍對；5-1 以後的站位、動作搬到新段，時間不變', () => {
+		const before = long();
+		const flow = flowOf(splitSegment(before, 's1', 17));
+		expect(flow.segments.map((s) => s.id)).toEqual(['s1', 's3', 's2']);
+		expect(flow.segments[0]).toEqual({ id: 's1', kind: 'music', audioId: 'a1', bpm: 120, firstBeatSec: 1.5, halfBeats: 64 });
+		// 第一拍往後 4 個八拍 = 16 秒
+		expect(flow.segments[1]).toEqual({ id: 's3', kind: 'music', audioId: 'a1', bpm: 120, firstBeatSec: 17.5, halfBeats: 64 });
+		expect(where(flow)).toEqual(['f1@s1:0', 'f2@s1:32', 'f3@s3:0', 'f4@s3:20']);
+		expect(flow.formations[3].walks).toEqual({ m1: { depart: { segmentId: 's3', at: 8 }, arrive: { segmentId: 's3', at: 20 } } });
+		expect(flow.actions.map((a) => [a.segmentId, a.start, a.length])).toEqual([
+			['s1', 16, 8],
+			['s3', 16, 16]
+		]);
+		expect(times(flow)).toEqual(times(before));
+		// 同一個檔、接著播：不算重疊
+		expect(audioOverlaps(flow, 's1')).toEqual([]);
+	});
+
+	it('有動作跨過切點就擋下，說是哪個動作', () => {
+		let flow = long();
+		const base = { note: '', members: [{ memberId: 'm1', role: null }] };
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's1', start: 56, length: 16, category: 'stunt', name: '拋接' }));
+		expect(splitSegment(flow, 's1', 17)).toEqual({ kind: 'blocked', message: '動作「技巧·拋接」（4-5 起）跨過 5-1，切不開' });
+	});
+
+	it('播放頭在第一個八拍、在別段、口號段：擋下', () => {
+		expect(splitSegment(long(), 's1', 3)).toEqual({
+			kind: 'blocked',
+			message: '播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍'
+		});
+		expect(splitSegment(long(), 's1', 40)).toEqual({ kind: 'blocked', message: '播放頭不在這一段' });
+		expect(splitSegment(long(), 's2', 34)).toEqual({ kind: 'blocked', message: '口號段不能切' });
 	});
 });

@@ -208,7 +208,7 @@ export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
 export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
 
-export { deleteSegment, moveSegment } from './segment-order';
+export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules } from './time-rules';
