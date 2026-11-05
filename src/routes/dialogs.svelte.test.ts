@@ -3,15 +3,14 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { fakeToMeters } from '#lib/test-fakes.js';
+import { editorPage } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
 
 async function newFlow() {
-	render(Page, { createEngine: () => createFakeEngine(), toMeters: fakeToMeters });
+	render(Page, editorPage().props);
 	await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 }
@@ -237,7 +236,7 @@ describe('被擋下的欄位', () => {
 
 describe('流程設定看得到場地', () => {
 	it('一行唯讀的場地：幾條、直放或橫放', async () => {
-		render(Page, { createEngine: () => createFakeEngine(), toMeters: fakeToMeters });
+		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));

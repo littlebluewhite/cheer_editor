@@ -1,5 +1,5 @@
-// 編輯 session：編輯頁的流程、復原、選取、提示、場上那一個問題、分組。頁面建一個，用 context 給元件；
-// 測試可以自己建一個放進頁面。不碰瀏覽器（開檔、存檔、草稿、播放留在頁面），所以在 Node 就測得到。
+// 編輯 session：編輯頁的流程、復原、選取、提示、場上那一個問題、分組。編輯器 module（#lib/editor.svelte.js）建一個，
+// 跟它一起放進 context 給元件；也可以單獨建來測。不碰瀏覽器（開檔、存檔、草稿、播放留在頁面），所以在 Node 就測得到。
 
 import { createContext } from 'svelte';
 import {
@@ -277,15 +277,6 @@ export class EditorSession {
 		this.#actionId = id;
 		if (id) this.#formationId = null;
 		if (changed) this.beats.reset();
-	}
-
-	/** 上一次在時間軸點的色條。每點一次都是新的一份，頁面看到就把右邊欄翻到「動作」（再點選著的那條也算）。 */
-	pickedAction = $state.raw<{ id: string } | null>(null);
-
-	/** 點色條：選這個動作，留下 pickedAction。 */
-	pickAction(id: string) {
-		this.selectAction(id);
-		this.pickedAction = { id };
 	}
 
 	selectMembers(ids: string[]) {

@@ -3,23 +3,24 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attemptWhos, recordAttempt, recordRunThrough } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { libSample } from '#lib/test-flows.js';
+import { libSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import AttemptCard from './AttemptCard.svelte';
 
 const DATE = '2026-11-01';
 
-/** 畫第 1 組（小美、小A）的卡，回傳 session。 */
-function setup(flow = libSample()) {
-	const session = new EditorSession(flow);
-	const action = flow.actions[0];
+/** 畫第 1 組（小美、小A）的卡（給了 index 就是那個動作的第一張卡），回傳 session。 */
+function setup(flow = libSample(), index = 0) {
+	const { editor, session } = testEditor(flow);
+	const action = flow.actions[index];
 	const { who, name } = attemptWhos(flow, action)[0];
-	render(TestSession, { props: { session, component: AttemptCard, props: { action, who, name, date: DATE } } });
+	render(TestSession, { props: { editor, component: AttemptCard, props: { action, who, name, date: DATE } } });
 	return { session, name };
 }
 
-const records = (session: EditorSession) => session.flow!.actions[0].successRate!.records;
+const records = (session: EditorSession, index = 0) => session.flow!.actions[index].successRate!.records;
 const tap = (name: string, phase: string, mark: '成功' | '小失誤' | '失敗') =>
 	fireEvent.click(screen.getByRole('button', { name: `${name} ${phase} ${mark}` }));
 
@@ -71,6 +72,9 @@ describe('記錄頁的卡', () => {
 		expect(records(session)).toEqual([]);
 		await save();
 		expect(records(session).map((r) => r.marks)).toEqual([{ p1: '✓', p2: '✗' }]);
+		await tap(name, '上法', '失敗');
+		await save();
+		expect(records(session).map((r) => r.marks)).toEqual([{ p1: '✓', p2: '✗' }, { p1: '✗' }]);
 	});
 
 	it('再按一次點著的記號就取消', async () => {
@@ -104,10 +108,26 @@ describe('記錄頁的卡', () => {
 		await fireEvent.click(screen.getByRole('checkbox', { name: '上法' }));
 		await fireEvent.click(screen.getByRole('checkbox', { name: '下法' }));
 		expect(screen.queryByRole('button', { name: '存這一次' })).toBeNull();
+		expect((screen.getByRole('button', { name: `${name} 中段 成功` }) as HTMLButtonElement).disabled).toBe(true);
 		await tap(name, '上法', '成功');
 		expect(records(session)).toEqual([]);
 		await tap(name, '下法', '小失誤');
 		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[false, { p1: '✓', p3: '△' }]]);
+		// 選的環節留著，下一次照樣只練這幾個；點了 ✗ 就存
+		await tap(name, '上法', '失敗');
+		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([
+			[false, { p1: '✓', p3: '△' }],
+			[false, { p1: '✗' }]
+		]);
+	});
+
+	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」，點了按「存這一次」存成整個做', async () => {
+		const { session, name } = setup(ratedSample(), 1);
+		expect(screen.queryByRole('radiogroup')).toBeNull();
+		expect(screen.queryByText('只練幾個環節')).toBeNull();
+		await tap(name, '整體 騰翻', '成功');
+		await save();
+		expect(records(session, 1).map((r) => r.whole)).toEqual([true]);
 	});
 
 	/** 第 1 組這天：全上 ✓✗、分段練 ✗、全上 △✓✓。 */

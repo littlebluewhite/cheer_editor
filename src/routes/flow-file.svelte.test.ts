@@ -12,12 +12,12 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
-import { audioFlow, fakeDecode, fakeSaver, openFile, flush } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fakeSaver, openFile, flush } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
 function setup(saver: FileSaver = fakeSaver().saver) {
-	render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode: fakeDecode });
+	render(Page, editorPage(null, { createSaver: () => saver }).props);
 }
 
 async function newFlow() {
@@ -92,7 +92,7 @@ describe('存檔', () => {
 		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
 		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
 		const { saver, saves } = fakeSaver();
-		render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode });
+		render(Page, editorPage(null, { createSaver: () => saver, decode }).props);
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
@@ -116,7 +116,7 @@ describe('存檔', () => {
 		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
 		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
 		const { saver, saves } = fakeSaver();
-		render(Page, { createEngine: () => createFakeEngine(), createSaver: () => saver, decode });
+		render(Page, editorPage(null, { createSaver: () => saver, decode }).props);
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
@@ -261,12 +261,8 @@ describe('開檔', () => {
 		const opened = fakeSaver();
 		const bytes = writeFlowFile(sampleFlow(), {});
 		const file = new File([bytes as Uint8Array<ArrayBuffer>], '縣賽.zip', { type: 'application/zip' });
-		render(Page, {
-			createEngine: () => createFakeEngine(),
-			createSaver: () => other.saver,
-			decode: fakeDecode,
-			pickFlowFile: async () => ({ file, saver: opened.saver })
-		});
+		const pickFlowFile = async () => ({ file, saver: opened.saver });
+		render(Page, editorPage(null, { createSaver: () => other.saver, pickFlowFile }).props);
 		await fireEvent.click(screen.getByLabelText('開啟流程檔'));
 		await flush();
 		expect(screen.getByText('練習用')).toBeTruthy();
@@ -277,11 +273,7 @@ describe('開檔', () => {
 	});
 
 	it('在選檔視窗按取消：什麼都不變', async () => {
-		render(Page, {
-			createEngine: () => createFakeEngine(),
-			decode: fakeDecode,
-			pickFlowFile: async () => null
-		});
+		render(Page, editorPage(null, { pickFlowFile: async () => null }).props);
 		await fireEvent.click(screen.getByLabelText('開啟流程檔'));
 		await flush();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
@@ -467,11 +459,8 @@ describe('新建', () => {
 		const engine = createFakeEngine();
 		let getBuffer: (id: string) => AudioBuffer | undefined = () => undefined;
 		const buffer = {} as AudioBuffer;
-		render(Page, {
-			createEngine: (get) => ((getBuffer = get), engine),
-			createSaver: () => fakeSaver().saver,
-			decode: async () => ({ durationSec: 30, peaks: [], buffer })
-		});
+		const decode = async () => ({ durationSec: 30, peaks: [], buffer });
+		render(Page, editorPage(null, { createEngine: (get) => ((getBuffer = get), engine), decode }).props);
 		await openFile(writeFlowFile(sampleFlow(), {}));
 		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
 		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
@@ -508,13 +497,10 @@ describe('新建', () => {
 	});
 
 	it('音樂檔壞了（解不開）：段設定說「音樂檔壞了，請重新選檔」，不拿長度 0 去提醒段比音樂長', async () => {
-		render(Page, {
-			createEngine: () => createFakeEngine(),
-			createSaver: () => fakeSaver().saver,
-			decode: async () => {
-				throw new Error('壞檔');
-			}
-		});
+		const decode = async () => {
+			throw new Error('壞檔');
+		};
+		render(Page, editorPage(null, { decode }).props);
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1, 2, 3]) }));
 		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
 		const dialog = screen.getByRole('dialog');

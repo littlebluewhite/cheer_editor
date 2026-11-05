@@ -8,13 +8,13 @@
 		actionLabel,
 		attemptWhos,
 		deleteLastRunThrough,
+		lastRunThrough,
 		phaseLabel,
 		recordableActions,
 		restoreRunThrough,
 		successPercent,
 		weakestPhase,
-		type Action,
-		type RemovedRunThrough
+		type Action
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import AttemptCard from './AttemptCard.svelte';
@@ -22,6 +22,7 @@
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import { Ask } from './ask.svelte.js';
 	import { Flash } from './flash.svelte.js';
+	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -40,12 +41,12 @@
 	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
-	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著那次全上，給「救回」。 */
-	const saved = new Flash<{ text: string; removed?: RemovedRunThrough }>();
+	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
+	const saved = new Flash<Notice>();
 	/** 刪掉上一次全上、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
 	const ask = new Ask((f) => session.record(f));
 	/** 這天有沒有全上。 */
-	const hasRun = $derived(flow.actions.some((a) => a.successRate?.records.some((r) => r.date === date && r.runThroughId)));
+	const hasRun = $derived(lastRunThrough(flow, date) !== undefined);
 
 	function closeSheet(done: boolean) {
 		recording = false;
@@ -53,13 +54,12 @@
 	}
 
 	function removeRun() {
-		ask.send(() => deleteLastRunThrough(flow, date), {
-			done: ({ removed }) => saved.show({ text: '已刪掉', removed })
-		});
-	}
-
-	function restoreRun(removed: RemovedRunThrough) {
-		ask.send(() => restoreRunThrough(flow, removed), { done: () => saved.show({ text: '已救回' }) });
+		removeWithRestore(
+			ask,
+			saved,
+			() => deleteLastRunThrough(flow, date),
+			({ removed }) => restoreRunThrough(flow, removed)
+		);
 	}
 
 	const countOn = (records: { date: string }[]) => records.filter((r) => r.date === date).length;
@@ -76,12 +76,7 @@
 	<div class="run">
 		<button type="button" class="primary" onclick={() => (recording = true)}>＋ 記一次全上</button>
 		<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
-		{#if saved.value}
-			{@const removed = saved.value.removed}
-			<span class="saved" role="status"
-				>{saved.value.text}{#if removed}<button type="button" class="ghost" onclick={() => restoreRun(removed)}>救回</button>{/if}</span
-			>
-		{/if}
+		<RecordNotice notice={saved} />
 		{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 	</div>
 	<div class="record">
@@ -123,19 +118,6 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 10px;
-	}
-	.saved {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		color: #15803d;
-		font-size: 13px;
-		font-weight: 700;
-	}
-	.saved button {
-		padding: 2px 8px;
-		font-size: 13px;
-		text-decoration: underline;
 	}
 	.error {
 		color: #b91c1c;

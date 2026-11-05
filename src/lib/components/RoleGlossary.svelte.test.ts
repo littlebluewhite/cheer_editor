@@ -1,6 +1,6 @@
 import { addCustomRole, createFlow, type Flow } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,8 +8,8 @@ import RoleGlossary from './RoleGlossary.svelte';
 
 /** 放一個帶著 flow 的 session 進 context，畫名詞對照表；回傳 session。 */
 function setup(flow: Flow) {
-	const session = new EditorSession(flow);
-	render(TestSession, { props: { session, component: RoleGlossary, props: { onclose: vi.fn() } } });
+	const { editor, session } = testEditor(flow);
+	render(TestSession, { props: { editor, component: RoleGlossary, props: { onclose: vi.fn() } } });
 	return session;
 }
 

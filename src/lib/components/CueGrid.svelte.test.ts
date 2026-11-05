@@ -12,9 +12,8 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
-import { fakeCellAt } from '#lib/test-fakes.js';
+import { fakeCellAt, testEditor } from '#lib/test-fakes.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import CueGrid from './CueGrid.svelte';
@@ -33,10 +32,10 @@ function sample(): Flow {
 
 /** 放一個帶著 flow、選了第一個動作的 session 進 context，畫它的拍點格子；回傳 session。 */
 function renderGrid(flow: Flow, playheadSec?: number) {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
 	session.selectAction(flow.actions[0].id);
 	render(TestSession, {
-		props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
+		props: { editor, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
 	});
 	return session;
 }
@@ -307,6 +306,22 @@ describe('環節那一列', () => {
 		await fireEvent.click(pop.getByRole('button', { name: '清掉環節' }));
 		const phases = session.flow!.actions[0].successRate!.phases;
 		expect(phases.map((p) => [p.id, p.beats])).toEqual([['p2', { at: 3, len: 2 }]]);
+	});
+});
+
+describe('疊在一起的拍點', () => {
+	it('給不同人的拍子疊在同一拍：拍子那條多開一軌，下面的步驟條往下移', () => {
+		const flow = sample();
+		const cues = [
+			{ kind: 'count' as const, at: 0, len: 4, word: 'down', who: null },
+			{ kind: 'count' as const, at: 2, len: 2, word: 'up', who: { member: 'm1' } }
+		];
+		renderGrid({ ...flow, actions: [{ ...flow.actions[0], cues }] });
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const row = (name: RegExp) => grid.getByRole('button', { name }).style.gridRow;
+		expect([row(/^拍子 down/), row(/^拍子 up/)]).toEqual(['3', '4']);
+		const step = document.querySelector<HTMLElement>('.row .lane-lbl.step')!;
+		expect(step.style.gridRow).toBe('5 / span 1');
 	});
 });
 

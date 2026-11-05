@@ -28,12 +28,12 @@
 		CUE_KIND_LABELS,
 		CUE_KINDS,
 		HALF_BEATS_PER_BEAT as BEAT,
-		HALF_BEATS_PER_EIGHT as EIGHT,
 		MOTION_WORDS,
 		PHASE_COLORS,
 		PHASE_KINDS,
 		phaseLabel,
 		STEP_WORDS,
+		actionEights,
 		addPhase,
 		toPosition,
 		atText,
@@ -106,12 +106,10 @@
 
 	/** 自己打的字，步驟和手位各一格。 */
 	let custom = $state({ step: '', motion: '' });
+	/** 動作碰到的每個八拍，和切進去的拍點、環節（切法在流程核心）。 */
+	const slices = $derived(actionEights(action));
 	/** 動作碰到的八拍（從 0 起）。 */
-	const eights = $derived.by(() => {
-		const first = Math.floor(action.start / EIGHT);
-		const last = Math.floor((action.start + action.length - 1) / EIGHT);
-		return Array.from({ length: last - first + 1 }, (_, i) => first + i);
-	});
+	const eights = $derived(slices.map((s) => s.eight));
 	/** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。 */
 	const firstCell = $derived(action.start % BEAT);
 
@@ -434,38 +432,8 @@
 		return nearest([...row.querySelectorAll<HTMLElement>('.cell')], (r) => [r.left, r.right], x);
 	}
 
-	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 個半格到第 c1 個半格（不含 c1）；疊在一起的放到下一軌。 */
-	function pieces(e: number, kind: CueKind) {
-		const lo = e * EIGHT;
-		const hi = lo + EIGHT;
-		const ends: number[] = [];
-		return (action.cues ?? []).filter((c) => c.kind === kind).flatMap((cue) => {
-			const s = action.start + cue.at;
-			const end = s + cue.len;
-			if (end <= lo || s >= hi) return [];
-			const c0 = Math.max(s, lo) - lo;
-			const c1 = Math.min(end, hi) - lo;
-			let track = ends.findIndex((x) => x <= c0);
-			if (track < 0) track = ends.length;
-			ends[track] = c1;
-			return [{ cue, c0, c1, track, first: s >= lo, last: end <= hi }];
-		});
-	}
-
-	/** 每個標了拍的環節在某一個八拍裡的那一段：從第 c0 個半格到第 c1 個半格（不含 c1）。 */
-	function phasePieces(e: number) {
-		const lo = e * EIGHT;
-		const hi = lo + EIGHT;
-		return phases.flatMap((phase) => {
-			if (!phase.beats) return [];
-			const s = action.start + phase.beats.at;
-			const end = s + phase.beats.len;
-			if (end <= lo || s >= hi) return [];
-			const c0 = Math.max(s, lo) - lo;
-			const c1 = Math.min(end, hi) - lo;
-			return [{ phase, beats: phase.beats, c0, c1, first: s >= lo, last: end <= hi }];
-		});
-	}
+	/** 某一個八拍裡的拍點、環節：每個從這個八拍的第 start 個半格到第 end 個半格（不含 end）；疊在一起的拍點在下一軌。 */
+	const inEight = (e: number) => slices.find((s) => s.eight === e)!;
 
 	/** 「1-1 到 1-3」：spanText 去掉後面的拍數。 */
 	const rangeOf = (at: number, len: number) => spanText(at, len).replace(/・.*$/, '');
@@ -474,7 +442,7 @@
 	function layout(e: number) {
 		let row = 3;
 		return LANES.map((lane) => {
-			const ps = pieces(e, lane.kind);
+			const ps = inEight(e).cues.filter((p) => p.cue.kind === lane.kind);
 			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
 			const placed = { ...lane, row, tracks, pieces: ps };
 			row += tracks;
@@ -578,7 +546,7 @@
 								></span>
 							{/each}
 						{/each}
-						{#each phasePieces(e) as p (p.phase.id)}
+						{#each inEight(e).phases as p (p.phase.id)}
 							{@const label = phaseLabel(p.phase)}
 							<!-- 淡底：從數字格鋪到最後一條，左右畫線；疊在格子上面、字的下面，點得穿 -->
 							<span
@@ -587,7 +555,7 @@
 								class:more={!p.last}
 								data-phase={p.phase.id}
 								style:--c={phaseColor(p.phase)}
-								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+								style:grid-column="{p.start + 2} / {p.end + 2}"
 								style:grid-row="1 / {bottom}"
 							></span>
 							<button
@@ -596,7 +564,7 @@
 								class:cont={!p.first}
 								class:more={!p.last}
 								style:--c={phaseColor(p.phase)}
-								style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+								style:grid-column="{p.start + 2} / {p.end + 2}"
 								style:grid-row="2"
 								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
 								aria-hidden={!p.first || undefined}
@@ -613,8 +581,8 @@
 									class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
 									class:cont={!p.first}
 									class:more={!p.last}
-									class:end={p.c0 >= 14}
-									style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
+									class:end={p.start >= 14}
+									style:grid-column="{p.start + 2} / {p.end + 2}"
 									style:grid-row={lane.row + p.track}
 									aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
 									aria-hidden={!p.first || undefined}

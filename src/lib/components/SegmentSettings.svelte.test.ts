@@ -13,6 +13,7 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { PEAKS_PER_SEC, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import SegmentSettings from './SegmentSettings.svelte';
 
@@ -29,7 +30,7 @@ const loaded = (durationSec: number): LoadedAudio => ({
 
 /** 放一個帶著 flow 的 session 進 context，畫段設定；回傳 session 和假的音訊 callback。 */
 function setup(flow: Flow, audios: Record<string, LoadedAudio> = {}, segmentId = 's1') {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
 	const onaudioload = vi.fn<(audioId: string, audio: LoadedAudio) => void>();
 	const decode = vi.fn<(bytes: ArrayBuffer) => Promise<DecodedAudio>>(async () => ({
 		durationSec: 95.2,
@@ -39,7 +40,7 @@ function setup(flow: Flow, audios: Record<string, LoadedAudio> = {}, segmentId =
 	const waveXToSec = (e: MouseEvent) => e.clientX * 0.05;
 	const onclose = vi.fn();
 	const props = { segmentId, audios, onaudioload, onpreview: () => {}, onclose, decode, waveXToSec };
-	render(TestSession, { props: { session, component: SegmentSettings, props } });
+	render(TestSession, { props: { editor, component: SegmentSettings, props } });
 	return { session, onaudioload, decode, onclose };
 }
 

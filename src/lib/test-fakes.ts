@@ -1,6 +1,6 @@
-// 畫面測試共用的假 adapter：存檔、草稿、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
-// 放好流程的編輯頁、開檔這些小工具，和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。
-// 只給測試用，頁面不 import。
+// 測試共用的假 adapter：存檔、草稿、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
+// 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
+// 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
 import { fireEvent, screen } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
@@ -17,7 +17,7 @@ import {
 	type Position
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 
@@ -56,6 +56,27 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt = new 
 /** 假的解碼：每個音樂檔都是 30 秒、沒有波形。 */
 export const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
 
+/**
+ * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
+ * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
+ * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
+ */
+export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
+	const { saver, saves } = fakeSaver();
+	const editor = new Editor(
+		{
+			createEngine: () => createFakeEngine(),
+			createSaver: () => saver,
+			pickFlowFile: null,
+			decode: fakeDecode,
+			draftStore: fakeDraftStore().store,
+			...adapters
+		},
+		flow
+	);
+	return { editor, session: editor.session, saves };
+}
+
 /** 等 async 的存檔、開檔跑完。 */
 export const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -67,21 +88,12 @@ export async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 }
 
 /**
- * 編輯頁放一個帶好流程的 session（算存過的，跟剛開檔一樣），其他 adapter（含座標換算）都是假的：`render(Page, page.props)`。
- * 測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
+ * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算也是假的：`render(Page, page.props)`。
+ * adapters 跟 testEditor 一樣。測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
  */
-export function editorPage(flow: Flow | null = null) {
-	const session = new EditorSession(flow);
-	const { saver, saves } = fakeSaver();
-	const props = {
-		session,
-		createEngine: () => createFakeEngine(),
-		createSaver: () => saver,
-		decode: fakeDecode,
-		toMeters: fakeToMeters,
-		cellAt: fakeCellAt
-	};
-	return { session, saves, props };
+export function editorPage(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
+	const t = testEditor(flow, adapters);
+	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt } };
 }
 
 /** 假的座標換算：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addMembers, createFlow, setPositions, type Clash, type Flow, type Member, type Position } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import Field from './Field.svelte';
 
@@ -20,12 +21,12 @@ function renderEditing(
 	props: Record<string, unknown> = {},
 	{ selected = [], multi = false }: { selected?: string[]; multi?: boolean } = {}
 ) {
-	const session = new EditorSession(flowWith(members, positions));
+	const { editor, session } = testEditor(flowWith(members, positions));
 	session.selectMembers(selected);
 	session.multiSelect = multi;
 	render(TestSession, {
 		props: {
-			session,
+			editor,
 			component: Field,
 			props: { field: { strips: 9, layout: 'vertical' }, members, positions, ...props }
 		}

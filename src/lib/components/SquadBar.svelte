@@ -4,7 +4,7 @@
 	// 沒選人：按號碼把那一組的人全選起來。「n 人沒分組」把沒分組的人選起來。
 	// 電腦上選好人按數字鍵 1–9、0 也一樣：都叫 session 的 squadKey（頁面收鍵盤）。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { squadColor, squadsOf, type Action } from '#lib/core';
+	import { squadBadge, squadsOf, type Action } from '#lib/core';
 	import ConfirmList from './ConfirmList.svelte';
 
 	interface Props {
@@ -18,12 +18,12 @@
 	/** 換組會動到紀錄時，等教練回答（保留舊紀錄／清掉重算，或確定）。 */
 	const ask = session.squadAsk;
 
-	/** 現在有的組號，1 到 n 不跳號（組號照組 id 的先後算）。 */
+	/** 現在有的組和它們的徽章，組號 1 到 n 不跳號（組號照組 id 的先後算）。 */
 	const squads = $derived(squadsOf(action));
-	const groups = $derived(squads.map((_, i) => i + 1));
-	const next = $derived(groups.length + 1);
+	const badges = $derived(squads.map((squad) => squadBadge(action, { squad })));
+	const next = $derived(badges.length + 1);
 	const selected = $derived(session.selectedMemberIds);
-	const picked = $derived(selected.filter((id) => action.members.some((m) => m.memberId === id)));
+	const picked = $derived(session.squadPicked);
 	const outside = $derived(selected.length - picked.length);
 	const loose = $derived(action.members.filter((m) => m.squad === undefined).map((m) => m.memberId));
 	const outsideText = $derived(outside ? `另外 ${outside} 人不在這個動作，不算` : '');
@@ -52,13 +52,13 @@
 		{:else if outside}{outsideText}；按號碼選起那一組
 		{:else}在場上選人；按號碼選起那一組{/if}
 	</span>
-	{#each groups as n (n)}
+	{#each badges as b (b.number)}
 		<button
 			type="button"
 			class="num"
-			style:--c={squadColor(n)}
-			aria-label={picked.length ? `放進第 ${n} 組` : `選起第 ${n} 組`}
-			onclick={() => number(n)}>{n}</button
+			style:--c={b.color}
+			aria-label={picked.length ? `放進第 ${b.number} 組` : `選起第 ${b.number} 組`}
+			onclick={() => number(b.number)}>{b.text}</button
 		>
 	{/each}
 	<button type="button" class="num new" aria-label="放進新的一組" disabled={!picked.length} onclick={() => session.squadKey(next)}
