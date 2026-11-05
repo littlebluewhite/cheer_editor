@@ -1,4 +1,4 @@
-// 隊員名單：加隊員、改隊員、刪隊員。
+// 隊員名單：加隊員、改隊員、排順序、刪隊員。
 
 import { actionLabel, type Action } from './action-types';
 import { dropOrphanCues } from './cues';
@@ -206,7 +206,21 @@ function replaced(flow: Flow, before: Action, id: string): { before: Action; act
 }
 
 /**
- * 刪隊員。一定先回「要確認」：「他在 N 個動作裡，其中 M 個會被整個刪掉」（有拍點會拿掉——給他的、和只剩他是那個角色的——再加「會一起拿掉 K 個拍點」），清單是那 M 個動作；
+ * 排順序：把這個人移到名單上第 to 個（0 起），其他人依序補上。名單順序就是號碼和泳道順序，
+ * 站位、動作都記 id，不用動。移到原本的位置：流程不變。
+ */
+export function moveMember(flow: Flow, id: string, to: number): CommandResult {
+	const from = flow.members.findIndex((m) => m.id === id);
+	if (from === -1) return blocked('找不到這個隊員');
+	if (to < 0) return blocked('已經是第一個了');
+	if (to >= flow.members.length) return blocked('已經是最後一個了');
+	if (to === from) return ok(flow);
+	return ok({ ...flow, members: flow.members.toSpliced(from, 1).toSpliced(to, 0, flow.members[from]) });
+}
+
+/**
+ * 刪隊員。一定先回「要確認」：「刪掉隊員「名字」（標記、全局角色）：他在 N 個動作裡，其中 M 個會被整個刪掉」
+ * （不在動作裡寫「他不在任何動作裡」，沒有動作會被整個刪掉就不寫「其中」那句；有拍點會拿掉——給他的、和只剩他是那個角色的——再加「會一起拿掉 K 個拍點」），清單是那 M 個動作；
  * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉，
  * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。刪隊員當成真的換人：他在的每一組和他自己的紀錄都清掉，
  * 確認訊息寫會清掉幾次。他走了空掉的組拿掉，後面的組往前補號。
@@ -234,8 +248,12 @@ export function deleteMember(
 		const dropped = cueCount(flow.actions.filter((a) => !emptied.includes(a))) - cueCount(actions);
 		const records = (list: Action[]) => list.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
 		const cleared = records(flow.actions) - records(actions);
+		const role = GLOBAL_ROLES.find((r) => r.key === member.globalRole)?.label;
+		const where = !inActions.length
+			? '他不在任何動作裡'
+			: `他在 ${inActions.length} 個動作裡` + (emptied.length ? `，其中 ${emptied.length} 個會被整個刪掉` : '');
 		return needsConfirm(
-			`${member.name} 在 ${inActions.length} 個動作裡，其中 ${emptied.length} 個會被整個刪掉` +
+			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
 				(cleared ? `，會清掉 ${cleared} 次紀錄` : ''),
 			emptied.map((a) => {
@@ -285,12 +303,13 @@ export function memberMarkers(flow: Flow): Record<string, string> {
 /**
  * 開頭字撞在一起的一群人：每人開頭字再帶名字後面第一個「群裡別人名字後面都沒有」的字
  * （王小明、王大華、王小美 → 王明、王大、王美），所以不會兩個人帶到同一個字。
+ * 連在一起的數字整串算一個字（新人1、新人10 → 新1、新10）。
  * 找不到（同名、名字只有一個字）就在開頭字後面加 1、2、3…，跳過已經被用掉的和群裡別人的名字
  * （甲10 在名單裡，甲11 就不會寫成「甲10」）。
  */
 function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<string, string> {
 	const head = chars.get(group[0].id)![0].toUpperCase();
-	const rest = (m: Member) => chars.get(m.id)!.slice(1);
+	const rest = (m: Member): string[] => chars.get(m.id)!.slice(1).join('').match(/\d+|./gu) ?? [];
 	const markers: Record<string, string> = {};
 	const left: Member[] = [];
 	for (const m of group) {

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
-import { createFlow, renameFlow } from '#lib/core';
+import { addMembers, createFlow, renameFlow, setMarkers } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { fakeToMeters } from '#lib/test-fakes.js';
@@ -1430,6 +1430,62 @@ describe('放一個帶好流程的 session 進頁面', () => {
 		await tab('隊員');
 		await fireEvent.click(bar());
 		expect(actionTab().getAttribute('aria-selected')).toBe('true');
+	});
+});
+
+describe('隊員名單：排順序、開頭字標記、刪隊員確認', () => {
+	/** libSample（小美、小A、小B、小芳）放進頁面，翻到「隊員」頁。 */
+	async function sample(flow = libSample()) {
+		const session = new EditorSession(flow);
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		await tab('隊員');
+		return session;
+	}
+	const lanes = () => [...document.querySelectorAll('[data-lane]')].map((el) => el.getAttribute('data-lane'));
+	const dotText = (id: string) => document.querySelector(`[data-member-id="${id}"] text`)!.textContent;
+
+	it('按「往上」：名單、泳道順序和場上的號碼跟著變；按復原回去', async () => {
+		await sample();
+		expect(lanes()).toEqual(['m1', 'm2', 'm3', 'm4']);
+		await fireEvent.click(screen.getByRole('button', { name: '第 3 位隊員往上' }));
+		expect((screen.getByLabelText('第 2 位隊員的名字') as HTMLInputElement).value).toBe('小B');
+		expect(lanes()).toEqual(['m1', 'm3', 'm2', 'm4']);
+		expect(dotText('m3')).toBe('2');
+		expect(dotText('m2')).toBe('3');
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		expect(lanes()).toEqual(['m1', 'm2', 'm3', 'm4']);
+		expect(dotText('m3')).toBe('3');
+	});
+
+	it('按「往下」和拖曳一樣能排', async () => {
+		const session = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '第 1 位隊員往下' }));
+		expect(lanes()).toEqual(['m2', 'm1', 'm3', 'm4']);
+		const rows = document.querySelectorAll('.members li');
+		await fireEvent.dragStart(rows[3].querySelector('[draggable="true"]')!);
+		await fireEvent.dragOver(rows[0]);
+		await fireEvent.drop(rows[0]);
+		expect(lanes()).toEqual(['m4', 'm2', 'm1', 'm3']);
+		expect(session.flow!.members.map((m) => m.name)).toEqual(['小芳', '小A', '小美', '小B']);
+	});
+
+	it('開頭字標記：新人1 到新人10 每個人都不同，新人10 寫「新10」', async () => {
+		const names = Array.from({ length: 10 }, (_, i) => ({ name: `新人${i + 1}`, gender: 'F' as const, globalRole: 'top' as const }));
+		await sample(flowOf(setMarkers(flowOf(addMembers(sessionFlow(), names)), 'initial')));
+		const texts = Array.from({ length: 10 }, (_, i) => dotText(`m${i + 1}`));
+		expect(texts[9]).toBe('新10');
+		expect(new Set(texts).size).toBe(10);
+	});
+
+	it('刪隊員的確認出現在那一列下面，寫名字、標記、全局角色；不在動作裡不寫「0 個動作裡」', async () => {
+		await sample(flowOf(addMembers(libSample(), [{ name: '阿強', gender: 'M', globalRole: 'base' }])));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 5 位隊員' }));
+		const box = screen.getByRole('alertdialog');
+		expect(box.closest('li')).toBe(document.querySelectorAll('.members li')[4]);
+		expect(box.textContent).toContain('刪掉隊員「阿強」（標記 5、底層）：他不在任何動作裡');
+		expect(box.textContent).not.toContain('0 個');
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		expect(lanes()).toEqual(['m1', 'm2', 'm3', 'm4']);
 	});
 });
 

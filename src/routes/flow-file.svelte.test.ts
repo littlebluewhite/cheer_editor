@@ -1,5 +1,5 @@
 // 頁面：存檔、開檔、Ctrl+S、缺音樂。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { unzipSync, zipSync, strToU8 } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -214,6 +214,25 @@ describe('存檔', () => {
 		await flush();
 		expect(saves).toHaveLength(1);
 		expect(screen.getByRole('status').textContent).toContain('存出來的檔裡沒有這些音樂');
+	});
+
+	it('排過的隊員順序存進去，再打開還是一樣（流程檔格式不變）', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await newFlow();
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '小A\n小B\n小C' } });
+		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'top' } });
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		await fireEvent.click(screen.getByRole('button', { name: '第 3 位隊員往上' }));
+		await ctrlS();
+		await flush();
+		cleanup();
+		setup();
+		await openFile(saves[0]);
+		const names = [1, 2, 3].map((n) => (screen.getByLabelText(`第 ${n} 位隊員的名字`) as HTMLInputElement).value);
+		expect(names).toEqual(['小A', '小C', '小B']);
+		expect([...document.querySelectorAll('[data-lane]')].map((el) => el.getAttribute('data-lane'))).toEqual(['m1', 'm3', 'm2']);
 	});
 
 	it('音樂資料也存進去', async () => {

@@ -17,6 +17,7 @@ export {
 	addMembers,
 	deleteMember,
 	memberMarkers,
+	moveMember,
 	setMarkers,
 	updateMember
 } from './members';
