@@ -3,6 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
 import {
+	addAction,
 	addMembers,
 	addSegment as addSegmentTo,
 	createFlow,
@@ -828,16 +829,38 @@ describe('站位與走位', () => {
 		expect(marked('data-walk-line')).toEqual([]);
 	});
 
-	it('撞位：播放頭所在那兩張站位之間的撞位，在場上畫紫色 ✕；走位條撞到的那段變紫；拖人照樣能拖', async () => {
-		// 小A [0, 0]、小B [2, 0]；站位 2 在 4.8 秒兩人換位置，1.6–4.8 秒走位，3.2 秒在 [1, 0] 撞在一起。
+	/** 小A [0, 0]、小B [2, 0]；站位 2 在 4.8 秒兩人換位置，1.6–4.8 秒走位，3.2 秒在 [1, 0] 撞在一起；站位 3 在 8 秒。 */
+	function swapping() {
 		let flow = flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));
 		flow = flowOf(addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
 		flow = flowOf(addSegmentTo(flow, 'music'));
 		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
 		flow = flowOf(insertFormation(flow, 4.8));
-		const f2 = flow.formations[1].id;
-		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
-		flow = flowOf(insertFormation(flow, 8));
+		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [2, 0], m2: [0, 0] }));
+		return flowOf(insertFormation(flow, 8));
+	}
+
+	it('撞位只看騰翻：兩個人一般走位交錯，場上沒有 ✕、走位條沒有紫色', async () => {
+		render(Page, editorPage(swapping()).props);
+		await seek(3.2);
+		expect(document.querySelector('[data-walk-line]')).not.toBeNull();
+		expect(document.querySelectorAll('.field [data-clash]')).toHaveLength(0);
+		expect(document.querySelectorAll('[data-walk-clash]')).toHaveLength(0);
+	});
+
+	it('撞位：播放頭所在那兩張站位之間的撞位，在場上畫紫色 ✕、寫是誰撞誰；走位條撞到的那段變紫；拖人照樣能拖', async () => {
+		// swapping 再讓小A 1.6–4.8 秒在騰翻動作裡。
+		const flow = flowOf(
+			addAction(swapping(), {
+				segmentId: 's1',
+				category: 'tumbling',
+				name: '',
+				start: 8,
+				length: 16,
+				note: '',
+				members: [{ memberId: 'm1', role: null }]
+			})
+		);
 		const { session, props } = editorPage(flow);
 		render(Page, props);
 		const marks = () => [...document.querySelectorAll('.field [data-clash]')];
@@ -846,6 +869,7 @@ describe('站位與走位', () => {
 		expect(marks()).toEqual([]);
 		await seek(2);
 		expect(marks().map((el) => el.getAttribute('transform'))).toEqual(['translate(1,0)']);
+		expect(marks()[0].querySelector('title')?.textContent).toBe('撞位：小A、小B');
 		await seek(4.8);
 		expect(marks()).toHaveLength(1);
 		// 站位 2 → 站位 3 之間沒人走，不畫。
@@ -1264,7 +1288,7 @@ describe('編輯器首頁', () => {
 		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(2);
 	});
 
-	it('空場的提示照實說新隊員排在哪；場地中間的 ✕ 有說明', async () => {
+	it('空場的提示照實說新隊員排在哪；場地中間的 ＋ 有說明', async () => {
 		await newFlow();
 		expect(document.querySelector('.field-empty')!.textContent).toContain('排進場地中間的空格點');
 		expect(document.querySelector('.center title')?.textContent).toBe('場地正中心');

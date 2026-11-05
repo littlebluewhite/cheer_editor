@@ -111,7 +111,7 @@
 		view = next;
 	}
 
-	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。 */
+	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。場地和泳道共用這一份。 */
 	const allClashes = $derived(flow ? clashes(flow) : []);
 
 	/**
@@ -606,7 +606,7 @@
 		></div>
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
-			<Timeline onopensegment={(id) => (openSegmentId = id)} />
+			<Timeline onopensegment={(id) => (openSegmentId = id)} clashes={allClashes} />
 		</div>
 		{#if view === 'practice'}
 			<div class="practice-host">

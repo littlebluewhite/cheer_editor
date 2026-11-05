@@ -10,6 +10,7 @@ import {
 	setMarkers,
 	setPositions,
 	setWalks,
+	type Clash,
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
@@ -70,15 +71,22 @@ function renderLanes(
 		playheadSec = 0,
 		selectedActionId = null,
 		selectedMemberIds = [],
-		multi = false
-	}: { playheadSec?: number; selectedActionId?: string | null; selectedMemberIds?: string[]; multi?: boolean } = {}
+		multi = false,
+		clashes = []
+	}: {
+		playheadSec?: number;
+		selectedActionId?: string | null;
+		selectedMemberIds?: string[];
+		multi?: boolean;
+		clashes?: Clash[];
+	} = {}
 ) {
 	const { editor, session } = testEditor(flow);
 	session.selectAction(selectedActionId);
 	session.selectMembers(selectedMemberIds);
 	session.multiSelect = multi;
 	editor.playback.seek(playheadSec);
-	render(TestSession, { props: { editor, component: Lanes, props: { pxPerSec: 10 } } });
+	render(TestSession, { props: { editor, component: Lanes, props: { pxPerSec: 10, clashes } } });
 	return { session, ask: session.ask };
 }
 
@@ -373,13 +381,14 @@ describe('走位條', () => {
 		expect(walkBar(0).dataset.actionId).toBeUndefined();
 	});
 
-	it('撞位：兩個人的走位條在撞到的那段標紫色；沒撞的人沒有', () => {
-		// 小A [0, 0]、小B [2, 0] 在 1.6–4.8 秒換位置：2.6–3.8 秒兩人不到半格。
+	it('撞位：照給的撞位，兩個人的走位條在撞到的那段標紫色；沒撞的人沒有', () => {
+		// 小A [0, 0]、小B [2, 0] 在 1.6–4.8 秒換位置；給一個 2.6–3.8 秒的撞位。
 		let flow = walking();
 		const f2 = flow.formations[1].id;
 		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
 		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
-		renderLanes(flow);
+		const clash: Clash = { memberIds: ['m1', 'm2'], sec: 3.2, pos: [1, 0], startSec: 2.6, endSec: 3.8, formationId: f2 };
+		renderLanes(flow, { clashes: [clash] });
 		for (const i of [0, 1]) {
 			const marks = walkBar(i).querySelectorAll<HTMLElement>('[data-walk-clash]');
 			expect(marks).toHaveLength(1);

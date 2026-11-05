@@ -456,7 +456,7 @@
 		{#each g.seams as l, i (i)}
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
-		<path class="center" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35"><title>場地正中心</title></path>
+		<path class="center" d="M-.4,0L.4,0M0,-.4L0,.4"><title>場地正中心</title></path>
 		<!-- 條編號寫在墊子裡靠後（橫放靠左）的邊、每條的中間：場外等著的人（排在場地外半格）和接縫上的人都不會蓋到 -->
 		{#each g.strips as s (s.number)}
 			<text
@@ -642,13 +642,12 @@
 		stroke-opacity: 0.9;
 		stroke-width: 0.08;
 	}
-	/* 撞位的 ✕：紫色粗線，蓋在走位線上面；不吃滑鼠。 */
+	/* 撞位的 ✕：紫色粗線，蓋在走位線上面；滑鼠移上去看得到是誰撞誰。 */
 	.clash {
 		fill: none;
 		stroke: var(--walk-clash, #a855f7);
 		stroke-width: 0.12;
 		stroke-linecap: round;
-		pointer-events: none;
 	}
 	.snap {
 		fill: #ffe27a;
