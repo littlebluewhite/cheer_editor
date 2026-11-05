@@ -707,5 +707,17 @@ await check('列印：八拍表的拍點、環節換行不截斷，背景是白�
 	);
 });
 
+await check('390×844（手機）使用說明：名詞表上下排，不用左右滑', async () => {
+	await setTouchViewport(390, 844);
+	await send('Page.navigate', { url: `http://localhost:${PORT}/guide` });
+	await waitFor(() => js(`return !!document.querySelector('#words table')`));
+	await sleep(300);
+	const r = await js(`const wraps = [...document.querySelectorAll('.table-wrap')].map((w) => ({
+			表: w.querySelector('th')?.textContent, 內容寬: w.scrollWidth, 框寬: w.clientWidth }));
+		return { 要滑的表: wraps.filter((w) => w.內容寬 > w.框寬 + 1), 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth };`);
+	await clearTouch();
+	return { ok: r.要滑的表.length === 0 && r.頁寬 <= r.畫面寬, value: r };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

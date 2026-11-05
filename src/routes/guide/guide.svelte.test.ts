@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import Guide from './+page.svelte';
 
@@ -75,6 +76,35 @@ describe('使用說明', () => {
 		expect(row('組')).toContain('動作只有一組時，新加進來、沒帶組的人進第 1 組');
 		expect(row('環節')).toContain('在口號段不數拍，環節不標拍');
 		expect(row('環節')).toContain('拍被清光，環節就沒了');
+	});
+
+	it('第 5 章的編輯器連結開在新分頁，說明頁不會被蓋掉', () => {
+		render(Guide);
+		const links = [...document.querySelectorAll<HTMLAnchorElement>('#cold-read a[href]')].filter(
+			(a) => !a.getAttribute('href')!.startsWith('#')
+		);
+		expect(links.length).toBeGreaterThan(0);
+		for (const a of links) {
+			expect(a.target, a.textContent!).toBe('_blank');
+			expect(a.rel).toContain('noopener');
+		}
+	});
+
+	it('試跑的勾選框重新整理後還在', async () => {
+		localStorage.clear();
+		const first = render(Guide);
+		const boxes = () => [...document.querySelectorAll<HTMLInputElement>('#cold-read input[type=checkbox]')];
+		await fireEvent.click(boxes()[0]);
+		await fireEvent.click(boxes()[2]);
+		first.unmount();
+
+		render(Guide);
+		await tick();
+		expect(boxes().map((b) => b.checked).slice(0, 4)).toEqual([true, false, true, false]);
+
+		await fireEvent.click(boxes()[0]);
+		expect(boxes()[0].checked).toBe(false);
+		localStorage.clear();
 	});
 
 	it('「組」只用在成功率：動作是一群隊員，複製人照新的選項文字', () => {
