@@ -12,7 +12,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest --run",
 		"test:watch": "vitest",
-		"guide:shots": "node scripts/guide-screenshots.mjs"
+		"guide:shots": "node scripts/guide-screenshots.mjs",
+		"check:layout": "node scripts/check-layout.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.1",

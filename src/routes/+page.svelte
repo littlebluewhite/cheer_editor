@@ -2,7 +2,6 @@
 	import {
 		currentFormation,
 		deleteAction,
-		deleteFormation,
 		firstBeatPreview,
 		formationAt,
 		formationTimes,
@@ -635,16 +634,25 @@
 		});
 	});
 
+	/** 提示泡泡留幾毫秒就自己收掉。 */
+	const NOTICE_MS = 5000;
+
+	// 提示泡泡過幾秒自己收掉（換了一句就重算）。
+	$effect(() => {
+		if (!session.notice) return;
+		const timer = setTimeout(() => (session.notice = ''), NOTICE_MS);
+		return () => clearTimeout(timer);
+	});
+
+	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
+	function dismissNotice(e: Event) {
+		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
+	}
+
 	// 在時間軸點了色條（再點選著的那條也算）：右邊欄翻到「動作」那一頁。
 	$effect(() => {
 		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
 	});
-
-	function removeFormation(id: string) {
-		const f = flow;
-		if (!f) return;
-		session.ask.send(() => deleteFormation(f, id));
-	}
 
 	function onkeydown(e: KeyboardEvent) {
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
@@ -671,7 +679,7 @@
 			togglePlay(flow);
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
 			e.preventDefault();
-			removeFormation(session.selectedFormationId);
+			session.removeFormation(session.selectedFormationId);
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedActionId) {
 			// Mac 的 delete 鍵送的是 Backspace
 			e.preventDefault();
@@ -714,7 +722,16 @@
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
 </svelte:head>
-<svelte:window {onkeydown} {onbeforeunload} {oninput} onchange={sent} onfocusout={sent} bind:innerWidth={windowW} />
+<svelte:window
+	{onkeydown}
+	{onbeforeunload}
+	{oninput}
+	onchange={sent}
+	onfocusout={sent}
+	onpointerdowncapture={dismissNotice}
+	onkeydowncapture={dismissNotice}
+	bind:innerWidth={windowW}
+/>
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
@@ -731,6 +748,9 @@
 			{#if session.notice}
 				<div class="toast">
 					<span role="status">{session.notice}</span>
+					{#if session.noticeUndo}
+						<button type="button" class="ghost undo" aria-label="復原刪掉的站位" onclick={undo}>復原</button>
+					{/if}
 					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (session.notice = '')}
 						><Icon name="close" size={14} /></button
 					>
@@ -1505,9 +1525,10 @@
 		color: var(--text);
 		font-size: 14px;
 	}
+	/* 放在場地下方，不蓋住上方的條號。 */
 	.toast {
 		position: absolute;
-		top: 14px;
+		bottom: 14px;
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 10;
@@ -1538,6 +1559,13 @@
 		width: 24px;
 		height: 24px;
 	}
+	.toast .undo {
+		width: auto;
+		padding: 0 8px;
+		color: #fff;
+		font-weight: 700;
+		text-decoration: underline;
+	}
 	.toast button:hover {
 		background: rgba(255, 255, 255, 0.12);
 		color: #fff;
@@ -1545,7 +1573,7 @@
 	@keyframes drop {
 		from {
 			opacity: 0;
-			transform: translate(-50%, -6px);
+			transform: translate(-50%, 6px);
 		}
 	}
 

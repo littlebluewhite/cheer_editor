@@ -124,6 +124,7 @@ export {
 	positionsAt,
 	renameFormation,
 	setPositions,
+	setTeamWalks,
 	setWalks
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk } from './formation';
