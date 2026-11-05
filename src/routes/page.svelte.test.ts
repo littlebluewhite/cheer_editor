@@ -70,6 +70,31 @@ describe('段、八拍尺、上方列', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 	});
 
+	it('段設定的敲擊測速：0.5 秒一下點 8 下，套用後段的 BPM 變成 120', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		const dialog = within(screen.getByRole('dialog', { name: '音樂 1 設定' }));
+		const tap = dialog.getByRole('button', { name: '敲擊測速' });
+		const apply = dialog.getByRole('button', { name: /^套用/ }) as HTMLButtonElement;
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			for (let i = 0; i < 8; i++) {
+				vi.setSystemTime(10_000 + i * 500);
+				expect(apply.disabled).toBe(true);
+				await fireEvent.click(tap);
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(apply.disabled).toBe(false);
+		expect(apply.textContent).toContain('120 BPM');
+		await fireEvent.click(apply);
+		expect((dialog.getByLabelText('BPM') as HTMLInputElement).value).toBe('120');
+		// 拍子的秒數跟著變：120 BPM 一拍 0.5 秒，8 個八拍 = 32 秒
+		expect(dialog.getByText('共 32.0 秒')).toBeTruthy();
+	});
+
 	it('段旁的「＋」：選「＋口號段」就插在這段後面', async () => {
 		await newFlow();
 		await addSegment('＋音樂段');
