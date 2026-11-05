@@ -430,14 +430,15 @@ describe('編輯 session：改完跳播放頭', () => {
 		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
 
-	it('挪站位：提示收掉、選著這張，播放頭跳到新的站位時間（播放中從那裡重播）', () => {
+	it('挪站位：提示改到哪（旁邊有復原）、選著這張，播放頭跳到新的站位時間（播放中從那裡重播）', () => {
 		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		const id = s.flow!.formations[1].id;
 		const to = { segmentId: 's1', at: 16 };
 		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
-		expect(s.notice).toBe('');
+		expect(s.notice).toBe('站位 2 改到 2-1');
+		expect(s.noticeUndo).toBe('復原改站位時間');
 		expect(jumps).toEqual([{ sec: toSeconds(s.flow!, to), replay: true }]);
 	});
 
