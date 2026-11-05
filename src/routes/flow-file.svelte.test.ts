@@ -1,5 +1,5 @@
 // 頁面：存檔、開檔、Ctrl+S、缺音樂。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { unzipSync, zipSync, strToU8 } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -214,6 +214,25 @@ describe('存檔', () => {
 		await flush();
 		expect(saves).toHaveLength(1);
 		expect(screen.getByRole('status').textContent).toContain('存出來的檔裡沒有這些音樂');
+	});
+
+	it('排過的隊員順序存進去，再打開還是一樣（流程檔格式不變）', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await newFlow();
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '小A\n小B\n小C' } });
+		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'top' } });
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		await fireEvent.click(screen.getByRole('button', { name: '第 3 位隊員往上' }));
+		await ctrlS();
+		await flush();
+		cleanup();
+		setup();
+		await openFile(saves[0]);
+		const names = [1, 2, 3].map((n) => (screen.getByLabelText(`第 ${n} 位隊員的名字`) as HTMLInputElement).value);
+		expect(names).toEqual(['小A', '小C', '小B']);
+		expect([...document.querySelectorAll('[data-lane]')].map((el) => el.getAttribute('data-lane'))).toEqual(['m1', 'm3', 'm2']);
 	});
 
 	it('音樂資料也存進去', async () => {
@@ -481,8 +500,30 @@ describe('新建', () => {
 		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
 		await flush();
+		// 缺的音樂都補好了：「少了音樂檔」的提示自己收掉
+		expect(screen.queryByRole('status')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
 		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
+	});
+
+	it('音樂檔壞了（解不開）：段設定說「音樂檔壞了，請重新選檔」，不拿長度 0 去提醒段比音樂長', async () => {
+		render(Page, {
+			createEngine: () => createFakeEngine(),
+			createSaver: () => fakeSaver().saver,
+			decode: async () => {
+				throw new Error('壞檔');
+			}
+		});
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1, 2, 3]) }));
+		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
+		const dialog = screen.getByRole('dialog');
+		expect(dialog.textContent).toContain('主歌.mp3（音樂檔壞了，請重新選檔）');
+		expect(within(dialog).queryByRole('note')).toBeNull();
+		// 第一拍照樣能改（不說「要在音樂結束（0.0 秒）之前」）
+		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '0.5' } });
+		expect(within(dialog).queryByRole('alert')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
+		expect(within(dialog).getByRole('alert').textContent).toBe('音樂檔壞了，請重新選檔');
 	});
 });

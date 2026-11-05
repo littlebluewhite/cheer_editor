@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import {
 	addAction,
@@ -191,6 +192,57 @@ describe('隊員名單', () => {
 	});
 });
 
+describe('排順序', () => {
+	const three = () =>
+		okFlow(
+			addMembers(empty, [
+				{ name: '小A', gender: 'F', globalRole: 'top' },
+				{ name: '小B', gender: 'M', globalRole: 'base' },
+				{ name: '小C', gender: 'M', globalRole: 'base' }
+			])
+		);
+	const names = () => [...document.querySelectorAll<HTMLInputElement>('li input')].map((i) => i.value);
+	const markers = () => [...document.querySelectorAll('li .no')].map((el) => el.textContent);
+
+	it('每一列有「往上」「往下」：換位置，號碼跟著變，可以復原', async () => {
+		const session = setup(three());
+		await fireEvent.click(screen.getByRole('button', { name: '第 3 位隊員往上' }));
+		expect(names()).toEqual(['小A', '小C', '小B']);
+		expect(markers()).toEqual(['1', '2', '3']);
+		expect(session.flow!.members.map((m) => m.id)).toEqual(['m1', 'm3', 'm2']);
+		await fireEvent.click(screen.getByRole('button', { name: '第 1 位隊員往下' }));
+		expect(names()).toEqual(['小C', '小A', '小B']);
+		session.undo();
+		session.undo();
+		expect(session.flow!.members.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+	});
+
+	it('第一個不能往上、最後一個不能往下', () => {
+		setup(three());
+		expect((screen.getByRole('button', { name: '第 1 位隊員往上' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByRole('button', { name: '第 3 位隊員往下' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByRole('button', { name: '第 2 位隊員往上' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('移到頭、尾按鈕變灰時，焦點換到同一列的另一顆，不掉到 body', async () => {
+		setup(three());
+		const up = screen.getByRole('button', { name: '第 2 位隊員往上' });
+		up.focus();
+		await fireEvent.click(up);
+		await tick();
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '第 1 位隊員往下' }));
+	});
+
+	it('拖一列的把手放到別列：移到那一列的位置', async () => {
+		const session = setup(three());
+		const rows = document.querySelectorAll('li');
+		await fireEvent.dragStart(rows[0].querySelector('[draggable="true"]')!);
+		await fireEvent.dragOver(rows[2]);
+		await fireEvent.drop(rows[2]);
+		expect(session.flow!.members.map((m) => m.name)).toEqual(['小B', '小C', '小A']);
+	});
+});
+
 describe('刪隊員', () => {
 	/** 小A 和小B；小A 一個人做一個動作。 */
 	function twoWithAction(): Flow {
@@ -223,12 +275,21 @@ describe('刪隊員', () => {
 		expect(scrolled[0].contains(screen.getByRole('alertdialog'))).toBe(true);
 	});
 
+	it('確認出現在那一列旁邊，寫名字、標記、全局角色', async () => {
+		setup(twoWithAction());
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 2 位隊員' }));
+		const box = screen.getByRole('alertdialog');
+		expect(box.closest('li')).toBe(document.querySelectorAll('li')[1]);
+		expect(box.textContent).toContain('刪掉隊員「小B」（標記 2、底層）：他不在任何動作裡');
+		expect(box.textContent).not.toContain('0 個');
+	});
+
 	it('按刪除先列出「他在 N 個動作裡，其中 M 個會被整個刪掉」，按確定才刪', async () => {
 		const session = setup(twoWithAction());
 		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
 		expect(session.canUndo).toBe(false);
 		const box = screen.getByRole('alertdialog');
-		expect(box.textContent).toContain('小A 在 1 個動作裡，其中 1 個會被整個刪掉');
+		expect(box.textContent).toContain('刪掉隊員「小A」（標記 1、上層）：他在 1 個動作裡，其中 1 個會被整個刪掉');
 		expect(box.textContent).toContain('動作「跳躍·T」（音樂 1 1-1 起）');
 		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
 		const flow = session.flow!;

@@ -5,6 +5,7 @@
 		firstBeatPreview,
 		formationAt,
 		formationTimes,
+		clashes,
 		formationWalks,
 		memberMarkers,
 		playbackPlan,
@@ -24,6 +25,7 @@
 		writeFlowFile,
 		type ConfirmOption,
 		type Flow,
+		type Clash,
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
@@ -33,10 +35,11 @@
 	import { createIndexedDbDraftStore, type Draft, type DraftStore } from '#lib/file/draft.js';
 	import { browserFilePicker, createBrowserSaver, flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
-	import { onMount, untrack, type ComponentProps } from 'svelte';
+	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
 		loadInspectorWidth,
+		MAX_LATENCY_MS,
 		loadLatencyMs,
 		loadTimelineHeight,
 		saveInspectorWidth,
@@ -45,6 +48,7 @@
 	} from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
 	import { setUnsavedChanges } from '#lib/unsaved.js';
+	import { flushPendingInput, settlePendingInput } from '#lib/pending-input.js';
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -220,6 +224,11 @@
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
 	let audios = $state<Record<string, LoadedAudio>>({});
 	const missingSegmentIds = $derived(flow ? segmentsMissingAudio(flow, Object.keys(audios)) : []);
+	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）；缺的音樂都補好了就自己收掉。 */
+	let missingNotice = '';
+	$effect(() => {
+		if (!missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
+	});
 	/** 播放頭，全域秒數。 */
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
@@ -254,12 +263,15 @@
 		view = next;
 	}
 
+	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。 */
+	const allClashes = $derived(flow ? clashes(flow) : []);
+
 	/**
-	 * 場上的影子和走位線：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線；
-	 * 在兩張站位中間只畫這段的走位線；開頭那張、最後一張之後都不畫。
+	 * 場上的影子、走位線和撞位：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線、撞位；
+	 * 在兩張站位中間只畫這段的走位線和撞位；開頭那張、最後一張之後都不畫。
 	 */
 	const trail = $derived.by(() => {
-		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[] };
+		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
 		if (!flow) return none;
 		const on = formationAt(flow, playheadSec);
 		const i = on
@@ -268,7 +280,8 @@
 		if (i <= 0) return none;
 		return {
 			ghosts: on ? flow.formations[i - 1].pos : none.ghosts,
-			walks: formationWalks(flow, flow.formations[i].id)
+			walks: formationWalks(flow, flow.formations[i].id),
+			clashes: allClashes.filter((c) => c.formationId === flow!.formations[i].id)
 		};
 	});
 
@@ -314,6 +327,7 @@
 
 	function pause() {
 		playing = false;
+		previewing = false;
 		player?.stop();
 	}
 
@@ -341,9 +355,28 @@
 		else requestAnimationFrame(frame);
 	}
 
+	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
+	let previewing = $state(false);
+
 	function preview(f: Flow, segmentId: string) {
 		pause();
 		getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
+		previewing = true;
+		requestAnimationFrame(previewFrame);
+	}
+
+	/** 試聽播完了沒（播放頭不動，只看播完）。 */
+	function previewFrame() {
+		if (!previewing || !player) return;
+		player.tick(0);
+		if (!player.playing) previewing = false;
+		else requestAnimationFrame(previewFrame);
+	}
+
+	function stopPreview() {
+		if (!previewing) return;
+		previewing = false;
+		player?.stop();
 	}
 
 	function setMetronome(f: Flow, on: boolean) {
@@ -351,8 +384,13 @@
 		if (playing) play(f);
 	}
 
-	function setLatency(ms: number) {
-		if (!Number.isFinite(ms)) return;
+	/** 清空、不合法或超出範圍：不改，欄位回到現在的值（不然欄位空著，實際還在用舊值）。 */
+	function setLatency(input: HTMLInputElement) {
+		const ms = input.valueAsNumber;
+		if (!(Math.abs(ms) <= MAX_LATENCY_MS)) {
+			input.value = String(latencyMs);
+			return;
+		}
 		latencyMs = ms;
 		saveLatencyMs(ms);
 	}
@@ -482,7 +520,10 @@
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段（選取、提示由 session 處理）。 */
 	function restore(f: Flow) {
 		playheadSec = Math.min(playheadSec, totalSeconds(f));
-		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) openSegmentId = null;
+		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
+			stopPreview();
+			openSegmentId = null;
+		}
 	}
 
 	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
@@ -517,6 +558,7 @@
 			]
 				.filter(Boolean)
 				.join('；');
+			if (missing) missingNotice = session.notice;
 		} catch {
 			session.notice = '存檔失敗，請再試一次';
 		} finally {
@@ -566,7 +608,7 @@
 				loaded[id] = { bytes: buffer, ...(await decode(buffer)) };
 			} catch {
 				// 這個瀏覽器解不開（例：Firefox 沒有 AAC）：位元組留著，存檔時照樣存回去，只是不出聲。
-				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [] };
+				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [], broken: true };
 				unreadable = true;
 			}
 		}
@@ -577,6 +619,7 @@
 				: unreadable
 					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
 					: '';
+			if (r.missingSegmentIds.length) missingNotice = session.notice;
 		});
 	}
 
@@ -654,6 +697,23 @@
 		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
 	});
 
+	/** 空白鍵照瀏覽器原本的行為的東西：按得下去、選得了、打得了字的。場上的人不算（空白鍵播放）。 */
+	const NATIVE_KEYS =
+		'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), ' +
+		'[role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"]';
+	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
+	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+
+	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
+	function undoKey(redoing: boolean) {
+		flushPendingInput();
+		flushSync();
+		if (redoing) redo();
+		else undo();
+		flushSync();
+		settlePendingInput();
+	}
+
 	function onkeydown(e: KeyboardEvent) {
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -661,22 +721,35 @@
 			void save();
 			return;
 		}
-		// 對話框、八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
-		if (!flow || overlayOpen) return;
-		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+		if (!flow) return;
 		// 練習時只留存檔：空白鍵留給記號按鈕，Delete 不能刪到藏起來的動作、站位；
 		// 復原、重做只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄
 		if (view === 'practice') return;
+		const target = e.target as Element | null;
+		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
+		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
 			e.preventDefault();
-			if (key === 'z' && !e.shiftKey) undo();
-			else redo();
-		} else if (e.key === ' ') {
-			if (e.repeat) return;
-			// 不讓焦點所在的按鈕也被空白鍵按到
+			undoKey(!(key === 'z' && !e.shiftKey));
+			return;
+		}
+		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它；其他時候播放／暫停
+		if (e.key === ' ') {
+			if (on(NATIVE_KEYS) || e.repeat) return;
+			// 對話框開著時只能暫停（不在對話框後面開始播）
+			if (overlayOpen && !playing) return;
 			e.preventDefault();
 			togglePlay(flow);
+			return;
+		}
+		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
+		if (overlayOpen || on(TYPING)) return;
+		// 選單自己用方向鍵、Home／End（例：任務角色選單）時不算
+		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
+		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
+			e.preventDefault();
+			seek(flow, e.key === 'Home' ? 0 : totalSeconds(flow));
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
 			e.preventDefault();
 			session.removeFormation(session.selectedFormationId);
@@ -691,17 +764,26 @@
 			!e.metaKey &&
 			!e.altKey
 		) {
-			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單自己用方向鍵時（已經 preventDefault）不算。
-			if ((e.target as Element | null)?.closest?.('[role="combobox"], [role="listbox"], [role="radiogroup"]')) return;
+			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單、分頁自己用方向鍵時（已經 preventDefault）不算。
+			if (on(ownKeys)) return;
 			e.preventDefault();
 			seek(flow, stepPlayhead(flow, playheadSec, e.key === 'ArrowRight' ? 1 : -1, e.shiftKey));
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
 			// 分組：選好人按 1–9 放進那組、0 拿出組。任務角色選單也用數字鍵，焦點在那裡不算。
-			if ((e.target as Element | null)?.closest?.('[role="combobox"]')) return;
+			if (on('[role="combobox"]')) return;
 			if (session.squadKey(Number(e.key))) e.preventDefault();
 		}
+	}
+
+	/** 右邊欄的分頁：←→ 換到另一頁，焦點跟著過去（只有兩頁，往哪邊都是另一頁）。 */
+	function tabKey(e: KeyboardEvent) {
+		if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.ctrlKey || e.metaKey || e.altKey) return;
+		e.preventDefault();
+		inspectorTab = inspectorTab === 'action' ? 'members' : 'action';
+		flushSync();
+		document.getElementById(`tab-${inspectorTab}`)?.focus();
 	}
 
 	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
@@ -800,8 +882,10 @@
 					<input
 						type="number"
 						step="10"
+						min={-MAX_LATENCY_MS}
+						max={MAX_LATENCY_MS}
 						value={latencyMs}
-						onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
+						onchange={(e) => setLatency(e.currentTarget)}
 					/>
 				</label>
 			</div>
@@ -847,6 +931,7 @@
 				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
+				clashes={trail.clashes}
 				badges={squadBadges}
 			>
 				{#snippet below()}
@@ -936,7 +1021,8 @@
 				onkeydown={colSplitKey}
 				ondblclick={() => setInspectorW(null)}
 			></div>
-			<div class="tabs" role="tablist" aria-label="右邊欄">
+			<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
+			<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
 				<button
 					type="button"
 					role="tab"
@@ -1021,8 +1107,15 @@
 			{decode}
 			{waveXToSec}
 			onaudioload={(id, audio) => (audios[id] = audio)}
+			{previewing}
 			onpreview={(id) => flow && preview(flow, id)}
-			onclose={() => (openSegmentId = null)}
+			{playing}
+			onpause={pause}
+			onstoppreview={stopPreview}
+			onclose={() => {
+				stopPreview();
+				openSegmentId = null;
+			}}
 		/>
 	{/if}
 	{#if settingsOpen}

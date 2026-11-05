@@ -112,13 +112,30 @@ describe('新增動作', () => {
 		expect(addAction(flow, lib({ segmentId: 's2', start: 0, length: 10 })).kind).toBe('ok');
 	});
 
+	it('時間重疊列出所有重疊的人，不只第一個', () => {
+		let flow = flowOf(addAction(sample(), lib({ start: 0, length: 8, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] })));
+		flow = flowOf(addAction(flow, lib({ category: 'jump', name: '跳', start: 8, length: 8, members: [{ memberId: 'm3', role: null }] })));
+		const everyone = lib({
+			category: 'dance',
+			name: '舞',
+			start: 4,
+			length: 8,
+			members: ['m1', 'm2', 'm3'].map((memberId) => ({ memberId, role: null }))
+		});
+		expect(addAction(flow, everyone)).toEqual({
+			kind: 'blocked',
+			message: '小A、小B 同一時間已經在「技巧·Lib」裡；小C 同一時間已經在「跳躍·跳」裡'
+		});
+	});
+
 	it.each([
 		['沒有人', lib({ members: [] }), '一個動作至少要有 1 個人'],
 		['同一個人放兩次', lib({ members: [{ memberId: 'm1', role: null }, { memberId: 'm1', role: '上層' }] }), '同一個人只能放一次'],
 		['不在名單上的人', lib({ members: [{ memberId: 'm9', role: null }] }), '找不到這個隊員'],
 		['不存在的任務角色', lib({ members: [{ memberId: 'm1', role: '飛人' }] }), '沒有「飛人」這個任務角色'],
 		['不存在的段', lib({ segmentId: 's9' }), '找不到這一段'],
-		['長度 0', lib({ length: 0 }), '動作長度至少要半拍'],
+		['長度 0', lib({ length: 0 }), '動作長度要在 0.5 到 16 拍之間'],
+		['長度是負的', lib({ start: 4, length: -2 }), '動作長度要在 0.5 到 14 拍之間'],
 		['開始在段之前', lib({ start: -1 }), '動作的開始不能在段之前'],
 		['不在半拍上的時間', lib({ start: 1.5 }), '音樂段的時間要落在半拍上'],
 		['大類不在 7 個裡面', lib({ category: 'chant' as never }), '請選大類']
@@ -129,7 +146,7 @@ describe('新增動作', () => {
 	it('口號段的長度單位是 0.1 秒，太短的提示寫 0.1 秒', () => {
 		expect(addAction(sample(), lib({ segmentId: 's2', length: 0 }))).toEqual({
 			kind: 'blocked',
-			message: '動作長度至少要 0.1 秒'
+			message: '動作長度要在 0.1 到 10.0 秒之間'
 		});
 	});
 
@@ -238,7 +255,7 @@ describe('改動作、刪動作', () => {
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 8, length: 8 })));
 		expect(updateAction(flow, 'x2', { start: 6 })).toEqual({
 			kind: 'blocked',
-			message: '小A 同一時間已經在「技巧·Lib」裡'
+			message: '小A、小B 同一時間已經在「技巧·Lib」裡'
 		});
 		const moved = flowOf(updateAction(flow, 'x2', { start: 10, note: '慢一點' }));
 		expect(moved.actions[1]).toMatchObject({ id: 'x2', start: 10, length: 8, note: '慢一點' });
@@ -299,7 +316,7 @@ describe('拖色條：移動、改長度', () => {
 		});
 		expect(moveAction(flow, 'x1', 2.2)).toEqual({
 			kind: 'blocked',
-			message: '小A 同一時間已經在「技巧·Ext」裡'
+			message: '小A、小B 同一時間已經在「技巧·Ext」裡'
 		});
 	});
 
@@ -309,7 +326,7 @@ describe('拖色條：移動、改長度', () => {
 		expect(flowOf(resizeAction(flow, 'x1', 3.25)).actions[0]).toMatchObject({ start: 4, length: 12 });
 		expect(resizeAction(flow, 'x1', 0.81)).toEqual({
 			kind: 'blocked',
-			message: '動作長度至少要半拍'
+			message: '動作長度要在 0.5 到 14 拍之間'
 		});
 		expect(resizeAction(flow, 'x1', 7).kind).toBe('blocked');
 	});

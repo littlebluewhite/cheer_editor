@@ -37,6 +37,15 @@ describe('建立流程', () => {
 		const r = createFlow({ name: ' 臺灣盃 ', field });
 		expect(r.kind === 'ok' && r.flow.name).toBe('臺灣盃');
 	});
+
+	it('名字最多 40 個字（前後空白不算），超過就擋下', () => {
+		const field = { strips: 9, layout: 'vertical' } as const;
+		expect(createFlow({ name: ` ${'字'.repeat(40)} `, field }).kind).toBe('ok');
+		expect(createFlow({ name: '字'.repeat(41), field })).toEqual({
+			kind: 'blocked',
+			message: '流程名字最多 40 個字'
+		});
+	});
 });
 
 describe('改流程名字', () => {
@@ -50,6 +59,14 @@ describe('改流程名字', () => {
 		const before = flow();
 		const r = renameFlow(before, ' 2027 全國賽 ');
 		expect(r).toEqual({ kind: 'ok', flow: { ...before, name: '2027 全國賽' } });
+	});
+
+	it('名字最多 40 個字，超過就擋下', () => {
+		expect(renameFlow(flow(), '字'.repeat(40)).kind).toBe('ok');
+		expect(renameFlow(flow(), '字'.repeat(41))).toEqual({
+			kind: 'blocked',
+			message: '流程名字最多 40 個字'
+		});
 	});
 
 	it('空白名字擋下', () => {

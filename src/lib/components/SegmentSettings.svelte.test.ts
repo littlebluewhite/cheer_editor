@@ -11,7 +11,7 @@ import {
 	type MusicSegment
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
+import { PEAKS_PER_SEC, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
 import SegmentSettings from './SegmentSettings.svelte';
@@ -50,6 +50,25 @@ describe('音樂段設定', () => {
 		const { session } = setup(musicFlow());
 		await fireEvent.click(screen.getByRole('img', { name: '波形' }), { clientX: 28 });
 		expect(lastSegment(session).firstBeatSec).toBeCloseTo(1.4, 9);
+	});
+
+	it('波形畫這一段從第一拍到段尾用到的那一截（不是固定前 20 秒）', async () => {
+		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		// 第一拍 30 秒、120 BPM、4 個八拍 = 16 秒：用到音樂檔的 30 到 46 秒
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 30, bpm: 120, eights: 4 }));
+		// 60 秒的音樂，每格振幅照秒數編：第 n 秒那幾格都是 n / 100
+		const peaks = Array.from({ length: 60 * PEAKS_PER_SEC }, (_, i) => Math.floor(i / PEAKS_PER_SEC) / 100);
+		setup(flow, { a1: { bytes: new ArrayBuffer(8), durationSec: 60, peaks } });
+		const wave = screen.getByRole('img', { name: '波形' });
+		expect(wave.getAttribute('viewBox')).toBe('30 0 16 2');
+		const columns = wave.querySelector('.peaks')!.getAttribute('d')!.split('M').slice(1);
+		expect(columns).toHaveLength(16 * PEAKS_PER_SEC);
+		// 第一格是第 30 秒（高 0.3：從 0.7 畫到 1.3）
+		expect(columns[0]).toMatch(/^30 0\.7/);
+		const beats = [...wave.querySelectorAll('line:not(.mid)')].map((l) => Number(l.getAttribute('x1')));
+		expect(beats[0]).toBe(30);
+		expect(beats).toHaveLength(32);
+		expect(screen.getByText(/在波形上點一下/).textContent).not.toContain('前 20 秒');
 	});
 
 	it('也可以直接打第一拍的秒數', async () => {
@@ -92,6 +111,15 @@ describe('音樂段設定', () => {
 		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（30.0 秒）之前');
 	});
 
+	it('第一拍離音樂結尾不到一拍：照音樂長度算說剩下不到一拍，長度不改', async () => {
+		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 29.9 }));
+		const { session } = setup(flow, { a1: loaded(30) });
+		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
+		expect(session.canUndo).toBe(false);
+		expect(screen.getByRole('alert').textContent).toBe('第一拍之後剩下不到一拍');
+	});
+
 	it('段比音樂檔長時提醒（不擋）；照音樂長度算之後就不提醒', async () => {
 		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
 		// 預設 150 BPM、8 個八拍 = 25.6 秒，音樂只有 20 秒
@@ -114,11 +142,11 @@ describe('音樂段設定', () => {
 		expect(lastSegment(session).halfBeats).toBe(12 * 16);
 	});
 
-	it('BPM 超出 60–170 時顯示流程核心的原因', async () => {
+	it('BPM 超出 60 到 170 時顯示流程核心的原因', async () => {
 		const { session } = setup(musicFlow());
 		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
 		expect(session.canUndo).toBe(false);
-		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60–170 之間');
+		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60 到 170 之間');
 	});
 
 	it('載入音樂檔：解碼後流程記一筆音樂檔，位元組另外交給呼叫端', async () => {
