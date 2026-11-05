@@ -1,9 +1,10 @@
 <script lang="ts">
-	// 流程設定：流程名字、場地（唯讀，建好之後不能換）、規則警告的開關和三個數字（可以恢復預設）、
+	// 流程設定：流程名字、調整場地（改條數或鋪向）、規則警告的開關和三個數字（可以恢復預設）、
 	// 標記用號碼還是開頭字、自訂任務角色（新增、改名、刪除）。被擋就顯示流程核心給的原因。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		addCustomRole,
+		adjustField,
 		DEFAULT_TIME_RULES,
 		deleteCustomRole,
 		memberMarkers,
@@ -11,7 +12,10 @@
 		setMarkers,
 		updateCustomRole,
 		updateTimeRules,
+		MAX_STRIPS,
+		MIN_STRIPS,
 		type ConfirmOption,
+		type FieldLayout,
 		type CustomRole,
 		type MarkerStyle,
 		type TimeRules
@@ -54,6 +58,11 @@
 		ask.send(() => addCustomRole(flow, { name: roleName, meaning: '' }), { done: () => (roleName = '') });
 	}
 
+	// 調整場地的兩個欄位；流程的場地變了（調整、復原）就跟著變。
+	let strips = $derived(flow.field.strips);
+	let layout = $derived<FieldLayout>(flow.field.layout);
+	const fieldSame = $derived(strips === flow.field.strips && layout === flow.field.layout);
+
 	function update(patch: Partial<TimeRules>) {
 		ask.send(() => updateTimeRules(flow, patch));
 	}
@@ -94,11 +103,24 @@
 			<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
 			<input aria-label="流程名字" value={flow.name} bind:this={nameInput} onchange={(e) => rename(e.currentTarget)} />
 		</label>
-		<p class="field-info">
-			<b>場地</b>
-			<span>{flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span>
-			<small>建好之後不能換</small>
-		</p>
+		<section class="rules field">
+			<b>場地<span class="now">現在 {flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span></b>
+			<div class="field-row">
+				<label>
+					條數
+					<input type="number" min={MIN_STRIPS} max={MAX_STRIPS} step="1" bind:value={strips} />
+				</label>
+				<label class="radio"><input type="radio" name="layout" value="vertical" bind:group={layout} />直放</label>
+				<label class="radio"><input type="radio" name="layout" value="horizontal" bind:group={layout} />橫放</label>
+				<button
+					type="button"
+					class="adjust"
+					disabled={fieldSame}
+					onclick={() => ask.send(() => adjustField(flow, { strips, layout }))}>調整場地</button
+				>
+			</div>
+			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。</span>
+		</section>
 		<section class="rules" class:off={!flow.timeRules.on}>
 			<div class="switch">
 				<label>
@@ -214,16 +236,25 @@
 		font-size: 14px;
 		font-weight: 400;
 	}
-	.field-info {
-		margin: 0;
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-	}
-	.field-info small {
-		margin-left: auto;
+	.now {
+		margin-left: 8px;
+		font-weight: 400;
 		font-size: 12px;
 		color: var(--muted, #66718a);
+	}
+	.field-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		align-items: center;
+	}
+	.field-row label {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+	.adjust {
+		margin-left: auto;
 	}
 	.rules {
 		display: grid;
