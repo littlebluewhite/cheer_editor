@@ -220,14 +220,14 @@ describe('被擋下的欄位', () => {
 	it('流程設定：擋下的數字欄位馬上回到實際值；錯誤留到那一格改對，改別格不會消失', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		const min = screen.getByLabelText('口號段最少（秒）') as HTMLInputElement;
+		const min = screen.getByLabelText('口號段加起來最少（秒）') as HTMLInputElement;
 		const before = min.value;
 		await fireEvent.change(min, { target: { value: '-5' } });
 		expect(min.value).toBe(before);
-		expect(screen.getByRole('alert').textContent).toContain('「口號段最少（秒）」');
+		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
 
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
-		expect(screen.getByRole('alert').textContent).toContain('「口號段最少（秒）」');
+		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
 
 		await fireEvent.change(min, { target: { value: '20' } });
 		expect(screen.queryByRole('alert')).toBeNull();
