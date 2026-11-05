@@ -168,13 +168,14 @@ describe('練習：記錄頁記分段練', () => {
 		expect(dayRow('小A')).toEqual(['✓']);
 	});
 
-	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」，點了就存成整個做', async () => {
+	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」，點了按「存這一次」存成整個做', async () => {
 		const { session } = await practice();
 		expect(card('第 1 組 小美').queryByRole('radiogroup')).not.toBeNull();
 		await pickAction('騰翻');
 		expect(card('小A').queryByRole('radiogroup')).toBeNull();
 		expect(card('小A').queryByText('只練幾個環節')).toBeNull();
 		await tap('小A', '整體 騰翻', '成功');
+		await save('小A');
 		expect(session.flow!.actions.find((a) => a.id === 'x3')!.successRate!.records.map((r) => r.whole)).toEqual([true]);
 	});
 
