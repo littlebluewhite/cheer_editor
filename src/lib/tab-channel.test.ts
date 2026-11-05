@@ -9,11 +9,13 @@ describe('分頁頻道：BroadcastChannel', () => {
 		const heard = { mine: vi.fn(), other: vi.fn() };
 		mine.listen(heard.mine);
 		other.listen(heard.other);
-		mine.post('editing?');
-		await vi.waitFor(() => expect(heard.other).toHaveBeenCalledWith('editing?'));
-		other.post('editing');
-		await vi.waitFor(() => expect(heard.mine).toHaveBeenCalledWith('editing'));
-		expect(heard.mine).not.toHaveBeenCalledWith('editing?');
+		const ask = { kind: 'editing?', id: 'f1' } as const;
+		const answer = { kind: 'editing', id: 'f1' } as const;
+		mine.post(ask);
+		await vi.waitFor(() => expect(heard.other).toHaveBeenCalledWith(ask));
+		other.post(answer);
+		await vi.waitFor(() => expect(heard.mine).toHaveBeenCalledWith(answer));
+		expect(heard.mine).not.toHaveBeenCalledWith(ask);
 		mine.close();
 		other.close();
 	});
