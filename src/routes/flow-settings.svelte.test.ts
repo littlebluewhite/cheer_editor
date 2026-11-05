@@ -1,0 +1,114 @@
+// 頁面：規則警告和流程設定（#161）。
+// 警告一條一行、各有小標題，點了打開流程設定；秒數填 0 被擋、說原因；沒有口號段時寫法中性；
+// 恢復預設；在流程設定新增、改名、刪除自訂任務角色。
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { afterEach, describe, expect, it } from 'vitest';
+import { addCustomRole, DEFAULT_TIME_RULES, updateTimeRules, type Flow } from '#lib/core';
+import { editorPage, teamFlow } from '#lib/test-fakes.js';
+import { flowOf } from '#lib/test-flows.js';
+import Page from './+page.svelte';
+
+// jsdom 沒有 scrollIntoView。
+Element.prototype.scrollIntoView = () => {};
+
+afterEach(cleanup);
+
+const warningList = () => screen.getByRole('list', { name: '規則警告' });
+
+async function openSettings() {
+	await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+	return screen.getByRole('dialog', { name: '流程設定' });
+}
+
+/** teamFlow（只有音樂段）加一個自訂任務角色「中心」，小A 在 Lib 裡是中心。 */
+function withCustomRole(): Flow {
+	const flow = flowOf(addCustomRole(teamFlow(), { name: '中心', meaning: '站正中間' }));
+	return {
+		...flow,
+		actions: flow.actions.map((a) => ({
+			...a,
+			members: a.members.map((m) => (m.memberId === 'm2' ? { ...m, role: '中心' } : m))
+		}))
+	};
+}
+
+describe('規則警告', () => {
+	it('兩條警告：兩行、各有小標題；點一條打開流程設定', async () => {
+		// 只有音樂段（沒有口號段），音樂段上限 1 秒
+		render(Page, editorPage(flowOf(updateTimeRules(teamFlow(), { maxMusicSec: 1 }))).props);
+		const items = within(warningList()).getAllByRole('listitem');
+		expect(items).toHaveLength(2);
+		expect(items.map((li) => li.querySelector('b')?.textContent)).toEqual(['還沒有口號段', '音樂段太長']);
+
+		await fireEvent.click(within(items[1]).getByRole('button'));
+		expect(screen.getByRole('dialog', { name: '流程設定' })).toBeTruthy();
+	});
+
+	it('沒有口號段：不寫「少於 30 秒」', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		const text = warningList().textContent!;
+		expect(text).toContain('還沒有口號段');
+		expect(text).not.toContain('少於');
+	});
+});
+
+describe('流程設定的規則警告', () => {
+	it('秒數填 0：被擋，退回原本的值並說原因', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		const dialog = await openSettings();
+		const min = within(dialog).getByLabelText('口號段加起來最少（秒）') as HTMLInputElement;
+		await fireEvent.change(min, { target: { value: '0' } });
+		expect(min.value).toBe('30');
+		expect(within(dialog).getByRole('alert').textContent).toContain('秒數要大於 0');
+	});
+
+	it('互相矛盾被擋：口號段最少不能比整支流程最多還多', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		const dialog = await openSettings();
+		await fireEvent.change(within(dialog).getByLabelText('整支流程最多（秒）'), { target: { value: '20' } });
+		expect(within(dialog).getByRole('alert').textContent).toMatch(/「整支流程最多」/);
+	});
+
+	it('恢復預設：三個數字和開關都回到預設', async () => {
+		const page = editorPage(flowOf(updateTimeRules(teamFlow(), { on: false, minChantSec: 10 })));
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '恢復預設' }));
+		expect(page.session.flow!.timeRules).toEqual(DEFAULT_TIME_RULES);
+		expect((within(dialog).getByLabelText('口號段加起來最少（秒）') as HTMLInputElement).value).toBe('30');
+		expect((within(dialog).getByRole('button', { name: '恢復預設' }) as HTMLButtonElement).disabled).toBe(true);
+	});
+});
+
+describe('流程設定的自訂任務角色', () => {
+	it('改名：動作裡的人跟著改', async () => {
+		const page = editorPage(withCustomRole());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.change(within(dialog).getByLabelText('「中心」的名稱'), { target: { value: '正中' } });
+		const flow = page.session.flow!;
+		expect(flow.customRoles.map((r) => r.name)).toEqual(['正中']);
+		expect(flow.actions[0].members.find((m) => m.memberId === 'm2')!.role).toBe('正中');
+	});
+
+	it('新增', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('新的自訂任務角色'), { target: { value: '尾巴' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '新增任務角色' }));
+		expect(page.session.flow!.customRoles.map((r) => r.name)).toEqual(['尾巴']);
+		expect(within(dialog).getByLabelText('「尾巴」的名稱')).toBeTruthy();
+	});
+
+	it('刪除有人用的：先列出動作問，確定才刪', async () => {
+		const page = editorPage(withCustomRole());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '刪除任務角色「中心」' }));
+		expect(page.session.flow!.customRoles).toHaveLength(1);
+		await fireEvent.click(within(dialog).getByRole('button', { name: '確定刪除' }));
+		expect(page.session.flow!.customRoles).toEqual([]);
+		expect(page.session.flow!.actions[0].members.find((m) => m.memberId === 'm2')!.role).toBeNull();
+	});
+});

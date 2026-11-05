@@ -163,18 +163,16 @@ describe('段、八拍尺、上方列', () => {
 
 	it('超過時間規則時上方列提醒；流程設定可以關掉或改數字', async () => {
 		await newFlow();
-		expect(screen.queryByText(/口號段共/)).toBeNull();
+		expect(screen.queryByText('還沒有口號段')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		expect(screen.getByText(/口號段共 0.0 秒，少於 30 秒/)).toBeTruthy();
+		expect(screen.getByText('口號段加起來最少要 30 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '0' } });
-		expect(screen.queryByText(/口號段共/)).toBeNull();
-		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '30' } });
-		expect(screen.getByText(/口號段共 0.0 秒/)).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText('口號段加起來最少（秒）'), { target: { value: '20' } });
+		expect(screen.getByText('口號段加起來最少要 20 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
-		expect(screen.queryByText(/口號段共/)).toBeNull();
+		expect(screen.queryByText('還沒有口號段')).toBeNull();
 	});
 
 	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
