@@ -130,16 +130,19 @@ describe('八拍表的列：全隊', () => {
 		expect(first.actions[0].who).toBe('小A（上層）、小B（主底）');
 	});
 
-	it('全隊都在的動作寫「全隊」；個人表寫他自己', () => {
+	it('全隊都在的動作寫「全隊」，有任務角色接著列出來；個人表只寫他的角色，不寫名字', () => {
 		const everyone = [
 			{ memberId: 'm1', role: '上層' },
 			{ memberId: 'm2', role: '主底' },
 			{ memberId: 'm3', role: null }
 		];
 		const flow = flowOf(addAction(sample(), action({ category: 'dance', name: '開場', members: everyone })));
-		expect(eightCountRows(flow, null)[0].actions[0].who).toBe('全隊');
-		expect(eightCountRows(flow, 'm2')[0].actions[0].who).toBe('小B（主底）');
-		expect(eightCountRows(flow, 'm3')[0].actions[0].who).toBe('小C');
+		expect(eightCountRows(flow, null)[0].actions[0].who).toBe('全隊：小A（上層）、小B（主底）');
+		expect(eightCountRows(flow, 'm2')[0].actions[0].who).toBe('主底');
+		expect(eightCountRows(flow, 'm3')[0].actions[0].who).toBe('');
+		const plain = everyone.map((m) => ({ ...m, role: null }));
+		const noRoles = flowOf(addAction(sample(), action({ category: 'dance', name: '開場', members: plain })));
+		expect(eightCountRows(noRoles, null)[0].actions[0].who).toBe('全隊');
 	});
 
 	it('從半拍開始的動作寫「3 的 &」', () => {
@@ -161,7 +164,7 @@ describe('八拍表的列：全隊', () => {
 });
 
 describe('八拍表的列：一個隊員', () => {
-	it('只列他參加的動作，人只寫他自己和他的任務角色；每個八拍的列照樣都有', () => {
+	it('只列他參加的動作，人只有他自己，寫他的任務角色；每個八拍的列照樣都有', () => {
 		let flow = sample();
 		flow = flowOf(addAction(flow, action({ length: 8 })));
 		flow = flowOf(
@@ -181,7 +184,7 @@ describe('八拍表的列：一個隊員', () => {
 				categoryLabel: '技巧',
 				name: 'Lib',
 				members: [{ memberId: 'm2', name: '小B', role: '主底' }],
-				who: '小B（主底）'
+				who: '主底'
 			}
 		]);
 		expect(mine[1].actions).toEqual([]);

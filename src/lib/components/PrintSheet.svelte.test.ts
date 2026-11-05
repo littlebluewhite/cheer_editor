@@ -101,6 +101,77 @@ describe('八拍表列印', () => {
 		expect(actionsCell(row)).not.toContain('小A');
 	});
 
+	it('全隊都在、有人有任務角色的動作，寫出誰是什麼角色', () => {
+		const flow = flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'stunt',
+				name: '金字塔',
+				start: 32,
+				length: 16,
+				note: '',
+				members: [
+					{ memberId: 'm1', role: '上層' },
+					{ memberId: 'm2', role: '主底' },
+					{ memberId: 'm3', role: null }
+				]
+			})
+		);
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const row = bodyRows().find((r) => actionsCell(r).includes('金字塔'))!;
+		expect(actionsCell(row)).toContain('技巧·金字塔：全隊：小A（上層）、小B（主底）');
+	});
+
+	it('名稱跟大類一樣時只寫一次', () => {
+		let flow = flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'dance',
+				name: '舞蹈',
+				start: 32,
+				length: 16,
+				note: '',
+				members: [{ memberId: 'm3', role: null }]
+			})
+		);
+		flow = flowOf(placeCue(flow, flow.actions.at(-1)!.id, { kind: 'count', at: 0, len: 2, word: 'down' }));
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const row = bodyRows().find((r) => actionsCell(r).includes('舞蹈'))!;
+		expect(actionsCell(row)).toContain('舞蹈：小C');
+		expect(actionsCell(row)).not.toContain('舞蹈·舞蹈');
+		expect(screen.getByRole('group', { name: '舞蹈 的拍點' }).textContent).not.toContain('舞蹈·舞蹈');
+	});
+
+	it('動作欄的欄名是「拍／動作」', () => {
+		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+		expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('拍／動作');
+	});
+
+	it('全隊的表在標題下面印號碼和名字的對照', () => {
+		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+		const legend = screen.getByRole('list', { name: '號碼和名字' });
+		expect(within(legend).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['1 小A', '2 小B', '3 小C']);
+	});
+
+	it('個人表不印對照，寫他的任務角色、組號和同組的人，不重複寫他的名字', async () => {
+		const flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }));
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+		expect(screen.queryByRole('list', { name: '號碼和名字' })).toBeNull();
+		const first = actionsCell(bodyRows()[0]);
+		expect(first).toContain('技巧·Lib：主底・第 1 組・同組：小A（上層）');
+		expect(first).not.toContain('小B');
+	});
+
+	it('小站位圖只裁出有人站的範圍', () => {
+		let flow = sample();
+		flow = flowOf(setPositions(flow, flow.formations[0].id, { m1: [0, 0], m2: [1, 0], m3: [0, 1] }));
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const [, , w, h] = within(bodyRows()[0]).getByRole('img', { name: '場地' }).getAttribute('viewBox')!.split(' ').map(Number);
+		expect(w).toBeLessThan(6);
+		expect(h).toBeLessThan(6);
+	});
+
 	it('有站位開始的那一列附小站位圖', () => {
 		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
 		const rows = bodyRows();
@@ -113,13 +184,14 @@ describe('八拍表列印', () => {
 		expect(rows[1].querySelector('figcaption')!.textContent).toBe('站位 2・第 1 拍');
 	});
 
-	it('只看一個隊員時，小站位圖上標出他', async () => {
+	it('只看一個隊員時，小站位圖上把他的點塗滿', async () => {
 		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
 		const marked = () =>
 			[...bodyRows()[0].querySelectorAll('[data-member-id].selected')].map((g) => g.getAttribute('data-member-id'));
 		expect(marked()).toEqual([]);
 		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
 		expect(marked()).toEqual(['m2']);
+		expect([...bodyRows()[0].querySelectorAll('[data-member-id].filled')].map((g) => g.getAttribute('data-member-id'))).toEqual(['m2']);
 	});
 
 	it('小站位圖和標題寫的標記跟編輯畫面一樣', async () => {
@@ -140,7 +212,7 @@ describe('八拍表列印', () => {
 		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
 		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
 		const first = actionsCell(bodyRows()[0]);
-		expect(first).toContain('小B（主底）');
+		expect(first).toContain('Lib：主底');
 		expect(first).not.toContain('小A');
 		expect(first).not.toContain('跳躍');
 		expect(screen.getByRole('heading').textContent).toContain('小B');

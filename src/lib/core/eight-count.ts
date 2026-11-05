@@ -2,12 +2,13 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { ACTION_CATEGORIES, type ActionCategory } from './action-types';
+import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
 import { actionEights } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
 import { phaseColor, phaseLabel } from './phase-types';
+import { squadNumber } from './success-rate';
 import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
@@ -28,7 +29,10 @@ export interface EightCountAction {
 	name: string;
 	/** 選一個人時只有他自己。 */
 	members: { memberId: string; name: string; role: string | null }[];
-	/** 給人看的：全隊都在寫「全隊」，不然「小A（上層）、小B（主底）」。 */
+	/**
+	 * 給人看的。全隊的表：「小A（上層）、小B（主底）」，全隊都在寫「全隊」（有任務角色就接著列「全隊：小A（上層）…」）。
+	 * 個人表不寫名字：「主底・第 2 組・同組：小A（上層）」，沒角色也沒分組是空的。
+	 */
 	who: string;
 }
 
@@ -105,6 +109,7 @@ export interface EightCountRow {
 export function eightCountRows(flow: Flow, memberId: string | null): EightCountRow[] {
 	const rows: EightCountRow[] = [];
 	const walks = memberId === null ? [] : memberWalks(flow, memberId);
+	const original = (id: string) => flow.actions.find((a) => a.id === id)!;
 	for (const { segment, label } of segmentSpans(flow)) {
 		const inSegment = flow.actions
 			.filter((a) => a.segmentId === segment.id)
@@ -135,16 +140,13 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							name: memberName(flow, m.memberId),
 							role: m.role
 						}));
-						const wholeTeam = memberId === null && flow.members.every((m) => members.some((x) => x.memberId === m.id));
 						return {
 							at: at(a.start),
 							category: a.category,
 							categoryLabel: categoryLabel(a.category),
 							name: a.name,
 							members,
-							who: wholeTeam
-								? '全隊'
-								: members.map((m) => (m.role ? `${m.name}（${m.role}）` : m.name)).join('、')
+							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId)
 						};
 					}),
 				formations: flow.formations.flatMap((f, i) => {
@@ -204,6 +206,32 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 		}
 	}
 	return rows;
+}
+
+const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
+
+/** 全隊的表：「小A（上層）、小C」；全隊都在寫「全隊」，有任務角色再列出來「全隊：小A（上層）、小B（主底）」。 */
+function teamWho(flow: Flow, action: Action): string {
+	const members = action.members.map((m) => ({ name: memberName(flow, m.memberId), role: m.role }));
+	const wholeTeam = flow.members.every((m) => action.members.some((x) => x.memberId === m.id));
+	if (!wholeTeam) return members.map(withRole).join('、');
+	const roles = members.filter((m) => m.role);
+	return roles.length ? `全隊：${roles.map(withRole).join('、')}` : '全隊';
+}
+
+/** 個人表：不寫他的名字，寫他的任務角色、第幾組和同組的人：「主底・第 2 組・同組：小A（上層）」；都沒有是空的。 */
+function memberWho(flow: Flow, action: Action, memberId: string): string {
+	const me = action.members.find((m) => m.memberId === memberId)!;
+	const parts = me.role ? [me.role] : [];
+	if (me.squad) {
+		const n = squadNumber(action, me.squad);
+		if (n) parts.push(`第 ${n} 組`);
+		const mates = action.members
+			.filter((m) => m.squad === me.squad && m.memberId !== memberId)
+			.map((m) => withRole({ name: memberName(flow, m.memberId), role: m.role }));
+		if (mates.length) parts.push(`同組：${mates.join('、')}`);
+	}
+	return parts.join('・');
 }
 
 /** 這一列沒有新東西：沒有動作開始、沒有站位、沒有走位、沒有拍點或環節。 */
