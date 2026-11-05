@@ -5,6 +5,7 @@
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import { tick } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from './marker';
@@ -30,6 +31,8 @@
 	const flow = $derived(session.flow!);
 
 	let names = $state('');
+	/** 每一列的名字欄（旁邊的字數要看它）。 */
+	const nameInputs = $state<HTMLInputElement[]>([]);
 	let gender = $state<Gender | ''>('');
 	let globalRole = $state<GlobalRole | ''>('');
 	/**
@@ -115,11 +118,15 @@
 						}}
 						ondragend={() => (dragging = null)}>{markers[m.id]}</span
 					>
-					<input
-						aria-label="第 {i + 1} 位隊員的名字"
-						value={m.name}
-						onchange={(e) => edit(m.id, { name: e.currentTarget.value }, e.currentTarget)}
-					/>
+					<span class="name-cell">
+						<input
+							aria-label="第 {i + 1} 位隊員的名字"
+							value={m.name}
+							bind:this={nameInputs[i]}
+							onchange={(e) => edit(m.id, { name: e.currentTarget.value }, e.currentTarget)}
+						/>
+						<CharCount field="memberName" input={nameInputs[i]} value={m.name} quiet />
+					</span>
 					<select
 						aria-label="第 {i + 1} 位隊員的性別"
 						value={m.gender}
@@ -234,7 +241,7 @@
 		li {
 			grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) 40px 40px 40px;
 		}
-		li > input {
+		li > .name-cell {
 			grid-column: 2 / -1;
 		}
 		li > select:first-of-type {
@@ -272,6 +279,21 @@
 	li input,
 	li select {
 		width: 100%;
+	}
+	/* 字數只在改名時出現，疊在名字欄右邊。 */
+	.name-cell {
+		position: relative;
+		display: grid;
+	}
+	.name-cell input:focus {
+		padding-right: 44px;
+	}
+	.name-cell :global(.char-count) {
+		position: absolute;
+		right: 6px;
+		top: 50%;
+		transform: translateY(-50%);
+		pointer-events: none;
 	}
 	.remove,
 	.move {

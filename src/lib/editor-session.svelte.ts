@@ -26,6 +26,9 @@ import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
 
+/** 檢視模式下改流程被擋的原因。 */
+export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先打開上方列的「編輯」';
+
 /** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
 export interface SessionPlayback {
 	/** 換一支流程（開檔、新建、救回草稿、回首頁）。 */
@@ -62,6 +65,11 @@ export class EditorSession {
 	#actionId = $state<string | null>(null);
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
 	#memberIds = $state.raw<string[]>([]);
+	/**
+	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 VIEW_ONLY；
+	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
+	 */
+	viewing = $state(false);
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
@@ -109,11 +117,16 @@ export class EditorSession {
 			this.change(f, this.#joining ?? undefined);
 			this.notice = '';
 		},
-		{ confirmLabel: '確定', onfail: (error) => (this.notice = error) }
+		{ confirmLabel: '確定', onfail: (error) => (this.notice = error), locked: () => this.#locked() }
 	);
 
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
-	readonly squadAsk = new Ask((f) => this.change(f));
+	readonly squadAsk = new Ask((f) => this.change(f), { locked: () => this.#locked() });
+
+	/** 改流程鎖著的原因：檢視模式是 VIEW_ONLY，編輯是空字串。 */
+	#locked(): string {
+		return this.viewing ? VIEW_ONLY : '';
+	}
 
 	/**
 	 * 給的流程算存過的（跟從檔案開的一樣）。playback：改完要叫的播放。
@@ -199,7 +212,7 @@ export class EditorSession {
 
 	/** 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。 */
 	changeAsk(options: { confirmLabel?: string; onfail?: (error: string) => void } = {}): Ask {
-		return new Ask((f) => this.change(f), options);
+		return new Ask((f) => this.change(f), { ...options, locked: () => this.#locked() });
 	}
 
 	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
@@ -207,8 +220,9 @@ export class EditorSession {
 		return new Ask((f) => this.record(f));
 	}
 
-	/** 復原：換上前一份編排，帶著現在的紀錄。回傳有沒有復原。 */
+	/** 復原：換上前一份編排，帶著現在的紀錄。回傳有沒有復原（檢視模式擋下，說原因）。 */
 	undo(): boolean {
+		if (this.#blocked()) return false;
 		const prev = this.#undo.at(-1);
 		if (!this.#flow || !prev) return false;
 		const before = this.#flow;
@@ -219,8 +233,9 @@ export class EditorSession {
 		return true;
 	}
 
-	/** 重做：換上復原掉的編排，帶著現在的紀錄。回傳有沒有重做。 */
+	/** 重做：換上復原掉的編排，帶著現在的紀錄。回傳有沒有重做（檢視模式擋下，說原因）。 */
 	redo(): boolean {
+		if (this.#blocked()) return false;
 		const next = this.#redo.at(-1);
 		if (!this.#flow || !next) return false;
 		const before = this.#flow;
@@ -229,6 +244,13 @@ export class EditorSession {
 		this.#flow = carryRecords(next, this.#flow);
 		this.#restored(this.#flow, before);
 		return true;
+	}
+
+	/** 鎖著（檢視模式）：原因放進提示，回傳 true。 */
+	#blocked(): boolean {
+		const locked = this.#locked();
+		if (locked) this.notice = locked;
+		return !!locked;
 	}
 
 	/**

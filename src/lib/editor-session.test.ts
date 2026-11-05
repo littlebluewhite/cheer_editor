@@ -17,7 +17,7 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf, libSample, squadNumbers } from '#lib/test-flows.js';
-import { EditorSession } from './editor-session.svelte.js';
+import { EditorSession, VIEW_ONLY } from './editor-session.svelte.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
 function sampleFlow(): Flow {
@@ -447,5 +447,28 @@ describe('編輯 session：改完跳播放頭', () => {
 		s.moved({ inserted: false, sec: 0, carried: 0 });
 		s.moved({ inserted: false, sec: 0, carried: 0 });
 		expect(jumps).toHaveLength(2);
+	});
+});
+
+describe('編輯 session：檢視模式', () => {
+	it('改的問題、場上的問題、復原都擋下，說原因；記照記；切回編輯就能復原', () => {
+		const s = new EditorSession(sampleFlow());
+		rename(s, '全國賽');
+		s.viewing = true;
+		const before = s.flow;
+		const asked = s.changeAsk();
+		asked.send(() => renameFlow(s.flow!, '區賽'));
+		expect(asked.error).toBe(VIEW_ONLY);
+		s.ask.send(() => renameFlow(s.flow!, '區賽'));
+		expect(s.notice).toBe(VIEW_ONLY);
+		s.notice = '';
+		expect(s.undo()).toBe(false);
+		expect(s.notice).toBe(VIEW_ONLY);
+		expect(s.flow).toBe(before);
+		recordOnce(s);
+		expect(records(s)).toBe(1);
+		s.viewing = false;
+		expect(s.undo()).toBe(true);
+		expect(s.flow!.name).toBe('練習用');
 	});
 });

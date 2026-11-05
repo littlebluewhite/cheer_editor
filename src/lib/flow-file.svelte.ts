@@ -1,10 +1,10 @@
 // 流程檔：編輯器 module 握著（getEditor().file）。開檔、存檔、新建、回首頁、草稿、「沒存先問」都在這裡，頁面只照它的狀態畫對話框和提示。
 // 管：這支流程在不在檔案裡、正在存、「還沒存」的問題、開檔錯誤、缺音樂的提示、
-// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存、
-// 打開時問要不要救回；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁）。
+// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
+// 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁）。
 
 import { missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
-import type { Draft, DraftInfo } from '#lib/file/draft.js';
+import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
 import type { MusicLibrary } from '#lib/music-library.svelte.js';
@@ -39,8 +39,12 @@ export class FlowFile {
 	#draftId = newDraftId();
 	/** 存過這份草稿、看過草稿有沒有超過 5 支了（每份草稿第一次存時看一次）。 */
 	#countedDraftId: string | null = null;
-	/** 打開時找到的草稿，等教練選救回或丟掉。busy = 按了丟掉，但另一個分頁正在編輯它。 */
-	#offer = $state.raw<(Draft & { name: string; busy?: boolean }) | null>(null);
+	/** 這支流程在檔案裡時，那個檔的位元組（從檔案開的、存好的）：沒改過時草稿就存它，重新整理後從最近的流程打開還是那個檔。 */
+	#fileBytes: Uint8Array | null = null;
+	/** 首頁列的最近的流程（有草稿的那幾支，最近的在前）。 */
+	#recent = $state.raw<RecentFlow[]>([]);
+	/** 讀最近的流程讀到第幾次：慢的舊結果不蓋掉新的。 */
+	#recentRead = 0;
 	/** 停手 1 秒後存草稿的計時器。 */
 	#draftTimer: ReturnType<typeof setTimeout> | undefined;
 	/** 分頁頻道：頁面打開時開。沒有（瀏覽器沒有 BroadcastChannel、頁面還沒打開）就當作沒有別的分頁。 */
@@ -59,6 +63,7 @@ export class FlowFile {
 		editor.session.onflow = () => {
 			this.#saveDraftLater();
 			this.#dropMissingNotice();
+			if (!editor.session.flow) void this.#readRecent();
 		};
 	}
 
@@ -108,6 +113,7 @@ export class FlowFile {
 			if (outcome === 'cancelled') return;
 			session.markSaved(f);
 			this.#onDisk = true;
+			this.#fileBytes = bytes;
 			// 這支流程現在就是這個檔：草稿 id 換成檔案的，別的分頁開這個檔才知道它正在被編。舊 id 的草稿清掉。
 			const oldId = this.#draftId;
 			this.#draftId = fileDraftId(bytes);
@@ -173,6 +179,11 @@ export class FlowFile {
 		const music = await this.#editor.readMusic(r.audio);
 		this.#unlessUnsaved(() => {
 			this.#start(r.flow, fileName === null ? 'draft' : 'file', draftId, music, saver);
+			// 從檔案開的：當下就把這個檔存成草稿，重新整理後首頁的最近的流程裡有它
+			if (fileName !== null) {
+				this.#fileBytes = bytes;
+				if (this.#draftChecked) void this.#saveDraft(bytes);
+			}
 			session.notice = r.missingSegmentIds.length
 				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
 				: music.hasBroken
@@ -193,16 +204,13 @@ export class FlowFile {
 		this.#unlessUnsaved(() => this.#editor.session.open(null));
 	}
 
-	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
+	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，列在首頁的最近的流程。 */
 	async leaveToHome() {
 		const { session, music } = this.#editor;
 		const f = session.flow;
 		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
-		const id = this.#draftId;
 		session.open(null);
-		if (!f || !bytes) return;
-		await this.#saveDraft(bytes);
-		this.#offer = { id, bytes, name: f.name, savedAt: new Date() };
+		if (bytes) await this.#saveDraft(bytes);
 	}
 
 	/**
@@ -215,6 +223,7 @@ export class FlowFile {
 		editor.session.open(flow, from !== 'draft');
 		this.#onDisk = from === 'file';
 		this.#draftId = draftId;
+		this.#fileBytes = null;
 		editor.adapters.pendingInput.settle();
 		this.onswitch();
 		this.#saver = saver;
@@ -280,34 +289,38 @@ export class FlowFile {
 
 	// ---------- 草稿 ----------
 
-	/** 打開時找到草稿：問要不要救回（text），丟不掉時說為什麼（error）。沒有草稿、教練已經開始編了就是 null。 */
-	get draftOffer(): { text: string; error: string } | null {
-		const offer = this.#offer;
-		if (!offer) return null;
-		return {
-			text: `上次編的「${offer.name}」還沒存，要救回嗎？${offer.savedAt ? `（${draftTime(offer.savedAt)} 存的草稿）` : ''}`,
-			error: offer.busy ? '另一個分頁正在編輯這份草稿，所以沒有丟掉。' : ''
-		};
+	/** 首頁列的最近的流程：有草稿的那幾支，最近的在前。 */
+	get recent(): RecentFlow[] {
+		return this.#recent;
 	}
 
-	/** 救回草稿：換上草稿的流程（還算未存，不在檔案裡）。另一個分頁正在編它就不開，首頁說原因。 */
-	async restoreDraft() {
-		const offer = this.#offer;
-		if (!offer) return;
-		this.#offer = null;
-		await this.#openBytes(offer.bytes, null, null, offer.id);
-	}
-
-	/** 丟掉草稿：先問別的分頁有沒有在編它，有就不丟，提示裡說它正在被編。 */
-	async discardDraft() {
-		const offer = this.#offer;
-		if (!offer) return;
-		if (await this.#otherTabEditing(offer.id)) {
-			if (this.#offer === offer) this.#offer = { ...offer, busy: true };
+	/**
+	 * 打開最近的流程裡的一支：有沒存的修改的，跟救回草稿一樣（還算未存，不在檔案裡）；沒改過的，跟開那個檔一樣。
+	 * 另一個分頁正在編它就不開，首頁說原因。
+	 */
+	async openRecent(id: string) {
+		let draft = null;
+		try {
+			draft = await this.#editor.adapters.draftStore.load(id);
+		} catch {
+			// 讀不到就當作沒有
+		}
+		const r = draft && readFlowFile(draft.bytes);
+		if (!draft || !r || r.kind !== 'ok') {
+			this.#openError = '這份草稿讀不出來';
 			return;
 		}
-		this.#offer = null;
-		this.#clearDraft(offer.id);
+		const unchanged = fileDraftId(draft.bytes) === id;
+		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, null, id);
+	}
+
+	/** 丟掉最近的流程裡的一支（頁面先問過教練了）：先問別的分頁有沒有在編它，有就不丟，標成正在編。 */
+	async discardRecent(id: string) {
+		if (await this.#otherTabEditing(id)) {
+			this.#recent = this.#recent.map((f) => (f.id === id ? { ...f, busy: true } : f));
+			return;
+		}
+		this.#clearDraft(id);
 	}
 
 	/** 另一個分頁回答它正在編這支流程（草稿 id）嗎（等一下下，沒人回就是沒有）。 */
@@ -326,26 +339,44 @@ export class FlowFile {
 		});
 	}
 
-	/** 打開時讀草稿：最近存的那一份讀得到、打得開，教練又還沒開始編，就問要不要救回。讀完了才開始自動存。 */
+	/** 打開時讀草稿，列成最近的流程。讀完了才開始自動存。 */
 	async #checkDraft() {
-		let draft: Draft | null = null;
-		try {
-			const store = this.#editor.adapters.draftStore;
-			const latest = newestFirst(await store.list())[0];
-			if (latest) draft = await store.load(latest.id);
-		} catch {
-			// 讀不到草稿就當作沒有
-		}
-		const r = draft && readFlowFile(draft.bytes);
-		// 等讀草稿的時候教練已經開始編了：不打斷他
-		if (draft && r && r.kind === 'ok' && !this.#editor.session.flow) this.#offer = { ...draft, name: r.flow.name };
+		await this.#readRecent();
 		this.#draftChecked = true;
 		this.#saveDraftLater();
 	}
 
 	/**
+	 * 讀最近的流程（在首頁時：打開時、回到首頁、草稿存了或清了）：每份草稿打開看名字（打不開的不列），
+	 * 改過沒存的標出來（沒改過的草稿就是那個檔，位元組算出來的 id 跟草稿 id 一樣）。讀不到草稿（例：私密視窗）就當作沒有。
+	 * 列好了才問別的分頁有沒有在編（不等回答就先列出來；還沒回答前點了，打開時照樣會擋）。
+	 */
+	async #readRecent() {
+		const read = ++this.#recentRead;
+		const store = this.#editor.adapters.draftStore;
+		let found: RecentFlow[] = [];
+		try {
+			const drafts = await Promise.all(newestFirst(await store.list()).map((d) => store.load(d.id)));
+			for (const d of drafts) {
+				const r = d && readFlowFile(d.bytes);
+				if (!d || !r || r.kind !== 'ok') continue;
+				found.push({ id: d.id, name: r.flow.name, savedAt: d.savedAt, unsaved: fileDraftId(d.bytes) !== d.id, busy: false });
+			}
+		} catch {
+			found = [];
+		}
+		if (read !== this.#recentRead) return;
+		this.#recent = found;
+		for (const f of found) {
+			void this.#otherTabEditing(f.id).then((busy) => {
+				if (busy && read === this.#recentRead) this.#recent = this.#recent.map((g) => (g.id === f.id ? { ...g, busy } : g));
+			});
+		}
+	}
+
+	/**
 	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。剛建好、還沒改的流程也存，重新整理救得回來。
-	 * 存成流程檔或剛開流程檔（在檔案裡、沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
+	 * 在檔案裡、沒有未存的修改（存好了、改回原樣）：草稿換回那個檔，首頁的最近的流程打開是沒改過的。
 	 * 流程換了（session 叫）、存好了、讀過草稿了都從頭算 1 秒。
 	 */
 	#saveDraftLater() {
@@ -354,7 +385,7 @@ export class FlowFile {
 		if (!this.#draftChecked || !f) return;
 		this.#draftTimer = setTimeout(() => {
 			if (this.ownsDraft) this.#saveDraft(writeFlowFile(f, this.#editor.music.bytes(f)));
-			else void this.#dropDraft(this.#draftId);
+			else if (this.#fileBytes) this.#saveDraft(this.#fileBytes);
 		}, DRAFT_DELAY_MS);
 	}
 
@@ -367,6 +398,7 @@ export class FlowFile {
 		const store = this.#editor.adapters.draftStore;
 		try {
 			await store.save(id, bytes);
+			this.#draftsChanged();
 			if (this.#countedDraftId === id) return;
 			this.#countedDraftId = id;
 			const others = newestFirst((await store.list()).filter((d) => d.id !== id));
@@ -383,7 +415,15 @@ export class FlowFile {
 
 	/** 清掉一支流程的草稿（不問）。清不了就算了。 */
 	#clearDraft(id: string) {
-		this.#editor.adapters.draftStore.clear(id).catch(() => {});
+		this.#editor.adapters.draftStore
+			.clear(id)
+			.then(() => this.#draftsChanged())
+			.catch(() => {});
+	}
+
+	/** 草稿存了或清了：在首頁就重讀最近的流程。 */
+	#draftsChanged() {
+		if (!this.#editor.session.flow) void this.#readRecent();
 	}
 
 	/** 這個分頁的流程要不要放在草稿裡：開著流程，有未存的修改或不在檔案裡。 */
@@ -391,6 +431,19 @@ export class FlowFile {
 		const { session } = this.#editor;
 		return !!session.flow && (session.unsaved || !this.#onDisk);
 	}
+}
+
+/** 首頁列的最近的流程裡的一支。 */
+export interface RecentFlow {
+	/** 草稿 id。 */
+	id: string;
+	name: string;
+	/** 草稿什麼時候存的；舊版編輯器存的是 null。 */
+	savedAt: Date | null;
+	/** 有沒存的修改（不是剛開、剛存好的那個檔）。 */
+	unsaved: boolean;
+	/** 另一個分頁正在編它：不能打開、不能丟掉。 */
+	busy: boolean;
 }
 
 /** 剛建好的流程的草稿 id：每次都不一樣。 */
@@ -411,6 +464,6 @@ function newestFirst(drafts: DraftInfo[]): DraftInfo[] {
 }
 
 /** 草稿存的時間寫成「11/5 14:03」。 */
-function draftTime(d: Date): string {
+export function draftTime(d: Date): string {
 	return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }

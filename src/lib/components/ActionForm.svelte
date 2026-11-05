@@ -30,6 +30,7 @@
 		type ActionCategory
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
+	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import { reveal } from './reveal';
@@ -47,6 +48,8 @@
 	// 流程從 session 拿；表單上的草稿（選到的動作，或跟著選的人、播放頭的新動作）在編輯器 module。
 	const session = getEditorSession();
 	const draft = getEditor().actionDraft;
+	let nameInput = $state<HTMLInputElement>();
+	let noteInput = $state<HTMLTextAreaElement>();
 	const flow = $derived(session.flow!);
 	/** 選到的動作；null = 新增。 */
 	const action = $derived(draft.action);
@@ -233,10 +236,12 @@
 			class="title"
 			aria-label="名稱"
 			bind:value={draft.name}
+			bind:this={nameInput}
 			onchange={changed}
 			onkeydown={addOnEnter}
 			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
 		/>
+		<CharCount field="actionName" input={nameInput} value={draft.name} />
 		{#if action}
 			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
 		{:else}
@@ -421,8 +426,8 @@
 		</div>
 
 		<label class="note">
-			<span class="cap">備註</span>
-			<textarea rows="2" bind:value={draft.note} onchange={changed}></textarea>
+			<span class="cap note-cap">備註<CharCount field="note" input={noteInput} value={draft.note} /></span>
+			<textarea aria-label="備註" rows="2" bind:value={draft.note} bind:this={noteInput} onchange={changed}></textarea>
 		</label>
 
 		{#if action}
@@ -620,6 +625,10 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted, #66718a);
+	}
+	.note-cap {
+		display: flex;
+		justify-content: space-between;
 	}
 	small {
 		font-size: 11px;

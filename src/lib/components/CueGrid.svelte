@@ -554,14 +554,16 @@
 									class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
 									class:cont={!p.first}
 									class:more={!p.last}
-									class:end={p.start >= 14}
 									style:grid-column="{p.start + 2} / {p.end + 2}"
 									style:grid-row={lane.row + p.track}
 									aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
 									aria-hidden={!p.first || undefined}
 									tabindex={p.first ? undefined : -1}
+									title={to ? `${p.cue.word}（${to}）` : p.cue.word}
 									onclick={() => pick(p.cue, p.cue.who)}
-									>{p.first ? p.cue.word : `…${p.cue.word}`}{#if to}<small class="who">{to}</small>{/if}</button
+									><span class="w">{p.first ? p.cue.word : `…${p.cue.word}`}</span>{#if to}<small class="who"
+											>{to}</small
+										>{/if}</button
 								>
 							{/each}
 						{/each}
@@ -606,7 +608,9 @@
 							<span class="lbl">{row.label}</span>
 							<div class="words">
 								{#each row.words as w (w)}
-									<button type="button" class="word" onclick={() => place(row.kind, w)}>{w}</button>
+									<button type="button" class="word" title={w} onclick={() => place(row.kind, w)}
+										><span class="w">{w}</span></button
+									>
 								{/each}
 								<span class="own">
 									<input
@@ -901,12 +905,15 @@
 		border-left-width: 4px;
 		color: var(--cue-step-ink);
 	}
-	/* 手位：一拍的粉紅小牌子；字比一拍寬時撐開蓋到右邊（最多三格），跟泳道的手位一樣。 */
+	/* 字比格子長就用「…」截斷，不蓋到隔壁的拍點；滑鼠移過去看全文。 */
+	.w,
+	.who {
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* 手位：一拍的粉紅小牌子，只待在自己那一格。 */
 	.item.motion {
-		justify-self: start;
-		width: max-content;
-		min-width: calc(100% - 2px);
-		max-width: calc(300% + 4px);
 		margin: 1px;
 		padding: 0 2px;
 		border-radius: 8px;
@@ -915,10 +922,6 @@
 		color: var(--cue-motion-ink);
 		font-size: 10px;
 		justify-content: center;
-	}
-	/* 最後一格的往左撐，不超出格子。 */
-	.item.motion.end {
-		justify-self: end;
 	}
 	/* 給誰寫在字下面。 */
 	.item:has(.who) {
@@ -1042,6 +1045,7 @@
 		gap: 4px;
 	}
 	.word {
+		max-width: 100%;
 		min-height: 26px;
 		padding: 3px 10px;
 		border-radius: 999px;

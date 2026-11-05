@@ -15,6 +15,7 @@
 		MAX_CHANT_SEC,
 		MAX_EIGHTS,
 		MIN_BPM,
+		MIN_TAPS,
 		beatLines,
 		deleteSegment,
 		fitSegmentToAudio,
@@ -23,6 +24,7 @@
 		musicOverrunSec,
 		readSegmentNumber,
 		segmentSpans,
+		tapBpm,
 		updateSegment,
 		type ConfirmOption,
 		type SegmentNumberField,
@@ -137,6 +139,24 @@
 		update({ firstBeatSec: waveXToSec(e, wave) });
 	}
 
+	/** 敲擊測速：每點一下記下時間（秒）；停超過 TAP_RESET_SEC 再點就重新算。 */
+	const TAP_RESET_SEC = 2;
+	let taps = $state<number[]>([]);
+	const tapped = $derived(tapBpm(taps));
+
+	function tap() {
+		const now = Date.now() / 1000;
+		const last = taps.at(-1);
+		taps = last !== undefined && now - last > TAP_RESET_SEC ? [now] : [...taps, now];
+	}
+
+	function applyTap() {
+		const bpm = tapped;
+		if (bpm === null) return;
+		taps = [];
+		update({ bpm });
+	}
+
 	function fitToAudio() {
 		const lengths = editor.music.lengths;
 		ask.send((o: ConfirmOption = {}) => fitSegmentToAudio(flow, segmentId, lengths, o), {
@@ -208,6 +228,17 @@
 					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
 						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
 					>
+				</div>
+				<div class="row">
+					<button type="button" onclick={tap}>敲擊測速</button>
+					<span class="hint" aria-live="polite">
+						{tapped !== null
+							? `點了 ${taps.length} 下，約 ${tapped} BPM`
+							: taps.length
+								? `再點 ${MIN_TAPS - taps.length} 下`
+								: `跟著音樂的拍子連點 ${MIN_TAPS} 下以上；停 ${TAP_RESET_SEC} 秒再點就重新算`}
+					</span>
+					<button type="button" disabled={tapped === null} onclick={applyTap}>套用{tapped !== null ? ` ${tapped} BPM` : ''}</button>
 				</div>
 				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->

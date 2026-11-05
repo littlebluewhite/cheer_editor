@@ -53,6 +53,19 @@ describe('任務角色', () => {
 		expect(addCustomRole(flow, { name: '後保', meaning: '' }).kind).toBe('blocked');
 	});
 
+	it('名稱最多 8 個字：加的時候和改名的時候都擋；開檔進來就超過的，沒改名可以改意思', () => {
+		expect(addCustomRole(empty(), { name: '一二三四五六七八', meaning: '' }).kind).toBe('ok');
+		expect(addCustomRole(empty(), { name: '一二三四五六七八九', meaning: '' })).toEqual({
+			kind: 'blocked',
+			message: '任務角色名稱最多 8 個字'
+		});
+		const added = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
+		expect(updateCustomRole(added, 'r1', { name: '一二三四五六七八九', meaning: '' }).kind).toBe('blocked');
+		const long = '字'.repeat(30);
+		const flow = { ...added, customRoles: [{ ...added.customRoles[0], name: long }] };
+		expect(flowOf(updateCustomRole(flow, 'r1', { name: long, meaning: '新的意思' })).customRoles[0].meaning).toBe('新的意思');
+	});
+
 	it('自訂角色可以掛在動作裡的人身上', () => {
 		let flow = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
 		flow = flowOf(addMembers(flow, [{ name: '小A', gender: 'F', globalRole: 'base' }]));

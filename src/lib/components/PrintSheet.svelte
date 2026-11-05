@@ -151,6 +151,7 @@
 															class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
 															style:grid-column="{c.from} / {c.to + 1}"
 															aria-label={cueLabel(c)}
+															title={c.who ? `${c.word}（${c.who}）` : c.word}
 															>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{c.word}{#if c.who}<small>{c.who}</small>{/if}{/if}</span
 														>
 													{/each}
@@ -348,8 +349,10 @@
 		border-left-width: 4px;
 		color: var(--cue-step-ink);
 	}
+	/* 手位靠左、跟著字寬，最寬到自己那一拍（左右各留 2px），再長就「…」，不蓋到下一拍。 */
 	.cue.motion {
 		justify-self: start;
+		max-width: calc(100% - 4px);
 		background: var(--cue-motion-bg);
 		border: 1px dashed var(--cue-motion-line);
 		border-radius: 999px;
