@@ -111,6 +111,14 @@ describe('動作表單：新增', () => {
 		expect(session.canUndo).toBe(false);
 	});
 
+	it('新增被擋下後，改了表單（例如加人）原因就收掉', async () => {
+		setup(sample(), null);
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(screen.getByRole('alert')).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
 	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
 		scrolled.length = 0;
 		setup(sample(), null);

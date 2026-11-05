@@ -53,6 +53,14 @@ describe('隊員名單', () => {
 		]);
 	});
 
+	it('加隊員被擋下的原因，改了加隊員的欄位就收掉', async () => {
+		setup();
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		expect(screen.getByRole('alert')).toBeTruthy();
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '小A' } });
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
 	it('一行一個名字，一次加多人', async () => {
 		const session = setup();
 		await fillNew('小A\n小B\n\n小C', 'M', 'top');

@@ -104,7 +104,8 @@
 	{/if}
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
-	<form class="add" novalidate onsubmit={add}>
+	<!-- 改了加隊員的欄位就收掉上次被擋的原因 -->
+	<form class="add" novalidate onsubmit={add} oninput={() => (ask.error = '')} onchange={() => (ask.error = '')}>
 		<b class="add-title">加隊員</b>
 		<label class="names">
 			名字（一次加多人：一行一個）

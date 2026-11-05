@@ -17,6 +17,14 @@ describe('新建流程', () => {
 		expect(screen.getByText('條數 1–12，鋪向直放或橫放')).toBeTruthy();
 	});
 
+	it('被擋下的原因，改了欄位就收掉', async () => {
+		setup();
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		expect(screen.getByRole('alert').textContent).toBe('請幫流程取名字');
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
 	it('取名字後建立，預設是 9 條直放', async () => {
 		const { oncreate } = setup();
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '2027 全國賽' } });

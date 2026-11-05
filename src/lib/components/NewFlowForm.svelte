@@ -42,7 +42,8 @@
 </script>
 
 <!-- novalidate：條數對不對由流程核心判斷，不用瀏覽器內建的檢查 -->
-<form class="new-flow" novalidate onsubmit={submit}>
+<!-- 改了任一欄位就收掉上次被擋的原因 -->
+<form class="new-flow" novalidate onsubmit={submit} oninput={() => (error = '')} onchange={() => (error = '')}>
 	<h2>新建流程</h2>
 
 	<label class="name">
