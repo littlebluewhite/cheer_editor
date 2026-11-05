@@ -19,6 +19,7 @@
 		squadColor,
 		squadNumber,
 		timeRuleWarnings,
+		stepPlayhead,
 		totalSeconds,
 		writeFlowFile,
 		type ConfirmOption,
@@ -560,6 +561,17 @@
 			// Mac 的 delete 鍵送的是 Backspace
 			e.preventDefault();
 			removeAction(session.selectedActionId);
+		} else if (
+			(e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+			!e.defaultPrevented &&
+			!e.ctrlKey &&
+			!e.metaKey &&
+			!e.altKey
+		) {
+			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單自己用方向鍵時（已經 preventDefault）不算。
+			if ((e.target as Element | null)?.closest?.('[role="combobox"], [role="listbox"], [role="radiogroup"]')) return;
+			e.preventDefault();
+			seek(flow, stepPlayhead(flow, playheadSec, e.key === 'ArrowRight' ? 1 : -1, e.shiftKey));
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {

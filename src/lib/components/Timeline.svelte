@@ -5,7 +5,7 @@
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
 	import { tick, untrack } from 'svelte';
-	import { addSegment, rulerMarks, segmentSpans, totalSeconds, type SegmentKind } from '#lib/core';
+	import { addSegment, rulerMarks, segmentSpans, snapToBeat, totalSeconds, type SegmentKind } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
@@ -114,7 +114,9 @@
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const ruler = e.currentTarget as HTMLElement;
-		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
+		// 吸到整拍（口號段 0.1 秒）：點八拍尺要停在「4-1」，不要一不小心停在「4-1&」。按著 Option／Alt 吸到半拍。
+		const toSec = (ev: PointerEvent) =>
+			snapToBeat(flow, (ev.clientX - ruler.getBoundingClientRect().left) / px, ev.altKey);
 		scrubbing = true;
 		onseek(toSec(e));
 		followPointer(

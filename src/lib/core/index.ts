@@ -165,6 +165,8 @@ export {
 	positionText,
 	rulerMarks,
 	segmentSpans,
+	snapToBeat,
+	stepPlayhead,
 	timeText,
 	timeTextWithUnit,
 	toPosition,

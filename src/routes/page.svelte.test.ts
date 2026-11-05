@@ -48,14 +48,38 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		const ruler = document.querySelector('[data-ruler]')!;
-		// 時間軸 1 秒 = 16 px；150 BPM 的 3-5& 在 8.2 秒
-		await fireEvent.pointerDown(ruler, { clientX: 8.2 * 16, button: 0 });
-		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
-		await fireEvent.pointerMove(window, { clientX: 1.6 * 16 });
+		// 時間軸 1 秒 = 16 px；150 BPM 一拍 0.4 秒，3-5& 在 8.2 秒、3-6 在 8.4 秒：點在 8.3 秒吸到整拍 3-6
+		await fireEvent.pointerDown(ruler, { clientX: 8.3 * 16, button: 0 });
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-6');
+		await fireEvent.pointerMove(window, { clientX: 1.7 * 16 });
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 1-5');
 		await fireEvent.pointerUp(window);
 		await fireEvent.pointerMove(window, { clientX: 0 });
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 1-5');
+		// 按著 Option／Alt 點，吸到半拍
+		await fireEvent.pointerDown(ruler, { clientX: 8.25 * 16, button: 0, altKey: true });
+		await fireEvent.pointerUp(window);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
+	});
+
+	it('方向鍵移播放頭：一次一拍，Shift 跳到下一個八拍的 1；在輸入框裡不算', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		const position = () => screen.getByLabelText('目前位置').textContent;
+		await fireEvent.keyDown(window, { key: 'ArrowRight' });
+		expect(position()).toBe('音樂 1 1-2');
+		await fireEvent.keyDown(window, { key: 'ArrowRight', shiftKey: true });
+		expect(position()).toBe('音樂 1 2-1');
+		await fireEvent.keyDown(window, { key: 'ArrowLeft' });
+		expect(position()).toBe('音樂 1 1-8');
+		await fireEvent.keyDown(window, { key: 'ArrowLeft', shiftKey: true });
+		expect(position()).toBe('音樂 1 1-1');
+		await fireEvent.keyDown(window, { key: 'ArrowLeft' });
+		expect(position()).toBe('音樂 1 1-1');
+		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'ArrowRight' });
+		expect(position()).toBe('音樂 1 1-1');
 	});
 
 	it('在八拍尺上拖到右邊緣時時間軸不自己捲走（不然尺跟著滑鼠跑，播放頭會亂跳）', async () => {
@@ -548,9 +572,10 @@ describe('站位與走位', () => {
 		await tab('動作');
 	}
 
+	/** 按著 Alt 點八拍尺：吸到半拍（站位要插在 3-5& 這種地方）。 */
 	async function seek(sec: number) {
 		const ruler = document.querySelector('[data-ruler]')!;
-		await fireEvent.pointerDown(ruler, { clientX: sec * 16, button: 0 });
+		await fireEvent.pointerDown(ruler, { clientX: sec * 16, button: 0, altKey: true });
 		await fireEvent.pointerUp(window);
 	}
 
@@ -977,7 +1002,7 @@ describe('八拍表', () => {
 	it('上方列「八拍表」打開列印畫面；關閉回到編輯，流程和播放頭照舊', async () => {
 		await newFlow();
 		await addSegment('＋音樂段');
-		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 8.2 * 16, button: 0 });
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 8.25 * 16, button: 0, altKey: true });
 		await fireEvent.pointerUp(window);
 		await fireEvent.click(screen.getByRole('button', { name: '八拍表' }));
 		const sheet = screen.getByRole('dialog', { name: '八拍表' });

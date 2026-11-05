@@ -10,6 +10,8 @@ import {
 	positionText,
 	rulerMarks,
 	segmentSpans,
+	snapToBeat,
+	stepPlayhead,
 	timeText,
 	toPosition,
 	toSeconds,
@@ -197,5 +199,45 @@ describe('出發和到達的時間文字', () => {
 		expect(parseTime(flow, 's1', '口號 1 2-5')).toBeNull();
 		expect(parseTime(flow, 's1', '口號 9 1.0')).toBeNull();
 		expect(parseTime(flow, 's1', '音樂 2-5')).toBeNull();
+	});
+});
+
+describe('播放頭吸附、一步一步移', () => {
+	it('在八拍尺上點：音樂段吸到最近的整拍，口號段吸到 0.1 秒', () => {
+		const flow = sample();
+		expect(snapToBeat(flow, 1.15)).toBeCloseTo(1.2);
+		expect(snapToBeat(flow, 0.95)).toBeCloseTo(0.8);
+		expect(snapToBeat(flow, 30.04)).toBeCloseTo(30.0);
+		expect(snapToBeat(flow, 62)).toBeCloseTo(62);
+		expect(snapToBeat(flow, 1.05, true)).toBeCloseTo(1.0);
+	});
+
+	it('沒有段時照原樣', () => {
+		expect(snapToBeat(empty(), 3.3)).toBe(3.3);
+		expect(stepPlayhead(empty(), 3.3, 1, false)).toBe(3.3);
+	});
+
+	it('方向鍵：音樂段一次一拍，從半拍上先對到整拍', () => {
+		const flow = sample();
+		expect(stepPlayhead(flow, 0.5, 1, false)).toBeCloseTo(0.8);
+		expect(stepPlayhead(flow, 0.8, 1, false)).toBeCloseTo(1.2);
+		expect(stepPlayhead(flow, 0.8, -1, false)).toBeCloseTo(0.4);
+		expect(stepPlayhead(flow, 0.5, -1, false)).toBeCloseTo(0.4);
+	});
+
+	it('頭尾停住；跨段時停在段的開頭', () => {
+		const flow = sample();
+		expect(stepPlayhead(flow, 0, -1, false)).toBe(0);
+		expect(stepPlayhead(flow, 62, 1, false)).toBeCloseTo(62);
+		expect(stepPlayhead(flow, 25.4, 1, false)).toBeCloseTo(25.6);
+		expect(stepPlayhead(flow, 58, -1, false)).toBeCloseTo(57.6);
+	});
+
+	it('口號段一次 1 秒；Shift 一次一個八拍（口號段 5 秒）', () => {
+		const flow = sample();
+		expect(stepPlayhead(flow, 25.6, 1, false)).toBeCloseTo(26.6);
+		expect(stepPlayhead(flow, 0.5, 1, true)).toBeCloseTo(3.2);
+		expect(stepPlayhead(flow, 3.2, -1, true)).toBeCloseTo(0);
+		expect(stepPlayhead(flow, 25.6, 1, true)).toBeCloseTo(30.6);
 	});
 });

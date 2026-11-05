@@ -96,6 +96,38 @@ export function nearestPosition(flow: Flow, sec: number): TimePosition {
 	return sec - lo > (hi - lo) / 2 ? toPosition(flow, hi)! : p;
 }
 
+/**
+ * 播放頭可以停的點（全域秒數，照時間排）：音樂段每 musicStep 個半拍、口號段每 chantStep 個 0.1 秒，
+ * 加上每段的開頭和流程結尾。
+ */
+function stops(flow: Flow, musicStep: number, chantStep: number): number[] {
+	const out: number[] = [];
+	for (const { segment, startSec, durationSec } of segmentSpans(flow)) {
+		const step = segment.kind === 'music' ? musicStep : chantStep;
+		for (let u = 0; u < units(segment); u += step) out.push(startSec + u * unitSec(segment));
+		out.push(startSec + durationSec);
+	}
+	return out;
+}
+
+/** 在八拍尺上點、拖播放頭：音樂段吸到最近的整拍（half：半拍），口號段吸到 0.1 秒。沒有段時照原樣。 */
+export function snapToBeat(flow: Flow, sec: number, half = false): number {
+	const points = stops(flow, half ? 1 : HALF_BEATS_PER_BEAT, 1);
+	if (!points.length) return sec;
+	return points.reduce((best, p) => (Math.abs(p - sec) < Math.abs(best - sec) ? p : best));
+}
+
+/**
+ * 方向鍵移播放頭：往 dir（1 往後、-1 往前）移到下一個停點。音樂段一拍（big：一個八拍），
+ * 口號段 1 秒（big：5 秒）；跨段時先停在段的開頭。到頭尾就停住。沒有段時照原樣。
+ */
+export function stepPlayhead(flow: Flow, sec: number, dir: 1 | -1, big: boolean): number {
+	const points = big ? stops(flow, HALF_BEATS_PER_EIGHT, 50) : stops(flow, HALF_BEATS_PER_BEAT, 10);
+	if (!points.length) return sec;
+	if (dir > 0) return points.find((p) => p > sec + EPS) ?? points.at(-1)!;
+	return points.findLast((p) => p < sec - EPS) ?? 0;
+}
+
 /** 八拍尺上的一個刻度（全域秒數）。大刻度有字。 */
 export interface RulerMark {
 	sec: number;

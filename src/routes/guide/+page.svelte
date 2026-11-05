@@ -450,7 +450,8 @@
 
 				<h4>移動播放頭</h4>
 				<ol class="steps">
-					<li>在八拍尺上點一下，播放頭就跳到那裡；按住拖可以慢慢找。</li>
+					<li>在八拍尺上點一下，播放頭就跳到那裡；按住拖可以慢慢找。音樂段會停在整拍上（例如「4-1」）；要停在半拍「4-1&amp;」，按著 Option（Windows：Alt）再點。</li>
+					<li>鍵盤的 ← → 一次移一拍（口號段 1 秒）；按著 Shift 跳到上一個、下一個八拍的 1（口號段 5 秒）。</li>
 					<li>看上方列的目前位置，確認在你要的那一拍，例如「音樂 1 3-1」。差一點就再點一次。</li>
 				</ol>
 
@@ -1001,6 +1002,8 @@
 						<thead><tr><th>按鍵</th><th>做什麼</th></tr></thead>
 						<tbody>
 							<tr><td><kbd>空白鍵</kbd></td><td>播放／暫停（游標在輸入框裡時不行）</td></tr>
+							<tr><td><kbd>←</kbd> <kbd>→</kbd>（<kbd>Shift</kbd>＋<kbd>←</kbd> <kbd>→</kbd>）</td><td>播放頭往前、往後一拍（一個八拍）；口號段 1 秒（5 秒）。游標在輸入框裡時不行</td></tr>
+							<tr><td><kbd>Option</kbd>（Windows：<kbd>Alt</kbd>）＋點八拍尺</td><td>播放頭停在半拍 &amp; 上（只點是停在整拍）</td></tr>
 							<tr><td><kbd>⌘S</kbd>／<kbd>Ctrl+S</kbd></td><td>存檔（在輸入框裡也可以）</td></tr>
 							<tr><td><kbd>⌘Z</kbd>／<kbd>Ctrl+Z</kbd></td><td>復原（游標在輸入框裡時是復原打的字）</td></tr>
 							<tr><td><kbd>⌘⇧Z</kbd>／<kbd>Ctrl+Shift+Z</kbd>、<kbd>Ctrl+Y</kbd></td><td>重做</td></tr>
