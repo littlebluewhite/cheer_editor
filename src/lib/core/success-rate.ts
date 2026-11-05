@@ -84,7 +84,7 @@ export interface SquadBadge {
 
 /**
  * 動作裡一個人的組徽章：第幾組和那一組的顏色；沒分組（或帶的組不在這個動作裡）是灰色「?」。
- * 場上的組號小圓、人員清單的組標籤、分組浮動列的號碼都照這個。
+ * 場上的組號小圓、動作設定的隊員清單的組標籤、分組浮動列的號碼都照這個。
  */
 export function squadBadge(action: Action, member: Pick<ActionMember, 'squad'>): SquadBadge {
 	const n = member.squad ? squadNumber(action, member.squad) : 0;

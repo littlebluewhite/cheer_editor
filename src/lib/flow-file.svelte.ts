@@ -48,7 +48,7 @@ export class FlowFile {
 		this.#onDisk = !!editor.session.flow;
 		editor.session.onflow = () => {
 			this.#saveDraftLater();
-			this.picked();
+			this.#dropMissingNotice();
 		};
 	}
 
@@ -166,7 +166,7 @@ export class FlowFile {
 	/** 新建流程表單建好了：換上它。剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟。 */
 	create(flow: Flow) {
 		this.#start(flow, 'new');
-		if (this.#draftChecked) this.#editor.adapters.draftStore.save(writeFlowFile(flow, {})).catch(() => {});
+		if (this.#draftChecked) this.#saveDraft(writeFlowFile(flow, {}));
 	}
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
@@ -176,12 +176,12 @@ export class FlowFile {
 
 	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
 	async leaveToHome() {
-		const { session, music, adapters } = this.#editor;
+		const { session, music } = this.#editor;
 		const f = session.flow;
 		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
 		session.open(null);
 		if (!f || !bytes) return;
-		await adapters.draftStore.save(bytes).catch(() => {});
+		await this.#saveDraft(bytes);
 		this.#offer = { bytes, name: f.name, savedAt: new Date() };
 	}
 
@@ -208,14 +208,11 @@ export class FlowFile {
 	/** 現在的提示是「有段找不到音樂」那一則（開檔、存檔時給的）：記下來，缺的音樂都補好了就收掉。 */
 	#noteMissing() {
 		this.#missingNotice = this.#editor.session.notice;
-		this.picked();
+		this.#dropMissingNotice();
 	}
 
-	/**
-	 * 流程換了（session 叫：刪了段、復原…）、給一段選好了音樂檔（音樂檔庫叫）：
-	 * 「有段找不到音樂」的提示還在、缺的音樂都沒了，就收掉它。
-	 */
-	picked() {
+	/** 流程換了（session 叫：選了音樂檔、刪了段、復原…）：「有段找不到音樂」的提示還在、缺的音樂都沒了，就收掉它。 */
+	#dropMissingNotice() {
 		const { session, music } = this.#editor;
 		if (this.#missingNotice && session.notice === this.#missingNotice && !music.missingSegmentIds.length) {
 			session.notice = '';
@@ -252,7 +249,7 @@ export class FlowFile {
 	#unlessUnsaved(then: () => void) {
 		// 換掉的流程是這個分頁放在草稿裡的：草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
 		const go = () => {
-			if (this.ownsDraft) this.#editor.adapters.draftStore.clear().catch(() => {});
+			if (this.ownsDraft) this.#dropDraft();
 			then();
 		};
 		if (this.#editor.session.unsaved) this.#asking = go;
@@ -288,7 +285,7 @@ export class FlowFile {
 			return;
 		}
 		this.#offer = null;
-		this.#editor.adapters.draftStore.clear().catch(() => {});
+		this.#dropDraft();
 	}
 
 	/** 另一個分頁回答它正在編輯草稿嗎（等一下下，沒人回就是沒有）。 */
@@ -332,10 +329,19 @@ export class FlowFile {
 		const f = this.#editor.session.flow;
 		if (!this.#draftChecked || !f) return;
 		this.#draftTimer = setTimeout(() => {
-			const { adapters, music } = this.#editor;
-			const done = this.ownsDraft ? adapters.draftStore.save(writeFlowFile(f, music.bytes(f))) : adapters.draftStore.clear();
-			done.catch(() => {});
+			if (this.ownsDraft) this.#saveDraft(writeFlowFile(f, this.#editor.music.bytes(f)));
+			else this.#dropDraft();
 		}, DRAFT_DELAY_MS);
+	}
+
+	/** 存草稿。存不了（例：私密視窗）就算了，草稿只是保險。 */
+	#saveDraft(bytes: Uint8Array): Promise<void> {
+		return this.#editor.adapters.draftStore.save(bytes).catch(() => {});
+	}
+
+	/** 丟掉草稿。丟不了就算了。 */
+	#dropDraft() {
+		this.#editor.adapters.draftStore.clear().catch(() => {});
 	}
 
 	/** 這個分頁的流程要不要放在草稿裡：開著流程，有未存的修改或不在檔案裡。 */

@@ -104,9 +104,9 @@ export class Editor {
 		this.#music = music;
 	}
 
-	/** 空的音樂檔庫：給一段選好了音樂檔，流程檔看要不要收掉「找不到音樂」的提示。 */
+	/** 空的音樂檔庫。 */
 	#newMusic(): MusicLibrary {
-		return new MusicLibrary(this.session, this.adapters.decode, () => this.file.picked());
+		return new MusicLibrary(this.session, this.adapters.decode);
 	}
 
 	/**

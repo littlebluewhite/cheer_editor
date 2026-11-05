@@ -21,6 +21,7 @@
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { cellIn, firstCell, fits } from '#lib/beat-selection.svelte.js';
 	import { popover } from '#lib/popover.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { touchOnUnpicked } from './pointer';
@@ -111,8 +112,6 @@
 	const slices = $derived(actionEights(action));
 	/** 動作碰到的八拍（從 0 起）。 */
 	const eights = $derived(slices.map((s) => s.eight));
-	/** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。 */
-	const firstCell = $derived(action.start % BEAT);
 
 	/** 選到的拍、給誰（session 管）：選的拍從 from 那一拍到 to 那一拍（從動作開始算的半拍，各佔一拍）。 */
 	const beats = session.beats;
@@ -137,20 +136,16 @@
 	let winW = $state(0);
 	const whoIndex = $derived(Math.max(0, whoOptions.findIndex((o) => sameWho(o.who, beats.who))));
 
-	/** 這一格（從 at 開始的一拍）整個在動作裡。 */
-	const inAction = (at: number) => at >= 0 && at + BEAT <= action.length;
-	const hasCells = $derived(inAction(firstCell));
+	const hasCells = $derived(fits(action, firstCell(action)));
 	/** 第 h 個半拍有沒有選到。 */
 	const covered = (h: number) => beats.covers(h);
 	/** 這一格（從 at 開始）有選到（前半或後半）。 */
 	const isSel = (at: number) => covered(at) || covered(at + 1);
-	/** 半拍 at 所在那一格的開頭。 */
-	const cellOf = (at: number) => at - ((((action.start + at) % BEAT) + BEAT) % BEAT);
 	/** 現在播到的那一格（從動作開始算）；播放頭不在這個段就是 null。 */
 	const nowCell = $derived.by(() => {
 		if (!segment) return null;
 		const pos = toPosition(flow, playback.sec);
-		return pos?.segmentId === segment.id ? cellOf(pos.at - action.start) : null;
+		return pos?.segmentId === segment.id ? cellIn(action, pos.at - action.start) : null;
 	});
 	const selLen = $derived(beats.len);
 	/** 可以改的環節：音樂段是選的拍剛好是它的拍的那個，口號段是點選的那個；沒有就 null。 */
@@ -209,7 +204,7 @@
 		if (e.button !== 0) return;
 		const el = (e.target as Element).closest<HTMLElement>('[data-at]');
 		const at = Number(el?.dataset.at);
-		if (!el || !inAction(at)) return;
+		if (!el || !fits(action, at)) return;
 		pointerSel = true;
 		// 手指：選到的格子上才拖得動（拖過幾拍）；沒選到的一滑是捲動（docs/adr/0005-ipad-touch.md）。
 		if (touchOnUnpicked(e, isSel(at))) {
@@ -336,7 +331,7 @@
 		hold = false;
 		const q = (s: string) => wrapEl!.querySelector<HTMLElement>(s);
 		// 選取碰到的第一格、最後一格（從 & 開始的選取，頭尾各碰到半格）。
-		const [first, last] = [cellOf(sel.from), cellOf(sel.to + 1)];
+		const [first, last] = [cellIn(action, sel.from), cellIn(action, sel.to + 1)];
 		const head = q(`.cell[data-at="${first}"]`);
 		const a = q(`.slot.motion[data-at="${first}"]`);
 		const b = q(`.slot.motion[data-at="${last}"]`);
@@ -484,9 +479,9 @@
 								class:right={isSel(at) && !covered(at)}
 								class:now={at === nowCell}
 								aria-label="{e + 1}-{c + 1}"
-								aria-pressed={inAction(at) && isSel(at)}
+								aria-pressed={fits(action, at) && isSel(at)}
 								aria-current={at === nowCell ? 'time' : undefined}
-								disabled={!inAction(at)}
+								disabled={!fits(action, at)}
 								onclick={(ev) => {
 								if (pointerSel) return;
 								beats.click(at, ev.shiftKey);
@@ -496,7 +491,7 @@
 							<span
 								class="slot phase"
 								data-at={at}
-								class:out={!inAction(at)}
+								class:out={!fits(action, at)}
 								class:sel={isSel(at)}
 								class:left={isSel(at) && !covered(at + 1)}
 								class:right={isSel(at) && !covered(at)}
@@ -507,7 +502,7 @@
 								<span
 									class="slot {lane.kind}"
 									data-at={at}
-									class:out={!inAction(at)}
+									class:out={!fits(action, at)}
 									class:sel={isSel(at)}
 									class:left={isSel(at) && !covered(at + 1)}
 									class:right={isSel(at) && !covered(at)}

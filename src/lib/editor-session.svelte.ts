@@ -61,7 +61,7 @@ export class EditorSession {
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};
 	/** 拍點格子選的拍（選到的動作的）。 */
-	readonly beats = new BeatSelection(() => this.#flow?.actions.find((a) => a.id === this.#actionId) ?? null);
+	readonly beats = new BeatSelection(() => this.selectedAction);
 
 	#notice = new Flash<string>();
 	/** 提示旁邊有「復原」（剛刪掉站位）。換了提示就沒有。 */
@@ -298,6 +298,11 @@ export class EditorSession {
 		return this.#actionId;
 	}
 
+	/** 選到的動作；沒選是 null。 */
+	get selectedAction(): Action | null {
+		return (this.#actionId && this.#flow?.actions.find((a) => a.id === this.#actionId)) || null;
+	}
+
 	get selectedMemberIds(): string[] {
 		return this.#memberIds;
 	}
@@ -346,7 +351,7 @@ export class EditorSession {
 
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	get groupingAction(): Action | null {
-		const a = this.#actionId ? this.#flow?.actions.find((x) => x.id === this.#actionId) : undefined;
+		const a = this.selectedAction;
 		return a && groupsPeople(a) ? a : null;
 	}
 
