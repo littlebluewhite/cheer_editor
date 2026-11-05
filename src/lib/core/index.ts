@@ -143,6 +143,7 @@ export type { SnapPoint } from './snap';
 
 export {
 	AUDIO_EXTENSIONS,
+	BROKEN_AUDIO,
 	DEFAULT_BPM,
 	MAX_BPM,
 	MAX_CHANT_SEC,
@@ -157,6 +158,7 @@ export {
 	updateSegment
 } from './segment';
 export type {
+	AudioLengths,
 	AudioRef,
 	BeatLine,
 	BeatTiming,

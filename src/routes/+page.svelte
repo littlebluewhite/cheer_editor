@@ -14,7 +14,6 @@
 		raisedAt,
 		missingAudioNames,
 		readFlowFile,
-		segmentsMissingAudio,
 		squadBadge,
 		timeRuleWarnings,
 		stackedMembers,
@@ -28,11 +27,11 @@
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
-	import type { LoadedAudio } from '#lib/audio/decode.js';
 	import { createPlayer, type Player } from '#lib/audio/player.js';
 	import type { Draft } from '#lib/file/draft.js';
 	import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
+	import type { MusicLibrary } from '#lib/music-library.svelte.js';
 	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
@@ -84,7 +83,7 @@
 	setEditor(editor);
 	const { session } = editor;
 	// 開檔、存檔、草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
-	const { createEngine, createSaver, pickFlowFile, decode, draftStore, pendingInput } = editor.adapters;
+	const { createEngine, createSaver, pickFlowFile, draftStore, pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
@@ -174,7 +173,7 @@
 		const f = flow;
 		const keep = ownsDraft;
 		const timer = setTimeout(() => {
-			const done = keep ? draftStore.save(writeFlowFile(f, audioBytes(f))) : draftStore.clear();
+			const done = keep ? draftStore.save(writeFlowFile(f, editor.music.bytes(f))) : draftStore.clear();
 			done.catch(() => {});
 		}, DRAFT_DELAY_MS);
 		return () => clearTimeout(timer);
@@ -200,13 +199,10 @@
 	function draftTime(d: Date): string {
 		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
-	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
-	let audios = $state<Record<string, LoadedAudio>>({});
-	const missingSegmentIds = $derived(flow ? segmentsMissingAudio(flow, Object.keys(audios)) : []);
 	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）；缺的音樂都補好了就自己收掉。 */
 	let missingNotice = '';
 	$effect(() => {
-		if (!missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
+		if (!editor.music.missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
 	});
 	/** 播放頭，全域秒數。 */
 	let playheadSec = $state(0);
@@ -275,7 +271,7 @@
 	let player: Player | null = null;
 
 	function getPlayer(): Player {
-		player ??= createPlayer(createEngine((id) => audios[id]?.buffer));
+		player ??= createPlayer(createEngine((id) => editor.music.buffer(id)));
 		return player;
 	}
 
@@ -423,12 +419,12 @@
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
-	 * 選取、提示由 session 清掉。
+	 * 選取、提示由 session 清掉。music：這支流程的音樂檔庫（開檔、救回草稿時解碼好的；沒給是空的）。
 	 */
 	function startFlow(
 		f: Flow,
 		from: 'file' | 'draft' | 'new',
-		loaded: Record<string, LoadedAudio> = {},
+		music?: MusicLibrary,
 		fileSaver: FileSaver | null = null
 	) {
 		pause();
@@ -438,7 +434,7 @@
 		pendingInput.settle();
 		opened++;
 		saver = fileSaver;
-		audios = loaded;
+		editor.switchMusic(music);
 		openError = '';
 		playheadSec = 0;
 		openSegmentId = null;
@@ -467,13 +463,6 @@
 		}
 	}
 
-	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
-	function audioBytes(f: Flow): Record<string, Uint8Array> {
-		const audio: Record<string, Uint8Array> = {};
-		for (const a of f.audio) if (audios[a.id]) audio[a.id] = new Uint8Array(audios[a.id].bytes);
-		return audio;
-	}
-
 	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；iPad 開分享選單；其他瀏覽器下載新檔。 */
 	async function save() {
 		if (!flow || saving) return;
@@ -482,13 +471,14 @@
 		const f = flow;
 		saving = true;
 		saver ??= createSaver();
+		// 存的這支流程有幾段找不到音樂（存的時候手上的音樂）
+		const missing = editor.music.missingSegmentIds.length;
 		try {
 			const fileName = flowFileName(f.name);
-			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), fileName);
+			const outcome = await saver.save(writeFlowFile(f, editor.music.bytes(f)), fileName);
 			if (outcome === 'cancelled') return;
 			session.markSaved(f);
 			onDisk = true;
-			const missing = segmentsMissingAudio(f, Object.keys(audios)).length;
 			session.notice = [
 				outcome === 'downloaded'
 					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${fileName}」；用 Chrome 或 Edge 才能直接存回原檔。`
@@ -541,23 +531,13 @@
 			else openError = message;
 			return;
 		}
-		const loaded: Record<string, LoadedAudio> = {};
-		let unreadable = false;
-		for (const [id, bytes] of Object.entries(r.audio)) {
-			const buffer = bytes.slice().buffer;
-			try {
-				loaded[id] = { bytes: buffer, ...(await decode(buffer)) };
-			} catch {
-				// 這個瀏覽器解不開（例：Firefox 沒有 AAC）：位元組留著，存檔時照樣存回去，只是不出聲。
-				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [], broken: true };
-				unreadable = true;
-			}
-		}
+		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
+		const music = await editor.readMusic(r.audio);
 		unlessUnsaved(() => {
-			startFlow(r.flow, fileName === null ? 'draft' : 'file', loaded, fileSaver);
+			startFlow(r.flow, fileName === null ? 'draft' : 'file', music, fileSaver);
 			session.notice = r.missingSegmentIds.length
 				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
-				: unreadable
+				: music.hasBroken
 					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
 					: '';
 			if (r.missingSegmentIds.length) missingNotice = session.notice;
@@ -593,7 +573,7 @@
 	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
 	async function leaveToHome() {
 		const f = flow;
-		const bytes = f && ownsDraft ? writeFlowFile(f, audioBytes(f)) : null;
+		const bytes = f && ownsDraft ? writeFlowFile(f, editor.music.bytes(f)) : null;
 		pause();
 		session.open(null);
 		if (!f || !bytes) return;
@@ -992,7 +972,6 @@
 				{playheadSec}
 				onseek={(sec) => flow && seek(flow, sec)}
 				onopensegment={(id) => (openSegmentId = id)}
-				{missingSegmentIds}
 			/>
 		</div>
 		{#if view === 'practice'}
@@ -1033,10 +1012,7 @@
 	{#if openSegmentId}
 		<SegmentSettings
 			segmentId={openSegmentId}
-			{audios}
-			{decode}
 			{waveXToSec}
-			onaudioload={(id, audio) => (audios[id] = audio)}
 			{previewing}
 			onpreview={(id) => flow && preview(flow, id)}
 			{playing}

@@ -2,16 +2,18 @@
 // 元件從 context 拿要用的那一部分。它握著編輯 session 和碰瀏覽器的 adapter，所以頁面只剩畫面和接線，
 // 規則在 Node 就測得到（測試用 #lib/test-fakes.js 的 testEditor 一行建好帶著假 adapter 的）。
 //
-// 每一部分是它的一個屬性（session、右邊欄翻到哪一頁…），之後搬進來的播放、流程檔、音樂檔庫、新動作草稿也一樣。
+// 每一部分是它的一個屬性（session、音樂檔庫、右邊欄翻到哪一頁…），之後搬進來的播放、流程檔、新動作草稿也一樣。
+// 音樂檔庫一支流程一個：換流程時換一個新的（readMusic、switchMusic），所以元件每次用都從 editor.music 拿。
 // 每個 adapter 都有真的（browserAdapters）和假的（testEditor）兩種；加一個 adapter 時兩邊都加。
 
 import { createContext } from 'svelte';
-import type { Flow } from '#lib/core';
+import type { AudioBytes, Flow } from '#lib/core';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile } from '#lib/file/save.js';
 import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
+import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
@@ -49,11 +51,31 @@ export class Editor {
 	readonly adapters: EditorAdapters;
 	/** 右邊欄翻到哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	inspectorTab = $state<'action' | 'members'>('action');
+	#music: MusicLibrary;
 
-	/** 給的流程算存過的（跟從檔案開的一樣）。 */
+	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
 		this.adapters = adapters;
 		this.session = new EditorSession(flow);
+		this.#music = $state.raw(new MusicLibrary(this.session, adapters.decode));
+	}
+
+	/** 音樂檔庫：這支流程用到的音樂檔。一支流程一個，換流程就換一個新的（switchMusic）。 */
+	get music(): MusicLibrary {
+		return this.#music;
+	}
+
+	/** 開檔、救回草稿：檔案裡的音樂解碼好，建一個新的音樂檔庫（還沒換上：確定換流程時交給 switchMusic）。 */
+	async readMusic(audio: AudioBytes): Promise<MusicLibrary> {
+		const music = new MusicLibrary(this.session, this.adapters.decode);
+		await music.load(audio);
+		return music;
+	}
+
+	/** 換流程：換上這支流程的音樂檔庫（沒給是空的：新建的流程）；舊的還在解碼的選檔不要了。 */
+	switchMusic(music = new MusicLibrary(this.session, this.adapters.decode)) {
+		this.#music.cancelPicks();
+		this.#music = music;
 	}
 
 	/**
