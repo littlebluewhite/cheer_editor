@@ -89,7 +89,9 @@ const helpers = `
 	window.$btn = (name, root = document) => [...root.querySelectorAll('button, [role=tab], a, label')].find((b) => b.textContent.trim() === name);
 	window.$set = (el, v, ev = 'input') => { el.value = v; el.dispatchEvent(new Event(ev, { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
 	window.$rect = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height }; };
-	window.$dot = (name) => $rect([...document.querySelectorAll('g[data-member-id]')].find((g) => g.getAttribute('aria-label') === name));
+	// 場上隊員的名字是「名字　位置」
+	window.$member = (name) => [...document.querySelectorAll('g[data-member-id]')].find((g) => g.getAttribute('aria-label').startsWith(name + '　'));
+	window.$dot = (name) => $rect($member(name));
 	window.$tick = (label) => $rect([...document.querySelectorAll('[data-ruler] .tk.big')].find((t) => t.textContent.trim() === label));
 	window.$label = (text) => [...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith(text));
 `;
@@ -110,7 +112,9 @@ async function shot(name, marks, clip) {
 		const clip = ${clip ? `union(${clip})` : `{ l: 0, t: 0, w: innerWidth, h: innerHeight }`};
 		const layer = document.createElement('div');
 		layer.id = 'shot-layer';
-		layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647';
+		// 用 popover 放在最上層：拍點小窗、選單也是 popover，一般的 z-index 蓋不過它們
+		layer.popover = 'manual';
+		layer.style.cssText = 'position:fixed;inset:0;width:auto;height:auto;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none';
 		for (const [n, expr, at = { x: 1, y: 0 }] of ${JSON.stringify(marks)}) {
 			const els = [].concat(eval(expr)).filter(Boolean);
 			if (!els.length) throw new Error('找不到要框的東西：' + expr);
@@ -131,6 +135,7 @@ async function shot(name, marks, clip) {
 			layer.append(frame, badge);
 		}
 		document.body.append(layer);
+		layer.showPopover();
 		return clip;
 	`);
 	await sleep(100);
@@ -260,7 +265,7 @@ await click(t3.l + 2, ruler.y);
 	await shot(
 		'drag',
 		[
-			[1, `[...document.querySelectorAll('g[data-member-id]')].find((g) => g.getAttribute('aria-label') === '小美')`],
+			[1, `$member('小美')`],
 			[2, `q('.readout')`]
 		],
 		`q('.field-host')`
@@ -282,7 +287,8 @@ await shot(
 		[1, `q('.rail .tools')`],
 		[2, `q('.now-formation')`],
 		[3, `q('.rail .warn')`],
-		[4, `q('.match-prev')`],
+		// 號碼放右邊中間：放右上角會蓋到上面 5 的框
+		[4, `q('.match-prev')`, { x: 1, y: 0.5 }],
 		[5, `q('.here')`],
 		[6, `q('.walk-tools')`],
 		[7, `q('.rail .legend')`],
@@ -311,7 +317,8 @@ await js(`
 		[...form.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim().startsWith(role)).click();
 		await new Promise((x) => setTimeout(x, 50));
 	}`);
-await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
+// 畫面高到整張動作表單放得下（備註、字數都在），拍的範圍才不會切到下面的時間軸
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1800, deviceScaleFactor: 2, mobile: false });
 await sleep(300);
 await shot(
 	'action',
@@ -385,14 +392,20 @@ await sleep(300);
 // 先捲好再選 4-5 到 4-6：拍點小窗照捲好的畫面決定放在格子上面還是下面。
 await js(`const panel = q('.cues').closest('.panel'); panel.scrollTop = panel.scrollHeight; await new Promise((x) => setTimeout(x, 100));
 	q('.cues .cell[aria-label="4-5"]').click(); await new Promise((x) => setTimeout(x, 50));
-	q('.cues [aria-label="多選一拍"]').click();`);
+	q('.cues [aria-label="多選一拍"]').click(); await new Promise((x) => setTimeout(x, 50));
+	// 重新選拍「給誰」回到全部（腳本用 .click() 點格子，沒走那條路，這裡自己選回來）
+	const who = q('.cues .pop select');
+	if (who.selectedOptions[0]?.textContent !== '全部') {
+		who.value = String([...who.options].findIndex((o) => o.textContent === '全部'));
+		who.dispatchEvent(new Event('change', { bubbles: true }));
+	}`);
 await sleep(200);
 await shot(
 	'cues',
 	[
 		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.55, y: 1 }],
 		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
-		[3, `q('.cues .pop')`, { x: 0, y: 0.9 }],
+		[3, `q('.cues .pop')`, { x: 0, y: 0.55 }],
 		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 0, y: 1 }],
 		[5, `q('.cues .who-sel')`, { x: 0.5, y: 0 }],
 		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0, y: 0 }],
@@ -443,7 +456,7 @@ await js(esc);
 	const r = await js(`return $rect(q('[data-ruler]'))`);
 	await click(r.l + 2, r.y);
 	const f = await js(`return $rect(q('svg[aria-label="場地"]'))`);
-	for (const [name, dx, dy] of [['小芳', 0, 70], ['阿偉', 60, 110], ['阿華', -60, 110]]) {
+	for (const [name, dx, dy] of [['小芳', 0, 160], ['阿偉', 100, 210], ['阿華', -100, 210]]) {
 		const d = await js(`return $dot('${name}')`);
 		await drag(d.x, d.y, f.x + dx, f.y + dy);
 	}

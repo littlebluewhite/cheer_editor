@@ -73,7 +73,7 @@
 	/** 選「整個」卻跳過前面的環節（最後一個點了的前面還有空著的）：存之前就說。 */
 	const skipping = $derived.by(() => {
 		const last = phases.findLastIndex((p) => shown[p.id]);
-		return whole && phases.slice(0, last).some((p) => !shown[p.id]);
+		return whole && last > 0 && phases.slice(0, last).some((p) => !shown[p.id]);
 	});
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
