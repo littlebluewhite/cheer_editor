@@ -11,7 +11,7 @@
 		type FieldLayout,
 		type Flow
 	} from '#lib/core';
-	import { Ask } from './ask.svelte';
+	import { Ask } from '#lib/ask.svelte.js';
 
 	let { oncreate }: { oncreate: (flow: Flow) => void } = $props();
 

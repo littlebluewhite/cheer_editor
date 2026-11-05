@@ -20,7 +20,6 @@
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
-	import { Ask } from './ask.svelte';
 	import { touchOnUnpicked } from './pointer';
 	import {
 		COUNT_WORDS,
@@ -117,13 +116,7 @@
 	/** 選到的拍：從 from 那一拍到 to 那一拍（從動作開始算的半拍，各佔一拍）。平常是格子開頭；點從 & 開始的拍點時落在 &。 */
 	let sel = $state({ from: 0, to: 0 });
 	/** 被擋的原因，和等教練回答的環節改動（會刪掉有記號的環節）。 */
-	const ask = new Ask(
-		(f) => {
-			hold = pop;
-			session.change(f);
-		},
-		{ confirmLabel: '確定刪除' }
-	);
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 
 	/** 拍點小窗開著沒；拖的時候先收起來，放開才跳出來。 */
 	let pop = $state(false);
@@ -217,7 +210,12 @@
 	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
 	function send(cmd: (o?: ConfirmOption) => CommandResult, after?: () => void): boolean {
 		hold = pop;
-		return ask.send(cmd, { done: () => after?.() }).kind === 'ok';
+		// 問了答好才成功：小窗也留在原地。
+		const done = () => {
+			hold = pop;
+			after?.();
+		};
+		return ask.send(cmd, { done }).kind === 'ok';
 	}
 
 	const selectOne = (at: number) => (sel = { from: at, to: at });

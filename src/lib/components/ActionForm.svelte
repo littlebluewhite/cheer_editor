@@ -39,7 +39,6 @@
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
-	import { Ask } from './ask.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import { reveal } from './reveal';
 	import Icon from './Icon.svelte';
@@ -105,7 +104,7 @@
 
 	let draft = $state<Draft>(blank());
 	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
-	const ask = new Ask((f) => session.change(f));
+	const ask = session.changeAsk();
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
