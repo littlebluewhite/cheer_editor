@@ -70,6 +70,50 @@ describe('段、八拍尺、上方列', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 	});
 
+	it('段旁的「＋」：選「＋口號段」就插在這段後面', async () => {
+		await newFlow();
+		await addSegment('＋音樂段');
+		await addSegment('＋音樂段');
+		await fireEvent.click(screen.getAllByRole('button', { name: '在這段後面加一段' })[0]);
+		expect(screen.getByText('加在音樂 1 後面')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		expect(screen.getByRole('dialog', { name: '口號 1 設定' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		const segs = [...document.querySelectorAll('.timeline .segs .seg b')].map((b) => b.textContent);
+		expect(segs).toEqual(['音樂 1', '口號 1', '音樂 2']);
+	});
+
+	it('點八拍數字：播放頭停在那個八拍的第 1 拍', async () => {
+		await newFlow();
+		await addSegment('＋音樂段');
+		const ruler = document.querySelector('[data-ruler]')!;
+		const three = within(ruler as HTMLElement).getByText('3');
+		// 數字寫在刻度右邊一點：點在數字上（3-1 是 6.4 秒，往右 10 px）
+		await fireEvent.pointerDown(three, { clientX: 6.4 * 16 + 10, button: 0 });
+		await fireEvent.pointerUp(window);
+		expect(position()).toBe('音樂 1 3-1');
+	});
+
+	it('沒有段時播放鍵是灰的，提示先加一段', async () => {
+		await newFlow();
+		const play = screen.getByRole('button', { name: '播放' }) as HTMLButtonElement;
+		expect(play.disabled).toBe(true);
+		expect(play.title).toBe('先加一段');
+		await addSegment('＋音樂段');
+		expect((screen.getByRole('button', { name: '播放' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('刪段後播放頭夾到流程結尾，上方的時間不會超過總長', async () => {
+		await newFlow();
+		await addSegment('＋音樂段');
+		await addSegment('＋口號段');
+		await fireEvent.keyDown(window, { key: 'End' });
+		expect(screen.getByText(/^0:35.6/).textContent).toBe('0:35.6 / 0:35.6');
+		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
+		expect(screen.getByText(/^0:25.6/).textContent).toBe('0:25.6 / 0:25.6');
+	});
+
 	it('方向鍵移播放頭：一次一拍，Shift 跳到下一個八拍的 1；在輸入框裡不算', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
@@ -661,6 +705,23 @@ describe('站位與走位', () => {
 		await dragFirstMember();
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.queryByRole('status')).toBeNull();
+	});
+
+	it('尺上點：一小段距離內先停到站位（不吸到旁邊的整拍）；停在站位上拖人改的是那張', async () => {
+		await setup();
+		await seek(8.25); // 3-5&（8.2 秒）
+		await dragFirstMember();
+		const ruler = document.querySelector('[data-ruler]')!;
+		// 沒按 Alt 點在 8.3 秒：最近的整拍是 3-6（8.4 秒），但站位 2 只差 1.6 px
+		await fireEvent.pointerDown(ruler, { clientX: 8.3 * 16, button: 0 });
+		await fireEvent.pointerUp(window);
+		expect(screen.getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（3-5&）');
+		await dragFirstMember('m2');
+		expect(thumbs()).toHaveLength(2);
+		// 離站位遠一點就照樣吸到整拍
+		await fireEvent.pointerDown(ruler, { clientX: 9.6 * 16, button: 0 });
+		await fireEvent.pointerUp(window);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 4-1');
 	});
 
 	it('拖人之後，後面還站在舊位置的站位跟著改，提示往後帶到幾張；同時插站位就合成一則', async () => {
@@ -1306,6 +1367,33 @@ describe('播放', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '往前移' }));
 		// 現在口號段（10 秒）在最前面，第一聲節拍器是 10 秒後音樂 1 的第一拍
 		expect(engine.clicks[0].when).toBeCloseTo(t0 + 10, 6);
+	});
+
+	it('播放中刪掉正在播的段：播放頭夾到結尾停下，不回到 0 重播', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const t0 = engine.clicks[0].when;
+		engine.audible = t0 + 40;
+		await nextFrame();
+		expect(position()).toBe('音樂 2 2-4');
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 2/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
+		expect(screen.getByText(/^0:35.6/).textContent).toBe('0:35.6 / 0:35.6');
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+		expect(engine.clicks).toEqual([]);
+	});
+
+	it('播放中刪掉前面的段：從同一秒接著播（不回到 0）', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const t0 = engine.clicks[0].when;
+		engine.audible = t0 + 30.2;
+		await nextFrame();
+		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+		// 30.2 秒現在在音樂 2 的 4.6 秒：第一聲節拍器是 0.2 秒後的 2-5（從 0 重播的話是馬上響）
+		expect(engine.clicks[0].when - t0).toBeCloseTo(0.2, 6);
 	});
 
 	it('播放中加隊員（沒動到段）：聲音不重排，不會中斷', async () => {

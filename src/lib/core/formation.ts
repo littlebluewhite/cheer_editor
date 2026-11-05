@@ -10,6 +10,7 @@ import { nextId } from './ids';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
+	snapToBeat,
 	timeTextWithUnit,
 	toPosition,
 	toSeconds,
@@ -197,6 +198,18 @@ export function formationTimes(
 		sec: formationSec(flow, formation),
 		deletable: deletable(i)
 	}));
+}
+
+/**
+ * 在八拍尺上點、拖播放頭：nearSec 秒以內有站位就停到最近的那張（停在站位上，拖人改的就是那張），
+ * 沒有才吸到最近的整拍（half：半拍）。
+ */
+export function snapPlayhead(flow: Flow, sec: number, nearSec: number, half = false): number {
+	let best: number | null = null;
+	for (const { sec: t } of formationTimes(flow)) {
+		if (Math.abs(t - sec) <= nearSec && (best === null || Math.abs(t - sec) < Math.abs(best - sec))) best = t;
+	}
+	return best ?? snapToBeat(flow, sec, half);
 }
 
 /** 站位的全域秒數。開頭那張還沒有段時是 0。 */

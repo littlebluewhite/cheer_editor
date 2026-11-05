@@ -10,6 +10,7 @@
 		memberMarkers,
 		playbackPlan,
 		playStartSec,
+		resumeSec,
 		NO_SQUAD_COLOR,
 		positionText,
 		positionsAt,
@@ -331,20 +332,27 @@
 		player?.stop();
 	}
 
-	// 播放中改了段（換順序、刪段、改 BPM、長度，或復原這些）：已經排好的聲音是舊的，照現在的段重排。
+	// 改了段（換順序、刪段、改 BPM、長度，或復原這些）：播放頭夾回流程裡（段變短、刪段後不跑到結尾後面）。
+	// 播放中已經排好的聲音是舊的，從夾住後的時間照現在的段重排（不回到 0）；夾到結尾就是播完了，停下。
 	// 只看 segments 這個陣列換了沒，改人、改動作不會重排。
 	// segments 另外 derived：flow 換了但 segments 是同一個陣列時，derived 不變，effect 不會跑。
 	const segments = $derived(flow?.segments);
 	$effect(() => {
 		segments;
 		untrack(() => {
-			if (playing && flow) play(flow);
+			if (!flow) return;
+			const { sec, ended } = resumeSec(flow, playheadSec);
+			playheadSec = sec;
+			if (!playing) return;
+			if (ended) pause();
+			else play(flow);
 		});
 	});
 
+	/** 沒有段時沒東西可以播（播放鍵是灰的）。 */
 	function togglePlay(f: Flow) {
 		if (playing) pause();
-		else play(f);
+		else if (f.segments.length) play(f);
 	}
 
 	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
@@ -859,7 +867,8 @@
 					class="play"
 					class:on={playing}
 					aria-label={playing ? '暫停' : '播放'}
-					title="空白鍵也可以播放／暫停"
+					title={flow.segments.length ? '空白鍵也可以播放／暫停' : '先加一段'}
+					disabled={!flow.segments.length && !playing}
 					onclick={() => flow && togglePlay(flow)}><Icon name={playing ? 'pause' : 'play'} size={18} /></button
 				>
 				<div class="board">
@@ -1354,6 +1363,12 @@
 	.play:hover {
 		background: #ff6a45;
 		border-color: #ff6a45;
+	}
+	/* 沒有段：灰的，按不下去 */
+	.play:disabled,
+	.play:disabled:hover {
+		background: var(--muted, #66718a);
+		border-color: var(--muted, #66718a);
 	}
 	.play.on {
 		background: #fff;

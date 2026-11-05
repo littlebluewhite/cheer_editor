@@ -112,6 +112,7 @@ export {
 	currentFormation,
 	deleteFormation,
 	formationAt,
+	snapPlayhead,
 	formationTimes,
 	formationWalks,
 	insertFormation,
@@ -181,7 +182,7 @@ export {
 } from './time';
 export type { RulerMark, SegmentSpan, TimePosition } from './time';
 
-export { firstBeatPreview, playbackPlan, playStartSec } from './playback';
+export { firstBeatPreview, playbackPlan, playStartSec, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
 export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
