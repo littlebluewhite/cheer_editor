@@ -534,13 +534,19 @@ describe('動作', () => {
 		const placed = () =>
 			grid.queryAllByRole('button', { name: /^(拍子|步驟|手位) / }).map((b) => b.getAttribute('aria-label'));
 
-		// 選 1-3 到 1-4，點「下手」放滿兩拍；手位只放在第一拍。
-		await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+		// 選 1-3 到 1-4，點「下手」放滿兩拍；手位只放在第一拍。放完選取跳到下一拍，所以每次重選。
+		const select34 = async () => {
+			await fireEvent.click(grid.getByRole('button', { name: '1-3' }));
+			await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
+		};
+		await select34();
 		const steps = within(grid.getByRole('group', { name: '步驟' }));
 		const motions = within(grid.getByRole('group', { name: '手位' }));
-		await fireEvent.click(grid.getByRole('button', { name: '多選一拍' }));
 		await fireEvent.click(steps.getByRole('button', { name: '下手' }));
+		expect(grid.getByText(/^選了/).textContent).toBe('選了 1-5・1 拍');
+		await select34();
 		await fireEvent.click(motions.getByRole('button', { name: 'high V' }));
+		await select34();
 		await fireEvent.click(grid.getByRole('button', { name: 'down' }));
 		expect(placed()).toEqual(['拍子 down 1-3 到 1-4・2 拍', '步驟 下手 1-3 到 1-4・2 拍', '手位 high V 1-3・1 拍']);
 
@@ -560,6 +566,7 @@ describe('動作', () => {
 		expect(steps.getByRole('button', { name: '抬腳' })).toBeTruthy();
 
 		// 自己打手位，按「加入」。
+		await fireEvent.click(grid.getByRole('button', { name: '1-4' }));
 		await fireEvent.input(motions.getByRole('textbox', { name: '自己打手位' }), { target: { value: '拳頭' } });
 		await fireEvent.click(motions.getByRole('button', { name: '加入手位' }));
 		expect(placed()).toContain('手位 拳頭 1-4・1 拍');
@@ -589,6 +596,8 @@ describe('動作', () => {
 
 		const motions = within(grid.getByRole('group', { name: '手位' }));
 		await fireEvent.click(motions.getByRole('button', { name: 'T' }));
+		// 放完跳到下一拍：點回 1-7。
+		await fireEvent.click(grid.getByRole('button', { name: '1-7' }));
 		await pickWho('上層');
 		expect(chosen()).toBe('上層');
 		await fireEvent.click(motions.getByRole('button', { name: 'high V' }));

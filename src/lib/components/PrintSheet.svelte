@@ -1,14 +1,11 @@
 <script lang="ts">
-	// 八拍表列印：蓋在編輯畫面上，選全隊或一個隊員，按「列印」用瀏覽器列印（可存 PDF）。
+	// 八拍表列印：蓋在編輯畫面上，選全隊、一個隊員或一個全局角色（那些人每人一張個人版），
+	// 按「列印」用瀏覽器列印（可存 PDF）。
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
-	import {
-		cueText,
-		eightCountRows,
-		memberMarkers,
-		type EightCountCue,
-		type EightCountPhase,
-		type Flow
-	} from '#lib/core';
+	import { GLOBAL_ROLES, eightCountRows, memberMarkers, type Flow } from '#lib/core';
+	import { loadPrintChoice, savePrintChoice } from '#lib/local-settings.js';
+	import { untrack } from 'svelte';
+	import EightCountCueLine, { actionTitle } from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -16,37 +13,42 @@
 	interface Props {
 		flow: Flow;
 		onclose: () => void;
+		/** 編輯畫面只選了一個人時是他的 id：預設印他。 */
+		selected?: string | null;
 		/** 叫瀏覽器列印；測試換成假的（jsdom 沒有列印）。 */
 		print?: () => void;
 	}
 
-	let { flow, onclose, print = () => window.print() }: Props = $props();
+	let { flow, onclose, selected = null, print = () => window.print() }: Props = $props();
 
-	/** '' = 全隊。 */
-	let memberId = $state('');
+	/** 有隊員是這個全局角色才給選。 */
+	const roleChoices = $derived(
+		GLOBAL_ROLES.filter((r) => flow.members.some((m) => m.globalRole === r.key)).map((r) => ({
+			value: `role:${r.key}`,
+			label: `全部${r.label}`
+		}))
+	);
+	const valid = (c: string) =>
+		c === '' || flow.members.some((m) => m.id === c) || roleChoices.some((r) => r.value === c);
 
-	const rows = $derived(eightCountRows(flow, memberId || null));
+	/** '' = 全隊、隊員 id、'role:top' = 全部上層。打開時：編輯畫面選的那個人優先，再來是上次選的。 */
+	let choice = $state(
+		untrack(() => [selected ?? '', loadPrintChoice(flow.name)].find((c) => c && valid(c)) ?? '')
+	);
+
+	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
+	const sheets = $derived(
+		choice.startsWith('role:')
+			? flow.members.filter((m) => `role:${m.globalRole}` === choice).map((m) => m.id)
+			: [choice]
+	);
 	const markers = $derived(memberMarkers(flow));
-	const who = $derived.by(() => {
-		const m = flow.members.find((m) => m.id === memberId);
+	function whoText(id: string): string {
+		const m = flow.members.find((m) => m.id === id);
 		if (!m) return '全隊';
 		return flow.markers === 'initial'
 			? `${m.name}（場上寫「${markers[m.id]}」）`
 			: `${m.name}（場上 ${markers[m.id]} 號）`;
-	});
-
-	/** 「技巧·Lib」；名稱跟大類一樣（「舞蹈」）只寫一次。 */
-	function title(categoryLabel: string, name: string): string {
-		return name && name !== categoryLabel ? `${categoryLabel}·${name}` : categoryLabel;
-	}
-
-	/** 「拍子 down 1-6 到 1-7・2 拍」「手位 high V 1-8・1 拍・給上層」。 */
-	const cueLabel = (c: EightCountCue) => cueText(c.kind, c.word, c.span, c.who ?? '');
-
-	/** 「環節 上法 延伸 1-1 到 1-3」。 */
-	function phaseAria(eight: number | null, p: EightCountPhase): string {
-		const span = p.to > p.from ? `${eight}-${p.from} 到 ${eight}-${p.to}` : `${eight}-${p.from}`;
-		return `環節 ${p.label} ${span}`;
 	}
 </script>
 
@@ -56,8 +58,11 @@
 			<b class="tool-title">八拍表</b>
 			<label>
 				印誰
-				<select bind:value={memberId}>
+				<select bind:value={choice} onchange={() => savePrintChoice(flow.name, choice)}>
 					<option value="">全隊</option>
+					{#each roleChoices as r (r.value)}
+						<option value={r.value}>{r.label}</option>
+					{/each}
 					{#each flow.members as m (m.id)}
 						<option value={m.id}>{m.name}</option>
 					{/each}
@@ -69,103 +74,75 @@
 			<button type="button" onclick={close}>關閉</button>
 		</div>
 
-		<div class="page">
-			<h1>{flow.name}　八拍表　{who}</h1>
-			{#if !memberId}
-				<ul class="legend" aria-label="號碼和名字">
-					{#each flow.members as m (m.id)}
-						<li><b>{markers[m.id]}</b> {m.name}</li>
-					{/each}
-				</ul>
-			{/if}
-			<table>
-				<thead>
-					<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
-				</thead>
-				{#each rows as row, i (i)}
-					<tbody>
-						<tr>
-							<td class="seg">{row.segmentLabel}</td>
-							<td class="seg">{row.eightText}</td>
-							<td class="num">{row.startSec.toFixed(1)}</td>
-							<td>
-								{#each row.actions as a, j (j)}
-									<div class="action">
-										<b class="at">{a.at}</b>
-										{title(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
-									</div>
-								{/each}
-								{#each row.continuing as name, j (j)}
-									<div class="muted">↳ {name} 繼續</div>
-								{/each}
-								{#each row.walks as w, j (j)}
-									<div>{w}</div>
-								{/each}
-							</td>
-							<td>
-								{#each row.formations as f (f.number)}
-									<figure>
-										<div class="mini">
-											<Field
-												field={flow.field}
-												members={flow.members}
-												{markers}
-												positions={f.pos}
-												controls={false}
-												marked={memberId ? [memberId] : []}
-												crop
-											/>
+		{#each sheets as memberId (memberId)}
+			{@const rows = eightCountRows(flow, memberId || null)}
+			<div class="page">
+				<h1>{flow.name}　八拍表　{whoText(memberId)}</h1>
+				{#if !memberId}
+					<ul class="legend" aria-label="號碼和名字">
+						{#each flow.members as m (m.id)}
+							<li><b>{markers[m.id]}</b> {m.name}</li>
+						{/each}
+					</ul>
+				{/if}
+				<table>
+					<thead>
+						<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
+					</thead>
+					{#each rows as row, i (i)}
+						<tbody>
+							<tr>
+								<td class="seg">{row.segmentLabel}</td>
+								<td class="seg">{row.eightText}</td>
+								<td class="num">{row.startSec.toFixed(1)}</td>
+								<td>
+									{#each row.actions as a, j (j)}
+										<div class="action">
+											<b class="at">{a.at}</b>
+											{actionTitle(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
+											{#if a.note}<div class="note">{a.note}</div>{/if}
 										</div>
-										<figcaption>{f.caption}</figcaption>
-									</figure>
-								{/each}
-							</td>
-						</tr>
-						{#if row.cues.length}
-							<tr class="cue-row">
-								<td colspan="5">
-									{#each row.cues as line, j (j)}
-										{@const name = title(line.categoryLabel, line.name)}
-										<div class="cue-line" role="group" aria-label="{name} 的拍點">
-											<span class="cue-name">{name}</span>
-											<div class="beats">
-												{#if line.phases.length}
-													<div class="phases">
-														{#each line.phases as p, k (k)}
-															<span
-																class="phase"
-																data-phase
-																style:grid-column="{p.from} / {p.to + 1}"
-																style:border-top-color={p.color}
-																aria-label={phaseAria(row.eight, p)}>{p.label}</span
-															>
-														{/each}
-													</div>
-												{/if}
-												<div class="cells">
-													{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-														<span class="n" style:grid-column={n}>{n}</span>
-													{/each}
-													{#each line.cues as c, k (k)}
-														<span
-															class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
-															style:grid-column="{c.from} / {c.to + 1}"
-															aria-label={cueLabel(c)}
-															title={c.who ? `${c.word}（${c.who}）` : c.word}
-															>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{c.word}{#if c.who}<small>{c.who}</small>{/if}{/if}</span
-														>
-													{/each}
-												</div>
+									{/each}
+									{#each row.continuing as name, j (j)}
+										<div class="muted">↳ {name} 繼續</div>
+									{/each}
+									{#each row.walks as w, j (j)}
+										<div>{w}</div>
+									{/each}
+								</td>
+								<td>
+									{#each row.formations as f (f.number)}
+										<figure>
+											<div class="mini">
+												<Field
+													field={flow.field}
+													members={flow.members}
+													{markers}
+													positions={f.pos}
+													controls={false}
+													marked={memberId ? [memberId] : []}
+													crop
+												/>
 											</div>
-										</div>
+											<figcaption>{f.caption}</figcaption>
+										</figure>
 									{/each}
 								</td>
 							</tr>
-						{/if}
-					</tbody>
-				{/each}
-			</table>
-		</div>
+							{#if row.cues.length}
+								<tr class="cue-row">
+									<td colspan="5">
+										{#each row.cues as line, j (j)}
+											<EightCountCueLine {line} eight={row.eight} />
+										{/each}
+									</td>
+								</tr>
+							{/if}
+						</tbody>
+					{/each}
+				</table>
+			</div>
+		{/each}
 	{/snippet}
 </Modal>
 
@@ -253,110 +230,8 @@
 	tbody {
 		break-inside: avoid;
 	}
-	/* 拍點：一排 8 格，字寫在佔的格子裡。黑白印也分得出：拍子實心、步驟左邊粗線、手位圓角虛線小牌子。 */
 	.cue-row td {
 		padding: 4px 8px 6px;
-	}
-	.cue-line {
-		display: flex;
-		gap: 8px;
-		align-items: start;
-		margin: 2px 0;
-	}
-	.cue-name {
-		flex: 0 0 9em;
-		font-size: 12px;
-		font-weight: 600;
-		padding-top: 2px;
-	}
-	.beats {
-		flex: 1;
-		min-width: 0;
-	}
-	/* 環節：拍點上面一行，左右直線框出範圍、上緣是環節的顏色，寫種類和名字（黑白印靠線和字）。 */
-	.phases {
-		display: grid;
-		grid-template-columns: repeat(8, 1fr);
-		margin-bottom: 2px;
-	}
-	.phase {
-		grid-row: 1;
-		margin: 0 1px;
-		padding: 1px 4px;
-		font-size: 11px;
-		font-weight: 600;
-		line-height: 1.3;
-		border: 1.5px solid #16213a;
-		border-top-width: 3px;
-		border-bottom: none;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		print-color-adjust: exact;
-		-webkit-print-color-adjust: exact;
-	}
-	.cells {
-		display: grid;
-		grid-template-columns: repeat(8, 1fr);
-		grid-auto-flow: row dense;
-		gap: 2px 0;
-		padding-bottom: 2px;
-		border: 1px solid #c9ced8;
-		background: linear-gradient(to right, #c9ced8 1px, transparent 1px) 0 0 / 12.5% 100%;
-		print-color-adjust: exact;
-		-webkit-print-color-adjust: exact;
-	}
-	.n {
-		grid-row: 1;
-		padding: 0 4px;
-		font-size: 10px;
-		color: #7a8296;
-		border-bottom: 1px solid #c9ced8;
-	}
-	.cue {
-		margin: 0 2px;
-		padding: 1px 4px;
-		font-size: 12px;
-		line-height: 1.3;
-		border-radius: 2px;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-	.cue small {
-		margin-left: 4px;
-		font-size: 10px;
-	}
-	/* 從 & 開始的拍點：格子只能整格，拍寫在字前面 */
-	.cue .span {
-		margin-right: 4px;
-		font-size: 10px;
-		font-weight: 400;
-	}
-	.cue.down {
-		background: var(--cue-down);
-		color: #fff;
-		font-weight: 600;
-	}
-	.cue.up {
-		background: var(--cue-up);
-		color: #fff;
-		font-weight: 600;
-	}
-	.cue.step {
-		background: var(--cue-step-bg);
-		border: 1px solid var(--cue-step-line);
-		border-left-width: 4px;
-		color: var(--cue-step-ink);
-	}
-	/* 手位靠左、跟著字寬，最寬到自己那一拍（左右各留 2px），再長就「…」，不蓋到下一拍。 */
-	.cue.motion {
-		justify-self: start;
-		max-width: calc(100% - 4px);
-		background: var(--cue-motion-bg);
-		border: 1px dashed var(--cue-motion-line);
-		border-radius: 999px;
-		color: var(--cue-motion-ink);
 	}
 	.num {
 		font-variant-numeric: tabular-nums;
@@ -365,6 +240,13 @@
 		display: inline-block;
 		min-width: 3.5em;
 		font-variant-numeric: tabular-nums;
+	}
+	/* 備註：動作底下，對齊動作名字（不在時間底下） */
+	.note {
+		margin-left: 3.5em;
+		font-size: 12px;
+		color: #4a5368;
+		white-space: pre-wrap;
 	}
 	figure {
 		margin: 0 0 4px;
@@ -398,21 +280,16 @@
 			overflow: visible;
 			background: #fff;
 		}
-		/* 長拍點、環節名字換行，不用「...」截掉 */
-		.cue,
-		.phase {
-			white-space: normal;
-			overflow: visible;
-			text-overflow: clip;
-			overflow-wrap: anywhere;
-		}
 		/* 同一個八拍可以跨頁（不然內容超過一頁時，第 1 頁只剩標題）；小站位圖不切開 */
 		tbody {
 			break-inside: auto;
 		}
-		figure,
-		.cue-line {
+		figure {
 			break-inside: avoid;
+		}
+		/* 照全局角色印：每人一張，從新的一頁開始 */
+		.page + .page {
+			break-before: page;
 		}
 		.page {
 			margin: 0;

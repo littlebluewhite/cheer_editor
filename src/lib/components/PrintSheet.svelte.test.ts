@@ -14,7 +14,7 @@ import {
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PrintSheet from './PrintSheet.svelte';
 
 /** 音樂 1（150 BPM、8 個八拍），第 2 個八拍有一張站位；第 1 個八拍 小A 上層、小B 主底做 Lib，第 3 拍後半拍 小C 跳。 */
@@ -61,6 +61,9 @@ const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').sli
 const actionsCell = (row: HTMLElement) => within(row).getAllByRole('cell')[3].textContent!;
 
 describe('八拍表列印', () => {
+	// 「印誰」記在 localStorage（照流程名字），每個測試從沒選過開始
+	beforeEach(() => localStorage.clear());
+
 	it('預設印全隊：一列一個八拍，寫段、第幾個八拍、開始秒數和這個八拍開始的動作', () => {
 		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
 		const rows = bodyRows();
@@ -280,6 +283,65 @@ describe('八拍表列印', () => {
 		expect(print).toHaveBeenCalledOnce();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(onclose).toHaveBeenCalledOnce();
+	});
+
+	describe('印誰', () => {
+		/** 照選項的字選「印誰」。 */
+		async function choose(label: string) {
+			const option = screen.getByRole('option', { name: label }) as HTMLOptionElement;
+			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: option.value } });
+		}
+		const chosen = () => (screen.getByLabelText('印誰') as HTMLSelectElement).selectedOptions[0].textContent;
+
+		it('記住上次選的：選「小A」關掉再打開，還是小A', async () => {
+			const first = render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+			await choose('小A');
+			first.unmount();
+			render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+			expect(chosen()).toBe('小A');
+			expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('小A');
+		});
+
+		it('編輯畫面只選了一個人時預設印他（比上次選的優先）', async () => {
+			const first = render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+			await choose('小A');
+			first.unmount();
+			render(PrintSheet, { flow: sample(), selected: 'm2', onclose: vi.fn(), print: vi.fn() });
+			expect(chosen()).toBe('小B');
+		});
+
+		it('選「全部底層」：每個底層各印一張個人版', async () => {
+			render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+			await choose('全部底層');
+			const titles = screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent);
+			expect(titles).toEqual(['全國賽　八拍表　小B（場上 2 號）', '全國賽　八拍表　小C（場上 3 號）']);
+			const tables = screen.getAllByRole('table');
+			expect(tables).toHaveLength(2);
+			// 個人版：小B 只有 Lib（主底），小C 只有跳躍
+			expect(tables[0].textContent).toContain('主底');
+			expect(tables[0].textContent).not.toContain('跳躍');
+			expect(tables[1].textContent).toContain('跳躍');
+			expect(tables[1].textContent).not.toContain('Lib');
+			expect(screen.queryByRole('list', { name: '號碼和名字' })).toBeNull();
+		});
+	});
+
+	it('有備註的動作，在動作底下印備註', () => {
+		const flow = flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'dance',
+				name: '開場',
+				start: 32,
+				length: 16,
+				note: '最後一拍看前面',
+				members: [{ memberId: 'm1', role: null }]
+			})
+		);
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const row = bodyRows().find((r) => actionsCell(r).includes('開場'))!;
+		const action = within(row).getByText(/舞蹈·開場/);
+		expect(within(action).getByText('最後一拍看前面')).toBeTruthy();
 	});
 
 	describe('拍點', () => {

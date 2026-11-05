@@ -2,16 +2,19 @@
 	// 拍點格子：像紙本八拍表，動作碰到的每個八拍一排 8 個數字格，下面是拍子、步驟、手位三條。
 	// 點一格選一拍；按住 Shift 點另一格選一段；也可以在數字格或拍點條的空格上按住拖過幾拍。
 	// 選好就在選的拍旁邊跳出拍點小窗，裡面有給誰、＋、－ 和三種拍點的按鈕。
-	// 點 down、up 就放滿選到的拍，選取跳到下一拍。
+	// 點 down、up 就放滿選到的拍；放完拍子、步驟、手位，選取都跳到下一拍。重新選拍（沒按 Shift）時「給誰」回到全部。
+	// 按住 Shift 時小窗不擋點擊，點得到小窗下面的格子（跨八拍選拍）。
+	// 選好拍按 ⌘C／Ctrl+C（或小窗的「複製」）複製選的拍裡的拍點，到同一個或別的動作選一拍按 ⌘V（「貼上」）貼上。
 	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 一格分前後兩個半格：從 & 開始或結束的拍點只塗半格；點這種拍點，選回它原本的範圍（也從 & 開始）。
 	// 現在播到的那一拍有標記。格子上按方向鍵左右移選取，加 Shift 延長選取；格子、小窗裡按 Delete／Backspace 清掉選的拍裡的拍點。
-	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
+	// 放之前選「給誰」：全部、動作裡的任務角色或隊員（選單分「任務角色」「隊員」兩組）。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	// 選的拍和給誰放在編輯 session（session.beats，選拍的規則在那裡）；這裡只管選拍的指標、焦點和畫格子。
 	// 拍子那條上面一直有一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
-	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
+	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入（名字欄按 Enter 也行）、清掉。
+	// 種類預設接在上一個環節後面（上法 → 中段 → 轉接 → 下法）。
 	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
 	// 選的拍剛好是一個環節的拍（例：點環節的色條）時，環節列多出改它名字、種類、顏色的地方。
 	// 口號段不數拍、沒有格子：直接一列「環節」，環節按鈕照加的先後排、種類、名字、加入；
@@ -41,10 +44,13 @@
 		toPosition,
 		clearCues,
 		clearPhaseBeats,
+		copyCues,
 		cueText,
 		deletePhase,
 		markPhaseBeats,
 		memberName,
+		nextPhaseKind,
+		pasteCues,
 		phaseColor,
 		placeCue,
 		sameWho,
@@ -90,7 +96,7 @@
 			{ kind: 'motion' as const, label: CUE_KIND_LABELS.motion, words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
 		];
 	});
-	/** 「給誰」的按鈕：全部、動作裡出現的任務角色、動作裡的隊員。 */
+	/** 「給誰」的選項：全部、動作裡出現的任務角色、動作裡的隊員（照這個順序編號，選單的 value 是編號）。 */
 	const whoOptions = $derived.by(() => {
 		const roles = [...new Set(action.members.flatMap((m) => (m.role === null ? [] : [m.role])))];
 		return [
@@ -99,10 +105,22 @@
 			...action.members.map((m) => ({ label: memberName(flow, m.memberId), who: { member: m.memberId } as Who }))
 		];
 	});
+	/** 選單裡的兩組：任務角色、隊員（編號接在「全部」後面）。 */
+	const whoGroups = $derived.by(() => {
+		const opts = whoOptions.map((o, i) => ({ ...o, i }));
+		return [
+			{ label: '任務角色', options: opts.filter((o) => o.who !== null && 'role' in o.who) },
+			{ label: '隊員', options: opts.filter((o) => o.who !== null && 'member' in o.who) }
+		].filter((g) => g.options.length);
+	});
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
 	let phaseName = $state('');
+	/** 按住 Shift：小窗不吃點擊，點得到下面的格子。 */
+	let through = $state(false);
+	/** 複製完的提示（「複製了 3 個拍點」）；重新開小窗就收掉。 */
+	let copyNote = $state('');
 	/** 口號段點選的環節 id。 */
 	let chosen = $state<string | null>(null);
 
@@ -165,6 +183,7 @@
 			ask.clear();
 			pop = false;
 			chosen = null;
+			phaseKind = nextPhaseKind(phases.at(-1)?.kind);
 		});
 	});
 
@@ -184,6 +203,7 @@
 
 	function openPop() {
 		hold = false;
+		copyNote = '';
 		ask.clear();
 		pop = true;
 	}
@@ -232,11 +252,11 @@
 		beats.grow(step);
 	}
 
-	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。拍子放完選取跳到下一拍。 */
+	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。放完選取跳到下一拍。 */
 	function place(kind: CueKind, word: string): boolean {
 		const len = kind === 'motion' ? BEAT : selLen;
 		const placed = send(() => placeCue(flow, action.id, { kind, at: sel.from, len, word, who: beats.who }));
-		if (placed && kind === 'count' && beats.next()) follow = pop;
+		if (placed && beats.next()) follow = pop;
 		return placed;
 	}
 
@@ -265,13 +285,24 @@
 		send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
-	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。 */
+	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。下一個環節的種類預設接在它後面。 */
 	function addNewPhase() {
 		const beats = segment?.kind === 'music' ? { at: sel.from, len: selLen } : undefined;
+		const kind = phaseKind;
 		send(
-			(o) => addPhase(flow, action.id, { kind: phaseKind, name: phaseName, beats }, o),
-			() => (phaseName = '')
+			(o) => addPhase(flow, action.id, { kind, name: phaseName, beats }, o),
+			() => {
+				phaseName = '';
+				phaseKind = nextPhaseKind(kind);
+			}
 		);
+	}
+
+	/** 環節名字欄按 Enter 就加入（選字中的 Enter 不算）。 */
+	function onPhaseKey(e: KeyboardEvent, add: () => void) {
+		if (e.key !== 'Enter' || composing(e)) return;
+		e.preventDefault();
+		add();
 	}
 
 	/** 口號段刪掉點選的環節。 */
@@ -289,12 +320,43 @@
 		send(() => clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
 	}
 
-	/** 格子、小窗裡按 Delete／Backspace（不在打字）：清掉選的拍裡每一種拍點。整個動作不刪（表單攔下來）。 */
-	function deleteKey(e: KeyboardEvent) {
-		if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+	/** 複製選的拍裡的拍點（位置從選的第一拍算）。 */
+	function copy() {
+		hold = pop;
+		const cues = copyCues(action, sel.from, sel.to + BEAT);
+		if (cues.length) beats.copied = cues;
+		copyNote = cues.length ? `複製了 ${cues.length} 個拍點，選一拍按「貼上」或 ⌘V` : '選的拍裡沒有拍點';
+	}
+
+	/** 把複製的拍點從選的第一拍開始貼上。 */
+	function paste() {
+		copyNote = '';
+		send(() => pasteCues(flow, action.id, sel.from, beats.copied));
+	}
+
+	/**
+	 * 格子、小窗裡的按鍵（不在打字）：Delete／Backspace 清掉選的拍裡每一種拍點（整個動作不刪，表單攔下來）；
+	 * ⌘C／Ctrl+C 複製、⌘V／Ctrl+V 貼上。
+	 */
+	function sheetKey(e: KeyboardEvent) {
 		if ((e.target as Element).closest('input, textarea, select')) return;
-		e.preventDefault();
-		send(() => clearCues(flow, action.id, null, sel.from, sel.to + BEAT));
+		const key = e.key.toLowerCase();
+		const mod = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
+		if (e.key === 'Delete' || e.key === 'Backspace') {
+			e.preventDefault();
+			send(() => clearCues(flow, action.id, null, sel.from, sel.to + BEAT));
+		} else if (mod && key === 'c') {
+			e.preventDefault();
+			copy();
+		} else if (mod && key === 'v') {
+			e.preventDefault();
+			paste();
+		}
+	}
+
+	/** 按住、放開 Shift（視窗失焦也算放開）。 */
+	function shiftKey(e: KeyboardEvent) {
+		if (e.key === 'Shift') through = e.type === 'keydown';
 	}
 
 	/** 點一個拍點或環節：選回它原本的範圍（從 & 開始的也照實）；拍點的「給誰」也換成它的。 */
@@ -450,7 +512,7 @@
 			class="sheet-wrap"
 			bind:this={wrapEl}
 			style:padding-bottom={reserve ? `${reserve}px` : undefined}
-			onkeydown={deleteKey}
+			onkeydown={sheetKey}
 		>
 			<div
 				class="sheet"
@@ -575,6 +637,7 @@
 				<div
 					class="pop"
 					class:above={popPos.above}
+					class:through
 					bind:this={popEl}
 					style:--arrow="{popPos.arrow}px"
 					role="dialog"
@@ -586,10 +649,24 @@
 						<button type="button" class="pm" aria-label="少選一拍" onclick={() => grow(-1)}>－</button>
 						<button type="button" class="pm" aria-label="多選一拍" onclick={() => grow(1)}>＋</button>
 						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
+						<button type="button" class="tool" aria-label="複製選的拍點" title="複製（⌘C／Ctrl+C）" onclick={copy}>複製</button>
+						<button
+							type="button"
+							class="tool"
+							aria-label="貼上拍點"
+							title="貼上（⌘V／Ctrl+V）"
+							disabled={!beats.copied.length}
+							onclick={paste}>貼上</button
+						>
 						<label class="who-sel">
 							<span>給誰</span>
 							<select value={whoIndex} onchange={(e) => (beats.who = whoOptions[Number(e.currentTarget.value)].who)}>
-								{#each whoOptions as o, i (i)}<option value={i}>{o.label}</option>{/each}
+								<option value={0}>{whoOptions[0].label}</option>
+								{#each whoGroups as g (g.label)}
+									<optgroup label={g.label}>
+										{#each g.options as o (o.i)}<option value={o.i}>{o.label}</option>{/each}
+									</optgroup>
+								{/each}
 							</select>
 						</label>
 						<button type="button" class="x" aria-label="關閉" onclick={() => (pop = false)}>✕</button>
@@ -654,6 +731,7 @@
 						>
 						{#if editing}{@render edit(editing)}{/if}
 					</div>
+					{#if copyNote}<p class="hint" role="status">{copyNote}</p>{/if}
 					{@render asks()}
 				</div>
 			{/if}
@@ -667,7 +745,13 @@
 		<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
 			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
 		</select>
-		<input class="custom" aria-label="環節的名字" placeholder="名字，例：延伸" bind:value={phaseName} />
+		<input
+			class="custom"
+			aria-label="環節的名字"
+			placeholder="名字，例：延伸"
+			bind:value={phaseName}
+			onkeydown={(e) => onPhaseKey(e, add)}
+		/>
 		<button type="button" class="word" aria-label="加入環節" onclick={add}>加入</button>
 	</span>
 {/snippet}
@@ -711,7 +795,7 @@
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 {/snippet}
 
-<svelte:window bind:innerWidth={winW} />
+<svelte:window bind:innerWidth={winW} onkeydown={shiftKey} onkeyup={shiftKey} onblur={() => (through = false)} />
 
 <style>
 	.cues {
@@ -1098,6 +1182,20 @@
 		border-left: 1px solid var(--line, #d8dee9);
 		border-top: 1px solid var(--line, #d8dee9);
 		transform: rotate(45deg);
+	}
+	/* 按住 Shift：小窗變淡、不吃點擊，點得到下面的格子。 */
+	.pop.through {
+		pointer-events: none;
+		opacity: 0.55;
+	}
+	.tool {
+		min-height: 28px;
+		padding: 2px 8px;
+		border-radius: 6px;
+		font-size: 12px;
+	}
+	.tool:disabled {
+		opacity: 0.4;
 	}
 	/* 放在選取上面時，小尖角在下面往下指。 */
 	.pop.above::before {
