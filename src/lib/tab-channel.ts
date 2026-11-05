@@ -1,8 +1,8 @@
-// 分頁頻道：同一個瀏覽器開著的編輯器分頁之間傳話。草稿只有一份，首頁要丟掉草稿前，先問有沒有別的分頁正在編輯它。
+// 分頁頻道：同一個瀏覽器開著的編輯器分頁之間傳話。草稿每支流程一份；打開、清掉一支流程的草稿前，先問有沒有別的分頁正在編這支流程。
 // 真的用 BroadcastChannel；沒有 BroadcastChannel 的瀏覽器沒有分頁頻道，當作沒有別的分頁。測試用 #lib/test-fakes.js 的 fakeTabs。
 
-/** 分頁之間傳的話：「有人正在編輯草稿嗎？」和回答「正在編」。 */
-export type TabMessage = 'editing?' | 'editing';
+/** 分頁之間傳的話：「有人正在編這支流程（草稿 id）嗎？」和回答「正在編」。 */
+export type TabMessage = { kind: 'editing?'; id: string } | { kind: 'editing'; id: string };
 
 export interface TabChannel {
 	/** 送給別的分頁（自己收不到）。 */

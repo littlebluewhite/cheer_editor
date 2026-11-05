@@ -276,7 +276,7 @@ describe('拍點跟著動作', () => {
 
 describe('給誰', () => {
 	const top = { role: '上層' };
-	const who = (kind: 'count' | 'motion', at: number, len: number, word: string, w: Cue['who']): Cue => ({
+	const who = (kind: Cue['kind'], at: number, len: number, word: string, w: Cue['who']): Cue => ({
 		kind,
 		at,
 		len,
@@ -311,6 +311,17 @@ describe('給誰', () => {
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm1' } }));
 		expect(cuesOf(flowOf(clearCues(flow, 'x1', 'motion', 0, 2)))).toEqual([]);
+	});
+
+	it('種類給 null：每一種都清，露在外面的部分留著', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 2, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 4, word: '上' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'T' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 2, word: 'up' }));
+		expect(cuesOf(flowOf(clearCues(flow, 'x1', null, 0, 2)))).toEqual([
+			who('step', 2, 2, '上', null),
+			who('count', 4, 2, 'up', null)
+		]);
 	});
 
 	it.each([
