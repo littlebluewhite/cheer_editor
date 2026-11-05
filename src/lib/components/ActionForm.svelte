@@ -525,7 +525,7 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {cellAt} />
+			<CueGrid {action} {playheadSec} {cellAt} />
 		{:else}
 			<button
 				type="button"
