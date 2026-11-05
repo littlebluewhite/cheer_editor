@@ -1172,7 +1172,8 @@ describe('八拍表', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '八拍表' }));
 		const sheet = screen.getByRole('dialog', { name: '八拍表' });
 		expect(within(sheet).getByRole('heading').textContent).toContain('全國賽');
-		expect(within(sheet).getAllByRole('row')).toHaveLength(9);
+		// 標題一列；第 1 個八拍有開頭那張站位，第 2 到第 8 個八拍空的合成一列
+		expect(within(sheet).getAllByRole('row')).toHaveLength(3);
 		await fireEvent.click(within(sheet).getByRole('button', { name: '關閉' }));
 		expect(screen.queryByRole('dialog', { name: '八拍表' })).toBeNull();
 		expect(position()).toBe('音樂 1 3-5&');

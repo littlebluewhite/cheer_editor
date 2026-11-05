@@ -39,6 +39,21 @@ describe('窄螢幕：擋住編輯畫面的提示', () => {
 		expect(hint().getByRole('button', { name: '回首頁' })).toBeTruthy();
 	});
 
+	it('隊員開了流程檔，按「看八拍表」直接看八拍表（只能看）；關掉回到提示', async () => {
+		setup();
+		await flush();
+		await openFile(writeFlowFile(audioFlow(), {}));
+		await flush();
+		await fireEvent.click(hint().getByRole('button', { name: '看八拍表' }));
+		const sheet = within(screen.getByRole('dialog', { name: '八拍表' }));
+		expect(sheet.getByLabelText('印誰')).toBeTruthy();
+		// 提示收起來，不蓋住八拍表
+		expect(screen.queryByRole('region', { name: '視窗太窄了' })).toBeNull();
+		await fireEvent.click(sheet.getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '八拍表' })).toBeNull();
+		expect(hint().getByRole('button', { name: '看八拍表' })).toBeTruthy();
+	});
+
 	it('剛建好的流程按「回首頁」：回到首頁，流程還在草稿裡，問要不要救回', async () => {
 		const drafts = setup();
 		await flush();

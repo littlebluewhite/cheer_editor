@@ -51,12 +51,47 @@ const action = (overrides: Partial<NewActionInput>): NewActionInput => ({
 
 describe('八拍表的列：全隊', () => {
 	it('音樂段一個八拍一列，寫段、第幾個八拍、開始秒數；最後不滿一個八拍也算一列', () => {
-		const rows = eightCountRows(sample(), null).filter((r) => r.segmentLabel === '音樂 1');
-		expect(rows.map((r) => [r.segmentLabel, r.eight, r.startSec])).toEqual([
-			['音樂 1', 1, 0],
-			['音樂 1', 2, expect.closeTo(3.2, 6)],
-			['音樂 1', 3, expect.closeTo(6.4, 6)]
+		// 每個八拍都有動作開始，才不會合起來
+		let flow = sample();
+		for (const start of [0, 16, 32]) flow = flowOf(addAction(flow, action({ start, length: 8 })));
+		const rows = eightCountRows(flow, null).filter((r) => r.segmentLabel === '音樂 1');
+		expect(rows.map((r) => [r.segmentLabel, r.eight, r.eightText, r.startSec])).toEqual([
+			['音樂 1', 1, '1', 0],
+			['音樂 1', 2, '2', expect.closeTo(3.2, 6)],
+			['音樂 1', 3, '3', expect.closeTo(6.4, 6)]
 		]);
+	});
+
+	it('連著沒有新動作的八拍合成一列，寫成範圍「2–3」，時間從第一個八拍開始算到最後一個結束', () => {
+		// 第 1 個八拍有開頭那張站位；第 2、3 個八拍什麼都沒有（第 3 個只有 4 拍）
+		const rows = eightCountRows(sample(), null).filter((r) => r.segmentLabel === '音樂 1');
+		expect(rows.map((r) => [r.eight, r.lastEight, r.eightText])).toEqual([
+			[1, 1, '1'],
+			[2, 3, '2–3']
+		]);
+		expect(rows[1].startSec).toBeCloseTo(3.2, 6);
+		expect(rows[1].durationSec).toBeCloseTo(3.2 + 1.6, 6);
+	});
+
+	it('中間有新動作的八拍把空的八拍分開；動作沒有拍點的延續八拍也算空的', () => {
+		let flow = flowOf(updateSegment(sample(), 's1', { eights: 8, lastBeats: 8 }));
+		// 1-1 開始、長 3 個八拍的舞蹈（沒有拍點），5-1 開始一個跳躍
+		flow = flowOf(addAction(flow, action({ category: 'dance', start: 0, length: 48 })));
+		flow = flowOf(addAction(flow, action({ category: 'jump', start: 64, length: 4 })));
+		const rows = eightCountRows(flow, null).filter((r) => r.segmentLabel === '音樂 1');
+		expect(rows.map((r) => r.eightText)).toEqual(['1', '2–4', '5', '6–8']);
+	});
+
+	it('有拍點、環節延續過來的八拍不算空的', () => {
+		let flow = flowOf(addAction(sample(), action({ start: 0, length: 32 })));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 14, len: 4, word: 'down' }));
+		expect(eightCountRows(flow, null).map((r) => r.eightText)).toEqual(['1', '2', '3', '整段 10.0 秒']);
+	});
+
+	it('口號段的八拍欄寫「整段 N 秒」', () => {
+		const chant = eightCountRows(sample(), null).find((r) => r.segmentLabel === '口號 1')!;
+		expect(chant.eightText).toBe('整段 10.0 秒');
+		expect(chant.lastEight).toBeNull();
 	});
 
 	it('每列寫這個八拍開始的動作：大類、名稱、人和任務角色', () => {
@@ -66,6 +101,7 @@ describe('八拍表的列：全隊', () => {
 			addAction(flow, action({ category: 'jump', name: '', start: 16, length: 4, members: [{ memberId: 'm3', role: null }] }))
 		);
 		const [first, second, third] = eightCountRows(flow, null);
+		expect(third.eightText).toBe('3');
 		expect(first.actions).toEqual([
 			{
 				at: '1',
@@ -75,7 +111,8 @@ describe('八拍表的列：全隊', () => {
 				members: [
 					{ memberId: 'm1', name: '小A', role: '上層' },
 					{ memberId: 'm2', name: '小B', role: '主底' }
-				]
+				],
+				who: '小A（上層）、小B（主底）'
 			}
 		]);
 		expect(second.actions).toEqual([
@@ -84,11 +121,25 @@ describe('八拍表的列：全隊', () => {
 				category: 'jump',
 				categoryLabel: '跳躍',
 				name: '',
-				members: [{ memberId: 'm3', name: '小C', role: null }]
+				members: [{ memberId: 'm3', name: '小C', role: null }],
+				who: '小C'
 			}
 		]);
 		// 動作只寫在開始的那一列，後面延續的八拍不重複寫
 		expect(third.actions).toEqual([]);
+		expect(first.actions[0].who).toBe('小A（上層）、小B（主底）');
+	});
+
+	it('全隊都在的動作寫「全隊」；個人表寫他自己', () => {
+		const everyone = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' },
+			{ memberId: 'm3', role: null }
+		];
+		const flow = flowOf(addAction(sample(), action({ category: 'dance', name: '開場', members: everyone })));
+		expect(eightCountRows(flow, null)[0].actions[0].who).toBe('全隊');
+		expect(eightCountRows(flow, 'm2')[0].actions[0].who).toBe('小B（主底）');
+		expect(eightCountRows(flow, 'm3')[0].actions[0].who).toBe('小C');
 	});
 
 	it('從半拍開始的動作寫「3 的 &」', () => {
@@ -116,16 +167,21 @@ describe('八拍表的列：一個隊員', () => {
 		flow = flowOf(
 			addAction(flow, action({ category: 'toss', name: '拋', start: 16, members: [{ memberId: 'm3', role: '後保' }] }))
 		);
-		const all = eightCountRows(flow, null);
 		const mine = eightCountRows(flow, 'm2');
-		expect(mine.map((r) => [r.segmentLabel, r.eight])).toEqual(all.map((r) => [r.segmentLabel, r.eight]));
+		// 他沒有新動作的八拍合成一列
+		expect(mine.map((r) => [r.segmentLabel, r.eightText])).toEqual([
+			['音樂 1', '1'],
+			['音樂 1', '2–3'],
+			['口號 1', '整段 10.0 秒']
+		]);
 		expect(mine[0].actions).toEqual([
 			{
 				at: '1',
 				category: 'stunt',
 				categoryLabel: '技巧',
 				name: 'Lib',
-				members: [{ memberId: 'm2', name: '小B', role: '主底' }]
+				members: [{ memberId: 'm2', name: '小B', role: '主底' }],
+				who: '小B（主底）'
 			}
 		]);
 		expect(mine[1].actions).toEqual([]);
@@ -143,11 +199,11 @@ describe('八拍表的列：站位', () => {
 		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
 		flow = flowOf(insertFormation(flow, 10.5));
 		const rows = eightCountRows(flow, null);
-		expect(rows.map((r) => r.formations.map((f) => [f.number, f.at]))).toEqual([
-			[[1, '1']],
-			[[2, '5']],
+		expect(rows.map((r) => r.formations.map((f) => [f.number, f.at, f.caption]))).toEqual([
+			[[1, '1', '站位 1・第 1 拍']],
+			[[2, '5', '站位 2・第 5 拍']],
 			[],
-			[[3, '2.5 秒']]
+			[[3, '2.5 秒', '站位 3・2.5 秒']]
 		]);
 		expect(rows[1].formations[0].pos.m1).toEqual([1, 2]);
 	});
@@ -157,7 +213,14 @@ describe('八拍表的列：站位', () => {
 		flow = flowOf(renameFormation(flow, flow.formations[1].id, '金字塔'));
 		const rows = eightCountRows(flow, null);
 		expect(rows[1].formations[0].name).toBe('金字塔');
+		expect(rows[1].formations[0].caption).toBe('站位 2 金字塔・第 5 拍');
 		expect(rows[0].formations[0].name).toBeUndefined();
+	});
+
+	it('站位在半拍上寫「第 3 拍的 &」', () => {
+		// 第 2 個八拍的第 3 拍後半拍：3.2 + 2.5 × 0.4 = 4.2 秒
+		const flow = flowOf(insertFormation(sample(), 4.2));
+		expect(eightCountRows(flow, null)[1].formations[0].caption).toBe('站位 2・第 3 拍的 &');
 	});
 });
 
@@ -219,10 +282,10 @@ describe('八拍表的列：拍點', () => {
 				categoryLabel: '技巧',
 				name: 'Cradle',
 				cues: [
-					{ kind: 'step', from: 5, to: 5, word: '下手', who: null },
-					{ kind: 'count', from: 6, to: 6, word: 'down', who: null },
-					{ kind: 'count', from: 7, to: 7, word: 'up', who: null },
-					{ kind: 'motion', from: 8, to: 8, word: 'high V', who: '上層' }
+					{ kind: 'step', from: 5, to: 5, span: '5', word: '下手', who: null },
+					{ kind: 'count', from: 6, to: 6, span: '6', word: 'down', who: null },
+					{ kind: 'count', from: 7, to: 7, span: '7', word: 'up', who: null },
+					{ kind: 'motion', from: 8, to: 8, span: '8', word: 'high V', who: '上層' }
 				],
 				phases: []
 			}
@@ -235,9 +298,9 @@ describe('八拍表的列：拍點', () => {
 		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 8, word: 'down' }));
 		const rows = eightCountRows(flow, null);
-		expect(rows[0].cues[0].cues).toEqual([{ kind: 'count', from: 7, to: 8, word: 'down', who: null }]);
+		expect(rows[0].cues[0].cues).toEqual([{ kind: 'count', from: 7, to: 8, span: '7 到 8', word: 'down', who: null }]);
 		expect(rows[1].cues).toEqual([
-			{ categoryLabel: '技巧', name: 'Lib', cues: [{ kind: 'count', from: 1, to: 2, word: 'down', who: null }], phases: [] }
+			{ categoryLabel: '技巧', name: 'Lib', cues: [{ kind: 'count', from: 1, to: 2, span: '1 到 2', word: 'down', who: null }], phases: [] }
 		]);
 		// 動作名字還是只在開始那一列的動作欄
 		expect(rows[1].actions).toEqual([]);
@@ -247,10 +310,23 @@ describe('八拍表的列：拍點', () => {
 		let flow = flowOf(addAction(sample(), action({ start: 0, length: 16 })));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 2, len: 4, word: '下手' }));
 		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 1 })) };
-		// 下手從 2 的 & 到 4 的 &
+		// 下手從 2 的 & 到 4 的 &：格子佔 2 到 4，字照實寫「2& 到 4」
 		expect(eightCountRows(flow, null)[0].cues[0].cues).toEqual([
-			{ kind: 'step', from: 2, to: 4, word: '下手', who: null }
+			{ kind: 'step', from: 2, to: 4, span: '2& 到 4', word: '下手', who: null }
 		]);
+	});
+
+	it('從「&」開始的拍點照實寫：一拍長寫「1& 到 2」，跨到下一列的兩列各寫自己那一段', () => {
+		let flow = flowOf(addAction(sample(), action({ start: 0, length: 32 })));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 2, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 14, len: 2, word: 'up' }));
+		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 1 })) };
+		const rows = eightCountRows(flow, null);
+		expect(rows[0].cues[0].cues.map((c) => [c.word, c.span])).toEqual([
+			['down', '1& 到 2'],
+			['up', '8&']
+		]);
+		expect(rows[1].cues[0].cues.map((c) => [c.word, c.span])).toEqual([['up', '1']]);
 	});
 
 	it('全隊表給隊員的寫他的名字；個人表只列給他的拍點，不寫給誰', () => {
@@ -308,7 +384,7 @@ describe('八拍表的列：環節', () => {
 			{
 				categoryLabel: '技巧',
 				name: 'Lib',
-				cues: [{ kind: 'count', from: 8, to: 8, word: 'down', who: null }],
+				cues: [{ kind: 'count', from: 8, to: 8, span: '8', word: 'down', who: null }],
 				phases: [
 					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b' },
 					{ label: '中段', from: 7, to: 8, color: '#475569' }
@@ -354,6 +430,6 @@ describe('八拍表的列：環節', () => {
 		const labels = (memberId: string) =>
 			eightCountRows(phased(), memberId).map((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)));
 		expect(labels('m2')).toEqual([['上法 延伸', '中段'], ['中段'], [], []]);
-		expect(labels('m3')).toEqual([[], [], [], []]);
+		expect(labels('m3')).toEqual([[], [], []]);
 	});
 });
