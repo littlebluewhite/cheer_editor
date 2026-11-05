@@ -88,7 +88,7 @@ describe('刪動作的提示', () => {
 		expect(screen.getByRole('status').textContent).toBe('已刪掉動作 技巧·Lib');
 		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的動作' }));
 		expect(bar()).not.toBeNull();
-		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByRole('status').textContent).toBe('已復原：刪動作 技巧·Lib');
 	});
 
 	it('表單的「刪除動作」也一樣有提示和復原', async () => {
