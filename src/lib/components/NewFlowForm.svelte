@@ -70,7 +70,7 @@
 	</label>
 
 	<fieldset>
-		<legend>場地<span>建好之後不能換</span></legend>
+		<legend>場地</legend>
 		<div class="options">
 			{#each FIELD_TEMPLATES as t, i (t.label)}
 				<label class="option">
@@ -153,12 +153,6 @@
 		margin-bottom: 6px;
 		font-size: 13px;
 		font-weight: 600;
-	}
-	legend span {
-		margin-left: 8px;
-		font-weight: 400;
-		color: var(--muted);
-		font-size: 12px;
 	}
 	.options {
 		display: grid;

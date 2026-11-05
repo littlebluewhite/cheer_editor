@@ -163,18 +163,16 @@ describe('段、八拍尺、上方列', () => {
 
 	it('超過時間規則時上方列提醒；流程設定可以關掉或改數字', async () => {
 		await newFlow();
-		expect(screen.queryByText(/口號段共/)).toBeNull();
+		expect(screen.queryByText('還沒有口號段')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		expect(screen.getByText(/口號段共 0.0 秒，少於 30 秒/)).toBeTruthy();
+		expect(screen.getByText('口號段加起來最少要 30 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '0' } });
-		expect(screen.queryByText(/口號段共/)).toBeNull();
-		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '30' } });
-		expect(screen.getByText(/口號段共 0.0 秒/)).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText('口號段加起來最少（秒）'), { target: { value: '20' } });
+		expect(screen.getByText('口號段加起來最少要 20 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
-		expect(screen.queryByText(/口號段共/)).toBeNull();
+		expect(screen.queryByText('還沒有口號段')).toBeNull();
 	});
 
 	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
@@ -1556,6 +1554,26 @@ describe('播放', () => {
 		await fireEvent.click(screen.getByLabelText('節拍器'));
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		expect(engine.clicks).toEqual([]);
+	});
+
+	it('播放速度選 0.5x：播放頭走一半速度', async () => {
+		const engine = await sample();
+		await fireEvent.change(screen.getByLabelText('播放速度'), { target: { value: '0.5' } });
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		engine.audible = engine.clicks[0].when + 6.4;
+		await nextFrame();
+		expect(position()).toBe('音樂 1 2-1');
+	});
+
+	it('重複開著、沒選動作：播到這個八拍結尾跳回這個八拍的 1', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByLabelText('重複'));
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		// 第 1 個八拍 3.2 秒
+		engine.audible = engine.clicks[0].when + 3.3;
+		await nextFrame();
+		expect(position()).toBe('音樂 1 1-1');
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
 	});
 
 	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {

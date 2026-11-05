@@ -4,12 +4,15 @@
 	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著，✗ 後面的按鈕停用）；
 	// 「全部 ✓ 存」一次存成每個環節都成功。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
 	// 只有一個環節：點了記號就存。
-	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次。
+	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
-	// 下面一排是這天的每一次，全上記的用虛線框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回。
+	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
+	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	import {
 		MARKS,
 		attemptText,
+		changeAttempt,
+		deleteAttempt,
 		deleteLastAttempt,
 		keptAttempt,
 		phaseColor,
@@ -17,6 +20,7 @@
 		recordAttempt,
 		restoreAttempt,
 		type Action,
+		type Attempt,
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -84,6 +88,12 @@
 		marks = {};
 	}
 
+	/** 只練幾個環節時點那一列的空白處（不是勾選框、名字、能按的記號）：跟點勾選框一樣。 */
+	function pickRow(e: MouseEvent, id: string) {
+		if (whole || (e.target as Element).closest('label, button:enabled')) return;
+		pick(id, !picked.includes(id));
+	}
+
 	/**
 	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存。
 	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
@@ -107,10 +117,54 @@
 		});
 	}
 
+	/** 點了這天的哪一次在改（id）；沒有是 null。 */
+	let editing = $state<string | null>(null);
+	/** 改的那一次現在的記號（還沒存）。 */
+	let draft = $state<Record<string, Mark>>({});
+	/** 改的那一次（紀錄被別的地方拿掉了就收起來）。 */
+	const edited = $derived(today.find((r) => r.id === editing));
+
+	function openEdit(attempt: Attempt) {
+		editing = editing === attempt.id ? null : attempt.id;
+		draft = { ...attempt.marks };
+	}
+
+	/** 改的時候點記號：再點一次點著的那顆就變空的。 */
+	function retap(phaseId: string, mark: Mark) {
+		if (draft[phaseId] === mark) {
+			const { [phaseId]: _, ...rest } = draft;
+			draft = rest;
+		} else draft = { ...draft, [phaseId]: mark };
+	}
+
+	function saveEdit(attempt: Attempt) {
+		ask.send(() => changeAttempt(flow, action.id, attempt.id, draft), {
+			done: () => {
+				editing = null;
+				flash.show({ text: '已改' });
+			}
+		});
+	}
+
+	/** 刪掉這天的某一次的提示，例：已刪掉 ·✓（第 4 次）。 */
+	const removedText = (attempt: Attempt) => `已刪掉 ${attemptText(action, attempt)}（第 ${today.indexOf(attempt) + 1} 次）`;
+
+	function removeEdited(attempt: Attempt) {
+		editing = null;
+		removeWithRestore(
+			ask,
+			flash,
+			removedText(attempt),
+			() => deleteAttempt(flow, action.id, attempt.id),
+			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
+		);
+	}
+
 	function removeLast() {
 		removeWithRestore(
 			ask,
 			flash,
+			removedText(today.findLast((r) => r.practice === 'drill')!),
 			() => deleteLastAttempt(flow, action.id, who, date, 'drill'),
 			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
 		);
@@ -134,11 +188,13 @@
 			</div>
 		{/if}
 	</header>
+	{#if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
 
 	<div class="phases">
 		{#each phases as p, i (p.id)}
 			{@const on = planned.includes(p) && i <= failAt}
-			<div class="phase" class:off={!on}>
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (鍵盤用勾選框) -->
+			<div class="phase" class:off={!on} class:pickable={!whole} onclick={(e) => pickRow(e, p.id)}>
 				{#if whole}
 					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
 				{:else}
@@ -181,9 +237,17 @@
 	<footer>
 		{#if today.length}
 			<ol class="day" aria-label="這天的每一次">
-				{#each today as r (r.id)}
+				{#each today as r, i (r.id)}
 					{@const run = r.practice === 'runThrough'}
-					<li class:run title={run ? '全上' : '分段練'}>{attemptText(action, r)}</li>
+					{@const kind = run ? '全上' : r.whole ? '分段練' : '只練幾個環節'}
+					<li class:run class:partial={!r.whole} title={kind}>
+						<button
+							type="button"
+							aria-expanded={editing === r.id}
+							aria-label="改第 {i + 1} 次（{kind} {attemptText(action, r)}）"
+							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
+						>
+					</li>
 				{/each}
 			</ol>
 		{:else}
@@ -197,6 +261,33 @@
 			onclick={removeLast}>刪掉上一次</button
 		>
 	</footer>
+	{#if edited}
+		{@const n = today.indexOf(edited) + 1}
+		<div class="edit" role="group" aria-label="改第 {n} 次">
+			<b>改第 {n} 次{edited.practice === 'runThrough' ? '（全上）' : ''}</b>
+			{#each phases as p (p.id)}
+				<div class="phase">
+					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
+					<div class="marks">
+						{#each MARKS as m (m.key)}
+							<button
+								type="button"
+								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
+								aria-label="第 {n} 次 {phaseLabel(p)} {m.label}"
+								aria-pressed={draft[p.id] === m.key}
+								onclick={() => retap(p.id, m.key)}>{m.key}</button
+							>
+						{/each}
+					</div>
+				</div>
+			{/each}
+			<div class="edit-row">
+				<button type="button" class="danger" onclick={() => removeEdited(edited)}>刪掉這一次</button>
+				<button type="button" onclick={() => (editing = null)}>不改了</button>
+				<button type="button" class="primary" onclick={() => saveEdit(edited)}>存修改</button>
+			</div>
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -272,8 +363,24 @@
 		font-size: 14px;
 		font-weight: 700;
 	}
-	label.phase-name {
+	label.phase-name,
+	.phase.pickable {
 		cursor: pointer;
+	}
+	/* 勾選框放大，好點 */
+	label.phase-name input {
+		width: 20px;
+		height: 20px;
+		margin: 0;
+	}
+	/* 點沒勾的環節停用的記號：交給那一列去勾 */
+	.phase.pickable .mark:disabled {
+		pointer-events: none;
+	}
+	.hint {
+		margin: -4px 0 0;
+		color: var(--muted);
+		font-size: 12px;
 	}
 	.chip {
 		flex: none;
@@ -336,6 +443,10 @@
 		.scope label {
 			min-height: 40px;
 		}
+		label.phase-name input {
+			width: 26px;
+			height: 26px;
+		}
 	}
 	footer {
 		display: flex;
@@ -352,17 +463,32 @@
 		gap: 4px;
 	}
 	.day li {
-		padding: 0 5px;
 		border: 1px solid var(--line);
 		border-radius: 5px;
 		background: var(--surface-2);
+	}
+	/* 點一次就能改它 */
+	.day button {
+		padding: 0 5px;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
 		font-size: 14px;
 		letter-spacing: 1px;
+	}
+	.day button[aria-expanded='true'] {
+		box-shadow: 0 0 0 2px var(--sel);
 	}
 	/* 全上記的那幾筆：虛線框，跟分段練分開。 */
 	.day li.run {
 		border: 2px dashed var(--sel);
 		background: var(--surface);
+	}
+	/* 只練幾個環節的那幾次：淡色框，跟整個做中途 ✗ 分開 */
+	.day li.partial {
+		border-style: dotted;
+		background: var(--surface);
+		color: var(--muted);
 	}
 	.none {
 		color: var(--muted);
@@ -381,5 +507,21 @@
 	}
 	.undo-last {
 		flex: none;
+	}
+	.edit {
+		display: grid;
+		gap: 6px;
+		padding: 8px;
+		border: 1px solid var(--sel);
+		border-radius: 8px;
+	}
+	.edit-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.edit-row .danger {
+		margin-right: auto;
 	}
 </style>

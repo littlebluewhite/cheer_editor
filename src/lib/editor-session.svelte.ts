@@ -78,6 +78,17 @@ export class EditorSession {
 	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
 	 */
 	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
+	/**
+	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
+	 * 不存進流程檔。
+	 */
+	practiceLeave: ((go: () => void) => void) | null = $state.raw(null);
+
+	/** 離開練習畫面的這一頁：有要先問的就交給它，沒有就直接 go()。 */
+	leavePracticePage(go: () => void) {
+		if (this.practiceLeave) this.practiceLeave(go);
+		else go();
+	}
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */

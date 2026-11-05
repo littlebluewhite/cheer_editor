@@ -22,7 +22,7 @@ const records = (session: EditorSession, index: number) =>
 	session.flow!.actions[index].successRate!.records.map((r) => ({ date: r.date, practice: r.practice, marks: r.marks }));
 const slot = (who: string, phase: string) => screen.getByRole('button', { name: new RegExp(`^${who} ${phase} `) });
 const stopped = (label: string) =>
-	within(screen.getByRole('region', { name: label })).getByRole('button', { name: '沒做（停了）' });
+	within(screen.getByRole('region', { name: label })).getByRole('button', { name: '這個沒做' });
 /** 表上一個動作的格子，一列一個環節（字擠成一行）。 */
 const sheetRows = (label: string) =>
 	within(screen.getByRole('region', { name: label }))
@@ -66,7 +66,7 @@ describe('記一次全上的表', () => {
 		expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✓', '✓']);
 	});
 
-	it('「沒做（停了）」：整個動作變空的，再按一次回來', async () => {
+	it('「這個沒做」：整個動作變空的，再按一次回來', async () => {
 		setup();
 		await fireEvent.click(stopped('騰翻'));
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
@@ -111,21 +111,20 @@ describe('記一次全上的表', () => {
 		expect(onclose).not.toHaveBeenCalled();
 	});
 
-	it('「後面都沒做」：這個動作後面的都變空的，這個動作照記；再按一次回來', async () => {
-		const { session } = setup();
-		const rest = () =>
-			within(screen.getByRole('region', { name: '技巧·Lib' })).getByRole('button', { name: '後面都沒做' });
+	it('「這個沒做」和「後面都沒做」並排；「後面都沒做」：這個動作和後面的都變空的；再按一次回來', async () => {
+		setup();
+		const head = within(screen.getByRole('region', { name: '技巧·Lib' }));
+		const rest = () => head.getByRole('button', { name: '後面都沒做' });
+		expect(rest().parentElement).toBe(stopped('技巧·Lib').parentElement);
 		await fireEvent.click(rest());
 		expect(rest().getAttribute('aria-pressed')).toBe('true');
+		expect(stopped('技巧·Lib').getAttribute('aria-pressed')).toBe('true');
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
+		expect(sheetRows('技巧·Lib')[1]).toEqual(['上法', '', '']);
+		expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '', '']);
+		await fireEvent.click(rest());
 		expect(stopped('技巧·Lib').getAttribute('aria-pressed')).toBe('false');
-		await fireEvent.click(rest());
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('false');
-
-		await fireEvent.click(rest());
-		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-		expect(records(session, 0)).toHaveLength(2);
-		expect(records(session, 1)).toEqual([]);
 	});
 
 	it('最後一個動作沒有「後面都沒做」', () => {
@@ -160,7 +159,7 @@ describe('記一次全上的表', () => {
 		expect(session.flow).toBe(before);
 	});
 
-	it('按了「沒做（停了）」也算改過', async () => {
+	it('按了「這個沒做」也算改過', async () => {
 		const { onclose } = setup();
 		await fireEvent.click(stopped('騰翻'));
 		await fireEvent.click(screen.getByRole('button', { name: '取消' }));

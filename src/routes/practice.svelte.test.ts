@@ -334,7 +334,7 @@ describe('練習：總表', () => {
 	const filter = (group: string, option: string) =>
 		fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name: option }));
 
-	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次，一欄一組（小字列出全組）加合計', async () => {
+	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次（只有一個環節不加），一欄一組（小字列出全組）加合計', async () => {
 		await summary();
 		const blocks = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
 		expect(blocks.filter((b) => b !== '練習')).toEqual(['技巧·Lib', '騰翻']);
@@ -347,8 +347,7 @@ describe('練習：總表', () => {
 		]);
 		expect(blockRows('騰翻')).toEqual([
 			['環節', '小美', '小A', '合計'],
-			['整體 騰翻', '100% 1 次', '—', '100% 1 次'],
-			['整次', '100% 1 次', '—', '100% 1 次']
+			['整體 騰翻', '100% 1 次', '—', '100% 1 次']
 		]);
 	});
 
@@ -366,7 +365,7 @@ describe('練習：總表', () => {
 	it('換篩選，數字跟著變：期間、練法、大字看完成率', async () => {
 		await summary();
 		expect(blockRows('技巧·Lib')[1][1]).toBe('100% 1 次');
-		await filter('期間', '最近 7 天');
+		await filter('期間', '最近 7 天（10/29–11/4）');
 		expect(blockRows('技巧·Lib')[1][1]).toBe('50% 2 次');
 		await filter('期間', '11/4');
 		await filter('練法', '只看全上');
@@ -385,7 +384,7 @@ describe('練習：總表', () => {
 	it('期間的第一個選項寫出選的日期；選的是今天才寫「今天」', async () => {
 		await summary();
 		const options = () => within(screen.getByRole('group', { name: '期間' })).getAllByRole('button').map((b) => b.textContent?.trim());
-		expect(options()).toEqual(['11/4', '最近 7 天', '全部']);
+		expect(options()).toEqual(['11/4', '最近 7 天（10/29–11/4）', '全部']);
 		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
 		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
 		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
@@ -455,7 +454,7 @@ describe('練習：總表', () => {
 		const stopped = (label: string) =>
 			within(within(screen.getByRole('region', { name: '記一次全上' })).getByRole('region', { name: label })).getByRole(
 				'button',
-				{ name: '沒做（停了）' }
+				{ name: '這個沒做' }
 			);
 
 		it('存這次全上：做到 Lib 就停了，Lib 第 2 組下法 ✗；總表只看全上多一次 ✗，騰翻沒有多；明細標著全上', async () => {
@@ -488,6 +487,33 @@ describe('練習：總表', () => {
 			// 再打開是新的一張，每格又是 ✓。
 			await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
 			expect(sheetRows('技巧·Lib')[3]).toEqual(['下法', '✓', '✓']);
+		});
+
+		it('記錄頁的全上表改過格子就切到「總表」或「編排」：跟按取消一樣先問；選「繼續記」表還在，選「丟掉」才切過去', async () => {
+			await summary();
+			await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+			await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
+			await tapSlot('第 2 組 小芳', '下法');
+			await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+			const confirm = within(screen.getByRole('alertdialog'));
+			expect(confirm.getByText('改過的格子還沒存，要丟掉嗎？')).toBeTruthy();
+			expect(screen.getByRole('button', { name: '記錄' }).getAttribute('aria-pressed')).toBe('true');
+			await fireEvent.click(confirm.getByRole('button', { name: '繼續記' }));
+			expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 小失誤');
+
+			await toArrange();
+			expect(screen.getByRole('button', { name: '練習' }).getAttribute('aria-pressed')).toBe('true');
+			await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '丟掉' }));
+			expect(screen.getByRole('button', { name: '編排' }).getAttribute('aria-pressed')).toBe('true');
+			await toPractice();
+			expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
+		});
+
+		it('沒改過格子：切頁不問', async () => {
+			await openSheet();
+			await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+			expect(screen.queryByRole('alertdialog')).toBeNull();
+			expect(screen.getByRole('button', { name: '記錄' }).getAttribute('aria-pressed')).toBe('true');
 		});
 	});
 });

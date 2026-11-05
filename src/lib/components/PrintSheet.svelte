@@ -2,7 +2,13 @@
 	// 八拍表列印：蓋在編輯畫面上，選全隊、一個隊員或一個全局角色（那些人每人一張個人版），
 	// 按「列印」用瀏覽器列印（可存 PDF）。
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
-	import { GLOBAL_ROLES, eightCountRows, memberMarkers, type Flow } from '#lib/core';
+	import {
+		GLOBAL_ROLES,
+		eightCountRows,
+		memberMarkers,
+		type EightCountRow,
+		type Flow
+	} from '#lib/core';
 	import { loadPrintChoice, savePrintChoice } from '#lib/local-settings.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine, { actionTitle } from './EightCountCueLine.svelte';
@@ -43,6 +49,23 @@
 			: [choice]
 	);
 	const markers = $derived(memberMarkers(flow));
+
+	/**
+	 * 這一列印在 A4 直的大約多高（px，估得偏高）。放得下一頁的才標「不切開」：
+	 * 比一頁還長的列也標的話，瀏覽器會把整列推到下一頁，前一頁只剩標題。
+	 * 量不到印出來的版面，照內容估：動作欄一行約 18 個字、每張小站位圖約 175、每排拍點約 60。
+	 */
+	const PAGE_PX = 1000;
+	function fitsPage(row: EightCountRow): boolean {
+		const lines = (text: string) => Math.ceil(text.length / 18);
+		const text =
+			row.actions.reduce(
+				(h, a) => h + 20 * lines(`${a.at}${a.categoryLabel}${a.name}${a.who}`) + 18 * lines(a.note),
+				0
+			) +
+			20 * (row.continuing.length + row.walks.length);
+		return Math.max(text, 175 * row.formations.length) + 60 * row.cues.length + 20 < PAGE_PX;
+	}
 	function whoText(id: string): string {
 		const m = flow.members.find((m) => m.id === id);
 		if (!m) return '全隊';
@@ -90,12 +113,12 @@
 						<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
 					</thead>
 					{#each rows as row, i (i)}
-						<tbody>
+						<tbody class:keep={fitsPage(row)}>
 							<tr>
 								<td class="seg">{row.segmentLabel}</td>
-								<td class="seg">{row.eightText}</td>
+								<td class="seg" class:eight={row.eight !== null}>{row.eightText}</td>
 								<td class="num">{row.startSec.toFixed(1)}</td>
-								<td>
+								<td class="actions">
 									{#each row.actions as a, j (j)}
 										<div class="action">
 											<b class="at">{a.at}</b>
@@ -110,7 +133,7 @@
 										<div>{w}</div>
 									{/each}
 								</td>
-								<td>
+								<td class="formations">
 									{#each row.formations as f (f.number)}
 										<figure>
 											<div class="mini">
@@ -227,9 +250,6 @@
 		min-width: 4.5em;
 		white-space: nowrap;
 	}
-	tbody {
-		break-inside: avoid;
-	}
 	.cue-row td {
 		padding: 4px 8px 6px;
 	}
@@ -274,15 +294,81 @@
 			padding: 16px 12px;
 		}
 	}
+	/* 手機：一個八拍一張卡，段、八拍、開始秒數一行，下面是動作，站位圖在動作下面；整張表不用左右捲 */
+	@media screen and (max-width: 700px) {
+		table,
+		tbody,
+		tr,
+		td {
+			display: block;
+		}
+		thead {
+			display: none;
+		}
+		tbody {
+			margin-bottom: 8px;
+			border: 1px solid #c9ced8;
+			border-radius: 4px;
+		}
+		tbody > tr:first-child {
+			display: flex;
+			flex-wrap: wrap;
+		}
+		td {
+			border: none;
+			padding: 4px 10px;
+		}
+		.seg,
+		.num {
+			min-width: 0;
+			padding-right: 0;
+			background: #f2f4f8;
+			font-weight: 600;
+		}
+		.num {
+			flex: 1;
+			padding-right: 10px;
+		}
+		.eight::before {
+			content: '八拍 ';
+		}
+		.num::after {
+			content: ' 秒';
+		}
+		.actions,
+		.formations {
+			flex-basis: 100%;
+		}
+		.formations {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0 12px;
+		}
+		.actions:empty,
+		.formations:empty {
+			display: none;
+		}
+		/* 拍點那一排的動作名字放上面一行，8 格拿整個寬度（跟手機檢視畫面的那一列一樣） */
+		.cue-row :global(.cue-line) {
+			flex-wrap: wrap;
+		}
+		.cue-row :global(.cue-name) {
+			flex-basis: 100%;
+		}
+	}
 	@media print {
 		:global(.print-sheet) {
 			position: static;
 			overflow: visible;
 			background: #fff;
 		}
-		/* 同一個八拍可以跨頁（不然內容超過一頁時，第 1 頁只剩標題）；小站位圖不切開 */
-		tbody {
-			break-inside: auto;
+		/* 鍵盤捲過表也不印焦點外框 */
+		:global(.print-sheet:focus-visible) {
+			outline: none;
+		}
+		/* 放得下一頁的八拍不切到兩頁（見 fitsPage）；小站位圖不切開 */
+		tbody.keep {
+			break-inside: avoid;
 		}
 		figure {
 			break-inside: avoid;

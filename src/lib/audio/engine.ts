@@ -2,6 +2,7 @@
 // 時間都是 AudioContext 的時鐘（秒）。
 
 import { sharedAudioContext } from './decode.js';
+import { stretch } from './stretch.js';
 
 export interface AudioEngine {
 	/** Safari、Firefox 要在使用者動作裡 resume 才出聲，所以播放一定由按鈕或空白鍵呼叫。 */
@@ -10,8 +11,10 @@ export interface AudioEngine {
 	currentTime(): number;
 	/** 喇叭正在播的那一刻，換成 AudioContext 時鐘（用 getOutputTimestamp 算）。 */
 	audibleTime(): number;
-	/** 在 when 從音樂檔的 offset 秒播 duration 秒。 */
-	playClip(audioId: string, when: number, offset: number, duration: number): void;
+	/** 慢速播放前先把這些音樂檔拉長成 rate 的速度（音高不變）；拉過的留著。 */
+	prepare(audioIds: string[], rate: number): void;
+	/** 在 when 從音樂檔的 offset 秒播 duration 秒（音樂檔的秒數）；rate：速度，小於 1 是拉長的音樂、音高不變。 */
+	playClip(audioId: string, when: number, offset: number, duration: number, rate: number): void;
 	/** 節拍器在 when 響一聲。 */
 	click(when: number, accent: boolean): void;
 	/** 停掉所有排了的聲音。 */
@@ -24,6 +27,25 @@ export function createWebAudioEngine(
 ): AudioEngine {
 	const ctx = sharedAudioContext();
 	const nodes = new Set<AudioScheduledSourceNode>();
+	/** 拉長過的音樂：原本的 AudioBuffer → 速度 → 拉長的。 */
+	const stretched = new WeakMap<AudioBuffer, Map<number, AudioBuffer>>();
+
+	/** 這個速度要播的 AudioBuffer：1 就是原本的；慢速第一次用到時才拉長（3 分鐘的歌約半秒）。 */
+	function bufferAt(audioId: string, rate: number): AudioBuffer | undefined {
+		const buffer = getBuffer(audioId);
+		if (!buffer || rate === 1) return buffer;
+		const byRate = stretched.get(buffer) ?? new Map<number, AudioBuffer>();
+		stretched.set(buffer, byRate);
+		let out = byRate.get(rate);
+		if (!out) {
+			const data = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+			const channels = stretch(data, buffer.sampleRate, rate);
+			out = ctx.createBuffer(channels.length, channels[0].length, buffer.sampleRate);
+			for (const [c, ch] of channels.entries()) out.copyToChannel(ch, c);
+			byRate.set(rate, out);
+		}
+		return out;
+	}
 
 	function track(node: AudioScheduledSourceNode) {
 		nodes.add(node);
@@ -39,13 +61,17 @@ export function createWebAudioEngine(
 			if (performanceTime === 0) return contextTime;
 			return contextTime + (performance.now() - performanceTime) / 1000;
 		},
-		playClip(audioId, when, offset, duration) {
-			const buffer = getBuffer(audioId);
+		prepare(audioIds, rate) {
+			for (const id of audioIds) bufferAt(id, rate);
+		},
+		playClip(audioId, when, offset, duration, rate) {
+			const buffer = bufferAt(audioId, rate);
 			if (!buffer) return;
 			const src = ctx.createBufferSource();
 			src.buffer = buffer;
 			src.connect(ctx.destination);
-			src.start(when, offset, duration);
+			// 拉長的音樂裡，原本第 offset 秒在 offset / rate 秒
+			src.start(when, offset / rate, duration / rate);
 			track(src);
 		},
 		click(when, accent) {

@@ -43,7 +43,7 @@ describe('記錄頁', () => {
 		const list = within(screen.getByRole('list', { name: '記成功率的動作' }));
 		expect(list.getAllByRole('button').map((b) => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
 			'技巧·Lib 這天 0 次',
-			'騰翻 這天 0 次'
+			'騰翻 這天每人 0 次'
 		]);
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');
@@ -91,6 +91,29 @@ describe('記錄頁', () => {
 		expect(disabled(removeLast())).toBe(true);
 	});
 
+	it('全部成功：不寫「最弱」；有一個環節沒成功才寫', async () => {
+		setup();
+		const who = '第 1 組 小美';
+		const item = () => screen.getByRole('button', { name: /^技巧·Lib/ }).textContent ?? '';
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		expect(item()).not.toContain('最弱');
+		await tap(who, '上法', '成功');
+		await tap(who, '中段', '小失誤');
+		await save(who);
+		expect(item()).toContain('最弱：中段 50%');
+	});
+
+	it('騰翻、跳躍每個人自己算：寫「這天每人 N 次」；每人次數不一樣寫範圍', async () => {
+		setup();
+		const item = () => screen.getByRole('button', { name: /^騰翻/ }).textContent?.replace(/\s+/g, ' ').trim();
+		expect(item()).toBe('騰翻 這天每人 0 次');
+		await pickAction('騰翻');
+		for (const who of ['小美', '小A', '小美', '小A']) await tap(who, '整體 騰翻', '成功');
+		expect(item()).toBe('騰翻 這天每人 2 次');
+		await tap('小美', '整體 騰翻', '失敗');
+		expect(item()).toBe('騰翻 這天每人 2–3 次 最弱：整體 騰翻 80%');
+	});
+
 	it('選了「只練幾個環節」和要練的環節：換動作再回來還是它', async () => {
 		setup();
 		const who = '第 1 組 小美';
@@ -117,12 +140,34 @@ describe('記錄頁', () => {
 	});
 });
 
+describe('記錄頁改某一次、刪掉某一次', () => {
+	it('改某一次的記號：左邊的最弱跟著變；刪掉那一次：卡片下面和次數都少一次', async () => {
+		setup();
+		const who = '第 1 組 小美';
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		const item = () => screen.getByRole('button', { name: /^技巧·Lib/ }).textContent ?? '';
+		expect(item()).not.toContain('最弱');
+
+		await fireEvent.click(card(who).getByRole('button', { name: /^改第 1 次/ }));
+		await fireEvent.click(card(who).getByRole('button', { name: '第 1 次 下法 失敗' }));
+		await fireEvent.click(card(who).getByRole('button', { name: '存修改' }));
+		expect(dayRow(who)).toEqual(['✓✓✗', '✓✓✓']);
+		expect(item()).toContain('最弱：下法 50%');
+
+		await fireEvent.click(card(who).getByRole('button', { name: /^改第 1 次/ }));
+		await fireEvent.click(card(who).getByRole('button', { name: '刪掉這一次' }));
+		expect(dayRow(who)).toEqual(['✓✓✓']);
+		expect(item()).toContain('這天 1 次');
+	});
+});
+
 describe('記錄頁記一次全上', () => {
 	it('按「＋ 記一次全上」打開全上表；存好回到記錄頁，寫「已存這次全上」，卡片和流程裡都有這次全上', async () => {
 		const session = setup();
 		await openSheet();
 		await tapSlot('第 2 組 小芳', '下法', 2);
-		await fireEvent.click(within(sheet().getByRole('region', { name: '騰翻' })).getByRole('button', { name: '沒做（停了）' }));
+		await fireEvent.click(within(sheet().getByRole('region', { name: '騰翻' })).getByRole('button', { name: '這個沒做' }));
 		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
 
 		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();

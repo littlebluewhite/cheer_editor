@@ -3,7 +3,7 @@
 
 export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
-export { createFlow, memberName, renameFlow, stripsProblem } from './flow';
+export { adjustField, createFlow, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
 export { MAX_CHARS, charCount, firstChars } from './text-length';
@@ -71,6 +71,8 @@ export {
 	attemptText,
 	attemptWhos,
 	carryRecords,
+	changeAttempt,
+	deleteAttempt,
 	deleteLastAttempt,
 	deleteLastRunThrough,
 	lastRunThrough,
@@ -204,15 +206,15 @@ export {
 } from './time';
 export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
 
-export { firstBeatPreview, playbackPlan, playStartSec, resumeSec } from './playback';
+export { firstBeatPreview, playbackPlan, playStartSec, repeatSpan, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
 export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
 
-export { deleteSegment, moveSegment } from './segment-order';
+export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
-export type { TimeRules } from './time-rules';
+export type { TimeRules, TimeRuleWarning } from './time-rules';
 
 export { CELL_M, FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
 export type {
