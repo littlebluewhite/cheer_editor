@@ -480,6 +480,9 @@
 	/** 等教練決定要不要丟掉還沒存的修改：確定就做 then。 */
 	let discardPending = $state.raw<{ then: () => void } | null>(null);
 
+	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
+	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || !!discardPending);
+
 	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
 	function unlessUnsaved(then: () => void) {
 		if (unsaved) discardPending = { then };
@@ -530,17 +533,17 @@
 			printOpen = false;
 			return;
 		}
-		// 八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
-		if (!flow || printOpen) return;
+		// 對話框、八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
+		if (!flow || overlayOpen) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+		// 練習時只留存檔：空白鍵留給記號按鈕，Delete 不能刪到藏起來的動作、站位；
+		// 復原、重做只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄
+		if (view === 'practice') return;
 		const key = e.key.toLowerCase();
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
 			e.preventDefault();
 			if (key === 'z' && !e.shiftKey) undo();
 			else redo();
-		} else if (view === 'practice') {
-			// 練習時只留存檔、復原、重做：空白鍵留給記號按鈕，Delete 不能刪到藏起來的動作、站位
-			return;
 		} else if (e.key === ' ') {
 			if (e.repeat) return;
 			// 不讓焦點所在的按鈕也被空白鍵按到
@@ -586,6 +589,7 @@
 	{@const warnings = timeRuleWarnings(flow)}
 	<div
 		class="editor"
+		inert={overlayOpen}
 		class:practicing={view === 'practice'}
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
@@ -604,7 +608,7 @@
 		{/snippet}
 		<header class="topbar">
 			<div class="title">
-				<b>{flow.name}</b>
+				<b title={flow.name}>{flow.name}</b>
 				{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}
 				<div class="view" role="group" aria-label="編排｜練習">
 					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
@@ -652,17 +656,20 @@
 			</div>
 
 			<div class="actions">
-				<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
-					><Icon name="undo" /><span class="narrow-hide">復原</span></button
-				>
-				<button
-					type="button"
-					class="ghost"
-					title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
-					disabled={!session.canRedo}
-					onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
-				>
-				<span class="sep" aria-hidden="true"></span>
+				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
+				{#if view === 'edit'}
+					<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
+						><Icon name="undo" /><span class="narrow-hide">復原</span></button
+					>
+					<button
+						type="button"
+						class="ghost"
+						title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
+						disabled={!session.canRedo}
+						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+					>
+					<span class="sep" aria-hidden="true"></span>
+				{/if}
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" /><span class="narrow-hide">八拍表</span></button
 				>
@@ -837,10 +844,16 @@
 		{/if}
 	</div>
 	<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
-	<div class="rotate-hint">
+	<div class="cover-hint rotate-hint">
 		<Icon name="fit" size={28} />
 		<b>請把 iPad 轉成橫的</b>
 		<span>編輯畫面要橫著放，場地和時間軸才放得下。</span>
+	</div>
+	<!-- 視窗太窄（手機、縮小的視窗）：場地會被右邊欄擠到看不見、上方列的按鈕疊在一起。排在後面，手機拿直的時蓋過上面那張 -->
+	<div class="cover-hint narrow-hint">
+		<Icon name="fit" size={28} />
+		<b>視窗太窄了</b>
+		<span>編輯畫面要至少 760 像素寬，場地和右邊欄才放得下。請用電腦，或把平板轉成橫的。</span>
 	</div>
 	{#if openSegmentId}
 		<SegmentSettings
@@ -1018,9 +1031,14 @@
 		font-size: 16px;
 		font-weight: 700;
 		color: #fff;
-		white-space: nowrap;
+		/* 只畫一行，放不下用「…」。不用 nowrap：名字這一欄最窄是 min-content（「編排｜練習」才不會被播放區壓到），
+		   nowrap 的長名字會把它撐開、右邊的按鈕擠出畫面；能在任何字斷開，名字就不算進最窄的寬度。 */
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 1;
+		line-clamp: 1;
+		overflow-wrap: anywhere;
 		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.unsaved {
 		flex: none;
@@ -1506,29 +1524,34 @@
 		}
 	}
 
-	/* 觸控螢幕拿直的（iPad 直放）：蓋住編輯畫面，請教練轉成橫的。 */
-	.rotate-hint {
+	/* 蓋住編輯畫面的提示：iPad 拿直的請教練轉成橫的、視窗太窄。 */
+	.cover-hint {
 		display: none;
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		place-content: center;
+		justify-items: center;
+		gap: 10px;
+		padding: 24px;
+		text-align: center;
+		background: var(--ink);
+		color: #c9d2e6;
+		font-size: 15px;
+	}
+	.cover-hint b {
+		color: #fff;
+		font-size: 22px;
 	}
 	/* screen：列印八拍表時（紙是直的）不能印到它。 */
 	@media screen and (pointer: coarse) and (orientation: portrait) {
 		.rotate-hint {
-			position: fixed;
-			inset: 0;
-			z-index: 100;
 			display: grid;
-			place-content: center;
-			justify-items: center;
-			gap: 10px;
-			padding: 24px;
-			text-align: center;
-			background: var(--ink);
-			color: #c9d2e6;
-			font-size: 15px;
 		}
-		.rotate-hint b {
-			color: #fff;
-			font-size: 22px;
+	}
+	@media screen and (max-width: 759px) {
+		.narrow-hint {
+			display: grid;
 		}
 	}
 

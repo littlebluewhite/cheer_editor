@@ -710,6 +710,53 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('status').textContent).toBe('流程開頭一定有一張站位，不能刪');
 	});
 
+	it('選了站位、又拖人插了新的一張：舊的選取清掉，按 Delete 不會刪到看不到的那張', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		await seek(20);
+		await dragFirstMember();
+		expect(thumbs()).toHaveLength(3);
+		await fireEvent.keyDown(window, { key: 'Delete' });
+		expect(thumbs()).toHaveLength(3);
+	});
+
+	it('段設定、流程設定、八拍表開著時：後面的編輯畫面不吃快捷鍵，也點不到、Tab 不到（inert）', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		const editor = document.querySelector('.editor') as HTMLElement;
+		expect(editor.inert).toBe(false);
+
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+		expect(screen.getByRole('dialog', { name: '音樂 1 設定' })).toBeTruthy();
+		expect(editor.inert).toBe(true);
+		await fireEvent.keyDown(window, { key: 'Delete' });
+		await fireEvent.keyDown(window, { key: 'Backspace' });
+		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
+		await fireEvent.keyDown(window, { key: ' ' });
+		expect(thumbs()).toHaveLength(2);
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(editor.inert).toBe(false);
+
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		expect(editor.inert).toBe(true);
+		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+		await fireEvent.keyDown(window, { key: ' ' });
+		expect(thumbs()).toHaveLength(2);
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+
+		await fireEvent.click(screen.getByRole('button', { name: '八拍表' }));
+		expect(editor.inert).toBe(true);
+		await fireEvent.click(within(screen.getByRole('dialog', { name: '八拍表' })).getByRole('button', { name: '關閉' }));
+		expect(editor.inert).toBe(false);
+	});
+
 	/** 第 n 張站位縮圖的左邊在時間軸上幾 px（1 秒 16 px）。 */
 	const thumbLeft = (n: number) =>
 		parseFloat((screen.getByRole('button', { name: `站位 ${n}` }).parentElement as HTMLElement).style.left);

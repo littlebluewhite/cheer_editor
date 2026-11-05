@@ -47,7 +47,7 @@
 	}
 </script>
 
-<div class="print-sheet" role="dialog" aria-label="八拍表">
+<div class="print-sheet" role="dialog" aria-label="八拍表" aria-modal="true" tabindex="-1" {@attach (el) => el.focus()}>
 	<div class="toolbar">
 		<b class="tool-title">八拍表</b>
 		<label>

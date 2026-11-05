@@ -4,6 +4,7 @@
 import { createContext } from 'svelte';
 import {
 	carryRecords,
+	currentFormation,
 	groupsPeople,
 	setSquad,
 	squadsOf,
@@ -168,6 +169,10 @@ export class EditorSession {
 			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
 		];
 		this.notice = said.filter(Boolean).join('；');
+		// 選著的縮圖不是剛改的那張：選取清掉，不然 Delete 會刪到眼睛沒在看的那張
+		if (this.#formationId && this.#flow && this.#formationId !== currentFormation(this.#flow, r.sec).formation.id) {
+			this.#formationId = null;
+		}
 		this.jump = { sec: r.sec, replay: false };
 	}
 

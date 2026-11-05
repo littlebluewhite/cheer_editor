@@ -49,7 +49,7 @@
 </script>
 
 <div class="backdrop">
-	<div class="dialog flow-dialog" role="dialog" aria-label="流程設定">
+	<div class="dialog flow-dialog" role="dialog" aria-label="流程設定" aria-modal="true" tabindex="-1" {@attach (el) => el.focus()}>
 		<header class="dialog-head">
 			<h2>流程設定</h2>
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={onclose}><Icon name="close" /></button>

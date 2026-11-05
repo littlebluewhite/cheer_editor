@@ -230,32 +230,52 @@ describe('練習：紀錄不進復原', () => {
 			.getAllByRole('button')
 			.map((b) => b.querySelector('.name')?.textContent?.trim());
 
-	it('記了之後按上方列的復原：編排回到上一步，紀錄還在；重做也一樣', async () => {
+	it('練習畫面沒有復原、重做：按鈕不在，⌘Z／Ctrl+Z 不會退掉看不到的編排修改', async () => {
+		await withOneStep();
+		await tap('第 1 組 小美', '上法', '成功');
+		expect(screen.queryByRole('button', { name: '復原' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '重做' })).toBeNull();
+		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
+		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+		expect(listed()).toEqual(['技巧·Lib', '拋投', '騰翻']);
+		await toArrange();
+		expect(disabled(screen.getByRole('button', { name: '復原' }))).toBe(false);
+	});
+
+	it('記了之後回編排按復原：編排回到上一步，紀錄還在；重做也一樣', async () => {
 		await withOneStep();
 		expect(listed()).toEqual(['技巧·Lib', '拋投', '騰翻']);
 		await tap('第 1 組 小美', '上法', '成功');
 		await tap('第 1 組 小美', '中段', '成功');
 		await tap('第 1 組 小美', '下法', '小失誤');
 
+		await toArrange();
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await toPractice();
 		expect(listed()).toEqual(['技巧·Lib', '騰翻']);
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 
+		await toArrange();
 		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await toPractice();
 		expect(listed()).toEqual(['技巧·Lib', '拋投', '騰翻']);
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 	});
 
 	it('記一次、刪掉上一次不算一步：不推進復原紀錄，也不清掉重做', async () => {
 		await withOneStep();
+		await toArrange();
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(disabled(screen.getByRole('button', { name: '復原' }))).toBe(true);
+		await toPractice();
 		await tap('第 1 組 小美', '上法', '失敗');
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
 		await tap('第 1 組 小美', '上法', '失敗');
+		await toArrange();
 		expect(disabled(screen.getByRole('button', { name: '復原' }))).toBe(true);
 		expect(disabled(screen.getByRole('button', { name: '重做' }))).toBe(false);
 		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+		await toPractice();
 		expect(listed()).toEqual(['技巧·Lib', '拋投', '騰翻']);
 		expect(dayRow('第 1 組 小美')).toEqual(['✗··']);
 	});

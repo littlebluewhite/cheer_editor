@@ -145,7 +145,7 @@
 </script>
 
 <div class="backdrop">
-	<div class="dialog seg-dialog" role="dialog" aria-label={`${span?.label ?? ''} 設定`}>
+	<div class="dialog seg-dialog" role="dialog" aria-label={`${span?.label ?? ''} 設定`} aria-modal="true" tabindex="-1" {@attach (el) => el.focus()}>
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
 			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
