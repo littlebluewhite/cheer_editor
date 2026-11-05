@@ -3,7 +3,7 @@
 // 口號段一整段一列，時間寫秒數。
 
 import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
-import { actionEights } from './beat-range';
+import { actionEights, beatSpanText } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
@@ -22,7 +22,7 @@ import {
 
 /** 八拍表一列裡的一個動作（這一列開始的）。 */
 export interface EightCountAction {
-	/** 在這一列哪裡開始：音樂段「3」、半拍「3 的 &」；口號段段內秒數「12.3 秒」。 */
+	/** 什麼時候：音樂段跟拍點小窗一樣寫「1-3& 到 2-2&・8 拍」；口號段段內秒數「12.3 秒」。 */
 	at: string;
 	category: ActionCategory;
 	categoryLabel: string;
@@ -43,7 +43,7 @@ export interface EightCountFormation {
 	/** 站位名稱，沒取就沒有。 */
 	name?: string;
 	at: string;
-	/** 給人看的：「站位 2 金字塔・第 5 拍」，口號段「站位 3・2.5 秒」。 */
+	/** 給人看的：「站位 2 金字塔・2-5」，口號段「站位 3・2.5 秒」。 */
 	caption: string;
 	pos: Record<string, Position>;
 }
@@ -54,8 +54,12 @@ export interface EightCountCue {
 	/** 這一列的第幾格到第幾格（1–8）。 */
 	from: number;
 	to: number;
-	/** 照實寫的拍：「5」「6 到 7」；從 & 開始的「1& 到 2」。 */
+	/** 整個拍點，跟拍點小窗一樣：「1-6 到 1-7・2 拍」「2-1&・1 拍」（跨列的兩列都寫整個）。 */
 	span: string;
+	/** 從 & 開始的拍點在開始那一列寫在字前面的拍：「1-1&」（格子只能整格）；其他是空的。 */
+	lead: string;
+	/** 從上一列接過來的那一段：不再寫字和給誰。 */
+	continued: boolean;
 	word: string;
 	/** 給誰：任務角色或隊員名字；給全部的和個人表是 null。 */
 	who: string | null;
@@ -95,6 +99,8 @@ export interface EightCountRow {
 	/** 這一列多長（秒）；口號段就是整段的秒數。 */
 	durationSec: number;
 	actions: EightCountAction[];
+	/** 前面的列開始、延續到這一列的動作名字（沒取名字寫大類），印成「↳ Lib 繼續」。 */
+	continuing: string[];
 	formations: EightCountFormation[];
 	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到達）」。全隊是空的。 */
 	walks: string[];
@@ -119,8 +125,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			}))
 			.filter((a) => a.members.length > 0)
 			.toSorted((a, b) => a.start - b.start);
-		const at = (u: number) =>
-			segment.kind === 'music' ? beatText(u) : `${atText(segment, u)} 秒`;
+		const at = (u: number) => (segment.kind === 'music' ? atText(segment, u) : `${atText(segment, u)} 秒`);
 		const rowOf = (from: number, to: number, eight: number | null): EightCountRow => {
 			const sec = toSeconds(flow, { segmentId: segment.id, at: from });
 			const end = Math.min(to, units(segment));
@@ -141,7 +146,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							role: m.role
 						}));
 						return {
-							at: at(a.start),
+							at: segment.kind === 'music' ? beatSpanText(segment, a.start, a.length) : at(a.start),
 							category: a.category,
 							categoryLabel: categoryLabel(a.category),
 							name: a.name,
@@ -149,10 +154,12 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId)
 						};
 					}),
+				continuing: inSegment
+					.filter((a) => a.start < from && a.start + a.length > from)
+					.map((a) => a.name || categoryLabel(a.category)),
 				formations: flow.formations.flatMap((f, i) => {
 					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
-					const when = segment.kind === 'music' ? beatWhen(f.at) : at(f.at);
-					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${when}`;
+					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}`;
 					return [{ number: i + 1, name: f.name, at: at(f.at), caption, pos: f.pos }];
 				}),
 				walks: walks
@@ -168,11 +175,13 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					// 個人表只切給他的拍點；口號段整段一列，沒有拍點、標的拍
 					const mine = (a.cues ?? []).filter((c) => memberId === null || cueForMember(c, a, memberId));
 					const slice = actionEights(a, mine).find((e) => e.eight + 1 === eight);
-					const cues = (slice?.cues ?? []).map(({ cue, start, end }) => ({
+					const cues = (slice?.cues ?? []).map(({ cue, start, end, first }) => ({
 						kind: cue.kind,
 						from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
 						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
-						span: spanText(start, end),
+						span: beatSpanText(segment, a.start + cue.at, cue.len),
+						lead: first && (a.start + cue.at) % HALF_BEATS_PER_BEAT === 1 ? atText(segment, a.start + cue.at) : '',
+						continued: !first,
 						word: cue.word,
 						who: memberId === null ? whoName(flow, cue.who) || null : null
 					}));
@@ -192,8 +201,15 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			for (let from = 0; from < segment.halfBeats; from += HALF_BEATS_PER_EIGHT) {
 				const row = rowOf(from, from + HALF_BEATS_PER_EIGHT, from / HALF_BEATS_PER_EIGHT + 1);
 				const prev = rows.at(-1);
-				// 連著沒有新東西的八拍合成一列（同一段裡）
-				if (prev && prev.segmentLabel === label && prev.eight !== null && isEmpty(prev) && isEmpty(row)) {
+				// 連著沒有新東西、延續的動作也一樣的八拍合成一列（同一段裡）
+				if (
+					prev &&
+					prev.segmentLabel === label &&
+					prev.eight !== null &&
+					isEmpty(prev) &&
+					isEmpty(row) &&
+					prev.continuing.join('\n') === row.continuing.join('\n')
+				) {
 					prev.lastEight = row.eight;
 					prev.eightText = `${prev.eight}–${row.eight}`;
 					prev.durationSec += row.durationSec;
@@ -234,7 +250,7 @@ function memberWho(flow: Flow, action: Action, memberId: string): string {
 	return parts.join('・');
 }
 
-/** 這一列沒有新東西：沒有動作開始、沒有站位、沒有走位、沒有拍點或環節。 */
+/** 這一列沒有新東西：沒有動作開始、沒有站位、沒有走位、沒有拍點或環節（只有延續的動作也算）。 */
 function isEmpty(row: EightCountRow): boolean {
 	return !row.actions.length && !row.formations.length && !row.walks.length && !row.cues.length;
 }
@@ -250,29 +266,4 @@ function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk
 
 function categoryLabel(category: ActionCategory): string {
 	return ACTION_CATEGORIES.find((c) => c.key === category)?.label ?? '';
-}
-
-/**
- * 一列裡 [start, end) 半拍照實寫，兩頭是佔到的第一個和最後一個半拍：整拍開始的「6 到 7」（最後一拍佔到它的 &），
- * 從 & 開始的「1& 到 2」；只有一拍（或半拍）就只寫一個。
- */
-function spanText(start: number, end: number): string {
-	const half = (h: number) => `${Math.floor(h / HALF_BEATS_PER_BEAT) + 1}${h % 2 === 1 ? '&' : ''}`;
-	const last = end - 1;
-	const first = half(start);
-	// 整拍開始、佔到最後一拍的 &：寫那一拍就好
-	const lastText = start % 2 === 0 && last % 2 === 1 ? half(last - 1) : half(last);
-	return lastText === first ? first : `${first} 到 ${lastText}`;
-}
-
-/** 站位在八拍裡的哪一拍：「第 5 拍」，半拍「第 3 拍的 &」。 */
-function beatWhen(at: number): string {
-	const beat = (Math.floor(at / 2) % 8) + 1;
-	return at % 2 === 1 ? `第 ${beat} 拍的 &` : `第 ${beat} 拍`;
-}
-
-/** 八拍裡的第幾拍：「3」，半拍「3 的 &」。 */
-function beatText(at: number): string {
-	const beat = (Math.floor(at / 2) % 8) + 1;
-	return at % 2 === 1 ? `${beat} 的 &` : `${beat}`;
 }
