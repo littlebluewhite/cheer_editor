@@ -381,14 +381,17 @@
 		<header class="topbar">
 			<div class="title">
 				<b title={flow.name}>{flow.name}</b>
-				{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}
+				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
+				<span class="unsaved-slot"
+					>{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}</span
+				>
 				<div class="view" role="group" aria-label="編排｜練習">
 					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
 					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
 				</div>
 				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
 				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
-					><Icon name="help" /><span class="narrow-hide">使用說明</span></a
+					><Icon name="help" /><span class="guide-text">使用說明</span></a
 				>
 			</div>
 
@@ -454,7 +457,7 @@
 				>
 				{#if view === 'edit'}
 					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
-						><Icon name="settings" /><span class="narrow-hide">流程設定</span></button
+						><Icon name="settings" /><span class="narrow-hide">流程</span>設定</button
 					>
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
@@ -823,8 +826,12 @@
 		overflow-wrap: anywhere;
 		overflow: hidden;
 	}
-	.unsaved {
+	.unsaved-slot {
 		flex: none;
+		min-width: 3em;
+		font-size: 12px;
+	}
+	.unsaved {
 		font-size: 12px;
 		color: #ffd27a;
 		display: inline-flex;
@@ -1396,7 +1403,7 @@
 		.latency input {
 			width: 56px;
 		}
-		/* 使用說明、復原、重做、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		/* 復原、重做只留圖示，流程設定只留「設定」，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;
 			width: 1px;
@@ -1408,7 +1415,7 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字） */
-	@media (max-width: 1280px) {
+	@media (max-width: 1380px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
@@ -1416,6 +1423,37 @@
 			grid-row: 2;
 			grid-column: 1 / -1;
 			justify-content: center;
+		}
+	}
+	@media (max-width: 1280px) {
+		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字 */
+		.guide-text {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+	}
+
+	/* 手機：名字一行、按鈕一行（不收進選單）。一行硬塞的話名字被擠到 0，名字這一欄的按鈕還會畫到右邊按鈕上，點錯。 */
+	@media (max-width: 760px) {
+		.topbar {
+			grid-template-columns: minmax(0, 1fr);
+			row-gap: 6px;
+			padding: 6px 12px;
+		}
+		.title b {
+			flex: 1 1 0;
+			min-width: 2em;
+		}
+		.actions {
+			grid-row: 2;
+			flex-wrap: wrap;
+		}
+		.transport {
+			grid-row: 3;
 		}
 	}
 
