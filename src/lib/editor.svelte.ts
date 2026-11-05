@@ -83,7 +83,7 @@ export class Editor {
 		this.session = new EditorSession(flow, this.playback, follow);
 		this.#music = $state.raw(this.#newMusic());
 		this.file = new FlowFile(this);
-		this.actionDraft = new ActionDraft(this.session, () => this.playback.sec);
+		this.actionDraft = new ActionDraft(this.session, this.playback);
 	}
 
 	/** 音樂檔庫：這支流程用到的音樂檔。一支流程一個，換流程就換一個新的（switchMusic）。 */
