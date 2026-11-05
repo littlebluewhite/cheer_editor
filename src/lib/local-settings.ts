@@ -46,6 +46,27 @@ export function saveLayoutPx(name: LayoutSize, px: number | null): void {
 	}
 }
 
+/**
+ * 手機檢視模式的「我」（隊員 id）：照流程名字分開記（流程檔裡沒有固定的 id；教練傳新版、名字一樣就還在）。
+ * 不進流程檔。沒選是 ''。
+ */
+export function loadMe(flowName: string): string {
+	try {
+		return localStorage.getItem(`cheer-editor:me:${flowName}`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
+export function saveMe(flowName: string, memberId: string): void {
+	try {
+		if (memberId) localStorage.setItem(`cheer-editor:me:${flowName}`, memberId);
+		else localStorage.removeItem(`cheer-editor:me:${flowName}`);
+	} catch {
+		// 存不了就只在這次用
+	}
+}
+
 /** 八拍表「印誰」上次選的，照流程名字分開存：'' 全隊、隊員 id、'role:top' 之類的全局角色。 */
 export function loadPrintChoice(flowName: string): string {
 	try {

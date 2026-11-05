@@ -674,7 +674,7 @@ describe('流程檔：兩個分頁（每支流程一份草稿）', () => {
 	});
 });
 
-describe('流程檔：「視窗太窄」提示上的「回首頁」', () => {
+describe('流程檔：窄螢幕上方列的「回首頁」', () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
