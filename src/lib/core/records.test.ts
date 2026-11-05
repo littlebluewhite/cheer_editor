@@ -422,13 +422,13 @@ describe('記錄頁要的清單', () => {
 		expect(recordableActions(flow).map((a) => a.id)).toEqual(['x1', 'x3', 'x2']);
 	});
 
-	it('每組一張卡：組照號碼排，名字是「第 n 組」加上層；沒分到組的人不出現', () => {
+	it('每組一張卡：組照號碼排，名字是「第 n 組」加上層，帶著全組；沒分到組的人不出現', () => {
 		let flow = flowOf(setSquad(sample(), 'x1', ['m1'], 3));
 		flow = flowOf(setSquad(flow, 'x1', ['m2'], null));
 		const x1 = flow.actions.find((a) => a.id === 'x1')!;
 		expect(attemptWhos(flow, x1)).toEqual([
-			{ who: 'g2', name: '第 1 組 小芳' },
-			{ who: 'g3', name: '第 2 組 小美' }
+			{ who: 'g2', name: '第 1 組 小芳', people: ['小B', '小芳'] },
+			{ who: 'g3', name: '第 2 組 小美', people: ['小美'] }
 		]);
 	});
 

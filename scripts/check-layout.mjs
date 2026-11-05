@@ -454,12 +454,21 @@ const topbarHits = () =>
 			const inView = r.left >= 0 && r.right <= innerWidth;
 			return !!t && el.contains(t) && inView ? [] : [{ 按鈕: (el.title || el.textContent).trim().slice(0, 8), 點到: t ? t.outerHTML.slice(0, 60) : null, 在畫面裡: inView }];
 		});`);
+/**
+ * 記錄頁一個一個選動作的程式（放在 js 裡用）：寬的時候點左邊清單，窄的時候（手機）從下拉選單選。
+ * 用法：for (const pick of PICKS) { pick(); ... }
+ */
+const PICKS = `const select = document.querySelector('.record .pick select');
+	const PICKS = select
+		? [...select.options].map((o) => () => { select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); })
+		: [...document.querySelectorAll('.record .list button')].map((b) => () => b.click());`;
 /** 「編排｜練習」的位置。 */
 const viewSpot = () => js(`const r = document.querySelector('.topbar .view').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)];`);
 /** 在練習頁記一次（流程就有未存的修改）。 */
 async function recordOnce() {
-	return js(`for (const b of document.querySelectorAll('.record .list button')) {
-			b.click();
+	return js(`${PICKS}
+		for (const pick of PICKS) {
+			pick();
 			await new Promise((r) => setTimeout(r, 100));
 			const fail = document.querySelector('.card button[aria-label$="失敗"]');
 			if (fail) { fail.click(); await new Promise((r) => setTimeout(r, 100)); document.querySelector('.card .save').click(); await new Promise((r) => setTimeout(r, 200)); return true; }
@@ -616,8 +625,9 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 		const inPractice = await js(`return !!document.querySelector('.practice-host') && !document.querySelector('.phone-view')`);
 		if (!inPractice) return { ok: false, value: '按了「練習」沒有進練習' };
 		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」，再按「存這一次」：存成一次
-		const picked = await js(`for (const b of document.querySelectorAll('.record .list button')) {
-				b.click();
+		const picked = await js(`${PICKS}
+			for (const pick of PICKS) {
+				pick();
 				await new Promise((r) => setTimeout(r, 100));
 				if (document.querySelector('.card button[aria-label$="失敗"]')) return true;
 			}
@@ -644,6 +654,26 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 	});
 }
 
+await check('390×844（觸控）練習記錄頁有 12 個動作：選動作是下拉選單，卡片不被動作清單擠到畫面外；選最後一個動作捲到它的卡片', async () => {
+	await setTouchViewport(390, 844);
+	await openPracticeFlow(`flow = core.updateSegment(flow, 's1', { eights: 16, lastBeats: 8 }).flow;
+		for (let i = 1; i < 12; i++) {
+			const r = core.addAction(flow, { segmentId: 's1', category: 'jump', name: '跳' + i, start: 16 * i, length: 16, note: '', members: [{ memberId: 'm1', role: null }] });
+			flow = core.addPhase(r.flow, r.id, { kind: 'whole', name: '', beats: { at: 0, len: 16 } }).flow;
+		}`);
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const top = () => js(`const c = document.querySelector('.card'); return c ? Math.round(c.getBoundingClientRect().top) : null;`);
+	const first = await top();
+	const select = await js(`const s = document.querySelector('.record .pick select'); return s ? s.options.length : 0;`);
+	if (select !== 12) return { ok: false, value: { 下拉選單的動作: select, 第一張卡的上緣: first } };
+	await js(`const s = document.querySelector('.record .pick select'); s.value = s.options[11].value; s.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await sleep(800);
+	const last = await top();
+	const name = await js(`return document.querySelector('.card').getAttribute('aria-label')`);
+	const inView = (y) => y !== null && y >= 0 && y < 844 - 100;
+	return { ok: inView(first) && inView(last) && name === '小美', value: { 第一張卡的上緣: first, 選了跳11後: last, 卡: name } };
+});
 await check('390×844（觸控）：有未存的修改（練習記了一次）按上方列的「回首頁」，「還沒存」對話框按鈕點得到', async () => {
 	await setTouchViewport(390, 844);
 	await openPracticeFlow();

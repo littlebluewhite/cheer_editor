@@ -11,6 +11,7 @@ import {
 	keptAttempt,
 	perPerson,
 	squadName,
+	squadPeople,
 	squadsOf,
 	type Attempt,
 	type Mark,
@@ -187,15 +188,19 @@ export function recordableActions(flow: Flow): Action[] {
 
 /**
  * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組（who 是組 id），照組號排，名字是「第 1 組 小美」；
- * 騰翻、跳躍是動作裡的每個人，照名單順序。沒分到組的人不算。
+ * people 是全組的名字（照名單順序）；騰翻、跳躍是動作裡的每個人，照名單順序，沒有 people。沒分到組的人不算。
  */
-export function attemptWhos(flow: Flow, action: Action): { who: string; name: string }[] {
+export function attemptWhos(flow: Flow, action: Action): { who: string; name: string; people?: string[] }[] {
 	if (perPerson(action.category)) {
 		return flow.members
 			.filter((m) => action.members.some((am) => am.memberId === m.id))
 			.map((m) => ({ who: m.id, name: m.name }));
 	}
-	return squadsOf(action).map((squad) => ({ who: squad, name: squadName(flow, action, squad) }));
+	return squadsOf(action).map((squad) => ({
+		who: squad,
+		name: squadName(flow, action, squad),
+		people: squadPeople(flow, action, squad).map((m) => m.name)
+	}));
 }
 
 /** 一次寫成一排記號，照環節順序，空的寫「·」，例：✓✓△、✗··。 */
