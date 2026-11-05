@@ -98,6 +98,32 @@ export function nearestPosition(flow: Flow, sec: number): TimePosition {
 }
 
 /**
+ * 拖過頭時停在哪（拖走位條、縮圖）：從 fromSec（合法的地方）往 toSec 拖，toSec 最近的那一格不合法時，
+ * 找兩者之間最靠 toSec 的合法格子。legal 問指令這一格能不能做；合法的格子要連成一段
+ * （從 fromSec 往外一旦不合法，再遠也不合法）。clamped = 停在比拖到的地方近（靠到邊界）。
+ */
+export function farthestLegal(
+	flow: Flow,
+	fromSec: number,
+	toSec: number,
+	legal: (p: TimePosition) => boolean
+): { to: TimePosition; clamped: boolean } {
+	const want = nearestPosition(flow, toSec);
+	if (legal(want)) return { to: want, clamped: false };
+	let ok = nearestPosition(flow, fromSec);
+	let bad = want;
+	for (;;) {
+		const [okSec, badSec] = [toSeconds(flow, ok), toSeconds(flow, bad)];
+		const mid = nearestPosition(flow, (okSec + badSec) / 2);
+		const midSec = toSeconds(flow, mid);
+		if (Math.abs(midSec - okSec) < EPS || Math.abs(midSec - badSec) < EPS) break;
+		if (legal(mid)) ok = mid;
+		else bad = mid;
+	}
+	return { to: ok, clamped: true };
+}
+
+/**
  * 播放頭可以停的點（全域秒數，照時間排）：音樂段每 musicStep 個半拍、口號段每 chantStep 個 0.1 秒，
  * 加上每段的開頭和流程結尾。
  */

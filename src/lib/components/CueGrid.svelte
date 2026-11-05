@@ -646,8 +646,12 @@
 				>
 					<div class="pop-head">
 						<!-- －／＋ 放在字前面：字會變長，放後面按鈕就會被擠走 -->
-						<button type="button" class="pm" aria-label="少選一拍" onclick={() => grow(-1)}>－</button>
-						<button type="button" class="pm" aria-label="多選一拍" onclick={() => grow(1)}>＋</button>
+						<button type="button" class="pm" aria-label="少選一拍" disabled={!beats.canGrow(-1)} onclick={() => grow(-1)}
+							>－</button
+						>
+						<button type="button" class="pm" aria-label="多選一拍" disabled={!beats.canGrow(1)} onclick={() => grow(1)}
+							>＋</button
+						>
 						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
 						<button type="button" class="tool" aria-label="複製選的拍點" title="複製（⌘C／Ctrl+C）" onclick={copy}>複製</button>
 						<button

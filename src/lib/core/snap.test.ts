@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	fieldPositionText,
+	snapGroup,
 	snapPointsNear,
 	snapPosition,
 	type FieldConfig,
@@ -94,5 +95,27 @@ describe('位置文字', () => {
 		expect(fieldPositionText(nine, [-4.572 + 0.3 * 1.8288, 3.6576])).toBe(
 			'第 3 條 左起 30%｜正面起第 2 格 1/2'
 		);
+	});
+});
+
+describe('整組拖：拖過頭停在最遠的合法位置', () => {
+	const team = { m1: [0, 0] as Position, m2: [0.9144, 0] as Position };
+
+	it('都在場地外 1 m 以內：跟一個人吸附一樣，沒有靠邊', () => {
+		const r = snapGroup(nine, team, 'm2', [3.25, 3.0], 1);
+		expect(close(r.at)).toEqual(close(snapPosition(nine, [3.25, 3.0], 1)));
+		expect(r.clamped).toBe(false);
+	});
+
+	it('拖的人出界：他停在最遠的吸附點，有靠邊', () => {
+		const r = snapGroup(nine, team, 'm2', [12, 0], 1);
+		expect(close(r.at)).toEqual([9.144, 0]);
+		expect(r.clamped).toBe(true);
+	});
+
+	it('別人會出界：整組停在那個人碰到邊界之前，拖的人還在吸附點上', () => {
+		const r = snapGroup(nine, team, 'm1', [10, -20], 1);
+		expect(close(r.at)).toEqual([8.2296, -7.3152]);
+		expect(r.clamped).toBe(true);
 	});
 });

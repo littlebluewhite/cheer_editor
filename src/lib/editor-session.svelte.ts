@@ -29,6 +29,9 @@ const UNDO_LIMIT = 100;
 /** 檢視模式下改流程被擋的原因。 */
 export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先打開上方列的「編輯」';
 
+/** 拖過頭（走位條、縮圖、場上的人）停在最遠的合法位置時的提示。 */
+export const AT_EDGE = '已靠到邊界';
+
 /** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
 export interface SessionPlayback {
 	/** 換一支流程（開檔、新建、救回草稿、回首頁）。 */
@@ -299,11 +302,15 @@ export class EditorSession {
 
 	// ---------- 改完跳播放頭 ----------
 
-	/** 拖人、跟上一張一樣改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。 */
-	moved(r: MoveResult) {
+	/**
+	 * 拖人、跟上一張一樣改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。
+	 * atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。
+	 */
+	moved(r: MoveResult, atEdge = false) {
 		const said = [
 			r.inserted && '插了一張站位，大家的位置自動帶入',
-			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
+			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`,
+			atEdge && AT_EDGE
 		];
 		this.notice = said.filter(Boolean).join('；');
 		this.#carriedInsertId =
@@ -317,9 +324,9 @@ export class EditorSession {
 
 	/**
 	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示改到哪（旁邊有「復原」）和走位被壓短的人，
-	 * 選著這張，播放頭跳到新的站位時間。
+	 * 選著這張，播放頭跳到新的站位時間。atEdge = 拖過頭停在邊界，提示多一句「已靠到邊界」。
 	 */
-	formationMoved(formationId: string, r: { sec: number; squeezed: string[] }) {
+	formationMoved(formationId: string, r: { sec: number; squeezed: string[] }, atEdge = false) {
 		const flow = this.#flow;
 		const index = flow?.formations.findIndex((f) => f.id === formationId) ?? -1;
 		if (!flow || index < 1) return;
@@ -327,7 +334,8 @@ export class EditorSession {
 		const names = r.squeezed.map((id) => flow.members.find((m) => m.id === id)?.name);
 		const said = [
 			`站位 ${index + 1} 改到 ${timeTextWithUnit(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })}`,
-			names.length && `走位被壓短：${names.join('、')}`
+			names.length && `走位被壓短：${names.join('、')}`,
+			atEdge && AT_EDGE
 		];
 		this.#undoNotice(said.filter(Boolean).join('；'), '復原改站位時間');
 		this.selectFormation(formationId);

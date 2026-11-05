@@ -8,20 +8,20 @@
 	// 流程和選取從 session 拿。點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕；滑鼠移上去、選到時才出現）。
 	// 跟下一張靠太近的縮圖變窄，不蓋到下一張；窄到畫不清楚的只畫號碼小標籤（沒有 ✕，選到後按 Delete 刪）；
 	// 還是疊到的幾張，上下分層錯開排（變矮），每張都點得到。
-	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才送到 session 的 ask，被擋就彈回原位。開頭那張拖不動。
+	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；拖過前後一張（或流程頭尾）就停在最遠能放的那一格，
+	// 放開才送到 session 的 ask，提示「已靠到邊界」。開頭那張拖不動。
 	// 刪掉（session.removeFormation，提示旁邊有「復原」）、挪好都算一步；挪好了選著這張，播放頭跳到新的站位時間（session.formationMoved）。
 	import {
+		farthestLegal,
 		fieldGeometry,
 		formationTimes,
 		moveFormation,
-		nearestPosition,
 		timeTextWithUnit,
 		toSeconds,
-		totalSeconds,
 		type TimePosition
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
@@ -101,8 +101,8 @@
 		return { top: THUMB_TOP + level * (height + LEVEL_GAP), height };
 	}
 
-	/** 正在拖的那張和吸到的那一格；還沒拖超過 DRAG_PX 時 to 是 null。 */
-	let drag = $state<{ id: string; to: TimePosition | null } | null>(null);
+	/** 正在拖的那張和吸到的那一格；還沒拖超過 DRAG_PX 時 to 是 null。clamped = 拖過頭、停在邊界。 */
+	let drag = $state<{ id: string; to: TimePosition | null; clamped: boolean } | null>(null);
 	/** 剛拖完：放開後瀏覽器接著送的 click 不算點縮圖。 */
 	let dragged = false;
 
@@ -110,38 +110,36 @@
 		// 手指按在沒選中的縮圖上：一滑是捲時間軸，點一下選中才拖得動（docs/adr/0005-ipad-touch.md）。
 		if (e.button !== 0 || touchOnUnpicked(e, id === selectedId)) return;
 		const x = e.clientX;
-		drag = { id, to: null };
+		drag = { id, to: null, clamped: false };
 		followPointer(
 			e,
 			(m) => {
 				if (drag && (drag.to || Math.abs(m.clientX - x) > DRAG_PX)) {
-					drag.to = nearestPosition(flow, sec + (m.clientX - x) / pxPerSec);
+					const legal = (p: TimePosition) => moveFormation(flow, id, p).kind === 'ok';
+					Object.assign(drag, farthestLegal(flow, sec, sec + (m.clientX - x) / pxPerSec, legal));
 				}
 			},
 			() => {
 				const to = drag?.to;
+				const clamped = !!drag?.clamped;
 				drag = null;
 				if (!to) return;
 				dragged = true;
 				setTimeout(() => (dragged = false));
+				if (Math.abs(toSeconds(flow, to) - sec) < 1e-9) {
+					if (clamped) session.notice = AT_EDGE;
+					return;
+				}
 				// 被擋時縮圖已經彈回原位，還原不用再做什麼。
 				session.ask.send(() => moveFormation(flow, id, to), {
 					revert: () => {},
-					done: (r) => session.formationMoved(id, r)
+					done: (r) => session.formationMoved(id, r, clamped)
 				});
 			},
 			() => (drag = null)
 		);
 	}
 
-	/**
-	 * 拖的時候縮圖上寫的新站位時間；home 是這張原本的段（拖得動的不是開頭那張，一定有段）。
-	 * 拖出流程頭尾就不寫（放開會被擋）。
-	 */
-	function dragText(home: string, to: TimePosition): string {
-		const sec = toSeconds(flow, to);
-		return sec >= 0 && sec < totalSeconds(flow) ? timeTextWithUnit(flow, home, to) : '';
-	}
 </script>
 
 <div class="row film">
@@ -196,8 +194,8 @@
 					{/if}
 					<span>{i + 1}</span>
 					{#if to}
-						{@const text = dragText(formation.segmentId!, to)}
-						{#if text}<em class="name when" aria-hidden="true">{text}</em>{/if}
+						<!-- 拖的時候寫新的站位時間；home 是這張原本的段（拖得動的不是開頭那張，一定有段） -->
+						<em class="name when" aria-hidden="true">{timeTextWithUnit(flow, formation.segmentId!, to)}</em>
 					{:else if formation.name && !tag}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
 				</button>
 				{#if deletable && !tag}

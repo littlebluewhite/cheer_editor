@@ -603,7 +603,7 @@
 							<SquadBar action={groupingAction} />
 						{/if}
 					{/snippet}
-					{#snippet railTop()}
+					{#snippet railHead()}
 						{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
 							<div class="select-tools">
 								{#if touchScreen}
@@ -617,6 +617,8 @@
 								{/if}
 							</div>
 						{/if}
+					{/snippet}
+					{#snippet railTop()}
 						{#if flow}
 							{@const now = currentFormation(flow, playback.sec)}
 							<div class="now-formation" aria-label="現在的站位">
@@ -1233,7 +1235,7 @@
 		background: #36425f;
 		margin: 0 4px;
 	}
-	/* 左欄：多選、取消選取、版面回原狀（iPad 沒有 Shift、Esc，也不好雙擊分界）。 */
+	/* 左欄上面固定的：多選、取消選取、版面回原狀（iPad 沒有 Shift、Esc，也不好雙擊分界）。 */
 	.select-tools {
 		display: flex;
 		flex-wrap: wrap;

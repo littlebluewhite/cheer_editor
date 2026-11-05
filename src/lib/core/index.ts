@@ -145,7 +145,7 @@ export {
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 
-export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
+export { FINE_ZOOM, fieldPositionText, snapGroup, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';
 
 export {
@@ -184,6 +184,7 @@ export {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
+	farthestLegal,
 	lengthText,
 	nearestPosition,
 	positionText,

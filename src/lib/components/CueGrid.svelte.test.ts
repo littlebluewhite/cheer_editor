@@ -134,6 +134,17 @@ describe('拍點格子：拖拉選拍', () => {
 		await fireEvent.click(grid.getByRole('button', { name: '少選一拍' }));
 		expect(selText()).toBe('選了 3-5 到 3-6・2 拍');
 	});
+	it('＋、－ 到上下限就停用：只選一拍時「－」、選到動作最後一拍時「＋」', async () => {
+		const { grid } = setup();
+		const minus = () => grid.getByRole('button', { name: '少選一拍' }) as HTMLButtonElement;
+		const plus = () => grid.getByRole('button', { name: '多選一拍' }) as HTMLButtonElement;
+		await fireEvent.click(grid.getByRole('button', { name: '4-1' }));
+		expect(minus().disabled).toBe(true);
+		expect(plus().disabled).toBe(false);
+		await fireEvent.click(plus());
+		expect(minus().disabled).toBe(false);
+		expect(plus().disabled).toBe(true);
+	});
 });
 
 describe('拍點格子：拍點小窗', () => {

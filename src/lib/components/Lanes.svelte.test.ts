@@ -471,44 +471,55 @@ describe('走位條', () => {
 		expect(Object.keys(session.flow!.formations[1].walks!)).toEqual(['m1']);
 	});
 
-	it('拖出前後兩張站位之間就還原，說原因；整組也一樣', async () => {
-		const { session, ask } = setupWalks(['m1', 'm2']);
+	/** 走到 f2（第 2 張）的走位，小A 和小B。 */
+	const walksOf = (session: { flow: Flow | null }) => session.flow!.formations[1].walks;
+	const at = (n: number) => ({ segmentId: 's1', at: n });
+
+	it('到達拖過這一張站位：停在這一張（最遠合法的地方），提示「已靠到邊界」；已經在邊上就不改', async () => {
+		const { session } = setupWalks(['m1', 'm2']);
+		// 先把到達往前拖一拍（2-4），再往後拖過頭
+		await dragBy(end(1, 'arrive'), -4);
+		await dragBy(end(1, 'arrive'), 40);
+		expect(walksOf(session)).toEqual({ m1: { depart: at(8), arrive: at(24) }, m2: { depart: at(8), arrive: at(24) } });
+		expect(session.notice).toBe('已靠到邊界');
+		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
+		session.notice = '';
+		session.undo();
+		session.undo();
+		// 已經在邊上：不算一步，照樣提示
 		await dragBy(end(1, 'arrive'), 4);
 		expect(session.canUndo).toBe(false);
-		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
-		expect(walkBar(0).style.left).toBe('16px');
-		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
+		expect(session.notice).toBe('已靠到邊界');
 	});
 
-	it('前一張在流程開頭時，出發拖到流程開頭之前也還原，說原因', async () => {
-		const { session, ask } = setupWalks();
+	it('前一張在流程開頭時，出發拖到流程開頭之前：停在流程開頭；拖中間也一樣，長度不變', async () => {
+		const { session } = setupWalks();
 		// 往左 20 px = 2 秒：出發 -0.4 秒，在流程開頭之前
 		await dragBy(end(0, 'depart'), -20);
-		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
-		ask.clear();
+		expect(walksOf(session)).toEqual({ m1: { depart: at(0), arrive: at(24) } });
+		expect(session.notice).toBe('已靠到邊界');
+		session.undo();
 		await dragBy(walkBar(0), -20);
-		expect(session.canUndo).toBe(false);
-		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
-		expect(walkBar(0).style.left).toBe('16px');
+		expect(walksOf(session)).toEqual({ m1: { depart: at(0), arrive: at(16) } });
+		expect(walkBar(0).style.left).toBe('0px');
 	});
 
-	it('這一張在流程最後一格時，拖中間拖過流程結尾也還原，不偷偷縮短', async () => {
+	it('這一張在流程最後一格時，拖中間拖過流程結尾：不動，不偷偷縮短', async () => {
 		// f2 在最後一個半拍（第 127 個，25.4 秒），預設走位 22.4 → 25.4 秒
 		let flow = flowOf(insertFormation(sample(), 25.4));
 		const f2 = flow.formations[1];
 		flow = flowOf(setPositions(flow, f2.id, { m1: f2.pos.m2, m2: f2.pos.m1 }));
-		const { session, ask } = renderLanes(flow);
+		const { session } = renderLanes(flow);
 		await dragBy(walkBar(0), 10);
 		expect(session.canUndo).toBe(false);
-		expect(ask.error).toBe('出發和到達要在前一張和這一張站位之間，已還原');
+		expect(session.notice).toBe('已靠到邊界');
 	});
 
-	it('出發拖到到達之後就還原，說原因', async () => {
-		const { session, ask } = setupWalks();
+	it('出發拖到到達之後：停在到達前半拍', async () => {
+		const { session } = setupWalks();
 		await dragBy(end(0, 'depart'), 40);
-		expect(session.canUndo).toBe(false);
-		expect(ask.error).toBe('出發要早於到達，已還原');
-		expect(walkBar(0).style.left).toBe('16px');
+		expect(walksOf(session)).toEqual({ m1: { depart: at(23), arrive: at(24) } });
+		expect(session.notice).toBe('已靠到邊界');
 	});
 
 	it('只是點一下，不改流程', async () => {
