@@ -24,43 +24,23 @@ export function saveLatencyMs(ms: number): void {
 	}
 }
 
-const TIMELINE_KEY = 'cheer-editor:timelineHeightPx';
+/** 拖分界改的大小（px）：時間軸的高度、右邊欄的寬度。存在 `cheer-editor:<名字>`。 */
+export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthPx';
 
-/** 時間軸的高度（px，拖場地和時間軸中間的分界改的）；null = 預設。 */
-export function loadTimelineHeight(): number | null {
+/** 拖分界改的大小；null = 預設（沒拖過，或雙擊回去了）。 */
+export function loadLayoutPx(name: LayoutSize): number | null {
 	try {
-		const px = Number(localStorage.getItem(TIMELINE_KEY));
+		const px = Number(localStorage.getItem(`cheer-editor:${name}`));
 		return Number.isFinite(px) && px > 0 ? px : null;
 	} catch {
 		return null;
 	}
 }
 
-export function saveTimelineHeight(px: number | null): void {
+export function saveLayoutPx(name: LayoutSize, px: number | null): void {
 	try {
-		if (px === null) localStorage.removeItem(TIMELINE_KEY);
-		else localStorage.setItem(TIMELINE_KEY, String(px));
-	} catch {
-		// 存不了就只在這次用
-	}
-}
-
-const INSPECTOR_KEY = 'cheer-editor:inspectorWidthPx';
-
-/** 右邊欄的寬度（px，拖場地和右邊欄中間的分界改的）；null = 自動。 */
-export function loadInspectorWidth(): number | null {
-	try {
-		const px = Number(localStorage.getItem(INSPECTOR_KEY));
-		return Number.isFinite(px) && px > 0 ? px : null;
-	} catch {
-		return null;
-	}
-}
-
-export function saveInspectorWidth(px: number | null): void {
-	try {
-		if (px === null) localStorage.removeItem(INSPECTOR_KEY);
-		else localStorage.setItem(INSPECTOR_KEY, String(px));
+		if (px === null) localStorage.removeItem(`cheer-editor:${name}`);
+		else localStorage.setItem(`cheer-editor:${name}`, String(px));
 	} catch {
 		// 存不了就只在這次用
 	}

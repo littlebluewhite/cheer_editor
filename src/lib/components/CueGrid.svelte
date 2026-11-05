@@ -19,8 +19,8 @@
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { popover } from '#lib/popover.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
-	import { Ask } from './ask.svelte';
 	import { touchOnUnpicked } from './pointer';
 	import {
 		COUNT_WORDS,
@@ -117,22 +117,15 @@
 	/** 選到的拍：從 from 那一拍到 to 那一拍（從動作開始算的半拍，各佔一拍）。平常是格子開頭；點從 & 開始的拍點時落在 &。 */
 	let sel = $state({ from: 0, to: 0 });
 	/** 被擋的原因，和等教練回答的環節改動（會刪掉有記號的環節）。 */
-	const ask = new Ask(
-		(f) => {
-			hold = pop;
-			session.change(f);
-		},
-		{ confirmLabel: '確定刪除' }
-	);
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 
 	/** 拍點小窗開著沒；拖的時候先收起來，放開才跳出來。 */
 	let pop = $state(false);
 	let dragging = $state(false);
 	let wrapEl = $state<HTMLElement>();
 	let popEl = $state<HTMLElement>();
+	/** 小窗在格子框裡的位置（小窗開在最上層，放的時候再加上格子框在畫面上的左上角）。 */
 	let popPos = $state({ top: 0, left: 0, arrow: 0, above: false });
-	/** 格子框在畫面上的左上角：小窗開在最上層（popover），用畫面座標放（popPos 是格子框裡的座標）。 */
-	let origin = $state({ x: 0, y: 0 });
 	/** 格子下面一直留著的空位（小窗最高那次的高度）：只長不縮，關掉小窗時捲動長度不會變短，畫面不會跳。 */
 	let reserve = $state(0);
 	/** 放完 down／up 自動跳到下一拍時才可以捲；自己點選的時候畫面不動。 */
@@ -217,7 +210,12 @@
 	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
 	function send(cmd: (o?: ConfirmOption) => CommandResult, after?: () => void): boolean {
 		hold = pop;
-		return ask.send(cmd, { done: () => after?.() }).kind === 'ok';
+		// 問了答好才成功：小窗也留在原地。
+		const done = () => {
+			hold = pop;
+			after?.();
+		};
+		return ask.send(cmd, { done }).kind === 'ok';
 	}
 
 	const selectOne = (at: number) => (sel = { from: at, to: at });
@@ -400,12 +398,6 @@
 		const a = q(`.slot.motion[data-at="${first}"]`);
 		const b = q(`.slot.motion[data-at="${last}"]`);
 		if (!head || !a || !b) return;
-		// 小窗開在最上層（popover）：右邊欄捲動容器裁不到它。
-		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
-		if (popEl.showPopover && !popEl.matches(':popover-open')) {
-			popEl.popover = 'manual';
-			popEl.showPopover();
-		}
 		// 最寬跟格子框一樣；先設好寬度再量高度
 		popEl.style.width = `min(480px, ${wrapEl.clientWidth}px)`;
 		const h = popEl.offsetHeight;
@@ -425,7 +417,6 @@
 			}
 		}
 		const wrap = wrapEl.getBoundingClientRect();
-		origin = { x: wrap.left, y: wrap.top };
 		// 小窗不會被右邊欄裁掉，下面可以開到畫面底（蓋住時間軸）；上面只算到右邊欄的頂端（再上面是分頁列、上方列）。
 		const view = { top: box.getBoundingClientRect().top, bottom: innerHeight };
 		const rect = (el: HTMLElement) => {
@@ -447,32 +438,10 @@
 		});
 	});
 
-	function outside(e: PointerEvent) {
-		if (pop && !wrapEl?.contains(e.target as Node)) pop = false;
-	}
-
-	// 小窗開著時右邊欄捲動、視窗變大變小：小窗跟著格子走。
-	$effect(() => {
-		if (!pop) return;
-		const move = () => {
-			if (!wrapEl) return;
-			const r = wrapEl.getBoundingClientRect();
-			origin = { x: r.left, y: r.top };
-		};
-		addEventListener('scroll', move, true);
-		addEventListener('resize', move);
-		return () => {
-			removeEventListener('scroll', move, true);
-			removeEventListener('resize', move);
-		};
-	});
-
-	/** Esc 只關小窗（不讓編輯頁把動作也取消選）。 */
-	function popKeys(e: KeyboardEvent) {
-		// 中文輸入法選字時的 Esc 是取消選字，不關小窗（Safari 選字時 keyCode 是 229）。
-		if (!pop || e.key !== 'Escape' || composing(e)) return;
-		e.stopPropagation();
-		pop = false;
+	/** 給 popover 的 place：格子框在畫面上的左上角加上小窗在格子框裡的位置（右邊欄捲動時跟著格子走）。 */
+	function placePop() {
+		const r = wrapEl!.getBoundingClientRect();
+		return { top: r.top + popPos.top, left: r.left + popPos.left };
 	}
 
 	/** 範圍 [lo, hi] 離 v 多遠（在裡面是 0）。 */
@@ -659,11 +628,10 @@
 					class="pop"
 					class:above={popPos.above}
 					bind:this={popEl}
-					style:top="{origin.y + popPos.top}px"
-					style:left="{origin.x + popPos.left}px"
 					style:--arrow="{popPos.arrow}px"
 					role="dialog"
 					aria-label="拍點小窗"
+					{@attach popover({ place: placePop, close: () => (pop = false), inside: [wrapEl] })}
 				>
 					<div class="pop-head">
 						<!-- －／＋ 放在字前面：字會變長，放後面按鈕就會被擠走 -->
@@ -793,7 +761,7 @@
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 {/snippet}
 
-<svelte:window bind:innerWidth={winW} onpointerdown={outside} onkeydowncapture={popKeys} />
+<svelte:window bind:innerWidth={winW} />
 
 <style>
 	.cues {

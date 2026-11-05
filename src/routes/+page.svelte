@@ -36,15 +36,12 @@
 	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
-		loadInspectorWidth,
 		MAX_LATENCY_MS,
 		loadLatencyMs,
-		loadTimelineHeight,
-		saveInspectorWidth,
-		saveLatencyMs,
-		saveTimelineHeight
+		saveLatencyMs
 	} from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
+	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -378,45 +375,30 @@
 	const TIMELINE_MIN_PX = 160;
 	/** 場地和上方列至少留這麼高。 */
 	const FIELD_KEEP_PX = 300;
-	let timelineH = $state<number | null>(loadTimelineHeight());
 	let timelineHost = $state<HTMLElement>();
-	let split: { y: number; h: number } | null = null;
+	const timelineDivider = new Divider({
+		name: 'timelineHeightPx',
+		axis: 'y',
+		clamp: (px) => Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX)),
+		size: currentTimelineH
+	});
 
 	/** 時間軸現在多高：拖過就是拖的高度，沒拖過量畫面（量不到用預設的 30vh）。 */
 	function currentTimelineH(): number {
-		if (timelineH !== null) return timelineH;
+		if (timelineDivider.px !== null) return timelineDivider.px;
 		return Math.round(timelineHost?.getBoundingClientRect().height || Math.max(200, window.innerHeight * 0.3));
-	}
-
-	function setTimelineH(px: number | null) {
-		timelineH =
-			px === null ? null : Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX));
-		saveTimelineHeight(timelineH);
-	}
-
-	function splitDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		split = { y: e.clientY, h: currentTimelineH() };
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-	}
-
-	function splitMove(e: PointerEvent) {
-		if (split) setTimelineH(split.h + split.y - e.clientY);
-	}
-
-	function splitKey(e: KeyboardEvent) {
-		const step = { ArrowUp: 24, ArrowDown: -24 }[e.key];
-		if (!step) return;
-		e.preventDefault();
-		setTimelineH(currentTimelineH() + step);
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
 	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
-	let inspectorW = $state<number | null>(loadInspectorWidth());
 	let windowW = $state(0);
 	let fieldHostH = $state(0);
-	let colSplit: { x: number; w: number } | null = null;
+	const inspectorDivider = new Divider({
+		name: 'inspectorWidthPx',
+		axis: 'x',
+		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
+		size: (): number => inspectorPx
+	});
 
 	const fieldAspect = $derived.by(() => {
 		if (!flow) return 1;
@@ -425,9 +407,9 @@
 	});
 	/** 右邊欄現在多寬。 */
 	const inspectorPx = $derived(
-		inspectorW === null
+		inspectorDivider.px === null
 			? autoInspectorWidth(windowW, fieldHostH, fieldAspect)
-			: clampInspectorWidth(inspectorW, windowW)
+			: clampInspectorWidth(inspectorDivider.px, windowW)
 	);
 
 	/** 量場地那一欄多高（視窗或時間軸變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
@@ -436,28 +418,6 @@
 		const ro = new ResizeObserver(() => (fieldHostH = el.clientHeight));
 		ro.observe(el);
 		return () => ro.disconnect();
-	}
-
-	function setInspectorW(px: number | null) {
-		inspectorW = px === null ? null : clampInspectorWidth(px, window.innerWidth);
-		saveInspectorWidth(inspectorW);
-	}
-
-	function colSplitDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		colSplit = { x: e.clientX, w: inspectorPx };
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-	}
-
-	function colSplitMove(e: PointerEvent) {
-		if (colSplit) setInspectorW(colSplit.w + colSplit.x - e.clientX);
-	}
-
-	function colSplitKey(e: KeyboardEvent) {
-		const step = { ArrowLeft: 24, ArrowRight: -24 }[e.key];
-		if (!step) return;
-		e.preventDefault();
-		setInspectorW(inspectorPx + step);
 	}
 
 
@@ -756,8 +716,8 @@
 
 	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
 	function resetLayout() {
-		setTimelineH(null);
-		setInspectorW(null);
+		timelineDivider.set(null);
+		inspectorDivider.set(null);
 	}
 
 	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
@@ -787,7 +747,7 @@
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
 		class:print-hidden={printOpen}
-		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
+		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
@@ -907,7 +867,7 @@
 					{/if}
 				{/snippet}
 				{#snippet railTop()}
-					{#if touchScreen || timelineH !== null || inspectorW !== null}
+					{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
 						<div class="select-tools">
 							{#if touchScreen}
 								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
@@ -915,7 +875,7 @@
 								</label>
 								<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
 							{/if}
-							{#if timelineH !== null || inspectorW !== null}
+							{#if timelineDivider.px !== null || inspectorDivider.px !== null}
 								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
 							{/if}
 						</div>
@@ -971,7 +931,7 @@
 		</main>
 
 		<aside class="inspector" hidden={view === 'practice'}>
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 			<div
 				class="col-split"
 				role="separator"
@@ -981,12 +941,7 @@
 				aria-valuemin={INSPECTOR_MIN_PX}
 				tabindex="0"
 				title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
-				onpointerdown={colSplitDown}
-				onpointermove={colSplitMove}
-				onpointerup={() => (colSplit = null)}
-				onpointercancel={() => (colSplit = null)}
-				onkeydown={colSplitKey}
-				ondblclick={() => setInspectorW(null)}
+				{@attach inspectorDivider.attach}
 			></div>
 			<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
 			<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
@@ -1018,23 +973,18 @@
 			</div>
 		</aside>
 
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 		<div
 			class="split"
 			hidden={view === 'practice'}
 			role="separator"
 			aria-orientation="horizontal"
 			aria-label="場地和時間軸的分界"
-			aria-valuenow={timelineH ?? currentTimelineH()}
+			aria-valuenow={timelineDivider.px ?? currentTimelineH()}
 			aria-valuemin={TIMELINE_MIN_PX}
 			tabindex="0"
 			title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
-			onpointerdown={splitDown}
-			onpointermove={splitMove}
-			onpointerup={() => (split = null)}
-			onpointercancel={() => (split = null)}
-			onkeydown={splitKey}
-			ondblclick={() => setTimelineH(null)}
+			{@attach timelineDivider.attach}
 		></div>
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>

@@ -1911,6 +1911,10 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 		const add = screen.getByRole('button', { name: '在最後加一段' });
 		await fireEvent.click(add);
 		expect(screen.getByRole('button', { name: '＋音樂段' })).toBeTruthy();
+		// 在輸入框裡用中文輸入法選字時的 Esc 不算
+		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', isComposing: true });
+		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', keyCode: 229 });
+		expect(screen.getByRole('button', { name: '＋音樂段' })).toBeTruthy();
 		await fireEvent.keyDown(add, { key: 'Escape' });
 		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
 		expect(add.getAttribute('aria-expanded')).toBe('false');
@@ -1933,6 +1937,9 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 		const tip = document.getElementById(bang.getAttribute('aria-describedby')!)!;
 		expect(tip.hidden).toBe(true);
 		await fireEvent.click(bang);
+		expect(tip.hidden).toBe(false);
+		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', isComposing: true });
+		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', keyCode: 229 });
 		expect(tip.hidden).toBe(false);
 		await fireEvent.keyDown(bang, { key: 'Escape' });
 		expect(tip.hidden).toBe(true);

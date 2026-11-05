@@ -9,7 +9,7 @@
 		moveFormation,
 		moveFormationHint,
 		moveTargetText,
-		parseTime,
+		readTime,
 		renameFormation,
 		timeText,
 		type Formation,
@@ -44,9 +44,7 @@
 	function renameHere(formationId: string, name: string) {
 		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
 		if (name.trim() === before) return;
-		const r = renameFormation(flow, formationId, name);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		session.change(r.flow);
+		session.ask.send(() => renameFormation(flow, formationId, name));
 	}
 
 	/**
@@ -55,11 +53,11 @@
 	 */
 	function retimeHere(box: HTMLInputElement, formation: Formation, text: string) {
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
-		const to = parseTime(flow, formation.segmentId!, box.value);
+		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
-		if (!to) return void (session.notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
+		if (to.kind === 'blocked') return void session.ask.send(() => to);
 		const f = flow;
-		session.ask.send(() => moveFormation(f, formation.id, to), {
+		session.ask.send(() => moveFormation(f, formation.id, to.value), {
 			revert: () => {},
 			done: (r) => session.formationMoved(formation.id, r)
 		});

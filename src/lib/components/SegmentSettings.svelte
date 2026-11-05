@@ -6,7 +6,6 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { Ask } from './ask.svelte';
 	import { tick } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
@@ -21,10 +20,11 @@
 		moveSegment,
 		musicLength,
 		musicOverrunSec,
-		parseNumber,
+		readSegmentNumber,
 		segmentSpans,
 		updateSegment,
 		type ConfirmOption,
+		type SegmentNumberField,
 		type SegmentPatch
 	} from '#lib/core';
 	import {
@@ -77,7 +77,7 @@
 	}
 
 	/** 被擋的原因，和段縮短會刪掉東西時等教練確認的清單（流程核心給的）。 */
-	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 	const span = $derived(segmentSpans(flow).find((s) => s.segment.id === segmentId));
 	const segment = $derived(span?.segment);
 	const music = $derived(segment?.kind === 'music' ? segment : null);
@@ -115,9 +115,13 @@
 		});
 	}
 
-	/** 一格數字欄位送出：被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。 */
-	function updateField(input: HTMLInputElement, field: string, patch: SegmentPatch, actual: () => number | undefined) {
-		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o), {
+	/**
+	 * 一格數字欄位送出（key 是改段的哪個欄位）：打的字先由核心讀，讀得懂才改段。
+	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。
+	 */
+	function updateField(input: HTMLInputElement, field: string, key: SegmentNumberField, actual: () => number | undefined) {
+		const value = readSegmentNumber(key, input.value);
+		ask.send((o: ConfirmOption = {}) => (value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o)), {
 			field,
 			revert: () => (input.value = String(actual() ?? '')),
 			cancel: () => (fieldsKey += 1)
@@ -188,10 +192,10 @@
 	function typeFirstBeat(input: HTMLInputElement) {
 		const field = '第一拍（秒）';
 		const revert = () => (input.value = String(music?.firstBeatSec ?? ''));
-		const sec = parseNumber(input.value);
-		const problem = pastEnd(sec);
+		const sec = readSegmentNumber('firstBeatSec', input.value);
+		const problem = sec.kind === 'ok' && pastEnd(sec.value);
 		if (problem) return blocked(problem, { field, revert });
-		updateField(input, field, { firstBeatSec: sec }, () => music?.firstBeatSec);
+		updateField(input, field, 'firstBeatSec', () => music?.firstBeatSec);
 	}
 
 	function clickWave(e: MouseEvent) {
@@ -257,7 +261,7 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', { bpm: parseNumber(e.currentTarget.value) }, () => music?.bpm)} />
+						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
@@ -301,7 +305,7 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', { eights: parseNumber(e.currentTarget.value) }, () => length?.eights)} />
+						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', 'eights', () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
@@ -309,7 +313,7 @@
 							type="text"
 							inputmode="numeric"
 							value={length.lastBeats}
-							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', { lastBeats: parseNumber(e.currentTarget.value) }, () => length?.lastBeats)}
+							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
 						/>
 					</label>
 					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
@@ -330,7 +334,7 @@
 							type="text"
 							inputmode="decimal"
 							value={span?.durationSec}
-							onchange={(e) => updateField(e.currentTarget, '長度（秒）', { seconds: parseNumber(e.currentTarget.value) }, () => span?.durationSec)}
+							onchange={(e) => updateField(e.currentTarget, '長度（秒）', 'seconds', () => span?.durationSec)}
 						/>
 					</label>
 					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>

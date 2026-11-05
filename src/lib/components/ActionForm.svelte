@@ -7,9 +7,9 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
-	import { composing } from '#lib/ime.js';
 	import { untrack, type ComponentProps } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 	import {
 		ACTION_CATEGORIES,
 		actionHints,
@@ -23,9 +23,9 @@
 		groupsPeople,
 		lengthText,
 		memberName,
-		parseAt,
-		parseLength,
 		positionText,
+		readLength,
+		readStart,
 		roleGlossary,
 		segmentSpans,
 		squadBadge,
@@ -34,11 +34,11 @@
 		type ActionCategory,
 		type ActionMember,
 		type ConfirmOption,
-		type NewActionInput
+		type NewActionInput,
+		type ReadResult
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
-	import { Ask } from './ask.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import { reveal } from './reveal';
 	import Icon from './Icon.svelte';
@@ -104,7 +104,7 @@
 
 	let draft = $state<Draft>(blank());
 	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
-	const ask = new Ask((f) => session.change(f));
+	const ask = session.changeAsk();
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -112,60 +112,10 @@
 	let legendPeek = $state(false);
 	const legendShown = $derived(legendOpen || legendPeek);
 	let bangEl = $state<HTMLElement>();
-	let tipEl = $state<HTMLElement>();
-	let tipPos = $state({ top: 0, left: 0 });
-
-	/** 說明小窗放在「!」下面、右邊對齊；畫面下面放不下就放上面，左右上下都不超出畫面。 */
-	function placeTip() {
-		if (!bangEl || !tipEl) return;
-		const b = bangEl.getBoundingClientRect();
-		const w = tipEl.offsetWidth;
-		const h = tipEl.offsetHeight;
-		const M = 8;
-		let top = b.bottom + 6;
-		if (top + h > innerHeight - M && b.top - 6 - h >= M) top = b.top - 6 - h;
-		tipPos = {
-			top: Math.max(M, Math.min(top, innerHeight - M - h)),
-			left: Math.max(M, Math.min(b.right - w, innerWidth - M - w))
-		};
-	}
-
-	$effect(() => {
-		if (!legendShown || !tipEl) return;
-		const tip = tipEl;
-		// 說明開在最上層（popover）：右邊欄捲動容器裁不到它。
-		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
-		if (tip.showPopover && !tip.matches(':popover-open')) {
-			tip.popover = 'manual';
-			tip.showPopover();
-		}
-		placeTip();
-		// 右邊欄捲動、視窗變大變小時跟著「!」走
-		addEventListener('scroll', placeTip, true);
-		addEventListener('resize', placeTip);
-		return () => {
-			removeEventListener('scroll', placeTip, true);
-			removeEventListener('resize', placeTip);
-			if (tip.popover) tip.hidePopover();
-		};
-	});
 
 	function closeLegend() {
 		legendOpen = false;
 		legendPeek = false;
-	}
-
-	/** 點外面就收起來（點「!」自己是開關，點說明裡面不算）。 */
-	function legendOutside(e: PointerEvent) {
-		const t = e.target as Node;
-		if (legendShown && !bangEl?.contains(t) && !tipEl?.contains(t)) closeLegend();
-	}
-
-	/** Esc 只收說明（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
-	function legendKeys(e: KeyboardEvent) {
-		if (!legendShown || e.key !== 'Escape' || composing(e)) return;
-		e.stopPropagation();
-		closeLegend();
 	}
 
 	function blank(): Draft {
@@ -249,24 +199,22 @@
 		});
 	});
 
-	function toInput(): NewActionInput | string {
-		if (!segment) return '找不到這一段';
-		const start = parseAt(segment, draft.startText);
-		if (start === null) {
-			return segment.kind === 'music' ? '開始看不懂，例：3-5&' : '開始看不懂，請打秒數';
-		}
-		const length = parseLength(segment, draft.lengthText);
-		if (length === null) return '長度看不懂';
+	/** 表單讀成動作：開始、長度由核心讀，看不懂就是被擋（原因交給問教練）。 */
+	function toInput(): ReadResult<NewActionInput> {
+		// 沒有段時沒有「新增動作」鈕；選到的動作一定在某一段裡。
+		const seg = segment!;
+		const start = readStart(seg, draft.startText);
+		if (start.kind === 'blocked') return start;
+		const length = readLength(seg, draft.lengthText);
+		if (length.kind === 'blocked') return length;
 		const { category, name, note, members, color } = draft;
-		return { segmentId: segment.id, category, name, start, length, note, members, color };
+		const value = { segmentId: seg.id, category, name, start: start.value, length: length.value, note, members, color };
+		return { kind: 'ok', value };
 	}
-
-	/** 開始、長度看不懂：跟核心擋下來一樣，交給問教練留下原因。 */
-	const notParsed = (message: string) => ({ kind: 'blocked', message }) as const;
 
 	function add() {
 		const input = toInput();
-		ask.send(() => (typeof input === 'string' ? notParsed(input) : addAction(flow, input)), {
+		ask.send(() => (input.kind === 'blocked' ? input : addAction(flow, input.value)), {
 			done: (r) => session.selectAction(r.id)
 		});
 	}
@@ -286,7 +234,7 @@
 		const id = action.id;
 		const input = toInput();
 		ask.send(
-			(o: ConfirmOption = {}) => (typeof input === 'string' ? notParsed(input) : updateAction(flow, id, input, o)),
+			(o: ConfirmOption = {}) => (input.kind === 'blocked' ? input : updateAction(flow, id, input.value, o)),
 			{ revert: () => action && (draft = fromAction(action)) }
 		);
 	}
@@ -347,8 +295,6 @@
 	const nameOf = (id: string) => memberName(flow, id);
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
-
-<svelte:window onpointerdown={legendOutside} onkeydowncapture={legendKeys} />
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
@@ -451,14 +397,14 @@
 						onfocus={(e) => e.currentTarget.matches(':focus-visible') && (legendPeek = true)}
 						onfocusout={closeLegend}>!</button
 					>
+					<!-- 說明放在「!」下面、右邊對齊；點外面（點「!」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
 					<span
 						class="tip"
 						id="people-legend"
 						role="tooltip"
 						hidden={!legendShown}
-						bind:this={tipEl}
-						style:top="{tipPos.top}px"
-						style:left="{tipPos.left}px"
+						{@attach legendShown &&
+							popover({ place: below(bangEl!, { gap: 6, align: 'right' }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>

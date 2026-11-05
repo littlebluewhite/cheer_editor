@@ -2,7 +2,7 @@
 	// 問教練 module 的畫法：給 ask（一個問題實例）就畫它的問題。要確認是「確定／取消」，
 	// 要選是「保留舊紀錄／清掉重算／取消」；按了交給 ask 帶著回答再送一次。
 	// 「還沒存，要丟掉嗎」不是流程核心的問題：直接給 message、items、確定鈕的字、onconfirm、oncancel。
-	import type { Ask } from './ask.svelte';
+	import type { Ask } from '#lib/ask.svelte.js';
 
 	type Props =
 		| { ask: Ask }

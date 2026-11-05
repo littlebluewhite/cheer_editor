@@ -12,7 +12,7 @@
 	import { composing } from '#lib/ime.js';
 	import type { Snippet } from 'svelte';
 	import { domPendingInput } from '#lib/pending-input.js';
-	import type { Ask } from './ask.svelte';
+	import type { Ask } from '#lib/ask.svelte.js';
 
 	interface Props {
 		label: string;

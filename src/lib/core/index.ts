@@ -1,7 +1,7 @@
 // 流程核心的對外介面。畫面只從這裡 import，不碰 core 裡的其他檔案。
 // 這一層是純 TypeScript：不碰 DOM、Svelte、Web Audio、檔案對話框。
 
-export type { CommandResult, ConfirmOption, RecordsChoice } from './result';
+export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
 export { createFlow, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
@@ -153,6 +153,7 @@ export {
 	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
+	readSegmentNumber,
 	updateSegment
 } from './segment';
 export type {
@@ -164,6 +165,7 @@ export type {
 	MusicSegment,
 	Segment,
 	SegmentKind,
+	SegmentNumberField,
 	SegmentPatch
 } from './segment';
 
@@ -173,11 +175,10 @@ export {
 	atText,
 	lengthText,
 	nearestPosition,
-	parseAt,
-	parseNumber,
-	parseLength,
-	parseTime,
 	positionText,
+	readLength,
+	readStart,
+	readTime,
 	rulerMarks,
 	segmentSpans,
 	snapToBeat,
@@ -188,7 +189,7 @@ export {
 	toSeconds,
 	totalSeconds
 } from './time';
-export type { RulerMark, SegmentSpan, TimePosition } from './time';
+export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
 
 export { firstBeatPreview, playbackPlan, playStartSec, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
