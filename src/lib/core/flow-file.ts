@@ -8,7 +8,7 @@ import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { PHASE_KINDS } from './phase-types';
-import { MAX_CHANT_SEC, MAX_EIGHTS } from './segment';
+import { fileLengthProblem } from './segment';
 import { freshIds } from './ids';
 import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
@@ -175,17 +175,13 @@ export function readFlowFile(
 }
 
 /**
- * 段的長度超出編輯器能設的範圍（口號段 0.1 到 MAX_CHANT_SEC 秒、音樂段到 MAX_EIGHTS 個八拍，不是正的也算）：
+ * 段的長度超出編輯器能設的範圍（跟改段一樣的上限，不是正的也算）：
  * 照樣打開會把分頁卡住，所以擋下來，寫出上限。沒問題是 null。
  */
 function segmentLengthProblem(flow: Flow): string | null {
 	for (const s of flow.segments) {
-		if (s.kind === 'chant' && !(s.tenths >= 1 && s.tenths <= MAX_CHANT_SEC * 10)) {
-			return `口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`;
-		}
-		if (s.kind === 'music' && !(s.halfBeats >= 1 && s.halfBeats <= MAX_EIGHTS * 16)) {
-			return `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`;
-		}
+		const problem = fileLengthProblem(s);
+		if (problem) return problem;
 	}
 	return null;
 }

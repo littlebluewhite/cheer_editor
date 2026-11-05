@@ -2,6 +2,7 @@
 	// 站位小編輯（場地左欄、圖例上面）：跟上一張一樣、拖人會改哪一張、播放頭所在站位的名稱和站位時間。
 	// 規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		formationAt,
@@ -9,33 +10,30 @@
 		moveFormation,
 		moveFormationHint,
 		moveTargetText,
-		parseTime,
+		readTime,
 		renameFormation,
 		timeText,
 		type Formation,
 		type TimePosition
 	} from '#lib/core';
 
-	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
-	}
-
-	let { playheadSec }: Props = $props();
-
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 改名、站位時間看不懂：被擋的原因放進提示；成功不收掉別的提示，也不動場上的問題。 */
+	const ask = session.changeAsk({ onfail: (error) => (session.notice = error) });
+	/** 播放頭（全域秒數）從編輯器 module 的播放拿。 */
+	const { playback } = getEditor();
 
-	const match = $derived(matchPrevious(flow, playheadSec, session.selectedMemberIds));
+	const match = $derived(matchPrevious(flow, playback.sec, session.selectedMemberIds));
 	const matchBlocked = $derived(match.kind === 'blocked' ? match.message : '');
-	const here = $derived(formationAt(flow, playheadSec));
+	const here = $derived(formationAt(flow, playback.sec));
 	// 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。
 	const hereTime = $derived(here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : '');
 
 	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示和播放頭跟拖人一樣。 */
 	function matchPrev() {
 		const f = flow;
-		const sec = playheadSec;
+		const sec = playback.sec;
 		const ids = session.selectedMemberIds;
 		session.ask.send(() => matchPrevious(f, sec, ids), { done: (r) => session.moved(r) });
 	}
@@ -44,9 +42,7 @@
 	function renameHere(formationId: string, name: string) {
 		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
 		if (name.trim() === before) return;
-		const r = renameFormation(flow, formationId, name);
-		if (r.kind !== 'ok') return void (session.notice = r.message);
-		session.change(r.flow);
+		ask.send(() => renameFormation(flow, formationId, name));
 	}
 
 	/**
@@ -55,11 +51,11 @@
 	 */
 	function retimeHere(box: HTMLInputElement, formation: Formation, text: string) {
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
-		const to = parseTime(flow, formation.segmentId!, box.value);
+		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
-		if (!to) return void (session.notice = '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）');
+		if (to.kind === 'blocked') return void ask.send(() => to);
 		const f = flow;
-		session.ask.send(() => moveFormation(f, formation.id, to), {
+		session.ask.send(() => moveFormation(f, formation.id, to.value), {
 			revert: () => {},
 			done: (r) => session.formationMoved(formation.id, r)
 		});
@@ -84,7 +80,7 @@
 	{#if matchBlocked}<span>{matchBlocked}</span>{/if}
 </div>
 <div class="here" class:on={!!here}>
-	<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+	<p class="move-target">{moveTargetText(flow, playback.sec)}</p>
 	{#if here}
 		{#key here.id}
 			<input

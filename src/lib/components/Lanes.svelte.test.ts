@@ -16,7 +16,7 @@ import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import Lanes from './Lanes.svelte';
 
@@ -73,11 +73,12 @@ function renderLanes(
 		multi = false
 	}: { playheadSec?: number; selectedActionId?: string | null; selectedMemberIds?: string[]; multi?: boolean } = {}
 ) {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
 	session.selectAction(selectedActionId);
 	session.selectMembers(selectedMemberIds);
 	session.multiSelect = multi;
-	render(TestSession, { props: { session, component: Lanes, props: { playheadSec, pxPerSec: 10 } } });
+	editor.playback.seek(playheadSec);
+	render(TestSession, { props: { editor, component: Lanes, props: { pxPerSec: 10 } } });
 	return { session, ask: session.ask };
 }
 

@@ -13,7 +13,7 @@ import {
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
-import { recordedFlow } from '#lib/test-fakes.js';
+import { recordedFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
@@ -48,12 +48,13 @@ function sample(): Flow {
 	return flowOf(updateSegment(flow, 's1', { eights: 2, lastBeats: 8 }));
 }
 
-/** 放一個帶著 flow 的 session（選了 actionId 和 selected 的人）進 context，畫動作表單；回傳 session。 */
+/** 放一個帶著 flow 的編輯器 module（選了 actionId 和 selected 的人，播放頭在 playheadSec）進 context，畫動作表單；回傳 session。 */
 function setup(flow: Flow, actionId: string | null, playheadSec = 0, selected: string[] = []) {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
+	editor.playback.seek(playheadSec);
 	session.selectAction(actionId);
 	session.selectMembers(selected);
-	render(TestSession, { props: { session, component: ActionForm, props: { playheadSec } } });
+	render(TestSession, { props: { editor, component: ActionForm, props: {} } });
 	return session;
 }
 
@@ -180,17 +181,6 @@ describe('動作表單：改選到的動作', () => {
 		return flow;
 	}
 
-	it('長度打負的：說能填的範圍，不說看不懂；全形數字當成半形', async () => {
-		const session = setup(withTwo(), 'x1');
-		const length = screen.getByLabelText('長度') as HTMLInputElement;
-		await fireEvent.input(length, { target: { value: '-2' } });
-		await fireEvent.change(length);
-		expect(screen.getByRole('alert').textContent).toBe('動作長度要在 0.5 到 16 拍之間，已還原');
-		await fireEvent.input(length, { target: { value: '２' } });
-		await fireEvent.change(length);
-		expect(session.flow!.actions[0]).toMatchObject({ length: 4 });
-	});
-
 	it('改了馬上生效；撞到同一個人就顯示原因並還原', async () => {
 		const session = setup(withTwo(), 'x1');
 		const length = screen.getByLabelText('長度') as HTMLInputElement;
@@ -289,18 +279,6 @@ describe('動作表單：改選到的動作', () => {
 		expect(screen.getByRole('dialog')).toBeTruthy();
 	});
 
-	it('新增到一半在名詞對照表改名或刪掉自訂角色：表單裡的人跟著換名字或變成沒有任務', async () => {
-		const flow = flowOf(addCustomRole(flowOf(addCustomRole(sample(), { name: '丟人的', meaning: '' })), { name: '抬腳的', meaning: '' }));
-		setup(flow, null, 0, ['m1', 'm2']);
-		await pickRole('小A', '丟人的');
-		await pickRole('小B', '抬腳的');
-		await fireEvent.click(screen.getByRole('button', { name: '名詞對照表' }));
-		await fireEvent.change(screen.getByLabelText('「丟人的」的名稱'), { target: { value: '拋人的' } });
-		await fireEvent.click(screen.getByRole('button', { name: '刪除任務角色「抬腳的」' }));
-		expect(screen.getByRole('combobox', { name: '小A 的任務角色' }).textContent).toBe('拋人的');
-		expect(screen.getByRole('combobox', { name: '小B 的任務角色' }).textContent).toBe('（沒有任務）');
-	});
-
 	it('標題是動作的名稱，可以直接改', async () => {
 		const session = setup(withTwo(), 'x2');
 		const name = screen.getByLabelText('名稱') as HTMLInputElement;
@@ -359,73 +337,6 @@ describe('動作表單：選人', () => {
 			})
 		);
 	}
-
-	const people = () =>
-		[...document.querySelectorAll('.people li .who > .name')].map((el) => el.textContent);
-
-	it('在播放頭新增動作時，人就是選到的人；加人、移出也改選取', async () => {
-		const session = setup(sample(), null, 0, ['m2']);
-		expect(people()).toEqual(['小B']);
-		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
-		expect(session.selectedMemberIds).toEqual(['m2', 'm1']);
-		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
-		expect(session.selectedMemberIds).toEqual(['m1']);
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: '上層' }]);
-	});
-
-	const role = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` }).textContent;
-
-	it('新動作：選到的人先照全局角色填任務角色；換大類跟著換，改過的不動', async () => {
-		const session = setup(sample(), null, 0, ['m1', 'm2']);
-		// 技巧：小A 全局上層、小B 全局底層
-		expect([role('小A'), role('小B')]).toEqual(['上層', '底層']);
-		await pickRole('小B', '主底');
-		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'tumbling' } });
-		expect([role('小A'), role('小B')]).toEqual(['騰翻', '主底']);
-		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'dance' } });
-		expect([role('小A'), role('小B')]).toEqual(['（沒有任務）', '主底']);
-		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'pyramid' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(session.flow!.actions[0].members).toEqual([
-			{ memberId: 'm1', role: '上層' },
-			{ memberId: 'm2', role: '主底' }
-		]);
-	});
-
-	it('新動作：清掉任務角色的人，之後再選別人也不會被填回去', async () => {
-		const session = setup(sample(), null, 0, ['m1']);
-		await pickRole('小A', '');
-		session.selectMembers(['m1', 'm2']);
-		await tick();
-		expect([role('小A'), role('小B')]).toEqual(['（沒有任務）', '底層']);
-	});
-
-	it('改動作時「＋加人…」：照動作的大類先填；跳躍不填', async () => {
-		const session = setup(withLib(), 'x1');
-		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
-		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
-		expect(session.flow!.actions[0].members).toEqual([
-			{ memberId: 'm1', role: '上層' },
-			{ memberId: 'm2', role: '底層' }
-		]);
-		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'jump' } });
-		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
-		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
-		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
-	});
-
-	it('新增時「從別的動作複製人」連任務角色一起帶，也改選取', async () => {
-		const session = setup(withLib(), null, 2);
-		await fireEvent.change(screen.getByLabelText('從別的動作複製人'), { target: { value: 'x1' } });
-		expect(session.selectedMemberIds).toEqual(['m1', 'm2']);
-		expect(screen.getByRole('combobox', { name: '小B 的任務角色' }).textContent).toBe('主底');
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(session.flow!.actions[1].members).toEqual([
-			{ memberId: 'm1', role: '上層' },
-			{ memberId: 'm2', role: '主底' }
-		]);
-	});
 
 	it('改動作時「從別的動作複製人」連任務角色一起換掉，馬上生效；選單裡沒有自己', async () => {
 		let flow = withLib();

@@ -11,6 +11,7 @@
 		type FieldLayout,
 		type Flow
 	} from '#lib/core';
+	import { Ask } from '#lib/ask.svelte.js';
 
 	let { oncreate }: { oncreate: (flow: Flow) => void } = $props();
 
@@ -19,7 +20,8 @@
 	let choice = $state<number | 'custom'>(0);
 	let customStrips = $state<number | null>(9);
 	let customLayout = $state<FieldLayout>('vertical');
-	let error = $state('');
+	/** 建立被擋下的原因（名字空的、條數不對）。 */
+	const ask = new Ask((flow) => oncreate(flow));
 	/** 自訂條數不對（超出範圍、不是整數）：不畫預覽，馬上說原因，不用等按建立。 */
 	const customError = $derived(choice === 'custom' ? stripsProblem(customStrips ?? Number.NaN) : null);
 
@@ -29,9 +31,7 @@
 			choice === 'custom'
 				? { strips: customStrips ?? Number.NaN, layout: customLayout }
 				: FIELD_TEMPLATES[choice].field;
-		const r = createFlow({ name, field });
-		if (r.kind === 'ok') oncreate(r.flow);
-		else error = r.message;
+		ask.send(() => createFlow({ name, field }));
 	}
 
 	/**
@@ -58,8 +58,8 @@
 </script>
 
 <!-- novalidate：條數對不對由流程核心判斷，不用瀏覽器內建的檢查 -->
-<!-- 改了任一欄位就收掉上次被擋的原因 -->
-<form class="new-flow" novalidate onsubmit={submit} oninput={() => (error = '')} onchange={() => (error = '')}>
+<!-- 改了任一欄位就告訴 Ask，收掉上次被擋的原因 -->
+<form class="new-flow" novalidate onsubmit={submit} oninput={() => ask.edited()} onchange={() => ask.edited()}>
 	<h2>新建流程</h2>
 
 	<label class="name">
@@ -106,7 +106,7 @@
 		{/if}
 	</fieldset>
 
-	{#if customError || error}<p class="error" role="alert">{customError || error}</p>{/if}
+	{#if customError || ask.error}<p class="error" role="alert">{customError || ask.error}</p>{/if}
 
 	<button type="submit" class="primary">建立</button>
 </form>

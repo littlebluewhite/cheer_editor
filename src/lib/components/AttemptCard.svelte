@@ -15,12 +15,11 @@
 		recordAttempt,
 		restoreAttempt,
 		type Action,
-		type Attempt,
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { Ask } from './ask.svelte.js';
-	import { Flash } from './flash.svelte.js';
+	import { Flash } from '#lib/flash.svelte.js';
+	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -38,9 +37,9 @@
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	/** 記一次、刪掉上一次、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
-	const ask = new Ask((f) => session.record(f));
-	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著那一次，給「救回」。 */
-	const flash = new Flash<{ text: string; removed?: { attempt: Attempt; index: number } }>();
+	const ask = session.recordAsk();
+	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
+	const flash = new Flash<Notice>();
 
 	/** 這次練：整個（true）或只練幾個環節（false）。換下一次也留著。 */
 	let whole = $state(true);
@@ -93,15 +92,12 @@
 	}
 
 	function removeLast() {
-		ask.send(() => deleteLastAttempt(flow, action.id, who, date, 'drill'), {
-			done: ({ attempt, index }) => flash.show({ text: '已刪掉', removed: { attempt, index } })
-		});
-	}
-
-	function restore(removed: { attempt: Attempt; index: number }) {
-		ask.send(() => restoreAttempt(flow, action.id, removed.attempt, removed.index), {
-			done: () => flash.show({ text: '已救回' })
-		});
+		removeWithRestore(
+			ask,
+			flash,
+			() => deleteLastAttempt(flow, action.id, who, date, 'drill'),
+			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
+		);
 	}
 </script>
 
@@ -153,12 +149,7 @@
 		<button type="button" class="primary save" disabled={!Object.keys(marks).length} onclick={save}>存這一次</button>
 	{/if}
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
-	{#if flash.value}
-		{@const removed = flash.value.removed}
-		<p class="flash" role="status">
-			{flash.value.text}{#if removed}<button type="button" class="ghost" onclick={() => restore(removed)}>救回</button>{/if}
-		</p>
-	{/if}
+	<RecordNotice notice={flash} />
 
 	<footer>
 		{#if today.length}
@@ -344,20 +335,6 @@
 	}
 	.save {
 		justify-self: start;
-	}
-	.flash {
-		margin: 0;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--ok);
-	}
-	.flash button {
-		padding: 2px 8px;
-		font-size: 13px;
-		text-decoration: underline;
 	}
 	.undo-last {
 		flex: none;

@@ -2,14 +2,15 @@
 	// 段設定：音樂段（音樂檔、BPM、第一拍、波形、長度）或口號段（秒數）。
 	// 每改一個欄位就送一個流程核心指令；被擋就顯示原因，流程不變。
 	// 段縮短會刪掉動作或站位時，先顯示清單，按確定才改。
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { Ask } from './ask.svelte';
 	import { tick } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
+		BROKEN_AUDIO,
 		MAX_BPM,
 		MAX_CHANT_SEC,
 		MAX_EIGHTS,
@@ -17,59 +18,36 @@
 		beatLines,
 		deleteSegment,
 		fitSegmentToAudio,
-		loadSegmentAudio,
 		moveSegment,
 		musicLength,
 		musicOverrunSec,
-		parseNumber,
+		readSegmentNumber,
 		segmentSpans,
 		updateSegment,
 		type ConfirmOption,
+		type SegmentNumberField,
 		type SegmentPatch
 	} from '#lib/core';
-	import {
-		PEAKS_PER_SEC,
-		decodeAudio,
-		type DecodedAudio,
-		type LoadedAudio
-	} from '#lib/audio/decode.js';
+	import { PEAKS_PER_SEC } from '#lib/audio/decode.js';
 
 	interface Props {
 		segmentId: string;
-		/** 已經解碼的音樂檔，用 audioId 對應。位元組不放在流程裡。 */
-		audios: Record<string, LoadedAudio>;
-		onaudioload: (audioId: string, audio: LoadedAudio) => void;
-		/** 「▶ 從第一拍聽 2 個八拍」：音訊在頁面那一層。 */
-		onpreview: (segmentId: string) => void;
-		/** 試聽正在響：按鈕換成「■ 停止試聽」。 */
-		previewing?: boolean;
-		onstoppreview?: () => void;
-		/** 正在播放：段設定蓋住上方列的暫停鈕，所以這裡也放一顆。 */
-		playing?: boolean;
-		onpause?: () => void;
 		onclose: () => void;
-		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
-		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 		/** 滑鼠在波形上的位置換成音樂檔的秒數（波形畫 wave.startSec 起的 wave.lengthSec 秒）；測試換成假的（jsdom 不算版面）。 */
 		waveXToSec?: (e: MouseEvent, wave: { startSec: number; lengthSec: number }) => number;
 	}
 
-	let {
-		segmentId,
-		audios,
-		onaudioload,
-		onpreview,
-		previewing = false,
-		onstoppreview = () => {},
-		playing = false,
-		onpause,
-		onclose,
-		decode = decodeAudio,
-		waveXToSec = defaultWaveXToSec
-	}: Props = $props();
+	let { segmentId, onclose, waveXToSec = defaultWaveXToSec }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 音樂檔（解碼好的、壞的、多長）從編輯器 module 的音樂檔庫拿：換流程會換一個，所以每次用都從 editor.music 拿。 */
+	const editor = getEditor();
+	/**
+	 * 播放從編輯器 module 拿：「▶ 從第一拍聽 2 個八拍」試聽，響的時候按鈕換成「■ 停止試聽」；
+	 * 正在播放時段設定蓋住上方列的暫停鈕，所以這裡也放一顆。
+	 */
+	const { playback } = editor;
 
 	function defaultWaveXToSec(e: MouseEvent, wave: { startSec: number; lengthSec: number }): number {
 		const r = (e.currentTarget as Element).getBoundingClientRect();
@@ -77,11 +55,11 @@
 	}
 
 	/** 被擋的原因，和段縮短會刪掉東西時等教練確認的清單（流程核心給的）。 */
-	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 	const span = $derived(segmentSpans(flow).find((s) => s.segment.id === segmentId));
 	const segment = $derived(span?.segment);
 	const music = $derived(segment?.kind === 'music' ? segment : null);
-	const loadedAudio = $derived(music?.audioId ? audios[music.audioId] : undefined);
+	const loadedAudio = $derived(editor.music.get(music?.audioId));
 	/** 音樂檔壞了（解不開）：不知道多長，不拿長度 0 去算、去提醒。 */
 	const broken = $derived(!!loadedAudio?.broken);
 	const audio = $derived(broken ? undefined : loadedAudio);
@@ -110,14 +88,18 @@
 
 	/** 新的改法取代還沒確認的舊清單。 */
 	function update(patch: SegmentPatch) {
-		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o), {
+		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o, editor.music.lengths), {
 			cancel: () => (fieldsKey += 1)
 		});
 	}
 
-	/** 一格數字欄位送出：被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。 */
-	function updateField(input: HTMLInputElement, field: string, patch: SegmentPatch, actual: () => number | undefined) {
-		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o), {
+	/**
+	 * 一格數字欄位送出（key 是改段的哪個欄位）：打的字先由核心讀，讀得懂才改段。
+	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。
+	 */
+	function updateField(input: HTMLInputElement, field: string, key: SegmentNumberField, actual: () => number | undefined) {
+		const value = readSegmentNumber(key, input.value);
+		ask.send((o: ConfirmOption = {}) => (value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o, editor.music.lengths)), {
 			field,
 			revert: () => (input.value = String(actual() ?? '')),
 			cancel: () => (fieldsKey += 1)
@@ -142,69 +124,22 @@
 		ask.send((o: ConfirmOption = {}) => deleteSegment(flow, segmentId, o), { done: onclose });
 	}
 
-	/** 不是流程核心擋的（檔案讀不出來、還沒載入）：跟核心擋下來一樣，交給問教練留下原因。 */
-	const blocked = (message: string, handlers: { field?: string; revert?: () => void } = {}) =>
-		void ask.send(() => ({ kind: 'blocked', message }) as const, handlers);
+	// 段設定關了（可能換開了別段、別的流程）：還在解碼的音樂檔不要了。
+	$effect(() => () => editor.music.cancelPicks());
 
-	/** 設定關掉了沒（音樂檔解碼完時用）。 */
-	let closed = false;
-	$effect(() => () => {
-		closed = true;
-	});
-
-	async function load(e: Event) {
+	/** 選音樂檔：音樂檔庫解碼、跟核心拿 id；成功算一步，被擋的原因（格式不對、讀不出來）放在這裡。 */
+	function load(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
-		if (!file) return;
-		const check = loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios));
-		if (check.kind === 'blocked') return blocked(check.message);
-		const bytes = await file.arrayBuffer();
-		let decoded: DecodedAudio;
-		try {
-			decoded = await decode(bytes);
-		} catch {
-			return blocked('這個音樂檔讀不出來');
-		}
-		// 解碼時設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
-		if (closed) return;
-		// 解碼要一點時間，用那時候的流程再送一次指令。
-		ask.send(() => loadSegmentAudio(flow, segmentId, file.name, Object.keys(audios)), {
-			done: (r) => onaudioload(r.audioId, { bytes, ...decoded })
-		});
-	}
-
-	const BROKEN = '音樂檔壞了，請重新選檔';
-
-	/** 有載入音樂時，第一拍要在音樂結束之前；不然擋下來（沒載入就不知道音樂多長，交給核心）。 */
-	const pastEnd = (sec: number) =>
-		audio && sec >= audio.durationSec ? `第一拍要在音樂結束（${audio.durationSec.toFixed(1)} 秒）之前` : null;
-
-	function setFirstBeat(sec: number) {
-		const problem = pastEnd(sec);
-		if (problem) return blocked(problem);
-		update({ firstBeatSec: sec });
-	}
-
-	/** 「第一拍（秒）」欄位：跟點波形一樣，但被擋時還原這一格、原因記在這一格。 */
-	function typeFirstBeat(input: HTMLInputElement) {
-		const field = '第一拍（秒）';
-		const revert = () => (input.value = String(music?.firstBeatSec ?? ''));
-		const sec = parseNumber(input.value);
-		const problem = pastEnd(sec);
-		if (problem) return blocked(problem, { field, revert });
-		updateField(input, field, { firstBeatSec: sec }, () => music?.firstBeatSec);
+		if (file) void editor.music.pick(segmentId, file, ask);
 	}
 
 	function clickWave(e: MouseEvent) {
-		setFirstBeat(waveXToSec(e, wave));
+		update({ firstBeatSec: waveXToSec(e, wave) });
 	}
 
 	function fitToAudio() {
-		if (broken) return blocked(BROKEN);
-		if (!music || !audio) return blocked('先載入音樂檔');
-		const problem = pastEnd(music.firstBeatSec);
-		if (problem) return blocked(problem);
-		const durationSec = audio.durationSec;
-		ask.send((o: ConfirmOption = {}) => fitSegmentToAudio(flow, segmentId, durationSec, o), {
+		const lengths = editor.music.lengths;
+		ask.send((o: ConfirmOption = {}) => fitSegmentToAudio(flow, segmentId, lengths, o), {
 			cancel: () => (fieldsKey += 1)
 		});
 	}
@@ -215,8 +150,8 @@
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
 			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
-			{#if playing}
-				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={onpause}><Icon name="pause" size={14} />暫停</button>
+			{#if playback.playing}
+				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={() => playback.pause()}><Icon name="pause" size={14} />暫停</button>
 			{/if}
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
@@ -232,7 +167,7 @@
 					</label>
 					<span class="audio" class:missing={audioName && !audio}>
 						{audioName
-							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${BROKEN}）` : '（找不到音樂，請重新選檔）'}`
+							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${BROKEN_AUDIO}）` : '（找不到音樂，請重新選檔）'}`
 							: '還沒載入'}
 					</span>
 				</div>
@@ -257,7 +192,7 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', { bpm: parseNumber(e.currentTarget.value) }, () => music?.bpm)} />
+						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
@@ -266,12 +201,12 @@
 							type="text"
 							inputmode="decimal"
 							value={music.firstBeatSec}
-							onchange={(e) => typeFirstBeat(e.currentTarget)}
+							onchange={(e) => updateField(e.currentTarget, '第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>
 					<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
-					<button type="button" class="listen" onclick={() => (previewing ? onstoppreview() : onpreview(segmentId))}
-						>{previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
+					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
+						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
 					>
 				</div>
 				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
@@ -301,7 +236,7 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', { eights: parseNumber(e.currentTarget.value) }, () => length?.eights)} />
+						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', 'eights', () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
@@ -309,7 +244,7 @@
 							type="text"
 							inputmode="numeric"
 							value={length.lastBeats}
-							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', { lastBeats: parseNumber(e.currentTarget.value) }, () => length?.lastBeats)}
+							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
 						/>
 					</label>
 					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
@@ -330,7 +265,7 @@
 							type="text"
 							inputmode="decimal"
 							value={span?.durationSec}
-							onchange={(e) => updateField(e.currentTarget, '長度（秒）', { seconds: parseNumber(e.currentTarget.value) }, () => span?.durationSec)}
+							onchange={(e) => updateField(e.currentTarget, '長度（秒）', 'seconds', () => span?.durationSec)}
 						/>
 					</label>
 					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>

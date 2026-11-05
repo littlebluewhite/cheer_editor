@@ -2,55 +2,30 @@
 	import {
 		currentFormation,
 		deleteAction,
-		firstBeatPreview,
-		formationAt,
-		formationTimes,
 		clashes,
 		formationWalks,
 		memberMarkers,
-		playbackPlan,
-		playStartSec,
-		resumeSec,
-		NO_SQUAD_COLOR,
 		positionText,
 		positionsAt,
 		raisedAt,
-		missingAudioNames,
-		readFlowFile,
-		segmentsMissingAudio,
-		squadColor,
-		squadNumber,
+		squadBadge,
 		timeRuleWarnings,
 		stackedMembers,
-		stepPlayhead,
 		totalSeconds,
-		writeFlowFile,
+		walkSpanAt,
 		type ConfirmOption,
 		type Flow,
 		type Clash,
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
-	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
-	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
-	import { createPlayer, type Player } from '#lib/audio/player.js';
-	import { createIndexedDbDraftStore, type Draft, type DraftStore } from '#lib/file/draft.js';
-	import { browserFilePicker, createBrowserSaver, flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
-	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
-	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
+	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
+	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
-	import {
-		loadInspectorWidth,
-		MAX_LATENCY_MS,
-		loadLatencyMs,
-		loadTimelineHeight,
-		saveInspectorWidth,
-		saveLatencyMs,
-		saveTimelineHeight
-	} from '#lib/local-settings.js';
+	import { MAX_LATENCY_MS } from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
-	import { setUnsavedChanges } from '#lib/unsaved.js';
-	import { flushPendingInput, settlePendingInput } from '#lib/pending-input.js';
+	import { Divider } from '#lib/divider.svelte.js';
+	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -71,18 +46,11 @@
 	import WalkForm from '#lib/components/WalkForm.svelte';
 
 	interface Props {
-		/** 音訊引擎；測試換成假的（jsdom 沒有 Web Audio）。第一次播放時才建立。 */
-		createEngine?: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
-		/** 存檔薄層，一支流程一個（記得存到哪個檔）；測試換成假的。 */
-		createSaver?: () => FileSaver;
-		/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge）；null 是瀏覽器不能（照舊用選檔欄位）。測試換成假的。 */
-		pickFlowFile?: (() => Promise<PickedFile | null>) | null;
-		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
-		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
-		/** 草稿存在哪裡（預設 IndexedDB）；測試換成假的（jsdom 沒有 IndexedDB）。 */
-		draftStore?: DraftStore;
-		/** 編輯 session（流程和復原）；測試放一個帶好流程的進來，再讀它的流程。沒給就自己建。 */
-		session?: EditorSession;
+		/**
+		 * 編輯器 module（編輯頁的狀態和碰瀏覽器的 adapter）；測試放一個帶好流程、adapter 都是假的進來
+		 * （#lib/test-fakes.js 的 editorPage），再讀它的 session。沒給就用真的 adapter 自己建。
+		 */
+		editor?: Editor;
 		// 螢幕座標換算（ADR 0002）：預設用瀏覽器算；jsdom 不算版面，測試換成假的。往下傳給場地、拍點格子、段設定的波形。
 		/** 場地：指標位置換成場地公尺。 */
 		toMeters?: ComponentProps<typeof Field>['toMeters'];
@@ -92,147 +60,32 @@
 		waveXToSec?: ComponentProps<typeof SegmentSettings>['waveXToSec'];
 	}
 
-	let {
-		createEngine = createWebAudioEngine,
-		createSaver = createBrowserSaver,
-		pickFlowFile = browserFilePicker(),
-		decode = decodeAudio,
-		draftStore = createIndexedDbDraftStore(),
-		session = new EditorSession(),
-		toMeters,
-		cellAt,
-		waveXToSec
-	}: Props = $props();
-	// session 一開始給了就不換：放進 context 的就是這一個。
+	let { editor: given, toMeters, cellAt, waveXToSec }: Props = $props();
+	// 編輯器 module 一開始給了就不換：放進 context 的就是這一個。
 	// svelte-ignore state_referenced_locally
-	setEditorSession(session);
+	const editor = given ?? new Editor(browserAdapters());
+	setEditor(editor);
+	const { session, playback } = editor;
+	// ⌘Z 前後送出沒送出的字：用編輯器 module 收著的 adapter。
+	const { pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
 
 	const flow = $derived(session.flow);
 	const unsaved = $derived(session.unsaved);
-	/** 欄位裡打了字還沒送出（名字、備註這類欄位在失去焦點時才送進流程）：關分頁前也要問。 */
-	let typing = $state(false);
-	$effect(() => setUnsavedChanges(unsaved || typing));
-	/** 有還沒存的修改時關分頁、重新整理：讓瀏覽器先問（草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。 */
+	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
+	setUnsavedCheck(() => editor.hasUnsavedWork);
+	/**
+	 * 有還沒存的修改、欄位裡打了字還沒送出時關分頁、重新整理：讓瀏覽器先問
+	 * （草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。
+	 */
 	function onbeforeunload(e: BeforeUnloadEvent) {
-		if (unsaved || typing) e.preventDefault();
+		if (editor.hasUnsavedWork) e.preventDefault();
 	}
-	function oninput(e: Event) {
-		if (flow && (e.target as Element | null)?.closest?.('input, textarea, [contenteditable]')) typing = true;
-	}
-	const sent = () => (typing = false);
-	/** 這支流程在檔案裡（從檔案開的、存過檔）：沒有未存的修改就不用草稿。剛建好、救回草稿的不在檔案裡。 */
-	// svelte-ignore state_referenced_locally
-	let onDisk = $state(!!session.flow);
-	/** 這個分頁的流程要不要放在草稿裡。 */
-	const ownsDraft = $derived(!!flow && (unsaved || !onDisk));
-	/** 存檔薄層，一支流程一個（記得存到哪個檔）：第一次存檔才建，換流程就丟掉。 */
-	let saver: FileSaver | null = null;
-	let saving = false;
-	/** 首頁開檔失敗的原因（編輯中失敗就放在上方列的 notice）。 */
-	let openError = $state('');
-	/** 打開時找到的草稿，等教練選救回或丟掉。busy = 按了丟掉，但另一個分頁正在編輯它。 */
-	let draftOffer = $state.raw<{ bytes: Uint8Array; name: string; savedAt: Date | null; busy?: boolean } | null>(null);
+	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
+	onMount(() => editor.file.connect());
 
-	/** 讀過草稿了：在這之前不自動存，免得蓋掉還沒問過的草稿。 */
-	let draftChecked = $state(false);
-
-	/**
-	 * 分頁之間的訊息：草稿只有一份，首頁要丟掉草稿前先問有沒有別的分頁正在編輯它（那個分頁會回答）。
-	 * 沒有 BroadcastChannel 的瀏覽器就當作沒有別的分頁。
-	 */
-	const DRAFT_CHANNEL = 'cheer-editor-draft';
-	let channel: BroadcastChannel | null = null;
-
-	onMount(() => {
-		if (typeof BroadcastChannel === 'function') {
-			channel = new BroadcastChannel(DRAFT_CHANNEL);
-			channel.addEventListener('message', (e) => {
-				if (e.data === 'editing?' && ownsDraft) channel?.postMessage('editing');
-			});
-		}
-		void checkDraft();
-		return () => channel?.close();
-	});
-
-	async function checkDraft() {
-		let draft: Draft | null = null;
-		try {
-			draft = await draftStore.load();
-		} catch {
-			// 讀不到草稿就當作沒有
-		}
-		const r = draft && readFlowFile(draft.bytes);
-		// 等讀草稿的時候教練已經開始編了：不打斷他
-		if (draft && r && r.kind === 'ok' && !flow) draftOffer = { ...draft, name: r.flow.name };
-		draftChecked = true;
-	}
-
-	/** 另一個分頁回答它正在編輯草稿嗎（等一下下，沒人回就是沒有）。 */
-	function otherTabEditing(): Promise<boolean> {
-		const ch = channel;
-		if (!ch) return Promise.resolve(false);
-		return new Promise((resolve) => {
-			const reply = (e: MessageEvent) => e.data === 'editing' && done(true);
-			const timer = setTimeout(() => done(false), 300);
-			function done(editing: boolean) {
-				clearTimeout(timer);
-				ch!.removeEventListener('message', reply);
-				resolve(editing);
-			}
-			ch.addEventListener('message', reply);
-			ch.postMessage('editing?');
-		});
-	}
-
-	/**
-	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。剛建好、還沒改的流程也存，重新整理救得回來。
-	 * 存成流程檔或剛開流程檔（在檔案裡、沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
-	 */
-	const DRAFT_DELAY_MS = 1000;
-	$effect(() => {
-		if (!draftChecked || !flow) return;
-		const f = flow;
-		const keep = ownsDraft;
-		const timer = setTimeout(() => {
-			const done = keep ? draftStore.save(writeFlowFile(f, audioBytes(f))) : draftStore.clear();
-			done.catch(() => {});
-		}, DRAFT_DELAY_MS);
-		return () => clearTimeout(timer);
-	});
-
-	async function restoreDraft(bytes: Uint8Array) {
-		draftOffer = null;
-		await openBytes(bytes, null);
-	}
-
-	async function discardDraft() {
-		const offer = draftOffer;
-		if (!offer) return;
-		if (await otherTabEditing()) {
-			if (draftOffer === offer) draftOffer = { ...offer, busy: true };
-			return;
-		}
-		draftOffer = null;
-		draftStore.clear().catch(() => {});
-	}
-
-	/** 草稿存的時間寫成「11/5 14:03」。 */
-	function draftTime(d: Date): string {
-		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-	}
-	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
-	let audios = $state<Record<string, LoadedAudio>>({});
-	const missingSegmentIds = $derived(flow ? segmentsMissingAudio(flow, Object.keys(audios)) : []);
-	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）；缺的音樂都補好了就自己收掉。 */
-	let missingNotice = '';
-	$effect(() => {
-		if (!missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
-	});
-	/** 播放頭，全域秒數。 */
-	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
@@ -243,15 +96,8 @@
 	const groupingAction = $derived(session.groupingAction);
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
 	const squadBadges = $derived(
-		Object.fromEntries(
-			(groupingAction?.members ?? []).map((m) => {
-				const n = m.squad ? squadNumber(groupingAction!, m.squad) : 0;
-				return [m.memberId, n ? { text: String(n), color: squadColor(n) } : { text: '?', color: NO_SQUAD_COLOR }];
-			})
-		)
+		Object.fromEntries((groupingAction?.members ?? []).map((m) => [m.memberId, squadBadge(groupingAction!, m)]))
 	);
-	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
-	let inspectorTab = $state<'action' | 'members'>('action');
 	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
 	let view = $state<'edit' | 'practice'>('edit');
 	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
@@ -261,7 +107,7 @@
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
-		if (next === 'practice') pause();
+		if (next === 'practice') playback.pause();
 		view = next;
 	}
 
@@ -275,21 +121,18 @@
 	const trail = $derived.by(() => {
 		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
 		if (!flow) return none;
-		const on = formationAt(flow, playheadSec);
-		const i = on
-			? flow.formations.indexOf(on)
-			: formationTimes(flow).findIndex((t) => t.sec > playheadSec);
-		if (i <= 0) return none;
+		const span = walkSpanAt(flow, playback.sec);
+		if (!span) return none;
 		return {
-			ghosts: on ? flow.formations[i - 1].pos : none.ghosts,
-			walks: formationWalks(flow, flow.formations[i].id),
-			clashes: allClashes.filter((c) => c.formationId === flow!.formations[i].id)
+			ghosts: span.on ? span.from.pos : none.ghosts,
+			walks: formationWalks(flow, span.to.id),
+			clashes: allClashes.filter((c) => c.formationId === span.to.id)
 		};
 	});
 
 	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字。 */
 	const position = $derived.by(() => {
-		const text = flow ? positionText(flow, playheadSec) : '';
+		const text = flow ? positionText(flow, playback.sec) : '';
 		const cut = text.indexOf(' ', text.indexOf(' ') + 1);
 		return cut === -1 ? null : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
 	});
@@ -301,152 +144,34 @@
 		return `${m}:${s}`;
 	}
 
-	let playing = $state(false);
-	let metronome = $state(true);
-	/** 延遲校正（毫秒）：存在瀏覽器，不進流程檔。 */
-	let latencyMs = $state(loadLatencyMs());
-	let player: Player | null = null;
-
-	function getPlayer(): Player {
-		player ??= createPlayer(createEngine((id) => audios[id]?.buffer));
-		return player;
-	}
-
-	function seek(f: Flow, sec: number) {
-		playheadSec = Math.min(Math.max(sec, 0), totalSeconds(f));
-		if (playing) play(f);
-	}
-
-	/** 從播放頭開始播；已經播完就從頭。一定由按鈕或空白鍵觸發。 */
-	function play(f: Flow) {
-		playheadSec = playStartSec(f, playheadSec);
-		getPlayer().start(playbackPlan(f, playheadSec), { fromSec: playheadSec, metronome });
-		if (!playing) {
-			playing = true;
-			requestAnimationFrame(frame);
-		}
-	}
-
-	function pause() {
-		playing = false;
-		previewing = false;
-		player?.stop();
-	}
-
-	// 改了段（換順序、刪段、改 BPM、長度，或復原這些）：播放頭夾回流程裡（段變短、刪段後不跑到結尾後面）。
-	// 播放中已經排好的聲音是舊的，從夾住後的時間照現在的段重排（不回到 0）；夾到結尾就是播完了，停下。
-	// 只看 segments 這個陣列換了沒，改人、改動作不會重排。
-	// segments 另外 derived：flow 換了但 segments 是同一個陣列時，derived 不變，effect 不會跑。
-	const segments = $derived(flow?.segments);
-	$effect(() => {
-		segments;
-		untrack(() => {
-			if (!flow) return;
-			const { sec, ended } = resumeSec(flow, playheadSec);
-			playheadSec = sec;
-			if (!playing) return;
-			if (ended) pause();
-			else play(flow);
-		});
-	});
-
-	/** 沒有段時沒東西可以播（播放鍵是灰的）。 */
-	function togglePlay(f: Flow) {
-		if (playing) pause();
-		else if (f.segments.length) play(f);
-	}
-
-	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
-	function frame() {
-		if (!playing || !player) return;
-		playheadSec = player.tick(latencyMs);
-		if (!player.playing) playing = false;
-		else requestAnimationFrame(frame);
-	}
-
-	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
-	let previewing = $state(false);
-
-	function preview(f: Flow, segmentId: string) {
-		pause();
-		getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
-		previewing = true;
-		requestAnimationFrame(previewFrame);
-	}
-
-	/** 試聽播完了沒（播放頭不動，只看播完）。 */
-	function previewFrame() {
-		if (!previewing || !player) return;
-		player.tick(0);
-		if (!player.playing) previewing = false;
-		else requestAnimationFrame(previewFrame);
-	}
-
-	function stopPreview() {
-		if (!previewing) return;
-		previewing = false;
-		player?.stop();
-	}
-
-	function setMetronome(f: Flow, on: boolean) {
-		metronome = on;
-		if (playing) play(f);
-	}
-
-	/** 清空、不合法或超出範圍：不改，欄位回到現在的值（不然欄位空著，實際還在用舊值）。 */
-	function setLatency(input: HTMLInputElement) {
-		const ms = input.valueAsNumber;
-		if (!(Math.abs(ms) <= MAX_LATENCY_MS)) {
-			input.value = String(latencyMs);
-			return;
-		}
-		latencyMs = ms;
-		saveLatencyMs(ms);
-	}
-
 	// ---------- 場地和時間軸的分界：拖它（或 ↑↓）改時間軸多高，存在這台電腦；雙擊回到預設 ----------
 	const TIMELINE_MIN_PX = 160;
 	/** 場地和上方列至少留這麼高。 */
 	const FIELD_KEEP_PX = 300;
-	let timelineH = $state<number | null>(loadTimelineHeight());
 	let timelineHost = $state<HTMLElement>();
-	let split: { y: number; h: number } | null = null;
+	const timelineDivider = new Divider({
+		name: 'timelineHeightPx',
+		axis: 'y',
+		clamp: (px) => Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX)),
+		size: currentTimelineH
+	});
 
 	/** 時間軸現在多高：拖過就是拖的高度，沒拖過量畫面（量不到用預設的 30vh）。 */
 	function currentTimelineH(): number {
-		if (timelineH !== null) return timelineH;
+		if (timelineDivider.px !== null) return timelineDivider.px;
 		return Math.round(timelineHost?.getBoundingClientRect().height || Math.max(200, window.innerHeight * 0.3));
-	}
-
-	function setTimelineH(px: number | null) {
-		timelineH =
-			px === null ? null : Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX));
-		saveTimelineHeight(timelineH);
-	}
-
-	function splitDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		split = { y: e.clientY, h: currentTimelineH() };
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-	}
-
-	function splitMove(e: PointerEvent) {
-		if (split) setTimelineH(split.h + split.y - e.clientY);
-	}
-
-	function splitKey(e: KeyboardEvent) {
-		const step = { ArrowUp: 24, ArrowDown: -24 }[e.key];
-		if (!step) return;
-		e.preventDefault();
-		setTimelineH(currentTimelineH() + step);
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
 	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
-	let inspectorW = $state<number | null>(loadInspectorWidth());
 	let windowW = $state(0);
 	let fieldHostH = $state(0);
-	let colSplit: { x: number; w: number } | null = null;
+	const inspectorDivider = new Divider({
+		name: 'inspectorWidthPx',
+		axis: 'x',
+		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
+		size: (): number => inspectorPx
+	});
 
 	const fieldAspect = $derived.by(() => {
 		if (!flow) return 1;
@@ -455,9 +180,9 @@
 	});
 	/** 右邊欄現在多寬。 */
 	const inspectorPx = $derived(
-		inspectorW === null
+		inspectorDivider.px === null
 			? autoInspectorWidth(windowW, fieldHostH, fieldAspect)
-			: clampInspectorWidth(inspectorW, windowW)
+			: clampInspectorWidth(inspectorDivider.px, windowW)
 	);
 
 	/** 量場地那一欄多高（視窗或時間軸變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
@@ -468,57 +193,15 @@
 		return () => ro.disconnect();
 	}
 
-	function setInspectorW(px: number | null) {
-		inspectorW = px === null ? null : clampInspectorWidth(px, window.innerWidth);
-		saveInspectorWidth(inspectorW);
-	}
 
-	function colSplitDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		colSplit = { x: e.clientX, w: inspectorPx };
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-	}
-
-	function colSplitMove(e: PointerEvent) {
-		if (colSplit) setInspectorW(colSplit.w + colSplit.x - e.clientX);
-	}
-
-	function colSplitKey(e: KeyboardEvent) {
-		const step = { ArrowLeft: 24, ArrowRight: -24 }[e.key];
-		if (!step) return;
-		e.preventDefault();
-		setInspectorW(inspectorPx + step);
-	}
-
-
-	/**
-	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
-	 * 選取、提示由 session 清掉。
-	 */
-	function startFlow(
-		f: Flow,
-		from: 'file' | 'draft' | 'new',
-		loaded: Record<string, LoadedAudio> = {},
-		fileSaver: FileSaver | null = null
-	) {
-		pause();
-		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
-		session.open(f, from !== 'draft');
-		onDisk = from === 'file';
-		typing = false;
+	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
+	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
+	editor.file.onswitch = () => {
 		opened++;
-		saver = fileSaver;
-		audios = loaded;
-		openError = '';
-		playheadSec = 0;
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
-		// 還沒有隊員的流程先開名單，有人了才開動作
-		inspectorTab = f.members.length ? 'action' : 'members';
-		// 剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟
-		if (from === 'new' && draftChecked) draftStore.save(writeFlowFile(f, {})).catch(() => {});
-	}
+	};
 
 	function undo() {
 		if (session.undo()) restore(session.flow!);
@@ -528,177 +211,36 @@
 		if (session.redo()) restore(session.flow!);
 	}
 
-	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段（選取、提示由 session 處理）。 */
+	/** 復原、重做換上的流程：開著的段設定可能指到已經不在的段（選取、提示、播放頭由 session、播放處理）。 */
 	function restore(f: Flow) {
-		playheadSec = Math.min(playheadSec, totalSeconds(f));
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
-			stopPreview();
+			playback.stopPreview();
 			openSegmentId = null;
 		}
 	}
 
-	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
-	function audioBytes(f: Flow): Record<string, Uint8Array> {
-		const audio: Record<string, Uint8Array> = {};
-		for (const a of f.audio) if (audios[a.id]) audio[a.id] = new Uint8Array(audios[a.id].bytes);
-		return audio;
-	}
-
-	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；iPad 開分享選單；其他瀏覽器下載新檔。 */
-	async function save() {
-		if (!flow || saving) return;
-		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
-		(document.activeElement as HTMLElement | null)?.blur();
-		const f = flow;
-		saving = true;
-		saver ??= createSaver();
-		try {
-			const fileName = flowFileName(f.name);
-			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), fileName);
-			if (outcome === 'cancelled') return;
-			session.markSaved(f);
-			onDisk = true;
-			const missing = segmentsMissingAudio(f, Object.keys(audios)).length;
-			session.notice = [
-				outcome === 'downloaded'
-					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${fileName}」；用 Chrome 或 Edge 才能直接存回原檔。`
-					: '',
-				missing
-					? `存好了，但有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次`
-					: ''
-			]
-				.filter(Boolean)
-				.join('；');
-			if (missing) missingNotice = session.notice;
-		} catch {
-			session.notice = '存檔失敗，請再試一次';
-		} finally {
-			saving = false;
-		}
-	}
-
-	/** 開檔：選檔欄位（Safari、iPad、Firefox）。缺的音樂照開，那一段標紅。 */
-	async function open(e: Event) {
+	/** 開檔：選檔欄位（Safari、iPad、Firefox）。 */
+	function open(e: Event) {
 		const input = e.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
-		if (!file) return;
-		await openBytes(new Uint8Array(await file.arrayBuffer()), file.name);
+		if (file) void editor.file.open(file);
 	}
 
-	/** 開檔：Chrome、Edge 不跳選檔欄位，改用 showOpenFilePicker，拿到存回那個檔的存檔薄層。 */
-	async function pickOpen(e: Event) {
-		if (!pickFlowFile) return;
+	/** 開檔：Chrome、Edge 不跳選檔欄位，改用選檔視窗。 */
+	function pickOpen(e: Event) {
+		if (!editor.file.canPick) return;
 		e.preventDefault();
-		let picked: PickedFile | null;
-		try {
-			picked = await pickFlowFile();
-		} catch {
-			picked = null;
-		}
-		if (picked) await openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		void editor.file.pick();
 	}
-
-	/**
-	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
-	 * fileSaver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。
-	 */
-	async function openBytes(bytes: Uint8Array, fileName: string | null, fileSaver: FileSaver | null = null) {
-		const r = readFlowFile(bytes);
-		if (r.kind === 'error') {
-			const message = `打不開「${fileName}」：${r.message}`;
-			if (flow) session.notice = message;
-			else openError = message;
-			return;
-		}
-		const loaded: Record<string, LoadedAudio> = {};
-		let unreadable = false;
-		for (const [id, bytes] of Object.entries(r.audio)) {
-			const buffer = bytes.slice().buffer;
-			try {
-				loaded[id] = { bytes: buffer, ...(await decode(buffer)) };
-			} catch {
-				// 這個瀏覽器解不開（例：Firefox 沒有 AAC）：位元組留著，存檔時照樣存回去，只是不出聲。
-				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [], broken: true };
-				unreadable = true;
-			}
-		}
-		unlessUnsaved(() => {
-			startFlow(r.flow, fileName === null ? 'draft' : 'file', loaded, fileSaver);
-			session.notice = r.missingSegmentIds.length
-				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
-				: unreadable
-					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
-					: '';
-			if (r.missingSegmentIds.length) missingNotice = session.notice;
-		});
-	}
-
-	/** 等教練決定要不要丟掉還沒存的修改：確定就做 then。 */
-	let discardPending = $state.raw<{ then: () => void } | null>(null);
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
-	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || !!discardPending);
-
-	/** 「先存檔」：存好了（沒有未存的修改）才接著做；在存檔視窗按取消或存失敗，就留在問的畫面。 */
-	async function saveThenContinue() {
-		const then = discardPending?.then;
-		await save();
-		if (session.unsaved || !discardPending) return;
-		discardPending = null;
-		then?.();
-	}
-
-	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
-	function unlessUnsaved(then: () => void) {
-		// 換掉的流程是這個分頁放在草稿裡的：草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
-		const go = () => {
-			if (ownsDraft) draftStore.clear().catch(() => {});
-			then();
-		};
-		if (unsaved) discardPending = { then: go };
-		else go();
-	}
-
-	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
-	async function leaveToHome() {
-		const f = flow;
-		const bytes = f && ownsDraft ? writeFlowFile(f, audioBytes(f)) : null;
-		pause();
-		session.open(null);
-		if (!f || !bytes) return;
-		await draftStore.save(bytes).catch(() => {});
-		draftOffer = { bytes, name: f.name, savedAt: new Date() };
-	}
-
-	/** 上方列「新建」：回到新建流程的畫面。 */
-	function startNew() {
-		unlessUnsaved(() => {
-			pause();
-			session.open(null);
-		});
-	}
-
-	// 改完要動播放頭的改動（拖人插站位、跟上一張一樣、挪站位）：session 說跳到哪，這裡跳。
-	// 拖人那種直接停到那張（播放中照樣跟著音樂走）；挪站位跟點八拍尺一樣，播放中從那裡重播。
-	$effect(() => {
-		const jump = session.jump;
-		if (!jump) return;
-		untrack(() => {
-			if (!jump.replay) playheadSec = jump.sec;
-			else if (flow) seek(flow, jump.sec);
-		});
-	});
+	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking);
 
 	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
 	function dismissNotice(e: Event) {
 		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
 	}
-
-	// 在時間軸點了色條（再點選著的那條也算）：右邊欄翻到「動作」那一頁。
-	$effect(() => {
-		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
-	});
 
 	/** 空白鍵照瀏覽器原本的行為的東西：按得下去、選得了、打得了字的。場上的人不算（空白鍵播放）。 */
 	const NATIVE_KEYS =
@@ -709,19 +251,19 @@
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
-		flushPendingInput();
+		pendingInput.flush();
 		flushSync();
 		if (redoing) redo();
 		else undo();
 		flushSync();
-		settlePendingInput();
+		pendingInput.settle();
 	}
 
 	function onkeydown(e: KeyboardEvent) {
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			void save();
+			void editor.file.save();
 			return;
 		}
 		if (!flow) return;
@@ -740,10 +282,8 @@
 		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它；其他時候播放／暫停
 		if (e.key === ' ') {
 			if (on(NATIVE_KEYS) || e.repeat) return;
-			// 對話框開著時只能暫停（不在對話框後面開始播）
-			if (overlayOpen && !playing) return;
-			e.preventDefault();
-			togglePlay(flow);
+			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
+			if (playback.space(overlayOpen)) e.preventDefault();
 			return;
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
@@ -752,7 +292,8 @@
 		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
 		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
 			e.preventDefault();
-			seek(flow, e.key === 'Home' ? 0 : totalSeconds(flow));
+			if (e.key === 'Home') playback.toStart();
+			else playback.toEnd();
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
 			e.preventDefault();
 			session.removeFormation(session.selectedFormationId);
@@ -770,7 +311,7 @@
 			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單、分頁自己用方向鍵時（已經 preventDefault）不算。
 			if (on(ownKeys)) return;
 			e.preventDefault();
-			seek(flow, stepPlayhead(flow, playheadSec, e.key === 'ArrowRight' ? 1 : -1, e.shiftKey));
+			playback.step(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -784,15 +325,15 @@
 	function tabKey(e: KeyboardEvent) {
 		if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.ctrlKey || e.metaKey || e.altKey) return;
 		e.preventDefault();
-		inspectorTab = inspectorTab === 'action' ? 'members' : 'action';
+		editor.inspectorTab = editor.inspectorTab === 'action' ? 'members' : 'action';
 		flushSync();
-		document.getElementById(`tab-${inspectorTab}`)?.focus();
+		document.getElementById(`tab-${editor.inspectorTab}`)?.focus();
 	}
 
 	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
 	function resetLayout() {
-		setTimelineH(null);
-		setInspectorW(null);
+		timelineDivider.set(null);
+		inspectorDivider.set(null);
 	}
 
 	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
@@ -810,9 +351,6 @@
 <svelte:window
 	{onkeydown}
 	{onbeforeunload}
-	{oninput}
-	onchange={sent}
-	onfocusout={sent}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
@@ -825,7 +363,7 @@
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
 		class:print-hidden={printOpen}
-		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
+		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
@@ -860,24 +398,24 @@
 				<button
 					type="button"
 					class="play"
-					class:on={playing}
-					aria-label={playing ? '暫停' : '播放'}
+					class:on={playback.playing}
+					aria-label={playback.playing ? '暫停' : '播放'}
 					title={flow.segments.length ? '空白鍵也可以播放／暫停' : '先加一段'}
-					disabled={!flow.segments.length && !playing}
-					onclick={() => flow && togglePlay(flow)}><Icon name={playing ? 'pause' : 'play'} size={18} /></button
+					disabled={!flow.segments.length && !playback.playing}
+					onclick={() => playback.toggle()}><Icon name={playback.playing ? 'pause' : 'play'} size={18} /></button
 				>
 				<div class="board">
 					<span class="pos" aria-label="目前位置"
 						>{#if position}<span class="pos-seg">{position.segment}</span>
 							<span class="pos-at">{position.at}</span>{:else}<span class="pos-seg">還沒有段</span>{/if}</span
 					>
-					<span class="clock">{clock(playheadSec)} <i>/ {clock(totalSeconds(flow))}</i></span>
+					<span class="clock">{clock(playback.sec)} <i>/ {clock(totalSeconds(flow))}</i></span>
 				</div>
 				<label class="toggle" title="播放時每拍響一聲">
 					<input
 						type="checkbox"
-						checked={metronome}
-						onchange={(e) => flow && setMetronome(flow, e.currentTarget.checked)}
+						checked={playback.metronome}
+						onchange={(e) => playback.setMetronome(e.currentTarget.checked)}
 					/>
 					<Icon name="metronome" />節拍器
 				</label>
@@ -888,8 +426,11 @@
 						step="10"
 						min={-MAX_LATENCY_MS}
 						max={MAX_LATENCY_MS}
-						value={latencyMs}
-						onchange={(e) => setLatency(e.currentTarget)}
+						value={playback.latencyMs}
+						onchange={(e) => {
+							// 清空、不合法或超出範圍：沒改，欄位回到現在的值（不然欄位空著，實際還在用舊值）
+							if (!playback.setLatency(e.currentTarget.valueAsNumber)) e.currentTarget.value = String(playback.latencyMs);
+						}}
 					/>
 				</label>
 			</div>
@@ -920,8 +461,8 @@
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
 				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-				<button type="button" class="ghost" onclick={startNew}><Icon name="new" />新建</button>
-				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={save}><Icon name="save" />存檔</button>
+				<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 		</header>
 
@@ -930,9 +471,8 @@
 				field={flow.field}
 				members={flow.members}
 				markers={memberMarkers(flow)}
-				positions={positionsAt(flow, playheadSec)}
-				raised={raisedAt(flow, playheadSec)}
-				{playheadSec}
+				positions={positionsAt(flow, playback.sec)}
+				raised={raisedAt(flow, playback.sec)}
 				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
@@ -945,7 +485,7 @@
 					{/if}
 				{/snippet}
 				{#snippet railTop()}
-					{#if touchScreen || timelineH !== null || inspectorW !== null}
+					{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
 						<div class="select-tools">
 							{#if touchScreen}
 								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
@@ -953,13 +493,13 @@
 								</label>
 								<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
 							{/if}
-							{#if timelineH !== null || inspectorW !== null}
+							{#if timelineDivider.px !== null || inspectorDivider.px !== null}
 								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
 							{/if}
 						</div>
 					{/if}
 					{#if flow}
-						{@const now = currentFormation(flow, playheadSec)}
+						{@const now = currentFormation(flow, playback.sec)}
 						<div class="now-formation" aria-label="現在的站位">
 							<span class="now-label">現在站位</span>
 							<div class="now-row">
@@ -979,18 +519,18 @@
 						</div>
 					{/if}
 					{#if flow}
-						{@const stacked = stackedMembers(flow.members, positionsAt(flow, playheadSec))}
+						{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
 						{#if stacked.length}
 							<p class="hint-warn" role="note">
 								{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
 							</p>
 						{/if}
-						<CueOverlay {flow} {playheadSec} />
+						<CueOverlay {flow} />
 					{/if}
 				{/snippet}
 				{#snippet railBottom()}
 					{#if flow?.members.length}
-						<FormationEditor {playheadSec} />
+						<FormationEditor />
 					{/if}
 				{/snippet}
 			{#if flow.members.length === 0}
@@ -1009,7 +549,7 @@
 		</main>
 
 		<aside class="inspector" hidden={view === 'practice'}>
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 			<div
 				class="col-split"
 				role="separator"
@@ -1019,12 +559,7 @@
 				aria-valuemin={INSPECTOR_MIN_PX}
 				tabindex="0"
 				title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
-				onpointerdown={colSplitDown}
-				onpointermove={colSplitMove}
-				onpointerup={() => (colSplit = null)}
-				onpointercancel={() => (colSplit = null)}
-				onkeydown={colSplitKey}
-				ondblclick={() => setInspectorW(null)}
+				{@attach inspectorDivider.attach}
 			></div>
 			<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
 			<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
@@ -1032,56 +567,46 @@
 					type="button"
 					role="tab"
 					id="tab-action"
-					aria-selected={inspectorTab === 'action'}
+					aria-selected={editor.inspectorTab === 'action'}
 					aria-controls="panel-action"
-					onclick={() => (inspectorTab = 'action')}><Icon name="bolt" />動作</button
+					onclick={() => (editor.inspectorTab = 'action')}><Icon name="bolt" />動作</button
 				>
 				<button
 					type="button"
 					role="tab"
 					id="tab-members"
-					aria-selected={inspectorTab === 'members'}
+					aria-selected={editor.inspectorTab === 'members'}
 					aria-controls="panel-members"
-					onclick={() => (inspectorTab = 'members')}
+					onclick={() => (editor.inspectorTab = 'members')}
 					><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 				>
 			</div>
-			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
-				<MemberPicker {playheadSec} />
-				<WalkForm {playheadSec} />
-				<ActionForm {playheadSec} {cellAt} />
+			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
+				<MemberPicker />
+				<WalkForm />
+				<ActionForm {cellAt} />
 			</div>
-			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
+			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 				<MemberPanel />
 			</div>
 		</aside>
 
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 		<div
 			class="split"
 			hidden={view === 'practice'}
 			role="separator"
 			aria-orientation="horizontal"
 			aria-label="場地和時間軸的分界"
-			aria-valuenow={timelineH ?? currentTimelineH()}
+			aria-valuenow={timelineDivider.px ?? currentTimelineH()}
 			aria-valuemin={TIMELINE_MIN_PX}
 			tabindex="0"
 			title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
-			onpointerdown={splitDown}
-			onpointermove={splitMove}
-			onpointerup={() => (split = null)}
-			onpointercancel={() => (split = null)}
-			onkeydown={splitKey}
-			ondblclick={() => setTimelineH(null)}
+			{@attach timelineDivider.attach}
 		></div>
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
-			<Timeline
-				{playheadSec}
-				onseek={(sec) => flow && seek(flow, sec)}
-				onopensegment={(id) => (openSegmentId = id)}
-				{missingSegmentIds}
-			/>
+			<Timeline onopensegment={(id) => (openSegmentId = id)} />
 		</div>
 		{#if view === 'practice'}
 			<div class="practice-host">
@@ -1096,7 +621,7 @@
 	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
-			<button type="button" onclick={leaveToHome}>回首頁</button>
+			<button type="button" onclick={() => editor.file.leaveToHome()}>回首頁</button>
 			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
 			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
 		</div>
@@ -1121,17 +646,9 @@
 	{#if openSegmentId}
 		<SegmentSettings
 			segmentId={openSegmentId}
-			{audios}
-			{decode}
 			{waveXToSec}
-			onaudioload={(id, audio) => (audios[id] = audio)}
-			{previewing}
-			onpreview={(id) => flow && preview(flow, id)}
-			{playing}
-			onpause={pause}
-			onstoppreview={stopPreview}
 			onclose={() => {
-				stopPreview();
+				playback.stopPreview();
 				openSegmentId = null;
 			}}
 		/>
@@ -1142,20 +659,16 @@
 	{#if printOpen}
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
 	{/if}
-	{#if discardPending}
+	{#if editor.file.asking}
 		<div class="backdrop discard">
 			<div class="discard-box">
 				<ConfirmList
 					message={`「${flow.name}」還沒存，改的東西會不見。`}
 					items={[]}
 					confirmLabel="不存了，繼續"
-					onconfirm={() => {
-						const then = discardPending?.then;
-						discardPending = null;
-						then?.();
-					}}
-					extra={{ label: '先存檔', onclick: saveThenContinue }}
-					oncancel={() => (discardPending = null)}
+					onconfirm={() => editor.file.answer('discard')}
+					extra={{ label: '先存檔', onclick: () => editor.file.answer('save') }}
+					oncancel={() => editor.file.answer('cancel')}
 				/>
 			</div>
 		</div>
@@ -1181,26 +694,22 @@
 		</section>
 
 		<section class="start">
-			{#if draftOffer}
+			{#if editor.file.draftOffer}
 				<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
-					<p id="draft-offer-text">
-						上次編的「{draftOffer.name}」還沒存，要救回嗎？{#if draftOffer.savedAt}（{draftTime(draftOffer.savedAt)} 存的草稿）{/if}
-					</p>
-					{#if draftOffer.busy}<p class="error">另一個分頁正在編輯這份草稿，所以沒有丟掉。</p>{/if}
+					<p id="draft-offer-text">{editor.file.draftOffer.text}</p>
+					{#if editor.file.draftOffer.error}<p class="error">{editor.file.draftOffer.error}</p>{/if}
 					<div class="row">
-						<button type="button" class="primary" onclick={() => draftOffer && restoreDraft(draftOffer.bytes)}
-							>救回</button
-						>
-						<button type="button" onclick={discardDraft}>丟掉</button>
+						<button type="button" class="primary" onclick={() => editor.file.restoreDraft()}>救回</button>
+						<button type="button" onclick={() => editor.file.discardDraft()}>丟掉</button>
 					</div>
 				</div>
 			{:else}
-				<NewFlowForm oncreate={(f) => startFlow(f, 'new')} />
+				<NewFlowForm oncreate={(f) => editor.file.create(f)} />
 				<div class="home-open">
 					<span>已經有流程檔？</span>
 					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 				</div>
-				{#if openError}<p class="error" role="alert">{openError}</p>{/if}
+				{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
 			{/if}
 		</section>
 	</div>

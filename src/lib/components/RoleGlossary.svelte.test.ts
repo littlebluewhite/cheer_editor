@@ -1,6 +1,6 @@
 import { addCustomRole, createFlow, type Flow } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { fakePendingInput, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,8 +8,8 @@ import RoleGlossary from './RoleGlossary.svelte';
 
 /** 放一個帶著 flow 的 session 進 context，畫名詞對照表；回傳 session。 */
 function setup(flow: Flow) {
-	const session = new EditorSession(flow);
-	render(TestSession, { props: { session, component: RoleGlossary, props: { onclose: vi.fn() } } });
+	const { editor, session } = testEditor(flow);
+	render(TestSession, { props: { editor, component: RoleGlossary, props: { onclose: vi.fn() } } });
 	return session;
 }
 
@@ -76,5 +76,17 @@ describe('名詞對照表', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '刪除任務角色「丟人的」' }));
 		expect(session.flow!.customRoles).toEqual([]);
 		expect(session.canUndo).toBe(true);
+	});
+
+	it('關掉之前先送出編輯器裡沒送出的字（跟離開欄位一樣）', async () => {
+		const pendingInput = fakePendingInput();
+		const { editor } = testEditor(empty(), { pendingInput });
+		const onclose = vi.fn();
+		render(TestSession, { props: { editor, component: RoleGlossary, props: { onclose } } });
+		pendingInput.pending = true;
+		pendingInput.onflush = vi.fn();
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		expect(pendingInput.onflush).toHaveBeenCalledOnce();
+		expect(onclose).toHaveBeenCalledOnce();
 	});
 });

@@ -11,8 +11,9 @@
 	// - 裡面有確認框時，Esc 只關確認框。
 	import { composing } from '#lib/ime.js';
 	import type { Snippet } from 'svelte';
-	import { flushPendingInput } from '#lib/pending-input.js';
-	import type { Ask } from './ask.svelte';
+	import { getEditor, hasEditor } from '#lib/editor.svelte.js';
+	import { domPendingInput } from '#lib/pending-input.js';
+	import type { Ask } from '#lib/ask.svelte.js';
 
 	interface Props {
 		label: string;
@@ -28,6 +29,8 @@
 
 	let { label, class: cls, onclose, ask, backdrop = true, children }: Props = $props();
 
+	/** 沒送出的字：編輯頁用編輯器 module 的；沒有編輯器的地方（八拍表單獨畫）直接看焦點所在的欄位。 */
+	const pendingInput = hasEditor() ? getEditor().adapters.pendingInput : domPendingInput;
 	const me = {};
 	let box: HTMLElement;
 	/** 這一下（按鍵、按下滑鼠）開始時被擋了幾次：關之前比一比，就知道這一下有沒有被擋。 */
@@ -57,7 +60,7 @@
 
 	function close() {
 		if (ask?.question) ask.answer('cancel');
-		flushPendingInput();
+		pendingInput.flush();
 		if (ask && ask.failures !== failuresAtGesture) return;
 		onclose();
 	}

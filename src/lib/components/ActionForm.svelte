@@ -7,39 +7,28 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
-	import { composing } from '#lib/ime.js';
-	import { untrack, type ComponentProps } from 'svelte';
+	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
+	import type { ComponentProps } from 'svelte';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 	import {
 		ACTION_CATEGORIES,
 		actionHints,
 		actionLabel,
 		actionSeconds,
-		actionSlotAt,
-		addAction,
-		atText,
-		defaultRoles,
 		deleteAction,
 		groupsPeople,
-		lengthText,
 		memberName,
-		parseAt,
-		parseLength,
 		positionText,
 		roleGlossary,
 		segmentSpans,
-		squadColor,
-		squadNumber,
-		updateAction,
-		type Action,
+		squadBadge,
 		type ActionCategory,
-		type ActionMember,
-		type ConfirmOption,
-		type NewActionInput
+		type ConfirmOption
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
-	import { Ask } from './ask.svelte';
 	import CueGrid from './CueGrid.svelte';
 	import { reveal } from './reveal';
 	import Icon from './Icon.svelte';
@@ -47,41 +36,22 @@
 	import RolePicker, { roleKey } from './RolePicker.svelte';
 
 	interface Props {
-		/** 播放頭，全域秒數。新動作從這裡開始。 */
-		playheadSec: number;
 		/** 拍點格子的「指標位置 → 格子」；沒給用格子預設的（ADR 0002）。 */
 		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
 	}
 
-	let { playheadSec, cellAt }: Props = $props();
+	let { cellAt }: Props = $props();
 
-	// 流程、選到的動作（null = 新增）、選到的人（新增時就是新動作的人）都從 session 拿。
+	// 流程從 session 拿；表單上的草稿（選到的動作，或跟著選的人、播放頭的新動作）在編輯器 module。
 	const session = getEditorSession();
+	const draft = getEditor().actionDraft;
 	const flow = $derived(session.flow!);
-	const actionId = $derived(session.selectedActionId);
-	const selectedMemberIds = $derived(session.selectedMemberIds);
-
-	interface Draft {
-		category: ActionCategory;
-		name: string;
-		startText: string;
-		lengthText: string;
-		note: string;
-		members: ActionMember[];
-		/** 辨識色；undefined = 用大類的顏色。 */
-		color: string | undefined;
-	}
-
-	const action = $derived(actionId ? (flow.actions.find((a) => a.id === actionId) ?? null) : null);
-	const slot = $derived(action ? null : actionSlotAt(flow, playheadSec));
-	const segment = $derived(
-		flow.segments.find((s) => s.id === (action?.segmentId ?? slot?.segmentId)) ?? null
-	);
+	/** 選到的動作；null = 新增。 */
+	const action = $derived(draft.action);
+	const segment = $derived(draft.segment);
 	const segmentLabel = $derived(
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
-	/** 播放頭換格才變，用來在新增時把開始、長度跟上播放頭。 */
-	const slotKey = $derived(slot ? `${slot.segmentId}:${slot.start}:${slot.length}` : '');
 	const roles = $derived(roleGlossary(flow));
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
@@ -103,9 +73,8 @@
 	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
 	const grouped = $derived(!!action && groupsPeople(action));
 
-	let draft = $state<Draft>(blank());
-	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
-	const ask = new Ask((f) => session.change(f));
+	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
+	const ask = draft.ask;
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -113,162 +82,10 @@
 	let legendPeek = $state(false);
 	const legendShown = $derived(legendOpen || legendPeek);
 	let bangEl = $state<HTMLElement>();
-	let tipEl = $state<HTMLElement>();
-	let tipPos = $state({ top: 0, left: 0 });
-
-	/** 說明小窗放在「!」下面、右邊對齊；畫面下面放不下就放上面，左右上下都不超出畫面。 */
-	function placeTip() {
-		if (!bangEl || !tipEl) return;
-		const b = bangEl.getBoundingClientRect();
-		const w = tipEl.offsetWidth;
-		const h = tipEl.offsetHeight;
-		const M = 8;
-		let top = b.bottom + 6;
-		if (top + h > innerHeight - M && b.top - 6 - h >= M) top = b.top - 6 - h;
-		tipPos = {
-			top: Math.max(M, Math.min(top, innerHeight - M - h)),
-			left: Math.max(M, Math.min(b.right - w, innerWidth - M - w))
-		};
-	}
-
-	$effect(() => {
-		if (!legendShown || !tipEl) return;
-		const tip = tipEl;
-		// 說明開在最上層（popover）：右邊欄捲動容器裁不到它。
-		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
-		if (tip.showPopover && !tip.matches(':popover-open')) {
-			tip.popover = 'manual';
-			tip.showPopover();
-		}
-		placeTip();
-		// 右邊欄捲動、視窗變大變小時跟著「!」走
-		addEventListener('scroll', placeTip, true);
-		addEventListener('resize', placeTip);
-		return () => {
-			removeEventListener('scroll', placeTip, true);
-			removeEventListener('resize', placeTip);
-			if (tip.popover) tip.hidePopover();
-		};
-	});
 
 	function closeLegend() {
 		legendOpen = false;
 		legendPeek = false;
-	}
-
-	/** 點外面就收起來（點「!」自己是開關，點說明裡面不算）。 */
-	function legendOutside(e: PointerEvent) {
-		const t = e.target as Node;
-		if (legendShown && !bangEl?.contains(t) && !tipEl?.contains(t)) closeLegend();
-	}
-
-	/** Esc 只收說明（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
-	function legendKeys(e: KeyboardEvent) {
-		if (!legendShown || e.key !== 'Escape' || composing(e)) return;
-		e.stopPropagation();
-		closeLegend();
-	}
-
-	function blank(): Draft {
-		const members = untrack(() => fromSelection([], 'stunt'));
-		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members, color: undefined };
-	}
-
-	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色，新來的照大類先填。 */
-	function fromSelection(current: ActionMember[], category: ActionCategory): ActionMember[] {
-		return selectedMemberIds
-			.filter((id) => flow.members.some((m) => m.id === id))
-			.map((id) => current.find((m) => m.memberId === id) ?? joined(id, category));
-	}
-
-	/** 剛加進動作的人：任務角色照大類和全局角色先填。 */
-	function joined(memberId: string, category: ActionCategory): ActionMember {
-		return defaultRoles(flow, category, [{ memberId, role: null }])[0];
-	}
-
-	function fromAction(a: Action): Draft {
-		const seg = flow.segments.find((s) => s.id === a.segmentId)!;
-		return {
-			category: a.category,
-			name: a.name,
-			startText: atText(seg, a.start),
-			lengthText: lengthText(seg, a.length),
-			note: a.note,
-			members: a.members.map((m) => ({ ...m })),
-			color: a.color
-		};
-	}
-
-	// 新增時改了表單（人、開始、長度…）就收掉上次被擋的原因：可能已經不對了，按新增會再檢查一次。
-	// 改動作時不收：改了馬上生效，原因是那一下被擋、已還原的說明。
-	$effect(() => {
-		if (action) return;
-		JSON.stringify(draft);
-		untrack(() => (ask.error = ''));
-	});
-
-	// 新增到一半在名詞對照表改名、刪掉自訂角色：表單裡的人跟著換名字，刪掉的變成沒有任務。
-	// （改動作時表單照動作重設，動作裡的人核心已經改好了。）
-	let customNames = untrack(() => new Map(flow.customRoles.map((r) => [r.id, r.name])));
-	$effect(() => {
-		const now = new Map(flow.customRoles.map((r) => [r.id, r.name]));
-		untrack(() => {
-			const changed = new Map<string, string | null>();
-			for (const [id, name] of customNames) if (now.get(id) !== name) changed.set(name, now.get(id) ?? null);
-			customNames = now;
-			if (action || !changed.size) return;
-			draft.members = draft.members.map((m) =>
-				m.role !== null && changed.has(m.role) ? { ...m, role: changed.get(m.role)! } : m
-			);
-		});
-	});
-
-	// 換選到的動作（或回到新增）時重設表單。
-	$effect(() => {
-		const a = action;
-		untrack(() => {
-			draft = a ? fromAction(a) : blank();
-			ask.clear();
-		});
-	});
-
-	// 新增時，人跟著選取。
-	$effect(() => {
-		void selectedMemberIds;
-		if (action) return;
-		untrack(() => (draft.members = fromSelection(draft.members, draft.category)));
-	});
-
-	// 新增時，開始和長度跟著播放頭。
-	$effect(() => {
-		if (!slotKey) return;
-		untrack(() => {
-			if (!slot || !segment) return;
-			draft.startText = atText(segment, slot.start);
-			draft.lengthText = lengthText(segment, slot.length);
-		});
-	});
-
-	function toInput(): NewActionInput | string {
-		if (!segment) return '找不到這一段';
-		const start = parseAt(segment, draft.startText);
-		if (start === null) {
-			return segment.kind === 'music' ? '開始看不懂，例：3-5&' : '開始看不懂，請打秒數';
-		}
-		const length = parseLength(segment, draft.lengthText);
-		if (length === null) return '長度看不懂';
-		const { category, name, note, members, color } = draft;
-		return { segmentId: segment.id, category, name, start, length, note, members, color };
-	}
-
-	/** 開始、長度看不懂：跟核心擋下來一樣，交給問教練留下原因。 */
-	const notParsed = (message: string) => ({ kind: 'blocked', message }) as const;
-
-	function add() {
-		const input = toInput();
-		ask.send(() => (typeof input === 'string' ? notParsed(input) : addAction(flow, input)), {
-			done: (r) => session.selectAction(r.id)
-		});
 	}
 
 	/** 問句是改長度問的：畫在長度欄位旁邊。 */
@@ -279,16 +96,10 @@
 		askAtLength = !!ask.question;
 	}
 
-	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
+	/** 改了表單：改選到的動作就馬上送出（草稿的 update）；新增時什麼都不做（等按「新增動作」）。 */
 	function changed() {
 		askAtLength = false;
-		if (!action) return;
-		const id = action.id;
-		const input = toInput();
-		ask.send(
-			(o: ConfirmOption = {}) => (typeof input === 'string' ? notParsed(input) : updateAction(flow, id, input, o)),
-			{ revert: () => action && (draft = fromAction(action)) }
-		);
+		draft.update();
 	}
 
 	function remove() {
@@ -300,27 +111,21 @@
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
 	function setRole(i: number, role: string | null, byKey: boolean) {
-		draft.members[i].role = role;
+		draft.setRole(i, role);
 		changed();
 		if (byKey) rolePickers[i + 1]?.focus();
 	}
 
-	/** 人改了：改動作就馬上生效；新增時改選取。 */
-	function membersChanged() {
-		if (action) changed();
-		else session.selectMembers(draft.members.map((m) => m.memberId));
-	}
-
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
-		draft.members.push(joined(select.value, draft.category));
+		draft.addMember(select.value);
 		select.value = '';
-		membersChanged();
+		changed();
 	}
 
 	function removeMember(i: number) {
-		draft.members.splice(i, 1);
-		membersChanged();
+		draft.removeMember(i);
+		changed();
 	}
 
 	/** 把別的動作的人連任務角色一起換進來。 */
@@ -328,27 +133,23 @@
 		const source = flow.actions.find((a) => a.id === select.value);
 		select.value = '';
 		if (!source) return;
-		draft.members = source.members.map((m) => ({ ...m }));
-		membersChanged();
+		draft.copyMembers(source);
+		changed();
 	}
 
-	/** 換大類；新增時任務角色還是舊大類預設值的人跟著換。 */
 	function setCategory(category: ActionCategory) {
-		if (!action) draft.members = defaultRoles(flow, category, draft.members, draft.category);
-		draft.category = category;
+		draft.setCategory(category);
 		changed();
 	}
 
 	function setColor(color: string | undefined) {
-		draft.color = color;
+		draft.setColor(color);
 		changed();
 	}
 
 	const nameOf = (id: string) => memberName(flow, id);
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
-
-<svelte:window onpointerdown={legendOutside} onkeydowncapture={legendKeys} />
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
@@ -451,14 +252,14 @@
 						onfocus={(e) => e.currentTarget.matches(':focus-visible') && (legendPeek = true)}
 						onfocusout={closeLegend}>!</button
 					>
+					<!-- 說明放在「!」下面、右邊對齊；點外面（點「!」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
 					<span
 						class="tip"
 						id="people-legend"
 						role="tooltip"
 						hidden={!legendShown}
-						bind:this={tipEl}
-						style:top="{tipPos.top}px"
-						style:left="{tipPos.left}px"
+						{@attach legendShown &&
+							popover({ place: below(bangEl!, { gap: 6, align: 'right', flip: true }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
@@ -489,8 +290,8 @@
 								onnew={() => (glossaryOpen = true)}
 							/>
 							{#if grouped}
-								{@const n = action && m.squad ? squadNumber(action, m.squad) : 0}
-								{#if n}<span class="squad-tag" style:--c={squadColor(n)}>第 {n} 組</span>
+								{@const badge = action && squadBadge(action, m)}
+								{#if badge?.number}<span class="squad-tag" style:--c={badge.color}>第 {badge.number} 組</span>
 								{:else}<span class="squad-tag none">沒分組</span>{/if}
 							{/if}
 							<button
@@ -526,14 +327,14 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {playheadSec} {cellAt} />
+			<CueGrid {action} {cellAt} />
 		{:else}
 			<button
 				type="button"
 				class="primary add"
 				disabled={!draft.members.length}
 				aria-describedby={draft.members.length ? undefined : 'add-why'}
-				onclick={add}>新增動作</button
+				onclick={() => draft.add()}>新增動作</button
 			>
 			{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 		{/if}

@@ -184,22 +184,6 @@ describe('編輯 session：選取', () => {
 		expect(s.selectedMemberIds).toEqual(['m1']);
 	});
 
-	it('點色條選動作：選它，每點一次都留一份新的（再點選著的那條也算）', () => {
-		const s = new EditorSession(libSample());
-		expect(s.pickedAction).toBeNull();
-		s.selectFormation('f1');
-		s.pickAction('x1');
-		expect(s.selectedActionId).toBe('x1');
-		expect(s.selectedFormationId).toBeNull();
-		const first = s.pickedAction;
-		expect(first).toEqual({ id: 'x1' });
-		s.pickAction('x1');
-		expect(s.pickedAction).not.toBe(first);
-		// 別的地方選動作（動作設定）不算點色條
-		s.selectAction(null);
-		expect(s.pickedAction).toEqual({ id: 'x1' });
-	});
-
 	it('取消選動作不動站位；全部取消', () => {
 		const s = new EditorSession(libSample());
 		s.selectFormation('f1');
@@ -344,6 +328,31 @@ describe('編輯 session：頁面層級的問題', () => {
 	});
 });
 
+describe('編輯 session：元件要的問題（「改」或「記」）', () => {
+	it('「改」的問題成功：算一步，可以復原；確定鈕的字照給的', () => {
+		const s = new EditorSession(sampleFlow());
+		const ask = s.changeAsk({ confirmLabel: '確定刪除' });
+		expect(ask.confirmLabel).toBe('確定刪除');
+		ask.send(() => renameFlow(s.flow!, '全國賽'));
+		expect(s.flow!.name).toBe('全國賽');
+		expect(s.unsaved).toBe(true);
+		expect(s.undo()).toBe(true);
+		expect(s.flow!.name).toBe('練習用');
+	});
+
+	it('「記」的問題成功：不算一步、不清重做', () => {
+		const s = new EditorSession(sampleFlow());
+		rename(s, 'A');
+		s.undo();
+		const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
+		s.recordAsk().send(() => recordAttempt(s.flow!, 'x1', attempt));
+		expect(records(s)).toBe(1);
+		expect(s.unsaved).toBe(true);
+		expect(s.canUndo).toBe(false);
+		expect(s.canRedo).toBe(true);
+	});
+});
+
 describe('編輯 session：分組數字鍵', () => {
 	/** libSample 選好 x1（小美、小A 第 1 組，小B、小芳 第 2 組），再選 ids 這些人。 */
 	function grouping(ids: string[]) {
@@ -397,39 +406,45 @@ describe('編輯 session：分組數字鍵', () => {
 });
 
 describe('編輯 session：改完跳播放頭', () => {
+	/** session 接上一個只記下「跳到哪、要不要重播」的播放。 */
+	function withJumps(flow: Flow) {
+		const jumps: { sec: number; replay: boolean }[] = [];
+		const s = new EditorSession(flow, { opened() {}, changed() {}, jump: (sec, replay) => void jumps.push({ sec, replay }) });
+		return { s, jumps };
+	}
+
 	it('拖人插了站位：提示說插了一張，播放頭停到那張（播放中不重播）', () => {
-		const s = new EditorSession(libSample());
+		const { s, jumps } = withJumps(libSample());
 		s.ask.send(() => moveMembers(s.flow!, 2, { m1: [1, 1] }), { done: (r) => s.moved(r) });
 		expect(s.flow!.formations).toHaveLength(2);
 		expect(s.canUndo).toBe(true);
 		expect(s.notice).toBe('插了一張站位，大家的位置自動帶入');
-		expect(s.jump).toEqual({ sec: 2, replay: false });
+		expect(jumps).toEqual([{ sec: 2, replay: false }]);
 	});
 
 	it('拖人改到現有的站位、往後帶：提示說帶了幾張', () => {
-		const s = new EditorSession(flowOf(insertFormation(libSample(), 2)));
+		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		s.ask.send(() => moveMembers(s.flow!, 0, { m1: [1, 1] }), { done: (r) => s.moved(r) });
 		expect(s.notice).toBe('後面 1 張站位也跟著改了');
-		expect(s.jump).toEqual({ sec: 0, replay: false });
+		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
 
 	it('挪站位：提示收掉、選著這張，播放頭跳到新的站位時間（播放中從那裡重播）', () => {
-		const s = new EditorSession(flowOf(insertFormation(libSample(), 2)));
+		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		const id = s.flow!.formations[1].id;
 		const to = { segmentId: 's1', at: 16 };
 		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
 		expect(s.notice).toBe('');
-		expect(s.jump).toEqual({ sec: toSeconds(s.flow!, to), replay: true });
+		expect(jumps).toEqual([{ sec: toSeconds(s.flow!, to), replay: true }]);
 	});
 
-	it('每次跳都是新的一份（跳到同一秒，頁面也看得到）', () => {
-		const s = new EditorSession(libSample());
+	it('跳到同一秒也每次都叫到播放', () => {
+		const { s, jumps } = withJumps(libSample());
 		s.moved({ inserted: false, sec: 0, carried: 0 });
-		const first = s.jump;
 		s.moved({ inserted: false, sec: 0, carried: 0 });
-		expect(s.jump).not.toBe(first);
+		expect(jumps).toHaveLength(2);
 	});
 });

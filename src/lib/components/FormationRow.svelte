@@ -14,6 +14,7 @@
 		totalSeconds,
 		type TimePosition
 	} from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { followPointer, touchOnUnpicked } from './pointer';
@@ -21,13 +22,13 @@
 	interface Props {
 		/** 時間軸 1 秒幾 px。 */
 		pxPerSec: number;
-		/** 點縮圖：播放頭跳到這張的站位時間（全域秒數）。 */
-		onseek: (sec: number) => void;
 	}
 
-	let { pxPerSec, onseek }: Props = $props();
+	let { pxPerSec }: Props = $props();
 
 	const session = getEditorSession();
+	/** 點縮圖：播放頭跳到這張的站位時間（編輯器 module 的播放）。 */
+	const { playback } = getEditor();
 	// 時間軸只在有流程時畫。
 	const flow = $derived(session.flow!);
 	const selectedId = $derived(session.selectedFormationId);
@@ -159,7 +160,7 @@
 					onclick={() => {
 						if (dragged) return;
 						session.selectFormation(formation.id);
-						onseek(sec);
+						playback.seek(sec);
 					}}
 					onpointerdown={deletable ? (e) => startDrag(e, formation.id, sec) : undefined}
 				>

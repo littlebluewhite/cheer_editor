@@ -6,31 +6,30 @@
 	// 「符合寬度」讓整支流程剛好放滿現在的寬度。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
-	import { composing } from '#lib/ime.js';
 	import { tick, untrack } from 'svelte';
 	import { addSegment, rulerMarks, segmentSpans, snapPlayhead, totalSeconds, type SegmentKind } from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
 	import { followPointer } from './pointer';
 
 	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
 		/** 放大 ×1 時，時間軸 1 秒幾 px。 */
 		pxPerSec?: number;
-		/** 點或拖八拍尺、點站位縮圖：播放頭移到這裡。 */
-		onseek: (sec: number) => void;
 		/** 點段、加好一段：打開這一段的段設定。 */
 		onopensegment: (segmentId: string) => void;
-		/** 找不到音樂檔的音樂段：標紅，點開段設定重新選檔。 */
-		missingSegmentIds?: string[];
 	}
 
-	let { playheadSec, pxPerSec = 16, onseek, onopensegment, missingSegmentIds = [] }: Props = $props();
+	let { pxPerSec = 16, onopensegment }: Props = $props();
 
 	const session = getEditorSession();
+	/** 找不到音樂檔的音樂段從音樂檔庫拿（editor.music，換流程會換一個）：標紅，點開段設定重新選檔。 */
+	const editor = getEditor();
+	/** 播放頭（全域秒數）從編輯器 module 的播放拿；點或拖八拍尺叫它跳過去。 */
+	const { playback } = editor;
 	// 頁面只在有流程時畫時間軸。
 	const flow = $derived(session.flow!);
 
@@ -50,8 +49,6 @@
 
 	/** 加段選單開著：after 是要加在哪一段後面（null：加在最後）；anchor 是打開它的「＋」。 */
 	let menu = $state<{ after: string | null; anchor: HTMLElement } | null>(null);
-	let menuEl = $state<HTMLElement>();
-	let menuPos = $state({ top: 0, left: 0 });
 	/** 倍數：通常是 ZOOMS 其中一個；「符合寬度」時是剛好放滿的倍數。 */
 	let zoom = $state(1);
 	let fitted = $state(false);
@@ -87,7 +84,7 @@
 
 	/** 按鈕：播放頭在畫面上就讓它不動，不在就以看得到的範圍中間為準。 */
 	function zoomButton(step: number) {
-		const head = LABEL_W + playheadSec * px - scroller.scrollLeft;
+		const head = LABEL_W + playback.sec * px - scroller.scrollLeft;
 		const inView = head >= LABEL_W && head <= scroller.clientWidth;
 		zoomBy(step, inView ? head : (LABEL_W + scroller.clientWidth) / 2);
 	}
@@ -145,48 +142,6 @@
 		session.ask.send(() => addSegment(flow, kind, after), { done: (r) => onopensegment(r.id) });
 	}
 
-	/** 選單放在「＋」下面，不超出畫面左右。 */
-	function placeMenu() {
-		if (!menu || !menuEl) return;
-		const b = menu.anchor.getBoundingClientRect();
-		const M = 8;
-		menuPos = {
-			top: b.bottom + 4,
-			left: Math.max(M, Math.min(b.left, innerWidth - M - menuEl.offsetWidth))
-		};
-	}
-
-	$effect(() => {
-		if (!menu || !menuEl) return;
-		const el = menuEl;
-		// 選單開在最上層（popover）：時間軸捲動容器裁不到它。jsdom 沒有 popover，所以在這裡才加屬性。
-		if (el.showPopover && !el.matches(':popover-open')) {
-			el.popover = 'manual';
-			el.showPopover();
-		}
-		placeMenu();
-		addEventListener('scroll', placeMenu, true);
-		addEventListener('resize', placeMenu);
-		return () => {
-			removeEventListener('scroll', placeMenu, true);
-			removeEventListener('resize', placeMenu);
-			if (el.popover) el.hidePopover();
-		};
-	});
-
-	/** 加段選單：點外面就收起來。 */
-	function menuOutside(e: PointerEvent) {
-		const t = e.target as Node;
-		if (menu && !menuEl?.contains(t) && !menu.anchor.contains(t)) menu = null;
-	}
-
-	/** 加段選單：Esc 只收選單（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
-	function menuKeys(e: KeyboardEvent) {
-		if (!menu || e.key !== 'Escape' || composing(e)) return;
-		e.stopPropagation();
-		menu = null;
-	}
-
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const ruler = e.currentTarget as HTMLElement;
@@ -202,10 +157,10 @@
 		scrubbing = true;
 		// 點在八拍數字上：停在那個八拍的第 1 拍（數字寫在刻度右邊，照位置算會停到後面一兩拍）
 		const label = (e.target as HTMLElement).closest<HTMLElement>('[data-mark-sec]');
-		onseek(label ? Number(label.dataset.markSec) : toSec(e));
+		playback.seek(label ? Number(label.dataset.markSec) : toSec(e));
 		followPointer(
 			e,
-			(ev) => onseek(toSec(ev)),
+			(ev) => playback.seek(toSec(ev)),
 			() => (scrubbing = false),
 			() => (scrubbing = false)
 		);
@@ -214,15 +169,13 @@
 	// 播放頭跑出畫面（播放中、或從別的地方跳過去）就捲過去，放在看得到的範圍的左邊四分之一。
 	// 只跟著播放頭；放大縮小自己管捲動，不然用滾輪放大時會被拉回播放頭。
 	$effect(() => {
-		const x = playheadSec * untrack(() => px);
+		const x = playback.sec * untrack(() => px);
 		if (scrubbing || !scroller || scroller.clientWidth === 0) return;
 		const view = scroller.clientWidth - LABEL_W;
 		const left = scroller.scrollLeft;
 		if (x < left || x > left + view - 24) scroller.scrollLeft = Math.max(0, x - view / 4);
 	});
 </script>
-
-<svelte:window onpointerdown={menuOutside} onkeydowncapture={menuKeys} />
 
 <div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel} {@attach pinchZoom}>
 	<div class="inner" style:width={`${width + LABEL_W + (fitted ? FIT_TAIL_PX : TAIL_PX)}px`}>
@@ -239,7 +192,7 @@
 			</div>
 			<div class="trk" style:width={`${width}px`}>
 				{#each spans as span (span.segment.id)}
-					{@const missing = missingSegmentIds.includes(span.segment.id)}
+					{@const missing = editor.music.missingSegmentIds.includes(span.segment.id)}
 					{@const meta =
 						span.segment.kind === 'music' ? `${span.segment.bpm} BPM` : `${span.durationSec.toFixed(1)} 秒`}
 					<button
@@ -308,24 +261,32 @@
 						{#if mark.label}<span data-mark-sec={mark.sec}>{mark.label}</span>{/if}
 					</div>
 				{/each}
-				<div class="ph-head" style:left={`${playheadSec * px}px`}></div>
+				<div class="ph-head" style:left={`${playback.sec * px}px`}></div>
 			</div>
 		</div>
-		<FormationRow pxPerSec={px} {onseek} />
-		<Lanes {playheadSec} pxPerSec={px} />
+		<FormationRow pxPerSec={px} />
+		<Lanes pxPerSec={px} />
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
 				<div class="lab"></div>
 				<span>還沒有隊員。到右邊的「隊員」加人，每個人會有一條自己的泳道。</span>
 			</div>
 		{/if}
-		<div class="ph" style:left={`${LABEL_W + playheadSec * px}px`}></div>
+		<div class="ph" style:left={`${LABEL_W + playback.sec * px}px`}></div>
 	</div>
 </div>
 
 {#if menu}
 	{@const after = spans.find((s) => s.segment.id === menu?.after)}
-	<div class="menu" bind:this={menuEl} style:top={`${menuPos.top}px`} style:left={`${menuPos.left}px`}>
+	<!-- 選單放在「＋」下面、左邊對齊；點外面、按 Esc 就收（popover.svelte.ts） -->
+	<div
+		class="menu"
+		{@attach popover({
+			place: below(menu.anchor, { gap: 4, align: 'left', flip: false }),
+			close: () => (menu = null),
+			inside: [menu.anchor]
+		})}
+	>
 		<span class="menu-title">{after ? `加在${after.label} 後面` : '加在最後'}</span>
 		<button type="button" onclick={() => add('music')}>＋音樂段</button>
 		<button type="button" onclick={() => add('chant')}>＋口號段</button>

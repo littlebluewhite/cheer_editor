@@ -2,11 +2,11 @@
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad，組 id）。
 // 組號（第 n 組）不存：動作裡現在有人的組照 id 發出的先後排，第一個是第 1 組（見 squadsOf）。
 
-import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
+import { ACTION_CATEGORIES, type Action, type ActionCategory, type ActionMember } from './action-types';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { rangeProblem, type BeatRange } from './beat-range';
-import { PHASE_COLORS } from './colors';
+import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
 import { PHASE_KINDS, type Phase } from './phase-types';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
@@ -73,6 +73,22 @@ export function squadsOf(action: Action): string[] {
 /** 這一組是第幾組（1 起），照 squadsOf 算；動作裡沒有人在這一組是 0。 */
 export function squadNumber(action: Action, squad: string): number {
 	return squadsOf(action).indexOf(squad) + 1;
+}
+
+/** 組的徽章：第幾組（沒分組是 0）、寫的字、顏色。 */
+export interface SquadBadge {
+	number: number;
+	text: string;
+	color: string;
+}
+
+/**
+ * 動作裡一個人的組徽章：第幾組和那一組的顏色；沒分組（或帶的組不在這個動作裡）是灰色「?」。
+ * 場上的組號小圓、動作設定的隊員清單的組標籤、分組浮動列的號碼都照這個。
+ */
+export function squadBadge(action: Action, member: Pick<ActionMember, 'squad'>): SquadBadge {
+	const n = member.squad ? squadNumber(action, member.squad) : 0;
+	return n ? { number: n, text: String(n), color: squadColor(n) } : { number: 0, text: '?', color: NO_SQUAD_COLOR };
 }
 
 /** 組 id 的寫法：g 加編號（g1、g2…），由流程的 id 發號，刪了不重用。 */

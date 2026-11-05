@@ -1,10 +1,12 @@
 // 拍的範圍：動作裡從某個半拍起、幾個半拍長的一段（拍點、環節標的拍都是）。
-// 切掉一段、塞進變短的動作、對齊整拍、檢查，拍點和標的拍共用這裡。
+// 切掉一段、塞進變短的動作、對齊整拍、檢查、切進每個八拍，拍點和標的拍共用這裡。
 // 兩邊的差別只有一個，寫在 RULES：拍點可以落在半拍「&」上（動作被拖半拍時跟著走），標的拍一定在音樂的整拍上。
 
 import type { Action } from './action-types';
+import type { Cue, CueKind } from './cues';
+import type { Phase } from './phase-types';
 import type { Segment } from './segment';
-import { atText, HALF_BEATS_PER_BEAT as BEAT } from './time';
+import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT } from './time';
 
 /** 從動作開始算第幾個半拍起（0 = 動作開始那一刻）、幾個半拍長。 */
 export interface BeatRange {
@@ -65,4 +67,67 @@ export function fitRange(of: RangeOf, action: Action, range: BeatRange, by: 1 | 
 export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
 	const first = atText(segment, action.start + at);
 	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
+}
+
+/** 一段拍落在一個八拍裡的那一段：從這個八拍開頭算第 start 個半拍到第 end 個半拍（不含 end，0–16）。 */
+export interface EightPiece {
+	start: number;
+	end: number;
+	/** 這段拍從這個八拍開始（不是從前一個八拍接過來的）。 */
+	first: boolean;
+	/** 這段拍在這個八拍結束（不是接到下一個八拍）。 */
+	last: boolean;
+}
+
+/** 動作碰到的一個八拍，和切進這個八拍的拍點、環節標的拍。 */
+export interface ActionEight {
+	/** 段內第幾個八拍，從 0 起。 */
+	eight: number;
+	/** 照拍點的先後；track 是第幾軌（從 0 起）。 */
+	cues: (EightPiece & { cue: Cue; track: number })[];
+	/** 標了拍的環節，照環節的先後；沒標拍的不切。 */
+	phases: (EightPiece & { phase: Phase; beats: BeatRange })[];
+}
+
+/**
+ * 把動作的拍點和環節標的拍切進動作碰到的每個八拍（八拍表、拍點格子都用這一份）。
+ * 碰到的八拍每個都有一個，沒有拍的也有；跨八拍的拍兩個八拍各拿自己那一段，從「&」開始的從那個半拍算。
+ * 疊放：同一種拍點在同一個八拍裡跟前面的疊在一起，就照先後放進第一個空出來的軌（別種不算疊）。
+ * 給了 cues 就只切那些（例：個人表只切給他的）；沒給是動作全部的拍點。只算音樂段的動作。
+ */
+export function actionEights(action: Action, cues: readonly Cue[] = action.cues ?? []): ActionEight[] {
+	const first = Math.floor(action.start / EIGHT);
+	const last = Math.floor((action.start + action.length - 1) / EIGHT);
+	return Array.from({ length: last - first + 1 }, (_, i) => {
+		const eight = first + i;
+		const lo = eight * EIGHT;
+		/** 每一種拍點每一軌畫到這個八拍的第幾個半拍。 */
+		const ends: Partial<Record<CueKind, number[]>> = {};
+		return {
+			eight,
+			cues: cues.flatMap((cue) => {
+				const piece = pieceIn(lo, action.start + cue.at, cue.len);
+				if (!piece) return [];
+				const tracks = (ends[cue.kind] ??= []);
+				let track = tracks.findIndex((end) => end <= piece.start);
+				if (track < 0) track = tracks.length;
+				tracks[track] = piece.end;
+				return [{ ...piece, cue, track }];
+			}),
+			phases: (action.successRate?.phases ?? []).flatMap((phase) => {
+				const { beats } = phase;
+				if (!beats) return [];
+				const piece = pieceIn(lo, action.start + beats.at, beats.len);
+				return piece ? [{ ...piece, phase, beats }] : [];
+			})
+		};
+	});
+}
+
+/** 從段內第 from 個半拍起、len 個半拍長的一段，落在從 lo 開始的那個八拍裡的那一段；沒落在裡面是 null。 */
+function pieceIn(lo: number, from: number, len: number): EightPiece | null {
+	const hi = lo + EIGHT;
+	const to = from + len;
+	if (to <= lo || from >= hi) return null;
+	return { start: Math.max(from, lo) - lo, end: Math.min(to, hi) - lo, first: from >= lo, last: to <= hi };
 }

@@ -1,7 +1,7 @@
 // 流程核心的對外介面。畫面只從這裡 import，不碰 core 裡的其他檔案。
 // 這一層是純 TypeScript：不碰 DOM、Svelte、Web Audio、檔案對話框。
 
-export type { CommandResult, ConfirmOption, RecordsChoice } from './result';
+export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
 export { createFlow, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
@@ -58,8 +58,8 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { groupsPeople, keptAttempt, MARKS, perPerson, squadName, squadNumber, squadsOf } from './success-rate';
-export type { Attempt, Mark, NewAttempt, PracticeKind, SuccessRate } from './success-rate';
+export { groupsPeople, keptAttempt, MARKS, perPerson, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
+export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
 	attemptText,
@@ -67,6 +67,7 @@ export {
 	carryRecords,
 	deleteLastAttempt,
 	deleteLastRunThrough,
+	lastRunThrough,
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
@@ -94,6 +95,9 @@ export {
 	weakestPhase
 } from './rates';
 export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
+
+export { actionEights } from './beat-range';
+export type { ActionEight, EightPiece } from './beat-range';
 
 export { eightCountRows } from './eight-count';
 export type {
@@ -129,15 +133,17 @@ export {
 	renameFormation,
 	setPositions,
 	setTeamWalks,
-	setWalks
+	setWalks,
+	walkSpanAt
 } from './formation';
-export type { Formation, FormationWalk, MoveResult, Position, Walk } from './formation';
+export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 
 export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';
 
 export {
 	AUDIO_EXTENSIONS,
+	BROKEN_AUDIO,
 	DEFAULT_BPM,
 	MAX_BPM,
 	MAX_CHANT_SEC,
@@ -148,9 +154,11 @@ export {
 	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
+	readSegmentNumber,
 	updateSegment
 } from './segment';
 export type {
+	AudioLengths,
 	AudioRef,
 	BeatLine,
 	BeatTiming,
@@ -159,6 +167,7 @@ export type {
 	MusicSegment,
 	Segment,
 	SegmentKind,
+	SegmentNumberField,
 	SegmentPatch
 } from './segment';
 
@@ -168,11 +177,10 @@ export {
 	atText,
 	lengthText,
 	nearestPosition,
-	parseAt,
-	parseNumber,
-	parseLength,
-	parseTime,
 	positionText,
+	readLength,
+	readStart,
+	readTime,
 	rulerMarks,
 	segmentSpans,
 	snapToBeat,
@@ -183,7 +191,7 @@ export {
 	toSeconds,
 	totalSeconds
 } from './time';
-export type { RulerMark, SegmentSpan, TimePosition } from './time';
+export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
 
 export { firstBeatPreview, playbackPlan, playStartSec, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';

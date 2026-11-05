@@ -246,22 +246,24 @@ describe('流程檔：版本', () => {
 		expect(r.kind === 'ok' && r.audio).toEqual({ a1: bytes(7) });
 	});
 
+	// 段的上限：改段的指令擋下的長度，直接寫進流程檔也打不開；改得出來的長度一定打得開。訊息各照各的。
+	const MUSIC_RANGE = '音樂段要在 1 到 200 個八拍之間';
+	const CHANT_RANGE = '口號段長度要在 0.1 到 300 秒之間';
 	it.each([
-		['口號段超過 300 秒', (f: any) => (f.segments[1].tenths = 3001), '口號段長度要在 0.1 到 300 秒之間'],
-		['口號段長度是 0', (f: any) => (f.segments[1].tenths = 0), '口號段長度要在 0.1 到 300 秒之間'],
-		['音樂段超過 200 個八拍', (f: any) => (f.segments[0].halfBeats = 200 * 16 + 2), '音樂段要在 1 到 200 個八拍之間'],
-		['音樂段長度是負的', (f: any) => (f.segments[2].halfBeats = -16), '音樂段要在 1 到 200 個八拍之間']
-	])('段太長或不是正的（%s）：打不開，寫出上限', (_, edit, message) => {
-		const flow = JSON.parse(JSON.stringify(sample()));
-		edit(flow);
-		expect(readFlowFile(zipOf({ formatVersion: 8, flow }))).toEqual({ kind: 'error', message });
-	});
-
-	it('段剛好在上限（300 秒、200 個八拍）：打得開', () => {
-		const flow = JSON.parse(JSON.stringify(sample()));
-		flow.segments[1].tenths = 3000;
-		flow.segments[0].halfBeats = 200 * 16;
-		expect(readFlowFile(zipOf({ formatVersion: 8, flow })).kind).toBe('ok');
+		['音樂段剛好 200 個八拍', 's1', { eights: 200, lastBeats: 8 }, { halfBeats: 200 * 16 }, null, null],
+		['音樂段超過 200 個八拍', 's1', { eights: 201, lastBeats: 1 }, { halfBeats: 200 * 16 + 2 }, '八拍數要在 1 到 200 之間', MUSIC_RANGE],
+		['音樂段長度是負的', 's3', { eights: -1, lastBeats: 8 }, { halfBeats: -16 }, '八拍數要在 1 到 200 之間', MUSIC_RANGE],
+		['口號段剛好 300 秒', 's2', { seconds: 300 }, { tenths: 3000 }, null, null],
+		['口號段超過 300 秒', 's2', { seconds: 300.1 }, { tenths: 3001 }, CHANT_RANGE, CHANT_RANGE],
+		['口號段長度是 0', 's2', { seconds: 0 }, { tenths: 0 }, CHANT_RANGE, CHANT_RANGE]
+	])('段的上限（%s）：改段和打開流程檔擋同一件事', (_, id, patch, length, edited, opened) => {
+		const flow = sample();
+		const r = updateSegment(flow, id, patch);
+		expect(r.kind === 'blocked' ? r.message : null).toBe(edited);
+		if (r.kind === 'ok') expect(r.flow.segments.find((s) => s.id === id)).toMatchObject(length);
+		const segments = flow.segments.map((s) => (s.id === id ? { ...s, ...length } : s));
+		const file = readFlowFile(writeFlowFile({ ...flow, segments }, {}));
+		expect(file.kind === 'error' ? file.message : null).toBe(opened);
 	});
 
 	it('名字長度開檔時不管：流程名、隊員名再長都打得開', () => {

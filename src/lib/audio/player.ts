@@ -1,5 +1,5 @@
 // 播放器：把流程核心算好的播放計畫排進音訊引擎，再把「喇叭正在播的時間」換回流程秒數。
-// 拍子和段的換算都在流程核心；這裡只做時鐘的加減。
+// 拍子和段的換算都在流程核心；這裡只做時鐘的加減。播放（#lib/playback.svelte.js）的內部，只有它在用。
 
 import type { PlaybackPlan } from '#lib/core';
 import type { AudioEngine } from './engine.js';

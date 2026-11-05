@@ -42,19 +42,19 @@
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
 		/** 時間軸 1 秒幾 px。 */
 		pxPerSec: number;
 	}
 
-	let { playheadSec, pxPerSec }: Props = $props();
+	let { pxPerSec }: Props = $props();
 
 	const session = getEditorSession();
+	const editor = getEditor();
 	// 時間軸只在有流程時畫。
 	const flow = $derived(session.flow!);
 	const selectedActionId = $derived(session.selectedActionId);
@@ -67,7 +67,7 @@
 	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number } | null>(null);
 
 	const width = $derived(totalSeconds(flow) * pxPerSec);
-	const idle = $derived(new Set(idleAt(flow, playheadSec)));
+	const idle = $derived(new Set(idleAt(flow, editor.playback.sec)));
 	const markers = $derived(memberMarkers(flow));
 	/** 每個動作的位置（px），一個動作算一次，泳道共用。 */
 	const placed = $derived(
@@ -328,7 +328,7 @@
 						style:background={actionColor(p.action)}
 						style:box-shadow={p.action.color ? `inset 4px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
-						onclick={() => session.pickAction(p.action.id)}
+						onclick={() => editor.pickAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
 						{#each phaseBars[p.action.id] as ph (ph.id)}

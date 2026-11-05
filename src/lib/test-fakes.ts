@@ -1,6 +1,6 @@
-// 畫面測試共用的假 adapter：存檔、草稿、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
-// 放好流程的編輯頁、開檔這些小工具，和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。
-// 只給測試用，頁面不 import。
+// 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
+// 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
+// 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
 import { fireEvent, screen } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
@@ -17,9 +17,12 @@ import {
 	type Position
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
+import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
+import { animationFrame } from '#lib/playback.svelte.js';
+import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
 
 /** 假的存檔：每次存的位元組和檔名照順序記下來，回傳給的結果。 */
 export function fakeSaver(outcome: SaveOutcome = 'saved') {
@@ -53,8 +56,87 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt = new 
 	return { store, state };
 }
 
+/**
+ * 假的分頁頻道：同一個 fakeTabs() 開的頻道就像同一個瀏覽器的分頁，互相聽得到（自己送的自己收不到），送了馬上收到。
+ * 每個分頁的編輯器 module 放同一個進去。
+ */
+export function fakeTabs(): OpenTabChannel {
+	const open = new Set<Set<(message: TabMessage) => void>>();
+	return () => {
+		const listeners = new Set<(message: TabMessage) => void>();
+		open.add(listeners);
+		return {
+			post(message) {
+				for (const other of open) if (other !== listeners) for (const on of [...other]) on(message);
+			},
+			listen(on) {
+				listeners.add(on);
+				return () => void listeners.delete(on);
+			},
+			close: () => void open.delete(listeners)
+		};
+	};
+}
+
 /** 假的解碼：每個音樂檔都是 30 秒、沒有波形。 */
 export const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
+
+/**
+ * 假的沒送出的字：測試自己設 pending（欄位裡打了字還沒送出）和 onflush（送出時欄位交給流程的改動）；
+ * 送出、當作已送出都是清掉。
+ */
+export function fakePendingInput(): PendingInput & { pending: boolean; onflush: () => void } {
+	return {
+		pending: false,
+		onflush: () => {},
+		flush() {
+			if (this.pending) this.onflush();
+			this.pending = false;
+		},
+		settle() {
+			this.pending = false;
+		}
+	};
+}
+
+/** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */
+export function manualFrames() {
+	let queued: (() => void)[] = [];
+	return {
+		nextFrame: (run: () => void) => void queued.push(run),
+		/** 撥一格：跑這一格之前排的（跑的時候排的留到下一格）。 */
+		step() {
+			const run = queued;
+			queued = [];
+			for (const f of run) f();
+		}
+	};
+}
+
+/**
+ * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
+ * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
+ * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
+ * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
+ */
+export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
+	const { saver, saves } = fakeSaver();
+	const editor = new Editor(
+		{
+			createEngine: () => createFakeEngine(),
+			createSaver: () => saver,
+			pickFlowFile: null,
+			decode: fakeDecode,
+			draftStore: fakeDraftStore().store,
+			openTabChannel: null,
+			pendingInput: fakePendingInput(),
+			nextFrame: manualFrames().nextFrame,
+			...adapters
+		},
+		flow
+	);
+	return { editor, session: editor.session, saves };
+}
 
 /** 等 async 的存檔、開檔跑完。 */
 export const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -67,21 +149,14 @@ export async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 }
 
 /**
- * 編輯頁放一個帶好流程的 session（算存過的，跟剛開檔一樣），其他 adapter（含座標換算）都是假的：`render(Page, page.props)`。
+ * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算也是假的：`render(Page, page.props)`。
+ * adapters 跟 testEditor 一樣，只有沒送出的字用真的（jsdom 有焦點和 change，存檔、⌘Z、關分頁要看到欄位裡打的字），
+ * 畫面時鐘也用真的（jsdom 的 requestAnimationFrame，測試等下一格畫面）。
  * 測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
  */
-export function editorPage(flow: Flow | null = null) {
-	const session = new EditorSession(flow);
-	const { saver, saves } = fakeSaver();
-	const props = {
-		session,
-		createEngine: () => createFakeEngine(),
-		createSaver: () => saver,
-		decode: fakeDecode,
-		toMeters: fakeToMeters,
-		cellAt: fakeCellAt
-	};
-	return { session, saves, props };
+export function editorPage(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
+	const t = testEditor(flow, { pendingInput: domPendingInput, nextFrame: animationFrame, ...adapters });
+	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt } };
 }
 
 /** 假的座標換算：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */

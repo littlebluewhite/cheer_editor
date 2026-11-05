@@ -7,7 +7,6 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
-	import { Ask } from './ask.svelte';
 	import { isLongMarker } from './marker';
 	import { reveal } from './reveal';
 	import {
@@ -36,7 +35,7 @@
 	/**
 	 * 等教練回答的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
 	 */
-	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 	/** 問題是哪一列送的（刪隊員、改名字）：問題畫在那一列下面。 */
 	let askingId = $state<string | null>(null);
 	/** 正在拖的那個人。 */
@@ -165,8 +164,8 @@
 	{/if}
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
-	<!-- 改了加隊員的欄位就收掉上次被擋的原因 -->
-	<form class="add" novalidate onsubmit={add} oninput={() => (ask.error = '')} onchange={() => (ask.error = '')}>
+	<!-- 改了加隊員的欄位就告訴 Ask，收掉上次被擋的原因 -->
+	<form class="add" novalidate onsubmit={add} oninput={() => ask.edited()} onchange={() => ask.edited()}>
 		<b class="add-title">加隊員</b>
 		<label class="names">
 			名字（一次加多人：一行一個；從試算表貼「名字、性別、全局角色」三欄也可以）

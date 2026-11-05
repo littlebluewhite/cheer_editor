@@ -104,15 +104,21 @@ export function restoreAttempt(flow: Flow, actionId: string, attempt: Attempt, i
 export type RemovedRunThrough = { actionId: string; attempt: Attempt; index: number }[];
 
 /**
- * 刪掉上一次全上：拿掉這一天最後存的那次全上，整次一起拿（每個動作、每組的都拿掉，不拆開）。
+ * 這天有沒有全上：有就回傳這天最後存的那次全上的 id，沒有是 undefined。
  * 「最後存的」看全上 id：每存一次全上發一個新的、刪了也不重用，所以號碼最大的就是最後存的。
  */
-export function deleteLastRunThrough(flow: Flow, date: string): CommandResult<{ removed: RemovedRunThrough }> {
+export function lastRunThrough(flow: Flow, date: string): string | undefined {
 	const runIds = flow.actions.flatMap(
 		(a) => a.successRate?.records.flatMap((r) => (r.date === date && r.runThroughId) || []) ?? []
 	);
-	if (runIds.length === 0) return blocked('這一天還沒有全上');
-	const last = runIds.reduce((a, b) => (Number(b.slice(1)) > Number(a.slice(1)) ? b : a));
+	if (runIds.length === 0) return undefined;
+	return runIds.reduce((a, b) => (Number(b.slice(1)) > Number(a.slice(1)) ? b : a));
+}
+
+/** 刪掉上一次全上：拿掉這一天最後存的那次全上（lastRunThrough），整次一起拿（每個動作、每組的都拿掉，不拆開）。 */
+export function deleteLastRunThrough(flow: Flow, date: string): CommandResult<{ removed: RemovedRunThrough }> {
+	const last = lastRunThrough(flow, date);
+	if (last === undefined) return blocked('這一天還沒有全上');
 	const removed: RemovedRunThrough = [];
 	let next = flow;
 	for (const action of flow.actions) {

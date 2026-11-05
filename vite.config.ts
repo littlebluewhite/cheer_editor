@@ -48,7 +48,8 @@ export default defineConfig({
 				test: {
 					name: 'core',
 					environment: 'node',
-					include: ['src/lib/core/**/*.test.ts', 'src/lib/audio/**/*.test.ts', 'src/lib/*.test.ts']
+					include: ['src/lib/core/**/*.test.ts', 'src/lib/audio/**/*.test.ts', 'src/lib/*.test.ts'],
+					exclude: ['src/**/*.svelte.test.ts']
 				}
 			},
 			{

@@ -1,8 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addMembers, createFlow, setPositions, type Clash, type Flow, type Member, type Position } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { Playback } from '#lib/playback.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import Field from './Field.svelte';
 
@@ -20,12 +22,12 @@ function renderEditing(
 	props: Record<string, unknown> = {},
 	{ selected = [], multi = false }: { selected?: string[]; multi?: boolean } = {}
 ) {
-	const session = new EditorSession(flowWith(members, positions));
+	const { editor, session } = testEditor(flowWith(members, positions));
 	session.selectMembers(selected);
 	session.multiSelect = multi;
 	render(TestSession, {
 		props: {
-			session,
+			editor,
 			component: Field,
 			props: { field: { strips: 9, layout: 'vertical' }, members, positions, ...props }
 		}
@@ -139,6 +141,7 @@ describe('在場上拖人', () => {
 	}
 
 	it('放開時位置吸到附近的 1/4，改進播放頭這一拍的站位（公尺），算一步', async () => {
+		const jump = vi.spyOn(Playback.prototype, 'jump');
 		const { session, dot } = setup();
 		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
 		await fireEvent.pointerMove(dot, { clientX: 46, clientY: 3 });
@@ -146,7 +149,8 @@ describe('在場上拖人', () => {
 		expect(session.canUndo).toBe(true);
 		expect(posOf(session, 'm1')[0]).toBeCloseTo(0.4572, 4);
 		expect(posOf(session, 'm1')[1]).toBeCloseTo(0, 4);
-		expect(session.jump).toEqual({ sec: 0, replay: false });
+		expect(jump).toHaveBeenCalledWith(0, false);
+		jump.mockRestore();
 	});
 
 	it('拖的時候左下角顯示位置文字、冒出吸附小點；放開就收起來', async () => {

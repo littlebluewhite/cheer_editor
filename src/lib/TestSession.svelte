@@ -1,19 +1,20 @@
 <script lang="ts">
-	// 元件測試用：把一個 session 放進 context，再畫要測的元件。只給測試用，頁面不 import。
-	// 用法：render(TestSession, { props: { session, component: AttemptCard, props: { ... } } })，操作後讀 session.flow。
+	// 元件測試用：把一個編輯器 module（和它的 session）放進 context，再畫要測的元件。只給測試用，頁面不 import。
+	// 用法：const { editor, session } = testEditor(flow)（#lib/test-fakes.js）；
+	// render(TestSession, { props: { editor, component: AttemptCard, props: { ... } } })，操作後讀 session.flow。
 	import type { Component } from 'svelte';
-	import { setEditorSession, type EditorSession } from './editor-session.svelte.js';
+	import { setEditor, type Editor } from './editor.svelte.js';
 
 	interface Props {
-		session: EditorSession;
+		editor: Editor;
 		/** 要測的元件（什麼元件都可以）。 */
 		component: Component<any>;
 		props: Record<string, unknown>;
 	}
 
-	let { session, component: Inner, props }: Props = $props();
+	let { editor, component: Inner, props }: Props = $props();
 	// svelte-ignore state_referenced_locally
-	setEditorSession(session);
+	setEditor(editor);
 </script>
 
 <Inner {...props} />
