@@ -4,6 +4,7 @@
 	// 時間的寫法照流程核心：這一段只打段內時間，別的段前面加段名。規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		clearWalks,
@@ -17,20 +18,15 @@
 		type Walk
 	} from '#lib/core';
 
-	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
-	}
-
-	let { playheadSec }: Props = $props();
-
 	const session = getEditorSession();
+	/** 播放頭（全域秒數）從編輯器 module 的播放拿。 */
+	const { playback } = getEditor();
 	const flow = $derived(session.flow!);
 	/** 選到的人；沒選人就是全隊。 */
 	const selectedMemberIds = $derived(session.selectedMemberIds);
 
 	const formation = $derived.by(() => {
-		const span = walkSpanAt(flow, playheadSec);
+		const span = walkSpanAt(flow, playback.sec);
 		return span?.on ? span.to : null;
 	});
 	/** 改誰：選到的人；沒選人是全隊有走位的人（兩張站位位置不同的人，站著不動的不寫）。 */

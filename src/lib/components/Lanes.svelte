@@ -47,13 +47,11 @@
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
 		/** 時間軸 1 秒幾 px。 */
 		pxPerSec: number;
 	}
 
-	let { playheadSec, pxPerSec }: Props = $props();
+	let { pxPerSec }: Props = $props();
 
 	const session = getEditorSession();
 	const editor = getEditor();
@@ -69,7 +67,7 @@
 	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number } | null>(null);
 
 	const width = $derived(totalSeconds(flow) * pxPerSec);
-	const idle = $derived(new Set(idleAt(flow, playheadSec)));
+	const idle = $derived(new Set(idleAt(flow, editor.playback.sec)));
 	const markers = $derived(memberMarkers(flow));
 	/** 每個動作的位置（px），一個動作算一次，泳道共用。 */
 	const placed = $derived(

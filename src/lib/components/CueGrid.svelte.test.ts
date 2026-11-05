@@ -30,12 +30,13 @@ function sample(): Flow {
 	);
 }
 
-/** 放一個帶著 flow、選了第一個動作的 session 進 context，畫它的拍點格子；回傳 session。 */
-function renderGrid(flow: Flow, playheadSec?: number) {
+/** 放一個帶著 flow、選了第一個動作、播放頭在 playheadSec 的編輯器 module 進 context，畫它的拍點格子；回傳 session。 */
+function renderGrid(flow: Flow, playheadSec = 0) {
 	const { editor, session } = testEditor(flow);
 	session.selectAction(flow.actions[0].id);
+	editor.playback.seek(playheadSec);
 	render(TestSession, {
-		props: { editor, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
+		props: { editor, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt } }
 	});
 	return session;
 }

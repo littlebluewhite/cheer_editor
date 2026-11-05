@@ -2,6 +2,7 @@
 	// 選人：一鍵選全隊、全部底層、全部上層、這一拍沒在動作裡的人、不選人；
 	// 「沿用上一個動作的人」取播放頭以前最晚結束的動作，再按一次換更早的。
 	// 選到的人是在播放頭新增動作的人，也是場上整組拖的那一組。
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		actionLabel,
@@ -11,14 +12,8 @@
 		type MemberGroup
 	} from '#lib/core';
 
-	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
-	}
-
-	let { playheadSec }: Props = $props();
-
 	const session = getEditorSession();
+	const { playback } = getEditor();
 	const flow = $derived(session.flow!);
 	const selected = $derived(session.selectedMemberIds);
 	const select = (ids: string[]) => session.selectMembers(ids);
@@ -37,12 +32,12 @@
 	const names = $derived(selected.map((id) => memberName(flow, id)).filter(Boolean));
 
 	function previous() {
-		const candidates = previousActions(flow, playheadSec);
+		const candidates = previousActions(flow, playback.sec);
 		if (candidates.length === 0) {
 			message = '播放頭前面還沒有動作';
 			return;
 		}
-		if (cycle.sec !== playheadSec) cycle = { sec: playheadSec, index: 0 };
+		if (cycle.sec !== playback.sec) cycle = { sec: playback.sec, index: 0 };
 		const action = candidates[cycle.index % candidates.length];
 		cycle.index += 1;
 		select(action.members.map((m) => m.memberId));
@@ -58,7 +53,7 @@
 	</header>
 	<div class="chips">
 		{#each GROUPS as g (g.group)}
-			<button type="button" onclick={() => select(memberGroup(flow, g.group, playheadSec))}
+			<button type="button" onclick={() => select(memberGroup(flow, g.group, playback.sec))}
 				>{g.label}</button
 			>
 		{/each}

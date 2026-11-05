@@ -2,14 +2,16 @@
 	// 場地左邊那一欄的大字：播放頭在有拍點的動作裡（或開始前一個八拍）時，每個動作一張卡，
 	// 寫現在這拍的步驟、拍子、手位（有長度的寫走到第幾拍），下面預告下一個。不吃滑鼠。
 	import { actionLabel, cuesAt, whoName, type Cue, type Flow } from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 
 	interface Props {
 		flow: Flow;
-		playheadSec: number;
 	}
-	let { flow, playheadSec }: Props = $props();
+	let { flow }: Props = $props();
 
-	const live = $derived(cuesAt(flow, playheadSec));
+	/** 播放頭從編輯器 module 的播放拿。 */
+	const { playback } = getEditor();
+	const live = $derived(cuesAt(flow, playback.sec));
 	/** 「high V（上層）」；給全部的只寫字。 */
 	const nextText = (c: Cue) => (c.who ? `${c.word}（${whoName(flow, c.who)}）` : c.word);
 </script>

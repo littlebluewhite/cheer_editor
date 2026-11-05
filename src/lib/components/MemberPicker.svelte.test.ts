@@ -55,7 +55,8 @@ function sample(): Flow {
 function setup(playheadSec: number, selected: string[] = []) {
 	const { editor, session } = testEditor(sample());
 	session.selectMembers(selected);
-	render(TestSession, { props: { editor, component: MemberPicker, props: { playheadSec } } });
+	editor.playback.seek(playheadSec);
+	render(TestSession, { props: { editor, component: MemberPicker, props: {} } });
 	return session;
 }
 
