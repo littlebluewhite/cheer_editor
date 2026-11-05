@@ -333,6 +333,24 @@ describe('動作', () => {
 			expect(dot().classList.contains('selected')).toBe(false);
 		});
 
+		/** 畫面上的字和滑過去的提示裡，提到「多選」的。 */
+		const multiHints = () =>
+			[document.body.textContent ?? '', ...[...document.querySelectorAll('[title]')].map((el) => el.getAttribute('title')!)].filter(
+				(t) => t.includes('多選')
+			);
+
+		it('電腦上的提示不提「多選」（電腦沒有這個開關）；觸控螢幕上有', async () => {
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: fine)' }));
+			await withAction();
+			expect(multiHints()).toEqual([]);
+			expect(name().getAttribute('title')).toContain('Shift＋點');
+			cleanup();
+
+			touchScreen();
+			await withAction();
+			expect(name().getAttribute('title')).toContain('多選');
+		});
+
 		it('觸控螢幕：「取消選取」跟 Esc 一樣，動作和人的選取都清掉；沒有選東西時按不了', async () => {
 			touchScreen();
 			await withAction();
