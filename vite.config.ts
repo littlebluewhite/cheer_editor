@@ -26,7 +26,13 @@ export default defineConfig({
 					lang: 'zh-Hant-TW',
 					display: 'standalone',
 					theme_color: '#ffffff',
-					background_color: '#ffffff'
+					background_color: '#ffffff',
+					// 圖檔在 static/，由 scripts/app-icons.sh 從 favicon.svg 產生（見 docs/deploy.md）。
+					icons: [
+						{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+						{ src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+						{ src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+					]
 				}
 			}
 		)
