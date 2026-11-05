@@ -119,6 +119,18 @@ describe('動作表單：新增', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
+	it('技巧有上層卻沒有底層：黃字提醒，照樣可以新增', async () => {
+		const session = setup(sample(), null, 0, ['m1']);
+		await pickRole('小A', '上層');
+		expect(screen.getByRole('note').textContent).toBe('有上層，但沒有底層（底層、主底、側底）');
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		await pickRole('小B', '主底');
+		expect(screen.queryByRole('note')).toBeNull();
+		await pickRole('小B', '保護');
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(session.flow!.actions).toHaveLength(1);
+	});
+
 	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
 		scrolled.length = 0;
 		setup(sample(), null);

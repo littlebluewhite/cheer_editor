@@ -19,6 +19,7 @@
 		squadColor,
 		squadNumber,
 		timeRuleWarnings,
+		stackedMembers,
 		stepPlayhead,
 		totalSeconds,
 		writeFlowFile,
@@ -753,7 +754,15 @@
 							<span class="warn-text">{#each warnings as w (w)}<span>{w}</span>{/each}</span>
 						</div>
 					{/if}
-					{#if flow}<CueOverlay {flow} {playheadSec} />{/if}
+					{#if flow}
+						{@const stacked = stackedMembers(flow.members, positionsAt(flow, playheadSec))}
+						{#if stacked.length}
+							<p class="hint-warn" role="note">
+								{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
+							</p>
+						{/if}
+						<CueOverlay {flow} {playheadSec} />
+					{/if}
 				{/snippet}
 				{#snippet railBottom()}
 					{#if flow?.members.length}

@@ -10,6 +10,7 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		ACTION_CATEGORIES,
+		actionHints,
 		actionLabel,
 		actionSeconds,
 		actionSlotAt,
@@ -380,6 +381,7 @@
 			{:else}
 				<p class="muted none">還沒有人：用上面的「選人」，或在場上點人。</p>
 			{/if}
+			{#each actionHints(draft) as hint (hint)}<p class="hint-warn" role="note">{hint}</p>{/each}
 			<div class="adders">
 				<select aria-label="加人" onchange={(e) => addMember(e.currentTarget)}>
 					<option value="">＋加人…</option>

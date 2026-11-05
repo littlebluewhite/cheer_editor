@@ -15,6 +15,7 @@
 		loadSegmentAudio,
 		musicLength,
 		musicLengthFromAudio,
+		musicOverrunSec,
 		segmentSpans,
 		updateSegment,
 		type ConfirmOption,
@@ -68,6 +69,8 @@
 	const audioName = $derived(flow.audio.find((a) => a.id === music?.audioId)?.name);
 	const otherAudio = $derived(flow.audio.filter((a) => a.id !== music?.audioId));
 	const length = $derived(music && musicLength(music));
+	/** 段比音樂檔長幾秒（從第一拍算）；還沒載入音樂是 0。 */
+	const overrun = $derived(music && audio ? musicOverrunSec(music, audio.durationSec) : 0);
 	const lines = $derived(
 		music ? beatLines({ bpm: music.bpm, firstBeatSec: music.firstBeatSec, windowSec: WAVE_WINDOW_SEC }) : []
 	);
@@ -247,6 +250,11 @@
 					</label>
 					<button type="button" onclick={fitToAudio}>照音樂長度算</button>
 				</div>
+				{#if overrun > 0}
+					<p class="hint-warn" role="note">
+						這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。要剛好就按「照音樂長度算」。
+					</p>
+				{/if}
 			</section>
 		{:else if segment?.kind === 'chant'}
 			<section>

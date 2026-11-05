@@ -178,6 +178,8 @@ export type { RulerMark, SegmentSpan, TimePosition } from './time';
 export { firstBeatPreview, playbackPlan, playStartSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
+export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
+
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules } from './time-rules';
 

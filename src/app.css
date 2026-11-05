@@ -281,6 +281,19 @@ input[type='radio'] {
 	}
 }
 
+/* ---------- 提醒（只提醒，不擋）：黃底小字，跟規則警告同色 ---------- */
+.hint-warn {
+	margin: 0;
+	padding: 6px 10px;
+	border-radius: 8px;
+	background: var(--warn-bg);
+	border: 1px solid #f0d488;
+	color: var(--warn-text);
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1.5;
+}
+
 /* ---------- 觸控螢幕（iPad）：手指點的地方變大，電腦上看起來不變（docs/adr/0005-ipad-touch.md） ---------- */
 @media (pointer: coarse) {
 	/* 上方列、場地左欄、右邊欄、對話框、提示、首頁、練習畫面的按鈕至少 40px。

@@ -14,6 +14,7 @@
 		MAX_MEMBERS,
 		addMembers,
 		deleteMember,
+		duplicateNames,
 		memberMarkers,
 		memberName,
 		updateMember,
@@ -34,6 +35,7 @@
 	 */
 	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
 	const markers = $derived(memberMarkers(flow));
+	const dupes = $derived(duplicateNames(flow.members));
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -62,6 +64,12 @@
 		<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
 		<span class="hint">名單順序就是泳道順序和場上的號碼；在「流程設定」可以把號碼換成開頭字（名字的第一個字）</span>
 	</header>
+
+	{#if dupes.length}
+		<p class="hint-warn" role="note">
+			有同名的隊員：{dupes.map((n) => `「${n}」`).join('、')}。泳道、動作表單上分不出誰是誰，可以加個字分開。
+		</p>
+	{/if}
 
 	{#if flow.members.length}
 		<ol>

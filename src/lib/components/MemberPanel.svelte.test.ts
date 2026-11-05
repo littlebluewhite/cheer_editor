@@ -61,6 +61,14 @@ describe('隊員名單', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
+	it('有同名的隊員時提醒（不擋）', async () => {
+		setup();
+		await fillNew('王小明\n阿強', 'M', 'base');
+		expect(screen.queryByRole('note')).toBeNull();
+		await fillNew('王小明', 'M', 'base');
+		expect(screen.getByRole('note').textContent).toContain('有同名的隊員：「王小明」');
+	});
+
 	it('一行一個名字，一次加多人', async () => {
 		const session = setup();
 		await fillNew('小A\n小B\n\n小C', 'M', 'top');

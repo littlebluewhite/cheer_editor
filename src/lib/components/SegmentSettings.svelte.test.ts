@@ -91,6 +91,15 @@ describe('音樂段設定', () => {
 		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（30.0 秒）之前');
 	});
 
+	it('段比音樂檔長時提醒（不擋）；照音樂長度算之後就不提醒', async () => {
+		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		// 預設 150 BPM、8 個八拍 = 25.6 秒，音樂只有 20 秒
+		setup(flow, { a1: loaded(20) });
+		expect(screen.getByRole('note').textContent).toContain('這一段比音樂檔長 5.6 秒');
+		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
+		expect(screen.queryByRole('note')).toBeNull();
+	});
+
 	it('還沒載入音樂就按照音樂長度算，提醒先載入', async () => {
 		const { session } = setup(musicFlow());
 		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
