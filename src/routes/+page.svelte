@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		currentFormation,
-		deleteAction,
 		clashes,
 		formationWalks,
 		memberMarkers,
@@ -13,7 +12,6 @@
 		stackedMembers,
 		totalSeconds,
 		walkSpanAt,
-		type ConfirmOption,
 		type Flow,
 		type Clash,
 		type FormationWalk,
@@ -35,6 +33,7 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import { modalOpen } from '#lib/components/Modal.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
@@ -236,6 +235,8 @@
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
 	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking);
+	/** 有東西蓋在上面（上面那些，或表單裡打開的名詞對照表這種對話框）：快捷鍵不動底下的編輯畫面。 */
+	const covered = () => overlayOpen || modalOpen();
 
 	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
 	function dismissNotice(e: Event) {
@@ -283,11 +284,11 @@
 		if (e.key === ' ') {
 			if (on(NATIVE_KEYS) || e.repeat) return;
 			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
-			if (playback.space(overlayOpen)) e.preventDefault();
+			if (playback.space(covered())) e.preventDefault();
 			return;
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
-		if (overlayOpen || on(TYPING)) return;
+		if (covered() || on(TYPING)) return;
 		// 選單自己用方向鍵、Home／End（例：任務角色選單）時不算
 		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
 		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
@@ -300,7 +301,7 @@
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedActionId) {
 			// Mac 的 delete 鍵送的是 Backspace
 			e.preventDefault();
-			removeAction(session.selectedActionId);
+			session.removeAction(session.selectedActionId);
 		} else if (
 			(e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
 			!e.defaultPrevented &&
@@ -335,14 +336,6 @@
 		timelineDivider.set(null);
 		inspectorDivider.set(null);
 	}
-
-	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
-	function removeAction(id: string) {
-		const f = flow;
-		if (!f) return;
-		// 按確定時用那時候的流程再送一次。
-		session.ask.send((o: ConfirmOption = {}) => deleteAction(flow ?? f, id, o));
-	}
 </script>
 
 <svelte:head>
@@ -369,10 +362,15 @@
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
 		{#snippet noticeToast()}
 			{#if session.notice}
-				<div class="toast">
+				<div
+					class="toast"
+					role="presentation"
+					onpointerenter={() => session.holdNotice(true)}
+					onpointerleave={() => session.holdNotice(false)}
+				>
 					<span role="status">{session.notice}</span>
 					{#if session.noticeUndo}
-						<button type="button" class="ghost undo" aria-label="復原刪掉的站位" onclick={undo}>復原</button>
+						<button type="button" class="ghost undo" aria-label={session.noticeUndo} onclick={undo}>復原</button>
 					{/if}
 					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (session.notice = '')}
 						><Icon name="close" size={14} /></button

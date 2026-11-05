@@ -930,9 +930,10 @@ describe('站位與走位', () => {
 			expect(thumbs()).toHaveLength(2);
 			await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
 			expect(screen.getByRole('status')).toBeTruthy();
-			await vi.advanceTimersByTimeAsync(2000);
+			// 有「復原」的提示留 10 秒
+			await vi.advanceTimersByTimeAsync(9000);
 			expect(screen.getByRole('status')).toBeTruthy();
-			await vi.advanceTimersByTimeAsync(4000);
+			await vi.advanceTimersByTimeAsync(1500);
 			expect(screen.queryByRole('status')).toBeNull();
 		} finally {
 			vi.useRealTimers();

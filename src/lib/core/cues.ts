@@ -155,17 +155,18 @@ export function placeCue(flow: Flow, actionId: string, input: NewCueInput): Comm
 	return withCues(flow, action, [...kept, cue]);
 }
 
-/** 清拍點：把 [from, to) 半拍裡那一種的拍點都清掉，不管給誰；露在外面的部分留著。 */
+/** 清拍點：把 [from, to) 半拍裡那一種（null 是每一種）的拍點都清掉，不管給誰；露在外面的部分留著。 */
 export function clearCues(
 	flow: Flow,
 	actionId: string,
-	kind: CueKind,
+	kind: CueKind | null,
 	from: number,
 	to: number
 ): CommandResult {
 	const found = find(flow, actionId);
 	if (!found) return blocked('找不到這個動作');
-	return withCues(flow, found.action, cut(found.action.cues ?? [], kind, from, to, () => true));
+	const cues = (kind ? [kind] : CUE_KINDS).reduce((cs, k) => cut(cs, k, from, to, () => true), found.action.cues ?? []);
+	return withCues(flow, found.action, cues);
 }
 
 /**
