@@ -4,9 +4,9 @@
 // 真的（domPendingInput）看 DOM，假的（#lib/test-fakes.js 的 fakePendingInput）給 Node 測試用。
 
 export interface PendingInput {
-	/** 焦點所在的欄位打了字還沒送出。 */
+	/** 焦點所在的欄位打了字還沒送出（打了又刪回原來的字也算）。 */
 	readonly pending: boolean;
-	/** 現在送出：跟離開欄位一樣發 change。 */
+	/** 現在送出：欄位的值跟上次送出的不一樣，就跟離開欄位一樣發 change。之後就沒有沒送出的字。 */
 	flush(): void;
 	/** 當作已經送出了：欄位被畫面改了值（例：復原換上舊的流程），現在的值不用再送。 */
 	settle(): void;
@@ -60,14 +60,12 @@ if (typeof window !== 'undefined') {
 /** 真的：看焦點所在的欄位（瀏覽器、jsdom）。 */
 export const domPendingInput: PendingInput = {
 	get pending() {
-		return (
-			!!typing && typing.typed && document.activeElement === typing.el && typing.el.value !== typing.value
-		);
+		return !!typing && typing.typed && document.activeElement === typing.el;
 	},
 	flush() {
 		const t = typing;
-		if (!t || !this.pending) return;
-		t.el.dispatchEvent(new Event('change', { bubbles: true }));
+		if (!t || document.activeElement !== t.el) return;
+		if (t.el.value !== t.value) t.el.dispatchEvent(new Event('change', { bubbles: true }));
 		sent(t);
 	},
 	settle() {

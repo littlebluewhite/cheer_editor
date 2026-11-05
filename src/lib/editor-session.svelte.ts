@@ -180,8 +180,8 @@ export class EditorSession {
 		this.#updated();
 	}
 
-	/** 給元件一個「改」的問題：成功就交給 change（算一步）。 */
-	changeAsk(options: { confirmLabel?: string } = {}): Ask {
+	/** 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。 */
+	changeAsk(options: { confirmLabel?: string; onfail?: (error: string) => void } = {}): Ask {
 		return new Ask((f) => this.change(f), options);
 	}
 

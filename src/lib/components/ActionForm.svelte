@@ -259,7 +259,7 @@
 						role="tooltip"
 						hidden={!legendShown}
 						{@attach legendShown &&
-							popover({ place: below(bangEl!, { gap: 6, align: 'right' }), close: closeLegend, inside: [bangEl] })}
+							popover({ place: below(bangEl!, { gap: 6, align: 'right', flip: true }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>

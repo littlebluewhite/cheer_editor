@@ -124,9 +124,9 @@ export class Editor {
 	}
 }
 
-// 元件用 getEditor() 拿編輯器 module，再拿要用的那一部分（例：getEditor().pickAction）。
-const [getEditor, setEditorContext] = createContext<Editor>();
-export { getEditor };
+// 元件用 getEditor() 拿編輯器 module，再拿要用的那一部分（例：getEditor().pickAction）。hasEditor：有沒有放（八拍表單獨畫時沒有）。
+const [getEditor, setEditorContext, hasEditor] = createContext<Editor>();
+export { getEditor, hasEditor };
 
 /** 頁面（和元件測試）放進 context：編輯器 module 和它的 session（元件照舊用 getEditorSession 拿 session）。 */
 export function setEditor(editor: Editor) {

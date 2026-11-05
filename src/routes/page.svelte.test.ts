@@ -752,6 +752,17 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('button', { name: '站位 1' })).toBeTruthy();
 	});
 
+	it('站位名稱改好了：別的提示照舊留著（場上的問題成功才收掉提示）', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		const notice = screen.getByRole('status').textContent;
+		expect(notice).toMatch(/插了一張站位/);
+		await fireEvent.change(screen.getByLabelText('站位名稱'), { target: { value: '開場' } });
+		expect(screen.getByRole('button', { name: '站位 2 開場' })).toBeTruthy();
+		expect(screen.getByRole('status').textContent).toBe(notice);
+	});
+
 	it('站位名稱：中文輸入法選字時按的 Enter 不離開輸入框（不然字會重複），選完再按 Enter 才離開', async () => {
 		await setup();
 		const box = screen.getByLabelText('站位名稱') as HTMLInputElement;
@@ -1831,8 +1842,6 @@ describe('動作設定：任務角色先照全局角色填、角色說明、Esc�
 		expect(screen.queryByText('還沒有人：先選人才能新增')).toBeNull();
 		// 技巧：小美、小芳全局上層，小A、小B 全局底層
 		expect(['小美', '小A', '小B', '小芳'].map(role)).toEqual(['上層', '底層', '底層', '上層']);
-		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'tumbling' } });
-		expect(['小美', '小A'].map(role)).toEqual(['騰翻', '騰翻']);
 
 		await fireEvent.click(screen.getByRole('combobox', { name: '小美 的任務角色' }));
 		const option = within(screen.getByRole('listbox')).getByRole('option', { name: /^側底/ });

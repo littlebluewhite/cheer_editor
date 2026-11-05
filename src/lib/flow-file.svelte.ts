@@ -46,7 +46,10 @@ export class FlowFile {
 	constructor(editor: Editor) {
 		this.#editor = editor;
 		this.#onDisk = !!editor.session.flow;
-		editor.session.onflow = () => this.#saveDraftLater();
+		editor.session.onflow = () => {
+			this.#saveDraftLater();
+			this.picked();
+		};
 	}
 
 	/**
@@ -208,7 +211,10 @@ export class FlowFile {
 		this.picked();
 	}
 
-	/** 給一段選好了音樂檔（音樂檔庫叫的）：「有段找不到音樂」的提示還在、缺的音樂都補好了，就收掉它。 */
+	/**
+	 * 流程換了（session 叫：刪了段、復原…）、給一段選好了音樂檔（音樂檔庫叫）：
+	 * 「有段找不到音樂」的提示還在、缺的音樂都沒了，就收掉它。
+	 */
 	picked() {
 		const { session, music } = this.#editor;
 		if (this.#missingNotice && session.notice === this.#missingNotice && !music.missingSegmentIds.length) {

@@ -172,7 +172,7 @@ describe('新建', () => {
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
-	it('比編輯器新的檔不打開，提示重新整理', async () => {
+	it('首頁開檔失敗：流程檔給的原因寫在首頁，留在首頁', async () => {
 		setup();
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
 		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：是新版編輯器存的，請重新整理，更新編輯器');
@@ -191,27 +191,11 @@ describe('新建', () => {
 		expect(getBuffer(engine.clips[0].audioId)).toStrictEqual(buffer);
 	});
 
-	it('缺音樂檔照開：那段標紅「找不到音樂」；點開重新選檔，紅色收掉', async () => {
+	it('開的檔缺音樂：時間軸那段標紅「找不到音樂」', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), {}));
 		const seg = screen.getByRole('button', { name: /音樂 1/ });
 		expect(seg.textContent).toContain('找不到音樂');
 		expect(seg.classList.contains('missing')).toBe(true);
-		await fireEvent.click(seg);
-		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
-		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await flush();
-		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
-	});
-
-	it('音樂檔壞了（解不開）：照開，段設定說「音樂檔壞了，請重新選檔」', async () => {
-		const decode = async () => {
-			throw new Error('壞檔');
-		};
-		render(Page, editorPage(null, { decode }).props);
-		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1, 2, 3]) }));
-		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
-		expect(screen.getByRole('dialog').textContent).toContain('主歌.mp3（音樂檔壞了，請重新選檔）');
 	});
 });

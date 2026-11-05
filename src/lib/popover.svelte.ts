@@ -63,25 +63,27 @@ export interface BelowInput {
 	gap: number;
 	/** 小窗的左邊對齊錨點的左邊，還是右邊對齊右邊。 */
 	align: 'left' | 'right';
+	/** 下面放不下就翻到上面、上下也不超出畫面；false：永遠放在錨點下面，只管左右（加段選單）。 */
+	flip: boolean;
 }
 
 /** 小窗離畫面邊上至少多遠。 */
 const MARGIN = 8;
 
-/** 小窗放在錨點下面；畫面下面放不下、上面放得下就放上面。上下左右都不超出畫面。 */
+/** 小窗放在錨點下面；畫面下面放不下、上面放得下就放上面（flip）。左右（flip 時上下也）不超出畫面。 */
 export function placeBelow(input: BelowInput): { top: number; left: number } {
 	const { anchor, pop, view, gap } = input;
 	let top = anchor.bottom + gap;
-	if (top + pop.h > view.h - MARGIN && anchor.top - gap - pop.h >= MARGIN) top = anchor.top - gap - pop.h;
+	if (input.flip) {
+		if (top + pop.h > view.h - MARGIN && anchor.top - gap - pop.h >= MARGIN) top = anchor.top - gap - pop.h;
+		top = Math.max(MARGIN, Math.min(top, view.h - MARGIN - pop.h));
+	}
 	const left = input.align === 'left' ? anchor.left : anchor.right - pop.w;
-	return {
-		top: Math.max(MARGIN, Math.min(top, view.h - MARGIN - pop.h)),
-		left: Math.max(MARGIN, Math.min(left, view.w - MARGIN - pop.w))
-	};
+	return { top, left: Math.max(MARGIN, Math.min(left, view.w - MARGIN - pop.w)) };
 }
 
 /** 給 popover 的 place：量好錨點、小窗、畫面，照 placeBelow 放。 */
-export function below(anchor: Element, how: Pick<BelowInput, 'gap' | 'align'>) {
+export function below(anchor: Element, how: Pick<BelowInput, 'gap' | 'align' | 'flip'>) {
 	return (pop: HTMLElement) =>
 		placeBelow({
 			anchor: anchor.getBoundingClientRect(),

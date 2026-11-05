@@ -11,6 +11,7 @@ function input(over: Partial<BelowInput> = {}): BelowInput {
 		view: { w: 1000, h: 800 },
 		gap: 6,
 		align: 'right',
+		flip: true,
 		...over
 	};
 }
@@ -38,5 +39,13 @@ describe('小窗放在錨點下面', () => {
 
 	it('上下都放不下：放下面，往上夾到不超出畫面底（留 8px）', () => {
 		expect(placeBelow(input({ pop: { w: 200, h: 700 } })).top).toBe(800 - 8 - 700);
+	});
+
+	it('不翻（加段選單）：下面放不下也放在錨點下面，只管左右', () => {
+		const lowRight = { top: 700, bottom: 720, left: 900, right: 920 };
+		expect(placeBelow(input({ anchor: lowRight, gap: 4, align: 'left', flip: false }))).toEqual({
+			top: 724,
+			left: 1000 - 8 - 200
+		});
 	});
 });
