@@ -31,6 +31,7 @@
 		type Member,
 		type Position
 	} from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from './marker';
@@ -52,7 +53,6 @@
 		markers = {},
 		positions = {},
 		raised = [],
-		playheadSec = 0,
 		toMeters = screenCtmToMeters,
 		controls = true,
 		ghosts = {},
@@ -73,8 +73,6 @@
 		positions?: Record<string, Position>;
 		/** 這一刻任務角色是上層或中層的人：畫在最上面，黃框加陰影。 */
 		raised?: string[];
-		/** 播放頭（全域秒數）：拖人改這一拍的站位。 */
-		playheadSec?: number;
 		toMeters?: ToMeters;
 		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
 		controls?: boolean;
@@ -101,6 +99,8 @@
 	// controls 一開始給了就不換（編輯頁或八拍表）。
 	// svelte-ignore state_referenced_locally
 	const session = controls && hasEditorSession() ? getEditorSession() : null;
+	/** 播放頭（全域秒數）從編輯器 module 的播放拿：拖人改這一拍的站位。有 session 就有編輯器 module（setEditor 一起放）。 */
+	const playback = session ? getEditor().playback : null;
 	/** 選到的人。 */
 	const selected = $derived(session?.selectedMemberIds ?? marked);
 
@@ -344,14 +344,14 @@
 	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）。 */
 	function drop(moves: Record<string, Position>) {
 		const s = session!;
-		const sec = playheadSec;
+		const sec = playback!.sec;
 		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
 	function nudge(moves: Record<string, Position>) {
 		const s = session!;
-		const sec = playheadSec;
+		const sec = playback!.sec;
 		const at = toPosition(s.flow!, sec);
 		const key = `${Object.keys(moves).sort().join(',')}@${at?.segmentId}:${at?.at}`;
 		s.nudge(key, () => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });

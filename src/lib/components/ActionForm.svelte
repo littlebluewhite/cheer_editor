@@ -36,13 +36,11 @@
 	import RolePicker, { roleKey } from './RolePicker.svelte';
 
 	interface Props {
-		/** 播放頭，全域秒數。新動作從這裡開始。 */
-		playheadSec: number;
 		/** 拍點格子的「指標位置 → 格子」；沒給用格子預設的（ADR 0002）。 */
 		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
 	}
 
-	let { playheadSec, cellAt }: Props = $props();
+	let { cellAt }: Props = $props();
 
 	// 流程從 session 拿；表單上的草稿（選到的動作，或跟著選的人、播放頭的新動作）在編輯器 module。
 	const session = getEditorSession();
@@ -329,7 +327,7 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {playheadSec} {cellAt} />
+			<CueGrid {action} {cellAt} />
 		{:else}
 			<button
 				type="button"

@@ -43,7 +43,7 @@ async function setup(flow: Flow, a1?: DecodedAudio | 'broken', segmentId = 's1')
 	// 假的「螢幕座標換波形秒數」：1 px = 0.05 秒
 	const waveXToSec = (e: MouseEvent) => e.clientX * 0.05;
 	const onclose = vi.fn();
-	const props = { segmentId, onpreview: () => {}, onclose, waveXToSec };
+	const props = { segmentId, onclose, waveXToSec };
 	const { unmount } = render(TestSession, { props: { editor, component: SegmentSettings, props } });
 	return { editor, session, decode, onclose, unmount };
 }

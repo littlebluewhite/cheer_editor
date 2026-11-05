@@ -54,7 +54,7 @@ function setup(flow: Flow, actionId: string | null, playheadSec = 0, selected: s
 	editor.playback.seek(playheadSec);
 	session.selectAction(actionId);
 	session.selectMembers(selected);
-	render(TestSession, { props: { editor, component: ActionForm, props: { playheadSec } } });
+	render(TestSession, { props: { editor, component: ActionForm, props: {} } });
 	return session;
 }
 
