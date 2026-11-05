@@ -202,7 +202,7 @@
 			{/if}
 			{#if ask.question}<ConfirmList {ask} />{/if}
 			<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
-			<form class="add-role" novalidate onsubmit={addRole}>
+			<form class="add-role" data-native-undo novalidate onsubmit={addRole}>
 				<input
 					aria-label="新的自訂任務角色"
 					placeholder="任務角色名稱"
