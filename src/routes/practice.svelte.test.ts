@@ -1,4 +1,5 @@
 // 頁面：練習畫面的「記錄」頁（記分段練）。流程在核心裡做好，放一個帶著它的 session 進頁面，再讀 session 的流程。
+// 卡片、全上表、記錄頁的規則在元件測試（AttemptCard、RunThroughSheet、RecordPage），這裡關於它們的只留接線：進練習、進記錄頁。
 // 之後的票（每天的表、總表…）可以在這個檔再加 describe，用一樣的 practiceFlow() 和小工具。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -45,56 +46,6 @@ const disabled = (button: HTMLElement) => (button as HTMLButtonElement).disabled
 const save = (who: string) => fireEvent.click(card(who).getByRole('button', { name: '存這一次' }));
 
 describe('練習：記錄頁記分段練', () => {
-	it('點 ✓ ✓ △ 再按「存這一次」才存成一次，卡片下面出現 ✓✓△，寫「已存」', async () => {
-		await practice();
-		await tap('第 1 組 小美', '上法', '成功');
-		await tap('第 1 組 小美', '中段', '成功');
-		await tap('第 1 組 小美', '下法', '小失誤');
-		expect(dayRow('第 1 組 小美')).toEqual([]);
-		await save('第 1 組 小美');
-		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
-		expect(card('第 1 組 小美').getByRole('status').textContent).toBe('已存');
-		expect(dayRow('第 2 組 小芳')).toEqual([]);
-	});
-
-	it('點了 ✗ 存下來，後面的環節空著', async () => {
-		await practice();
-		await tap('第 2 組 小芳', '上法', '成功');
-		await tap('第 2 組 小芳', '中段', '失敗');
-		expect(dayRow('第 2 組 小芳')).toEqual([]);
-		await save('第 2 組 小芳');
-		expect(dayRow('第 2 組 小芳')).toEqual(['✓✗·']);
-		await tap('第 2 組 小芳', '上法', '失敗');
-		await save('第 2 組 小芳');
-		expect(dayRow('第 2 組 小芳')).toEqual(['✓✗·', '✗··']);
-	});
-
-	it('再按一次點著的記號就取消', async () => {
-		await practice();
-		const who = '第 1 組 小美';
-		await tap(who, '上法', '成功');
-		await tap(who, '中段', '失敗');
-		await tap(who, '中段', '失敗');
-		const pressed = (phase: string, mark: string) =>
-			card(who).getByRole('button', { name: `${who} ${phase} ${mark}` }).getAttribute('aria-pressed');
-		expect(pressed('中段', '失敗')).toBe('false');
-		await tap(who, '中段', '成功');
-		await tap(who, '下法', '成功');
-		await save(who);
-		expect(dayRow(who)).toEqual(['✓✓✓']);
-	});
-
-	it('整個做卻跳過前面的環節：存之前就提醒；存成只練幾個環節，不算進整次', async () => {
-		const { session } = await practice();
-		await tap('第 1 組 小美', '下法', '成功');
-		expect(card('第 1 組 小美').getByText(/跳過了前面的環節/)).toBeTruthy();
-		expect(dayRow('第 1 組 小美')).toEqual([]);
-		await save('第 1 組 小美');
-		expect(dayRow('第 1 組 小美')).toEqual(['··✓']);
-		const flow = session.flow!;
-		expect(flow.actions[0].successRate?.records.map((r) => [r.whole, r.marks])).toEqual([[false, { p3: '✓' }]]);
-	});
-
 	it('開另一個檔：點了還沒存的記號不帶過去', async () => {
 		await practice();
 		await tap('第 1 組 小美', '上法', '成功');
@@ -102,94 +53,6 @@ describe('練習：記錄頁記分段練', () => {
 		expect(pressed()).toBe('true');
 		await openFile(writeFlowFile(practiceFlow(), {}), '開啟');
 		expect(pressed()).toBe('false');
-	});
-
-	it('只練幾個環節：點選要練的，沒選的按鈕變灰；點完選的就存', async () => {
-		const { session } = await practice();
-		const who = '第 1 組 小美';
-		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
-		await fireEvent.click(card(who).getByRole('checkbox', { name: '上法' }));
-		await fireEvent.click(card(who).getByRole('checkbox', { name: '下法' }));
-		expect(disabled(card(who).getByRole('button', { name: `${who} 中段 成功` }))).toBe(true);
-
-		await tap(who, '上法', '成功');
-		expect(dayRow(who)).toEqual([]);
-		await tap(who, '下法', '小失誤');
-		expect(dayRow(who)).toEqual(['✓·△']);
-		// 選的環節留著，下一次照樣只練這幾個
-		await tap(who, '上法', '失敗');
-		expect(dayRow(who)).toEqual(['✓·△', '✗··']);
-
-		const flow = session.flow!;
-		expect(flow.actions[0].successRate?.records.map((r) => [r.whole, r.marks])).toEqual([
-			[false, { p1: '✓', p3: '△' }],
-			[false, { p1: '✗' }]
-		]);
-	});
-
-	it('刪掉上一次：拿掉這組這天最後一次；顯示「已刪掉」，按「救回」放回去；沒有就不能按', async () => {
-		await practice();
-		const who = '第 1 組 小美';
-		const removeLast = () => card(who).getByRole('button', { name: '刪掉上一次' });
-		expect(disabled(removeLast())).toBe(true);
-		await tap(who, '上法', '失敗');
-		await save(who);
-		await tap(who, '上法', '成功');
-		await tap(who, '中段', '失敗');
-		await save(who);
-		expect(dayRow(who)).toEqual(['✗··', '✓✗·']);
-		await fireEvent.click(removeLast());
-		expect(dayRow(who)).toEqual(['✗··']);
-		expect(card(who).getByRole('status').textContent).toContain('已刪掉');
-		await fireEvent.click(card(who).getByRole('button', { name: '救回' }));
-		expect(dayRow(who)).toEqual(['✗··', '✓✗·']);
-		await fireEvent.click(removeLast());
-		expect(dayRow(who)).toEqual(['✗··']);
-		await fireEvent.click(removeLast());
-		expect(dayRow(who)).toEqual([]);
-		expect(disabled(removeLast())).toBe(true);
-	});
-
-	it('左邊照流程順序列出有環節的動作和這天記了幾次；騰翻每人一張卡', async () => {
-		await practice();
-		const list = within(screen.getByRole('list', { name: '記成功率的動作' }));
-		expect(list.getAllByRole('button').map((b) => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'技巧·Lib 這天 0 次',
-			'騰翻 這天 0 次'
-		]);
-		await tap('第 1 組 小美', '上法', '失敗');
-		await save('第 1 組 小美');
-		expect(list.getByRole('button', { name: /^技巧·Lib/ }).textContent).toContain('這天 1 次');
-
-		await pickAction('騰翻');
-		expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['練習', '小美', '小A']);
-		await tap('小A', '整體 騰翻', '成功');
-		await save('小A');
-		expect(dayRow('小A')).toEqual(['✓']);
-	});
-
-	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」，點了按「存這一次」存成整個做', async () => {
-		const { session } = await practice();
-		expect(card('第 1 組 小美').queryByRole('radiogroup')).not.toBeNull();
-		await pickAction('騰翻');
-		expect(card('小A').queryByRole('radiogroup')).toBeNull();
-		expect(card('小A').queryByText('只練幾個環節')).toBeNull();
-		await tap('小A', '整體 騰翻', '成功');
-		await save('小A');
-		expect(session.flow!.actions.find((a) => a.id === 'x3')!.successRate!.records.map((r) => r.whole)).toEqual([true]);
-	});
-
-	it('點到一半就換動作：這一次不存', async () => {
-		await practice();
-		const who = '第 1 組 小美';
-		await tap(who, '上法', '成功');
-		await tap(who, '中段', '成功');
-		await pickAction('騰翻');
-		await pickAction('技巧·Lib');
-		expect(card(who).getByRole('button', { name: `${who} 上法 成功` }).getAttribute('aria-pressed')).toBe('false');
-		await tap(who, '下法', '成功');
-		await save(who);
-		expect(dayRow(who)).toEqual(['··✓']);
 	});
 
 	it('點到一半就換到編排：這一次不存', async () => {
@@ -562,7 +425,6 @@ describe('練習：總表', () => {
 		async function openSheet() {
 			await summary();
 			await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
-			return within(screen.getByRole('region', { name: '記一次全上' }));
 		}
 		/** 表上一個動作的格子，一列一個環節（字擠成一行）。 */
 		const sheetRows = (label: string) =>
@@ -582,47 +444,6 @@ describe('練習：總表', () => {
 				'button',
 				{ name: '沒做（停了）' }
 			);
-
-		it('打開一張表：每個要記的動作照流程順序，一欄一組，每格先是 ✓；讀屏讀得出誰、環節、記號', async () => {
-			const sheet = await openSheet();
-			expect(sheet.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['技巧·Lib', '騰翻']);
-			expect(sheetRows('技巧·Lib')).toEqual([
-				['環節', '第 1 組 小美', '第 2 組 小芳'],
-				['上法', '✓', '✓'],
-				['中段', '✓', '✓'],
-				['下法', '✓', '✓']
-			]);
-			expect(sheetRows('騰翻')).toEqual([
-				['環節', '小美', '小A'],
-				['整體 騰翻', '✓', '✓']
-			]);
-			expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 成功');
-		});
-
-		it('點一格 ✓ → △ → ✗ → ✓；變 ✗ 同一組後面變空的，改回來後面回到 ✓', async () => {
-			await openSheet();
-			await tapSlot('第 2 組 小芳', '下法');
-			expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 小失誤');
-			await tapSlot('第 2 組 小芳', '下法');
-			expect(slot('第 2 組 小芳', '下法').textContent?.trim()).toBe('✗');
-
-			await tapSlot('第 1 組 小美', '中段', 2);
-			expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✗', '']);
-			expect(slot('第 1 組 小美', '下法').getAttribute('aria-label')).toBe('第 1 組 小美 下法 空的');
-			expect(sheetRows('技巧·Lib').map((r) => r[2])).toEqual(['第 2 組 小芳', '✓', '✓', '✗']);
-
-			await tapSlot('第 1 組 小美', '中段');
-			expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✓', '✓']);
-		});
-
-		it('「沒做（停了）」：整個動作變空的，再按一次回來', async () => {
-			await openSheet();
-			await fireEvent.click(stopped('騰翻'));
-			expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
-			expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '', '']);
-			await fireEvent.click(stopped('騰翻'));
-			expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '✓', '✓']);
-		});
 
 		it('存這次全上：做到 Lib 就停了，Lib 第 2 組下法 ✗；總表只看全上多一次 ✗，騰翻沒有多；明細標著全上', async () => {
 			await openSheet();
@@ -655,109 +476,6 @@ describe('練習：總表', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
 			expect(sheetRows('技巧·Lib')[3]).toEqual(['下法', '✓', '✓']);
 		});
-
-		it('每個動作都按了沒做：擋下來說沒有要存的', async () => {
-			await openSheet();
-			await fireEvent.click(stopped('技巧·Lib'));
-			await fireEvent.click(stopped('騰翻'));
-			await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-			expect(screen.getByRole('alert').textContent).toBe('每個動作都沒做，沒有要存的');
-			expect(screen.getByRole('region', { name: '記一次全上' })).toBeTruthy();
-		});
-	});
-});
-
-describe('練習：記錄頁記一次全上', () => {
-	const sheet = () => within(screen.getByRole('region', { name: '記一次全上' }));
-	/** 點表上的一格 times 次（✓ → △ → ✗）。 */
-	async function tapSlot(who: string, phase: string, times: number) {
-		for (let i = 0; i < times; i++) await fireEvent.click(sheet().getByRole('button', { name: new RegExp(`^${who} ${phase} `) }));
-	}
-	/** 總表上一格的讀屏文字（誰 環節 比例 次數）。 */
-	const summaryCell = (who: string, phase: string) =>
-		screen.getByRole('button', { name: new RegExp(`^${who} ${phase} `) }).getAttribute('aria-label');
-
-	it('記錄頁按「＋ 記一次全上」打開全上表；存好回到記錄頁，記錄頁和總表都看得到這次全上', async () => {
-		await practice();
-		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
-		await tapSlot('第 2 組 小芳', '下法', 2);
-		await fireEvent.click(within(sheet().getByRole('region', { name: '騰翻' })).getByRole('button', { name: '沒做（停了）' }));
-		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-
-		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
-		expect(screen.getByRole('status').textContent).toBe('已存這次全上');
-		expect(dayRow('第 1 組 小美')).toEqual(['✓✓✓']);
-		expect(dayRow('第 2 組 小芳')).toEqual(['✓✓✗']);
-
-		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
-		await fireEvent.click(within(screen.getByRole('group', { name: '練法' })).getByRole('button', { name: '只看全上' }));
-		expect(summaryCell('第 1 組 小美', '下法')).toBe('第 1 組 小美 下法 100% 1 次');
-		expect(summaryCell('第 2 組 小芳', '下法')).toBe('第 2 組 小芳 下法 0% 1 次');
-	});
-
-	it('改過格子按取消先問；選「丟掉」什麼都不存，回到記錄頁', async () => {
-		await practice();
-		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
-		await tapSlot('第 2 組 小芳', '下法', 2);
-		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
-		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '丟掉' }));
-
-		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
-		expect(dayRow('第 1 組 小美')).toEqual([]);
-		expect(dayRow('第 2 組 小芳')).toEqual([]);
-	});
-
-	it('中途停了按「後面都沒做」：後面的動作不存', async () => {
-		const { session } = await practice();
-		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
-		await tapSlot('第 1 組 小美', '中段', 2);
-		await fireEvent.click(within(sheet().getByRole('region', { name: '技巧·Lib' })).getByRole('button', { name: '後面都沒做' }));
-		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-		expect(session.flow!.actions.map((a) => a.successRate?.records.length ?? 0)).toEqual([2, 0, 0]);
-		expect(dayRow('第 1 組 小美')).toEqual(['✓✗·']);
-	});
-
-	it('卡片上全上的那幾筆用另一種外框；「刪掉上一次」只刪這張卡記的分段練', async () => {
-		await practice();
-		const who = '第 1 組 小美';
-		await tap(who, '上法', '失敗');
-		await save(who);
-		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
-		await fireEvent.click(within(sheet().getByRole('region', { name: '技巧·Lib' })).getByRole('button', { name: '後面都沒做' }));
-		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-
-		const items = () => within(card(who).getByRole('list', { name: '這天的每一次' })).getAllByRole('listitem');
-		expect(items().map((li) => [li.textContent?.trim(), li.classList.contains('run')])).toEqual([
-			['✗··', false],
-			['✓✓✓', true]
-		]);
-		await fireEvent.click(card(who).getByRole('button', { name: '刪掉上一次' }));
-		expect(dayRow(who)).toEqual(['✓✓✓']);
-		expect(disabled(card(who).getByRole('button', { name: '刪掉上一次' }))).toBe(true);
-	});
-	it('「刪掉上一次全上」：整次拿掉這天最後存的全上（每個動作的都拿掉），分段練留著；「已刪掉」旁按「救回」整次放回去', async () => {
-		const { session } = await practice();
-		const who = '第 1 組 小美';
-		const removeRun = () => screen.getByRole('button', { name: '刪掉上一次全上' });
-		const runs = () => session.flow!.actions.flatMap((a) => a.successRate?.records.filter((r) => r.runThroughId) ?? []);
-		expect(disabled(removeRun())).toBe(true);
-		await tap(who, '上法', '失敗');
-		await save(who);
-		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
-		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-		expect(runs()).toHaveLength(4);
-		expect(dayRow(who)).toEqual(['✗··', '✓✓✓']);
-
-		await fireEvent.click(removeRun());
-		expect(runs()).toEqual([]);
-		expect(dayRow(who)).toEqual(['✗··']);
-		expect(screen.getByRole('status').textContent).toContain('已刪掉');
-		expect(disabled(removeRun())).toBe(true);
-
-		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
-		expect(runs()).toHaveLength(4);
-		expect(dayRow(who)).toEqual(['✗··', '✓✓✓']);
-		expect(screen.getByRole('status').textContent).toBe('已救回');
 	});
 });
 

@@ -23,8 +23,58 @@ const records = (session: EditorSession, index: number) =>
 const slot = (who: string, phase: string) => screen.getByRole('button', { name: new RegExp(`^${who} ${phase} `) });
 const stopped = (label: string) =>
 	within(screen.getByRole('region', { name: label })).getByRole('button', { name: '沒做（停了）' });
+/** 表上一個動作的格子，一列一個環節（字擠成一行）。 */
+const sheetRows = (label: string) =>
+	within(screen.getByRole('region', { name: label }))
+		.getAllByRole('row')
+		.map((row) => Array.from(row.children).map((c) => c.textContent?.trim() ?? ''));
+const tapSlot = async (who: string, phase: string, times = 1) => {
+	for (let i = 0; i < times; i++) await fireEvent.click(slot(who, phase));
+};
 
 describe('記一次全上的表', () => {
+	it('每個要記的動作照流程順序一塊，一欄一組，每格先是 ✓；讀屏讀得出誰、環節、記號', () => {
+		setup();
+		const sheet = within(screen.getByRole('region', { name: '記一次全上' }));
+		expect(sheet.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['技巧·Lib', '騰翻']);
+		expect(sheetRows('技巧·Lib')).toEqual([
+			['環節', '第 1 組 小美', '第 2 組 小芳'],
+			['上法', '✓', '✓'],
+			['中段', '✓', '✓'],
+			['下法', '✓', '✓']
+		]);
+		expect(sheetRows('騰翻')).toEqual([
+			['環節', '小美', '小A'],
+			['整體 騰翻', '✓', '✓']
+		]);
+		expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 成功');
+	});
+
+	it('點一格 ✓ → △ → ✗ → ✓；變 ✗ 同一組後面變空的，改回來後面回到 ✓', async () => {
+		setup();
+		await tapSlot('第 2 組 小芳', '下法');
+		expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 小失誤');
+		await tapSlot('第 2 組 小芳', '下法');
+		expect(slot('第 2 組 小芳', '下法').textContent?.trim()).toBe('✗');
+
+		await tapSlot('第 1 組 小美', '中段', 2);
+		expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✗', '']);
+		expect(slot('第 1 組 小美', '下法').getAttribute('aria-label')).toBe('第 1 組 小美 下法 空的');
+		expect(sheetRows('技巧·Lib').map((r) => r[2])).toEqual(['第 2 組 小芳', '✓', '✓', '✗']);
+
+		await tapSlot('第 1 組 小美', '中段');
+		expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✓', '✓']);
+	});
+
+	it('「沒做（停了）」：整個動作變空的，再按一次回來', async () => {
+		setup();
+		await fireEvent.click(stopped('騰翻'));
+		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
+		expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '', '']);
+		await fireEvent.click(stopped('騰翻'));
+		expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '✓', '✓']);
+	});
+
 	it('第 2 組下法點成 ✗、騰翻沒做，存：session 的流程裡 Lib 每組多一次全上，騰翻沒有；表關掉；不算復原的一步', async () => {
 		const { session, onclose } = setup();
 		await fireEvent.click(slot('第 2 組 小芳', '下法'));
