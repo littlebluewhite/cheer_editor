@@ -1,9 +1,11 @@
 // 頁面：新動作表單（右邊欄沒選動作時）。打的字留得住、Enter 送出、新增後播放頭跳到動作結束。
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { editorPage, teamFlow } from '#lib/test-fakes.js';
+import { setSquad } from '#lib/core';
+import { editorPage, phasedFlow, teamFlow } from '#lib/test-fakes.js';
+import { flowOf, squadNumbers } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -123,5 +125,49 @@ describe('新動作表單：打到一半的內容', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		await fireEvent.click(screen.getByRole('button', { name: '開新的動作表單' }));
 		expect(field('名稱').value).toBe('');
+	});
+});
+
+describe('接下一個動作', () => {
+	/** Lib（第 1 個八拍，有環節）分 3 組：小美、小A 第 1 組，小芳第 2 組，小B 第 3 組。 */
+	function threeSquads() {
+		let flow = phasedFlow();
+		for (const [id, squad] of [['m1', 1], ['m2', 1], ['m3', 2], ['m4', 3]] as const) {
+			flow = flowOf(setSquad(flow, 'x1', [id], squad));
+		}
+		return flow;
+	}
+	/** 表單上每個人和任務角色。 */
+	const roles = () =>
+		screen.getAllByRole('combobox', { name: /的任務角色$/ }).map((el) => `${el.getAttribute('aria-label')}：${el.textContent?.trim()}`);
+
+	it('選 Lib 按接下一個動作：新表單開始是 Lib 的結束拍，人和任務角色一樣', async () => {
+		render(Page, editorPage(threeSquads()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(screen.getByRole('button', { name: '接下一個動作' }));
+		expect(screen.queryByRole('button', { name: '開新的動作表單' })).toBeNull();
+		expect(field('開始').value).toBe('2-1');
+		expect(field('名稱').value).toBe('');
+		expect(roles()).toEqual(['小美 的任務角色：上層', '小A 的任務角色：主底', '小芳 的任務角色：上層', '小B 的任務角色：主底']);
+	});
+
+	it('新增後加第一個環節：組跟 Lib 一樣', async () => {
+		const page = editorPage(threeSquads());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(screen.getByRole('button', { name: '接下一個動作' }));
+		await fireEvent.input(field('名稱'), { target: { value: '金字塔' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: '2-1' }));
+		await fireEvent.click(grid.getByRole('button', { name: '2-4' }), { shiftKey: true });
+		const pop = within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
+		await fireEvent.change(pop.getByRole('combobox', { name: '環節的種類' }), { target: { value: 'load' } });
+		await fireEvent.click(pop.getByRole('button', { name: '加入環節' }));
+		const pyramid = page.session.flow!.actions[1];
+		expect(pyramid.name).toBe('金字塔');
+		expect(pyramid.successRate?.phases).toHaveLength(1);
+		expect(squadNumbers(pyramid)).toEqual([1, 1, 2, 3]);
+		expect(pyramid.members.map((m) => m.role)).toEqual(['上層', '主底', '上層', '主底']);
 	});
 });
