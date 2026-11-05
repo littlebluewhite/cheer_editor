@@ -36,7 +36,7 @@ describe('記一次全上的表', () => {
 			{ date: DATE, practice: 'runThrough', marks: { p1: '✓', p2: '✓', p3: '✗' } }
 		]);
 		expect(records(session, 1)).toEqual([]);
-		expect(onclose).toHaveBeenCalledOnce();
+		expect(onclose).toHaveBeenCalledExactlyOnceWith(true);
 		expect(session.canUndo).toBe(false);
 	});
 
@@ -57,6 +57,63 @@ describe('記一次全上的表', () => {
 
 		expect(screen.getByRole('alert').textContent).toBe('每個動作都沒做，沒有要存的');
 		expect(session.flow).toBe(before);
+		expect(onclose).not.toHaveBeenCalled();
+	});
+
+	it('「後面都沒做」：這個動作後面的都變空的，這個動作照記；再按一次回來', async () => {
+		const { session } = setup();
+		const rest = () =>
+			within(screen.getByRole('region', { name: '技巧·Lib' })).getByRole('button', { name: '後面都沒做' });
+		await fireEvent.click(rest());
+		expect(rest().getAttribute('aria-pressed')).toBe('true');
+		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
+		expect(stopped('技巧·Lib').getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(rest());
+		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('false');
+
+		await fireEvent.click(rest());
+		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
+		expect(records(session, 0)).toHaveLength(2);
+		expect(records(session, 1)).toEqual([]);
+	});
+
+	it('最後一個動作沒有「後面都沒做」', () => {
+		setup();
+		expect(within(screen.getByRole('region', { name: '騰翻' })).queryByRole('button', { name: '後面都沒做' })).toBeNull();
+	});
+
+	it('沒改過格子按取消：直接關掉，什麼都不存', async () => {
+		const { session, onclose } = setup();
+		const before = session.flow;
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(onclose).toHaveBeenCalledExactlyOnceWith(false);
+		expect(session.flow).toBe(before);
+	});
+
+	it('改過格子後按取消先問：選「繼續記」表還在、格子還在；選「丟掉」才關掉', async () => {
+		const { session, onclose } = setup();
+		const before = session.flow;
+		await fireEvent.click(slot('第 2 組 小芳', '下法'));
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		const confirm = within(screen.getByRole('alertdialog'));
+		expect(confirm.getByText('改過的格子還沒存，要丟掉嗎？')).toBeTruthy();
+		expect(onclose).not.toHaveBeenCalled();
+
+		await fireEvent.click(confirm.getByRole('button', { name: '繼續記' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 小失誤');
+
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '丟掉' }));
+		expect(onclose).toHaveBeenCalledExactlyOnceWith(false);
+		expect(session.flow).toBe(before);
+	});
+
+	it('按了「沒做（停了）」也算改過', async () => {
+		const { onclose } = setup();
+		await fireEvent.click(stopped('騰翻'));
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(screen.getByRole('alertdialog')).toBeTruthy();
 		expect(onclose).not.toHaveBeenCalled();
 	});
 });

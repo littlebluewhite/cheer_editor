@@ -2,6 +2,7 @@
 	// 練習畫面（上方列切到「練習」時蓋掉編排）：上面選頁和日期，下面是那一頁。
 	// 兩頁「記錄」「總表」共用日期；日期由編輯頁管（切回編排再切回來還在，不存進流程檔）。
 	// 流程從 session 拿；記一次、刪掉上一次、記一次全上交給 session 的「記」（不算復原的一步）。
+	import { localDate } from '#lib/local-date.js';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
 
@@ -19,9 +20,12 @@
 	] as const;
 	let page = $state<(typeof PAGES)[number]['key']>('record');
 
-	/** 日期框清空了就回到原來的日期（一次一定要有日期）。 */
+	/** 最晚選到今天（未來還沒練）。 */
+	const today = localDate();
+
+	/** 日期框清空了、打了未來的日子，就回到原來的日期（一次一定要有日期）。 */
 	function changeDate(input: HTMLInputElement) {
-		if (input.value) ondate(input.value);
+		if (input.value && input.value <= localDate()) ondate(input.value);
 		else input.value = date;
 	}
 </script>
@@ -33,7 +37,7 @@
 				<button type="button" aria-pressed={page === p.key} onclick={() => (page = p.key)}>{p.label}</button>
 			{/each}
 		</div>
-		<label class="date">日期<input type="date" value={date} onchange={(e) => changeDate(e.currentTarget)} /></label>
+		<label class="date">日期<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
 	{#if page === 'record'}
 		<RecordPage {date} />

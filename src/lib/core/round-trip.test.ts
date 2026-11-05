@@ -107,7 +107,7 @@ const commands: [string, (flow: Flow) => CommandResult | Flow][] = [
 	['setSquad', (f) => setSquad(f, 'x1', ['m1'], 2, { records: 'keep' })],
 	['recordAttempt', (f) => recordAttempt(f, 'x1', { ...drill, who: 'g2' })],
 	['recordRunThrough', (f) => recordRunThrough(f, date, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }])],
-	['deleteLastAttempt', (f) => deleteLastAttempt(f, 'x1', 'g1', date)],
+	['deleteLastAttempt', (f) => deleteLastAttempt(f, 'x1', 'g1', date, 'drill')],
 	['carryRecords', (f) => carryRecords(f, flowOf(recordAttempt(f, 'x1', { ...drill, who: 'g2' })))],
 	['addPhase', (f) => addPhase(f, 'x3', { kind: 'whole', name: '拋' })],
 	['addPhase（音樂段標拍）', (f) => addPhase(f, 'x1', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }, { confirmed: true })],
