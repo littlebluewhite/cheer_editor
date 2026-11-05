@@ -37,9 +37,10 @@ function setup(flow: Flow, audios: Record<string, LoadedAudio> = {}, segmentId =
 	}));
 	// 假的「螢幕座標換波形秒數」：1 px = 0.05 秒
 	const waveXToSec = (e: MouseEvent) => e.clientX * 0.05;
-	const props = { segmentId, audios, onaudioload, onpreview: () => {}, onclose: () => {}, decode, waveXToSec };
+	const onclose = vi.fn();
+	const props = { segmentId, audios, onaudioload, onpreview: () => {}, onclose, decode, waveXToSec };
 	render(TestSession, { props: { session, component: SegmentSettings, props } });
-	return { session, onaudioload, decode };
+	return { session, onaudioload, decode, onclose };
 }
 
 const lastSegment = (session: EditorSession) => session.flow!.segments[0] as MusicSegment;
@@ -210,5 +211,44 @@ describe('口號段設定', () => {
 		const { session } = setup(flow, {}, 's2');
 		await fireEvent.change(screen.getByLabelText('長度（秒）'), { target: { value: '31.5' } });
 		expect(session.flow!.segments[1]).toEqual({ id: 's2', kind: 'chant', tenths: 315 });
+	});
+});
+
+describe('刪段、調段順序', () => {
+	/** 音樂 1（s1）→ 口號 1（s2）；口號 1 裡有一個動作。 */
+	function twoSegments(): Flow {
+		let flow = flowOf(addSegment(musicFlow(), 'chant'));
+		flow = flowOf(addMembers(flow, [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+		return flowOf(
+			addAction(flow, {
+				segmentId: 's2',
+				category: 'dance',
+				name: '喊',
+				start: 0,
+				length: 10,
+				note: '',
+				members: [{ memberId: 'm1', role: null }]
+			})
+		);
+	}
+
+	it('往前移、往後移：第一段不能往前、最後一段不能往後', async () => {
+		const { session } = setup(twoSegments(), {}, 's2');
+		expect((screen.getByRole('button', { name: '往後移' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '往前移' }));
+		expect(session.flow!.segments.map((s) => s.id)).toEqual(['s2', 's1']);
+		expect((screen.getByRole('button', { name: '往前移' }) as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it('刪這一段：有動作先問，確定才刪、關掉段設定；可以復原', async () => {
+		const { session, onclose } = setup(twoSegments(), {}, 's2');
+		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
+		expect(screen.getByRole('alertdialog').textContent).toContain('刪掉口號 1，下面這些也會一起刪掉');
+		expect(session.flow!.segments).toHaveLength(2);
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		expect(session.flow!.segments.map((s) => s.id)).toEqual(['s1']);
+		expect(onclose).toHaveBeenCalled();
+		session.undo();
+		expect(session.flow!.segments).toHaveLength(2);
 	});
 });

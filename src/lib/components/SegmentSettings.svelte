@@ -12,7 +12,9 @@
 		MAX_BPM,
 		MIN_BPM,
 		beatLines,
+		deleteSegment,
 		loadSegmentAudio,
+		moveSegment,
 		musicLength,
 		musicLengthFromAudio,
 		musicOverrunSec,
@@ -88,6 +90,19 @@
 		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o), {
 			cancel: () => (fieldsKey += 1)
 		});
+	}
+
+	/** 這一段排第幾（0 起）。 */
+	const index = $derived(flow.segments.findIndex((s) => s.id === segmentId));
+
+	/** 跟旁邊那段換位置；動作、站位跟著段走（見 segment-order.ts）。 */
+	function move(dir: -1 | 1) {
+		ask.send(() => moveSegment(flow, segmentId, dir));
+	}
+
+	/** 刪這一段：段裡有動作、站位時核心先問；刪好了關掉段設定。 */
+	function remove() {
+		ask.send((o: ConfirmOption = {}) => deleteSegment(flow, segmentId, o), { done: onclose });
 	}
 
 	/** 不是流程核心擋的（檔案讀不出來、還沒載入）：跟核心擋下來一樣，交給問教練留下原因。 */
@@ -275,6 +290,12 @@
 		{/if}
 		{/key}
 
+		<section class="order">
+			<button type="button" disabled={index <= 0} onclick={() => move(-1)}>往前移</button>
+			<button type="button" disabled={index >= flow.segments.length - 1} onclick={() => move(1)}>往後移</button>
+			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除這一段</button>
+		</section>
+
 		{#if ask.question}<ConfirmList {ask} />{/if}
 
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
@@ -282,6 +303,14 @@
 </div>
 
 <style>
+	.order {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.order .danger {
+		margin-left: auto;
+	}
 	.seg-dialog {
 		width: min(680px, 100%);
 	}
