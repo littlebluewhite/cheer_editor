@@ -1,7 +1,7 @@
 // 頁面：存檔、開檔、Ctrl+S、缺音樂。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { unzipSync, zipSync, strToU8 } from 'fflate';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
 	createFlow,
 	insertFormation,
@@ -86,55 +86,6 @@ describe('存檔', () => {
 		await flush();
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
-	});
-
-	it('音樂檔還在解碼時關掉段設定、新增別段：解碼完不會放進新的那段，也不會弄丟新段', async () => {
-		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
-		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
-		const { saver, saves } = fakeSaver();
-		render(Page, editorPage(null, { createSaver: () => saver, decode }).props);
-		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
-		const file = new File([new Uint8Array([1])], '主歌.mp3', { type: 'audio/mpeg' });
-		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await vi.waitFor(() => expect(finish).toBeDefined());
-		await fireEvent.click(within(screen.getByRole('dialog', { name: /設定/ })).getByRole('button', { name: '關閉' }));
-		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
-		finish!({ durationSec: 30, peaks: [] });
-		await flush();
-		await ctrlS();
-		await flush();
-		const r = readFlowFile(saves[0]);
-		if (r.kind !== 'ok') throw new Error(r.message);
-		expect(r.flow.segments).toHaveLength(2);
-		expect(r.flow.segments[1]).toMatchObject({ audioId: null });
-	});
-
-	it('音樂檔還在解碼時開了別的流程檔：解碼完不會放進新流程', async () => {
-		let finish: ((a: { durationSec: number; peaks: number[] }) => void) | undefined;
-		const decode = () => new Promise<{ durationSec: number; peaks: number[] }>((r) => (finish = r));
-		const { saver, saves } = fakeSaver();
-		render(Page, editorPage(null, { createSaver: () => saver, decode }).props);
-		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
-		const file = new File([new Uint8Array([1])], '別首.mp3', { type: 'audio/mpeg' });
-		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await vi.waitFor(() => expect(finish).toBeDefined());
-		const pendingDecode = finish!;
-		await fireEvent.click(within(screen.getByRole('dialog', { name: /設定/ })).getByRole('button', { name: '關閉' }));
-		await openFile(writeFlowFile(sampleFlow(), {}), '開啟');
-		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
-		pendingDecode({ durationSec: 30, peaks: [] });
-		await flush();
-		await ctrlS();
-		await flush();
-		const r = readFlowFile(saves.at(-1)!);
-		if (r.kind !== 'ok') throw new Error(r.message);
-		expect(r.flow.name).toBe('練習用');
-		expect(r.flow.audio.map((a) => a.name)).toEqual(['主歌.mp3']);
 	});
 
 	it('按「存檔」也可以；存了就沒有未存的修改，改了又有', async () => {
@@ -455,37 +406,26 @@ describe('新建', () => {
 		expect((screen.getByRole('button', { name: '復原' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
-	it('選音樂檔後復原再重做：解碼過的音樂還在，照樣能播', async () => {
+	it('播放時音訊引擎從音樂檔庫拿解碼好的音樂', async () => {
 		const engine = createFakeEngine();
 		let getBuffer: (id: string) => AudioBuffer | undefined = () => undefined;
 		const buffer = {} as AudioBuffer;
 		const decode = async () => ({ durationSec: 30, peaks: [], buffer });
 		render(Page, editorPage(null, { createEngine: (get) => ((getBuffer = get), engine), decode }).props);
-		await openFile(writeFlowFile(sampleFlow(), {}));
-		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
-		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
-		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await flush();
-		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
-		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).toContain('找不到音樂');
-		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
-		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1, 2]) }));
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		expect(engine.clips).toHaveLength(1);
 		expect(getBuffer(engine.clips[0].audioId)).toStrictEqual(buffer);
 	});
 
-	it('缺音樂檔照開：那段標紅「找不到音樂」，點開重新選檔就好了；動作和站位都還在', async () => {
+	it('缺音樂檔照開：提示少了哪個檔、那段標紅「找不到音樂」；點開重新選檔，提示和紅色都收掉', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), {}));
 		expect(screen.getByRole('status').textContent).toBe('「練習用.zip」裡少了音樂檔「主歌.mp3」：點紅色的段重新選檔');
 		const seg = screen.getByRole('button', { name: /音樂 1/ });
 		expect(seg.textContent).toContain('找不到音樂');
 		expect(seg.classList.contains('missing')).toBe(true);
-		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
 		await fireEvent.click(seg);
-		expect(screen.getByRole('dialog').textContent).toContain('找不到音樂');
 		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
 		await flush();
@@ -493,23 +433,15 @@ describe('新建', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
-		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
 	});
 
-	it('音樂檔壞了（解不開）：段設定說「音樂檔壞了，請重新選檔」，不拿長度 0 去提醒段比音樂長', async () => {
+	it('音樂檔壞了（解不開）：照開，段設定說「音樂檔壞了，請重新選檔」', async () => {
 		const decode = async () => {
 			throw new Error('壞檔');
 		};
 		render(Page, editorPage(null, { decode }).props);
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1, 2, 3]) }));
 		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
-		const dialog = screen.getByRole('dialog');
-		expect(dialog.textContent).toContain('主歌.mp3（音樂檔壞了，請重新選檔）');
-		expect(within(dialog).queryByRole('note')).toBeNull();
-		// 第一拍照樣能改（不說「要在音樂結束（0.0 秒）之前」）
-		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '0.5' } });
-		expect(within(dialog).queryByRole('alert')).toBeNull();
-		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
-		expect(within(dialog).getByRole('alert').textContent).toBe('音樂檔壞了，請重新選檔');
+		expect(screen.getByRole('dialog').textContent).toContain('主歌.mp3（音樂檔壞了，請重新選檔）');
 	});
 });

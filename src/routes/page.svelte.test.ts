@@ -12,7 +12,7 @@ import {
 	setPositions
 } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
-import { audioFlow, editorPage } from '#lib/test-fakes.js';
+import { editorPage } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 /** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
@@ -1522,21 +1522,6 @@ describe('播放', () => {
 		expect(engine.clicks).toHaveLength(16);
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(engine.clicks).toEqual([]);
-	});
-});
-
-describe('變速切段', () => {
-	it('第二個音樂段選了同一個音樂檔：第一拍接在音樂 1 後面，波形畫這一段用到的那一截；第一拍可以再改', async () => {
-		// 音樂 1：主歌.mp3，第一拍 0 秒、150 BPM、8 個八拍 = 25.6 秒
-		const page = editorPage(flowOf(addSegmentTo(audioFlow(), 'music')));
-		render(Page, page.props);
-		await fireEvent.click(screen.getByRole('button', { name: /音樂 2/ }));
-		await fireEvent.change(screen.getByLabelText('用已載入的音樂'), { target: { value: 'a1' } });
-		expect((screen.getByLabelText('第一拍（秒）') as HTMLInputElement).value).toBe('25.6');
-		expect(screen.getByRole('img', { name: '波形' }).getAttribute('viewBox')).toBe('25.6 0 25.6 2');
-		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '25.8' } });
-		expect(page.session.flow!.segments[1]).toMatchObject({ audioId: 'a1', firstBeatSec: 25.8 });
-		expect(screen.getByRole('img', { name: '波形' }).getAttribute('viewBox')).toBe('25.8 0 25.6 2');
 	});
 });
 

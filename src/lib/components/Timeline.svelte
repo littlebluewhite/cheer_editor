@@ -9,6 +9,7 @@
 	import { composing } from '#lib/ime.js';
 	import { tick, untrack } from 'svelte';
 	import { addSegment, rulerMarks, segmentSpans, snapPlayhead, totalSeconds, type SegmentKind } from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
@@ -24,13 +25,13 @@
 		onseek: (sec: number) => void;
 		/** 點段、加好一段：打開這一段的段設定。 */
 		onopensegment: (segmentId: string) => void;
-		/** 找不到音樂檔的音樂段：標紅，點開段設定重新選檔。 */
-		missingSegmentIds?: string[];
 	}
 
-	let { playheadSec, pxPerSec = 16, onseek, onopensegment, missingSegmentIds = [] }: Props = $props();
+	let { playheadSec, pxPerSec = 16, onseek, onopensegment }: Props = $props();
 
 	const session = getEditorSession();
+	/** 找不到音樂檔的音樂段從音樂檔庫拿（editor.music，換流程會換一個）：標紅，點開段設定重新選檔。 */
+	const editor = getEditor();
 	// 頁面只在有流程時畫時間軸。
 	const flow = $derived(session.flow!);
 
@@ -239,7 +240,7 @@
 			</div>
 			<div class="trk" style:width={`${width}px`}>
 				{#each spans as span (span.segment.id)}
-					{@const missing = missingSegmentIds.includes(span.segment.id)}
+					{@const missing = editor.music.missingSegmentIds.includes(span.segment.id)}
 					{@const meta =
 						span.segment.kind === 'music' ? `${span.segment.bpm} BPM` : `${span.durationSec.toFixed(1)} 秒`}
 					<button

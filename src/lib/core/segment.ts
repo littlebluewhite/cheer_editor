@@ -88,16 +88,37 @@ function musicLengthFromAudio(input: BeatTiming & { durationSec: number }): Musi
 	return { eights, lastBeats: beats - (eights - 1) * 8 };
 }
 
-/** 「照音樂長度算」：音樂段的長度改成從第一拍到音樂結束的完整拍數。durationSec 是音樂檔多長。 */
+/**
+ * 音樂檔多長（秒），用 audioId 對應（音樂檔庫給的）。null 是壞了：這個瀏覽器解不開，不知道多長。
+ * 沒有這個 id 是手上沒有那個檔（還沒載入、找不到），也不知道多長。
+ */
+export type AudioLengths = Readonly<Record<string, number | null>>;
+
+/** 音樂檔壞了（解不開）：段設定的音樂檔那一行也寫這一句。 */
+export const BROKEN_AUDIO = '音樂檔壞了，請重新選檔';
+
+/** 第一拍要在音樂結束之前：知道音樂多長才擋（壞了、手上沒有就不擋）。 */
+function pastEnd(firstBeatSec: number, durationSec: number | null | undefined): string | null {
+	return durationSec != null && firstBeatSec >= durationSec
+		? `第一拍要在音樂結束（${durationSec.toFixed(1)} 秒）之前`
+		: null;
+}
+
+/** 「照音樂長度算」：音樂段的長度改成從第一拍到音樂結束的完整拍數。音樂多長從 lengths 拿（音樂檔庫給的）。 */
 export function fitSegmentToAudio(
 	flow: Flow,
 	segmentId: string,
-	durationSec: number,
+	lengths: AudioLengths,
 	options: ConfirmOption = {}
 ): CommandResult {
 	const segment = flow.segments.find((s) => s.id === segmentId);
 	if (!segment) return blocked('找不到這一段');
 	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
+	const durationSec = segment.audioId === null ? undefined : lengths[segment.audioId];
+	if (durationSec === null) return blocked(BROKEN_AUDIO);
+	if (durationSec === undefined) return blocked('先載入音樂檔');
+	const late = pastEnd(segment.firstBeatSec, durationSec);
+	if (late) return blocked(late);
 	const length = musicLengthFromAudio({ ...segment, durationSec });
 	if (!length) return blocked('第一拍之後剩下不到一拍');
 	return updateSegment(flow, segmentId, length, options);
@@ -159,12 +180,14 @@ export function readSegmentNumber(field: SegmentNumberField, text: string): Read
 /**
  * 改段。改 BPM 時動作和站位存的是拍，所以拍不變、秒數跟著變。
  * 段縮短、有動作或站位放不進段裡時回「要確認」並列出清單；帶 { confirmed: true } 再送一次才刪。
+ * lengths：音樂多長（音樂檔庫給的），改第一拍時擋在音樂結束之後的。
  */
 export function updateSegment(
 	flow: Flow,
 	segmentId: string,
 	patch: SegmentPatch,
-	options: ConfirmOption = {}
+	options: ConfirmOption = {},
+	lengths: AudioLengths = {}
 ): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
 	if (index === -1) return blocked('找不到這一段');
@@ -178,12 +201,14 @@ export function updateSegment(
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
 			return blocked(RANGE.firstBeatSec);
 		}
+		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
+		const late = patch.firstBeatSec === undefined || audioId === null ? null : pastEnd(patch.firstBeatSec, lengths[audioId]);
+		if (late) return blocked(late);
 		const length = { ...musicLength(old), ...pick(patch, 'eights', 'lastBeats') };
 		const tooLong = lengthProblem(length);
 		if (tooLong) return blocked(tooLong);
 		const { eights, lastBeats } = length;
 		const halfBeats = ((eights - 1) * 8 + lastBeats) * 2;
-		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
 		if (audioId !== null && !flow.audio.some((a) => a.id === audioId)) {
 			return blocked('找不到這個音樂檔');
 		}
