@@ -1,7 +1,7 @@
 <script module lang="ts">
 	import type { CommandResult } from '#lib/core';
-	import type { Ask } from './ask.svelte.js';
-	import type { Flash } from './flash.svelte.js';
+	import type { Ask } from '#lib/ask.svelte.js';
+	import type { Flash } from '#lib/flash.svelte.js';
 
 	/** 記錄頁的提示：字（已存、已刪掉、已救回），刪掉之後帶著「救回」要做的事。 */
 	export type Notice = { text: string; restore?: () => void };

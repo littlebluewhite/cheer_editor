@@ -14,6 +14,7 @@ import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile } from '#lib/file/save.js';
 import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
+import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -27,16 +28,19 @@ export interface EditorAdapters {
 	decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 	/** 草稿存在哪裡。 */
 	draftStore: DraftStore;
+	/** 欄位裡打了還沒送出的字。 */
+	pendingInput: PendingInput;
 }
 
-/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB。 */
+/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、焦點所在的欄位。 */
 export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
 		createSaver: () => createBrowserSaver(),
 		pickFlowFile: browserFilePicker(),
 		decode: decodeAudio,
-		draftStore: createIndexedDbDraftStore()
+		draftStore: createIndexedDbDraftStore(),
+		pendingInput: domPendingInput
 	};
 }
 
@@ -72,6 +76,14 @@ export class Editor {
 	switchMusic(music = new MusicLibrary(this.session, this.adapters.decode)) {
 		this.#music.cancelPicks();
 		this.#music = music;
+	}
+
+	/**
+	 * 有沒有沒存的東西：沒存的改動，或欄位裡打了還沒送出的字（在首頁打的不算）。
+	 * 關分頁前的提醒、service worker 擋重新整理都看這個。
+	 */
+	get hasUnsavedWork(): boolean {
+		return this.session.unsaved || (!!this.session.flow && this.adapters.pendingInput.pending);
 	}
 
 	/** 點時間軸的色條：選這個動作，右邊欄翻到「動作」（再點選著的那條也算）。 */

@@ -7,7 +7,6 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { Ask } from './ask.svelte';
 	import { tick } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
@@ -68,7 +67,7 @@
 	}
 
 	/** 被擋的原因，和段縮短會刪掉東西時等教練確認的清單（流程核心給的）。 */
-	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 	const span = $derived(segmentSpans(flow).find((s) => s.segment.id === segmentId));
 	const segment = $derived(span?.segment);
 	const music = $derived(segment?.kind === 'music' ? segment : null);

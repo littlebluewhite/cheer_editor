@@ -328,6 +328,31 @@ describe('編輯 session：頁面層級的問題', () => {
 	});
 });
 
+describe('編輯 session：元件要的問題（「改」或「記」）', () => {
+	it('「改」的問題成功：算一步，可以復原；確定鈕的字照給的', () => {
+		const s = new EditorSession(sampleFlow());
+		const ask = s.changeAsk({ confirmLabel: '確定刪除' });
+		expect(ask.confirmLabel).toBe('確定刪除');
+		ask.send(() => renameFlow(s.flow!, '全國賽'));
+		expect(s.flow!.name).toBe('全國賽');
+		expect(s.unsaved).toBe(true);
+		expect(s.undo()).toBe(true);
+		expect(s.flow!.name).toBe('練習用');
+	});
+
+	it('「記」的問題成功：不算一步、不清重做', () => {
+		const s = new EditorSession(sampleFlow());
+		rename(s, 'A');
+		s.undo();
+		const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
+		s.recordAsk().send(() => recordAttempt(s.flow!, 'x1', attempt));
+		expect(records(s)).toBe(1);
+		expect(s.unsaved).toBe(true);
+		expect(s.canUndo).toBe(false);
+		expect(s.canRedo).toBe(true);
+	});
+});
+
 describe('編輯 session：分組數字鍵', () => {
 	/** libSample 選好 x1（小美、小A 第 1 組，小B、小芳 第 2 組），再選 ids 這些人。 */
 	function grouping(ids: string[]) {

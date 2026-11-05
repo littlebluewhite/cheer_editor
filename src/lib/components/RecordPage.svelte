@@ -20,8 +20,7 @@
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
-	import { Ask } from './ask.svelte.js';
-	import { Flash } from './flash.svelte.js';
+	import { Flash } from '#lib/flash.svelte.js';
 	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
 	import { actionColor } from './category-colors';
 
@@ -44,7 +43,7 @@
 	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
 	const saved = new Flash<Notice>();
 	/** 刪掉上一次全上、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
-	const ask = new Ask((f) => session.record(f));
+	const ask = session.recordAsk();
 	/** 這天有沒有全上。 */
 	const hasRun = $derived(lastRunThrough(flow, date) !== undefined);
 

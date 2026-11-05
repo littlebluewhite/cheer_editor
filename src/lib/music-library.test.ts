@@ -1,7 +1,6 @@
 // 音樂檔庫（編輯器 module 的 music）：在 Node 測，解碼換成假的。
 import { describe, expect, it } from 'vitest';
 import { addSegment, createFlow, loadSegmentAudio, updateSegment, type Flow, type MusicSegment } from '#lib/core';
-import { Ask } from '#lib/components/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { flowOf } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
@@ -14,8 +13,8 @@ function musicFlow(): Flow {
 
 const mp3 = (name = '主歌.mp3', bytes = [1, 2, 3]) => new File([new Uint8Array(bytes)], name, { type: 'audio/mpeg' });
 
-/** 段設定的問教練：成功就交給 session 的「改」。 */
-const changeAsk = (session: EditorSession) => new Ask((f) => session.change(f));
+/** 段設定的問教練：session 的「改」（成功就算一步）。 */
+const changeAsk = (session: EditorSession) => session.changeAsk();
 
 const segment = (session: EditorSession, i = 0) => session.flow!.segments[i] as MusicSegment;
 

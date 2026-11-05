@@ -5,7 +5,7 @@
 
 import { loadSegmentAudio, segmentsMissingAudio, type AudioBytes, type AudioLengths, type Flow } from '#lib/core';
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
-import type { Ask } from '#lib/components/ask.svelte.js';
+import type { Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 
 export class MusicLibrary {

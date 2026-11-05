@@ -35,17 +35,13 @@
 	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
-		loadInspectorWidth,
 		MAX_LATENCY_MS,
 		loadLatencyMs,
-		loadTimelineHeight,
-		saveInspectorWidth,
-		saveLatencyMs,
-		saveTimelineHeight
+		saveLatencyMs
 	} from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
-	import { setUnsavedChanges } from '#lib/unsaved.js';
-	import { flushPendingInput, settlePendingInput } from '#lib/pending-input.js';
+	import { Divider } from '#lib/divider.svelte.js';
+	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -87,24 +83,22 @@
 	setEditor(editor);
 	const { session } = editor;
 	// 開檔、存檔、草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
-	const { createEngine, createSaver, pickFlowFile, draftStore } = editor.adapters;
+	const { createEngine, createSaver, pickFlowFile, draftStore, pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
 
 	const flow = $derived(session.flow);
 	const unsaved = $derived(session.unsaved);
-	/** 欄位裡打了字還沒送出（名字、備註這類欄位在失去焦點時才送進流程）：關分頁前也要問。 */
-	let typing = $state(false);
-	$effect(() => setUnsavedChanges(unsaved || typing));
-	/** 有還沒存的修改時關分頁、重新整理：讓瀏覽器先問（草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。 */
+	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
+	setUnsavedCheck(() => editor.hasUnsavedWork);
+	/**
+	 * 有還沒存的修改、欄位裡打了字還沒送出時關分頁、重新整理：讓瀏覽器先問
+	 * （草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。
+	 */
 	function onbeforeunload(e: BeforeUnloadEvent) {
-		if (unsaved || typing) e.preventDefault();
+		if (editor.hasUnsavedWork) e.preventDefault();
 	}
-	function oninput(e: Event) {
-		if (flow && (e.target as Element | null)?.closest?.('input, textarea, [contenteditable]')) typing = true;
-	}
-	const sent = () => (typing = false);
 	/** 這支流程在檔案裡（從檔案開的、存過檔）：沒有未存的修改就不用草稿。剛建好、救回草稿的不在檔案裡。 */
 	// svelte-ignore state_referenced_locally
 	let onDisk = $state(!!session.flow);
@@ -377,45 +371,30 @@
 	const TIMELINE_MIN_PX = 160;
 	/** 場地和上方列至少留這麼高。 */
 	const FIELD_KEEP_PX = 300;
-	let timelineH = $state<number | null>(loadTimelineHeight());
 	let timelineHost = $state<HTMLElement>();
-	let split: { y: number; h: number } | null = null;
+	const timelineDivider = new Divider({
+		name: 'timelineHeightPx',
+		axis: 'y',
+		clamp: (px) => Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX)),
+		size: currentTimelineH
+	});
 
 	/** 時間軸現在多高：拖過就是拖的高度，沒拖過量畫面（量不到用預設的 30vh）。 */
 	function currentTimelineH(): number {
-		if (timelineH !== null) return timelineH;
+		if (timelineDivider.px !== null) return timelineDivider.px;
 		return Math.round(timelineHost?.getBoundingClientRect().height || Math.max(200, window.innerHeight * 0.3));
-	}
-
-	function setTimelineH(px: number | null) {
-		timelineH =
-			px === null ? null : Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX));
-		saveTimelineHeight(timelineH);
-	}
-
-	function splitDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		split = { y: e.clientY, h: currentTimelineH() };
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-	}
-
-	function splitMove(e: PointerEvent) {
-		if (split) setTimelineH(split.h + split.y - e.clientY);
-	}
-
-	function splitKey(e: KeyboardEvent) {
-		const step = { ArrowUp: 24, ArrowDown: -24 }[e.key];
-		if (!step) return;
-		e.preventDefault();
-		setTimelineH(currentTimelineH() + step);
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
 	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
-	let inspectorW = $state<number | null>(loadInspectorWidth());
 	let windowW = $state(0);
 	let fieldHostH = $state(0);
-	let colSplit: { x: number; w: number } | null = null;
+	const inspectorDivider = new Divider({
+		name: 'inspectorWidthPx',
+		axis: 'x',
+		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
+		size: (): number => inspectorPx
+	});
 
 	const fieldAspect = $derived.by(() => {
 		if (!flow) return 1;
@@ -424,9 +403,9 @@
 	});
 	/** 右邊欄現在多寬。 */
 	const inspectorPx = $derived(
-		inspectorW === null
+		inspectorDivider.px === null
 			? autoInspectorWidth(windowW, fieldHostH, fieldAspect)
-			: clampInspectorWidth(inspectorW, windowW)
+			: clampInspectorWidth(inspectorDivider.px, windowW)
 	);
 
 	/** 量場地那一欄多高（視窗或時間軸變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
@@ -435,28 +414,6 @@
 		const ro = new ResizeObserver(() => (fieldHostH = el.clientHeight));
 		ro.observe(el);
 		return () => ro.disconnect();
-	}
-
-	function setInspectorW(px: number | null) {
-		inspectorW = px === null ? null : clampInspectorWidth(px, window.innerWidth);
-		saveInspectorWidth(inspectorW);
-	}
-
-	function colSplitDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		colSplit = { x: e.clientX, w: inspectorPx };
-		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-	}
-
-	function colSplitMove(e: PointerEvent) {
-		if (colSplit) setInspectorW(colSplit.w + colSplit.x - e.clientX);
-	}
-
-	function colSplitKey(e: KeyboardEvent) {
-		const step = { ArrowLeft: 24, ArrowRight: -24 }[e.key];
-		if (!step) return;
-		e.preventDefault();
-		setInspectorW(inspectorPx + step);
 	}
 
 
@@ -474,7 +431,7 @@
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		session.open(f, from !== 'draft');
 		onDisk = from === 'file';
-		typing = false;
+		pendingInput.settle();
 		opened++;
 		saver = fileSaver;
 		editor.switchMusic(music);
@@ -510,7 +467,7 @@
 	async function save() {
 		if (!flow || saving) return;
 		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
-		(document.activeElement as HTMLElement | null)?.blur();
+		pendingInput.flush();
 		const f = flow;
 		saving = true;
 		saver ??= createSaver();
@@ -657,12 +614,12 @@
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
-		flushPendingInput();
+		pendingInput.flush();
 		flushSync();
 		if (redoing) redo();
 		else undo();
 		flushSync();
-		settlePendingInput();
+		pendingInput.settle();
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -739,8 +696,8 @@
 
 	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
 	function resetLayout() {
-		setTimelineH(null);
-		setInspectorW(null);
+		timelineDivider.set(null);
+		inspectorDivider.set(null);
 	}
 
 	/** 刪動作；有紀錄時核心要確認，跟拉色條一樣在場上問，確定才刪。 */
@@ -758,9 +715,6 @@
 <svelte:window
 	{onkeydown}
 	{onbeforeunload}
-	{oninput}
-	onchange={sent}
-	onfocusout={sent}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
@@ -773,7 +727,7 @@
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
 		class:print-hidden={printOpen}
-		style:--timeline-h={timelineH === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineH}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
+		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
@@ -893,7 +847,7 @@
 					{/if}
 				{/snippet}
 				{#snippet railTop()}
-					{#if touchScreen || timelineH !== null || inspectorW !== null}
+					{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
 						<div class="select-tools">
 							{#if touchScreen}
 								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
@@ -901,7 +855,7 @@
 								</label>
 								<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
 							{/if}
-							{#if timelineH !== null || inspectorW !== null}
+							{#if timelineDivider.px !== null || inspectorDivider.px !== null}
 								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
 							{/if}
 						</div>
@@ -957,7 +911,7 @@
 		</main>
 
 		<aside class="inspector" hidden={view === 'practice'}>
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 			<div
 				class="col-split"
 				role="separator"
@@ -967,12 +921,7 @@
 				aria-valuemin={INSPECTOR_MIN_PX}
 				tabindex="0"
 				title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
-				onpointerdown={colSplitDown}
-				onpointermove={colSplitMove}
-				onpointerup={() => (colSplit = null)}
-				onpointercancel={() => (colSplit = null)}
-				onkeydown={colSplitKey}
-				ondblclick={() => setInspectorW(null)}
+				{@attach inspectorDivider.attach}
 			></div>
 			<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
 			<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
@@ -1004,23 +953,18 @@
 			</div>
 		</aside>
 
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 		<div
 			class="split"
 			hidden={view === 'practice'}
 			role="separator"
 			aria-orientation="horizontal"
 			aria-label="場地和時間軸的分界"
-			aria-valuenow={timelineH ?? currentTimelineH()}
+			aria-valuenow={timelineDivider.px ?? currentTimelineH()}
 			aria-valuemin={TIMELINE_MIN_PX}
 			tabindex="0"
 			title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
-			onpointerdown={splitDown}
-			onpointermove={splitMove}
-			onpointerup={() => (split = null)}
-			onpointercancel={() => (split = null)}
-			onkeydown={splitKey}
-			ondblclick={() => setTimelineH(null)}
+			{@attach timelineDivider.attach}
 		></div>
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
