@@ -133,14 +133,15 @@ describe('landmark 和跳到時間軸', () => {
 		expect(screen.getByRole('region', { name: '時間軸' })).toBeTruthy();
 	});
 
-	it('編輯畫面第一個 Tab 停的是「跳到時間軸」；按了焦點到時間軸，再 Tab 就是「在最後加一段」', async () => {
+	it('編輯畫面第一個 Tab 停的是「跳到時間軸」；按了焦點到時間軸，再 Tab 是段列最左邊的「插入八拍」、接著「在最後加一段」', async () => {
 		setup();
 		const first = document.querySelector<HTMLElement>('.editor :is(a[href], button, input, select, textarea, [tabindex="0"])')!;
 		expect(first.textContent).toBe('跳到時間軸');
 		await press(first);
 		const timeline = screen.getByRole('region', { name: '時間軸' });
 		expect(document.activeElement).toBe(timeline);
-		expect(timeline.querySelector('button')).toBe(screen.getByRole('button', { name: '在最後加一段' }));
+		const [insert, plus] = [...timeline.querySelectorAll<HTMLButtonElement>('button')].filter((b) => !b.disabled);
+		expect([insert.textContent, plus.getAttribute('aria-label')]).toEqual(['插入八拍', '在最後加一段']);
 	});
 });
 
