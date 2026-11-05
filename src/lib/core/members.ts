@@ -248,13 +248,17 @@ export function deleteMember(
 		const records = (list: Action[]) => list.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
 		const cleared = records(flow.actions) - records(actions);
 		const role = GLOBAL_ROLES.find((r) => r.key === member.globalRole)?.label;
+		const lostTop = inActions.filter(
+			(a) => !emptied.includes(a) && a.members.some((m) => m.memberId === id && m.role === '上層')
+		);
 		const where = !inActions.length
 			? '他不在任何動作裡'
 			: `他在 ${inActions.length} 個動作裡` + (emptied.length ? `，其中 ${emptied.length} 個會被整個刪掉` : '');
 		return needsConfirm(
 			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄` : ''),
+				(cleared ? `，會清掉 ${cleared} 次紀錄` : '') +
+				(lostTop.length ? `，${lostTop.map((a) => `「${actionLabel(a)}」`).join('、')}會少了上層` : ''),
 			emptied.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）`;

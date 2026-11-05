@@ -411,12 +411,34 @@ export class FlowFile {
 	 */
 	#saveDraftLater() {
 		clearTimeout(this.#draftTimer);
-		const f = this.#editor.session.flow;
-		if (!this.#draftChecked || !f) return;
-		this.#draftTimer = setTimeout(() => {
-			if (this.ownsDraft) this.#saveDraft(writeFlowFile(f, this.#editor.music.bytes(f)));
-			else if (this.#fileBytes) this.#saveDraft(this.#fileBytes);
-		}, DRAFT_DELAY_MS);
+		this.#draftTimer = undefined;
+		if (!this.#draftChecked || !this.#editor.session.flow) return;
+		this.#draftTimer = setTimeout(() => this.#saveDraftNow(), DRAFT_DELAY_MS);
+	}
+
+	/**
+	 * 現在存草稿（停手 1 秒到了、分頁藏起來了）：先送出欄位裡打到一半的字，草稿才有剛打的字
+	 * （送出會改流程、又排一次 1 秒後存，這裡一起存掉）。
+	 */
+	#saveDraftNow() {
+		const { session, adapters, music } = this.#editor;
+		adapters.pendingInput.flush();
+		clearTimeout(this.#draftTimer);
+		this.#draftTimer = undefined;
+		const f = session.flow;
+		if (!f) return;
+		if (this.ownsDraft) void this.#saveDraft(writeFlowFile(f, music.bytes(f)));
+		else if (this.#fileBytes) void this.#saveDraft(this.#fileBytes);
+	}
+
+	/**
+	 * 分頁藏起來了、要關了（pagehide、visibilitychange 變 hidden）：送出欄位裡打到一半的字，
+	 * 還沒進草稿的改動現在就存，不等停手 1 秒（iPad 收掉分頁不會問 beforeunload）。
+	 */
+	pageHidden() {
+		if (!this.#editor.session.flow) return;
+		this.#editor.adapters.pendingInput.flush();
+		if (this.#draftTimer !== undefined) this.#saveDraftNow();
 	}
 
 	/**
