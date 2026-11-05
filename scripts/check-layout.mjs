@@ -542,6 +542,26 @@ await check('844×390（手機橫拿）：提示和練習畫面都不溢出、�
 	const practice = await overflow();
 	return { ok: hint.ok && noOverflow(edit) && noOverflow(practice), value: { 提示: hint.value, 編排: edit, 練習: practice } };
 });
+await check('390×844（觸控）：有未存的修改按提示上的「回首頁」，「還沒存」對話框蓋在提示上面，按鈕點得到', async () => {
+	await setTouchViewport(390, 844);
+	await openSample();
+	await renameFlowTo('改過的名字');
+	const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '回首頁');
+		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	await tap(go.x, go.y);
+	const res = await js(`const box = document.querySelector('.discard-box');
+		if (!box) return { 打開了: false };
+		const buttons = [...box.querySelectorAll('button')].map((b) => {
+			const r = b.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { 名字: b.textContent.trim(), 點得到: !!top && b.contains(top), 在畫面裡: r.left >= 0 && r.right <= innerWidth };
+		});
+		return { 打開了: true, buttons };`);
+	// 回首頁，後面的檢查從乾淨的頁面開始
+	await js(`[...document.querySelectorAll('.discard-box button')].find((b) => b.textContent.trim() === '不存了，繼續')?.click()`);
+	await sleep(300);
+	return { ok: res.打開了 && res.buttons.length === 3 && res.buttons.every((b) => b.點得到 && b.在畫面裡), value: res };
+});
 await check('390×844（觸控）：隊員開了流程檔，按提示上的「看八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
 	await setTouchViewport(390, 844);
 	await openPracticeFlow();
