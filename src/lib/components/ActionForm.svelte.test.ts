@@ -188,7 +188,7 @@ describe('動作表單：改選到的動作', () => {
 
 		await fireEvent.input(length, { target: { value: '6' } });
 		await fireEvent.change(length);
-		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡，已還原');
+		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡：下一個動作從 1-5 就開始，已還原');
 		expect(length.value).toBe('4');
 		expect(session.canUndo).toBe(false);
 
@@ -424,7 +424,7 @@ describe('動作表單：拍點格子', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '確定' }));
 
 		expect(screen.queryByRole('alertdialog')).toBeNull();
-		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡，已還原');
+		expect(screen.getByRole('alert').textContent).toBe('小A 同一時間已經在「技巧·B」裡：下一個動作從 1-2 就開始，已還原');
 		expect(length.value).toBe('4');
 		expect(session.flow).toBe(changed);
 	});

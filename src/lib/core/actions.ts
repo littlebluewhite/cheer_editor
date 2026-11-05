@@ -17,7 +17,7 @@ import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
 import { tooLong } from './text-length';
-import { EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
+import { atText, EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -189,7 +189,10 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 	return null;
 }
 
-/** 動作裡的人哪裡不行（找不到、重複、沒有這個任務角色、同一時間在別的動作裡）；沒問題是 null。 */
+/**
+ * 動作裡的人哪裡不行（找不到、重複、沒有這個任務角色、同一時間在別的動作裡）；沒問題是 null。
+ * 重疊時寫撞到的動作在哪裡結束（在前面的）或從哪裡開始（在後面的），教練知道要挪到哪裡。
+ */
 function peopleProblem(flow: Flow, action: Action): string | null {
 	const roles = roleGlossary(flow).map((r) => r.name);
 	const seen = new Set<string>();
@@ -206,10 +209,20 @@ function peopleProblem(flow: Flow, action: Action): string | null {
 		const shared = action.members.filter((m) => other.members.some((o) => o.memberId === m.memberId));
 		if (shared.length) {
 			const names = shared.map((m) => memberName(flow, m.memberId)).join('、');
-			clashes.push(`${names} 同一時間已經在「${actionLabel(other)}」裡`);
+			clashes.push(`${names} 同一時間已經在「${actionLabel(other)}」裡：${whereOther(flow, other, action)}`);
 		}
 	}
 	return clashes.length ? clashes.join('；') : null;
+}
+
+/** 撞到的動作 other 在 action 前面：「上一個動作在 3-1& 才結束」；在後面：「下一個動作從 4-1 就開始」。 */
+function whereOther(flow: Flow, other: Action, action: Action): string {
+	const segment = flow.segments.find((s) => s.id === other.segmentId)!;
+	// 音樂段「2-1& 才結束」，口號段「3.5 秒才結束」
+	const at = (u: number) => atText(segment, u) + (segment.kind === 'chant' ? ' 秒' : ' ');
+	return other.start <= action.start
+		? `上一個動作在 ${at(other.start + other.length)}才結束`
+		: `下一個動作從 ${at(other.start)}就開始`;
 }
 
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */

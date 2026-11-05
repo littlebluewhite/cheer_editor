@@ -181,7 +181,7 @@ describe('拖色條', () => {
 		const { session, ask } = setup(0);
 		await dragBy(tumble(), 10);
 		expect(session.canUndo).toBe(false);
-		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡，已還原');
+		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡：下一個動作從 2-1 就開始，已還原');
 		expect(tumble().style.left).toBe('16px');
 	});
 
@@ -193,7 +193,7 @@ describe('拖色條', () => {
 		expect(session.flow!.actions[1]).toMatchObject({ id: 'x2', start: 8, length: 7 });
 		expect(parseFloat(tumble().style.width)).toBeCloseTo(14, 6);
 		await dragBy(handle(), 10);
-		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡，已還原');
+		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡：下一個動作從 2-1 就開始，已還原');
 		expect(parseFloat(tumble().style.width)).toBeCloseTo(14, 6);
 	});
 
