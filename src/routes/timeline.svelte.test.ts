@@ -70,3 +70,31 @@ describe('播放頭', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5');
 	});
 });
+
+describe('點色條、跳到動作開始（#170）', () => {
+	const where = () => screen.getByLabelText('目前位置').textContent;
+
+	it('點一下色條：只選到動作，播放頭不動', async () => {
+		const { session } = setup();
+		await fireEvent.click(bar('x2'));
+		expect(session.selectedActionId).toBe('x2');
+		expect(where()).toBe('音樂 1 1-1');
+	});
+
+	it('雙擊色條：播放頭跳到動作開始', async () => {
+		const { session } = setup();
+		// 瀏覽器雙擊會先送兩個 click
+		await fireEvent.click(bar('x2'));
+		await fireEvent.click(bar('x2'));
+		await fireEvent.dblClick(bar('x2'));
+		expect(session.selectedActionId).toBe('x2');
+		expect(where()).toBe('音樂 1 3-2');
+	});
+
+	it('按動作表單的「跳到開始」：播放頭跳到動作開始', async () => {
+		setup();
+		await fireEvent.click(bar('x2'));
+		await fireEvent.click(screen.getByRole('button', { name: '跳到開始' }));
+		expect(where()).toBe('音樂 1 3-2');
+	});
+});

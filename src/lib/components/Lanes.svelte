@@ -2,7 +2,7 @@
 	// 泳道：一人一條，照名單順序。動作是色條（顏色照大類，每條都寫動作名稱和那個人的任務角色），
 	// 沒在動作裡的時間是灰條紋；播放頭那一拍閒著的人名字變灰、標「閒」。
 	// 流程和選取從 session 拿。拖色條移動、拉右邊改長度：放開時送到 session 的 ask（場上那一個問題），被擋就還原。
-	// 點名字選人，Shift＋點（或開著多選時點）多選。
+	// 點名字選人，Shift＋點（或開著多選時點）多選。點色條只選動作；雙擊色條播放頭跳到動作開始。
 	// 拉短會切到拍點時先不改，ask 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
@@ -362,6 +362,7 @@
 						style:box-shadow={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
 						onclick={() => editor.pickAction(p.action.id)}
+						ondblclick={() => editor.seekToAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id, m.id)}
 					>
 						{#each phaseBars[p.action.id] as ph (ph.id)}
