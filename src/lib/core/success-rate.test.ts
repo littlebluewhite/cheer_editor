@@ -9,6 +9,7 @@ import {
 	addPhase,
 	phaseColor,
 	setSquad,
+	squadBadge,
 	squadName,
 	squadsOf,
 	updateAction,
@@ -143,6 +144,34 @@ describe('組的名字', () => {
 	it('沒有上層就只叫第 n 組', () => {
 		const flow = grouped([['m2', 3], ['m3', 3]]);
 		expect(squadName(flow, actionOf(flow), nth(flow, 3))).toBe('第 3 組');
+	});
+});
+
+describe('組的徽章', () => {
+	/** x1 加一個環節（全部的人先進第 1 組），小A 第 2 組、小B 第 3 組、小芳沒分組。 */
+	function grouped(): Flow {
+		let flow = flowOf(setSquad(rated(sample()), 'x1', ['m2'], 2));
+		flow = flowOf(setSquad(flow, 'x1', ['m3'], 3));
+		return flowOf(setSquad(flow, 'x1', ['m4'], null));
+	}
+
+	it('動作裡的人：第幾組和那一組的顏色', () => {
+		const action = actionOf(grouped());
+		expect(action.members.slice(0, 3).map((m) => squadBadge(action, m))).toEqual([
+			{ number: 1, text: '1', color: '#1d4ed8' },
+			{ number: 2, text: '2', color: '#be185d' },
+			{ number: 3, text: '3', color: '#047857' }
+		]);
+	});
+
+	it('沒分組：灰色「?」', () => {
+		const action = actionOf(grouped());
+		expect(squadBadge(action, action.members[3])).toEqual({ number: 0, text: '?', color: '#6b7280' });
+	});
+
+	it('帶的組不是這個動作裡的組（別的動作抄來的）：也是沒分組', () => {
+		const action = actionOf(grouped());
+		expect(squadBadge(action, { squad: 'g99' })).toEqual({ number: 0, text: '?', color: '#6b7280' });
 	});
 });
 
