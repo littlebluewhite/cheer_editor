@@ -1,12 +1,12 @@
-// 頁面：首頁列出最近的流程（有草稿的那幾支，點了打開、丟掉先問），欄位裡打了字還沒送出時關分頁先問。
+// 頁面：首頁列出最近的流程（有草稿的那幾支，點了打開、丟掉先問），欄位裡打了字還沒送出時關分頁先問、顯示「未存」、也進草稿。
 // 草稿的規則（停手 1 秒存、存檔後清掉、兩個分頁…）在 src/lib/flow-file.test.ts。IndexedDB 換成記憶體裡的假草稿庫。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { createFlow, writeFlowFile } from '#lib/core';
+import { createFlow, readFlowFile, writeFlowFile } from '#lib/core';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { OpenTabChannel } from '#lib/tab-channel.js';
 import { audioFlow, editorPage, fakeDraftStore, fakeTabs, flush, openFile, testEditor } from '#lib/test-fakes.js';
-import { flowOf } from '#lib/test-flows.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -87,6 +87,23 @@ describe('首頁：最近的流程', () => {
 		expect(drafts.latest()).toBeNull();
 	});
 
+	it('「丟掉」的確認是對話框：焦點先在「取消」，Escape 等於取消，焦點回到「丟掉」', async () => {
+		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), {}));
+		setup(drafts.store);
+		await flush();
+		const drop = screen.getByRole('button', { name: '丟掉「練習用」' });
+		drop.focus();
+		await fireEvent.click(drop);
+		const dialog = screen.getByRole('dialog', { name: /丟掉「練習用」的草稿？/ });
+		expect(dialog.getAttribute('aria-modal')).toBe('true');
+		expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '取消' }));
+		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+		await flush();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(drafts.latest()).not.toBeNull();
+		expect(document.activeElement).toBe(drop);
+	});
+
 	it('開了流程檔沒改、重新整理：首頁的最近的流程裡有它，點了打開（不算未存）', async () => {
 		const drafts = fakeDraftStore();
 		const first = setup(drafts.store);
@@ -115,5 +132,83 @@ describe('關分頁、重新整理', () => {
 		await fireEvent.input(name, { target: { value: '小A' } });
 		expect(leaveAsks()).toBe(true);
 		expect(hasUnsavedChanges()).toBe(true);
+	});
+});
+
+describe('欄位裡打到一半的字（還沒離開欄位）', () => {
+	/** 開著範例流程（Lib），選到 Lib；草稿讀過了。 */
+	async function opened() {
+		const drafts = fakeDraftStore();
+		const page = editorPage(libSample(), { draftStore: drafts.store });
+		render(Page, page.props);
+		await flush();
+		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
+		return { ...page, drafts };
+	}
+
+	/** 在動作名稱打字，不離開欄位。 */
+	async function typeName(value: string) {
+		const name = screen.getByLabelText('名稱');
+		name.focus();
+		await fireEvent.input(name, { target: { value } });
+		return name;
+	}
+
+	/** 草稿裡 Lib 的名字。 */
+	const draftName = (bytes: Uint8Array | null) => {
+		const r = readFlowFile(bytes ?? new Uint8Array());
+		return r.kind === 'ok' ? r.flow.actions[0].name : null;
+	};
+
+	it('在動作名稱打字不離開：馬上顯示「未存」', async () => {
+		await opened();
+		expect(screen.queryByText('未存')).toBeNull();
+		await typeName('高 Lib');
+		expect(screen.getByText('未存')).toBeTruthy();
+	});
+
+	it('停手 1 秒存草稿時還在打字：先送出，草稿裡有打的字；焦點還在欄位裡', async () => {
+		const { drafts } = await opened();
+		vi.useFakeTimers();
+		try {
+			// 先改了別的（備註），停手 1 秒就要存草稿；這 1 秒裡去打名稱
+			await fireEvent.change(screen.getByLabelText('備註'), { target: { value: '慢慢來' } });
+			const name = await typeName('高 Lib');
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(draftName(drafts.latest())).toBe('高 Lib');
+			expect(document.activeElement).toBe(name);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([
+		['關掉、收掉分頁（pagehide）', () => window.dispatchEvent(new Event('pagehide'))],
+		[
+			'切到別的分頁、別的 app（visibilitychange 變 hidden）',
+			() => {
+				Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+				document.dispatchEvent(new Event('visibilitychange'));
+			}
+		]
+	])('%s：送出打到一半的字，馬上存草稿（不等 1 秒）', async (_, hide) => {
+		const { drafts, session } = await opened();
+		await typeName('高 Lib');
+		try {
+			hide();
+			await flush();
+		} finally {
+			Reflect.deleteProperty(document, 'visibilityState');
+		}
+		expect(session.flow!.actions[0].name).toBe('高 Lib');
+		expect(draftName(drafts.latest())).toBe('高 Lib');
+	});
+
+	it('切回這個分頁（visibilitychange 變 visible）：不送出', async () => {
+		const { session } = await opened();
+		await typeName('高 Lib');
+		document.dispatchEvent(new Event('visibilitychange'));
+		await flush();
+		expect(session.flow!.actions[0].name).toBe('Lib');
 	});
 });
