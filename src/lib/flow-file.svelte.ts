@@ -26,8 +26,10 @@ export class FlowFile {
 	/** 正在存：存好之前再按存檔不算。 */
 	#saving = false;
 	#openError = $state('');
-	/** 等教練回答「還沒存」：確定就做這件事（換流程）。 */
-	#asking = $state.raw<(() => void) | null>(null);
+	/** 等教練回答「還沒存」：確定就做這件事（換流程）。open = 問的是要開別的流程檔。 */
+	#asking = $state.raw<{ then: () => void; open: boolean } | null>(null);
+	/** 按「開啟」時已經答應丟掉還沒存的修改：選到的檔打開時不再問。又改了流程就不算。 */
+	#openApproved = false;
 	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）。 */
 	#missingNotice = '';
 	/** 讀過草稿了：在這之前不自動存，免得蓋掉還沒問過的草稿。 */
@@ -61,6 +63,7 @@ export class FlowFile {
 		this.#editor = editor;
 		this.#onDisk = !!editor.session.flow;
 		editor.session.onflow = () => {
+			this.#openApproved = false;
 			this.#saveDraftLater();
 			this.#dropMissingNotice();
 			if (!editor.session.flow) void this.#readRecent();
@@ -177,7 +180,9 @@ export class FlowFile {
 		if (await this.#otherTabEditing(draftId)) return cannotOpen('另一個分頁正在編這支流程');
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
 		const music = await this.#editor.readMusic(r.audio);
-		this.#unlessUnsaved(() => {
+		const approved = this.#openApproved;
+		this.#openApproved = false;
+		this.#unlessUnsaved(true, approved, () => {
 			this.#start(r.flow, fileName === null ? 'draft' : 'file', draftId, music, saver);
 			// 從檔案開的：當下就把這個檔存成草稿，重新整理後首頁的最近的流程裡有它
 			if (fileName !== null) {
@@ -201,12 +206,32 @@ export class FlowFile {
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
 	startNew() {
-		this.#unlessUnsaved(() => this.#editor.session.open(null));
+		this.#unlessUnsaved(false, false, () => this.#editor.session.open(null));
 	}
 
-	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，列在首頁的最近的流程。 */
+	/**
+	 * 上方列「開啟」：有還沒存的修改就先問「要開別的流程檔」，答應了才選檔（choose：跳選檔視窗或選檔欄位），選到的檔打開時不再問。
+	 * 回傳現在就能選檔（沒有未存的修改、剛答應過）。
+	 */
+	mayChoose(choose: () => void): boolean {
+		if (this.#openApproved || !this.#editor.session.unsaved) return true;
+		this.#asking = {
+			open: true,
+			then: () => {
+				this.#openApproved = true;
+				choose();
+			}
+		};
+		return false;
+	}
+
+	/**
+	 * 「視窗太窄」提示上的「回首頁」：有還沒存的修改就跟「新建」一樣先問。
+	 * 沒有就直接回去；這個分頁的流程（剛建好）留在草稿裡，列在首頁的最近的流程。
+	 */
 	async leaveToHome() {
 		const { session, music } = this.#editor;
+		if (session.unsaved) return this.startNew();
 		const f = session.flow;
 		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
 		session.open(null);
@@ -256,12 +281,17 @@ export class FlowFile {
 		return this.#asking !== null;
 	}
 
+	/** 問的是要開別的流程檔（不是新建、回首頁）。 */
+	get askingToOpen(): boolean {
+		return !!this.#asking?.open;
+	}
+
 	/**
 	 * 回答「還沒存」：丟掉就接著換流程；取消就留著；先存檔要存好了（沒有未存的修改）才接著換，
 	 * 在存檔視窗按取消或存失敗，就留在問的畫面。
 	 */
 	async answer(choice: 'save' | 'discard' | 'cancel') {
-		const then = this.#asking;
+		const then = this.#asking?.then;
 		if (!then) return;
 		if (choice === 'cancel') {
 			this.#asking = null;
@@ -275,15 +305,15 @@ export class FlowFile {
 		then();
 	}
 
-	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
-	#unlessUnsaved(then: () => void) {
+	/** 會換掉現在的流程（open：開檔；不然是新建、回首頁）：有還沒存的修改、又還沒答應過（approved）就先問，確定才做。 */
+	#unlessUnsaved(open: boolean, approved: boolean, then: () => void) {
 		// 換掉的流程是這個分頁放在草稿裡的：它的草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
 		// 只丟這支流程的，別支流程的草稿不動。
 		const go = () => {
 			if (this.ownsDraft) void this.#dropDraft(this.#draftId);
 			then();
 		};
-		if (this.#editor.session.unsaved) this.#asking = go;
+		if (this.#editor.session.unsaved && !approved) this.#asking = { then: go, open };
 		else go();
 	}
 
