@@ -181,7 +181,7 @@ export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules } from './time-rules';
 
-export { FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
+export { CELL_M, FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
 export type {
 	FieldConfig,
 	FieldGeometry,

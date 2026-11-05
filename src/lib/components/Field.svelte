@@ -20,6 +20,7 @@
 	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
+		CELL_M,
 		fieldPositionText,
 		moveMembers,
 		snapPointsNear,
@@ -309,6 +310,32 @@
 		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
 	}
 
+	const ARROWS: Record<string, Position> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+	/**
+	 * 鍵盤操作焦點所在的人：Enter／空白鍵跟點一下一樣；方向鍵移 1/4 格（Shift 一格），跟拖人一樣吸附、改播放頭這一拍的站位。
+	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把空白鍵當播放、方向鍵當移播放頭。
+	 */
+	function dotKey(e: KeyboardEvent, id: string) {
+		if (!session) return;
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			e.stopPropagation();
+			session.pickMember(id, e.shiftKey);
+			return;
+		}
+		const dir = ARROWS[e.key];
+		if (!dir || e.ctrlKey || e.metaKey || e.altKey || !positions[id]) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const step = e.shiftKey ? CELL_M : CELL_M / 4;
+		const o = positions[id];
+		const to = snapPosition(field, [o[0] + dir[0] * step, o[1] + dir[1] * step], zoom);
+		const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
+		const [dx, dy] = [to[0] - o[0], to[1] - o[1]];
+		drop(Object.fromEntries(ids.map((i) => [i, [positions[i][0] + dx, positions[i][1] + dy] as Position])));
+	}
+
 	/** 框裡的人（Shift 時加上原本選的），照名單順序。 */
 	function inBox(a: Position, b: Position, shift: boolean): string[] {
 		const within = (v: number, p: number, q: number) => v >= Math.min(p, q) && v <= Math.max(p, q);
@@ -416,8 +443,10 @@
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
 				data-member-id={m.id}
 				role="button"
-				tabindex="-1"
+				tabindex={session ? 0 : undefined}
 				aria-label={m.name}
+				aria-pressed={session ? sel : undefined}
+				onkeydown={(e) => dotKey(e, m.id)}
 				transform="translate({p[0]},{p[1]})"
 			>
 				<title>{m.name}</title>
@@ -566,6 +595,11 @@
 	}
 	.dot.dragging {
 		cursor: grabbing;
+	}
+	/* 用鍵盤停到人時，圓點的邊加粗變色當焦點框。 */
+	.dot:focus-visible circle:not(.ring) {
+		stroke: var(--sel);
+		stroke-width: 0.1;
 	}
 	.dot circle {
 		stroke: #16213a;

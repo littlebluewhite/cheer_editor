@@ -168,6 +168,26 @@ describe('在場上拖人', () => {
 		expect(session.canUndo).toBe(false);
 	});
 
+	it('鍵盤：Tab 停得到人，Enter／空白鍵跟點一下一樣（Shift 加選、拿掉）；方向鍵移 1/4 格、Shift 移一格，一下算一步', async () => {
+		const { session, dot } = setup();
+		expect(dot.getAttribute('tabindex')).toBe('0');
+		await fireEvent.keyDown(dot, { key: 'Enter' });
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		await fireEvent.keyDown(dot, { key: ' ', shiftKey: true });
+		expect(session.selectedMemberIds).toEqual([]);
+		await fireEvent.keyDown(dot, { key: 'ArrowRight' });
+		expect(posOf(session, 'm1')[0]).toBeCloseTo(0.4572, 4);
+		await fireEvent.keyDown(dot, { key: 'ArrowDown', shiftKey: true });
+		expect(posOf(session, 'm1')[1]).toBeCloseTo(1.8288, 4);
+		session.undo();
+		expect(posOf(session, 'm1')[1]).toBeCloseTo(0, 4);
+	});
+
+	it('八拍表的小站位圖（沒有 session）：人不能用 Tab 停', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0] }, controls: false });
+		expect(document.querySelector('[data-member-id="m1"]')!.getAttribute('tabindex')).toBeNull();
+	});
+
 	it('放大到 ×2 以上會吸到 1/8', async () => {
 		const { session, dot } = setup();
 		await fireEvent.click(screen.getByRole('button', { name: '放大' }));
@@ -309,6 +329,14 @@ describe('在場上選人、整組拖', () => {
 		expect(posOf(session, 'm1')[0]).toBeCloseTo(0.4572, 4);
 		expect(posOf(session, 'm2')[0]).toBeCloseTo(1.4572, 4);
 		expect(posOf(session, 'm2')[1]).toBeCloseTo(0, 4);
+		expect(posOf(session, 'm3')).toEqual([3, 3]);
+	});
+
+	it('鍵盤：選了好幾個人時，在其中一個上按方向鍵整組一起移', async () => {
+		const { session, dot } = setup(['m1', 'm2']);
+		await fireEvent.keyDown(dot('m1'), { key: 'ArrowLeft' });
+		expect(posOf(session, 'm1')[0]).toBeCloseTo(-0.4572, 4);
+		expect(posOf(session, 'm2')[0]).toBeCloseTo(1 - 0.4572, 4);
 		expect(posOf(session, 'm3')).toEqual([3, 3]);
 	});
 

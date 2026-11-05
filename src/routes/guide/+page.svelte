@@ -1009,6 +1009,7 @@
 							<tr><td><kbd>⌘⇧Z</kbd>／<kbd>Ctrl+Shift+Z</kbd>、<kbd>Ctrl+Y</kbd></td><td>重做</td></tr>
 							<tr><td><kbd>Delete</kbd>（Mac：<kbd>delete</kbd>）</td><td>刪掉選到的站位或動作（不會先問，按錯可以復原；動作有成功率紀錄時會先問）</td></tr>
 							<tr><td><kbd>Esc</kbd></td><td>關掉段設定、流程設定、八拍表、拍點小窗；都沒開時，取消選取（選到的人、站位、動作），動作表單回到新增</td></tr>
+							<tr><td><kbd>Tab</kbd> 停到場上的人，再按 <kbd>Enter</kbd>／<kbd>空白鍵</kbd>、方向鍵</td><td>跟點一下一樣選他（<kbd>Shift</kbd> 加選、拿掉）；方向鍵移 1/4 格，<kbd>Shift</kbd>＋方向鍵移一格，改播放頭這一拍的站位（跟拖人一樣，選了好幾個人時整組一起移）</td></tr>
 							<tr><td><kbd>Shift</kbd>＋點</td><td>在場地或泳道名字上多選隊員；在拍點格子上選連續好幾拍</td></tr>
 							<tr><td><kbd>1</kbd>–<kbd>9</kbd>、<kbd>0</kbd>、<kbd>Q</kbd>…（任務角色選單上）</td><td>選任務角色，跳到下一個人；<kbd>Backspace</kbd> 是沒有任務（見 <a href="#actions">4.6</a>）</td></tr>
 							<tr><td><kbd>1</kbd>–<kbd>9</kbd>、<kbd>0</kbd>（選到有環節的動作、場上選好人時）</td><td>放進那一組；0 拿出組（見 <a href="#practice">4.10</a>）</td></tr>
