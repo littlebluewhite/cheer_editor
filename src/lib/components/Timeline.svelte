@@ -38,6 +38,8 @@
 	const WHEEL_STEP = 40;
 
 	let menuOpen = $state(false);
+	let menuEl = $state<HTMLElement>();
+	let addEl = $state<HTMLElement>();
 	let zoomIndex = $state(ZOOMS.indexOf(1));
 	let wheelAcc = 0;
 	let scroller: HTMLDivElement;
@@ -111,6 +113,19 @@
 		session.ask.send(() => addSegment(flow, kind), { done: (r) => onopensegment(r.id) });
 	}
 
+	/** 加段選單：點外面就收起來。 */
+	function menuOutside(e: PointerEvent) {
+		const t = e.target as Node;
+		if (menuOpen && !menuEl?.contains(t) && !addEl?.contains(t)) menuOpen = false;
+	}
+
+	/** 加段選單：Esc 只收選單（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
+	function menuKeys(e: KeyboardEvent) {
+		if (!menuOpen || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		e.stopPropagation();
+		menuOpen = false;
+	}
+
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const ruler = e.currentTarget as HTMLElement;
@@ -138,6 +153,8 @@
 	});
 </script>
 
+<svelte:window onpointerdown={menuOutside} onkeydowncapture={menuKeys} />
+
 <div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel} {@attach pinchZoom}>
 	<div class="inner" style:width={`${width + LABEL_W + 200}px`}>
 		<div class="row segs">
@@ -147,11 +164,12 @@
 					type="button"
 					class="add"
 					aria-label="在最後加一段"
+					bind:this={addEl}
 					aria-expanded={menuOpen}
 					onclick={() => (menuOpen = !menuOpen)}><Icon name="plus" size={14} /></button
 				>
 				{#if menuOpen}
-					<span class="menu">
+					<span class="menu" bind:this={menuEl}>
 						<button type="button" onclick={() => add('music')}>＋音樂段</button>
 						<button type="button" onclick={() => add('chant')}>＋口號段</button>
 					</span>
