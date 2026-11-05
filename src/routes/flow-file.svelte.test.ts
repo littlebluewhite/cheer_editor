@@ -182,7 +182,7 @@ describe('新建', () => {
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 		await newFlow();
 		expect(screen.getByText('全國賽')).toBeTruthy();
-		expect(screen.getByText('已選 0 人')).toBeTruthy();
+		expect(screen.getByText('選了 0 人')).toBeTruthy();
 	});
 
 	it('問「還沒存」時可以按「先存檔」：存好了才繼續', async () => {

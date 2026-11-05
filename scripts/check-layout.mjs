@@ -193,12 +193,12 @@ async function hitAndClick(selector) {
 	return hit;
 }
 
-await check('場地的放大、縮小、全場按鈕點得到，點了倍率會變', async () => {
+await check('場地的放大、縮小、整個場地按鈕點得到，點了倍率會變', async () => {
 	const seen = {};
 	const before = await zoomText();
 	seen.放大 = { ...(await hitAndClick('.rail button[aria-label="放大"]')), 倍率: `${before} → ${await zoomText()}` };
 	const mid = await zoomText();
-	seen.全場 = { ...(await hitAndClick('.rail .tools button:not([aria-label])')), 倍率: `${mid} → ${await zoomText()}` };
+	seen.整個場地 = { ...(await hitAndClick('.rail .tools button:not([aria-label])')), 倍率: `${mid} → ${await zoomText()}` };
 	const after = await zoomText();
 	seen.縮小 = { ...(await hitAndClick('.rail button[aria-label="縮小"]')) };
 	await hitAndClick('.rail button[aria-label="放大"]');
@@ -207,7 +207,7 @@ await check('場地的放大、縮小、全場按鈕點得到，點了倍率會�
 	await hitAndClick('.rail button[aria-label="縮小"]');
 	seen.縮小.倍率 = `${two} → ${await zoomText()}`;
 	const ok =
-		seen.放大.self && seen.全場.self && seen.縮小.self &&
+		seen.放大.self && seen.整個場地.self && seen.縮小.self &&
 		before === '×1.0' && mid !== before && after === '×1.0' && (await zoomText()) !== two;
 	return { ok, value: seen };
 });
@@ -1062,16 +1062,28 @@ await check('列印八拍表：沒有焦點外框；放得下一頁的列不切�
 	return { ok, value: { ...outline, 列: rows } };
 });
 
-await check('390×844（手機）使用說明：名詞表上下排，不用左右滑', async () => {
+await check('390×844（手機）使用說明：名詞表上下排，不用左右滑；看得到短提示、點得到「回目錄」', async () => {
 	await setTouchViewport(390, 844);
-	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/guide` });
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/guide?from=editor` });
 	await waitFor(() => js(`return !!document.querySelector('#words table')`));
 	await sleep(300);
 	const r = await js(`const wraps = [...document.querySelectorAll('.table-wrap')].map((w) => ({
 			表: w.querySelector('th')?.textContent, 內容寬: w.scrollWidth, 框寬: w.clientWidth }));
-		return { 要滑的表: wraps.filter((w) => w.內容寬 > w.框寬 + 1), 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth };`);
+		document.querySelector('#practice').scrollIntoView();
+		await new Promise((r) => setTimeout(r, 150));
+		const top = document.querySelector('.to-toc');
+		const b = top.getBoundingClientRect();
+		const hint = document.querySelector('.head-hint-short').getBoundingClientRect();
+		return { 要滑的表: wraps.filter((w) => w.內容寬 > w.框寬 + 1), 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth,
+			短提示寬: Math.round(hint.width), 大標題是按鈕: document.querySelector('.head .brand').tagName === 'BUTTON',
+			回目錄點得到: document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === top };`);
+	const atToc = await js(`document.querySelector('.to-toc').click(); await new Promise((r) => setTimeout(r, 300));
+		return Math.round(document.querySelector('#toc').getBoundingClientRect().top);`);
 	await clearTouch();
-	return { ok: r.要滑的表.length === 0 && r.頁寬 <= r.畫面寬, value: r };
+	return {
+		ok: r.要滑的表.length === 0 && r.頁寬 <= r.畫面寬 && r.短提示寬 > 0 && r.大標題是按鈕 && r.回目錄點得到 && atToc >= 0 && atToc < 200,
+		value: { ...r, 按了回目錄目錄在: atToc }
+	};
 });
 
 await check('1440×900 右邊欄是新動作表單：「新增動作」不用捲就看得到、點得到（黏在右邊欄底部）', async () => {

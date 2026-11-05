@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Guide from './+page.svelte';
 
 describe('使用說明', () => {
@@ -90,6 +90,56 @@ describe('使用說明', () => {
 		}
 	});
 
+	it('用字跟畫面一樣：「整個場地」「移出組」「0 秒」，不寫「全場」「拿出組」「0s」', () => {
+		render(Guide);
+		const text = document.body.textContent!;
+		for (const gone of ['全場', '拿出組', '0s']) expect(text, gone).not.toContain(gone);
+		expect(text).toContain('按「整個場地」');
+		expect(text).toContain('「✕」移出組');
+	});
+
+	it('每個交叉引用（見 4.x、見下面的「…」、（4.x））都是連結，連得到頁面裡的小標題', () => {
+		render(Guide);
+		const walker = document.createTreeWalker(document.querySelector('main')!, NodeFilter.SHOW_TEXT);
+		for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+			if (n.parentElement!.closest('a')) continue;
+			const t = n.textContent!;
+			expect(t, t).not.toMatch(/見\s*(上面|下面)|見\s*[0-9圖]|（[0-9]\.[0-9]/);
+			// 連結後面不留沒連到的「…」：整句「4.1 的「最近的流程」」都在連結裡
+			if (n.previousSibling?.nodeName === 'A') expect(t, t).not.toMatch(/^\s*的「/);
+		}
+		const links = [...document.querySelectorAll<HTMLAnchorElement>('main a[href^="#"]')];
+		expect(links.length).toBeGreaterThan(60);
+		for (const a of links) expect(document.getElementById(decodeURIComponent(a.hash.slice(1))), a.textContent!).not.toBeNull();
+		// 小標題都有 id，可以直接連過去
+		for (const h4 of document.querySelectorAll('main h4')) expect(h4.id, h4.textContent!).not.toBe('');
+		expect(document.querySelector('a[href="#最近的流程"]')?.textContent).toBe('4.1 的「最近的流程」');
+	});
+
+	it('有一節「隊員怎麼看流程」：開檔、手機的檢視畫面、「我」、八拍表只看自己，不會改到流程', () => {
+		render(Guide);
+		const toc = screen.getByRole('navigation', { name: '目錄' });
+		const link = [...toc.querySelectorAll('a')].find((a) => a.textContent === '4.12 隊員怎麼看流程');
+		expect(link?.getAttribute('href')).toBe('#viewers');
+		const text = document.getElementById('viewers')!.textContent!;
+		for (const words of ['開啟流程檔', '檢視模式', '八拍表這一列', '我', '播放', '印誰', '「編輯」', '只能看、只能播放', '最近的流程', '丟掉']) {
+			expect(text, words).toContain(words);
+		}
+	});
+
+	it('說明跟畫面一樣：練習時播放鍵那一區也藏起來、場上的人按空白鍵是播放、拍點格子一直有環節列', () => {
+		render(Guide);
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
+		expect(row('上方列')).toContain('練習時沒有播放鍵那一區');
+		expect(row('拍點格子')).toContain('環節列');
+		const keys = document.getElementById('keys')!.textContent!;
+		expect(keys).toContain('Tab 停到場上的人，再按 Enter');
+		expect(keys).not.toContain('Enter／空白鍵');
+		expect(keys).toContain('場上的人');
+		expect(document.getElementById('practice')!.textContent).not.toContain('拍點格子多一條「環節」');
+	});
+
 	it('試跑的勾選框重新整理後還在', async () => {
 		localStorage.clear();
 		const first = render(Guide);
@@ -113,5 +163,40 @@ describe('使用說明', () => {
 		expect(text).not.toContain('一組隊員');
 		expect(text).not.toContain('整組帶進來');
 		expect(text).toContain('從別的動作複製人（連任務角色和組）…');
+	});
+
+	describe('從編輯器打開（網址有 ?from=editor）', () => {
+		afterEach(() => {
+			history.replaceState(null, '', '/');
+			vi.restoreAllMocks();
+			vi.useRealTimers();
+		});
+
+		it('左上的大標題是關掉這個分頁；關不掉就寫怎麼回編輯器', async () => {
+			history.replaceState(null, '', '/guide?from=editor');
+			vi.useFakeTimers();
+			const close = vi.spyOn(window, 'close').mockImplementation(() => {});
+			render(Guide);
+			await tick();
+			const back = screen.getByRole('button', { name: '關掉這個分頁，回到編輯器' });
+			await fireEvent.click(back);
+			expect(close).toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(500);
+			expect(screen.getByRole('status').textContent).toContain('關不掉這個分頁');
+		});
+
+		it('不是從編輯器打開：大標題照舊是連到編輯器的連結', async () => {
+			render(Guide);
+			await tick();
+			expect(screen.queryByRole('button', { name: '關掉這個分頁，回到編輯器' })).toBeNull();
+			expect(screen.getByRole('link', { name: '競技啦啦隊流程編輯器' })).toBeTruthy();
+		});
+	});
+
+	it('窄螢幕也有短提示，和一顆「回目錄」連到目錄', () => {
+		render(Guide);
+		expect(document.querySelector('.head-hint-short')?.textContent).toBe('關掉分頁回編輯器');
+		const top = screen.getByRole('link', { name: '回目錄' });
+		expect(document.getElementById(top.getAttribute('href')!.slice(1))).toBe(screen.getByRole('navigation', { name: '目錄' }));
 	});
 });

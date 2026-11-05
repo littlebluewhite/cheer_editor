@@ -356,6 +356,7 @@ describe('改環節', () => {
 		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法 延伸/ }));
 		const box = within(edit()!);
 		expect((box.getByRole('textbox', { name: '這個環節的名字' }) as HTMLInputElement).value).toBe('延伸');
+		expect((box.getByRole('textbox', { name: '這個環節的名字' }) as HTMLInputElement).placeholder).toBe('名字（可不填）');
 		expect((box.getByRole('combobox', { name: '這個環節的種類' }) as HTMLSelectElement).value).toBe('load');
 		expect((box.getByRole('combobox', { name: '這個環節的顏色' }) as HTMLSelectElement).value).toBe('#c62828');
 	});

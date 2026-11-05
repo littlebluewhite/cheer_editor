@@ -795,7 +795,7 @@
 		<input
 			class="custom"
 			aria-label="這個環節的名字"
-			placeholder="名字（可空）"
+			placeholder="名字（可不填）"
 			value={p.name}
 			onchange={(e) => editPhase(p.id, { name: e.currentTarget.value })}
 		/>
