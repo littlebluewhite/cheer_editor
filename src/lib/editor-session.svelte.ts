@@ -5,6 +5,7 @@ import { createContext } from 'svelte';
 import {
 	carryRecords,
 	currentFormation,
+	deleteFormation,
 	groupsPeople,
 	setSquad,
 	squadsOf,
@@ -41,8 +42,24 @@ export class EditorSession {
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 
-	/** 提示（存檔、開檔的結果、被擋的原因…），浮在場地或練習畫面上。 */
-	notice = $state('');
+	#notice = $state('');
+	/** 提示旁邊有「復原」（剛刪掉站位）。換了提示就沒有。 */
+	#noticeUndo = $state(false);
+
+	/** 提示（存檔、開檔的結果、被擋的原因…），浮在場地或練習畫面上；頁面過幾秒或下一個操作就收掉。 */
+	get notice(): string {
+		return this.#notice;
+	}
+
+	set notice(text: string) {
+		this.#notice = text;
+		this.#noticeUndo = false;
+	}
+
+	/** 提示旁邊要不要放「復原」：按了等於按一次復原。 */
+	get noticeUndo(): boolean {
+		return this.#noticeUndo;
+	}
 
 	/**
 	 * 場上那一個問題：拖色條、走位條、挪站位、Delete 刪動作都送到這裡。要問就畫在場上，
@@ -201,13 +218,27 @@ export class EditorSession {
 	}
 
 	/**
-	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示走位被壓短的人數，
+	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示走位被壓短的人，
 	 * 選著這張，播放頭跳到新的站位時間。
 	 */
-	formationMoved(formationId: string, r: { sec: number; squeezed: number }) {
-		this.notice = r.squeezed > 0 ? `有 ${r.squeezed} 人的走位被壓短` : '';
+	formationMoved(formationId: string, r: { sec: number; squeezed: string[] }) {
+		const names = r.squeezed.map((id) => this.#flow?.members.find((m) => m.id === id)?.name);
+		this.notice = names.length ? `走位被壓短：${names.join('、')}` : '';
 		this.selectFormation(formationId);
 		this.jump = { sec: r.sec, replay: true };
+	}
+
+	/** 刪一張站位（縮圖的 ✕、Delete）：不問，提示「已刪掉站位 N」，旁邊有「復原」。 */
+	removeFormation(formationId: string) {
+		const flow = this.#flow;
+		if (!flow) return;
+		const number = flow.formations.findIndex((f) => f.id === formationId) + 1;
+		this.ask.send(() => deleteFormation(flow, formationId), {
+			done: () => {
+				this.notice = `已刪掉站位 ${number}`;
+				this.#noticeUndo = true;
+			}
+		});
 	}
 
 	// ---------- 選取 ----------

@@ -1,13 +1,16 @@
 <script lang="ts">
-	// 出發和到達：播放頭停在站位上（不是開頭那張）時，替選到的人（沒選人就是全隊）設走到這張的出發和到達。
+	// 出發和到達：播放頭停在站位上（不是開頭那張）時，替選到的人（沒選人就是全隊有走位的人）設走到這張的出發和到達。
+	// 在出發或到達按 Enter 就套用（選字中的 Enter 不算）。
 	// 時間的寫法照流程核心：這一段只打段內時間，別的段前面加段名。規則都交給流程核心判斷；被擋就說原因。
 	import { untrack } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		clearWalks,
 		formationAt,
+		formationWalks,
 		memberWalk,
 		parseTime,
+		setTeamWalks,
 		setWalks,
 		timeText,
 		type Walk
@@ -30,8 +33,13 @@
 		const f = formationAt(flow, playheadSec);
 		return f && f !== flow.formations[0] && f.segmentId ? f : null;
 	});
+	/** 改誰：選到的人；沒選人是全隊有走位的人（兩張站位位置不同的人，站著不動的不寫）。 */
 	const memberIds = $derived(
-		selectedMemberIds.length ? selectedMemberIds : flow.members.map((m) => m.id)
+		selectedMemberIds.length
+			? selectedMemberIds
+			: formation
+				? formationWalks(flow, formation.id).map((w) => w.memberId)
+				: []
 	);
 	/** 現在的走法給教練看的樣子；選到的人不一樣時是空字串。 */
 	const current = $derived.by(() => {
@@ -73,7 +81,17 @@
 		if (!arrive) return void notParsed(`到達看不懂${hint}`);
 		const walk: Walk = { depart, arrive };
 		const id = formation.id;
-		ask.send(() => setWalks(flow, id, Object.fromEntries(memberIds.map((m) => [m, walk]))));
+		const ids = selectedMemberIds;
+		ask.send(() =>
+			ids.length ? setWalks(flow, id, Object.fromEntries(ids.map((m) => [m, walk]))) : setTeamWalks(flow, id, walk)
+		);
+	}
+
+	function onkeydown(e: KeyboardEvent) {
+		// 中文輸入法選字時按的 Enter 不算
+		if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+		e.preventDefault();
+		apply();
 	}
 
 	function useDefault() {
@@ -85,15 +103,15 @@
 
 {#if formation && current}
 	<section class="walk-form">
-		<h3>出發和到達<span class="muted">（{selectedMemberIds.length ? `選到的 ${memberIds.length} 人` : '全隊'}）</span></h3>
+		<h3>出發和到達<span class="muted">（{selectedMemberIds.length ? '選到的' : '全隊有走位的'} {memberIds.length} 人）</span></h3>
 		<div class="grid">
 			<div class="field">
 				<span class="cap" aria-hidden="true">出發</span>
-				<input aria-label="出發" bind:value={departText} placeholder={current.depart ? '' : '每人不一樣'} />
+				<input aria-label="出發" bind:value={departText} {onkeydown} placeholder={current.depart ? '' : '每人不一樣'} />
 			</div>
 			<div class="field">
 				<span class="cap" aria-hidden="true">到達</span>
-				<input aria-label="到達" bind:value={arriveText} placeholder={current.arrive ? '' : '每人不一樣'} />
+				<input aria-label="到達" bind:value={arriveText} {onkeydown} placeholder={current.arrive ? '' : '每人不一樣'} />
 			</div>
 		</div>
 		<small class="muted">這一段打「2-5」，口號段打秒數；別的段前面加段名，例：口號 1 12.3</small>

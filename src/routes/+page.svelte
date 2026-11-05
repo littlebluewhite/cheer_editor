@@ -2,10 +2,10 @@
 	import {
 		currentFormation,
 		deleteAction,
-		deleteFormation,
 		firstBeatPreview,
 		formationAt,
 		formationTimes,
+		clashes,
 		formationWalks,
 		memberMarkers,
 		playbackPlan,
@@ -25,19 +25,21 @@
 		writeFlowFile,
 		type ConfirmOption,
 		type Flow,
+		type Clash,
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
 	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
 	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 	import { createPlayer, type Player } from '#lib/audio/player.js';
-	import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
-	import { createBrowserSaver, type FileSaver } from '#lib/file/save.js';
+	import { createIndexedDbDraftStore, type Draft, type DraftStore } from '#lib/file/draft.js';
+	import { browserFilePicker, createBrowserSaver, flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
 	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
 		loadInspectorWidth,
+		MAX_LATENCY_MS,
 		loadLatencyMs,
 		loadTimelineHeight,
 		saveInspectorWidth,
@@ -71,6 +73,8 @@
 		createEngine?: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
 		/** 存檔薄層，一支流程一個（記得存到哪個檔）；測試換成假的。 */
 		createSaver?: () => FileSaver;
+		/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge）；null 是瀏覽器不能（照舊用選檔欄位）。測試換成假的。 */
+		pickFlowFile?: (() => Promise<PickedFile | null>) | null;
 		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
 		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 		/** 草稿存在哪裡（預設 IndexedDB）；測試換成假的（jsdom 沒有 IndexedDB）。 */
@@ -89,6 +93,7 @@
 	let {
 		createEngine = createWebAudioEngine,
 		createSaver = createBrowserSaver,
+		pickFlowFile = browserFilePicker(),
 		decode = decodeAudio,
 		draftStore = createIndexedDbDraftStore(),
 		session = new EditorSession(),
@@ -105,44 +110,90 @@
 
 	const flow = $derived(session.flow);
 	const unsaved = $derived(session.unsaved);
-	$effect(() => setUnsavedChanges(unsaved));
+	/** 欄位裡打了字還沒送出（名字、備註這類欄位在失去焦點時才送進流程）：關分頁前也要問。 */
+	let typing = $state(false);
+	$effect(() => setUnsavedChanges(unsaved || typing));
 	/** 有還沒存的修改時關分頁、重新整理：讓瀏覽器先問（草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。 */
 	function onbeforeunload(e: BeforeUnloadEvent) {
-		if (unsaved) e.preventDefault();
+		if (unsaved || typing) e.preventDefault();
 	}
+	function oninput(e: Event) {
+		if (flow && (e.target as Element | null)?.closest?.('input, textarea, [contenteditable]')) typing = true;
+	}
+	const sent = () => (typing = false);
+	/** 這支流程在檔案裡（從檔案開的、存過檔）：沒有未存的修改就不用草稿。剛建好、救回草稿的不在檔案裡。 */
+	// svelte-ignore state_referenced_locally
+	let onDisk = $state(!!session.flow);
+	/** 這個分頁的流程要不要放在草稿裡。 */
+	const ownsDraft = $derived(!!flow && (unsaved || !onDisk));
 	/** 存檔薄層，一支流程一個（記得存到哪個檔）：第一次存檔才建，換流程就丟掉。 */
 	let saver: FileSaver | null = null;
 	let saving = false;
 	/** 首頁開檔失敗的原因（編輯中失敗就放在上方列的 notice）。 */
 	let openError = $state('');
-	/** 打開時找到的草稿，等教練選救回或丟掉。 */
-	let draftOffer = $state.raw<{ bytes: Uint8Array; name: string } | null>(null);
+	/** 打開時找到的草稿，等教練選救回或丟掉。busy = 按了丟掉，但另一個分頁正在編輯它。 */
+	let draftOffer = $state.raw<{ bytes: Uint8Array; name: string; savedAt: Date | null; busy?: boolean } | null>(null);
 
 	/** 讀過草稿了：在這之前不自動存，免得蓋掉還沒問過的草稿。 */
 	let draftChecked = $state(false);
 
-	onMount(async () => {
-		let bytes: Uint8Array | null = null;
+	/**
+	 * 分頁之間的訊息：草稿只有一份，首頁要丟掉草稿前先問有沒有別的分頁正在編輯它（那個分頁會回答）。
+	 * 沒有 BroadcastChannel 的瀏覽器就當作沒有別的分頁。
+	 */
+	const DRAFT_CHANNEL = 'cheer-editor-draft';
+	let channel: BroadcastChannel | null = null;
+
+	onMount(() => {
+		if (typeof BroadcastChannel === 'function') {
+			channel = new BroadcastChannel(DRAFT_CHANNEL);
+			channel.addEventListener('message', (e) => {
+				if (e.data === 'editing?' && ownsDraft) channel?.postMessage('editing');
+			});
+		}
+		void checkDraft();
+		return () => channel?.close();
+	});
+
+	async function checkDraft() {
+		let draft: Draft | null = null;
 		try {
-			bytes = await draftStore.load();
+			draft = await draftStore.load();
 		} catch {
 			// 讀不到草稿就當作沒有
 		}
-		const r = bytes && readFlowFile(bytes);
+		const r = draft && readFlowFile(draft.bytes);
 		// 等讀草稿的時候教練已經開始編了：不打斷他
-		if (bytes && r && r.kind === 'ok' && !flow) draftOffer = { bytes, name: r.flow.name };
+		if (draft && r && r.kind === 'ok' && !flow) draftOffer = { ...draft, name: r.flow.name };
 		draftChecked = true;
-	});
+	}
+
+	/** 另一個分頁回答它正在編輯草稿嗎（等一下下，沒人回就是沒有）。 */
+	function otherTabEditing(): Promise<boolean> {
+		const ch = channel;
+		if (!ch) return Promise.resolve(false);
+		return new Promise((resolve) => {
+			const reply = (e: MessageEvent) => e.data === 'editing' && done(true);
+			const timer = setTimeout(() => done(false), 300);
+			function done(editing: boolean) {
+				clearTimeout(timer);
+				ch!.removeEventListener('message', reply);
+				resolve(editing);
+			}
+			ch.addEventListener('message', reply);
+			ch.postMessage('editing?');
+		});
+	}
 
 	/**
-	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。
-	 * 存成流程檔或剛開流程檔（沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
+	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。剛建好、還沒改的流程也存，重新整理救得回來。
+	 * 存成流程檔或剛開流程檔（在檔案裡、沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
 	 */
 	const DRAFT_DELAY_MS = 1000;
 	$effect(() => {
 		if (!draftChecked || !flow) return;
 		const f = flow;
-		const keep = unsaved;
+		const keep = ownsDraft;
 		const timer = setTimeout(() => {
 			const done = keep ? draftStore.save(writeFlowFile(f, audioBytes(f))) : draftStore.clear();
 			done.catch(() => {});
@@ -152,12 +203,23 @@
 
 	async function restoreDraft(bytes: Uint8Array) {
 		draftOffer = null;
-		await openBytes(bytes, false);
+		await openBytes(bytes, null);
 	}
 
-	function discardDraft() {
+	async function discardDraft() {
+		const offer = draftOffer;
+		if (!offer) return;
+		if (await otherTabEditing()) {
+			if (draftOffer === offer) draftOffer = { ...offer, busy: true };
+			return;
+		}
 		draftOffer = null;
 		draftStore.clear().catch(() => {});
+	}
+
+	/** 草稿存的時間寫成「11/5 14:03」。 */
+	function draftTime(d: Date): string {
+		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
 	let audios = $state<Record<string, LoadedAudio>>({});
@@ -196,12 +258,15 @@
 		view = next;
 	}
 
+	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。 */
+	const allClashes = $derived(flow ? clashes(flow) : []);
+
 	/**
-	 * 場上的影子和走位線：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線；
-	 * 在兩張站位中間只畫這段的走位線；開頭那張、最後一張之後都不畫。
+	 * 場上的影子、走位線和撞位：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線、撞位；
+	 * 在兩張站位中間只畫這段的走位線和撞位；開頭那張、最後一張之後都不畫。
 	 */
 	const trail = $derived.by(() => {
-		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[] };
+		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
 		if (!flow) return none;
 		const on = formationAt(flow, playheadSec);
 		const i = on
@@ -210,7 +275,8 @@
 		if (i <= 0) return none;
 		return {
 			ghosts: on ? flow.formations[i - 1].pos : none.ghosts,
-			walks: formationWalks(flow, flow.formations[i].id)
+			walks: formationWalks(flow, flow.formations[i].id),
+			clashes: allClashes.filter((c) => c.formationId === flow!.formations[i].id)
 		};
 	});
 
@@ -293,8 +359,13 @@
 		if (playing) play(f);
 	}
 
-	function setLatency(ms: number) {
-		if (!Number.isFinite(ms)) return;
+	/** 清空、不合法或超出範圍：不改，欄位回到現在的值（不然欄位空著，實際還在用舊值）。 */
+	function setLatency(input: HTMLInputElement) {
+		const ms = input.valueAsNumber;
+		if (!(Math.abs(ms) <= MAX_LATENCY_MS)) {
+			input.value = String(latencyMs);
+			return;
+		}
 		latencyMs = ms;
 		saveLatencyMs(ms);
 	}
@@ -390,11 +461,19 @@
 	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
 	 * 選取、提示由 session 清掉。
 	 */
-	function startFlow(f: Flow, loaded: Record<string, LoadedAudio> = {}, saved = false) {
+	function startFlow(
+		f: Flow,
+		from: 'file' | 'draft' | 'new',
+		loaded: Record<string, LoadedAudio> = {},
+		fileSaver: FileSaver | null = null
+	) {
 		pause();
-		session.open(f, saved);
+		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
+		session.open(f, from !== 'draft');
+		onDisk = from === 'file';
+		typing = false;
 		opened++;
-		saver = null;
+		saver = fileSaver;
 		audios = loaded;
 		openError = '';
 		playheadSec = 0;
@@ -435,13 +514,15 @@
 		saving = true;
 		saver ??= createSaver();
 		try {
-			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), `${f.name}.zip`);
+			const fileName = flowFileName(f.name);
+			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), fileName);
 			if (outcome === 'cancelled') return;
 			session.markSaved(f);
+			onDisk = true;
 			const missing = segmentsMissingAudio(f, Object.keys(audios)).length;
 			session.notice = [
 				outcome === 'downloaded'
-					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${f.name}.zip」；用 Chrome 或 Edge 才能直接存回原檔。`
+					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${fileName}」；用 Chrome 或 Edge 才能直接存回原檔。`
 					: '',
 				missing
 					? `存好了，但有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次`
@@ -456,21 +537,38 @@
 		}
 	}
 
-	/** 開檔：四家瀏覽器都用選檔。缺的音樂照開，那一段標紅。 */
+	/** 開檔：選檔欄位（Safari、iPad、Firefox）。缺的音樂照開，那一段標紅。 */
 	async function open(e: Event) {
 		const input = e.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
 		if (!file) return;
-		await openBytes(new Uint8Array(await file.arrayBuffer()), true);
+		await openBytes(new Uint8Array(await file.arrayBuffer()), file.name);
 	}
 
-	/** 打開流程檔的位元組。fromFile = 從檔案開（算已存）；草稿救回來的還算未存。 */
-	async function openBytes(bytes: Uint8Array, fromFile: boolean) {
+	/** 開檔：Chrome、Edge 不跳選檔欄位，改用 showOpenFilePicker，拿到存回那個檔的存檔薄層。 */
+	async function pickOpen(e: Event) {
+		if (!pickFlowFile) return;
+		e.preventDefault();
+		let picked: PickedFile | null;
+		try {
+			picked = await pickFlowFile();
+		} catch {
+			picked = null;
+		}
+		if (picked) await openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+	}
+
+	/**
+	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
+	 * fileSaver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。
+	 */
+	async function openBytes(bytes: Uint8Array, fileName: string | null, fileSaver: FileSaver | null = null) {
 		const r = readFlowFile(bytes);
 		if (r.kind === 'error') {
-			if (flow) session.notice = r.message;
-			else openError = r.message;
+			const message = `打不開「${fileName}」：${r.message}`;
+			if (flow) session.notice = message;
+			else openError = message;
 			return;
 		}
 		const loaded: Record<string, LoadedAudio> = {};
@@ -486,13 +584,22 @@
 			}
 		}
 		unlessUnsaved(() => {
-			startFlow(r.flow, loaded, fromFile);
+			startFlow(r.flow, fileName === null ? 'draft' : 'file', loaded, fileSaver);
 			session.notice = r.missingSegmentIds.length
-				? '有段找不到音樂：點紅色的段重新選檔'
+				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds)}：點紅色的段重新選檔`
 				: unreadable
 					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
 					: '';
 		});
+	}
+
+	/** 缺音樂的段用到的音樂檔名：「主歌.mp3」「副歌.mp3」。 */
+	function missingAudioNames(f: Flow, segmentIds: string[]): string {
+		const ids = new Set(f.segments.flatMap((s) => (s.kind === 'music' && segmentIds.includes(s.id) ? [s.audioId] : [])));
+		return f.audio
+			.filter((a) => ids.has(a.id))
+			.map((a) => `「${a.name}」`)
+			.join('');
 	}
 
 	/** 等教練決定要不要丟掉還沒存的修改：確定就做 then。 */
@@ -512,8 +619,13 @@
 
 	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
 	function unlessUnsaved(then: () => void) {
-		if (unsaved) discardPending = { then };
-		else then();
+		// 換掉的流程是這個分頁放在草稿裡的：草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
+		const go = () => {
+			if (ownsDraft) draftStore.clear().catch(() => {});
+			then();
+		};
+		if (unsaved) discardPending = { then: go };
+		else go();
 	}
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
@@ -535,16 +647,25 @@
 		});
 	});
 
+	/** 提示泡泡留幾毫秒就自己收掉。 */
+	const NOTICE_MS = 5000;
+
+	// 提示泡泡過幾秒自己收掉（換了一句就重算）。
+	$effect(() => {
+		if (!session.notice) return;
+		const timer = setTimeout(() => (session.notice = ''), NOTICE_MS);
+		return () => clearTimeout(timer);
+	});
+
+	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
+	function dismissNotice(e: Event) {
+		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
+	}
+
 	// 在時間軸點了色條（再點選著的那條也算）：右邊欄翻到「動作」那一頁。
 	$effect(() => {
 		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
 	});
-
-	function removeFormation(id: string) {
-		const f = flow;
-		if (!f) return;
-		session.ask.send(() => deleteFormation(f, id));
-	}
 
 	/** 空白鍵照瀏覽器原本的行為的東西：按得下去、選得了、打得了字的。場上的人不算（空白鍵播放）。 */
 	const NATIVE_KEYS =
@@ -601,7 +722,7 @@
 			seek(flow, e.key === 'Home' ? 0 : totalSeconds(flow));
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
 			e.preventDefault();
-			removeFormation(session.selectedFormationId);
+			session.removeFormation(session.selectedFormationId);
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedActionId) {
 			// Mac 的 delete 鍵送的是 Backspace
 			e.preventDefault();
@@ -653,7 +774,16 @@
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
 </svelte:head>
-<svelte:window {onkeydown} {onbeforeunload} bind:innerWidth={windowW} />
+<svelte:window
+	{onkeydown}
+	{onbeforeunload}
+	{oninput}
+	onchange={sent}
+	onfocusout={sent}
+	onpointerdowncapture={dismissNotice}
+	onkeydowncapture={dismissNotice}
+	bind:innerWidth={windowW}
+/>
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
@@ -670,6 +800,9 @@
 			{#if session.notice}
 				<div class="toast">
 					<span role="status">{session.notice}</span>
+					{#if session.noticeUndo}
+						<button type="button" class="ghost undo" aria-label="復原刪掉的站位" onclick={undo}>復原</button>
+					{/if}
 					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (session.notice = '')}
 						><Icon name="close" size={14} /></button
 					>
@@ -719,8 +852,10 @@
 					<input
 						type="number"
 						step="10"
+						min={-MAX_LATENCY_MS}
+						max={MAX_LATENCY_MS}
 						value={latencyMs}
-						onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
+						onchange={(e) => setLatency(e.currentTarget)}
 					/>
 				</label>
 			</div>
@@ -749,7 +884,7 @@
 					>
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
-				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onchange={open} /></label>
+				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 				<button type="button" class="ghost" onclick={startNew}><Icon name="new" />新建</button>
 				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={save}><Icon name="save" />存檔</button>
 			</div>
@@ -766,6 +901,7 @@
 				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
+				clashes={trail.clashes}
 				badges={squadBadges}
 			>
 				{#snippet below()}
@@ -825,7 +961,7 @@
 			{#if flow.members.length === 0}
 				<div class="field-empty">
 					<b>場上還沒有人</b>
-					<span>到右邊的「隊員」加人，他們會出現在場上，可以直接拖。</span>
+					<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 				</div>
 			{/if}
 			{#if session.ask.question}
@@ -994,7 +1130,10 @@
 		<section class="start">
 			{#if draftOffer}
 				<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
-					<p id="draft-offer-text">上次編的「{draftOffer.name}」還沒存，要救回嗎？</p>
+					<p id="draft-offer-text">
+						上次編的「{draftOffer.name}」還沒存，要救回嗎？{#if draftOffer.savedAt}（{draftTime(draftOffer.savedAt)} 存的草稿）{/if}
+					</p>
+					{#if draftOffer.busy}<p class="error">另一個分頁正在編輯這份草稿，所以沒有丟掉。</p>{/if}
 					<div class="row">
 						<button type="button" class="primary" onclick={() => draftOffer && restoreDraft(draftOffer.bytes)}
 							>救回</button
@@ -1003,10 +1142,10 @@
 					</div>
 				</div>
 			{:else}
-				<NewFlowForm oncreate={(f) => startFlow(f, {}, true)} />
+				<NewFlowForm oncreate={(f) => startFlow(f, 'new')} />
 				<div class="home-open">
 					<span>已經有流程檔？</span>
-					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onchange={open} /></label>
+					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 				</div>
 				{#if openError}<p class="error" role="alert">{openError}</p>{/if}
 			{/if}
@@ -1444,9 +1583,10 @@
 		color: var(--text);
 		font-size: 14px;
 	}
+	/* 放在場地下方，不蓋住上方的條號。 */
 	.toast {
 		position: absolute;
-		top: 14px;
+		bottom: 14px;
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 10;
@@ -1477,6 +1617,13 @@
 		width: 24px;
 		height: 24px;
 	}
+	.toast .undo {
+		width: auto;
+		padding: 0 8px;
+		color: #fff;
+		font-weight: 700;
+		text-decoration: underline;
+	}
 	.toast button:hover {
 		background: rgba(255, 255, 255, 0.12);
 		color: #fff;
@@ -1484,7 +1631,7 @@
 	@keyframes drop {
 		from {
 			opacity: 0;
-			transform: translate(-50%, -6px);
+			transform: translate(-50%, 6px);
 		}
 	}
 

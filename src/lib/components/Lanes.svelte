@@ -6,7 +6,9 @@
 	// 拉短會切到拍點時先不改，ask 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
-	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）。
+	// 拖的時候走位條上面即時寫新的拍數，拖出範圍（放開會被擋）當下變色。點一下（滑鼠、手指）選這個人，Shift＋點加進來。
+	// 走位條看起來是細條，能點的範圍比較高（WALK_HIT_H）。
+	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（見 clashes），拖的時候先藏起來。
 	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
 	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
@@ -15,6 +17,7 @@
 	import {
 		actionLabel,
 		actionSeconds,
+		clashes,
 		CUE_KINDS,
 		cueForMember,
 		formationWalks,
@@ -27,6 +30,7 @@
 		phaseLabel,
 		resizeAction,
 		setWalks,
+		timeText,
 		toSeconds,
 		totalSeconds,
 		type ConfirmOption,
@@ -88,6 +92,11 @@
 	const NAME_H = 12;
 	const TRACK_H = 10;
 	const WALK_H = 5;
+	/** 走位條能點的高度（px）：比看到的細條高，往下多出 WALK_HIT_DROP 伸進泳道之間的空隙。 */
+	const WALK_HIT_H = 12;
+	const WALK_HIT_DROP = 3;
+	/** 撞位那段最少畫這麼寬（px）：只撞到一個取樣點時也看得到。 */
+	const CLASH_MIN_W = 4;
 	/** 環節細條的高度（px）。 */
 	const PHASE_H = 3;
 
@@ -143,15 +152,23 @@
 		dx: number;
 	} | null>(null);
 
-	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘。 */
+	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘、撞位的那幾段。 */
 	const walks = $derived.by(() => {
 		const byMember: Record<
 			string,
-			({ formationId: string } & Pick<FormationWalk, 'departSec' | 'arriveSec' | 'tooFast' | 'tiring'>)[]
+			({ formationId: string; clashes: { startSec: number; endSec: number }[] } & Pick<
+				FormationWalk,
+				'departSec' | 'arriveSec' | 'tooFast' | 'tiring'
+			>)[]
 		> = {};
 		for (const b of flow.formations) {
 			for (const { memberId, departSec, arriveSec, tooFast, tiring } of formationWalks(flow, b.id)) {
-				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring });
+				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, clashes: [] });
+			}
+		}
+		for (const c of clashes(flow)) {
+			for (const id of c.memberIds) {
+				byMember[id]?.find((w) => w.formationId === c.formationId)?.clashes.push(c);
 			}
 		}
 		return byMember;
@@ -187,11 +204,11 @@
 		session.ask.send(run, { revert: () => {} });
 	}
 
-	/** 上一次按下走位條的是不是手指：手指點沒選到的人的走位條＝選他。 */
-	let walkTouch = false;
+	/** 上一次按下走位條後真的拖了：放開後瀏覽器接著送的 click 不算點一下。 */
+	let walkMoved = false;
 
 	function startWalkDrag(e: PointerEvent, formationId: string, memberId: string) {
-		walkTouch = e.pointerType === 'touch';
+		walkMoved = false;
 		if (e.button !== 0 || touchOnUnpicked(e, selected.has(memberId))) return;
 		const end = (e.target as Element).closest<HTMLElement>('[data-end]')?.dataset.end;
 		const mode: WalkEnd = end === 'depart' || end === 'arrive' ? end : 'move';
@@ -205,19 +222,24 @@
 				if (walkDrag) walkDrag.dx = ev.clientX - walkDrag.x0;
 			},
 			() => {
-				if (walkDrag && Math.abs(walkDrag.dx) >= DRAG_PX) dropWalk(walkDrag);
+				if (walkDrag && Math.abs(walkDrag.dx) >= DRAG_PX) {
+					walkMoved = true;
+					dropWalk(walkDrag);
+				}
 				walkDrag = null;
 			},
 			() => (walkDrag = null)
 		);
 	}
 
-	function tapWalk(memberId: string) {
-		if (walkTouch && !selected.has(memberId)) session.pickMember(memberId, false);
+	/** 點一下走位條：選這個人（已經選到就不動，選到的一組才拖得動）；Shift＋點加進來或拿掉。 */
+	function tapWalk(e: MouseEvent, memberId: string) {
+		if (walkMoved) return;
+		if (e.shiftKey || !selected.has(memberId)) session.pickMember(memberId, e.shiftKey);
 	}
 
-	/** 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多；一起交給 setWalks，被擋就整組還原。 */
-	function dropWalk(d: NonNullable<typeof walkDrag>) {
+	/** 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多：每個人新的出發和到達。 */
+	function draggedWalks(d: NonNullable<typeof walkDrag>): Record<string, Walk> {
 		const seconds = (id: string) => {
 			const w = memberWalk(flow, d.formationId, id)!;
 			return { depart: toSeconds(flow, w.depart), arrive: toSeconds(flow, w.arrive) };
@@ -233,8 +255,31 @@
 				arrive: nearestPosition(flow, d.mode === 'depart' ? arrive : arrive + shift)
 			};
 		}
+		return next;
+	}
+
+	/** 放開：一起交給 setWalks，被擋就整組還原。 */
+	function dropWalk(d: NonNullable<typeof walkDrag>) {
+		const next = draggedWalks(d);
 		session.ask.send(() => setWalks(flow, d.formationId, next), { revert: () => {} });
 	}
+
+	/** 拖的時候被拖的那個人新的拍數（這張站位那一段只寫段內時間），out = 放開會被擋。 */
+	const walkReadout = $derived.by(() => {
+		const d = walkDrag;
+		if (!d || d.dx === 0) return null;
+		const next = draggedWalks(d);
+		const own = next[d.memberId];
+		const home = flow.formations.find((f) => f.id === d.formationId)!.segmentId!;
+		const t = (p: Walk['depart']) => timeText(flow, home, p);
+		const text =
+			d.mode === 'depart'
+				? `出發 ${t(own.depart)}`
+				: d.mode === 'arrive'
+					? `到達 ${t(own.arrive)}`
+					: `${t(own.depart)} 到 ${t(own.arrive)}`;
+		return { text, out: setWalks(flow, d.formationId, next).kind !== 'ok' };
+	});
 </script>
 
 {#each flow.members as m, i (m.id)}
@@ -339,13 +384,38 @@
 					class:dragging={d !== null}
 					class:fast={w.tooFast}
 					class:tiring={w.tiring}
+					class:out={d?.memberId === m.id && walkReadout?.out}
 					data-walk={w.formationId}
 					style:left={`${w.departSec * pxPerSec + dl}px`}
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
-					title="走位：拖左端改出發、拖右端改到達、拖中間一起挪"
+					style:height={`${WALK_HIT_H}px`}
+					style:bottom={`${-WALK_HIT_DROP}px`}
+					title="走位：點一下選這個人；拖左端改出發、拖右端改到達、拖中間一起挪"
 					onpointerdown={(e) => startWalkDrag(e, w.formationId, m.id)}
-					onclick={() => tapWalk(m.id)}
+					onclick={(e) => tapWalk(e, m.id)}
 				>
+					<span
+						class="strip"
+						data-walk-strip
+						style:height={`${WALK_H}px`}
+						style:bottom={`${WALK_HIT_DROP}px`}
+					></span>
+					{#if !d}
+						{#each w.clashes as c, i (i)}
+							<span
+								class="clash"
+								data-walk-clash
+								title="撞位"
+								style:left={`${(c.startSec - w.departSec) * pxPerSec}px`}
+								style:width={`${Math.max((c.endSec - c.startSec) * pxPerSec, CLASH_MIN_W)}px`}
+								style:height={`${WALK_H}px`}
+								style:bottom={`${WALK_HIT_DROP}px`}
+							></span>
+						{/each}
+					{/if}
+					{#if d?.memberId === m.id && walkReadout}
+						<span class="readout" class:out={walkReadout.out} data-walk-readout>{walkReadout.text}</span>
+					{/if}
 					<span class="end l" data-end="depart"></span>
 					<span class="end r" data-end="arrive"></span>
 				</button>
@@ -573,43 +643,87 @@
 			width: min(16px, 40%);
 		}
 	}
-	/* 走位條：細條貼在泳道下緣，蓋在色條上面；兩端是把手。 */
+	/* 走位條：按鈕本身透明、比較高（好點），裡面的細條（.strip）貼在泳道下緣，蓋在色條上面；兩端是把手。 */
 	.walk {
 		position: absolute;
-		bottom: 0;
-		height: 5px;
 		z-index: 3;
 		padding: 0;
 		border: none;
-		border-radius: 3px;
-		background: var(--ink, #16213a);
-		opacity: 0.8;
+		border-radius: 0;
+		background: transparent;
 		cursor: grab;
 		user-select: none;
+		--walk-color: var(--ink, #16213a);
+	}
+	.walk:hover {
+		background: transparent;
+	}
+	.strip {
+		position: absolute;
+		left: 0;
+		right: 0;
+		border-radius: 3px;
+		background: var(--walk-color);
+		opacity: 0.8;
+		pointer-events: none;
+	}
+	/* 拖的時候的拍數：浮在走位條上面。拖出範圍（放開會被擋）變紅底。 */
+	.readout {
+		position: absolute;
+		bottom: calc(100% + 2px);
+		left: 50%;
+		transform: translateX(-50%);
+		padding: 2px 6px;
+		border-radius: 4px;
+		background: var(--ink, #16213a);
+		color: #fff;
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 14px;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+		pointer-events: none;
+	}
+	.readout.out {
+		background: var(--danger, #c8372d);
 	}
 	.walk.picked {
 		touch-action: none;
 	}
-	.walk:hover,
-	.walk.dragging {
+	.walk:hover .strip,
+	.walk.dragging .strip {
 		opacity: 1;
 	}
 	/* 走太快：紅色；很喘：橘色。跟場地上的線一樣。 */
 	.walk.fast {
-		background: var(--walk-fast, #e5202e);
-		opacity: 0.9;
+		--walk-color: var(--walk-fast, #e5202e);
 	}
 	.walk.tiring {
-		background: var(--walk-tiring, #ff9500);
+		--walk-color: var(--walk-tiring, #ff9500);
+	}
+	.walk.fast .strip,
+	.walk.tiring .strip {
 		opacity: 0.9;
+	}
+	/* 撞位：走位條上撞到的那段疊紫色，跟紅、橘分得開。 */
+	.clash {
+		position: absolute;
+		border-radius: 3px;
+		background: var(--walk-clash, #a855f7);
+		pointer-events: none;
+	}
+	/* 拖出範圍：細條變成虛線的危險色，放開會還原。 */
+	.walk.out .strip {
+		background: repeating-linear-gradient(90deg, var(--danger, #c8372d) 0 4px, transparent 4px 6px);
+		opacity: 1;
 	}
 	.walk.dragging {
 		cursor: grabbing;
 	}
 	.end {
 		position: absolute;
-		top: -2px;
-		bottom: -2px;
+		top: 0;
+		bottom: 0;
 		width: 6px;
 		cursor: ew-resize;
 	}

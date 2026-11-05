@@ -13,13 +13,15 @@ export {
 	GENDERS,
 	GLOBAL_ROLES,
 	MAX_MEMBERS,
+	addMemberLines,
 	addMembers,
 	deleteMember,
 	memberMarkers,
+	moveMember,
 	setMarkers,
 	updateMember
 } from './members';
-export type { Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
+export type { AddMembersResult, Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
 
 export { ACTION_CATEGORIES, actionLabel, actionSeconds } from './action-types';
 export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
@@ -122,6 +124,7 @@ export {
 	positionsAt,
 	renameFormation,
 	setPositions,
+	setTeamWalks,
 	setWalks
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk } from './formation';
@@ -133,12 +136,14 @@ export {
 	AUDIO_EXTENSIONS,
 	DEFAULT_BPM,
 	MAX_BPM,
+	MAX_CHANT_SEC,
+	MAX_EIGHTS,
 	MIN_BPM,
 	addSegment,
 	beatLines,
+	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
-	musicLengthFromAudio,
 	updateSegment
 } from './segment';
 export type {
@@ -160,6 +165,7 @@ export {
 	lengthText,
 	nearestPosition,
 	parseAt,
+	parseNumber,
 	parseLength,
 	parseTime,
 	positionText,
@@ -195,3 +201,6 @@ export type {
 	Rect,
 	Strip
 } from './field';
+
+export { clashes } from './clash';
+export type { Clash } from './clash';
