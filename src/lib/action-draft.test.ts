@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	addAction,
+	addPhase,
 	addCustomRole,
 	addMembers,
 	addSegment,
@@ -13,7 +14,7 @@ import {
 	type Flow
 } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { flowOf } from '#lib/test-flows.js';
+import { flowOf, libSample, squadNumbers } from '#lib/test-flows.js';
 import { manualFrames, testEditor } from '#lib/test-fakes.js';
 import type { ActionDraft } from './action-draft.svelte.js';
 
@@ -281,6 +282,16 @@ describe('動作表單的草稿：送出（開始、長度由核心讀）', () =
 		expect(session.canUndo).toBe(true);
 		expect(session.selectedActionId).toBe('x1');
 		expect(draft.action).toBe(session.flow!.actions[0]);
+	});
+
+	it('「從別的動作複製人」再新增：組跟著過去，新動作加第一個環節後還是那幾組', () => {
+		const { draft, session, playback } = setup(libSample());
+		playback.seek(6.4);
+		draft.copyMembers(session.flow!.actions[0]);
+		draft.add();
+		const id = session.selectedActionId!;
+		session.change(flowOf(addPhase(session.flow!, id, { kind: 'whole', name: '', beats: { at: 0, len: 16 } })));
+		expect(squadNumbers(session.flow!.actions.find((a) => a.id === id)!)).toEqual([1, 1, 2, 2]);
 	});
 
 	it.each([
