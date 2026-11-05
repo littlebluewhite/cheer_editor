@@ -143,6 +143,16 @@ describe('練習：記錄頁記分段練', () => {
 		expect(dayRow('小A')).toEqual(['✓']);
 	});
 
+	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」，點了就存成整個做', async () => {
+		const { session } = await practice();
+		expect(card('第 1 組 小美').queryByRole('radiogroup')).not.toBeNull();
+		await pickAction('騰翻');
+		expect(card('小A').queryByRole('radiogroup')).toBeNull();
+		expect(card('小A').queryByText('只練幾個環節')).toBeNull();
+		await tap('小A', '整體 騰翻', '成功');
+		expect(session.flow!.actions.find((a) => a.id === 'x3')!.successRate!.records.map((r) => r.whole)).toEqual([true]);
+	});
+
 	it('點到一半就換動作：這一次不存', async () => {
 		await practice();
 		const who = '第 1 組 小美';
@@ -442,7 +452,7 @@ describe('練習：總表', () => {
 		expect(blockRows('技巧·Lib')[1][1]).toBe('100% 1 次');
 		await filter('期間', '最近 7 天');
 		expect(blockRows('技巧·Lib')[1][1]).toBe('50% 2 次');
-		await filter('期間', '今天');
+		await filter('期間', '11/4');
 		await filter('練法', '只看全上');
 		expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '0% 1 次', '—', '0% 1 次']);
 		await filter('練法', '只看分段練');
@@ -450,11 +460,44 @@ describe('練習：總表', () => {
 		await filter('練法', '全部');
 		await filter('大字看', '完成率');
 		expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '100% 1 次', '60% 5 次', '67% 6 次']);
-		expect(blockRows('技巧·Lib')[4]).toEqual(['整次', '0% 1 次', '60% 5 次', '50% 6 次']);
+		// 整次一律是整次成功率：切到完成率時寫清楚
+		expect(blockRows('技巧·Lib')[4]).toEqual(['整次成功率', '0% 1 次', '60% 5 次', '50% 6 次']);
+		await filter('大字看', '成功率');
+		expect(blockRows('技巧·Lib')[4][0]).toBe('整次');
+	});
+
+	it('期間的第一個選項寫出選的日期；選的是今天才寫「今天」', async () => {
+		await summary();
+		const options = () => within(screen.getByRole('group', { name: '期間' })).getAllByRole('button').map((b) => b.textContent?.trim());
+		expect(options()).toEqual(['11/4', '最近 7 天', '全部']);
+		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		const [, m, d] = localDate().split('-').map(Number);
+		expect(options()[0]).toBe(`今天 ${m}/${d}`);
+	});
+
+	it('明細照格子的篩選：11/4＋只看分段練，只列 11/4 分段練的那幾次', async () => {
+		await summary();
+		await filter('練法', '只看分段練');
+		await fireEvent.click(cell('第 2 組 小芳', '下法'));
+		const days = () =>
+			within(screen.getByRole('complementary', { name: '明細' }))
+				.getAllByRole('listitem')
+				.filter((li) => li.querySelector('time'))
+				.map((li) => li.textContent?.replace(/\s+/g, ''));
+		expect(days()).toEqual(['2026-11-04✓✓✓✗✗']);
+		// 第 1 組 11/4 只有全上：分段練沒有
+		await fireEvent.click(cell('第 1 組 小美', '上法'));
+		expect(within(screen.getByRole('complementary', { name: '明細' })).getByText('還沒有紀錄')).toBeTruthy();
+		// 換篩選，打開著的明細跟著變
+		await filter('期間', '全部');
+		expect(days()).toEqual(['2026-11-01✗']);
 	});
 
 	it('點格子：右邊滑出這組、這個環節每天的每一次，全上的有標出來；可以關掉', async () => {
 		await summary();
+		await filter('期間', '全部');
 		await fireEvent.click(cell('第 1 組 小美', '上法'));
 		const detail = within(screen.getByRole('complementary', { name: '明細' }));
 		expect(detail.getByRole('heading').textContent).toBe('第 1 組 小美 上法');

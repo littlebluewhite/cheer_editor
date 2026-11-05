@@ -40,13 +40,14 @@
 {/if}
 
 <style>
-	/* 放在場地左邊那一欄（放大縮小下面），不蓋到場地。 */
+	/* 放在場地左邊那一欄（放大縮小下面），不蓋到場地。
+	   不跟著左欄縮：左欄放不下就捲，卡不會被切掉下緣。 */
 	.cues-now {
 		display: flex;
 		flex-direction: column;
+		flex-shrink: 0;
 		gap: 8px;
 		max-width: 100%;
-		min-height: 0;
 		overflow: hidden;
 		pointer-events: none;
 	}

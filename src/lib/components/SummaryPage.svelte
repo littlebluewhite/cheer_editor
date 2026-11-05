@@ -3,7 +3,7 @@
 	// 每個有記成功率、有環節的動作一塊，照流程順序：一列一個環節，最後一列「整次」；
 	// 一欄一組（騰翻、跳躍一欄一個人），最後一欄「合計」。
 	// 格子大字是選的比例（成功率或完成率；整次一律是整次成功率），小字是次數；顏色照 rateBand，數字一定寫出來。
-	// 點一組的格子，右邊滑出這組、這個環節每天的每一次（全上的那幾次有標出來）。
+	// 點一組的格子，右邊滑出這組、這個環節每天的每一次（全上的那幾次有標出來），篩選和格子一樣。
 	// 「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表。
 	import {
 		actionLabel,
@@ -22,6 +22,7 @@
 		type Tally
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 
@@ -38,11 +39,16 @@
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
 
-	const PERIODS: { key: Period; label: string }[] = [
-		{ key: 'today', label: '今天' },
+	/** 選的那天寫成「11/4」；是今天才加「今天」（日期是右上角選的，不一定是今天）。 */
+	const dayLabel = $derived.by(() => {
+		const [, m, d] = date.split('-').map(Number);
+		return date === localDate() ? `今天 ${m}/${d}` : `${m}/${d}`;
+	});
+	const PERIODS = $derived<{ key: Period; label: string }[]>([
+		{ key: 'today', label: dayLabel },
 		{ key: 'week', label: '最近 7 天' },
 		{ key: 'all', label: '全部' }
-	];
+	]);
 	const PRACTICES: { key: PracticeKind | 'all'; label: string }[] = [
 		{ key: 'all', label: '全部' },
 		{ key: 'runThrough', label: '只看全上' },
@@ -77,7 +83,7 @@
 		const phase = block?.action.successRate?.phases.find((p) => p.id === phaseId);
 		const column = block?.table.columns.find((c) => c.who === who);
 		if (!block || !phase || !column) return null;
-		return { title: `${column.name} ${phaseLabel(phase)}`, days: cellDetail(block.action, who, phaseId) };
+		return { title: `${column.name} ${phaseLabel(phase)}`, days: cellDetail(block.action, who, phaseId, filter) };
 	});
 </script>
 
@@ -149,7 +155,8 @@
 								</tr>
 							{/each}
 							<tr class="whole">
-								<th scope="row">整次</th>
+								<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
+								<th scope="row">{rate === 'completion' ? '整次成功率' : '整次'}</th>
 								{#each table.columns as col (col.who)}
 									{@const c = wholeCell(col)}
 									<td class={rateBand(c.pct)}>{@render number(c)}</td>
@@ -299,8 +306,9 @@
 	.empty {
 		color: var(--muted);
 	}
+	/* 蓋在練習畫面上（不蓋上方列）：位置照練習畫面那一格（.practice-host），不跟著總表捲。 */
 	.detail {
-		position: fixed;
+		position: absolute;
 		top: 0;
 		right: 0;
 		bottom: 0;

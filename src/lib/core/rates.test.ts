@@ -15,7 +15,8 @@ import {
 	type Action,
 	type Flow,
 	type Mark,
-	type NewAttempt
+	type NewAttempt,
+	type RateFilter
 } from './index';
 import { flowOf, libSample } from '../test-flows';
 
@@ -264,6 +265,20 @@ describe('一格的明細', () => {
 		]);
 		expect(cellDetail(x1(flow), 'g1', 'p1').map((d) => d.marks.map((m) => m.mark).join(''))).toEqual(['✓✓✓', '✓']);
 		expect(cellDetail(x1(flow), 'g2', 'p2')).toEqual([]);
+	});
+
+	it('套用和格子一樣的篩選：期間、練法', () => {
+		const flow = recorded(
+			attempt('✓··', { date: '2026-11-01' }),
+			attempt('✗··', { date: '2026-11-04' }),
+			attempt('△✓✓', { date: '2026-11-04', ...runThrough('r1') }),
+			attempt('✓··', { date: '2026-11-05' })
+		);
+		const marks = (filter: RateFilter) => cellDetail(x1(flow), 'g1', 'p1', filter).map((d) => `${d.date} ${d.marks.map((m) => m.mark).join('')}`);
+		expect(marks({ from: '2026-11-04', to: '2026-11-04', practice: 'drill' })).toEqual(['2026-11-04 ✗']);
+		expect(marks({ from: '2026-11-02', to: '2026-11-04' })).toEqual(['2026-11-04 ✗△']);
+		expect(marks({ practice: 'runThrough' })).toEqual(['2026-11-04 △']);
+		expect(marks({})).toEqual(['2026-11-01 ✓', '2026-11-04 ✗△', '2026-11-05 ✓']);
 	});
 });
 
