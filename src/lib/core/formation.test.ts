@@ -22,6 +22,7 @@ import {
 	positionsAt,
 	renameFormation,
 	setPositions,
+	setTeamWalks,
 	setWalks,
 	updateSegment,
 	type CommandResult,
@@ -640,6 +641,19 @@ describe('設出發和到達', () => {
 		expect(memberWalk(walking(), 'f3', A)).toEqual({ depart: at('s1', 100), arrive: at('s2', 44) });
 	});
 
+	it('對全隊套用：只寫進兩張站位位置不同的人，站著不動的人不寫', () => {
+		// walking()：走到 f2 時小A 從 [0, 0] 走到 [4, 0]，小B 一直站在 [-2, 0]
+		const w = { depart: at('s1', 20), arrive: at('s1', 50) };
+		const flow = okFlow(setTeamWalks(walking(), 'f2', w));
+		expect(flow.formations[1].walks).toEqual({ [A]: w });
+		// 擋下來的規則跟 setWalks 一樣
+		expect(setTeamWalks(walking(), 'f2', { depart: at('s1', 50), arrive: at('s1', 50) })).toEqual({
+			kind: 'blocked',
+			message: '出發要早於到達'
+		});
+		expect(setTeamWalks(walking(), 'f1', w).kind).toBe('blocked');
+	});
+
 	it('清掉設定：回到預設，沒清的人留著', () => {
 		const set = okFlow(
 			setWalks(walking(), 'f2', {
@@ -976,7 +990,7 @@ describe('挪站位', () => {
 		expect(memberWalk(after, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 50) });
 	});
 
-	it('下一張的設定不改；走位比挪之前短的人數（兩段都算，一人算一次）是 squeezed', () => {
+	it('下一張的設定不改；走位比挪之前短的人（兩段都算，一人算一次，照名單順序）是 squeezed', () => {
 		// 小A 走到 f3：自己設 22 秒出發、27.6 秒（口號 1 第 20 個 0.1 秒）到。
 		const flow = okFlow(
 			setWalks(walking(), 'f3', { [A]: { depart: at('s1', 110), arrive: at('s2', 20) } })
@@ -986,10 +1000,10 @@ describe('挪站位', () => {
 		if (r.kind !== 'ok') throw new Error('擋下來了');
 		expect(r.flow.formations[2]).toBe(flow.formations[2]);
 		expect(memberWalk(r.flow, 'f3', A)).toEqual({ depart: at('s1', 120), arrive: at('s2', 20) });
-		expect(r.squeezed).toBe(1);
+		expect(r.squeezed).toEqual([A]);
 		// 往前挪、速度不變：沒人被壓短；碰到前一張被夾：壓短
-		expect(moveFormation(early(), 'f2', at('s1', 84))).toMatchObject({ squeezed: 0 });
-		expect(moveFormation(early(), 'f2', at('s1', 40))).toMatchObject({ squeezed: 1 });
+		expect(moveFormation(early(), 'f2', at('s1', 84))).toMatchObject({ squeezed: [] });
+		expect(moveFormation(early(), 'f2', at('s1', 40))).toMatchObject({ squeezed: [A] });
 	});
 
 	it('前一張以前、後一張以後，每個人每一刻的位置都不變', () => {
