@@ -6,6 +6,9 @@ export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './
 export { createFlow, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
+export { MAX_CHARS, charCount, firstChars } from './text-length';
+export type { LimitedText } from './text-length';
+
 export { missingAudioNames, readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
 export type { AudioBytes, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
 
@@ -27,6 +30,7 @@ export { ACTION_CATEGORIES, actionLabel, actionSeconds } from './action-types';
 export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
 export {
 	actionSlotAt,
+	busyMembers,
 	addAction,
 	deleteAction,
 	idleAt,

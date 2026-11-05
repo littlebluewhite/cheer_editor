@@ -8,6 +8,7 @@ import { withWalks, type Position } from './formation';
 import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { settle } from './settle';
 import { perPerson, recordItems, type Attempt } from './success-rate';
+import { tooLong } from './text-length';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -43,9 +44,6 @@ export interface NewMemberInput {
 	gender: Gender | null;
 	globalRole: GlobalRole | null;
 }
-
-/** 隊員名字最多幾個字。 */
-const MAX_NAME_CHARS = 20;
 
 /** 加隊員多帶的結果：沒加進去的那幾行的原因，和那幾行原本的字（畫面留在輸入框給教練改）。 */
 export interface AddMembersResult {
@@ -250,13 +248,17 @@ export function deleteMember(
 		const records = (list: Action[]) => list.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
 		const cleared = records(flow.actions) - records(actions);
 		const role = GLOBAL_ROLES.find((r) => r.key === member.globalRole)?.label;
+		const lostTop = inActions.filter(
+			(a) => !emptied.includes(a) && a.members.some((m) => m.memberId === id && m.role === '上層')
+		);
 		const where = !inActions.length
 			? '他不在任何動作裡'
 			: `他在 ${inActions.length} 個動作裡` + (emptied.length ? `，其中 ${emptied.length} 個會被整個刪掉` : '');
 		return needsConfirm(
 			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄` : ''),
+				(cleared ? `，會清掉 ${cleared} 次紀錄` : '') +
+				(lostTop.length ? `，${lostTop.map((a) => `「${actionLabel(a)}」`).join('、')}會少了上層` : ''),
 			emptied.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）`;
@@ -378,8 +380,7 @@ function samePlace(a: Position, b: Position): boolean {
 /** 名字的毛病：空的、太長；沒問題是 null。名字先去掉前後空白再傳進來。 */
 function memberNameProblem(name: string): string | null {
 	if (!name) return '請填隊員名字';
-	if (Array.from(name).length > MAX_NAME_CHARS) return `隊員名字最多 ${MAX_NAME_CHARS} 個字`;
-	return null;
+	return tooLong('memberName', name);
 }
 
 /** 下一個沒用過的 m 編號。 */

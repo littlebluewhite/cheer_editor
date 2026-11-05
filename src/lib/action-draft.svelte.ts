@@ -8,6 +8,7 @@ import {
 	actionSlotAt,
 	addAction,
 	atText,
+	busyMembers,
 	defaultRoles,
 	lengthText,
 	readLength,
@@ -204,7 +205,31 @@ export class ActionDraft {
 
 	/** 加一個人（「＋加人…」）：任務角色照大類和全局角色先填。 */
 	addMember(memberId: string) {
-		this.#setMembers([...this.#draft.members, newActionMember(this.#session.flow!, memberId, this.#draft.category)]);
+		this.addMembers([memberId]);
+	}
+
+	/** 加好幾個人（「把選的 N 人加進來」）：任務角色照大類和全局角色先填。 */
+	addMembers(memberIds: string[]) {
+		const flow = this.#session.flow!;
+		const added = memberIds.map((id) => newActionMember(flow, id, this.#draft.category));
+		this.#setMembers([...this.#draft.members, ...added]);
+	}
+
+	/**
+	 * 草稿這段時間裡已經在別的動作裡的人：隊員 id → 那個動作（表單標出來、「＋加人…」的選項也標）。
+	 * 開始、長度看不懂時是空的。
+	 */
+	get busy(): Map<string, Action> {
+		const segment = this.#segment;
+		if (!segment) return new Map();
+		const read = this.#read(segment);
+		return read.kind === 'ok' ? busyMembers(this.#session.flow!, { ...read.value, id: this.#action?.id }) : new Map();
+	}
+
+	/** 拿掉草稿裡同一時間在別的動作裡的人（「拿掉這幾個人」）。 */
+	dropBusy() {
+		const busy = this.busy;
+		this.#setMembers(this.#draft.members.filter((m) => !busy.has(m.memberId)));
 	}
 
 	/** 把第 i 個人移出。 */

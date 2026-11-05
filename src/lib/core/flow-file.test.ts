@@ -266,11 +266,16 @@ describe('流程檔：版本', () => {
 		expect(file.kind === 'error' ? file.message : null).toBe(opened);
 	});
 
-	it('名字長度開檔時不管：流程名、隊員名再長都打得開', () => {
+	it('字數開檔時不管：流程名、隊員名、動作名稱、備註、站位名稱、自訂角色再長都打得開', () => {
 		const flow = JSON.parse(JSON.stringify(sample()));
 		flow.name = '名'.repeat(100);
 		flow.members[0].name = '名'.repeat(100);
-		expect(readFlowFile(zipOf({ formatVersion: 8, flow })).kind).toBe('ok');
+		flow.actions[0].name = '名'.repeat(600);
+		flow.actions[0].note = '名'.repeat(600);
+		flow.formations[0].name = '名'.repeat(600);
+		flow.customRoles = [{ id: 'r1', name: '名'.repeat(100), meaning: '' }];
+		const file = readFlowFile(zipOf({ formatVersion: 8, flow }));
+		expect(file.kind === 'ok' && file.flow.actions[0].name).toBe('名'.repeat(600));
 	});
 
 	/** 一筆走位設定，段和時間可以換成壞的。 */
