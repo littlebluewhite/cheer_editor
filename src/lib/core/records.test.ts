@@ -8,6 +8,7 @@ import {
 	deleteAction,
 	deleteLastAttempt,
 	deleteMember,
+	restoreAttempt,
 	keptAttempt,
 	addPhase,
 	readFlowFile,
@@ -129,38 +130,86 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 });
 
 describe('刪掉上一次', () => {
-	/** 11/04：第 1 組 t1、第 2 組 t2、第 1 組 t3；11/05：第 1 組 t4。 */
+	/** 11/04：第 1 組 t1、第 2 組 t2、第 1 組 t3、第 1 組全上 t4；11/05：第 1 組 t5。 */
 	function recorded(): Flow {
 		let flow = sample();
-		for (const input of [
-			drill({ p1: '✓' }),
-			drill({ p1: '✓' }, { who: 'g2' }),
-			drill({ p1: '✗' }),
-			drill({ p1: '△' }, { date: '2026-11-05' })
-		]) {
+		for (const input of [drill({ p1: '✓' }), drill({ p1: '✓' }, { who: 'g2' }), drill({ p1: '✗' })]) {
 			flow = flowOf(recordAttempt(flow, 'x1', input));
 		}
-		return flow;
+		flow = flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
+		return flowOf(recordAttempt(flow, 'x1', drill({ p1: '△' }, { date: '2026-11-05' })));
 	}
 
-	it('拿掉這組在那天最後記的一次，別組、別天的不動', () => {
-		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-04'));
-		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't4']);
-		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', '2026-11-04'));
-		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t2', 't4']);
+	it('拿掉這組在那天、那種練法最後記的一次，別組、別天、別種練法的不動', () => {
+		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-04', 'drill'));
+		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't4', 't5']);
+		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', '2026-11-04', 'drill'));
+		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t2', 't4', 't5']);
 	});
 
-	it('那天這組沒有紀錄就擋下來', () => {
-		expect(deleteLastAttempt(recorded(), 'x1', 'g2', '2026-11-05')).toEqual({
+	it('全上的最後一筆只有指定全上才刪', () => {
+		const flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-04', 'runThrough'));
+		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't5']);
+	});
+
+	it('回傳刪掉的那一次和它原本排第幾', () => {
+		const r = deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-04', 'drill');
+		expect(r.kind === 'ok' && [r.attempt.id, r.index]).toEqual(['t3', 2]);
+	});
+
+	it('那天這組這種練法沒有紀錄就擋下來', () => {
+		expect(deleteLastAttempt(recorded(), 'x1', 'g2', '2026-11-05', 'drill')).toEqual({
+			kind: 'blocked',
+			message: '這一天還沒有紀錄'
+		});
+		expect(deleteLastAttempt(recorded(), 'x1', 'g2', '2026-11-04', 'runThrough')).toEqual({
 			kind: 'blocked',
 			message: '這一天還沒有紀錄'
 		});
 	});
 
 	it('刪掉的 id 不再發', () => {
-		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-05'));
+		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-05', 'drill'));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' })));
-		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't5']);
+		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't4', 't6']);
+	});
+});
+
+describe('救回刪掉的那一次', () => {
+	function deleted() {
+		let flow = sample();
+		for (const input of [drill({ p1: '✓' }), drill({ p1: '✗' }), drill({ p1: '△' }, { who: 'g2' })]) {
+			flow = flowOf(recordAttempt(flow, 'x1', input));
+		}
+		const r = deleteLastAttempt(flow, 'x1', 'g1', '2026-11-04', 'drill');
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		return r;
+	}
+
+	it('放回原本的位置，一模一樣', () => {
+		const { flow, attempt, index } = deleted();
+		const back = flowOf(restoreAttempt(flow, 'x1', attempt, index));
+		expect(recordsOf(back).map((r) => r.id)).toEqual(['t1', 't2', 't3']);
+		expect(recordsOf(back)[1]).toEqual(attempt);
+	});
+
+	it('刪掉之後又記了一次：救回的還是排在原本的位置，新記的在後面', () => {
+		const { flow, attempt, index } = deleted();
+		const more = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' })));
+		const back = flowOf(restoreAttempt(more, 'x1', attempt, index));
+		expect(recordsOf(back).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't4']);
+	});
+
+	it('已經在了（救回過）就擋下來', () => {
+		const { flow, attempt, index } = deleted();
+		const back = flowOf(restoreAttempt(flow, 'x1', attempt, index));
+		expect(restoreAttempt(back, 'x1', attempt, index).kind).toBe('blocked');
+	});
+
+	it('動作不在了就擋下來', () => {
+		const { flow, attempt, index } = deleted();
+		const gone = flowOf(deleteAction(flow, 'x1', { confirmed: true }));
+		expect(restoreAttempt(gone, 'x1', attempt, index)).toEqual({ kind: 'blocked', message: '找不到這個動作' });
 	});
 });
 
@@ -186,7 +235,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	it('換上的流程比較新（重做），紀錄一樣用現在的', () => {
 		const current = recorded();
 		const newer = flowOf(updateAction(current, 'x1', { name: '新的名字' }));
-		const fewer = flowOf(deleteLastAttempt(current, 'x1', 'g1', '2026-11-04'));
+		const fewer = flowOf(deleteLastAttempt(current, 'x1', 'g1', '2026-11-04', 'drill'));
 		const carried = carryRecords(newer, fewer);
 		expect(carried.actions[0].name).toBe('新的名字');
 		expect(recordsOf(carried).map((r) => r.id)).toEqual(['t1', 't2']);
@@ -233,7 +282,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	it('發過的 id 不會因為換上舊的流程又發一次', () => {
 		const older = sample();
 		let current = recorded();
-		current = flowOf(deleteLastAttempt(current, 'x2', 'm2', '2026-11-04'));
+		current = flowOf(deleteLastAttempt(current, 'x2', 'm2', '2026-11-04', 'drill'));
 		const carried = carryRecords(older, current);
 		const again = flowOf(recordAttempt(carried, 'x2', drill({ p4: '△' }, { who: 'm1' })));
 		expect(recordsOf(again, 'x2').map((r) => r.id)).toEqual(['t5']);
@@ -466,7 +515,7 @@ describe('記一次全上', () => {
 
 	it('第二次全上帶新的全上 id；刪掉了也不重用', () => {
 		let flow = flowOf(recordRunThrough(sample(), date, sheet().slice(0, 1)));
-		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', date));
+		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', date, 'runThrough'));
 		const r = recordRunThrough(flow, date, sheet().slice(0, 1));
 		expect(r.kind === 'ok' && r.runThroughId).toBe('r2');
 	});

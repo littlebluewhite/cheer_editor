@@ -489,6 +489,9 @@ await js(`
 			q('button[aria-label="' + card + ' ' + PHASES[i] + ' ' + NAMES[m] + '"]').click();
 			await wait();
 		}
+		// 「整個」要按「存這一次」才存
+		[...document.querySelectorAll('.practice .card')].find((c) => c.getAttribute('aria-label') === card).querySelector('.save').click();
+		await wait();
 	};
 	const one = '第 1 組 小美', two = '第 2 組 小芳';
 	$set(date, day(1)); await wait();

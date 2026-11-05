@@ -25,6 +25,7 @@
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
+	import { Flash } from './flash.svelte.js';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD），跟記錄頁共用；期間從這天往回算。 */
@@ -38,6 +39,13 @@
 
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
+	/** 存好全上之後的「已存」，幾秒後收掉。 */
+	const saved = new Flash<string>();
+
+	function closeSheet(done: boolean) {
+		recording = false;
+		if (done) saved.show('已存這次全上');
+	}
 
 	/** 選的那天寫成「11/4」；是今天才加「今天」（日期是右上角選的，不一定是今天）。 */
 	const dayLabel = $derived.by(() => {
@@ -93,7 +101,7 @@
 
 <div class="summary">
 	{#if recording}
-		<RunThroughSheet {date} onclose={() => (recording = false)} />
+		<RunThroughSheet {date} onclose={closeSheet} />
 	{:else}
 		<div class="filters">
 			<div class="seg" role="group" aria-label="期間">
@@ -115,6 +123,7 @@
 				{/each}
 			</div>
 			<button type="button" class="primary" onclick={() => ((recording = true), (open = null))}>＋ 記一次全上</button>
+			{#if saved.value}<span class="saved" role="status">{saved.value}</span>{/if}
 		</div>
 
 		{#each blocks as { action, table } (action.id)}
@@ -197,6 +206,11 @@
 {/if}
 
 <style>
+	.saved {
+		color: #15803d;
+		font-size: 13px;
+		font-weight: 700;
+	}
 	.summary {
 		display: grid;
 		gap: 16px;

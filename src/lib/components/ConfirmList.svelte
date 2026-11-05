@@ -13,6 +13,8 @@
 				onconfirm: () => void;
 				oncancel: () => void;
 				confirmLabel: string;
+				/** 取消鈕的字，預設「取消」。 */
+				cancelLabel?: string;
 				/** 確定鈕前面多一個鈕（例：「先存檔」）。 */
 				extra?: { label: string; onclick: () => void };
 			};
@@ -20,7 +22,7 @@
 	let props: Props = $props();
 
 	const view = $derived.by(() => {
-		if (!props.ask) return { ...props, onkeep: undefined };
+		if (!props.ask) return { cancelLabel: '取消', ...props, onkeep: undefined };
 		const ask = props.ask;
 		const q = ask.question;
 		return {
@@ -30,6 +32,7 @@
 			onconfirm: () => ask.answer(q?.choose ? 'clear' : 'confirm'),
 			onkeep: q?.choose ? () => ask.answer('keep') : undefined,
 			oncancel: () => ask.answer('cancel'),
+			cancelLabel: '取消',
 			extra: undefined
 		};
 	});
@@ -46,7 +49,7 @@
 		{#if view.onkeep}<button type="button" onclick={view.onkeep}>保留舊紀錄</button>{/if}
 		{#if view.extra}<button type="button" class="primary" onclick={view.extra.onclick}>{view.extra.label}</button>{/if}
 		<button type="button" class="confirm-btn" onclick={view.onconfirm}>{view.confirmLabel}</button>
-		<button type="button" onclick={view.oncancel}>取消</button>
+		<button type="button" onclick={view.oncancel}>{view.cancelLabel}</button>
 	</div>
 </div>
 

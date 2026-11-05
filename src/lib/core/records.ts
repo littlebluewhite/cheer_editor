@@ -14,7 +14,8 @@ import {
 	squadsOf,
 	type Attempt,
 	type Mark,
-	type NewAttempt
+	type NewAttempt,
+	type PracticeKind
 } from './success-rate';
 
 /** 記一次：給動作、誰、日期、練法、整個做或只練幾個環節、記號（存成 keptAttempt 給的樣子）。回傳新的一次的 id。 */
@@ -66,18 +67,37 @@ export function recordRunThrough(
 	return { kind: 'ok', flow: next, runThroughId };
 }
 
-/** 刪掉上一次：拿掉這組（騰翻、跳躍是這個人）在這一天最後記的一次。 */
+/**
+ * 刪掉上一次：拿掉這組（騰翻、跳躍是這個人）在這一天、這種練法（分段練或全上）最後記的一次。
+ * 回傳刪掉的那一次和它原本在紀錄裡排第幾，給「救回」用。
+ */
 export function deleteLastAttempt(
 	flow: Flow,
 	actionId: string,
 	who: string,
-	date: string
-): CommandResult {
+	date: string,
+	practice: PracticeKind
+): CommandResult<{ attempt: Attempt; index: number }> {
 	const action = flow.actions.find((a) => a.id === actionId);
 	const records = action?.successRate?.records ?? [];
-	const last = records.findLast((r) => r.who === who && r.date === date);
-	if (!action || !last) return blocked('這一天還沒有紀錄');
-	return ok(withRecords(flow, action, records.filter((r) => r !== last)));
+	const index = records.findLastIndex((r) => r.who === who && r.date === date && r.practice === practice);
+	if (!action || index < 0) return blocked('這一天還沒有紀錄');
+	return {
+		kind: 'ok',
+		flow: withRecords(flow, action, records.toSpliced(index, 1)),
+		attempt: records[index],
+		index
+	};
+}
+
+/** 救回剛刪掉的那一次：放回原本排第幾（之後又記的排在它後面），照記一次的規則檢查；已經在了就擋下來。 */
+export function restoreAttempt(flow: Flow, actionId: string, attempt: Attempt, index: number): CommandResult {
+	const action = flow.actions.find((a) => a.id === actionId);
+	if (!action?.successRate) return blocked('找不到這個動作');
+	if (attemptIds(flow).includes(attempt.id)) return blocked('這一次已經在了');
+	const problem = attemptProblem(action, attempt);
+	if (problem) return blocked(problem);
+	return ok(withRecords(flow, action, action.successRate.records.toSpliced(index, 0, attempt)));
 }
 
 /**

@@ -68,7 +68,8 @@ export {
 	deleteLastAttempt,
 	recordableActions,
 	recordAttempt,
-	recordRunThrough
+	recordRunThrough,
+	restoreAttempt
 } from './records';
 export type { RunThroughMarks } from './records';
 

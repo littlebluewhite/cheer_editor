@@ -16,6 +16,7 @@
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
+	import { Flash } from './flash.svelte.js';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -34,6 +35,13 @@
 	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
+	/** 存好全上之後的「已存」，幾秒後收掉。 */
+	const saved = new Flash<string>();
+
+	function closeSheet(done: boolean) {
+		recording = false;
+		if (done) saved.show('已存這次全上');
+	}
 
 	const countOn = (records: { date: string }[]) => records.filter((r) => r.date === date).length;
 	/** 這天最弱的環節，例：最弱：下法 50%；這天沒紀錄就是空的。 */
@@ -44,9 +52,12 @@
 </script>
 
 {#if recording}
-	<RunThroughSheet {date} onclose={() => (recording = false)} />
+	<RunThroughSheet {date} onclose={closeSheet} />
 {:else if action}
-	<button type="button" class="primary run" onclick={() => (recording = true)}>＋ 記一次全上</button>
+	<div class="run">
+		<button type="button" class="primary" onclick={() => (recording = true)}>＋ 記一次全上</button>
+		{#if saved.value}<span class="saved" role="status">{saved.value}</span>{/if}
+	</div>
 	<div class="record">
 		<ul class="list" aria-label="記成功率的動作">
 			{#each actions as a (a.id)}
@@ -82,7 +93,14 @@
 
 <style>
 	.run {
-		justify-self: start;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.saved {
+		color: #15803d;
+		font-size: 13px;
+		font-weight: 700;
 	}
 	.record {
 		display: grid;
