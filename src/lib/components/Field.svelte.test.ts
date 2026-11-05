@@ -363,7 +363,7 @@ describe('在場上選人、整組拖', () => {
 		// 一直捏下去也有上限
 		for (let i = 0; i < 100; i++) await fireEvent.wheel(svg, { deltaY: -20, ctrlKey: true, clientX: 0, clientY: 0 });
 		expect(zoomText()).toBe('×8.0');
-		await fireEvent.click(screen.getByRole('button', { name: /全場/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '整個場地' }));
 		await fireEvent.wheel(svg, { deltaY: -100, metaKey: true, clientX: 0, clientY: 0 });
 		expect(zoomText()).toBe('×1.3');
 	});

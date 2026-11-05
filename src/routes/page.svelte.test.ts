@@ -179,7 +179,7 @@ describe('段、八拍尺、上方列', () => {
 		render(Page, editorPage().props);
 		const check = () => {
 			const link = screen.getByRole('link', { name: '使用說明' }) as HTMLAnchorElement;
-			expect(link.getAttribute('href')).toMatch(/\/guide$/);
+			expect(link.getAttribute('href')).toMatch(/\/guide\?from=editor$/);
 			expect(link.target).toBe('_blank');
 		};
 		check();
@@ -424,7 +424,7 @@ describe('動作', () => {
 		expect(dot().classList.contains('selected')).toBe(false);
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		expect(dot().classList.contains('selected')).toBe(true);
-		expect(screen.getByText('已選 1 人：小A')).toBeTruthy();
+		expect(screen.getByText('選了 1 人：小A')).toBeTruthy();
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(dot().classList.contains('selected')).toBe(false);
 		await fireEvent.click(document.querySelector('[data-lane="m1"] .lab')!);
@@ -1450,7 +1450,8 @@ describe('編輯器首頁', () => {
 		expect(screen.getByText('臺灣盃')).toBeTruthy();
 		expect(document.querySelectorAll('[data-strip-number]')).toHaveLength(5);
 		expect(screen.queryByRole('radio')).toBeNull();
-		expect(screen.queryByText(/場地/, { selector: 'button' })).toBeNull();
+		// 場地上的「整個場地」是縮放鈕，不是換場地
+		expect(screen.queryAllByText(/場地/, { selector: 'button' }).map((b) => b.textContent)).toEqual(['整個場地']);
 	});
 
 	it('新建表單名字、條數都錯：兩個欄位都標紅，下面各寫自己的錯；改好名字只收名字的', async () => {
@@ -1520,12 +1521,12 @@ describe('編輯器首頁', () => {
 		await addOne('小A');
 		await tab('動作');
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		expect(screen.getByText('已選 1 人：小A')).toBeTruthy();
+		expect(screen.getByText('選了 1 人：小A')).toBeTruthy();
 		await tab('隊員');
 		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
 		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
 		await addOne('小B');
-		expect(screen.getByText('已選 0 人')).toBeTruthy();
+		expect(screen.getByText('選了 0 人')).toBeTruthy();
 		expect(document.querySelector('[data-member-id].selected')).toBeNull();
 	});
 });
@@ -1797,7 +1798,7 @@ describe('復原和重做', () => {
 		for (let i = 0; i < 3; i++) await fireEvent.click(undoButton());
 		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(0);
 		await fireEvent.click(redoButton());
-		expect(screen.getByText('已選 0 人')).toBeTruthy();
+		expect(screen.getByText('選了 0 人')).toBeTruthy();
 	});
 
 	it('新建別的流程時清空復原紀錄', async () => {

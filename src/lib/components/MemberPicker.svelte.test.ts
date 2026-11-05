@@ -94,8 +94,8 @@ describe('選人捷徑', () => {
 		expect(screen.getByRole('status').textContent).toBe('播放頭前面還沒有動作');
 	});
 
-	it('顯示已選幾人、是誰', () => {
+	it('顯示選了幾人、是誰', () => {
 		setup(0, ['m3', 'm1']);
-		expect(screen.getByText(/已選 2 人：小C、小A/)).toBeTruthy();
+		expect(screen.getByText(/選了 2 人：小C、小A/)).toBeTruthy();
 	});
 });

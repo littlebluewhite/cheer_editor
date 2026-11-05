@@ -72,7 +72,7 @@
 	const { pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
-	const guideHref = resolve('/guide');
+	const guideHref = `${resolve('/guide')}?from=editor`;
 
 	const flow = $derived(session.flow);
 	/** 上方列的「未存」：有沒存的改動，或欄位裡打了字還沒送出（打字時就出現）。 */
@@ -380,7 +380,7 @@
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-			// 分組：選好人按 1–9 放進那組、0 拿出組。任務角色選單也用數字鍵，焦點在那裡不算。
+			// 分組：選好人按 1–9 放進那組、0 移出組。任務角色選單也用數字鍵，焦點在那裡不算。
 			if (on('[role="combobox"]')) return;
 			if (session.squadKey(Number(e.key))) e.preventDefault();
 		}

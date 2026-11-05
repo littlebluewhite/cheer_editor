@@ -104,9 +104,12 @@ describe('記錄頁的卡', () => {
 
 	it('「整個」照順序點：上法 ✓ 不提醒跳過；只點下法才提醒', async () => {
 		const { name } = setup();
+		// 還沒點、點了又取消（沒有記號）也不提醒
+		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
 		await tap(name, '上法', '成功');
 		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
 		await tap(name, '上法', '成功');
+		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
 		await tap(name, '下法', '成功');
 		expect(screen.getByText(/跳過了前面的環節/)).toBeTruthy();
 	});

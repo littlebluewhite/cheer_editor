@@ -5,7 +5,7 @@
 	export const NUMBER_BAND = 0.8;
 
 	/**
-	 * 全場的畫面範圍（公尺）：外圍以外再留給條編號（NUMBER_BAND）和「正面／裁判」字樣的空間。
+	 * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號（NUMBER_BAND）和「正面／裁判」字樣的空間。
 	 * 編輯頁拿它的長寬比分配右邊欄的寬度。
 	 */
 	export function fullView(field: FieldConfig) {
@@ -110,7 +110,7 @@
 		badges?: Record<string, { text: string; color: string }>;
 		/** 沒有編輯器時（八拍表的個人表）標出這些人，畫得跟選到一樣。 */
 		marked?: string[];
-		/** 只畫有人站的那一塊（八拍表的小站位圖），標的人塗滿；沒有人時畫全場。 */
+		/** 只畫有人站的那一塊（八拍表的小站位圖），標的人塗滿；沒有人時畫整個場地。 */
 		crop?: boolean;
 	} = $props();
 
@@ -146,7 +146,7 @@
 	/** 場地那一塊的寬和高（px）；jsdom 量不到，是 0。 */
 	let stageSize = $state<[number, number]>([0, 0]);
 	let zoom = $state(1);
-	/** 放大時畫面中心（公尺）；null = 全場的中心。 */
+	/** 放大時畫面中心（公尺）；null = 整個場地的中心。 */
 	let center = $state<Position | null>(null);
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
@@ -168,7 +168,7 @@
 	});
 
 	/**
-	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：全場時放大到有最小尺寸（夠大就是 1）；
+	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
 	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。八拍表的小站位圖不放大。
 	 */
 	const dotScale = $derived.by(() => {
@@ -176,7 +176,7 @@
 		const [w, h] = stageSize;
 		const shrink = 1 / Math.sqrt(zoom);
 		if (!w || !h) return shrink;
-		// preserveAspectRatio meet：全場時 1 公尺幾 px 看比較緊的那一邊
+		// preserveAspectRatio meet：看整個場地時 1 公尺幾 px 看比較緊的那一邊
 		const pxPerM = Math.min(w / full.width, h / full.height);
 		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM)) * shrink;
 	});
@@ -277,7 +277,7 @@
 		const [cx, cy] = anchor
 			? [anchor[0] + ((c[0] - anchor[0]) * zoom) / z, anchor[1] + ((c[1] - anchor[1]) * zoom) / z]
 			: c;
-		// 中心夾在畫面不超出全場的範圍裡，挪過頭再挪回來才不會卡住。
+		// 中心夾在畫面不超出整個場地的範圍裡，挪過頭再挪回來才不會卡住。
 		const [w, h] = [full.width / z, full.height / z];
 		center = [
 			clamp(cx - pan[0], full.x + w / 2, full.x + full.width - w / 2),
@@ -330,7 +330,7 @@
 	/**
 	 * Ctrl／⌘＋滾輪、觸控板捏合：照滾了多少成比例縮放（跟時間軸一樣要按 Ctrl／⌘）。觸控板捏合是一連串 Ctrl＋滾輪的小事件
 	 * （deltaY 約是 -100 × ln(放大倍數)），每個事件都放大一格的話，捏一下就跳到最大。
-	 * 沒按 Ctrl／⌘：放大時是平移（觸控板兩指滑、滑鼠滾輪；Shift＋滾輪左右移），全場時不管（不擋頁面捲動）。
+	 * 沒按 Ctrl／⌘：放大時是平移（觸控板兩指滑、滑鼠滾輪；Shift＋滾輪左右移），看整個場地時不管（不擋頁面捲動）。
 	 */
 	function onwheel(e: WheelEvent) {
 		const line = e.deltaMode === 1 ? 33 : 1;
@@ -547,7 +547,7 @@
 						onclick={() => setZoom(zoom * ZOOM_STEP)}><Icon name="plus" /></button
 					>
 					<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
-						><Icon name="fit" />全場</button
+						><Icon name="fit" />整個場地</button
 					>
 				</div>
 				{@render railHead?.()}

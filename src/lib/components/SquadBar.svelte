@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 分組浮動列：選到有環節、要分組的動作時，在場地下面（「正面／裁判」那一排）出現。只在編排畫面。
-	// 有選人：按號碼放進那一組、「＋」放進新的一組、「✕」拿出組；選的人一次改好，是一個復原步驟。
+	// 有選人：按號碼放進那一組、「＋」放進新的一組、「✕」移出組；選的人一次改好，是一個復原步驟。
 	// 選的人都在同一組時，那一組的號碼是按下的（看得出現在在哪一組）。
 	// 沒選人：按號碼把那一組的人全選起來。「n 人沒分組」把沒分組的人選起來。
 	// 電腦上選好人按數字鍵 1–9、0 也一樣：都叫 session 的 squadKey（頁面收鍵盤）。
@@ -71,7 +71,7 @@
 	<button type="button" class="num new" aria-label="放進新的一組" disabled={!picked.length} onclick={() => session.squadKey(next)}
 		>＋</button
 	>
-	<button type="button" class="num out" aria-label="拿出組" disabled={!picked.length} onclick={() => session.squadKey(0)}>✕</button>
+	<button type="button" class="num out" aria-label="移出組" disabled={!picked.length} onclick={() => session.squadKey(0)}>✕</button>
 	{#if loose.length}
 		<button type="button" class="link" onclick={() => session.selectMembers(loose)}>{loose.length} 人沒分組</button>
 	{/if}

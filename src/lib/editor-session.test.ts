@@ -386,7 +386,7 @@ describe('編輯 session：分組數字鍵', () => {
 		expect(s.flow).toBe(before);
 	});
 
-	it('0 拿出組', () => {
+	it('0 移出組', () => {
 		const s = grouping(['m1', 'm3']);
 		expect(s.squadKey(0)).toBe(true);
 		expect(squads(s)).toEqual([undefined, 1, undefined, 2]);

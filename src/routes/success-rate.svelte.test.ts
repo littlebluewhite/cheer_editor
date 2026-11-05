@@ -84,7 +84,7 @@ describe('分組浮動列', () => {
 		expect(tags()).toEqual(['第 1 組', '第 1 組', '第 1 組', '第 1 組']);
 	});
 
-	it('選人按號碼放進那一組；按「✕」拿出組', async () => {
+	it('選人按號碼放進那一組；按「✕」移出組', async () => {
 		await openPhased();
 		await pick('小芳', '小B');
 		await tap('放進新的一組');
@@ -92,7 +92,7 @@ describe('分組浮動列', () => {
 		await tap('放進第 2 組');
 		expect(tags()).toEqual(['第 2 組', '第 1 組', '第 2 組', '第 2 組']);
 		await pick('小A', '小B');
-		await tap('拿出組');
+		await tap('移出組');
 		expect(tags()).toEqual(['第 1 組', '沒分組', '第 1 組', '沒分組']);
 		expect(badge('小A')!.textContent).toBe('?');
 	});
@@ -101,7 +101,7 @@ describe('分組浮動列', () => {
 		await openPhased(flowOf(setSquad(phasedFlow(), 'x1', ['m3', 'm4'], 2)));
 		expect(picked()).toEqual([]);
 		expect((within(bar()!).getByRole('button', { name: '放進新的一組' }) as HTMLButtonElement).disabled).toBe(true);
-		expect((within(bar()!).getByRole('button', { name: '拿出組' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((within(bar()!).getByRole('button', { name: '移出組' }) as HTMLButtonElement).disabled).toBe(true);
 		await tap('選起第 2 組');
 		expect(picked()).toEqual(['小芳', '小B']);
 	});
@@ -146,7 +146,7 @@ describe('分組浮動列', () => {
 });
 
 describe('數字鍵分組', () => {
-	it('選好人按 1–9 放進那組，0 拿出組', async () => {
+	it('選好人按 1–9 放進那組，0 移出組', async () => {
 		await openPhased();
 		await pick('小芳', '小B');
 		await fireEvent.keyDown(window, { key: '2' });
