@@ -688,6 +688,16 @@
 		opacity: 0;
 		cursor: pointer;
 	}
+	/* 手指：色票、「照大類」至少 32px */
+	@media (pointer: coarse) {
+		.swatch {
+			width: 32px;
+			height: 32px;
+		}
+		.swatch.auto {
+			width: auto;
+		}
+	}
 	.swatch:has(input:checked) {
 		box-shadow:
 			0 0 0 2px var(--surface, #fff),
@@ -811,6 +821,17 @@
 		font-size: 12px;
 		font-weight: 700;
 		line-height: 1;
+	}
+	/* 手指：「!」點得到的範圍 32px，看起來不變。 */
+	@media (pointer: coarse) {
+		.bang {
+			position: relative;
+		}
+		.bang::after {
+			content: '';
+			position: absolute;
+			inset: -7px;
+		}
 	}
 	.tip {
 		display: grid;

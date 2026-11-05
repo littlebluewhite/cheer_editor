@@ -308,6 +308,20 @@ describe('在場上選人、整組拖', () => {
 		expect(session.selectedMemberIds).toEqual(['m2']);
 	});
 
+	it('觸控板捏合（一連串 Ctrl＋滾輪的小事件）照手指比例放大，不會一下跳到很大；滑鼠滾一格放大一點', async () => {
+		const { svg } = setup();
+		const zoomText = () => document.querySelector('.zoom')!.textContent;
+		// 捏合一次：20 個 deltaY -2 的事件，加起來放大 e^0.4 ≈ 1.5 倍
+		for (let i = 0; i < 20; i++) await fireEvent.wheel(svg, { deltaY: -2, ctrlKey: true, clientX: 0, clientY: 0 });
+		expect(zoomText()).toBe('×1.5');
+		// 一直捏下去也有上限
+		for (let i = 0; i < 100; i++) await fireEvent.wheel(svg, { deltaY: -20, ctrlKey: true, clientX: 0, clientY: 0 });
+		expect(zoomText()).toBe('×8.0');
+		await fireEvent.click(screen.getByRole('button', { name: /全場/ }));
+		await fireEvent.wheel(svg, { deltaY: -100, clientX: 0, clientY: 0 });
+		expect(zoomText()).toBe('×1.3');
+	});
+
 	it('手指沒剛好按在點上：22 px 以內最近的人也算按到；再遠就是框選或清除', async () => {
 		const { session, svg } = setup();
 		const touch = { pointerType: 'touch', pointerId: 1, button: 0 };

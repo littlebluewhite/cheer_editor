@@ -230,6 +230,18 @@
 		gap: 4px;
 		align-items: center;
 	}
+	/* 手指：↑ ↓ 刪除是 40px 的按鈕，一行放不下：名字自己一行，性別、全局角色和按鈕排第二行。 */
+	@media (pointer: coarse) {
+		li {
+			grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) 40px 40px 40px;
+		}
+		li > input {
+			grid-column: 2 / -1;
+		}
+		li > select:first-of-type {
+			grid-column: 2;
+		}
+	}
 	li.dragging {
 		opacity: 0.5;
 	}

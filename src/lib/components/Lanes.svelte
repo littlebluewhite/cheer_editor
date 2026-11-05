@@ -566,9 +566,20 @@
 	.phase {
 		box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.8);
 	}
+	/* 字放不下用「…」（完整的字在 title）：先縮任務角色，再縮名稱。 */
 	.bar > b,
 	.role {
 		position: relative;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.bar > b {
+		flex: none;
+		max-width: 100%;
+	}
+	.role {
+		flex: 0 100 auto;
 	}
 	.bar.has-cues.has-phases {
 		padding-top: 4px;
@@ -627,8 +638,11 @@
 	.bar:hover .rz {
 		background: rgba(255, 255, 255, 0.35);
 	}
-	/* 手指：拉長短的把手、走位條和兩端點得到的範圍變大，看起來不變。 */
+	/* 手指：泳道（名字）至少 32px 高；拉長短的把手、走位條和兩端點得到的範圍變大，看起來不變。 */
 	@media (pointer: coarse) {
+		.row {
+			min-height: 32px;
+		}
 		.rz {
 			width: min(16px, 40%);
 		}

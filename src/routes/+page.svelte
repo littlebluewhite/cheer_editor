@@ -918,8 +918,9 @@
 					>
 					<span class="sep" aria-hidden="true"></span>
 				{/if}
+				<!-- 八拍表的字一直留著：使用說明都叫它「八拍表」，只有印表機圖示認不出來 -->
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
-					><Icon name="print" /><span class="narrow-hide">八拍表</span></button
+					><Icon name="print" />八拍表</button
 				>
 				{#if view === 'edit'}
 					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
@@ -1434,6 +1435,12 @@
 		border-radius: 999px;
 		border: 1px solid #36425f;
 	}
+	/* 手指：節拍器至少 32px 高 */
+	@media (pointer: coarse) {
+		.toggle {
+			min-height: 32px;
+		}
+	}
 	.toggle:has(input:checked) {
 		background: #24304c;
 		border-color: #4a5a80;
@@ -1854,8 +1861,8 @@
 	}
 
 	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。
-	   上方列多了「編排｜練習」，所以從 1440px 就開始收。 */
-	@media (max-width: 1440px) {
+	   上方列多了「編排｜練習」，所以從 1540px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
+	@media (max-width: 1540px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1871,7 +1878,7 @@
 		.latency input {
 			width: 56px;
 		}
-		/* 使用說明、復原、重做、八拍表、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		/* 使用說明、復原、重做、流程設定只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;
 			width: 1px;
@@ -1882,8 +1889,8 @@
 		}
 	}
 
-	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行 */
-	@media (max-width: 1140px) {
+	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字） */
+	@media (max-width: 1280px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
@@ -1937,8 +1944,10 @@
 	.intro-mat .t {
 		fill: var(--top);
 	}
+	/* 「競技啦啦隊」「流程編輯器」各一行，不在字中間斷開：欄窄（761–900 寬）時字跟著縮 */
 	.intro h1 {
-		font-size: 40px;
+		font-size: clamp(30px, 4.4vw, 40px);
+		word-break: keep-all;
 		line-height: 1.15;
 		font-weight: 800;
 		letter-spacing: 0.02em;

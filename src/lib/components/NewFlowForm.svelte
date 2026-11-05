@@ -5,6 +5,8 @@
 		MAX_STRIPS,
 		MIN_STRIPS,
 		createFlow,
+		fieldGeometry,
+		stripsProblem,
 		type FieldConfig,
 		type FieldLayout,
 		type Flow
@@ -18,6 +20,8 @@
 	let customStrips = $state<number | null>(9);
 	let customLayout = $state<FieldLayout>('vertical');
 	let error = $state('');
+	/** 自訂條數不對（超出範圍、不是整數）：不畫預覽，馬上說原因，不用等按建立。 */
+	const customError = $derived(choice === 'custom' ? stripsProblem(customStrips ?? Number.NaN) : null);
 
 	function submit(e: SubmitEvent) {
 		e.preventDefault();
@@ -30,14 +34,26 @@
 		else error = r.message;
 	}
 
-	/** 選項上的小場地圖：幾條、直放或橫放（正面在下面）。 */
-	function strips(f: { strips: number; layout: FieldLayout }) {
-		const n = Math.min(Math.max(Math.round(f.strips) || 1, 1), MAX_STRIPS);
-		return Array.from({ length: n }, (_, i) =>
-			f.layout === 'vertical'
-				? { x: (i * 36) / n, y: 0, w: 36 / n - 0.8, h: 28 }
-				: { x: 0, y: (i * 28) / n, w: 36, h: 28 / n - 0.8 }
-		);
+	/**
+	 * 選項上的小場地圖：幾條、直放或橫放（正面在下面），照實際比例（一條 1 格寬、7 格長）縮進 36×28 的框、置中。
+	 * 條數不對時不畫。
+	 */
+	function strips(f: FieldConfig) {
+		if (stripsProblem(f.strips)) return [];
+		const n = f.strips;
+		const vertical = f.layout === 'vertical';
+		const { cols, rows } = fieldGeometry(f);
+		const cell = Math.min(36 / cols, 28 / rows);
+		const [x0, y0] = [(36 - cols * cell) / 2, (28 - rows * cell) / 2];
+		// 條和條之間留一點縫，外框不縮（整塊的比例才準）
+		const half = Math.min(0.4, cell / 8);
+		return Array.from({ length: n }, (_, i) => {
+			const from = i * cell + (i > 0 ? half : 0);
+			const len = cell - (i > 0 ? half : 0) - (i < n - 1 ? half : 0);
+			return vertical
+				? { x: x0 + from, y: y0, w: len, h: rows * cell }
+				: { x: x0, y: y0 + from, w: cols * cell, h: len };
+		});
 	}
 </script>
 
@@ -67,7 +83,7 @@
 			<label class="option">
 				<input type="radio" name="field" value="custom" bind:group={choice} />
 				<svg viewBox="-1 -1 38 30" aria-hidden="true">
-					{#each strips({ strips: customStrips ?? 1, layout: customLayout }) as s, j (j)}
+					{#each strips({ strips: customStrips ?? Number.NaN, layout: customLayout }) as s, j (j)}
 						<rect class:faint={choice !== 'custom'} x={s.x} y={s.y} width={s.w} height={s.h} />
 					{/each}
 				</svg>
@@ -90,7 +106,7 @@
 		{/if}
 	</fieldset>
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if customError || error}<p class="error" role="alert">{customError || error}</p>{/if}
 
 	<button type="submit" class="primary">建立</button>
 </form>

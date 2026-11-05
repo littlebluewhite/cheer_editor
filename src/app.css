@@ -304,4 +304,11 @@ input[type='radio'] {
 		min-height: 40px;
 		min-width: 40px;
 	}
+	/* 其他地方也至少 32px：輸入框、選單、文字樣子的按鈕、勾選框和單選的那一行 */
+	input:where(:not([type='checkbox'], [type='radio'], [type='file'], [type='range'])),
+	select,
+	button.link,
+	:where(label:has(> input[type='checkbox'], > input[type='radio'])) {
+		min-height: 32px;
+	}
 }

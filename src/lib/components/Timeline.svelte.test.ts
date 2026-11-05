@@ -1,4 +1,4 @@
-import { addSegment, createFlow } from '#lib/core';
+import { addSegment, createFlow, updateSegment } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -65,5 +65,32 @@ describe('時間軸放大縮小', () => {
 		expect(screen.getByText('×1')).toBeTruthy();
 		await fireEvent.wheel(timeline, { deltaY: -15, ctrlKey: true });
 		expect(screen.getByText('×1.5')).toBeTruthy();
+	});
+});
+
+describe('段列', () => {
+	/** 一個音樂段後面接一個 0.1 秒的口號段。 */
+	function setupShortChant() {
+		let flow = flowOf(addSegment(flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } })), 'music'));
+		flow = flowOf(addSegment(flow, 'chant'));
+		flow = flowOf(updateSegment(flow, flow.segments[1].id, { seconds: 0.1 }));
+		render(TestSession, {
+			props: {
+				session: new EditorSession(flow),
+				component: Timeline,
+				props: { playheadSec: 0, onseek: () => {}, onopensegment: () => {} }
+			}
+		});
+	}
+
+	it('段上的字放不下時，滑過去看得到完整的字', () => {
+		setupShortChant();
+		expect(screen.getByRole('button', { name: /^音樂 1/ }).title).toMatch(/^音樂 1　\d+ BPM/);
+		expect(screen.getByRole('button', { name: /^口號 1/ }).title).toMatch(/^口號 1　0\.1 秒/);
+	});
+
+	it('很短的段也有點得到的寬度', () => {
+		setupShortChant();
+		expect(parseFloat(screen.getByRole('button', { name: /^口號 1/ }).style.width)).toBeGreaterThanOrEqual(16);
 	});
 });

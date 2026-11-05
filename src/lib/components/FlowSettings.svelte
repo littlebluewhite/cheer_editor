@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 流程設定：流程名字、規則警告的開關和三個數字、標記用號碼還是開頭字。被擋就顯示流程核心給的原因。
+	// 流程設定：流程名字、場地（唯讀，建好之後不能換）、規則警告的開關和三個數字、標記用號碼還是開頭字。被擋就顯示流程核心給的原因。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		memberMarkers,
@@ -65,6 +65,11 @@
 			流程名字
 			<input value={flow.name} onchange={(e) => rename(e.currentTarget)} />
 		</label>
+		<p class="field-info">
+			<b>場地</b>
+			<span>{flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span>
+			<small>建好之後不能換</small>
+		</p>
 		<section class="rules" class:off={!flow.timeRules.on}>
 			<label class="switch">
 				<input
@@ -132,6 +137,17 @@
 	.stack input {
 		font-size: 14px;
 		font-weight: 400;
+	}
+	.field-info {
+		margin: 0;
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+	.field-info small {
+		margin-left: auto;
+		font-size: 12px;
+		color: var(--muted, #66718a);
 	}
 	.rules {
 		display: grid;
