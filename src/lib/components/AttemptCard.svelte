@@ -7,9 +7,12 @@
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次。
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
 	// 下面一排是這天的每一次，全上記的用虛線框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回。
+	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	import {
 		MARKS,
 		attemptText,
+		changeAttempt,
+		deleteAttempt,
 		deleteLastAttempt,
 		keptAttempt,
 		phaseColor,
@@ -17,6 +20,7 @@
 		recordAttempt,
 		restoreAttempt,
 		type Action,
+		type Attempt,
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -107,6 +111,45 @@
 		});
 	}
 
+	/** 點了這天的哪一次在改（id）；沒有是 null。 */
+	let editing = $state<string | null>(null);
+	/** 改的那一次現在的記號（還沒存）。 */
+	let draft = $state<Record<string, Mark>>({});
+	/** 改的那一次（紀錄被別的地方拿掉了就收起來）。 */
+	const edited = $derived(today.find((r) => r.id === editing));
+
+	function openEdit(attempt: Attempt) {
+		editing = editing === attempt.id ? null : attempt.id;
+		draft = { ...attempt.marks };
+	}
+
+	/** 改的時候點記號：再點一次點著的那顆就變空的。 */
+	function retap(phaseId: string, mark: Mark) {
+		if (draft[phaseId] === mark) {
+			const { [phaseId]: _, ...rest } = draft;
+			draft = rest;
+		} else draft = { ...draft, [phaseId]: mark };
+	}
+
+	function saveEdit(attempt: Attempt) {
+		ask.send(() => changeAttempt(flow, action.id, attempt.id, draft), {
+			done: () => {
+				editing = null;
+				flash.show({ text: '已改' });
+			}
+		});
+	}
+
+	function removeEdited(attempt: Attempt) {
+		editing = null;
+		removeWithRestore(
+			ask,
+			flash,
+			() => deleteAttempt(flow, action.id, attempt.id),
+			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
+		);
+	}
+
 	function removeLast() {
 		removeWithRestore(
 			ask,
@@ -181,9 +224,16 @@
 	<footer>
 		{#if today.length}
 			<ol class="day" aria-label="這天的每一次">
-				{#each today as r (r.id)}
+				{#each today as r, i (r.id)}
 					{@const run = r.practice === 'runThrough'}
-					<li class:run title={run ? '全上' : '分段練'}>{attemptText(action, r)}</li>
+					<li class:run title={run ? '全上' : '分段練'}>
+						<button
+							type="button"
+							aria-expanded={editing === r.id}
+							aria-label="改第 {i + 1} 次（{run ? '全上' : '分段練'} {attemptText(action, r)}）"
+							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
+						>
+					</li>
 				{/each}
 			</ol>
 		{:else}
@@ -197,6 +247,33 @@
 			onclick={removeLast}>刪掉上一次</button
 		>
 	</footer>
+	{#if edited}
+		{@const n = today.indexOf(edited) + 1}
+		<div class="edit" role="group" aria-label="改第 {n} 次">
+			<b>改第 {n} 次{edited.practice === 'runThrough' ? '（全上）' : ''}</b>
+			{#each phases as p (p.id)}
+				<div class="phase">
+					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
+					<div class="marks">
+						{#each MARKS as m (m.key)}
+							<button
+								type="button"
+								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
+								aria-label="第 {n} 次 {phaseLabel(p)} {m.label}"
+								aria-pressed={draft[p.id] === m.key}
+								onclick={() => retap(p.id, m.key)}>{m.key}</button
+							>
+						{/each}
+					</div>
+				</div>
+			{/each}
+			<div class="edit-row">
+				<button type="button" class="danger" onclick={() => removeEdited(edited)}>刪掉這一次</button>
+				<button type="button" onclick={() => (editing = null)}>不改了</button>
+				<button type="button" class="primary" onclick={() => saveEdit(edited)}>存修改</button>
+			</div>
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -352,12 +429,21 @@
 		gap: 4px;
 	}
 	.day li {
-		padding: 0 5px;
 		border: 1px solid var(--line);
 		border-radius: 5px;
 		background: var(--surface-2);
+	}
+	/* 點一次就能改它 */
+	.day button {
+		padding: 0 5px;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
 		font-size: 14px;
 		letter-spacing: 1px;
+	}
+	.day button[aria-expanded='true'] {
+		box-shadow: 0 0 0 2px var(--sel);
 	}
 	/* 全上記的那幾筆：虛線框，跟分段練分開。 */
 	.day li.run {
@@ -381,5 +467,21 @@
 	}
 	.undo-last {
 		flex: none;
+	}
+	.edit {
+		display: grid;
+		gap: 6px;
+		padding: 8px;
+		border: 1px solid var(--sel);
+		border-radius: 8px;
+	}
+	.edit-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.edit-row .danger {
+		margin-right: auto;
 	}
 </style>

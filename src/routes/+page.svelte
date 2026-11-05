@@ -134,7 +134,9 @@
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
 		if (next === 'practice') playback.pause();
-		view = next;
+		// 全上表改過格子：先問（session.practiceLeave），丟掉才切
+		if (next === 'edit' && view === 'practice') session.leavePracticePage(() => (view = next));
+		else view = next;
 	}
 
 	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。場地和泳道共用這一份。 */
