@@ -48,8 +48,8 @@ export interface Action {
 	successRate?: SuccessRate;
 }
 
-/** 加動作的輸入：新動作一定沒有環節，所以不收成功率設定，人身上也不收組。 */
-export type NewActionInput = Omit<Action, 'id' | 'successRate' | 'members'> & { members: Omit<ActionMember, 'squad'>[] };
+/** 加動作的輸入：新動作一定沒有環節，所以不收成功率設定；人身上只收別的動作的組（從別的動作複製人）。 */
+export type NewActionInput = Omit<Action, 'id' | 'successRate'>;
 
 /** 改動作的欄位（成功率設定由環節的指令改；人身上的組可以帶，例：從別的動作複製人）。 */
 export type ActionChanges = Partial<Omit<Action, 'id' | 'successRate'>>;
