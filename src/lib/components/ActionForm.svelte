@@ -37,6 +37,7 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import { Ask } from './ask.svelte';
 	import CueGrid from './CueGrid.svelte';
+	import { reveal } from './reveal';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 	import RolePicker, { roleKey } from './RolePicker.svelte';
@@ -399,13 +400,13 @@
 
 	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->
 	{#if ask.question}
-		<div {@attach (d) => d.scrollIntoView({ block: 'nearest' })}>
+		<div {@attach reveal(ask.failures)}>
 			<ConfirmList {ask} />
 		</div>
 	{/if}
 
 	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
-	{#if ask.error}<p class="error" role="alert" {@attach (p) => p.scrollIntoView({ block: 'nearest' })}>{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
 </section>
 
 {#if glossaryOpen}

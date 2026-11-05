@@ -31,6 +31,9 @@ Element.prototype.scrollIntoView = function () {
 	scrolled.push(this);
 };
 
+/** 等畫面跑一格。捲過去要等下一格：按 Tab 送出時，瀏覽器會先把下一個欄位捲進來，同一格捲的會被蓋掉。 */
+const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+
 /** 音樂 1（150 BPM、2 個八拍，一個半拍 0.2 秒）；隊員小A、小B。 */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -112,6 +115,18 @@ describe('動作表單：新增', () => {
 		scrolled.length = 0;
 		setup(sample(), null);
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(scrolled).toEqual([]);
+		await frame();
+		expect(scrolled).toEqual([screen.getByRole('alert')]);
+	});
+
+	it('原因還留著時又被擋一次（同一句），也再捲一次', async () => {
+		setup(sample(), null);
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		await frame();
+		scrolled.length = 0;
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		await frame();
 		expect(scrolled).toEqual([screen.getByRole('alert')]);
 	});
 
@@ -357,7 +372,9 @@ describe('動作表單：拍點格子', () => {
 		await fireEvent.input(length, { target: { value: '2' } });
 		await fireEvent.change(length);
 		expect(screen.getByRole('alertdialog').textContent).toContain('會拿掉 1 個拍點');
-		// 問句在拍點格子下面，右邊欄看不到：出現時捲過去
+		// 問句在拍點格子下面，右邊欄看不到：出現時（下一格）捲過去
+		expect(scrolled).toEqual([]);
+		await frame();
 		expect(scrolled).toHaveLength(1);
 		expect(scrolled[0].contains(screen.getByRole('alertdialog'))).toBe(true);
 

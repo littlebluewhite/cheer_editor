@@ -31,6 +31,8 @@ const OPTIONS: Record<Exclude<Answer, 'cancel'>, ConfirmOption> = {
 export class Ask {
 	question = $state<Question | null>(null);
 	error = $state('');
+	/** 沒成功（被擋、要問）幾次：同一句原因又出現一次時，畫面靠它知道要再捲過去。 */
+	failures = $state(0);
 	/** 要確認時確定鈕的字。 */
 	readonly confirmLabel: string;
 	#onchange: (flow: Flow) => void;
@@ -85,6 +87,9 @@ export class Ask {
 			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose' };
 			this.#pending = { send, handlers };
 		}
-		if (r.kind !== 'ok') this.#onfail?.(this.error);
+		if (r.kind !== 'ok') {
+			this.failures++;
+			this.#onfail?.(this.error);
+		}
 	}
 }

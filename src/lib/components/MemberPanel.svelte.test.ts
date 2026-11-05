@@ -18,6 +18,15 @@ function okFlow(r: CommandResult): Flow {
 	return r.flow;
 }
 
+// jsdom 沒有 scrollIntoView：記下被捲過去的元素。
+const scrolled: Element[] = [];
+Element.prototype.scrollIntoView = function () {
+	scrolled.push(this);
+};
+
+/** 等畫面跑一格（捲過去是等下一格才捲）。 */
+const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+
 const empty = okFlow(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
 
 /** 放一個帶著 flow 的 session 進 context，畫隊員名單；回傳 session。 */
@@ -97,6 +106,19 @@ describe('隊員名單', () => {
 		expect(session.canUndo).toBe(false);
 		expect(screen.getByRole('alert').textContent).toBe('一支流程最多 40 人');
 	});
+
+	it('被擋下的原因在名單下面看不到時，捲過去讓它看得到', async () => {
+		const forty = Array.from({ length: 40 }, (_, i) => ({
+			name: `隊員${i + 1}`,
+			gender: 'F' as const,
+			globalRole: 'top' as const
+		}));
+		setup(okFlow(addMembers(empty, forty)));
+		scrolled.length = 0;
+		await fillNew('小A', 'F', 'base');
+		await frame();
+		expect(scrolled).toEqual([screen.getByRole('alert')]);
+	});
 });
 
 describe('刪隊員', () => {
@@ -121,6 +143,15 @@ describe('刪隊員', () => {
 			})
 		);
 	}
+
+	it('確認框在名單下面看不到時，捲過去讓它看得到', async () => {
+		setup(twoWithAction());
+		scrolled.length = 0;
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
+		await frame();
+		expect(scrolled).toHaveLength(1);
+		expect(scrolled[0].contains(screen.getByRole('alertdialog'))).toBe(true);
+	});
 
 	it('按刪除先列出「他在 N 個動作裡，其中 M 個會被整個刪掉」，按確定才刪', async () => {
 		const session = setup(twoWithAction());

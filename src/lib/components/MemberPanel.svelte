@@ -7,6 +7,7 @@
 	import Icon from './Icon.svelte';
 	import { Ask } from './ask.svelte';
 	import { isLongMarker } from './marker';
+	import { reveal } from './reveal';
 	import {
 		GENDERS,
 		GLOBAL_ROLES,
@@ -97,8 +98,9 @@
 		</ol>
 	{/if}
 
+	<!-- 名單很長時問句和原因在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
 	{#if ask.question}
-		<ConfirmList {ask} />
+		<div {@attach reveal(ask.failures)}><ConfirmList {ask} /></div>
 	{/if}
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
@@ -127,7 +129,7 @@
 		<button type="submit" class="primary">加隊員</button>
 	</form>
 
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
 </section>
 
 <style>
