@@ -58,8 +58,8 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { groupsPeople, keptAttempt, MARKS, perPerson, squadName, squadNumber, squadsOf } from './success-rate';
-export type { Attempt, Mark, NewAttempt, PracticeKind, SuccessRate } from './success-rate';
+export { groupsPeople, keptAttempt, MARKS, perPerson, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
+export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
 	attemptText,
@@ -133,9 +133,10 @@ export {
 	renameFormation,
 	setPositions,
 	setTeamWalks,
-	setWalks
+	setWalks,
+	walkSpanAt
 } from './formation';
-export type { Formation, FormationWalk, MoveResult, Position, Walk } from './formation';
+export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 
 export { FINE_ZOOM, fieldPositionText, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';

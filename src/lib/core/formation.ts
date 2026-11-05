@@ -419,6 +419,24 @@ export function formationAt(flow: Flow, sec: number): Formation | undefined {
 	return flow.formations.find((f) => f.segmentId === p.segmentId && f.at === p.at);
 }
 
+/** 兩張站位之間的走位：從 from（A）走到 to（B）。on：播放頭停在 B 那一拍上（formationAt）。 */
+export interface WalkSpan {
+	from: Formation;
+	to: Formation;
+	on: boolean;
+}
+
+/**
+ * 播放頭這一刻（全域秒數）是哪兩張站位之間的走位：停在一張站位上是前一張走到這一張，
+ * 在兩張中間是前後這兩張。停在開頭那張上、最後一張之後、還沒有段時沒有（null）。
+ * 場上的影子、走位線、撞位和出發和到達的表單都照這個畫。
+ */
+export function walkSpanAt(flow: Flow, sec: number): WalkSpan | null {
+	const on = formationAt(flow, sec);
+	const i = on ? flow.formations.indexOf(on) : flow.formations.findIndex((f) => formationSec(flow, f) > sec);
+	return i > 0 ? { from: flow.formations[i - 1], to: flow.formations[i], on: !!on } : null;
+}
+
 /**
  * 在播放頭所在的那一拍插一張站位，位置帶入那一刻大家走到的地方。
  * 插之前和插之後，每個人每一刻的位置都一樣：插在 t，對原本 A→B 有走位（出發 s、到達 e）的人，

@@ -7,13 +7,13 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		clearWalks,
-		formationAt,
 		formationWalks,
 		memberWalk,
 		parseTime,
 		setTeamWalks,
 		setWalks,
 		timeText,
+		walkSpanAt,
 		type Walk
 	} from '#lib/core';
 	import { Ask } from './ask.svelte';
@@ -31,8 +31,8 @@
 	const selectedMemberIds = $derived(session.selectedMemberIds);
 
 	const formation = $derived.by(() => {
-		const f = formationAt(flow, playheadSec);
-		return f && f !== flow.formations[0] && f.segmentId ? f : null;
+		const span = walkSpanAt(flow, playheadSec);
+		return span?.on ? span.to : null;
 	});
 	/** 改誰：選到的人；沒選人是全隊有走位的人（兩張站位位置不同的人，站著不動的不寫）。 */
 	const memberIds = $derived(
