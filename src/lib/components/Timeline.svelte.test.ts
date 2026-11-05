@@ -153,7 +153,7 @@ describe('自動符合寬度', () => {
 		const timeline = setup();
 		await fireEvent.click(screen.getByRole('button', { name: '時間軸縮小' }));
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋口號段' }));
 		const inner = timeline.querySelector('.inner') as HTMLElement;
 		expect(parseFloat(inner.style.width)).toBeCloseTo(fits(3), 6);
 	});

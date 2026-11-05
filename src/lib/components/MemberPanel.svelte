@@ -101,9 +101,19 @@
 		dragging = null;
 	}
 
+	/** 刪隊員。刪掉了焦點給補上來的那一列（刪的是最後一個就給上一列）的刪除鈕；取消就回到他的刪除鈕：不掉回 body。 */
 	function remove(id: string) {
 		askingId = id;
-		ask.send((o: ConfirmOption = {}) => deleteMember(flow, id, o));
+		const at = flow.members.findIndex((m) => m.id === id);
+		const focusRemove = async (i: number) => {
+			await tick();
+			const buttons = document.querySelectorAll<HTMLElement>('.members .remove');
+			buttons[Math.min(i, buttons.length - 1)]?.focus();
+		};
+		ask.send((o: ConfirmOption = {}) => deleteMember(flow, id, o), {
+			done: () => focusRemove(at),
+			cancel: () => focusRemove(at)
+		});
 	}
 </script>
 
@@ -217,8 +227,8 @@
 	{/if}
 
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
-	<!-- 改了加隊員的欄位就告訴 Ask，收掉上次被擋的原因 -->
-	<form class="add" novalidate onsubmit={add} oninput={() => ask.edited()} onchange={() => ask.edited()}>
+	<!-- 改了加隊員的欄位就告訴 Ask，收掉上次被擋的原因；字還沒送出，⌘Z 交給瀏覽器（data-native-undo） -->
+	<form class="add" data-native-undo novalidate onsubmit={add} oninput={() => ask.edited()} onchange={() => ask.edited()}>
 		<b class="add-title">加隊員</b>
 		<label class="names">
 			名字（一次加多人：一行一個；從試算表貼「名字、性別、全局角色」三欄也可以）

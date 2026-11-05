@@ -9,7 +9,7 @@ import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, t
 import { FIXED_ROLES } from './roles';
 import { settle } from './settle';
 import { perPerson, recordItems, squadNumber, type Attempt } from './success-rate';
-import { tooLong } from './text-length';
+import { charCount, firstChars, tooLong } from './text-length';
 import { atText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -52,10 +52,9 @@ export interface AddMembersResult {
 	rejected: string[];
 }
 
-/** 一個要加的人：畫面上的字（rejected 用）、錯的時候寫在哪（「第 2 行」），和讀出來的人或錯誤。 */
+/** 一個要加的人：畫面上的字（rejected 用）、名字（錯的時候用它標是哪一個），和讀出來的人或錯誤。 */
 interface Entry {
 	text: string;
-	where: string;
 	name: string;
 	input: NewMemberInput | null;
 	problems: string[];
@@ -67,7 +66,7 @@ interface Entry {
 export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<AddMembersResult> {
 	return addEntries(
 		flow,
-		inputs.map((input, i) => ({ text: input.name, where: `第 ${i + 1} 個`, name: input.name.trim(), input, problems: [] }))
+		inputs.map((input) => ({ text: input.name, name: input.name.trim(), input, problems: [] }))
 	);
 }
 
@@ -83,11 +82,11 @@ export function addMemberLines(
 	text: string,
 	defaults: { gender: Gender | null; globalRole: GlobalRole | null }
 ): CommandResult<AddMembersResult> {
-	const entries = text.split('\n').flatMap((line, i): Entry[] => {
+	const entries = text.split('\n').flatMap((line): Entry[] => {
 		if (!line.trim()) return [];
 		const cols = columns(line);
 		if (cols.length > 1 && NAME_HEADERS.has(cols[0].toLowerCase())) return [];
-		const entry: Entry = { text: line, where: `第 ${i + 1} 行`, name: cols[0], input: null, problems: [] };
+		const entry: Entry = { text: line, name: cols[0], input: null, problems: [] };
 		if (cols.length === 1) entry.input = { name: cols[0], ...defaults };
 		else if (cols.length !== 3) entry.problems.push('一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）');
 		else {
@@ -140,7 +139,8 @@ function columns(line: string): string[] {
 
 /**
  * 有錯的人（沒名字、名字太長、沒選性別或全局角色、認不得的行）不加，所有錯一次列在 errors，其他人照加；
- * 一個都加不了就擋下，原因是所有錯（一行一個）。只有一個人時錯誤不寫第幾個。
+ * 一個都加不了就擋下，原因是所有錯（一行一個）。錯誤用名字標是哪一個（不寫第幾行：沒加的行留在框裡，行號會對不上），
+ * 名字太長只寫前 ERROR_NAME_CHARS 個字；只有一個人時不標。
  * 加了會超過 MAX_MEMBERS 人就一個都不加，原因寫還能加幾人。
  * 新人排進開頭那張站位最靠近場地中間的空格點（不跟現有的人疊到），後面的站位用同一個位置；格點都有人了才排場外。
  */
@@ -156,7 +156,7 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 	}
 	const bad = entries.filter((e) => e.problems.length);
 	const errors = bad.map((e) =>
-		entries.length === 1 ? e.problems.join('；') : `${e.where}「${e.name}」：${e.problems.join('；')}`
+		entries.length === 1 || !e.name ? e.problems.join('；') : `「${shortName(e.name)}」：${e.problems.join('；')}`
 	);
 	const left = MAX_MEMBERS - flow.members.length;
 	if (entries.length > left) {
@@ -187,6 +187,14 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 		return { ...f, pos };
 	});
 	return ok({ ...flow, members: [...flow.members, ...added], formations }, { errors, rejected: bad.map((e) => e.text) });
+}
+
+/** 錯誤裡的名字最多寫幾個字。 */
+const ERROR_NAME_CHARS = 10;
+
+/** 錯誤裡的名字：太長就截斷加「…」。 */
+function shortName(name: string): string {
+	return charCount(name) > ERROR_NAME_CHARS ? `${firstChars(name, ERROR_NAME_CHARS)}…` : name;
 }
 
 export interface MemberChanges {

@@ -18,7 +18,7 @@ async function newFlow() {
 /** 在最後加一段（會打開段設定），再關掉。 */
 async function addSegment(kind: '＋音樂段' | '＋口號段') {
 	await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-	await fireEvent.click(screen.getByRole('button', { name: kind }));
+	await fireEvent.click(screen.getByRole('menuitem', { name: kind }));
 	await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '關閉' }));
 }
 
@@ -201,7 +201,7 @@ describe('對話框裡的確認框', () => {
 });
 
 describe('被擋下的欄位', () => {
-	it('段設定：擋下的欄位馬上回到實際值；錯誤留到那一格改對，改別格不會消失', async () => {
+	it('段設定：擋下的欄位馬上回到實際值；改好別格，紅字也收掉（#163）', async () => {
 		await newFlow();
 		await addSegment('＋音樂段');
 		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
@@ -211,13 +211,10 @@ describe('被擋下的欄位', () => {
 		expect(screen.getByRole('alert').textContent).toContain('「八拍數」');
 
 		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '140' } });
-		expect(screen.getByRole('alert').textContent).toContain('「八拍數」');
-
-		await fireEvent.change(eights, { target: { value: '6' } });
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
-	it('流程設定：擋下的數字欄位馬上回到實際值；錯誤留到那一格改對，改別格不會消失', async () => {
+	it('流程設定：擋下的數字欄位馬上回到實際值；改好別格，紅字也收掉（#163）', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		const min = screen.getByLabelText('口號段加起來最少（秒）') as HTMLInputElement;
@@ -227,9 +224,6 @@ describe('被擋下的欄位', () => {
 		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
 
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
-		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
-
-		await fireEvent.change(min, { target: { value: '20' } });
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 });

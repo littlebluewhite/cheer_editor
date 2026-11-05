@@ -109,7 +109,7 @@
 		</table>
 		{#if ask.question}<ConfirmList {ask} />{/if}
 		<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
-		<form novalidate onsubmit={add}>
+		<form data-native-undo novalidate onsubmit={add}>
 			<b>新增自訂任務角色</b>
 			<div class="fields">
 				<label

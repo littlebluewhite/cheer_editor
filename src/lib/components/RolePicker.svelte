@@ -10,7 +10,9 @@
 	// 任務角色選單：不用原生 <select>，因為 Mac 上原生選單打開時按鍵只會移到那一項、還要再按確認。
 	// 這裡按快捷鍵就直接選好（選單開著或關著都一樣），Backspace、Delete 是沒有任務。
 	// 焦點一直留在按鈕上，選單裡的項目用 aria-activedescendant 指。
+	// 選單開在最上層（popover.svelte.ts）：右邊欄裁不到它，下面放不下就往上開。
 	import { composing } from '#lib/ime.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 
 	interface Props {
 		label: string;
@@ -30,13 +32,24 @@
 	let open = $state(false);
 	/** 選單開著時，方向鍵指到第幾項（0 = 沒有任務，最後一項 = 自訂）。 */
 	let active = $state(0);
-	let button: HTMLButtonElement;
+	let button = $state<HTMLButtonElement>();
+
+	/** 選單跟按鈕一樣寬，放在按鈕下面；下面放不下就放上面，不超出畫面。 */
+	function place(pop: HTMLElement) {
+		pop.style.width = `${button!.offsetWidth}px`;
+		return below(button!, { gap: 4, align: 'left', flip: true })(pop);
+	}
+
+	// 方向鍵選到的項目捲進畫面（選單太長、自己捲的時候）。
+	$effect(() => {
+		if (open) document.getElementById(`${uid}-${active}`)?.scrollIntoView({ block: 'nearest' });
+	});
 
 	/** 選單的項目：沒有任務、每個角色、自訂。 */
 	const items = $derived<(string | null | typeof NEW)[]>([null, ...names, NEW]);
 
 	export function focus() {
-		button.focus();
+		button?.focus();
 	}
 
 	function toggle() {
@@ -84,7 +97,13 @@
 	</button>
 	{#if open}
 		<!-- 按下去不要搶走按鈕的焦點，不然 focusout 先把選單關掉。 -->
-		<ul role="listbox" id="{uid}-list" aria-label={label} onmousedown={(e) => e.preventDefault()}>
+		<ul
+			role="listbox"
+			id="{uid}-list"
+			aria-label={label}
+			onmousedown={(e) => e.preventDefault()}
+			{@attach popover({ place, close: () => (open = false), inside: [button] })}
+		>
 			{#each items as item, k (k)}
 				<!-- 鍵盤操作在上面的 combobox 上（焦點一直在那裡），項目只收滑鼠。 -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -140,15 +159,14 @@
 		color: var(--muted, #66718a);
 	}
 	ul {
-		position: absolute;
-		left: 0;
-		right: 0;
-		top: calc(100% + 4px);
-		z-index: 20;
+		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、顏色；寬度和位置由 place 給 */
+		position: fixed;
+		inset: auto;
+		color: inherit;
 		list-style: none;
 		margin: 0;
 		padding: 4px;
-		max-height: 300px;
+		max-height: min(300px, calc(100vh - 16px));
 		overflow-y: auto;
 		background: var(--surface, #fff);
 		border: 1px solid var(--line, #d8dee9);

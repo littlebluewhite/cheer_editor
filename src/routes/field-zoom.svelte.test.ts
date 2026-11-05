@@ -12,7 +12,7 @@ afterEach(cleanup);
 
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
 const zoomText = () => document.querySelector('.field-wrap .zoom')!.textContent;
-const svg = () => screen.getByRole('img', { name: '場地' });
+const svg = () => screen.getByRole('group', { name: '場地' });
 const viewBox = () => svg().getAttribute('viewBox')!.split(' ').map(Number);
 
 function open() {

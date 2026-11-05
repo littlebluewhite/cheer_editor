@@ -164,3 +164,45 @@ describe('手機的練習頁', () => {
 		scrolled.mockRestore();
 	});
 });
+
+describe('為什麼不能編：照螢幕寫轉成橫的、太窄或太矮', () => {
+	const real = { w: window.innerWidth, h: window.innerHeight };
+	/** 視窗多大、是不是觸控螢幕（pointer: coarse）。 */
+	function screenOf(w: number, h: number, touch: boolean) {
+		Object.defineProperty(window, 'innerWidth', { value: w, configurable: true });
+		Object.defineProperty(window, 'innerHeight', { value: h, configurable: true });
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN || (touch && query === '(pointer: coarse)') }));
+	}
+	afterEach(() => {
+		Object.defineProperty(window, 'innerWidth', { value: real.w, configurable: true });
+		Object.defineProperty(window, 'innerHeight', { value: real.h, configurable: true });
+	});
+	const why = () => document.querySelector('.phone-why')?.textContent ?? '';
+
+	it('直拿的 iPad（768×1024 觸控）：請轉成橫的，不寫太窄', async () => {
+		screenOf(768, 1024, true);
+		await openOnPhone();
+		expect(why()).toContain('請轉成橫的');
+		expect(why()).not.toContain('太窄');
+	});
+
+	it('很矮的視窗（1440×500）：寫太矮，不寫太窄', async () => {
+		screenOf(1440, 500, false);
+		await openOnPhone();
+		expect(why()).toContain('太矮');
+		expect(why()).not.toContain('太窄');
+	});
+
+	it('手機直拿（390×844 觸控）轉過來也不夠寬：寫太窄，不叫人轉', async () => {
+		screenOf(390, 844, true);
+		await openOnPhone();
+		expect(why()).toContain('太窄');
+		expect(why()).not.toContain('轉成橫的');
+	});
+
+	it('窄的桌面視窗（800×900）：寫太窄', async () => {
+		screenOf(800, 900, false);
+		await openOnPhone();
+		expect(why()).toContain('太窄');
+	});
+});

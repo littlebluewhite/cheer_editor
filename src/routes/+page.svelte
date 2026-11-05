@@ -23,7 +23,7 @@
 	import { resolve } from '$app/paths';
 	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN } from '#lib/editor-layout.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -204,14 +204,16 @@
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
-	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
+	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
+	let windowH = $state(0);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
-		name: 'inspectorWidthPx',
+		name: 'inspectorWidthRatio',
 		axis: 'x',
 		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
-		size: (): number => inspectorPx
+		size: (): number => inspectorPx,
+		relativeTo: () => windowW || window.innerWidth
 	});
 
 	const fieldAspect = $derived.by(() => {
@@ -306,6 +308,8 @@
 	const SPACE_PLAYS = '[data-space-plays]';
 	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
 	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+	/** 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字。 */
+	const NATIVE_UNDO = '[data-native-undo] :is(textarea, input:not([type="checkbox"], [type="radio"]))';
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
@@ -332,8 +336,10 @@
 		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
 		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
+		// 還沒送出的表單（新動作、加隊員）的輸入框除外：字不在流程裡，交給瀏覽器退字。
 		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
+			if (on(NATIVE_UNDO)) return;
 			e.preventDefault();
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
@@ -410,6 +416,7 @@
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
+	bind:innerHeight={windowH}
 />
 <svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
@@ -504,6 +511,10 @@
 				</label>
 			</div>
 		{/snippet}
+		<!-- 鍵盤用的捷徑：上方列、場地、右邊欄要按很多下 Tab 才到時間軸。平常藏著，Tab 到它才出現。 -->
+		{#if view === 'edit' && !narrow}
+			<button type="button" class="skip" onclick={() => timelineHost?.focus()}>跳到時間軸</button>
+		{/if}
 		<header class="topbar">
 			<div class="title">
 				<b title={flow.name}>{flow.name}</b>
@@ -602,6 +613,7 @@
 						</select>
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
 				</main>
 			{/if}
 		{:else}
@@ -702,7 +714,7 @@
 				</Field>
 			</main>
 
-			<aside class="inspector" hidden={view === 'practice'}>
+			<aside class="inspector" aria-label="右邊欄" hidden={view === 'practice'}>
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 				<div
 					class="col-split"
@@ -759,9 +771,9 @@
 				{@attach timelineDivider.attach}
 			></div>
 
-			<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
+			<section class="timeline-host" aria-label="時間軸" tabindex="-1" hidden={view === 'practice'} bind:this={timelineHost}>
 				<Timeline onopensegment={(id) => (openSegmentId = id)} clashes={allClashes} />
-			</div>
+			</section>
 		{/if}
 		{#if view === 'practice'}
 			<div class="practice-host">
@@ -929,7 +941,17 @@
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content);
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content) auto;
+	}
+	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行小字放最下面，不跟場地搶位置 */
+	.phone-why {
+		margin: 0;
+		padding: 4px 12px;
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.phone-why:empty {
+		display: none;
 	}
 	.phone-field {
 		position: relative;
@@ -963,7 +985,7 @@
 	@media (orientation: landscape) {
 		.phone-view {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-			grid-template-rows: auto auto minmax(0, 1fr);
+			grid-template-rows: auto auto minmax(0, 1fr) auto;
 		}
 		.phone-view > :global(*) {
 			grid-column: 2;
@@ -1610,6 +1632,35 @@
 		display: none;
 	}
 
+	/* 上方列、播放區、分頁、時間軸：從空白處拖過去不會把整頁的字反白（輸入框裡照常能選字）。 */
+	.topbar,
+	.transport,
+	.tabs,
+	.timeline-host {
+		user-select: none;
+		-webkit-user-select: none;
+	}
+	:is(.topbar, .transport, .timeline-host) :global(input) {
+		user-select: text;
+		-webkit-user-select: text;
+	}
+
+	/* 「跳到時間軸」：不佔版面；Tab 到它才從左上角出現。 */
+	.skip {
+		position: fixed;
+		top: 8px;
+		left: 8px;
+		z-index: 200;
+		translate: 0 calc(-100% - 16px);
+	}
+	.skip:focus-visible {
+		translate: none;
+	}
+	/* 按「跳到時間軸」聚焦的是整塊時間軸：用跟其他東西一樣的焦點框，框在裡面（外面會被裁掉）。 */
+	.timeline-host:focus-visible {
+		outline-offset: -2px;
+	}
+
 	/* 讓時間軸撐滿這一列、自己捲動。 */
 	.timeline-host {
 		grid-column: 1 / -1;
@@ -1759,10 +1810,11 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
 		gap: 56px;
-		align-items: center;
+		/* 貼上方：新建表單出現錯誤、最近的流程變多時，上面的東西不跳 */
+		align-items: start;
 		max-width: 1040px;
 		margin: 0 auto;
-		padding: 48px 32px;
+		padding: max(48px, 10dvh) 32px 48px;
 	}
 	.home-guide {
 		position: absolute;

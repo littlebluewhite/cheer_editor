@@ -150,8 +150,11 @@
 	let follow = false;
 	/** 按的是小窗裡的按鈕（＋－、放拍點）：小窗留在原地，按鈕不會從滑鼠下面跑掉。 */
 	let hold = false;
-	/** 視窗多寬；變了小窗就重新放。 */
+	/** 視窗多寬多高；變了小窗就重新放。 */
 	let winW = $state(0);
+	let winH = $state(0);
+	/** 小窗比看得到的範圍高（矮視窗、iPad 橫放）：縮矮、裡面自己捲。 */
+	let popScrolls = $state(false);
 	const whoIndex = $derived(Math.max(0, whoOptions.findIndex((o) => sameWho(o.who, beats.who))));
 
 	const hasCells = $derived(fits(action, firstCell(action)));
@@ -390,7 +393,8 @@
 		void flow;
 		void ask.error;
 		void ask.question;
-		void winW; // 視窗變寬變窄，小窗也重新放
+		void winW; // 視窗變大變小，小窗也重新放
+		void winH;
 		const held = hold;
 		hold = false;
 		const q = (s: string) => wrapEl!.querySelector<HTMLElement>(s);
@@ -400,13 +404,18 @@
 		const a = q(`.slot.motion[data-at="${first}"]`);
 		const b = q(`.slot.motion[data-at="${last}"]`);
 		if (!head || !a || !b) return;
-		// 最寬跟格子框一樣；先設好寬度再量高度
+		const box = scrollBox(wrapEl);
+		// 小窗不會被右邊欄裁掉，下面可以開到畫面底（蓋住時間軸，離底邊留一點）；上面只算到右邊欄的頂端（再上面是分頁列、上方列）。
+		const viewTop = box.getBoundingClientRect().top;
+		const viewBottom = innerHeight - GAP;
+		// 最寬跟格子框一樣、最高是看得到的範圍（再高就裡面自己捲）；先設好寬高再量高度
 		popEl.style.width = `min(480px, ${wrapEl.clientWidth}px)`;
+		popEl.style.maxHeight = `${viewBottom - viewTop}px`;
 		const h = popEl.offsetHeight;
+		popScrolls = popEl.scrollHeight > popEl.clientHeight;
 		untrack(() => {
 			if (h + GAP > reserve) reserve = h + GAP;
 		});
-		const box = scrollBox(wrapEl);
 		// 自動跳到的下一拍在畫面下面看不到：往下捲剛好看得到那一排就好。
 		let scrolled = false;
 		if (follow) {
@@ -419,8 +428,7 @@
 			}
 		}
 		const wrap = wrapEl.getBoundingClientRect();
-		// 小窗不會被右邊欄裁掉，下面可以開到畫面底（蓋住時間軸）；上面只算到右邊欄的頂端（再上面是分頁列、上方列）。
-		const view = { top: box.getBoundingClientRect().top, bottom: innerHeight };
+		const view = { top: viewTop, bottom: viewBottom };
 		const rect = (el: HTMLElement) => {
 			const r = el.getBoundingClientRect();
 			return { top: r.top - wrap.top, bottom: r.bottom - wrap.top, left: r.left - wrap.left, right: r.right - wrap.left };
@@ -638,6 +646,7 @@
 					class="pop"
 					class:above={popPos.above}
 					class:through
+					class:scrolls={popScrolls}
 					bind:this={popEl}
 					style:--arrow="{popPos.arrow}px"
 					role="dialog"
@@ -799,7 +808,7 @@
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 {/snippet}
 
-<svelte:window bind:innerWidth={winW} onkeydown={shiftKey} onkeyup={shiftKey} onblur={() => (through = false)} />
+<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onkeydown={shiftKey} onkeyup={shiftKey} onblur={() => (through = false)} />
 
 <style>
 	.cues {
@@ -899,6 +908,13 @@
 	.cell.sel.left,
 	.cell.sel.right {
 		outline-style: dashed;
+	}
+	/* 選到的格子用鍵盤停在上面：換成全站的焦點框（格子外面的青色框），不被選取的框蓋掉。 */
+	.cell.sel:focus-visible {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: 2px;
+		position: relative;
+		z-index: 1;
 	}
 	/* 現在播到的那一拍：數字格底下一條播放頭顏色的粗線。 */
 	.cell.now {
@@ -1070,10 +1086,9 @@
 	.pop-row.phase .lbl {
 		color: var(--text, #1a2238);
 	}
-	/* 口號段點選的環節。 */
+	/* 口號段點選的環節：深色的框（用陰影畫；外框留給焦點的青色框）。 */
 	.word.phase[aria-pressed='true'] {
-		outline: 2px solid var(--sel, #19b4d8);
-		outline-offset: 2px;
+		box-shadow: 0 0 0 2px var(--ink, #16213a);
 	}
 	.clear:disabled {
 		opacity: 0.4;
@@ -1115,12 +1130,16 @@
 	.pop-row.motion .lbl {
 		color: var(--cue-motion-ink);
 	}
+	/* 自己打的字和「加入」：窄的時候換行，不擠出去蓋到「清掉」。 */
 	.own {
 		display: inline-flex;
+		flex-wrap: wrap;
 		gap: 4px;
+		max-width: 100%;
 	}
 	.custom {
 		width: 9em;
+		max-width: 100%;
 		min-height: 26px;
 		padding: 2px 8px;
 		border-radius: 999px;
@@ -1186,6 +1205,10 @@
 		border-left: 1px solid var(--line, #d8dee9);
 		border-top: 1px solid var(--line, #d8dee9);
 		transform: rotate(45deg);
+	}
+	/* 比看得到的範圍高：裡面自己捲（小尖角會被裁掉，反正小窗蓋到選取了）。 */
+	.pop.scrolls {
+		overflow-y: auto;
 	}
 	/* 按住 Shift：小窗變淡、不吃點擊，點得到下面的格子。 */
 	.pop.through {

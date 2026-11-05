@@ -256,7 +256,7 @@ describe('在場上選人、整組拖', () => {
 
 	function setup(selected: string[] = [], multi = false) {
 		const session = renderEditing(members, { m1: [0, 0], m2: [1, 0], m3: [3, 3] }, { toMeters }, { selected, multi });
-		const svg = screen.getByRole('img', { name: '場地' }) as unknown as SVGSVGElement;
+		const svg = screen.getByRole('group', { name: '場地' }) as unknown as SVGSVGElement;
 		const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
 		return { session, svg, dot };
 	}

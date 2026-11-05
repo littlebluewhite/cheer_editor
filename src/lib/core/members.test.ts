@@ -254,15 +254,15 @@ describe('貼上名單加隊員', () => {
 		]);
 	});
 
-	it('認不得的行列進錯誤（寫第幾行），其他行照加；所有錯誤一次列出', () => {
+	it('認不得的行列進錯誤（寫名字，不寫第幾行），其他行照加；所有錯誤一次列出', () => {
 		const text = ['小A', '小B\t男孩\t底層', '小C\t女\t大力士', '小D\t女', '小E\t男\t上層'].join('\n');
 		const r = addMemberLines(newFlow(), text, picked);
 		expect(r).toMatchObject({
 			kind: 'ok',
 			errors: [
-				'第 2 行「小B」：性別要寫「男」或「女」',
-				'第 3 行「小C」：全局角色要寫「底層」或「上層」',
-				'第 4 行「小D」：一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）'
+				'「小B」：性別要寫「男」或「女」',
+				'「小C」：全局角色要寫「底層」或「上層」',
+				'「小D」：一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）'
 			],
 			rejected: ['小B\t男孩\t底層', '小C\t女\t大力士', '小D\t女']
 		});
@@ -313,11 +313,12 @@ describe('貼上名單加隊員', () => {
 	});
 
 	it('沒選性別、全局角色，名字太長：每一行的錯一次列出；一行都加不了就擋下', () => {
-		const long = '一二三四五六七八九十一二三四五六七八九十一';
+		const long = '一二三四五六七八九十'.repeat(50);
 		const r = addMemberLines(newFlow(), `小A\n${long}\t男\t底層`, { gender: null, globalRole: null });
+		// 長名字只寫前 10 個字
 		expect(r).toEqual({
 			kind: 'blocked',
-			message: `第 1 行「小A」：請選性別；請選全局角色\n第 2 行「${long}」：隊員名字最多 20 個字`
+			message: '「小A」：請選性別；請選全局角色\n「一二三四五六七八九十…」：隊員名字最多 20 個字'
 		});
 	});
 
@@ -340,7 +341,7 @@ describe('貼上名單加隊員', () => {
 		const full = okFlow(addMemberLines(newFlow(), Array.from({ length: 39 }, (_, i) => `隊員${i + 1}`).join('\n'), picked));
 		expect(addMemberLines(full, '小A\n小B\t男孩\t底層', picked)).toEqual({
 			kind: 'blocked',
-			message: '第 2 行「小B」：性別要寫「男」或「女」\n一支流程最多 40 人，這次加 2 人，只能再加 1 人'
+			message: '「小B」：性別要寫「男」或「女」\n一支流程最多 40 人，這次加 2 人，只能再加 1 人'
 		});
 	});
 });

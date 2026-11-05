@@ -3,11 +3,13 @@
 
 export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
-export { adjustField, createFlow, memberName, renameFlow, stripsProblem } from './flow';
+export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
 export { MAX_CHARS, charCount, firstChars } from './text-length';
 export type { LimitedText } from './text-length';
+
+export { changeLabel } from './change-label';
 
 export { missingAudioNames, readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
 export type { AudioBytes, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
@@ -212,6 +214,8 @@ export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
 
 export { deleteSegment, moveSegment, splitSegment } from './segment-order';
+
+export { insertBeats } from './insert-beats';
 
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules, TimeRuleWarning } from './time-rules';
