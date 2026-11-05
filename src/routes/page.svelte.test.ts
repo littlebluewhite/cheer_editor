@@ -77,6 +77,10 @@ describe('段、八拍尺、上方列', () => {
 
 	it('超過時間規則時上方列提醒；流程設定可以關掉或改數字', async () => {
 		await newFlow();
+		expect(screen.queryByText(/口號段共/)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByText(/口號段共 0.0 秒，少於 30 秒/)).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '0' } });

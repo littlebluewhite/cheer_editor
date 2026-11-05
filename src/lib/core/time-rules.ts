@@ -28,10 +28,10 @@ export function updateTimeRules(flow: Flow, patch: Partial<TimeRules>): CommandR
 	return ok({ ...flow, timeRules });
 }
 
-/** 給上方列的提醒文字；關掉時是空的。 */
+/** 給上方列的提醒文字；關掉時、還沒有任何段時是空的。 */
 export function timeRuleWarnings(flow: Flow): string[] {
 	const rules = flow.timeRules;
-	if (!rules.on) return [];
+	if (!rules.on || flow.segments.length === 0) return [];
 	let chant = 0;
 	let music = 0;
 	for (const span of segmentSpans(flow)) {

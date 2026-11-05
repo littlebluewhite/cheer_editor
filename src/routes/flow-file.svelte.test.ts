@@ -25,6 +25,12 @@ async function newFlow() {
 	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 }
 
+async function addChant() {
+	await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+	await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+	await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+}
+
 const ctrlS = (target: Element | Window = window) => fireEvent.keyDown(target, { key: 's', ctrlKey: true });
 
 /** audioFlow 再加第 2 張站位在 1 秒。 */
@@ -134,6 +140,7 @@ describe('存檔', () => {
 	it('按「存檔」也可以；存了就沒有未存的修改，改了又有', async () => {
 		setup();
 		await newFlow();
+		await addChant();
 		expect(hasUnsavedChanges()).toBe(true);
 		expect(screen.getByText('未存')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
@@ -145,9 +152,26 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(true);
 	});
 
+	it('有未存的修改時關分頁或重新整理，瀏覽器先問；沒有就不問', async () => {
+		setup();
+		await newFlow();
+		const leave = () => {
+			const e = new Event('beforeunload', { cancelable: true });
+			window.dispatchEvent(e);
+			return e.defaultPrevented;
+		};
+		expect(leave()).toBe(false);
+		await addChant();
+		expect(leave()).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await flush();
+		expect(leave()).toBe(false);
+	});
+
 	it('在存檔對話框按取消：還是未存', async () => {
 		setup(fakeSaver('cancelled').saver);
 		await newFlow();
+		await addChant();
 		await ctrlS();
 		await flush();
 		expect(hasUnsavedChanges()).toBe(true);
@@ -214,6 +238,7 @@ describe('開檔', () => {
 	it('有未存的修改時開別的檔先問；取消就留在原本的流程，確定才打開', async () => {
 		setup();
 		await newFlow();
+		await addChant();
 		const file = writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) });
 		await openFile(file, '開啟');
 		expect(screen.getByRole('alertdialog').textContent).toContain('「全國賽」還沒存');
@@ -239,9 +264,19 @@ describe('新建', () => {
 		expect(screen.getByText('已選 0 人')).toBeTruthy();
 	});
 
+	it('剛建好、什麼都沒改：不算未存，按「新建」不用問', async () => {
+		setup();
+		await newFlow();
+		expect(screen.queryByText('未存')).toBeNull();
+		expect(hasUnsavedChanges()).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
 	it('有未存的修改先問；取消就留著，確定才回到新建流程', async () => {
 		setup();
 		await newFlow();
+		await addChant();
 		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
 		expect(screen.getByRole('alertdialog').textContent).toContain('「全國賽」還沒存');
 		await fireEvent.click(screen.getByRole('button', { name: '取消' }));

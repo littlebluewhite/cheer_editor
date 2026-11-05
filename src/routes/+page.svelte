@@ -103,6 +103,10 @@
 	const flow = $derived(session.flow);
 	const unsaved = $derived(session.unsaved);
 	$effect(() => setUnsavedChanges(unsaved));
+	/** 有還沒存的修改時關分頁、重新整理：讓瀏覽器先問（草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。 */
+	function onbeforeunload(e: BeforeUnloadEvent) {
+		if (unsaved) e.preventDefault();
+	}
 	/** 存檔薄層，一支流程一個（記得存到哪個檔）：第一次存檔才建，換流程就丟掉。 */
 	let saver: FileSaver | null = null;
 	let saving = false;
@@ -583,7 +587,7 @@
 <svelte:head>
 	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
 </svelte:head>
-<svelte:window {onkeydown} bind:innerWidth={windowW} />
+<svelte:window {onkeydown} {onbeforeunload} bind:innerWidth={windowW} />
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
@@ -921,7 +925,7 @@
 					</div>
 				</div>
 			{:else}
-				<NewFlowForm oncreate={startFlow} />
+				<NewFlowForm oncreate={(f) => startFlow(f, {}, true)} />
 				<div class="home-open">
 					<span>已經有流程檔？</span>
 					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onchange={open} /></label>

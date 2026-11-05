@@ -46,6 +46,16 @@ describe('時間規則警告', () => {
 		]);
 	});
 
+	it('還沒有任何段時不警告（剛建好的流程不要一打開就黃字）', () => {
+		const flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
+		expect(timeRuleWarnings(flow)).toEqual([]);
+	});
+
+	it('只有音樂段、沒有口號段，照樣提醒口號段不夠', () => {
+		const flow = flowOf(addSegment(flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } })), 'music'));
+		expect(timeRuleWarnings(flow)).toEqual(['口號段共 0.0 秒，少於 30 秒']);
+	});
+
 	it('關掉就沒有警告', () => {
 		const flow = flowOf(updateTimeRules(routine(260, 20), { on: false }));
 		expect(timeRuleWarnings(flow)).toEqual([]);

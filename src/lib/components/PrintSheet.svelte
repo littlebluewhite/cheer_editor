@@ -59,7 +59,7 @@
 				{/each}
 			</select>
 		</label>
-		<span class="muted">用瀏覽器列印（Ctrl+P），也可以存成 PDF。</span>
+		<span class="muted">用瀏覽器列印（⌘P／Ctrl+P），也可以存成 PDF。</span>
 		<span class="grow"></span>
 		<button type="button" class="primary" onclick={print}><Icon name="print" />列印</button>
 		<button type="button" onclick={onclose}>關閉</button>

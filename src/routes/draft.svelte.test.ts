@@ -107,6 +107,7 @@ describe('編輯時自動存草稿', () => {
 		await flush();
 		vi.useFakeTimers();
 		await newFlow();
+		await addChant();
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(drafts.state.bytes).not.toBeNull();
 		await fireEvent.keyDown(window, { key: 's', ctrlKey: true });
@@ -114,7 +115,7 @@ describe('編輯時自動存草稿', () => {
 		expect(drafts.state.bytes).toBeNull();
 		await addChant();
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftFlow(drafts.state.bytes).flow.segments).toHaveLength(1);
+		expect(draftFlow(drafts.state.bytes).flow.segments).toHaveLength(2);
 	});
 
 	it('救回草稿時清空復原紀錄；復原後草稿照常存（存的是復原後的流程，音樂還在）', async () => {
