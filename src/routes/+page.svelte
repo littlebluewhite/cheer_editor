@@ -767,7 +767,7 @@
 				aria-valuenow={timelineDivider.px ?? currentTimelineH()}
 				aria-valuemin={TIMELINE_MIN_PX}
 				tabindex="0"
-				title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
+				title="拖這裡改時間軸的高度，場地跟著變（雙擊或按場地左邊的「版面回原狀」回到預設）"
 				{@attach timelineDivider.attach}
 			></div>
 
