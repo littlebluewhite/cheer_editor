@@ -68,6 +68,33 @@ describe('空白鍵', () => {
 		expect(playing()).toBe(true);
 	});
 
+	it('滑鼠點過選取用的按鈕（色條、站位縮圖、泳道名字、縮放鈕）：空白鍵照樣播放／暫停，不再按一次那顆鈕；Enter 照樣按下', async () => {
+		setup();
+		const bar = document.querySelector<HTMLElement>('[data-lane="m1"] [data-action-id="x1"]')!;
+		await fireEvent.click(bar);
+		expect(await space(bar)).toBe(false);
+		expect(playing()).toBe(true);
+		// 放開空白鍵時也不按下它（瀏覽器的按鈕是放開空白鍵才算按）
+		expect(await fireEvent.keyUp(bar, { key: ' ' })).toBe(false);
+		const targets = [
+			screen.getByRole('button', { name: '站位 1' }),
+			document.querySelector<HTMLElement>('[data-lane="m1"] button.lab')!,
+			screen.getByRole('button', { name: '時間軸放大' }),
+			screen.getByRole('button', { name: '時間軸縮小' }),
+			screen.getByRole('button', { name: '符合寬度' })
+		];
+		for (const el of targets) {
+			const was = playing();
+			expect(await space(el), el.outerHTML.slice(0, 60)).toBe(false);
+			expect(playing()).toBe(!was);
+			expect(await fireEvent.keyUp(el, { key: ' ' })).toBe(false);
+		}
+		// Enter 照樣按下（瀏覽器自己按，不攔）
+		expect(await fireEvent.keyDown(bar, { key: 'Enter' })).toBe(true);
+		// 一般的按鈕（流程設定）放開空白鍵照樣按下
+		expect(await fireEvent.keyUp(screen.getByRole('button', { name: '流程設定' }), { key: ' ' })).toBe(true);
+	});
+
 	it('段設定開著時，空白鍵和段設定裡的暫停鈕都能暫停', async () => {
 		setup();
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
@@ -184,11 +211,20 @@ describe('Home／End、分頁', () => {
 		const clock = document.querySelector('.clock')!.textContent!;
 		const [now, total] = clock.split('/').map((s) => s.trim());
 		expect(now).toBe(total);
+		expect(position()).toBe('結尾');
 		await fireEvent.keyDown(window, { key: 'Home' });
 		expect(position()).toBe('音樂 1 1-1');
 		// 輸入框裡的 Home／End 是移游標
 		await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'End' });
 		expect(position()).toBe('音樂 1 1-1');
+	});
+
+	it('播放中按 End：停在結尾，不從頭重播', async () => {
+		setup();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		await fireEvent.keyDown(window, { key: 'End' });
+		expect(playing()).toBe(false);
+		expect(position()).toBe('結尾');
 	});
 
 	it('分頁可以用左右方向鍵切換，焦點跟著走；播放頭不動', async () => {

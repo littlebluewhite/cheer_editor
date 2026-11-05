@@ -2,7 +2,7 @@
 // 播放器（#lib/audio/player.js：排程和時鐘換算）是它的內部；音訊引擎第一次播放時才建。
 // 畫面時鐘（nextFrame）是 adapter：瀏覽器用 requestAnimationFrame，測試手動撥一格。
 
-import { firstBeatPreview, playbackPlan, playStartSec, resumeSec, stepPlayhead, totalSeconds, type Flow } from '#lib/core';
+import { firstBeatPreview, playbackPlan, playStartSec, resumeSec, snapToBeat, stepPlayhead, totalSeconds, type Flow } from '#lib/core';
 import type { AudioEngine } from '#lib/audio/engine.js';
 import { createPlayer, type Player } from '#lib/audio/player.js';
 import type { SessionPlayback } from '#lib/editor-session.svelte.js';
@@ -94,6 +94,14 @@ export class Playback implements SessionPlayback {
 		this.#player?.stop();
 	}
 
+	/** 播放中開始拖人：先暫停，播放頭停到最近的整拍（站位才不會插在半拍上）。沒在播就不動。 */
+	pauseOnBeat() {
+		const f = this.#flow();
+		if (!this.#playing || !f) return;
+		this.pause();
+		this.#sec = snapToBeat(f, this.#sec);
+	}
+
 	/** 播放鍵：播放中就暫停，不然播放。 */
 	toggle() {
 		if (this.#playing) this.pause();
@@ -110,12 +118,15 @@ export class Playback implements SessionPlayback {
 		return true;
 	}
 
-	/** 跳到某一秒（夾在 0 到流程結尾之間）；播放中就從那裡重新排聲音。 */
+	/** 跳到某一秒（夾在 0 到流程結尾之間）；播放中就從那裡重新排聲音，跳到結尾就是播完了，停下（不從頭重播）。 */
 	seek(sec: number) {
 		const f = this.#flow();
 		if (!f) return;
-		this.#sec = Math.min(Math.max(sec, 0), totalSeconds(f));
-		if (this.#playing) this.play();
+		const { sec: at, ended } = resumeSec(f, sec);
+		this.#sec = at;
+		if (!this.#playing) return;
+		if (ended) this.pause();
+		else this.play();
 	}
 
 	/** 跳到流程開頭（Home）。 */

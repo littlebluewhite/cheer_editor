@@ -174,6 +174,19 @@ describe('播放：播放、暫停、從哪裡播', () => {
 		expect(position()).toBe('音樂 2 1-1');
 	});
 
+	it('播放中按 End（或點到時間尺最尾端）：停在結尾，不從頭重播', () => {
+		const { playback, engine } = setup();
+		playback.play();
+		playback.toEnd();
+		expect(playback.playing).toBe(false);
+		expect(playback.sec).toBeCloseTo(61.2, 6);
+		expect(engine.clicks).toEqual([]);
+		playback.play();
+		playback.seek(999);
+		expect(playback.playing).toBe(false);
+		expect(playback.sec).toBeCloseTo(61.2, 6);
+	});
+
 	it('跳的時候夾在 0 到流程結尾之間', () => {
 		const { playback } = setup();
 		playback.seek(-3);
