@@ -744,7 +744,11 @@
 		<FlowSettings onclose={() => (settingsOpen = false)} />
 	{/if}
 	{#if printOpen}
-		<PrintSheet {flow} onclose={() => (printOpen = false)} />
+		<PrintSheet
+			{flow}
+			selected={session.selectedMemberIds.length === 1 ? session.selectedMemberIds[0] : null}
+			onclose={() => (printOpen = false)}
+		/>
 	{/if}
 	{#if editor.file.asking}
 		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
