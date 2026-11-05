@@ -473,7 +473,6 @@
 				markers={memberMarkers(flow)}
 				positions={positionsAt(flow, playback.sec)}
 				raised={raisedAt(flow, playback.sec)}
-				playheadSec={playback.sec}
 				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
@@ -526,12 +525,12 @@
 								{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
 							</p>
 						{/if}
-						<CueOverlay {flow} playheadSec={playback.sec} />
+						<CueOverlay {flow} />
 					{/if}
 				{/snippet}
 				{#snippet railBottom()}
 					{#if flow?.members.length}
-						<FormationEditor playheadSec={playback.sec} />
+						<FormationEditor />
 					{/if}
 				{/snippet}
 			{#if flow.members.length === 0}
@@ -583,9 +582,9 @@
 				>
 			</div>
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
-				<MemberPicker playheadSec={playback.sec} />
-				<WalkForm playheadSec={playback.sec} />
-				<ActionForm playheadSec={playback.sec} {cellAt} />
+				<MemberPicker />
+				<WalkForm />
+				<ActionForm {cellAt} />
 			</div>
 			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 				<MemberPanel />
@@ -607,11 +606,7 @@
 		></div>
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
-			<Timeline
-				playheadSec={playback.sec}
-				onseek={(sec) => playback.seek(sec)}
-				onopensegment={(id) => (openSegmentId = id)}
-			/>
+			<Timeline onopensegment={(id) => (openSegmentId = id)} />
 		</div>
 		{#if view === 'practice'}
 			<div class="practice-host">
@@ -652,11 +647,6 @@
 		<SegmentSettings
 			segmentId={openSegmentId}
 			{waveXToSec}
-			previewing={playback.previewing}
-			onpreview={(id) => playback.preview(id)}
-			playing={playback.playing}
-			onpause={() => playback.pause()}
-			onstoppreview={() => playback.stopPreview()}
 			onclose={() => {
 				playback.stopPreview();
 				openSegmentId = null;

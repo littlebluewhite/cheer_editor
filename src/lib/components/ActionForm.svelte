@@ -8,6 +8,7 @@
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	import { untrack, type ComponentProps } from 'svelte';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import {
@@ -46,19 +47,19 @@
 	import RolePicker, { roleKey } from './RolePicker.svelte';
 
 	interface Props {
-		/** 播放頭，全域秒數。新動作從這裡開始。 */
-		playheadSec: number;
 		/** 拍點格子的「指標位置 → 格子」；沒給用格子預設的（ADR 0002）。 */
 		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
 	}
 
-	let { playheadSec, cellAt }: Props = $props();
+	let { cellAt }: Props = $props();
 
 	// 流程、選到的動作（null = 新增）、選到的人（新增時就是新動作的人）都從 session 拿。
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	const actionId = $derived(session.selectedActionId);
 	const selectedMemberIds = $derived(session.selectedMemberIds);
+	/** 播放頭從編輯器 module 的播放拿：新動作從這裡開始。 */
+	const { playback } = getEditor();
 
 	interface Draft {
 		category: ActionCategory;
@@ -72,7 +73,7 @@
 	}
 
 	const action = $derived(actionId ? (flow.actions.find((a) => a.id === actionId) ?? null) : null);
-	const slot = $derived(action ? null : actionSlotAt(flow, playheadSec));
+	const slot = $derived(action ? null : actionSlotAt(flow, playback.sec));
 	const segment = $derived(
 		flow.segments.find((s) => s.id === (action?.segmentId ?? slot?.segmentId)) ?? null
 	);
@@ -472,7 +473,7 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {playheadSec} {cellAt} />
+			<CueGrid {action} {cellAt} />
 		{:else}
 			<button
 				type="button"

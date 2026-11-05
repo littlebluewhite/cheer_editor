@@ -77,7 +77,8 @@ function renderLanes(
 	session.selectAction(selectedActionId);
 	session.selectMembers(selectedMemberIds);
 	session.multiSelect = multi;
-	render(TestSession, { props: { editor, component: Lanes, props: { playheadSec, pxPerSec: 10 } } });
+	editor.playback.seek(playheadSec);
+	render(TestSession, { props: { editor, component: Lanes, props: { pxPerSec: 10 } } });
 	return { session, ask: session.ask };
 }
 
