@@ -409,7 +409,7 @@ async function renameFlowTo(name) {
 	await sleep(200);
 }
 
-for (const w of [1141, 1200, 1300]) {
+for (const w of [1141, 1200, 1300, 1380, 1381]) {
 	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
 		await setViewport(w, 900);
 		await openSample();
@@ -430,6 +430,74 @@ await check('1400 寬：「八拍表」按鈕有字，不是只有圖示', async
 		if (!node) return { 包著字的寬: 0 };
 		return { 包著字的寬: Math.round(node.parentElement.getBoundingClientRect().width), 按鈕寬: Math.round(b.getBoundingClientRect().width) };`);
 	return { ok: r.包著字的寬 >= 40, value: r };
+});
+
+await check('1440 寬：「使用說明」「設定」按鈕有字，不是只有圖示', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const r = await js(`const textW = (el, word) => {
+			const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+			let node; while ((node = walker.nextNode()) && !node.textContent.includes(word));
+			return node ? Math.round(node.parentElement.getBoundingClientRect().width) : 0; };
+		const guide = document.querySelector('.topbar a[title="使用說明"]');
+		const gear = [...document.querySelectorAll('.topbar button')].find((x) => x.title === '流程設定');
+		return { 使用說明: textW(guide, '使用說明'), 設定: textW(gear, '設定') };`);
+	return { ok: r.使用說明 >= 40 && r.設定 >= 20, value: r };
+});
+
+/** 上方列每顆看得到的按鈕、連結：中心點最上面的東西是不是它自己。 */
+const topbarHits = () =>
+	js(`return [...document.querySelectorAll('.topbar button, .topbar a, .topbar label.btn')].filter((el) => el.checkVisibility()).flatMap((el) => {
+			const r = el.getBoundingClientRect();
+			if (r.width < 3 || r.height < 3) return [];
+			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			const inView = r.left >= 0 && r.right <= innerWidth;
+			return !!t && el.contains(t) && inView ? [] : [{ 按鈕: (el.title || el.textContent).trim().slice(0, 8), 點到: t ? t.outerHTML.slice(0, 60) : null, 在畫面裡: inView }];
+		});`);
+/** 「編排｜練習」的位置。 */
+const viewSpot = () => js(`const r = document.querySelector('.topbar .view').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)];`);
+/** 在練習頁記一次（流程就有未存的修改）。 */
+async function recordOnce() {
+	return js(`for (const b of document.querySelectorAll('.record .list button')) {
+			b.click();
+			await new Promise((r) => setTimeout(r, 100));
+			const fail = document.querySelector('.card button[aria-label$="失敗"]');
+			if (fail) { fail.click(); await new Promise((r) => setTimeout(r, 100)); document.querySelector('.card .save').click(); await new Promise((r) => setTimeout(r, 200)); return true; }
+		}
+		return false;`);
+}
+
+for (const w of [390, 500, 760]) {
+	await check(`${w} 寬練習頁：上方列每顆按鈕點到的是它自己（出現「未存」前後都是），流程名字看得到，「編排｜練習」不被推走`, async () => {
+		await setViewport(w, 844);
+		await openPracticeFlow();
+		await js(`[...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '去練習').click()`);
+		await sleep(300);
+		const before = await topbarHits();
+		const spot = await viewSpot();
+		const recorded = await recordOnce();
+		const unsaved = await js(`return !!document.querySelector('.topbar .unsaved')`);
+		const after = await topbarHits();
+		const spotAfter = await viewSpot();
+		const nameW = await js(`return Math.round(document.querySelector('.topbar .title b').getBoundingClientRect().width)`);
+		const v = { 未存前點錯的: before, 未存後點錯的: after, 有未存: recorded && unsaved, 編排練習: `${spot} → ${spotAfter}`, 名字寬: nameW };
+		return { ok: before.length === 0 && after.length === 0 && v.有未存 && String(spot) === String(spotAfter) && nameW > 0, value: v };
+	});
+}
+
+await check('1440 寬編排頁：出現「未存」前後，「編排｜練習」位置不變', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const spot = await viewSpot();
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title === '流程設定').click()`);
+	await waitFor(() => js(`return !!document.querySelector('.flow-dialog')`));
+	await js(`document.querySelector('.flow-dialog input[type=checkbox]').click()`);
+	await sleep(100);
+	await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+	await sleep(200);
+	const unsaved = await js(`return !!document.querySelector('.topbar .unsaved')`);
+	const spotAfter = await viewSpot();
+	return { ok: unsaved && String(spot) === String(spotAfter), value: { 有未存: unsaved, 編排練習: `${spot} → ${spotAfter}` } };
 });
 
 await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編輯器」各一行，不溢出', async () => {
@@ -769,6 +837,64 @@ await check('390×844（手機）使用說明：名詞表上下排，不用左�
 		return { 要滑的表: wraps.filter((w) => w.內容寬 > w.框寬 + 1), 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth };`);
 	await clearTouch();
 	return { ok: r.要滑的表.length === 0 && r.頁寬 <= r.畫面寬, value: r };
+});
+
+await check('1440×900 右邊欄是新動作表單：「新增動作」不用捲就看得到、點得到（黏在右邊欄底部）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	// 選全隊：新動作表單列出所有人，表單比右邊欄長
+	await js(`[...document.querySelectorAll('.inspector button')].find((b) => b.textContent.trim() === '全隊').click()`);
+	await sleep(300);
+	const r = await js(`const panel = document.querySelector('#panel-action'); panel.scrollTop = 0;
+		await new Promise((r) => setTimeout(r, 150));
+		const b = document.querySelector('.action-form .add').getBoundingClientRect();
+		const p = panel.getBoundingClientRect();
+		const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+		return { 點得到: hit === document.querySelector('.action-form .add'), 按鈕: [Math.round(b.top), Math.round(b.bottom)],
+			右邊欄: [Math.round(p.top), Math.round(p.bottom)], 右邊欄要捲: panel.scrollHeight > panel.clientHeight };`);
+	return { ok: r.點得到 && r.按鈕[1] <= r.右邊欄[1] && r.右邊欄要捲, value: r };
+});
+
+// ---------- 撞位的 ✕、場地中心記號（#133） ----------
+
+await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、有「撞位：誰、誰」；場地中心記號是「＋」不是 ✕', async () => {
+	await setViewport(1440, 1000);
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	// 小A 在騰翻裡從 [-3, 3] 走到 [3, 3]，經過站在 [0, 3.85] 的小B：✕ 畫在 [0, 3.425]，離場地中心遠。
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const of = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		let flow = of(c.createFlow({ name: '撞位', field: { strips: 9, layout: 'vertical' } }));
+		flow = of(c.addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
+		flow = of(c.addSegment(flow, 'music'));
+		flow = of(c.setPositions(flow, 'f1', { m1: [-3, 3], m2: [0, 3.85] }));
+		flow = of(c.insertFormation(flow, 4.8));
+		flow = of(c.setPositions(flow, flow.formations[1].id, { m1: [3, 3] }));
+		flow = of(c.addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 0, length: 24, note: '',
+			members: [{ memberId: 'm1', role: null }] }));
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([c.writeFlowFile(flow, {})], '撞位.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await sleep(300);
+	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+	await sleep(300);
+	const clash = await js(`const x = document.querySelector('.field [data-clash]');
+		if (!x) return { 有: false };
+		const r = x.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+		const top = document.elementFromPoint(cx, cy);
+		return { 有: true, 接得到滑鼠: top === x, 最上面: top?.outerHTML.slice(0, 80), 說明: x.querySelector('title')?.textContent };`);
+	// 「＋」的橫線上有東西、斜角上沒有；「✕」剛好相反。
+	const center = await js(`const el = document.querySelector('.field .center');
+		const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, d = r.width * 0.35;
+		return { 橫線上: document.elementFromPoint(cx + d, cy) === el, 斜角上: document.elementFromPoint(cx + d, cy + d) === el };`);
+	return {
+		ok: clash.接得到滑鼠 && clash.說明 === '撞位：小A、小B' && center.橫線上 && !center.斜角上,
+		value: { 撞位: clash, 中心記號: center }
+	};
 });
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');

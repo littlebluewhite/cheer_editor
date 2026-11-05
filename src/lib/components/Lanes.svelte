@@ -8,7 +8,7 @@
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 拖的時候走位條上面即時寫新的拍數，拖出範圍（放開會被擋）當下變色。點一下（滑鼠、手指）選這個人，Shift＋點加進來。
 	// 走位條看起來是細條，能點的範圍比較高（WALK_HIT_H）。
-	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（見 clashes），拖的時候先藏起來。
+	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（頁面算好的 clashes），拖的時候先藏起來。
 	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
 	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
@@ -17,7 +17,6 @@
 	import {
 		actionLabel,
 		actionSeconds,
-		clashes,
 		CUE_KINDS,
 		cueForMember,
 		formationWalks,
@@ -33,6 +32,7 @@
 		timeText,
 		toSeconds,
 		totalSeconds,
+		type Clash,
 		type ConfirmOption,
 		type Cue,
 		type CueKind,
@@ -49,9 +49,11 @@
 	interface Props {
 		/** 時間軸 1 秒幾 px。 */
 		pxPerSec: number;
+		/** 整個流程的撞位：頁面算一次，跟場地共用。 */
+		clashes?: Clash[];
 	}
 
-	let { pxPerSec }: Props = $props();
+	let { pxPerSec, clashes = [] }: Props = $props();
 
 	const session = getEditorSession();
 	const editor = getEditor();
@@ -62,6 +64,8 @@
 
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
 	const DRAG_PX = 3;
+	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 	/** 正在拖的色條：move = 整條移動，resize = 拉右邊；dx 是滑鼠移了幾 px。 */
 	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number } | null>(null);
@@ -166,7 +170,7 @@
 				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, clashes: [] });
 			}
 		}
-		for (const c of clashes(flow)) {
+		for (const c of clashes) {
 			for (const id of c.memberIds) {
 				byMember[id]?.find((w) => w.formationId === c.formationId)?.clashes.push(c);
 			}
@@ -297,7 +301,7 @@
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
-			title="點一下選這個人；多選開著或 Shift＋點，可以選好幾個"
+			title={touchScreen ? '點一下選這個人；打開「多選」再點，可以選好幾個' : '點一下選這個人；Shift＋點可以選好幾個'}
 			onclick={(e) => session.pickMember(m.id, e.shiftKey)}
 		>
 			<b

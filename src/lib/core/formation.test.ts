@@ -1000,14 +1000,22 @@ describe('挪站位', () => {
 		expect(memberWalk(later, 'f2', A)).toEqual({ depart: at('s1', 60), arrive: at('s1', 90) });
 	});
 
-	it('挪完碰到前一張就夾在前一張；夾完出發不早於到達就當沒設', () => {
-		// 往前挪 60 個半拍到第 40 個（8 秒）：出發夾在開頭，到達是第 20 個（4 秒）
-		const squeezed = okFlow(moveFormation(early(), 'f2', at('s1', 40)));
-		expect(memberWalk(squeezed, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 20) });
-		// 挪到第 4 個：出發、到達都夾在開頭，當沒設；不到一個八拍，整段走
-		const gone = okFlow(moveFormation(early(), 'f2', at('s1', 4)));
-		expect(gone.formations[1].walks).toBeUndefined();
-		expect(memberWalk(gone, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 4) });
+	it('往前挪碰到前一張：出發夾在前一張，走位長度不變', () => {
+		// 往前挪 60 個半拍到第 40 個（8 秒）：出發夾在開頭，還是走 30 個半拍，第 30 個到，之後等到站位時間
+		const kept = okFlow(moveFormation(early(), 'f2', at('s1', 40)));
+		expect(memberWalk(kept, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 30) });
+		// 剛好放得下：挪到第 30 個，出發在開頭、到達在站位時間
+		const exact = okFlow(moveFormation(early(), 'f2', at('s1', 30)));
+		expect(memberWalk(exact, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 30) });
+	});
+
+	it('放不下就縮成前一張到新的站位時間整段走，出發不早於前一張', () => {
+		// 測試員的例子：站位 3 在 5-1、站位 4 在 8-5，阿明 5-5 出發、8-1 到；站位 4 挪到 6-1。
+		// 這裡是開頭（1-1）→ 第 20 個半拍（2-3），小A 原本走 30 個半拍：縮成 0 到 20。
+		const short = okFlow(moveFormation(early(), 'f2', at('s1', 20)));
+		expect(memberWalk(short, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 20) });
+		const tiny = okFlow(moveFormation(early(), 'f2', at('s1', 4)));
+		expect(memberWalk(tiny, 'f2', A)).toEqual({ depart: at('s1', 0), arrive: at('s1', 4) });
 	});
 
 	it('跟著挪完不在格子上（跨到別段）就往前取', () => {
@@ -1037,9 +1045,10 @@ describe('挪站位', () => {
 		expect(r.flow.formations[2]).toBe(flow.formations[2]);
 		expect(memberWalk(r.flow, 'f3', A)).toEqual({ depart: at('s1', 120), arrive: at('s2', 20) });
 		expect(r.squeezed).toEqual([A]);
-		// 往前挪、速度不變：沒人被壓短；碰到前一張被夾：壓短
+		// 往前挪、速度不變或碰到前一張但放得下：沒人被壓短；放不下：壓短
 		expect(moveFormation(early(), 'f2', at('s1', 84))).toMatchObject({ squeezed: [] });
-		expect(moveFormation(early(), 'f2', at('s1', 40))).toMatchObject({ squeezed: [A] });
+		expect(moveFormation(early(), 'f2', at('s1', 40))).toMatchObject({ squeezed: [] });
+		expect(moveFormation(early(), 'f2', at('s1', 20))).toMatchObject({ squeezed: [A] });
 	});
 
 	it('前一張以前、後一張以後，每個人每一刻的位置都不變', () => {

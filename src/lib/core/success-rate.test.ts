@@ -5,6 +5,7 @@ import {
 	addSegment,
 	createFlow,
 	clearPhaseBeats,
+	deletePhase,
 	attemptWhos,
 	addPhase,
 	phaseColor,
@@ -252,8 +253,34 @@ describe('組跟著改動作', () => {
 		expect(squadsOf(actionOf(flow, 'x2')).some((id) => x1.includes(id))).toBe(false);
 	});
 
-	it('複製到沒打開記成功率的動作：組不帶', () => {
-		const flow = copyPeople(twoActions('stunt', false));
+	it('複製到還沒有環節的動作：組照號碼帶著（新發的組 id），加第一個環節後還是那幾組', () => {
+		let flow = twoActions('stunt', false);
+		flow = flowOf(setSquad(flow, 'x1', ['m4'], null));
+		flow = copyPeople(flow);
+		const x1 = squadsOf(actionOf(flow, 'x1'));
+		expect(squadsOf(actionOf(flow, 'x2')).some((id) => x1.includes(id))).toBe(false);
+		flow = rated(flow, 'x2');
+		expect(squads(flow, 'x2')).toEqual([1, 1, 2, undefined]);
+	});
+
+	it('新增動作時帶著別的動作的人和組：加第一個環節後還是那幾組，沒分組的人還是沒有組', () => {
+		let flow = twoActions('stunt', false);
+		flow = flowOf(setSquad(flow, 'x1', ['m4'], null));
+		const members = actionOf(flow, 'x1').members.map((m) => ({ ...m }));
+		const input = { segmentId: 's1', category: 'stunt' as const, name: '', start: 48, length: 16, note: '', members };
+		const added = addAction(flow, input);
+		flow = rated(flowOf(added), 'x3');
+		expect(squads(flow, 'x3')).toEqual([1, 1, 2, undefined]);
+	});
+
+	it('還沒有環節、沒帶組的動作加第一個環節：全部的人進第 1 組', () => {
+		expect(squads(rated(twoActions('stunt', false), 'x2'), 'x2')).toEqual([1]);
+	});
+
+	it('最後一個環節刪掉：組拿掉', () => {
+		let flow = copyPeople(twoActions('stunt', true));
+		const phase = actionOf(flow, 'x2').successRate!.phases[0].id;
+		flow = flowOf(deletePhase(flow, 'x2', phase));
 		expect(actionOf(flow, 'x2').members.some((m) => 'squad' in m)).toBe(false);
 	});
 
