@@ -25,6 +25,7 @@
 		moveMembers,
 		snapPointsNear,
 		snapPosition,
+		type Clash,
 		type FormationWalk,
 		type Member,
 		type Position
@@ -55,6 +56,7 @@
 		controls = true,
 		ghosts = {},
 		walks = [],
+		clashes = [],
 		railTop,
 		railBottom,
 		children,
@@ -78,6 +80,8 @@
 		ghosts?: Record<string, Position>;
 		/** 走位線，從起點畫到終點；太快的標紅、很喘的標橘。有選人時只畫選到的人。 */
 		walks?: FormationWalk[];
+		/** 撞位：在撞到的位置畫紫色 ✕。只是提醒。 */
+		clashes?: Clash[];
 		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
 		railTop?: Snippet;
 		/** 左欄圖例上面的東西（跟上一張一樣、拖人會改）。 */
@@ -373,6 +377,7 @@
 				</label>
 				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
 				<span aria-hidden="true"><i class="fast"></i>走太快</span>
+				<span aria-hidden="true"><b class="clash-mark">✕</b>撞位</span>
 			</div>
 			<div class="legend" aria-hidden="true">
 				<span><i class="base"></i>底層</span>
@@ -431,6 +436,15 @@
 				x2={w.to[0]}
 				y2={w.to[1]}
 			/>
+		{/each}
+		{#each clashes as c, i (i)}
+			<path
+				data-clash={c.memberIds.join(',')}
+				class="clash"
+				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
+				transform="translate({c.pos[0]},{c.pos[1]})"
+				><title>撞位：{c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '').join('、')}</title></path
+			>
 		{/each}
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
@@ -579,6 +593,14 @@
 		stroke-opacity: 0.9;
 		stroke-width: 0.08;
 	}
+	/* 撞位的 ✕：紫色粗線，蓋在走位線上面；不吃滑鼠。 */
+	.clash {
+		fill: none;
+		stroke: var(--walk-clash, #a855f7);
+		stroke-width: 0.12;
+		stroke-linecap: round;
+		pointer-events: none;
+	}
 	.snap {
 		fill: #ffe27a;
 		opacity: 0.9;
@@ -707,6 +729,10 @@
 	}
 	.walk-tools .fast {
 		background: var(--walk-fast, #e5202e);
+	}
+	.walk-tools .clash-mark {
+		color: var(--walk-clash, #a855f7);
+		font-size: 12px;
 	}
 	.legend {
 		display: flex;

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { addMembers, createFlow, setPositions, type Flow, type Member, type Position } from '#lib/core';
+import { addMembers, createFlow, setPositions, type Clash, type Flow, type Member, type Position } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
@@ -436,5 +436,30 @@ describe('影子和走位線', () => {
 			positions: { m1: [1, 0] }
 		});
 		expect(document.querySelector('[data-ghost], [data-walk-line]')).toBeNull();
+	});
+});
+
+describe('撞位', () => {
+	const members: Member[] = ['小A', '小B'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const clash: Clash = { memberIds: ['m1', 'm2'], sec: 3.2, pos: [1, 0.5], startSec: 2.6, endSec: 3.8, formationId: 'f2' };
+
+	it('在撞位的位置畫紫色 ✕，標出是哪兩個人', () => {
+		renderEditing(members, { m1: [0, 0], m2: [2, 0] }, { clashes: [clash] });
+		const marks = document.querySelectorAll<SVGElement>('[data-clash]');
+		expect(marks).toHaveLength(1);
+		expect(marks[0].getAttribute('transform')).toBe('translate(1,0.5)');
+		expect(marks[0].textContent).toContain('小A');
+		expect(marks[0].textContent).toContain('小B');
+		expect(screen.getByText('撞位')).toBeTruthy();
+	});
+
+	it('沒給撞位就不畫', () => {
+		renderEditing(members, { m1: [0, 0], m2: [2, 0] });
+		expect(document.querySelector('[data-clash]')).toBeNull();
 	});
 });
