@@ -104,7 +104,7 @@ async function openSample() {
 		const input = await send('Runtime.evaluate', { expression: `document.querySelector('.home-open input[type=file]')` });
 		if (input.result.objectId) await send('DOM.setFileInputFiles', { files: [SAMPLE], objectId: input.result.objectId });
 		await sleep(500);
-		return js(`return !!document.querySelector('.rail')`);
+		return js(`return !!document.querySelector('.rail, .phone-view')`);
 	});
 	await sleep(300);
 }
@@ -128,7 +128,7 @@ async function openPracticeFlow(more = '') {
 		dt.items.add(new File([writeFlowFile(flow, {})], '練習用.zip', { type: 'application/zip' }));
 		input.files = dt.files;
 		input.dispatchEvent(new Event('change', { bubbles: true }));`);
-	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await waitFor(() => js(`return !!document.querySelector('.rail, .phone-view')`));
 	await sleep(300);
 }
 
@@ -471,7 +471,7 @@ for (const w of [390, 500, 760]) {
 	await check(`${w} 寬練習頁：上方列每顆按鈕點到的是它自己（出現「未存」前後都是），流程名字看得到，「編排｜練習」不被推走`, async () => {
 		await setViewport(w, 844);
 		await openPracticeFlow();
-		await js(`[...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '去練習').click()`);
+		await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
 		await sleep(300);
 		const before = await topbarHits();
 		const spot = await viewSpot();
@@ -576,37 +576,45 @@ const overflow = () =>
 		}).map((el) => el.outerHTML.slice(0, 60));
 		return { 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth, 跑出去的: out.slice(0, 5) };`);
 const noOverflow = (o) => o.頁寬 <= o.畫面寬 && o.跑出去的.length === 0;
-/** 擋住編輯畫面的提示看得到，按鈕整顆在畫面裡、中心點是它自己。 */
-const narrowHint = () =>
-	js(`const hint = document.querySelector('.narrow-hint');
-		if (!hint || getComputedStyle(hint).display === 'none') return { ok: false, value: '沒有窄螢幕提示' };
-		const buttons = [...hint.querySelectorAll('button')].map((b) => {
-			const r = b.getBoundingClientRect();
-			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-			return { 名字: b.textContent.trim(), 點得到: !!top && b.contains(top), 在畫面裡: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };
-		});
-		const field = document.querySelector('.field-host').getBoundingClientRect();
-		const cover = document.elementFromPoint(field.left + field.width / 2, field.top + field.height / 2);
-		const covered = !!cover && hint.contains(cover);
-		return { ok: covered && buttons.length === 3 && buttons.every((b) => b.點得到 && b.在畫面裡), value: { 場地被蓋住: covered, buttons } };`);
+/**
+ * 手機的檢視畫面（#175）：上面場地、中間播放鈕、下面八拍表這一列（橫拿時場地在左），都在畫面裡；
+ * 播放鈕和「我」整顆在畫面裡、中心點是它自己；上方列每顆按鈕點到的是它自己；沒有「編輯」開關。
+ */
+const phoneView = () =>
+	js(`const view = document.querySelector('.phone-view');
+		if (!view || !view.checkVisibility()) return { ok: false, value: '沒有手機的檢視畫面' };
+		const box = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }; };
+		const hit = (el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return !!t && el.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; };
+		const field = box(view.querySelector('.phone-field svg.field'));
+		const play = view.querySelector('.transport .play');
+		const row = box(view.querySelector('.now-eight'));
+		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#phone-me')), 八拍表這一列: row,
+			有編輯開關: !!document.querySelector('.topbar [role=switch]'), 畫面高: innerHeight };
+		// 直拿：場地在播放鈕上面；橫拿：場地在左邊
+		const f = view.querySelector('.phone-field svg.field').getBoundingClientRect(), p = play.getBoundingClientRect();
+		const inOrder = field.h >= 120 && (f.bottom <= p.top + 1 || f.right <= p.left + 1) && row.h > 0 && row.bottom <= innerHeight + 1;
+		return { ok: inOrder && v.播放鈕點得到 && v.我點得到 && !v.有編輯開關, value: v };`);
 
-await check('768×1024 的桌面視窗算窄：編輯畫面顯示窄螢幕提示，不是一個很小的場地', async () => {
+await check('768×1024 的桌面視窗算窄：編排是手機的檢視畫面，不是一個很小的場地', async () => {
 	await setViewport(768, 1024);
 	await openSample();
-	return narrowHint();
+	return phoneView();
 });
 
 for (const [w, h] of [[390, 844], [820, 1180]]) {
-	await check(`${w}×${h}（觸控）：開檔後被擋住，按「去練習」能記一次，不溢出`, async () => {
+	await check(`${w}×${h}（觸控）：開檔直接是檢視畫面（不溢出、播放鈕和上方列點得到）；切到「練習」能記一次，不溢出`, async () => {
 		await setTouchViewport(w, h);
 		await openPracticeFlow();
-		const hint = await narrowHint();
-		if (!hint.ok) return hint;
-		const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '去練習');
+		const phone = await phoneView();
+		const hits = await topbarHits();
+		const o0 = await overflow();
+		if (!phone.ok || hits.length || !noOverflow(o0)) return { ok: false, value: { 檢視畫面: phone.value, 上方列點錯的: hits, ...o0 } };
+		const go = await js(`const b = [...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習');
 			const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
 		await tap(go.x, go.y);
-		const inPractice = await js(`return !!document.querySelector('.practice-host') && !document.querySelector('.narrow-hint')`);
-		if (!inPractice) return { ok: false, value: '按了「去練習」沒有進練習' };
+		const inPractice = await js(`return !!document.querySelector('.practice-host') && !document.querySelector('.phone-view')`);
+		if (!inPractice) return { ok: false, value: '按了「練習」沒有進練習' };
 		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」，再按「存這一次」：存成一次
 		const picked = await js(`for (const b of document.querySelectorAll('.record .list button')) {
 				b.click();
@@ -636,21 +644,15 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 	});
 }
 
-await check('844×390（手機橫拿）：提示和練習畫面都不溢出、按鈕點得到', async () => {
-	await setTouchViewport(844, 390);
-	await openSample();
-	const hint = await narrowHint();
-	const edit = await overflow();
-	await js(`[...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '去練習').click()`);
-	await sleep(300);
-	const practice = await overflow();
-	return { ok: hint.ok && noOverflow(edit) && noOverflow(practice), value: { 提示: hint.value, 編排: edit, 練習: practice } };
-});
-await check('390×844（觸控）：有未存的修改按提示上的「回首頁」，「還沒存」對話框蓋在提示上面，按鈕點得到', async () => {
+await check('390×844（觸控）：有未存的修改（練習記了一次）按上方列的「回首頁」，「還沒存」對話框按鈕點得到', async () => {
 	await setTouchViewport(390, 844);
-	await openSample();
-	await renameFlowTo('改過的名字');
-	const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '回首頁');
+	await openPracticeFlow();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const recorded = await recordOnce();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '編排').click()`);
+	await sleep(300);
+	const go = await js(`const b = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '回首頁');
 		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
 	await tap(go.x, go.y);
 	const res = await js(`const box = document.querySelector('.discard-box');
@@ -664,17 +666,39 @@ await check('390×844（觸控）：有未存的修改按提示上的「回首�
 	// 回首頁，後面的檢查從乾淨的頁面開始
 	await js(`[...document.querySelectorAll('.discard-box button')].find((b) => b.textContent.trim() === '不存了，繼續')?.click()`);
 	await sleep(300);
-	return { ok: res.打開了 && res.buttons.length === 3 && res.buttons.every((b) => b.點得到 && b.在畫面裡), value: res };
+	return { ok: recorded && res.打開了 && res.buttons.length === 3 && res.buttons.every((b) => b.點得到 && b.在畫面裡), value: { 記了一次: recorded, ...res } };
 });
-await check('390×844（觸控）：隊員開了流程檔，按提示上的「看八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
+await check('390×844（觸控）檢視畫面：點播放鈕，播放頭會走', async () => {
 	await setTouchViewport(390, 844);
 	await openPracticeFlow();
-	const hint = await narrowHint();
-	if (!hint.ok) return hint;
-	const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '看八拍表');
+	const at = () => js(`return document.querySelector('.phone-view .board .clock').textContent`);
+	const before = await at();
+	const play = await js(`const r = document.querySelector('.phone-view .transport .play').getBoundingClientRect();
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	await tap(play.x, play.y);
+	await sleep(1200);
+	const after = await at();
+	await js(`document.querySelector('.phone-view .transport .play').click()`);
+	return { ok: before !== after, value: { 播放前: before, 播放後: after } };
+});
+
+await check('844×390（手機橫拿）：檢視畫面和練習畫面都不溢出、播放鈕點得到', async () => {
+	await setTouchViewport(844, 390);
+	await openSample();
+	const phone = await phoneView();
+	const edit = await overflow();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const practice = await overflow();
+	return { ok: phone.ok && noOverflow(edit) && noOverflow(practice), value: { 檢視畫面: phone.value, 編排: edit, 練習: practice } };
+});
+await check('390×844（觸控）：隊員開了流程檔，按上方列的「八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
+	await setTouchViewport(390, 844);
+	await openPracticeFlow();
+	const go = await js(`const b = document.querySelector('.topbar button[title="八拍表"]');
 		if (!b) return null;
 		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-	if (!go) return { ok: false, value: '提示上沒有「看八拍表」' };
+	if (!go) return { ok: false, value: '上方列沒有「八拍表」' };
 	await tap(go.x, go.y);
 	const res = await js(`const sheet = document.querySelector('.print-sheet');
 		if (!sheet) return { 打開了: false };
