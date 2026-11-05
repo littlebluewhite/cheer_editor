@@ -652,12 +652,15 @@
 						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 					</div>
 				{/if}
-				{#if session.ask.question}
-					<div class="toast-confirm">
-						<ConfirmList ask={session.ask} />
-					</div>
-				{/if}
-				{@render noticeToast()}
+				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人 -->
+				<div class="field-toasts">
+					{#if session.ask.question}
+						<div class="toast-confirm">
+							<ConfirmList ask={session.ask} />
+						</div>
+					{/if}
+					{@render noticeToast()}
+				</div>
 				</Field>
 			</main>
 
@@ -1372,7 +1375,7 @@
 		color: var(--text);
 		font-size: 14px;
 	}
-	/* 放在場地下方，不蓋住上方的條號。 */
+	/* 練習畫面、手機的檢視畫面：放在下方。編輯畫面場地上的放在上方（見 .field-toasts）。 */
 	.toast {
 		position: absolute;
 		bottom: 14px;
@@ -1391,13 +1394,36 @@
 		box-shadow: var(--shadow-pop);
 		animation: drop 0.18s ease-out;
 	}
-	.toast-confirm {
+	/* 場地上的確認框和提示：從上方往下排，不蓋到下面的「正面／裁判」和正面場外的人。 */
+	.field-toasts {
 		position: absolute;
 		top: 14px;
-		left: 50%;
-		transform: translateX(-50%);
+		left: 16px;
+		right: 16px;
 		z-index: 10;
-		width: min(420px, calc(100% - 32px));
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		pointer-events: none;
+	}
+	.field-toasts > :global(*) {
+		pointer-events: auto;
+	}
+	.field-toasts .toast {
+		position: static;
+		transform: none;
+		max-width: min(560px, 100%);
+		animation-name: drop-in;
+	}
+	@keyframes drop-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
+	}
+	.toast-confirm {
+		width: min(420px, 100%);
 		box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
 		border-radius: 10px;
 	}

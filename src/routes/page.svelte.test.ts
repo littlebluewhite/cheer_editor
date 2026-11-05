@@ -897,9 +897,11 @@ describe('站位與走位', () => {
 		expect(marked('data-walk-line')).toEqual([]);
 
 		await seek(8.25);
-		await dragFirstMember(); // 插站位 2，小A 換位置
-		expect(marked('data-ghost')).toEqual(['m1', 'm2']);
+		await dragFirstMember(); // 插站位 2，小A 換位置；拖人就選到他
+		expect(marked('data-ghost')).toEqual(['m1']);
 		expect(marked('data-walk-line')).toEqual(['m1']);
+		await fireEvent.click(screen.getByRole('button', { name: '不選人' }));
+		expect(marked('data-ghost')).toEqual(['m1', 'm2']);
 
 		await seek(4);
 		expect(marked('data-ghost')).toEqual([]);
@@ -911,6 +913,34 @@ describe('站位與走位', () => {
 		await fireEvent.pointerUp(dot, { clientX: 0, clientY: 0 });
 		expect(marked('data-ghost')).toEqual(['m2']);
 		expect(marked('data-walk-line')).toEqual([]);
+	});
+
+	it('選了小A、拖小B：選到的換成小B，看得到他的影子和走位線', async () => {
+		const pressed = (id: string) =>
+			document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('aria-pressed');
+		await setup();
+		await seek(8.25);
+		const a = document.querySelector('[data-member-id="m1"]')!;
+		await fireEvent.pointerDown(a, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(a, { clientX: 0, clientY: 0 });
+		expect(pressed('m1')).toBe('true');
+		await dragFirstMember('m2');
+		expect(pressed('m1')).toBe('false');
+		expect(pressed('m2')).toBe('true');
+		expect(document.querySelector('.field [data-walk-line="m2"]')).not.toBeNull();
+	});
+
+	it('選到一個人：場地下面寫他的名字和第幾條第幾格；滑鼠停在圓點上也看得到', async () => {
+		await setup();
+		const a = document.querySelector('[data-member-id="m1"]')!;
+		expect(screen.queryByLabelText('選到的人在哪')).toBeNull();
+		await fireEvent.pointerDown(a, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(a, { clientX: 0, clientY: 0 });
+		// 小A 在場地正中間：9 條直放的第 5 條中間、正面起第 4 格中間
+		expect(screen.getByLabelText('選到的人在哪').textContent).toBe('小A　第 5 條 左起 1/2｜正面起第 4 格 1/2');
+		expect(a.querySelector('title')!.textContent).toBe('小A　第 5 條 左起 1/2｜正面起第 4 格 1/2');
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		expect(screen.queryByLabelText('選到的人在哪')).toBeNull();
 	});
 
 	/** 小A [0, 0]、小B [2, 0]；站位 2 在 4.8 秒兩人換位置，1.6–4.8 秒走位，3.2 秒在 [1, 0] 撞在一起；站位 3 在 8 秒。 */
@@ -1223,6 +1253,34 @@ describe('站位與走位', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '套用' }));
 	}
 
+	it('選到走太快的人：出發和到達旁寫每秒幾公尺、至少要幾拍；走位條的說明也寫速度', async () => {
+		render(Page, editorPage(swapping()).props);
+		await seek(4.8);
+		const a = document.querySelector('[data-member-id="m1"]')!;
+		await fireEvent.pointerDown(a, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(a, { clientX: 0, clientY: 0 });
+		// 預設 1.6–4.8 秒走 2 公尺：每秒 0.6 公尺
+		expect(screen.getByLabelText('走位速度').textContent).toBe('每秒 0.6 公尺');
+		// 2-4 到 2-5 只有 0.4 秒：每秒 5 公尺；每秒 4 公尺要 0.5 秒，150 BPM 一拍 0.4 秒，至少要 1.5 拍
+		await setWalk('2-4', '2-5');
+		expect(screen.getByLabelText('走位速度').textContent).toBe('走太快：每秒 5.0 公尺，至少要 1.5 拍');
+		expect(document.querySelector('[data-lane="m1"] [data-walk]')!.getAttribute('title')).toMatch(
+			/^走太快：每秒 5\.0 公尺，至少要 1\.5 拍。/
+		);
+	});
+
+	it('選到的人這一段沒有走位：寫「這段沒有走位」，套用停用', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 只有小A 走位
+		await fireEvent.click(document.querySelector('[data-lane="m2"] .lab')!);
+		expect(screen.getByText('這段沒有走位')).toBeTruthy();
+		expect((screen.getByRole('button', { name: '套用' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(document.querySelector('[data-lane="m1"] .lab')!);
+		expect(screen.queryByText('這段沒有走位')).toBeNull();
+		expect((screen.getByRole('button', { name: '套用' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
 	it('出發和到達的表單：只在播放頭停在站位上、不是開頭那張時出現，顯示現在的走法', async () => {
 		await setup();
 		expect(depart()).toBeNull();
@@ -1264,10 +1322,11 @@ describe('站位與走位', () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember(); // 只有小A 走位
+		await fireEvent.click(screen.getByRole('button', { name: '不選人' }));
 		expect(screen.getByText('（全隊有走位的 1 人）')).toBeTruthy();
 		await setWalk('1-1', '2-1');
-		await fireEvent.click(document.querySelector('[data-lane="m2"] .lab')!);
-		// 小B 沒被寫進去，還是預設
+		// 小B 沒被寫進去：之後讓他也走位，他的出發和到達還是預設
+		await dragFirstMember('m2');
 		expect(depart()!.value).toBe('2-5&');
 	});
 
@@ -1401,11 +1460,11 @@ describe('編輯器首頁', () => {
 		});
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
 		expect(screen.getByRole('alert').textContent).toBe('第 3 行「阿強」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」');
-		// 9 條直放：中間四個格點離中心各差半格（0.9144 m），先排正面左邊、再正面右邊。
+		// 9 條直放：格點是每一格的正中間；先排正中心，再排正面那一格（差一格 1.8288 m）。
 		const at = (id: string) =>
 			document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);
-		expect(at('m1')).toEqual([expect.closeTo(-0.9144, 4), expect.closeTo(0.9144, 4)]);
-		expect(at('m2')).toEqual([expect.closeTo(0.9144, 4), expect.closeTo(0.9144, 4)]);
+		expect(at('m1')).toEqual([expect.closeTo(0, 4), expect.closeTo(0, 4)]);
+		expect(at('m2')).toEqual([expect.closeTo(0, 4), expect.closeTo(1.8288, 4)]);
 		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(2);
 	});
 

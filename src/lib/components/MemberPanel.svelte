@@ -325,9 +325,12 @@
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 	}
+	/* 多字的標記：橫的膠囊，字不用縮小。 */
 	.no.long {
-		font-size: 8px;
-		letter-spacing: -0.3px;
+		width: auto;
+		padding: 0 5px;
+		border-radius: 999px;
+		font-size: 10px;
 	}
 	.no.top {
 		background: var(--top, #e0664f);

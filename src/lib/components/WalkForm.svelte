@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 出發和到達：播放頭停在站位上（不是開頭那張）時，替選到的人（沒選人就是全隊有走位的人）設走到這張的出發和到達。
-	// 在出發或到達按 Enter 就套用（選字中的 Enter 不算）。
+	// 在出發或到達按 Enter 就套用（選字中的 Enter 不算）。旁邊寫走位速度（太快寫至少要幾拍）；選到的人這段都沒走位就寫「這段沒有走位」、不能套用。
 	// 時間的寫法照流程核心：這一段只打段內時間，別的段前面加段名。規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
@@ -15,6 +15,7 @@
 		setWalks,
 		timeText,
 		walkSpanAt,
+		walkSpeedText,
 		type Walk
 	} from '#lib/core';
 
@@ -36,6 +37,20 @@
 			: formation
 				? formationWalks(flow, formation.id).map((w) => w.memberId)
 				: []
+	);
+	/** 改的人裡面這段真的有走位的（位置有變）。 */
+	const moving = $derived(
+		formation ? formationWalks(flow, formation.id).filter((w) => memberIds.includes(w.memberId)) : []
+	);
+	/** 選到的人這段都站著不動：沒有走位可以設。 */
+	const noWalk = $derived(memberIds.length > 0 && moving.length === 0);
+	/** 速度：只有一個人走位時寫他的速度；好幾個人時只寫太快和很喘的人（前面加名字）。 */
+	const speedLines = $derived(
+		moving.length === 1
+			? [walkSpeedText(flow, moving[0])]
+			: moving
+					.filter((w) => w.tooFast || w.tiring)
+					.map((w) => `${flow.members.find((m) => m.id === w.memberId)?.name ?? ''}　${walkSpeedText(flow, w)}`)
 	);
 	/** 現在的走法給教練看的樣子；選到的人不一樣時是空字串。 */
 	const current = $derived.by(() => {
@@ -96,20 +111,29 @@
 {#if formation && current}
 	<section class="walk-form">
 		<h3>出發和到達<span class="muted">（{selectedMemberIds.length ? '選到的' : '全隊有走位的'} {memberIds.length} 人）</span></h3>
-		<div class="grid">
-			<div class="field">
-				<span class="cap" aria-hidden="true">出發</span>
-				<input aria-label="出發" bind:value={departText} {onkeydown} placeholder={current.depart ? '' : '每人不一樣'} />
+		{#if noWalk}
+			<p class="no-walk">這段沒有走位</p>
+		{:else}
+			<div class="grid">
+				<div class="field">
+					<span class="cap" aria-hidden="true">出發</span>
+					<input aria-label="出發" bind:value={departText} {onkeydown} placeholder={current.depart ? '' : '每人不一樣'} />
+				</div>
+				<div class="field">
+					<span class="cap" aria-hidden="true">到達</span>
+					<input aria-label="到達" bind:value={arriveText} {onkeydown} placeholder={current.arrive ? '' : '每人不一樣'} />
+				</div>
 			</div>
-			<div class="field">
-				<span class="cap" aria-hidden="true">到達</span>
-				<input aria-label="到達" bind:value={arriveText} {onkeydown} placeholder={current.arrive ? '' : '每人不一樣'} />
-			</div>
-		</div>
-		<small class="muted">這一段打「2-5」，口號段打秒數；別的段前面加段名，例：口號 1 12.3</small>
+			{#if speedLines.length}
+				<p class="speed" aria-label="走位速度">
+					{#each speedLines as line, i (i)}<span>{line}</span>{/each}
+				</p>
+			{/if}
+			<small class="muted">這一段打「2-5」，口號段打秒數；別的段前面加段名，例：口號 1 12.3</small>
+		{/if}
 		<div class="buttons">
-			<button type="button" class="primary" onclick={apply}>套用</button>
-			<button type="button" onclick={useDefault} title="清掉設定：最後一個八拍才出發">用預設</button>
+			<button type="button" class="primary" disabled={noWalk} onclick={apply}>套用</button>
+			<button type="button" disabled={noWalk} onclick={useDefault} title="清掉設定：最後一個八拍才出發">用預設</button>
 		</div>
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	</section>
@@ -162,5 +186,14 @@
 	}
 	p {
 		margin: 0;
+	}
+	.speed {
+		display: grid;
+		gap: 2px;
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+	}
+	.no-walk {
+		color: var(--muted, #66718a);
 	}
 </style>

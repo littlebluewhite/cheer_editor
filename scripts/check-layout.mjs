@@ -810,8 +810,9 @@ await check('1024×768（觸控）：40 人、場外排了人時，條編號不�
 		const covered = await js(`const dots = [...document.querySelectorAll('.field g.dot')].map((d) => d.getBoundingClientRect());
 			return [...document.querySelectorAll('[data-strip-number]')].flatMap((t) => {
 				const r = t.getBoundingClientRect();
-				const hit = dots.some((d) => d.left < r.right && d.right > r.left && d.top < r.bottom && d.bottom > r.top);
-				return hit ? [t.textContent] : [];
+				const box = (b) => [b.left, b.top, b.right, b.bottom].map(Math.round);
+				const hits = dots.filter((d) => d.left < r.right && d.right > r.left && d.top < r.bottom && d.bottom > r.top);
+				return hits.length ? [{ 編號: t.textContent, 編號的框: box(r), 蓋到的圓點: hits.map(box) }] : [];
 			});`);
 		if (covered.length) bad.push({ 場地: field, 被蓋住的條編號: covered });
 	}
@@ -969,6 +970,23 @@ await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、
 		ok: clash.接得到滑鼠 && clash.說明 === '撞位：小A、小B' && center.橫線上 && !center.斜角上,
 		value: { 撞位: clash, 中心記號: center }
 	};
+});
+
+await check('1440×1000 左欄的「跟上一張一樣」：播放頭在站位上和不在站位上，按鈕位置一樣', async () => {
+	await setViewport(1440, 1000);
+	await openSample();
+	const spot = () => js(`const b = [...document.querySelectorAll('.rail button')].find((x) => x.textContent.trim() === '跟上一張一樣');
+		const r = b.getBoundingClientRect();
+		return { 在站位上: !!document.querySelector('.rail .here.on'), 位置: [Math.round(r.left), Math.round(r.top)] };`);
+	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+	await sleep(300);
+	const on = await spot();
+	// 往後一拍：離開站位
+	await js(`document.activeElement?.blur(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+	await sleep(300);
+	const off = await spot();
+	const ok = on.在站位上 && !off.在站位上 && on.位置[0] === off.位置[0] && on.位置[1] === off.位置[1];
+	return { ok, value: { 在站位上: on, 不在站位上: off } };
 });
 
 // ---------- 長的拍點文字（#146） ----------

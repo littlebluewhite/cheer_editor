@@ -200,6 +200,12 @@
 		gap: 4px 12px;
 		max-height: 120px;
 		overflow: auto;
+		/* 捲得動的那一邊淡淡一層漸層（捲到底就消失），看得出下面還有人 */
+		background:
+			linear-gradient(var(--surface-2, #f6f8fb) 30%, transparent) top / 100% 24px no-repeat local,
+			linear-gradient(transparent, var(--surface-2, #f6f8fb) 70%) bottom / 100% 24px no-repeat local,
+			linear-gradient(rgba(22, 33, 58, 0.14), transparent) top / 100% 10px no-repeat scroll,
+			linear-gradient(transparent, rgba(22, 33, 58, 0.14)) bottom / 100% 10px no-repeat scroll;
 	}
 	.preview li {
 		display: inline-flex;
@@ -225,9 +231,12 @@
 		background: var(--top, #e0664f);
 		color: #fff;
 	}
+	/* 多字的標記：橫的膠囊，字不用縮小。 */
 	.no.long {
-		font-size: 7px;
-		letter-spacing: -0.3px;
+		width: auto;
+		padding: 0 4px;
+		border-radius: 999px;
+		font-size: 9px;
 	}
 	.error {
 		margin: 0;

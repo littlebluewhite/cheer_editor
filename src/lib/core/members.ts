@@ -394,13 +394,13 @@ function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<str
 }
 
 /**
- * 新人排進場的格點：墊子上格線的交點（含墊子的邊），一格一個。
+ * 新人排進場的格點：墊子上每一格的正中間（不在格線、接縫或墊子邊上），一格一個。
  * 照離場地中心多近排；一樣近時先排靠正面的，再先排左邊的。
  */
 function gridPoints(field: FieldConfig): Position[] {
 	const { mat, cols, rows } = fieldGeometry(field);
-	const points = Array.from({ length: cols + 1 }, (_, i) =>
-		Array.from({ length: rows + 1 }, (_, j): Position => [mat.x + i * CELL_M, mat.y + j * CELL_M])
+	const points = Array.from({ length: cols }, (_, i) =>
+		Array.from({ length: rows }, (_, j): Position => [mat.x + (i + 0.5) * CELL_M, mat.y + (j + 0.5) * CELL_M])
 	).flat();
 	const near = (p: Position) => Math.round(Math.hypot(p[0], p[1]) * 1e6);
 	return points.sort((a, b) => near(a) - near(b) || b[1] - a[1] || a[0] - b[0]);
@@ -412,22 +412,22 @@ function overlaps(a: Position, b: Position): boolean {
 }
 
 /**
- * 場地放滿時，新人等著被擺好的位置：場地外半格、每 1/2 格一個（圓點不會疊在一起），繞著場地排一圈。
- * 從正面左邊的角開始往右排到場地右邊外，再從那個角沿著左邊往後，再沿著右邊往後，最後排後面。
- * 都在吸附點上、在場地外 1 m 以內。
- * 一共 4 ×（左右格數 ＋ 前後格數）＋ 8 個位置；最小的場地（1 條，1 × 7 格）剛好 40 個，所以一定有空位。
+ * 場地放滿時，新人等著被擺好的位置：墊子外 3/8 格（0.69 m），每 1/2 格一個（圓點不會疊在一起），繞著場地排一圈。
+ * 圓點（半徑 0.3 m）整個在墊子外、也整個在外圍 1 m 以內，不壓到墊子邊和外圍框線。
+ * 先在正面外從左到右排成一列（左右各超出墊子 1/4 格），再沿著左邊往後，再沿著右邊往後，最後排後面。
+ * 都在吸附點上（放大後的 1/8 格）。
+ * 一共 4 ×（左右格數 ＋ 前後格數）＋ 4 個位置；最小的場地（1 條，7 格）有 36 個，加上 7 格一定放得下 40 人。
  */
 function waitingSpots(field: FieldConfig): Position[] {
 	const { mat, cols, rows } = fieldGeometry(field);
 	const step = CELL_M / 2;
-	const left = mat.x - step;
-	const right = mat.x + mat.width + step;
-	const front = mat.y + mat.height + step;
-	const back = mat.y - step;
-	const alongFront = Array.from({ length: 2 * cols + 3 }, (_, j): Position => [left + j * step, front]);
-	const side = (x: number) => Array.from({ length: 2 * rows + 2 }, (_, j): Position => [x, front - (j + 1) * step]);
-	const alongBack = Array.from({ length: 2 * cols + 1 }, (_, j): Position => [left + (j + 1) * step, back]);
-	return [...alongFront, ...side(left), ...side(right), ...alongBack];
+	const out = (CELL_M * 3) / 8;
+	const front = mat.y + mat.height + out;
+	const back = mat.y - out;
+	const row = (y: number) => Array.from({ length: 2 * cols + 2 }, (_, j): Position => [mat.x - CELL_M / 4 + j * step, y]);
+	const side = (x: number) =>
+		Array.from({ length: 2 * rows }, (_, j): Position => [x, mat.y + mat.height - CELL_M / 4 - j * step]);
+	return [...row(front), ...side(mat.x - out), ...side(mat.x + mat.width + out), ...row(back)];
 }
 
 /** 第一個沒人站的位置。最多 40 人、位置至少 40 個，所以一定找得到。 */
