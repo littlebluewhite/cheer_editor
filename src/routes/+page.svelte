@@ -420,10 +420,17 @@
 			const outcome = await saver.save(writeFlowFile(f, audioBytes(f)), `${f.name}.zip`);
 			if (outcome === 'cancelled') return;
 			session.markSaved(f);
-			session.notice =
+			const missing = segmentsMissingAudio(f, Object.keys(audios)).length;
+			session.notice = [
 				outcome === 'downloaded'
 					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${f.name}.zip」；用 Chrome 或 Edge 才能直接存回原檔。`
-					: '';
+					: '',
+				missing
+					? `存好了，但有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次`
+					: ''
+			]
+				.filter(Boolean)
+				.join('；');
 		} catch {
 			session.notice = '存檔失敗，請再試一次';
 		} finally {

@@ -171,6 +171,16 @@ describe('存檔', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 	});
 
+	it('有段找不到音樂時存檔：照樣存，但提醒存出來的檔裡沒有那段音樂', async () => {
+		const { saver, saves } = fakeSaver();
+		setup(saver);
+		await openFile(writeFlowFile(sampleFlow(), {}));
+		await ctrlS();
+		await flush();
+		expect(saves).toHaveLength(1);
+		expect(screen.getByRole('status').textContent).toContain('存出來的檔裡沒有這些音樂');
+	});
+
 	it('音樂資料也存進去', async () => {
 		const { saver, saves } = fakeSaver();
 		setup(saver);
