@@ -1,6 +1,11 @@
 <script module lang="ts">
 	/** 開著的對話框，最後一個在最上面：Esc、Tab 只歸它管。 */
 	const stack: object[] = [];
+
+	/** 有沒有對話框開著（編輯頁的快捷鍵用：開著就不動底下的畫面）。 */
+	export function modalOpen(): boolean {
+		return stack.length > 0;
+	}
 </script>
 
 <script lang="ts">
