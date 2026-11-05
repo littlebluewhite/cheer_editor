@@ -74,7 +74,7 @@ describe('八拍表列印', () => {
 		expect(first).toContain('Lib');
 		expect(first).toContain('小A（上層）');
 		expect(first).toContain('小B（主底）');
-		expect(first).toContain('3 的 &');
+		expect(first).toContain('1-3&・1 拍');
 		expect(first).toContain('跳躍');
 		expect(first).toContain('小C');
 	});
@@ -181,7 +181,7 @@ describe('八拍表列印', () => {
 		// 小圖只是看的：沒有放大縮小的按鈕
 		expect(within(rows[0]).queryByRole('button', { name: '放大' })).toBeNull();
 		// 寫「站位 N」和哪一拍，不只是一個數字
-		expect(rows[1].querySelector('figcaption')!.textContent).toBe('站位 2・第 1 拍');
+		expect(rows[1].querySelector('figcaption')!.textContent).toBe('站位 2・2-1');
 	});
 
 	it('只看一個隊員時，小站位圖上把他的點塗滿', async () => {
@@ -230,6 +230,48 @@ describe('八拍表列印', () => {
 		expect(actionsCell(bodyRows()[1])).not.toContain('出發');
 	});
 
+	it('時間只有一種寫法：「八拍-拍」，有長度的接「・N 拍」，結束拍跟拍點小窗一樣算', async () => {
+		let flow = sample();
+		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
+		// 動作拖到半拍上：Lib 從 1-1& 開始，down 從 1-1& 佔 1 拍
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 2, word: 'down' }));
+		flow = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, start: 1 } : a)) };
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
+		const first = actionsCell(bodyRows()[0]);
+		expect(first).toContain('1-1& 到 1-8&・8 拍');
+		expect(first).toContain('1-1 出發 → 站位 2（2-1 到達）');
+		expect([...document.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['站位 1・1-1', '站位 2・2-1']);
+		const down = within(screen.getByRole('group', { name: '技巧·Lib 的拍點' })).getByLabelText('拍子 down 1-1&・1 拍');
+		expect(down.textContent).toContain('1-1&');
+		// 別的寫法都沒有：「3 的 &」「第 5 拍」「1& 到 2」
+		const text = screen.getByRole('table').textContent!;
+		expect(text).not.toMatch(/的 &|第 \d+ 拍|(^|[^-\d])[1-8]& 到/);
+	});
+
+	it('跨兩個八拍的 Lib，第二列加一行「↳ Lib 繼續」；之後的列不寫', () => {
+		const flow = flowOf(resizeAction(sample(), 'x1', 6.4));
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const rows = bodyRows();
+		expect(rows.map((r) => within(r).getAllByRole('cell')[1].textContent)).toEqual(['1', '2', '3–8']);
+		expect(actionsCell(rows[0])).not.toContain('繼續');
+		expect(within(rows[1]).getByText('↳ Lib 繼續')).toBeTruthy();
+		expect(actionsCell(rows[2])).not.toContain('繼續');
+	});
+
+	it('跨到下一列的手位，下一列只畫格子不重複寫字', () => {
+		// 1-8& 開始的一拍 high V，佔到 2-1
+		let flow = flowOf(resizeAction(sample(), 'x1', 6.4));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 14, len: 2, word: 'high V' }));
+		flow = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, start: 1 } : a)) };
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const [first, second] = screen.getAllByRole('group', { name: '技巧·Lib 的拍點' });
+		expect(within(first).getByLabelText('手位 high V 1-8&・1 拍').textContent).toContain('high V');
+		const tail = within(second).getByLabelText('手位 high V 1-8&・1 拍');
+		expect(tail.style.gridColumn).toBe('1 / 2');
+		expect(tail.textContent).toBe('');
+	});
+
 	it('按「列印」叫瀏覽器列印；「關閉」關掉', async () => {
 		const print = vi.fn();
 		const onclose = vi.fn();
@@ -256,26 +298,16 @@ describe('八拍表列印', () => {
 			expect(within(line).getAllByText(/^[1-8]$/).map((c) => c.textContent)).toEqual([
 				'1', '2', '3', '4', '5', '6', '7', '8'
 			]);
-			const step = within(line).getByLabelText('步驟 下手 1-5');
+			const step = within(line).getByLabelText('步驟 下手 1-5・1 拍');
 			expect(step.textContent).toBe('下手');
 			expect(step.style.gridColumn).toBe('5 / 6');
-			const down = within(line).getByLabelText('拍子 down 1-6 到 1-7');
+			const down = within(line).getByLabelText('拍子 down 1-6 到 1-7・2 拍');
 			expect(down.textContent).toBe('down');
 			expect(down.style.gridColumn).toBe('6 / 8');
-			const motion = within(line).getByLabelText('手位 high V 1-8・給上層');
+			const motion = within(line).getByLabelText('手位 high V 1-8・1 拍・給上層');
 			expect(motion.textContent).toContain('high V');
 			expect(motion.textContent).toContain('上層');
 			expect(motion.style.gridColumn).toBe('8 / 9');
-		});
-
-		it('從「&」開始的拍點照實寫「1& 到 2」', () => {
-			let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 2, word: 'down' }));
-			flow = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, start: 1 } : a)) };
-			render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
-			const line = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
-			const down = within(line).getByLabelText('拍子 down 1-1& 到 1-2');
-			expect(down.textContent).toContain('1& 到 2');
-			expect(down.textContent).toContain('down');
 		});
 
 		it('沒有拍點的八拍表跟原本一樣，不多印格子', () => {
@@ -288,11 +320,11 @@ describe('八拍表列印', () => {
 			render(PrintSheet, { flow: cued(), onclose: vi.fn(), print: vi.fn() });
 			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
 			const line = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
-			expect(within(line).getByLabelText('拍子 down 1-6 到 1-7')).toBeTruthy();
+			expect(within(line).getByLabelText('拍子 down 1-6 到 1-7・2 拍')).toBeTruthy();
 			expect(line.textContent).not.toContain('high V');
 			await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
 			const mine = screen.getByRole('group', { name: '技巧·Lib 的拍點' });
-			const motion = within(mine).getByLabelText('手位 high V 1-8');
+			const motion = within(mine).getByLabelText('手位 high V 1-8・1 拍');
 			expect(motion.textContent).toBe('high V');
 		});
 	});
@@ -324,7 +356,7 @@ describe('八拍表列印', () => {
 			]);
 			// 環節那一行在拍點那一排上面
 			const phaseRow = first.querySelector('[data-phase]')!.parentElement!;
-			const down = within(first).getByLabelText('拍子 down 1-6 到 1-7');
+			const down = within(first).getByLabelText('拍子 down 1-6 到 1-7・2 拍');
 			expect(phaseRow.compareDocumentPosition(down) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 			expect(document.body.textContent).not.toContain('下法');
 		});

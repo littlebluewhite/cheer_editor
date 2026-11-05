@@ -40,14 +40,8 @@
 		return name && name !== categoryLabel ? `${categoryLabel}·${name}` : categoryLabel;
 	}
 
-	/** 「拍子 down 1-6 到 1-7」「拍子 down 1-1& 到 1-2」「手位 high V 1-8・給上層」。 */
-	function cueLabel(eight: number | null, c: EightCountCue): string {
-		const span = c.span
-			.split(' 到 ')
-			.map((b) => `${eight}-${b}`)
-			.join(' 到 ');
-		return cueText(c.kind, c.word, span, c.who ?? '');
-	}
+	/** 「拍子 down 1-6 到 1-7・2 拍」「手位 high V 1-8・1 拍・給上層」。 */
+	const cueLabel = (c: EightCountCue) => cueText(c.kind, c.word, c.span, c.who ?? '');
 
 	/** 「環節 上法 延伸 1-1 到 1-3」。 */
 	function phaseAria(eight: number | null, p: EightCountPhase): string {
@@ -101,6 +95,9 @@
 										{title(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
 									</div>
 								{/each}
+								{#each row.continuing as name, j (j)}
+									<div class="muted">↳ {name} 繼續</div>
+								{/each}
 								{#each row.walks as w, j (j)}
 									<div>{w}</div>
 								{/each}
@@ -153,8 +150,8 @@
 														<span
 															class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
 															style:grid-column="{c.from} / {c.to + 1}"
-															aria-label={cueLabel(row.eight, c)}
-															>{#if c.span.includes('&')}<span class="span">{c.span}</span>{/if}{c.word}{#if c.who}<small>{c.who}</small>{/if}</span
+															aria-label={cueLabel(c)}
+															>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{c.word}{#if c.who}<small>{c.who}</small>{/if}{/if}</span
 														>
 													{/each}
 												</div>
