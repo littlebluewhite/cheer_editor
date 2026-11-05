@@ -6,9 +6,9 @@
 
 import type { Action } from './action-types';
 import type { Flow } from './flow';
-import { attemptWhos } from './records';
+import { attemptText, attemptWhos } from './records';
 import type { Phase } from './phase-types';
-import type { Attempt, Mark, PracticeKind } from './success-rate';
+import type { Attempt, PracticeKind } from './success-rate';
 
 /** 一個環節的次數：✓、△、✗ 各幾次，和有打記號的次數（空的不算）。 */
 export interface Tally {
@@ -91,7 +91,7 @@ export function dailyTable(action: Action, who?: string): DailyTable {
 
 /**
  * 最弱的環節：那天有記號的環節裡成功率最低的（比真正的比例，不比四捨五入後的數字），一樣低就取前面的。
- * 那天沒紀錄就是 null。
+ * 那天沒紀錄、或每個環節都全部成功（沒有哪個比較弱）就是 null。
  */
 export function weakestPhase(action: Action, date: string): { phase: Phase; tally: Tally } | null {
 	const phases = action.successRate?.phases ?? [];
@@ -104,7 +104,7 @@ export function weakestPhase(action: Action, date: string): { phase: Phase; tall
 			weakest = { phase, tally };
 		}
 	}
-	return weakest;
+	return weakest && weakest.tally.success < weakest.tally.marked ? weakest : null;
 }
 
 /** 總表的篩選：日期範圍（YYYY-MM-DD，兩頭都算；沒給就不限），練法（沒給就是全部）。 */
@@ -156,20 +156,21 @@ export function periodRange(date: string, period: Period): { from?: string; to?:
 	return { from: `${from.getUTCFullYear()}-${pad(from.getUTCMonth() + 1)}-${pad(from.getUTCDate())}`, to: date };
 }
 
-/** 一格的明細的一天：那天的每一次記號（照記的先後），標出哪幾次是全上。 */
+/** 一格的明細的一天：那天的每一次記號（照記的先後），標出哪幾次是全上。整次的格子是整排記號（例：✓✗·）。 */
 export interface DetailDay {
 	date: string;
-	marks: { mark: Mark; runThrough: boolean }[];
+	marks: { mark: string; runThrough: boolean }[];
 }
 
 /**
  * 一格的明細：這組（騰翻、跳躍是這個人）、這個環節每天的每一次記號，照日期排。空的不列。
+ * phaseId 是 null 是「整次」那一格：整個做的每一次，寫成一排記號（attemptText）；只練幾個環節的不列。
  * filter 和那一格用的一樣（期間、練法），明細才對得上格子的次數。
  */
-export function cellDetail(action: Action, who: string, phaseId: string, filter: RateFilter = {}): DetailDay[] {
+export function cellDetail(action: Action, who: string, phaseId: string | null, filter: RateFilter = {}): DetailDay[] {
 	const days = new Map<string, DetailDay['marks']>();
 	for (const r of action.successRate?.records ?? []) {
-		const mark = r.marks[phaseId];
+		const mark = phaseId === null ? r.whole && attemptText(action, r) : r.marks[phaseId];
 		if (r.who !== who || !mark || !passes(r, filter)) continue;
 		if (!days.has(r.date)) days.set(r.date, []);
 		days.get(r.date)!.push({ mark, runThrough: r.practice === 'runThrough' });

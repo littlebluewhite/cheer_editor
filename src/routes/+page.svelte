@@ -22,7 +22,8 @@
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN } from '#lib/editor-layout.js';
+	import { SPEEDS } from '#lib/playback.svelte.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -134,7 +135,9 @@
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
 		if (next === 'practice') playback.pause();
-		view = next;
+		// 全上表改過格子：先問（session.practiceLeave），丟掉才切
+		if (next === 'edit' && view === 'practice') session.leavePracticePage(() => (view = next));
+		else view = next;
 	}
 
 	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。場地和泳道共用這一份。 */
@@ -201,14 +204,16 @@
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
-	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
+	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
+	let windowH = $state(0);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
-		name: 'inspectorWidthPx',
+		name: 'inspectorWidthRatio',
 		axis: 'x',
 		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
-		size: (): number => inspectorPx
+		size: (): number => inspectorPx,
+		relativeTo: () => windowW || window.innerWidth
 	});
 
 	const fieldAspect = $derived.by(() => {
@@ -303,6 +308,8 @@
 	const SPACE_PLAYS = '[data-space-plays]';
 	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
 	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+	/** 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字。 */
+	const NATIVE_UNDO = '[data-native-undo] :is(textarea, input:not([type="checkbox"], [type="radio"]))';
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
@@ -329,8 +336,10 @@
 		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
 		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
+		// 還沒送出的表單（新動作、加隊員）的輸入框除外：字不在流程裡，交給瀏覽器退字。
 		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
+			if (on(NATIVE_UNDO)) return;
 			e.preventDefault();
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
@@ -407,6 +416,7 @@
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
+	bind:innerHeight={windowH}
 />
 <svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
@@ -466,6 +476,23 @@
 					/>
 					<Icon name="metronome" />節拍器
 				</label>
+				<label class="toggle repeat" title="有選動作就重複那個動作，沒選就重複目前的八拍">
+					<input
+						type="checkbox"
+						checked={playback.repeat}
+						onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
+					/>
+					<Icon name="repeat" />重複
+				</label>
+				<select
+					class="speed"
+					aria-label="播放速度"
+					title="慢速播放，音高不變"
+					value={String(playback.rate)}
+					onchange={(e) => playback.setRate(Number(e.currentTarget.value))}
+				>
+					{#each SPEEDS as rate (rate)}<option value={String(rate)}>{rate}x</option>{/each}
+				</select>
 				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
 					<span class="latency-text">延遲校正</span>
 					<input
@@ -582,6 +609,7 @@
 						</select>
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
 				</main>
 			{/if}
 		{:else}
@@ -632,10 +660,20 @@
 							</div>
 						{/if}
 						{#if warnings.length}
-							<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
-								<Icon name="warn" />
-								<span class="warn-text">{#each warnings as w (w)}<span>{w}</span>{/each}</span>
-							</div>
+							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定 -->
+							<ul class="warn" aria-label="規則警告">
+								{#each warnings as w (w.title)}
+									<li>
+										{#if view === 'edit' && !session.viewing}
+											<button type="button" title="規則警告（只提醒，不擋）：按一下打開流程設定" onclick={() => (settingsOpen = true)}
+												><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></button
+											>
+										{:else}
+											<span class="row"><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
 						{/if}
 						{#if flow}
 							{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
@@ -897,7 +935,17 @@
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content);
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content) auto;
+	}
+	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行小字放最下面，不跟場地搶位置 */
+	.phone-why {
+		margin: 0;
+		padding: 4px 12px;
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.phone-why:empty {
+		display: none;
 	}
 	.phone-field {
 		position: relative;
@@ -931,7 +979,7 @@
 	@media (orientation: landscape) {
 		.phone-view {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-			grid-template-rows: auto auto minmax(0, 1fr);
+			grid-template-rows: auto auto minmax(0, 1fr) auto;
 		}
 		.phone-view > :global(*) {
 			grid-column: 2;
@@ -1189,12 +1237,17 @@
 		outline: 2px solid var(--sel);
 		outline-offset: 2px;
 	}
-	.latency input {
+	.latency input,
+	.speed {
 		width: 64px;
 		background: #0c1426;
 		color: #fff;
 		border-color: #36425f;
 		padding: 3px 6px;
+	}
+	.speed {
+		width: auto;
+		font-size: 12px;
 	}
 
 	.actions {
@@ -1270,16 +1323,42 @@
 	}
 	/* 左欄（場地左邊）的東西：警告、跟上一張一樣、拖人會改。 */
 	.warn {
-		display: flex;
-		align-items: flex-start;
-		gap: 6px;
-		padding: 6px 12px;
+		list-style: none;
+		margin: 0;
+		padding: 4px 0;
 		border-radius: 10px;
 		background: var(--warn-bg);
 		border: 1px solid #f0d488;
 		color: var(--warn-text);
 		font-size: 12px;
 		font-weight: 500;
+	}
+	.warn li + li {
+		border-top: 1px solid #f0d488;
+	}
+	.warn button,
+	.warn .row {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		width: 100%;
+		padding: 4px 12px;
+		border: 0;
+		border-radius: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+	}
+	.warn button {
+		cursor: pointer;
+	}
+	.warn button:hover {
+		text-decoration: underline;
+	}
+	.warn b {
+		display: block;
+		font-weight: 700;
 	}
 	/* 左欄最上面：播放頭這一刻用的站位。號碼跟站位縮圖列一樣是深色小方塊，左邊一條墊子藍。 */
 	.now-formation {
@@ -1333,10 +1412,6 @@
 	.warn :global(svg) {
 		flex: none;
 		margin-top: 1px;
-	}
-	.warn span + span::before {
-		content: '／';
-		margin-right: 6px;
 	}
 
 	/* 選檔用的 input 藏起來，外面的 label 看起來像按鈕。 */
@@ -1624,8 +1699,8 @@
 	}
 
 	/* 窄一點的視窗：延遲校正只留「延遲」、輸入框和「毫秒」（滑過去看得到說明），不整個藏起來。
-	   上方列多了「編排｜練習」，所以從 1540px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
-	@media (max-width: 1540px) {
+	   上方列多了「編排｜練習」、播放區多了「重複」和速度，所以從 1700px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
+	@media (max-width: 1700px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1653,8 +1728,8 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
-	   右邊多了「編輯」開關、延遲校正多了「毫秒」，所以從 1435px 就換。 */
-	@media (max-width: 1435px) {
+	   右邊多了「編輯」開關、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1570px 就換。 */
+	@media (max-width: 1570px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}

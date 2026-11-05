@@ -359,3 +359,69 @@ describe('播放：節拍器、延遲校正', () => {
 		expect(playback.latencyMs).toBe(1000);
 	});
 });
+
+describe('播放：慢速、重複', () => {
+	it('0.5x：播放頭走一半速度，節拍器照慢的時間排', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.setRate(0.5);
+		playback.play();
+		const t0 = engine.clicks[0].when;
+		// 150 BPM 一拍 0.4 秒，慢一半就是 0.8 秒響一聲
+		expect(engine.clicks[1].when - t0).toBeCloseTo(0.8, 6);
+		engine.audible = t0 + 6.4;
+		frames.step();
+		expect(playback.sec).toBeCloseTo(3.2, 6);
+		expect(position()).toBe('音樂 1 2-1');
+	});
+
+	it('重複、選了動作：從動作開始播，播到動作結束跳回動作開始，一直播', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		// 第 2 個八拍（3.2 到 6.4 秒）
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 16, length: 16, note: '', members }));
+		const { session, playback, engine, frames, position } = setup(flow);
+		session.selectAction('x1');
+		playback.setRepeat(true);
+		playback.play();
+		expect(position()).toBe('音樂 1 2-1');
+		let t0 = engine.clicks[0].when;
+		// 只排到動作結束：8 拍
+		expect(engine.clicks).toHaveLength(8);
+		engine.audible = t0 + 2;
+		frames.step();
+		expect(position()).toBe('音樂 1 2-6');
+		engine.audible = t0 + 3.3;
+		frames.step();
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-1');
+		t0 = engine.clicks[0].when;
+		engine.audible = t0 + 0.5;
+		frames.step();
+		expect(position()).toBe('音樂 1 2-2');
+	});
+
+	it('重複、沒選動作：在播放頭所在的八拍裡重複', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.setRepeat(true);
+		playback.seek(8.2); // 3-5&
+		playback.play();
+		const t0 = engine.clicks[0].when;
+		// 3-6 到 3-8 三聲，第 4 個八拍不排
+		expect(engine.clicks).toHaveLength(3);
+		engine.audible = t0 + 1.5;
+		frames.step();
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 3-1');
+	});
+
+	it('重複開著也照樣能跳：播放頭跳到別的八拍，就重複那一個', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.setRepeat(true);
+		playback.play();
+		playback.seek(13); // 5-1
+		const t0 = engine.clicks[0].when;
+		engine.audible = t0 + 3.3;
+		frames.step();
+		expect(position()).toBe('音樂 1 5-1');
+	});
+});

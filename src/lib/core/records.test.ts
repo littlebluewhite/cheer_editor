@@ -4,8 +4,10 @@ import {
 	attemptText,
 	attemptWhos,
 	carryRecords,
+	changeAttempt,
 	clearPhaseBeats,
 	deleteAction,
+	deleteAttempt,
 	deleteLastAttempt,
 	deleteLastRunThrough,
 	deleteMember,
@@ -23,6 +25,8 @@ import {
 	squadName,
 	squadsOf,
 	updateAction,
+	successPercent,
+	weakestPhase,
 	writeFlowFile,
 	type Flow,
 	type NewAttempt,
@@ -175,6 +179,71 @@ describe('刪掉上一次', () => {
 		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-05', 'drill'));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' })));
 		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't4', 't6']);
+	});
+});
+
+describe('改某一次、刪掉某一次', () => {
+	/** 11/04 第 1 組：t1 ✓✓✓、t2 ✓✓✓、t3 ✓✓✓，全上 t4 ✓✓✓。 */
+	function recorded(): Flow {
+		let flow = sample();
+		for (let i = 0; i < 3; i++) flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' })));
+		return flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
+	}
+	const lowest = (flow: Flow) => {
+		const w = weakestPhase(flow.actions[0], '2026-11-04');
+		return w && successPercent(w.tally);
+	};
+
+	it('改中間那一次的記號：還在原來的位置、id 不變，成功率跟著變', () => {
+		const flow = recorded();
+		expect(lowest(flow)).toBeNull();
+		const changed = flowOf(changeAttempt(flow, 'x1', 't2', { p1: '✓', p2: '✓', p3: '✗' }));
+		expect(recordsOf(changed).map((r) => [r.id, r.marks.p3])).toEqual([
+			['t1', '✓'],
+			['t2', '✗'],
+			['t3', '✓'],
+			['t4', '✓']
+		]);
+		expect(lowest(changed)).toBe(75);
+	});
+
+	it('改成 ✗：後面的記號不存（跟記的時候一樣）；整個做卻空了一格算只練幾個環節', () => {
+		let flow = flowOf(changeAttempt(recorded(), 'x1', 't1', { p1: '✗', p2: '✓', p3: '✓' }));
+		expect(recordsOf(flow)[0]).toMatchObject({ whole: true, marks: { p1: '✗' } });
+		flow = flowOf(changeAttempt(flow, 'x1', 't2', { p1: '✓', p3: '✓' }));
+		expect(recordsOf(flow)[1]).toMatchObject({ whole: false, marks: { p1: '✓', p3: '✓' } });
+	});
+
+	it('全上的那一次也能改；空了一格就擋下來', () => {
+		const flow = flowOf(changeAttempt(recorded(), 'x1', 't4', { p1: '✓', p2: '△', p3: '✓' }));
+		expect(recordsOf(flow)[3]).toMatchObject({ practice: 'runThrough', runThroughId: 'r1', marks: { p2: '△' } });
+		expect(changeAttempt(flow, 'x1', 't4', { p1: '✓', p3: '✓' })).toEqual({
+			kind: 'blocked',
+			message: '全上的一次每個環節都要有記號（✗ 後面的不用）'
+		});
+	});
+
+	it('一個記號都沒有、找不到那一次就擋下來', () => {
+		expect(changeAttempt(recorded(), 'x1', 't1', {})).toEqual({ kind: 'blocked', message: '一次至少要有一個記號' });
+		expect(changeAttempt(recorded(), 'x1', 't9', { p1: '✓' })).toEqual({ kind: 'blocked', message: '找不到這一次' });
+	});
+
+	it('刪掉某一次：只拿掉它，回傳它和原本排第幾，救回放回原位；全上的也一樣', () => {
+		const r = deleteAttempt(recorded(), 'x1', 't2');
+		expect(r.kind === 'ok' && [recordsOf(r.flow).map((a) => a.id), r.attempt.id, r.index]).toEqual([
+			['t1', 't3', 't4'],
+			't2',
+			1
+		]);
+		if (r.kind !== 'ok') return;
+		expect(recordsOf(flowOf(restoreAttempt(r.flow, 'x1', r.attempt, r.index))).map((a) => a.id)).toEqual([
+			't1',
+			't2',
+			't3',
+			't4'
+		]);
+		expect(recordsOf(flowOf(deleteAttempt(recorded(), 'x1', 't4'))).map((a) => a.id)).toEqual(['t1', 't2', 't3']);
+		expect(deleteAttempt(recorded(), 'x1', 't9')).toEqual({ kind: 'blocked', message: '找不到這一次' });
 	});
 });
 

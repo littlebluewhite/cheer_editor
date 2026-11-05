@@ -9,8 +9,10 @@ export const INSPECTOR_AUTO_MAX_PX = 960;
 export const FIELD_CHROME_PX = 236 + 12 + 24;
 /** 場地那一欄上下的內距（各 12）。 */
 const FIELD_PAD_Y_PX = 24;
+/** 場地最小多寬（不算左邊工具欄）：右邊欄拖得再寬，1024 寬的小筆電、iPad 上場地也不會被擠到看不清楚。 */
+export const FIELD_MIN_W_PX = 360;
 /** 自己拖的時候，場地那一欄至少留這麼寬。 */
-export const FIELD_KEEP_W_PX = 560;
+export const FIELD_KEEP_W_PX = FIELD_CHROME_PX + FIELD_MIN_W_PX;
 
 /**
  * 沒拖過時右邊欄多寬：場地那一欄高 fieldHostH，場地的長寬比是 aspect（寬 ÷ 高），
@@ -28,6 +30,23 @@ export function autoInspectorWidth(windowW: number, fieldHostH: number, aspect: 
  * 只看 screen：列印時紙比較窄，不能因為這樣換畫面。
  */
 export const NARROW_SCREEN = 'screen and (max-width: 1023px), screen and (max-height: 599px)';
+/** 編輯畫面至少要這麼寬、這麼高（跟 NARROW_SCREEN 一樣）。 */
+const EDIT_MIN_W_PX = 1024;
+const EDIT_MIN_H_PX = 600;
+
+/**
+ * 窄螢幕上為什麼不能編，寫在手機的檢視畫面上：觸控螢幕拿直的、轉成橫的就夠大 → 請轉成橫的；
+ * 不然照寬或高分開寫太窄、太矮（兩個都不夠寫太小）。夠大就是 ''。
+ */
+export function viewOnlyReason(w: number, h: number, touch: boolean): string {
+	const narrow = w < EDIT_MIN_W_PX;
+	const short = h < EDIT_MIN_H_PX;
+	if (!narrow && !short) return '';
+	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return '請轉成橫的，才能編輯';
+	if (narrow && short) return `畫面太小了（不到 ${EDIT_MIN_W_PX}×${EDIT_MIN_H_PX} 像素），只能看、不能編`;
+	if (narrow) return `畫面太窄了（不到 ${EDIT_MIN_W_PX} 像素寬），只能看、不能編`;
+	return `畫面太矮了（不到 ${EDIT_MIN_H_PX} 像素高），只能看、不能編`;
+}
 
 /** 自己拖的寬度夾在 INSPECTOR_MIN_PX 和「場地那一欄留 FIELD_KEEP_W_PX」之間。 */
 export function clampInspectorWidth(px: number, windowW: number): number {

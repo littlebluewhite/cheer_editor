@@ -163,18 +163,16 @@ describe('段、八拍尺、上方列', () => {
 
 	it('超過時間規則時上方列提醒；流程設定可以關掉或改數字', async () => {
 		await newFlow();
-		expect(screen.queryByText(/口號段共/)).toBeNull();
+		expect(screen.queryByText('還沒有口號段')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		expect(screen.getByText(/口號段共 0.0 秒，少於 30 秒/)).toBeTruthy();
+		expect(screen.getByText('口號段加起來最少要 30 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '0' } });
-		expect(screen.queryByText(/口號段共/)).toBeNull();
-		await fireEvent.change(screen.getByLabelText('口號段最少（秒）'), { target: { value: '30' } });
-		expect(screen.getByText(/口號段共 0.0 秒/)).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText('口號段加起來最少（秒）'), { target: { value: '20' } });
+		expect(screen.getByText('口號段加起來最少要 20 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
-		expect(screen.queryByText(/口號段共/)).toBeNull();
+		expect(screen.queryByText('還沒有口號段')).toBeNull();
 	});
 
 	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
@@ -1021,7 +1019,7 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('status').textContent).toBe('已刪掉站位 2');
 		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的站位' }));
 		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByRole('status').textContent).toBe('已復原：刪站位 2');
 		// 只復原一步：拖人插的站位還在，再按上方列的復原才退掉拖人
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(thumbs()).toHaveLength(1);
@@ -1536,6 +1534,26 @@ describe('播放', () => {
 		expect(engine.clicks).toEqual([]);
 	});
 
+	it('播放速度選 0.5x：播放頭走一半速度', async () => {
+		const engine = await sample();
+		await fireEvent.change(screen.getByLabelText('播放速度'), { target: { value: '0.5' } });
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		engine.audible = engine.clicks[0].when + 6.4;
+		await nextFrame();
+		expect(position()).toBe('音樂 1 2-1');
+	});
+
+	it('重複開著、沒選動作：播到這個八拍結尾跳回這個八拍的 1', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByLabelText('重複'));
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		// 第 1 個八拍 3.2 秒
+		engine.audible = engine.clicks[0].when + 3.3;
+		await nextFrame();
+		expect(position()).toBe('音樂 1 1-1');
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+	});
+
 	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
 		await sample();
 		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
@@ -1681,7 +1699,8 @@ describe('復原和重做', () => {
 		// fireEvent 回傳 false 表示被 preventDefault（瀏覽器自己的復原不會跑）
 		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
-		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'y', ctrlKey: true })).toBe(false);
+		// 新動作表單的字還不在流程裡，⌘Z 交給瀏覽器（見 undo 測試）；別的文字框照樣退回流程
+		expect(await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'y', ctrlKey: true })).toBe(false);
 		expect(thumbs()).toHaveLength(2);
 	});
 
@@ -1920,7 +1939,21 @@ describe('場地和右邊欄的分界', () => {
 		expect(reset()).toBeNull();
 	});
 
-	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {
+	it('拖過的寬度照視窗寬的比例記：大螢幕調過，換小一點的視窗，右邊欄跟著變窄', async () => {
+		await newFlow();
+		expect(width()).toBe(800);
+		for (let i = 0; i < 4; i++) await fireEvent.keyDown(bar(), { key: 'ArrowRight' });
+		expect(width()).toBe(704);
+		// 704 / 1600 = 0.44 → 1200 寬是 528
+		Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+		await fireEvent(window, new Event('resize'));
+		expect(width()).toBe(528);
+		cleanup();
+		await newFlow();
+		expect(width()).toBe(528);
+	});
+
+	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 632 px（場地本身 360 px）', async () => {
 		await newFlow();
 		const before = width();
 		await fireEvent.pointerDown(bar(), { clientX: 900, button: 0 });
@@ -1928,7 +1961,7 @@ describe('場地和右邊欄的分界', () => {
 		expect(width()).toBe(before + 40);
 		await fireEvent.pointerMove(bar(), { clientX: 0 });
 		await fireEvent.pointerUp(bar(), { clientX: 0 });
-		expect(width()).toBe(1600 - 560);
+		expect(width()).toBe(1600 - 632);
 	});
 });
 

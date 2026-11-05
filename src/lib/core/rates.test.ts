@@ -147,8 +147,17 @@ describe('最弱的環節', () => {
 	});
 
 	it('只看那天：別天的紀錄不算；那天沒有記號的環節不算', () => {
-		const action = lib(attempt('✗✗✗', { date: '2026-11-03' }), attempt('✓··', { whole: false }), attempt('·✗·', { date: '2026-11-03', whole: false }));
+		const action = lib(
+			attempt('✗✗✗', { date: '2026-11-03' }),
+			attempt('✓··', { whole: false }),
+			attempt('△··', { whole: false }),
+			attempt('·✗·', { date: '2026-11-03', whole: false })
+		);
 		expect(weakestPhase(action, '2026-11-04')?.phase.id).toBe('p1');
+	});
+
+	it('那天每個有記號的環節都全部成功：沒有最弱的', () => {
+		expect(weakestPhase(lib(attempt('✓✓✓'), attempt('✓··', { whole: false })), '2026-11-04')).toBeNull();
 	});
 
 	it('那天沒紀錄就沒有', () => {
@@ -265,6 +274,23 @@ describe('一格的明細', () => {
 		]);
 		expect(cellDetail(x1(flow), 'g1', 'p1').map((d) => d.marks.map((m) => m.mark).join(''))).toEqual(['✓✓✓', '✓']);
 		expect(cellDetail(x1(flow), 'g2', 'p2')).toEqual([]);
+	});
+
+	it('整次（phaseId 是 null）：整個做的每一次寫成一排記號；只練幾個環節的不列', () => {
+		const flow = recorded(
+			attempt('✓✗·', { date: '2026-11-04' }),
+			attempt('✓✓△', { date: '2026-11-04', ...runThrough('r1') }),
+			attempt('✓··', { date: '2026-11-04', whole: false })
+		);
+		expect(cellDetail(x1(flow), 'g1', null)).toEqual([
+			{
+				date: '2026-11-04',
+				marks: [
+					{ mark: '✓✗·', runThrough: false },
+					{ mark: '✓✓△', runThrough: true }
+				]
+			}
+		]);
 	});
 
 	it('套用和格子一樣的篩選：期間、練法', () => {

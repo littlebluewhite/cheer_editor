@@ -229,10 +229,12 @@
 {/if}
 
 <!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
+<!-- 新動作的字還不在流程裡：⌘Z 交給瀏覽器退字（data-native-undo）。 -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <section
 	class="action-form"
 	class:creating={!action}
+	data-native-undo={!action || undefined}
 	style:--cat={actionColor(draft)}
 	bind:this={formEl}
 	onkeydown={formKey}

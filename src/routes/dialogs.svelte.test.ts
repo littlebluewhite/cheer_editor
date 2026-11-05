@@ -220,14 +220,14 @@ describe('被擋下的欄位', () => {
 	it('流程設定：擋下的數字欄位馬上回到實際值；錯誤留到那一格改對，改別格不會消失', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		const min = screen.getByLabelText('口號段最少（秒）') as HTMLInputElement;
+		const min = screen.getByLabelText('口號段加起來最少（秒）') as HTMLInputElement;
 		const before = min.value;
 		await fireEvent.change(min, { target: { value: '-5' } });
 		expect(min.value).toBe(before);
-		expect(screen.getByRole('alert').textContent).toContain('「口號段最少（秒）」');
+		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
 
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
-		expect(screen.getByRole('alert').textContent).toContain('「口號段最少（秒）」');
+		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
 
 		await fireEvent.change(min, { target: { value: '20' } });
 		expect(screen.queryByRole('alert')).toBeNull();
@@ -235,14 +235,16 @@ describe('被擋下的欄位', () => {
 });
 
 describe('流程設定看得到場地', () => {
-	it('一行唯讀的場地：幾條、直放或橫放', async () => {
+	it('寫現在的場地：幾條、直放或橫放；調整場地的欄位填好現在的值（#169）', async () => {
 		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		const row = within(dialog('流程設定')).getByText('場地').parentElement!;
-		expect(row.textContent).toContain('5 條橫放');
-		expect(row.querySelector('input, select, button')).toBeNull();
+		const settings = within(dialog('流程設定'));
+		expect(settings.getByText(/現在 5 條橫放/)).toBeTruthy();
+		expect((settings.getByLabelText('條數') as HTMLInputElement).value).toBe('5');
+		expect((settings.getByLabelText('橫放') as HTMLInputElement).checked).toBe(true);
+		expect((settings.getByRole('button', { name: '調整場地' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 });

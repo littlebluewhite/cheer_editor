@@ -2,11 +2,25 @@
 // 播放器（#lib/audio/player.js：排程和時鐘換算）是它的內部；音訊引擎第一次播放時才建。
 // 畫面時鐘（nextFrame）是 adapter：瀏覽器用 requestAnimationFrame，測試手動撥一格。
 
-import { firstBeatPreview, playbackPlan, playStartSec, resumeSec, snapToBeat, stepPlayhead, totalSeconds, type Flow } from '#lib/core';
+import {
+	firstBeatPreview,
+	playbackPlan,
+	playStartSec,
+	repeatSpan,
+	resumeSec,
+	snapToBeat,
+	stepPlayhead,
+	totalSeconds,
+	type Action,
+	type Flow
+} from '#lib/core';
 import type { AudioEngine } from '#lib/audio/engine.js';
 import { createPlayer, type Player } from '#lib/audio/player.js';
 import type { SessionPlayback } from '#lib/editor-session.svelte.js';
 import { loadLatencyMs, MAX_LATENCY_MS, saveLatencyMs } from '#lib/local-settings.js';
+
+/** 播放速度可以選的：正常、0.75x、0.5x（慢速時音高不變）。 */
+export const SPEEDS = [1, 0.75, 0.5] as const;
 
 /** 畫面時鐘：下一格畫面時叫 run 一次。 */
 export type NextFrame = (run: () => void) => void;
@@ -19,11 +33,18 @@ export class Playback implements SessionPlayback {
 	readonly #createEngine: () => AudioEngine;
 	readonly #nextFrame: NextFrame;
 	readonly #moved: () => void;
+	readonly #selectedAction: () => Action | null;
 	#player: Player | null = null;
 
 	#at = $state(0);
 	#playing = $state(false);
 	#metronome = $state(true);
+	/** 播放速度：1、0.75、0.5（音高不變）。不進流程檔。 */
+	#rate = $state(1);
+	/** 重複：選了動作就重複那個動作，沒選就重複播放頭所在的八拍。不進流程檔。 */
+	#repeat = $state(false);
+	/** 重複播的那段從哪一秒開始（播到結尾跳回這裡）。 */
+	#loopStart = 0;
 	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
 	#previewing = $state(false);
 	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
@@ -32,12 +53,20 @@ export class Playback implements SessionPlayback {
 	/**
 	 * flow：現在的流程；createEngine：建音訊引擎（第一次播放時才建）。
 	 * moved：播放頭動了要叫的（編輯器 module 接上：動作表單的草稿跟著播放頭）。
+	 * selectedAction：選著的動作（「重複」播它）。
 	 */
-	constructor(flow: () => Flow | null, createEngine: () => AudioEngine, nextFrame: NextFrame, moved: () => void) {
+	constructor(
+		flow: () => Flow | null,
+		createEngine: () => AudioEngine,
+		nextFrame: NextFrame,
+		moved: () => void,
+		selectedAction: () => Action | null
+	) {
 		this.#flow = flow;
 		this.#createEngine = createEngine;
 		this.#nextFrame = nextFrame;
 		this.#moved = moved;
+		this.#selectedAction = selectedAction;
 	}
 
 	/** 播放頭（全域秒數）；每次改都叫 moved。 */
@@ -67,6 +96,14 @@ export class Playback implements SessionPlayback {
 		return this.#metronome;
 	}
 
+	get rate(): number {
+		return this.#rate;
+	}
+
+	get repeat(): boolean {
+		return this.#repeat;
+	}
+
 	get latencyMs(): number {
 		return this.#latencyMs;
 	}
@@ -76,12 +113,26 @@ export class Playback implements SessionPlayback {
 		return this.#player;
 	}
 
-	/** 從播放頭開始播；已經播完就從頭。沒有段時沒東西可以播。一定由按鈕或空白鍵觸發。 */
+	/**
+	 * 從播放頭開始播；已經播完就從頭。沒有段時沒東西可以播。一定由按鈕或空白鍵觸發。
+	 * 重複開著：只播到那段的結尾（#frame 再跳回開頭）；播放頭不在那段裡就從那段開始。
+	 */
 	play() {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
 		this.#sec = playStartSec(f, this.#sec);
-		this.#getPlayer().start(playbackPlan(f, this.#sec), { fromSec: this.#sec, metronome: this.#metronome });
+		let until = Infinity;
+		const span = this.#repeat ? repeatSpan(f, this.#sec, this.#selectedAction()) : null;
+		if (span) {
+			if (this.#sec < span.startSec || this.#sec >= span.endSec - 0.01) this.#sec = span.startSec;
+			this.#loopStart = span.startSec;
+			until = span.endSec;
+		}
+		this.#getPlayer().start(playbackPlan(f, this.#sec, until), {
+			fromSec: this.#sec,
+			metronome: this.#metronome,
+			rate: this.#rate
+		});
 		if (!this.#playing) {
 			this.#playing = true;
 			this.#nextFrame(this.#frame);
@@ -168,6 +219,18 @@ export class Playback implements SessionPlayback {
 		if (this.#playing) this.play();
 	}
 
+	/** 開關重複；播放中就照新的設定重排。 */
+	setRepeat(on: boolean) {
+		this.#repeat = on;
+		if (this.#playing) this.play();
+	}
+
+	/** 換播放速度；播放中就照新的速度重排。 */
+	setRate(rate: number) {
+		this.#rate = rate;
+		if (this.#playing) this.play();
+	}
+
 	/**
 	 * 延遲校正（毫秒）：只移畫面上的播放頭，不動聲音；存在這台電腦。
 	 * 不是數字（清空、亂填）或超出範圍就不改，回傳 false（欄位要回到現在的值，不然欄位空著，實際還在用舊值）。
@@ -211,10 +274,14 @@ export class Playback implements SessionPlayback {
 		else this.play();
 	}
 
-	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
+	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停（重複開著就跳回那段開頭接著播）。 */
 	#frame = () => {
 		if (!this.#playing || !this.#player) return;
 		this.#sec = this.#player.tick(this.#latencyMs);
+		if (!this.#player.playing && this.#repeat) {
+			this.#sec = this.#loopStart;
+			this.play();
+		}
 		if (!this.#player.playing) this.#playing = false;
 		else this.#nextFrame(this.#frame);
 	};

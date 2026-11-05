@@ -2,18 +2,19 @@
 // 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加段、動作等。
 
 import type { Action } from './action-types';
-import { MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
-import type { Formation } from './formation';
+import { fieldGeometry, MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
+import type { Formation, Position } from './formation';
 import type { MarkerStyle, Member } from './members';
 import { blocked, ok, type CommandResult } from './result';
 import type { CustomRole } from './roles';
 import type { AudioRef, Segment } from './segment';
+import { snapPosition } from './snap';
 import { tooLong } from './text-length';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
 
 export interface Flow {
 	name: string;
-	/** 建好之後不能換。 */
+	/** 建好之後可以調整（adjustField）。 */
 	field: FieldConfig;
 	timeRules: TimeRules;
 	/** 名單順序 = 泳道順序。 */
@@ -83,4 +84,31 @@ export function renameFlow(flow: Flow, name: string): CommandResult {
 	const problem = flowNameProblem(trimmed);
 	if (problem) return blocked(problem);
 	return ok({ ...flow, name: trimmed });
+}
+
+/**
+ * 調整場地：改條數或鋪向。墊子上的人照比例放大縮小，再吸到最近的 1/4 格；
+ * 站在墊子外的人，跟最近那個邊的距離不變（還是在場外）。
+ */
+export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
+	const problem = stripsProblem(field.strips);
+	if (problem) return blocked(problem);
+	const from = fieldGeometry(flow.field).mat;
+	const to = fieldGeometry(field).mat;
+	const axis = (v: number, lo: number, len: number, newLo: number, newLen: number) => {
+		if (v < lo) return newLo - (lo - v);
+		if (v > lo + len) return newLo + newLen + (v - lo - len);
+		return newLo + ((v - lo) / len) * newLen;
+	};
+	const move = ([x, y]: Position): Position => {
+		const p: Position = [axis(x, from.x, from.width, to.x, to.width), axis(y, from.y, from.height, to.y, to.height)];
+		const snapped = snapPosition(field, p, 1);
+		const onMat = (v: number, lo: number, len: number) => v >= lo && v <= lo + len;
+		return [onMat(x, from.x, from.width) ? snapped[0] : p[0], onMat(y, from.y, from.height) ? snapped[1] : p[1]];
+	};
+	const formations = flow.formations.map((f) => ({
+		...f,
+		pos: Object.fromEntries(Object.entries(f.pos).map(([id, p]) => [id, move(p)]))
+	}));
+	return ok({ ...flow, field: { ...field }, formations });
 }

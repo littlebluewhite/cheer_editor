@@ -15,23 +15,34 @@ export interface DividerOptions {
 	clamp: (px: number) => number;
 	/** 現在畫面上多大（沒拖過時是預設的大小）：從這裡開始拖、按方向鍵。 */
 	size: () => number;
+	/** 有給就照它的比例記（例如視窗寬）：大螢幕調過，換小螢幕時跟著縮，不會把另一邊擠到最小。 */
+	relativeTo?: () => number;
 }
 
 export class Divider {
-	/** 拖過的大小（px）；null = 預設（沒拖過，或雙擊回去了）。 */
-	px = $state<number | null>(null);
+	/** 存的值：px，或 relativeTo 的比例；null = 預設（沒拖過，或雙擊回去了）。 */
+	#stored = $state<number | null>(null);
 	#opts: DividerOptions;
 	#drag: { from: number; px: number } | null = null;
 
 	constructor(opts: DividerOptions) {
 		this.#opts = opts;
-		this.px = loadLayoutPx(opts.name);
+		this.#stored = loadLayoutPx(opts.name);
+	}
+
+	/** 拖過的大小（px）；null = 預設（沒拖過，或雙擊回去了）。 */
+	get px(): number | null {
+		const { relativeTo } = this.#opts;
+		if (this.#stored === null || !relativeTo) return this.#stored;
+		return Math.round(this.#stored * relativeTo());
 	}
 
 	/** 改大小（null = 回到預設），存在這台電腦。 */
 	set(px: number | null) {
-		this.px = px === null ? null : this.#opts.clamp(px);
-		saveLayoutPx(this.#opts.name, this.px);
+		const { relativeTo } = this.#opts;
+		const clamped = px === null ? null : this.#opts.clamp(px);
+		this.#stored = clamped === null || !relativeTo ? clamped : clamped / relativeTo();
+		saveLayoutPx(this.#opts.name, this.#stored);
 	}
 
 	/** attachment：放在分界元素上，`{@attach divider.attach}`。 */

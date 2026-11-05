@@ -6,6 +6,7 @@ import { createContext } from 'svelte';
 import {
 	actionLabel,
 	carryRecords,
+	changeLabel,
 	currentFormation,
 	deleteAction,
 	deleteFormation,
@@ -25,6 +26,12 @@ import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
+
+/** 復原、重做紀錄的一步：要換上的流程、那一步改了什麼（例：「插入站位 3」）。 */
+interface Step {
+	flow: Flow;
+	label: string;
+}
 
 /** 檢視模式下改流程被擋的原因。 */
 export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先打開上方列的「編輯」';
@@ -47,10 +54,13 @@ export class EditorSession {
 	#flow = $state.raw<Flow | null>(null);
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
-	/** 復原紀錄：改之前的流程（最舊的在前）。指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。 */
-	#undo = $state.raw<Flow[]>([]);
-	/** 重做紀錄：復原掉的流程（最近復原的在後）。做了新的一步就清掉。 */
-	#redo = $state.raw<Flow[]>([]);
+	/**
+	 * 復原紀錄：改之前的流程（最舊的在前）和那一步改了什麼（復原、重做的提示用）。
+	 * 指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。
+	 */
+	#undo = $state.raw<Step[]>([]);
+	/** 重做紀錄：復原掉的流程（最近復原的在後）和那一步改了什麼。做了新的一步就清掉。 */
+	#redo = $state.raw<Step[]>([]);
 
 	/** 上一步可以接著合的：哪一種（key）、合完的流程。流程換了（中間有別的改動）就接不上。 */
 	#joinable: { key: string; flow: Flow } | null = null;
@@ -75,6 +85,17 @@ export class EditorSession {
 	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
 	 */
 	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
+	/**
+	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
+	 * 不存進流程檔。
+	 */
+	practiceLeave: ((go: () => void) => void) | null = $state.raw(null);
+
+	/** 離開練習畫面的這一頁：有要先問的就交給它，沒有就直接 go()。 */
+	leavePracticePage(go: () => void) {
+		if (this.practiceLeave) this.practiceLeave(go);
+		else go();
+	}
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
@@ -192,7 +213,10 @@ export class EditorSession {
 		if (!this.#flow || flow === this.#flow) return false;
 		const before = this.#flow;
 		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
-		if (!joined) this.#undo = [...this.#undo, this.#flow].slice(-UNDO_LIMIT);
+		// 合成一步的：說的是從合之前到現在改了什麼
+		const from = joined ? this.#undo.at(-1)!.flow : this.#flow;
+		const step = { flow: from, label: changeLabel(from, flow) };
+		this.#undo = (joined ? [...this.#undo.slice(0, -1), step] : [...this.#undo, step]).slice(-UNDO_LIMIT);
 		this.#joinable = join !== undefined ? { key: join, flow } : null;
 		this.#redo = [];
 		this.#flow = flow;
@@ -217,7 +241,23 @@ export class EditorSession {
 
 	/** 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。 */
 	changeAsk(options: { confirmLabel?: string; onfail?: (error: string) => void } = {}): Ask {
-		return new Ask((f) => this.change(f), { ...options, locked: () => this.#locked() });
+		const ask = new Ask((f) => this.change(f), { ...options, locked: () => this.#locked() });
+		this.#changeAsks.add(new WeakRef(ask));
+		return ask;
+	}
+
+	/** 給元件的「改」的問題（changeAsk）：復原、重做時一起收掉。元件拆掉了就放掉（WeakRef）。 */
+	#changeAsks = new Set<WeakRef<Ask>>();
+
+	/** 問題都收掉：問的是換掉之前的流程，留著會冒出舊內容，按下去還會清掉重做。 */
+	#clearAsks() {
+		this.ask.clear();
+		this.squadAsk.clear();
+		for (const ref of this.#changeAsks) {
+			const ask = ref.deref();
+			if (ask) ask.clear();
+			else this.#changeAsks.delete(ref);
+		}
 	}
 
 	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
@@ -225,29 +265,31 @@ export class EditorSession {
 		return new Ask((f) => this.record(f));
 	}
 
-	/** 復原：換上前一份編排，帶著現在的紀錄。回傳有沒有復原（檢視模式擋下，說原因）。 */
+	/** 復原：換上前一份編排，帶著現在的紀錄，提示「已復原：…」。回傳有沒有復原（檢視模式擋下，說原因）。 */
 	undo(): boolean {
 		if (this.#blocked()) return false;
 		const prev = this.#undo.at(-1);
 		if (!this.#flow || !prev) return false;
 		const before = this.#flow;
-		this.#redo = [...this.#redo, this.#flow];
+		this.#redo = [...this.#redo, { flow: this.#flow, label: prev.label }];
 		this.#undo = this.#undo.slice(0, -1);
-		this.#flow = carryRecords(prev, this.#flow);
+		this.#flow = carryRecords(prev.flow, this.#flow);
 		this.#restored(this.#flow, before);
+		this.notice = `已復原：${prev.label}`;
 		return true;
 	}
 
-	/** 重做：換上復原掉的編排，帶著現在的紀錄。回傳有沒有重做（檢視模式擋下，說原因）。 */
+	/** 重做：換上復原掉的編排，帶著現在的紀錄，提示「已重做：…」。回傳有沒有重做（檢視模式擋下，說原因）。 */
 	redo(): boolean {
 		if (this.#blocked()) return false;
 		const next = this.#redo.at(-1);
 		if (!this.#flow || !next) return false;
 		const before = this.#flow;
-		this.#undo = [...this.#undo, this.#flow];
+		this.#undo = [...this.#undo, { flow: this.#flow, label: next.label }];
 		this.#redo = this.#redo.slice(0, -1);
-		this.#flow = carryRecords(next, this.#flow);
+		this.#flow = carryRecords(next.flow, this.#flow);
 		this.#restored(this.#flow, before);
+		this.notice = `已重做：${next.label}`;
 		return true;
 	}
 
@@ -271,12 +313,12 @@ export class EditorSession {
 		}
 	}
 
-	/** 復原、重做換上的流程：提示、場上的問題收掉，選取修剪，播放頭夾回流程。 */
+	/** 復原、重做換上的流程：提示、場上和元件的問題收掉，選取修剪，播放頭夾回流程。 */
 	#restored(flow: Flow, before: Flow) {
 		this.#joinable = null;
 		this.#carriedInsertId = null;
 		this.#trim(flow);
-		this.ask.clear();
+		this.#clearAsks();
 		this.notice = '';
 		this.#playback.changed(before);
 		// 選到的站位還在、站位時間換了（復原、重做挪站位）：播放頭跟到它的時間，接著拖人才不會多插一張

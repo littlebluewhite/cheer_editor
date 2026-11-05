@@ -1,15 +1,27 @@
 <script lang="ts">
-	// 流程設定：流程名字、場地（唯讀，建好之後不能換）、規則警告的開關和三個數字、標記用號碼還是開頭字。被擋就顯示流程核心給的原因。
+	// 流程設定：流程名字、調整場地（改條數或鋪向）、規則警告的開關和三個數字（可以恢復預設）、
+	// 標記用號碼還是開頭字、自訂任務角色（新增、改名、刪除）。被擋就顯示流程核心給的原因。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
+		addCustomRole,
+		adjustField,
+		DEFAULT_TIME_RULES,
+		deleteCustomRole,
 		memberMarkers,
 		renameFlow,
 		setMarkers,
+		updateCustomRole,
 		updateTimeRules,
+		MAX_STRIPS,
+		MIN_STRIPS,
+		type ConfirmOption,
+		type FieldLayout,
+		type CustomRole,
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
+	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
@@ -22,9 +34,34 @@
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
-	/** 被擋的原因。 */
-	const ask = session.changeAsk();
+	/** 被擋的原因，和刪有人用的自訂任務角色時等教練確認的清單。 */
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 	let nameInput = $state<HTMLInputElement>();
+	/** 新的自訂任務角色名稱。 */
+	let roleName = $state('');
+	let roleNameInput = $state<HTMLInputElement>();
+	/** 每個自訂任務角色的名稱欄（旁邊的字數要看它），照角色 id。 */
+	const roleInputs = $state<Record<string, HTMLInputElement>>({});
+	const isDefault = $derived(
+		(Object.keys(DEFAULT_TIME_RULES) as (keyof TimeRules)[]).every((k) => flow.timeRules[k] === DEFAULT_TIME_RULES[k])
+	);
+
+	/** 改自訂任務角色的名稱；被擋就把輸入框還原。 */
+	function renameRole(role: CustomRole, input: HTMLInputElement) {
+		ask.send(() => updateCustomRole(flow, role.id, { name: input.value, meaning: role.meaning }), {
+			revert: () => (input.value = role.name)
+		});
+	}
+
+	function addRole(e: SubmitEvent) {
+		e.preventDefault();
+		ask.send(() => addCustomRole(flow, { name: roleName, meaning: '' }), { done: () => (roleName = '') });
+	}
+
+	// 調整場地的兩個欄位；流程的場地變了（調整、復原）就跟著變。
+	let strips = $derived(flow.field.strips);
+	let layout = $derived<FieldLayout>(flow.field.layout);
+	const fieldSame = $derived(strips === flow.field.strips && layout === flow.field.layout);
 
 	function update(patch: Partial<TimeRules>) {
 		ask.send(() => updateTimeRules(flow, patch));
@@ -50,7 +87,7 @@
 	];
 
 	const fields = [
-		['minChantSec', '口號段最少（秒）'],
+		['minChantSec', '口號段加起來最少（秒）'],
 		['maxMusicSec', '音樂段加起來最多（秒）'],
 		['maxTotalSec', '整支流程最多（秒）']
 	] as const;
@@ -66,26 +103,44 @@
 			<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
 			<input aria-label="流程名字" value={flow.name} bind:this={nameInput} onchange={(e) => rename(e.currentTarget)} />
 		</label>
-		<p class="field-info">
-			<b>場地</b>
-			<span>{flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span>
-			<small>建好之後不能換</small>
-		</p>
+		<section class="rules field">
+			<b>場地<span class="now">現在 {flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span></b>
+			<div class="field-row">
+				<label>
+					條數
+					<input type="number" min={MIN_STRIPS} max={MAX_STRIPS} step="1" bind:value={strips} />
+				</label>
+				<label class="radio"><input type="radio" name="layout" value="vertical" bind:group={layout} />直放</label>
+				<label class="radio"><input type="radio" name="layout" value="horizontal" bind:group={layout} />橫放</label>
+				<button
+					type="button"
+					class="adjust"
+					disabled={fieldSame}
+					onclick={() => ask.send(() => adjustField(flow, { strips, layout }))}>調整場地</button
+				>
+			</div>
+			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。</span>
+		</section>
 		<section class="rules" class:off={!flow.timeRules.on}>
-			<label class="switch">
-				<input
-					type="checkbox"
-					checked={flow.timeRules.on}
-					onchange={(e) => update({ on: e.currentTarget.checked })}
-				/>
-				規則警告（只提醒，不擋）
-			</label>
+			<div class="switch">
+				<label>
+					<input
+						type="checkbox"
+						checked={flow.timeRules.on}
+						onchange={(e) => update({ on: e.currentTarget.checked })}
+					/>
+					規則警告（只提醒，不擋）
+				</label>
+				<button type="button" class="ghost reset" disabled={isDefault} onclick={() => update(DEFAULT_TIME_RULES)}
+					>恢復預設</button
+				>
+			</div>
 			{#each fields as [key, label] (key)}
 				<label class="num">
 					{label}
 					<input
 						type="number"
-						min="0"
+						min="1"
 						value={flow.timeRules[key]}
 						onchange={(e) => setSeconds(key, label, e.currentTarget)}
 					/>
@@ -120,6 +175,44 @@
 				</ul>
 			{/if}
 		</section>
+		<section class="rules roles">
+			<b>自訂任務角色</b>
+			{#if flow.customRoles.length}
+				<ul class="role-list" aria-label="自訂任務角色">
+					{#each flow.customRoles as role (role.id)}
+						<li>
+							<input
+								aria-label="「{role.name}」的名稱"
+								value={role.name}
+								bind:this={roleInputs[role.id]}
+								onchange={(e) => renameRole(role, e.currentTarget)}
+							/><CharCount field="roleName" input={roleInputs[role.id]} value={role.name} quiet />
+							<button
+								type="button"
+								class="ghost icon"
+								aria-label="刪除任務角色「{role.name}」"
+								onclick={() => ask.send((o: ConfirmOption = {}) => deleteCustomRole(flow, role.id, o))}
+								><Icon name="trash" size={14} /></button
+							>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<span class="note">還沒有。動作裡每個人的任務角色不夠用時，在這裡加。</span>
+			{/if}
+			{#if ask.question}<ConfirmList {ask} />{/if}
+			<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
+			<form class="add-role" data-native-undo novalidate onsubmit={addRole}>
+				<input
+					aria-label="新的自訂任務角色"
+					placeholder="任務角色名稱"
+					bind:value={roleName}
+					bind:this={roleNameInput}
+				/><CharCount field="roleName" input={roleNameInput} value={roleName} />
+				<button type="submit">新增任務角色</button>
+			</form>
+			<span class="note">改名時，動作裡的人、給這個角色的拍點一起改；意思在名詞對照表填。</span>
+		</section>
 		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	{/snippet}
@@ -143,16 +236,25 @@
 		font-size: 14px;
 		font-weight: 400;
 	}
-	.field-info {
-		margin: 0;
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-	}
-	.field-info small {
-		margin-left: auto;
+	.now {
+		margin-left: 8px;
+		font-weight: 400;
 		font-size: 12px;
 		color: var(--muted, #66718a);
+	}
+	.field-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		align-items: center;
+	}
+	.field-row label {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+	.adjust {
+		margin-left: auto;
 	}
 	.rules {
 		display: grid;
@@ -167,6 +269,33 @@
 		align-items: center;
 		font-weight: 600;
 		padding-bottom: 4px;
+	}
+	.switch label {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+	.reset {
+		margin-left: auto;
+		font-weight: 400;
+		font-size: 12px;
+	}
+	.role-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 6px;
+	}
+	.role-list li,
+	.add-role {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+	.role-list input,
+	.add-role input {
+		width: 9em;
 	}
 	.num {
 		display: flex;
