@@ -124,7 +124,8 @@ describe('泳道', () => {
 		renderLanes(flow);
 		const [a] = bars(lanes()[0]);
 		expect(a.style.background).toBe('rgb(21, 101, 192)');
-		expect(a.style.boxShadow).toContain('#d9603b');
+		// 大類那條 6px：挑了辨識色也認得出大類
+		expect(a.style.boxShadow).toBe('inset 6px 0 0 #d9603b');
 		// 沒挑辨識色的照大類塗，不加左邊那條
 		expect(bars(lanes()[2])[0].style.boxShadow).toBe('');
 	});

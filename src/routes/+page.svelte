@@ -34,7 +34,7 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
-	import { modalOpen } from '#lib/components/Modal.svelte';
+	import Modal, { modalOpen } from '#lib/components/Modal.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
@@ -73,7 +73,8 @@
 	const guideHref = resolve('/guide');
 
 	const flow = $derived(session.flow);
-	const unsaved = $derived(session.unsaved);
+	/** 上方列的「未存」：有沒存的改動，或欄位裡打了字還沒送出（打字時就出現）。 */
+	const unsaved = $derived(editor.hasUnsavedWork);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
 	setUnsavedCheck(() => editor.hasUnsavedWork);
 	/**
@@ -229,11 +230,17 @@
 		if (file) void editor.file.open(file);
 	}
 
-	/** 開檔：Chrome、Edge 不跳選檔欄位，改用選檔視窗。 */
+	/** 開檔：有還沒存的修改先問，答應了才選檔。Chrome、Edge 不跳選檔欄位，改用選檔視窗。 */
 	function pickOpen(e: Event) {
-		if (!editor.file.canPick) return;
-		e.preventDefault();
-		void editor.file.pick();
+		const input = e.currentTarget as HTMLInputElement;
+		const pick = editor.file.canPick;
+		// 答應了再按一次選檔欄位：這次照常跳選檔（按「不存了，繼續」還算教練按的，瀏覽器肯開）
+		const choose = pick ? () => void editor.file.pick() : () => input.click();
+		if (!editor.file.mayChoose(choose)) e.preventDefault();
+		else if (pick) {
+			e.preventDefault();
+			choose();
+		}
 	}
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
@@ -277,10 +284,11 @@
 		const target = e.target as Element | null;
 		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
-		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）
+		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
+		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
 			e.preventDefault();
-			undoKey(!(key === 'z' && !e.shiftKey));
+			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
 		}
 		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它；其他時候播放／暫停
@@ -347,10 +355,12 @@
 <svelte:window
 	{onkeydown}
 	{onbeforeunload}
+	onpagehide={() => editor.file.pageHidden()}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
 />
+<svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
@@ -675,18 +685,21 @@
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
 	{/if}
 	{#if editor.file.asking}
-		<div class="backdrop discard">
-			<div class="discard-box">
+		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
+		<!-- 真的對話框：Escape、點背景＝取消，焦點先放在「取消」，關掉後回到按的按鈕 -->
+		<Modal label={message} class="discard-box" onclose={() => editor.file.answer('cancel')}>
+			{#snippet children()}
 				<ConfirmList
-					message={`「${flow.name}」還沒存，改的東西會不見。`}
+					{message}
 					items={[]}
 					confirmLabel="不存了，繼續"
 					onconfirm={() => editor.file.answer('discard')}
 					extra={{ label: '先存檔', onclick: () => editor.file.answer('save') }}
 					oncancel={() => editor.file.answer('cancel')}
+					focusCancel
 				/>
-			</div>
-		</div>
+			{/snippet}
+		</Modal>
 	{/if}
 {:else}
 	<div class="home">
@@ -739,12 +752,13 @@
 		</section>
 		{#if discarding}
 			{@const f = discarding}
-			<div class="backdrop discard">
-				<div class="discard-box">
+			{@const message = f.unsaved
+				? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
+				: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+			<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
+				{#snippet children()}
 					<ConfirmList
-						message={f.unsaved
-							? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
-							: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+						{message}
 						items={[]}
 						confirmLabel="丟掉"
 						onconfirm={() => {
@@ -753,9 +767,10 @@
 							void editor.file.discardRecent(id);
 						}}
 						oncancel={() => (discarding = null)}
+						focusCancel
 					/>
-				</div>
-			</div>
+				{/snippet}
+			</Modal>
 		{/if}
 	</div>
 {/if}
@@ -1362,11 +1377,13 @@
 		grid-template-rows: minmax(0, 1fr);
 	}
 
-	.discard {
+	/* 「還沒存」、首頁「丟掉」的確認：蓋過窄螢幕的提示（回首頁也會問） */
+	:global(.backdrop:has(> .discard-box)) {
 		align-items: flex-start;
 		padding-top: 72px;
+		z-index: 110;
 	}
-	.discard-box {
+	:global(.discard-box) {
 		width: min(420px, 100%);
 		box-shadow: var(--shadow-pop);
 		border-radius: 10px;

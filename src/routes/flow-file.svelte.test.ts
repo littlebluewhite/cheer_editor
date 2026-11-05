@@ -1,6 +1,6 @@
 // 頁面：存檔、開檔、Ctrl+S、缺音樂的接線。存檔薄層換成假的 FileSaver（真的要手動在四家瀏覽器檢查）。
 // 開檔、存檔、「沒存先問」的規則在編輯器 module 的流程檔測（src/lib/flow-file.test.ts）。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { zipSync, strToU8 } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { createFlow, insertFormation, readFlowFile, writeFlowFile } from '#lib/core';
@@ -197,5 +197,86 @@ describe('新建', () => {
 		const seg = screen.getByRole('button', { name: /音樂 1/ });
 		expect(seg.textContent).toContain('找不到音樂');
 		expect(seg.classList.contains('missing')).toBe(true);
+	});
+});
+
+describe('「還沒存」確認框是對話框', () => {
+	/** 新建、改一下（加一段口號），焦點放在「新建」再按它：跳出「還沒存」。 */
+	async function asking() {
+		const page = editorPage(null, { createSaver: () => fakeSaver().saver });
+		render(Page, page.props);
+		await newFlow();
+		await addChant();
+		const button = screen.getByRole('button', { name: '新建' });
+		button.focus();
+		await fireEvent.click(button);
+		return { session: page.session, button };
+	}
+
+	it('開著時按 ⌘Z、⌘⇧Z：底下的流程不動，還是「未存」', async () => {
+		const { session } = await asking();
+		const before = session.flow;
+		expect(screen.getByRole('alertdialog').textContent).toContain('還沒存');
+		expect(session.canUndo).toBe(true);
+		await fireEvent.keyDown(document.activeElement ?? window, { key: 'z', metaKey: true });
+		expect(session.flow).toBe(before);
+		expect(screen.getByText('未存')).toBeTruthy();
+		// 重做也不動（關掉之後還能復原那一步）
+		await fireEvent.keyDown(document.activeElement ?? window, { key: 'z', metaKey: true, shiftKey: true });
+		await fireEvent.keyDown(document.activeElement ?? window, { key: 'y', ctrlKey: true });
+		expect(session.flow).toBe(before);
+		expect(session.canUndo).toBe(true);
+	});
+
+	it('一打開焦點就在「取消」上；對話框有 aria-modal，名字是問的問題', async () => {
+		await asking();
+		const dialog = screen.getByRole('dialog', { name: '「全國賽」還沒存，改的東西會不見。' });
+		expect(dialog.getAttribute('aria-modal')).toBe('true');
+		expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '取消' }));
+	});
+
+	it('按 Escape 等於取消：關掉，流程還在；焦點回到「新建」', async () => {
+		const { session, button } = await asking();
+		const before = session.flow;
+		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+		await flush();
+		expect(screen.queryByText(/還沒存/)).toBeNull();
+		expect(session.flow).toBe(before);
+		expect(document.activeElement).toBe(button);
+	});
+});
+
+describe('有未存的修改時按「開啟」：先問再選檔', () => {
+	it('選檔欄位（Safari、iPad、Firefox）：先問「要開別的流程檔」，按「取消」不跳選檔', async () => {
+		setup();
+		await newFlow();
+		await addChant();
+		const notPrevented = await fireEvent.click(screen.getByLabelText('開啟'));
+		expect(notPrevented).toBe(false);
+		const dialog = screen.getByRole('dialog', { name: /還沒存/ });
+		expect(dialog.textContent).toContain('要開別的流程檔');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.getByText('全國賽')).toBeTruthy();
+	});
+
+	it('選檔視窗（Chrome、Edge）：「取消」不跳選檔視窗；「不存了，繼續」才選，選到的檔直接打開不再問', async () => {
+		const bytes = writeFlowFile(sampleFlow(), {});
+		const file = new File([bytes as Uint8Array<ArrayBuffer>], '縣賽.zip', { type: 'application/zip' });
+		let picks = 0;
+		const pickFlowFile = async () => (picks++, { file, saver: fakeSaver().saver });
+		render(Page, editorPage(null, { pickFlowFile }).props);
+		await newFlow();
+		await addChant();
+		await fireEvent.click(screen.getByLabelText('開啟'));
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(picks).toBe(0);
+
+		await fireEvent.click(screen.getByLabelText('開啟'));
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		await flush();
+		expect(picks).toBe(1);
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.getByText('練習用')).toBeTruthy();
 	});
 });

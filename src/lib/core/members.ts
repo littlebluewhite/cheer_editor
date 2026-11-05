@@ -6,8 +6,9 @@ import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { FIXED_ROLES } from './roles';
 import { settle } from './settle';
-import { perPerson, recordItems, type Attempt } from './success-rate';
+import { perPerson, recordItems, squadNumber, type Attempt } from './success-rate';
 import { tooLong } from './text-length';
 import { atText, segmentSpans } from './time';
 
@@ -71,8 +72,11 @@ export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<
 }
 
 /**
- * 貼上的名單加隊員：每一行是「名字」（用表單選的性別、全局角色）或「名字<Tab>性別<Tab>全局角色」
- * （性別認男、女；全局角色認底層、上層）。空行跳過。見 addEntries。
+ * 貼上的名單加隊員：每一行是「名字」（用表單選的性別、全局角色）或「名字、性別、全局角色」三欄。
+ * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白）。
+ * 性別認男、女、男生、女生、M、F；全局角色認底層、上層、base、top、飛人（英文不分大小寫）。
+ * 全局角色寫成主底、後保這類任務角色：擋下並說明。三欄的行不用表單選的。空行、標題列（第一欄是「名字」「姓名」「name」）跳過。
+ * 見 addEntries。
  */
 export function addMemberLines(
 	flow: Flow,
@@ -81,20 +85,57 @@ export function addMemberLines(
 ): CommandResult<AddMembersResult> {
 	const entries = text.split('\n').flatMap((line, i): Entry[] => {
 		if (!line.trim()) return [];
-		const cols = line.split('\t').map((c) => c.trim());
+		const cols = columns(line);
+		if (cols.length > 1 && NAME_HEADERS.has(cols[0].toLowerCase())) return [];
 		const entry: Entry = { text: line, where: `第 ${i + 1} 行`, name: cols[0], input: null, problems: [] };
 		if (cols.length === 1) entry.input = { name: cols[0], ...defaults };
-		else if (cols.length !== 3) entry.problems.push('一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab 隔開）');
+		else if (cols.length !== 3) entry.problems.push('一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）');
 		else {
-			const gender = GENDERS.find((g) => g.label === cols[1])?.key ?? null;
-			const globalRole = GLOBAL_ROLES.find((r) => r.label === cols[2])?.key ?? null;
+			const gender = genderOf(cols[1]);
+			const globalRole = globalRoleOf(cols[2]);
 			if (!gender) entry.problems.push('性別要寫「男」或「女」');
-			if (!globalRole) entry.problems.push('全局角色要寫「底層」或「上層」');
+			if (!globalRole) {
+				const task = FIXED_ROLES.some((r) => r.name === cols[2]) ? `「${cols[2]}」是任務角色（每個動作各自設），` : '';
+				entry.problems.push(`${task}全局角色要寫「底層」或「上層」`);
+			}
 			if (gender && globalRole) entry.input = { name: cols[0], gender, globalRole };
 		}
 		return [entry];
 	});
 	return addEntries(flow, entries);
+}
+
+/** 貼上名單認得的性別寫法（英文比小寫）。 */
+const GENDER_WORDS: Record<string, Gender> = { 女: 'F', 女生: 'F', f: 'F', 男: 'M', 男生: 'M', m: 'M' };
+/** 貼上名單認得的全局角色寫法（英文比小寫）。 */
+const GLOBAL_ROLE_WORDS: Record<string, GlobalRole> = { 底層: 'base', base: 'base', 上層: 'top', top: 'top', 飛人: 'top' };
+/** 標題列的第一欄。 */
+const NAME_HEADERS = new Set(['名字', '姓名', 'name']);
+
+function genderOf(word: string): Gender | null {
+	return Object.hasOwn(GENDER_WORDS, word.toLowerCase()) ? GENDER_WORDS[word.toLowerCase()] : null;
+}
+
+function globalRoleOf(word: string): GlobalRole | null {
+	return Object.hasOwn(GLOBAL_ROLE_WORDS, word.toLowerCase()) ? GLOBAL_ROLE_WORDS[word.toLowerCase()] : null;
+}
+
+/**
+ * 一行切成幾欄：有 Tab 用 Tab 切，有逗號用逗號切；只有空白時，至少三段、而且最後兩段像性別或全局角色
+ * （或任務角色、標題列）才切成「名字、性別、全局角色」，不然整行是名字。
+ */
+function columns(line: string): string[] {
+	if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
+	if (/[,，]/.test(line)) return line.split(/[,，]/).map((c) => c.trim());
+	const words = line.trim().split(/\s+/);
+	if (words.length < 3) return [line.trim()];
+	const [gender, role] = words.slice(-2);
+	const looksLike =
+		genderOf(gender) ||
+		globalRoleOf(role) ||
+		FIXED_ROLES.some((r) => r.name === role) ||
+		NAME_HEADERS.has(words[0].toLowerCase());
+	return looksLike ? [words.slice(0, -2).join(' '), gender, role] : [line.trim()];
 }
 
 /**
@@ -219,7 +260,9 @@ export function moveMember(flow: Flow, id: string, to: number): CommandResult {
 
 /**
  * 刪隊員。一定先回「要確認」：「刪掉隊員「名字」（標記、全局角色）：他在 N 個動作裡，其中 M 個會被整個刪掉」
- * （不在動作裡寫「他不在任何動作裡」，沒有動作會被整個刪掉就不寫「其中」那句；有拍點會拿掉——給他的、和只剩他是那個角色的——再加「會一起拿掉 K 個拍點」），清單是那 M 個動作；
+ * （不在動作裡寫「他不在任何動作裡」，沒有動作會被整個刪掉就不寫「其中」那句；有拍點會拿掉——給他的、和只剩他是那個角色的——再加「會一起拿掉 K 個拍點」；
+ * 留下來的動作沒有別人是他的任務角色就寫「「技巧·Lib」會沒有上層」，見 lostRole；標記是號碼、他後面還有人就寫號碼會往前遞補），
+ * 清單是他在的每個動作：他的任務角色（第幾組的），或「只有他，會整個刪掉」；
  * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉，
  * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。刪隊員當成真的換人：他在的每一組和他自己的紀錄都清掉，
  * 確認訊息寫會清掉幾次。他走了空掉的組拿掉，後面的組往前補號。
@@ -251,13 +294,23 @@ export function deleteMember(
 		const where = !inActions.length
 			? '他不在任何動作裡'
 			: `他在 ${inActions.length} 個動作裡` + (emptied.length ? `，其中 ${emptied.length} 個會被整個刪掉` : '');
+		const lost = inActions.flatMap((a) => (emptied.includes(a) ? [] : lostRole(a, id)));
+		const after = flow.members.length - 1 - flow.members.indexOf(member);
 		return needsConfirm(
 			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄` : ''),
-			emptied.map((a) => {
+				(cleared ? `，會清掉 ${cleared} 次紀錄` : '') +
+				(lost.length ? `，${lost.join('、')}` : '') +
+				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : ''),
+			inActions.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
-				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）`;
+				const mine = a.members.find((m) => m.memberId === id)!;
+				const what = emptied.includes(a)
+					? '：只有他，會整個刪掉'
+					: mine.role
+						? `：他是${mine.squad === undefined ? '' : `第 ${squadNumber(a, mine.squad)} 組的`}${mine.role}`
+						: '';
+				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）${what}`;
 			})
 		);
 	}
@@ -272,6 +325,19 @@ export function deleteMember(
 		}),
 		actions
 	});
+}
+
+/**
+ * 他走了，動作（分組的看他那一組）裡沒有別人是他的任務角色：「「技巧·Lib」第 1 組會沒有上層」；
+ * 沒有任務、還有別人是那個角色、那一組只剩他（組會整個拿掉）：沒有。
+ */
+function lostRole(action: Action, id: string): string[] {
+	const mine = action.members.find((m) => m.memberId === id)!;
+	if (!mine.role) return [];
+	const mates = action.members.filter((m) => m.memberId !== id && m.squad === mine.squad);
+	if (!mates.length || mates.some((m) => m.role === mine.role)) return [];
+	const squad = mine.squad === undefined ? '' : `第 ${squadNumber(action, mine.squad)} 組`;
+	return [`「${actionLabel(action)}」${squad}會沒有${mine.role}`];
 }
 
 /** 標記用什麼：號碼（名單第幾個）或開頭字（名字的第一個字）。 */

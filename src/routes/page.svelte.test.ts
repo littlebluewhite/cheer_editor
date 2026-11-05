@@ -1372,7 +1372,7 @@ describe('編輯器首頁', () => {
 			target: { value: '王小明\t男\t底層\n李美\t女\t上層\n阿強\t男\t中層' }
 		});
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
-		expect(screen.getByRole('alert').textContent).toBe('第 3 行「阿強」：全局角色要寫「底層」或「上層」');
+		expect(screen.getByRole('alert').textContent).toBe('第 3 行「阿強」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」');
 		// 9 條直放：中間四個格點離中心各差半格（0.9144 m），先排正面左邊、再正面右邊。
 		const at = (id: string) =>
 			document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);
