@@ -140,7 +140,8 @@ export {
 	setPositions,
 	setTeamWalks,
 	setWalks,
-	walkSpanAt
+	walkSpanAt,
+	walkSpeedText
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 

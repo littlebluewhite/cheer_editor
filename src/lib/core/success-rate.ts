@@ -8,6 +8,7 @@ import type { Segment } from './segment';
 import { rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
 import { PHASE_KINDS, type Phase } from './phase-types';
+import type { Member } from './members';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
@@ -292,13 +293,22 @@ export function beatsProblem(segment: Segment, action: Action, beats: BeatRange)
 	return rangeProblem('phase', action, beats);
 }
 
-/** 組的名字：「第 1 組 小美」，後面是組裡任務角色是上層的人（好幾個就用名單上第一個）；沒有上層就只叫「第 1 組」。 */
+/** 一組裡的人，照名單順序。 */
+export function squadPeople(flow: Flow, action: Action, squad: string): Member[] {
+	return flow.members.filter((member) => action.members.some((m) => m.memberId === member.id && m.squad === squad));
+}
+
+/**
+ * 組的名字：「第 1 組 小美」，後面是組裡任務角色是上層的人；沒有上層用主底，也沒有主底就用組裡第一個人
+ * （好幾個都照名單順序用第一個）。組裡沒有人就只叫「第 1 組」。
+ */
 export function squadName(flow: Flow, action: Action, squad: string): string {
-	const top = flow.members.find((member) =>
-		action.members.some((m) => m.memberId === member.id && m.squad === squad && m.role === '上層')
-	);
+	const people = squadPeople(flow, action, squad);
+	const withRole = (role: string) =>
+		people.find((member) => action.members.some((m) => m.memberId === member.id && m.squad === squad && m.role === role));
+	const who = withRole('上層') ?? withRole('主底') ?? people[0];
 	const n = squadNumber(action, squad);
-	return top ? `第 ${n} 組 ${top.name}` : `第 ${n} 組`;
+	return who ? `第 ${n} 組 ${who.name}` : `第 ${n} 組`;
 }
 
 /** 流程裡全部環節的 id（發新 id 時用）。 */

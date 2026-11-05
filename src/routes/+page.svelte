@@ -232,10 +232,16 @@
 	}
 
 
+	/** 右邊欄的兩頁（動作、隊員）：換流程時捲回最上面。 */
+	let actionPanel = $state<HTMLElement>();
+	let membersPanel = $state<HTMLElement>();
+
 	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
 	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
+		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
+		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
 		me = session.flow ? loadMe(session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
@@ -652,12 +658,15 @@
 						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 					</div>
 				{/if}
-				{#if session.ask.question}
-					<div class="toast-confirm">
-						<ConfirmList ask={session.ask} />
-					</div>
-				{/if}
-				{@render noticeToast()}
+				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人 -->
+				<div class="field-toasts">
+					{#if session.ask.question}
+						<div class="toast-confirm">
+							<ConfirmList ask={session.ask} />
+						</div>
+					{/if}
+					{@render noticeToast()}
+				</div>
 				</Field>
 			</main>
 
@@ -694,12 +703,12 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
+				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 					<MemberPanel />
 				</div>
 			</aside>
@@ -726,7 +735,7 @@
 			<div class="practice-host">
 				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
 				{#key opened}
-					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} />
+					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
 				{/key}
 				{@render noticeToast()}
 			</div>
@@ -877,9 +886,10 @@
 	.editor.practicing {
 		grid-template-rows: auto minmax(0, 1fr);
 	}
-	/* 窄螢幕：上方列下面整塊是手機的檢視畫面（或練習畫面） */
+	/* 窄螢幕：上方列下面整塊是手機的檢視畫面（或練習畫面）。沒有右邊欄，只留一欄：不然右邊欄那欄 360px 把 320 寬的手機撐寬 */
 	.editor.narrow {
 		grid-template-rows: auto minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr);
 	}
 	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲） */
 	.phone-view {
@@ -1372,7 +1382,7 @@
 		color: var(--text);
 		font-size: 14px;
 	}
-	/* 放在場地下方，不蓋住上方的條號。 */
+	/* 練習畫面、手機的檢視畫面：放在下方。編輯畫面場地上的放在上方（見 .field-toasts）。 */
 	.toast {
 		position: absolute;
 		bottom: 14px;
@@ -1391,13 +1401,36 @@
 		box-shadow: var(--shadow-pop);
 		animation: drop 0.18s ease-out;
 	}
-	.toast-confirm {
+	/* 場地上的確認框和提示：從上方往下排，不蓋到下面的「正面／裁判」和正面場外的人。 */
+	.field-toasts {
 		position: absolute;
 		top: 14px;
-		left: 50%;
-		transform: translateX(-50%);
+		left: 16px;
+		right: 16px;
 		z-index: 10;
-		width: min(420px, calc(100% - 32px));
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		pointer-events: none;
+	}
+	.field-toasts > :global(*) {
+		pointer-events: auto;
+	}
+	.field-toasts .toast {
+		position: static;
+		transform: none;
+		max-width: min(560px, 100%);
+		animation-name: drop-in;
+	}
+	@keyframes drop-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
+	}
+	.toast-confirm {
+		width: min(420px, 100%);
 		box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
 		border-radius: 10px;
 	}

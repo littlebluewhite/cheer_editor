@@ -7,7 +7,7 @@ import { readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { editorPage, flush, manualFrames, openFile } from '#lib/test-fakes.js';
-import { libSample } from '#lib/test-flows.js';
+import { libSample, ratedSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 Element.prototype.scrollIntoView = () => {};
@@ -126,5 +126,41 @@ describe('手機的檢視模式', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+});
+
+describe('手機的練習頁', () => {
+	/** 範例流程拿掉環節：沒有要記的動作。 */
+	function noPhases(): Flow {
+		const flow = libSample();
+		return { ...flow, actions: flow.actions.map(({ successRate: _, ...a }) => a) };
+	}
+
+	it('流程還沒有環節：記錄、總表都說要用電腦或橫放的 iPad 加環節，沒有「記一次全上」', async () => {
+		await openOnPhone(noPhases());
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		const practice = screen.getByRole('region', { name: '練習' });
+		expect(practice.textContent).toContain('電腦或橫放的 iPad');
+		expect(screen.queryByRole('button', { name: /記一次全上/ })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		expect(practice.textContent).toContain('電腦或橫放的 iPad');
+		expect(screen.queryByRole('button', { name: /記一次全上/ })).toBeNull();
+	});
+
+	it('動作清單是下拉選單：選一個動作，顯示它的卡片並捲過去', async () => {
+		const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView');
+		await openOnPhone(ratedSample());
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		expect(screen.queryByRole('list', { name: '記成功率的動作' })).toBeNull();
+		const pick = screen.getByRole('combobox', { name: '記哪個動作' }) as HTMLSelectElement;
+		expect([...pick.options].map((o) => o.textContent)).toEqual(['技巧·Lib', '騰翻']);
+		expect(screen.getByRole('region', { name: '第 1 組 小美' })).toBeTruthy();
+
+		scrolled.mockClear();
+		await fireEvent.change(pick, { target: { value: pick.options[1].value } });
+		expect(screen.getByRole('region', { name: '小美' })).toBeTruthy();
+		expect(screen.queryByRole('region', { name: '第 1 組 小美' })).toBeNull();
+		expect(scrolled).toHaveBeenCalled();
+		scrolled.mockRestore();
 	});
 });

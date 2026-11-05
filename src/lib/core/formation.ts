@@ -11,6 +11,7 @@ import { tooLong } from './text-length';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
+	lengthText,
 	snapToBeat,
 	timeTextWithUnit,
 	toPosition,
@@ -356,6 +357,23 @@ export function formationWalks(flow: Flow, formationId: string): FormationWalk[]
 		});
 	}
 	return out;
+}
+
+/**
+ * 走位速度給教練看的說明：「每秒 1.3 公尺」；太快的加「至少要 N 拍」（照每秒 TOO_FAST_MPS 公尺算），
+ * 很喘的加「不喘要 N 拍」（照每秒 TIRING_MPS 公尺算）。拍數照走位中間那一刻所在的段，進位到半拍；口號段寫秒數，進位到 0.1 秒。
+ */
+export function walkSpeedText(flow: Flow, walk: FormationWalk): string {
+	const speed = `每秒 ${walk.speed.toFixed(1)} 公尺`;
+	if (!walk.tooFast && !walk.tiring) return speed;
+	const segment = flow.segments.find((s) => s.id === toPosition(flow, (walk.departSec + walk.arriveSec) / 2)?.segmentId);
+	if (!segment) return speed;
+	const distance = Math.hypot(walk.to[0] - walk.from[0], walk.to[1] - walk.from[1]);
+	const need = (mps: number) => {
+		const n = Math.ceil(distance / mps / unitSec(segment) - EPS);
+		return `${lengthText(segment, n)} ${segment.kind === 'music' ? '拍' : '秒'}`;
+	};
+	return walk.tooFast ? `走太快：${speed}，至少要 ${need(TOO_FAST_MPS)}` : `很喘：${speed}，不喘要 ${need(TIRING_MPS)}`;
 }
 
 /** 能設出發和到達的站位在 formations 裡的位置；不能設時回原因。 */

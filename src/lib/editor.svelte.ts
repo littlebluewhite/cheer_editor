@@ -7,7 +7,7 @@
 // 每個 adapter 都有真的（browserAdapters）和假的（testEditor）兩種；加一個 adapter 時兩邊都加。
 
 import { createContext } from 'svelte';
-import type { AudioBytes, Flow } from '#lib/core';
+import { actionSeconds, type AudioBytes, type Flow } from '#lib/core';
 import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
@@ -121,6 +121,13 @@ export class Editor {
 	pickAction(id: string) {
 		this.session.selectAction(id);
 		this.inspectorTab = 'action';
+	}
+
+	/** 雙擊色條、動作表單的「跳到開始」：播放頭跳到這個動作開始。 */
+	seekToAction(id: string) {
+		const flow = this.session.flow;
+		const action = flow?.actions.find((a) => a.id === id);
+		if (flow && action) this.playback.seek(actionSeconds(flow, action).startSec);
 	}
 }
 

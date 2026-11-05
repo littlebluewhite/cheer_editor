@@ -54,6 +54,17 @@ describe('場地', () => {
 		expect(stripNumbers()).toHaveLength(5);
 	});
 
+	it('條編號寫在外圍框外面（直放在後面、橫放在左邊）：場外排的人不會蓋到', () => {
+		const coords = (attr: 'x' | 'y') =>
+			Array.from(document.querySelectorAll('[data-strip-number]'), (el) => Number(el.getAttribute(attr)));
+		const outer = (attr: 'x' | 'y') => Number(document.querySelector('rect.margin')!.getAttribute(attr));
+		render(Field, { field: { strips: 9, layout: 'vertical' } });
+		for (const y of coords('y')) expect(y).toBeLessThan(outer('y'));
+		document.body.innerHTML = '';
+		render(Field, { field: { strips: 5, layout: 'horizontal' } });
+		for (const x of coords('x')) expect(x).toBeLessThan(outer('x'));
+	});
+
 	it('正面在下面，標「正面／裁判」', () => {
 		render(Field, { field: { strips: 9, layout: 'vertical' } });
 		expect(screen.getByText(/正面／裁判/)).toBeTruthy();
@@ -61,6 +72,25 @@ describe('場地', () => {
 });
 
 describe('上層、中層畫在最上面', () => {
+	it('多字的標記畫成橫的膠囊，字放得下；一個字的照樣是圓點', () => {
+		const members: Member[] = ['隊員25', '李美'].map((name, i) => ({
+			id: `m${i + 1}`,
+			name,
+			gender: 'F',
+			globalRole: 'base'
+		}));
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members,
+			markers: { m1: '隊25', m2: '李' },
+			positions: { m1: [0, 0], m2: [2, 0] }
+		});
+		const pill = document.querySelector('[data-member-id="m1"] rect.base')!;
+		expect(Number(pill.getAttribute('width'))).toBeGreaterThan(Number(pill.getAttribute('height')));
+		expect(document.querySelector('[data-member-id="m1"] circle.base')).toBeNull();
+		expect(document.querySelector('[data-member-id="m2"] circle.base')).not.toBeNull();
+	});
+
 	it('點上寫標記；兩個字的標記字小一點', () => {
 		const members: Member[] = ['王小明', '李美'].map((name, i) => ({
 			id: `m${i + 1}`,
@@ -158,10 +188,12 @@ describe('在場上拖人', () => {
 		expect(document.querySelectorAll('[data-snap-point]')).toHaveLength(0);
 		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
 		await fireEvent.pointerMove(dot, { clientX: 46, clientY: 3 });
-		expect(screen.getByText(/^小A\s第 5 條 左起 3\/4｜正面起第 4 格 1\/2$/)).toBeTruthy();
+		// 圓點的 <title>（滑鼠停上去的說明）也寫位置，不算
+		expect(screen.getByText(/^小A\s第 5 條 左起 3\/4｜正面起第 4 格 1\/2$/, { ignore: 'title' })).toBeTruthy();
 		expect(document.querySelectorAll('[data-snap-point]').length).toBeGreaterThan(0);
 		await fireEvent.pointerUp(dot, { clientX: 46, clientY: 3 });
-		expect(screen.queryByText(/第 5 條/)).toBeNull();
+		// 拖的人被選到：場地下面改寫「選到的人在哪」
+		expect(screen.queryByText(/第 5 條/, { ignore: 'title, [role=note]' })).toBeNull();
 		expect(document.querySelectorAll('[data-snap-point]')).toHaveLength(0);
 	});
 

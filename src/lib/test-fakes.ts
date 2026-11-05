@@ -151,8 +151,8 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 export const flush = () => new Promise((r) => setTimeout(r, 0));
 
 /** 從「開啟流程檔」（首頁）或「開啟」（上方列）開一個檔：只有測檔案本身才用，其他測試用 editorPage 放流程。 */
-export async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
-	const file = new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip', { type: 'application/zip' });
+export async function openFile(bytes: Uint8Array, label = '開啟流程檔', name = '練習用.zip') {
+	const file = new File([bytes as Uint8Array<ArrayBuffer>], name);
 	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
 	await flush();
 }

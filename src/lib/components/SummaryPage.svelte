@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 練習畫面的「總表」頁：一眼看全部動作、每組、每個環節的成功率，找出最弱的地方。
 	// 每個有記成功率、有環節的動作一塊，照流程順序：一列一個環節，最後一列「整次」；
-	// 一欄一組（騰翻、跳躍一欄一個人），最後一欄「合計」。
+	// 一欄一組（騰翻、跳躍一欄一個人；組的名字下面小字列出全組），最後一欄「合計」。
 	// 格子大字是選的比例（成功率或完成率；整次一律是整次成功率），小字是次數；顏色照 rateBand，數字一定寫出來。
 	// 點一組的格子，右邊滑出這組、這個環節每天的每一次（全上的那幾次有標出來），篩選和格子一樣。
 	// 「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表。
@@ -137,7 +137,7 @@
 							<tr>
 								<th scope="col">環節</th>
 								{#each table.columns as col (col.who)}
-									<th scope="col">{col.name}</th>
+									<th scope="col">{col.name}{#if col.people}{' '}<small class="people">{col.people.join('・')}</small>{/if}</th>
 								{/each}
 								<th scope="col">合計</th>
 							</tr>
@@ -274,6 +274,12 @@
 	thead th {
 		background: var(--surface-2);
 		font-size: 13px;
+	}
+	.people {
+		display: block;
+		color: var(--muted);
+		font-size: 11px;
+		font-weight: 400;
 	}
 	th[scope='row'] {
 		text-align: left;

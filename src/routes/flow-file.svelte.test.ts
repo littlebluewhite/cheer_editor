@@ -84,6 +84,14 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(true);
 	});
 
+	it('存好了：提示寫存到哪個檔', async () => {
+		setup();
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await flush();
+		expect(screen.getByRole('status').textContent).toBe('已存到「全國賽.zip」');
+	});
+
 	it('有未存的修改時關分頁或重新整理，瀏覽器先問；沒有就不問', async () => {
 		setup();
 		await newFlow();
@@ -111,6 +119,12 @@ describe('開檔', () => {
 		expect(hasUnsavedChanges()).toBe(false);
 	});
 
+	it('開好了：提示寫開的是哪個檔', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }), '開啟流程檔', '縣賽 第二版.zip');
+		expect(screen.getByRole('status').textContent).toBe('已開啟「縣賽 第二版.zip」');
+	});
+
 	it('瀏覽器能選檔（Chrome、Edge）：點「開啟流程檔」改用選檔視窗打開', async () => {
 		const bytes = writeFlowFile(sampleFlow(), {});
 		const file = new File([bytes as Uint8Array<ArrayBuffer>], '縣賽.zip', { type: 'application/zip' });
@@ -128,6 +142,18 @@ describe('開檔', () => {
 		await openFile(writeFlowFile(other, {}), '開啟');
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByText('另一支')).toBeTruthy();
+	});
+
+	it('開了另一個流程檔：右邊欄捲回最上面', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		const panels = [...document.querySelectorAll('.panel')];
+		// jsdom 不會捲：換成記得住的數字，看開檔後有沒有歸零
+		for (const p of panels) Object.defineProperty(p, 'scrollTop', { value: 300, writable: true });
+		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
+		await openFile(writeFlowFile(other, {}), '開啟');
+		expect(screen.getByText('另一支')).toBeTruthy();
+		expect(panels.map((p) => p.scrollTop)).toEqual([0, 0]);
 	});
 
 	it('有未存的修改時開別的檔先問；取消就留在原本的流程，確定才打開', async () => {
@@ -177,6 +203,29 @@ describe('新建', () => {
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
 		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：是新版編輯器存的，請重新整理，更新編輯器');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it('開到壞掉的 zip：寫「檔案壞掉了，或不是這個編輯器存的流程檔」', async () => {
+		setup();
+		await openFile(new TextEncoder().encode('PK 壞掉了'), '開啟流程檔', 'broken.zip');
+		expect(screen.getByRole('alert').textContent).toBe('打不開「broken.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
+	});
+
+	it('開到音樂檔：提示音樂要在段設定裡載入', async () => {
+		setup();
+		await openFile(new TextEncoder().encode('RIFF....WAVE'), '開啟流程檔', '主歌.wav');
+		expect(screen.getByRole('alert').textContent).toBe(
+			'打不開「主歌.wav」：這是音樂檔，不是流程檔。先建好流程，再點段列上的段，在段設定按「載入音樂檔」'
+		);
+	});
+
+	it('編輯中從上方列開到音樂檔：提示點段列上的段去載入', async () => {
+		setup();
+		await newFlow();
+		await openFile(new TextEncoder().encode('ID3'), '開啟', '主歌.MP3');
+		expect(screen.getByRole('status').textContent).toBe(
+			'打不開「主歌.MP3」：這是音樂檔，不是流程檔。音樂要點段列上的段，在段設定按「載入音樂檔」'
+		);
 	});
 
 	it('播放時音訊引擎從音樂檔庫拿解碼好的音樂', async () => {
