@@ -44,6 +44,17 @@ describe('記錄頁的卡', () => {
 		expect(records(session).map((r) => r.marks)).toEqual([{ p1: '✓', p2: '✗' }]);
 	});
 
+	it('選「整個」卻跳過前面的環節：照樣存成只練幾個環節，但卡上說一聲，不是偷偷的', async () => {
+		const { session, name } = setup();
+		await tap(name, '下法', '成功');
+		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[false, { p3: '✓' }]]);
+		expect(screen.getByRole('status').textContent).toBe('跳過了前面的環節，這次記成「只練幾個環節」，不算進整次成功率');
+		await tap(name, '上法', '成功');
+		await tap(name, '中段', '成功');
+		await tap(name, '下法', '成功');
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+
 	it('記兩次再刪掉上一次：session 的流程裡剩第一次', async () => {
 		const { session, name } = setup();
 		await tap(name, '上法', '失敗');

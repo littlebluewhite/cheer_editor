@@ -40,6 +40,8 @@
 	let picked = $state<string[]>([]);
 	/** 這一次已經點的記號（還沒存）。 */
 	let marks = $state<Record<string, Mark>>({});
+	/** 選「整個」卻跳過前面的環節、上一次存成只練幾個環節時的說明；下一次點就收掉。 */
+	let note = $state('');
 
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 這一次要練的環節，照順序。 */
@@ -61,13 +63,19 @@
 
 	/** 點一個記號：點到最後一個要練的環節、或點了 ✗，就存成一次（留哪些記號、算不算整個做由核心決定）。 */
 	function tap(phaseId: string, mark: Mark) {
+		note = '';
 		const next = { ...marks, [phaseId]: mark };
 		if (mark !== '✗' && phaseId !== planned.at(-1)?.id) {
 			marks = next;
 			return;
 		}
 		marks = {};
-		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }));
+		const skipped = whole && !keptAttempt(action, whole, next).whole;
+		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
+			done: () => {
+				if (skipped) note = '跳過了前面的環節，這次記成「只練幾個環節」，不算進整次成功率';
+			}
+		});
 	}
 
 	function removeLast() {
@@ -116,6 +124,7 @@
 	</div>
 
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if note}<p class="hint" role="status">{note}</p>{/if}
 
 	<footer>
 		{#if today.length}
