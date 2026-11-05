@@ -27,14 +27,15 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number): Comma
 	const fits = (name: string, room: number) => rooms.push({ name, room });
 
 	const formations = flow.formations.map((f, i) => {
+		const name = `站位 ${i + 1} `;
 		const walks = f.walks && Object.fromEntries(
 			Object.entries(f.walks).map(([id, w]): [string, Walk] => {
-				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(`站位 ${i + 1} `, end - 1 - p.at);
+				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(name, end - 1 - p.at);
 				return [id, { depart: later(w.depart), arrive: later(w.arrive) }];
 			})
 		);
 		const moved = i > 0 && f.segmentId === at.segmentId && f.at >= at.at;
-		if (moved) fits(`站位 ${i + 1} `, end - 1 - f.at);
+		if (moved) fits(name, end - 1 - f.at);
 		return { ...f, ...(moved && { at: f.at + length }), ...(walks && { walks }) };
 	});
 	const actions = flow.actions.map((a) => {

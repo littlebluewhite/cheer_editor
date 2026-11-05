@@ -4,6 +4,7 @@
 	// 按了鈕寫選了誰（選的人一改就收掉）；選不到人時不改選取，只寫原因。
 	// 選到的人是在播放頭新增動作的人，也是場上整組拖的那一組。
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		actionLabel,
@@ -19,7 +20,7 @@
 	const selected = $derived(session.selectedMemberIds);
 	const select = (ids: string[]) => session.selectMembers(ids);
 	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
-	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const touchScreen = isTouchScreen();
 
 	/** empty：選不到人時寫的原因。 */
 	const GROUPS: { group: MemberGroup; label: string; empty: string }[] = [

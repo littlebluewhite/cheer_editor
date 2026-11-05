@@ -49,6 +49,7 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
@@ -71,7 +72,7 @@
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
 	const DRAG_PX = 3;
 	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
-	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const touchScreen = isTouchScreen();
 
 	/** 正在拖的色條：move = 整條移動，resize = 拉右邊；dx 是滑鼠移了幾 px；memberId 是按在誰的泳道上。 */
 	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number; memberId: string } | null>(null);

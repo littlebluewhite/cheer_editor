@@ -23,7 +23,7 @@
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -94,7 +94,7 @@
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
-	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const touchScreen = isTouchScreen();
 
 	// ---------- 窄螢幕（手機、直拿的 iPad）：一律檢視模式，編排換成手機的檢視畫面（docs/adr/0005-ipad-touch.md） ----------
 	const narrowQuery = typeof matchMedia === 'function' ? matchMedia(NARROW_SCREEN) : null;
