@@ -36,6 +36,7 @@ const NO_PLAYBACK: SessionPlayback = { opened() {}, changed() {}, jump() {} };
 
 export class EditorSession {
 	readonly #playback: SessionPlayback;
+	readonly #updated: () => void;
 	#flow = $state.raw<Flow | null>(null);
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
@@ -95,9 +96,13 @@ export class EditorSession {
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
 	readonly squadAsk = new Ask((f) => this.change(f));
 
-	/** 給的流程算存過的（跟從檔案開的一樣）。playback：改完要叫的播放。 */
-	constructor(flow: Flow | null = null, playback: SessionPlayback = NO_PLAYBACK) {
+	/**
+	 * 給的流程算存過的（跟從檔案開的一樣）。playback：改完要叫的播放。
+	 * updated：換了流程或選取之後要叫的（編輯器 module 接上：動作表單的草稿跟上）。
+	 */
+	constructor(flow: Flow | null = null, playback: SessionPlayback = NO_PLAYBACK, updated: () => void = () => {}) {
 		this.#playback = playback;
+		this.#updated = updated;
 		this.open(flow, true);
 	}
 
@@ -132,6 +137,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.squadAsk.clear();
 		this.#playback.opened();
+		this.#updated();
 	}
 
 	/** 存好了：存的是 flow 這一份。 */
@@ -155,6 +161,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.#trim(flow);
 		this.#playback.changed(before);
+		this.#updated();
 		return true;
 	}
 
@@ -164,6 +171,7 @@ export class EditorSession {
 	 */
 	record(flow: Flow) {
 		if (this.#flow) this.#flow = flow;
+		this.#updated();
 	}
 
 	/** 給元件一個「改」的問題：成功就交給 change（算一步）。 */
@@ -220,6 +228,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.notice = '';
 		this.#playback.changed(before);
+		this.#updated();
 	}
 
 	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
@@ -294,6 +303,7 @@ export class EditorSession {
 	selectFormation(id: string | null) {
 		this.#formationId = id;
 		if (id) this.#actionId = null;
+		this.#updated();
 	}
 
 	/** 選動作：站位的選取清掉。換了動作，選的拍從頭來。 */
@@ -302,10 +312,12 @@ export class EditorSession {
 		this.#actionId = id;
 		if (id) this.#formationId = null;
 		if (changed) this.beats.reset();
+		this.#updated();
 	}
 
 	selectMembers(ids: string[]) {
 		this.#memberIds = ids;
+		this.#updated();
 	}
 
 	/** 點人（場地、泳道名字）：只選他；Shift 或多選開著是加進來或拿掉。 */
@@ -320,6 +332,7 @@ export class EditorSession {
 		this.#formationId = null;
 		this.#actionId = null;
 		this.#memberIds = [];
+		this.#updated();
 	}
 
 	// ---------- 分組 ----------

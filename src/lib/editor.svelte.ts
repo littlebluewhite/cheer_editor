@@ -8,6 +8,7 @@
 
 import { createContext } from 'svelte';
 import type { AudioBytes, Flow } from '#lib/core';
+import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
@@ -55,6 +56,8 @@ export class Editor {
 	readonly adapters: EditorAdapters;
 	/** 播放：播放頭、在不在播、節拍器、延遲校正、試聽。 */
 	readonly playback: Playback;
+	/** 動作表單的草稿：跟著選的人、播放頭、自訂任務角色。 */
+	readonly actionDraft: ActionDraft;
 	/** 右邊欄翻到哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	inspectorTab = $state<'action' | 'members'>('action');
 	#music: MusicLibrary;
@@ -62,13 +65,17 @@ export class Editor {
 	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
 		this.adapters = adapters;
+		// 建 session 時（開給的流程）草稿還沒建：它建好時自己跟上一次。
+		const follow = () => this.actionDraft?.follow();
 		this.playback = new Playback(
 			() => this.session.flow,
 			() => adapters.createEngine((id) => this.music.buffer(id)),
-			adapters.nextFrame
+			adapters.nextFrame,
+			follow
 		);
-		this.session = new EditorSession(flow, this.playback);
+		this.session = new EditorSession(flow, this.playback, follow);
 		this.#music = $state.raw(new MusicLibrary(this.session, adapters.decode));
+		this.actionDraft = new ActionDraft(this.session, () => this.playback.sec);
 	}
 
 	/** 音樂檔庫：這支流程用到的音樂檔。一支流程一個，換流程就換一個新的（switchMusic）。 */
