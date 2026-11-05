@@ -2,7 +2,15 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
-import { addMembers, addSegment as addSegmentTo, createFlow, renameFlow, setMarkers } from '#lib/core';
+import {
+	addMembers,
+	addSegment as addSegmentTo,
+	createFlow,
+	insertFormation,
+	renameFlow,
+	setMarkers,
+	setPositions
+} from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { audioFlow, editorPage, fakeToMeters } from '#lib/test-fakes.js';
@@ -764,6 +772,39 @@ describe('站位與走位', () => {
 		expect(marked('data-walk-line')).toEqual([]);
 	});
 
+	it('撞位：播放頭所在那兩張站位之間的撞位，在場上畫紫色 ✕；走位條撞到的那段變紫；拖人照樣能拖', async () => {
+		// 小A [0, 0]、小B [2, 0]；站位 2 在 4.8 秒兩人換位置，1.6–4.8 秒走位，3.2 秒在 [1, 0] 撞在一起。
+		let flow = flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
+		flow = flowOf(addSegmentTo(flow, 'music'));
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
+		flow = flowOf(insertFormation(flow, 4.8));
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
+		flow = flowOf(insertFormation(flow, 8));
+		const session = new EditorSession(flow);
+		render(Page, { createEngine: () => createFakeEngine(), session, toMeters: fakeToMeters });
+		const marks = () => [...document.querySelectorAll('.field [data-clash]')];
+
+		// 播放頭在開頭那張：前面沒有走位，不畫。
+		expect(marks()).toEqual([]);
+		await seek(2);
+		expect(marks().map((el) => el.getAttribute('transform'))).toEqual(['translate(1,0)']);
+		await seek(4.8);
+		expect(marks()).toHaveLength(1);
+		// 站位 2 → 站位 3 之間沒人走，不畫。
+		await seek(6);
+		expect(marks()).toEqual([]);
+
+		expect(document.querySelectorAll('[data-lane="m1"] [data-walk-clash]')).toHaveLength(1);
+		expect(document.querySelectorAll('[data-lane="m2"] [data-walk-clash]')).toHaveLength(1);
+
+		// 只是提醒：在站位 2 上照樣拖人。
+		await seek(4.8);
+		await dragFirstMember();
+		expect(session.flow!.formations[1].pos.m1).not.toEqual([2, 0]);
+	});
+
 	it('點縮圖跳到那一拍；✕ 刪除站位；開頭那張沒有 ✕', async () => {
 		await setup();
 		await seek(8.25);
@@ -844,7 +885,7 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(3);
 	});
 
-	it('段設定、流程設定、八拍表開著時：後面的編輯畫面不吃快捷鍵，也點不到、Tab 不到（inert）', async () => {
+	it('段設定、流程設定、八拍表開著時：後面的編輯畫面不吃快捷鍵（復原、空白鍵暫停除外，見 keyboard 測試），也點不到、Tab 不到（inert）', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
@@ -857,7 +898,6 @@ describe('站位與走位', () => {
 		expect(editor.inert).toBe(true);
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		await fireEvent.keyDown(window, { key: 'Backspace' });
-		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
@@ -867,7 +907,6 @@ describe('站位與走位', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		expect(editor.inert).toBe(true);
-		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
@@ -1509,18 +1548,16 @@ describe('復原和重做', () => {
 		expect(thumbs()).toHaveLength(2);
 	});
 
-	it('焦點在文字框或下拉選單裡時不攔，讓瀏覽器復原打的字', async () => {
+	it('焦點在文字框或下拉選單裡也是退回流程，不讓瀏覽器自己復原（打了沒送出的字見 keyboard 測試）', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
 		const z = { key: 'z', ctrlKey: true };
 		// fireEvent 回傳 false 表示被 preventDefault（瀏覽器自己的復原不會跑）
-		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), z)).toBe(true);
-		expect(thumbs()).toHaveLength(2);
-		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(true);
-		expect(thumbs()).toHaveLength(2);
-		expect(await fireEvent.keyDown(window, z)).toBe(false);
+		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
+		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'y', ctrlKey: true })).toBe(false);
+		expect(thumbs()).toHaveLength(2);
 	});
 
 	it('做了新的一步，重做的紀錄就清掉', async () => {

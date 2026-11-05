@@ -8,7 +8,7 @@
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
 	// 拖的時候走位條上面即時寫新的拍數，拖出範圍（放開會被擋）當下變色。點一下（滑鼠、手指）選這個人，Shift＋點加進來。
 	// 走位條看起來是細條，能點的範圍比較高（WALK_HIT_H）。
-	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）。
+	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（見 clashes），拖的時候先藏起來。
 	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
 	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
@@ -17,6 +17,7 @@
 	import {
 		actionLabel,
 		actionSeconds,
+		clashes,
 		CUE_KINDS,
 		cueForMember,
 		formationWalks,
@@ -94,6 +95,8 @@
 	/** 走位條能點的高度（px）：比看到的細條高，往下多出 WALK_HIT_DROP 伸進泳道之間的空隙。 */
 	const WALK_HIT_H = 12;
 	const WALK_HIT_DROP = 3;
+	/** 撞位那段最少畫這麼寬（px）：只撞到一個取樣點時也看得到。 */
+	const CLASH_MIN_W = 4;
 	/** 環節細條的高度（px）。 */
 	const PHASE_H = 3;
 
@@ -149,15 +152,23 @@
 		dx: number;
 	} | null>(null);
 
-	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘。 */
+	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘、撞位的那幾段。 */
 	const walks = $derived.by(() => {
 		const byMember: Record<
 			string,
-			({ formationId: string } & Pick<FormationWalk, 'departSec' | 'arriveSec' | 'tooFast' | 'tiring'>)[]
+			({ formationId: string; clashes: { startSec: number; endSec: number }[] } & Pick<
+				FormationWalk,
+				'departSec' | 'arriveSec' | 'tooFast' | 'tiring'
+			>)[]
 		> = {};
 		for (const b of flow.formations) {
 			for (const { memberId, departSec, arriveSec, tooFast, tiring } of formationWalks(flow, b.id)) {
-				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring });
+				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, clashes: [] });
+			}
+		}
+		for (const c of clashes(flow)) {
+			for (const id of c.memberIds) {
+				byMember[id]?.find((w) => w.formationId === c.formationId)?.clashes.push(c);
 			}
 		}
 		return byMember;
@@ -389,6 +400,19 @@
 						style:height={`${WALK_H}px`}
 						style:bottom={`${WALK_HIT_DROP}px`}
 					></span>
+					{#if !d}
+						{#each w.clashes as c, i (i)}
+							<span
+								class="clash"
+								data-walk-clash
+								title="撞位"
+								style:left={`${(c.startSec - w.departSec) * pxPerSec}px`}
+								style:width={`${Math.max((c.endSec - c.startSec) * pxPerSec, CLASH_MIN_W)}px`}
+								style:height={`${WALK_H}px`}
+								style:bottom={`${WALK_HIT_DROP}px`}
+							></span>
+						{/each}
+					{/if}
 					{#if d?.memberId === m.id && walkReadout}
 						<span class="readout" class:out={walkReadout.out} data-walk-readout>{walkReadout.text}</span>
 					{/if}
@@ -680,6 +704,13 @@
 	.walk.fast .strip,
 	.walk.tiring .strip {
 		opacity: 0.9;
+	}
+	/* 撞位：走位條上撞到的那段疊紫色，跟紅、橘分得開。 */
+	.clash {
+		position: absolute;
+		border-radius: 3px;
+		background: var(--walk-clash, #a855f7);
+		pointer-events: none;
 	}
 	/* 拖出範圍：細條變成虛線的危險色，放開會還原。 */
 	.walk.out .strip {
