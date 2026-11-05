@@ -1,10 +1,18 @@
 <script lang="ts" module>
 	import { fieldGeometry, type FieldConfig } from '#lib/core';
 
-	/** 全場的畫面範圍（公尺）：外圍以外再留給「正面／裁判」字樣的空間。編輯頁拿它的長寬比分配右邊欄的寬度。 */
+	/** 外圍框外寫條編號的那一邊（直放在後面、橫放在左右）留多寬（公尺）：放大了的場外圓點也蓋不到編號。 */
+	export const NUMBER_BAND = 0.8;
+
+	/**
+	 * 全場的畫面範圍（公尺）：外圍以外再留給條編號（NUMBER_BAND）和「正面／裁判」字樣的空間。
+	 * 編輯頁拿它的長寬比分配右邊欄的寬度。
+	 */
 	export function fullView(field: FieldConfig) {
 		const { outer } = fieldGeometry(field);
-		return { x: outer.x - 0.3, y: outer.y - 0.3, width: outer.width + 0.6, height: outer.height + 1.3 };
+		const side = field.layout === 'horizontal' ? NUMBER_BAND : 0.3;
+		const back = field.layout === 'vertical' ? NUMBER_BAND : 0.3;
+		return { x: outer.x - side, y: outer.y - back, width: outer.width + 2 * side, height: outer.height + back + 1 };
 	}
 </script>
 
@@ -14,7 +22,8 @@
 	// 拖人：吸附和位置文字都問流程核心；放開時把新位置（公尺）改進播放頭這一拍的站位，送到 session 的 ask，
 	// 改好了 session 說插了站位或往後帶了幾張、播放頭停到那張（session.moved）。
 	// 放大縮小：按鈕、滾輪、兩指捏合；兩指一起拖是移動畫面。
-	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移。
+	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移；
+	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
 	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
@@ -34,7 +43,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
-	import { isLongMarker } from './marker';
+	import { isLongMarker, markerWidth } from './marker';
 
 	/** 螢幕座標 → 場地公尺座標。測試換成假的（見 docs/adr/0002-component-tests-jsdom.md）。 */
 	type ToMeters = (e: { clientX: number; clientY: number }, svg: SVGSVGElement) => Position;
@@ -111,6 +120,11 @@
 	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 	/** 圓點的半徑（公尺）。 */
 	const DOT_R = 0.3;
+	/** 多字標記的字高（公尺）：寫在橫的膠囊裡。 */
+	const LONG_FONT = 0.24;
+	/** 多字標記的膠囊寬（公尺）：放得下字、至少跟圓點一樣寬；一兩格寬的標記畫圓點，是 0。 */
+	const pillWidth = (mark: string) =>
+		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * LONG_FONT + 0.14) : 0;
 	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
 	const MIN_DOT_PX = touchScreen ? 32 : 22;
 	const ZOOM_STEP = 1.25;
@@ -219,6 +233,14 @@
 		if (!drag?.cur) return '';
 		const name = members.find((m) => m.id === drag!.id)?.name ?? '';
 		return `${name}　${fieldPositionText(field, drag.cur)}`;
+	});
+	/** 名字和在哪（滑鼠停在圓點上、選到一個人時寫在場地下面）。 */
+	const whereText = (m: Member, p: Position) => `${m.name}　${fieldPositionText(field, p)}`;
+	/** 編輯頁選到一個人（不在拖）：場地下面寫他的名字和位置。 */
+	const picked = $derived.by(() => {
+		if (!session || drag?.cur || selected.length !== 1) return '';
+		const m = members.find((x) => x.id === selected[0]);
+		return m && positions[m.id] ? whereText(m, positions[m.id]) : '';
 	});
 
 	function clamp(v: number, lo: number, hi: number) {
@@ -337,6 +359,8 @@
 			return;
 		}
 		if (drag && (drag.cur || !still(e, drag.client))) {
+			// 拖一個沒選到的人：選取換成他，畫的影子和走位線才是他的。
+			if (!drag.cur && !selected.includes(drag.id)) session?.selectMembers([drag.id]);
 			const [px, py] = toMeters(e, svg);
 			const o = drag.orig[drag.id];
 			drag.cur = snapPosition(field, [o[0] + px - drag.start[0], o[1] + py - drag.start[1]], zoom);
@@ -470,13 +494,14 @@
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
 		<path class="center" d="M-.4,0L.4,0M0,-.4L0,.4"><title>場地正中心</title></path>
-		<!-- 條編號寫在墊子裡靠後（橫放靠左）的邊、每條的中間：場外等著的人（排在場地外半格）和接縫上的人都不會蓋到 -->
+		<!-- 條編號寫在外圍框外面那一條（NUMBER_BAND，直放在後面、橫放在左邊）靠外的地方、每條的中間：
+		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
 		{#each g.strips as s (s.number)}
 			<text
 				class="num"
 				data-strip-number
-				x={vertical ? s.rect.x + s.rect.width / 2 : g.mat.x + 0.35}
-				y={vertical ? g.mat.y + 0.45 : s.rect.y + s.rect.height / 2 + 0.14}>{s.number}</text
+				x={vertical ? s.rect.x + s.rect.width / 2 : g.outer.x - NUMBER_BAND * 0.7}
+				y={vertical ? g.outer.y - NUMBER_BAND / 2 : s.rect.y + s.rect.height / 2 + 0.09}>{s.number}</text
 			>
 		{/each}
 		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
@@ -508,6 +533,7 @@
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
 		{#each dots as { m, mark, p, up, sel } (m.id)}
+			{@const pill = pillWidth(mark)}
 			<g
 				class="dot"
 				class:raised={up}
@@ -522,13 +548,18 @@
 				onkeydown={(e) => dotKey(e, m.id)}
 				transform="translate({p[0]},{p[1]})"
 			>
-				<title>{m.name}</title>
+				<title>{session ? whereText(m, p) : m.name}</title>
 				<g transform="scale({dotScale})">
-					{#if sel}<circle class="ring" r="0.42" />{/if}
-					<circle class={m.globalRole} r={DOT_R} />
-					<text y={isLongMarker(mark) ? 0.08 : 0.11} class:long={isLongMarker(mark)}>{mark}</text>
+					{#if pill}
+						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
+						<rect class={m.globalRole} x={-pill / 2} y={-DOT_R} width={pill} height={DOT_R * 2} rx={DOT_R} />
+					{:else}
+						{#if sel}<circle class="ring" r="0.42" />{/if}
+						<circle class={m.globalRole} r={DOT_R} />
+					{/if}
+					<text y={pill ? 0.085 : 0.11} class:long={!!pill}>{mark}</text>
 					{#if badges[m.id]}
-						<g class="badge" transform="translate(0.27,-0.27)">
+						<g class="badge" transform="translate({Math.max(pill / 2 - 0.03, 0.27)},-0.27)">
 							<circle r="0.17" style:fill={badges[m.id].color} />
 							<text y="0.065">{badges[m.id].text}</text>
 						</g>
@@ -541,6 +572,7 @@
 		{/if}
 	</svg>
 	{#if readout}<div class="readout">{readout}</div>{/if}
+	{#if picked}<div class="picked" role="note" aria-label="選到的人在哪">{picked}</div>{/if}
 	{@render children?.()}
 	<div class="below">{@render below?.()}</div>
 	</div>
@@ -617,9 +649,8 @@
 		font-family: inherit;
 	}
 	.num {
-		font-size: 0.4px;
-		fill: #fff;
-		fill-opacity: 0.75;
+		font-size: 0.3px;
+		fill: var(--muted, #66718a);
 		font-weight: 700;
 		pointer-events: none;
 	}
@@ -681,15 +712,15 @@
 		cursor: grabbing;
 	}
 	/* 用鍵盤停到人時，圓點的邊加粗變色當焦點框。 */
-	.dot:focus-visible circle:not(.ring) {
+	.dot:focus-visible :is(circle, rect):not(.ring) {
 		stroke: var(--sel);
 		stroke-width: 0.1;
 	}
-	.dot circle {
+	.dot :is(circle, rect) {
 		stroke: #16213a;
 		stroke-width: 0.04;
 	}
-	.dot.selected circle.ring {
+	.dot.selected .ring {
 		fill: rgba(25, 180, 216, 0.25);
 		stroke: #7fe6ff;
 		stroke-width: 0.07;
@@ -702,22 +733,22 @@
 		pointer-events: none;
 	}
 	/* 八拍表個人表：自己的點塗滿深色、字反白 */
-	.dot.filled circle:not(.ring) {
+	.dot.filled :is(circle, rect):not(.ring) {
 		fill: #16213a;
 	}
 	.dot.filled text {
 		fill: #fff;
 	}
-	.dot circle.base {
+	.dot .base {
 		fill: #fff;
 	}
-	.dot circle.top {
+	.dot .top {
 		fill: var(--top, #e0664f);
 	}
 	.dot.raised {
 		filter: drop-shadow(0 0.08px 0.1px rgba(0, 0, 0, 0.55));
 	}
-	.dot.raised circle {
+	.dot.raised :is(circle, rect) {
 		stroke: #ffd400;
 		stroke-width: 0.08;
 	}
@@ -728,7 +759,7 @@
 		pointer-events: none;
 	}
 	.dot text.long {
-		font-size: 0.2px;
+		font-size: 0.24px;
 	}
 	.dot .badge circle {
 		stroke: #fff;
@@ -738,7 +769,7 @@
 		font-size: 0.2px;
 		fill: #fff;
 	}
-	.dot circle.top + text {
+	.dot .top + text {
 		fill: #fff;
 	}
 	.tools {
@@ -854,6 +885,21 @@
 	}
 	.below > :global(*) {
 		pointer-events: auto;
+	}
+	/* 選到一個人：寫在左下角「正面／裁判」那一排的空處，不蓋到場地和場外的人。 */
+	.picked {
+		position: absolute;
+		left: 4px;
+		bottom: 4px;
+		max-width: calc(50% - 90px);
+		padding: 3px 8px;
+		border-radius: 6px;
+		background: rgba(255, 255, 255, 0.94);
+		color: var(--text, #1a2238);
+		font-size: 12px;
+		line-height: 1.35;
+		font-variant-numeric: tabular-nums;
+		pointer-events: none;
 	}
 	.readout {
 		position: absolute;

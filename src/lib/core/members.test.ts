@@ -65,35 +65,50 @@ describe('加隊員', () => {
 
 	const C = 6 * 0.3048;
 
-	it('新人排進開頭那張站位最靠近場地中間的格點：一樣近時先正面、再左邊', () => {
+	it('新人排進開頭那張站位最靠近場地中間的格點（格子正中間）：9 條直放第一個人站在正中心', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
-		// 9 條直放：左右 9 格、前後 7 格，中間四個格點離中心一樣近（各差半格）。
 		const [x, y] = flow.formations[0].pos[flow.members[0].id];
-		expect(x).toBeCloseTo(-C / 2, 6);
-		expect(y).toBeCloseTo(C / 2, 6);
+		expect(x).toBeCloseTo(0, 6);
+		expect(y).toBeCloseTo(0, 6);
 	});
 
-	it('一次加多人：一個一個排進下一個最近的空格點，不疊在一起', () => {
+	it('一次加多人：一個一個排進下一個最近的空格點，一樣近時先正面、再左邊', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA, xiaoA, xiaoA, xiaoA]));
 		const ps = flow.members.map((m) => flow.formations[0].pos[m.id]);
-		// 中間四個（半格、半格），再來是左右差一格半、前後差半格那一圈的正面左邊。
-		expect(ps.map(([x, y]) => [x / C, y / C].map((v) => Math.round(v * 2) / 2))).toEqual([
-			[-0.5, 0.5],
-			[0.5, 0.5],
-			[-0.5, -0.5],
-			[0.5, -0.5],
-			[-0.5, 1.5]
+		expect(ps.map(([x, y]) => [x / C, y / C].map((v) => Math.round(v * 2) / 2 + 0))).toEqual([
+			[0, 0],
+			[0, 1],
+			[-1, 0],
+			[1, 0],
+			[0, -1]
 		]);
 	});
 
 	it('格點附近（不到半格）已經有人：跳過那個格點', () => {
 		let flow = okFlow(addMembers(newFlow(), [xiaoA]));
-		// 把第一個人挪到右前那個格點旁邊 1/4 格
-		flow = okFlow(setPositions(flow, 'f1', { [flow.members[0].id]: [C / 2 + C / 4, C / 2] }));
+		// 把第一個人挪到正中心旁邊 1/4 格
+		flow = okFlow(setPositions(flow, 'f1', { [flow.members[0].id]: [C / 4, 0] }));
 		flow = okFlow(addMembers(flow, [xiaoA, xiaoA]));
 		const pos = flow.formations[0].pos;
-		expect(pos[flow.members[1].id]).toEqual([expect.closeTo(-C / 2, 6), expect.closeTo(C / 2, 6)]);
-		expect(pos[flow.members[2].id]).toEqual([expect.closeTo(-C / 2, 6), expect.closeTo(-C / 2, 6)]);
+		expect(pos[flow.members[1].id]).toEqual([expect.closeTo(0, 6), expect.closeTo(C, 6)]);
+		expect(pos[flow.members[2].id]).toEqual([expect.closeTo(-C, 6), expect.closeTo(0, 6)]);
+	});
+
+	it('9 條直放加 20 人：全部在墊子上某一格的正中間，不在格線、接縫或墊子邊上', () => {
+		const flow = okFlow(addMembers(newFlow(), Array(20).fill(xiaoA)));
+		const { mat } = fieldGeometry(flow.field);
+		const ps = Object.values(flow.formations[0].pos);
+		expect(ps).toHaveLength(20);
+		for (const [x, y] of ps) {
+			const cx = (x - mat.x) / C;
+			const cy = (y - mat.y) / C;
+			expect(cx - Math.floor(cx)).toBeCloseTo(0.5, 6);
+			expect(cy - Math.floor(cy)).toBeCloseTo(0.5, 6);
+			expect(cx).toBeGreaterThan(0);
+			expect(cx).toBeLessThan(9);
+			expect(cy).toBeGreaterThan(0);
+			expect(cy).toBeLessThan(7);
+		}
 	});
 
 	it('後面的站位沒有新人的位置：用開頭那張的同一個位置', () => {
@@ -108,17 +123,18 @@ describe('加隊員', () => {
 		expect(flow.formations[1].pos.m1).toEqual([3, 3]);
 	});
 
-	it('格點都有人了才排場外：1 條直放只有 16 個格點，第 17 個人站在正面左邊的場地外', () => {
+	it('格點都有人了才排場外：1 條直放只有 7 格，第 8 個人起在正面外從左到右排成一列', () => {
 		const field = { strips: 1, layout: 'vertical' } as const;
-		const flow = okFlow(addMembers(okFlow(createFlow({ name: '小場地', field })), Array(17).fill(xiaoA)));
+		const flow = okFlow(addMembers(okFlow(createFlow({ name: '小場地', field })), Array(11).fill(xiaoA)));
 		const { mat } = fieldGeometry(field);
 		const ps = flow.members.map((m) => flow.formations[0].pos[m.id]);
-		const onMat = ([x, y]: number[]) =>
-			x >= mat.x - 1e-9 && x <= mat.x + mat.width + 1e-9 && y >= mat.y - 1e-9 && y <= mat.y + mat.height + 1e-9;
-		expect(ps.slice(0, 16).every(onMat)).toBe(true);
-		const [x, y] = ps[16];
-		expect(x).toBeLessThan(mat.x);
-		expect(y).toBeGreaterThan(mat.y + mat.height);
+		const onMat = ([x, y]: number[]) => x > mat.x && x < mat.x + mat.width && y > mat.y && y < mat.y + mat.height;
+		expect(ps.slice(0, 7).every(onMat)).toBe(true);
+		const outside = ps.slice(7);
+		expect(outside[0][0]).toBeLessThan(mat.x);
+		for (const [, y] of outside) expect(y).toBeCloseTo(outside[0][1], 6);
+		expect(outside[0][1]).toBeGreaterThan(mat.y + mat.height);
+		for (let i = 1; i < outside.length; i++) expect(outside[i][0] - outside[i - 1][0]).toBeCloseTo(C / 2, 6);
 	});
 
 	const fields = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].flatMap((strips) =>
@@ -126,22 +142,27 @@ describe('加隊員', () => {
 	);
 	const forty = Array.from({ length: 40 }, (_, i) => ({ ...xiaoA, name: `隊員${i + 1}` }));
 
-	it.each(fields)('$strips 條 $layout：40 人一次加或一個一個加，都在場地外 1 m 內、圓點不疊在一起', (field) => {
+	it.each(fields)('$strips 條 $layout：40 人一次加或一個一個加，整個圓點都在外圍框裡、場外的人不壓到墊子邊、圓點不疊在一起', (field) => {
 		const empty = okFlow(createFlow({ name: '測試', field }));
 		const atOnce = okFlow(addMembers(empty, forty));
 		const oneByOne = forty.reduce((f, m) => okFlow(addMembers(f, [m])), empty);
-		const { outer } = fieldGeometry(field);
+		const { outer, mat } = fieldGeometry(field);
 		expect(oneByOne.formations[0].pos).toEqual(atOnce.formations[0].pos);
 		const ps = Object.values(atOnce.formations[0].pos);
 		expect(ps).toHaveLength(40);
 		// 圓點半徑 0.3 m：兩人中心至少差 0.6 m 才不會疊到。
 		for (const [i, [x1, y1]] of ps.entries())
 			for (const [x2, y2] of ps.slice(i + 1)) expect(Math.hypot(x1 - x2, y1 - y2)).toBeGreaterThanOrEqual(0.6);
+		const R = 0.3;
 		for (const [x, y] of ps) {
-			expect(x).toBeGreaterThanOrEqual(outer.x - 1e-9);
-			expect(x).toBeLessThanOrEqual(outer.x + outer.width + 1e-9);
-			expect(y).toBeGreaterThanOrEqual(outer.y - 1e-9);
-			expect(y).toBeLessThanOrEqual(outer.y + outer.height + 1e-9);
+			expect(x - R).toBeGreaterThanOrEqual(outer.x - 1e-9);
+			expect(x + R).toBeLessThanOrEqual(outer.x + outer.width + 1e-9);
+			expect(y - R).toBeGreaterThanOrEqual(outer.y - 1e-9);
+			expect(y + R).toBeLessThanOrEqual(outer.y + outer.height + 1e-9);
+			// 墊子外的人：圓點整個在墊子外，不壓到墊子的邊
+			const dx = Math.max(mat.x - x, 0, x - mat.x - mat.width);
+			const dy = Math.max(mat.y - y, 0, y - mat.y - mat.height);
+			if (dx || dy) expect(Math.hypot(dx, dy)).toBeGreaterThanOrEqual(R);
 		}
 	});
 

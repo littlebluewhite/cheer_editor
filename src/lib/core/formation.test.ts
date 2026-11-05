@@ -26,6 +26,7 @@ import {
 	setWalks,
 	updateSegment,
 	walkSpanAt,
+	walkSpeedText,
 	type CommandResult,
 	type Flow,
 	type Walk
@@ -82,7 +83,7 @@ describe('改位置', () => {
 		const flow = twoMembers();
 		const [a] = flow.members;
 		const waiting = flow.formations[0].pos[a.id];
-		const moved = okFlow(setPositions(flow, 'f1', { [a.id]: [0, 0] }));
+		const moved = okFlow(setPositions(flow, 'f1', { [a.id]: [3, 3] }));
 		const next = okFlow(addMembers(moved, [{ name: '小C', gender: 'M', globalRole: 'base' }]));
 		expect(next.formations[0].pos[next.members[2].id]).toEqual(waiting);
 	});
@@ -936,6 +937,23 @@ describe('這段的走位', () => {
 		expect(formationWalks(withAction(rushed(), A, 'dance', 96), 'f2')[0].tooFast).toBe(true);
 		// 第 94–98 個半拍（18.8–19.6 秒）剛好在出發時結束，不算重疊。
 		expect(formationWalks(withAction(rushed(), A, 'tumbling', 94), 'f2')[0].tooFast).toBe(true);
+	});
+
+	it('速度的說明：正常只寫速度；太快寫至少要幾拍（每秒 4 公尺）；很喘寫不喘要幾拍（每秒 2.5 公尺）', () => {
+		const text = (flow: Flow, formationId: string) => walkSpeedText(flow, formationWalks(flow, formationId)[0]);
+		expect(text(walking(), 'f2')).toBe('每秒 1.3 公尺');
+		// 4 公尺：每秒 4 公尺要 1 秒，150 BPM 一拍 0.4 秒，2.5 拍
+		expect(text(rushed(), 'f2')).toBe('走太快：每秒 10.0 公尺，至少要 2.5 拍');
+		// 第 94 到 100 個半拍走 4 公尺；每秒 2.5 公尺要剛好 1.6 秒 = 4 拍（不因為小數誤差多算半拍）
+		const tiring = okFlow(
+			setWalks(walking(), 'f2', { [A]: { depart: { segmentId: 's1', at: 94 }, arrive: { segmentId: 's1', at: 100 } } })
+		);
+		expect(text(tiring, 'f2')).toBe('很喘：每秒 3.3 公尺，不喘要 4 拍');
+		// 口號段寫秒數：f3 在口號 1 的 4.4 秒，4.0–4.4 秒走 5 公尺；每秒 4 公尺要 1.25 秒 → 1.3 秒
+		const chant = okFlow(
+			setWalks(walking(), 'f3', { [A]: { depart: { segmentId: 's2', at: 40 }, arrive: { segmentId: 's2', at: 44 } } })
+		);
+		expect(text(chant, 'f3')).toBe('走太快：每秒 12.5 公尺，至少要 1.3 秒');
 	});
 
 	it('開頭那張或找不到站位：沒有走位', () => {
