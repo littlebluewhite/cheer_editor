@@ -2,10 +2,10 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
-import { addMembers, createFlow, renameFlow, setMarkers } from '#lib/core';
+import { addMembers, addSegment as addSegmentTo, createFlow, renameFlow, setMarkers } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
-import { fakeToMeters } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fakeToMeters } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 /** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
@@ -1372,6 +1372,43 @@ describe('播放', () => {
 		await nextFrame();
 		expect(position()).toBe('音樂 1 1-1');
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+	});
+
+	it('試聽中按「■ 停止試聽」就停；播完自己換回「▶ 從第一拍聽」', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
+		await fireEvent.click(screen.getByRole('button', { name: '■ 停止試聽' }));
+		expect(engine.clicks).toEqual([]);
+		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
+		// 2 個八拍、150 BPM = 6.4 秒
+		engine.audible = engine.clicks[0].when + 6.5;
+		await nextFrame();
+		expect(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' })).toBeTruthy();
+	});
+
+	it('試聽中關掉段設定：試聽停掉', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
+		expect(engine.clicks).toHaveLength(16);
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		expect(engine.clicks).toEqual([]);
+	});
+});
+
+describe('變速切段', () => {
+	it('第二個音樂段選了同一個音樂檔：第一拍接在音樂 1 後面，波形畫這一段用到的那一截；第一拍可以再改', async () => {
+		// 音樂 1：主歌.mp3，第一拍 0 秒、150 BPM、8 個八拍 = 25.6 秒
+		const page = editorPage(flowOf(addSegmentTo(audioFlow(), 'music')));
+		render(Page, page.props);
+		await fireEvent.click(screen.getByRole('button', { name: /音樂 2/ }));
+		await fireEvent.change(screen.getByLabelText('用已載入的音樂'), { target: { value: 'a1' } });
+		expect((screen.getByLabelText('第一拍（秒）') as HTMLInputElement).value).toBe('25.6');
+		expect(screen.getByRole('img', { name: '波形' }).getAttribute('viewBox')).toBe('25.6 0 25.6 2');
+		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '25.8' } });
+		expect(page.session.flow!.segments[1]).toMatchObject({ audioId: 'a1', firstBeatSec: 25.8 });
+		expect(screen.getByRole('img', { name: '波形' }).getAttribute('viewBox')).toBe('25.8 0 25.6 2');
 	});
 });
 

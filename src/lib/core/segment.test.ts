@@ -212,6 +212,35 @@ describe('音樂檔', () => {
 		expect(flow.audio).toHaveLength(1);
 	});
 
+	it('新音樂段選了跟前一個音樂段同一個檔：第一拍接在前一段後面（前一段第一拍＋長度）', () => {
+		let flow = flowOf(loadSegmentAudio(twoMusic(), 's1', '歌.mp3'));
+		// 前一段：第一拍 1.2 秒、120 BPM、4 個八拍 = 16 秒
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 1.2, bpm: 120, eights: 4 }));
+		flow = flowOf(updateSegment(flow, 's2', { audioId: 'a1' }));
+		expect(flow.segments[1]).toMatchObject({ audioId: 'a1', firstBeatSec: 17.2 });
+		// 教練可以再改
+		flow = flowOf(updateSegment(flow, 's2', { firstBeatSec: 17.5 }));
+		expect(flow.segments[1]).toMatchObject({ firstBeatSec: 17.5 });
+	});
+
+	it('中間隔著口號段也一樣接上前一個音樂段；已經有音樂的段換檔不動第一拍', () => {
+		let flow = flowOf(addSegment(flowOf(addSegment(newFlow(), 'music')), 'chant'));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(loadSegmentAudio(flow, 's1', '歌.mp3'));
+		// 前一段：150 BPM、8 個八拍 = 25.6 秒
+		expect(flowOf(updateSegment(flow, 's3', { audioId: 'a1' })).segments[2]).toMatchObject({ firstBeatSec: 25.6 });
+		flow = flowOf(loadSegmentAudio(flow, 's3', '別首.mp3'));
+		flow = flowOf(updateSegment(flow, 's3', { firstBeatSec: 3 }));
+		expect(flowOf(updateSegment(flow, 's3', { audioId: 'a1' })).segments[2]).toMatchObject({ firstBeatSec: 3 });
+	});
+
+	it('前一個音樂段用的是別的檔：第一拍不動', () => {
+		let flow = flowOf(loadSegmentAudio(twoMusic(), 's1', '歌.mp3'));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(loadSegmentAudio(flow, 's2', '別首.mp3'));
+		expect(flowOf(updateSegment(flow, 's3', { audioId: 'a1' })).segments[2]).toMatchObject({ firstBeatSec: 0 });
+	});
+
 	it('指到不存在的音樂檔就擋下', () => {
 		expect(updateSegment(twoMusic(), 's1', { audioId: 'a9' })).toEqual({
 			kind: 'blocked',

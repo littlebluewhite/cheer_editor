@@ -500,8 +500,30 @@ describe('新建', () => {
 		const file = new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
 		await flush();
+		// 缺的音樂都補好了：「少了音樂檔」的提示自己收掉
+		expect(screen.queryByRole('status')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByRole('button', { name: /音樂 1/ }).textContent).not.toContain('找不到音樂');
 		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
+	});
+
+	it('音樂檔壞了（解不開）：段設定說「音樂檔壞了，請重新選檔」，不拿長度 0 去提醒段比音樂長', async () => {
+		render(Page, {
+			createEngine: () => createFakeEngine(),
+			createSaver: () => fakeSaver().saver,
+			decode: async () => {
+				throw new Error('壞檔');
+			}
+		});
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1, 2, 3]) }));
+		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
+		const dialog = screen.getByRole('dialog');
+		expect(dialog.textContent).toContain('主歌.mp3（音樂檔壞了，請重新選檔）');
+		expect(within(dialog).queryByRole('note')).toBeNull();
+		// 第一拍照樣能改（不說「要在音樂結束（0.0 秒）之前」）
+		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '0.5' } });
+		expect(within(dialog).queryByRole('alert')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
+		expect(within(dialog).getByRole('alert').textContent).toBe('音樂檔壞了，請重新選檔');
 	});
 });

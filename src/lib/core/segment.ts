@@ -136,8 +136,7 @@ export function updateSegment(
 		const bpm = patch.bpm ?? old.bpm;
 		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(`BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`);
 		// 第一拍最細 0.01 秒，也比較好讀。
-		const firstBeatSec =
-			patch.firstBeatSec === undefined ? old.firstBeatSec : Math.round(patch.firstBeatSec * 100) / 100;
+		const firstBeatSec = Math.round((patch.firstBeatSec ?? continuedFirstBeat(flow, index, patch) ?? old.firstBeatSec) * 100) / 100;
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
 			return blocked('第一拍要是 0 秒以上');
 		}
@@ -206,6 +205,18 @@ export function loadSegmentAudio(
 	const audio = [...flow.audio, { id, file: `audio/${id}.${ext}`, name: fileName }];
 	const r = updateSegment({ ...flow, audio }, segmentId, { audioId: id });
 	return r.kind === 'ok' ? { ...r, audioId: id } : r;
+}
+
+/**
+ * 變速切段：還沒有音樂的段選了跟前一個音樂段同一個檔，第一拍接在前一段後面（前一段的第一拍＋長度）。
+ * 其他情況是 undefined（第一拍不動）。
+ */
+function continuedFirstBeat(flow: Flow, index: number, patch: SegmentPatch): number | undefined {
+	const old = flow.segments[index];
+	if (old.kind !== 'music' || old.audioId !== null || !patch.audioId) return undefined;
+	const prev = flow.segments.slice(0, index).findLast((s) => s.kind === 'music');
+	if (prev?.kind !== 'music' || prev.audioId !== patch.audioId) return undefined;
+	return prev.firstBeatSec + (prev.halfBeats * 30) / prev.bpm;
 }
 
 /** 存檔只帶用到的音樂，所以沒有段在用的音樂檔直接拿掉。 */
