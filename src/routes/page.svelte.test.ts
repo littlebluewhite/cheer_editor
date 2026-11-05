@@ -1967,11 +1967,17 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 		expect(screen.getByRole('button', { name: '＋口號段' })).toBeTruthy();
 	});
 
-	it('動作設定的「!」說明小窗', async () => {
+	it('動作設定的「?」說明小窗', async () => {
 		const session = await withSample();
 		const bang = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
 		const tip = document.getElementById(bang.getAttribute('aria-describedby')!)!;
 		expect(tip.hidden).toBe(true);
+		// 圖示是「?」，不是像警告的「!」；Tab 到它、滑鼠移過去都不會自己彈出來，點了才開。
+		bang.focus();
+		await fireEvent.focus(bang);
+		await fireEvent.pointerEnter(bang, { pointerType: 'mouse' });
+		expect(tip.hidden).toBe(true);
+		expect(bang.textContent).toBe('?');
 		await fireEvent.click(bang);
 		expect(tip.hidden).toBe(false);
 		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', isComposing: true });
