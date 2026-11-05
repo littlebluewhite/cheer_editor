@@ -213,6 +213,7 @@
 	}
 	.summary {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 16px;
 	}
 	.filters {
@@ -391,5 +392,39 @@
 	.marks small {
 		font-size: 10px;
 		color: var(--muted);
+	}
+	/* 印出來：只印表格，欄位跟著紙寬縮（人多時字可以拆行），不印篩選、按鈕和明細 */
+	@media print {
+		.filters,
+		.detail {
+			display: none;
+		}
+		.scroll {
+			overflow: visible;
+		}
+		table {
+			width: 100%;
+		}
+		th,
+		thead th,
+		td,
+		td:has(.cell) {
+			padding: 2px;
+			font-size: 9px;
+			white-space: normal;
+			word-break: break-all;
+		}
+		.cell {
+			min-width: 0;
+			padding: 0;
+			font-size: 9px;
+			white-space: normal;
+		}
+		td strong {
+			font-size: 11px;
+		}
+		td small {
+			font-size: 8px;
+		}
 	}
 </style>

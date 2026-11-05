@@ -1110,14 +1110,16 @@
 			</div>
 		{/if}
 	</div>
-	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
+	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
 			<button type="button" onclick={leaveToHome}>回首頁</button>
+			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
 			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
 		</div>
 	{/snippet}
-	{#if view === 'edit'}
+	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來 -->
+	{#if view === 'edit' && !printOpen}
 		<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
 		<section class="cover-hint rotate-hint" aria-labelledby="rotate-hint-title">
 			<Icon name="fit" size={28} />
@@ -1246,6 +1248,8 @@
 		grid-column: 1 / -1;
 		min-height: 0;
 		display: grid;
+		/* 表格很寬時（人多）只有表格自己左右捲，不把練習畫面撐開 */
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.split {
 		grid-column: 1 / -1;
@@ -1823,6 +1827,16 @@
 
 	@media print {
 		.print-hidden {
+			display: none;
+		}
+		/* 印記一次全上表、總表：只印練習畫面裡的表，不印上方列和提示 */
+		.editor.practicing {
+			display: block;
+			height: auto;
+			background: none;
+		}
+		.editor.practicing > .topbar,
+		.toast {
 			display: none;
 		}
 	}

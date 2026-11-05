@@ -35,9 +35,12 @@
 			: `${m.name}（場上 ${markers[m.id]} 號）`;
 	});
 
-	/** 「拍子 down 1-6 到 1-7」「手位 high V 1-8・給上層」。 */
+	/** 「拍子 down 1-6 到 1-7」「拍子 down 1-1& 到 1-2」「手位 high V 1-8・給上層」。 */
 	function cueLabel(eight: number | null, c: EightCountCue): string {
-		const span = c.to > c.from ? `${eight}-${c.from} 到 ${eight}-${c.to}` : `${eight}-${c.from}`;
+		const span = c.span
+			.split(' 到 ')
+			.map((b) => `${eight}-${b}`)
+			.join(' 到 ');
 		return cueText(c.kind, c.word, span, c.who ?? '');
 	}
 
@@ -76,15 +79,14 @@
 				{#each rows as row, i (i)}
 					<tbody>
 						<tr>
-							<td>{row.segmentLabel}</td>
-							<td>{row.eight ?? `整段 ${row.durationSec.toFixed(1)} 秒`}</td>
+							<td class="seg">{row.segmentLabel}</td>
+							<td class="seg">{row.eightText}</td>
 							<td class="num">{row.startSec.toFixed(1)}</td>
 							<td>
 								{#each row.actions as a, j (j)}
 									<div class="action">
 										<b class="at">{a.at}</b>
-										{a.categoryLabel}{#if a.name}·{a.name}{/if}：
-										{a.members.map((m) => (m.role ? `${m.name}（${m.role}）` : m.name)).join('、')}
+										{a.categoryLabel}{#if a.name}·{a.name}{/if}：{a.who}
 									</div>
 								{/each}
 								{#each row.walks as w, j (j)}
@@ -95,9 +97,16 @@
 								{#each row.formations as f (f.number)}
 									<figure>
 										<div class="mini">
-											<Field field={flow.field} members={flow.members} {markers} positions={f.pos} controls={false} />
+											<Field
+												field={flow.field}
+												members={flow.members}
+												{markers}
+												positions={f.pos}
+												controls={false}
+												marked={memberId ? [memberId] : []}
+											/>
 										</div>
-										<figcaption>站位 {f.number}{f.name ? ` ${f.name}` : ''}　{f.at}</figcaption>
+										<figcaption>{f.caption}</figcaption>
 									</figure>
 								{/each}
 							</td>
@@ -132,7 +141,7 @@
 															class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
 															style:grid-column="{c.from} / {c.to + 1}"
 															aria-label={cueLabel(row.eight, c)}
-															>{c.word}{#if c.who}<small>{c.who}</small>{/if}</span
+															>{#if c.span.includes('&')}<span class="span">{c.span}</span>{/if}{c.word}{#if c.who}<small>{c.who}</small>{/if}</span
 														>
 													{/each}
 												</div>
@@ -164,6 +173,7 @@
 		z-index: 1;
 		display: flex;
 		gap: 12px;
+		flex-wrap: wrap;
 		align-items: center;
 		padding: 10px 20px;
 		background: var(--ink, #16213a);
@@ -172,8 +182,10 @@
 	.tool-title {
 		font-size: 15px;
 		color: #fff;
+		white-space: nowrap;
 	}
 	.toolbar label {
+		white-space: nowrap;
 		display: inline-flex;
 		gap: 8px;
 		align-items: center;
@@ -211,6 +223,11 @@
 	th {
 		background: #f2f4f8;
 		font-size: 12px;
+	}
+	/* 「音樂 1」「5–8」不折成直排 */
+	.seg {
+		min-width: 4.5em;
+		white-space: nowrap;
 	}
 	tbody {
 		break-inside: avoid;
@@ -289,6 +306,12 @@
 		margin-left: 4px;
 		font-size: 10px;
 	}
+	/* 從 & 開始的拍點：格子只能整格，拍寫在字前面 */
+	.cue .span {
+		margin-right: 4px;
+		font-size: 10px;
+		font-weight: 400;
+	}
 	.cue.down {
 		background: var(--cue-down);
 		color: #fff;
@@ -335,11 +358,38 @@
 	.muted {
 		color: #7a8296;
 	}
+	/* 窄的時候（直拿 iPad、手機）：說明自己一行，「八拍表」「印誰」不擠成直排 */
+	@media screen and (max-width: 900px) {
+		.toolbar .muted {
+			order: 1;
+			flex-basis: 100%;
+		}
+		.page {
+			margin: 12px 8px 24px;
+			padding: 16px 12px;
+		}
+	}
 	@media print {
 		:global(.print-sheet) {
 			position: static;
 			overflow: visible;
 			background: #fff;
+		}
+		/* 長拍點、環節名字換行，不用「...」截掉 */
+		.cue,
+		.phase {
+			white-space: normal;
+			overflow: visible;
+			text-overflow: clip;
+			overflow-wrap: anywhere;
+		}
+		/* 同一個八拍可以跨頁（不然內容超過一頁時，第 1 頁只剩標題）；小站位圖不切開 */
+		tbody {
+			break-inside: auto;
+		}
+		figure,
+		.cue-line {
+			break-inside: avoid;
 		}
 		.page {
 			margin: 0;

@@ -181,6 +181,8 @@
 		--minor: #b45309;
 		--fail: #b91c1c;
 		display: grid;
+		/* 人多時只有表格自己左右捲（.scroll），不把畫面撐開 */
+		grid-template-columns: minmax(0, 1fr);
 		gap: 16px;
 		padding: 12px;
 		background: var(--surface);
@@ -286,6 +288,38 @@
 	@media (pointer: coarse) {
 		.slot {
 			min-height: 56px;
+		}
+	}
+	/* 印出來：只印表格，欄位跟著紙寬縮（人多時名字可以拆行），不印說明和按鈕 */
+	@media print {
+		.sheet {
+			padding: 0;
+			border: 0;
+		}
+		header p,
+		.stop,
+		footer {
+			display: none;
+		}
+		.scroll {
+			overflow: visible;
+		}
+		table {
+			width: 100%;
+		}
+		th,
+		thead th,
+		td {
+			padding: 2px;
+			font-size: 9px;
+			white-space: normal;
+			word-break: break-all;
+		}
+		.slot {
+			min-width: 0;
+			min-height: 0;
+			padding: 0;
+			font-size: 11px;
 		}
 	}
 </style>

@@ -116,6 +116,33 @@ async function openPracticeFlow(more = '') {
 	await sleep(300);
 }
 
+/**
+ * 開首頁，打開一份 40 人的流程：音樂 1（4 個八拍），x1 全隊跳躍（環節「整個」整個動作，可以記全上），
+ * 上面一個很長的步驟拍點（量八拍表印出來有沒有被截斷）。
+ */
+async function openBigFlow() {
+	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const of = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		let flow = of(c.createFlow({ name: '40 人', field: { strips: 9, layout: 'vertical' } }));
+		flow = of(c.addMembers(flow, Array.from({ length: 40 }, (_, i) => ({ name: '隊員' + (i + 1), gender: 'F', globalRole: 'base' }))));
+		flow = of(c.addSegment(flow, 'music'));
+		flow = of(c.updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
+		flow = of(c.addAction(flow, { segmentId: 's1', category: 'jump', name: '跳', start: 0, length: 16, note: '',
+			members: flow.members.map((m) => ({ memberId: m.id, role: null })) }));
+		flow = of(c.addPhase(flow, 'x1', { kind: 'whole', name: '整個跳', beats: { at: 0, len: 16 } }));
+		flow = of(c.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '左腳往前踩一步然後手臂拉到高V再往下收回胸前' }));
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([c.writeFlowFile(flow, {})], '40人.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.topbar')`));
+	await sleep(300);
+}
+
 /** 頁面裡元素的中心和外框。 */
 const rectOf = (selector) =>
 	js(`const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
@@ -390,7 +417,7 @@ const narrowHint = () =>
 		const field = document.querySelector('.field-host').getBoundingClientRect();
 		const cover = document.elementFromPoint(field.left + field.width / 2, field.top + field.height / 2);
 		const covered = !!cover && hint.contains(cover);
-		return { ok: covered && buttons.length === 2 && buttons.every((b) => b.點得到 && b.在畫面裡), value: { 場地被蓋住: covered, buttons } };`);
+		return { ok: covered && buttons.length === 3 && buttons.every((b) => b.點得到 && b.在畫面裡), value: { 場地被蓋住: covered, buttons } };`);
 
 await check('768×1024 的桌面視窗算窄：編輯畫面顯示窄螢幕提示，不是一個很小的場地', async () => {
 	await setViewport(768, 1024);
@@ -448,7 +475,110 @@ await check('844×390（手機橫拿）：提示和練習畫面都不溢出、�
 	const practice = await overflow();
 	return { ok: hint.ok && noOverflow(edit) && noOverflow(practice), value: { 提示: hint.value, 編排: edit, 練習: practice } };
 });
+await check('390×844（觸控）：隊員開了流程檔，按提示上的「看八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
+	await setTouchViewport(390, 844);
+	await openPracticeFlow();
+	const hint = await narrowHint();
+	if (!hint.ok) return hint;
+	const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '看八拍表');
+		if (!b) return null;
+		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	if (!go) return { ok: false, value: '提示上沒有「看八拍表」' };
+	await tap(go.x, go.y);
+	const res = await js(`const sheet = document.querySelector('.print-sheet');
+		if (!sheet) return { 打開了: false };
+		const hit = (el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return !!t && el.contains(t) && r.left >= 0 && r.right <= innerWidth; };
+		const close = [...sheet.querySelectorAll('button')].find((b) => b.textContent.trim() === '關閉');
+		return { 打開了: true, 印誰點得到: hit(sheet.querySelector('select')), 關閉點得到: hit(close), 表格有列: sheet.querySelectorAll('tbody tr').length };`);
+	const o = await overflow();
+	return {
+		ok: res.打開了 && res.印誰點得到 && res.關閉點得到 && res.表格有列 > 0 && o.頁寬 <= o.畫面寬,
+		value: { ...res, 頁寬: o.頁寬, 畫面寬: o.畫面寬 }
+	};
+});
 await clearTouch();
+
+// ---------- 八拍表、記一次全上表、總表：畫面上和印出來 ----------
+
+await check('768×1024 八拍表的標題列：「八拍表」「印誰」各自一行，不擠成直排', async () => {
+	await setViewport(768, 1024);
+	await openSample();
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(300);
+	// 數字自己那一段字排成幾行（每個字一行就是直排）
+	return js(`const one = (sel) => { const el = document.querySelector(sel);
+			const text = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+			const range = document.createRange(); range.selectNodeContents(text);
+			const lines = new Set([...range.getClientRects()].filter((r) => r.width).map((r) => Math.round(r.top))).size;
+			return { 字: text.textContent.trim(), 行數: lines, 一行: lines === 1 }; };
+		const title = one('.print-sheet .tool-title'), who = one('.print-sheet .toolbar label');
+		const seg = one('.print-sheet td.seg');
+		return { ok: title.一行 && who.一行 && seg.一行, value: { 八拍表: title, 印誰: who, 段: seg } };`);
+});
+
+await check('1440×900 記一次全上 40 人：只有表格左右捲，不撐開整頁', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(200);
+	await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('記一次全上')).click()`);
+	await sleep(300);
+	return js(`const sheet = document.querySelector('.sheet');
+		const scroll = sheet.querySelector('.scroll');
+		const practice = document.querySelector('.practice');
+		const date = document.querySelector('.practice .date').getBoundingClientRect();
+		const r = sheet.getBoundingClientRect();
+		const v = { 頁寬: document.scrollingElement.scrollWidth, 練習寬: [practice.scrollWidth, practice.clientWidth],
+			全上表右邊: Math.round(r.right), 畫面寬: innerWidth, 表格自己捲: scroll.scrollWidth > scroll.clientWidth, 日期右邊: Math.round(date.right) };
+		return { ok: v.頁寬 <= innerWidth && practice.scrollWidth <= practice.clientWidth + 1 && r.right <= innerWidth && v.表格自己捲 && date.right <= innerWidth, value: v };`);
+});
+
+/** 用列印的媒體查詢量：A4 直的扣掉邊界大約 718px 寬。 */
+async function asPrinted(fn) {
+	await setViewport(718, 1000);
+	await send('Emulation.setEmulatedMedia', { media: 'print' });
+	await sleep(300);
+	try { return await fn(); } finally { await send('Emulation.setEmulatedMedia', { media: '' }); }
+}
+/** 印出來：表格都不超出紙寬，App 的上方列和按鈕（表格裡的格子以外）都不印。 */
+const printedTables = () =>
+	js(`const shown = (el) => el.checkVisibility();
+		const tables = [...document.querySelectorAll('table')].filter(shown).map((t) => Math.round(t.getBoundingClientRect().right));
+		const buttons = [...document.querySelectorAll('button')].filter((b) => shown(b) && !b.closest('table')).map((b) => b.textContent.trim().slice(0, 12));
+		const v = { 紙寬: innerWidth, 頁寬: document.scrollingElement.scrollWidth, 表格右邊: tables, 上方列印出來: shown(document.querySelector('.topbar')), 印出來的按鈕: buttons };
+		return { ok: tables.length > 0 && tables.every((r) => r <= innerWidth) && v.頁寬 <= innerWidth && !v.上方列印出來 && buttons.length === 0, value: v };`);
+
+await check('列印：記一次全上 40 人只印表格，欄位不超出紙寬，不印上方列和按鈕', async () => {
+	// 上一條已經開著 40 人的全上表
+	return asPrinted(printedTables);
+});
+
+await check('列印：總表 40 人只印表格，欄位不超出紙寬，不印上方列和按鈕', async () => {
+	await js(`[...document.querySelectorAll('.sheet footer button')].find((b) => b.textContent.trim() === '取消').click()`);
+	await sleep(200);
+	// 改過格子的話會先問；沒改過直接回去
+	await js(`[...document.querySelectorAll('.practice .pages button')].find((b) => b.textContent.trim() === '總表').click()`);
+	await sleep(300);
+	return asPrinted(printedTables);
+});
+
+await check('列印：八拍表的拍點、環節換行不截斷，背景是白的', async () => {
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '編排').click()`);
+	await sleep(200);
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(300);
+	return asPrinted(() =>
+		js(`const cut = [...document.querySelectorAll('.print-sheet .cue, .print-sheet .phase')]
+				.filter((el) => getComputedStyle(el).textOverflow === 'ellipsis' || el.scrollWidth > el.clientWidth + 1)
+				.map((el) => el.textContent.trim().slice(0, 20));
+			const bg = [document.documentElement, document.body, document.querySelector('.print-sheet')].map((el) => getComputedStyle(el).backgroundColor);
+			const white = bg.every((c) => c === 'rgb(255, 255, 255)' || c === 'rgba(0, 0, 0, 0)');
+			const table = document.querySelector('.print-sheet table').getBoundingClientRect();
+			return { ok: cut.length === 0 && white && table.right <= innerWidth,
+				value: { 被截斷的: cut, 背景: bg, 表格右邊: Math.round(table.right), 紙寬: innerWidth } };`)
+	);
+});
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

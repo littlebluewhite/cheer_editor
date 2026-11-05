@@ -51,6 +51,7 @@
 		min-height: 0;
 		overflow-y: auto;
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		align-content: start;
 		gap: 12px;
 		padding: 12px 16px 24px;
@@ -86,5 +87,14 @@
 		align-items: center;
 		gap: 8px;
 		font-weight: 600;
+	}
+	@media print {
+		.practice {
+			overflow: visible;
+			padding: 0;
+		}
+		header {
+			display: none;
+		}
 	}
 </style>
