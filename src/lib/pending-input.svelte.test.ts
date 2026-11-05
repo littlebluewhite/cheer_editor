@@ -75,4 +75,17 @@ describe('沒送出的字（真的 adapter）', () => {
 		domPendingInput.flush();
 		expect(sent).toEqual(['小芳']);
 	});
+
+	it('中文輸入法還在選字：現在送出不送（注音不進流程），還算沒送出；選完了才送', async () => {
+		const { input, sent } = field();
+		await type(input, '小美ㄇㄟˇ');
+		await fireEvent.compositionStart(input);
+		domPendingInput.flush();
+		expect(sent).toEqual([]);
+		expect(domPendingInput.pending).toBe(true);
+		await fireEvent.compositionEnd(input);
+		await fireEvent.input(input, { target: { value: '小美美' } });
+		domPendingInput.flush();
+		expect(sent).toEqual(['小美美']);
+	});
 });

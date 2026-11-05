@@ -73,7 +73,8 @@
 	const guideHref = resolve('/guide');
 
 	const flow = $derived(session.flow);
-	const unsaved = $derived(session.unsaved);
+	/** 上方列的「未存」：有沒存的改動，或欄位裡打了字還沒送出（打字時就出現）。 */
+	const unsaved = $derived(editor.hasUnsavedWork);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
 	setUnsavedCheck(() => editor.hasUnsavedWork);
 	/**
@@ -347,10 +348,12 @@
 <svelte:window
 	{onkeydown}
 	{onbeforeunload}
+	onpagehide={() => editor.file.pageHidden()}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
 />
+<svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}

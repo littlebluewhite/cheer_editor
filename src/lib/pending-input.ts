@@ -2,11 +2,17 @@
 // 有沒有打了還沒送出的字、現在送出（跟離開欄位一樣）、當作已經送出了（例：復原換上舊的流程）。
 // 編輯器 module 收它（關分頁前的提醒、service worker 擋重新整理、存檔、欄位裡按 ⌘Z）；對話框關掉前也先送出。
 // 真的（domPendingInput）看 DOM，假的（#lib/test-fakes.js 的 fakePendingInput）給 Node 測試用。
+// 真的 pending 是畫面看得到的（上方列的「未存」一打字就出現）：焦點、打字、送出都通知在看它的地方。
+
+import { createSubscriber } from 'svelte/reactivity';
 
 export interface PendingInput {
 	/** 焦點所在的欄位打了字還沒送出（打了又刪回原來的字也算）。 */
 	readonly pending: boolean;
-	/** 現在送出：欄位的值跟上次送出的不一樣，就跟離開欄位一樣發 change。之後就沒有沒送出的字。 */
+	/**
+	 * 現在送出：欄位的值跟上次送出的不一樣，就跟離開欄位一樣發 change。之後就沒有沒送出的字。
+	 * 中文輸入法還在選字時不送（不然注音、拼音會進流程），選完照樣算沒送出。
+	 */
 	flush(): void;
 	/** 當作已經送出了：欄位被畫面改了值（例：復原換上舊的流程），現在的值不用再送。 */
 	settle(): void;
@@ -14,8 +20,18 @@ export interface PendingInput {
 
 type Field = HTMLInputElement | HTMLTextAreaElement;
 
-/** 焦點所在的欄位、它上次送出時的值、之後教練有沒有在裡面打字（畫面自己改的值不算打字）。 */
-let typing: { el: Field; value: string; typed: boolean } | null = null;
+/** 焦點所在的欄位、它上次送出時的值、之後教練有沒有在裡面打字（畫面自己改的值不算打字）、輸入法是不是還在選字。 */
+let typing: { el: Field; value: string; typed: boolean; composing: boolean } | null = null;
+
+/** 在看 pending 的地方（畫面）：焦點、打字、送出時通知它們重看。 */
+const watchers = new Set<() => void>();
+const subscribe = createSubscriber((update) => {
+	watchers.add(update);
+	return () => watchers.delete(update);
+});
+function changed() {
+	for (const update of watchers) update();
+}
 
 function isTextField(el: EventTarget | null): el is Field {
 	return (
@@ -28,21 +44,37 @@ function isTextField(el: EventTarget | null): el is Field {
 function sent(t: NonNullable<typeof typing>) {
 	t.value = t.el.value;
 	t.typed = false;
+	changed();
 }
 
 if (typeof window !== 'undefined') {
 	window.addEventListener(
 		'focusin',
-		(e) => (typing = isTextField(e.target) ? { el: e.target, value: e.target.value, typed: false } : null),
-		true
-	);
-	window.addEventListener(
-		'input',
 		(e) => {
-			if (typing && e.target === typing.el) typing.typed = true;
+			typing = isTextField(e.target) ? { el: e.target, value: e.target.value, typed: false, composing: false } : null;
+			changed();
 		},
 		true
 	);
+	window.addEventListener('focusout', changed, true);
+	window.addEventListener(
+		'input',
+		(e) => {
+			if (!typing || e.target !== typing.el) return;
+			typing.typed = true;
+			changed();
+		},
+		true
+	);
+	for (const [type, composing] of [['compositionstart', true], ['compositionend', false]] as const) {
+		window.addEventListener(
+			type,
+			(e) => {
+				if (typing && e.target === typing.el) typing.composing = composing;
+			},
+			true
+		);
+	}
 	// 值跟上次送出的一樣（例：⌘Z 退回之後離開欄位）：不再送一次，免得多記一步。捕獲階段，比欄位自己的處理早。
 	window.addEventListener(
 		'change',
@@ -60,11 +92,12 @@ if (typeof window !== 'undefined') {
 /** 真的：看焦點所在的欄位（瀏覽器、jsdom）。 */
 export const domPendingInput: PendingInput = {
 	get pending() {
+		subscribe();
 		return !!typing && typing.typed && document.activeElement === typing.el;
 	},
 	flush() {
 		const t = typing;
-		if (!t || document.activeElement !== t.el) return;
+		if (!t || document.activeElement !== t.el || t.composing) return;
 		if (t.el.value !== t.value) t.el.dispatchEvent(new Event('change', { bubbles: true }));
 		sent(t);
 	},
