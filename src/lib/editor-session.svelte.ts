@@ -16,6 +16,7 @@ import {
 	type MoveResult
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/components/ask.svelte.js';
+import { Flash } from '#lib/components/flash.svelte.js';
 
 const UNDO_LIMIT = 100;
 
@@ -42,17 +43,18 @@ export class EditorSession {
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 
-	#notice = $state('');
+	#notice = new Flash<string>();
 	/** 提示旁邊有「復原」（剛刪掉站位）。換了提示就沒有。 */
 	#noticeUndo = $state(false);
 
-	/** 提示（存檔、開檔的結果、被擋的原因…），浮在場地或練習畫面上；頁面過幾秒或下一個操作就收掉。 */
+	/** 提示（存檔、開檔的結果、被擋的原因…），浮在場地或練習畫面上；過幾秒（換了一句就重算）或頁面看到下一個操作就收掉。 */
 	get notice(): string {
-		return this.#notice;
+		return this.#notice.value ?? '';
 	}
 
 	set notice(text: string) {
-		this.#notice = text;
+		if (!text) this.#notice.clear();
+		else if (text !== this.#notice.value) this.#notice.show(text);
 		this.#noticeUndo = false;
 	}
 

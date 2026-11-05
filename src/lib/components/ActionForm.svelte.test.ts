@@ -243,6 +243,10 @@ describe('動作表單：改選到的動作', () => {
 		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: '底層' });
 		await fireEvent.keyDown(pickB, { key: 'Backspace' });
 		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+		// 中文輸入法還在選字時按的鍵（Safari 選字時 keyCode 是 229）不算快捷鍵。
+		await fireEvent.keyDown(pickB, { key: '1', isComposing: true });
+		await fireEvent.keyDown(pickB, { key: '1', keyCode: 229 });
+		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
 	});
 
 	it('任務角色選單每一項有一句說明，取自名詞對照表（自訂角色用教練寫的意思）', async () => {

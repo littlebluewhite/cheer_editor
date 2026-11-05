@@ -2,7 +2,7 @@
 
 import { CELL_M } from './field';
 import type { Flow } from './flow';
-import { formationTimes, formationWalks, type FormationWalk, type Position } from './formation';
+import { formationTimes, formationWalks, walkPoint, type FormationWalk, type Position } from './formation';
 import { EPS, segmentSpans, unitSec, units } from './time';
 
 /** 一次撞位：連續好幾個取樣點都撞到只算一次。 */
@@ -50,9 +50,7 @@ export function clashes(flow: Flow): Clash[] {
 				const byId = new Map<string, FormationWalk>(leg.walks.map((w) => [w.memberId, w]));
 				const at = (id: string): Position | undefined => {
 					const w = byId.get(id);
-					if (!w) return leg.aPos[id];
-					const f = Math.min(Math.max((t - w.departSec) / (w.arriveSec - w.departSec), 0), 1);
-					return [w.from[0] + (w.to[0] - w.from[0]) * f, w.from[1] + (w.to[1] - w.from[1]) * f];
+					return w ? walkPoint(w.from, w.to, w.departSec, w.arriveSec, t) : leg.aPos[id];
 				};
 				const walking = (id: string) => {
 					const w = byId.get(id);

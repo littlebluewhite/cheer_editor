@@ -102,7 +102,7 @@ export function addMemberLines(
 /**
  * 有錯的人（沒名字、名字太長、沒選性別或全局角色、認不得的行）不加，所有錯一次列在 errors，其他人照加；
  * 一個都加不了就擋下，原因是所有錯（一行一個）。只有一個人時錯誤不寫第幾個。
- * 加了會超過 40 人就一個都不加，原因寫還能加幾人。
+ * 加了會超過 MAX_MEMBERS 人就一個都不加，原因寫還能加幾人。
  * 新人排進開頭那張站位最靠近場地中間的空格點（不跟現有的人疊到），後面的站位用同一個位置；格點都有人了才排場外。
  */
 function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResult> {
@@ -110,7 +110,7 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 	for (const e of entries) {
 		if (!e.input) continue;
 		const { name, gender, globalRole } = e.input;
-		const problem = nameProblem(name.trim());
+		const problem = memberNameProblem(name.trim());
 		if (problem) e.problems.push(problem);
 		if (!gender) e.problems.push('請選性別');
 		if (!globalRole) e.problems.push('請選全局角色');
@@ -170,7 +170,7 @@ export function updateMember(
 	const member = flow.members.find((m) => m.id === id);
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
-	const problem = nameProblem(updated.name);
+	const problem = memberNameProblem(updated.name);
 	if (problem) return blocked(problem);
 	// 改名字當成可能換了人：先照「換人」走收尾，看會動到哪些紀錄（他在的組的、他自己的）。
 	const swapped = updated.name === member.name ? [] : flow.actions.map((a) => replaced(flow, a, id));
@@ -375,7 +375,7 @@ function samePlace(a: Position, b: Position): boolean {
 }
 
 /** 名字的毛病：空的、太長；沒問題是 null。名字先去掉前後空白再傳進來。 */
-function nameProblem(name: string): string | null {
+function memberNameProblem(name: string): string | null {
 	if (!name) return '請填隊員名字';
 	if (Array.from(name).length > MAX_NAME_CHARS) return `隊員名字最多 ${MAX_NAME_CHARS} 個字`;
 	return null;

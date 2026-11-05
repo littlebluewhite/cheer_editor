@@ -8,6 +8,7 @@ import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { PHASE_KINDS } from './phase-types';
+import { MAX_CHANT_SEC, MAX_EIGHTS } from './segment';
 import { freshIds } from './ids';
 import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
@@ -166,9 +167,27 @@ export function readFlowFile(
 	}
 	if (!isFlow(doc.flow)) return { kind: 'error', message: BROKEN };
 	const flow = doc.flow;
+	const tooLong = segmentLengthProblem(flow);
+	if (tooLong) return { kind: 'error', message: tooLong };
 	const audio: AudioBytes = {};
 	for (const ref of flow.audio) if (files[folder + ref.file]) audio[ref.id] = files[folder + ref.file];
 	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
+}
+
+/**
+ * 段的長度超出編輯器能設的範圍（口號段 0.1 到 MAX_CHANT_SEC 秒、音樂段到 MAX_EIGHTS 個八拍，不是正的也算）：
+ * 照樣打開會把分頁卡住，所以擋下來，寫出上限。沒問題是 null。
+ */
+function segmentLengthProblem(flow: Flow): string | null {
+	for (const s of flow.segments) {
+		if (s.kind === 'chant' && !(s.tenths >= 1 && s.tenths <= MAX_CHANT_SEC * 10)) {
+			return `口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`;
+		}
+		if (s.kind === 'music' && !(s.halfBeats >= 1 && s.halfBeats <= MAX_EIGHTS * 16)) {
+			return `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`;
+		}
+	}
+	return null;
 }
 
 /**
@@ -179,8 +198,9 @@ function folderOf(files: Record<string, Uint8Array>): string | null {
 	if (files[JSON_FILE]) return '';
 	const found = Object.keys(files)
 		.filter((k) => !k.startsWith('__MACOSX/'))
-		.map((k) => k.match(/^([^/]+\/)flow\.json$/)?.[1])
-		.filter((f) => f !== undefined);
+		.map((k) => k.split('/'))
+		.filter((parts) => parts.length === 2 && parts[0] !== '' && parts[1] === JSON_FILE)
+		.map(([folder]) => `${folder}/`);
 	return found.length === 1 ? found[0] : null;
 }
 
@@ -321,4 +341,10 @@ export function segmentsMissingAudio(flow: Flow, loadedAudioIds: string[]): stri
 	return flow.segments
 		.filter((s) => s.kind === 'music' && s.audioId !== null && !loaded.has(s.audioId))
 		.map((s) => s.id);
+}
+
+/** 這些段（通常是 segmentsMissingAudio 給的）用到的音樂檔名，照音樂檔的順序，同一個檔只寫一次。 */
+export function missingAudioNames(flow: Flow, segmentIds: string[]): string[] {
+	const ids = new Set(flow.segments.flatMap((s) => (s.kind === 'music' && segmentIds.includes(s.id) ? [s.audioId] : [])));
+	return flow.audio.filter((a) => ids.has(a.id)).map((a) => a.name);
 }

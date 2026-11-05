@@ -6,7 +6,7 @@ export type { CommandResult, ConfirmOption, RecordsChoice } from './result';
 export { createFlow, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
-export { readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
+export { missingAudioNames, readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
 export type { AudioBytes, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
 
 export {
@@ -66,12 +66,14 @@ export {
 	attemptWhos,
 	carryRecords,
 	deleteLastAttempt,
+	deleteLastRunThrough,
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
-	restoreAttempt
+	restoreAttempt,
+	restoreRunThrough
 } from './records';
-export type { RunThroughMarks } from './records';
+export type { RemovedRunThrough, RunThroughMarks } from './records';
 
 export { PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';

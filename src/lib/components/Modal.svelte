@@ -9,6 +9,7 @@
 	// - Esc、×、點背景走同一條路 close()：先把還沒離開的欄位送出去（跟離開欄位一樣），
 	//   這一下有欄位被擋（退回實際值、顯示原因）或要問教練，就先不關，讓教練看到是哪一格。
 	// - 裡面有確認框時，Esc 只關確認框。
+	import { composing } from '#lib/ime.js';
 	import type { Snippet } from 'svelte';
 	import { flushPendingInput } from '#lib/pending-input.js';
 	import type { Ask } from './ask.svelte';
@@ -86,7 +87,7 @@
 		if (!isTop()) return;
 		mark();
 		if (e.key === 'Tab') return trapTab(e);
-		if (e.key !== 'Escape' || e.isComposing) return;
+		if (e.key !== 'Escape' || composing(e)) return;
 		e.stopPropagation();
 		e.preventDefault();
 		if (ask?.question) ask.answer('cancel');

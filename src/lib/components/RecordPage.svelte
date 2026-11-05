@@ -3,19 +3,24 @@
 	// 左邊：有記成功率、有環節的動作，照流程順序，每個寫這天記了幾次和最弱的環節。
 	// 右邊：選到的動作每組一張卡（騰翻、跳躍每人一張），下面是這個動作每天的成功率。
 	// 最上面的「＋ 記一次全上」打開跟總表一樣的全上表（RunThroughSheet），存好或取消再回到記錄頁。
+	// 旁邊的「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），刪了幾秒內可以救回。
 	import {
 		actionLabel,
 		attemptWhos,
+		deleteLastRunThrough,
 		phaseLabel,
 		recordableActions,
+		restoreRunThrough,
 		successPercent,
 		weakestPhase,
-		type Action
+		type Action,
+		type RemovedRunThrough
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
+	import { Ask } from './ask.svelte.js';
 	import { Flash } from './flash.svelte.js';
 	import { actionColor } from './category-colors';
 
@@ -35,12 +40,26 @@
 	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
-	/** 存好全上之後的「已存」，幾秒後收掉。 */
-	const saved = new Flash<string>();
+	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著那次全上，給「救回」。 */
+	const saved = new Flash<{ text: string; removed?: RemovedRunThrough }>();
+	/** 刪掉上一次全上、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
+	const ask = new Ask((f) => session.record(f));
+	/** 這天有沒有全上。 */
+	const hasRun = $derived(flow.actions.some((a) => a.successRate?.records.some((r) => r.date === date && r.runThroughId)));
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) saved.show('已存這次全上');
+		if (done) saved.show({ text: '已存這次全上' });
+	}
+
+	function removeRun() {
+		ask.send(() => deleteLastRunThrough(flow, date), {
+			done: ({ removed }) => saved.show({ text: '已刪掉', removed })
+		});
+	}
+
+	function restoreRun(removed: RemovedRunThrough) {
+		ask.send(() => restoreRunThrough(flow, removed), { done: () => saved.show({ text: '已救回' }) });
 	}
 
 	const countOn = (records: { date: string }[]) => records.filter((r) => r.date === date).length;
@@ -56,7 +75,14 @@
 {:else if action}
 	<div class="run">
 		<button type="button" class="primary" onclick={() => (recording = true)}>＋ 記一次全上</button>
-		{#if saved.value}<span class="saved" role="status">{saved.value}</span>{/if}
+		<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
+		{#if saved.value}
+			{@const removed = saved.value.removed}
+			<span class="saved" role="status"
+				>{saved.value.text}{#if removed}<button type="button" class="ghost" onclick={() => restoreRun(removed)}>救回</button>{/if}</span
+			>
+		{/if}
+		{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 	</div>
 	<div class="record">
 		<ul class="list" aria-label="記成功率的動作">
@@ -94,13 +120,26 @@
 <style>
 	.run {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 10px;
 	}
 	.saved {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
 		color: #15803d;
 		font-size: 13px;
 		font-weight: 700;
+	}
+	.saved button {
+		padding: 2px 8px;
+		font-size: 13px;
+		text-decoration: underline;
+	}
+	.error {
+		color: #b91c1c;
+		font-size: 13px;
 	}
 	.record {
 		display: grid;
