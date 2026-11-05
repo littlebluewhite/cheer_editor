@@ -27,6 +27,7 @@ export { ACTION_CATEGORIES, actionLabel, actionSeconds } from './action-types';
 export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
 export {
 	actionSlotAt,
+	busyMembers,
 	addAction,
 	deleteAction,
 	idleAt,

@@ -6,6 +6,8 @@
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
+	// 同一時間在別的動作裡的人標出來（「拿掉這幾個人」一次拿掉）；改動作時選了別的人，「把選的 N 人加進來」。
+	// 從任務角色選單的「＋自訂任務角色…」新增的角色，套給打開選單的那個人。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
@@ -71,12 +73,26 @@
 			}))
 	);
 
+	/** 同一時間在別的動作裡的人：隊員 id → 那個動作（清單和「＋加人…」標出來）。 */
+	const busy = $derived(draft.busy);
+	const busyHere = $derived(draft.members.filter((m) => busy.has(m.memberId)));
+	/** 改動作時，選了但還沒在動作裡的人（「把選的 N 人加進來」）。 */
+	const pickedOutside = $derived(
+		action
+			? session.selectedMemberIds.filter(
+					(id) => flow.members.some((m) => m.id === id) && !draft.members.some((d) => d.memberId === id)
+				)
+			: []
+	);
+
 	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
 	const grouped = $derived(!!action && groupsPeople(action));
 
 	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
 	const ask = draft.ask;
 	let glossaryOpen = $state(false);
+	/** 從第幾個人的任務角色選單打開名詞對照表（「＋自訂任務角色…」）：新增的角色套給他。 */
+	let roleFor: number | null = null;
 	let formEl: HTMLElement;
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
@@ -121,6 +137,28 @@
 		draft.setRole(i, role);
 		changed();
 		if (byKey) rolePickers[i + 1]?.focus();
+	}
+
+	/** 名詞對照表新增了自訂任務角色：是從任務角色選單打開的，就套給那個人。 */
+	function roleAdded(name: string) {
+		if (roleFor === null || !draft.members[roleFor]) return;
+		setRole(roleFor, name, false);
+		roleFor = null;
+	}
+
+	function openGlossary(i: number | null) {
+		roleFor = i;
+		glossaryOpen = true;
+	}
+
+	function addSelected() {
+		draft.addMembers(pickedOutside);
+		changed();
+	}
+
+	function dropBusy() {
+		draft.dropBusy();
+		changed();
 	}
 
 	function addMember(select: HTMLSelectElement) {
@@ -316,7 +354,7 @@
 						</span>
 					</span>
 				</span>
-				<button type="button" class="link" onclick={() => (glossaryOpen = true)}>名詞對照表</button>
+				<button type="button" class="link" onclick={() => openGlossary(null)}>名詞對照表</button>
 			</div>
 			{#if draft.members.length}
 				<ul class:grouped>
@@ -326,6 +364,7 @@
 							<span class="who">
 								{#if who}<i class="gr {who.globalRole}">{who.globalRole === 'top' ? '上' : '底'}</i>{/if}
 								<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
+								{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
 							</span>
 							<RolePicker
 								bind:this={rolePickers[i]}
@@ -333,7 +372,7 @@
 								value={m.role}
 								{roles}
 								onpick={(role, byKey) => setRole(i, role, byKey)}
-								onnew={() => (glossaryOpen = true)}
+								onnew={() => openGlossary(i)}
 							/>
 							{#if grouped}
 								{@const badge = action && squadBadge(action, m)}
@@ -352,11 +391,25 @@
 			{:else}
 				<p class="muted none">還沒有人：用上面的「選人」，或在場上點人。</p>
 			{/if}
+			{#if busyHere.length}
+				<p class="hint-warn" role="note">
+					{busyHere.map((m) => nameOf(m.memberId)).join('、')} 同一時間在別的動作裡
+					<button type="button" class="link" onclick={dropBusy}>拿掉這幾個人</button>
+				</p>
+			{/if}
 			{#each actionHints(draft) as hint (hint)}<p class="hint-warn" role="note">{hint}</p>{/each}
+			{#if pickedOutside.length}
+				<button type="button" class="add-picked" onclick={addSelected}
+					><Icon name="plus" size={14} />把選的 {pickedOutside.length} 人加進來</button
+				>
+			{/if}
 			<div class="adders">
 				<select aria-label="加人" onchange={(e) => addMember(e.currentTarget)}>
 					<option value="">＋加人…</option>
-					{#each others as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+					{#each others as m (m.id)}
+						{@const a = busy.get(m.id)}
+						<option value={m.id}>{m.name}{a ? `（在「${actionLabel(a)}」裡）` : ''}</option>
+					{/each}
 				</select>
 				{#if copySources.length}
 					<select aria-label="從別的動作複製人" onchange={(e) => copyFrom(e.currentTarget)}>
@@ -403,7 +456,7 @@
 </section>
 
 {#if glossaryOpen}
-	<RoleGlossary onclose={() => (glossaryOpen = false)} />
+	<RoleGlossary onclose={() => (glossaryOpen = false)} onadded={roleAdded} />
 {/if}
 
 <style>
@@ -735,6 +788,14 @@
 	/* 動作有環節時：任務角色和移出鈕中間多一個唯讀的「第 n 組」標籤 */
 	ul.grouped li {
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
+	}
+	.busy-tag {
+		font-size: 11px;
+		color: var(--danger, #c8372d);
+		white-space: nowrap;
+	}
+	.add-picked {
+		justify-self: start;
 	}
 	.squad-tag {
 		font-size: 12px;

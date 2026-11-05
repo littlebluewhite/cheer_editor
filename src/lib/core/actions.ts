@@ -171,7 +171,12 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 		const max = lengthText(segment, Math.max(1, units(segment) - action.start));
 		return `動作長度要在 ${lengthText(segment, 1)} 到 ${max} ${music ? '拍' : '秒'}之間`;
 	}
-	if (action.start + action.length > units(segment)) return '動作不能跨段，要跨就拆成兩個';
+	if (action.start + action.length > units(segment)) {
+		// 最後一段後面沒有段可以拆：寫還剩多長。
+		const room = units(segment) - action.start;
+		if (flow.segments.at(-1) !== segment || room < 1) return '動作不能跨段，要跨就拆成兩個';
+		return `超過這段的結尾，最多 ${lengthText(segment, room)} ${music ? '拍' : '秒'}`;
+	}
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';
 	for (const cue of action.cues ?? []) {
 		const problem = cueProblem(segment, action, cue);
@@ -204,8 +209,24 @@ function peopleProblem(flow: Flow, action: Action): string | null {
 }
 
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */
-function overlaps(a: Action, b: Action): boolean {
+function overlaps(a: ActionSlot, b: ActionSlot): boolean {
 	return a.segmentId === b.segmentId && a.start < b.start + b.length && b.start < a.start + a.length;
+}
+
+/** 動作佔的段和時間。 */
+type ActionSlot = Pick<Action, 'segmentId' | 'start' | 'length'>;
+
+/**
+ * 這段時間裡已經在別的動作裡的人（選人時標出來、一次拿掉）：隊員 id → 他在的那個動作。
+ * id 是正在改的動作自己，不算。
+ */
+export function busyMembers(flow: Flow, slot: ActionSlot & { id?: string }): Map<string, Action> {
+	const busy = new Map<string, Action>();
+	for (const other of flow.actions) {
+		if (other.id === slot.id || !overlaps(other, slot)) continue;
+		for (const m of other.members) if (!busy.has(m.memberId)) busy.set(m.memberId, other);
+	}
+	return busy;
 }
 
 /** 在播放頭新增動作時預設的段和時間：從播放頭那一格開始，音樂段一個八拍、口號段 3 秒，不超出段尾。沒有段是 null。 */

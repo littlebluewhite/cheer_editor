@@ -156,7 +156,7 @@ describe('刪隊員', () => {
 		// 小A 在 x1（和小B）和 x2（只有他）裡
 		expect(deleteMember(flow, 'm1')).toEqual({
 			kind: 'confirm',
-			message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，其中 1 個會被整個刪掉',
+			message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，其中 1 個會被整個刪掉，「技巧·Lib」會少了上層',
 			items: ['動作「跳躍·T」（音樂 1 3-1 起）']
 		});
 		expect(flow).toEqual(before);
@@ -191,6 +191,11 @@ describe('刪隊員', () => {
 	it('標記用開頭字時寫開頭字', () => {
 		const flow = flowOf(setMarkers(sample(), 'initial'));
 		expect(deleteMember(flow, 'm3')).toMatchObject({ message: '刪掉隊員「小C」（標記 小C、底層）：他不在任何動作裡' });
+	});
+
+	it('他在留下來的動作裡是上層：確認訊息寫那個動作會少了上層；他是別的任務角色就不寫', () => {
+		expect(deleteMember(sample(), 'm1')).toMatchObject({ message: expect.stringMatching(/，「技巧·Lib」會少了上層$/) });
+		expect(deleteMember(sample(), 'm2')).toMatchObject({ message: expect.not.stringContaining('少了') });
 	});
 
 	it('在動作裡但沒有動作會被整個刪掉：不寫「其中 0 個」', () => {

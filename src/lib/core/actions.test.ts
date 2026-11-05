@@ -9,6 +9,7 @@ import {
 	memberActionAt,
 	memberGroup,
 	moveAction,
+	moveSegment,
 	previousActions,
 	raisedAt,
 	resizeAction,
@@ -93,6 +94,18 @@ describe('新增動作', () => {
 		expect(addAction(flow, lib({ start: 20, length: 12 })).kind).toBe('ok');
 		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 6 })).kind).toBe('blocked');
 		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 5 })).kind).toBe('ok');
+	});
+
+	it('最後一段超出段尾：後面沒有段可以拆，寫最多還剩多長', () => {
+		expect(addAction(sample(), lib({ segmentId: 's2', start: 70, length: 40 }))).toEqual({
+			kind: 'blocked',
+			message: '超過這段的結尾，最多 3.0 秒'
+		});
+		const last = flowOf(moveSegment(sample(), 's1', 1));
+		expect(addAction(last, lib({ start: 24, length: 16 }))).toEqual({
+			kind: 'blocked',
+			message: '超過這段的結尾，最多 4 拍'
+		});
 	});
 
 	it('同一個隊員同一時間只能在一個動作裡，重疊就擋下', () => {
