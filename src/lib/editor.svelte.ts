@@ -78,7 +78,8 @@ export class Editor {
 			() => this.session.flow,
 			() => adapters.createEngine((id) => this.music.buffer(id)),
 			adapters.nextFrame,
-			follow
+			follow,
+			() => this.session.selectedAction
 		);
 		this.session = new EditorSession(flow, this.playback, follow);
 		this.#music = $state.raw(this.#newMusic());

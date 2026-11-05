@@ -22,6 +22,7 @@
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
+	import { SPEEDS } from '#lib/playback.svelte.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
@@ -468,6 +469,23 @@
 					/>
 					<Icon name="metronome" />節拍器
 				</label>
+				<label class="toggle repeat" title="有選動作就重複那個動作，沒選就重複目前的八拍">
+					<input
+						type="checkbox"
+						checked={playback.repeat}
+						onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
+					/>
+					<Icon name="repeat" />重複
+				</label>
+				<select
+					class="speed"
+					aria-label="播放速度"
+					title="慢速播放，音高不變"
+					value={String(playback.rate)}
+					onchange={(e) => playback.setRate(Number(e.currentTarget.value))}
+				>
+					{#each SPEEDS as rate (rate)}<option value={String(rate)}>{rate}x</option>{/each}
+				</select>
 				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
 					<span class="latency-text">延遲校正</span>
 					<input
@@ -1201,12 +1219,17 @@
 		outline: 2px solid var(--sel);
 		outline-offset: 2px;
 	}
-	.latency input {
+	.latency input,
+	.speed {
 		width: 64px;
 		background: #0c1426;
 		color: #fff;
 		border-color: #36425f;
 		padding: 3px 6px;
+	}
+	.speed {
+		width: auto;
+		font-size: 12px;
 	}
 
 	.actions {
@@ -1658,8 +1681,8 @@
 	}
 
 	/* 窄一點的視窗：延遲校正只留「延遲」、輸入框和「毫秒」（滑過去看得到說明），不整個藏起來。
-	   上方列多了「編排｜練習」，所以從 1540px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
-	@media (max-width: 1540px) {
+	   上方列多了「編排｜練習」、播放區多了「重複」和速度，所以從 1700px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
+	@media (max-width: 1700px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1687,8 +1710,8 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
-	   右邊多了「編輯」開關、延遲校正多了「毫秒」，所以從 1435px 就換。 */
-	@media (max-width: 1435px) {
+	   右邊多了「編輯」開關、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1570px 就換。 */
+	@media (max-width: 1570px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}

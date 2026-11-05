@@ -409,7 +409,7 @@ async function renameFlowTo(name) {
 	await sleep(200);
 }
 
-for (const w of [1141, 1200, 1300, 1435, 1436]) {
+for (const w of [1141, 1200, 1300, 1570, 1571, 1700, 1701]) {
 	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
 		await setViewport(w, 900);
 		await openSample();

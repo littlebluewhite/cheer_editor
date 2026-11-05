@@ -205,7 +205,7 @@ export {
 } from './time';
 export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
 
-export { firstBeatPreview, playbackPlan, playStartSec, resumeSec } from './playback';
+export { firstBeatPreview, playbackPlan, playStartSec, repeatSpan, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
 export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
