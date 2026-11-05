@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 站位小編輯（場地左欄、圖例上面）：跟上一張一樣、拖人會改哪一張、播放頭所在站位的名稱和站位時間。
 	// 規則都交給流程核心判斷；被擋就說原因。
+	import { composing } from '#lib/ime.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		formationAt,
@@ -69,7 +70,7 @@
 	 * 中文輸入法還在選字時按的 Enter / Esc 是給輸入法的；這時離開輸入框，字會重複（Safari 選字時 keyCode 是 229）。
 	 */
 	function boxKeydown(e: KeyboardEvent & { currentTarget: HTMLInputElement }, original: string) {
-		if (e.isComposing || e.keyCode === 229) return;
+		if (composing(e)) return;
 		if (e.key === 'Enter') e.currentTarget.blur();
 		if (e.key === 'Escape') {
 			e.currentTarget.value = original;

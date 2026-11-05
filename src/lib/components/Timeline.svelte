@@ -6,6 +6,7 @@
 	// 「符合寬度」讓整支流程剛好放滿現在的寬度。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
+	import { composing } from '#lib/ime.js';
 	import { tick, untrack } from 'svelte';
 	import { addSegment, rulerMarks, segmentSpans, snapPlayhead, totalSeconds, type SegmentKind } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -181,7 +182,7 @@
 
 	/** 加段選單：Esc 只收選單（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
 	function menuKeys(e: KeyboardEvent) {
-		if (!menu || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		if (!menu || e.key !== 'Escape' || composing(e)) return;
 		e.stopPropagation();
 		menu = null;
 	}

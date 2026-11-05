@@ -189,6 +189,10 @@ describe('對話框裡的確認框', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
 		expect(screen.getByRole('alertdialog')).toBeTruthy();
+		// 中文輸入法還在選字時的 Esc（Safari 選字時 keyCode 是 229）是給輸入法的，不關。
+		await fireEvent.keyDown(document.activeElement ?? window, { key: 'Escape', isComposing: true });
+		await fireEvent.keyDown(document.activeElement ?? window, { key: 'Escape', keyCode: 229 });
+		expect(screen.getByRole('alertdialog')).toBeTruthy();
 		await fireEvent.keyDown(document.activeElement ?? window, { key: 'Escape' });
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(dialog('音樂 1 設定')).toBeTruthy();

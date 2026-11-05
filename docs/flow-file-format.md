@@ -13,7 +13,7 @@ audio/a1.mp3     flow.audio 列出的音樂檔，原封不動（zip 裡不再壓
 audio/a2.m4a
 ```
 
-- `flow.json` 只有 `formatVersion` 和 `flow` 兩層。延遲校正之類的本機設定不進檔。
+- `flow.json` 只有 `formatVersion` 和 `flow` 兩層。延遲校正之類的本機設定不進檔（延遲校正存在瀏覽器裡，±1000 毫秒，`MAX_LATENCY_MS`；超出就當 0）。
 - 開檔時 `flow.json` 不在最上層、而在唯一一層資料夾裡（例：電腦解壓再重新壓縮成 `練習用/flow.json`）也打得開，
   音樂檔照同一個資料夾找（`練習用/audio/a1.mp3`）。Mac 壓縮時多放的 `__MACOSX/` 不算。存檔一律放最上層。
 - `flow` 的欄位：`name`、`field`（`strips`、`layout`: `vertical`／`horizontal`）、`timeRules`、`members`、
@@ -68,6 +68,9 @@ audio/a2.m4a
 
 - 音樂段：`audioId` 還沒載入音樂時是 `null`；`firstBeatSec` 是第一拍在音樂檔的第幾秒；長度存半拍數。
 - 口號段：長度存 0.1 秒數。
+- 長度上限（`src/lib/core/segment.ts`）：音樂段最多 `MAX_EIGHTS`（200）個八拍，也就是 `halfBeats` 1 到 3200；
+  口號段 0.1 到 `MAX_CHANT_SEC`（300）秒，也就是 `tenths` 1 到 3000。開檔（含救回草稿）時段的長度超出或不是正的就打不開，
+  原因寫上限，例：「打不開「檔名」：口號段長度要在 0.1 到 300 秒之間」「…：音樂段要在 1 到 200 個八拍之間」。
 
 ## 時間規則、自訂任務角色、動作
 
@@ -173,7 +176,8 @@ audio/a2.m4a
 ```
 
 - `gender`：`F` 或 `M`。`globalRole`：`base`（底層）或 `top`（上層），教練自己選，不依性別帶入。
-- 最多 40 人。改名字（候補上場）不換 id，所以站位和動作都跟著這個人。
+- 最多 40 人（`MAX_MEMBERS`）。改名字（候補上場）不換 id，所以站位和動作都跟著這個人。
+- 名字長度：隊員名字最多 20 個字、流程名字（`flow.name`）最多 40 個字（`MAX_FLOW_NAME`），只在編輯器裡新增、改名時擋；開檔不檢查，超過的照樣打得開。
 - `markers`（在 `flow` 上，可有可無）：標記用什麼。`number`：名單第幾個；`initial`：名字開頭的字。
   沒有就是 `number`。開頭字撞在一起時顯示什麼不存，打開時照名字算（規則在 `memberMarkers`）。
 

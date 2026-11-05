@@ -15,6 +15,7 @@
 	// 選的拍剛好是一個環節的拍（例：點環節的色條）時，環節列多出改它名字、種類、顏色的地方。
 	// 口號段不數拍、沒有格子：直接一列「環節」，環節按鈕照加的先後排、種類、名字、加入；
 	// 點一個環節選它，可以改名字、種類、顏色，或按清掉刪掉它（有記號先問）。
+	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -309,7 +310,7 @@
 
 	/** Enter 也能加入；中文輸入法還在選字時按的 Enter 不算（Safari 選字時 keyCode 是 229）。 */
 	function onCustomKey(e: KeyboardEvent, kind: 'step' | 'motion') {
-		if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+		if (e.key !== 'Enter' || composing(e)) return;
 		e.preventDefault();
 		addCustom(kind);
 	}
@@ -471,7 +472,7 @@
 	/** Esc 只關小窗（不讓編輯頁把動作也取消選）。 */
 	function popKeys(e: KeyboardEvent) {
 		// 中文輸入法選字時的 Esc 是取消選字，不關小窗（Safari 選字時 keyCode 是 229）。
-		if (!pop || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		if (!pop || e.key !== 'Escape' || composing(e)) return;
 		e.stopPropagation();
 		pop = false;
 	}

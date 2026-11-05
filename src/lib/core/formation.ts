@@ -230,13 +230,17 @@ export function positionsAt(flow: Flow, sec: number): Record<string, Position> {
 	const a = flow.formations[next - 1];
 	const b = flow.formations[next];
 	const out: Record<string, Position> = {};
-	for (const [id, [ax, ay]] of Object.entries(a.pos)) {
-		const [bx, by] = b.pos[id] ?? [ax, ay];
+	for (const [id, from] of Object.entries(a.pos)) {
 		const { depart, arrive } = walkTimes(flow, next, id);
-		const k = Math.min(Math.max((sec - depart) / (arrive - depart), 0), 1);
-		out[id] = [ax + (bx - ax) * k, ay + (by - ay) * k];
+		out[id] = walkPoint(from, b.pos[id] ?? from, depart, arrive, sec);
 	}
 	return out;
+}
+
+/** 從 from 走到 to（departSec 出發、arriveSec 到達，直線等速）的人，在 sec 這一刻站在哪：出發前在 from，到達後在 to。 */
+export function walkPoint(from: Position, to: Position, departSec: number, arriveSec: number, sec: number): Position {
+	const k = Math.min(Math.max((sec - departSec) / (arriveSec - departSec), 0), 1);
+	return [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
 }
 
 /**

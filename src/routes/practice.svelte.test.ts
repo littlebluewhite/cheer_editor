@@ -735,6 +735,30 @@ describe('練習：記錄頁記一次全上', () => {
 		expect(dayRow(who)).toEqual(['✓✓✓']);
 		expect(disabled(card(who).getByRole('button', { name: '刪掉上一次' }))).toBe(true);
 	});
+	it('「刪掉上一次全上」：整次拿掉這天最後存的全上（每個動作的都拿掉），分段練留著；「已刪掉」旁按「救回」整次放回去', async () => {
+		const { session } = await practice();
+		const who = '第 1 組 小美';
+		const removeRun = () => screen.getByRole('button', { name: '刪掉上一次全上' });
+		const runs = () => session.flow!.actions.flatMap((a) => a.successRate?.records.filter((r) => r.runThroughId) ?? []);
+		expect(disabled(removeRun())).toBe(true);
+		await tap(who, '上法', '失敗');
+		await save(who);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
+		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
+		expect(runs()).toHaveLength(4);
+		expect(dayRow(who)).toEqual(['✗··', '✓✓✓']);
+
+		await fireEvent.click(removeRun());
+		expect(runs()).toEqual([]);
+		expect(dayRow(who)).toEqual(['✗··']);
+		expect(screen.getByRole('status').textContent).toContain('已刪掉');
+		expect(disabled(removeRun())).toBe(true);
+
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
+		expect(runs()).toHaveLength(4);
+		expect(dayRow(who)).toEqual(['✗··', '✓✓✓']);
+		expect(screen.getByRole('status').textContent).toBe('已救回');
+	});
 });
 
 describe('練習：日期', () => {

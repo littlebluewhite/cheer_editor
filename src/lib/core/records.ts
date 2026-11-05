@@ -100,6 +100,45 @@ export function restoreAttempt(flow: Flow, actionId: string, attempt: Attempt, i
 	return ok(withRecords(flow, action, action.successRate.records.toSpliced(index, 0, attempt)));
 }
 
+/** 刪掉的一次全上：每一次記在哪個動作、原本排第幾（照排第幾由小到大），給「救回」用。 */
+export type RemovedRunThrough = { actionId: string; attempt: Attempt; index: number }[];
+
+/**
+ * 刪掉上一次全上：拿掉這一天最後存的那次全上，整次一起拿（每個動作、每組的都拿掉，不拆開）。
+ * 「最後存的」看全上 id：每存一次全上發一個新的、刪了也不重用，所以號碼最大的就是最後存的。
+ */
+export function deleteLastRunThrough(flow: Flow, date: string): CommandResult<{ removed: RemovedRunThrough }> {
+	const runIds = flow.actions.flatMap(
+		(a) => a.successRate?.records.flatMap((r) => (r.date === date && r.runThroughId) || []) ?? []
+	);
+	if (runIds.length === 0) return blocked('這一天還沒有全上');
+	const last = runIds.reduce((a, b) => (Number(b.slice(1)) > Number(a.slice(1)) ? b : a));
+	const removed: RemovedRunThrough = [];
+	let next = flow;
+	for (const action of flow.actions) {
+		const records = action.successRate?.records ?? [];
+		if (!records.some((r) => r.runThroughId === last)) continue;
+		records.forEach((attempt, index) => {
+			if (attempt.runThroughId === last) removed.push({ actionId: action.id, attempt, index });
+		});
+		next = withRecords(next, action, records.filter((r) => r.runThroughId !== last));
+	}
+	return { kind: 'ok', flow: next, removed };
+}
+
+/** 救回剛刪掉的那次全上：整次放回原本排第幾，每一次照記一次的規則檢查；有一次放不回去就一次都不放。 */
+export function restoreRunThrough(flow: Flow, removed: RemovedRunThrough): CommandResult {
+	const ids = attemptIds(flow);
+	if (removed.some((r) => ids.includes(r.attempt.id))) return blocked('這次全上已經在了');
+	let next = flow;
+	for (const { actionId, attempt, index } of removed) {
+		const r = restoreAttempt(next, actionId, attempt, index);
+		if (r.kind !== 'ok') return r;
+		next = r.flow;
+	}
+	return ok(next);
+}
+
 /**
  * 把現在的紀錄帶到這份流程上：復原、重做換上 next 時用。紀錄不算復原的一步，所以每個動作的紀錄用 current 的；
  * 指到 next 裡已經不在的動作、環節、組 id、隊員的紀錄或記號丟掉，丟到一個記號都沒有的那一次整筆拿掉（重做也救不回）。

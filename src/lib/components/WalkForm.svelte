@@ -2,6 +2,7 @@
 	// 出發和到達：播放頭停在站位上（不是開頭那張）時，替選到的人（沒選人就是全隊有走位的人）設走到這張的出發和到達。
 	// 在出發或到達按 Enter 就套用（選字中的 Enter 不算）。
 	// 時間的寫法照流程核心：這一段只打段內時間，別的段前面加段名。規則都交給流程核心判斷；被擋就說原因。
+	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
@@ -89,7 +90,7 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		// 中文輸入法選字時按的 Enter 不算
-		if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+		if (e.key !== 'Enter' || composing(e)) return;
 		e.preventDefault();
 		apply();
 	}

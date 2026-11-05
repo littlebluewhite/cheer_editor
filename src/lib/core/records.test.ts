@@ -7,8 +7,10 @@ import {
 	clearPhaseBeats,
 	deleteAction,
 	deleteLastAttempt,
+	deleteLastRunThrough,
 	deleteMember,
 	restoreAttempt,
+	restoreRunThrough,
 	keptAttempt,
 	addPhase,
 	readFlowFile,
@@ -550,5 +552,60 @@ describe('記一次全上', () => {
 		expect(squad2('runThrough').phases.p3).toMatchObject({ fail: 1, marked: 1 });
 		expect(squad2('drill').whole).toEqual({ whole: 1, clean: 1 });
 		expect(squad2('drill').phases.p3).toMatchObject({ fail: 0, marked: 1 });
+	});
+});
+
+describe('刪掉上一次全上', () => {
+	const date = '2026-11-04';
+	const run1: RunThroughMarks[] = [
+		{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } },
+		{ actionId: 'x2', who: 'm1', marks: { p4: '✓' } }
+	];
+	const run2: RunThroughMarks[] = [
+		{ actionId: 'x1', who: 'g2', marks: { p1: '✗' } },
+		{ actionId: 'x2', who: 'm2', marks: { p4: '✗' } }
+	];
+	/** 分段練一次、全上 r1、再分段練一次、全上 r2。 */
+	const recorded = () => {
+		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' }, { whole: false })));
+		flow = flowOf(recordRunThrough(flow, date, run1));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' }, { whole: false })));
+		return flowOf(recordRunThrough(flow, date, run2));
+	};
+	const runIds = (flow: Flow) => [...recordsOf(flow), ...recordsOf(flow, 'x2')].map((r) => r.runThroughId ?? '-');
+
+	it('整次拿掉這天最後存的那次全上（每個動作的都拿掉），分段練和前一次全上留著', () => {
+		const flow = flowOf(deleteLastRunThrough(recorded(), date));
+		expect(runIds(flow)).toEqual(['-', 'r1', '-', 'r1']);
+		const again = flowOf(deleteLastRunThrough(flow, date));
+		expect(runIds(again)).toEqual(['-', '-']);
+	});
+
+	it('只看這一天：別天的全上不刪', () => {
+		const other = flowOf(recordRunThrough(recorded(), '2026-11-05', run1));
+		const flow = flowOf(deleteLastRunThrough(other, date));
+		expect(runIds(flow)).toEqual(['-', 'r1', '-', 'r3', 'r1', 'r3']);
+	});
+
+	it('這天沒有全上：擋下來', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' })));
+		expect(deleteLastRunThrough(flow, date)).toEqual({ kind: 'blocked', message: '這一天還沒有全上' });
+	});
+
+	it('救回：整次放回原本的位置；已經在了就擋下來', () => {
+		const before = recorded();
+		const r = deleteLastRunThrough(before, date);
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		const back = flowOf(restoreRunThrough(r.flow, r.removed));
+		expect(back.actions).toEqual(before.actions);
+		expect(restoreRunThrough(back, r.removed)).toEqual({ kind: 'blocked', message: '這次全上已經在了' });
+	});
+
+	it('救回之前又記了一次：放回原本排第幾，又記的排在後面', () => {
+		const r = deleteLastRunThrough(recorded(), date);
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		const more = flowOf(recordAttempt(r.flow, 'x1', drill({ p3: '✓' }, { whole: false })));
+		const back = flowOf(restoreRunThrough(more, r.removed));
+		expect(runIds(back)).toEqual(['-', 'r1', '-', 'r2', '-', 'r1', 'r2']);
 	});
 });

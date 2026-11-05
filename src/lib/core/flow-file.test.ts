@@ -11,6 +11,7 @@ import {
 	insertFormation,
 	loadSegmentAudio,
 	memberMarkers,
+	missingAudioNames,
 	placeCue,
 	readFlowFile,
 	recordAttempt,
@@ -243,6 +244,31 @@ describe('流程檔：版本', () => {
 		const r = readFlowFile(wrapped);
 		expect(r.kind === 'ok' && r.flow).toEqual(flow);
 		expect(r.kind === 'ok' && r.audio).toEqual({ a1: bytes(7) });
+	});
+
+	it.each([
+		['口號段超過 300 秒', (f: any) => (f.segments[1].tenths = 3001), '口號段長度要在 0.1 到 300 秒之間'],
+		['口號段長度是 0', (f: any) => (f.segments[1].tenths = 0), '口號段長度要在 0.1 到 300 秒之間'],
+		['音樂段超過 200 個八拍', (f: any) => (f.segments[0].halfBeats = 200 * 16 + 2), '音樂段要在 1 到 200 個八拍之間'],
+		['音樂段長度是負的', (f: any) => (f.segments[2].halfBeats = -16), '音樂段要在 1 到 200 個八拍之間']
+	])('段太長或不是正的（%s）：打不開，寫出上限', (_, edit, message) => {
+		const flow = JSON.parse(JSON.stringify(sample()));
+		edit(flow);
+		expect(readFlowFile(zipOf({ formatVersion: 8, flow }))).toEqual({ kind: 'error', message });
+	});
+
+	it('段剛好在上限（300 秒、200 個八拍）：打得開', () => {
+		const flow = JSON.parse(JSON.stringify(sample()));
+		flow.segments[1].tenths = 3000;
+		flow.segments[0].halfBeats = 200 * 16;
+		expect(readFlowFile(zipOf({ formatVersion: 8, flow })).kind).toBe('ok');
+	});
+
+	it('名字長度開檔時不管：流程名、隊員名再長都打得開', () => {
+		const flow = JSON.parse(JSON.stringify(sample()));
+		flow.name = '名'.repeat(100);
+		flow.members[0].name = '名'.repeat(100);
+		expect(readFlowFile(zipOf({ formatVersion: 8, flow })).kind).toBe('ok');
 	});
 
 	/** 一筆走位設定，段和時間可以換成壞的。 */
@@ -605,6 +631,14 @@ describe('流程檔：缺音樂檔', () => {
 		flow = flowOf(updateSegment(flow, 's3', { audioId: 'a1' }));
 		const r = readFlowFile(writeFlowFile(flow, {}));
 		expect(r.kind === 'ok' && r.missingSegmentIds).toEqual(['s1', 's3']);
+	});
+
+	it('缺的音樂檔名：照音樂檔的順序，同一個檔只寫一次', () => {
+		const flow = sample();
+		expect(missingAudioNames(flow, ['s3', 's1'])).toEqual(['第一首.mp3', 'second.m4a']);
+		const shared = flowOf(updateSegment(flow, 's3', { audioId: 'a1' }));
+		expect(missingAudioNames(shared, ['s1', 's3'])).toEqual(['第一首.mp3']);
+		expect(missingAudioNames(flow, [])).toEqual([]);
 	});
 });
 

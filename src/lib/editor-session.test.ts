@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	addAction,
 	addMembers,
@@ -248,6 +248,22 @@ describe('編輯 session：選取', () => {
 		expect(s.selectedMemberIds).toEqual([]);
 		expect(s.selectedActionId).toBeNull();
 		expect(s.notice).toBe('');
+	});
+
+	it('提示過 5 秒自己收掉；換了一句就重算', () => {
+		vi.useFakeTimers();
+		try {
+			const s = new EditorSession(libSample());
+			s.notice = '存好了';
+			vi.advanceTimersByTime(4000);
+			s.notice = '另一句';
+			vi.advanceTimersByTime(4000);
+			expect(s.notice).toBe('另一句');
+			vi.advanceTimersByTime(1000);
+			expect(s.notice).toBe('');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

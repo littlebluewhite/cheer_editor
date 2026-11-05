@@ -10,6 +10,8 @@
 	// 任務角色選單：不用原生 <select>，因為 Mac 上原生選單打開時按鍵只會移到那一項、還要再按確認。
 	// 這裡按快捷鍵就直接選好（選單開著或關著都一樣），Backspace、Delete 是沒有任務。
 	// 焦點一直留在按鈕上，選單裡的項目用 aria-activedescendant 指。
+	import { composing } from '#lib/ime.js';
+
 	interface Props {
 		label: string;
 		value: string | null;
@@ -49,7 +51,7 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || composing(e)) return;
 		const at = ROLE_KEYS.indexOf(e.key.toLowerCase());
 		if (at >= 0 && at < names.length) choose(names[at], true);
 		else if (e.key === 'Backspace' || e.key === 'Delete') choose(null, true);

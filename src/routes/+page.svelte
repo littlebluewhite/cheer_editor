@@ -15,6 +15,7 @@
 		positionText,
 		positionsAt,
 		raisedAt,
+		missingAudioNames,
 		readFlowFile,
 		segmentsMissingAudio,
 		squadColor,
@@ -625,21 +626,12 @@
 		unlessUnsaved(() => {
 			startFlow(r.flow, fileName === null ? 'draft' : 'file', loaded, fileSaver);
 			session.notice = r.missingSegmentIds.length
-				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds)}：點紅色的段重新選檔`
+				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
 				: unreadable
 					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
 					: '';
 			if (r.missingSegmentIds.length) missingNotice = session.notice;
 		});
-	}
-
-	/** 缺音樂的段用到的音樂檔名：「主歌.mp3」「副歌.mp3」。 */
-	function missingAudioNames(f: Flow, segmentIds: string[]): string {
-		const ids = new Set(f.segments.flatMap((s) => (s.kind === 'music' && segmentIds.includes(s.id) ? [s.audioId] : [])));
-		return f.audio
-			.filter((a) => ids.has(a.id))
-			.map((a) => `「${a.name}」`)
-			.join('');
 	}
 
 	/** 等教練決定要不要丟掉還沒存的修改：確定就做 then。 */
@@ -696,16 +688,6 @@
 			if (!jump.replay) playheadSec = jump.sec;
 			else if (flow) seek(flow, jump.sec);
 		});
-	});
-
-	/** 提示泡泡留幾毫秒就自己收掉。 */
-	const NOTICE_MS = 5000;
-
-	// 提示泡泡過幾秒自己收掉（換了一句就重算）。
-	$effect(() => {
-		if (!session.notice) return;
-		const timer = setTimeout(() => (session.notice = ''), NOTICE_MS);
-		return () => clearTimeout(timer);
 	});
 
 	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */

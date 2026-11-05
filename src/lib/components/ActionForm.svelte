@@ -7,6 +7,7 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
+	import { composing } from '#lib/ime.js';
 	import { untrack, type ComponentProps } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
@@ -163,7 +164,7 @@
 
 	/** Esc 只收說明（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
 	function legendKeys(e: KeyboardEvent) {
-		if (!legendShown || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		if (!legendShown || e.key !== 'Escape' || composing(e)) return;
 		e.stopPropagation();
 		closeLegend();
 	}
