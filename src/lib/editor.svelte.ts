@@ -17,6 +17,7 @@ import { FlowFile } from '#lib/flow-file.svelte.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
+import { browserTabChannel, type OpenTabChannel } from '#lib/tab-channel.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -30,13 +31,15 @@ export interface EditorAdapters {
 	decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 	/** 草稿存在哪裡。 */
 	draftStore: DraftStore;
+	/** 分頁頻道：問別的分頁有沒有在編草稿；null 是瀏覽器沒有（當作沒有別的分頁）。 */
+	openTabChannel: OpenTabChannel | null;
 	/** 欄位裡打了還沒送出的字。 */
 	pendingInput: PendingInput;
 	/** 畫面時鐘：播放時每一格畫面移一次播放頭。 */
 	nextFrame: NextFrame;
 }
 
-/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、焦點所在的欄位、requestAnimationFrame。 */
+/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、BroadcastChannel、焦點所在的欄位、requestAnimationFrame。 */
 export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
@@ -44,6 +47,7 @@ export function browserAdapters(): EditorAdapters {
 		pickFlowFile: browserFilePicker(),
 		decode: decodeAudio,
 		draftStore: createIndexedDbDraftStore(),
+		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame
 	};
@@ -52,13 +56,13 @@ export function browserAdapters(): EditorAdapters {
 export class Editor {
 	/** 編輯 session：流程、復原、選取、提示、場上那一個問題、分組。 */
 	readonly session: EditorSession;
-	/** 收著的 adapter。草稿的規則還在頁面，頁面從這裡拿；規則搬進來以後就不用再對外。 */
+	/** 收著的 adapter。頁面從這裡拿沒送出的字（⌘Z 前後送出）。 */
 	readonly adapters: EditorAdapters;
 	/** 播放：播放頭、在不在播、節拍器、延遲校正、試聽。 */
 	readonly playback: Playback;
 	/** 右邊欄翻到哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	inspectorTab = $state<'action' | 'members'>('action');
-	/** 流程檔：開檔、存檔、新建、「沒存先問」。 */
+	/** 流程檔：開檔、存檔、新建、回首頁、草稿、「沒存先問」。 */
 	readonly file: FlowFile;
 	#music: MusicLibrary;
 

@@ -1,5 +1,5 @@
 // 編輯 session：編輯頁的流程、復原、選取、提示、場上那一個問題、分組。編輯器 module（#lib/editor.svelte.js）建一個，
-// 跟它一起放進 context 給元件；也可以單獨建來測。不碰瀏覽器（開檔、存檔、草稿留在頁面），所以在 Node 就測得到。
+// 跟它一起放進 context 給元件；也可以單獨建來測。不碰瀏覽器（開檔、存檔、草稿在編輯器 module 的流程檔），所以在 Node 就測得到。
 // 播放在編輯器 module：建 session 時接上（SessionPlayback），換了流程、改完要跳播放頭時 session 直接叫它。
 
 import { createContext } from 'svelte';
@@ -57,6 +57,8 @@ export class EditorSession {
 	#memberIds = $state.raw<string[]>([]);
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
+	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
+	onflow: () => void = () => {};
 	/** 拍點格子選的拍（選到的動作的）。 */
 	readonly beats = new BeatSelection(() => this.#flow?.actions.find((a) => a.id === this.#actionId) ?? null);
 
@@ -132,6 +134,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.squadAsk.clear();
 		this.#playback.opened();
+		this.onflow();
 	}
 
 	/** 存好了：存的是 flow 這一份。 */
@@ -155,6 +158,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.#trim(flow);
 		this.#playback.changed(before);
+		this.onflow();
 		return true;
 	}
 
@@ -163,7 +167,9 @@ export class EditorSession {
 	 * 復原、重做換上的流程都帶著現在的紀錄（carryRecords）。
 	 */
 	record(flow: Flow) {
-		if (this.#flow) this.#flow = flow;
+		if (!this.#flow) return;
+		this.#flow = flow;
+		this.onflow();
 	}
 
 	/** 給元件一個「改」的問題：成功就交給 change（算一步）。 */
@@ -220,6 +226,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.notice = '';
 		this.#playback.changed(before);
+		this.onflow();
 	}
 
 	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */

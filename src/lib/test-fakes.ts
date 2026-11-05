@@ -1,4 +1,4 @@
-// 測試共用的假 adapter：存檔、草稿、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
+// 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
 // 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
 // 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
 import { fireEvent, screen } from '@testing-library/svelte';
@@ -22,6 +22,7 @@ import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
+import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
 
 /** 假的存檔：每次存的位元組和檔名照順序記下來，回傳給的結果。 */
 export function fakeSaver(outcome: SaveOutcome = 'saved') {
@@ -53,6 +54,28 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt = new 
 		}
 	};
 	return { store, state };
+}
+
+/**
+ * 假的分頁頻道：同一個 fakeTabs() 開的頻道就像同一個瀏覽器的分頁，互相聽得到（自己送的自己收不到），送了馬上收到。
+ * 每個分頁的編輯器 module 放同一個進去。
+ */
+export function fakeTabs(): OpenTabChannel {
+	const open = new Set<Set<(message: TabMessage) => void>>();
+	return () => {
+		const listeners = new Set<(message: TabMessage) => void>();
+		open.add(listeners);
+		return {
+			post(message) {
+				for (const other of open) if (other !== listeners) for (const on of [...other]) on(message);
+			},
+			listen(on) {
+				listeners.add(on);
+				return () => void listeners.delete(on);
+			},
+			close: () => void open.delete(listeners)
+		};
+	};
 }
 
 /** 假的解碼：每個音樂檔都是 30 秒、沒有波形。 */
@@ -94,6 +117,7 @@ export function manualFrames() {
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
+ * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
@@ -104,6 +128,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			pickFlowFile: null,
 			decode: fakeDecode,
 			draftStore: fakeDraftStore().store,
+			openTabChannel: null,
 			pendingInput: fakePendingInput(),
 			nextFrame: manualFrames().nextFrame,
 			...adapters
