@@ -35,6 +35,11 @@
 			: `${m.name}（場上 ${markers[m.id]} 號）`;
 	});
 
+	/** 「技巧·Lib」；名稱跟大類一樣（「舞蹈」）只寫一次。 */
+	function title(categoryLabel: string, name: string): string {
+		return name && name !== categoryLabel ? `${categoryLabel}·${name}` : categoryLabel;
+	}
+
 	/** 「拍子 down 1-6 到 1-7」「拍子 down 1-1& 到 1-2」「手位 high V 1-8・給上層」。 */
 	function cueLabel(eight: number | null, c: EightCountCue): string {
 		const span = c.span
@@ -72,9 +77,16 @@
 
 		<div class="page">
 			<h1>{flow.name}　八拍表　{who}</h1>
+			{#if !memberId}
+				<ul class="legend" aria-label="號碼和名字">
+					{#each flow.members as m (m.id)}
+						<li><b>{markers[m.id]}</b> {m.name}</li>
+					{/each}
+				</ul>
+			{/if}
 			<table>
 				<thead>
-					<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>動作</th><th>站位</th></tr>
+					<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
 				</thead>
 				{#each rows as row, i (i)}
 					<tbody>
@@ -86,7 +98,7 @@
 								{#each row.actions as a, j (j)}
 									<div class="action">
 										<b class="at">{a.at}</b>
-										{a.categoryLabel}{#if a.name}·{a.name}{/if}：{a.who}
+										{title(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
 									</div>
 								{/each}
 								{#each row.walks as w, j (j)}
@@ -104,6 +116,7 @@
 												positions={f.pos}
 												controls={false}
 												marked={memberId ? [memberId] : []}
+												crop
 											/>
 										</div>
 										<figcaption>{f.caption}</figcaption>
@@ -115,7 +128,7 @@
 							<tr class="cue-row">
 								<td colspan="5">
 									{#each row.cues as line, j (j)}
-										{@const name = `${line.categoryLabel}${line.name ? `·${line.name}` : ''}`}
+										{@const name = title(line.categoryLabel, line.name)}
 										<div class="cue-line" role="group" aria-label="{name} 的拍點">
 											<span class="cue-name">{name}</span>
 											<div class="beats">
@@ -208,6 +221,16 @@
 	h1 {
 		font-size: 18px;
 		margin: 0 0 14px;
+	}
+	/* 全隊的表：場上標記和名字的對照 */
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 2px 14px;
+		margin: -6px 0 12px;
+		padding: 0;
+		list-style: none;
+		font-size: 12px;
 	}
 	table {
 		border-collapse: collapse;
