@@ -328,6 +328,31 @@ for (const [w, h] of [[1440, 900], [1280, 720], [1024, 768]]) {
 	});
 }
 
+await check('超寬螢幕（2560 寬）按「符合寬度」：整支流程放滿時間軸，沒有橫向捲軸', async () => {
+	await setViewport(2560, 1200);
+	await openSample();
+	const hit = await hitAndClick('.timeline [aria-label="符合寬度"]');
+	await sleep(200);
+	const m = await js(`const t = document.querySelector('.timeline'); const trk = t.querySelector('.ruler');
+		return { 看得到: t.clientWidth, 捲得到: t.scrollWidth, 流程: Math.round(trk.getBoundingClientRect().width) };`);
+	return { ok: hit.self && m.捲得到 <= m.看得到 && m.流程 >= (m.看得到 - 148) * 0.9, value: { ...m, 擋住按鈕的: hit.self ? null : hit.top } };
+});
+
+await check('1440×900 最後一段旁的「＋」點得到，選單整個看得到、選項點得到', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	// 時間軸捲到最右邊：最後一段的「＋」在看得到的範圍右邊
+	await js(`const t = document.querySelector('.timeline'); t.scrollLeft = t.scrollWidth;`);
+	await sleep(200);
+	await js(`const all = document.querySelectorAll('.timeline .add-after'); all[all.length - 1].classList.add('last-add')`);
+	const hit = await hitAndClick('.timeline .last-add');
+	if (!hit.self) return { ok: false, value: { 擋住加段鈕的: hit.top } };
+	const res = await cornersVisible('.menu');
+	const btns = await js(`return [...document.querySelectorAll('.menu button')].map((b) => { const r = b.getBoundingClientRect();
+		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [b.textContent.trim(), !!t && b.contains(t)]; });`);
+	return { ok: res.ok && btns.length === 2 && btns.every(([, v]) => v), value: { ...res.value, 選項: btns } };
+});
+
 // ---------- 窄螢幕（寬不到 1024 或高不到 600，ADR 0005 的 2026-11 更新） ----------
 
 /** 觸控螢幕（手機、iPad）：pointer: coarse，點下去是手指。 */

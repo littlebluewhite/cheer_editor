@@ -11,6 +11,7 @@ import {
 	positionText,
 	rulerMarks,
 	segmentSpans,
+	snapPlayhead,
 	snapToBeat,
 	stepPlayhead,
 	timeText,
@@ -228,6 +229,17 @@ describe('播放頭吸附、一步一步移', () => {
 		expect(snapToBeat(flow, 30.04)).toBeCloseTo(30.0);
 		expect(snapToBeat(flow, 62)).toBeCloseTo(62);
 		expect(snapToBeat(flow, 1.05, true)).toBeCloseTo(1.0);
+	});
+
+	it('在八拍尺上點：一小段距離內先停到最近的站位，再來才是最近的整拍', () => {
+		// 站位 2 在 1-2&（第 3 個半拍，0.6 秒）
+		const base = sample();
+		const flow = { ...base, formations: [...base.formations, { id: 'f2', segmentId: 's1', at: 3, pos: {} }] };
+		expect(snapPlayhead(flow, 0.75, 0.2)).toBeCloseTo(0.6);
+		expect(snapPlayhead(flow, 0.75, 0.1)).toBeCloseTo(0.8);
+		// 開頭那張也算
+		expect(snapPlayhead(flow, 0.15, 0.2)).toBe(0);
+		expect(snapPlayhead(flow, 1.05, 0.1, true)).toBeCloseTo(1.0);
 	});
 
 	it('沒有段時照原樣', () => {

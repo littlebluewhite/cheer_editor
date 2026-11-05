@@ -63,11 +63,25 @@ describe('刪段', () => {
 
 	it('刪第一段：開頭那張站位跟著新的第一段，位置是新第一段開始那一刻大家所在的地方', () => {
 		const r = deleteSegment(sample(), 's1');
-		expect(r.kind).toBe('confirm');
+		// 開頭那張不會刪掉（跟著新的第一段），不列進清單
+		expect(r).toEqual({
+			kind: 'confirm',
+			message: '刪掉音樂 1，下面這些也會一起刪掉',
+			items: ['動作「技巧·Lib」（1-1 起）', '站位 2（2-1）']
+		});
 		const flow = flowOf(deleteSegment(sample(), 's1', { confirmed: true }));
 		expect(flow.segments.map((s) => s.id)).toEqual(['s2']);
 		expect(where(flow)).toEqual(['f1@s2:0', 'f3@s2:20']);
 		expect(flow.formations[0].pos).toEqual({ m1: [1, 0] });
+	});
+
+	it('刪第一段、新的第一段開頭本來就有站位：那張接手當開頭，原本的開頭那張真的刪掉，列進清單', () => {
+		let flow = sample();
+		const f4: Formation = { id: 'f4', segmentId: 's2', at: 0, pos: { m1: [2, 2] } };
+		flow = { ...flow, formations: [...flow.formations.slice(0, 2), f4, flow.formations[2]] };
+		const r = deleteSegment(flow, 's1');
+		expect(r.kind === 'confirm' && r.items).toContain('站位 1（1-1）');
+		expect(where(flowOf(deleteSegment(flow, 's1', { confirmed: true })))).toEqual(['f4@s2:0', 'f3@s2:20']);
 	});
 
 	it('刪掉唯一的段：回到沒有段，開頭那張留著', () => {
@@ -92,13 +106,17 @@ describe('刪段', () => {
 });
 
 describe('調段順序', () => {
-	it('往前移：段換位置，動作、站位跟著自己的段走；開頭那張變成一般站位留在原本那段的開頭', () => {
+	it('往前移：段換位置，動作、站位跟著自己的段走；開頭那張跟著新的第一段，不多出一張站位', () => {
 		const flow = flowOf(moveSegment(sample(), 's2', -1));
 		expect(flow.segments.map((s) => s.id)).toEqual(['s2', 's1']);
-		// 新的開頭（f4）是口號 1 開始那一刻大家所在的位置
-		expect(where(flow)).toEqual(['f4@s2:0', 'f3@s2:20', 'f1@s1:0', 'f2@s1:16']);
-		expect(flow.formations[0].pos).toEqual({ m1: [1, 0] });
+		expect(where(flow)).toEqual(['f1@s2:0', 'f3@s2:20', 'f2@s1:16']);
+		expect(flow.formations[0].pos).toEqual({ m1: [0, 0] });
 		expect(flow.actions.map((a) => a.segmentId)).toEqual(['s1', 's2']);
+	});
+
+	it('移到第一段再移回來：站位一樣多，開頭那張回到原本的段', () => {
+		const back = flowOf(moveSegment(flowOf(moveSegment(sample(), 's2', -1)), 's2', 1));
+		expect(where(back)).toEqual(['f1@s1:0', 'f2@s1:16', 'f3@s2:20']);
 	});
 
 	it('新的第一段開頭本來就有站位：那張變成開頭（拿掉走位設定）', () => {

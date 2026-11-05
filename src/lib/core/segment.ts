@@ -232,8 +232,11 @@ function pick<T extends object, K extends keyof T>(obj: T, ...keys: K[]): Partia
 	return out;
 }
 
-/** 在最後加一段，回傳新段的 id。 */
-export function addSegment(flow: Flow, kind: SegmentKind): CommandResult<{ id: string }> {
+/** 加一段（給 afterId 就插在那一段後面，沒給就加在最後），回傳新段的 id。 */
+export function addSegment(flow: Flow, kind: SegmentKind, afterId?: string): CommandResult<{ id: string }> {
+	const after = afterId === undefined ? flow.segments.length - 1 : flow.segments.findIndex((s) => s.id === afterId);
+	if (afterId !== undefined && after === -1) return blocked('找不到這一段');
+	const index = after + 1;
 	const id = nextId('s', flow.segments.map((s) => s.id));
 	const segment: Segment =
 		kind === 'music'
@@ -244,5 +247,5 @@ export function addSegment(flow: Flow, kind: SegmentKind): CommandResult<{ id: s
 		flow.segments.length === 0
 			? flow.formations.with(0, { ...flow.formations[0], segmentId: id, at: 0 })
 			: flow.formations;
-	return { kind: 'ok', flow: { ...flow, segments: [...flow.segments, segment], formations }, id };
+	return { kind: 'ok', flow: { ...flow, segments: flow.segments.toSpliced(index, 0, segment), formations }, id };
 }

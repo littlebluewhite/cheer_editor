@@ -36,6 +36,17 @@ describe('加段', () => {
 		const r = addSegment(flowOf(addSegment(newFlow(), 'music')), 'chant');
 		expect(r.kind === 'ok' && r.id).toBe('s2');
 	});
+
+	it('指定加在哪一段後面：插在那一段後面，開頭那張站位不動', () => {
+		let flow = flowOf(addSegment(flowOf(addSegment(newFlow(), 'music')), 'music'));
+		flow = flowOf(addSegment(flow, 'chant', 's1'));
+		expect(flow.segments.map((s) => s.id)).toEqual(['s1', 's3', 's2']);
+		expect(flow.formations[0]).toMatchObject({ segmentId: 's1', at: 0 });
+	});
+
+	it('指定的段找不到就擋下', () => {
+		expect(addSegment(flowOf(addSegment(newFlow(), 'music')), 'chant', 's9').kind).toBe('blocked');
+	});
 });
 
 describe('改音樂段', () => {
