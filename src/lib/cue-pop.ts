@@ -19,7 +19,7 @@ export interface CuePopInput {
 	pop: { w: number; h: number };
 	/** 格子框多寬；小窗左右不超出。 */
 	wrapW: number;
-	/** 畫面看得到的上下範圍（換成格子框的座標）。 */
+	/** 畫面看得到的上下範圍（換成格子框的座標）。小窗比它高時 CueGrid 先把小窗縮矮（裡面自己捲）。 */
 	view: { top: number; bottom: number };
 	/** 一排八拍多高（含排跟排中間的空隙）。 */
 	rowH: number;
@@ -55,5 +55,7 @@ export function placeCuePop(input: CuePopInput): CuePopPos {
 			: roomBelow < pop.h && roomAbove > roomBelow;
 	const x = above ? input.arrowAbove : input.arrowBelow;
 	const left = Math.max(0, Math.min(x - pop.w / 2, input.wrapW - pop.w));
-	return { top: above ? aboveTop : belowTop, left, arrow: x - left, above };
+	// 上下都放不下（矮視窗、iPad 橫放）：夾在看得到的範圍裡，會蓋到一點選取，但不出界。
+	const top = Math.max(input.view.top, Math.min(above ? aboveTop : belowTop, input.view.bottom - pop.h));
+	return { top, left, arrow: x - left, above };
 }

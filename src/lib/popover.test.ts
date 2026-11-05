@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { placeBelow, type BelowInput } from './popover.svelte.js';
 
 /**
- * 畫面座標（px）。畫面 1000×800；錨點（「!」、「＋」）在 300–320、100–120；小窗寬 200、高 150。
+ * 畫面座標（px）。畫面 1000×800；錨點（「?」、「＋」）在 300–320、100–120；小窗寬 200、高 150。
  */
 function input(over: Partial<BelowInput> = {}): BelowInput {
 	return {

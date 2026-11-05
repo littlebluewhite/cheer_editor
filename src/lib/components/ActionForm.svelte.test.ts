@@ -196,7 +196,7 @@ describe('動作表單：改選到的動作', () => {
 		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
-	it('名字底色照性別、旁邊標底層或上層；驚嘆號說明顏色和快捷鍵', () => {
+	it('名字底色照性別、旁邊標底層或上層；「?」說明顏色和快捷鍵', () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
 		setup(flow, 'x1');
 		const rowA = screen.getByLabelText('小A 的任務角色').closest('li')!;
@@ -277,6 +277,17 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
 		await fireEvent.click(screen.getByRole('option', { name: '＋自訂任務角色…' }));
 		expect(screen.getByRole('dialog')).toBeTruthy();
+	});
+
+	it('任務角色選單用方向鍵選到的項目捲進畫面', async () => {
+		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		setup(flow, 'x1');
+		const pick = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		await fireEvent.keyDown(pick, { key: 'ArrowDown' });
+		await fireEvent.keyDown(pick, { key: 'ArrowUp' });
+		const last = screen.getByRole('option', { name: '＋自訂任務角色…' });
+		expect(pick.getAttribute('aria-activedescendant')).toBe(last.id);
+		expect(scrolled.at(-1)).toBe(last);
 	});
 
 	it('標題是動作的名稱，可以直接改', async () => {

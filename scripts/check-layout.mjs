@@ -101,7 +101,8 @@ async function openSample() {
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
 	await waitFor(async () => {
-		const input = await send('Runtime.evaluate', { expression: `document.querySelector('.home-open input[type=file]')` });
+		// 先清空：頁面還沒接好事件時放的檔沒人收，同一個檔再放一次不會再觸發 change（機器忙時會一直「等太久」）
+		const input = await send('Runtime.evaluate', { expression: `(() => { const i = document.querySelector('.home-open input[type=file]'); if (i) i.value = ''; return i; })()` });
 		if (input.result.objectId) await send('DOM.setFileInputFiles', { files: [SAMPLE], objectId: input.result.objectId });
 		await sleep(500);
 		return js(`return !!document.querySelector('.rail, .phone-view')`);
@@ -283,7 +284,7 @@ const scrollPanelTo = (selector, k) =>
 		await new Promise((r) => setTimeout(r, 150));
 		return Math.round((el.getBoundingClientRect().top - top) / panel.clientHeight * 100) / 100;`);
 
-await check('1400×900「!」說明小窗整個看得到，不被右邊欄裁掉', async () => {
+await check('1400×900「?」說明小窗整個看得到，不被右邊欄裁掉', async () => {
 	await pickFirstAction(1400, 900);
 	// 「!」捲到右邊欄的各個高度（越下面，小窗往下開越容易被裁掉），每個都要整個看得到
 	const bad = [];
@@ -293,7 +294,7 @@ await check('1400×900「!」說明小窗整個看得到，不被右邊欄裁掉
 		const p = await rectOf('.action-form .bang');
 		await click(p.x, p.y);
 		const res = await cornersVisible('#people-legend');
-		if (!res.ok) bad.push({ 驚嘆號在右邊欄的: at, ...res.value });
+		if (!res.ok) bad.push({ 問號在右邊欄的: at, ...res.value });
 	}
 	return { ok: bad.length === 0, value: bad };
 });
@@ -1273,6 +1274,69 @@ await check('滑鼠點過「時間軸縮小」再按真的空白鍵：播放，�
 	const after = await zoom();
 	await js(`document.querySelector('button[aria-label="暫停"]')?.click()`);
 	return { ok: focused === '時間軸縮小' && playing && after === before, value: { 焦點: focused, 播放: playing, 倍數: `${before} → ${after}` } };
+});
+
+// ---------- 選單和小窗不跑出畫面（#141） ----------
+
+/** 中心點最上面的東西是不是它自己（先捲進它所在的小窗裡看得到的地方）。 */
+const centersHit = (selector) =>
+	js(`return [...document.querySelectorAll(${JSON.stringify(selector)})].map((b) => {
+		b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		return [b.getAttribute('aria-label') || b.textContent.trim(), !!t && b.contains(t), t ? t.outerHTML.slice(0, 50) : '畫面外']; })
+		.filter(([, ok]) => !ok);`);
+
+await check('1180×813、6 個人：最後一個人的任務角色選單整個看得到，「＋自訂任務角色…」點得到', async () => {
+	await setViewport(1180, 813);
+	const of = `((r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; })`;
+	await openPracticeFlow(`flow = ${of}(core.addMembers(flow, [{ name: '小C', gender: 'M', globalRole: 'base' }, { name: '小D', gender: 'F', globalRole: 'base' }]));
+		flow = ${of}(core.addAction(flow, { segmentId: 's1', category: 'stunt', name: '六人', start: 16, length: 16, note: '',
+			members: flow.members.map((m) => ({ memberId: m.id, role: null })) }));`);
+	await js(`document.querySelector('[data-action-id="x2"]').click()`);
+	await waitFor(() => js(`return document.querySelectorAll('.action-form [role=combobox]').length === 6`));
+	await js(`[...document.querySelectorAll('.action-form [role=combobox]')].at(-1).classList.add('last-pick')`);
+	// 最後一個人捲到右邊欄的各個高度（越下面，選單往下開越容易被裁掉）
+	const bad = [];
+	for (const k of [0.5, 0.8, 0.95]) {
+		await js(`document.activeElement?.blur()`);
+		await sleep(100);
+		const at = await scrollPanelTo('.last-pick', k);
+		const p = await rectOf('.last-pick');
+		await click(p.x, p.y);
+		const res = await cornersVisible('[role=listbox]');
+		const miss = await centersHit('[role=listbox] [role=option]');
+		if (!res.ok || miss.length) bad.push({ 選單在右邊欄的: at, ...res.value, 點不到的: miss });
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('1024×768 在最上面和最下面的八拍點一拍：拍點小窗整個在畫面裡，每顆按鈕中心點到的是它自己', async () => {
+	await setViewport(1024, 768);
+	// 三個八拍長的動作 x2：拍點格子有三排
+	await openPracticeFlow(`flow = core.addAction(flow, { segmentId: 's1', category: 'jump', name: '長', start: 16, length: 48, note: '',
+		members: [{ memberId: 'm1', role: null }] }).flow;`);
+	await js(`document.querySelector('[data-action-id="x2"]').click()`);
+	await waitFor(() => js(`return document.querySelectorAll('.cues .row').length === 3`));
+	await js(`const rows = [...document.querySelectorAll('.cues .row')];
+		rows[0].querySelector('.cell:not(:disabled)').classList.add('top-cell');
+		[...rows.at(-1).querySelectorAll('.cell:not(:disabled)')].at(-1).classList.add('bottom-cell');`);
+	const bad = [];
+	for (const cell of ['.top-cell', '.bottom-cell']) {
+		for (const k of [0.1, 0.5, 0.9]) {
+			await js(`if (document.querySelector('.cues .pop')) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+			await sleep(100);
+			const at = await scrollPanelTo(cell, k);
+			const p = await rectOf(cell);
+			await click(p.x, p.y);
+			await sleep(200);
+			const box = await js(`const r = document.querySelector('.cues .pop').getBoundingClientRect();
+				return { ok: r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth,
+					小窗: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], 畫面: [innerWidth, innerHeight] };`);
+			const miss = await centersHit('.cues .pop button');
+			if (!box.ok || miss.length) bad.push({ 點的: cell, 在右邊欄的: at, ...box, 點不到的: miss });
+		}
+	}
+	return { ok: bad.length === 0, value: bad };
 });
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');

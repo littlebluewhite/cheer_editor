@@ -1,4 +1,4 @@
-// 小窗（「!」說明、拍點小窗、加段選單）共用的部分：每個小窗只給內容和放哪裡。
+// 小窗（「?」說明、拍點小窗、加段選單）共用的部分：每個小窗只給內容和放哪裡。
 // 放到最上層（popover）：右邊欄、時間軸的捲動容器裁不到它；跟著錨點捲動、縮放；點外面、按 Esc 就關。
 // 算位置是純函式（placeBelow；拍點小窗用 cue-pop），量畫面的事在 attachment 裡（jsdom 量不到版面，ADR 0002）。
 import type { Attachment } from 'svelte/attachments';
