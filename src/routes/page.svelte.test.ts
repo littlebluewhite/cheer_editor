@@ -70,6 +70,31 @@ describe('段、八拍尺、上方列', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 	});
 
+	it('段設定的敲擊測速：0.5 秒一下點 8 下，套用後段的 BPM 變成 120', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		const dialog = within(screen.getByRole('dialog', { name: '音樂 1 設定' }));
+		const tap = dialog.getByRole('button', { name: '敲擊測速' });
+		const apply = dialog.getByRole('button', { name: /^套用/ }) as HTMLButtonElement;
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			for (let i = 0; i < 8; i++) {
+				vi.setSystemTime(10_000 + i * 500);
+				expect(apply.disabled).toBe(true);
+				await fireEvent.click(tap);
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(apply.disabled).toBe(false);
+		expect(apply.textContent).toContain('120 BPM');
+		await fireEvent.click(apply);
+		expect((dialog.getByLabelText('BPM') as HTMLInputElement).value).toBe('120');
+		// 拍子的秒數跟著變：120 BPM 一拍 0.5 秒，8 個八拍 = 32 秒
+		expect(dialog.getByText('共 32.0 秒')).toBeTruthy();
+	});
+
 	it('段旁的「＋」：選「＋口號段」就插在這段後面', async () => {
 		await newFlow();
 		await addSegment('＋音樂段');
@@ -165,12 +190,10 @@ describe('段、八拍尺、上方列', () => {
 		check();
 	});
 
-	it('流程名字最多 40 個字：新建和流程設定都擋下，說最多幾個字', async () => {
+	it('流程名字最多 40 個字：新建時打不下第 41 個字（前 40 個留著）；流程設定送進太長的名字擋下，說最多幾個字', async () => {
 		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(41) } });
-		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		expect(screen.getByRole('alert').textContent).toContain('流程名字最多 40 個字');
-		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(40) } });
+		expect((screen.getByLabelText('流程名字') as HTMLInputElement).value).toBe('字'.repeat(40));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;

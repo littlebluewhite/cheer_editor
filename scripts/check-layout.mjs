@@ -409,7 +409,7 @@ async function renameFlowTo(name) {
 	await sleep(200);
 }
 
-for (const w of [1141, 1200, 1300, 1380, 1381]) {
+for (const w of [1141, 1200, 1300, 1410, 1411]) {
 	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
 		await setViewport(w, 900);
 		await openSample();
@@ -512,6 +512,42 @@ await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編�
 			return { 寬: ${w}, 行數: lines, 溢出: h.scrollWidth > h.clientWidth + 1 };`);
 		if (r.行數 !== 2 || r.溢出) bad.push(r);
 	}
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('首頁有 5 支最近的流程（名字很長）：1440×900、390×844 照樣有（捲過去）點得到的「建立」和「開啟流程檔」，「丟掉」離打開的按鈕遠一點，不溢出', async () => {
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte`));
+	// 直接在 IndexedDB 放 5 份草稿（跟 src/lib/file/draft.ts 存的一樣），重新整理
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const db = await new Promise((r, j) => { const q = indexedDB.open('cheer-editor', 1);
+			q.onupgradeneeded = () => q.result.createObjectStore('draft'); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); });
+		const tx = db.transaction('draft', 'readwrite');
+		tx.objectStore('draft').clear();
+		for (let i = 0; i < 5; i++) {
+			const flow = c.createFlow({ name: '第' + i + '支'.repeat(36), field: { strips: 9, layout: 'vertical' } }).flow;
+			tx.objectStore('draft').put({ bytes: c.writeFlowFile(flow, {}), savedAt: Date.now() - i * 60000 }, 'layout-' + i);
+		}
+		await new Promise((r) => (tx.oncomplete = r));
+		db.close();`);
+	const bad = [];
+	for (const [w, h] of [[1440, 900], [390, 844]]) {
+		await setViewport(w, h);
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte && document.querySelectorAll('.recent li').length === 5`), 30).catch(() => {});
+		const r = await js(`const seen = (el) => { if (!el) return '沒有';
+				el.scrollIntoView({ block: 'nearest' });
+				const b = el.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+				return b.top >= 0 && b.bottom <= innerHeight && !!top && el.contains(top) ? '好' : '看不到或點不到'; };
+			const create = [...document.querySelectorAll('.home button')].find((b) => b.textContent.trim() === '建立');
+			const li = document.querySelector('.recent li');
+			const gap = li ? li.querySelector('.recent-drop').getBoundingClientRect().left - li.querySelector('.recent-open').getBoundingClientRect().right : -1;
+			return { 寬: ${w}, 建立: seen(create), 開啟流程檔: seen(document.querySelector('.home-open label.open')),
+				最近的流程: document.querySelectorAll('.recent li').length, 丟掉離打開: Math.round(gap),
+				溢出: document.scrollingElement.scrollWidth > innerWidth ? [...document.querySelectorAll('.home *')].filter((el) => el.getBoundingClientRect().right > innerWidth + 1).map((el) => el.outerHTML.slice(0, 50)).slice(0, 4) : false };`);
+		if (r.建立 !== '好' || r.開啟流程檔 !== '好' || r.最近的流程 !== 5 || r.丟掉離打開 < 12 || r.溢出) bad.push(r);
+	}
+	await js(`await new Promise((r) => { const q = indexedDB.deleteDatabase('cheer-editor'); q.onsuccess = q.onerror = q.onblocked = r; });`);
 	return { ok: bad.length === 0, value: bad };
 });
 
@@ -879,6 +915,30 @@ await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、
 		ok: clash.接得到滑鼠 && clash.說明 === '撞位：小A、小B' && center.橫線上 && !center.斜角上,
 		value: { 撞位: clash, 中心記號: center }
 	};
+});
+
+// ---------- 長的拍點文字（#146） ----------
+
+await check('很長的手位：拍點格子、泳道、八拍表上都待在自己那一拍，不蓋到下一個拍點', async () => {
+	await setViewport(1440, 900);
+	const long = '雙手從胸前握拳往上推到高V再往兩邊打開';
+	await openPracticeFlow(`flow = core.placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: '${long}' }).flow;
+		flow = core.placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: '拳頭' }).flow;`);
+	await js(`document.querySelector('[data-lane="m1"] [data-action-id="x1"]').click()`);
+	await sleep(300);
+	const grid = await js(`const items = [...document.querySelectorAll('.cues .item.motion')];
+		const slot = document.querySelector('.cues .slot.motion[data-at="0"]').getBoundingClientRect();
+		const r = items[0].getBoundingClientRect();
+		return { ok: r.right <= slot.right + 1, 手位: [Math.round(r.left), Math.round(r.right)], 那一拍: [Math.round(slot.left), Math.round(slot.right)], 看全文: items[0].title };`);
+	const lane = await js(`const [a, b] = [...document.querySelectorAll('[data-lane="m1"] .cue.motion')].map((e) => e.getBoundingClientRect());
+		return { ok: a.right <= b.left + 1, 長的: [Math.round(a.left), Math.round(a.right)], 下一個: [Math.round(b.left), Math.round(b.right)] };`);
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(400);
+	const sheet = await js(`const cue = [...document.querySelectorAll('.print-sheet .cue.motion')][0].getBoundingClientRect();
+		const n1 = document.querySelector('.print-sheet .cells .n').getBoundingClientRect();
+		return { ok: cue.right <= n1.right + 1, 手位: [Math.round(cue.left), Math.round(cue.right)], 第1拍: [Math.round(n1.left), Math.round(n1.right)] };`);
+	await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+	return { ok: grid.ok && !!grid.看全文 && lane.ok && sheet.ok, value: { 拍點格子: grid, 泳道: lane, 八拍表: sheet } };
 });
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');

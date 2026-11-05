@@ -6,6 +6,7 @@ import type { Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { nextId } from './ids';
 import type { GlobalRole } from './members';
+import { tooLong } from './text-length';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
 export interface CustomRole {
@@ -42,6 +43,8 @@ export const FIXED_ROLES: readonly RoleEntry[] = [
 export function addCustomRole(flow: Flow, input: { name: string; meaning: string }): CommandResult {
 	const name = input.name.trim();
 	if (!name) return blocked('請填任務角色名稱');
+	const tooLongName = tooLong('roleName', name);
+	if (tooLongName) return blocked(tooLongName);
 	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個任務角色了`);
 	const id = nextId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
@@ -57,6 +60,8 @@ export function updateCustomRole(flow: Flow, id: string, input: { name: string; 
 	if (!old) return blocked('找不到這個任務角色');
 	const name = input.name.trim();
 	if (!name) return blocked('請填任務角色名稱');
+	const tooLongName = name !== old.name ? tooLong('roleName', name) : null;
+	if (tooLongName) return blocked(tooLongName);
 	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
 		return blocked(`已經有「${name}」這個任務角色了`);
 	}

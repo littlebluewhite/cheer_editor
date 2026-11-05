@@ -1,7 +1,7 @@
 // 頁面：窄螢幕（寬不到 1024 或高不到 600）擋住編輯畫面的提示，上面的「回首頁」「去練習」（docs/adr/0005-ipad-touch.md）。
 // 提示什麼時候蓋上來是媒體查詢的事，jsdom 量不到，在 check:layout 檢查；這裡只按提示上的兩顆按鈕。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { writeFlowFile } from '#lib/core';
 import { audioFlow, editorPage, flush, openFile } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
@@ -47,13 +47,13 @@ describe('窄螢幕：擋住編輯畫面的提示', () => {
 		expect(hint().getByRole('button', { name: '看八拍表' })).toBeTruthy();
 	});
 
-	it('剛建好的流程按「回首頁」：回到首頁，問要不要救回', async () => {
+	it('剛建好的流程按「回首頁」：回到首頁，列在最近的流程', async () => {
 		setup();
 		await flush();
 		await newFlow();
 		await fireEvent.click(hint().getByRole('button', { name: '回首頁' }));
 		await flush();
-		expect(screen.getByRole('alertdialog').textContent).toContain('全國賽');
+		await vi.waitFor(() => expect(screen.getByRole('list', { name: '最近的流程' }).textContent).toContain('全國賽'));
 	});
 
 	it('有未存的修改按「回首頁」：跟「新建」一樣先問；取消就留著，「不存了，繼續」才回首頁', async () => {
@@ -73,7 +73,7 @@ describe('窄螢幕：擋住編輯畫面的提示', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
-		// 丟掉了，首頁不問要不要救回
-		expect(screen.queryByRole('alertdialog')).toBeNull();
+		// 丟掉了，不列在最近的流程
+		expect(screen.queryByText('全國賽')).toBeNull();
 	});
 });

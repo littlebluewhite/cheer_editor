@@ -46,6 +46,12 @@ describe('建立流程', () => {
 			message: '流程名字最多 40 個字'
 		});
 	});
+
+	it('字數照看得到的字算：一個家庭 emoji 算 1 個字', () => {
+		const field = { strips: 9, layout: 'vertical' } as const;
+		expect(createFlow({ name: '👨‍👩‍👧‍👦'.repeat(40), field }).kind).toBe('ok');
+		expect(createFlow({ name: '👨‍👩‍👧‍👦'.repeat(41), field }).kind).toBe('blocked');
+	});
 });
 
 describe('改流程名字', () => {

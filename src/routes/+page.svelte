@@ -18,6 +18,7 @@
 		type Position
 	} from '#lib/core';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
+	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { MAX_LATENCY_MS } from '#lib/local-settings.js';
@@ -103,6 +104,8 @@
 	let practiceDate = $state(localDate());
 	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；練習畫面照這個重開。 */
 	let opened = $state(0);
+	/** 首頁按了「丟掉」的那支最近的流程：先問。 */
+	let discarding = $state.raw<RecentFlow | null>(null);
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
@@ -446,23 +449,34 @@
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
 				{#if view === 'edit'}
-					<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
-						><Icon name="undo" /><span class="narrow-hide">復原</span></button
-					>
-					<button
-						type="button"
-						class="ghost"
-						title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
-						disabled={!session.canRedo}
-						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
-					>
+					<!-- 關掉是檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
+					<label class="toggle" title="關掉是檢視模式：只能看、只能播放，不會不小心改到">
+						<input
+							type="checkbox"
+							role="switch"
+							checked={!session.viewing}
+							onchange={(e) => (session.viewing = !e.currentTarget.checked)}
+						/>編輯
+					</label>
+					{#if !session.viewing}
+						<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
+							><Icon name="undo" /><span class="narrow-hide">復原</span></button
+						>
+						<button
+							type="button"
+							class="ghost"
+							title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
+							disabled={!session.canRedo}
+							onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+						>
+					{/if}
 					<span class="sep" aria-hidden="true"></span>
 				{/if}
 				<!-- 八拍表的字一直留著：使用說明都叫它「八拍表」，只有印表機圖示認不出來 -->
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" />八拍表</button
 				>
-				{#if view === 'edit'}
+				{#if view === 'edit' && !session.viewing}
 					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
 						><Icon name="settings" /><span class="narrow-hide">流程</span>設定</button
 					>
@@ -705,24 +719,56 @@
 		</section>
 
 		<section class="start">
-			{#if editor.file.draftOffer}
-				<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
-					<p id="draft-offer-text">{editor.file.draftOffer.text}</p>
-					{#if editor.file.draftOffer.error}<p class="error">{editor.file.draftOffer.error}</p>{/if}
-					<div class="row">
-						<button type="button" class="primary" onclick={() => editor.file.restoreDraft()}>救回</button>
-						<button type="button" onclick={() => editor.file.discardDraft()}>丟掉</button>
-					</div>
+			<NewFlowForm oncreate={(f) => editor.file.create(f)} />
+			<div class="home-open">
+				<span>已經有流程檔？</span>
+				<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+			</div>
+			{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
+			{#if editor.file.recent.length}
+				<div class="recent">
+					<h2 id="recent-title">最近的流程</h2>
+					<ul aria-labelledby="recent-title">
+						{#each editor.file.recent as f (f.id)}
+							<li>
+								<button type="button" class="recent-open" disabled={f.busy} onclick={() => editor.file.openRecent(f.id)}>
+									<span class="recent-name">{f.name}</span>
+									<span class="recent-meta"
+										>{[f.savedAt ? draftTime(f.savedAt) : '', f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
+											.filter(Boolean)
+											.join('・')}</span
+									>
+								</button>
+								<button type="button" class="link recent-drop" aria-label={`丟掉「${f.name}」`} onclick={() => (discarding = f)}>丟掉</button>
+							</li>
+						{/each}
+					</ul>
+					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 				</div>
-			{:else}
-				<NewFlowForm oncreate={(f) => editor.file.create(f)} />
-				<div class="home-open">
-					<span>已經有流程檔？</span>
-					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-				</div>
-				{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
 			{/if}
 		</section>
+		{#if discarding}
+			{@const f = discarding}
+			{@const message = f.unsaved
+				? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
+				: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+			<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
+				{#snippet children()}
+					<ConfirmList
+						{message}
+						items={[]}
+						confirmLabel="丟掉"
+						onconfirm={() => {
+							const id = f.id;
+							discarding = null;
+							void editor.file.discardRecent(id);
+						}}
+						oncancel={() => (discarding = null)}
+						focusCancel
+					/>
+				{/snippet}
+			</Modal>
+		{/if}
 	</div>
 {/if}
 
@@ -1328,7 +1374,7 @@
 		grid-template-rows: minmax(0, 1fr);
 	}
 
-	/* 蓋過窄螢幕的提示（回首頁也會問） */
+	/* 「還沒存」、首頁「丟掉」的確認：蓋過窄螢幕的提示（回首頁也會問） */
 	:global(.backdrop:has(> .discard-box)) {
 		align-items: flex-start;
 		padding-top: 72px;
@@ -1426,8 +1472,9 @@
 		}
 	}
 
-	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字） */
-	@media (max-width: 1380px) {
+	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
+	   右邊多了「編輯」開關，所以從 1410px 就換。 */
+	@media (max-width: 1410px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
@@ -1529,6 +1576,8 @@
 	}
 	.start {
 		display: grid;
+		/* 最近的流程名字很長時不撐寬整欄（名字自己截斷） */
+		grid-template-columns: minmax(0, 1fr);
 		gap: 14px;
 	}
 	.home-open {
@@ -1542,22 +1591,58 @@
 	.home .error {
 		text-align: center;
 	}
-	.draft-offer {
+	.recent {
 		display: grid;
-		gap: 16px;
-		padding: 24px;
-		background: var(--surface);
-		border-radius: 14px;
-		box-shadow: var(--shadow-pop);
-		font-size: 15px;
-	}
-	.draft-offer .row {
-		display: flex;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 8px;
+		margin-top: 10px;
+	}
+	.recent h2 {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+	.recent ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 6px;
+	}
+	.recent li {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+	.recent-open {
+		flex: 1;
+		min-width: 0;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 12px;
+	}
+	.recent-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-weight: 600;
+	}
+	.recent-meta {
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.recent-drop {
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.recent-note {
+		color: var(--muted);
+		font-size: 12px;
 	}
 	@media (max-width: 760px) {
 		.home {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 			gap: 28px;
 			padding: 32px 16px;
 		}
