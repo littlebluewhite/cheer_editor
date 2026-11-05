@@ -3,14 +3,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { writeFlowFile } from '#lib/core';
-import { audioFlow, editorPage, fakeDraftStore, flush, openFile } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, flush, openFile } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 Element.prototype.scrollIntoView = () => {};
 
-function setup(drafts = fakeDraftStore()) {
-	render(Page, editorPage(null, { draftStore: drafts.store }).props);
-	return drafts;
+function setup() {
+	render(Page, editorPage().props);
 }
 
 async function newFlow() {
@@ -48,29 +47,12 @@ describe('窄螢幕：擋住編輯畫面的提示', () => {
 		expect(hint().getByRole('button', { name: '看八拍表' })).toBeTruthy();
 	});
 
-	it('剛建好的流程按「回首頁」：回到首頁，流程還在草稿裡，問要不要救回', async () => {
-		const drafts = setup();
+	it('剛建好的流程按「回首頁」：回到首頁，問要不要救回', async () => {
+		setup();
 		await flush();
 		await newFlow();
 		await fireEvent.click(hint().getByRole('button', { name: '回首頁' }));
 		await flush();
-		expect(drafts.state.bytes).not.toBeNull();
 		expect(screen.getByRole('alertdialog').textContent).toContain('全國賽');
-		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
-		await flush();
-		expect(screen.getByText('全國賽')).toBeTruthy();
-	});
-
-	it('剛開、沒改過的流程檔按「回首頁」：直接回首頁，不問', async () => {
-		const drafts = setup();
-		await flush();
-		await openFile(writeFlowFile(audioFlow(), {}));
-		await flush();
-		expect(screen.getByText('練習用')).toBeTruthy();
-		await fireEvent.click(hint().getByRole('button', { name: '回首頁' }));
-		await flush();
-		expect(screen.getByLabelText('流程名字')).toBeTruthy();
-		expect(screen.queryByRole('alertdialog')).toBeNull();
-		expect(drafts.state.bytes).toBeNull();
 	});
 });

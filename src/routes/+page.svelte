@@ -8,20 +8,17 @@
 		positionText,
 		positionsAt,
 		raisedAt,
-		readFlowFile,
 		squadBadge,
 		timeRuleWarnings,
 		stackedMembers,
 		totalSeconds,
 		walkSpanAt,
-		writeFlowFile,
 		type ConfirmOption,
 		type Flow,
 		type Clash,
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
-	import type { Draft } from '#lib/file/draft.js';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -69,8 +66,8 @@
 	const editor = given ?? new Editor(browserAdapters());
 	setEditor(editor);
 	const { session, playback } = editor;
-	// 草稿的規則還在頁面：用編輯器 module 收著的 adapter。
-	const { draftStore, pendingInput } = editor.adapters;
+	// ⌘Z 前後送出沒送出的字：用編輯器 module 收著的 adapter。
+	const { pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
@@ -86,98 +83,9 @@
 	function onbeforeunload(e: BeforeUnloadEvent) {
 		if (editor.hasUnsavedWork) e.preventDefault();
 	}
-	/** 這個分頁的流程要不要放在草稿裡。 */
-	const ownsDraft = $derived(editor.file.ownsDraft);
-	/** 打開時找到的草稿，等教練選救回或丟掉。busy = 按了丟掉，但另一個分頁正在編輯它。 */
-	let draftOffer = $state.raw<{ bytes: Uint8Array; name: string; savedAt: Date | null; busy?: boolean } | null>(null);
+	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
+	onMount(() => editor.file.connect());
 
-	/** 讀過草稿了：在這之前不自動存，免得蓋掉還沒問過的草稿。 */
-	let draftChecked = $state(false);
-
-	/**
-	 * 分頁之間的訊息：草稿只有一份，首頁要丟掉草稿前先問有沒有別的分頁正在編輯它（那個分頁會回答）。
-	 * 沒有 BroadcastChannel 的瀏覽器就當作沒有別的分頁。
-	 */
-	const DRAFT_CHANNEL = 'cheer-editor-draft';
-	let channel: BroadcastChannel | null = null;
-
-	onMount(() => {
-		if (typeof BroadcastChannel === 'function') {
-			channel = new BroadcastChannel(DRAFT_CHANNEL);
-			channel.addEventListener('message', (e) => {
-				if (e.data === 'editing?' && ownsDraft) channel?.postMessage('editing');
-			});
-		}
-		void checkDraft();
-		return () => channel?.close();
-	});
-
-	async function checkDraft() {
-		let draft: Draft | null = null;
-		try {
-			draft = await draftStore.load();
-		} catch {
-			// 讀不到草稿就當作沒有
-		}
-		const r = draft && readFlowFile(draft.bytes);
-		// 等讀草稿的時候教練已經開始編了：不打斷他
-		if (draft && r && r.kind === 'ok' && !flow) draftOffer = { ...draft, name: r.flow.name };
-		draftChecked = true;
-	}
-
-	/** 另一個分頁回答它正在編輯草稿嗎（等一下下，沒人回就是沒有）。 */
-	function otherTabEditing(): Promise<boolean> {
-		const ch = channel;
-		if (!ch) return Promise.resolve(false);
-		return new Promise((resolve) => {
-			const reply = (e: MessageEvent) => e.data === 'editing' && done(true);
-			const timer = setTimeout(() => done(false), 300);
-			function done(editing: boolean) {
-				clearTimeout(timer);
-				ch!.removeEventListener('message', reply);
-				resolve(editing);
-			}
-			ch.addEventListener('message', reply);
-			ch.postMessage('editing?');
-		});
-	}
-
-	/**
-	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。剛建好、還沒改的流程也存，重新整理救得回來。
-	 * 存成流程檔或剛開流程檔（在檔案裡、沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
-	 */
-	const DRAFT_DELAY_MS = 1000;
-	$effect(() => {
-		if (!draftChecked || !flow) return;
-		const f = flow;
-		const keep = ownsDraft;
-		const timer = setTimeout(() => {
-			const done = keep ? draftStore.save(writeFlowFile(f, editor.music.bytes(f))) : draftStore.clear();
-			done.catch(() => {});
-		}, DRAFT_DELAY_MS);
-		return () => clearTimeout(timer);
-	});
-
-	async function restoreDraft(bytes: Uint8Array) {
-		draftOffer = null;
-		await editor.file.openDraft(bytes);
-	}
-
-	async function discardDraft() {
-		const offer = draftOffer;
-		if (!offer) return;
-		if (await otherTabEditing()) {
-			if (draftOffer === offer) draftOffer = { ...offer, busy: true };
-			return;
-		}
-		draftOffer = null;
-		draftStore.clear().catch(() => {});
-	}
-
-	/** 草稿存的時間寫成「11/5 14:03」。 */
-	function draftTime(d: Date): string {
-		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-	}
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
@@ -295,12 +203,6 @@
 		printOpen = false;
 	};
 
-	/** 新建流程表單建好了：換上它。剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟。 */
-	function create(f: Flow) {
-		editor.file.create(f);
-		if (draftChecked) draftStore.save(writeFlowFile(f, {})).catch(() => {});
-	}
-
 	function undo() {
 		if (session.undo()) restore(session.flow!);
 	}
@@ -334,16 +236,6 @@
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
 	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking);
-
-	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
-	async function leaveToHome() {
-		const f = flow;
-		const bytes = f && ownsDraft ? writeFlowFile(f, editor.music.bytes(f)) : null;
-		session.open(null);
-		if (!f || !bytes) return;
-		await draftStore.save(bytes).catch(() => {});
-		draftOffer = { bytes, name: f.name, savedAt: new Date() };
-	}
 
 	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
 	function dismissNotice(e: Event) {
@@ -734,7 +626,7 @@
 	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
-			<button type="button" onclick={leaveToHome}>回首頁</button>
+			<button type="button" onclick={() => editor.file.leaveToHome()}>回首頁</button>
 			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
 			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
 		</div>
@@ -812,21 +704,17 @@
 		</section>
 
 		<section class="start">
-			{#if draftOffer}
+			{#if editor.file.draftOffer}
 				<div class="draft-offer" role="alertdialog" aria-labelledby="draft-offer-text">
-					<p id="draft-offer-text">
-						上次編的「{draftOffer.name}」還沒存，要救回嗎？{#if draftOffer.savedAt}（{draftTime(draftOffer.savedAt)} 存的草稿）{/if}
-					</p>
-					{#if draftOffer.busy}<p class="error">另一個分頁正在編輯這份草稿，所以沒有丟掉。</p>{/if}
+					<p id="draft-offer-text">{editor.file.draftOffer.text}</p>
+					{#if editor.file.draftOffer.error}<p class="error">{editor.file.draftOffer.error}</p>{/if}
 					<div class="row">
-						<button type="button" class="primary" onclick={() => draftOffer && restoreDraft(draftOffer.bytes)}
-							>救回</button
-						>
-						<button type="button" onclick={discardDraft}>丟掉</button>
+						<button type="button" class="primary" onclick={() => editor.file.restoreDraft()}>救回</button>
+						<button type="button" onclick={() => editor.file.discardDraft()}>丟掉</button>
 					</div>
 				</div>
 			{:else}
-				<NewFlowForm oncreate={create} />
+				<NewFlowForm oncreate={(f) => editor.file.create(f)} />
 				<div class="home-open">
 					<span>已經有流程檔？</span>
 					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>

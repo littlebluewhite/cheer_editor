@@ -1,11 +1,18 @@
-// 流程檔：編輯器 module 握著（getEditor().file）。開檔、存檔、新建、「沒存先問」都在這裡，頁面只照它的狀態畫對話框和提示。
+// 流程檔：編輯器 module 握著（getEditor().file）。開檔、存檔、新建、回首頁、草稿、「沒存先問」都在這裡，頁面只照它的狀態畫對話框和提示。
 // 管：這支流程在不在檔案裡、正在存、「還沒存」的問題、開檔錯誤、缺音樂的提示、
-// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）。草稿的自動存、讀、丟掉還在頁面。
+// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（停手 1 秒自動存、打開時問要不要救回、丟掉前先問別的分頁）。
 
 import { missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import type { Draft } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
 import type { MusicLibrary } from '#lib/music-library.svelte.js';
+import type { TabChannel } from '#lib/tab-channel.js';
+
+/** 停手多久才存草稿。 */
+const DRAFT_DELAY_MS = 1000;
+/** 丟掉草稿前等別的分頁回答多久。 */
+const OTHER_TAB_WAIT_MS = 300;
 
 export class FlowFile {
 	readonly #editor: Editor;
@@ -20,6 +27,14 @@ export class FlowFile {
 	#asking = $state.raw<(() => void) | null>(null);
 	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）。 */
 	#missingNotice = '';
+	/** 讀過草稿了：在這之前不自動存，免得蓋掉還沒問過的草稿。 */
+	#draftChecked = false;
+	/** 打開時找到的草稿，等教練選救回或丟掉。busy = 按了丟掉，但另一個分頁正在編輯它。 */
+	#offer = $state.raw<{ bytes: Uint8Array; name: string; savedAt: Date | null; busy?: boolean } | null>(null);
+	/** 停手 1 秒後存草稿的計時器。 */
+	#draftTimer: ReturnType<typeof setTimeout> | undefined;
+	/** 分頁頻道：頁面打開時開。沒有（瀏覽器沒有 BroadcastChannel、頁面還沒打開）就當作沒有別的分頁。 */
+	#channel: TabChannel | null = null;
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -31,6 +46,25 @@ export class FlowFile {
 	constructor(editor: Editor) {
 		this.#editor = editor;
 		this.#onDisk = !!editor.session.flow;
+		editor.session.onflow = () => this.#saveDraftLater();
+	}
+
+	/**
+	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁的草稿是它的就回答「正在編」），讀草稿。
+	 * 回傳頁面關掉時要做的：關掉分頁頻道、還在等停手 1 秒的草稿不存了。
+	 */
+	connect(): () => void {
+		const channel = this.#editor.adapters.openTabChannel?.() ?? null;
+		this.#channel = channel;
+		channel?.listen((message) => {
+			if (message === 'editing?' && this.ownsDraft) channel.post('editing');
+		});
+		void this.#checkDraft();
+		return () => {
+			channel?.close();
+			this.#channel = null;
+			clearTimeout(this.#draftTimer);
+		};
 	}
 
 	/** 首頁開檔失敗的原因（編輯中失敗就放在提示）。 */
@@ -58,6 +92,7 @@ export class FlowFile {
 			if (outcome === 'cancelled') return;
 			session.markSaved(f);
 			this.#onDisk = true;
+			this.#saveDraftLater();
 			session.notice = [
 				outcome === 'downloaded'
 					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${fileName}」；用 Chrome 或 Edge 才能直接存回原檔。`
@@ -125,19 +160,26 @@ export class FlowFile {
 		});
 	}
 
-	/** 救回草稿：換上草稿的流程（還算未存，不在檔案裡）。 */
-	async openDraft(bytes: Uint8Array) {
-		await this.#openBytes(bytes, null);
-	}
-
-	/** 新建流程表單建好了：換上它。 */
+	/** 新建流程表單建好了：換上它。剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟。 */
 	create(flow: Flow) {
 		this.#start(flow, 'new');
+		if (this.#draftChecked) this.#editor.adapters.draftStore.save(writeFlowFile(flow, {})).catch(() => {});
 	}
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
 	startNew() {
 		this.#unlessUnsaved(() => this.#editor.session.open(null));
+	}
+
+	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
+	async leaveToHome() {
+		const { session, music, adapters } = this.#editor;
+		const f = session.flow;
+		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
+		session.open(null);
+		if (!f || !bytes) return;
+		await adapters.draftStore.save(bytes).catch(() => {});
+		this.#offer = { bytes, name: f.name, savedAt: new Date() };
 	}
 
 	/**
@@ -211,9 +253,93 @@ export class FlowFile {
 		else go();
 	}
 
+	// ---------- 草稿 ----------
+
+	/** 打開時找到草稿：問要不要救回（text），丟不掉時說為什麼（error）。沒有草稿、教練已經開始編了就是 null。 */
+	get draftOffer(): { text: string; error: string } | null {
+		const offer = this.#offer;
+		if (!offer) return null;
+		return {
+			text: `上次編的「${offer.name}」還沒存，要救回嗎？${offer.savedAt ? `（${draftTime(offer.savedAt)} 存的草稿）` : ''}`,
+			error: offer.busy ? '另一個分頁正在編輯這份草稿，所以沒有丟掉。' : ''
+		};
+	}
+
+	/** 救回草稿：換上草稿的流程（還算未存，不在檔案裡）。 */
+	async restoreDraft() {
+		const offer = this.#offer;
+		if (!offer) return;
+		this.#offer = null;
+		await this.#openBytes(offer.bytes, null);
+	}
+
+	/** 丟掉草稿：先問別的分頁有沒有在編它，有就不丟，提示裡說它正在被編。 */
+	async discardDraft() {
+		const offer = this.#offer;
+		if (!offer) return;
+		if (await this.#otherTabEditing()) {
+			if (this.#offer === offer) this.#offer = { ...offer, busy: true };
+			return;
+		}
+		this.#offer = null;
+		this.#editor.adapters.draftStore.clear().catch(() => {});
+	}
+
+	/** 另一個分頁回答它正在編輯草稿嗎（等一下下，沒人回就是沒有）。 */
+	#otherTabEditing(): Promise<boolean> {
+		const channel = this.#channel;
+		if (!channel) return Promise.resolve(false);
+		return new Promise((resolve) => {
+			const stop = channel.listen((message) => message === 'editing' && done(true));
+			const timer = setTimeout(() => done(false), OTHER_TAB_WAIT_MS);
+			function done(editing: boolean) {
+				clearTimeout(timer);
+				stop();
+				resolve(editing);
+			}
+			channel.post('editing?');
+		});
+	}
+
+	/** 打開時讀草稿：讀得到、打得開，教練又還沒開始編，就問要不要救回。讀完了才開始自動存。 */
+	async #checkDraft() {
+		let draft: Draft | null = null;
+		try {
+			draft = await this.#editor.adapters.draftStore.load();
+		} catch {
+			// 讀不到草稿就當作沒有
+		}
+		const r = draft && readFlowFile(draft.bytes);
+		// 等讀草稿的時候教練已經開始編了：不打斷他
+		if (draft && r && r.kind === 'ok' && !this.#editor.session.flow) this.#offer = { ...draft, name: r.flow.name };
+		this.#draftChecked = true;
+		this.#saveDraftLater();
+	}
+
+	/**
+	 * 編輯時自動存草稿：停手 1 秒才存（整個 zip 含音樂，不要每一下都存）。剛建好、還沒改的流程也存，重新整理救得回來。
+	 * 存成流程檔或剛開流程檔（在檔案裡、沒有未存的修改）就丟掉草稿：檔案裡已經有了，下次打開不用問。
+	 * 流程換了（session 叫）、存好了、讀過草稿了都從頭算 1 秒。
+	 */
+	#saveDraftLater() {
+		clearTimeout(this.#draftTimer);
+		const f = this.#editor.session.flow;
+		if (!this.#draftChecked || !f) return;
+		this.#draftTimer = setTimeout(() => {
+			const { adapters, music } = this.#editor;
+			const done = this.ownsDraft ? adapters.draftStore.save(writeFlowFile(f, music.bytes(f))) : adapters.draftStore.clear();
+			done.catch(() => {});
+		}, DRAFT_DELAY_MS);
+	}
+
 	/** 這個分頁的流程要不要放在草稿裡：開著流程，有未存的修改或不在檔案裡。 */
 	get ownsDraft(): boolean {
 		const { session } = this.#editor;
 		return !!session.flow && (session.unsaved || !this.#onDisk);
 	}
+}
+
+/** 草稿存的時間寫成「11/5 14:03」。 */
+function draftTime(d: Date): string {
+	return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
