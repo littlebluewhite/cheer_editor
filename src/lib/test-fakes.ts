@@ -35,15 +35,16 @@ export function fakeSaver(outcome: SaveOutcome = 'saved') {
 	return { saver, saves, fileNames };
 }
 
-/** 假的草稿：存在記憶體（state.bytes），一開始可以先放一份。 */
-export function fakeDraftStore(initial: Uint8Array | null = null) {
-	const state = { bytes: initial };
+/** 假的草稿：存在記憶體（state.bytes、state.savedAt），一開始可以先放一份。 */
+export function fakeDraftStore(initial: Uint8Array | null = null, savedAt = new Date()) {
+	const state = { bytes: initial, savedAt };
 	const store: DraftStore = {
 		async load() {
-			return state.bytes;
+			return state.bytes && { bytes: state.bytes, savedAt: state.savedAt };
 		},
 		async save(bytes) {
 			state.bytes = bytes;
+			state.savedAt = new Date();
 		},
 		async clear() {
 			state.bytes = null;
