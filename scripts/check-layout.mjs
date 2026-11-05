@@ -941,5 +941,32 @@ await check('很長的手位：拍點格子、泳道、八拍表上都待在自�
 	return { ok: grid.ok && !!grid.看全文 && lane.ok && sheet.ok, value: { 拍點格子: grid, 泳道: lane, 八拍表: sheet } };
 });
 
+// ---------- 記錄卡不位移（#142） ----------
+
+await check('記錄頁：點第一個環節前後「存這一次」不動；存好、刪掉之後「刪掉上一次」和左邊清單不動', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow(`flow = (await import('/src/lib/test-flows.ts')).ratedSample();`);
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const spot = (selector) => js(`const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)];`);
+	const press = async (selector) => { const p = await rectOf(selector); await click(p.x, p.y); await sleep(200); };
+	await js(`document.querySelectorAll('.record .list li')[1].classList.add('second')`);
+	const saveSpot = [await spot('.card .save')];
+	const undoSpot = [await spot('.card .undo-last')];
+	const listSpot = [await spot('.record .list .second')];
+	await press('.card button[aria-label$="上法 成功"]');
+	saveSpot.push(await spot('.card .save'));
+	await press('.card .save');
+	undoSpot.push(await spot('.card .undo-last'));
+	listSpot.push(await spot('.record .list .second'));
+	await press('.card .undo-last');
+	undoSpot.push(await spot('.card .undo-last'));
+	const same = (spots) => spots.every(([x, y]) => x === spots[0][0] && y === spots[0][1]);
+	return {
+		ok: same(saveSpot) && same(undoSpot) && same(listSpot),
+		value: { 存這一次: saveSpot, '刪掉上一次（存前、存後、刪後）': undoSpot, 清單第二個動作: listSpot }
+	};
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);
