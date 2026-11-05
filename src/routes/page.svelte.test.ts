@@ -2,7 +2,15 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine, type FakeEngine } from '#lib/audio/fake-engine.js';
-import { addMembers, createFlow, renameFlow, setMarkers } from '#lib/core';
+import {
+	addMembers,
+	addSegment as addSegmentTo,
+	createFlow,
+	insertFormation,
+	renameFlow,
+	setMarkers,
+	setPositions
+} from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { fakeToMeters } from '#lib/test-fakes.js';
@@ -762,6 +770,39 @@ describe('站位與走位', () => {
 		await fireEvent.pointerUp(dot, { clientX: 0, clientY: 0 });
 		expect(marked('data-ghost')).toEqual(['m2']);
 		expect(marked('data-walk-line')).toEqual([]);
+	});
+
+	it('撞位：播放頭所在那兩張站位之間的撞位，在場上畫紫色 ✕；走位條撞到的那段變紫；拖人照樣能拖', async () => {
+		// 小A [0, 0]、小B [2, 0]；站位 2 在 4.8 秒兩人換位置，1.6–4.8 秒走位，3.2 秒在 [1, 0] 撞在一起。
+		let flow = flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
+		flow = flowOf(addSegmentTo(flow, 'music'));
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
+		flow = flowOf(insertFormation(flow, 4.8));
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
+		flow = flowOf(insertFormation(flow, 8));
+		const session = new EditorSession(flow);
+		render(Page, { createEngine: () => createFakeEngine(), session, toMeters: fakeToMeters });
+		const marks = () => [...document.querySelectorAll('.field [data-clash]')];
+
+		// 播放頭在開頭那張：前面沒有走位，不畫。
+		expect(marks()).toEqual([]);
+		await seek(2);
+		expect(marks().map((el) => el.getAttribute('transform'))).toEqual(['translate(1,0)']);
+		await seek(4.8);
+		expect(marks()).toHaveLength(1);
+		// 站位 2 → 站位 3 之間沒人走，不畫。
+		await seek(6);
+		expect(marks()).toEqual([]);
+
+		expect(document.querySelectorAll('[data-lane="m1"] [data-walk-clash]')).toHaveLength(1);
+		expect(document.querySelectorAll('[data-lane="m2"] [data-walk-clash]')).toHaveLength(1);
+
+		// 只是提醒：在站位 2 上照樣拖人。
+		await seek(4.8);
+		await dragFirstMember();
+		expect(session.flow!.formations[1].pos.m1).not.toEqual([2, 0]);
 	});
 
 	it('點縮圖跳到那一拍；✕ 刪除站位；開頭那張沒有 ✕', async () => {

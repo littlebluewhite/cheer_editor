@@ -5,6 +5,7 @@
 		firstBeatPreview,
 		formationAt,
 		formationTimes,
+		clashes,
 		formationWalks,
 		memberMarkers,
 		playbackPlan,
@@ -24,6 +25,7 @@
 		writeFlowFile,
 		type ConfirmOption,
 		type Flow,
+		type Clash,
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
@@ -255,12 +257,15 @@
 		view = next;
 	}
 
+	/** 整個流程的撞位；只跟著流程重算，播放頭動不用重算。 */
+	const allClashes = $derived(flow ? clashes(flow) : []);
+
 	/**
-	 * 場上的影子和走位線：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線；
-	 * 在兩張站位中間只畫這段的走位線；開頭那張、最後一張之後都不畫。
+	 * 場上的影子、走位線和撞位：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線、撞位；
+	 * 在兩張站位中間只畫這段的走位線和撞位；開頭那張、最後一張之後都不畫。
 	 */
 	const trail = $derived.by(() => {
-		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[] };
+		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
 		if (!flow) return none;
 		const on = formationAt(flow, playheadSec);
 		const i = on
@@ -269,7 +274,8 @@
 		if (i <= 0) return none;
 		return {
 			ghosts: on ? flow.formations[i - 1].pos : none.ghosts,
-			walks: formationWalks(flow, flow.formations[i].id)
+			walks: formationWalks(flow, flow.formations[i].id),
+			clashes: allClashes.filter((c) => c.formationId === flow!.formations[i].id)
 		};
 	});
 
@@ -855,6 +861,7 @@
 				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
+				clashes={trail.clashes}
 				badges={squadBadges}
 			>
 				{#snippet below()}

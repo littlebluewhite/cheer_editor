@@ -201,3 +201,6 @@ export type {
 	Rect,
 	Strip
 } from './field';
+
+export { clashes } from './clash';
+export type { Clash } from './clash';
