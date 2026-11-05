@@ -21,11 +21,12 @@
 	// 編輯頁（有 session、有按鈕）才能選人、拖人，選取從 session 拿；八拍表的小站位圖只畫。
 	// 拖人：吸附和位置文字都問流程核心；放開時把新位置（公尺）改進播放頭這一拍的站位，送到 session 的 ask，
 	// 改好了 session 說插了站位或往後帶了幾張、播放頭停到那張（session.moved）。
-	// 放大縮小：按鈕、滾輪、兩指捏合；兩指一起拖是移動畫面。
+	// 放大縮小：按鈕（到上下限停用）、Ctrl／⌘＋滾輪、兩指捏合。放大後滾輪、觸控板兩指滑、兩指一起拖是平移（Shift＋滾輪左右移），
+	// 拖人拖到畫面邊上會自動捲。圓點照倍數開根號放大（×4 看起來大 2 倍），條號固定在畫面邊上。
 	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移；
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
-	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
+	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
 	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
@@ -33,6 +34,7 @@
 		fieldPositionText,
 		moveMembers,
 		positionsAt,
+		snapGroup,
 		snapPointsNear,
 		snapPosition,
 		toPosition,
@@ -68,6 +70,7 @@
 		ghosts = {},
 		walks = [],
 		clashes = [],
+		railHead,
 		railTop,
 		railBottom,
 		children,
@@ -93,6 +96,8 @@
 		walks?: FormationWalk[];
 		/** 撞位：在撞到的位置畫紫色 ✕。只是提醒。 */
 		clashes?: Clash[];
+		/** 左欄放大縮小旁邊、固定在上面不捲走的東西（多選、版面回原狀）。 */
+		railHead?: Snippet;
 		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
 		railTop?: Snippet;
 		/** 左欄圖例上面的東西（跟上一張一樣、拖人會改）。 */
@@ -162,14 +167,29 @@
 		return { x, y, width, height };
 	});
 
-	/** 圓點（連選取圈、標記、組號、影子）放大幾倍才有最小尺寸；夠大就是 1。八拍表的小站位圖不放大。 */
+	/**
+	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：全場時放大到有最小尺寸（夠大就是 1）；
+	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。八拍表的小站位圖不放大。
+	 */
 	const dotScale = $derived.by(() => {
+		if (!controls) return 1;
 		const [w, h] = stageSize;
-		if (!controls || !w || !h) return 1;
-		// preserveAspectRatio meet：1 公尺幾 px 看比較緊的那一邊
-		const pxPerM = Math.min(w / view.width, h / view.height);
-		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM));
+		const shrink = 1 / Math.sqrt(zoom);
+		if (!w || !h) return shrink;
+		// preserveAspectRatio meet：全場時 1 公尺幾 px 看比較緊的那一邊
+		const pxPerM = Math.min(w / full.width, h / full.height);
+		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM)) * shrink;
 	});
+
+	/** 條編號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
+	const numScale = $derived(controls ? 1 / Math.sqrt(zoom) : 1);
+	const numberAt = (s: { rect: { x: number; y: number; width: number; height: number } }): Position =>
+		vertical
+			? [s.rect.x + s.rect.width / 2, Math.max(g.outer.y - NUMBER_BAND / 2, view.y + (NUMBER_BAND / 2) * numScale)]
+			: [
+					Math.max(g.outer.x - NUMBER_BAND * 0.7, view.x + NUMBER_BAND * 0.3 * numScale),
+					s.rect.y + s.rect.height / 2 + 0.09 * numScale
+				];
 
 	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
 	function watchStage(el: HTMLElement) {
@@ -189,6 +209,8 @@
 		orig: Record<string, Position>;
 		/** 按到的人吸附後的位置；還沒移動時是 null。 */
 		cur: Position | null;
+		/** 拖過頭（有人會出界）：整組停在最遠的地方。 */
+		atEdge: boolean;
 	} | null>(null);
 	let box = $state<{ client: [number, number]; shift: boolean; a: Position; b: Position | null } | null>(
 		null
@@ -295,14 +317,66 @@
 		if (fingers.size === 0) pinching = false;
 	}
 
+	/** 螢幕 1 px 是幾公尺（現在的倍數）。 */
+	function metersPerPx(e: { clientX: number; clientY: number }): number {
+		const [x0] = toMeters(e, svg);
+		const [x1] = toMeters({ clientX: e.clientX + 1, clientY: e.clientY }, svg);
+		return x1 - x0;
+	}
+
+	/** Ctrl／⌘＋滾一次最多放大或縮小 e^0.25 ≈ 1.28 倍（滑鼠滾一格）。 */
+	const WHEEL_MAX = 0.25;
+
 	/**
-	 * 滾輪和觸控板捏合：照滾了多少成比例縮放。觸控板捏合是一連串 Ctrl＋滾輪的小事件（deltaY 約是 -100 × ln(放大倍數)），
-	 * 每個事件都放大一格的話，捏一下就跳到最大。滑鼠滾一格（deltaY 約 100）放大約 1.25 倍。
+	 * Ctrl／⌘＋滾輪、觸控板捏合：照滾了多少成比例縮放（跟時間軸一樣要按 Ctrl／⌘）。觸控板捏合是一連串 Ctrl＋滾輪的小事件
+	 * （deltaY 約是 -100 × ln(放大倍數)），每個事件都放大一格的話，捏一下就跳到最大。
+	 * 沒按 Ctrl／⌘：放大時是平移（觸控板兩指滑、滑鼠滾輪；Shift＋滾輪左右移），全場時不管（不擋頁面捲動）。
 	 */
 	function onwheel(e: WheelEvent) {
+		const line = e.deltaMode === 1 ? 33 : 1;
+		const [dx, dy] = [e.deltaX * line, e.deltaY * line];
+		if (e.ctrlKey || e.metaKey) {
+			e.preventDefault();
+			const step = clamp(-dy * (e.ctrlKey ? 0.01 : 0.0025), -WHEEL_MAX, WHEEL_MAX);
+			setZoom(zoom * Math.exp(step), toMeters(e, svg));
+			return;
+		}
+		if (zoom <= 1) return;
 		e.preventDefault();
-		const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
-		setZoom(zoom * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0025)), toMeters(e, svg));
+		const [px, py] = e.shiftKey && !dx ? [dy, 0] : [dx, dy];
+		const perPx = metersPerPx(e);
+		setZoom(zoom, undefined, [-px * perPx, -py * perPx]);
+	}
+
+	// ---------- 拖人拖到畫面邊上：自動捲 ----------
+	/** 指標離畫面邊緣這麼近（px，含超出畫面）就往那邊捲。 */
+	const EDGE_PX = 32;
+	/** 自動捲每一格畫面捲幾 px。 */
+	const EDGE_STEP_PX = 10;
+	/** 拖人時最後的指標位置：停著不動也照樣捲。 */
+	let lastPointer: { clientX: number; clientY: number } | null = null;
+	let edgeFrame = 0;
+
+	function edgeScroll() {
+		edgeFrame = 0;
+		if (!drag?.cur || !lastPointer || zoom <= 1) return;
+		const [x, y] = toMeters(lastPointer, svg);
+		const edge = EDGE_PX * metersPerPx(lastPointer);
+		const push = (v: number, lo: number, size: number) => (v < lo + edge ? -1 : v > lo + size - edge ? 1 : 0);
+		const dir = [push(x, view.x, view.width), push(y, view.y, view.height)];
+		if (!dir[0] && !dir[1]) return;
+		const step = EDGE_STEP_PX * metersPerPx(lastPointer);
+		const before = [view.x, view.y];
+		setZoom(zoom, undefined, [-dir[0] * step, -dir[1] * step]);
+		if (view.x === before[0] && view.y === before[1]) return;
+		dragTo(lastPointer);
+		edgeFrame = requestAnimationFrame(edgeScroll);
+	}
+
+	function stopEdgeScroll() {
+		if (edgeFrame) cancelAnimationFrame(edgeFrame);
+		edgeFrame = 0;
+		lastPointer = null;
 	}
 
 	function down(e: PointerEvent) {
@@ -326,7 +400,7 @@
 		if (id && positions[id]) {
 			const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
 			const orig = Object.fromEntries(ids.map((i) => [i, positions[i]]));
-			drag = { id, ids, client, shift: e.shiftKey, start: toMeters(e, svg), orig, cur: null };
+			drag = { id, ids, client, shift: e.shiftKey, start: toMeters(e, svg), orig, cur: null, atEdge: false };
 		} else if (!id) {
 			box = { client, shift: e.shiftKey || session.multiSelect, a: toMeters(e, svg), b: null };
 		} else return;
@@ -368,28 +442,39 @@
 				const at = positionsAt(session!.flow!, playback.sec);
 				drag.orig = Object.fromEntries(drag.ids.map((i) => [i, at[i] ?? drag!.orig[i]]));
 			}
-			const [px, py] = toMeters(e, svg);
-			const o = drag.orig[drag.id];
-			drag.cur = snapPosition(field, [o[0] + px - drag.start[0], o[1] + py - drag.start[1]], zoom);
+			dragTo(e);
+			lastPointer = { clientX: e.clientX, clientY: e.clientY };
+			if (!edgeFrame && typeof requestAnimationFrame === 'function') edgeFrame = requestAnimationFrame(edgeScroll);
 		} else if (box && (box.b || !still(e, box.client))) {
 			box.b = toMeters(e, svg);
 		}
 	}
 
+	/** 拖到指標這裡：按到的人吸附（整組不出界），算在場地公尺座標裡，畫面捲了也對。 */
+	function dragTo(e: { clientX: number; clientY: number }) {
+		if (!drag) return;
+		const [px, py] = toMeters(e, svg);
+		const o = drag.orig[drag.id];
+		const snapped = snapGroup(field, drag.orig, drag.id, [o[0] + px - drag.start[0], o[1] + py - drag.start[1]], zoom);
+		drag.cur = snapped.at;
+		drag.atEdge = snapped.clamped;
+	}
+
 	function up(e: PointerEvent) {
 		liftFinger(e);
-		if (drag?.cur) drop(dragged);
+		stopEdgeScroll();
+		if (drag?.cur) drop(dragged, drag.atEdge);
 		else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
 		box = null;
 	}
 
-	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）。 */
-	function drop(moves: Record<string, Position>) {
+	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。 */
+	function drop(moves: Record<string, Position>, atEdge: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
+		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r, atEdge) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
@@ -444,17 +529,28 @@
 <div class="field-wrap" class:with-rail={controls}>
 	{#if controls}
 		<div class="rail">
-			<div class="tools">
-				<button type="button" class="ghost icon" aria-label="縮小" onclick={() => setZoom(zoom / ZOOM_STEP)}
-					><Icon name="minus" /></button
-				>
-				<span class="zoom">×{zoom.toFixed(1)}</span>
-				<button type="button" class="ghost icon" aria-label="放大" onclick={() => setZoom(zoom * ZOOM_STEP)}
-					><Icon name="plus" /></button
-				>
-				<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
-					><Icon name="fit" />全場</button
-				>
+			<div class="rail-head">
+				<div class="tools">
+					<button
+						type="button"
+						class="ghost icon"
+						aria-label="縮小"
+						disabled={zoom <= 1}
+						onclick={() => setZoom(zoom / ZOOM_STEP)}><Icon name="minus" /></button
+					>
+					<span class="zoom">×{zoom.toFixed(1)}</span>
+					<button
+						type="button"
+						class="ghost icon"
+						aria-label="放大"
+						disabled={zoom >= MAX_ZOOM}
+						onclick={() => setZoom(zoom * ZOOM_STEP)}><Icon name="plus" /></button
+					>
+					<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
+						><Icon name="fit" />全場</button
+					>
+				</div>
+				{@render railHead?.()}
 			</div>
 			{@render railTop?.()}
 			<div class="rail-gap"></div>
@@ -489,6 +585,7 @@
 		onpointerup={up}
 		onpointercancel={(e) => {
 			liftFinger(e);
+			stopEdgeScroll();
 			drag = null;
 			box = null;
 		}}
@@ -505,12 +602,8 @@
 		<!-- 條編號寫在外圍框外面那一條（NUMBER_BAND，直放在後面、橫放在左邊）靠外的地方、每條的中間：
 		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
 		{#each g.strips as s (s.number)}
-			<text
-				class="num"
-				data-strip-number
-				x={vertical ? s.rect.x + s.rect.width / 2 : g.outer.x - NUMBER_BAND * 0.7}
-				y={vertical ? g.outer.y - NUMBER_BAND / 2 : s.rect.y + s.rect.height / 2 + 0.09}>{s.number}</text
-			>
+			{@const [nx, ny] = numberAt(s)}
+			<text class="num" data-strip-number x={nx} y={ny} style:font-size="{0.3 * numScale}px">{s.number}</text>
 		{/each}
 		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
@@ -618,6 +711,18 @@
 	.rail > :global(*) {
 		max-width: 100%;
 	}
+	/* 放大縮小、版面回原狀固定在左欄上面：左欄捲下去也看得到。 */
+	.rail-head {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		padding-bottom: 2px;
+		background: var(--paper, #eceff5);
+	}
 	.rail-gap {
 		flex: 1;
 	}
@@ -663,6 +768,11 @@
 		fill: var(--muted, #66718a);
 		font-weight: 700;
 		pointer-events: none;
+		/* 放大後固定在畫面邊上時可能疊在墊子上：白邊才看得清楚 */
+		paint-order: stroke;
+		stroke: #fff;
+		stroke-width: 0.06px;
+		stroke-opacity: 0.8;
 	}
 	.front {
 		font-size: 0.42px;

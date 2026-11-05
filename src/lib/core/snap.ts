@@ -23,6 +23,33 @@ export function snapPosition(field: FieldConfig, [x, y]: Position, zoom: number)
 	return axes(field).map((a, i) => snapAxis([x, y][i], a, div)) as Position;
 }
 
+/**
+ * 拖人（一個或整組）：id 是按到的人，orig 是一起移的人原本的位置，want 是他被拖到的地方。
+ * 照他吸附，其他人照他的位移一起移；拖過頭（有人會超出墊子外 1 m）就停在最遠的地方：
+ * 每個方向上每個人都不出界的範圍裡最靠 want 的吸附點。clamped = 有停在邊界。
+ */
+export function snapGroup(
+	field: FieldConfig,
+	orig: Record<string, Position>,
+	id: string,
+	want: Position,
+	zoom: number
+): { at: Position; clamped: boolean } {
+	const div = divisions(zoom);
+	const all = Object.values(orig);
+	let clamped = false;
+	const at = axes(field).map((a, i) => {
+		const own = orig[id][i];
+		const lo = a.lo + own - Math.min(...all.map((p) => p[i]));
+		const hi = a.hi + own - Math.max(...all.map((p) => p[i]));
+		if (want[i] < lo - EPS || want[i] > hi + EPS) clamped = true;
+		const v = snapAxis(want[i], { ...a, lo, hi }, div);
+		// 範圍裡沒有吸附點（原本就不在格子上的人擠在邊上）：照範圍夾
+		return Math.min(Math.max(v, lo), hi);
+	}) as Position;
+	return { at, clamped };
+}
+
 /** 這個點附近（前後左右各多一格）的吸附點，給畫面在拖的時候畫成小點。 */
 export function snapPointsNear(field: FieldConfig, [x, y]: Position, zoom: number): SnapPoint[] {
 	const div = divisions(zoom);

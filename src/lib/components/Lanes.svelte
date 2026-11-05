@@ -21,6 +21,7 @@
 		atText,
 		CUE_KINDS,
 		cueForMember,
+		farthestLegal,
 		formationWalks,
 		idleAt,
 		lengthText,
@@ -42,10 +43,11 @@
 		type CueKind,
 		type Flow,
 		type FormationWalk,
+		type TimePosition,
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
-	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
@@ -272,37 +274,54 @@
 		if (e.shiftKey || !selected.has(memberId)) session.pickMember(memberId, e.shiftKey);
 	}
 
-	/** 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多：每個人新的出發和到達。 */
-	function draggedWalks(d: NonNullable<typeof walkDrag>): Record<string, Walk> {
+	/**
+	 * 拖的那個人吸到最近一格後挪了幾秒，其他人挪一樣多：每個人新的出發和到達。
+	 * 拖過頭（前後兩張站位之外、出發不早於到達）就停在最遠的合法格子：clamped；shiftSec 是真的挪了幾秒。
+	 */
+	function draggedWalks(d: NonNullable<typeof walkDrag>) {
 		const seconds = (id: string) => {
 			const w = memberWalk(flow, d.formationId, id)!;
 			return { depart: toSeconds(flow, w.depart), arrive: toSeconds(flow, w.arrive) };
 		};
 		const own = seconds(d.memberId);
 		const from = d.mode === 'arrive' ? own.arrive : own.depart;
-		const shift = toSeconds(flow, nearestPosition(flow, from + d.dx / pxPerSec)) - from;
-		const next: Record<string, Walk> = {};
-		for (const id of d.ids) {
-			const { depart, arrive } = seconds(id);
-			next[id] = {
-				depart: nearestPosition(flow, d.mode === 'arrive' ? depart : depart + shift),
-				arrive: nearestPosition(flow, d.mode === 'depart' ? arrive : arrive + shift)
-			};
-		}
-		return next;
+		const walksTo = (p: TimePosition) => {
+			const shift = toSeconds(flow, p) - from;
+			const next: Record<string, Walk> = {};
+			for (const id of d.ids) {
+				const { depart, arrive } = seconds(id);
+				next[id] = {
+					depart: nearestPosition(flow, d.mode === 'arrive' ? depart : depart + shift),
+					arrive: nearestPosition(flow, d.mode === 'depart' ? arrive : arrive + shift)
+				};
+			}
+			return next;
+		};
+		const legal = (p: TimePosition) => setWalks(flow, d.formationId, walksTo(p)).kind === 'ok';
+		const { to, clamped } = farthestLegal(flow, from, from + d.dx / pxPerSec, legal);
+		return { walks: walksTo(to), clamped, shiftSec: toSeconds(flow, to) - from };
 	}
 
-	/** 放開：一起交給 setWalks，被擋就整組還原。 */
+	/** 放開：一起交給 setWalks；拖過頭停在邊界並提示，已經在邊界上就不改。 */
 	function dropWalk(d: NonNullable<typeof walkDrag>) {
-		const next = draggedWalks(d);
-		session.ask.send(() => setWalks(flow, d.formationId, next), { revert: () => {} });
+		const { walks: next, clamped, shiftSec } = draggedWalks(d);
+		if (Math.abs(shiftSec) < 1e-9) {
+			if (clamped) session.notice = AT_EDGE;
+			return;
+		}
+		session.ask.send(() => setWalks(flow, d.formationId, next), {
+			revert: () => {},
+			done: () => {
+				if (clamped) session.notice = AT_EDGE;
+			}
+		});
 	}
 
-	/** 拖的時候被拖的那個人新的拍數（這張站位那一段只寫段內時間），out = 放開會被擋。 */
-	const walkReadout = $derived.by(() => {
+	/** 拖的時候：被拖的那個人新的拍數（這張站位那一段只寫段內時間），out = 拖過頭、停在邊界；dx = 走位條挪幾 px。 */
+	const walkPreview = $derived.by(() => {
 		const d = walkDrag;
 		if (!d || d.dx === 0) return null;
-		const next = draggedWalks(d);
+		const { walks: next, clamped, shiftSec } = draggedWalks(d);
 		const own = next[d.memberId];
 		const home = flow.formations.find((f) => f.id === d.formationId)!.segmentId!;
 		const t = (p: Walk['depart']) => timeText(flow, home, p);
@@ -312,7 +331,7 @@
 				: d.mode === 'arrive'
 					? `到達 ${t(own.arrive)}`
 					: `${t(own.depart)} 到 ${t(own.arrive)}`;
-		return { text, out: setWalks(flow, d.formationId, next).kind !== 'ok' };
+		return { text, out: clamped, dx: clamped ? shiftSec * pxPerSec : d.dx };
 	});
 </script>
 
@@ -421,8 +440,9 @@
 			{#each walks[m.id] ?? [] as w (w.formationId)}
 				{@const d =
 					walkDrag?.formationId === w.formationId && walkDrag.ids.includes(m.id) ? walkDrag : null}
-				{@const dl = d && d.mode !== 'arrive' ? d.dx : 0}
-				{@const dr = d && d.mode !== 'depart' ? d.dx : 0}
+				{@const dx = d ? (walkPreview?.dx ?? d.dx) : 0}
+				{@const dl = d && d.mode !== 'arrive' ? dx : 0}
+				{@const dr = d && d.mode !== 'depart' ? dx : 0}
 				<button
 					type="button"
 					class="walk"
@@ -430,7 +450,7 @@
 					class:dragging={d !== null}
 					class:fast={w.tooFast}
 					class:tiring={w.tiring}
-					class:out={d?.memberId === m.id && walkReadout?.out}
+					class:out={d?.memberId === m.id && walkPreview?.out}
 					data-walk={w.formationId}
 					style:left={`${w.departSec * pxPerSec + dl}px`}
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
@@ -459,8 +479,8 @@
 							></span>
 						{/each}
 					{/if}
-					{#if d?.memberId === m.id && walkReadout}
-						<span class="readout" class:out={walkReadout.out} data-walk-readout>{walkReadout.text}</span>
+					{#if d?.memberId === m.id && walkPreview}
+						<span class="readout" class:out={walkPreview.out} data-walk-readout>{walkPreview.text}</span>
 					{/if}
 					<span class="end l" data-end="depart"></span>
 					<span class="end r" data-end="arrive"></span>

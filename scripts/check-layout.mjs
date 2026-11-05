@@ -1290,6 +1290,69 @@ await check('滑鼠點過「時間軸縮小」再按真的空白鍵：播放，�
 	return { ok: focused === '時間軸縮小' && playing && after === before, value: { 焦點: focused, 播放: playing, 倍數: `${before} → ${after}` } };
 });
 
+/** 真的滾輪，按著修飾鍵（CDP modifiers：2 Ctrl、4 ⌘、8 Shift）。 */
+const wheelWith = async (x, y, deltaY, modifiers) => {
+	await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY, modifiers });
+	await sleep(200);
+};
+const fieldViewBox = () => js(`return document.querySelector('svg.field').getAttribute('viewBox')`);
+
+await check('場地放大後：滾輪是平移、倍數不變；⌘＋滾輪才縮放', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await hitAndClick('.rail button[aria-label="放大"]');
+	await hitAndClick('.rail button[aria-label="放大"]');
+	const f = await rectOf('svg.field');
+	const seen = { 倍數: [await zoomText()], 畫面: [await fieldViewBox()] };
+	await wheelWith(f.x, f.y, 120, 0);
+	seen.倍數.push(await zoomText());
+	seen.畫面.push(await fieldViewBox());
+	await wheelWith(f.x, f.y, -120, 4);
+	seen.倍數.push(await zoomText());
+	const [a, b, c] = seen.倍數;
+	return { ok: a === b && seen.畫面[0] !== seen.畫面[1] && c !== b, value: seen };
+});
+
+await check('場地放大後拖人到畫面邊上停著：自動捲', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	for (let i = 0; i < 3; i++) await hitAndClick('.rail button[aria-label="放大"]');
+	const p = await js(`const svg = document.querySelector('svg.field').getBoundingClientRect();
+		const d = [...document.querySelectorAll('svg.field [data-member-id]')].map((g) => g.getBoundingClientRect())
+			.find((r) => r.left > svg.left + 80 && r.right < svg.right - 80 && r.top > svg.top + 80 && r.bottom < svg.bottom - 80);
+		return d ? { x: d.left + d.width / 2, y: d.top + d.height / 2, right: svg.right } : null;`);
+	if (!p) return { ok: false, value: '放大後畫面裡沒有人' };
+	const before = await fieldViewBox();
+	await mouse('mousePressed', p.x, p.y);
+	await mouse('mouseMoved', p.x + 10, p.y);
+	await mouse('mouseMoved', p.right - 4, p.y);
+	await sleep(600);
+	const after = await fieldViewBox();
+	await mouse('mouseReleased', p.right - 4, p.y, 0);
+	return { ok: before !== after, value: { 按下時: before, 拖到右邊停一下: after } };
+});
+
+await check('左欄捲到底，「版面回原狀」還固定在上面點得到', async () => {
+	await setViewport(1440, 1000);
+	await openSample();
+	await js(`const s = document.querySelector('[aria-label="場地和時間軸的分界"]');
+		for (let i = 0; i < 40; i++) s.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));`);
+	await sleep(300);
+	const rail = await rectOf('.rail');
+	await wheel(rail.x, rail.y, 2000);
+	const res = await js(`const rail = document.querySelector('.rail');
+		const b = [...rail.querySelectorAll('button')].find((x) => x.textContent.trim() === '版面回原狀');
+		if (!b) return { ok: false, value: '沒有「版面回原狀」' };
+		const r = b.getBoundingClientRect();
+		const rr = rail.getBoundingClientRect();
+		const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		return { ok: rail.scrollTop > 0 && !!top && b.contains(top) && r.top >= rr.top - 1,
+			value: { 左欄捲了: rail.scrollTop, 按鈕: [Math.round(r.top), Math.round(r.bottom)], 左欄: [Math.round(rr.top), Math.round(rr.bottom)], 中心點上面是: top ? top.outerHTML.slice(0, 80) : null } };`);
+	// 拖過的高度存在這台電腦，下一條檢查不要受影響
+	await js(`document.querySelector('[aria-label="場地和時間軸的分界"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+	return res;
+});
+
 // ---------- 選單和小窗不跑出畫面（#141） ----------
 
 /** 中心點最上面的東西是不是它自己（先捲進它所在的小窗裡看得到的地方）。 */

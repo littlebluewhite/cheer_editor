@@ -1173,17 +1173,39 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(80);
 	});
 
-	it('拖縮圖被擋就彈回去，上方說原因；開頭那張拖不動', async () => {
+	it('縮圖拖過前一張：停在前一張後面那一格（最遠合法的地方），提示「已靠到邊界」；開頭那張拖不動', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
 		await dragThumb(2, -200);
-		expect(thumbLeft(2)).toBeCloseTo(131.2);
-		expect(screen.getByRole('status').textContent).toBe(
-			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前，已還原'
-		);
+		// 站位 1 在 1-1（0 秒）：最早挪到 1-1&（0.2 秒）
+		expect(thumbLeft(2)).toBeCloseTo(3.2);
+		const notice = screen.getByRole('status').textContent!;
+		expect(notice).toMatch(/^站位 2 改到 1-1&；/);
+		expect(notice).toMatch(/；已靠到邊界$/);
 		await dragThumb(1, 50);
 		expect(thumbLeft(1)).toBe(0);
+	});
+
+	it('走位條拖過下一張站位：停在那張站位（最遠合法的地方），提示「已靠到邊界」', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 小A 走到站位 2（3-5&，8.2 秒）
+		const bar = () => document.querySelector<HTMLElement>('[data-lane="m1"] [data-walk]')!;
+		const right = () => parseFloat(bar().style.left) + parseFloat(bar().style.width);
+		const drag = async (el: Element, dx: number) => {
+			await fireEvent.pointerDown(el, { clientX: 300, button: 0 });
+			await fireEvent.pointerMove(window, { clientX: 300 + dx });
+			await fireEvent.pointerUp(window, { clientX: 300 + dx });
+		};
+		expect(right()).toBeCloseTo(131.2);
+		// 到達先往前一拍（0.4 秒 = 6.4 px），再拖中間往後 100 px：到達停在站位 2，長度不變
+		await drag(bar().querySelector('[data-end="arrive"]')!, -6.4);
+		const width = parseFloat(bar().style.width);
+		await drag(bar(), 100);
+		expect(right()).toBeCloseTo(131.2);
+		expect(parseFloat(bar().style.width)).toBeCloseTo(width);
+		expect(screen.getByRole('status').textContent).toBe('已靠到邊界');
 	});
 
 	it('拖縮圖被系統打斷（pointercancel）就彈回去，之後別處放開也不會挪', async () => {

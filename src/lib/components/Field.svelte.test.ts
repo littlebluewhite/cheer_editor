@@ -312,6 +312,16 @@ describe('在場上選人、整組拖', () => {
 		expect(session.selectedMemberIds).toEqual(['m2', 'm3']);
 	});
 
+	it('整組拖出界：停在最遠的合法位置（隊形不變），提示「已靠到邊界」', async () => {
+		const { session, dot } = setup(['m1', 'm2']);
+		// m2 往左拖 20 m：m1 在他左邊 1 m，先碰到邊界（墊子外 1 m）；整組停在 m1 出界之前
+		await dragFrom(dot('m2'), [100, 0], [-1900, 0]);
+		const [m1, m2] = [posOf(session, 'm1'), posOf(session, 'm2')];
+		expect(m2[0]).toBeCloseTo(-8.2296, 4);
+		expect(m2[0] - m1[0]).toBeCloseTo(1, 6);
+		expect(session.notice).toBe('已靠到邊界');
+	});
+
 	it('兩根手指：捏合放大、一起拖移動畫面；不會選人、拖人', async () => {
 		const { session, dot, svg } = setup();
 		const finger = (id: number, x: number, y: number) => ({
@@ -344,7 +354,7 @@ describe('在場上選人、整組拖', () => {
 		expect(session.selectedMemberIds).toEqual(['m2']);
 	});
 
-	it('觸控板捏合（一連串 Ctrl＋滾輪的小事件）照手指比例放大，不會一下跳到很大；滑鼠滾一格放大一點', async () => {
+	it('觸控板捏合（一連串 Ctrl＋滾輪的小事件）照手指比例放大，不會一下跳到很大；⌘＋滑鼠滾一格放大一點', async () => {
 		const { svg } = setup();
 		const zoomText = () => document.querySelector('.zoom')!.textContent;
 		// 捏合一次：20 個 deltaY -2 的事件，加起來放大 e^0.4 ≈ 1.5 倍
@@ -354,7 +364,7 @@ describe('在場上選人、整組拖', () => {
 		for (let i = 0; i < 100; i++) await fireEvent.wheel(svg, { deltaY: -20, ctrlKey: true, clientX: 0, clientY: 0 });
 		expect(zoomText()).toBe('×8.0');
 		await fireEvent.click(screen.getByRole('button', { name: /全場/ }));
-		await fireEvent.wheel(svg, { deltaY: -100, clientX: 0, clientY: 0 });
+		await fireEvent.wheel(svg, { deltaY: -100, metaKey: true, clientX: 0, clientY: 0 });
 		expect(zoomText()).toBe('×1.3');
 	});
 

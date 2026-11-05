@@ -109,9 +109,14 @@ export class BeatSelection {
 
 	/** ＋、－：多選或少選一拍（動最後一拍）；最少一拍，不超出動作。 */
 	grow(step: 1 | -1) {
+		if (this.canGrow(step)) this.#to += step * BEAT;
+	}
+
+	/** ＋、－ 按不按得下去（到上下限就停用）。 */
+	canGrow(step: 1 | -1): boolean {
 		const a = this.#action();
 		const to = this.#to + step * BEAT;
-		if (a && to >= this.#from && fits(a, to)) this.#to = to;
+		return !!a && to >= this.#from && fits(a, to);
 	}
 
 	/** 選下一拍（放完拍子）：選取後面那一拍；動作裡沒有就不動。回有沒有選。 */

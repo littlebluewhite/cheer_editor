@@ -3,6 +3,7 @@ import {
 	addSegment,
 	atText,
 	createFlow,
+	farthestLegal,
 	lengthText,
 	positionText,
 	readLength,
@@ -318,5 +319,24 @@ describe('播放頭吸附、一步一步移', () => {
 		expect(stepPlayhead(flow, 0.5, 1, true)).toBeCloseTo(3.2);
 		expect(stepPlayhead(flow, 3.2, -1, true)).toBeCloseTo(0);
 		expect(stepPlayhead(flow, 25.6, 1, true)).toBeCloseTo(30.6);
+	});
+});
+
+describe('拖過頭停在最遠的合法格子', () => {
+	const flow = sample();
+	const upTo = (sec: number) => (p: { segmentId: string; at: number }) => toSeconds(flow, p) <= sec + 1e-9;
+
+	it('拖到的格子合法：就是那一格，沒有靠邊', () => {
+		expect(farthestLegal(flow, 1, 3.05, upTo(6))).toEqual({ to: { segmentId: 's1', at: 15 }, clamped: false });
+	});
+
+	it('拖過頭：停在往那邊最遠的合法格子，有靠邊', () => {
+		expect(farthestLegal(flow, 1, 20, upTo(6))).toEqual({ to: { segmentId: 's1', at: 30 }, clamped: true });
+		const atLeast = (p: { segmentId: string; at: number }) => toSeconds(flow, p) >= 0.8 - 1e-9;
+		expect(farthestLegal(flow, 3, -5, atLeast)).toEqual({ to: { segmentId: 's1', at: 4 }, clamped: true });
+	});
+
+	it('跨段：停在別段的格子上', () => {
+		expect(farthestLegal(flow, 0, 50, upTo(27))).toEqual({ to: { segmentId: 's2', at: 14 }, clamped: true });
 	});
 });
