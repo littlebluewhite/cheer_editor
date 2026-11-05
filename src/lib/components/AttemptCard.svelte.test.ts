@@ -5,6 +5,7 @@ import { attemptWhos, recordAttempt, recordRunThrough } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { libSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import AttemptCard from './AttemptCard.svelte';
 
@@ -12,10 +13,10 @@ const DATE = '2026-11-01';
 
 /** 畫第 1 組（小美、小A）的卡（給了 index 就是那個動作的第一張卡），回傳 session。 */
 function setup(flow = libSample(), index = 0) {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
 	const action = flow.actions[index];
 	const { who, name } = attemptWhos(flow, action)[0];
-	render(TestSession, { props: { session, component: AttemptCard, props: { action, who, name, date: DATE } } });
+	render(TestSession, { props: { editor, component: AttemptCard, props: { action, who, name, date: DATE } } });
 	return { session, name };
 }
 

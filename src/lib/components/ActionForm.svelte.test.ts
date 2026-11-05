@@ -13,7 +13,7 @@ import {
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
-import { recordedFlow } from '#lib/test-fakes.js';
+import { recordedFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
@@ -50,10 +50,10 @@ function sample(): Flow {
 
 /** 放一個帶著 flow 的 session（選了 actionId 和 selected 的人）進 context，畫動作表單；回傳 session。 */
 function setup(flow: Flow, actionId: string | null, playheadSec = 0, selected: string[] = []) {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
 	session.selectAction(actionId);
 	session.selectMembers(selected);
-	render(TestSession, { props: { session, component: ActionForm, props: { playheadSec } } });
+	render(TestSession, { props: { editor, component: ActionForm, props: { playheadSec } } });
 	return session;
 }
 

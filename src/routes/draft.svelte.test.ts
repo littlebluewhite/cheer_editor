@@ -2,19 +2,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFlowFile, writeFlowFile } from '#lib/core';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { DraftStore } from '#lib/file/draft.js';
-import { audioFlow, fakeDecode, fakeDraftStore, fakeSaver, flush } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fakeDraftStore, flush } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
 function setup(draftStore: DraftStore) {
-	return render(Page, {
-		createEngine: () => createFakeEngine(),
-		createSaver: () => fakeSaver().saver,
-		decode: fakeDecode,
-		draftStore
-	});
+	return render(Page, editorPage(null, { draftStore }).props);
 }
 
 async function newFlow() {

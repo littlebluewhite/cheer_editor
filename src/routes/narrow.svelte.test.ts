@@ -3,19 +3,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { writeFlowFile } from '#lib/core';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { audioFlow, fakeDecode, fakeDraftStore, fakeSaver, flush, openFile } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fakeDraftStore, flush, openFile } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 Element.prototype.scrollIntoView = () => {};
 
 function setup(drafts = fakeDraftStore()) {
-	render(Page, {
-		createEngine: () => createFakeEngine(),
-		createSaver: () => fakeSaver().saver,
-		decode: fakeDecode,
-		draftStore: drafts.store
-	});
+	render(Page, editorPage(null, { draftStore: drafts.store }).props);
 	return drafts;
 }
 

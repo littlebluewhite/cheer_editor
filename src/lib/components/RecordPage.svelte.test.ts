@@ -1,8 +1,7 @@
 // 記錄頁：放一個帶好流程的 session 進去，選動作、點卡、記全上，讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { EditorSession } from '#lib/editor-session.svelte.js';
-import { practiceFlow } from '#lib/test-fakes.js';
+import { practiceFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import RecordPage from './RecordPage.svelte';
 
@@ -10,8 +9,8 @@ const DATE = '2026-11-01';
 
 /** 畫 practiceFlow() 的記錄頁（Lib 第 1 組小美、第 2 組小芳；拋投沒有環節；騰翻小美、小A），回傳 session。 */
 function setup() {
-	const session = new EditorSession(practiceFlow());
-	render(TestSession, { props: { session, component: RecordPage, props: { date: DATE } } });
+	const { editor, session } = testEditor(practiceFlow());
+	render(TestSession, { props: { editor, component: RecordPage, props: { date: DATE } } });
 	return session;
 }
 
