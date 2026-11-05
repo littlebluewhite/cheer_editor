@@ -219,6 +219,18 @@ describe('標記', () => {
 		expect(memberMarkers(flow)).toEqual({ m1: '王2', m2: '王1' });
 	});
 
+	it('加第幾個時也跳過別人的名字：甲11 不會寫成另一個人的「甲10」', () => {
+		const names = Array.from({ length: 14 }, (_, i) => `甲${i + 1}`);
+		const flow = okFlow(setMarkers(people(...names), 'initial'));
+		const markers = memberMarkers(flow);
+		const nameOf = Object.fromEntries(flow.members.map((m) => [m.id, m.name]));
+		for (const [id, marker] of Object.entries(markers)) {
+			const other = flow.members.find((m) => m.id !== id && m.name === marker);
+			expect(other, `${nameOf[id]} 的標記「${marker}」是別人的名字`).toBeUndefined();
+		}
+		expect(new Set(Object.values(markers)).size).toBe(14);
+	});
+
 	it('檔案裡的名字是空的：標記寫問號，不會當掉', () => {
 		const base = people('王小明', '李美');
 		const flow: Flow = {

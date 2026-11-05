@@ -202,7 +202,8 @@ export function memberMarkers(flow: Flow): Record<string, string> {
 /**
  * 開頭字撞在一起的一群人：每人開頭字再帶名字後面第一個「群裡別人名字後面都沒有」的字
  * （王小明、王大華、王小美 → 王明、王大、王美），所以不會兩個人帶到同一個字。
- * 找不到（同名、名字只有一個字）就在開頭字後面加 1、2、3…，跳過已經被用掉的。
+ * 找不到（同名、名字只有一個字）就在開頭字後面加 1、2、3…，跳過已經被用掉的和群裡別人的名字
+ * （甲10 在名單裡，甲11 就不會寫成「甲10」）。
  */
 function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<string, string> {
 	const head = chars.get(group[0].id)![0].toUpperCase();
@@ -217,7 +218,9 @@ function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<str
 	const used = new Set(Object.values(markers));
 	let n = 1;
 	for (const m of left) {
-		while (used.has(head + n)) n++;
+		const taken = (marker: string) =>
+			used.has(marker) || group.some((o) => o !== m && chars.get(o.id)!.join('').toUpperCase() === marker);
+		while (taken(head + n)) n++;
 		markers[m.id] = head + n++;
 	}
 	return markers;
