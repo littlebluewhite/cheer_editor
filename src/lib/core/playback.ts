@@ -34,6 +34,15 @@ export function playStartSec(flow: Flow, sec: number): number {
 	return sec >= totalSeconds(flow) - AT_END_SEC ? 0 : sec;
 }
 
+/**
+ * 段變短、刪段之後播放頭該在哪：夾回流程裡（不回到 0）。ended：夾到結尾（播完了），播放中就停下來。
+ */
+export function resumeSec(flow: Flow, sec: number): { sec: number; ended: boolean } {
+	const total = totalSeconds(flow);
+	const clamped = Math.min(Math.max(sec, 0), total);
+	return { sec: clamped, ended: clamped >= total - AT_END_SEC };
+}
+
 /** 從流程第 fromSec 秒開始播。口號段沒有音樂也沒有節拍器，時間照走。 */
 export function playbackPlan(flow: Flow, fromSec: number): PlaybackPlan {
 	const clips: PlaybackClip[] = [];

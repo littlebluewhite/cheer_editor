@@ -1,12 +1,11 @@
 // 刪段、調段順序（docs/adr/0003-v1-small-decisions.md）。
 // 動作、站位記「哪個段 ＋ 段內時間」，所以跟著自己的段走。開頭那張站位永遠在流程開頭，「跟著第一段」：
-// 第一段換了，新的第一段開頭本來就有站位就用那張；沒有就照那一刻大家所在的位置做一張。
-// 原本的開頭那張：段還在就變成一般站位留在那一段的開頭；段刪掉了就跟著刪。
+// 第一段換了，新的第一段開頭本來就有站位就用那張（原本的開頭那張：段還在就變成一般站位，段刪掉了就跟著刪）；
+// 沒有的話開頭那張自己搬過去：換順序時整張搬，刪段時位置換成那一刻大家所在的地方。站位不會變多。
 
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
-import { nextId } from './ids';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { atText, segmentSpans } from './time';
@@ -17,9 +16,12 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 	if (index === -1) return blocked('找不到這一段');
 	const segment = flow.segments[index];
 	const droppedActions = flow.actions.filter((a) => a.segmentId === segmentId);
-	// 刪掉唯一的段時，開頭那張留著（回到沒有段），不算刪掉。
+	// 開頭那張跟著新的第一段（刪掉唯一的段時回到沒有段），不算刪掉；
+	// 只有新的第一段開頭本來就有站位、那張接手當開頭時，原本的開頭那張才真的刪掉。
+	const next = flow.segments[1]?.id;
+	const takenOver = flow.formations.some((f) => f.segmentId === next && f.at === 0);
 	const droppedFormations = flow.formations.filter(
-		(f, i) => f.segmentId === segmentId && !(i === 0 && flow.segments.length === 1)
+		(f, i) => f.segmentId === segmentId && !(i === 0 && !takenOver)
 	);
 	if (!answered(option) && (droppedActions.length || droppedFormations.length)) {
 		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
@@ -67,13 +69,15 @@ function reorder(flow: Flow, segments: Segment[]): Formation[] {
 		if (takeover) {
 			kept = kept.filter((f) => f !== takeover);
 			opening = withWalks(takeover, {});
+			if (alive.has(oldOpening.segmentId!)) kept.push(oldOpening);
+		} else if (alive.has(oldOpening.segmentId!)) {
+			// 換順序：開頭那張整張搬到新的第一段開頭，不多做一張。
+			opening = { ...withWalks(oldOpening, {}), segmentId: first, at: 0 };
 		} else {
+			// 刪段：開頭那張留著，位置換成新的第一段開始那一刻大家所在的地方。
 			const startSec = segmentSpans(flow).find((s) => s.segment.id === first)!.startSec;
-			const keepsOld = alive.has(oldOpening.segmentId!);
-			const id = keepsOld ? nextId('f', flow.formations.map((f) => f.id)) : oldOpening.id;
-			opening = { id, segmentId: first, at: 0, pos: positionsAt(flow, startSec) };
+			opening = { ...withWalks(oldOpening, {}), segmentId: first, at: 0, pos: positionsAt(flow, startSec) };
 		}
-		if (alive.has(oldOpening.segmentId!)) kept.push(oldOpening);
 	}
 
 	const order = new Map(segments.map((s, i) => [s.id, i]));

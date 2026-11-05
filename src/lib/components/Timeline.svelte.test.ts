@@ -58,6 +58,22 @@ describe('時間軸放大縮小', () => {
 		expect(screen.getByText('×1')).toBeTruthy();
 	});
 
+	it('「符合寬度」：整支流程剛好放滿現在的寬度，沒有橫向捲軸；再按「＋」接回一般倍數', async () => {
+		const timeline = setup();
+		// 音樂段 25.6 秒、1 秒 16 px：看得到 148（名字欄）＋ 25.6 × 16 × 1.5 ＋ 16（尾巴）px 時剛好 ×1.5
+		Object.defineProperty(timeline, 'clientWidth', { value: 148 + 25.6 * 16 * 1.5 + 16, configurable: true });
+		await fireEvent.click(screen.getByRole('button', { name: '符合寬度' }));
+		expect(screen.getByText('×1.5')).toBeTruthy();
+		const inner = timeline.querySelector('.inner') as HTMLElement;
+		expect(parseFloat(inner.style.width)).toBeCloseTo(timeline.clientWidth, 6);
+
+		Object.defineProperty(timeline, 'clientWidth', { value: 148 + 25.6 * 16 * 0.6 + 16 });
+		await fireEvent.click(screen.getByRole('button', { name: '符合寬度' }));
+		expect(screen.getByText('×0.6')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '時間軸放大' }));
+		expect(screen.getByText('×0.75')).toBeTruthy();
+	});
+
 	it('觸控板捏合的小事件累積夠了才動一格', async () => {
 		const timeline = setup();
 		await fireEvent.wheel(timeline, { deltaY: -15, ctrlKey: true });

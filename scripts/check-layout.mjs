@@ -96,16 +96,20 @@ async function openSample() {
 /**
  * 開首頁，打開一份有可以記成功率的動作的流程（範例流程沒有）：
  * 在頁面裡用測試共用的 libSample()（src/lib/test-flows.ts）做好、寫成流程檔，從「開啟流程檔」放進去。
+ * more 是在頁面裡改 flow 的程式（可以用 core 裡的函式），例如加拍點。
  */
-async function openPracticeFlow() {
+async function openPracticeFlow(more = '') {
 	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
 	await js(`const { libSample } = await import('/src/lib/test-flows.ts');
-		const { writeFlowFile } = await import('/src/lib/core/index.ts');
+		const core = await import('/src/lib/core/index.ts');
+		const { writeFlowFile } = core;
+		let flow = libSample();
+		${more}
 		const input = document.querySelector('.home-open input[type=file]');
 		const dt = new DataTransfer();
-		dt.items.add(new File([writeFlowFile(libSample(), {})], '練習用.zip', { type: 'application/zip' }));
+		dt.items.add(new File([writeFlowFile(flow, {})], '練習用.zip', { type: 'application/zip' }));
 		input.files = dt.files;
 		input.dispatchEvent(new Event('change', { bubbles: true }));`);
 	await waitFor(() => js(`return !!document.querySelector('.rail')`));
@@ -280,6 +284,73 @@ await check('拍點格子在畫面中間時，點一拍再 Shift 點下一拍，
 		if (!res.ok || btns.length !== 3 || !btns.every(([, v]) => v)) bad.push({ 那一排在右邊欄的: at, ...res.value, 按鈕: btns });
 	}
 	return { ok: aboveCount > 0 && bad.length === 0, value: { 選: `${first} 到 ${next}`, 開在上面幾次: aboveCount, 沒過: bad } };
+});
+
+await check('總表點一格：右邊的明細不蓋住上方列，存檔點得到', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(200);
+	await js(`[...document.querySelectorAll('.practice .pages button')].find((b) => b.textContent.trim() === '總表').click()`);
+	await sleep(200);
+	await js(`document.querySelector('.summary .cell').click()`);
+	await sleep(400);
+	return js(`const save = document.querySelector('.topbar .save');
+		const r = save.getBoundingClientRect();
+		const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		const d = document.querySelector('.detail').getBoundingClientRect();
+		const bar = document.querySelector('.topbar').getBoundingClientRect();
+		return { ok: !!top && save.contains(top) && d.top >= bar.bottom - 1,
+			value: { 存檔中心點上面是: top ? top.outerHTML.slice(0, 60) : null, 明細上緣: Math.round(d.top), 上方列下緣: Math.round(bar.bottom) } };`);
+});
+
+for (const [w, h] of [[1440, 900], [1280, 720], [1024, 768]]) {
+	await check(`${w}×${h} 播放頭在有很多拍點的動作裡：大字卡整張看得到，下緣不被切`, async () => {
+		await setViewport(w, h);
+		// Lib 第 1 拍放拍子、步驟、手位，給全部、上層、小美各一個：卡又高又多行
+		await openPracticeFlow(`for (const c of [
+				{ kind: 'count', at: 0, len: 4, word: 'down' },
+				{ kind: 'step', at: 0, len: 4, word: '下手' },
+				{ kind: 'step', at: 0, len: 4, word: '上', who: { role: '上層' } },
+				{ kind: 'motion', at: 0, len: 2, word: 'high V' },
+				{ kind: 'motion', at: 0, len: 2, word: 'T', who: { member: 'm1' } },
+				{ kind: 'motion', at: 2, len: 2, word: 'low V' }
+			]) { const r = core.placeCue(flow, 'x1', c); if (r.kind !== 'ok') throw new Error(r.message); flow = r.flow; }`);
+		const r = await rectOf('[data-ruler]');
+		await click(r.left + 2, r.y);
+		await sleep(300);
+		return js(`const box = document.querySelector('.cues-now');
+			if (!box) return { ok: false, value: '沒有大字卡' };
+			const b = box.getBoundingClientRect();
+			const cards = [...box.querySelectorAll('.card')].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom)]; });
+			const cut = cards.filter(([, bottom]) => bottom > b.bottom + 0.5);
+			return { ok: cards.length > 0 && cut.length === 0, value: { 大字區: [Math.round(b.top), Math.round(b.bottom)], 卡: cards, 下緣被切: cut } };`);
+	});
+}
+
+await check('超寬螢幕（2560 寬）按「符合寬度」：整支流程放滿時間軸，沒有橫向捲軸', async () => {
+	await setViewport(2560, 1200);
+	await openSample();
+	const hit = await hitAndClick('.timeline [aria-label="符合寬度"]');
+	await sleep(200);
+	const m = await js(`const t = document.querySelector('.timeline'); const trk = t.querySelector('.ruler');
+		return { 看得到: t.clientWidth, 捲得到: t.scrollWidth, 流程: Math.round(trk.getBoundingClientRect().width) };`);
+	return { ok: hit.self && m.捲得到 <= m.看得到 && m.流程 >= (m.看得到 - 148) * 0.9, value: { ...m, 擋住按鈕的: hit.self ? null : hit.top } };
+});
+
+await check('1440×900 最後一段旁的「＋」點得到，選單整個看得到、選項點得到', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	// 時間軸捲到最右邊：最後一段的「＋」在看得到的範圍右邊
+	await js(`const t = document.querySelector('.timeline'); t.scrollLeft = t.scrollWidth;`);
+	await sleep(200);
+	await js(`const all = document.querySelectorAll('.timeline .add-after'); all[all.length - 1].classList.add('last-add')`);
+	const hit = await hitAndClick('.timeline .last-add');
+	if (!hit.self) return { ok: false, value: { 擋住加段鈕的: hit.top } };
+	const res = await cornersVisible('.menu');
+	const btns = await js(`return [...document.querySelectorAll('.menu button')].map((b) => { const r = b.getBoundingClientRect();
+		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [b.textContent.trim(), !!t && b.contains(t)]; });`);
+	return { ok: res.ok && btns.length === 2 && btns.every(([, v]) => v), value: { ...res.value, 選項: btns } };
 });
 
 // ---------- 窄螢幕（寬不到 1024 或高不到 600，ADR 0005 的 2026-11 更新） ----------

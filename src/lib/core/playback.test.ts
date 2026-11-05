@@ -6,6 +6,7 @@ import {
 	loadSegmentAudio,
 	playbackPlan,
 	playStartSec,
+	resumeSec,
 	updateSegment,
 	type Flow
 } from './index';
@@ -89,6 +90,14 @@ describe('按播放從哪裡開始', () => {
 		expect(playStartSec(flow, 6.68)).toBe(6.68);
 		expect(playStartSec(flow, 6.695)).toBe(0);
 		expect(playStartSec(flow, 6.7)).toBe(0);
+	});
+
+	it('段變短、刪段後（播放中重排聲音）：從夾到流程裡的時間接著播，不回到 0；夾到結尾就是播完了', () => {
+		const flow = sample(); // 共 6.7 秒
+		expect(resumeSec(flow, 2.5)).toEqual({ sec: 2.5, ended: false });
+		expect(resumeSec(flow, 46.8)).toEqual({ sec: 6.7, ended: true });
+		expect(resumeSec(flow, 6.695)).toEqual({ sec: 6.695, ended: true });
+		expect(resumeSec(flow, -1)).toEqual({ sec: 0, ended: false });
 	});
 });
 
