@@ -1,8 +1,17 @@
 <script lang="ts">
-	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加自訂角色。
+	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加、改、刪自訂角色。
+	// 刪有人用的自訂角色時，核心回「要確認」：列出動作，按確定才刪。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { addCustomRole, roleGlossary } from '#lib/core';
+	import {
+		addCustomRole,
+		deleteCustomRole,
+		roleGlossary,
+		updateCustomRole,
+		type ConfirmOption,
+		type CustomRole
+	} from '#lib/core';
 	import { Ask } from './ask.svelte';
+	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 
 	interface Props {
@@ -16,8 +25,18 @@
 
 	let name = $state('');
 	let meaning = $state('');
-	/** 被擋的原因。 */
-	const ask = new Ask((f) => session.change(f));
+	/** 被擋的原因，和刪有人用的角色時等教練確認的清單。 */
+	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
+
+	/** 改自訂角色的名稱或意思；被擋就把輸入框還原。 */
+	function edit(role: CustomRole, patch: Partial<Pick<CustomRole, 'name' | 'meaning'>>, input: HTMLInputElement) {
+		const r = ask.send(() => updateCustomRole(flow, role.id, { name: role.name, meaning: role.meaning, ...patch }));
+		if (r.kind !== 'ok') input.value = patch.name !== undefined ? role.name : role.meaning;
+	}
+
+	function remove(role: CustomRole) {
+		ask.send((o: ConfirmOption = {}) => deleteCustomRole(flow, role.id, o));
+	}
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -51,14 +70,42 @@
 			</thead>
 			<tbody>
 				{#each roleGlossary(flow) as r (r.name)}
+					{@const custom = r.custom ? flow.customRoles.find((c) => c.name === r.name) : undefined}
 					<tr>
-						<td><b>{r.name}</b>{#if r.custom}<small class="tag">自訂</small>{/if}</td>
-						<td>{r.meaning}</td>
-						<td>{r.ruleName || '—'}</td>
+						{#if custom}
+							<td>
+								<input
+									class="role-name"
+									aria-label="「{custom.name}」的名稱"
+									value={custom.name}
+									onchange={(e) => edit(custom, { name: e.currentTarget.value }, e.currentTarget)}
+								/><small class="tag">自訂</small>
+							</td>
+							<td>
+								<input
+									aria-label="「{custom.name}」的意思"
+									value={custom.meaning}
+									onchange={(e) => edit(custom, { meaning: e.currentTarget.value }, e.currentTarget)}
+								/>
+							</td>
+							<td>
+								<button
+									type="button"
+									class="ghost icon"
+									aria-label="刪除任務角色「{custom.name}」"
+									onclick={() => remove(custom)}><Icon name="trash" size={14} /></button
+								>
+							</td>
+						{:else}
+							<td><b>{r.name}</b>{#if r.custom}<small class="tag">自訂</small>{/if}</td>
+							<td>{r.meaning}</td>
+							<td>{r.ruleName || '—'}</td>
+						{/if}
 					</tr>
 				{/each}
 			</tbody>
 		</table>
+		{#if ask.question}<ConfirmList {ask} />{/if}
 		<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
 		<form novalidate onsubmit={add}>
 			<b>新增自訂任務角色</b>
@@ -67,7 +114,7 @@
 				<label>意思 <input bind:value={meaning} /></label>
 				<button type="submit" class="primary">新增任務角色</button>
 			</div>
-			<p class="muted">自訂任務角色只存在這一支流程裡。</p>
+			<p class="muted">自訂任務角色只存在這一支流程裡。在上面的表裡可以直接改名稱、意思，或按垃圾桶刪掉。</p>
 		</form>
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 	</div>
@@ -97,6 +144,10 @@
 	}
 	td:first-child {
 		white-space: nowrap;
+	}
+	.role-name {
+		width: 9em;
+		font-weight: 600;
 	}
 	.tag {
 		margin-left: 6px;

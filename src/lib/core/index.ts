@@ -100,7 +100,7 @@ export type {
 	EightCountRow
 } from './eight-count';
 
-export { addCustomRole, roleGlossary } from './roles';
+export { addCustomRole, deleteCustomRole, roleGlossary, updateCustomRole } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {

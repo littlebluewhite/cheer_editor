@@ -25,8 +25,9 @@ describe('名詞對照表', () => {
 		expect(rows[3].textContent).toContain('上層');
 		expect(rows[3].textContent).toContain('被撐在最上面的人。');
 		expect(rows[3].textContent).toContain('上層人員');
-		expect(rows[11].textContent).toContain('丟人的');
-		expect(rows[11].textContent).toContain('把上層丟給中層接');
+		// 自訂角色的名稱、意思是可以改的輸入框
+		expect((within(rows[11]).getByLabelText('「丟人的」的名稱') as HTMLInputElement).value).toBe('丟人的');
+		expect((within(rows[11]).getByLabelText('「丟人的」的意思') as HTMLInputElement).value).toBe('把上層丟給中層接');
 		expect(rows[11].textContent).toContain('自訂');
 	});
 
@@ -42,5 +43,31 @@ describe('名詞對照表', () => {
 		await fireEvent.input(screen.getByLabelText('任務角色名稱'), { target: { value: '上層' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增任務角色' }));
 		expect(screen.getByRole('alert').textContent).toBe('已經有「上層」這個任務角色了');
+	});
+
+	it('自訂角色可以改名稱、意思；固定角色不能改', async () => {
+		const session = setup(flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' })));
+		expect(screen.queryByLabelText('「上層」的名稱')).toBeNull();
+		await fireEvent.change(screen.getByLabelText('「丟人的」的名稱'), { target: { value: '拋人的' } });
+		expect(session.flow!.customRoles).toMatchObject([{ name: '拋人的' }]);
+		await fireEvent.change(screen.getByLabelText('「拋人的」的意思'), { target: { value: '把上層拋上去' } });
+		expect(session.flow!.customRoles).toMatchObject([{ name: '拋人的', meaning: '把上層拋上去' }]);
+	});
+
+	it('改名被擋下：顯示原因，欄位回到原本的名字', async () => {
+		let flow = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
+		flow = flowOf(addCustomRole(flow, { name: '抬腳的', meaning: '' }));
+		setup(flow);
+		const box = screen.getByLabelText('「丟人的」的名稱') as HTMLInputElement;
+		await fireEvent.change(box, { target: { value: '抬腳的' } });
+		expect(screen.getByRole('alert').textContent).toBe('已經有「抬腳的」這個任務角色了');
+		expect(box.value).toBe('丟人的');
+	});
+
+	it('刪自訂角色：沒人用直接刪，可以復原', async () => {
+		const session = setup(flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' })));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除任務角色「丟人的」' }));
+		expect(session.flow!.customRoles).toEqual([]);
+		expect(session.canUndo).toBe(true);
 	});
 });

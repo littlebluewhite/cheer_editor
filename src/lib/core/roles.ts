@@ -1,8 +1,9 @@
 // 任務角色：隊員在某個動作裡要做的事。11 個固定的 ＋ 這支流程自己加的。
 // 跟全局角色互不影響，所以這裡不看隊員的全局角色。
 
+import { actionLabel } from './action-types';
 import type { Flow } from './flow';
-import { blocked, ok, type CommandResult } from './result';
+import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { nextId } from './ids';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
@@ -44,6 +45,50 @@ export function addCustomRole(flow: Flow, input: { name: string; meaning: string
 	const id = nextId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
 	return ok({ ...flow, customRoles: [...flow.customRoles, role] });
+}
+
+/**
+ * 改自訂任務角色的名稱、意思。名稱規則跟新增一樣（跟自己原本的名字一樣可以）。
+ * 動作裡的人、給這個角色的拍點存的是名稱，一起改成新的。
+ */
+export function updateCustomRole(flow: Flow, id: string, input: { name: string; meaning: string }): CommandResult {
+	const old = flow.customRoles.find((r) => r.id === id);
+	if (!old) return blocked('找不到這個任務角色');
+	const name = input.name.trim();
+	if (!name) return blocked('請填任務角色名稱');
+	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
+		return blocked(`已經有「${name}」這個任務角色了`);
+	}
+	const role = { id, name, meaning: input.meaning.trim() };
+	const actions = flow.actions.map((a) => ({
+		...a,
+		members: a.members.map((m) => (m.role === old.name ? { ...m, role: name } : m)),
+		...(a.cues && {
+			cues: a.cues.map((c) => (c.who && 'role' in c.who && c.who.role === old.name ? { ...c, who: { role: name } } : c))
+		})
+	}));
+	return ok({ ...flow, customRoles: flow.customRoles.map((r) => (r.id === id ? role : r)), actions });
+}
+
+/**
+ * 刪自訂任務角色。有動作用到時先問（列出動作）；確定後那些人變成沒有任務，給這個角色的拍點刪掉。
+ */
+export function deleteCustomRole(flow: Flow, id: string, option: ConfirmOption = {}): CommandResult {
+	const role = flow.customRoles.find((r) => r.id === id);
+	if (!role) return blocked('找不到這個任務角色');
+	const using = flow.actions.filter((a) => a.members.some((m) => m.role === role.name));
+	if (using.length && !option.confirmed) {
+		return needsConfirm(
+			`「${role.name}」用在 ${using.length} 個動作裡：刪掉後那些人變成沒有任務，給「${role.name}」的拍點也會刪掉`,
+			using.map(actionLabel)
+		);
+	}
+	const actions = flow.actions.map((a) => ({
+		...a,
+		members: a.members.map((m) => (m.role === role.name ? { ...m, role: null } : m)),
+		...(a.cues && { cues: a.cues.filter((c) => !(c.who && 'role' in c.who && c.who.role === role.name)) })
+	}));
+	return ok({ ...flow, customRoles: flow.customRoles.filter((r) => r.id !== id), actions });
 }
 
 /** 名詞對照表：固定的 11 個在前，這支流程的自訂角色接在後面。 */
