@@ -170,7 +170,7 @@ export class FlowFile {
 	 * saver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。draftId：這支流程的草稿 id（沒給就照檔案算）。
 	 * 另一個分頁正在編這支流程就不開，說原因。
 	 */
-	async #openBytes(bytes: Uint8Array, fileName: string | null, saver: FileSaver | null = null, draftId = fileDraftId(bytes)) {
+	async #openBytes(bytes: Uint8Array, fileName: string | null, saver: FileSaver | null = null, draftId = fileDraftId(bytes)): Promise<void> {
 		const session = this.#editor.session;
 		const r = readFlowFile(bytes);
 		const cannotOpen = (reason: string) => {
