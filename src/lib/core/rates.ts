@@ -114,6 +114,15 @@ export interface RateFilter {
 	practice?: PracticeKind;
 }
 
+/** 這一次有沒有通過篩選。 */
+function passes(r: Attempt, filter: RateFilter): boolean {
+	return (
+		(filter.from === undefined || r.date >= filter.from) &&
+		(filter.to === undefined || r.date <= filter.to) &&
+		(filter.practice === undefined || r.practice === filter.practice)
+	);
+}
+
 /** 成功率表：一欄一組（騰翻、跳躍一欄一個人），每欄是每個環節和整次的次數；加上合計。 */
 export interface RateTable {
 	columns: ({ who: string; name: string } & RateCounts)[];
@@ -126,12 +135,7 @@ export interface RateTable {
  */
 export function rateTable(flow: Flow, action: Action, filter: RateFilter = {}): RateTable {
 	const phases = action.successRate?.phases ?? [];
-	const records = (action.successRate?.records ?? []).filter(
-		(r) =>
-			(filter.from === undefined || r.date >= filter.from) &&
-			(filter.to === undefined || r.date <= filter.to) &&
-			(filter.practice === undefined || r.practice === filter.practice)
-	);
+	const records = (action.successRate?.records ?? []).filter((r) => passes(r, filter));
 	return {
 		columns: attemptWhos(flow, action).map((w) => ({ ...w, ...rateCounts(phases, records.filter((r) => r.who === w.who)) })),
 		total: rateCounts(phases, records)
@@ -158,12 +162,15 @@ export interface DetailDay {
 	marks: { mark: Mark; runThrough: boolean }[];
 }
 
-/** 一格的明細：這組（騰翻、跳躍是這個人）、這個環節每天的每一次記號，照日期排。空的不列。 */
-export function cellDetail(action: Action, who: string, phaseId: string): DetailDay[] {
+/**
+ * 一格的明細：這組（騰翻、跳躍是這個人）、這個環節每天的每一次記號，照日期排。空的不列。
+ * filter 和那一格用的一樣（期間、練法），明細才對得上格子的次數。
+ */
+export function cellDetail(action: Action, who: string, phaseId: string, filter: RateFilter = {}): DetailDay[] {
 	const days = new Map<string, DetailDay['marks']>();
 	for (const r of action.successRate?.records ?? []) {
 		const mark = r.marks[phaseId];
-		if (r.who !== who || !mark) continue;
+		if (r.who !== who || !mark || !passes(r, filter)) continue;
 		if (!days.has(r.date)) days.set(r.date, []);
 		days.get(r.date)!.push({ mark, runThrough: r.practice === 'runThrough' });
 	}

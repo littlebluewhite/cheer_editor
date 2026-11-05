@@ -10,6 +10,7 @@
 		memberMarkers,
 		playbackPlan,
 		playStartSec,
+		resumeSec,
 		NO_SQUAD_COLOR,
 		positionText,
 		positionsAt,
@@ -331,20 +332,27 @@
 		player?.stop();
 	}
 
-	// 播放中改了段（換順序、刪段、改 BPM、長度，或復原這些）：已經排好的聲音是舊的，照現在的段重排。
+	// 改了段（換順序、刪段、改 BPM、長度，或復原這些）：播放頭夾回流程裡（段變短、刪段後不跑到結尾後面）。
+	// 播放中已經排好的聲音是舊的，從夾住後的時間照現在的段重排（不回到 0）；夾到結尾就是播完了，停下。
 	// 只看 segments 這個陣列換了沒，改人、改動作不會重排。
 	// segments 另外 derived：flow 換了但 segments 是同一個陣列時，derived 不變，effect 不會跑。
 	const segments = $derived(flow?.segments);
 	$effect(() => {
 		segments;
 		untrack(() => {
-			if (playing && flow) play(flow);
+			if (!flow) return;
+			const { sec, ended } = resumeSec(flow, playheadSec);
+			playheadSec = sec;
+			if (!playing) return;
+			if (ended) pause();
+			else play(flow);
 		});
 	});
 
+	/** 沒有段時沒東西可以播（播放鍵是灰的）。 */
 	function togglePlay(f: Flow) {
 		if (playing) pause();
-		else play(f);
+		else if (f.segments.length) play(f);
 	}
 
 	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
@@ -872,7 +880,8 @@
 					class="play"
 					class:on={playing}
 					aria-label={playing ? '暫停' : '播放'}
-					title="空白鍵也可以播放／暫停"
+					title={flow.segments.length ? '空白鍵也可以播放／暫停' : '先加一段'}
+					disabled={!flow.segments.length && !playing}
 					onclick={() => flow && togglePlay(flow)}><Icon name={playing ? 'pause' : 'play'} size={18} /></button
 				>
 				<div class="board">
@@ -1102,14 +1111,16 @@
 			</div>
 		{/if}
 	</div>
-	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
+	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
 			<button type="button" onclick={leaveToHome}>回首頁</button>
+			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
 			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
 		</div>
 	{/snippet}
-	{#if view === 'edit'}
+	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來 -->
+	{#if view === 'edit' && !printOpen}
 		<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
 		<section class="cover-hint rotate-hint" aria-labelledby="rotate-hint-title">
 			<Icon name="fit" size={28} />
@@ -1238,6 +1249,8 @@
 		grid-column: 1 / -1;
 		min-height: 0;
 		display: grid;
+		/* 表格很寬時（人多）只有表格自己左右捲，不把練習畫面撐開 */
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.split {
 		grid-column: 1 / -1;
@@ -1379,6 +1392,12 @@
 	.play:hover {
 		background: #ff6a45;
 		border-color: #ff6a45;
+	}
+	/* 沒有段：灰的，按不下去 */
+	.play:disabled,
+	.play:disabled:hover {
+		background: var(--muted, #66718a);
+		border-color: var(--muted, #66718a);
 	}
 	.play.on {
 		background: #fff;
@@ -1815,6 +1834,16 @@
 
 	@media print {
 		.print-hidden {
+			display: none;
+		}
+		/* 印記一次全上表、總表：只印練習畫面裡的表，不印上方列和提示 */
+		.editor.practicing {
+			display: block;
+			height: auto;
+			background: none;
+		}
+		.editor.practicing > .topbar,
+		.toast {
 			display: none;
 		}
 	}

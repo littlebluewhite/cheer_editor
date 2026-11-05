@@ -1,8 +1,8 @@
 <script lang="ts">
 	// 記錄頁、總表的「＋ 記一次全上」打開的表（照台灣教練的全上表）：每個要記的動作一塊，照流程順序；一列一個環節，一欄一組。
 	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組後面的環節變空的；改回來，後面回到 ✓。
-	// 全上中途停了，就在沒做的動作按「沒做（停了）」：整個動作變空的，不存。
-	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存。
+	// 全上中途停了，就在沒做的動作按「沒做（停了）」：整個動作變空的，不存；停在哪個動作就在那裡按「後面都沒做」，後面的一次變空的。
+	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問）。
 	import {
 		actionLabel,
 		attemptWhos,
@@ -17,13 +17,14 @@
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { Ask } from './ask.svelte.js';
+	import ConfirmList from './ConfirmList.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
 		/** 記在哪一天（練習畫面選的日期）。 */
 		date: string;
-		/** 存好或取消後關掉這張表。 */
-		onclose: () => void;
+		/** 存好（saved = true）或取消後關掉這張表。 */
+		onclose: (saved: boolean) => void;
 	}
 
 	let { date, onclose }: Props = $props();
@@ -41,6 +42,10 @@
 	let picked = $state<Record<string, Mark>>({});
 	/** 按了「沒做（停了）」的動作。 */
 	let skipped = $state<string[]>([]);
+	/** 按了取消，等教練確定要不要丟掉改過的格子。 */
+	let confirming = $state(false);
+	/** 改過格子、按過「沒做」：取消要先問。 */
+	const dirty = $derived(skipped.length > 0 || Object.values(picked).some((m) => m !== '✓'));
 
 	const key = (actionId: string, who: string, phaseId: string) => `${actionId}|${who}|${phaseId}`;
 
@@ -68,11 +73,29 @@
 		skipped = skipped.includes(actionId) ? skipped.filter((id) => id !== actionId) : [...skipped, actionId];
 	}
 
+	/** 第 index 個動作後面的動作 id。 */
+	const after = (index: number) => blocks.slice(index + 1).map((b) => b.action.id);
+	/** 後面的動作都按了沒做。 */
+	const restSkipped = (index: number) => after(index).every((id) => skipped.includes(id));
+
+	/** 「後面都沒做」：後面的動作都變沒做；已經都沒做就都回來。 */
+	function toggleRest(index: number) {
+		const rest = after(index);
+		skipped = restSkipped(index)
+			? skipped.filter((id) => !rest.includes(id))
+			: [...skipped, ...rest.filter((id) => !skipped.includes(id))];
+	}
+
+	function cancel() {
+		if (dirty) confirming = true;
+		else onclose(false);
+	}
+
 	function save() {
 		const entries: RunThroughMarks[] = blocks
 			.filter(({ action }) => !skipped.includes(action.id))
 			.flatMap(({ action, whos }) => whos.map(({ who }) => ({ actionId: action.id, who, marks: tapped(action, who) })));
-		ask.send(() => recordRunThrough(flow, date, entries), { done: onclose });
+		ask.send(() => recordRunThrough(flow, date, entries), { done: () => onclose(true) });
 	}
 
 	const markLabel = (m: Mark | null) => MARKS.find((x) => x.key === m)?.label ?? '空的';
@@ -81,10 +104,10 @@
 <section class="sheet" aria-label="記一次全上">
 	<header>
 		<h3>記一次全上</h3>
-		<p>每格先是 ✓，點出錯的地方：✓ → △ → ✗。中途停了，沒做的動作按「沒做（停了）」。</p>
+		<p>每格先是 ✓，點出錯的地方：✓ → △ → ✗。中途停了，在停下來的動作按「後面都沒做」，或在沒做的動作按「沒做（停了）」。</p>
 	</header>
 
-	{#each blocks as { action, whos } (action.id)}
+	{#each blocks as { action, whos }, index (action.id)}
 		{@const phases = action.successRate?.phases ?? []}
 		{@const phaseIds = phases.map((p) => p.id)}
 		{@const off = skipped.includes(action.id)}
@@ -93,6 +116,11 @@
 			<div class="head">
 				<h4><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h4>
 				<button type="button" class="stop" aria-pressed={off} onclick={() => toggleSkip(action.id)}>沒做（停了）</button>
+				{#if index < blocks.length - 1}
+					<button type="button" class="stop" aria-pressed={restSkipped(index)} onclick={() => toggleRest(index)}
+						>後面都沒做</button
+					>
+				{/if}
 			</div>
 			<div class="scroll">
 				<table>
@@ -130,10 +158,21 @@
 
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 
-	<footer>
-		<button type="button" class="primary" onclick={save}>存這次全上</button>
-		<button type="button" onclick={onclose}>取消</button>
-	</footer>
+	{#if confirming}
+		<ConfirmList
+			message="改過的格子還沒存，要丟掉嗎？"
+			items={[]}
+			confirmLabel="丟掉"
+			cancelLabel="繼續記"
+			onconfirm={() => onclose(false)}
+			oncancel={() => (confirming = false)}
+		/>
+	{:else}
+		<footer>
+			<button type="button" class="primary" onclick={save}>存這次全上</button>
+			<button type="button" onclick={cancel}>取消</button>
+		</footer>
+	{/if}
 </section>
 
 <style>
@@ -142,6 +181,8 @@
 		--minor: #b45309;
 		--fail: #b91c1c;
 		display: grid;
+		/* 人多時只有表格自己左右捲（.scroll），不把畫面撐開 */
+		grid-template-columns: minmax(0, 1fr);
 		gap: 16px;
 		padding: 12px;
 		background: var(--surface);
@@ -247,6 +288,38 @@
 	@media (pointer: coarse) {
 		.slot {
 			min-height: 56px;
+		}
+	}
+	/* 印出來：只印表格，欄位跟著紙寬縮（人多時名字可以拆行），不印說明和按鈕 */
+	@media print {
+		.sheet {
+			padding: 0;
+			border: 0;
+		}
+		header p,
+		.stop,
+		footer {
+			display: none;
+		}
+		.scroll {
+			overflow: visible;
+		}
+		table {
+			width: 100%;
+		}
+		th,
+		thead th,
+		td {
+			padding: 2px;
+			font-size: 9px;
+			white-space: normal;
+			word-break: break-all;
+		}
+		.slot {
+			min-width: 0;
+			min-height: 0;
+			padding: 0;
+			font-size: 11px;
 		}
 	}
 </style>

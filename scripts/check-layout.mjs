@@ -96,19 +96,50 @@ async function openSample() {
 /**
  * 開首頁，打開一份有可以記成功率的動作的流程（範例流程沒有）：
  * 在頁面裡用測試共用的 libSample()（src/lib/test-flows.ts）做好、寫成流程檔，從「開啟流程檔」放進去。
+ * more 是在頁面裡改 flow 的程式（可以用 core 裡的函式），例如加拍點。
  */
-async function openPracticeFlow() {
+async function openPracticeFlow(more = '') {
 	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
 	await js(`const { libSample } = await import('/src/lib/test-flows.ts');
-		const { writeFlowFile } = await import('/src/lib/core/index.ts');
+		const core = await import('/src/lib/core/index.ts');
+		const { writeFlowFile } = core;
+		let flow = libSample();
+		${more}
 		const input = document.querySelector('.home-open input[type=file]');
 		const dt = new DataTransfer();
-		dt.items.add(new File([writeFlowFile(libSample(), {})], '練習用.zip', { type: 'application/zip' }));
+		dt.items.add(new File([writeFlowFile(flow, {})], '練習用.zip', { type: 'application/zip' }));
 		input.files = dt.files;
 		input.dispatchEvent(new Event('change', { bubbles: true }));`);
 	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await sleep(300);
+}
+
+/**
+ * 開首頁，打開一份 40 人的流程：音樂 1（4 個八拍），x1 全隊跳躍（環節「整個」整個動作，可以記全上），
+ * 上面一個很長的步驟拍點（量八拍表印出來有沒有被截斷）。
+ */
+async function openBigFlow() {
+	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const of = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		let flow = of(c.createFlow({ name: '40 人', field: { strips: 9, layout: 'vertical' } }));
+		flow = of(c.addMembers(flow, Array.from({ length: 40 }, (_, i) => ({ name: '隊員' + (i + 1), gender: 'F', globalRole: 'base' }))));
+		flow = of(c.addSegment(flow, 'music'));
+		flow = of(c.updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
+		flow = of(c.addAction(flow, { segmentId: 's1', category: 'jump', name: '跳', start: 0, length: 16, note: '',
+			members: flow.members.map((m) => ({ memberId: m.id, role: null })) }));
+		flow = of(c.addPhase(flow, 'x1', { kind: 'whole', name: '整個跳', beats: { at: 0, len: 16 } }));
+		flow = of(c.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '左腳往前踩一步然後手臂拉到高V再往下收回胸前' }));
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([c.writeFlowFile(flow, {})], '40人.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.topbar')`));
 	await sleep(300);
 }
 
@@ -282,6 +313,73 @@ await check('拍點格子在畫面中間時，點一拍再 Shift 點下一拍，
 	return { ok: aboveCount > 0 && bad.length === 0, value: { 選: `${first} 到 ${next}`, 開在上面幾次: aboveCount, 沒過: bad } };
 });
 
+await check('總表點一格：右邊的明細不蓋住上方列，存檔點得到', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(200);
+	await js(`[...document.querySelectorAll('.practice .pages button')].find((b) => b.textContent.trim() === '總表').click()`);
+	await sleep(200);
+	await js(`document.querySelector('.summary .cell').click()`);
+	await sleep(400);
+	return js(`const save = document.querySelector('.topbar .save');
+		const r = save.getBoundingClientRect();
+		const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		const d = document.querySelector('.detail').getBoundingClientRect();
+		const bar = document.querySelector('.topbar').getBoundingClientRect();
+		return { ok: !!top && save.contains(top) && d.top >= bar.bottom - 1,
+			value: { 存檔中心點上面是: top ? top.outerHTML.slice(0, 60) : null, 明細上緣: Math.round(d.top), 上方列下緣: Math.round(bar.bottom) } };`);
+});
+
+for (const [w, h] of [[1440, 900], [1280, 720], [1024, 768]]) {
+	await check(`${w}×${h} 播放頭在有很多拍點的動作裡：大字卡整張看得到，下緣不被切`, async () => {
+		await setViewport(w, h);
+		// Lib 第 1 拍放拍子、步驟、手位，給全部、上層、小美各一個：卡又高又多行
+		await openPracticeFlow(`for (const c of [
+				{ kind: 'count', at: 0, len: 4, word: 'down' },
+				{ kind: 'step', at: 0, len: 4, word: '下手' },
+				{ kind: 'step', at: 0, len: 4, word: '上', who: { role: '上層' } },
+				{ kind: 'motion', at: 0, len: 2, word: 'high V' },
+				{ kind: 'motion', at: 0, len: 2, word: 'T', who: { member: 'm1' } },
+				{ kind: 'motion', at: 2, len: 2, word: 'low V' }
+			]) { const r = core.placeCue(flow, 'x1', c); if (r.kind !== 'ok') throw new Error(r.message); flow = r.flow; }`);
+		const r = await rectOf('[data-ruler]');
+		await click(r.left + 2, r.y);
+		await sleep(300);
+		return js(`const box = document.querySelector('.cues-now');
+			if (!box) return { ok: false, value: '沒有大字卡' };
+			const b = box.getBoundingClientRect();
+			const cards = [...box.querySelectorAll('.card')].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom)]; });
+			const cut = cards.filter(([, bottom]) => bottom > b.bottom + 0.5);
+			return { ok: cards.length > 0 && cut.length === 0, value: { 大字區: [Math.round(b.top), Math.round(b.bottom)], 卡: cards, 下緣被切: cut } };`);
+	});
+}
+
+await check('超寬螢幕（2560 寬）按「符合寬度」：整支流程放滿時間軸，沒有橫向捲軸', async () => {
+	await setViewport(2560, 1200);
+	await openSample();
+	const hit = await hitAndClick('.timeline [aria-label="符合寬度"]');
+	await sleep(200);
+	const m = await js(`const t = document.querySelector('.timeline'); const trk = t.querySelector('.ruler');
+		return { 看得到: t.clientWidth, 捲得到: t.scrollWidth, 流程: Math.round(trk.getBoundingClientRect().width) };`);
+	return { ok: hit.self && m.捲得到 <= m.看得到 && m.流程 >= (m.看得到 - 148) * 0.9, value: { ...m, 擋住按鈕的: hit.self ? null : hit.top } };
+});
+
+await check('1440×900 最後一段旁的「＋」點得到，選單整個看得到、選項點得到', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	// 時間軸捲到最右邊：最後一段的「＋」在看得到的範圍右邊
+	await js(`const t = document.querySelector('.timeline'); t.scrollLeft = t.scrollWidth;`);
+	await sleep(200);
+	await js(`const all = document.querySelectorAll('.timeline .add-after'); all[all.length - 1].classList.add('last-add')`);
+	const hit = await hitAndClick('.timeline .last-add');
+	if (!hit.self) return { ok: false, value: { 擋住加段鈕的: hit.top } };
+	const res = await cornersVisible('.menu');
+	const btns = await js(`return [...document.querySelectorAll('.menu button')].map((b) => { const r = b.getBoundingClientRect();
+		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [b.textContent.trim(), !!t && b.contains(t)]; });`);
+	return { ok: res.ok && btns.length === 2 && btns.every(([, v]) => v), value: { ...res.value, 選項: btns } };
+});
+
 // ---------- 上方列、首頁、場地編號（#110） ----------
 
 /** 用流程設定把流程名字改成 name（關掉對話框）。 */
@@ -370,7 +468,7 @@ const narrowHint = () =>
 		const field = document.querySelector('.field-host').getBoundingClientRect();
 		const cover = document.elementFromPoint(field.left + field.width / 2, field.top + field.height / 2);
 		const covered = !!cover && hint.contains(cover);
-		return { ok: covered && buttons.length === 2 && buttons.every((b) => b.點得到 && b.在畫面裡), value: { 場地被蓋住: covered, buttons } };`);
+		return { ok: covered && buttons.length === 3 && buttons.every((b) => b.點得到 && b.在畫面裡), value: { 場地被蓋住: covered, buttons } };`);
 
 await check('768×1024 的桌面視窗算窄：編輯畫面顯示窄螢幕提示，不是一個很小的場地', async () => {
 	await setViewport(768, 1024);
@@ -389,7 +487,7 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 		await tap(go.x, go.y);
 		const inPractice = await js(`return !!document.querySelector('.practice-host') && !document.querySelector('.narrow-hint')`);
 		if (!inPractice) return { ok: false, value: '按了「去練習」沒有進練習' };
-		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」：點了 ✗ 就存成一次
+		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」，再按「存這一次」：存成一次
 		const picked = await js(`for (const b of document.querySelectorAll('.record .list button')) {
 				b.click();
 				await new Promise((r) => setTimeout(r, 100));
@@ -405,6 +503,13 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 			return { x: r.left + r.width / 2, y: r.top + r.height / 2, self: !!top && b.contains(top), top: top ? top.outerHTML.slice(0, 60) : null };`);
 		if (!mark.self) return { ok: false, value: { 記號按鈕被蓋住: mark.top } };
 		await tap(mark.x, mark.y);
+		const save = await js(`const b = document.querySelector('.card .save');
+			b.scrollIntoView({ block: 'center' });
+			const r = b.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { x: r.left + r.width / 2, y: r.top + r.height / 2, self: !!top && b.contains(top), top: top ? top.outerHTML.slice(0, 60) : null };`);
+		if (!save.self) return { ok: false, value: { 存這一次被蓋住: save.top } };
+		await tap(save.x, save.y);
 		const after = await js(`return document.querySelectorAll('.card .day li').length`);
 		const o = await overflow();
 		return { ok: after === before + 1 && noOverflow(o), value: { 記了幾次: `${before} → ${after}`, ...o } };
@@ -420,6 +525,28 @@ await check('844×390（手機橫拿）：提示和練習畫面都不溢出、�
 	await sleep(300);
 	const practice = await overflow();
 	return { ok: hint.ok && noOverflow(edit) && noOverflow(practice), value: { 提示: hint.value, 編排: edit, 練習: practice } };
+});
+await check('390×844（觸控）：隊員開了流程檔，按提示上的「看八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
+	await setTouchViewport(390, 844);
+	await openPracticeFlow();
+	const hint = await narrowHint();
+	if (!hint.ok) return hint;
+	const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '看八拍表');
+		if (!b) return null;
+		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	if (!go) return { ok: false, value: '提示上沒有「看八拍表」' };
+	await tap(go.x, go.y);
+	const res = await js(`const sheet = document.querySelector('.print-sheet');
+		if (!sheet) return { 打開了: false };
+		const hit = (el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return !!t && el.contains(t) && r.left >= 0 && r.right <= innerWidth; };
+		const close = [...sheet.querySelectorAll('button')].find((b) => b.textContent.trim() === '關閉');
+		return { 打開了: true, 印誰點得到: hit(sheet.querySelector('select')), 關閉點得到: hit(close), 表格有列: sheet.querySelectorAll('tbody tr').length };`);
+	const o = await overflow();
+	return {
+		ok: res.打開了 && res.印誰點得到 && res.關閉點得到 && res.表格有列 > 0 && o.頁寬 <= o.畫面寬,
+		value: { ...res, 頁寬: o.頁寬, 畫面寬: o.畫面寬 }
+	};
 });
 
 /**
@@ -498,6 +625,87 @@ await check('1024×768（觸控）：40 人、場外排了人時，條編號不�
 });
 
 await clearTouch();
+
+// ---------- 八拍表、記一次全上表、總表：畫面上和印出來 ----------
+
+await check('768×1024 八拍表的標題列：「八拍表」「印誰」各自一行，不擠成直排', async () => {
+	await setViewport(768, 1024);
+	await openSample();
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(300);
+	// 數字自己那一段字排成幾行（每個字一行就是直排）
+	return js(`const one = (sel) => { const el = document.querySelector(sel);
+			const text = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+			const range = document.createRange(); range.selectNodeContents(text);
+			const lines = new Set([...range.getClientRects()].filter((r) => r.width).map((r) => Math.round(r.top))).size;
+			return { 字: text.textContent.trim(), 行數: lines, 一行: lines === 1 }; };
+		const title = one('.print-sheet .tool-title'), who = one('.print-sheet .toolbar label');
+		const seg = one('.print-sheet td.seg');
+		return { ok: title.一行 && who.一行 && seg.一行, value: { 八拍表: title, 印誰: who, 段: seg } };`);
+});
+
+await check('1440×900 記一次全上 40 人：只有表格左右捲，不撐開整頁', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(200);
+	await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('記一次全上')).click()`);
+	await sleep(300);
+	return js(`const sheet = document.querySelector('.sheet');
+		const scroll = sheet.querySelector('.scroll');
+		const practice = document.querySelector('.practice');
+		const date = document.querySelector('.practice .date').getBoundingClientRect();
+		const r = sheet.getBoundingClientRect();
+		const v = { 頁寬: document.scrollingElement.scrollWidth, 練習寬: [practice.scrollWidth, practice.clientWidth],
+			全上表右邊: Math.round(r.right), 畫面寬: innerWidth, 表格自己捲: scroll.scrollWidth > scroll.clientWidth, 日期右邊: Math.round(date.right) };
+		return { ok: v.頁寬 <= innerWidth && practice.scrollWidth <= practice.clientWidth + 1 && r.right <= innerWidth && v.表格自己捲 && date.right <= innerWidth, value: v };`);
+});
+
+/** 用列印的媒體查詢量：A4 直的扣掉邊界大約 718px 寬。 */
+async function asPrinted(fn) {
+	await setViewport(718, 1000);
+	await send('Emulation.setEmulatedMedia', { media: 'print' });
+	await sleep(300);
+	try { return await fn(); } finally { await send('Emulation.setEmulatedMedia', { media: '' }); }
+}
+/** 印出來：表格都不超出紙寬，App 的上方列和按鈕（表格裡的格子以外）都不印。 */
+const printedTables = () =>
+	js(`const shown = (el) => el.checkVisibility();
+		const tables = [...document.querySelectorAll('table')].filter(shown).map((t) => Math.round(t.getBoundingClientRect().right));
+		const buttons = [...document.querySelectorAll('button')].filter((b) => shown(b) && !b.closest('table')).map((b) => b.textContent.trim().slice(0, 12));
+		const v = { 紙寬: innerWidth, 頁寬: document.scrollingElement.scrollWidth, 表格右邊: tables, 上方列印出來: shown(document.querySelector('.topbar')), 印出來的按鈕: buttons };
+		return { ok: tables.length > 0 && tables.every((r) => r <= innerWidth) && v.頁寬 <= innerWidth && !v.上方列印出來 && buttons.length === 0, value: v };`);
+
+await check('列印：記一次全上 40 人只印表格，欄位不超出紙寬，不印上方列和按鈕', async () => {
+	// 上一條已經開著 40 人的全上表
+	return asPrinted(printedTables);
+});
+
+await check('列印：總表 40 人只印表格，欄位不超出紙寬，不印上方列和按鈕', async () => {
+	await js(`[...document.querySelectorAll('.sheet footer button')].find((b) => b.textContent.trim() === '取消').click()`);
+	await sleep(200);
+	// 改過格子的話會先問；沒改過直接回去
+	await js(`[...document.querySelectorAll('.practice .pages button')].find((b) => b.textContent.trim() === '總表').click()`);
+	await sleep(300);
+	return asPrinted(printedTables);
+});
+
+await check('列印：八拍表的拍點、環節換行不截斷，背景是白的', async () => {
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '編排').click()`);
+	await sleep(200);
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(300);
+	return asPrinted(() =>
+		js(`const cut = [...document.querySelectorAll('.print-sheet .cue, .print-sheet .phase')]
+				.filter((el) => getComputedStyle(el).textOverflow === 'ellipsis' || el.scrollWidth > el.clientWidth + 1)
+				.map((el) => el.textContent.trim().slice(0, 20));
+			const bg = [document.documentElement, document.body, document.querySelector('.print-sheet')].map((el) => getComputedStyle(el).backgroundColor);
+			const white = bg.every((c) => c === 'rgb(255, 255, 255)' || c === 'rgba(0, 0, 0, 0)');
+			const table = document.querySelector('.print-sheet table').getBoundingClientRect();
+			return { ok: cut.length === 0 && white && table.right <= innerWidth,
+				value: { 被截斷的: cut, 背景: bg, 表格右邊: Math.round(table.right), 紙寬: innerWidth } };`)
+	);
+});
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

@@ -1,11 +1,13 @@
 <script lang="ts">
-	// 時間軸：段列（點段打開段設定、「＋」在最後加一段）、八拍尺（點或拖＝移動播放頭）、
+	// 時間軸：段列（點段打開段設定；左邊「＋」在最後加一段，段旁的「＋」加在這段後面）、
+	// 八拍尺（點或拖＝移動播放頭，先停站位再停整拍；點八拍數字停在那個八拍的 1）、
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
-	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準）。
+	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準），
+	// 「符合寬度」讓整支流程剛好放滿現在的寬度。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
 	import { tick, untrack } from 'svelte';
-	import { addSegment, rulerMarks, segmentSpans, snapToBeat, totalSeconds, type SegmentKind } from '#lib/core';
+	import { addSegment, rulerMarks, segmentSpans, snapPlayhead, totalSeconds, type SegmentKind } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import FormationRow from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
@@ -39,27 +41,47 @@
 	/** 滾輪累積這麼多才算一格放大縮小（觸控板捏合一次會送很多小事件）。 */
 	const WHEEL_STEP = 40;
 
-	let menuOpen = $state(false);
+	/** 尺上點到站位這麼近（px）就停到站位。 */
+	const NEAR_FORMATION_PX = 8;
+	/** 時間軸最後面多留的空白（px）；「符合寬度」時只留一點點，不出現橫向捲軸。 */
+	const TAIL_PX = 200;
+	const FIT_TAIL_PX = 16;
+
+	/** 加段選單開著：after 是要加在哪一段後面（null：加在最後）；anchor 是打開它的「＋」。 */
+	let menu = $state<{ after: string | null; anchor: HTMLElement } | null>(null);
 	let menuEl = $state<HTMLElement>();
-	let addEl = $state<HTMLElement>();
-	let zoomIndex = $state(ZOOMS.indexOf(1));
+	let menuPos = $state({ top: 0, left: 0 });
+	/** 倍數：通常是 ZOOMS 其中一個；「符合寬度」時是剛好放滿的倍數。 */
+	let zoom = $state(1);
+	let fitted = $state(false);
 	let wheelAcc = 0;
 	let scroller: HTMLDivElement;
 	/** 正在八拍尺上拖：這時不自動捲（一捲尺就跟著跑，滑鼠換算的秒數會亂跳）。 */
 	let scrubbing = false;
-	const px = $derived(pxPerSec * ZOOMS[zoomIndex]);
+	const px = $derived(pxPerSec * zoom);
 	const spans = $derived(segmentSpans(flow));
 	const marks = $derived(rulerMarks(flow));
 	const width = $derived(totalSeconds(flow) * px);
 
 	/** 放大縮小一格；anchor 是不動的那一點，離時間軸左緣幾 px（含名字欄）。 */
 	async function zoomBy(step: number, anchor: number) {
-		const next = Math.min(Math.max(zoomIndex + step, 0), ZOOMS.length - 1);
-		if (next === zoomIndex) return;
+		const next = step > 0 ? ZOOMS.find((z) => z > zoom + 1e-9) : ZOOMS.findLast((z) => z < zoom - 1e-9);
+		if (next === undefined) return;
 		const sec = (scroller.scrollLeft + anchor - LABEL_W) / px;
-		zoomIndex = next;
+		zoom = next;
+		fitted = false;
 		await tick();
 		scroller.scrollLeft = Math.max(0, LABEL_W + sec * px - anchor);
+	}
+
+	/** 符合寬度：整支流程剛好放滿看得到的寬度（很短、很長的流程可以超出「＋」「−」的最大、最小倍數）。 */
+	function fitWidth() {
+		const total = totalSeconds(flow);
+		const fit = (scroller.clientWidth - LABEL_W - FIT_TAIL_PX) / (total * pxPerSec);
+		if (!(fit > 0)) return;
+		zoom = fit;
+		fitted = true;
+		scroller.scrollLeft = 0;
 	}
 
 	/** 按鈕：播放頭在畫面上就讓它不動，不在就以看得到的範圍中間為準。 */
@@ -109,33 +131,77 @@
 		};
 	}
 
-	/** 在最後加一段，加好就打開它的段設定。 */
-	function add(kind: SegmentKind) {
-		menuOpen = false;
-		session.ask.send(() => addSegment(flow, kind), { done: (r) => onopensegment(r.id) });
+	/** 打開、收起加段選單（再點同一個「＋」就收起來）。 */
+	function toggleMenu(e: MouseEvent, after: string | null) {
+		const anchor = e.currentTarget as HTMLElement;
+		menu = menu?.anchor === anchor ? null : { after, anchor };
 	}
+
+	/** 加一段（加在選單的那一段後面，或加在最後），加好就打開它的段設定。 */
+	function add(kind: SegmentKind) {
+		const after = menu?.after ?? undefined;
+		menu = null;
+		session.ask.send(() => addSegment(flow, kind, after), { done: (r) => onopensegment(r.id) });
+	}
+
+	/** 選單放在「＋」下面，不超出畫面左右。 */
+	function placeMenu() {
+		if (!menu || !menuEl) return;
+		const b = menu.anchor.getBoundingClientRect();
+		const M = 8;
+		menuPos = {
+			top: b.bottom + 4,
+			left: Math.max(M, Math.min(b.left, innerWidth - M - menuEl.offsetWidth))
+		};
+	}
+
+	$effect(() => {
+		if (!menu || !menuEl) return;
+		const el = menuEl;
+		// 選單開在最上層（popover）：時間軸捲動容器裁不到它。jsdom 沒有 popover，所以在這裡才加屬性。
+		if (el.showPopover && !el.matches(':popover-open')) {
+			el.popover = 'manual';
+			el.showPopover();
+		}
+		placeMenu();
+		addEventListener('scroll', placeMenu, true);
+		addEventListener('resize', placeMenu);
+		return () => {
+			removeEventListener('scroll', placeMenu, true);
+			removeEventListener('resize', placeMenu);
+			if (el.popover) el.hidePopover();
+		};
+	});
 
 	/** 加段選單：點外面就收起來。 */
 	function menuOutside(e: PointerEvent) {
 		const t = e.target as Node;
-		if (menuOpen && !menuEl?.contains(t) && !addEl?.contains(t)) menuOpen = false;
+		if (menu && !menuEl?.contains(t) && !menu.anchor.contains(t)) menu = null;
 	}
 
 	/** 加段選單：Esc 只收選單（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
 	function menuKeys(e: KeyboardEvent) {
-		if (!menuOpen || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		if (!menu || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
 		e.stopPropagation();
-		menuOpen = false;
+		menu = null;
 	}
 
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
 		const ruler = e.currentTarget as HTMLElement;
-		// 吸到整拍（口號段 0.1 秒）：點八拍尺要停在「4-1」，不要一不小心停在「4-1&」。按著 Option／Alt 吸到半拍。
+		// 先停站位（差不到幾 px），再吸到整拍（口號段 0.1 秒）：點八拍尺要停在「4-1」，不要一不小心停在「4-1&」。
+		// 按著 Option／Alt 吸到半拍。
 		const toSec = (ev: PointerEvent) =>
-			snapToBeat(flow, (ev.clientX - ruler.getBoundingClientRect().left) / px, ev.altKey);
+			snapPlayhead(
+				flow,
+				(ev.clientX - ruler.getBoundingClientRect().left) / px,
+				NEAR_FORMATION_PX / px,
+				ev.altKey
+			);
 		scrubbing = true;
-		onseek(toSec(e));
+		// 點在八拍數字上：停在那個八拍的第 1 拍（數字寫在刻度右邊，照位置算會停到後面一兩拍）
+		const label = (e.target as HTMLElement).closest<HTMLElement>('[data-mark-sec]');
+		onseek(label ? Number(label.dataset.markSec) : toSec(e));
 		followPointer(
 			e,
 			(ev) => onseek(toSec(ev)),
@@ -158,7 +224,7 @@
 <svelte:window onpointerdown={menuOutside} onkeydowncapture={menuKeys} />
 
 <div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel} {@attach pinchZoom}>
-	<div class="inner" style:width={`${width + LABEL_W + 200}px`}>
+	<div class="inner" style:width={`${width + LABEL_W + (fitted ? FIT_TAIL_PX : TAIL_PX)}px`}>
 		<div class="row segs">
 			<div class="lab">
 				<span>段</span>
@@ -166,16 +232,9 @@
 					type="button"
 					class="add"
 					aria-label="在最後加一段"
-					bind:this={addEl}
-					aria-expanded={menuOpen}
-					onclick={() => (menuOpen = !menuOpen)}><Icon name="plus" size={14} /></button
+					aria-expanded={!!menu && menu.after === null}
+					onclick={(e) => toggleMenu(e, null)}><Icon name="plus" size={14} /></button
 				>
-				{#if menuOpen}
-					<span class="menu" bind:this={menuEl}>
-						<button type="button" onclick={() => add('music')}>＋音樂段</button>
-						<button type="button" onclick={() => add('chant')}>＋口號段</button>
-					</span>
-				{/if}
 			</div>
 			<div class="trk" style:width={`${width}px`}>
 				{#each spans as span (span.segment.id)}
@@ -186,6 +245,7 @@
 						type="button"
 						class="seg {span.segment.kind}"
 						class:missing
+						class:short={span.durationSec * px - 2 < SEG_MIN_W}
 						style:left={`${span.startSec * px}px`}
 						style:width={`${Math.max(span.durationSec * px - 2, SEG_MIN_W)}px`}
 						title="{span.label}　{meta}{missing ? '　找不到音樂' : ''}：點一下設定"
@@ -195,6 +255,15 @@
 						{#if missing}<span class="flag">找不到音樂</span>{/if}
 						<span class="meta">{meta}</span>
 					</button>
+					<button
+						type="button"
+						class="add-after"
+						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
+						aria-label="在這段後面加一段"
+						title={`加在${span.label} 後面`}
+						aria-expanded={menu?.after === span.segment.id}
+						onclick={(e) => toggleMenu(e, span.segment.id)}><Icon name="plus" size={12} /></button
+					>
 				{/each}
 				{#if spans.length === 0}
 					<span class="empty">按左邊的 ＋ 加第一段：跟著音樂的「音樂段」，或喊口號的「口號段」。</span>
@@ -209,16 +278,24 @@
 						type="button"
 						class="ghost"
 						aria-label="時間軸縮小"
-						disabled={zoomIndex === 0}
+						disabled={zoom <= ZOOMS[0] + 1e-9}
 						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
 					>
-					<span class="zoom-val">×{ZOOMS[zoomIndex]}</span>
+					<span class="zoom-val">×{Number(zoom.toFixed(2))}</span>
 					<button
 						type="button"
 						class="ghost"
 						aria-label="時間軸放大"
-						disabled={zoomIndex === ZOOMS.length - 1}
+						disabled={zoom >= ZOOMS.at(-1)! - 1e-9}
 						onclick={() => zoomButton(1)}><Icon name="plus" size={13} /></button
+					>
+					<button
+						type="button"
+						class="ghost fit"
+						aria-label="符合寬度"
+						title="整支流程剛好放滿現在的寬度"
+						disabled={spans.length === 0}
+						onclick={fitWidth}><Icon name="fitWidth" size={13} /></button
 					>
 				</span>
 			</div>
@@ -227,7 +304,7 @@
 			<div class="trk ruler" data-ruler style:width={`${width}px`} onpointerdown={startSeek}>
 				{#each marks as mark (mark.sec)}
 					<div class="tk" class:big={mark.major} style:left={`${mark.sec * px}px`}>
-						{#if mark.label}<span>{mark.label}</span>{/if}
+						{#if mark.label}<span data-mark-sec={mark.sec}>{mark.label}</span>{/if}
 					</div>
 				{/each}
 				<div class="ph-head" style:left={`${playheadSec * px}px`}></div>
@@ -244,6 +321,15 @@
 		<div class="ph" style:left={`${LABEL_W + playheadSec * px}px`}></div>
 	</div>
 </div>
+
+{#if menu}
+	{@const after = spans.find((s) => s.segment.id === menu?.after)}
+	<div class="menu" bind:this={menuEl} style:top={`${menuPos.top}px`} style:left={`${menuPos.left}px`}>
+		<span class="menu-title">{after ? `加在${after.label} 後面` : '加在最後'}</span>
+		<button type="button" onclick={() => add('music')}>＋音樂段</button>
+		<button type="button" onclick={() => add('chant')}>＋口號段</button>
+	</div>
+{/if}
 
 <style>
 	.timeline {
@@ -302,9 +388,12 @@
 		color: var(--mat, #2f66b8);
 	}
 	.menu {
-		position: absolute;
-		left: 12px;
-		top: 30px;
+		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、顏色 */
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		color: inherit;
+		z-index: 30;
 		display: grid;
 		gap: 2px;
 		min-width: 130px;
@@ -313,6 +402,12 @@
 		border-radius: 10px;
 		padding: 4px;
 		box-shadow: var(--shadow-pop);
+	}
+	.menu-title {
+		padding: 4px 10px 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted, #66718a);
 	}
 	.menu button {
 		justify-content: flex-start;
@@ -336,6 +431,21 @@
 		padding: 0;
 		color: var(--muted, #66718a);
 	}
+	/* 段旁的「＋」：段右端的小圓鈕，加在這段後面（段的字留出位置，不被它蓋住）。 */
+	.add-after {
+		position: absolute;
+		top: 50%;
+		z-index: 1;
+		width: 18px;
+		height: 18px;
+		margin: -9px 0 0 -9px;
+		padding: 0;
+		border-radius: 50%;
+		border: 1px solid var(--line, #d8dee9);
+		background: var(--surface, #fff);
+		color: var(--mat, #2f66b8);
+		box-shadow: 0 1px 2px rgba(22, 33, 58, 0.15);
+	}
 	/* 手指：段列和八拍尺高一點，「＋」和放大縮小點得到的範圍（32px）放得進去，看起來不變。 */
 	@media (pointer: coarse) {
 		.segs {
@@ -349,6 +459,11 @@
 		.zoom-btns button {
 			position: relative;
 		}
+		.add-after::after {
+			content: '';
+			position: absolute;
+			inset: -7px;
+		}
 		.add::after,
 		.zoom-btns button::after {
 			content: '';
@@ -358,6 +473,23 @@
 		/* 段列最上面幾 px 是場地和時間軸分界的把手：「＋」點得到的範圍往下多一點，不超出段列 */
 		.add::after {
 			bottom: -10px;
+		}
+		.add-after::after {
+			inset: -8px -8px -12px;
+		}
+		/* 「符合寬度」緊貼著「＋」：它點得到的範圍不往左蓋到「＋」，往右多一點；倍數、間隔窄一點讓出縫 */
+		.lab.zoom {
+			gap: 4px;
+		}
+		.zoom-val {
+			min-width: 22px;
+		}
+		.zoom-btns .fit {
+			margin-left: 8px;
+		}
+		.zoom-btns .fit::after {
+			left: -2px;
+			right: -10px;
 		}
 	}
 	.trk {
@@ -370,7 +502,7 @@
 		top: 4px;
 		bottom: 4px;
 		border-radius: 6px;
-		padding: 0 8px;
+		padding: 0 24px 0 8px;
 		justify-content: flex-start;
 		gap: 8px;
 		font-size: 12px;
@@ -380,6 +512,10 @@
 		white-space: nowrap;
 		border: none;
 		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+	}
+	/* 很短的段撐到最小寬度，會疊到下一段的開頭：疊在上面，才點得到。 */
+	.seg.short {
+		z-index: 1;
 	}
 	/* 字放不下用「…」（完整的字在 title）：先縮 BPM／秒數，再縮段名。 */
 	.seg > * {

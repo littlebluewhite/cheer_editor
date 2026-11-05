@@ -62,7 +62,8 @@
 		railBottom,
 		children,
 		below,
-		badges = {}
+		badges = {},
+		marked = []
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -93,13 +94,15 @@
 		below?: Snippet;
 		/** 點右上角的小圓（隊員 id → 字和顏色），分組時寫組號。 */
 		badges?: Record<string, { text: string; color: string }>;
+		/** 沒有編輯器時（八拍表的個人表）標出這些人，畫得跟選到一樣。 */
+		marked?: string[];
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
 	// svelte-ignore state_referenced_locally
 	const session = controls && hasEditorSession() ? getEditorSession() : null;
 	/** 選到的人。 */
-	const selected = $derived(session?.selectedMemberIds ?? []);
+	const selected = $derived(session?.selectedMemberIds ?? marked);
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
 	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
