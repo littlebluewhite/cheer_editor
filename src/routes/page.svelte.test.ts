@@ -1938,7 +1938,21 @@ describe('場地和右邊欄的分界', () => {
 		expect(reset()).toBeNull();
 	});
 
-	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {
+	it('拖過的寬度照視窗寬的比例記：大螢幕調過，換小一點的視窗，右邊欄跟著變窄', async () => {
+		await newFlow();
+		expect(width()).toBe(800);
+		for (let i = 0; i < 4; i++) await fireEvent.keyDown(bar(), { key: 'ArrowRight' });
+		expect(width()).toBe(704);
+		// 704 / 1600 = 0.44 → 1200 寬是 528
+		Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+		await fireEvent(window, new Event('resize'));
+		expect(width()).toBe(528);
+		cleanup();
+		await newFlow();
+		expect(width()).toBe(528);
+	});
+
+	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 632 px（場地本身 360 px）', async () => {
 		await newFlow();
 		const before = width();
 		await fireEvent.pointerDown(bar(), { clientX: 900, button: 0 });
@@ -1946,7 +1960,7 @@ describe('場地和右邊欄的分界', () => {
 		expect(width()).toBe(before + 40);
 		await fireEvent.pointerMove(bar(), { clientX: 0 });
 		await fireEvent.pointerUp(bar(), { clientX: 0 });
-		expect(width()).toBe(1600 - 560);
+		expect(width()).toBe(1600 - 632);
 	});
 });
 

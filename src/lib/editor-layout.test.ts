@@ -5,7 +5,8 @@ import {
 	INSPECTOR_AUTO_MAX_PX,
 	INSPECTOR_MIN_PX,
 	autoInspectorWidth,
-	clampInspectorWidth
+	clampInspectorWidth,
+	viewOnlyReason
 } from './editor-layout';
 
 describe('右邊欄自動多寬', () => {
@@ -33,5 +34,20 @@ describe('自己拖的寬度', () => {
 		expect(clampInspectorWidth(100, 1440)).toBe(INSPECTOR_MIN_PX);
 		expect(clampInspectorWidth(500, 1440)).toBe(500);
 		expect(clampInspectorWidth(2000, 1440)).toBe(1440 - FIELD_KEEP_W_PX);
+	});
+
+	it('拖到最寬，場地本身（不算左邊工具欄）還有 360 px 寬：1024 寬的視窗也是', () => {
+		expect(1024 - FIELD_CHROME_PX - clampInspectorWidth(2000, 1024)).toBeGreaterThanOrEqual(360);
+		expect(clampInspectorWidth(2000, 1024)).toBeGreaterThanOrEqual(INSPECTOR_MIN_PX);
+	});
+});
+
+describe('窄螢幕上為什麼不能編', () => {
+	it('手機橫拿（844×390 觸控）又窄又矮：寫太小，不叫人轉', () => {
+		expect(viewOnlyReason(844, 390, true)).toBe('畫面太小了（不到 1024×600 像素），只能看、不能編');
+	});
+
+	it('夠大就不寫', () => {
+		expect(viewOnlyReason(1024, 600, false)).toBe('');
 	});
 });
