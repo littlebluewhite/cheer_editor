@@ -10,7 +10,7 @@ import {
 	type CommandResult,
 	type Flow
 } from '#lib/core';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import MemberPanel from './MemberPanel.svelte';
 
@@ -32,8 +32,8 @@ const empty = okFlow(createFlow({ name: '測試', field: { strips: 9, layout: 'v
 
 /** 放一個帶著 flow 的 session 進 context，畫隊員名單；回傳 session。 */
 function setup(flow: Flow = empty) {
-	const session = new EditorSession(flow);
-	render(TestSession, { props: { session, component: MemberPanel, props: {} } });
+	const { editor, session } = testEditor(flow);
+	render(TestSession, { props: { editor, component: MemberPanel, props: {} } });
 	return session;
 }
 

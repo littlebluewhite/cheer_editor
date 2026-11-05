@@ -12,9 +12,8 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
-import { fakeCellAt } from '#lib/test-fakes.js';
+import { fakeCellAt, testEditor } from '#lib/test-fakes.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import CueGrid from './CueGrid.svelte';
@@ -33,9 +32,9 @@ function sample(): Flow {
 
 /** 放一個帶著 flow 的 session 進 context，畫第一個動作的拍點格子；回傳 session。 */
 function renderGrid(flow: Flow, playheadSec?: number) {
-	const session = new EditorSession(flow);
+	const { editor, session } = testEditor(flow);
 	render(TestSession, {
-		props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
+		props: { editor, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
 	});
 	return session;
 }

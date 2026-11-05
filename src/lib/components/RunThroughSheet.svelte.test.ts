@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import RunThroughSheet from './RunThroughSheet.svelte';
 
@@ -10,9 +11,9 @@ const DATE = '2026-11-01';
 
 /** 畫全上表（Lib 第 1 組小美、第 2 組小芳；騰翻小美、小A），回傳 session 和關掉的 callback。 */
 function setup() {
-	const session = new EditorSession(ratedSample());
+	const { editor, session } = testEditor(ratedSample());
 	const onclose = vi.fn();
-	render(TestSession, { props: { session, component: RunThroughSheet, props: { date: DATE, onclose } } });
+	render(TestSession, { props: { editor, component: RunThroughSheet, props: { date: DATE, onclose } } });
 	return { session, onclose };
 }
 

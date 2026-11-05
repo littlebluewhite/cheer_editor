@@ -42,6 +42,7 @@
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
@@ -55,6 +56,7 @@
 	let { playheadSec, pxPerSec }: Props = $props();
 
 	const session = getEditorSession();
+	const editor = getEditor();
 	// 時間軸只在有流程時畫。
 	const flow = $derived(session.flow!);
 	const selectedActionId = $derived(session.selectedActionId);
@@ -328,7 +330,7 @@
 						style:background={actionColor(p.action)}
 						style:box-shadow={p.action.color ? `inset 4px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
-						onclick={() => session.pickAction(p.action.id)}
+						onclick={() => editor.pickAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id)}
 					>
 						{#each phaseBars[p.action.id] as ph (ph.id)}

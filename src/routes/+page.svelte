@@ -31,12 +31,11 @@
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
-	import { decodeAudio, type DecodedAudio, type LoadedAudio } from '#lib/audio/decode.js';
-	import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
+	import type { LoadedAudio } from '#lib/audio/decode.js';
 	import { createPlayer, type Player } from '#lib/audio/player.js';
-	import { createIndexedDbDraftStore, type Draft, type DraftStore } from '#lib/file/draft.js';
-	import { browserFilePicker, createBrowserSaver, flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
-	import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
+	import type { Draft } from '#lib/file/draft.js';
+	import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
+	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
@@ -71,18 +70,11 @@
 	import WalkForm from '#lib/components/WalkForm.svelte';
 
 	interface Props {
-		/** 音訊引擎；測試換成假的（jsdom 沒有 Web Audio）。第一次播放時才建立。 */
-		createEngine?: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
-		/** 存檔薄層，一支流程一個（記得存到哪個檔）；測試換成假的。 */
-		createSaver?: () => FileSaver;
-		/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge）；null 是瀏覽器不能（照舊用選檔欄位）。測試換成假的。 */
-		pickFlowFile?: (() => Promise<PickedFile | null>) | null;
-		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
-		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
-		/** 草稿存在哪裡（預設 IndexedDB）；測試換成假的（jsdom 沒有 IndexedDB）。 */
-		draftStore?: DraftStore;
-		/** 編輯 session（流程和復原）；測試放一個帶好流程的進來，再讀它的流程。沒給就自己建。 */
-		session?: EditorSession;
+		/**
+		 * 編輯器 module（編輯頁的狀態和碰瀏覽器的 adapter）；測試放一個帶好流程、adapter 都是假的進來
+		 * （#lib/test-fakes.js 的 editorPage），再讀它的 session。沒給就用真的 adapter 自己建。
+		 */
+		editor?: Editor;
 		// 螢幕座標換算（ADR 0002）：預設用瀏覽器算；jsdom 不算版面，測試換成假的。往下傳給場地、拍點格子、段設定的波形。
 		/** 場地：指標位置換成場地公尺。 */
 		toMeters?: ComponentProps<typeof Field>['toMeters'];
@@ -92,20 +84,14 @@
 		waveXToSec?: ComponentProps<typeof SegmentSettings>['waveXToSec'];
 	}
 
-	let {
-		createEngine = createWebAudioEngine,
-		createSaver = createBrowserSaver,
-		pickFlowFile = browserFilePicker(),
-		decode = decodeAudio,
-		draftStore = createIndexedDbDraftStore(),
-		session = new EditorSession(),
-		toMeters,
-		cellAt,
-		waveXToSec
-	}: Props = $props();
-	// session 一開始給了就不換：放進 context 的就是這一個。
+	let { editor: given, toMeters, cellAt, waveXToSec }: Props = $props();
+	// 編輯器 module 一開始給了就不換：放進 context 的就是這一個。
 	// svelte-ignore state_referenced_locally
-	setEditorSession(session);
+	const editor = given ?? new Editor(browserAdapters());
+	setEditor(editor);
+	const { session } = editor;
+	// 開檔、存檔、草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
+	const { createEngine, createSaver, pickFlowFile, decode, draftStore } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
@@ -250,8 +236,6 @@
 			})
 		)
 	);
-	/** 右邊欄開著哪一頁：動作（選人＋動作表單）或隊員名單。 */
-	let inspectorTab = $state<'action' | 'members'>('action');
 	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
 	let view = $state<'edit' | 'practice'>('edit');
 	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
@@ -515,7 +499,7 @@
 		settingsOpen = false;
 		printOpen = false;
 		// 還沒有隊員的流程先開名單，有人了才開動作
-		inspectorTab = f.members.length ? 'action' : 'members';
+		editor.inspectorTab = f.members.length ? 'action' : 'members';
 		// 剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟
 		if (from === 'new' && draftChecked) draftStore.save(writeFlowFile(f, {})).catch(() => {});
 	}
@@ -695,11 +679,6 @@
 		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
 	}
 
-	// 在時間軸點了色條（再點選著的那條也算）：右邊欄翻到「動作」那一頁。
-	$effect(() => {
-		if (session.pickedAction) untrack(() => (inspectorTab = 'action'));
-	});
-
 	/** 空白鍵照瀏覽器原本的行為的東西：按得下去、選得了、打得了字的。場上的人不算（空白鍵播放）。 */
 	const NATIVE_KEYS =
 		'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), ' +
@@ -784,9 +763,9 @@
 	function tabKey(e: KeyboardEvent) {
 		if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.ctrlKey || e.metaKey || e.altKey) return;
 		e.preventDefault();
-		inspectorTab = inspectorTab === 'action' ? 'members' : 'action';
+		editor.inspectorTab = editor.inspectorTab === 'action' ? 'members' : 'action';
 		flushSync();
-		document.getElementById(`tab-${inspectorTab}`)?.focus();
+		document.getElementById(`tab-${editor.inspectorTab}`)?.focus();
 	}
 
 	/** 兩條分界都回到預設（雙擊分界也可以，一次一條）。 */
@@ -1032,26 +1011,26 @@
 					type="button"
 					role="tab"
 					id="tab-action"
-					aria-selected={inspectorTab === 'action'}
+					aria-selected={editor.inspectorTab === 'action'}
 					aria-controls="panel-action"
-					onclick={() => (inspectorTab = 'action')}><Icon name="bolt" />動作</button
+					onclick={() => (editor.inspectorTab = 'action')}><Icon name="bolt" />動作</button
 				>
 				<button
 					type="button"
 					role="tab"
 					id="tab-members"
-					aria-selected={inspectorTab === 'members'}
+					aria-selected={editor.inspectorTab === 'members'}
 					aria-controls="panel-members"
-					onclick={() => (inspectorTab = 'members')}
+					onclick={() => (editor.inspectorTab = 'members')}
 					><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 				>
 			</div>
-			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={inspectorTab !== 'action'}>
+			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
 				<MemberPicker {playheadSec} />
 				<WalkForm {playheadSec} />
 				<ActionForm {playheadSec} {cellAt} />
 			</div>
-			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={inspectorTab !== 'members'}>
+			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 				<MemberPanel />
 			</div>
 		</aside>

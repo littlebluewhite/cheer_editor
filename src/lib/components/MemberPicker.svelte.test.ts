@@ -8,7 +8,7 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import MemberPicker from './MemberPicker.svelte';
 
@@ -53,9 +53,9 @@ function sample(): Flow {
 
 /** 放一個帶著範例流程（選了 selected 的人）的 session 進 context，畫選人捷徑；回傳 session。 */
 function setup(playheadSec: number, selected: string[] = []) {
-	const session = new EditorSession(sample());
+	const { editor, session } = testEditor(sample());
 	session.selectMembers(selected);
-	render(TestSession, { props: { session, component: MemberPicker, props: { playheadSec } } });
+	render(TestSession, { props: { editor, component: MemberPicker, props: { playheadSec } } });
 	return session;
 }
 

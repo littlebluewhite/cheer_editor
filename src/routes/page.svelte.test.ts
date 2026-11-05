@@ -12,8 +12,7 @@ import {
 	setPositions
 } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
-import { audioFlow, editorPage, fakeToMeters } from '#lib/test-fakes.js';
+import { audioFlow, editorPage } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 /** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
@@ -30,7 +29,7 @@ Element.prototype.scrollIntoView = () => {};
 
 /** 新建一個流程。jsdom 不算 SVG 座標：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */
 async function newFlow(engine: FakeEngine = createFakeEngine()) {
-	render(Page, { createEngine: () => engine, toMeters: fakeToMeters });
+	render(Page, editorPage(null, { createEngine: () => engine }).props);
 	await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 }
@@ -168,7 +167,7 @@ describe('段、八拍尺、上方列', () => {
 	});
 
 	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
-		render(Page, { createEngine: () => createFakeEngine() });
+		render(Page, editorPage().props);
 		const check = () => {
 			const link = screen.getByRole('link', { name: '使用說明' }) as HTMLAnchorElement;
 			expect(link.getAttribute('href')).toMatch(/\/guide$/);
@@ -181,7 +180,7 @@ describe('段、八拍尺、上方列', () => {
 	});
 
 	it('流程名字最多 40 個字：新建和流程設定都擋下，說最多幾個字', async () => {
-		render(Page, { createEngine: () => createFakeEngine(), toMeters: fakeToMeters });
+		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(41) } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 		expect(screen.getByRole('alert').textContent).toContain('流程名字最多 40 個字');
@@ -843,8 +842,8 @@ describe('站位與走位', () => {
 		const f2 = flow.formations[1].id;
 		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
 		flow = flowOf(insertFormation(flow, 8));
-		const session = new EditorSession(flow);
-		render(Page, { createEngine: () => createFakeEngine(), session, toMeters: fakeToMeters });
+		const { session, props } = editorPage(flow);
+		render(Page, props);
 		const marks = () => [...document.querySelectorAll('.field [data-clash]')];
 
 		// 播放頭在開頭那張：前面沒有走位，不畫。
@@ -1243,6 +1242,7 @@ describe('八拍表', () => {
 
 describe('編輯器首頁', () => {
 	it('新建流程後，上方畫出那個場地，沒有換場地的入口', async () => {
+		// 沒給編輯器 module：頁面用真的 adapter 自己建（jsdom 沒有 IndexedDB、Web Audio，用不到就不會壞）
 		render(Page);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
@@ -1661,10 +1661,10 @@ describe('復原和重做', () => {
 
 	// 最多記 100 步在 session 測（src/lib/editor-session.test.ts）；這裡只看按鈕接到 session 的復原、重做。
 	it('復原、重做按鈕接到 session：session 裡有幾步就能按幾次', async () => {
-		const session = new EditorSession(sessionFlow());
+		const { session, props } = editorPage(sessionFlow());
 		session.change(flowOf(renameFlow(session.flow!, 'A')));
 		session.change(flowOf(renameFlow(session.flow!, 'B')));
-		render(Page, { createEngine: () => createFakeEngine(), session });
+		render(Page, props);
 		await fireEvent.click(undoButton());
 		await fireEvent.click(undoButton());
 		expect(undoButton().disabled).toBe(true);
@@ -1716,8 +1716,8 @@ describe('復原和重做', () => {
 
 describe('放一個帶好流程的 session 進頁面', () => {
 	it('頁面畫 session 的流程；操作後讀 session 的流程', async () => {
-		const session = new EditorSession(sessionFlow());
-		render(Page, { createEngine: () => createFakeEngine(), session });
+		const { session, props } = editorPage(sessionFlow());
+		render(Page, props);
 		expect(document.querySelector('.topbar b')?.textContent).toBe('全國賽');
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
@@ -1726,8 +1726,8 @@ describe('放一個帶好流程的 session 進頁面', () => {
 	});
 
 	it('在「隊員」頁點色條（再點選著的那條也一樣）：右邊欄翻到「動作」', async () => {
-		const session = new EditorSession(libSample());
-		render(Page, { createEngine: () => createFakeEngine(), session });
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
 		const actionTab = () => screen.getByRole('tab', { name: /^動作/ });
 		const bar = () => document.querySelector<HTMLElement>('[data-lane="m1"] [data-action-id="x1"]')!;
 		await tab('隊員');
@@ -1743,8 +1743,8 @@ describe('放一個帶好流程的 session 進頁面', () => {
 describe('隊員名單：排順序、開頭字標記、刪隊員確認', () => {
 	/** libSample（小美、小A、小B、小芳）放進頁面，翻到「隊員」頁。 */
 	async function sample(flow = libSample()) {
-		const session = new EditorSession(flow);
-		render(Page, { createEngine: () => createFakeEngine(), session });
+		const { session, props } = editorPage(flow);
+		render(Page, props);
 		await tab('隊員');
 		return session;
 	}
@@ -1899,9 +1899,9 @@ describe('場地和右邊欄的分界', () => {
 describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 	/** 打開範例流程、選好動作 x1。 */
 	async function withSample() {
-		const session = new EditorSession(libSample());
-		render(Page, { createEngine: () => createFakeEngine(), session });
-		session.pickAction('x1');
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
+		session.selectAction('x1');
 		await tick();
 		return session;
 	}
@@ -1965,8 +1965,8 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 
 describe('動作設定：任務角色先照全局角色填、角色說明、Esc、新增鈕、改長度的確認框', () => {
 	async function withSample() {
-		const session = new EditorSession(libSample());
-		render(Page, { createEngine: () => createFakeEngine(), session });
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
 		await tick();
 		return session;
 	}
@@ -2014,7 +2014,7 @@ describe('動作設定：任務角色先照全局角色填、角色說明、Esc�
 
 	it('改動作長度要確認時，確認框出現在長度欄位旁邊', async () => {
 		const session = await withSample();
-		session.pickAction('x1');
+		session.selectAction('x1');
 		await tick();
 		const length = screen.getByLabelText('長度') as HTMLInputElement;
 		await fireEvent.input(length, { target: { value: '2' } });

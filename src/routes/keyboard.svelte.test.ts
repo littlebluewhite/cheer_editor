@@ -1,8 +1,7 @@
 // 編輯畫面的鍵盤（#95）：空白鍵照一般網頁、輸入框裡的 ⌘Z 退回流程、方向鍵移人合成一步、Home／End、分頁。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { editorPage } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -11,8 +10,8 @@ Element.prototype.scrollIntoView = () => {};
 
 /** 頁面放範例流程：音樂 1（4 個八拍）、小美、小A、小B、小芳，動作 Lib。 */
 function setup() {
-	const session = new EditorSession(libSample());
-	render(Page, { createEngine: () => createFakeEngine(), session });
+	const { session, props } = editorPage(libSample());
+	render(Page, props);
 	return session;
 }
 

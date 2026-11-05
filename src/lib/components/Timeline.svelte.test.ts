@@ -2,7 +2,7 @@ import { addSegment, createFlow, updateSegment } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { EditorSession } from '#lib/editor-session.svelte.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import Timeline from './Timeline.svelte';
 
@@ -12,7 +12,7 @@ function setup() {
 	);
 	const { container } = render(TestSession, {
 		props: {
-			session: new EditorSession(flow),
+			editor: testEditor(flow).editor,
 			component: Timeline,
 			props: { playheadSec: 0, onseek: () => {}, onopensegment: () => {} }
 		}
@@ -92,7 +92,7 @@ describe('段列', () => {
 		flow = flowOf(updateSegment(flow, flow.segments[1].id, { seconds: 0.1 }));
 		render(TestSession, {
 			props: {
-				session: new EditorSession(flow),
+				editor: testEditor(flow).editor,
 				component: Timeline,
 				props: { playheadSec: 0, onseek: () => {}, onopensegment: () => {} }
 			}
