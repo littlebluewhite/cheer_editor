@@ -9,7 +9,7 @@ export interface FakeEngine extends AudioEngine {
 	audible: number;
 	resumed: boolean;
 	/** 目前排著的聲音；stopAll 會清掉。 */
-	clips: { audioId: string; when: number; offset: number; duration: number }[];
+	clips: { audioId: string; when: number; offset: number; duration: number; rate: number }[];
 	clicks: { when: number; accent: boolean }[];
 }
 
@@ -23,8 +23,9 @@ export function createFakeEngine(): FakeEngine {
 		resume: () => void (engine.resumed = true),
 		currentTime: () => engine.time,
 		audibleTime: () => engine.audible,
-		playClip: (audioId, when, offset, duration) =>
-			void engine.clips.push({ audioId, when, offset, duration }),
+		prepare: () => {},
+		playClip: (audioId, when, offset, duration, rate) =>
+			void engine.clips.push({ audioId, when, offset, duration, rate }),
 		click: (when, accent) => void engine.clicks.push({ when, accent }),
 		stopAll() {
 			engine.clips = [];

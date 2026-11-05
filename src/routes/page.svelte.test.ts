@@ -1534,6 +1534,26 @@ describe('播放', () => {
 		expect(engine.clicks).toEqual([]);
 	});
 
+	it('播放速度選 0.5x：播放頭走一半速度', async () => {
+		const engine = await sample();
+		await fireEvent.change(screen.getByLabelText('播放速度'), { target: { value: '0.5' } });
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		engine.audible = engine.clicks[0].when + 6.4;
+		await nextFrame();
+		expect(position()).toBe('音樂 1 2-1');
+	});
+
+	it('重複開著、沒選動作：播到這個八拍結尾跳回這個八拍的 1', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByLabelText('重複'));
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		// 第 1 個八拍 3.2 秒
+		engine.audible = engine.clicks[0].when + 3.3;
+		await nextFrame();
+		expect(position()).toBe('音樂 1 1-1');
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+	});
+
 	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
 		await sample();
 		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;

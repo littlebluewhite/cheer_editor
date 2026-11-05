@@ -540,7 +540,7 @@ await js(`
 	$btn('＋ 記一次全上').click(); await wait();
 	q('button[aria-label="第 1 組 小美 中段 成功"]').click(); await wait();
 	$btn('存這次全上').click(); await wait();
-	$btn('最近 7 天').click(); await wait();
+	[...document.querySelectorAll('.summary .seg button')].find((b) => b.textContent.startsWith('最近 7 天')).click(); await wait();
 	[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).click(); await wait();
 `);
 // 表只有一個動作：畫面矮一點，下面才不會一大片空白（明細貼著右邊、跟畫面一樣高）
@@ -548,7 +548,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: W, height: 640, device
 await sleep(300);
 await shot('summary', [
 	[1, `[...document.querySelectorAll('.summary .filters .seg')]`],
-	[2, `q('.summary .filters button.primary')`],
+	[2, `q('.summary .run button.primary')`],
 	[3, `[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).closest('td')`],
 	[4, `[...document.querySelectorAll('.summary td.total')]`, { x: 1, y: 1 }],
 	[5, `q('.summary tr.whole')`, { x: 0, y: 1 }],
