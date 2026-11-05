@@ -17,9 +17,11 @@
 
 	interface Props {
 		onclose: () => void;
+		/** 新增了自訂任務角色（新角色的名稱）。 */
+		onadded?: (name: string) => void;
 	}
 
-	let { onclose }: Props = $props();
+	let { onclose, onadded }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -46,6 +48,7 @@
 		e.preventDefault();
 		ask.send(() => addCustomRole(flow, { name, meaning }), {
 			done: () => {
+				onadded?.(flow.customRoles.at(-1)!.name);
 				name = '';
 				meaning = '';
 			}

@@ -148,12 +148,12 @@ describe('隊員名單', () => {
 
 	it('有幾行認不得：其他行照加，所有錯誤一次列出，輸入框只留下沒加進去的行', async () => {
 		const session = setup();
-		await fillNew('小A\n小B\t男生\t底層\n小C\n小D\t女\t中層', 'F', 'base');
+		await fillNew('小A\n小B\t男孩\t底層\n小C\n小D\t女\t中層', 'F', 'base');
 		expect(session.flow!.members.map((m) => m.name)).toEqual(['小A', '小C']);
 		expect(screen.getByRole('alert').textContent).toBe(
-			'第 2 行「小B」：性別要寫「男」或「女」第 4 行「小D」：全局角色要寫「底層」或「上層」'
+			'第 2 行「小B」：性別要寫「男」或「女」第 4 行「小D」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」'
 		);
-		expect((screen.getByLabelText(/^名字/) as HTMLTextAreaElement).value).toBe('小B\t男生\t底層\n小D\t女\t中層');
+		expect((screen.getByLabelText(/^名字/) as HTMLTextAreaElement).value).toBe('小B\t男孩\t底層\n小D\t女\t中層');
 	});
 
 	it('加完之後表單記住這次選的性別和全局角色，名字清掉', async () => {

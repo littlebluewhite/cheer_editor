@@ -1,7 +1,7 @@
 // 手機（窄螢幕）的檢視模式（#175，docs/adr/0005-ipad-touch.md）：上面場地、中間播放鈕、下面現在這一列八拍表；
 // 從名單選一次「我」，這台裝置照流程記住（不進流程檔），之後打開就把我標亮。
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
@@ -107,5 +107,24 @@ describe('手機的檢視模式', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
 		await flush();
 		await vi.waitFor(() => expect(screen.getByRole('list', { name: '最近的流程' }).textContent).toContain('測試'));
+	});
+
+	it('有未存的修改（練習記了一次）按「回首頁」：跟「新建」一樣先問；取消就留著，「不存了，繼續」才回首頁', async () => {
+		await openOnPhone();
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		for (const phase of ['上法', '中段', '下法']) {
+			await fireEvent.click(screen.getByRole('button', { name: `第 1 組 小美 ${phase} 成功` }));
+		}
+		await fireEvent.click(within(screen.getByRole('region', { name: '第 1 組 小美' })).getByRole('button', { name: '存這一次' }));
+		await fireEvent.click(screen.getByRole('button', { name: '編排' }));
+		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
+		const dialog = within(screen.getByRole('dialog', { name: '「測試」還沒存，改的東西會不見。' }));
+		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+		expect(row()).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		await flush();
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 });

@@ -644,6 +644,30 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 	});
 }
 
+await check('390×844（觸控）：有未存的修改（練習記了一次）按上方列的「回首頁」，「還沒存」對話框按鈕點得到', async () => {
+	await setTouchViewport(390, 844);
+	await openPracticeFlow();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const recorded = await recordOnce();
+	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '編排').click()`);
+	await sleep(300);
+	const go = await js(`const b = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '回首頁');
+		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	await tap(go.x, go.y);
+	const res = await js(`const box = document.querySelector('.discard-box');
+		if (!box) return { 打開了: false };
+		const buttons = [...box.querySelectorAll('button')].map((b) => {
+			const r = b.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { 名字: b.textContent.trim(), 點得到: !!top && b.contains(top), 在畫面裡: r.left >= 0 && r.right <= innerWidth };
+		});
+		return { 打開了: true, buttons };`);
+	// 回首頁，後面的檢查從乾淨的頁面開始
+	await js(`[...document.querySelectorAll('.discard-box button')].find((b) => b.textContent.trim() === '不存了，繼續')?.click()`);
+	await sleep(300);
+	return { ok: recorded && res.打開了 && res.buttons.length === 3 && res.buttons.every((b) => b.點得到 && b.在畫面裡), value: { 記了一次: recorded, ...res } };
+});
 await check('390×844（觸控）檢視畫面：點播放鈕，播放頭會走', async () => {
 	await setTouchViewport(390, 844);
 	await openPracticeFlow();

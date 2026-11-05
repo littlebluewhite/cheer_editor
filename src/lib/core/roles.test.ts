@@ -53,6 +53,14 @@ describe('任務角色', () => {
 		expect(addCustomRole(flow, { name: '後保', meaning: '' }).kind).toBe('blocked');
 	});
 
+	it('名稱不能跟隊員同名（拍點的「給誰」才分得出是角色還是人）：加的時候和改名的時候都擋', () => {
+		let flow = flowOf(addMembers(empty(), [{ name: '小華', gender: 'F', globalRole: 'top' }]));
+		const message = '已經有叫「小華」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人';
+		expect(addCustomRole(flow, { name: ' 小華 ', meaning: '' })).toEqual({ kind: 'blocked', message });
+		flow = flowOf(addCustomRole(flow, { name: '丟人的', meaning: '' }));
+		expect(updateCustomRole(flow, 'r1', { name: '小華', meaning: '' })).toEqual({ kind: 'blocked', message });
+	});
+
 	it('名稱最多 8 個字：加的時候和改名的時候都擋；開檔進來就超過的，沒改名可以改意思', () => {
 		expect(addCustomRole(empty(), { name: '一二三四五六七八', meaning: '' }).kind).toBe('ok');
 		expect(addCustomRole(empty(), { name: '一二三四五六七八九', meaning: '' })).toEqual({

@@ -235,14 +235,16 @@ describe('刪隊員：當成真的換人', () => {
 	it('確認訊息加上會清掉幾次紀錄；確定後清掉他在的每一組和他自己的紀錄', () => {
 		const flow = recorded();
 		const r = deleteMember(flow, 'm2');
-		expect(r.kind === 'confirm' && r.message).toBe('刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 3 次紀錄');
+		expect(r.kind === 'confirm' && r.message).toBe('刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 3 次紀錄，「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補');
 		const after = flowOf(deleteMember(flow, 'm2', { confirmed: true }));
 		expect([ids(after, 'x1'), ids(after, 'x2')]).toEqual([['t2'], ['t4']]);
 	});
 
-	it('沒有紀錄：訊息跟以前一樣', () => {
+	it('沒有紀錄：不寫紀錄', () => {
 		const r = deleteMember(sample(), 'm2');
-		expect(r.kind === 'confirm' && r.message).toBe('刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡');
+		expect(r.kind === 'confirm' && r.message).toBe(
+			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補'
+		);
 	});
 });
 
