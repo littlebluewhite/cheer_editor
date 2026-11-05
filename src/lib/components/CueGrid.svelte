@@ -9,6 +9,7 @@
 	// 現在播到的那一拍有標記。格子上按方向鍵左右移選取，加 Shift 延長選取。
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
+	// 選的拍和給誰放在編輯 session（session.beats，選拍的規則在那裡）；這裡只管選拍的指標、焦點和畫格子。
 	// 拍子那條上面一直有一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
 	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入、清掉。
 	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
@@ -61,6 +62,7 @@
 	} from '#lib/core';
 
 	interface Props {
+		/** 選到的動作（session 選的那個；選的拍跟著它）。 */
 		action: Action;
 		/** 播放頭（全域秒數）；標出現在播到的那一拍。 */
 		playheadSec?: number;
@@ -95,9 +97,6 @@
 			...action.members.map((m) => ({ label: memberName(flow, m.memberId), who: { member: m.memberId } as Who }))
 		];
 	});
-	/** 放拍點時給誰；預設全部。 */
-	let who = $state<Who>(null);
-
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
@@ -116,8 +115,9 @@
 	/** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。 */
 	const firstCell = $derived(action.start % BEAT);
 
-	/** 選到的拍：從 from 那一拍到 to 那一拍（從動作開始算的半拍，各佔一拍）。平常是格子開頭；點從 & 開始的拍點時落在 &。 */
-	let sel = $state({ from: 0, to: 0 });
+	/** 選到的拍、給誰（session 管）：選的拍從 from 那一拍到 to 那一拍（從動作開始算的半拍，各佔一拍）。 */
+	const beats = session.beats;
+	const sel = $derived({ from: beats.from, to: beats.to });
 	/** 被擋的原因，和等教練回答的環節改動（會刪掉有記號的環節）。 */
 	const ask = new Ask(
 		(f) => {
@@ -143,28 +143,24 @@
 	let hold = false;
 	/** 視窗多寬；變了小窗就重新放。 */
 	let winW = $state(0);
-	const whoIndex = $derived(Math.max(0, whoOptions.findIndex((o) => sameWho(o.who, who))));
+	const whoIndex = $derived(Math.max(0, whoOptions.findIndex((o) => sameWho(o.who, beats.who))));
 
 	/** 這一格（從 at 開始的一拍）整個在動作裡。 */
 	const inAction = (at: number) => at >= 0 && at + BEAT <= action.length;
 	const hasCells = $derived(inAction(firstCell));
-	/** 動作裡最後一格。 */
-	const lastCell = $derived(firstCell + (Math.floor((action.length - firstCell) / BEAT) - 1) * BEAT);
 	/** 第 h 個半拍有沒有選到。 */
-	const covered = (h: number) => h >= sel.from && h < sel.to + BEAT;
+	const covered = (h: number) => beats.covers(h);
 	/** 這一格（從 at 開始）有選到（前半或後半）。 */
 	const isSel = (at: number) => covered(at) || covered(at + 1);
 	/** 半拍 at 所在那一格的開頭。 */
 	const cellOf = (at: number) => at - ((((action.start + at) % BEAT) + BEAT) % BEAT);
-	/** 半拍 at 所在那一格，夾在動作的第一格和最後一格之間。 */
-	const snap = (at: number) => Math.min(Math.max(cellOf(at), firstCell), lastCell);
 	/** 現在播到的那一格（從動作開始算）；播放頭不在這個段就是 null。 */
 	const nowCell = $derived.by(() => {
 		if (playheadSec === undefined || !segment) return null;
 		const pos = toPosition(flow, playheadSec);
 		return pos?.segmentId === segment.id ? cellOf(pos.at - action.start) : null;
 	});
-	const selLen = $derived(sel.to - sel.from + BEAT);
+	const selLen = $derived(beats.len);
 	/** 可以改的環節：音樂段是選的拍剛好是它的拍的那個，口號段是點選的那個；沒有就 null。 */
 	const editing = $derived(
 		(segment?.kind === 'music'
@@ -174,36 +170,14 @@
 
 	// 只在值變了才通知（action 每次改流程都是新物件）。
 	const actionId = $derived(action.id);
-	const actionLength = $derived(action.length);
 
-	// 換動作就從第一拍開始。
+	// 換動作就收掉小窗和問題（選的拍由 session 從第一拍開始）。
 	$effect(() => {
 		void actionId;
 		untrack(() => {
 			ask.clear();
-			sel = { from: firstCell, to: firstCell };
-			who = null;
 			pop = false;
 			chosen = null;
-		});
-	});
-
-	// 選到的人或角色不在動作裡了，就回到全部。
-	$effect(() => {
-		const options = whoOptions;
-		untrack(() => {
-			if (!options.some((o) => sameWho(o.who, who))) who = null;
-		});
-	});
-
-	// 動作移動或變短、選取跑到外面或不在整拍上時，也從第一拍開始。
-	$effect(() => {
-		const first = firstCell;
-		void actionLength;
-		untrack(() => {
-			if (!inAction(sel.from) || !inAction(sel.to) || (sel.from - first) % BEAT !== 0) {
-				sel = { from: first, to: first };
-			}
 		});
 	});
 
@@ -222,28 +196,13 @@
 		return ask.send(cmd, { done: () => after?.() }).kind === 'ok';
 	}
 
-	const selectOne = (at: number) => (sel = { from: at, to: at });
-
-	/** 選取固定的那一端：上次沒按 Shift 點的那一格。 */
-	let pivot = 0;
-	/** 點一格選一拍；按住 Shift 點，就從上次點的那一格選到這一格。 */
-	function selectTo(at: number, shift: boolean) {
-		// 選取被別的地方換掉了（放完拍子跳下一拍、點拍點），就從選取的開頭算。
-		// 選取從 & 開始（點了這種拍點）時，從它所在的那一格算。
-		const keep = snap(!shift ? at : sel.from === pivot || sel.to === pivot ? pivot : sel.from);
-		at = snap(at);
-		pivot = keep;
-		sel = { from: Math.min(keep, at), to: Math.max(keep, at) };
-	}
-
 	function openPop() {
 		hold = false;
 		ask.clear();
 		pop = true;
 	}
 
-	/** 拖拉選拍：按下那一格；pointer 按下過、還沒收到 click（點一下時 pointerdown 已經選好，click 不用再選）。 */
-	let anchor: number | null = null;
+	/** 拖拉選拍：pointer 按下過、還沒收到 click（點一下時 pointerdown 已經選好，click 不用再選）。 */
 	let pointerSel = false;
 
 	/** 手指按在沒選到的格子上：先不選（可能是要捲畫面）；放開了才選這一拍，被系統打斷（捲動了）就不選。 */
@@ -260,46 +219,38 @@
 			tapAt = at;
 			return;
 		}
-		selectTo(at, e.shiftKey);
-		anchor = pivot;
+		beats.click(at, e.shiftKey);
 		dragging = true;
 		// 抓住指標：拖過變淡（disabled）的格子、拖出格子外都收得到。
 		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
 	}
 
 	function dragMove(e: PointerEvent) {
-		if (anchor === null) return;
+		if (!dragging) return;
 		const el = cellAt(e.currentTarget as HTMLElement, e.clientX, e.clientY);
-		// 拖到動作外面時停在動作的第一拍或最後一拍。
-		const at = Math.min(Math.max(Number(el.dataset.at), firstCell), lastCell);
-		sel = { from: Math.min(anchor, at), to: Math.max(anchor, at) };
+		beats.dragTo(Number(el.dataset.at));
 	}
 
 	function dragEnd() {
-		if (tapAt !== null) selectTo(tapAt, false);
-		if (anchor !== null || tapAt !== null) openPop();
+		if (tapAt !== null) beats.click(tapAt);
+		if (dragging || tapAt !== null) openPop();
 		dragCancel();
 	}
 	function dragCancel() {
-		anchor = null;
 		tapAt = null;
 		dragging = false;
 	}
 
-	function grow(step: number) {
+	function grow(step: 1 | -1) {
 		hold = pop;
-		const to = sel.to + step * BEAT;
-		if (to >= sel.from && inAction(to)) sel = { from: sel.from, to };
+		beats.grow(step);
 	}
 
 	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。拍子放完選取跳到下一拍。 */
 	function place(kind: CueKind, word: string): boolean {
 		const len = kind === 'motion' ? BEAT : selLen;
-		const placed = send(() => placeCue(flow, action.id, { kind, at: sel.from, len, word, who }));
-		if (placed && kind === 'count' && inAction(sel.to + BEAT)) {
-			selectOne(sel.to + BEAT);
-			follow = pop;
-		}
+		const placed = send(() => placeCue(flow, action.id, { kind, at: sel.from, len, word, who: beats.who }));
+		if (placed && kind === 'count' && beats.next()) follow = pop;
 		return placed;
 	}
 
@@ -353,27 +304,18 @@
 	}
 
 	/** 點一個拍點或環節：選回它原本的範圍（從 & 開始的也照實）；拍點的「給誰」也換成它的。 */
-	function pick({ at, len }: { at: number; len: number }, cueWho?: Who) {
-		sel = { from: at, to: at + len - BEAT };
-		pivot = at;
-		if (cueWho !== undefined) who = cueWho;
+	function pick(range: { at: number; len: number }, cueWho?: Who) {
+		beats.pick(range, cueWho);
 		openPop();
 	}
 
-	/** 方向鍵：左右移選取（選一格）；加 Shift 從固定的那一端延長或縮短。焦點跟著動的那一端。 */
+	/** 方向鍵：左右移選取；加 Shift 延長或縮短（規則在 session）。焦點跟著動的那一端。 */
 	function arrowKey(e: KeyboardEvent) {
 		const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
 		if (!dir) return;
 		e.preventDefault();
-		// 動的那一端：Shift 時是不固定的那一端；沒 Shift 時往右從最後一格、往左從第一格（從 & 開始的取它碰到的那一格）。
-		const end = e.shiftKey
-			? snap(sel.from === pivot ? sel.to : sel.from)
-			: dir > 0
-				? cellOf(sel.to + 1)
-				: cellOf(sel.from + 1);
-		const to = end + dir * BEAT;
-		if (!inAction(to)) return;
-		selectTo(to, e.shiftKey);
+		const to = beats.arrow(dir, e.shiftKey);
+		if (to === null) return;
 		openPop();
 		wrapEl?.querySelector<HTMLElement>(`.cell[data-at="${to}"]`)?.focus();
 	}
@@ -609,7 +551,7 @@
 								disabled={!inAction(at)}
 								onclick={(ev) => {
 								if (pointerSel) return;
-								selectTo(at, ev.shiftKey);
+								beats.click(at, ev.shiftKey);
 								openPop();
 							}}>{c + 1}</button
 							>
@@ -704,7 +646,7 @@
 						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
 						<label class="who-sel">
 							<span>給誰</span>
-							<select value={whoIndex} onchange={(e) => (who = whoOptions[Number(e.currentTarget.value)].who)}>
+							<select value={whoIndex} onchange={(e) => (beats.who = whoOptions[Number(e.currentTarget.value)].who)}>
 								{#each whoOptions as o, i (i)}<option value={i}>{o.label}</option>{/each}
 							</select>
 						</label>

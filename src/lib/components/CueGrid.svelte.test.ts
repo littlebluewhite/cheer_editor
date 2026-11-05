@@ -31,9 +31,10 @@ function sample(): Flow {
 	);
 }
 
-/** 放一個帶著 flow 的 session 進 context，畫第一個動作的拍點格子；回傳 session。 */
+/** 放一個帶著 flow、選了第一個動作的 session 進 context，畫它的拍點格子；回傳 session。 */
 function renderGrid(flow: Flow, playheadSec?: number) {
 	const session = new EditorSession(flow);
+	session.selectAction(flow.actions[0].id);
 	render(TestSession, {
 		props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
 	});
@@ -71,12 +72,6 @@ describe('拍點格子：拖拉選拍', () => {
 		]);
 	});
 
-	it('往回拖也可以：從 4-1 拖回 3-7', async () => {
-		const { grid, selText } = setup();
-		await drag(grid.getByRole('button', { name: '4-1' }), idx('4-1'), idx('3-7'));
-		expect(selText()).toBe('選了 3-7 到 4-1・3 拍');
-	});
-
 	it('拖完放開後瀏覽器補發的 click 不會把選取改回一格', async () => {
 		const { grid, selText } = setup();
 		const cell = grid.getByRole('button', { name: '3-5' });
@@ -94,14 +89,6 @@ describe('拍點格子：拖拉選拍', () => {
 		expect(selText()).toBe('選了 3-5 到 3-7・3 拍');
 		await drag(slots('motion')[idx('4-1')], idx('4-1'), idx('4-2'), 3);
 		expect(selText()).toBe('選了 4-1 到 4-2・2 拍');
-	});
-
-	it('拖到動作外面，選取停在動作的最後一拍或第一拍', async () => {
-		const { grid, selText } = setup();
-		await drag(grid.getByRole('button', { name: '3-5' }), idx('3-5'), idx('4-8'));
-		expect(selText()).toBe('選了 3-5 到 4-2・6 拍');
-		await drag(grid.getByRole('button', { name: '3-5' }), idx('3-5'), idx('3-1'));
-		expect(selText()).toBe('選了 3-3 到 3-5・3 拍');
 	});
 
 	it('從動作外面（變淡的格子）按下不會開始選，也不會跳出拍點小窗', async () => {
@@ -169,15 +156,6 @@ describe('拍點格子：拍點小窗', () => {
 		expect(pop()).not.toBeNull();
 	});
 
-	it('點一格，再按住 Shift 點另一格，選一整段（往前點也可以）', async () => {
-		const { grid, selText } = setup();
-		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
-		await fireEvent.click(grid.getByRole('button', { name: '4-1' }), { shiftKey: true });
-		expect(selText()).toBe('選了 3-5 到 4-1・5 拍');
-		await fireEvent.click(grid.getByRole('button', { name: '3-3' }), { shiftKey: true });
-		expect(selText()).toBe('選了 3-3 到 3-5・3 拍');
-	});
-
 	it('Shift 按著拖，也是從上次點的那一格選起', async () => {
 		const { grid, selText } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-4' }));
@@ -217,16 +195,6 @@ describe('拍點格子：拍點小窗', () => {
 		expect(pop()).not.toBeNull();
 		await fireEvent.pointerDown(document.body);
 		expect(pop()).toBeNull();
-	});
-
-	it('點一個已經放好的拍點，選回它佔的拍，也跳出小窗', async () => {
-		const flow = sample();
-		const action = { ...flow.actions[0], cues: [{ kind: 'count' as const, at: 4, len: 4, word: 'down', who: null }] };
-		renderGrid({ ...flow, actions: [action] });
-		const grid = within(screen.getByRole('group', { name: '拍點' }));
-		await fireEvent.click(grid.getByRole('button', { name: /^拍子 down/ }));
-		const pop = grid.getByRole('dialog', { name: '拍點小窗' });
-		expect(within(pop).getByText(/^選了/).textContent).toBe('選了 3-5 到 3-6・2 拍');
 	});
 
 	it('給誰在小窗裡選：選了隊員再放，拍點給那個人', async () => {
@@ -312,23 +280,8 @@ describe('方向鍵', () => {
 		expect(selText()).toBe('選了 3-6・1 拍');
 		expect(document.activeElement).toBe(cell('3-6'));
 		await fireEvent.keyDown(cell('3-6'), { key: 'ArrowRight', shiftKey: true });
-		await fireEvent.keyDown(cell('3-7'), { key: 'ArrowRight', shiftKey: true });
-		expect(selText()).toBe('選了 3-6 到 3-8・3 拍');
-		expect(document.activeElement).toBe(cell('3-8'));
-		await fireEvent.keyDown(cell('3-8'), { key: 'ArrowLeft', shiftKey: true });
 		expect(selText()).toBe('選了 3-6 到 3-7・2 拍');
-		await fireEvent.keyDown(cell('3-7'), { key: 'ArrowLeft' });
-		expect(selText()).toBe('選了 3-5・1 拍');
-	});
-
-	it('到動作頭尾就停住', async () => {
-		const { grid, selText } = setup();
-		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
-		await fireEvent.keyDown(grid.getByRole('button', { name: '3-3' }), { key: 'ArrowLeft' });
-		expect(selText()).toBe('選了 3-3・1 拍');
-		await fireEvent.click(grid.getByRole('button', { name: '4-2' }));
-		await fireEvent.keyDown(grid.getByRole('button', { name: '4-2' }), { key: 'ArrowRight', shiftKey: true });
-		expect(selText()).toBe('選了 4-2・1 拍');
+		expect(document.activeElement).toBe(cell('3-7'));
 	});
 });
 
