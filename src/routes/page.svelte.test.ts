@@ -1041,6 +1041,27 @@ describe('編輯器首頁', () => {
 		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(2);
 	});
 
+	it('空場的提示照實說新隊員排在哪；場地中間的 ✕ 有說明', async () => {
+		await newFlow();
+		expect(document.querySelector('.field-empty')!.textContent).toContain('排進場地中間的空格點');
+		expect(document.querySelector('.center title')?.textContent).toBe('場地正中心');
+	});
+
+	it('從試算表貼三欄加隊員：直接排進場地中間的格點，認不得的行列出原因', async () => {
+		await newFlow();
+		await fireEvent.input(screen.getByLabelText(/^名字/), {
+			target: { value: '王小明\t男\t底層\n李美\t女\t上層\n阿強\t男\t中層' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		expect(screen.getByRole('alert').textContent).toBe('第 3 行「阿強」：全局角色要寫「底層」或「上層」');
+		// 9 條直放：中間四個格點離中心各差半格（0.9144 m），先排正面左邊、再正面右邊。
+		const at = (id: string) =>
+			document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);
+		expect(at('m1')).toEqual([expect.closeTo(-0.9144, 4), expect.closeTo(0.9144, 4)]);
+		expect(at('m2')).toEqual([expect.closeTo(0.9144, 4), expect.closeTo(0.9144, 4)]);
+		expect(document.querySelectorAll('[data-member-id]')).toHaveLength(2);
+	});
+
 	it('刪掉選到的人：選取跟著清掉，之後加的新人（id 重用）不會被選到', async () => {
 		await newFlow();
 		const addOne = async (name: string) => {

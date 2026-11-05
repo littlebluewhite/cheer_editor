@@ -785,7 +785,7 @@
 			{#if flow.members.length === 0}
 				<div class="field-empty">
 					<b>場上還沒有人</b>
-					<span>到右邊的「隊員」加人，他們會出現在場上，可以直接拖。</span>
+					<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 				</div>
 			{/if}
 			{#if session.ask.question}

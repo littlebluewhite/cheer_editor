@@ -44,28 +44,110 @@ export interface NewMemberInput {
 	globalRole: GlobalRole | null;
 }
 
-/** 一次加一個或多個隊員，排在名單最後。 */
-export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult {
-	if (flow.members.length + inputs.length > MAX_MEMBERS) {
-		return blocked(`一支流程最多 ${MAX_MEMBERS} 人`);
+/** 隊員名字最多幾個字。 */
+const MAX_NAME_CHARS = 20;
+
+/** 加隊員多帶的結果：沒加進去的那幾行的原因，和那幾行原本的字（畫面留在輸入框給教練改）。 */
+export interface AddMembersResult {
+	errors: string[];
+	rejected: string[];
+}
+
+/** 一個要加的人：畫面上的字（rejected 用）、錯的時候寫在哪（「第 2 行」），和讀出來的人或錯誤。 */
+interface Entry {
+	text: string;
+	where: string;
+	name: string;
+	input: NewMemberInput | null;
+	problems: string[];
+}
+
+/**
+ * 一次加一個或多個隊員，排在名單最後。見 addEntries。
+ */
+export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<AddMembersResult> {
+	return addEntries(
+		flow,
+		inputs.map((input, i) => ({ text: input.name, where: `第 ${i + 1} 個`, name: input.name.trim(), input, problems: [] }))
+	);
+}
+
+/**
+ * 貼上的名單加隊員：每一行是「名字」（用表單選的性別、全局角色）或「名字<Tab>性別<Tab>全局角色」
+ * （性別認男、女；全局角色認底層、上層）。空行跳過。見 addEntries。
+ */
+export function addMemberLines(
+	flow: Flow,
+	text: string,
+	defaults: { gender: Gender | null; globalRole: GlobalRole | null }
+): CommandResult<AddMembersResult> {
+	const entries = text.split('\n').flatMap((line, i): Entry[] => {
+		if (!line.trim()) return [];
+		const cols = line.trim().split('\t').map((c) => c.trim());
+		const entry: Entry = { text: line, where: `第 ${i + 1} 行`, name: cols[0], input: null, problems: [] };
+		if (cols.length === 1) entry.input = { name: cols[0], ...defaults };
+		else if (cols.length !== 3) entry.problems.push('一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab 隔開）');
+		else {
+			const gender = GENDERS.find((g) => g.label === cols[1])?.key ?? null;
+			const globalRole = GLOBAL_ROLES.find((r) => r.label === cols[2])?.key ?? null;
+			if (!gender) entry.problems.push('性別要寫「男」或「女」');
+			if (!globalRole) entry.problems.push('全局角色要寫「底層」或「上層」');
+			if (gender && globalRole) entry.input = { name: cols[0], gender, globalRole };
+		}
+		return [entry];
+	});
+	return addEntries(flow, entries);
+}
+
+/**
+ * 有錯的人（沒名字、名字太長、沒選性別或全局角色、認不得的行）不加，所有錯一次列在 errors，其他人照加；
+ * 一個都加不了就擋下，原因是所有錯（一行一個）。只有一個人時錯誤不寫第幾個。
+ * 加了會超過 40 人就一個都不加，原因寫還能加幾人。
+ * 新人排進開頭那張站位最靠近場地中間的空格點（不跟現有的人疊到），後面的站位用同一個位置；格點都有人了才排場外。
+ */
+function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResult> {
+	if (!entries.length) return blocked('請填隊員名字');
+	for (const e of entries) {
+		if (!e.input) continue;
+		const { name, gender, globalRole } = e.input;
+		const problem = nameProblem(name.trim());
+		if (problem) e.problems.push(problem);
+		if (!gender) e.problems.push('請選性別');
+		if (!globalRole) e.problems.push('請選全局角色');
 	}
+	const bad = entries.filter((e) => e.problems.length);
+	const errors = bad.map((e) =>
+		entries.length === 1 ? e.problems.join('；') : `${e.where}「${e.name}」：${e.problems.join('；')}`
+	);
+	const left = MAX_MEMBERS - flow.members.length;
+	if (entries.length > left) {
+		errors.push(
+			left ? `一支流程最多 ${MAX_MEMBERS} 人，這次加 ${entries.length} 人，只能再加 ${left} 人` : `一支流程最多 ${MAX_MEMBERS} 人，已經滿了`
+		);
+	}
+	if (bad.length === entries.length || entries.length > left) return blocked(errors.join('\n'));
+
 	const added: Member[] = [];
 	let n = nextNumber(flow.members);
-	for (const input of inputs) {
-		const name = input.name.trim();
-		const { gender, globalRole } = input;
-		if (!name) return blocked('請填隊員名字');
-		if (!gender) return blocked('請選性別');
-		if (!globalRole) return blocked('請選全局角色');
-		added.push({ id: `m${n++}`, name, gender, globalRole });
+	for (const e of entries) {
+		if (e.problems.length) continue;
+		const { name, gender, globalRole } = e.input!;
+		added.push({ id: `m${n++}`, name: name.trim(), gender: gender!, globalRole: globalRole! });
 	}
+	const opening = { ...flow.formations[0].pos };
+	const grid = gridPoints(flow.field);
 	const spots = waitingSpots(flow.field);
+	for (const m of added) {
+		const taken = Object.values(opening);
+		opening[m.id] = grid.find((g) => !taken.some((t) => overlaps(g, t))) ?? freeSpot(spots, taken);
+	}
+	// 後面的站位沒有新人的位置：用開頭那張的。
 	const formations = flow.formations.map((f) => {
 		const pos = { ...f.pos };
-		for (const m of added) pos[m.id] = freeSpot(spots, Object.values(pos));
+		for (const m of added) pos[m.id] = opening[m.id];
 		return { ...f, pos };
 	});
-	return ok({ ...flow, members: [...flow.members, ...added], formations });
+	return ok({ ...flow, members: [...flow.members, ...added], formations }, { errors, rejected: bad.map((e) => e.text) });
 }
 
 export interface MemberChanges {
@@ -88,7 +170,8 @@ export function updateMember(
 	const member = flow.members.find((m) => m.id === id);
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
-	if (!updated.name) return blocked('請填隊員名字');
+	const problem = nameProblem(updated.name);
+	if (problem) return blocked(problem);
 	// 改名字當成可能換了人：先照「換人」走收尾，看會動到哪些紀錄（他在的組的、他自己的）。
 	const swapped = updated.name === member.name ? [] : flow.actions.map((a) => replaced(flow, a, id));
 	const mine = swapped.filter((s) => s.records.length);
@@ -227,7 +310,25 @@ function clashMarkers(group: Member[], chars: Map<string, string[]>): Record<str
 }
 
 /**
- * 新人等著被擺好的位置：場地外半格、每 1/2 格一個（圓點不會疊在一起），繞著場地排一圈。
+ * 新人排進場的格點：墊子上格線的交點（含墊子的邊），一格一個。
+ * 照離場地中心多近排；一樣近時先排靠正面的，再先排左邊的。
+ */
+function gridPoints(field: FieldConfig): Position[] {
+	const { mat, cols, rows } = fieldGeometry(field);
+	const points = Array.from({ length: cols + 1 }, (_, i) =>
+		Array.from({ length: rows + 1 }, (_, j): Position => [mat.x + i * CELL_M, mat.y + j * CELL_M])
+	).flat();
+	const near = (p: Position) => Math.round(Math.hypot(p[0], p[1]) * 1e6);
+	return points.sort((a, b) => near(a) - near(b) || b[1] - a[1] || a[0] - b[0]);
+}
+
+/** 兩個圓點疊到：中心距離不到半格。 */
+function overlaps(a: Position, b: Position): boolean {
+	return Math.hypot(a[0] - b[0], a[1] - b[1]) < CELL_M / 2 - 1e-6;
+}
+
+/**
+ * 場地放滿時，新人等著被擺好的位置：場地外半格、每 1/2 格一個（圓點不會疊在一起），繞著場地排一圈。
  * 從正面左邊的角開始往右排到場地右邊外，再從那個角沿著左邊往後，再沿著右邊往後，最後排後面。
  * 都在吸附點上、在場地外 1 m 以內。
  * 一共 4 ×（左右格數 ＋ 前後格數）＋ 8 個位置；最小的場地（1 條，1 × 7 格）剛好 40 個，所以一定有空位。
@@ -252,6 +353,13 @@ function freeSpot(spots: Position[], taken: Position[]): Position {
 
 function samePlace(a: Position, b: Position): boolean {
 	return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+}
+
+/** 名字的毛病：空的、太長；沒問題是 null。名字先去掉前後空白再傳進來。 */
+function nameProblem(name: string): string | null {
+	if (!name) return '請填隊員名字';
+	if (Array.from(name).length > MAX_NAME_CHARS) return `隊員名字最多 ${MAX_NAME_CHARS} 個字`;
+	return null;
 }
 
 /** 下一個沒用過的 m 編號。 */
