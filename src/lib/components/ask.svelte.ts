@@ -3,6 +3,7 @@
 //   成功：把新流程交給 onchange；被擋：留下原因（給了還原就加「，已還原」並還原）；要確認、要選：留下問題。
 //   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到那一格成功送出為止。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
+// 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
 
 import type { CommandResult, ConfirmOption, Flow } from '#lib/core';
 
@@ -71,6 +72,13 @@ export class Ask {
 			return;
 		}
 		this.#settle(pending.send(OPTIONS[answer]), pending.send, pending.handlers);
+	}
+
+	/** 教練改了一格：收掉那一格的紅字，別格的留著。
+	 *  沒給格名：是整張表單送出（沒給 field）的那一格，收掉 error。 */
+	edited(field?: string) {
+		if (field === undefined) this.error = '';
+		else delete this.fieldErrors[field];
 	}
 
 	/** 原因和問題都收掉（例：換了動作）。 */
