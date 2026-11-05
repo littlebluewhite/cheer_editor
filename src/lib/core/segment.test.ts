@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	addSegment,
+	audioOverlaps,
 	beatLines,
 	createFlow,
 	loadSegmentAudio,
@@ -107,6 +108,12 @@ describe('改音樂段', () => {
 			kind: 'blocked',
 			message: '八拍數要是整數'
 		});
+	});
+
+	it('只改八拍數：最後一個八拍回到滿的 8 拍（不留著上次算出的零頭）', () => {
+		let flow = flowOf(updateSegment(withMusic(), 's1', { eights: 10, lastBeats: 1 }));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 4 }));
+		expect(musicLength(flow.segments[0] as MusicSegment)).toEqual({ eights: 4, lastBeats: 8 });
 	});
 
 	it.each([0, -1, 9, 2.5, Number.NaN])('最後一個八拍 %s 拍不合理就擋下，訊息只講這一格', (lastBeats) => {
@@ -318,11 +325,36 @@ describe('音樂檔', () => {
 		expect(flowOf(updateSegment(flow, 's3', { audioId: 'a1' })).segments[2]).toMatchObject({ firstBeatSec: 3 });
 	});
 
+	it('新音樂段選了跟前一個音樂段同一個檔：BPM 也沿用前一段', () => {
+		let flow = flowOf(loadSegmentAudio(twoMusic(), 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { bpm: 128 }));
+		flow = flowOf(updateSegment(flow, 's2', { audioId: 'a1' }));
+		expect(flow.segments[1]).toMatchObject({ audioId: 'a1', bpm: 128 });
+	});
+
 	it('前一個音樂段用的是別的檔：第一拍不動', () => {
 		let flow = flowOf(loadSegmentAudio(twoMusic(), 's1', '歌.mp3'));
 		flow = flowOf(addSegment(flow, 'music'));
 		flow = flowOf(loadSegmentAudio(flow, 's2', '別首.mp3'));
-		expect(flowOf(updateSegment(flow, 's3', { audioId: 'a1' })).segments[2]).toMatchObject({ firstBeatSec: 0 });
+		expect(flowOf(updateSegment(flow, 's3', { audioId: 'a1' })).segments[2]).toMatchObject({ firstBeatSec: 0, bpm: 150 });
+	});
+
+	it('兩段用同一個檔、用到的時間重疊：說跟哪一段重疊、重疊幾秒', () => {
+		let flow = flowOf(loadSegmentAudio(twoMusic(), 's1', '歌.mp3'));
+		// 音樂 1：0 到 25.6 秒；音樂 2 接在後面（25.6 秒起），不重疊
+		flow = flowOf(updateSegment(flow, 's2', { audioId: 'a1' }));
+		expect(audioOverlaps(flow, 's1')).toEqual([]);
+		// 音樂 1 拉長到 10 個八拍 = 32 秒：音樂 2 的 25.6 到 32 秒播兩次
+		flow = flowOf(updateSegment(flow, 's1', { eights: 10 }));
+		expect(audioOverlaps(flow, 's1')).toEqual([{ label: '音樂 2', sec: expect.closeTo(6.4, 9) }]);
+		expect(audioOverlaps(flow, 's2')).toEqual([{ label: '音樂 1', sec: expect.closeTo(6.4, 9) }]);
+	});
+
+	it('用不同的檔、沒有音樂：不算重疊', () => {
+		let flow = flowOf(loadSegmentAudio(twoMusic(), 's1', '歌.mp3'));
+		expect(audioOverlaps(flow, 's1')).toEqual([]);
+		flow = flowOf(loadSegmentAudio(flow, 's2', '別首.mp3'));
+		expect(audioOverlaps(flow, 's2')).toEqual([]);
 	});
 
 	it('指到不存在的音樂檔就擋下', () => {

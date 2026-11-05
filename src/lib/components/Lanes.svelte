@@ -35,6 +35,7 @@
 		timeText,
 		toSeconds,
 		totalSeconds,
+		walkSpeedText,
 		type Clash,
 		type ConfirmOption,
 		type Cue,
@@ -173,14 +174,16 @@
 	const walks = $derived.by(() => {
 		const byMember: Record<
 			string,
-			({ formationId: string; clashes: { startSec: number; endSec: number }[] } & Pick<
+			({ formationId: string; speed: string; clashes: { startSec: number; endSec: number }[] } & Pick<
 				FormationWalk,
 				'departSec' | 'arriveSec' | 'tooFast' | 'tiring'
 			>)[]
 		> = {};
 		for (const b of flow.formations) {
-			for (const { memberId, departSec, arriveSec, tooFast, tiring } of formationWalks(flow, b.id)) {
-				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, clashes: [] });
+			for (const w of formationWalks(flow, b.id)) {
+				const { memberId, departSec, arriveSec, tooFast, tiring } = w;
+				const speed = walkSpeedText(flow, w);
+				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, clashes: [] });
 			}
 		}
 		for (const c of clashes) {
@@ -433,7 +436,7 @@
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
 					style:height={`${WALK_HIT_H}px`}
 					style:bottom={`${-WALK_HIT_DROP}px`}
-					title="走位：點一下選這個人；拖左端改出發、拖右端改到達、拖中間一起挪"
+					title="{w.speed}。點一下選這個人；拖左端改出發、拖右端改到達、拖中間一起挪"
 					onpointerdown={(e) => startWalkDrag(e, w.formationId, m.id)}
 					onclick={(e) => tapWalk(e, m.id)}
 				>
@@ -502,10 +505,12 @@
 		background: var(--sel-soft, #dcf4fa);
 		box-shadow: inset 3px 0 0 var(--sel, #19b4d8);
 	}
-	/* 標記圓圈：顏色照全局角色，跟場上的點一樣。 */
+	/* 標記圓圈：顏色照全局角色，跟場上的點一樣；多字的標記是橫的膠囊。 */
 	.no.long {
-		font-size: 7px;
-		letter-spacing: -0.3px;
+		width: auto;
+		padding: 0 4px;
+		border-radius: 999px;
+		font-size: 9px;
 	}
 	.no {
 		flex: none;

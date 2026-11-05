@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 站位小編輯（場地左欄、圖例上面）：跟上一張一樣、拖人會改哪一張、播放頭所在站位的名稱和站位時間。
+	// 站位小編輯（場地左欄、圖例上面）：拖人會改哪一張、播放頭所在站位的名稱和站位時間、跟上一張一樣（在最下面，位置固定）。
 	// 規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
 	import { getEditor } from '#lib/editor.svelte.js';
@@ -77,10 +77,6 @@
 	}
 </script>
 
-<div class="match-prev">
-	<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
-	{#if matchBlocked}<span>{matchBlocked}</span>{/if}
-</div>
 <div class="here" class:on={!!here}>
 	<p class="move-target">{moveTargetText(flow, playback.sec)}</p>
 	{#if here}
@@ -109,6 +105,11 @@
 			<p class="time-hint">{moveFormationHint(flow, here.id)}</p>
 		{/key}
 	{/if}
+</div>
+<!-- 放在卡片下面：左欄下面這一塊貼著底，卡片變高變矮時按鈕不會跳；說明字那一行一直留著，有沒有字都一樣高 -->
+<div class="match-prev">
+	<button type="button" disabled={!!matchBlocked} onclick={matchPrev}>跟上一張一樣</button>
+	<span class="why">{matchBlocked}</span>
 </div>
 
 <style>
@@ -177,18 +178,17 @@
 		font-size: 12px;
 		pointer-events: none;
 	}
-	/* ① 跟上一張一樣：在「拖人會改」那一行上面。 */
+	/* ① 跟上一張一樣：在站位卡片下面，按鈕位置固定；按不下去的原因寫在下面那一行。 */
 	.match-prev {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
+		display: grid;
+		justify-items: start;
+		gap: 2px;
 		font-size: 12px;
 		color: var(--muted);
 	}
-	.match-prev span {
-		padding: 4px 10px;
-		border-radius: 8px;
-		background: var(--surface, #fff);
+	.match-prev .why {
+		min-height: 1.4em;
+		line-height: 1.4;
+		padding: 0 2px;
 	}
 </style>

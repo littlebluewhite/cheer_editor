@@ -140,7 +140,8 @@ export {
 	setPositions,
 	setTeamWalks,
 	setWalks,
-	walkSpanAt
+	walkSpanAt,
+	walkSpeedText
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 
@@ -156,6 +157,7 @@ export {
 	MAX_EIGHTS,
 	MIN_BPM,
 	addSegment,
+	audioOverlaps,
 	beatLines,
 	fitSegmentToAudio,
 	loadSegmentAudio,
@@ -165,6 +167,7 @@ export {
 } from './segment';
 export type {
 	AudioLengths,
+	AudioOverlap,
 	AudioRef,
 	BeatLine,
 	BeatTiming,

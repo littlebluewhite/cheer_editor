@@ -164,6 +164,17 @@
 		return cut === -1 ? { segment: text, at: '' } : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
 	});
 
+	/**
+	 * 延遲校正欄位送出（離開欄位或按 Enter）：清空、不是數字就回到現在的值；超出 ±MAX_LATENCY_MS 就夾到邊上，提示範圍。
+	 */
+	function applyLatency(input: HTMLInputElement) {
+		const ms = input.valueAsNumber;
+		const used = Number.isNaN(ms) ? playback.latencyMs : Math.min(Math.max(ms, -MAX_LATENCY_MS), MAX_LATENCY_MS);
+		playback.setLatency(used);
+		input.value = String(used);
+		if (!Number.isNaN(ms) && used !== ms) session.notice = `延遲校正要在 -${MAX_LATENCY_MS} 到 ${MAX_LATENCY_MS} 毫秒之間，改成 ${used}`;
+	}
+
 	/** 秒數寫成「1:05.3」。 */
 	function clock(sec: number): string {
 		const m = Math.floor(sec / 60);
@@ -450,18 +461,20 @@
 					<Icon name="metronome" />節拍器
 				</label>
 				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
-					<span class="latency-text">延遲校正（毫秒）</span>
+					<span class="latency-text">延遲校正</span>
 					<input
 						type="number"
+						aria-label="延遲校正（毫秒）"
 						step="10"
 						min={-MAX_LATENCY_MS}
 						max={MAX_LATENCY_MS}
 						value={playback.latencyMs}
-						onchange={(e) => {
-							// 清空、不合法或超出範圍：沒改，欄位回到現在的值（不然欄位空著，實際還在用舊值）
-							if (!playback.setLatency(e.currentTarget.valueAsNumber)) e.currentTarget.value = String(playback.latencyMs);
+						onchange={(e) => applyLatency(e.currentTarget)}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') applyLatency(e.currentTarget);
 						}}
 					/>
+					<span class="unit" aria-hidden="true">毫秒</span>
 				</label>
 			</div>
 		{/snippet}
@@ -639,12 +652,15 @@
 						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 					</div>
 				{/if}
-				{#if session.ask.question}
-					<div class="toast-confirm">
-						<ConfirmList ask={session.ask} />
-					</div>
-				{/if}
-				{@render noticeToast()}
+				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人 -->
+				<div class="field-toasts">
+					{#if session.ask.question}
+						<div class="toast-confirm">
+							<ConfirmList ask={session.ask} />
+						</div>
+					{/if}
+					{@render noticeToast()}
+				</div>
 				</Field>
 			</main>
 
@@ -713,7 +729,7 @@
 			<div class="practice-host">
 				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
 				{#key opened}
-					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} />
+					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
 				{/key}
 				{@render noticeToast()}
 			</div>
@@ -1359,7 +1375,7 @@
 		color: var(--text);
 		font-size: 14px;
 	}
-	/* 放在場地下方，不蓋住上方的條號。 */
+	/* 練習畫面、手機的檢視畫面：放在下方。編輯畫面場地上的放在上方（見 .field-toasts）。 */
 	.toast {
 		position: absolute;
 		bottom: 14px;
@@ -1378,13 +1394,36 @@
 		box-shadow: var(--shadow-pop);
 		animation: drop 0.18s ease-out;
 	}
-	.toast-confirm {
+	/* 場地上的確認框和提示：從上方往下排，不蓋到下面的「正面／裁判」和正面場外的人。 */
+	.field-toasts {
 		position: absolute;
 		top: 14px;
-		left: 50%;
-		transform: translateX(-50%);
+		left: 16px;
+		right: 16px;
 		z-index: 10;
-		width: min(420px, calc(100% - 32px));
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		pointer-events: none;
+	}
+	.field-toasts > :global(*) {
+		pointer-events: auto;
+	}
+	.field-toasts .toast {
+		position: static;
+		transform: none;
+		max-width: min(560px, 100%);
+		animation-name: drop-in;
+	}
+	@keyframes drop-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
+	}
+	.toast-confirm {
+		width: min(420px, 100%);
 		box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
 		border-radius: 10px;
 	}
@@ -1577,7 +1616,7 @@
 		}
 	}
 
-	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。
+	/* 窄一點的視窗：延遲校正只留「延遲」、輸入框和「毫秒」（滑過去看得到說明），不整個藏起來。
 	   上方列多了「編排｜練習」，所以從 1540px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
 	@media (max-width: 1540px) {
 		.latency-text {
@@ -1589,7 +1628,7 @@
 			white-space: nowrap;
 		}
 		.latency::before {
-			/* 只給眼睛看的短名字；讀屏還是讀完整的「延遲校正（毫秒）」 */
+			/* 只給眼睛看的短名字，後面還有「毫秒」；讀屏還是讀完整的「延遲校正（毫秒）」 */
 			content: '延遲' / '';
 		}
 		.latency input {
@@ -1607,8 +1646,8 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
-	   右邊多了「編輯」開關，所以從 1410px 就換。 */
-	@media (max-width: 1410px) {
+	   右邊多了「編輯」開關、延遲校正多了「毫秒」，所以從 1435px 就換。 */
+	@media (max-width: 1435px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}

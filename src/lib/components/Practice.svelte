@@ -2,6 +2,8 @@
 	// 練習畫面（上方列切到「練習」時蓋掉編排）：上面選頁和日期，下面是那一頁。
 	// 兩頁「記錄」「總表」共用日期；日期由編輯頁管（切回編排再切回來還在，不存進流程檔）。
 	// 流程從 session 拿；記一次、刪掉上一次、記一次全上交給 session 的「記」（不算復原的一步）。
+	import { recordableActions } from '#lib/core';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { localDate } from '#lib/local-date.js';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
@@ -10,9 +12,15 @@
 		/** 記在哪一天（YYYY-MM-DD），預設今天；可以改（練完補打）。 */
 		date: string;
 		ondate: (date: string) => void;
+		/** 窄螢幕（手機）：記錄頁的動作清單改成下拉選單。 */
+		narrow?: boolean;
 	}
 
-	let { date, ondate }: Props = $props();
+	let { date, ondate, narrow = false }: Props = $props();
+
+	const session = getEditorSession();
+	/** 有沒有要記的動作（有記成功率、有環節）；沒有就兩頁都只寫怎麼加環節，不給記一次全上。 */
+	const empty = $derived(recordableActions(session.flow!).length === 0);
 
 	const PAGES = [
 		{ key: 'record', label: '記錄' },
@@ -39,8 +47,11 @@
 		</div>
 		<label class="date">日期<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
-	{#if page === 'record'}
-		<RecordPage {date} />
+	{#if empty}
+		<!-- 手機不能編排（docs/adr/0005-ipad-touch.md），所以寫清楚要換電腦或橫放的 iPad。 -->
+		<p class="empty">還沒有要記的動作：要先幫動作加環節。用電腦或橫放的 iPad 打開這支流程，到「編排」的拍點格子加環節。</p>
+	{:else if page === 'record'}
+		<RecordPage {date} {narrow} />
 	{:else}
 		<SummaryPage {date} />
 	{/if}
@@ -87,6 +98,9 @@
 		align-items: center;
 		gap: 8px;
 		font-weight: 600;
+	}
+	.empty {
+		color: var(--muted);
 	}
 	@media print {
 		.practice {

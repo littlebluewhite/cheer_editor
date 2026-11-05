@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 練習畫面的「記錄」頁：記分段練。
 	// 左邊：有記成功率、有環節的動作，照流程順序，每個寫這天記了幾次和最弱的環節。
+	// 窄螢幕（手機）清單會疊在卡片上面、動作一多要捲很久，所以改成下拉選單，選好捲到卡片。
 	// 右邊：選到的動作每組一張卡（騰翻、跳躍每人一張），下面是這個動作每天的成功率。
 	// 最上面的「＋ 記一次全上」打開跟總表一樣的全上表（RunThroughSheet），存好或取消再回到記錄頁。
 	// 旁邊的「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），刪了幾秒內可以救回。
@@ -27,9 +28,11 @@
 	interface Props {
 		/** 記在哪一天（YYYY-MM-DD）。 */
 		date: string;
+		/** 窄螢幕：動作清單改成下拉選單。 */
+		narrow?: boolean;
 	}
 
-	let { date }: Props = $props();
+	let { date, narrow = false }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -61,6 +64,14 @@
 		);
 	}
 
+	/** 卡片那一塊：手機從下拉選好動作就捲過去。 */
+	let cards = $state<HTMLElement>();
+
+	function choose(id: string) {
+		chosenId = id;
+		cards?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+	}
+
 	const countOn = (records: { date: string }[]) => records.filter((r) => r.date === date).length;
 	/** 這天最弱的環節，例：最弱：下法 50%；這天沒紀錄就是空的。 */
 	function weakestText(a: Action): string {
@@ -78,25 +89,35 @@
 		<RecordNotice notice={saved} />
 		{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 	</div>
-	<div class="record">
-		<ul class="list" aria-label="記成功率的動作">
-			{#each actions as a (a.id)}
-				{@const weakest = weakestText(a)}
-				<li>
-					<button type="button" aria-pressed={a === action} onclick={() => (chosenId = a.id)}>
-						<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
-						<small>這天 {countOn(a.successRate?.records ?? [])} 次</small>
-						<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
-						<small class="weakest">{weakest}</small>
-					</button>
-				</li>
-			{/each}
-		</ul>
+	<div class="record" class:narrow>
+		{#if narrow}
+			<label class="pick"
+				>記哪個動作<select value={action.id} onchange={(e) => choose(e.currentTarget.value)}>
+					{#each actions as a (a.id)}
+						<option value={a.id}>{actionLabel(a)}</option>
+					{/each}
+				</select></label
+			>
+		{:else}
+			<ul class="list" aria-label="記成功率的動作">
+				{#each actions as a (a.id)}
+					{@const weakest = weakestText(a)}
+					<li>
+						<button type="button" aria-pressed={a === action} onclick={() => (chosenId = a.id)}>
+							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
+							<small>這天 {countOn(a.successRate?.records ?? [])} 次</small>
+							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
+							<small class="weakest">{weakest}</small>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 
-		<div class="cards">
+		<div class="cards" bind:this={cards}>
 			{#key action.id}
 				{#each attemptWhos(flow, action) as w (w.who)}
-					<AttemptCard {action} who={w.who} name={w.name} {date} />
+					<AttemptCard {action} who={w.who} name={w.name} people={w.people} {date} />
 				{:else}
 					<p class="empty">這個動作還沒有分組：到編排選這個動作，在場上選人，用場地下面的分組浮動列分組。</p>
 				{/each}
@@ -108,8 +129,6 @@
 			{/key}
 		</div>
 	</div>
-{:else}
-	<p class="empty">還沒有要記的動作：到編排的拍點格子，幫動作加環節。</p>
 {/if}
 
 <style>
@@ -183,6 +202,18 @@
 	}
 	.empty {
 		color: var(--muted);
+	}
+	.pick {
+		display: grid;
+		gap: 4px;
+		font-weight: 600;
+	}
+	/* 手機：清單換成下拉選單，排成一欄 */
+	.record.narrow {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.record.narrow .rates {
+		grid-column: auto;
 	}
 	@media (max-width: 760px) {
 		.record {

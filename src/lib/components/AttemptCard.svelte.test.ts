@@ -15,8 +15,8 @@ const DATE = '2026-11-01';
 function setup(flow = libSample(), index = 0) {
 	const { editor, session } = testEditor(flow);
 	const action = flow.actions[index];
-	const { who, name } = attemptWhos(flow, action)[0];
-	render(TestSession, { props: { editor, component: AttemptCard, props: { action, who, name, date: DATE } } });
+	const { who, name, people } = attemptWhos(flow, action)[0];
+	render(TestSession, { props: { editor, component: AttemptCard, props: { action, who, name, people, date: DATE } } });
 	return { session, name };
 }
 
@@ -216,5 +216,14 @@ describe('記錄頁的卡', () => {
 		expect(screen.getByRole('button', { name: '救回' })).toBeTruthy();
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(screen.queryByRole('button', { name: '救回' })).toBeNull();
+	});
+
+	it('沒有上層的組：標題是主底的名字，下面小字列出全組', () => {
+		const flow = libSample();
+		// 第 1 組的小美改當後保：組裡沒有上層，主底是小A
+		const members = flow.actions[0].members.map((m) => (m.memberId === 'm1' ? { ...m, role: '後保' } : m));
+		setup({ ...flow, actions: [{ ...flow.actions[0], members }] });
+		const card = screen.getByRole('region', { name: '第 1 組 小A' });
+		expect(card.querySelector('header')?.textContent).toContain('小美・小A');
 	});
 });

@@ -258,9 +258,10 @@
 	.th.lower::before {
 		display: none;
 	}
+	/* 號碼在左邊自己一欄，小圖在右邊：號碼不蓋到站在角落的人。 */
 	.pick {
 		position: relative;
-		display: block;
+		display: flex;
 		width: 100%;
 		height: 100%;
 		padding: 0;
@@ -318,15 +319,16 @@
 		background: var(--surface, #fff);
 	}
 	.th.tag .pick span {
-		left: 0;
-		right: 0;
+		flex: 1;
+		align-self: flex-start;
 		min-width: 0;
 		padding: 0;
 		border-radius: 3px 3px 0 0;
 	}
 	svg {
 		display: block;
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		height: 100%;
 	}
 	.margin {
@@ -346,18 +348,16 @@
 		fill: var(--top, #e0664f);
 	}
 	.pick span {
-		position: absolute;
-		left: 3px;
-		top: 3px;
-		min-width: 16px;
+		order: -1;
+		flex: none;
+		min-width: 15px;
 		font-size: 10px;
 		line-height: 15px;
 		font-weight: 700;
 		text-align: center;
 		color: #fff;
 		background: var(--ink, #16213a);
-		border-radius: 4px;
-		padding: 0 3px;
+		padding: 0 2px;
 	}
 	/* 站位名稱：縮圖底下一條，太長就切掉，滑鼠停上去看全名。 */
 	.name {
