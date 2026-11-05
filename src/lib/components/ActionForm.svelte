@@ -23,9 +23,9 @@
 		groupsPeople,
 		lengthText,
 		memberName,
-		parseAt,
-		parseLength,
 		positionText,
+		readLength,
+		readStart,
 		roleGlossary,
 		segmentSpans,
 		squadColor,
@@ -35,7 +35,8 @@
 		type ActionCategory,
 		type ActionMember,
 		type ConfirmOption,
-		type NewActionInput
+		type NewActionInput,
+		type ReadResult
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
@@ -249,24 +250,22 @@
 		});
 	});
 
-	function toInput(): NewActionInput | string {
-		if (!segment) return '找不到這一段';
-		const start = parseAt(segment, draft.startText);
-		if (start === null) {
-			return segment.kind === 'music' ? '開始看不懂，例：3-5&' : '開始看不懂，請打秒數';
-		}
-		const length = parseLength(segment, draft.lengthText);
-		if (length === null) return '長度看不懂';
+	/** 表單讀成動作：開始、長度由核心讀，看不懂就是被擋（原因交給問教練）。 */
+	function toInput(): ReadResult<NewActionInput> {
+		// 沒有段時沒有「新增動作」鈕；選到的動作一定在某一段裡。
+		const seg = segment!;
+		const start = readStart(seg, draft.startText);
+		if (start.kind === 'blocked') return start;
+		const length = readLength(seg, draft.lengthText);
+		if (length.kind === 'blocked') return length;
 		const { category, name, note, members, color } = draft;
-		return { segmentId: segment.id, category, name, start, length, note, members, color };
+		const value = { segmentId: seg.id, category, name, start: start.value, length: length.value, note, members, color };
+		return { kind: 'ok', value };
 	}
-
-	/** 開始、長度看不懂：跟核心擋下來一樣，交給問教練留下原因。 */
-	const notParsed = (message: string) => ({ kind: 'blocked', message }) as const;
 
 	function add() {
 		const input = toInput();
-		ask.send(() => (typeof input === 'string' ? notParsed(input) : addAction(flow, input)), {
+		ask.send(() => (input.kind === 'blocked' ? input : addAction(flow, input.value)), {
 			done: (r) => session.selectAction(r.id)
 		});
 	}
@@ -286,7 +285,7 @@
 		const id = action.id;
 		const input = toInput();
 		ask.send(
-			(o: ConfirmOption = {}) => (typeof input === 'string' ? notParsed(input) : updateAction(flow, id, input, o)),
+			(o: ConfirmOption = {}) => (input.kind === 'blocked' ? input : updateAction(flow, id, input.value, o)),
 			{ revert: () => action && (draft = fromAction(action)) }
 		);
 	}

@@ -4,11 +4,10 @@ import {
 	atText,
 	createFlow,
 	lengthText,
-	parseAt,
-	parseNumber,
-	parseLength,
-	parseTime,
 	positionText,
+	readLength,
+	readStart,
+	readTime,
 	rulerMarks,
 	segmentSpans,
 	snapPlayhead,
@@ -35,6 +34,9 @@ function sample(): Flow {
 }
 
 const empty = () => flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
+
+/** 讀得懂的時間點。 */
+const time = (segmentId: string, at: number) => ({ kind: 'ok', value: { segmentId, at } });
 
 describe('段的秒數', () => {
 	it('段跟段緊接：音樂段 = 半拍數 × 30 ÷ BPM，口號段 = 0.1 秒數 ÷ 10', () => {
@@ -147,39 +149,45 @@ describe('段內時間的文字（動作表單）', () => {
 		expect(atText(chant(), 123)).toBe('12.3');
 	});
 
-	it('把教練打的時間點換回段內整數時間；看不懂是 null', () => {
-		expect(parseAt(music(), '3-5&')).toBe(41);
-		expect(parseAt(music(), ' 1-1 ')).toBe(0);
-		expect(parseAt(music(), '1-9')).toBeNull();
-		expect(parseAt(music(), 'abc')).toBeNull();
-		expect(parseAt(chant(), '12.3')).toBe(123);
+	it('開始：把教練打的時間點換回段內整數時間', () => {
+		expect(readStart(music(), '3-5&')).toEqual({ kind: 'ok', value: 41 });
+		expect(readStart(music(), ' 1-1 ')).toEqual({ kind: 'ok', value: 0 });
+		expect(readStart(chant(), '12.3')).toEqual({ kind: 'ok', value: 123 });
 		// 負的看得懂（交給指令擋下、說範圍），不說看不懂
-		expect(parseAt(chant(), '-1')).toBe(-10);
+		expect(readStart(chant(), '-1')).toEqual({ kind: 'ok', value: -10 });
 	});
 
-	it('欄位裡的數字：全形當成半形；空白、看不懂是 NaN（交給指令擋下、說範圍）', () => {
-		expect(parseNumber(' １２．５ ')).toBe(12.5);
-		expect(parseNumber('－３')).toBe(-3);
-		expect(parseNumber('200')).toBe(200);
-		expect(parseNumber('')).toBeNaN();
-		expect(parseNumber('abc')).toBeNaN();
+	it('開始看不懂：擋下來，音樂段給例子，口號段說打秒數', () => {
+		const unreadable = { kind: 'blocked', message: '開始看不懂，例：3-5&' };
+		expect(readStart(music(), '1-9')).toEqual(unreadable);
+		expect(readStart(music(), 'abc')).toEqual(unreadable);
+		expect(readStart(music(), '')).toEqual(unreadable);
+		expect(readStart(music(), '0-1')).toEqual(unreadable);
+		expect(readStart(chant(), 'abc')).toEqual({ kind: 'blocked', message: '開始看不懂，請打秒數' });
+		expect(readStart(chant(), '')).toEqual({ kind: 'blocked', message: '開始看不懂，請打秒數' });
 	});
 
 	it('全形數字、全形符號當成半形', () => {
-		expect(parseAt(music(), '３－５＆')).toBe(41);
-		expect(parseAt(chant(), '１２．３')).toBe(123);
-		expect(parseLength(music(), '４．５')).toBe(9);
-		expect(parseLength(chant(), '－２')).toBe(-20);
-		expect(parseTime(sample(), 's3', '口號 １ １２．３ 秒')).toEqual({ segmentId: 's2', at: 123 });
+		expect(readStart(music(), '３－５＆')).toEqual({ kind: 'ok', value: 41 });
+		expect(readStart(chant(), '１２．３')).toEqual({ kind: 'ok', value: 123 });
+		expect(readLength(music(), '４．５')).toEqual({ kind: 'ok', value: 9 });
+		expect(readLength(chant(), '－２')).toEqual({ kind: 'ok', value: -20 });
+		expect(readTime(sample(), 's3', '口號 １ １２．３ 秒', '出發')).toEqual(time('s2', 123));
 	});
 
 	it('長度：音樂段用拍（可以半拍），口號段用秒（到 0.1 秒）', () => {
 		expect(lengthText(music(), 16)).toBe('8');
 		expect(lengthText(music(), 9)).toBe('4.5');
 		expect(lengthText(chant(), 30)).toBe('3.0');
-		expect(parseLength(music(), '4.5')).toBe(9);
-		expect(parseLength(chant(), '2.5')).toBe(25);
-		expect(parseLength(chant(), '')).toBeNull();
+		expect(readLength(music(), '4.5')).toEqual({ kind: 'ok', value: 9 });
+		expect(readLength(chant(), '2.5')).toEqual({ kind: 'ok', value: 25 });
+	});
+
+	it('長度看不懂：擋下來說看不懂', () => {
+		const unreadable = { kind: 'blocked', message: '長度看不懂' };
+		expect(readLength(chant(), '')).toEqual(unreadable);
+		expect(readLength(music(), 'abc')).toEqual(unreadable);
+		expect(readLength(music(), '3-5')).toEqual(unreadable);
 	});
 });
 
@@ -200,24 +208,37 @@ describe('出發和到達的時間文字', () => {
 
 	it('解析：只有段內時間就是這一段；前面有段名就是那一段', () => {
 		const flow = sample();
-		expect(parseTime(flow, 's1', '2-5')).toEqual({ segmentId: 's1', at: 24 });
-		expect(parseTime(flow, 's2', ' 12.3 ')).toEqual({ segmentId: 's2', at: 123 });
-		expect(parseTime(flow, 's3', '口號 1 12.3')).toEqual({ segmentId: 's2', at: 123 });
-		expect(parseTime(flow, 's2', '音樂 1 3-5&')).toEqual({ segmentId: 's1', at: 41 });
-		expect(parseTime(flow, 's2', '音樂 2 1-1')).toEqual({ segmentId: 's3', at: 0 });
+		expect(readTime(flow, 's1', '2-5', '出發')).toEqual(time('s1', 24));
+		expect(readTime(flow, 's2', ' 12.3 ', '到達')).toEqual(time('s2', 123));
+		expect(readTime(flow, 's3', '口號 1 12.3', '站位時間')).toEqual(time('s2', 123));
+		expect(readTime(flow, 's2', '音樂 1 3-5&', '出發')).toEqual(time('s1', 41));
+		expect(readTime(flow, 's2', '音樂 2 1-1', '出發')).toEqual(time('s3', 0));
 	});
 
 	it('從上方列抄來的「秒」也看得懂', () => {
-		expect(parseTime(sample(), 's3', '口號 1 12.3 秒')).toEqual({ segmentId: 's2', at: 123 });
+		expect(readTime(sample(), 's3', '口號 1 12.3 秒', '出發')).toEqual(time('s2', 123));
 	});
 
-	it('看不懂是 null：寫法不對、沒有這一段', () => {
+	it('看不懂：寫法不對、沒有這一段都擋下來，說是哪一格、給例子', () => {
 		const flow = sample();
-		expect(parseTime(flow, 's1', '')).toBeNull();
-		expect(parseTime(flow, 's1', '12.3')).toBeNull();
-		expect(parseTime(flow, 's1', '口號 1 2-5')).toBeNull();
-		expect(parseTime(flow, 's1', '口號 9 1.0')).toBeNull();
-		expect(parseTime(flow, 's1', '音樂 2-5')).toBeNull();
+		const departHint = { kind: 'blocked', message: '出發看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）' };
+		expect(readTime(flow, 's1', '', '出發')).toEqual(departHint);
+		expect(readTime(flow, 's1', '12.3', '出發')).toEqual(departHint);
+		expect(readTime(flow, 's1', '口號 1 2-5', '出發')).toEqual(departHint);
+		expect(readTime(flow, 's1', '口號 9 1.0', '出發')).toEqual(departHint);
+		expect(readTime(flow, 's1', '音樂 2-5', '出發')).toEqual(departHint);
+	});
+
+	it('出發、到達、站位時間看不懂時用同一個例子', () => {
+		const flow = sample();
+		expect(readTime(flow, 's1', 'abc', '到達')).toEqual({
+			kind: 'blocked',
+			message: '到達看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
+		});
+		expect(readTime(flow, 's1', 'abc', '站位時間')).toEqual({
+			kind: 'blocked',
+			message: '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
+		});
 	});
 });
 
