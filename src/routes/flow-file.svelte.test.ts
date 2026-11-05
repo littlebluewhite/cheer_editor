@@ -273,6 +273,30 @@ describe('新建', () => {
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
+	it('問「還沒存」時可以按「先存檔」：存好了才繼續', async () => {
+		const { saver, fileNames } = fakeSaver();
+		setup(saver);
+		await newFlow();
+		await addChant();
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fireEvent.click(screen.getByRole('button', { name: '先存檔' }));
+		await flush();
+		expect(fileNames).toEqual(['全國賽.zip']);
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it('按「先存檔」但在存檔視窗按取消：留在原本的流程，還在問', async () => {
+		setup(fakeSaver('cancelled').saver);
+		await newFlow();
+		await addChant();
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fireEvent.click(screen.getByRole('button', { name: '先存檔' }));
+		await flush();
+		expect(screen.getByRole('alertdialog').textContent).toContain('「全國賽」還沒存');
+		expect(hasUnsavedChanges()).toBe(true);
+	});
+
 	it('有未存的修改先問；取消就留著，確定才回到新建流程', async () => {
 		setup();
 		await newFlow();

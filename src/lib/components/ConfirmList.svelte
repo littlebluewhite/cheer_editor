@@ -13,6 +13,8 @@
 				onconfirm: () => void;
 				oncancel: () => void;
 				confirmLabel: string;
+				/** 確定鈕前面多一個鈕（例：「先存檔」）。 */
+				extra?: { label: string; onclick: () => void };
 			};
 
 	let props: Props = $props();
@@ -27,7 +29,8 @@
 			confirmLabel: q?.choose ? '清掉重算' : ask.confirmLabel,
 			onconfirm: () => ask.answer(q?.choose ? 'clear' : 'confirm'),
 			onkeep: q?.choose ? () => ask.answer('keep') : undefined,
-			oncancel: () => ask.answer('cancel')
+			oncancel: () => ask.answer('cancel'),
+			extra: undefined
 		};
 	});
 </script>
@@ -41,6 +44,7 @@
 	{/if}
 	<div class="buttons">
 		{#if view.onkeep}<button type="button" onclick={view.onkeep}>保留舊紀錄</button>{/if}
+		{#if view.extra}<button type="button" class="primary" onclick={view.extra.onclick}>{view.extra.label}</button>{/if}
 		<button type="button" class="confirm-btn" onclick={view.onconfirm}>{view.confirmLabel}</button>
 		<button type="button" onclick={view.oncancel}>取消</button>
 	</div>

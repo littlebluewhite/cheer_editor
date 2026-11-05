@@ -489,6 +489,15 @@
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
 	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || !!discardPending);
 
+	/** 「先存檔」：存好了（沒有未存的修改）才接著做；在存檔視窗按取消或存失敗，就留在問的畫面。 */
+	async function saveThenContinue() {
+		const then = discardPending?.then;
+		await save();
+		if (session.unsaved || !discardPending) return;
+		discardPending = null;
+		then?.();
+	}
+
 	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
 	function unlessUnsaved(then: () => void) {
 		if (unsaved) discardPending = { then };
@@ -909,6 +918,7 @@
 						discardPending = null;
 						then?.();
 					}}
+					extra={{ label: '先存檔', onclick: saveThenContinue }}
 					oncancel={() => (discardPending = null)}
 				/>
 			</div>
