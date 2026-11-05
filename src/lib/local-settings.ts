@@ -3,11 +3,14 @@
 
 const LATENCY_KEY = 'cheer-editor:latencyMs';
 
-/** 延遲校正（毫秒），預設 0。 */
+/** 延遲校正最多調幾毫秒（前後都是）。 */
+export const MAX_LATENCY_MS = 1000;
+
+/** 延遲校正（毫秒），預設 0；存的值超出 ±1000 也當 0。 */
 export function loadLatencyMs(): number {
 	try {
 		const ms = Number(localStorage.getItem(LATENCY_KEY) ?? 0);
-		return Number.isFinite(ms) ? ms : 0;
+		return Math.abs(ms) <= MAX_LATENCY_MS ? ms : 0;
 	} catch {
 		return 0;
 	}

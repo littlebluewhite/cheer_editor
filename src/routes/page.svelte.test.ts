@@ -128,6 +128,59 @@ describe('段、八拍尺、上方列', () => {
 		check();
 	});
 
+	it('流程名字最多 40 個字：新建和流程設定都擋下，說最多幾個字', async () => {
+		render(Page, { createEngine: () => createFakeEngine(), toMeters: fakeToMeters });
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(41) } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		expect(screen.getByRole('alert').textContent).toContain('流程名字最多 40 個字');
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(40) } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
+		await fireEvent.change(name, { target: { value: '名'.repeat(41) } });
+		expect(screen.getByRole('alert').textContent).toContain('流程名字最多 40 個字');
+		expect(name.value).toBe('字'.repeat(40));
+	});
+
+	it('段設定：口號段超過 300 秒、八拍數超過 200 擋下，訊息寫範圍，欄位退回，流程不改', async () => {
+		await newFlow();
+		await addSegment('＋音樂段');
+		await addSegment('＋口號段');
+		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
+		const seconds = screen.getByLabelText('長度（秒）') as HTMLInputElement;
+		await fireEvent.change(seconds, { target: { value: '99999999' } });
+		expect(screen.getByRole('alert').textContent).toBe('「長度（秒）」退回原本的值：口號段長度要在 0.1 到 300 秒之間');
+		expect(seconds.value).toBe('10');
+		await fireEvent.change(seconds, { target: { value: '-3' } });
+		expect(screen.getByRole('alert').textContent).toContain('要在 0.1 到 300 秒之間');
+		await fireEvent.pointerDown(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+		const eights = screen.getByLabelText('八拍數') as HTMLInputElement;
+		await fireEvent.change(eights, { target: { value: '50000' } });
+		expect(screen.getByRole('alert').textContent).toBe('「八拍數」退回原本的值：八拍數要在 1 到 200 之間');
+		expect(eights.value).toBe('8');
+		expect(screen.getByRole('dialog').textContent).toContain('共 25.6 秒');
+	});
+
+	it('段設定：八拍數和最後一拍各自說自己的錯；全形數字當成半形', async () => {
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '0' } });
+		await fireEvent.change(screen.getByLabelText('最後一個八拍有幾拍'), { target: { value: '9' } });
+		expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([
+			'「八拍數」退回原本的值：八拍數要在 1 到 200 之間',
+			'「最後一個八拍有幾拍」退回原本的值：最後一個八拍的拍數要在 1 到 8 之間'
+		]);
+		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '１２' } });
+		await fireEvent.change(screen.getByLabelText('最後一個八拍有幾拍'), { target: { value: '４' } });
+		expect(screen.queryAllByRole('alert')).toEqual([]);
+		expect(screen.getByRole('dialog').textContent).toContain('共 36.8 秒');
+	});
+
 	it('流程設定可以改流程名字；空白會被擋，欄位還原', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
@@ -1289,6 +1342,24 @@ describe('播放', () => {
 		cleanup();
 		await newFlow();
 		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('200');
+	});
+
+	it('延遲校正限制在 −1000 到 +1000 毫秒；清空或不合法時欄位回到現在的值', async () => {
+		await sample();
+		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
+		await fireEvent.change(field, { target: { value: '-1000' } });
+		expect(field.value).toBe('-1000');
+		await fireEvent.change(field, { target: { value: '' } });
+		expect(field.value).toBe('-1000');
+		await fireEvent.change(field, { target: { value: '1001' } });
+		expect(field.value).toBe('-1000');
+		await fireEvent.change(field, { target: { value: '1000' } });
+		expect(field.value).toBe('1000');
+
+		cleanup();
+		localStorage.setItem('cheer-editor:latencyMs', '99999');
+		await newFlow();
+		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('0');
 	});
 
 	it('段設定的「▶ 從第一拍聽 2 個八拍」播 16 拍節拍器，播放頭不動', async () => {

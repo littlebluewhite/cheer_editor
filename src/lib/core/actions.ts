@@ -16,7 +16,7 @@ import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
-import { EPS, HALF_BEATS_PER_EIGHT, toPosition, toSeconds, unitSec, units } from './time';
+import { EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -161,7 +161,10 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 		return music ? '音樂段的時間要落在半拍上' : '口號段的時間最細 0.1 秒';
 	}
 	if (action.start < 0) return '動作的開始不能在段之前';
-	if (action.length < 1) return music ? '動作長度至少要半拍' : '動作長度至少要 0.1 秒';
+	if (action.length < 1) {
+		const max = lengthText(segment, Math.max(1, units(segment) - action.start));
+		return `動作長度要在 ${lengthText(segment, 1)} 到 ${max} ${music ? '拍' : '秒'}之間`;
+	}
 	if (action.start + action.length > units(segment)) return '動作不能跨段，要跨就拆成兩個';
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';
 	for (const cue of action.cues ?? []) {
@@ -181,14 +184,17 @@ function peopleProblem(flow: Flow, action: Action): string | null {
 		seen.add(memberId);
 		if (role !== null && !roles.includes(role)) return `沒有「${role}」這個任務角色`;
 	}
+	// 列出所有重疊的人（照撞到的動作分開寫），教練一次改完。
+	const clashes: string[] = [];
 	for (const other of flow.actions) {
 		if (other.id === action.id || !overlaps(other, action)) continue;
-		const shared = action.members.find((m) => other.members.some((o) => o.memberId === m.memberId));
-		if (shared) {
-			return `${memberName(flow, shared.memberId)} 同一時間已經在「${actionLabel(other)}」裡`;
+		const shared = action.members.filter((m) => other.members.some((o) => o.memberId === m.memberId));
+		if (shared.length) {
+			const names = shared.map((m) => memberName(flow, m.memberId)).join('、');
+			clashes.push(`${names} 同一時間已經在「${actionLabel(other)}」裡`);
 		}
 	}
-	return null;
+	return clashes.length ? clashes.join('；') : null;
 }
 
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */

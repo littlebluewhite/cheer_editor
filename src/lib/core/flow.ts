@@ -38,10 +38,19 @@ export interface NewFlowInput {
 }
 
 const NO_NAME = '請幫流程取名字';
+export const MAX_FLOW_NAME = 40;
+
+/** 流程名字哪裡不行；沒問題是 null。字數照看到的字算（一個中文字、一個 emoji 都算一個）。 */
+function nameProblem(name: string): string | null {
+	if (!name) return NO_NAME;
+	if ([...name].length > MAX_FLOW_NAME) return `流程名字最多 ${MAX_FLOW_NAME} 個字`;
+	return null;
+}
 
 export function createFlow(input: NewFlowInput): CommandResult {
 	const name = input.name.trim();
-	if (!name) return blocked(NO_NAME);
+	const problem = nameProblem(name);
+	if (problem) return blocked(problem);
 	const { strips } = input.field;
 	if (!Number.isInteger(strips) || strips < MIN_STRIPS || strips > MAX_STRIPS) {
 		return blocked(`條數要是 ${MIN_STRIPS}–${MAX_STRIPS} 的整數`);
@@ -67,6 +76,7 @@ export function memberName(flow: Flow, id: string): string {
 /** 流程設定：改流程名字。存檔的檔名跟著變。 */
 export function renameFlow(flow: Flow, name: string): CommandResult {
 	const trimmed = name.trim();
-	if (!trimmed) return blocked(NO_NAME);
+	const problem = nameProblem(trimmed);
+	if (problem) return blocked(problem);
 	return ok({ ...flow, name: trimmed });
 }

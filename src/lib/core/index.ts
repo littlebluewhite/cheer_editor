@@ -136,12 +136,14 @@ export {
 	AUDIO_EXTENSIONS,
 	DEFAULT_BPM,
 	MAX_BPM,
+	MAX_CHANT_SEC,
+	MAX_EIGHTS,
 	MIN_BPM,
 	addSegment,
 	beatLines,
+	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
-	musicLengthFromAudio,
 	updateSegment
 } from './segment';
 export type {
@@ -163,6 +165,7 @@ export {
 	lengthText,
 	nearestPosition,
 	parseAt,
+	parseNumber,
 	parseLength,
 	parseTime,
 	positionText,

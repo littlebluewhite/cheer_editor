@@ -172,6 +172,17 @@ describe('動作表單：改選到的動作', () => {
 		return flow;
 	}
 
+	it('長度打負的：說能填的範圍，不說看不懂；全形數字當成半形', async () => {
+		const session = setup(withTwo(), 'x1');
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '-2' } });
+		await fireEvent.change(length);
+		expect(screen.getByRole('alert').textContent).toBe('動作長度要在 0.5 到 16 拍之間，已還原');
+		await fireEvent.input(length, { target: { value: '２' } });
+		await fireEvent.change(length);
+		expect(session.flow!.actions[0]).toMatchObject({ length: 4 });
+	});
+
 	it('改了馬上生效；撞到同一個人就顯示原因並還原', async () => {
 		const session = setup(withTwo(), 'x1');
 		const length = screen.getByLabelText('長度') as HTMLInputElement;

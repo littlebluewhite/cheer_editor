@@ -92,6 +92,15 @@ describe('音樂段設定', () => {
 		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（30.0 秒）之前');
 	});
 
+	it('第一拍離音樂結尾不到一拍：照音樂長度算說剩下不到一拍，長度不改', async () => {
+		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 29.9 }));
+		const { session } = setup(flow, { a1: loaded(30) });
+		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
+		expect(session.canUndo).toBe(false);
+		expect(screen.getByRole('alert').textContent).toBe('第一拍之後剩下不到一拍');
+	});
+
 	it('段比音樂檔長時提醒（不擋）；照音樂長度算之後就不提醒', async () => {
 		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
 		// 預設 150 BPM、8 個八拍 = 25.6 秒，音樂只有 20 秒
@@ -114,11 +123,11 @@ describe('音樂段設定', () => {
 		expect(lastSegment(session).halfBeats).toBe(12 * 16);
 	});
 
-	it('BPM 超出 60–170 時顯示流程核心的原因', async () => {
+	it('BPM 超出 60 到 170 時顯示流程核心的原因', async () => {
 		const { session } = setup(musicFlow());
 		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
 		expect(session.canUndo).toBe(false);
-		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60–170 之間');
+		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60 到 170 之間');
 	});
 
 	it('載入音樂檔：解碼後流程記一筆音樂檔，位元組另外交給呼叫端', async () => {
