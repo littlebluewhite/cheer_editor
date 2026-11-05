@@ -442,23 +442,34 @@
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
 				{#if view === 'edit'}
-					<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
-						><Icon name="undo" /><span class="narrow-hide">復原</span></button
-					>
-					<button
-						type="button"
-						class="ghost"
-						title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
-						disabled={!session.canRedo}
-						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
-					>
+					<!-- 關掉是檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
+					<label class="toggle" title="關掉是檢視模式：只能看、只能播放，不會不小心改到">
+						<input
+							type="checkbox"
+							role="switch"
+							checked={!session.viewing}
+							onchange={(e) => (session.viewing = !e.currentTarget.checked)}
+						/>編輯
+					</label>
+					{#if !session.viewing}
+						<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
+							><Icon name="undo" /><span class="narrow-hide">復原</span></button
+						>
+						<button
+							type="button"
+							class="ghost"
+							title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
+							disabled={!session.canRedo}
+							onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+						>
+					{/if}
 					<span class="sep" aria-hidden="true"></span>
 				{/if}
 				<!-- 八拍表的字一直留著：使用說明都叫它「八拍表」，只有印表機圖示認不出來 -->
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" />八拍表</button
 				>
-				{#if view === 'edit'}
+				{#if view === 'edit' && !session.viewing}
 					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
 						><Icon name="settings" /><span class="narrow-hide">流程</span>設定</button
 					>
@@ -1447,8 +1458,9 @@
 		}
 	}
 
-	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字） */
-	@media (max-width: 1380px) {
+	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
+	   右邊多了「編輯」開關，所以從 1410px 就換。 */
+	@media (max-width: 1410px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
