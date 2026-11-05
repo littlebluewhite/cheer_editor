@@ -2,7 +2,7 @@
 // 草稿的規則（停手 1 秒存、存檔後清掉、兩個分頁…）在 src/lib/flow-file.test.ts。IndexedDB 換成記憶體裡的假草稿庫。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { createFlow, readFlowFile, writeFlowFile } from '#lib/core';
+import { addSegment, createFlow, readFlowFile, writeFlowFile } from '#lib/core';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { OpenTabChannel } from '#lib/tab-channel.js';
 import { audioFlow, editorPage, fakeDraftStore, fakeTabs, flush, openFile, testEditor } from '#lib/test-fakes.js';
@@ -118,6 +118,29 @@ describe('首頁：最近的流程', () => {
 		await flush();
 		expect(screen.getByText('練習用')).toBeTruthy();
 		expect(screen.queryByText('未存')).toBeNull();
+	});
+
+	it('開了流程檔、改了沒存就關分頁，再開同一個檔：先問要救回修改還是用檔案', async () => {
+		const drafts = fakeDraftStore();
+		const bytes = writeFlowFile(audioFlow(), {});
+		const page = editorPage(null, { draftStore: drafts.store });
+		const first = render(Page, page.props);
+		await flush();
+		await openFile(bytes);
+		page.session.change(flowOf(addSegment(page.session.flow!, 'chant')));
+		// 關分頁：還沒進草稿的改動馬上存
+		window.dispatchEvent(new Event('pagehide'));
+		await flush();
+		first.unmount();
+		setup(drafts.store);
+		await flush();
+		await openFile(bytes);
+		const dialog = await screen.findByRole('dialog', { name: /「練習用」有還沒存的修改/ });
+		expect(dialog.getAttribute('aria-modal')).toBe('true');
+		expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '取消' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '救回修改' }));
+		await vi.waitFor(() => expect(screen.getByText('未存')).toBeTruthy());
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 });
 

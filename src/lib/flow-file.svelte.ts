@@ -1,7 +1,8 @@
 // 流程檔：編輯器 module 握著（getEditor().file）。開檔、存檔、新建、回首頁、草稿、「沒存先問」都在這裡，頁面只照它的狀態畫對話框和提示。
 // 管：這支流程在不在檔案裡、正在存、「還沒存」的問題、開檔錯誤、缺音樂的提示、
 // 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
-// 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁）。
+// 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁；
+// 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
 
 import { AUDIO_EXTENSIONS, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import type { DraftInfo } from '#lib/file/draft.js';
@@ -28,6 +29,8 @@ export class FlowFile {
 	#openError = $state('');
 	/** 等教練回答「還沒存」：確定就做這件事（換流程）。open = 問的是要開別的流程檔。 */
 	#asking = $state.raw<{ then: () => void; open: boolean } | null>(null);
+	/** 開檔時那個檔有改過沒存的草稿：等教練回答救回修改、用檔案、取消（answerDraft）。 */
+	#draftAsk = $state.raw<(DraftAsk & { resolve: (choice: DraftChoice) => void }) | null>(null);
 	/** 按「開啟」時已經答應丟掉還沒存的修改：選到的檔打開時不再問。又改了流程就不算。 */
 	#openApproved = false;
 	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）。 */
@@ -182,6 +185,18 @@ export class FlowFile {
 			return cannotOpen(`這是音樂檔，不是流程檔。${where}，在段設定按「載入音樂檔」`);
 		}
 		if (await this.#otherTabEditing(draftId)) return cannotOpen('另一個分頁正在編這支流程');
+		// 從檔案開的、這台電腦上有這個檔改過沒存的草稿（不是這個分頁正開著的）：先問，不蓋掉修改
+		if (fileName !== null && !(session.flow && draftId === this.#draftId)) {
+			const changed = await this.#changedDraft(draftId);
+			if (changed) {
+				const choice = await new Promise<DraftChoice>((resolve) => {
+					this.#draftAsk = { name: r.flow.name, savedAt: changed.savedAt, resolve };
+				});
+				this.#draftAsk = null;
+				if (choice === 'cancel') return;
+				if (choice === 'draft') return this.#openBytes(changed.bytes, null, null, draftId);
+			}
+		}
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
 		const music = await this.#editor.readMusic(r.audio);
 		const approved = this.#openApproved;
@@ -308,6 +323,17 @@ export class FlowFile {
 		}
 		this.#asking = null;
 		then();
+	}
+
+	/** 開檔時那個檔有改過沒存的草稿：問教練的那支流程（名字、草稿什麼時候存的）。沒在問是 null。 */
+	get draftAsk(): DraftAsk | null {
+		const ask = this.#draftAsk;
+		return ask && { name: ask.name, savedAt: ask.savedAt };
+	}
+
+	/** 回答「有改過沒存的草稿」：draft＝救回修改（開草稿）；file＝用檔案（草稿換成檔案，修改丟掉）；cancel＝都不開。 */
+	answerDraft(choice: DraftChoice) {
+		this.#draftAsk?.resolve(choice);
 	}
 
 	/** 會換掉現在的流程（open：開檔；不然是新建、回首頁）：有還沒存的修改、又還沒答應過（approved）就先問，確定才做。 */
@@ -448,7 +474,7 @@ export class FlowFile {
 
 	/**
 	 * 存這支流程的草稿。存不了（例：私密視窗）就算了，草稿只是保險。
-	 * 這份草稿第一次存：草稿超過 5 支流程的，就丟掉最舊的。
+	 * 這份草稿第一次存：草稿超過 5 支流程的，先丟跟檔案一樣（沒改過）的、舊的先丟；都丟了還超過，才丟改過沒存的最舊那份。
 	 */
 	async #saveDraft(bytes: Uint8Array): Promise<void> {
 		const id = this.#draftId;
@@ -458,11 +484,28 @@ export class FlowFile {
 			this.#draftsChanged();
 			if (this.#countedDraftId === id) return;
 			this.#countedDraftId = id;
-			const others = newestFirst((await store.list()).filter((d) => d.id !== id));
-			for (const old of others.slice(MAX_DRAFTS - 1)) void this.#dropDraft(old.id);
+			const oldestFirst = newestFirst((await store.list()).filter((d) => d.id !== id)).reverse();
+			const extra = oldestFirst.length - (MAX_DRAFTS - 1);
+			if (extra <= 0) return;
+			const loaded = await Promise.all(oldestFirst.map((d) => store.load(d.id)));
+			// 讀不出來的也算沒改過（反正打不開）
+			const unchanged = (i: number) => !loaded[i] || fileDraftId(loaded[i].bytes) === oldestFirst[i].id;
+			const order = [...oldestFirst.filter((_, i) => unchanged(i)), ...oldestFirst.filter((_, i) => !unchanged(i))];
+			for (const old of order.slice(0, extra)) void this.#dropDraft(old.id);
 		} catch {
 			// 草稿只是保險
 		}
+	}
+
+	/** 這支流程（草稿 id）有改過沒存的草稿（跟檔案不一樣、打得開）就給它，沒有是 null。讀不到就當作沒有。 */
+	async #changedDraft(id: string) {
+		try {
+			const d = await this.#editor.adapters.draftStore.load(id);
+			if (d && fileDraftId(d.bytes) !== id && readFlowFile(d.bytes).kind === 'ok') return d;
+		} catch {
+			// 草稿只是保險
+		}
+		return null;
 	}
 
 	/** 丟掉一支流程的草稿：先問別的分頁，有分頁正在編它就不丟。 */
@@ -489,6 +532,16 @@ export class FlowFile {
 		return !!session.flow && (session.unsaved || !this.#onDisk);
 	}
 }
+
+/** 開檔時那個檔有改過沒存的草稿：問的是哪支流程。 */
+export interface DraftAsk {
+	name: string;
+	/** 草稿什麼時候存的；舊版編輯器存的是 null。 */
+	savedAt: Date | null;
+}
+
+/** 回答「有改過沒存的草稿」：救回修改、用檔案（丟掉修改）、取消。 */
+export type DraftChoice = 'draft' | 'file' | 'cancel';
 
 /** 首頁列的最近的流程裡的一支。 */
 export interface RecentFlow {

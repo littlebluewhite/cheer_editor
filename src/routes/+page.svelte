@@ -291,7 +291,7 @@
 	}
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
-	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking);
+	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking || !!editor.file.draftAsk);
 	/** 有東西蓋在上面（上面那些，或表單裡打開的名詞對照表這種對話框）：快捷鍵不動底下的編輯畫面。 */
 	const covered = () => overlayOpen || modalOpen();
 
@@ -912,6 +912,23 @@
 			</Modal>
 		{/if}
 	</div>
+{/if}
+{#if editor.file.draftAsk}
+	{@const ask = editor.file.draftAsk}
+	{@const message = `「${ask.name}」有還沒存的修改（草稿${ask.savedAt ? ` ${draftTime(ask.savedAt)}` : ''}）。要救回修改，還是用檔案？用檔案會丟掉這些修改。`}
+	<Modal label={message} class="discard-box" onclose={() => editor.file.answerDraft('cancel')}>
+		{#snippet children()}
+			<ConfirmList
+				{message}
+				items={[]}
+				confirmLabel="用檔案（丟掉修改）"
+				onconfirm={() => editor.file.answerDraft('file')}
+				extra={{ label: '救回修改', onclick: () => editor.file.answerDraft('draft') }}
+				oncancel={() => editor.file.answerDraft('cancel')}
+				focusCancel
+			/>
+		{/snippet}
+	</Modal>
 {/if}
 
 <style>
