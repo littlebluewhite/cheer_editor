@@ -96,6 +96,9 @@ export {
 } from './rates';
 export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
 
+export { actionEights } from './beat-range';
+export type { ActionEight, EightPiece } from './beat-range';
+
 export { eightCountRows } from './eight-count';
 export type {
 	EightCountAction,
