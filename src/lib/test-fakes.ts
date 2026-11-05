@@ -21,6 +21,7 @@ import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
+import { animationFrame } from '#lib/playback.svelte.js';
 
 /** 假的存檔：每次存的位元組和檔名照順序記下來，回傳給的結果。 */
 export function fakeSaver(outcome: SaveOutcome = 'saved') {
@@ -75,6 +76,20 @@ export function fakePendingInput(): PendingInput & { pending: boolean; onflush: 
 	};
 }
 
+/** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */
+export function manualFrames() {
+	let queued: (() => void)[] = [];
+	return {
+		nextFrame: (run: () => void) => void queued.push(run),
+		/** 撥一格：跑這一格之前排的（跑的時候排的留到下一格）。 */
+		step() {
+			const run = queued;
+			queued = [];
+			for (const f of run) f();
+		}
+	};
+}
+
 /**
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
@@ -90,6 +105,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			decode: fakeDecode,
 			draftStore: fakeDraftStore().store,
 			pendingInput: fakePendingInput(),
+			nextFrame: manualFrames().nextFrame,
 			...adapters
 		},
 		flow
@@ -109,11 +125,12 @@ export async function openFile(bytes: Uint8Array, label = '開啟流程檔') {
 
 /**
  * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算也是假的：`render(Page, page.props)`。
- * adapters 跟 testEditor 一樣，只有沒送出的字用真的（jsdom 有焦點和 change，存檔、⌘Z、關分頁要看到欄位裡打的字）。
+ * adapters 跟 testEditor 一樣，只有沒送出的字用真的（jsdom 有焦點和 change，存檔、⌘Z、關分頁要看到欄位裡打的字），
+ * 畫面時鐘也用真的（jsdom 的 requestAnimationFrame，測試等下一格畫面）。
  * 測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
  */
 export function editorPage(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
-	const t = testEditor(flow, { pendingInput: domPendingInput, ...adapters });
+	const t = testEditor(flow, { pendingInput: domPendingInput, nextFrame: animationFrame, ...adapters });
 	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt } };
 }
 

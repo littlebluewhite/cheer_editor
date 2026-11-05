@@ -1,5 +1,6 @@
 // 編輯 session：編輯頁的流程、復原、選取、提示、場上那一個問題、分組。編輯器 module（#lib/editor.svelte.js）建一個，
-// 跟它一起放進 context 給元件；也可以單獨建來測。不碰瀏覽器（開檔、存檔、草稿、播放留在頁面），所以在 Node 就測得到。
+// 跟它一起放進 context 給元件；也可以單獨建來測。不碰瀏覽器（開檔、存檔、草稿留在頁面），所以在 Node 就測得到。
+// 播放在編輯器 module：建 session 時接上（SessionPlayback），換了流程、改完要跳播放頭時 session 直接叫它。
 
 import { createContext } from 'svelte';
 import {
@@ -21,7 +22,20 @@ import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
 
+/** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
+export interface SessionPlayback {
+	/** 換一支流程（開檔、新建、救回草稿、回首頁）。 */
+	opened(): void;
+	/** 換上改過、復原、重做的流程；before 是換之前的。 */
+	changed(before: Flow): void;
+	/** 改完要跳播放頭：跳到 sec；replay = 播放中從那裡重播。 */
+	jump(sec: number, replay: boolean): void;
+}
+
+const NO_PLAYBACK: SessionPlayback = { opened() {}, changed() {}, jump() {} };
+
 export class EditorSession {
+	readonly #playback: SessionPlayback;
 	#flow = $state.raw<Flow | null>(null);
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
@@ -78,17 +92,12 @@ export class EditorSession {
 		{ confirmLabel: '確定', onfail: (error) => (this.notice = error) }
 	);
 
-	/**
-	 * 改完要跳播放頭（拖人插站位、挪站位）：跳到哪一秒、播放中要不要從那裡重播。頁面看到就跳。
-	 * 每次都是新的一份，跳到同一秒頁面也看得到。
-	 */
-	jump = $state.raw<{ sec: number; replay: boolean } | null>(null);
-
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
 	readonly squadAsk = new Ask((f) => this.change(f));
 
-	/** 給的流程算存過的（跟從檔案開的一樣）。 */
-	constructor(flow: Flow | null = null) {
+	/** 給的流程算存過的（跟從檔案開的一樣）。playback：改完要叫的播放。 */
+	constructor(flow: Flow | null = null, playback: SessionPlayback = NO_PLAYBACK) {
+		this.#playback = playback;
 		this.open(flow, true);
 	}
 
@@ -122,6 +131,7 @@ export class EditorSession {
 		this.notice = '';
 		this.ask.clear();
 		this.squadAsk.clear();
+		this.#playback.opened();
 	}
 
 	/** 存好了：存的是 flow 這一份。 */
@@ -136,6 +146,7 @@ export class EditorSession {
 	 */
 	change(flow: Flow, join?: string): boolean {
 		if (!this.#flow || flow === this.#flow) return false;
+		const before = this.#flow;
 		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
 		if (!joined) this.#undo = [...this.#undo, this.#flow].slice(-UNDO_LIMIT);
 		this.#joinable = join !== undefined ? { key: join, flow } : null;
@@ -143,6 +154,7 @@ export class EditorSession {
 		this.#flow = flow;
 		this.ask.clear();
 		this.#trim(flow);
+		this.#playback.changed(before);
 		return true;
 	}
 
@@ -168,10 +180,11 @@ export class EditorSession {
 	undo(): boolean {
 		const prev = this.#undo.at(-1);
 		if (!this.#flow || !prev) return false;
+		const before = this.#flow;
 		this.#redo = [...this.#redo, this.#flow];
 		this.#undo = this.#undo.slice(0, -1);
 		this.#flow = carryRecords(prev, this.#flow);
-		this.#restored(this.#flow);
+		this.#restored(this.#flow, before);
 		return true;
 	}
 
@@ -179,10 +192,11 @@ export class EditorSession {
 	redo(): boolean {
 		const next = this.#redo.at(-1);
 		if (!this.#flow || !next) return false;
+		const before = this.#flow;
 		this.#undo = [...this.#undo, this.#flow];
 		this.#redo = this.#redo.slice(0, -1);
 		this.#flow = carryRecords(next, this.#flow);
-		this.#restored(this.#flow);
+		this.#restored(this.#flow, before);
 		return true;
 	}
 
@@ -199,12 +213,13 @@ export class EditorSession {
 		}
 	}
 
-	/** 復原、重做換上的流程：提示、場上的問題收掉，選取修剪。 */
-	#restored(flow: Flow) {
+	/** 復原、重做換上的流程：提示、場上的問題收掉，選取修剪，播放頭夾回流程。 */
+	#restored(flow: Flow, before: Flow) {
 		this.#joinable = null;
 		this.#trim(flow);
 		this.ask.clear();
 		this.notice = '';
+		this.#playback.changed(before);
 	}
 
 	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
@@ -230,7 +245,7 @@ export class EditorSession {
 		if (this.#formationId && this.#flow && this.#formationId !== currentFormation(this.#flow, r.sec).formation.id) {
 			this.#formationId = null;
 		}
-		this.jump = { sec: r.sec, replay: false };
+		this.#playback.jump(r.sec, false);
 	}
 
 	/**
@@ -241,7 +256,7 @@ export class EditorSession {
 		const names = r.squeezed.map((id) => this.#flow?.members.find((m) => m.id === id)?.name);
 		this.notice = names.length ? `走位被壓短：${names.join('、')}` : '';
 		this.selectFormation(formationId);
-		this.jump = { sec: r.sec, replay: true };
+		this.#playback.jump(r.sec, true);
 	}
 
 	/** 刪一張站位（縮圖的 ✕、Delete）：不問，提示「已刪掉站位 N」，旁邊有「復原」。 */

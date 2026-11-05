@@ -22,8 +22,8 @@ export class FlowFile {
 	#missingNotice = '';
 
 	/**
-	 * 換流程前頁面要做的事（新建、開檔、救回草稿、回到新建流程）：停播放、畫面回到流程開頭、對話框都關掉。
-	 * 頁面建好時接上。
+	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
+	 * 播放停下、回到開頭由播放做（session.open 叫它）。
 	 */
 	onswitch: () => void = () => {};
 
@@ -137,10 +137,7 @@ export class FlowFile {
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
 	startNew() {
-		this.#unlessUnsaved(() => {
-			this.onswitch();
-			this.#editor.session.open(null);
-		});
+		this.#unlessUnsaved(() => this.#editor.session.open(null));
 	}
 
 	/**
@@ -149,11 +146,11 @@ export class FlowFile {
 	 */
 	#start(flow: Flow, from: 'file' | 'draft' | 'new', music?: MusicLibrary, saver: FileSaver | null = null) {
 		const editor = this.#editor;
-		this.onswitch();
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		editor.session.open(flow, from !== 'draft');
 		this.#onDisk = from === 'file';
 		editor.adapters.pendingInput.settle();
+		this.onswitch();
 		this.#saver = saver;
 		editor.switchMusic(music);
 		this.#openError = '';

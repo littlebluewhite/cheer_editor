@@ -102,18 +102,7 @@ describe('段、八拍尺、上方列', () => {
 		expect((screen.getByRole('button', { name: '播放' }) as HTMLButtonElement).disabled).toBe(false);
 	});
 
-	it('刪段後播放頭夾到流程結尾，上方的時間不會超過總長', async () => {
-		await newFlow();
-		await addSegment('＋音樂段');
-		await addSegment('＋口號段');
-		await fireEvent.keyDown(window, { key: 'End' });
-		expect(screen.getByText(/^0:35.6/).textContent).toBe('0:35.6 / 0:35.6');
-		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
-		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
-		expect(screen.getByText(/^0:25.6/).textContent).toBe('0:25.6 / 0:25.6');
-	});
-
-	it('方向鍵移播放頭：一次一拍，Shift 跳到下一個八拍的 1；在輸入框裡不算', async () => {
+	it('方向鍵移播放頭：一次一拍，Shift 一個八拍；在輸入框裡不算（怎麼移在 playback 測）', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
@@ -125,12 +114,8 @@ describe('段、八拍尺、上方列', () => {
 		expect(position()).toBe('音樂 1 2-1');
 		await fireEvent.keyDown(window, { key: 'ArrowLeft' });
 		expect(position()).toBe('音樂 1 1-8');
-		await fireEvent.keyDown(window, { key: 'ArrowLeft', shiftKey: true });
-		expect(position()).toBe('音樂 1 1-1');
-		await fireEvent.keyDown(window, { key: 'ArrowLeft' });
-		expect(position()).toBe('音樂 1 1-1');
 		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'ArrowRight' });
-		expect(position()).toBe('音樂 1 1-1');
+		expect(position()).toBe('音樂 1 1-8');
 	});
 
 	it('在八拍尺上拖到右邊緣時時間軸不自己捲走（不然尺跟著滑鼠跑，播放頭會亂跳）', async () => {
@@ -1324,6 +1309,7 @@ async function nextFrame() {
 
 const position = () => screen.getByLabelText('目前位置').textContent;
 
+// 播放的規則在 src/lib/playback.test.ts（Node）；這裡只看頁面接到播放。
 describe('播放', () => {
 	beforeEach(() => localStorage.clear());
 
@@ -1337,152 +1323,38 @@ describe('播放', () => {
 		return engine;
 	}
 
-	it('按播放，播放頭跟著喇叭的時間走，口號段時間照走；再按一次暫停', async () => {
+	it('播放鍵：按了播，上方列的位置跟著喇叭的時間走；再按一次暫停', async () => {
 		const engine = await sample();
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		expect(engine.resumed).toBe(true);
-		const t0 = engine.clicks[0].when;
-		engine.audible = t0 + 8.2;
+		engine.audible = engine.clicks[0].when + 8.2;
 		await nextFrame();
 		expect(position()).toBe('音樂 1 3-5&');
-		engine.audible = t0 + 25.6 + 3;
-		await nextFrame();
-		expect(position()).toBe('口號 1 3.0 秒');
-		engine.audible = t0 + 35.6 + 0.4;
-		await nextFrame();
-		expect(position()).toBe('音樂 2 1-2');
-
 		await fireEvent.click(screen.getByRole('button', { name: '暫停' }));
 		expect(engine.clicks).toEqual([]);
-		engine.audible = t0 + 50;
-		await nextFrame();
-		expect(position()).toBe('音樂 2 1-2');
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
 	});
 
-	it('播放中換段的順序：照新的順序重排聲音（不然還在播舊的順序）', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		const t0 = engine.clicks[0].when;
-		await fireEvent.click(screen.getByRole('button', { name: /口號 1/ }));
-		await fireEvent.click(screen.getByRole('button', { name: '往前移' }));
-		// 現在口號段（10 秒）在最前面，第一聲節拍器是 10 秒後音樂 1 的第一拍
-		expect(engine.clicks[0].when).toBeCloseTo(t0 + 10, 6);
-	});
-
-	it('播放中刪掉正在播的段：播放頭夾到結尾停下，不回到 0 重播', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		const t0 = engine.clicks[0].when;
-		engine.audible = t0 + 40;
-		await nextFrame();
-		expect(position()).toBe('音樂 2 2-4');
-		await fireEvent.click(screen.getByRole('button', { name: /^音樂 2/ }));
-		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
-		expect(screen.getByText(/^0:35.6/).textContent).toBe('0:35.6 / 0:35.6');
-		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
-		expect(engine.clicks).toEqual([]);
-	});
-
-	it('播放中刪掉前面的段：從同一秒接著播（不回到 0）', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		const t0 = engine.clicks[0].when;
-		engine.audible = t0 + 30.2;
-		await nextFrame();
-		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
-		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
-		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
-		// 30.2 秒現在在音樂 2 的 4.6 秒：第一聲節拍器是 0.2 秒後的 2-5（從 0 重播的話是馬上響）
-		expect(engine.clicks[0].when - t0).toBeCloseTo(0.2, 6);
-	});
-
-	it('播放中加隊員（沒動到段）：聲音不重排，不會中斷', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		const scheduled = engine.clicks;
-		await tab('隊員');
-		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '王小明' } });
-		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
-		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'base' } });
-		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
-		expect(document.querySelectorAll('[data-member-id]').length).toBe(1);
-		expect(engine.clicks).toBe(scheduled);
-	});
-
-	it('從播放頭開始播：口號段沒有節拍器，第一聲是下一個音樂段的第一拍', async () => {
-		const engine = await sample();
-		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, {
-			clientX: 26.6 * 16,
-			button: 0
-		});
-		await fireEvent.pointerUp(window);
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		engine.audible = engine.clicks[0].when;
-		await nextFrame();
-		expect(position()).toBe('音樂 2 1-1');
-	});
-
-	it('播放中在八拍尺上點，從那裡接著播', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, {
-			clientX: 26.6 * 16,
-			button: 0
-		});
-		await fireEvent.pointerUp(window);
-		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
-		engine.audible = engine.clicks[0].when;
-		await nextFrame();
-		expect(position()).toBe('音樂 2 1-1');
-	});
-
-	it('空白鍵播放／暫停；在輸入框裡打字不算', async () => {
-		const engine = await sample();
-		await fireEvent.keyDown(window, { key: ' ' });
-		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
-		await fireEvent.keyDown(window, { key: ' ' });
-		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
-		await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: ' ' });
-		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
-		expect(engine.clicks).toEqual([]);
-	});
-
-	it('節拍器關掉就不響', async () => {
+	it('節拍器勾選框：關掉就不響', async () => {
 		const engine = await sample();
 		await fireEvent.click(screen.getByLabelText('節拍器'));
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		expect(engine.clicks).toEqual([]);
-		await fireEvent.click(screen.getByLabelText('節拍器'));
-		expect(engine.clicks.length).toBeGreaterThan(0);
 	});
 
-	it('延遲校正：預設 0，存在瀏覽器；播放頭晚這麼多毫秒', async () => {
-		const engine = await sample();
+	it('延遲校正欄位：存在這台電腦；清空或超出範圍時欄位回到現在的值；存的值超出範圍當 0', async () => {
+		await sample();
 		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
 		expect(field.value).toBe('0');
 		await fireEvent.change(field, { target: { value: '200' } });
-		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		engine.audible = engine.clicks[0].when + 8.4;
-		await nextFrame();
-		expect(position()).toBe('音樂 1 3-5&');
+		await fireEvent.change(field, { target: { value: '' } });
+		expect(field.value).toBe('200');
+		await fireEvent.change(field, { target: { value: '1001' } });
+		expect(field.value).toBe('200');
 
 		cleanup();
 		await newFlow();
 		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('200');
-	});
-
-	it('延遲校正限制在 −1000 到 +1000 毫秒；清空或不合法時欄位回到現在的值', async () => {
-		await sample();
-		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
-		await fireEvent.change(field, { target: { value: '-1000' } });
-		expect(field.value).toBe('-1000');
-		await fireEvent.change(field, { target: { value: '' } });
-		expect(field.value).toBe('-1000');
-		await fireEvent.change(field, { target: { value: '1001' } });
-		expect(field.value).toBe('-1000');
-		await fireEvent.change(field, { target: { value: '1000' } });
-		expect(field.value).toBe('1000');
 
 		cleanup();
 		localStorage.setItem('cheer-editor:latencyMs', '99999');
@@ -1490,22 +1362,11 @@ describe('播放', () => {
 		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('0');
 	});
 
-	it('段設定的「▶ 從第一拍聽 2 個八拍」播 16 拍節拍器，播放頭不動', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: /音樂 2/ }));
-		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
-		expect(engine.resumed).toBe(true);
-		expect(engine.clicks).toHaveLength(16);
-		engine.audible = engine.clicks[0].when + 3;
-		await nextFrame();
-		expect(position()).toBe('音樂 1 1-1');
-		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
-	});
-
-	it('試聽中按「■ 停止試聽」就停；播完自己換回「▶ 從第一拍聽」', async () => {
+	it('段設定的試聽：按「▶ 從第一拍聽」響、按「■ 停止試聽」停、播完換回來；關掉段設定就停', async () => {
 		const engine = await sample();
 		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
+		expect(engine.clicks).toHaveLength(16);
 		await fireEvent.click(screen.getByRole('button', { name: '■ 停止試聽' }));
 		expect(engine.clicks).toEqual([]);
 		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
@@ -1513,13 +1374,8 @@ describe('播放', () => {
 		engine.audible = engine.clicks[0].when + 6.5;
 		await nextFrame();
 		expect(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' })).toBeTruthy();
-	});
 
-	it('試聽中關掉段設定：試聽停掉', async () => {
-		const engine = await sample();
-		await fireEvent.click(screen.getByRole('button', { name: /音樂 1/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '▶ 從第一拍聽 2 個八拍' }));
-		expect(engine.clicks).toHaveLength(16);
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(engine.clicks).toEqual([]);
 	});
