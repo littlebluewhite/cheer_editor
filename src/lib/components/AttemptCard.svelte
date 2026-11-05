@@ -1,9 +1,11 @@
 <script lang="ts">
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
 	// 每個環節三顆大按鈕 ✓ △ ✗；再按一次點著的那顆就取消。
-	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著）；跳過前面的環節，存之前就提醒。
+	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著，✗ 後面的按鈕停用）；
+	// 「全部 ✓ 存」一次存成每個環節都成功。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
+	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次。
-	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。
+	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
 	// 下面一排是這天的每一次，全上記的用虛線框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回。
 	import {
 		MARKS,
@@ -43,10 +45,12 @@
 	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
 	const flash = new Flash<Notice>();
 
-	/** 這次練：整個（true）或只練幾個環節（false）。換下一次也留著。 */
-	let whole = $state(true);
-	/** 只練幾個環節時，要練的環節 id。 */
-	let picked = $state<string[]>([]);
+	/** 這張卡的「這次練」在 session 裡的 key。 */
+	const scopeKey = $derived(`${action.id} ${who}`);
+	/** 這次練：整個做（whole），或只練幾個環節（picked 是要練的環節 id）。換下一次、換動作、切頁都留著。 */
+	const scope = $derived(session.drillScopes[scopeKey] ?? { whole: true, picked: [] });
+	const whole = $derived(scope.whole);
+	const picked = $derived(scope.picked);
 	/** 這一次已經點的記號（還沒存）。 */
 	let marks = $state<Record<string, Mark>>({});
 
@@ -57,36 +61,46 @@
 	const kept = $derived(keptAttempt(action, whole, marks));
 	/** 卡上亮的記號。 */
 	const shown = $derived(kept.marks);
-	/** 選「整個」卻跳過前面的環節：存之前就說。 */
-	const skipping = $derived(whole && Object.keys(marks).length > 0 && !kept.whole);
+	/** 「整個」第一個 ✗ 在第幾個環節（後面的停用）；沒有 ✗ 是 phases.length。 */
+	const failAt = $derived.by(() => {
+		const i = phases.findIndex((p) => shown[p.id] === '✗');
+		return whole && i >= 0 ? i : phases.length;
+	});
+	/** 選「整個」卻跳過前面的環節（最後一個點了的前面還有空著的）：存之前就說。 */
+	const skipping = $derived.by(() => {
+		const last = phases.findLastIndex((p) => shown[p.id]);
+		return whole && phases.slice(0, last).some((p) => !shown[p.id]);
+	});
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
 	function setWhole(value: boolean) {
-		whole = value;
+		session.drillScopes[scopeKey] = { whole: value, picked };
 		marks = {};
 	}
 
 	function pick(id: string, on: boolean) {
-		picked = on ? [...picked, id] : picked.filter((p) => p !== id);
+		session.drillScopes[scopeKey] = { whole, picked: on ? [...picked, id] : picked.filter((p) => p !== id) };
 		marks = {};
 	}
 
-	/** 點一個記號；再點一次點著的那顆就取消。只練幾個環節時，點到最後一個要練的環節、或點了 ✗，就存。 */
+	/**
+	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存。
+	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
+	 */
 	function tap(phaseId: string, mark: Mark) {
 		flash.clear();
 		if (shown[phaseId] === mark) {
-			const { [phaseId]: _, ...rest } = marks;
+			const { [phaseId]: _, ...rest } = shown;
 			marks = rest;
 			return;
 		}
-		marks = { ...marks, [phaseId]: mark };
-		if (!whole && (mark === '✗' || phaseId === planned.at(-1)?.id)) save();
+		marks = keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks;
+		if (phases.length === 1 || (!whole && (mark === '✗' || phaseId === planned.at(-1)?.id))) save();
 	}
 
-	/** 存這一次（留哪些記號、算不算整個做由核心決定）。 */
-	function save() {
-		const next = marks;
+	/** 存這一次（留哪些記號、算不算整個做由核心決定）；給了 next 就存它，不看點了的。 */
+	function save(next = marks) {
 		marks = {};
 		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
 			done: () => flash.show({ text: '已存' })
@@ -122,8 +136,8 @@
 	</header>
 
 	<div class="phases">
-		{#each phases as p (p.id)}
-			{@const on = planned.includes(p)}
+		{#each phases as p, i (p.id)}
+			{@const on = planned.includes(p) && i <= failAt}
 			<div class="phase" class:off={!on}>
 				{#if whole}
 					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
@@ -149,12 +163,20 @@
 		{/each}
 	</div>
 
+	<!-- 提示在左、存檔鈕在右（靠近 ✓）；這一列高度固定，提示出現、收掉都不位移 -->
+	<div class="save-row">
+		<RecordNotice notice={flash} />
+		{#if whole && phases.length > 1}
+			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>存這一次</button>
+			<button
+				type="button"
+				class="primary all-ok"
+				onclick={() => save(Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])))}>全部 ✓ 存</button
+			>
+		{/if}
+	</div>
 	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
-	{#if whole}
-		<button type="button" class="primary save" disabled={!Object.keys(marks).length} onclick={save}>存這一次</button>
-	{/if}
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
-	<RecordNotice notice={flash} />
 
 	<footer>
 		{#if today.length}
@@ -299,7 +321,7 @@
 		background: var(--fail);
 		border-color: var(--fail);
 	}
-	/* 只練幾個環節時，沒選的環節按鈕變灰 */
+	/* 只練幾個環節時沒選的環節、「整個」✗ 後面的環節：按鈕變灰 */
 	.mark:disabled {
 		color: var(--muted);
 		background: var(--surface-2);
@@ -346,8 +368,16 @@
 		color: var(--muted);
 		font-size: 12px;
 	}
-	.save {
-		justify-self: start;
+	.save-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+		min-height: 36px;
+	}
+	.save-row :global(.notice) {
+		margin-right: auto;
 	}
 	.undo-last {
 		flex: none;

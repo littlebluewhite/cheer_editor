@@ -995,6 +995,33 @@ await check('很長的手位：拍點格子、泳道、八拍表上都待在自�
 	return { ok: grid.ok && !!grid.看全文 && lane.ok && sheet.ok, value: { 拍點格子: grid, 泳道: lane, 八拍表: sheet } };
 });
 
+// ---------- 記錄卡不位移（#142） ----------
+
+await check('記錄頁：點第一個環節前後「存這一次」不動；存好、刪掉之後「刪掉上一次」和左邊清單不動', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow(`flow = (await import('/src/lib/test-flows.ts')).ratedSample();`);
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const spot = (selector) => js(`const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)];`);
+	const press = async (selector) => { const p = await rectOf(selector); await click(p.x, p.y); await sleep(200); };
+	await js(`document.querySelectorAll('.record .list li')[1].classList.add('second')`);
+	const saveSpot = [await spot('.card .save')];
+	const undoSpot = [await spot('.card .undo-last')];
+	const listSpot = [await spot('.record .list .second')];
+	await press('.card button[aria-label$="上法 成功"]');
+	saveSpot.push(await spot('.card .save'));
+	await press('.card .save');
+	undoSpot.push(await spot('.card .undo-last'));
+	listSpot.push(await spot('.record .list .second'));
+	await press('.card .undo-last');
+	undoSpot.push(await spot('.card .undo-last'));
+	const same = (spots) => spots.every(([x, y]) => x === spots[0][0] && y === spots[0][1]);
+	return {
+		ok: same(saveSpot) && same(undoSpot) && same(listSpot),
+		value: { 存這一次: saveSpot, '刪掉上一次（存前、存後、刪後）': undoSpot, 清單第二個動作: listSpot }
+	};
+});
+
 // ---------- 時間軸：自動符合寬度、刻度不擠、站位小圖（#152） ----------
 
 /** 時間軸看得到的寬、捲得到的寬、流程（八拍尺）多寬、最後一張縮圖的右緣（從時間軸左緣算）。 */
@@ -1065,6 +1092,24 @@ await check('兩張站位只差 2 拍：沒選到、滑鼠沒移上去時 ✕ �
 	seen['×1'] = await covered();
 	seen.倍數 = await js(`return document.querySelector('.timeline .zoom-val').textContent`);
 	return { ok: seen.放滿.length === 0 && seen['×1'].length === 0 && seen.倍數 === '×1.0', value: seen };
+});
+
+await check('滑鼠點過「時間軸縮小」再按真的空白鍵：播放，不會又縮小一次（放開空白鍵不算按下按鈕）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const btn = await js(`const r = document.querySelector('.timeline [aria-label="時間軸縮小"]').getBoundingClientRect();
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	await click(btn.x, btn.y);
+	const zoom = () => js(`return document.querySelector('.timeline .zoom-val').textContent`);
+	const before = await zoom();
+	const focused = await js(`return document.activeElement?.getAttribute('aria-label')`);
+	for (const type of ['keyDown', 'keyUp'])
+		await send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32, text: type === 'keyDown' ? ' ' : undefined });
+	await sleep(300);
+	const playing = await js(`return !!document.querySelector('button[aria-label="暫停"]')`);
+	const after = await zoom();
+	await js(`document.querySelector('button[aria-label="暫停"]')?.click()`);
+	return { ok: focused === '時間軸縮小' && playing && after === before, value: { 焦點: focused, 播放: playing, 倍數: `${before} → ${after}` } };
 });
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');

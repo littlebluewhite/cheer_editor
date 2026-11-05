@@ -67,6 +67,19 @@ describe('練習：記錄頁記分段練', () => {
 		expect(dayRow(who)).toEqual(['··✓']);
 	});
 
+	it('「只練幾個環節」切到總表、編排再回來還是它', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		const partial = () => (card(who).getByRole('radio', { name: '只練幾個環節' }) as HTMLInputElement).checked;
+		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+		expect(partial()).toBe(true);
+		await toArrange();
+		await toPractice();
+		expect(partial()).toBe(true);
+	});
+
 	it('存檔再打開，紀錄還在；日期是今天', async () => {
 		const { saves } = await practice();
 		await tap('第 1 組 小美', '上法', '成功');

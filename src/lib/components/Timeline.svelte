@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定；左邊「＋」在最後加一段，段旁的「＋」加在這段後面）、
-	// 八拍尺（點或拖＝移動播放頭，先停站位再停整拍；點八拍數字停在那個八拍的 1）、
+	// 八拍尺（點或拖＝移動播放頭，先停站位再停整拍；點八拍數字停在那個八拍的 1；播放頭的線也能拖）、
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
 	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準），
 	// 「符合寬度」讓整支流程剛好放滿現在的寬度（連最後一張站位的縮圖），換視窗大小也維持放滿，直到自己按「＋」「−」。
@@ -73,6 +73,7 @@
 	let viewW = $state(0);
 	let wheelAcc = 0;
 	let scroller: HTMLDivElement;
+	let ruler: HTMLDivElement;
 	/** 最後一張站位的時間（秒）：它的縮圖往右多佔 THUMB_W。 */
 	const lastFormationSec = $derived(Math.max(0, ...formationTimes(flow).map((t) => t.sec)));
 	/** 剛好放滿看得到的寬的倍數；量不到寬、沒有段時是 0。 */
@@ -203,9 +204,9 @@
 		});
 	}
 
+	/** 在八拍尺上、或在播放頭那條線上按下去：點或拖移動播放頭。 */
 	function startSeek(e: PointerEvent) {
 		if (e.button !== 0) return;
-		const ruler = e.currentTarget as HTMLElement;
 		// 先停站位（差不到幾 px），再吸到整拍（口號段 0.1 秒）：點八拍尺要停在「4-1」，不要一不小心停在「4-1&」。
 		// 按著 Option／Alt 吸到半拍。
 		const toSec = (ev: PointerEvent) =>
@@ -297,6 +298,7 @@
 					<button
 						type="button"
 						class="ghost"
+						data-space-plays
 						aria-label="時間軸縮小"
 						disabled={zoom <= ZOOMS[0] + 1e-9}
 						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
@@ -305,6 +307,7 @@
 					<button
 						type="button"
 						class="ghost"
+						data-space-plays
 						aria-label="時間軸放大"
 						disabled={zoom >= ZOOMS.at(-1)! - 1e-9}
 						onclick={() => zoomButton(1)}><Icon name="plus" size={13} /></button
@@ -312,6 +315,7 @@
 					<button
 						type="button"
 						class="ghost fit"
+						data-space-plays
 						aria-label="符合寬度"
 						title="整支流程剛好放滿現在的寬度"
 						disabled={spans.length === 0}
@@ -321,7 +325,7 @@
 			</div>
 			<!-- 用滑鼠點或拖移動播放頭；鍵盤操作之後跟播放（空白鍵）一起做。 -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="trk ruler" data-ruler style:width={`${width}px`} onpointerdown={startSeek}>
+			<div class="trk ruler" data-ruler bind:this={ruler} style:width={`${width}px`} onpointerdown={startSeek}>
 				{#each marks as mark (mark.sec)}
 					<div class="tk" class:big={mark.major} style:left={`${mark.sec * px}px`}>
 						{#if mark.label}<span data-mark-sec={mark.sec}>{mark.label}</span>{/if}
@@ -338,7 +342,9 @@
 				<span>還沒有隊員。到右邊的「隊員」加人，每個人會有一條自己的泳道。</span>
 			</div>
 		{/if}
-		<div class="ph" style:left={`${LABEL_W + playback.sec * px}px`}></div>
+		<!-- 播放頭的線本身也能拖（跟在八拍尺上拖一樣） -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="ph" data-playhead-line style:left={`${LABEL_W + playback.sec * px}px`} onpointerdown={startSeek}></div>
 	</div>
 </div>
 
@@ -653,6 +659,15 @@
 		margin-left: -1px;
 		background: var(--now, #f2542d);
 		z-index: 5;
-		pointer-events: none;
+		cursor: ew-resize;
+	}
+	/* 拖得到的範圍比線寬一點 */
+	.ph::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: -3px;
+		right: -3px;
 	}
 </style>

@@ -23,6 +23,7 @@
 		CELL_M,
 		fieldPositionText,
 		moveMembers,
+		positionsAt,
 		snapPointsNear,
 		snapPosition,
 		toPosition,
@@ -337,6 +338,12 @@
 			return;
 		}
 		if (drag && (drag.cur || !still(e, drag.client))) {
+			if (!drag.cur && playback?.playing) {
+				// 播放中一開始拖就先暫停、播放頭停到整拍；拖的人從那一拍的位置算起
+				playback.pauseOnBeat();
+				const at = positionsAt(session!.flow!, playback.sec);
+				drag.orig = Object.fromEntries(drag.ids.map((i) => [i, at[i] ?? drag!.orig[i]]));
+			}
 			const [px, py] = toMeters(e, svg);
 			const o = drag.orig[drag.id];
 			drag.cur = snapPosition(field, [o[0] + px - drag.start[0], o[1] + py - drag.start[1]], zoom);

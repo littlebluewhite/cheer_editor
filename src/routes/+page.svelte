@@ -156,11 +156,12 @@
 		};
 	});
 
-	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字。 */
+	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字；在結尾只有「結尾」（at 是空的）。 */
 	const position = $derived.by(() => {
 		const text = flow ? positionText(flow, playback.sec) : '';
+		if (!text) return null;
 		const cut = text.indexOf(' ', text.indexOf(' ') + 1);
-		return cut === -1 ? null : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
+		return cut === -1 ? { segment: text, at: '' } : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
 	});
 
 	/** 秒數寫成「1:05.3」。 */
@@ -281,6 +282,8 @@
 	const NATIVE_KEYS =
 		'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), ' +
 		'[role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"]';
+	/** 選取用的按鈕（色條、站位縮圖、泳道名字、縮放鈕）：滑鼠點過焦點留在上面，空白鍵還是播放／暫停（Enter 照樣按下）。 */
+	const SPACE_PLAYS = '[data-space-plays]';
 	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
 	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
@@ -315,9 +318,9 @@
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
 		}
-		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它；其他時候播放／暫停
+		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它（選取用的按鈕除外）；其他時候播放／暫停
 		if (e.key === ' ') {
-			if (on(NATIVE_KEYS) || e.repeat) return;
+			if ((on(NATIVE_KEYS) && !on(SPACE_PLAYS)) || e.repeat) return;
 			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
 			if (playback.space(covered())) e.preventDefault();
 			return;
@@ -378,6 +381,10 @@
 </svelte:head>
 <svelte:window
 	{onkeydown}
+	onkeyup={(e) => {
+		// 按鈕是放開空白鍵才算按：選取用的按鈕上的空白鍵已經拿去播放／暫停，不再按一次
+		if (e.key === ' ' && (e.target as Element | null)?.closest?.(SPACE_PLAYS)) e.preventDefault();
+	}}
 	{onbeforeunload}
 	onpagehide={() => editor.file.pageHidden()}
 	onpointerdowncapture={dismissNotice}
@@ -429,12 +436,12 @@
 				>
 				<div class="board">
 					<span class="pos" aria-label="目前位置"
-						>{#if position}<span class="pos-seg">{position.segment}</span>
-							<span class="pos-at">{position.at}</span>{:else}<span class="pos-seg">還沒有段</span>{/if}</span
+						>{#if position}<span class="pos-seg">{position.segment}</span
+							>{#if position.at}{' '}<span class="pos-at">{position.at}</span>{/if}{:else}<span class="pos-seg">還沒有段</span>{/if}</span
 					>
 					<span class="clock">{clock(playback.sec)} <i>/ {clock(totalSeconds(flow))}</i></span>
 				</div>
-				<label class="toggle" title="播放時每拍響一聲">
+				<label class="toggle metronome" title="播放時每拍響一聲">
 					<input
 						type="checkbox"
 						checked={playback.metronome}
@@ -744,7 +751,11 @@
 		<FlowSettings onclose={() => (settingsOpen = false)} />
 	{/if}
 	{#if printOpen}
-		<PrintSheet {flow} onclose={() => (printOpen = false)} />
+		<PrintSheet
+			{flow}
+			selected={session.selectedMemberIds.length === 1 ? session.selectedMemberIds[0] : null}
+			onclose={() => (printOpen = false)}
+		/>
 	{/if}
 	{#if editor.file.asking}
 		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
@@ -1138,6 +1149,12 @@
 		background: #24304c;
 		border-color: #4a5a80;
 		color: #fff;
+	}
+	/* 節拍器開著：亮的底色，跟關著的一眼分得出來 */
+	.toggle.metronome:has(input:checked) {
+		background: var(--sel);
+		border-color: var(--sel);
+		font-weight: 600;
 	}
 	.toggle input {
 		position: absolute;

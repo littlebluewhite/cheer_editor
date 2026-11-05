@@ -52,7 +52,6 @@ describe('記錄頁', () => {
 		await pickAction('騰翻');
 		expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['小美', '小A']);
 		await tap('小A', '整體 騰翻', '成功');
-		await save('小A');
 		expect(dayRow('小A')).toEqual(['✓']);
 	});
 
@@ -90,6 +89,18 @@ describe('記錄頁', () => {
 		await fireEvent.click(removeLast());
 		expect(dayRow(who)).toEqual([]);
 		expect(disabled(removeLast())).toBe(true);
+	});
+
+	it('選了「只練幾個環節」和要練的環節：換動作再回來還是它', async () => {
+		setup();
+		const who = '第 1 組 小美';
+		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
+		await fireEvent.click(card(who).getByRole('checkbox', { name: '下法' }));
+		await pickAction('騰翻');
+		await pickAction('技巧·Lib');
+		expect((card(who).getByRole('radio', { name: '只練幾個環節' }) as HTMLInputElement).checked).toBe(true);
+		expect((card(who).getByRole('checkbox', { name: '下法' }) as HTMLInputElement).checked).toBe(true);
+		expect((card('第 2 組 小芳').getByRole('radio', { name: '整個' }) as HTMLInputElement).checked).toBe(true);
 	});
 
 	it('點到一半就換動作：這一次不存', async () => {

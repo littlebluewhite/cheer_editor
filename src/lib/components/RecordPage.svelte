@@ -106,7 +106,8 @@
 						<button type="button" aria-pressed={a === action} onclick={() => (chosenId = a.id)}>
 							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
 							<small>這天 {countOn(a.successRate?.records ?? [])} 次</small>
-							{#if weakest}<small class="weakest">{weakest}</small>{/if}
+							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
+							<small class="weakest">{weakest}</small>
 						</button>
 					</li>
 				{/each}
@@ -192,6 +193,7 @@
 		gap: 10px;
 	}
 	.list .weakest {
+		min-height: 1lh;
 		color: var(--text);
 	}
 	.rates {

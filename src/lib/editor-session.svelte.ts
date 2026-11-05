@@ -70,6 +70,11 @@ export class EditorSession {
 	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
 	 */
 	viewing = $state(false);
+	/**
+	 * 記錄頁每張卡上次選的「這次練」，key 是「動作 id 組或隊員 id」：whole 整個做，不是就只練 picked 這幾個環節。
+	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
+	 */
+	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
