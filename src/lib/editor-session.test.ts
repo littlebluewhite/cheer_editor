@@ -406,39 +406,45 @@ describe('編輯 session：分組數字鍵', () => {
 });
 
 describe('編輯 session：改完跳播放頭', () => {
+	/** session 接上一個只記下「跳到哪、要不要重播」的播放。 */
+	function withJumps(flow: Flow) {
+		const jumps: { sec: number; replay: boolean }[] = [];
+		const s = new EditorSession(flow, { opened() {}, changed() {}, jump: (sec, replay) => void jumps.push({ sec, replay }) });
+		return { s, jumps };
+	}
+
 	it('拖人插了站位：提示說插了一張，播放頭停到那張（播放中不重播）', () => {
-		const s = new EditorSession(libSample());
+		const { s, jumps } = withJumps(libSample());
 		s.ask.send(() => moveMembers(s.flow!, 2, { m1: [1, 1] }), { done: (r) => s.moved(r) });
 		expect(s.flow!.formations).toHaveLength(2);
 		expect(s.canUndo).toBe(true);
 		expect(s.notice).toBe('插了一張站位，大家的位置自動帶入');
-		expect(s.jump).toEqual({ sec: 2, replay: false });
+		expect(jumps).toEqual([{ sec: 2, replay: false }]);
 	});
 
 	it('拖人改到現有的站位、往後帶：提示說帶了幾張', () => {
-		const s = new EditorSession(flowOf(insertFormation(libSample(), 2)));
+		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		s.ask.send(() => moveMembers(s.flow!, 0, { m1: [1, 1] }), { done: (r) => s.moved(r) });
 		expect(s.notice).toBe('後面 1 張站位也跟著改了');
-		expect(s.jump).toEqual({ sec: 0, replay: false });
+		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
 
 	it('挪站位：提示收掉、選著這張，播放頭跳到新的站位時間（播放中從那裡重播）', () => {
-		const s = new EditorSession(flowOf(insertFormation(libSample(), 2)));
+		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		const id = s.flow!.formations[1].id;
 		const to = { segmentId: 's1', at: 16 };
 		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
 		expect(s.notice).toBe('');
-		expect(s.jump).toEqual({ sec: toSeconds(s.flow!, to), replay: true });
+		expect(jumps).toEqual([{ sec: toSeconds(s.flow!, to), replay: true }]);
 	});
 
-	it('每次跳都是新的一份（跳到同一秒，頁面也看得到）', () => {
-		const s = new EditorSession(libSample());
+	it('跳到同一秒也每次都叫到播放', () => {
+		const { s, jumps } = withJumps(libSample());
 		s.moved({ inserted: false, sec: 0, carried: 0 });
-		const first = s.jump;
 		s.moved({ inserted: false, sec: 0, carried: 0 });
-		expect(s.jump).not.toBe(first);
+		expect(jumps).toHaveLength(2);
 	});
 });

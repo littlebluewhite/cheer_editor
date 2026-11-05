@@ -2,13 +2,9 @@
 	import {
 		currentFormation,
 		deleteAction,
-		firstBeatPreview,
 		clashes,
 		formationWalks,
 		memberMarkers,
-		playbackPlan,
-		playStartSec,
-		resumeSec,
 		positionText,
 		positionsAt,
 		raisedAt,
@@ -17,7 +13,6 @@
 		squadBadge,
 		timeRuleWarnings,
 		stackedMembers,
-		stepPlayhead,
 		totalSeconds,
 		walkSpanAt,
 		writeFlowFile,
@@ -27,18 +22,13 @@
 		type FormationWalk,
 		type Position
 	} from '#lib/core';
-	import { createPlayer, type Player } from '#lib/audio/player.js';
 	import type { Draft } from '#lib/file/draft.js';
 	import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import type { MusicLibrary } from '#lib/music-library.svelte.js';
-	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
+	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
-	import {
-		MAX_LATENCY_MS,
-		loadLatencyMs,
-		saveLatencyMs
-	} from '#lib/local-settings.js';
+	import { MAX_LATENCY_MS } from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
@@ -81,9 +71,9 @@
 	// svelte-ignore state_referenced_locally
 	const editor = given ?? new Editor(browserAdapters());
 	setEditor(editor);
-	const { session } = editor;
-	// 開檔、存檔、草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
-	const { createEngine, createSaver, pickFlowFile, draftStore, pendingInput } = editor.adapters;
+	const { session, playback } = editor;
+	// 開檔、存檔、草稿的規則還在頁面：用編輯器 module 收著的 adapter。
+	const { createSaver, pickFlowFile, draftStore, pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
@@ -204,8 +194,6 @@
 	$effect(() => {
 		if (!editor.music.missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
 	});
-	/** 播放頭，全域秒數。 */
-	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
@@ -227,7 +215,7 @@
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
-		if (next === 'practice') pause();
+		if (next === 'practice') playback.pause();
 		view = next;
 	}
 
@@ -241,7 +229,7 @@
 	const trail = $derived.by(() => {
 		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
 		if (!flow) return none;
-		const span = walkSpanAt(flow, playheadSec);
+		const span = walkSpanAt(flow, playback.sec);
 		if (!span) return none;
 		return {
 			ghosts: span.on ? span.from.pos : none.ghosts,
@@ -252,7 +240,7 @@
 
 	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字。 */
 	const position = $derived.by(() => {
-		const text = flow ? positionText(flow, playheadSec) : '';
+		const text = flow ? positionText(flow, playback.sec) : '';
 		const cut = text.indexOf(' ', text.indexOf(' ') + 1);
 		return cut === -1 ? null : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
 	});
@@ -262,109 +250,6 @@
 		const m = Math.floor(sec / 60);
 		const s = (sec - m * 60).toFixed(1).padStart(4, '0');
 		return `${m}:${s}`;
-	}
-
-	let playing = $state(false);
-	let metronome = $state(true);
-	/** 延遲校正（毫秒）：存在瀏覽器，不進流程檔。 */
-	let latencyMs = $state(loadLatencyMs());
-	let player: Player | null = null;
-
-	function getPlayer(): Player {
-		player ??= createPlayer(createEngine((id) => editor.music.buffer(id)));
-		return player;
-	}
-
-	function seek(f: Flow, sec: number) {
-		playheadSec = Math.min(Math.max(sec, 0), totalSeconds(f));
-		if (playing) play(f);
-	}
-
-	/** 從播放頭開始播；已經播完就從頭。一定由按鈕或空白鍵觸發。 */
-	function play(f: Flow) {
-		playheadSec = playStartSec(f, playheadSec);
-		getPlayer().start(playbackPlan(f, playheadSec), { fromSec: playheadSec, metronome });
-		if (!playing) {
-			playing = true;
-			requestAnimationFrame(frame);
-		}
-	}
-
-	function pause() {
-		playing = false;
-		previewing = false;
-		player?.stop();
-	}
-
-	// 改了段（換順序、刪段、改 BPM、長度，或復原這些）：播放頭夾回流程裡（段變短、刪段後不跑到結尾後面）。
-	// 播放中已經排好的聲音是舊的，從夾住後的時間照現在的段重排（不回到 0）；夾到結尾就是播完了，停下。
-	// 只看 segments 這個陣列換了沒，改人、改動作不會重排。
-	// segments 另外 derived：flow 換了但 segments 是同一個陣列時，derived 不變，effect 不會跑。
-	const segments = $derived(flow?.segments);
-	$effect(() => {
-		segments;
-		untrack(() => {
-			if (!flow) return;
-			const { sec, ended } = resumeSec(flow, playheadSec);
-			playheadSec = sec;
-			if (!playing) return;
-			if (ended) pause();
-			else play(flow);
-		});
-	});
-
-	/** 沒有段時沒東西可以播（播放鍵是灰的）。 */
-	function togglePlay(f: Flow) {
-		if (playing) pause();
-		else if (f.segments.length) play(f);
-	}
-
-	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停。 */
-	function frame() {
-		if (!playing || !player) return;
-		playheadSec = player.tick(latencyMs);
-		if (!player.playing) playing = false;
-		else requestAnimationFrame(frame);
-	}
-
-	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
-	let previewing = $state(false);
-
-	function preview(f: Flow, segmentId: string) {
-		pause();
-		getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
-		previewing = true;
-		requestAnimationFrame(previewFrame);
-	}
-
-	/** 試聽播完了沒（播放頭不動，只看播完）。 */
-	function previewFrame() {
-		if (!previewing || !player) return;
-		player.tick(0);
-		if (!player.playing) previewing = false;
-		else requestAnimationFrame(previewFrame);
-	}
-
-	function stopPreview() {
-		if (!previewing) return;
-		previewing = false;
-		player?.stop();
-	}
-
-	function setMetronome(f: Flow, on: boolean) {
-		metronome = on;
-		if (playing) play(f);
-	}
-
-	/** 清空、不合法或超出範圍：不改，欄位回到現在的值（不然欄位空著，實際還在用舊值）。 */
-	function setLatency(input: HTMLInputElement) {
-		const ms = input.valueAsNumber;
-		if (!(Math.abs(ms) <= MAX_LATENCY_MS)) {
-			input.value = String(latencyMs);
-			return;
-		}
-		latencyMs = ms;
-		saveLatencyMs(ms);
 	}
 
 	// ---------- 場地和時間軸的分界：拖它（或 ↑↓）改時間軸多高，存在這台電腦；雙擊回到預設 ----------
@@ -419,7 +304,8 @@
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
-	 * 選取、提示由 session 清掉。music：這支流程的音樂檔庫（開檔、救回草稿時解碼好的；沒給是空的）。
+	 * 選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
+	 * music：這支流程的音樂檔庫（開檔、救回草稿時解碼好的；沒給是空的）。
 	 */
 	function startFlow(
 		f: Flow,
@@ -427,7 +313,6 @@
 		music?: MusicLibrary,
 		fileSaver: FileSaver | null = null
 	) {
-		pause();
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		session.open(f, from !== 'draft');
 		onDisk = from === 'file';
@@ -436,7 +321,6 @@
 		saver = fileSaver;
 		editor.switchMusic(music);
 		openError = '';
-		playheadSec = 0;
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
@@ -454,11 +338,10 @@
 		if (session.redo()) restore(session.flow!);
 	}
 
-	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段（選取、提示由 session 處理）。 */
+	/** 復原、重做換上的流程：開著的段設定可能指到已經不在的段（選取、提示、播放頭由 session、播放處理）。 */
 	function restore(f: Flow) {
-		playheadSec = Math.min(playheadSec, totalSeconds(f));
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
-			stopPreview();
+			playback.stopPreview();
 			openSegmentId = null;
 		}
 	}
@@ -574,7 +457,6 @@
 	async function leaveToHome() {
 		const f = flow;
 		const bytes = f && ownsDraft ? writeFlowFile(f, editor.music.bytes(f)) : null;
-		pause();
 		session.open(null);
 		if (!f || !bytes) return;
 		await draftStore.save(bytes).catch(() => {});
@@ -583,22 +465,8 @@
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
 	function startNew() {
-		unlessUnsaved(() => {
-			pause();
-			session.open(null);
-		});
+		unlessUnsaved(() => session.open(null));
 	}
-
-	// 改完要動播放頭的改動（拖人插站位、跟上一張一樣、挪站位）：session 說跳到哪，這裡跳。
-	// 拖人那種直接停到那張（播放中照樣跟著音樂走）；挪站位跟點八拍尺一樣，播放中從那裡重播。
-	$effect(() => {
-		const jump = session.jump;
-		if (!jump) return;
-		untrack(() => {
-			if (!jump.replay) playheadSec = jump.sec;
-			else if (flow) seek(flow, jump.sec);
-		});
-	});
 
 	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
 	function dismissNotice(e: Event) {
@@ -645,10 +513,8 @@
 		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它；其他時候播放／暫停
 		if (e.key === ' ') {
 			if (on(NATIVE_KEYS) || e.repeat) return;
-			// 對話框開著時只能暫停（不在對話框後面開始播）
-			if (overlayOpen && !playing) return;
-			e.preventDefault();
-			togglePlay(flow);
+			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
+			if (playback.space(overlayOpen)) e.preventDefault();
 			return;
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
@@ -657,7 +523,8 @@
 		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
 		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
 			e.preventDefault();
-			seek(flow, e.key === 'Home' ? 0 : totalSeconds(flow));
+			if (e.key === 'Home') playback.toStart();
+			else playback.toEnd();
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
 			e.preventDefault();
 			session.removeFormation(session.selectedFormationId);
@@ -675,7 +542,7 @@
 			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單、分頁自己用方向鍵時（已經 preventDefault）不算。
 			if (on(ownKeys)) return;
 			e.preventDefault();
-			seek(flow, stepPlayhead(flow, playheadSec, e.key === 'ArrowRight' ? 1 : -1, e.shiftKey));
+			playback.step(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -762,24 +629,24 @@
 				<button
 					type="button"
 					class="play"
-					class:on={playing}
-					aria-label={playing ? '暫停' : '播放'}
+					class:on={playback.playing}
+					aria-label={playback.playing ? '暫停' : '播放'}
 					title={flow.segments.length ? '空白鍵也可以播放／暫停' : '先加一段'}
-					disabled={!flow.segments.length && !playing}
-					onclick={() => flow && togglePlay(flow)}><Icon name={playing ? 'pause' : 'play'} size={18} /></button
+					disabled={!flow.segments.length && !playback.playing}
+					onclick={() => playback.toggle()}><Icon name={playback.playing ? 'pause' : 'play'} size={18} /></button
 				>
 				<div class="board">
 					<span class="pos" aria-label="目前位置"
 						>{#if position}<span class="pos-seg">{position.segment}</span>
 							<span class="pos-at">{position.at}</span>{:else}<span class="pos-seg">還沒有段</span>{/if}</span
 					>
-					<span class="clock">{clock(playheadSec)} <i>/ {clock(totalSeconds(flow))}</i></span>
+					<span class="clock">{clock(playback.sec)} <i>/ {clock(totalSeconds(flow))}</i></span>
 				</div>
 				<label class="toggle" title="播放時每拍響一聲">
 					<input
 						type="checkbox"
-						checked={metronome}
-						onchange={(e) => flow && setMetronome(flow, e.currentTarget.checked)}
+						checked={playback.metronome}
+						onchange={(e) => playback.setMetronome(e.currentTarget.checked)}
 					/>
 					<Icon name="metronome" />節拍器
 				</label>
@@ -790,8 +657,11 @@
 						step="10"
 						min={-MAX_LATENCY_MS}
 						max={MAX_LATENCY_MS}
-						value={latencyMs}
-						onchange={(e) => setLatency(e.currentTarget)}
+						value={playback.latencyMs}
+						onchange={(e) => {
+							// 清空、不合法或超出範圍：沒改，欄位回到現在的值（不然欄位空著，實際還在用舊值）
+							if (!playback.setLatency(e.currentTarget.valueAsNumber)) e.currentTarget.value = String(playback.latencyMs);
+						}}
 					/>
 				</label>
 			</div>
@@ -832,9 +702,9 @@
 				field={flow.field}
 				members={flow.members}
 				markers={memberMarkers(flow)}
-				positions={positionsAt(flow, playheadSec)}
-				raised={raisedAt(flow, playheadSec)}
-				{playheadSec}
+				positions={positionsAt(flow, playback.sec)}
+				raised={raisedAt(flow, playback.sec)}
+				playheadSec={playback.sec}
 				{toMeters}
 				ghosts={trail.ghosts}
 				walks={trail.walks}
@@ -861,7 +731,7 @@
 						</div>
 					{/if}
 					{#if flow}
-						{@const now = currentFormation(flow, playheadSec)}
+						{@const now = currentFormation(flow, playback.sec)}
 						<div class="now-formation" aria-label="現在的站位">
 							<span class="now-label">現在站位</span>
 							<div class="now-row">
@@ -881,18 +751,18 @@
 						</div>
 					{/if}
 					{#if flow}
-						{@const stacked = stackedMembers(flow.members, positionsAt(flow, playheadSec))}
+						{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
 						{#if stacked.length}
 							<p class="hint-warn" role="note">
 								{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
 							</p>
 						{/if}
-						<CueOverlay {flow} {playheadSec} />
+						<CueOverlay {flow} playheadSec={playback.sec} />
 					{/if}
 				{/snippet}
 				{#snippet railBottom()}
 					{#if flow?.members.length}
-						<FormationEditor {playheadSec} />
+						<FormationEditor playheadSec={playback.sec} />
 					{/if}
 				{/snippet}
 			{#if flow.members.length === 0}
@@ -944,9 +814,9 @@
 				>
 			</div>
 			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
-				<MemberPicker {playheadSec} />
-				<WalkForm {playheadSec} />
-				<ActionForm {playheadSec} {cellAt} />
+				<MemberPicker playheadSec={playback.sec} />
+				<WalkForm playheadSec={playback.sec} />
+				<ActionForm playheadSec={playback.sec} {cellAt} />
 			</div>
 			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 				<MemberPanel />
@@ -969,8 +839,8 @@
 
 		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
 			<Timeline
-				{playheadSec}
-				onseek={(sec) => flow && seek(flow, sec)}
+				playheadSec={playback.sec}
+				onseek={(sec) => playback.seek(sec)}
 				onopensegment={(id) => (openSegmentId = id)}
 			/>
 		</div>
@@ -1013,13 +883,13 @@
 		<SegmentSettings
 			segmentId={openSegmentId}
 			{waveXToSec}
-			{previewing}
-			onpreview={(id) => flow && preview(flow, id)}
-			{playing}
-			onpause={pause}
-			onstoppreview={stopPreview}
+			previewing={playback.previewing}
+			onpreview={(id) => playback.preview(id)}
+			playing={playback.playing}
+			onpause={() => playback.pause()}
+			onstoppreview={() => playback.stopPreview()}
 			onclose={() => {
-				stopPreview();
+				playback.stopPreview();
 				openSegmentId = null;
 			}}
 		/>
