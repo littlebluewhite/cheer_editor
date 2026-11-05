@@ -328,6 +328,7 @@
 		<button
 			type="button"
 			class="lab"
+			data-space-plays
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
@@ -351,6 +352,7 @@
 					<button
 						type="button"
 						class="bar"
+						data-space-plays
 						class:selected={p.action.id === selectedActionId}
 						data-action-id={p.action.id}
 						class:dragging={d !== null}

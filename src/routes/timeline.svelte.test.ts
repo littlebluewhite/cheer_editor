@@ -58,3 +58,15 @@ describe('時間軸上拖動作長度', () => {
 		expect(await screen.findByText(/小A 同一時間已經在「技巧·Lib」裡：上一個動作在 3-1& 才結束/)).toBeTruthy();
 	});
 });
+
+describe('播放頭', () => {
+	it('時間軸上那條播放頭的線本身也能拖（不只八拍尺）', async () => {
+		setup();
+		const line = document.querySelector<HTMLElement>('[data-playhead-line]')!;
+		// 150 BPM 一拍 0.4 秒：拖到 3-5（8 秒）
+		await fireEvent.pointerDown(line, { clientX: 0, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 8 * 16 });
+		await fireEvent.pointerUp(window, { clientX: 8 * 16 });
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5');
+	});
+});

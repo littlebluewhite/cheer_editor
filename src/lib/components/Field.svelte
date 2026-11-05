@@ -32,6 +32,7 @@
 		CELL_M,
 		fieldPositionText,
 		moveMembers,
+		positionsAt,
 		snapPointsNear,
 		snapPosition,
 		toPosition,
@@ -361,6 +362,12 @@
 		if (drag && (drag.cur || !still(e, drag.client))) {
 			// 拖一個沒選到的人：選取換成他，畫的影子和走位線才是他的。
 			if (!drag.cur && !selected.includes(drag.id)) session?.selectMembers([drag.id]);
+			if (!drag.cur && playback?.playing) {
+				// 播放中一開始拖就先暫停、播放頭停到整拍；拖的人從那一拍的位置算起
+				playback.pauseOnBeat();
+				const at = positionsAt(session!.flow!, playback.sec);
+				drag.orig = Object.fromEntries(drag.ids.map((i) => [i, at[i] ?? drag!.orig[i]]));
+			}
 			const [px, py] = toMeters(e, svg);
 			const o = drag.orig[drag.id];
 			drag.cur = snapPosition(field, [o[0] + px - drag.start[0], o[1] + py - drag.start[1]], zoom);

@@ -151,8 +151,15 @@ describe('目前位置文字', () => {
 
 	it('最後一個八拍不滿：最後一拍是那個八拍的第 4 拍', () => {
 		const flow = flowOf(updateSegment(sample(), 's3', { eights: 2, lastBeats: 4 }));
-		// 音樂 2 是 120 BPM、12 拍 = 6 秒，從 58 秒開始
-		expect(positionText(flow, 64)).toBe('音樂 2 2-4&');
+		// 音樂 2 是 120 BPM、12 拍 = 6 秒，從 58 秒開始：最後一個半拍從 63.75 秒開始
+		expect(positionText(flow, 63.75)).toBe('音樂 2 2-4&');
+	});
+
+	it('在流程結尾（播完、按 End）寫「結尾」，不寫最後一個半拍', () => {
+		const flow = sample();
+		const end = segmentSpans(flow).at(-1)!;
+		expect(positionText(flow, end.startSec + end.durationSec)).toBe('結尾');
+		expect(positionText(flow, end.startSec + end.durationSec - 0.2)).not.toBe('結尾');
 	});
 
 	it('沒有段時是空字串', () => {

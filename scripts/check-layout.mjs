@@ -1082,5 +1082,23 @@ await check('兩張站位只差 2 拍：沒選到、滑鼠沒移上去時 ✕ �
 	return { ok: seen.放滿.length === 0 && seen['×1'].length === 0 && seen.倍數 === '×1.0', value: seen };
 });
 
+await check('滑鼠點過「時間軸縮小」再按真的空白鍵：播放，不會又縮小一次（放開空白鍵不算按下按鈕）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const btn = await js(`const r = document.querySelector('.timeline [aria-label="時間軸縮小"]').getBoundingClientRect();
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	await click(btn.x, btn.y);
+	const zoom = () => js(`return document.querySelector('.timeline .zoom-val').textContent`);
+	const before = await zoom();
+	const focused = await js(`return document.activeElement?.getAttribute('aria-label')`);
+	for (const type of ['keyDown', 'keyUp'])
+		await send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32, text: type === 'keyDown' ? ' ' : undefined });
+	await sleep(300);
+	const playing = await js(`return !!document.querySelector('button[aria-label="暫停"]')`);
+	const after = await zoom();
+	await js(`document.querySelector('button[aria-label="暫停"]')?.click()`);
+	return { ok: focused === '時間軸縮小' && playing && after === before, value: { 焦點: focused, 播放: playing, 倍數: `${before} → ${after}` } };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);
