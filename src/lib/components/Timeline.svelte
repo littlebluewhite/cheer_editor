@@ -7,7 +7,15 @@
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
 	import { tick, untrack } from 'svelte';
-	import { addSegment, rulerMarks, segmentSpans, snapPlayhead, totalSeconds, type SegmentKind } from '#lib/core';
+	import {
+		addSegment,
+		rulerMarks,
+		segmentSpans,
+		snapPlayhead,
+		totalSeconds,
+		type Clash,
+		type SegmentKind
+	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { below, popover } from '#lib/popover.svelte.js';
@@ -21,9 +29,11 @@
 		pxPerSec?: number;
 		/** 點段、加好一段：打開這一段的段設定。 */
 		onopensegment: (segmentId: string) => void;
+		/** 整個流程的撞位，交給泳道畫。 */
+		clashes?: Clash[];
 	}
 
-	let { pxPerSec = 16, onopensegment }: Props = $props();
+	let { pxPerSec = 16, onopensegment, clashes = [] }: Props = $props();
 
 	const session = getEditorSession();
 	/** 找不到音樂檔的音樂段從音樂檔庫拿（editor.music，換流程會換一個）：標紅，點開段設定重新選檔。 */
@@ -265,7 +275,7 @@
 			</div>
 		</div>
 		<FormationRow pxPerSec={px} />
-		<Lanes pxPerSec={px} />
+		<Lanes pxPerSec={px} {clashes} />
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
 				<div class="lab"></div>

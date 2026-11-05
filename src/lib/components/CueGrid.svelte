@@ -36,9 +36,9 @@
 		phaseLabel,
 		STEP_WORDS,
 		actionEights,
+		beatSpanText,
 		addPhase,
 		toPosition,
-		atText,
 		clearCues,
 		clearPhaseBeats,
 		cueText,
@@ -168,14 +168,8 @@
 		});
 	});
 
-	/** 段內時間文字（例：「3-5」）；at 從動作開始算。 */
-	const beatText = (at: number) => (segment ? atText(segment, action.start + at) : '');
-	/** 「3-5 到 3-6・2 拍」；只有一拍是「3-5・1 拍」。 */
-	function spanText(from: number, len: number): string {
-		const last = from + len - BEAT;
-		const range = last > from ? `${beatText(from)} 到 ${beatText(last)}` : beatText(from);
-		return `${range}・${len / BEAT} 拍`;
-	}
+	/** 「3-5 到 3-6・2 拍」；只有一拍是「3-5・1 拍」。from 從動作開始算。 */
+	const spanText = (from: number, len: number) => (segment ? beatSpanText(segment, action.start + from, len) : '');
 
 	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
 	function send(cmd: (o?: ConfirmOption) => CommandResult, after?: () => void): boolean {

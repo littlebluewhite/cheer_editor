@@ -1,5 +1,6 @@
-// 撞位：兩個隊員同一時間靠得太近，而且至少一個人正在走位。只是提醒，不擋任何指令。
+// 撞位：兩個隊員同一時間靠得太近，而且至少一個人正在騰翻中走位。只是提醒，不擋任何指令。
 
+import { actionSeconds } from './action-types';
 import { CELL_M } from './field';
 import type { Flow } from './flow';
 import { formationTimes, formationWalks, walkPoint, type FormationWalk, type Position } from './formation';
@@ -25,9 +26,15 @@ const TOO_CLOSE_M = CELL_M / 2;
 
 /**
  * 整個流程的撞位，照時間排。取樣：音樂段每半拍、口號段每 0.1 秒（段內時間的每一格）。
- * 每個取樣點，兩人中心距離小於半格、至少一人在走位（出發之後、到達之前），就算撞到。
+ * 每個取樣點，兩人中心距離小於半格、至少一人在騰翻中走位，就算撞到。
+ * 騰翻中走位：在他自己參加的騰翻動作時間裡（含開始、不含結束；助跑也在裡面），而且在出發之後、到達之前。
+ * 一般走位、原地騰翻（位置沒變）不算；只拿騰翻中走位的人跟其他人比。
  */
 export function clashes(flow: Flow): Clash[] {
+	const tumbling = flow.actions
+		.filter((x) => x.category === 'tumbling')
+		.map((x) => ({ ...actionSeconds(flow, x), ids: new Set(x.members.map((m) => m.memberId)) }));
+	if (!tumbling.length) return [];
 	const times = formationTimes(flow);
 	/** 每段走位（A→B）：B 的 id、B 的秒數、這段裡位置有變的人。 */
 	const legs = times.slice(1).map(({ formation, sec }, i) => ({
@@ -52,13 +59,19 @@ export function clashes(flow: Flow): Clash[] {
 					const w = byId.get(id);
 					return w ? walkPoint(w.from, w.to, w.departSec, w.arriveSec, t) : leg.aPos[id];
 				};
-				const walking = (id: string) => {
+				/** 這個取樣點騰翻中走位的人（在 ids 裡的位置）。 */
+				const tumblers: number[] = [];
+				ids.forEach((id, i) => {
 					const w = byId.get(id);
-					return !!w && w.departSec < t - EPS && t < w.arriveSec - EPS;
-				};
-				for (let i = 0; i < ids.length; i++) {
-					for (let j = i + 1; j < ids.length; j++) {
-						if (!walking(ids[i]) && !walking(ids[j])) continue;
+					if (!w || !(w.departSec < t - EPS && t < w.arriveSec - EPS)) return;
+					if (tumbling.some((x) => x.ids.has(id) && x.startSec <= t + EPS && t < x.endSec - EPS)) tumblers.push(i);
+				});
+				const isTumbler = new Set(tumblers);
+				for (const a of tumblers) {
+					for (let b = 0; b < ids.length; b++) {
+						// 兩個都騰翻中的那一對只從前面那個人算一次。
+						if (b === a || (isTumbler.has(b) && b < a)) continue;
+						const [i, j] = a < b ? [a, b] : [b, a];
 						const p = at(ids[i]);
 						const q = at(ids[j]);
 						if (!p || !q) continue;

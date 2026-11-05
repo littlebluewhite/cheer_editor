@@ -38,7 +38,7 @@ const draftFlow = (bytes: Uint8Array | null) => read(bytes ?? new Uint8Array()).
 const addChant = (flow: Flow) => flowOf(addSegment(flow, 'chant'));
 
 /** 頁面打開了，讀過草稿（用假的計時器）。這台電腦上的草稿是 draft（沒給就沒有），drafts 是假的草稿存放。 */
-async function connected(draft: Uint8Array | null = null, savedAt?: Date) {
+async function connected(draft: Uint8Array | null = null, savedAt?: Date | null) {
 	const drafts = fakeDraftStore(draft, savedAt);
 	const t = testEditor(null, { draftStore: drafts.store });
 	t.editor.file.connect();
@@ -378,12 +378,12 @@ describe('流程檔：自動存草稿', () => {
 		editor.file.create(newFlow('全國賽'));
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(500);
-		expect(draftFlow(drafts.state.bytes).segments).toEqual([]);
+		expect(draftFlow(drafts.latest()).segments).toEqual([]);
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(500);
-		expect(draftFlow(drafts.state.bytes).segments).toEqual([]);
+		expect(draftFlow(drafts.latest()).segments).toEqual([]);
 		await vi.advanceTimersByTimeAsync(500);
-		const flow = draftFlow(drafts.state.bytes);
+		const flow = draftFlow(drafts.latest());
 		expect(flow.name).toBe('全國賽');
 		expect(flow.segments.map((s) => s.kind)).toEqual(['chant', 'chant']);
 	});
@@ -392,7 +392,7 @@ describe('流程檔：自動存草稿', () => {
 		const { editor, session, drafts } = await connected();
 		editor.file.create(newFlow('全國賽'));
 		await vi.advanceTimersByTimeAsync(0);
-		expect(draftFlow(drafts.state.bytes).name).toBe('全國賽');
+		expect(draftFlow(drafts.latest()).name).toBe('全國賽');
 		expect(session.unsaved).toBe(false);
 	});
 
@@ -401,27 +401,27 @@ describe('流程檔：自動存草稿', () => {
 		editor.file.create(newFlow('全國賽'));
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(drafts.state.bytes).not.toBeNull();
+		expect(drafts.latest()).not.toBeNull();
 		await editor.file.save();
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftFlow(drafts.state.bytes).segments).toHaveLength(2);
+		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
 	});
 
 	it('開了流程檔（在檔案裡、沒改過）：草稿清掉，也不存；改了才存', async () => {
 		const { editor, session, drafts } = await connected();
 		editor.file.create(newFlow('全國賽'));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(drafts.state.bytes).not.toBeNull();
+		expect(drafts.latest()).not.toBeNull();
 		await editor.file.open(zip(audioFlow()));
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(session.flow!.name).toBe('練習用');
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftFlow(drafts.state.bytes).name).toBe('練習用');
+		expect(draftFlow(drafts.latest()).name).toBe('練習用');
 	});
 
 	it('記成功率（不算復原的一步）也存草稿', async () => {
@@ -430,7 +430,7 @@ describe('流程檔：自動存草稿', () => {
 		const attempt = { date: '2026-11-05', who: 'g2', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } };
 		session.record(flowOf(recordAttempt(session.flow!, 'x1', attempt)));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftFlow(drafts.state.bytes).actions[0].successRate!.records).toHaveLength(4);
+		expect(draftFlow(drafts.latest()).actions[0].successRate!.records).toHaveLength(4);
 	});
 
 	it('有改動時按新建、選「不存了，繼續」：草稿清掉', async () => {
@@ -438,11 +438,11 @@ describe('流程檔：自動存草稿', () => {
 		editor.file.create(newFlow('全國賽'));
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(drafts.state.bytes).not.toBeNull();
+		expect(drafts.latest()).not.toBeNull();
 		editor.file.startNew();
 		await editor.file.answer('discard');
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 });
 
@@ -455,19 +455,21 @@ describe('流程檔：打開時讀草稿', () => {
 		expect(editor.file.draftOffer).toEqual({ text: '上次編的「練習用」還沒存，要救回嗎？（11/5 14:03 存的草稿）', error: '' });
 	});
 
-	it('舊版編輯器存的草稿沒有記時間：不寫時間', async () => {
-		const bytes = writeFlowFile(audioFlow(), {});
-		const draftStore = { ...fakeDraftStore().store, load: async () => ({ bytes, savedAt: null }) };
-		const { editor } = testEditor(null, { draftStore });
-		editor.file.connect();
-		await vi.advanceTimersByTimeAsync(0);
+	it('舊版編輯器存的那一份草稿（沒有記時間）：讀得進來、不寫時間，救得回；救回後照常存在同一份', async () => {
+		const { editor, session, drafts } = await connected(writeFlowFile(audioFlow(), {}), null);
 		expect(editor.file.draftOffer?.text).toBe('上次編的「練習用」還沒存，要救回嗎？');
+		await editor.file.restoreDraft();
+		expect(session.flow!.name).toBe('練習用');
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect([...drafts.all.keys()]).toEqual(['current']);
+		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
 	});
 
 	it('沒有草稿、讀不到草稿（私密視窗）、草稿打不開：都不問', async () => {
 		expect((await connected()).editor.file.draftOffer).toBeNull();
 		expect((await connected(new TextEncoder().encode('不是 zip'))).editor.file.draftOffer).toBeNull();
-		const draftStore = { ...fakeDraftStore().store, load: () => Promise.reject(new Error('私密視窗')) };
+		const draftStore = { ...fakeDraftStore().store, list: () => Promise.reject(new Error('私密視窗')) };
 		const { editor } = testEditor(null, { draftStore });
 		editor.file.connect();
 		await vi.advanceTimersByTimeAsync(0);
@@ -477,18 +479,18 @@ describe('流程檔：打開時讀草稿', () => {
 	it('讀草稿比較慢、教練已經開始編了：不問；讀完了才開始自動存（在這之前不蓋掉草稿）', async () => {
 		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), {}));
 		let loaded = () => {};
-		const load = () => new Promise<void>((r) => (loaded = r)).then(() => drafts.store.load());
-		const { editor, session } = testEditor(null, { draftStore: { ...drafts.store, load } });
+		const list = () => new Promise<void>((r) => (loaded = r)).then(() => drafts.store.list());
+		const { editor, session } = testEditor(null, { draftStore: { ...drafts.store, list } });
 		editor.file.connect();
 		editor.file.create(newFlow('全國賽'));
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(read(drafts.state.bytes!).flow.name).toBe('練習用');
+		expect(read(drafts.latest()!).flow.name).toBe('練習用');
 		loaded();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(editor.file.draftOffer).toBeNull();
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(read(drafts.state.bytes!).flow.name).toBe('全國賽');
+		expect(read(drafts.latest()!).flow.name).toBe('全國賽');
 	});
 
 	it('按「救回」：換上草稿的流程（含音樂），還算沒存，不再問；少了音樂時提示寫「草稿」', async () => {
@@ -509,10 +511,10 @@ describe('流程檔：打開時讀草稿', () => {
 		expect(session.canUndo).toBe(false);
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftFlow(drafts.state.bytes).segments).toHaveLength(2);
+		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
 		session.undo();
 		await vi.advanceTimersByTimeAsync(1000);
-		const r = read(drafts.state.bytes!);
+		const r = read(drafts.latest()!);
 		expect(r.flow.segments.map((s) => s.kind)).toEqual(['music']);
 		expect(r.audio).toEqual({ a1: new Uint8Array([7, 7]) });
 	});
@@ -521,11 +523,11 @@ describe('流程檔：打開時讀草稿', () => {
 		const { editor, drafts } = await connected(writeFlowFile(audioFlow(), {}));
 		await editor.file.discardDraft();
 		expect(editor.file.draftOffer).toBeNull();
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 });
 
-describe('流程檔：兩個分頁（草稿只有一份）', () => {
+describe('流程檔：兩個分頁（每支流程一份草稿）', () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
@@ -537,17 +539,99 @@ describe('流程檔：兩個分頁（草稿只有一份）', () => {
 		return { ...t, close };
 	}
 
+	/** 草稿裡有哪幾支流程（照名字排）。 */
+	const draftNames = (drafts: ReturnType<typeof fakeDraftStore>) =>
+		[...drafts.all.values()].map((d) => read(d.bytes).flow.name).sort();
+
+	it('分頁 A 編流程 A、分頁 B 編流程 B：兩份草稿都在，不互相蓋掉', async () => {
+		const drafts = fakeDraftStore();
+		const tabs = fakeTabs();
+		const a = await openTab(drafts, tabs);
+		const b = await openTab(drafts, tabs);
+		a.editor.file.create(newFlow('全國賽'));
+		b.editor.file.create(newFlow('校內賽'));
+		a.session.change(addChant(a.session.flow!));
+		b.session.change(addChant(b.session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(draftNames(drafts)).toEqual(['全國賽', '校內賽']);
+	});
+
+	it('分頁 B 按「新建 → 不存了」：只清掉流程 B 的草稿，流程 A 的還在', async () => {
+		const drafts = fakeDraftStore();
+		const tabs = fakeTabs();
+		const a = await openTab(drafts, tabs);
+		const b = await openTab(drafts, tabs);
+		a.editor.file.create(newFlow('全國賽'));
+		a.session.change(addChant(a.session.flow!));
+		b.editor.file.create(newFlow('校內賽'));
+		b.session.change(addChant(b.session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		b.editor.file.startNew();
+		await b.editor.file.answer('discard');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(draftNames(drafts)).toEqual(['全國賽']);
+	});
+
+	it('分頁 A 正在編流程 A：分頁 B 救回它被擋，首頁說原因，草稿還在', async () => {
+		const drafts = fakeDraftStore();
+		const tabs = fakeTabs();
+		const a = await openTab(drafts, tabs);
+		a.editor.file.create(newFlow('全國賽'));
+		const b = await openTab(drafts, tabs);
+		expect(b.editor.file.draftOffer?.text).toContain('全國賽');
+		await b.editor.file.restoreDraft();
+		expect(b.session.flow).toBeNull();
+		expect(b.editor.file.draftOffer).toBeNull();
+		expect(b.editor.file.openError).toBe('打不開「全國賽」：另一個分頁正在編這支流程');
+		expect(draftNames(drafts)).toEqual(['全國賽']);
+	});
+
+	it('分頁 A 開著流程檔：分頁 B 開同一個檔被擋、說原因；A 存好的檔也一樣', async () => {
+		const drafts = fakeDraftStore();
+		const tabs = fakeTabs();
+		const bytes = writeFlowFile(audioFlow(), {});
+		const file = () => new File([bytes as Uint8Array<ArrayBuffer>], '練習用.zip');
+		const a = await openTab(drafts, tabs);
+		// 先問別的分頁，等 300 毫秒沒人回答才開
+		const opening = a.editor.file.open(file());
+		await vi.advanceTimersByTimeAsync(300);
+		await opening;
+		expect(a.session.flow!.name).toBe('練習用');
+		const b = await openTab(drafts, tabs);
+		await b.editor.file.open(file());
+		expect(b.session.flow).toBeNull();
+		expect(b.editor.file.openError).toBe('打不開「練習用.zip」：另一個分頁正在編這支流程');
+
+		a.editor.file.create(newFlow('全國賽'));
+		await a.editor.file.save();
+		await b.editor.file.open(new File([a.saves[0] as Uint8Array<ArrayBuffer>], '全國賽.zip'));
+		expect(b.session.flow).toBeNull();
+		expect(b.editor.file.openError).toBe('打不開「全國賽.zip」：另一個分頁正在編這支流程');
+	});
+
+	it('編第 6 支流程：最舊的那份草稿刪掉，只留最近編過的 5 支', async () => {
+		const drafts = fakeDraftStore();
+		const ages = [3, 5, 1, 4, 2];
+		for (const day of ages) {
+			drafts.all.set(`d${day}`, { bytes: writeFlowFile(newFlow(`第 ${day} 支`), {}), savedAt: new Date(2026, 10, day) });
+		}
+		const tab = await openTab(drafts, fakeTabs());
+		tab.editor.file.create(newFlow('全國賽'));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(draftNames(drafts)).toEqual(['全國賽', '第 2 支', '第 3 支', '第 4 支', '第 5 支']);
+	});
+
 	it('另一個分頁正在編這份草稿：「丟掉」不刪，提示說它正在被編', async () => {
 		const drafts = fakeDraftStore();
 		const tabs = fakeTabs();
 		const first = await openTab(drafts, tabs);
 		first.editor.file.create(newFlow('全國賽'));
 		const second = await openTab(drafts, tabs);
-		const saved = drafts.state.bytes;
+		const saved = drafts.latest();
 		expect(second.editor.file.draftOffer?.text).toContain('全國賽');
 		await second.editor.file.discardDraft();
 		expect(second.editor.file.draftOffer?.error).toBe('另一個分頁正在編輯這份草稿，所以沒有丟掉。');
-		expect(drafts.state.bytes).toBe(saved);
+		expect(drafts.latest()).toBe(saved);
 	});
 
 	it('另一個分頁開著存好的流程檔（草稿不是它的）：不回答；等 300 毫秒沒人回答，就丟掉', async () => {
@@ -558,15 +642,15 @@ describe('流程檔：兩個分頁（草稿只有一份）', () => {
 		await first.editor.file.save();
 		await vi.advanceTimersByTimeAsync(1000);
 		// 第三個分頁留下的草稿
-		drafts.state.bytes = writeFlowFile(audioFlow(), {});
+		drafts.all.set('third', { bytes: writeFlowFile(audioFlow(), {}), savedAt: new Date() });
 		const second = await openTab(drafts, tabs);
 		const discarding = second.editor.file.discardDraft();
 		await vi.advanceTimersByTimeAsync(299);
-		expect(drafts.state.bytes).not.toBeNull();
+		expect(drafts.latest()).not.toBeNull();
 		await vi.advanceTimersByTimeAsync(1);
 		await discarding;
 		expect(second.editor.file.draftOffer).toBeNull();
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 
 	it('正在編的分頁關掉了：不回答，草稿丟得掉', async () => {
@@ -579,7 +663,7 @@ describe('流程檔：兩個分頁（草稿只有一份）', () => {
 		const discarding = second.editor.file.discardDraft();
 		await vi.advanceTimersByTimeAsync(300);
 		await discarding;
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 });
 
@@ -592,7 +676,7 @@ describe('流程檔：「視窗太窄」提示上的「回首頁」', () => {
 		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([7, 7]) }));
 		session.change(addChant(session.flow!));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(drafts.state.bytes).not.toBeNull();
+		expect(drafts.latest()).not.toBeNull();
 		await editor.file.leaveToHome();
 		expect(editor.file.asking).toBe(true);
 		expect(editor.file.askingToOpen).toBe(false);
@@ -603,7 +687,7 @@ describe('流程檔：「視窗太窄」提示上的「回首頁」', () => {
 		await editor.file.answer('discard');
 		expect(session.flow).toBeNull();
 		expect(editor.file.draftOffer).toBeNull();
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 
 	it('剛建好、沒改過的流程：不問，回到首頁，留在草稿裡問要不要救回（寫現在的時間）', async () => {
@@ -625,6 +709,6 @@ describe('流程檔：「視窗太窄」提示上的「回首頁」', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(session.flow).toBeNull();
 		expect(editor.file.draftOffer).toBeNull();
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 });
