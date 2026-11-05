@@ -15,6 +15,7 @@ import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile 
 import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
+import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -30,9 +31,11 @@ export interface EditorAdapters {
 	draftStore: DraftStore;
 	/** 欄位裡打了還沒送出的字。 */
 	pendingInput: PendingInput;
+	/** 畫面時鐘：播放時每一格畫面移一次播放頭。 */
+	nextFrame: NextFrame;
 }
 
-/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、焦點所在的欄位。 */
+/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、焦點所在的欄位、requestAnimationFrame。 */
 export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
@@ -40,15 +43,18 @@ export function browserAdapters(): EditorAdapters {
 		pickFlowFile: browserFilePicker(),
 		decode: decodeAudio,
 		draftStore: createIndexedDbDraftStore(),
-		pendingInput: domPendingInput
+		pendingInput: domPendingInput,
+		nextFrame: animationFrame
 	};
 }
 
 export class Editor {
 	/** 編輯 session：流程、復原、選取、提示、場上那一個問題、分組。 */
 	readonly session: EditorSession;
-	/** 收著的 adapter。開檔、存檔、草稿、播放的規則還在頁面，頁面從這裡拿；規則搬進來以後就不用再對外。 */
+	/** 收著的 adapter。開檔、存檔、草稿的規則還在頁面，頁面從這裡拿；規則搬進來以後就不用再對外。 */
 	readonly adapters: EditorAdapters;
+	/** 播放：播放頭、在不在播、節拍器、延遲校正、試聽。 */
+	readonly playback: Playback;
 	/** 右邊欄翻到哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	inspectorTab = $state<'action' | 'members'>('action');
 	#music: MusicLibrary;
@@ -56,7 +62,12 @@ export class Editor {
 	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
 		this.adapters = adapters;
-		this.session = new EditorSession(flow);
+		this.playback = new Playback(
+			() => this.session.flow,
+			() => adapters.createEngine((id) => this.music.buffer(id)),
+			adapters.nextFrame
+		);
+		this.session = new EditorSession(flow, this.playback);
 		this.#music = $state.raw(new MusicLibrary(this.session, adapters.decode));
 	}
 
