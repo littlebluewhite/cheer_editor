@@ -7,8 +7,8 @@ import { composing } from '#lib/ime.js';
 export interface PopoverOptions {
 	/** 小窗放哪裡（畫面座標）。打開、捲動、視窗變大變小、裡面讀的狀態變了，都再放一次。 */
 	place: (pop: HTMLElement) => { top: number; left: number };
-	/** 點外面、按 Esc：把小窗關掉。 */
-	close: () => void;
+	/** 點外面、按 Esc：把小窗關掉（按 Esc 的話焦點要還給打開它的鈕，by 分得出來）。 */
+	close: (by: 'outside' | 'escape') => void;
 	/** 點這些裡面不算點外面（例：打開小窗的鈕）；小窗自己本來就不算。 */
 	inside?: (Element | undefined)[];
 }
@@ -32,12 +32,12 @@ export function popover(o: PopoverOptions): Attachment<HTMLElement> {
 		$effect(place);
 		const outside = (e: PointerEvent) => {
 			const t = e.target as Node;
-			if (![el, ...(o.inside ?? [])].some((x) => x?.contains(t))) o.close();
+			if (![el, ...(o.inside ?? [])].some((x) => x?.contains(t))) o.close('outside');
 		};
 		const keys = (e: KeyboardEvent) => {
 			if (e.key !== 'Escape' || composing(e)) return;
 			e.stopPropagation();
-			o.close();
+			o.close('escape');
 		};
 		addEventListener('scroll', place, true);
 		addEventListener('resize', place);

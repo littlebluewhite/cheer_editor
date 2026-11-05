@@ -118,10 +118,11 @@
 		font-weight: 700;
 		font-size: 14px;
 	}
-	/* 選的人現在在的那一組：外面一圈。 */
+	/* 選的人現在在的那一組：外面一圈深色（用陰影畫；外框留給焦點的青色框）。 */
 	.num[aria-pressed='true'] {
-		outline: 3px solid var(--sel, #19b4d8);
-		outline-offset: 2px;
+		box-shadow:
+			0 0 0 2px #fff,
+			0 0 0 4px var(--ink, #16213a);
 	}
 	.num.new {
 		background: #fff;

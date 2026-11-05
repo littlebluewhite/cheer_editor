@@ -12,7 +12,7 @@
 	// 改動作時「開始」旁邊有「跳到開始」（播放頭跳到動作開始）。
 	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列），勾「照組排」就照組號排。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
-	import { flushSync, type ComponentProps } from 'svelte';
+	import { flushSync, tick, type ComponentProps } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { composing } from '#lib/ime.js';
@@ -144,6 +144,13 @@
 	function remove() {
 		askAtLength = false;
 		if (action) session.removeAction(action.id, ask);
+		keepFocus();
+	}
+
+	/** 按的鈕做完就不見了（刪除動作、新增動作、接下一個動作）：焦點給表單的名稱，不掉回頁面最上面。 */
+	async function keepFocus() {
+		await tick();
+		if (!formEl.contains(document.activeElement)) nameInput?.focus();
 	}
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
@@ -255,11 +262,7 @@
 			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
 		/>
 		<CharCount field="actionName" input={nameInput} value={draft.name} />
-		{#if action}
-			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
-		{:else}
-			<span class="badge">新動作</span>
-		{/if}
+		{#if !action}<span class="badge">新動作</span>{/if}
 	</header>
 
 	{#if !segment}
@@ -453,7 +456,7 @@
 
 		{#if action}
 			<!-- 轉接（例如 Lib 轉金字塔）：開新表單接在結束拍後面，人、任務角色、組帶過去 -->
-			<button type="button" class="next" onclick={() => draft.next()}><Icon name="plus" size={14} />接下一個動作</button>
+			<button type="button" class="next" onclick={() => (draft.next(), keepFocus())}><Icon name="plus" size={14} />接下一個動作</button>
 			<CueGrid {action} {cellAt} />
 		{:else}
 			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
@@ -463,11 +466,16 @@
 					class="primary add"
 					disabled={!draft.members.length}
 					aria-describedby={draft.members.length ? undefined : 'add-why'}
-					onclick={() => draft.add()}>新增動作</button
+					onclick={() => (draft.add(), keepFocus())}>新增動作</button
 				>
 				{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 			</div>
 		{/if}
+	{/if}
+
+	<!-- 「刪除動作」畫在標題右邊，但在 Tab 順序的最後：在名稱按 Tab 不會先跳到它。 -->
+	{#if action}
+		<button type="button" class="danger remove" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
 	{/if}
 
 	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->
@@ -506,9 +514,19 @@
 		border-left: 4px solid var(--cat);
 	}
 	header {
+		grid-area: 1 / 1;
 		display: flex;
 		align-items: center;
 		gap: 8px;
+	}
+	/* 「刪除動作」跟標題同一格、靠右；標題留出它的位置。 */
+	.action-form:has(> .remove) header {
+		padding-right: 96px;
+	}
+	.remove {
+		grid-area: 1 / 1;
+		justify-self: end;
+		align-self: center;
 	}
 	.dot {
 		flex: none;

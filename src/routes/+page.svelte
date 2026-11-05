@@ -508,6 +508,10 @@
 				</label>
 			</div>
 		{/snippet}
+		<!-- 鍵盤用的捷徑：上方列、場地、右邊欄要按很多下 Tab 才到時間軸。平常藏著，Tab 到它才出現。 -->
+		{#if view === 'edit' && !narrow}
+			<button type="button" class="skip" onclick={() => timelineHost?.focus()}>跳到時間軸</button>
+		{/if}
 		<header class="topbar">
 			<div class="title">
 				<b title={flow.name}>{flow.name}</b>
@@ -704,7 +708,7 @@
 				</Field>
 			</main>
 
-			<aside class="inspector" hidden={view === 'practice'}>
+			<aside class="inspector" aria-label="右邊欄" hidden={view === 'practice'}>
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 				<div
 					class="col-split"
@@ -761,9 +765,9 @@
 				{@attach timelineDivider.attach}
 			></div>
 
-			<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
+			<section class="timeline-host" aria-label="時間軸" tabindex="-1" hidden={view === 'practice'} bind:this={timelineHost}>
 				<Timeline onopensegment={(id) => (openSegmentId = id)} clashes={allClashes} />
-			</div>
+			</section>
 		{/if}
 		{#if view === 'practice'}
 			<div class="practice-host">
@@ -1610,6 +1614,35 @@
 	}
 	.panel[hidden] {
 		display: none;
+	}
+
+	/* 上方列、播放區、分頁、時間軸：從空白處拖過去不會把整頁的字反白（輸入框裡照常能選字）。 */
+	.topbar,
+	.transport,
+	.tabs,
+	.timeline-host {
+		user-select: none;
+		-webkit-user-select: none;
+	}
+	:is(.topbar, .transport, .timeline-host) :global(input) {
+		user-select: text;
+		-webkit-user-select: text;
+	}
+
+	/* 「跳到時間軸」：不佔版面；Tab 到它才從左上角出現。 */
+	.skip {
+		position: fixed;
+		top: 8px;
+		left: 8px;
+		z-index: 200;
+		translate: 0 calc(-100% - 16px);
+	}
+	.skip:focus-visible {
+		translate: none;
+	}
+	/* 按「跳到時間軸」聚焦的是整塊時間軸：用跟其他東西一樣的焦點框，框在裡面（外面會被裁掉）。 */
+	.timeline-host:focus-visible {
+		outline-offset: -2px;
 	}
 
 	/* 讓時間軸撐滿這一列、自己捲動。 */

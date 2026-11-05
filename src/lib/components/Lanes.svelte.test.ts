@@ -125,9 +125,9 @@ describe('泳道', () => {
 		const [a] = bars(lanes()[0]);
 		expect(a.style.background).toBe('rgb(21, 101, 192)');
 		// 大類那條 6px：挑了辨識色也認得出大類
-		expect(a.style.boxShadow).toBe('inset 6px 0 0 #d9603b');
+		expect(a.style.getPropertyValue('--tint')).toBe('inset 6px 0 0 #d9603b');
 		// 沒挑辨識色的照大類塗，不加左邊那條
-		expect(bars(lanes()[2])[0].style.boxShadow).toBe('');
+		expect(bars(lanes()[2])[0].style.getPropertyValue('--tint')).toBe('');
 	});
 
 	it('每個人的色條都寫動作名稱，不寫大類（顏色就是大類）；沒取名才寫大類', () => {
@@ -144,6 +144,7 @@ describe('泳道', () => {
 		setup(0.5);
 		const idle = lanes().map((l) => l.querySelector('.idle-tag') !== null);
 		expect(idle).toEqual([false, false, true]);
+		expect(lanes()[2].querySelector('.idle-tag')?.getAttribute('title')).toBe('播放頭這一拍沒在動作裡');
 	});
 
 	it('點色條選這個動作；選到的色條有框', async () => {

@@ -475,12 +475,13 @@
 		</div>
 	{/if}
 	<div class="stage" {@attach watchStage}>
+	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
 		class="field"
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
-		role="img"
+		role={session ? 'group' : 'img'}
 		aria-label="場地"
 		{onwheel}
 		onpointerdown={down}
@@ -550,7 +551,7 @@
 				data-member-id={m.id}
 				role="button"
 				tabindex={session ? 0 : undefined}
-				aria-label={m.name}
+				aria-label={session ? whereText(m, p) : m.name}
 				aria-pressed={session ? sel : undefined}
 				onkeydown={(e) => dotKey(e, m.id)}
 				transform="translate({p[0]},{p[1]})"
@@ -558,9 +559,11 @@
 				<title>{session ? whereText(m, p) : m.name}</title>
 				<g transform="scale({dotScale})">
 					{#if pill}
+						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
 						<rect class={m.globalRole} x={-pill / 2} y={-DOT_R} width={pill} height={DOT_R * 2} rx={DOT_R} />
 					{:else}
+						{#if session}<circle class="focus-ring" r="0.54" />{/if}
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}
@@ -718,10 +721,15 @@
 	.dot.dragging {
 		cursor: grabbing;
 	}
-	/* 用鍵盤停到人時，圓點的邊加粗變色當焦點框。 */
-	.dot:focus-visible :is(circle, rect):not(.ring) {
+	/* 用鍵盤停到人時：圓點外面隔一點距離的青色細框（跟全站的焦點框一樣）；選到是塗滿的 .ring，兩個分得開。 */
+	.dot .focus-ring {
+		display: none;
+		fill: none;
 		stroke: var(--sel);
-		stroke-width: 0.1;
+		stroke-width: 0.08;
+	}
+	.dot:focus-visible .focus-ring {
+		display: inline;
 	}
 	.dot :is(circle, rect) {
 		stroke: #16213a;
