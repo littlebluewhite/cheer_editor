@@ -48,8 +48,8 @@ export type Settled =
 /**
  * 收尾：before 是改之前的動作（加動作時沒有），after 是指令改好的動作（人、大類、段、拍點都改好了）。
  * 照回答清掉換了人的組的紀錄（選了清掉才清；一定清掉的不管回答都拿掉）；動作變短、拖到半拍、換段時標的拍跟著切短或刪掉；
- * 開始分組時全部的人進新的一組（第 1 組），只有一組時新進、沒帶組的人進那一組，從別的動作帶組進來的人照號碼對（見 squadRules）；
- * 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉。組號不存（見 squadsOf），組空掉後面的自然往前補，紀錄不用換號。
+ * 開始分組時沒人帶組就全部的人進新的一組（第 1 組），只有一組時新進、沒帶組的人進那一組，從別的動作帶組進來的人照號碼對（見 squadRules）；
+ * 還沒有環節的動作也照號碼對、留著組（加第一個環節時照用）；騰翻、跳躍的動作人身上的組拿掉。組號不存（見 squadsOf），組空掉後面的自然往前補，紀錄不用換號。
  * 回收好的動作和後果；不守成功率規則就擋。要不要問、怎麼問由 falloutQuestion 決定。
  */
 export function settle(flow: Flow, before: Action | undefined, after: Action, answer: ConfirmOption = {}): Settled {
@@ -72,13 +72,14 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 
 /**
  * 組的規則（先放好組，再算紀錄的後果，所以換了人的組照樣會問）：
- * 開始分組（改之前不分組、改之後分組：加了第一個環節，或大類從騰翻、跳躍換成要分組的）時，動作裡的人全部進新的一組（第 1 組）；
+ * 開始分組（改之前不分組、改之後分組：加了第一個環節，或大類從騰翻、跳躍換成要分組的）時，沒有人帶組就全部進新的一組（第 1 組），
+ * 有人帶組（還沒有環節時從別的動作複製來的）就照那些組；
  * 帶著別的動作的組 id 進來的人（從別的動作複製）照號碼對：那邊的第 n 組對到這邊的第 n 組，這邊沒有就是新的一組，
  * 所以兩個動作不會共用同一組；新進動作、沒帶組的人，動作只有一組就進那一組，有好幾組或還沒有組就沒有組。
  * 新的組 id 從流程發（刪了不重用），回傳記上發到第幾號的流程。
  */
 function squadRules(flow: Flow, before: Action | undefined, after: Action): { action: Action; flow: Flow } {
-	if (!groupsPeople(after)) return { action: after, flow };
+	if (perPerson(after.category)) return { action: after, flow };
 	let lastIds = flow.lastIds;
 	const issue = () => {
 		const issued = freshIds('g', 1, lastIds, allSquadIds(flow));
@@ -86,7 +87,8 @@ function squadRules(flow: Flow, before: Action | undefined, after: Action): { ac
 		return issued.ids[0];
 	};
 	const done = (action: Action) => ({ action, flow: lastIds === flow.lastIds ? flow : { ...flow, lastIds } });
-	if (before && !groupsPeople(before)) {
+	const carried = after.members.some((m) => m.squad !== undefined);
+	if (before && !groupsPeople(before) && groupsPeople(after) && !carried) {
 		const squad = issue();
 		return done({ ...after, members: after.members.map((m) => ({ ...m, squad })) });
 	}
@@ -113,9 +115,9 @@ function squadRules(flow: Flow, before: Action | undefined, after: Action): { ac
 	return done(same ? after : { ...after, members });
 }
 
-/** 不分組的動作（沒有環節、騰翻、跳躍）人身上的組拿掉（例：從別的動作複製人、大類換成騰翻）。 */
+/** 騰翻、跳躍的動作人身上的組拿掉（例：大類換成騰翻、從別的動作複製人）。還沒有環節的動作留著（加第一個環節時照用）。 */
 function ungroup(action: Action): Action {
-	if (groupsPeople(action) || action.members.every((m) => m.squad === undefined)) return action;
+	if (!perPerson(action.category) || action.members.every((m) => m.squad === undefined)) return action;
 	return { ...action, members: action.members.map(({ squad: _, ...m }) => m) };
 }
 
