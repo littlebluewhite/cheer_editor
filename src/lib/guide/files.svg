@@ -75,7 +75,7 @@
   <g id="node-restore" data-graph-role="node" data-node-id="restore" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="600,110,930,180">
   <rect x="600.0" y="110.0" width="330.0" height="70.0" rx="10.0" fill="#fefce8" stroke="#eab308" stroke-width="1.8"/>
   <text data-text-role="title" data-full-text="下次打開首頁" data-text-max-width="306.0" x="765.0" y="145.0" text-anchor="middle" class="node-title" font-size="18">下次打開首頁</text>
-  <text data-text-role="subtitle" data-full-text="問你要「救回」還是「丟掉」" data-text-max-width="306.0" x="765.0" y="167.0" text-anchor="middle" class="node-sub" font-size="12">問你要「救回」還是「丟掉」</text>
+  <text data-text-role="subtitle" data-full-text="列在「最近的流程」，點名字打開" data-text-max-width="306.0" x="765.0" y="167.0" text-anchor="middle" class="node-sub" font-size="12">列在「最近的流程」，點名字打開</text>
   </g>
   <g id="node-member" data-graph-role="node" data-node-id="member" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="600,220,930,290">
   <rect x="600.0" y="220.0" width="330.0" height="70.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>

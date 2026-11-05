@@ -447,6 +447,42 @@ await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編�
 	return { ok: bad.length === 0, value: bad };
 });
 
+await check('首頁有 5 支最近的流程（名字很長）：1440×900、390×844 照樣有（捲過去）點得到的「建立」和「開啟流程檔」，「丟掉」離打開的按鈕遠一點，不溢出', async () => {
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte`));
+	// 直接在 IndexedDB 放 5 份草稿（跟 src/lib/file/draft.ts 存的一樣），重新整理
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const db = await new Promise((r, j) => { const q = indexedDB.open('cheer-editor', 1);
+			q.onupgradeneeded = () => q.result.createObjectStore('draft'); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); });
+		const tx = db.transaction('draft', 'readwrite');
+		tx.objectStore('draft').clear();
+		for (let i = 0; i < 5; i++) {
+			const flow = c.createFlow({ name: '第' + i + '支'.repeat(36), field: { strips: 9, layout: 'vertical' } }).flow;
+			tx.objectStore('draft').put({ bytes: c.writeFlowFile(flow, {}), savedAt: Date.now() - i * 60000 }, 'layout-' + i);
+		}
+		await new Promise((r) => (tx.oncomplete = r));
+		db.close();`);
+	const bad = [];
+	for (const [w, h] of [[1440, 900], [390, 844]]) {
+		await setViewport(w, h);
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte && document.querySelectorAll('.recent li').length === 5`), 30).catch(() => {});
+		const r = await js(`const seen = (el) => { if (!el) return '沒有';
+				el.scrollIntoView({ block: 'nearest' });
+				const b = el.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+				return b.top >= 0 && b.bottom <= innerHeight && !!top && el.contains(top) ? '好' : '看不到或點不到'; };
+			const create = [...document.querySelectorAll('.home button')].find((b) => b.textContent.trim() === '建立');
+			const li = document.querySelector('.recent li');
+			const gap = li ? li.querySelector('.recent-drop').getBoundingClientRect().left - li.querySelector('.recent-open').getBoundingClientRect().right : -1;
+			return { 寬: ${w}, 建立: seen(create), 開啟流程檔: seen(document.querySelector('.home-open label.open')),
+				最近的流程: document.querySelectorAll('.recent li').length, 丟掉離打開: Math.round(gap),
+				溢出: document.scrollingElement.scrollWidth > innerWidth ? [...document.querySelectorAll('.home *')].filter((el) => el.getBoundingClientRect().right > innerWidth + 1).map((el) => el.outerHTML.slice(0, 50)).slice(0, 4) : false };`);
+		if (r.建立 !== '好' || r.開啟流程檔 !== '好' || r.最近的流程 !== 5 || r.丟掉離打開 < 12 || r.溢出) bad.push(r);
+	}
+	await js(`await new Promise((r) => { const q = indexedDB.deleteDatabase('cheer-editor'); q.onsuccess = q.onerror = q.onblocked = r; });`);
+	return { ok: bad.length === 0, value: bad };
+});
+
 // ---------- 窄螢幕（寬不到 1024 或高不到 600，ADR 0005 的 2026-11 更新） ----------
 
 /** 觸控螢幕（手機、iPad）：pointer: coarse，點下去是手指。 */
