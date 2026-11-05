@@ -1477,15 +1477,16 @@ describe('播放', () => {
 		expect(engine.clicks).toEqual([]);
 	});
 
-	it('延遲校正欄位：存在這台電腦；清空或超出範圍時欄位回到現在的值；存的值超出範圍當 0', async () => {
+	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
 		await sample();
 		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
 		expect(field.value).toBe('0');
 		await fireEvent.change(field, { target: { value: '200' } });
 		await fireEvent.change(field, { target: { value: '' } });
 		expect(field.value).toBe('200');
-		await fireEvent.change(field, { target: { value: '1001' } });
-		expect(field.value).toBe('200');
+		await fireEvent.change(field, { target: { value: '-1001' } });
+		expect(field.value).toBe('-1000');
+		await fireEvent.change(field, { target: { value: '200' } });
 
 		cleanup();
 		await newFlow();

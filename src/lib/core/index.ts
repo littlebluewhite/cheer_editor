@@ -156,6 +156,7 @@ export {
 	MAX_EIGHTS,
 	MIN_BPM,
 	addSegment,
+	audioOverlaps,
 	beatLines,
 	fitSegmentToAudio,
 	loadSegmentAudio,
@@ -165,6 +166,7 @@ export {
 } from './segment';
 export type {
 	AudioLengths,
+	AudioOverlap,
 	AudioRef,
 	BeatLine,
 	BeatTiming,

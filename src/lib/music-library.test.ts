@@ -26,6 +26,8 @@ describe('音樂檔庫：給一段選音樂檔', () => {
 		expect(session.flow!.audio).toEqual([{ id: 'a1', file: 'audio/a1.mp3', name: '主歌.mp3' }]);
 		expect(segment(session).audioId).toBe('a1');
 		expect(session.canUndo).toBe(true);
+		// 這一段第一次有音樂：長度照音樂長度算（95.2 × 150 ÷ 60 = 238 拍 = 30 個八拍，最後一個 6 拍）
+		expect(segment(session).halfBeats).toBe(238 * 2);
 		expect(editor.music.get('a1')).toEqual({ bytes: expect.any(ArrayBuffer), ...decoded });
 		expect(new Uint8Array(editor.music.get('a1')!.bytes)).toEqual(new Uint8Array([1, 2, 3]));
 	});
@@ -98,6 +100,8 @@ describe('音樂檔庫：存檔、缺音樂', () => {
 		const { editor, session } = testEditor(flow, { decode: async () => ({ durationSec: 60, peaks: [] }) });
 		const ask = changeAsk(session);
 		await editor.music.pick('s1', mp3(), ask);
+		// 第一次載入時長度照音樂長度算成整首 60 秒：切段先把音樂 1 縮短成 8 個八拍
+		ask.send((o) => updateSegment(session.flow!, 's1', { eights: 8 }, o));
 		ask.send((o) => updateSegment(session.flow!, 's2', { audioId: 'a1' }, o, editor.music.lengths));
 		// 音樂 1：第一拍 0 秒、150 BPM、8 個八拍 = 25.6 秒
 		expect(segment(session, 1)).toMatchObject({ audioId: 'a1', firstBeatSec: 25.6 });

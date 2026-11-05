@@ -203,18 +203,21 @@ export function updateSegment(
 	const old = flow.segments[index];
 	let next: Segment;
 	if (old.kind === 'music') {
-		const bpm = patch.bpm ?? old.bpm;
+		const continued = continuedFrom(flow, index, patch);
+		const bpm = patch.bpm ?? continued?.bpm ?? old.bpm;
 		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(OUT_OF_RANGE.bpm);
 		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
 		// 先看音樂結束：大到算不出來的第一拍也說要在音樂結束之前。
 		const late = patch.firstBeatSec === undefined || audioId === null ? null : pastEnd(patch.firstBeatSec, lengths[audioId]);
 		if (late) return blocked(late);
 		// 第一拍最細 0.01 秒，也比較好讀。
-		const firstBeatSec = Math.round((patch.firstBeatSec ?? continuedFirstBeat(flow, index, patch) ?? old.firstBeatSec) * 100) / 100;
+		const firstBeatSec = Math.round((patch.firstBeatSec ?? (continued && continued.firstBeatSec + (continued.halfBeats * 30) / continued.bpm) ?? old.firstBeatSec) * 100) / 100;
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
 			return blocked(OUT_OF_RANGE.firstBeatSec);
 		}
-		const length = { ...musicLength(old), ...pick(patch, 'eights', 'lastBeats') };
+		// 只改八拍數：最後一個八拍回到滿的 8 拍，不留著上次算出的零頭。
+		const full = patch.eights !== undefined && patch.lastBeats === undefined ? { lastBeats: 8 } : {};
+		const length = { ...musicLength(old), ...full, ...pick(patch, 'eights', 'lastBeats') };
 		const tooLong = lengthProblem(length);
 		if (tooLong) return blocked(tooLong);
 		const { eights, lastBeats } = length;
@@ -276,15 +279,40 @@ export function loadSegmentAudio(
 }
 
 /**
- * 變速切段：還沒有音樂的段選了跟前一個音樂段同一個檔，第一拍接在前一段後面（前一段的第一拍＋長度）。
- * 其他情況是 undefined（第一拍不動）。
+ * 變速切段：還沒有音樂的段選了跟前一個音樂段同一個檔，接著前一段：第一拍接在前一段後面（前一段的第一拍＋長度），
+ * BPM 沿用前一段。回前一段；其他情況是 undefined（第一拍、BPM 不動）。
  */
-function continuedFirstBeat(flow: Flow, index: number, patch: SegmentPatch): number | undefined {
+function continuedFrom(flow: Flow, index: number, patch: SegmentPatch): MusicSegment | undefined {
 	const old = flow.segments[index];
 	if (old.kind !== 'music' || old.audioId !== null || !patch.audioId) return undefined;
 	const prev = flow.segments.slice(0, index).findLast((s) => s.kind === 'music');
-	if (prev?.kind !== 'music' || prev.audioId !== patch.audioId) return undefined;
-	return prev.firstBeatSec + (prev.halfBeats * 30) / prev.bpm;
+	return prev?.kind === 'music' && prev.audioId === patch.audioId ? prev : undefined;
+}
+
+/** 這一段跟另一段用同一個音樂檔、用到的時間重疊：那一截播放時會聽兩次。 */
+export interface AudioOverlap {
+	/** 另一段的名字，例：音樂 2 */
+	label: string;
+	/** 重疊幾秒 */
+	sec: number;
+}
+
+/** 跟這一段用同一個音樂檔、用到的那一截（第一拍到段尾）重疊的其他段。 */
+export function audioOverlaps(flow: Flow, segmentId: string): AudioOverlap[] {
+	const used = (span: ReturnType<typeof segmentSpans>[number]) =>
+		span.segment.kind === 'music' && span.segment.audioId !== null
+			? { audioId: span.segment.audioId, from: span.segment.firstBeatSec, to: span.segment.firstBeatSec + span.durationSec }
+			: null;
+	const spans = segmentSpans(flow);
+	const self = spans.find((s) => s.segment.id === segmentId);
+	const mine = self && used(self);
+	if (!mine) return [];
+	return spans.flatMap((span) => {
+		const other = span === self ? null : used(span);
+		if (!other || other.audioId !== mine.audioId) return [];
+		const sec = Math.min(mine.to, other.to) - Math.max(mine.from, other.from);
+		return sec > 1e-9 ? [{ label: span.label, sec }] : [];
+	});
 }
 
 /** 存檔只帶用到的音樂，所以沒有段在用的音樂檔直接拿掉。 */

@@ -3,7 +3,7 @@
 // 每個音樂的長度和波形、哪幾段找不到音樂、給音訊引擎的 buffer。
 // 給一段選音樂檔也在這裡：解碼、跟核心拿 id（核心的「選音樂」只有這裡在叫，還留著哪些由這裡報）。
 
-import { loadSegmentAudio, segmentsMissingAudio, type AudioBytes, type AudioLengths, type Flow } from '#lib/core';
+import { fitSegmentToAudio, loadSegmentAudio, segmentsMissingAudio, type AudioBytes, type AudioLengths, type Flow } from '#lib/core';
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
 import type { Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
@@ -70,6 +70,7 @@ export class MusicLibrary {
 	/**
 	 * 給一段選一個音樂檔：解碼，跟核心拿新的 id，結果交給 ask（段設定的「改」：成功就算一步）。
 	 * 被擋的原因（格式不對、讀不出來）也交給 ask。解完之前叫了 cancelPicks（段設定關了、換了流程）就丟掉。
+	 * 這一段第一次有音樂：長度順便照音樂長度算（同一步；會刪到東西、算不出來就只載入）。
 	 */
 	async pick(segmentId: string, file: File, ask: Ask): Promise<void> {
 		const check = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
@@ -88,9 +89,12 @@ export class MusicLibrary {
 		if (!this.#picks.delete(pick)) return;
 		// 解碼要一點時間，用那時候的流程再送一次指令。
 		// 音樂先放進來再換流程：流程換了時這段已經有音樂（流程檔看要不要收掉「找不到音樂」的提示）。
+		const first = this.#flow.segments.some((s) => s.id === segmentId && s.kind === 'music' && s.audioId === null);
 		const r = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
-		if (r.kind === 'ok') this.#audios = { ...this.#audios, [r.audioId]: { bytes, ...decoded } };
-		ask.send(() => r);
+		if (r.kind !== 'ok') return void ask.send(() => r);
+		this.#audios = { ...this.#audios, [r.audioId]: { bytes, ...decoded } };
+		const fit = first ? fitSegmentToAudio(r.flow, segmentId, { [r.audioId]: decoded.durationSec }) : null;
+		ask.send(() => (fit?.kind === 'ok' ? fit : r));
 	}
 
 	/** 還在解碼的選檔都不要了：段設定關了、換了流程。 */
