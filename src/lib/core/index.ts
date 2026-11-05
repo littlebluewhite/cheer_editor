@@ -3,7 +3,7 @@
 
 export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
-export { adjustField, createFlow, memberName, renameFlow, stripsProblem } from './flow';
+export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
 export { MAX_CHARS, charCount, firstChars } from './text-length';

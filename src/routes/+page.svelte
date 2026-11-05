@@ -1757,10 +1757,11 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
 		gap: 56px;
-		align-items: center;
+		/* 貼上方：新建表單出現錯誤、最近的流程變多時，上面的東西不跳 */
+		align-items: start;
 		max-width: 1040px;
 		margin: 0 auto;
-		padding: 48px 32px;
+		padding: max(48px, 10dvh) 32px 48px;
 	}
 	.home-guide {
 		position: absolute;

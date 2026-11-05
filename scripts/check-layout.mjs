@@ -1236,5 +1236,33 @@ await check('滑鼠點過「時間軸縮小」再按真的空白鍵：播放，�
 	return { ok: focused === '時間軸縮小' && playing && after === before, value: { 焦點: focused, 播放: playing, 倍數: `${before} → ${after}` } };
 });
 
+await check('段設定：BPM 被擋、紅字出現前後，對話框上緣不動（#163）', async () => {
+	await setViewport(1440, 1200);
+	// 新建一支流程（不用開檔），在最後加一個音樂段：段設定自己打開
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	// 頁面還沒接上（hydrate）時按建立會變成一般的表單送出：沒進編輯畫面就再按一次
+	await waitFor(async () => {
+		await js(`const name = document.querySelector('.new-flow input[aria-label="流程名字"]');
+			if (!name) return;
+			name.value = '版面'; name.dispatchEvent(new Event('input', { bubbles: true }));
+			document.querySelector('.new-flow button[type=submit]').click();`);
+		await sleep(500);
+		return js(`return !!document.querySelector('button[aria-label="在最後加一段"]')`);
+	});
+	await js(`document.querySelector('button[aria-label="在最後加一段"]').click();
+		await new Promise((r) => setTimeout(r, 50));
+		[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '＋音樂段').click();`);
+	await waitFor(() => js(`return !!document.querySelector('.seg-dialog')`));
+	await sleep(200);
+	const top = () => js(`return Math.round(document.querySelector('.seg-dialog').getBoundingClientRect().top)`);
+	const before = await top();
+	await js(`const i = [...document.querySelectorAll('.seg-dialog label')].find((l) => l.textContent.trim().startsWith('BPM')).querySelector('input');
+		i.value = '999'; i.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await sleep(200);
+	const alert = await js(`return document.querySelector('.seg-dialog [role=alert]')?.textContent ?? null`);
+	const after = await top();
+	return { ok: !!alert && before === after, value: { 上緣: `${before} → ${after}`, 紅字: alert } };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

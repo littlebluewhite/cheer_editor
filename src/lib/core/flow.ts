@@ -41,9 +41,10 @@ export interface NewFlowInput {
 
 const NO_NAME = '請幫流程取名字';
 
-/** 流程名字哪裡不行；沒問題是 null。 */
-function flowNameProblem(name: string): string | null {
-	return name ? tooLong('flowName', name) : NO_NAME;
+/** 流程名字哪裡不行（頭尾空白先去掉）；沒問題是 null。 */
+export function flowNameProblem(name: string): string | null {
+	const trimmed = name.trim();
+	return trimmed ? tooLong('flowName', trimmed) : NO_NAME;
 }
 
 /** 條數的毛病：不是 1–12 的整數；沒問題是 null。 */

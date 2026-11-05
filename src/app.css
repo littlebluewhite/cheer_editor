@@ -220,6 +220,10 @@ textarea:focus {
 	border-color: var(--sel);
 	box-shadow: 0 0 0 3px var(--sel-soft);
 }
+/* 出錯的欄位標紅（錯誤寫在欄位下面） */
+:is(input, select, textarea)[aria-invalid='true'] {
+	border-color: var(--danger);
+}
 input::placeholder,
 textarea::placeholder {
 	color: #a3abbd;
@@ -231,12 +235,13 @@ input[type='radio'] {
 }
 
 /* ---------- 對話框 ---------- */
+/* 對話框貼上方往下長：錯誤、提醒出現時上緣不動，不會整塊跳、害人點錯格子 */
 .backdrop {
 	position: fixed;
 	inset: 0;
 	background: rgba(16, 24, 44, 0.5);
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: center;
 	z-index: 50;
 	padding: 16px;
