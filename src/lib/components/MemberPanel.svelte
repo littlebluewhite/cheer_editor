@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 隊員名單：加隊員、改隊員、排順序、刪隊員。名單順序 = 泳道順序和號碼。規則（40 人上限、必填、名字長度、貼上的行認不認得）都交給流程核心判斷。
-	// 排順序：每一列「往上」「往下」，或拖圓圈（標記）放到別列。
-	// 刪隊員先在那一列下面顯示流程核心給的「要確認」說明，按確定才刪。
+	// 排順序：每一列「往上」「往下」，拖圓圈（標記）放到別列，或點圓圈打號碼（打 1 就移到第一個）。
+	// 刪隊員先在那一列下面顯示流程核心給的「要確認」說明，按確定才刪。改名字被擋下的原因也畫在那一列下面。
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import { tick } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -39,8 +39,10 @@
 	 * 等教練回答的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
 	 */
 	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
-	/** 問題是哪一列送的（刪隊員、改名字）：問題畫在那一列下面。 */
+	/** 問題是哪一列送的（刪隊員、改名字、排順序）：問題和被擋的原因畫在那一列下面；null 是加隊員表單送的。 */
 	let askingId = $state<string | null>(null);
+	/** 正在打號碼的那個人（圓圈換成輸入框）。 */
+	let numbering = $state<string | null>(null);
 	/** 正在拖的那個人。 */
 	let dragging = $state<string | null>(null);
 	const markers = $derived(memberMarkers(flow));
@@ -49,6 +51,7 @@
 	function add(e: SubmitEvent) {
 		e.preventDefault();
 		// 性別、全局角色加完不清掉：下一批常常一樣。有幾行沒加進去：輸入框留下那幾行，原因一次列出。
+		askingId = null;
 		ask.send(() => addMemberLines(flow, names, { gender: gender || null, globalRole: globalRole || null }), {
 			done: (r) => {
 				names = r.rejected.join('\n');
@@ -66,11 +69,30 @@
 
 	/** 移到名單上第 to 個。按的那顆變灰（移到頭、尾）時，焦點換到同一列的另一顆，不掉到 body。 */
 	async function move(id: string, to: number, button?: HTMLButtonElement) {
+		askingId = id;
 		ask.send(() => moveMember(flow, id, to));
 		await tick();
 		if (!button) return;
 		const target = button.disabled ? button.parentElement?.querySelector<HTMLButtonElement>('.move:not(:disabled)') : button;
 		target?.focus();
+	}
+
+	/** 打的號碼：移到第幾個（超過人數就排最後）；不是號碼就不動。打完焦點回到他的圓圈。 */
+	async function renumber(id: string, text: string) {
+		numbering = null;
+		const n = Number(text.normalize('NFKC').trim());
+		if (!Number.isInteger(n)) return;
+		const to = Math.min(Math.max(n, 1), flow.members.length) - 1;
+		if (to !== flow.members.findIndex((m) => m.id === id)) await move(id, to);
+		await tick();
+		// 這段時間又點開別人的號碼：不搶焦點。
+		if (numbering === null) document.querySelector<HTMLElement>(`.members .no[data-id="${id}"]`)?.focus();
+	}
+
+	/** attachment：出現就把焦點放進來，選起整串（直接打新的號碼）。 */
+	function focusSelect(el: HTMLInputElement) {
+		el.focus();
+		el.select();
 	}
 
 	function drop(e: DragEvent, to: number) {
@@ -88,7 +110,7 @@
 <section class="members">
 	<header>
 		<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
-		<span class="hint">名單順序就是泳道順序和場上的號碼，按 ↑ ↓ 或拖圓圈排順序；在「流程設定」可以把號碼換成開頭字（名字的第一個字）</span>
+		<span class="hint">名單順序就是泳道順序和場上的號碼，按 ↑ ↓、拖圓圈，或點圓圈打號碼排順序；在「流程設定」可以把號碼換成開頭字（名字的第一個字）</span>
 	</header>
 
 	{#if dupes.length}
@@ -105,19 +127,41 @@
 					ondragover={(e) => dragging && e.preventDefault()}
 					ondrop={(e) => drop(e, i)}
 				>
-					<!-- 拖曳是滑鼠、手指的捷徑；鍵盤用「往上」「往下」。 -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<span
-						class="no {m.globalRole}"
-						class:long={isLongMarker(markers[m.id])}
-						draggable="true"
-						title="拖曳排順序"
-						ondragstart={(e) => {
-							dragging = m.id;
-							e.dataTransfer?.setData('text/plain', m.name);
-						}}
-						ondragend={() => (dragging = null)}>{markers[m.id]}</span
-					>
+					<!-- 拖曳是滑鼠、手指的捷徑；鍵盤用「往上」「往下」，或按圓圈打號碼。 -->
+					{#if numbering === m.id}
+						<input
+							class="no-input"
+							aria-label="第 {i + 1} 位隊員的號碼"
+							inputmode="numeric"
+							value={i + 1}
+							{@attach focusSelect}
+							onchange={(e) => renumber(m.id, e.currentTarget.value)}
+							onblur={() => (numbering = null)}
+							onkeydown={(e) => e.key === 'Escape' && (numbering = null)}
+						/>
+					{:else}
+						<span
+							class="no {m.globalRole}"
+							class:long={isLongMarker(markers[m.id])}
+							role="button"
+							tabindex="0"
+							aria-label="改第 {i + 1} 位隊員的號碼"
+							data-id={m.id}
+							draggable="true"
+							title="拖曳排順序；按一下打號碼"
+							onclick={() => (numbering = m.id)}
+							onkeydown={(e) => {
+								if (e.key !== 'Enter' && e.key !== ' ') return;
+								e.preventDefault();
+								numbering = m.id;
+							}}
+							ondragstart={(e) => {
+								dragging = m.id;
+								e.dataTransfer?.setData('text/plain', m.name);
+							}}
+							ondragend={() => (dragging = null)}>{markers[m.id]}</span
+						>
+					{/if}
 					<span class="name-cell">
 						<input
 							aria-label="第 {i + 1} 位隊員的名字"
@@ -164,6 +208,8 @@
 					<!-- 名單很長時問句可能在看得到的範圍外，按了像沒反應：出現時捲過去。 -->
 					{#if ask.question && askingId === m.id}
 						<div class="asking" {@attach reveal(ask.failures)}><ConfirmList {ask} /></div>
+					{:else if ask.error && askingId === m.id}
+						<p class="error asking" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>
 					{/if}
 				</li>
 			{/each}
@@ -197,7 +243,8 @@
 		<button type="submit" class="primary">加隊員</button>
 	</form>
 
-	{#if ask.error}
+	<!-- 那一列送的被擋下：原因畫在那一列下面（上面），這裡不畫。 -->
+	{#if ask.error && !flow.members.some((m) => m.id === askingId)}
 		<p class="error" role="alert" {@attach reveal(ask.failures)}>
 			{#each ask.error.split('\n') as line, i (i)}<span>{line}</span>{/each}
 		</p>
@@ -267,6 +314,16 @@
 		border: 1.5px solid #16213a;
 		background: #fff;
 		cursor: grab;
+	}
+	.no-input {
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border-radius: 6px;
+		text-align: center;
+		font-size: 11px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
 	}
 	.no.long {
 		font-size: 8px;
