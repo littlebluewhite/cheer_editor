@@ -10,7 +10,7 @@
 
 <script lang="ts">
 	// 對話框的共用行為：流程設定、八拍表、段設定、名詞對照表都用它。
-	// - 打開時焦點進去；Tab／Shift+Tab 只在裡面轉；關掉後焦點回到打開它的按鈕。
+	// - 打開時焦點進去（裡面標了 data-autofocus 的就放那裡）；Tab／Shift+Tab 只在裡面轉；關掉後焦點回到打開它的按鈕。
 	// - Esc、×、點背景走同一條路 close()：先把還沒離開的欄位送出去（跟離開欄位一樣），
 	//   這一下有欄位被擋（退回實際值、顯示原因）或要問教練，就先不關，讓教練看到是哪一格。
 	// - 裡面有確認框時，Esc 只關確認框。
@@ -49,7 +49,8 @@
 		box = el;
 		const opener = document.activeElement as HTMLElement | null;
 		stack.push(me);
-		el.focus();
+		// 裡面有指定一打開就放焦點的（例：「還沒存」的「取消」）就放那裡，不然放在對話框本身
+		(el.querySelector<HTMLElement>('[data-autofocus]') ?? el).focus();
 		return () => {
 			stack.splice(stack.indexOf(me), 1);
 			// 等頁面更新完（底下的編輯畫面不再 inert）才還焦點。

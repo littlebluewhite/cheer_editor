@@ -2,7 +2,7 @@
 // 拍點格子只管指標（點一下還是拖）、焦點和畫格子；選拍的規則都在這裡，在 Node 就測得到。
 // 拍都是「從動作開始算的半拍」。格子對齊音樂的整拍：動作從 & 開始時，第一格是 1。
 
-import { HALF_BEATS_PER_BEAT as BEAT, type Action, type Who } from '#lib/core';
+import { HALF_BEATS_PER_BEAT as BEAT, type Action, type Cue, type Who } from '#lib/core';
 
 /** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。拍點格子也用。 */
 export const firstCell = (a: Action) => a.start % BEAT;
@@ -28,8 +28,11 @@ export class BeatSelection {
 	/** 上次看到的動作的第一格和長度：動作移到半拍上或變短時，才檢查選取。 */
 	#shape = { first: 0, length: 0 };
 
-	/** 放拍點時給誰；預設全部。 */
+	/** 放拍點時給誰；預設全部，重新選拍（沒按 Shift 點）就回到全部。 */
 	who = $state<Who>(null);
+
+	/** 複製的拍點（位置從 0 算，見 copyCues）；換動作也留著，貼到別的動作。 */
+	copied = $state.raw<Cue[]>([]);
 
 	/** action：現在選到的動作（沒選是 null）。 */
 	constructor(action: () => Action | null) {
@@ -55,7 +58,7 @@ export class BeatSelection {
 	}
 
 	/**
-	 * 點一格選一拍；按住 Shift 點，就從上次點的那一格選到這一格。
+	 * 點一格選一拍（重新選，給誰回到全部）；按住 Shift 點，就從上次點的那一格選到這一格。
 	 * 選取被別的地方換掉了（放完拍子跳下一拍、點拍點），Shift 就從選取的開頭算；
 	 * 選取從 & 開始（點了這種拍點）時，從它所在的那一格算。
 	 */
@@ -65,6 +68,7 @@ export class BeatSelection {
 		const keep = snap(a, !shift ? at : this.#from === this.#pivot || this.#to === this.#pivot ? this.#pivot : this.#from);
 		at = snap(a, at);
 		this.#pivot = keep;
+		if (!shift) this.who = null;
 		this.#from = Math.min(keep, at);
 		this.#to = Math.max(keep, at);
 	}

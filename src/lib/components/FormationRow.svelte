@@ -1,7 +1,13 @@
+<script lang="ts" module>
+	/** 縮圖的寬（px）：最後一張縮圖比流程結尾還右邊，時間軸「符合寬度」要算進去。 */
+	export const THUMB_W = 80;
+</script>
+
 <script lang="ts">
 	// 站位縮圖列：每張站位一個小站位圖，放在它的站位時間上。
-	// 流程和選取從 session 拿。點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。跟下一張靠太近的縮圖變窄，不蓋到下一張；
-	// 窄到底還是疊到的幾張，上下分層錯開排（變矮），每張都點得到。
+	// 流程和選取從 session 拿。點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕；滑鼠移上去、選到時才出現）。
+	// 跟下一張靠太近的縮圖變窄，不蓋到下一張；窄到畫不清楚的只畫號碼小標籤（沒有 ✕，選到後按 Delete 刪）；
+	// 還是疊到的幾張，上下分層錯開排（變矮），每張都點得到。
 	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才送到 session 的 ask，被擋就彈回原位。開頭那張拖不動。
 	// 刪掉（session.removeFormation，提示旁邊有「復原」）、挪好都算一步；挪好了選著這張，播放頭跳到新的站位時間（session.formationMoved）。
 	import {
@@ -33,19 +39,22 @@
 	const flow = $derived(session.flow!);
 	const selectedId = $derived(session.selectedFormationId);
 
-	const THUMB_W = 80;
-	/** 縮圖最窄：號碼和 ✕ 還放得下。 */
+	/** 縮圖最窄：號碼和 ✕ 還放得下、小站位圖看得出來；再窄就只畫號碼小標籤。 */
 	const MIN_THUMB_W = 44;
+	/** 號碼小標籤最窄（兩位數的號碼放得下）。 */
+	const TAG_W = 18;
 	/** 拖超過這麼多 px 才算拖；沒超過就是點一下（手抖不會挪到）。 */
 	const DRAG_PX = 10;
 	const g = $derived(fieldGeometry(flow.field));
 	const items = $derived(formationTimes(flow));
 	const width = $derived(Math.max(0, ...items.map((i) => i.sec)) * pxPerSec + THUMB_W);
-	/** 每張縮圖的寬：跟下一張站位靠太近時變窄，不蓋到下一張；再近也不窄過 MIN_THUMB_W。 */
+	/** 每張縮圖的寬：跟下一張站位靠太近時變窄，不蓋到下一張；比 MIN_THUMB_W 窄就變成號碼小標籤（不窄過 TAG_W）。 */
 	const widths = $derived(
 		items.map(({ sec }, i) => {
 			const next = items[i + 1];
-			return next ? Math.min(THUMB_W, Math.max(MIN_THUMB_W, (next.sec - sec) * pxPerSec - 4)) : THUMB_W;
+			if (!next) return THUMB_W;
+			const room = (next.sec - sec) * pxPerSec - 4;
+			return room >= MIN_THUMB_W ? Math.min(THUMB_W, room) : Math.max(TAG_W, room);
 		})
 	);
 
@@ -140,8 +149,10 @@
 	<div class="trk" style:width={`${width}px`}>
 		{#each items as { formation, sec, deletable }, i (formation.id)}
 			{@const to = drag?.id === formation.id ? drag.to : null}
+			{@const tag = !to && widths[i] < MIN_THUMB_W}
 			<div
 				class="th"
+				class:tag
 				class:on={selectedId === formation.id}
 				class:movable={deletable}
 				class:dragging={!!to}
@@ -155,7 +166,11 @@
 					type="button"
 					class="pick"
 					aria-label={formation.name ? `站位 ${i + 1} ${formation.name}` : `站位 ${i + 1}`}
-					title={formation.name ? `站位 ${i + 1} ${formation.name}` : undefined}
+					title={tag
+						? `站位 ${i + 1}${formation.name ? ` ${formation.name}` : ''}${deletable ? '：選到後按 Delete 刪掉' : ''}`
+						: formation.name
+							? `站位 ${i + 1} ${formation.name}`
+							: undefined}
 					aria-pressed={selectedId === formation.id}
 					onclick={() => {
 						if (dragged) return;
@@ -164,25 +179,27 @@
 					}}
 					onpointerdown={deletable ? (e) => startDrag(e, formation.id, sec) : undefined}
 				>
-					<svg
-						viewBox="{g.outer.x} {g.outer.y} {g.outer.width} {g.outer.height}"
-						preserveAspectRatio="xMidYMid meet"
-						aria-hidden="true"
-					>
-						<rect class="margin" x={g.outer.x} y={g.outer.y} width={g.outer.width} height={g.outer.height} />
-						<rect class="mat" x={g.mat.x} y={g.mat.y} width={g.mat.width} height={g.mat.height} />
-						{#each flow.members as m (m.id)}
-							{@const p = formation.pos[m.id]}
-							{#if p}<circle class={m.globalRole} cx={p[0]} cy={p[1]} r="0.45" />{/if}
-						{/each}
-					</svg>
+					{#if !tag}
+						<svg
+							viewBox="{g.outer.x} {g.outer.y} {g.outer.width} {g.outer.height}"
+							preserveAspectRatio="xMidYMid meet"
+							aria-hidden="true"
+						>
+							<rect class="margin" x={g.outer.x} y={g.outer.y} width={g.outer.width} height={g.outer.height} />
+							<rect class="mat" x={g.mat.x} y={g.mat.y} width={g.mat.width} height={g.mat.height} />
+							{#each flow.members as m (m.id)}
+								{@const p = formation.pos[m.id]}
+								{#if p}<circle class={m.globalRole} cx={p[0]} cy={p[1]} r="0.45" />{/if}
+							{/each}
+						</svg>
+					{/if}
 					<span>{i + 1}</span>
 					{#if to}
 						{@const text = dragText(formation.segmentId!, to)}
 						{#if text}<em class="name when" aria-hidden="true">{text}</em>{/if}
-					{:else if formation.name}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
+					{:else if formation.name && !tag}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
 				</button>
-				{#if deletable}
+				{#if deletable && !tag}
 					<button
 						type="button"
 						class="del"
@@ -283,8 +300,29 @@
 			0 0 0 3px var(--sel-soft, #dcf4fa),
 			0 6px 14px rgb(22 33 58 / 0.28);
 	}
+	/* ✕ 平常藏起來，滑鼠移上去、選到、鍵盤移到這張時才出現（不蓋著小站位圖，也不容易誤刪）；拖的時候藏起來。 */
+	.del {
+		display: none;
+	}
+	.th:hover .del,
+	.th.on .del,
+	.th:focus-within .del {
+		display: inline-flex;
+	}
 	.th.dragging .del {
 		display: none;
+	}
+	/* 號碼小標籤：太窄畫不清楚小站位圖，只寫號碼。 */
+	.th.tag .pick {
+		border-radius: 5px;
+		background: var(--surface, #fff);
+	}
+	.th.tag .pick span {
+		flex: 1;
+		align-self: flex-start;
+		min-width: 0;
+		padding: 0;
+		border-radius: 3px 3px 0 0;
 	}
 	svg {
 		display: block;

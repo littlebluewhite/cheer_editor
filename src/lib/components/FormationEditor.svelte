@@ -16,6 +16,7 @@
 		type Formation,
 		type TimePosition
 	} from '#lib/core';
+	import CharCount from './CharCount.svelte';
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -27,6 +28,7 @@
 	const match = $derived(matchPrevious(flow, playback.sec, session.selectedMemberIds));
 	const matchBlocked = $derived(match.kind === 'blocked' ? match.message : '');
 	const here = $derived(formationAt(flow, playback.sec));
+	let nameInput = $state<HTMLInputElement>();
 	// 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。
 	const hereTime = $derived(here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : '');
 
@@ -79,14 +81,18 @@
 	<p class="move-target">{moveTargetText(flow, playback.sec)}</p>
 	{#if here}
 		{#key here.id}
-			<input
-				class="formation-name"
-				aria-label="站位名稱"
-				placeholder="幫這張站位取名（可不填）"
-				value={here.name ?? ''}
-				onkeydown={(e) => boxKeydown(e, here.name ?? '')}
-				onchange={(e) => renameHere(here.id, e.currentTarget.value)}
-			/>
+			<div class="name-row">
+				<input
+					class="formation-name"
+					aria-label="站位名稱"
+					placeholder="幫這張站位取名（可不填）"
+					value={here.name ?? ''}
+					bind:this={nameInput}
+					onkeydown={(e) => boxKeydown(e, here.name ?? '')}
+					onchange={(e) => renameHere(here.id, e.currentTarget.value)}
+				/>
+				<CharCount field="formationName" input={nameInput} value={here.name ?? ''} />
+			</div>
 			<label class="formation-time">
 				<span>站位時間</span>
 				<input
@@ -121,8 +127,14 @@
 	.here.on .move-target {
 		padding: 0 2px;
 	}
+	.name-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
 	.formation-name {
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		font-size: 14px;
 		font-weight: 600;
 	}

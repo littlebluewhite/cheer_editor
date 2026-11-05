@@ -7,6 +7,7 @@ import { fieldGeometry } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { nextId } from './ids';
+import { tooLong } from './text-length';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
@@ -175,6 +176,8 @@ export function renameFormation(flow: Flow, formationId: string, name: string): 
 	if (!formation) return blocked('找不到這張站位');
 	const { name: _, ...rest } = formation;
 	const trimmed = name.trim();
+	const problem = trimmed !== formation.name ? tooLong('formationName', trimmed) : null;
+	if (problem) return blocked(problem);
 	const updated: Formation = { ...rest, ...(trimmed ? { name: trimmed } : {}) };
 	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });
 }

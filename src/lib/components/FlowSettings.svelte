@@ -9,6 +9,7 @@
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
+	import CharCount from './CharCount.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
@@ -23,6 +24,7 @@
 	const flow = $derived(session.flow!);
 	/** 被擋的原因。 */
 	const ask = session.changeAsk();
+	let nameInput = $state<HTMLInputElement>();
 
 	function update(patch: Partial<TimeRules>) {
 		ask.send(() => updateTimeRules(flow, patch));
@@ -61,8 +63,8 @@
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
 		<label class="stack">
-			流程名字
-			<input value={flow.name} onchange={(e) => rename(e.currentTarget)} />
+			<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
+			<input aria-label="流程名字" value={flow.name} bind:this={nameInput} onchange={(e) => rename(e.currentTarget)} />
 		</label>
 		<p class="field-info">
 			<b>場地</b>
@@ -132,6 +134,10 @@
 		display: grid;
 		gap: 6px;
 		font-weight: 600;
+	}
+	.head {
+		display: flex;
+		justify-content: space-between;
 	}
 	.stack input {
 		font-size: 14px;

@@ -16,7 +16,8 @@ import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
-import { EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
+import { tooLong } from './text-length';
+import { atText, EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -149,12 +150,20 @@ export function setSquad(
 
 /** 檢查動作、收尾：大類、段、時間、拍點先檢查，再收尾（成功率規則在裡面），最後檢查人。 */
 function checked(flow: Flow, before: Action | undefined, action: Action, options: ConfirmOption): Settled {
-	const shape = shapeProblem(flow, action);
+	const shape = textProblem(before, action) ?? shapeProblem(flow, action);
 	if (shape) return { kind: 'blocked', message: shape };
 	const settled = settle(flow, before, action, options);
 	if (settled.kind === 'blocked') return settled;
 	const people = peopleProblem(flow, settled.action);
 	return people ? { kind: 'blocked', message: people } : settled;
+}
+
+/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收。 */
+function textProblem(before: Action | undefined, action: Action): string | null {
+	return (
+		(action.name !== before?.name ? tooLong('actionName', action.name) : null) ??
+		(action.note !== before?.note ? tooLong('note', action.note) : null)
+	);
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */
@@ -171,7 +180,12 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 		const max = lengthText(segment, Math.max(1, units(segment) - action.start));
 		return `動作長度要在 ${lengthText(segment, 1)} 到 ${max} ${music ? '拍' : '秒'}之間`;
 	}
-	if (action.start + action.length > units(segment)) return '動作不能跨段，要跨就拆成兩個';
+	if (action.start + action.length > units(segment)) {
+		// 最後一段後面沒有段可以拆：寫還剩多長。
+		const room = units(segment) - action.start;
+		if (flow.segments.at(-1) !== segment || room < 1) return '動作不能跨段，要跨就拆成兩個';
+		return `超過這段的結尾，最多 ${lengthText(segment, room)} ${music ? '拍' : '秒'}`;
+	}
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';
 	for (const cue of action.cues ?? []) {
 		const problem = cueProblem(segment, action, cue);
@@ -180,7 +194,10 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 	return null;
 }
 
-/** 動作裡的人哪裡不行（找不到、重複、沒有這個任務角色、同一時間在別的動作裡）；沒問題是 null。 */
+/**
+ * 動作裡的人哪裡不行（找不到、重複、沒有這個任務角色、同一時間在別的動作裡）；沒問題是 null。
+ * 重疊時寫撞到的動作在哪裡結束（在前面的）或從哪裡開始（在後面的），教練知道要挪到哪裡。
+ */
 function peopleProblem(flow: Flow, action: Action): string | null {
 	const roles = roleGlossary(flow).map((r) => r.name);
 	const seen = new Set<string>();
@@ -197,15 +214,41 @@ function peopleProblem(flow: Flow, action: Action): string | null {
 		const shared = action.members.filter((m) => other.members.some((o) => o.memberId === m.memberId));
 		if (shared.length) {
 			const names = shared.map((m) => memberName(flow, m.memberId)).join('、');
-			clashes.push(`${names} 同一時間已經在「${actionLabel(other)}」裡`);
+			clashes.push(`${names} 同一時間已經在「${actionLabel(other)}」裡：${whereOther(flow, other, action)}`);
 		}
 	}
 	return clashes.length ? clashes.join('；') : null;
 }
 
+/** 撞到的動作 other 在 action 前面：「上一個動作在 3-1& 才結束」；在後面：「下一個動作從 4-1 就開始」。 */
+function whereOther(flow: Flow, other: Action, action: Action): string {
+	const segment = flow.segments.find((s) => s.id === other.segmentId)!;
+	// 音樂段「2-1& 才結束」，口號段「3.5 秒才結束」
+	const at = (u: number) => atText(segment, u) + (segment.kind === 'chant' ? ' 秒' : ' ');
+	return other.start <= action.start
+		? `上一個動作在 ${at(other.start + other.length)}才結束`
+		: `下一個動作從 ${at(other.start)}就開始`;
+}
+
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */
-function overlaps(a: Action, b: Action): boolean {
+function overlaps(a: ActionSlot, b: ActionSlot): boolean {
 	return a.segmentId === b.segmentId && a.start < b.start + b.length && b.start < a.start + a.length;
+}
+
+/** 動作佔的段和時間。 */
+type ActionSlot = Pick<Action, 'segmentId' | 'start' | 'length'>;
+
+/**
+ * 這段時間裡已經在別的動作裡的人（選人時標出來、一次拿掉）：隊員 id → 他在的那個動作。
+ * id 是正在改的動作自己，不算。
+ */
+export function busyMembers(flow: Flow, slot: ActionSlot & { id?: string }): Map<string, Action> {
+	const busy = new Map<string, Action>();
+	for (const other of flow.actions) {
+		if (other.id === slot.id || !overlaps(other, slot)) continue;
+		for (const m of other.members) if (!busy.has(m.memberId)) busy.set(m.memberId, other);
+	}
+	return busy;
 }
 
 /** 在播放頭新增動作時預設的段和時間：從播放頭那一格開始，音樂段一個八拍、口號段 3 秒，不超出段尾。沒有段是 null。 */

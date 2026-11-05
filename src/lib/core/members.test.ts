@@ -255,18 +255,61 @@ describe('貼上名單加隊員', () => {
 	});
 
 	it('認不得的行列進錯誤（寫第幾行），其他行照加；所有錯誤一次列出', () => {
-		const text = ['小A', '小B\t男生\t底層', '小C\t女\t中層', '小D\t女', '小E\t男\t上層'].join('\n');
+		const text = ['小A', '小B\t男孩\t底層', '小C\t女\t大力士', '小D\t女', '小E\t男\t上層'].join('\n');
 		const r = addMemberLines(newFlow(), text, picked);
 		expect(r).toMatchObject({
 			kind: 'ok',
 			errors: [
 				'第 2 行「小B」：性別要寫「男」或「女」',
 				'第 3 行「小C」：全局角色要寫「底層」或「上層」',
-				'第 4 行「小D」：一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab 隔開）'
+				'第 4 行「小D」：一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）'
 			],
-			rejected: ['小B\t男生\t底層', '小C\t女\t中層', '小D\t女']
+			rejected: ['小B\t男孩\t底層', '小C\t女\t大力士', '小D\t女']
 		});
 		expect(okFlow(r).members.map((m) => m.name)).toEqual(['小A', '小E']);
+	});
+
+	it('用空白或逗號分隔：最後兩段是性別和全局角色就當三欄，不偷用表單選的', () => {
+		const text = ['小明 男 底層', '小美,女,上層', '阿芳，女，上層', '王 大明  男  底層', 'Amy Chen F top'].join('\n');
+		const flow = okFlow(addMemberLines(newFlow(), text, picked));
+		expect(flow.members).toMatchObject([
+			{ name: '小明', gender: 'M', globalRole: 'base' },
+			{ name: '小美', gender: 'F', globalRole: 'top' },
+			{ name: '阿芳', gender: 'F', globalRole: 'top' },
+			{ name: '王 大明', gender: 'M', globalRole: 'base' },
+			{ name: 'Amy Chen', gender: 'F', globalRole: 'top' }
+		]);
+	});
+
+	it('認得「男生、女生、M、F」和「base、top、飛人」', () => {
+		const text = ['小A\t男生\tbase', '小B 女生 飛人', '小C,m,Base', '小D\tf\tTOP'].join('\n');
+		expect(okFlow(addMemberLines(newFlow(), text, none)).members).toMatchObject([
+			{ gender: 'M', globalRole: 'base' },
+			{ gender: 'F', globalRole: 'top' },
+			{ gender: 'M', globalRole: 'base' },
+			{ gender: 'F', globalRole: 'top' }
+		]);
+	});
+
+	it('跳過標題列', () => {
+		for (const header of ['名字\t性別\t全局角色', '姓名,性別,角色', 'name gender role']) {
+			const r = addMemberLines(newFlow(), `${header}\n小A\t女\t上層`, none);
+			expect(r).toMatchObject({ kind: 'ok', errors: [], rejected: [] });
+			expect(okFlow(r).members.map((m) => m.name)).toEqual(['小A']);
+		}
+	});
+
+	it('全局角色寫成主底、後保這類任務角色：擋下並說明', () => {
+		expect(addMemberLines(newFlow(), '小A 女 主底', picked)).toEqual({
+			kind: 'blocked',
+			message: '「主底」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」'
+		});
+		expect(addMemberLines(newFlow(), '小A\t男\t後保', picked)).toMatchObject({ kind: 'blocked' });
+	});
+
+	it('空白分隔、最後兩段不是性別和全局角色：整行當名字', () => {
+		const flow = okFlow(addMemberLines(newFlow(), 'Amy Chen', picked));
+		expect(flow.members).toMatchObject([{ name: 'Amy Chen', gender: 'F', globalRole: 'top' }]);
 	});
 
 	it('沒選性別、全局角色，名字太長：每一行的錯一次列出；一行都加不了就擋下', () => {
@@ -295,7 +338,7 @@ describe('貼上名單加隊員', () => {
 
 	it('超過 40 人：一個都不加，寫還能加幾人，其他錯誤也一起列出', () => {
 		const full = okFlow(addMemberLines(newFlow(), Array.from({ length: 39 }, (_, i) => `隊員${i + 1}`).join('\n'), picked));
-		expect(addMemberLines(full, '小A\n小B\t男生\t底層', picked)).toEqual({
+		expect(addMemberLines(full, '小A\n小B\t男孩\t底層', picked)).toEqual({
 			kind: 'blocked',
 			message: '第 2 行「小B」：性別要寫「男」或「女」\n一支流程最多 40 人，這次加 2 人，只能再加 1 人'
 		});

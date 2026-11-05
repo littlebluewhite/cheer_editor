@@ -8,9 +8,11 @@ import {
 	attemptText,
 	carryRecords,
 	deletePhase,
+	nextPhaseKind,
 	recordAttempt,
 	updatePhase,
 	type Flow,
+	type PhaseKind,
 	type NewAttempt
 } from './index';
 import { flowOf, libSample, squadNumbers } from '../test-flows';
@@ -227,5 +229,18 @@ describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流�
 		const undone = carryRecords(before, after);
 		expect(toss(undone).successRate!.phases.map((p) => p.id)).toEqual(['p4']);
 		expect(toss(undone).successRate!.records.map((r) => r.marks)).toEqual([{ p4: '✓' }]);
+	});
+});
+
+describe('下一個環節預設的種類', () => {
+	it('接在上一個環節後面：上法 → 中段 → 轉接 → 下法；下法、整體後面不變；沒有環節是上法', () => {
+		expect([undefined, 'load', 'hold', 'transition', 'dismount', 'whole'].map((k) => nextPhaseKind(k as PhaseKind | undefined))).toEqual([
+			'load',
+			'hold',
+			'transition',
+			'dismount',
+			'dismount',
+			'whole'
+		]);
 	});
 });

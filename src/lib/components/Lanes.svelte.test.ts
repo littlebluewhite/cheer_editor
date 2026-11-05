@@ -124,7 +124,8 @@ describe('泳道', () => {
 		renderLanes(flow);
 		const [a] = bars(lanes()[0]);
 		expect(a.style.background).toBe('rgb(21, 101, 192)');
-		expect(a.style.boxShadow).toContain('#d9603b');
+		// 大類那條 6px：挑了辨識色也認得出大類
+		expect(a.style.boxShadow).toBe('inset 6px 0 0 #d9603b');
 		// 沒挑辨識色的照大類塗，不加左邊那條
 		expect(bars(lanes()[2])[0].style.boxShadow).toBe('');
 	});
@@ -181,7 +182,7 @@ describe('拖色條', () => {
 		const { session, ask } = setup(0);
 		await dragBy(tumble(), 10);
 		expect(session.canUndo).toBe(false);
-		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡，已還原');
+		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡：下一個動作從 2-1 就開始，已還原');
 		expect(tumble().style.left).toBe('16px');
 	});
 
@@ -193,7 +194,7 @@ describe('拖色條', () => {
 		expect(session.flow!.actions[1]).toMatchObject({ id: 'x2', start: 8, length: 7 });
 		expect(parseFloat(tumble().style.width)).toBeCloseTo(14, 6);
 		await dragBy(handle(), 10);
-		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡，已還原');
+		expect(ask.error).toBe('小C 同一時間已經在「跳躍」裡：下一個動作從 2-1 就開始，已還原');
 		expect(parseFloat(tumble().style.width)).toBeCloseTo(14, 6);
 	});
 

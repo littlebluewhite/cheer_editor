@@ -155,6 +155,38 @@ export function placeCue(flow: Flow, actionId: string, input: NewCueInput): Comm
 	return withCues(flow, action, [...kept, cue]);
 }
 
+/**
+ * 複製拍點：[from, to) 半拍裡的拍點，位置改成從 from 算；跨出去的切到這個範圍（取到整拍，不到一拍不要）。
+ * 拍點格子的複製用，貼上交給 pasteCues。
+ */
+export function copyCues(action: Action, from: number, to: number): Cue[] {
+	return (action.cues ?? []).flatMap((c) => {
+		const at = Math.max(c.at, from);
+		const end = Math.min(c.at + c.len, to);
+		const len = end - at - ((end - at) % BEAT);
+		return len >= BEAT && (c.kind !== 'motion' || len === BEAT) ? [{ ...c, at: at - from, len }] : [];
+	});
+}
+
+/**
+ * 貼上拍點：copied（位置從 0 算）從 at 開始放進動作，跟一個一個放拍點一樣（蓋到的切短），整個是一步。
+ * 給的角色、隊員不在這個動作裡就改成給全部。有一個放不下就整個擋下。
+ */
+export function pasteCues(flow: Flow, actionId: string, at: number, copied: Cue[]): CommandResult {
+	const found = find(flow, actionId);
+	if (!found) return blocked('找不到這個動作');
+	if (!copied.length) return blocked('沒有複製的拍點');
+	const { action, segment } = found;
+	let cues = action.cues ?? [];
+	for (const c of copied) {
+		const cue: Cue = { ...c, at: at + c.at, who: givenToSomeone(c, action) ? c.who : null };
+		const problem = cueProblem(segment, action, cue);
+		if (problem) return blocked(`貼不下：${problem}`);
+		cues = [...cut(cues, cue.kind, cue.at, cue.at + cue.len, (k) => sameWho(k.who, cue.who)), cue];
+	}
+	return withCues(flow, action, cues);
+}
+
 /** 清拍點：把 [from, to) 半拍裡那一種（null 是每一種）的拍點都清掉，不管給誰；露在外面的部分留著。 */
 export function clearCues(
 	flow: Flow,

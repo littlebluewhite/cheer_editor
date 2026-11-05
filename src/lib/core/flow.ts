@@ -8,6 +8,7 @@ import type { MarkerStyle, Member } from './members';
 import { blocked, ok, type CommandResult } from './result';
 import type { CustomRole } from './roles';
 import type { AudioRef, Segment } from './segment';
+import { tooLong } from './text-length';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
 
 export interface Flow {
@@ -38,13 +39,10 @@ export interface NewFlowInput {
 }
 
 const NO_NAME = '請幫流程取名字';
-export const MAX_FLOW_NAME = 40;
 
-/** 流程名字哪裡不行；沒問題是 null。字數照看到的字算（一個中文字、一個 emoji 都算一個）。 */
+/** 流程名字哪裡不行；沒問題是 null。 */
 function flowNameProblem(name: string): string | null {
-	if (!name) return NO_NAME;
-	if ([...name].length > MAX_FLOW_NAME) return `流程名字最多 ${MAX_FLOW_NAME} 個字`;
-	return null;
+	return name ? tooLong('flowName', name) : NO_NAME;
 }
 
 /** 條數的毛病：不是 1–12 的整數；沒問題是 null。 */

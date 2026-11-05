@@ -21,8 +21,8 @@
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { MAX_LATENCY_MS } from '#lib/local-settings.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
+	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -34,10 +34,11 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
-	import { modalOpen } from '#lib/components/Modal.svelte';
+	import Modal, { modalOpen } from '#lib/components/Modal.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
+	import NowEightCount from '#lib/components/NowEightCount.svelte';
 	import Practice from '#lib/components/Practice.svelte';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
@@ -73,7 +74,8 @@
 	const guideHref = resolve('/guide');
 
 	const flow = $derived(session.flow);
-	const unsaved = $derived(session.unsaved);
+	/** 上方列的「未存」：有沒存的改動，或欄位裡打了字還沒送出（打字時就出現）。 */
+	const unsaved = $derived(editor.hasUnsavedWork);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
 	setUnsavedCheck(() => editor.hasUnsavedWork);
 	/**
@@ -92,6 +94,28 @@
 	let printOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
+	// ---------- 窄螢幕（手機、直拿的 iPad）：一律檢視模式，編排換成手機的檢視畫面（docs/adr/0005-ipad-touch.md） ----------
+	const narrowQuery = typeof matchMedia === 'function' ? matchMedia(NARROW_SCREEN) : null;
+	let narrow = $state(narrowQuery?.matches ?? false);
+	onMount(() => {
+		if (!narrowQuery?.addEventListener) return;
+		const changed = () => (narrow = narrowQuery.matches);
+		narrowQuery.addEventListener('change', changed);
+		return () => narrowQuery.removeEventListener('change', changed);
+	});
+	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯
+	$effect(() => {
+		session.viewing = narrow;
+	});
+	/** 「我」：手機檢視畫面標亮的人。這台裝置照流程記住（local-settings），不進流程檔；換流程時讀那支的。 */
+	let me = $state(session.flow ? loadMe(session.flow.name) : '');
+	/** 「我」還在名單裡才算（教練刪了那個人就沒有）。 */
+	const myId = $derived(flow?.members.some((m) => m.id === me) ? me : '');
+	function pickMe(id: string) {
+		me = id;
+		if (flow) saveMe(flow.name, id);
+	}
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived(session.groupingAction);
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
@@ -200,6 +224,7 @@
 	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
+		me = session.flow ? loadMe(session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
@@ -229,11 +254,17 @@
 		if (file) void editor.file.open(file);
 	}
 
-	/** 開檔：Chrome、Edge 不跳選檔欄位，改用選檔視窗。 */
+	/** 開檔：有還沒存的修改先問，答應了才選檔。Chrome、Edge 不跳選檔欄位，改用選檔視窗。 */
 	function pickOpen(e: Event) {
-		if (!editor.file.canPick) return;
-		e.preventDefault();
-		void editor.file.pick();
+		const input = e.currentTarget as HTMLInputElement;
+		const pick = editor.file.canPick;
+		// 答應了再按一次選檔欄位：這次照常跳選檔（按「不存了，繼續」還算教練按的，瀏覽器肯開）
+		const choose = pick ? () => void editor.file.pick() : () => input.click();
+		if (!editor.file.mayChoose(choose)) e.preventDefault();
+		else if (pick) {
+			e.preventDefault();
+			choose();
+		}
 	}
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
@@ -277,10 +308,11 @@
 		const target = e.target as Element | null;
 		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
-		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）
+		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
+		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
 			e.preventDefault();
-			undoKey(!(key === 'z' && !e.shiftKey));
+			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
 		}
 		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它；其他時候播放／暫停
@@ -347,10 +379,12 @@
 <svelte:window
 	{onkeydown}
 	{onbeforeunload}
+	onpagehide={() => editor.file.pageHidden()}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
 />
+<svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
 {#if flow}
 	{@const warnings = timeRuleWarnings(flow)}
@@ -358,6 +392,7 @@
 		class="editor"
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
+		class:narrow
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
 		style:--inspector-w="{inspectorPx}px"
@@ -381,23 +416,7 @@
 				</div>
 			{/if}
 		{/snippet}
-		<header class="topbar">
-			<div class="title">
-				<b title={flow.name}>{flow.name}</b>
-				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
-				<span class="unsaved-slot"
-					>{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}</span
-				>
-				<div class="view" role="group" aria-label="編排｜練習">
-					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
-					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
-				</div>
-				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
-				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
-					><Icon name="help" /><span class="guide-text">使用說明</span></a
-				>
-			</div>
-
+		{#snippet transport()}
 			<div class="transport" hidden={view === 'practice'}>
 				<button
 					type="button"
@@ -438,10 +457,31 @@
 					/>
 				</label>
 			</div>
+		{/snippet}
+		<header class="topbar">
+			<div class="title">
+				<b title={flow.name}>{flow.name}</b>
+				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
+				<span class="unsaved-slot"
+					>{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}</span
+				>
+				<div class="view" role="group" aria-label="編排｜練習">
+					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
+					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
+				</div>
+				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
+				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
+					><Icon name="help" /><span class="guide-text">使用說明</span></a
+				>
+			</div>
+
+			<!-- 播放區：寬的時候在上方列中間；窄螢幕放在手機檢視畫面的場地下面 -->
+			{#if !narrow}{@render transport()}{/if}
 
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
-				{#if view === 'edit'}
+				<!-- 窄螢幕一律是檢視模式，沒有「編輯」開關 -->
+				{#if view === 'edit' && !narrow}
 					<!-- 關掉是檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<label class="toggle" title="關掉是檢視模式：只能看、只能播放，不會不小心改到">
 						<input
@@ -476,156 +516,195 @@
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
 				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-				<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+				{#if narrow}
+					<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
+					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
+				{:else}
+					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+				{/if}
 				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 		</header>
 
-		<main class="field-host" hidden={view === 'practice'} {@attach watchFieldHostH}>
-			<Field
-				field={flow.field}
-				members={flow.members}
-				markers={memberMarkers(flow)}
-				positions={positionsAt(flow, playback.sec)}
-				raised={raisedAt(flow, playback.sec)}
-				{toMeters}
-				ghosts={trail.ghosts}
-				walks={trail.walks}
-				clashes={trail.clashes}
-				badges={squadBadges}
-			>
-				{#snippet below()}
-					{#if groupingAction && flow}
-						<SquadBar action={groupingAction} />
-					{/if}
-				{/snippet}
-				{#snippet railTop()}
-					{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
-						<div class="select-tools">
-							{#if touchScreen}
-								<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
-									<input type="checkbox" bind:checked={session.multiSelect} />多選
-								</label>
-								<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
-							{/if}
-							{#if timelineDivider.px !== null || inspectorDivider.px !== null}
-								<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
-							{/if}
-						</div>
-					{/if}
-					{#if flow}
-						{@const now = currentFormation(flow, playback.sec)}
-						<div class="now-formation" aria-label="現在的站位">
-							<span class="now-label">現在站位</span>
-							<div class="now-row">
-								<span class="now-no">{now.number}</span>
-								{#if now.formation.name}
-									<strong class="now-name" title={now.formation.name}>{now.formation.name}</strong>
-								{:else}
-									<span class="now-name unnamed">站位 {now.number}</span>
+		{#if narrow}
+			{#if view === 'edit'}
+				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面八拍表這一列。只能看、只能播放；場上的人拖不動 -->
+				<main class="phone-view">
+					<div class="phone-field">
+						<Field
+							field={flow.field}
+							members={flow.members}
+							markers={memberMarkers(flow)}
+							positions={positionsAt(flow, playback.sec)}
+							raised={raisedAt(flow, playback.sec)}
+							controls={false}
+							marked={myId ? [myId] : []}
+							ghosts={trail.ghosts}
+							walks={trail.walks}
+							clashes={trail.clashes}
+						/>
+						{@render noticeToast()}
+					</div>
+					{@render transport()}
+					<div class="phone-me">
+						<label for="phone-me">我</label>
+						<select id="phone-me" value={myId} onchange={(e) => pickMe(e.currentTarget.value)}>
+							<option value="">（選自己：場上標亮我、八拍表只看我的）</option>
+							{#each flow.members as m (m.id)}
+								<option value={m.id}>{m.name}</option>
+							{/each}
+						</select>
+					</div>
+					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+				</main>
+			{/if}
+		{:else}
+			<main class="field-host" hidden={view === 'practice'} {@attach watchFieldHostH}>
+				<Field
+					field={flow.field}
+					members={flow.members}
+					markers={memberMarkers(flow)}
+					positions={positionsAt(flow, playback.sec)}
+					raised={raisedAt(flow, playback.sec)}
+					{toMeters}
+					ghosts={trail.ghosts}
+					walks={trail.walks}
+					clashes={trail.clashes}
+					badges={squadBadges}
+				>
+					{#snippet below()}
+						{#if groupingAction && flow}
+							<SquadBar action={groupingAction} />
+						{/if}
+					{/snippet}
+					{#snippet railTop()}
+						{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
+							<div class="select-tools">
+								{#if touchScreen}
+									<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
+										<input type="checkbox" bind:checked={session.multiSelect} />多選
+									</label>
+									<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
+								{/if}
+								{#if timelineDivider.px !== null || inspectorDivider.px !== null}
+									<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
 								{/if}
 							</div>
-						</div>
-					{/if}
-					{#if warnings.length}
-						<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
-							<Icon name="warn" />
-							<span class="warn-text">{#each warnings as w (w)}<span>{w}</span>{/each}</span>
-						</div>
-					{/if}
-					{#if flow}
-						{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
-						{#if stacked.length}
-							<p class="hint-warn" role="note">
-								{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
-							</p>
 						{/if}
-						<CueOverlay {flow} />
-					{/if}
-				{/snippet}
-				{#snippet railBottom()}
-					{#if flow?.members.length}
-						<FormationEditor />
-					{/if}
-				{/snippet}
-			{#if flow.members.length === 0}
-				<div class="field-empty">
-					<b>場上還沒有人</b>
-					<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
-				</div>
-			{/if}
-			<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人 -->
-			<div class="field-toasts">
-				{#if session.ask.question}
-					<div class="toast-confirm">
-						<ConfirmList ask={session.ask} />
+						{#if flow}
+							{@const now = currentFormation(flow, playback.sec)}
+							<div class="now-formation" aria-label="現在的站位">
+								<span class="now-label">現在站位</span>
+								<div class="now-row">
+									<span class="now-no">{now.number}</span>
+									{#if now.formation.name}
+										<strong class="now-name" title={now.formation.name}>{now.formation.name}</strong>
+									{:else}
+										<span class="now-name unnamed">站位 {now.number}</span>
+									{/if}
+								</div>
+							</div>
+						{/if}
+						{#if warnings.length}
+							<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
+								<Icon name="warn" />
+								<span class="warn-text">{#each warnings as w (w)}<span>{w}</span>{/each}</span>
+							</div>
+						{/if}
+						{#if flow}
+							{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
+							{#if stacked.length}
+								<p class="hint-warn" role="note">
+									{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
+								</p>
+							{/if}
+							<CueOverlay {flow} />
+						{/if}
+					{/snippet}
+					{#snippet railBottom()}
+						{#if flow?.members.length}
+							<FormationEditor />
+						{/if}
+					{/snippet}
+				{#if flow.members.length === 0}
+					<div class="field-empty">
+						<b>場上還沒有人</b>
+						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 					</div>
 				{/if}
-				{@render noticeToast()}
-			</div>
-			</Field>
-		</main>
+				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人 -->
+				<div class="field-toasts">
+					{#if session.ask.question}
+						<div class="toast-confirm">
+							<ConfirmList ask={session.ask} />
+						</div>
+					{/if}
+					{@render noticeToast()}
+				</div>
+				</Field>
+			</main>
 
-		<aside class="inspector" hidden={view === 'practice'}>
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+			<aside class="inspector" hidden={view === 'practice'}>
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
+				<div
+					class="col-split"
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="場地和右邊欄的分界"
+					aria-valuenow={inspectorPx}
+					aria-valuemin={INSPECTOR_MIN_PX}
+					tabindex="0"
+					title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
+					{@attach inspectorDivider.attach}
+				></div>
+				<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
+				<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
+					<button
+						type="button"
+						role="tab"
+						id="tab-action"
+						aria-selected={editor.inspectorTab === 'action'}
+						aria-controls="panel-action"
+						onclick={() => (editor.inspectorTab = 'action')}><Icon name="bolt" />動作</button
+					>
+					<button
+						type="button"
+						role="tab"
+						id="tab-members"
+						aria-selected={editor.inspectorTab === 'members'}
+						aria-controls="panel-members"
+						onclick={() => (editor.inspectorTab = 'members')}
+						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
+					>
+				</div>
+				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
+					<MemberPicker />
+					<WalkForm />
+					<ActionForm {cellAt} />
+				</div>
+				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
+					<MemberPanel />
+				</div>
+			</aside>
+
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 			<div
-				class="col-split"
+				class="split"
+				hidden={view === 'practice'}
 				role="separator"
-				aria-orientation="vertical"
-				aria-label="場地和右邊欄的分界"
-				aria-valuenow={inspectorPx}
-				aria-valuemin={INSPECTOR_MIN_PX}
+				aria-orientation="horizontal"
+				aria-label="場地和時間軸的分界"
+				aria-valuenow={timelineDivider.px ?? currentTimelineH()}
+				aria-valuemin={TIMELINE_MIN_PX}
 				tabindex="0"
-				title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
-				{@attach inspectorDivider.attach}
+				title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
+				{@attach timelineDivider.attach}
 			></div>
-			<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
-			<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
-				<button
-					type="button"
-					role="tab"
-					id="tab-action"
-					aria-selected={editor.inspectorTab === 'action'}
-					aria-controls="panel-action"
-					onclick={() => (editor.inspectorTab = 'action')}><Icon name="bolt" />動作</button
-				>
-				<button
-					type="button"
-					role="tab"
-					id="tab-members"
-					aria-selected={editor.inspectorTab === 'members'}
-					aria-controls="panel-members"
-					onclick={() => (editor.inspectorTab = 'members')}
-					><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
-				>
-			</div>
-			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
-				<MemberPicker />
-				<WalkForm />
-				<ActionForm {cellAt} />
-			</div>
-			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
-				<MemberPanel />
-			</div>
-		</aside>
 
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
-		<div
-			class="split"
-			hidden={view === 'practice'}
-			role="separator"
-			aria-orientation="horizontal"
-			aria-label="場地和時間軸的分界"
-			aria-valuenow={timelineDivider.px ?? currentTimelineH()}
-			aria-valuemin={TIMELINE_MIN_PX}
-			tabindex="0"
-			title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
-			{@attach timelineDivider.attach}
-		></div>
-
-		<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
-			<Timeline onopensegment={(id) => (openSegmentId = id)} clashes={allClashes} />
-		</div>
+			<div class="timeline-host" hidden={view === 'practice'} bind:this={timelineHost}>
+				<Timeline onopensegment={(id) => (openSegmentId = id)} clashes={allClashes} />
+			</div>
+		{/if}
 		{#if view === 'practice'}
 			<div class="practice-host">
 				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
@@ -636,7 +715,7 @@
 			</div>
 		{/if}
 	</div>
-	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
+	<!-- 大的 iPad 拿直的（不算窄）：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
 			<button type="button" onclick={() => editor.file.leaveToHome()}>回首頁</button>
@@ -644,20 +723,13 @@
 			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
 		</div>
 	{/snippet}
-	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來 -->
-	{#if view === 'edit' && !printOpen}
+	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來。窄螢幕是手機的檢視畫面，不擋 -->
+	{#if view === 'edit' && !printOpen && !narrow}
 		<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
 		<section class="cover-hint rotate-hint" aria-labelledby="rotate-hint-title">
 			<Icon name="fit" size={28} />
 			<b id="rotate-hint-title">請把 iPad 轉成橫的</b>
 			<span>編輯畫面要橫著放，場地和時間軸才放得下。練習、記錄、看八拍表直著也可以。</span>
-			{@render coverWays()}
-		</section>
-		<!-- 視窗太窄（手機、直拿 iPad、縮小的視窗）：場地太小點不到、上方列的按鈕疊在一起。排在後面，手機拿直的時蓋過上面那張 -->
-		<section class="cover-hint narrow-hint" aria-labelledby="narrow-hint-title">
-			<Icon name="fit" size={28} />
-			<b id="narrow-hint-title">視窗太窄了</b>
-			<span>編輯畫面要至少 1024 像素寬、600 像素高，場地才夠大。請用電腦，或把平板轉成橫的。練習、記錄、看八拍表在這裡就可以。</span>
 			{@render coverWays()}
 		</section>
 	{/if}
@@ -675,21 +747,28 @@
 		<FlowSettings onclose={() => (settingsOpen = false)} />
 	{/if}
 	{#if printOpen}
-		<PrintSheet {flow} onclose={() => (printOpen = false)} />
+		<PrintSheet
+			{flow}
+			selected={session.selectedMemberIds.length === 1 ? session.selectedMemberIds[0] : null}
+			onclose={() => (printOpen = false)}
+		/>
 	{/if}
 	{#if editor.file.asking}
-		<div class="backdrop discard">
-			<div class="discard-box">
+		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
+		<!-- 真的對話框：Escape、點背景＝取消，焦點先放在「取消」，關掉後回到按的按鈕 -->
+		<Modal label={message} class="discard-box" onclose={() => editor.file.answer('cancel')}>
+			{#snippet children()}
 				<ConfirmList
-					message={`「${flow.name}」還沒存，改的東西會不見。`}
+					{message}
 					items={[]}
 					confirmLabel="不存了，繼續"
 					onconfirm={() => editor.file.answer('discard')}
 					extra={{ label: '先存檔', onclick: () => editor.file.answer('save') }}
 					oncancel={() => editor.file.answer('cancel')}
+					focusCancel
 				/>
-			</div>
-		</div>
+			{/snippet}
+		</Modal>
 	{/if}
 {:else}
 	<div class="home">
@@ -742,12 +821,13 @@
 		</section>
 		{#if discarding}
 			{@const f = discarding}
-			<div class="backdrop discard">
-				<div class="discard-box">
+			{@const message = f.unsaved
+				? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
+				: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+			<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
+				{#snippet children()}
 					<ConfirmList
-						message={f.unsaved
-							? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
-							: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+						{message}
 						items={[]}
 						confirmLabel="丟掉"
 						onconfirm={() => {
@@ -756,9 +836,10 @@
 							void editor.file.discardRecent(id);
 						}}
 						oncancel={() => (discarding = null)}
+						focusCancel
 					/>
-				</div>
-			</div>
+				{/snippet}
+			</Modal>
 		{/if}
 	</div>
 {/if}
@@ -778,6 +859,63 @@
 	/* 練習：主畫面換成練習畫面，編排的東西藏起來（不拆掉：場地、時間軸的縮放還在） */
 	.editor.practicing {
 		grid-template-rows: auto minmax(0, 1fr);
+	}
+	/* 窄螢幕：上方列下面整塊是手機的檢視畫面（或練習畫面） */
+	.editor.narrow {
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲） */
+	.phone-view {
+		grid-column: 1 / -1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content);
+	}
+	.phone-field {
+		position: relative;
+		min-height: 0;
+		padding: 8px;
+	}
+	.phone-view .transport {
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 8px 10px;
+		padding: 8px 12px;
+		background: var(--ink);
+	}
+	.phone-me {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		background: var(--surface);
+		border-top: 1px solid var(--line);
+		font-weight: 600;
+	}
+	.phone-me select {
+		flex: 1;
+		min-width: 0;
+	}
+	.phone-view :global(.now-eight) {
+		max-height: 38dvh;
+	}
+	/* 手機橫拿：場地在左、播放區和八拍表在右，場地才不會被擠扁 */
+	@media (orientation: landscape) {
+		.phone-view {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+			grid-template-rows: auto auto minmax(0, 1fr);
+		}
+		.phone-view > :global(*) {
+			grid-column: 2;
+		}
+		.phone-view > .phone-field {
+			grid-column: 1;
+			grid-row: 1 / -1;
+		}
+		.phone-view :global(.now-eight) {
+			max-height: none;
+		}
 	}
 	.editor > [hidden],
 	.topbar > [hidden] {
@@ -1211,7 +1349,7 @@
 		color: var(--text);
 		font-size: 14px;
 	}
-	/* 練習畫面：放在下方。場地上的放在上方（見 .field-toasts）。 */
+	/* 練習畫面、手機的檢視畫面：放在下方。編輯畫面場地上的放在上方（見 .field-toasts）。 */
 	.toast {
 		position: absolute;
 		bottom: 14px;
@@ -1388,11 +1526,13 @@
 		grid-template-rows: minmax(0, 1fr);
 	}
 
-	.discard {
+	/* 「還沒存」、首頁「丟掉」的確認：蓋過窄螢幕的提示（回首頁也會問） */
+	:global(.backdrop:has(> .discard-box)) {
 		align-items: flex-start;
 		padding-top: 72px;
+		z-index: 110;
 	}
-	.discard-box {
+	:global(.discard-box) {
 		width: min(420px, 100%);
 		box-shadow: var(--shadow-pop);
 		border-radius: 10px;
@@ -1414,7 +1554,7 @@
 		}
 	}
 
-	/* 蓋住編輯畫面的提示：iPad 拿直的請教練轉成橫的、視窗太窄。 */
+	/* 蓋住編輯畫面的提示：大的 iPad 拿直的請教練轉成橫的。 */
 	.cover-hint {
 		display: none;
 		position: fixed;
@@ -1446,11 +1586,6 @@
 	/* screen：列印八拍表時（紙是直的）不能印到它。 */
 	@media screen and (pointer: coarse) and (orientation: portrait) {
 		.rotate-hint {
-			display: grid;
-		}
-	}
-	@media screen and (max-width: 1023px), screen and (max-height: 599px) {
-		.narrow-hint {
 			display: grid;
 		}
 	}
@@ -1490,7 +1625,7 @@
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
-		.transport {
+		.topbar .transport {
 			grid-row: 2;
 			grid-column: 1 / -1;
 			justify-content: center;
@@ -1522,9 +1657,6 @@
 		.actions {
 			grid-row: 2;
 			flex-wrap: wrap;
-		}
-		.transport {
-			grid-row: 3;
 		}
 	}
 
