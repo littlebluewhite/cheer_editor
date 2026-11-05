@@ -451,6 +451,14 @@ describe('這一刻的拍點', () => {
 		expect(summary(cued(), 7)).toEqual([]);
 	});
 
+	it('最後一個拍點過了、動作還沒結束：卡還在，只是沒有亮的、也沒有下一個', () => {
+		let flow = flowOf(updateSegment(sample(), 's1', { bpm: 120 }));
+		flow = flowOf(moveAction(flow, 'x1', 5));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 2, word: 'down' }));
+		expect(summary(flow, 6)).toEqual([{ action: 'x1', now: [], next: null }]);
+		expect(summary(flow, 7)).toEqual([]);
+	});
+
 	it('檔案裡的拍點沒照時間排，下一個還是最近的那個', () => {
 		const flow = cued();
 		const shuffled: Flow = {

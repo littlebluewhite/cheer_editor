@@ -87,7 +87,8 @@ export interface LiveCues {
 
 /**
  * 這一刻（全域秒數）的拍點：每個有拍點的動作一份，現在亮哪些、下一個是什麼。
- * 動作開始前一個八拍就開始預告；動作結束那一刻起不再出現。口號段沒有拍點。場地的大字用它。
+ * 動作開始前一個八拍就開始預告；最後一個拍點過了也留著（沒有亮的、也沒有下一個），動作結束那一刻起才不出現。
+ * 口號段沒有拍點。場地的大字用它。
  */
 export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 	const byKind = (a: Cue, b: Cue) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
@@ -110,7 +111,7 @@ export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 						at: atText(segment, action.start + nextAt),
 						cues: action.cues.filter((c) => c.at === nextAt).toSorted(byKind)
 					};
-		return now.length || next ? [{ action, now, next }] : [];
+		return [{ action, now, next }];
 	});
 }
 
