@@ -130,18 +130,38 @@ describe('動作表單的草稿：新增時跟著選取和播放頭', () => {
 		expect(draft.members).toEqual([{ memberId: 'm2', role: '底層' }]);
 	});
 
-	it('播放頭動了，開始和長度跟著播放頭那一格；在同一格裡動，打的字不動', () => {
+	it('播放頭動了，開始和長度跟著播放頭那一格', () => {
 		const { draft, playback } = setup();
 		playback.seek(1);
-		draft.startText = '3-1';
-		draft.lengthText = '2';
-		playback.seek(1.1);
-		expect([draft.startText, draft.lengthText]).toEqual(['3-1', '2']);
 		playback.step(1, false);
 		expect([draft.startText, draft.lengthText]).toEqual(['1-4', '8']);
 		// 最後一個八拍的 4-7：到段尾只剩 2 拍
 		playback.seek(12);
 		expect([draft.startText, draft.lengthText]).toEqual(['4-7', '2']);
+	});
+
+	it('打過字的開始、長度不再跟著播放頭；新增之後的新草稿又跟著走', () => {
+		const { draft, playback, session } = setup();
+		draft.startText = '3-1';
+		playback.seek(5);
+		expect([draft.startText, draft.lengthText]).toEqual(['3-1', '8']);
+		draft.lengthText = '2';
+		playback.seek(12);
+		expect([draft.startText, draft.lengthText]).toEqual(['3-1', '2']);
+		session.selectMembers(['m1']);
+		draft.add();
+		session.selectAction(null);
+		playback.seek(1);
+		expect([draft.startText, draft.lengthText]).toEqual(['1-3&', '8']);
+	});
+
+	it('開始欄有焦點時不跟著播放頭，離開了沒打字就跟上', () => {
+		const { draft, playback } = setup();
+		draft.focusSlotField('startText');
+		playback.seek(1);
+		expect([draft.startText, draft.lengthText]).toEqual(['1-1', '8']);
+		draft.focusSlotField(null);
+		expect(draft.startText).toBe('1-3&');
 	});
 
 	it('播放中播到下一個八拍：開始跟著走', () => {
@@ -321,8 +341,7 @@ describe('動作表單的草稿：紅字', () => {
 		['換大類', ({ draft }) => draft.setCategory('pyramid')],
 		['挑辨識色', ({ draft }) => draft.setColor('#1565c0')],
 		['改任務角色', ({ draft }) => draft.setRole(0, null)],
-		['場上多選一個人', ({ session }) => session.selectMembers(['m1', 'm2'])],
-		['播放頭換一格', ({ playback }) => playback.seek(5)]
+		['場上多選一個人', ({ session }) => session.selectMembers(['m1', 'm2'])]
 	] as [string, (t: ReturnType<typeof setup>) => void][])('新增被擋下後，草稿一改（%s）紅字就收掉', (_, edit) => {
 		const t = blocked();
 		edit(t);

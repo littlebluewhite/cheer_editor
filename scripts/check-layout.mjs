@@ -735,5 +735,21 @@ await check('390×844（手機）使用說明：名詞表上下排，不用左�
 	return { ok: r.要滑的表.length === 0 && r.頁寬 <= r.畫面寬, value: r };
 });
 
+await check('1440×900 右邊欄是新動作表單：「新增動作」不用捲就看得到、點得到（黏在右邊欄底部）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	// 選全隊：新動作表單列出所有人，表單比右邊欄長
+	await js(`[...document.querySelectorAll('.inspector button')].find((b) => b.textContent.trim() === '全隊').click()`);
+	await sleep(300);
+	const r = await js(`const panel = document.querySelector('#panel-action'); panel.scrollTop = 0;
+		await new Promise((r) => setTimeout(r, 150));
+		const b = document.querySelector('.action-form .add').getBoundingClientRect();
+		const p = panel.getBoundingClientRect();
+		const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+		return { 點得到: hit === document.querySelector('.action-form .add'), 按鈕: [Math.round(b.top), Math.round(b.bottom)],
+			右邊欄: [Math.round(p.top), Math.round(p.bottom)], 右邊欄要捲: panel.scrollHeight > panel.clientHeight };`);
+	return { ok: r.點得到 && r.按鈕[1] <= r.右邊欄[1] && r.右邊欄要捲, value: r };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

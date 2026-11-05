@@ -4,6 +4,7 @@
 // 送出時開始、長度由核心讀（readStart、readLength），看不懂就是被擋，原因跟指令被擋一樣交給 ask。
 
 import {
+	actionSeconds,
 	actionSlotAt,
 	addAction,
 	atText,
@@ -24,6 +25,15 @@ import {
 import type { Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 
+/** 播放頭（全域秒數）。 */
+interface Playhead {
+	readonly sec: number;
+	seek(sec: number): void;
+}
+
+/** 跟著播放頭的兩個欄位。 */
+type SlotField = 'startText' | 'lengthText';
+
 interface Draft {
 	category: ActionCategory;
 	name: string;
@@ -33,6 +43,12 @@ interface Draft {
 	members: ActionMember[];
 	/** 辨識色；undefined = 用大類的顏色。 */
 	color: string | undefined;
+}
+
+/** 收起來的新動作草稿：欄位和打過字的開始、長度。 */
+interface Kept {
+	draft: Draft;
+	typed: Set<SlotField>;
 }
 
 /** 上次跟上的：選到的動作（同一個 id 改過也是新的）、選人（session 每次選都換一個新的陣列）、播放頭那一格、自訂任務角色。 */
@@ -45,17 +61,26 @@ interface Seen {
 
 export class ActionDraft {
 	readonly #session: EditorSession;
-	readonly #playheadSec: () => number;
+	readonly #playhead: Playhead;
 	#draft = $state<Draft>(blank([]));
 	/** null：沒開流程（表單不在），開了流程就從頭建。 */
 	#seen: Seen | null = null;
+	/** 新增時開始、長度不再跟著播放頭的欄位：教練打過字的（換了草稿才放掉），和正有焦點的那一個。 */
+	#typed = new Set<SlotField>();
+	#focused: SlotField | null = null;
+	/** 去選別的動作時收起來的新動作草稿：回到新增時拿回來。 */
+	#kept: Kept | null = null;
+	/** 換過大類的草稿（動作 id，新增是 ''）：換完還有人不是新大類的預設任務角色，就問要不要換（offerDefaultRoles）。 */
+	#categoryChanged = $state<string | null>(null);
+	/** 剛新增的動作和送出的草稿：復原掉這個動作、回到新增時拿回來。 */
+	#added: { id: string; kept: Kept } | null = null;
 
 	/** 選到的動作；null = 新增。 */
 	readonly #action = $derived.by(() => this.#session.selectedAction);
 	/** 新增時，播放頭那一格（新動作從這裡開始）。 */
 	readonly #slot = $derived.by(() => {
 		const flow = this.#session.flow;
-		return flow && !this.#action ? actionSlotAt(flow, this.#playheadSec()) : null;
+		return flow && !this.#action ? actionSlotAt(flow, this.#playhead.sec) : null;
 	});
 	/** 草稿在哪一段：動作的段，或播放頭那一格的段；null = 還沒有段。 */
 	readonly #segment = $derived.by(() => {
@@ -66,10 +91,10 @@ export class ActionDraft {
 	/** 被擋的原因，和等教練回答的改動（會切短或拿掉拍點、會清掉紀錄；有紀錄的組換了人要選保留／清掉）。 */
 	readonly ask: Ask;
 
-	/** playheadSec：播放頭（全域秒數）。 */
-	constructor(session: EditorSession, playheadSec: () => number) {
+	/** playhead：播放頭（新增後跳到新動作的結束）。 */
+	constructor(session: EditorSession, playhead: Playhead) {
 		this.#session = session;
-		this.#playheadSec = playheadSec;
+		this.#playhead = playhead;
 		this.ask = session.changeAsk();
 		this.follow();
 	}
@@ -111,7 +136,7 @@ export class ActionDraft {
 	}
 
 	set startText(text: string) {
-		this.#set('startText', text);
+		this.#type('startText', text);
 	}
 
 	get lengthText(): string {
@@ -119,7 +144,13 @@ export class ActionDraft {
 	}
 
 	set lengthText(text: string) {
-		this.#set('lengthText', text);
+		this.#type('lengthText', text);
+	}
+
+	/** 開始或長度欄有焦點（null：離開了）：有焦點的欄位不跟著播放頭變，離開了沒打過字就再跟上。 */
+	focusSlotField(field: SlotField | null) {
+		this.#focused = field;
+		if (!field && !this.#action) this.#toSlot();
 	}
 
 	get note(): string {
@@ -137,6 +168,25 @@ export class ActionDraft {
 		const { members, category: from } = this.#draft;
 		if (!this.#action) this.#set('members', defaultRoles(this.#session.flow!, category, members, from));
 		this.#set('category', category);
+		this.#categoryChanged = this.#action?.id ?? '';
+	}
+
+	/** 剛換過大類，有人的任務角色不是新大類的預設值：可以一次換成預設任務角色（useDefaultRoles）。 */
+	get offerDefaultRoles(): boolean {
+		if (this.#categoryChanged !== (this.#action?.id ?? '')) return false;
+		const defaults = this.#defaultRoles();
+		return this.#draft.members.some((m, i) => m.role !== defaults[i].role);
+	}
+
+	/** 每個人的任務角色都換成這個大類的預設值（照全局角色）。改動作時一樣要再叫 update() 送出。 */
+	useDefaultRoles() {
+		this.#set('members', this.#defaultRoles());
+		this.#categoryChanged = null;
+	}
+
+	#defaultRoles(): ActionMember[] {
+		const cleared = this.#draft.members.map((m) => ({ ...m, role: null }));
+		return defaultRoles(this.#session.flow!, this.#draft.category, cleared);
 	}
 
 	/** 挑辨識色；undefined = 用大類的顏色。 */
@@ -167,13 +217,20 @@ export class ActionDraft {
 		this.#setMembers(source.members.map((m) => ({ ...m })));
 	}
 
-	/** 新增動作（「新增動作」鈕）：成功就選到新的動作。 */
+	/** 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。 */
 	add() {
 		const segment = this.#segment;
 		if (this.#action || !segment) return;
 		const input = this.#read(segment);
+		const sent = this.#keep();
 		this.ask.send(() => (input.kind === 'blocked' ? input : addAction(this.#session.flow!, input.value)), {
-			done: (r) => this.#session.selectAction(r.id)
+			done: (r) => {
+				this.#session.selectAction(r.id);
+				const flow = this.#session.flow!;
+				this.#playhead.seek(actionSeconds(flow, flow.actions.find((a) => a.id === r.id)!).endSec);
+				this.#kept = null;
+				this.#added = { id: r.id, kept: sent };
+			}
 		});
 	}
 
@@ -193,14 +250,17 @@ export class ActionDraft {
 
 	/**
 	 * session 換了流程或選取、播放頭動了：草稿跟上。
-	 * 換了選到的動作（或回到新增）：草稿照動作重設，新增是空白的；紅字和問題收掉。
-	 * 新增時：自訂任務角色改名、刪掉，草稿裡的人跟著換名字、變成沒有任務；人跟著選的人；開始和長度跟著播放頭那一格。
+	 * 換了選到的動作（或回到新增）：草稿照動作重設；紅字和問題收掉。
+	 * 回到新增時拿回去選別的動作前收起來的草稿（復原掉剛新增的動作時，拿回送出的草稿），沒有就是空白的。
+	 * 新增時：自訂任務角色改名、刪掉，草稿裡的人跟著換名字、變成沒有任務；人跟著選的人；
+	 * 開始和長度跟著播放頭那一格（打過字、正有焦點的欄位不跟）。
 	 * （改動作時草稿照動作重設：動作裡的人核心已經改好了。）
 	 */
 	follow() {
 		const flow = this.#session.flow;
 		if (!flow) {
 			this.#seen = null;
+			this.#kept = this.#added = null;
 			return;
 		}
 		const action = this.#action;
@@ -210,7 +270,10 @@ export class ActionDraft {
 		const seen = this.#seen;
 		this.#seen = { action, selection, slot: slotKey, roles: flow.customRoles };
 		if (!seen || action !== seen.action) {
-			this.#reset();
+			if (seen && !seen.action) this.#kept = this.#keep();
+			if (action?.id !== seen?.action?.id) this.#categoryChanged = null;
+			const undone = seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
+			this.#reset(undone ? this.#added!.kept : this.#kept);
 			this.ask.clear();
 			return;
 		}
@@ -222,15 +285,25 @@ export class ActionDraft {
 		if (slotKey !== seen.slot) this.#toSlot();
 	}
 
-	/** 草稿照選到的動作重設；新增是空白的：人是選到的人，開始和長度是播放頭那一格。 */
-	#reset() {
+	/**
+	 * 草稿照選到的動作重設。新增時拿回收起來的草稿（kept），沒有就是空白的：人是選到的人（收起來的人保留任務角色），
+	 * 沒打過字的開始和長度是播放頭那一格。
+	 */
+	#reset(kept: Kept | null = null) {
 		const action = this.#action;
 		if (action) {
 			this.#draft = fromAction(this.#session.flow!, action);
 			return;
 		}
-		this.#draft = blank(this.#fromSelection([], 'stunt'));
+		const draft = kept ? { ...kept.draft } : blank([]);
+		this.#draft = { ...draft, members: this.#fromSelection(draft.members, draft.category) };
+		this.#typed = new Set(kept?.typed);
 		this.#toSlot();
+	}
+
+	/** 新動作草稿收起來的樣子（復原、回到新增時拿回來）。 */
+	#keep(): Kept {
+		return { draft: { ...this.#draft, members: this.#draft.members.map((m) => ({ ...m })) }, typed: new Set(this.#typed) };
 	}
 
 	/** 改草稿的一格。真的變了，而且是新增：告訴 ask，收掉上次被擋的原因（可能已經不對了，按新增會再檢查一次）。 */
@@ -273,13 +346,20 @@ export class ActionDraft {
 		this.#set('members', members);
 	}
 
-	/** 開始和長度改成播放頭那一格（沒有段時不動）。 */
+	/** 開始和長度改成播放頭那一格（沒有段時不動）；打過字、正有焦點的欄位不動。 */
 	#toSlot() {
 		const slot = this.#slot;
 		const segment = this.#segment;
 		if (!slot || !segment) return;
-		this.#set('startText', atText(segment, slot.start));
-		this.#set('lengthText', lengthText(segment, slot.length));
+		const follows = (field: SlotField) => !this.#typed.has(field) && this.#focused !== field;
+		if (follows('startText')) this.#set('startText', atText(segment, slot.start));
+		if (follows('lengthText')) this.#set('lengthText', lengthText(segment, slot.length));
+	}
+
+	/** 教練在開始或長度欄打字：新增時這一欄不再跟著播放頭。 */
+	#type(field: SlotField, text: string) {
+		if (!this.#action && this.#draft[field] !== text) this.#typed.add(field);
+		this.#set(field, text);
 	}
 
 	/** 草稿讀成動作：開始、長度由核心讀，看不懂就是被擋（原因交給 ask）。 */

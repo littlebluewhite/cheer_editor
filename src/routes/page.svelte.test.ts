@@ -289,6 +289,9 @@ describe('動作', () => {
 	it('新增的動作出現在泳道上；任務角色是上層的人在場上畫在最上面；閒著的人標「閒」', async () => {
 		await withAction();
 		expect(bar()?.textContent).toContain('上層');
+		// 新增後播放頭跳到動作結束：移回動作裡
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 0, button: 0 });
+		await fireEvent.pointerUp(window);
 		expect(dot().classList.contains('raised')).toBe(true);
 		expect(document.querySelector('[data-lane="m1"] .idle-tag')).toBeNull();
 		// 播放頭移到動作之後（一個八拍 = 3.2 秒）
