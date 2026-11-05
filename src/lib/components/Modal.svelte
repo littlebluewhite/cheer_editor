@@ -11,7 +11,7 @@
 	// - 裡面有確認框時，Esc 只關確認框。
 	import { composing } from '#lib/ime.js';
 	import type { Snippet } from 'svelte';
-	import { flushPendingInput } from '#lib/pending-input.js';
+	import { domPendingInput } from '#lib/pending-input.js';
 	import type { Ask } from '#lib/ask.svelte.js';
 
 	interface Props {
@@ -57,7 +57,7 @@
 
 	function close() {
 		if (ask?.question) ask.answer('cancel');
-		flushPendingInput();
+		domPendingInput.flush();
 		if (ask && ask.failures !== failuresAtGesture) return;
 		onclose();
 	}

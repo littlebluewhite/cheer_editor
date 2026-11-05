@@ -42,8 +42,7 @@
 	} from '#lib/local-settings.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
-	import { setUnsavedChanges } from '#lib/unsaved.js';
-	import { flushPendingInput, settlePendingInput } from '#lib/pending-input.js';
+	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -85,24 +84,22 @@
 	setEditor(editor);
 	const { session } = editor;
 	// 開檔、存檔、草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
-	const { createEngine, createSaver, pickFlowFile, decode, draftStore } = editor.adapters;
+	const { createEngine, createSaver, pickFlowFile, decode, draftStore, pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
 
 	const flow = $derived(session.flow);
 	const unsaved = $derived(session.unsaved);
-	/** 欄位裡打了字還沒送出（名字、備註這類欄位在失去焦點時才送進流程）：關分頁前也要問。 */
-	let typing = $state(false);
-	$effect(() => setUnsavedChanges(unsaved || typing));
-	/** 有還沒存的修改時關分頁、重新整理：讓瀏覽器先問（草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。 */
+	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
+	setUnsavedCheck(() => editor.hasUnsavedWork);
+	/**
+	 * 有還沒存的修改、欄位裡打了字還沒送出時關分頁、重新整理：讓瀏覽器先問
+	 * （草稿要停手 1 秒才存，最後的修改可能還沒進草稿）。
+	 */
 	function onbeforeunload(e: BeforeUnloadEvent) {
-		if (unsaved || typing) e.preventDefault();
+		if (editor.hasUnsavedWork) e.preventDefault();
 	}
-	function oninput(e: Event) {
-		if (flow && (e.target as Element | null)?.closest?.('input, textarea, [contenteditable]')) typing = true;
-	}
-	const sent = () => (typing = false);
 	/** 這支流程在檔案裡（從檔案開的、存過檔）：沒有未存的修改就不用草稿。剛建好、救回草稿的不在檔案裡。 */
 	// svelte-ignore state_referenced_locally
 	let onDisk = $state(!!session.flow);
@@ -438,7 +435,7 @@
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		session.open(f, from !== 'draft');
 		onDisk = from === 'file';
-		typing = false;
+		pendingInput.settle();
 		opened++;
 		saver = fileSaver;
 		audios = loaded;
@@ -481,7 +478,7 @@
 	async function save() {
 		if (!flow || saving) return;
 		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
-		(document.activeElement as HTMLElement | null)?.blur();
+		pendingInput.flush();
 		const f = flow;
 		saving = true;
 		saver ??= createSaver();
@@ -637,12 +634,12 @@
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
-		flushPendingInput();
+		pendingInput.flush();
 		flushSync();
 		if (redoing) redo();
 		else undo();
 		flushSync();
-		settlePendingInput();
+		pendingInput.settle();
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -738,9 +735,6 @@
 <svelte:window
 	{onkeydown}
 	{onbeforeunload}
-	{oninput}
-	onchange={sent}
-	onfocusout={sent}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}

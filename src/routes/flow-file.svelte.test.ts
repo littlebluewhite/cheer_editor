@@ -63,8 +63,6 @@ describe('存檔', () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
-		// 瀏覽器在欄位失去焦點時送 change；jsdom 不會，這裡補上。
-		name.addEventListener('blur', () => name.dispatchEvent(new Event('change', { bubbles: true })));
 		name.focus();
 		await fireEvent.input(name, { target: { value: '縣賽' } });
 		await ctrlS(name);
@@ -72,6 +70,8 @@ describe('存檔', () => {
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.name).toBe('縣賽');
 		expect(hasUnsavedChanges()).toBe(false);
+		// 送出不靠讓欄位失去焦點：存完還在欄位裡
+		expect(document.activeElement).toBe(name);
 	});
 
 	it('打字打到一半按存檔按鈕（iPad 點按鈕不一定會讓輸入框失去焦點）：一樣先送出那個欄位', async () => {
@@ -79,13 +79,13 @@ describe('存檔', () => {
 		setup(saver);
 		await openFile(writeFlowFile(sampleFlow(), {}));
 		const name = screen.getByLabelText('站位名稱') as HTMLInputElement;
-		name.addEventListener('blur', () => name.dispatchEvent(new Event('change', { bubbles: true })));
 		name.focus();
 		await fireEvent.input(name, { target: { value: '開場' } });
 		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
 		await flush();
 		const r = readFlowFile(saves[0]);
 		expect(r.kind === 'ok' && r.flow.formations[0].name).toBe('開場');
+		expect(document.activeElement).toBe(name);
 	});
 
 	it('音樂檔還在解碼時關掉段設定、新增別段：解碼完不會放進新的那段，也不會弄丟新段', async () => {
