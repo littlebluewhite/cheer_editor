@@ -118,7 +118,8 @@ describe('八拍表的列：全隊', () => {
 					{ memberId: 'm1', name: '小A', role: '上層' },
 					{ memberId: 'm2', name: '小B', role: '主底' }
 				],
-				who: '小A（上層）、小B（主底）'
+				who: '小A（上層）、小B（主底）',
+				note: ''
 			}
 		]);
 		expect(second.actions).toEqual([
@@ -128,7 +129,8 @@ describe('八拍表的列：全隊', () => {
 				categoryLabel: '跳躍',
 				name: '',
 				members: [{ memberId: 'm3', name: '小C', role: null }],
-				who: '小C'
+				who: '小C',
+				note: ''
 			}
 		]);
 		// 動作只寫在開始的那一列，後面延續的八拍寫「繼續」
@@ -194,7 +196,8 @@ describe('八拍表的列：一個隊員', () => {
 				categoryLabel: '技巧',
 				name: 'Lib',
 				members: [{ memberId: 'm2', name: '小B', role: '主底' }],
-				who: '主底'
+				who: '主底',
+				note: ''
 			}
 		]);
 		expect(mine[1].actions).toEqual([]);

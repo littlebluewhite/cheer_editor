@@ -1,7 +1,9 @@
 <script lang="ts">
-	// 八拍表列印：蓋在編輯畫面上，選全隊或一個隊員，按「列印」用瀏覽器列印（可存 PDF）。
+	// 八拍表列印：蓋在編輯畫面上，選全隊、一個隊員或一個全局角色（那些人每人一張個人版），
+	// 按「列印」用瀏覽器列印（可存 PDF）。
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
 	import {
+		GLOBAL_ROLES,
 		cueText,
 		eightCountRows,
 		memberMarkers,
@@ -9,6 +11,8 @@
 		type EightCountPhase,
 		type Flow
 	} from '#lib/core';
+	import { loadPrintChoice, savePrintChoice } from '#lib/local-settings.js';
+	import { untrack } from 'svelte';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -16,24 +20,43 @@
 	interface Props {
 		flow: Flow;
 		onclose: () => void;
+		/** 編輯畫面只選了一個人時是他的 id：預設印他。 */
+		selected?: string | null;
 		/** 叫瀏覽器列印；測試換成假的（jsdom 沒有列印）。 */
 		print?: () => void;
 	}
 
-	let { flow, onclose, print = () => window.print() }: Props = $props();
+	let { flow, onclose, selected = null, print = () => window.print() }: Props = $props();
 
-	/** '' = 全隊。 */
-	let memberId = $state('');
+	/** 有隊員是這個全局角色才給選。 */
+	const roleChoices = $derived(
+		GLOBAL_ROLES.filter((r) => flow.members.some((m) => m.globalRole === r.key)).map((r) => ({
+			value: `role:${r.key}`,
+			label: `全部${r.label}`
+		}))
+	);
+	const valid = (c: string) =>
+		c === '' || flow.members.some((m) => m.id === c) || roleChoices.some((r) => r.value === c);
 
-	const rows = $derived(eightCountRows(flow, memberId || null));
+	/** '' = 全隊、隊員 id、'role:top' = 全部上層。打開時：編輯畫面選的那個人優先，再來是上次選的。 */
+	let choice = $state(
+		untrack(() => [selected ?? '', loadPrintChoice(flow.name)].find((c) => c && valid(c)) ?? '')
+	);
+
+	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
+	const sheets = $derived(
+		choice.startsWith('role:')
+			? flow.members.filter((m) => `role:${m.globalRole}` === choice).map((m) => m.id)
+			: [choice]
+	);
 	const markers = $derived(memberMarkers(flow));
-	const who = $derived.by(() => {
-		const m = flow.members.find((m) => m.id === memberId);
+	function whoText(id: string): string {
+		const m = flow.members.find((m) => m.id === id);
 		if (!m) return '全隊';
 		return flow.markers === 'initial'
 			? `${m.name}（場上寫「${markers[m.id]}」）`
 			: `${m.name}（場上 ${markers[m.id]} 號）`;
-	});
+	}
 
 	/** 「技巧·Lib」；名稱跟大類一樣（「舞蹈」）只寫一次。 */
 	function title(categoryLabel: string, name: string): string {
@@ -56,8 +79,11 @@
 			<b class="tool-title">八拍表</b>
 			<label>
 				印誰
-				<select bind:value={memberId}>
+				<select bind:value={choice} onchange={() => savePrintChoice(flow.name, choice)}>
 					<option value="">全隊</option>
+					{#each roleChoices as r (r.value)}
+						<option value={r.value}>{r.label}</option>
+					{/each}
 					{#each flow.members as m (m.id)}
 						<option value={m.id}>{m.name}</option>
 					{/each}
@@ -69,103 +95,107 @@
 			<button type="button" onclick={close}>關閉</button>
 		</div>
 
-		<div class="page">
-			<h1>{flow.name}　八拍表　{who}</h1>
-			{#if !memberId}
-				<ul class="legend" aria-label="號碼和名字">
-					{#each flow.members as m (m.id)}
-						<li><b>{markers[m.id]}</b> {m.name}</li>
-					{/each}
-				</ul>
-			{/if}
-			<table>
-				<thead>
-					<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
-				</thead>
-				{#each rows as row, i (i)}
-					<tbody>
-						<tr>
-							<td class="seg">{row.segmentLabel}</td>
-							<td class="seg">{row.eightText}</td>
-							<td class="num">{row.startSec.toFixed(1)}</td>
-							<td>
-								{#each row.actions as a, j (j)}
-									<div class="action">
-										<b class="at">{a.at}</b>
-										{title(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
-									</div>
-								{/each}
-								{#each row.continuing as name, j (j)}
-									<div class="muted">↳ {name} 繼續</div>
-								{/each}
-								{#each row.walks as w, j (j)}
-									<div>{w}</div>
-								{/each}
-							</td>
-							<td>
-								{#each row.formations as f (f.number)}
-									<figure>
-										<div class="mini">
-											<Field
-												field={flow.field}
-												members={flow.members}
-												{markers}
-												positions={f.pos}
-												controls={false}
-												marked={memberId ? [memberId] : []}
-												crop
-											/>
+		{#each sheets as memberId (memberId)}
+			{@const rows = eightCountRows(flow, memberId || null)}
+			<div class="page">
+				<h1>{flow.name}　八拍表　{whoText(memberId)}</h1>
+				{#if !memberId}
+					<ul class="legend" aria-label="號碼和名字">
+						{#each flow.members as m (m.id)}
+							<li><b>{markers[m.id]}</b> {m.name}</li>
+						{/each}
+					</ul>
+				{/if}
+				<table>
+					<thead>
+						<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
+					</thead>
+					{#each rows as row, i (i)}
+						<tbody>
+							<tr>
+								<td class="seg">{row.segmentLabel}</td>
+								<td class="seg">{row.eightText}</td>
+								<td class="num">{row.startSec.toFixed(1)}</td>
+								<td>
+									{#each row.actions as a, j (j)}
+										<div class="action">
+											<b class="at">{a.at}</b>
+											{title(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
+											{#if a.note}<div class="note">{a.note}</div>{/if}
 										</div>
-										<figcaption>{f.caption}</figcaption>
-									</figure>
-								{/each}
-							</td>
-						</tr>
-						{#if row.cues.length}
-							<tr class="cue-row">
-								<td colspan="5">
-									{#each row.cues as line, j (j)}
-										{@const name = title(line.categoryLabel, line.name)}
-										<div class="cue-line" role="group" aria-label="{name} 的拍點">
-											<span class="cue-name">{name}</span>
-											<div class="beats">
-												{#if line.phases.length}
-													<div class="phases">
-														{#each line.phases as p, k (k)}
-															<span
-																class="phase"
-																data-phase
-																style:grid-column="{p.from} / {p.to + 1}"
-																style:border-top-color={p.color}
-																aria-label={phaseAria(row.eight, p)}>{p.label}</span
-															>
-														{/each}
-													</div>
-												{/if}
-												<div class="cells">
-													{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-														<span class="n" style:grid-column={n}>{n}</span>
-													{/each}
-													{#each line.cues as c, k (k)}
-														<span
-															class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
-															style:grid-column="{c.from} / {c.to + 1}"
-															aria-label={cueLabel(c)}
-															title={c.who ? `${c.word}（${c.who}）` : c.word}
-															>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{c.word}{#if c.who}<small>{c.who}</small>{/if}{/if}</span
-														>
-													{/each}
-												</div>
+									{/each}
+									{#each row.continuing as name, j (j)}
+										<div class="muted">↳ {name} 繼續</div>
+									{/each}
+									{#each row.walks as w, j (j)}
+										<div>{w}</div>
+									{/each}
+								</td>
+								<td>
+									{#each row.formations as f (f.number)}
+										<figure>
+											<div class="mini">
+												<Field
+													field={flow.field}
+													members={flow.members}
+													{markers}
+													positions={f.pos}
+													controls={false}
+													marked={memberId ? [memberId] : []}
+													crop
+												/>
 											</div>
-										</div>
+											<figcaption>{f.caption}</figcaption>
+										</figure>
 									{/each}
 								</td>
 							</tr>
-						{/if}
-					</tbody>
-				{/each}
-			</table>
-		</div>
+							{#if row.cues.length}
+								<tr class="cue-row">
+									<td colspan="5">
+										{#each row.cues as line, j (j)}
+											{@const name = title(line.categoryLabel, line.name)}
+											<div class="cue-line" role="group" aria-label="{name} 的拍點">
+												<span class="cue-name">{name}</span>
+												<div class="beats">
+													{#if line.phases.length}
+														<div class="phases">
+															{#each line.phases as p, k (k)}
+																<span
+																	class="phase"
+																	data-phase
+																	style:grid-column="{p.from} / {p.to + 1}"
+																	style:border-top-color={p.color}
+																	aria-label={phaseAria(row.eight, p)}>{p.label}</span
+																>
+															{/each}
+														</div>
+													{/if}
+													<div class="cells">
+														{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
+															<span class="n" style:grid-column={n}>{n}</span>
+														{/each}
+														{#each line.cues as c, k (k)}
+															<span
+																class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
+																style:grid-column="{c.from} / {c.to + 1}"
+																aria-label={cueLabel(c)}
+																title={c.who ? `${c.word}（${c.who}）` : c.word}
+																>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{c.word}{#if c.who}<small>{c.who}</small>{/if}{/if}</span
+															>
+														{/each}
+													</div>
+												</div>
+											</div>
+										{/each}
+									</td>
+								</tr>
+							{/if}
+						</tbody>
+					{/each}
+				</table>
+			</div>
+		{/each}
 	{/snippet}
 </Modal>
 
@@ -366,6 +396,13 @@
 		min-width: 3.5em;
 		font-variant-numeric: tabular-nums;
 	}
+	/* 備註：動作底下，對齊動作名字（不在時間底下） */
+	.note {
+		margin-left: 3.5em;
+		font-size: 12px;
+		color: #4a5368;
+		white-space: pre-wrap;
+	}
 	figure {
 		margin: 0 0 4px;
 	}
@@ -413,6 +450,10 @@
 		figure,
 		.cue-line {
 			break-inside: avoid;
+		}
+		/* 照全局角色印：每人一張，從新的一頁開始 */
+		.page + .page {
+			break-before: page;
 		}
 		.page {
 			margin: 0;
