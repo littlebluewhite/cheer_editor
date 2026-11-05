@@ -69,7 +69,8 @@
 				<tr><th>名稱</th><th>意思</th><th>規則上的叫法</th></tr>
 			</thead>
 			<tbody>
-				{#each roleGlossary(flow) as r (r.name)}
+				<!-- 自訂角色用 id 當 key：改名時同一列不重畫，游標留在原地 -->
+				{#each roleGlossary(flow) as r ((r.custom && flow.customRoles.find((c) => c.name === r.name)?.id) || r.name)}
 					{@const custom = r.custom ? flow.customRoles.find((c) => c.name === r.name) : undefined}
 					<tr>
 						{#if custom}

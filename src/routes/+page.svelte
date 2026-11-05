@@ -258,6 +258,15 @@
 		player?.stop();
 	}
 
+	// 播放中改了段（換順序、刪段、改 BPM、長度，或復原這些）：已經排好的聲音是舊的，照現在的段重排。
+	// 只看 segments 這個陣列換了沒，改人、改動作不會重排。
+	$effect(() => {
+		flow?.segments;
+		untrack(() => {
+			if (playing && flow) play(flow);
+		});
+	});
+
 	function togglePlay(f: Flow) {
 		if (playing) pause();
 		else play(f);

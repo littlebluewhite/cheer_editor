@@ -1,5 +1,6 @@
 import {
 	addAction,
+	addCustomRole,
 	addMembers,
 	addSegment,
 	createFlow,
@@ -233,6 +234,18 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
 		await fireEvent.click(screen.getByRole('option', { name: '＋自訂任務角色…' }));
 		expect(screen.getByRole('dialog')).toBeTruthy();
+	});
+
+	it('新增到一半在名詞對照表改名或刪掉自訂角色：表單裡的人跟著換名字或變成沒有任務', async () => {
+		const flow = flowOf(addCustomRole(flowOf(addCustomRole(sample(), { name: '丟人的', meaning: '' })), { name: '抬腳的', meaning: '' }));
+		setup(flow, null, 0, ['m1', 'm2']);
+		await pickRole('小A', '丟人的');
+		await pickRole('小B', '抬腳的');
+		await fireEvent.click(screen.getByRole('button', { name: '名詞對照表' }));
+		await fireEvent.change(screen.getByLabelText('「丟人的」的名稱'), { target: { value: '拋人的' } });
+		await fireEvent.click(screen.getByRole('button', { name: '刪除任務角色「抬腳的」' }));
+		expect(screen.getByRole('combobox', { name: '小A 的任務角色' }).textContent).toBe('拋人的');
+		expect(screen.getByRole('combobox', { name: '小B 的任務角色' }).textContent).toBe('（沒有任務）');
 	});
 
 	it('標題是動作的名稱，可以直接改', async () => {

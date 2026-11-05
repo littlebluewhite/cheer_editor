@@ -54,6 +54,13 @@ describe('名詞對照表', () => {
 		expect(session.flow!.customRoles).toMatchObject([{ name: '拋人的', meaning: '把上層拋上去' }]);
 	});
 
+	it('改名後同一列不重畫：游標不會掉出對照表（按 Tab 還能接著改意思）', async () => {
+		setup(flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' })));
+		const box = screen.getByLabelText('「丟人的」的名稱');
+		await fireEvent.change(box, { target: { value: '拋人的' } });
+		expect(screen.getByLabelText('「拋人的」的名稱')).toBe(box);
+	});
+
 	it('改名被擋下：顯示原因，欄位回到原本的名字', async () => {
 		let flow = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
 		flow = flowOf(addCustomRole(flow, { name: '抬腳的', meaning: '' }));

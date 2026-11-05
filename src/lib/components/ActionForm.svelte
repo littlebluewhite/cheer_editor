@@ -140,6 +140,22 @@
 		untrack(() => (ask.error = ''));
 	});
 
+	// 新增到一半在名詞對照表改名、刪掉自訂角色：表單裡的人跟著換名字，刪掉的變成沒有任務。
+	// （改動作時表單照動作重設，動作裡的人核心已經改好了。）
+	let customNames = untrack(() => new Map(flow.customRoles.map((r) => [r.id, r.name])));
+	$effect(() => {
+		const now = new Map(flow.customRoles.map((r) => [r.id, r.name]));
+		untrack(() => {
+			const changed = new Map<string, string | null>();
+			for (const [id, name] of customNames) if (now.get(id) !== name) changed.set(name, now.get(id) ?? null);
+			customNames = now;
+			if (action || !changed.size) return;
+			draft.members = draft.members.map((m) =>
+				m.role !== null && changed.has(m.role) ? { ...m, role: changed.get(m.role)! } : m
+			);
+		});
+	});
+
 	// 換選到的動作（或回到新增）時重設表單。
 	$effect(() => {
 		const a = action;

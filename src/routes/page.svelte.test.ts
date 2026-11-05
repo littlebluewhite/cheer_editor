@@ -1112,6 +1112,16 @@ describe('播放', () => {
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
 	});
 
+	it('播放中換段的順序：照新的順序重排聲音（不然還在播舊的順序）', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const t0 = engine.clicks[0].when;
+		await fireEvent.click(screen.getByRole('button', { name: /口號 1/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '往前移' }));
+		// 現在口號段（10 秒）在最前面，第一聲節拍器是 10 秒後音樂 1 的第一拍
+		expect(engine.clicks[0].when).toBeCloseTo(t0 + 10, 6);
+	});
+
 	it('從播放頭開始播：口號段沒有節拍器，第一聲是下一個音樂段的第一拍', async () => {
 		const engine = await sample();
 		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, {
