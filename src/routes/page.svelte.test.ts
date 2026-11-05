@@ -288,6 +288,9 @@ describe('動作', () => {
 	it('新增的動作出現在泳道上；任務角色是上層的人在場上畫在最上面；閒著的人標「閒」', async () => {
 		await withAction();
 		expect(bar()?.textContent).toContain('上層');
+		// 新增後播放頭跳到動作結束：移回動作裡
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 0, button: 0 });
+		await fireEvent.pointerUp(window);
 		expect(dot().classList.contains('raised')).toBe(true);
 		expect(document.querySelector('[data-lane="m1"] .idle-tag')).toBeNull();
 		// 播放頭移到動作之後（一個八拍 = 3.2 秒）
@@ -330,6 +333,24 @@ describe('動作', () => {
 			await fireEvent.click(name());
 			await fireEvent.keyDown(window, { key: 'Escape' });
 			expect(dot().classList.contains('selected')).toBe(false);
+		});
+
+		/** 畫面上的字和滑過去的提示裡，提到「多選」的。 */
+		const multiHints = () =>
+			[document.body.textContent ?? '', ...[...document.querySelectorAll('[title]')].map((el) => el.getAttribute('title')!)].filter(
+				(t) => t.includes('多選')
+			);
+
+		it('電腦上的提示不提「多選」（電腦沒有這個開關）；觸控螢幕上有', async () => {
+			vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: fine)' }));
+			await withAction();
+			expect(multiHints()).toEqual([]);
+			expect(name().getAttribute('title')).toContain('Shift＋點');
+			cleanup();
+
+			touchScreen();
+			await withAction();
+			expect(name().getAttribute('title')).toContain('多選');
 		});
 
 		it('觸控螢幕：「取消選取」跟 Esc 一樣，動作和人的選取都清掉；沒有選東西時按不了', async () => {
@@ -722,6 +743,18 @@ describe('站位與走位', () => {
 		);
 	});
 
+	it('刪掉剛自動插入、又往後帶改了後面站位的那張：提示後面的改動還在，要按復原', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await seek(4);
+		await dragFirstMember('m2'); // 插站位 2，往後帶改了站位 3
+		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
+		expect(screen.getByRole('status').textContent).toBe(
+			'已刪掉站位 2；後面站位的改動還在，要整個還原按復原'
+		);
+	});
+
 	it('場地旁邊那一行字跟著播放頭變：會改哪一張站位，還是會插一張新的', async () => {
 		const line = () => screen.getByText(/^拖人會/).textContent;
 		await setup();
@@ -1008,21 +1041,36 @@ describe('站位與走位', () => {
 		await fireEvent.pointerUp(window, { clientX: 300 + dx });
 	}
 
-	it('拖縮圖挪站位：吸到最近一格，播放頭跟過去；算一步復原；手抖一下不算拖', async () => {
+	it('拖縮圖挪站位：吸到最近一格，播放頭跟過去，提示改到哪和「復原」；手滑幾 px 不算拖', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember(); // 站位 2 在 3-5&（8.2 秒）
 		await seek(0);
-		await dragThumb(2, -3);
+		await dragThumb(2, -5);
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
 		// 往左 52 px（3.25 秒），吸到 5 秒的 2-5&
 		await dragThumb(2, -52);
 		expect(thumbLeft(2)).toBeCloseTo(80);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-5&');
 		expect(screen.getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（2-5&）');
-		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByRole('status').textContent).toBe('站位 2 改到 2-5&');
+		// 提示的「復原」：站位回原本的時間，播放頭跟著回去（不然接著拖人會多插一張）
+		await fireEvent.click(screen.getByRole('button', { name: '復原改站位時間' }));
+		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
+	});
+
+	it('改站位時間後按上方列的復原：選到的站位還在，播放頭回到它的時間；重做再跟過去', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember();
+		await seek(0);
+		await dragThumb(2, -52);
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-5&');
 	});
 
 	it('手指：沒選中的縮圖拖不動（留給時間軸捲動），點一下選中了才拖得動', async () => {
@@ -1109,7 +1157,7 @@ describe('站位與走位', () => {
 
 		// 小A 本來最後一個八拍才走（3.2 秒），挪到 1-2（0.4 秒）只剩 0.4 秒
 		await fireEvent.change(box()!, { target: { value: '1-2' } });
-		expect(screen.getByRole('status').textContent).toBe('走位被壓短：小A');
+		expect(screen.getByRole('status').textContent).toBe('站位 2 改到 1-2；走位被壓短：小A');
 	});
 
 	const depart = () => screen.queryByLabelText<HTMLInputElement>('出發');

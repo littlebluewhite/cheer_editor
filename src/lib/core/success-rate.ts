@@ -146,21 +146,25 @@ export function squadProblem(action: Action, squad: number): string | null {
 
 /** 動作能不能分組（給教練看的原因）；可以是 null。 */
 function groupingProblem(action: Action): string | null {
-	if (!action.successRate) return '動作有環節才能分組';
-	if (perPerson(action.category)) {
-		const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
-		return `${label}的動作不分組，每個人自己算`;
-	}
-	return null;
+	return action.successRate ? perPersonProblem(action) : '動作有環節才能分組';
+}
+
+/** 騰翻、跳躍的動作不分組（給教練看的原因）；其他大類是 null。 */
+function perPersonProblem(action: Action): string | null {
+	if (!perPerson(action.category)) return null;
+	const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
+	return `${label}的動作不分組，每個人自己算`;
 }
 
 /**
  * 成功率規則（只有這一份）：動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。
  * 收尾最後照這個檢查，讀流程檔也照這個檢查。第 6 版就有的規則（v6RateProblem）再加：
  * 有成功率設定就至少一個環節；音樂段的環節一定有標的拍、照拍的先後排；組 id 是 g 加編號。
+ * 只有組放寬（第 9 版起）：還沒有環節的動作也可以有組（從別的動作複製人帶來的，加第一個環節時照用），騰翻、跳躍還是不分組。
  */
 export function successRateProblem(segment: Segment, action: Action): string | null {
-	const problem = v6RateProblem(segment, action);
+	const grouped = action.members.some((m) => m.squad !== undefined);
+	const problem = (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action);
 	if (problem) return problem;
 	const phases = action.successRate?.phases;
 	if (phases && !phases.length) return '記成功率的動作至少要有一個環節';
@@ -181,6 +185,11 @@ export function v6RateProblem(segment: Segment, action: Action): string | null {
 		const problem = groupingProblem(action);
 		if (problem) return problem;
 	}
+	return phasesAndRecordsProblem(segment, action);
+}
+
+/** 第 6 版就有的規則裡組以外的：環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。 */
+function phasesAndRecordsProblem(segment: Segment, action: Action): string | null {
 	const phases = action.successRate?.phases ?? [];
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
 	for (const p of phases) {

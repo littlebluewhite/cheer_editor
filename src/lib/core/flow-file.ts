@@ -13,7 +13,7 @@ import { freshIds } from './ids';
 import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 8;
+export const FORMAT_VERSION = 9;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -39,6 +39,8 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 第 7 版：記成功率的動作至少有一個環節、音樂段的環節一定有拍、組號從 1 連續。升級時整理環節和組（見 tidySuccessRate）。
  * 第 8 版：人身上的組從第幾組（數字）換成組 id（g1、g2…，字串），分組動作的紀錄的「誰」也換成組 id；組號照 id 發出的先後算，
  *   不存。升級時每個動作的組照號碼順序發組 id，流程的 lastIds 記上 g（見 squadIds）。
+ * 第 9 版：還沒有環節的動作（騰翻、跳躍除外）也可以有組（從別的動作複製人帶來的，加第一個環節時照用）。資料不用動；
+ *   第 8 版以前沒有環節的動作有組就是壞掉的檔，升級時交給 isFlow 擋下來（見 squadsWithoutPhases）。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -47,8 +49,14 @@ const UPGRADES: Record<number, Upgrade> = {
 	4: (doc) => ({ formatVersion: 5, flow: doc.flow }),
 	5: (doc) => ({ formatVersion: 6, flow: doc.flow }),
 	6: (doc) => ({ formatVersion: 7, flow: tidySuccessRate(doc.flow) }),
-	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) })
+	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) }),
+	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow })
 };
+
+/** 有沒有動作沒打開記成功率卻有組（第 8 版以前不行）。 */
+function squadsWithoutPhases(v: unknown): boolean {
+	return flowShape(v) && (v as Flow).actions.some((a) => !a.successRate && a.members.some((m) => m.squad !== undefined));
+}
 
 /**
  * 第 6 → 7 版：每個記成功率的動作走收尾（改之前、改之後都是它自己）：音樂段沒標拍的環節拿掉，連它們的記號

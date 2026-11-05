@@ -64,6 +64,8 @@
 
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
 	const DRAG_PX = 3;
+	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 	/** 正在拖的色條：move = 整條移動，resize = 拉右邊；dx 是滑鼠移了幾 px。 */
 	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number } | null>(null);
@@ -309,7 +311,7 @@
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
-			title="點一下選這個人；多選開著或 Shift＋點，可以選好幾個"
+			title={touchScreen ? '點一下選這個人；打開「多選」再點，可以選好幾個' : '點一下選這個人；Shift＋點可以選好幾個'}
 			onclick={(e) => session.pickMember(m.id, e.shiftKey)}
 		>
 			<b

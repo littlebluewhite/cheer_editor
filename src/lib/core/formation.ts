@@ -517,15 +517,17 @@ export function moveFormation(
 	}
 	const shift = sec - formationSec(flow, b);
 	if (Math.abs(shift) < EPS) return ok(flow, { sec, squeezed: [] });
-	// 這張上自己設的出發和到達跟著挪一樣多秒，夾在前一張和新的站位時間之間，
-	// 不在格子上就往前取（跟插站位一樣）；夾完出發不早於到達就當沒設。
-	const moved = (t: number) => toPosition(flow, Math.min(Math.max(t + shift, aSec), sec))!;
+	// 這張上自己設的走位跟著挪一樣多秒、長度不變；出發碰到前一張就夾在前一張，
+	// 到達最晚是新的站位時間（放不下就整段走）。不在格子上就往前取（跟插站位一樣）；
+	// 取完出發不早於到達就當沒設。
+	const grid = (t: number) => toPosition(flow, t)!;
 	const walks: Record<string, Walk> = {};
 	for (const id of Object.keys(b.walks ?? {})) {
 		const w = customWalk(flow, index, id);
 		if (!w) continue;
-		const depart = moved(w.depart);
-		const arrive = moved(w.arrive);
+		const departSec = Math.max(w.depart + shift, aSec);
+		const depart = grid(departSec);
+		const arrive = grid(Math.min(departSec + w.arrive - w.depart, sec));
 		if (toSeconds(flow, depart) < toSeconds(flow, arrive) - EPS) walks[id] = { depart, arrive };
 	}
 	const formation = withWalks({ ...b, ...to }, walks);

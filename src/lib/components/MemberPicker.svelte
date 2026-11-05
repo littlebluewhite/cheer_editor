@@ -17,6 +17,8 @@
 	const flow = $derived(session.flow!);
 	const selected = $derived(session.selectedMemberIds);
 	const select = (ids: string[]) => session.selectMembers(ids);
+	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 	const GROUPS: { group: MemberGroup; label: string }[] = [
 		{ group: 'all', label: '全隊' },
@@ -61,7 +63,9 @@
 	</div>
 	{#if message}<p class="muted" role="status">{message}</p>{/if}
 	<p class="picked" class:none={!names.length}>已選 {names.length} 人{names.length ? `：${names.join('、')}` : ''}</p>
-	<p class="muted">場上點人、拖空白處框選，或點泳道上的名字。要選好幾個人：按住 Shift 點；iPad 打開場地左邊的「多選」。</p>
+	<p class="muted">
+		場上點人、拖空白處框選，或點泳道上的名字。要選好幾個人：{touchScreen ? '打開場地左邊的「多選」再點' : '按住 Shift 點'}。
+	</p>
 </section>
 
 <style>

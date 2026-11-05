@@ -19,10 +19,16 @@ import { freshIds, nextId } from './ids';
 import { tooLong } from './text-length';
 import { EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
 
-/** 新增動作，回傳新動作的 id。 */
+/** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
 	const id = nextId('x', flow.actions.map((a) => a.id));
-	const members = input.members.map(({ memberId, role }) => ({ memberId, role }));
+	// 組只認別的動作的組（從別的動作複製人），收尾照號碼換成這個動作自己的組；其他的不收。
+	const others = allSquadIds(flow);
+	const members = input.members.map(({ memberId, role, squad }) => ({
+		memberId,
+		role,
+		...(squad !== undefined && others.includes(squad) && { squad })
+	}));
 	const settled = checked(flow, undefined, normalize({ id, ...input, members }), {});
 	if (settled.kind === 'blocked') return settled;
 	return { kind: 'ok', flow: { ...settled.flow, actions: [...flow.actions, settled.action] }, id };
