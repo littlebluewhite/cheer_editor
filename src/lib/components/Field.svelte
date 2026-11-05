@@ -63,7 +63,8 @@
 		children,
 		below,
 		badges = {},
-		marked = []
+		marked = [],
+		crop = false
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -94,6 +95,8 @@
 		badges?: Record<string, { text: string; color: string }>;
 		/** 沒有編輯器時（八拍表的個人表）標出這些人，畫得跟選到一樣。 */
 		marked?: string[];
+		/** 只畫有人站的那一塊（八拍表的小站位圖），標的人塗滿；沒有人時畫全場。 */
+		crop?: boolean;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -125,7 +128,17 @@
 	let zoom = $state(1);
 	/** 放大時畫面中心（公尺）；null = 全場的中心。 */
 	let center = $state<Position | null>(null);
+	/** 裁的時候人外面留多少（公尺）。 */
+	const CROP_MARGIN = 1;
 	const view = $derived.by(() => {
+		const placed = Object.values(positions);
+		if (crop && placed.length) {
+			const xs = placed.map(([x]) => x);
+			const ys = placed.map(([, y]) => y);
+			const x = Math.min(...xs) - CROP_MARGIN;
+			const y = Math.min(...ys) - CROP_MARGIN;
+			return { x, y, width: Math.max(...xs) + CROP_MARGIN - x, height: Math.max(...ys) + CROP_MARGIN - y };
+		}
 		const width = full.width / zoom;
 		const height = full.height / zoom;
 		const [cx, cy] = center ?? [full.x + full.width / 2, full.y + full.height / 2];
@@ -499,6 +512,7 @@
 				class="dot"
 				class:raised={up}
 				class:selected={sel}
+				class:filled={crop && sel}
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
 				data-member-id={m.id}
 				role="button"
@@ -687,6 +701,13 @@
 		stroke-width: 0.04;
 		stroke-dasharray: 0.15 0.08;
 		pointer-events: none;
+	}
+	/* 八拍表個人表：自己的點塗滿深色、字反白 */
+	.dot.filled circle:not(.ring) {
+		fill: #16213a;
+	}
+	.dot.filled text {
+		fill: #fff;
 	}
 	.dot circle.base {
 		fill: #fff;
