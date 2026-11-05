@@ -38,22 +38,31 @@ export function fakeSaver(outcome: SaveOutcome = 'saved') {
 	return { saver, saves, fileNames };
 }
 
-/** 假的草稿：存在記憶體（state.bytes、state.savedAt），一開始可以先放一份。 */
-export function fakeDraftStore(initial: Uint8Array | null = null, savedAt = new Date()) {
-	const state = { bytes: initial, savedAt };
+/**
+ * 假的草稿：存在記憶體，key 是流程的草稿 id（all）。一開始可以先放一份，id 是舊版編輯器那一份的「current」。
+ * latest()：最後存的那份草稿的位元組，沒有草稿是 null。
+ */
+export function fakeDraftStore(initial: Uint8Array | null = null, savedAt: Date | null = new Date()) {
+	const all = new Map<string, { bytes: Uint8Array; savedAt: Date | null }>();
+	if (initial) all.set('current', { bytes: initial, savedAt });
 	const store: DraftStore = {
-		async load() {
-			return state.bytes && { bytes: state.bytes, savedAt: state.savedAt };
+		async list() {
+			return [...all].map(([id, d]) => ({ id, savedAt: d.savedAt }));
 		},
-		async save(bytes) {
-			state.bytes = bytes;
-			state.savedAt = new Date();
+		async load(id) {
+			const d = all.get(id);
+			return d ? { id, ...d } : null;
 		},
-		async clear() {
-			state.bytes = null;
+		async save(id, bytes) {
+			all.delete(id);
+			all.set(id, { bytes, savedAt: new Date() });
+		},
+		async clear(id) {
+			all.delete(id);
 		}
 	};
-	return { store, state };
+	const latest = () => [...all.values()].at(-1)?.bytes ?? null;
+	return { store, all, latest };
 }
 
 /**

@@ -43,7 +43,7 @@ describe('打開時救回草稿', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '丟掉' }));
 		await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
-		expect(drafts.state.bytes).toBeNull();
+		expect(drafts.latest()).toBeNull();
 	});
 });
 
