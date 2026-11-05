@@ -175,7 +175,7 @@ export function atText(segment: Segment, at: number): string {
 /** atText 的反向：教練打的時間點 → 段內整數時間；看不懂是 null。不檢查有沒有超出段（指令會擋）。 */
 export function parseAt(segment: Segment, text: string): number | null {
 	if (segment.kind === 'chant') return parseScaled(text, 10);
-	const m = /^(\d+)-([1-8])(&?)$/.exec(text.trim());
+	const m = /^(\d+)-([1-8])(&?)$/.exec(halfWidth(text).trim());
 	if (!m || Number(m[1]) < 1) return null;
 	return ((Number(m[1]) - 1) * 8 + Number(m[2]) - 1) * 2 + (m[3] ? 1 : 0);
 }
@@ -202,7 +202,7 @@ export function timeTextWithUnit(flow: Flow, homeSegmentId: string, p: TimePosit
  * 看不懂或沒有這一段是 null。不檢查有沒有超出段（指令會擋）。
  */
 export function parseTime(flow: Flow, homeSegmentId: string, text: string): TimePosition | null {
-	const m = /^(?:(音樂|口號)\s*(\d+)\s+)?(.+?)\s*秒?$/.exec(text.trim());
+	const m = /^(?:(音樂|口號)\s*(\d+)\s+)?(.+?)\s*秒?$/.exec(halfWidth(text).trim());
 	if (!m) return null;
 	const spans = segmentSpans(flow);
 	const span = m[1]
@@ -223,9 +223,21 @@ export function parseLength(segment: Segment, text: string): number | null {
 	return parseScaled(text, segment.kind === 'music' ? 2 : 10);
 }
 
-/** 非負的數字乘上 scale 取最近的整數；空白、負數、看不懂是 null。 */
+/** 數字乘上 scale 取最近的整數；空白、看不懂是 null。負的照算，交給指令擋下、說範圍。 */
 function parseScaled(text: string, scale: number): number | null {
-	if (!text.trim()) return null;
-	const v = Number(text);
-	return Number.isFinite(v) && v >= 0 ? Math.round(v * scale) : null;
+	const v = parseNumber(text);
+	return Number.isFinite(v) ? Math.round(v * scale) : null;
+}
+
+/** 欄位裡打的數字：全形當成半形（中文輸入法不用切換）。空白、看不懂是 NaN，交給指令擋下、說範圍。 */
+export function parseNumber(text: string): number {
+	const t = halfWidth(text).trim();
+	return t ? Number(t) : Number.NaN;
+}
+
+/** 全形的數字和符號（０–９、．、－、＋、＆）換成半形；全形空白換成半形空白。 */
+function halfWidth(text: string): string {
+	return text
+		.replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+		.replace(/\u3000/g, ' ');
 }

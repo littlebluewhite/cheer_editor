@@ -11,14 +11,17 @@
 	import {
 		AUDIO_EXTENSIONS,
 		MAX_BPM,
+		MAX_CHANT_SEC,
+		MAX_EIGHTS,
 		MIN_BPM,
 		beatLines,
 		deleteSegment,
+		fitSegmentToAudio,
 		loadSegmentAudio,
 		moveSegment,
 		musicLength,
-		musicLengthFromAudio,
 		musicOverrunSec,
+		parseNumber,
 		segmentSpans,
 		updateSegment,
 		type ConfirmOption,
@@ -164,9 +167,10 @@
 	function typeFirstBeat(input: HTMLInputElement) {
 		const field = '第一拍（秒）';
 		const revert = () => (input.value = String(music?.firstBeatSec ?? ''));
-		const problem = pastEnd(input.valueAsNumber);
+		const sec = parseNumber(input.value);
+		const problem = pastEnd(sec);
 		if (problem) return blocked(problem, { field, revert });
-		updateField(input, field, { firstBeatSec: input.valueAsNumber }, () => music?.firstBeatSec);
+		updateField(input, field, { firstBeatSec: sec }, () => music?.firstBeatSec);
 	}
 
 	function clickWave(e: MouseEvent) {
@@ -177,13 +181,10 @@
 		if (!music || !audio) return blocked('先載入音樂檔');
 		const problem = pastEnd(music.firstBeatSec);
 		if (problem) return blocked(problem);
-		update(
-			musicLengthFromAudio({
-				durationSec: audio.durationSec,
-				firstBeatSec: music.firstBeatSec,
-				bpm: music.bpm
-			})
-		);
+		const durationSec = audio.durationSec;
+		ask.send((o: ConfirmOption = {}) => fitSegmentToAudio(flow, segmentId, durationSec, o), {
+			cancel: () => (fieldsKey += 1)
+		});
 	}
 </script>
 
@@ -231,15 +232,14 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', { bpm: e.currentTarget.valueAsNumber }, () => music?.bpm)} />
+						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', { bpm: parseNumber(e.currentTarget.value) }, () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
 						第一拍（秒）
 						<input
-							type="number"
-							step="0.01"
-							min="0"
+							type="text"
+							inputmode="decimal"
 							value={music.firstBeatSec}
 							onchange={(e) => typeFirstBeat(e.currentTarget)}
 						/>
@@ -275,19 +275,18 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="number" min="1" step="1" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', { eights: e.currentTarget.valueAsNumber }, () => length?.eights)} />
+						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', { eights: parseNumber(e.currentTarget.value) }, () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
 						<input
-							type="number"
-							min="1"
-							max="8"
-							step="1"
+							type="text"
+							inputmode="numeric"
 							value={length.lastBeats}
-							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', { lastBeats: e.currentTarget.valueAsNumber }, () => length?.lastBeats)}
+							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', { lastBeats: parseNumber(e.currentTarget.value) }, () => length?.lastBeats)}
 						/>
 					</label>
+					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
 					<button type="button" onclick={fitToAudio}>照音樂長度算</button>
 				</div>
 				{#if overrun > 0}
@@ -302,14 +301,13 @@
 					<label class="inline">
 						長度（秒）
 						<input
-							type="number"
-							step="0.1"
-							min="0.1"
+							type="text"
+							inputmode="decimal"
 							value={span?.durationSec}
-							onchange={(e) => updateField(e.currentTarget, '長度（秒）', { seconds: e.currentTarget.valueAsNumber }, () => span?.durationSec)}
+							onchange={(e) => updateField(e.currentTarget, '長度（秒）', { seconds: parseNumber(e.currentTarget.value) }, () => span?.durationSec)}
 						/>
 					</label>
-					<span class="hint">口號段只計秒數，最細 0.1 秒</span>
+					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>
 				</div>
 			</section>
 		{/if}
@@ -365,7 +363,7 @@
 		align-items: center;
 		font-size: 13px;
 	}
-	input[type='number'] {
+	input[inputmode] {
 		width: 6.5em;
 		font-variant-numeric: tabular-nums;
 	}
