@@ -129,14 +129,15 @@ export function stepPlayhead(flow: Flow, sec: number, dir: 1 | -1, big: boolean)
 	return points.findLast((p) => p < sec - EPS) ?? 0;
 }
 
-/** 八拍尺上的一個刻度（全域秒數）。大刻度有字。 */
+/** 八拍尺上的一個刻度（全域秒數）。大刻度有字；start：段的第一個刻度。 */
 export interface RulerMark {
 	sec: number;
 	major: boolean;
 	label?: string;
+	start?: true;
 }
 
-/** 八拍尺：音樂段每拍一格，八拍的第一拍是大刻度並寫第幾個八拍；口號段每秒一格，每 5 秒寫秒數。 */
+/** 八拍尺：音樂段每拍一格，八拍的第一拍是大刻度並寫第幾個八拍；口號段每秒一格，每 5 秒寫「n 秒」。 */
 export function rulerMarks(flow: Flow): RulerMark[] {
 	const marks: RulerMark[] = [];
 	for (const { segment, startSec, durationSec } of segmentSpans(flow)) {
@@ -144,16 +145,42 @@ export function rulerMarks(flow: Flow): RulerMark[] {
 			const spb = 60 / segment.bpm;
 			for (let b = 0; b < Math.ceil(segment.halfBeats / 2); b++) {
 				const sec = startSec + b * spb;
-				marks.push(b % 8 === 0 ? { sec, major: true, label: `${b / 8 + 1}` } : { sec, major: false });
+				const label = `${b / 8 + 1}`;
+				marks.push(b % 8 !== 0 ? { sec, major: false } : b === 0 ? { sec, major: true, label, start: true } : { sec, major: true, label });
 			}
 		} else {
 			for (let k = 0; k < durationSec - EPS; k++) {
 				const sec = startSec + k;
-				marks.push(k % 5 === 0 ? { sec, major: true, label: `${k}s` } : { sec, major: false });
+				const label = `${k} 秒`;
+				marks.push(k % 5 !== 0 ? { sec, major: false } : k === 0 ? { sec, major: true, label, start: true } : { sec, major: true, label });
 			}
 		}
 	}
 	return marks;
+}
+
+/** 刻度字大約多寬（px，11px 粗體）：數字 7、空白 3、中文 11，加上離刻度線 4、跟下一個字留 4。 */
+function labelWidth(label: string): number {
+	return 8 + [...label].reduce((w, c) => w + (/\d/.test(c) ? 7 : c === ' ' ? 3 : 11), 0);
+}
+
+/**
+ * 1 秒 pxPerSec 時，拿掉會疊在一起的刻度字（刻度照畫）：號碼太密就跳著寫。
+ * 每段開頭的字先放（段交界太近時，拿掉的是前一段不滿八拍的號碼），其他的照時間放得下才寫。
+ */
+export function spacedLabels(marks: RulerMark[], pxPerSec: number): RulerMark[] {
+	const taken: [number, number][] = [];
+	const shown = new Set<RulerMark>();
+	const labeled = marks.filter((m) => m.label);
+	for (const m of [...labeled.filter((m) => m.start), ...labeled.filter((m) => !m.start)]) {
+		const left = m.sec * pxPerSec;
+		const right = left + labelWidth(m.label!);
+		if (taken.every(([l, r]) => right <= l || left >= r)) {
+			taken.push([left, right]);
+			shown.add(m);
+		}
+	}
+	return marks.map((m) => (m.label && !shown.has(m) ? { sec: m.sec, major: m.major } : m));
 }
 
 /** 上方列的目前位置，例：「音樂 1 3-5&」、「口號 1 12.3 秒」。沒有段時是空字串。 */

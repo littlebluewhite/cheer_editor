@@ -203,7 +203,7 @@ export class FlowFile {
 		});
 	}
 
-	/** 新建流程表單建好了：換上它。剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟。 */
+	/** 新建流程表單建好了：換上它。剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好不能編，按「回首頁」也不會丟。 */
 	create(flow: Flow) {
 		this.#start(flow, 'new', newDraftId());
 		if (this.#draftChecked) this.#saveDraft(writeFlowFile(flow, {}));
@@ -231,7 +231,7 @@ export class FlowFile {
 	}
 
 	/**
-	 * 「視窗太窄」提示上的「回首頁」：有還沒存的修改就跟「新建」一樣先問。
+	 * 窄螢幕上方列的「回首頁」：有還沒存的修改就跟「新建」一樣先問。
 	 * 沒有就直接回去；這個分頁的流程（剛建好）留在草稿裡，列在首頁的最近的流程。
 	 */
 	async leaveToHome() {

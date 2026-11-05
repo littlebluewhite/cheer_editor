@@ -102,6 +102,37 @@ describe('記錄頁的卡', () => {
 		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[false, { p1: '✓', p3: '✓' }]]);
 	});
 
+	it('「整個」照順序點：上法 ✓ 不提醒跳過；只點下法才提醒', async () => {
+		const { name } = setup();
+		await tap(name, '上法', '成功');
+		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
+		await tap(name, '上法', '成功');
+		await tap(name, '下法', '成功');
+		expect(screen.getByText(/跳過了前面的環節/)).toBeTruthy();
+	});
+
+	it('「整個」按了 ✗：後面環節的按鈕停用，存下來後面空著；取消 ✗ 也不會冒出之前的記號', async () => {
+		const { session, name } = setup();
+		await tap(name, '下法', '小失誤');
+		await tap(name, '上法', '失敗');
+		const button = (phase: string) => screen.getByRole('button', { name: `${name} ${phase} 成功` }) as HTMLButtonElement;
+		expect([button('中段').disabled, button('下法').disabled]).toEqual([true, true]);
+		await tap(name, '上法', '失敗');
+		expect(pressed(name, '下法', '小失誤')).toBe('false');
+		expect(button('下法').disabled).toBe(false);
+		await tap(name, '上法', '失敗');
+		await save();
+		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✗' }]]);
+	});
+
+	it('「全部 ✓ 存」：每個環節都成功，存成一次整個做', async () => {
+		const { session, name } = setup();
+		await tap(name, '中段', '小失誤');
+		await fireEvent.click(screen.getByRole('button', { name: '全部 ✓ 存' }));
+		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✓', p2: '✓', p3: '✓' }]]);
+		expect(pressed(name, '中段', '小失誤')).toBe('false');
+	});
+
 	it('「只練幾個環節」：點到最後一個選的環節就自動存', async () => {
 		const { session, name } = setup();
 		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
@@ -121,13 +152,15 @@ describe('記錄頁的卡', () => {
 		]);
 	});
 
-	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」，點了按「存這一次」存成整個做', async () => {
+	it('只有一個環節的動作：卡上沒有「整個／只練幾個環節」和存檔鈕，點了記號就存成整個做', async () => {
 		const { session, name } = setup(ratedSample(), 1);
 		expect(screen.queryByRole('radiogroup')).toBeNull();
 		expect(screen.queryByText('只練幾個環節')).toBeNull();
-		await tap(name, '整體 騰翻', '成功');
-		await save();
-		expect(records(session, 1).map((r) => r.whole)).toEqual([true]);
+		expect(screen.queryByRole('button', { name: '存這一次' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '全部 ✓ 存' })).toBeNull();
+		await tap(name, '整體 騰翻', '小失誤');
+		expect(records(session, 1).map((r) => [r.whole, r.marks])).toEqual([[true, { p4: '△' }]]);
+		expect(screen.getByRole('status').textContent).toBe('已存');
 	});
 
 	/** 第 1 組這天：全上 ✓✗、分段練 ✗、全上 △✓✓。 */

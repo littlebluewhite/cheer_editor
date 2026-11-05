@@ -10,6 +10,7 @@ import {
 	readTime,
 	rulerMarks,
 	segmentSpans,
+	spacedLabels,
 	snapPlayhead,
 	snapToBeat,
 	stepPlayhead,
@@ -93,24 +94,44 @@ describe('全域秒數和「段 ＋ 段內整數時間」互換', () => {
 });
 
 describe('八拍尺的刻度', () => {
-	it('音樂段每拍一格，每個八拍的第一拍是大刻度並寫第幾個八拍；口號段每秒一格，每 5 秒寫秒數', () => {
+	it('音樂段每拍一格，每個八拍的第一拍是大刻度並寫第幾個八拍；口號段每秒一格，每 5 秒寫「n 秒」', () => {
 		const flow = flowOf(updateSegment(sample(), 's1', { eights: 2, lastBeats: 2 }));
 		// 音樂 1：150 BPM、10 拍、4 秒；口號 1：32.4 秒，從 4 秒開始
 		const marks = rulerMarks(flow);
 		expect(marks.slice(0, 11)).toEqual([
-			{ sec: 0, major: true, label: '1' },
+			{ sec: 0, major: true, label: '1', start: true },
 			...[0.4, 0.8, 1.2, 1.6, 2, 2.4, 2.8].map((sec) => ({ sec: expect.closeTo(sec, 9), major: false })),
 			{ sec: expect.closeTo(3.2, 9), major: true, label: '2' },
 			{ sec: expect.closeTo(3.6, 9), major: false },
-			{ sec: 4, major: true, label: '0s' }
+			{ sec: 4, major: true, label: '0 秒', start: true }
 		]);
 		expect(marks.slice(11, 16)).toEqual([
 			{ sec: 5, major: false },
 			{ sec: 6, major: false },
 			{ sec: 7, major: false },
 			{ sec: 8, major: false },
-			{ sec: 9, major: true, label: '5s' }
+			{ sec: 9, major: true, label: '5 秒' }
 		]);
+	});
+
+	const labels = (flow: Flow, pxPerSec: number) =>
+		spacedLabels(rulerMarks(flow), pxPerSec).flatMap((m) => (m.label ? [m.label] : []));
+
+	it('放得下就每個八拍都寫', () => {
+		const flow = flowOf(updateSegment(sample(), 's1', { eights: 4, lastBeats: 8 }));
+		expect(labels(flow, 16).slice(0, 5)).toEqual(['1', '2', '3', '4', '0 秒']);
+	});
+
+	it('號碼太密時跳著寫，不擠成一團', () => {
+		// 150 BPM 一個八拍 3.2 秒；1 秒 4 px 時一個八拍只有 12.8 px，放不下一個號碼
+		const flow = flowOf(updateSegment(sample(), 's1', { eights: 16, lastBeats: 8 }));
+		expect(labels(flow, 4).slice(0, 8)).toEqual(['1', '3', '5', '7', '9', '11', '13', '15']);
+	});
+
+	it('段交界兩個刻度太近：不寫前一段不滿八拍的號碼，下一段的開頭照寫', () => {
+		// 音樂 1 最後一個八拍只有 1 拍：「2」在 3.2 秒，口號段的「0 秒」在 3.6 秒
+		const flow = flowOf(updateSegment(sample(), 's1', { eights: 2, lastBeats: 1 }));
+		expect(labels(flow, 16).slice(0, 3)).toEqual(['1', '0 秒', '5 秒']);
 	});
 });
 

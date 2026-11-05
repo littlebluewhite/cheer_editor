@@ -39,20 +39,21 @@ export const FIXED_ROLES: readonly RoleEntry[] = [
 	['騰翻', '做騰翻的人。', '騰翻人員']
 ].map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false }));
 
-/** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複。 */
+/** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複、不能跟隊員同名。 */
 export function addCustomRole(flow: Flow, input: { name: string; meaning: string }): CommandResult {
 	const name = input.name.trim();
 	if (!name) return blocked('請填任務角色名稱');
 	const tooLongName = tooLong('roleName', name);
 	if (tooLongName) return blocked(tooLongName);
 	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個任務角色了`);
+	if (isMemberName(flow, name)) return blocked(memberNameTaken(name));
 	const id = nextId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
 	return ok({ ...flow, customRoles: [...flow.customRoles, role] });
 }
 
 /**
- * 改自訂任務角色的名稱、意思。名稱規則跟新增一樣（跟自己原本的名字一樣可以）。
+ * 改自訂任務角色的名稱、意思。名稱規則跟新增一樣（跟自己原本的名字一樣可以，開檔進來就跟隊員同名的也留著）。
  * 動作裡的人、給這個角色的拍點存的是名稱，一起改成新的。
  */
 export function updateCustomRole(flow: Flow, id: string, input: { name: string; meaning: string }): CommandResult {
@@ -65,6 +66,7 @@ export function updateCustomRole(flow: Flow, id: string, input: { name: string; 
 	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
 		return blocked(`已經有「${name}」這個任務角色了`);
 	}
+	if (name !== old.name && isMemberName(flow, name)) return blocked(memberNameTaken(name));
 	const role = { id, name, meaning: input.meaning.trim() };
 	const actions = flow.actions.map((a) => ({
 		...a,
@@ -95,6 +97,15 @@ export function deleteCustomRole(flow: Flow, id: string, option: ConfirmOption =
 		...(a.cues && { cues: a.cues.filter((c) => !(c.who && 'role' in c.who && c.who.role === role.name)) })
 	}));
 	return ok({ ...flow, customRoles: flow.customRoles.filter((r) => r.id !== id), actions });
+}
+
+/** 有隊員叫這個名字：拍點的「給誰」會有兩個一樣的選項，分不出是角色還是人。 */
+function isMemberName(flow: Flow, name: string): boolean {
+	return flow.members.some((m) => m.name === name);
+}
+
+function memberNameTaken(name: string): string {
+	return `已經有叫「${name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人`;
 }
 
 /** 名詞對照表：固定的 11 個在前，這支流程的自訂角色接在後面。 */

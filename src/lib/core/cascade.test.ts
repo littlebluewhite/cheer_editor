@@ -11,12 +11,13 @@ import {
 	formationTimes,
 	insertFormation,
 	setMarkers,
+	updateAction,
 	updateSegment,
 	type Flow,
 	type NewActionInput,
 	type Walk
 } from './index';
-import { flowOf } from '../test-flows';
+import { flowOf, libSample } from '../test-flows';
 
 /**
  * 音樂 1（150 BPM、4 個八拍 = 64 個半拍，一個半拍 0.2 秒）→ 口號 1（10 秒）；隊員小A、小B、小C。
@@ -156,8 +157,9 @@ describe('刪隊員', () => {
 		// 小A 在 x1（和小B）和 x2（只有他）裡
 		expect(deleteMember(flow, 'm1')).toEqual({
 			kind: 'confirm',
-			message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，其中 1 個會被整個刪掉，「技巧·Lib」會少了上層',
-			items: ['動作「跳躍·T」（音樂 1 3-1 起）']
+			message:
+				'刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，其中 1 個會被整個刪掉，「技巧·Lib」會沒有上層；後面 2 個人的號碼會往前遞補',
+			items: ['動作「技巧·Lib」（音樂 1 1-1 起）：他是上層', '動作「跳躍·T」（音樂 1 3-1 起）：只有他，會整個刪掉']
 		});
 		expect(flow).toEqual(before);
 	});
@@ -193,13 +195,39 @@ describe('刪隊員', () => {
 		expect(deleteMember(flow, 'm3')).toMatchObject({ message: '刪掉隊員「小C」（標記 小C、底層）：他不在任何動作裡' });
 	});
 
-	it('他在留下來的動作裡是上層：確認訊息寫那個動作會少了上層；他是別的任務角色就不寫', () => {
-		expect(deleteMember(sample(), 'm1')).toMatchObject({ message: expect.stringMatching(/，「技巧·Lib」會少了上層$/) });
-		expect(deleteMember(sample(), 'm2')).toMatchObject({ message: expect.not.stringContaining('少了') });
+	it('留下來的動作裡沒有別人是他的任務角色：寫那個動作會沒有那個角色；還有別人是就不寫', () => {
+		expect(deleteMember(sample(), 'm1')).toMatchObject({ message: expect.stringContaining('，「技巧·Lib」會沒有上層；') });
+		expect(deleteMember(sample(), 'm2')).toMatchObject({ message: expect.stringContaining('，「技巧·Lib」會沒有底層；') });
+		const twoTops = flowOf(
+			updateAction(sample(), 'x1', {
+				members: [
+					{ memberId: 'm1', role: '上層' },
+					{ memberId: 'm2', role: '底層' },
+					{ memberId: 'm3', role: '上層' }
+				]
+			})
+		);
+		expect(deleteMember(twoTops, 'm1')).toMatchObject({ message: expect.not.stringContaining('會沒有') });
+	});
+
+	it('分組的動作：看他那一組，寫第幾組會沒有那個角色', () => {
+		expect(deleteMember(libSample(), 'm1')).toMatchObject({
+			message: '刪掉隊員「小美」（標記 1、上層）：他在 1 個動作裡，「技巧·Lib」第 1 組會沒有上層；後面 3 個人的號碼會往前遞補',
+			items: ['動作「技巧·Lib」（音樂 1 1-1 起）：他是第 1 組的上層']
+		});
+	});
+
+	it('號碼遞補：他是最後一個就不寫；標記用開頭字也不寫', () => {
+		expect(deleteMember(sample(), 'm3')).toMatchObject({ message: expect.not.stringContaining('遞補') });
+		expect(deleteMember(flowOf(setMarkers(sample(), 'initial')), 'm1')).toMatchObject({
+			message: expect.not.stringContaining('遞補')
+		});
 	});
 
 	it('在動作裡但沒有動作會被整個刪掉：不寫「其中 0 個」', () => {
-		expect(deleteMember(sample(), 'm2')).toMatchObject({ message: '刪掉隊員「小B」（標記 2、底層）：他在 1 個動作裡' });
+		expect(deleteMember(sample(), 'm2')).toMatchObject({
+			message: '刪掉隊員「小B」（標記 2、底層）：他在 1 個動作裡，「技巧·Lib」會沒有底層；後面 1 個人的號碼會往前遞補'
+		});
 	});
 
 	it('找不到這個隊員就擋下', () => {
