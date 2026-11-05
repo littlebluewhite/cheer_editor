@@ -108,16 +108,12 @@
 	/** 從第幾個人的任務角色選單打開名詞對照表（「＋自訂任務角色…」）：新增的角色套給他。 */
 	let roleFor: number | null = null;
 	let formEl: HTMLElement;
-	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
+	/** 「?」說明點了才開（Tab 到它、滑鼠移過去都不開，才不會自己彈出來蓋住東西）。 */
 	let legendOpen = $state(false);
-	/** 滑鼠移到「!」上、或用鍵盤移到「!」：也看得到說明，移開就收。 */
-	let legendPeek = $state(false);
-	const legendShown = $derived(legendOpen || legendPeek);
 	let bangEl = $state<HTMLElement>();
 
 	function closeLegend() {
 		legendOpen = false;
-		legendPeek = false;
 	}
 
 	/** 問句是改長度問的：畫在長度欄位旁邊。 */
@@ -347,7 +343,7 @@
 
 		<div class="people">
 			<div class="people-head">
-				<span class="cap">人（{draft.members.length}）＋任務角色</span>
+				<span class="cap">人（{draft.members.length}）・任務角色</span>
 				<span class="legend">
 					<button
 						type="button"
@@ -356,19 +352,15 @@
 						aria-describedby="people-legend"
 						aria-expanded={legendOpen}
 						bind:this={bangEl}
-						onclick={() => (legendOpen = !legendOpen)}
-						onpointerenter={(e) => e.pointerType === 'mouse' && (legendPeek = true)}
-						onpointerleave={() => (legendPeek = false)}
-						onfocus={(e) => e.currentTarget.matches(':focus-visible') && (legendPeek = true)}
-						onfocusout={closeLegend}>!</button
+						onclick={() => (legendOpen = !legendOpen)}>?</button
 					>
-					<!-- 說明放在「!」下面、右邊對齊；點外面（點「!」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
+					<!-- 說明放在「?」下面、右邊對齊；點外面（點「?」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
 					<span
 						class="tip"
 						id="people-legend"
 						role="tooltip"
-						hidden={!legendShown}
-						{@attach legendShown &&
+						hidden={!legendOpen}
+						{@attach legendOpen &&
 							popover({ place: below(bangEl!, { gap: 6, align: 'right', flip: true }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
@@ -791,7 +783,7 @@
 		font-weight: 700;
 		line-height: 1;
 	}
-	/* 手指：「!」點得到的範圍 32px，看起來不變。 */
+	/* 手指：「?」點得到的範圍 32px，看起來不變。 */
 	@media (pointer: coarse) {
 		.bang {
 			position: relative;

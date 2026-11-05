@@ -1431,6 +1431,27 @@ describe('編輯器首頁', () => {
 		expect(screen.queryByText(/場地/, { selector: 'button' })).toBeNull();
 	});
 
+	it('新建表單名字、條數都錯：兩個欄位都標紅，下面各寫自己的錯；改好名字只收名字的', async () => {
+		render(Page);
+		await fireEvent.click(screen.getByRole('radio', { name: /自訂/ }));
+		await fireEvent.input(screen.getByLabelText('條數'), { target: { value: '13' } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		const name = screen.getByLabelText('流程名字');
+		const strips = screen.getByLabelText('條數');
+		/** 欄位標的錯誤訊息（aria-errormessage 指到的那一段）。 */
+		const errorOf = (input: HTMLElement) =>
+			input.getAttribute('aria-invalid') === 'true'
+				? document.getElementById(input.getAttribute('aria-errormessage') ?? '')?.textContent
+				: null;
+		expect(errorOf(name)).toBe('請幫流程取名字');
+		expect(errorOf(strips)).toBe('條數要是 1–12 的整數');
+		expect(screen.getAllByRole('alert')).toHaveLength(2);
+
+		await fireEvent.input(name, { target: { value: '校內賽' } });
+		expect(errorOf(name)).toBeNull();
+		expect(errorOf(strips)).toBe('條數要是 1–12 的整數');
+	});
+
 	it('加的隊員出現在名單上，也在場上（開頭站位）', async () => {
 		render(Page);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
@@ -1457,7 +1478,7 @@ describe('編輯器首頁', () => {
 			target: { value: '王小明\t男\t底層\n李美\t女\t上層\n阿強\t男\t中層' }
 		});
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
-		expect(screen.getByRole('alert').textContent).toBe('第 3 行「阿強」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」');
+		expect(screen.getByRole('alert').textContent).toBe('「阿強」：「中層」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」');
 		// 9 條直放：格點是每一格的正中間；先排正中心，再排正面那一格（差一格 1.8288 m）。
 		const at = (id: string) =>
 			document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);
@@ -1939,7 +1960,21 @@ describe('場地和右邊欄的分界', () => {
 		expect(reset()).toBeNull();
 	});
 
-	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {
+	it('拖過的寬度照視窗寬的比例記：大螢幕調過，換小一點的視窗，右邊欄跟著變窄', async () => {
+		await newFlow();
+		expect(width()).toBe(800);
+		for (let i = 0; i < 4; i++) await fireEvent.keyDown(bar(), { key: 'ArrowRight' });
+		expect(width()).toBe(704);
+		// 704 / 1600 = 0.44 → 1200 寬是 528
+		Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+		await fireEvent(window, new Event('resize'));
+		expect(width()).toBe(528);
+		cleanup();
+		await newFlow();
+		expect(width()).toBe(528);
+	});
+
+	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 632 px（場地本身 360 px）', async () => {
 		await newFlow();
 		const before = width();
 		await fireEvent.pointerDown(bar(), { clientX: 900, button: 0 });
@@ -1947,7 +1982,7 @@ describe('場地和右邊欄的分界', () => {
 		expect(width()).toBe(before + 40);
 		await fireEvent.pointerMove(bar(), { clientX: 0 });
 		await fireEvent.pointerUp(bar(), { clientX: 0 });
-		expect(width()).toBe(1600 - 560);
+		expect(width()).toBe(1600 - 632);
 	});
 });
 
@@ -1986,11 +2021,17 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 		expect(screen.getByRole('menuitem', { name: '＋口號段' })).toBeTruthy();
 	});
 
-	it('動作設定的「!」說明小窗', async () => {
+	it('動作設定的「?」說明小窗', async () => {
 		const session = await withSample();
 		const bang = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
 		const tip = document.getElementById(bang.getAttribute('aria-describedby')!)!;
 		expect(tip.hidden).toBe(true);
+		// 圖示是「?」，不是像警告的「!」；Tab 到它、滑鼠移過去都不會自己彈出來，點了才開。
+		bang.focus();
+		await fireEvent.focus(bang);
+		await fireEvent.pointerEnter(bang, { pointerType: 'mouse' });
+		expect(tip.hidden).toBe(true);
+		expect(bang.textContent).toBe('?');
 		await fireEvent.click(bang);
 		expect(tip.hidden).toBe(false);
 		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', isComposing: true });

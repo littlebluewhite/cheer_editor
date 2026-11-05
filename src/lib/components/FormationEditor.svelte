@@ -124,9 +124,6 @@
 		border: 1px solid var(--line, #d8dee9);
 		border-left: 4px solid var(--sel, #19b4d8);
 	}
-	.here.on .move-target {
-		padding: 0 2px;
-	}
 	.name-row {
 		display: flex;
 		align-items: center;
@@ -168,12 +165,10 @@
 		line-height: 1.4;
 		color: var(--muted);
 	}
-	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。 */
+	/* 拖人之前的提示：會改哪一張站位，還是會插一張新的。沒有框的灰色小字，不像按鈕。 */
 	.move-target {
 		margin: 0;
-		padding: 4px 10px;
-		border-radius: 8px;
-		background: var(--surface, #fff);
+		padding: 0 2px;
 		color: var(--muted);
 		font-size: 12px;
 		pointer-events: none;

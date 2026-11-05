@@ -24,8 +24,8 @@ export function saveLatencyMs(ms: number): void {
 	}
 }
 
-/** 拖分界改的大小（px）：時間軸的高度、右邊欄的寬度。存在 `cheer-editor:<名字>`。 */
-export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthPx';
+/** 拖分界改的大小：時間軸的高度（px）、右邊欄的寬度（視窗寬的比例）。存在 `cheer-editor:<名字>`。 */
+export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthRatio';
 
 /** 拖分界改的大小；null = 預設（沒拖過，或雙擊回去了）。 */
 export function loadLayoutPx(name: LayoutSize): number | null {

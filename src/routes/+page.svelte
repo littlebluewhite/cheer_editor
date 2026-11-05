@@ -23,7 +23,7 @@
 	import { resolve } from '$app/paths';
 	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN } from '#lib/editor-layout.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -204,14 +204,16 @@
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
-	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
+	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
+	let windowH = $state(0);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
-		name: 'inspectorWidthPx',
+		name: 'inspectorWidthRatio',
 		axis: 'x',
 		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
-		size: (): number => inspectorPx
+		size: (): number => inspectorPx,
+		relativeTo: () => windowW || window.innerWidth
 	});
 
 	const fieldAspect = $derived.by(() => {
@@ -414,6 +416,7 @@
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
+	bind:innerHeight={windowH}
 />
 <svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
@@ -610,6 +613,7 @@
 						</select>
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
 				</main>
 			{/if}
 		{:else}
@@ -935,7 +939,17 @@
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content);
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content) auto;
+	}
+	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行小字放最下面，不跟場地搶位置 */
+	.phone-why {
+		margin: 0;
+		padding: 4px 12px;
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.phone-why:empty {
+		display: none;
 	}
 	.phone-field {
 		position: relative;
@@ -969,7 +983,7 @@
 	@media (orientation: landscape) {
 		.phone-view {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-			grid-template-rows: auto auto minmax(0, 1fr);
+			grid-template-rows: auto auto minmax(0, 1fr) auto;
 		}
 		.phone-view > :global(*) {
 			grid-column: 2;
@@ -1794,10 +1808,11 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
 		gap: 56px;
-		align-items: center;
+		/* 貼上方：新建表單出現錯誤、最近的流程變多時，上面的東西不跳 */
+		align-items: start;
 		max-width: 1040px;
 		margin: 0 auto;
-		padding: 48px 32px;
+		padding: max(48px, 10dvh) 32px 48px;
 	}
 	.home-guide {
 		position: absolute;

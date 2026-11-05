@@ -66,4 +66,14 @@ describe('拍點小窗放哪裡', () => {
 		const p = placeCuePop(input({ cur, sel: { top: 440, bottom: 540, left: 100, right: 200 }, view: { top: 0, bottom: 900 } }));
 		expect(p).toEqual({ top: 312, left: 0, arrow: 150, above: true });
 	});
+	it('上下都放不下（矮視窗、iPad 橫放）：夾在看得到的範圍裡，不超出上面也不超出下面', () => {
+		// 看得到 0–200，小窗高 150；選在中間（60–100），上面只有 52、下面只有 92。
+		const mid = placeCuePop(input({ pop: { w: 300, h: 150 }, view: { top: 0, bottom: 200 }, sel: { top: 60, bottom: 100, left: 100, right: 200 } }));
+		expect(mid.top).toBeGreaterThanOrEqual(0);
+		expect(mid.top + 150).toBeLessThanOrEqual(200);
+		// 選在最上面那排還往上捲出去一點（-20–20）：小窗不跑到看得到的範圍上面。
+		const high = placeCuePop(input({ pop: { w: 300, h: 150 }, view: { top: 0, bottom: 160 }, sel: { top: -20, bottom: 20, left: 100, right: 200 } }));
+		expect(high.top).toBeGreaterThanOrEqual(0);
+		expect(high.top + 150).toBeLessThanOrEqual(160);
+	});
 });
