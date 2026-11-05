@@ -706,7 +706,7 @@
 			<div class="practice-host">
 				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
 				{#key opened}
-					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} />
+					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
 				{/key}
 				{@render noticeToast()}
 			</div>

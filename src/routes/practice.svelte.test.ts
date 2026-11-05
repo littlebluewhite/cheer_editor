@@ -321,12 +321,12 @@ describe('練習：總表', () => {
 	const filter = (group: string, option: string) =>
 		fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name: option }));
 
-	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次，一欄一組加合計', async () => {
+	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次，一欄一組（小字列出全組）加合計', async () => {
 		await summary();
 		const blocks = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
 		expect(blocks.filter((b) => b !== '練習')).toEqual(['技巧·Lib', '騰翻']);
 		expect(blockRows('技巧·Lib')).toEqual([
-			['環節', '第 1 組 小美', '第 2 組 小芳', '合計'],
+			['環節', '第 1 組 小美 小美・小A', '第 2 組 小芳 小芳・小B', '合計'],
 			['上法', '100% 1 次', '100% 5 次', '100% 6 次'],
 			['中段', '100% 1 次', '100% 5 次', '100% 6 次'],
 			['下法', '0% 1 次', '60% 5 次', '50% 6 次'],

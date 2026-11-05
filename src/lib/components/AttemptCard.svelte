@@ -28,11 +28,13 @@
 		who: string;
 		/** 卡上寫的名字：「第 1 組 小美」或隊員名字。 */
 		name: string;
+		/** 全組的名字，寫在名字下面（只寫名字看不出這組有誰）；騰翻、跳躍沒有。 */
+		people?: string[];
 		/** 記在哪一天（YYYY-MM-DD）。 */
 		date: string;
 	}
 
-	let { action, who, name, date }: Props = $props();
+	let { action, who, name, people, date }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -103,7 +105,10 @@
 
 <section class="card" aria-label={name}>
 	<header>
-		<b>{name}</b>
+		<div class="who">
+			<b>{name}</b>
+			{#if people}<small>{people.join('・')}</small>{/if}
+		</div>
 		<!-- 只有一個環節就沒得選，一定是整個做 -->
 		{#if phases.length > 1}
 			<div class="scope" role="radiogroup" aria-label="{name} 這次練">
@@ -192,8 +197,16 @@
 		justify-content: space-between;
 		gap: 6px 12px;
 	}
+	.who {
+		display: grid;
+		min-width: 0;
+	}
 	header b {
 		font-size: 15px;
+	}
+	.who small {
+		color: var(--muted);
+		font-size: 12px;
 	}
 	.scope {
 		display: flex;

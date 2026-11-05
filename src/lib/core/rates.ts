@@ -125,7 +125,7 @@ function passes(r: Attempt, filter: RateFilter): boolean {
 
 /** 成功率表：一欄一組（騰翻、跳躍一欄一個人），每欄是每個環節和整次的次數；加上合計。 */
 export interface RateTable {
-	columns: ({ who: string; name: string } & RateCounts)[];
+	columns: ({ who: string; name: string; people?: string[] } & RateCounts)[];
 	total: RateCounts;
 }
 

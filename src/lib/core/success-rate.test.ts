@@ -142,9 +142,22 @@ describe('組的名字', () => {
 		expect(squadName(flow, actionOf(flow), nth(flow, 2))).toBe('第 2 組 小美');
 	});
 
-	it('沒有上層就只叫第 n 組', () => {
-		const flow = grouped([['m2', 3], ['m3', 3]]);
-		expect(squadName(flow, actionOf(flow), nth(flow, 3))).toBe('第 3 組');
+	it('沒有上層：用主底的名字', () => {
+		const flow = grouped([['m3', 3], ['m2', 3]]);
+		expect(squadName(flow, actionOf(flow), nth(flow, 3))).toBe('第 3 組 小A');
+	});
+
+	it('沒有上層也沒有主底：用名單上第一個人', () => {
+		const flow = grouped([['m4', 2], ['m3', 3]]);
+		expect(squadName(flow, actionOf(flow), nth(flow, 3))).toBe('第 3 組 小B');
+	});
+
+	it('練習畫面的「誰」帶著全組的名字，照名單順序', () => {
+		const flow = grouped([['m3', 2], ['m2', 2]]);
+		expect(attemptWhos(flow, actionOf(flow))).toEqual([
+			{ who: nth(flow, 1), name: '第 1 組 小美', people: ['小美', '小芳'] },
+			{ who: nth(flow, 2), name: '第 2 組 小A', people: ['小A', '小B'] }
+		]);
 	});
 });
 
@@ -180,7 +193,7 @@ describe('開始分組：動作裡的人全部進第 1 組', () => {
 	it('有一個環節的騰翻（四個人）換成技巧並帶「確定」：每個人在第 1 組，記錄頁的「誰」是一組', () => {
 		const flow = flowOf(updateAction(rated(sample('tumbling')), 'x1', { category: 'stunt' }, { confirmed: true }));
 		expect(squadNumbers(actionOf(flow))).toEqual([1, 1, 1, 1]);
-		expect(attemptWhos(flow, actionOf(flow))).toEqual([{ who: 'g1', name: '第 1 組 小美' }]);
+		expect(attemptWhos(flow, actionOf(flow))).toEqual([{ who: 'g1', name: '第 1 組 小美', people: ['小美', '小A', '小B', '小芳'] }]);
 	});
 });
 

@@ -540,7 +540,7 @@ describe('流程檔：版本', () => {
 		expect(r.flow.lastIds).toEqual(flow.lastIds);
 		expect(r.flow.lastIds?.g).toBe(2);
 		expect(attemptWhos(r.flow, after)).toEqual(attemptWhos(flow, before));
-		expect(after.successRate?.records.map((a) => squadName(r.flow, after, a.who))).toEqual(['第 1 組', '第 2 組', '第 1 組']);
+		expect(after.successRate?.records.map((a) => squadName(r.flow, after, a.who))).toEqual(['第 1 組 小A', '第 2 組 小B', '第 1 組 小A']);
 		expect(after.successRate?.records).toEqual(before.successRate?.records);
 		expect(rateTable(r.flow, after)).toEqual(rateTable(flow, before));
 		expect(readFlowFile(writeFlowFile(r.flow, {}))).toMatchObject({ kind: 'ok', flow: r.flow });
