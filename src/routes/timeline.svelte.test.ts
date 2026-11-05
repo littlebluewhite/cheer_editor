@@ -1,7 +1,7 @@
 // 時間軸上拖動作長度（#152）：拖的時候看得到新的長度和結束拍；重疊時訊息寫上一個動作在哪裡結束。
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { addAction } from '#lib/core';
+import { addAction, moveMembers, positionsAt } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -68,5 +68,74 @@ describe('播放頭', () => {
 		await fireEvent.pointerMove(window, { clientX: 8 * 16 });
 		await fireEvent.pointerUp(window, { clientX: 8 * 16 });
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5');
+	});
+});
+
+describe('點色條、跳到動作開始（#170）', () => {
+	const where = () => screen.getByLabelText('目前位置').textContent;
+
+	it('點一下色條：只選到動作，播放頭不動', async () => {
+		const { session } = setup();
+		await fireEvent.click(bar('x2'));
+		expect(session.selectedActionId).toBe('x2');
+		expect(where()).toBe('音樂 1 1-1');
+	});
+
+	it('雙擊色條：播放頭跳到動作開始', async () => {
+		const { session } = setup();
+		// 瀏覽器雙擊會先送兩個 click
+		await fireEvent.click(bar('x2'));
+		await fireEvent.click(bar('x2'));
+		await fireEvent.dblClick(bar('x2'));
+		expect(session.selectedActionId).toBe('x2');
+		expect(where()).toBe('音樂 1 3-2');
+	});
+
+	it('按動作表單的「跳到開始」：播放頭跳到動作開始', async () => {
+		setup();
+		await fireEvent.click(bar('x2'));
+		await fireEvent.click(screen.getByRole('button', { name: '跳到開始' }));
+		expect(where()).toBe('音樂 1 3-2');
+	});
+});
+
+describe('站位列雙擊插站位（#171）', () => {
+	/** 範例流程再加一張站位在 3-5（8 秒）：小美走到 [3, 3]（2-5 出發），3-1 時她走到一半。 */
+	function withWalk() {
+		const flow = flowOf(moveMembers(libSample(), 8, { m1: [3, 3] }));
+		const { session, props } = editorPage(flow);
+		render(Page, props);
+		return { session, before: flow };
+	}
+	const track = () => document.querySelector<HTMLElement>('.film .trk')!;
+
+	it('在 3-1 的空白處雙擊：3-1 多一張站位，每個人站在那一拍本來的位置', async () => {
+		const { session, before } = withWalk();
+		// 150 BPM 一拍 0.4 秒：3-1 是 6.4 秒 = 102.4 px（時間軸 ×1）
+		await fireEvent.dblClick(track(), { clientX: 102.4 });
+		const formations = session.flow!.formations;
+		expect(formations).toHaveLength(3);
+		const added = formations[1];
+		expect(added).toMatchObject({ segmentId: 's1', at: 32 });
+		expect(added.pos).toEqual(positionsAt(before, 6.4));
+		// 小美走到一半：開頭的位置和 [3, 3] 的正中間
+		const [x, y] = before.formations[0].pos.m1;
+		expect(added.pos.m1[0]).toBeCloseTo((x + 3) / 2);
+		expect(added.pos.m1[1]).toBeCloseTo((y + 3) / 2);
+		expect(screen.getByRole('button', { name: '站位 2', pressed: true })).toBeTruthy();
+	});
+
+	it('⌘Z：插的那張不見', async () => {
+		const { session } = withWalk();
+		await fireEvent.dblClick(track(), { clientX: 102.4 });
+		expect(session.flow!.formations).toHaveLength(3);
+		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
+		expect(session.flow!.formations).toHaveLength(2);
+	});
+
+	it('雙擊縮圖不會多插一張', async () => {
+		const { session } = withWalk();
+		await fireEvent.dblClick(screen.getByRole('button', { name: '站位 2' }), { clientX: 8 * 16 + 10 });
+		expect(session.flow!.formations).toHaveLength(2);
 	});
 });

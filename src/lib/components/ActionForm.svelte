@@ -9,6 +9,7 @@
 	// 同一時間在別的動作裡的人標出來（「拿掉這幾個人」一次拿掉）；改動作時選了別的人，「把選的 N 人加進來」。
 	// 從任務角色選單的「＋自訂任務角色…」新增的角色，套給打開選單的那個人。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
+	// 改動作時「開始」旁邊有「跳到開始」（播放頭跳到動作開始）。
 	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列），勾「照組排」就照組號排。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
 	import { flushSync, type ComponentProps } from 'svelte';
@@ -47,7 +48,8 @@
 
 	// 流程從 session 拿；表單上的草稿（選到的動作，或跟著選的人、播放頭的新動作）在編輯器 module。
 	const session = getEditorSession();
-	const draft = getEditor().actionDraft;
+	const editor = getEditor();
+	const draft = editor.actionDraft;
 	let nameInput = $state<HTMLInputElement>();
 	let noteInput = $state<HTMLTextAreaElement>();
 	const flow = $derived(session.flow!);
@@ -302,7 +304,12 @@
 				{/each}
 			</fieldset>
 			<div class="field">
-				<span class="cap" aria-hidden="true">開始</span>
+				<span class="start-cap">
+					<span class="cap" aria-hidden="true">開始</span>
+					{#if action}
+						<button type="button" class="link" onclick={() => editor.seekToAction(action.id)}>跳到開始</button>
+					{/if}
+				</span>
 				<input
 						aria-label="開始"
 						bind:value={draft.startText}
@@ -638,9 +645,13 @@
 		font-weight: 600;
 		color: var(--muted, #66718a);
 	}
-	.note-cap {
+	.note-cap,
+	.start-cap {
 		display: flex;
 		justify-content: space-between;
+	}
+	.start-cap .link {
+		font-size: 12px;
 	}
 	small {
 		font-size: 11px;

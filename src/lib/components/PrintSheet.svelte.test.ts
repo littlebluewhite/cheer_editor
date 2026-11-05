@@ -344,6 +344,21 @@ describe('八拍表列印', () => {
 		expect(within(action).getByText('最後一拍看前面')).toBeTruthy();
 	});
 
+	it('印的時候放得下一頁的八拍不切到兩頁；比一頁還長的照樣可以切（不然整列推到下一頁，前一頁只剩標題）', () => {
+		// 第 3 個八拍（6.4 秒起）塞 7 張站位：7 張小站位圖疊起來比 A4 一頁高
+		let flow = sample();
+		for (let i = 0; i < 7; i++) flow = flowOf(insertFormation(flow, 6.4 + i * 0.4));
+		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+		const keep = (eight: string) =>
+			bodyRows()
+				.find((r) => within(r).getAllByRole('cell')[1].textContent === eight)!
+				.closest('tbody')!
+				.classList.contains('keep');
+		expect(keep('1')).toBe(true);
+		expect(keep('2')).toBe(true);
+		expect(keep('3')).toBe(false);
+	});
+
 	describe('拍點', () => {
 		/** Lib（小A 上層、小B 主底）：1-5 下手、1-6 到 1-7 down、1-8 上層 high V。 */
 		function cued(): Flow {
