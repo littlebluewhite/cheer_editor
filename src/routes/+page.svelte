@@ -197,10 +197,16 @@
 	}
 
 
+	/** 右邊欄的兩頁（動作、隊員）：換流程時捲回最上面。 */
+	let actionPanel = $state<HTMLElement>();
+	let membersPanel = $state<HTMLElement>();
+
 	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
 	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
+		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
+		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
@@ -606,12 +612,12 @@
 					><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 				>
 			</div>
-			<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
+			<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
 				<MemberPicker />
 				<WalkForm />
 				<ActionForm {cellAt} />
 			</div>
-			<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
+			<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
 				<MemberPanel />
 			</div>
 		</aside>
@@ -1443,6 +1449,11 @@
 	@media screen and (max-width: 1023px), screen and (max-height: 599px) {
 		.narrow-hint {
 			display: grid;
+		}
+		/* 被擋住的編輯畫面（上方列、右邊欄比手機寬）不把頁面撐寬，手機上不能往右拖。
+		   用 contain: paint 不用 overflow: hidden：上方列裡只給讀屏的字是 position: absolute，overflow 切不到它們 */
+		.editor:not(.practicing) {
+			contain: paint;
 		}
 	}
 

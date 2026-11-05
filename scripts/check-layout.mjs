@@ -596,6 +596,18 @@ await check('768×1024 的桌面視窗算窄：編輯畫面顯示窄螢幕提示
 	return narrowHint();
 });
 
+for (const [w, h] of [[320, 640], [390, 844]]) {
+	// 手機的版面寬會跟著撐寬的內容變大（innerWidth 也跟著變），所以跟設定的螢幕寬比
+	await check(`${w}×${h}（觸控）：被擋住的編輯畫面不把頁面撐寬（不能往右拖）`, async () => {
+		await setTouchViewport(w, h);
+		await openSample();
+		const hint = await narrowHint();
+		if (!hint.ok) return hint;
+		const v = await js(`return { 頁寬: document.scrollingElement.scrollWidth, 版面寬: innerWidth }`);
+		return { ok: v.頁寬 <= w && v.版面寬 <= w, value: { 螢幕寬: w, ...v } };
+	});
+}
+
 for (const [w, h] of [[390, 844], [820, 1180]]) {
 	await check(`${w}×${h}（觸控）：開檔後被擋住，按「去練習」能記一次，不溢出`, async () => {
 		await setTouchViewport(w, h);

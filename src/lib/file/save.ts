@@ -10,6 +10,10 @@ export type SaveOutcome = 'saved' | 'shared' | 'downloaded' | 'cancelled';
 /** 一支流程一個：記得上次存到哪個檔，下次存回同一個。開別的流程時換一個新的。 */
 export interface FileSaver {
 	save(bytes: Uint8Array, fileName: string): Promise<SaveOutcome>;
+	/** 存回的那個檔叫什麼（Chrome、Edge：開檔拿到的、存檔對話框選的，教練可能改過名字）；沒有就是存檔時給的檔名。 */
+	readonly fileName?: string;
+	/** 觸控螢幕（手機、平板）：下載新檔時不叫教練改用 Chrome、Edge（那上面也不能存回原檔）。 */
+	readonly touch?: boolean;
 }
 
 /**
@@ -61,6 +65,10 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 	/** 開檔拿到的 handle 只能讀：第一次存之前要寫入的權限。 */
 	let askWrite = opened !== null;
 	return {
+		get fileName() {
+			return handle?.name;
+		},
+		touch: matchMedia('(pointer: coarse)').matches,
 		async save(bytes, fileName) {
 			if (!('showSaveFilePicker' in window)) {
 				const file = new File([bytes as Uint8Array<ArrayBuffer>], fileName, { type: 'application/zip' });

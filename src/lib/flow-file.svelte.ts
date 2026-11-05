@@ -3,9 +3,9 @@
 // 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
 // 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁）。
 
-import { missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { AUDIO_EXTENSIONS, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import type { DraftInfo } from '#lib/file/draft.js';
-import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
+import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
 import type { MusicLibrary } from '#lib/music-library.svelte.js';
 import type { TabChannel } from '#lib/tab-channel.js';
@@ -106,6 +106,9 @@ export class FlowFile {
 		adapters.pendingInput.flush();
 		const f = session.flow;
 		this.#saving = true;
+		// 第一次存（這支流程還沒有存檔薄層）：下載新檔時多說一句這個瀏覽器怎麼存；原本在不在檔案裡（從檔案開的）
+		const first = !this.#saver;
+		const hadFile = this.#onDisk;
 		this.#saver ??= adapters.createSaver();
 		// 存的這支流程有幾段找不到音樂（存的時候手上的音樂）
 		const missing = music.missingSegmentIds.length;
@@ -123,12 +126,8 @@ export class FlowFile {
 			if (oldId !== this.#draftId) void this.#dropDraft(oldId);
 			this.#saveDraftLater();
 			session.notice = [
-				outcome === 'downloaded'
-					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${fileName}」；用 Chrome 或 Edge 才能直接存回原檔。`
-					: '',
-				missing
-					? `存好了，但有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次`
-					: ''
+				savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch),
+				missing ? `有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次` : ''
 			]
 				.filter(Boolean)
 				.join('；');
@@ -176,7 +175,12 @@ export class FlowFile {
 			if (session.flow) session.notice = message;
 			else this.#openError = message;
 		};
-		if (r.kind === 'error') return cannotOpen(r.message);
+		if (r.kind === 'error') {
+			if (!fileName || !isAudioName(fileName)) return cannotOpen(r.message);
+			// 拿音樂檔來開：說音樂要去段設定載入（首頁還沒有段，先建流程）
+			const where = session.flow ? '音樂要點段列上的段' : '先建好流程，再點段列上的段';
+			return cannotOpen(`這是音樂檔，不是流程檔。${where}，在段設定按「載入音樂檔」`);
+		}
 		if (await this.#otherTabEditing(draftId)) return cannotOpen('另一個分頁正在編這支流程');
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
 		const music = await this.#editor.readMusic(r.audio);
@@ -189,11 +193,12 @@ export class FlowFile {
 				this.#fileBytes = bytes;
 				if (this.#draftChecked) void this.#saveDraft(bytes);
 			}
+			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名
 			session.notice = r.missingSegmentIds.length
 				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
-				: music.hasBroken
-					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
-					: '';
+				: [fileName !== null ? `已開啟「${fileName}」` : '', music.hasBroken ? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音' : '']
+						.filter(Boolean)
+						.join('；');
 			if (r.missingSegmentIds.length) this.#noteMissing();
 		});
 	}
@@ -496,6 +501,26 @@ export interface RecentFlow {
 	unsaved: boolean;
 	/** 另一個分頁正在編它：不能打開、不能丟掉。 */
 	busy: boolean;
+}
+
+/**
+ * 存好了的提示，寫出檔名。下載新檔（Safari、Firefox）第一次存時多說一句：從檔案開的，說原本的檔沒改，
+ * 在電腦上叫教練改用 Chrome、Edge 才能存回原檔；新的流程本來就沒有原檔，只說每次存都下載一個新檔。
+ */
+function savedText(outcome: SaveOutcome, fileName: string, first: boolean, hadFile: boolean, touch: boolean): string {
+	if (outcome === 'saved') return `已存到「${fileName}」`;
+	if (outcome === 'shared') return `已分享「${fileName}」`;
+	if (!first) return `已下載${hadFile ? '新的' : ''}「${fileName}」`;
+	if (!hadFile) return `已下載「${fileName}」；這個瀏覽器每次存檔都下載一個新檔`;
+	return touch
+		? `已下載新的「${fileName}」；原本開的檔沒有改`
+		: `已下載新的「${fileName}」；這個瀏覽器不能改原本開的檔，用電腦上的 Chrome 或 Edge 開檔，存檔才會存回原檔`;
+}
+
+/** 檔名看起來是音樂檔（段設定載入得了的副檔名）。 */
+function isAudioName(fileName: string): boolean {
+	const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+	return fileName.includes('.') && (AUDIO_EXTENSIONS as readonly string[]).includes(ext);
 }
 
 /** 剛建好的流程的草稿 id：每次都不一樣。 */
