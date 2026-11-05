@@ -45,6 +45,12 @@ export const MAX_EIGHTS = 200;
 export const MAX_CHANT_SEC = 300;
 export const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'wav'] as const;
 
+/** 檔名是載入得了的音樂檔就回副檔名（小寫，例：「mp3」），不是就 null。 */
+export function audioExtension(fileName: string): string | null {
+	const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+	return fileName.includes('.') && (AUDIO_EXTENSIONS as readonly string[]).includes(ext) ? ext : null;
+}
+
 /** 音樂段長度給教練看的樣子：幾個八拍、最後一個八拍幾拍（1–8）。 */
 export interface MusicLength {
 	eights: number;
@@ -268,10 +274,8 @@ export function loadSegmentAudio(
 	const segment = flow.segments.find((s) => s.id === segmentId);
 	if (!segment) return blocked('找不到這一段');
 	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
-	const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-	if (!(AUDIO_EXTENSIONS as readonly string[]).includes(ext) || !fileName.includes('.')) {
-		return blocked(`只能載入 ${AUDIO_EXTENSIONS.join('、')}`);
-	}
+	const ext = audioExtension(fileName);
+	if (!ext) return blocked(`只能載入 ${AUDIO_EXTENSIONS.join('、')}`);
 	const id = nextId('a', [...flow.audio.map((a) => a.id), ...heldIds]);
 	const audio = [...flow.audio, { id, file: `audio/${id}.${ext}`, name: fileName }];
 	const r = updateSegment({ ...flow, audio }, segmentId, { audioId: id });

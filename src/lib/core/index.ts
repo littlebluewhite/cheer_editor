@@ -154,6 +154,7 @@ export type { SnapPoint } from './snap';
 
 export {
 	AUDIO_EXTENSIONS,
+	audioExtension,
 	BROKEN_AUDIO,
 	DEFAULT_BPM,
 	MAX_BPM,

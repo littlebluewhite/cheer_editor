@@ -4,7 +4,7 @@
 // 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁；
 // 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
 
-import { AUDIO_EXTENSIONS, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
@@ -179,7 +179,7 @@ export class FlowFile {
 			else this.#openError = message;
 		};
 		if (r.kind === 'error') {
-			if (!fileName || !isAudioName(fileName)) return cannotOpen(r.message);
+			if (!fileName || !audioExtension(fileName)) return cannotOpen(r.message);
 			// 拿音樂檔來開：說音樂要去段設定載入（首頁還沒有段，先建流程）
 			const where = session.flow ? '音樂要點段列上的段' : '先建好流程，再點段列上的段';
 			return cannotOpen(`這是音樂檔，不是流程檔。${where}，在段設定按「載入音樂檔」`);
@@ -568,12 +568,6 @@ function savedText(outcome: SaveOutcome, fileName: string, first: boolean, hadFi
 	return touch
 		? `已下載新的「${fileName}」；原本開的檔沒有改`
 		: `已下載新的「${fileName}」；這個瀏覽器不能改原本開的檔，用電腦上的 Chrome 或 Edge 開檔，存檔才會存回原檔`;
-}
-
-/** 檔名看起來是音樂檔（段設定載入得了的副檔名）。 */
-function isAudioName(fileName: string): boolean {
-	const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-	return fileName.includes('.') && (AUDIO_EXTENSIONS as readonly string[]).includes(ext);
 }
 
 /** 剛建好的流程的草稿 id：每次都不一樣。 */
