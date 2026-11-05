@@ -39,6 +39,7 @@
 	import { resolve } from '$app/paths';
 	import {
 		loadInspectorWidth,
+		MAX_LATENCY_MS,
 		loadLatencyMs,
 		loadTimelineHeight,
 		saveInspectorWidth,
@@ -357,8 +358,13 @@
 		if (playing) play(f);
 	}
 
-	function setLatency(ms: number) {
-		if (!Number.isFinite(ms)) return;
+	/** 清空、不合法或超出範圍：不改，欄位回到現在的值（不然欄位空著，實際還在用舊值）。 */
+	function setLatency(input: HTMLInputElement) {
+		const ms = input.valueAsNumber;
+		if (!(Math.abs(ms) <= MAX_LATENCY_MS)) {
+			input.value = String(latencyMs);
+			return;
+		}
 		latencyMs = ms;
 		saveLatencyMs(ms);
 	}
@@ -806,8 +812,10 @@
 					<input
 						type="number"
 						step="10"
+						min={-MAX_LATENCY_MS}
+						max={MAX_LATENCY_MS}
 						value={latencyMs}
-						onchange={(e) => setLatency(e.currentTarget.valueAsNumber)}
+						onchange={(e) => setLatency(e.currentTarget)}
 					/>
 				</label>
 			</div>

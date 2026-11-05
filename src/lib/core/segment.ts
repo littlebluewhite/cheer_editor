@@ -40,6 +40,9 @@ export interface AudioRef {
 export const MIN_BPM = 60;
 export const MAX_BPM = 170;
 export const DEFAULT_BPM = 150;
+/** 一個音樂段最多幾個八拍、口號段最長幾秒：再長時間軸會畫到分頁卡住。 */
+export const MAX_EIGHTS = 200;
+export const MAX_CHANT_SEC = 300;
 export const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'wav'] as const;
 
 /** 音樂段長度給教練看的樣子：幾個八拍、最後一個八拍幾拍（1–8）。 */
@@ -60,14 +63,27 @@ export interface BeatTiming {
 	firstBeatSec: number;
 }
 
-/** 「照音樂長度算」：從第一拍算到音樂結束有幾個完整的拍（至少 1 拍）。結果可以直接給 updateSegment。 */
-export function musicLengthFromAudio(input: BeatTiming & { durationSec: number }): MusicLength {
-	const beats = Math.max(
-		1,
-		Math.floor(((input.durationSec - input.firstBeatSec) * input.bpm) / 60 + 1e-9)
-	);
+/** 從第一拍算到音樂結束有幾個完整的拍；不到一拍是 null。 */
+function musicLengthFromAudio(input: BeatTiming & { durationSec: number }): MusicLength | null {
+	const beats = Math.floor(((input.durationSec - input.firstBeatSec) * input.bpm) / 60 + 1e-9);
+	if (beats < 1) return null;
 	const eights = Math.ceil(beats / 8);
 	return { eights, lastBeats: beats - (eights - 1) * 8 };
+}
+
+/** 「照音樂長度算」：音樂段的長度改成從第一拍到音樂結束的完整拍數。durationSec 是音樂檔多長。 */
+export function fitSegmentToAudio(
+	flow: Flow,
+	segmentId: string,
+	durationSec: number,
+	options: ConfirmOption = {}
+): CommandResult {
+	const segment = flow.segments.find((s) => s.id === segmentId);
+	if (!segment) return blocked('找不到這一段');
+	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
+	const length = musicLengthFromAudio({ ...segment, durationSec });
+	if (!length) return blocked('第一拍之後剩下不到一拍');
+	return updateSegment(flow, segmentId, length, options);
 }
 
 /** 波形上的一條拍子線。秒數是音樂檔裡的秒數。 */
@@ -118,7 +134,7 @@ export function updateSegment(
 	let next: Segment;
 	if (old.kind === 'music') {
 		const bpm = patch.bpm ?? old.bpm;
-		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(`BPM 要在 ${MIN_BPM}–${MAX_BPM} 之間`);
+		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(`BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`);
 		// 第一拍最細 0.01 秒，也比較好讀。
 		const firstBeatSec =
 			patch.firstBeatSec === undefined ? old.firstBeatSec : Math.round(patch.firstBeatSec * 100) / 100;
@@ -127,14 +143,11 @@ export function updateSegment(
 		}
 		const length = { ...musicLength(old), ...pick(patch, 'eights', 'lastBeats') };
 		const { eights, lastBeats } = length;
-		if (
-			!Number.isInteger(eights) ||
-			eights < 1 ||
-			!Number.isInteger(lastBeats) ||
-			lastBeats < 1 ||
-			lastBeats > 8
-		) {
-			return blocked('八拍數至少 1；最後一個八拍要有 1–8 拍');
+		// 兩格各說各的：教練才知道是哪一格錯。
+		if (!(eights >= 1 && eights <= MAX_EIGHTS)) return blocked(`八拍數要在 1 到 ${MAX_EIGHTS} 之間`);
+		if (!Number.isInteger(eights)) return blocked('八拍數要是整數');
+		if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) {
+			return blocked('最後一個八拍的拍數要在 1 到 8 之間');
 		}
 		const halfBeats = ((eights - 1) * 8 + lastBeats) * 2;
 		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
@@ -144,7 +157,9 @@ export function updateSegment(
 		next = { ...old, audioId, bpm, firstBeatSec, halfBeats };
 	} else {
 		const tenths = patch.seconds === undefined ? old.tenths : Math.round(patch.seconds * 10);
-		if (!(tenths >= 1)) return blocked('口號段至少 0.1 秒');
+		if (!(tenths >= 1 && tenths <= MAX_CHANT_SEC * 10)) {
+			return blocked(`口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`);
+		}
 		next = { ...old, tenths };
 	}
 	// 段縮短：動作要整個放得進段裡；站位的時間點要在段裡（段尾那一刻已經是下一段）。
