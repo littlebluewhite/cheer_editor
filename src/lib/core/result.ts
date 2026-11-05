@@ -19,6 +19,16 @@ export type CommandResult<Extra extends object = object> =
 	 */
 	| { kind: 'choose'; message: string; items: string[] };
 
+/**
+ * 讀教練打的字（時間、長度、數字）：看得懂是 ok 帶 value；看不懂是被擋，message 是給教練看的原因。
+ * 被擋跟指令被擋一樣，表單可以直接交給問教練。
+ */
+export type ReadResult<T> = { kind: 'ok'; value: T } | { kind: 'blocked'; message: string };
+
+/** 讀到的值：null 是看不懂，擋下來說 message。 */
+export const readOr = <T>(value: T | null, message: string): ReadResult<T> =>
+	value === null ? { kind: 'blocked', message } : { kind: 'ok', value };
+
 /** 紀錄的兩個選擇：保留舊紀錄（只是改錯字）或清掉重算（真的換人了）。 */
 export type RecordsChoice = 'keep' | 'clear';
 

@@ -9,7 +9,7 @@
 		clearWalks,
 		formationWalks,
 		memberWalk,
-		parseTime,
+		readTime,
 		setTeamWalks,
 		setWalks,
 		timeText,
@@ -69,18 +69,14 @@
 		});
 	});
 
-	/** 看不懂：跟核心擋下來一樣，交給問教練留下原因。 */
-	const notParsed = (message: string) => ask.send(() => ({ kind: 'blocked', message }) as const);
-
 	function apply() {
 		if (!formation) return;
 		const home = formation.segmentId!;
-		const depart = parseTime(flow, home, departText);
-		const arrive = parseTime(flow, home, arriveText);
-		const hint = '，例：2-5（別的段前面加段名，例：口號 1 12.3）';
-		if (!depart) return void notParsed(`出發看不懂${hint}`);
-		if (!arrive) return void notParsed(`到達看不懂${hint}`);
-		const walk: Walk = { depart, arrive };
+		const depart = readTime(flow, home, departText, '出發');
+		const arrive = readTime(flow, home, arriveText, '到達');
+		if (depart.kind === 'blocked') return void ask.send(() => depart);
+		if (arrive.kind === 'blocked') return void ask.send(() => arrive);
+		const walk: Walk = { depart: depart.value, arrive: arrive.value };
 		const id = formation.id;
 		const ids = selectedMemberIds;
 		ask.send(() =>

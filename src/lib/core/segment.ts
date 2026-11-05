@@ -5,8 +5,8 @@
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { nextId } from './ids';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { atText, segmentSpans, units } from './time';
+import { answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
+import { atText, parseNumber, segmentSpans, units } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -64,13 +64,13 @@ export function musicLength(segment: MusicSegment): MusicLength {
 export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>): string | null {
 	if ('tenths' in length) {
 		const { tenths } = length;
-		return tenths >= 1 && tenths <= MAX_CHANT_SEC * 10 ? null : `口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`;
+		return tenths >= 1 && tenths <= MAX_CHANT_SEC * 10 ? null : RANGE.seconds;
 	}
 	const { eights, lastBeats } = length;
 	// 兩格各說各的：教練才知道是哪一格錯。
-	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return `八拍數要在 1 到 ${MAX_EIGHTS} 之間`;
+	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return RANGE.eights;
 	if (!Number.isInteger(eights)) return '八拍數要是整數';
-	if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) return '最後一個八拍的拍數要在 1 到 8 之間';
+	if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) return RANGE.lastBeats;
 	return null;
 }
 
@@ -135,6 +135,27 @@ export interface SegmentPatch {
 	seconds?: number;
 }
 
+/** 段設定裡打數字的欄位。 */
+export type SegmentNumberField = 'bpm' | 'firstBeatSec' | 'eights' | 'lastBeats' | 'seconds';
+
+/** 每個數字欄位能填的範圍：超出範圍、看不懂都說這一句。 */
+const RANGE: Record<SegmentNumberField, string> = {
+	bpm: `BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`,
+	firstBeatSec: '第一拍要是 0 秒以上',
+	eights: `八拍數要在 1 到 ${MAX_EIGHTS} 之間`,
+	lastBeats: '最後一個八拍的拍數要在 1 到 8 之間',
+	seconds: `口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`
+};
+
+/**
+ * 段設定的數字欄位打的字（全形當成半形）。空白、看不懂就擋下，說能填的範圍；
+ * 超出範圍的照讀，交給 updateSegment 擋下（說同一句）。
+ */
+export function readSegmentNumber(field: SegmentNumberField, text: string): ReadResult<number> {
+	const value = parseNumber(text);
+	return readOr(Number.isFinite(value) ? value : null, RANGE[field]);
+}
+
 /**
  * 改段。改 BPM 時動作和站位存的是拍，所以拍不變、秒數跟著變。
  * 段縮短、有動作或站位放不進段裡時回「要確認」並列出清單；帶 { confirmed: true } 再送一次才刪。
@@ -151,11 +172,11 @@ export function updateSegment(
 	let next: Segment;
 	if (old.kind === 'music') {
 		const bpm = patch.bpm ?? old.bpm;
-		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(`BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`);
+		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(RANGE.bpm);
 		// 第一拍最細 0.01 秒，也比較好讀。
 		const firstBeatSec = Math.round((patch.firstBeatSec ?? continuedFirstBeat(flow, index, patch) ?? old.firstBeatSec) * 100) / 100;
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
-			return blocked('第一拍要是 0 秒以上');
+			return blocked(RANGE.firstBeatSec);
 		}
 		const length = { ...musicLength(old), ...pick(patch, 'eights', 'lastBeats') };
 		const tooLong = lengthProblem(length);

@@ -6,6 +6,7 @@ import {
 	loadSegmentAudio,
 	fitSegmentToAudio,
 	musicLength,
+	readSegmentNumber,
 	updateSegment,
 	type MusicSegment
 } from './index';
@@ -112,6 +113,26 @@ describe('改音樂段', () => {
 			kind: 'blocked',
 			message: '最後一個八拍的拍數要在 1 到 8 之間'
 		});
+	});
+});
+
+describe('段設定欄位裡打的數字', () => {
+	it('全形當成半形；負的、超出範圍的照讀（交給指令擋下、說範圍）', () => {
+		expect(readSegmentNumber('bpm', ' １２．５ ')).toEqual({ kind: 'ok', value: 12.5 });
+		expect(readSegmentNumber('seconds', '－３')).toEqual({ kind: 'ok', value: -3 });
+		expect(readSegmentNumber('eights', '200')).toEqual({ kind: 'ok', value: 200 });
+		expect(readSegmentNumber('lastBeats', '9')).toEqual({ kind: 'ok', value: 9 });
+	});
+
+	it.each([
+		['bpm', 'BPM 要在 60 到 170 之間'],
+		['firstBeatSec', '第一拍要是 0 秒以上'],
+		['eights', '八拍數要在 1 到 200 之間'],
+		['lastBeats', '最後一個八拍的拍數要在 1 到 8 之間'],
+		['seconds', '口號段長度要在 0.1 到 300 秒之間']
+	] as const)('%s 空白、看不懂就擋下，訊息跟超出範圍一樣寫能填的範圍', (field, message) => {
+		expect(readSegmentNumber(field, '')).toEqual({ kind: 'blocked', message });
+		expect(readSegmentNumber(field, 'abc')).toEqual({ kind: 'blocked', message });
 	});
 });
 

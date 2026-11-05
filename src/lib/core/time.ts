@@ -3,6 +3,7 @@
 // 播放頭用全域秒數（從流程開頭算）表示；要給教練看或存檔時才換成段內時間。
 
 import type { Flow } from './flow';
+import { readOr, type ReadResult } from './result';
 import type { Segment } from './segment';
 
 /** 流程裡的一個時間點：哪一段 ＋ 段內第幾個半拍（音樂段）或第幾個 0.1 秒（口號段）。 */
@@ -172,8 +173,14 @@ export function atText(segment: Segment, at: number): string {
 	return `${Math.floor(beat / 8) + 1}-${(beat % 8) + 1}${and}`;
 }
 
+/** 動作的開始：atText 的反向，教練打的時間點 → 段內整數時間。不檢查有沒有超出段（指令會擋）。 */
+export function readStart(segment: Segment, text: string): ReadResult<number> {
+	const hint = segment.kind === 'music' ? '例：3-5&' : '請打秒數';
+	return readOr(parseAt(segment, text), `開始看不懂，${hint}`);
+}
+
 /** atText 的反向：教練打的時間點 → 段內整數時間；看不懂是 null。不檢查有沒有超出段（指令會擋）。 */
-export function parseAt(segment: Segment, text: string): number | null {
+function parseAt(segment: Segment, text: string): number | null {
 	if (segment.kind === 'chant') return parseScaled(text, 10);
 	const m = /^(\d+)-([1-8])(&?)$/.exec(halfWidth(text).trim());
 	if (!m || Number(m[1]) < 1) return null;
@@ -197,11 +204,20 @@ export function timeTextWithUnit(flow: Flow, homeSegmentId: string, p: TimePosit
 	return timeText(flow, homeSegmentId, p) + (kind === 'chant' ? ' 秒' : '');
 }
 
+/** 用 timeText 寫法打時間的欄位：走位的出發、到達，站位小編輯的站位時間。 */
+export type TimeField = '出發' | '到達' | '站位時間';
+
 /**
- * timeText 的反向：只有段內時間就是 homeSegmentId 那一段；前面有段名（可以帶上方列的「秒」）就是那一段。
- * 看不懂或沒有這一段是 null。不檢查有沒有超出段（指令會擋）。
+ * 出發、到達、站位時間：timeText 的反向。只有段內時間就是 homeSegmentId 那一段；
+ * 前面有段名（可以帶上方列的「秒」）就是那一段。寫法不對、沒有這一段都算看不懂，原因寫出是哪一格（field）。
+ * 不檢查有沒有超出段（指令會擋）。
  */
-export function parseTime(flow: Flow, homeSegmentId: string, text: string): TimePosition | null {
+export function readTime(flow: Flow, homeSegmentId: string, text: string, field: TimeField): ReadResult<TimePosition> {
+	return readOr(parseTime(flow, homeSegmentId, text), `${field}看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）`);
+}
+
+/** readTime 讀的那一步：看不懂或沒有這一段是 null。 */
+function parseTime(flow: Flow, homeSegmentId: string, text: string): TimePosition | null {
 	const m = /^(?:(音樂|口號)\s*(\d+)\s+)?(.+?)\s*秒?$/.exec(halfWidth(text).trim());
 	if (!m) return null;
 	const spans = segmentSpans(flow);
@@ -218,9 +234,9 @@ export function lengthText(segment: Segment, length: number): string {
 	return segment.kind === 'music' ? String(length / 2) : (length / 10).toFixed(1);
 }
 
-/** lengthText 的反向：拍數或秒數 → 半拍數或 0.1 秒數（取最近的）；看不懂是 null。 */
-export function parseLength(segment: Segment, text: string): number | null {
-	return parseScaled(text, segment.kind === 'music' ? 2 : 10);
+/** 動作的長度：lengthText 的反向，拍數或秒數 → 半拍數或 0.1 秒數（取最近的）。負的照讀，交給指令擋下、說範圍。 */
+export function readLength(segment: Segment, text: string): ReadResult<number> {
+	return readOr(parseScaled(text, segment.kind === 'music' ? 2 : 10), '長度看不懂');
 }
 
 /** 數字乘上 scale 取最近的整數；空白、看不懂是 null。負的照算，交給指令擋下、說範圍。 */
@@ -229,7 +245,7 @@ function parseScaled(text: string, scale: number): number | null {
 	return Number.isFinite(v) ? Math.round(v * scale) : null;
 }
 
-/** 欄位裡打的數字：全形當成半形（中文輸入法不用切換）。空白、看不懂是 NaN，交給指令擋下、說範圍。 */
+/** 欄位裡打的數字：全形當成半形（中文輸入法不用切換）。空白、看不懂是 NaN。 */
 export function parseNumber(text: string): number {
 	const t = halfWidth(text).trim();
 	return t ? Number(t) : Number.NaN;
