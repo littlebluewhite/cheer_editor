@@ -1,10 +1,11 @@
 <script lang="ts">
 	// 練習畫面的「總表」頁：一眼看全部動作、每組、每個環節的成功率，找出最弱的地方。
-	// 每個有記成功率、有環節的動作一塊，照流程順序：一列一個環節，最後一列「整次」；
+	// 每個有記成功率、有環節的動作一塊，照流程順序：一列一個環節，最後一列「整次」（只有一個環節時跟那一列一樣，不放）；
 	// 一欄一組（騰翻、跳躍一欄一個人；組的名字下面小字列出全組），最後一欄「合計」。
-	// 格子大字是選的比例（成功率或完成率；整次一律是整次成功率），小字是次數；顏色照 rateBand，數字一定寫出來。
-	// 點一組的格子，右邊滑出這組、這個環節每天的每一次（全上的那幾次有標出來），篩選和格子一樣。
-	// 「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表。
+	// 格子大字是選的比例（成功率或完成率；整次一律是整次成功率），小字是次數；顏色照 rateBand（篩選下面有圖例），數字一定寫出來。
+	// 點一組的格子（整次的也可以），右邊滑出這組、這個環節每天的每一次（全上的那幾次有標出來），篩選和格子一樣。
+	// 最上面一排（RunThroughBar，跟記錄頁一樣）：「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表；
+	// 「刪掉上一次全上」整次拿掉這天最後存的全上（記完才發現記錯，不用切回記錄頁）。
 	import {
 		actionLabel,
 		cellDetail,
@@ -25,6 +26,8 @@
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
+	import RunThroughBar from './RunThroughBar.svelte';
+	import type { Notice } from './RecordNotice.svelte';
 	import { Flash } from '#lib/flash.svelte.js';
 
 	interface Props {
@@ -39,22 +42,29 @@
 
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
-	/** 存好全上之後的「已存」，幾秒後收掉。 */
-	const saved = new Flash<string>();
+	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
+	const saved = new Flash<Notice>();
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) saved.show('已存這次全上');
+		if (done) saved.show({ text: '已存這次全上' });
 	}
 
+	/** YYYY-MM-DD 寫成「11/4」。 */
+	function monthDay(day: string): string {
+		const [, m, d] = day.split('-').map(Number);
+		return `${m}/${d}`;
+	}
 	/** 選的那天寫成「11/4」；是今天才加「今天」（日期是右上角選的，不一定是今天）。 */
-	const dayLabel = $derived.by(() => {
-		const [, m, d] = date.split('-').map(Number);
-		return date === localDate() ? `今天 ${m}/${d}` : `${m}/${d}`;
+	const dayLabel = $derived(date === localDate() ? `今天 ${monthDay(date)}` : monthDay(date));
+	/** 最近 7 天寫出是哪幾天，例：最近 7 天（10/29–11/4）。 */
+	const weekLabel = $derived.by(() => {
+		const { from, to } = periodRange(date, 'week');
+		return `最近 7 天（${monthDay(from!)}–${monthDay(to!)}）`;
 	});
 	const PERIODS = $derived<{ key: Period; label: string }[]>([
 		{ key: 'today', label: dayLabel },
-		{ key: 'week', label: '最近 7 天' },
+		{ key: 'week', label: weekLabel },
 		{ key: 'all', label: '全部' }
 	]);
 	const PRACTICES: { key: PracticeKind | 'all'; label: string }[] = [
@@ -81,28 +91,46 @@
 	const wholeCell = (c: RateCounts) => ({ pct: percent(c.whole.clean, c.whole.whole), count: c.whole.whole });
 	const cellText = (c: { pct: number | null; count: number }) => (c.pct === null ? '—' : `${c.pct}% ${c.count} 次`);
 
-	/** 打開的明細：哪個動作、誰、哪個環節。 */
-	let open = $state<{ actionId: string; who: string; phaseId: string } | null>(null);
+	/** 打開的明細：哪個動作、誰、哪個環節（null 是整次）。 */
+	let open = $state<{ actionId: string; who: string; phaseId: string | null } | null>(null);
 	/** 明細的內容；動作、組或環節不在了就關掉。 */
 	const detail = $derived.by(() => {
 		if (!open) return null;
 		const { actionId, who, phaseId } = open;
 		const block = blocks.find((b) => b.action.id === actionId);
-		const phase = block?.action.successRate?.phases.find((p) => p.id === phaseId);
+		const phases = block?.action.successRate?.phases ?? [];
+		const phase = phaseId === null ? (phases.length > 1 ? '整次' : null) : phases.find((p) => p.id === phaseId);
 		const column = block?.table.columns.find((c) => c.who === who);
 		if (!block || !phase || !column) return null;
-		return { title: `${column.name} ${phaseLabel(phase)}`, days: cellDetail(block.action, who, phaseId, filter) };
+		const name = typeof phase === 'string' ? phase : phaseLabel(phase);
+		return { title: `${column.name} ${name}`, days: cellDetail(block.action, who, phaseId, filter) };
 	});
+	const isOpen = (actionId: string, who: string, phaseId: string | null) =>
+		open?.actionId === actionId && open.who === who && open.phaseId === phaseId;
 </script>
 
 {#snippet number(c: { pct: number | null; count: number })}
 	{#if c.pct === null}—{:else}<strong>{c.pct}%</strong> <small>{c.count} 次</small>{/if}
 {/snippet}
 
+<!-- 一組的一格：點了打開明細（phaseId 是 null 是整次）。 -->
+{#snippet cellButton(actionId: string, who: string, phaseId: string | null, label: string, c: { pct: number | null; count: number })}
+	<td class={rateBand(c.pct)}>
+		<button
+			type="button"
+			class="cell"
+			aria-label="{label} {cellText(c)}"
+			aria-pressed={isOpen(actionId, who, phaseId)}
+			onclick={() => (open = { actionId, who, phaseId })}>{@render number(c)}</button
+		>
+	</td>
+{/snippet}
+
 <div class="summary">
 	{#if recording}
 		<RunThroughSheet {date} onclose={closeSheet} />
 	{:else}
+		<RunThroughBar {date} notice={saved} onrecord={() => ((recording = true), (open = null))} />
 		<div class="filters">
 			<div class="seg" role="group" aria-label="期間">
 				<span>期間</span>
@@ -122,9 +150,13 @@
 					<button type="button" aria-pressed={rate === r.key} onclick={() => (rate = r.key)}>{r.label}</button>
 				{/each}
 			</div>
-			<button type="button" class="primary" onclick={() => ((recording = true), (open = null))}>＋ 記一次全上</button>
-			{#if saved.value}<span class="saved" role="status">{saved.value}</span>{/if}
 		</div>
+		<ul class="legend" aria-label="顏色">
+			<li><span class="good"></span>90% 以上</li>
+			<li><span class="fair"></span>75–89%</li>
+			<li><span class="poor"></span>75% 以下</li>
+			<li>— 沒有紀錄</li>
+		</ul>
 
 		{#each blocks as { action, table } (action.id)}
 			{@const phases = action.successRate?.phases ?? []}
@@ -148,30 +180,22 @@
 								<tr>
 									<th scope="row">{phaseLabel(p)}</th>
 									{#each table.columns as col (col.who)}
-										{@const c = phaseCell(col.phases[p.id])}
-										<td class={rateBand(c.pct)}>
-											<button
-												type="button"
-												class="cell"
-												aria-label="{col.name} {phaseLabel(p)} {cellText(c)}"
-												aria-pressed={open?.actionId === action.id && open.who === col.who && open.phaseId === p.id}
-												onclick={() => (open = { actionId: action.id, who: col.who, phaseId: p.id })}
-												>{@render number(c)}</button
-											>
-										</td>
+										{@render cellButton(action.id, col.who, p.id, `${col.name} ${phaseLabel(p)}`, phaseCell(col.phases[p.id]))}
 									{/each}
 									<td class="total {rateBand(total.pct) ?? ''}">{@render number(total)}</td>
 								</tr>
 							{/each}
-							<tr class="whole">
-								<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
-								<th scope="row">{rate === 'completion' ? '整次成功率' : '整次'}</th>
-								{#each table.columns as col (col.who)}
-									{@const c = wholeCell(col)}
-									<td class={rateBand(c.pct)}>{@render number(c)}</td>
-								{/each}
-								<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
-							</tr>
+							<!-- 只有一個環節：整次跟那一列一樣，不放 -->
+							{#if phases.length > 1}
+								<tr class="whole">
+									<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
+									<th scope="row">{rate === 'completion' ? '整次成功率' : '整次'}</th>
+									{#each table.columns as col (col.who)}
+										{@render cellButton(action.id, col.who, null, `${col.name} 整次`, wholeCell(col))}
+									{/each}
+									<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
+								</tr>
+							{/if}
 						</tbody>
 					</table>
 				</div>
@@ -206,11 +230,6 @@
 {/if}
 
 <style>
-	.saved {
-		color: #15803d;
-		font-size: 13px;
-		font-weight: 700;
-	}
 	.summary {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -246,6 +265,27 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+	}
+	.legend {
+		list-style: none;
+		margin: -8px 0 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 14px;
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.legend li {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.legend span {
+		width: 14px;
+		height: 14px;
+		border-radius: 3px;
+		border: 1px solid var(--line);
 	}
 	.swatch {
 		width: 10px;

@@ -4,9 +4,9 @@
 	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著，✗ 後面的按鈕停用）；
 	// 「全部 ✓ 存」一次存成每個環節都成功。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
 	// 只有一個環節：點了記號就存。
-	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次。
+	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
-	// 下面一排是這天的每一次，全上記的用虛線框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回。
+	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	import {
 		MARKS,
@@ -88,6 +88,12 @@
 		marks = {};
 	}
 
+	/** 只練幾個環節時點那一列的空白處（不是勾選框、名字、能按的記號）：跟點勾選框一樣。 */
+	function pickRow(e: MouseEvent, id: string) {
+		if (whole || (e.target as Element).closest('label, button:enabled')) return;
+		pick(id, !picked.includes(id));
+	}
+
 	/**
 	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存。
 	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
@@ -140,11 +146,15 @@
 		});
 	}
 
+	/** 刪掉這天的某一次的提示，例：已刪掉 ·✓（第 4 次）。 */
+	const removedText = (attempt: Attempt) => `已刪掉 ${attemptText(action, attempt)}（第 ${today.indexOf(attempt) + 1} 次）`;
+
 	function removeEdited(attempt: Attempt) {
 		editing = null;
 		removeWithRestore(
 			ask,
 			flash,
+			removedText(attempt),
 			() => deleteAttempt(flow, action.id, attempt.id),
 			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
 		);
@@ -154,6 +164,7 @@
 		removeWithRestore(
 			ask,
 			flash,
+			removedText(today.findLast((r) => r.practice === 'drill')!),
 			() => deleteLastAttempt(flow, action.id, who, date, 'drill'),
 			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
 		);
@@ -177,11 +188,13 @@
 			</div>
 		{/if}
 	</header>
+	{#if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
 
 	<div class="phases">
 		{#each phases as p, i (p.id)}
 			{@const on = planned.includes(p) && i <= failAt}
-			<div class="phase" class:off={!on}>
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (鍵盤用勾選框) -->
+			<div class="phase" class:off={!on} class:pickable={!whole} onclick={(e) => pickRow(e, p.id)}>
 				{#if whole}
 					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
 				{:else}
@@ -226,11 +239,12 @@
 			<ol class="day" aria-label="這天的每一次">
 				{#each today as r, i (r.id)}
 					{@const run = r.practice === 'runThrough'}
-					<li class:run title={run ? '全上' : '分段練'}>
+					{@const kind = run ? '全上' : r.whole ? '分段練' : '只練幾個環節'}
+					<li class:run class:partial={!r.whole} title={kind}>
 						<button
 							type="button"
 							aria-expanded={editing === r.id}
-							aria-label="改第 {i + 1} 次（{run ? '全上' : '分段練'} {attemptText(action, r)}）"
+							aria-label="改第 {i + 1} 次（{kind} {attemptText(action, r)}）"
 							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
 						>
 					</li>
@@ -349,8 +363,24 @@
 		font-size: 14px;
 		font-weight: 700;
 	}
-	label.phase-name {
+	label.phase-name,
+	.phase.pickable {
 		cursor: pointer;
+	}
+	/* 勾選框放大，好點 */
+	label.phase-name input {
+		width: 20px;
+		height: 20px;
+		margin: 0;
+	}
+	/* 點沒勾的環節停用的記號：交給那一列去勾 */
+	.phase.pickable .mark:disabled {
+		pointer-events: none;
+	}
+	.hint {
+		margin: -4px 0 0;
+		color: var(--muted);
+		font-size: 12px;
 	}
 	.chip {
 		flex: none;
@@ -413,6 +443,10 @@
 		.scope label {
 			min-height: 40px;
 		}
+		label.phase-name input {
+			width: 26px;
+			height: 26px;
+		}
 	}
 	footer {
 		display: flex;
@@ -449,6 +483,12 @@
 	.day li.run {
 		border: 2px dashed var(--sel);
 		background: var(--surface);
+	}
+	/* 只練幾個環節的那幾次：淡色框，跟整個做中途 ✗ 分開 */
+	.day li.partial {
+		border-style: dotted;
+		background: var(--surface);
+		color: var(--muted);
 	}
 	.none {
 		color: var(--muted);

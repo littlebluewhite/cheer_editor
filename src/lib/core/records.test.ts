@@ -196,7 +196,7 @@ describe('改某一次、刪掉某一次', () => {
 
 	it('改中間那一次的記號：還在原來的位置、id 不變，成功率跟著變', () => {
 		const flow = recorded();
-		expect(lowest(flow)).toBe(100);
+		expect(lowest(flow)).toBeNull();
 		const changed = flowOf(changeAttempt(flow, 'x1', 't2', { p1: '✓', p2: '✓', p3: '✗' }));
 		expect(recordsOf(changed).map((r) => [r.id, r.marks.p3])).toEqual([
 			['t1', '✓'],
