@@ -3,16 +3,14 @@
 	// 左邊：有記成功率、有環節的動作，照流程順序，每個寫這天記了幾次和最弱的環節。
 	// 窄螢幕（手機）清單會疊在卡片上面、動作一多要捲很久，所以改成下拉選單，選好捲到卡片。
 	// 右邊：選到的動作每組一張卡（騰翻、跳躍每人一張），下面是這個動作每天的成功率。
-	// 最上面的「＋ 記一次全上」打開跟總表一樣的全上表（RunThroughSheet），存好或取消再回到記錄頁。
-	// 旁邊的「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），刪了幾秒內可以救回。
+	// 最上面一排（RunThroughBar，跟總表一樣）：「＋ 記一次全上」打開全上表（RunThroughSheet），存好或取消再回到記錄頁；
+	// 「刪掉上一次全上」整次拿掉這天最後存的全上。
 	import {
 		actionLabel,
 		attemptWhos,
-		deleteLastRunThrough,
-		lastRunThrough,
+		perPerson,
 		phaseLabel,
 		recordableActions,
-		restoreRunThrough,
 		successPercent,
 		weakestPhase,
 		type Action
@@ -22,7 +20,8 @@
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import { Flash } from '#lib/flash.svelte.js';
-	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
+	import RunThroughBar from './RunThroughBar.svelte';
+	import type { Notice } from './RecordNotice.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -45,23 +44,10 @@
 	let recording = $state(false);
 	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
 	const saved = new Flash<Notice>();
-	/** 刪掉上一次全上、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
-	const ask = session.recordAsk();
-	/** 這天有沒有全上。 */
-	const hasRun = $derived(lastRunThrough(flow, date) !== undefined);
 
 	function closeSheet(done: boolean) {
 		recording = false;
 		if (done) saved.show({ text: '已存這次全上' });
-	}
-
-	function removeRun() {
-		removeWithRestore(
-			ask,
-			saved,
-			() => deleteLastRunThrough(flow, date),
-			({ removed }) => restoreRunThrough(flow, removed)
-		);
 	}
 
 	/** 卡片那一塊：手機從下拉選好動作就捲過去。 */
@@ -72,8 +58,20 @@
 		cards?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
 
-	const countOn = (records: { date: string }[]) => records.filter((r) => r.date === date).length;
-	/** 這天最弱的環節，例：最弱：下法 50%；這天沒紀錄就是空的。 */
+	/**
+	 * 這天記了幾次，例：這天 3 次。騰翻、跳躍每個人自己算，加起來會誤會，寫「這天每人 5 次」；
+	 * 每人不一樣多寫「這天每人 3–5 次」。
+	 */
+	function countText(a: Action): string {
+		const records = (a.successRate?.records ?? []).filter((r) => r.date === date);
+		if (!perPerson(a.category)) return `這天 ${records.length} 次`;
+		// 動作裡沒人時當成 0 次
+		const counts = attemptWhos(flow, a).map(({ who }) => records.filter((r) => r.who === who).length);
+		if (!counts.length) counts.push(0);
+		const [min, max] = [Math.min(...counts), Math.max(...counts)];
+		return `這天每人 ${min === max ? min : `${min}–${max}`} 次`;
+	}
+	/** 這天最弱的環節，例：最弱：下法 50%；這天沒紀錄、或全部成功就是空的。 */
 	function weakestText(a: Action): string {
 		const weakest = weakestPhase(a, date);
 		return weakest ? `最弱：${phaseLabel(weakest.phase)} ${successPercent(weakest.tally)}%` : '';
@@ -83,12 +81,7 @@
 {#if recording}
 	<RunThroughSheet {date} onclose={closeSheet} />
 {:else if action}
-	<div class="run">
-		<button type="button" class="primary" onclick={() => (recording = true)}>＋ 記一次全上</button>
-		<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
-		<RecordNotice notice={saved} />
-		{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
-	</div>
+	<RunThroughBar {date} notice={saved} onrecord={() => (recording = true)} />
 	<div class="record" class:narrow>
 		{#if narrow}
 			<label class="pick"
@@ -105,7 +98,7 @@
 					<li>
 						<button type="button" aria-pressed={a === action} onclick={() => (chosenId = a.id)}>
 							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
-							<small>這天 {countOn(a.successRate?.records ?? [])} 次</small>
+							<small>{countText(a)}</small>
 							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
 							<small class="weakest">{weakest}</small>
 						</button>
@@ -132,16 +125,6 @@
 {/if}
 
 <style>
-	.run {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 10px;
-	}
-	.error {
-		color: #b91c1c;
-		font-size: 13px;
-	}
 	.record {
 		display: grid;
 		grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);

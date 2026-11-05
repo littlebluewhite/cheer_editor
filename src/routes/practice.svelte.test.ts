@@ -334,7 +334,7 @@ describe('練習：總表', () => {
 	const filter = (group: string, option: string) =>
 		fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name: option }));
 
-	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次，一欄一組（小字列出全組）加合計', async () => {
+	it('每個有記成功率的動作一塊，照流程順序；一列一個環節加整次（只有一個環節不加），一欄一組（小字列出全組）加合計', async () => {
 		await summary();
 		const blocks = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
 		expect(blocks.filter((b) => b !== '練習')).toEqual(['技巧·Lib', '騰翻']);
@@ -347,8 +347,7 @@ describe('練習：總表', () => {
 		]);
 		expect(blockRows('騰翻')).toEqual([
 			['環節', '小美', '小A', '合計'],
-			['整體 騰翻', '100% 1 次', '—', '100% 1 次'],
-			['整次', '100% 1 次', '—', '100% 1 次']
+			['整體 騰翻', '100% 1 次', '—', '100% 1 次']
 		]);
 	});
 
@@ -366,7 +365,7 @@ describe('練習：總表', () => {
 	it('換篩選，數字跟著變：期間、練法、大字看完成率', async () => {
 		await summary();
 		expect(blockRows('技巧·Lib')[1][1]).toBe('100% 1 次');
-		await filter('期間', '最近 7 天');
+		await filter('期間', '最近 7 天（10/29–11/4）');
 		expect(blockRows('技巧·Lib')[1][1]).toBe('50% 2 次');
 		await filter('期間', '11/4');
 		await filter('練法', '只看全上');
@@ -385,7 +384,7 @@ describe('練習：總表', () => {
 	it('期間的第一個選項寫出選的日期；選的是今天才寫「今天」', async () => {
 		await summary();
 		const options = () => within(screen.getByRole('group', { name: '期間' })).getAllByRole('button').map((b) => b.textContent?.trim());
-		expect(options()).toEqual(['11/4', '最近 7 天', '全部']);
+		expect(options()).toEqual(['11/4', '最近 7 天（10/29–11/4）', '全部']);
 		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
 		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
 		await fireEvent.click(screen.getByRole('button', { name: '總表' }));

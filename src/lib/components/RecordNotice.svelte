@@ -7,12 +7,13 @@
 	export type Notice = { text: string; restore?: () => void };
 
 	/**
-	 * 刪掉上一次、救回（卡片和全上共用這一份）：經過 ask 送刪掉的指令，成功就提示「已刪掉」，旁邊有「救回」（留久一點）；
-	 * 按「救回」送 restore 拿刪掉的結果做的指令，成功就提示「已救回」。
+	 * 刪掉上一次、救回（卡片和全上共用這一份）：經過 ask 送刪掉的指令，成功就提示 text（寫出刪了哪一次，例「已刪掉 ·✓（第 4 次）」），
+	 * 旁邊有「救回」（留久一點）；按「救回」送 restore 拿刪掉的結果做的指令，成功就提示「已救回」。
 	 */
 	export function removeWithRestore<R extends CommandResult>(
 		ask: Ask,
 		notice: Flash<Notice>,
+		text: string,
 		remove: () => R,
 		restore: (removed: Extract<R, { kind: 'ok' }>) => CommandResult
 	) {
@@ -20,7 +21,7 @@
 			done: (removed) =>
 				notice.show(
 					{
-						text: '已刪掉',
+						text,
 						restore: () => ask.send(() => restore(removed), { done: () => notice.show({ text: '已救回' }) })
 					},
 					UNDO_FLASH_MS
@@ -36,8 +37,10 @@
 
 {#if notice.value}
 	{@const restore = notice.value.restore}
+	<!-- 刪掉的提示用中性色：綠字會被當成成功 -->
 	<p
 		class="notice"
+		class:removed={!!restore}
 		role="status"
 		onpointerenter={() => notice.hold(true)}
 		onpointerleave={() => notice.hold(false)}
@@ -55,6 +58,9 @@
 		color: #15803d;
 		font-size: 13px;
 		font-weight: 700;
+	}
+	.notice.removed {
+		color: var(--text);
 	}
 	.notice button {
 		padding: 2px 8px;
