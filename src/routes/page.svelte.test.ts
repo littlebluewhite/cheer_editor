@@ -885,7 +885,7 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(3);
 	});
 
-	it('段設定、流程設定、八拍表開著時：後面的編輯畫面不吃快捷鍵，也點不到、Tab 不到（inert）', async () => {
+	it('段設定、流程設定、八拍表開著時：後面的編輯畫面不吃快捷鍵（復原、空白鍵暫停除外，見 keyboard 測試），也點不到、Tab 不到（inert）', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
@@ -898,7 +898,6 @@ describe('站位與走位', () => {
 		expect(editor.inert).toBe(true);
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		await fireEvent.keyDown(window, { key: 'Backspace' });
-		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
@@ -908,7 +907,6 @@ describe('站位與走位', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		expect(editor.inert).toBe(true);
-		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
@@ -1513,18 +1511,16 @@ describe('復原和重做', () => {
 		expect(thumbs()).toHaveLength(2);
 	});
 
-	it('焦點在文字框或下拉選單裡時不攔，讓瀏覽器復原打的字', async () => {
+	it('焦點在文字框或下拉選單裡也是退回流程，不讓瀏覽器自己復原（打了沒送出的字見 keyboard 測試）', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
 		const z = { key: 'z', ctrlKey: true };
 		// fireEvent 回傳 false 表示被 preventDefault（瀏覽器自己的復原不會跑）
-		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), z)).toBe(true);
-		expect(thumbs()).toHaveLength(2);
-		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(true);
-		expect(thumbs()).toHaveLength(2);
-		expect(await fireEvent.keyDown(window, z)).toBe(false);
+		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
+		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'y', ctrlKey: true })).toBe(false);
+		expect(thumbs()).toHaveLength(2);
 	});
 
 	it('做了新的一步，重做的紀錄就清掉', async () => {

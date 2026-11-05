@@ -168,19 +168,22 @@ describe('在場上拖人', () => {
 		expect(session.canUndo).toBe(false);
 	});
 
-	it('鍵盤：Tab 停得到人，Enter／空白鍵跟點一下一樣（Shift 加選、拿掉）；方向鍵移 1/4 格、Shift 移一格，一下算一步', async () => {
+	it('鍵盤：Tab 停得到人，Enter 跟點一下一樣（Shift 加選、拿掉），空白鍵不選（留給播放）；方向鍵移 1/4 格、Shift 移一格，連續移算一步', async () => {
 		const { session, dot } = setup();
 		expect(dot.getAttribute('tabindex')).toBe('0');
 		await fireEvent.keyDown(dot, { key: 'Enter' });
 		expect(session.selectedMemberIds).toEqual(['m1']);
-		await fireEvent.keyDown(dot, { key: ' ', shiftKey: true });
+		await fireEvent.keyDown(dot, { key: 'Enter', shiftKey: true });
+		expect(session.selectedMemberIds).toEqual([]);
+		expect(await fireEvent.keyDown(dot, { key: ' ' })).toBe(true);
 		expect(session.selectedMemberIds).toEqual([]);
 		await fireEvent.keyDown(dot, { key: 'ArrowRight' });
 		expect(posOf(session, 'm1')[0]).toBeCloseTo(0.4572, 4);
 		await fireEvent.keyDown(dot, { key: 'ArrowDown', shiftKey: true });
 		expect(posOf(session, 'm1')[1]).toBeCloseTo(1.8288, 4);
 		session.undo();
-		expect(posOf(session, 'm1')[1]).toBeCloseTo(0, 4);
+		expect(posOf(session, 'm1')).toEqual([0, 0]);
+		expect(session.canUndo).toBe(false);
 	});
 
 	it('八拍表的小站位圖（沒有 session）：人不能用 Tab 停', () => {
