@@ -213,7 +213,7 @@ export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './
 export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
-export type { TimeRules } from './time-rules';
+export type { TimeRules, TimeRuleWarning } from './time-rules';
 
 export { CELL_M, FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
 export type {

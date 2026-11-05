@@ -634,10 +634,20 @@
 							</div>
 						{/if}
 						{#if warnings.length}
-							<div class="warn" title="規則警告（只提醒，不擋）；在「流程設定」調整">
-								<Icon name="warn" />
-								<span class="warn-text">{#each warnings as w (w)}<span>{w}</span>{/each}</span>
-							</div>
+							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定 -->
+							<ul class="warn" aria-label="規則警告">
+								{#each warnings as w (w.title)}
+									<li>
+										{#if view === 'edit' && !session.viewing}
+											<button type="button" title="規則警告（只提醒，不擋）：按一下打開流程設定" onclick={() => (settingsOpen = true)}
+												><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></button
+											>
+										{:else}
+											<span class="row"><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
 						{/if}
 						{#if flow}
 							{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
@@ -1272,16 +1282,42 @@
 	}
 	/* 左欄（場地左邊）的東西：警告、跟上一張一樣、拖人會改。 */
 	.warn {
-		display: flex;
-		align-items: flex-start;
-		gap: 6px;
-		padding: 6px 12px;
+		list-style: none;
+		margin: 0;
+		padding: 4px 0;
 		border-radius: 10px;
 		background: var(--warn-bg);
 		border: 1px solid #f0d488;
 		color: var(--warn-text);
 		font-size: 12px;
 		font-weight: 500;
+	}
+	.warn li + li {
+		border-top: 1px solid #f0d488;
+	}
+	.warn button,
+	.warn .row {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		width: 100%;
+		padding: 4px 12px;
+		border: 0;
+		border-radius: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+	}
+	.warn button {
+		cursor: pointer;
+	}
+	.warn button:hover {
+		text-decoration: underline;
+	}
+	.warn b {
+		display: block;
+		font-weight: 700;
 	}
 	/* 左欄最上面：播放頭這一刻用的站位。號碼跟站位縮圖列一樣是深色小方塊，左邊一條墊子藍。 */
 	.now-formation {
@@ -1335,10 +1371,6 @@
 	.warn :global(svg) {
 		flex: none;
 		margin-top: 1px;
-	}
-	.warn span + span::before {
-		content: '／';
-		margin-right: 6px;
 	}
 
 	/* 選檔用的 input 藏起來，外面的 label 看起來像按鈕。 */
