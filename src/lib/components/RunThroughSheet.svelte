@@ -1,8 +1,8 @@
 <script lang="ts">
 	// 記錄頁、總表的「＋ 記一次全上」打開的表（照台灣教練的全上表）：每個要記的動作一塊，照流程順序；一列一個環節，一欄一組。
 	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組後面的環節變空的；改回來，後面回到 ✓。
-	// 全上中途停了，就在沒做的動作按「沒做（停了）」：整個動作變空的，不存；停在哪個動作就在那裡按「後面都沒做」，後面的一次變空的。
-	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問）。
+	// 有個動作沒做，在它那裡按「這個沒做」：整個動作變空的，不存；中途停了，在第一個沒做的動作按「後面都沒做」，它和後面的一次變空的。
+	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問，切頁也一樣）。
 	import {
 		actionLabel,
 		attemptWhos,
@@ -39,7 +39,7 @@
 
 	/** 教練點過的格子（key：動作|誰|環節）；沒點過的是 ✓。 */
 	let picked = $state<Record<string, Mark>>({});
-	/** 按了「沒做（停了）」的動作。 */
+	/** 按了「這個沒做」的動作。 */
 	let skipped = $state<string[]>([]);
 	/** 按了取消，等教練確定要不要丟掉改過的格子。 */
 	let confirming = $state(false);
@@ -72,12 +72,12 @@
 		skipped = skipped.includes(actionId) ? skipped.filter((id) => id !== actionId) : [...skipped, actionId];
 	}
 
-	/** 第 index 個動作後面的動作 id。 */
-	const after = (index: number) => blocks.slice(index + 1).map((b) => b.action.id);
-	/** 後面的動作都按了沒做。 */
+	/** 第 index 個動作和它後面的動作 id。 */
+	const after = (index: number) => blocks.slice(index).map((b) => b.action.id);
+	/** 這個和後面的動作都按了沒做。 */
 	const restSkipped = (index: number) => after(index).every((id) => skipped.includes(id));
 
-	/** 「後面都沒做」：後面的動作都變沒做；已經都沒做就都回來。 */
+	/** 「後面都沒做」：這個和後面的動作都變沒做；已經都沒做就都回來。 */
 	function toggleRest(index: number) {
 		const rest = after(index);
 		skipped = restSkipped(index)
@@ -88,6 +88,28 @@
 	function cancel() {
 		if (dirty) confirming = true;
 		else onclose(false);
+	}
+
+	/** 確定丟掉之後要去的地方（切頁時先問）；按取消問的是 null。 */
+	let leaving: (() => void) | null = null;
+
+	// 改過格子：切頁（記錄、總表、編排）跟按取消一樣先問，丟掉才切過去。
+	$effect(() => {
+		if (!dirty) return;
+		const guard = (go: () => void) => {
+			leaving = go;
+			confirming = true;
+		};
+		session.practiceLeave = guard;
+		return () => {
+			if (session.practiceLeave === guard) session.practiceLeave = null;
+		};
+	});
+
+	function discard() {
+		const go = leaving;
+		onclose(false);
+		go?.();
 	}
 
 	function save() {
@@ -103,7 +125,7 @@
 <section class="sheet" aria-label="記一次全上">
 	<header>
 		<h3>記一次全上</h3>
-		<p>每格先是 ✓，點出錯的地方：✓ → △ → ✗。中途停了，在停下來的動作按「後面都沒做」，或在沒做的動作按「沒做（停了）」。</p>
+		<p>每格先是 ✓，點出錯的地方：✓ → △ → ✗。有個動作沒做，按它的「這個沒做」；中途停了，在第一個沒做的動作按「後面都沒做」。</p>
 	</header>
 
 	{#each blocks as { action, whos }, index (action.id)}
@@ -114,7 +136,7 @@
 		<section class="block" class:off aria-label={actionLabel(action)}>
 			<div class="head">
 				<h4><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h4>
-				<button type="button" class="stop" aria-pressed={off} onclick={() => toggleSkip(action.id)}>沒做（停了）</button>
+				<button type="button" class="stop" aria-pressed={off} onclick={() => toggleSkip(action.id)}>這個沒做</button>
 				{#if index < blocks.length - 1}
 					<button type="button" class="stop" aria-pressed={restSkipped(index)} onclick={() => toggleRest(index)}
 						>後面都沒做</button
@@ -163,8 +185,11 @@
 			items={[]}
 			confirmLabel="丟掉"
 			cancelLabel="繼續記"
-			onconfirm={() => onclose(false)}
-			oncancel={() => (confirming = false)}
+			onconfirm={discard}
+			oncancel={() => {
+				confirming = false;
+				leaving = null;
+			}}
 		/>
 	{:else}
 		<footer>

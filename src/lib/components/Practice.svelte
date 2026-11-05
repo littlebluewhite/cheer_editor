@@ -42,7 +42,11 @@
 	<header>
 		<div class="pages" role="group" aria-label="練習的頁">
 			{#each PAGES as p (p.key)}
-				<button type="button" aria-pressed={page === p.key} onclick={() => (page = p.key)}>{p.label}</button>
+				<button
+					type="button"
+					aria-pressed={page === p.key}
+					onclick={() => p.key !== page && session.leavePracticePage(() => (page = p.key))}>{p.label}</button
+				>
 			{/each}
 		</div>
 		<label class="date">日期<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>

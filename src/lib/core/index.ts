@@ -71,6 +71,8 @@ export {
 	attemptText,
 	attemptWhos,
 	carryRecords,
+	changeAttempt,
+	deleteAttempt,
 	deleteLastAttempt,
 	deleteLastRunThrough,
 	lastRunThrough,

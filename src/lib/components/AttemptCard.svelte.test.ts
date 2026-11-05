@@ -1,5 +1,5 @@
 // 記錄頁的一張卡：放一個真的 session 進去，點記號，讀 session 的流程。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attemptWhos, recordAttempt, recordRunThrough } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
@@ -216,6 +216,53 @@ describe('記錄頁的卡', () => {
 		expect(screen.getByRole('button', { name: '救回' })).toBeTruthy();
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(screen.queryByRole('button', { name: '救回' })).toBeNull();
+	});
+
+	it('點歷史裡的某一次可以改記號：還在原來的位置，寫「已改」；不算復原的一步', async () => {
+		const { session } = setup(mixed());
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 2 次/ }));
+		const edit = within(screen.getByRole('group', { name: '改第 2 次' }));
+		expect(edit.getByRole('button', { name: '第 2 次 上法 失敗' }).getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(edit.getByRole('button', { name: '第 2 次 上法 成功' }));
+		await fireEvent.click(edit.getByRole('button', { name: '第 2 次 中段 成功' }));
+		await fireEvent.click(edit.getByRole('button', { name: '第 2 次 下法 小失誤' }));
+		await fireEvent.click(edit.getByRole('button', { name: '存修改' }));
+
+		expect(records(session).map((r) => [r.practice, r.whole, r.marks])).toEqual([
+			['runThrough', true, { p1: '✓', p2: '✗' }],
+			['drill', true, { p1: '✓', p2: '✓', p3: '△' }],
+			['runThrough', true, { p1: '△', p2: '✓', p3: '✓' }]
+		]);
+		expect(screen.queryByRole('group', { name: '改第 2 次' })).toBeNull();
+		expect(screen.getByRole('status').textContent).toBe('已改');
+		expect(session.canUndo).toBe(false);
+	});
+
+	it('點全上記的那一次也能刪掉（只刪這一次）；「救回」放回原位；按「不改了」什麼都不動', async () => {
+		const { session } = setup(mixed());
+		const before = records(session);
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 1 次/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '不改了' }));
+		expect(screen.queryByRole('group', { name: '改第 1 次' })).toBeNull();
+		expect(records(session)).toBe(before);
+
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 3 次/ }));
+		await fireEvent.click(within(screen.getByRole('group', { name: '改第 3 次' })).getByRole('button', { name: '刪掉這一次' }));
+		expect(records(session).map((r) => r.id)).toEqual([before[0].id, before[1].id]);
+		expect(screen.getByRole('status').textContent).toContain('已刪掉');
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
+		expect(records(session)).toEqual(before);
+	});
+
+	it('全上的那一次改到空了一格：擋下來說原因，紀錄不變', async () => {
+		const { session } = setup(mixed());
+		const before = records(session);
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 3 次/ }));
+		const edit = within(screen.getByRole('group', { name: '改第 3 次' }));
+		await fireEvent.click(edit.getByRole('button', { name: '第 3 次 中段 成功' }));
+		await fireEvent.click(edit.getByRole('button', { name: '存修改' }));
+		expect(screen.getByRole('alert').textContent).toBe('全上的一次每個環節都要有記號（✗ 後面的不用）');
+		expect(records(session)).toBe(before);
 	});
 
 	it('沒有上層的組：標題是主底的名字，下面小字列出全組', () => {
