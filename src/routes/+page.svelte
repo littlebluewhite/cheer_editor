@@ -163,6 +163,17 @@
 		return cut === -1 ? null : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
 	});
 
+	/**
+	 * 延遲校正欄位送出（離開欄位或按 Enter）：清空、不是數字就回到現在的值；超出 ±MAX_LATENCY_MS 就夾到邊上，提示範圍。
+	 */
+	function applyLatency(input: HTMLInputElement) {
+		const ms = input.valueAsNumber;
+		const used = Number.isNaN(ms) ? playback.latencyMs : Math.min(Math.max(ms, -MAX_LATENCY_MS), MAX_LATENCY_MS);
+		playback.setLatency(used);
+		input.value = String(used);
+		if (!Number.isNaN(ms) && used !== ms) session.notice = `延遲校正要在 -${MAX_LATENCY_MS} 到 ${MAX_LATENCY_MS} 毫秒之間，改成 ${used}`;
+	}
+
 	/** 秒數寫成「1:05.3」。 */
 	function clock(sec: number): string {
 		const m = Math.floor(sec / 60);
@@ -443,18 +454,20 @@
 					<Icon name="metronome" />節拍器
 				</label>
 				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
-					<span class="latency-text">延遲校正（毫秒）</span>
+					<span class="latency-text">延遲校正</span>
 					<input
 						type="number"
+						aria-label="延遲校正（毫秒）"
 						step="10"
 						min={-MAX_LATENCY_MS}
 						max={MAX_LATENCY_MS}
 						value={playback.latencyMs}
-						onchange={(e) => {
-							// 清空、不合法或超出範圍：沒改，欄位回到現在的值（不然欄位空著，實際還在用舊值）
-							if (!playback.setLatency(e.currentTarget.valueAsNumber)) e.currentTarget.value = String(playback.latencyMs);
+						onchange={(e) => applyLatency(e.currentTarget)}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') applyLatency(e.currentTarget);
 						}}
 					/>
+					<span class="unit" aria-hidden="true">毫秒</span>
 				</label>
 			</div>
 		{/snippet}
@@ -1560,7 +1573,7 @@
 		}
 	}
 
-	/* 窄一點的視窗：延遲校正只留輸入框（名字還在，滑過去看得到說明），不整個藏起來。
+	/* 窄一點的視窗：延遲校正只留「延遲」、輸入框和「毫秒」（滑過去看得到說明），不整個藏起來。
 	   上方列多了「編排｜練習」，所以從 1540px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
 	@media (max-width: 1540px) {
 		.latency-text {
@@ -1572,7 +1585,7 @@
 			white-space: nowrap;
 		}
 		.latency::before {
-			/* 只給眼睛看的短名字；讀屏還是讀完整的「延遲校正（毫秒）」 */
+			/* 只給眼睛看的短名字，後面還有「毫秒」；讀屏還是讀完整的「延遲校正（毫秒）」 */
 			content: '延遲' / '';
 		}
 		.latency input {
@@ -1590,8 +1603,8 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
-	   右邊多了「編輯」開關，所以從 1410px 就換。 */
-	@media (max-width: 1410px) {
+	   右邊多了「編輯」開關、延遲校正多了「毫秒」，所以從 1435px 就換。 */
+	@media (max-width: 1435px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}

@@ -16,6 +16,7 @@
 		MAX_EIGHTS,
 		MIN_BPM,
 		MIN_TAPS,
+		audioOverlaps,
 		beatLines,
 		deleteSegment,
 		fitSegmentToAudio,
@@ -35,7 +36,7 @@
 	interface Props {
 		segmentId: string;
 		onclose: () => void;
-		/** 滑鼠在波形上的位置換成音樂檔的秒數（波形畫 wave.startSec 起的 wave.lengthSec 秒）；測試換成假的（jsdom 不算版面）。 */
+		/** 滑鼠在波形上的位置換成音樂檔的秒數（波形畫 wave.startSec 起的 wave.lengthSec 秒，就是整個音樂檔）；測試換成假的（jsdom 不算版面）。 */
 		waveXToSec?: (e: MouseEvent, wave: { startSec: number; lengthSec: number }) => number;
 	}
 
@@ -70,20 +71,20 @@
 	const length = $derived(music && musicLength(music));
 	/** 段比音樂檔長幾秒（從第一拍算）；還沒載入音樂是 0。 */
 	const overrun = $derived(music && audio ? musicOverrunSec(music, audio.durationSec) : 0);
-	/** 波形畫這一段用到的那一截：音樂檔裡從第一拍到段尾。 */
-	const wave = $derived({ startSec: music?.firstBeatSec ?? 0, lengthSec: span?.durationSec ?? 0 });
-	const lines = $derived(
-		music ? beatLines({ bpm: music.bpm, firstBeatSec: music.firstBeatSec, windowSec: wave.startSec + wave.lengthSec }) : []
-	);
+	/** 這一段用到的那一截：音樂檔裡從第一拍到段尾（波形上標亮）。 */
+	const used = $derived({ startSec: music?.firstBeatSec ?? 0, endSec: (music?.firstBeatSec ?? 0) + (span?.durationSec ?? 0) });
+	/** 波形畫整個音樂檔（段比音樂長就畫到段尾），第一拍前面也點得到。 */
+	const wave = $derived({ startSec: 0, lengthSec: Math.max(audio?.durationSec ?? 0, used.endSec) });
+	const lines = $derived(music ? beatLines({ bpm: music.bpm, firstBeatSec: music.firstBeatSec, windowSec: used.endSec }) : []);
 	const wavePath = $derived.by(() => {
 		const peaks = audio?.peaks ?? [];
 		const w = 1 / PEAKS_PER_SEC;
-		const from = Math.floor(wave.startSec * PEAKS_PER_SEC);
-		const to = Math.min(Math.ceil((wave.startSec + wave.lengthSec) * PEAKS_PER_SEC), peaks.length);
 		let d = '';
-		for (let i = from; i < to; i++) d += `M${i * w} ${1 - peaks[i]}h${w}v${2 * peaks[i]}h${-w}z`;
+		for (let i = 0; i < peaks.length; i++) d += `M${i * w} ${1 - peaks[i]}h${w}v${2 * peaks[i]}h${-w}z`;
 		return d;
 	});
+	/** 跟這一段用同一個音樂檔、時間重疊的段：那一截會播兩次。 */
+	const overlaps = $derived(music ? audioOverlaps(flow, segmentId) : []);
 
 	/** 取消時換一個值，讓欄位照流程重畫，回到原本的值。 */
 	let fieldsKey = $state(0);
@@ -131,7 +132,10 @@
 
 	/** 選音樂檔：音樂檔庫解碼、跟核心拿 id；成功算一步，被擋的原因（格式不對、讀不出來）放在這裡。 */
 	function load(e: Event) {
-		const file = (e.currentTarget as HTMLInputElement).files?.[0];
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		// 清掉欄位：復原後再選同一個檔，瀏覽器才會再通知（值沒變就不送 change）。
+		input.value = '';
 		if (file) void editor.music.pick(segmentId, file, ask);
 	}
 
@@ -250,6 +254,7 @@
 					preserveAspectRatio="none"
 					onclick={clickWave}
 				>
+					<rect class="used" x={used.startSec} width={used.endSec - used.startSec} y="0" height="2" />
 					<line class="mid" x1={wave.startSec} x2={wave.startSec + wave.lengthSec} y1="1" y2="1" />
 					<path class="peaks" d={wavePath} />
 					{#each lines as line (line.sec)}
@@ -257,8 +262,8 @@
 					{/each}
 				</svg>
 				<p class="hint">
-					{audio ? '' : '沒有音樂檔：載入後會畫出波形。'}在波形上點一下＝把第一拍放在那裡。細線是照 BPM
-					算出的每一拍，對準鼓點就對了。波形畫的是這一段用到的那一截：從第一拍到段尾。
+					{audio ? '' : '沒有音樂檔：載入後會畫出波形。'}在波形上點一下＝把第一拍放在那裡，第一拍前面也點得到。細線是照 BPM
+					算出的每一拍，對準鼓點就對了。波形畫整個音樂檔，亮的那一截是這一段用到的：從第一拍到段尾。
 				</p>
 			</section>
 
@@ -286,6 +291,11 @@
 						這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。要剛好就按「照音樂長度算」。
 					</p>
 				{/if}
+				{#each overlaps as o (o.label)}
+					<p class="hint-warn" role="note">
+						跟{o.label} 用同一個音樂檔，有 {o.sec.toFixed(1)} 秒重疊：那一截音樂會播兩次。
+					</p>
+				{/each}
 			</section>
 		{:else if segment?.kind === 'chant'}
 			<section>
@@ -402,6 +412,10 @@
 	}
 	.peaks {
 		fill: #6f97dc;
+	}
+	/* 這一段用到的那一截：底色亮一點 */
+	.used {
+		fill: rgba(255, 255, 255, 0.1);
 	}
 	line {
 		vector-effect: non-scaling-stroke;
