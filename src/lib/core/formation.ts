@@ -249,6 +249,15 @@ export function setWalks(flow: Flow, formationId: string, walks: Record<string, 
 	return ok({ ...flow, formations: flow.formations.with(index, updated) });
 }
 
+/**
+ * 對全隊套用同一個出發和到達：只寫進走到 formationId（B）時位置有變的人（見 formationWalks），
+ * 站著不動的人不寫。擋下的規則跟 setWalks 一樣。
+ */
+export function setTeamWalks(flow: Flow, formationId: string, walk: Walk): CommandResult {
+	const movers = formationWalks(flow, formationId).map((w) => [w.memberId, walk]);
+	return setWalks(flow, formationId, Object.fromEntries(movers));
+}
+
 /** 清掉 formationId（B）上這些人的出發和到達設定，回到預設。 */
 export function clearWalks(flow: Flow, formationId: string, memberIds: string[]): CommandResult {
 	const index = walkFormationIndex(flow, formationId);
@@ -446,14 +455,15 @@ export function insertFormation(flow: Flow, sec: number): CommandResult {
 }
 
 /**
- * 挪站位：把站位時間改到 to，隊員的位置不變。sec = 新的站位時間（全域秒數）。
+ * 挪站位：把站位時間改到 to，隊員的位置不變。sec = 新的站位時間（全域秒數）；
+ * squeezed = 走位因此變短的人（走到這張和下一張都算），照名單順序，給畫面提示。
  * 擋下：開頭那張、to 不在段的格子上、不在前一張之後和後一張（最後一張是流程結尾）之前。
  */
 export function moveFormation(
 	flow: Flow,
 	formationId: string,
 	to: TimePosition
-): CommandResult<{ sec: number; squeezed: number }> {
+): CommandResult<{ sec: number; squeezed: string[] }> {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
 	if (index === -1) return blocked('找不到這張站位');
 	if (index === 0) return blocked('開頭那張不能挪');
@@ -468,7 +478,7 @@ export function moveFormation(
 		return blocked(`站位 ${index + 1} 要挪到站位 ${index}（${before}）之後、${end}之前`);
 	}
 	const shift = sec - formationSec(flow, b);
-	if (Math.abs(shift) < EPS) return ok(flow, { sec, squeezed: 0 });
+	if (Math.abs(shift) < EPS) return ok(flow, { sec, squeezed: [] });
 	// 這張上自己設的出發和到達跟著挪一樣多秒，夾在前一張和新的站位時間之間，
 	// 不在格子上就往前取（跟插站位一樣）；夾完出發不早於到達就當沒設。
 	const moved = (t: number) => toPosition(flow, Math.min(Math.max(t + shift, aSec), sec))!;
@@ -506,8 +516,8 @@ function neighbourTimes(flow: Flow, index: number): { before: string; after: str
 	return { before: text(flow.formations[index - 1]), after: c ? text(c) : null };
 }
 
-/** 走到 formationIds 這幾張的走位，after 比 before 短的人數（一人只算一次）。 */
-function shortened(before: Flow, after: Flow, formationIds: string[]): number {
+/** 走到 formationIds 這幾張的走位，after 比 before 短的人（一人只算一次，照名單順序）。 */
+function shortened(before: Flow, after: Flow, formationIds: string[]): string[] {
 	const lengths = (flow: Flow, id: string) =>
 		new Map(formationWalks(flow, id).map((w) => [w.memberId, w.arriveSec - w.departSec]));
 	const out = new Set<string>();
@@ -517,7 +527,7 @@ function shortened(before: Flow, after: Flow, formationIds: string[]): number {
 			if (now < was.get(memberId)! - EPS) out.add(memberId);
 		}
 	}
-	return out.size;
+	return after.members.map((m) => m.id).filter((id) => out.has(id));
 }
 
 /** 段內時間在不在那一段的格子上（音樂段半拍、口號段 0.1 秒，不超出段）。 */

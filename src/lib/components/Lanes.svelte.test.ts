@@ -309,6 +309,59 @@ describe('走位條', () => {
 		expect(session.canUndo).toBe(true);
 	});
 
+	it('走位條能點的範圍至少 12 px 高，看到的還是細條', () => {
+		setupWalks();
+		expect(parseFloat(walkBar(0).style.height)).toBeGreaterThanOrEqual(12);
+		const strip = walkBar(0).querySelector<HTMLElement>('[data-walk-strip]')!;
+		expect(parseFloat(strip.style.height)).toBeLessThanOrEqual(5);
+	});
+
+	it('滑鼠點走位條也選中這個人，不改流程；Shift＋點加進來', async () => {
+		const { session } = setupWalks();
+		const mouse = { button: 0, pointerType: 'mouse' };
+		await fireEvent.pointerDown(walkBar(0), { ...mouse, clientX: 100 });
+		await fireEvent.pointerUp(window, { ...mouse, clientX: 100 });
+		await fireEvent.click(walkBar(0));
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		await fireEvent.pointerDown(walkBar(1), { ...mouse, clientX: 100 });
+		await fireEvent.pointerUp(window, { ...mouse, clientX: 100 });
+		await fireEvent.click(walkBar(1), { shiftKey: true });
+		expect(session.selectedMemberIds).toEqual(['m1', 'm2']);
+		expect(session.canUndo).toBe(false);
+	});
+
+	it('拖完放開後的 click 不改選取', async () => {
+		const { session } = setupWalks();
+		await dragBy(walkBar(0), -4);
+		await fireEvent.click(walkBar(0));
+		expect(session.selectedMemberIds).toEqual([]);
+	});
+
+	it('拖的時候旁邊即時寫拍數；拖出範圍當下就變色', async () => {
+		setupWalks();
+		const readout = () => document.querySelector<HTMLElement>('[data-walk-readout]');
+		expect(readout()).toBeNull();
+		// 預設 1-5 出發、2-5 到達；拖中間往前 4 px（一拍）
+		await fireEvent.pointerDown(walkBar(0), { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 96 });
+		expect(readout()!.textContent).toBe('1-4 到 2-4');
+		expect(readout()!.classList.contains('out')).toBe(false);
+		await fireEvent.pointerUp(window, { clientX: 96 });
+		expect(readout()).toBeNull();
+
+		await fireEvent.pointerDown(end(0, 'depart'), { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 102 });
+		expect(readout()!.textContent).toBe('出發 1-4&'); // 上一次拖已經改成 1-4 出發
+		await fireEvent.pointerMove(window, { clientX: 140 });
+		expect(readout()!.classList.contains('out')).toBe(true);
+		await fireEvent.pointerUp(window, { clientX: 140 });
+
+		await fireEvent.pointerDown(end(1, 'arrive'), { clientX: 100, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 98 });
+		expect(readout()!.textContent).toBe('到達 2-4&');
+		await fireEvent.pointerUp(window, { clientX: 98 });
+	});
+
 	it('有走位的人才有走位條，從出發畫到到達，跟動作色條分開', () => {
 		setupWalks();
 		expect(walkBars(lanes()[0])).toHaveLength(1);

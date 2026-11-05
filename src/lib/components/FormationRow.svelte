@@ -1,10 +1,10 @@
 <script lang="ts">
 	// 站位縮圖列：每張站位一個小站位圖，放在它的站位時間上。
-	// 流程和選取從 session 拿。點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。跟下一張靠太近的縮圖變窄，不蓋到下一張。
+	// 流程和選取從 session 拿。點縮圖＝選這張並跳到那一拍；✕＝刪掉（開頭那張沒有 ✕）。跟下一張靠太近的縮圖變窄，不蓋到下一張；
+	// 窄到底還是疊到的幾張，上下分層錯開排（變矮），每張都點得到。
 	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才送到 session 的 ask，被擋就彈回原位。開頭那張拖不動。
-	// 刪掉、挪好都算一步；挪好了選著這張，播放頭跳到新的站位時間（session.formationMoved）。
+	// 刪掉（session.removeFormation，提示旁邊有「復原」）、挪好都算一步；挪好了選著這張，播放頭跳到新的站位時間（session.formationMoved）。
 	import {
-		deleteFormation,
 		fieldGeometry,
 		formationTimes,
 		moveFormation,
@@ -47,6 +47,49 @@
 			return next ? Math.min(THUMB_W, Math.max(MIN_THUMB_W, (next.sec - sec) * pxPerSec - 4)) : THUMB_W;
 		})
 	);
+
+	/** 縮圖的上緣和高（px）：沒疊到別張時照原本的。 */
+	const THUMB_TOP = 6;
+	const THUMB_H = 64;
+	/** 分層時上下兩層之間留的空（px）。 */
+	const LEVEL_GAP = 2;
+
+	/**
+	 * 每張縮圖排在第幾層、那一群共幾層。照時間一張一張放，放進最上面一層還空著的地方（左緣不早於那一層上一張的右緣）；
+	 * 連著疊在一起的算一群，一群裡的縮圖平分高度。
+	 */
+	const levels = $derived.by(() => {
+		const out: { level: number; of: number }[] = [];
+		let start = 0;
+		let reach = -Infinity;
+		let ends: number[] = [];
+		const close = (end: number) => {
+			const of = Math.max(...out.slice(start, end).map((o) => o.level)) + 1;
+			for (let j = start; j < end; j++) out[j].of = of;
+		};
+		items.forEach(({ sec }, i) => {
+			const left = sec * pxPerSec;
+			if (left >= reach) {
+				if (i > 0) close(i);
+				start = i;
+				ends = [];
+			}
+			let level = ends.findIndex((e) => e <= left);
+			if (level === -1) level = ends.length;
+			ends[level] = left + widths[i];
+			reach = Math.max(reach, ends[level]);
+			out.push({ level, of: 1 });
+		});
+		if (items.length) close(items.length);
+		return out;
+	});
+
+	/** 第 i 張縮圖的上緣和高（px）。 */
+	function box(i: number): { top: number; height: number } {
+		const { level, of } = levels[i];
+		const height = (THUMB_H - LEVEL_GAP * (of - 1)) / of;
+		return { top: THUMB_TOP + level * (height + LEVEL_GAP), height };
+	}
 
 	/** 正在拖的那張和吸到的那一格；還沒拖超過 DRAG_PX 時 to 是 null。 */
 	let drag = $state<{ id: string; to: TimePosition | null } | null>(null);
@@ -101,8 +144,11 @@
 				class:on={selectedId === formation.id}
 				class:movable={deletable}
 				class:dragging={!!to}
+				class:lower={!to && levels[i].level > 0}
 				style:left={`${(to ? toSeconds(flow, to) : sec) * pxPerSec}px`}
 				style:width={`${to ? THUMB_W : widths[i]}px`}
+				style:top={`${to ? THUMB_TOP : box(i).top}px`}
+				style:height={`${to ? THUMB_H : box(i).height}px`}
 			>
 				<button
 					type="button"
@@ -140,7 +186,7 @@
 						type="button"
 						class="del"
 						aria-label={`刪除站位 ${i + 1}`}
-						onclick={() => session.ask.send(() => deleteFormation(flow, formation.id))}><Icon name="close" size={11} /></button
+						onclick={() => session.removeFormation(formation.id)}><Icon name="close" size={11} /></button
 					>
 				{/if}
 			</div>
@@ -188,6 +234,10 @@
 		height: 6px;
 		width: 2px;
 		background: #9aa6bf;
+	}
+	/* 分層排在下面的縮圖：時間點的短線會畫到上一層的縮圖上，不畫。 */
+	.th.lower::before {
+		display: none;
 	}
 	.pick {
 		position: relative;
