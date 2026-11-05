@@ -186,6 +186,7 @@ export {
 	readStart,
 	readTime,
 	rulerMarks,
+	spacedLabels,
 	segmentSpans,
 	snapToBeat,
 	stepPlayhead,
