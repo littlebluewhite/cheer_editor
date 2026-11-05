@@ -3,6 +3,7 @@
 // 跟重拍使用說明截圖（scripts/guide-screenshots.mjs）一樣：自己開 vite dev 和 headless Chrome，用 CDP 操作。
 // 全部通過時 0 結束；有一條失敗就印出檢查名稱和量到的值，1 結束。
 // Chrome 不在 macOS 預設位置時，用 CHROME=/path/to/chrome 指定。
+// 同時有別的檢查在跑、埠被佔走時，用 LAYOUT_PORT=（vite，預設 4199）、LAYOUT_CDP=（Chrome，預設 9339）換別的埠。
 //
 // 怎麼加一條新檢查：
 //   在最下面「檢查」那一段加
@@ -17,8 +18,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const PORT = 4199;
-const CDP = 9339;
+const PORT = Number(process.env.LAYOUT_PORT ?? 4199);
+const CDP = Number(process.env.LAYOUT_CDP ?? 9339);
 const SAMPLE = resolve('docs/samples/sample-flow.zip');
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const tmp = mkdtempSync(join(tmpdir(), 'check-layout-'));
@@ -186,6 +187,78 @@ await check('時間軸拖到最大時，場地左欄最下面的工具捲得到�
 	// 拖過的高度存在這台電腦，下一條檢查不要受影響
 	await js(`document.querySelector('[aria-label="場地和時間軸的分界"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
 	return res;
+});
+
+/** 元素的四個角（往內縮 6px，避開圓角）最上面的東西是不是它自己：被裁掉或被蓋住的角會是別的東西。 */
+const cornersVisible = (selector) =>
+	js(`const el = document.querySelector(${JSON.stringify(selector)});
+		const r = el.getBoundingClientRect();
+		const pts = [[r.left + 6, r.top + 6], [r.right - 6, r.top + 6], [r.left + 6, r.bottom - 6], [r.right - 6, r.bottom - 6]];
+		const bad = pts.filter(([x, y]) => { const t = document.elementFromPoint(x, y); return !t || !el.contains(t); })
+			.map(([x, y]) => { const t = document.elementFromPoint(x, y); return [Math.round(x), Math.round(y), t ? t.outerHTML.slice(0, 60) : '畫面外']; });
+		return { ok: bad.length === 0, value: { 小窗: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], 畫面: [innerWidth, innerHeight], 被擋住的角: bad } };`);
+
+/** 開範例流程，在泳道上點第一個動作，右邊欄出現動作表單。 */
+async function pickFirstAction(w, h) {
+	await setViewport(w, h);
+	await openSample();
+	await js(`document.querySelector('[data-action-id]').click()`);
+	await waitFor(() => js(`return !!document.querySelector('.action-form .bang')`));
+	await sleep(200);
+}
+
+/** 把 selector 捲到右邊欄看得到的範圍裡、從上面算 k（0～1）的地方。 */
+const scrollPanelTo = (selector, k) =>
+	js(`const el = document.querySelector(${JSON.stringify(selector)}); const panel = el.closest('.panel');
+		const top = panel.getBoundingClientRect().top;
+		panel.scrollTop += el.getBoundingClientRect().top - (top + panel.clientHeight * ${k});
+		await new Promise((r) => setTimeout(r, 150));
+		return Math.round((el.getBoundingClientRect().top - top) / panel.clientHeight * 100) / 100;`);
+
+await check('1400×900「!」說明小窗整個看得到，不被右邊欄裁掉', async () => {
+	await pickFirstAction(1400, 900);
+	// 「!」捲到右邊欄的各個高度（越下面，小窗往下開越容易被裁掉），每個都要整個看得到
+	const bad = [];
+	for (const k of [0.3, 0.5, 0.7, 0.85, 0.95]) {
+		await js(`const b = document.querySelector('.action-form .bang'); if (b.getAttribute('aria-expanded') === 'true') b.click();`);
+		const at = await scrollPanelTo('.action-form .bang', k);
+		const p = await rectOf('.action-form .bang');
+		await click(p.x, p.y);
+		const res = await cornersVisible('#people-legend');
+		if (!res.ok) bad.push({ 驚嘆號在右邊欄的: at, ...res.value });
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('拍點格子在畫面中間時，點一拍再 Shift 點下一拍，拍點小窗開在上面也不被分頁列、上方列蓋住', async () => {
+	await pickFirstAction(1440, 900);
+	// 範例的第一個動作不一定從 1-1 開始：用格子第一排裡最前面兩個能點的拍（報告裡是 1-6、1-7）
+	const [first, next] = await js(`const cells = [...document.querySelector('.cues .row').querySelectorAll('.cell:not(:disabled)')];
+		return [cells[0].getAttribute('aria-label'), cells[1].getAttribute('aria-label')];`);
+	const cell = (n) => `.cues .cell[aria-label="${n}"]`;
+	// 那一排捲到右邊欄的各個高度：下面放不下時小窗開在上面，開在上面的每一次都要整個看得到、down、up、✕ 點得到
+	const bad = [];
+	let aboveCount = 0;
+	for (const k of [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
+		await js(`if (document.querySelector('.cues .pop')) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		const at = await scrollPanelTo(cell(first), k);
+		const a = await rectOf(cell(first));
+		await click(a.x, a.y);
+		const b = await rectOf(cell(next));
+		await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', buttons: 1, clickCount: 1, modifiers: 8 });
+		await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers: 8 });
+		await sleep(300);
+		const above = await js(`return document.querySelector('.cues .pop').classList.contains('above')`);
+		if (!above) continue;
+		aboveCount++;
+		const res = await cornersVisible('.cues .pop');
+		const btns = await js(`const pop = document.querySelector('.cues .pop');
+			const els = [...pop.querySelectorAll('button')].filter((b) => ['down', 'up', '✕'].includes(b.textContent.trim()));
+			return els.map((b) => { const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return [b.textContent.trim(), !!t && b.contains(t)]; });`);
+		if (!res.ok || btns.length !== 3 || !btns.every(([, v]) => v)) bad.push({ 那一排在右邊欄的: at, ...res.value, 按鈕: btns });
+	}
+	return { ok: aboveCount > 0 && bad.length === 0, value: { 選: `${first} 到 ${next}`, 開在上面幾次: aboveCount, 沒過: bad } };
 });
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');

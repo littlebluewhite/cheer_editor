@@ -106,6 +106,65 @@
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
+	/** 滑鼠移到「!」上、或用鍵盤移到「!」：也看得到說明，移開就收。 */
+	let legendPeek = $state(false);
+	const legendShown = $derived(legendOpen || legendPeek);
+	let bangEl = $state<HTMLElement>();
+	let tipEl = $state<HTMLElement>();
+	let tipPos = $state({ top: 0, left: 0 });
+
+	/** 說明小窗放在「!」下面、右邊對齊；畫面下面放不下就放上面，左右上下都不超出畫面。 */
+	function placeTip() {
+		if (!bangEl || !tipEl) return;
+		const b = bangEl.getBoundingClientRect();
+		const w = tipEl.offsetWidth;
+		const h = tipEl.offsetHeight;
+		const M = 8;
+		let top = b.bottom + 6;
+		if (top + h > innerHeight - M && b.top - 6 - h >= M) top = b.top - 6 - h;
+		tipPos = {
+			top: Math.max(M, Math.min(top, innerHeight - M - h)),
+			left: Math.max(M, Math.min(b.right - w, innerWidth - M - w))
+		};
+	}
+
+	$effect(() => {
+		if (!legendShown || !tipEl) return;
+		const tip = tipEl;
+		// 說明開在最上層（popover）：右邊欄捲動容器裁不到它。
+		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
+		if (tip.showPopover && !tip.matches(':popover-open')) {
+			tip.popover = 'manual';
+			tip.showPopover();
+		}
+		placeTip();
+		// 右邊欄捲動、視窗變大變小時跟著「!」走
+		addEventListener('scroll', placeTip, true);
+		addEventListener('resize', placeTip);
+		return () => {
+			removeEventListener('scroll', placeTip, true);
+			removeEventListener('resize', placeTip);
+			if (tip.popover) tip.hidePopover();
+		};
+	});
+
+	function closeLegend() {
+		legendOpen = false;
+		legendPeek = false;
+	}
+
+	/** 點外面就收起來（點「!」自己是開關，點說明裡面不算）。 */
+	function legendOutside(e: PointerEvent) {
+		const t = e.target as Node;
+		if (legendShown && !bangEl?.contains(t) && !tipEl?.contains(t)) closeLegend();
+	}
+
+	/** Esc 只收說明（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
+	function legendKeys(e: KeyboardEvent) {
+		if (!legendShown || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		e.stopPropagation();
+		closeLegend();
+	}
 
 	function blank(): Draft {
 		const members = untrack(() => fromSelection([]));
@@ -264,6 +323,8 @@
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
 
+<svelte:window onpointerdown={legendOutside} onkeydowncapture={legendKeys} />
+
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
 	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
@@ -348,10 +409,22 @@
 						aria-label="顏色和快捷鍵說明"
 						aria-describedby="people-legend"
 						aria-expanded={legendOpen}
+						bind:this={bangEl}
 						onclick={() => (legendOpen = !legendOpen)}
-						onfocusout={() => (legendOpen = false)}>!</button
+						onpointerenter={(e) => e.pointerType === 'mouse' && (legendPeek = true)}
+						onpointerleave={() => (legendPeek = false)}
+						onfocus={(e) => e.currentTarget.matches(':focus-visible') && (legendPeek = true)}
+						onfocusout={closeLegend}>!</button
 					>
-					<span class="tip" id="people-legend" role="tooltip">
+					<span
+						class="tip"
+						id="people-legend"
+						role="tooltip"
+						hidden={!legendShown}
+						bind:this={tipEl}
+						style:top="{tipPos.top}px"
+						style:left="{tipPos.left}px"
+					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
 						<span>點任務角色選單後按鍵就選好，跳到下一個人：</span>
@@ -685,7 +758,6 @@
 		margin-right: auto;
 	}
 	.legend {
-		position: relative;
 		margin-right: 8px;
 	}
 	.bang {
@@ -700,11 +772,14 @@
 		line-height: 1;
 	}
 	.tip {
-		display: none;
-		position: absolute;
-		right: 0;
-		top: calc(100% + 6px);
-		z-index: 10;
+		display: grid;
+		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、捲軸、顏色 */
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		border: 0;
+		overflow: visible;
+		color: inherit;
 		width: max-content;
 		max-width: min(320px, 80vw);
 		padding: 10px 12px;
@@ -714,10 +789,8 @@
 		font-size: 12px;
 		gap: 6px;
 	}
-	.legend:hover .tip,
-	.bang:focus-visible + .tip,
-	.bang[aria-expanded='true'] + .tip {
-		display: grid;
+	.tip[hidden] {
+		display: none;
 	}
 	.tip > span {
 		display: flex;

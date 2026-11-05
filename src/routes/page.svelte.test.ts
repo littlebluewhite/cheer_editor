@@ -1605,3 +1605,137 @@ describe('場地和右邊欄的分界', () => {
 		expect(width()).toBe(1600 - 560);
 	});
 });
+
+describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
+	/** 打開範例流程、選好動作 x1。 */
+	async function withSample() {
+		const session = new EditorSession(libSample());
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		session.pickAction('x1');
+		await tick();
+		return session;
+	}
+
+	it('加段的「＋」選單', async () => {
+		const session = await withSample();
+		const add = screen.getByRole('button', { name: '在最後加一段' });
+		await fireEvent.click(add);
+		expect(screen.getByRole('button', { name: '＋音樂段' })).toBeTruthy();
+		await fireEvent.keyDown(add, { key: 'Escape' });
+		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
+		expect(add.getAttribute('aria-expanded')).toBe('false');
+		// Esc 只收選單，動作還選著
+		expect(session.selectedActionId).toBe('x1');
+
+		await fireEvent.click(add);
+		await fireEvent.pointerDown(document.querySelector('.topbar')!);
+		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
+
+		// 點選單裡面不算外面
+		await fireEvent.click(add);
+		await fireEvent.pointerDown(screen.getByRole('button', { name: '＋口號段' }));
+		expect(screen.getByRole('button', { name: '＋口號段' })).toBeTruthy();
+	});
+
+	it('動作設定的「!」說明小窗', async () => {
+		const session = await withSample();
+		const bang = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
+		const tip = document.getElementById(bang.getAttribute('aria-describedby')!)!;
+		expect(tip.hidden).toBe(true);
+		await fireEvent.click(bang);
+		expect(tip.hidden).toBe(false);
+		await fireEvent.keyDown(bang, { key: 'Escape' });
+		expect(tip.hidden).toBe(true);
+		expect(bang.getAttribute('aria-expanded')).toBe('false');
+		expect(session.selectedActionId).toBe('x1');
+
+		await fireEvent.click(bang);
+		await fireEvent.pointerDown(tip);
+		expect(tip.hidden).toBe(false);
+		await fireEvent.pointerDown(document.querySelector('.topbar')!);
+		expect(tip.hidden).toBe(true);
+	});
+
+	it('拍點小窗', async () => {
+		const session = await withSample();
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-1' }));
+		expect(screen.getByRole('dialog', { name: '拍點小窗' })).toBeTruthy();
+		await fireEvent.keyDown(grid.getByRole('button', { name: '1-1' }), { key: 'Escape' });
+		expect(screen.queryByRole('dialog', { name: '拍點小窗' })).toBeNull();
+		expect(session.selectedActionId).toBe('x1');
+
+		await fireEvent.click(grid.getByRole('button', { name: '1-1' }));
+		await fireEvent.pointerDown(screen.getByRole('dialog', { name: '拍點小窗' }));
+		expect(screen.getByRole('dialog', { name: '拍點小窗' })).toBeTruthy();
+		await fireEvent.pointerDown(document.querySelector('.topbar')!);
+		expect(screen.queryByRole('dialog', { name: '拍點小窗' })).toBeNull();
+	});
+});
+
+describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
+	/** 打開範例流程、選好動作 x1。 */
+	async function withSample() {
+		const session = new EditorSession(libSample());
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		session.pickAction('x1');
+		await tick();
+		return session;
+	}
+
+	it('加段的「＋」選單', async () => {
+		const session = await withSample();
+		const add = screen.getByRole('button', { name: '在最後加一段' });
+		await fireEvent.click(add);
+		expect(screen.getByRole('button', { name: '＋音樂段' })).toBeTruthy();
+		await fireEvent.keyDown(add, { key: 'Escape' });
+		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
+		expect(add.getAttribute('aria-expanded')).toBe('false');
+		// Esc 只收選單，動作還選著
+		expect(session.selectedActionId).toBe('x1');
+
+		await fireEvent.click(add);
+		await fireEvent.pointerDown(document.querySelector('.topbar')!);
+		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
+
+		// 點選單裡面不算外面
+		await fireEvent.click(add);
+		await fireEvent.pointerDown(screen.getByRole('button', { name: '＋口號段' }));
+		expect(screen.getByRole('button', { name: '＋口號段' })).toBeTruthy();
+	});
+
+	it('動作設定的「!」說明小窗', async () => {
+		const session = await withSample();
+		const bang = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
+		const tip = document.getElementById(bang.getAttribute('aria-describedby')!)!;
+		expect(tip.hidden).toBe(true);
+		await fireEvent.click(bang);
+		expect(tip.hidden).toBe(false);
+		await fireEvent.keyDown(bang, { key: 'Escape' });
+		expect(tip.hidden).toBe(true);
+		expect(bang.getAttribute('aria-expanded')).toBe('false');
+		expect(session.selectedActionId).toBe('x1');
+
+		await fireEvent.click(bang);
+		await fireEvent.pointerDown(tip);
+		expect(tip.hidden).toBe(false);
+		await fireEvent.pointerDown(document.querySelector('.topbar')!);
+		expect(tip.hidden).toBe(true);
+	});
+
+	it('拍點小窗', async () => {
+		const session = await withSample();
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		await fireEvent.click(grid.getByRole('button', { name: '1-1' }));
+		expect(screen.getByRole('dialog', { name: '拍點小窗' })).toBeTruthy();
+		await fireEvent.keyDown(grid.getByRole('button', { name: '1-1' }), { key: 'Escape' });
+		expect(screen.queryByRole('dialog', { name: '拍點小窗' })).toBeNull();
+		expect(session.selectedActionId).toBe('x1');
+
+		await fireEvent.click(grid.getByRole('button', { name: '1-1' }));
+		await fireEvent.pointerDown(screen.getByRole('dialog', { name: '拍點小窗' }));
+		expect(screen.getByRole('dialog', { name: '拍點小窗' })).toBeTruthy();
+		await fireEvent.pointerDown(document.querySelector('.topbar')!);
+		expect(screen.queryByRole('dialog', { name: '拍點小窗' })).toBeNull();
+	});
+});
