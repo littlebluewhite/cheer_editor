@@ -383,12 +383,12 @@ describe('給誰', () => {
 
 	it('刪隊員：確認訊息寫會一起拿掉幾個拍點（給他的、和他是最後一個的角色的）；沒有就不寫', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
-		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉' });
+		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡' });
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: 'K', who: { member: 'm1' } }));
 		expect(deleteMember(flow, 'm1')).toMatchObject({
 			kind: 'confirm',
-			message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉，會一起拿掉 2 個拍點'
+			message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，會一起拿掉 2 個拍點'
 		});
 	});
 

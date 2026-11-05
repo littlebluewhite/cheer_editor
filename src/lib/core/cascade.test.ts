@@ -10,6 +10,7 @@ import {
 	deleteMember,
 	formationTimes,
 	insertFormation,
+	setMarkers,
 	updateSegment,
 	type Flow,
 	type NewActionInput,
@@ -149,22 +150,22 @@ describe('段縮短', () => {
 });
 
 describe('刪隊員', () => {
-	it('先回「要確認」：他在 N 個動作裡，其中 M 個會被整個刪掉；流程不變', () => {
+	it('先回「要確認」：寫名字、標記、全局角色，他在 N 個動作裡，其中 M 個會被整個刪掉；流程不變', () => {
 		const flow = sample();
 		const before = structuredClone(flow);
 		// 小A 在 x1（和小B）和 x2（只有他）裡
 		expect(deleteMember(flow, 'm1')).toEqual({
 			kind: 'confirm',
-			message: '小A 在 2 個動作裡，其中 1 個會被整個刪掉',
+			message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，其中 1 個會被整個刪掉',
 			items: ['動作「跳躍·T」（音樂 1 3-1 起）']
 		});
 		expect(flow).toEqual(before);
 	});
 
-	it('不在動作裡的人也要先確認', () => {
+	it('不在動作裡的人也要先確認，不寫「0 個動作裡，其中 0 個」', () => {
 		expect(deleteMember(sample(), 'm3')).toEqual({
 			kind: 'confirm',
-			message: '小C 在 0 個動作裡，其中 0 個會被整個刪掉',
+			message: '刪掉隊員「小C」（標記 3、底層）：他不在任何動作裡',
 			items: []
 		});
 	});
@@ -185,6 +186,15 @@ describe('刪隊員', () => {
 			{ m2: { depart: { segmentId: 's1', at: 4 }, arrive: { segmentId: 's1', at: 10 } } },
 			undefined
 		]);
+	});
+
+	it('標記用開頭字時寫開頭字', () => {
+		const flow = flowOf(setMarkers(sample(), 'initial'));
+		expect(deleteMember(flow, 'm3')).toMatchObject({ message: '刪掉隊員「小C」（標記 小C、底層）：他不在任何動作裡' });
+	});
+
+	it('在動作裡但沒有動作會被整個刪掉：不寫「其中 0 個」', () => {
+		expect(deleteMember(sample(), 'm2')).toMatchObject({ message: '刪掉隊員「小B」（標記 2、底層）：他在 1 個動作裡' });
 	});
 
 	it('找不到這個隊員就擋下', () => {

@@ -18,6 +18,7 @@ import {
 	deleteMember,
 	deletePhase,
 	insertFormation,
+	moveMember,
 	loadSegmentAudio,
 	markPhaseBeats,
 	matchPrevious,
@@ -79,6 +80,7 @@ const commands: [string, (flow: Flow) => CommandResult | Flow][] = [
 	['addMembers', (f) => addMembers(f, [{ name: '小C', gender: 'M', globalRole: 'base' }])],
 	['updateMember', (f) => updateMember(f, 'm1', { name: '小美美' }, { records: 'keep' })],
 	['deleteMember', (f) => deleteMember(f, 'm4', { confirmed: true })],
+	['moveMember', (f) => moveMember(f, 'm4', 0)],
 	['setMarkers', (f) => setMarkers(f, 'initial')],
 	[
 		'addAction',
