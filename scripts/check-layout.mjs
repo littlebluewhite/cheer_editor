@@ -3,7 +3,7 @@
 // 跟重拍使用說明截圖（scripts/guide-screenshots.mjs）一樣：自己開 vite dev 和 headless Chrome，用 CDP 操作。
 // 全部通過時 0 結束；有一條失敗就印出檢查名稱和量到的值，1 結束。
 // Chrome 不在 macOS 預設位置時，用 CHROME=/path/to/chrome 指定。
-// 同時有別的檢查在跑、埠被佔走時，用 LAYOUT_PORT=（vite，預設 4199）、LAYOUT_CDP=（Chrome，預設 9339）換別的埠。
+// vite 和 Chrome 的埠每次自己找空的，好幾個一起跑也不會撞；要固定的話用 LAYOUT_PORT=（vite）、LAYOUT_CDP=（Chrome）。
 //
 // 怎麼加一條新檢查：
 //   在最下面「檢查」那一段加
@@ -15,17 +15,30 @@
 //   先在修之前跑一次，確定它會失敗，再去修。
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const PORT = Number(process.env.LAYOUT_PORT ?? 4199);
-const CDP = Number(process.env.LAYOUT_CDP ?? 9339);
+/** 跟作業系統要一個現在沒人用的埠（好幾個 agent 同時跑也不會撞到別人的 vite 或 Chrome）。 */
+function freePort() {
+	return new Promise((r) => { const s = createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+}
+const PORT = Number(process.env.LAYOUT_PORT ?? (await freePort()));
+const CDP = Number(process.env.LAYOUT_CDP ?? (await freePort()));
 const SAMPLE = resolve('docs/samples/sample-flow.zip');
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const tmp = mkdtempSync(join(tmpdir(), 'check-layout-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const server = spawn('node_modules/.bin/vite', ['dev', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
+const server = spawn('node_modules/.bin/vite', ['dev', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+// vite 一開始就停掉（埠被佔、設定壞掉）時馬上說為什麼，不要傻等到「等太久」。
+// 要等 vite 自己印出 Local: 網址才算開好：埠被別人佔著時，別人也會回 200，光看網頁打不打得開會騙人。
+let viteErr = '';
+let viteReady = false;
+let started = false;
+server.stdout.on('data', (d) => { if (String(d).replace(/\x1b\[[0-9;]*m/g, '').includes(`127.0.0.1:${PORT}/`)) viteReady = true; });
+server.stderr.on('data', (d) => { viteErr += d; });
+server.on('exit', (code) => { if (!started) { console.error(`vite 沒開起來（結束碼 ${code}）：\n${viteErr}`); stop(1); } });
 const chrome = spawn(CHROME, [
 	'--headless=new', `--remote-debugging-port=${CDP}`, '--hide-scrollbars', '--mute-audio',
 	`--user-data-dir=${join(tmp, 'profile')}`, 'about:blank'
@@ -34,18 +47,21 @@ const stop = (code) => { chrome.kill(); server.kill(); process.exit(code); };
 process.on('uncaughtException', (e) => { console.error(e); stop(1); });
 process.on('unhandledRejection', (e) => { console.error(e); stop(1); });
 
-async function waitFor(fn) {
-	for (let i = 0; i < 150; i++) {
+async function waitFor(fn, tries = 150) {
+	for (let i = 0; i < tries; i++) {
 		try { const v = await fn(); if (v) return v; } catch {}
 		await sleep(200);
 	}
 	throw new Error('等太久');
 }
-await waitFor(async () => (await fetch(`http://localhost:${PORT}/`)).ok);
+// 第一次開 vite 要先整理套件，很多東西同時在跑時會慢，所以這裡等久一點（最多 3 分鐘）
+await waitFor(() => viteReady, 900);
+await waitFor(async () => (await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(2000) })).ok, 900);
+started = true;
 const targets = await waitFor(async () => {
-	const t = await (await fetch(`http://127.0.0.1:${CDP}/json`)).json();
+	const t = await (await fetch(`http://127.0.0.1:${CDP}/json`, { signal: AbortSignal.timeout(2000) })).json();
 	return t.some((x) => x.type === 'page') && t;
-});
+}, 900);
 
 // ---------- CDP ----------
 const ws = new WebSocket(targets.find((t) => t.type === 'page').webSocketDebuggerUrl);
@@ -81,7 +97,7 @@ const setViewport = async (width, height) => {
 
 /** 開首頁，用「開啟流程檔」打開 docs/samples/sample-flow.zip，等編輯畫面出來。 */
 async function openSample() {
-	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
 	await waitFor(async () => {
@@ -99,7 +115,7 @@ async function openSample() {
  * more 是在頁面裡改 flow 的程式（可以用 core 裡的函式），例如加拍點。
  */
 async function openPracticeFlow(more = '') {
-	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
 	await js(`const { libSample } = await import('/src/lib/test-flows.ts');
@@ -121,7 +137,7 @@ async function openPracticeFlow(more = '') {
  * 上面一個很長的步驟拍點（量八拍表印出來有沒有被截斷）。
  */
 async function openBigFlow() {
-	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
 	await js(`const c = await import('/src/lib/core/index.ts');
@@ -417,7 +433,7 @@ await check('1400 寬：「八拍表」按鈕有字，不是只有圖示', async
 });
 
 await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編輯器」各一行，不溢出', async () => {
-	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!document.querySelector('.intro h1')`));
 	const bad = [];
 	for (const w of [761, 800, 850, 900]) {
@@ -599,7 +615,7 @@ await check('1024×768（觸控）：40 人、場外排了人時，條編號不�
 	await setTouchViewport(1024, 768);
 	const bad = [];
 	for (const field of [{ strips: 1, layout: 'vertical' }, { strips: 1, layout: 'horizontal' }]) {
-		await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 		await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 		await sleep(300);
 		// 小場地：格點不夠 40 人，剩下的人排在場外
@@ -709,7 +725,7 @@ await check('列印：八拍表的拍點、環節換行不截斷，背景是白�
 
 await check('390×844（手機）使用說明：名詞表上下排，不用左右滑', async () => {
 	await setTouchViewport(390, 844);
-	await send('Page.navigate', { url: `http://localhost:${PORT}/guide` });
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/guide` });
 	await waitFor(() => js(`return !!document.querySelector('#words table')`));
 	await sleep(300);
 	const r = await js(`const wraps = [...document.querySelectorAll('.table-wrap')].map((w) => ({

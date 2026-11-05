@@ -4,19 +4,32 @@
 // Chrome 不在 macOS 預設位置時，用 CHROME=/path/to/chrome 指定。
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const OUT = 'src/lib/guide/shots';
-const PORT = 4198;
-const CDP = 9338;
+/** 跟作業系統要一個現在沒人用的埠（好幾個 agent 同時跑也不會撞到別人的 vite 或 Chrome）。 */
+function freePort() {
+	return new Promise((r) => { const s = createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+}
+const PORT = await freePort();
+const CDP = await freePort();
 const W = 1440;
 const H = 1000;
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const tmp = mkdtempSync(join(tmpdir(), 'guide-shots-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const server = spawn('node_modules/.bin/vite', ['dev', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
+const server = spawn('node_modules/.bin/vite', ['dev', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+// vite 一開始就停掉（埠被佔、設定壞掉）時馬上說為什麼，不要傻等到「等太久」。
+// 要等 vite 自己印出 Local: 網址才算開好：埠被別人佔著時，別人也會回 200，光看網頁打不打得開會騙人。
+let viteErr = '';
+let viteReady = false;
+let started = false;
+server.stdout.on('data', (d) => { if (String(d).replace(/\x1b\[[0-9;]*m/g, '').includes(`127.0.0.1:${PORT}/`)) viteReady = true; });
+server.stderr.on('data', (d) => { viteErr += d; });
+server.on('exit', (code) => { if (!started) { console.error(`vite 沒開起來（結束碼 ${code}）：\n${viteErr}`); stop(1); } });
 const chrome = spawn(CHROME, [
 	'--headless=new', `--remote-debugging-port=${CDP}`, '--hide-scrollbars', '--mute-audio',
 	`--user-data-dir=${join(tmp, 'profile')}`, 'about:blank'
@@ -25,18 +38,21 @@ const stop = (code) => { chrome.kill(); server.kill(); process.exit(code); };
 process.on('uncaughtException', (e) => { console.error(e); stop(1); });
 process.on('unhandledRejection', (e) => { console.error(e); stop(1); });
 
-async function waitFor(fn) {
-	for (let i = 0; i < 150; i++) {
+async function waitFor(fn, tries = 150) {
+	for (let i = 0; i < tries; i++) {
 		try { const v = await fn(); if (v) return v; } catch {}
 		await sleep(200);
 	}
 	throw new Error('等太久');
 }
-await waitFor(async () => (await fetch(`http://localhost:${PORT}/`)).ok);
+// 第一次開 vite 要先整理套件，很多東西同時在跑時會慢，所以這裡等久一點（最多 3 分鐘）
+await waitFor(() => viteReady, 900);
+await waitFor(async () => (await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(2000) })).ok, 900);
+started = true;
 const targets = await waitFor(async () => {
-	const t = await (await fetch(`http://127.0.0.1:${CDP}/json`)).json();
+	const t = await (await fetch(`http://127.0.0.1:${CDP}/json`, { signal: AbortSignal.timeout(2000) })).json();
 	return t.some((x) => x.type === 'page') && t;
-});
+}, 900);
 
 // ---------- CDP ----------
 const ws = new WebSocket(targets.find((t) => t.type === 'page').webSocketDebuggerUrl);
@@ -157,7 +173,7 @@ mkdirSync(OUT, { recursive: true });
 await send('Page.enable');
 await send('DOM.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: false });
-await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 await waitFor(() => js(`return !!document.querySelector('.home .start form')`));
 // 畫面先由伺服器畫好，Svelte 接手之前按「建立」會變成一般的表單送出；等 Svelte 載入再開始點。
 await waitFor(() => js(`return !!window.__svelte`));
