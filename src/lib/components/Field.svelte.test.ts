@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { addMembers, createFlow, setPositions, type Flow, type Member, type Position } from '#lib/core';
+import { addMembers, createFlow, setPositions, type Clash, type Flow, type Member, type Position } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import TestSession from '#lib/TestSession.svelte';
@@ -168,19 +168,22 @@ describe('在場上拖人', () => {
 		expect(session.canUndo).toBe(false);
 	});
 
-	it('鍵盤：Tab 停得到人，Enter／空白鍵跟點一下一樣（Shift 加選、拿掉）；方向鍵移 1/4 格、Shift 移一格，一下算一步', async () => {
+	it('鍵盤：Tab 停得到人，Enter 跟點一下一樣（Shift 加選、拿掉），空白鍵不選（留給播放）；方向鍵移 1/4 格、Shift 移一格，連續移算一步', async () => {
 		const { session, dot } = setup();
 		expect(dot.getAttribute('tabindex')).toBe('0');
 		await fireEvent.keyDown(dot, { key: 'Enter' });
 		expect(session.selectedMemberIds).toEqual(['m1']);
-		await fireEvent.keyDown(dot, { key: ' ', shiftKey: true });
+		await fireEvent.keyDown(dot, { key: 'Enter', shiftKey: true });
+		expect(session.selectedMemberIds).toEqual([]);
+		expect(await fireEvent.keyDown(dot, { key: ' ' })).toBe(true);
 		expect(session.selectedMemberIds).toEqual([]);
 		await fireEvent.keyDown(dot, { key: 'ArrowRight' });
 		expect(posOf(session, 'm1')[0]).toBeCloseTo(0.4572, 4);
 		await fireEvent.keyDown(dot, { key: 'ArrowDown', shiftKey: true });
 		expect(posOf(session, 'm1')[1]).toBeCloseTo(1.8288, 4);
 		session.undo();
-		expect(posOf(session, 'm1')[1]).toBeCloseTo(0, 4);
+		expect(posOf(session, 'm1')).toEqual([0, 0]);
+		expect(session.canUndo).toBe(false);
 	});
 
 	it('八拍表的小站位圖（沒有 session）：人不能用 Tab 停', () => {
@@ -436,5 +439,30 @@ describe('影子和走位線', () => {
 			positions: { m1: [1, 0] }
 		});
 		expect(document.querySelector('[data-ghost], [data-walk-line]')).toBeNull();
+	});
+});
+
+describe('撞位', () => {
+	const members: Member[] = ['小A', '小B'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const clash: Clash = { memberIds: ['m1', 'm2'], sec: 3.2, pos: [1, 0.5], startSec: 2.6, endSec: 3.8, formationId: 'f2' };
+
+	it('在撞位的位置畫紫色 ✕，標出是哪兩個人', () => {
+		renderEditing(members, { m1: [0, 0], m2: [2, 0] }, { clashes: [clash] });
+		const marks = document.querySelectorAll<SVGElement>('[data-clash]');
+		expect(marks).toHaveLength(1);
+		expect(marks[0].getAttribute('transform')).toBe('translate(1,0.5)');
+		expect(marks[0].textContent).toContain('小A');
+		expect(marks[0].textContent).toContain('小B');
+		expect(screen.getByText('撞位')).toBeTruthy();
+	});
+
+	it('沒給撞位就不畫', () => {
+		renderEditing(members, { m1: [0, 0], m2: [2, 0] });
+		expect(document.querySelector('[data-clash]')).toBeNull();
 	});
 });

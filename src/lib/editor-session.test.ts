@@ -120,6 +120,38 @@ describe('編輯 session：流程和復原', () => {
 		expect(records(s)).toBe(2);
 	});
 
+	it('同一個 join 連續改合成一步；join 不一樣、中間有別的改動、復原過就斷開', () => {
+		const s = new EditorSession(sampleFlow());
+		const join = (name: string, key: string) => s.change(flowOf(renameFlow(s.flow!, name)), key);
+		join('A', 'k');
+		join('B', 'k');
+		join('C', 'k');
+		join('D', 'other');
+		rename(s, 'E');
+		join('F', 'k');
+		const names: string[] = [];
+		while (s.undo()) names.push(s.flow!.name);
+		expect(names).toEqual(['E', 'D', 'C', '練習用']);
+
+		join('A', 'k');
+		s.undo();
+		s.redo();
+		join('B', 'k');
+		s.undo();
+		expect(s.flow!.name).toBe('A');
+	});
+
+	it('nudge：問題成功時用給的 key 合；被擋不算', () => {
+		const s = new EditorSession(sampleFlow());
+		const ok = (name: string) => () => renameFlow(s.flow!, name);
+		s.nudge('k', ok('A'));
+		s.nudge('k', () => ({ kind: 'blocked', message: '不行' }) as const);
+		s.nudge('k', ok('B'));
+		s.undo();
+		expect(s.flow!.name).toBe('練習用');
+		expect(s.canUndo).toBe(false);
+	});
+
 	it('換一支流程：清掉復原和重做；從檔案開的算存過，救回的草稿不算', () => {
 		const s = new EditorSession(sampleFlow());
 		rename(s, 'A');

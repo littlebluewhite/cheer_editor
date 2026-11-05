@@ -17,6 +17,7 @@ export {
 	addMembers,
 	deleteMember,
 	memberMarkers,
+	moveMember,
 	setMarkers,
 	updateMember
 } from './members';
@@ -101,7 +102,7 @@ export type {
 	EightCountRow
 } from './eight-count';
 
-export { addCustomRole, deleteCustomRole, roleGlossary, updateCustomRole } from './roles';
+export { addCustomRole, defaultRoles, deleteCustomRole, roleGlossary, updateCustomRole } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {
@@ -135,12 +136,14 @@ export {
 	AUDIO_EXTENSIONS,
 	DEFAULT_BPM,
 	MAX_BPM,
+	MAX_CHANT_SEC,
+	MAX_EIGHTS,
 	MIN_BPM,
 	addSegment,
 	beatLines,
+	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
-	musicLengthFromAudio,
 	updateSegment
 } from './segment';
 export type {
@@ -162,6 +165,7 @@ export {
 	lengthText,
 	nearestPosition,
 	parseAt,
+	parseNumber,
 	parseLength,
 	parseTime,
 	positionText,
@@ -197,3 +201,6 @@ export type {
 	Rect,
 	Strip
 } from './field';
+
+export { clashes } from './clash';
+export type { Clash } from './clash';

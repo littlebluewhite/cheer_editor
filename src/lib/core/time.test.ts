@@ -5,6 +5,7 @@ import {
 	createFlow,
 	lengthText,
 	parseAt,
+	parseNumber,
 	parseLength,
 	parseTime,
 	positionText,
@@ -151,7 +152,24 @@ describe('段內時間的文字（動作表單）', () => {
 		expect(parseAt(music(), '1-9')).toBeNull();
 		expect(parseAt(music(), 'abc')).toBeNull();
 		expect(parseAt(chant(), '12.3')).toBe(123);
-		expect(parseAt(chant(), '-1')).toBeNull();
+		// 負的看得懂（交給指令擋下、說範圍），不說看不懂
+		expect(parseAt(chant(), '-1')).toBe(-10);
+	});
+
+	it('欄位裡的數字：全形當成半形；空白、看不懂是 NaN（交給指令擋下、說範圍）', () => {
+		expect(parseNumber(' １２．５ ')).toBe(12.5);
+		expect(parseNumber('－３')).toBe(-3);
+		expect(parseNumber('200')).toBe(200);
+		expect(parseNumber('')).toBeNaN();
+		expect(parseNumber('abc')).toBeNaN();
+	});
+
+	it('全形數字、全形符號當成半形', () => {
+		expect(parseAt(music(), '３－５＆')).toBe(41);
+		expect(parseAt(chant(), '１２．３')).toBe(123);
+		expect(parseLength(music(), '４．５')).toBe(9);
+		expect(parseLength(chant(), '－２')).toBe(-20);
+		expect(parseTime(sample(), 's3', '口號 １ １２．３ 秒')).toEqual({ segmentId: 's2', at: 123 });
 	});
 
 	it('長度：音樂段用拍（可以半拍），口號段用秒（到 0.1 秒）', () => {

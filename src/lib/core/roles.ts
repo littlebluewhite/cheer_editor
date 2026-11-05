@@ -1,10 +1,11 @@
 // 任務角色：隊員在某個動作裡要做的事。11 個固定的 ＋ 這支流程自己加的。
-// 跟全局角色互不影響，所以這裡不看隊員的全局角色。
+// 跟全局角色互不影響；只有加人進動作時的預設值（defaultRoles）照全局角色先填。
 
-import { actionLabel } from './action-types';
+import { actionLabel, type ActionCategory, type ActionMember } from './action-types';
 import type { Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { nextId } from './ids';
+import type { GlobalRole } from './members';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
 export interface CustomRole {
@@ -97,4 +98,30 @@ export function roleGlossary(flow: Flow): RoleEntry[] {
 		...FIXED_ROLES,
 		...flow.customRoles.map((r) => ({ name: r.name, meaning: r.meaning, ruleName: '', custom: true }))
 	];
+}
+
+/** 這個大類裡，全局角色是 globalRole 的人先填哪個任務角色；null 是不填。 */
+function defaultRole(category: ActionCategory, globalRole: GlobalRole | undefined): string | null {
+	if (category === 'tumbling') return '騰翻';
+	if (category !== 'stunt' && category !== 'pyramid' && category !== 'toss') return null;
+	if (!globalRole) return null;
+	return globalRole === 'top' ? '上層' : '底層';
+}
+
+/**
+ * 加人進動作時先填任務角色：技巧、金字塔、拋投照全局角色填底層或上層；騰翻填騰翻；跳躍、舞蹈、其他不填。
+ * 沒有任務的人才填，已經指定的不動。
+ * 給了 from（換大類）：還是 from 預設值的人（教練沒改過）換成這個大類的預設值，其他不動。
+ */
+export function defaultRoles<M extends ActionMember>(
+	flow: Flow,
+	category: ActionCategory,
+	members: M[],
+	from?: ActionCategory
+): M[] {
+	return members.map((m) => {
+		const globalRole = flow.members.find((p) => p.id === m.memberId)?.globalRole;
+		const untouched = from === undefined ? m.role === null : m.role === defaultRole(from, globalRole);
+		return untouched ? { ...m, role: defaultRole(category, globalRole) } : m;
+	});
 }

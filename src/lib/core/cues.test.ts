@@ -65,6 +65,14 @@ describe('放拍點', () => {
 		expect(cuesOf(flow)).toEqual([count(0, 2, 'down'), count(2, 2, 'up'), count(4, 4, 'down')]);
 	});
 
+	it('動作被拖半拍、拍點落在 & 上：在原位換字，長度不變、旁邊的不動', () => {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 2, word: 'up' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 2, len: 2, word: 'down' }));
+		flow = flowOf(updateAction(flow, 'x1', { start: 5 }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 2, word: 'down' }));
+		expect(cuesOf(flow)).toEqual([count(0, 2, 'down'), count(2, 2, 'down')]);
+	});
+
 	it('整個被蓋到的舊拍點拿掉', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 2, len: 2, word: 'down' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 6, word: 'up' }));
@@ -76,8 +84,7 @@ describe('放拍點', () => {
 		['在動作之前', { at: -2, len: 2, word: 'down' }, '拍點要在動作裡面'],
 		['不到一拍', { at: 0, len: 1, word: 'down' }, '拍點要佔整數拍，至少 1 拍'],
 		['不是整數拍', { at: 0, len: 3, word: 'down' }, '拍點要佔整數拍，至少 1 拍'],
-		['拍子用別的字', { at: 0, len: 2, word: 'ready' }, '拍子只能是 down 或 up'],
-		['不在整拍上', { at: 1, len: 2, word: 'down' }, '拍點要放在整拍上']
+		['拍子用別的字', { at: 0, len: 2, word: 'ready' }, '拍子只能是 down 或 up']
 	])('不合規則被擋（%s）', (_, input, message) => {
 		expect(placeCue(sample(), 'x1', { kind: 'count', ...input })).toEqual({ kind: 'blocked', message });
 	});
@@ -383,12 +390,12 @@ describe('給誰', () => {
 
 	it('刪隊員：確認訊息寫會一起拿掉幾個拍點（給他的、和他是最後一個的角色的）；沒有就不寫', () => {
 		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
-		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉' });
+		expect(deleteMember(flow, 'm1')).toMatchObject({ message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡' });
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: 'high V', who: top }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: 'K', who: { member: 'm1' } }));
 		expect(deleteMember(flow, 'm1')).toMatchObject({
 			kind: 'confirm',
-			message: '小A 在 2 個動作裡，其中 0 個會被整個刪掉，會一起拿掉 2 個拍點'
+			message: '刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，會一起拿掉 2 個拍點'
 		});
 	});
 

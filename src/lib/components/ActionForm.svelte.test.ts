@@ -105,18 +105,24 @@ describe('動作表單：新增', () => {
 		expect(session.flow!.actions[0].color).toBe('#1565c0');
 	});
 
-	it('沒有人就被流程核心擋下，顯示原因', async () => {
-		const session = setup(sample(), null);
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(screen.getByRole('alert').textContent).toBe('一個動作至少要有 1 個人');
-		expect(session.canUndo).toBe(false);
+	it('沒選人時「新增動作」是灰的，旁邊寫原因；選了人就能按', async () => {
+		setup(sample(), null);
+		const add = screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement;
+		expect(add.disabled).toBe(true);
+		expect(document.getElementById(add.getAttribute('aria-describedby')!)!.textContent).toBe(
+			'還沒有人：先選人才能新增'
+		);
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		expect(add.disabled).toBe(false);
+		expect(add.getAttribute('aria-describedby')).toBeNull();
 	});
 
-	it('新增被擋下後，改了表單（例如加人）原因就收掉', async () => {
-		setup(sample(), null);
+	it('新增被擋下後，改了表單（例如改開始）原因就收掉', async () => {
+		setup(sample(), null, 0, ['m2']);
+		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(screen.getByRole('alert')).toBeTruthy();
-		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '1-1' } });
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
@@ -134,7 +140,8 @@ describe('動作表單：新增', () => {
 
 	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
 		scrolled.length = 0;
-		setup(sample(), null);
+		setup(sample(), null, 0, ['m2']);
+		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(scrolled).toEqual([]);
 		await frame();
@@ -142,7 +149,8 @@ describe('動作表單：新增', () => {
 	});
 
 	it('原因還留著時又被擋一次（同一句），也再捲一次', async () => {
-		setup(sample(), null);
+		setup(sample(), null, 0, ['m2']);
+		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		await frame();
 		scrolled.length = 0;
@@ -171,6 +179,17 @@ describe('動作表單：改選到的動作', () => {
 		flow = flowOf(addAction(flow, { ...base, name: 'B', start: 8, length: 8 }));
 		return flow;
 	}
+
+	it('長度打負的：說能填的範圍，不說看不懂；全形數字當成半形', async () => {
+		const session = setup(withTwo(), 'x1');
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '-2' } });
+		await fireEvent.change(length);
+		expect(screen.getByRole('alert').textContent).toBe('動作長度要在 0.5 到 16 拍之間，已還原');
+		await fireEvent.input(length, { target: { value: '２' } });
+		await fireEvent.change(length);
+		expect(session.flow!.actions[0]).toMatchObject({ length: 4 });
+	});
 
 	it('改了馬上生效；撞到同一個人就顯示原因並還原', async () => {
 		const session = setup(withTwo(), 'x1');
@@ -212,7 +231,7 @@ describe('動作表單：改選到的動作', () => {
 		const pickB = screen.getByRole('combobox', { name: '小B 的任務角色' });
 		// 選單打開時按鍵也是直接選好、關掉選單，不用再按確認。
 		await fireEvent.click(pickA);
-		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4');
+		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4被撐在最上面的人。');
 		pickA.focus();
 		await fireEvent.keyDown(pickA, { key: '4' });
 		expect(session.flow!.actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
@@ -224,6 +243,36 @@ describe('動作表單：改選到的動作', () => {
 		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: '底層' });
 		await fireEvent.keyDown(pickB, { key: 'Backspace' });
 		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+	});
+
+	it('任務角色選單每一項有一句說明，取自名詞對照表（自訂角色用教練寫的意思）', async () => {
+		const flow = flowOf(addCustomRole(withTwo(), { name: '丟人的', meaning: '把上層丟出去的人' }));
+		setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		const list = within(screen.getByRole('listbox'));
+		const meaning = (name: RegExp) => list.getByRole('option', { name }).querySelector('.meaning')?.textContent;
+		expect(meaning(/^主底/)).toBe('主要撐住上層腳的底層。單底層技巧的那位底層。');
+		expect(meaning(/^騰翻/)).toBe('做騰翻的人。');
+		expect(meaning(/^丟人的/)).toBe('把上層丟出去的人');
+	});
+
+	it('長度改短要確認時，確認框就在長度欄位旁邊（不在表單最底下）', async () => {
+		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 8, members: [{ memberId: 'm1', role: null }] }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 4, word: 'down' }));
+		setup(flow, 'x1');
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '2' } });
+		await fireEvent.change(length);
+		const dialog = screen.getAllByRole('alertdialog');
+		expect(dialog).toHaveLength(1);
+		// 確認框緊接在開始、長度那一列後面，排在人、備註、拍點格子前面
+		expect(length.closest('.grid')!.contains(dialog[0])).toBe(true);
+		expect(
+			dialog[0].compareDocumentPosition(screen.getByLabelText('備註')) & Node.DOCUMENT_POSITION_FOLLOWING
+		).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(length.value).toBe('4');
 	});
 
 	it('任務角色選單用滑鼠點也可以；最後一項是自訂任務角色', async () => {
@@ -318,7 +367,48 @@ describe('動作表單：選人', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
 		expect(session.selectedMemberIds).toEqual(['m1']);
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: '上層' }]);
+	});
+
+	const role = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` }).textContent;
+
+	it('新動作：選到的人先照全局角色填任務角色；換大類跟著換，改過的不動', async () => {
+		const session = setup(sample(), null, 0, ['m1', 'm2']);
+		// 技巧：小A 全局上層、小B 全局底層
+		expect([role('小A'), role('小B')]).toEqual(['上層', '底層']);
+		await pickRole('小B', '主底');
+		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'tumbling' } });
+		expect([role('小A'), role('小B')]).toEqual(['騰翻', '主底']);
+		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'dance' } });
+		expect([role('小A'), role('小B')]).toEqual(['（沒有任務）', '主底']);
+		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'pyramid' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(session.flow!.actions[0].members).toEqual([
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		]);
+	});
+
+	it('新動作：清掉任務角色的人，之後再選別人也不會被填回去', async () => {
+		const session = setup(sample(), null, 0, ['m1']);
+		await pickRole('小A', '');
+		session.selectMembers(['m1', 'm2']);
+		await tick();
+		expect([role('小A'), role('小B')]).toEqual(['（沒有任務）', '底層']);
+	});
+
+	it('改動作時「＋加人…」：照動作的大類先填；跳躍不填', async () => {
+		const session = setup(withLib(), 'x1');
+		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		expect(session.flow!.actions[0].members).toEqual([
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '底層' }
+		]);
+		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'jump' } });
+		await fireEvent.click(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
+		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
+		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
 	});
 
 	it('新增時「從別的動作複製人」連任務角色一起帶，也改選取', async () => {
@@ -489,7 +579,7 @@ describe('動作表單：成功率', () => {
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		expect(session.flow!.actions[1].members).toEqual([
 			{ memberId: 'm1', role: '上層', squad: 'g1' },
-			{ memberId: 'm2', role: null, squad: 'g1' }
+			{ memberId: 'm2', role: '底層', squad: 'g1' }
 		]);
 		expect(squadTags()).toEqual(['第 1 組', '第 1 組']);
 	});

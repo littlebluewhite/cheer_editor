@@ -5,6 +5,7 @@
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
+	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	import { untrack, type ComponentProps } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -16,6 +17,7 @@
 		actionSlotAt,
 		addAction,
 		atText,
+		defaultRoles,
 		deleteAction,
 		groupsPeople,
 		lengthText,
@@ -106,17 +108,81 @@
 	let glossaryOpen = $state(false);
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
+	/** 滑鼠移到「!」上、或用鍵盤移到「!」：也看得到說明，移開就收。 */
+	let legendPeek = $state(false);
+	const legendShown = $derived(legendOpen || legendPeek);
+	let bangEl = $state<HTMLElement>();
+	let tipEl = $state<HTMLElement>();
+	let tipPos = $state({ top: 0, left: 0 });
+
+	/** 說明小窗放在「!」下面、右邊對齊；畫面下面放不下就放上面，左右上下都不超出畫面。 */
+	function placeTip() {
+		if (!bangEl || !tipEl) return;
+		const b = bangEl.getBoundingClientRect();
+		const w = tipEl.offsetWidth;
+		const h = tipEl.offsetHeight;
+		const M = 8;
+		let top = b.bottom + 6;
+		if (top + h > innerHeight - M && b.top - 6 - h >= M) top = b.top - 6 - h;
+		tipPos = {
+			top: Math.max(M, Math.min(top, innerHeight - M - h)),
+			left: Math.max(M, Math.min(b.right - w, innerWidth - M - w))
+		};
+	}
+
+	$effect(() => {
+		if (!legendShown || !tipEl) return;
+		const tip = tipEl;
+		// 說明開在最上層（popover）：右邊欄捲動容器裁不到它。
+		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
+		if (tip.showPopover && !tip.matches(':popover-open')) {
+			tip.popover = 'manual';
+			tip.showPopover();
+		}
+		placeTip();
+		// 右邊欄捲動、視窗變大變小時跟著「!」走
+		addEventListener('scroll', placeTip, true);
+		addEventListener('resize', placeTip);
+		return () => {
+			removeEventListener('scroll', placeTip, true);
+			removeEventListener('resize', placeTip);
+			if (tip.popover) tip.hidePopover();
+		};
+	});
+
+	function closeLegend() {
+		legendOpen = false;
+		legendPeek = false;
+	}
+
+	/** 點外面就收起來（點「!」自己是開關，點說明裡面不算）。 */
+	function legendOutside(e: PointerEvent) {
+		const t = e.target as Node;
+		if (legendShown && !bangEl?.contains(t) && !tipEl?.contains(t)) closeLegend();
+	}
+
+	/** Esc 只收說明（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
+	function legendKeys(e: KeyboardEvent) {
+		if (!legendShown || e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
+		e.stopPropagation();
+		closeLegend();
+	}
 
 	function blank(): Draft {
-		const members = untrack(() => fromSelection([]));
+		const members = untrack(() => fromSelection([], 'stunt'));
 		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members, color: undefined };
 	}
 
-	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色。 */
-	function fromSelection(current: ActionMember[]): ActionMember[] {
+	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色，新來的照大類先填。 */
+	function fromSelection(current: ActionMember[], category: ActionCategory): ActionMember[] {
 		return selectedMemberIds
 			.filter((id) => flow.members.some((m) => m.id === id))
-			.map((id) => current.find((m) => m.memberId === id) ?? { memberId: id, role: null });
+			.map((id) => current.find((m) => m.memberId === id) ?? joined(id, category));
+	}
+
+	/** 剛加進動作的人：任務角色照大類和全局角色先填。 */
+	function joined(memberId: string, category: ActionCategory): ActionMember {
+		return defaultRoles(flow, category, [{ memberId, role: null }])[0];
 	}
 
 	function fromAction(a: Action): Draft {
@@ -169,7 +235,7 @@
 	$effect(() => {
 		void selectedMemberIds;
 		if (action) return;
-		untrack(() => (draft.members = fromSelection(draft.members)));
+		untrack(() => (draft.members = fromSelection(draft.members, draft.category)));
 	});
 
 	// 新增時，開始和長度跟著播放頭。
@@ -204,8 +270,17 @@
 		});
 	}
 
+	/** 問句是改長度問的：畫在長度欄位旁邊。 */
+	let askAtLength = $state(false);
+
+	function lengthChanged() {
+		changed();
+		askAtLength = !!ask.question;
+	}
+
 	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
 	function changed() {
+		askAtLength = false;
 		if (!action) return;
 		const id = action.id;
 		const input = toInput();
@@ -216,6 +291,7 @@
 	}
 
 	function remove() {
+		askAtLength = false;
 		if (!action) return;
 		const id = action.id;
 		ask.send((o: ConfirmOption = {}) => deleteAction(flow, id, o), { done: () => session.selectAction(null) });
@@ -236,7 +312,7 @@
 
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
-		draft.members.push({ memberId: select.value, role: null });
+		draft.members.push(joined(select.value, draft.category));
 		select.value = '';
 		membersChanged();
 	}
@@ -255,6 +331,13 @@
 		membersChanged();
 	}
 
+	/** 換大類；新增時任務角色還是舊大類預設值的人跟著換。 */
+	function setCategory(category: ActionCategory) {
+		if (!action) draft.members = defaultRoles(flow, category, draft.members, draft.category);
+		draft.category = category;
+		changed();
+	}
+
 	function setColor(color: string | undefined) {
 		draft.color = color;
 		changed();
@@ -264,12 +347,21 @@
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
 
+<svelte:window onpointerdown={legendOutside} onkeydowncapture={legendKeys} />
+
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
 	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
 {/if}
 
-<section class="action-form" class:creating={!action} style:--cat={actionColor(draft)}>
+<!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<section
+	class="action-form"
+	class:creating={!action}
+	style:--cat={actionColor(draft)}
+	onkeydown={(e) => !action && e.key === 'Escape' && e.stopPropagation()}
+>
 	<header>
 		<span class="dot"></span>
 		<input
@@ -295,10 +387,7 @@
 				<span class="cap">大類</span>
 				<select
 					value={draft.category}
-					onchange={(e) => {
-						draft.category = e.currentTarget.value as ActionCategory;
-						changed();
-					}}
+					onchange={(e) => setCategory(e.currentTarget.value as ActionCategory)}
 				>
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
@@ -333,9 +422,15 @@
 			</div>
 			<div class="field">
 				<span class="cap" aria-hidden="true">長度</span>
-				<input aria-label="長度" bind:value={draft.lengthText} onchange={changed} />
+				<input aria-label="長度" bind:value={draft.lengthText} onchange={lengthChanged} />
 				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
 			</div>
+			<!-- 改長度要確認（會切到拍點）：問句就在長度下面，不用捲到表單最底下找。 -->
+			{#if askAtLength && ask.question}
+				<div class="wide" {@attach reveal(ask.failures)}>
+					<ConfirmList {ask} />
+				</div>
+			{/if}
 		</div>
 
 		<div class="people">
@@ -348,10 +443,22 @@
 						aria-label="顏色和快捷鍵說明"
 						aria-describedby="people-legend"
 						aria-expanded={legendOpen}
+						bind:this={bangEl}
 						onclick={() => (legendOpen = !legendOpen)}
-						onfocusout={() => (legendOpen = false)}>!</button
+						onpointerenter={(e) => e.pointerType === 'mouse' && (legendPeek = true)}
+						onpointerleave={() => (legendPeek = false)}
+						onfocus={(e) => e.currentTarget.matches(':focus-visible') && (legendPeek = true)}
+						onfocusout={closeLegend}>!</button
 					>
-					<span class="tip" id="people-legend" role="tooltip">
+					<span
+						class="tip"
+						id="people-legend"
+						role="tooltip"
+						hidden={!legendShown}
+						bind:this={tipEl}
+						style:top="{tipPos.top}px"
+						style:left="{tipPos.left}px"
+					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
 						<span>點任務角色選單後按鍵就選好，跳到下一個人：</span>
@@ -376,7 +483,7 @@
 								bind:this={rolePickers[i]}
 								label="{nameOf(m.memberId)} 的任務角色"
 								value={m.role}
-								names={roles.map((r) => r.name)}
+								{roles}
 								onpick={(role, byKey) => setRole(i, role, byKey)}
 								onnew={() => (glossaryOpen = true)}
 							/>
@@ -418,14 +525,21 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {cellAt} />
+			<CueGrid {action} {playheadSec} {cellAt} />
 		{:else}
-			<button type="button" class="primary add" onclick={add}>新增動作</button>
+			<button
+				type="button"
+				class="primary add"
+				disabled={!draft.members.length}
+				aria-describedby={draft.members.length ? undefined : 'add-why'}
+				onclick={add}>新增動作</button
+			>
+			{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 		{/if}
 	{/if}
 
 	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->
-	{#if ask.question}
+	{#if ask.question && !askAtLength}
 		<div {@attach reveal(ask.failures)}>
 			<ConfirmList {ask} />
 		</div>
@@ -685,7 +799,6 @@
 		margin-right: auto;
 	}
 	.legend {
-		position: relative;
 		margin-right: 8px;
 	}
 	.bang {
@@ -700,11 +813,14 @@
 		line-height: 1;
 	}
 	.tip {
-		display: none;
-		position: absolute;
-		right: 0;
-		top: calc(100% + 6px);
-		z-index: 10;
+		display: grid;
+		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、捲軸、顏色 */
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		border: 0;
+		overflow: visible;
+		color: inherit;
 		width: max-content;
 		max-width: min(320px, 80vw);
 		padding: 10px 12px;
@@ -714,10 +830,8 @@
 		font-size: 12px;
 		gap: 6px;
 	}
-	.legend:hover .tip,
-	.bang:focus-visible + .tip,
-	.bang[aria-expanded='true'] + .tip {
-		display: grid;
+	.tip[hidden] {
+		display: none;
 	}
 	.tip > span {
 		display: flex;
@@ -773,6 +887,11 @@
 		width: 100%;
 		padding: 8px 12px;
 		font-size: 14px;
+	}
+	.why {
+		margin-top: -6px;
+		font-size: 12px;
+		text-align: center;
 	}
 	/* 右邊欄夠寬時：大類、開始、長度排一列，辨識色在下一列；人分兩欄。少捲一點。 */
 	@container (min-width: 600px) {

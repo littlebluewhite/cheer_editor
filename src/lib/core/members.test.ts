@@ -5,6 +5,7 @@ import {
 	createFlow,
 	fieldGeometry,
 	memberMarkers,
+	moveMember,
 	setMarkers,
 	setPositions,
 	updateMember,
@@ -325,8 +326,51 @@ describe('標記', () => {
 		expect(memberMarkers(flow)).toEqual({ m1: '?', m2: '李' });
 	});
 
+	it('名字後面的數字整串當一個字：新人1 到新人10，新人10 寫「新10」，每個人都不同', () => {
+		const names = Array.from({ length: 10 }, (_, i) => `新人${i + 1}`);
+		const markers = memberMarkers(okFlow(setMarkers(people(...names), 'initial')));
+		expect(markers.m1).toBe('新1');
+		expect(markers.m10).toBe('新10');
+		expect(new Set(Object.values(markers)).size).toBe(10);
+	});
+
 	it('可以改回號碼', () => {
 		const flow = okFlow(setMarkers(okFlow(setMarkers(people('王小明'), 'initial')), 'number'));
 		expect(memberMarkers(flow)).toEqual({ m1: '1' });
+	});
+});
+
+describe('隊員排順序', () => {
+	const people = (...names: string[]) =>
+		okFlow(addMembers(newFlow(), names.map((name) => ({ ...xiaoA, name }))));
+
+	it('把一個人移到名單上第幾個：其他人依序補上，號碼跟著變，id 不變', () => {
+		const flow = okFlow(moveMember(people('小A', '小B', '小C'), 'm3', 0));
+		expect(flow.members.map((m) => m.name)).toEqual(['小C', '小A', '小B']);
+		expect(memberMarkers(flow)).toEqual({ m3: '1', m1: '2', m2: '3' });
+	});
+
+	it('往下移一個：跟下面那個人換位置', () => {
+		const flow = okFlow(moveMember(people('小A', '小B', '小C'), 'm1', 1));
+		expect(flow.members.map((m) => m.name)).toEqual(['小B', '小A', '小C']);
+	});
+
+	it('站位、動作不動（都記 id）', () => {
+		const before = people('小A', '小B');
+		const after = okFlow(moveMember(before, 'm2', 0));
+		expect(after.formations).toBe(before.formations);
+		expect(after.actions).toBe(before.actions);
+	});
+
+	it('已經在第一個、最後一個就擋下；找不到人也擋下', () => {
+		const flow = people('小A', '小B');
+		expect(moveMember(flow, 'm1', -1)).toEqual({ kind: 'blocked', message: '已經是第一個了' });
+		expect(moveMember(flow, 'm2', 2)).toEqual({ kind: 'blocked', message: '已經是最後一個了' });
+		expect(moveMember(flow, 'm9', 0)).toEqual({ kind: 'blocked', message: '找不到這個隊員' });
+	});
+
+	it('移到原本的位置：流程不變（不算一步）', () => {
+		const flow = people('小A', '小B');
+		expect(moveMember(flow, 'm1', 0)).toEqual({ kind: 'ok', flow });
 	});
 });

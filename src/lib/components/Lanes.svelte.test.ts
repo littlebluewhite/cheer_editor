@@ -372,6 +372,23 @@ describe('走位條', () => {
 		expect(walkBar(0).dataset.actionId).toBeUndefined();
 	});
 
+	it('撞位：兩個人的走位條在撞到的那段標紫色；沒撞的人沒有', () => {
+		// 小A [0, 0]、小B [2, 0] 在 1.6–4.8 秒換位置：2.6–3.8 秒兩人不到半格。
+		let flow = walking();
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
+		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
+		renderLanes(flow);
+		for (const i of [0, 1]) {
+			const marks = walkBar(i).querySelectorAll<HTMLElement>('[data-walk-clash]');
+			expect(marks).toHaveLength(1);
+			// 走位條從 1.6 秒開始；紫段從 2.6 秒畫到 3.8 秒（每秒 10 px）。
+			expect(parseFloat(marks[0].style.left)).toBeCloseTo(10, 6);
+			expect(parseFloat(marks[0].style.width)).toBeCloseTo(12, 6);
+		}
+		expect(lanes()[2].querySelector('[data-walk-clash]')).toBeNull();
+	});
+
 	it('走太快的走位條標紅', () => {
 		let flow = walking();
 		const f2 = flow.formations[1].id;
