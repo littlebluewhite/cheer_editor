@@ -357,6 +357,22 @@ describe('環節那一列', () => {
 	});
 });
 
+describe('疊在一起的拍點', () => {
+	it('給不同人的拍子疊在同一拍：拍子那條多開一軌，下面的步驟條往下移', () => {
+		const flow = sample();
+		const cues = [
+			{ kind: 'count' as const, at: 0, len: 4, word: 'down', who: null },
+			{ kind: 'count' as const, at: 2, len: 2, word: 'up', who: { member: 'm1' } }
+		];
+		renderGrid({ ...flow, actions: [{ ...flow.actions[0], cues }] });
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const row = (name: RegExp) => grid.getByRole('button', { name }).style.gridRow;
+		expect([row(/^拍子 down/), row(/^拍子 up/)]).toEqual(['3', '4']);
+		const step = document.querySelector<HTMLElement>('.row .lane-lbl.step')!;
+		expect(step.style.gridRow).toBe('5 / span 1');
+	});
+});
+
 describe('改環節', () => {
 	/** 3-3 到 3-4 上法「延伸」（紅色）、3-5 到 3-6 中段。 */
 	function phased() {
