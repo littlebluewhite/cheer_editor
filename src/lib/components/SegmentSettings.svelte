@@ -116,12 +116,24 @@
 		});
 	}
 
+	/** 有載入音樂時，第一拍要在音樂結束之前；不然擋下來（沒載入就不知道音樂多長，交給核心）。 */
+	const pastEnd = (sec: number) =>
+		audio && sec >= audio.durationSec ? `第一拍要在音樂結束（${audio.durationSec.toFixed(1)} 秒）之前` : null;
+
+	function setFirstBeat(sec: number) {
+		const problem = pastEnd(sec);
+		if (problem) return blocked(problem);
+		update({ firstBeatSec: sec });
+	}
+
 	function clickWave(e: MouseEvent) {
-		update({ firstBeatSec: waveXToSec(e) });
+		setFirstBeat(waveXToSec(e));
 	}
 
 	function fitToAudio() {
 		if (!music || !audio) return blocked('先載入音樂檔');
+		const problem = pastEnd(music.firstBeatSec);
+		if (problem) return blocked(problem);
 		update(
 			musicLengthFromAudio({
 				durationSec: audio.durationSec,
@@ -186,7 +198,7 @@
 							step="0.01"
 							min="0"
 							value={music.firstBeatSec}
-							onchange={(e) => update({ firstBeatSec: numberValue(e) })}
+							onchange={(e) => setFirstBeat(numberValue(e))}
 						/>
 					</label>
 					<button type="button" class="listen" onclick={() => onpreview(segmentId)}

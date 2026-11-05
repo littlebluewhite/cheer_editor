@@ -66,6 +66,31 @@ describe('音樂段設定', () => {
 		expect(lastSegment(session).halfBeats).toBe(150);
 	});
 
+	it('第一拍打在音樂結束之後：擋下來，說音樂只有幾秒', async () => {
+		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		const { session } = setup(flow, { a1: loaded(90) });
+		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '100' } });
+		expect(session.canUndo).toBe(false);
+		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（90.0 秒）之前');
+	});
+
+	it('點波形點到音樂結束之後：一樣擋下來', async () => {
+		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		const { session } = setup(flow, { a1: loaded(5) });
+		await fireEvent.click(screen.getByRole('img', { name: '波形' }), { clientX: 120 });
+		expect(session.canUndo).toBe(false);
+		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（5.0 秒）之前');
+	});
+
+	it('第一拍已經在音樂結束之後（換了短的檔）：照音樂長度算不給 0.5 秒，說原因', async () => {
+		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 40 }));
+		const { session } = setup(flow, { a1: loaded(30) });
+		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
+		expect(lastSegment(session).halfBeats).toBe(flow.segments[0].kind === 'music' ? flow.segments[0].halfBeats : -1);
+		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（30.0 秒）之前');
+	});
+
 	it('還沒載入音樂就按照音樂長度算，提醒先載入', async () => {
 		const { session } = setup(musicFlow());
 		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
