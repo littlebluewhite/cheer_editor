@@ -1,6 +1,6 @@
 // 頁面：首頁列出最近的流程（有草稿的那幾支，點了打開、丟掉先問），欄位裡打了字還沒送出時關分頁先問、顯示「未存」、也進草稿。
 // 草稿的規則（停手 1 秒存、存檔後清掉、兩個分頁…）在 src/lib/flow-file.test.ts。IndexedDB 換成記憶體裡的假草稿庫。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { createFlow, readFlowFile, writeFlowFile } from '#lib/core';
 import type { DraftStore } from '#lib/file/draft.js';
@@ -85,6 +85,23 @@ describe('首頁：最近的流程', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '丟掉' }));
 		await vi.waitFor(() => expect(screen.queryByRole('list', { name: '最近的流程' })).toBeNull());
 		expect(drafts.latest()).toBeNull();
+	});
+
+	it('「丟掉」的確認是對話框：焦點先在「取消」，Escape 等於取消，焦點回到「丟掉」', async () => {
+		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), {}));
+		setup(drafts.store);
+		await flush();
+		const drop = screen.getByRole('button', { name: '丟掉「練習用」' });
+		drop.focus();
+		await fireEvent.click(drop);
+		const dialog = screen.getByRole('dialog', { name: /丟掉「練習用」的草稿？/ });
+		expect(dialog.getAttribute('aria-modal')).toBe('true');
+		expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '取消' }));
+		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+		await flush();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(drafts.latest()).not.toBeNull();
+		expect(document.activeElement).toBe(drop);
 	});
 
 	it('開了流程檔沒改、重新整理：首頁的最近的流程裡有它，點了打開（不算未存）', async () => {
