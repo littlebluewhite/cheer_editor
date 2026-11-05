@@ -199,6 +199,16 @@ describe('加隊員', () => {
 			message: '隊員名字最多 20 個字'
 		});
 	});
+	it('開檔進來名字超過 20 個字的人：名字沒改，還是可以改性別和全局角色', () => {
+		const long = '一二三四五六七八九十一二三四五六七八九十一';
+		const added = okFlow(addMembers(newFlow(), [xiaoA]));
+		const flow = { ...added, members: added.members.map((m) => ({ ...m, name: long })) };
+		const id = flow.members[0].id;
+		expect(okFlow(updateMember(flow, id, { gender: 'M' })).members[0]).toMatchObject({ name: long, gender: 'M' });
+		expect(okFlow(updateMember(flow, id, { name: long, globalRole: 'base' })).members[0]).toMatchObject({
+			globalRole: 'base'
+		});
+	});
 });
 
 describe('貼上名單加隊員', () => {
@@ -244,6 +254,13 @@ describe('貼上名單加隊員', () => {
 		expect(r).toEqual({
 			kind: 'blocked',
 			message: `第 1 行「小A」：請選性別；請選全局角色\n第 2 行「${long}」：隊員名字最多 20 個字`
+		});
+	});
+
+	it('試算表三欄有空格：不偷用表單選的，列出要寫什麼', () => {
+		expect(addMemberLines(newFlow(), '小A\t\t', picked)).toEqual({
+			kind: 'blocked',
+			message: '性別要寫「男」或「女」；全局角色要寫「底層」或「上層」'
 		});
 	});
 

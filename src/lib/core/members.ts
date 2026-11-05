@@ -83,7 +83,7 @@ export function addMemberLines(
 ): CommandResult<AddMembersResult> {
 	const entries = text.split('\n').flatMap((line, i): Entry[] => {
 		if (!line.trim()) return [];
-		const cols = line.trim().split('\t').map((c) => c.trim());
+		const cols = line.split('\t').map((c) => c.trim());
 		const entry: Entry = { text: line, where: `第 ${i + 1} 行`, name: cols[0], input: null, problems: [] };
 		if (cols.length === 1) entry.input = { name: cols[0], ...defaults };
 		else if (cols.length !== 3) entry.problems.push('一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab 隔開）');
@@ -170,7 +170,8 @@ export function updateMember(
 	const member = flow.members.find((m) => m.id === id);
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
-	const problem = memberNameProblem(updated.name);
+	// 名字有改才檢查：開檔進來名字太長的人還是可以改性別和全局角色。
+	const problem = updated.name === member.name ? null : memberNameProblem(updated.name);
 	if (problem) return blocked(problem);
 	// 改名字當成可能換了人：先照「換人」走收尾，看會動到哪些紀錄（他在的組的、他自己的）。
 	const swapped = updated.name === member.name ? [] : flow.actions.map((a) => replaced(flow, a, id));
