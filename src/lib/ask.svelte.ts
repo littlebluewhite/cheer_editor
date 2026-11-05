@@ -5,6 +5,7 @@
 //   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到那一格成功送出為止。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
 // 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
+// 給了鎖（locked，例：檢視模式）：鎖著時指令不送，直接當被擋，原因是鎖給的那句。
 
 import type { CommandResult, ConfirmOption, Flow } from '#lib/core';
 
@@ -44,21 +45,30 @@ export class Ask {
 	readonly confirmLabel: string;
 	#onchange: (flow: Flow) => void;
 	#onfail: ((error: string) => void) | undefined;
+	#locked: (() => string) | undefined;
 	#pending: { send: (o: ConfirmOption) => CommandResult; handlers: Handlers<CommandResult> } | null = null;
 
-	/** onfail：沒成功（被擋、要問）之後呼叫，給 error（要問時是空的）。 */
+	/**
+	 * onfail：沒成功（被擋、要問）之後呼叫，給 error（要問時是空的）。
+	 * locked：鎖著的原因（空字串是沒鎖）；鎖著時送什麼都當被擋。
+	 */
 	constructor(
 		onchange: (flow: Flow) => void,
-		{ confirmLabel = '確定', onfail }: { confirmLabel?: string; onfail?: (error: string) => void } = {}
+		{
+			confirmLabel = '確定',
+			onfail,
+			locked
+		}: { confirmLabel?: string; onfail?: (error: string) => void; locked?: () => string } = {}
 	) {
 		this.#onchange = onchange;
 		this.#onfail = onfail;
+		this.#locked = locked;
 		this.confirmLabel = confirmLabel;
 	}
 
 	/** 送指令；回第一次送出的結果。 */
 	send<R extends CommandResult>(send: (o?: ConfirmOption) => R, handlers: Handlers<R> = {}): R {
-		const r = send({});
+		const r = this.#run(send, {});
 		this.#settle(r, send, handlers as Handlers<CommandResult>);
 		return r;
 	}
@@ -72,7 +82,13 @@ export class Ask {
 			pending.handlers.cancel?.();
 			return;
 		}
-		this.#settle(pending.send(OPTIONS[answer]), pending.send, pending.handlers);
+		this.#settle(this.#run(pending.send, OPTIONS[answer]), pending.send, pending.handlers);
+	}
+
+	/** 送一次：鎖著就不送，當被擋。 */
+	#run<R extends CommandResult>(send: (o: ConfirmOption) => R, o: ConfirmOption): R {
+		const locked = this.#locked?.();
+		return locked ? ({ kind: 'blocked', message: locked } as R) : send(o);
 	}
 
 	/** 教練改了一格：收掉那一格的紅字，別格的留著。
