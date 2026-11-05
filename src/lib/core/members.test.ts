@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+	addMemberLines,
 	addMembers,
 	createFlow,
 	fieldGeometry,
 	memberMarkers,
+	moveMember,
 	setMarkers,
 	setPositions,
 	updateMember,
+	type CommandResult,
 	type Flow,
 	type NewMemberInput
 } from './index';
@@ -17,7 +20,7 @@ function newFlow(): Flow {
 	return r.flow;
 }
 
-function okFlow(r: ReturnType<typeof addMembers>): Flow {
+function okFlow(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(r.message);
 	return r.flow;
 }
@@ -60,42 +63,62 @@ describe('加隊員', () => {
 		expect(new Set(flow.members.map((m) => m.id)).size).toBe(3);
 	});
 
-	it('新人出現在開頭站位，站在正面左邊、場地外那 1 m 裡', () => {
+	const C = 6 * 0.3048;
+
+	it('新人排進開頭那張站位最靠近場地中間的格點：一樣近時先正面、再左邊', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
+		// 9 條直放：左右 9 格、前後 7 格，中間四個格點離中心一樣近（各差半格）。
 		const [x, y] = flow.formations[0].pos[flow.members[0].id];
-		// 9 條直放：場地左邊 x = -8.23，正面 y = 6.40，外圍到 -9.23、7.40。
-		expect(x).toBeLessThan(-8.23);
-		expect(x).toBeGreaterThanOrEqual(-9.23);
-		expect(y).toBeGreaterThan(6.4);
-		expect(y).toBeLessThanOrEqual(7.4);
+		expect(x).toBeCloseTo(-C / 2, 6);
+		expect(y).toBeCloseTo(C / 2, 6);
 	});
 
-	it('一次加多人排成一排，從左往右每 1/2 格一個，圓點不會疊在一起', () => {
-		const flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA, xiaoA]));
+	it('一次加多人：一個一個排進下一個最近的空格點，不疊在一起', () => {
+		const flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA, xiaoA, xiaoA, xiaoA]));
 		const ps = flow.members.map((m) => flow.formations[0].pos[m.id]);
-		expect(ps.map((p) => p[1])).toEqual([ps[0][1], ps[0][1], ps[0][1]]);
-		expect(ps.map((p) => p[0])).toEqual([
-			expect.closeTo(-9.14, 2),
-			expect.closeTo(-8.23, 2),
-			expect.closeTo(-7.32, 2)
+		// 中間四個（半格、半格），再來是左右差一格半、前後差半格那一圈的正面左邊。
+		expect(ps.map(([x, y]) => [x / C, y / C].map((v) => Math.round(v * 2) / 2))).toEqual([
+			[-0.5, 0.5],
+			[0.5, 0.5],
+			[-0.5, -0.5],
+			[0.5, -0.5],
+			[-0.5, 1.5]
 		]);
 	});
 
-	it('之後再加的人排在還沒擺好的人右邊', () => {
-		let flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA]));
-		flow = okFlow(addMembers(flow, [xiaoA]));
+	it('格點附近（不到半格）已經有人：跳過那個格點', () => {
+		let flow = okFlow(addMembers(newFlow(), [xiaoA]));
+		// 把第一個人挪到右前那個格點旁邊 1/4 格
+		flow = okFlow(setPositions(flow, 'f1', { [flow.members[0].id]: [C / 2 + C / 4, C / 2] }));
+		flow = okFlow(addMembers(flow, [xiaoA, xiaoA]));
 		const pos = flow.formations[0].pos;
-		expect(pos[flow.members[2].id][0]).toBeCloseTo(-7.32, 2);
+		expect(pos[flow.members[1].id]).toEqual([expect.closeTo(-C / 2, 6), expect.closeTo(C / 2, 6)]);
+		expect(pos[flow.members[2].id]).toEqual([expect.closeTo(-C / 2, 6), expect.closeTo(-C / 2, 6)]);
 	});
 
-	it('橫放場地也是正面左邊場地外', () => {
-		const r = createFlow({ name: '臺灣盃', field: { strips: 5, layout: 'horizontal' } });
-		const flow = okFlow(addMembers(okFlow(r), [xiaoA]));
-		const [x, y] = flow.formations[0].pos[flow.members[0].id];
-		expect(x).toBeLessThan(-6.4);
-		expect(x).toBeGreaterThanOrEqual(-7.4);
-		expect(y).toBeGreaterThan(4.57);
-		expect(y).toBeLessThanOrEqual(5.57);
+	it('後面的站位沒有新人的位置：用開頭那張的同一個位置', () => {
+		const before = okFlow(addMembers(newFlow(), [xiaoA]));
+		const twoFormations = {
+			...before,
+			formations: [...before.formations, { ...before.formations[0], id: 'f2', at: 8, pos: { m1: [3, 3] as [number, number] } }]
+		};
+		const flow = okFlow(addMembers(twoFormations, [xiaoA]));
+		const id = flow.members[1].id;
+		expect(flow.formations[1].pos[id]).toEqual(flow.formations[0].pos[id]);
+		expect(flow.formations[1].pos.m1).toEqual([3, 3]);
+	});
+
+	it('格點都有人了才排場外：1 條直放只有 16 個格點，第 17 個人站在正面左邊的場地外', () => {
+		const field = { strips: 1, layout: 'vertical' } as const;
+		const flow = okFlow(addMembers(okFlow(createFlow({ name: '小場地', field })), Array(17).fill(xiaoA)));
+		const { mat } = fieldGeometry(field);
+		const ps = flow.members.map((m) => flow.formations[0].pos[m.id]);
+		const onMat = ([x, y]: number[]) =>
+			x >= mat.x - 1e-9 && x <= mat.x + mat.width + 1e-9 && y >= mat.y - 1e-9 && y <= mat.y + mat.height + 1e-9;
+		expect(ps.slice(0, 16).every(onMat)).toBe(true);
+		const [x, y] = ps[16];
+		expect(x).toBeLessThan(mat.x);
+		expect(y).toBeGreaterThan(mat.y + mat.height);
 	});
 
 	const fields = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].flatMap((strips) =>
@@ -107,37 +130,19 @@ describe('加隊員', () => {
 		const empty = okFlow(createFlow({ name: '測試', field }));
 		const atOnce = okFlow(addMembers(empty, forty));
 		const oneByOne = forty.reduce((f, m) => okFlow(addMembers(f, [m])), empty);
-		const { mat, outer } = fieldGeometry(field);
-		for (const flow of [atOnce, oneByOne]) {
-			const ps = Object.values(flow.formations[0].pos);
-			expect(ps).toHaveLength(40);
-			// 圓點半徑 0.3 m：兩人中心至少差 0.6 m 才不會疊到。
-			for (const [i, [x1, y1]] of ps.entries())
-				for (const [x2, y2] of ps.slice(i + 1)) expect(Math.hypot(x1 - x2, y1 - y2)).toBeGreaterThanOrEqual(0.6);
-			for (const [x, y] of ps) {
-				expect(x).toBeGreaterThanOrEqual(outer.x - 1e-9);
-				expect(x).toBeLessThanOrEqual(outer.x + outer.width + 1e-9);
-				expect(y).toBeGreaterThanOrEqual(outer.y - 1e-9);
-				expect(y).toBeLessThanOrEqual(outer.y + outer.height + 1e-9);
-				const onMat = x > mat.x && x < mat.x + mat.width && y > mat.y && y < mat.y + mat.height;
-				expect(onMat).toBe(false);
-			}
-			// 第一個人在正面左邊的場地外
-			const [x0, y0] = flow.formations[0].pos[flow.members[0].id];
-			expect(x0).toBeLessThan(mat.x);
-			expect(y0).toBeGreaterThan(mat.y + mat.height);
+		const { outer } = fieldGeometry(field);
+		expect(oneByOne.formations[0].pos).toEqual(atOnce.formations[0].pos);
+		const ps = Object.values(atOnce.formations[0].pos);
+		expect(ps).toHaveLength(40);
+		// 圓點半徑 0.3 m：兩人中心至少差 0.6 m 才不會疊到。
+		for (const [i, [x1, y1]] of ps.entries())
+			for (const [x2, y2] of ps.slice(i + 1)) expect(Math.hypot(x1 - x2, y1 - y2)).toBeGreaterThanOrEqual(0.6);
+		for (const [x, y] of ps) {
+			expect(x).toBeGreaterThanOrEqual(outer.x - 1e-9);
+			expect(x).toBeLessThanOrEqual(outer.x + outer.width + 1e-9);
+			expect(y).toBeGreaterThanOrEqual(outer.y - 1e-9);
+			expect(y).toBeLessThanOrEqual(outer.y + outer.height + 1e-9);
 		}
-	});
-
-	it('有人已經站在等待的位置上：新人跳過那裡，不疊上去', () => {
-		let flow = okFlow(addMembers(newFlow(), [xiaoA, xiaoA]));
-		const [first, second] = flow.members.map((m) => flow.formations[0].pos[m.id]);
-		// 把第一個人移走、第二個人留著；新人補第一個位置，再來的人跳過第二個位置
-		flow = okFlow(setPositions(flow, 'f1', { [flow.members[0].id]: [0, 0] }));
-		flow = okFlow(addMembers(flow, [xiaoA, xiaoA]));
-		const pos = flow.formations[0].pos;
-		expect(pos[flow.members[2].id]).toEqual(first);
-		expect(pos[flow.members[3].id]).not.toEqual(second);
 	});
 
 	it('改名字（候補上場）：同一個人、位置不變、名單順序不變', () => {
@@ -168,14 +173,94 @@ describe('加隊員', () => {
 		});
 	});
 
-	it('滿 40 人就不能再加', () => {
+	it('滿 40 人就不能再加；超過時寫還能加幾人', () => {
 		const forty = Array.from({ length: 40 }, (_, i) => ({ ...xiaoA, name: `隊員${i + 1}` }));
 		const full = okFlow(addMembers(newFlow(), forty));
 		expect(full.members).toHaveLength(40);
-		expect(addMembers(full, [xiaoA])).toEqual({ kind: 'blocked', message: '一支流程最多 40 人' });
+		expect(addMembers(full, [xiaoA])).toEqual({ kind: 'blocked', message: '一支流程最多 40 人，已經滿了' });
 
-		const thirtyNine = okFlow(addMembers(newFlow(), forty.slice(1)));
-		expect(addMembers(thirtyNine, [xiaoA, xiaoA]).kind).toBe('blocked');
+		const thirtyEight = okFlow(addMembers(newFlow(), forty.slice(2)));
+		expect(addMembers(thirtyEight, [xiaoA, xiaoA, xiaoA])).toEqual({
+			kind: 'blocked',
+			message: '一支流程最多 40 人，這次加 3 人，只能再加 2 人'
+		});
+	});
+
+	it('隊員名字最多 20 個字：加的時候和改的時候都擋', () => {
+		const twenty = '一二三四五六七八九十一二三四五六七八九十';
+		expect(addMembers(newFlow(), [{ ...xiaoA, name: twenty }]).kind).toBe('ok');
+		expect(addMembers(newFlow(), [{ ...xiaoA, name: twenty + '一' }])).toEqual({
+			kind: 'blocked',
+			message: '隊員名字最多 20 個字'
+		});
+		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
+		expect(updateMember(flow, flow.members[0].id, { name: twenty + '一' })).toEqual({
+			kind: 'blocked',
+			message: '隊員名字最多 20 個字'
+		});
+	});
+});
+
+describe('貼上名單加隊員', () => {
+	const picked = { gender: 'F', globalRole: 'top' } as const;
+	const none = { gender: null, globalRole: null };
+
+	it('一行一個名字：用表單選的性別和全局角色；空行跳過', () => {
+		const r = addMemberLines(newFlow(), '小A\n\n 小B \n', picked);
+		expect(r).toMatchObject({ kind: 'ok', errors: [], rejected: [] });
+		const flow = okFlow(r);
+		expect(flow.members).toMatchObject([
+			{ name: '小A', gender: 'F', globalRole: 'top' },
+			{ name: '小B', gender: 'F', globalRole: 'top' }
+		]);
+	});
+
+	it('從試算表貼「名字<Tab>性別<Tab>全局角色」：每一行用自己的性別和全局角色', () => {
+		const flow = okFlow(addMemberLines(newFlow(), '王小明\t男\t底層\n李美\t女\t上層', none));
+		expect(flow.members).toMatchObject([
+			{ name: '王小明', gender: 'M', globalRole: 'base' },
+			{ name: '李美', gender: 'F', globalRole: 'top' }
+		]);
+	});
+
+	it('認不得的行列進錯誤（寫第幾行），其他行照加；所有錯誤一次列出', () => {
+		const text = ['小A', '小B\t男生\t底層', '小C\t女\t中層', '小D\t女', '小E\t男\t上層'].join('\n');
+		const r = addMemberLines(newFlow(), text, picked);
+		expect(r).toMatchObject({
+			kind: 'ok',
+			errors: [
+				'第 2 行「小B」：性別要寫「男」或「女」',
+				'第 3 行「小C」：全局角色要寫「底層」或「上層」',
+				'第 4 行「小D」：一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab 隔開）'
+			],
+			rejected: ['小B\t男生\t底層', '小C\t女\t中層', '小D\t女']
+		});
+		expect(okFlow(r).members.map((m) => m.name)).toEqual(['小A', '小E']);
+	});
+
+	it('沒選性別、全局角色，名字太長：每一行的錯一次列出；一行都加不了就擋下', () => {
+		const long = '一二三四五六七八九十一二三四五六七八九十一';
+		const r = addMemberLines(newFlow(), `小A\n${long}\t男\t底層`, { gender: null, globalRole: null });
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: `第 1 行「小A」：請選性別；請選全局角色\n第 2 行「${long}」：隊員名字最多 20 個字`
+		});
+	});
+
+	it('只有一行：錯誤不寫第幾行', () => {
+		expect(addMemberLines(newFlow(), '小A', { gender: 'F', globalRole: null })).toEqual({
+			kind: 'blocked',
+			message: '請選全局角色'
+		});
+		expect(addMemberLines(newFlow(), '  \n', picked)).toEqual({ kind: 'blocked', message: '請填隊員名字' });
+	});
+
+	it('超過 40 人：一個都不加，寫還能加幾人，其他錯誤也一起列出', () => {
+		const full = okFlow(addMemberLines(newFlow(), Array.from({ length: 39 }, (_, i) => `隊員${i + 1}`).join('\n'), picked));
+		expect(addMemberLines(full, '小A\n小B\t男生\t底層', picked)).toEqual({
+			kind: 'blocked',
+			message: '第 2 行「小B」：性別要寫「男」或「女」\n一支流程最多 40 人，這次加 2 人，只能再加 1 人'
+		});
 	});
 });
 
@@ -241,8 +326,51 @@ describe('標記', () => {
 		expect(memberMarkers(flow)).toEqual({ m1: '?', m2: '李' });
 	});
 
+	it('名字後面的數字整串當一個字：新人1 到新人10，新人10 寫「新10」，每個人都不同', () => {
+		const names = Array.from({ length: 10 }, (_, i) => `新人${i + 1}`);
+		const markers = memberMarkers(okFlow(setMarkers(people(...names), 'initial')));
+		expect(markers.m1).toBe('新1');
+		expect(markers.m10).toBe('新10');
+		expect(new Set(Object.values(markers)).size).toBe(10);
+	});
+
 	it('可以改回號碼', () => {
 		const flow = okFlow(setMarkers(okFlow(setMarkers(people('王小明'), 'initial')), 'number'));
 		expect(memberMarkers(flow)).toEqual({ m1: '1' });
+	});
+});
+
+describe('隊員排順序', () => {
+	const people = (...names: string[]) =>
+		okFlow(addMembers(newFlow(), names.map((name) => ({ ...xiaoA, name }))));
+
+	it('把一個人移到名單上第幾個：其他人依序補上，號碼跟著變，id 不變', () => {
+		const flow = okFlow(moveMember(people('小A', '小B', '小C'), 'm3', 0));
+		expect(flow.members.map((m) => m.name)).toEqual(['小C', '小A', '小B']);
+		expect(memberMarkers(flow)).toEqual({ m3: '1', m1: '2', m2: '3' });
+	});
+
+	it('往下移一個：跟下面那個人換位置', () => {
+		const flow = okFlow(moveMember(people('小A', '小B', '小C'), 'm1', 1));
+		expect(flow.members.map((m) => m.name)).toEqual(['小B', '小A', '小C']);
+	});
+
+	it('站位、動作不動（都記 id）', () => {
+		const before = people('小A', '小B');
+		const after = okFlow(moveMember(before, 'm2', 0));
+		expect(after.formations).toBe(before.formations);
+		expect(after.actions).toBe(before.actions);
+	});
+
+	it('已經在第一個、最後一個就擋下；找不到人也擋下', () => {
+		const flow = people('小A', '小B');
+		expect(moveMember(flow, 'm1', -1)).toEqual({ kind: 'blocked', message: '已經是第一個了' });
+		expect(moveMember(flow, 'm2', 2)).toEqual({ kind: 'blocked', message: '已經是最後一個了' });
+		expect(moveMember(flow, 'm9', 0)).toEqual({ kind: 'blocked', message: '找不到這個隊員' });
+	});
+
+	it('移到原本的位置：流程不變（不算一步）', () => {
+		const flow = people('小A', '小B');
+		expect(moveMember(flow, 'm1', 0)).toEqual({ kind: 'ok', flow });
 	});
 });

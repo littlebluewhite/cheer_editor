@@ -214,21 +214,35 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
 		const r = readFlowFile(zipOf({ formatVersion: 9, flow: sample() }));
-		expect(r).toEqual({ kind: 'error', message: '這個流程檔是新版編輯器存的，請重新整理，更新編輯器' });
+		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
 	it.each([
-		['不是 zip', bytes(1, 2, 3)],
-		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') })],
-		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') })],
-		['沒有 formatVersion', zipOf({ flow: sample() })],
-		['沒有 flow', zipOf({ formatVersion: 1 })],
-		['flow 只有名字', zipOf({ formatVersion: 1, flow: { name: '壞掉的' } })],
-		['flow 的清單不是陣列', zipOf({ formatVersion: 1, flow: { ...sample(), audio: {} } })],
-		['清單裡有不是物件的東西', zipOf({ formatVersion: 1, flow: { ...sample(), segments: [null] } })],
-		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } })]
-	])('%s：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+		['不是 zip', bytes(1, 2, 3), '不是 zip 檔'],
+		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') }), 'zip 裡沒有 flow.json'],
+		['flow.json 在兩層資料夾裡', zipSync({ 'a/b/flow.json': strToU8('{}') }), 'zip 裡沒有 flow.json'],
+		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') }), 'flow.json 壞掉了'],
+		['沒有 formatVersion', zipOf({ flow: sample() }), 'flow.json 壞掉了'],
+		['沒有 flow', zipOf({ formatVersion: 1 }), 'flow.json 壞掉了'],
+		['flow 只有名字', zipOf({ formatVersion: 1, flow: { name: '壞掉的' } }), 'flow.json 壞掉了'],
+		['flow 的清單不是陣列', zipOf({ formatVersion: 1, flow: { ...sample(), audio: {} } }), 'flow.json 壞掉了'],
+		['清單裡有不是物件的東西', zipOf({ formatVersion: 1, flow: { ...sample(), segments: [null] } }), 'flow.json 壞掉了'],
+		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } }), 'flow.json 壞掉了']
+	])('%s：打不開，寫出原因', (_, file, message) => {
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message });
+	});
+
+	it('zip 裡多包一層資料夾（電腦重新壓縮過）：照樣打開，音樂也讀到', () => {
+		const flow = sample();
+		const inner = unzipSync(writeFlowFile(flow, { a1: bytes(7) }));
+		const wrapped = zipSync({
+			'練習用/': new Uint8Array(),
+			...Object.fromEntries(Object.entries(inner).map(([k, v]) => [`練習用/${k}`, v])),
+			'__MACOSX/練習用/._flow.json': bytes(0)
+		});
+		const r = readFlowFile(wrapped);
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		expect(r.kind === 'ok' && r.audio).toEqual({ a1: bytes(7) });
 	});
 
 	/** 一筆走位設定，段和時間可以換成壞的。 */
@@ -345,7 +359,7 @@ describe('流程檔：版本', () => {
 		['沒打開記成功率卻有組', brokenRate((f) => delete f.actions[0].successRate)],
 		['發到第幾號不是數字', brokenRate((f) => (f.lastIds = { p: 'x' }))]
 	])('欄位壞掉（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
 	});
 
 	it('第 1 版的檔：資料不用動，每張站位的位置都一樣', () => {
@@ -448,7 +462,7 @@ describe('流程檔：版本', () => {
 			f.actions[0].members[0].squad = 0;
 			for (const r of sr.records) if (r.who === 1) r.who = 0;
 		});
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
 	});
 
 	/** 第 7 版的檔（組是第幾組，見 numbered）改壞一個地方；sr 是 Lib 的成功率設定。 */
@@ -472,7 +486,7 @@ describe('流程檔：版本', () => {
 			for (const r of sr.records) r.who += 1;
 		})]
 	])('第 7 版的檔不守規則（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
 	});
 
 	it('第 7 版的檔：口號段的環節沒標拍，打得開', () => {
@@ -537,7 +551,7 @@ describe('流程檔：版本', () => {
 		['紀錄的誰是數字', v8((_, sr) => (sr.records[0].who = 1))],
 		['紀錄的誰指到沒有人的組 id', v8((_, sr) => (sr.records[0].who = 'g9'))]
 	])('第 8 版的檔組 id 壞掉（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: '這不是流程檔' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
@@ -574,7 +588,7 @@ describe('流程檔：版本', () => {
 	it('沒有升級步驟的舊版號：不是流程檔', () => {
 		expect(readFlowFile(zipOf({ formatVersion: 0, flow: v0Flow }))).toEqual({
 			kind: 'error',
-			message: '這不是流程檔'
+			message: 'flow.json 壞掉了'
 		});
 	});
 });

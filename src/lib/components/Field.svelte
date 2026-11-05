@@ -407,7 +407,7 @@
 		{#each g.seams as l, i (i)}
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
-		<path class="center" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35" />
+		<path class="center" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35"><title>場地正中心</title></path>
 		{#each g.strips as s (s.number)}
 			<text
 				class="num"
@@ -418,7 +418,7 @@
 		{/each}
 		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
-			<circle data-ghost={id} class="ghost" cx={p[0]} cy={p[1]} r="0.3" />
+			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r="0.3" />
 		{/each}
 		{#each walkLines as w (w.memberId)}
 			<line
@@ -496,7 +496,7 @@
 		align-items: flex-start;
 		gap: 8px;
 		min-height: 0;
-		overflow: hidden;
+		overflow-y: auto;
 	}
 	.rail > :global(*) {
 		max-width: 100%;
@@ -553,7 +553,7 @@
 		letter-spacing: 0.08px;
 	}
 	/* 影子和走位線：淡淡的，不擋點，也不吃滑鼠（點人、拖人、框選照舊）。 */
-	.ghost {
+	.ghost-dot {
 		fill: #fff;
 		fill-opacity: 0.22;
 		stroke: #fff;
