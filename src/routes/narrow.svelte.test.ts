@@ -55,4 +55,25 @@ describe('窄螢幕：擋住編輯畫面的提示', () => {
 		await flush();
 		expect(screen.getByRole('alertdialog').textContent).toContain('全國賽');
 	});
+
+	it('有未存的修改按「回首頁」：跟「新建」一樣先問；取消就留著，「不存了，繼續」才回首頁', async () => {
+		setup();
+		await flush();
+		await newFlow();
+		// 改一下：加一段口號（jsdom 不套媒體查詢，提示底下的編輯畫面點得到）
+		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(hint().getByRole('button', { name: '回首頁' }));
+		const dialog = within(screen.getByRole('dialog', { name: '「全國賽」還沒存，改的東西會不見。' }));
+		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+		expect(screen.getByText('全國賽')).toBeTruthy();
+
+		await fireEvent.click(hint().getByRole('button', { name: '回首頁' }));
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		await flush();
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+		// 丟掉了，首頁不問要不要救回
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+	});
 });

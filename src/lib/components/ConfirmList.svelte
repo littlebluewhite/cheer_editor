@@ -17,12 +17,15 @@
 				cancelLabel?: string;
 				/** 確定鈕前面多一個鈕（例：「先存檔」）。 */
 				extra?: { label: string; onclick: () => void };
+				/** 放在對話框裡：打開時焦點放在取消鈕，按 Enter 不會丟掉東西。 */
+				focusCancel?: boolean;
 			};
 
 	let props: Props = $props();
+	const id = $props.id();
 
 	const view = $derived.by(() => {
-		if (!props.ask) return { cancelLabel: '取消', ...props, onkeep: undefined };
+		if (!props.ask) return { cancelLabel: '取消', focusCancel: false, ...props, onkeep: undefined };
 		const ask = props.ask;
 		const q = ask.question;
 		return {
@@ -33,13 +36,14 @@
 			onkeep: q?.choose ? () => ask.answer('keep') : undefined,
 			oncancel: () => ask.answer('cancel'),
 			cancelLabel: '取消',
-			extra: undefined
+			extra: undefined,
+			focusCancel: false
 		};
 	});
 </script>
 
-<div class="confirm" role="alertdialog" aria-label={view.confirmLabel}>
-	<p>{view.message}</p>
+<div class="confirm" role="alertdialog" aria-labelledby="{id}-q">
+	<p id="{id}-q">{view.message}</p>
 	{#if view.items.length}
 		<ul>
 			{#each view.items as item (item)}<li>{item}</li>{/each}
@@ -49,7 +53,7 @@
 		{#if view.onkeep}<button type="button" onclick={view.onkeep}>保留舊紀錄</button>{/if}
 		{#if view.extra}<button type="button" class="primary" onclick={view.extra.onclick}>{view.extra.label}</button>{/if}
 		<button type="button" class="confirm-btn" onclick={view.onconfirm}>{view.confirmLabel}</button>
-		<button type="button" onclick={view.oncancel}>{view.cancelLabel}</button>
+		<button type="button" onclick={view.oncancel} data-autofocus={view.focusCancel || undefined}>{view.cancelLabel}</button>
 	</div>
 </div>
 

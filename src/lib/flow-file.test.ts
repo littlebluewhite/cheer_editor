@@ -268,6 +268,25 @@ describe('流程檔：沒存先問', () => {
 		expect(session.flow).toBeNull();
 	});
 
+	it('按「開啟」：有沒存的改動先問「要開別的流程檔」，丟掉了才選檔，選到的檔不再問；又改了流程就要再問', async () => {
+		const { editor, session } = testEditor(audioFlow());
+		session.change(flowOf(renameFlow(session.flow!, '全國賽')));
+		let chose = 0;
+		const choose = () => chose++;
+		expect(editor.file.mayChoose(choose)).toBe(false);
+		expect(editor.file.askingToOpen).toBe(true);
+		await editor.file.answer('discard');
+		expect(chose).toBe(1);
+		// 選檔欄位再按一次：這次照常選
+		expect(editor.file.mayChoose(choose)).toBe(true);
+		session.change(flowOf(renameFlow(session.flow!, '縣賽')));
+		expect(editor.file.mayChoose(choose)).toBe(false);
+		await editor.file.answer('discard');
+		await editor.file.open(zip(newFlow('另一支')));
+		expect(editor.file.asking).toBe(false);
+		expect(session.flow!.name).toBe('另一支');
+	});
+
 	it('「先存檔」：存好了才接著開檔', async () => {
 		const { editor, session, saves } = testEditor(audioFlow());
 		session.change(flowOf(renameFlow(session.flow!, '全國賽')));
@@ -568,21 +587,35 @@ describe('流程檔：「視窗太窄」提示上的「回首頁」', () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
-	it('有改動也不問：回到首頁，流程（含音樂）留在草稿裡，問要不要救回（寫現在的時間）；救回來還是那樣', async () => {
+	it('有改動：跟「新建」一樣先問；「取消」留著，「丟掉」才回首頁，草稿跟著丟掉、首頁不問要不要救回', async () => {
 		const { editor, session, drafts } = await connected();
 		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([7, 7]) }));
 		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(drafts.state.bytes).not.toBeNull();
+		await editor.file.leaveToHome();
+		expect(editor.file.asking).toBe(true);
+		expect(editor.file.askingToOpen).toBe(false);
+		await editor.file.answer('cancel');
+		expect(session.flow!.segments.map((s) => s.kind)).toEqual(['music', 'chant']);
+
+		await editor.file.leaveToHome();
+		await editor.file.answer('discard');
+		expect(session.flow).toBeNull();
+		expect(editor.file.draftOffer).toBeNull();
+		expect(drafts.state.bytes).toBeNull();
+	});
+
+	it('剛建好、沒改過的流程：不問，回到首頁，留在草稿裡問要不要救回（寫現在的時間）', async () => {
+		const { editor, session } = await connected();
+		editor.file.create(newFlow('全國賽'));
 		vi.setSystemTime(new Date(2026, 10, 5, 14, 3));
 		await editor.file.leaveToHome();
 		expect(editor.file.asking).toBe(false);
 		expect(session.flow).toBeNull();
-		expect(editor.file.draftOffer?.text).toBe('上次編的「練習用」還沒存，要救回嗎？（11/5 14:03 存的草稿）');
-		const r = read(drafts.state.bytes!);
-		expect(r.flow.segments.map((s) => s.kind)).toEqual(['music', 'chant']);
-		expect(r.audio).toEqual({ a1: new Uint8Array([7, 7]) });
+		expect(editor.file.draftOffer?.text).toBe('上次編的「全國賽」還沒存，要救回嗎？（11/5 14:03 存的草稿）');
 		await editor.file.restoreDraft();
-		expect(session.flow!.segments.map((s) => s.kind)).toEqual(['music', 'chant']);
-		expect(session.unsaved).toBe(true);
+		expect(session.flow!.name).toBe('全國賽');
 	});
 
 	it('剛開、沒改過的流程檔：直接回首頁，不問、不留草稿', async () => {
