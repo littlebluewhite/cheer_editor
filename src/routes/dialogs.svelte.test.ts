@@ -235,14 +235,16 @@ describe('被擋下的欄位', () => {
 });
 
 describe('流程設定看得到場地', () => {
-	it('一行唯讀的場地：幾條、直放或橫放', async () => {
+	it('寫現在的場地：幾條、直放或橫放；調整場地的欄位填好現在的值（#169）', async () => {
 		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
-		const row = within(dialog('流程設定')).getByText('場地').parentElement!;
-		expect(row.textContent).toContain('5 條橫放');
-		expect(row.querySelector('input, select, button')).toBeNull();
+		const settings = within(dialog('流程設定'));
+		expect(settings.getByText(/現在 5 條橫放/)).toBeTruthy();
+		expect((settings.getByLabelText('條數') as HTMLInputElement).value).toBe('5');
+		expect((settings.getByLabelText('橫放') as HTMLInputElement).checked).toBe(true);
+		expect((settings.getByRole('button', { name: '調整場地' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 });

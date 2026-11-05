@@ -112,3 +112,33 @@ describe('流程設定的自訂任務角色', () => {
 		expect(page.session.flow!.actions[0].members.find((m) => m.memberId === 'm2')!.role).toBeNull();
 	});
 });
+
+describe('調整場地（#169）', () => {
+	const strips = () => document.querySelectorAll('[data-strip-number]').length;
+
+	it('9 條直放改 5 條橫放：場地條數變了；關掉按 ⌘Z 回來', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		expect(strips()).toBe(9);
+		const dialog = await openSettings();
+		expect(dialog.textContent).not.toContain('建好之後不能換');
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '5' } });
+		await fireEvent.click(within(dialog).getByLabelText('橫放'));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
+		expect(page.session.flow!.field).toEqual({ strips: 5, layout: 'horizontal' });
+		expect(strips()).toBe(5);
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
+		expect(page.session.flow!.field).toEqual({ strips: 9, layout: 'vertical' });
+		expect(strips()).toBe(9);
+	});
+
+	it('條數不對：被擋、說原因', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '13' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
+		expect(within(dialog).getByRole('alert').textContent).toContain('條數要是 1–12 的整數');
+	});
+});
