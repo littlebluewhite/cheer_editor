@@ -25,6 +25,7 @@ import {
 	setTeamWalks,
 	setWalks,
 	updateSegment,
+	walkSpanAt,
 	type CommandResult,
 	type Flow,
 	type Walk
@@ -605,6 +606,41 @@ describe('現在的站位', () => {
 
 	it('還沒有段：開頭那張', () => {
 		expect(currentFormation(twoMembers(), 0)).toMatchObject({ formation: { id: 'f1' }, number: 1 });
+	});
+});
+
+describe('走位那一段', () => {
+	// walking()：f1 開頭 → f2 在 20 秒（音樂 1 第 100 個半拍）→ f3 在 30 秒（口號 1 第 44 個 0.1 秒）。
+	/** 播放頭在 sec 時是哪兩張之間的走位：[前一張, 走到的那張, 是不是停在走到的那張上]。 */
+	const span = (flow: Flow, sec: number) => {
+		const s = walkSpanAt(flow, sec);
+		return s && [s.from.id, s.to.id, s.on];
+	};
+
+	it('在一張站位上（那一拍裡都算）：前一張走到這一張', () => {
+		expect(span(walking(), 20)).toEqual(['f1', 'f2', true]);
+		expect(span(walking(), 20.1)).toEqual(['f1', 'f2', true]);
+		expect(span(walking(), 30)).toEqual(['f2', 'f3', true]);
+	});
+
+	it('在兩張中間：前後這兩張，不在站位上', () => {
+		expect(span(walking(), 10)).toEqual(['f1', 'f2', false]);
+		expect(span(walking(), 19.9)).toEqual(['f1', 'f2', false]);
+		expect(span(walking(), 25)).toEqual(['f2', 'f3', false]);
+	});
+
+	it('在開頭那張上：前面沒有走位', () => {
+		expect(span(walking(), 0)).toBeNull();
+		expect(span(walking(), 0.1)).toBeNull();
+	});
+
+	it('在最後一張之後：後面沒有走位', () => {
+		expect(span(walking(), 31)).toBeNull();
+		expect(span(walking(), 999)).toBeNull();
+	});
+
+	it('還沒有段：沒有走位', () => {
+		expect(span(twoMembers(), 0)).toBeNull();
 	});
 });
 

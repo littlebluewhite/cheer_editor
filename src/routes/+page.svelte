@@ -3,27 +3,24 @@
 		currentFormation,
 		deleteAction,
 		firstBeatPreview,
-		formationAt,
-		formationTimes,
 		clashes,
 		formationWalks,
 		memberMarkers,
 		playbackPlan,
 		playStartSec,
 		resumeSec,
-		NO_SQUAD_COLOR,
 		positionText,
 		positionsAt,
 		raisedAt,
 		missingAudioNames,
 		readFlowFile,
 		segmentsMissingAudio,
-		squadColor,
-		squadNumber,
+		squadBadge,
 		timeRuleWarnings,
 		stackedMembers,
 		stepPlayhead,
 		totalSeconds,
+		walkSpanAt,
 		writeFlowFile,
 		type ConfirmOption,
 		type Flow,
@@ -229,12 +226,7 @@
 	const groupingAction = $derived(session.groupingAction);
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
 	const squadBadges = $derived(
-		Object.fromEntries(
-			(groupingAction?.members ?? []).map((m) => {
-				const n = m.squad ? squadNumber(groupingAction!, m.squad) : 0;
-				return [m.memberId, n ? { text: String(n), color: squadColor(n) } : { text: '?', color: NO_SQUAD_COLOR }];
-			})
-		)
+		Object.fromEntries((groupingAction?.members ?? []).map((m) => [m.memberId, squadBadge(groupingAction!, m)]))
 	);
 	/** 主畫面：編排（場地、右邊欄、時間軸）或練習（記成功率）。練習時編排的東西藏起來（不拆掉，場地、時間軸的縮放還在）。 */
 	let view = $state<'edit' | 'practice'>('edit');
@@ -259,15 +251,12 @@
 	const trail = $derived.by(() => {
 		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
 		if (!flow) return none;
-		const on = formationAt(flow, playheadSec);
-		const i = on
-			? flow.formations.indexOf(on)
-			: formationTimes(flow).findIndex((t) => t.sec > playheadSec);
-		if (i <= 0) return none;
+		const span = walkSpanAt(flow, playheadSec);
+		if (!span) return none;
 		return {
-			ghosts: on ? flow.formations[i - 1].pos : none.ghosts,
-			walks: formationWalks(flow, flow.formations[i].id),
-			clashes: allClashes.filter((c) => c.formationId === flow!.formations[i].id)
+			ghosts: span.on ? span.from.pos : none.ghosts,
+			walks: formationWalks(flow, span.to.id),
+			clashes: allClashes.filter((c) => c.formationId === span.to.id)
 		};
 	});
 
