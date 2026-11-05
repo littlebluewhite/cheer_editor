@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填）都交給流程核心判斷。
+	// 隊員名單：加隊員、改隊員、刪隊員。名單順序 = 泳道順序。規則（40 人上限、必填、名字長度、貼上的行認不認得）都交給流程核心判斷。
 	// 刪隊員先顯示流程核心給的「要確認」說明，按確定才刪。
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -12,7 +12,7 @@
 		GENDERS,
 		GLOBAL_ROLES,
 		MAX_MEMBERS,
-		addMembers,
+		addMemberLines,
 		deleteMember,
 		duplicateNames,
 		memberMarkers,
@@ -39,13 +39,13 @@
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
-		const list = names.split('\n').filter((n) => n.trim());
-		const inputs = (list.length ? list : ['']).map((name) => ({
-			name,
-			gender: gender || null,
-			globalRole: globalRole || null
-		}));
-		ask.send(() => addMembers(flow, inputs), { done: () => (names = '') });
+		// 性別、全局角色加完不清掉：下一批常常一樣。有幾行沒加進去：輸入框留下那幾行，原因一次列出。
+		ask.send(() => addMemberLines(flow, names, { gender: gender || null, globalRole: globalRole || null }), {
+			done: (r) => {
+				names = r.rejected.join('\n');
+				ask.error = r.errors.join('\n');
+			}
+		});
 	}
 
 	function edit(id: string, changes: MemberChanges, input?: HTMLInputElement) {
@@ -116,7 +116,7 @@
 	<form class="add" novalidate onsubmit={add} oninput={() => (ask.error = '')} onchange={() => (ask.error = '')}>
 		<b class="add-title">加隊員</b>
 		<label class="names">
-			名字（一次加多人：一行一個）
+			名字（一次加多人：一行一個；從試算表貼「名字、性別、全局角色」三欄也可以）
 			<textarea rows="3" bind:value={names} placeholder="名字或暱稱"></textarea>
 		</label>
 		<div class="pair">
@@ -138,7 +138,11 @@
 		<button type="submit" class="primary">加隊員</button>
 	</form>
 
-	{#if ask.error}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
+	{#if ask.error}
+		<p class="error" role="alert" {@attach reveal(ask.failures)}>
+			{#each ask.error.split('\n') as line, i (i)}<span>{line}</span>{/each}
+		</p>
+	{/if}
 </section>
 
 <style>
@@ -237,6 +241,8 @@
 		padding: 7px 12px;
 	}
 	.error {
+		display: grid;
+		gap: 2px;
 		margin: 0;
 		padding: 8px 10px;
 		border-radius: 8px;
