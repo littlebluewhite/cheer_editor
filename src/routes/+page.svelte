@@ -12,7 +12,6 @@
 		positionText,
 		positionsAt,
 		raisedAt,
-		missingAudioNames,
 		readFlowFile,
 		squadBadge,
 		timeRuleWarnings,
@@ -29,9 +28,7 @@
 	} from '#lib/core';
 	import { createPlayer, type Player } from '#lib/audio/player.js';
 	import type { Draft } from '#lib/file/draft.js';
-	import { flowFileName, type FileSaver, type PickedFile } from '#lib/file/save.js';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
-	import type { MusicLibrary } from '#lib/music-library.svelte.js';
 	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
@@ -82,8 +79,8 @@
 	const editor = given ?? new Editor(browserAdapters());
 	setEditor(editor);
 	const { session } = editor;
-	// 開檔、存檔、草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
-	const { createEngine, createSaver, pickFlowFile, draftStore, pendingInput } = editor.adapters;
+	// 草稿、播放的規則還在頁面：用編輯器 module 收著的 adapter。
+	const { createEngine, draftStore, pendingInput } = editor.adapters;
 
 	/** 使用說明開在新分頁：編輯畫面留著，還沒存的修改不會因為看說明而不見。 */
 	const guideHref = resolve('/guide');
@@ -99,16 +96,8 @@
 	function onbeforeunload(e: BeforeUnloadEvent) {
 		if (editor.hasUnsavedWork) e.preventDefault();
 	}
-	/** 這支流程在檔案裡（從檔案開的、存過檔）：沒有未存的修改就不用草稿。剛建好、救回草稿的不在檔案裡。 */
-	// svelte-ignore state_referenced_locally
-	let onDisk = $state(!!session.flow);
 	/** 這個分頁的流程要不要放在草稿裡。 */
-	const ownsDraft = $derived(!!flow && (unsaved || !onDisk));
-	/** 存檔薄層，一支流程一個（記得存到哪個檔）：第一次存檔才建，換流程就丟掉。 */
-	let saver: FileSaver | null = null;
-	let saving = false;
-	/** 首頁開檔失敗的原因（編輯中失敗就放在上方列的 notice）。 */
-	let openError = $state('');
+	const ownsDraft = $derived(editor.file.ownsDraft);
 	/** 打開時找到的草稿，等教練選救回或丟掉。busy = 按了丟掉，但另一個分頁正在編輯它。 */
 	let draftOffer = $state.raw<{ bytes: Uint8Array; name: string; savedAt: Date | null; busy?: boolean } | null>(null);
 
@@ -181,7 +170,7 @@
 
 	async function restoreDraft(bytes: Uint8Array) {
 		draftOffer = null;
-		await openBytes(bytes, null);
+		await editor.file.openDraft(bytes);
 	}
 
 	async function discardDraft() {
@@ -199,11 +188,6 @@
 	function draftTime(d: Date): string {
 		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
-	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）；缺的音樂都補好了就自己收掉。 */
-	let missingNotice = '';
-	$effect(() => {
-		if (!editor.music.missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
-	});
 	/** 播放頭，全域秒數。 */
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
@@ -417,33 +401,21 @@
 	}
 
 
-	/**
-	 * 換成另一支流程（新建、開檔、救回草稿）：畫面回到流程開頭、對話框都關掉。
-	 * 選取、提示由 session 清掉。music：這支流程的音樂檔庫（開檔、救回草稿時解碼好的；沒給是空的）。
-	 */
-	function startFlow(
-		f: Flow,
-		from: 'file' | 'draft' | 'new',
-		music?: MusicLibrary,
-		fileSaver: FileSaver | null = null
-	) {
+	// 換流程（新建、開檔、救回草稿、回到新建流程）之前：停播放，畫面回到流程開頭、對話框都關掉。
+	// 換上流程、選取、提示由編輯器 module 的流程檔和 session 處理。
+	editor.file.onswitch = () => {
 		pause();
-		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
-		session.open(f, from !== 'draft');
-		onDisk = from === 'file';
-		pendingInput.settle();
 		opened++;
-		saver = fileSaver;
-		editor.switchMusic(music);
-		openError = '';
 		playheadSec = 0;
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
-		// 還沒有隊員的流程先開名單，有人了才開動作
-		editor.inspectorTab = f.members.length ? 'action' : 'members';
-		// 剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟
-		if (from === 'new' && draftChecked) draftStore.save(writeFlowFile(f, {})).catch(() => {});
+	};
+
+	/** 新建流程表單建好了：換上它。剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟。 */
+	function create(f: Flow) {
+		editor.file.create(f);
+		if (draftChecked) draftStore.save(writeFlowFile(f, {})).catch(() => {});
 	}
 
 	function undo() {
@@ -463,112 +435,23 @@
 		}
 	}
 
-	/** 存成「流程名.zip」：Chrome、Edge 第一次跳存檔對話框、之後存回同一個檔；iPad 開分享選單；其他瀏覽器下載新檔。 */
-	async function save() {
-		if (!flow || saving) return;
-		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
-		pendingInput.flush();
-		const f = flow;
-		saving = true;
-		saver ??= createSaver();
-		// 存的這支流程有幾段找不到音樂（存的時候手上的音樂）
-		const missing = editor.music.missingSegmentIds.length;
-		try {
-			const fileName = flowFileName(f.name);
-			const outcome = await saver.save(writeFlowFile(f, editor.music.bytes(f)), fileName);
-			if (outcome === 'cancelled') return;
-			session.markSaved(f);
-			onDisk = true;
-			session.notice = [
-				outcome === 'downloaded'
-					? `這個瀏覽器不能存回原檔，所以下載了一個新的「${fileName}」；用 Chrome 或 Edge 才能直接存回原檔。`
-					: '',
-				missing
-					? `存好了，但有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次`
-					: ''
-			]
-				.filter(Boolean)
-				.join('；');
-			if (missing) missingNotice = session.notice;
-		} catch {
-			session.notice = '存檔失敗，請再試一次';
-		} finally {
-			saving = false;
-		}
-	}
-
-	/** 開檔：選檔欄位（Safari、iPad、Firefox）。缺的音樂照開，那一段標紅。 */
-	async function open(e: Event) {
+	/** 開檔：選檔欄位（Safari、iPad、Firefox）。 */
+	function open(e: Event) {
 		const input = e.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
-		if (!file) return;
-		await openBytes(new Uint8Array(await file.arrayBuffer()), file.name);
+		if (file) void editor.file.open(file);
 	}
 
-	/** 開檔：Chrome、Edge 不跳選檔欄位，改用 showOpenFilePicker，拿到存回那個檔的存檔薄層。 */
-	async function pickOpen(e: Event) {
-		if (!pickFlowFile) return;
+	/** 開檔：Chrome、Edge 不跳選檔欄位，改用選檔視窗。 */
+	function pickOpen(e: Event) {
+		if (!editor.file.canPick) return;
 		e.preventDefault();
-		let picked: PickedFile | null;
-		try {
-			picked = await pickFlowFile();
-		} catch {
-			picked = null;
-		}
-		if (picked) await openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		void editor.file.pick();
 	}
-
-	/**
-	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
-	 * fileSaver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。
-	 */
-	async function openBytes(bytes: Uint8Array, fileName: string | null, fileSaver: FileSaver | null = null) {
-		const r = readFlowFile(bytes);
-		if (r.kind === 'error') {
-			const message = `打不開「${fileName}」：${r.message}`;
-			if (flow) session.notice = message;
-			else openError = message;
-			return;
-		}
-		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
-		const music = await editor.readMusic(r.audio);
-		unlessUnsaved(() => {
-			startFlow(r.flow, fileName === null ? 'draft' : 'file', music, fileSaver);
-			session.notice = r.missingSegmentIds.length
-				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
-				: music.hasBroken
-					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
-					: '';
-			if (r.missingSegmentIds.length) missingNotice = session.notice;
-		});
-	}
-
-	/** 等教練決定要不要丟掉還沒存的修改：確定就做 then。 */
-	let discardPending = $state.raw<{ then: () => void } | null>(null);
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
-	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || !!discardPending);
-
-	/** 「先存檔」：存好了（沒有未存的修改）才接著做；在存檔視窗按取消或存失敗，就留在問的畫面。 */
-	async function saveThenContinue() {
-		const then = discardPending?.then;
-		await save();
-		if (session.unsaved || !discardPending) return;
-		discardPending = null;
-		then?.();
-	}
-
-	/** 會換掉現在的流程（開檔、新建）：有還沒存的修改就先問，確定才做。 */
-	function unlessUnsaved(then: () => void) {
-		// 換掉的流程是這個分頁放在草稿裡的：草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
-		const go = () => {
-			if (ownsDraft) draftStore.clear().catch(() => {});
-			then();
-		};
-		if (unsaved) discardPending = { then: go };
-		else go();
-	}
+	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking);
 
 	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
 	async function leaveToHome() {
@@ -579,14 +462,6 @@
 		if (!f || !bytes) return;
 		await draftStore.save(bytes).catch(() => {});
 		draftOffer = { bytes, name: f.name, savedAt: new Date() };
-	}
-
-	/** 上方列「新建」：回到新建流程的畫面。 */
-	function startNew() {
-		unlessUnsaved(() => {
-			pause();
-			session.open(null);
-		});
 	}
 
 	// 改完要動播放頭的改動（拖人插站位、跟上一張一樣、挪站位）：session 說跳到哪，這裡跳。
@@ -626,7 +501,7 @@
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			void save();
+			void editor.file.save();
 			return;
 		}
 		if (!flow) return;
@@ -822,8 +697,8 @@
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
 				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-				<button type="button" class="ghost" onclick={startNew}><Icon name="new" />新建</button>
-				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={save}><Icon name="save" />存檔</button>
+				<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 		</header>
 
@@ -1030,20 +905,16 @@
 	{#if printOpen}
 		<PrintSheet {flow} onclose={() => (printOpen = false)} />
 	{/if}
-	{#if discardPending}
+	{#if editor.file.asking}
 		<div class="backdrop discard">
 			<div class="discard-box">
 				<ConfirmList
 					message={`「${flow.name}」還沒存，改的東西會不見。`}
 					items={[]}
 					confirmLabel="不存了，繼續"
-					onconfirm={() => {
-						const then = discardPending?.then;
-						discardPending = null;
-						then?.();
-					}}
-					extra={{ label: '先存檔', onclick: saveThenContinue }}
-					oncancel={() => (discardPending = null)}
+					onconfirm={() => editor.file.answer('discard')}
+					extra={{ label: '先存檔', onclick: () => editor.file.answer('save') }}
+					oncancel={() => editor.file.answer('cancel')}
 				/>
 			</div>
 		</div>
@@ -1083,12 +954,12 @@
 					</div>
 				</div>
 			{:else}
-				<NewFlowForm oncreate={(f) => startFlow(f, 'new')} />
+				<NewFlowForm oncreate={create} />
 				<div class="home-open">
 					<span>已經有流程檔？</span>
 					<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 				</div>
-				{#if openError}<p class="error" role="alert">{openError}</p>{/if}
+				{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
 			{/if}
 		</section>
 	</div>

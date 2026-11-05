@@ -57,11 +57,16 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt = new 
 /** 假的解碼：每個音樂檔都是 30 秒、沒有波形。 */
 export const fakeDecode = async () => ({ durationSec: 30, peaks: [] });
 
-/** 假的沒送出的字：測試自己設 pending（欄位裡打了字還沒送出）；送出、當作已送出都是清掉。 */
-export function fakePendingInput(): PendingInput & { pending: boolean } {
+/**
+ * 假的沒送出的字：測試自己設 pending（欄位裡打了字還沒送出）和 onflush（送出時欄位交給流程的改動）；
+ * 送出、當作已送出都是清掉。
+ */
+export function fakePendingInput(): PendingInput & { pending: boolean; onflush: () => void } {
 	return {
 		pending: false,
+		onflush: () => {},
 		flush() {
+			if (this.pending) this.onflush();
 			this.pending = false;
 		},
 		settle() {
