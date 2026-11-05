@@ -52,9 +52,11 @@ export {
 	MOTION_WORDS,
 	STEP_WORDS,
 	clearCues,
+	copyCues,
 	cueForMember,
 	cuesAt,
 	cueText,
+	pasteCues,
 	placeCue,
 	sameWho,
 	usedWords,
@@ -80,7 +82,7 @@ export {
 } from './records';
 export type { RemovedRunThrough, RunThroughMarks } from './records';
 
-export { PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
+export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';
 export { addPhase, clearPhaseBeats, deletePhase, markPhaseBeats, updatePhase } from './phases';
 export type { NewPhaseInput, PhaseChange } from './phases';
@@ -186,6 +188,7 @@ export {
 	readStart,
 	readTime,
 	rulerMarks,
+	spacedLabels,
 	segmentSpans,
 	snapToBeat,
 	stepPlayhead,

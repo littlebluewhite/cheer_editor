@@ -108,14 +108,30 @@ describe('新增動作', () => {
 		});
 	});
 
-	it('同一個隊員同一時間只能在一個動作裡，重疊就擋下', () => {
-		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 16 })));
+	it('同一個隊員同一時間只能在一個動作裡，重疊就擋下，說上一個動作在哪裡結束', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 17 })));
 		const jump = (start: number, memberId: string) =>
 			lib({ category: 'jump', name: '跳', start, length: 4, members: [{ memberId, role: null }] });
 		expect(addAction(flow, jump(14, 'm2'))).toEqual({
 			kind: 'blocked',
-			message: '小B 同一時間已經在「技巧·Lib」裡'
+			message: '小B 同一時間已經在「技巧·Lib」裡：上一個動作在 2-1& 才結束'
 		});
+		expect(addAction(flow, jump(18, 'm2')).kind).toBe('ok');
+		const chant = flowOf(addAction(sample(), lib({ segmentId: 's2', start: 10, length: 25 })));
+		expect(addAction(chant, lib({ segmentId: 's2', start: 0, length: 12, members: [{ memberId: 'm1', role: null }] }))).toEqual({
+			kind: 'blocked',
+			message: '小A 同一時間已經在「技巧·Lib」裡：下一個動作從 1.0 秒就開始'
+		});
+		expect(addAction(chant, lib({ segmentId: 's2', start: 30, length: 10, members: [{ memberId: 'm1', role: null }] }))).toEqual({
+			kind: 'blocked',
+			message: '小A 同一時間已經在「技巧·Lib」裡：上一個動作在 3.5 秒才結束'
+		});
+	});
+
+	it('接在後面、或別人同一時間做別的動作，都可以', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 16 })));
+		const jump = (start: number, memberId: string) =>
+			lib({ category: 'jump', name: '跳', start, length: 4, members: [{ memberId, role: null }] });
 		// 接在後面、或別人同一時間做別的動作，都可以
 		expect(addAction(flow, jump(16, 'm2')).kind).toBe('ok');
 		expect(addAction(flow, jump(14, 'm3')).kind).toBe('ok');
@@ -135,7 +151,7 @@ describe('新增動作', () => {
 		});
 		expect(addAction(flow, everyone)).toEqual({
 			kind: 'blocked',
-			message: '小A、小B 同一時間已經在「技巧·Lib」裡；小C 同一時間已經在「跳躍·跳」裡'
+			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束；小C 同一時間已經在「跳躍·跳」裡：下一個動作從 1-5 就開始'
 		});
 	});
 
@@ -289,7 +305,7 @@ describe('改動作、刪動作', () => {
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 8, length: 8 })));
 		expect(updateAction(flow, 'x2', { start: 6 })).toEqual({
 			kind: 'blocked',
-			message: '小A、小B 同一時間已經在「技巧·Lib」裡'
+			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束'
 		});
 		const moved = flowOf(updateAction(flow, 'x2', { start: 10, note: '慢一點' }));
 		expect(moved.actions[1]).toMatchObject({ id: 'x2', start: 10, length: 8, note: '慢一點' });
@@ -350,7 +366,7 @@ describe('拖色條：移動、改長度', () => {
 		});
 		expect(moveAction(flow, 'x1', 2.2)).toEqual({
 			kind: 'blocked',
-			message: '小A、小B 同一時間已經在「技巧·Ext」裡'
+			message: '小A、小B 同一時間已經在「技巧·Ext」裡：下一個動作從 2-1 就開始'
 		});
 	});
 

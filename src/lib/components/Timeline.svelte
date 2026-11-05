@@ -3,15 +3,18 @@
 	// 八拍尺（點或拖＝移動播放頭，先停站位再停整拍；點八拍數字停在那個八拍的 1）、
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
 	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準），
-	// 「符合寬度」讓整支流程剛好放滿現在的寬度。
+	// 「符合寬度」讓整支流程剛好放滿現在的寬度（連最後一張站位的縮圖），換視窗大小也維持放滿，直到自己按「＋」「−」。
+	// 流程比畫面短時，開檔、加段後自動放滿（比畫面長時維持 ×1，不自動縮小）。
 	// 播放頭跑出看得到的範圍時（播放中），自動捲過去。
 	// 流程從 session 拿；站位縮圖列、泳道也自己從 session 拿選取、送改動，時間軸不轉手。
 	import { tick, untrack } from 'svelte';
 	import {
 		addSegment,
+		formationTimes,
 		rulerMarks,
 		segmentSpans,
 		snapPlayhead,
+		spacedLabels,
 		totalSeconds,
 		type Clash,
 		type SegmentKind
@@ -19,7 +22,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { below, popover } from '#lib/popover.svelte.js';
-	import FormationRow from './FormationRow.svelte';
+	import FormationRow, { THUMB_W } from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
 	import { followPointer } from './pointer';
@@ -59,16 +62,47 @@
 
 	/** 加段選單開著：after 是要加在哪一段後面（null：加在最後）；anchor 是打開它的「＋」。 */
 	let menu = $state<{ after: string | null; anchor: HTMLElement } | null>(null);
-	/** 倍數：通常是 ZOOMS 其中一個；「符合寬度」時是剛好放滿的倍數。 */
-	let zoom = $state(1);
-	let fitted = $state(false);
+	/** 自己按「＋」「−」選的倍數（ZOOMS 其中一個）。 */
+	let picked = $state(1);
+	/**
+	 * 放滿：auto = 開檔、加段後自動（流程比畫面長時用 ×1），fit = 按了「符合寬度」（再長也縮到放滿），
+	 * null = 用自己選的倍數。
+	 */
+	let fill = $state<'auto' | 'fit' | null>('auto');
+	/** 時間軸看得到的寬（px）：畫出來時量，換視窗大小、拖分界時重量。 */
+	let viewW = $state(0);
 	let wheelAcc = 0;
 	let scroller: HTMLDivElement;
+	/** 最後一張站位的時間（秒）：它的縮圖往右多佔 THUMB_W。 */
+	const lastFormationSec = $derived(Math.max(0, ...formationTimes(flow).map((t) => t.sec)));
+	/** 剛好放滿看得到的寬的倍數；量不到寬、沒有段時是 0。 */
+	const fitZoom = $derived.by(() => {
+		const total = totalSeconds(flow);
+		const room = viewW - LABEL_W;
+		if (!(total > 0) || room <= 0) return 0;
+		const byEnd = (room - FIT_TAIL_PX) / (total * pxPerSec);
+		const byThumb = lastFormationSec > 0 ? (room - THUMB_W) / (lastFormationSec * pxPerSec) : Infinity;
+		return Math.max(0, Math.min(byEnd, byThumb));
+	});
+	/** 倍數：通常是自己選的；放滿時是剛好放滿的倍數。 */
+	const zoom = $derived(
+		fill && fitZoom > 0 ? (fill === 'fit' ? fitZoom : Math.max(1, fitZoom)) : picked
+	);
+	/** 現在剛好放滿（流程比畫面長、自動時用 ×1 的不算）：後面只留一點點空白。 */
+	const fitted = $derived(!!fill && fitZoom > 0 && (fill === 'fit' || fitZoom >= 1));
 	/** 正在八拍尺上拖：這時不自動捲（一捲尺就跟著跑，滑鼠換算的秒數會亂跳）。 */
 	let scrubbing = false;
 	const px = $derived(pxPerSec * zoom);
 	const spans = $derived(segmentSpans(flow));
-	const marks = $derived(rulerMarks(flow));
+	const allMarks = $derived(rulerMarks(flow));
+	/** 刻度字太密時跳著寫，段交界不疊在一起（spacedLabels）。 */
+	const marks = $derived(spacedLabels(allMarks, px));
+	/** 時間軸捲到哪裡（px）：段名跟著移到看得到的左邊。 */
+	let scrollX = $state(0);
+	/** 段名往右移時，段的右邊至少留這麼寬給段名（px）。 */
+	const NAME_ROOM = 100;
+	/** 段名要往右移多少（px），才在看得到的地方：最多移到段尾前 NAME_ROOM。 */
+	const nameShift = (left: number, w: number) => Math.min(Math.max(0, scrollX - left), Math.max(0, w - NAME_ROOM));
 	const width = $derived(totalSeconds(flow) * px);
 
 	/** 放大縮小一格；anchor 是不動的那一點，離時間軸左緣幾 px（含名字欄）。 */
@@ -76,21 +110,33 @@
 		const next = step > 0 ? ZOOMS.find((z) => z > zoom + 1e-9) : ZOOMS.findLast((z) => z < zoom - 1e-9);
 		if (next === undefined) return;
 		const sec = (scroller.scrollLeft + anchor - LABEL_W) / px;
-		zoom = next;
-		fitted = false;
+		picked = next;
+		fill = null;
 		await tick();
 		scroller.scrollLeft = Math.max(0, LABEL_W + sec * px - anchor);
 	}
 
 	/** 符合寬度：整支流程剛好放滿看得到的寬度（很短、很長的流程可以超出「＋」「−」的最大、最小倍數）。 */
 	function fitWidth() {
-		const total = totalSeconds(flow);
-		const fit = (scroller.clientWidth - LABEL_W - FIT_TAIL_PX) / (total * pxPerSec);
-		if (!(fit > 0)) return;
-		zoom = fit;
-		fitted = true;
+		viewW = scroller.clientWidth;
+		fill = 'fit';
 		scroller.scrollLeft = 0;
 	}
+
+	/** 量看得到的寬：畫出來時量一次，之後跟著 ResizeObserver（jsdom 沒有，測試裡自己給）。 */
+	function measure(el: HTMLElement) {
+		viewW = el.clientWidth;
+		if (typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(() => (viewW = el.clientWidth));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}
+
+	// 換流程（換一個音樂檔庫）：回到自動放滿。
+	$effect(() => {
+		void editor.music;
+		untrack(() => (fill = 'auto'));
+	});
 
 	/** 按鈕：播放頭在畫面上就讓它不動，不在就以看得到的範圍中間為準。 */
 	function zoomButton(step: number) {
@@ -149,7 +195,12 @@
 	function add(kind: SegmentKind) {
 		const after = menu?.after ?? undefined;
 		menu = null;
-		session.ask.send(() => addSegment(flow, kind, after), { done: (r) => onopensegment(r.id) });
+		session.ask.send(() => addSegment(flow, kind, after), {
+			done: (r) => {
+				if (fill !== 'fit') fill = 'auto';
+				onopensegment(r.id);
+			}
+		});
 	}
 
 	function startSeek(e: PointerEvent) {
@@ -187,8 +238,11 @@
 	});
 </script>
 
-<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel} {@attach pinchZoom}>
-	<div class="inner" style:width={`${width + LABEL_W + (fitted ? FIT_TAIL_PX : TAIL_PX)}px`}>
+<div class="timeline" bind:this={scroller} style:--lab-w={`${LABEL_W}px`} {onwheel} {@attach pinchZoom} {@attach measure} onscroll={() => (scrollX = scroller.scrollLeft)}>
+	<div
+		class="inner"
+		style:width={`${LABEL_W + (fitted ? Math.max(width + FIT_TAIL_PX, lastFormationSec * px + THUMB_W) : width + TAIL_PX)}px`}
+	>
 		<div class="row segs">
 			<div class="lab">
 				<span>段</span>
@@ -203,6 +257,7 @@
 			<div class="trk" style:width={`${width}px`}>
 				{#each spans as span (span.segment.id)}
 					{@const missing = editor.music.missingSegmentIds.includes(span.segment.id)}
+					{@const segW = Math.max(span.durationSec * px - 2, SEG_MIN_W)}
 					{@const meta =
 						span.segment.kind === 'music' ? `${span.segment.bpm} BPM` : `${span.durationSec.toFixed(1)} 秒`}
 					<button
@@ -211,7 +266,8 @@
 						class:missing
 						class:short={span.durationSec * px - 2 < SEG_MIN_W}
 						style:left={`${span.startSec * px}px`}
-						style:width={`${Math.max(span.durationSec * px - 2, SEG_MIN_W)}px`}
+						style:width={`${segW}px`}
+						style:padding-left={`${8 + nameShift(span.startSec * px, segW)}px`}
 						title="{span.label}　{meta}{missing ? '　找不到音樂' : ''}：點一下設定"
 						onclick={() => onopensegment(span.segment.id)}
 					>
@@ -245,7 +301,7 @@
 						disabled={zoom <= ZOOMS[0] + 1e-9}
 						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
 					>
-					<span class="zoom-val">×{Number(zoom.toFixed(2))}</span>
+					<span class="zoom-val">×{zoom.toFixed(1)}</span>
 					<button
 						type="button"
 						class="ghost"

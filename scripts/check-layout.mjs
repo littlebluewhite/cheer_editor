@@ -968,5 +968,77 @@ await check('記錄頁：點第一個環節前後「存這一次」不動；存�
 	};
 });
 
+// ---------- 時間軸：自動符合寬度、刻度不擠、站位小圖（#152） ----------
+
+/** 時間軸看得到的寬、捲得到的寬、流程（八拍尺）多寬、最後一張縮圖的右緣（從時間軸左緣算）。 */
+const timelineFill = () =>
+	js(`const t = document.querySelector('.timeline'); const tr = t.getBoundingClientRect();
+		const ths = [...t.querySelectorAll('.film .th')].map((e) => e.getBoundingClientRect().right - tr.left);
+		return { 看得到: t.clientWidth, 捲得到: t.scrollWidth, 流程: Math.round(t.querySelector('.ruler').getBoundingClientRect().width),
+			最後縮圖右緣: Math.round(Math.max(...ths)), 倍數: t.querySelector('.zoom-val').textContent };`);
+
+await check('1920×1080 開範例流程（不按「符合寬度」）：流程放滿時間軸，最後一張縮圖也在畫面裡，沒有橫向捲軸', async () => {
+	await setViewport(1920, 1080);
+	await openSample();
+	const m = await timelineFill();
+	return { ok: m.捲得到 <= m.看得到 && m.流程 >= (m.看得到 - 148) * 0.9 && m.最後縮圖右緣 <= m.看得到, value: m };
+});
+
+await check('1920 開範例流程後縮成 1280 寬：還是放滿，沒有橫向捲軸', async () => {
+	await setViewport(1280, 900);
+	await sleep(300);
+	const m = await timelineFill();
+	return { ok: m.捲得到 <= m.看得到 && m.流程 >= (m.看得到 - 148) * 0.9, value: m };
+});
+
+/** 八拍尺上看得到的刻度字，有沒有兩個疊在一起。 */
+const rulerOverlaps = () =>
+	js(`const spans = [...document.querySelectorAll('.timeline .ruler .tk span')].map((s) => {
+			const r = s.getBoundingClientRect(); return { t: s.textContent, l: r.left, r: r.right }; });
+		const bad = [];
+		for (let i = 1; i < spans.length; i++) if (spans[i].l < spans[i - 1].r - 0.5) bad.push(spans[i - 1].t + '|' + spans[i].t);
+		return { 字: spans.length, 疊到的: bad.slice(0, 8) };`);
+
+await check('時間軸縮到最小：八拍號碼不疊在一起；音樂段最後一個八拍只有 1 拍、後面接口號段，段交界也不疊', async () => {
+	await setViewport(1440, 900);
+	// 音樂 1：16 個八拍、最後一個八拍 1 拍，後面接口號段（「0 秒」緊貼在前一段最後的號碼旁邊）
+	await openPracticeFlow(`flow = core.updateSegment(flow, 's1', { eights: 16, lastBeats: 1 }).flow;
+		flow = core.addSegment(flow, 'chant').flow;`);
+	const seen = {};
+	seen.原本 = await rulerOverlaps();
+	for (let i = 0; i < 12; i++) await js(`document.querySelector('.timeline [aria-label="時間軸縮小"]').click()`);
+	await sleep(200);
+	seen.最小 = await rulerOverlaps();
+	seen.倍數 = await js(`return document.querySelector('.timeline .zoom-val').textContent`);
+	const ok = Object.values(seen).every((v) => typeof v === 'string' || (v.字 > 0 && v.疊到的.length === 0));
+	return { ok, value: seen };
+});
+
+await check('兩張站位只差 2 拍：沒選到、滑鼠沒移上去時 ✕ 不蓋在縮圖上（放滿和 ×1 都是）', async () => {
+	await setViewport(1440, 900);
+	// libSample 150 BPM：2 拍 0.8 秒
+	await openPracticeFlow(`flow = core.insertFormation(flow, 4.8).flow; flow = core.insertFormation(flow, 5.6).flow;`);
+	await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+	const covered = () =>
+		js(`return [...document.querySelectorAll('.film .th')].flatMap((th, i) => {
+			const r = th.getBoundingClientRect();
+			const pick = th.querySelector('.pick');
+			// 縮圖上的四個點：右上角（✕ 的地方）、中間、左下、右下
+			const pts = [[r.right - 6, r.top + 6], [r.left + r.width / 2, r.top + r.height / 2], [r.left + 4, r.bottom - 4], [r.right - 4, r.bottom - 4]];
+			return pts.some(([x, y]) => { const el = document.elementFromPoint(x, y); return !el || !pick.contains(el); })
+				? ['站位 ' + (i + 1) + '（寬 ' + Math.round(r.width) + '）'] : [];
+		});`);
+	const seen = { 放滿: await covered() };
+	await js(`const z = () => document.querySelector('.timeline .zoom-val').textContent;
+		for (let i = 0; i < 20 && z() !== '×1.0'; i++) {
+			document.querySelector('.timeline [aria-label="時間軸縮小"]').click();
+			await new Promise((r) => setTimeout(r, 50));
+		}`);
+	await sleep(200);
+	seen['×1'] = await covered();
+	seen.倍數 = await js(`return document.querySelector('.timeline .zoom-val').textContent`);
+	return { ok: seen.放滿.length === 0 && seen['×1'].length === 0 && seen.倍數 === '×1.0', value: seen };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

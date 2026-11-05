@@ -6,6 +6,7 @@
 	// 拉短會切到拍點時先不改，ask 問教練；按確定才改，按取消色條就留在原來的長度。
 	// 走位條：每走位一次一條細條，貼在泳道下緣，從出發畫到到達。拖左端改出發、拖右端改到達、拖中間一起挪；
 	// 被拖的人在選取裡時，選到、同一個間隔有走位的人一起挪一樣多。放開才用 setWalks 改，被擋（有人出界）整組還原。
+	// 拉右邊改長度時，色條右邊即時寫新的長度和在哪一拍結束（吸到半拍，口號段 0.1 秒），放開會被擋就變色。
 	// 拖的時候走位條上面即時寫新的拍數，拖出範圍（放開會被擋）當下變色。點一下（滑鼠、手指）選這個人，Shift＋點加進來。
 	// 走位條看起來是細條，能點的範圍比較高（WALK_HIT_H）。
 	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（頁面算好的 clashes），拖的時候先藏起來。
@@ -17,10 +18,12 @@
 	import {
 		actionLabel,
 		actionSeconds,
+		atText,
 		CUE_KINDS,
 		cueForMember,
 		formationWalks,
 		idleAt,
+		lengthText,
 		memberMarkers,
 		memberWalk,
 		moveAction,
@@ -67,8 +70,8 @@
 	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
-	/** 正在拖的色條：move = 整條移動，resize = 拉右邊；dx 是滑鼠移了幾 px。 */
-	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number } | null>(null);
+	/** 正在拖的色條：move = 整條移動，resize = 拉右邊；dx 是滑鼠移了幾 px；memberId 是按在誰的泳道上。 */
+	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number; memberId: string } | null>(null);
 
 	const width = $derived(totalSeconds(flow) * pxPerSec);
 	const idle = $derived(new Set(idleAt(flow, editor.playback.sec)));
@@ -188,10 +191,10 @@
 		return byMember;
 	});
 
-	function startDrag(e: PointerEvent, id: string) {
+	function startDrag(e: PointerEvent, id: string, memberId: string) {
 		if (e.button !== 0 || touchOnUnpicked(e, id === selectedActionId)) return;
 		const mode = (e.target as Element).closest('[data-resize]') ? 'resize' : 'move';
-		drag = { id, mode, x0: e.clientX, dx: 0 };
+		drag = { id, mode, x0: e.clientX, dx: 0, memberId };
 		followPointer(
 			e,
 			(ev) => {
@@ -217,6 +220,20 @@
 		// 放開時色條已經彈回原位，還原不用再做什麼。
 		session.ask.send(run, { revert: () => {} });
 	}
+
+	/** 拉右邊時新的長度和結束拍（「16.5 拍・在 3-1& 結束」，口號段「2.5 秒・在 3.5 秒結束」）；out = 放開會被擋。 */
+	const resizeReadout = $derived.by(() => {
+		const d = drag;
+		if (!d || d.mode !== 'resize' || Math.abs(d.dx) < DRAG_PX) return null;
+		const p = placed.find((x) => x.action.id === d.id);
+		const segment = p && flow.segments.find((s) => s.id === p.action.segmentId);
+		if (!p || !segment) return null;
+		const length = p.action.length + Math.round(d.dx / p.halfPx);
+		const chant = segment.kind === 'chant';
+		const end = atText(segment, p.action.start + length) + (chant ? ' 秒' : ' ');
+		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
+		return { text: `${lengthText(segment, length)} ${chant ? '秒' : '拍'}・在 ${end}結束`, out };
+	});
 
 	/** 上一次按下走位條後真的拖了：放開後瀏覽器接著送的 click 不算點一下。 */
 	let walkMoved = false;
@@ -343,7 +360,7 @@
 						style:box-shadow={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
 						onclick={() => editor.pickAction(p.action.id)}
-						onpointerdown={(e) => startDrag(e, p.action.id)}
+						onpointerdown={(e) => startDrag(e, p.action.id, m.id)}
 					>
 						{#each phaseBars[p.action.id] as ph (ph.id)}
 							<span
@@ -385,6 +402,14 @@
 						{/each}
 						<span class="rz" data-resize title="拉這裡改長度"></span>
 					</button>
+					{#if d?.mode === 'resize' && d.memberId === m.id && resizeReadout}
+						<span
+							class="readout at-end"
+							class:out={resizeReadout.out}
+							data-resize-readout
+							style:left={`${p.left + Math.max(p.width + d.dx, 2)}px`}>{resizeReadout.text}</span
+						>
+					{/if}
 				{/if}
 			{/each}
 			{#each walks[m.id] ?? [] as w (w.formationId)}
@@ -644,13 +669,13 @@
 		z-index: 2;
 		box-shadow: 0 4px 10px rgba(22, 33, 58, 0.3);
 	}
-	/* 色條右邊的把手：拉它改長度。 */
+	/* 色條右邊的把手：拉它改長度。點得到的範圍 12px（短的色條最多四成，留中間給拖整條）。 */
 	.rz {
 		position: absolute;
 		top: 0;
 		right: 0;
 		bottom: 0;
-		width: 6px;
+		width: min(12px, 40%);
 		cursor: ew-resize;
 	}
 	.bar:hover .rz {
@@ -715,6 +740,13 @@
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
 		pointer-events: none;
+	}
+	/* 拉色條右邊時：寫在色條右端旁邊，垂直置中。 */
+	.readout.at-end {
+		bottom: auto;
+		top: 50%;
+		z-index: 3;
+		transform: translate(6px, -50%);
 	}
 	.readout.out {
 		background: var(--danger, #c8372d);
