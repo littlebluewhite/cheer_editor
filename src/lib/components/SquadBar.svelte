@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 分組浮動列：選到有環節、要分組的動作時，在場地下面（「正面／裁判」那一排）出現。只在編排畫面。
 	// 有選人：按號碼放進那一組、「＋」放進新的一組、「✕」拿出組；選的人一次改好，是一個復原步驟。
+	// 選的人都在同一組時，那一組的號碼是按下的（看得出現在在哪一組）。
 	// 沒選人：按號碼把那一組的人全選起來。「n 人沒分組」把沒分組的人選起來。
 	// 電腦上選好人按數字鍵 1–9、0 也一樣：都叫 session 的 squadKey（頁面收鍵盤）。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -26,6 +27,11 @@
 	const picked = $derived(session.squadPicked);
 	const outside = $derived(selected.length - picked.length);
 	const loose = $derived(action.members.filter((m) => m.squad === undefined).map((m) => m.memberId));
+	/** 選的人都在同一組：那一組的 id；沒選人、有人沒分組或分在不同組是 undefined。 */
+	const current = $derived.by(() => {
+		const of = new Set(picked.map((id) => action.members.find((m) => m.memberId === id)?.squad));
+		return of.size === 1 ? [...of][0] : undefined;
+	});
 	const outsideText = $derived(outside ? `另外 ${outside} 人不在這個動作，不算` : '');
 
 	// 換動作時（和剛出現時），沒回答的問題和原因收掉。
@@ -52,11 +58,12 @@
 		{:else if outside}{outsideText}；按號碼選起那一組
 		{:else}在場上選人；按號碼選起那一組{/if}
 	</span>
-	{#each badges as b (b.number)}
+	{#each badges as b, i (b.number)}
 		<button
 			type="button"
 			class="num"
 			style:--c={b.color}
+			aria-pressed={current !== undefined && squads[i] === current}
 			aria-label={picked.length ? `放進第 ${b.number} 組` : `選起第 ${b.number} 組`}
 			onclick={() => number(b.number)}>{b.text}</button
 		>
@@ -110,6 +117,11 @@
 		color: #fff;
 		font-weight: 700;
 		font-size: 14px;
+	}
+	/* 選的人現在在的那一組：外面一圈。 */
+	.num[aria-pressed='true'] {
+		outline: 3px solid var(--sel, #19b4d8);
+		outline-offset: 2px;
 	}
 	.num.new {
 		background: #fff;

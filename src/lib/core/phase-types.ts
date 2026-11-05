@@ -12,6 +12,17 @@ export const PHASE_KINDS: { key: PhaseKind; label: string }[] = [
 ];
 
 /**
+ * 加下一個環節時預設的種類：接在上一個環節（last）後面，照上法、中段、轉接、下法的順序；
+ * 下法、整體後面還是一樣，還沒有環節是上法。
+ */
+export function nextPhaseKind(last: PhaseKind | undefined): PhaseKind {
+	const order: PhaseKind[] = ['load', 'hold', 'transition', 'dismount'];
+	if (!last) return 'load';
+	const i = order.indexOf(last);
+	return i < 0 ? last : order[Math.min(i + 1, order.length - 1)];
+}
+
+/**
  * 種類的顏色（環節沒挑辨識色時用）：上法青、中段石板灰、轉接金、下法紫、整體灰。
  * 避開拍子 down 的藍（#1f5fbf）、up 的綠（#2b7a2f），環節和拍子畫在一起時才分得出來。
  */
