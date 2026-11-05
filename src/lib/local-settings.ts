@@ -66,3 +66,20 @@ export function saveMe(flowName: string, memberId: string): void {
 		// 存不了就只在這次用
 	}
 }
+
+/** 八拍表「印誰」上次選的，照流程名字分開存：'' 全隊、隊員 id、'role:top' 之類的全局角色。 */
+export function loadPrintChoice(flowName: string): string {
+	try {
+		return localStorage.getItem(`cheer-editor:print:${flowName}`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
+export function savePrintChoice(flowName: string, choice: string): void {
+	try {
+		localStorage.setItem(`cheer-editor:print:${flowName}`, choice);
+	} catch {
+		// 存不了就只在這次用
+	}
+}

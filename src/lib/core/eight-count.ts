@@ -34,6 +34,8 @@ export interface EightCountAction {
 	 * 個人表不寫名字：「主底・第 2 組・同組：小A（上層）」，沒角色也沒分組是空的。
 	 */
 	who: string;
+	/** 動作的備註，沒寫是空的。 */
+	note: string;
 }
 
 /** 八拍表一列裡開始的站位，給畫小站位圖。 */
@@ -151,7 +153,8 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							categoryLabel: categoryLabel(a.category),
 							name: a.name,
 							members,
-							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId)
+							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId),
+							note: a.note
 						};
 					}),
 				continuing: inSegment
