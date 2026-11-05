@@ -12,6 +12,7 @@ import {
 	restoreAttempt,
 	restoreRunThrough,
 	keptAttempt,
+	lastRunThrough,
 	addPhase,
 	readFlowFile,
 	recordableActions,
@@ -590,6 +591,20 @@ describe('刪掉上一次全上', () => {
 	it('這天沒有全上：擋下來', () => {
 		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' })));
 		expect(deleteLastRunThrough(flow, date)).toEqual({ kind: 'blocked', message: '這一天還沒有全上' });
+	});
+
+	it('這天有沒有全上：有就是這天最後存的那次的全上 id；只有分段練、只有別天的全上就沒有', () => {
+		expect(lastRunThrough(recorded(), date)).toBe('r2');
+		expect(lastRunThrough(flowOf(deleteLastRunThrough(recorded(), date)), date)).toBe('r1');
+		expect(lastRunThrough(recorded(), '2026-11-05')).toBeUndefined();
+		expect(lastRunThrough(flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' }))), date)).toBeUndefined();
+		expect(lastRunThrough(sample(), date)).toBeUndefined();
+	});
+
+	it('全上 id 照號碼比，不照字：r10 比 r9 晚', () => {
+		let flow = sample();
+		for (let i = 0; i < 10; i++) flow = flowOf(recordRunThrough(flow, date, run1));
+		expect(lastRunThrough(flow, date)).toBe('r10');
 	});
 
 	it('救回：整次放回原本的位置；已經在了就擋下來', () => {

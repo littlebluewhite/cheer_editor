@@ -67,6 +67,7 @@ export {
 	carryRecords,
 	deleteLastAttempt,
 	deleteLastRunThrough,
+	lastRunThrough,
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
