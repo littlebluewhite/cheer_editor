@@ -204,6 +204,7 @@ describe('編輯時自動存草稿', () => {
 		await newFlow();
 		expect(leaveAsks()).toBe(false);
 		const name = screen.getByLabelText(/^名字/);
+		name.focus();
 		await fireEvent.input(name, { target: { value: '小A' } });
 		expect(leaveAsks()).toBe(true);
 		expect(hasUnsavedChanges()).toBe(true);

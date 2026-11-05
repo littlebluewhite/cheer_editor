@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { libSample } from '#lib/test-flows.js';
-import { testEditor } from '#lib/test-fakes.js';
+import { fakePendingInput, testEditor } from '#lib/test-fakes.js';
 
 describe('編輯器 module：建', () => {
 	it('給一支流程：session 拿得到，算存過的', () => {
@@ -37,5 +37,31 @@ describe('編輯器 module：右邊欄', () => {
 		editor.inspectorTab = 'members';
 		session.selectAction('x1');
 		expect(editor.inspectorTab).toBe('members');
+	});
+});
+
+describe('編輯器 module：有沒有沒存的東西（關分頁前的提醒、service worker 擋重新整理看這個）', () => {
+	it('剛開的流程、沒打字：沒有；有沒存的改動：有', () => {
+		const { editor, session } = testEditor(libSample());
+		expect(editor.hasUnsavedWork).toBe(false);
+		session.open(libSample());
+		expect(editor.hasUnsavedWork).toBe(true);
+	});
+
+	it('欄位裡打了字還沒送出：有，沒有沒存的改動也一樣；送出了就沒有', () => {
+		const pendingInput = fakePendingInput();
+		const { editor, session } = testEditor(libSample(), { pendingInput });
+		pendingInput.pending = true;
+		expect(session.unsaved).toBe(false);
+		expect(editor.hasUnsavedWork).toBe(true);
+		pendingInput.flush();
+		expect(editor.hasUnsavedWork).toBe(false);
+	});
+
+	it('首頁（沒開流程）打的字不算', () => {
+		const pendingInput = fakePendingInput();
+		const { editor } = testEditor(null, { pendingInput });
+		pendingInput.pending = true;
+		expect(editor.hasUnsavedWork).toBe(false);
 	});
 });
