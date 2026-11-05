@@ -197,6 +197,15 @@ describe('第一拍要在音樂結束之前（音樂多長由音樂檔庫給）'
 		});
 	});
 
+	it('第一拍打了大到算不出來的數（1e309、1e308）：還是說要在音樂結束之前，不說要 0 秒以上', () => {
+		for (const text of ['1e309', '1e308']) {
+			const value = readSegmentNumber('firstBeatSec', text);
+			expect(value.kind).toBe('ok');
+			if (value.kind !== 'ok') continue;
+			expect(updateSegment(withMusic(), 's1', { firstBeatSec: value.value }, {}, { a1: 30 })).toEqual(pastEnd('30.0'));
+		}
+	});
+
 	it('照音樂長度算：第一拍已經在音樂結束之後（換了短的檔），說同一句', () => {
 		expect(fitSegmentToAudio(withMusic(40), 's1', { a1: 30 })).toEqual(pastEnd('30.0'));
 		expect(fitSegmentToAudio(withMusic(31), 's1', { a1: 30 })).toEqual(pastEnd('30.0'));

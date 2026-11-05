@@ -183,7 +183,7 @@ const OUT_OF_RANGE: Record<SegmentNumberField, string> = {
  */
 export function readSegmentNumber(field: SegmentNumberField, text: string): ReadResult<number> {
 	const value = parseNumber(text);
-	return readOr(Number.isFinite(value) ? value : null, OUT_OF_RANGE[field]);
+	return readOr(Number.isNaN(value) ? null : value, OUT_OF_RANGE[field]);
 }
 
 /**
@@ -205,14 +205,15 @@ export function updateSegment(
 	if (old.kind === 'music') {
 		const bpm = patch.bpm ?? old.bpm;
 		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(OUT_OF_RANGE.bpm);
+		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
+		// 先看音樂結束：大到算不出來的第一拍也說要在音樂結束之前。
+		const late = patch.firstBeatSec === undefined || audioId === null ? null : pastEnd(patch.firstBeatSec, lengths[audioId]);
+		if (late) return blocked(late);
 		// 第一拍最細 0.01 秒，也比較好讀。
 		const firstBeatSec = Math.round((patch.firstBeatSec ?? continuedFirstBeat(flow, index, patch) ?? old.firstBeatSec) * 100) / 100;
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
 			return blocked(OUT_OF_RANGE.firstBeatSec);
 		}
-		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
-		const late = patch.firstBeatSec === undefined || audioId === null ? null : pastEnd(patch.firstBeatSec, lengths[audioId]);
-		if (late) return blocked(late);
 		const length = { ...musicLength(old), ...pick(patch, 'eights', 'lastBeats') };
 		const tooLong = lengthProblem(length);
 		if (tooLong) return blocked(tooLong);
