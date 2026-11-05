@@ -17,6 +17,7 @@ import {
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
 import { Flash } from '#lib/flash.svelte.js';
+import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
 
@@ -42,6 +43,8 @@ export class EditorSession {
 	#memberIds = $state.raw<string[]>([]);
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
+	/** 拍點格子選的拍（選到的動作的）。 */
+	readonly beats = new BeatSelection(() => this.#flow?.actions.find((a) => a.id === this.#actionId) ?? null);
 
 	#notice = new Flash<string>();
 	/** 提示旁邊有「復原」（剛刪掉站位）。換了提示就沒有。 */
@@ -211,6 +214,7 @@ export class EditorSession {
 		if (this.#memberIds.some((id) => !f.members.some((m) => m.id === id))) {
 			this.#memberIds = this.#memberIds.filter((id) => f.members.some((m) => m.id === id));
 		}
+		this.beats.fit();
 	}
 
 	// ---------- 改完跳播放頭 ----------
@@ -277,10 +281,12 @@ export class EditorSession {
 		if (id) this.#actionId = null;
 	}
 
-	/** 選動作：站位的選取清掉。 */
+	/** 選動作：站位的選取清掉。換了動作，選的拍從頭來。 */
 	selectAction(id: string | null) {
+		const changed = id !== this.#actionId;
 		this.#actionId = id;
 		if (id) this.#formationId = null;
+		if (changed) this.beats.reset();
 	}
 
 	selectMembers(ids: string[]) {
