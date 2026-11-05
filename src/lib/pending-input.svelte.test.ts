@@ -57,12 +57,22 @@ describe('沒送出的字（真的 adapter）', () => {
 		expect(sent).toEqual([]);
 	});
 
-	it('畫面改了欄位的值（沒打字）：不算沒送出，現在送出也不發 change', () => {
+	it('打了字又刪回原來的字：還是算有；現在送出不發 change（值沒變），之後就沒有了', async () => {
+		const { input, sent } = field();
+		await type(input, '小美美');
+		await fireEvent.input(input, { target: { value: '小美' } });
+		expect(domPendingInput.pending).toBe(true);
+		domPendingInput.flush();
+		expect(sent).toEqual([]);
+		expect(domPendingInput.pending).toBe(false);
+	});
+
+	it('畫面改了欄位的值（沒打字）：不算沒送出；現在送出照樣送（跟離開欄位一樣）', () => {
 		const { input, sent } = field();
 		input.focus();
 		input.value = '小芳';
 		expect(domPendingInput.pending).toBe(false);
 		domPendingInput.flush();
-		expect(sent).toEqual([]);
+		expect(sent).toEqual(['小芳']);
 	});
 });

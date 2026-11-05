@@ -51,10 +51,7 @@ export class ActionDraft {
 	#seen: Seen | null = null;
 
 	/** 選到的動作；null = 新增。 */
-	readonly #action = $derived.by(() => {
-		const id = this.#session.selectedActionId;
-		return (id && this.#session.flow?.actions.find((a) => a.id === id)) || null;
-	});
+	readonly #action = $derived.by(() => this.#session.selectedAction);
 	/** 新增時，播放頭那一格（新動作從這裡開始）。 */
 	readonly #slot = $derived.by(() => {
 		const flow = this.#session.flow;
@@ -157,7 +154,7 @@ export class ActionDraft {
 
 	/** 加一個人（「＋加人…」）：任務角色照大類和全局角色先填。 */
 	addMember(memberId: string) {
-		this.#setMembers([...this.#draft.members, joined(this.#session.flow!, memberId, this.#draft.category)]);
+		this.#setMembers([...this.#draft.members, newActionMember(this.#session.flow!, memberId, this.#draft.category)]);
 	}
 
 	/** 把第 i 個人移出。 */
@@ -259,7 +256,7 @@ export class ActionDraft {
 		const flow = this.#session.flow!;
 		return this.#session.selectedMemberIds
 			.filter((id) => flow.members.some((m) => m.id === id))
-			.map((id) => current.find((m) => m.memberId === id) ?? joined(flow, id, category));
+			.map((id) => current.find((m) => m.memberId === id) ?? newActionMember(flow, id, category));
 	}
 
 	/** 自訂任務角色從 before 換成 now：改了名的換成新名字，刪掉的變成沒有任務。 */
@@ -317,6 +314,6 @@ function fromAction(flow: Flow, a: Action): Draft {
 }
 
 /** 剛加進動作的人：任務角色照大類和全局角色先填。 */
-function joined(flow: Flow, memberId: string, category: ActionCategory): ActionMember {
+function newActionMember(flow: Flow, memberId: string, category: ActionCategory): ActionMember {
 	return defaultRoles(flow, category, [{ memberId, role: null }])[0];
 }

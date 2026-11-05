@@ -19,6 +19,8 @@
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 改名、站位時間看不懂：被擋的原因放進提示；成功不收掉別的提示，也不動場上的問題。 */
+	const ask = session.changeAsk({ onfail: (error) => (session.notice = error) });
 	/** 播放頭（全域秒數）從編輯器 module 的播放拿。 */
 	const { playback } = getEditor();
 
@@ -40,7 +42,7 @@
 	function renameHere(formationId: string, name: string) {
 		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
 		if (name.trim() === before) return;
-		session.ask.send(() => renameFormation(flow, formationId, name));
+		ask.send(() => renameFormation(flow, formationId, name));
 	}
 
 	/**
@@ -51,7 +53,7 @@
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
 		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
-		if (to.kind === 'blocked') return void session.ask.send(() => to);
+		if (to.kind === 'blocked') return void ask.send(() => to);
 		const f = flow;
 		session.ask.send(() => moveFormation(f, formation.id, to.value), {
 			revert: () => {},

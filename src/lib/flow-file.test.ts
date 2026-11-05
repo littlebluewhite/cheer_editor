@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	addSegment,
 	createFlow,
+	deleteSegment,
 	readFlowFile,
 	recordAttempt,
 	renameFlow,
@@ -313,6 +314,13 @@ describe('流程檔：缺音樂、壞音樂', () => {
 				'存好了，但有 1 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次'
 		);
 		await editor.music.pick('s1', mp3(), session.changeAsk());
+		expect(session.notice).toBe('');
+	});
+
+	it('缺音樂的段刪掉了（缺的都沒了）：提示也自己收掉', async () => {
+		const { editor, session } = testEditor();
+		await editor.file.open(zip(audioFlow()));
+		session.change(flowOf(deleteSegment(session.flow!, 's1', { confirmed: true })));
 		expect(session.notice).toBe('');
 	});
 

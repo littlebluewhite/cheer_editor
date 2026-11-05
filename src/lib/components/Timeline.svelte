@@ -282,7 +282,7 @@
 	<div
 		class="menu"
 		{@attach popover({
-			place: below(menu.anchor, { gap: 4, align: 'left' }),
+			place: below(menu.anchor, { gap: 4, align: 'left', flip: false }),
 			close: () => (menu = null),
 			inside: [menu.anchor]
 		})}

@@ -8,7 +8,7 @@ import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { PHASE_KINDS } from './phase-types';
-import { lengthProblem, MAX_EIGHTS, musicLength } from './segment';
+import { fileLengthProblem } from './segment';
 import { freshIds } from './ids';
 import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
@@ -175,14 +175,13 @@ export function readFlowFile(
 }
 
 /**
- * 段的長度超出編輯器能設的範圍（跟改段一樣照 lengthProblem，不是正的也算）：
+ * 段的長度超出編輯器能設的範圍（跟改段一樣的上限，不是正的也算）：
  * 照樣打開會把分頁卡住，所以擋下來，寫出上限。沒問題是 null。
  */
 function segmentLengthProblem(flow: Flow): string | null {
 	for (const s of flow.segments) {
-		const problem = lengthProblem(s.kind === 'music' ? musicLength(s) : s);
-		// 改段時八拍數、最後一個八拍分兩格說；檔案裡只有一個長度，說整段的範圍。
-		if (problem) return s.kind === 'music' ? `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間` : problem;
+		const problem = fileLengthProblem(s);
+		if (problem) return problem;
 	}
 	return null;
 }

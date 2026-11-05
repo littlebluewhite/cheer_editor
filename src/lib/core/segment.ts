@@ -64,14 +64,23 @@ export function musicLength(segment: MusicSegment): MusicLength {
 export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>): string | null {
 	if ('tenths' in length) {
 		const { tenths } = length;
-		return tenths >= 1 && tenths <= MAX_CHANT_SEC * 10 ? null : RANGE.seconds;
+		return tenths >= 1 && tenths <= MAX_CHANT_SEC * 10 ? null : OUT_OF_RANGE.seconds;
 	}
 	const { eights, lastBeats } = length;
 	// 兩格各說各的：教練才知道是哪一格錯。
-	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return RANGE.eights;
+	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return OUT_OF_RANGE.eights;
 	if (!Number.isInteger(eights)) return '八拍數要是整數';
-	if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) return RANGE.lastBeats;
+	if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) return OUT_OF_RANGE.lastBeats;
 	return null;
+}
+
+/**
+ * 流程檔裡一段的長度合不合上限（開檔時擋）：照 lengthProblem，但音樂段說整段的範圍
+ * （改段時八拍數、最後一個八拍分兩格說；檔案裡只有一個長度）。合就是 null。
+ */
+export function fileLengthProblem(segment: Segment): string | null {
+	if (segment.kind === 'chant') return lengthProblem(segment);
+	return lengthProblem(musicLength(segment)) ? `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間` : null;
 }
 
 export interface BeatTiming {
@@ -159,8 +168,8 @@ export interface SegmentPatch {
 /** 段設定裡打數字的欄位。 */
 export type SegmentNumberField = 'bpm' | 'firstBeatSec' | 'eights' | 'lastBeats' | 'seconds';
 
-/** 每個數字欄位能填的範圍：超出範圍、看不懂都說這一句。 */
-const RANGE: Record<SegmentNumberField, string> = {
+/** 每個數字欄位超出範圍時說的話（說能填的範圍）；看不懂也說這一句。 */
+const OUT_OF_RANGE: Record<SegmentNumberField, string> = {
 	bpm: `BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`,
 	firstBeatSec: '第一拍要是 0 秒以上',
 	eights: `八拍數要在 1 到 ${MAX_EIGHTS} 之間`,
@@ -174,7 +183,7 @@ const RANGE: Record<SegmentNumberField, string> = {
  */
 export function readSegmentNumber(field: SegmentNumberField, text: string): ReadResult<number> {
 	const value = parseNumber(text);
-	return readOr(Number.isFinite(value) ? value : null, RANGE[field]);
+	return readOr(Number.isFinite(value) ? value : null, OUT_OF_RANGE[field]);
 }
 
 /**
@@ -195,11 +204,11 @@ export function updateSegment(
 	let next: Segment;
 	if (old.kind === 'music') {
 		const bpm = patch.bpm ?? old.bpm;
-		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(RANGE.bpm);
+		if (!(bpm >= MIN_BPM && bpm <= MAX_BPM)) return blocked(OUT_OF_RANGE.bpm);
 		// 第一拍最細 0.01 秒，也比較好讀。
 		const firstBeatSec = Math.round((patch.firstBeatSec ?? continuedFirstBeat(flow, index, patch) ?? old.firstBeatSec) * 100) / 100;
 		if (!(firstBeatSec >= 0 && Number.isFinite(firstBeatSec))) {
-			return blocked(RANGE.firstBeatSec);
+			return blocked(OUT_OF_RANGE.firstBeatSec);
 		}
 		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
 		const late = patch.firstBeatSec === undefined || audioId === null ? null : pastEnd(patch.firstBeatSec, lengths[audioId]);

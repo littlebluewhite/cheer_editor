@@ -4,14 +4,14 @@
 
 import { HALF_BEATS_PER_BEAT as BEAT, type Action, type Who } from '#lib/core';
 
-/** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。 */
-const firstCell = (a: Action) => a.start % BEAT;
+/** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。拍點格子也用。 */
+export const firstCell = (a: Action) => a.start % BEAT;
 /** 動作裡最後一格。 */
 const lastCell = (a: Action) => firstCell(a) + (Math.floor((a.length - firstCell(a)) / BEAT) - 1) * BEAT;
-/** 這一格（從 at 開始的一拍）整個在動作裡。 */
-const fits = (a: Action, at: number) => at >= 0 && at + BEAT <= a.length;
-/** 半拍 at 所在那一格的開頭。 */
-const cellIn = (a: Action, at: number) => at - ((((a.start + at) % BEAT) + BEAT) % BEAT);
+/** 這一格（從 at 開始的一拍）整個在動作裡。拍點格子也用。 */
+export const fits = (a: Action, at: number) => at >= 0 && at + BEAT <= a.length;
+/** 半拍 at 所在那一格的開頭。拍點格子也用。 */
+export const cellIn = (a: Action, at: number) => at - ((((a.start + at) % BEAT) + BEAT) % BEAT);
 /** 半拍 at 所在那一格，夾在動作的第一格和最後一格之間。 */
 const snap = (a: Action, at: number) => Math.min(Math.max(cellIn(a, at), firstCell(a)), lastCell(a));
 /** 給誰還在動作裡：全部，或動作裡的任務角色、隊員。 */

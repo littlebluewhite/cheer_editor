@@ -13,7 +13,7 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { PEAKS_PER_SEC, type DecodedAudio } from '#lib/audio/decode.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
-import { flush, testEditor } from '#lib/test-fakes.js';
+import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import SegmentSettings from './SegmentSettings.svelte';
 
@@ -171,18 +171,11 @@ describe('音樂段設定', () => {
 		expect(screen.getByRole('dialog').textContent).toContain('主歌.mp3（95.2 秒）');
 	});
 
-	it('音樂檔還在解碼時關掉段設定：解碼完不放進流程', async () => {
-		let finish = (_: DecodedAudio) => {};
-		const { session, decode, unmount } = await setup(musicFlow());
-		decode.mockImplementationOnce(() => new Promise((r) => (finish = r)));
-		const file = new File([new Uint8Array([1])], '主歌.mp3', { type: 'audio/mpeg' });
-		await fireEvent.change(screen.getByLabelText('載入音樂檔'), { target: { files: [file] } });
-		await vi.waitFor(() => expect(decode).toHaveBeenCalledOnce());
+	it('關掉段設定：跟音樂檔庫說還在解碼的選檔不要了', async () => {
+		const { editor, unmount } = await setup(musicFlow());
+		const cancelPicks = vi.spyOn(editor.music, 'cancelPicks');
 		unmount();
-		finish({ durationSec: 30, peaks: [] });
-		await flush();
-		expect(session.flow!.audio).toEqual([]);
-		expect(session.canUndo).toBe(false);
+		expect(cancelPicks).toHaveBeenCalledOnce();
 	});
 
 	it('找不到音樂（流程指到、手上沒有）：寫「找不到音樂，請重新選檔」', async () => {
