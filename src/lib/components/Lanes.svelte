@@ -341,7 +341,7 @@
 				title={m.globalRole === 'top' ? '上層' : '底層'}>{markers[m.id]}</b
 			>
 			<span class="name">{m.name}</span>
-			{#if idle.has(m.id)}<span class="idle-tag">閒</span>{/if}
+			{#if idle.has(m.id)}<span class="idle-tag" title="播放頭這一拍沒在動作裡">閒</span>{/if}
 		</button>
 		<div class="trk" style:width={`${width}px`}>
 			{#each placed as p (p.action.id)}
@@ -362,7 +362,7 @@
 						style:left={`${p.left + (d?.mode === 'move' ? d.dx : 0)}px`}
 						style:width={`${Math.max(p.width + (d?.mode === 'resize' ? d.dx : 0), 2)}px`}
 						style:background={actionColor(p.action)}
-						style:box-shadow={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
+						style:--tint={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
 						onclick={() => editor.pickAction(p.action.id)}
 						ondblclick={() => editor.seekToAction(p.action.id)}
@@ -541,14 +541,16 @@
 	.lab.idle .name {
 		color: #9aa3b5;
 	}
+	/* 「閒」：字夠大、夠深，不會看成「開」。 */
 	.idle-tag {
 		margin-left: auto;
 		flex: none;
 		padding: 0 5px;
 		border-radius: 4px;
-		background: var(--line-soft, #e8ecf3);
-		color: var(--muted, #66718a);
-		font-size: 11px;
+		background: var(--line, #d8dee9);
+		color: var(--text, #1a2238);
+		font-size: 13px;
+		font-weight: 700;
 	}
 	/* 灰條紋 = 沒在動作裡（站著或走位）；色條蓋在上面。 */
 	.trk {
@@ -578,7 +580,8 @@
 		white-space: nowrap;
 		cursor: grab;
 		user-select: none;
-		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.14);
+		/* --tint：有辨識色時左邊那條大類的顏色（取代下緣的陰影）。 */
+		box-shadow: var(--tint, inset 0 -2px 0 rgba(0, 0, 0, 0.14));
 	}
 	/* 選中的才不讓手指捲畫面（手指拖得動）；沒選中的手指一滑是捲動。 */
 	.bar.selected {
@@ -805,9 +808,18 @@
 	.end.r {
 		right: 0;
 	}
+	/* 選到：貼著色條的深色框（用陰影畫）。外框留給焦點（全站的青色外框），兩個同時出現也分得開。 */
 	.bar.selected {
-		outline: 2px solid var(--ink, #16213a);
-		outline-offset: 1px;
+		box-shadow:
+			var(--tint, inset 0 -2px 0 rgba(0, 0, 0, 0.14)),
+			0 0 0 2px var(--ink, #16213a);
 		z-index: 1;
+	}
+	.bar.selected.dragging {
+		box-shadow:
+			var(--tint, inset 0 0 0 transparent),
+			0 0 0 2px var(--ink, #16213a),
+			0 4px 10px rgba(22, 33, 58, 0.3);
+		z-index: 2;
 	}
 </style>

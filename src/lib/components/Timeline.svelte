@@ -200,9 +200,33 @@
 		menu = menu?.anchor === anchor ? null : { after, anchor };
 	}
 
+	/** 收起加段選單；按 Esc 收的話焦點回到「＋」（不然掉回頁面最上面）。 */
+	function closeMenu(by: 'outside' | 'escape') {
+		const anchor = menu?.anchor;
+		menu = null;
+		if (by === 'escape') anchor?.focus();
+	}
+
+	/** 加段選單打開時焦點進第一項；上下鍵在幾項之間輪流換。 */
+	function menuKeys(el: HTMLElement) {
+		const items = () => [...el.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+		items()[0]?.focus();
+		const keys = (e: KeyboardEvent) => {
+			if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+			e.preventDefault();
+			const all = items();
+			const i = all.indexOf(document.activeElement as HTMLElement);
+			all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus();
+		};
+		el.addEventListener('keydown', keys);
+		return () => el.removeEventListener('keydown', keys);
+	}
+
 	/** 加一段（加在選單的那一段後面，或加在最後），加好就打開它的段設定。 */
 	function add(kind: SegmentKind) {
 		const after = menu?.after ?? undefined;
+		// 選單項目要不見了：焦點先回「＋」，段設定關掉時焦點才回得來（不掉回頁面最上面）。
+		menu?.anchor.focus();
 		menu = null;
 		session.ask.send(() => addSegment(flow, kind, after), {
 			done: (r) => {
@@ -302,6 +326,7 @@
 					type="button"
 					class="add"
 					aria-label="在最後加一段"
+					aria-haspopup="menu"
 					aria-expanded={!!menu && menu.after === null}
 					onclick={(e) => toggleMenu(e, null)}><Icon name="plus" size={14} /></button
 				>
@@ -333,6 +358,7 @@
 						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
 						aria-label="在這段後面加一段"
 						title={`加在${span.label} 後面`}
+						aria-haspopup="menu"
 						aria-expanded={menu?.after === span.segment.id}
 						onclick={(e) => toggleMenu(e, span.segment.id)}><Icon name="plus" size={12} /></button
 					>
@@ -404,15 +430,18 @@
 	<!-- 選單放在「＋」下面、左邊對齊；點外面、按 Esc 就收（popover.svelte.ts） -->
 	<div
 		class="menu"
+		role="menu"
+		aria-labelledby="add-menu-title"
 		{@attach popover({
 			place: below(menu.anchor, { gap: 4, align: 'left', flip: false }),
-			close: () => (menu = null),
+			close: closeMenu,
 			inside: [menu.anchor]
 		})}
+		{@attach menuKeys}
 	>
-		<span class="menu-title">{after ? `加在${after.label} 後面` : '加在最後'}</span>
-		<button type="button" onclick={() => add('music')}>＋音樂段</button>
-		<button type="button" onclick={() => add('chant')}>＋口號段</button>
+		<span class="menu-title" id="add-menu-title">{after ? `加在${after.label} 後面` : '加在最後'}</span>
+		<button type="button" role="menuitem" onclick={() => add('music')}>＋音樂段</button>
+		<button type="button" role="menuitem" onclick={() => add('chant')}>＋口號段</button>
 	</div>
 {/if}
 

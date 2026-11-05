@@ -42,7 +42,7 @@ describe('段、八拍尺、上方列', () => {
 	it('「＋」在最後加音樂段，打開段設定；關掉後點段可以再打開', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		expect(screen.getByRole('dialog', { name: '音樂 1 設定' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.queryByRole('dialog')).toBeNull();
@@ -53,7 +53,7 @@ describe('段、八拍尺、上方列', () => {
 	it('在八拍尺上點或拖，上方列顯示播放頭的位置', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		const ruler = document.querySelector('[data-ruler]')!;
 		// 時間軸 1 秒 = 16 px；150 BPM 一拍 0.4 秒，3-5& 在 8.2 秒、3-6 在 8.4 秒：點在 8.3 秒吸到整拍 3-6
@@ -73,7 +73,7 @@ describe('段、八拍尺、上方列', () => {
 	it('段設定的敲擊測速：0.5 秒一下點 8 下，套用後段的 BPM 變成 120', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		const dialog = within(screen.getByRole('dialog', { name: '音樂 1 設定' }));
 		const tap = dialog.getByRole('button', { name: '敲擊測速' });
 		const apply = dialog.getByRole('button', { name: /^套用/ }) as HTMLButtonElement;
@@ -101,7 +101,7 @@ describe('段、八拍尺、上方列', () => {
 		await addSegment('＋音樂段');
 		await fireEvent.click(screen.getAllByRole('button', { name: '在這段後面加一段' })[0]);
 		expect(screen.getByText('加在音樂 1 後面')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋口號段' }));
 		expect(screen.getByRole('dialog', { name: '口號 1 設定' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		const segs = [...document.querySelectorAll('.timeline .segs .seg b')].map((b) => b.textContent);
@@ -131,7 +131,7 @@ describe('段、八拍尺、上方列', () => {
 	it('方向鍵移播放頭：一次一拍，Shift 一個八拍；在輸入框裡不算（怎麼移在 playback 測）', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		const position = () => screen.getByLabelText('目前位置').textContent;
 		await fireEvent.keyDown(window, { key: 'ArrowRight' });
@@ -147,7 +147,7 @@ describe('段、八拍尺、上方列', () => {
 	it('在八拍尺上拖到右邊緣時時間軸不自己捲走（不然尺跟著滑鼠跑，播放頭會亂跳）', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		const timeline = document.querySelector('.timeline') as HTMLElement;
 		// jsdom 沒有排版：假裝時間軸看得到 400 px（扣掉名字欄 148 px，剩 252 px）
@@ -165,7 +165,7 @@ describe('段、八拍尺、上方列', () => {
 		await newFlow();
 		expect(screen.queryByText('還沒有口號段')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByText('口號段加起來最少要 30 秒')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
@@ -226,7 +226,7 @@ describe('段、八拍尺、上方列', () => {
 	it('段設定：八拍數和最後一拍各自說自己的錯；全形數字當成半形', async () => {
 		await newFlow();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.change(screen.getByLabelText('八拍數'), { target: { value: '0' } });
 		await fireEvent.change(screen.getByLabelText('最後一個八拍有幾拍'), { target: { value: '9' } });
 		expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([
@@ -289,7 +289,7 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
 		await tab('動作');
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await pickRole('小A', '上層');
@@ -654,7 +654,7 @@ describe('動作', () => {
 		}
 		await tab('動作');
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
@@ -704,7 +704,7 @@ describe('站位與走位', () => {
 	async function setup(engine?: FakeEngine) {
 		await newFlow(engine);
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋音樂段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '小A\n小B' } });
 		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
@@ -1510,7 +1510,7 @@ describe('編輯器首頁', () => {
 
 async function addSegment(kind: '＋音樂段' | '＋口號段') {
 	await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-	await fireEvent.click(screen.getByRole('button', { name: kind }));
+	await fireEvent.click(screen.getByRole('menuitem', { name: kind }));
 	await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 }
 
@@ -2000,25 +2000,25 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 		const session = await withSample();
 		const add = screen.getByRole('button', { name: '在最後加一段' });
 		await fireEvent.click(add);
-		expect(screen.getByRole('button', { name: '＋音樂段' })).toBeTruthy();
+		expect(screen.getByRole('menuitem', { name: '＋音樂段' })).toBeTruthy();
 		// 在輸入框裡用中文輸入法選字時的 Esc 不算
 		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', isComposing: true });
 		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape', keyCode: 229 });
-		expect(screen.getByRole('button', { name: '＋音樂段' })).toBeTruthy();
+		expect(screen.getByRole('menuitem', { name: '＋音樂段' })).toBeTruthy();
 		await fireEvent.keyDown(add, { key: 'Escape' });
-		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
+		expect(screen.queryByRole('menuitem', { name: '＋音樂段' })).toBeNull();
 		expect(add.getAttribute('aria-expanded')).toBe('false');
 		// Esc 只收選單，動作還選著
 		expect(session.selectedActionId).toBe('x1');
 
 		await fireEvent.click(add);
 		await fireEvent.pointerDown(document.querySelector('.topbar')!);
-		expect(screen.queryByRole('button', { name: '＋音樂段' })).toBeNull();
+		expect(screen.queryByRole('menuitem', { name: '＋音樂段' })).toBeNull();
 
 		// 點選單裡面不算外面
 		await fireEvent.click(add);
-		await fireEvent.pointerDown(screen.getByRole('button', { name: '＋口號段' }));
-		expect(screen.getByRole('button', { name: '＋口號段' })).toBeTruthy();
+		await fireEvent.pointerDown(screen.getByRole('menuitem', { name: '＋口號段' }));
+		expect(screen.getByRole('menuitem', { name: '＋口號段' })).toBeTruthy();
 	});
 
 	it('動作設定的「?」說明小窗', async () => {

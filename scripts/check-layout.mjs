@@ -1381,5 +1381,45 @@ await check('段設定：BPM 被擋、紅字出現前後，對話框上緣不動
 	return { ok: !!alert && before === after, value: { 上緣: `${before} → ${after}`, 紅字: alert } };
 });
 
+await check('色條：用 Tab 停在選到的色條上，跟滑鼠點選的樣子不一樣（焦點框是青色外框，不被選取的框蓋掉）', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	const bar = '[data-lane="m1"] [data-action-id="x1"]';
+	const look = () =>
+		js(`const el = document.querySelector('${bar}'), s = getComputedStyle(el);
+			return { 焦點: document.activeElement === el, 看得到焦點: el.matches(':focus-visible'),
+				外框: s.outlineStyle === 'none' ? 'none' : s.outlineWidth + ' ' + s.outlineStyle + ' ' + s.outlineColor + ' offset ' + s.outlineOffset,
+				陰影: s.boxShadow };`);
+	const tab = async (shift) => {
+		for (const type of ['keyDown', 'keyUp'])
+			await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: shift ? 8 : 0 });
+		await sleep(150);
+	};
+	const p = await rectOf(bar);
+	await click(p.x, p.y);
+	const clicked = await look();
+	await tab(false);
+	await tab(true);
+	const tabbed = await look();
+	const ok =
+		clicked.焦點 && !clicked.看得到焦點 && tabbed.焦點 && tabbed.看得到焦點 &&
+		tabbed.外框 !== clicked.外框 && tabbed.外框.includes('rgb(25, 180, 216)');
+	return { ok, value: { 滑鼠點選: clicked, Tab回來: tabbed } };
+});
+
+await check('從時間軸左下角的空白處一路拖到上方列：不會把介面上的字反白', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	await js(`getSelection().removeAllRanges()`);
+	const from = await js(`const r = document.querySelector('.timeline-host').getBoundingClientRect(); return { x: r.left + 4, y: r.bottom - 4 };`);
+	const to = await js(`const r = document.querySelector('.topbar').getBoundingClientRect(); return { x: r.right - 4, y: r.top + 4 };`);
+	await mouse('mousePressed', from.x, from.y);
+	for (let i = 1; i <= 10; i++) await mouse('mouseMoved', from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10);
+	await mouse('mouseReleased', to.x, to.y, 0);
+	await sleep(200);
+	const text = await js(`return getSelection().toString()`);
+	return { ok: text.trim() === '', value: { 反白的字: text.slice(0, 120) } };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

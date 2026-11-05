@@ -22,7 +22,7 @@ async function newFlow() {
 
 async function addChant() {
 	await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-	await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+	await fireEvent.click(screen.getByRole('menuitem', { name: '＋口號段' }));
 	await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 }
 
@@ -80,7 +80,7 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(false);
 		expect(screen.queryByText('未存')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '＋口號段' }));
 		expect(hasUnsavedChanges()).toBe(true);
 	});
 

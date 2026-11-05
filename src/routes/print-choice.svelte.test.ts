@@ -14,7 +14,8 @@ const chosen = () =>
 
 /** 點場上的隊員（不拖）。 */
 async function clickDot(name: string) {
-	const dot = screen.getByRole('button', { name, pressed: false });
+	// 場上的人名字後面接位置（「小B　第 5 條…」）
+	const dot = screen.getByRole('button', { name: new RegExp(`^${name}　`), pressed: false });
 	await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
 	await fireEvent.pointerUp(dot, { clientX: 0, clientY: 0 });
 }

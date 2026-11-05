@@ -18,7 +18,7 @@ async function newFlow() {
 /** 在最後加一段（會打開段設定），再關掉。 */
 async function addSegment(kind: '＋音樂段' | '＋口號段') {
 	await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-	await fireEvent.click(screen.getByRole('button', { name: kind }));
+	await fireEvent.click(screen.getByRole('menuitem', { name: kind }));
 	await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '關閉' }));
 }
 

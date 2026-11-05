@@ -905,6 +905,13 @@
 	.cell.sel.right {
 		outline-style: dashed;
 	}
+	/* 選到的格子用鍵盤停在上面：換成全站的焦點框（格子外面的青色框），不被選取的框蓋掉。 */
+	.cell.sel:focus-visible {
+		outline: 2px solid var(--sel, #19b4d8);
+		outline-offset: 2px;
+		position: relative;
+		z-index: 1;
+	}
 	/* 現在播到的那一拍：數字格底下一條播放頭顏色的粗線。 */
 	.cell.now {
 		box-shadow: inset 0 -3px 0 var(--now, #f2542d);
@@ -1075,10 +1082,9 @@
 	.pop-row.phase .lbl {
 		color: var(--text, #1a2238);
 	}
-	/* 口號段點選的環節。 */
+	/* 口號段點選的環節：深色的框（用陰影畫；外框留給焦點的青色框）。 */
 	.word.phase[aria-pressed='true'] {
-		outline: 2px solid var(--sel, #19b4d8);
-		outline-offset: 2px;
+		box-shadow: 0 0 0 2px var(--ink, #16213a);
 	}
 	.clear:disabled {
 		opacity: 0.4;

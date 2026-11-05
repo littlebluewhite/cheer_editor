@@ -101,9 +101,19 @@
 		dragging = null;
 	}
 
+	/** 刪隊員。刪掉了焦點給補上來的那一列（刪的是最後一個就給上一列）的刪除鈕；取消就回到他的刪除鈕：不掉回 body。 */
 	function remove(id: string) {
 		askingId = id;
-		ask.send((o: ConfirmOption = {}) => deleteMember(flow, id, o));
+		const at = flow.members.findIndex((m) => m.id === id);
+		const focusRemove = async (i: number) => {
+			await tick();
+			const buttons = document.querySelectorAll<HTMLElement>('.members .remove');
+			buttons[Math.min(i, buttons.length - 1)]?.focus();
+		};
+		ask.send((o: ConfirmOption = {}) => deleteMember(flow, id, o), {
+			done: () => focusRemove(at),
+			cancel: () => focusRemove(at)
+		});
 	}
 </script>
 
