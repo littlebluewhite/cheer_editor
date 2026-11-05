@@ -10,7 +10,6 @@
 		type ConfirmOption,
 		type CustomRole
 	} from '#lib/core';
-	import { Ask } from './ask.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -27,7 +26,7 @@
 	let name = $state('');
 	let meaning = $state('');
 	/** 被擋的原因，和刪有人用的角色時等教練確認的清單。 */
-	const ask = new Ask((f) => session.change(f), { confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 
 	/** 改自訂角色的名稱或意思；被擋就把輸入框還原。 */
 	function edit(role: CustomRole, patch: Partial<Pick<CustomRole, 'name' | 'meaning'>>, input: HTMLInputElement) {

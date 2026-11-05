@@ -16,7 +16,6 @@
 		type RunThroughMarks
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { Ask } from './ask.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { actionColor } from './category-colors';
 
@@ -32,7 +31,7 @@
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	/** 存好了交給 session 的「記」（紀錄不算復原的一步）。 */
-	const ask = new Ask((f) => session.record(f));
+	const ask = session.recordAsk();
 
 	const NEXT: Record<Mark, Mark> = { '✓': '△', '△': '✗', '✗': '✓' };
 

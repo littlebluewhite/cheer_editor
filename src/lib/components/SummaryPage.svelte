@@ -25,7 +25,7 @@
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
-	import { Flash } from './flash.svelte.js';
+	import { Flash } from '#lib/flash.svelte.js';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD），跟記錄頁共用；期間從這天往回算。 */

@@ -19,8 +19,7 @@
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { Ask } from './ask.svelte.js';
-	import { Flash } from './flash.svelte.js';
+	import { Flash } from '#lib/flash.svelte.js';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -38,7 +37,7 @@
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	/** 記一次、刪掉上一次、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
-	const ask = new Ask((f) => session.record(f));
+	const ask = session.recordAsk();
 	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著那一次，給「救回」。 */
 	const flash = new Flash<{ text: string; removed?: { attempt: Attempt; index: number } }>();
 

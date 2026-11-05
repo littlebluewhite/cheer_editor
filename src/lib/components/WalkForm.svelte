@@ -16,7 +16,6 @@
 		timeText,
 		type Walk
 	} from '#lib/core';
-	import { Ask } from './ask.svelte';
 
 	interface Props {
 		/** 播放頭，全域秒數。 */
@@ -57,7 +56,7 @@
 	let departText = $state('');
 	let arriveText = $state('');
 	/** 被擋的原因（出發、到達看不懂也算）。 */
-	const ask = new Ask((f) => session.change(f));
+	const ask = session.changeAsk();
 
 	// 換站位、換選取、流程改了：欄位回到現在的走法。
 	$effect(() => {

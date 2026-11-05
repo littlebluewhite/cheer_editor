@@ -15,8 +15,8 @@ import {
 	type Flow,
 	type MoveResult
 } from '#lib/core';
-import { Ask, type Handlers } from '#lib/components/ask.svelte.js';
-import { Flash } from '#lib/components/flash.svelte.js';
+import { Ask, type Handlers } from '#lib/ask.svelte.js';
+import { Flash } from '#lib/flash.svelte.js';
 
 const UNDO_LIMIT = 100;
 
@@ -149,6 +149,16 @@ export class EditorSession {
 	 */
 	record(flow: Flow) {
 		if (this.#flow) this.#flow = flow;
+	}
+
+	/** 給元件一個「改」的問題：成功就交給 change（算一步）。 */
+	changeAsk(options: { confirmLabel?: string } = {}): Ask {
+		return new Ask((f) => this.change(f), options);
+	}
+
+	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
+	recordAsk(): Ask {
+		return new Ask((f) => this.record(f));
 	}
 
 	/** 復原：換上前一份編排，帶著現在的紀錄。回傳有沒有復原。 */

@@ -9,7 +9,6 @@
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
-	import { Ask } from './ask.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
@@ -23,7 +22,7 @@
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	/** 被擋的原因。 */
-	const ask = new Ask((f) => session.change(f));
+	const ask = session.changeAsk();
 
 	function update(patch: Partial<TimeRules>) {
 		ask.send(() => updateTimeRules(flow, patch));
