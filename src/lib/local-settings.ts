@@ -47,38 +47,25 @@ export function saveLayoutPx(name: LayoutSize, px: number | null): void {
 }
 
 /**
- * 手機檢視模式的「我」（隊員 id）：照流程名字分開記（流程檔裡沒有固定的 id；教練傳新版、名字一樣就還在）。
- * 不進流程檔。沒選是 ''。
+ * 照流程名字分開記的設定（流程檔裡沒有固定的 id；教練傳新版、名字一樣就還在），不進流程檔。存在 `cheer-editor:<kind>:<流程名字>`。
+ * me：手機檢視模式的「我」（隊員 id）。print：八拍表「印誰」上次選的（隊員 id、'role:top' 之類的全局角色）。
+ * 沒選（全隊）是 ''。
  */
-export function loadMe(flowName: string): string {
+export type FlowSetting = 'me' | 'print';
+
+export function loadFlowSetting(kind: FlowSetting, flowName: string): string {
 	try {
-		return localStorage.getItem(`cheer-editor:me:${flowName}`) ?? '';
+		return localStorage.getItem(`cheer-editor:${kind}:${flowName}`) ?? '';
 	} catch {
 		return '';
 	}
 }
 
-export function saveMe(flowName: string, memberId: string): void {
+/** 存 ''（沒選）就刪掉那一筆。 */
+export function saveFlowSetting(kind: FlowSetting, flowName: string, value: string): void {
 	try {
-		if (memberId) localStorage.setItem(`cheer-editor:me:${flowName}`, memberId);
-		else localStorage.removeItem(`cheer-editor:me:${flowName}`);
-	} catch {
-		// 存不了就只在這次用
-	}
-}
-
-/** 八拍表「印誰」上次選的，照流程名字分開存：'' 全隊、隊員 id、'role:top' 之類的全局角色。 */
-export function loadPrintChoice(flowName: string): string {
-	try {
-		return localStorage.getItem(`cheer-editor:print:${flowName}`) ?? '';
-	} catch {
-		return '';
-	}
-}
-
-export function savePrintChoice(flowName: string, choice: string): void {
-	try {
-		localStorage.setItem(`cheer-editor:print:${flowName}`, choice);
+		if (value) localStorage.setItem(`cheer-editor:${kind}:${flowName}`, value);
+		else localStorage.removeItem(`cheer-editor:${kind}:${flowName}`);
 	} catch {
 		// 存不了就只在這次用
 	}

@@ -11,7 +11,7 @@
 		type EightCountRow,
 		type Flow
 	} from '#lib/core';
-	import { loadPrintChoice, savePrintChoice } from '#lib/local-settings.js';
+	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
@@ -41,7 +41,7 @@
 
 	/** '' = 全隊、隊員 id、'role:top' = 全部上層。打開時：編輯畫面選的那個人優先，再來是上次選的。 */
 	let choice = $state(
-		untrack(() => [selected ?? '', loadPrintChoice(flow.name)].find((c) => c && valid(c)) ?? '')
+		untrack(() => [selected ?? '', loadFlowSetting('print', flow.name)].find((c) => c && valid(c)) ?? '')
 	);
 
 	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
@@ -83,7 +83,7 @@
 			<b class="tool-title">八拍表</b>
 			<label>
 				印誰
-				<select bind:value={choice} onchange={() => savePrintChoice(flow.name, choice)}>
+				<select bind:value={choice} onchange={() => saveFlowSetting('print', flow.name, choice)}>
 					<option value="">全隊</option>
 					{#each roleChoices as r (r.value)}
 						<option value={r.value}>{r.label}</option>
