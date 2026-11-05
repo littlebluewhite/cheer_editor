@@ -91,6 +91,41 @@ export function deleteLastAttempt(
 	};
 }
 
+/**
+ * 改某一次的記號（點歷史裡的那一次）：還在原來的位置、id、日期、誰、練法都不變；記號照記一次的規則留（keptAttempt），
+ * 原本整個做、改了卻空了一格就變只練幾個環節。全上的一次一定整個做，空了一格就擋下來。
+ */
+export function changeAttempt(
+	flow: Flow,
+	actionId: string,
+	attemptId: string,
+	marks: Record<string, Mark>
+): CommandResult {
+	const action = flow.actions.find((a) => a.id === actionId);
+	const records = action?.successRate?.records ?? [];
+	const index = records.findIndex((r) => r.id === attemptId);
+	if (!action || index < 0) return blocked('找不到這一次');
+	const attempt = { ...records[index], ...keptAttempt(action, records[index].whole, marks) };
+	if (attempt.practice === 'runThrough' && !attempt.whole && Object.keys(attempt.marks).length)
+		return blocked('全上的一次每個環節都要有記號（✗ 後面的不用）');
+	const problem = attemptProblem(action, attempt);
+	if (problem) return blocked(problem);
+	return ok(withRecords(flow, action, records.toSpliced(index, 1, attempt)));
+}
+
+/** 刪掉某一次（點歷史裡的那一次，全上的也只刪這一次）。回傳刪掉的那一次和它原本排第幾，給「救回」用。 */
+export function deleteAttempt(
+	flow: Flow,
+	actionId: string,
+	attemptId: string
+): CommandResult<{ attempt: Attempt; index: number }> {
+	const action = flow.actions.find((a) => a.id === actionId);
+	const records = action?.successRate?.records ?? [];
+	const index = records.findIndex((r) => r.id === attemptId);
+	if (!action || index < 0) return blocked('找不到這一次');
+	return { kind: 'ok', flow: withRecords(flow, action, records.toSpliced(index, 1)), attempt: records[index], index };
+}
+
 /** 救回剛刪掉的那一次：放回原本排第幾（之後又記的排在它後面），照記一次的規則檢查；已經在了就擋下來。 */
 export function restoreAttempt(flow: Flow, actionId: string, attempt: Attempt, index: number): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);

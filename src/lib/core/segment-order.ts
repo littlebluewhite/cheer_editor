@@ -1,4 +1,4 @@
-// 刪段、調段順序（docs/adr/0003-v1-small-decisions.md）。
+// 刪段、調段順序（docs/adr/0003-v1-small-decisions.md）、從播放頭切段。
 // 動作、站位記「哪個段 ＋ 段內時間」，所以跟著自己的段走。開頭那張站位永遠在流程開頭，「跟著第一段」：
 // 第一段換了，新的第一段開頭本來就有站位就用那張（原本的開頭那張：段還在就變成一般站位，段刪掉了就跟著刪）；
 // 沒有的話開頭那張自己搬過去：換順序時整張搬，刪段時位置換成那一刻大家所在的地方。站位不會變多。
@@ -6,9 +6,10 @@
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
+import { nextId } from './ids';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
-import { atText, segmentSpans } from './time';
+import { EPS, HALF_BEATS_PER_EIGHT, atText, segmentSpans, toPosition, totalSeconds } from './time';
 
 /** 刪段：段裡的動作、站位一起刪。會刪到東西時先問（列出清單）；空的段直接刪。 */
 export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOption = {}): CommandResult {
@@ -47,6 +48,45 @@ export function moveSegment(flow: Flow, segmentId: string, dir: -1 | 1): Command
 	if (to >= flow.segments.length) return blocked('已經是最後一段了');
 	const segments = flow.segments.with(index, flow.segments[to]).with(to, flow.segments[index]);
 	return ok({ ...flow, segments, formations: reorder(flow, segments) });
+}
+
+/**
+ * 從播放頭（全域秒數）這個八拍把音樂段切成兩段：切點吸到那個八拍的開頭，新段插在後面，
+ * 沿用音樂檔和 BPM，第一拍接在切點。切點以後的動作、站位、走位搬到新段，時間不變。
+ * 有動作跨過切點就擋下（說是哪個）。
+ */
+export function splitSegment(flow: Flow, segmentId: string, sec: number): CommandResult {
+	const index = flow.segments.findIndex((s) => s.id === segmentId);
+	if (index === -1) return blocked('找不到這一段');
+	const old = flow.segments[index];
+	if (old.kind !== 'music') return blocked('口號段不能切');
+	const pos = toPosition(flow, sec);
+	if (pos?.segmentId !== segmentId || sec >= totalSeconds(flow) - EPS) return blocked('播放頭不在這一段');
+	const cut = Math.floor(pos.at / HALF_BEATS_PER_EIGHT) * HALF_BEATS_PER_EIGHT;
+	if (cut === 0) return blocked('播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍');
+	const across = flow.actions.find((a) => a.segmentId === segmentId && a.start < cut && a.start + a.length > cut);
+	if (across) {
+		return blocked(`動作「${actionLabel(across)}」（${atText(old, across.start)} 起）跨過 ${atText(old, cut)}，切不開`);
+	}
+	const id = nextId('s', flow.segments.map((s) => s.id));
+	const firstBeatSec = old.firstBeatSec + (cut * 30) / old.bpm;
+	const after: Segment = { ...old, id, firstBeatSec, halfBeats: old.halfBeats - cut };
+	const segments = flow.segments.with(index, { ...old, halfBeats: cut }).toSpliced(index + 1, 0, after);
+	/** 切點以後的時間點換到新段。 */
+	const moved = <T extends { segmentId: string | null; at: number }>(p: T): T =>
+		p.segmentId === segmentId && p.at >= cut ? { ...p, segmentId: id, at: p.at - cut } : p;
+	const formations = flow.formations.map((f) => {
+		const g = moved(f);
+		if (!g.walks) return g;
+		const walks = Object.fromEntries(
+			Object.entries(g.walks).map(([m, w]) => [m, { depart: moved(w.depart), arrive: moved(w.arrive) }])
+		);
+		return withWalks(g, walks);
+	});
+	const actions = flow.actions.map((a) =>
+		a.segmentId === segmentId && a.start >= cut ? { ...a, segmentId: id, start: a.start - cut } : a
+	);
+	return ok({ ...flow, segments, formations, actions });
 }
 
 /**

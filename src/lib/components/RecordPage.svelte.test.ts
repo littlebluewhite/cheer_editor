@@ -117,12 +117,34 @@ describe('記錄頁', () => {
 	});
 });
 
+describe('記錄頁改某一次、刪掉某一次', () => {
+	it('改某一次的記號：左邊的最弱跟著變；刪掉那一次：卡片下面和次數都少一次', async () => {
+		setup();
+		const who = '第 1 組 小美';
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		const item = () => screen.getByRole('button', { name: /^技巧·Lib/ }).textContent ?? '';
+		expect(item()).toContain('最弱：上法 100%');
+
+		await fireEvent.click(card(who).getByRole('button', { name: /^改第 1 次/ }));
+		await fireEvent.click(card(who).getByRole('button', { name: '第 1 次 下法 失敗' }));
+		await fireEvent.click(card(who).getByRole('button', { name: '存修改' }));
+		expect(dayRow(who)).toEqual(['✓✓✗', '✓✓✓']);
+		expect(item()).toContain('最弱：下法 50%');
+
+		await fireEvent.click(card(who).getByRole('button', { name: /^改第 1 次/ }));
+		await fireEvent.click(card(who).getByRole('button', { name: '刪掉這一次' }));
+		expect(dayRow(who)).toEqual(['✓✓✓']);
+		expect(item()).toContain('這天 1 次');
+	});
+});
+
 describe('記錄頁記一次全上', () => {
 	it('按「＋ 記一次全上」打開全上表；存好回到記錄頁，寫「已存這次全上」，卡片和流程裡都有這次全上', async () => {
 		const session = setup();
 		await openSheet();
 		await tapSlot('第 2 組 小芳', '下法', 2);
-		await fireEvent.click(within(sheet().getByRole('region', { name: '騰翻' })).getByRole('button', { name: '沒做（停了）' }));
+		await fireEvent.click(within(sheet().getByRole('region', { name: '騰翻' })).getByRole('button', { name: '這個沒做' }));
 		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
 
 		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
