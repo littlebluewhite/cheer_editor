@@ -260,8 +260,10 @@
 
 	// 播放中改了段（換順序、刪段、改 BPM、長度，或復原這些）：已經排好的聲音是舊的，照現在的段重排。
 	// 只看 segments 這個陣列換了沒，改人、改動作不會重排。
+	// segments 另外 derived：flow 換了但 segments 是同一個陣列時，derived 不變，effect 不會跑。
+	const segments = $derived(flow?.segments);
 	$effect(() => {
-		flow?.segments;
+		segments;
 		untrack(() => {
 			if (playing && flow) play(flow);
 		});

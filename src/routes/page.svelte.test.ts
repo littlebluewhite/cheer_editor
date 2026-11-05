@@ -1122,6 +1122,19 @@ describe('播放', () => {
 		expect(engine.clicks[0].when).toBeCloseTo(t0 + 10, 6);
 	});
 
+	it('播放中加隊員（沒動到段）：聲音不重排，不會中斷', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const scheduled = engine.clicks;
+		await tab('隊員');
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '王小明' } });
+		await fireEvent.change(screen.getByLabelText('性別'), { target: { value: 'F' } });
+		await fireEvent.change(screen.getByLabelText('全局角色'), { target: { value: 'base' } });
+		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
+		expect(document.querySelectorAll('[data-member-id]').length).toBe(1);
+		expect(engine.clicks).toBe(scheduled);
+	});
+
 	it('從播放頭開始播：口號段沒有節拍器，第一聲是下一個音樂段的第一拍', async () => {
 		const engine = await sample();
 		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, {
