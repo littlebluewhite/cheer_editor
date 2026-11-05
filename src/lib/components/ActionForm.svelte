@@ -491,7 +491,7 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {cellAt} />
+			<CueGrid {action} {playheadSec} {cellAt} />
 		{:else}
 			<button type="button" class="primary add" onclick={add}>新增動作</button>
 		{/if}

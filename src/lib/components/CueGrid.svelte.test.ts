@@ -5,6 +5,7 @@ import {
 	createFlow,
 	addPhase,
 	PHASE_COLORS,
+	toSeconds,
 	updateAction,
 	updatePhase,
 	updateSegment,
@@ -31,9 +32,11 @@ function sample(): Flow {
 }
 
 /** 放一個帶著 flow 的 session 進 context，畫第一個動作的拍點格子；回傳 session。 */
-function renderGrid(flow: Flow) {
+function renderGrid(flow: Flow, playheadSec?: number) {
 	const session = new EditorSession(flow);
-	render(TestSession, { props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt } } });
+	render(TestSession, {
+		props: { session, component: CueGrid, props: { action: flow.actions[0], cellAt: fakeCellAt, playheadSec } }
+	});
 	return session;
 }
 
@@ -237,6 +240,98 @@ describe('拍點格子：拍點小窗', () => {
 	});
 });
 
+describe('從 & 開始的拍點', () => {
+	/** 動作拖到 3-3&（start 37）：拍子 up 給小A 從 3-3& 到 3-4&、down 給全部從 3-4& 到 3-5&。 */
+	function offbeat() {
+		const flow = sample();
+		const cues = [
+			{ kind: 'count' as const, at: 0, len: 2, word: 'up', who: { member: 'm1' } },
+			{ kind: 'count' as const, at: 2, len: 2, word: 'down', who: null }
+		];
+		const session = renderGrid({ ...flow, actions: [{ ...flow.actions[0], start: 37, cues }] });
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		return { session, grid, cues };
+	}
+
+	it('只塗半格：從 3-3 的後半格塗到 3-4 的前半格', () => {
+		const { grid } = offbeat();
+		const up = grid.getByRole('button', { name: /^拍子 up/ });
+		const cell = (name: string) => grid.getByRole('button', { name }).style.gridColumn;
+		// 一格佔兩欄（前半、後半）
+		expect(cell('3-3')).toBe('6 / span 2');
+		expect(cell('3-4')).toBe('8 / span 2');
+		expect(up.style.gridColumn).toBe('7 / 9');
+	});
+
+	it('點它選回它原本的範圍，給誰也換成它的；換字只換掉它，旁邊的拍點不動', async () => {
+		const { grid, session, cues } = offbeat();
+		await fireEvent.click(grid.getByRole('button', { name: /^拍子 up/ }));
+		const pop = within(grid.getByRole('dialog', { name: '拍點小窗' }));
+		expect(pop.getByText(/^選了/).textContent).toBe('選了 3-3&・1 拍');
+		expect((pop.getByRole('combobox', { name: '給誰' }) as HTMLSelectElement).value).toBe('1');
+		await fireEvent.click(pop.getByRole('button', { name: 'down' }));
+		expect(session.flow!.actions[0].cues).toEqual([
+			{ kind: 'count', at: 0, len: 2, word: 'down', who: { member: 'm1' } },
+			cues[1]
+		]);
+	});
+
+	it('選到的半格塗半格', async () => {
+		const { grid } = offbeat();
+		await fireEvent.click(grid.getByRole('button', { name: /^拍子 up/ }));
+		const cell = (name: string) => grid.getByRole('button', { name });
+		expect(cell('3-3').classList.contains('right')).toBe(true);
+		expect(cell('3-4').classList.contains('left')).toBe(true);
+		expect(cell('3-4').getAttribute('aria-pressed')).toBe('true');
+		expect(cell('3-5').getAttribute('aria-pressed')).toBe('false');
+	});
+});
+
+describe('現在播到的那一拍', () => {
+	it('播放頭在 3-5& 時，3-5 那一格有標記；別格沒有', () => {
+		const flow = sample();
+		renderGrid(flow, toSeconds(flow, { segmentId: 's1', at: 41 }));
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		expect(grid.getByRole('button', { name: '3-5' }).getAttribute('aria-current')).toBe('time');
+		expect(document.querySelectorAll('[aria-current]')).toHaveLength(1);
+	});
+
+	it('播放頭不在這個動作的八拍裡，就沒有標記', () => {
+		const flow = sample();
+		renderGrid(flow, toSeconds(flow, { segmentId: 's1', at: 4 }));
+		expect(document.querySelectorAll('[aria-current]')).toHaveLength(0);
+	});
+});
+
+describe('方向鍵', () => {
+	it('左右移選取；Shift 加方向鍵延長選取，焦點跟著走', async () => {
+		const { grid, selText } = setup();
+		const cell = (name: string) => grid.getByRole('button', { name });
+		await fireEvent.click(cell('3-5'));
+		await fireEvent.keyDown(cell('3-5'), { key: 'ArrowRight' });
+		expect(selText()).toBe('選了 3-6・1 拍');
+		expect(document.activeElement).toBe(cell('3-6'));
+		await fireEvent.keyDown(cell('3-6'), { key: 'ArrowRight', shiftKey: true });
+		await fireEvent.keyDown(cell('3-7'), { key: 'ArrowRight', shiftKey: true });
+		expect(selText()).toBe('選了 3-6 到 3-8・3 拍');
+		expect(document.activeElement).toBe(cell('3-8'));
+		await fireEvent.keyDown(cell('3-8'), { key: 'ArrowLeft', shiftKey: true });
+		expect(selText()).toBe('選了 3-6 到 3-7・2 拍');
+		await fireEvent.keyDown(cell('3-7'), { key: 'ArrowLeft' });
+		expect(selText()).toBe('選了 3-5・1 拍');
+	});
+
+	it('到動作頭尾就停住', async () => {
+		const { grid, selText } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
+		await fireEvent.keyDown(grid.getByRole('button', { name: '3-3' }), { key: 'ArrowLeft' });
+		expect(selText()).toBe('選了 3-3・1 拍');
+		await fireEvent.click(grid.getByRole('button', { name: '4-2' }));
+		await fireEvent.keyDown(grid.getByRole('button', { name: '4-2' }), { key: 'ArrowRight', shiftKey: true });
+		expect(selText()).toBe('選了 4-2・1 拍');
+	});
+});
+
 describe('環節那一列', () => {
 	it('動作拖到半拍上：相鄰的環節各佔自己的格子，不疊在一起', () => {
 		let flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } }));
@@ -244,7 +339,7 @@ describe('環節那一列', () => {
 		flow = flowOf(updateAction(flow, 'x1', { start: 37 }));
 		renderGrid(flow);
 		const columns = [...document.querySelectorAll<HTMLElement>('.item.phase')].map((b) => b.style.gridColumn);
-		expect(columns).toEqual(['5 / 6', '6 / 7']);
+		expect(columns).toEqual(['8 / 10', '10 / 12']);
 	});
 
 	it('動作拖到半拍上：點環節選回它那一格，清掉就刪掉它，隔壁的環節還在', async () => {
