@@ -1,6 +1,7 @@
 // 問教練 module：畫面上「送指令 → 問 → 再送」只寫這一次。一個實例管一個地方的問題，ConfirmList 收它就畫。
 // 送一個指令（給它「帶著回答再送一次」的函式），照結果：
 //   成功：把新流程交給 onchange；被擋：留下原因（給了還原就加「，已還原」並還原）；要確認、要選：留下問題。
+//   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到那一格成功送出為止。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
 
 import type { CommandResult, ConfirmOption, Flow } from '#lib/core';
@@ -15,11 +16,13 @@ export interface Question {
 	choose: boolean;
 }
 
-/** 送指令時可以給的事：成功之後再做什麼、怎麼還原畫面（被擋、取消時）、只在按取消時做什麼。 */
+/** 送指令時可以給的事：成功之後再做什麼、怎麼還原畫面（被擋、取消時）、只在按取消時做什麼、
+ *  是哪一格送的（給了就把原因記在那一格，留到那一格改對為止）。 */
 export interface Handlers<R extends CommandResult> {
 	done?: (r: Extract<R, { kind: 'ok' }>) => void;
 	revert?: () => void;
 	cancel?: () => void;
+	field?: string;
 }
 
 const OPTIONS: Record<Exclude<Answer, 'cancel'>, ConfirmOption> = {
@@ -31,6 +34,8 @@ const OPTIONS: Record<Exclude<Answer, 'cancel'>, ConfirmOption> = {
 export class Ask {
 	question = $state<Question | null>(null);
 	error = $state('');
+	/** 每一格被擋的原因（格名 → 原因）：那一格改對了才收掉，改別格不會收。 */
+	fieldErrors = $state<Record<string, string>>({});
 	/** 沒成功（被擋、要問）幾次：同一句原因又出現一次時，畫面靠它知道要再捲過去。 */
 	failures = $state(0);
 	/** 要確認時確定鈕的字。 */
@@ -77,11 +82,14 @@ export class Ask {
 
 	#settle(r: CommandResult, send: (o: ConfirmOption) => CommandResult, handlers: Handlers<CommandResult>) {
 		this.clear();
+		const field = handlers.field;
+		if (field !== undefined && r.kind === 'ok') delete this.fieldErrors[field];
 		if (r.kind === 'ok') {
 			this.#onchange(r.flow);
 			handlers.done?.(r);
 		} else if (r.kind === 'blocked') {
-			this.error = handlers.revert ? `${r.message}，已還原` : r.message;
+			if (field !== undefined) this.fieldErrors[field] = `「${field}」退回原本的值：${r.message}`;
+			else this.error = handlers.revert ? `${r.message}，已還原` : r.message;
 			handlers.revert?.();
 		} else {
 			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose' };
