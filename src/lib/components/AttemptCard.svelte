@@ -1,7 +1,10 @@
 <script lang="ts">
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
-	// 每個環節三顆大按鈕 ✓ △ ✗；照順序點，點到最後一個要練的環節、或點了 ✗，就自動存成一次（存成核心 keptAttempt 給的樣子：✗ 後面空著）。
+	// 每個環節三顆大按鈕 ✓ △ ✗；再按一次點著的那顆就取消。
+	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著）；跳過前面的環節，存之前就提醒。
+	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次。
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。
+	// 下面一排是這天的每一次，全上記的用虛線框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回。
 	import {
 		MARKS,
 		attemptText,
@@ -10,11 +13,14 @@
 		phaseColor,
 		phaseLabel,
 		recordAttempt,
+		restoreAttempt,
 		type Action,
+		type Attempt,
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { Ask } from './ask.svelte.js';
+	import { Flash } from './flash.svelte.js';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -31,8 +37,10 @@
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
-	/** 記一次、刪掉上一次：紀錄改了交給 session 的「記」（不算復原的一步）。 */
+	/** 記一次、刪掉上一次、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
 	const ask = new Ask((f) => session.record(f));
+	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著那一次，給「救回」。 */
+	const flash = new Flash<{ text: string; removed?: { attempt: Attempt; index: number } }>();
 
 	/** 這次練：整個（true）或只練幾個環節（false）。換下一次也留著。 */
 	let whole = $state(true);
@@ -40,15 +48,17 @@
 	let picked = $state<string[]>([]);
 	/** 這一次已經點的記號（還沒存）。 */
 	let marks = $state<Record<string, Mark>>({});
-	/** 選「整個」卻跳過前面的環節、上一次存成只練幾個環節時的說明；下一次點就收掉。 */
-	let note = $state('');
 
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 這一次要練的環節，照順序。 */
 	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
-	/** 卡上亮的記號：會存下來的樣子。 */
-	const shown = $derived(keptAttempt(action, whole, marks).marks);
-	/** 這組在這一天的每一次，照記的先後。 */
+	/** 會存下來的樣子（核心決定留哪些記號、算不算整個做）。 */
+	const kept = $derived(keptAttempt(action, whole, marks));
+	/** 卡上亮的記號。 */
+	const shown = $derived(kept.marks);
+	/** 選「整個」卻跳過前面的環節：存之前就說。 */
+	const skipping = $derived(whole && Object.keys(marks).length > 0 && !kept.whole);
+	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
 	function setWhole(value: boolean) {
@@ -61,25 +71,37 @@
 		marks = {};
 	}
 
-	/** 點一個記號：點到最後一個要練的環節、或點了 ✗，就存成一次（留哪些記號、算不算整個做由核心決定）。 */
+	/** 點一個記號；再點一次點著的那顆就取消。只練幾個環節時，點到最後一個要練的環節、或點了 ✗，就存。 */
 	function tap(phaseId: string, mark: Mark) {
-		note = '';
-		const next = { ...marks, [phaseId]: mark };
-		if (mark !== '✗' && phaseId !== planned.at(-1)?.id) {
-			marks = next;
+		flash.clear();
+		if (shown[phaseId] === mark) {
+			const { [phaseId]: _, ...rest } = marks;
+			marks = rest;
 			return;
 		}
+		marks = { ...marks, [phaseId]: mark };
+		if (!whole && (mark === '✗' || phaseId === planned.at(-1)?.id)) save();
+	}
+
+	/** 存這一次（留哪些記號、算不算整個做由核心決定）。 */
+	function save() {
+		const next = marks;
 		marks = {};
-		const skipped = whole && !keptAttempt(action, whole, next).whole;
 		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
-			done: () => {
-				if (skipped) note = '跳過了前面的環節，這次記成「只練幾個環節」，不算進整次成功率';
-			}
+			done: () => flash.show({ text: '已存' })
 		});
 	}
 
 	function removeLast() {
-		ask.send(() => deleteLastAttempt(flow, action.id, who, date));
+		ask.send(() => deleteLastAttempt(flow, action.id, who, date, 'drill'), {
+			done: ({ attempt, index }) => flash.show({ text: '已刪掉', removed: { attempt, index } })
+		});
+	}
+
+	function restore(removed: { attempt: Attempt; index: number }) {
+		ask.send(() => restoreAttempt(flow, action.id, removed.attempt, removed.index), {
+			done: () => flash.show({ text: '已救回' })
+		});
 	}
 </script>
 
@@ -123,18 +145,36 @@
 		{/each}
 	</div>
 
+	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
+	{#if whole}
+		<button type="button" class="primary save" disabled={!Object.keys(marks).length} onclick={save}>存這一次</button>
+	{/if}
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
-	{#if note}<p class="hint" role="status">{note}</p>{/if}
+	{#if flash.value}
+		{@const removed = flash.value.removed}
+		<p class="flash" role="status">
+			{flash.value.text}{#if removed}<button type="button" class="ghost" onclick={() => restore(removed)}>救回</button>{/if}
+		</p>
+	{/if}
 
 	<footer>
 		{#if today.length}
 			<ol class="day" aria-label="這天的每一次">
-				{#each today as r (r.id)}<li>{attemptText(action, r)}</li>{/each}
+				{#each today as r (r.id)}
+					{@const run = r.practice === 'runThrough'}
+					<li class:run title={run ? '全上' : '分段練'}>{attemptText(action, r)}</li>
+				{/each}
 			</ol>
 		{:else}
 			<p class="none">這天還沒記</p>
 		{/if}
-		<button type="button" class="undo-last" disabled={!today.length} onclick={removeLast}>刪掉上一次</button>
+		<button
+			type="button"
+			class="undo-last"
+			disabled={!today.some((r) => r.practice === 'drill')}
+			title="刪掉這張卡這天最後記的一次分段練（全上的不刪）"
+			onclick={removeLast}>刪掉上一次</button
+		>
 	</footer>
 </section>
 
@@ -290,9 +330,31 @@
 		font-size: 14px;
 		letter-spacing: 1px;
 	}
+	/* 全上記的那幾筆：虛線框，跟分段練分開。 */
+	.day li.run {
+		border: 2px dashed var(--sel);
+		background: var(--surface);
+	}
 	.none {
 		color: var(--muted);
 		font-size: 12px;
+	}
+	.save {
+		justify-self: start;
+	}
+	.flash {
+		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--ok);
+	}
+	.flash button {
+		padding: 2px 8px;
+		font-size: 13px;
+		text-decoration: underline;
 	}
 	.undo-last {
 		flex: none;

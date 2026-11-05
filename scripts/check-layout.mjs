@@ -338,7 +338,7 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 		await tap(go.x, go.y);
 		const inPractice = await js(`return !!document.querySelector('.practice-host') && !document.querySelector('.narrow-hint')`);
 		if (!inPractice) return { ok: false, value: '按了「去練習」沒有進練習' };
-		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」：點了 ✗ 就存成一次
+		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」，再按「存這一次」：存成一次
 		const picked = await js(`for (const b of document.querySelectorAll('.record .list button')) {
 				b.click();
 				await new Promise((r) => setTimeout(r, 100));
@@ -354,6 +354,13 @@ for (const [w, h] of [[390, 844], [820, 1180]]) {
 			return { x: r.left + r.width / 2, y: r.top + r.height / 2, self: !!top && b.contains(top), top: top ? top.outerHTML.slice(0, 60) : null };`);
 		if (!mark.self) return { ok: false, value: { 記號按鈕被蓋住: mark.top } };
 		await tap(mark.x, mark.y);
+		const save = await js(`const b = document.querySelector('.card .save');
+			b.scrollIntoView({ block: 'center' });
+			const r = b.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { x: r.left + r.width / 2, y: r.top + r.height / 2, self: !!top && b.contains(top), top: top ? top.outerHTML.slice(0, 60) : null };`);
+		if (!save.self) return { ok: false, value: { 存這一次被蓋住: save.top } };
+		await tap(save.x, save.y);
 		const after = await js(`return document.querySelectorAll('.card .day li').length`);
 		const o = await overflow();
 		return { ok: after === before + 1 && noOverflow(o), value: { 記了幾次: `${before} → ${after}`, ...o } };
