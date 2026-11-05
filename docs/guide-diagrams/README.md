@@ -22,7 +22,7 @@ python3 "$F" check src/lib/guide/time.svg
 
 ## 畫面截圖
 
-說明裡另外有 10 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
+說明裡另外有 14 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
 改了編輯器的畫面之後，重拍一次：
 
 ```sh

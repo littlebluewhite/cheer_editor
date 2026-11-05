@@ -344,7 +344,8 @@ await shot('print', [
 	[1, `$label('印誰')`, { x: 0.5, y: 1 }],
 	[2, `$btn('列印', q('.print-sheet'))`, { x: 0.5, y: 1 }],
 	[3, `q('.print-sheet .action')`],
-	[4, `q('.print-sheet .mini')`]
+	// 連圖下面那行「站位 1・第 1 拍」一起框（說明寫的是圖和它下面的字）
+	[4, `q('.print-sheet figure')`]
 ], `[q('.print-sheet .toolbar'), q('.print-sheet .page')]`);
 
 // 9 拍點格子：在 Lib 放 down 2 拍、up 1 拍、下手 4 拍，給上層的 high V 在 4-7，最後選 4-5 到 4-6，拍點小窗開著
