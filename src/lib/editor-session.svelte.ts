@@ -9,11 +9,12 @@ import {
 	setSquad,
 	squadsOf,
 	type Action,
+	type CommandResult,
 	type ConfirmOption,
 	type Flow,
 	type MoveResult
 } from '#lib/core';
-import { Ask } from '#lib/components/ask.svelte.js';
+import { Ask, type Handlers } from '#lib/components/ask.svelte.js';
 
 const UNDO_LIMIT = 100;
 
@@ -25,6 +26,11 @@ export class EditorSession {
 	#undo = $state.raw<Flow[]>([]);
 	/** 重做紀錄：復原掉的流程（最近復原的在後）。做了新的一步就清掉。 */
 	#redo = $state.raw<Flow[]>([]);
+
+	/** 上一步可以接著合的：哪一種（key）、合完的流程。流程換了（中間有別的改動）就接不上。 */
+	#joinable: { key: string; flow: Flow } | null = null;
+	/** nudge 送出時的 key：ask 成功時交給 change。 */
+	#joining: string | null = null;
 
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	#formationId = $state<string | null>(null);
@@ -44,7 +50,7 @@ export class EditorSession {
 	 */
 	readonly ask = new Ask(
 		(f) => {
-			this.change(f);
+			this.change(f, this.#joining ?? undefined);
 			this.notice = '';
 		},
 		{ confirmLabel: '確定', onfail: (error) => (this.notice = error) }
@@ -89,6 +95,7 @@ export class EditorSession {
 		this.#saved = saved ? this.#flow : null;
 		this.#undo = [];
 		this.#redo = [];
+		this.#joinable = null;
 		this.clearSelection();
 		this.notice = '';
 		this.ask.clear();
@@ -102,11 +109,14 @@ export class EditorSession {
 
 	/**
 	 * 「改」：算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。同一個流程不算。清掉重做。
+	 * 給了 join：上一步也是同一個 join、中間沒有別的改動，就跟上一步合成一步。
 	 * 回傳有沒有換上新的流程。
 	 */
-	change(flow: Flow): boolean {
+	change(flow: Flow, join?: string): boolean {
 		if (!this.#flow || flow === this.#flow) return false;
-		this.#undo = [...this.#undo, this.#flow].slice(-UNDO_LIMIT);
+		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
+		if (!joined) this.#undo = [...this.#undo, this.#flow].slice(-UNDO_LIMIT);
+		this.#joinable = join !== undefined ? { key: join, flow } : null;
 		this.#redo = [];
 		this.#flow = flow;
 		this.ask.clear();
@@ -144,8 +154,22 @@ export class EditorSession {
 		return true;
 	}
 
+	/**
+	 * 方向鍵移人：跟場上的問題一樣送出去，成功時連續同一個 key（同一批人、同一拍）、
+	 * 中間沒有別的改動，就合成復原的一步。
+	 */
+	nudge<R extends CommandResult>(key: string, send: () => R, handlers: Handlers<R> = {}): R {
+		this.#joining = key;
+		try {
+			return this.ask.send(send, handlers);
+		} finally {
+			this.#joining = null;
+		}
+	}
+
 	/** 復原、重做換上的流程：提示、場上的問題收掉，選取修剪。 */
 	#restored(flow: Flow) {
+		this.#joinable = null;
 		this.#trim(flow);
 		this.ask.clear();
 		this.notice = '';

@@ -10,6 +10,7 @@
 	//   這一下有欄位被擋（退回實際值、顯示原因）或要問教練，就先不關，讓教練看到是哪一格。
 	// - 裡面有確認框時，Esc 只關確認框。
 	import type { Snippet } from 'svelte';
+	import { flushPendingInput } from '#lib/pending-input.js';
 	import type { Ask } from './ask.svelte';
 
 	interface Props {
@@ -28,8 +29,6 @@
 
 	const me = {};
 	let box: HTMLElement;
-	/** 焦點所在的輸入框，和它上次送出時的值：不一樣就是還沒送出。 */
-	let typing: { el: HTMLInputElement | HTMLTextAreaElement; value: string } | null = null;
 	/** 這一下（按鍵、按下滑鼠）開始時被擋了幾次：關之前比一比，就知道這一下有沒有被擋。 */
 	let failuresAtGesture = 0;
 	/** 按下滑鼠時在背景上：放開也在背景上才算點背景。 */
@@ -55,33 +54,11 @@
 		failuresAtGesture = ask?.failures ?? 0;
 	}
 
-	/** 還沒離開的輸入框：跟離開欄位一樣送出去。 */
-	function flush() {
-		const t = typing;
-		if (!t || document.activeElement !== t.el || t.el.value === t.value) return;
-		t.el.dispatchEvent(new Event('change', { bubbles: true }));
-		t.value = t.el.value;
-	}
-
 	function close() {
 		if (ask?.question) ask.answer('cancel');
-		flush();
+		flushPendingInput();
 		if (ask && ask.failures !== failuresAtGesture) return;
 		onclose();
-	}
-
-	function onfocusin(e: FocusEvent) {
-		const el = e.target;
-		typing =
-			(el instanceof HTMLInputElement && !['checkbox', 'radio', 'file'].includes(el.type)) ||
-			el instanceof HTMLTextAreaElement
-				? { el, value: el.value }
-				: null;
-	}
-
-	/** 欄位送出、處理完之後（掛在 window 上，比欄位自己的處理晚）：記下現在的值。 */
-	function onchange(e: Event) {
-		if (typing && e.target === typing.el) typing.value = typing.el.value;
 	}
 
 	const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -128,10 +105,10 @@
 	}
 </script>
 
-<svelte:window onkeydowncapture={onkeydown} onpointerdowncapture={() => isTop() && mark()} {onchange} />
+<svelte:window onkeydowncapture={onkeydown} onpointerdowncapture={() => isTop() && mark()} />
 
 {#snippet dialog()}
-	<div class={cls} role="dialog" aria-label={label} aria-modal="true" tabindex="-1" {onfocusin} {@attach modal}>
+	<div class={cls} role="dialog" aria-label={label} aria-modal="true" tabindex="-1" {@attach modal}>
 		{@render children(close)}
 	</div>
 {/snippet}

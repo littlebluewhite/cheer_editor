@@ -25,6 +25,7 @@
 		moveMembers,
 		snapPointsNear,
 		snapPosition,
+		toPosition,
 		type FormationWalk,
 		type Member,
 		type Position
@@ -310,15 +311,25 @@
 		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
 	}
 
+	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
+	function nudge(moves: Record<string, Position>) {
+		const s = session!;
+		const sec = playheadSec;
+		const at = toPosition(s.flow!, sec);
+		const key = `${Object.keys(moves).sort().join(',')}@${at?.segmentId}:${at?.at}`;
+		s.nudge(key, () => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
+	}
+
 	const ARROWS: Record<string, Position> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 	/**
-	 * 鍵盤操作焦點所在的人：Enter／空白鍵跟點一下一樣；方向鍵移 1/4 格（Shift 一格），跟拖人一樣吸附、改播放頭這一拍的站位。
-	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把空白鍵當播放、方向鍵當移播放頭。
+	 * 鍵盤操作焦點所在的人：Enter 跟點一下一樣；方向鍵移 1/4 格（Shift 一格），跟拖人一樣吸附、改播放頭這一拍的站位。
+	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把方向鍵當移播放頭。
+	 * 空白鍵往外傳：焦點在人身上時，空白鍵跟頁面其他地方一樣是播放／暫停。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
 		if (!session) return;
-		if (e.key === 'Enter' || e.key === ' ') {
+		if (e.key === 'Enter') {
 			e.preventDefault();
 			e.stopPropagation();
 			session.pickMember(id, e.shiftKey);
@@ -333,7 +344,7 @@
 		const to = snapPosition(field, [o[0] + dir[0] * step, o[1] + dir[1] * step], zoom);
 		const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
 		const [dx, dy] = [to[0] - o[0], to[1] - o[1]];
-		drop(Object.fromEntries(ids.map((i) => [i, [positions[i][0] + dx, positions[i][1] + dy] as Position])));
+		nudge(Object.fromEntries(ids.map((i) => [i, [positions[i][0] + dx, positions[i][1] + dy] as Position])));
 	}
 
 	/** 框裡的人（Shift 時加上原本選的），照名單順序。 */

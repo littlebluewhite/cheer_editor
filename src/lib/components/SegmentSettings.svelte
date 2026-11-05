@@ -38,6 +38,9 @@
 		onaudioload: (audioId: string, audio: LoadedAudio) => void;
 		/** 「▶ 從第一拍聽 2 個八拍」：音訊在頁面那一層。 */
 		onpreview: (segmentId: string) => void;
+		/** 正在播放：段設定蓋住上方列的暫停鈕，所以這裡也放一顆。 */
+		playing?: boolean;
+		onpause?: () => void;
 		onclose: () => void;
 		/** 解碼音樂檔；測試換成假的（jsdom 沒有 Web Audio）。 */
 		decode?: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
@@ -50,6 +53,8 @@
 		audios,
 		onaudioload,
 		onpreview,
+		playing = false,
+		onpause,
 		onclose,
 		decode = decodeAudio,
 		waveXToSec = defaultWaveXToSec
@@ -192,6 +197,9 @@
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
 			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
+			{#if playing}
+				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={onpause}><Icon name="pause" size={14} />暫停</button>
+			{/if}
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
 
@@ -329,6 +337,13 @@
 </Modal>
 
 <style>
+	/* 播放中才有的暫停鈕：靠右，緊挨著 × */
+	.pause {
+		margin-left: auto;
+	}
+	.pause + .close {
+		margin-left: 0;
+	}
 	.order {
 		display: flex;
 		flex-wrap: wrap;
