@@ -161,7 +161,7 @@ describe('記錄頁的卡', () => {
 		expect((screen.getByRole('button', { name: '刪掉上一次' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
-	it('刪掉後顯示「已刪掉」和「救回」：按救回放回原位；幾秒後消失', async () => {
+	it('刪掉後顯示「已刪掉」和「救回」：按救回放回原位；10 秒後消失，滑鼠在上面時不消失', async () => {
 		vi.useFakeTimers();
 		const { session } = setup(mixed());
 		const before = records(session);
@@ -172,8 +172,16 @@ describe('記錄頁的卡', () => {
 		expect(records(session)).toEqual(before);
 		expect(session.canUndo).toBe(false);
 
+		// 滑鼠移上去停住倒數，移開了把剩下的走完（共 10 秒）
 		await removeLast();
-		await vi.advanceTimersByTimeAsync(6000);
+		await vi.advanceTimersByTimeAsync(3000);
+		await fireEvent.pointerEnter(screen.getByRole('status'));
+		await vi.advanceTimersByTimeAsync(30000);
+		expect(screen.getByRole('button', { name: '救回' })).toBeTruthy();
+		await fireEvent.pointerLeave(screen.getByRole('status'));
+		await vi.advanceTimersByTimeAsync(6500);
+		expect(screen.getByRole('button', { name: '救回' })).toBeTruthy();
+		await vi.advanceTimersByTimeAsync(1000);
 		expect(screen.queryByRole('button', { name: '救回' })).toBeNull();
 	});
 });
