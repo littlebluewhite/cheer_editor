@@ -9,7 +9,7 @@
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
-	import type { ComponentProps } from 'svelte';
+	import { flushSync, type ComponentProps } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { composing } from '#lib/ime.js';
@@ -19,15 +19,13 @@
 		actionHints,
 		actionLabel,
 		actionSeconds,
-		deleteAction,
 		groupsPeople,
 		memberName,
 		positionText,
 		roleGlossary,
 		segmentSpans,
 		squadBadge,
-		type ActionCategory,
-		type ConfirmOption
+		type ActionCategory
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import ConfirmList from './ConfirmList.svelte';
@@ -79,6 +77,7 @@
 	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
 	const ask = draft.ask;
 	let glossaryOpen = $state(false);
+	let formEl: HTMLElement;
 	/** 「!」說明點一下打開（iPad 沒有滑鼠移上去）。 */
 	let legendOpen = $state(false);
 	/** 滑鼠移到「!」上、或用鍵盤移到「!」：也看得到說明，移開就收。 */
@@ -114,9 +113,7 @@
 
 	function remove() {
 		askAtLength = false;
-		if (!action) return;
-		const id = action.id;
-		ask.send((o: ConfirmOption = {}) => deleteAction(flow, id, o), { done: () => session.selectAction(null) });
+		if (action) session.removeAction(action.id, ask);
 	}
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
@@ -133,9 +130,21 @@
 		changed();
 	}
 
+	/** 移出一個人。焦點留在表單裡（下一個人的 ×，沒人了就「加人」），不掉到頁面上：不然接著按 Backspace 會刪掉整個動作。 */
 	function removeMember(i: number) {
 		draft.removeMember(i);
 		changed();
+		flushSync();
+		const xs = formEl.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
+		(xs[i] ?? xs[i - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
+	}
+
+	/**
+	 * 表單裡的按鍵不給頁面：新增時 Esc 不清選取；Delete／Backspace 不刪整個動作（拍點格子自己清拍點，
+	 * 輸入框照常刪字）。要刪動作用「刪除動作」，或在泳道選了按 Delete。
+	 */
+	function formKey(e: KeyboardEvent) {
+		if ((!action && e.key === 'Escape') || e.key === 'Delete' || e.key === 'Backspace') e.stopPropagation();
 	}
 
 	/** 把別的動作的人連任務角色一起換進來。 */
@@ -177,7 +186,8 @@
 	class="action-form"
 	class:creating={!action}
 	style:--cat={actionColor(draft)}
-	onkeydown={(e) => !action && e.key === 'Escape' && e.stopPropagation()}
+	bind:this={formEl}
+	onkeydown={formKey}
 >
 	<header>
 		<span class="dot"></span>

@@ -6,7 +6,7 @@ import type { Action } from './action-types';
 import type { Cue, CueKind } from './cues';
 import type { Phase } from './phase-types';
 import type { Segment } from './segment';
-import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT } from './time';
+import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT, lengthText } from './time';
 
 /** 從動作開始算第幾個半拍起（0 = 動作開始那一刻）、幾個半拍長。 */
 export interface BeatRange {
@@ -67,6 +67,16 @@ export function fitRange(of: RangeOf, action: Action, range: BeatRange, by: 1 | 
 export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
 	const first = atText(segment, action.start + at);
 	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
+}
+
+/**
+ * 拍點小窗和八拍表的拍：「3-5 到 3-6・2 拍」，只有一拍（或不到一拍）是「3-5・1 拍」。
+ * at 是段內時間；結束拍寫最後一拍開始的那個半拍（從 & 開始的就落在 & 上：「2-4& 到 2-7&・4 拍」）。
+ */
+export function beatSpanText(segment: Segment, at: number, len: number): string {
+	const last = at + len - BEAT;
+	const range = last > at ? `${atText(segment, at)} 到 ${atText(segment, last)}` : atText(segment, at);
+	return `${range}・${lengthText(segment, len)} 拍`;
 }
 
 /** 一段拍落在一個八拍裡的那一段：從這個八拍開頭算第 start 個半拍到第 end 個半拍（不含 end，0–16）。 */
