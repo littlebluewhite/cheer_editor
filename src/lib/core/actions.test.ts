@@ -165,6 +165,29 @@ describe('新增動作', () => {
 	});
 });
 
+describe('動作名稱和備註的字數', () => {
+	it('動作名稱最多 20 個字、備註最多 200 個字：加的時候和改的時候都擋，訊息說上限', () => {
+		expect(addAction(sample(), lib({ name: '字'.repeat(20), note: '字'.repeat(200) })).kind).toBe('ok');
+		expect(addAction(sample(), lib({ name: '字'.repeat(21) }))).toEqual({
+			kind: 'blocked',
+			message: '動作名稱最多 20 個字'
+		});
+		const flow = flowOf(addAction(sample(), lib()));
+		expect(updateAction(flow, 'x1', { note: '字'.repeat(201) })).toEqual({
+			kind: 'blocked',
+			message: '備註最多 200 個字'
+		});
+	});
+
+	it('開檔進來名稱、備註超過上限的動作：沒改那一欄就照收，可以改別的', () => {
+		const added = flowOf(addAction(sample(), lib()));
+		const long = { name: '字'.repeat(600), note: '字'.repeat(600) };
+		const flow = { ...added, actions: added.actions.map((a) => ({ ...a, ...long })) };
+		expect(flowOf(updateAction(flow, 'x1', { ...long, start: 2 })).actions[0]).toMatchObject({ ...long, start: 2 });
+		expect(updateAction(flow, 'x1', { name: '字'.repeat(599) }).kind).toBe('blocked');
+	});
+});
+
 describe('某一刻誰在做什麼、誰閒著', () => {
 	/** 音樂 1 一個半拍 0.2 秒：Lib（小A 上層、小B 主底）在 0–3.2 秒；口號 1 從 6.4 秒開始，小C 騰翻在 7.4–8.4 秒。 */
 	function busy(): Flow {

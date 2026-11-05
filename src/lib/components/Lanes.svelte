@@ -127,6 +127,16 @@
 		)
 	);
 
+	/**
+	 * 手位最多撐幾個半拍：往右撐到下一個手位（或動作結尾）為止；最後一拍的往左撐到上一個手位為止。
+	 * 字再長就用「…」截斷，不蓋到下一個手位。
+	 */
+	function motionRoom(mine: Cue[], c: Cue, length: number, atEnd: boolean): number {
+		const others = mine.filter((d) => d.kind === 'motion' && d !== c);
+		if (atEnd) return c.at + c.len - Math.max(0, ...others.filter((d) => d.at < c.at).map((d) => d.at + d.len));
+		return Math.min(length, ...others.filter((d) => d.at > c.at).map((d) => d.at)) - c.at;
+	}
+
 	/** 每個人：每個動作裡給他的拍點，和他用到哪幾種（照拍子、步驟、手位排，一種一條）。 */
 	const cues = $derived.by(() => {
 		const byMember: Record<string, { mine: Record<string, Cue[]>; kinds: CueKind[] }> = {};
@@ -366,6 +376,7 @@
 								style:transform={atEnd ? 'translateX(-100%)' : undefined}
 								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
+								style:max-width={c.kind === 'motion' ? `${motionRoom(mine, c, p.action.length, atEnd) * p.halfPx}px` : undefined}
 								style:top={`${lift[m.id] + NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
 								style:height={`${TRACK_H - 1}px`}>{c.word}</span
 							>
@@ -617,8 +628,11 @@
 		border-left: 3px solid var(--cue-step-line);
 		color: var(--cue-step-ink);
 	}
-	/* 手位只佔一拍，字常比一拍長：寬度跟著字撐開；最後一拍的往左撐。 */
+	/* 手位只佔一拍，字常比一拍長：寬度跟著字撐開，最多到下一個手位，再長就「…」；最後一拍的往左撐。 */
 	.cue.motion {
+		display: block;
+		line-height: 9px;
+		text-overflow: ellipsis;
 		background: var(--cue-motion-bg);
 		color: var(--cue-motion-ink);
 		font-weight: 600;

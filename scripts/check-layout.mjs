@@ -777,5 +777,29 @@ await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、
 	};
 });
 
+// ---------- 長的拍點文字（#146） ----------
+
+await check('很長的手位：拍點格子、泳道、八拍表上都待在自己那一拍，不蓋到下一個拍點', async () => {
+	await setViewport(1440, 900);
+	const long = '雙手從胸前握拳往上推到高V再往兩邊打開';
+	await openPracticeFlow(`flow = core.placeCue(flow, 'x1', { kind: 'motion', at: 0, len: 2, word: '${long}' }).flow;
+		flow = core.placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: '拳頭' }).flow;`);
+	await js(`document.querySelector('[data-lane="m1"] [data-action-id="x1"]').click()`);
+	await sleep(300);
+	const grid = await js(`const items = [...document.querySelectorAll('.cues .item.motion')];
+		const slot = document.querySelector('.cues .slot.motion[data-at="0"]').getBoundingClientRect();
+		const r = items[0].getBoundingClientRect();
+		return { ok: r.right <= slot.right + 1, 手位: [Math.round(r.left), Math.round(r.right)], 那一拍: [Math.round(slot.left), Math.round(slot.right)], 看全文: items[0].title };`);
+	const lane = await js(`const [a, b] = [...document.querySelectorAll('[data-lane="m1"] .cue.motion')].map((e) => e.getBoundingClientRect());
+		return { ok: a.right <= b.left + 1, 長的: [Math.round(a.left), Math.round(a.right)], 下一個: [Math.round(b.left), Math.round(b.right)] };`);
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(400);
+	const sheet = await js(`const cue = [...document.querySelectorAll('.print-sheet .cue.motion')][0].getBoundingClientRect();
+		const n1 = document.querySelector('.print-sheet .cells .n').getBoundingClientRect();
+		return { ok: cue.right <= n1.right + 1, 手位: [Math.round(cue.left), Math.round(cue.right)], 第1拍: [Math.round(n1.left), Math.round(n1.right)] };`);
+	await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+	return { ok: grid.ok && !!grid.看全文 && lane.ok && sheet.ok, value: { 拍點格子: grid, 泳道: lane, 八拍表: sheet } };
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

@@ -12,10 +12,12 @@
 		type Flow
 	} from '#lib/core';
 	import { Ask } from '#lib/ask.svelte.js';
+	import CharCount from './CharCount.svelte';
 
 	let { oncreate }: { oncreate: (flow: Flow) => void } = $props();
 
 	let name = $state('');
+	let nameInput = $state<HTMLInputElement>();
 	/** 選到的範本編號，或 'custom'。 */
 	let choice = $state<number | 'custom'>(0);
 	let customStrips = $state<number | null>(9);
@@ -63,8 +65,8 @@
 	<h2>新建流程</h2>
 
 	<label class="name">
-		流程名字
-		<input bind:value={name} placeholder="例：2027 全國賽" />
+		<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={name} /></span>
+		<input aria-label="流程名字" bind:value={name} bind:this={nameInput} placeholder="例：2027 全國賽" />
 	</label>
 
 	<fieldset>
@@ -130,6 +132,10 @@
 		gap: 6px;
 		font-size: 13px;
 		font-weight: 600;
+	}
+	.head {
+		display: flex;
+		justify-content: space-between;
 	}
 	.name input {
 		font-size: 15px;

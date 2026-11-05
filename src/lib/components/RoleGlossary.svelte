@@ -10,6 +10,7 @@
 		type ConfirmOption,
 		type CustomRole
 	} from '#lib/core';
+	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -24,6 +25,9 @@
 	const flow = $derived(session.flow!);
 
 	let name = $state('');
+	let nameInput = $state<HTMLInputElement>();
+	/** 每個自訂角色的名稱欄（旁邊的字數要看它），照角色 id。 */
+	const roleInputs = $state<Record<string, HTMLInputElement>>({});
 	let meaning = $state('');
 	/** 被擋的原因，和刪有人用的角色時等教練確認的清單。 */
 	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
@@ -70,8 +74,11 @@
 									class="role-name"
 									aria-label="「{custom.name}」的名稱"
 									value={custom.name}
+									bind:this={roleInputs[custom.id]}
 									onchange={(e) => edit(custom, { name: e.currentTarget.value }, e.currentTarget)}
-								/><small class="tag">自訂</small>
+								/><CharCount field="roleName" input={roleInputs[custom.id]} value={custom.name} quiet /><small
+									class="tag">自訂</small
+								>
 							</td>
 							<td>
 								<input
@@ -102,7 +109,13 @@
 		<form novalidate onsubmit={add}>
 			<b>新增自訂任務角色</b>
 			<div class="fields">
-				<label>任務角色名稱 <input bind:value={name} /></label>
+				<label
+					>任務角色名稱 <input aria-label="任務角色名稱" bind:value={name} bind:this={nameInput} /><CharCount
+						field="roleName"
+						input={nameInput}
+						value={name}
+					/></label
+				>
 				<label>意思 <input bind:value={meaning} /></label>
 				<button type="submit" class="primary">新增任務角色</button>
 			</div>
@@ -140,6 +153,9 @@
 	.role-name {
 		width: 9em;
 		font-weight: 600;
+	}
+	td :global(.char-count) {
+		margin-left: 4px;
 	}
 	.tag {
 		margin-left: 6px;

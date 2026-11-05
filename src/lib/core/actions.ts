@@ -16,6 +16,7 @@ import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
+import { tooLong } from './text-length';
 import { EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。 */
@@ -143,12 +144,20 @@ export function setSquad(
 
 /** 檢查動作、收尾：大類、段、時間、拍點先檢查，再收尾（成功率規則在裡面），最後檢查人。 */
 function checked(flow: Flow, before: Action | undefined, action: Action, options: ConfirmOption): Settled {
-	const shape = shapeProblem(flow, action);
+	const shape = textProblem(before, action) ?? shapeProblem(flow, action);
 	if (shape) return { kind: 'blocked', message: shape };
 	const settled = settle(flow, before, action, options);
 	if (settled.kind === 'blocked') return settled;
 	const people = peopleProblem(flow, settled.action);
 	return people ? { kind: 'blocked', message: people } : settled;
+}
+
+/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收。 */
+function textProblem(before: Action | undefined, action: Action): string | null {
+	return (
+		(action.name !== before?.name ? tooLong('actionName', action.name) : null) ??
+		(action.note !== before?.note ? tooLong('note', action.note) : null)
+	);
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */
