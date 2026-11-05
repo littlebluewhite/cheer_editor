@@ -214,6 +214,8 @@ export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './
 
 export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
+export { insertBeats } from './insert-beats';
+
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules, TimeRuleWarning } from './time-rules';
 

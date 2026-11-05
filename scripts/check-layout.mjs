@@ -414,6 +414,20 @@ await check('1440×900 最後一段旁的「＋」點得到，選單整個看得
 	return { ok: res.ok && btns.length === 2 && btns.every(([, v]) => v), value: { ...res.value, 選項: btns } };
 });
 
+await check('1024×768「段」那一格的「插入八拍」和「＋」都點得到；小窗整個看得到、欄位點得到（#168）', async () => {
+	await setViewport(1024, 768);
+	await openSample();
+	const add = await js(`const b = document.querySelector('.timeline .segs .lab .add'); const r = b.getBoundingClientRect();
+		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!t && b.contains(t);`);
+	const hit = await hitAndClick('.timeline .segs .lab .insert');
+	if (!hit.self || !add) return { ok: false, value: { 加段鈕點得到: add, 擋住插入鈕的: hit.top } };
+	await sleep(200);
+	const res = await cornersVisible('.insert-pop');
+	const parts = await js(`return [...document.querySelectorAll('.insert-pop input, .insert-pop select, .insert-pop button')].map((b) => { const r = b.getBoundingClientRect();
+		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [b.getAttribute('aria-label') || b.textContent.trim(), !!t && b.contains(t)]; });`);
+	return { ok: res.ok && parts.length === 3 && parts.every(([, v]) => v), value: { ...res.value, 欄位: parts } };
+});
+
 // ---------- 上方列、首頁、場地編號（#110） ----------
 
 /** 用流程設定把流程名字改成 name（關掉對話框）。 */
