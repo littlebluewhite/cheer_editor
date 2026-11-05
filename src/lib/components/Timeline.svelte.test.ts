@@ -14,7 +14,7 @@ function setup() {
 		props: {
 			editor: testEditor(flow).editor,
 			component: Timeline,
-			props: { playheadSec: 0, onseek: () => {}, onopensegment: () => {} }
+			props: { onopensegment: () => {} }
 		}
 	});
 	return container.querySelector('.timeline') as HTMLElement;
@@ -94,7 +94,7 @@ describe('段列', () => {
 			props: {
 				editor: testEditor(flow).editor,
 				component: Timeline,
-				props: { playheadSec: 0, onseek: () => {}, onopensegment: () => {} }
+				props: { onopensegment: () => {} }
 			}
 		});
 	}

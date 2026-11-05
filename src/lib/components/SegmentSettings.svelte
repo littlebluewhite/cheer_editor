@@ -32,34 +32,22 @@
 
 	interface Props {
 		segmentId: string;
-		/** 「▶ 從第一拍聽 2 個八拍」：音訊在頁面那一層。 */
-		onpreview: (segmentId: string) => void;
-		/** 試聽正在響：按鈕換成「■ 停止試聽」。 */
-		previewing?: boolean;
-		onstoppreview?: () => void;
-		/** 正在播放：段設定蓋住上方列的暫停鈕，所以這裡也放一顆。 */
-		playing?: boolean;
-		onpause?: () => void;
 		onclose: () => void;
 		/** 滑鼠在波形上的位置換成音樂檔的秒數（波形畫 wave.startSec 起的 wave.lengthSec 秒）；測試換成假的（jsdom 不算版面）。 */
 		waveXToSec?: (e: MouseEvent, wave: { startSec: number; lengthSec: number }) => number;
 	}
 
-	let {
-		segmentId,
-		onpreview,
-		previewing = false,
-		onstoppreview = () => {},
-		playing = false,
-		onpause,
-		onclose,
-		waveXToSec = defaultWaveXToSec
-	}: Props = $props();
+	let { segmentId, onclose, waveXToSec = defaultWaveXToSec }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	/** 音樂檔（解碼好的、壞的、多長）從編輯器 module 的音樂檔庫拿：換流程會換一個，所以每次用都從 editor.music 拿。 */
 	const editor = getEditor();
+	/**
+	 * 播放從編輯器 module 拿：「▶ 從第一拍聽 2 個八拍」試聽，響的時候按鈕換成「■ 停止試聽」；
+	 * 正在播放時段設定蓋住上方列的暫停鈕，所以這裡也放一顆。
+	 */
+	const { playback } = editor;
 
 	function defaultWaveXToSec(e: MouseEvent, wave: { startSec: number; lengthSec: number }): number {
 		const r = (e.currentTarget as Element).getBoundingClientRect();
@@ -162,8 +150,8 @@
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
 			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
-			{#if playing}
-				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={onpause}><Icon name="pause" size={14} />暫停</button>
+			{#if playback.playing}
+				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={() => playback.pause()}><Icon name="pause" size={14} />暫停</button>
 			{/if}
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
@@ -217,8 +205,8 @@
 						/>
 					</label>
 					<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
-					<button type="button" class="listen" onclick={() => (previewing ? onstoppreview() : onpreview(segmentId))}
-						>{previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
+					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
+						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
 					>
 				</div>
 				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->

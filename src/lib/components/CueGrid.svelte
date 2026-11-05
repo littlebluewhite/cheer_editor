@@ -19,6 +19,7 @@
 	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { popover } from '#lib/popover.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
@@ -64,15 +65,15 @@
 	interface Props {
 		/** 選到的動作（session 選的那個；選的拍跟著它）。 */
 		action: Action;
-		/** 播放頭（全域秒數）；標出現在播到的那一拍。 */
-		playheadSec?: number;
 		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
 		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
 	}
 
-	let { action, playheadSec, cellAt = nearestCell }: Props = $props();
+	let { action, cellAt = nearestCell }: Props = $props();
 
 	const session = getEditorSession();
+	/** 播放頭從編輯器 module 的播放拿：標出現在播到的那一拍。 */
+	const { playback } = getEditor();
 	const flow = $derived(session.flow!);
 
 	const cols = Array.from({ length: 8 }, (_, c) => c);
@@ -147,8 +148,8 @@
 	const cellOf = (at: number) => at - ((((action.start + at) % BEAT) + BEAT) % BEAT);
 	/** 現在播到的那一格（從動作開始算）；播放頭不在這個段就是 null。 */
 	const nowCell = $derived.by(() => {
-		if (playheadSec === undefined || !segment) return null;
-		const pos = toPosition(flow, playheadSec);
+		if (!segment) return null;
+		const pos = toPosition(flow, playback.sec);
 		return pos?.segmentId === segment.id ? cellOf(pos.at - action.start) : null;
 	});
 	const selLen = $derived(beats.len);

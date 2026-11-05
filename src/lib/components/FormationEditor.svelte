@@ -2,6 +2,7 @@
 	// 站位小編輯（場地左欄、圖例上面）：跟上一張一樣、拖人會改哪一張、播放頭所在站位的名稱和站位時間。
 	// 規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		formationAt,
@@ -16,26 +17,21 @@
 		type TimePosition
 	} from '#lib/core';
 
-	interface Props {
-		/** 播放頭，全域秒數。 */
-		playheadSec: number;
-	}
-
-	let { playheadSec }: Props = $props();
-
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 播放頭（全域秒數）從編輯器 module 的播放拿。 */
+	const { playback } = getEditor();
 
-	const match = $derived(matchPrevious(flow, playheadSec, session.selectedMemberIds));
+	const match = $derived(matchPrevious(flow, playback.sec, session.selectedMemberIds));
 	const matchBlocked = $derived(match.kind === 'blocked' ? match.message : '');
-	const here = $derived(formationAt(flow, playheadSec));
+	const here = $derived(formationAt(flow, playback.sec));
 	// 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。
 	const hereTime = $derived(here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : '');
 
 	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示和播放頭跟拖人一樣。 */
 	function matchPrev() {
 		const f = flow;
-		const sec = playheadSec;
+		const sec = playback.sec;
 		const ids = session.selectedMemberIds;
 		session.ask.send(() => matchPrevious(f, sec, ids), { done: (r) => session.moved(r) });
 	}
@@ -82,7 +78,7 @@
 	{#if matchBlocked}<span>{matchBlocked}</span>{/if}
 </div>
 <div class="here" class:on={!!here}>
-	<p class="move-target">{moveTargetText(flow, playheadSec)}</p>
+	<p class="move-target">{moveTargetText(flow, playback.sec)}</p>
 	{#if here}
 		{#key here.id}
 			<input
