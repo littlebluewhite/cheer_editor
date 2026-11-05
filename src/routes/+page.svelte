@@ -23,7 +23,7 @@
 	import { resolve } from '$app/paths';
 	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN } from '#lib/editor-layout.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -204,14 +204,16 @@
 	}
 
 	// ---------- 場地和右邊欄的分界：沒拖過時自動分（場地吃得到的寬度給場地，剩下給右邊欄）；
-	// 拖它（或 ←→）自己定寬度，存在這台電腦；雙擊回到自動 ----------
+	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
+	let windowH = $state(0);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
-		name: 'inspectorWidthPx',
+		name: 'inspectorWidthRatio',
 		axis: 'x',
 		clamp: (px) => clampInspectorWidth(px, window.innerWidth),
-		size: (): number => inspectorPx
+		size: (): number => inspectorPx,
+		relativeTo: () => windowW || window.innerWidth
 	});
 
 	const fieldAspect = $derived.by(() => {
@@ -306,6 +308,8 @@
 	const SPACE_PLAYS = '[data-space-plays]';
 	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
 	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+	/** 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字。 */
+	const NATIVE_UNDO = '[data-native-undo] :is(textarea, input:not([type="checkbox"], [type="radio"]))';
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
@@ -332,8 +336,10 @@
 		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
 		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
+		// 還沒送出的表單（新動作、加隊員）的輸入框除外：字不在流程裡，交給瀏覽器退字。
 		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
+			if (on(NATIVE_UNDO)) return;
 			e.preventDefault();
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
@@ -410,6 +416,7 @@
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
+	bind:innerHeight={windowH}
 />
 <svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && editor.file.pageHidden()} />
 
@@ -602,6 +609,7 @@
 						</select>
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
 				</main>
 			{/if}
 		{:else}
@@ -927,7 +935,17 @@
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content);
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content) auto;
+	}
+	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行小字放最下面，不跟場地搶位置 */
+	.phone-why {
+		margin: 0;
+		padding: 4px 12px;
+		color: var(--muted);
+		font-size: 12px;
+	}
+	.phone-why:empty {
+		display: none;
 	}
 	.phone-field {
 		position: relative;
@@ -961,7 +979,7 @@
 	@media (orientation: landscape) {
 		.phone-view {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-			grid-template-rows: auto auto minmax(0, 1fr);
+			grid-template-rows: auto auto minmax(0, 1fr) auto;
 		}
 		.phone-view > :global(*) {
 			grid-column: 2;

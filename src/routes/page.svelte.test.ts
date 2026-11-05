@@ -1019,7 +1019,7 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('status').textContent).toBe('已刪掉站位 2');
 		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的站位' }));
 		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByRole('status').textContent).toBe('已復原：刪站位 2');
 		// 只復原一步：拖人插的站位還在，再按上方列的復原才退掉拖人
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(thumbs()).toHaveLength(1);
@@ -1720,7 +1720,8 @@ describe('復原和重做', () => {
 		// fireEvent 回傳 false 表示被 preventDefault（瀏覽器自己的復原不會跑）
 		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
-		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'y', ctrlKey: true })).toBe(false);
+		// 新動作表單的字還不在流程裡，⌘Z 交給瀏覽器（見 undo 測試）；別的文字框照樣退回流程
+		expect(await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'y', ctrlKey: true })).toBe(false);
 		expect(thumbs()).toHaveLength(2);
 	});
 
@@ -1959,7 +1960,21 @@ describe('場地和右邊欄的分界', () => {
 		expect(reset()).toBeNull();
 	});
 
-	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 560 px', async () => {
+	it('拖過的寬度照視窗寬的比例記：大螢幕調過，換小一點的視窗，右邊欄跟著變窄', async () => {
+		await newFlow();
+		expect(width()).toBe(800);
+		for (let i = 0; i < 4; i++) await fireEvent.keyDown(bar(), { key: 'ArrowRight' });
+		expect(width()).toBe(704);
+		// 704 / 1600 = 0.44 → 1200 寬是 528
+		Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+		await fireEvent(window, new Event('resize'));
+		expect(width()).toBe(528);
+		cleanup();
+		await newFlow();
+		expect(width()).toBe(528);
+	});
+
+	it('拖分界：往左拖右邊欄變寬，但場地那一欄至少留 632 px（場地本身 360 px）', async () => {
 		await newFlow();
 		const before = width();
 		await fireEvent.pointerDown(bar(), { clientX: 900, button: 0 });
@@ -1967,7 +1982,7 @@ describe('場地和右邊欄的分界', () => {
 		expect(width()).toBe(before + 40);
 		await fireEvent.pointerMove(bar(), { clientX: 0 });
 		await fireEvent.pointerUp(bar(), { clientX: 0 });
-		expect(width()).toBe(1600 - 560);
+		expect(width()).toBe(1600 - 632);
 	});
 });
 
