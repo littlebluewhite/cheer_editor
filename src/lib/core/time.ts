@@ -183,10 +183,11 @@ export function spacedLabels(marks: RulerMark[], pxPerSec: number): RulerMark[] 
 	return marks.map((m) => (m.label && !shown.has(m) ? { sec: m.sec, major: m.major } : m));
 }
 
-/** 上方列的目前位置，例：「音樂 1 3-5&」、「口號 1 12.3 秒」。沒有段時是空字串。 */
+/** 上方列的目前位置，例：「音樂 1 3-5&」、「口號 1 12.3 秒」；在流程結尾（播完、按 End）是「結尾」。沒有段時是空字串。 */
 export function positionText(flow: Flow, sec: number): string {
 	const found = spanAt(flow, sec);
 	if (!found) return '';
+	if (sec >= totalSeconds(flow) - EPS) return '結尾';
 	const { span, at } = found;
 	const unit = span.segment.kind === 'chant' ? ' 秒' : '';
 	return `${span.label} ${atText(span.segment, at)}${unit}`;
