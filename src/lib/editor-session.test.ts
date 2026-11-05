@@ -315,7 +315,7 @@ describe('編輯 session：頁面層級的問題', () => {
 		expect(s.notice).toBe('');
 	});
 
-	it('改了、復原：問題收掉；復原也清提示', () => {
+	it('改了、復原：問題收掉；復原的提示換成「已復原：…」', () => {
 		const s = new EditorSession(libSample());
 		s.ask.send(result({ kind: 'confirm', message: '確定嗎', items: [] }));
 		rename(s, 'A');
@@ -324,7 +324,7 @@ describe('編輯 session：頁面層級的問題', () => {
 		s.notice = '提示';
 		s.undo();
 		expect(s.ask.question).toBeNull();
-		expect(s.notice).toBe('');
+		expect(s.notice).toBe('已復原：改流程名字');
 	});
 });
 

@@ -1019,7 +1019,7 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('status').textContent).toBe('已刪掉站位 2');
 		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的站位' }));
 		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByRole('status').textContent).toBe('已復原：刪站位 2');
 		// 只復原一步：拖人插的站位還在，再按上方列的復原才退掉拖人
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(thumbs()).toHaveLength(1);
@@ -1679,7 +1679,8 @@ describe('復原和重做', () => {
 		// fireEvent 回傳 false 表示被 preventDefault（瀏覽器自己的復原不會跑）
 		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
-		expect(await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'y', ctrlKey: true })).toBe(false);
+		// 新動作表單的字還不在流程裡，⌘Z 交給瀏覽器（見 undo 測試）；別的文字框照樣退回流程
+		expect(await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'y', ctrlKey: true })).toBe(false);
 		expect(thumbs()).toHaveLength(2);
 	});
 
