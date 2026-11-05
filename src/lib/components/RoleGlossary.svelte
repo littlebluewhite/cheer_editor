@@ -13,6 +13,7 @@
 	import { Ask } from './ask.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
+	import Modal from './Modal.svelte';
 
 	interface Props {
 		onclose: () => void;
@@ -47,22 +48,13 @@
 			}
 		});
 	}
-
-	// Esc 關掉對照表。用捕獲階段先攔下來，底下的編輯畫面就不會把 Esc 當成「清除選取」。
-	function onkeydown(e: KeyboardEvent) {
-		if (e.key !== 'Escape') return;
-		e.stopPropagation();
-		onclose();
-	}
 </script>
 
-<svelte:window onkeydowncapture={onkeydown} />
-
-<div class="backdrop">
-	<div class="dialog glossary" role="dialog" aria-label="名詞對照表">
+<Modal label="名詞對照表" class="dialog glossary" {ask} {onclose}>
+	{#snippet children(close)}
 		<header class="dialog-head">
 			<h2>名詞對照表：任務角色</h2>
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={onclose}><Icon name="close" /></button>
+			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
 		<table>
 			<thead>
@@ -118,11 +110,11 @@
 			<p class="muted">自訂任務角色只存在這一支流程裡。在上面的表裡可以直接改名稱、意思，或按垃圾桶刪掉。</p>
 		</form>
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
-	</div>
-</div>
+	{/snippet}
+</Modal>
 
 <style>
-	.glossary {
+	:global(.glossary) {
 		width: min(760px, 100%);
 		font-size: 13px;
 	}

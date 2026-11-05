@@ -1,5 +1,5 @@
 // 頁面：草稿自動存、打開時問要不要救回。IndexedDB 換成記憶體裡的假草稿庫（真的要手動在四家瀏覽器檢查）。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFlowFile, writeFlowFile } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
@@ -9,7 +9,7 @@ import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
 function setup(draftStore: DraftStore) {
-	render(Page, {
+	return render(Page, {
 		createEngine: () => createFakeEngine(),
 		createSaver: () => fakeSaver().saver,
 		decode: fakeDecode,
@@ -17,7 +17,26 @@ function setup(draftStore: DraftStore) {
 	});
 }
 
+async function newFlow() {
+	await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
+	await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+}
+
+async function addChant() {
+	await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
+	await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
+}
+
+/** 關掉分頁、重新整理：瀏覽器有沒有先問。 */
+function leaveAsks() {
+	const e = new Event('beforeunload', { cancelable: true });
+	window.dispatchEvent(e);
+	return e.defaultPrevented;
+}
+
 describe('打開時救回草稿', () => {
+	afterEach(() => vi.useRealTimers());
+
 	it('有草稿就問；按「救回」打開草稿（含動作、音樂），還算未存', async () => {
 		const { store } = fakeDraftStore(writeFlowFile(audioFlow(), { a1: new Uint8Array([1]) }));
 		setup(store);
@@ -37,10 +56,36 @@ describe('打開時救回草稿', () => {
 		setup(drafts.store);
 		await flush();
 		await fireEvent.click(screen.getByRole('button', { name: '丟掉' }));
-		await flush();
-		expect(screen.queryByRole('alertdialog')).toBeNull();
+		// 先問別的分頁有沒有在編輯它，等一下下
+		await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 		expect(drafts.state.bytes).toBeNull();
+	});
+
+	it('問的時候寫出草稿是什麼時候存的', async () => {
+		const { store } = fakeDraftStore(writeFlowFile(audioFlow(), {}), new Date(2026, 10, 5, 14, 3));
+		setup(store);
+		await flush();
+		expect(screen.getByRole('alertdialog').textContent).toContain('11/5 14:03 存的草稿');
+	});
+
+	it('另一個分頁正在編輯這份草稿：「丟掉」不刪，告訴我', async () => {
+		const drafts = fakeDraftStore();
+		vi.useFakeTimers();
+		const editing = setup(drafts.store);
+		await vi.advanceTimersByTimeAsync(0);
+		await newFlow();
+		await addChant();
+		await vi.advanceTimersByTimeAsync(1000);
+		const saved = drafts.state.bytes;
+		expect(saved).not.toBeNull();
+		vi.useRealTimers();
+		const home = within(setup(drafts.store).container);
+		await flush();
+		await fireEvent.click(home.getByRole('button', { name: '丟掉' }));
+		await vi.waitFor(() => expect(home.getByRole('alertdialog').textContent).toContain('另一個分頁正在編輯'));
+		expect(drafts.state.bytes).toBe(saved);
+		editing.unmount();
 	});
 
 	it('沒有草稿就不問', async () => {
@@ -53,16 +98,6 @@ describe('打開時救回草稿', () => {
 
 describe('編輯時自動存草稿', () => {
 	afterEach(() => vi.useRealTimers());
-
-	async function newFlow() {
-		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
-		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-	}
-
-	async function addChant() {
-		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
-		await fireEvent.click(screen.getByRole('button', { name: '＋口號段' }));
-	}
 
 	function draftFlow(bytes: Uint8Array | null) {
 		const r = bytes && readFlowFile(bytes);
@@ -135,6 +170,49 @@ describe('編輯時自動存草稿', () => {
 		const r = draftFlow(drafts.state.bytes);
 		expect(r.flow.segments.map((s) => s.kind)).toEqual(['music']);
 		expect(r.audio).toEqual({ a1: new Uint8Array([7, 7]) });
+	});
+
+	it('剛建好、還沒改的流程也存草稿，重新整理救得回來', async () => {
+		const drafts = fakeDraftStore();
+		const first = setup(drafts.store);
+		await flush();
+		vi.useFakeTimers();
+		await newFlow();
+		await vi.advanceTimersByTimeAsync(1000);
+		vi.useRealTimers();
+		first.unmount();
+		setup(drafts.store);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
+		await flush();
+		expect(screen.getByText('全國賽')).toBeTruthy();
+	});
+
+	it('有改動時按新建、選「不存了，繼續」：草稿清掉', async () => {
+		const drafts = fakeDraftStore();
+		setup(drafts.store);
+		await flush();
+		vi.useFakeTimers();
+		await newFlow();
+		await addChant();
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(drafts.state.bytes).not.toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(drafts.state.bytes).toBeNull();
+	});
+
+	it('欄位裡打了字還沒送出：關分頁、重新整理前瀏覽器先問', async () => {
+		setup(fakeDraftStore().store);
+		await flush();
+		await newFlow();
+		expect(leaveAsks()).toBe(false);
+		const name = screen.getByLabelText(/^名字/);
+		await fireEvent.input(name, { target: { value: '小A' } });
+		expect(leaveAsks()).toBe(true);
+		expect(hasUnsavedChanges()).toBe(true);
 	});
 
 	it('剛開的流程檔沒改過，不存草稿', async () => {

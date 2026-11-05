@@ -116,7 +116,10 @@ export type ReadFlowFileResult =
 	/** 打不開：message 是給教練看的原因。 */
 	| { kind: 'error'; message: string };
 
-const NOT_A_FLOW_FILE = '這不是流程檔';
+// 打不開的原因（頁面前面加上檔名）。
+const NOT_A_ZIP = '不是 zip 檔';
+const NO_JSON = `zip 裡沒有 ${JSON_FILE}`;
+const BROKEN = `${JSON_FILE} 壞掉了`;
 
 /** 流程 ＋ 音樂資料 → 流程檔（zip 位元組）。沒給位元組的音樂檔就不放（開的時候算缺音樂）。 */
 export function writeFlowFile(flow: Flow, audio: AudioBytes): Uint8Array {
@@ -131,6 +134,7 @@ export function writeFlowFile(flow: Flow, audio: AudioBytes): Uint8Array {
 
 /**
  * 流程檔（zip 位元組）→ 流程 ＋ 音樂資料。舊版自動升級，比編輯器新的不打開。
+ * flow.json 不在最上層、而在唯一一層資料夾裡（電腦重新壓縮過）也打得開，音樂檔照那個資料夾找。
  * upgrades 只有測試會換。
  */
 export function readFlowFile(
@@ -138,27 +142,46 @@ export function readFlowFile(
 	upgrades: Record<number, Upgrade> = UPGRADES
 ): ReadFlowFileResult {
 	let files: Record<string, Uint8Array>;
-	let doc: FlowDocument;
 	try {
 		files = unzipSync(bytes);
-		doc = JSON.parse(strFromU8(files[JSON_FILE]));
 	} catch {
-		return { kind: 'error', message: NOT_A_FLOW_FILE };
+		return { kind: 'error', message: NOT_A_ZIP };
 	}
-	if (!isDocument(doc)) return { kind: 'error', message: NOT_A_FLOW_FILE };
+	const folder = folderOf(files);
+	if (folder === null) return { kind: 'error', message: NO_JSON };
+	let doc: FlowDocument;
+	try {
+		doc = JSON.parse(strFromU8(files[folder + JSON_FILE]));
+	} catch {
+		return { kind: 'error', message: BROKEN };
+	}
+	if (!isDocument(doc)) return { kind: 'error', message: BROKEN };
 	if (doc.formatVersion > FORMAT_VERSION) {
-		return { kind: 'error', message: '這個流程檔是新版編輯器存的，請重新整理，更新編輯器' };
+		return { kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' };
 	}
 	while (doc.formatVersion < FORMAT_VERSION) {
 		const upgrade = upgrades[doc.formatVersion];
-		if (!upgrade) return { kind: 'error', message: NOT_A_FLOW_FILE };
+		if (!upgrade) return { kind: 'error', message: BROKEN };
 		doc = upgrade(doc);
 	}
-	if (!isFlow(doc.flow)) return { kind: 'error', message: NOT_A_FLOW_FILE };
+	if (!isFlow(doc.flow)) return { kind: 'error', message: BROKEN };
 	const flow = doc.flow;
 	const audio: AudioBytes = {};
-	for (const ref of flow.audio) if (files[ref.file]) audio[ref.id] = files[ref.file];
+	for (const ref of flow.audio) if (files[folder + ref.file]) audio[ref.id] = files[folder + ref.file];
 	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
+}
+
+/**
+ * flow.json 在哪個資料夾：最上層是 ''；不在最上層時，找唯一一層資料夾裡的（Mac 壓縮時多放的 __MACOSX 不算）。
+ * 都沒有是 null。
+ */
+function folderOf(files: Record<string, Uint8Array>): string | null {
+	if (files[JSON_FILE]) return '';
+	const found = Object.keys(files)
+		.filter((k) => !k.startsWith('__MACOSX/'))
+		.map((k) => k.match(/^([^/]+\/)flow\.json$/)?.[1])
+		.filter((f) => f !== undefined);
+	return found.length === 1 ? found[0] : null;
 }
 
 function isDocument(doc: unknown): doc is FlowDocument {

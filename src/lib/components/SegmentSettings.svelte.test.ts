@@ -72,7 +72,7 @@ describe('音樂段設定', () => {
 		const { session } = setup(flow, { a1: loaded(90) });
 		await fireEvent.change(screen.getByLabelText('第一拍（秒）'), { target: { value: '100' } });
 		expect(session.canUndo).toBe(false);
-		expect(screen.getByRole('alert').textContent).toBe('第一拍要在音樂結束（90.0 秒）之前');
+		expect(screen.getByRole('alert').textContent).toBe('「第一拍（秒）」退回原本的值：第一拍要在音樂結束（90.0 秒）之前');
 	});
 
 	it('點波形點到音樂結束之後：一樣擋下來', async () => {
@@ -118,7 +118,7 @@ describe('音樂段設定', () => {
 		const { session } = setup(musicFlow());
 		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
 		expect(session.canUndo).toBe(false);
-		expect(screen.getByRole('alert').textContent).toBe('BPM 要在 60–170 之間');
+		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60–170 之間');
 	});
 
 	it('載入音樂檔：解碼後流程記一筆音樂檔，位元組另外交給呼叫端', async () => {

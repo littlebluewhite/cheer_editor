@@ -407,7 +407,7 @@
 		{#each g.seams as l, i (i)}
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
-		<path class="center" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35" />
+		<path class="center" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35"><title>場地正中心</title></path>
 		{#each g.strips as s (s.number)}
 			<text
 				class="num"
