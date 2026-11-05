@@ -5,12 +5,14 @@ import {
 	addSegment,
 	createFlow,
 	clearCues,
+	copyCues,
 	cueForMember,
 	cuesAt,
 	deleteAction,
 	deleteMember,
 	moveAction,
 	MOTION_WORDS,
+	pasteCues,
 	placeCue,
 	resizeAction,
 	STEP_WORDS,
@@ -492,5 +494,57 @@ describe('這一刻的拍點', () => {
 	it('沒有拍點的動作、口號段的動作都沒有', () => {
 		expect(summary(sample(), 1.5)).toEqual([]);
 		expect(summary(cued(), 32 * 0.25 + 1)).toEqual([]);
+	});
+});
+
+describe('複製、貼上拍點', () => {
+	/** x1（4 拍）：down 第 1–2 拍、上層 high V 第 2 拍、步驟「上」第 3–4 拍。 */
+	function withCues(): Flow {
+		let flow = flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 4, word: 'down' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: 'high V', who: { role: '上層' } }));
+		return flowOf(placeCue(flow, 'x1', { kind: 'step', at: 4, len: 4, word: '上' }));
+	}
+	const action = (flow: Flow) => flow.actions.find((a) => a.id === 'x1')!;
+
+	it('複製 [from, to) 的拍點：位置從 from 算，跨出去的切到選的範圍（取到整拍）', () => {
+		expect(copyCues(action(withCues()), 2, 6)).toEqual([
+			count(0, 2, 'down'),
+			{ kind: 'motion', at: 0, len: 2, word: 'high V', who: { role: '上層' } },
+			{ kind: 'step', at: 2, len: 2, word: '上', who: null }
+		]);
+		expect(copyCues(action(withCues()), 6, 8)).toEqual([{ kind: 'step', at: 0, len: 2, word: '上', who: null }]);
+	});
+
+	it('貼上：從 at 開始照原本的相對位置放，蓋到的照放拍點的規則切短；一個復原步驟', () => {
+		const flow = withCues();
+		const copied = copyCues(action(flow), 0, 2);
+		const pasted = flowOf(pasteCues(flow, 'x1', 6, copied));
+		expect(cuesOf(pasted)).toEqual([
+			count(0, 4, 'down'),
+			{ kind: 'motion', at: 2, len: 2, word: 'high V', who: { role: '上層' } },
+			{ kind: 'step', at: 4, len: 4, word: '上', who: null },
+			count(6, 2, 'down')
+		]);
+	});
+
+	it('給的角色、隊員不在這個動作裡：改成給全部', () => {
+		const copied: Cue[] = [
+			{ kind: 'motion', at: 0, len: 2, word: 'K', who: { role: '後點' } },
+			{ kind: 'step', at: 0, len: 2, word: '放', who: { member: 'm9' } }
+		];
+		expect(cuesOf(flowOf(pasteCues(sample(), 'x1', 0, copied)))).toEqual([
+			{ kind: 'motion', at: 0, len: 2, word: 'K', who: null },
+			{ kind: 'step', at: 0, len: 2, word: '放', who: null }
+		]);
+	});
+
+	it('有一個放不下（超出動作）就整個擋下，說原因', () => {
+		const flow = withCues();
+		const r = pasteCues(flow, 'x1', 6, copyCues(action(flow), 0, 4));
+		expect(r).toEqual({ kind: 'blocked', message: expect.stringContaining('動作裡面') });
+	});
+
+	it('沒有拍點可以貼就擋下', () => {
+		expect(pasteCues(sample(), 'x1', 0, [])).toEqual({ kind: 'blocked', message: '沒有複製的拍點' });
 	});
 });

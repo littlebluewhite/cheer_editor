@@ -9,7 +9,7 @@
 	// 同一時間在別的動作裡的人標出來（「拿掉這幾個人」一次拿掉）；改動作時選了別的人，「把選的 N 人加進來」。
 	// 從任務角色選單的「＋自訂任務角色…」新增的角色，套給打開選單的那個人。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
-	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
+	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列），勾「照組排」就照組號排。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
 	import { flushSync, type ComponentProps } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
@@ -90,6 +90,15 @@
 
 	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
 	const grouped = $derived(!!action && groupsPeople(action));
+	/** 人員清單照組號排（沒分組的排最後）；只在分組的動作有用。 */
+	let bySquad = $state(false);
+	/** 清單上的順序：draft.members 的第幾個。 */
+	const order = $derived.by(() => {
+		const all = draft.members.map((_, i) => i);
+		if (!grouped || !bySquad || !action) return all;
+		const num = (i: number) => squadBadge(action, draft.members[i]).number || Infinity;
+		return all.toSorted((a, b) => num(a) - num(b));
+	});
 
 	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
 	const ask = draft.ask;
@@ -139,7 +148,7 @@
 	function setRole(i: number, role: string | null, byKey: boolean) {
 		draft.setRole(i, role);
 		changed();
-		if (byKey) rolePickers[i + 1]?.focus();
+		if (byKey) rolePickers[order[order.indexOf(i) + 1]]?.focus();
 	}
 
 	/** 名詞對照表新增了自訂任務角色：是從任務角色選單打開的，就套給那個人。 */
@@ -359,11 +368,14 @@
 						</span>
 					</span>
 				</span>
+				{#if grouped}
+					<label class="by-squad"><input type="checkbox" bind:checked={bySquad} />照組排</label>
+				{/if}
 				<button type="button" class="link" onclick={() => openGlossary(null)}>名詞對照表</button>
 			</div>
 			{#if draft.members.length}
 				<ul class:grouped>
-					{#each draft.members as m, i (m.memberId)}
+					{#each order.map((i) => ({ m: draft.members[i], i })) as { m, i } (m.memberId)}
 						{@const who = memberOf(m.memberId)}
 						<li>
 							<span class="who">
@@ -668,6 +680,14 @@
 	}
 	.people-head .link {
 		font-size: 12px;
+	}
+	.by-squad {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-right: 8px;
+		font-size: 12px;
+		color: var(--muted, #66718a);
 	}
 	.none {
 		font-size: 12px;
