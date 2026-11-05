@@ -13,15 +13,16 @@
 	interface Props {
 		label: string;
 		value: string | null;
-		/** 角色名稱，照名詞對照表的順序。 */
-		names: string[];
+		/** 角色名稱和一句說明，照名詞對照表的順序。 */
+		roles: { name: string; meaning: string }[];
 		/** byKey：是按快捷鍵選的（外面可以跳到下一個人）。 */
 		onpick: (role: string | null, byKey: boolean) => void;
 		/** 選了「＋自訂任務角色…」。 */
 		onnew: () => void;
 	}
 
-	let { label, value, names, onpick, onnew }: Props = $props();
+	let { label, value, roles, onpick, onnew }: Props = $props();
+	const names = $derived(roles.map((r) => r.name));
 
 	const uid = $props.id();
 	let open = $state(false);
@@ -93,7 +94,7 @@
 					onclick={() => choose(item)}
 					onmouseenter={() => (active = k)}
 				>
-					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roleKey(k - 1)}<kbd>{roleKey(k - 1)}</kbd>{/if}{/if}
+					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roleKey(k - 1)}<kbd>{roleKey(k - 1)}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{roles[k - 1].meaning}</span>{/if}{/if}
 				</li>
 			{/each}
 		</ul>
@@ -154,9 +155,10 @@
 	}
 	li {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
-		gap: 8px;
+		gap: 2px 8px;
 		padding: 5px 8px;
 		border-radius: 6px;
 		font-size: 13px;
@@ -164,6 +166,14 @@
 	}
 	li.active {
 		background: var(--sel-soft, #dcf4fa);
+	}
+	/* 名詞對照表的意思：換行寫在名稱下面 */
+	.meaning {
+		flex-basis: 100%;
+		font-size: 11px;
+		font-weight: 400;
+		line-height: 1.4;
+		color: var(--muted, #66718a);
 	}
 	li[aria-selected='true'] {
 		font-weight: 600;

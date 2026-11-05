@@ -1940,3 +1940,66 @@ describe('小選單和小窗：按 Esc 或點外面就收起來', () => {
 		expect(screen.queryByRole('dialog', { name: '拍點小窗' })).toBeNull();
 	});
 });
+
+describe('動作設定：任務角色先照全局角色填、角色說明、Esc、新增鈕、改長度的確認框', () => {
+	async function withSample() {
+		const session = new EditorSession(libSample());
+		render(Page, { createEngine: () => createFakeEngine(), session });
+		await tick();
+		return session;
+	}
+	const role = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` }).textContent;
+
+	it('沒選人時「新增動作」是灰的、寫原因；按「全隊」後任務角色照全局角色填好，選單每項有說明', async () => {
+		await withSample();
+		const add = screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement;
+		expect(add.disabled).toBe(true);
+		expect(screen.getByText('還沒有人：先選人才能新增')).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		expect(add.disabled).toBe(false);
+		expect(screen.queryByText('還沒有人：先選人才能新增')).toBeNull();
+		// 技巧：小美、小芳全局上層，小A、小B 全局底層
+		expect(['小美', '小A', '小B', '小芳'].map(role)).toEqual(['上層', '底層', '底層', '上層']);
+		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'tumbling' } });
+		expect(['小美', '小A'].map(role)).toEqual(['騰翻', '騰翻']);
+
+		await fireEvent.click(screen.getByRole('combobox', { name: '小美 的任務角色' }));
+		const option = within(screen.getByRole('listbox')).getByRole('option', { name: /^側底/ });
+		expect(option.textContent).toContain('多底層技巧裡，在主底旁邊一起撐的底層。');
+	});
+
+	it('新動作表單：任務角色選單開著時連按兩次 Esc，只收起選單，選好的人和任務角色都還在', async () => {
+		const session = await withSample();
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
+		await pickRole('小A', '主底');
+		const picker = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		await fireEvent.click(picker);
+		expect(screen.getByRole('listbox')).toBeTruthy();
+		await fireEvent.keyDown(picker, { key: 'Escape' });
+		expect(screen.queryByRole('listbox')).toBeNull();
+		await fireEvent.keyDown(picker, { key: 'Escape' });
+		expect(session.selectedMemberIds).toEqual(['m1', 'm2', 'm3', 'm4']);
+		expect(['小美', '小A'].map(role)).toEqual(['上層', '主底']);
+
+		// 表單裡其他地方（例：名稱框）按 Esc 也不清
+		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'Escape' });
+		expect(session.selectedMemberIds).toHaveLength(4);
+		// 表單外面按 Esc 照舊取消選人
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(session.selectedMemberIds).toEqual([]);
+	});
+
+	it('改動作長度要確認時，確認框出現在長度欄位旁邊', async () => {
+		const session = await withSample();
+		session.pickAction('x1');
+		await tick();
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '2' } });
+		await fireEvent.change(length);
+		const dialog = screen.getByRole('alertdialog');
+		expect(length.closest('.grid')!.contains(dialog)).toBe(true);
+		await fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+		expect(length.value).toBe('8');
+	});
+});
