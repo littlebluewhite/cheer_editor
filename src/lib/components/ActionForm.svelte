@@ -1,16 +1,18 @@
 <script lang="ts">
-	// 動作表單：沒選動作時是新增（卡片標「新動作」、換底色，開始跟著播放頭）；選了動作時改那個動作，改了馬上生效。
+	// 動作表單：沒選動作時是新增（卡片標「新動作」、換底色，開始跟著播放頭；「新增動作」黏在右邊欄底部，名稱、開始、長度欄按 Enter 也新增）；
+	// 選了動作時改那個動作，改了馬上生效。換大類後有人不是新大類的預設任務角色，提示可以一次換掉。
 	// 卡片的標題就是名稱輸入框；辨識色沒挑就用大類的顏色。
 	// 規則（跨段、重疊、至少 1 人、角色存在）都交給流程核心判斷；被擋就顯示原因並還原。
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
-	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
+	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
 	import { flushSync, type ComponentProps } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { composing } from '#lib/ime.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import {
 		ACTION_CATEGORIES,
@@ -51,6 +53,7 @@
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
 	const roles = $derived(roleGlossary(flow));
+	const categoryLabel = $derived(ACTION_CATEGORIES.find((c) => c.key === draft.category)?.label ?? '');
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
 	const others = $derived(
@@ -99,6 +102,13 @@
 	function changed() {
 		askAtLength = false;
 		draft.update();
+	}
+
+	/** 新動作的名稱、開始、長度欄按 Enter 就新增（選字中的 Enter 不算）。 */
+	function addOnEnter(e: KeyboardEvent) {
+		if (action || e.key !== 'Enter' || composing(e) || !draft.members.length) return;
+		e.preventDefault();
+		draft.add();
 	}
 
 	function remove() {
@@ -151,6 +161,11 @@
 		changed();
 	}
 
+	function useDefaultRoles() {
+		draft.useDefaultRoles();
+		changed();
+	}
+
 	function setColor(color: string | undefined) {
 		draft.setColor(color);
 		changed();
@@ -181,6 +196,7 @@
 			aria-label="名稱"
 			bind:value={draft.name}
 			onchange={changed}
+			onkeydown={addOnEnter}
 			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
 		/>
 		{#if action}
@@ -204,6 +220,12 @@
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
 			</label>
+			{#if draft.offerDefaultRoles}
+				<p class="wide roles-offer" role="note">
+					有人的任務角色不是{categoryLabel}的預設值
+					<button type="button" class="link" onclick={useDefaultRoles}>換成{categoryLabel}的預設任務角色</button>
+				</p>
+			{/if}
 			<fieldset class="wide colors">
 				<legend class="cap">辨識色</legend>
 				<label class="swatch auto" title="大類的顏色" style:--c={CATEGORY_COLORS[draft.category]}>
@@ -229,12 +251,26 @@
 			</fieldset>
 			<div class="field">
 				<span class="cap" aria-hidden="true">開始</span>
-				<input aria-label="開始" bind:value={draft.startText} onchange={changed} />
+				<input
+						aria-label="開始"
+						bind:value={draft.startText}
+						onchange={changed}
+						onkeydown={addOnEnter}
+						onfocus={() => draft.focusSlotField('startText')}
+						onblur={() => draft.focusSlotField(null)}
+					/>
 				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
 			</div>
 			<div class="field">
 				<span class="cap" aria-hidden="true">長度</span>
-				<input aria-label="長度" bind:value={draft.lengthText} onchange={lengthChanged} />
+				<input
+						aria-label="長度"
+						bind:value={draft.lengthText}
+						onchange={lengthChanged}
+						onkeydown={addOnEnter}
+						onfocus={() => draft.focusSlotField('lengthText')}
+						onblur={() => draft.focusSlotField(null)}
+					/>
 				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
 			</div>
 			<!-- 改長度要確認（會切到拍點）：問句就在長度下面，不用捲到表單最底下找。 -->
@@ -337,16 +373,21 @@
 		</label>
 
 		{#if action}
+			<!-- 轉接（例如 Lib 轉金字塔）：開新表單接在結束拍後面，人、任務角色、組帶過去 -->
+			<button type="button" class="next" onclick={() => draft.next()}><Icon name="plus" size={14} />接下一個動作</button>
 			<CueGrid {action} {cellAt} />
 		{:else}
-			<button
-				type="button"
-				class="primary add"
-				disabled={!draft.members.length}
-				aria-describedby={draft.members.length ? undefined : 'add-why'}
-				onclick={() => draft.add()}>新增動作</button
-			>
-			{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
+			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
+			<div class="add-bar">
+				<button
+					type="button"
+					class="primary add"
+					disabled={!draft.members.length}
+					aria-describedby={draft.members.length ? undefined : 'add-why'}
+					onclick={() => draft.add()}>新增動作</button
+				>
+				{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
+			</div>
 		{/if}
 	{/if}
 
@@ -432,6 +473,9 @@
 		width: 100%;
 		justify-content: center;
 		border-style: dashed;
+	}
+	.next {
+		justify-self: start;
 	}
 	.danger {
 		padding: 3px 8px;
@@ -716,13 +760,23 @@
 		background-color: var(--surface-2, #f6f8fb);
 		border-style: dashed;
 	}
+	.add-bar {
+		position: sticky;
+		bottom: 0;
+		z-index: 1;
+		display: grid;
+		gap: 6px;
+		margin: 0 -14px;
+		padding: 10px 14px;
+		background: var(--new-bg);
+		box-shadow: 0 -6px 8px -6px rgb(0 0 0 / 0.15);
+	}
 	.add {
 		width: 100%;
 		padding: 8px 12px;
 		font-size: 14px;
 	}
 	.why {
-		margin-top: -6px;
 		font-size: 12px;
 		text-align: center;
 	}
@@ -748,6 +802,10 @@
 		.adders {
 			grid-template-columns: 1fr 1fr;
 		}
+	}
+	.roles-offer {
+		font-size: 12px;
+		color: var(--muted, #66718a);
 	}
 	.error {
 		padding: 8px 10px;

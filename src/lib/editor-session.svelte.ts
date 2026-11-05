@@ -9,9 +9,11 @@ import {
 	currentFormation,
 	deleteAction,
 	deleteFormation,
+	formationTimes,
 	groupsPeople,
 	setSquad,
 	squadsOf,
+	timeTextWithUnit,
 	type Action,
 	type CommandResult,
 	type ConfirmOption,
@@ -54,6 +56,8 @@ export class EditorSession {
 
 	/** 選到的站位（點縮圖選）；按 Delete 刪掉它。 */
 	#formationId = $state<string | null>(null);
+	/** 最近一次拖人自動插入、又往後帶改了後面站位的那張站位：刪它時提示後面的改動還在。 */
+	#carriedInsertId: string | null = null;
 	/** 選到的動作（點色條選）；按 Delete 刪掉它。跟站位一次只選一種。 */
 	#actionId = $state<string | null>(null);
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
@@ -243,10 +247,15 @@ export class EditorSession {
 	/** 復原、重做換上的流程：提示、場上的問題收掉，選取修剪，播放頭夾回流程。 */
 	#restored(flow: Flow, before: Flow) {
 		this.#joinable = null;
+		this.#carriedInsertId = null;
 		this.#trim(flow);
 		this.ask.clear();
 		this.notice = '';
 		this.#playback.changed(before);
+		// 選到的站位還在、站位時間換了（復原、重做挪站位）：播放頭跟到它的時間，接著拖人才不會多插一張
+		const sec = (f: Flow) => formationTimes(f).find((t) => t.formation.id === this.#formationId)?.sec;
+		const now = sec(flow);
+		if (now !== undefined && now !== sec(before)) this.#playback.jump(now, false);
 		this.onflow();
 		this.#updated();
 	}
@@ -270,6 +279,8 @@ export class EditorSession {
 			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`
 		];
 		this.notice = said.filter(Boolean).join('；');
+		this.#carriedInsertId =
+			r.inserted && r.carried > 0 && this.#flow ? currentFormation(this.#flow, r.sec).formation.id : null;
 		// 選著的縮圖不是剛改的那張：選取清掉，不然 Delete 會刪到眼睛沒在看的那張
 		if (this.#formationId && this.#flow && this.#formationId !== currentFormation(this.#flow, r.sec).formation.id) {
 			this.#formationId = null;
@@ -278,12 +289,20 @@ export class EditorSession {
 	}
 
 	/**
-	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示走位被壓短的人，
+	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示改到哪（旁邊有「復原」）和走位被壓短的人，
 	 * 選著這張，播放頭跳到新的站位時間。
 	 */
 	formationMoved(formationId: string, r: { sec: number; squeezed: string[] }) {
-		const names = r.squeezed.map((id) => this.#flow?.members.find((m) => m.id === id)?.name);
-		this.notice = names.length ? `走位被壓短：${names.join('、')}` : '';
+		const flow = this.#flow;
+		const index = flow?.formations.findIndex((f) => f.id === formationId) ?? -1;
+		if (!flow || index < 1) return;
+		const f = flow.formations[index];
+		const names = r.squeezed.map((id) => flow.members.find((m) => m.id === id)?.name);
+		const said = [
+			`站位 ${index + 1} 改到 ${timeTextWithUnit(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })}`,
+			names.length && `走位被壓短：${names.join('、')}`
+		];
+		this.#undoNotice(said.filter(Boolean).join('；'), '復原改站位時間');
 		this.selectFormation(formationId);
 		this.#playback.jump(r.sec, true);
 	}
@@ -294,7 +313,13 @@ export class EditorSession {
 		if (!flow) return;
 		const number = flow.formations.findIndex((f) => f.id === formationId) + 1;
 		this.ask.send(() => deleteFormation(flow, formationId), {
-			done: () => this.#undoNotice(`已刪掉站位 ${number}`, '復原刪掉的站位')
+			done: () =>
+				this.#undoNotice(
+					formationId === this.#carriedInsertId
+						? `已刪掉站位 ${number}；後面站位的改動還在，要整個還原按復原`
+						: `已刪掉站位 ${number}`,
+					'復原刪掉的站位'
+				)
 		});
 	}
 

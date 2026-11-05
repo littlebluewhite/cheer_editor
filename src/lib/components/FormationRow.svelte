@@ -37,7 +37,7 @@
 	/** 縮圖最窄：號碼和 ✕ 還放得下。 */
 	const MIN_THUMB_W = 44;
 	/** 拖超過這麼多 px 才算拖；沒超過就是點一下（手抖不會挪到）。 */
-	const DRAG_PX = 4;
+	const DRAG_PX = 10;
 	const g = $derived(fieldGeometry(flow.field));
 	const items = $derived(formationTimes(flow));
 	const width = $derived(Math.max(0, ...items.map((i) => i.sec)) * pxPerSec + THUMB_W);
