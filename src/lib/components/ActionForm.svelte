@@ -7,9 +7,9 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
-	import { composing } from '#lib/ime.js';
 	import { untrack, type ComponentProps } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 	import {
 		ACTION_CATEGORIES,
 		actionHints,
@@ -112,60 +112,10 @@
 	let legendPeek = $state(false);
 	const legendShown = $derived(legendOpen || legendPeek);
 	let bangEl = $state<HTMLElement>();
-	let tipEl = $state<HTMLElement>();
-	let tipPos = $state({ top: 0, left: 0 });
-
-	/** 說明小窗放在「!」下面、右邊對齊；畫面下面放不下就放上面，左右上下都不超出畫面。 */
-	function placeTip() {
-		if (!bangEl || !tipEl) return;
-		const b = bangEl.getBoundingClientRect();
-		const w = tipEl.offsetWidth;
-		const h = tipEl.offsetHeight;
-		const M = 8;
-		let top = b.bottom + 6;
-		if (top + h > innerHeight - M && b.top - 6 - h >= M) top = b.top - 6 - h;
-		tipPos = {
-			top: Math.max(M, Math.min(top, innerHeight - M - h)),
-			left: Math.max(M, Math.min(b.right - w, innerWidth - M - w))
-		};
-	}
-
-	$effect(() => {
-		if (!legendShown || !tipEl) return;
-		const tip = tipEl;
-		// 說明開在最上層（popover）：右邊欄捲動容器裁不到它。
-		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
-		if (tip.showPopover && !tip.matches(':popover-open')) {
-			tip.popover = 'manual';
-			tip.showPopover();
-		}
-		placeTip();
-		// 右邊欄捲動、視窗變大變小時跟著「!」走
-		addEventListener('scroll', placeTip, true);
-		addEventListener('resize', placeTip);
-		return () => {
-			removeEventListener('scroll', placeTip, true);
-			removeEventListener('resize', placeTip);
-			if (tip.popover) tip.hidePopover();
-		};
-	});
 
 	function closeLegend() {
 		legendOpen = false;
 		legendPeek = false;
-	}
-
-	/** 點外面就收起來（點「!」自己是開關，點說明裡面不算）。 */
-	function legendOutside(e: PointerEvent) {
-		const t = e.target as Node;
-		if (legendShown && !bangEl?.contains(t) && !tipEl?.contains(t)) closeLegend();
-	}
-
-	/** Esc 只收說明（不讓編輯頁把動作也取消選）。中文輸入法選字時的 Esc 不算。 */
-	function legendKeys(e: KeyboardEvent) {
-		if (!legendShown || e.key !== 'Escape' || composing(e)) return;
-		e.stopPropagation();
-		closeLegend();
 	}
 
 	function blank(): Draft {
@@ -346,8 +296,6 @@
 	const memberOf = (id: string) => flow.members.find((m) => m.id === id);
 </script>
 
-<svelte:window onpointerdown={legendOutside} onkeydowncapture={legendKeys} />
-
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
 	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
@@ -449,14 +397,14 @@
 						onfocus={(e) => e.currentTarget.matches(':focus-visible') && (legendPeek = true)}
 						onfocusout={closeLegend}>!</button
 					>
+					<!-- 說明放在「!」下面、右邊對齊；點外面（點「!」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
 					<span
 						class="tip"
 						id="people-legend"
 						role="tooltip"
 						hidden={!legendShown}
-						bind:this={tipEl}
-						style:top="{tipPos.top}px"
-						style:left="{tipPos.left}px"
+						{@attach legendShown &&
+							popover({ place: below(bangEl!, { gap: 6, align: 'right' }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
 						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
