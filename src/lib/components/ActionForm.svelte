@@ -28,8 +28,7 @@
 		positionText,
 		roleGlossary,
 		segmentSpans,
-		squadColor,
-		squadNumber,
+		squadBadge,
 		updateAction,
 		type Action,
 		type ActionCategory,
@@ -489,8 +488,8 @@
 								onnew={() => (glossaryOpen = true)}
 							/>
 							{#if grouped}
-								{@const n = action && m.squad ? squadNumber(action, m.squad) : 0}
-								{#if n}<span class="squad-tag" style:--c={squadColor(n)}>第 {n} 組</span>
+								{@const badge = action && squadBadge(action, m)}
+								{#if badge?.number}<span class="squad-tag" style:--c={badge.color}>第 {badge.number} 組</span>
 								{:else}<span class="squad-tag none">沒分組</span>{/if}
 							{/if}
 							<button

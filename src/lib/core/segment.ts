@@ -57,6 +57,23 @@ export function musicLength(segment: MusicSegment): MusicLength {
 	return { eights, lastBeats: beats - (eights - 1) * 8 };
 }
 
+/**
+ * 段的長度合不合上限：音樂段 1 到 MAX_EIGHTS 個八拍（最後一個八拍 1 到 8 拍），口號段 0.1 到 MAX_CHANT_SEC 秒。
+ * 改段的指令和讀流程檔都照這一份擋（音樂段給 musicLength）。回第一個不合的原因，合就是 null。
+ */
+export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>): string | null {
+	if ('tenths' in length) {
+		const { tenths } = length;
+		return tenths >= 1 && tenths <= MAX_CHANT_SEC * 10 ? null : `口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`;
+	}
+	const { eights, lastBeats } = length;
+	// 兩格各說各的：教練才知道是哪一格錯。
+	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return `八拍數要在 1 到 ${MAX_EIGHTS} 之間`;
+	if (!Number.isInteger(eights)) return '八拍數要是整數';
+	if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) return '最後一個八拍的拍數要在 1 到 8 之間';
+	return null;
+}
+
 export interface BeatTiming {
 	bpm: number;
 	/** 第一拍在音樂檔的第幾秒 */
@@ -141,13 +158,9 @@ export function updateSegment(
 			return blocked('第一拍要是 0 秒以上');
 		}
 		const length = { ...musicLength(old), ...pick(patch, 'eights', 'lastBeats') };
+		const tooLong = lengthProblem(length);
+		if (tooLong) return blocked(tooLong);
 		const { eights, lastBeats } = length;
-		// 兩格各說各的：教練才知道是哪一格錯。
-		if (!(eights >= 1 && eights <= MAX_EIGHTS)) return blocked(`八拍數要在 1 到 ${MAX_EIGHTS} 之間`);
-		if (!Number.isInteger(eights)) return blocked('八拍數要是整數');
-		if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) {
-			return blocked('最後一個八拍的拍數要在 1 到 8 之間');
-		}
 		const halfBeats = ((eights - 1) * 8 + lastBeats) * 2;
 		const audioId = patch.audioId === undefined ? old.audioId : patch.audioId;
 		if (audioId !== null && !flow.audio.some((a) => a.id === audioId)) {
@@ -156,9 +169,8 @@ export function updateSegment(
 		next = { ...old, audioId, bpm, firstBeatSec, halfBeats };
 	} else {
 		const tenths = patch.seconds === undefined ? old.tenths : Math.round(patch.seconds * 10);
-		if (!(tenths >= 1 && tenths <= MAX_CHANT_SEC * 10)) {
-			return blocked(`口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`);
-		}
+		const tooLong = lengthProblem({ tenths });
+		if (tooLong) return blocked(tooLong);
 		next = { ...old, tenths };
 	}
 	// 段縮短：動作要整個放得進段裡；站位的時間點要在段裡（段尾那一刻已經是下一段）。
