@@ -2,11 +2,12 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
-import { cueForMember, whoName, type Cue, type CueKind } from './cues';
+import { ACTION_CATEGORIES, type ActionCategory } from './action-types';
+import { actionEights } from './beat-range';
+import { cueForMember, whoName, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
-import { phaseColor, phaseLabel, type Phase } from './phase-types';
+import { phaseColor, phaseLabel } from './phase-types';
 import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
@@ -162,12 +163,23 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到達）`;
 					}),
 				cues: inSegment.flatMap((a) => {
-					const cues = (a.cues ?? []).flatMap((c) =>
-						memberId === null || cueForMember(c, a, memberId)
-							? cueInRow(flow, a, c, from, memberId === null)
-							: []
-					);
-					const phases = (a.successRate?.phases ?? []).flatMap((p) => phaseInRow(a, p, from));
+					// 個人表只切給他的拍點；口號段整段一列，沒有拍點、標的拍
+					const mine = (a.cues ?? []).filter((c) => memberId === null || cueForMember(c, a, memberId));
+					const slice = actionEights(a, mine).find((e) => e.eight + 1 === eight);
+					const cues = (slice?.cues ?? []).map(({ cue, start, end }) => ({
+						kind: cue.kind,
+						from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
+						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
+						span: spanText(start, end),
+						word: cue.word,
+						who: memberId === null ? whoName(flow, cue.who) || null : null
+					}));
+					const phases = (slice?.phases ?? []).map(({ phase, start, end }) => ({
+						label: phaseLabel(phase),
+						from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
+						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
+						color: phaseColor(phase)
+					}));
 					return cues.length || phases.length
 						? [{ categoryLabel: categoryLabel(a.category), name: a.name, cues, phases }]
 						: [];
@@ -210,39 +222,6 @@ function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk
 
 function categoryLabel(category: ActionCategory): string {
 	return ACTION_CATEGORIES.find((c) => c.key === category)?.label ?? '';
-}
-
-/** 拍點落在從 from 半拍開始那一列的那一段（佔到的格子都算，落在 & 的也是）；沒落在這一列是空的。 */
-function cueInRow(flow: Flow, action: Action, cue: Cue, from: number, withWho: boolean): EightCountCue[] {
-	const start = Math.max(action.start + cue.at, from) - from;
-	const end = Math.min(action.start + cue.at + cue.len, from + HALF_BEATS_PER_EIGHT) - from;
-	if (start >= end) return [];
-	return [
-		{
-			kind: cue.kind,
-			from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
-			to: Math.ceil(end / HALF_BEATS_PER_BEAT),
-			span: spanText(start, end),
-			word: cue.word,
-			who: withWho ? whoName(flow, cue.who) || null : null
-		}
-	];
-}
-
-/** 環節標的拍落在從 from 半拍開始那一列的那一段；沒標拍、沒落在這一列是空的。 */
-function phaseInRow(action: Action, phase: Phase, from: number): EightCountPhase[] {
-	if (!phase.beats) return [];
-	const start = Math.max(action.start + phase.beats.at, from) - from;
-	const end = Math.min(action.start + phase.beats.at + phase.beats.len, from + HALF_BEATS_PER_EIGHT) - from;
-	if (start >= end) return [];
-	return [
-		{
-			label: phaseLabel(phase),
-			from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
-			to: Math.ceil(end / HALF_BEATS_PER_BEAT),
-			color: phaseColor(phase)
-		}
-	];
 }
 
 /**
