@@ -86,13 +86,16 @@
 <section class="card" aria-label={name}>
 	<header>
 		<b>{name}</b>
-		<div class="scope" role="radiogroup" aria-label="{name} 這次練">
-			<span>這次練</span>
-			<label><input type="radio" name="scope-{action.id}-{who}" checked={whole} onchange={() => setWhole(true)} />整個</label>
-			<label
-				><input type="radio" name="scope-{action.id}-{who}" checked={!whole} onchange={() => setWhole(false)} />只練幾個環節</label
-			>
-		</div>
+		<!-- 只有一個環節就沒得選，一定是整個做 -->
+		{#if phases.length > 1}
+			<div class="scope" role="radiogroup" aria-label="{name} 這次練">
+				<span>這次練</span>
+				<label><input type="radio" name="scope-{action.id}-{who}" checked={whole} onchange={() => setWhole(true)} />整個</label>
+				<label
+					><input type="radio" name="scope-{action.id}-{who}" checked={!whole} onchange={() => setWhole(false)} />只練幾個環節</label
+				>
+			</div>
+		{/if}
 	</header>
 
 	<div class="phases">
