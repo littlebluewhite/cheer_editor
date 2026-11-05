@@ -2,7 +2,7 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
+import { categoryLabel, type Action, type ActionCategory } from './action-types';
 import { actionEights, beatSpanText } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
@@ -80,7 +80,7 @@ export interface EightCountPhase {
 
 /** 八拍表一列裡、一個有拍點或標了拍的環節的動作那一排 8 格。 */
 export interface EightCountCueLine {
-	categoryLabel: string;
+	category: ActionCategory;
 	name: string;
 	cues: EightCountCue[];
 	/** 這一列的環節，畫在拍點上面一行；環節不分給誰，個人表也一樣。沒標拍的不印。 */
@@ -195,7 +195,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 						color: phaseColor(phase)
 					}));
 					return cues.length || phases.length
-						? [{ categoryLabel: categoryLabel(a.category), name: a.name, cues, phases }]
+						? [{ category: a.category, name: a.name, cues, phases }]
 						: [];
 				})
 			};
@@ -265,8 +265,4 @@ function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk
 			? [{ number: i + 1, walk: memberWalk(flow, b.id, memberId)! }]
 			: []
 	);
-}
-
-function categoryLabel(category: ActionCategory): string {
-	return ACTION_CATEGORIES.find((c) => c.key === category)?.label ?? '';
 }

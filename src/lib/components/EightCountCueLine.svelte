@@ -1,13 +1,6 @@
-<script lang="ts" module>
-	/** 「技巧·Lib」；名稱跟大類一樣（「舞蹈」）只寫一次。八拍表的動作和拍點那一排都這樣寫。 */
-	export function actionTitle(categoryLabel: string, name: string): string {
-		return name && name !== categoryLabel ? `${categoryLabel}·${name}` : categoryLabel;
-	}
-</script>
-
 <script lang="ts">
 	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和手機的「八拍表這一列」共用。
-	import { cueText, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
+	import { actionLabel, cueText, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
 
 	interface Props {
 		line: EightCountCueLine;
@@ -17,7 +10,7 @@
 
 	let { line, eight }: Props = $props();
 
-	const name = $derived(actionTitle(line.categoryLabel, line.name));
+	const name = $derived(actionLabel(line));
 
 	/** 「拍子 down 1-6 到 1-7・2 拍」「手位 high V 1-8・1 拍・給上層」。 */
 	const cueLabel = (c: EightCountCue) => cueText(c.kind, c.word, c.span, c.who ?? '');

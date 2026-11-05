@@ -295,7 +295,7 @@ describe('八拍表的列：拍點', () => {
 		const rows = eightCountRows(cradle(), null);
 		expect(rows[1].cues).toEqual([
 			{
-				categoryLabel: '技巧',
+				category: 'stunt',
 				name: 'Cradle',
 				cues: [
 					{ kind: 'step', from: 5, to: 5, span: '2-5・1 拍', lead: '', continued: false, word: '下手', who: null },
@@ -320,7 +320,7 @@ describe('八拍表的列：拍點', () => {
 		]);
 		expect(rows[1].cues).toEqual([
 			{
-				categoryLabel: '技巧',
+				category: 'stunt',
 				name: 'Lib',
 				cues: [{ kind: 'count', from: 1, to: 2, span, lead: '', continued: true, word: 'down', who: null }],
 				phases: []
@@ -406,7 +406,7 @@ describe('八拍表的列：環節', () => {
 		const [first] = eightCountRows(phased(), null);
 		expect(first.cues).toEqual([
 			{
-				categoryLabel: '技巧',
+				category: 'stunt',
 				name: 'Lib',
 				cues: [{ kind: 'count', from: 8, to: 8, span: '1-8・1 拍', lead: '', continued: false, word: 'down', who: null }],
 				phases: [
@@ -421,7 +421,7 @@ describe('八拍表的列：環節', () => {
 		const second = eightCountRows(phased(), null)[1];
 		expect(second.cues).toEqual([
 			{
-				categoryLabel: '技巧',
+				category: 'stunt',
 				name: 'Lib',
 				cues: [],
 				phases: [{ label: '中段', from: 1, to: 2, color: '#475569' }]

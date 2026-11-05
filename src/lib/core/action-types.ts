@@ -59,10 +59,15 @@ export function replaceAction(flow: Flow, action: Action): Flow {
 	return { ...flow, actions: flow.actions.map((a) => (a.id === action.id ? action : a)) };
 }
 
-/** 給教練看的動作名字：「技巧·Lib」；沒取名就只有大類。 */
-export function actionLabel(action: Action): string {
-	const category = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label ?? '';
-	return action.name ? `${category}·${action.name}` : category;
+/** 大類的名字：「技巧」。 */
+export function categoryLabel(category: ActionCategory): string {
+	return ACTION_CATEGORIES.find((c) => c.key === category)?.label ?? '';
+}
+
+/** 給教練看的動作名字：「技巧·Lib」；沒取名、名稱跟大類一樣（「舞蹈」）就只寫大類。 */
+export function actionLabel(action: Pick<Action, 'category' | 'name'>): string {
+	const category = categoryLabel(action.category);
+	return action.name && action.name !== category ? `${category}·${action.name}` : category;
 }
 
 /** 動作在全域秒數上的開始和結束（結束那一刻不算在動作裡）。 */

@@ -4,6 +4,7 @@
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
 	import {
 		GLOBAL_ROLES,
+		actionLabel,
 		eightCountRows,
 		memberMarkers,
 		type EightCountRow,
@@ -11,7 +12,7 @@
 	} from '#lib/core';
 	import { loadPrintChoice, savePrintChoice } from '#lib/local-settings.js';
 	import { untrack } from 'svelte';
-	import EightCountCueLine, { actionTitle } from './EightCountCueLine.svelte';
+	import EightCountCueLine from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -122,7 +123,7 @@
 									{#each row.actions as a, j (j)}
 										<div class="action">
 											<b class="at">{a.at}</b>
-											{actionTitle(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
+											{actionLabel(a)}{#if a.who}：{a.who}{/if}
 											{#if a.note}<div class="note">{a.note}</div>{/if}
 										</div>
 									{/each}
