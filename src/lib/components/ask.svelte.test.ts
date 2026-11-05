@@ -180,3 +180,22 @@ describe('回答', () => {
 		expect(ask.error).toBe('');
 	});
 });
+
+describe('改了一格', () => {
+	it('一格被擋有紅字，告訴它這格改了：那格的紅字收掉，別格的還在', () => {
+		const ask = new Ask(vi.fn());
+		ask.send(command(blocked('BPM 不對')).send, { field: 'BPM' });
+		ask.send(command(blocked('拍數不對')).send, { field: '拍數' });
+		ask.edited('BPM');
+		expect(ask.fieldErrors).toEqual({ 拍數: '「拍數」退回原本的值：拍數不對' });
+	});
+
+	it('沒給格名：收掉整張表單送出被擋的紅字，有格名的留著', () => {
+		const ask = new Ask(vi.fn());
+		ask.send(command(blocked('BPM 不對')).send, { field: 'BPM' });
+		ask.send(command(blocked('請幫流程取名字')).send);
+		ask.edited();
+		expect(ask.error).toBe('');
+		expect(ask.fieldErrors).toEqual({ BPM: '「BPM」退回原本的值：BPM 不對' });
+	});
+});
