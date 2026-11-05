@@ -552,13 +552,6 @@
 			void save();
 			return;
 		}
-		// Esc 先關掉開著的段設定、流程設定、八拍表
-		if (e.key === 'Escape' && (openSegmentId || settingsOpen || printOpen)) {
-			openSegmentId = null;
-			settingsOpen = false;
-			printOpen = false;
-			return;
-		}
 		// 對話框、八拍表蓋在上面時，快捷鍵不動到底下的編輯畫面
 		if (!flow || overlayOpen) return;
 		if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
