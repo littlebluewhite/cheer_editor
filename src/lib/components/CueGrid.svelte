@@ -6,7 +6,7 @@
 	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
 	// 一格分前後兩個半格：從 & 開始或結束的拍點只塗半格；點這種拍點，選回它原本的範圍（也從 & 開始）。
-	// 現在播到的那一拍有標記。格子上按方向鍵左右移選取，加 Shift 延長選取。
+	// 現在播到的那一拍有標記。格子上按方向鍵左右移選取，加 Shift 延長選取；格子、小窗裡按 Delete／Backspace 清掉選的拍裡的拍點。
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	// 選的拍和給誰放在編輯 session（session.beats，選拍的規則在那裡）；這裡只管選拍的指標、焦點和畫格子。
@@ -36,9 +36,9 @@
 		phaseLabel,
 		STEP_WORDS,
 		actionEights,
+		beatSpanText,
 		addPhase,
 		toPosition,
-		atText,
 		clearCues,
 		clearPhaseBeats,
 		cueText,
@@ -168,14 +168,8 @@
 		});
 	});
 
-	/** 段內時間文字（例：「3-5」）；at 從動作開始算。 */
-	const beatText = (at: number) => (segment ? atText(segment, action.start + at) : '');
-	/** 「3-5 到 3-6・2 拍」；只有一拍是「3-5・1 拍」。 */
-	function spanText(from: number, len: number): string {
-		const last = from + len - BEAT;
-		const range = last > from ? `${beatText(from)} 到 ${beatText(last)}` : beatText(from);
-		return `${range}・${len / BEAT} 拍`;
-	}
+	/** 「3-5 到 3-6・2 拍」；只有一拍是「3-5・1 拍」。from 從動作開始算。 */
+	const spanText = (from: number, len: number) => (segment ? beatSpanText(segment, action.start + from, len) : '');
 
 	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
 	function send(cmd: (o?: ConfirmOption) => CommandResult, after?: () => void): boolean {
@@ -293,6 +287,14 @@
 
 	function clear(kind: CueKind) {
 		send(() => clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
+	}
+
+	/** 格子、小窗裡按 Delete／Backspace（不在打字）：清掉選的拍裡每一種拍點。整個動作不刪（表單攔下來）。 */
+	function deleteKey(e: KeyboardEvent) {
+		if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+		if ((e.target as Element).closest('input, textarea, select')) return;
+		e.preventDefault();
+		send(() => clearCues(flow, action.id, null, sel.from, sel.to + BEAT));
 	}
 
 	/** 點一個拍點或環節：選回它原本的範圍（從 & 開始的也照實）；拍點的「給誰」也換成它的。 */
@@ -443,7 +445,13 @@
 		<p class="muted">動作不到一拍，不能放拍點</p>
 	{:else}
 		<p class="hint">在數字格上點或拖，選好拍就會跳出拍點小窗。點一拍，再按住 Shift 點另一拍，也能選連續好幾拍。</p>
-		<div class="sheet-wrap" bind:this={wrapEl} style:padding-bottom={reserve ? `${reserve}px` : undefined}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="sheet-wrap"
+			bind:this={wrapEl}
+			style:padding-bottom={reserve ? `${reserve}px` : undefined}
+			onkeydown={deleteKey}
+		>
 			<div
 				class="sheet"
 				role="presentation"

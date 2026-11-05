@@ -803,5 +803,47 @@ await check('390×844（手機）使用說明：名詞表上下排，不用左�
 	return { ok: r.要滑的表.length === 0 && r.頁寬 <= r.畫面寬, value: r };
 });
 
+// ---------- 撞位的 ✕、場地中心記號（#133） ----------
+
+await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、有「撞位：誰、誰」；場地中心記號是「＋」不是 ✕', async () => {
+	await setViewport(1440, 1000);
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	// 小A 在騰翻裡從 [-3, 3] 走到 [3, 3]，經過站在 [0, 3.85] 的小B：✕ 畫在 [0, 3.425]，離場地中心遠。
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const of = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		let flow = of(c.createFlow({ name: '撞位', field: { strips: 9, layout: 'vertical' } }));
+		flow = of(c.addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
+		flow = of(c.addSegment(flow, 'music'));
+		flow = of(c.setPositions(flow, 'f1', { m1: [-3, 3], m2: [0, 3.85] }));
+		flow = of(c.insertFormation(flow, 4.8));
+		flow = of(c.setPositions(flow, flow.formations[1].id, { m1: [3, 3] }));
+		flow = of(c.addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 0, length: 24, note: '',
+			members: [{ memberId: 'm1', role: null }] }));
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([c.writeFlowFile(flow, {})], '撞位.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await sleep(300);
+	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+	await sleep(300);
+	const clash = await js(`const x = document.querySelector('.field [data-clash]');
+		if (!x) return { 有: false };
+		const r = x.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+		const top = document.elementFromPoint(cx, cy);
+		return { 有: true, 接得到滑鼠: top === x, 最上面: top?.outerHTML.slice(0, 80), 說明: x.querySelector('title')?.textContent };`);
+	// 「＋」的橫線上有東西、斜角上沒有；「✕」剛好相反。
+	const center = await js(`const el = document.querySelector('.field .center');
+		const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, d = r.width * 0.35;
+		return { 橫線上: document.elementFromPoint(cx + d, cy) === el, 斜角上: document.elementFromPoint(cx + d, cy + d) === el };`);
+	return {
+		ok: clash.接得到滑鼠 && clash.說明 === '撞位：小A、小B' && center.橫線上 && !center.斜角上,
+		value: { 撞位: clash, 中心記號: center }
+	};
+});
+
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

@@ -4,8 +4,10 @@
 
 import { createContext } from 'svelte';
 import {
+	actionLabel,
 	carryRecords,
 	currentFormation,
+	deleteAction,
 	deleteFormation,
 	groupsPeople,
 	setSquad,
@@ -17,7 +19,7 @@ import {
 	type MoveResult
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
-import { Flash } from '#lib/flash.svelte.js';
+import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
@@ -64,8 +66,8 @@ export class EditorSession {
 	readonly beats = new BeatSelection(() => this.selectedAction);
 
 	#notice = new Flash<string>();
-	/** 提示旁邊有「復原」（剛刪掉站位）。換了提示就沒有。 */
-	#noticeUndo = $state(false);
+	/** 提示旁邊「復原」的名字（剛刪掉站位、動作，例：「復原刪掉的站位」）；沒有是空字串。換了提示就沒有。 */
+	#noticeUndo = $state('');
 
 	/** 提示（存檔、開檔的結果、被擋的原因…），浮在場地或練習畫面上；過幾秒（換了一句就重算）或頁面看到下一個操作就收掉。 */
 	get notice(): string {
@@ -75,12 +77,23 @@ export class EditorSession {
 	set notice(text: string) {
 		if (!text) this.#notice.clear();
 		else if (text !== this.#notice.value) this.#notice.show(text);
-		this.#noticeUndo = false;
+		this.#noticeUndo = '';
 	}
 
-	/** 提示旁邊要不要放「復原」：按了等於按一次復原。 */
-	get noticeUndo(): boolean {
+	/** 提示旁邊「復原」的名字（空字串是沒有「復原」）：按了等於按一次復原。 */
+	get noticeUndo(): string {
 		return this.#noticeUndo;
+	}
+
+	/** 剛刪掉東西：提示旁邊放「復原」（undoLabel 是它的名字），留久一點（UNDO_FLASH_MS）。 */
+	#undoNotice(text: string, undoLabel: string) {
+		this.#notice.show(text, UNDO_FLASH_MS);
+		this.#noticeUndo = undoLabel;
+	}
+
+	/** 滑鼠在提示上：先不收（停住倒數）；移開了把剩下的時間走完。 */
+	holdNotice(on: boolean) {
+		this.#notice.hold(on);
 	}
 
 	/**
@@ -281,9 +294,23 @@ export class EditorSession {
 		if (!flow) return;
 		const number = flow.formations.findIndex((f) => f.id === formationId) + 1;
 		this.ask.send(() => deleteFormation(flow, formationId), {
+			done: () => this.#undoNotice(`已刪掉站位 ${number}`, '復原刪掉的站位')
+		});
+	}
+
+	/**
+	 * 刪一個動作（Delete、表單的「刪除動作」）：有紀錄時 ask 先問（預設在場上問），確定才刪；
+	 * 刪了提示「已刪掉動作 …」，旁邊有「復原」。
+	 */
+	removeAction(actionId: string, ask: Ask = this.ask) {
+		const flow = this.#flow;
+		const action = flow?.actions.find((a) => a.id === actionId);
+		if (!flow || !action) return;
+		// 按確定時用那時候的流程再送一次。
+		ask.send((o: ConfirmOption = {}) => deleteAction(this.#flow ?? flow, actionId, o), {
 			done: () => {
-				this.notice = `已刪掉站位 ${number}`;
-				this.#noticeUndo = true;
+				this.selectAction(null);
+				this.#undoNotice(`已刪掉動作 ${actionLabel(action)}`, '復原刪掉的動作');
 			}
 		});
 	}
