@@ -5,6 +5,7 @@
 	// 會切短或拿掉拍點時，核心回「要確認」：顯示清單，按確定才改，按取消就還原。
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
+	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	import { untrack, type ComponentProps } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -16,6 +17,7 @@
 		actionSlotAt,
 		addAction,
 		atText,
+		defaultRoles,
 		deleteAction,
 		groupsPeople,
 		lengthText,
@@ -167,15 +169,20 @@
 	}
 
 	function blank(): Draft {
-		const members = untrack(() => fromSelection([]));
+		const members = untrack(() => fromSelection([], 'stunt'));
 		return { category: 'stunt', name: '', startText: '', lengthText: '', note: '', members, color: undefined };
 	}
 
-	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色。 */
-	function fromSelection(current: ActionMember[]): ActionMember[] {
+	/** 選到的人當新動作的人；已經在表單裡的人保留任務角色，新來的照大類先填。 */
+	function fromSelection(current: ActionMember[], category: ActionCategory): ActionMember[] {
 		return selectedMemberIds
 			.filter((id) => flow.members.some((m) => m.id === id))
-			.map((id) => current.find((m) => m.memberId === id) ?? { memberId: id, role: null });
+			.map((id) => current.find((m) => m.memberId === id) ?? joined(id, category));
+	}
+
+	/** 剛加進動作的人：任務角色照大類和全局角色先填。 */
+	function joined(memberId: string, category: ActionCategory): ActionMember {
+		return defaultRoles(flow, category, [{ memberId, role: null }])[0];
 	}
 
 	function fromAction(a: Action): Draft {
@@ -228,7 +235,7 @@
 	$effect(() => {
 		void selectedMemberIds;
 		if (action) return;
-		untrack(() => (draft.members = fromSelection(draft.members)));
+		untrack(() => (draft.members = fromSelection(draft.members, draft.category)));
 	});
 
 	// 新增時，開始和長度跟著播放頭。
@@ -263,8 +270,17 @@
 		});
 	}
 
+	/** 問句是改長度問的：畫在長度欄位旁邊。 */
+	let askAtLength = $state(false);
+
+	function lengthChanged() {
+		changed();
+		askAtLength = !!ask.question;
+	}
+
 	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
 	function changed() {
+		askAtLength = false;
 		if (!action) return;
 		const id = action.id;
 		const input = toInput();
@@ -275,6 +291,7 @@
 	}
 
 	function remove() {
+		askAtLength = false;
 		if (!action) return;
 		const id = action.id;
 		ask.send((o: ConfirmOption = {}) => deleteAction(flow, id, o), { done: () => session.selectAction(null) });
@@ -295,7 +312,7 @@
 
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
-		draft.members.push({ memberId: select.value, role: null });
+		draft.members.push(joined(select.value, draft.category));
 		select.value = '';
 		membersChanged();
 	}
@@ -314,6 +331,13 @@
 		membersChanged();
 	}
 
+	/** 換大類；新增時任務角色還是舊大類預設值的人跟著換。 */
+	function setCategory(category: ActionCategory) {
+		if (!action) draft.members = defaultRoles(flow, category, draft.members, draft.category);
+		draft.category = category;
+		changed();
+	}
+
 	function setColor(color: string | undefined) {
 		draft.color = color;
 		changed();
@@ -330,7 +354,14 @@
 	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
 {/if}
 
-<section class="action-form" class:creating={!action} style:--cat={actionColor(draft)}>
+<!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<section
+	class="action-form"
+	class:creating={!action}
+	style:--cat={actionColor(draft)}
+	onkeydown={(e) => !action && e.key === 'Escape' && e.stopPropagation()}
+>
 	<header>
 		<span class="dot"></span>
 		<input
@@ -356,10 +387,7 @@
 				<span class="cap">大類</span>
 				<select
 					value={draft.category}
-					onchange={(e) => {
-						draft.category = e.currentTarget.value as ActionCategory;
-						changed();
-					}}
+					onchange={(e) => setCategory(e.currentTarget.value as ActionCategory)}
 				>
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
@@ -394,9 +422,15 @@
 			</div>
 			<div class="field">
 				<span class="cap" aria-hidden="true">長度</span>
-				<input aria-label="長度" bind:value={draft.lengthText} onchange={changed} />
+				<input aria-label="長度" bind:value={draft.lengthText} onchange={lengthChanged} />
 				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
 			</div>
+			<!-- 改長度要確認（會切到拍點）：問句就在長度下面，不用捲到表單最底下找。 -->
+			{#if askAtLength && ask.question}
+				<div class="wide" {@attach reveal(ask.failures)}>
+					<ConfirmList {ask} />
+				</div>
+			{/if}
 		</div>
 
 		<div class="people">
@@ -449,7 +483,7 @@
 								bind:this={rolePickers[i]}
 								label="{nameOf(m.memberId)} 的任務角色"
 								value={m.role}
-								names={roles.map((r) => r.name)}
+								{roles}
 								onpick={(role, byKey) => setRole(i, role, byKey)}
 								onnew={() => (glossaryOpen = true)}
 							/>
@@ -491,14 +525,21 @@
 		</label>
 
 		{#if action}
-			<CueGrid {action} {cellAt} />
+			<CueGrid {action} {playheadSec} {cellAt} />
 		{:else}
-			<button type="button" class="primary add" onclick={add}>新增動作</button>
+			<button
+				type="button"
+				class="primary add"
+				disabled={!draft.members.length}
+				aria-describedby={draft.members.length ? undefined : 'add-why'}
+				onclick={add}>新增動作</button
+			>
+			{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 		{/if}
 	{/if}
 
 	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->
-	{#if ask.question}
+	{#if ask.question && !askAtLength}
 		<div {@attach reveal(ask.failures)}>
 			<ConfirmList {ask} />
 		</div>
@@ -846,6 +887,11 @@
 		width: 100%;
 		padding: 8px 12px;
 		font-size: 14px;
+	}
+	.why {
+		margin-top: -6px;
+		font-size: 12px;
+		text-align: center;
 	}
 	/* 右邊欄夠寬時：大類、開始、長度排一列，辨識色在下一列；人分兩欄。少捲一點。 */
 	@container (min-width: 600px) {

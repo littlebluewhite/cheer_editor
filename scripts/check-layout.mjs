@@ -55,6 +55,8 @@ const pending = new Map();
 ws.addEventListener('message', (e) => {
 	const m = JSON.parse(e.data);
 	if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+	// 上一條檢查留下未存的修改：換頁時的「離開網站？」直接按離開，不然頁面卡住
+	if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
 });
 const send = (method, params = {}) =>
 	new Promise((r, j) => {
@@ -88,6 +90,25 @@ async function openSample() {
 		await sleep(500);
 		return js(`return !!document.querySelector('.rail')`);
 	});
+	await sleep(300);
+}
+
+/**
+ * 開首頁，打開一份有可以記成功率的動作的流程（範例流程沒有）：
+ * 在頁面裡用測試共用的 libSample()（src/lib/test-flows.ts）做好、寫成流程檔，從「開啟流程檔」放進去。
+ */
+async function openPracticeFlow() {
+	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	await js(`const { libSample } = await import('/src/lib/test-flows.ts');
+		const { writeFlowFile } = await import('/src/lib/core/index.ts');
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([writeFlowFile(libSample(), {})], '練習用.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.rail')`));
 	await sleep(300);
 }
 
@@ -285,6 +306,96 @@ await check('1440×900 最後一段旁的「＋」點得到，選單整個看得
 		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [b.textContent.trim(), !!t && b.contains(t)]; });`);
 	return { ok: res.ok && btns.length === 2 && btns.every(([, v]) => v), value: { ...res.value, 選項: btns } };
 });
+
+// ---------- 窄螢幕（寬不到 1024 或高不到 600，ADR 0005 的 2026-11 更新） ----------
+
+/** 觸控螢幕（手機、iPad）：pointer: coarse，點下去是手指。 */
+async function setTouchViewport(width, height) {
+	await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+	await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+	await sleep(400);
+}
+async function clearTouch() {
+	await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+}
+/** 手指點一下。 */
+const tap = async (x, y) => {
+	await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+	await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+	await sleep(300);
+};
+/** 頁面有沒有橫向捲軸、有沒有東西跑出畫面右邊（看得到的元素）。 */
+const overflow = () =>
+	js(`const out = [...document.querySelectorAll('body *')].filter((el) => {
+			const r = el.getBoundingClientRect();
+			return r.width && r.height && el.checkVisibility() && (r.right > innerWidth + 1 || r.left < -1);
+		}).map((el) => el.outerHTML.slice(0, 60));
+		return { 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth, 跑出去的: out.slice(0, 5) };`);
+const noOverflow = (o) => o.頁寬 <= o.畫面寬 && o.跑出去的.length === 0;
+/** 擋住編輯畫面的提示看得到，按鈕整顆在畫面裡、中心點是它自己。 */
+const narrowHint = () =>
+	js(`const hint = document.querySelector('.narrow-hint');
+		if (!hint || getComputedStyle(hint).display === 'none') return { ok: false, value: '沒有窄螢幕提示' };
+		const buttons = [...hint.querySelectorAll('button')].map((b) => {
+			const r = b.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { 名字: b.textContent.trim(), 點得到: !!top && b.contains(top), 在畫面裡: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };
+		});
+		const field = document.querySelector('.field-host').getBoundingClientRect();
+		const cover = document.elementFromPoint(field.left + field.width / 2, field.top + field.height / 2);
+		const covered = !!cover && hint.contains(cover);
+		return { ok: covered && buttons.length === 2 && buttons.every((b) => b.點得到 && b.在畫面裡), value: { 場地被蓋住: covered, buttons } };`);
+
+await check('768×1024 的桌面視窗算窄：編輯畫面顯示窄螢幕提示，不是一個很小的場地', async () => {
+	await setViewport(768, 1024);
+	await openSample();
+	return narrowHint();
+});
+
+for (const [w, h] of [[390, 844], [820, 1180]]) {
+	await check(`${w}×${h}（觸控）：開檔後被擋住，按「去練習」能記一次，不溢出`, async () => {
+		await setTouchViewport(w, h);
+		await openPracticeFlow();
+		const hint = await narrowHint();
+		if (!hint.ok) return hint;
+		const go = await js(`const b = [...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '去練習');
+			const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+		await tap(go.x, go.y);
+		const inPractice = await js(`return !!document.querySelector('.practice-host') && !document.querySelector('.narrow-hint')`);
+		if (!inPractice) return { ok: false, value: '按了「去練習」沒有進練習' };
+		// 左邊清單挑第一個有卡的動作，第一張卡的第一個環節點「失敗」：點了 ✗ 就存成一次
+		const picked = await js(`for (const b of document.querySelectorAll('.record .list button')) {
+				b.click();
+				await new Promise((r) => setTimeout(r, 100));
+				if (document.querySelector('.card button[aria-label$="失敗"]')) return true;
+			}
+			return false;`);
+		if (!picked) return { ok: false, value: '範例流程沒有可以記的動作' };
+		const before = await js(`return document.querySelectorAll('.card .day li').length`);
+		const mark = await js(`const b = document.querySelector('.card button[aria-label$="失敗"]');
+			b.scrollIntoView({ block: 'center' });
+			const r = b.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { x: r.left + r.width / 2, y: r.top + r.height / 2, self: !!top && b.contains(top), top: top ? top.outerHTML.slice(0, 60) : null };`);
+		if (!mark.self) return { ok: false, value: { 記號按鈕被蓋住: mark.top } };
+		await tap(mark.x, mark.y);
+		const after = await js(`return document.querySelectorAll('.card .day li').length`);
+		const o = await overflow();
+		return { ok: after === before + 1 && noOverflow(o), value: { 記了幾次: `${before} → ${after}`, ...o } };
+	});
+}
+
+await check('844×390（手機橫拿）：提示和練習畫面都不溢出、按鈕點得到', async () => {
+	await setTouchViewport(844, 390);
+	await openSample();
+	const hint = await narrowHint();
+	const edit = await overflow();
+	await js(`[...document.querySelectorAll('.narrow-hint button')].find((b) => b.textContent.trim() === '去練習').click()`);
+	await sleep(300);
+	const practice = await overflow();
+	return { ok: hint.ok && noOverflow(edit) && noOverflow(practice), value: { 提示: hint.value, 編排: edit, 練習: practice } };
+});
+await clearTouch();
 
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

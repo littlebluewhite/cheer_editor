@@ -5,6 +5,8 @@
 	// 點 down、up 就放滿選到的拍，選取跳到下一拍。
 	// 步驟放滿選到的拍，手位只放在選到的第一拍；兩條都可以自己打字，這支流程用過的字變成按鈕。
 	// 格子對齊音樂的整拍（動作從 & 開始也一樣），動作外面的格子變淡、不能選。
+	// 一格分前後兩個半格：從 & 開始或結束的拍點只塗半格；點這種拍點，選回它原本的範圍（也從 & 開始）。
+	// 現在播到的那一拍有標記。格子上按方向鍵左右移選取，加 Shift 延長選取。
 	// 放之前選「給誰」：全部、動作裡的任務角色或隊員。給不同人的拍點疊在同一拍時，那一條往下多開一軌。
 	// 規則（在動作裡、整數拍、只有 down／up、給的人在動作裡）都交給流程核心；被擋就顯示原因。
 	// 拍子那條上面一直有一條「環節」（環節的顏色，寫種類和名字），標了拍的範圍從上到下鋪同色淡底、左右畫線；
@@ -31,6 +33,7 @@
 		phaseLabel,
 		STEP_WORDS,
 		addPhase,
+		toPosition,
 		atText,
 		clearCues,
 		clearPhaseBeats,
@@ -58,11 +61,13 @@
 
 	interface Props {
 		action: Action;
+		/** 播放頭（全域秒數）；標出現在播到的那一拍。 */
+		playheadSec?: number;
 		/** 指標位置 → 對到的格子（身上有 data-at）。預設照格子在畫面上的範圍找最近的；jsdom 算不了版面，測試換掉（ADR 0002）。 */
 		cellAt?: (sheet: HTMLElement, x: number, y: number) => HTMLElement;
 	}
 
-	let { action, cellAt = nearestCell }: Props = $props();
+	let { action, playheadSec, cellAt = nearestCell }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -110,7 +115,7 @@
 	/** 動作裡第一格（整拍）從動作開始算第幾個半拍；動作從 & 開始時是 1。 */
 	const firstCell = $derived(action.start % BEAT);
 
-	/** 選到的拍：從 from 那一格到 to 那一格（都是格子開頭、從動作開始算的半拍）。 */
+	/** 選到的拍：從 from 那一拍到 to 那一拍（從動作開始算的半拍，各佔一拍）。平常是格子開頭；點從 & 開始的拍點時落在 &。 */
 	let sel = $state({ from: 0, to: 0 });
 	/** 被擋的原因，和等教練回答的環節改動（會刪掉有記號的環節）。 */
 	const ask = new Ask(
@@ -144,7 +149,20 @@
 	const hasCells = $derived(inAction(firstCell));
 	/** 動作裡最後一格。 */
 	const lastCell = $derived(firstCell + (Math.floor((action.length - firstCell) / BEAT) - 1) * BEAT);
-	const isSel = (at: number) => at >= sel.from && at <= sel.to;
+	/** 第 h 個半拍有沒有選到。 */
+	const covered = (h: number) => h >= sel.from && h < sel.to + BEAT;
+	/** 這一格（從 at 開始）有選到（前半或後半）。 */
+	const isSel = (at: number) => covered(at) || covered(at + 1);
+	/** 半拍 at 所在那一格的開頭。 */
+	const cellOf = (at: number) => at - ((((action.start + at) % BEAT) + BEAT) % BEAT);
+	/** 半拍 at 所在那一格，夾在動作的第一格和最後一格之間。 */
+	const snap = (at: number) => Math.min(Math.max(cellOf(at), firstCell), lastCell);
+	/** 現在播到的那一格（從動作開始算）；播放頭不在這個段就是 null。 */
+	const nowCell = $derived.by(() => {
+		if (playheadSec === undefined || !segment) return null;
+		const pos = toPosition(flow, playheadSec);
+		return pos?.segmentId === segment.id ? cellOf(pos.at - action.start) : null;
+	});
 	const selLen = $derived(sel.to - sel.from + BEAT);
 	/** 可以改的環節：音樂段是選的拍剛好是它的拍的那個，口號段是點選的那個；沒有就 null。 */
 	const editing = $derived(
@@ -210,7 +228,9 @@
 	/** 點一格選一拍；按住 Shift 點，就從上次點的那一格選到這一格。 */
 	function selectTo(at: number, shift: boolean) {
 		// 選取被別的地方換掉了（放完拍子跳下一拍、點拍點），就從選取的開頭算。
-		const keep = !shift ? at : sel.from === pivot || sel.to === pivot ? pivot : sel.from;
+		// 選取從 & 開始（點了這種拍點）時，從它所在的那一格算。
+		const keep = snap(!shift ? at : sel.from === pivot || sel.to === pivot ? pivot : sel.from);
+		at = snap(at);
 		pivot = keep;
 		sel = { from: Math.min(keep, at), to: Math.max(keep, at) };
 	}
@@ -331,16 +351,30 @@
 		send(() => clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
 	}
 
-	/** 點一個拍點：選回它佔的那幾格（動作被拖半拍時，取碰到的整拍格，不超出動作）。 */
-	function pick(c: Cue) {
-		const cellOf = (at: number) => at - ((((action.start + at) % BEAT) + BEAT) % BEAT);
-		const from = Math.max(cellOf(c.at), firstCell);
-		let to = cellOf(c.at + c.len - 1);
-		while (to > from && !inAction(to)) to -= BEAT;
-		if (inAction(from)) {
-			sel = { from, to };
-			openPop();
-		}
+	/** 點一個拍點或環節：選回它原本的範圍（從 & 開始的也照實）；拍點的「給誰」也換成它的。 */
+	function pick({ at, len }: { at: number; len: number }, cueWho?: Who) {
+		sel = { from: at, to: at + len - BEAT };
+		pivot = at;
+		if (cueWho !== undefined) who = cueWho;
+		openPop();
+	}
+
+	/** 方向鍵：左右移選取（選一格）；加 Shift 從固定的那一端延長或縮短。焦點跟著動的那一端。 */
+	function arrowKey(e: KeyboardEvent) {
+		const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+		if (!dir) return;
+		e.preventDefault();
+		// 動的那一端：Shift 時是不固定的那一端；沒 Shift 時往右從最後一格、往左從第一格（從 & 開始的取它碰到的那一格）。
+		const end = e.shiftKey
+			? snap(sel.from === pivot ? sel.to : sel.from)
+			: dir > 0
+				? cellOf(sel.to + 1)
+				: cellOf(sel.from + 1);
+		const to = end + dir * BEAT;
+		if (!inAction(to)) return;
+		selectTo(to, e.shiftKey);
+		openPop();
+		wrapEl?.querySelector<HTMLElement>(`.cell[data-at="${to}"]`)?.focus();
 	}
 
 	/** 往上找會捲動的那一層（編輯頁右邊欄）。 */
@@ -361,9 +395,11 @@
 		const held = hold;
 		hold = false;
 		const q = (s: string) => wrapEl!.querySelector<HTMLElement>(s);
-		const head = q(`.cell[data-at="${sel.from}"]`);
-		const a = q(`.slot.motion[data-at="${sel.from}"]`);
-		const b = q(`.slot.motion[data-at="${sel.to}"]`);
+		// 選取碰到的第一格、最後一格（從 & 開始的選取，頭尾各碰到半格）。
+		const [first, last] = [cellOf(sel.from), cellOf(sel.to + 1)];
+		const head = q(`.cell[data-at="${first}"]`);
+		const a = q(`.slot.motion[data-at="${first}"]`);
+		const b = q(`.slot.motion[data-at="${last}"]`);
 		if (!head || !a || !b) return;
 		// 小窗開在最上層（popover）：右邊欄捲動容器裁不到它。
 		// jsdom 沒有 popover（還會把 popover 屬性的元素當成藏起來），所以在這裡才加屬性。
@@ -455,7 +491,7 @@
 		return nearest([...row.querySelectorAll<HTMLElement>('.cell')], (r) => [r.left, r.right], x);
 	}
 
-	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）；疊在一起的放到下一軌。 */
+	/** 某一種的每個拍點在某一個八拍裡的那一段：從第 c0 個半格到第 c1 個半格（不含 c1）；疊在一起的放到下一軌。 */
 	function pieces(e: number, kind: CueKind) {
 		const lo = e * EIGHT;
 		const hi = lo + EIGHT;
@@ -464,8 +500,8 @@
 			const s = action.start + cue.at;
 			const end = s + cue.len;
 			if (end <= lo || s >= hi) return [];
-			const c0 = Math.floor((Math.max(s, lo) - lo) / BEAT);
-			const c1 = Math.ceil((Math.min(end, hi) - lo) / BEAT);
+			const c0 = Math.max(s, lo) - lo;
+			const c1 = Math.min(end, hi) - lo;
 			let track = ends.findIndex((x) => x <= c0);
 			if (track < 0) track = ends.length;
 			ends[track] = c1;
@@ -473,7 +509,7 @@
 		});
 	}
 
-	/** 每個標了拍的環節在某一個八拍裡的那一段：從第 c0 格到第 c1 格（不含 c1）。 */
+	/** 每個標了拍的環節在某一個八拍裡的那一段：從第 c0 個半格到第 c1 個半格（不含 c1）。 */
 	function phasePieces(e: number) {
 		const lo = e * EIGHT;
 		const hi = lo + EIGHT;
@@ -482,8 +518,8 @@
 			const s = action.start + phase.beats.at;
 			const end = s + phase.beats.len;
 			if (end <= lo || s >= hi) return [];
-			const c0 = Math.floor((Math.max(s, lo) - lo) / BEAT);
-			const c1 = Math.ceil((Math.min(end, hi) - lo) / BEAT);
+			const c0 = Math.max(s, lo) - lo;
+			const c1 = Math.min(end, hi) - lo;
 			return [{ phase, beats: phase.beats, c0, c1, first: s >= lo, last: end <= hi }];
 		});
 	}
@@ -544,6 +580,7 @@
 					dragCancel();
 				}}
 				onclick={() => (pointerSel = false)}
+				onkeydown={arrowKey}
 			>
 				{#each eights as e (e)}
 					{@const lanes = layout(e)}
@@ -560,10 +597,14 @@
 								type="button"
 								class="cell"
 								data-at={at}
-								style:grid-column={c + 2}
-								class:sel={inAction(at) && isSel(at)}
+								style:grid-column="{c * 2 + 2} / span 2"
+								class:sel={isSel(at)}
+								class:left={isSel(at) && !covered(at + 1)}
+								class:right={isSel(at) && !covered(at)}
+								class:now={at === nowCell}
 								aria-label="{e + 1}-{c + 1}"
 								aria-pressed={inAction(at) && isSel(at)}
+								aria-current={at === nowCell ? 'time' : undefined}
 								disabled={!inAction(at)}
 								onclick={(ev) => {
 								if (pointerSel) return;
@@ -575,8 +616,10 @@
 								class="slot phase"
 								data-at={at}
 								class:out={!inAction(at)}
-								class:sel={inAction(at) && isSel(at)}
-								style:grid-column={c + 2}
+								class:sel={isSel(at)}
+								class:left={isSel(at) && !covered(at + 1)}
+								class:right={isSel(at) && !covered(at)}
+								style:grid-column="{c * 2 + 2} / span 2"
 								style:grid-row="2"
 							></span>
 							{#each lanes as lane (lane.kind)}
@@ -584,8 +627,10 @@
 									class="slot {lane.kind}"
 									data-at={at}
 									class:out={!inAction(at)}
-									class:sel={inAction(at) && isSel(at)}
-									style:grid-column={c + 2}
+									class:sel={isSel(at)}
+									class:left={isSel(at) && !covered(at + 1)}
+									class:right={isSel(at) && !covered(at)}
+									style:grid-column="{c * 2 + 2} / span 2"
 									style:grid-row="{lane.row} / span {lane.tracks}"
 								></span>
 							{/each}
@@ -613,7 +658,7 @@
 								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}
-								onclick={() => pick({ kind: 'step', ...p.beats, word: '', who: null })}
+								onclick={() => pick(p.beats)}
 								>{p.first ? label : `…${label}`}</button
 							>
 						{/each}
@@ -625,13 +670,13 @@
 									class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
 									class:cont={!p.first}
 									class:more={!p.last}
-									class:end={p.c0 === 7}
+									class:end={p.c0 >= 14}
 									style:grid-column="{p.c0 + 2} / {p.c1 + 2}"
 									style:grid-row={lane.row + p.track}
 									aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
 									aria-hidden={!p.first || undefined}
 									tabindex={p.first ? undefined : -1}
-									onclick={() => pick(p.cue)}
+									onclick={() => pick(p.cue, p.cue.who)}
 									>{p.first ? p.cue.word : `…${p.cue.word}`}{#if to}<small class="who">{to}</small>{/if}</button
 								>
 							{/each}
@@ -815,7 +860,8 @@
 	}
 	.row {
 		display: grid;
-		grid-template-columns: 34px repeat(8, minmax(0, 1fr));
+		/* 一拍兩欄（前半、後半）：從 & 開始或結束的拍點只塗半格。 */
+		grid-template-columns: 34px repeat(16, minmax(0, 1fr));
 		grid-template-rows: auto;
 		grid-auto-rows: minmax(24px, auto);
 		column-gap: 3px;
@@ -852,6 +898,23 @@
 		outline-offset: -1px;
 		background: var(--sel-soft, #dcf4fa);
 		color: var(--text, #1a2238);
+	}
+	/* 只選到半格（從 & 開始的拍點）：只塗那一半。 */
+	.cell.sel.left,
+	.slot.sel.left {
+		background: linear-gradient(to right, var(--sel-soft, #dcf4fa) 50%, transparent 50%);
+	}
+	.cell.sel.right,
+	.slot.sel.right {
+		background: linear-gradient(to left, var(--sel-soft, #dcf4fa) 50%, transparent 50%);
+	}
+	.cell.sel.left,
+	.cell.sel.right {
+		outline-style: dashed;
+	}
+	/* 現在播到的那一拍：數字格底下一條播放頭顏色的粗線。 */
+	.cell.now {
+		box-shadow: inset 0 -3px 0 var(--now, #f2542d);
 	}
 	.lane-lbl {
 		grid-column: 1;

@@ -2,7 +2,7 @@
 // 存在動作裡、從動作開始算半拍，所以拖動作、改 BPM 時跟著走；刪動作時一起刪。
 
 import { replaceAction, type Action } from './action-types';
-import { cutOut, fitRange, onBeat, rangeProblem, rangeText } from './beat-range';
+import { cutOut, fitRange, rangeProblem, rangeText } from './beat-range';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
@@ -143,7 +143,7 @@ export interface NewCueInput {
 	who?: Who;
 }
 
-/** 放拍點：同一個動作、同一種、同一個「給誰」裡被蓋到的拍點切短或拿掉。放的時候要對齊音樂的整拍。 */
+/** 放拍點：同一個動作、同一種、同一個「給誰」裡被蓋到的拍點切短或拿掉。可以落在 &（例：在動作被拖半拍後的拍點上換字）。 */
 export function placeCue(flow: Flow, actionId: string, input: NewCueInput): CommandResult {
 	const found = find(flow, actionId);
 	if (!found) return blocked('找不到這個動作');
@@ -151,7 +151,6 @@ export function placeCue(flow: Flow, actionId: string, input: NewCueInput): Comm
 	const cue: Cue = { ...input, word: input.word.trim(), who: input.who ?? null };
 	const problem = cueProblem(segment, action, cue);
 	if (problem) return blocked(problem);
-	if (!onBeat(action, cue.at)) return blocked('拍點要放在整拍上');
 	const kept = cut(action.cues ?? [], cue.kind, cue.at, cue.at + cue.len, (c) => sameWho(c.who, cue.who));
 	return withCues(flow, action, [...kept, cue]);
 }

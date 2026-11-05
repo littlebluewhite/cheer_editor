@@ -515,6 +515,8 @@
 		printOpen = false;
 		// 還沒有隊員的流程先開名單，有人了才開動作
 		inspectorTab = f.members.length ? 'action' : 'members';
+		// 剛建好的當下就存一次草稿，不等停手 1 秒：手機上建好就被「視窗太窄」擋住，也不會丟
+		if (from === 'new' && draftChecked) draftStore.save(writeFlowFile(f, {})).catch(() => {});
 	}
 
 	function undo() {
@@ -664,6 +666,17 @@
 		};
 		if (unsaved) discardPending = { then: go };
 		else go();
+	}
+
+	/** 「視窗太窄」提示上的「回首頁」：不問，這個分頁的流程（剛建好、有改動）留在草稿裡，首頁問要不要救回。 */
+	async function leaveToHome() {
+		const f = flow;
+		const bytes = f && ownsDraft ? writeFlowFile(f, audioBytes(f)) : null;
+		pause();
+		session.open(null);
+		if (!f || !bytes) return;
+		await draftStore.save(bytes).catch(() => {});
+		draftOffer = { bytes, name: f.name, savedAt: new Date() };
 	}
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
@@ -1097,18 +1110,29 @@
 			</div>
 		{/if}
 	</div>
-	<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
-	<div class="cover-hint rotate-hint">
-		<Icon name="fit" size={28} />
-		<b>請把 iPad 轉成橫的</b>
-		<span>編輯畫面要橫著放，場地和時間軸才放得下。</span>
-	</div>
-	<!-- 視窗太窄（手機、縮小的視窗）：場地會被右邊欄擠到看不見、上方列的按鈕疊在一起。排在後面，手機拿直的時蓋過上面那張 -->
-	<div class="cover-hint narrow-hint">
-		<Icon name="fit" size={28} />
-		<b>視窗太窄了</b>
-		<span>編輯畫面要至少 760 像素寬，場地和右邊欄才放得下。請用電腦，或把平板轉成橫的。</span>
-	</div>
+	<!-- 窄螢幕、iPad 拿直的：編輯畫面擋住，但留「回首頁」「去練習」，不會被困住（練習、記錄、總表、八拍表照常能用，docs/adr/0005-ipad-touch.md） -->
+	{#snippet coverWays()}
+		<div class="cover-ways">
+			<button type="button" onclick={leaveToHome}>回首頁</button>
+			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
+		</div>
+	{/snippet}
+	{#if view === 'edit'}
+		<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
+		<section class="cover-hint rotate-hint" aria-labelledby="rotate-hint-title">
+			<Icon name="fit" size={28} />
+			<b id="rotate-hint-title">請把 iPad 轉成橫的</b>
+			<span>編輯畫面要橫著放，場地和時間軸才放得下。練習、記錄、看八拍表直著也可以。</span>
+			{@render coverWays()}
+		</section>
+		<!-- 視窗太窄（手機、直拿 iPad、縮小的視窗）：場地太小點不到、上方列的按鈕疊在一起。排在後面，手機拿直的時蓋過上面那張 -->
+		<section class="cover-hint narrow-hint" aria-labelledby="narrow-hint-title">
+			<Icon name="fit" size={28} />
+			<b id="narrow-hint-title">視窗太窄了</b>
+			<span>編輯畫面要至少 1024 像素寬、600 像素高，場地才夠大。請用電腦，或把平板轉成橫的。練習、記錄、看八拍表在這裡就可以。</span>
+			{@render coverWays()}
+		</section>
+	{/if}
 	{#if openSegmentId}
 		<SegmentSettings
 			segmentId={openSegmentId}
@@ -1822,13 +1846,23 @@
 		color: #fff;
 		font-size: 22px;
 	}
+	.cover-hint > span {
+		max-width: 28em;
+	}
+	.cover-ways {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 10px;
+		margin-top: 6px;
+	}
 	/* screen：列印八拍表時（紙是直的）不能印到它。 */
 	@media screen and (pointer: coarse) and (orientation: portrait) {
 		.rotate-hint {
 			display: grid;
 		}
 	}
-	@media screen and (max-width: 759px) {
+	@media screen and (max-width: 1023px), screen and (max-height: 599px) {
 		.narrow-hint {
 			display: grid;
 		}
