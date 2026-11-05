@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+	<!-- App 圖示：墊子條紋（app.css 的 mat、mat-deep 兩色）上站著幾個人（最上面那個用 now 的橘色）。
+	     圖滿版不留邊、人都在中間 80% 裡，Android 裁成圓形、iOS 切圓角都不會切到人。
+	     改了這個檔，照 docs/deploy.md「App 圖示」重新產生 PNG 和 ICO。 -->
+	<rect width="512" height="512" fill="#2f66b8" />
+	<rect x="102.4" width="102.4" height="512" fill="#1d4489" />
+	<rect x="307.2" width="102.4" height="512" fill="#1d4489" />
+	<g stroke="#16213a" stroke-width="12">
+		<circle cx="156" cy="330" r="46" fill="#ffffff" />
+		<circle cx="256" cy="330" r="46" fill="#ffffff" />
+		<circle cx="356" cy="330" r="46" fill="#ffffff" />
+		<circle cx="256" cy="190" r="46" fill="#f2542d" />
+	</g>
+</svg>

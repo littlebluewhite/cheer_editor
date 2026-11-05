@@ -31,3 +31,15 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
 `npm run dev` 不會啟用 service worker，要試離線請用上面的 build + preview。
 
 手動檢查離線：用 preview 或正式網址開一次，等頁面載完，開發者工具 Network 勾 Offline（或關掉 preview），重新整理，編輯器還能打開。
+
+## App 圖示
+
+圖示畫在 `static/favicon.svg`（墊子條紋加圓點，用 `src/app.css` 的顏色）。分頁上的 favicon、
+iPhone／iPad 主畫面的 `apple-touch-icon.png`、PWA manifest 的 `pwa-192x192.png`／`pwa-512x512.png` 都從它產生。
+`static/` 底下的檔會一起被 service worker 先存起來，離線也有圖示。
+
+改了 SVG 就重新產生一次（要先裝 ImageMagick），產生的檔一起 commit：
+
+```sh
+sh scripts/app-icons.sh
+```
