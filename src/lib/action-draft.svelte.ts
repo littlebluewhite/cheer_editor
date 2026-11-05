@@ -234,6 +234,21 @@ export class ActionDraft {
 		});
 	}
 
+	/**
+	 * 「接下一個動作」（例如 Lib 轉接成金字塔）：開一張新動作表單，開始接在選到的動作的結束拍（播放頭跳過去），
+	 * 大類、人、任務角色、組都帶過去。打到一半的新動作草稿換成這一張。
+	 */
+	next() {
+		const action = this.#action;
+		if (!action) return;
+		const flow = this.#session.flow!;
+		this.#kept = { draft: { ...blank(action.members.map((m) => ({ ...m }))), category: action.category }, typed: new Set() };
+		this.#playhead.seek(actionSeconds(flow, action).endSec);
+		// 先選人再回到新增：回到新增時草稿的人照選到的人，從收起來的草稿拿任務角色和組。
+		this.#session.selectMembers(action.members.map((m) => m.memberId));
+		this.#session.selectAction(null);
+	}
+
 	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
 	update() {
 		const action = this.#action;

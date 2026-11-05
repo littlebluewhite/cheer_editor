@@ -7,7 +7,7 @@
 	// 會清掉紀錄時也一樣先問；有紀錄的組換了人，核心回「要選」：保留舊紀錄、清掉重算、取消。
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
-	// 改動作時下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
+	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列）。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
 	import { flushSync, type ComponentProps } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
@@ -373,6 +373,8 @@
 		</label>
 
 		{#if action}
+			<!-- 轉接（例如 Lib 轉金字塔）：開新表單接在結束拍後面，人、任務角色、組帶過去 -->
+			<button type="button" class="next" onclick={() => draft.next()}><Icon name="plus" size={14} />接下一個動作</button>
 			<CueGrid {action} {cellAt} />
 		{:else}
 			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
@@ -471,6 +473,9 @@
 		width: 100%;
 		justify-content: center;
 		border-style: dashed;
+	}
+	.next {
+		justify-self: start;
 	}
 	.danger {
 		padding: 3px 8px;
