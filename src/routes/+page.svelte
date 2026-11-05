@@ -224,6 +224,11 @@
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
 	let audios = $state<Record<string, LoadedAudio>>({});
 	const missingSegmentIds = $derived(flow ? segmentsMissingAudio(flow, Object.keys(audios)) : []);
+	/** 說「有段找不到音樂」的那則提示（開檔、存檔時給的）；缺的音樂都補好了就自己收掉。 */
+	let missingNotice = '';
+	$effect(() => {
+		if (!missingSegmentIds.length && missingNotice && session.notice === missingNotice) session.notice = '';
+	});
 	/** 播放頭，全域秒數。 */
 	let playheadSec = $state(0);
 	let openSegmentId = $state<string | null>(null);
@@ -322,6 +327,7 @@
 
 	function pause() {
 		playing = false;
+		previewing = false;
 		player?.stop();
 	}
 
@@ -349,9 +355,28 @@
 		else requestAnimationFrame(frame);
 	}
 
+	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
+	let previewing = $state(false);
+
 	function preview(f: Flow, segmentId: string) {
 		pause();
 		getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
+		previewing = true;
+		requestAnimationFrame(previewFrame);
+	}
+
+	/** 試聽播完了沒（播放頭不動，只看播完）。 */
+	function previewFrame() {
+		if (!previewing || !player) return;
+		player.tick(0);
+		if (!player.playing) previewing = false;
+		else requestAnimationFrame(previewFrame);
+	}
+
+	function stopPreview() {
+		if (!previewing) return;
+		previewing = false;
+		player?.stop();
 	}
 
 	function setMetronome(f: Flow, on: boolean) {
@@ -495,7 +520,10 @@
 	/** 復原、重做換上的流程：播放頭和開著的段設定可能指到已經不在的段（選取、提示由 session 處理）。 */
 	function restore(f: Flow) {
 		playheadSec = Math.min(playheadSec, totalSeconds(f));
-		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) openSegmentId = null;
+		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
+			stopPreview();
+			openSegmentId = null;
+		}
 	}
 
 	/** 流程用到、而且有載入的音樂檔位元組（存檔、草稿都用）。 */
@@ -530,6 +558,7 @@
 			]
 				.filter(Boolean)
 				.join('；');
+			if (missing) missingNotice = session.notice;
 		} catch {
 			session.notice = '存檔失敗，請再試一次';
 		} finally {
@@ -579,7 +608,7 @@
 				loaded[id] = { bytes: buffer, ...(await decode(buffer)) };
 			} catch {
 				// 這個瀏覽器解不開（例：Firefox 沒有 AAC）：位元組留著，存檔時照樣存回去，只是不出聲。
-				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [] };
+				loaded[id] = { bytes: buffer, durationSec: 0, peaks: [], broken: true };
 				unreadable = true;
 			}
 		}
@@ -590,6 +619,7 @@
 				: unreadable
 					? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音'
 					: '';
+			if (r.missingSegmentIds.length) missingNotice = session.notice;
 		});
 	}
 
@@ -1077,10 +1107,15 @@
 			{decode}
 			{waveXToSec}
 			onaudioload={(id, audio) => (audios[id] = audio)}
+			{previewing}
 			onpreview={(id) => flow && preview(flow, id)}
 			{playing}
 			onpause={pause}
-			onclose={() => (openSegmentId = null)}
+			onstoppreview={stopPreview}
+			onclose={() => {
+				stopPreview();
+				openSegmentId = null;
+			}}
 		/>
 	{/if}
 	{#if settingsOpen}
