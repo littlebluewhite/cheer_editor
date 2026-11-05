@@ -2,7 +2,7 @@
 // 元件從 context 拿要用的那一部分。它握著編輯 session 和碰瀏覽器的 adapter，所以頁面只剩畫面和接線，
 // 規則在 Node 就測得到（測試用 #lib/test-fakes.js 的 testEditor 一行建好帶著假 adapter 的）。
 //
-// 每一部分是它的一個屬性（session、音樂檔庫、右邊欄翻到哪一頁…），之後搬進來的播放、流程檔、新動作草稿也一樣。
+// 每一部分是它的一個屬性（session、播放、流程檔、音樂檔庫、右邊欄翻到哪一頁…），之後搬進來的新動作草稿也一樣。
 // 音樂檔庫一支流程一個：換流程時換一個新的（readMusic、switchMusic），所以元件每次用都從 editor.music 拿。
 // 每個 adapter 都有真的（browserAdapters）和假的（testEditor）兩種；加一個 adapter 時兩邊都加。
 
@@ -13,6 +13,7 @@ import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile } from '#lib/file/save.js';
 import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
+import { FlowFile } from '#lib/flow-file.svelte.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
@@ -51,12 +52,14 @@ export function browserAdapters(): EditorAdapters {
 export class Editor {
 	/** 編輯 session：流程、復原、選取、提示、場上那一個問題、分組。 */
 	readonly session: EditorSession;
-	/** 收著的 adapter。開檔、存檔、草稿的規則還在頁面，頁面從這裡拿；規則搬進來以後就不用再對外。 */
+	/** 收著的 adapter。草稿的規則還在頁面，頁面從這裡拿；規則搬進來以後就不用再對外。 */
 	readonly adapters: EditorAdapters;
 	/** 播放：播放頭、在不在播、節拍器、延遲校正、試聽。 */
 	readonly playback: Playback;
 	/** 右邊欄翻到哪一頁：動作（選人＋動作表單）或隊員名單。 */
 	inspectorTab = $state<'action' | 'members'>('action');
+	/** 流程檔：開檔、存檔、新建、「沒存先問」。 */
+	readonly file: FlowFile;
 	#music: MusicLibrary;
 
 	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
@@ -68,7 +71,8 @@ export class Editor {
 			adapters.nextFrame
 		);
 		this.session = new EditorSession(flow, this.playback);
-		this.#music = $state.raw(new MusicLibrary(this.session, adapters.decode));
+		this.#music = $state.raw(this.#newMusic());
+		this.file = new FlowFile(this);
 	}
 
 	/** 音樂檔庫：這支流程用到的音樂檔。一支流程一個，換流程就換一個新的（switchMusic）。 */
@@ -78,15 +82,20 @@ export class Editor {
 
 	/** 開檔、救回草稿：檔案裡的音樂解碼好，建一個新的音樂檔庫（還沒換上：確定換流程時交給 switchMusic）。 */
 	async readMusic(audio: AudioBytes): Promise<MusicLibrary> {
-		const music = new MusicLibrary(this.session, this.adapters.decode);
+		const music = this.#newMusic();
 		await music.load(audio);
 		return music;
 	}
 
 	/** 換流程：換上這支流程的音樂檔庫（沒給是空的：新建的流程）；舊的還在解碼的選檔不要了。 */
-	switchMusic(music = new MusicLibrary(this.session, this.adapters.decode)) {
+	switchMusic(music = this.#newMusic()) {
 		this.#music.cancelPicks();
 		this.#music = music;
+	}
+
+	/** 空的音樂檔庫：給一段選好了音樂檔，流程檔看要不要收掉「找不到音樂」的提示。 */
+	#newMusic(): MusicLibrary {
+		return new MusicLibrary(this.session, this.adapters.decode, () => this.file.picked());
 	}
 
 	/**
