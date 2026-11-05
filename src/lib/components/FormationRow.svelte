@@ -10,9 +10,12 @@
 	// 還是疊到的幾張，上下分層錯開排（變矮），每張都點得到。
 	// 拖縮圖＝挪站位：吸到最近一格，縮圖上寫新的站位時間；放開才送到 session 的 ask，被擋就彈回原位。開頭那張拖不動。
 	// 刪掉（session.removeFormation，提示旁邊有「復原」）、挪好都算一步；挪好了選著這張，播放頭跳到新的站位時間（session.formationMoved）。
+	// 空白處雙擊＝在最近的那一拍插一張站位（位置自動帶入，跟拖人插的一樣），選著它，播放頭跳過去。
 	import {
 		fieldGeometry,
+		formationAt,
 		formationTimes,
+		insertFormation,
 		moveFormation,
 		nearestPosition,
 		timeTextWithUnit,
@@ -134,6 +137,22 @@
 		);
 	}
 
+	let trk: HTMLElement;
+
+	/** 雙擊站位列的空白處：在最近的那一拍插一張站位。點在縮圖上、流程頭尾之外不算。 */
+	function insertAt(e: MouseEvent) {
+		if ((e.target as Element).closest('.th, .lab')) return;
+		const raw = (e.clientX - trk.getBoundingClientRect().left) / pxPerSec;
+		if (raw < 0 || raw >= totalSeconds(flow)) return;
+		const sec = toSeconds(flow, nearestPosition(flow, raw));
+		session.ask.send(() => insertFormation(flow, sec), {
+			done: () => {
+				session.moved({ inserted: true, sec, carried: 0 });
+				session.selectFormation(formationAt(session.flow!, sec)!.id);
+			}
+		});
+	}
+
 	/**
 	 * 拖的時候縮圖上寫的新站位時間；home 是這張原本的段（拖得動的不是開頭那張，一定有段）。
 	 * 拖出流程頭尾就不寫（放開會被擋）。
@@ -144,9 +163,11 @@
 	}
 </script>
 
-<div class="row film">
+<!-- 雙擊插站位是滑鼠捷徑；鍵盤照樣是播放頭移過去再拖人（方向鍵）插站位。 -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="row film" ondblclick={insertAt}>
 	<div class="lab">站位</div>
-	<div class="trk" style:width={`${width}px`}>
+	<div class="trk" bind:this={trk} style:width={`${width}px`}>
 		{#each items as { formation, sec, deletable }, i (formation.id)}
 			{@const to = drag?.id === formation.id ? drag.to : null}
 			{@const tag = !to && widths[i] < MIN_THUMB_W}
