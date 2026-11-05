@@ -18,13 +18,13 @@
 	import {
 		actionLabel,
 		actionSeconds,
-		atText,
+		atTextWithUnit,
 		CUE_KINDS,
 		cueForMember,
 		farthestLegal,
 		formationWalks,
 		idleAt,
-		lengthText,
+		lengthTextWithUnit,
 		memberMarkers,
 		memberWalk,
 		moveAction,
@@ -226,7 +226,7 @@
 		session.ask.send(run, { revert: () => {} });
 	}
 
-	/** 拉右邊時新的長度和結束拍（「16.5 拍・在 3-1& 結束」，口號段「2.5 秒・在 3.5 秒結束」）；out = 放開會被擋。 */
+	/** 拉右邊時新的長度和結束拍（「16.5 拍・在 3-1& 結束」，口號段「2.5 秒・在 3.5 秒 結束」）；out = 放開會被擋。 */
 	const resizeReadout = $derived.by(() => {
 		const d = drag;
 		if (!d || d.mode !== 'resize' || Math.abs(d.dx) < DRAG_PX) return null;
@@ -234,10 +234,9 @@
 		const segment = p && flow.segments.find((s) => s.id === p.action.segmentId);
 		if (!p || !segment) return null;
 		const length = p.action.length + Math.round(d.dx / p.halfPx);
-		const chant = segment.kind === 'chant';
-		const end = atText(segment, p.action.start + length) + (chant ? ' 秒' : ' ');
+		const end = atTextWithUnit(segment, p.action.start + length);
 		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
-		return { text: `${lengthText(segment, length)} ${chant ? '秒' : '拍'}・在 ${end}結束`, out };
+		return { text: `${lengthTextWithUnit(segment, length)}・在 ${end} 結束`, out };
 	});
 
 	/** 上一次按下走位條後真的拖了：放開後瀏覽器接著送的 click 不算點一下。 */

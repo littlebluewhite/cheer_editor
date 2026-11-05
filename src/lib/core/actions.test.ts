@@ -120,11 +120,11 @@ describe('新增動作', () => {
 		const chant = flowOf(addAction(sample(), lib({ segmentId: 's2', start: 10, length: 25 })));
 		expect(addAction(chant, lib({ segmentId: 's2', start: 0, length: 12, members: [{ memberId: 'm1', role: null }] }))).toEqual({
 			kind: 'blocked',
-			message: '小A 同一時間已經在「技巧·Lib」裡：下一個動作從 1.0 秒就開始'
+			message: '小A 同一時間已經在「技巧·Lib」裡：下一個動作從 1.0 秒 就開始'
 		});
 		expect(addAction(chant, lib({ segmentId: 's2', start: 30, length: 10, members: [{ memberId: 'm1', role: null }] }))).toEqual({
 			kind: 'blocked',
-			message: '小A 同一時間已經在「技巧·Lib」裡：上一個動作在 3.5 秒才結束'
+			message: '小A 同一時間已經在「技巧·Lib」裡：上一個動作在 3.5 秒 才結束'
 		});
 	});
 

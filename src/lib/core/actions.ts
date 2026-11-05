@@ -17,7 +17,7 @@ import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
 import { tooLong } from './text-length';
-import { atText, EPS, HALF_BEATS_PER_EIGHT, lengthText, toPosition, toSeconds, unitSec, units } from './time';
+import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -184,7 +184,7 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 		// 最後一段後面沒有段可以拆：寫還剩多長。
 		const room = units(segment) - action.start;
 		if (flow.segments.at(-1) !== segment || room < 1) return '動作不能跨段，要跨就拆成兩個';
-		return `超過這段的結尾，最多 ${lengthText(segment, room)} ${music ? '拍' : '秒'}`;
+		return `超過這段的結尾，最多 ${lengthTextWithUnit(segment, room)}`;
 	}
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';
 	for (const cue of action.cues ?? []) {
@@ -223,11 +223,10 @@ function peopleProblem(flow: Flow, action: Action): string | null {
 /** 撞到的動作 other 在 action 前面：「上一個動作在 3-1& 才結束」；在後面：「下一個動作從 4-1 就開始」。 */
 function whereOther(flow: Flow, other: Action, action: Action): string {
 	const segment = flow.segments.find((s) => s.id === other.segmentId)!;
-	// 音樂段「2-1& 才結束」，口號段「3.5 秒才結束」
-	const at = (u: number) => atText(segment, u) + (segment.kind === 'chant' ? ' 秒' : ' ');
+	// 音樂段「2-1& 才結束」，口號段「3.5 秒 才結束」
 	return other.start <= action.start
-		? `上一個動作在 ${at(other.start + other.length)}才結束`
-		: `下一個動作從 ${at(other.start)}就開始`;
+		? `上一個動作在 ${atTextWithUnit(segment, other.start + other.length)} 才結束`
+		: `下一個動作從 ${atTextWithUnit(segment, other.start)} 就開始`;
 }
 
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */

@@ -13,10 +13,10 @@
 		HALF_BEATS_PER_BEAT,
 		HALF_BEATS_PER_EIGHT,
 		addSegment,
-		atText,
+		atTextWithUnit,
 		formationTimes,
 		insertBeats,
-		lengthText,
+		lengthTextWithUnit,
 		readLength,
 		rulerMarks,
 		segmentSpans,
@@ -262,11 +262,11 @@
 		const read = readLength(span.segment, insertCount);
 		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
 		const length = read.kind === 'ok' ? read.value * scale : 0;
-		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : `${lengthText(span.segment, length)} ${music ? '拍' : '秒'}`;
+		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
 		insertAsk.send(() => (read.kind === 'ok' ? insertBeats(flow, at, length) : read), {
 			done: () => {
 				inserting = null;
-				session.notice = `在${span.label} ${atText(span.segment, at.at)} 插入了 ${amount}，後面的站位和動作往後延`;
+				session.notice = `在${span.label} ${atTextWithUnit(span.segment, at.at)} 插入了 ${amount}，後面的站位和動作往後延`;
 			}
 		});
 	}
@@ -460,7 +460,7 @@
 			insert();
 		}}
 	>
-		<span class="menu-title">在{insertSpan.label} {atText(insertSpan.segment, insertAt.at)}{music ? '' : ' 秒'} 插入</span>
+		<span class="menu-title">在{insertSpan.label} {atTextWithUnit(insertSpan.segment, insertAt.at)} 插入</span>
 		<div class="insert-row">
 			<input aria-label="插入幾個" inputmode="decimal" bind:value={insertCount} />
 			{#if music}

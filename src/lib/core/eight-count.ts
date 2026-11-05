@@ -13,6 +13,7 @@ import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
+	atTextWithUnit,
 	segmentSpans,
 	timeTextWithUnit,
 	toSeconds,
@@ -126,7 +127,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			}))
 			.filter((a) => a.members.length > 0)
 			.toSorted((a, b) => a.start - b.start);
-		const at = (u: number) => (segment.kind === 'music' ? atText(segment, u) : `${atText(segment, u)} 秒`);
+		const at = (u: number) => atTextWithUnit(segment, u);
 		const rowOf = (from: number, to: number, eight: number | null): EightCountRow => {
 			const sec = toSeconds(flow, { segmentId: segment.id, at: from });
 			const end = Math.min(to, units(segment));
