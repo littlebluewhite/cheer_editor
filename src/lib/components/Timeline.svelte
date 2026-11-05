@@ -36,6 +36,8 @@
 	/** 左邊名字欄的寬度（px）；泳道和站位列用同一個 CSS 變數。 */
 	const LABEL_W = 148;
 	const ZOOMS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+	/** 很短的段（0.1 秒的口號段、縮到很小時）在段列上最少這麼寬，才點得到。 */
+	const SEG_MIN_W = 16;
 	/** 滾輪累積這麼多才算一格放大縮小（觸控板捏合一次會送很多小事件）。 */
 	const WHEEL_STEP = 40;
 
@@ -237,22 +239,21 @@
 			<div class="trk" style:width={`${width}px`}>
 				{#each spans as span (span.segment.id)}
 					{@const missing = missingSegmentIds.includes(span.segment.id)}
+					{@const meta =
+						span.segment.kind === 'music' ? `${span.segment.bpm} BPM` : `${span.durationSec.toFixed(1)} 秒`}
 					<button
 						type="button"
 						class="seg {span.segment.kind}"
 						class:missing
+						class:short={span.durationSec * px - 2 < SEG_MIN_W}
 						style:left={`${span.startSec * px}px`}
-						style:width={`${Math.max(span.durationSec * px - 2, 4)}px`}
-						title="點一下設定"
+						style:width={`${Math.max(span.durationSec * px - 2, SEG_MIN_W)}px`}
+						title="{span.label}　{meta}{missing ? '　找不到音樂' : ''}：點一下設定"
 						onclick={() => onopensegment(span.segment.id)}
 					>
 						<b>{span.label}</b>
 						{#if missing}<span class="flag">找不到音樂</span>{/if}
-						<span class="meta"
-							>{span.segment.kind === 'music'
-								? `${span.segment.bpm} BPM`
-								: `${span.durationSec.toFixed(1)} 秒`}</span
-						>
+						<span class="meta">{meta}</span>
 					</button>
 					<button
 						type="button"
@@ -445,8 +446,15 @@
 		color: var(--mat, #2f66b8);
 		box-shadow: 0 1px 2px rgba(22, 33, 58, 0.15);
 	}
-	/* 手指：「＋」和放大縮小點得到的範圍變大，看起來不變。 */
+	/* 手指：段列和八拍尺高一點，「＋」和放大縮小點得到的範圍（32px）放得進去，看起來不變。 */
 	@media (pointer: coarse) {
+		.segs {
+			height: 44px;
+		}
+		.ruler-row {
+			top: 44px;
+			height: 34px;
+		}
 		.add,
 		.zoom-btns button {
 			position: relative;
@@ -461,6 +469,27 @@
 			content: '';
 			position: absolute;
 			inset: -6px;
+		}
+		/* 段列最上面幾 px 是場地和時間軸分界的把手：「＋」點得到的範圍往下多一點，不超出段列 */
+		.add::after {
+			bottom: -10px;
+		}
+		.add-after::after {
+			inset: -8px -8px -12px;
+		}
+		/* 「符合寬度」緊貼著「＋」：它點得到的範圍不往左蓋到「＋」，往右多一點；倍數、間隔窄一點讓出縫 */
+		.lab.zoom {
+			gap: 4px;
+		}
+		.zoom-val {
+			min-width: 22px;
+		}
+		.zoom-btns .fit {
+			margin-left: 8px;
+		}
+		.zoom-btns .fit::after {
+			left: -2px;
+			right: -10px;
 		}
 	}
 	.trk {
@@ -484,7 +513,22 @@
 		border: none;
 		box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
 	}
+	/* 很短的段撐到最小寬度，會疊到下一段的開頭：疊在上面，才點得到。 */
+	.seg.short {
+		z-index: 1;
+	}
+	/* 字放不下用「…」（完整的字在 title）：先縮 BPM／秒數，再縮段名。 */
+	.seg > * {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.seg > b {
+		flex: none;
+		max-width: 100%;
+	}
 	.seg .meta {
+		flex: 0 100 auto;
 		opacity: 0.8;
 		font-variant-numeric: tabular-nums;
 	}

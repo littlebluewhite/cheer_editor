@@ -230,3 +230,16 @@ describe('被擋下的欄位', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 });
+
+describe('流程設定看得到場地', () => {
+	it('一行唯讀的場地：幾條、直放或橫放', async () => {
+		render(Page, { createEngine: () => createFakeEngine(), toMeters: fakeToMeters });
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
+		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		const row = within(dialog('流程設定')).getByText('場地').parentElement!;
+		expect(row.textContent).toContain('5 條橫放');
+		expect(row.querySelector('input, select, button')).toBeNull();
+	});
+});

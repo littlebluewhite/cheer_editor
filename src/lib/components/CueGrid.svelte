@@ -889,6 +889,19 @@
 		font-weight: 700;
 		color: var(--muted, #66718a);
 	}
+	/* 手指：拍的格子至少 32px（格子之間不留縫、外框留白少一點，右邊欄才放得下一排八拍）。 */
+	@media (pointer: coarse) {
+		.cues {
+			padding: 10px 6px;
+		}
+		.row {
+			grid-template-columns: 24px repeat(16, minmax(0, 1fr));
+			column-gap: 0;
+		}
+		.cell {
+			min-height: 32px;
+		}
+	}
 	.cell:disabled {
 		opacity: 0.3;
 		border-style: dashed;

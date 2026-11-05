@@ -104,6 +104,12 @@
 	/** 選到的人。 */
 	const selected = $derived(session?.selectedMemberIds ?? marked);
 
+	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
+	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	/** 圓點的半徑（公尺）。 */
+	const DOT_R = 0.3;
+	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
+	const MIN_DOT_PX = touchScreen ? 32 : 22;
 	const ZOOM_STEP = 1.25;
 	/** 按下後移動不到這麼多 px 算點一下。 */
 	const CLICK_PX = 4;
@@ -114,6 +120,8 @@
 	const full = $derived(fullView(field));
 
 	let svg: SVGSVGElement;
+	/** 場地那一塊的寬和高（px）；jsdom 量不到，是 0。 */
+	let stageSize = $state<[number, number]>([0, 0]);
 	let zoom = $state(1);
 	/** 放大時畫面中心（公尺）；null = 全場的中心。 */
 	let center = $state<Position | null>(null);
@@ -125,6 +133,23 @@
 		const y = clamp(cy - height / 2, full.y, full.y + full.height - height);
 		return { x, y, width, height };
 	});
+
+	/** 圓點（連選取圈、標記、組號、影子）放大幾倍才有最小尺寸；夠大就是 1。八拍表的小站位圖不放大。 */
+	const dotScale = $derived.by(() => {
+		const [w, h] = stageSize;
+		if (!controls || !w || !h) return 1;
+		// preserveAspectRatio meet：1 公尺幾 px 看比較緊的那一邊
+		const pxPerM = Math.min(w / view.width, h / view.height);
+		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM));
+	});
+
+	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
+	function watchStage(el: HTMLElement) {
+		if (typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(() => (stageSize = [el.clientWidth, el.clientHeight]));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}
 
 	/** 按著場上：拖人（id 是按到的人，ids 是一起移的人）或框選（box）。client 是按下時的螢幕座標。 */
 	let drag = $state<{
@@ -234,9 +259,14 @@
 		if (fingers.size === 0) pinching = false;
 	}
 
+	/**
+	 * 滾輪和觸控板捏合：照滾了多少成比例縮放。觸控板捏合是一連串 Ctrl＋滾輪的小事件（deltaY 約是 -100 × ln(放大倍數)），
+	 * 每個事件都放大一格的話，捏一下就跳到最大。滑鼠滾一格（deltaY 約 100）放大約 1.25 倍。
+	 */
 	function onwheel(e: WheelEvent) {
 		e.preventDefault();
-		setZoom(e.deltaY < 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP, toMeters(e, svg));
+		const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+		setZoom(zoom * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0025)), toMeters(e, svg));
 	}
 
 	function down(e: PointerEvent) {
@@ -400,7 +430,7 @@
 			</div>
 		</div>
 	{/if}
-	<div class="stage">
+	<div class="stage" {@attach watchStage}>
 	<svg
 		bind:this={svg}
 		class="field"
@@ -427,17 +457,18 @@
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
 		<path class="center" d="M-.35,-.35L.35,.35M-.35,.35L.35,-.35"><title>場地正中心</title></path>
+		<!-- 條編號寫在墊子裡靠後（橫放靠左）的邊、每條的中間：場外等著的人（排在場地外半格）和接縫上的人都不會蓋到 -->
 		{#each g.strips as s (s.number)}
 			<text
 				class="num"
 				data-strip-number
-				x={vertical ? s.rect.x + s.rect.width / 2 : g.mat.x - 0.5}
-				y={vertical ? g.mat.y - 0.3 : s.rect.y + s.rect.height / 2 + 0.14}>{s.number}</text
+				x={vertical ? s.rect.x + s.rect.width / 2 : g.mat.x + 0.35}
+				y={vertical ? g.mat.y + 0.45 : s.rect.y + s.rect.height / 2 + 0.14}>{s.number}</text
 			>
 		{/each}
 		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
-			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r="0.3" />
+			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r={DOT_R * dotScale} />
 		{/each}
 		{#each walkLines as w (w.memberId)}
 			<line
@@ -478,15 +509,17 @@
 				transform="translate({p[0]},{p[1]})"
 			>
 				<title>{m.name}</title>
-				{#if sel}<circle class="ring" r="0.42" />{/if}
-				<circle class={m.globalRole} r="0.3" />
-				<text y={isLongMarker(mark) ? 0.08 : 0.11} class:long={isLongMarker(mark)}>{mark}</text>
-				{#if badges[m.id]}
-					<g class="badge" transform="translate(0.27,-0.27)">
-						<circle r="0.17" style:fill={badges[m.id].color} />
-						<text y="0.065">{badges[m.id].text}</text>
-					</g>
-				{/if}
+				<g transform="scale({dotScale})">
+					{#if sel}<circle class="ring" r="0.42" />{/if}
+					<circle class={m.globalRole} r={DOT_R} />
+					<text y={isLongMarker(mark) ? 0.08 : 0.11} class:long={isLongMarker(mark)}>{mark}</text>
+					{#if badges[m.id]}
+						<g class="badge" transform="translate(0.27,-0.27)">
+							<circle r="0.17" style:fill={badges[m.id].color} />
+							<text y="0.065">{badges[m.id].text}</text>
+						</g>
+					{/if}
+				</g>
 			</g>
 		{/each}
 		{#if lasso}
@@ -571,8 +604,10 @@
 	}
 	.num {
 		font-size: 0.4px;
-		fill: #66718a;
+		fill: #fff;
+		fill-opacity: 0.75;
 		font-weight: 700;
+		pointer-events: none;
 	}
 	.front {
 		font-size: 0.42px;
@@ -727,6 +762,12 @@
 	}
 	.walk-tools input {
 		margin: 0;
+	}
+	/* 手指：勾選框那一行至少 32px 高。 */
+	@media (pointer: coarse) {
+		.walk-tools label {
+			min-height: 32px;
+		}
 	}
 	.walk-tools span {
 		display: inline-flex;

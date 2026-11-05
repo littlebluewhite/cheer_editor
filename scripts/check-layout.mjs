@@ -380,6 +380,57 @@ await check('1440×900 最後一段旁的「＋」點得到，選單整個看得
 	return { ok: res.ok && btns.length === 2 && btns.every(([, v]) => v), value: { ...res.value, 選項: btns } };
 });
 
+// ---------- 上方列、首頁、場地編號（#110） ----------
+
+/** 用流程設定把流程名字改成 name（關掉對話框）。 */
+async function renameFlowTo(name) {
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title === '流程設定').click()`);
+	await waitFor(() => js(`return !!document.querySelector('.flow-dialog')`));
+	await js(`const i = [...document.querySelectorAll('.flow-dialog label')].find((l) => l.textContent.includes('流程名字')).querySelector('input');
+		i.value = ${JSON.stringify(name)}; i.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await sleep(100);
+	await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+	await sleep(200);
+}
+
+for (const w of [1141, 1200, 1300]) {
+	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
+		await setViewport(w, 900);
+		await openSample();
+		await renameFlowTo('二〇二七全國賽決賽版本第三版');
+		const r = await js(`const b = document.querySelector('.topbar .title b');
+			return { 名字寬: Math.round(b.getBoundingClientRect().width), 一個字: parseFloat(getComputedStyle(b).fontSize) };`);
+		return { ok: r.名字寬 >= 8 * r.一個字, value: r };
+	});
+}
+
+await check('1400 寬：「八拍表」按鈕有字，不是只有圖示', async () => {
+	await setViewport(1400, 900);
+	await openSample();
+	// 字有沒有真的畫出來：包著「八拍表」三個字的那一層夠寬（只給讀屏的字包在縮成 1px 的框裡）
+	const r = await js(`const b = [...document.querySelectorAll('.topbar button')].find((x) => x.title === '八拍表');
+		const walker = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+		let node; while ((node = walker.nextNode()) && !node.textContent.includes('八拍表'));
+		if (!node) return { 包著字的寬: 0 };
+		return { 包著字的寬: Math.round(node.parentElement.getBoundingClientRect().width), 按鈕寬: Math.round(b.getBoundingClientRect().width) };`);
+	return { ok: r.包著字的寬 >= 40, value: r };
+});
+
+await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編輯器」各一行，不溢出', async () => {
+	await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+	await waitFor(() => js(`return !!document.querySelector('.intro h1')`));
+	const bad = [];
+	for (const w of [761, 800, 850, 900]) {
+		await setViewport(w, 900);
+		const r = await js(`const h = document.querySelector('.intro h1');
+			const range = document.createRange(); range.selectNodeContents(h);
+			const lines = new Set([...range.getClientRects()].map((x) => Math.round(x.top))).size;
+			return { 寬: ${w}, 行數: lines, 溢出: h.scrollWidth > h.clientWidth + 1 };`);
+		if (r.行數 !== 2 || r.溢出) bad.push(r);
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
 // ---------- 窄螢幕（寬不到 1024 或高不到 600，ADR 0005 的 2026-11 更新） ----------
 
 /** 觸控螢幕（手機、iPad）：pointer: coarse，點下去是手指。 */
@@ -497,6 +548,82 @@ await check('390×844（觸控）：隊員開了流程檔，按提示上的「�
 		value: { ...res, 頁寬: o.頁寬, 畫面寬: o.畫面寬 }
 	};
 });
+
+/**
+ * 看得到的按鈕、輸入框、選單、勾選框那一行、場上的圓點：手指點得到的範圍（從中心往上下左右，最上面還是它自己的地方）
+ * 寬和高都至少 32px。點得到的範圍可以比看起來大（::after 放大）。時間軸上的段、色條、走位條照時間長短畫，不量。
+ * 每個先捲到捲動範圍的中間再量。
+ */
+const smallTargets = () =>
+	js(`const sel = 'button, a[href], select, input, label:has(> input[type=checkbox]), label:has(> input[type=radio]), .field g.dot';
+		const skip = '.timeline .seg, .timeline .bar, .timeline .walk, label input';
+		const bad = [];
+		let n = 0;
+		for (const el of document.querySelectorAll(sel)) {
+			if (el.matches(skip) || !el.checkVisibility()) continue;
+			const r0 = el.getBoundingClientRect();
+			if (r0.width < 3 || r0.height < 3) continue;
+			el.scrollIntoView({ block: 'center', inline: 'nearest' });
+			const r = el.getBoundingClientRect();
+			if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) continue;
+			const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+			const hits = (x, y) => { const t = document.elementFromPoint(x, y); return !!t && el.contains(t); };
+			if (!hits(cx, cy)) continue;
+			n++;
+			const reach = (dx, dy) => { let d = 0; while (d < 40 && hits(cx + dx * (d + 1), cy + dy * (d + 1))) d++; return d; };
+			const w = reach(-1, 0) + reach(1, 0) + 1, h = reach(0, -1) + reach(0, 1) + 1;
+			const name = (el.getAttribute('aria-label') || el.textContent || el.type || '').trim().slice(0, 12);
+			if (w < 32 || h < 32) bad.push(name + '：點得到 ' + w + '×' + h);
+		}
+		return { 量了幾個: n, 太小的: bad };`);
+
+await check('1024×768（觸控）：圓點和按鈕、輸入框、勾選框點得到的範圍都至少 32px', async () => {
+	await setTouchViewport(1024, 768);
+	await openSample();
+	const res = {};
+	res.開檔 = await smallTargets();
+	const dot = await js(`const c = document.querySelector('.field g.dot circle.base, .field g.dot circle.top').getBoundingClientRect(); return Math.round(c.width);`);
+	await js(`document.getElementById('tab-members').click()`);
+	await sleep(300);
+	res.隊員 = await smallTargets();
+	await js(`document.querySelector('[data-action-id]').click()`);
+	await sleep(300);
+	res.選了動作 = await smallTargets();
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title === '流程設定').click()`);
+	await sleep(300);
+	res.流程設定 = await smallTargets();
+	const ok = dot >= 32 && Object.values(res).every((r) => r.量了幾個 > 0 && r.太小的.length === 0);
+	return { ok, value: { 圓點直徑: dot, ...res } };
+});
+await check('1024×768（觸控）：40 人、場外排了人時，條編號不被（放大了的）圓點蓋住', async () => {
+	await setTouchViewport(1024, 768);
+	const bad = [];
+	for (const field of [{ strips: 1, layout: 'vertical' }, { strips: 1, layout: 'horizontal' }]) {
+		await send('Page.navigate', { url: `http://localhost:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+		await sleep(300);
+		// 小場地：格點不夠 40 人，剩下的人排在場外
+		await js(`const core = await import('/src/lib/core/index.ts');
+			let f = core.createFlow({ name: '四十人', field: ${JSON.stringify(field)} }).flow;
+			f = core.addMembers(f, Array.from({ length: 40 }, (_, i) => ({ name: '隊員' + (i + 1), gender: 'F', globalRole: 'base' }))).flow;
+			const input = document.querySelector('.home-open input[type=file]');
+			const dt = new DataTransfer();
+			dt.items.add(new File([core.writeFlowFile(f, {})], '四十人.zip', { type: 'application/zip' }));
+			input.files = dt.files;
+			input.dispatchEvent(new Event('change', { bubbles: true }));`);
+		await waitFor(() => js(`return !!document.querySelector('.rail')`));
+		await sleep(500);
+		const covered = await js(`const dots = [...document.querySelectorAll('.field g.dot')].map((d) => d.getBoundingClientRect());
+			return [...document.querySelectorAll('[data-strip-number]')].flatMap((t) => {
+				const r = t.getBoundingClientRect();
+				const hit = dots.some((d) => d.left < r.right && d.right > r.left && d.top < r.bottom && d.bottom > r.top);
+				return hit ? [t.textContent] : [];
+			});`);
+		if (covered.length) bad.push({ 場地: field, 被蓋住的條編號: covered });
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
 await clearTouch();
 
 // ---------- 八拍表、記一次全上表、總表：畫面上和印出來 ----------
