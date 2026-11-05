@@ -371,6 +371,23 @@ for (const [w, h] of [[1440, 900], [1280, 720], [1024, 768]]) {
 	});
 }
 
+await check('1440×900 把右邊欄拖到最寬，換成 1024×768：場地本身還有 360 px 寬（右邊欄寬度照比例記）', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	const bar = await rectOf('.col-split');
+	await mouse('mousePressed', bar.x, bar.y);
+	await mouse('mouseMoved', 0, bar.y);
+	await mouse('mouseReleased', 0, bar.y, 0);
+	await sleep(200);
+	const fieldW = () => js(`return Math.round(document.querySelector('.field-host svg.field').getBoundingClientRect().width)`);
+	const wide = await fieldW();
+	await setViewport(1024, 768);
+	const small = await fieldW();
+	// 拖過的寬度記在這台電腦：清掉，後面的檢查從預設版面開始
+	await js(`for (const k of Object.keys(localStorage)) if (k.startsWith('cheer-editor:inspectorWidth')) localStorage.removeItem(k)`);
+	return { ok: wide >= 360 && small >= 360, value: { 拖完的場地寬: wide, '1024×768 的場地寬': small } };
+});
+
 await check('超寬螢幕（2560 寬）按「符合寬度」：整支流程放滿時間軸，沒有橫向捲軸', async () => {
 	await setViewport(2560, 1200);
 	await openSample();
@@ -604,6 +621,28 @@ const phoneView = () =>
 		const f = view.querySelector('.phone-field svg.field').getBoundingClientRect(), p = play.getBoundingClientRect();
 		const inOrder = field.h >= 120 && (f.bottom <= p.top + 1 || f.right <= p.left + 1) && row.h > 0 && row.bottom <= innerHeight + 1;
 		return { ok: inOrder && v.播放鈕點得到 && v.我點得到 && !v.有編輯開關, value: v };`);
+
+/** 手機的檢視畫面最下面那行「為什麼不能編」的字（#164）；看不到是 null。 */
+const viewOnlyWhy = () =>
+	js(`const p = document.querySelector('.phone-view .phone-why');
+		if (!p || !p.checkVisibility()) return null;
+		const r = p.getBoundingClientRect();
+		return r.bottom <= innerHeight + 1 && r.top >= 0 ? p.textContent.trim() : '（在畫面外）' + p.textContent.trim();`);
+
+await check('768×1024（觸控，直拿的 iPad）：檢視畫面寫「請轉成橫的」，不寫太窄', async () => {
+	await setTouchViewport(768, 1024);
+	await openPracticeFlow();
+	const why = await viewOnlyWhy();
+	await clearTouch();
+	return { ok: !!why && why.startsWith('請轉成橫的') && !why.includes('太窄'), value: why };
+});
+
+await check('1440×500（矮的桌面視窗）：檢視畫面寫「太矮」，不寫太窄', async () => {
+	await setViewport(1440, 500);
+	await openPracticeFlow();
+	const why = await viewOnlyWhy();
+	return { ok: !!why && why.includes('太矮') && !why.includes('太窄') && !why.startsWith('（'), value: why };
+});
 
 await check('768×1024 的桌面視窗算窄：編排是手機的檢視畫面，不是一個很小的場地', async () => {
 	await setViewport(768, 1024);
