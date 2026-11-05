@@ -5,6 +5,7 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	defaultRoles,
 	deleteCustomRole,
 	placeCue,
 	roleGlossary,
@@ -127,5 +128,71 @@ describe('改、刪自訂任務角色', () => {
 	it('找不到角色就擋下', () => {
 		expect(deleteCustomRole(empty(), 'r9').kind).toBe('blocked');
 		expect(updateCustomRole(empty(), 'r9', { name: '甲', meaning: '' }).kind).toBe('blocked');
+	});
+});
+
+describe('任務角色的預設值（加人進動作時先照全局角色填）', () => {
+	/** 小A 上層、小B 底層、小C 底層。 */
+	const team = () =>
+		flowOf(
+			addMembers(empty(), [
+				{ name: '小A', gender: 'F', globalRole: 'top' },
+				{ name: '小B', gender: 'M', globalRole: 'base' },
+				{ name: '小C', gender: 'M', globalRole: 'base' }
+			])
+		);
+	const blank = [
+		{ memberId: 'm1', role: null },
+		{ memberId: 'm2', role: null }
+	];
+
+	it('技巧、金字塔、拋投：全局底層填「底層」、全局上層填「上層」', () => {
+		for (const category of ['stunt', 'pyramid', 'toss'] as const) {
+			expect(defaultRoles(team(), category, blank)).toEqual([
+				{ memberId: 'm1', role: '上層' },
+				{ memberId: 'm2', role: '底層' }
+			]);
+		}
+	});
+
+	it('騰翻：都填「騰翻」', () => {
+		expect(defaultRoles(team(), 'tumbling', blank)).toEqual([
+			{ memberId: 'm1', role: '騰翻' },
+			{ memberId: 'm2', role: '騰翻' }
+		]);
+	});
+
+	it('跳躍、舞蹈、其他：不填', () => {
+		for (const category of ['jump', 'dance', 'other'] as const) {
+			expect(defaultRoles(team(), category, blank)).toEqual(blank);
+		}
+	});
+
+	it('已經指定任務角色的人不動（組也留著）', () => {
+		const members = [
+			{ memberId: 'm1', role: '中層', squad: 'g1' },
+			{ memberId: 'm2', role: null }
+		];
+		expect(defaultRoles(team(), 'stunt', members)).toEqual([
+			{ memberId: 'm1', role: '中層', squad: 'g1' },
+			{ memberId: 'm2', role: '底層' }
+		]);
+	});
+
+	it('換大類（from）：還是舊大類預設值的人換成新大類的；改過的、清掉的不動', () => {
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' },
+			{ memberId: 'm3', role: null }
+		];
+		expect(defaultRoles(team(), 'tumbling', members, 'stunt')).toEqual([
+			{ memberId: 'm1', role: '騰翻' },
+			{ memberId: 'm2', role: '主底' },
+			{ memberId: 'm3', role: null }
+		]);
+		// 從不填的大類換過來：沒有任務的人照新大類填
+		expect(defaultRoles(team(), 'stunt', [{ memberId: 'm3', role: null }], 'jump')).toEqual([
+			{ memberId: 'm3', role: '底層' }
+		]);
 	});
 });
