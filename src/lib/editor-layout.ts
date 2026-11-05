@@ -30,6 +30,11 @@ export function autoInspectorWidth(windowW: number, fieldHostH: number, aspect: 
  * 只看 screen：列印時紙比較窄，不能因為這樣換畫面。
  */
 export const NARROW_SCREEN = 'screen and (max-width: 1023px), screen and (max-height: 599px)';
+/** 觸控螢幕（iPad、手機）：主要的指標是手指。沒有 matchMedia（伺服器上）就當不是。 */
+export function isTouchScreen(): boolean {
+	return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
 /** 編輯畫面至少要這麼寬、這麼高（跟 NARROW_SCREEN 一樣）。 */
 const EDIT_MIN_W_PX = 1024;
 const EDIT_MIN_H_PX = 600;

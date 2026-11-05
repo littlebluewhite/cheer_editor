@@ -2,7 +2,7 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { ACTION_CATEGORIES, type Action, type ActionCategory } from './action-types';
+import { categoryLabel, type Action, type ActionCategory } from './action-types';
 import { actionEights, beatSpanText } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
 import { memberName, type Flow } from './flow';
@@ -13,6 +13,7 @@ import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
+	atTextWithUnit,
 	segmentSpans,
 	timeTextWithUnit,
 	toSeconds,
@@ -25,7 +26,6 @@ export interface EightCountAction {
 	/** 什麼時候：音樂段跟拍點小窗一樣寫「1-3& 到 2-2&・8 拍」；口號段段內秒數「12.3 秒」。 */
 	at: string;
 	category: ActionCategory;
-	categoryLabel: string;
 	name: string;
 	/** 選一個人時只有他自己。 */
 	members: { memberId: string; name: string; role: string | null }[];
@@ -80,7 +80,7 @@ export interface EightCountPhase {
 
 /** 八拍表一列裡、一個有拍點或標了拍的環節的動作那一排 8 格。 */
 export interface EightCountCueLine {
-	categoryLabel: string;
+	category: ActionCategory;
 	name: string;
 	cues: EightCountCue[];
 	/** 這一列的環節，畫在拍點上面一行；環節不分給誰，個人表也一樣。沒標拍的不印。 */
@@ -127,7 +127,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			}))
 			.filter((a) => a.members.length > 0)
 			.toSorted((a, b) => a.start - b.start);
-		const at = (u: number) => (segment.kind === 'music' ? atText(segment, u) : `${atText(segment, u)} 秒`);
+		const at = (u: number) => atTextWithUnit(segment, u);
 		const rowOf = (from: number, to: number, eight: number | null): EightCountRow => {
 			const sec = toSeconds(flow, { segmentId: segment.id, at: from });
 			const end = Math.min(to, units(segment));
@@ -150,7 +150,6 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 						return {
 							at: segment.kind === 'music' ? beatSpanText(segment, a.start, a.length) : at(a.start),
 							category: a.category,
-							categoryLabel: categoryLabel(a.category),
 							name: a.name,
 							members,
 							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId),
@@ -195,7 +194,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 						color: phaseColor(phase)
 					}));
 					return cues.length || phases.length
-						? [{ categoryLabel: categoryLabel(a.category), name: a.name, cues, phases }]
+						? [{ category: a.category, name: a.name, cues, phases }]
 						: [];
 				})
 			};
@@ -265,8 +264,4 @@ function memberWalks(flow: Flow, memberId: string): { number: number; walk: Walk
 			? [{ number: i + 1, walk: memberWalk(flow, b.id, memberId)! }]
 			: []
 	);
-}
-
-function categoryLabel(category: ActionCategory): string {
-	return ACTION_CATEGORIES.find((c) => c.key === category)?.label ?? '';
 }

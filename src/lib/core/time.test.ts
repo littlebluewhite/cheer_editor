@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	addSegment,
 	atText,
+	atTextWithUnit,
 	createFlow,
 	farthestLegal,
 	lengthText,
+	lengthTextWithUnit,
 	positionText,
 	readLength,
 	readStart,
@@ -210,6 +212,13 @@ describe('段內時間的文字（動作表單）', () => {
 		expect(lengthText(chant(), 30)).toBe('3.0');
 		expect(readLength(music(), '4.5')).toEqual({ kind: 'ok', value: 9 });
 		expect(readLength(chant(), '2.5')).toEqual({ kind: 'ok', value: 25 });
+	});
+
+	it('帶單位：長度「4.5 拍」「3.0 秒」；時間點音樂段不加（「3-5&」），口號段加「 秒」', () => {
+		expect(lengthTextWithUnit(music(), 9)).toBe('4.5 拍');
+		expect(lengthTextWithUnit(chant(), 30)).toBe('3.0 秒');
+		expect(atTextWithUnit(music(), 41)).toBe('3-5&');
+		expect(atTextWithUnit(chant(), 123)).toBe('12.3 秒');
 	});
 
 	it('長度看不懂：擋下來說看不懂', () => {

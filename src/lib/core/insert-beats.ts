@@ -6,7 +6,7 @@ import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import type { Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
-import { lengthText, units, type TimePosition } from './time';
+import { lengthTextWithUnit, units, type TimePosition } from './time';
 
 /**
  * 在 at 插入 length 格：這一段裡從 at 起（含 at）開始的站位、動作、出發、到達都晚 length 格。
@@ -16,7 +16,6 @@ import { lengthText, units, type TimePosition } from './time';
 export function insertBeats(flow: Flow, at: TimePosition, length: number): CommandResult {
 	const segment = flow.segments.find((s) => s.id === at.segmentId);
 	if (!segment) return blocked('找不到這一段');
-	const music = segment.kind === 'music';
 	if (!Number.isInteger(length) || length < 1) return blocked('插入的長度要大於 0');
 	const end = units(segment);
 	if (!Number.isInteger(at.at) || at.at < 0 || at.at >= end) return blocked('插入的地方不在這一段裡');
@@ -28,14 +27,15 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number): Comma
 	const fits = (name: string, room: number) => rooms.push({ name, room });
 
 	const formations = flow.formations.map((f, i) => {
+		const name = `站位 ${i + 1} `;
 		const walks = f.walks && Object.fromEntries(
 			Object.entries(f.walks).map(([id, w]): [string, Walk] => {
-				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(`站位 ${i + 1} `, end - 1 - p.at);
+				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(name, end - 1 - p.at);
 				return [id, { depart: later(w.depart), arrive: later(w.arrive) }];
 			})
 		);
 		const moved = i > 0 && f.segmentId === at.segmentId && f.at >= at.at;
-		if (moved) fits(`站位 ${i + 1} `, end - 1 - f.at);
+		if (moved) fits(name, end - 1 - f.at);
 		return { ...f, ...(moved && { at: f.at + length }), ...(walks && { walks }) };
 	});
 	const actions = flow.actions.map((a) => {
@@ -46,7 +46,7 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number): Comma
 
 	const limit = rooms.reduce<(typeof rooms)[number] | null>((t, r) => (!t || r.room < t.room ? r : t), null);
 	if (limit && limit.room < length) {
-		const most = limit.room > 0 ? `最多插 ${lengthText(segment, limit.room)} ${music ? '拍' : '秒'}` : '這段後面已經沒有空了';
+		const most = limit.room > 0 ? `最多插 ${lengthTextWithUnit(segment, limit.room)}` : '這段後面已經沒有空了';
 		return blocked(`${limit.name}會超過這段的結尾，${most}`);
 	}
 	return ok({ ...flow, formations, actions });

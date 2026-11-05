@@ -18,13 +18,13 @@
 	import {
 		actionLabel,
 		actionSeconds,
-		atText,
+		atTextWithUnit,
 		CUE_KINDS,
 		cueForMember,
 		farthestLegal,
 		formationWalks,
 		idleAt,
-		lengthText,
+		lengthTextWithUnit,
 		memberMarkers,
 		memberWalk,
 		moveAction,
@@ -49,6 +49,7 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { isLongMarker } from './marker';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
@@ -71,7 +72,7 @@
 	/** 移動不到這麼多 px 算點一下，不改動作。 */
 	const DRAG_PX = 3;
 	/** 觸控螢幕才有「多選」開關，提示才提它（docs/adr/0005-ipad-touch.md）。 */
-	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const touchScreen = isTouchScreen();
 
 	/** 正在拖的色條：move = 整條移動，resize = 拉右邊；dx 是滑鼠移了幾 px；memberId 是按在誰的泳道上。 */
 	let drag = $state<{ id: string; mode: 'move' | 'resize'; x0: number; dx: number; memberId: string } | null>(null);
@@ -226,7 +227,7 @@
 		session.ask.send(run, { revert: () => {} });
 	}
 
-	/** 拉右邊時新的長度和結束拍（「16.5 拍・在 3-1& 結束」，口號段「2.5 秒・在 3.5 秒結束」）；out = 放開會被擋。 */
+	/** 拉右邊時新的長度和結束拍（「16.5 拍・在 3-1& 結束」，口號段「2.5 秒・在 3.5 秒 結束」）；out = 放開會被擋。 */
 	const resizeReadout = $derived.by(() => {
 		const d = drag;
 		if (!d || d.mode !== 'resize' || Math.abs(d.dx) < DRAG_PX) return null;
@@ -234,10 +235,9 @@
 		const segment = p && flow.segments.find((s) => s.id === p.action.segmentId);
 		if (!p || !segment) return null;
 		const length = p.action.length + Math.round(d.dx / p.halfPx);
-		const chant = segment.kind === 'chant';
-		const end = atText(segment, p.action.start + length) + (chant ? ' 秒' : ' ');
+		const end = atTextWithUnit(segment, p.action.start + length);
 		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
-		return { text: `${lengthText(segment, length)} ${chant ? '秒' : '拍'}・在 ${end}結束`, out };
+		return { text: `${lengthTextWithUnit(segment, length)}・在 ${end} 結束`, out };
 	});
 
 	/** 上一次按下走位條後真的拖了：放開後瀏覽器接著送的 click 不算點一下。 */

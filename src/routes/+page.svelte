@@ -21,9 +21,9 @@
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { loadMe, MAX_LATENCY_MS, saveMe } from '#lib/local-settings.js';
+	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
+	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -94,7 +94,7 @@
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
-	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const touchScreen = isTouchScreen();
 
 	// ---------- 窄螢幕（手機、直拿的 iPad）：一律檢視模式，編排換成手機的檢視畫面（docs/adr/0005-ipad-touch.md） ----------
 	const narrowQuery = typeof matchMedia === 'function' ? matchMedia(NARROW_SCREEN) : null;
@@ -110,12 +110,12 @@
 		session.viewing = narrow;
 	});
 	/** 「我」：手機檢視畫面標亮的人。這台裝置照流程記住（local-settings），不進流程檔；換流程時讀那支的。 */
-	let me = $state(session.flow ? loadMe(session.flow.name) : '');
+	let me = $state(session.flow ? loadFlowSetting('me', session.flow.name) : '');
 	/** 「我」還在名單裡才算（教練刪了那個人就沒有）。 */
 	const myId = $derived(flow?.members.some((m) => m.id === me) ? me : '');
 	function pickMe(id: string) {
 		me = id;
-		if (flow) saveMe(flow.name, id);
+		if (flow) saveFlowSetting('me', flow.name, id);
 	}
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived(session.groupingAction);
@@ -247,7 +247,7 @@
 		opened++;
 		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
 		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
-		me = session.flow ? loadMe(session.flow.name) : '';
+		me = session.flow ? loadFlowSetting('me', session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
@@ -291,7 +291,7 @@
 	}
 
 	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
-	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking);
+	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking || !!editor.file.draftAsk);
 	/** 有東西蓋在上面（上面那些，或表單裡打開的名詞對照表這種對話框）：快捷鍵不動底下的編輯畫面。 */
 	const covered = () => overlayOpen || modalOpen();
 
@@ -767,7 +767,7 @@
 				aria-valuenow={timelineDivider.px ?? currentTimelineH()}
 				aria-valuemin={TIMELINE_MIN_PX}
 				tabindex="0"
-				title="拖這裡調整場地和時間軸的高度（雙擊或按場地左邊的「版面回原狀」回到預設）"
+				title="拖這裡改時間軸的高度，場地跟著變（雙擊或按場地左邊的「版面回原狀」回到預設）"
 				{@attach timelineDivider.attach}
 			></div>
 
@@ -912,6 +912,23 @@
 			</Modal>
 		{/if}
 	</div>
+{/if}
+{#if editor.file.draftAsk}
+	{@const ask = editor.file.draftAsk}
+	{@const message = `「${ask.name}」有還沒存的修改（草稿${ask.savedAt ? ` ${draftTime(ask.savedAt)}` : ''}）。要救回修改，還是用檔案？用檔案會丟掉這些修改。`}
+	<Modal label={message} class="discard-box" onclose={() => editor.file.answerDraft('cancel')}>
+		{#snippet children()}
+			<ConfirmList
+				{message}
+				items={[]}
+				confirmLabel="用檔案（丟掉修改）"
+				onconfirm={() => editor.file.answerDraft('file')}
+				extra={{ label: '救回修改', onclick: () => editor.file.answerDraft('draft') }}
+				oncancel={() => editor.file.answerDraft('cancel')}
+				focusCancel
+			/>
+		{/snippet}
+	</Modal>
 {/if}
 
 <style>

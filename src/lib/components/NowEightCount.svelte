@@ -1,8 +1,8 @@
 <script lang="ts">
 	// 手機檢視模式下面那一塊：八拍表裡播放頭現在這一列（docs/adr/0005-ipad-touch.md）。
 	// 選了「我」就是我的個人表那一列（我的動作、任務角色、走位），沒選是全隊。列的內容都問流程核心。
-	import { eightCountRows, type Flow } from '#lib/core';
-	import EightCountCueLine, { actionTitle } from './EightCountCueLine.svelte';
+	import { actionLabel, eightCountRows, type Flow } from '#lib/core';
+	import EightCountCueLine from './EightCountCueLine.svelte';
 
 	interface Props {
 		flow: Flow;
@@ -26,7 +26,7 @@
 			<span>{row.eight === null ? row.eightText : `第 ${row.eightText} 個八拍`}</span>
 		</header>
 		{#each row.actions as a, j (j)}
-			<div class="action"><b class="at">{a.at}</b> {actionTitle(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}</div>
+			<div class="action"><b class="at">{a.at}</b> {actionLabel(a)}{#if a.who}：{a.who}{/if}</div>
 		{/each}
 		{#each row.continuing as name, j (j)}
 			<div class="muted">↳ {name} 繼續</div>

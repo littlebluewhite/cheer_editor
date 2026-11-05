@@ -215,8 +215,7 @@ export function positionText(flow: Flow, sec: number): string {
 	if (!found) return '';
 	if (sec >= totalSeconds(flow) - EPS) return '結尾';
 	const { span, at } = found;
-	const unit = span.segment.kind === 'chant' ? ' 秒' : '';
-	return `${span.label} ${atText(span.segment, at)}${unit}`;
+	return `${span.label} ${atTextWithUnit(span.segment, at)}`;
 }
 
 /** 段內時間點給教練看的樣子：音樂段「3-5&」（第幾個八拍-第幾拍，半拍加 &），口號段秒數「12.3」。 */
@@ -225,6 +224,11 @@ export function atText(segment: Segment, at: number): string {
 	const beat = Math.floor(at / 2);
 	const and = at % 2 === 1 ? '&' : '';
 	return `${Math.floor(beat / 8) + 1}-${(beat % 8) + 1}${and}`;
+}
+
+/** atText，口號段後面再加「 秒」：音樂段「3-5&」，口號段「12.3 秒」。後面接字時中間空一格（「3-5& 結束」「12.3 秒 結束」）。 */
+export function atTextWithUnit(segment: Segment, at: number): string {
+	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
 }
 
 /** 動作的開始：atText 的反向，教練打的時間點 → 段內整數時間。不檢查有沒有超出段（指令會擋）。 */
@@ -286,6 +290,11 @@ function parseTime(flow: Flow, homeSegmentId: string, text: string): TimePositio
 /** 長度給教練看的樣子：音樂段幾拍（可以 .5），口號段幾秒（到 0.1）。 */
 export function lengthText(segment: Segment, length: number): string {
 	return segment.kind === 'music' ? String(length / 2) : (length / 10).toFixed(1);
+}
+
+/** lengthText 帶單位：音樂段「4.5 拍」，口號段「3.0 秒」。 */
+export function lengthTextWithUnit(segment: Segment, length: number): string {
+	return `${lengthText(segment, length)} ${segment.kind === 'music' ? '拍' : '秒'}`;
 }
 
 /** 動作的長度：lengthText 的反向，拍數或秒數 → 半拍數或 0.1 秒數（取最近的）。負的照讀，交給指令擋下、說範圍。 */

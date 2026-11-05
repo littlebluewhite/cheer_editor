@@ -11,7 +11,7 @@ import { tooLong } from './text-length';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
-	lengthText,
+	lengthTextWithUnit,
 	snapToBeat,
 	timeTextWithUnit,
 	toPosition,
@@ -371,7 +371,7 @@ export function walkSpeedText(flow: Flow, walk: FormationWalk): string {
 	const distance = Math.hypot(walk.to[0] - walk.from[0], walk.to[1] - walk.from[1]);
 	const need = (mps: number) => {
 		const n = Math.ceil(distance / mps / unitSec(segment) - EPS);
-		return `${lengthText(segment, n)} ${segment.kind === 'music' ? '拍' : '秒'}`;
+		return lengthTextWithUnit(segment, n);
 	};
 	return walk.tooFast ? `走太快：${speed}，至少要 ${need(TOO_FAST_MPS)}` : `很喘：${speed}，不喘要 ${need(TIRING_MPS)}`;
 }

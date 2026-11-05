@@ -45,6 +45,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
 	import Icon from './Icon.svelte';
 	import { isLongMarker, markerWidth } from './marker';
 
@@ -123,7 +124,7 @@
 	const selected = $derived(session?.selectedMemberIds ?? marked);
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
-	const touchScreen = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+	const touchScreen = isTouchScreen();
 	/** 圓點的半徑（公尺）。 */
 	const DOT_R = 0.3;
 	/** 多字標記的字高（公尺）：寫在橫的膠囊裡。 */

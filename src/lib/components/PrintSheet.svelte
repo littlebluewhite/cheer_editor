@@ -4,14 +4,16 @@
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
 	import {
 		GLOBAL_ROLES,
+		actionLabel,
+		charCount,
 		eightCountRows,
 		memberMarkers,
 		type EightCountRow,
 		type Flow
 	} from '#lib/core';
-	import { loadPrintChoice, savePrintChoice } from '#lib/local-settings.js';
+	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
 	import { untrack } from 'svelte';
-	import EightCountCueLine, { actionTitle } from './EightCountCueLine.svelte';
+	import EightCountCueLine from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -39,7 +41,7 @@
 
 	/** '' = 全隊、隊員 id、'role:top' = 全部上層。打開時：編輯畫面選的那個人優先，再來是上次選的。 */
 	let choice = $state(
-		untrack(() => [selected ?? '', loadPrintChoice(flow.name)].find((c) => c && valid(c)) ?? '')
+		untrack(() => [selected ?? '', loadFlowSetting('print', flow.name)].find((c) => c && valid(c)) ?? '')
 	);
 
 	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
@@ -57,10 +59,10 @@
 	 */
 	const PAGE_PX = 1000;
 	function fitsPage(row: EightCountRow): boolean {
-		const lines = (text: string) => Math.ceil(text.length / 18);
+		const lines = (text: string) => Math.ceil(charCount(text) / 18);
 		const text =
 			row.actions.reduce(
-				(h, a) => h + 20 * lines(`${a.at}${a.categoryLabel}${a.name}${a.who}`) + 18 * lines(a.note),
+				(h, a) => h + 20 * lines(`${a.at}${actionLabel(a)}${a.who}`) + 18 * lines(a.note),
 				0
 			) +
 			20 * (row.continuing.length + row.walks.length);
@@ -81,7 +83,7 @@
 			<b class="tool-title">八拍表</b>
 			<label>
 				印誰
-				<select bind:value={choice} onchange={() => savePrintChoice(flow.name, choice)}>
+				<select bind:value={choice} onchange={() => saveFlowSetting('print', flow.name, choice)}>
 					<option value="">全隊</option>
 					{#each roleChoices as r (r.value)}
 						<option value={r.value}>{r.label}</option>
@@ -122,7 +124,7 @@
 									{#each row.actions as a, j (j)}
 										<div class="action">
 											<b class="at">{a.at}</b>
-											{actionTitle(a.categoryLabel, a.name)}{#if a.who}：{a.who}{/if}
+											{actionLabel(a)}{#if a.who}：{a.who}{/if}
 											{#if a.note}<div class="note">{a.note}</div>{/if}
 										</div>
 									{/each}
