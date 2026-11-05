@@ -186,6 +186,17 @@ describe('存檔', () => {
 		expect(hasUnsavedChanges()).toBe(false);
 	});
 
+	it('流程名字有檔名不能用的字：先照瀏覽器的規則換成「_」，提示的檔名跟存下來的一樣', async () => {
+		const { saver, fileNames } = fakeSaver('downloaded');
+		setup(saver);
+		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '縣賽: A/B?' } });
+		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		await ctrlS();
+		await flush();
+		expect(fileNames).toEqual(['縣賽_ A_B_.zip']);
+		expect(screen.getByRole('status').textContent).toContain('下載了一個新的「縣賽_ A_B_.zip」');
+	});
+
 	it('iPad 交給分享選單：算存好了，不寫說明', async () => {
 		setup(fakeSaver('shared').saver);
 		await newFlow();
@@ -224,6 +235,38 @@ describe('開檔', () => {
 		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
 		expect(screen.queryByText(/找不到音樂/)).toBeNull();
 		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('瀏覽器能選檔又能存回（Chrome、Edge）：開檔後第一次存檔就存回同一個檔', async () => {
+		const other = fakeSaver();
+		const opened = fakeSaver();
+		const bytes = writeFlowFile(sampleFlow(), {});
+		const file = new File([bytes as Uint8Array<ArrayBuffer>], '縣賽.zip', { type: 'application/zip' });
+		render(Page, {
+			createEngine: () => createFakeEngine(),
+			createSaver: () => other.saver,
+			decode: fakeDecode,
+			pickFlowFile: async () => ({ file, saver: opened.saver })
+		});
+		await fireEvent.click(screen.getByLabelText('開啟流程檔'));
+		await flush();
+		expect(screen.getByText('練習用')).toBeTruthy();
+		await ctrlS();
+		await flush();
+		expect(opened.saves).toHaveLength(1);
+		expect(other.saves).toHaveLength(0);
+	});
+
+	it('在選檔視窗按取消：什麼都不變', async () => {
+		render(Page, {
+			createEngine: () => createFakeEngine(),
+			decode: fakeDecode,
+			pickFlowFile: async () => null
+		});
+		await fireEvent.click(screen.getByLabelText('開啟流程檔'));
+		await flush();
+		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
 	it('編輯中也可以從上方列開別的檔；沒有未存的修改就不問', async () => {
@@ -325,7 +368,7 @@ describe('新建', () => {
 	it('比編輯器新的檔不打開，提示重新整理', async () => {
 		setup();
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
-		expect(screen.getByRole('alert').textContent).toContain('請重新整理，更新編輯器');
+		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：是新版編輯器存的，請重新整理，更新編輯器');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
@@ -355,20 +398,37 @@ describe('新建', () => {
 		expect(saved.members[0].squad).toBe('g1');
 	});
 
-	it('第 7 版的檔裡音樂段的環節沒標拍：提示「這不是流程檔」，留在首頁', async () => {
+	it('第 7 版的檔裡音樂段的環節沒標拍：提示 flow.json 壞掉了，留在首頁', async () => {
 		setup();
 		const flow = JSON.parse(JSON.stringify(flowOf(addPhase(sampleFlow(), 'x1', { kind: 'load', name: '', beats: { at: 0, len: 4 } }))));
 		delete flow.actions[0].successRate.phases[0].beats;
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 7, flow })) }));
-		expect(screen.getByRole('alert').textContent).toContain('這不是流程檔');
+		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：flow.json 壞掉了');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 	});
 
-	it('flow.json 壞掉（例：flow 只有名字）：提示「這不是流程檔」，留在首頁', async () => {
+	it('flow.json 壞掉（例：flow 只有名字）：提示檔名和原因，留在首頁', async () => {
 		setup();
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 1, flow: { name: '壞' } })) }));
-		expect(screen.getByRole('alert').textContent).toContain('這不是流程檔');
+		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：flow.json 壞掉了');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it.each([
+		['不是 zip', new TextEncoder().encode('不是 zip'), '不是 zip 檔'],
+		['沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') }), 'zip 裡沒有 flow.json']
+	])('%s：提示檔名和原因', async (_, bytes, reason) => {
+		setup();
+		await openFile(bytes);
+		expect(screen.getByRole('alert').textContent).toBe(`打不開「練習用.zip」：${reason}`);
+	});
+
+	it('zip 裡多包一層資料夾：照樣打開', async () => {
+		setup();
+		const inner = unzipSync(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		await openFile(zipSync(Object.fromEntries(Object.entries(inner).map(([k, v]) => [`練習用/${k}`, v]))));
+		expect(screen.getByText('練習用')).toBeTruthy();
+		expect(screen.queryByText(/找不到音樂/)).toBeNull();
 	});
 
 	it('開檔清空復原紀錄', async () => {
@@ -411,6 +471,7 @@ describe('新建', () => {
 	it('缺音樂檔照開：那段標紅「找不到音樂」，點開重新選檔就好了；動作和站位都還在', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), {}));
+		expect(screen.getByRole('status').textContent).toBe('「練習用.zip」裡少了音樂檔「主歌.mp3」：點紅色的段重新選檔');
 		const seg = screen.getByRole('button', { name: /音樂 1/ });
 		expect(seg.textContent).toContain('找不到音樂');
 		expect(seg.classList.contains('missing')).toBe(true);
