@@ -10,8 +10,8 @@
 		type TimeRules
 	} from '#lib/core';
 	import { Ask } from './ask.svelte';
-	import { numberValue } from './form';
 	import Icon from './Icon.svelte';
+	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
 
 	interface Props {
@@ -29,10 +29,17 @@
 		ask.send(() => updateTimeRules(flow, patch));
 	}
 
+	/** 改一個秒數；被擋就把那一格還原成實際的值，原因記在那一格。 */
+	function setSeconds(key: (typeof fields)[number][0], label: string, input: HTMLInputElement) {
+		ask.send(() => updateTimeRules(flow, { [key]: input.valueAsNumber }), {
+			field: label,
+			revert: () => (input.value = String(flow.timeRules[key]))
+		});
+	}
+
 	function rename(input: HTMLInputElement) {
-		const r = ask.send(() => renameFlow(flow, input.value));
 		// 被擋下時把輸入框還原成原本的名字。
-		if (r.kind !== 'ok') input.value = flow.name;
+		ask.send(() => renameFlow(flow, input.value), { field: '流程名字', revert: () => (input.value = flow.name) });
 	}
 
 	const markers = $derived(memberMarkers(flow));
@@ -48,11 +55,11 @@
 	] as const;
 </script>
 
-<div class="backdrop">
-	<div class="dialog flow-dialog" role="dialog" aria-label="流程設定" aria-modal="true" tabindex="-1" {@attach (el) => el.focus()}>
+<Modal label="流程設定" class="dialog flow-dialog" {ask} {onclose}>
+	{#snippet children(close)}
 		<header class="dialog-head">
 			<h2>流程設定</h2>
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={onclose}><Icon name="close" /></button>
+			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
 		<label class="stack">
 			流程名字
@@ -74,7 +81,7 @@
 						type="number"
 						min="0"
 						value={flow.timeRules[key]}
-						onchange={(e) => update({ [key]: numberValue(e) })}
+						onchange={(e) => setSeconds(key, label, e.currentTarget)}
 					/>
 				</label>
 			{/each}
@@ -107,12 +114,13 @@
 				</ul>
 			{/if}
 		</section>
+		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
-	</div>
-</div>
+	{/snippet}
+</Modal>
 
 <style>
-	.flow-dialog {
+	:global(.flow-dialog) {
 		width: min(420px, 100%);
 		font-size: 13px;
 	}

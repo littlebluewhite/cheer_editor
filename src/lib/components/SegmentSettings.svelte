@@ -5,8 +5,9 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
+	import Modal from './Modal.svelte';
 	import { Ask } from './ask.svelte';
-	import { numberValue } from './form';
+	import { tick } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
 		MAX_BPM,
@@ -92,12 +93,26 @@
 		});
 	}
 
+	/** 一格數字欄位送出：被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。 */
+	function updateField(input: HTMLInputElement, field: string, patch: SegmentPatch, actual: () => number | undefined) {
+		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o), {
+			field,
+			revert: () => (input.value = String(actual() ?? '')),
+			cancel: () => (fieldsKey += 1)
+		});
+	}
+
 	/** 這一段排第幾（0 起）。 */
 	const index = $derived(flow.segments.findIndex((s) => s.id === segmentId));
 
-	/** 跟旁邊那段換位置；動作、站位跟著段走（見 segment-order.ts）。 */
-	function move(dir: -1 | 1) {
+	/** 跟旁邊那段換位置；動作、站位跟著段走（見 segment-order.ts）。
+	 *  按的那顆變灰（移到頭、尾）時，焦點換到另一顆，不掉出段設定。 */
+	async function move(dir: -1 | 1, button: HTMLButtonElement) {
 		ask.send(() => moveSegment(flow, segmentId, dir));
+		await tick();
+		if (!button.disabled) return;
+		const other = [...(button.parentElement?.querySelectorAll('button') ?? [])].find((b) => b !== button && !b.disabled);
+		(other ?? button.closest<HTMLElement>('[role="dialog"]'))?.focus();
 	}
 
 	/** 刪這一段：段裡有動作、站位時核心先問；刪好了關掉段設定。 */
@@ -106,7 +121,8 @@
 	}
 
 	/** 不是流程核心擋的（檔案讀不出來、還沒載入）：跟核心擋下來一樣，交給問教練留下原因。 */
-	const blocked = (message: string) => void ask.send(() => ({ kind: 'blocked', message }) as const);
+	const blocked = (message: string, handlers: { field?: string; revert?: () => void } = {}) =>
+		void ask.send(() => ({ kind: 'blocked', message }) as const, handlers);
 
 	/** 設定關掉了沒（音樂檔解碼完時用）。 */
 	let closed = false;
@@ -144,6 +160,15 @@
 		update({ firstBeatSec: sec });
 	}
 
+	/** 「第一拍（秒）」欄位：跟點波形一樣，但被擋時還原這一格、原因記在這一格。 */
+	function typeFirstBeat(input: HTMLInputElement) {
+		const field = '第一拍（秒）';
+		const revert = () => (input.value = String(music?.firstBeatSec ?? ''));
+		const problem = pastEnd(input.valueAsNumber);
+		if (problem) return blocked(problem, { field, revert });
+		updateField(input, field, { firstBeatSec: input.valueAsNumber }, () => music?.firstBeatSec);
+	}
+
 	function clickWave(e: MouseEvent) {
 		setFirstBeat(waveXToSec(e));
 	}
@@ -162,12 +187,12 @@
 	}
 </script>
 
-<div class="backdrop">
-	<div class="dialog seg-dialog" role="dialog" aria-label={`${span?.label ?? ''} 設定`} aria-modal="true" tabindex="-1" {@attach (el) => el.focus()}>
+<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose}>
+	{#snippet children(close)}
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
 			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={onclose}><Icon name="close" /></button>
+			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
 
 		{#key fieldsKey}
@@ -206,7 +231,7 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => update({ bpm: numberValue(e) })} />
+						<input type="number" min={MIN_BPM} max={MAX_BPM} value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', { bpm: e.currentTarget.valueAsNumber }, () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
@@ -216,7 +241,7 @@
 							step="0.01"
 							min="0"
 							value={music.firstBeatSec}
-							onchange={(e) => setFirstBeat(numberValue(e))}
+							onchange={(e) => typeFirstBeat(e.currentTarget)}
 						/>
 					</label>
 					<button type="button" class="listen" onclick={() => onpreview(segmentId)}
@@ -250,7 +275,7 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="number" min="1" step="1" value={length.eights} onchange={(e) => update({ eights: numberValue(e) })} />
+						<input type="number" min="1" step="1" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', { eights: e.currentTarget.valueAsNumber }, () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
@@ -260,7 +285,7 @@
 							max="8"
 							step="1"
 							value={length.lastBeats}
-							onchange={(e) => update({ lastBeats: numberValue(e) })}
+							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', { lastBeats: e.currentTarget.valueAsNumber }, () => length?.lastBeats)}
 						/>
 					</label>
 					<button type="button" onclick={fitToAudio}>照音樂長度算</button>
@@ -281,7 +306,7 @@
 							step="0.1"
 							min="0.1"
 							value={span?.durationSec}
-							onchange={(e) => update({ seconds: numberValue(e) })}
+							onchange={(e) => updateField(e.currentTarget, '長度（秒）', { seconds: e.currentTarget.valueAsNumber }, () => span?.durationSec)}
 						/>
 					</label>
 					<span class="hint">口號段只計秒數，最細 0.1 秒</span>
@@ -291,16 +316,17 @@
 		{/key}
 
 		<section class="order">
-			<button type="button" disabled={index <= 0} onclick={() => move(-1)}>往前移</button>
-			<button type="button" disabled={index >= flow.segments.length - 1} onclick={() => move(1)}>往後移</button>
+			<button type="button" disabled={index <= 0} onclick={(e) => move(-1, e.currentTarget)}>往前移</button>
+			<button type="button" disabled={index >= flow.segments.length - 1} onclick={(e) => move(1, e.currentTarget)}>往後移</button>
 			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除這一段</button>
 		</section>
 
 		{#if ask.question}<ConfirmList {ask} />{/if}
 
+		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
 		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
-	</div>
-</div>
+	{/snippet}
+</Modal>
 
 <style>
 	.order {
@@ -311,7 +337,7 @@
 	.order .danger {
 		margin-left: auto;
 	}
-	.seg-dialog {
+	:global(.seg-dialog) {
 		width: min(680px, 100%);
 	}
 	section {
