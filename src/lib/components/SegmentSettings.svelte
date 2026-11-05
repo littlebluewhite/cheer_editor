@@ -25,6 +25,7 @@
 		musicOverrunSec,
 		readSegmentNumber,
 		segmentSpans,
+		splitSegment,
 		tapBpm,
 		updateSegment,
 		type ConfirmOption,
@@ -291,6 +292,10 @@
 						這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。要剛好就按「照音樂長度算」。
 					</p>
 				{/if}
+				<div class="row">
+					<button type="button" onclick={() => ask.send(() => splitSegment(flow, segmentId, playback.sec))}>從播放頭這個八拍切成兩段</button>
+					<span class="hint">切點在播放頭那個八拍的第 1 拍；後面的動作和站位搬到新的一段，BPM、第一拍接著算</span>
+				</div>
 				{#each overlaps as o (o.label)}
 					<p class="hint-warn" role="note">
 						跟{o.label} 用同一個音樂檔，有 {o.sec.toFixed(1)} 秒重疊：那一截音樂會播兩次。
