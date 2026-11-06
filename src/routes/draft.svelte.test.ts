@@ -65,10 +65,25 @@ describe('首頁：最近的流程', () => {
 		await flush();
 		setup(drafts.store, tabs);
 		await vi.waitFor(() => expect(recent('全國賽').textContent).toContain('另一個分頁正在編'));
-		expect((recent('全國賽') as HTMLButtonElement).disabled).toBe(true);
 		await fireEvent.click(recent('全國賽'));
 		await flush();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it('另一個分頁關掉以後：標著正在編的那支點得開，不用重新整理', async () => {
+		const drafts = fakeDraftStore();
+		const tabs = fakeTabs();
+		const other = testEditor(null, { draftStore: drafts.store, openTabChannel: tabs });
+		const closeOther = other.editor.file.connect();
+		await flush();
+		other.editor.file.create(newFlowOf('全國賽'));
+		await flush();
+		setup(drafts.store, tabs);
+		await vi.waitFor(() => expect(recent('全國賽').textContent).toContain('另一個分頁正在編'));
+		closeOther();
+		expect((recent('全國賽') as HTMLButtonElement).disabled).toBe(false);
+		await fireEvent.click(recent('全國賽'));
+		await vi.waitFor(() => expect(screen.getByText('未存')).toBeTruthy());
 	});
 
 	it('按「丟掉」先問；按取消草稿還在，確定才丟掉', async () => {

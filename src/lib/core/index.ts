@@ -6,7 +6,7 @@ export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './
 export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
-export { MAX_CHARS, charCount, firstChars } from './text-length';
+export { MAX_CHARS, charCount, charStart, firstChars } from './text-length';
 export type { LimitedText } from './text-length';
 
 export { changeLabel } from './change-label';

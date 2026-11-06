@@ -54,7 +54,7 @@ export function playbackPlan(flow: Flow, fromSec: number, untilSec = Infinity): 
 	const endSec = Math.min(totalSeconds(flow), untilSec);
 	for (const { segment, startSec, durationSec } of segmentSpans(flow)) {
 		const segEnd = Math.min(startSec + durationSec, endSec);
-		if (segment.kind !== 'music' || segEnd <= fromSec + EPS) continue;
+		if (segment.kind !== 'music' || segEnd <= Math.max(fromSec, startSec) + EPS) continue;
 		const skip = Math.max(0, fromSec - startSec);
 		if (segment.audioId) {
 			clips.push({

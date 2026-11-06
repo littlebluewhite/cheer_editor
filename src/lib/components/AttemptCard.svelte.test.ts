@@ -191,6 +191,15 @@ describe('記錄頁的卡', () => {
 		expect(screen.getByRole('status').textContent).toBe('已存');
 	});
 
+	it('之前選了「只練幾個環節」、後來環節刪到剩一個：照樣存成整個做', async () => {
+		const flow = ratedSample();
+		const { session, name } = setup(flow, 1);
+		const { who } = attemptWhos(flow, flow.actions[1])[0];
+		session.drillScopes[`${flow.actions[1].id} ${who}`] = { whole: false, picked: [] };
+		await tap(name, '整體 騰翻', '成功');
+		expect(records(session, 1).map((r) => r.whole)).toEqual([true]);
+	});
+
 	/** 第 1 組這天：全上 ✓✗、分段練 ✗、全上 △✓✓。 */
 	function mixed() {
 		let flow = flowOf(recordRunThrough(libSample(), DATE, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } }]));

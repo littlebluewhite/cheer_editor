@@ -41,6 +41,12 @@ describe('從某一刻播放', () => {
 		expect(plan.endSec).toBeCloseTo(6.7, 9);
 	});
 
+	it('重複播第一段裡的一小段：後面的段不排進來（不會排出負的長度）', () => {
+		const plan = playbackPlan(sample(), 0, 1);
+		expect(plan.clips.map((c) => c.audioId)).toEqual(['a1']);
+		expect(plan.clips[0].durationSec).toBeCloseTo(1, 9);
+	});
+
 	it('從段中間播：那一段從對應的音樂位置接著播，已經過去的段不播', () => {
 		const plan = playbackPlan(sample(), 5.7);
 		expect(plan.clips).toHaveLength(1);

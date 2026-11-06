@@ -1,10 +1,11 @@
 // 插入八拍：在一個段的某一拍空出幾拍（音樂段幾個半拍、口號段幾個 0.1 秒），
-// 這個段裡在那之後的站位、動作（拍點記在動作裡，跟著走）、走位的出發和到達一起往後延。
+// 這個段裡在那之後的站位、動作（拍點記在動作裡，跟著走）、走位的出發和到達一起往後延；在那之前的不變
+// （照預設走、在那之前就出發的人，把出發記成自己設的）。
 // 段不變長：後面的東西超過段尾就擋下。
 
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
-import type { Walk } from './formation';
+import { formationWalks, memberWalk, type Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
 import { lengthTextWithUnit, units, type TimePosition } from './time';
 
@@ -28,13 +29,21 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number): Comma
 
 	const formations = flow.formations.map((f, i) => {
 		const name = `站位 ${i + 1} `;
-		const walks = f.walks && Object.fromEntries(
-			Object.entries(f.walks).map(([id, w]): [string, Walk] => {
+		const moved = i > 0 && f.segmentId === at.segmentId && f.at >= at.at;
+		// 沒自己設的人照預設走：這張往後延、出發卻在插入點以前，就把原本的出發記下來，插入點以前站的地方才不會變
+		const kept = moved
+			? formationWalks(flow, f.id).flatMap(({ memberId }): [string, Walk][] => {
+					const w = memberWalk(flow, f.id, memberId);
+					return !f.walks?.[memberId] && w && !moves(w.depart) ? [[memberId, w]] : [];
+				})
+			: [];
+		const stored = kept.length ? { ...Object.fromEntries(kept), ...f.walks } : f.walks;
+		const walks = stored && Object.fromEntries(
+			Object.entries(stored).map(([id, w]): [string, Walk] => {
 				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(name, end - 1 - p.at);
 				return [id, { depart: later(w.depart), arrive: later(w.arrive) }];
 			})
 		);
-		const moved = i > 0 && f.segmentId === at.segmentId && f.at >= at.at;
 		if (moved) fits(name, end - 1 - f.at);
 		return { ...f, ...(moved && { at: f.at + length }), ...(walks && { walks }) };
 	});

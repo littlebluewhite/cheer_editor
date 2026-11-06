@@ -873,7 +873,7 @@
 					<ul aria-labelledby="recent-title">
 						{#each editor.file.recent as f (f.id)}
 							<li>
-								<button type="button" class="recent-open" disabled={f.busy} onclick={() => editor.file.openRecent(f.id)}>
+								<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
 									<span class="recent-name">{f.name}</span>
 									<span class="recent-meta"
 										>{[f.savedAt ? draftTime(f.savedAt) : '', f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']

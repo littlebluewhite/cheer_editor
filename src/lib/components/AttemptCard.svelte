@@ -53,7 +53,8 @@
 	const scopeKey = $derived(`${action.id} ${who}`);
 	/** 這次練：整個做（whole），或只練幾個環節（picked 是要練的環節 id）。換下一次、換動作、切頁都留著。 */
 	const scope = $derived(session.drillScopes[scopeKey] ?? { whole: true, picked: [] });
-	const whole = $derived(scope.whole);
+	/** 只有一個環節就是整個做（選「整個／只練幾個環節」的地方不見了，之前選的不算）。 */
+	const whole = $derived(scope.whole || (action.successRate?.phases.length ?? 0) < 2);
 	const picked = $derived(scope.picked);
 	/** 這一次已經點的記號（還沒存）。 */
 	let marks = $state<Record<string, Mark>>({});

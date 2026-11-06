@@ -2,7 +2,7 @@
 	// 欄位旁邊的字數（n/20），照看得到的字算。打（貼）太多時只留放得下的字，像原生的 maxlength，
 	// 但一個家庭 emoji 算一個字。舊檔裡已經超過上限的字照留，只是不能再變長；輸入法選字時先不管，選好再算。
 	import { untrack } from 'svelte';
-	import { MAX_CHARS, charCount, firstChars, type LimitedText } from '#lib/core';
+	import { MAX_CHARS, charCount, charStart, firstChars, type LimitedText } from '#lib/core';
 
 	interface Props {
 		field: LimitedText;
@@ -40,8 +40,11 @@
 			const limit = Math.max(max, charCount(accepted));
 			if (charCount(now) > limit) {
 				const caret = el.selectionEnd ?? now.length;
+				// 跟上次一樣的開頭：游標前多出來的那幾個一定是新打的，不能算進去；切在 emoji 中間就退到它前面。
+				const grew = Math.max(0, now.length - accepted.length);
 				let head = 0;
-				while (head < caret && now[head] === accepted[head]) head++;
+				while (head < caret - grew && now[head] === accepted[head]) head++;
+				head = charStart(now, head);
 				const tail = now.slice(caret);
 				const typed = firstChars(now.slice(head, caret), limit - charCount(now.slice(0, head) + tail));
 				el.value = now.slice(0, head) + typed + tail;

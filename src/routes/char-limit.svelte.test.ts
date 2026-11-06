@@ -61,6 +61,26 @@ describe('字數', () => {
 		expect(count(name)).toBe('20/20');
 	});
 
+	it('20 個一樣的字前面再打一個：多的那個切掉，不會卡住', async () => {
+		await setup();
+		const name = screen.getByLabelText('名稱') as HTMLInputElement;
+		await type(name, 'a'.repeat(20));
+		name.value = 'a'.repeat(21);
+		name.setSelectionRange(1, 1);
+		await fireEvent.input(name);
+		expect(name.value).toBe('a'.repeat(20));
+	});
+
+	it('滿 20 個 emoji 時把第一個換成兩個：留得下的那個 emoji 是完整的', async () => {
+		await setup();
+		const name = screen.getByLabelText('名稱') as HTMLInputElement;
+		await type(name, '😀'.repeat(20));
+		name.value = '😃😄' + '😀'.repeat(19);
+		name.setSelectionRange(4, 4);
+		await fireEvent.input(name);
+		expect(name.value).toBe('😃' + '😀'.repeat(19));
+	});
+
 	it('備註旁邊顯示 n/200', async () => {
 		await setup();
 		const note = screen.getByLabelText('備註');

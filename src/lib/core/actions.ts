@@ -158,10 +158,10 @@ function checked(flow: Flow, before: Action | undefined, action: Action, options
 	return people ? { kind: 'blocked', message: people } : settled;
 }
 
-/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收。 */
+/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收（名稱會去掉頭尾空白，跟去掉空白的比）。 */
 function textProblem(before: Action | undefined, action: Action): string | null {
 	return (
-		(action.name !== before?.name ? tooLong('actionName', action.name) : null) ??
+		(action.name !== before?.name.trim() ? tooLong('actionName', action.name) : null) ??
 		(action.note !== before?.note ? tooLong('note', action.note) : null)
 	);
 }

@@ -38,6 +38,16 @@ export function firstChars(text: string, n: number): string {
 	return text;
 }
 
+/** 第 i 個 code unit 所在那個字的開頭（i 在 emoji 中間時退到 emoji 前面）。 */
+export function charStart(text: string, i: number): number {
+	let start = 0;
+	for (const { index } of graphemes.segment(text)) {
+		if (index > i) break;
+		start = index;
+	}
+	return start;
+}
+
 /** 太長時的原因（「動作名稱最多 20 個字」）；沒超過是 null。頭尾空白不算。 */
 export function tooLong(field: LimitedText, text: string): string | null {
 	const max = MAX_CHARS[field];

@@ -6,6 +6,9 @@ import {
 	createFlow,
 	insertBeats,
 	insertFormation,
+	memberWalk,
+	positionsAt,
+	setPositions,
 	setWalks,
 	toSeconds,
 	updateSegment,
@@ -82,6 +85,16 @@ describe('插入八拍', () => {
 		const after = flowOf(insertBeats(before, at('s1', 76), 4));
 		expect(after.actions.map((a) => a.start)).toEqual([0, 64, 100]);
 		expect(after.formations[3].walks).toEqual({ m1: { depart: at('s1', 72), arrive: at('s1', 84) } });
+	});
+
+	it('沒自己設走位的人：插入點以前就出發的，出發不變（出發前站的地方也不變），只晚到達', () => {
+		// 小B 在站位 3（5-1）換位置：預設 4-1 出發、5-1 到達；在 4-5 插 4 拍
+		const before = flowOf(setPositions(sample(), 'f3', { m2: [3, 3] }));
+		const after = flowOf(insertBeats(before, at('s1', 56), 8));
+		for (const halfBeat of [40, 48]) {
+			expect(positionsAt(after, halfBeat * HALF).m2).toEqual(positionsAt(before, halfBeat * HALF).m2);
+		}
+		expect(memberWalk(after, 'f3', 'm2')).toEqual({ depart: at('s1', 48), arrive: at('s1', 72) });
 	});
 
 	it('在第一段的開頭插：開頭那張站位不動', () => {
