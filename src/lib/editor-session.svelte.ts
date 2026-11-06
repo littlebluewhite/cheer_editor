@@ -34,7 +34,7 @@ interface Step {
 }
 
 /** 檢視模式下改流程被擋的原因。 */
-export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先打開上方列的「編輯」';
+export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上方列的「編輯」';
 
 /** 拖過頭（走位條、縮圖、場上的人）停在最遠的合法位置時的提示。 */
 export const AT_EDGE = '已靠到邊界';

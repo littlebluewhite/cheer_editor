@@ -441,7 +441,7 @@ async function renameFlowTo(name) {
 	await sleep(200);
 }
 
-for (const w of [1141, 1200, 1300, 1570, 1571, 1700, 1701]) {
+for (const w of [1141, 1200, 1300, 1670, 1671, 1800, 1801]) {
 	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
 		await setViewport(w, 900);
 		await openSample();
@@ -463,6 +463,21 @@ await check('1400 寬：「八拍表」按鈕有字，不是只有圖示', async
 		return { 包著字的寬: Math.round(node.parentElement.getBoundingClientRect().width), 按鈕寬: Math.round(b.getBoundingClientRect().width) };`);
 	return { ok: r.包著字的寬 >= 40, value: r };
 });
+
+for (const w of [1920, 1400]) {
+	await check(`${w} 寬：按「檢視」再按回「編輯」，上方列的按鈕和播放區都不跑（復原、重做、流程設定只變灰）`, async () => {
+		await setViewport(w, 900);
+		await openSample();
+		const where = `return [...document.querySelectorAll('.topbar button, .topbar .btn')].map((b) => Math.round(b.getBoundingClientRect().left)).join(',');`;
+		const press = (name) => `[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '${name}').click();`;
+		const edit = await js(where);
+		await js(press('檢視'));
+		await sleep(100);
+		const view = await js(where);
+		await js(press('編輯'));
+		return { ok: edit === view, value: { 編輯: edit, 檢視: view } };
+	});
+}
 
 await check('1440 寬：「使用說明」「設定」按鈕有字，不是只有圖示', async () => {
 	await setViewport(1440, 900);
@@ -619,7 +634,7 @@ const overflow = () =>
 const noOverflow = (o) => o.頁寬 <= o.畫面寬 && o.跑出去的.length === 0;
 /**
  * 手機的檢視畫面（#175）：上面場地、中間播放鈕、下面八拍表這一列（橫拿時場地在左），都在畫面裡；
- * 播放鈕和「我」整顆在畫面裡、中心點是它自己；上方列每顆按鈕點到的是它自己；沒有「編輯」開關。
+ * 播放鈕和「我」整顆在畫面裡、中心點是它自己；上方列每顆按鈕點到的是它自己；沒有「編輯｜檢視」切換。
  */
 const phoneView = () =>
 	js(`const view = document.querySelector('.phone-view');
@@ -631,7 +646,7 @@ const phoneView = () =>
 		const play = view.querySelector('.transport .play');
 		const row = box(view.querySelector('.now-eight'));
 		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#phone-me')), 八拍表這一列: row,
-			有編輯開關: !!document.querySelector('.topbar [role=switch]'), 畫面高: innerHeight };
+			有編輯開關: !!document.querySelector('.topbar .mode'), 畫面高: innerHeight };
 		// 直拿：場地在播放鈕上面；橫拿：場地在左邊
 		const f = view.querySelector('.phone-field svg.field').getBoundingClientRect(), p = play.getBoundingClientRect();
 		const inOrder = field.h >= 120 && (f.bottom <= p.top + 1 || f.right <= p.left + 1) && row.h > 0 && row.bottom <= innerHeight + 1;

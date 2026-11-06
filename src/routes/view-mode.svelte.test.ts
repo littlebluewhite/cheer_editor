@@ -1,4 +1,4 @@
-// 檢視模式（電腦，#174）：上方列的「編輯」開關關掉就只能看、只能播放；改流程的指令都擋下（不只藏按鈕），開回來又能改。
+// 檢視模式（電腦，#174）：上方列「編輯｜檢視」按「檢視」就只能看、只能播放；改流程的指令都擋下（不只藏按鈕），按回「編輯」又能改。
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { editorPage } from '#lib/test-fakes.js';
@@ -14,7 +14,9 @@ function setup() {
 	return session;
 }
 
-const editSwitch = () => screen.getByRole('switch', { name: '編輯' }) as HTMLInputElement;
+const editBtn = () => screen.getByRole('button', { name: '編輯' });
+const viewBtn = () => screen.getByRole('button', { name: '檢視' });
+const undoBtn = () => screen.getByRole('button', { name: '復原' }) as HTMLButtonElement;
 const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
 const playing = () => !!screen.queryByRole('button', { name: '暫停' });
 const nameBox = () => screen.getByLabelText('第 1 位隊員的名字') as HTMLInputElement;
@@ -26,14 +28,18 @@ async function drag(id: string) {
 }
 
 describe('檢視模式', () => {
-	it('預設是編輯；關掉「編輯」後拖人、Delete、⌘Z、改名都不改流程', async () => {
+	it('預設是編輯；按「檢視」後拖人、Delete、⌘Z、改名都不改流程', async () => {
 		const session = setup();
-		expect(editSwitch().checked).toBe(true);
+		expect(editBtn().getAttribute('aria-pressed')).toBe('true');
 		// 先改一次，⌘Z 才有東西可以退
 		await drag('m1');
 		expect(session.canUndo).toBe(true);
-		await fireEvent.click(editSwitch());
-		expect(editSwitch().checked).toBe(false);
+		await fireEvent.click(viewBtn());
+		expect(viewBtn().getAttribute('aria-pressed')).toBe('true');
+		expect(editBtn().getAttribute('aria-pressed')).toBe('false');
+		// 上方列換色、場地角落有標籤，一眼看得出是檢視模式
+		expect(document.querySelector('.topbar')!.classList.contains('viewing')).toBe(true);
+		expect(document.querySelector('.field-host')!.textContent).toContain('檢視模式・只能看');
 		const before = session.flow;
 		const where = dot('m2').getAttribute('transform');
 
@@ -49,8 +55,10 @@ describe('檢視模式', () => {
 
 		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
 		expect(session.flow).toBe(before);
-		// 復原、重做鈕藏起來
-		expect(screen.queryByRole('button', { name: '復原' })).toBeNull();
+		// 復原、重做、流程設定留在原地、變灰：換模式時按鈕不會跑
+		expect(undoBtn().disabled).toBe(true);
+		expect((screen.getByRole('button', { name: '重做' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByRole('button', { name: /設定/ }) as HTMLButtonElement).disabled).toBe(true);
 
 		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
 		await fireEvent.change(nameBox(), { target: { value: '美美' } });
@@ -60,19 +68,21 @@ describe('檢視模式', () => {
 
 	it('檢視模式下空白鍵照樣播放', async () => {
 		setup();
-		await fireEvent.click(editSwitch());
+		await fireEvent.click(viewBtn());
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(playing()).toBe(true);
 	});
 
-	it('開回「編輯」就能改', async () => {
+	it('按回「編輯」就能改', async () => {
 		const session = setup();
-		await fireEvent.click(editSwitch());
-		await fireEvent.click(editSwitch());
-		expect(editSwitch().checked).toBe(true);
+		await fireEvent.click(viewBtn());
+		await fireEvent.click(editBtn());
+		expect(editBtn().getAttribute('aria-pressed')).toBe('true');
+		expect(document.querySelector('.topbar')!.classList.contains('viewing')).toBe(false);
+		expect(document.querySelector('.field-host')!.textContent).not.toContain('檢視模式・只能看');
 		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
 		await fireEvent.change(nameBox(), { target: { value: '美美' } });
 		expect(session.flow!.members[0].name).toBe('美美');
-		expect(screen.getByRole('button', { name: '復原' })).toBeTruthy();
+		expect(undoBtn().disabled).toBe(false);
 	});
 });

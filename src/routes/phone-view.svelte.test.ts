@@ -51,10 +51,10 @@ describe('手機的檢視模式', () => {
 		expect(row().textContent).not.toContain('Lib');
 	});
 
-	it('一律是檢視模式：沒有「編輯」開關，也沒有復原、流程設定', async () => {
+	it('一律是檢視模式：沒有「編輯｜檢視」切換，也沒有復原、流程設定', async () => {
 		const { session } = await openOnPhone();
 		expect(session.viewing).toBe(true);
-		expect(screen.queryByRole('switch', { name: '編輯' })).toBeNull();
+		expect(screen.queryByRole('group', { name: '編輯｜檢視' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '復原' })).toBeNull();
 		expect(screen.queryByRole('button', { name: /設定/ })).toBeNull();
 	});

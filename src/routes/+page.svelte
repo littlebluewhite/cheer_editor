@@ -515,7 +515,8 @@
 		{#if view === 'edit' && !narrow}
 			<button type="button" class="skip" onclick={() => timelineHost?.focus()}>跳到時間軸</button>
 		{/if}
-		<header class="topbar">
+		<!-- 檢視模式時上方列換成紫色：整個畫面一看就知道現在只能看 -->
+		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow}>
 			<div class="title">
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
@@ -537,37 +538,40 @@
 
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
-				<!-- 窄螢幕一律是檢視模式，沒有「編輯」開關 -->
+				<!-- 窄螢幕一律是檢視模式，沒有「編輯｜檢視」切換 -->
 				{#if view === 'edit' && !narrow}
-					<!-- 關掉是檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
-					<label class="toggle" title="關掉是檢視模式：只能看、只能播放，不會不小心改到">
-						<input
-							type="checkbox"
-							role="switch"
-							checked={!session.viewing}
-							onchange={(e) => (session.viewing = !e.currentTarget.checked)}
-						/>編輯
-					</label>
-					{#if !session.viewing}
-						<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={!session.canUndo} onclick={undo}
-							><Icon name="undo" /><span class="narrow-hide">復原</span></button
+					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
+					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
+					<div class="mode" role="group" aria-label="編輯｜檢視">
+						<button type="button" aria-pressed={!session.viewing} onclick={() => (session.viewing = false)}
+							><Icon name="pencil" />編輯</button
 						>
 						<button
 							type="button"
-							class="ghost"
-							title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
-							disabled={!session.canRedo}
-							onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+							aria-pressed={session.viewing}
+							title="檢視模式：只能看、只能播放，不會不小心改到"
+							onclick={() => (session.viewing = true)}><Icon name="eye" />檢視</button
 						>
-					{/if}
+					</div>
+					<!-- 檢視時復原、重做不拿掉，只變灰：換模式時旁邊的按鈕不會跑 -->
+					<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={session.viewing || !session.canUndo} onclick={undo}
+						><Icon name="undo" /><span class="narrow-hide">復原</span></button
+					>
+					<button
+						type="button"
+						class="ghost"
+						title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
+						disabled={session.viewing || !session.canRedo}
+						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+					>
 					<span class="sep" aria-hidden="true"></span>
 				{/if}
 				<!-- 八拍表的字一直留著：使用說明都叫它「八拍表」，只有印表機圖示認不出來 -->
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" />八拍表</button
 				>
-				{#if view === 'edit' && !session.viewing}
-					<button type="button" class="ghost" title="流程設定" onclick={() => (settingsOpen = true)}
+				{#if view === 'edit' && !narrow}
+					<button type="button" class="ghost" title="流程設定" disabled={session.viewing} onclick={() => (settingsOpen = true)}
 						><Icon name="settings" /><span class="narrow-hide">流程</span>設定</button
 					>
 				{/if}
@@ -617,7 +621,11 @@
 				</main>
 			{/if}
 		{:else}
-			<main class="field-host" hidden={view === 'practice'} {@attach watchFieldHostH}>
+			<main class="field-host" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>
+				{#if session.viewing}
+					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
+					<div class="view-badge"><Icon name="eye" />檢視模式・只能看</div>
+				{/if}
 				<Field
 					field={flow.field}
 					members={flow.members}
@@ -1090,6 +1098,9 @@
 		background: var(--ink);
 		color: #e8ecf5;
 	}
+	.topbar.viewing {
+		background: #3b2a6b;
+	}
 	.title {
 		display: flex;
 		align-items: baseline;
@@ -1152,6 +1163,39 @@
 		background: #fff;
 		color: var(--ink);
 		font-weight: 700;
+	}
+	/* 編輯｜檢視：字的粗細兩格一樣，換模式時寬度不變、旁邊的按鈕不跑 */
+	.mode {
+		display: inline-flex;
+		padding: 2px;
+		border-radius: 999px;
+		background: #0c1426;
+		border: 1px solid #36425f;
+	}
+	.mode button {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 10px;
+		border: none;
+		border-radius: 999px;
+		background: none;
+		color: #8b99b8;
+		font-size: 13px;
+		font-weight: 600;
+	}
+	.mode button:hover {
+		color: #fff;
+	}
+	.mode button[aria-pressed='true'] {
+		background: #fff;
+		color: var(--ink);
+	}
+	/* 手指（橫拿的 iPad）：跟節拍器一樣至少 32px 高 */
+	@media (pointer: coarse) {
+		.mode button {
+			min-height: 32px;
+		}
 	}
 
 	.transport {
@@ -1459,6 +1503,26 @@
 		min-height: 0;
 		padding: 12px;
 	}
+	.field-host.viewing {
+		box-shadow: inset 0 0 0 4px #ffc53d;
+	}
+	.view-badge {
+		position: absolute;
+		top: 18px;
+		right: 22px;
+		z-index: 5;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: #ffc53d;
+		color: #2a1d00;
+		font-weight: 700;
+		font-size: 13px;
+		box-shadow: 0 2px 8px rgba(22, 33, 58, 0.15);
+		pointer-events: none;
+	}
 	.field-empty {
 		position: absolute;
 		left: 50%;
@@ -1751,8 +1815,8 @@
 	}
 
 	/* 窄一點的視窗：延遲校正只留「延遲」、輸入框和「毫秒」（滑過去看得到說明），不整個藏起來。
-	   上方列多了「編排｜練習」、播放區多了「重複」和速度，所以從 1700px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
-	@media (max-width: 1700px) {
+	   上方列多了「編排｜練習」、播放區多了「重複」和速度，右邊的「編輯｜檢視」兩格比一個開關寬，所以從 1800px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
+	@media (max-width: 1800px) {
 		.latency-text {
 			position: absolute;
 			width: 1px;
@@ -1780,8 +1844,8 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
-	   右邊多了「編輯」開關、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1570px 就換。 */
-	@media (max-width: 1570px) {
+	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1670px 就換。 */
+	@media (max-width: 1670px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
