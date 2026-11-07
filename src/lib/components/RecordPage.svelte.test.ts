@@ -125,19 +125,6 @@ describe('記錄頁', () => {
 		expect((card(who).getByRole('checkbox', { name: '下法' }) as HTMLInputElement).checked).toBe(true);
 		expect((card('第 2 組 小芳').getByRole('radio', { name: '整個' }) as HTMLInputElement).checked).toBe(true);
 	});
-
-	it('點到一半就換動作：這一次不存', async () => {
-		setup();
-		const who = '第 1 組 小美';
-		await tap(who, '上法', '成功');
-		await tap(who, '中段', '成功');
-		await pickAction('騰翻');
-		await pickAction('技巧·Lib');
-		expect(card(who).getByRole('button', { name: `${who} 上法 成功` }).getAttribute('aria-pressed')).toBe('false');
-		await tap(who, '下法', '成功');
-		await save(who);
-		expect(dayRow(who)).toEqual(['··✓']);
-	});
 });
 
 describe('記錄頁改某一次、刪掉某一次', () => {

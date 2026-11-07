@@ -2,10 +2,10 @@
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
 	// 每個環節三顆大按鈕 ✓ △ ✗；再按一次點著的那顆就取消。
 	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著，✗ 後面的按鈕停用）；
-	// 「全部 ✓ 存」一次存成每個環節都成功。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
+	// 「全部 ✓ 存」已點的照點的存，空著的補 ✓。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
 	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
-	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
+	// 點到一半的記號還沒進流程，跟「這次練」的選擇一樣留在 session：換動作、換頁再回來還在，卡上標「還沒存」。
 	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	import {
@@ -56,8 +56,11 @@
 	/** 只有一個環節就是整個做（選「整個／只練幾個環節」的地方不見了，之前選的不算）。 */
 	const whole = $derived(scope.whole || (action.successRate?.phases.length ?? 0) < 2);
 	const picked = $derived(scope.picked);
-	/** 這一次已經點的記號（還沒存）。 */
-	let marks = $state<Record<string, Mark>>({});
+	/** 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在。 */
+	const marks = $derived(session.drillMarks[scopeKey] ?? {});
+	function setMarks(next: Record<string, Mark>) {
+		session.drillMarks[scopeKey] = next;
+	}
 
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 這一次要練的環節，照順序。 */
@@ -81,12 +84,12 @@
 
 	function setWhole(value: boolean) {
 		session.drillScopes[scopeKey] = { whole: value, picked };
-		marks = {};
+		setMarks({});
 	}
 
 	function pick(id: string, on: boolean) {
 		session.drillScopes[scopeKey] = { whole, picked: on ? [...picked, id] : picked.filter((p) => p !== id) };
-		marks = {};
+		setMarks({});
 	}
 
 	/** 只練幾個環節時點那一列的空白處（不是勾選框、名字、能按的記號）：跟點勾選框一樣。 */
@@ -103,16 +106,16 @@
 		flash.clear();
 		if (shown[phaseId] === mark) {
 			const { [phaseId]: _, ...rest } = shown;
-			marks = rest;
+			setMarks(rest);
 			return;
 		}
-		marks = keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks;
+		setMarks(keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks);
 		if (phases.length === 1 || (!whole && (mark === '✗' || phaseId === planned.at(-1)?.id))) save();
 	}
 
 	/** 存這一次（留哪些記號、算不算整個做由核心決定）；給了 next 就存它，不看點了的。 */
 	function save(next = marks) {
-		marks = {};
+		setMarks({});
 		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
 			done: () => flash.show({ text: '已存' })
 		});
@@ -175,7 +178,7 @@
 <section class="card" aria-label={name}>
 	<header>
 		<div class="who">
-			<b>{name}</b>
+			<b>{name}{#if Object.keys(marks).length}<span class="unsaved">還沒存</span>{/if}</b>
 			{#if people}<small>{people.join('・')}</small>{/if}
 		</div>
 		<!-- 只有一個環節就沒得選，一定是整個做 -->
@@ -228,7 +231,7 @@
 			<button
 				type="button"
 				class="primary all-ok"
-				onclick={() => save(Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])))}>全部 ✓ 存</button
+				onclick={() => save({ ...Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])), ...shown })}>全部 ✓ 存</button
 			>
 		{/if}
 	</div>
@@ -317,6 +320,15 @@
 	}
 	header b {
 		font-size: 15px;
+	}
+	.unsaved {
+		margin-left: 6px;
+		padding: 0 5px;
+		border-radius: 4px;
+		background: var(--surface-2);
+		color: var(--minor);
+		font-size: 12px;
+		font-weight: 400;
 	}
 	.who small {
 		color: var(--muted);
