@@ -41,7 +41,7 @@ use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
 use crate::run_together::{Answer, Ask, Report, RunView, Runs, Who};
-use crate::sharing::{Role, VIEW_ONLY, role_of};
+use crate::sharing::{Role, VIEW_ONLY, no_access, role_of};
 
 /// 前一步被退回、還沒換成伺服器的樣子就送的步：退回的原因。
 const AFTER_SENT_BACK: &str = "沒存進去：前一步沒存進去，這一步也不算";
@@ -449,7 +449,7 @@ fn present_for(here: &[Here], me: i64) -> Vec<Present> {
     people
 }
 
-/// 連房間：別的網站叫的擋（403）、沒登入 401、不是我的或沒有這支 404。
+/// 連房間：別的網站叫的擋（403）、沒登入 401、不是我的或沒有這支 404、被擁有者刪了（刪的時候我有權限）410。
 pub async fn join(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -469,7 +469,7 @@ pub async fn join(
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     if role_of(&state.db, &id, user_id).await?.is_none() {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+        return Ok(no_access(&state.db, &id, user_id).await?.into_response());
     }
     Ok(ws.on_upgrade(move |socket| async move {
         let rooms = state.rooms.clone();

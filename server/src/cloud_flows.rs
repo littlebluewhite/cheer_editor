@@ -13,7 +13,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::accounts::{AppError, SignedIn, random_id, signed_in};
 use crate::records::{self, CloudRecord, Stored};
-use crate::sharing::{Role, role_of};
+use crate::sharing::{Role, no_access, role_of};
 
 /// 雲端流程的 id 幾個字（亂數）。
 const FLOW_ID_LEN: usize = 12;
@@ -51,6 +51,8 @@ pub struct MyFlows {
     pub mine: Vec<CloudFlowSummary>,
     /// 分享給我的，最近改的在前。
     pub shared: Vec<SharedFlowSummary>,
+    /// 被擁有者刪掉的（刪的時候我有權限，#252）：這台的離線副本說「被刪掉了」，不說被收回。
+    pub deleted: Vec<String>,
 }
 
 /// 打開一支雲端流程拿到的。
@@ -233,10 +235,21 @@ pub async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<R
             })
         })
         .collect();
-    Ok(Json(MyFlows { mine, shared }).into_response())
+    let deleted: Vec<(String,)> =
+        sqlx::query_as("SELECT flow_id FROM deleted_flows WHERE user_id = $1 ORDER BY flow_id")
+            .bind(user_id)
+            .fetch_all(&state.db)
+            .await?;
+    let deleted = deleted.into_iter().map(|(id,)| id).collect();
+    Ok(Json(MyFlows {
+        mine,
+        shared,
+        deleted,
+    })
+    .into_response())
 }
 
-/// 拿一支：編排、現在第幾步、我的權限。沒權限、沒有這支都回 404。
+/// 拿一支：編排、現在第幾步、我的權限。沒權限、沒有這支都回 404；被擁有者刪了（刪的時候我有權限）回 410。
 pub async fn get_one(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -246,7 +259,7 @@ pub async fn get_one(
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let Some(role) = role_of(&state.db, &id, user_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+        return Ok(no_access(&state.db, &id, user_id).await?.into_response());
     };
     let (content, step, at): (String, i64, DateTime<Utc>) =
         sqlx::query_as("SELECT content::text, step, updated_at FROM flows WHERE id = $1")

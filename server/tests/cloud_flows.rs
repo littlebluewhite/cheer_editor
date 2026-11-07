@@ -133,7 +133,7 @@ async fn create_list_and_get_my_flows(db: sqlx::PgPool) {
 
     let (status, list, _) = s.send("GET", "/api/flows", None, Some(&lin)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(list, json!({ "mine": [], "shared": [] }));
+    assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [] }));
 
     // 新建：伺服器用流程核心建（名字頭尾空白去掉），回這支的 id、名字、最後改的時間。
     let (status, made) = s.create(&lin, "  全國賽 ").await;
@@ -182,7 +182,7 @@ async fn flow_core_blocks_a_bad_new_flow(db: sqlx::PgPool) {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body, json!({ "message": "請幫流程取名字" }));
     let (_, list, _) = s.send("GET", "/api/flows", None, Some(&lin)).await;
-    assert_eq!(list, json!({ "mine": [], "shared": [] }));
+    assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [] }));
 }
 
 #[sqlx::test]
@@ -199,7 +199,7 @@ async fn others_cannot_get_or_list_my_flow(db: sqlx::PgPool) {
     let (status, _, _) = s.send("GET", "/api/flows/nope", None, Some(&lin)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (_, list, _) = s.send("GET", "/api/flows", None, Some(&wang)).await;
-    assert_eq!(list, json!({ "mine": [], "shared": [] }));
+    assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [] }));
 
     // 沒登入：401。
     let (status, _, _) = s.send("GET", &path, None, None).await;

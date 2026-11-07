@@ -142,7 +142,7 @@
 				const ids = [...list.mine, ...list.shared].map((c) => c.id);
 				void offline.saveSignedInHere({ me, cloudIds: ids });
 				// 被收回、被刪掉的：這台的離線副本刪掉（還沒傳的先擋住列出來，#260）
-				await editor.file.dropGoneCopies(ids);
+				await editor.file.dropGoneCopies(ids, list.deleted);
 				await readLocal();
 			},
 			() => {
@@ -1277,14 +1277,17 @@
 	{/if}
 {/if}
 {#if editor.file.lost}
-	{@const rows = editor.file.lost}
-	{@const message = `擁有者收回了你的權限，這 ${rows.length} 筆沒存進去`}
+	{@const { rows, deleted } = editor.file.lost}
+	{@const message =
+		deleted === undefined ? `擁有者收回了你的權限，這 ${rows.length} 筆沒存進去` : `「${deleted}」被擁有者刪掉了，這 ${rows.length} 筆沒存進去`}
 	<!-- 被收回時還有沒傳的（#260）：擋住畫面，按「知道了」才丟掉、回首頁。首頁連上網路才發現被收回的（#261）也是這個框 -->
 	<Modal label={message} class="dialog lost-box" onclose={() => {}}>
 		{#snippet children()}
 			<div class="lost">
 				<h2>{message}</h2>
-				<p>你斷線時記的，傳上去時已經沒有權限了。這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。</p>
+				<p>
+					你斷線時記的，傳上去時{deleted === undefined ? '已經沒有權限了' : '這支流程已經刪掉了'}。這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。
+				</p>
 				<table>
 					<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
 					<tbody>

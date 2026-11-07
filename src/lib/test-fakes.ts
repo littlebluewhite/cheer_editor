@@ -696,8 +696,12 @@ export function fakeServer(
 		}
 		return moved.length;
 	};
+	/** 被刪掉的流程 → 刪的時候有權限的人（之後打開、連房間說被刪了，不說被收回）。 */
+	const deletedFor = new Map<string, string[]>();
 	/** 刪掉一支，告訴開著的房間。 */
 	const deleteFlow = (flowId: string) => {
+		const f = state.flows.find((g) => g.id === flowId);
+		if (f) deletedFor.set(flowId, [f.owner, ...Object.keys(f.people ?? {})]);
 		state.flows = state.flows.filter((f) => f.id !== flowId);
 		for (const r of rooms.filter((r) => r.flowId === flowId)) deliver(r.room, () => ({ kind: 'deleted' }));
 	};
@@ -838,7 +842,8 @@ export function fakeServer(
 					const owner = find(f.owner)!;
 					const role = roleOf(f, email)!;
 					return { id: f.id, name: f.flow.name, updatedAt: f.updatedAt, ownerName: owner.name, ownerDisabled: !!owner.disabled, role };
-				})
+				}),
+				deleted: [...deletedFor].filter(([, emails]) => emails.some((e) => same(e, email))).map(([id]) => id)
 			};
 		},
 		async createFlow(input) {
@@ -948,7 +953,13 @@ export function fakeServer(
 				send(request) {
 					const f = state.flows.find((g) => g.id === flowId);
 					const role = f && roleOf(f, email);
-					if (!f || down.has(room)) return;
+					if (down.has(room)) return;
+					// 連上時流程已經被刪了：刪的時候有權限的說被刪了，不然當作被收回
+					if (!f) {
+						const deleted = deletedFor.get(flowId)?.some((e) => same(e, email));
+						if (request.kind === 'hello') deliver(room, () => ({ kind: deleted ? 'deleted' : 'revoked' }));
+						return;
+					}
 					if (!role) return deliver(room, () => ({ kind: 'revoked' }));
 					const editor = role === 'owner' || role === 'editor';
 					if (request.kind === 'hello') {

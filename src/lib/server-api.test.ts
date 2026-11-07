@@ -1,4 +1,5 @@
-// 連伺服器的 adapter（真的，fetch 換成假的）：傳上雲端的流程太大（伺服器收 16 MB 以下）。
+// 連伺服器的 adapter（真的，fetch、WebSocket 換成假的）：傳上雲端的流程太大（伺服器收 16 MB 以下）；
+// 房間連不上時分得出被收回、被刪掉（不一直重連）。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FORMAT_VERSION, type Flow } from '#lib/core';
 import { FLOW_TOO_BIG, httpServer } from '#lib/server-api.js';
@@ -23,5 +24,55 @@ describe('傳上雲端：流程太大', () => {
 		vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 413 })));
 		const made = await httpServer().uploadFlow(flowOfSize(10));
 		expect(made).toEqual({ message: FLOW_TOO_BIG });
+	});
+});
+
+describe('房間連不上：被收回、被刪掉', () => {
+	/** 連房間的 WebSocket 都被伺服器拒絕（馬上關掉）；回開過幾次。 */
+	function refusedRoom(flowStatus: number) {
+		let opened = 0;
+		class Refused {
+			onopen: (() => void) | null = null;
+			onmessage: (() => void) | null = null;
+			onclose: (() => void) | null = null;
+			constructor() {
+				opened++;
+				queueMicrotask(() => this.onclose?.());
+			}
+			close() {}
+		}
+		vi.stubGlobal('WebSocket', Refused);
+		vi.stubGlobal('location', { href: 'https://cheer.example/' });
+		vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} });
+		vi.stubGlobal('navigator', { onLine: true });
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => new Response('{}', { status: url.endsWith('/api/me') ? 200 : flowStatus }))
+		);
+		return { opened: () => opened };
+	}
+
+	for (const [status, kind] of [
+		[410, 'deleted'],
+		[404, 'revoked']
+	] as const) {
+		it(`流程 ${status}：說 ${kind}，不再重連`, async () => {
+			vi.useFakeTimers();
+			const ws = refusedRoom(status);
+			const room = httpServer().openRoom('c1');
+			const heard: unknown[] = [];
+			room.onmessage = (m) => heard.push(m);
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(heard).toEqual([{ kind }]);
+			expect(ws.opened()).toBe(1);
+			vi.useRealTimers();
+		});
+	}
+});
+
+describe('拿一支雲端流程', () => {
+	it('被擁有者刪了（410）：跟打不開一樣是 null，不說連不上', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 410 })));
+		expect(await httpServer().cloudFlow('c1')).toBeNull();
 	});
 });

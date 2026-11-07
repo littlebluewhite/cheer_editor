@@ -291,7 +291,8 @@ describe('登出、被收回、被刪掉', () => {
 		render(Page, editorPage(null, { server: s.server, offline: s.offline.store }).props);
 		await settle();
 		expect(s.offline.copyIds()).toEqual([]);
-		expect(screen.getByRole('alert').textContent).toContain('你已經不能打開「流程1」。你已經不能打開「王教練的流程」。這台留著的那份也刪掉了。');
+		// 被刪掉的說被刪掉，不說被收回
+		expect(screen.getByRole('alert').textContent).toContain('「流程1」被擁有者刪掉了。你已經不能打開「王教練的流程」。這台留著的那份也刪掉了。');
 	});
 
 	it('被收回的那支這台還有沒傳的：先擋住列出來，按「知道了」才刪', async () => {
