@@ -2188,6 +2188,35 @@ await check('走位條兩端的把手：觸控（1024×768）時每個點得到�
 	};
 });
 
+// ---------- 選人工具列（#222） ----------
+
+await check('1440×900 選到人：工具列浮在場地正上方，場地不跳；按「鏡像」後的提示排在工具列下面，不蓋住它', async () => {
+	await setViewport(1440, 900);
+	// 小美站在中線上：鏡像一定跳提示（位置都沒變）
+	await openPracticeFlow();
+	const fieldAt = () => js(`return ['.field-host svg.field', '.field-host .mat'].map((s) => {
+		const r = document.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); });`);
+	const before = await fieldAt();
+	const d = await rectOf('.field-host [data-member-id="m1"]');
+	await click(d.x, d.y);
+	const bar = await js(`const b = document.querySelector('.field-host [role="toolbar"]');
+		if (!b) return null;
+		const r = b.getBoundingClientRect(), s = document.querySelector('.field-host .stage').getBoundingClientRect();
+		return { 上: Math.round(r.top - s.top), 下緣: Math.round(r.bottom), 置中差: Math.round((r.left + r.right) / 2 - (s.left + s.right) / 2) };`);
+	const shown = await fieldAt();
+	await js(`[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '鏡像').click()`);
+	await sleep(300);
+	const toast = await js(`const t = [...document.querySelectorAll('.field-toasts > *')].find((e) => e.getClientRects().length);
+		return t ? Math.round(t.getBoundingClientRect().top) : null;`);
+	await press('Escape');
+	const hidden = { 工具列: await js(`return !!document.querySelector('.field-host [role="toolbar"]')`), 場地: await fieldAt() };
+	const same = [shown, hidden.場地].every((v) => String(v) === String(before));
+	return {
+		ok: !!bar && bar.上 >= 0 && bar.上 <= 8 && Math.abs(bar.置中差) <= 1 && same && toast !== null && toast >= bar.下緣 && !hidden.工具列,
+		value: { 之前: before, 工具列出現: { 場地: shown, 工具列: bar }, 提示上緣: toast, 收起: hidden }
+	};
+});
+
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);

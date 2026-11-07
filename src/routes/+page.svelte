@@ -1742,7 +1742,8 @@
 	/* 場地上的確認框和提示：從上方往下排，不蓋到下面的「正面／裁判」和正面場外的人。 */
 	.field-toasts {
 		position: absolute;
-		top: 14px;
+		/* 選人工具列出現時（--tools-h，Field 給）排在它下面 */
+		top: calc(14px + var(--tools-h, 0px));
 		left: 16px;
 		right: 16px;
 		z-index: 10;
