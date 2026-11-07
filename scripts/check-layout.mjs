@@ -670,7 +670,7 @@ await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編�
 	return { ok: bad.length === 0, value: bad };
 });
 
-await check('首頁有 5 支最近的流程（名字很長）：1440×900、390×844 照樣有（捲過去）點得到的「建立」和「開啟流程檔」，「丟掉」離打開的按鈕遠一點，不溢出', async () => {
+await check('首頁有 5 支最近的流程（名字很長）：1440×900 照樣有（捲過去）點得到的「建立」和「開啟流程檔」；390×844 沒有「建立」，「開啟流程檔」整欄寬、在第一個畫面裡；「丟掉」離打開的按鈕遠一點，不溢出', async () => {
 	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte`));
 	// 直接在 IndexedDB 放 5 份草稿（跟 src/lib/file/draft.ts 存的一樣），重新整理
@@ -697,10 +697,17 @@ await check('首頁有 5 支最近的流程（名字很長）：1440×900、390�
 			const create = [...document.querySelectorAll('.home button')].find((b) => b.textContent.trim() === '建立');
 			const li = document.querySelector('.recent li');
 			const gap = li ? li.querySelector('.recent-drop').getBoundingClientRect().left - li.querySelector('.recent-open').getBoundingClientRect().right : -1;
-			return { 寬: ${w}, 建立: seen(create), 開啟流程檔: seen(document.querySelector('.home-open label.open')),
+			const open = document.querySelector('.home-open label.open');
+			const openBox = open.getBoundingClientRect();
+			const column = document.querySelector('.start').getBoundingClientRect();
+			// 窄的時候：開啟流程檔不用捲就看得到（先看位置，seen 會捲過去）、跟整欄一樣寬
+			const openFirstScreen = openBox.bottom <= innerHeight;
+			return { 寬: ${w}, 建立: create ? seen(create) : '沒有', 開啟流程檔: seen(open),
+				開啟在第一個畫面: openFirstScreen, 開啟整欄寬: openBox.width >= column.width - 2,
 				最近的流程: document.querySelectorAll('.recent li').length, 丟掉離打開: Math.round(gap),
 				溢出: document.scrollingElement.scrollWidth > innerWidth ? [...document.querySelectorAll('.home *')].filter((el) => el.getBoundingClientRect().right > innerWidth + 1).map((el) => el.outerHTML.slice(0, 50)).slice(0, 4) : false };`);
-		if (r.建立 !== '好' || r.開啟流程檔 !== '好' || r.最近的流程 !== 5 || r.丟掉離打開 < 12 || r.溢出) bad.push(r);
+		const narrowOk = w < 1024 ? r.建立 === '沒有' && r.開啟在第一個畫面 && r.開啟整欄寬 : r.建立 === '好';
+		if (!narrowOk || r.開啟流程檔 !== '好' || r.最近的流程 !== 5 || r.丟掉離打開 < 12 || r.溢出) bad.push(r);
 	}
 	await js(`await new Promise((r) => { const q = indexedDB.deleteDatabase('cheer-editor'); q.onsuccess = q.onerror = q.onblocked = r; });`);
 	return { ok: bad.length === 0, value: bad };

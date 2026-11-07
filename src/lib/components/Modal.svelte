@@ -29,10 +29,12 @@
 		ask?: Ask;
 		/** false：沒有背景那一層（八拍表自己蓋滿畫面）。 */
 		backdrop?: boolean;
+		/** 關之前再送出對話框自己的東西（例：流程設定還沒按「調整場地」的場地）；回 false 就先不關。 */
+		beforeclose?: () => boolean;
 		children: Snippet<[close: () => void]>;
 	}
 
-	let { label, class: cls, onclose, ask, backdrop = true, children }: Props = $props();
+	let { label, class: cls, onclose, ask, backdrop = true, beforeclose, children }: Props = $props();
 
 	/** 沒送出的字：編輯頁用編輯器 module 的；沒有編輯器的地方（八拍表單獨畫）直接看焦點所在的欄位。 */
 	const pendingInput = hasEditor() ? getEditor().adapters.pendingInput : domPendingInput;
@@ -68,6 +70,7 @@
 		if (ask?.question) ask.answer('cancel');
 		pendingInput.flush();
 		if (ask && ask.failures !== failuresAtGesture) return;
+		if (beforeclose && !beforeclose()) return;
 		onclose();
 	}
 

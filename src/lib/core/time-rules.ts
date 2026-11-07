@@ -37,10 +37,11 @@ export function updateTimeRules(flow: Flow, patch: Partial<TimeRules>): CommandR
 	return ok({ ...flow, timeRules });
 }
 
-/** 一條規則警告：小標題和內容。 */
+/** 一條規則警告：小標題、內容、是哪一個數字的規則（點警告時帶到那一格）。 */
 export interface TimeRuleWarning {
 	title: string;
 	text: string;
+	rule: 'minChantSec' | 'maxMusicSec' | 'maxTotalSec';
 }
 
 /** 左邊欄的規則警告，一條一個；關掉時、還沒有任何段時是空的。還沒有口號段時寫法中性（不說「少於」）。 */
@@ -56,15 +57,15 @@ export function timeRuleWarnings(flow: Flow): TimeRuleWarning[] {
 	const total = chant + music;
 	const warnings: TimeRuleWarning[] = [];
 	if (!flow.segments.some((s) => s.kind === 'chant')) {
-		warnings.push({ title: '還沒有口號段', text: `口號段加起來最少要 ${rules.minChantSec} 秒` });
+		warnings.push({ title: '還沒有口號段', text: `口號段加起來最少要 ${rules.minChantSec} 秒`, rule: 'minChantSec' });
 	} else if (chant < rules.minChantSec - EPS) {
-		warnings.push({ title: '口號段太短', text: `口號段共 ${chant.toFixed(1)} 秒，少於 ${rules.minChantSec} 秒` });
+		warnings.push({ title: '口號段太短', text: `口號段共 ${chant.toFixed(1)} 秒，少於 ${rules.minChantSec} 秒`, rule: 'minChantSec' });
 	}
 	if (music > rules.maxMusicSec + EPS) {
-		warnings.push({ title: '音樂段太長', text: `音樂段共 ${music.toFixed(1)} 秒，超過 ${rules.maxMusicSec} 秒` });
+		warnings.push({ title: '音樂段太長', text: `音樂段共 ${music.toFixed(1)} 秒，超過 ${rules.maxMusicSec} 秒`, rule: 'maxMusicSec' });
 	}
 	if (total > rules.maxTotalSec + EPS) {
-		warnings.push({ title: '整支流程太長', text: `整支流程共 ${total.toFixed(1)} 秒，超過 ${rules.maxTotalSec} 秒` });
+		warnings.push({ title: '整支流程太長', text: `整支流程共 ${total.toFixed(1)} 秒，超過 ${rules.maxTotalSec} 秒`, rule: 'maxTotalSec' });
 	}
 	return warnings;
 }
