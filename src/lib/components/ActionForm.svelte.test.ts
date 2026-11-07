@@ -592,3 +592,11 @@ describe('動作表單：改人會動到紀錄時（真的 session，好幾步�
 		expect(records(session.flow!)).toHaveLength(1);
 	});
 });
+
+describe('新動作表單：移出最後一個人', () => {
+	it('選一個人打開表單，把他移出：不出錯，表單收起來，焦點到「＋ 新動作」', async () => {
+		setup(sample(), null, 0, ['m1']);
+		await fireEvent.click(screen.getByRole('button', { name: '把 小A 移出這個動作' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '＋ 新動作' }));
+	});
+});

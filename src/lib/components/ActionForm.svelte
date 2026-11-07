@@ -230,8 +230,10 @@
 		draft.removeMember(i);
 		changed('people');
 		flushSync();
-		const xs = formEl!.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
-		(xs[i] ?? xs[i - 1] ?? formEl!.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
+		// 新動作移出最後一個人，表單收起來了：給「＋ 新動作」
+		if (!formEl) return expandEl?.focus();
+		const xs = formEl.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
+		(xs[i] ?? xs[i - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
 	}
 
 	/**
