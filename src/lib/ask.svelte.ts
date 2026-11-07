@@ -32,12 +32,14 @@ export interface Question {
 }
 
 /** 送指令時可以給的事：成功之後再做什麼、怎麼還原畫面（被擋、取消時）、只在按取消時做什麼、
- *  是哪一格送的（給了就把原因記在那一格，留到改了那一格或有指令成功為止）。 */
+ *  是哪一格送的（給了就把原因記在那一格，留到改了那一格或有指令成功為止）、
+ *  用哪個步驟 id（要先知道新東西的 id 的人自己發，例：音樂檔庫先算好音樂檔的 id 才傳上雲端；沒給就發一個新的）。 */
 export interface Handlers<R extends CommandResult> {
 	done?: (r: Extract<R, { kind: 'ok' }>) => void;
 	revert?: () => void;
 	cancel?: () => void;
 	field?: string;
+	stepId?: string;
 }
 
 /** 成功的一步送了什麼：步驟 id、一串指令（帶著教練的回答）。雲端流程把它送給伺服器（#248）。 */
@@ -104,7 +106,7 @@ export class Ask {
 	send<N extends CommandName>(command: Command<N>, handlers?: Handlers<CommandOutcome<N>>): CommandOutcome<N>;
 	send(commands: Command[], handlers?: Handlers<CommandResult>): CommandResult;
 	send(what: object, handlers: Handlers<never> = {}): unknown {
-		const send = this.#byName(what as Command | Command[]);
+		const send = this.#byName(what as Command | Command[], handlers.stepId);
 		const r = this.#run(send, {});
 		this.#settle(r, send, handlers as Handlers<CommandResult>);
 		return r;
@@ -122,11 +124,10 @@ export class Ask {
 	 * 每次都跑在那時候的流程上。要問時記下是第幾個指令問的，
 	 * 回答放進那個指令的 options（前面回答過的留著），整串再送一次。整串是同一步，用同一個步驟 id。
 	 */
-	#byName(what: Command | Command[]): Sender {
+	#byName(what: Command | Command[], stepId = newStepId()): Sender {
 		const single = !Array.isArray(what);
 		let commands = single ? [what] : what;
 		let asking = -1;
-		const stepId = newStepId();
 		const send: Sender = (o) => {
 			if (asking >= 0) commands = commands.map((c, i) => (i === asking ? { ...c, options: o } : c));
 			const flow = this.#flow();
@@ -193,6 +194,6 @@ export class Ask {
 }
 
 /** 一步的步驟 id：12 個字的亂數（小寫字母、數字）。一步裡新東西的 id 由它算出來（ADR 0011）。 */
-function newStepId(): string {
+export function newStepId(): string {
 	return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
 }

@@ -9,6 +9,7 @@ pub mod flow_core;
 pub mod flow_room;
 pub mod lockout;
 pub mod mail;
+pub mod music;
 pub mod my_account;
 pub mod sharing;
 
@@ -24,6 +25,7 @@ use crate::breach::BreachCheck;
 use crate::clock::Clock;
 use crate::flow_core::FlowCore;
 use crate::mail::Mailer;
+use crate::music::MusicStore;
 use crate::my_account::MailLimit;
 
 /// 前端建置時另外產生的入口頁（`vite.config.ts` 裡 adapter 的 `fallback`）。
@@ -47,6 +49,8 @@ pub struct AppState {
     pub mail_limit: MailLimit,
     /// 開著的雲端流程房間：權限改了告訴他們（#250）。
     pub rooms: flow_room::Rooms,
+    /// 放雲端流程音樂檔的 R2；沒設定時（本機開發沒填）放音樂的 API 回 503。
+    pub music: Option<MusicStore>,
 }
 
 /// 整個網站：API 和前端建好的檔案（`site`）在同一個網址（ADR 0009）。
@@ -87,6 +91,12 @@ pub fn app(state: AppState, site: &Path) -> Router {
             post(sharing::revoke),
         )
         .route("/api/flows/{id}/leave", post(sharing::leave))
+        .route("/api/flows/{id}/audio", post(music::start_upload))
+        .route("/api/flows/{id}/audio/{audio_id}", get(music::download))
+        .route(
+            "/api/flows/{id}/audio/{audio_id}/done",
+            post(music::finish_upload),
+        )
         .route("/api/forgot-password", post(my_account::forgot_password))
         .route("/api/account/name", post(my_account::change_name))
         .route("/api/account/password", post(my_account::change_password))

@@ -12,9 +12,11 @@ import type { Role } from '#lib/api-types/Role.js';
 import type { ShareProblem } from '#lib/api-types/ShareProblem.js';
 import type { SharedFlowSummary } from '#lib/api-types/SharedFlowSummary.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
+import type { Presigned } from '#lib/api-types/Presigned.js';
 import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
 import type { RoomRequest } from '#lib/api-types/RoomRequest.js';
 import type { SignedOut } from '#lib/api-types/SignedOut.js';
+import type { StartUpload } from '#lib/api-types/StartUpload.js';
 import type { TooManyTries } from '#lib/api-types/TooManyTries.js';
 import type { AdminProblem } from '#lib/api-types/AdminProblem.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
@@ -119,6 +121,13 @@ export interface ServerAdapter {
 	leave(flowId: string): Promise<void>;
 	/** 連一支雲端流程的房間（#248）：先送打招呼（指紋、分頁 id、上次看到第幾步），再一步一步送。 */
 	openRoom(flowId: string): FlowRoom;
+	/**
+	 * 把一個音樂檔傳上雲端（#249）：伺服器查權限、發預簽網址，瀏覽器直接傳到 R2，傳完伺服器查大小。
+	 * audioId 是流程裡這個音樂檔的 id。伺服器說太大（超過 60 MB）是 'tooBig'；其他做不成丟 ServerUnreachable。
+	 */
+	uploadAudio(flowId: string, audioId: string, file: File): Promise<'ok' | 'tooBig'>;
+	/** 從雲端拿一個音樂檔（拿下載的預簽網址，再從 R2 拿）；雲端上沒有是 null。 */
+	audioBytes(flowId: string, audioId: string): Promise<Uint8Array | null>;
 
 	/** 忘記密碼：寄設密碼信。有沒有這個帳號都一樣（伺服器不說）。 */
 	forgotPassword(email: string): Promise<void>;
@@ -284,6 +293,38 @@ export function httpServer(base = ''): ServerAdapter {
 			};
 			socket.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
 			return room;
+		},
+		async uploadAudio(flowId, audioId, file) {
+			const flow = `flows/${encodeURIComponent(flowId)}/audio`;
+			const ask: StartUpload = { audioId, fileName: file.name, size: file.size };
+			const start = await post(flow, ask);
+			if (start.status === 413) return 'tooBig';
+			if (!start.ok) throw new ServerUnreachable();
+			const { url } = (await start.json()) as Presigned;
+			try {
+				const put = await fetch(url, { method: 'PUT', body: file });
+				if (!put.ok) throw new ServerUnreachable();
+			} catch {
+				throw new ServerUnreachable();
+			}
+			const done = await post(`${flow}/${encodeURIComponent(audioId)}/done`, {});
+			if (done.status === 413) return 'tooBig';
+			if (!done.ok) throw new ServerUnreachable();
+			return 'ok';
+		},
+		async audioBytes(flowId, audioId) {
+			const res = await get(`flows/${encodeURIComponent(flowId)}/audio/${encodeURIComponent(audioId)}`);
+			if (res.status === 404) return null;
+			if (!res.ok) throw new ServerUnreachable();
+			const { url } = (await res.json()) as Presigned;
+			try {
+				// 從 R2 拿（別的網址）：R2 bucket 的 CORS 要准這個網站（docs/deploy.md）。
+				const file = await fetch(url, { mode: 'cors' });
+				if (!file.ok) throw new ServerUnreachable();
+				return new Uint8Array(await file.arrayBuffer());
+			} catch {
+				throw new ServerUnreachable();
+			}
 		},
 		async forgotPassword(email) {
 			const res = await post('forgot-password', { email });

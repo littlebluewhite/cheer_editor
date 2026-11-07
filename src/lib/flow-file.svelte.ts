@@ -6,7 +6,7 @@
 // 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247），
 // 每一步送伺服器存（cloud，#248），沒有存檔。
 
-import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type AudioBytes, type Flow } from '#lib/core';
 import { CloudSteps } from '#lib/cloud-steps.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
@@ -276,7 +276,10 @@ export class FlowFile {
 			this.#openError = '這支流程打不開了';
 			return;
 		}
-		this.#start(found.flow as Flow, 'cloud', newDraftId());
+		const flow = found.flow as Flow;
+		const music = await this.#editor.readMusic(await this.#cloudAudio(id, flow));
+		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
+		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
 		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
 		cloud.onrevoked = () => {
@@ -312,6 +315,18 @@ export class FlowFile {
 			throw e;
 		}
 		if (this.#cloudId === id) this.#editor.session.open(null);
+	}
+
+	/** 雲端流程用到的音樂檔，從雲端拿下來（#249）。雲端上沒有、拿不到的不放：那段標「找不到音樂」。 */
+	async #cloudAudio(id: string, flow: Flow): Promise<AudioBytes> {
+		const audio: AudioBytes = {};
+		await Promise.all(
+			flow.audio.map(async (a) => {
+				const bytes = await this.#editor.adapters.server.audioBytes(id, a.id).catch(() => null);
+				if (bytes) audio[a.id] = bytes;
+			})
+		);
+		return audio;
 	}
 
 	/** 上方列「新建」：回到新建流程的畫面。 */

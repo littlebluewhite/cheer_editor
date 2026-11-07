@@ -46,6 +46,7 @@ impl Server {
             core: cheer_server::flow_core::FlowCore::start().unwrap(),
             mail_limit: Default::default(),
             rooms: Default::default(),
+            music: None,
         };
         let site = tempfile::tempdir().unwrap();
         std::fs::write(site.path().join("200.html"), "spa entry").unwrap();

@@ -5,6 +5,7 @@ use cheer_server::clock::Clock;
 use cheer_server::config::Config;
 use cheer_server::flow_core::FlowCore;
 use cheer_server::mail::Mailer;
+use cheer_server::music::MusicStore;
 use tracing_subscriber::EnvFilter;
 
 const USAGE: &str = "用法：
@@ -51,6 +52,13 @@ async fn main() -> anyhow::Result<()> {
         core: FlowCore::start().context("流程核心載入失敗")?,
         mail_limit: Default::default(),
         rooms: Default::default(),
+        music: match config.r2 {
+            Some(r2) => Some(
+                MusicStore::new(r2.endpoint, &r2.bucket, &r2.access_key, &r2.secret)
+                    .context("R2 的設定不對")?,
+            ),
+            None => None,
+        },
     };
 
     if let Some((email, name)) = command {

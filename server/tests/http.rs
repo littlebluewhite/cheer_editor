@@ -21,6 +21,7 @@ fn unreachable_pool() -> cheer_server::AppState {
         core: cheer_server::flow_core::FlowCore::start().unwrap(),
         mail_limit: Default::default(),
         rooms: Default::default(),
+        music: None,
     }
 }
 
