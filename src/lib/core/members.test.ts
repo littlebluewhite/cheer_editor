@@ -111,16 +111,40 @@ describe('加隊員', () => {
 		}
 	});
 
-	it('後面的站位沒有新人的位置：用開頭那張的同一個位置', () => {
-		const before = okFlow(addMembers(newFlow(), [xiaoA]));
-		const twoFormations = {
-			...before,
-			formations: [...before.formations, { ...before.formations[0], id: 'f2', at: 8, pos: { m1: [3, 3] as [number, number] } }]
-		};
-		const flow = okFlow(addMembers(twoFormations, [xiaoA]));
-		const id = flow.members[1].id;
-		expect(flow.formations[1].pos[id]).toEqual(flow.formations[0].pos[id]);
-		expect(flow.formations[1].pos.m1).toEqual([3, 3]);
+	/** 這張站位裡有沒有兩個人疊到（中心距離不到半格）。 */
+	function piledUp(pos: Record<string, [number, number]>): boolean {
+		const ps = Object.values(pos);
+		return ps.some((a, i) => ps.slice(i + 1).some((b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < C / 2 - 1e-6));
+	}
+
+	/** 開頭那張和第二張站位的人站在不同地方：第二張的人剛好站在開頭那張的空格點上。 */
+	function twoFormations(count: number): Flow {
+		const before = okFlow(addMembers(newFlow(), Array(count).fill(xiaoA)));
+		const f1 = before.formations[0];
+		const pos: Record<string, [number, number]> = {};
+		before.members.forEach((m, i) => (pos[m.id] = [-f1.pos[m.id][0], -f1.pos[m.id][1] + (i === 0 ? C : 0)]));
+		return { ...before, formations: [f1, { ...f1, id: 'f2', at: 8, pos }] };
+	}
+
+	it('有好幾張站位時加 8 人：每一張站位各找各的空位，沒有兩人站同一點', () => {
+		const start = twoFormations(1);
+		expect(start.formations[1].pos.m1).toEqual([expect.closeTo(0, 6), expect.closeTo(C, 6)]);
+		const flow = okFlow(addMembers(start, Array(8).fill(xiaoA)));
+		for (const f of flow.formations) {
+			expect(Object.keys(f.pos)).toHaveLength(9);
+			expect(piledUp(f.pos)).toBe(false);
+		}
+		expect(flow.formations[1].pos.m1).toEqual(start.formations[1].pos.m1);
+	});
+
+	it('一次加 37 人：原本 3 人在每一張站位都沒被蓋住', () => {
+		const start = twoFormations(3);
+		const flow = okFlow(addMembers(start, Array(37).fill(xiaoA)));
+		for (const [i, f] of flow.formations.entries()) {
+			expect(Object.keys(f.pos)).toHaveLength(40);
+			expect(piledUp(f.pos)).toBe(false);
+			for (const id of ['m1', 'm2', 'm3']) expect(f.pos[id]).toEqual(start.formations[i].pos[id]);
+		}
 	});
 
 	it('格點都有人了才排場外：1 條直放只有 7 格，第 8 個人起在正面外從左到右排成一列', () => {
