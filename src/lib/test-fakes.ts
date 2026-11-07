@@ -11,7 +11,9 @@ import {
 	createFlow,
 	loadSegmentAudio,
 	addPhase,
+	checkFlowDocument,
 	checkRecord,
+	flowProblem,
 	putRecords,
 	recordAttempt,
 	remoteChange,
@@ -183,6 +185,7 @@ export interface FakeCloudFlow {
  * 分享連結（#251）照真的規則：只有擁有者能開、關（關掉再打開是新的一條），有權限的人看得到；用連結打開不用登入、
  * 拿不到紀錄，已經有權限的帶自己的權限。
  * 音樂檔（#249）放在那支流程的 audio：超過 60 MB 不收（'tooBig'）；audioTooBig 設成 true 就是伺服器傳完才查到太大。
+ * 傳上雲端（#259）照真的規則：檢查一整支流程、整份流程檢查，過了建一支新的（登入的人是擁有者），紀錄拆出來、沒有記的人。
  * 別人的改動、誰開著（#253）照真的規則：收了一步就把改好的東西送給同一支流程其他開著的房間；有人進來、離開、換模式就說在場名單
  * （自己不列，同一個人只列一次）。joinAs(flowId, email, editing)：別人（在別的地方）打開這支流程，回他的房間，可以送步、換模式。
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
@@ -607,6 +610,17 @@ export function fakeServer(
 			const r = createFlow(input);
 			if (r.kind !== 'ok') throw new Error(r.kind === 'blocked' ? r.message : r.kind);
 			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow: r.flow, updatedAt: new Date().toISOString() };
+			state.flows.push(made);
+			return { id: made.id, name: made.flow.name, updatedAt: made.updatedAt };
+		},
+		async uploadFlow(doc) {
+			mine();
+			const checked = checkFlowDocument(structuredClone(doc));
+			if (checked.kind === 'error') return { message: checked.message };
+			const problem = flowProblem(checked.flow);
+			if (problem) return { message: problem };
+			const { flow, records } = takeRecords(checked.flow);
+			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow, updatedAt: new Date().toISOString(), records };
 			state.flows.push(made);
 			return { id: made.id, name: made.flow.name, updatedAt: made.updatedAt };
 		},

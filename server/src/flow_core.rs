@@ -173,6 +173,20 @@ impl FlowCore {
         async move { result.await? }
     }
 
+    /// 傳上雲端（`uploadFlowJson`，#259）：doc 是流程檔裡 flow.json 的內容。跑「檢查一整支流程」和「整份流程檢查」，
+    /// 回結果的 JSON：不收帶原因；收了帶不帶紀錄的編排和拿出來的紀錄（StoredAttempt[]）。
+    pub fn upload_flow(
+        &self,
+        doc: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            call(ctx, "uploadFlowJson", (doc,))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
+
     fn call_two(
         &self,
         name: &'static str,

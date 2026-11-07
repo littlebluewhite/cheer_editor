@@ -28,7 +28,7 @@
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { NEW_VERSION } from '#lib/cloud-steps.svelte.js';
 	import type { Me, MyFlows } from '#lib/server-api.js';
-	import { ROLE_NAMES } from '#lib/role-names.js';
+	import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
@@ -618,6 +618,8 @@
 		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow}>
 			<div class="title">
 				<b title={flow.name}>{flow.name}</b>
+				<!-- 登入時本機流程寫「這台」：分得出這支只在這台電腦、還沒傳上雲端 -->
+				{#if account && !cloud && !linkOnly}<span class="here-tag" title="只在這台電腦，靠草稿和流程檔留著">這台</span>{/if}
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
 					>{#if cloud}{#if !cloud.newVersion}<span class="cloud-saved">{cloud.saving ? '存中…' : '✓ 已存'}</span>{/if}{:else if unsaved}<span
@@ -682,7 +684,12 @@
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
 				{#if cloud || linkOnly}
-					<!-- 雲端流程每一步都存了：沒有存檔、開啟、新建，只回首頁 -->
+					<!-- 雲端流程每一步都存了：沒有存檔、開啟、新建，換成下載（擁有者、編輯者；手機沒有）和回首頁 -->
+					{#if cloud && canEdit(cloud.role) && !narrow}
+						<button type="button" class="ghost" title="下載成流程檔" onclick={() => editor.file.download()}
+							><Icon name="download" />下載</button
+						>
+					{/if}
 					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}
 						><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
 					>
@@ -709,6 +716,12 @@
 						<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
 					{:else}
 						<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+					{/if}
+					<!-- 登入時存檔左邊：按了直接傳，不先問（傳上去不會弄丟東西） -->
+					{#if account && !narrow}
+						<button type="button" class="ghost" title="傳上雲端" onclick={() => editor.file.upload()}
+							><Icon name="cloud" /><span class="upload-text">傳上雲端</span></button
+						>
 					{/if}
 					<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 				{/if}
@@ -978,6 +991,18 @@
 					oncancel={() => editor.file.answer('cancel')}
 					focusCancel
 				/>
+			{/snippet}
+		</Modal>
+	{/if}
+	{#if editor.file.tooBig}
+		{@const big = editor.file.tooBig}
+		<Modal label="傳不上去：音樂檔太大" class="discard-box too-big" onclose={() => editor.file.dismissTooBig()}>
+			{#snippet children()}
+				<h2>傳不上去：音樂檔太大</h2>
+				<p>「{big.segment}」的音樂檔 {big.mb} MB，一個音樂檔最多 60 MB。請轉成 mp3（3 分鐘約 3–7 MB），在流程設定換掉再傳。</p>
+				<div class="too-big-actions">
+					<button type="button" class="primary" data-autofocus onclick={() => editor.file.dismissTooBig()}>知道了</button>
+				</div>
 			{/snippet}
 		</Modal>
 	{/if}
@@ -1346,6 +1371,16 @@
 	}
 	.cloud-saved {
 		color: #b8c4dc;
+		white-space: nowrap;
+	}
+	/* 登入時本機流程的小標「這台」 */
+	.here-tag {
+		flex: none;
+		font-size: 11px;
+		color: #b8c4dc;
+		border: 1px solid #4a5878;
+		border-radius: 4px;
+		padding: 0 5px;
 		white-space: nowrap;
 	}
 	.present {
@@ -2021,6 +2056,24 @@
 		box-shadow: var(--shadow-pop);
 		border-radius: 10px;
 	}
+	/* 傳上雲端時音樂檔太大的框 */
+	.too-big-actions {
+		display: flex;
+		justify-content: flex-end;
+	}
+	:global(.too-big) h2 {
+		margin: 0;
+		font-size: 15px;
+	}
+	:global(.too-big) p {
+		margin: 0;
+		font-size: 13px;
+	}
+	:global(.too-big) {
+		display: grid;
+		gap: 10px;
+		padding: 14px 16px;
+	}
 
 	@media print {
 		.print-hidden {
@@ -2116,8 +2169,10 @@
 		}
 	}
 	@media (max-width: 1280px) {
-		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字 */
-		.guide-text {
+		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字。
+		   登入時本機流程多的「傳上雲端」也只留圖示（滑過去看得到字），流程名字才不會被擠掉 */
+		.guide-text,
+		.upload-text {
 			position: absolute;
 			width: 1px;
 			height: 1px;
