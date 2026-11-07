@@ -338,21 +338,31 @@ pub async fn logout(
 
 /// 帶著的 cookie 是誰（還沒到期、沒被停用）。
 pub async fn current_user(state: &AppState, headers: &HeaderMap) -> anyhow::Result<Option<Me>> {
+    Ok(signed_in(state, headers).await?.map(|(_, me)| me))
+}
+
+/// 帶著的 cookie 是誰：使用者 id 和 Me（還沒到期、沒被停用）。
+pub async fn signed_in(state: &AppState, headers: &HeaderMap) -> anyhow::Result<Option<(i64, Me)>> {
     let Some(token) = session_token(headers) else {
         return Ok(None);
     };
-    let found: Option<(String, String, bool)> = sqlx::query_as(
-        "SELECT u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+    let found: Option<(i64, String, String, bool)> = sqlx::query_as(
+        "SELECT u.id, u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.expires_at > $2 AND u.disabled_at IS NULL",
     )
     .bind(sha256(&token))
     .bind(state.clock.now())
     .fetch_optional(&state.db)
     .await?;
-    Ok(found.map(|(email, name, is_admin)| Me {
-        email,
-        name,
-        is_admin,
+    Ok(found.map(|(id, email, name, is_admin)| {
+        (
+            id,
+            Me {
+                email,
+                name,
+                is_admin,
+            },
+        )
     }))
 }
 

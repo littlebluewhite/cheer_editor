@@ -1,11 +1,15 @@
 // 連伺服器的 adapter：所有 HTTP 呼叫都經過它（ADR 0009：API 跟網頁同一個網址，cookie 由瀏覽器帶）。
 // 真的是 httpServer；假的是 #lib/test-fakes.js 的 fakeServer（前端測試不開真的伺服器）。
 // 訊息的型別從 Rust 產生（src/lib/api-types/，見 docs/deploy.md），對不上就編譯不過。
+import type { NewFlowInput } from '#lib/core';
+import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
+import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { Me } from '#lib/api-types/Me.js';
+import type { MyFlows } from '#lib/api-types/MyFlows.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
 
-export type { LinkInfo, Me, PasswordProblem };
+export type { CloudFlow, CloudFlowSummary, LinkInfo, Me, PasswordProblem };
 
 /** 設密碼的結果：設好、連結不能用了（過期、用過、亂改的），或密碼不收的原因。 */
 export type SetPasswordResult = 'ok' | 'gone' | PasswordProblem;
@@ -28,6 +32,12 @@ export interface ServerAdapter {
 	passwordLink(token: string): Promise<LinkInfo | null>;
 	/** 用設密碼連結設密碼。 */
 	setPassword(token: string, password: string): Promise<SetPasswordResult>;
+	/** 我的流程（我擁有的雲端流程），最近改的在前。 */
+	myFlows(): Promise<CloudFlowSummary[]>;
+	/** 新建一支雲端流程（伺服器用流程核心照新建表單的名字、場地建）。 */
+	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
+	/** 拿一支雲端流程；沒有這支、不是我的是 null。 */
+	cloudFlow(id: string): Promise<CloudFlow | null>;
 }
 
 /** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。 */
@@ -40,6 +50,16 @@ export function httpServer(base = ''): ServerAdapter {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body)
 			});
+		} catch {
+			throw new ServerUnreachable();
+		}
+		if (res.status >= 500) throw new ServerUnreachable();
+		return res;
+	}
+	async function get(path: string): Promise<Response> {
+		let res: Response;
+		try {
+			res = await fetch(`${base}/api/${path}`);
 		} catch {
 			throw new ServerUnreachable();
 		}
@@ -75,6 +95,22 @@ export function httpServer(base = ''): ServerAdapter {
 			if (res.ok) return 'ok';
 			if (res.status === 410) return 'gone';
 			if (res.status === 422) return (await res.json()) as PasswordProblem;
+			throw new ServerUnreachable();
+		},
+		async myFlows() {
+			const res = await get('flows');
+			if (res.ok) return ((await res.json()) as MyFlows).mine;
+			throw new ServerUnreachable();
+		},
+		async createFlow(input) {
+			const res = await post('flows', input);
+			if (res.ok) return (await res.json()) as CloudFlowSummary;
+			throw new ServerUnreachable();
+		},
+		async cloudFlow(id) {
+			const res = await get(`flows/${encodeURIComponent(id)}`);
+			if (res.ok) return (await res.json()) as CloudFlow;
+			if (res.status === 404) return null;
 			throw new ServerUnreachable();
 		}
 	};

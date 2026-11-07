@@ -73,7 +73,17 @@ ws.addEventListener('message', (e) => {
 	if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
 	// 上一條檢查留下未存的修改：換頁時的「離開網站？」直接按離開，不然頁面卡住
 	if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
+	// 假裝登入了（vite dev 沒有伺服器）：攔下 /api/…，回 fakeApi 給的
+	if (m.method === 'Fetch.requestPaused') {
+		const path = new URL(m.params.request.url).pathname;
+		const body = fakeApi?.[path];
+		if (body === undefined) send('Fetch.continueRequest', { requestId: m.params.requestId });
+		else send('Fetch.fulfillRequest', { requestId: m.params.requestId, responseCode: 200,
+			responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
+	}
 });
+/** 攔下的 API（路徑 → 回的 JSON）；null 是不攔。 */
+let fakeApi = null;
 const send = (method, params = {}) =>
 	new Promise((r, j) => {
 		const i = ++id;
@@ -622,6 +632,34 @@ await check('首頁沒登入（電腦、手機）：右上角「使用說明」�
 			return { 寬: ${w}, 鈕: links.map((a) => a.textContent.trim() + (hit(a) ? '' : '（點不到）')), 蓋到: covered };`);
 		if (r.鈕.join() !== '使用說明,登入' || r.蓋到.length) bad.push(r);
 	}
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('首頁登入後：電腦兩欄（清單在左、新建在右），手機一欄（清單在上、新建在下），不溢出', async () => {
+	const bad = [];
+	fakeApi = {
+		'/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: true },
+		'/api/flows': { mine: [
+			{ id: 'c1', name: '校慶表演'.repeat(8), updatedAt: '2026-11-06T07:20:00.000Z' },
+			{ id: 'c2', name: '全國賽', updatedAt: '2026-11-05T01:03:00.000Z' }
+		] }
+	};
+	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
+	for (const [w, h, cols] of [[1440, 900, 2], [390, 844, 1]]) {
+		await setViewport(w, h);
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte && document.querySelectorAll('.cloud-list li').length === 2`), 30).catch(() => {});
+		const r = await js(`const box = (s) => document.querySelector(s)?.getBoundingClientRect();
+			const lists = box('.home-lists'), start = box('.home.signed-in .start');
+			if (!lists || !start) return { 寬: ${w}, 沒有兩塊: true };
+			const side = Math.abs(lists.top - start.top) < 2 && lists.right <= start.left;
+			const stacked = lists.bottom <= start.top;
+			return { 寬: ${w}, 欄: side ? 2 : stacked ? 1 : 0, 雲端: document.querySelectorAll('.cloud-list li').length,
+				溢出: document.scrollingElement.scrollWidth > innerWidth };`);
+		if (r.欄 !== cols || r.雲端 !== 2 || r.溢出) bad.push(r);
+	}
+	await send('Fetch.disable');
+	fakeApi = null;
 	return { ok: bad.length === 0, value: bad };
 });
 
