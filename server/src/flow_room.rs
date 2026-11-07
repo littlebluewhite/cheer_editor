@@ -26,7 +26,7 @@ use crate::AppState;
 use crate::accounts::{AppError, signed_in};
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
-use crate::records::{self, CloudRecord, DroppedRecord, Stored};
+use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
 use crate::sharing::{Role, role_of};
 
 /// 不能改的人送來的步：退回的原因。
@@ -54,6 +54,11 @@ pub enum RoomEvent {
         user_id: i64,
         name: String,
         records: Vec<Stored>,
+    },
+    /// 紀錄跟著改了（#258：跑一步、改、刪、救回）：from 是送來的那個連線。
+    RecordsChanged {
+        from: u64,
+        change: Arc<RecordsChange>,
     },
 }
 
@@ -195,6 +200,15 @@ pub enum RoomRequest {
         #[ts(type = "unknown[]")]
         attempts: serde_json::Value,
     },
+    /// 改幾次的記號（#258）：改好的那幾次（StoredAttempt，伺服器只拿記號）。
+    ChangeRecords {
+        #[ts(type = "unknown[]")]
+        attempts: serde_json::Value,
+    },
+    /// 刪幾次（#258）：一次的 id。
+    DeleteRecords { ids: Vec<String> },
+    /// 救回剛刪掉的幾次（#258）：一次的 id。
+    RestoreRecords { ids: Vec<String> },
 }
 
 /// 伺服器送給用戶端的。
@@ -251,13 +265,18 @@ pub enum RoomMessage {
     /// 現在誰開著（自己不列，同一個人只列一次），照進來的先後。
     Present { people: Vec<Present> },
     /// 我送的紀錄：收了的（伺服器存的樣子，記號可能少了）、沒存進去的和原因。
-    /// 送過、後來被清掉的兩邊都不放。
+    /// 送過、後來被清掉的兩邊都不放。改、刪、救回：那幾次現在在伺服器上的樣子（還在的），dropped 是空的。
     RecordsSaved {
         saved: Vec<CloudRecord>,
         dropped: Vec<DroppedRecord>,
     },
     /// 別人（或我在別的分頁）記的。
     NewRecords { records: Vec<CloudRecord> },
+    /// 別人改、刪、救回的紀錄，或別人的一步跟著改、清掉的紀錄（#258）：改好的那幾次（不在畫面上的加進來）、刪掉的 id。
+    RecordsChanged {
+        changed: Vec<CloudRecord>,
+        deleted: Vec<String>,
+    },
 }
 
 /// 在場名單的一個人：在編輯還是檢視（他有一個分頁在編輯就算在編輯）。
@@ -370,7 +389,7 @@ async fn serve(
                     let _one_at_a_time = steps.lock().await;
                     let (reply, change) =
                         take_step(&state, flow_id, user_id, &tab_id, step_id, commands).await?;
-                    if let (RoomMessage::Accepted { step, .. }, Some(change)) = (&reply, change) {
+                    if let (RoomMessage::Accepted { step, .. }, Some((change, kept))) = (&reply, change) {
                         let event = RoomEvent::Changed {
                             from: conn,
                             by: name.clone(),
@@ -378,11 +397,25 @@ async fn serve(
                             change: change.into(),
                         };
                         state.rooms.tell(flow_id, event);
+                        // 紀錄跟著改的接在編排的改動後面（別人先套編排，再換紀錄）。
+                        if !kept.is_empty() {
+                            state.rooms.tell(flow_id, RoomEvent::RecordsChanged { from: conn, change: kept.into() });
+                        }
                     }
                     reply
                 }
                 Some(RoomRequest::Record { attempts }) => {
                     records::record(&state, flow_id, user_id, conn, attempts).await?
+                }
+                Some(RoomRequest::ChangeRecords { attempts }) => {
+                    let attempts = serde_json::from_value(attempts).unwrap_or_default();
+                    records::amend(&state, flow_id, user_id, conn, Amend::Change(attempts)).await?
+                }
+                Some(RoomRequest::DeleteRecords { ids }) => {
+                    records::amend(&state, flow_id, user_id, conn, Amend::Delete(ids)).await?
+                }
+                Some(RoomRequest::RestoreRecords { ids }) => {
+                    records::amend(&state, flow_id, user_id, conn, Amend::Restore(ids)).await?
                 }
                 Some(RoomRequest::Mode { editing }) => {
                     state.rooms.set_editing(flow_id, conn, editing && role.can_edit());
@@ -412,10 +445,15 @@ async fn serve(
                             action_id: s.action_id,
                             attempt: s.attempt,
                             by: (by != user_id).then(|| name.clone()),
+                            mine: by == user_id,
                         })
                         .collect();
                     RoomMessage::NewRecords { records }
                 }
+                Ok(RoomEvent::RecordsChanged { from, change }) if from != conn => RoomMessage::RecordsChanged {
+                    changed: change.changed.iter().map(|r| r.seen_by(user_id)).collect(),
+                    deleted: change.deleted.clone(),
+                },
                 Ok(_) => continue,
                 // 漏聽了幾件：照資料庫重新看一次自己的權限，再說一次在場名單。
                 // 漏掉的別人的改動要重新連才拿得到（斷線、重新連在 #255）。
@@ -486,8 +524,11 @@ async fn tell(socket: &mut WebSocket, message: &RoomMessage) -> anyhow::Result<(
     Ok(())
 }
 
+/// 收一步的結果：回送的人的話；收了的帶要送給別人的改動（RemoteChange 的 JSON）和跟著改的紀錄。
+type Taken = (RoomMessage, Option<(String, RecordsChange)>);
+
 /// 收一步。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted；先查權限：被收回回 Revoked，
-/// 不能改的（記錄者、檢視者）退回。收了的連同要送給別人的改動（RemoteChange 的 JSON）一起回。
+/// 不能改的（記錄者、檢視者）退回。收了的連同要送給別人的改動、跟著改的紀錄一起回。
 async fn take_step(
     state: &AppState,
     flow_id: &str,
@@ -495,7 +536,7 @@ async fn take_step(
     tab_id: &str,
     step_id: String,
     commands: serde_json::Value,
-) -> anyhow::Result<(RoomMessage, Option<String>)> {
+) -> anyhow::Result<Taken> {
     let mut tx = state.db.begin().await?;
     let Some((content, step)): Option<(String, i64)> =
         sqlx::query_as("SELECT content::text, step FROM flows WHERE id = $1 FOR UPDATE")
@@ -520,20 +561,19 @@ async fn take_step(
         return Ok((RoomMessage::Accepted { step_id, step }, None));
     }
 
-    let rejected =
-        |message: String, content: String| -> anyhow::Result<(RoomMessage, Option<String>)> {
-            let flow = RawValue::from_string(content)?;
-            let step_id = step_id.clone();
-            Ok((
-                RoomMessage::Rejected {
-                    step_id,
-                    message,
-                    flow,
-                    step,
-                },
-                None,
-            ))
-        };
+    let rejected = |message: String, content: String| -> anyhow::Result<Taken> {
+        let flow = RawValue::from_string(content)?;
+        let step_id = step_id.clone();
+        Ok((
+            RoomMessage::Rejected {
+                step_id,
+                message,
+                flow,
+                step,
+            },
+            None,
+        ))
+    };
     if !role.can_edit() {
         return rejected(VIEW_ONLY.into(), content);
     }
@@ -588,7 +628,7 @@ async fn take_step(
     .bind(now)
     .execute(&mut *tx)
     .await?;
-    records::after_step(
+    let kept = records::after_step(
         &mut tx,
         flow_id,
         &before,
@@ -599,5 +639,8 @@ async fn take_step(
     // 換掉、刪掉的音樂記下哪天不用了（#249）。
     crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;
     tx.commit().await?;
-    Ok((RoomMessage::Accepted { step_id, step }, Some(change)))
+    Ok((
+        RoomMessage::Accepted { step_id, step },
+        Some((change, kept)),
+    ))
 }

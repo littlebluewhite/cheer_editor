@@ -16,6 +16,7 @@ import {
 	createFlow,
 	deleteAction,
 	deleteAttempt,
+	deleteAttempts,
 	deleteCustomRole,
 	deleteFormation,
 	deleteLastAttempt,
@@ -283,6 +284,7 @@ const cases: Case[] = [
 	at('changeAttempt', base, { name: 'changeAttempt', args: ['x1', 't1', { p1: '✗' }] }, (f) =>
 		changeAttempt(f, 'x1', 't1', { p1: '✗' })
 	),
+	at('deleteAttempts', base, { name: 'deleteAttempts', args: [['t1']] }, (f) => deleteAttempts(f, ['t1'])),
 	at('deleteAttempt', base, { name: 'deleteAttempt', args: ['x1', 't1'] }, (f) => deleteAttempt(f, 'x1', 't1')),
 	at(
 		'restoreAttempt',
@@ -416,8 +418,8 @@ describe('用名字＋參數叫指令', () => {
 		expect(runCommand(flow, sent, STEP)).toEqual(inStep(STEP, () => c.direct(flow)));
 	});
 
-	it('53 個指令都登記，每個都有情境', () => {
-		expect(COMMAND_NAMES).toHaveLength(53);
+	it('54 個指令都登記，每個都有情境', () => {
+		expect(COMMAND_NAMES).toHaveLength(54);
 		expect(new Set(cases.map((c) => c.command.name))).toEqual(new Set(COMMAND_NAMES));
 	});
 
