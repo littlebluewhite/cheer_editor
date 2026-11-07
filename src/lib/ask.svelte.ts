@@ -7,6 +7,7 @@
 // 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
 // 給了鎖（locked，例：檢視模式）：鎖著時指令不送，直接當被擋，原因是鎖給的那句。
 // 用名字送的指令跑在 flow（建它時給的）那時候的流程上；回答放進要問的那個指令的 options，整串再送一次。
+// 還沒到指令就被擋（例：教練打的字看不懂）用 block：跟送出被擋一樣留下原因。
 
 import {
 	runCommand,
@@ -97,6 +98,12 @@ export class Ask {
 		const r = this.#run(send, {});
 		this.#settle(r, send, handlers as Handlers<CommandResult>);
 		return r;
+	}
+
+	/** 不用送指令就被擋（例：教練打的字看不懂）：跟送出被擋一樣留下原因；鎖著時原因是鎖給的那句。 */
+	block(message: string, handlers: Handlers<CommandResult> = {}) {
+		const send = (): CommandResult => ({ kind: 'blocked', message });
+		this.#settle(this.#run(send, {}), send, handlers);
 	}
 
 	/**

@@ -14,14 +14,9 @@
 		GENDERS,
 		GLOBAL_ROLES,
 		MAX_MEMBERS,
-		addMemberLines,
-		deleteMember,
 		duplicateNames,
 		memberMarkers,
 		memberName,
-		moveMember,
-		updateMember,
-		type ConfirmOption,
 		type Gender,
 		type GlobalRole,
 		type MemberChanges
@@ -52,7 +47,7 @@
 		e.preventDefault();
 		// 性別、全局角色加完不清掉：下一批常常一樣。有幾行沒加進去：輸入框留下那幾行，原因一次列出。
 		askingId = null;
-		ask.send(() => addMemberLines(flow, names, { gender: gender || null, globalRole: globalRole || null }), {
+		ask.send({ name: 'addMemberLines', args: [names, { gender: gender || null, globalRole: globalRole || null }] }, {
 			done: (r) => {
 				names = r.rejected.join('\n');
 				ask.error = r.errors.join('\n');
@@ -62,7 +57,7 @@
 
 	function edit(id: string, changes: MemberChanges, input?: HTMLInputElement) {
 		askingId = id;
-		const r = ask.send((o: ConfirmOption = {}) => updateMember(flow, id, changes, o));
+		const r = ask.send({ name: 'updateMember', args: [id, changes] });
 		// 被擋下（或要問）時把輸入框還原成原本的名字；選好了核心改的名字會再畫上去。
 		if (r.kind !== 'ok' && input) input.value = memberName(flow, id);
 	}
@@ -70,7 +65,7 @@
 	/** 移到名單上第 to 個。按的那顆變灰（移到頭、尾）時，焦點換到同一列的另一顆，不掉到 body。 */
 	async function move(id: string, to: number, button?: HTMLButtonElement) {
 		askingId = id;
-		ask.send(() => moveMember(flow, id, to));
+		ask.send({ name: 'moveMember', args: [id, to] });
 		await tick();
 		if (!button) return;
 		const target = button.disabled ? button.parentElement?.querySelector<HTMLButtonElement>('.move:not(:disabled)') : button;
@@ -110,7 +105,7 @@
 			const buttons = document.querySelectorAll<HTMLElement>('.members .remove');
 			buttons[Math.min(i, buttons.length - 1)]?.focus();
 		};
-		ask.send((o: ConfirmOption = {}) => deleteMember(flow, id, o), {
+		ask.send({ name: 'deleteMember', args: [id] }, {
 			done: () => focusRemove(at),
 			cancel: () => focusRemove(at)
 		});

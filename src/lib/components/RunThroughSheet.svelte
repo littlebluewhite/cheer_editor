@@ -10,7 +10,6 @@
 		MARKS,
 		phaseLabel,
 		recordableActions,
-		recordRunThrough,
 		type Action,
 		type Mark,
 		type RunThroughMarks
@@ -116,7 +115,7 @@
 		const entries: RunThroughMarks[] = blocks
 			.filter(({ action }) => !skipped.includes(action.id))
 			.flatMap(({ action, whos }) => whos.map(({ who }) => ({ actionId: action.id, who, marks: tapped(action, who) })));
-		ask.send(() => recordRunThrough(flow, date, entries), { done: () => onclose(true) });
+		ask.send({ name: 'recordRunThrough', args: [date, entries] }, { done: () => onclose(true) });
 	}
 
 	const markLabel = (m: Mark | null) => MARKS.find((x) => x.key === m)?.label ?? '空的';

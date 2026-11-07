@@ -3,18 +3,10 @@
 	// 標記用號碼還是開頭字、自訂任務角色（新增、改名、刪除）。被擋就顯示流程核心給的原因。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
-		addCustomRole,
-		adjustField,
 		DEFAULT_TIME_RULES,
-		deleteCustomRole,
 		memberMarkers,
-		renameFlow,
-		setMarkers,
-		updateCustomRole,
-		updateTimeRules,
 		MAX_STRIPS,
 		MIN_STRIPS,
-		type ConfirmOption,
 		type FieldLayout,
 		type CustomRole,
 		type MarkerStyle,
@@ -48,14 +40,14 @@
 
 	/** 改自訂任務角色的名稱；被擋就把輸入框還原。 */
 	function renameRole(role: CustomRole, input: HTMLInputElement) {
-		ask.send(() => updateCustomRole(flow, role.id, { name: input.value, meaning: role.meaning }), {
+		ask.send({ name: 'updateCustomRole', args: [role.id, { name: input.value, meaning: role.meaning }] }, {
 			revert: () => (input.value = role.name)
 		});
 	}
 
 	function addRole(e: SubmitEvent) {
 		e.preventDefault();
-		ask.send(() => addCustomRole(flow, { name: roleName, meaning: '' }), { done: () => (roleName = '') });
+		ask.send({ name: 'addCustomRole', args: [{ name: roleName, meaning: '' }] }, { done: () => (roleName = '') });
 	}
 
 	// 調整場地的兩個欄位；流程的場地變了（調整、復原）就跟著變。
@@ -64,12 +56,12 @@
 	const fieldSame = $derived(strips === flow.field.strips && layout === flow.field.layout);
 
 	function update(patch: Partial<TimeRules>) {
-		ask.send(() => updateTimeRules(flow, patch));
+		ask.send({ name: 'updateTimeRules', args: [patch] });
 	}
 
 	/** 改一個秒數；被擋就把那一格還原成實際的值，原因記在那一格。 */
 	function setSeconds(key: (typeof fields)[number][0], label: string, input: HTMLInputElement) {
-		ask.send(() => updateTimeRules(flow, { [key]: input.valueAsNumber }), {
+		ask.send({ name: 'updateTimeRules', args: [{ [key]: input.valueAsNumber }] }, {
 			field: label,
 			revert: () => (input.value = String(flow.timeRules[key]))
 		});
@@ -77,7 +69,7 @@
 
 	function rename(input: HTMLInputElement) {
 		// 被擋下時把輸入框還原成原本的名字。
-		ask.send(() => renameFlow(flow, input.value), { field: '流程名字', revert: () => (input.value = flow.name) });
+		ask.send({ name: 'renameFlow', args: [input.value] }, { field: '流程名字', revert: () => (input.value = flow.name) });
 	}
 
 	const markers = $derived(memberMarkers(flow));
@@ -116,7 +108,7 @@
 					type="button"
 					class="adjust"
 					disabled={fieldSame}
-					onclick={() => ask.send(() => adjustField(flow, { strips, layout }))}>調整場地</button
+					onclick={() => ask.send({ name: 'adjustField', args: [{ strips, layout }] })}>調整場地</button
 				>
 			</div>
 			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。</span>
@@ -155,7 +147,7 @@
 						type="radio"
 						name="markers"
 						checked={(flow.markers ?? 'number') === s.key}
-						onchange={() => ask.send(() => setMarkers(flow, s.key))}
+						onchange={() => ask.send({ name: 'setMarkers', args: [s.key] })}
 					/>
 					{s.label}
 				</label>
@@ -191,7 +183,7 @@
 								type="button"
 								class="ghost icon"
 								aria-label="刪除任務角色「{role.name}」"
-								onclick={() => ask.send((o: ConfirmOption = {}) => deleteCustomRole(flow, role.id, o))}
+								onclick={() => ask.send({ name: 'deleteCustomRole', args: [role.id] })}
 								><Icon name="trash" size={14} /></button
 							>
 						</li>

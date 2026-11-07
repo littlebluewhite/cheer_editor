@@ -18,17 +18,11 @@
 		MIN_TAPS,
 		audioOverlaps,
 		beatLines,
-		deleteSegment,
-		fitSegmentToAudio,
-		moveSegment,
 		musicLength,
 		musicOverrunSec,
 		readSegmentNumber,
 		segmentSpans,
-		splitSegment,
 		tapBpm,
-		updateSegment,
-		type ConfirmOption,
 		type SegmentNumberField,
 		type SegmentPatch
 	} from '#lib/core';
@@ -92,7 +86,7 @@
 
 	/** 新的改法取代還沒確認的舊清單。 */
 	function update(patch: SegmentPatch) {
-		ask.send((o: ConfirmOption = {}) => updateSegment(flow, segmentId, patch, o, editor.music.lengths), {
+		ask.send({ name: 'updateSegment', args: [segmentId, patch, editor.music.lengths] }, {
 			cancel: () => (fieldsKey += 1)
 		});
 	}
@@ -103,11 +97,13 @@
 	 */
 	function updateField(input: HTMLInputElement, field: string, key: SegmentNumberField, actual: () => number | undefined) {
 		const value = readSegmentNumber(key, input.value);
-		ask.send((o: ConfirmOption = {}) => (value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o, editor.music.lengths)), {
+		const handlers = {
 			field,
 			revert: () => (input.value = String(actual() ?? '')),
 			cancel: () => (fieldsKey += 1)
-		});
+		};
+		if (value.kind === 'blocked') return void ask.block(value.message, handlers);
+		ask.send({ name: 'updateSegment', args: [segmentId, { [key]: value.value }, editor.music.lengths] }, handlers);
 	}
 
 	/** 這一段排第幾（0 起）。 */
@@ -116,7 +112,7 @@
 	/** 跟旁邊那段換位置；動作、站位跟著段走（見 segment-order.ts）。
 	 *  按的那顆變灰（移到頭、尾）時，焦點換到另一顆，不掉出段設定。 */
 	async function move(dir: -1 | 1, button: HTMLButtonElement) {
-		ask.send(() => moveSegment(flow, segmentId, dir));
+		ask.send({ name: 'moveSegment', args: [segmentId, dir] });
 		await tick();
 		if (!button.disabled) return;
 		const other = [...(button.parentElement?.querySelectorAll('button') ?? [])].find((b) => b !== button && !b.disabled);
@@ -125,7 +121,7 @@
 
 	/** 刪這一段：段裡有動作、站位時核心先問；刪好了關掉段設定。 */
 	function remove() {
-		ask.send((o: ConfirmOption = {}) => deleteSegment(flow, segmentId, o), { done: onclose });
+		ask.send({ name: 'deleteSegment', args: [segmentId] }, { done: onclose });
 	}
 
 	// 段設定關了（可能換開了別段、別的流程）：還在解碼的音樂檔不要了。
@@ -164,7 +160,7 @@
 
 	function fitToAudio() {
 		const lengths = editor.music.lengths;
-		ask.send((o: ConfirmOption = {}) => fitSegmentToAudio(flow, segmentId, lengths, o), {
+		ask.send({ name: 'fitSegmentToAudio', args: [segmentId, lengths] }, {
 			cancel: () => (fieldsKey += 1)
 		});
 	}
@@ -293,7 +289,7 @@
 					</p>
 				{/if}
 				<div class="row">
-					<button type="button" onclick={() => ask.send(() => splitSegment(flow, segmentId, playback.sec))}>從播放頭這個八拍切成兩段</button>
+					<button type="button" onclick={() => ask.send({ name: 'splitSegment', args: [segmentId, playback.sec] })}>從播放頭這個八拍切成兩段</button>
 					<span class="hint">切點在播放頭那個八拍的第 1 拍；後面的動作和站位搬到新的一段，BPM、第一拍接著算</span>
 				</div>
 				{#each overlaps as o (o.label)}

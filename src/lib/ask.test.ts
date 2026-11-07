@@ -322,3 +322,24 @@ describe('用名字送指令', () => {
 		expect(onchange).not.toHaveBeenCalled();
 	});
 });
+
+describe('不用送指令就被擋（教練打的字看不懂）', () => {
+	it('留下原因，跟送出被擋一樣：給了格名記在那一格、給了還原就還原', () => {
+		const onfail = vi.fn();
+		const ask = new Ask(vi.fn(), { onfail });
+		const revert = vi.fn();
+		ask.block('看不懂出發', { field: '出發', revert });
+		expect(ask.fieldErrors).toEqual({ 出發: '「出發」退回原本的值：看不懂出發' });
+		expect(revert).toHaveBeenCalled();
+		ask.block('看不懂到達');
+		expect(ask.error).toBe('看不懂到達');
+		expect(ask.failures).toBe(2);
+		expect(onfail).toHaveBeenCalledWith('看不懂到達');
+	});
+
+	it('鎖著：原因是鎖給的那句', () => {
+		const ask = new Ask(vi.fn(), { locked: () => '檢視模式' });
+		ask.block('看不懂出發');
+		expect(ask.error).toBe('檢視模式');
+	});
+});
