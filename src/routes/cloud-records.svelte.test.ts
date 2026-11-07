@@ -74,6 +74,18 @@ describe('雲端流程記一次', () => {
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 	});
 
+	it('記了一次（存在伺服器）不算還沒存：按「首頁」直接回首頁，不問', async () => {
+		const s = await open(wangsFlow('recorder'));
+		await tap('第 1 組 小美', '上法', '成功');
+		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '存這一次' }));
+		await flush();
+		expect(s.page.session.unsaved).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: '首頁' }));
+		await flush();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(s.page.session.flow).toBeNull();
+	});
+
 	it('打開時拿到紀錄：別人記的記號後面寫名字，總表的明細也是', async () => {
 		await open(wangsFlow('recorder', [wangs('tabc123def456', 'g1', { p1: '✓', p2: '✗' })]));
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✗·王教練']);
@@ -95,6 +107,29 @@ describe('雲端流程記一次', () => {
 		await flush();
 		expect(dayRow('第 1 組 小美')).toEqual(['✗··', '✓✓✓王教練']);
 		expect(s.state.flows[0].records!.length).toBe(2);
+	});
+});
+
+describe('雲端流程斷線時別人記的（#255）', () => {
+	it('連回來時換成伺服器現在的紀錄：斷線時別人記的放進來、刪的拿掉，自己沒傳的留著', async () => {
+		const s = await open(wangsFlow('recorder', [wangs('tgone00000001', 'g2', { p1: '✗' })]));
+		expect(dayRow('第 2 組 小芳')).toEqual(['✗··王教練']);
+		s.disconnect();
+		await flush();
+
+		// 斷線時：王教練記了一次、刪了一次；林教練自己記了一次（還沒傳）
+		s.recordAs('c1', wang.email, [wangs('tnew000000001', 'g1', { p1: '✓', p2: '✓', p3: '✓' })]);
+		s.state.flows[0].records = s.state.flows[0].records!.map((r) => (r.attempt.id === 'tgone00000001' ? { ...r, gone: true } : r));
+		await tap('第 1 組 小美', '上法', '小失誤');
+		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '存這一次' }));
+		await flush();
+
+		s.reconnect();
+		await flush();
+		await flush();
+		expect(dayRow('第 1 組 小美').sort()).toEqual(['✓✓✓王教練', '△··'].sort());
+		expect(dayRow('第 2 組 小芳')).toEqual([]);
+		expect(s.state.flows[0].records!.filter((r) => !r.gone).map((r) => r.by)).toEqual([wang.email, lin.email]);
 	});
 });
 

@@ -31,6 +31,8 @@ struct Server {
     state: AppState,
     site: tempfile::TempDir,
     addr: std::net::SocketAddr,
+    /// 伺服器的時間（測試往後撥）。
+    now: Arc<Mutex<DateTime<Utc>>>,
 }
 
 /// 登入的一個人：要帶的 Cookie、email。
@@ -44,11 +46,12 @@ impl Server {
         let now = Arc::new(Mutex::new(
             Utc.with_ymd_and_hms(2026, 11, 7, 9, 0, 0).unwrap(),
         ));
+        let clock = now.clone();
         let state = AppState {
             db,
             mailer: Mailer::memory(),
             breach: BreachCheck::list(Vec::<&str>::new()),
-            clock: Clock::new(move || -> DateTime<Utc> { *now.lock().unwrap() }),
+            clock: Clock::new(move || -> DateTime<Utc> { *clock.lock().unwrap() }),
             site_url: SITE.into(),
             core: FlowCore::start().unwrap(),
             mail_limit: Default::default(),
@@ -61,7 +64,12 @@ impl Server {
         let addr = listener.local_addr().unwrap();
         let router = app(state.clone(), site.path());
         tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        Self { state, site, addr }
+        Self {
+            state,
+            site,
+            addr,
+            now,
+        }
     }
 
     async fn send(
@@ -104,6 +112,12 @@ impl Server {
         let token = mail.text[at..].split_whitespace().next().unwrap();
         let body = json!({ "token": token, "password": GOOD });
         self.send("POST", "/api/set-password", Some(body), "").await;
+        let cookie = self.login(email).await;
+        User { cookie, email }
+    }
+
+    /// 這個人在另一台裝置登入：回那台要帶的 Cookie。
+    async fn login(&self, email: &str) -> String {
         let req = Request::post("/api/login")
             .header("sec-fetch-site", "same-origin")
             .header(header::CONTENT_TYPE, "application/json")
@@ -116,14 +130,13 @@ impl Server {
             .await
             .unwrap();
         let set_cookie = res.headers().get(header::SET_COOKIE).unwrap();
-        let cookie = set_cookie
+        set_cookie
             .to_str()
             .unwrap()
             .split(';')
             .next()
             .unwrap()
-            .to_owned();
-        User { cookie, email }
+            .to_owned()
     }
 
     async fn create(&self, owner: &User, name: &str) -> String {
@@ -454,4 +467,105 @@ async fn reconnecting_catches_up_on_what_others_changed_meanwhile(db: sqlx::PgPo
     assert_eq!(kinds, ["current", "ready"], "{heard:?}");
     assert_eq!(heard[0]["flow"], server);
     assert_eq!(heard[0]["step"], 3);
+}
+
+/// 一直聽到房間關掉為止（在場名單、補上的改動跳過）；5 秒內沒關掉就失敗。
+async fn closed(socket: &mut Socket) {
+    loop {
+        if hear(socket).await.is_null() {
+            return;
+        }
+    }
+}
+
+/// 送一步改名字；回伺服器存著的名字（送的那個房間不用等回答）。
+async fn rename_from(s: &Server, socket: &mut Socket, id: &str, name: &str) -> String {
+    let commands = json!([{ "name": "renameFlow", "args": [name] }]);
+    let _ = socket
+        .send(Message::Text(
+            json!({ "kind": "step", "stepId": format!("rename-{name}"), "seen": 0, "commands": commands })
+                .to_string()
+                .into(),
+        ))
+        .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (name,): (String,) = sqlx::query_as("SELECT content->>'name' FROM flows WHERE id = $1")
+        .bind(id)
+        .fetch_one(&s.state.db)
+        .await
+        .unwrap();
+    name
+}
+
+#[sqlx::test]
+async fn a_disabled_user_is_cut_off_from_an_open_room(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let admin = s.user("admin@example.com", "管理員").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "editor").await;
+    let (mut b, first) = join_as(&s, &lin, &id, "tab-b", true).await;
+    assert_eq!(first["kind"], "ready");
+
+    let lin_id = s.user_id(lin.email).await;
+    let path = format!("/api/admin/users/{lin_id}/disable");
+    let (status, _) = s.send("POST", &path, None, &admin.cookie).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // 開著的房間馬上關掉，也存不進去
+    closed(&mut b).await;
+    assert_eq!(
+        rename_from(&s, &mut b, &id, "被停用的人改的").await,
+        "全國賽"
+    );
+}
+
+#[sqlx::test]
+async fn changing_the_password_elsewhere_cuts_off_rooms_on_other_devices(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    let (mut a, _) = join_as(&s, &wang, &id, "tab-a", true).await;
+    let phone = s.login(wang.email).await;
+    let (mut b, _) = join_as(
+        &s,
+        &User {
+            cookie: phone.clone(),
+            email: wang.email,
+        },
+        &id,
+        "tab-b",
+        true,
+    )
+    .await;
+
+    let new = "換一個新的密碼也一樣要很長很長";
+    let body = json!({ "current": GOOD, "password": new });
+    let (status, _) = s
+        .send("POST", "/api/account/password", Some(body), &phone)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // 別台裝置（登入狀態被刪了）的房間關掉、存不進去；改密碼的這台照樣能改
+    closed(&mut a).await;
+    assert_eq!(rename_from(&s, &mut a, &id, "別台改的").await, "全國賽");
+    say(
+        &mut b,
+        json!({ "kind": "step", "stepId": "phone-1", "seen": 0, "commands": [{ "name": "renameFlow", "args": ["手機改的"] }] }),
+    )
+    .await;
+    assert_eq!(reply(&mut b).await["kind"], "accepted");
+}
+
+#[sqlx::test]
+async fn after_30_days_an_open_room_cannot_save(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    let (mut a, _) = join_as(&s, &wang, &id, "tab-a", true).await;
+
+    *s.now.lock().unwrap() += chrono::Duration::days(30);
+    assert_eq!(rename_from(&s, &mut a, &id, "過期了還改").await, "全國賽");
+    closed(&mut a).await;
 }

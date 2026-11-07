@@ -13,4 +13,8 @@ mine: Array<CloudFlowSummary>,
 /**
  * 分享給我的，最近改的在前。
  */
-shared: Array<SharedFlowSummary>, };
+shared: Array<SharedFlowSummary>, 
+/**
+ * 被擁有者刪掉的（刪的時候我有權限，#252）：這台的離線副本說「被刪掉了」，不說被收回。
+ */
+deleted: Array<string>, };

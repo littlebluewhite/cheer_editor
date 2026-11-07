@@ -225,6 +225,36 @@ describe('傳不上去、登入過期', () => {
 	});
 });
 
+describe('流程被刪了時還有沒傳的', () => {
+	it('斷線時流程被刪了：框寫被刪掉了（不是被收回），按「知道了」才刪掉、回首頁', async () => {
+		const s = await open();
+		s.network('offline');
+		await settle();
+		await recordOne();
+		s.deleteFlow('c1');
+		s.network('online');
+		await settle();
+
+		const box = screen.getByRole('dialog', { name: '「測試」被擁有者刪掉了，這 1 筆沒存進去' });
+		expect(box.textContent).toContain('傳上去時這支流程已經刪掉了');
+		await fireEvent.click(within(box).getByRole('button', { name: '知道了' }));
+		await settle();
+		expect(screen.getByRole('alert').textContent).toContain('「測試」被擁有者刪掉了。');
+		expect(s.offline.of('c1')).toBeNull();
+	});
+
+	it('斷線時流程被刪了、沒有沒傳的：連上就回首頁，黃條說被刪掉了', async () => {
+		const s = await open();
+		s.network('offline');
+		await settle();
+		s.deleteFlow('c1');
+		s.network('online');
+		await settle();
+		expect(s.page.session.flow).toBeNull();
+		expect(screen.getByRole('alert').textContent).toContain('「測試」被擁有者刪掉了。');
+	});
+});
+
 describe('被收回時還有沒傳的', () => {
 	it('連上時才知道被收回：擋住畫面的框列出那幾筆，按「知道了」才刪掉、回首頁', async () => {
 		const s = await open();

@@ -18,6 +18,7 @@
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。
 // 改、刪、救回（#258）也從這裡送；伺服器回那幾次現在的樣子（記錄者動別人的不算，換回來）。別人改的、刪的，
 // 別人的一步跟著改、清掉的紀錄，馬上換掉。記錄者只能改、刪自己記的（session.ownRecordsOnly）。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄。
+// 連回來時（#255）伺服器也給現在的紀錄：斷線時別人記的、改的、刪的換上，自己還沒傳到的照這邊的。
 // 斷網時記的（#260）：房間斷了照記，還沒傳的（記了的、改了刪了的）存在這台（離線存放，撐得過重新整理），連上了打招呼、自動傳。
 // 還沒送到伺服器的那一次直接改、刪（不用送）；送過的連上再送。斷著時說為什麼（link：斷網、伺服器沒回應、登入過期），
 // 連上後傳的時候「傳中…（N 筆）」，傳完一下子「都傳上去了。」。被收回時還有沒傳的：unsentRows 列出來（擋住的框），forget 丟掉。
@@ -373,7 +374,9 @@ export class CloudSteps {
 
 	/** 打招呼（連上、連回來）：上次看到第幾步，伺服器先補上之後別人的改動。 */
 	#hello() {
-		this.#room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: this.#seen, editing: this.#editing });
+		// 連回來的：也要現在的紀錄（斷線時別人記的、改的、刪的）
+		const records = this.offline;
+		this.#room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: this.#seen, editing: this.#editing, records });
 	}
 
 	/**
@@ -456,6 +459,8 @@ export class CloudSteps {
 			this.#others(m.records, []);
 		} else if (m.kind === 'recordsChanged') {
 			this.#others(m.changed, m.deleted);
+		} else if (m.kind === 'records') {
+			this.#caughtUp(m.records);
 		} else if (m.kind === 'runThroughs') {
 			this.#heardRuns(m.runs);
 		} else if (m.kind === 'claimRefused') {
@@ -584,6 +589,28 @@ export class CloudSteps {
 		const names = Object.fromEntries(incoming.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
 		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
 		this.#session.serverRecords(putRecords(flow, [...records, ...[...fresh.values()].map(stored)]));
+	}
+
+	/**
+	 * 伺服器現在的紀錄（連回來時，#255）：換成這一份（斷線時別人記的放進來、刪的拿掉）；
+	 * 我還沒傳到的（記了的、改了刪了救回的）照我這邊的，連上後再送。
+	 */
+	#caughtUp(server: CloudRecord[]) {
+		const flow = this.#session.flow;
+		if (!flow) return;
+		const pending = new Set([...this.#unsent.keys(), ...this.#pendingAmends().flatMap((a) => a.ids)]);
+		const local = new Map(takeRecords(flow).records.map((r) => [r.attempt.id, r]));
+		const records = server.flatMap((r) => {
+			const id = attemptOf(r).id;
+			if (!pending.has(id)) return [stored(r)];
+			const mine = local.get(id);
+			return mine ? [mine] : [];
+		});
+		const listed = new Set(records.map((r) => r.attempt.id));
+		for (const [id, r] of local) if (pending.has(id) && !listed.has(id)) records.push(r);
+		const names = Object.fromEntries(server.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
+		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
+		this.#session.serverRecords(putRecords(flow, records));
 	}
 
 	/** 擁有者改了我的權限。降成記錄者、檢視者：還沒送到的步不算，換成伺服器的樣子並提示。 */

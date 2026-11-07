@@ -833,6 +833,49 @@ async fn others_see_records_a_step_cleared_or_trimmed(db: sqlx::PgPool) {
     assert_eq!(heard["deleted"], json!(["tonly22222220"]));
 }
 
+#[sqlx::test]
+async fn reconnecting_gets_the_records_others_added_changed_or_deleted_meanwhile(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let marks = json!({ LOAD: "✓", HOLD: "✓", DISMOUNT: "✓" });
+    record(
+        &mut coach,
+        json!([drill("tkept00000001", SQUAD_1, marks.clone())]),
+    )
+    .await;
+    record(
+        &mut coach,
+        json!([drill("tgone00000001", SQUAD_1, marks.clone())]),
+    )
+    .await;
+
+    // 林教練斷線的時候，王教練又記了一次、刪了一次
+    record(
+        &mut coach,
+        json!([drill("tnew000000001", SQUAD_2, marks.clone())]),
+    )
+    .await;
+    delete(&mut coach, json!(["tgone00000001"])).await;
+
+    // 林教練連回來（要現在的紀錄）：先拿到現在的紀錄（別人記的帶名字），再說可以送步
+    let mut phone = s.connect(&lin, &id).await.unwrap();
+    let hello = json!({ "kind": "hello", "fingerprint": FINGERPRINT, "tabId": lin.email, "seen": 6, "records": true });
+    say(&mut phone, hello).await;
+    let now = hear(&mut phone).await;
+    assert_eq!(now["kind"], "records", "{now}");
+    let records = now["records"].as_array().unwrap();
+    assert_eq!(ids(records), vec!["tkept00000001", "tnew000000001"]);
+    assert_eq!(records[1]["by"], "王教練");
+    assert_eq!(hear(&mut phone).await["kind"], "ready");
+
+    // 第一次打開（沒要）：不送，紀錄跟著打開時拿的
+    let (_, first) = s.join(&lin, &id).await;
+    assert_eq!(first["kind"], "ready");
+}
+
 async fn say(socket: &mut Socket, message: Value) {
     socket
         .send(Message::Text(message.to_string().into()))

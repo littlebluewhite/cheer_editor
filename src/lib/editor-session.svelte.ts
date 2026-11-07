@@ -316,6 +316,8 @@ export class EditorSession {
 	serverRecords(flow: Flow) {
 		if (!this.#flow) return;
 		this.#flow = flow;
+		// 雲端流程的紀錄存在伺服器（沒送到的另外算）：不算還沒存
+		if (this.sharedRecords) this.#saved = flow;
 		this.onflow();
 		this.#updated();
 	}

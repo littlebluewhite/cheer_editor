@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, signed_in};
+use crate::accounts::{AppError, SignedIn, signed_in};
 
 /// 一個音樂檔最大幾個位元組（60 MB）。前端 `src/lib/music-library.svelte.ts` 的 MAX_CLOUD_AUDIO_BYTES 跟它一樣。
 pub const MAX_AUDIO_BYTES: i64 = 60 * 1024 * 1024;
@@ -116,7 +116,7 @@ pub async fn start_upload(
     Path(flow_id): Path<String>,
     Json(input): Json<StartUpload>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     if !allowed(&state, &flow_id, user_id, Access::Edit).await? {
@@ -159,7 +159,7 @@ pub async fn finish_upload(
     headers: HeaderMap,
     Path((flow_id, audio_id)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     if !allowed(&state, &flow_id, user_id, Access::Edit).await? {
@@ -208,7 +208,7 @@ pub async fn download(
     headers: HeaderMap,
     Path((flow_id, audio_id)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     if !allowed(&state, &flow_id, user_id, Access::Open).await? {

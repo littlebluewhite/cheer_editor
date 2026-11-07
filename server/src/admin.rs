@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{LinkPurpose, current_user_id, new_link, password_mail};
+use crate::accounts::{LinkPurpose, SignedIn, new_link, password_mail, signed_in, signed_out};
 use crate::mail::{Mail, MailError};
 use crate::sharing::{hand_over_flows, tell_new_owner};
 
@@ -106,8 +106,8 @@ impl FromRequestParts<AppState> for Admin {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Response> {
-        match current_user_id(state, &parts.headers).await {
-            Ok(Some((id, true))) => Ok(Self(id)),
+        match signed_in(state, &parts.headers).await {
+            Ok(Some(SignedIn { user_id, me, .. })) if me.is_admin => Ok(Self(user_id)),
             Ok(Some(_)) => Err(StatusCode::FORBIDDEN.into_response()),
             Ok(None) => Err(StatusCode::UNAUTHORIZED.into_response()),
             Err(err) => Err(AdminError::Internal(err).into_response()),
@@ -318,6 +318,7 @@ pub async fn disable(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    signed_out(&state, id);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

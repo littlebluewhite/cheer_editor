@@ -444,7 +444,7 @@ async fn the_admin_gets_nothing_not_shared_with_them(db: sqlx::PgPool) {
     let (status, _) = s.people(&admin, &id).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (_, list) = s.send("GET", "/api/flows", None, &admin.cookie).await;
-    assert_eq!(list, json!({ "mine": [], "shared": [] }));
+    assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [] }));
     assert_eq!(
         s.connect(&admin, &id).await.err(),
         Some(StatusCode::NOT_FOUND)
@@ -815,17 +815,25 @@ async fn only_the_owner_deletes_and_everything_goes_with_it(db: sqlx::PgPool) {
     assert_eq!(hear(&mut lin_room).await, json!({ "kind": "deleted" }));
     assert_eq!(hear(&mut lin_room).await, Value::Null);
     assert_eq!(hear(&mut owner_room).await, json!({ "kind": "deleted" }));
-    // 所有人都打不開
+    // 所有人都打不開：刪的時候有權限的人看得出是被刪了（410，「我的流程」也列出來），不是被收回（404）
     for who in [&wang, &lin] {
         let (status, _) = s
             .send("GET", &format!("/api/flows/{id}"), None, &who.cookie)
             .await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(status, StatusCode::GONE);
         let (_, list) = s.send("GET", "/api/flows", None, &who.cookie).await;
-        assert_eq!(list, json!({ "mine": [], "shared": [] }));
+        assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [id] }));
     }
+    assert_eq!(s.connect(&lin, &id).await.err(), Some(StatusCode::GONE));
+    // 本來就沒權限的：跟沒有這支一樣
+    let (status, _) = s
+        .send("GET", &format!("/api/flows/{id}"), None, &admin.cookie)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, list) = s.send("GET", "/api/flows", None, &admin.cookie).await;
+    assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [] }));
     assert_eq!(
-        s.connect(&lin, &id).await.err(),
+        s.connect(&admin, &id).await.err(),
         Some(StatusCode::NOT_FOUND)
     );
     assert_eq!(

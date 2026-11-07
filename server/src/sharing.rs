@@ -12,8 +12,11 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, signed_in};
+use crate::accounts::{AppError, SignedIn, signed_in};
 use crate::flow_room::RoomEvent;
+
+/// 不能做的人（記錄者、檢視者送來的步，檢視者送來的紀錄）的原因。
+pub const VIEW_ONLY: &str = "你只能看這支流程";
 
 /// 一個人對一支流程的權限。
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, TS)]
@@ -73,6 +76,35 @@ pub async fn role_of<'e>(
     .fetch_optional(db)
     .await?;
     Ok(found.and_then(|(role,)| role).and_then(|r| Role::parse(&r)))
+}
+
+/// 這支流程被擁有者刪了，刪的時候這個人有權限（#252）：打開、連房間說「被刪了」（410），不說被收回。
+pub async fn deleted_for<'e>(
+    db: impl sqlx::PgExecutor<'e>,
+    flow_id: &str,
+    user_id: i64,
+) -> anyhow::Result<bool> {
+    let (deleted,): (bool,) = sqlx::query_as(
+        "SELECT EXISTS (SELECT 1 FROM deleted_flows WHERE flow_id = $1 AND user_id = $2)",
+    )
+    .bind(flow_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+    Ok(deleted)
+}
+
+/// 沒權限時回的：被刪了（刪的時候有權限）410，不然跟沒有這支一樣 404。
+pub async fn no_access<'e>(
+    db: impl sqlx::PgExecutor<'e>,
+    flow_id: &str,
+    user_id: i64,
+) -> anyhow::Result<StatusCode> {
+    Ok(if deleted_for(db, flow_id, user_id).await? {
+        StatusCode::GONE
+    } else {
+        StatusCode::NOT_FOUND
+    })
 }
 
 // ---------- 前後端共用的訊息 ----------
@@ -135,7 +167,7 @@ async fn caller(
     flow_id: &str,
     only_owner: bool,
 ) -> Result<Result<(i64, Role), Response>, AppError> {
-    let Some((user_id, _)) = signed_in(state, headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(state, headers).await? else {
         return Ok(Err(StatusCode::UNAUTHORIZED.into_response()));
     };
     let Some(role) = role_of(&state.db, flow_id, user_id).await? else {
@@ -400,6 +432,7 @@ pub(crate) fn tell_new_owner(state: &AppState, flows: &[String], from: i64, to: 
 
 /// 刪流程（#252）：只有擁有者。所有人都打不開，步驟紀錄、權限跟著刪（外鍵 ON DELETE CASCADE）；
 /// 音樂記下哪天不用了（30 天後真的刪在 #266）。開著的房間都說被刪了。
+/// 刪的時候有權限的人記在 deleted_flows：之後打開說「被刪了」，不說被收回。
 pub async fn delete(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -416,6 +449,16 @@ pub async fn delete(
         .await?;
     sqlx::query(
         "UPDATE flow_audio SET unused_since = COALESCE(unused_since, $2) WHERE flow_id = $1",
+    )
+    .bind(&id)
+    .bind(state.clock.now())
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO deleted_flows (flow_id, user_id, deleted_at)
+         SELECT id, owner_id, $2 FROM flows WHERE id = $1
+         UNION SELECT flow_id, user_id, $2 FROM flow_permissions WHERE flow_id = $1
+         ON CONFLICT DO NOTHING",
     )
     .bind(&id)
     .bind(state.clock.now())

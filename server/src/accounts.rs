@@ -280,6 +280,7 @@ pub async fn set_password(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    signed_out(&state, link.user_id);
     // 重設後寄通知信：帳號被別人用了，他也會知道。密碼已經設好，寄不出去只記在 log。
     if link.purpose == LinkPurpose::Reset {
         let mail = Mail {
@@ -386,50 +387,50 @@ pub async fn logout(
 
 /// 帶著的 cookie 是誰（還沒到期、沒被停用）。
 pub async fn current_user(state: &AppState, headers: &HeaderMap) -> anyhow::Result<Option<Me>> {
-    Ok(signed_in(state, headers).await?.map(|(_, me)| me))
+    Ok(signed_in(state, headers).await?.map(|s| s.me))
 }
 
-/// 帶著的 cookie 是誰：使用者 id 和 Me（還沒到期、沒被停用）。
-pub async fn signed_in(state: &AppState, headers: &HeaderMap) -> anyhow::Result<Option<(i64, Me)>> {
+/// 登入著的人：使用者 id、Me、這個登入狀態的號碼雜湊（改密碼留這台、房間重查用）。
+pub struct SignedIn {
+    pub user_id: i64,
+    pub me: Me,
+    pub token_hash: Vec<u8>,
+}
+
+/// 帶著的 cookie 是誰（還沒到期、沒被停用）；沒登入是 None。
+pub async fn signed_in(state: &AppState, headers: &HeaderMap) -> anyhow::Result<Option<SignedIn>> {
     let Some(token) = session_token(headers) else {
         return Ok(None);
     };
+    session(state, sha256(&token)).await
+}
+
+/// 這個登入狀態（號碼雜湊）現在還算登入著嗎：還在（沒登出、沒因為改密碼或停用被刪）、沒到期、人沒被停用。
+pub async fn session(state: &AppState, token_hash: Vec<u8>) -> anyhow::Result<Option<SignedIn>> {
     let found: Option<(i64, String, String, bool)> = sqlx::query_as(
         "SELECT u.id, u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.expires_at > $2 AND u.disabled_at IS NULL",
     )
-    .bind(sha256(&token))
+    .bind(&token_hash)
     .bind(state.clock.now())
     .fetch_optional(&state.db)
     .await?;
-    Ok(found.map(|(id, email, name, is_admin)| {
-        (
-            id,
-            Me {
-                email,
-                name,
-                is_admin,
-            },
-        )
+    Ok(found.map(|(user_id, email, name, is_admin)| SignedIn {
+        user_id,
+        me: Me {
+            email,
+            name,
+            is_admin,
+        },
+        token_hash,
     }))
 }
 
-/// 帶著的 cookie 是誰（id、是不是管理員）；沒登入、到期、被停用是 None。
-pub(crate) async fn current_user_id(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> anyhow::Result<Option<(i64, bool)>> {
-    let Some(token) = session_token(headers) else {
-        return Ok(None);
-    };
-    Ok(sqlx::query_as(
-        "SELECT u.id, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = $1 AND s.expires_at > $2 AND u.disabled_at IS NULL",
-    )
-    .bind(sha256(&token))
-    .bind(state.clock.now())
-    .fetch_optional(&state.db)
-    .await?)
+/// 這個人有登入狀態被刪了（被停用、改密碼、重設密碼）：他開著的房間重查，不算登入了就關掉。
+pub(crate) fn signed_out(state: &AppState, user_id: i64) {
+    state
+        .rooms
+        .tell_everywhere(crate::flow_room::RoomEvent::SignedOut { user_id });
 }
 
 // ---------- 小工具 ----------
@@ -518,6 +519,17 @@ fn random_token() -> anyhow::Result<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
+}
+
+/// len 個字的亂數（小寫字母、數字）：雲端流程的 id（12 個字）、分享連結（32 個字）。
+pub(crate) fn random_id(len: usize) -> anyhow::Result<String> {
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bytes = vec![0u8; len];
+    getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
+    Ok(bytes
+        .iter()
+        .map(|b| CHARS[*b as usize % CHARS.len()] as char)
+        .collect())
 }
 
 pub(crate) fn sha256(token: &str) -> Vec<u8> {

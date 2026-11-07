@@ -13,8 +13,8 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{
-    AppError, LinkPurpose, Me, hash_password, new_link, password_mail, password_problem,
-    session_token, sha256, verify_password,
+    AppError, LinkPurpose, Me, SignedIn, hash_password, new_link, password_mail, password_problem,
+    signed_in, signed_out, verify_password,
 };
 use crate::lockout;
 
@@ -130,7 +130,12 @@ pub async fn change_password(
     headers: HeaderMap,
     Json(req): Json<ChangePasswordRequest>,
 ) -> Result<Response, AppError> {
-    let Some(me) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn {
+        user_id,
+        me,
+        token_hash,
+    }) = signed_in(&state, &headers).await?
+    else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let now = state.clock.now();
@@ -139,7 +144,7 @@ pub async fn change_password(
     }
     let (hash,): (Option<String>,) =
         sqlx::query_as("SELECT password_hash FROM users WHERE id = $1")
-            .bind(me.user_id)
+            .bind(user_id)
             .fetch_one(&state.db)
             .await?;
     let ok = match hash {
@@ -157,46 +162,20 @@ pub async fn change_password(
     let mut tx = state.db.begin().await?;
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(hash)
-        .bind(me.user_id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2")
-        .bind(me.user_id)
-        .bind(&me.token_hash)
+        .bind(user_id)
+        .bind(&token_hash)
         .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM password_links WHERE user_id = $1")
-        .bind(me.user_id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await?;
     lockout::clear(&mut *tx, &me.email).await?;
     tx.commit().await?;
+    signed_out(&state, user_id);
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-struct SignedIn {
-    user_id: i64,
-    email: String,
-    token_hash: Vec<u8>,
-}
-
-/// 帶著的登入狀態是誰（跟 `current_user` 一樣：沒到期、沒被停用），加上這個登入狀態的號碼雜湊。
-async fn signed_in(state: &AppState, headers: &HeaderMap) -> anyhow::Result<Option<SignedIn>> {
-    let Some(token) = session_token(headers) else {
-        return Ok(None);
-    };
-    let token_hash = sha256(&token);
-    let found: Option<(i64, String)> = sqlx::query_as(
-        "SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = $1 AND s.expires_at > $2 AND u.disabled_at IS NULL",
-    )
-    .bind(&token_hash)
-    .bind(state.clock.now())
-    .fetch_optional(&state.db)
-    .await?;
-    Ok(found.map(|(user_id, email)| SignedIn {
-        user_id,
-        email,
-        token_hash,
-    }))
 }

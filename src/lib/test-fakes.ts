@@ -49,6 +49,8 @@ import {
 	type UnsentRecords
 } from '#lib/offline-store.js';
 import {
+	FLOW_TOO_BIG,
+	MAX_CLOUD_FLOW_BYTES,
 	ServerUnreachable,
 	type AdminResult,
 	type FlowRoom,
@@ -275,9 +277,10 @@ export interface FakeCloudFlow {
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
  * 跑一步時紀錄放回流程再跑、跑完清掉該清的；收了告訴同一支流程開著的別的房間（別人記的帶名字）。
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
- * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的（斷線 1 分鐘當他離開沒做）。
+ * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆（斷線 1 分鐘當他離開沒做）。
  * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
- * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，再說可以送步。
+ * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，
+ * 要紀錄的（連回來的）再給現在的紀錄，再說可以送步。
  */
 export function fakeServer(
 	init: {
@@ -577,6 +580,17 @@ export function fakeServer(
 		const r = runCommands(putRecords(structuredClone(f.flow), structuredClone(records)), [command], '');
 		return r.kind === 'ok' ? takeRecords(r.flow).records[0] : undefined;
 	};
+	/** 同一次全上的同一個動作、同一組，別的一筆已經存了（沒清掉的）：那一筆（#262）。 */
+	const firstInRun = (f: FakeCloudFlow, r: StoredAttempt) =>
+		(f.records ?? []).find(
+			(o) =>
+				!o.gone &&
+				o.attempt.id !== r.attempt.id &&
+				r.attempt.runThroughId !== undefined &&
+				o.attempt.runThroughId === r.attempt.runThroughId &&
+				o.actionId === r.actionId &&
+				o.attempt.who === r.attempt.who
+		);
 	/**
 	 * 這個人改、刪、救回幾次（#258）：記錄者只能動自己記的，擁有者、編輯者都能；刪掉的改、刪都不算，救回才拿回來。
 	 * 回那幾次現在的樣子（還在的），告訴別的房間。
@@ -599,7 +613,7 @@ export function fakeServer(
 			const after =
 				request.kind === 'changeRecords' && !r.gone
 					? runOne(f, [r], { name: 'changeAttempt', args: [r.actionId, id, marks] })
-					: request.kind === 'restoreRecords' && r.gone
+					: request.kind === 'restoreRecords' && r.gone && !firstInRun(f, r)
 						? runOne(f, [], { name: 'restoreAttempt', args: [r.actionId, r.attempt, 0] })
 						: undefined;
 			if (!after) return r;
@@ -621,15 +635,7 @@ export function fakeServer(
 		const added: StoredAttempt[] = [];
 		for (const r of structuredClone(incoming)) {
 			// 同一次全上的同一組只收先存的（#262）
-			const first = (f.records ?? []).find(
-				(o) =>
-					!o.gone &&
-					o.attempt.id !== r.attempt.id &&
-					r.attempt.runThroughId !== undefined &&
-					o.attempt.runThroughId === r.attempt.runThroughId &&
-					o.actionId === r.actionId &&
-					o.attempt.who === r.attempt.who
-			);
+			const first = firstInRun(f, r);
 			if (first) {
 				const by = first.by ? nameOf(first.by) : '別人';
 				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by });
@@ -690,8 +696,12 @@ export function fakeServer(
 		}
 		return moved.length;
 	};
+	/** 被刪掉的流程 → 刪的時候有權限的人（之後打開、連房間說被刪了，不說被收回）。 */
+	const deletedFor = new Map<string, string[]>();
 	/** 刪掉一支，告訴開著的房間。 */
 	const deleteFlow = (flowId: string) => {
+		const f = state.flows.find((g) => g.id === flowId);
+		if (f) deletedFor.set(flowId, [f.owner, ...Object.keys(f.people ?? {})]);
 		state.flows = state.flows.filter((f) => f.id !== flowId);
 		for (const r of rooms.filter((r) => r.flowId === flowId)) deliver(r.room, () => ({ kind: 'deleted' }));
 	};
@@ -832,7 +842,8 @@ export function fakeServer(
 					const owner = find(f.owner)!;
 					const role = roleOf(f, email)!;
 					return { id: f.id, name: f.flow.name, updatedAt: f.updatedAt, ownerName: owner.name, ownerDisabled: !!owner.disabled, role };
-				})
+				}),
+				deleted: [...deletedFor].filter(([, emails]) => emails.some((e) => same(e, email))).map(([id]) => id)
 			};
 		},
 		async createFlow(input) {
@@ -845,6 +856,7 @@ export function fakeServer(
 		},
 		async uploadFlow(doc) {
 			mine();
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
 			const checked = checkFlowDocument(structuredClone(doc));
 			if (checked.kind === 'error') return { message: checked.message };
 			const problem = flowProblem(checked.flow);
@@ -941,7 +953,13 @@ export function fakeServer(
 				send(request) {
 					const f = state.flows.find((g) => g.id === flowId);
 					const role = f && roleOf(f, email);
-					if (!f || down.has(room)) return;
+					if (down.has(room)) return;
+					// 連上時流程已經被刪了：刪的時候有權限的說被刪了，不然當作被收回
+					if (!f) {
+						const deleted = deletedFor.get(flowId)?.some((e) => same(e, email));
+						if (request.kind === 'hello') deliver(room, () => ({ kind: deleted ? 'deleted' : 'revoked' }));
+						return;
+					}
 					if (!role) return deliver(room, () => ({ kind: 'revoked' }));
 					const editor = role === 'owner' || role === 'editor';
 					if (request.kind === 'hello') {
@@ -949,6 +967,10 @@ export function fakeServer(
 						open.tab = request.tabId;
 						open.sentBack = undefined;
 						if (ready) catchUp(f, request.seen, open);
+						if (ready && request.records) {
+							const records = (f.records ?? []).filter((r) => !r.gone).map((r) => cloudRecord(r, email));
+							deliver(room, () => ({ kind: 'records', records }));
+						}
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
 						if (!ready) return;
 						open.here = true;
@@ -1071,7 +1093,7 @@ export function fakeServer(
 		state.signedIn = signedIn;
 		const heard: RoomMessage[] = [];
 		room.onmessage = (m) => heard.push(m);
-		room.send({ kind: 'hello', fingerprint: state.fingerprint, tabId: `tab-${email}`, seen: 0, editing });
+		room.send({ kind: 'hello', fingerprint: state.fingerprint, tabId: `tab-${email}`, seen: 0, editing, records: false });
 		let n = 0;
 		/** 上次看到第幾步：聽到的最後一步（換成伺服器的樣子也算）。 */
 		const seen = () => Math.max(0, ...heard.map((m) => ('step' in m ? m.step : 0)));

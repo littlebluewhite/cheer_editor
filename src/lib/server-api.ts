@@ -73,6 +73,12 @@ export interface FlowRoom {
 	close(): void;
 }
 
+/** 傳上雲端的流程（flow.json 的內容，不含音樂）最多幾個 byte：跟伺服器的 UPLOAD_LIMIT（server/src/lib.rs）一樣。 */
+export const MAX_CLOUD_FLOW_BYTES = 16 * 1024 * 1024;
+
+/** 流程超過 MAX_CLOUD_FLOW_BYTES，傳不上去的原因（前面接「傳不上去：」）。 */
+export const FLOW_TOO_BIG = '這支流程太大了（音樂檔以外超過 16 MB）';
+
 /** 斷線後隔多久重連（伺服器沒回應時也是多久自動再試一次，#260）：1、2、4、8 秒，之後每 10 秒。 */
 const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
 
@@ -136,10 +142,10 @@ export interface ServerAdapter {
 	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
 	/**
 	 * 傳上雲端（#259）：送流程檔的 flow.json 內容（帶成功率紀錄），伺服器檢查整支流程，過了建一支新的雲端流程（我是擁有者）。
-	 * 不收回原因。音樂檔另外用 uploadAudio 傳。
+	 * 不收回原因（超過 16 MB 也是，FLOW_TOO_BIG）。音樂檔另外用 uploadAudio 傳。
 	 */
 	uploadFlow(doc: FlowDocument): Promise<CloudFlowSummary | FlowBlocked>;
-	/** 拿一支雲端流程（帶我的權限）；沒有這支、沒有權限是 null。 */
+	/** 拿一支雲端流程（帶我的權限）；沒有這支、沒有權限、被刪了是 null。 */
 	cloudFlow(id: string): Promise<CloudFlow | null>;
 
 	// 分享（#250）：分享、改權限、收回只有擁有者能做；離開只有不是擁有者的能做。
@@ -315,14 +321,18 @@ export function httpServer(base = ''): ServerAdapter {
 			throw new ServerUnreachable();
 		},
 		async uploadFlow(doc) {
+			// 伺服器只收 16 MB 以下：先擋，不然它回 413 會被當成連不上
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
 			const res = await post('flows/upload', doc);
+			if (res.status === 413) return { message: FLOW_TOO_BIG };
 			if (res.ok || res.status === 422) return (await res.json()) as CloudFlowSummary | FlowBlocked;
 			throw new ServerUnreachable();
 		},
 		async cloudFlow(id) {
 			const res = await get(`flows/${encodeURIComponent(id)}`);
 			if (res.ok) return (await res.json()) as CloudFlow;
-			if (res.status === 404) return null;
+			// 410：被擁有者刪了
+			if (res.status === 404 || res.status === 410) return null;
 			throw new ServerUnreachable();
 		},
 		async people(flowId) {
@@ -398,15 +408,16 @@ export function httpServer(base = ''): ServerAdapter {
 			const offline = () => socket?.close();
 			window.addEventListener('online', online);
 			window.addEventListener('offline', offline);
-			/** 斷了：問問看為什麼（斷網、登入過期、被收回或流程刪了、伺服器沒回應）。 */
-			const why = async (): Promise<RoomDown | 'gone'> => {
+			/** 斷了：問問看為什麼（斷網、登入過期、被收回、流程被刪了（410）、伺服器沒回應）。 */
+			const why = async (): Promise<RoomDown | 'revoked' | 'deleted'> => {
 				if (!navigator.onLine) return 'offline';
 				try {
 					const me = await fetch(`${base}/api/me`);
 					if (me.status === 401) return 'expired';
 					if (!me.ok) return 'unreachable';
 					const flow = await fetch(`${base}/api/flows/${encodeURIComponent(flowId)}`);
-					return flow.status === 404 ? 'gone' : 'unreachable';
+					if (flow.status === 410) return 'deleted';
+					return flow.status === 404 ? 'revoked' : 'unreachable';
 				} catch {
 					return navigator.onLine ? 'unreachable' : 'offline';
 				}
@@ -434,8 +445,8 @@ export function httpServer(base = ''): ServerAdapter {
 					up = false;
 					void why().then((reason) => {
 						if (closed || socket) return;
-						// 被收回、流程被刪了：房間連不上了，當作被收回（回首頁說原因）
-						if (reason === 'gone') return room.onmessage({ kind: 'revoked' });
+						// 被收回、流程被刪了：房間連不上了，回首頁說原因
+						if (reason === 'revoked' || reason === 'deleted') return room.onmessage({ kind: reason });
 						if (reason !== lastWhy) room.onconnection(false, reason);
 						lastWhy = reason;
 						// 登入過期：等重登，不自己再連（「現在再試」照樣能按）

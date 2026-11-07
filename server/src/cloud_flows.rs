@@ -11,9 +11,12 @@ use serde_json::value::RawValue;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, signed_in};
+use crate::accounts::{AppError, SignedIn, random_id, signed_in};
 use crate::records::{self, CloudRecord, Stored};
-use crate::sharing::{Role, role_of};
+use crate::sharing::{Role, no_access, role_of};
+
+/// 雲端流程的 id 幾個字（亂數）。
+const FLOW_ID_LEN: usize = 12;
 
 /// 「我的流程」裡的一支。
 #[derive(Serialize, TS)]
@@ -48,6 +51,8 @@ pub struct MyFlows {
     pub mine: Vec<CloudFlowSummary>,
     /// 分享給我的，最近改的在前。
     pub shared: Vec<SharedFlowSummary>,
+    /// 被擁有者刪掉的（刪的時候我有權限，#252）：這台的離線副本說「被刪掉了」，不說被收回。
+    pub deleted: Vec<String>,
 }
 
 /// 打開一支雲端流程拿到的。
@@ -83,10 +88,10 @@ pub async fn create(
     headers: HeaderMap,
     Json(input): Json<Box<RawValue>>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
-    let id = new_flow_id()?;
+    let id = random_id(FLOW_ID_LEN)?;
     let commands = format!(r#"[{{"name":"createFlow","args":[{}]}}]"#, input.get());
     // 建這支流程的那一步：步驟 id 用這支流程的 id（亂數），新東西的 id 由它算出來（ADR 0011）。
     let Ok(result) = state
@@ -137,7 +142,7 @@ pub async fn upload(
     headers: HeaderMap,
     Json(doc): Json<Box<RawValue>>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let Ok(result) = state.core.upload_flow(doc.get().to_owned()).await else {
@@ -156,7 +161,7 @@ pub async fn upload(
         }
     };
 
-    let id = new_flow_id()?;
+    let id = random_id(FLOW_ID_LEN)?;
     let now = state.clock.now();
     let mut tx = state.db.begin().await?;
     let (name,): (String,) = sqlx::query_as(
@@ -191,7 +196,7 @@ struct Uploaded<'a> {
 
 /// 我的流程（我擁有的）、分享給我的，最近改的在前。
 pub async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let rows: Vec<(String, String, DateTime<Utc>)> = sqlx::query_as(
@@ -230,20 +235,31 @@ pub async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<R
             })
         })
         .collect();
-    Ok(Json(MyFlows { mine, shared }).into_response())
+    let deleted: Vec<(String,)> =
+        sqlx::query_as("SELECT flow_id FROM deleted_flows WHERE user_id = $1 ORDER BY flow_id")
+            .bind(user_id)
+            .fetch_all(&state.db)
+            .await?;
+    let deleted = deleted.into_iter().map(|(id,)| id).collect();
+    Ok(Json(MyFlows {
+        mine,
+        shared,
+        deleted,
+    })
+    .into_response())
 }
 
-/// 拿一支：編排、現在第幾步、我的權限。沒權限、沒有這支都回 404。
+/// 拿一支：編排、現在第幾步、我的權限。沒權限、沒有這支都回 404；被擁有者刪了（刪的時候我有權限）回 410。
 pub async fn get_one(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let Some(role) = role_of(&state.db, &id, user_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+        return Ok(no_access(&state.db, &id, user_id).await?.into_response());
     };
     let (content, step, at): (String, i64, DateTime<Utc>) =
         sqlx::query_as("SELECT content::text, step, updated_at FROM flows WHERE id = $1")
@@ -275,15 +291,4 @@ pub(crate) struct Outcome<'a> {
 /// 時間寫成跟 JS `toISOString` 一樣：`2026-11-07T09:00:00.000Z`。
 pub(crate) fn iso(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)
-}
-
-/// 雲端流程的 id：12 個字的亂數（小寫字母、數字）。
-fn new_flow_id() -> anyhow::Result<String> {
-    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut bytes = [0u8; 12];
-    getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
-    Ok(bytes
-        .iter()
-        .map(|b| CHARS[*b as usize % CHARS.len()] as char)
-        .collect())
 }

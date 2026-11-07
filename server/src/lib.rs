@@ -36,7 +36,7 @@ use crate::my_account::MailLimit;
 /// 前端建置時另外產生的入口頁（`vite.config.ts` 裡 adapter 的 `fallback`）。
 const SPA_ENTRY: &str = "200.html";
 
-/// 傳上雲端的流程（flow.json 的內容，不含音樂）最大幾個位元組。
+/// 傳上雲端的流程（flow.json 的內容，不含音樂）最大幾個位元組。前端先擋、413 也說太大（src/lib/server-api.ts 的 MAX_CLOUD_FLOW_BYTES）。
 const UPLOAD_LIMIT: usize = 16 * 1024 * 1024;
 
 /// `migrations/` 底下的遷移，編譯時包進程式；伺服器啟動時跑。

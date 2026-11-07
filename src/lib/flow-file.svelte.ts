@@ -36,6 +36,10 @@ import type { TabChannel } from '#lib/tab-channel.js';
 /** 傳上雲端傳好的提示。 */
 export const UPLOADED = '傳上雲端了：現在開的是雲端那支，可以分享了。這台的草稿丟掉了，資料夾裡的流程檔沒動。';
 const UPLOAD_UNREACHABLE = '連不上伺服器，沒傳上雲端';
+/** 被收回回首頁時，黃條說的。 */
+const revokedText = (name: string) => `你已經不能打開「${name}」。`;
+/** 流程被擁有者刪了回首頁時，黃條說的（#252）。 */
+const deletedText = (name: string) => `「${name}」被擁有者刪掉了。`;
 /** 被收回、被刪掉回首頁時，黃條後面加的（離線副本一起刪了，#261）。 */
 const COPY_DROPPED = '這台留著的那份也刪掉了。';
 
@@ -356,14 +360,20 @@ export class FlowFile {
 			this.#editor.session.open(null);
 			this.#revoked = `${why(name)}${COPY_DROPPED}`;
 		};
-		const revoked = goneHome((name) => `你已經不能打開「${name}」。`);
+		const revoked = goneHome(revokedText);
 		// 被收回時還有沒傳的：先擋住列出來，按「知道了」才丟掉、回首頁
 		cloud.onrevoked = () => {
 			const rows = cloud.unsentRows;
 			if (rows.length) this.#lost = { rows, then: revoked };
 			else revoked();
 		};
-		cloud.ondeleted = goneHome((name) => `「${name}」被擁有者刪掉了。`);
+		const deleted = goneHome(deletedText);
+		// 被刪掉時還有沒傳的：一樣先擋住列出來（框寫被刪掉了）
+		cloud.ondeleted = () => {
+			const rows = cloud.unsentRows;
+			if (rows.length) this.#lost = { rows, then: deleted, deleted: this.#editor.session.flow?.name ?? '' };
+			else deleted();
+		};
 		// 從離線副本打開的：連上了就換成最新的
 		cloud.onback = () => {
 			if (this.#offlineAt !== null && this.#cloud === cloud) void this.openCloud(id, true);
@@ -460,10 +470,14 @@ export class FlowFile {
 		this.#editor.session.readOnly = ONLY_VIEW;
 	}
 
-	/** 被收回時還沒傳的（#260）：擋住畫面的框列出來；按「知道了」（lostKnown）才丟掉、回首頁。沒有是 null。 */
-	#lost = $state.raw<{ rows: DroppedRecord[]; then: () => void } | null>(null);
-	get lost(): DroppedRecord[] | null {
-		return this.#lost?.rows ?? null;
+	/**
+	 * 被收回、流程被刪了時還沒傳的（#260）：擋住畫面的框列出來；按「知道了」（lostKnown）才丟掉、回首頁。沒有是 null。
+	 * deleted：流程被擁有者刪了（那支的名字，框寫被刪掉了）；被收回是 undefined。
+	 */
+	#lost = $state.raw<{ rows: DroppedRecord[]; then: () => void; deleted?: string } | null>(null);
+	get lost(): { rows: DroppedRecord[]; deleted?: string } | null {
+		const lost = this.#lost;
+		return lost && { rows: lost.rows, deleted: lost.deleted };
 	}
 	/** 被收回的框按「知道了」：沒傳的丟掉，回首頁。 */
 	lostKnown() {
@@ -474,9 +488,10 @@ export class FlowFile {
 
 	/**
 	 * 首頁連上網路、拿到雲端流程的清單（cloudIds：我還打得開的）：不在裡面的（被收回、被刪掉）離線副本刪掉（#261），
-	 * 首頁最上面黃的那條說哪幾支。還有紀錄沒傳的照 #260 先擋住列出來，按「知道了」才刪（一支一支來）。
+	 * 首頁最上面黃的那條說哪幾支（deletedIds 裡的是被擁有者刪掉的，寫被刪掉了）。
+	 * 還有紀錄沒傳的照 #260 先擋住列出來，按「知道了」才刪（一支一支來）。
 	 */
-	async dropGoneCopies(cloudIds: string[]) {
+	async dropGoneCopies(cloudIds: string[], deletedIds: string[] = []) {
 		const store = this.#editor.adapters.offline;
 		const open = new Set(cloudIds);
 		const gone = (await store.copies()).filter((c) => !open.has(c.flowId));
@@ -488,9 +503,10 @@ export class FlowFile {
 			const lost = queue.shift();
 			if (lost) this.#lost = lost;
 		};
-		const tell = (name: string) => {
-			names.push(name);
-			this.#revoked = `${names.map((n) => `你已經不能打開「${n}」。`).join('')}${COPY_DROPPED}`;
+		const deleted = new Set(deletedIds);
+		const tell = (name: string, flowId: string) => {
+			names.push(deleted.has(flowId) ? deletedText(name) : revokedText(name));
+			this.#revoked = `${names.join('')}${COPY_DROPPED}`;
 		};
 		for (const c of gone) {
 			const u = unsent.find((x) => x.flowId === c.flowId);
@@ -500,13 +516,14 @@ export class FlowFile {
 					then: () => {
 						void store.saveUnsent({ ...u, records: [], amends: [], dropped: [] });
 						void store.dropCopy(c.flowId);
-						tell(c.name);
+						tell(c.name, c.flowId);
 						next();
-					}
+					},
+					...(deleted.has(c.flowId) && { deleted: c.name })
 				});
 			} else {
 				await store.dropCopy(c.flowId);
-				tell(c.name);
+				tell(c.name, c.flowId);
 			}
 		}
 		next();
