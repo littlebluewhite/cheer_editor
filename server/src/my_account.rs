@@ -14,7 +14,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::accounts::{
     AppError, LinkPurpose, Me, SignedIn, hash_password, new_link, password_mail, password_problem,
-    signed_in, verify_password,
+    signed_in, signed_out, verify_password,
 };
 use crate::lockout;
 
@@ -176,5 +176,6 @@ pub async fn change_password(
         .await?;
     lockout::clear(&mut *tx, &me.email).await?;
     tx.commit().await?;
+    signed_out(&state, user_id);
     Ok(StatusCode::NO_CONTENT.into_response())
 }

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{LinkPurpose, SignedIn, new_link, password_mail, signed_in};
+use crate::accounts::{LinkPurpose, SignedIn, new_link, password_mail, signed_in, signed_out};
 use crate::mail::{Mail, MailError};
 use crate::sharing::{hand_over_flows, tell_new_owner};
 
@@ -318,6 +318,7 @@ pub async fn disable(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    signed_out(&state, id);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

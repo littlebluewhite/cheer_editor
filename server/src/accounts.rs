@@ -280,6 +280,7 @@ pub async fn set_password(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    signed_out(&state, link.user_id);
     // 重設後寄通知信：帳號被別人用了，他也會知道。密碼已經設好，寄不出去只記在 log。
     if link.purpose == LinkPurpose::Reset {
         let mail = Mail {
@@ -423,6 +424,13 @@ pub async fn session(state: &AppState, token_hash: Vec<u8>) -> anyhow::Result<Op
         },
         token_hash,
     }))
+}
+
+/// 這個人有登入狀態被刪了（被停用、改密碼、重設密碼）：他開著的房間重查，不算登入了就關掉。
+pub(crate) fn signed_out(state: &AppState, user_id: i64) {
+    state
+        .rooms
+        .tell_everywhere(crate::flow_room::RoomEvent::SignedOut { user_id });
 }
 
 // ---------- 小工具 ----------

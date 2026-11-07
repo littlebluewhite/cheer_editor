@@ -20,6 +20,7 @@
 //! 漏聽了房間裡的事（落後超過 256 件）也照這樣從資料庫補。
 //! 一起記全上（#262，ADR 0012）：誰在表裡、誰拿著哪幾組放在房間裡（見 run_together.rs），變了就告訴能記的人
 //! （檢視者不說）；連線斷了記下時間，1 分鐘後再說一次（當他離開）；被收回、降成檢視者踢出表。
+//! 登入狀態不算了（被停用、改密碼、重設密碼、30 天到期、登出）：連線關掉，送來的不收（見 serve）。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -34,7 +35,7 @@ use serde_json::value::RawValue;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, SignedIn, signed_in};
+use crate::accounts::{AppError, SignedIn, session, signed_in};
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
@@ -57,6 +58,8 @@ pub enum RoomEvent {
     Permission { user_id: i64, role: Option<Role> },
     /// 擁有者把這支流程刪了（#252）：每個人都要知道。
     Deleted,
+    /// 這個人有登入狀態被刪了（被停用、改密碼、重設密碼）：他的連線重查自己的，不算登入了就關掉。
+    SignedOut { user_id: i64 },
     /// 收了一步：哪個連線送的、送的人的名字、收了之後第幾步、改好之後的東西（RemoteChange 的 JSON）。
     Changed {
         from: u64,
@@ -133,6 +136,13 @@ impl Rooms {
     pub fn tell(&self, flow_id: &str, event: RoomEvent) {
         if let Some(room) = self.lock().get(flow_id) {
             let _ = room.events.send(event);
+        }
+    }
+
+    /// 告訴每一支流程開著的連線（例：有人被停用，他開著哪幾支不知道）。
+    pub fn tell_everywhere(&self, event: RoomEvent) {
+        for room in self.lock().values() {
+            let _ = room.events.send(event.clone());
         }
     }
 
@@ -445,7 +455,12 @@ pub async fn join(
     if !from_this_site(&headers) {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
-    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn {
+        user_id,
+        token_hash,
+        ..
+    }) = signed_in(&state, &headers).await?
+    else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     if role_of(&state.db, &id, user_id).await?.is_none() {
@@ -455,7 +470,12 @@ pub async fn join(
         let rooms = state.rooms.clone();
         let clock = state.clock.clone();
         let conn = rooms.next_conn.fetch_add(1, Ordering::Relaxed);
-        if let Err(e) = serve(state, socket, &id, user_id, conn).await {
+        let who = Connected {
+            user_id,
+            token_hash,
+            conn,
+        };
+        if let Err(e) = serve(state, socket, &id, who).await {
             tracing::error!(err = %e, "房間出錯");
         }
         rooms.run_disconnect(&id, conn, clock.now());
@@ -463,15 +483,30 @@ pub async fn join(
     }))
 }
 
+/// 連上的是誰：使用者 id、他的登入狀態（號碼雜湊）、這個連線的號碼。
+struct Connected {
+    user_id: i64,
+    token_hash: Vec<u8>,
+    conn: u64,
+}
+
 /// 一個連線：先打招呼，再一步一步收；權限被改、被收回馬上說；別人的改動、在場名單送過來。
-/// 對方斷線、被收回就結束。
+/// 對方斷線、被收回就結束。登入狀態不算了（被停用、改密碼、30 天到期、登出）就關掉，不再收（#234）：
+/// 每次送來的都先重查，被停用、改密碼時也馬上重查。前端連不回來時問 /api/me 就知道是沒登入了。
 async fn serve(
     state: AppState,
     mut socket: WebSocket,
     flow_id: &str,
-    user_id: i64,
-    conn: u64,
+    connected: Connected,
 ) -> anyhow::Result<()> {
+    let Connected {
+        user_id,
+        token_hash,
+        conn,
+    } = connected;
+    let still_signed_in = async || -> anyhow::Result<bool> {
+        Ok(session(&state, token_hash.clone()).await?.is_some())
+    };
     // 打招呼前就開始聽：連上之後的權限改動不會漏掉。
     let mut events = state.rooms.listen(flow_id);
     let (tab_id, seen, editing) = loop {
@@ -528,6 +563,7 @@ async fn serve(
         let reply = tokio::select! {
             request = next_request(&mut socket) => match request {
                 None => return Ok(()),
+                Some(_) if !still_signed_in().await? => return Ok(()),
                 Some(request @ (RoomRequest::Step { .. } | RoomRequest::Undo { .. })) => {
                     // 存好、告訴別人都在鎖裡：別人收到的改動照第幾步的順序。
                     let steps = state.rooms.steps(flow_id);
@@ -624,6 +660,12 @@ async fn serve(
                     told_role(&state, flow_id, changed).await?
                 }
                 Ok(RoomEvent::Deleted) => RoomMessage::Deleted,
+                Ok(RoomEvent::SignedOut { user_id: who }) if who == user_id => {
+                    if !still_signed_in().await? {
+                        return Ok(());
+                    }
+                    continue;
+                }
                 Ok(RoomEvent::Changed { from, by, step, change }) if from != conn && step > known => {
                     known = step;
                     RoomMessage::Changed { step, by, change: RawValue::from_string(change.to_string())? }
