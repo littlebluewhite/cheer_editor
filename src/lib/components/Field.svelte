@@ -575,20 +575,7 @@
 			{@render railTop?.()}
 			<div class="rail-gap"></div>
 			{@render railBottom?.()}
-			<div class="walk-tools">
-				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
-					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
-				</label>
-				<!-- 圖例可以收起來（存在這台電腦）；收著時箭頭朝右，看得出還能打開 -->
-				<button
-					type="button"
-					class="ghost legend-toggle"
-					aria-expanded={legendOpen}
-					aria-controls={legendId}
-					title={legendOpen ? '收起圖例' : '打開圖例'}
-					onclick={toggleLegend}>圖例<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▸'}</span></button
-				>
-			</div>
+			<!-- 圖例在「只看橘紅走位線」上面：左欄很矮（時間軸拖到最大）時，捲到底最下面那一行工具一定看得到、點得到 -->
 			<div class="legend-box" id={legendId} hidden={!legendOpen}>
 				<div class="walk-tools" aria-hidden="true">
 					<!-- 門檻寫短（m/s），時間軸拉高時左欄還捲得到；滑鼠移上去寫完整的。 -->
@@ -603,6 +590,20 @@
 					<span><i class="top"></i>上層</span>
 					<span><i class="up"></i>正在上面</span>
 				</div>
+			</div>
+			<div class="walk-tools">
+				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
+					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
+				</label>
+				<!-- 圖例可以收起來（存在這台電腦）；收著時箭頭朝上，看得出還能打開 -->
+				<button
+					type="button"
+					class="ghost legend-toggle"
+					aria-expanded={legendOpen}
+					aria-controls={legendId}
+					title={legendOpen ? '收起圖例' : '打開圖例'}
+					onclick={toggleLegend}>圖例<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▴'}</span></button
+				>
 			</div>
 		</div>
 	{/if}
