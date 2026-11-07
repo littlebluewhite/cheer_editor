@@ -12,6 +12,7 @@ import {
 	deleteFormation,
 	formationTimes,
 	groupsPeople,
+	moveGroup,
 	sameFlow,
 	setSquad,
 	squadsOf,
@@ -21,7 +22,8 @@ import {
 	type ConfirmOption,
 	type Flow,
 	type Mark,
-	type MoveResult
+	type MoveResult,
+	type Position
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
@@ -99,6 +101,8 @@ export class EditorSession {
 	#memberIds = $state.raw<string[]>([]);
 	/** 最後點的是哪一種：Delete／Backspace 只看它（點了人以後，之前選的站位、動作還在，但不刪）。 */
 	#picked: PickKind | null = null;
+	/** ⌘C 複製的站位（那時候大家的位置）；⌘V 貼到播放頭。不存進流程檔。 */
+	#copied: Record<string, Position> | null = null;
 	/**
 	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 VIEW_ONLY；
 	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
@@ -399,7 +403,7 @@ export class EditorSession {
 	// ---------- 改完跳播放頭 ----------
 
 	/**
-	 * 拖人、跟上一張一樣、選人工具列改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。
+	 * 拖人、選人工具列、貼上站位改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。
 	 * 有往後帶：提示旁邊放「只改這張」（見 #onlyThis）。atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。
 	 */
 	moved(r: MoveResult, atEdge = false) {
@@ -502,6 +506,30 @@ export class EditorSession {
 		else if (this.#picked === 'action' && this.#actionId) this.removeAction(this.#actionId);
 		else if (this.#memberIds.length || this.#actionId || this.#formationId) this.notice = PICK_ACTION_FIRST;
 		else return false;
+		return true;
+	}
+
+	/** ⌘C：最後點的是站位卡片就複製它（大家的位置），提示怎麼貼。回傳有沒有處理。 */
+	copyFormation(): boolean {
+		const index = this.#flow?.formations.findIndex((f) => f.id === this.#formationId) ?? -1;
+		if (this.#picked !== 'formation' || index < 0) return false;
+		this.#copied = this.#flow!.formations[index].pos;
+		this.notice = `已複製站位 ${index + 1}；移到別的地方按 ⌘V 貼上`;
+		return true;
+	}
+
+	/**
+	 * ⌘V：播放頭（sec）那一拍的站位改成複製的那張，沒有站位就插一張；跟拖人一樣往後帶、算一步復原（moveGroup）。
+	 * 複製之後才加的人沒有位置，不動。回傳有沒有處理（沒複製過就沒有）。
+	 */
+	pasteFormation(sec: number): boolean {
+		const copied = this.#copied;
+		const flow = this.#flow;
+		if (!copied || !flow) return false;
+		const ids = flow.members.map((m) => m.id).filter((id) => copied[id]);
+		this.ask.send(() => moveGroup(flow, sec, ids, () => Object.fromEntries(ids.map((id) => [id, copied[id]]))), {
+			done: (r) => this.moved(r)
+		});
 		return true;
 	}
 

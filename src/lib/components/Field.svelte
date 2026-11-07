@@ -113,7 +113,7 @@
 		railHead?: Snippet;
 		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
 		railTop?: Snippet;
-		/** 左欄圖例上面的東西（跟上一張一樣、拖人會改）。 */
+		/** 左欄圖例上面的東西（拖人會改、站位名稱）。 */
 		railBottom?: Snippet;
 		/** 疊在場地上的東西。 */
 		children?: Snippet;
@@ -450,15 +450,18 @@
 	/** 選人工具列出現著（編輯頁、能改、有選人）：場上的提示往下排（--tools-h）。 */
 	const toolsOn = $derived(!!session && !session.viewing && selected.length > 0);
 
-	/** 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。空白處照舊是瀏覽器的選單。 */
+	/**
+	 * 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。
+	 * 沒選人時在空白處按：開套用全隊的選單（跟第 [_] 張一樣）；有選人時空白處照舊是瀏覽器的選單。
+	 */
 	function contextMenu(e: MouseEvent) {
 		if (!session || session.viewing) return;
-		const el = (e.target as Element).closest?.('[data-member-id]');
+		const el = (e.target as Element).closest?.('[data-member-id]') ?? (selected.length ? null : svg);
 		const id = el?.getAttribute('data-member-id');
-		if (!el || !id) return;
+		if (!el) return;
 		e.preventDefault();
-		if (!selected.includes(id)) session.selectMembers([id]);
-		// 鍵盤的選單鍵沒有指標位置：開在那個人旁邊
+		if (id && !selected.includes(id)) session.selectMembers([id]);
+		// 鍵盤的選單鍵沒有指標位置：開在那個人（或場地）旁邊
 		const r = el.getBoundingClientRect();
 		menu = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.right, y: r.bottom };
 	}
@@ -856,7 +859,7 @@
 		min-width: 0;
 		min-height: 0;
 	}
-	/* 左欄：上面是放大縮小和提示，下面是跟上一張一樣、拖人會改、圖例。 */
+	/* 左欄：上面是放大縮小和提示，下面是拖人會改、圖例。 */
 	.rail {
 		display: flex;
 		flex-direction: column;

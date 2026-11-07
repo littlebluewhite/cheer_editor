@@ -133,7 +133,6 @@ export {
 	formationTimes,
 	formationWalks,
 	insertFormation,
-	matchPrevious,
 	memberWalk,
 	moveFormation,
 	moveFormationHint,

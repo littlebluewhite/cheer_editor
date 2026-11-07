@@ -45,7 +45,7 @@ export interface Walk {
 	arrive: TimePosition;
 }
 
-/** moveMembers、matchPrevious 多帶的結果，見 moveMembers。 */
+/** moveMembers、moveGroup 多帶的結果，見 moveMembers。 */
 export interface MoveResult {
 	inserted: boolean;
 	sec: number;
@@ -91,25 +91,6 @@ export function moveMembers(
 }
 
 /**
- * 跟上一張一樣：選到的人在播放頭這一拍的站位，改成上一張站位的位置；這一拍沒有站位就先插一張
- * （跟拖人一樣），效果就是「他們到這一拍都還站著」。改完往後帶。回傳跟 moveMembers 一樣。
- * 沒選人、播放頭在開頭那張，就擋下。
- */
-export function matchPrevious(
-	flow: Flow,
-	sec: number,
-	memberIds: string[]
-): CommandResult<MoveResult> {
-	if (memberIds.length === 0) return blocked('先選人');
-	if (formationAt(flow, sec) === flow.formations[0]) return blocked('開頭那張前面沒有站位');
-	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
-	return moveAt(flow, sec, (f, target) => {
-		const previous = f.formations[f.formations.indexOf(target) - 1];
-		return Object.fromEntries(memberIds.map((id) => [id, previous.pos[id]]));
-	});
-}
-
-/**
  * 一組人移到新位置（選人工具列的鏡像、對齊……都走這裡）：跟拖人同一條路，這一拍沒有站位就先插一張（自動帶入），
  * place 拿選到的人在這一拍站位裡的位置，回傳他們的新位置；改完往後帶。回傳跟 moveMembers 一樣。
  * 沒選人、找不到隊員就擋下；位置都沒變、也不用插站位，就擋下（不記一步復原）。
@@ -136,7 +117,7 @@ function pick(pos: Record<string, Position>, ids: string[]): Record<string, Posi
 }
 
 /**
- * moveMembers、matchPrevious、moveGroup 共用：插站位（需要時）、改位置、往後帶（carry = false 就不帶）。
+ * moveMembers、moveGroup 共用：插站位（需要時）、改位置、往後帶（carry = false 就不帶）。
  * movesFor 拿到插好站位的流程和要改的那張。
  */
 function moveAt(
