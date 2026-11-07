@@ -199,6 +199,7 @@ export {
 	lengthTextWithUnit,
 	nearestPosition,
 	positionText,
+	readJump,
 	readLength,
 	readStart,
 	readTime,

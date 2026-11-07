@@ -6,6 +6,7 @@
 		memberMarkers,
 		positionText,
 		positionsAt,
+		readJump,
 		raisedAt,
 		squadBadge,
 		timeRuleWarnings,
@@ -29,6 +30,7 @@
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
+	import { composing } from '#lib/ime.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -195,6 +197,30 @@
 	function closeMore(by: 'outside' | 'escape') {
 		moreOpen = false;
 		if (by === 'escape') moreBtn?.focus();
+	}
+
+	/** 手機點時間打「3-1」跳過去：jumpText 是 null 時收著；jumpError 是看不懂的原因（#228）。 */
+	let jumpText = $state<string | null>(null);
+	let jumpError = $state('');
+
+	function closeJump() {
+		jumpText = null;
+		jumpError = '';
+	}
+
+	/** Enter 跳過去、收起來；看不懂就說為什麼，欄位留著改。Esc 收起來不跳。 */
+	function jumpKey(e: KeyboardEvent) {
+		if (composing(e)) return;
+		if (e.key === 'Escape') return closeJump();
+		if (e.key !== 'Enter' || !flow) return;
+		e.preventDefault();
+		const read = readJump(flow, playback.sec, jumpText ?? '');
+		if (read.kind !== 'ok') {
+			jumpError = read.message;
+			return;
+		}
+		playback.seek(read.value);
+		closeJump();
 	}
 
 	/** 秒數寫成「1:05.3」。 */
@@ -513,13 +539,49 @@
 					disabled={!flow.segments.length && !playback.playing}
 					onclick={() => playback.toggle()}><Icon name={playback.playing ? 'pause' : 'play'} size={18} /></button
 				>
-				<div class="board">
+				{#snippet board()}
 					<span class="pos" aria-label="目前位置"
 						>{#if position}<span class="pos-seg">{position.segment}</span
 							>{#if position.at}{' '}<span class="pos-at">{position.at}</span>{/if}{:else}<span class="pos-seg">還沒有段</span>{/if}</span
 					>
 					<span class="clock">{clock(playback.sec)} <i>/ {clock(totalSeconds(flow))}</i></span>
-				</div>
+				{/snippet}
+				{#if narrow}
+					<!-- 手機跳時間（#228）：回開頭、上一個／下一個八拍；點時間打「3-1」跳過去。只是看，不改流程 -->
+					<div class="jump" role="group" aria-label="跳時間">
+						<button type="button" aria-label="回開頭" onclick={() => playback.toStart()}>⏮</button>
+						<button type="button" aria-label="上一個八拍" onclick={() => playback.step(-1, true)}>‹ 八拍</button>
+						<button type="button" aria-label="下一個八拍" onclick={() => playback.step(1, true)}>八拍 ›</button>
+					</div>
+					{#if jumpText === null}
+						<button
+							type="button"
+							class="board"
+							aria-label="跳到哪裡"
+							title="點一下，打 3-1 跳到第 3 個八拍"
+							disabled={!flow.segments.length}
+							onclick={() => (jumpText = '')}>{@render board()}</button
+						>
+					{:else}
+						<div class="jump-to">
+							<input
+								type="text"
+								aria-label="跳到哪裡"
+								placeholder="例：3-1"
+								enterkeyhint="go"
+								autocomplete="off"
+								bind:value={jumpText}
+								oninput={() => (jumpError = '')}
+								onkeydown={jumpKey}
+								onblur={closeJump}
+								{@attach (el) => el.focus()}
+							/>
+							{#if jumpError}<p class="jump-error" role="alert">{jumpError}</p>{/if}
+						</div>
+					{/if}
+				{:else}
+					<div class="board">{@render board()}</div>
+				{/if}
 				<label class="toggle metronome" title="播放時每拍響一聲">
 					<input
 						type="checkbox"
@@ -1134,6 +1196,38 @@
 		gap: 8px 10px;
 		padding: 8px 12px;
 		background: var(--ink);
+	}
+	/* 手機跳時間：回開頭、上一個／下一個八拍（手指至少 40px 高）；時間本身是按鈕，點了換成打字的欄位 */
+	.jump {
+		display: flex;
+		gap: 6px;
+	}
+	.jump button {
+		min-height: 40px;
+		padding: 0 12px;
+		background: transparent;
+		border-color: #36425f;
+		color: #c9d2e6;
+		white-space: nowrap;
+	}
+	button.board {
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.jump-to {
+		display: grid;
+		gap: 4px;
+		min-width: 168px;
+	}
+	.jump-to input {
+		min-height: 40px;
+		font-size: 16px; /* iOS 小於 16px 會自動放大畫面 */
+	}
+	.jump-error {
+		margin: 0;
+		font-size: 12px;
+		color: #ffb4a3;
 	}
 	.phone-me {
 		display: flex;
