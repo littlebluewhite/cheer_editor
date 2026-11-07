@@ -1,9 +1,26 @@
-// 總檢查：每個會改流程的指令，成功的結果存成流程檔再打開，要打得開而且一樣。
+// 總檢查：每個會改流程的指令，成功的結果存成流程檔再打開，要打得開而且一樣；也要過得了整份流程檢查（檢查不比指令嚴）。
 import { describe, expect, it } from 'vitest';
 import {
 	PHASE_COLORS,
 	addAction,
 	addCustomRole,
+	addMemberLines,
+	adjustField,
+	changeAttempt,
+	copyCues,
+	deleteAttempt,
+	deleteCustomRole,
+	deleteLastRunThrough,
+	deleteSegment,
+	fitSegmentToAudio,
+	flowProblem,
+	insertBeats,
+	moveSegment,
+	pasteCues,
+	restoreAttempt,
+	restoreRunThrough,
+	splitSegment,
+	updateCustomRole,
 	addMembers,
 	addPhase,
 	addSegment,
@@ -129,8 +146,58 @@ const commands: [string, (flow: Flow) => CommandResult | Flow][] = [
 	['addSegment', (f) => addSegment(f, 'music')],
 	['updateSegment', (f) => updateSegment(f, 's1', { bpm: 144 }, { confirmed: true })],
 	['loadSegmentAudio', (f) => loadSegmentAudio(f, 's1', '第一首.mp3')],
-	['updateTimeRules', (f) => updateTimeRules(f, { on: false, maxTotalSec: 150 })]
+	['updateTimeRules', (f) => updateTimeRules(f, { on: false, maxTotalSec: 150 })],
+	['adjustField', (f) => adjustField(f, { strips: 7, layout: 'horizontal' })],
+	['addMemberLines', (f) => addMemberLines(f, '小D', { gender: 'F', globalRole: 'top' })],
+	[
+		'pasteCues',
+		(f) => {
+			const placed = flowOf(placeCue(f, 'x1', down(0)));
+			return pasteCues(placed, 'x1', 8, copyCues(placed.actions[0], 0, 4));
+		}
+	],
+	['updateCustomRole', (f) => updateCustomRole(flowOf(addCustomRole(f, { name: '飛人', meaning: '' })), 'r1', { name: '飛飛', meaning: '' })],
+	[
+		'deleteCustomRole',
+		(f) => {
+			const roles = flowOf(addCustomRole(flowOf(addCustomRole(f, { name: '飛人', meaning: '' })), { name: '飛飛', meaning: '' }));
+			return deleteCustomRole(roles, 'r1');
+		}
+	],
+	['changeAttempt', (f) => changeAttempt(f, 'x1', attemptId(f), { p1: '✓', p2: '✓', p3: '✓' })],
+	['deleteAttempt', (f) => deleteAttempt(f, 'x1', attemptId(f))],
+	[
+		'restoreAttempt',
+		(f) => {
+			const r = deleteAttempt(f, 'x1', attemptId(f));
+			// 刪了之後改過別的地方，再放回去。
+			return r.kind === 'ok' ? restoreAttempt(flowOf(renameFlow(r.flow, '新名字')), 'x1', r.attempt, r.index) : r;
+		}
+	],
+	['deleteLastRunThrough', (f) => deleteLastRunThrough(runThrough(f), date)],
+	[
+		'restoreRunThrough',
+		(f) => {
+			const r = deleteLastRunThrough(runThrough(f), date);
+			return r.kind === 'ok' ? restoreRunThrough(r.flow, r.removed) : r;
+		}
+	],
+	['fitSegmentToAudio', (f) => fitSegmentToAudio(flowOf(loadSegmentAudio(f, 's1', '第一首.mp3')), 's1', { a1: 30 }, { confirmed: true })],
+	['deleteSegment', (f) => deleteSegment(f, 's2', { confirmed: true })],
+	['moveSegment', (f) => moveSegment(f, 's2', -1)],
+	['splitSegment', (f) => splitSegment(f, 's1', 3.2)],
+	['insertBeats', (f) => insertBeats(f, { segmentId: 's1', at: 16 }, 16)]
 ];
+
+/** x1 記的第一次的 id。 */
+function attemptId(flow: Flow): string {
+	return flow.actions[0].successRate!.records[0].id;
+}
+
+/** 再記一次全上。 */
+function runThrough(flow: Flow): Flow {
+	return flowOf(recordRunThrough(flow, date, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
+}
 
 describe('每個會改流程的指令：成功的結果存了再開', () => {
 	it.each(commands)('%s', (_, command) => {
@@ -142,5 +209,15 @@ describe('每個會改流程的指令：成功的結果存了再開', () => {
 		const opened = readFlowFile(writeFlowFile(flow, {}));
 		expect(opened.kind).toBe('ok');
 		expect(opened.kind === 'ok' && opened.flow).toEqual(flow);
+	});
+});
+
+describe('每個會改流程的指令：成功的結果過得了整份流程檢查', () => {
+	it.each(commands)('%s', (_, command) => {
+		const before = base();
+		const r = command(before);
+		const flow = 'kind' in r ? flowOf(r) : r;
+		expect(flowProblem(flow, before)).toBeNull();
+		expect(flowProblem(flow)).toBeNull();
 	});
 });

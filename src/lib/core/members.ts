@@ -448,7 +448,7 @@ function samePlace(a: Position, b: Position): boolean {
 }
 
 /** 名字的毛病：空的、太長；沒問題是 null。名字先去掉前後空白再傳進來。 */
-function memberNameProblem(name: string): string | null {
+export function memberNameProblem(name: string): string | null {
 	if (!name) return '請填隊員名字';
 	return tooLong('memberName', name);
 }
