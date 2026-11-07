@@ -227,7 +227,7 @@ export class EditorSession {
 
 	/**
 	 * 換一支流程（開檔、新建、救回草稿；null 是回到首頁）：清掉復原和重做、選取、提示、問題。
-	 * id 會跟上一支重複，所以選取全部清掉。saved = 從檔案開的，算存過。
+	 * id 會跟上一支重複，所以選取和複製的站位全部清掉。saved = 從檔案開的，算存過。
 	 */
 	open(flow: Flow | null, saved = false) {
 		this.#flow = flow;
@@ -235,6 +235,7 @@ export class EditorSession {
 		this.#undo = [];
 		this.#redo = [];
 		this.#joinable = null;
+		this.#copied = null;
 		this.clearSelection();
 		this.drillMarks = {};
 		this.notice = '';

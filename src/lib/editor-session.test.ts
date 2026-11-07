@@ -497,3 +497,16 @@ describe('編輯 session：檢視模式', () => {
 		expect(s.flow!.name).toBe('練習用');
 	});
 });
+
+describe('編輯 session：站位 ⌘C 換流程', () => {
+	it('複製站位後開另一支流程：⌘V 不貼（id 會跟上一支重複，不能把別支的位置貼到別人身上）', () => {
+		const flow = flowOf(insertFormation(libSample(), 2));
+		const s = new EditorSession(flow);
+		s.selectFormation(flow.formations[0].id);
+		expect(s.copyFormation()).toBe(true);
+		s.open(flowOf(insertFormation(libSample(), 2)));
+		const before = s.flow;
+		expect(s.pasteFormation(0)).toBe(false);
+		expect(s.flow).toBe(before);
+	});
+});
