@@ -84,12 +84,12 @@ describe('按鈕消失後焦點不掉回 body', () => {
 		expect(document.activeElement).toBe(removeButton(2));
 	});
 
-	it('按「刪除動作」：焦點在動作表單的名稱', async () => {
+	it('按「刪除動作」：焦點在動作表單（不在名稱：那裡的 ⌘Z 是退字，#205）', async () => {
 		setup();
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
 		await press(screen.getByRole('button', { name: '刪除動作' }));
 		expect(screen.queryByRole('button', { name: '刪除動作' })).toBeNull();
-		expect(document.activeElement).toBe(screen.getByLabelText('名稱'));
+		expect(document.activeElement).toBe(document.querySelector('.action-form'));
 	});
 
 	it('按「新增動作」：焦點在新動作的名稱', async () => {

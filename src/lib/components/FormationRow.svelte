@@ -186,7 +186,6 @@
 				<button
 					type="button"
 					class="pick"
-					data-space-plays
 					aria-label={formation.name ? `站位 ${i + 1} ${formation.name}` : `站位 ${i + 1}`}
 					title={tag
 						? `站位 ${i + 1}${formation.name ? ` ${formation.name}` : ''}${deletable ? '：選到後按 Delete 刪掉' : ''}`

@@ -43,8 +43,6 @@ export class Playback implements SessionPlayback {
 	#rate = $state(1);
 	/** 重複：選了動作就重複那個動作，沒選就重複播放頭所在的八拍。不進流程檔。 */
 	#repeat = $state(false);
-	/** 重複播的那段從哪一秒開始（播到結尾跳回這裡）。 */
-	#loopStart = 0;
 	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
 	#previewing = $state(false);
 	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
@@ -115,7 +113,7 @@ export class Playback implements SessionPlayback {
 
 	/**
 	 * 從播放頭開始播；已經播完就從頭。沒有段時沒東西可以播。一定由按鈕或空白鍵觸發。
-	 * 重複開著：只播到那段的結尾（#frame 再跳回開頭）；播放頭不在那段裡就從那段開始。
+	 * 重複開著：只播到那段的結尾，接著從那段開頭一直重複（下一圈先排好，圈和圈之間不停）；播放頭不在那段裡就從那段開始。
 	 */
 	play() {
 		const f = this.#flow();
@@ -125,13 +123,13 @@ export class Playback implements SessionPlayback {
 		const span = this.#repeat ? repeatSpan(f, this.#sec, this.#selectedAction()) : null;
 		if (span) {
 			if (this.#sec < span.startSec || this.#sec >= span.endSec - 0.01) this.#sec = span.startSec;
-			this.#loopStart = span.startSec;
 			until = span.endSec;
 		}
 		this.#getPlayer().start(playbackPlan(f, this.#sec, until), {
 			fromSec: this.#sec,
 			metronome: this.#metronome,
-			rate: this.#rate
+			rate: this.#rate,
+			loop: span ? { plan: playbackPlan(f, span.startSec, span.endSec), fromSec: span.startSec } : undefined
 		});
 		if (!this.#playing) {
 			this.#playing = true;
@@ -274,14 +272,10 @@ export class Playback implements SessionPlayback {
 		else this.play();
 	}
 
-	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停（重複開著就跳回那段開頭接著播）。 */
+	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停（重複開著時播放器自己一圈接一圈播，不會停）。 */
 	#frame = () => {
 		if (!this.#playing || !this.#player) return;
 		this.#sec = this.#player.tick(this.#latencyMs);
-		if (!this.#player.playing && this.#repeat) {
-			this.#sec = this.#loopStart;
-			this.play();
-		}
 		if (!this.#player.playing) this.#playing = false;
 		else this.#nextFrame(this.#frame);
 	};

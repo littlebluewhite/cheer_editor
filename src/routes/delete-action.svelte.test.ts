@@ -100,6 +100,19 @@ describe('刪動作的提示', () => {
 		expect(bar()).not.toBeNull();
 	});
 
+	it('按「刪除動作」後馬上 ⌘Z：動作回來（#205）', async () => {
+		const session = await setup();
+		const remove = screen.getByRole('button', { name: '刪除動作' });
+		remove.focus();
+		await fireEvent.click(remove);
+		expect(bar()).toBeNull();
+		// 焦點留在動作表單裡，不掉到頁面最上面；⌘Z 退回流程，不是交給瀏覽器退字
+		expect(document.querySelector('.action-form')!.contains(document.activeElement)).toBe(true);
+		expect(await fireEvent.keyDown(document.activeElement!, { key: 'z', metaKey: true })).toBe(false);
+		expect(bar()).not.toBeNull();
+		expect(session.flow!.actions).toHaveLength(1);
+	});
+
 	it('有「復原」的提示留 10 秒；滑鼠在上面時不收，移開了把剩下的時間走完', async () => {
 		await setup();
 		vi.useFakeTimers();
