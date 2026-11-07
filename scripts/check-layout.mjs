@@ -1871,6 +1871,70 @@ await check('1440×900 場上選到的人有明顯的框：選取框的線至少
 	return { ok: m.有框 && m.線粗 >= 2 && m.多出來 >= 3, value: m };
 });
 
+// ---------- 撞位 ✕ 在圓點上面、只撞一下的紫段、走位條把手（#216） ----------
+
+await check('1440×1000 小A 騰翻中衝過站著的小B（只撞到一個取樣點）：✕ 在小B 的圓點上面看得到，泳道的紫段至少 8 px 寬', async () => {
+	await setViewport(1440, 1000);
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	// 小A 從 [-7, 3] 跑到 [7, 3]，3.2 秒經過站在 [0, 3.3] 的小B：只撞到一個取樣點，✕ 畫在 [0, 3.15]，在小B 的圓點裡。
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const of = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		let flow = of(c.createFlow({ name: '撞一下', field: { strips: 9, layout: 'vertical' } }));
+		flow = of(c.addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
+		flow = of(c.addSegment(flow, 'music'));
+		flow = of(c.setPositions(flow, 'f1', { m1: [-7, 3], m2: [0, 3.3] }));
+		flow = of(c.insertFormation(flow, 4.8));
+		flow = of(c.setPositions(flow, flow.formations[1].id, { m1: [7, 3] }));
+		flow = of(c.addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 0, length: 24, note: '',
+			members: [{ memberId: 'm1', role: null }] }));
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([c.writeFlowFile(flow, {})], '撞一下.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await sleep(300);
+	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+	await sleep(300);
+	// ✕ 的中心和四條斜線上各一點（外框的 1/4、3/4）：最上面都是 ✕，不是圓點
+	const mark = await js(`const x = document.querySelector('.field [data-clash]');
+		if (!x) return { 有: false };
+		const r = x.getBoundingClientRect();
+		const dot = document.querySelector('.field [data-member-id="m2"]').getBoundingClientRect();
+		const 疊在圓點上 = dot.left < r.right && dot.right > r.left && dot.top < r.bottom && dot.bottom > r.top;
+		const pts = [[0.5, 0.5], [0.25, 0.25], [0.75, 0.75], [0.25, 0.75], [0.75, 0.25]];
+		const 被蓋的點 = pts.filter(([fx, fy]) => document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy) !== x);
+		return { 有: true, 疊在圓點上, 被蓋的點 };`);
+	const seg = await js(`const s = document.querySelector('[data-lane="m1"] [data-walk-clash]');
+		if (!s) return { 有: false };
+		s.scrollIntoView({ block: 'center', inline: 'center' });
+		await new Promise((r) => setTimeout(r, 150));
+		const r = s.getBoundingClientRect();
+		return { 有: true, 寬: Math.round(r.width * 10) / 10, 看得到: s.checkVisibility() && r.height > 0 };`);
+	return {
+		ok: mark.有 && mark.疊在圓點上 && mark.被蓋的點.length === 0 && seg.有 && seg.看得到 && seg.寬 >= 8,
+		value: { 撞位記號: mark, 紫段: seg }
+	};
+});
+
+await check('走位條兩端的把手：觸控（1024×768）時每個點得到的範圍都比滑鼠（1440×900）時寬', async () => {
+	const ends = () => js(`return [...document.querySelectorAll('[data-walk] [data-end]')].map((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);`);
+	await setViewport(1440, 900);
+	await openSample();
+	const mouseW = await ends();
+	await setTouchViewport(1024, 768);
+	await openSample();
+	const touchW = await ends();
+	await clearTouch();
+	const narrower = touchW.flatMap((w, i) => (w > mouseW[i] ? [] : [{ 第幾個: i, 滑鼠: mouseW[i], 觸控: w }]));
+	return {
+		ok: mouseW.length > 0 && touchW.length === mouseW.length && narrower.length === 0,
+		value: { 幾個: [mouseW.length, touchW.length], 滑鼠最窄: Math.min(...mouseW), 觸控最窄: Math.min(...touchW), 沒變寬的: narrower.slice(0, 5) }
+	};
+});
+
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
