@@ -8,6 +8,7 @@ import { blocked, ok, type CommandResult } from './result';
 import { settle } from './settle';
 import {
 	attemptProblem,
+	changedAttempt,
 	keptAttempt,
 	perPerson,
 	squadName,
@@ -93,7 +94,7 @@ export function deleteLastAttempt(
 }
 
 /**
- * 改某一次的記號（點歷史裡的那一次）：還在原來的位置、id、日期、誰、練法都不變；記號照記一次的規則留（keptAttempt），
+ * 改某一次的記號（點歷史裡的那一次）：還在原來的位置、id、日期、誰、練法都不變；只看那一次當時就有的環節、照記一次的規則留（changedAttempt），
  * 原本整個做、改了卻空了一格就變只練幾個環節。全上的一次一定整個做，空了一格就擋下來。
  */
 export function changeAttempt(
@@ -107,7 +108,7 @@ export function changeAttempt(
 	const index = records.findIndex((r) => r.id === attemptId);
 	if (!action || index < 0) return blocked('找不到這一次');
 	const { blanks: _old, ...rest } = records[index];
-	const attempt = { ...rest, ...keptAttempt(action, records[index].whole, marks) };
+	const attempt = { ...rest, ...changedAttempt(action, records[index], marks) };
 	if (attempt.practice === 'runThrough' && !attempt.whole && Object.keys(attempt.marks).length)
 		return blocked('全上的一次每個環節都要有記號（✗ 後面的不用）');
 	const problem = attemptProblem(action, attempt);
