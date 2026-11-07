@@ -7,6 +7,7 @@ import {
 	putRecords,
 	remoteChange,
 	runCommands,
+	stepKeys,
 	takeRecords,
 	type Command,
 	type Flow,
@@ -36,14 +37,16 @@ export function applyRemoteChangeJson(flow: string, change: string): string {
 
 /**
  * 雲端流程跑一步（ADR 0008）：先把分開存的紀錄（records，StoredAttempt[] 的 JSON）放回編排，跑完再拿出來。
- * 成功時結果的 flow 是不帶紀錄的編排，多一個 records：跑完還在的紀錄（清掉的不在、記號可能少了）。
+ * 成功時結果的 flow 是不帶紀錄的編排，多一個 records：跑完還在的紀錄（清掉的不在、記號可能少了），
+ * 和 keys、watch：這一步記下的鍵、要查別的分頁改過沒有的鍵（stepKeys，#254）。
  */
 export function runStepJson(flow: string, records: string, commands: string, stepId: string): string {
-	const full = putRecords(JSON.parse(flow) as Flow, JSON.parse(records) as StoredAttempt[]);
+	const before = JSON.parse(flow) as Flow;
+	const full = putRecords(before, JSON.parse(records) as StoredAttempt[]);
 	const r = runCommands(full, JSON.parse(commands) as Command[], stepId);
 	if (r.kind !== 'ok') return JSON.stringify(r);
 	const taken = takeRecords(r.flow);
-	return JSON.stringify({ ...r, flow: taken.flow, records: taken.records });
+	return JSON.stringify({ ...r, flow: taken.flow, records: taken.records, ...stepKeys(before, taken.flow) });
 }
 
 /** 伺服器收一串紀錄（StoredAttempt[] 的 JSON）：每一次照「記一次」的規則檢查（checkRecord），回結果的 JSON（一樣的順序）。 */

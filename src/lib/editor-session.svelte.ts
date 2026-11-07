@@ -112,10 +112,10 @@ export class EditorSession {
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/**
-	 * 雲端流程：改好的一步交給它送伺服器（#248）。接著它時改的步不進復原紀錄（雲端的復原在 #256），也不算未存。
-	 * 本機流程是 null。
+	 * 雲端流程：改好的一步交給它送伺服器（#248），帶這一步改了什麼（changeLabel，被退回時的提示用，#254）。
+	 * 接著它時改的步不進復原紀錄（雲端的復原在 #256），也不算未存。本機流程是 null。
 	 */
-	onstep: ((step: SentStep) => void) | null = null;
+	onstep: ((step: SentStep, label: string) => void) | null = null;
 	/** 不能改的原因（例：有新版，請重新整理）：有的話改流程的指令都擋下說這句，比檢視模式優先。空字串是沒有。 */
 	readOnly = $state('');
 	/**
@@ -251,7 +251,7 @@ export class EditorSession {
 		const before = this.#flow;
 		if (this.onstep) {
 			// 雲端流程：送伺服器（存好了由它說），不進復原紀錄
-			if (step) this.onstep(step);
+			if (step) this.onstep(step, changeLabel(before, flow));
 			this.#saved = flow;
 		} else {
 			const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;

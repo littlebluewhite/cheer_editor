@@ -5,7 +5,7 @@
  */
 export type RoomRequest = { "kind": "hello", fingerprint: string, tabId: string, 
 /**
- * 上次看到第幾步（改到同一個東西時用，#254）。
+ * 上次看到第幾步（每一步另外帶，在 Step 裡比；打招呼這個斷線重連時用，#255）。
  */
 seen: number, 
 /**
