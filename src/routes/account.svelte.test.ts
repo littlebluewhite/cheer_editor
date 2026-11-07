@@ -64,6 +64,9 @@ describe('首頁的登入、帳號選單', () => {
 		await flush();
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
+		// 雲端流程打開前先拿音樂檔（#249）：等它打開
+		await flush();
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: '林教練 ▾' })).toBeNull();
 		expect(screen.queryByRole('link', { name: '登入' })).toBeNull();
 	});

@@ -11,7 +11,7 @@ pub enum ConfigError {
     Invalid { name: &'static str, value: String },
 }
 
-/// 不 derive Debug：`database_url` 裡有密碼、`resend` 有金鑰，不能被印進 log。
+/// 不 derive Debug：`database_url` 裡有密碼、`resend`、`r2` 有金鑰，不能被印進 log。
 pub struct Config {
     pub database_url: String,
     pub listen_addr: SocketAddr,
@@ -21,6 +21,17 @@ pub struct Config {
     pub site_url: String,
     /// Resend 的金鑰和寄件人；沒設金鑰時信印在終端機（本機開發）。
     pub resend: Option<(String, String)>,
+    /// 放雲端流程音樂檔的 R2；沒設 R2_ENDPOINT 時是 None（放音樂的 API 回 503）。
+    pub r2: Option<R2Config>,
+}
+
+/// R2（S3 相容）的 bucket 和只管這個 bucket 的 token。
+pub struct R2Config {
+    /// 例：`https://<帳號 id>.r2.cloudflarestorage.com`
+    pub endpoint: reqwest::Url,
+    pub bucket: String,
+    pub access_key: String,
+    pub secret: String,
 }
 
 impl Config {
@@ -46,12 +57,26 @@ impl Config {
             )),
             Err(_) => None,
         };
+        let need = |name: &'static str| std::env::var(name).map_err(|_| ConfigError::Missing(name));
+        let r2 = match std::env::var("R2_ENDPOINT") {
+            Ok(value) => Some(R2Config {
+                endpoint: value.parse().map_err(|_| ConfigError::Invalid {
+                    name: "R2_ENDPOINT",
+                    value: value.clone(),
+                })?,
+                bucket: need("R2_BUCKET")?,
+                access_key: need("R2_ACCESS_KEY_ID")?,
+                secret: need("R2_SECRET_ACCESS_KEY")?,
+            }),
+            Err(_) => None,
+        };
         Ok(Self {
             database_url,
             listen_addr,
             site_dir: site_dir.into(),
             site_url,
             resend,
+            r2,
         })
     }
 }

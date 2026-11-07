@@ -44,6 +44,32 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 - 登入的 cookie 是 `__Host-` 開頭、`Secure`：本機用 `http://127.0.0.1` 或 `http://localhost` 開，Chrome 照樣收；Safari 要 https。
 - 改資料的 API 會看 `Sec-Fetch-Site`（沒有就看 `Origin`）擋別的網站送來的請求；用 curl 試要自己帶 `-H 'Sec-Fetch-Site: same-origin'`。
 
+### 雲端流程的音樂檔（Cloudflare R2）
+
+雲端流程的音樂檔放 R2，不經過伺服器（#249）：伺服器查權限、發 10 分鐘內有效的預簽網址，瀏覽器直接 PUT 上去；
+傳完伺服器在 R2 查一次大小，超過 60 MB 就刪掉、退回。播放時瀏覽器拿下載的預簽網址，用 `fetch` 從 R2 拿下來解碼。
+在 R2 的名字是 `flows/<流程 id>/<音樂檔 id>.<副檔名>`；換掉、刪掉的音樂在資料表 `flow_audio` 記下哪天不用了。
+
+- 設定：`R2_ENDPOINT`（`https://<帳號 id>.r2.cloudflarestorage.com`）、`R2_BUCKET`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`。
+  token 用「Object Read & Write」，只管這一個 bucket。沒設 `R2_ENDPOINT` 時放音樂、拿音樂的 API 回 503（其他照常）。
+- **本機開發用另一個 bucket**（例：`cheer-music-dev`），不要指到正式的。
+- bucket 的 CORS 只准新網址和本機開發（瀏覽器直接 PUT、GET 預簽網址才過得了）。R2 → bucket → Settings → CORS Policy：
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://<新網址>"],
+    "AllowedMethods": ["GET", "PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+  開發用的 bucket 把 `AllowedOrigins` 換成 `["http://127.0.0.1:8080", "http://localhost:8080"]`。
+- 伺服器測試不連 R2：`server/tests/music.rs` 開一台假的 R2（本機 HTTP，照 S3 的路徑收 PUT、HEAD、GET、DELETE，不驗簽名）。
+  真的 R2 還沒接上實測過（#263）；`rusty-s3` 接不起來時換 `aws-sdk-s3`。
+
 第一個管理員（也用來救進不去的管理員、換人當管理員）。沒有預設帳號、預設密碼：
 
 ```sh

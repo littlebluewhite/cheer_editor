@@ -2,10 +2,12 @@
 // 管：解碼過的音樂（含壞掉的）、還留著哪些（復原可能還要用，只加不刪）、存檔和草稿要寫的位元組、
 // 每個音樂的長度和波形、哪幾段找不到音樂、給音訊引擎的 buffer。
 // 給一段選音樂檔也在這裡：解碼、跟核心拿 id（核心的「選音樂」只有這裡在叫，還留著哪些由這裡報）。
+// 雲端流程（upload 有接）選的音樂檔先傳上雲端（#249），傳好才送那一步；超過 60 MB 不傳。
 
 import {
 	fitSegmentToAudio,
 	loadSegmentAudio,
+	runCommand,
 	segmentsMissingAudio,
 	type AudioBytes,
 	type AudioLengths,
@@ -13,10 +15,20 @@ import {
 	type Flow
 } from '#lib/core';
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
-import type { Ask } from '#lib/ask.svelte.js';
+import { newStepId, type Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 
+/** 雲端流程一個音樂檔最大幾個位元組（60 MB）。伺服器 server/src/music.rs 的 MAX_AUDIO_BYTES 跟它一樣。 */
+export const MAX_CLOUD_AUDIO_BYTES = 60 * 1024 * 1024;
+export const AUDIO_TOO_BIG = '音樂檔太大，請轉成 mp3';
+export const UPLOAD_FAILED = '連不上伺服器，音樂檔沒傳上去';
+
+/** 把音樂檔傳上雲端（audioId：流程裡這個音樂檔的 id）。伺服器查到太大是 'tooBig'；連不上丟錯。 */
+export type UploadAudio = (audioId: string, file: File) => Promise<'ok' | 'tooBig'>;
+
 export class MusicLibrary {
+	/** 雲端流程：選的音樂檔先傳上雲端（流程檔打開雲端流程時接上）；本機流程是 null。 */
+	upload: UploadAudio | null = null;
 	readonly #session: EditorSession;
 	readonly #decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
 	/** 解碼過的音樂檔，用 flow.audio 的 id 對應；位元組不放進流程。 */
@@ -79,10 +91,13 @@ export class MusicLibrary {
 	 * 給一段選一個音樂檔：解碼，跟核心拿新的 id，結果交給 ask（段設定的「改」：成功就算一步）。
 	 * 被擋的原因（格式不對、讀不出來）也交給 ask。解完之前叫了 cancelPicks（段設定關了、換了流程）就丟掉。
 	 * 這一段第一次有音樂：長度順便照音樂長度算（同一步；會刪到東西、算不出來就只載入）。
+	 * 雲端流程：超過 60 MB 直接擋；解碼好先傳上雲端，傳好才送那一步（太大、連不上就擋下，流程不改）。
 	 */
 	async pick(segmentId: string, file: File, ask: Ask): Promise<void> {
 		const check = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
 		if (check.kind === 'blocked') return void ask.block(check.message);
+		const upload = this.upload;
+		if (upload && file.size > MAX_CLOUD_AUDIO_BYTES) return void ask.block(AUDIO_TOO_BIG);
 		const pick = {};
 		this.#picks.add(pick);
 		const bytes = await file.arrayBuffer();
@@ -94,20 +109,39 @@ export class MusicLibrary {
 			return;
 		}
 		// 解碼時段設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
-		if (!this.#picks.delete(pick)) return;
-		// 解碼要一點時間，用那時候的流程再送一次指令。
-		// 音樂先放進來再換流程：流程換了時這段已經有音樂（流程檔看要不要收掉「找不到音樂」的提示）。
-		const first = this.#flow.segments.some((s) => s.id === segmentId && s.kind === 'music' && s.audioId === null);
+		if (!this.#picks.has(pick)) return;
 		// 還留著哪些先記下來：音樂放進來之後再算，核心會給另一個 id。
 		const held = this.#heldIds;
 		const load: Command<'loadSegmentAudio'> = { name: 'loadSegmentAudio', args: [segmentId, file.name, held] };
-		const r = loadSegmentAudio(this.#flow, segmentId, file.name, held);
-		if (r.kind !== 'ok') return void ask.send(load);
+		// 步驟 id 先發好：音樂檔的 id 由它算出來（ADR 0011），音樂檔庫、雲端都用這個 id 記。
+		const stepId = newStepId();
+		if (upload) {
+			const r = runCommand(this.#flow, load, stepId);
+			if (r.kind === 'ok') {
+				let sent: 'ok' | 'tooBig' | 'unreachable';
+				try {
+					sent = await upload(r.audioId, file);
+				} catch {
+					sent = 'unreachable';
+				}
+				if (!this.#picks.has(pick)) return;
+				if (sent !== 'ok') {
+					this.#picks.delete(pick);
+					return void ask.block(sent === 'tooBig' ? AUDIO_TOO_BIG : UPLOAD_FAILED);
+				}
+			}
+		}
+		this.#picks.delete(pick);
+		// 解碼、傳上去要一點時間，用那時候的流程再送一次指令（同一個步驟 id，音樂檔的 id 一樣）。
+		// 音樂先放進來再換流程：流程換了時這段已經有音樂（流程檔看要不要收掉「找不到音樂」的提示）。
+		const first = this.#flow.segments.some((s) => s.id === segmentId && s.kind === 'music' && s.audioId === null);
+		const r = runCommand(this.#flow, load, stepId);
+		if (r.kind !== 'ok') return void ask.send(load, { stepId });
 		this.#audios = { ...this.#audios, [r.audioId]: { bytes, ...decoded } };
 		const lengths = { [r.audioId]: decoded.durationSec };
 		const fit = first ? fitSegmentToAudio(r.flow, segmentId, lengths) : null;
-		if (fit?.kind === 'ok') ask.send([load, { name: 'fitSegmentToAudio', args: [segmentId, lengths] }]);
-		else ask.send(load);
+		if (fit?.kind === 'ok') ask.send([load, { name: 'fitSegmentToAudio', args: [segmentId, lengths] }], { stepId });
+		else ask.send(load, { stepId });
 	}
 
 	/** 還在解碼的選檔都不要了：段設定關了、換了流程。 */
