@@ -34,6 +34,7 @@
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import type CueGrid from '#lib/components/CueGrid.svelte';
 	import CueOverlay from '#lib/components/CueOverlay.svelte';
+	import RuleSummary from '#lib/components/RuleSummary.svelte';
 	import Field, { fullView } from '#lib/components/Field.svelte';
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
@@ -782,6 +783,9 @@
 									<span class="row"><Icon name="warn" /><span><b>規則警告關著</b>到流程設定打開</span></span>
 								{/if}
 							</div>
+						{/if}
+						{#if flow}
+							<RuleSummary {flow} clashes={allClashes} />
 						{/if}
 						{#if flow}
 							{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
