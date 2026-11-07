@@ -110,7 +110,7 @@ export function allSquadIds(flow: Flow): string[] {
 }
 
 /**
- * 換掉動作的環節清單，紀錄裡對不上的記號跟著拿掉（記號清光的那一次整筆拿掉）。
+ * 換掉動作的環節清單，紀錄裡對不上的記號和空著的環節跟著拿掉（兩個都清光的那一次整筆拿掉）。
  * 一個環節都不剩就不記成功率：成功率設定和每個人的組一起拿掉。
  */
 export function replacePhases(action: Action, phases: Phase[]): Action {
@@ -222,14 +222,14 @@ function phasesAndRecordsProblem(segment: Segment, action: Action): string | nul
 
 /**
  * 一次哪裡不守規則（給教練看的原因）；沒問題是 null。記一次和讀流程檔都照這個檢查。
- * 記號只能打在動作現在的環節上、只能是 ✓ △ ✗、至少一個；誰要對得上：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。
+ * 記號只能打在動作現在的環節上、只能是 ✓ △ ✗、至少一個（✗ 的環節刪掉後只剩空著的環節也可以）；誰要對得上：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。
  */
 export function attemptProblem(action: Action, attempt: NewAttempt): string | null {
 	const phaseIds = new Set(action.successRate?.phases.map((p) => p.id));
 	const marks = Object.entries(attempt.marks);
 	if (marks.some(([id]) => !phaseIds.has(id))) return '記號要打在這個動作的環節上';
 	if (marks.some(([, mark]) => !MARKS.some((m) => m.key === mark))) return '記號只能是 ✓、△、✗';
-	if (marks.length === 0) return '一次至少要有一個記號';
+	if (marks.length === 0 && !attempt.blanks?.length) return '一次至少要有一個記號';
 	if (attempt.blanks && !blanksFit(attempt, phaseIds)) return '空著的環節要是這個動作的環節、沒有記號，而且那一次是整個做';
 	if (!whoFits(action, attempt.who)) return perPerson(action.category) ? '這個隊員不在動作裡' : '這一組沒有人';
 	if (!isDate(attempt.date)) return '日期要寫成 2026-11-04 這樣';
@@ -295,7 +295,8 @@ export function changedAttempt(
 }
 
 /**
- * 動作的紀錄裡對不上現在的環節、組、隊員的拿掉：指到不在的環節的記號和空著的環節丟掉，丟到一個記號都沒有的那一次整筆拿掉；
+ * 動作的紀錄裡對不上現在的環節、組、隊員的拿掉：指到不在的環節的記號和空著的環節丟掉，丟到記號和空著的環節都沒有的那一次整筆拿掉
+ * （當時就有的環節全被刪光）；
  * 誰對不上（組沒人了、人不在動作裡、大類換成騰翻或換掉騰翻）的那一次也拿掉。都對得上就回傳原來的動作。
  */
 export function fitRecords(action: Action): Action {
@@ -307,7 +308,7 @@ export function fitRecords(action: Action): Action {
 		const marks = Object.entries(r.marks).filter(([id]) => phaseIds.has(id));
 		const blanks = r.blanks?.filter((id) => phaseIds.has(id));
 		if (marks.length === Object.keys(r.marks).length && blanks?.length === r.blanks?.length) return [r];
-		if (!marks.length) return [];
+		if (!marks.length && !blanks?.length) return [];
 		return [{ ...withoutBlanks(r), marks: Object.fromEntries(marks), ...(blanks?.length && { blanks }) }];
 	});
 	const same = records.length === rate.records.length && records.every((r, i) => r === rate.records[i]);

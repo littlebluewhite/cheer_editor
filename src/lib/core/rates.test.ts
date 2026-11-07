@@ -131,6 +131,10 @@ describe('整次只看那一次當時就有、現在還在的環節', () => {
 		expect(dailyTable(libWithout(['p1'], attempt('✗··'))).total.whole.clean).toBe(0);
 	});
 
+	it('✗·· 和 ✓✓✓ 刪掉上法：失敗的那一次空著的還在，照樣算進整次，整次 50%', () => {
+		expect(dailyTable(libWithout(['p1'], attempt('✗··'), attempt('✓✓✓'))).total.whole).toEqual({ clean: 1, whole: 2 });
+	});
+
 	it('✓✓✗ 刪掉下法：剩下當時就有的都是 ✓，算成功', () => {
 		expect(dailyTable(libWithout(['p3'], attempt('✓✓✗'))).total.whole).toEqual({ clean: 1, whole: 1 });
 	});
