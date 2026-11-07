@@ -31,13 +31,15 @@
 	const count = $derived(session.selectedMemberIds.length);
 	const actions = $derived(selectionActions(count));
 
-	/** 「第幾張站位」框打的數字；沒打過（null）就是播放頭前面那一張（以前的「跟上一張一樣」）。 */
-	let typedNth = $state<number | null>(null);
-	const nth = $derived.by(() => {
-		if (typedNth !== null) return typedNth;
+	/** 播放頭在哪張站位（在站位上、還是在它後面）和選到誰：換了，框裡打的數字就不算了。 */
+	const where = $derived.by(() => {
 		const { number } = currentFormation(session.flow!, playback.sec);
-		return Math.max(1, formationAt(session.flow!, playback.sec) ? number - 1 : number);
+		const on = !!formationAt(session.flow!, playback.sec);
+		return { number, on, key: `${number}${on ? '' : '+'}|${session.selectedMemberIds.join()}` };
 	});
+	/** 「第幾張站位」框打的數字（打的時候在哪）；沒打過或換過地方，就是播放頭前面那一張（以前的「跟上一張一樣」）。 */
+	let typed = $state<{ n: number; key: string } | null>(null);
+	const nth = $derived(typed?.key === where.key ? typed.n : Math.max(1, where.on ? where.number - 1 : where.number));
 	/** 按鈕的名字：[_] 換成框裡的數字；沒選人是全隊。 */
 	const nameOf = (a: SelectionAction) => (count ? '' : '全隊') + a.label.replace('[_]', String(nth));
 
@@ -101,7 +103,10 @@
 				max={session.flow!.formations.length}
 				aria-label="跟第幾張站位一樣"
 				value={nth}
-				oninput={(e) => (typedNth = e.currentTarget.valueAsNumber || null)}
+				oninput={(e) => {
+					const n = e.currentTarget.valueAsNumber;
+					typed = n ? { n, key: where.key } : null;
+				}}
 				onkeydown={(e) => e.key === 'Enter' && run(a)}
 			/>
 			<button type="button" {role} title={a.title} aria-label={nameOf(a)} onclick={() => run(a)}>{after.trim()}</button>

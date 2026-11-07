@@ -1,5 +1,6 @@
 // 跟第 [_] 張一樣、站位卡片 ⌘C／⌘V（#224）：都跟拖人走同一條路（自動插站位、往後帶、一步復原）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import { insertFormation, setPositions, type Flow } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
@@ -58,6 +59,27 @@ describe('跟第 [_] 張一樣', () => {
 		await click('m1');
 		expect(within(toolbar()).getByRole('button', { name: '跟第 2 張一樣' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: '跟上一張一樣' })).toBeNull();
+	});
+
+	it('打過數字後移播放頭、換選人：框回到預設（播放頭前面那一張），不留著舊數字', async () => {
+		const page = editorPage(threeFormations());
+		render(Page, page.props);
+		page.editor.playback.seek(4); // 站位 2
+		await click('m1');
+		await fireEvent.input(within(toolbar()).getByRole('spinbutton', { name: '跟第幾張站位一樣' }), {
+			target: { value: '3' }
+		});
+		expect(within(toolbar()).getByRole('button', { name: '跟第 3 張一樣' })).toBeTruthy();
+
+		page.editor.playback.seek(8); // 站位 3
+		await tick();
+		expect(within(toolbar()).getByRole('button', { name: '跟第 2 張一樣' })).toBeTruthy();
+
+		await fireEvent.input(within(toolbar()).getByRole('spinbutton', { name: '跟第幾張站位一樣' }), {
+			target: { value: '3' }
+		});
+		await click('m3', true);
+		expect(within(toolbar()).getByRole('button', { name: '跟第 2 張一樣' })).toBeTruthy();
 	});
 
 	it('沒選人時套用全隊：在場上空白處按右鍵，選單裡的「跟第 [_] 張一樣」改全部的人', async () => {
