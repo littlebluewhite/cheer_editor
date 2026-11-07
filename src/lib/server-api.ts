@@ -50,21 +50,27 @@ export type {
 	UserStatus
 };
 
+/** 房間斷線的原因（#260）：斷網、伺服器沒回應、登入超過 30 天（或在別的地方登出了）。 */
+export type RoomDown = 'offline' | 'unreachable' | 'expired';
+
 /**
  * 一支雲端流程的房間（WebSocket）：送步、收伺服器的回答。第一次還沒連上時送的先排著，連上就送。
  * 斷線了（網路斷、部署切換）自己重連（#255）；斷線時送的丟掉，連回來要重新打招呼。
+ * 斷線時說為什麼（#260）：斷網等連上網路就連；登入過期不再自己連（重登後再打開）。
  */
 export interface FlowRoom {
 	send(request: RoomRequest): void;
 	/** 收到伺服器說的話（房間建好後接上）。 */
 	onmessage: (message: RoomMessage) => void;
-	/** 斷線了（false），又連上了（true）。 */
-	onconnection: (connected: boolean) => void;
+	/** 斷線了（false，帶為什麼；原因變了會再說一次），又連上了（true）。 */
+	onconnection: (connected: boolean, why?: RoomDown) => void;
+	/** 「現在再試」（#260）：斷線的話馬上再連一次。 */
+	retry(): void;
 	/** 不用了：關掉，不再重連。 */
 	close(): void;
 }
 
-/** 斷線後隔多久重連：1、2、4、8 秒，之後每 10 秒。 */
+/** 斷線後隔多久重連（伺服器沒回應時也是多久自動再試一次，#260）：1、2、4、8 秒，之後每 10 秒。 */
 const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
 
 /** 管理的事的結果：做好了，或做不成的原因（email 撞到別人、今天寄不出去、這個人現在不能這樣做）。 */
@@ -348,41 +354,80 @@ export function httpServer(base = ''): ServerAdapter {
 			let up = true;
 			let closed = false;
 			let tries = 0;
-			let socket: WebSocket;
+			/** 上次說的斷線原因（變了才再說）。 */
+			let lastWhy: RoomDown | null = null;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			let socket: WebSocket | null = null;
 			const room: FlowRoom = {
 				onmessage: () => {},
 				onconnection: () => {},
 				send(request) {
 					const text = JSON.stringify(request);
-					if (socket.readyState === WebSocket.OPEN) socket.send(text);
+					if (socket?.readyState === WebSocket.OPEN) socket.send(text);
 					else if (up) waiting.push(text);
+				},
+				retry() {
+					if (closed || up || socket) return;
+					tries = 0;
+					connect();
 				},
 				close() {
 					closed = true;
-					socket.close();
+					clearTimeout(timer);
+					window.removeEventListener('online', online);
+					window.removeEventListener('offline', offline);
+					socket?.close();
+				}
+			};
+			/** 連上網路了：斷線的話馬上再連。 */
+			const online = () => room.retry();
+			/** 瀏覽器說斷網了：WebSocket 不一定馬上發現，自己關掉。 */
+			const offline = () => socket?.close();
+			window.addEventListener('online', online);
+			window.addEventListener('offline', offline);
+			/** 斷了：問問看為什麼（斷網、登入過期、被收回或流程刪了、伺服器沒回應）。 */
+			const why = async (): Promise<RoomDown | 'gone'> => {
+				if (!navigator.onLine) return 'offline';
+				try {
+					const me = await fetch(`${base}/api/me`);
+					if (me.status === 401) return 'expired';
+					if (!me.ok) return 'unreachable';
+					const flow = await fetch(`${base}/api/flows/${encodeURIComponent(flowId)}`);
+					return flow.status === 404 ? 'gone' : 'unreachable';
+				} catch {
+					return navigator.onLine ? 'unreachable' : 'offline';
 				}
 			};
 			const connect = () => {
 				if (closed) return;
-				socket = new WebSocket(url);
-				socket.onopen = () => {
+				clearTimeout(timer);
+				const s = new WebSocket(url);
+				socket = s;
+				s.onopen = () => {
 					tries = 0;
+					lastWhy = null;
 					if (up) {
-						for (const text of waiting.splice(0)) socket.send(text);
+						for (const text of waiting.splice(0)) s.send(text);
 						return;
 					}
 					up = true;
 					room.onconnection(true);
 				};
-				socket.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
-				socket.onclose = () => {
-					if (closed) return;
+				s.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
+				s.onclose = () => {
+					if (closed || socket !== s) return;
+					socket = null;
 					waiting.length = 0;
-					if (up) {
-						up = false;
-						room.onconnection(false);
-					}
-					setTimeout(connect, RECONNECT_MS[Math.min(tries++, RECONNECT_MS.length - 1)]);
+					up = false;
+					void why().then((reason) => {
+						if (closed || socket) return;
+						// 被收回、流程被刪了：房間連不上了，當作被收回（回首頁說原因）
+						if (reason === 'gone') return room.onmessage({ kind: 'revoked' });
+						if (reason !== lastWhy) room.onconnection(false, reason);
+						lastWhy = reason;
+						// 登入過期：等重登，不自己再連（「現在再試」照樣能按）
+						if (reason !== 'expired') timer = setTimeout(connect, RECONNECT_MS[Math.min(tries++, RECONNECT_MS.length - 1)]);
+					});
 				};
 			};
 			connect();

@@ -6,7 +6,7 @@
 	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
-	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
+	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來，雲端流程還沒傳上去的後面黃色「沒傳」（#260）；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	// 雲端流程別人記的那一次，記號後面小字寫名字（自己記的不寫，#257）。
 	// 雲端流程（#258）：「刪掉上一次」寫成「刪掉我的上一次」，只刪自己記的（編輯者也是）；記錄者點別人記的那一次只看得到是誰記的，不能改、刪。
@@ -252,7 +252,9 @@
 							aria-expanded={editing === r.id}
 							aria-label="改第 {i + 1} 次（{kind} {attemptText(action, r)}）"
 							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
-						>{#if session.recordedBy[r.id]}<small class="by">{session.recordedBy[r.id]}</small>{/if}
+						>{#if session.recordedBy[r.id]}<small class="by">{session.recordedBy[r.id]}</small>{/if}{#if session.unsentRecords.has(r.id)}<small
+								class="unsent">沒傳</small
+							>{/if}
 					</li>
 				{/each}
 			</ol>
@@ -496,6 +498,16 @@
 		padding-right: 5px;
 		font-size: 11px;
 		color: var(--muted);
+	}
+	/* 還沒傳上去的那一次（#260）：黃色小標，傳上去就拿掉。 */
+	.day .unsent {
+		margin-right: 4px;
+		padding: 0 4px;
+		border-radius: 4px;
+		background: #fef3c7;
+		color: #92400e;
+		font-size: 11px;
+		font-weight: 700;
 	}
 	/* 全上記的那幾筆：虛線框，跟分段練分開。 */
 	.day li.run {

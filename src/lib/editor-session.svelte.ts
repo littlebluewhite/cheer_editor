@@ -145,6 +145,8 @@ export class EditorSession {
 	ownRecordsOnly = $state(false);
 	/** 雲端流程沒存進去的紀錄（教練改了流程）：練習畫面上紅色一條，按「知道了」才清掉。 */
 	droppedRecords = $state.raw<DroppedRecord[]>([]);
+	/** 雲端流程還沒傳上去的那幾次的 id（#260）：卡片「這天的每一次」那一次後面黃色「沒傳」。 */
+	unsentRecords = $state.raw<ReadonlySet<string>>(new Set());
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};
 	/** 拍點格子選的拍（選到的動作的）。 */
@@ -244,6 +246,7 @@ export class EditorSession {
 		this.#joinable = null;
 		this.recordedBy = {};
 		this.droppedRecords = [];
+		this.unsentRecords = new Set();
 		this.clearSelection();
 		this.notice = '';
 		this.ask.clear();

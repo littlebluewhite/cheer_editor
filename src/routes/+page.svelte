@@ -46,6 +46,8 @@
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
 	import NowEightCount from '#lib/components/NowEightCount.svelte';
 	import Practice from '#lib/components/Practice.svelte';
+	import UnsentLogout, { unsentFlows } from '#lib/components/UnsentLogout.svelte';
+	import { unsentCount, type UnsentRecords } from '#lib/offline-store.js';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
@@ -103,9 +105,17 @@
 	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：在首頁時（打開、回到首頁）跟伺服器拿。還沒拿到是 null；連不上伺服器 cloudError。 */
 	let myFlows = $state.raw<MyFlows | null>(null);
 	let cloudError = $state(false);
+	/** 這台還沒傳的成功率紀錄（#260）：雲端流程 id → 幾筆（列的右邊「N 筆沒傳」）。 */
+	let unsentByFlow = $state.raw<Record<string, number>>({});
 	$effect(() => {
 		if (!account || flow) return;
 		let stale = false;
+		editor.adapters.offline.unsent().then(
+			(list) => {
+				if (!stale) unsentByFlow = Object.fromEntries(list.map((u) => [u.flowId, unsentCount(u)]));
+			},
+			() => {}
+		);
 		editor.adapters.server.myFlows().then(
 			(list) => {
 				if (stale) return;
@@ -142,10 +152,20 @@
 		else editor.file.create(f);
 	}
 
-	/** 登出這台裝置。連不上伺服器時還是登入著（選單留著，可以再按一次）。 */
+	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
+	let unsentAtLogout = $state.raw<UnsentRecords[] | null>(null);
+	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
 	async function logout() {
+		const left = await unsentFlows(editor.adapters.offline);
+		if (left.length) unsentAtLogout = left;
+		else await signOut();
+	}
+	/** 登出這台裝置（discard：先丟掉這台沒傳的紀錄）。連不上伺服器時還是登入著（選單留著，可以再按一次）。 */
+	async function signOut(discard = false) {
+		unsentAtLogout = null;
 		try {
 			await editor.adapters.server.logout();
+			if (discard) await editor.adapters.offline.clearUnsent();
 			account = null;
 		} catch {
 			// 沒登出成功：什麼都不變
@@ -982,6 +1002,33 @@
 			onclose={() => (printOpen = false)}
 		/>
 	{/if}
+	{#if editor.file.lost}
+		{@const rows = editor.file.lost}
+		{@const message = `擁有者收回了你的權限，這 ${rows.length} 筆沒存進去`}
+		<!-- 被收回時還有沒傳的（#260）：擋住畫面，按「知道了」才丟掉、回首頁 -->
+		<Modal label={message} class="dialog lost-box" onclose={() => {}}>
+			{#snippet children()}
+				<div class="lost">
+					<h2>{message}</h2>
+					<p>你斷線時記的，傳上去時已經沒有權限了。這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。</p>
+					<table>
+						<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
+						<tbody>
+							{#each rows as d (d.id)}
+								<tr>
+									<td>{d.date}</td>
+									<td>{d.action}</td>
+									<td>{d.who}</td>
+									<td>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+					<div class="buttons"><button type="button" class="primary" data-autofocus onclick={() => editor.file.lostKnown()}>知道了</button></div>
+				</div>
+			{/snippet}
+		</Modal>
+	{/if}
 	{#if editor.file.asking}
 		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
 		<!-- 真的對話框：Escape、點背景＝取消，焦點先放在「取消」，關掉後回到按的按鈕 -->
@@ -1069,6 +1116,7 @@
 									<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
 										<span class="recent-name">{c.name}</span>
 										<span class="recent-meta">{draftTime(new Date(c.updatedAt))} 改過</span>
+										{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
 									</button>
 								</li>
 							{:else}
@@ -1088,6 +1136,7 @@
 												new Date(c.updatedAt)
 											)} 改過</span
 										>
+										{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
 									</button>
 								</li>
 							{:else}
@@ -1162,6 +1211,9 @@
 			{/snippet}
 		</Modal>
 	{/if}
+{/if}
+{#if unsentAtLogout}
+	<UnsentLogout flows={unsentAtLogout} onstay={() => (unsentAtLogout = null)} ondiscard={() => signOut(true)} />
 {/if}
 {#if leavingUnsent}
 	{@const n = leavingUnsent}
@@ -2308,6 +2360,52 @@
 	.recent-meta {
 		color: var(--muted);
 		font-size: 12px;
+	}
+	/* 這台還沒傳的成功率紀錄（#260） */
+	.unsent-count {
+		flex: none;
+		padding: 0 6px;
+		border-radius: 4px;
+		background: #fef3c7;
+		color: #92400e;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	/* 被收回時沒傳的（#260）：擋住畫面的框 */
+	:global(.lost-box) {
+		width: min(480px, 100%);
+		border-radius: 10px;
+		box-shadow: var(--shadow-pop);
+	}
+	.lost {
+		display: grid;
+		gap: 10px;
+		padding: 18px;
+	}
+	.lost h2 {
+		margin: 0;
+		font-size: 17px;
+		color: #991b1b;
+	}
+	.lost p {
+		margin: 0;
+	}
+	.lost table {
+		border-collapse: collapse;
+		font-size: 13px;
+	}
+	.lost th,
+	.lost td {
+		padding: 2px 12px 2px 0;
+		text-align: left;
+	}
+	.lost .run {
+		margin-left: 4px;
+		color: var(--muted);
+	}
+	.lost .buttons {
+		display: flex;
+		justify-content: flex-end;
 	}
 	.recent-drop {
 		color: var(--muted);

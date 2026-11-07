@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fakeServer, flush } from '#lib/test-fakes.js';
+import { fakeOfflineStore, fakeServer, flush } from '#lib/test-fakes.js';
 import Login from './+page.svelte';
 
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: '我們這一隊今年一定會贏 go go' };
@@ -98,6 +98,20 @@ describe('登入頁', () => {
 		render(Login, { server: fake.server, go: () => {} });
 		await flush();
 		expect(screen.getByText('登入超過 30 天了，請再登入一次。').classList.contains('warn')).toBe(true);
+	});
+
+	it('登入超過 30 天、這台還有沒傳的成功率紀錄（#260）：黃色那一行加「這台還有 N 筆成功率紀錄沒傳，登入後會自動傳。」', async () => {
+		history.replaceState(null, '', '/login');
+		const fake = fakeServer({ users: [lin] });
+		fake.state.expired = true;
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const unsent = [
+			{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [{ ids: ['tdef456abc123'], request: { kind: 'deleteRecords' as const, ids: ['tdef456abc123'] } }], dropped: [] }
+		];
+		render(Login, { server: fake.server, go: () => {}, offline: fakeOfflineStore({ unsent }).store });
+		await flush();
+		expect(screen.getByRole('status').textContent!.trim()).toBe('登入超過 30 天了，請再登入一次。這台還有 2 筆成功率紀錄沒傳，登入後會自動傳。');
 	});
 
 	it('沒到期：沒有黃色那一行', async () => {

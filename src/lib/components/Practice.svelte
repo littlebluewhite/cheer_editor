@@ -3,9 +3,14 @@
 	// 兩頁「記錄」「總表」共用日期；日期由編輯頁管（切回編排再切回來還在，不存進流程檔）。
 	// 流程從 session 拿；記一次、刪掉上一次、記一次全上交給 session 的「記」（不算復原的一步）。
 	// 雲端流程（#257）：檢視者只看總表、不能記；沒存進去的紀錄（教練改了流程）在日期那一排下面紅色一條，按「知道了」才清。
+	// 斷網照記（#260）：日期那一排下面一件事一條：斷網（黃）、傳不上去（紅，「現在再試」）、登入超過 30 天（紅，「再登入」）、
+	// 傳中、都傳上去了（綠，一下就收）。iPhone、iPad 的 Safari 第一次記之後，下面滑上來提醒加到主畫面。
+	import { resolve } from '$app/paths';
 	import { recordableActions } from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { localDate } from '#lib/local-date.js';
+	import HomeScreenHint from './HomeScreenHint.svelte';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
 
@@ -20,6 +25,12 @@
 	let { date, ondate, narrow = false }: Props = $props();
 
 	const session = getEditorSession();
+	/** 開著的雲端流程（本機流程是 null）：連線、還沒傳的。 */
+	const cloud = $derived(getEditor().file.cloud);
+	/** 還有幾筆沒傳。 */
+	const unsent = $derived(cloud?.unsentCount ?? 0);
+	/** 加到主畫面的提醒有多高：練習畫面下面留這麼多。 */
+	let hintHeight = $state(0);
 	/** 有沒有要記的動作（有記成功率、有環節）；沒有就兩頁都只寫怎麼加環節，不給記一次全上。 */
 	const empty = $derived(recordableActions(session.flow!).length === 0);
 
@@ -44,7 +55,7 @@
 	}
 </script>
 
-<section class="practice" aria-label="練習">
+<section class="practice" aria-label="練習" style:padding-bottom={cloud?.homeHint ? `${hintHeight + 24}px` : undefined}>
 	<header>
 		<div class="pages" role="group" aria-label="練習的頁">
 			{#each PAGES as p (p.key)}
@@ -57,11 +68,40 @@
 		</div>
 		<label class="date">日期<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
+	{#if cloud && (!session.cannotRecord || unsent)}
+		{#if cloud.link === 'offline'}
+			<p class="bar warn" role="status">
+				{unsent ? `斷線了：還有 ${unsent} 筆沒傳，連上網路會自動傳。` : '斷線了：記的會先存在這台，連上網路自動傳。'}
+			</p>
+		{:else if cloud.link === 'unreachable'}
+			<p class="bar bad" role="status">
+				<span
+					>{unsent
+						? `傳不上去（伺服器沒回應）：還有 ${unsent} 筆沒傳，等一下會自動再試。`
+						: '傳不上去（伺服器沒回應）：記的會先存在這台，等一下會自動再試。'}</span
+				>
+				<button type="button" onclick={() => cloud.retry()}>現在再試</button>
+			</p>
+		{:else if cloud.link === 'expired'}
+			<p class="bar bad" role="status">
+				<span
+					>{unsent
+						? `登入超過 30 天了：還有 ${unsent} 筆沒傳，再登入一次就會傳。`
+						: '登入超過 30 天了：記的會先存在這台，再登入一次就會傳。'}</span
+				>
+				<a class="btn" href={resolve('/login')}>再登入</a>
+			</p>
+		{:else if cloud.syncing}
+			<p class="bar" role="status">傳中…（{unsent} 筆）</p>
+		{:else if cloud.synced.value}
+			<p class="bar ok" role="status">都傳上去了。</p>
+		{/if}
+	{/if}
 	{#if dropped.length}
 		<div class="dropped" role="alert">
 			<div class="dropped-head">
 				<p><b>教練改了流程，這 {dropped.length} 筆沒存進去</b><small>你記的時候，教練刪掉了這些環節或組。</small></p>
-				<button type="button" onclick={() => (session.droppedRecords = [])}>知道了</button>
+				<button type="button" onclick={() => (cloud ? cloud.dismissDropped() : (session.droppedRecords = []))}>知道了</button>
 			</div>
 			<table>
 				<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
@@ -85,6 +125,9 @@
 		<RecordPage {date} {narrow} />
 	{:else}
 		<SummaryPage {date} />
+	{/if}
+	{#if cloud?.homeHint}
+		<HomeScreenHint bind:height={hintHeight} onknown={() => cloud.closeHomeHint(true)} onlater={() => cloud.closeHomeHint(false)} />
 	{/if}
 </section>
 
@@ -132,6 +175,38 @@
 	}
 	.empty {
 		color: var(--muted);
+	}
+	.bar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px 12px;
+		margin: 0;
+		padding: 8px 12px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--surface);
+		font-weight: 600;
+	}
+	.bar.warn {
+		border-color: #fcd34d;
+		background: #fffbeb;
+		color: #92400e;
+	}
+	.bar.bad {
+		border-color: #fca5a5;
+		background: #fef2f2;
+		color: #991b1b;
+	}
+	.bar.ok {
+		border-color: #86efac;
+		background: #f0fdf4;
+		color: #15803d;
+	}
+	.bar button,
+	.bar .btn {
+		flex: none;
 	}
 	.dropped {
 		display: grid;

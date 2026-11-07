@@ -1555,6 +1555,64 @@ await check('色條：用 Tab 停在選到的色條上，跟滑鼠點選的樣�
 	return { ok, value: { 滑鼠點選: clicked, Tab回來: tabbed } };
 });
 
+await check('390×844 iPhone Safari 雲端流程練習頁（#260）：傳不上去的提示條、記好後滑上來的「加到主畫面」提醒，不蓋住記錄的按鈕；捲到底按鈕在提醒上面', async () => {
+	await setTouchViewport(390, 844);
+	await send('Emulation.setUserAgentOverride', {
+		userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
+	});
+	// vite dev 沒有伺服器：房間的 WebSocket 一連就斷（連不上），/api/me、流程照假的回，所以是「傳不上去（伺服器沒回應）」
+	const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', {
+		source: `window.WebSocket = class { static OPEN = 1; readyState = 0; constructor() { setTimeout(() => this.onclose?.({}), 20); } send() {} close() {} };`
+	});
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte`));
+	const flow = await js(`const { libSample } = await import('/src/lib/test-flows.ts'); return libSample();`);
+	fakeApi = {
+		'/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: false },
+		'/api/flows': { mine: [], shared: [{ id: 'c1', name: '測試', updatedAt: '2026-11-06T07:20:00.000Z', ownerName: '王教練', ownerDisabled: false, role: 'recorder' }] },
+		'/api/flows/c1': { id: 'c1', flow, step: 0, updatedAt: '2026-11-06T07:20:00.000Z', role: 'recorder', records: [] }
+	};
+	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
+	try {
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.cloud-list .recent-open')`), 50);
+		await js(`document.querySelector('.cloud-list .recent-open').click()`);
+		await waitFor(() => js(`return !!document.querySelector('.topbar')`), 50);
+		await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+		await waitFor(() => js(`return [...document.querySelectorAll('.practice .bar')].some((b) => b.textContent.includes('傳不上去'))`), 50);
+		await js(`document.querySelector('.card button[aria-label$="失敗"]').click()`);
+		await sleep(100);
+		await js(`document.querySelector('.card .save').click()`);
+		await waitFor(() => js(`return !!document.querySelector('.sheet')`), 30);
+		await sleep(400);
+		const r = await js(`const practice = document.querySelector('.practice');
+			const sheet = document.querySelector('.sheet').getBoundingClientRect();
+			const bar = document.querySelector('.practice .bar').getBoundingClientRect();
+			const hit = (b) => { const r = b.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!top && b.contains(top); };
+			const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+			practice.scrollTop = 0;
+			const buttons = [...document.querySelectorAll('.card button')].filter((b) => b.checkVisibility());
+			const underBar = buttons.filter((b) => overlaps(b.getBoundingClientRect(), bar)).map((b) => b.getAttribute('aria-label') ?? b.textContent.trim());
+			// 捲到底：最下面那一排按鈕（最後一張卡的）在提醒上面、點得到（上面的往上捲就看得到）
+			practice.scrollTop = practice.scrollHeight;
+			await new Promise((r) => setTimeout(r, 200));
+			const lowest = Math.max(...buttons.map((b) => b.getBoundingClientRect().bottom));
+			const bottomRow = buttons.filter((b) => b.getBoundingClientRect().bottom > lowest - 4);
+			const covered = bottomRow.filter((b) => b.getBoundingClientRect().bottom > sheet.top || !hit(b)).map((b) => b.getAttribute('aria-label') ?? b.textContent.trim());
+			const sheetButtons = [...document.querySelectorAll('.sheet button')].map((b) => b.textContent.trim() + (hit(b) ? '' : '（點不到）'));
+			return { 提示條蓋到的: underBar, 提醒蓋到的: covered, 提醒的鈕: sheetButtons, 提醒在畫面裡: sheet.bottom <= innerHeight + 1 && sheet.left >= 0 && sheet.right <= innerWidth,
+				溢出: document.scrollingElement.scrollWidth > innerWidth };`);
+		const ok = !r.提示條蓋到的.length && !r.提醒蓋到的.length && r.提醒的鈕.join() === '下次再說,知道了' && r.提醒在畫面裡 && !r.溢出;
+		return { ok, value: r };
+	} finally {
+		await send('Fetch.disable');
+		fakeApi = null;
+		await send('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+		await send('Emulation.setUserAgentOverride', { userAgent: '' });
+		await clearTouch();
+	}
+});
+
 await check('從時間軸左下角的空白處一路拖到上方列：不會把介面上的字反白', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow();

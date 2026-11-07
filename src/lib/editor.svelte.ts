@@ -20,6 +20,7 @@ import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
 import { browserTabChannel, type OpenTabChannel } from '#lib/tab-channel.js';
 import { httpServer, type ServerAdapter } from '#lib/server-api.js';
+import { createIndexedDbOfflineStore, type OfflineStore } from '#lib/offline-store.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -41,9 +42,11 @@ export interface EditorAdapters {
 	nextFrame: NextFrame;
 	/** 連伺服器：登入、我是誰。 */
 	server: ServerAdapter;
+	/** 離線存放（#260）：雲端流程還沒傳的紀錄、沒存進去的清單存在這台。 */
+	offline: OfflineStore;
 }
 
-/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch。 */
+/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB（草稿、離線存放）、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch。 */
 export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
@@ -54,7 +57,8 @@ export function browserAdapters(): EditorAdapters {
 		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame,
-		server: httpServer()
+		server: httpServer(),
+		offline: createIndexedDbOfflineStore()
 	};
 }
 
