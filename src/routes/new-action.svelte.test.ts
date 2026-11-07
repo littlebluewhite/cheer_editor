@@ -67,6 +67,19 @@ describe('新動作表單：送出', () => {
 		expect(screen.getByRole('button', { name: '開新的動作表單' })).toBeTruthy();
 	});
 
+	it('新增後沒有選到的人：場上、泳道名字都沒選，下一次拖人不會整隊一起走', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		expect(page.session.selectedMemberIds.length).toBeGreaterThan(1);
+		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		expect(page.session.flow!.actions).toHaveLength(2);
+		expect(page.session.selectedMemberIds).toEqual([]);
+		expect(document.querySelectorAll('[data-member-id][aria-pressed="true"]')).toHaveLength(0);
+		expect(document.querySelectorAll('[data-lane] .lab[aria-pressed="true"]')).toHaveLength(0);
+	});
+
 	it('新增後播放頭跳到新動作結束；下一張新表單的開始接在後面', async () => {
 		render(Page, editorPage(teamFlow()).props);
 		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));

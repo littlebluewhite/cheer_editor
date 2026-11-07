@@ -78,4 +78,17 @@ describe('復原、重做說退了什麼', () => {
 		await redoKey();
 		expect(screen.getByRole('status').textContent).toContain('已重做：插入站位 2');
 	});
+
+	it('復原、重做按鈕的提示寫出下一步會退什麼；也說方向鍵連按合成一步', async () => {
+		setup(flowOf(moveMembers(libSample(), 8, { m1: [3, 3] })));
+		const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+		expect(button('復原').title).not.toContain('：');
+		await fireEvent.dblClick(document.querySelector<HTMLElement>('.film .trk')!, { clientX: 102.4 });
+		expect(button('復原').title).toContain('復原：插入站位 2');
+		expect(button('復原').title).toContain('方向鍵連按');
+		expect(button('重做').title).not.toContain('：插入');
+		await undoKey();
+		expect(button('重做').title).toContain('重做：插入站位 2');
+		expect(button('復原').title).not.toContain('插入站位 2');
+	});
 });

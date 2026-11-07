@@ -5,7 +5,8 @@ import type { Action } from './action-types';
 import { fieldGeometry, MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import type { Formation, Position } from './formation';
 import type { MarkerStyle, Member } from './members';
-import { blocked, ok, type CommandResult } from './result';
+import { stackedMembers } from './hints';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { CustomRole } from './roles';
 import type { AudioRef, Segment } from './segment';
 import { snapPosition } from './snap';
@@ -90,8 +91,9 @@ export function renameFlow(flow: Flow, name: string): CommandResult {
 /**
  * 調整場地：改條數或鋪向。墊子上的人照比例放大縮小，再吸到最近的 1/4 格（對中線對稱的人吸完還是對稱）；
  * 站在墊子外的人，跟最近那個邊的距離不變（還是在場外）。
+ * 調完會有人疊在同一點（原本沒疊在一起）時先問，列出哪張站位誰疊在一起；確定（confirmed）才調。
  */
-export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
+export function adjustField(flow: Flow, field: FieldConfig, o: ConfirmOption = {}): CommandResult {
 	const problem = stripsProblem(field.strips);
 	if (problem) return blocked(problem);
 	const from = fieldGeometry(flow.field).mat;
@@ -116,6 +118,17 @@ export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
 		...f,
 		pos: Object.fromEntries(Object.entries(f.pos).map(([id, p]) => [id, move(p)]))
 	}));
+	if (!answered(o)) {
+		const items = formations.flatMap((f, i) => {
+			const before = stackedMembers(flow.members, flow.formations[i].pos);
+			const wasStacked = (g: Member[]) => before.some((b) => g.every((m) => b.includes(m)));
+			const name = f.name ? `「${f.name}」` : '';
+			return stackedMembers(flow.members, f.pos)
+				.filter((g) => !wasStacked(g))
+				.map((g) => `站位 ${i + 1}${name}：${g.map((m) => m.name).join('、')}`);
+		});
+		if (items.length) return needsConfirm('這樣調整，這些人會疊在同一點（之後可以再拖開）：', items);
+	}
 	return ok({ ...flow, field: { ...field }, formations });
 }
 
