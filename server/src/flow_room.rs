@@ -261,6 +261,8 @@ async fn take_step(
     .bind(now)
     .execute(&mut *tx)
     .await?;
+    // 換掉、刪掉的音樂記下哪天不用了（#249）。
+    crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;
     tx.commit().await?;
     Ok(Some(RoomMessage::Accepted { step_id, step }))
 }

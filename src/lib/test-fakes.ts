@@ -22,6 +22,7 @@ import {
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { flowOf } from '#lib/test-flows.js';
 import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
+import { MAX_CLOUD_AUDIO_BYTES } from '#lib/music-library.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
@@ -135,7 +136,10 @@ export interface FakeLink {
 	hoursLeft?: number;
 }
 
-/** 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）、現在第幾步（沒寫是 0）、收過的步驟 id（→ 收了之後第幾步）。 */
+/**
+ * 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）、現在第幾步（沒寫是 0）、收過的步驟 id（→ 收了之後第幾步）、
+ * 傳上雲端的音樂檔（audio id → 位元組，假的 R2）。
+ */
 export interface FakeCloudFlow {
 	id: string;
 	owner: string;
@@ -143,6 +147,7 @@ export interface FakeCloudFlow {
 	updatedAt: string;
 	step?: number;
 	stepIds?: Record<string, number>;
+	audio?: Record<string, Uint8Array>;
 }
 
 /**
@@ -154,6 +159,7 @@ export interface FakeCloudFlow {
  * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
+ * 音樂檔（#249）放在那支流程的 audio：超過 60 MB 不收（'tooBig'）；audioTooBig 設成 true 就是伺服器傳完才查到太大。
  */
 export function fakeServer(
 	init: {
@@ -177,7 +183,8 @@ export function fakeServer(
 		forgot: [] as string[],
 		otherDevices: 1,
 		fingerprint: CORE_FINGERPRINT,
-		holdRoom: false
+		holdRoom: false,
+		audioTooBig: false
 	};
 	/** 留著還沒處理的（holdRoom 時）。 */
 	let held: (() => void)[] = [];
@@ -332,7 +339,7 @@ export function fakeServer(
 			mine();
 			const r = createFlow(input);
 			if (r.kind !== 'ok') throw new Error(r.kind === 'blocked' ? r.message : r.kind);
-			const made = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow: r.flow, updatedAt: new Date().toISOString() };
+			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow: r.flow, updatedAt: new Date().toISOString() };
 			state.flows.push(made);
 			return { id: made.id, name: made.flow.name, updatedAt: made.updatedAt };
 		},
@@ -357,6 +364,17 @@ export function fakeServer(
 				close() {}
 			};
 			return room;
+		},
+		async uploadAudio(flowId, audioId, file) {
+			const f = mine().find((g) => g.id === flowId);
+			if (!f) throw new ServerUnreachable();
+			if (state.audioTooBig || file.size > MAX_CLOUD_AUDIO_BYTES) return 'tooBig';
+			f.audio = { ...f.audio, [audioId]: new Uint8Array(await file.arrayBuffer()) };
+			return 'ok';
+		},
+		async audioBytes(flowId, audioId) {
+			const bytes = mine().find((g) => g.id === flowId)?.audio?.[audioId];
+			return bytes ? bytes.slice() : null;
 		},
 		async forgotPassword(email) {
 			reachable();
