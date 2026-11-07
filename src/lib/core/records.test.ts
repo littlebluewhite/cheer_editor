@@ -122,7 +122,7 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 	] as const)('查詢給的結果跟記一次存下來的一樣：%s', (_, whole, marks) => {
 		const flow = sample();
 		const saved = recordsOf(flowOf(recordAttempt(flow, 'x1', drill(marks, { whole }))))[0];
-		expect(keptAttempt(flow.actions[0], whole, marks)).toEqual({ whole: saved.whole, marks: saved.marks });
+		expect(keptAttempt(flow.actions[0], whole, marks)).toEqual({ whole: saved.whole, marks: saved.marks, blanks: saved.blanks });
 	});
 
 	it('讀流程檔不套這兩條：後來加在前面的環節，舊的一次照樣打得開、還是整個做', () => {

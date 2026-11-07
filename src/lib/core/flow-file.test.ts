@@ -175,13 +175,22 @@ describe('流程檔：存了再開', () => {
 		]);
 	});
 
+	it('整個做、中途 ✗ 的一次，✗ 後面空著的環節存了再開也一樣', () => {
+		const flow = flowOf(
+			recordAttempt(withSuccessRate(), 'x1', { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✗' } })
+		);
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		expect(r.kind === 'ok' && r.flow.actions[0].successRate?.records[0].blanks).toEqual(['p3']);
+	});
+
 	it('標記用開頭字，存了再開也一樣', () => {
 		const flow = flowOf(setMarkers(sample(), 'initial'));
 		const r = readFlowFile(writeFlowFile(flow, {}));
 		expect(r.kind === 'ok' && r.flow.markers).toBe('initial');
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 9 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('zip 裡是一份 flow.json（formatVersion 10 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -189,7 +198,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(9);
+		expect(json.formatVersion).toBe(10);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -214,7 +223,7 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 10, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 11, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -369,6 +378,12 @@ describe('流程檔：版本', () => {
 		['記號指到不在的環節', brokenRecord((r) => (r.marks.p9 = '✓'))],
 		['記號不是 ✓ △ ✗', brokenRecord((r) => (r.marks.p1 = 'O'))],
 		['一個記號都沒有', brokenRecord((r) => (r.marks = {}))],
+		['空著的環節不是陣列', brokenRecord((r) => (r.blanks = 'p3'))],
+		['空著的環節是空陣列', brokenRecord((r) => (r.blanks = []))],
+		['空著的環節指到不在的環節', brokenRecord((r) => ((r.marks = { p1: '✗' }), (r.blanks = ['p9'])))],
+		['空著的環節有記號', brokenRecord((r) => (r.blanks = ['p3']))],
+		['空著的環節重複', brokenRecord((r) => ((r.marks = { p1: '✗' }), (r.blanks = ['p2', 'p2'])))],
+		['只練幾個環節卻有空著的環節', brokenRecord((_, records) => (records[1].blanks = ['p2']))],
 		['環節種類不在五種裡', brokenRate((_, sr) => (sr.phases[1].kind = 'other'))],
 		['環節沒有 id', brokenRate((_, sr) => delete sr.phases[1].id)],
 		['環節的 id 重複', brokenRate((_, sr) => (sr.phases[1].id = sr.phases[0].id))],
@@ -597,7 +612,7 @@ describe('流程檔：版本', () => {
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2、3、4、5、6、7、8、9 版資料不用動。
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2、3、4、5、6、7、8、9、10 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
@@ -609,7 +624,8 @@ describe('流程檔：版本', () => {
 		5: (doc: FlowDocument) => ({ formatVersion: 6, flow: doc.flow }),
 		6: (doc: FlowDocument) => ({ formatVersion: 7, flow: doc.flow }),
 		7: (doc: FlowDocument) => ({ formatVersion: 8, flow: doc.flow }),
-		8: (doc: FlowDocument) => ({ formatVersion: 9, flow: doc.flow })
+		8: (doc: FlowDocument) => ({ formatVersion: 9, flow: doc.flow }),
+		9: (doc: FlowDocument) => ({ formatVersion: 10, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {
