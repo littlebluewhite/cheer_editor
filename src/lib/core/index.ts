@@ -167,6 +167,7 @@ export {
 	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
+	newChantTenths,
 	readSegmentNumber,
 	updateSegment
 } from './segment';

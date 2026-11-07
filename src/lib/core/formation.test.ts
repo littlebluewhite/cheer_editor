@@ -377,6 +377,18 @@ describe('走位的時間', () => {
 		expectAt(walking(), 21, A, [4, 0.5]);
 	});
 
+	it('後一張在口號段開頭、前一段是音樂段：用前一段的 BPM 往前 8 拍出發，不從前一張整段走（#221）', () => {
+		// 開頭 → 25.6 秒（口號 1 的 0 秒）：前一段音樂 1 是 150 BPM，往前 8 拍是 22.4 秒
+		let flow = withSegments();
+		flow = okFlow(setPositions(flow, 'f1', { [A]: [0, 0] }));
+		flow = okFlow(insertFormation(flow, 25.6));
+		flow = okFlow(setPositions(flow, 'f2', { [A]: [4, 0] }));
+		expect(flow.formations[1]).toMatchObject({ segmentId: 's2', at: 0 });
+		expectAt(flow, 22.4, A, [0, 0]);
+		expectAt(flow, 24, A, [2, 0]);
+		expect(memberWalk(flow, 'f2', A)).toEqual({ depart: at('s1', 112), arrive: at('s2', 0) });
+	});
+
 	it('出發落進前一段：用後一張那段的 BPM 往前 8 拍', () => {
 		const flow = chantThenMusic();
 		expectAt(flow, 8.4, A, [0, 0]);

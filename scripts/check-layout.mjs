@@ -1842,6 +1842,118 @@ await check('1440×900 場上選到的人有明顯的框：選取框的線至少
 	return { ok: m.有框 && m.線粗 >= 2 && m.多出來 >= 3, value: m };
 });
 
+// ---------- 其他小項（#221） ----------
+
+/**
+ * 在頁面裡跑：contrast(el) 是 el 的字和它後面的底色的對比（WCAG，1 到 21）。
+ * 底色從自己往外找，半透明的一層層疊上去；字的透明度（含外層的 opacity）也算進去。
+ */
+const CONTRAST_JS = `
+	const rgba = (c) => { const m = c.match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p[3] ?? 1]; };
+	const over = (top, bottom) => [0, 1, 2].map((i) => top[i] * top[3] + bottom[i] * (1 - top[3])).concat(1);
+	const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+	const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+	const backdrop = (el) => { const layers = []; for (let e = el; e; e = e.parentElement) { const c = rgba(getComputedStyle(e).backgroundColor); if (c && c[3] > 0) { layers.push(c); if (c[3] >= 1) break; } } return layers.reverse().reduce((bg, l) => over(l, bg), [255, 255, 255, 1]); };
+	const contrast = (el) => { let op = 1; for (let e = el; e; e = e.parentElement) op *= Number(getComputedStyle(e).opacity);
+		const c = rgba(getComputedStyle(el).color); const bg = backdrop(el); return +ratio(over([c[0], c[1], c[2], c[3] * op], bg), bg).toFixed(2); };
+	const bgContrast = (a, b) => +ratio(backdrop(a), backdrop(b)).toFixed(2);`;
+
+await check('上方列「重複」「節拍器」開著和關著一眼分得出來：開著的底色跟關著的對比至少 3:1，開著的字也看得清楚（4.5:1）（#221）', async () => {
+	await setViewport(1440, 1000);
+	await openSample();
+	const m = await js(`${CONTRAST_JS}
+		const out = {};
+		for (const name of ['repeat', 'metronome']) {
+			const label = document.querySelector('.toggle.' + name), input = label.querySelector('input');
+			const state = () => ({ 底色: getComputedStyle(label).backgroundColor, 字: contrast(label) });
+			if (input.checked) input.click();
+			const off = state(); const offEl = label.cloneNode(true); label.after(offEl);
+			input.click();
+			const on = state();
+			out[name] = { 關著: off, 開著: on, 開關底色對比: bgContrast(label, offEl) };
+			offEl.remove();
+			input.click();
+		}
+		return out;`);
+	const ok = Object.values(m).every((t) => t.開關底色對比 >= 3 && t.開著.字 >= 4.5 && t.關著.字 >= 4.5);
+	return { ok, value: m };
+});
+
+await check('1440×1000 字太淡的地方看得清楚（對比至少 4.5:1）：播放時間的總長、段列的 BPM 和秒數、右邊欄分頁的人數、泳道的號碼圓圈；號碼圓圈至少 20 px（#221）', async () => {
+	await setViewport(1440, 1000);
+	await openSample();
+	const m = await js(`${CONTRAST_JS}
+		const pick = { 總長: '.clock i', BPM和秒數: '.seg .meta', 分頁人數: '.tabs .count', 號碼圓圈: '[data-lane] .lab .no' };
+		const out = {};
+		for (const [k, sel] of Object.entries(pick)) out[k] = [...document.querySelectorAll(sel)].map(contrast);
+		out.圓圈大小 = [...document.querySelectorAll('[data-lane] .lab .no')].map((el) => Math.round(el.getBoundingClientRect().height));
+		return out;`);
+	const { 圓圈大小, ...contrasts } = m;
+	const ok = Object.values(contrasts).every((v) => v.length && v.every((x) => x >= 4.5)) && 圓圈大小.every((h) => h >= 20);
+	return { ok, value: m };
+});
+
+/** 從 Tab 停在 start 上開始，一直按 Tab，記下停在 within 裡的每一格（離開 within 就停）。 */
+async function tabStops(start, within) {
+	await js(`document.querySelector(${JSON.stringify(start)}).focus()`);
+	const stops = [];
+	for (let i = 0; i < 40; i++) {
+		const s = await js(`const a = document.activeElement; if (!a.closest(${JSON.stringify(within)})) return null;
+			const r = a.getBoundingClientRect(); return { 名: a.getAttribute('aria-label') || a.textContent.trim().slice(0, 8), x: Math.round(r.left), y: Math.round(r.top + r.height / 2) };`);
+		if (!s) break;
+		stops.push(s);
+		await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+		await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+		await sleep(60);
+	}
+	return stops;
+}
+
+for (const [w, h] of [[1440, 1000], [1920, 1080]]) {
+	await check(`${w}×${h} 上方列的 Tab 照畫面順序：由上到下、同一行由左到右（#221）`, async () => {
+		await setViewport(w, h);
+		await openSample();
+		const stops = await tabStops('.topbar .view button', '.topbar');
+		// 同一行（中心高度差 20 px 以內）要往右；換行要往下
+		const bad = stops.slice(1).filter((s, i) => {
+			const p = stops[i];
+			return Math.abs(s.y - p.y) <= 20 ? s.x <= p.x : s.y < p.y;
+		});
+		return { ok: stops.length > 8 && bad.length === 0, value: { 跳回去的: bad, 順序: stops.map((s) => `${s.名}@${s.x},${s.y}`).join(' → ') } };
+	});
+}
+
+await check('1440×1000 選到的人站在場地後面（上方）時跳提示：提示不蓋住他（#221）', async () => {
+	await setViewport(1440, 1000);
+	// 小美站在場地正中間最後面（墊子後緣再往後一點，提示預設就在這裡）
+	await openPracticeFlow(`flow = core.setPositions(flow, 'f1', { m1: [0, -core.fieldGeometry(flow.field).mat.height / 2 - 0.4] }).flow;`);
+	// 先收起「已開啟」的提示（它也在那裡，會擋到滑鼠）
+	await js(`document.querySelector('.field-toasts [aria-label="收起提示"]')?.click()`);
+	await sleep(200);
+	const p = await rectOf('.field [data-member-id="m1"]');
+	await click(p.x, p.y);
+	// 選到人按 Delete：提示「要刪動作，先點動作」
+	await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 });
+	await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 });
+	await sleep(400);
+	const m = await js(`const t = document.querySelector('.field-toasts .toast'); if (!t) return { 有提示: false };
+		const a = t.getBoundingClientRect(), b = document.querySelector('.field [data-member-id="m1"]').getBoundingClientRect();
+		const r = (x) => [Math.round(x.left), Math.round(x.top), Math.round(x.right), Math.round(x.bottom)];
+		return { 有提示: true, 提示: r(a), 小美: r(b), 蓋住: a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom };`);
+	return { ok: m.有提示 && !m.蓋住, value: m };
+});
+
+await check('1440×900 場地和時間軸的分界往上拖到底：場地那一塊至少還有 320 px 高（#221）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await js(`const s = document.querySelector('[aria-label="場地和時間軸的分界"]');
+		for (let i = 0; i < 60; i++) s.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));`);
+	await sleep(300);
+	const hgt = await js(`return Math.round(document.querySelector('main.field-host').getBoundingClientRect().height)`);
+	await js(`document.querySelector('[aria-label="場地和時間軸的分界"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+	return { ok: hgt >= 320, value: `場地那一塊 ${hgt} px 高` };
+});
+
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);

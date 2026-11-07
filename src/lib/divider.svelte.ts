@@ -1,6 +1,8 @@
 // 編輯頁可以拖的分界（場地和時間軸、場地和右邊欄）：拖它或按方向鍵改一邊的大小，雙擊回到預設，存在這台電腦。
+// 拖到一半按 Esc 回到拖之前的大小。
 // 夾在範圍內、現在畫面上多大由用的地方給（量版面的事 jsdom 量不到，ADR 0002）。
 
+import { onEscape } from '#lib/components/pointer.js';
 import { loadLayoutPx, saveLayoutPx, type LayoutSize } from '#lib/local-settings.js';
 
 /** 按一下方向鍵改多少 px。 */
@@ -23,7 +25,8 @@ export class Divider {
 	/** 存的值：px，或 relativeTo 的比例；null = 預設（沒拖過，或雙擊回去了）。 */
 	#stored = $state<number | null>(null);
 	#opts: DividerOptions;
-	#drag: { from: number; px: number } | null = null;
+	/** 拖的時候：從哪裡開始拖、那時多大、那時存的值（按 Esc 回到它）、拿掉 Esc 監聽。 */
+	#drag: { from: number; px: number; stored: number | null; offEscape: () => void } | null = null;
 
 	constructor(opts: DividerOptions) {
 		this.#opts = opts;
@@ -51,14 +54,25 @@ export class Divider {
 		const at = (e: PointerEvent) => (axis === 'y' ? e.clientY : e.clientX);
 		const bigger = axis === 'y' ? 'ArrowUp' : 'ArrowLeft';
 		const smaller = axis === 'y' ? 'ArrowDown' : 'ArrowRight';
-		const end = () => (this.#drag = null);
+		const end = () => {
+			this.#drag?.offEscape();
+			this.#drag = null;
+		};
 		const off = new AbortController();
 		const opts = { signal: off.signal };
 		el.addEventListener(
 			'pointerdown',
 			(e) => {
 				if (e.button !== 0) return;
-				this.#drag = { from: at(e), px: this.#opts.size() };
+				this.#drag?.offEscape();
+				const stored = this.#stored;
+				// 拖到一半按 Esc：回到拖之前的大小
+				const offEscape = onEscape(() => {
+					this.#drag = null;
+					this.#stored = stored;
+					saveLayoutPx(this.#opts.name, stored);
+				});
+				this.#drag = { from: at(e), px: this.#opts.size(), stored, offEscape };
 				el.setPointerCapture?.(e.pointerId);
 			},
 			opts
@@ -84,6 +98,9 @@ export class Divider {
 			opts
 		);
 		el.addEventListener('dblclick', () => this.set(null), opts);
-		return () => off.abort();
+		return () => {
+			off.abort();
+			end();
+		};
 	};
 }

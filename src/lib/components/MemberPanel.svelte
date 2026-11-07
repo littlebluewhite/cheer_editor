@@ -221,7 +221,11 @@
 						type="button"
 						class="ghost icon remove"
 						aria-label="刪除第 {i + 1} 位隊員"
-						onclick={() => remove(m.id)}><Icon name="trash" size={14} /></button
+						onclick={() => remove(m.id)}
+						onkeydown={(e) => {
+							// 問句開著、焦點還在刪除鈕上：Esc 也是取消
+							if (e.key === 'Escape' && ask.question && askingId === m.id) ask.answer('cancel');
+						}}><Icon name="trash" size={14} /></button
 					>
 					<!-- 名單很長時問句可能在看得到的範圍外，按了像沒反應：出現時捲過去。 -->
 					{#if ask.question && askingId === m.id}

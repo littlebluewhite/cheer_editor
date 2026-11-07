@@ -8,6 +8,7 @@ import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { nextId } from './ids';
 import { tooLong } from './text-length';
+import type { Segment } from './segment';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
@@ -388,7 +389,8 @@ function walkFormationIndex(flow: Flow, formationId: string): number | string {
  * 一個人在 formations[index - 1]（A）→ formations[index]（B）的出發和到達（全域秒數）。
  * 自己設的（B 的 walks）夾在 A、B 之間；夾完出發不早於到達就當沒設。
  * 預設：到達 = B；出發 = B 往前一個八拍（用 B 所在音樂段的 BPM），落進前一段時往前取到那一段的格子上。
- * B 在口號段，或 A、B 之間不到一個八拍：整段走（出發 = A）。
+ * B 在口號段開頭、前一段是音樂段：用前一段的 BPM 往前一個八拍。
+ * B 在口號段其他地方，或 A、B 之間不到一個八拍：整段走（出發 = A）。
  */
 function walkTimes(flow: Flow, index: number, memberId: string): { depart: number; arrive: number } {
 	return customWalk(flow, index, memberId) ?? defaultWalk(flow, index);
@@ -411,12 +413,21 @@ function customWalk(
 	return depart < arrive - EPS ? { depart, arrive } : null;
 }
 
+/**
+ * 預設出發用哪一段的拍子往前數：B 所在的段；B 在口號段開頭（時間 0）時是它前面那一段（走位都在那一段裡）。
+ */
+function beatSegment(flow: Flow, b: Formation): Segment | undefined {
+	const i = flow.segments.findIndex((s) => s.id === b.segmentId);
+	const segment = flow.segments[i];
+	return segment?.kind === 'chant' && b.at === 0 && i > 0 ? flow.segments[i - 1] : segment;
+}
+
 /** 沒設的人在 formations[index - 1] → formations[index] 的出發和到達（見 walkTimes）。 */
 function defaultWalk(flow: Flow, index: number): { depart: number; arrive: number } {
 	const aSec = formationSec(flow, flow.formations[index - 1]);
 	const b = flow.formations[index];
 	const arrive = formationSec(flow, b);
-	const segment = flow.segments.find((s) => s.id === b.segmentId);
+	const segment = beatSegment(flow, b);
 	if (segment?.kind !== 'music') return { depart: aSec, arrive };
 	const depart = arrive - HALF_BEATS_PER_EIGHT * unitSec(segment);
 	if (depart <= aSec + EPS) return { depart: aSec, arrive };

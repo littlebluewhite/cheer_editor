@@ -332,8 +332,30 @@ function pick<T extends object, K extends keyof T>(obj: T, ...keys: K[]): Partia
 	return out;
 }
 
-/** 加一段（給 afterId 就插在那一段後面，沒給就加在最後），回傳新段的 id。 */
-export function addSegment(flow: Flow, kind: SegmentKind, afterId?: string): CommandResult<{ id: string }> {
+/** 新口號段預設幾個 0.1 秒（10 秒）。 */
+const DEFAULT_CHANT_TENTHS = 100;
+
+/**
+ * 編排畫面加的新口號段多長（0.1 秒數）：預設 10 秒；規則警告開著、口號段加起來還不到最少秒數時，
+ * 補到剛好夠（不會一加就跳「口號段太短」），最長到口號段的上限。
+ */
+export function newChantTenths(flow: Flow): number {
+	if (!flow.timeRules.on) return DEFAULT_CHANT_TENTHS;
+	const have = flow.segments.reduce((sum, s) => sum + (s.kind === 'chant' ? s.tenths : 0), 0);
+	const missing = Math.ceil(flow.timeRules.minChantSec * 10 - have);
+	return Math.min(Math.max(DEFAULT_CHANT_TENTHS, missing), MAX_CHANT_SEC * 10);
+}
+
+/**
+ * 加一段（給 afterId 就插在那一段後面，沒給就加在最後），回傳新段的 id。
+ * 口號段預設 10 秒；給 tenths 就用那個長度（例：newChantTenths）。
+ */
+export function addSegment(
+	flow: Flow,
+	kind: SegmentKind,
+	afterId?: string,
+	tenths = DEFAULT_CHANT_TENTHS
+): CommandResult<{ id: string }> {
 	const after = afterId === undefined ? flow.segments.length - 1 : flow.segments.findIndex((s) => s.id === afterId);
 	if (afterId !== undefined && after === -1) return blocked('找不到這一段');
 	const index = after + 1;
@@ -341,7 +363,7 @@ export function addSegment(flow: Flow, kind: SegmentKind, afterId?: string): Com
 	const segment: Segment =
 		kind === 'music'
 			? { id, kind, audioId: null, bpm: DEFAULT_BPM, firstBeatSec: 0, halfBeats: 8 * 8 * 2 }
-			: { id, kind, tenths: 100 };
+			: { id, kind, tenths };
 	// 開頭站位在第一段的時間 0：加第一段時把它指過去。
 	const formations =
 		flow.segments.length === 0

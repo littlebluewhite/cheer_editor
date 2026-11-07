@@ -398,7 +398,7 @@
 				class:long={isLongMarker(markers[m.id])}
 				title={m.globalRole === 'top' ? '上層' : '底層'}>{markers[m.id]}</b
 			>
-			<span class="name">{m.name}</span>
+			<span class="name" title={m.name}>{m.name}</span>
 			{#if idle.has(m.id)}<span class="idle-tag" title="播放頭這一拍沒在動作裡">閒</span>{/if}
 		</button>
 		<div class="trk" style:width={`${width}px`}>
@@ -574,12 +574,12 @@
 	}
 	.no {
 		flex: none;
-		width: 18px;
-		height: 18px;
+		width: 22px;
+		height: 22px;
 		border-radius: 50%;
 		display: inline-grid;
 		place-items: center;
-		font-size: 10px;
+		font-size: 12px;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1;
@@ -589,9 +589,10 @@
 		background: #fff;
 		color: #16213a;
 	}
+	/* 深色的字：白字在橘底上太淡 */
 	.gr.top {
 		background: var(--top, #e0664f);
-		color: #fff;
+		color: #16213a;
 	}
 	.name {
 		overflow: hidden;
