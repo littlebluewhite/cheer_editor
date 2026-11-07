@@ -2,12 +2,12 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
-import { actionLabel, type Action } from './action-types';
-import { updateAction } from './actions';
-import { cueFallout } from './cues';
+import { actionLabel, replaceAction, type Action } from './action-types';
+import { changeAction } from './actions';
 import type { Flow } from './flow';
 import { nextId } from './ids';
-import { phaseFallout, phaseFalloutText } from './phase-beats';
+import { phaseFalloutText } from './phase-beats';
+import { cueFalloutText } from './settle';
 import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
 import { atText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
 
@@ -294,24 +294,19 @@ function trimAction(
 	length: number
 ): { kind: 'ok'; flow: Flow; item: string; records: number; marks: number } | { kind: 'blocked'; message: string } {
 	const segment = flow.segments.find((s) => s.id === before.segmentId)!;
-	const after = { ...before, length };
-	const r = updateAction(flow, before.id, { length }, { confirmed: true });
-	if (r.kind !== 'ok') return { kind: 'blocked', message: r.message };
-	const cues = cueFallout(segment, segment, before, after, flow);
-	const phases = phaseFallout(segment, segment, before, after);
-	const fallout = [
-		cues && [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean).join('、') + '拍點',
-		phases && phaseFalloutText(phases)
-	].filter(Boolean);
-	const trimmedRecords = r.flow.actions.find((a) => a.id === before.id)?.successRate?.records.length ?? 0;
+	const r = changeAction(flow, before.id, { length }, { confirmed: true });
+	if (r.kind !== 'ok') return r;
+	const { cues } = r;
+	const { phases } = r.fallout;
+	const fallout = [cues && cueFalloutText(cues), phases && phaseFalloutText(phases)].filter(Boolean);
 	return {
 		kind: 'ok',
-		flow: r.flow,
+		flow: replaceAction(r.flow, r.action),
 		item:
 			`裁短：動作「${actionLabel(before)}」（${atText(segment, before.start)} 起）` +
 			`${lengthTextWithUnit(segment, before.length)} → ${lengthTextWithUnit(segment, length)}` +
 			(fallout.length ? `，會${fallout.join('，')}` : ''),
-		records: (before.successRate?.records.length ?? 0) - trimmedRecords,
+		records: (before.successRate?.records.length ?? 0) - (r.action.successRate?.records.length ?? 0),
 		marks: phases?.marked ?? 0
 	};
 }
