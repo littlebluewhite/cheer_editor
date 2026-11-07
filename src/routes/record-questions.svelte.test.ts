@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { squadNumber } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
-import { editorPage, recordedFlow } from '#lib/test-fakes.js';
+import { editorPage, flush, recordedFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -118,6 +118,30 @@ describe('改隊員名字時問保留還是清掉', () => {
 		await fireEvent.click(within(unsaved!).getByRole('button', { name: '取消' }));
 		await press('保留舊紀錄');
 		expect(session.flow!.members[0].name).toBe('小芳芳');
+	});
+
+	it('還沒選保留或清掉就按「新建」再按「先存檔」：不存、不新建，說先回答問題；還能選保留，改名沒不見（#208）', async () => {
+		const { session, props, saves } = editorPage(recordedFlow());
+		render(Page, props);
+		await openRoster();
+		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		const unsaved = screen.getAllByRole('alertdialog').find((d) => d.textContent?.includes('還沒存'))!;
+		await fireEvent.click(within(unsaved).getByRole('button', { name: '先存檔' }));
+		await flush();
+		expect(saves).toEqual([]);
+		expect(screen.getByRole('status').textContent).toContain('先回答');
+		await press('保留舊紀錄');
+		expect(session.flow!.members[0].name).toBe('小芳芳');
+		expect(session.unsaved).toBe(true);
+	});
+
+	it('還沒選保留或清掉就關分頁：一樣算有沒存的（#208）', async () => {
+		const { editor, props } = editorPage(recordedFlow());
+		render(Page, props);
+		await openRoster();
+		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
+		expect(editor.hasUnsavedWork).toBe(true);
 	});
 });
 

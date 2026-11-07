@@ -279,6 +279,11 @@ export class EditorSession {
 		return [...this.#changeAsks].some((ref) => !!ref.deref()?.question);
 	}
 
+	/** 換掉流程、關分頁就會不見的：有還沒存的修改，或改了還在等教練回答（例：改名後還沒選保留或清掉）。 */
+	get unsavedOrAsking(): boolean {
+		return this.unsaved || this.questionOpen;
+	}
+
 	/** 問題都收掉：問的是換掉之前的流程，留著會冒出舊內容，按下去還會清掉重做。 */
 	#clearAsks() {
 		this.ask.clear();
