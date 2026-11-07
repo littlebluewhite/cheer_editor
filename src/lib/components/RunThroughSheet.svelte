@@ -28,6 +28,8 @@
 	let { date, onclose }: Props = $props();
 
 	const session = getEditorSession();
+	/** 這次全上開的時間（手機的時間）：一天裡的全上照它排第幾次。 */
+	const startedAt = Date.now();
 	const flow = $derived(session.flow!);
 	/** 存好了交給 session 的「記」（紀錄不算復原的一步）。 */
 	const ask = session.recordAsk();
@@ -115,7 +117,7 @@
 		const entries: RunThroughMarks[] = blocks
 			.filter(({ action }) => !skipped.includes(action.id))
 			.flatMap(({ action, whos }) => whos.map(({ who }) => ({ actionId: action.id, who, marks: tapped(action, who) })));
-		ask.send({ name: 'recordRunThrough', args: [date, entries] }, { done: () => onclose(true) });
+		ask.send({ name: 'recordRunThrough', args: [date, startedAt, entries] }, { done: () => onclose(true) });
 	}
 
 	const markLabel = (m: Mark | null) => MARKS.find((x) => x.key === m)?.label ?? '空的';

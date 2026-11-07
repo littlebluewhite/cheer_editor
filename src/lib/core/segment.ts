@@ -4,7 +4,7 @@
 
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
-import { nextId } from './ids';
+import { newId } from './ids';
 import { answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
 import { atText, parseNumber, segmentSpans, units } from './time';
 
@@ -276,7 +276,7 @@ export function loadSegmentAudio(
 	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
 	const ext = audioExtension(fileName);
 	if (!ext) return blocked(`只能載入 ${AUDIO_EXTENSIONS.join('、')}`);
-	const id = nextId('a', [...flow.audio.map((a) => a.id), ...heldIds]);
+	const id = newId('a', [...flow.audio.map((a) => a.id), ...heldIds]);
 	const audio = [...flow.audio, { id, file: `audio/${id}.${ext}`, name: fileName }];
 	const r = updateSegment({ ...flow, audio }, segmentId, { audioId: id });
 	return r.kind === 'ok' ? { ...r, audioId: id } : r;
@@ -337,7 +337,7 @@ export function addSegment(flow: Flow, kind: SegmentKind, afterId?: string): Com
 	const after = afterId === undefined ? flow.segments.length - 1 : flow.segments.findIndex((s) => s.id === afterId);
 	if (afterId !== undefined && after === -1) return blocked('找不到這一段');
 	const index = after + 1;
-	const id = nextId('s', flow.segments.map((s) => s.id));
+	const id = newId('s', flow.segments.map((s) => s.id));
 	const segment: Segment =
 		kind === 'music'
 			? { id, kind, audioId: null, bpm: DEFAULT_BPM, firstBeatSec: 0, halfBeats: 8 * 8 * 2 }

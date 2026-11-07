@@ -25,6 +25,7 @@ import {
 	deleteSegment,
 	fitSegmentToAudio,
 	insertBeats,
+	inStep,
 	insertFormation,
 	loadSegmentAudio,
 	markPhaseBeats,
@@ -60,11 +61,15 @@ import {
 	type Command,
 	type CommandResult,
 	type Flow,
-	type NewAttempt
+	type NewActionInput,
+	type NewAttempt,
+	type StepResult
 } from './index';
 import { flowOf, ratedSample } from '../test-flows';
 
 const date = '2026-11-04';
+/** 測試用的步驟 id。 */
+const STEP = 'k3m9q2w7';
 const drill: NewAttempt = {
 	date,
 	who: 'g1',
@@ -109,21 +114,23 @@ function base(): Flow {
 }
 
 /** base 再記一次全上。 */
-const withRun = () => flowOf(recordRunThrough(base(), date, run));
+const withRun = () => flowOf(recordRunThrough(base(), date, 1794036000000, run));
 
-/** base 刪掉 t1：給「放回一次」用。 */
-function deleted() {
+/** base 刪掉 t1：給「放回一次」用。在一步外面先做好（不在一步裡發的 id），情境裡跑幾次都一樣。 */
+const DELETED = (() => {
 	const r = deleteAttempt(base(), 'x1', 't1');
 	if (r.kind !== 'ok') throw new Error('deleteAttempt');
 	return r;
-}
+})();
+const deleted = () => DELETED;
 
-/** withRun 刪掉那次全上：給「放回全上」用。 */
-function deletedRun() {
+/** withRun 刪掉那次全上：給「放回全上」用。跟 deleted 一樣先做好。 */
+const DELETED_RUN = (() => {
 	const r = deleteLastRunThrough(withRun(), date);
 	if (r.kind !== 'ok') throw new Error('deleteLastRunThrough');
 	return r;
-}
+})();
+const deletedRun = () => DELETED_RUN;
 
 /** 一個情境：在哪個流程上、用名字叫的指令、直接叫的同一個指令。 */
 interface Case {
@@ -289,7 +296,7 @@ const cases: Case[] = [
 	at('deleteLastAttempt', base, { name: 'deleteLastAttempt', args: ['x1', 'g1', date, 'drill'] }, (f) =>
 		deleteLastAttempt(f, 'x1', 'g1', date, 'drill')
 	),
-	at('recordRunThrough', base, { name: 'recordRunThrough', args: [date, run] }, (f) => recordRunThrough(f, date, run)),
+	at('recordRunThrough', base, { name: 'recordRunThrough', args: [date, 1794036000000, run] }, (f) => recordRunThrough(f, date, 1794036000000, run)),
 	at('deleteLastRunThrough', withRun, { name: 'deleteLastRunThrough', args: [date] }, (f) =>
 		deleteLastRunThrough(f, date)
 	),
@@ -398,13 +405,15 @@ const cases: Case[] = [
 ];
 
 describe('用名字＋參數叫指令', () => {
-	it.each(cases.map((c) => [c.label, c] as const))('%s：跟直接叫一樣', (_, c) => {
-		expect(runCommand(c.flow(), c.command)).toEqual(c.direct(c.flow()));
+	it.each(cases.map((c) => [c.label, c] as const))('%s：跟在同一步裡直接叫一樣', (_, c) => {
+		const flow = c.flow();
+		expect(runCommand(flow, c.command, STEP)).toEqual(inStep(STEP, () => c.direct(flow)));
 	});
 
 	it.each(cases.map((c) => [c.label, c] as const))('%s：參數轉成 JSON 再轉回來，結果一樣', (_, c) => {
 		const sent = JSON.parse(JSON.stringify(c.command)) as Command;
-		expect(runCommand(c.flow(), sent)).toEqual(c.direct(c.flow()));
+		const flow = c.flow();
+		expect(runCommand(flow, sent, STEP)).toEqual(inStep(STEP, () => c.direct(flow)));
 	});
 
 	it('53 個指令都登記，每個都有情境', () => {
@@ -421,46 +430,99 @@ describe('用名字＋參數叫指令', () => {
 describe('一步帶好幾個指令', () => {
 	it('照順序跑：後面的指令跑在前面改好的流程上', () => {
 		const flow = base();
-		const r = runCommands(flow, [
-			{ name: 'addSegment', args: ['music'] },
-			{ name: 'updateSegment', args: ['s3', { eights: 2 }] }
-		]);
+		const r = runCommands(
+			flow,
+			[
+				{ name: 'addSegment', args: ['music'] },
+				{ name: 'moveSegment', args: ['s2', 1] }
+			],
+			STEP
+		);
 		expect(r.kind === 'ok' && r.flow).toEqual(
-			flowOf(updateSegment(flowOf(addSegment(flow, 'music')), 's3', { eights: 2 }))
+			inStep(STEP, () => flowOf(moveSegment(flowOf(addSegment(flow, 'music')), 's2', 1)))
 		);
 	});
 
 	it('多帶的結果都留著（例：新加的段 id）', () => {
-		const r = runCommands(base(), [
-			{ name: 'addSegment', args: ['music'] },
-			{ name: 'renameFlow', args: ['決賽'] }
-		]);
-		expect(r).toMatchObject({ kind: 'ok', id: 's3' });
+		const r = runCommands(
+			base(),
+			[
+				{ name: 'addSegment', args: ['music'] },
+				{ name: 'renameFlow', args: ['決賽'] }
+			],
+			STEP
+		);
+		expect(r.kind === 'ok' && r.flow.segments.at(-1)!.id).toBe(r.kind === 'ok' && 'id' in r && r.id);
 	});
 
 	it('中間一個被擋：整串都不算，回那一個的原因和它是第幾個', () => {
-		const r = runCommands(base(), [
-			{ name: 'renameFlow', args: ['決賽'] },
-			{ name: 'deleteAction', args: ['x9'] },
-			{ name: 'moveMember', args: ['m4', 0] }
-		]);
+		const r = runCommands(
+			base(),
+			[
+				{ name: 'renameFlow', args: ['決賽'] },
+				{ name: 'deleteAction', args: ['x9'] },
+				{ name: 'moveMember', args: ['m4', 0] }
+			],
+			STEP
+		);
 		expect(r).toEqual({ kind: 'blocked', message: '找不到這個動作', at: 1 });
 	});
 
 	it('中間一個要問：整串都不算，回那一個的問題和它是第幾個', () => {
 		const flow = base();
-		const r = runCommands(flow, [
-			{ name: 'renameFlow', args: ['決賽'] },
-			{ name: 'deleteAction', args: ['x1'] }
-		]);
+		const r = runCommands(
+			flow,
+			[
+				{ name: 'renameFlow', args: ['決賽'] },
+				{ name: 'deleteAction', args: ['x1'] }
+			],
+			STEP
+		);
 		expect(r).toEqual({ ...deleteAction(flow, 'x1'), at: 1 });
 	});
 
 	it('沒有開著的流程：只有新建流程叫得動', () => {
-		expect(runCommands(null, [{ name: 'renameFlow', args: ['決賽'] }])).toMatchObject({ kind: 'blocked', at: 0 });
+		expect(runCommands(null, [{ name: 'renameFlow', args: ['決賽'] }], STEP)).toMatchObject({ kind: 'blocked', at: 0 });
 		const field = { strips: 7, layout: 'horizontal' } as const;
-		expect(runCommand(null, { name: 'createFlow', args: [{ name: '新', field }] })).toEqual(
-			createFlow({ name: '新', field })
+		expect(runCommand(null, { name: 'createFlow', args: [{ name: '新', field }] }, STEP)).toEqual(
+			inStep(STEP, () => createFlow({ name: '新', field }))
 		);
+	});
+});
+
+describe('新東西的 id 由步驟 id 算出來', () => {
+	const twoSegments = (stepId: string) =>
+		runCommands(
+			base(),
+			[
+				{ name: 'addSegment', args: ['music'] },
+				{ name: 'addSegment', args: ['chant'] }
+			],
+			stepId
+		);
+	const newSegmentIds = (r: StepResult) => (r.kind === 'ok' ? r.flow.segments.slice(2).map((s) => s.id) : []);
+
+	it('同一個步驟 id 跑同一步：新東西的 id 一樣', () => {
+		expect(newSegmentIds(twoSegments('k3m9q2w7'))).toEqual(newSegmentIds(twoSegments('k3m9q2w7')));
+	});
+
+	it('換一個步驟 id 就不一樣；同一步裡的兩個也不一樣', () => {
+		const ids = [...newSegmentIds(twoSegments('k3m9q2w7')), ...newSegmentIds(twoSegments('z8w1p0a5'))];
+		expect(ids).toHaveLength(4);
+		expect(new Set(ids).size).toBe(4);
+	});
+
+	it('格式是種類字母加 12 個小寫字母或數字', () => {
+		const ids = newSegmentIds(twoSegments('k3m9q2w7'));
+		expect(ids).toHaveLength(2);
+		for (const id of ids) expect(id).toMatch(/^s[a-z0-9]{12}$/);
+	});
+
+	it('指令回的 id 就是流程裡新東西的 id', () => {
+		const action: NewActionInput = { segmentId: 's1', category: 'jump', name: 'T', start: 48, length: 8, note: '', members: [{ memberId: 'm1', role: null }] };
+		const r = runCommand(base(), { name: 'addAction', args: [action] }, 'k3m9q2w7');
+		if (r.kind !== 'ok') throw new Error('addAction');
+		expect(r.id).toMatch(/^x[a-z0-9]{12}$/);
+		expect(r.flow.actions.at(-1)!.id).toBe(r.id);
 	});
 });

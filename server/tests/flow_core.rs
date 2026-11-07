@@ -9,7 +9,8 @@ use serde_json::value::RawValue;
 use cheer_server::flow_core::{self, FlowCore};
 
 /// 範例流程：從沒有流程開始，一步一步（一步可以帶好幾個指令）用名字＋參數建出來；
-/// 有成功、要選、要確認、一步裡第二個被擋。
+/// 有成功、要選、要確認、一步裡第二個被擋。每一步是 `{ stepId, commands }`：新東西的 id 由步驟 id 算出來，
+/// 後面的步照算出來的 id 寫。
 const SAMPLE_STEPS: &str = include_str!("fixtures/sample-steps.json");
 
 /// 照順序跑每一步：成功就換成新的流程，再跑下一步。每一步的結果（JSON）一行。
@@ -20,7 +21,7 @@ require('node:vm').runInThisContext(require('node:fs').readFileSync(code, 'utf8'
 let flow = 'null';
 const out = [];
 for (const step of JSON.parse(steps)) {
-	const result = flowCore.runCommandsJson(flow, JSON.stringify(step));
+	const result = flowCore.runCommandsJson(flow, JSON.stringify(step.commands), step.stepId);
 	out.push(result);
 	const r = JSON.parse(result);
 	if (r.kind === 'ok') flow = JSON.stringify(r.flow);
@@ -48,12 +49,13 @@ fn node_run_steps(steps: &str) -> String {
 }
 
 async fn run_steps(core: &FlowCore, steps: &str) -> String {
-    let steps: Vec<Box<RawValue>> = serde_json::from_str(steps).unwrap();
+    let steps: Vec<HashMap<String, Box<RawValue>>> = serde_json::from_str(steps).unwrap();
     let mut flow = "null".to_string();
     let mut out = Vec::new();
     for step in steps {
+        let step_id: String = serde_json::from_str(step["stepId"].get()).unwrap();
         let result = core
-            .run_commands(flow.clone(), step.get().to_string())
+            .run_commands(flow.clone(), step["commands"].get().to_string(), step_id)
             .await
             .unwrap();
         // 流程照原樣拿出來（不重新排鍵、不重寫數字），跟 Node 那邊 JSON.stringify(r.flow) 一樣。
@@ -110,6 +112,11 @@ async fn name_lengths_count_the_same_as_node() {
             });
         }
     }
+    let steps = steps
+        .into_iter()
+        .enumerate()
+        .map(|(i, commands)| serde_json::json!({ "stepId": format!("step{i}"), "commands": commands }))
+        .collect::<Vec<_>>();
     let steps = serde_json::Value::from(steps).to_string();
 
     let quickjs = run_steps(&core, &steps).await;
@@ -130,16 +137,22 @@ async fn a_command_that_throws_comes_back_as_an_error() {
     let core = FlowCore::start().unwrap();
 
     let r = core
-        .run_commands("null".into(), r#"[{ "name": "renameFlow" }]"#.into())
+        .run_commands(
+            "null".into(),
+            r#"[{ "name": "renameFlow" }]"#.into(),
+            "step1".into(),
+        )
         .await;
 
     // 沒有流程時被擋（不丟例外）；參數壞掉丟例外時回錯誤，不會讓伺服器掛掉。
     assert!(r.unwrap().contains(r#""kind":"blocked""#));
-    let r = core.run_commands("{}".into(), "not json".into()).await;
+    let r = core
+        .run_commands("{}".into(), "not json".into(), "step2".into())
+        .await;
     assert!(r.is_err());
     // 丟過例外之後照樣能跑。
     let r = core
-        .run_commands("null".into(), SAMPLE_STEPS_FIRST.into())
+        .run_commands("null".into(), SAMPLE_STEPS_FIRST.into(), "step3".into())
         .await;
     assert!(r.unwrap().starts_with(r#"{"kind":"ok""#));
 }

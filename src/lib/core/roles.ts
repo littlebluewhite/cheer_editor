@@ -4,7 +4,7 @@
 import { actionLabel, type ActionCategory, type ActionMember } from './action-types';
 import type { Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { nextId } from './ids';
+import { newId } from './ids';
 import type { GlobalRole } from './members';
 import { tooLong } from './text-length';
 
@@ -47,7 +47,7 @@ export function addCustomRole(flow: Flow, input: { name: string; meaning: string
 	if (tooLongName) return blocked(tooLongName);
 	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個任務角色了`);
 	if (isMemberName(flow, name)) return blocked(memberNameTaken(name));
-	const id = nextId('r', flow.customRoles.map((r) => r.id));
+	const id = newId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
 	return ok({ ...flow, customRoles: [...flow.customRoles, role] });
 }

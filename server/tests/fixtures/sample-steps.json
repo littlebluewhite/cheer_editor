@@ -1,41 +1,20 @@
 [
-  [{ "name": "createFlow", "args": [{ "name": "測試", "field": { "strips": 9, "layout": "vertical" } }] }],
-  [{ "name": "addMembers", "args": [[
-    { "name": "小美", "gender": "F", "globalRole": "top" },
-    { "name": "小A", "gender": "M", "globalRole": "base" },
-    { "name": "小B", "gender": "M", "globalRole": "base" },
-    { "name": "小芳", "gender": "F", "globalRole": "top" }
-  ]] }],
-  [
-    { "name": "addSegment", "args": ["music"] },
-    { "name": "updateSegment", "args": ["s1", { "eights": 4, "lastBeats": 8 }] }
-  ],
-  [{ "name": "addAction", "args": [{
-    "segmentId": "s1", "category": "stunt", "name": "Lib", "start": 0, "length": 16, "note": "",
-    "members": [
-      { "memberId": "m1", "role": "上層" },
-      { "memberId": "m2", "role": "主底" },
-      { "memberId": "m3", "role": "主底" },
-      { "memberId": "m4", "role": "上層" }
-    ]
-  }] }],
-  [
-    { "name": "addPhase", "args": ["x1", { "kind": "load", "name": "", "beats": { "at": 0, "len": 4 } }] },
-    { "name": "addPhase", "args": ["x1", { "kind": "hold", "name": "", "beats": { "at": 4, "len": 8 } }] },
-    { "name": "addPhase", "args": ["x1", { "kind": "dismount", "name": "", "beats": { "at": 12, "len": 4 } }] }
-  ],
-  [
-    { "name": "setSquad", "args": ["x1", ["m1", "m2"], 1] },
-    { "name": "setSquad", "args": ["x1", ["m3", "m4"], 2] }
-  ],
-  [{ "name": "recordAttempt", "args": ["x1", { "date": "2026-11-04", "who": "g1", "practice": "drill", "whole": true, "marks": { "p1": "✓", "p2": "△", "p3": "✗" } }] }],
-  [{ "name": "placeCue", "args": ["x1", { "kind": "count", "at": 0, "len": 2, "word": "down" }] }],
-  [{ "name": "addCustomRole", "args": [{ "name": "飛人", "meaning": "" }] }],
-  [{ "name": "insertFormation", "args": [2] }],
-  [{ "name": "setPositions", "args": ["f2", { "m1": [1.5, 2], "m2": [3, 4.25] }] }],
-  [{ "name": "updateMember", "args": ["m1", { "name": "小美美" }] }],
-  [{ "name": "updateMember", "args": ["m1", { "name": "小美美" }], "options": { "records": "keep" } }],
-  [{ "name": "deleteMember", "args": ["m4"] }],
-  [{ "name": "renameFlow", "args": ["決賽"] }, { "name": "renameFlow", "args": [""] }],
-  [{ "name": "renameFlow", "args": ["決賽 2026"] }]
+  {"stepId":"step01","commands":[{"name":"createFlow","args":[{"name":"測試","field":{"strips":9,"layout":"vertical"}}]}]},
+  {"stepId":"step02","commands":[{"name":"addMembers","args":[[{"name":"小美","gender":"F","globalRole":"top"},{"name":"小A","gender":"M","globalRole":"base"},{"name":"小B","gender":"M","globalRole":"base"},{"name":"小芳","gender":"F","globalRole":"top"}]]}]},
+  {"stepId":"step03","commands":[{"name":"addSegment","args":["music"]}]},
+  {"stepId":"step04","commands":[{"name":"updateSegment","args":["ss8th1zgvyub2",{"eights":4,"lastBeats":8}]}]},
+  {"stepId":"step05","commands":[{"name":"addAction","args":[{"segmentId":"ss8th1zgvyub2","category":"stunt","name":"Lib","start":0,"length":16,"note":"","members":[{"memberId":"mzk52d2cu1vww","role":"上層"},{"memberId":"mh5fx931iypar","role":"主底"},{"memberId":"mynspp181tezh","role":"主底"},{"memberId":"msw4sio1bgnxb","role":"上層"}]}]}]},
+  {"stepId":"step06","commands":[{"name":"addPhase","args":["x2l8axo41g3ph",{"kind":"load","name":"","beats":{"at":0,"len":4}}]},{"name":"addPhase","args":["x2l8axo41g3ph",{"kind":"hold","name":"","beats":{"at":4,"len":8}}]},{"name":"addPhase","args":["x2l8axo41g3ph",{"kind":"dismount","name":"","beats":{"at":12,"len":4}}]}]},
+  {"stepId":"step07","commands":[{"name":"setSquad","args":["x2l8axo41g3ph",["mzk52d2cu1vww","mh5fx931iypar"],1]},{"name":"setSquad","args":["x2l8axo41g3ph",["mynspp181tezh","msw4sio1bgnxb"],2]}]},
+  {"stepId":"step08","commands":[{"name":"recordAttempt","args":["x2l8axo41g3ph",{"date":"2026-11-04","who":"g7sil583dmpgv","practice":"drill","whole":true,"marks":{"pq4lkns0v20ec":"✓","p33qu2fx2u0ue":"△","p8jok7d9wl8v2":"✗"}}]}]},
+  {"stepId":"step09","commands":[{"name":"recordRunThrough","args":["2026-11-04",1794036000000,[{"actionId":"x2l8axo41g3ph","who":"gre8zqixysbk8","marks":{"pq4lkns0v20ec":"✓","p33qu2fx2u0ue":"✓","p8jok7d9wl8v2":"✓"}}]]}]},
+  {"stepId":"step10","commands":[{"name":"placeCue","args":["x2l8axo41g3ph",{"kind":"count","at":0,"len":2,"word":"down"}]}]},
+  {"stepId":"step11","commands":[{"name":"addCustomRole","args":[{"name":"飛人","meaning":""}]}]},
+  {"stepId":"step12","commands":[{"name":"insertFormation","args":[2]}]},
+  {"stepId":"step13","commands":[{"name":"setPositions","args":["fm4absteiatg5",{"mzk52d2cu1vww":[1.5,2],"mh5fx931iypar":[3,4.25]}]}]},
+  {"stepId":"step14","commands":[{"name":"updateMember","args":["mzk52d2cu1vww",{"name":"小美美"}]}]},
+  {"stepId":"step15","commands":[{"name":"updateMember","args":["mzk52d2cu1vww",{"name":"小美美"}],"options":{"records":"keep"}}]},
+  {"stepId":"step16","commands":[{"name":"deleteMember","args":["msw4sio1bgnxb"]}]},
+  {"stepId":"step17","commands":[{"name":"renameFlow","args":["決賽"]},{"name":"renameFlow","args":[""]}]},
+  {"stepId":"step18","commands":[{"name":"renameFlow","args":["決賽 2026"]}]}
 ]

@@ -6,6 +6,7 @@ import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { newIds } from './ids';
 import { FIXED_ROLES } from './roles';
 import { settle } from './settle';
 import { perPerson, recordItems, squadNumber, type Attempt } from './success-rate';
@@ -166,13 +167,12 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 	}
 	if (bad.length === entries.length || entries.length > left) return blocked(errors.join('\n'));
 
-	const added: Member[] = [];
-	let n = nextNumber(flow.members);
-	for (const e of entries) {
-		if (e.problems.length) continue;
+	const good = entries.filter((e) => !e.problems.length);
+	const ids = newIds('m', good.length, flow.members.map((m) => m.id));
+	const added: Member[] = good.map((e, i) => {
 		const { name, gender, globalRole } = e.input!;
-		added.push({ id: `m${n++}`, name: name.trim(), gender: gender!, globalRole: globalRole! });
-	}
+		return { id: ids[i], name: name.trim(), gender: gender!, globalRole: globalRole! };
+	});
 	const opening = { ...flow.formations[0].pos };
 	const grid = gridPoints(flow.field);
 	const spots = waitingSpots(flow.field);
@@ -451,9 +451,4 @@ function samePlace(a: Position, b: Position): boolean {
 export function memberNameProblem(name: string): string | null {
 	if (!name) return '請填隊員名字';
 	return tooLong('memberName', name);
-}
-
-/** 下一個沒用過的 m 編號。 */
-function nextNumber(members: Member[]): number {
-	return Math.max(0, ...members.map((m) => Number(m.id.slice(1)) || 0)) + 1;
 }

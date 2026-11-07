@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	inStep,
 	ACTION_COLORS,
 	PHASE_COLORS,
 	addAction,
@@ -169,10 +170,10 @@ describe('刪環節', () => {
 		expect(lib(flow).successRate!.records.map((r) => r.marks)).toEqual([{ p2: '✓', p3: '✓' }]);
 	});
 
-	it('刪了的環節 id 不再發', () => {
-		let flow = flowOf(deletePhase(sample(), 'x1', 'p3'));
-		const r = addPhase(flow, 'x1', { kind: 'dismount', name: '', beats: { at: 12, len: 4 } });
-		expect(r.kind === 'ok' && r.id).toBe('p4');
+	it('刪了的環節 id 不再發：新的環節 id 是亂數', () => {
+		const flow = flowOf(deletePhase(sample(), 'x1', 'p3'));
+		const r = inStep('k3m9q2w7', () => addPhase(flow, 'x1', { kind: 'dismount', name: '', beats: { at: 12, len: 4 } }));
+		expect(r.kind === 'ok' && r.id).toMatch(/^p[a-z0-9]{12}$/);
 	});
 
 	it('找不到環節：擋下來', () => {

@@ -2,6 +2,7 @@
 // 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加段、動作等。
 
 import type { Action } from './action-types';
+import { newId } from './ids';
 import { fieldGeometry, MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import type { Formation, Position } from './formation';
 import type { MarkerStyle, Member } from './members';
@@ -30,8 +31,6 @@ export interface Flow {
 	actions: Action[];
 	/** 隊員的標記用號碼還是開頭字；沒有就是號碼。 */
 	markers?: MarkerStyle;
-	/** 刪了也不重用的 id 已經發到第幾號，key 是 id 的字母（p：環節，t：一次）；沒有就是還沒發過。 */
-	lastIds?: Record<string, number>;
 }
 
 export interface NewFlowInput {
@@ -68,7 +67,7 @@ export function createFlow(input: NewFlowInput): CommandResult {
 		members: [],
 		audio: [],
 		segments: [],
-		formations: [{ id: 'f1', segmentId: null, at: 0, pos: {} }],
+		formations: [{ id: newId('f', []), segmentId: null, at: 0, pos: {} }],
 		customRoles: [],
 		actions: []
 	});

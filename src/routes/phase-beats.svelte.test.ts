@@ -2,7 +2,7 @@
 // 刪掉最後一個就不記成功率；把動作改短切到環節時先問。口號段的動作直接一列環節，不用標拍。
 // 流程在核心裡做好，放一個帶著它的 session 進頁面，再讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	addAction,
 	addMembers,
@@ -19,6 +19,13 @@ import { flowOf, squadNumbers } from '#lib/test-flows.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { editorPage, openFile, flush } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
+
+// 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
+// 所以不算步驟 id：新東西照舊發下一個編號。亂數的 id 在核心測試（commands、flow-file）和 ask-ids.test.ts 測。
+vi.mock('#lib/core/ids.js', async (load) => ({
+	...(await load<typeof import('#lib/core/ids.js')>()),
+	inStep: <R>(_stepId: string, run: () => R) => run()
+}));
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};

@@ -123,7 +123,7 @@ const commands: [string, (flow: Flow) => CommandResult | Flow][] = [
 	],
 	['setSquad', (f) => setSquad(f, 'x1', ['m1'], 2, { records: 'keep' })],
 	['recordAttempt', (f) => recordAttempt(f, 'x1', { ...drill, who: 'g2' })],
-	['recordRunThrough', (f) => recordRunThrough(f, date, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }])],
+	['recordRunThrough', (f) => recordRunThrough(f, date, 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }])],
 	['deleteLastAttempt', (f) => deleteLastAttempt(f, 'x1', 'g1', date, 'drill')],
 	['carryRecords', (f) => carryRecords(f, flowOf(recordAttempt(f, 'x1', { ...drill, who: 'g2' })))],
 	['addPhase', (f) => addPhase(f, 'x3', { kind: 'whole', name: '拋' })],
@@ -174,7 +174,7 @@ const commands: [string, (flow: Flow) => CommandResult | Flow][] = [
 			return r.kind === 'ok' ? restoreAttempt(flowOf(renameFlow(r.flow, '新名字')), 'x1', r.attempt, r.index) : r;
 		}
 	],
-	['deleteLastRunThrough', (f) => deleteLastRunThrough(runThrough(f), date)],
+	['deleteLastRunThrough', (f) => deleteLastRunThrough(runThrough(runThrough(f)), date)],
 	[
 		'restoreRunThrough',
 		(f) => {
@@ -196,7 +196,7 @@ function attemptId(flow: Flow): string {
 
 /** 再記一次全上。 */
 function runThrough(flow: Flow): Flow {
-	return flowOf(recordRunThrough(flow, date, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
+	return flowOf(recordRunThrough(flow, date, 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
 }
 
 describe('每個會改流程的指令：成功的結果存了再開', () => {

@@ -106,14 +106,16 @@ impl FlowCore {
     }
 
     /// 用名字＋參數跑一串指令（`runCommands`）：flow 是流程的 JSON（沒有開著的流程是 `null`），
-    /// commands 是指令串的 JSON。回結果的 JSON，跟前端跑出來的逐位元組一樣。
+    /// commands 是指令串的 JSON，step_id 是這一步的步驟 id（新東西的 id 由它算出來，ADR 0011）。
+    /// 回結果的 JSON，跟前端用同一個步驟 id 跑出來的逐位元組一樣。
     pub fn run_commands(
         &self,
         flow: String,
         commands: String,
+        step_id: String,
     ) -> impl Future<Output = Result<String, CoreError>> + use<> {
         let result = self.submit(move |ctx| {
-            call(ctx, "runCommandsJson", (flow, commands))
+            call(ctx, "runCommandsJson", (flow, commands, step_id))
                 .catch(ctx)
                 .map_err(|e| CoreError::Js(e.to_string()))
         });
@@ -121,7 +123,11 @@ impl FlowCore {
     }
 }
 
-fn call<'js>(ctx: &Ctx<'js>, name: &str, args: (String, String)) -> rquickjs::Result<String> {
+fn call<'js>(
+    ctx: &Ctx<'js>,
+    name: &str,
+    args: (String, String, String),
+) -> rquickjs::Result<String> {
     let core: Object = ctx.globals().get("flowCore")?;
     let f: Function = core.get(name)?;
     f.call(args)

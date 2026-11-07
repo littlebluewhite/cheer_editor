@@ -14,14 +14,14 @@ import { memberName, type Flow } from './flow';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
-import { allSquadIds, squadProblem, squadsOf } from './success-rate';
-import { freshIds, nextId } from './ids';
+import { allSquadIds, squadProblem, squadsOf, withSquadOrder } from './success-rate';
+import { newId } from './ids';
 import { tooLong } from './text-length';
 import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
-	const id = nextId('x', flow.actions.map((a) => a.id));
+	const id = newId('x', flow.actions.map((a) => a.id));
 	// 組只認別的動作的組（從別的動作複製人），收尾照號碼換成這個動作自己的組；其他的不收。
 	const others = allSquadIds(flow);
 	const members = input.members.map(({ memberId, role, squad }) => ({
@@ -31,7 +31,7 @@ export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id
 	}));
 	const settled = checked(flow, undefined, normalize({ id, ...input, members }), {});
 	if (settled.kind === 'blocked') return settled;
-	return { kind: 'ok', flow: { ...settled.flow, actions: [...flow.actions, settled.action] }, id };
+	return { kind: 'ok', flow: { ...flow, actions: [...flow.actions, settled.action] }, id };
 }
 
 /** 名稱去掉頭尾空白；人複製一份，不跟呼叫端共用物件；辨識色是空的就不留欄位（用大類的顏色）。組和紀錄交給收尾（settle）。 */
@@ -68,7 +68,7 @@ export function updateAction(
 	if (settled.kind === 'blocked') return settled;
 	return (
 		falloutQuestion(flow, old, settled.action, cues, settled.fallout, options) ??
-		ok(replaceAction(settled.flow, settled.action))
+		ok(replaceAction(flow, settled.action))
 	);
 }
 
@@ -133,18 +133,19 @@ export function setSquad(
 	const problem = squad === null ? null : squadProblem(action, squad);
 	if (problem) return blocked(problem);
 	const own = squadsOf(action);
-	const issued = squad === null || squad <= own.length ? null : freshIds('g', 1, flow.lastIds, allSquadIds(flow));
-	const id = squad === null ? null : (own[squad - 1] ?? issued!.ids[0]);
+	const issued = squad === null || squad <= own.length ? null : newId('g', allSquadIds(flow));
+	const id = squad === null ? null : (own[squad - 1] ?? issued!);
 	const members = action.members.map((m) => {
 		if (!memberIds.includes(m.memberId)) return m;
 		const { squad: _, ...rest } = m;
 		return id === null ? rest : { ...rest, squad: id };
 	});
-	const settled = settle(issued ? { ...flow, lastIds: issued.lastIds } : flow, action, { ...action, members }, options);
+	const after = withSquadOrder({ ...action, members }, issued ? [issued] : []);
+	const settled = settle(flow, action, after, options);
 	if (settled.kind === 'blocked') return settled;
 	return (
 		falloutQuestion(flow, action, settled.action, null, settled.fallout, options) ??
-		ok(replaceAction(settled.flow, settled.action))
+		ok(replaceAction(flow, settled.action))
 	);
 }
 

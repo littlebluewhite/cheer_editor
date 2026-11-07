@@ -1,9 +1,16 @@
 // 音樂檔庫（編輯器 module 的 music）：在 Node 測，解碼換成假的。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addSegment, createFlow, loadSegmentAudio, renameFlow, updateSegment, writeFlowFile, type Flow, type MusicSegment } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { flowOf } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
+
+// 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
+// 所以不算步驟 id：新東西照舊發下一個編號。亂數的 id 在核心測試（commands、flow-file）和 ask-ids.test.ts 測。
+vi.mock('#lib/core/ids.js', async (load) => ({
+	...(await load<typeof import('#lib/core/ids.js')>()),
+	inStep: <R>(_stepId: string, run: () => R) => run()
+}));
 
 /** 一個音樂段（音樂 1：150 BPM、8 個八拍 = 25.6 秒），還沒有音樂。 */
 function musicFlow(): Flow {

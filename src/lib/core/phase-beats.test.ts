@@ -355,12 +355,14 @@ describe('標的拍跟著動作', () => {
 	});
 
 	it('換到口號段：環節照原本拍的先後排，不是照加的先後', () => {
-		// 先加的 p4 在後面（2-5 起），後加的 p5 在前面（1-1 起）。
-		let flow = flowOf(clearPhaseBeats(sample(), 'x1', 0, 32, { confirmed: true }));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'dismount', name: '', beats: { at: 24, len: 8 } }));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 6 } }));
-		flow = flowOf(updateAction(flow, 'x1', { segmentId: 's2', start: 0, length: 30 }, { confirmed: true }));
-		expect(brief(flow)).toEqual(['p5', 'p4']);
+		// 先加的在後面（2-5 起），後加的在前面（1-1 起）。
+		const cleared = flowOf(clearPhaseBeats(sample(), 'x1', 0, 32, { confirmed: true }));
+		const first = addPhase(cleared, 'x1', { kind: 'dismount', name: '', beats: { at: 24, len: 8 } });
+		if (first.kind !== 'ok') throw new Error(first.kind);
+		const second = addPhase(first.flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 6 } });
+		if (second.kind !== 'ok') throw new Error(second.kind);
+		const flow = flowOf(updateAction(second.flow, 'x1', { segmentId: 's2', start: 0, length: 30 }, { confirmed: true }));
+		expect(brief(flow)).toEqual([second.id, first.id]);
 	});
 
 	it('從口號段換回音樂段：沒拍的環節刪掉（先問），刪光就不記成功率', () => {

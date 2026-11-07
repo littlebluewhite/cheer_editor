@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	inStep,
 	addAction,
 	addMembers,
 	addSegment,
@@ -51,8 +52,9 @@ describe('環節的 id', () => {
 	it('刪掉的環節的 id 不重用：清光再加，是新的 id', () => {
 		let flow = flowOf(clearPhaseBeats(rated(sample()), 'x1', 0, 16));
 		expect(actionOf(flow).successRate).toBeUndefined();
-		flow = rated(flow);
-		expect(actionOf(flow).successRate?.phases.map((p) => p.id)).toEqual(['p2']);
+		const before = flow;
+		flow = inStep('k3m9q2w7', () => rated(before));
+		expect(actionOf(flow).successRate?.phases.map((p) => p.id)).toEqual([expect.stringMatching(/^p[a-z0-9]{12}$/)]);
 	});
 });
 
@@ -67,6 +69,20 @@ describe('設組', () => {
 		flow = flowOf(setSquad(flow, 'x1', ['m1'], null));
 		expect(squads(flow)).toEqual([undefined, 2, 1, 1]);
 		expect('squad' in actionOf(flow).members[0]).toBe(false);
+	});
+
+	it('新的組 id 是亂數：組號照發出的先後排，一組空掉後面的往前補', () => {
+		const start = on();
+		let n = 0;
+		const step = (flow: Flow, ids: string[], squad: number) => inStep(`step${++n}`, () => flowOf(setSquad(flow, 'x1', ids, squad)));
+		let flow = step(start, ['m4'], 2);
+		flow = step(flow, ['m3'], 3);
+		flow = step(flow, ['m2'], 4);
+		expect(squads(flow)).toEqual([1, 4, 3, 2]);
+		for (const id of squadsOf(actionOf(flow)).slice(1)) expect(id).toMatch(/^g[a-z0-9]{12}$/);
+		flow = step(flow, ['m4'], 1);
+		expect(squads(flow)).toEqual([1, 3, 2, 1]);
+		expect(actionOf(flow).squadOrder).toHaveLength(2);
 	});
 
 	it.each([

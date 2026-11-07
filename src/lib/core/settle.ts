@@ -4,7 +4,7 @@
 
 import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
 import type { Flow } from './flow';
-import { freshIds } from './ids';
+import { newId } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
@@ -19,6 +19,7 @@ import {
 	replacePhases,
 	successRateProblem,
 	withoutRecords,
+	withSquadOrder,
 	type Attempt
 } from './success-rate';
 
@@ -40,9 +41,9 @@ export interface CueFallout {
 	items: string[];
 }
 
-/** 收好了：action 是收好的動作；flow 是發過新的組 id 之後的流程（記上發到第幾號，動作還沒換上）。 */
+/** 收好了：action 是收好的動作（還沒換進流程）。 */
 export type Settled =
-	| { kind: 'ok'; action: Action; flow: Flow; fallout: Fallout }
+	| { kind: 'ok'; action: Action; fallout: Fallout }
 	| { kind: 'blocked'; message: string };
 
 /**
@@ -64,10 +65,10 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	// 換上新的環節：一個都不剩就不記成功率（例：舊檔記成功率卻沒有環節）。
 	const rate = settled.successRate;
 	const phased = rate ? replacePhases(settled, phases?.phases ?? rate.phases) : settled;
-	const action = ungroup(phased);
+	const action = withSquadOrder(ungroup(phased));
 	const problem = successRateProblem(to, action);
 	if (problem) return { kind: 'blocked', message: problem };
-	return { kind: 'ok', action, flow: grouped.flow, fallout: { phases, lost, changed } };
+	return { kind: 'ok', action, fallout: { phases, lost, changed } };
 }
 
 /**
@@ -76,17 +77,17 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
  * 有人帶組（還沒有環節時從別的動作複製來的）就照那些組；
  * 帶著別的動作的組 id 進來的人（從別的動作複製）照號碼對：那邊的第 n 組對到這邊的第 n 組，這邊沒有就是新的一組，
  * 所以兩個動作不會共用同一組；新進動作、沒帶組的人，動作只有一組就進那一組，有好幾組或還沒有組就沒有組。
- * 新的組 id 從流程發（刪了不重用），回傳記上發到第幾號的流程。
+ * 新的組 id 不跟流程裡的組 id 撞（刪了不重用），動作記下發出的先後（squadOrder）。
  */
-function squadRules(flow: Flow, before: Action | undefined, after: Action): { action: Action; flow: Flow } {
-	if (perPerson(after.category)) return { action: after, flow };
-	let lastIds = flow.lastIds;
+function squadRules(flow: Flow, before: Action | undefined, after: Action): { action: Action } {
+	if (perPerson(after.category)) return { action: after };
+	const issued: string[] = [];
 	const issue = () => {
-		const issued = freshIds('g', 1, lastIds, allSquadIds(flow));
-		lastIds = issued.lastIds;
-		return issued.ids[0];
+		const id = newId('g', [...allSquadIds(flow), ...issued]);
+		issued.push(id);
+		return id;
 	};
-	const done = (action: Action) => ({ action, flow: lastIds === flow.lastIds ? flow : { ...flow, lastIds } });
+	const done = (action: Action) => ({ action: withSquadOrder(action, issued) });
 	const carried = after.members.some((m) => m.squad !== undefined);
 	if (before && !groupsPeople(before) && groupsPeople(after) && !carried) {
 		const squad = issue();
