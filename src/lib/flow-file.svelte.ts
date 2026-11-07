@@ -1,6 +1,6 @@
 // 流程檔：編輯器 module 握著（getEditor().file）。開檔、存檔、新建、回首頁、草稿、「沒存先問」都在這裡，頁面只照它的狀態畫對話框和提示。
 // 管：這支流程在不在檔案裡、正在存、「還沒存」的問題、開檔錯誤、缺音樂的提示、
-// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
+// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，超過 5 支只自動丟沒改過的；停手 1 秒自動存，
 // 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁；
 // 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
 
@@ -355,6 +355,12 @@ export class FlowFile {
 		return this.#recent;
 	}
 
+	/** 改過沒存的草稿超過 5 支時，是幾支（首頁提醒教練自己丟）；沒超過是 0。 */
+	get unsavedOverLimit(): number {
+		const n = this.#recent.filter((f) => f.unsaved).length;
+		return n > MAX_DRAFTS ? n : 0;
+	}
+
 	/**
 	 * 打開最近的流程裡的一支：有沒存的修改的，跟救回草稿一樣（還算未存，不在檔案裡）；沒改過的，跟開那個檔一樣。
 	 * 另一個分頁正在編它就不開，首頁說原因。
@@ -474,7 +480,7 @@ export class FlowFile {
 
 	/**
 	 * 存這支流程的草稿。存不了（例：私密視窗）就算了，草稿只是保險。
-	 * 這份草稿第一次存：草稿超過 5 支流程的，先丟跟檔案一樣（沒改過）的、舊的先丟；都丟了還超過，才丟改過沒存的最舊那份。
+	 * 這份草稿第一次存：草稿超過 5 支流程的，丟跟檔案一樣（沒改過）的、舊的先丟；改過沒存的不丟（首頁提醒，教練自己丟）。
 	 */
 	async #saveDraft(bytes: Uint8Array): Promise<void> {
 		const id = this.#draftId;
@@ -489,9 +495,8 @@ export class FlowFile {
 			if (extra <= 0) return;
 			const loaded = await Promise.all(oldestFirst.map((d) => store.load(d.id)));
 			// 讀不出來的也算沒改過（反正打不開）
-			const unchanged = (i: number) => !loaded[i] || fileDraftId(loaded[i].bytes) === oldestFirst[i].id;
-			const order = [...oldestFirst.filter((_, i) => unchanged(i)), ...oldestFirst.filter((_, i) => !unchanged(i))];
-			for (const old of order.slice(0, extra)) void this.#dropDraft(old.id);
+			const unchanged = oldestFirst.filter((d, i) => !loaded[i] || fileDraftId(loaded[i].bytes) === d.id);
+			for (const old of unchanged.slice(0, extra)) void this.#dropDraft(old.id);
 		} catch {
 			// 草稿只是保險
 		}

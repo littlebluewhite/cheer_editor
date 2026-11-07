@@ -102,6 +102,21 @@ describe('首頁：最近的流程', () => {
 		expect(drafts.latest()).toBeNull();
 	});
 
+	it('改過沒存的草稿超過 5 支：首頁提醒有幾支還沒存；教練丟掉一支，剩 5 支就不提醒', async () => {
+		const drafts = fakeDraftStore();
+		for (const day of [1, 2, 3, 4, 5, 6]) {
+			drafts.all.set(`n${day}`, { bytes: writeFlowFile(newFlowOf(`第 ${day} 支`), {}), savedAt: new Date(2026, 10, day) });
+		}
+		setup(drafts.store);
+		await flush();
+		expect(screen.getByText(/有 6 支還沒存/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '丟掉「第 3 支」' }));
+		await fireEvent.click(screen.getByRole('button', { name: '丟掉' }));
+		await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^第 3 支/ })).toBeNull());
+		expect(drafts.all.has('n3')).toBe(false);
+		expect(screen.queryByText(/支還沒存/)).toBeNull();
+	});
+
 	it('「丟掉」的確認是對話框：焦點先在「取消」，Escape 等於取消，焦點回到「丟掉」', async () => {
 		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), {}));
 		setup(drafts.store);

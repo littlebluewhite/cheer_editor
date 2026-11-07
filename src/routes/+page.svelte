@@ -889,6 +889,9 @@
 							</li>
 						{/each}
 					</ul>
+					{#if editor.file.unsavedOverLimit}
+						<p class="recent-note" role="status">有 {editor.file.unsavedOverLimit} 支還沒存。編輯器不會自動丟掉還沒存的，用不到的按「丟掉」。</p>
+					{/if}
 					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 				</div>
 			{/if}
