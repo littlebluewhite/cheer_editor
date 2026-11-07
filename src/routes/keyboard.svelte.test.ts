@@ -247,6 +247,23 @@ describe('方向鍵移人', () => {
 		// 第一批（合成一步）、m2、m1、改名、m1
 		expect(steps).toHaveLength(5);
 	});
+
+	it('檢視模式：點過人以後方向鍵照樣移播放頭，不說「檢視模式」', async () => {
+		const session = setup();
+		await fireEvent.click(screen.getByRole('button', { name: '檢視' }));
+		await fireEvent.pointerDown(dot('m1'), { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(dot('m1'), { clientX: 0, clientY: 0 });
+		dot('m1').focus();
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		const before = session.flow;
+		expect(position()).toBe('音樂 1 1-1');
+		expect(await fireEvent.keyDown(dot('m1'), { key: 'ArrowRight' })).toBe(false);
+		expect(position()).toBe('音樂 1 1-2');
+		await fireEvent.keyDown(dot('m1'), { key: 'ArrowLeft', shiftKey: true });
+		expect(position()).toBe('音樂 1 1-1');
+		expect(session.flow).toBe(before);
+		expect(screen.queryByRole('status')?.textContent ?? '').not.toContain('檢視模式');
+	});
 });
 
 describe('Home／End、分頁', () => {

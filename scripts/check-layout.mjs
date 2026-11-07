@@ -149,8 +149,9 @@ async function openPracticeFlow(more = '') {
 /**
  * 開首頁，打開一份 40 人的流程：音樂 1（4 個八拍），x1 全隊跳躍（環節「整個」整個動作，可以記全上），
  * 上面一個很長的步驟拍點（量八拍表印出來有沒有被截斷）。
+ * more 是在頁面裡改 flow 的程式（c 是 core、of 拿出成功的流程），例如加站位。
  */
-async function openBigFlow() {
+async function openBigFlow(more = '') {
 	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
@@ -164,6 +165,7 @@ async function openBigFlow() {
 			members: flow.members.map((m) => ({ memberId: m.id, role: null })) }));
 		flow = of(c.addPhase(flow, 'x1', { kind: 'whole', name: '整個跳', beats: { at: 0, len: 16 } }));
 		flow = of(c.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '左腳往前踩一步然後手臂拉到高V再往下收回胸前' }));
+		${more}
 		const input = document.querySelector('.home-open input[type=file]');
 		const dt = new DataTransfer();
 		dt.items.add(new File([c.writeFlowFile(flow, {})], '40人.zip', { type: 'application/zip' }));
@@ -563,6 +565,24 @@ for (const w of [1920, 1400]) {
 	});
 }
 
+for (const [w, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
+	await check(`${w}×${h} 按「檢視」：左邊的站位編輯欄藏起來，場地比編輯模式大；按回「編輯」場地回原來大小（#213）`, async () => {
+		await setViewport(w, h);
+		await openSample();
+		const size = `const r = document.querySelector('.field-host .mat').getBoundingClientRect(); return { 寬: Math.round(r.width), 高: Math.round(r.height), 左欄: !!document.querySelector('.field-host .rail')?.offsetParent };`;
+		const press = (name) => `[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '${name}').click();`;
+		const edit = await js(size);
+		await js(press('檢視'));
+		await sleep(300);
+		const view = await js(size);
+		await js(press('編輯'));
+		await sleep(300);
+		const back = await js(size);
+		const ok = view.寬 > edit.寬 && view.高 > edit.高 && !view.左欄 && edit.左欄 && back.寬 === edit.寬 && back.高 === edit.高;
+		return { ok, value: { 編輯: edit, 檢視: view, 切回編輯: back } };
+	});
+}
+
 await check('1440 寬：播放頭到結尾（位置只寫「結尾」）時，上方列高度不變（#205）', async () => {
 	await setViewport(1440, 900);
 	await openSample();
@@ -668,7 +688,7 @@ await check('首頁 761–900 寬：大標題「競技啦啦隊」「流程編�
 	return { ok: bad.length === 0, value: bad };
 });
 
-await check('首頁有 5 支最近的流程（名字很長）：1440×900、390×844 照樣有（捲過去）點得到的「建立」和「開啟流程檔」，「丟掉」離打開的按鈕遠一點，不溢出', async () => {
+await check('首頁有 5 支最近的流程（名字很長）：1440×900 照樣有（捲過去）點得到的「建立」和「開啟流程檔」；390×844 沒有「建立」，「開啟流程檔」整欄寬、在第一個畫面裡；「丟掉」離打開的按鈕遠一點，不溢出', async () => {
 	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte`));
 	// 直接在 IndexedDB 放 5 份草稿（跟 src/lib/file/draft.ts 存的一樣），重新整理
@@ -695,10 +715,17 @@ await check('首頁有 5 支最近的流程（名字很長）：1440×900、390�
 			const create = [...document.querySelectorAll('.home button')].find((b) => b.textContent.trim() === '建立');
 			const li = document.querySelector('.recent li');
 			const gap = li ? li.querySelector('.recent-drop').getBoundingClientRect().left - li.querySelector('.recent-open').getBoundingClientRect().right : -1;
-			return { 寬: ${w}, 建立: seen(create), 開啟流程檔: seen(document.querySelector('.home-open label.open')),
+			const open = document.querySelector('.home-open label.open');
+			const openBox = open.getBoundingClientRect();
+			const column = document.querySelector('.start').getBoundingClientRect();
+			// 窄的時候：開啟流程檔不用捲就看得到（先看位置，seen 會捲過去）、跟整欄一樣寬
+			const openFirstScreen = openBox.bottom <= innerHeight;
+			return { 寬: ${w}, 建立: create ? seen(create) : '沒有', 開啟流程檔: seen(open),
+				開啟在第一個畫面: openFirstScreen, 開啟整欄寬: openBox.width >= column.width - 2,
 				最近的流程: document.querySelectorAll('.recent li').length, 丟掉離打開: Math.round(gap),
 				溢出: document.scrollingElement.scrollWidth > innerWidth ? [...document.querySelectorAll('.home *')].filter((el) => el.getBoundingClientRect().right > innerWidth + 1).map((el) => el.outerHTML.slice(0, 50)).slice(0, 4) : false };`);
-		if (r.建立 !== '好' || r.開啟流程檔 !== '好' || r.最近的流程 !== 5 || r.丟掉離打開 < 12 || r.溢出) bad.push(r);
+		const narrowOk = w < 1024 ? r.建立 === '沒有' && r.開啟在第一個畫面 && r.開啟整欄寬 : r.建立 === '好';
+		if (!narrowOk || r.開啟流程檔 !== '好' || r.最近的流程 !== 5 || r.丟掉離打開 < 12 || r.溢出) bad.push(r);
 	}
 	await js(`await new Promise((r) => { const q = indexedDB.deleteDatabase('cheer-editor'); q.onsuccess = q.onerror = q.onblocked = r; });`);
 	return { ok: bad.length === 0, value: bad };
@@ -742,7 +769,7 @@ const phoneView = () =>
 		const field = box(view.querySelector('.phone-field svg.field'));
 		const play = view.querySelector('.transport .play');
 		const row = box(view.querySelector('.now-eight'));
-		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#phone-me')), 八拍表這一列: row,
+		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#me-pick')), 八拍表這一列: row,
 			有編輯開關: !!document.querySelector('.topbar .mode'), 畫面高: innerHeight };
 		// 直拿：場地在播放鈕上面；橫拿：場地在左邊
 		const f = view.querySelector('.phone-field svg.field').getBoundingClientRect(), p = play.getBoundingClientRect();
@@ -1166,6 +1193,24 @@ await check('列印 A4 直印八拍表：動作欄每行超過一個字', async 
 		const lines = await actionLines();
 		return { ok: manyChars(lines.最少一行幾個字) && lines.動作欄寬 >= 240, value: lines };
 	});
+});
+
+await check('列印八拍表（40 人）：每張小站位圖範圍一樣（所有站位有人處合起來），圓點上的號碼看得清楚（#217）', async () => {
+	// 站位 1 全隊往中間縮一半，第 2 個八拍開頭的站位 2 散回原本的位置：兩張合起來的範圍比站位 1 大
+	await setViewport(1440, 900);
+	await openBigFlow(`const spread = flow.formations[0].pos;
+		const half = Object.fromEntries(Object.entries(spread).map(([id, [x, y]]) => [id, [x / 2, y / 2]]));
+		flow = of(c.setPositions(flow, flow.formations[0].id, half));
+		flow = of(c.insertFormation(flow, 3.2));
+		flow = of(c.setPositions(flow, flow.formations[1].id, spread));`);
+	await openEightCount();
+	return asPrinted(() =>
+		js(`const figs = [...document.querySelectorAll('.print-sheet figure svg')];
+			const boxes = [...new Set(figs.map((s) => s.getAttribute('viewBox')))];
+			const nums = [...document.querySelectorAll('.print-sheet figure .dot text')].map((t) => t.getBoundingClientRect().height);
+			const 號碼最小高 = Math.round(Math.min(...nums) * 10) / 10;
+			return { ok: figs.length === 2 && boxes.length === 1 && 號碼最小高 >= 9, value: { 圖: figs.length, 範圍: boxes, 號碼最小高 } };`)
+	);
 });
 
 await check('列印八拍表：沒有焦點外框；放得下一頁的列不切開，比一頁長的列可以切（不整列推到下一頁）', async () => {
@@ -1780,6 +1825,50 @@ await check('1440×900 播放頭停在走位條右端（點站位 2）：按住�
 	const ok = Math.abs(before.播放頭 - before.right) <= 2 && Math.abs(after.left - before.left) < 1 && after.right < before.right - 10 && after.位置 === before.位置;
 	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title.startsWith('復原')).click()`);
 	return { ok, value: { 拖之前: before, 拖之後: after } };
+});
+
+await check('1440×900 40 人：點場上最後一個人，泳道捲到他那一行（不藏在段列、八拍尺底下，不左右捲）；再點第一個人也是（#215）', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	const scroller = '.timeline';
+	/** 那一行的名字在時間軸看得到的地方（扣掉黏在上面的段列、八拍尺）。 */
+	const seen = (id) =>
+		js(`const t = document.querySelector('${scroller}'), box = t.getBoundingClientRect();
+			const lab = document.querySelector('[data-lane="${id}"] .lab').getBoundingClientRect();
+			const head = document.querySelector('.ruler-row').getBoundingClientRect().bottom;
+			return { 看得到: lab.top >= head - 1 && lab.bottom <= box.bottom + 1, 名字上緣: Math.round(lab.top), 尺下緣: Math.round(head),
+				時間軸下緣: Math.round(box.bottom), 上下捲: Math.round(t.scrollTop), 左右捲: Math.round(t.scrollLeft) };`);
+	const ids = await js(`return [...document.querySelectorAll('[data-lane]')].map((r) => r.dataset.lane)`);
+	const [first, last] = [ids[0], ids.at(-1)];
+	await js(`const t = document.querySelector('${scroller}'); t.scrollTop = 0; t.scrollLeft = 40;`);
+	await sleep(200);
+	const left = await js(`return Math.round(document.querySelector('${scroller}').scrollLeft)`);
+	const tap = async (id) => {
+		const p = await rectOf(`.field [data-member-id="${id}"]`);
+		await click(p.x, p.y);
+	};
+	const before = await seen(last);
+	await tap(last);
+	const toLast = await seen(last);
+	await tap(first);
+	const toFirst = await seen(first);
+	const ok = !before.看得到 && toLast.看得到 && toFirst.看得到 && toLast.左右捲 === left && toFirst.左右捲 === left;
+	return { ok, value: { 點之前: before, 點最後一個: toLast, 再點第一個: toFirst } };
+});
+
+await check('1440×900 場上選到的人有明顯的框：選取框的線至少 2 px 粗、比圓點大一圈（#215）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const p = await rectOf('.field [data-member-id="m1"]');
+	await click(p.x, p.y);
+	const m = await js(`const g = document.querySelector('.field [data-member-id="m1"]');
+		const ring = g.querySelector('.ring'), dot = g.querySelector('circle.base, circle.top, rect.base, rect.top');
+		if (!ring) return { 有框: false };
+		const scale = g.getScreenCTM().a * g.querySelector('g').transform.baseVal[0].matrix.a;
+		const s = getComputedStyle(ring);
+		return { 有框: true, 線粗: +(parseFloat(s.strokeWidth) * scale).toFixed(1), 線色: s.stroke,
+			多出來: +((ring.getBoundingClientRect().width - dot.getBoundingClientRect().width) / 2).toFixed(1) };`);
+	return { ok: m.有框 && m.線粗 >= 2 && m.多出來 >= 3, value: m };
 });
 
 if (pageErrors.length) {

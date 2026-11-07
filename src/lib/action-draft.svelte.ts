@@ -253,7 +253,10 @@ export class ActionDraft {
 		});
 	}
 
-	/** 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。 */
+	/**
+	 * 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。
+	 * 選到的人清掉：下一次拖人不會整隊一起走。
+	 */
 	add() {
 		const segment = this.#segment;
 		if (this.#action || !segment) return;
@@ -262,6 +265,7 @@ export class ActionDraft {
 		this.ask.send(() => (input.kind === 'blocked' ? input : addAction(this.#session.flow!, input.value)), {
 			done: (r) => {
 				this.#session.selectAction(r.id);
+				this.#session.selectMembers([]);
 				const flow = this.#session.flow!;
 				this.#playhead.seek(actionSeconds(flow, flow.actions.find((a) => a.id === r.id)!).endSec);
 				this.#kept = null;
@@ -332,6 +336,8 @@ export class ActionDraft {
 			if (seen && !seen.action) this.#kept = this.#keep();
 			if (action?.id !== seen?.action?.id) this.#categoryChanged = null;
 			const undone = seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
+			// 復原掉剛新增的動作：新增時清掉的人也選回來（草稿的人跟著選取）
+			if (undone) this.#session.selectMembers(this.#added!.kept.draft.members.map((m) => m.memberId));
 			this.#reset(undone ? this.#added!.kept : this.#kept);
 			this.ask.clear();
 			return;

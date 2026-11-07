@@ -1,6 +1,9 @@
 <script lang="ts">
 	// 流程設定：流程名字、調整場地（改條數或鋪向）、規則警告的開關和三個數字（可以恢復預設）、
 	// 標記用號碼還是開頭字、自訂任務角色（新增、改名、刪除）。被擋就顯示流程核心給的原因。
+	// 欄位按 Enter 就套用；改了場地沒按「調整場地」就關，照樣調整（關掉就套用）。
+	import { getEditor } from '#lib/editor.svelte.js';
+	import { composing } from '#lib/ime.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		addCustomRole,
@@ -28,9 +31,11 @@
 
 	interface Props {
 		onclose: () => void;
+		/** 打開時焦點放在哪一格：規則警告的開關，或某一個秒數（點規則警告時帶到那一格）。 */
+		focus?: 'on' | (typeof fields)[number][0];
 	}
 
-	let { onclose }: Props = $props();
+	let { onclose, focus }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -62,6 +67,38 @@
 	let strips = $derived(flow.field.strips);
 	let layout = $derived<FieldLayout>(flow.field.layout);
 	const fieldSame = $derived(strips === flow.field.strips && layout === flow.field.layout);
+	/** 調整場地自己的問題：會有人疊在一起時問「照樣調整」，被擋的原因寫在場地旁邊。 */
+	const fieldAsk = session.changeAsk({ confirmLabel: '照樣調整' });
+
+	/** 調整場地；被擋或取消就把兩個欄位退回現在的場地。 */
+	function applyField() {
+		return fieldAsk.send((o: ConfirmOption = {}) => adjustField(flow, { strips, layout }, o), {
+			revert: () => {
+				strips = flow.field.strips;
+				layout = flow.field.layout;
+			}
+		});
+	}
+
+	/** 關之前：場地改了沒按「調整場地」就照樣調整；被擋、要問就先不關。正在問時關＝取消（退回）。 */
+	function beforeclose(): boolean {
+		if (fieldAsk.question) {
+			fieldAsk.answer('cancel');
+			return false;
+		}
+		return fieldSame || applyField().kind === 'ok';
+	}
+
+	const { pendingInput } = getEditor().adapters;
+
+	/** 欄位按 Enter：跟離開欄位一樣送出（條數欄是調整場地）。 */
+	function onenter(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
+		if (e.key !== 'Enter' || composing(e)) return;
+		e.preventDefault();
+		if (e.currentTarget.dataset.strips !== undefined) {
+			if (!fieldSame) applyField();
+		} else pendingInput.flush();
+	}
 
 	function update(patch: Partial<TimeRules>) {
 		ask.send(() => updateTimeRules(flow, patch));
@@ -93,7 +130,7 @@
 	] as const;
 </script>
 
-<Modal label="流程設定" class="dialog flow-dialog" {ask} {onclose}>
+<Modal label="流程設定" class="dialog flow-dialog" {ask} {onclose} {beforeclose}>
 	{#snippet children(close)}
 		<header class="dialog-head">
 			<h2>流程設定</h2>
@@ -101,14 +138,28 @@
 		</header>
 		<label class="stack">
 			<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
-			<input aria-label="流程名字" value={flow.name} bind:this={nameInput} onchange={(e) => rename(e.currentTarget)} />
+			<input
+				aria-label="流程名字"
+				value={flow.name}
+				bind:this={nameInput}
+				onchange={(e) => rename(e.currentTarget)}
+				onkeydown={onenter}
+			/>
 		</label>
 		<section class="rules field">
 			<b>場地<span class="now">現在 {flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span></b>
 			<div class="field-row">
 				<label>
 					條數
-					<input type="number" min={MIN_STRIPS} max={MAX_STRIPS} step="1" bind:value={strips} />
+					<input
+						type="number"
+						min={MIN_STRIPS}
+						max={MAX_STRIPS}
+						step="1"
+						data-strips
+						bind:value={strips}
+						onkeydown={onenter}
+					/>
 				</label>
 				<label class="radio"><input type="radio" name="layout" value="vertical" bind:group={layout} />直放</label>
 				<label class="radio"><input type="radio" name="layout" value="horizontal" bind:group={layout} />橫放</label>
@@ -116,16 +167,19 @@
 					type="button"
 					class="adjust"
 					disabled={fieldSame}
-					onclick={() => ask.send(() => adjustField(flow, { strips, layout }))}>調整場地</button
+					onclick={applyField}>調整場地</button
 				>
 			</div>
-			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。</span>
+			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。沒按就關掉，也會照樣調整。</span>
+			{#if fieldAsk.question}<ConfirmList ask={fieldAsk} />{/if}
+			{#if fieldAsk.error}<p class="error" role="alert">{fieldAsk.error}</p>{/if}
 		</section>
 		<section class="rules" class:off={!flow.timeRules.on}>
 			<div class="switch">
 				<label>
 					<input
 						type="checkbox"
+						data-autofocus={focus === 'on' || undefined}
 						checked={flow.timeRules.on}
 						onchange={(e) => update({ on: e.currentTarget.checked })}
 					/>
@@ -135,14 +189,19 @@
 					>恢復預設</button
 				>
 			</div>
+			{#if !flow.timeRules.on}
+				<span class="note">關著：左邊欄不會提醒。打勾就再打開。</span>
+			{/if}
 			{#each fields as [key, label] (key)}
 				<label class="num">
 					{label}
 					<input
 						type="number"
 						min="1"
+						data-autofocus={focus === key || undefined}
 						value={flow.timeRules[key]}
 						onchange={(e) => setSeconds(key, label, e.currentTarget)}
+						onkeydown={onenter}
 					/>
 				</label>
 			{/each}
@@ -186,6 +245,7 @@
 								value={role.name}
 								bind:this={roleInputs[role.id]}
 								onchange={(e) => renameRole(role, e.currentTarget)}
+								onkeydown={onenter}
 							/><CharCount field="roleName" input={roleInputs[role.id]} value={role.name} quiet />
 							<button
 								type="button"
