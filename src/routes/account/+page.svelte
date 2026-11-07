@@ -101,6 +101,8 @@
 		try {
 			await server.logout();
 			if (discard) await offline.clearUnsent();
+			// 離線副本跟著帳號：登出就清掉（#261）
+			await offline.clearCopies();
 			go(resolve('/'));
 		} catch {
 			// 沒登出成功：什麼都不變

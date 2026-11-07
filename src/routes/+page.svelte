@@ -47,7 +47,7 @@
 	import NowEightCount from '#lib/components/NowEightCount.svelte';
 	import Practice from '#lib/components/Practice.svelte';
 	import UnsentLogout, { unsentFlows } from '#lib/components/UnsentLogout.svelte';
-	import { unsentCount, type UnsentRecords } from '#lib/offline-store.js';
+	import { unsentCount, type OfflineCopy, type UnsentRecords } from '#lib/offline-store.js';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
@@ -97,30 +97,53 @@
 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
 	onMount(() => editor.file.connect());
 
-	/** 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。 */
+	/**
+	 * 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。
+	 * 斷網時伺服器問不到：用這台記著的（離線副本那邊，#261），首頁照樣列離線副本。
+	 */
 	let account = $state.raw<Me | null | undefined>(undefined);
 	onMount(() => {
-		editor.adapters.server.me().then((m) => (account = m));
+		editor.adapters.server.me().then(async (m) => {
+			account = m ?? (isOnline() ? null : ((await editor.adapters.offline.signedInHere())?.me ?? null));
+		});
 	});
 	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：在首頁時（打開、回到首頁）跟伺服器拿。還沒拿到是 null；連不上伺服器 cloudError。 */
 	let myFlows = $state.raw<MyFlows | null>(null);
 	let cloudError = $state(false);
 	/** 這台還沒傳的成功率紀錄（#260）：雲端流程 id → 幾筆（列的右邊「N 筆沒傳」）。 */
 	let unsentByFlow = $state.raw<Record<string, number>>({});
+	/** 這台的離線副本（#261）：有網路時列的右邊「離線可開」，斷網時只列這些。 */
+	let copies = $state.raw<OfflineCopy[]>([]);
+	/** 斷網時：上次看到的雲端流程有幾支（「還有 N 支雲端流程，連上網路才看得到。」）。 */
+	let knownCloudIds = $state.raw<string[]>([]);
 	$effect(() => {
 		if (!account || flow) return;
+		const me = account;
+		const { offline, server } = editor.adapters;
 		let stale = false;
-		editor.adapters.offline.unsent().then(
-			(list) => {
-				if (!stale) unsentByFlow = Object.fromEntries(list.map((u) => [u.flowId, unsentCount(u)]));
-			},
-			() => {}
-		);
-		editor.adapters.server.myFlows().then(
-			(list) => {
+		const readLocal = async () => {
+			const [list, kept] = await Promise.all([offline.unsent(), offline.copies()]);
+			if (stale) return;
+			unsentByFlow = Object.fromEntries(list.map((u) => [u.flowId, unsentCount(u)]));
+			copies = kept;
+		};
+		void readLocal();
+		if (!online) {
+			offline.signedInHere().then((here) => {
+				if (!stale) knownCloudIds = here?.cloudIds ?? [];
+			});
+			return () => (stale = true);
+		}
+		server.myFlows().then(
+			async (list) => {
 				if (stale) return;
 				myFlows = list;
 				cloudError = false;
+				const ids = [...list.mine, ...list.shared].map((c) => c.id);
+				void offline.saveSignedInHere({ me, cloudIds: ids });
+				// 被收回、被刪掉的：這台的離線副本刪掉（還沒傳的先擋住列出來，#260）
+				await editor.file.dropGoneCopies(ids);
+				await readLocal();
 			},
 			() => {
 				if (!stale) cloudError = true;
@@ -128,6 +151,8 @@
 		);
 		return () => (stale = true);
 	});
+	/** 有離線副本的雲端流程（「離線可開」）。 */
+	const copyIds = $derived(new Set(copies.map((c) => c.flowId)));
 
 	/** 有沒有網路（瀏覽器說的）：沒網路時新建不能存在雲端。 */
 	const isOnline = () => typeof navigator === 'undefined' || navigator.onLine;
@@ -166,6 +191,8 @@
 		try {
 			await editor.adapters.server.logout();
 			if (discard) await editor.adapters.offline.clearUnsent();
+			// 離線副本跟著帳號：登出就清掉（#261）；草稿不屬於哪個帳號，留著
+			await editor.adapters.offline.clearCopies();
 			account = null;
 		} catch {
 			// 沒登出成功：什麼都不變
@@ -657,7 +684,7 @@
 				{#if account && !cloud && !linkOnly}<span class="here-tag" title="只在這台電腦，靠草稿和流程檔留著">這台</span>{/if}
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">⚠ 斷線</span>{:else if !cloud.newVersion}<span class="cloud-saved"
+					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">{editor.file.offlineAt !== null ? '⚠ 沒有網路' : '⚠ 斷線'}</span>{:else if !cloud.newVersion}<span class="cloud-saved"
 								>{cloud.saving ? '存中…' : '✓ 已存'}</span
 							>{/if}{:else if unsaved}<span
 							class="unsaved"
@@ -762,6 +789,12 @@
 					<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 				{/if}
 			</div>
+			<!-- 斷網打開的離線副本（#261）：上方列下面一整條灰的，編排、練習、手機都看得到 -->
+			{#if editor.file.offlineAt !== null}
+				<p class="copy-bar" role="status" aria-label="沒有網路">
+					沒有網路，這是 {draftTime(new Date(editor.file.offlineAt))} 的樣子。只能看、記成功率；連上網路就換成最新的。
+				</p>
+			{/if}
 		</header>
 
 		{#if narrow}
@@ -1015,33 +1048,6 @@
 			onclose={() => (printOpen = false)}
 		/>
 	{/if}
-	{#if editor.file.lost}
-		{@const rows = editor.file.lost}
-		{@const message = `擁有者收回了你的權限，這 ${rows.length} 筆沒存進去`}
-		<!-- 被收回時還有沒傳的（#260）：擋住畫面，按「知道了」才丟掉、回首頁 -->
-		<Modal label={message} class="dialog lost-box" onclose={() => {}}>
-			{#snippet children()}
-				<div class="lost">
-					<h2>{message}</h2>
-					<p>你斷線時記的，傳上去時已經沒有權限了。這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。</p>
-					<table>
-						<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
-						<tbody>
-							{#each rows as d (d.id)}
-								<tr>
-									<td>{d.date}</td>
-									<td>{d.action}</td>
-									<td>{d.who}</td>
-									<td>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-					<div class="buttons"><button type="button" class="primary" data-autofocus onclick={() => editor.file.lostKnown()}>知道了</button></div>
-				</div>
-			{/snippet}
-		</Modal>
-	{/if}
 	{#if editor.file.asking}
 		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
 		<!-- 真的對話框：Escape、點背景＝取消，焦點先放在「取消」，關掉後回到按的按鈕 -->
@@ -1131,43 +1137,76 @@
 			<div class="home-lists">
 				<section class="area" aria-labelledby="cloud-title">
 					<h2 id="cloud-title">雲端</h2>
-					<h3 id="mine-title">我的流程</h3>
-					<ul class="cloud-list" aria-labelledby="mine-title">
-						{#if cloudError}
-							<li class="empty">連不上伺服器，現在看不到雲端的流程。</li>
-						{:else if myFlows}
-							{#each myFlows.mine as c (c.id)}
-								<li>
-									<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
-										<span class="recent-name">{c.name}</span>
-										<span class="recent-meta">{draftTime(new Date(c.updatedAt))} 改過</span>
-										{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
-									</button>
-								</li>
-							{:else}
-								<li class="empty">還沒有。新建時選「存在：雲端」，或打開一支本機流程按「傳上雲端」。</li>
-							{/each}
+					{#if !online}
+						<!-- 斷網（#261）：只列這台留著的離線副本，時間換成這台的是什麼時候的樣子 -->
+						{@const mineCopies = copies.filter((c) => c.role === 'owner')}
+						{@const sharedCopies = copies.filter((c) => c.role !== 'owner')}
+						{@const hidden = knownCloudIds.filter((id) => !copyIds.has(id)).length}
+						<p class="offline-bar">沒有網路：只列這台留著的（離線副本），能看、記成功率，不能改。</p>
+						{#snippet copyRow(c: OfflineCopy)}
+							<li>
+								<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.flowId)}>
+									<span class="recent-name">{c.name}</span>
+									<span class="recent-meta">這台的是 {draftTime(new Date(c.savedAt))} 的樣子</span>
+									{#if unsentByFlow[c.flowId]}<span class="unsent-count">{unsentByFlow[c.flowId]} 筆沒傳</span>{/if}
+									<span class="copy-tag">離線可開</span>
+								</button>
+							</li>
+						{/snippet}
+						{#if mineCopies.length}
+							<h3 id="mine-title">我的流程</h3>
+							<ul class="cloud-list" aria-labelledby="mine-title">
+								{#each mineCopies as c (c.flowId)}{@render copyRow(c)}{/each}
+							</ul>
 						{/if}
-					</ul>
-					{#if myFlows}
-						<h3 id="shared-title">分享給我的</h3>
-						<ul class="cloud-list" aria-labelledby="shared-title">
-							{#each myFlows.shared as c (c.id)}
-								<li>
-									<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
-										<span class="recent-name">{c.name}</span>
-										<span class="recent-meta"
-											>{c.ownerDisabled ? `${c.ownerName}的（已停用）` : `${c.ownerName}的・${ROLE_NAMES[c.role]}`}・{draftTime(
-												new Date(c.updatedAt)
-											)} 改過</span
-										>
-										{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
-									</button>
-								</li>
-							{:else}
-								<li class="empty">還沒有人分享給你。</li>
-							{/each}
+						{#if sharedCopies.length}
+							<h3 id="shared-title">分享給我的</h3>
+							<ul class="cloud-list" aria-labelledby="shared-title">
+								{#each sharedCopies as c (c.flowId)}{@render copyRow(c)}{/each}
+							</ul>
+						{/if}
+						{#if hidden}<p class="offline-more">還有 {hidden} 支雲端流程，連上網路才看得到。</p>{/if}
+					{:else}
+						<h3 id="mine-title">我的流程</h3>
+						<ul class="cloud-list" aria-labelledby="mine-title">
+							{#if cloudError}
+								<li class="empty">連不上伺服器，現在看不到雲端的流程。</li>
+							{:else if myFlows}
+								{#each myFlows.mine as c (c.id)}
+									<li>
+										<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
+											<span class="recent-name">{c.name}</span>
+											<span class="recent-meta">{draftTime(new Date(c.updatedAt))} 改過</span>
+											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
+											{#if copyIds.has(c.id)}<span class="copy-tag">離線可開</span>{/if}
+										</button>
+									</li>
+								{:else}
+									<li class="empty">還沒有。新建時選「存在：雲端」，或打開一支本機流程按「傳上雲端」。</li>
+								{/each}
+							{/if}
 						</ul>
+						{#if myFlows}
+							<h3 id="shared-title">分享給我的</h3>
+							<ul class="cloud-list" aria-labelledby="shared-title">
+								{#each myFlows.shared as c (c.id)}
+									<li>
+										<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
+											<span class="recent-name">{c.name}</span>
+											<span class="recent-meta"
+												>{c.ownerDisabled ? `${c.ownerName}的（已停用）` : `${c.ownerName}的・${ROLE_NAMES[c.role]}`}・{draftTime(
+													new Date(c.updatedAt)
+												)} 改過</span
+											>
+											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
+											{#if copyIds.has(c.id)}<span class="copy-tag">離線可開</span>{/if}
+										</button>
+									</li>
+								{:else}
+									<li class="empty">還沒有人分享給你。</li>
+								{/each}
+							</ul>
+						{/if}
 					{/if}
 				</section>
 				<section class="area recent" aria-labelledby="here-title">
@@ -1236,6 +1275,33 @@
 			{/snippet}
 		</Modal>
 	{/if}
+{/if}
+{#if editor.file.lost}
+	{@const rows = editor.file.lost}
+	{@const message = `擁有者收回了你的權限，這 ${rows.length} 筆沒存進去`}
+	<!-- 被收回時還有沒傳的（#260）：擋住畫面，按「知道了」才丟掉、回首頁。首頁連上網路才發現被收回的（#261）也是這個框 -->
+	<Modal label={message} class="dialog lost-box" onclose={() => {}}>
+		{#snippet children()}
+			<div class="lost">
+				<h2>{message}</h2>
+				<p>你斷線時記的，傳上去時已經沒有權限了。這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。</p>
+				<table>
+					<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
+					<tbody>
+						{#each rows as d (d.id)}
+							<tr>
+								<td>{d.date}</td>
+								<td>{d.action}</td>
+								<td>{d.who}</td>
+								<td>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+				<div class="buttons"><button type="button" class="primary" data-autofocus onclick={() => editor.file.lostKnown()}>知道了</button></div>
+			</div>
+		{/snippet}
+	</Modal>
 {/if}
 {#if unsentAtLogout}
 	<UnsentLogout flows={unsentAtLogout} onstay={() => (unsentAtLogout = null)} ondiscard={() => signOut(true)} />
@@ -1436,6 +1502,16 @@
 		padding: 8px 12px 8px 16px;
 		background: var(--ink);
 		color: #e8ecf5;
+	}
+	/* 斷網打開的離線副本：上方列下面一整條灰的（上方列的最後一行，貼齊左右、下緣） */
+	.copy-bar {
+		grid-column: 1 / -1;
+		grid-row: 2;
+		margin: 0 -12px -8px -16px;
+		padding: 4px 16px;
+		background: #e2e8f0;
+		color: #334155;
+		font-size: 13px;
 	}
 	.topbar.viewing {
 		background: #3b2a6b;
@@ -2261,6 +2337,9 @@
 			grid-column: 1 / -1;
 			justify-content: center;
 		}
+		.copy-bar {
+			grid-row: 3;
+		}
 	}
 	@media (max-width: 1280px) {
 		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字。
@@ -2290,6 +2369,10 @@
 		.actions {
 			grid-row: 2;
 			flex-wrap: wrap;
+		}
+		.copy-bar {
+			margin: 0 -12px -6px;
+			padding: 4px 12px;
 		}
 	}
 
@@ -2425,6 +2508,29 @@
 		color: #92400e;
 		font-size: 12px;
 		font-weight: 700;
+	}
+	/* 這台有離線副本（#261） */
+	.copy-tag {
+		flex: none;
+		padding: 0 6px;
+		border-radius: 4px;
+		background: #e2e8f0;
+		color: #334155;
+		font-size: 12px;
+	}
+	/* 斷網時雲端那塊上面一條灰的、最下面看不到幾支 */
+	.offline-bar {
+		margin: 0 0 8px;
+		padding: 6px 10px;
+		border-radius: 6px;
+		background: #e2e8f0;
+		color: #334155;
+		font-size: 13px;
+	}
+	.offline-more {
+		margin: 8px 0 0;
+		color: #64748b;
+		font-size: 13px;
 	}
 	/* 被收回時沒傳的（#260）：擋住畫面的框 */
 	:global(.lost-box) {

@@ -1,6 +1,16 @@
 // 離線存放存的樣子（#260）：新版讀得懂舊版存的；幾筆沒傳；哪些瀏覽器存的會被清掉（要提醒加到主畫面）。
 import { describe, expect, it } from 'vitest';
-import { isVolatileSafari, readUnsent, storedUnsent, unsentCount, type UnsentRecords } from '#lib/offline-store.js';
+import {
+	copiesToDrop,
+	isVolatileSafari,
+	readCopy,
+	readUnsent,
+	storedCopy,
+	storedUnsent,
+	unsentCount,
+	type OfflineCopy,
+	type UnsentRecords
+} from '#lib/offline-store.js';
 
 const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
 const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
@@ -45,6 +55,36 @@ describe('離線存放存的樣子', () => {
 			dropped: [row]
 		};
 		expect(unsentCount(u)).toBe(2);
+	});
+});
+
+describe('離線副本存的樣子（#261）', () => {
+	const copy = (flowId: string, openedAt: number): OfflineCopy => ({
+		flowId,
+		name: flowId,
+		savedAt: openedAt,
+		openedAt,
+		role: 'owner',
+		step: 3,
+		flow: { name: flowId },
+		records: []
+	});
+
+	it('第 1 版存的讀得回來；讀不懂的不算', () => {
+		const v1 = { v: 1, flowId: 'c1', name: '區賽', savedAt: 5, openedAt: 6, role: 'recorder', step: 2, flow: { name: '區賽' }, records: [] };
+		expect(readCopy(v1)).toEqual({ flowId: 'c1', name: '區賽', savedAt: 5, openedAt: 6, role: 'recorder', step: 2, flow: { name: '區賽' }, records: [] });
+		expect(readCopy(storedCopy(copy('c2', 1)))).toEqual(copy('c2', 1));
+		expect(readCopy({ v: 99, flowId: 'c1', flow: {} })).toBeNull();
+		expect(readCopy({ v: 1, flowId: 'c1' })).toBeNull();
+	});
+
+	it('留最近打開的 5 支，再舊的刪掉；還有紀錄沒傳的那支不刪', () => {
+		const all = [1, 2, 3, 4, 5, 6, 7].map((i) => copy(`c${i}`, i));
+		expect(copiesToDrop(all, [])).toEqual(['c2', 'c1']);
+		const unsent: UnsentRecords = { flowId: 'c1', flowName: 'c1', records: [{ record, row }], amends: [], dropped: [] };
+		expect(copiesToDrop(all, [unsent])).toEqual(['c2']);
+		// 只剩沒存進去的清單（不算沒傳）：照樣刪
+		expect(copiesToDrop(all, [{ ...unsent, records: [], dropped: [row] }])).toEqual(['c2', 'c1']);
 	});
 });
 

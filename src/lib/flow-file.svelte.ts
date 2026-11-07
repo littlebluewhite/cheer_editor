@@ -16,6 +16,7 @@ import {
 	putRecords,
 	readFlowFile,
 	segmentSpans,
+	takeRecords,
 	writeFlowFile,
 	type Attempt,
 	type AudioBytes,
@@ -27,12 +28,21 @@ import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES, type MusicLibrary } from '#lib/music-library.svelte.js';
+import { copiesToDrop, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
 import { canEdit } from '#lib/role-names.js';
+import type { CloudFlow } from '#lib/server-api.js';
 import type { TabChannel } from '#lib/tab-channel.js';
 
 /** 傳上雲端傳好的提示。 */
 export const UPLOADED = '傳上雲端了：現在開的是雲端那支，可以分享了。這台的草稿丟掉了，資料夾裡的流程檔沒動。';
 const UPLOAD_UNREACHABLE = '連不上伺服器，沒傳上雲端';
+/** 被收回、被刪掉回首頁時，黃條後面加的（離線副本一起刪了，#261）。 */
+const COPY_DROPPED = '這台留著的那份也刪掉了。';
+
+/** 伺服器拿到的雲端流程存成離線副本的樣子（時間之後填）。 */
+function copyOf(found: CloudFlow, name: string): Omit<OfflineCopy, 'savedAt' | 'openedAt'> {
+	return { flowId: found.id, name, role: found.role, step: found.step, flow: found.flow, records: found.records };
+}
 
 /** 停手多久才存草稿。 */
 const DRAFT_DELAY_MS = 1000;
@@ -101,6 +111,7 @@ export class FlowFile {
 		editor.session.onflow = () => {
 			this.#openApproved = false;
 			this.#saveDraftLater();
+			this.#saveCopyLater();
 			this.#dropMissingNotice();
 			if (!editor.session.flow) {
 				this.#closeCloud();
@@ -280,6 +291,8 @@ export class FlowFile {
 		this.#cloud?.close();
 		this.#cloud = null;
 		this.#cloudId = null;
+		this.#offlineAt = null;
+		clearTimeout(this.#copyTimer);
 		if (this.#linkOnly) this.#editor.session.readOnly = '';
 		this.#linkOnly = false;
 	}
@@ -296,14 +309,24 @@ export class FlowFile {
 		await this.openCloud(made.id);
 	}
 
-	/** 打開一支雲端流程：從伺服器拿編排，連它的房間，每一步送伺服器存；沒有草稿。 */
-	async openCloud(id: string) {
-		let found;
+	/**
+	 * 打開一支雲端流程：從伺服器拿編排，連它的房間，每一步送伺服器存；沒有草稿。
+	 * 打開了就在這台留一份離線副本（#261，含音樂），只留最近打開的 5 支。連不上伺服器、這台有離線副本：打開那份
+	 * （斷線的樣子：只能看、能記），連上了就換成最新的（refresh：換的時候不關練習畫面、對話框）。
+	 */
+	async openCloud(id: string, refresh = false) {
+		const { server, offline: store } = this.#editor.adapters;
+		let found: CloudFlow | null;
+		let copy: OfflineCopy | null = null;
 		try {
-			found = await this.#editor.adapters.server.cloudFlow(id);
+			found = await server.cloudFlow(id);
 		} catch {
-			this.#openError = '連不上伺服器，打不開雲端的流程';
-			return;
+			copy = (await store.copies()).find((c) => c.flowId === id) ?? null;
+			if (!copy) {
+				if (!refresh) this.#openError = '連不上伺服器，打不開雲端的流程';
+				return;
+			}
+			found = { id, flow: copy.flow, step: copy.step, updatedAt: '', role: copy.role, records: copy.records };
 		}
 		if (!found) {
 			this.#openError = '這支流程打不開了';
@@ -311,26 +334,27 @@ export class FlowFile {
 		}
 		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
-		const store = this.#editor.adapters.offline;
 		const saved = (await store.unsent()).find((u) => u.flowId === id);
 		const fromServer = putRecords(found.flow as Flow, records);
 		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
-		const server = this.#editor.adapters.server;
-		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId)));
+		const audio = copy ? await store.copyAudio(id) : await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId));
+		const music = await this.#editor.readMusic(audio);
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
-		this.#start(flow, 'cloud', newDraftId(), music);
+		this.#start(flow, 'cloud', newDraftId(), music, null, !refresh);
 		this.#cloudId = id;
+		this.#offlineAt = copy?.savedAt ?? null;
 		this.#editor.session.recordedBy = Object.fromEntries(
 			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
 		);
-		const room = this.#editor.adapters.server.openRoom(id);
+		const room = server.openRoom(id);
 		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved });
-		// 傳不上去了：這台存著的丟掉，回首頁說原因
+		// 傳不上去了：這台存著的（沒傳的、離線副本）丟掉，回首頁說原因
 		const goneHome = (why: (name: string) => string) => () => {
 			const name = this.#editor.session.flow?.name ?? '';
 			cloud.forget();
+			void store.dropCopy(id);
 			this.#editor.session.open(null);
-			this.#revoked = why(name);
+			this.#revoked = `${why(name)}${COPY_DROPPED}`;
 		};
 		const revoked = goneHome((name) => `你已經不能打開「${name}」。`);
 		// 被收回時還有沒傳的：先擋住列出來，按「知道了」才丟掉、回首頁
@@ -340,7 +364,74 @@ export class FlowFile {
 			else revoked();
 		};
 		cloud.ondeleted = goneHome((name) => `「${name}」被擁有者刪掉了。`);
+		// 從離線副本打開的：連上了就換成最新的
+		cloud.onback = () => {
+			if (this.#offlineAt !== null && this.#cloud === cloud) void this.openCloud(id, true);
+		};
 		this.#cloud = cloud;
+		await this.#keepCopy(copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 }, copy ? undefined : audio);
+	}
+
+	/** 開著的是從離線副本打開的（斷網）：那份是什麼時候的樣子（毫秒）；不是是 null。 */
+	#offlineAt = $state<number | null>(null);
+	get offlineAt(): number | null {
+		return this.#offlineAt;
+	}
+
+	/** 離線副本存進這台（打開時、開著時換成最新的）時，存的那幾個音樂檔：換了才再存音樂。 */
+	#copyAudioIds = '';
+	/** 開著時換成最新的：停手 1 秒才存。 */
+	#copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/** 存一份離線副本（這次打開：最近打開的時間換成現在），再刪掉超過 5 支的（有沒傳紀錄的不刪）。 */
+	async #keepCopy(copy: OfflineCopy, audio?: AudioBytes) {
+		const store = this.#editor.adapters.offline;
+		const copies = await store.copies();
+		const openedAt = Math.max(Date.now(), ...copies.filter((c) => c.flowId !== copy.flowId).map((c) => c.openedAt + 1));
+		await store.saveCopy({ ...copy, openedAt }, audio);
+		if (audio) this.#copyAudioIds = Object.keys(audio).sort().join();
+		const all = [...copies.filter((c) => c.flowId !== copy.flowId), { ...copy, openedAt }];
+		for (const drop of copiesToDrop(all, await store.unsent())) await store.dropCopy(drop);
+	}
+
+	/** 開著的雲端流程改了（自己、別人的改動、紀錄）：停手 1 秒後把離線副本換成現在的樣子。 */
+	#saveCopyLater() {
+		clearTimeout(this.#copyTimer);
+		if (!this.#cloud) return;
+		this.#copyTimer = setTimeout(() => void this.#saveCopyNow(), DRAFT_DELAY_MS);
+	}
+
+	/**
+	 * 離線副本換成現在的樣子：只在連著、沒有還沒送到的步時（不然記的第幾步對不上）；這台還沒傳的紀錄不放進去（另外存）。
+	 * 已經被擠掉的不再放回來。
+	 */
+	async #saveCopyNow() {
+		const { session, adapters, music } = this.#editor;
+		const cloud = this.#cloud;
+		const id = this.#cloudId;
+		if (!cloud || !id || !session.flow || cloud.offline || cloud.unsent || this.#offlineAt !== null) return;
+		const old = (await adapters.offline.copies()).find((c) => c.flowId === id);
+		if (!old || this.#cloud !== cloud) return;
+		const { flow, records } = takeRecords(session.flow);
+		const unsent = new Set(cloud.unsentIds);
+		const by = session.recordedBy;
+		const audioIds = flow.audio.map((a) => a.id).sort().join();
+		const audio = audioIds !== this.#copyAudioIds ? music.bytes(flow) : undefined;
+		await adapters.offline.saveCopy(
+			{
+				...old,
+				name: flow.name,
+				savedAt: Date.now(),
+				role: cloud.role,
+				step: cloud.seen,
+				flow,
+				records: records
+					.filter((r) => !unsent.has(r.attempt.id))
+					.map((r) => ({ ...r, by: by[r.attempt.id] || null, mine: !(r.attempt.id in by) }))
+			},
+			audio
+		);
+		if (audio) this.#copyAudioIds = audioIds;
 	}
 
 	/**
@@ -381,6 +472,46 @@ export class FlowFile {
 		then?.();
 	}
 
+	/**
+	 * 首頁連上網路、拿到雲端流程的清單（cloudIds：我還打得開的）：不在裡面的（被收回、被刪掉）離線副本刪掉（#261），
+	 * 首頁最上面黃的那條說哪幾支。還有紀錄沒傳的照 #260 先擋住列出來，按「知道了」才刪（一支一支來）。
+	 */
+	async dropGoneCopies(cloudIds: string[]) {
+		const store = this.#editor.adapters.offline;
+		const open = new Set(cloudIds);
+		const gone = (await store.copies()).filter((c) => !open.has(c.flowId));
+		if (!gone.length) return;
+		const unsent = await store.unsent();
+		const names: string[] = [];
+		const queue: { rows: DroppedRecord[]; then: () => void }[] = [];
+		const next = () => {
+			const lost = queue.shift();
+			if (lost) this.#lost = lost;
+		};
+		const tell = (name: string) => {
+			names.push(name);
+			this.#revoked = `${names.map((n) => `你已經不能打開「${n}」。`).join('')}${COPY_DROPPED}`;
+		};
+		for (const c of gone) {
+			const u = unsent.find((x) => x.flowId === c.flowId);
+			if (u && unsentCount(u) > 0) {
+				queue.push({
+					rows: u.records.map((r) => r.row),
+					then: () => {
+						void store.saveUnsent({ ...u, records: [], amends: [], dropped: [] });
+						void store.dropCopy(c.flowId);
+						tell(c.name);
+						next();
+					}
+				});
+			} else {
+				await store.dropCopy(c.flowId);
+				tell(c.name);
+			}
+		}
+		next();
+	}
+
 	/** 被收回、被刪掉回首頁時，首頁最上面黃的那條（「你已經不能打開「…」。」）；沒有是空字串。 */
 	#revoked = $state('');
 	get revoked(): string {
@@ -399,6 +530,8 @@ export class FlowFile {
 		// 自己離開的：房間說「被收回」時直接回首頁，不寫「你已經不能打開」
 		const revoked = cloud.onrevoked;
 		cloud.onrevoked = () => this.#editor.session.open(null);
+		// 自己離開的：這台的離線副本先刪（#261），回首頁時才不當作被收回寫黃條；沒離開成，下次打開會再留一份
+		await this.#editor.adapters.offline.dropCopy(id);
 		try {
 			await this.#editor.adapters.server.leave(id);
 		} catch (e) {
@@ -416,6 +549,8 @@ export class FlowFile {
 		// 自己刪的：房間說「被刪掉了」時直接回首頁，不寫黃條
 		const deleted = cloud.ondeleted;
 		cloud.ondeleted = () => this.#editor.session.open(null);
+		// 自己刪的：這台的離線副本先刪（#261），理由同上
+		await this.#editor.adapters.offline.dropCopy(id);
 		try {
 			await this.#editor.adapters.server.deleteFlow(id);
 		} catch (e) {
@@ -558,7 +693,14 @@ export class FlowFile {
 	 * 換成另一支流程（新建、開檔、救回草稿）。選取、提示由 session 清掉。
 	 * draftId：這支流程的草稿 id。music：這支流程的音樂檔庫（開檔、救回草稿時解碼好的；沒給是空的）。
 	 */
-	#start(flow: Flow, from: 'file' | 'draft' | 'new' | 'cloud', draftId: string, music?: MusicLibrary, saver: FileSaver | null = null) {
+	#start(
+		flow: Flow,
+		from: 'file' | 'draft' | 'new' | 'cloud',
+		draftId: string,
+		music?: MusicLibrary,
+		saver: FileSaver | null = null,
+		switching = true
+	) {
 		const editor = this.#editor;
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		editor.session.open(flow, from !== 'draft');
@@ -567,7 +709,8 @@ export class FlowFile {
 		this.#draftId = draftId;
 		this.#fileBytes = null;
 		editor.adapters.pendingInput.settle();
-		this.onswitch();
+		// 從離線副本換成最新的（同一支流程）：練習畫面、對話框不關
+		if (switching) this.onswitch();
 		this.#saver = saver;
 		editor.switchMusic(music);
 		this.#openError = '';

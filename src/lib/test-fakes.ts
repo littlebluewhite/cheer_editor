@@ -38,7 +38,16 @@ import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
-import { isEmptyUnsent, readUnsent, storedUnsent, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
+import {
+	isEmptyUnsent,
+	readCopy,
+	readUnsent,
+	storedCopy,
+	storedUnsent,
+	type OfflineStore,
+	type SignedInHere,
+	type UnsentRecords
+} from '#lib/offline-store.js';
 import {
 	ServerUnreachable,
 	type AdminResult,
@@ -100,9 +109,13 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt: Date 
 /**
  * 假的離線存放（#260）：存在記憶體（all：流程 id → 存進去的樣子，跟真的一樣帶版號、讀回來時用 readUnsent），
  * 一開始可以先放幾份（unsent）。volatile：這台是 iPhone、iPad 的 Safari（不是從主畫面打開的），提醒加到主畫面；按過「知道了」就不提醒。
+ * 離線副本（#261）：copies（流程 id → 存進去的樣子，帶版號）、audio（流程 id → 音樂）、這台登入的是誰（here）。
  */
 export function fakeOfflineStore(init: { unsent?: UnsentRecords[]; volatile?: boolean } = {}) {
 	const all = new Map<string, unknown>((init.unsent ?? []).map((u) => [u.flowId, storedUnsent(u)]));
+	const copies = new Map<string, unknown>();
+	const audio = new Map<string, Record<string, Uint8Array>>();
+	let here: SignedInHere | null = null;
 	let known = false;
 	const store: OfflineStore = {
 		async unsent() {
@@ -118,11 +131,46 @@ export function fakeOfflineStore(init: { unsent?: UnsentRecords[]; volatile?: bo
 		needsHomeScreen: () => !!init.volatile && !known,
 		homeScreenKnown() {
 			known = true;
+		},
+		async copies() {
+			return [...copies.values()].flatMap((v) => readCopy(structuredClone(v)) ?? []);
+		},
+		async copyAudio(flowId) {
+			return structuredClone(audio.get(flowId) ?? {});
+		},
+		async saveCopy(copy, bytes) {
+			copies.set(copy.flowId, storedCopy(copy));
+			if (bytes) audio.set(copy.flowId, structuredClone(bytes));
+		},
+		async dropCopy(flowId) {
+			copies.delete(flowId);
+			audio.delete(flowId);
+		},
+		async clearCopies() {
+			copies.clear();
+			audio.clear();
+			here = null;
+		},
+		async signedInHere() {
+			return structuredClone(here);
+		},
+		async saveSignedInHere(h) {
+			here = structuredClone(h);
 		}
 	};
 	/** 這支流程現在存著的（沒有是 null）。 */
 	const of = (flowId: string) => readUnsent(all.get(flowId));
-	return { store, all, of };
+	/** 這支流程的離線副本（沒有是 null）。 */
+	const copy = (flowId: string) => readCopy(copies.get(flowId));
+	/** 離線副本的流程 id，最早打開的在前。 */
+	const copyIds = () =>
+		[...copies.values()]
+			.flatMap((v) => readCopy(v) ?? [])
+			.sort((a, b) => a.openedAt - b.openedAt)
+			.map((c) => c.flowId);
+	/** 這支離線副本的音樂（沒有是 null）。 */
+	const audioOf = (flowId: string) => audio.get(flowId) ?? null;
+	return { store, all, of, copy, copyIds, audioOf, signedInHere: () => here };
 }
 
 /**
@@ -945,7 +993,14 @@ export function fakeServer(
 			};
 			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '' };
 			rooms.push(open);
-			if (state.link !== 'online') cut(open, state.link);
+			// 斷著時開的房間：馬上連不上，等下一個 microtask 才說（跟真的一樣，說的時候房間已經接好了）
+			if (state.link !== 'online') {
+				const why = state.link;
+				down.add(room);
+				queueMicrotask(() => {
+					if (down.has(room)) room.onconnection(false, why);
+				});
+			}
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {
