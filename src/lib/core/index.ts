@@ -208,7 +208,8 @@ export {
 	timeTextWithUnit,
 	toPosition,
 	toSeconds,
-	totalSeconds
+	totalSeconds,
+	units
 } from './time';
 export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
 

@@ -27,8 +27,6 @@
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import RunThroughBar from './RunThroughBar.svelte';
-	import type { Notice } from './RecordNotice.svelte';
-	import { Flash } from '#lib/flash.svelte.js';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD），跟記錄頁共用；期間從這天往回算。 */
@@ -42,12 +40,10 @@
 
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
-	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
-	const saved = new Flash<Notice>();
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) saved.show({ text: '已存這次全上' });
+		if (done) session.notice = '已存這次全上';
 	}
 
 	/** YYYY-MM-DD 寫成「11/4」。 */
@@ -130,7 +126,7 @@
 	{#if recording}
 		<RunThroughSheet {date} onclose={closeSheet} />
 	{:else}
-		<RunThroughBar {date} notice={saved} onrecord={() => ((recording = true), (open = null))} />
+		<RunThroughBar {date} onrecord={() => ((recording = true), (open = null))} />
 		<div class="filters">
 			<div class="seg" role="group" aria-label="期間">
 				<span>期間</span>
@@ -325,6 +321,15 @@
 		text-align: left;
 		font-weight: 600;
 	}
+	/* 40 人時表格很寬：「環節」那一欄往右捲也留在左邊，看得出每一列是哪個環節。 */
+	tr > th:first-child {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+	}
+	tbody th {
+		background: var(--surface);
+	}
 	.cell {
 		width: 100%;
 		min-width: 72px;
@@ -447,6 +452,9 @@
 		}
 		.scroll {
 			overflow: visible;
+		}
+		tr > th:first-child {
+			position: static;
 		}
 		table {
 			width: 100%;

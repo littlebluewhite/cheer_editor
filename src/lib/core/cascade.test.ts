@@ -96,27 +96,43 @@ describe('改 BPM', () => {
 });
 
 describe('段縮短', () => {
-	it('有動作或站位放不進段裡：回「要確認」並列出清單，流程不變', () => {
+	it('跨出段尾的動作裁短到段尾、整個在段外的刪掉：回「要確認」，清單分「裁短」和「刪掉」兩組，流程不變', () => {
 		const flow = sample();
 		const before = structuredClone(flow);
 		// 3 個八拍又 4 拍 = 56 個半拍：x2（32–48）和 f3（48）都放得下
 		expect(updateSegment(flow, 's1', { eights: 4, lastBeats: 4 }).kind).toBe('ok');
-		// 2 個八拍又 4 拍 = 40 個半拍：x2 跨出段尾，f3 在段外
-		expect(updateSegment(flow, 's1', { eights: 3, lastBeats: 4 })).toEqual({
+		// 6 拍 = 12 個半拍：x1（0–16）跨出段尾，x2（32–48）、f2（16）、f3（48）在段外
+		expect(updateSegment(flow, 's1', { eights: 1, lastBeats: 6 })).toEqual({
 			kind: 'confirm',
-			message: '音樂 1 縮短後，下面這些放不進段裡，確定就刪掉',
-			items: ['動作「跳躍·T」（3-1 起）', '站位 3（4-1）']
+			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
+			items: [
+				'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍',
+				'刪掉：動作「跳躍·T」（3-1 起）',
+				'刪掉：站位 2（2-1）',
+				'刪掉：站位 3（4-1）'
+			]
 		});
 		expect(flow).toEqual(before);
 	});
 
-	it('帶「已確認」再送一次：段縮短，放不進的動作和站位刪掉，其他不動', () => {
+	it('帶「已確認」再送一次：跨出段尾的動作只留到段尾，在段外的動作和站位刪掉，其他不動', () => {
 		const after = flowOf(
 			updateSegment(sample(), 's1', { eights: 3, lastBeats: 4 }, { confirmed: true })
 		);
 		expect(after.segments[0]).toMatchObject({ halfBeats: 40 });
-		expect(after.actions.map((a) => a.id)).toEqual(['x1']);
+		expect(after.actions.map((a) => [a.id, a.start, a.length])).toEqual([
+			['x1', 0, 16],
+			['x2', 32, 8]
+		]);
 		expect(after.formations.map((f) => f.id)).toEqual(['f1', 'f2']);
+	});
+
+	it('從段尾那一刻開始的動作整個在段外：刪掉，不裁短', () => {
+		// 2 個八拍 = 32 個半拍：x2 從 32 開始
+		expect(updateSegment(sample(), 's1', { eights: 2, lastBeats: 8 })).toMatchObject({
+			kind: 'confirm',
+			items: ['刪掉：動作「跳躍·T」（3-1 起）', '刪掉：站位 3（4-1）']
+		});
 	});
 
 	it('連帶刪掉的站位，出發和到達設定跟著一起刪', () => {
@@ -133,20 +149,32 @@ describe('段縮短', () => {
 		// 3 個八拍 = 48 個半拍：x2（32–48）剛好結束在段尾，f3（48）落在段外
 		expect(updateSegment(sample(), 's1', { eights: 3, lastBeats: 8 })).toMatchObject({
 			kind: 'confirm',
-			items: ['站位 3（4-1）']
+			items: ['刪掉：站位 3（4-1）']
 		});
 	});
 
 	it('口號段縮短也一樣，時間寫秒數', () => {
-		// 口號 1 從 12.8 秒開始；在它的第 7 秒插一張站位
-		const flow = flowOf(insertFormation(sample(), 12.8 + 7));
+		// 口號 1 從 12.8 秒開始；在它的第 7 秒插一張站位，再放一個 3 秒起、5 秒長的動作
+		let flow = flowOf(insertFormation(sample(), 12.8 + 7));
+		flow = flowOf(
+			addAction(flow, {
+				segmentId: 's2',
+				category: 'dance',
+				name: '',
+				start: 30,
+				length: 50,
+				note: '',
+				members: [{ memberId: 'm3', role: null }]
+			})
+		);
 		expect(updateSegment(flow, 's2', { seconds: 5 })).toMatchObject({
 			kind: 'confirm',
-			message: '口號 1 縮短後，下面這些放不進段裡，確定就刪掉',
-			items: ['站位 4（7.0）']
+			message: '口號 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
+			items: ['裁短：動作「舞蹈」（3.0 起）5.0 秒 → 2.0 秒', '刪掉：站位 4（7.0）']
 		});
 		const after = flowOf(updateSegment(flow, 's2', { seconds: 5 }, { confirmed: true }));
 		expect(after.formations.map((f) => f.id)).toEqual(['f1', 'f2', 'f3']);
+		expect(after.actions.find((a) => a.segmentId === 's2')).toMatchObject({ start: 30, length: 20 });
 	});
 });
 

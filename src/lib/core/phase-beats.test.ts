@@ -121,7 +121,7 @@ describe('蓋到別的環節', () => {
 		const add = (o = {}) => addPhase(recorded, 'x1', { kind: 'whole', name: '', beats: { at: 24, len: 8 } }, o);
 		expect(add()).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉',
+			message: '會刪掉 1 個環節，清掉 1 次的記號（紀錄救不回來），確定就刪掉',
 			items: ['刪掉：環節 下法 搖籃']
 		});
 		expect(brief(flowOf(add({ confirmed: true })))).toEqual(['p1 0+6', 'p2 6+14', 'p4 24+8']);
@@ -136,7 +136,7 @@ describe('蓋到別的環節', () => {
 		const recorded = record(sample(), { p1: '✓', p2: '△' });
 		expect(markPhaseBeats(recorded, 'x1', 'p2', 0, 20)).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉',
+			message: '會刪掉 1 個環節，清掉 1 次的記號（紀錄救不回來），確定就刪掉',
 			items: ['刪掉：環節 上法 延伸']
 		});
 		const flow = flowOf(markPhaseBeats(recorded, 'x1', 'p2', 0, 20, { confirmed: true }));
@@ -228,7 +228,7 @@ describe('清標的拍', () => {
 		const recorded = record(sample(), { p1: '✓', p2: '△' });
 		expect(clearPhaseBeats(recorded, 'x1', 0, 6)).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉',
+			message: '會刪掉 1 個環節，清掉 1 次的記號（紀錄救不回來），確定就刪掉',
 			items: ['刪掉：環節 上法 延伸']
 		});
 		const flow = flowOf(clearPhaseBeats(recorded, 'x1', 0, 6, { confirmed: true }));
@@ -244,7 +244,7 @@ describe('清標的拍', () => {
 		const recorded = record(record(sample(), { p1: '✓' }), { p3: '✗' });
 		expect(clearPhaseBeats(recorded, 'x1', 0, 32)).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 3 個環節，清掉 2 次的記號；動作沒有環節了，不再記成功率，確定就刪掉',
+			message: '會刪掉 3 個環節，清掉 2 次的記號（紀錄救不回來）；動作沒有環節了，不再記成功率，確定就刪掉',
 			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段', '刪掉：環節 下法 搖籃']
 		});
 		expectUnrated(flowOf(clearPhaseBeats(recorded, 'x1', 0, 32, { confirmed: true })));

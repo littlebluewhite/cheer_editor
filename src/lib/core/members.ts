@@ -5,9 +5,9 @@ import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
-import { answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_GONE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { FIXED_ROLES } from './roles';
-import { settle } from './settle';
+import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
 import { atText, segmentSpans } from './time';
@@ -140,7 +140,7 @@ function columns(line: string): string[] {
 /**
  * 有錯的人（沒名字、名字太長、沒選性別或全局角色、認不得的行）不加，所有錯一次列在 errors，其他人照加；
  * 一個都加不了就擋下，原因是所有錯（一行一個）。錯誤用名字標是哪一個（不寫第幾行：沒加的行留在框裡，行號會對不上），
- * 名字太長只寫前 ERROR_NAME_CHARS 個字；只有一個人時不標。
+ * 名字太長只寫前 ERROR_NAME_CHARS 個字；一樣的錯合成一行，名字列在一起（「小A」、「小B」：請選性別），每個人都一樣（含只有一個人）就不標。
  * 加了會超過 MAX_MEMBERS 人就一個都不加，原因寫還能加幾人。
  * 新人在每一張站位各自排進那一張最靠近場地中間的空格點（不跟那一張現有的人疊到）；格點都有人了才排場外。
  */
@@ -155,9 +155,19 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 		if (!globalRole) e.problems.push('請選全局角色');
 	}
 	const bad = entries.filter((e) => e.problems.length);
-	const errors = bad.map((e) =>
-		entries.length === 1 || !e.name ? e.problems.join('；') : `「${shortName(e.name)}」：${e.problems.join('；')}`
-	);
+	// 一樣的錯寫一次：名字列在一起；每個人都一樣（或沒名字）就不寫名字。
+	// 不用 Map.groupBy：舊一點的 iPad Safari 沒有。
+	const same = new Map<string, Entry[]>();
+	for (const e of bad) {
+		const problem = e.problems.join('；');
+		same.set(problem, [...(same.get(problem) ?? []), e]);
+	}
+	const errors = [...same].map(([problem, group]) => {
+		const named = group.filter((e) => e.name);
+		return group.length === entries.length || named.length < group.length
+			? problem
+			: `${named.map((e) => `「${shortName(e.name)}」`).join('、')}：${problem}`;
+	});
 	const left = MAX_MEMBERS - flow.members.length;
 	if (entries.length > left) {
 		errors.push(
@@ -223,7 +233,7 @@ export function updateMember(
 	if (mine.length && !answered(options)) {
 		const count = mine.reduce((n, s) => n + s.records.length, 0);
 		return needsChoice(
-			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算`,
+			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算${RECORDS_GONE}`,
 			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
 		);
 	}
@@ -269,8 +279,9 @@ export function moveMember(flow: Flow, id: string, to: number): CommandResult {
  * 留下來的動作沒有別人是他的任務角色就寫「「技巧·Lib」會沒有上層」，見 lostRole；標記是號碼、他後面還有人就寫號碼會往前遞補），
  * 清單是他在的每個動作：他的任務角色（第幾組的），或「只有他，會整個刪掉」；
  * 帶 { confirmed: true } 再送一次才刪：從名單、每張站位、每個動作拿掉他，沒人剩下的動作刪掉，
- * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。刪隊員當成真的換人：他在的每一組和他自己的紀錄都清掉，
- * 確認訊息寫會清掉幾次。他走了空掉的組拿掉，後面的組往前補號。
+ * 給他的拍點（和動作裡已經沒人做的角色的拍點）也拿掉。他自己的紀錄（騰翻、跳躍）和整個刪掉的動作的紀錄一定清掉，確認訊息寫會清掉幾次；
+ * 他在的組還有別人、那一組有紀錄：跟在動作裡移人一樣改回「要選」，帶 { records: 'keep' } 留著那一組的紀錄，
+ * { records: 'clear' }（或只帶 { confirmed: true }）清掉。他走了空掉的組拿掉，後面的組往前補號。
  */
 export function deleteMember(
 	flow: Flow,
@@ -281,32 +292,37 @@ export function deleteMember(
 	if (!member) return blocked('找不到這個隊員');
 	const inActions = flow.actions.filter((a) => a.members.some((m) => m.memberId === id));
 	const emptied = inActions.filter((a) => a.members.length === 1);
-	// 刪隊員當成真的換人：每個留下來的動作走收尾，回答固定是清掉重算。
+	// 刪隊員跟在動作裡移人一樣：每個留下來的動作走收尾；他在的組還有人，那一組的紀錄照回答保留或清掉（只按確定是清掉）。
+	let changed = 0;
 	const actions = flow.actions
 		.filter((a) => !emptied.includes(a))
 		.map((a) => {
 			const after = dropOrphanCues({ ...a, members: a.members.filter((m) => m.memberId !== id) });
-			const settled = settle(flow, a, after, { records: 'clear' });
-			return settled.kind === 'ok' ? settled.action : after;
+			const settled = settle(flow, a, after, { records: options.records ?? 'clear' });
+			if (settled.kind !== 'ok') return after;
+			changed += settled.fallout.changed.length;
+			return settled.action;
 		});
 	if (!answered(options)) {
 		const spans = segmentSpans(flow);
 		const cueCount = (list: Action[]) => list.reduce((n, a) => n + (a.cues?.length ?? 0), 0);
 		const dropped = cueCount(flow.actions.filter((a) => !emptied.includes(a))) - cueCount(actions);
 		const records = (list: Action[]) => list.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
-		const cleared = records(flow.actions) - records(actions);
+		// 一定清掉的（他自己的、整個刪掉的動作的）；換了人的組要問，不算在這裡。
+		const cleared = records(flow.actions) - records(actions) - changed;
 		const role = GLOBAL_ROLES.find((r) => r.key === member.globalRole)?.label;
 		const where = !inActions.length
 			? '他不在任何動作裡'
 			: `他在 ${inActions.length} 個動作裡` + (emptied.length ? `，其中 ${emptied.length} 個會被整個刪掉` : '');
 		const lost = inActions.flatMap((a) => (emptied.includes(a) ? [] : lostRole(a, id)));
 		const after = flow.members.length - 1 - flow.members.indexOf(member);
-		return needsConfirm(
+		return (changed ? needsChoice : needsConfirm)(
 			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄` : '') +
+				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_GONE}` : '') +
 				(lost.length ? `，${lost.join('、')}` : '') +
-				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : ''),
+				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : '') +
+				(changed ? `；${CHANGED_SQUADS_QUESTION}` : ''),
 			inActions.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				const mine = a.members.find((m) => m.memberId === id)!;

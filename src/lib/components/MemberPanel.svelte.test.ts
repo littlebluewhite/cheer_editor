@@ -111,17 +111,16 @@ describe('隊員名單', () => {
 		expect(session.flow!.members.map((m) => m.name)).toEqual(['小A', '候補小C']);
 	});
 
-	it('滿 40 人時流程核心擋下，顯示原因', async () => {
+	it('滿 40 人時加隊員表單停用，寫為什麼', () => {
 		const forty = Array.from({ length: 40 }, (_, i) => ({
 			name: `隊員${i + 1}`,
 			gender: 'F' as const,
 			globalRole: 'top' as const
 		}));
-		const session = setup(okFlow(addMembers(empty, forty)));
+		setup(okFlow(addMembers(empty, forty)));
 		expect(screen.getByText(/40 \/ 40/)).toBeTruthy();
-		await fillNew('小A', 'F', 'base');
-		expect(session.canUndo).toBe(false);
-		expect(screen.getByRole('alert').textContent).toBe('一支流程最多 40 人，已經滿了');
+		expect(screen.getByRole('button', { name: '加隊員' }).matches(':disabled')).toBe(true);
+		expect(screen.getByText('已經 40 人了（一支流程最多 40 人），刪掉隊員才能再加')).toBeTruthy();
 	});
 
 	it('超過 40 人時寫還能加幾人，一個都不加', async () => {
@@ -180,14 +179,14 @@ describe('隊員名單', () => {
 	});
 
 	it('被擋下的原因在名單下面看不到時，捲過去讓它看得到', async () => {
-		const forty = Array.from({ length: 40 }, (_, i) => ({
+		const forty = Array.from({ length: 39 }, (_, i) => ({
 			name: `隊員${i + 1}`,
 			gender: 'F' as const,
 			globalRole: 'top' as const
 		}));
 		setup(okFlow(addMembers(empty, forty)));
 		scrolled.length = 0;
-		await fillNew('小A', 'F', 'base');
+		await fillNew('小A\n小B', 'F', 'base');
 		await frame();
 		expect(scrolled).toEqual([screen.getByRole('alert')]);
 	});

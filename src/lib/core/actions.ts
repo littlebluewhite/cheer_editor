@@ -11,7 +11,7 @@ import {
 } from './action-types';
 import { cueFallout, cueProblem } from './cues';
 import { memberName, type Flow } from './flow';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
@@ -72,7 +72,10 @@ export function updateAction(
 	);
 }
 
-/** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。要確認時跟 updateAction 一樣。 */
+/**
+ * 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；拖過段尾就裁短到段尾。
+ * 開始拖到段尾後面、段之前、撞到人就擋。要確認時（裁短切到拍點、環節）跟 updateAction 一樣。
+ */
 export function moveAction(
 	flow: Flow,
 	id: string,
@@ -80,10 +83,14 @@ export function moveAction(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const at = unitAt(flow, id, startSec);
-	return at === null ? blocked('找不到這個動作') : updateAction(flow, id, { start: at }, options);
+	const action = flow.actions.find((a) => a.id === id);
+	if (at === null || !action) return blocked('找不到這個動作');
+	const end = segmentEnd(flow, action);
+	const length = at < end ? Math.min(action.length, end - at) : action.length;
+	return updateAction(flow, id, { start: at, length }, options);
 }
 
-/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格；太短、超出段尾、撞到人就擋。會切到拍點時跟 updateAction 一樣先問。 */
+/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格，拉過段尾就停在段尾；太短、撞到人就擋。會切到拍點時跟 updateAction 一樣先問。 */
 export function resizeAction(
 	flow: Flow,
 	id: string,
@@ -94,7 +101,12 @@ export function resizeAction(
 	const action = flow.actions.find((a) => a.id === id);
 	return at === null || !action
 		? blocked('找不到這個動作')
-		: updateAction(flow, id, { length: at - action.start }, options);
+		: updateAction(flow, id, { length: Math.min(at, segmentEnd(flow, action)) - action.start }, options);
+}
+
+/** 動作那一段的段尾（段內時間）。 */
+function segmentEnd(flow: Flow, action: Action): number {
+	return units(flow.segments.find((s) => s.id === action.segmentId)!);
 }
 
 /** 全域秒數在動作那一段裡最近的整數時間（可以落在段外，交給檢查擋）。 */
@@ -111,7 +123,7 @@ export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}
 	const action = flow.actions.find((a) => a.id === id);
 	if (!action) return blocked('找不到這個動作');
 	const count = action.successRate?.records.length ?? 0;
-	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄`, []);
+	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄${RECORDS_GONE}`, []);
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 

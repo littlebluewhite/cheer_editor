@@ -1078,6 +1078,25 @@ await check('1440×900 記一次全上 40 人：只有表格左右捲，不撐�
 		return { ok: v.頁寬 <= innerWidth && practice.scrollWidth <= practice.clientWidth + 1 && r.right <= innerWidth && v.表格自己捲 && date.right <= innerWidth, value: v };`);
 });
 
+/** 表格往右捲到底：第一欄（環節）還在表格看得到的左邊，沒被捲走。 */
+const firstColumnStays = (block) =>
+	js(`const scroll = document.querySelector(${JSON.stringify(block)} + ' .scroll');
+		scroll.scrollLeft = scroll.scrollWidth;
+		await new Promise((r) => setTimeout(r, 100));
+		const box = scroll.getBoundingClientRect();
+		const heads = [...scroll.querySelectorAll('tr > th:first-child')].map((th) => Math.round(th.getBoundingClientRect().left - box.left));
+		scroll.scrollLeft = 0;
+		return { ok: scroll.scrollWidth > scroll.clientWidth && heads.every((x) => Math.abs(x) <= 1), value: { 第一欄離表格左邊: heads } };`);
+
+await check('1440×900 記一次全上 40 人：往右捲時「環節」那一欄留在左邊；整張表一個畫面看得完，「存這次全上」不用捲整頁就按得到', async () => {
+	// 上一條已經開著 40 人的全上表
+	const first = await firstColumnStays('.sheet .block');
+	const r = await js(`const sheet = document.querySelector('.sheet').getBoundingClientRect();
+		const save = [...document.querySelectorAll('.sheet footer button')].find((b) => b.textContent.trim() === '存這次全上').getBoundingClientRect();
+		return { 全上表高: Math.round(sheet.height), 存的鈕下緣: Math.round(save.bottom), 畫面高: innerHeight };`);
+	return { ok: first.ok && r.存的鈕下緣 <= r.畫面高, value: { ...first.value, ...r } };
+});
+
 /** 用列印的媒體查詢量：A4 直的扣掉邊界大約 718px 寬。 */
 async function asPrinted(fn) {
 	await setViewport(718, 1000);
@@ -1105,6 +1124,11 @@ await check('列印：總表 40 人只印表格，欄位不超出紙寬，不印
 	await js(`[...document.querySelectorAll('.practice .pages button')].find((b) => b.textContent.trim() === '總表').click()`);
 	await sleep(300);
 	return asPrinted(printedTables);
+});
+
+await check('1440×900 總表 40 人：往右捲時「環節」那一欄留在左邊', async () => {
+	// 上一條開著 40 人的總表
+	return firstColumnStays('.summary .block');
 });
 
 await check('列印：八拍表的拍點、環節換行不截斷，背景是白的', async () => {
@@ -1383,6 +1407,35 @@ await check('記錄頁：點第一個環節前後「存這一次」不動；存�
 	return {
 		ok: same(saveSpot) && same(undoSpot) && same(listSpot),
 		value: { 存這一次: saveSpot, '刪掉上一次（存前、存後、刪後）': undoSpot, 清單第二個動作: listSpot }
+	};
+});
+
+// ---------- 「已做了・復原」提示不推動版面（#211） ----------
+
+await check('記錄頁：「已存」「已刪掉…救回」提示出現、換掉、收掉時，卡片、上面那一排和左邊清單都不動；同時只有一則，浮在畫面上', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow(`flow = (await import('/src/lib/test-flows.ts')).ratedSample();`);
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const press = async (selector) => { const p = await rectOf(selector); await click(p.x, p.y); await sleep(200); };
+	const spots = () => js(`return ['.run', '.record .list', '.card', '.card .undo-last'].map((s) => {
+		const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.height)].join(','); });`);
+	// 看得到的提示（編排畫面藏起來時，場地上那一份不算）
+	const toasts = () => js(`return [...document.querySelectorAll('.toast')].filter((t) => t.getClientRects().length).map((t) => t.textContent.trim() + '｜' + getComputedStyle(t).position)`);
+	await press('.card button[aria-label$="上法 成功"]');
+	const before = await spots();
+	await press('.card .save');
+	const saved = { 位置: await spots(), 提示: await toasts() };
+	await press('.card .undo-last');
+	const removed = { 位置: await spots(), 提示: await toasts() };
+	await js(`document.querySelector('.toast button[aria-label="收起提示"]').click()`);
+	await sleep(200);
+	const gone = { 位置: await spots(), 提示: await toasts() };
+	const same = [saved, removed, gone].every((v) => String(v.位置) === String(before));
+	const one = (v, text) => v.提示.length === 1 && v.提示[0].startsWith(text) && v.提示[0].endsWith('｜absolute');
+	return {
+		ok: same && one(saved, '已存') && one(removed, '已刪掉') && gone.提示.length === 0,
+		value: { 之前: before, 存好: saved, 刪掉: removed, 收掉: gone }
 	};
 });
 
@@ -1798,6 +1851,21 @@ await check('1440×900 播放頭停在走位條右端（點站位 2）：按住�
 	return { ok, value: { 拖之前: before, 拖之後: after } };
 });
 
+await check('1440×900 40 人：時間軸往下捲到最後的泳道，站位列還在八拍尺下面，縮圖看得到', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	return js(`const t = document.querySelector('.timeline');
+		t.scrollTop = t.scrollHeight;
+		await new Promise((r) => setTimeout(r, 200));
+		const ruler = document.querySelector('.timeline .ruler-row').getBoundingClientRect();
+		const film = document.querySelector('.timeline .row.film').getBoundingClientRect();
+		const thumb = document.querySelector('.timeline .row.film .th').getBoundingClientRect();
+		const hit = document.elementFromPoint(thumb.left + thumb.width / 2, thumb.top + thumb.height / 2);
+		const v = { 捲了: Math.round(t.scrollTop), 八拍尺下緣: Math.round(ruler.bottom), 站位列上緣: Math.round(film.top), 點縮圖點到縮圖: !!hit?.closest('.th') };
+		t.scrollTop = 0;
+		return { ok: v.捲了 > 0 && Math.abs(v.站位列上緣 - v.八拍尺下緣) <= 1 && v.點縮圖點到縮圖, value: v };`);
+});
+
 await check('1440×900 40 人：點場上最後一個人，泳道捲到他那一行（不藏在段列、八拍尺底下，不左右捲）；再點第一個人也是（#215）', async () => {
 	await setViewport(1440, 900);
 	await openBigFlow();
@@ -1952,6 +2020,70 @@ await check('1440×900 場地和時間軸的分界往上拖到底：場地那一
 	const hgt = await js(`return Math.round(document.querySelector('main.field-host').getBoundingClientRect().height)`);
 	await js(`document.querySelector('[aria-label="場地和時間軸的分界"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
 	return { ok: hgt >= 320, value: `場地那一塊 ${hgt} px 高` };
+});
+
+// ---------- 撞位 ✕ 在圓點上面、只撞一下的紫段、走位條把手（#216） ----------
+
+await check('1440×1000 小A 騰翻中衝過站著的小B（只撞到一個取樣點）：✕ 在小B 的圓點上面看得到，泳道的紫段至少 8 px 寬', async () => {
+	await setViewport(1440, 1000);
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	// 小A 從 [-7, 3] 跑到 [7, 3]，3.2 秒經過站在 [0, 3.3] 的小B：只撞到一個取樣點，✕ 畫在 [0, 3.15]，在小B 的圓點裡。
+	await js(`const c = await import('/src/lib/core/index.ts');
+		const of = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		let flow = of(c.createFlow({ name: '撞一下', field: { strips: 9, layout: 'vertical' } }));
+		flow = of(c.addMembers(flow, ['小A', '小B'].map((name) => ({ name, gender: 'F', globalRole: 'base' }))));
+		flow = of(c.addSegment(flow, 'music'));
+		flow = of(c.setPositions(flow, 'f1', { m1: [-7, 3], m2: [0, 3.3] }));
+		flow = of(c.insertFormation(flow, 4.8));
+		flow = of(c.setPositions(flow, flow.formations[1].id, { m1: [7, 3] }));
+		flow = of(c.addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 0, length: 24, note: '',
+			members: [{ memberId: 'm1', role: null }] }));
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([c.writeFlowFile(flow, {})], '撞一下.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await sleep(300);
+	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+	await sleep(300);
+	// ✕ 的中心和四條斜線上各一點（外框的 1/4、3/4）：最上面都是 ✕，不是圓點
+	const mark = await js(`const x = document.querySelector('.field [data-clash]');
+		if (!x) return { 有: false };
+		const r = x.getBoundingClientRect();
+		const dot = document.querySelector('.field [data-member-id="m2"]').getBoundingClientRect();
+		const 疊在圓點上 = dot.left < r.right && dot.right > r.left && dot.top < r.bottom && dot.bottom > r.top;
+		const pts = [[0.5, 0.5], [0.25, 0.25], [0.75, 0.75], [0.25, 0.75], [0.75, 0.25]];
+		const 被蓋的點 = pts.filter(([fx, fy]) => document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy) !== x);
+		return { 有: true, 疊在圓點上, 被蓋的點 };`);
+	const seg = await js(`const s = document.querySelector('[data-lane="m1"] [data-walk-clash]');
+		if (!s) return { 有: false };
+		s.scrollIntoView({ block: 'center', inline: 'center' });
+		await new Promise((r) => setTimeout(r, 150));
+		const r = s.getBoundingClientRect();
+		return { 有: true, 寬: Math.round(r.width * 10) / 10, 看得到: s.checkVisibility() && r.height > 0 };`);
+	return {
+		ok: mark.有 && mark.疊在圓點上 && mark.被蓋的點.length === 0 && seg.有 && seg.看得到 && seg.寬 >= 8,
+		value: { 撞位記號: mark, 紫段: seg }
+	};
+});
+
+await check('走位條兩端的把手：觸控（1024×768）時每個點得到的範圍都比滑鼠（1440×900）時寬', async () => {
+	const ends = () => js(`return [...document.querySelectorAll('[data-walk] [data-end]')].map((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);`);
+	await setViewport(1440, 900);
+	await openSample();
+	const mouseW = await ends();
+	await setTouchViewport(1024, 768);
+	await openSample();
+	const touchW = await ends();
+	await clearTouch();
+	const narrower = touchW.flatMap((w, i) => (w > mouseW[i] ? [] : [{ 第幾個: i, 滑鼠: mouseW[i], 觸控: w }]));
+	return {
+		ok: mouseW.length > 0 && touchW.length === mouseW.length && narrower.length === 0,
+		value: { 幾個: [mouseW.length, touchW.length], 滑鼠最窄: Math.min(...mouseW), 觸控最窄: Math.min(...touchW), 沒變寬的: narrower.slice(0, 5) }
+	};
 });
 
 if (pageErrors.length) {

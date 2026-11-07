@@ -336,6 +336,15 @@ describe('貼上名單加隊員', () => {
 		expect(flow.members).toMatchObject([{ name: 'Amy Chen', gender: 'F', globalRole: 'top' }]);
 	});
 
+	it('同一個錯不每人重複：每個人都一樣就只寫一次，不寫名字；只有幾個人一樣就把名字列在一起', () => {
+		const none = { gender: null, globalRole: null };
+		expect(addMemberLines(newFlow(), '小A\n小B\n小C', none)).toEqual({ kind: 'blocked', message: '請選性別；請選全局角色' });
+		expect(addMemberLines(newFlow(), '小A\n小B\n小C\t男孩\t底層', none)).toEqual({
+			kind: 'blocked',
+			message: '「小A」、「小B」：請選性別；請選全局角色\n「小C」：性別要寫「男」或「女」'
+		});
+	});
+
 	it('沒選性別、全局角色，名字太長：每一行的錯一次列出；一行都加不了就擋下', () => {
 		const long = '一二三四五六七八九十'.repeat(50);
 		const r = addMemberLines(newFlow(), `小A\n${long}\t男\t底層`, { gender: null, globalRole: null });
