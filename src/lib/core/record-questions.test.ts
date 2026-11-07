@@ -81,7 +81,35 @@ describe('刪動作', () => {
 	it('段縮短連帶刪動作：確認訊息加上會清掉幾次', () => {
 		const r = updateSegment(recorded(), 's1', { eights: 2 });
 		expect(r.kind).toBe('confirm');
-		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，下面這些放不進段裡，確定就刪掉，會一起清掉 2 次紀錄（紀錄救不回來）');
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（紀錄救不回來）');
+	});
+
+	it('段縮短裁短動作：環節照動作變短的規則切短或刪掉；有紀錄的環節會不見時，確認訊息寫會清掉幾次', () => {
+		// 1 拍 = 2 個半拍：x1 裁短成 1 拍，p1（1-1）留著，p2（1-2 到 1-3）、p3（1-4）刪掉；t3 只記了 p2，整次不見。x2 在段外。
+		expect(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 })).toEqual({
+			kind: 'confirm',
+			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 3 次紀錄（紀錄救不回來）',
+			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）']
+		});
+		const flow = flowOf(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 }, { confirmed: true }));
+		expect(action(flow, 'x1').successRate!.phases.map((p) => [p.id, p.beats])).toEqual([['p1', { at: 0, len: 2 }]]);
+		expect(ids(flow, 'x1')).toEqual(['t1', 't2']);
+	});
+
+	it('段縮短裁短動作，切到的環節有記號但那次還有別的記號：確認訊息寫會清掉幾次的記號', () => {
+		// 3 拍：p3（1-4）刪掉；那次還記了 p1，紀錄留著
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill('g1', { p1: '✓', p3: '✗' })));
+		const r = updateSegment(flow, 's1', { eights: 1, lastBeats: 3 });
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會清掉 1 次的記號（紀錄救不回來）');
+		const after = flowOf(updateSegment(flow, 's1', { eights: 1, lastBeats: 3 }, { confirmed: true }));
+		expect(action(after, 'x1').successRate!.records.map((r) => r.marks)).toEqual([{ p1: '✓' }]);
+	});
+
+	it('段縮短裁短動作，切到的環節沒有記號：確認訊息不說紀錄', () => {
+		// 3 拍：p3（1-4）刪掉，沒有記號
+		const r = updateSegment(recorded(), 's1', { eights: 1, lastBeats: 3 });
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（紀錄救不回來）');
+		expect(r.kind === 'confirm' && r.items[0]).toBe('裁短：動作「技巧·Lib」（1-1 起）8 拍 → 3 拍，會刪掉 1 個環節');
 	});
 });
 

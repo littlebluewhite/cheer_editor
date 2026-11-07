@@ -271,8 +271,19 @@ describe('拍點跟著動作', () => {
 	});
 
 	it('段縮短連帶刪動作：拍點跟著動作一起刪', () => {
-		const flow = flowOf(updateSegment(withDownUp(), 's1', { eights: 1, lastBeats: 4 }, { confirmed: true }));
+		const flow = flowOf(updateSegment(withDownUp(), 's1', { eights: 1, lastBeats: 2 }, { confirmed: true }));
 		expect(flow.actions.map((a) => a.id)).toEqual(['x2']);
+	});
+
+	it('段縮短裁短動作：落在切掉那段的拍點拿掉，跨過段尾的切短；確認清單寫在「裁短」那一行', () => {
+		// 3 拍 = 6 個半拍：x1（4–12）裁短成 4–6，down（0–4）切短成 2，up（4–6）落在切掉的那段
+		expect(updateSegment(withDownUp(), 's1', { eights: 1, lastBeats: 3 })).toMatchObject({
+			kind: 'confirm',
+			items: ['裁短：動作「技巧·Lib」（1-3 起）4 拍 → 1 拍，會拿掉 1 個、切短 1 個拍點']
+		});
+		const flow = flowOf(updateSegment(withDownUp(), 's1', { eights: 1, lastBeats: 3 }, { confirmed: true }));
+		expect(flow.actions[0]).toMatchObject({ start: 4, length: 2 });
+		expect(cuesOf(flow)).toEqual([count(0, 2, 'down')]);
 	});
 });
 
