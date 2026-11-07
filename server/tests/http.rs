@@ -20,6 +20,7 @@ fn unreachable_pool() -> cheer_server::AppState {
         site_url: "https://cheer.example".into(),
         core: cheer_server::flow_core::FlowCore::start().unwrap(),
         mail_limit: Default::default(),
+        rooms: Default::default(),
     }
 }
 
