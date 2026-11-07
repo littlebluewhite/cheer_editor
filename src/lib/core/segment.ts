@@ -8,6 +8,7 @@ import type { Flow } from './flow';
 import { nextId } from './ids';
 import { phaseFalloutText } from './phase-beats';
 import { cueFalloutText } from './settle';
+import { recordCount } from './success-rate';
 import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
 import { atText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
 
@@ -256,7 +257,7 @@ export function updateSegment(
 		formations
 	};
 	const trimItems: string[] = [];
-	let records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
+	let records = recordCount(droppedActions);
 	let marks = 0;
 	for (const a of trimmed) {
 		const cut = trimAction(result, a, end - a.start);
