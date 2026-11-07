@@ -3,6 +3,9 @@
 
 export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
+export { COMMAND_NAMES, runCommand, runCommands } from './commands';
+export type { Command, CommandArgs, CommandName, CommandOutcome, StepResult } from './commands';
+
 export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
