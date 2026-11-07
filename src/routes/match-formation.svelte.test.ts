@@ -1,7 +1,8 @@
 // 跟第 [_] 張一樣、站位卡片 ⌘C／⌘V（#224）：都跟拖人走同一條路（自動插站位、往後帶、一步復原）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
-import { insertFormation, setPositions, type Flow } from '#lib/core';
+import { deleteMember, insertFormation, setPositions, type Flow } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -60,6 +61,27 @@ describe('跟第 [_] 張一樣', () => {
 		expect(screen.queryByRole('button', { name: '跟上一張一樣' })).toBeNull();
 	});
 
+	it('打過數字後移播放頭、換選人：框回到預設（播放頭前面那一張），不留著舊數字', async () => {
+		const page = editorPage(threeFormations());
+		render(Page, page.props);
+		page.editor.playback.seek(4); // 站位 2
+		await click('m1');
+		await fireEvent.input(within(toolbar()).getByRole('spinbutton', { name: '跟第幾張站位一樣' }), {
+			target: { value: '3' }
+		});
+		expect(within(toolbar()).getByRole('button', { name: '跟第 3 張一樣' })).toBeTruthy();
+
+		page.editor.playback.seek(8); // 站位 3
+		await tick();
+		expect(within(toolbar()).getByRole('button', { name: '跟第 2 張一樣' })).toBeTruthy();
+
+		await fireEvent.input(within(toolbar()).getByRole('spinbutton', { name: '跟第幾張站位一樣' }), {
+			target: { value: '3' }
+		});
+		await click('m3', true);
+		expect(within(toolbar()).getByRole('button', { name: '跟第 2 張一樣' })).toBeTruthy();
+	});
+
 	it('沒選人時套用全隊：在場上空白處按右鍵，選單裡的「跟第 [_] 張一樣」改全部的人', async () => {
 		const page = editorPage(threeFormations());
 		render(Page, page.props);
@@ -93,13 +115,19 @@ describe('跟第 [_] 張一樣', () => {
 });
 
 describe('站位卡片 ⌘C／⌘V', () => {
+	it('⌘C 的提示寫「記下站位 N 的位置」，不用要避開的「複製站位」', async () => {
+		render(Page, editorPage(threeFormations()).props);
+		await fireEvent.click(thumbs()[2]);
+		await fireEvent.keyDown(window, { key: 'c', metaKey: true });
+		expect(screen.getByRole('status').textContent).toBe('記下站位 3 的位置；移到別的地方按 ⌘V 貼上');
+	});
+
 	it('播放頭那一拍有站位：改成複製的那張，往後帶，⌘Z 一步回去', async () => {
 		const page = editorPage(threeFormations());
 		render(Page, page.props);
 		const before = page.session.flow!;
 		await fireEvent.click(thumbs()[2]); // 選站位 3
 		await fireEvent.keyDown(window, { key: 'c', metaKey: true });
-		expect(screen.getByRole('status').textContent).toBe('已複製站位 3；移到別的地方按 ⌘V 貼上');
 
 		page.editor.playback.seek(0); // 開頭那張
 		await fireEvent.keyDown(window, { key: 'v', metaKey: true });
@@ -131,6 +159,21 @@ describe('站位卡片 ⌘C／⌘V', () => {
 		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
 		expect(page.session.flow).toEqual(before);
 		expect(thumbs()).toHaveLength(3);
+	});
+
+	it('複製後那些人都刪掉了：⌘V 不動流程，提示說複製的人都不在隊上，不是「先選人」', async () => {
+		const page = editorPage(threeFormations());
+		render(Page, page.props);
+		await fireEvent.click(thumbs()[2]);
+		await fireEvent.keyDown(window, { key: 'c', metaKey: true });
+		let flow = page.session.flow!;
+		for (const m of flow.members) flow = flowOf(deleteMember(flow, m.id, { confirmed: true }));
+		page.session.change(flow);
+
+		page.editor.playback.seek(2);
+		await fireEvent.keyDown(window, { key: 'v', metaKey: true });
+		expect(page.session.flow).toBe(flow);
+		expect(screen.getByRole('status').textContent).toBe('複製的人都不在隊上了，沒有貼上');
 	});
 
 	it('在拍點格子上按 ⌘V 是貼拍點，不貼站位', async () => {

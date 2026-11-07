@@ -997,14 +997,17 @@
 		</section>
 	{/if}
 	{#if openSegmentId}
-		<SegmentSettings
-			segmentId={openSegmentId}
-			{waveXToSec}
-			onclose={() => {
-				playback.stopPreview();
-				openSegmentId = null;
-			}}
-		/>
+		<!-- 開著時從時間軸點另一段：重開一個，打開時記的東西（BPM）照新的那段 -->
+		{#key openSegmentId}
+			<SegmentSettings
+				segmentId={openSegmentId}
+				{waveXToSec}
+				onclose={() => {
+					playback.stopPreview();
+					openSegmentId = null;
+				}}
+			/>
+		{/key}
 	{/if}
 	{#if settingsOpen}
 		<FlowSettings

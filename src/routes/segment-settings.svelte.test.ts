@@ -171,6 +171,20 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 		expect(field(dialog, '最後一個八拍有幾拍').value).toBe('4');
 	});
 
+	it('段設定開著時從時間軸點另一段：「照音樂長度重算八拍數」照新的那段的 BPM 判斷，沒改 BPM 就不出現', async () => {
+		let flow = flowOf(loadSegmentAudio(oneMusic(), 's1', '歌.mp3'));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's2', { audioId: 'a1', bpm: 120 }));
+		await open(flow, 90, true);
+		const first = await settings('音樂 1');
+		expect(first.queryByRole('button', { name: '照音樂長度重算八拍數' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 2/, hidden: true }));
+		const second = within(screen.getByRole('dialog', { name: '音樂 2 設定' }));
+		expect(field(second, 'BPM').value).toBe('120');
+		expect(second.queryByRole('button', { name: '照音樂長度重算八拍數' })).toBeNull();
+	});
+
 	it('重算讓段變短：動作裁短到段尾，有紀錄會不見就先問，按確定才改', async () => {
 		// libSample 的音樂 1 換成 3 秒的歌；Lib 1-1 到 1-8，第 1 組練過一次記了下法（1-7 到 1-8）
 		let flow = flowOf(loadSegmentAudio(libSample(), 's1', '歌.mp3'));
