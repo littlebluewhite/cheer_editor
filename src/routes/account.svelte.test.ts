@@ -27,6 +27,23 @@ describe('首頁的登入、帳號選單', () => {
 		expect(within(menu).getByRole('menuitem', { name: '登出' })).toBeTruthy();
 	});
 
+	it('管理員的選單多「管理使用者」，到管理使用者頁；不是管理員沒有', async () => {
+		const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: lin.password };
+		const admin = fakeServer({ users: [lin], signedIn: lin.email });
+		const { unmount } = render(Page, editorPage(null, { server: admin.server }).props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '林教練 ▾' }));
+		const link = within(screen.getByRole('menu')).getByRole('menuitem', { name: '管理使用者' });
+		expect(link.getAttribute('href')).toBe('/users');
+		unmount();
+
+		const user = fakeServer({ users: [wang], signedIn: wang.email });
+		render(Page, editorPage(null, { server: user.server }).props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '王教練 ▾' }));
+		expect(within(screen.getByRole('menu')).queryByRole('menuitem', { name: '管理使用者' })).toBeNull();
+	});
+
 	it('按「登出」：登出這台裝置，回到有「登入」的首頁', async () => {
 		const fake = fakeServer({ users: [lin], signedIn: lin.email });
 		render(Page, editorPage(null, { server: fake.server }).props);

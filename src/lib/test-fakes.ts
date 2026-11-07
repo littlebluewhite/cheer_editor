@@ -24,7 +24,7 @@ import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
-import { ServerUnreachable, type LinkInfo, type Me, type ServerAdapter } from '#lib/server-api.js';
+import { ServerUnreachable, type AdminResult, type LinkInfo, type Me, type ServerAdapter, type UserStatus } from '#lib/server-api.js';
 
 /** 假的存檔：每次存的位元組和檔名照順序記下來，回傳給的結果。 */
 export function fakeSaver(outcome: SaveOutcome = 'saved') {
@@ -110,39 +110,73 @@ export function fakePendingInput(): PendingInput & { pending: boolean; onflush: 
 	};
 }
 
-/** 假的伺服器上的一個使用者：設好密碼的才有 password。 */
+/** 假的伺服器上的一個使用者：設好密碼的才有 password；被停用的 disabled。 */
 export interface FakeUser extends Me {
 	password?: string;
+	disabled?: boolean;
+}
+
+/** 假的設密碼連結：誰的、哪一種；邀請還有幾小時過期（沒寫是 24）。 */
+export interface FakeLink {
+	email: string;
+	purpose: LinkInfo['purpose'];
+	hoursLeft?: number;
 }
 
 /**
  * 假的連伺服器：使用者、設密碼連結（token → 那條連結）放在記憶體，規則跟真的一樣
- * （email 不分大小寫；密碼至少 15 個看得到的字、不在外洩清單 breached 裡；連結用一次就不能用）。
+ * （email 不分大小寫；密碼至少 15 個看得到的字、不在外洩清單 breached 裡；連結用一次就不能用；被停用的登不進去）。
  * signedIn：現在登入的是誰（沒登入是 null）。unreachable 設成 true 就是連不上伺服器。
+ * 管理使用者：使用者的 id 是他在 users 裡的位置 + 1；mailQuota 設成 true 就是寄信服務今天的額度用完了。
  */
 export function fakeServer(
-	init: { users?: FakeUser[]; links?: Record<string, { email: string; purpose: LinkInfo['purpose'] }>; signedIn?: string | null; breached?: string[] } = {}
+	init: { users?: FakeUser[]; links?: Record<string, FakeLink>; signedIn?: string | null; breached?: string[] } = {}
 ) {
 	const state = {
 		users: init.users ?? [],
 		links: { ...init.links },
 		signedIn: init.signedIn ?? null,
 		breached: init.breached ?? [],
-		unreachable: false
+		unreachable: false,
+		mailQuota: false
 	};
-	const find = (email: string) => state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+	let nextToken = 1;
+	const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+	const find = (email: string) => state.users.find((u) => same(u.email, email));
 	const reachable = () => {
 		if (state.unreachable) throw new ServerUnreachable();
 	};
+	const signedInUser = () => (!state.unreachable && state.signedIn ? find(state.signedIn) : undefined);
+	const linksOf = (email: string) => Object.entries(state.links).filter(([, l]) => same(l.email, email));
+	/** 換一條新的連結：這個人之前的連結作廢。 */
+	const newLink = (email: string, purpose: FakeLink['purpose']) => {
+		for (const [token] of linksOf(email)) delete state.links[token];
+		state.links[`fake-token-${nextToken++}`] = { email, purpose };
+	};
+	const status = (u: FakeUser): UserStatus => {
+		if (u.disabled) return { kind: 'disabled' };
+		if (u.password) return { kind: 'active' };
+		const invite = linksOf(u.email).find(([, l]) => l.purpose === 'invite')?.[1];
+		return invite ? { kind: 'invited', hoursLeft: invite.hoursLeft ?? 24 } : { kind: 'inviteExpired' };
+	};
+	/** 管理員叫的、這個 id 的人：先看連得上、是不是管理員、寄信服務今天還能不能寄（mail）。 */
+	const adminDoes = (id: number, mail: boolean, act: (u: FakeUser) => AdminResult | void): AdminResult => {
+		reachable();
+		if (!signedInUser()?.isAdmin) throw new ServerUnreachable();
+		const u = state.users[id - 1];
+		if (!u) throw new ServerUnreachable();
+		if (mail && state.mailQuota) return { kind: 'mailQuota' };
+		return act(u) ?? 'ok';
+	};
 	const server: ServerAdapter = {
 		async me() {
-			const u = !state.unreachable && state.signedIn ? find(state.signedIn) : undefined;
-			return u ? { email: u.email, name: u.name, isAdmin: u.isAdmin } : null;
+			const u = signedInUser();
+			return u && !u.disabled ? { email: u.email, name: u.name, isAdmin: u.isAdmin } : null;
 		},
 		async login(email, password) {
 			reachable();
 			const u = find(email);
-			if (!u?.password || u.password !== password) return 'wrong';
+			if (!u?.password || u.password !== password || u.disabled) return 'wrong';
 			state.signedIn = u.email;
 			return 'ok';
 		},
@@ -167,6 +201,54 @@ export function fakeServer(
 			u.password = password;
 			delete state.links[token];
 			return 'ok';
+		},
+		async listUsers() {
+			reachable();
+			const me = signedInUser();
+			if (!me?.isAdmin) return null;
+			return state.users.map((u, i) => ({ id: i + 1, name: u.name, email: u.email, status: status(u), me: u === me }));
+		},
+		async addUser(email, name) {
+			reachable();
+			if (!signedInUser()?.isAdmin) throw new ServerUnreachable();
+			if (find(email)) return { kind: 'emailTaken' };
+			if (state.mailQuota) return { kind: 'mailQuota' };
+			state.users.push({ email: email.trim(), name: name.trim(), isAdmin: false });
+			newLink(email.trim(), 'invite');
+			return 'ok';
+		},
+		async resendInvite(id) {
+			return adminDoes(id, true, (u) => {
+				if (u.password || u.disabled) return { kind: 'notAllowed' };
+				newLink(u.email, 'invite');
+			});
+		},
+		async sendReset(id) {
+			return adminDoes(id, true, (u) => {
+				if (!u.password || u.disabled) return { kind: 'notAllowed' };
+				newLink(u.email, 'reset');
+			});
+		},
+		async changeEmail(id, email) {
+			const other = find(email);
+			if (other && other !== state.users[id - 1]) return { kind: 'emailTaken' };
+			return adminDoes(id, true, (u) => {
+				for (const [, l] of linksOf(u.email)) l.email = email.trim();
+				if (state.signedIn && same(state.signedIn, u.email)) state.signedIn = email.trim();
+				u.email = email.trim();
+			});
+		},
+		async disableUser(id) {
+			return adminDoes(id, false, (u) => {
+				if (u === signedInUser()) return { kind: 'notAllowed' };
+				u.disabled = true;
+				for (const [token] of linksOf(u.email)) delete state.links[token];
+			});
+		},
+		async enableUser(id) {
+			return adminDoes(id, false, (u) => {
+				u.disabled = false;
+			});
 		}
 	};
 	return { server, state };

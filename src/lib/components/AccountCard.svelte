@@ -5,7 +5,8 @@
 	import { resolve } from '$app/paths';
 	import Icon from '#lib/components/Icon.svelte';
 
-	let { children }: { children: Snippet } = $props();
+	/** wide：管理使用者那種一張表的頁，卡片放寬。 */
+	let { children, wide = false }: { children: Snippet; wide?: boolean } = $props();
 </script>
 
 <div class="page">
@@ -13,7 +14,7 @@
 		<a class="brand" href={resolve('/')}>競技啦啦隊流程編輯器</a>
 		<a class="btn ghost" href={resolve('/')}><Icon name="home" />回首頁</a>
 	</header>
-	<main class="card">
+	<main class="card" class:wide>
 		{@render children()}
 	</main>
 </div>
@@ -45,6 +46,9 @@
 		background: var(--surface);
 		border-radius: 12px;
 		box-shadow: var(--shadow-pop);
+	}
+	.card.wide {
+		width: min(960px, calc(100% - 32px));
 	}
 	.card :global(form) {
 		display: grid;

@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod admin;
 pub mod breach;
 pub mod clock;
 pub mod config;
@@ -45,6 +46,15 @@ pub fn app(state: AppState, site: &Path) -> Router {
         .route("/api/logout", post(accounts::logout))
         .route("/api/password-link", post(accounts::password_link))
         .route("/api/set-password", post(accounts::set_password))
+        .route("/api/admin/users", get(admin::list).post(admin::add))
+        .route(
+            "/api/admin/users/{id}/resend-invite",
+            post(admin::resend_invite),
+        )
+        .route("/api/admin/users/{id}/send-reset", post(admin::send_reset))
+        .route("/api/admin/users/{id}/email", post(admin::change_email))
+        .route("/api/admin/users/{id}/disable", post(admin::disable))
+        .route("/api/admin/users/{id}/enable", post(admin::enable))
         // 建置把每頁存成 <名字>.html（例：/guide → guide.html），重新整理才打得開。
         // 找不到的路徑回前端的入口頁，讓前端自己處理路由。
         .fallback_service(

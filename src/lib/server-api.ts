@@ -4,8 +4,14 @@
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { Me } from '#lib/api-types/Me.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
+import type { AdminProblem } from '#lib/api-types/AdminProblem.js';
+import type { UserRow } from '#lib/api-types/UserRow.js';
+import type { UserStatus } from '#lib/api-types/UserStatus.js';
 
-export type { LinkInfo, Me, PasswordProblem };
+export type { AdminProblem, LinkInfo, Me, PasswordProblem, UserRow, UserStatus };
+
+/** 管理的事的結果：做好了，或做不成的原因（email 撞到別人、今天寄不出去、這個人現在不能這樣做）。 */
+export type AdminResult = 'ok' | AdminProblem;
 
 /** 設密碼的結果：設好、連結不能用了（過期、用過、亂改的），或密碼不收的原因。 */
 export type SetPasswordResult = 'ok' | 'gone' | PasswordProblem;
@@ -28,6 +34,22 @@ export interface ServerAdapter {
 	passwordLink(token: string): Promise<LinkInfo | null>;
 	/** 用設密碼連結設密碼。 */
 	setPassword(token: string, password: string): Promise<SetPasswordResult>;
+
+	// 管理使用者：只有管理員能叫（#245）。
+	/** 所有使用者；不是管理員是 null。 */
+	listUsers(): Promise<UserRow[] | null>;
+	/** 加使用者、寄邀請。 */
+	addUser(email: string, name: string): Promise<AdminResult>;
+	/** 重寄邀請：舊的連結馬上不能用。 */
+	resendInvite(id: number): Promise<AdminResult>;
+	/** 寄重設密碼信。 */
+	sendReset(id: number): Promise<AdminResult>;
+	/** 改 email：新舊兩個信箱都收到通知。 */
+	changeEmail(id: number, email: string): Promise<AdminResult>;
+	/** 停用：他每台裝置登出、還沒用的連結作廢。 */
+	disableUser(id: number): Promise<AdminResult>;
+	/** 恢復：用原本的密碼就能登入。 */
+	enableUser(id: number): Promise<AdminResult>;
 }
 
 /** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。 */
@@ -43,8 +65,21 @@ export function httpServer(base = ''): ServerAdapter {
 		} catch {
 			throw new ServerUnreachable();
 		}
-		if (res.status >= 500) throw new ServerUnreachable();
+		// 503 是寄信服務今天的額度用完了（內容寫著 mailQuota），交給管理的事自己看。
+		if (res.status >= 500 && res.status !== 503) throw new ServerUnreachable();
 		return res;
+	}
+	async function admin(path: string, body: unknown = {}): Promise<AdminResult> {
+		const res = await post(`admin/users${path}`, body);
+		if (res.ok) return 'ok';
+		if (res.status === 409 || res.status === 503) {
+			try {
+				return (await res.json()) as AdminProblem;
+			} catch {
+				// 不是我們的伺服器回的 503（例：前面的 proxy）
+			}
+		}
+		throw new ServerUnreachable();
 	}
 	return {
 		async me() {
@@ -76,6 +111,23 @@ export function httpServer(base = ''): ServerAdapter {
 			if (res.status === 410) return 'gone';
 			if (res.status === 422) return (await res.json()) as PasswordProblem;
 			throw new ServerUnreachable();
-		}
+		},
+		async listUsers() {
+			let res: Response;
+			try {
+				res = await fetch(`${base}/api/admin/users`);
+			} catch {
+				throw new ServerUnreachable();
+			}
+			if (res.ok) return (await res.json()) as UserRow[];
+			if (res.status === 401 || res.status === 403) return null;
+			throw new ServerUnreachable();
+		},
+		addUser: (email, name) => admin('', { email, name }),
+		resendInvite: (id) => admin(`/${id}/resend-invite`),
+		sendReset: (id) => admin(`/${id}/send-reset`),
+		changeEmail: (id, email) => admin(`/${id}/email`, { email }),
+		disableUser: (id) => admin(`/${id}/disable`),
+		enableUser: (id) => admin(`/${id}/enable`)
 	};
 }
