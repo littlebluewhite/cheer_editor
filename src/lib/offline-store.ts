@@ -4,10 +4,12 @@
 // 存的樣子帶版號（v）：之後的新版用 readUnsent 讀得懂舊版存的（讀不懂的不算）。
 // 這一層的 IndexedDB 不寫自動測試（jsdom 沒有 IndexedDB），改用手動檢查；存的樣子怎麼讀在 offline-store.test.ts。
 // iPhone、iPad 的 Safari（不是從主畫面打開的）7 天沒打開這個網站就清掉網站存的資料：needsHomeScreen 說要不要提醒加到主畫面。
+// 離線副本（#261）也存在這裡：登入的人打開過的雲端流程留一份（編排、紀錄、音樂），斷網也打得開；
+// 還有這台登入的是誰、上次看到幾支雲端流程（斷網時 me() 問不到，首頁照這個畫雲端那塊）。登出就清掉（clearCopies）。
 
-import type { StoredAttempt } from '#lib/core';
+import type { AudioBytes, StoredAttempt } from '#lib/core';
 import type { DroppedRecord } from '#lib/editor-session.svelte.js';
-import type { RoomRequest } from '#lib/server-api.js';
+import type { CloudRecord, Me, Role, RoomRequest } from '#lib/server-api.js';
 
 /** 改、刪、救回紀錄的那一種送進房間的（#258）。 */
 export type AmendRequest = Extract<RoomRequest, { kind: 'changeRecords' | 'deleteRecords' | 'restoreRecords' }>;
@@ -25,6 +27,30 @@ export interface UnsentRecords {
 	dropped: DroppedRecord[];
 }
 
+/** 一支雲端流程的離線副本（音樂另外存，copyAudio 拿）。 */
+export interface OfflineCopy {
+	flowId: string;
+	name: string;
+	/** 這台的是什麼時候的樣子（毫秒）：「這台的是 11/6 15:20 的樣子」。 */
+	savedAt: number;
+	/** 最近打開的時候（毫秒）：留最近打開的 5 支照這個。 */
+	openedAt: number;
+	/** 我的權限（存的時候的）。 */
+	role: Role;
+	/** 第幾步的樣子（連上時從這裡補上別人的改動）。 */
+	step: number;
+	/** 編排（不含紀錄）。 */
+	flow: unknown;
+	/** 成功率紀錄（伺服器上的，不含這台還沒傳的）。 */
+	records: CloudRecord[];
+}
+
+/** 這台登入的是誰、上次看到的雲端流程（id）：斷網時首頁用。 */
+export interface SignedInHere {
+	me: Me;
+	cloudIds: string[];
+}
+
 export interface OfflineStore {
 	/** 每支流程這台還沒傳的（和沒存進去的清單），不照順序。讀不到是空的。 */
 	unsent(): Promise<UnsentRecords[]>;
@@ -36,6 +62,56 @@ export interface OfflineStore {
 	needsHomeScreen(): boolean;
 	/** 加到主畫面的提醒按了「知道了」：以後不再提醒。 */
 	homeScreenKnown(): void;
+	/** 離線副本（#261），不照順序、不帶音樂。讀不到是空的。 */
+	copies(): Promise<OfflineCopy[]>;
+	/** 一支離線副本的音樂（audio id → 位元組）。 */
+	copyAudio(flowId: string): Promise<AudioBytes>;
+	/** 存一支離線副本，蓋掉舊的；audio 沒給是音樂不動。 */
+	saveCopy(copy: OfflineCopy, audio?: AudioBytes): Promise<void>;
+	/** 刪掉一支離線副本（和它的音樂）。 */
+	dropCopy(flowId: string): Promise<void>;
+	/** 登出：離線副本、這台登入的是誰都清掉（還沒傳的紀錄不動）。 */
+	clearCopies(): Promise<void>;
+	/** 這台登入的是誰（斷網時首頁用）；沒有是 null。 */
+	signedInHere(): Promise<SignedInHere | null>;
+	/** 記下這台登入的是誰、看到的雲端流程。 */
+	saveSignedInHere(here: SignedInHere): Promise<void>;
+}
+
+/** 離線副本留最近打開的幾支（跟草稿的 5 支分開算）。 */
+export const MAX_COPIES = 5;
+
+/**
+ * 離線副本要刪掉哪幾支：照最近打開的留 MAX_COPIES 支，再舊的刪掉，但這台還有紀錄沒傳的那支不刪。
+ */
+export function copiesToDrop(copies: OfflineCopy[], unsent: UnsentRecords[]): string[] {
+	const keep = new Set(unsent.filter((u) => unsentCount(u) > 0).map((u) => u.flowId));
+	return [...copies]
+		.sort((a, b) => b.openedAt - a.openedAt)
+		.slice(MAX_COPIES)
+		.filter((c) => !keep.has(c.flowId))
+		.map((c) => c.flowId);
+}
+
+/** 存進去的離線副本（帶版號）。 */
+export function storedCopy(c: OfflineCopy): unknown {
+	return { v: VERSION, ...structuredClone(c) };
+}
+
+/** 存著的離線副本讀回來：認得的版號才讀；讀不懂是 null。 */
+export function readCopy(value: unknown): OfflineCopy | null {
+	const v = value as Partial<OfflineCopy> & { v?: unknown };
+	if (!v || typeof v !== 'object' || v.v !== 1 || typeof v.flowId !== 'string' || !v.flow) return null;
+	return {
+		flowId: v.flowId,
+		name: typeof v.name === 'string' ? v.name : '',
+		savedAt: typeof v.savedAt === 'number' ? v.savedAt : 0,
+		openedAt: typeof v.openedAt === 'number' ? v.openedAt : 0,
+		role: v.role ?? 'viewer',
+		step: typeof v.step === 'number' ? v.step : 0,
+		flow: v.flow,
+		records: Array.isArray(v.records) ? v.records : []
+	};
 }
 
 /** 現在存的樣子的版號。 */
@@ -82,6 +158,10 @@ export function isVolatileSafari(userAgent: string, maxTouchPoints: number, stan
 
 const DB_NAME = 'cheer-editor-offline';
 const UNSENT = 'unsent';
+const COPIES = 'copies';
+const COPY_AUDIO = 'copyAudio';
+const META = 'meta';
+const SIGNED_IN = 'signedIn';
 const HOME_SCREEN_KEY = 'cheer-editor:homeScreenKnown';
 
 /** 真的：IndexedDB（私密視窗、空間不夠、封鎖網站資料時讀寫失敗：讀當作沒有，寫吞掉）。 */
@@ -90,7 +170,7 @@ export function createIndexedDbOfflineStore(): OfflineStore {
 		async unsent() {
 			const found: UnsentRecords[] = [];
 			try {
-				await run('readonly', (s) => {
+				await run(UNSENT, 'readonly', (s) => {
 					const req = s.openCursor();
 					req.onsuccess = () => {
 						const cursor = req.result;
@@ -108,16 +188,69 @@ export function createIndexedDbOfflineStore(): OfflineStore {
 		},
 		async saveUnsent(u) {
 			try {
-				await run('readwrite', (s) => (isEmptyUnsent(u) ? s.delete(u.flowId) : s.put(storedUnsent(u), u.flowId)));
+				await run(UNSENT, 'readwrite', (s) => (isEmptyUnsent(u) ? s.delete(u.flowId) : s.put(storedUnsent(u), u.flowId)));
 			} catch {
 				// 存不了：只留在這個分頁
 			}
 		},
 		async clearUnsent() {
 			try {
-				await run('readwrite', (s) => s.clear());
+				await run(UNSENT, 'readwrite', (s) => s.clear());
 			} catch {
 				// 清不了就算了
+			}
+		},
+		async copies() {
+			try {
+				const all = (await run(COPIES, 'readonly', (s) => s.getAll())) as unknown[];
+				return all.flatMap((v) => readCopy(v) ?? []);
+			} catch {
+				return [];
+			}
+		},
+		async copyAudio(flowId) {
+			try {
+				return ((await run(COPY_AUDIO, 'readonly', (s) => s.get(flowId))) as AudioBytes | undefined) ?? {};
+			} catch {
+				return {};
+			}
+		},
+		async saveCopy(copy, audio) {
+			try {
+				await run(COPIES, 'readwrite', (s) => s.put(storedCopy(copy), copy.flowId));
+				if (audio) await run(COPY_AUDIO, 'readwrite', (s) => s.put(audio, copy.flowId));
+			} catch {
+				// 存不了（空間不夠）：這支就沒有離線副本
+			}
+		},
+		async dropCopy(flowId) {
+			try {
+				await run(COPIES, 'readwrite', (s) => s.delete(flowId));
+				await run(COPY_AUDIO, 'readwrite', (s) => s.delete(flowId));
+			} catch {
+				// 刪不了就算了
+			}
+		},
+		async clearCopies() {
+			try {
+				for (const name of [COPIES, COPY_AUDIO, META]) await run(name, 'readwrite', (s) => s.clear());
+			} catch {
+				// 清不了就算了
+			}
+		},
+		async signedInHere() {
+			try {
+				const v = (await run(META, 'readonly', (s) => s.get(SIGNED_IN))) as SignedInHere | undefined;
+				return v?.me ? v : null;
+			} catch {
+				return null;
+			}
+		},
+		async saveSignedInHere(here) {
+			try {
+				await run(META, 'readwrite', (s) => s.put(structuredClone(here), SIGNED_IN));
+			} catch {
+				// 存不了：斷網時首頁當作沒登入
 			}
 		},
 		needsHomeScreen() {
@@ -144,20 +277,25 @@ export function createIndexedDbOfflineStore(): OfflineStore {
 
 function openDb(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
-		const req = indexedDB.open(DB_NAME, 1);
-		req.onupgradeneeded = () => req.result.createObjectStore(UNSENT);
+		// 第 2 版多了離線副本（#261）：舊的資料庫只補上沒有的
+		const req = indexedDB.open(DB_NAME, 2);
+		req.onupgradeneeded = () => {
+			for (const name of [UNSENT, COPIES, COPY_AUDIO, META]) {
+				if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
+			}
+		};
 		req.onsuccess = () => resolve(req.result);
 		req.onerror = () => reject(req.error);
 	});
 }
 
 /** 開一個交易做一件事，等交易寫完（不只是 request 成功）才算數。 */
-async function run(mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest): Promise<unknown> {
+async function run(name: string, mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest): Promise<unknown> {
 	const db = await openDb();
 	try {
 		return await new Promise((resolve, reject) => {
-			const tx = db.transaction(UNSENT, mode);
-			const req = op(tx.objectStore(UNSENT));
+			const tx = db.transaction(name, mode);
+			const req = op(tx.objectStore(name));
 			tx.oncomplete = () => resolve(req.result);
 			tx.onerror = tx.onabort = () => reject(tx.error);
 		});

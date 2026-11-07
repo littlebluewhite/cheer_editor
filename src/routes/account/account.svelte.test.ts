@@ -89,12 +89,14 @@ describe('我的帳號頁', () => {
 		expect(state.users[0].password).toBe(lin.password);
 	});
 
-	it('「登出這台裝置」：登出，回首頁', async () => {
-		const { state, went } = await accountPage();
+	it('「登出這台裝置」：登出，回首頁；這台的離線副本清掉（#261）', async () => {
+		const { state, went, offline } = await accountPage();
+		await offline.store.saveCopy({ flowId: 'c1', name: '流程', savedAt: 1, openedAt: 1, role: 'owner', step: 0, flow: {}, records: [] });
 		await fireEvent.click(screen.getByRole('button', { name: '登出這台裝置' }));
 		await flush();
 		expect(state.signedIn).toBeNull();
 		expect(went).toEqual(['/']);
+		expect(offline.copyIds()).toEqual([]);
 	});
 
 	it('這台還有沒傳的成功率紀錄（#260）：登出先跳小框，「先不要登出」留著，「丟掉，登出」才登出', async () => {

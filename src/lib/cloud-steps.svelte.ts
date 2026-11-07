@@ -113,6 +113,8 @@ export class CloudSteps {
 	onrevoked: () => void = () => {};
 	/** 擁有者刪了這支流程（#252）：流程檔接上（回首頁說原因）。 */
 	ondeleted: () => void = () => {};
+	/** 斷線後又連上了（伺服器說可以送步，#261）：從離線副本打開的，流程檔接上換成最新的。 */
+	onback: () => void = () => {};
 
 	/**
 	 * 連 room（這支流程的房間），從第 step 步開始，我的權限是 role；session 改好的步交給它。
@@ -139,6 +141,11 @@ export class CloudSteps {
 		this.#hello();
 		session.onstep = (s, label) => this.#push({ ...s, label, seen: this.#seen });
 		session.onrecord = (before, after) => this.#recorded(before, after);
+	}
+
+	/** 上次看到第幾步（離線副本記著，連上時從這裡補，#261）。 */
+	get seen(): number {
+		return this.#seen;
 	}
 
 	/** 還有幾筆沒傳。 */
@@ -308,6 +315,7 @@ export class CloudSteps {
 		if (m.kind === 'ready') {
 			this.#ready = true;
 			this.link = 'online';
+			const back = this.offline;
 			if (this.offline) {
 				this.offline = false;
 				this.#lock();
@@ -319,6 +327,7 @@ export class CloudSteps {
 			this.#sendRecords([...this.#unsent.keys()]);
 			for (const { ids, request } of this.#amends.splice(0)) this.#send(ids, request);
 			this.#touch();
+			if (back) this.onback();
 		} else if (m.kind === 'newVersion') {
 			this.newVersion = true;
 			this.offline = false;
