@@ -23,7 +23,9 @@ export function dodgeSelected(watch: () => unknown): Attachment<HTMLElement> {
 			// 放在上方時佔的範圍：場地上緣到提示下緣；左右在上在下都一樣（置中）
 			const left = Math.min(...kids.map((r) => r.left));
 			const right = Math.max(...kids.map((r) => r.right));
-			const bottom = host.getBoundingClientRect().top + TOASTS_TOP_PX + el.offsetHeight + MARGIN_PX;
+			// 選人工具列出現時，上方的提示排在它下面（--tools-h）
+			const tools = parseFloat(getComputedStyle(host).getPropertyValue('--tools-h')) || 0;
+			const bottom = host.getBoundingClientRect().top + TOASTS_TOP_PX + tools + el.offsetHeight + MARGIN_PX;
 			const covered = [...host.querySelectorAll('.dot.selected, .dot.dragging')].some((d) => {
 				const r = d.getBoundingClientRect();
 				return r.left < right && left < r.right && r.top < bottom;
