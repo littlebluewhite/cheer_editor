@@ -40,29 +40,31 @@
 	/** 「第幾張站位」框打的數字（打的時候在哪）；沒打過或換過地方，就是播放頭前面那一張（以前的「跟上一張一樣」）。 */
 	let typed = $state<{ n: number; key: string } | null>(null);
 	const nth = $derived(typed?.key === where.key ? typed.n : Math.max(1, where.on ? where.number - 1 : where.number));
-	/** 按鈕的名字：[_] 換成框裡的數字；沒選人是全隊。 */
-	const nameOf = (a: SelectionAction) => (count ? '' : '全隊') + a.label.replace('[_]', String(nth));
+	/** 沒選人時名字前面加「全隊」。 */
+	const team = $derived(count ? '' : '全隊');
+	/** 按鈕的名字：[_] 換成框裡的數字。 */
+	const nameOf = (a: SelectionAction) => team + a.label.replace('[_]', String(nth));
 
 	/** 畫出來的一項：一個動作自己一顆鈕；同一組（group）的收成一顆「組名 ▾」，點了才看到裡面幾項。 */
 	interface Item {
 		label: string;
 		title: string;
+		/** 收成一組時是組名；一個動作自己一顆鈕時沒有。 */
+		group?: string;
 		actions: SelectionAction[];
 	}
 	const items = $derived(
 		actions.reduce<Item[]>((list, a) => {
 			if (!a.group) return [...list, { label: a.label, title: a.title, actions: [a] }];
-			const label = `${a.group} ▾`;
-			const at = list.find((i) => i.label === label);
+			const at = list.find((i) => i.group === a.group);
 			if (at) {
 				at.actions.push(a);
 				at.title = at.actions.map((x) => x.label).join('或');
 				return list;
 			}
-			return [...list, { label, title: a.label, actions: [a] }];
+			return [...list, { label: `${a.group} ▾`, title: a.label, group: a.group, actions: [a] }];
 		}, [])
 	);
-	const isGroup = (i: Item) => i.label.endsWith(' ▾');
 
 	/** 工具列上打開的那一組（▾ 小選單）和它的鈕。 */
 	let openGroup = $state<{ label: string; button: HTMLElement } | null>(null);
@@ -96,7 +98,7 @@
 	{#if a.nth}
 		{@const [before, after] = a.label.split('[_]')}
 		<span class="nth">
-			{count ? '' : '全隊'}{before.trim()}
+			{team}{before.trim()}
 			<input
 				type="number"
 				min="1"
@@ -119,7 +121,7 @@
 {#if count && actions.length}
 	<div class="tools-bar" role="toolbar" aria-label="選人工具列">
 		{#each items as i (i.label)}
-			{#if isGroup(i)}
+			{#if i.group}
 				<button
 					type="button"
 					title={i.title}
@@ -144,7 +146,7 @@
 		<div
 			class="menu"
 			role="menu"
-			aria-label={group.label.replace(' ▾', '')}
+			aria-label={group.group}
 			{@attach popover({
 				place: below(openGroup.button, { gap: 4, align: 'left', flip: true }),
 				close: () => (openGroup = null),
@@ -169,7 +171,7 @@
 		{@attach menuKeys}
 	>
 		{#each items as i (i.label)}
-			{#if isGroup(i)}
+			{#if i.group}
 				<button
 					type="button"
 					role="menuitem"
