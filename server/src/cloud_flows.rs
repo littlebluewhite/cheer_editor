@@ -213,7 +213,7 @@ pub(crate) struct Outcome<'a> {
 }
 
 /// 時間寫成跟 JS `toISOString` 一樣：`2026-11-07T09:00:00.000Z`。
-fn iso(at: DateTime<Utc>) -> String {
+pub(crate) fn iso(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 

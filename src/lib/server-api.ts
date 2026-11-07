@@ -6,6 +6,7 @@ import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
 import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
 import type { CloudRecord } from '#lib/api-types/CloudRecord.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
+import type { LinkedFlow } from '#lib/api-types/LinkedFlow.js';
 import type { Me } from '#lib/api-types/Me.js';
 import type { MyFlows } from '#lib/api-types/MyFlows.js';
 import type { Person } from '#lib/api-types/Person.js';
@@ -16,6 +17,7 @@ import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
 import type { Presigned } from '#lib/api-types/Presigned.js';
 import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
 import type { RoomRequest } from '#lib/api-types/RoomRequest.js';
+import type { ShareLink } from '#lib/api-types/ShareLink.js';
 import type { SignedOut } from '#lib/api-types/SignedOut.js';
 import type { StartUpload } from '#lib/api-types/StartUpload.js';
 import type { TooManyTries } from '#lib/api-types/TooManyTries.js';
@@ -29,6 +31,7 @@ export type {
 	CloudFlowSummary,
 	CloudRecord,
 	LinkInfo,
+	LinkedFlow,
 	Me,
 	MyFlows,
 	PasswordProblem,
@@ -121,6 +124,16 @@ export interface ServerAdapter {
 	revoke(flowId: string, userId: number): Promise<Person[]>;
 	/** 離開這支流程。 */
 	leave(flowId: string): Promise<void>;
+
+	// 分享連結（#251）：一支流程一條，只有擁有者能開、關；有權限的人都看得到。
+	/** 分享連結開著是連結的那串字，關著是 null。 */
+	shareLink(flowId: string): Promise<string | null>;
+	/** 擁有者開、關分享連結，回現在的（開著再開還是同一條；關掉再打開換新的）。 */
+	switchShareLink(flowId: string, on: boolean): Promise<string | null>;
+	/** 用分享連結打開（不用登入）：編排沒有紀錄；已經登入、有權限的帶自己的權限。連結不能用了是 null。 */
+	linkedFlow(token: string): Promise<LinkedFlow | null>;
+	/** 用分享連結拿一個音樂檔；沒有是 null。 */
+	linkAudioBytes(token: string, audioId: string): Promise<Uint8Array | null>;
 	/** 連一支雲端流程的房間（#248）：先送打招呼（指紋、分頁 id、上次看到第幾步），再一步一步送。 */
 	openRoom(flowId: string): FlowRoom;
 	/**
@@ -167,6 +180,21 @@ export function httpServer(base = ''): ServerAdapter {
 			}
 		}
 		throw new ServerUnreachable();
+	}
+	/** 拿下載的預簽網址（path），再從 R2 拿那個檔；沒有是 null。 */
+	async function presignedBytes(path: string): Promise<Uint8Array | null> {
+		const res = await get(path);
+		if (res.status === 404) return null;
+		if (!res.ok) throw new ServerUnreachable();
+		const { url } = (await res.json()) as Presigned;
+		try {
+			// 從 R2 拿（別的網址）：R2 bucket 的 CORS 要准這個網站（docs/deploy.md）。
+			const file = await fetch(url, { mode: 'cors' });
+			if (!file.ok) throw new ServerUnreachable();
+			return new Uint8Array(await file.arrayBuffer());
+		} catch {
+			throw new ServerUnreachable();
+		}
 	}
 	async function get(path: string): Promise<Response> {
 		let res: Response;
@@ -314,20 +342,24 @@ export function httpServer(base = ''): ServerAdapter {
 			if (!done.ok) throw new ServerUnreachable();
 			return 'ok';
 		},
-		async audioBytes(flowId, audioId) {
-			const res = await get(`flows/${encodeURIComponent(flowId)}/audio/${encodeURIComponent(audioId)}`);
-			if (res.status === 404) return null;
-			if (!res.ok) throw new ServerUnreachable();
-			const { url } = (await res.json()) as Presigned;
-			try {
-				// 從 R2 拿（別的網址）：R2 bucket 的 CORS 要准這個網站（docs/deploy.md）。
-				const file = await fetch(url, { mode: 'cors' });
-				if (!file.ok) throw new ServerUnreachable();
-				return new Uint8Array(await file.arrayBuffer());
-			} catch {
-				throw new ServerUnreachable();
-			}
+		audioBytes: (flowId, audioId) => presignedBytes(`flows/${encodeURIComponent(flowId)}/audio/${encodeURIComponent(audioId)}`),
+		async shareLink(flowId) {
+			const res = await get(`flows/${encodeURIComponent(flowId)}/link`);
+			if (res.ok) return ((await res.json()) as ShareLink).token;
+			throw new ServerUnreachable();
 		},
+		async switchShareLink(flowId, on) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/link`, { on });
+			if (res.ok) return ((await res.json()) as ShareLink).token;
+			throw new ServerUnreachable();
+		},
+		async linkedFlow(token) {
+			const res = await get(`links/${encodeURIComponent(token)}`);
+			if (res.ok) return (await res.json()) as LinkedFlow;
+			if (res.status === 404) return null;
+			throw new ServerUnreachable();
+		},
+		linkAudioBytes: (token, audioId) => presignedBytes(`links/${encodeURIComponent(token)}/audio/${encodeURIComponent(audioId)}`),
 		async forgotPassword(email) {
 			const res = await post('forgot-password', { email });
 			if (!res.ok) throw new ServerUnreachable();

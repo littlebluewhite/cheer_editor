@@ -5,6 +5,7 @@
 // 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
 // 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247），
 // 每一步送伺服器存（cloud，#248），沒有存檔。
+// 用分享連結打開的（#251）：已經有權限的照自己的權限打開；沒有的只能看（linkOnly）：不連房間、沒有草稿、沒有練習頁。
 
 import {
 	audioExtension,
@@ -16,7 +17,7 @@ import {
 	type AudioBytes,
 	type Flow
 } from '#lib/core';
-import { CloudSteps } from '#lib/cloud-steps.svelte.js';
+import { CloudSteps, ONLY_VIEW } from '#lib/cloud-steps.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
@@ -70,6 +71,8 @@ export class FlowFile {
 	#cloudId = $state<string | null>(null);
 	/** 開著的雲端流程一步一步送伺服器存；本機流程、在首頁是 null。 */
 	#cloud = $state.raw<CloudSteps | null>(null);
+	/** 開著的雲端流程是用分享連結看的（沒有權限）：只能看，重新整理才看到新的。 */
+	#linkOnly = $state(false);
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -254,10 +257,17 @@ export class FlowFile {
 		return this.#cloud;
 	}
 
+	/** 開著的雲端流程是用分享連結看的（沒有權限）：只能看、沒有練習頁、分享。 */
+	get linkOnly(): boolean {
+		return this.#linkOnly;
+	}
+
 	#closeCloud() {
 		this.#cloud?.close();
 		this.#cloud = null;
 		this.#cloudId = null;
+		if (this.#linkOnly) this.#editor.session.readOnly = '';
+		this.#linkOnly = false;
 	}
 
 	/** 新建表單選了存在雲端：伺服器照表單的名字、場地建一支，再打開它（沒有草稿）。 */
@@ -288,7 +298,8 @@ export class FlowFile {
 		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
 		const flow = putRecords(found.flow as Flow, records);
-		const music = await this.#editor.readMusic(await this.#cloudAudio(id, flow));
+		const server = this.#editor.adapters.server;
+		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId)));
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
@@ -302,6 +313,32 @@ export class FlowFile {
 			this.#revoked = `你已經不能打開「${name}」。`;
 		};
 		this.#cloud = cloud;
+	}
+
+	/**
+	 * 用分享連結打開（網址 #share=…）：已經登入、有權限的人照自己的權限打開（跟從首頁點的一樣）；
+	 * 沒有權限的只拿到編排（沒有紀錄），只能看：不連房間、沒有草稿。連結關了、換了，首頁說打不開。
+	 */
+	async openLink(token: string) {
+		const server = this.#editor.adapters.server;
+		let found;
+		try {
+			found = await server.linkedFlow(token);
+		} catch {
+			this.#openError = '連不上伺服器，打不開分享連結';
+			return;
+		}
+		if (!found) {
+			this.#openError = '這個分享連結不能用了：可能已經關掉，或換了一條新的。';
+			return;
+		}
+		if (found.role) return this.openCloud(found.id);
+		const flow = found.flow as Flow;
+		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.linkAudioBytes(token, audioId)));
+		this.#start(flow, 'cloud', newDraftId(), music);
+		this.#cloudId = found.id;
+		this.#linkOnly = true;
+		this.#editor.session.readOnly = ONLY_VIEW;
 	}
 
 	/** 被收回回首頁時，首頁最上面黃的那條（「你已經不能打開「…」。」）；沒有是空字串。 */
@@ -331,12 +368,12 @@ export class FlowFile {
 		if (this.#cloudId === id) this.#editor.session.open(null);
 	}
 
-	/** 雲端流程用到的音樂檔，從雲端拿下來（#249）。雲端上沒有、拿不到的不放：那段標「找不到音樂」。 */
-	async #cloudAudio(id: string, flow: Flow): Promise<AudioBytes> {
+	/** 雲端流程用到的音樂檔，從雲端拿下來（#249；get 拿一個）。雲端上沒有、拿不到的不放：那段標「找不到音樂」。 */
+	async #cloudAudio(flow: Flow, get: (audioId: string) => Promise<Uint8Array | null>): Promise<AudioBytes> {
 		const audio: AudioBytes = {};
 		await Promise.all(
 			flow.audio.map(async (a) => {
-				const bytes = await this.#editor.adapters.server.audioBytes(id, a.id).catch(() => null);
+				const bytes = await get(a.id).catch(() => null);
 				if (bytes) audio[a.id] = bytes;
 			})
 		);
