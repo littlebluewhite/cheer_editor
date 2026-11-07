@@ -1,7 +1,8 @@
 <script lang="ts">
 	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」和提示。
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），提示寫出刪了這天第幾次全上，幾秒內可以救回。
-	import { lastRunThrough } from '#lib/core';
+	// 雲端流程的記錄者（#258）換成「刪掉我上一次全上記的」：只刪自己在這天最後記過的那次全上記的組（別人記的不刪）。
+	import { lastRunThrough, runThroughsOn } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import type { Flash } from '#lib/flash.svelte.js';
 	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
@@ -41,11 +42,42 @@
 			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
 		);
 	}
+
+	/** 記錄者（雲端流程）：這天自己記過的最後一次全上是第幾次、自己在那次記的那幾次的 id；沒有是 null。 */
+	const myLastRun = $derived.by(() => {
+		if (!session.ownRecordsOnly) return null;
+		const runs = runThroughsOn(flow, date);
+		const mine = flow.actions.flatMap(
+			(a) => a.successRate?.records.filter((r) => r.date === date && r.runThroughId && !(r.id in session.recordedBy)) ?? []
+		);
+		for (let n = runs.length - 1; n >= 0; n--) {
+			const ids = mine.filter((r) => r.runThroughId === runs[n]).map((r) => r.id);
+			if (ids.length) return { n: n + 1, ids };
+		}
+		return null;
+	});
+
+	function removeMyRun() {
+		const { n, ids } = myLastRun!;
+		removeWithRestore(
+			ask,
+			notice,
+			`已刪掉你在第 ${n} 次全上記的 ${ids.length} 欄`,
+			{ name: 'deleteAttempts', args: [ids] },
+			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
+		);
+	}
 </script>
 
 <div class="run">
 	<button type="button" class="primary" onclick={onrecord}>＋ 記一次全上</button>
-	<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
+	{#if session.ownRecordsOnly}
+		<button type="button" disabled={!myLastRun} title="只刪你在這天最後一次全上記的那幾組（別人記的不刪）" onclick={removeMyRun}
+			>刪掉我上一次全上記的</button
+		>
+	{:else}
+		<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
+	{/if}
 	<RecordNotice {notice} />
 	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 </div>
