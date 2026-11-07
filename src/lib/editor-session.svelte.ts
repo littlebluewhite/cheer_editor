@@ -34,6 +34,9 @@ interface Step {
 	label: string;
 }
 
+/** 選得到的三種東西：站位、動作、人。 */
+type PickKind = 'formation' | 'action' | 'member';
+
 /** 檢視模式下改流程被擋的原因。 */
 export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上方列的「編輯」';
 
@@ -83,7 +86,7 @@ export class EditorSession {
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
 	#memberIds = $state.raw<string[]>([]);
 	/** 最後點的是哪一種：Delete／Backspace 只看它（點了人以後，之前選的站位、動作還在，但不刪）。 */
-	#picked: 'formation' | 'action' | 'member' | null = null;
+	#picked: PickKind | null = null;
 	/**
 	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 VIEW_ONLY；
 	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
@@ -490,7 +493,7 @@ export class EditorSession {
 	}
 
 	/** 選了（on）就記成最後點的這一種；清掉的剛好是最後點的那一種，就變成沒有。 */
-	#pick(kind: 'formation' | 'action' | 'member', on: boolean) {
+	#pick(kind: PickKind, on: boolean) {
 		if (on) this.#picked = kind;
 		else if (this.#picked === kind) this.#picked = null;
 	}
