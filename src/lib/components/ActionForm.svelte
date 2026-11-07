@@ -138,6 +138,8 @@
 	}
 
 	function remove() {
+		// 點「刪除動作」不搶焦點（例：觸控）時，名稱欄打的字先送出，跟離開欄位一樣；表單換成新動作時「未存」不卡住
+		editor.adapters.pendingInput.flush();
 		askAtLength = false;
 		if (action) session.removeAction(action.id, ask);
 		keepFocus();
