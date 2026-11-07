@@ -6,7 +6,7 @@
 	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
 	// 點到一半的記號還沒進流程，跟「這次練」的選擇一樣留在 session：換動作、換頁再回來還在，卡上標「還沒存」。
-	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
+	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次；提示走編輯器唯一的提示，不在卡上）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	import {
 		MARKS,
@@ -25,8 +25,7 @@
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { Flash } from '#lib/flash.svelte.js';
-	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
+	import { removeWithRestore } from './record-notice';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -47,8 +46,6 @@
 	const flow = $derived(session.flow!);
 	/** 記一次、刪掉上一次、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
 	const ask = session.recordAsk();
-	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
-	const flash = new Flash<Notice>();
 
 	/** 這張卡的「這次練」在 session 裡的 key。 */
 	const scopeKey = $derived(`${action.id} ${who}`);
@@ -110,7 +107,7 @@
 	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
 	 */
 	function tap(phaseId: string, mark: Mark) {
-		flash.clear();
+		session.notice = '';
 		if (shown[phaseId] === mark) {
 			const { [phaseId]: _, ...rest } = shown;
 			setMarks(rest);
@@ -124,7 +121,7 @@
 	function save(next = marks) {
 		setMarks({});
 		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
-			done: () => flash.show({ text: '已存' })
+			done: () => (session.notice = '已存')
 		});
 	}
 
@@ -152,7 +149,7 @@
 		ask.send(() => changeAttempt(flow, action.id, attempt.id, draft), {
 			done: () => {
 				editing = null;
-				flash.show({ text: '已改' });
+				session.notice = '已改';
 			}
 		});
 	}
@@ -164,7 +161,7 @@
 		editing = null;
 		removeWithRestore(
 			ask,
-			flash,
+			session,
 			removedText(attempt),
 			() => deleteAttempt(flow, action.id, attempt.id),
 			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
@@ -174,7 +171,7 @@
 	function removeLast() {
 		removeWithRestore(
 			ask,
-			flash,
+			session,
 			removedText(today.findLast((r) => r.practice === 'drill')!),
 			() => deleteLastAttempt(flow, action.id, who, date, 'drill'),
 			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
@@ -230,18 +227,13 @@
 		{/each}
 	</div>
 
-	<!-- 提示在左、存檔鈕在右（靠近 ✓）；這一列高度固定，提示出現、收掉都不位移 -->
-	<div class="save-row">
-		<RecordNotice notice={flash} />
-		{#if whole && phases.length > 1}
+	<!-- 存檔鈕在右（靠近 ✓）。提示（已存、已刪掉…救回）浮在練習畫面下方，不在卡上推動版面 -->
+	{#if whole && phases.length > 1}
+		<div class="save-row">
 			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>存這一次</button>
-			<button
-				type="button"
-				class="primary all-ok"
-				onclick={() => save(fillOk(action, shown))}>全部 ✓ 存</button
-			>
-		{/if}
-	</div>
+			<button type="button" class="primary all-ok" onclick={() => save(fillOk(action, shown))}>全部 ✓ 存</button>
+		</div>
+	{/if}
 	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 
@@ -520,9 +512,6 @@
 		justify-content: flex-end;
 		gap: 8px;
 		min-height: 36px;
-	}
-	.save-row :global(.notice) {
-		margin-right: auto;
 	}
 	.undo-last {
 		flex: none;

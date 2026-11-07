@@ -5,7 +5,7 @@
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { nextId } from './ids';
-import { answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
+import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
 import { atText, parseNumber, segmentSpans, units } from './time';
 
 export interface MusicSegment {
@@ -247,7 +247,7 @@ export function updateSegment(
 	if (!answered(options) && (droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
 		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
-		const cleared = records ? `，會一起清掉 ${records} 次紀錄` : '';
+		const cleared = records ? `，會一起清掉 ${records} 次紀錄${RECORDS_GONE}` : '';
 		return needsConfirm(`${label} 縮短後，下面這些放不進段裡，確定就刪掉${cleared}`, [
 			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${atText(old, a.start)} 起）`),
 			...droppedFormations.map(
