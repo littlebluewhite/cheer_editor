@@ -68,6 +68,7 @@
 		raised = [],
 		toMeters = screenCtmToMeters,
 		controls = true,
+		rail = true,
 		ghosts = {},
 		walks = [],
 		clashes = [],
@@ -91,6 +92,8 @@
 		toMeters?: ToMeters;
 		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
 		controls?: boolean;
+		/** false：左欄藏起來（不拆掉，切回來原樣），場地拿整個寬度（檢視模式）。只在 controls 時有左欄。 */
+		rail?: boolean;
 		/** 上一張站位的位置，畫成淡淡的影子點。有選人時只畫選到的人。 */
 		ghosts?: Record<string, Position>;
 		/** 走位線，從起點畫到終點；太快的標紅、很喘的標橘。有選人時只畫選到的人。 */
@@ -531,9 +534,9 @@
 	}
 </script>
 
-<div class="field-wrap" class:with-rail={controls}>
+<div class="field-wrap" class:with-rail={controls && rail}>
 	{#if controls}
-		<div class="rail">
+		<div class="rail" hidden={!rail}>
 			<div class="rail-head">
 				<div class="tools">
 					<button
@@ -712,6 +715,9 @@
 		gap: 8px;
 		min-height: 0;
 		overflow-y: auto;
+	}
+	.rail[hidden] {
+		display: none;
 	}
 	.rail > :global(*) {
 		max-width: 100%;

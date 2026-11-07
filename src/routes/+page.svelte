@@ -27,6 +27,7 @@
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
+	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import type CueGrid from '#lib/components/CueGrid.svelte';
@@ -433,6 +434,7 @@
 		class="editor"
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
+		class:viewing={session.viewing && !narrow}
 		class:narrow
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
@@ -456,6 +458,16 @@
 					>
 				</div>
 			{/if}
+		{/snippet}
+		<!-- 「我」選單：手機的檢視畫面和電腦的檢視模式右邊欄共用（一次只出現一個） -->
+		{#snippet mePicker(hint: string)}
+			<label for="me-pick">我</label>
+			<select id="me-pick" value={myId} onchange={(e) => pickMe(e.currentTarget.value)}>
+				<option value="">{hint}</option>
+				{#each flow?.members ?? [] as m (m.id)}
+					<option value={m.id}>{m.name}</option>
+				{/each}
+			</select>
 		{/snippet}
 		{#snippet transport()}
 			<div class="transport" hidden={view === 'practice'}>
@@ -615,13 +627,7 @@
 					</div>
 					{@render transport()}
 					<div class="phone-me">
-						<label for="phone-me">我</label>
-						<select id="phone-me" value={myId} onchange={(e) => pickMe(e.currentTarget.value)}>
-							<option value="">（選自己：場上標亮我、八拍表只看我的）</option>
-							{#each flow.members as m (m.id)}
-								<option value={m.id}>{m.name}</option>
-							{/each}
-						</select>
+						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
 					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
@@ -640,6 +646,7 @@
 					positions={positionsAt(flow, playback.sec)}
 					raised={raisedAt(flow, playback.sec)}
 					{toMeters}
+					rail={!session.viewing}
 					ghosts={trail.ghosts}
 					walks={trail.walks}
 					clashes={trail.clashes}
@@ -729,7 +736,7 @@
 				</Field>
 			</main>
 
-			<aside class="inspector" aria-label="右邊欄" hidden={view === 'practice'}>
+			<aside class="inspector" class:viewing={session.viewing} aria-label="右邊欄" hidden={view === 'practice'}>
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 				<div
 					class="col-split"
@@ -743,7 +750,7 @@
 					{@attach inspectorDivider.attach}
 				></div>
 				<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
-				<div class="tabs" role="tablist" aria-label="右邊欄" onkeydown={tabKey}>
+				<div class="tabs" role="tablist" aria-label="右邊欄" hidden={session.viewing} onkeydown={tabKey}>
 					<button
 						type="button"
 						role="tab"
@@ -762,15 +769,27 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
+				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
 					<!-- 換一份流程就重開：上一支沒送出的加隊員名單不帶過去 -->
 					{#key opened}<MemberPanel />{/key}
 				</div>
+				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
+				{#if session.viewing}
+					<div class="panel view-panel">
+						<div class="view-me">{@render mePicker('（選自己：八拍表這一列只看我的）')}</div>
+						<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+						{#if session.selectedAction}
+							<ActionDetail {flow} action={session.selectedAction} />
+						{:else}
+							<p class="view-hint">點時間軸上的動作，這裡看得到人、任務角色、拍點、備註。</p>
+						{/if}
+					</div>
+				{/if}
 			</aside>
 
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ↑↓ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
@@ -961,6 +980,10 @@
 		/* 場地｜右邊欄。右邊欄的寬度放在 --inspector-w（沒拖過時照螢幕大小自動分）。 */
 		grid-template-columns: minmax(0, 1fr) var(--inspector-w, 360px);
 		background: var(--paper);
+	}
+	/* 檢視模式是看的版面：時間軸預設矮一點（拖過分界就照拖的），場地拿到更多高度 */
+	.editor.viewing {
+		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(160px, 22vh));
 	}
 	/* 練習：主畫面換成練習畫面，編排的東西藏起來（不拆掉：場地、時間軸的縮放還在） */
 	.editor.practicing {
@@ -1728,8 +1751,32 @@
 		align-content: start;
 		gap: 18px;
 	}
-	.panel[hidden] {
+	.panel[hidden],
+	.tabs[hidden] {
 		display: none;
+	}
+	/* 檢視模式沒有分頁列：看的那塊拿整個高度 */
+	.inspector.viewing {
+		grid-template-rows: minmax(0, 1fr);
+	}
+	.view-me {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+	.view-me select {
+		flex: 1;
+		min-width: 0;
+	}
+	.view-panel :global(.now-eight) {
+		overflow: visible;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+	}
+	.view-hint {
+		margin: 0;
+		color: var(--muted);
+		font-size: 13px;
 	}
 
 	/* 上方列、播放區、分頁、時間軸：從空白處拖過去不會把整頁的字反白（輸入框裡照常能選字）。 */

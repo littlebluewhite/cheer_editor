@@ -563,6 +563,24 @@ for (const w of [1920, 1400]) {
 	});
 }
 
+for (const [w, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
+	await check(`${w}×${h} 按「檢視」：左邊的站位編輯欄藏起來，場地比編輯模式大；按回「編輯」場地回原來大小（#213）`, async () => {
+		await setViewport(w, h);
+		await openSample();
+		const size = `const r = document.querySelector('.field-host .mat').getBoundingClientRect(); return { 寬: Math.round(r.width), 高: Math.round(r.height), 左欄: !!document.querySelector('.field-host .rail')?.offsetParent };`;
+		const press = (name) => `[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '${name}').click();`;
+		const edit = await js(size);
+		await js(press('檢視'));
+		await sleep(300);
+		const view = await js(size);
+		await js(press('編輯'));
+		await sleep(300);
+		const back = await js(size);
+		const ok = view.寬 > edit.寬 && view.高 > edit.高 && !view.左欄 && edit.左欄 && back.寬 === edit.寬 && back.高 === edit.高;
+		return { ok, value: { 編輯: edit, 檢視: view, 切回編輯: back } };
+	});
+}
+
 await check('1440 寬：播放頭到結尾（位置只寫「結尾」）時，上方列高度不變（#205）', async () => {
 	await setViewport(1440, 900);
 	await openSample();
@@ -742,7 +760,7 @@ const phoneView = () =>
 		const field = box(view.querySelector('.phone-field svg.field'));
 		const play = view.querySelector('.transport .play');
 		const row = box(view.querySelector('.now-eight'));
-		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#phone-me')), 八拍表這一列: row,
+		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#me-pick')), 八拍表這一列: row,
 			有編輯開關: !!document.querySelector('.topbar .mode'), 畫面高: innerHeight };
 		// 直拿：場地在播放鈕上面；橫拿：場地在左邊
 		const f = view.querySelector('.phone-field svg.field').getBoundingClientRect(), p = play.getBoundingClientRect();

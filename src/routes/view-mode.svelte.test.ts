@@ -1,8 +1,9 @@
 // 檢視模式（電腦，#174）：上方列「編輯｜檢視」按「檢視」就只能看、只能播放；改流程的指令都擋下（不只藏按鈕），按回「編輯」又能改。
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
+import { placeCue, updateAction } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
-import { libSample } from '#lib/test-flows.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 Element.prototype.scrollIntoView = () => {};
@@ -34,6 +35,8 @@ describe('檢視模式', () => {
 		// 先改一次，⌘Z 才有東西可以退
 		await drag('m1');
 		expect(session.canUndo).toBe(true);
+		// 隊員分頁先打開：檢視模式的右邊欄沒有分頁，名字框藏著，但改名照樣送到指令那一層
+		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
 		await fireEvent.click(viewBtn());
 		expect(viewBtn().getAttribute('aria-pressed')).toBe('true');
 		expect(editBtn().getAttribute('aria-pressed')).toBe('false');
@@ -60,7 +63,6 @@ describe('檢視模式', () => {
 		expect((screen.getByRole('button', { name: '重做' }) as HTMLButtonElement).disabled).toBe(true);
 		expect((screen.getByRole('button', { name: /設定/ }) as HTMLButtonElement).disabled).toBe(true);
 
-		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
 		await fireEvent.change(nameBox(), { target: { value: '美美' } });
 		expect(session.flow).toBe(before);
 		expect(nameBox().value).toBe('小美');
@@ -112,5 +114,54 @@ describe('檢視模式', () => {
 		await fireEvent.change(nameBox(), { target: { value: '美美' } });
 		expect(session.flow!.members[0].name).toBe('美美');
 		expect(undoBtn().disabled).toBe(false);
+	});
+
+	it('檢視模式是「看的版面」：沒有站位編輯欄、右邊欄只有「我」、現在這一列、點到的動作的詳細內容', async () => {
+		// 動作 Lib 加備註、一個給上層的拍點
+		let flow = flowOf(updateAction(libSample(), 'x1', { note: '底層先蹲好' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down', who: { role: '上層' } }));
+		const { props } = editorPage(flow);
+		render(Page, props);
+		await fireEvent.click(viewBtn());
+
+		// 編輯的東西都看不到：站位編輯欄、新動作表單、右邊欄的分頁
+		expect(screen.queryByRole('textbox', { name: '站位名稱' })).toBeNull();
+		expect(screen.queryByRole('textbox', { name: '名稱' })).toBeNull();
+		expect(screen.queryByRole('tab', { name: '動作' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '放大' })).toBeNull();
+		// 看的東西：「我」選單、八拍表這一列、還沒點動作時說怎麼看
+		const me = screen.getByRole('combobox', { name: '我' }) as HTMLSelectElement;
+		const now = screen.getByRole('region', { name: '八拍表這一列' });
+		expect(now.textContent).toContain('Lib');
+		const panel = screen.getByRole('complementary', { name: '右邊欄' });
+		expect(panel.textContent).toContain('點時間軸上的動作');
+
+		// 選「我」：這一列只看我的
+		await fireEvent.change(me, { target: { value: 'm2' } });
+		expect(me.value).toBe('m2');
+		expect(now.textContent).toContain('主底');
+
+		// 點時間軸上的動作：人、任務角色、拍點、備註，只能看（沒有輸入框）
+		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
+		const detail = screen.getByRole('region', { name: '動作詳細' });
+		const text = detail.textContent!;
+		expect(text).toContain('Lib');
+		expect(text).toContain('音樂 1 1-1 到 1-8・8 拍');
+		for (const words of ['小美', '上層', '小A', '主底', '小B', '小芳']) expect(text).toContain(words);
+		expect(text).toContain('拍子 down 1-1 到 1-2・2 拍・給上層');
+		expect(text).toContain('底層先蹲好');
+		expect(detail.querySelectorAll('input, select, textarea, button')).toHaveLength(0);
+	});
+
+	it('切回編輯：站位編輯欄、分頁、動作表單、放大縮小都回來', async () => {
+		setup();
+		await fireEvent.click(viewBtn());
+		await fireEvent.click(editBtn());
+		expect(screen.getByRole('textbox', { name: '站位名稱' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '放大' })).toBeTruthy();
+		expect(screen.getByRole('tab', { name: '動作' }).getAttribute('aria-selected')).toBe('true');
+		expect(screen.getByRole('textbox', { name: '名稱' })).toBeTruthy();
+		expect(screen.queryByRole('region', { name: '八拍表這一列' })).toBeNull();
+		expect(screen.queryByRole('combobox', { name: '我' })).toBeNull();
 	});
 });
