@@ -52,6 +52,18 @@ impl Mailer {
         }
     }
 
+    /// Resend 今天、這個月寄了幾封（Resend 的 `GET /usage`，每天算用量用）；不是 Resend 是 None。
+    pub async fn usage(&self) -> Result<Option<(i64, i64)>, resend_rs::Error> {
+        let Self::Resend { client, .. } = self else {
+            return Ok(None);
+        };
+        let usage = client.usage.get().await?;
+        Ok(Some((
+            usage.emails.daily.used.into(),
+            usage.emails.monthly.used.into(),
+        )))
+    }
+
     pub async fn send(&self, mail: Mail) -> Result<(), MailError> {
         match self {
             Self::Resend { client, from } => {

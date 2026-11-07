@@ -11,4 +11,4 @@ seen: number,
 /**
  * 在編輯（不是檢視模式）：在場名單用。
  */
-editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "undo", stepId: string, seen: number, of: string, redo: boolean, change: unknown, } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], };
+editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "undo", stepId: string, seen: number, of: string, redo: boolean, change: unknown, } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], } | { "kind": "changeRecords", attempts: unknown[], } | { "kind": "deleteRecords", ids: Array<string>, } | { "kind": "restoreRecords", ids: Array<string>, };
