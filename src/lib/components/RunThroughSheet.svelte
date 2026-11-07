@@ -203,7 +203,6 @@
 	.sheet {
 		--ok: #15803d;
 		--minor: #b45309;
-		--fail: #b91c1c;
 		display: grid;
 		/* 人多時只有表格自己左右捲（.scroll），不把畫面撐開 */
 		grid-template-columns: minmax(0, 1fr);

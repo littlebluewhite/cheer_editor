@@ -165,7 +165,7 @@ describe('隊員名單', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
-	it('名字超過 20 個字：加的時候擋下；改名字時擋下並還原', async () => {
+	it('名字超過 20 個字：加的時候擋下；改名字時切到前 20 個字存進去，不整段退回', async () => {
 		const session = setup();
 		const long = '一二三四五六七八九十一二三四五六七八九十一';
 		await fillNew(long, 'F', 'top');
@@ -174,8 +174,9 @@ describe('隊員名單', () => {
 		await fillNew('小A', 'F', 'top');
 		const input = screen.getByLabelText('第 1 位隊員的名字') as HTMLInputElement;
 		await fireEvent.change(input, { target: { value: long } });
-		expect(screen.getByRole('alert').textContent).toBe('隊員名字最多 20 個字');
-		expect(input.value).toBe('小A');
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(input.value).toBe(long.slice(0, 20));
+		expect(session.flow!.members[0].name).toBe(long.slice(0, 20));
 	});
 
 	it('被擋下的原因在名單下面看不到時，捲過去讓它看得到', async () => {

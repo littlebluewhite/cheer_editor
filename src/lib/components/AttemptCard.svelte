@@ -298,7 +298,6 @@
 	.card {
 		--ok: #15803d;
 		--minor: #b45309;
-		--fail: #b91c1c;
 		display: grid;
 		align-content: start;
 		gap: 10px;

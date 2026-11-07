@@ -188,7 +188,7 @@ describe('段、八拍尺、上方列', () => {
 		check();
 	});
 
-	it('流程名字最多 40 個字：新建時打不下第 41 個字（前 40 個留著）；流程設定送進太長的名字擋下，說最多幾個字', async () => {
+	it('流程名字最多 40 個字：新建時打不下第 41 個字（前 40 個留著）；流程設定送進太長的名字切到前 40 個字存進去，不整段退回', async () => {
 		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(41) } });
 		expect((screen.getByLabelText('流程名字') as HTMLInputElement).value).toBe('字'.repeat(40));
@@ -196,8 +196,8 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 		await fireEvent.change(name, { target: { value: '名'.repeat(41) } });
-		expect(screen.getByRole('alert').textContent).toContain('流程名字最多 40 個字');
-		expect(name.value).toBe('字'.repeat(40));
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(name.value).toBe('名'.repeat(40));
 	});
 
 	it('段設定：口號段超過 300 秒、八拍數超過 200 擋下，訊息寫範圍，欄位退回，流程不改', async () => {

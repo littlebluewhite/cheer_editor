@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 欄位旁邊的字數（n/20），照看得到的字算。打（貼）太多時只留放得下的字，像原生的 maxlength，
+	// 欄位旁邊的字數（n/20），照看得到的字算；打到上限變紅。打（貼）太多時只留放得下的字，像原生的 maxlength，
 	// 但一個家庭 emoji 算一個字。舊檔裡已經超過上限的字照留，只是不能再變長；輸入法選字時先不管，選好再算。
 	import { untrack } from 'svelte';
 	import { MAX_CHARS, charCount, charStart, firstChars, type LimitedText } from '#lib/core';
@@ -60,30 +60,43 @@
 			composing = false;
 			clip();
 		};
+		// capture：比欄位的 bind:value 先跑。不然瀏覽器在兩個 listener 之間跑 microtask，
+		// 畫面先把打進去的字當成「欄位現在該有的字」帶回來，accepted 變成太長的字，就不切了（B20）。
 		const oninput = () => (composing ? (text = el.value) : clip());
-		// 畫面在 change 時可能把欄位退回原本的字。
-		const onchange = () => queueMicrotask(() => (text = accepted = el.value));
+		// 離開欄位前先切：沒經過打字就變太長的字（自動填入之類）也照上限存，不整段被退回。
+		// capture：比畫面的 onchange 先跑。沒太長就不碰狀態（畫面換掉時也會 change，那一刻不能改狀態）。
+		const beforechange = () => {
+			if (!composing && charCount(el.value) > Math.max(max, charCount(accepted))) clip();
+		};
+		// 畫面在 change 時可能把欄位退回原本的字：等它退完再算。掛在 window，排在畫面的 onchange 後面
+		// （只在 el 上排 microtask 不夠：瀏覽器在同一個事件的兩個 listener 之間就會跑 microtask，那時還沒退回）；
+		// 再晚一個 microtask 才改狀態，理由同 onblur。
+		const onchange = (e: Event) => {
+			if (e.target === el) queueMicrotask(() => (text = accepted = el.value));
+		};
 		const onfocus = () => (focused = true);
 		// 晚一點才改：欄位可能是畫面換掉時才失去焦點，那一刻不能改狀態（B01）。
 		const onblur = () => queueMicrotask(() => (focused = document.activeElement === el));
-		el.addEventListener('input', oninput);
+		el.addEventListener('input', oninput, true);
 		el.addEventListener('compositionstart', onstart);
 		el.addEventListener('compositionend', onend);
-		el.addEventListener('change', onchange);
+		el.addEventListener('change', beforechange, true);
+		window.addEventListener('change', onchange);
 		el.addEventListener('focus', onfocus);
 		el.addEventListener('blur', onblur);
 		return () => {
-			el.removeEventListener('input', oninput);
+			el.removeEventListener('input', oninput, true);
 			el.removeEventListener('compositionstart', onstart);
 			el.removeEventListener('compositionend', onend);
-			el.removeEventListener('change', onchange);
+			el.removeEventListener('change', beforechange, true);
+			window.removeEventListener('change', onchange);
 			el.removeEventListener('focus', onfocus);
 			el.removeEventListener('blur', onblur);
 		};
 	});
 </script>
 
-<small class="char-count" class:over={n > max} id={uid} hidden={quiet && !focused}>{n}/{max}</small>
+<small class="char-count" class:full={n >= max} id={uid} hidden={quiet && !focused}>{n}/{max}</small>
 
 <style>
 	.char-count {
@@ -92,7 +105,7 @@
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
-	.over {
+	.full {
 		color: var(--fail);
 	}
 </style>

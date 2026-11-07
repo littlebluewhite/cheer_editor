@@ -1576,6 +1576,65 @@ await check('欄位有焦點時畫面把它換掉（站位名稱有焦點時刪�
 	return { ok: after === before - 1 && phone, value: { 刪之前幾張: before, 刪之後幾張: after, 縮窄後是手機畫面: phone } };
 });
 
+/** 有焦點的欄位：值、旁邊的字數（aria-describedby 指到的）、字數的顏色、紅色（--fail）是什麼顏色。 */
+const fieldCount = (selector) =>
+	js(`const i = document.querySelector(${JSON.stringify(selector)});
+		const c = document.getElementById(i.getAttribute('aria-describedby'));
+		const probe = document.createElement('i');
+		probe.style.color = 'var(--fail)';
+		document.body.append(probe);
+		const fail = getComputedStyle(probe).color;
+		probe.remove();
+		return { value: i.value, count: c.textContent, color: getComputedStyle(c).color, fail, chars: [...new Intl.Segmenter().segment(i.value)].length };`);
+/** 真的按 Tab 離開欄位。 */
+async function tabOut() {
+	for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+	await sleep(300);
+}
+
+await check('字數上限（B20）：貼上、輸入法打超過上限，停在上限、計數變紅；按 Tab 離開後字還在', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await js(`document.querySelector('[data-action-id]').click()`);
+	await sleep(300);
+	const sel = 'input[aria-label="名稱"]';
+	const at = await rectOf(sel);
+	await click(at.x, at.y);
+	await js(`document.querySelector(${JSON.stringify(sel)}).select()`);
+	await send('Input.insertText', { text: '一二三四五六七八九十'.repeat(3) });
+	await sleep(200);
+	const pasted = await fieldCount(sel);
+	await tabOut();
+	const left = await fieldCount(sel);
+	await js(`const i = document.querySelector(${JSON.stringify(sel)}); i.focus(); i.select();`);
+	const ime = '字'.repeat(25);
+	await send('Input.imeSetComposition', { text: ime, selectionStart: ime.length, selectionEnd: ime.length });
+	await send('Input.insertText', { text: ime });
+	await sleep(200);
+	const composed = await fieldCount(sel);
+	await tabOut();
+	const composedLeft = await fieldCount(sel);
+	const ok =
+		pasted.chars === 20 && pasted.count === '20/20' && pasted.color === pasted.fail &&
+		left.chars === 20 && left.count === '20/20' &&
+		composed.value === '字'.repeat(20) && composed.count === '20/20' && composedLeft.value === '字'.repeat(20);
+	return { ok, value: { 貼上: pasted, 離開後: left, 輸入法: composed, 輸入法離開後: composedLeft } };
+});
+
+await check('名字被退回（B28）：流程名字清成空白再離開，字數寫的是欄位裡留下來的字', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await js(`document.querySelector('.topbar button[title="流程設定"]').click()`);
+	await sleep(300);
+	const sel = '.flow-dialog input[aria-label="流程名字"]';
+	await js(`const i = document.querySelector(${JSON.stringify(sel)}); i.focus(); i.select();`);
+	await send('Input.insertText', { text: '   ' });
+	await tabOut();
+	const after = await fieldCount(sel);
+	await press('Escape');
+	return { ok: after.value.trim() !== '' && after.count === `${after.chars}/40`, value: after };
+});
+
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
