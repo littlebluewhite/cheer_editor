@@ -430,13 +430,14 @@ export class EditorSession {
 	}
 
 	/**
-	 * Delete／Backspace：只刪最後點的那一個（站位或動作）。最後點的是人時不刪，提示要刪動作先點動作。
+	 * Delete／Backspace：只刪最後點的那一個（站位或動作）。最後點的是人時不刪，提示要刪動作先點動作；
+	 * 點了人又把人取消掉（最後點的沒了，之前選的動作還亮著）也一樣不刪、提示。
 	 * 回傳有沒有處理（頁面拿來 preventDefault）。
 	 */
 	deleteKey(): boolean {
 		if (this.#picked === 'formation' && this.#formationId) this.removeFormation(this.#formationId);
 		else if (this.#picked === 'action' && this.#actionId) this.removeAction(this.#actionId);
-		else if (this.#picked === 'member' && this.#memberIds.length) this.notice = PICK_ACTION_FIRST;
+		else if (this.#memberIds.length || this.#actionId || this.#formationId) this.notice = PICK_ACTION_FIRST;
 		else return false;
 		return true;
 	}
