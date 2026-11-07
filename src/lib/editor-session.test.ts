@@ -7,13 +7,10 @@ import {
 	deleteAction,
 	addPhase,
 	insertFormation,
-	moveFormation,
-	moveMembers,
 	recordAttempt,
 	renameFlow,
 	toSeconds,
-	type CommandResult,
-	type ConfirmOption,
+	updateMember,
 	type Flow
 } from '#lib/core';
 import { flowOf, libSample, squadNumbers } from '#lib/test-flows.js';
@@ -143,23 +140,24 @@ describe('編輯 session：流程和復原', () => {
 
 	it('nudge：問題成功時用給的 key 合；被擋不算', () => {
 		const s = new EditorSession(sampleFlow());
-		const ok = (name: string) => () => renameFlow(s.flow!, name);
-		s.nudge('k', ok('A'));
-		s.nudge('k', () => ({ kind: 'blocked', message: '不行' }) as const);
-		s.nudge('k', ok('B'));
-		s.undo();
-		expect(s.flow!.name).toBe('練習用');
-		expect(s.canUndo).toBe(false);
-	});
-
-	it('nudge 用名字送：成功時用給的 key 合成一步', () => {
-		const s = new EditorSession(sampleFlow());
 		s.nudge('k', { name: 'renameFlow', args: ['A'] });
+		s.nudge('k', { name: 'deleteAction', args: ['x9'] });
 		s.nudge('k', { name: 'renameFlow', args: ['B'] });
 		expect(s.flow!.name).toBe('B');
 		s.undo();
 		expect(s.flow!.name).toBe('練習用');
 		expect(s.canUndo).toBe(false);
+	});
+
+	it('nudge 只收指令名字＋參數：包好的函式型別就不過', () => {
+		const s = new EditorSession(sampleFlow());
+		const sendFunction = () =>
+			s.nudge(
+				'k',
+				// @ts-expect-error 不收包好的函式
+				() => renameFlow(s.flow!, 'A')
+			);
+		expect(sendFunction).toBeTypeOf('function');
 	});
 
 	it('換一支流程：清掉復原和重做；從檔案開的算存過，救回的草稿不算', () => {
@@ -262,12 +260,10 @@ describe('編輯 session：選取', () => {
 });
 
 describe('編輯 session：頁面層級的問題', () => {
-	const result = (r: CommandResult) => () => r;
-
 	it('成功：算一步，提示收掉', () => {
 		const s = new EditorSession(libSample());
 		s.notice = '舊的提示';
-		s.ask.send(() => renameFlow(s.flow!, '全國賽'));
+		s.ask.send({ name: 'renameFlow', args: ['全國賽'] });
 		expect(s.flow!.name).toBe('全國賽');
 		expect(s.canUndo).toBe(true);
 		expect(s.notice).toBe('');
@@ -275,11 +271,11 @@ describe('編輯 session：頁面層級的問題', () => {
 
 	it('被擋：原因放進提示；給了還原就加「，已還原」並還原', () => {
 		const s = new EditorSession(libSample());
-		s.ask.send(result({ kind: 'blocked', message: '不能這樣拖' }));
-		expect(s.notice).toBe('不能這樣拖');
+		s.ask.send({ name: 'deleteAction', args: ['x9'] });
+		expect(s.notice).toBe('找不到這個動作');
 		let reverted = false;
-		s.ask.send(result({ kind: 'blocked', message: '不能這樣拖' }), { revert: () => (reverted = true) });
-		expect(s.notice).toBe('不能這樣拖，已還原');
+		s.ask.send({ name: 'deleteAction', args: ['x9'] }, { revert: () => (reverted = true) });
+		expect(s.notice).toBe('找不到這個動作，已還原');
 		expect(reverted).toBe(true);
 		expect(s.canUndo).toBe(false);
 	});
@@ -289,7 +285,7 @@ describe('編輯 session：頁面層級的問題', () => {
 		const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
 		s.record(flowOf(recordAttempt(s.flow!, 'x1', attempt)));
 		s.notice = '舊的提示';
-		s.ask.send((o) => deleteAction(s.flow!, 'x1', o));
+		s.ask.send({ name: 'deleteAction', args: ['x1'] });
 		expect(s.ask.question?.message).toContain('會清掉 1 次紀錄');
 		expect(s.notice).toBe('');
 		expect(s.flow!.actions).toHaveLength(1);
@@ -301,23 +297,22 @@ describe('編輯 session：頁面層級的問題', () => {
 	it('要選：保留舊紀錄、清掉重算帶著回答再送', () => {
 		for (const answer of ['keep', 'clear'] as const) {
 			const s = new EditorSession(libSample());
-			const sent: ConfirmOption[] = [];
-			s.ask.send((o: ConfirmOption = {}): CommandResult => {
-				sent.push(o);
-				return o.records ? renameFlow(s.flow!, answer) : { kind: 'choose', message: '要保留嗎', items: [] };
-			});
+			const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
+			s.record(flowOf(recordAttempt(s.flow!, 'x1', attempt)));
+			const before = s.flow!;
+			s.ask.send({ name: 'updateMember', args: ['m1', { name: '小美美' }] });
 			expect(s.ask.question?.choose).toBe(true);
 			s.ask.answer(answer);
-			expect(sent.at(-1)).toEqual({ records: answer });
-			expect(s.flow!.name).toBe(answer);
+			expect(s.flow).toEqual(flowOf(updateMember(before, 'm1', { name: '小美美' }, { records: answer })));
 		}
 	});
 
 	it('取消：問題收掉、流程沒變、還原', () => {
-		const s = new EditorSession(libSample());
+		const s = new EditorSession(sampleFlow());
+		recordOnce(s);
 		const before = s.flow;
 		let reverted = false;
-		s.ask.send(result({ kind: 'confirm', message: '確定嗎', items: [] }), { revert: () => (reverted = true) });
+		s.ask.send({ name: 'deleteAction', args: ['x1'] }, { revert: () => (reverted = true) });
 		s.ask.answer('cancel');
 		expect(s.ask.question).toBeNull();
 		expect(s.flow).toBe(before);
@@ -326,11 +321,12 @@ describe('編輯 session：頁面層級的問題', () => {
 	});
 
 	it('改了、復原：問題收掉；復原的提示換成「已復原：…」', () => {
-		const s = new EditorSession(libSample());
-		s.ask.send(result({ kind: 'confirm', message: '確定嗎', items: [] }));
+		const s = new EditorSession(sampleFlow());
+		recordOnce(s);
+		s.ask.send({ name: 'deleteAction', args: ['x1'] });
 		rename(s, 'A');
 		expect(s.ask.question).toBeNull();
-		s.ask.send(result({ kind: 'confirm', message: '確定嗎', items: [] }));
+		s.ask.send({ name: 'deleteAction', args: ['x1'] });
 		s.notice = '提示';
 		s.undo();
 		expect(s.ask.question).toBeNull();
@@ -343,7 +339,7 @@ describe('編輯 session：元件要的問題（「改」或「記」）', () =>
 		const s = new EditorSession(sampleFlow());
 		const ask = s.changeAsk({ confirmLabel: '確定刪除' });
 		expect(ask.confirmLabel).toBe('確定刪除');
-		ask.send(() => renameFlow(s.flow!, '全國賽'));
+		ask.send({ name: 'renameFlow', args: ['全國賽'] });
 		expect(s.flow!.name).toBe('全國賽');
 		expect(s.unsaved).toBe(true);
 		expect(s.undo()).toBe(true);
@@ -355,7 +351,7 @@ describe('編輯 session：元件要的問題（「改」或「記」）', () =>
 		rename(s, 'A');
 		s.undo();
 		const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
-		s.recordAsk().send(() => recordAttempt(s.flow!, 'x1', attempt));
+		s.recordAsk().send({ name: 'recordAttempt', args: ['x1', attempt] });
 		expect(records(s)).toBe(1);
 		expect(s.unsaved).toBe(true);
 		expect(s.canUndo).toBe(false);
@@ -445,7 +441,7 @@ describe('編輯 session：改完跳播放頭', () => {
 
 	it('拖人插了站位：提示說插了一張，播放頭停到那張（播放中不重播）', () => {
 		const { s, jumps } = withJumps(libSample());
-		s.ask.send(() => moveMembers(s.flow!, 2, { m1: [1, 1] }), { done: (r) => s.moved(r) });
+		s.ask.send({ name: 'moveMembers', args: [2, { m1: [1, 1] }] }, { done: (r) => s.moved(r) });
 		expect(s.flow!.formations).toHaveLength(2);
 		expect(s.canUndo).toBe(true);
 		expect(s.notice).toBe('插了一張站位，大家的位置自動帶入');
@@ -455,7 +451,7 @@ describe('編輯 session：改完跳播放頭', () => {
 	it('拖人改到現有的站位、往後帶：提示說帶了幾張', () => {
 		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
-		s.ask.send(() => moveMembers(s.flow!, 0, { m1: [1, 1] }), { done: (r) => s.moved(r) });
+		s.ask.send({ name: 'moveMembers', args: [0, { m1: [1, 1] }] }, { done: (r) => s.moved(r) });
 		expect(s.notice).toBe('後面 1 張站位也跟著改了');
 		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
@@ -465,7 +461,7 @@ describe('編輯 session：改完跳播放頭', () => {
 		s.notice = '舊的提示';
 		const id = s.flow!.formations[1].id;
 		const to = { segmentId: 's1', at: 16 };
-		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
+		s.ask.send({ name: 'moveFormation', args: [id, to] }, { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
 		expect(s.notice).toBe('站位 2 改到 2-1');
 		expect(s.noticeUndo).toBe('復原改站位時間');
@@ -487,9 +483,9 @@ describe('編輯 session：檢視模式', () => {
 		s.viewing = true;
 		const before = s.flow;
 		const asked = s.changeAsk();
-		asked.send(() => renameFlow(s.flow!, '區賽'));
+		asked.send({ name: 'renameFlow', args: ['區賽'] });
 		expect(asked.error).toBe(VIEW_ONLY);
-		s.ask.send(() => renameFlow(s.flow!, '區賽'));
+		s.ask.send({ name: 'renameFlow', args: ['區賽'] });
 		expect(s.notice).toBe(VIEW_ONLY);
 		s.notice = '';
 		expect(s.undo()).toBe(false);
