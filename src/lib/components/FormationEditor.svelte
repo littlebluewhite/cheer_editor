@@ -39,11 +39,14 @@
 		session.ask.send(() => matchPrevious(f, sec, ids), { done: (r) => session.moved(r) });
 	}
 
-	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。站位已經刪掉了（名稱框跟著被拿掉時才送出）、框上沒有站位 id 就不改。 */
-	function renameHere(formationId: string | undefined, name: string) {
+	/**
+	 * 幫播放頭所在的站位取名；名字沒變就不記一步復原。站位已經刪掉了（名稱框跟著被拿掉時才送出）、框上沒有站位 id 就不改。
+	 * 被擋下（例：檢視模式）：框變回流程裡的名字。
+	 */
+	function renameHere(box: HTMLInputElement, formationId: string | undefined, name: string) {
 		const formation = flow.formations.find((f) => f.id === formationId);
 		if (!formation || name.trim() === (formation.name ?? '')) return;
-		ask.send(() => renameFormation(flow, formation.id, name));
+		ask.send(() => renameFormation(flow, formation.id, name), { revert: () => (box.value = formation.name ?? '') });
 	}
 
 	/**
@@ -92,7 +95,7 @@
 					bind:this={nameInput}
 					data-id={here.id}
 					onkeydown={(e) => boxKeydown(e, here.name ?? '')}
-					onchange={(e) => renameHere(e.currentTarget.dataset.id, e.currentTarget.value)}
+					onchange={(e) => renameHere(e.currentTarget, e.currentTarget.dataset.id, e.currentTarget.value)}
 				/>
 				<CharCount field="formationName" input={nameInput} value={here.name ?? ''} />
 			</div>

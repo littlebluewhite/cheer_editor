@@ -73,6 +73,16 @@ describe('檢視模式', () => {
 		expect(playing()).toBe(true);
 	});
 
+	it('檢視模式改站位名稱被擋下：名稱框變回流程裡的名字', async () => {
+		const session = setup();
+		await fireEvent.click(viewBtn());
+		const box = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		const name = box.value;
+		await fireEvent.change(box, { target: { value: '開場' } });
+		expect(session.flow!.formations[0].name ?? '').toBe(name);
+		expect(box.value).toBe(name);
+	});
+
 	it('按回「編輯」就能改', async () => {
 		const session = setup();
 		await fireEvent.click(viewBtn());
