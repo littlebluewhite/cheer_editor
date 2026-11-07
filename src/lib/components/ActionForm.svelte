@@ -102,12 +102,36 @@
 		return all.toSorted((a, b) => num(a) - num(b));
 	});
 
+	/**
+	 * 新動作表單沒選人時收起來，只有「＋ 新動作」（選了人就打開）。
+	 * 按「＋ 新動作」、從選到的動作按「開新的動作表單」：沒選人也打開；換了選到的動作就回到收起來。
+	 */
+	let opened = $state(false);
+	$effect.pre(() => {
+		if (action) opened = false;
+	});
+	const open = $derived(!!action || opened || draft.members.length > 0);
+	let expandEl = $state<HTMLButtonElement>();
+
+	/** 「開新的動作表單」：回到新增，表單打開。 */
+	function openNew() {
+		session.selectAction(null);
+		opened = true;
+	}
+
+	/** 「＋ 新動作」：打開表單，名稱有焦點。 */
+	async function expand() {
+		opened = true;
+		await tick();
+		nameInput?.focus();
+	}
+
 	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
 	const ask = draft.ask;
 	let glossaryOpen = $state(false);
 	/** 從第幾個人的任務角色選單打開名詞對照表（「＋自訂任務角色…」）：新增的角色套給他。 */
 	let roleFor: number | null = null;
-	let formEl: HTMLElement;
+	let formEl = $state<HTMLElement>();
 	/** 「?」說明點了才開（Tab 到它、滑鼠移過去都不開，才不會自己彈出來蓋住東西）。 */
 	let legendOpen = $state(false);
 	let bangEl = $state<HTMLElement>();
@@ -120,20 +144,27 @@
 	let askAtLength = $state(false);
 
 	function lengthChanged() {
-		changed();
+		changed('length');
 		askAtLength = !!ask.question;
 	}
 
-	/** 改了表單：改選到的動作就馬上送出（草稿的 update）；新增時什麼都不做（等按「新增動作」）。 */
-	function changed() {
+	/** 表單上的一格（或「新增動作」鈕）：被擋的原因寫在它旁邊。 */
+	type Spot = 'name' | 'category' | 'color' | 'start' | 'length' | 'people' | 'note' | 'add';
+	/** 被擋的原因寫在哪：教練剛改的那一格、按 Enter 的那一格、或「新增動作」鈕旁邊，右邊欄不用自己捲過去。null：表單最下面。 */
+	let errorAt = $state<Spot | null>(null);
+
+	/** 改了表單（at：改的是哪一格）：改選到的動作就馬上送出（草稿的 update）；新增時什麼都不做（等按「新增動作」）。 */
+	function changed(at: Spot) {
 		askAtLength = false;
+		errorAt = at;
 		draft.update();
 	}
 
 	/** 新動作的名稱、開始、長度欄按 Enter 就新增（選字中的 Enter 不算）。 */
-	function addOnEnter(e: KeyboardEvent) {
+	function addOnEnter(e: KeyboardEvent, at: Spot) {
 		if (action || e.key !== 'Enter' || composing(e) || !draft.members.length) return;
 		e.preventDefault();
+		errorAt = at;
 		draft.add();
 	}
 
@@ -141,6 +172,7 @@
 		// 點「刪除動作」不搶焦點（例：觸控）時，名稱欄打的字先送出，跟離開欄位一樣；表單換成新動作時「未存」不卡住
 		editor.adapters.pendingInput.flush();
 		askAtLength = false;
+		errorAt = null;
 		if (action) session.removeAction(action.id, ask);
 		keepFocus('form');
 	}
@@ -152,13 +184,15 @@
 	 */
 	async function keepFocus(to: 'name' | 'form' = 'name') {
 		await tick();
-		if (!formEl.contains(document.activeElement)) (to === 'form' ? formEl : nameInput)?.focus();
+		// 沒選人、表單收起來了（例：刪掉動作）：給「＋ 新動作」
+		if (!open) return expandEl?.focus();
+		if (!formEl!.contains(document.activeElement)) (to === 'form' ? formEl : nameInput)?.focus();
 	}
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
 	function setRole(i: number, role: string | null, byKey: boolean) {
 		draft.setRole(i, role);
-		changed();
+		changed('people');
 		if (byKey) rolePickers[order[order.indexOf(i) + 1]]?.focus();
 	}
 
@@ -176,28 +210,28 @@
 
 	function addSelected() {
 		draft.addMembers(pickedOutside);
-		changed();
+		changed('people');
 	}
 
 	function dropBusy() {
 		draft.dropBusy();
-		changed();
+		changed('people');
 	}
 
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
 		draft.addMember(select.value);
 		select.value = '';
-		changed();
+		changed('people');
 	}
 
 	/** 移出一個人。焦點留在表單裡（下一個人的 ×，沒人了就「加人」），不掉到頁面上：不然接著按 Backspace 會刪掉整個動作。 */
 	function removeMember(i: number) {
 		draft.removeMember(i);
-		changed();
+		changed('people');
 		flushSync();
-		const xs = formEl.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
-		(xs[i] ?? xs[i - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
+		const xs = formEl!.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
+		(xs[i] ?? xs[i - 1] ?? formEl!.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
 	}
 
 	/**
@@ -214,22 +248,22 @@
 		select.value = '';
 		if (!source) return;
 		draft.copyMembers(source);
-		changed();
+		changed('people');
 	}
 
 	function setCategory(category: ActionCategory) {
 		draft.setCategory(category);
-		changed();
+		changed('category');
 	}
 
 	function useDefaultRoles() {
 		draft.useDefaultRoles();
-		changed();
+		changed('people');
 	}
 
 	function setColor(color: string | undefined) {
 		draft.setColor(color);
-		changed();
+		changed('color');
 	}
 
 	const nameOf = (id: string) => memberName(flow, id);
@@ -238,8 +272,19 @@
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
-	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
+	<button type="button" class="new" onclick={openNew}><Icon name="plus" size={14} />開新的動作表單</button>
 {/if}
+
+{#if !open}
+	<!-- 還沒選人：新動作表單收成一個鈕，不佔右邊欄 -->
+	<button type="button" class="new collapsed" bind:this={expandEl} onclick={expand}>＋ 新動作</button>
+	<p class="muted collapsed-hint">在場上點人或用上面的「選人」，表單就會打開。</p>
+{:else}
+
+<!-- 被擋的原因寫在教練剛改的那一格（或按的鈕）旁邊：不用捲去找，右邊欄也不會自己捲走。 -->
+{#snippet errorAtSpot(at: Spot, wide = false)}
+	{#if ask.error && errorAt === at}<p class="error" class:wide role="alert">{ask.error}</p>{/if}
+{/snippet}
 
 <!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
 <!-- 新動作的字還不在流程裡：⌘Z 交給瀏覽器退字（data-native-undo）。 -->
@@ -260,13 +305,14 @@
 			aria-label="名稱"
 			bind:value={draft.name}
 			bind:this={nameInput}
-			onchange={changed}
-			onkeydown={addOnEnter}
+			onchange={() => changed('name')}
+			onkeydown={(e) => addOnEnter(e, 'name')}
 			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
 		/>
 		<CharCount field="actionName" input={nameInput} value={draft.name} />
 		{#if !action}<span class="badge">新動作</span>{/if}
 	</header>
+	{@render errorAtSpot('name')}
 
 	{#if !segment}
 		<p class="empty">先加一段才能加動作：在下面的時間軸按「＋」。</p>
@@ -281,6 +327,7 @@
 				>
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
+				{@render errorAtSpot('category')}
 			</label>
 			{#if draft.offerDefaultRoles}
 				<p class="wide roles-offer" role="note">
@@ -311,6 +358,7 @@
 					</label>
 				{/each}
 			</fieldset>
+			{@render errorAtSpot('color', true)}
 			<div class="field">
 				<span class="start-cap">
 					<span class="cap" aria-hidden="true">開始</span>
@@ -321,12 +369,13 @@
 				<input
 						aria-label="開始"
 						bind:value={draft.startText}
-						onchange={changed}
-						onkeydown={addOnEnter}
+						onchange={() => changed('start')}
+						onkeydown={(e) => addOnEnter(e, 'start')}
 						onfocus={() => draft.focusSlotField('startText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
 				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
+				{@render errorAtSpot('start')}
 			</div>
 			<div class="field">
 				<span class="cap" aria-hidden="true">長度</span>
@@ -334,11 +383,12 @@
 						aria-label="長度"
 						bind:value={draft.lengthText}
 						onchange={lengthChanged}
-						onkeydown={addOnEnter}
+						onkeydown={(e) => addOnEnter(e, 'length')}
 						onfocus={() => draft.focusSlotField('lengthText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
 				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
+				{@render errorAtSpot('length')}
 			</div>
 			<!-- 改長度要確認（會切到拍點）：問句就在長度下面，不用捲到表單最底下找。 -->
 			{#if askAtLength && ask.question}
@@ -446,11 +496,13 @@
 					</select>
 				{/if}
 			</div>
+			{@render errorAtSpot('people')}
 		</div>
 
 		<label class="note">
 			<span class="cap note-cap">備註<CharCount field="note" input={noteInput} value={draft.note} /></span>
-			<textarea aria-label="備註" rows="2" bind:value={draft.note} bind:this={noteInput} onchange={changed}></textarea>
+			<textarea aria-label="備註" rows="2" bind:value={draft.note} bind:this={noteInput} onchange={() => changed('note')}></textarea>
+			{@render errorAtSpot('note')}
 		</label>
 
 		{#if action}
@@ -460,12 +512,13 @@
 		{:else}
 			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
 			<div class="add-bar">
+				{@render errorAtSpot('add')}
 				<button
 					type="button"
 					class="primary add"
 					disabled={!draft.members.length}
 					aria-describedby={draft.members.length ? undefined : 'add-why'}
-					onclick={() => (draft.add(), keepFocus())}>新增動作</button
+					onclick={() => ((errorAt = 'add'), draft.add(), keepFocus())}>新增動作</button
 				>
 				{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 			</div>
@@ -484,9 +537,10 @@
 		</div>
 	{/if}
 
-	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
-	{#if ask.error}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
+	<!-- 不是哪一格送的（例：刪除動作被擋）：寫在最下面。右邊欄很長時會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
+	{#if ask.error && errorAt === null}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
 </section>
+{/if}
 
 {#if glossaryOpen}
 	<RoleGlossary onclose={() => (glossaryOpen = false)} onadded={roleAdded} />
@@ -572,6 +626,17 @@
 		width: 100%;
 		justify-content: center;
 		border-style: dashed;
+	}
+	.new.collapsed {
+		padding: 10px 12px;
+		font-size: 14px;
+		font-weight: 600;
+		background: var(--new-bg);
+		border-color: var(--new-line);
+	}
+	.collapsed-hint {
+		font-size: 12px;
+		text-align: center;
 	}
 	.next {
 		justify-self: start;
@@ -893,6 +958,10 @@
 		padding: 10px 14px;
 		background: var(--new-bg);
 		box-shadow: 0 -6px 8px -6px rgb(0 0 0 / 0.15);
+	}
+	/* Tab 進一格時瀏覽器把它捲進來：留出黏底那一條（和右邊欄底下的留白）的高度，欄位不會停在那一條後面 */
+	.action-form.creating :is(input, select, textarea) {
+		scroll-margin-bottom: 110px;
 	}
 	.add {
 		width: 100%;

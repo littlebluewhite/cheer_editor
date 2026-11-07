@@ -23,6 +23,7 @@
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
@@ -181,6 +182,16 @@
 		playback.setLatency(used);
 		input.value = String(used);
 		if (!Number.isNaN(ms) && used !== ms) session.notice = `延遲校正要在 -${MAX_LATENCY_MS} 到 ${MAX_LATENCY_MS} 毫秒之間，改成 ${used}`;
+	}
+
+	/** 播放列的「⋯」小窗（延遲校正）：平常收著，不佔播放列的位置。 */
+	let moreOpen = $state(false);
+	let moreBtn = $state<HTMLButtonElement>();
+
+	/** 點外面、按 Esc 就關；按 Esc 的話焦點回到「⋯」。 */
+	function closeMore(by: 'outside' | 'escape') {
+		moreOpen = false;
+		if (by === 'escape') moreBtn?.focus();
 	}
 
 	/** 秒數寫成「1:05.3」。 */
@@ -529,22 +540,42 @@
 				>
 					{#each SPEEDS as rate (rate)}<option value={String(rate)}>{rate}x</option>{/each}
 				</select>
-				<label class="latency" title="用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。">
-					<span class="latency-text">延遲校正</span>
-					<input
-						type="number"
-						aria-label="延遲校正（毫秒）"
-						step="10"
-						min={-MAX_LATENCY_MS}
-						max={MAX_LATENCY_MS}
-						value={playback.latencyMs}
-						onchange={(e) => applyLatency(e.currentTarget)}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') applyLatency(e.currentTarget);
-						}}
-					/>
-					<span class="unit" aria-hidden="true">毫秒</span>
-				</label>
+				<button
+					type="button"
+					class="more"
+					aria-label="更多播放選項"
+					title="延遲校正"
+					aria-expanded={moreOpen}
+					bind:this={moreBtn}
+					onclick={() => (moreOpen = !moreOpen)}>⋯</button
+				>
+				<!-- 小窗放在「⋯」下面、右邊對齊；點外面（點「⋯」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
+				{#if moreOpen}
+					<div
+						class="more-pop"
+						role="group"
+						aria-label="更多播放選項"
+						{@attach popover({ place: below(moreBtn!, { gap: 6, align: 'right', flip: true }), close: closeMore, inside: [moreBtn] })}
+					>
+						<label class="latency">
+							<span class="latency-text">延遲校正</span>
+							<input
+								type="number"
+								aria-label="延遲校正（毫秒）"
+								step="10"
+								min={-MAX_LATENCY_MS}
+								max={MAX_LATENCY_MS}
+								value={playback.latencyMs}
+								onchange={(e) => applyLatency(e.currentTarget)}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') applyLatency(e.currentTarget);
+								}}
+							/>
+							<span class="unit" aria-hidden="true">毫秒</span>
+						</label>
+						<p class="more-hint">用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。</p>
+					</div>
+				{/if}
 			</div>
 		{/snippet}
 		<!-- 鍵盤用的捷徑：上方列、場地、右邊欄要按很多下 Tab 才到時間軸。平常藏著，Tab 到它才出現。 -->
@@ -1415,6 +1446,47 @@
 		border-color: #36425f;
 		padding: 3px 6px;
 	}
+	.more {
+		padding: 2px 10px;
+		border-radius: 999px;
+		border: 1px solid #36425f;
+		background: transparent;
+		color: #c9d2e6;
+		font-size: 14px;
+		font-weight: 700;
+		line-height: 1.4;
+	}
+	.more[aria-expanded='true'] {
+		background: #24304c;
+		color: #fff;
+	}
+	/* 手指：「⋯」至少 32px 高 */
+	@media (pointer: coarse) {
+		.more {
+			min-height: 32px;
+		}
+	}
+	.more-pop {
+		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、顏色；跟上方列一樣深底 */
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		display: grid;
+		gap: 6px;
+		width: max-content;
+		max-width: min(280px, 80vw);
+		padding: 10px 12px;
+		border: 1px solid #36425f;
+		border-radius: 8px;
+		background: var(--ink);
+		color: #c9d2e6;
+		box-shadow: var(--shadow-pop);
+	}
+	.more-hint {
+		margin: 0;
+		font-size: 11px;
+		color: #8b99b8;
+	}
 	.speed {
 		width: auto;
 		font-size: 12px;
@@ -1947,24 +2019,9 @@
 		}
 	}
 
-	/* 窄一點的視窗：延遲校正只留「延遲」、輸入框和「毫秒」（滑過去看得到說明），不整個藏起來。
-	   上方列多了「編排｜練習」、播放區多了「重複」和速度，右邊的「編輯｜檢視」兩格比一個開關寬，所以從 1800px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
+	/* 窄一點的視窗：上方列多了「編排｜練習」、播放區多了「重複」和速度，右邊的「編輯｜檢視」兩格比一個開關寬，
+	   所以從 1800px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
 	@media (max-width: 1800px) {
-		.latency-text {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-		.latency::before {
-			/* 只給眼睛看的短名字，後面還有「毫秒」；讀屏還是讀完整的「延遲校正（毫秒）」 */
-			content: '延遲' / '';
-		}
-		.latency input {
-			width: 56px;
-		}
 		/* 復原、重做只留圖示，流程設定只留「設定」，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;

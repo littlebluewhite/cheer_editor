@@ -159,6 +159,7 @@ describe('開檔', () => {
 	it('開另一個流程檔：上一支沒送出的新動作名稱、加隊員名單不帶過去', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.input(screen.getByLabelText('名稱'), { target: { value: '小翻' } });
 		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
 		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '阿強\n阿美' } });

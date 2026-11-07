@@ -59,6 +59,7 @@ describe('還沒送出的輸入框裡 ⌘Z 交給瀏覽器退字', () => {
 		await fireEvent.click(tab('隊員'));
 		await fireEvent.change(screen.getByLabelText('第 2 位隊員的名字'), { target: { value: '阿A' } });
 		await fireEvent.click(tab('動作'));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		const before = session.flow;
 		const name = screen.getByLabelText('名稱') as HTMLInputElement;
 		name.focus();

@@ -160,7 +160,7 @@ describe('檢視模式', () => {
 		expect(screen.getByRole('textbox', { name: '站位名稱' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: '放大' })).toBeTruthy();
 		expect(screen.getByRole('tab', { name: '動作' }).getAttribute('aria-selected')).toBe('true');
-		expect(screen.getByRole('textbox', { name: '名稱' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
 		expect(screen.queryByRole('region', { name: '八拍表這一列' })).toBeNull();
 		expect(screen.queryByRole('combobox', { name: '我' })).toBeNull();
 	});

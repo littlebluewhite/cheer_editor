@@ -25,6 +25,7 @@ describe('新動作表單：播放中', () => {
 	it('在開始欄打 3-1：播放頭再走幾拍，欄位還是 3-1', async () => {
 		const engine = createFakeEngine();
 		render(Page, editorPage(teamFlow(), { createEngine: () => engine }).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		engine.audible = engine.clicks[0].when + 0.4;
 		await nextFrame();
@@ -40,6 +41,7 @@ describe('新動作表單：播放中', () => {
 	it('只是點進開始欄：有焦點時也不跟著播放頭變；離開欄位後再跟著走', async () => {
 		const engine = createFakeEngine();
 		render(Page, editorPage(teamFlow(), { createEngine: () => engine }).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		field('開始').focus();
 		await fireEvent.focus(field('開始'));
@@ -91,6 +93,36 @@ describe('新動作表單：送出', () => {
 	});
 });
 
+describe('新動作表單：選到人才打開（#214）', () => {
+	it('沒選人時只有「＋ 新動作」；選了人表單打開，取消選人又收起來', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		expect(screen.queryByLabelText('名稱')).toBeNull();
+		expect(screen.queryByRole('button', { name: '新增動作' })).toBeNull();
+		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		expect(field('名稱')).toBeTruthy();
+		expect(screen.getByRole('button', { name: '新增動作' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '＋ 新動作' })).toBeNull();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.queryByLabelText('名稱')).toBeNull();
+		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
+	});
+
+	it('按「＋ 新動作」：沒選人也打開表單，名稱有焦點', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+		expect(document.activeElement).toBe(field('名稱'));
+		expect((screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it('選了動作按「開新的動作表單」：表單直接打開，不用再按一次', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(screen.getByRole('button', { name: '開新的動作表單' }));
+		expect(field('名稱')).toBeTruthy();
+	});
+});
+
 describe('新動作表單：開始的寫法跟著段', () => {
 	it('在音樂段打了開始 3-1，播放頭移到口號段：開始換成秒，按新增成功', async () => {
 		const page = editorPage(flowOf(addSegment(teamFlow(), 'chant')));
@@ -130,6 +162,7 @@ describe('換大類', () => {
 describe('新動作表單：打到一半的內容', () => {
 	it('打了名稱和開始，點別的動作再回到新表單：名稱、開始都還在', async () => {
 		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.input(field('名稱'), { target: { value: '金字塔' } });
 		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
 		await fireEvent.change(field('開始'));

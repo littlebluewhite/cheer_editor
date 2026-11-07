@@ -46,6 +46,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
 	import { isLongMarker, markerWidth } from './marker';
 
@@ -251,6 +252,13 @@
 	);
 	/** false：只畫太快和很喘的走位線，正常的白線藏起來，場地比較乾淨。 */
 	let allWalkLines = $state(true);
+	/** 左下的圖例開著嗎（存在這台電腦）。 */
+	let legendOpen = $state(loadLegendOpen());
+	const legendId = $props.id();
+	function toggleLegend() {
+		legendOpen = !legendOpen;
+		saveLegendOpen(legendOpen);
+	}
 	const walkLines = $derived(
 		walks.filter((w) => shown(w.memberId) && (allWalkLines || w.tooFast || w.tiring))
 	);
@@ -568,14 +576,27 @@
 				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
 					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
 				</label>
-				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
-				<span aria-hidden="true"><i class="fast"></i>走太快</span>
-				<span aria-hidden="true"><b class="clash-mark">✕</b>撞位</span>
+				<!-- 圖例可以收起來（存在這台電腦）；收著時箭頭朝右，看得出還能打開 -->
+				<button
+					type="button"
+					class="ghost legend-toggle"
+					aria-expanded={legendOpen}
+					aria-controls={legendId}
+					title={legendOpen ? '收起圖例' : '打開圖例'}
+					onclick={toggleLegend}>圖例<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▸'}</span></button
+				>
 			</div>
-			<div class="legend" aria-hidden="true">
-				<span><i class="base"></i>底層</span>
-				<span><i class="top"></i>上層</span>
-				<span><i class="up"></i>正在上面</span>
+			<div class="legend-box" id={legendId} hidden={!legendOpen}>
+				<div class="walk-tools" aria-hidden="true">
+					<span><i class="tiring"></i>很喘</span>
+					<span><i class="fast"></i>走太快</span>
+					<span><b class="clash-mark">✕</b>撞位</span>
+				</div>
+				<div class="legend" aria-hidden="true">
+					<span><i class="base"></i>底層</span>
+					<span><i class="top"></i>上層</span>
+					<span><i class="up"></i>正在上面</span>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -981,6 +1002,28 @@
 	.walk-tools .clash-mark {
 		color: var(--walk-clash, #a855f7);
 		font-size: 12px;
+	}
+	.legend-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		padding: 1px 6px;
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	/* 手指：「圖例」至少 32px 高 */
+	@media (pointer: coarse) {
+		.legend-toggle {
+			min-height: 32px;
+		}
+	}
+	.legend-box {
+		display: grid;
+		gap: 8px;
+		justify-items: start;
+	}
+	.legend-box[hidden] {
+		display: none;
 	}
 	.legend {
 		display: flex;
