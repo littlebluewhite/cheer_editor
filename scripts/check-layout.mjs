@@ -115,6 +115,9 @@ async function openSample() {
 		const input = await send('Runtime.evaluate', { expression: `(() => { const i = document.querySelector('.home-open input[type=file]'); if (i) i.value = ''; return i; })()` });
 		if (input.result.objectId) await send('DOM.setFileInputFiles', { files: [SAMPLE], objectId: input.result.objectId });
 		await sleep(500);
+		// 上一條檢查留下沒存的草稿：開同一個檔會先問「救回修改／用檔案」，按用檔案
+		await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('用檔案'))?.click()`);
+		await sleep(300);
 		return js(`return !!document.querySelector('.rail, .phone-view')`);
 	});
 	await sleep(300);
