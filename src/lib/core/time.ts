@@ -285,6 +285,7 @@ export function readJump(flow: Flow, sec: number, text: string): ReadResult<numb
 	if (read.kind !== 'ok') return read;
 	const span = segmentSpans(flow).find((s) => s.segment.id === read.value.segmentId)!;
 	const { segment } = span;
+	if (read.value.at < 0) return { kind: 'blocked', message: '時間不能是負的' };
 	if (read.value.at < units(segment)) return { kind: 'ok', value: toSeconds(flow, read.value) };
 	const size =
 		segment.kind === 'music'

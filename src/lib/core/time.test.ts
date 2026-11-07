@@ -10,6 +10,7 @@ import {
 	positionText,
 	readLength,
 	readStart,
+	readJump,
 	readTime,
 	rulerMarks,
 	segmentSpans,
@@ -347,5 +348,11 @@ describe('拖過頭停在最遠的合法格子', () => {
 
 	it('跨段：停在別段的格子上', () => {
 		expect(farthestLegal(flow, 0, 50, upTo(27))).toEqual({ to: { segmentId: 's2', at: 14 }, clamped: true });
+	});
+});
+
+describe('readJump', () => {
+	it('口號段打負的秒數：擋下來，不會跳回前一段', () => {
+		expect(readJump(sample(), 30, '-1')).toEqual({ kind: 'blocked', message: '時間不能是負的' });
 	});
 });
