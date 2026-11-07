@@ -40,26 +40,17 @@
 		STEP_WORDS,
 		actionEights,
 		beatSpanText,
-		addPhase,
 		toPosition,
-		clearCues,
-		clearPhaseBeats,
 		copyCues,
 		cueText,
-		deletePhase,
-		markPhaseBeats,
 		memberName,
 		nextPhaseKind,
-		pasteCues,
 		phaseColor,
-		placeCue,
 		sameWho,
-		updatePhase,
 		usedWords,
 		whoName,
 		type Action,
-		type CommandResult,
-		type ConfirmOption,
+		type Command,
 		type Cue,
 		type CueKind,
 		type Flow,
@@ -194,7 +185,7 @@
 	const spanText = (from: number, len: number) => (segment ? beatSpanText(segment, action.start + from, len) : '');
 
 	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
-	function send(cmd: (o?: ConfirmOption) => CommandResult, after?: () => void): boolean {
+	function send(cmd: Command, after?: () => void): boolean {
 		hold = pop;
 		// 問了答好才成功：小窗也留在原地。
 		const done = () => {
@@ -258,7 +249,7 @@
 	/** 拍子、步驟放滿選到的拍；手位只放在第一拍。放完選取跳到下一拍。 */
 	function place(kind: CueKind, word: string): boolean {
 		const len = kind === 'motion' ? BEAT : selLen;
-		const placed = send(() => placeCue(flow, action.id, { kind, at: sel.from, len, word, who: beats.who }));
+		const placed = send({ name: 'placeCue', args: [action.id, { kind, at: sel.from, len, word, who: beats.who }] });
 		if (placed && beats.next()) follow = pop;
 		return placed;
 	}
@@ -279,13 +270,13 @@
 	function markPhase(phaseId: string) {
 		const { from } = sel;
 		const len = selLen;
-		send((o) => markPhaseBeats(flow, action.id, phaseId, from, len, o));
+		send({ name: 'markPhaseBeats', args: [action.id, phaseId, from, len] });
 	}
 
 	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
 	function clearPhases() {
 		const { from, to } = sel;
-		send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
+		send({ name: 'clearPhaseBeats', args: [action.id, from, to + BEAT] });
 	}
 
 	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。下一個環節的種類預設接在它後面。 */
@@ -293,7 +284,7 @@
 		const beats = segment?.kind === 'music' ? { at: sel.from, len: selLen } : undefined;
 		const kind = phaseKind;
 		send(
-			(o) => addPhase(flow, action.id, { kind, name: phaseName, beats }, o),
+			{ name: 'addPhase', args: [action.id, { kind, name: phaseName, beats }] },
 			() => {
 				phaseName = '';
 				phaseKind = nextPhaseKind(kind);
@@ -311,16 +302,16 @@
 	/** 口號段刪掉點選的環節。 */
 	function deleteChosen() {
 		const id = chosen;
-		if (id) send((o) => deletePhase(flow, action.id, id, o));
+		if (id) send({ name: 'deletePhase', args: [action.id, id] });
 	}
 
 	/** 改環節的名字、種類、顏色。 */
 	function editPhase(id: string, change: PhaseChange) {
-		send(() => updatePhase(flow, action.id, id, change));
+		send({ name: 'updatePhase', args: [action.id, id, change] });
 	}
 
 	function clear(kind: CueKind) {
-		send(() => clearCues(flow, action.id, kind, sel.from, sel.to + BEAT));
+		send({ name: 'clearCues', args: [action.id, kind, sel.from, sel.to + BEAT] });
 	}
 
 	/** 複製選的拍裡的拍點（位置從選的第一拍算）。 */
@@ -334,7 +325,7 @@
 	/** 把複製的拍點從選的第一拍開始貼上。 */
 	function paste() {
 		copyNote = '';
-		send(() => pasteCues(flow, action.id, sel.from, beats.copied));
+		send({ name: 'pasteCues', args: [action.id, sel.from, beats.copied] });
 	}
 
 	/**
@@ -347,7 +338,7 @@
 		const mod = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
 		if (e.key === 'Delete' || e.key === 'Backspace') {
 			e.preventDefault();
-			send(() => clearCues(flow, action.id, null, sel.from, sel.to + BEAT));
+			send({ name: 'clearCues', args: [action.id, null, sel.from, sel.to + BEAT] });
 		} else if (mod && key === 'c') {
 			e.preventDefault();
 			copy();

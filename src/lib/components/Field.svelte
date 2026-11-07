@@ -32,7 +32,6 @@
 	import {
 		CELL_M,
 		fieldPositionText,
-		moveMembers,
 		positionsAt,
 		snapGroup,
 		snapPointsNear,
@@ -475,7 +474,7 @@
 	function drop(moves: Record<string, Position>, atEdge: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r, atEdge) });
+		s.ask.send({ name: 'moveMembers', args: [sec, moves] }, { done: (r) => s.moved(r, atEdge) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
@@ -484,7 +483,7 @@
 		const sec = playback!.sec;
 		const at = toPosition(s.flow!, sec);
 		const key = `${Object.keys(moves).sort().join(',')}@${at?.segmentId}:${at?.at}`;
-		s.nudge(key, () => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r) });
+		s.nudge(key, { name: 'moveMembers', args: [sec, moves] }, { done: (r) => s.moved(r) });
 	}
 
 	const ARROWS: Record<string, Position> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };

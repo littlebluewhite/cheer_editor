@@ -3,6 +3,7 @@ pub mod breach;
 pub mod clock;
 pub mod config;
 pub mod csrf;
+pub mod flow_core;
 pub mod mail;
 
 use std::path::Path;

@@ -167,7 +167,7 @@ function textProblem(before: Action | undefined, action: Action): string | null 
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */
-function shapeProblem(flow: Flow, action: Action): string | null {
+export function shapeProblem(flow: Flow, action: Action): string | null {
 	if (!ACTION_CATEGORIES.some((c) => c.key === action.category)) return '請選大類';
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
 	if (!segment) return '找不到這一段';
@@ -230,7 +230,7 @@ function whereOther(flow: Flow, other: Action, action: Action): string {
 }
 
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */
-function overlaps(a: ActionSlot, b: ActionSlot): boolean {
+export function overlaps(a: ActionSlot, b: ActionSlot): boolean {
 	return a.segmentId === b.segmentId && a.start < b.start + b.length && b.start < a.start + a.length;
 }
 

@@ -4,7 +4,6 @@
 		FIELD_TEMPLATES,
 		MAX_STRIPS,
 		MIN_STRIPS,
-		createFlow,
 		fieldGeometry,
 		flowNameProblem,
 		stripsProblem,
@@ -40,7 +39,7 @@
 		// 兩格各自查：都錯時兩個錯一起出現，不用按兩次才知道
 		nameError = flowNameProblem(name) ?? '';
 		if (nameError || customError) return;
-		ask.send(() => createFlow({ name, field }));
+		ask.send({ name: 'createFlow', args: [{ name, field }] });
 	}
 
 	/**

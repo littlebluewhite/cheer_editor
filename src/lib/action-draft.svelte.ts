@@ -6,18 +6,15 @@
 import {
 	actionSeconds,
 	actionSlotAt,
-	addAction,
 	atText,
 	busyMembers,
 	defaultRoles,
 	lengthText,
 	readLength,
 	readStart,
-	updateAction,
 	type Action,
 	type ActionCategory,
 	type ActionMember,
-	type ConfirmOption,
 	type Flow,
 	type NewActionInput,
 	type ReadResult,
@@ -248,7 +245,8 @@ export class ActionDraft {
 		if (this.#action || !segment) return;
 		const input = this.#read(segment);
 		const sent = this.#keep();
-		this.ask.send(() => (input.kind === 'blocked' ? input : addAction(this.#session.flow!, input.value)), {
+		if (input.kind === 'blocked') return void this.ask.block(input.message);
+		this.ask.send({ name: 'addAction', args: [input.value] }, {
 			done: (r) => {
 				this.#session.selectAction(r.id);
 				const flow = this.#session.flow!;
@@ -281,11 +279,9 @@ export class ActionDraft {
 		if (!action || !segment) return;
 		const id = action.id;
 		const input = this.#read(segment);
-		this.ask.send(
-			(o: ConfirmOption = {}) =>
-				input.kind === 'blocked' ? input : updateAction(this.#session.flow!, id, input.value, o),
-			{ revert: () => this.#reset() }
-		);
+		const revert = () => this.#reset();
+		if (input.kind === 'blocked') return void this.ask.block(input.message, { revert });
+		this.ask.send({ name: 'updateAction', args: [id, input.value] }, { revert });
 	}
 
 	/**

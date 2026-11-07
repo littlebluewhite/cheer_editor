@@ -3,6 +3,9 @@
 
 export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
 
+export { COMMAND_NAMES, runCommand, runCommands } from './commands';
+export type { Command, CommandArgs, CommandName, CommandOutcome, StepResult } from './commands';
+
 export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
@@ -11,8 +14,17 @@ export type { LimitedText } from './text-length';
 
 export { changeLabel } from './change-label';
 
-export { missingAudioNames, readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
-export type { AudioBytes, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
+export {
+	checkFlowDocument,
+	FORMAT_VERSION,
+	missingAudioNames,
+	readFlowFile,
+	segmentsMissingAudio,
+	writeFlowFile
+} from './flow-file';
+export type { AudioBytes, CheckFlowDocumentResult, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
+
+export { flowProblem } from './flow-check';
 
 export {
 	GENDERS,

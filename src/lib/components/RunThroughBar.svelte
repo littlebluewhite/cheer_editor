@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」和提示。
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），提示寫出刪了這天第幾次全上，幾秒內可以救回。
-	import { deleteLastRunThrough, lastRunThrough, restoreRunThrough } from '#lib/core';
+	import { lastRunThrough } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import type { Flash } from '#lib/flash.svelte.js';
 	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
@@ -37,8 +37,8 @@
 			ask,
 			notice,
 			`已刪掉第 ${runsOn()} 次全上`,
-			() => deleteLastRunThrough(flow, date),
-			({ removed }) => restoreRunThrough(flow, removed)
+			{ name: 'deleteLastRunThrough', args: [date] },
+			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
 		);
 	}
 </script>

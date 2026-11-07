@@ -2,14 +2,7 @@
 	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加、改、刪自訂角色。
 	// 刪有人用的自訂角色時，核心回「要確認」：列出動作，按確定才刪。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import {
-		addCustomRole,
-		deleteCustomRole,
-		roleGlossary,
-		updateCustomRole,
-		type ConfirmOption,
-		type CustomRole
-	} from '#lib/core';
+	import { roleGlossary, type CustomRole } from '#lib/core';
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
@@ -36,17 +29,17 @@
 
 	/** 改自訂角色的名稱或意思；被擋就把輸入框還原。 */
 	function edit(role: CustomRole, patch: Partial<Pick<CustomRole, 'name' | 'meaning'>>, input: HTMLInputElement) {
-		const r = ask.send(() => updateCustomRole(flow, role.id, { name: role.name, meaning: role.meaning, ...patch }));
+		const r = ask.send({ name: 'updateCustomRole', args: [role.id, { name: role.name, meaning: role.meaning, ...patch }] });
 		if (r.kind !== 'ok') input.value = patch.name !== undefined ? role.name : role.meaning;
 	}
 
 	function remove(role: CustomRole) {
-		ask.send((o: ConfirmOption = {}) => deleteCustomRole(flow, role.id, o));
+		ask.send({ name: 'deleteCustomRole', args: [role.id] });
 	}
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
-		ask.send(() => addCustomRole(flow, { name, meaning }), {
+		ask.send({ name: 'addCustomRole', args: [{ name, meaning }] }, {
 			done: () => {
 				onadded?.(flow.customRoles.at(-1)!.name);
 				name = '';

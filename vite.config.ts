@@ -2,9 +2,17 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { withPwa } from '@vite-pwa/sveltekit';
 import { svelteTesting } from '@testing-library/svelte/vite';
+import { bundleCore } from './scripts/core-bundle.mjs';
 
 export default defineConfig({
 	plugins: [
+		// 流程核心那包的指紋（__CORE_FINGERPRINT__），伺服器帶的是同一個（scripts/core-bundle.mjs、ADR 0010）。
+		{
+			name: 'core-fingerprint',
+			config: async () => ({
+				define: { __CORE_FINGERPRINT__: JSON.stringify((await bundleCore()).fingerprint) }
+			})
+		},
 		// withPwa 包住 sveltekit()：產生 service worker（可離線）和 manifest。
 		withPwa(
 			{
