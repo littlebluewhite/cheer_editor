@@ -385,8 +385,9 @@ describe('播放：慢速、重複', () => {
 		playback.play();
 		expect(position()).toBe('音樂 1 2-1');
 		let t0 = engine.clicks[0].when;
-		// 只排到動作結束：8 拍
-		expect(engine.clicks).toHaveLength(8);
+		// 這一圈排到動作結束：8 拍；下一圈（再 8 拍）緊接著先排好
+		expect(engine.clicks).toHaveLength(16);
+		expect(engine.clicks[8].when - t0).toBeCloseTo(3.2, 6);
 		engine.audible = t0 + 2;
 		frames.step();
 		expect(position()).toBe('音樂 1 2-6');
@@ -394,7 +395,7 @@ describe('播放：慢速、重複', () => {
 		frames.step();
 		expect(playback.playing).toBe(true);
 		expect(position()).toBe('音樂 1 2-1');
-		t0 = engine.clicks[0].when;
+		t0 = engine.clicks[8].when;
 		engine.audible = t0 + 0.5;
 		frames.step();
 		expect(position()).toBe('音樂 1 2-2');
@@ -406,21 +407,53 @@ describe('播放：慢速、重複', () => {
 		playback.seek(8.2); // 3-5&
 		playback.play();
 		const t0 = engine.clicks[0].when;
-		// 3-6 到 3-8 三聲，第 4 個八拍不排
-		expect(engine.clicks).toHaveLength(3);
-		engine.audible = t0 + 1.5;
+		// 3-6 到 3-8 三聲，接著下一圈整個第 3 個八拍 8 聲；第 4 個八拍不排
+		expect(engine.clicks).toHaveLength(3 + 8);
+		engine.audible = t0 + 1.3;
 		frames.step();
 		expect(playback.playing).toBe(true);
 		expect(position()).toBe('音樂 1 3-1');
 	});
+
+	for (const latency of [0, 500]) {
+		it(`重複：每一圈接得很緊，圈和圈之間沒有多停一下（延遲校正 ${latency} 毫秒）（#205）`, () => {
+			const { playback, engine, frames, position } = setup();
+			// 排過的每一聲節拍器都記下來（引擎停掉時會清掉排著的，這裡不清）
+			const heard: number[] = [];
+			const click = engine.click;
+			engine.click = (when, accent) => {
+				heard.push(when);
+				click(when, accent);
+			};
+			playback.setLatency(latency);
+			playback.setRepeat(true);
+			playback.seek(3.2); // 2-1：重複第 2 個八拍
+			playback.play();
+			const t0 = heard[0];
+			const positions = new Set<string>();
+			// 畫面一秒 60 格，跑三圈多；喇叭的時間和排程的時鐘一起走
+			for (let t = 0; t < 3 * 3.2 + 1; t += 1 / 60) {
+				engine.time = engine.audible = t0 + t;
+				frames.step();
+				positions.add(position());
+			}
+			expect(playback.playing).toBe(true);
+			const times = heard.filter((w) => w < t0 + 3 * 3.2 + 0.2).sort((a, b) => a - b);
+			// 150 BPM：三圈 24 拍，每一拍都隔 0.4 秒，連圈和圈的接縫也是
+			expect(times.length).toBeGreaterThanOrEqual(24);
+			for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeCloseTo(0.4, 6);
+			// 播放頭一直在第 2 個八拍裡
+			expect([...positions].filter((p) => !p.startsWith('音樂 1 2-'))).toEqual([]);
+		});
+	}
 
 	it('重複開著也照樣能跳：播放頭跳到別的八拍，就重複那一個', () => {
 		const { playback, engine, frames, position } = setup();
 		playback.setRepeat(true);
 		playback.play();
 		playback.seek(13); // 5-1
-		const t0 = engine.clicks[0].when;
-		engine.audible = t0 + 3.3;
+		const t0 = engine.clicks[0].when; // 5-2
+		engine.audible = t0 + 2.9;
 		frames.step();
 		expect(position()).toBe('音樂 1 5-1');
 	});

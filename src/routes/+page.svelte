@@ -300,12 +300,20 @@
 		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
 	}
 
-	/** 空白鍵照瀏覽器原本的行為的東西：按得下去、選得了、打得了字的。場上的人不算（空白鍵播放）。 */
+	/** 按得下去、選得了、打得了字的東西。 */
 	const NATIVE_KEYS =
 		'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), ' +
 		'[role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"]';
-	/** 選取用的按鈕（色條、站位縮圖、泳道名字、縮放鈕）：滑鼠點過焦點留在上面，空白鍵還是播放／暫停（Enter 照樣按下）。 */
-	const SPACE_PLAYS = '[data-space-plays]';
+	/**
+	 * 空白鍵照瀏覽器原本的行為的地方：打字的地方、選單，和對話框、選單裡的東西。
+	 * 其他按鈕（節拍器、重複、檢視、段按鈕、對話框的觸發按鈕…）都不吃空白鍵，空白鍵一律播放／暫停（Enter 照樣按下）。
+	 */
+	const SPACE_NATIVE =
+		'input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"]), select, textarea, ' +
+		'[contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"], ' +
+		`:is(dialog, [role="dialog"], [role="alertdialog"]) :is(${NATIVE_KEYS})`;
+	/** 按下的空白鍵拿去播放／暫停了：放開時也攔下來。 */
+	let spaceUsed = false;
 	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
 	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 	/** 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字。 */
@@ -344,11 +352,13 @@
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
 		}
-		// 空白鍵：焦點在按鈕、勾選框、選單、輸入框上時照一般網頁按下它（選取用的按鈕除外）；其他時候播放／暫停
+		// 空白鍵：焦點在打字的地方、選單、對話框裡時照一般網頁；其他時候（包括按鈕上）播放／暫停
 		if (e.key === ' ') {
-			if ((on(NATIVE_KEYS) && !on(SPACE_PLAYS)) || e.repeat) return;
+			// 元件自己用了空白鍵（例：隊員號碼的圓圈）就不播放
+			if (e.repeat || e.defaultPrevented) return;
 			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
-			if (playback.space(covered())) e.preventDefault();
+			spaceUsed = !on(SPACE_NATIVE) && playback.space(covered());
+			if (spaceUsed) e.preventDefault();
 			return;
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
@@ -404,8 +414,9 @@
 <svelte:window
 	{onkeydown}
 	onkeyup={(e) => {
-		// 按鈕是放開空白鍵才算按：選取用的按鈕上的空白鍵已經拿去播放／暫停，不再按一次
-		if (e.key === ' ' && (e.target as Element | null)?.closest?.(SPACE_PLAYS)) e.preventDefault();
+		// 按鈕、勾選框是放開空白鍵才算按：空白鍵已經拿去播放／暫停，不再按一次
+		if (e.key === ' ' && spaceUsed) e.preventDefault();
+		if (e.key === ' ') spaceUsed = false;
 	}}
 	{onbeforeunload}
 	onpagehide={() => editor.file.pageHidden()}
@@ -1242,6 +1253,13 @@
 		align-items: baseline;
 		gap: 8px;
 		white-space: nowrap;
+	}
+	/* 在結尾只寫「結尾」、沒有大字：放一個看不到的大字撐住這一行，上方列高度不變 */
+	.pos::after {
+		content: '\200b';
+		font-size: 20px;
+		font-weight: 700;
+		margin-left: -8px; /* 不多佔 .pos 的 gap */
 	}
 	.pos-seg {
 		font-size: 12px;

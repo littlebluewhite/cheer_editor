@@ -142,10 +142,19 @@
 		editor.adapters.pendingInput.flush();
 		askAtLength = false;
 		if (action) session.removeAction(action.id, ask);
-		keepFocus();
+		focusForm();
 	}
 
-	/** 按的鈕做完就不見了（刪除動作、新增動作、接下一個動作）：焦點給表單的名稱，不掉回頁面最上面。 */
+	/**
+	 * 「刪除動作」不見了：焦點給表單本身，不掉回頁面最上面。不給新動作的名稱：
+	 * 那裡的 ⌘Z 是退字，按了刪除馬上 ⌘Z 要讓動作回來。
+	 */
+	async function focusForm() {
+		await tick();
+		if (!formEl.contains(document.activeElement)) formEl.focus();
+	}
+
+	/** 按的鈕做完就不見了（新增動作、接下一個動作）：焦點給表單的名稱，不掉回頁面最上面。 */
 	async function keepFocus() {
 		await tick();
 		if (!formEl.contains(document.activeElement)) nameInput?.focus();
@@ -246,6 +255,7 @@
 	data-native-undo={!action || undefined}
 	style:--cat={actionColor(draft)}
 	bind:this={formEl}
+	tabindex="-1"
 	onkeydown={formKey}
 >
 	<header>
@@ -488,6 +498,9 @@
 {/if}
 
 <style>
+	.action-form:focus {
+		outline: none;
+	}
 	.action-form {
 		display: grid;
 		/* 標題的名稱輸入框不撐寬右邊欄 */

@@ -111,4 +111,26 @@ describe('打號碼排順序', () => {
 		expect(screen.queryByLabelText('第 1 位隊員的號碼')).toBeNull();
 		expect(session.flow!.members.map((m) => m.name)).toEqual(['小A', '小B', '小芳', '阿強', '小美']);
 	});
+
+	it('改號碼時按 Esc：焦點回到那一列的圓圈，不掉到整個頁面（#205）', async () => {
+		await setup(five());
+		const circle = () => screen.getByRole('button', { name: '改第 3 位隊員的號碼' });
+		circle().focus();
+		await fireEvent.click(circle());
+		const no = screen.getByLabelText('第 3 位隊員的號碼');
+		expect(document.activeElement).toBe(no);
+		await fireEvent.keyDown(no, { key: 'Escape' });
+		await frame();
+		expect(screen.queryByLabelText('第 3 位隊員的號碼')).toBeNull();
+		expect(document.activeElement).toBe(circle());
+	});
+
+	it('在圓圈上按空白鍵：打開號碼欄，不播放', async () => {
+		await setup(five());
+		const circle = screen.getByRole('button', { name: '改第 2 位隊員的號碼' });
+		circle.focus();
+		await fireEvent.keyDown(circle, { key: ' ' });
+		expect(document.activeElement).toBe(screen.getByLabelText('第 2 位隊員的號碼'));
+		expect(screen.queryByRole('button', { name: '暫停' })).toBeNull();
+	});
 });

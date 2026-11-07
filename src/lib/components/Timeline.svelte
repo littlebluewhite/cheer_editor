@@ -375,7 +375,6 @@
 					<button
 						type="button"
 						class="ghost"
-						data-space-plays
 						aria-label="時間軸縮小"
 						disabled={zoom <= ZOOMS[0] + 1e-9}
 						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
@@ -384,7 +383,6 @@
 					<button
 						type="button"
 						class="ghost"
-						data-space-plays
 						aria-label="時間軸放大"
 						disabled={zoom >= ZOOMS.at(-1)! - 1e-9}
 						onclick={() => zoomButton(1)}><Icon name="plus" size={13} /></button
@@ -392,7 +390,6 @@
 					<button
 						type="button"
 						class="ghost fit"
-						data-space-plays
 						aria-label="符合寬度"
 						title="整支流程剛好放滿現在的寬度"
 						disabled={spans.length === 0}

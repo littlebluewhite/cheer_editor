@@ -198,9 +198,9 @@ await send('Runtime.enable');
 await setViewport(1440, 1000);
 await openSample();
 
-/** 真的按一個鍵（送到有焦點的地方，跟人按一樣）：Enter、Escape、Tab。 */
+/** 真的按一個鍵（送到有焦點的地方，跟人按一樣）：Enter、Escape、Tab、End、Home。 */
 async function press(key) {
-	const code = { Enter: 13, Escape: 27, Tab: 9 }[key];
+	const code = { Enter: 13, Escape: 27, Tab: 9, End: 35, Home: 36 }[key];
 	for (const type of ['keyDown', 'keyUp'])
 		await send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code, text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
 	await sleep(300);
@@ -502,6 +502,19 @@ for (const w of [1920, 1400]) {
 		return { ok: edit === view, value: { 編輯: edit, 檢視: view } };
 	});
 }
+
+await check('1440 寬：播放頭到結尾（位置只寫「結尾」）時，上方列高度不變（#205）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const measure = `return { 高: document.querySelector('.topbar').getBoundingClientRect().height, 位置: document.querySelector('[aria-label="目前位置"]').textContent };`;
+	await js(`document.activeElement?.blur()`);
+	await press('Home');
+	const start = await js(measure);
+	await press('End');
+	const end = await js(measure);
+	await press('Home');
+	return { ok: end.位置 === '結尾' && end.高 === start.高, value: { 開頭: start, 結尾: end } };
+});
 
 await check('1440 寬：「使用說明」「設定」按鈕有字，不是只有圖示', async () => {
 	await setViewport(1440, 900);

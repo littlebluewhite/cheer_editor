@@ -84,8 +84,12 @@
 		if (!Number.isInteger(n)) return;
 		const to = Math.min(Math.max(n, 1), flow.members.length) - 1;
 		if (to !== flow.members.findIndex((m) => m.id === id)) await move(id, to);
+		await focusCircle(id);
+	}
+
+	/** 號碼欄收起來：焦點回到他的圓圈，不掉到整個頁面。這段時間又點開別人的號碼：不搶焦點。 */
+	async function focusCircle(id: string) {
 		await tick();
-		// 這段時間又點開別人的號碼：不搶焦點。
 		if (numbering === null) document.querySelector<HTMLElement>(`.members .no[data-id="${id}"]`)?.focus();
 	}
 
@@ -147,7 +151,11 @@
 							{@attach focusSelect}
 							onchange={(e) => renumber(m.id, e.currentTarget.value)}
 							onblur={() => (numbering = null)}
-							onkeydown={(e) => e.key === 'Escape' && (numbering = null)}
+							onkeydown={(e) => {
+								if (e.key !== 'Escape') return;
+								numbering = null;
+								void focusCircle(m.id);
+							}}
 						/>
 					{:else}
 						<span
