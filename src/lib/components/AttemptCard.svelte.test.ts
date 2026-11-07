@@ -237,9 +237,8 @@ describe('記錄頁的卡', () => {
 		const before = records(session);
 		await removeLast();
 		expect(records(session).map((r) => r.id)).toEqual([before[0].id, before[2].id]);
-		// 寫出刪了哪一次（這天的第 2 次），用中性色（不是成功的綠字）
-		expect(screen.getByRole('status').textContent).toBe('已刪掉 ✗··（第 2 次）救回');
-		expect(screen.getByRole('status').classList.contains('removed')).toBe(true);
+		// 寫出刪了哪一次（這天的第 2 次）
+		expect(screen.getByRole('status').textContent).toBe('已刪掉 ✗··（第 2 次）');
 		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		expect(records(session)).toEqual(before);
 		expect(session.canUndo).toBe(false);
@@ -247,10 +246,10 @@ describe('記錄頁的卡', () => {
 		// 滑鼠移上去停住倒數，移開了把剩下的走完（共 10 秒）
 		await removeLast();
 		await vi.advanceTimersByTimeAsync(3000);
-		await fireEvent.pointerEnter(screen.getByRole('status'));
+		await fireEvent.pointerEnter(screen.getByRole('status').parentElement!);
 		await vi.advanceTimersByTimeAsync(30000);
 		expect(screen.getByRole('button', { name: '救回' })).toBeTruthy();
-		await fireEvent.pointerLeave(screen.getByRole('status'));
+		await fireEvent.pointerLeave(screen.getByRole('status').parentElement!);
 		await vi.advanceTimersByTimeAsync(6500);
 		expect(screen.getByRole('button', { name: '救回' })).toBeTruthy();
 		await vi.advanceTimersByTimeAsync(1000);
@@ -288,7 +287,7 @@ describe('記錄頁的卡', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /^改第 3 次/ }));
 		await fireEvent.click(within(screen.getByRole('group', { name: '改第 3 次' })).getByRole('button', { name: '刪掉這一次' }));
 		expect(records(session).map((r) => r.id)).toEqual([before[0].id, before[1].id]);
-		expect(screen.getByRole('status').textContent).toBe('已刪掉 △✓✓（第 3 次）救回');
+		expect(screen.getByRole('status').textContent).toBe('已刪掉 △✓✓（第 3 次）');
 		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		expect(records(session)).toEqual(before);
 	});

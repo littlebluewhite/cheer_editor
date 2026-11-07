@@ -134,7 +134,7 @@ describe('拍點格子上標環節', () => {
 		await select('2-5', '2-8');
 		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
 		const dialog = within(screen.getByRole('alertdialog'));
-		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
+		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號（紀錄救不回來），確定就刪掉')).toBeTruthy();
 		expect(dialog.getByText('刪掉：環節 下法 搖籃')).toBeTruthy();
 
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
@@ -336,7 +336,7 @@ describe('口號段的環節（不用標拍）', () => {
 		await fireEvent.click(row().getByRole('button', { name: '環節 整體' }));
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		const dialog = within(screen.getByRole('alertdialog'));
-		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
+		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號（紀錄救不回來），確定就刪掉')).toBeTruthy();
 
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
 		expect(screen.queryByRole('alertdialog')).toBeNull();

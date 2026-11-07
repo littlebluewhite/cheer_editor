@@ -463,7 +463,7 @@ describe('編輯 session：改完跳播放頭', () => {
 		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
 		expect(s.notice).toBe('站位 2 改到 2-1');
-		expect(s.noticeUndo).toBe('復原改站位時間');
+		expect(s.noticeButton?.name).toBe('復原改站位時間');
 		expect(jumps).toEqual([{ sec: toSeconds(s.flow!, to), replay: true }]);
 	});
 

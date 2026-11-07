@@ -1,7 +1,8 @@
 <script lang="ts">
-	// 隊員名單：加隊員、改隊員、排順序、刪隊員。名單順序 = 泳道順序和號碼。規則（40 人上限、必填、名字長度、貼上的行認不認得）都交給流程核心判斷。
+	// 隊員名單：加隊員、改隊員、排順序、刪隊員。名單順序 = 泳道順序和號碼。規則（40 人上限、必填、名字長度、貼上的行認不認得）都交給流程核心判斷；
+	// 已經滿 40 人時加隊員表單停用，寫為什麼。
 	// 排順序：每一列「往上」「往下」，拖圓圈（標記）放到別列，或點圓圈打號碼（打 1 就移到第一個）。
-	// 刪隊員先在那一列下面顯示流程核心給的「要確認」說明，按確定才刪。改名字被擋下的原因也畫在那一列下面。
+	// 刪隊員先在那一列下面顯示流程核心給的「要確認」說明，按確定才刪；他在的組有紀錄時跟在動作裡移人一樣，選保留舊紀錄或清掉重算。改名字被擋下的原因也畫在那一列下面。
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import { tick } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -47,6 +48,8 @@
 	let dragging = $state<string | null>(null);
 	const markers = $derived(memberMarkers(flow));
 	const dupes = $derived(duplicateNames(flow.members));
+	/** 滿了：加隊員表單停用，寫為什麼（開檔進來超過的也算滿）。 */
+	const full = $derived(flow.members.length >= MAX_MEMBERS);
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -238,27 +241,28 @@
 	<!-- 改了加隊員的欄位就告訴 Ask，收掉上次被擋的原因；字還沒送出，⌘Z 交給瀏覽器（data-native-undo） -->
 	<form class="add" data-native-undo novalidate onsubmit={add} oninput={() => ask.edited()} onchange={() => ask.edited()}>
 		<b class="add-title">加隊員</b>
+		{#if full}<p class="full">已經 {flow.members.length} 人了（一支流程最多 {MAX_MEMBERS} 人），刪掉隊員才能再加</p>{/if}
 		<label class="names">
 			名字（一次加多人：一行一個；從試算表貼「名字、性別、全局角色」三欄也可以）
-			<textarea rows="3" bind:value={names} placeholder="名字或暱稱"></textarea>
+			<textarea rows="3" bind:value={names} placeholder="名字或暱稱" disabled={full}></textarea>
 		</label>
 		<div class="pair">
 			<label>
 				性別
-				<select bind:value={gender}>
+				<select bind:value={gender} disabled={full}>
 					<option value="">請選</option>
 					{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
 				</select>
 			</label>
 			<label>
 				全局角色
-				<select bind:value={globalRole}>
+				<select bind:value={globalRole} disabled={full}>
 					<option value="">請選</option>
 					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
 				</select>
 			</label>
 		</div>
-		<button type="submit" class="primary">加隊員</button>
+		<button type="submit" class="primary" disabled={full}>加隊員</button>
 	</form>
 
 	<!-- 那一列送的被擋下：原因畫在那一列下面（上面），這裡不畫。 -->
@@ -390,6 +394,11 @@
 	}
 	.add-title {
 		font-size: 13px;
+	}
+	.full {
+		margin: 0;
+		font-size: 12px;
+		color: var(--muted, #66718a);
 	}
 	.add label {
 		display: grid;

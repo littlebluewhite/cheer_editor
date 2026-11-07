@@ -247,8 +247,9 @@
 		const source = flow.actions.find((a) => a.id === select.value);
 		select.value = '';
 		if (!source) return;
+		askAtLength = false;
+		errorAt = 'people';
 		draft.copyMembers(source);
-		changed('people');
 	}
 
 	function setCategory(category: ActionCategory) {

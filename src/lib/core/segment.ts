@@ -2,11 +2,14 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
-import { actionLabel } from './action-types';
+import { actionLabel, type Action } from './action-types';
+import { updateAction } from './actions';
+import { cueFallout } from './cues';
 import type { Flow } from './flow';
 import { nextId } from './ids';
-import { answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atText, parseNumber, segmentSpans, units } from './time';
+import { phaseFallout, phaseFalloutText } from './phase-beats';
+import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
+import { atText, lengthTextWithUnit, parseNumber, segmentSpans, units } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -194,7 +197,8 @@ export function readSegmentNumber(field: SegmentNumberField, text: string): Read
 
 /**
  * 改段。改 BPM 時動作和站位存的是拍，所以拍不變、秒數跟著變。
- * 段縮短、有動作或站位放不進段裡時回「要確認」並列出清單；帶 { confirmed: true } 再送一次才刪。
+ * 段縮短時跨出段尾的動作裁短到段尾（拍點、環節照動作變短的規則），整個在段外的動作和站位刪掉：
+ * 先回「要確認」，清單分「裁短：」和「刪掉：」兩組，會清掉紀錄時寫幾次；帶 { confirmed: true } 再送一次才改。
  * lengths：音樂多長（音樂檔庫給的），改第一拍時擋在音樂結束之後的。
  */
 export function updateSegment(
@@ -238,26 +242,73 @@ export function updateSegment(
 		if (tooLong) return blocked(tooLong);
 		next = { ...old, tenths };
 	}
-	// 段縮短：動作要整個放得進段裡；站位的時間點要在段裡（段尾那一刻已經是下一段）。
+	// 段縮短：跨出段尾的動作裁短到段尾，整個在段外的刪掉；站位的時間點要在段裡（段尾那一刻已經是下一段）。
 	const end = units(next);
-	const actions = flow.actions.filter((a) => a.segmentId !== segmentId || a.start + a.length <= end);
+	const mine = (a: Action) => a.segmentId === segmentId;
+	const droppedActions = flow.actions.filter((a) => mine(a) && a.start >= end);
+	const trimmed = flow.actions.filter((a) => mine(a) && a.start < end && a.start + a.length > end);
 	const formations = flow.formations.filter((f) => f.segmentId !== segmentId || f.at < end);
-	const droppedActions = flow.actions.filter((a) => !actions.includes(a));
 	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
-	if (!answered(options) && (droppedActions.length || droppedFormations.length)) {
+	let result: Flow = {
+		...flow,
+		segments: flow.segments.with(index, next),
+		actions: flow.actions.filter((a) => !droppedActions.includes(a)),
+		formations
+	};
+	const trimItems: string[] = [];
+	let records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
+	let marks = 0;
+	for (const a of trimmed) {
+		const cut = trimAction(result, a, end - a.start);
+		if (cut.kind === 'blocked') return blocked(`動作「${actionLabel(a)}」裁短後：${cut.message}`);
+		result = cut.flow;
+		records += cut.records;
+		marks += cut.marks;
+		trimItems.push(cut.item);
+	}
+	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
-		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
-		const cleared = records ? `，會一起清掉 ${records} 次紀錄` : '';
-		return needsConfirm(`${label} 縮短後，下面這些放不進段裡，確定就刪掉${cleared}`, [
-			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${atText(old, a.start)} 起）`),
-			...droppedFormations.map(
-				(f) => `站位 ${flow.formations.indexOf(f) + 1}（${atText(old, f.at)}）`
-			)
+		const lost = records ? `會一起清掉 ${records} 次紀錄` : marks ? `會清掉 ${marks} 次的記號` : '';
+		const cleared = lost && `，${lost}${RECORDS_GONE}`;
+		return needsConfirm(`${label} 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉${cleared}`, [
+			...trimItems,
+			...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${atText(old, a.start)} 起）`),
+			...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atText(old, f.at)}）`)
 		]);
 	}
-	return ok(
-		withoutUnusedAudio({ ...flow, segments: flow.segments.with(index, next), actions, formations })
-	);
+	return ok(withoutUnusedAudio(result));
+}
+
+/**
+ * 裁短一個動作：只留到 length（段已經換成變短的那一段）。拍點、環節照動作變短的規則切短或刪掉（見 updateAction）。
+ * 回裁短好的流程、確認清單上「裁短」那一行、整次不見的紀錄和清掉記號的次數。
+ */
+function trimAction(
+	flow: Flow,
+	before: Action,
+	length: number
+): { kind: 'ok'; flow: Flow; item: string; records: number; marks: number } | { kind: 'blocked'; message: string } {
+	const segment = flow.segments.find((s) => s.id === before.segmentId)!;
+	const after = { ...before, length };
+	const r = updateAction(flow, before.id, { length }, { confirmed: true });
+	if (r.kind !== 'ok') return { kind: 'blocked', message: r.message };
+	const cues = cueFallout(segment, segment, before, after, flow);
+	const phases = phaseFallout(segment, segment, before, after);
+	const fallout = [
+		cues && [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean).join('、') + '拍點',
+		phases && phaseFalloutText(phases)
+	].filter(Boolean);
+	const trimmedRecords = r.flow.actions.find((a) => a.id === before.id)?.successRate?.records.length ?? 0;
+	return {
+		kind: 'ok',
+		flow: r.flow,
+		item:
+			`裁短：動作「${actionLabel(before)}」（${atText(segment, before.start)} 起）` +
+			`${lengthTextWithUnit(segment, before.length)} → ${lengthTextWithUnit(segment, length)}` +
+			(fallout.length ? `，會${fallout.join('，')}` : ''),
+		records: (before.successRate?.records.length ?? 0) - trimmedRecords,
+		marks: phases?.marked ?? 0
+	};
 }
 
 /**

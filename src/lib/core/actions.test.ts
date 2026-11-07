@@ -359,10 +359,16 @@ describe('拖色條：移動、改長度', () => {
 		expect(flowOf(moveAction(flow, 'x1', 7.66)).actions[0].start).toBe(13);
 	});
 
-	it('拖到段外（跨段、段之前）或撞到同一人就擋下', () => {
+	it('拖過段尾：動作停在段尾（裁短），不是整個彈回去', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
+		// 6 秒是第 30 個半拍，段尾在 32：只留 2 個半拍
+		expect(flowOf(moveAction(flow, 'x1', 6)).actions[0]).toMatchObject({ segmentId: 's1', start: 30, length: 2 });
+	});
+
+	it('拖到段外（開始已經在段尾後面、段之前）或撞到同一人就擋下', () => {
 		let flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 16, length: 8 })));
-		expect(moveAction(flow, 'x1', 6)).toEqual({
+		expect(moveAction(flow, 'x1', 6.4)).toEqual({
 			kind: 'blocked',
 			message: '動作不能跨段，要跨就拆成兩個'
 		});
@@ -376,7 +382,7 @@ describe('拖色條：移動、改長度', () => {
 		});
 	});
 
-	it('拉右邊改長度：結束吸到最近的半拍；拉到 0 或超出段尾就擋下', () => {
+	it('拉右邊改長度：結束吸到最近的半拍；拉到 0 就擋下，拉過段尾停在段尾', () => {
 		const flow = flowOf(addAction(sample(), lib({ start: 4, length: 8 })));
 		// 開始 0.8 秒；結束拉到 3.25 秒 → 長度 12 個半拍（結束 3.2 秒）
 		expect(flowOf(resizeAction(flow, 'x1', 3.25)).actions[0]).toMatchObject({ start: 4, length: 12 });
@@ -384,7 +390,7 @@ describe('拖色條：移動、改長度', () => {
 			kind: 'blocked',
 			message: '動作長度要在 0.5 到 14 拍之間'
 		});
-		expect(resizeAction(flow, 'x1', 7).kind).toBe('blocked');
+		expect(flowOf(resizeAction(flow, 'x1', 7)).actions[0]).toMatchObject({ start: 4, length: 28 });
 	});
 
 	it('找不到動作就擋下', () => {
