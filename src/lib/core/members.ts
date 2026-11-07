@@ -142,7 +142,7 @@ function columns(line: string): string[] {
  * 一個都加不了就擋下，原因是所有錯（一行一個）。錯誤用名字標是哪一個（不寫第幾行：沒加的行留在框裡，行號會對不上），
  * 名字太長只寫前 ERROR_NAME_CHARS 個字；只有一個人時不標。
  * 加了會超過 MAX_MEMBERS 人就一個都不加，原因寫還能加幾人。
- * 新人排進開頭那張站位最靠近場地中間的空格點（不跟現有的人疊到），後面的站位用同一個位置；格點都有人了才排場外。
+ * 新人在每一張站位各自排進那一張最靠近場地中間的空格點（不跟那一張現有的人疊到）；格點都有人了才排場外。
  */
 function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResult> {
 	if (!entries.length) return blocked('請填隊員名字');
@@ -173,17 +173,14 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 		const { name, gender, globalRole } = e.input!;
 		added.push({ id: `m${n++}`, name: name.trim(), gender: gender!, globalRole: globalRole! });
 	}
-	const opening = { ...flow.formations[0].pos };
 	const grid = gridPoints(flow.field);
 	const spots = waitingSpots(flow.field);
-	for (const m of added) {
-		const taken = Object.values(opening);
-		opening[m.id] = grid.find((g) => !taken.some((t) => overlaps(g, t))) ?? freeSpot(spots, taken);
-	}
-	// 後面的站位沒有新人的位置：用開頭那張的。
 	const formations = flow.formations.map((f) => {
 		const pos = { ...f.pos };
-		for (const m of added) pos[m.id] = opening[m.id];
+		for (const m of added) {
+			const taken = Object.values(pos);
+			pos[m.id] = grid.find((g) => !taken.some((t) => overlaps(g, t))) ?? freeSpot(spots, taken);
+		}
 		return { ...f, pos };
 	});
 	return ok({ ...flow, members: [...flow.members, ...added], formations }, { errors, rejected: bad.map((e) => e.text) });
