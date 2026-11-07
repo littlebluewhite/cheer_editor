@@ -12,6 +12,7 @@ import type { Role } from '#lib/api-types/Role.js';
 import type { ShareProblem } from '#lib/api-types/ShareProblem.js';
 import type { SharedFlowSummary } from '#lib/api-types/SharedFlowSummary.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
+import type { Present } from '#lib/api-types/Present.js';
 import type { Presigned } from '#lib/api-types/Presigned.js';
 import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
 import type { RoomRequest } from '#lib/api-types/RoomRequest.js';
@@ -31,6 +32,7 @@ export type {
 	MyFlows,
 	PasswordProblem,
 	Person,
+	Present,
 	Role,
 	RoomMessage,
 	RoomRequest,
@@ -119,7 +121,10 @@ export interface ServerAdapter {
 	revoke(flowId: string, userId: number): Promise<Person[]>;
 	/** 離開這支流程。 */
 	leave(flowId: string): Promise<void>;
-	/** 連一支雲端流程的房間（#248）：先送打招呼（指紋、分頁 id、上次看到第幾步），再一步一步送。 */
+	/**
+	 * 連一支雲端流程的房間（#248）：先送打招呼（指紋、分頁 id、上次看到第幾步、在編輯還是檢視），再一步一步送。
+	 * 別人的改動、誰開著也從房間來（#253）。
+	 */
 	openRoom(flowId: string): FlowRoom;
 	/**
 	 * 把一個音樂檔傳上雲端（#249）：伺服器查權限、發預簽網址，瀏覽器直接傳到 R2，傳完伺服器查大小。

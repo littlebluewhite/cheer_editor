@@ -216,12 +216,17 @@ async fn say(socket: &mut Socket, message: Value) {
         .unwrap();
 }
 
-/// 伺服器說的下一句；房間關了是 Null。
+/// 伺服器說的下一句（誰開著、別的連線的改動〔#253〕跳過）；房間關了是 Null。
 async fn hear(socket: &mut Socket) -> Value {
     let next = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match socket.next().await {
-                Some(Ok(Message::Text(text))) => return serde_json::from_str(&text).unwrap(),
+                Some(Ok(Message::Text(text))) => {
+                    let message: Value = serde_json::from_str(&text).unwrap();
+                    if message["kind"] != "present" && message["kind"] != "changed" {
+                        return message;
+                    }
+                }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return Value::Null,
                 _ => {}
             }
@@ -510,7 +515,7 @@ async fn the_room_is_told_when_a_role_changes_or_is_revoked(db: sqlx::PgPool) {
     assert_eq!(hear(&mut room).await, json!({ "kind": "revoked" }));
     assert_eq!(hear(&mut room).await, Value::Null);
     // 擁有者的房間沒收到別人的事
-    let quiet = tokio::time::timeout(Duration::from_millis(200), owner_room.next()).await;
+    let quiet = tokio::time::timeout(Duration::from_millis(200), hear(&mut owner_room)).await;
     assert!(quiet.is_err(), "擁有者不該收到：{quiet:?}");
     // 再連也連不上
     assert_eq!(

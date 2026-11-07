@@ -5,6 +5,7 @@
 import { createContext } from 'svelte';
 import {
 	actionLabel,
+	applyRemoteChange,
 	carryRecords,
 	changeLabel,
 	currentFormation,
@@ -17,7 +18,8 @@ import {
 	type CommandName,
 	type CommandOutcome,
 	type Flow,
-	type MoveResult
+	type MoveResult,
+	type RemoteChange
 } from '#lib/core';
 import { Ask, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
@@ -295,6 +297,28 @@ export class EditorSession {
 		this.#restored(flow, before);
 		this.notice = message;
 	}
+
+	/**
+	 * 套上別人的改動（雲端流程，#253）：by 是改的人的名字。不算一步，開著的表單、問題都不收；
+	 * 選著的東西被刪了就不再選著；在改的動作（動作表單開著的）被刪了，表單回到新增並說原因。
+	 */
+	applyRemote(change: RemoteChange, by: string) {
+		const before = this.#flow;
+		if (!before) return;
+		const flow = applyRemoteChange(before, change);
+		const editing = this.selectedAction;
+		this.#flow = flow;
+		this.#saved = flow;
+		this.#trim(flow);
+		if (editing && !this.#actionId) this.notice = `${by}刪掉了你在改的動作「${actionLabel(editing)}」`;
+		this.#playback.changed(before);
+		this.onflow();
+		this.#updated();
+		this.onremote(flow, by);
+	}
+
+	/** 套上別人的改動之後叫（頁面接上：開著的段設定指到被刪掉的段就關掉並說原因）。 */
+	onremote: (flow: Flow, by: string) => void = () => {};
 
 	/** 復原：換上前一份編排，帶著現在的紀錄，提示「已復原：…」。回傳有沒有復原（檢視模式擋下，說原因）。 */
 	undo(): boolean {

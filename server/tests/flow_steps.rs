@@ -156,10 +156,16 @@ async fn say(socket: &mut Socket, message: Value) {
         .unwrap();
 }
 
+/// 伺服器回這個連線的下一句：誰開著、別的連線的改動（#253）跳過。
 async fn hear(socket: &mut Socket) -> Value {
     loop {
         match socket.next().await.unwrap().unwrap() {
-            Message::Text(text) => return serde_json::from_str(&text).unwrap(),
+            Message::Text(text) => {
+                let message: Value = serde_json::from_str(&text).unwrap();
+                if message["kind"] != "present" && message["kind"] != "changed" {
+                    return message;
+                }
+            }
             Message::Close(_) => panic!("房間關了"),
             _ => {}
         }
