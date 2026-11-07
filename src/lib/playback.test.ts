@@ -8,8 +8,6 @@ import {
 	createFlow,
 	deleteSegment,
 	insertFormation,
-	moveFormation,
-	moveMembers,
 	moveSegment,
 	positionText,
 	updateSegment,
@@ -247,7 +245,7 @@ describe('播放：session 改完跳播放頭', () => {
 		const { session, playback, engine } = setup(libSample());
 		playback.play();
 		const scheduled = engine.clicks;
-		session.ask.send(() => moveMembers(session.flow!, 2, { m1: [1, 1] }), { done: (r) => session.moved(r) });
+		session.ask.send({ name: 'moveMembers', args: [2, { m1: [1, 1] }] }, { done: (r) => session.moved(r) });
 		expect(session.flow!.formations).toHaveLength(2);
 		expect(playback.sec).toBe(2);
 		expect(playback.playing).toBe(true);
@@ -259,7 +257,7 @@ describe('播放：session 改完跳播放頭', () => {
 		playback.play();
 		const id = session.flow!.formations[1].id;
 		const to = { segmentId: 's1', at: 16 };
-		session.ask.send(() => moveFormation(session.flow!, id, to), { done: (r) => session.formationMoved(id, r) });
+		session.ask.send({ name: 'moveFormation', args: [id, to] }, { done: (r) => session.formationMoved(id, r) });
 		// 2-1（3.2 秒）
 		expect(playback.sec).toBeCloseTo(3.2, 6);
 		expect(playback.playing).toBe(true);

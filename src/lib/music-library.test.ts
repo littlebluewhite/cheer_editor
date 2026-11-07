@@ -101,8 +101,8 @@ describe('音樂檔庫：存檔、缺音樂', () => {
 		const ask = changeAsk(session);
 		await editor.music.pick('s1', mp3(), ask);
 		// 第一次載入時長度照音樂長度算成整首 60 秒：切段先把音樂 1 縮短成 8 個八拍
-		ask.send((o) => updateSegment(session.flow!, 's1', { eights: 8 }, o));
-		ask.send((o) => updateSegment(session.flow!, 's2', { audioId: 'a1' }, o, editor.music.lengths));
+		ask.send({ name: 'updateSegment', args: ['s1', { eights: 8 }] });
+		ask.send({ name: 'updateSegment', args: ['s2', { audioId: 'a1' }, editor.music.lengths] });
 		// 音樂 1：第一拍 0 秒、150 BPM、8 個八拍 = 25.6 秒
 		expect(segment(session, 1)).toMatchObject({ audioId: 'a1', firstBeatSec: 25.6 });
 		expect(editor.music.lengths).toEqual({ a1: 60 });
