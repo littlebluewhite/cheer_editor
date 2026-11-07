@@ -13,7 +13,6 @@
 		readTime,
 		renameFormation,
 		timeText,
-		type Formation,
 		type TimePosition
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
@@ -40,18 +39,21 @@
 		session.ask.send(() => matchPrevious(f, sec, ids), { done: (r) => session.moved(r) });
 	}
 
-	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。 */
+	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。站位已經刪掉了（名稱框跟著被拿掉時才送出）就不改。 */
 	function renameHere(formationId: string, name: string) {
-		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
-		if (name.trim() === before) return;
+		const formation = flow.formations.find((f) => f.id === formationId);
+		if (!formation || name.trim() === (formation.name ?? '')) return;
 		ask.send(() => renameFormation(flow, formationId, name));
 	}
 
 	/**
 	 * 「站位時間」框改了：寫法跟出發、到達一樣，看得懂就挪過去。
 	 * 框先變回原本的 text：挪成功時跟著流程換成新的站位時間，看不懂或被擋就留在原本的。
+	 * 站位已經刪掉了（框跟著被拿掉時才送出）就不挪。
 	 */
-	function retimeHere(box: HTMLInputElement, formation: Formation, text: string) {
+	function retimeHere(box: HTMLInputElement, formationId: string, text: string) {
+		const formation = flow.formations.find((f) => f.id === formationId);
+		if (!formation) return;
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
 		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
@@ -88,8 +90,9 @@
 					placeholder="幫這張站位取名（可不填）"
 					value={here.name ?? ''}
 					bind:this={nameInput}
+					data-id={here.id}
 					onkeydown={(e) => boxKeydown(e, here.name ?? '')}
-					onchange={(e) => renameHere(here.id, e.currentTarget.value)}
+					onchange={(e) => renameHere(e.currentTarget.dataset.id!, e.currentTarget.value)}
 				/>
 				<CharCount field="formationName" input={nameInput} value={here.name ?? ''} />
 			</div>
@@ -98,8 +101,9 @@
 				<input
 					value={hereTime}
 					disabled={here === flow.formations[0]}
+					data-id={here.id}
 					onkeydown={(e) => boxKeydown(e, hereTime)}
-					onchange={(e) => retimeHere(e.currentTarget, here, hereTime)}
+					onchange={(e) => retimeHere(e.currentTarget, e.currentTarget.dataset.id!, hereTime)}
 				/>
 			</label>
 			<p class="time-hint">{moveFormationHint(flow, here.id)}</p>
