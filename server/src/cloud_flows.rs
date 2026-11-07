@@ -11,9 +11,12 @@ use serde_json::value::RawValue;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, SignedIn, signed_in};
+use crate::accounts::{AppError, SignedIn, random_id, signed_in};
 use crate::records::{self, CloudRecord, Stored};
 use crate::sharing::{Role, role_of};
+
+/// 雲端流程的 id 幾個字（亂數）。
+const FLOW_ID_LEN: usize = 12;
 
 /// 「我的流程」裡的一支。
 #[derive(Serialize, TS)]
@@ -86,7 +89,7 @@ pub async fn create(
     let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
-    let id = new_flow_id()?;
+    let id = random_id(FLOW_ID_LEN)?;
     let commands = format!(r#"[{{"name":"createFlow","args":[{}]}}]"#, input.get());
     // 建這支流程的那一步：步驟 id 用這支流程的 id（亂數），新東西的 id 由它算出來（ADR 0011）。
     let Ok(result) = state
@@ -156,7 +159,7 @@ pub async fn upload(
         }
     };
 
-    let id = new_flow_id()?;
+    let id = random_id(FLOW_ID_LEN)?;
     let now = state.clock.now();
     let mut tx = state.db.begin().await?;
     let (name,): (String,) = sqlx::query_as(
@@ -275,15 +278,4 @@ pub(crate) struct Outcome<'a> {
 /// 時間寫成跟 JS `toISOString` 一樣：`2026-11-07T09:00:00.000Z`。
 pub(crate) fn iso(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)
-}
-
-/// 雲端流程的 id：12 個字的亂數（小寫字母、數字）。
-fn new_flow_id() -> anyhow::Result<String> {
-    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut bytes = [0u8; 12];
-    getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
-    Ok(bytes
-        .iter()
-        .map(|b| CHARS[*b as usize % CHARS.len()] as char)
-        .collect())
 }

@@ -13,7 +13,7 @@ use serde_json::value::RawValue;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, SignedIn, signed_in};
+use crate::accounts::{AppError, SignedIn, random_id, signed_in};
 use crate::cloud_flows::iso;
 use crate::sharing::{Role, role_of};
 
@@ -81,7 +81,8 @@ pub async fn switch(
         Some(Role::Owner) => {}
         Some(_) => return Ok(StatusCode::FORBIDDEN.into_response()),
     }
-    let fresh = req.on.then(new_token).transpose()?;
+    // 分享連結：32 個字，猜不到。
+    let fresh = req.on.then(|| random_id(32)).transpose()?;
     let (token,): (Option<String>,) = sqlx::query_as(
         "UPDATE flows SET share_token = CASE WHEN $2 THEN COALESCE(share_token, $3) END
          WHERE id = $1 RETURNING share_token",
@@ -157,15 +158,4 @@ fn without_records(content: &str) -> anyhow::Result<Box<RawValue>> {
         }
     }
     Ok(RawValue::from_string(serde_json::to_string(&flow)?)?)
-}
-
-/// 分享連結：32 個字的亂數（小寫字母、數字），猜不到。
-fn new_token() -> anyhow::Result<String> {
-    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
-    Ok(bytes
-        .iter()
-        .map(|b| CHARS[*b as usize % CHARS.len()] as char)
-        .collect())
 }

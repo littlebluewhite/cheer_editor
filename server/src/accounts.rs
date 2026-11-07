@@ -521,6 +521,17 @@ fn random_token() -> anyhow::Result<String> {
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
 }
 
+/// len 個字的亂數（小寫字母、數字）：雲端流程的 id（12 個字）、分享連結（32 個字）。
+pub(crate) fn random_id(len: usize) -> anyhow::Result<String> {
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bytes = vec![0u8; len];
+    getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
+    Ok(bytes
+        .iter()
+        .map(|b| CHARS[*b as usize % CHARS.len()] as char)
+        .collect())
+}
+
 pub(crate) fn sha256(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
