@@ -757,7 +757,8 @@
 					<ActionForm {cellAt} />
 				</div>
 				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
-					<MemberPanel />
+					<!-- 換一份流程就重開：上一支沒送出的加隊員名單不帶過去 -->
+					{#key opened}<MemberPanel />{/key}
 				</div>
 			</aside>
 
@@ -959,13 +960,14 @@
 		grid-template-rows: auto minmax(0, 1fr);
 		grid-template-columns: minmax(0, 1fr);
 	}
-	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲） */
+	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲）。
+	   八拍表這一列固定高（畫面夠高時 25dvh，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
 	.phone-view {
 		grid-column: 1 / -1;
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, max-content) auto;
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, 25dvh) auto;
 	}
 	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行小字放最下面，不跟場地搶位置 */
 	.phone-why {

@@ -12,6 +12,7 @@ import {
 	deleteFormation,
 	formationTimes,
 	groupsPeople,
+	sameFlow,
 	setSquad,
 	squadsOf,
 	timeTextWithUnit,
@@ -223,17 +224,19 @@ export class EditorSession {
 	}
 
 	/**
-	 * 「改」：算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。同一個流程不算。清掉重做。
+	 * 「改」：算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。清掉重做。
+	 * 改之前和改之後內容一樣（例：拖 0 距離、在段尾插入八拍）不算：不換流程、不清重做。
 	 * 給了 join：上一步也是同一個 join、中間沒有別的改動，就跟上一步合成一步。
+	 * label：復原、重做提示寫的（例：「插入八拍」）；沒給就比對改了什麼（changeLabel）。
 	 * 回傳有沒有換上新的流程。
 	 */
-	change(flow: Flow, join?: string): boolean {
-		if (!this.#flow || flow === this.#flow) return false;
+	change(flow: Flow, join?: string, label?: string): boolean {
+		if (!this.#flow || sameFlow(flow, this.#flow)) return false;
 		const before = this.#flow;
 		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
 		// 合成一步的：說的是從合之前到現在改了什麼
 		const from = joined ? this.#undo.at(-1)!.flow : this.#flow;
-		const step = { flow: from, label: changeLabel(from, flow) };
+		const step = { flow: from, label: label ?? changeLabel(from, flow) };
 		this.#undo = (joined ? [...this.#undo.slice(0, -1), step] : [...this.#undo, step]).slice(-UNDO_LIMIT);
 		this.#joinable = join !== undefined ? { key: join, flow } : null;
 		this.#redo = [];
@@ -257,15 +260,24 @@ export class EditorSession {
 		this.#updated();
 	}
 
-	/** 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。 */
-	changeAsk(options: { confirmLabel?: string; onfail?: (error: string) => void } = {}): Ask {
-		const ask = new Ask((f) => this.change(f), { ...options, locked: () => this.#locked() });
+	/**
+	 * 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。
+	 * label：這個問題改的，復原、重做提示都寫它（例：「插入八拍」）；沒給就比對改了什麼。
+	 */
+	changeAsk({ label, ...options }: { confirmLabel?: string; onfail?: (error: string) => void; label?: string } = {}): Ask {
+		const ask = new Ask((f) => this.change(f, undefined, label), { ...options, locked: () => this.#locked() });
 		this.#changeAsks.add(new WeakRef(ask));
 		return ask;
 	}
 
 	/** 給元件的「改」的問題（changeAsk）：復原、重做時一起收掉。元件拆掉了就放掉（WeakRef）。 */
 	#changeAsks = new Set<WeakRef<Ask>>();
+
+	/** 有「改」的問題等教練回答（例：改了有紀錄的人的名字，還沒選保留或清掉）：答了才會改進流程。 */
+	get questionOpen(): boolean {
+		if (this.ask.question || this.squadAsk.question) return true;
+		return [...this.#changeAsks].some((ref) => !!ref.deref()?.question);
+	}
 
 	/** 問題都收掉：問的是換掉之前的流程，留著會冒出舊內容，按下去還會清掉重做。 */
 	#clearAsks() {

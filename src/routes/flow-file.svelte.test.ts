@@ -156,6 +156,20 @@ describe('開檔', () => {
 		expect(panels.map((p) => p.scrollTop)).toEqual([0, 0]);
 	});
 
+	it('開另一個流程檔：上一支沒送出的新動作名稱、加隊員名單不帶過去', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		await fireEvent.input(screen.getByLabelText('名稱'), { target: { value: '小翻' } });
+		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '阿強\n阿美' } });
+		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
+		await openFile(writeFlowFile(other, {}), '開啟');
+		expect(screen.getByText('另一支')).toBeTruthy();
+		expect((screen.getByLabelText(/^名字/) as HTMLInputElement).value).toBe('');
+		await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
+		expect((screen.getByLabelText('名稱') as HTMLInputElement).value).toBe('');
+	});
+
 	it('有未存的修改時開別的檔先問；取消就留在原本的流程，確定才打開', async () => {
 		setup();
 		await newFlow();

@@ -60,6 +60,28 @@ describe('調整場地', () => {
 		}
 	});
 
+	it('左右對稱的站位：9 條換 4 條再換回 9 條，還是左右對稱', () => {
+		const FOUR_V: FieldConfig = { strips: 4, layout: 'vertical' };
+		// 每一對站在中線兩邊一樣遠（格子單位，都在 1/4 格上）
+		const xs = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5];
+		const pairs = Object.fromEntries(
+			xs.flatMap((x, i) => [
+				[`l${i}`, [-x, 1] as [number, number]],
+				[`r${i}`, [x, 1] as [number, number]]
+			])
+		);
+		const there = flowOf(adjustField(flowWith([pairs]), FOUR_V));
+		const back = flowOf(adjustField(there, NINE_V));
+		for (const flow of [there, back]) {
+			const pos = flow.formations[0].pos;
+			for (const i of xs.keys()) {
+				const [lx, ly] = inCells(pos[`l${i}`]);
+				const [rx, ry] = inCells(pos[`r${i}`]);
+				expect([lx + rx + 0, ly - ry + 0]).toEqual([0, 0]);
+			}
+		}
+	});
+
 	it('條數不對就擋下', () => {
 		expect(adjustField(before, { strips: 0, layout: 'vertical' })).toEqual({
 			kind: 'blocked',
