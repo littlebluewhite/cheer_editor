@@ -11,17 +11,21 @@ import {
 	currentFormation,
 	formationTimes,
 	groupsPeople,
+	joinUndo,
 	squadsOf,
 	timeTextWithUnit,
+	undoChanges,
+	undone,
 	type Action,
 	type Command,
 	type CommandName,
 	type CommandOutcome,
 	type Flow,
 	type MoveResult,
-	type RemoteChange
+	type RemoteChange,
+	type UndoChanges
 } from '#lib/core';
-import { Ask, type Handlers, type SentStep } from '#lib/ask.svelte.js';
+import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
@@ -37,11 +41,17 @@ export interface DroppedRecord {
 	runThrough: boolean;
 }
 
-/** 復原、重做紀錄的一步：要換上的流程、那一步改了什麼（例：「插入站位 3」）。 */
-interface Step {
-	flow: Flow;
-	label: string;
-}
+/**
+ * 復原、重做紀錄的一步：那一步改了什麼（例：「插入站位 3」）。本機流程存要換上的流程；
+ * 雲端流程（#256）不存整份，存那一步改到的東西改之前、改之後的樣子（changes），和送出去的步驟 id（ids，方向鍵合成的有好幾個）。
+ */
+type Step = { label: string } & ({ flow: Flow } | { ids: string[]; changes: UndoChanges });
+
+/**
+ * 雲端流程送伺服器的一步（交給 onstep）：一串指令，或復原、重做（#256）：
+ * of 是要復原的那一步的步驟 id（重做是復原那一步的），change 是要放回去的樣子。
+ */
+export type CloudStep = SentStep | { id: string; undo: { of: string; redo: boolean; change: RemoteChange } };
 
 /** 檢視模式下改流程被擋的原因。 */
 export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上方列的「編輯」';
@@ -113,9 +123,9 @@ export class EditorSession {
 	multiSelect = $state(false);
 	/**
 	 * 雲端流程：改好的一步交給它送伺服器（#248），帶這一步改了什麼（changeLabel，被退回時的提示用，#254）。
-	 * 接著它時改的步不進復原紀錄（雲端的復原在 #256），也不算未存。本機流程是 null。
+	 * 復原、重做也交給它（#256）。接著它時不算未存，復原紀錄存改到的東西。本機流程是 null。
 	 */
-	onstep: ((step: SentStep, label: string) => void) | null = null;
+	onstep: ((step: CloudStep, label: string) => void) | null = null;
 	/** 不能改的原因（例：有新版，請重新整理）：有的話改流程的指令都擋下說這句，比檢視模式優先。空字串是沒有。 */
 	readOnly = $state('');
 	/**
@@ -249,16 +259,24 @@ export class EditorSession {
 	change(flow: Flow, join?: string, step?: SentStep): boolean {
 		if (!this.#flow || flow === this.#flow) return false;
 		const before = this.#flow;
+		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
+		const last = joined ? this.#undo.at(-1) : undefined;
+		let undoStep: Step | null = null;
 		if (this.onstep) {
-			// 雲端流程：送伺服器（存好了由它說），不進復原紀錄
-			if (step) this.onstep(step, changeLabel(before, flow));
+			// 雲端流程：送伺服器（存好了由它說）；復原紀錄存改到的東西（#256），合成一步的照第一步之前到現在
+			const label = changeLabel(before, flow);
+			if (step) this.onstep(step, label);
 			this.#saved = flow;
+			const changes = undoChanges(before, flow);
+			if (step && last && 'ids' in last) undoStep = { label, ids: [...last.ids, step.id], changes: joinUndo(last.changes, changes) };
+			else if (step) undoStep = { label, ids: [step.id], changes };
 		} else {
-			const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
 			// 合成一步的：說的是從合之前到現在改了什麼
-			const from = joined ? this.#undo.at(-1)!.flow : this.#flow;
-			const undoStep = { flow: from, label: changeLabel(from, flow) };
-			this.#undo = (joined ? [...this.#undo.slice(0, -1), undoStep] : [...this.#undo, undoStep]).slice(-UNDO_LIMIT);
+			const from = last && 'flow' in last ? last.flow : before;
+			undoStep = { flow: from, label: changeLabel(from, flow) };
+		}
+		if (undoStep) {
+			this.#undo = (last ? [...this.#undo.slice(0, -1), undoStep] : [...this.#undo, undoStep]).slice(-UNDO_LIMIT);
 			this.#joinable = join !== undefined ? { key: join, flow } : null;
 			this.#redo = [];
 		}
@@ -352,30 +370,51 @@ export class EditorSession {
 
 	/** 復原：換上前一份編排，帶著現在的紀錄，提示「已復原：…」。回傳有沒有復原（檢視模式擋下，說原因）。 */
 	undo(): boolean {
-		if (this.#blocked()) return false;
-		const prev = this.#undo.at(-1);
-		if (!this.#flow || !prev) return false;
-		const before = this.#flow;
-		this.#redo = [...this.#redo, { flow: this.#flow, label: prev.label }];
-		this.#undo = this.#undo.slice(0, -1);
-		this.#flow = carryRecords(prev.flow, this.#flow);
-		this.#restored(this.#flow, before);
-		this.notice = `已復原：${prev.label}`;
-		return true;
+		return this.#travel(false);
 	}
 
 	/** 重做：換上復原掉的編排，帶著現在的紀錄，提示「已重做：…」。回傳有沒有重做（檢視模式擋下，說原因）。 */
 	redo(): boolean {
+		return this.#travel(true);
+	}
+
+	/**
+	 * 復原（redo 是重做）：拿走這一邊最後一步、放進另一邊。本機流程換上存著的流程。
+	 * 雲端流程（#256）把那一步改到的東西放回改之前（重做是改之後）的樣子，畫面先改，再當成新的一步送伺服器
+	 * （of 是那一步的步驟 id，方向鍵合成的是第一個）；另一邊記下這次送的步驟 id。
+	 */
+	#travel(redo: boolean): boolean {
 		if (this.#blocked()) return false;
-		const next = this.#redo.at(-1);
-		if (!this.#flow || !next) return false;
+		const from = redo ? this.#redo : this.#undo;
+		const step = from.at(-1);
+		if (!this.#flow || !step) return false;
 		const before = this.#flow;
-		this.#undo = [...this.#undo, { flow: this.#flow, label: next.label }];
-		this.#redo = this.#redo.slice(0, -1);
-		this.#flow = carryRecords(next.flow, this.#flow);
+		let back: Step;
+		if ('flow' in step) {
+			back = { flow: before, label: step.label };
+			this.#flow = carryRecords(step.flow, before);
+		} else {
+			const id = newStepId();
+			const change = redo ? step.changes.redo : step.changes.undo;
+			back = { label: step.label, ids: [id], changes: step.changes };
+			this.#flow = undone(before, change);
+			this.#saved = this.#flow;
+			this.onstep?.({ id, undo: { of: step.ids[0], redo, change } }, step.label);
+		}
+		const to = [...(redo ? this.#undo : this.#redo), back];
+		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];
+		else [this.#undo, this.#redo] = [from.slice(0, -1), to];
 		this.#restored(this.#flow, before);
-		this.notice = `已重做：${next.label}`;
+		this.notice = `${redo ? '已重做' : '已復原'}：${step.label}`;
 		return true;
+	}
+
+	/** 雲端流程的步被退回（#256）：那幾步（步驟 id）不算，從復原、重做紀錄拿掉。 */
+	dropSteps(ids: string[]) {
+		const dropped = (s: Step) => 'ids' in s && s.ids.some((id) => ids.includes(id));
+		this.#undo = this.#undo.filter((s) => !dropped(s));
+		this.#redo = this.#redo.filter((s) => !dropped(s));
+		this.#joinable = null;
 	}
 
 	/** 鎖著（檢視模式）：原因放進提示，回傳 true。 */
