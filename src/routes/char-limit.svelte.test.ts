@@ -38,6 +38,16 @@ describe('字數', () => {
 		expect(count(name)).toBe('1/20');
 	});
 
+	it('打到上限計數變紅（full），少一個字就不紅', async () => {
+		await setup();
+		const name = screen.getByLabelText('名稱');
+		const counter = () => document.getElementById(name.getAttribute('aria-describedby')!)!;
+		await type(name, '字'.repeat(19));
+		expect(counter().classList.contains('full')).toBe(false);
+		await type(name, '字'.repeat(20));
+		expect(counter().classList.contains('full')).toBe(true);
+	});
+
 	it('貼上太長的動作名稱：留前 20 個字，不整串丟掉，存得進去', async () => {
 		const session = await setup();
 		const name = screen.getByLabelText('名稱') as HTMLInputElement;
