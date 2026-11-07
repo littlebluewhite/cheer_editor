@@ -7,7 +7,16 @@
 // 每一步送伺服器存（cloud，#248），沒有存檔。
 // 用分享連結打開的（#251）：已經有權限的照自己的權限打開；沒有的只能看（linkOnly）：不連房間、沒有草稿、沒有練習頁。
 
-import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type AudioBytes, type Flow } from '#lib/core';
+import {
+	audioExtension,
+	missingAudioNames,
+	putRecords,
+	readFlowFile,
+	writeFlowFile,
+	type Attempt,
+	type AudioBytes,
+	type Flow
+} from '#lib/core';
 import { CloudSteps, ONLY_VIEW } from '#lib/cloud-steps.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
@@ -286,12 +295,17 @@ export class FlowFile {
 			this.#openError = '這支流程打不開了';
 			return;
 		}
-		const flow = found.flow as Flow;
+		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。
+		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
+		const flow = putRecords(found.flow as Flow, records);
 		const server = this.#editor.adapters.server;
 		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId)));
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
+		this.#editor.session.recordedBy = Object.fromEntries(
+			found.records.flatMap((r) => (r.by ? [[(r.attempt as Attempt).id, r.by]] : []))
+		);
 		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
 		const goneHome = (why: (name: string) => string) => () => {
 			const name = this.#editor.session.flow?.name ?? '';

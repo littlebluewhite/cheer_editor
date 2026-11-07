@@ -1,0 +1,140 @@
+// 頁面：雲端流程的成功率紀錄（#257，ADR 0008）。記一次送到伺服器（不算復原的一步）；別人記的記號後面寫名字，
+// 自己的不寫；別人記的馬上看到；教練改了流程沒存進去的紅條、表、「知道了」；檢視者只看總表。
+// 伺服器換成測試共用的假伺服器（fakeServer）：紀錄照真的規則檢查、存、告訴別的房間。
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { describe, expect, it } from 'vitest';
+import { setSquad, type Attempt, type StoredAttempt } from '#lib/core';
+import { localDate } from '#lib/local-date.js';
+import { editorPage, fakeServer, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
+import Page from './+page.svelte';
+
+// jsdom 沒有 scrollIntoView。
+Element.prototype.scrollIntoView = () => {};
+
+const pw = '我們這一隊今年一定會贏 go go';
+const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: pw };
+const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: pw };
+
+/** 王教練的「測試」（libSample：Lib 三個環節上法、中段、下法，第 1 組小美、第 2 組小芳），林教練的權限是 role。 */
+const wangsFlow = (role: 'recorder' | 'viewer', records: FakeCloudFlow['records'] = []): FakeCloudFlow => ({
+	id: 'c1',
+	owner: wang.email,
+	flow: libSample(),
+	updatedAt: new Date(2026, 10, 6, 15, 20).toISOString(),
+	people: { [lin.email]: role },
+	records
+});
+
+/** 王教練記的一次：今天、分段練、整個做。 */
+const wangs = (id: string, who: string, marks: Attempt['marks']): StoredAttempt & { by: string } => ({
+	actionId: 'x1',
+	attempt: { id, date: localDate(), who, practice: 'drill', whole: true, marks },
+	by: wang.email
+});
+
+/** 林教練登入、打開王教練的「測試」、切到練習。 */
+async function open(flow: FakeCloudFlow) {
+	const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows: [flow] });
+	const page = editorPage(null, { server: fake.server });
+	render(Page, page.props);
+	await flush();
+	await fireEvent.click(screen.getByRole('button', { name: /^測試/ }));
+	await flush();
+	await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+	return { ...fake, page };
+}
+
+const card = (who: string) => within(screen.getByRole('region', { name: who }));
+const tap = (who: string, phase: string, mark: '成功' | '小失誤' | '失敗') =>
+	fireEvent.click(screen.getByRole('button', { name: `${who} ${phase} ${mark}` }));
+/** 卡片下面那一排：這天的每一次（記號，別人記的後面寫名字）。 */
+function dayRow(who: string): string[] {
+	const list = card(who).queryByRole('list', { name: '這天的每一次' });
+	return list ? within(list).getAllByRole('listitem').map((li) => li.textContent!.replace(/\s+/g, ' ').trim()) : [];
+}
+
+describe('雲端流程記一次', () => {
+	it('記一次送到伺服器存起來，記下是誰記的；編排裡不帶紀錄；不算復原的一步；自己記的不寫名字', async () => {
+		const s = await open(wangsFlow('recorder'));
+		await tap('第 1 組 小美', '上法', '成功');
+		await tap('第 1 組 小美', '中段', '成功');
+		await tap('第 1 組 小美', '下法', '小失誤');
+		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '存這一次' }));
+		await flush();
+
+		const stored = s.state.flows[0].records!;
+		expect(stored.map((r) => [r.actionId, r.attempt.who, r.attempt.marks, r.by])).toEqual([
+			['x1', 'g1', { p1: '✓', p2: '✓', p3: '△' }, lin.email]
+		]);
+		expect(stored[0].attempt.date).toBe(localDate());
+		expect(s.state.flows[0].flow.actions[0].successRate!.records).toEqual([]);
+		expect(s.page.session.canUndo).toBe(false);
+		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
+	});
+
+	it('打開時拿到紀錄：別人記的記號後面寫名字，總表的明細也是', async () => {
+		await open(wangsFlow('recorder', [wangs('tabc123def456', 'g1', { p1: '✓', p2: '✗' })]));
+		expect(dayRow('第 1 組 小美')).toEqual(['✓✗·王教練']);
+
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		await fireEvent.click(screen.getByRole('button', { name: /^第 1 組 小美 上法 / }));
+		const detail = within(screen.getByRole('complementary', { name: '明細' }));
+		const days = detail.getAllByRole('listitem').filter((li) => li.querySelector('time'));
+		expect(days.map((li) => li.textContent!.replace(/\s+/g, ''))).toEqual([`${localDate()}✓王教練`]);
+	});
+
+	it('別人記的馬上看到，寫名字；同一組兩個人記，兩次都在', async () => {
+		const s = await open(wangsFlow('recorder'));
+		await tap('第 1 組 小美', '上法', '失敗');
+		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '存這一次' }));
+		await flush();
+
+		s.recordAs('c1', wang.email, [wangs('tabc123def456', 'g1', { p1: '✓', p2: '✓', p3: '✓' })]);
+		await flush();
+		expect(dayRow('第 1 組 小美')).toEqual(['✗··', '✓✓✓王教練']);
+		expect(s.state.flows[0].records!.length).toBe(2);
+	});
+});
+
+describe('雲端流程沒存進去的紀錄', () => {
+	it('教練記的時候改了流程（第 2 組沒有人了）：紅條「這 N 筆沒存進去」、表；卡上拿掉；按「知道了」才清掉', async () => {
+		const s = await open(wangsFlow('recorder'));
+		s.state.holdRoom = true;
+		await tap('第 2 組 小芳', '上法', '成功');
+		await fireEvent.click(card('第 2 組 小芳').getByRole('button', { name: '存這一次' }));
+		expect(dayRow('第 2 組 小芳')).toEqual(['✓··']);
+		// 教練（在別的地方）把小B、小芳換到第 1 組
+		s.state.flows[0].flow = flowOf(setSquad(s.state.flows[0].flow, 'x1', ['m3', 'm4'], 1));
+		s.releaseRoom();
+		await flush();
+
+		const bar = screen.getByRole('alert');
+		expect(bar.textContent).toContain('教練改了流程，這 1 筆沒存進去');
+		expect(bar.textContent).toContain('你記的時候，教練刪掉了這些環節或組。');
+		const row = within(bar).getAllByRole('row')[1];
+		expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual([localDate(), '技巧·Lib', '第 2 組 小芳', '✓··']);
+		expect(dayRow('第 2 組 小芳')).toEqual([]);
+		expect(s.state.flows[0].records ?? []).toEqual([]);
+
+		await fireEvent.click(within(bar).getByRole('button', { name: '知道了' }));
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+});
+
+describe('雲端流程的權限', () => {
+	it('檢視者：練習只有總表、看得到紀錄，不能記', async () => {
+		const s = await open(wangsFlow('viewer', [wangs('tabc123def456', 'g1', { p1: '✓' })]));
+		const pages = within(screen.getByRole('group', { name: '練習的頁' }));
+		expect(pages.getAllByRole('button').map((b) => b.textContent)).toEqual(['總表']);
+		expect(screen.queryByRole('region', { name: '第 1 組 小美' })).toBeNull();
+		expect(screen.getByRole('button', { name: /^第 1 組 小美 上法 / }).textContent).toContain('100%');
+
+		// 程式送的也擋下
+		const ask = s.page.session.recordAsk();
+		ask.send({ name: 'recordAttempt', args: ['x1', { date: localDate(), who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } }] });
+		await flush();
+		expect(ask.error).toBe('你只能看這支流程');
+		expect(s.state.flows[0].records!.length).toBe(1);
+	});
+});

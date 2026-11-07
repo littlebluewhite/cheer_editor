@@ -268,7 +268,7 @@ describe('一格的明細', () => {
 			attempt('✓✓△', { date: '2026-11-04', ...runThrough('r1') }),
 			attempt('✓··', { date: '2026-11-04', whole: false })
 		);
-		expect(cellDetail(x1(flow), 'g1', 'p3')).toEqual([
+		expect(cellDetail(x1(flow), 'g1', 'p3')).toMatchObject([
 			{ date: '2026-11-04', marks: [{ mark: '△', runThrough: true }] },
 			{ date: '2026-11-05', marks: [{ mark: '✗', runThrough: false }] }
 		]);
@@ -282,7 +282,7 @@ describe('一格的明細', () => {
 			attempt('✓✓△', { date: '2026-11-04', ...runThrough('r1') }),
 			attempt('✓··', { date: '2026-11-04', whole: false })
 		);
-		expect(cellDetail(x1(flow), 'g1', null)).toEqual([
+		expect(cellDetail(x1(flow), 'g1', null)).toMatchObject([
 			{
 				date: '2026-11-04',
 				marks: [

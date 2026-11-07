@@ -11,4 +11,4 @@ seen: number,
 /**
  * 在編輯（不是檢視模式）：在場名單用。
  */
-editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "mode", editing: boolean, };
+editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], };

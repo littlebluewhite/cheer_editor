@@ -8,6 +8,7 @@
 //! 存好、送出去照第幾步的順序（同一支流程的步在這台伺服器上一個一個來）。
 //! 誰開著（#253）：每個連線是誰、在編輯還是檢視；有人進來、離開、換模式就告訴每個連線（自己不列，同一個人只列一次）。
 //! 流程被刪了（#252）每個連線都說，房間關掉。改到同一個東西在 #254。
+//! 成功率紀錄（#257）也從這裡送：記一次、別人記的馬上告訴房間裡的人（見 records.rs）。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -23,9 +24,9 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, signed_in};
-use crate::cloud_flows::Outcome;
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
+use crate::records::{self, CloudRecord, DroppedRecord, Stored};
 use crate::sharing::{Role, role_of};
 
 /// 不能改的人送來的步：退回的原因。
@@ -47,6 +48,13 @@ pub enum RoomEvent {
     },
     /// 在場名單變了：現在開著的每個連線。
     Present(Arc<Vec<Here>>),
+    /// 有人記了幾次（收了的）：from 是送來的那個連線，user_id、name 是記的人。
+    Recorded {
+        from: u64,
+        user_id: i64,
+        name: String,
+        records: Vec<Stored>,
+    },
 }
 
 /// 開著這支流程的一個連線：誰、在編輯還是檢視。
@@ -182,6 +190,11 @@ pub enum RoomRequest {
     },
     /// 換成編輯或檢視模式（在場名單用）。
     Mode { editing: bool },
+    /// 記一次（分段練，或一個人記的全上的每一次）：流程核心的 StoredAttempt（動作 id、那一次，id 是手機發的）。
+    Record {
+        #[ts(type = "unknown[]")]
+        attempts: serde_json::Value,
+    },
 }
 
 /// 伺服器送給用戶端的。
@@ -237,6 +250,14 @@ pub enum RoomMessage {
     },
     /// 現在誰開著（自己不列，同一個人只列一次），照進來的先後。
     Present { people: Vec<Present> },
+    /// 我送的紀錄：收了的（伺服器存的樣子，記號可能少了）、沒存進去的和原因。
+    /// 送過、後來被清掉的兩邊都不放。
+    RecordsSaved {
+        saved: Vec<CloudRecord>,
+        dropped: Vec<DroppedRecord>,
+    },
+    /// 別人（或我在別的分頁）記的。
+    NewRecords { records: Vec<CloudRecord> },
 }
 
 /// 在場名單的一個人：在編輯還是檢視（他有一個分頁在編輯就算在編輯）。
@@ -360,6 +381,9 @@ async fn serve(
                     }
                     reply
                 }
+                Some(RoomRequest::Record { attempts }) => {
+                    records::record(&state, flow_id, user_id, conn, attempts).await?
+                }
                 Some(RoomRequest::Mode { editing }) => {
                     state.rooms.set_editing(flow_id, conn, editing && role.can_edit());
                     continue;
@@ -381,6 +405,17 @@ async fn serve(
                     RoomMessage::Changed { step, by, change: RawValue::from_string(change.to_string())? }
                 }
                 Ok(RoomEvent::Present(here)) => RoomMessage::Present { people: present_for(&here, user_id) },
+                Ok(RoomEvent::Recorded { from, user_id: by, name, records }) if from != conn => {
+                    let records = records
+                        .into_iter()
+                        .map(|s| CloudRecord {
+                            action_id: s.action_id,
+                            attempt: s.attempt,
+                            by: (by != user_id).then(|| name.clone()),
+                        })
+                        .collect();
+                    RoomMessage::NewRecords { records }
+                }
                 Ok(_) => continue,
                 // 漏聽了幾件：照資料庫重新看一次自己的權限，再說一次在場名單。
                 // 漏掉的別人的改動要重新連才拿得到（斷線、重新連在 #255）。
@@ -502,15 +537,22 @@ async fn take_step(
     if !role.can_edit() {
         return rejected(VIEW_ONLY.into(), content);
     }
+    // 紀錄放回流程再跑（ADR 0008）：跑完照結果清掉、改掉該改的紀錄。
+    let before = records::before_step(&mut tx, flow_id).await?;
     let Ok(result) = state
         .core
-        .run_commands(content.clone(), commands.to_string(), step_id.clone())
+        .run_step(
+            content.clone(),
+            serde_json::to_string(&before)?,
+            commands.to_string(),
+            step_id.clone(),
+        )
         .await
     else {
         // 流程核心看不懂（例：沒有這個指令、參數不對）。
         return rejected("沒存進去：伺服器看不懂這一步".into(), content);
     };
-    let outcome: Outcome = serde_json::from_str(&result)?;
+    let outcome: records::StepOutcome = serde_json::from_str(&result)?;
     let flow = match (outcome.kind.as_str(), outcome.flow) {
         ("ok", Some(flow)) => flow,
         // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。
@@ -545,6 +587,14 @@ async fn take_step(
     .bind(user_id)
     .bind(now)
     .execute(&mut *tx)
+    .await?;
+    records::after_step(
+        &mut tx,
+        flow_id,
+        &before,
+        outcome.records.unwrap_or_default(),
+        now,
+    )
     .await?;
     // 換掉、刪掉的音樂記下哪天不用了（#249）。
     crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;

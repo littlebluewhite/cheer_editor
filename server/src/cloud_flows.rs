@@ -12,6 +12,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, signed_in};
+use crate::records::{self, CloudRecord};
 use crate::sharing::{Role, role_of};
 
 /// 「我的流程」裡的一支。
@@ -64,6 +65,8 @@ pub struct CloudFlow {
     pub updated_at: String,
     /// 我的權限（記錄者、檢視者打開一律是檢視模式）。
     pub role: Role,
+    /// 成功率紀錄（跟編排分開存，ADR 0008），照收到的先後；別人記的帶名字。
+    pub records: Vec<CloudRecord>,
 }
 
 /// 流程核心不收時（422）的原因。
@@ -188,12 +191,14 @@ pub async fn get_one(
             .fetch_one(&state.db)
             .await?;
     let flow = RawValue::from_string(content)?;
+    let records = records::for_viewer(&state.db, &id, user_id).await?;
     Ok(Json(CloudFlow {
         id,
         flow,
         step,
         updated_at: iso(at),
         role,
+        records,
     })
     .into_response())
 }

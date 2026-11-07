@@ -141,6 +141,38 @@ impl FlowCore {
         self.call_two("applyRemoteChangeJson", flow, change)
     }
 
+    /// 雲端流程跑一步（`runStepJson`，ADR 0008）：records 是分開存的紀錄（StoredAttempt[] 的 JSON），
+    /// 先放回 flow 再跑 commands，跑完拿出來。成功時結果的 flow 不帶紀錄，records 是跑完還在的紀錄。
+    pub fn run_step(
+        &self,
+        flow: String,
+        records: String,
+        commands: String,
+        step_id: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            call(ctx, "runStepJson", (flow, records, commands, step_id))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
+
+    /// 收紀錄時照「記一次」的規則檢查（`checkRecordsJson`）：records 是 StoredAttempt[] 的 JSON，
+    /// 回每一次的結果（照收，或整筆不存和原因）的 JSON，順序一樣。
+    pub fn check_records(
+        &self,
+        flow: String,
+        records: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            call(ctx, "checkRecordsJson", (flow, records))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
+
     fn call_two(
         &self,
         name: &'static str,
