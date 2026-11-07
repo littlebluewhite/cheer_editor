@@ -65,6 +65,41 @@ describe('場地', () => {
 		for (const x of coords('x')) expect(x).toBeLessThan(outer('x'));
 	});
 
+	it('格號（#227）：直放寫在左邊外圍框外、正面起 1–7，每個號碼在那一格的前後範圍裡', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' } });
+		const els = [...document.querySelectorAll('[data-cell-number]')];
+		expect(els.map((el) => el.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+		const outerX = Number(document.querySelector('rect.margin')!.getAttribute('x'));
+		// 7 格 × 6 呎 ≈ 12.8 m，中心在 0：第 1 格（正面）在 y 4.6–6.4 m
+		const cell = 6 * 0.3048;
+		els.forEach((el, i) => {
+			const y = Number(el.getAttribute('y'));
+			expect(Number(el.getAttribute('x'))).toBeLessThan(outerX);
+			expect(y).toBeLessThan(3.5 * cell - i * cell);
+			expect(y).toBeGreaterThan(2.5 * cell - i * cell);
+		});
+	});
+
+	it('格號（#227）：橫放寫在後面外圍框外、左起 1–7，每個號碼在那一格的左右範圍裡', () => {
+		render(Field, { field: { strips: 5, layout: 'horizontal' } });
+		const els = [...document.querySelectorAll('[data-cell-number]')];
+		expect(els.map((el) => el.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+		const outerY = Number(document.querySelector('rect.margin')!.getAttribute('y'));
+		const cell = 6 * 0.3048;
+		els.forEach((el, i) => {
+			const x = Number(el.getAttribute('x'));
+			expect(Number(el.getAttribute('y'))).toBeLessThan(outerY);
+			expect(x).toBeGreaterThan(-3.5 * cell + i * cell);
+			expect(x).toBeLessThan(-2.5 * cell + i * cell);
+		});
+	});
+
+	it('八拍表的小站位圖（只畫一塊）不寫格號：擠在裁切的邊上會跟條號疊在一起', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' }, controls: false, crop: { x: -2, y: -2, width: 4, height: 4 } });
+		expect(document.querySelectorAll('[data-cell-number]')).toHaveLength(0);
+		expect(stripNumbers().length).toBeGreaterThan(0);
+	});
+
 	it('正面在下面，標「正面／裁判」', () => {
 		render(Field, { field: { strips: 9, layout: 'vertical' } });
 		expect(screen.getByText(/正面／裁判/)).toBeTruthy();
