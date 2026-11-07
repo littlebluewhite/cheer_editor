@@ -15,7 +15,7 @@ import {
 	type Flow
 } from '#lib/core';
 import type { AudioEngine } from '#lib/audio/engine.js';
-import { createPlayer, type Player } from '#lib/audio/player.js';
+import { createPlayer, type Lap, type Player } from '#lib/audio/player.js';
 import type { SessionPlayback } from '#lib/editor-session.svelte.js';
 import { loadLatencyMs, MAX_LATENCY_MS, saveLatencyMs } from '#lib/local-settings.js';
 
@@ -43,6 +43,8 @@ export class Playback implements SessionPlayback {
 	#rate = $state(1);
 	/** 重複：選了動作就重複那個動作，沒選就重複播放頭所在的八拍。不進流程檔。 */
 	#repeat = $state(false);
+	/** 重複播的那段從哪一秒開始：每一圈快播完時，照現在的流程和選的動作從這裡再算一次下一圈。 */
+	#loopStart = 0;
 	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
 	#previewing = $state(false);
 	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
@@ -123,13 +125,14 @@ export class Playback implements SessionPlayback {
 		const span = this.#repeat ? repeatSpan(f, this.#sec, this.#selectedAction()) : null;
 		if (span) {
 			if (this.#sec < span.startSec || this.#sec >= span.endSec - 0.01) this.#sec = span.startSec;
+			this.#loopStart = span.startSec;
 			until = span.endSec;
 		}
 		this.#getPlayer().start(playbackPlan(f, this.#sec, until), {
 			fromSec: this.#sec,
 			metronome: this.#metronome,
 			rate: this.#rate,
-			loop: span ? { plan: playbackPlan(f, span.startSec, span.endSec), fromSec: span.startSec } : undefined
+			loop: span ? this.#nextLap : undefined
 		});
 		if (!this.#playing) {
 			this.#playing = true;
@@ -271,6 +274,15 @@ export class Playback implements SessionPlayback {
 		if (ended) this.pause();
 		else this.play();
 	}
+
+	/** 重複的下一圈：照現在的流程和選的動作（播放中改了、換選了，下一圈就聽得到）。算不出來就不再重複。 */
+	#nextLap = (): Lap | null => {
+		const f = this.#flow();
+		const span = f && repeatSpan(f, this.#loopStart, this.#selectedAction());
+		if (!f || !span) return null;
+		this.#loopStart = span.startSec;
+		return { plan: playbackPlan(f, span.startSec, span.endSec), fromSec: span.startSec };
+	};
 
 	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停（重複開著時播放器自己一圈接一圈播，不會停）。 */
 	#frame = () => {

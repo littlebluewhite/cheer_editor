@@ -111,11 +111,11 @@ export class Editor {
 	}
 
 	/**
-	 * 有沒有沒存的東西：沒存的改動，或欄位裡打了還沒送出的字（在首頁打的不算）。
+	 * 有沒有沒存的東西：沒存的改動、改了還在等教練回答的，或欄位裡打了還沒送出的字（在首頁打的不算）。
 	 * 關分頁前的提醒、service worker 擋重新整理都看這個。
 	 */
 	get hasUnsavedWork(): boolean {
-		return this.session.unsaved || (!!this.session.flow && this.adapters.pendingInput.pending);
+		return this.session.unsavedOrAsking || (!!this.session.flow && this.adapters.pendingInput.pending);
 	}
 
 	/** 點時間軸的色條：選這個動作，右邊欄翻到「動作」（再點選著的那條也算）。 */

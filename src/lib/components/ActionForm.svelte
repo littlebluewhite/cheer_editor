@@ -142,22 +142,17 @@
 		editor.adapters.pendingInput.flush();
 		askAtLength = false;
 		if (action) session.removeAction(action.id, ask);
-		focusForm();
+		keepFocus('form');
 	}
 
 	/**
-	 * 「刪除動作」不見了：焦點給表單本身，不掉回頁面最上面。不給新動作的名稱：
+	 * 按的鈕做完就不見了：焦點留在表單裡，不掉回頁面最上面。
+	 * 新增動作、接下一個動作給名稱；「刪除動作」給表單本身（to = 'form'），不給新動作的名稱：
 	 * 那裡的 ⌘Z 是退字，按了刪除馬上 ⌘Z 要讓動作回來。
 	 */
-	async function focusForm() {
+	async function keepFocus(to: 'name' | 'form' = 'name') {
 		await tick();
-		if (!formEl.contains(document.activeElement)) formEl.focus();
-	}
-
-	/** 按的鈕做完就不見了（新增動作、接下一個動作）：焦點給表單的名稱，不掉回頁面最上面。 */
-	async function keepFocus() {
-		await tick();
-		if (!formEl.contains(document.activeElement)) nameInput?.focus();
+		if (!formEl.contains(document.activeElement)) (to === 'form' ? formEl : nameInput)?.focus();
 	}
 
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */

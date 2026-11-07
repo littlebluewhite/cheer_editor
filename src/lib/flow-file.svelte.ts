@@ -234,7 +234,7 @@ export class FlowFile {
 	 * 回傳現在就能選檔（沒有未存的修改、剛答應過）。
 	 */
 	mayChoose(choose: () => void): boolean {
-		if (this.#openApproved || !this.#unsaved()) return true;
+		if (this.#openApproved || !this.#editor.session.unsavedOrAsking) return true;
 		this.#asking = {
 			open: true,
 			then: () => {
@@ -251,7 +251,7 @@ export class FlowFile {
 	 */
 	async leaveToHome() {
 		const { session, music } = this.#editor;
-		if (this.#unsaved()) return this.startNew();
+		if (session.unsavedOrAsking) return this.startNew();
 		const f = session.flow;
 		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
 		session.open(null);
@@ -310,6 +310,7 @@ export class FlowFile {
 	/**
 	 * 回答「還沒存」：丟掉就接著換流程；取消就留著；先存檔要存好了（沒有未存的修改）才接著換，
 	 * 在存檔視窗按取消或存失敗，就留在問的畫面。
+	 * 還有問題等教練回答（例：改名後還沒選保留或清掉）時先存檔不存也不換：存了也沒有那個修改，換掉就不見了；收掉這個問題，提示先回答。
 	 */
 	async answer(choice: 'save' | 'discard' | 'cancel') {
 		const then = this.#asking?.then;
@@ -319,6 +320,11 @@ export class FlowFile {
 			return;
 		}
 		if (choice === 'save') {
+			if (this.#editor.session.questionOpen) {
+				this.#asking = null;
+				this.#editor.session.notice = '還有問題沒回答：先回答了再存檔';
+				return;
+			}
 			await this.save();
 			if (this.#editor.session.unsaved || !this.#asking) return;
 		}
@@ -337,12 +343,6 @@ export class FlowFile {
 		this.#draftAsk?.resolve(choice);
 	}
 
-	/** 換流程前要先問：有還沒存的修改，或改了還在等教練回答（例：改名後還沒選保留或清掉），換掉就不見了。 */
-	#unsaved(): boolean {
-		const { session } = this.#editor;
-		return session.unsaved || session.questionOpen;
-	}
-
 	/** 會換掉現在的流程（open：開檔；不然是新建、回首頁）：有還沒存的修改、又還沒答應過（approved）就先問，確定才做。 */
 	#unlessUnsaved(open: boolean, approved: boolean, then: () => void) {
 		// 換掉的流程是這個分頁放在草稿裡的：它的草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
@@ -351,7 +351,7 @@ export class FlowFile {
 			if (this.ownsDraft) void this.#dropDraft(this.#draftId);
 			then();
 		};
-		if (this.#unsaved() && !approved) this.#asking = { then: go, open };
+		if (this.#editor.session.unsavedOrAsking && !approved) this.#asking = { then: go, open };
 		else go();
 	}
 
