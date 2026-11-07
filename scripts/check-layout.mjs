@@ -13,6 +13,9 @@
 //       return { ok: 有沒有過, value: 量到的值 };   // value 失敗時會印出來，寫得讓人看得懂
 //     });
 //   先在修之前跑一次，確定它會失敗，再去修。
+//
+// 共用規則：整個腳本跑完，中間頁面只要丟過例外（沒接住的錯誤、沒處理的 rejection）就算失敗，
+// 印出例外和是哪一條檢查時發生的（單元測試抓不到的那一類，例：拆元件途中失去焦點改到狀態）。
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -73,7 +76,14 @@ ws.addEventListener('message', (e) => {
 	if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
 	// 上一條檢查留下未存的修改：換頁時的「離開網站？」直接按離開，不然頁面卡住
 	if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
+	if (m.method === 'Runtime.exceptionThrown') {
+		const d = m.params.exceptionDetails;
+		pageErrors.push({ check: current, error: (d.exception?.description ?? d.text).split('\n').slice(0, 4).join('\n') });
+	}
 });
+/** 頁面丟過的例外，和那時在跑哪一條檢查。 */
+const pageErrors = [];
+let current = '（還沒開始檢查）';
 const send = (method, params = {}) =>
 	new Promise((r, j) => {
 		const i = ++id;
@@ -167,6 +177,7 @@ const rectOf = (selector) =>
 
 const failed = [];
 async function check(name, fn) {
+	current = name;
 	let res;
 	try { res = await fn(); } catch (e) { res = { ok: false, value: String(e.message ?? e) }; }
 	console.log(`${res.ok ? '通過' : '失敗'}  ${name}`);
@@ -174,13 +185,23 @@ async function check(name, fn) {
 		console.log(`      量到：${typeof res.value === 'string' ? res.value : JSON.stringify(res.value)}`);
 		failed.push(name);
 	}
+	current = `（「${name}」之後、下一條檢查之前）`;
 }
 
 // ---------- 檢查 ----------
 await send('Page.enable');
 await send('DOM.enable');
+await send('Runtime.enable');
 await setViewport(1440, 1000);
 await openSample();
+
+/** 真的按一個鍵（送到有焦點的地方，跟人按一樣）：Enter、Escape。 */
+async function press(key) {
+	const code = { Enter: 13, Escape: 27 }[key];
+	for (const type of ['keyDown', 'keyUp'])
+		await send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code, text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
+	await sleep(300);
+}
 
 const zoomText = () => js(`return document.querySelector('.rail .zoom').textContent.trim()`);
 /** 按鈕中心點最上面的東西是不是按鈕自己；是的話用真的滑鼠點它。 */
@@ -1511,5 +1532,51 @@ await check('從時間軸左下角的空白處一路拖到上方列：不會把�
 	return { ok: text.trim() === '', value: { 反白的字: text.slice(0, 120) } };
 });
 
+// B01：欄位有焦點時畫面把它換掉，頁面不丟例外（丟了會由最後那條共用規則抓到）。
+await check('欄位有焦點時畫面把它換掉（首頁名字欄按 Enter 建立、流程設定的名字欄按 Esc 關掉）：畫面照常換過去', async () => {
+	await setViewport(1440, 900);
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.new-flow input[aria-label="流程名字"]')`));
+	await sleep(300);
+	await js(`document.querySelector('.new-flow input[aria-label="流程名字"]').focus()`);
+	await send('Input.insertText', { text: '例外測試' });
+	await press('Enter');
+	const created = await waitFor(() => js(`return !!document.querySelector('.rail')`), 25).catch(() => false);
+	await js(`document.querySelector('.topbar button[title="流程設定"]').click()`);
+	await sleep(300);
+	await js(`document.querySelector('.flow-dialog input[aria-label="流程名字"], .flow-dialog input').focus()`);
+	await send('Input.insertText', { text: '2' });
+	await press('Escape');
+	const closed = await js(`return !document.querySelector('.flow-dialog')`);
+	return { ok: created && closed, value: { 建立了: created, 流程設定關掉了: closed } };
+});
+
+await check('欄位有焦點時畫面把它換掉（站位名稱有焦點時刪掉這張站位、縮成手機寬）：畫面照常換過去', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const before = await js(`return document.querySelectorAll('.row.film .pick').length`);
+	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
+	await sleep(300);
+	await js(`document.querySelector('.formation-name').focus()`);
+	await send('Input.insertText', { text: '開場' });
+	// 用 click() 不搶焦點：焦點還在名稱欄裡時整張站位被拿掉
+	await js(`document.querySelector('[aria-label="刪除站位 2"]').click()`);
+	await sleep(300);
+	const after = await js(`return document.querySelectorAll('.row.film .pick').length`);
+	await js(`[...document.querySelectorAll('.row.film .pick')].at(-1).click()`);
+	await sleep(300);
+	await js(`document.querySelector('.formation-name').focus()`);
+	await send('Input.insertText', { text: '開場' });
+	await setViewport(390, 844);
+	const phone = await js(`return !!document.querySelector('.phone-view')`);
+	await setViewport(1440, 900);
+	return { ok: after === before - 1 && phone, value: { 刪之前幾張: before, 刪之後幾張: after, 縮窄後是手機畫面: phone } };
+});
+
+if (pageErrors.length) {
+	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
+	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
+	failed.push('頁面例外');
+}
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

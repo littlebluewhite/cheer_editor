@@ -29,8 +29,14 @@ const subscribe = createSubscriber((update) => {
 	watchers.add(update);
 	return () => watchers.delete(update);
 });
+/**
+ * 晚一點才通知：Chrome 拆掉有焦點的欄位時當下就發 change、blur、focusout（欄位是畫面換掉時才失去焦點），
+ * 那一刻改狀態 Svelte 會丟 state_unsafe_mutation（B01）。pending 本來就看當下的焦點和字，晚通知不會看錯。
+ */
 function changed() {
-	for (const update of watchers) update();
+	queueMicrotask(() => {
+		for (const update of watchers) update();
+	});
 }
 
 function isTextField(el: EventTarget | null): el is Field {

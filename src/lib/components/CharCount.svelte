@@ -64,7 +64,8 @@
 		// 畫面在 change 時可能把欄位退回原本的字。
 		const onchange = () => queueMicrotask(() => (text = accepted = el.value));
 		const onfocus = () => (focused = true);
-		const onblur = () => (focused = false);
+		// 晚一點才改：欄位可能是畫面換掉時才失去焦點，那一刻不能改狀態（B01）。
+		const onblur = () => queueMicrotask(() => (focused = document.activeElement === el));
 		el.addEventListener('input', oninput);
 		el.addEventListener('compositionstart', onstart);
 		el.addEventListener('compositionend', onend);
