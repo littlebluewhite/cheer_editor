@@ -88,7 +88,7 @@ export function renameFlow(flow: Flow, name: string): CommandResult {
 }
 
 /**
- * 調整場地：改條數或鋪向。墊子上的人照比例放大縮小，再吸到最近的 1/4 格；
+ * 調整場地：改條數或鋪向。墊子上的人照比例放大縮小，再吸到最近的 1/4 格（對中線對稱的人吸完還是對稱）；
  * 站在墊子外的人，跟最近那個邊的距離不變（還是在場外）。
  */
 export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
@@ -101,15 +101,36 @@ export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
 		if (v > lo + len) return newLo + newLen + (v - lo - len);
 		return newLo + ((v - lo) / len) * newLen;
 	};
-	const move = ([x, y]: Position): Position => {
+	const moveOneSide = ([x, y]: Position): Position => {
 		const p: Position = [axis(x, from.x, from.width, to.x, to.width), axis(y, from.y, from.height, to.y, to.height)];
 		const snapped = snapPosition(field, p, 1);
 		const onMat = (v: number, lo: number, len: number) => v >= lo && v <= lo + len;
 		return [onMat(x, from.x, from.width) ? snapped[0] : p[0], onMat(y, from.y, from.height) ? snapped[1] : p[1]];
+	};
+	// 場地和格子都對中線左右、前後對稱：照離中線多遠算，再放回原本那一邊，對稱的站位換完還是對稱
+	const move = ([x, y]: Position): Position => {
+		const [ax, ay] = moveOneSide([Math.abs(x), Math.abs(y)]);
+		return [Math.sign(x) * ax, Math.sign(y) * ay];
 	};
 	const formations = flow.formations.map((f) => ({
 		...f,
 		pos: Object.fromEntries(Object.entries(f.pos).map(([id, p]) => [id, move(p)]))
 	}));
 	return ok({ ...flow, field: { ...field }, formations });
+}
+
+/** 兩份流程內容一不一樣（不看是不是同一個物件；沒有的欄位和 undefined 算一樣）。復原用它判斷「改」有沒有改到東西。 */
+export function sameFlow(a: Flow, b: Flow): boolean {
+	return same(a, b);
+}
+
+function same(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+	if (Array.isArray(a) || Array.isArray(b)) {
+		return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => same(x, b[i]));
+	}
+	const x = a as Record<string, unknown>;
+	const y = b as Record<string, unknown>;
+	return [...new Set([...Object.keys(x), ...Object.keys(y)])].every((k) => same(x[k], y[k]));
 }

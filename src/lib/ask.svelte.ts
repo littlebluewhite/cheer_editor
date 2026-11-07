@@ -2,7 +2,7 @@
 // 編輯頁的元件跟 session 要（changeAsk 是「改」、recordAsk 是「記」），不自己接；沒有 session 的（新建流程）才自己給 onchange。
 // 送一個指令（給它「帶著回答再送一次」的函式），照結果：
 //   成功：把新流程交給 onchange；被擋：留下原因（給了還原就加「，已還原」並還原）；要確認、要選：留下問題。
-//   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到任何一格成功送出為止（改好了就收，不疊著）。
+//   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到任何一格成功送出、或又要問為止（改好了就收，不疊著）。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
 // 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
 // 給了鎖（locked，例：檢視模式）：鎖著時指令不送，直接當被擋，原因是鎖給的那句。
@@ -37,7 +37,7 @@ const OPTIONS: Record<Exclude<Answer, 'cancel'>, ConfirmOption> = {
 export class Ask {
 	question = $state<Question | null>(null);
 	error = $state('');
-	/** 每一格被擋的原因（格名 → 原因）：教練改了那一格、或任何一個指令成功就收掉。 */
+	/** 每一格被擋的原因（格名 → 原因）：教練改了那一格、任何一個指令成功、或又要問就收掉。 */
 	fieldErrors = $state<Record<string, string>>({});
 	/** 沒成功（被擋、要問）幾次：同一句原因又出現一次時，畫面靠它知道要再捲過去。 */
 	failures = $state(0);
@@ -117,6 +117,8 @@ export class Ask {
 			else this.error = handlers.revert ? `${r.message}，已還原` : r.message;
 			handlers.revert?.();
 		} else {
+			// 要問了：舊的紅字收掉，確認框旁邊不留跟這次無關的原因。
+			this.fieldErrors = {};
 			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose' };
 			this.#pending = { send, handlers };
 		}

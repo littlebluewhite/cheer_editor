@@ -241,7 +241,7 @@
 	let insertCount = $state('1');
 	let insertUnit = $state<'eight' | 'beat'>('eight');
 	/** 插入八拍被擋的原因畫在小窗裡。 */
-	const insertAsk = session.changeAsk();
+	const insertAsk = session.changeAsk({ label: '插入八拍' });
 	/** 播放頭在哪一段的哪一格（插在這裡）。 */
 	const insertAt = $derived(toPosition(flow, playback.sec));
 	const insertSpan = $derived(spans.find((s) => s.segment.id === insertAt?.segmentId));
@@ -263,10 +263,16 @@
 		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
 		const length = read.kind === 'ok' ? read.value * scale : 0;
 		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
+		const before = session.flow;
 		insertAsk.send(() => (read.kind === 'ok' ? insertBeats(flow, at, length) : read), {
 			done: () => {
 				inserting = null;
-				session.notice = `在${span.label} ${atTextWithUnit(span.segment, at.at)} 插入了 ${amount}，後面的站位和動作往後延`;
+				const where = `${span.label} ${atTextWithUnit(span.segment, at.at)}`;
+				// 後面沒有東西要往後延：流程沒變（不算一步），不說插入了
+				session.notice =
+					session.flow === before
+						? `${where} 後面沒有站位或動作，沒有東西要往後延`
+						: `在${where} 插入了 ${amount}，後面的站位和動作往後延`;
 			}
 		});
 	}
@@ -491,7 +497,7 @@
 		display: flex;
 		border-bottom: 1px solid var(--line-soft, #e8ecf3);
 	}
-	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 5）上面。 */
+	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 4）上面。 */
 	.segs,
 	.ruler-row {
 		position: sticky;
@@ -773,6 +779,8 @@
 		font-weight: 700;
 		color: var(--text, #1a2238);
 		font-variant-numeric: tabular-nums;
+		/* 刻度只有 1px 寬：不擋的話「0 秒」會在空白處斷成兩行 */
+		white-space: nowrap;
 	}
 	/* 播放頭：八拍尺上的三角形，和往下貫穿整個時間軸的線。 */
 	.ph-head {
@@ -800,7 +808,8 @@
 		width: 2px;
 		margin-left: -1px;
 		background: var(--now, #f2542d);
-		z-index: 5;
+		/* 在走位條（z 5）底下：播放頭停在走位條端點上時，按到的是端點 */
+		z-index: 4;
 		cursor: ew-resize;
 	}
 	/* 拖得到的範圍比線寬一點 */
