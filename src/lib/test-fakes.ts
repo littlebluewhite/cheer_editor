@@ -23,6 +23,7 @@ import {
 	type Command,
 	type Flow,
 	type Position,
+	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -187,6 +188,8 @@ export interface FakeCloudFlow {
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
  * 跑一步時紀錄放回流程再跑、跑完清掉該清的；收了告訴同一支流程開著的別的房間（別人記的帶名字）。
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
+ * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
+ * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，再說可以送步。
  */
 export function fakeServer(
 	init: {
@@ -214,17 +217,20 @@ export function fakeServer(
 		audioTooBig: false
 	};
 	/** 留著還沒處理的（holdRoom 時）。 */
-	let held: (() => void)[] = [];
+	let held: { room: FlowRoom; send: () => void }[] = [];
+	/** 斷線的房間：送來的不收，還沒送到的回答不見。 */
+	const down = new Set<FlowRoom>();
 	const deliver = (room: FlowRoom, answer: () => RoomMessage | null) => {
 		const send = () => {
+			if (down.has(room)) return;
 			const message = answer();
 			if (message) room.onmessage(message);
 		};
-		if (state.holdRoom) held.push(send);
+		if (state.holdRoom) held.push({ room, send });
 		else queueMicrotask(send);
 	};
-	/** 收過的步（每支流程）：第幾步、哪個分頁、改到的東西（stepKeys）、送的人的名字。 */
-	const stepLog = new Map<string, { step: number; tab: string; keys: string[]; by: string }[]>();
+	/** 收過的步（每支流程）：第幾步、哪個分頁、改到的東西（stepKeys）、送的人的名字、改好之後的東西。 */
+	const stepLog = new Map<string, { step: number; tab: string; keys: string[]; by: string; change: RemoteChange }[]>();
 	/**
 	 * 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉；改到同一個東西退回）。
 	 * 收了就把改好的東西送給同一支流程其他開著的房間。
@@ -266,7 +272,7 @@ export function fakeServer(
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
-		stepLog.set(f.id, [...log, { step: step + 1, tab: from.tab, keys, by }]);
+		stepLog.set(f.id, [...log, { step: step + 1, tab: from.tab, keys, by, change }]);
 		f.flow = after.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
@@ -329,6 +335,37 @@ export function fakeServer(
 				else people.push({ userId, name: u.name, editing: o.editing });
 			}
 			deliver(r.room, () => ({ kind: 'present', people }));
+		}
+	};
+	/** 打招呼帶上次看到第 seen 步：之後別的分頁收了的步照順序補給他；中間的步沒留就給伺服器現在的樣子。 */
+	const catchUp = (f: FakeCloudFlow, seen: number, to: OpenRoom) => {
+		const step = f.step ?? 0;
+		const missed = (stepLog.get(f.id) ?? []).filter((l) => l.step > seen && l.step <= step);
+		if (missed.length !== step - seen) {
+			const flow = structuredClone(f.flow);
+			if (seen < step) deliver(to.room, () => ({ kind: 'current', flow, step }));
+			return;
+		}
+		for (const l of missed.filter((l) => l.tab !== to.tab)) {
+			deliver(to.room, () => ({ kind: 'changed', step: l.step, by: l.by, change: structuredClone(l.change) }));
+		}
+	};
+	/** 斷掉這個人開著的房間：還沒處理的、還沒送到的回答都不見；別人的在場名單拿掉他。 */
+	const disconnect = (email = state.signedIn ?? '') => {
+		const mine = rooms.filter((r) => same(r.email, email) && !down.has(r.room));
+		for (const r of mine) {
+			down.add(r.room);
+			r.here = false;
+			r.room.onconnection(false);
+			tellPresent(r.flowId);
+		}
+		held = held.filter((h) => !down.has(h.room));
+	};
+	/** 這個人斷掉的房間連回來（房間重新打招呼）。 */
+	const reconnect = (email = state.signedIn ?? '') => {
+		for (const r of rooms.filter((r) => same(r.email, email) && down.has(r.room))) {
+			down.delete(r.room);
+			r.room.onconnection(true);
 		}
 	};
 	/** 伺服器送給前端的一次：別人記的帶名字。 */
@@ -633,15 +670,18 @@ export function fakeServer(
 			const email = state.signedIn ?? '';
 			const room: FlowRoom = {
 				onmessage: () => {},
+				onconnection: () => {},
 				send(request) {
 					const f = state.flows.find((g) => g.id === flowId);
 					const role = f && roleOf(f, email);
-					if (!f) return;
+					if (!f || down.has(room)) return;
 					if (!role) return deliver(room, () => ({ kind: 'revoked' }));
 					const editor = role === 'owner' || role === 'editor';
 					if (request.kind === 'hello') {
 						ready = request.fingerprint === state.fingerprint;
 						open.tab = request.tabId;
+						open.sentBack = undefined;
+						if (ready) catchUp(f, request.seen, open);
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
 						if (!ready) return;
 						open.here = true;
@@ -713,7 +753,7 @@ export function fakeServer(
 		state.holdRoom = false;
 		const now = held;
 		held = [];
-		for (const send of now) send();
+		for (const { send } of now) send();
 	};
 	/** 別人（email）在別的地方打開這支流程：回他的房間（打過招呼了）、送一步、換模式。 */
 	const joinAs = (flowId: string, email: string, editing = true) => {
@@ -735,7 +775,7 @@ export function fakeServer(
 			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
 		};
 	};
-	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs };
+	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs, disconnect, reconnect };
 }
 
 /**

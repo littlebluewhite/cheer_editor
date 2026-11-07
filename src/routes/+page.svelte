@@ -19,14 +19,14 @@
 	} from '#lib/core';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
-	import { flushSync, onMount, type ComponentProps } from 'svelte';
+	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
-	import { NEW_VERSION } from '#lib/cloud-steps.svelte.js';
+	import { NEW_VERSION, OFFLINE } from '#lib/cloud-steps.svelte.js';
 	import type { Me, MyFlows } from '#lib/server-api.js';
 	import { ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
@@ -174,12 +174,27 @@
 	const cloud = $derived(editor.file.cloud);
 	/** 用分享連結看的（沒有權限，#251）：只能看、沒有練習頁、分享。 */
 	const linkOnly = $derived(editor.file.linkOnly);
-	/** 只能看：雲端流程有新版、我是記錄者或檢視者、用分享連結看的。 */
+	/** 只能看：雲端流程有新版、斷線了、我是記錄者或檢視者、用分享連結看的。 */
 	const viewOnly = $derived(!!cloud?.viewOnly || linkOnly);
-	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。只能看的時候不能改
+	/** 被鎖成檢視模式之前在檢視模式嗎：解開（變寬、連回來）時回到原本的模式。 */
+	let viewingBeforeLock = false;
+	let locked = false;
+	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到原本的模式。只能看的時候不能改
 	$effect(() => {
-		session.viewing = narrow || viewOnly;
+		const lock = narrow || viewOnly;
+		untrack(() => {
+			if (lock && !locked) viewingBeforeLock = session.viewing;
+			session.viewing = lock || viewingBeforeLock;
+		});
+		locked = lock;
 	});
+	/** 雲端流程還有沒送到的步時按「首頁」：先問（還有幾步）；沒有是 0。 */
+	let leavingUnsent = $state(0);
+	/** 上方列的「首頁」：雲端流程還有沒送到的步先問，沒有就直接回去。 */
+	function goHome() {
+		if (cloud?.unsent) leavingUnsent = cloud.unsent;
+		else void editor.file.leaveToHome();
+	}
 	/** 這次是從分享連結（網址 #share=…）打開的：回首頁時把網址上的連結拿掉，重新整理才不會又打開。 */
 	let fromLink = $state(false);
 	onMount(() => {
@@ -620,7 +635,9 @@
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if cloud}{#if !cloud.newVersion}<span class="cloud-saved">{cloud.saving ? '存中…' : '✓ 已存'}</span>{/if}{:else if unsaved}<span
+					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">⚠ 斷線</span>{:else if !cloud.newVersion}<span class="cloud-saved"
+								>{cloud.saving ? '存中…' : '✓ 已存'}</span
+							>{/if}{:else if unsaved}<span
 							class="unsaved"
 							title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span
 						>{/if}</span
@@ -683,8 +700,7 @@
 				<span class="sep" aria-hidden="true"></span>
 				{#if cloud || linkOnly}
 					<!-- 雲端流程每一步都存了：沒有存檔、開啟、新建，只回首頁 -->
-					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}
-						><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
+					<button type="button" class="ghost" onclick={goHome}><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
 					>
 					<!-- 誰開著（#253）：別人的頭像放在「分享」左邊，一人一個顏色，右下小圖示是在編輯（筆）還是檢視（眼睛）；自己不列 -->
 					{#if cloud?.present.length}
@@ -745,7 +761,9 @@
 						</select>
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
-					<p class="phone-why">{cloud?.newVersion ? NEW_VERSION : viewOnlyReason(windowW, windowH, touchScreen)}</p>
+					<p class="phone-why">
+						{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? OFFLINE : viewOnlyReason(windowW, windowH, touchScreen)}
+					</p>
 				</main>
 			{/if}
 		{:else}
@@ -753,7 +771,7 @@
 				{#if session.viewing}
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
 					<div class="view-badge">
-						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : '檢視模式・只能看'}
+						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? '斷線了・連上才能改' : '檢視模式・只能看'}
 					</div>
 				{/if}
 				<Field
@@ -926,7 +944,7 @@
 	<!-- 大的 iPad 拿直的（不算窄）：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
-			<button type="button" onclick={() => editor.file.leaveToHome()}>回首頁</button>
+			<button type="button" onclick={goHome}>回首頁</button>
 			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
 			{#if !linkOnly}<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>{/if}
 		</div>
@@ -1145,6 +1163,26 @@
 		</Modal>
 	{/if}
 {/if}
+{#if leavingUnsent}
+	{@const n = leavingUnsent}
+	{@const message = `還有 ${n} 步沒送到，離開就不見了`}
+	<Modal label={message} class="discard-box" onclose={() => (leavingUnsent = 0)}>
+		{#snippet children()}
+			<ConfirmList
+				{message}
+				items={[]}
+				confirmLabel={`離開（丟掉 ${n} 步）`}
+				cancelLabel="留下來"
+				onconfirm={() => {
+					leavingUnsent = 0;
+					void editor.file.leaveToHome();
+				}}
+				oncancel={() => (leavingUnsent = 0)}
+				focusCancel
+			/>
+		{/snippet}
+	</Modal>
+{/if}
 {#if editor.file.draftAsk}
 	{@const ask = editor.file.draftAsk}
 	{@const message = `「${ask.name}」有還沒存的修改（草稿${ask.savedAt ? ` ${draftTime(ask.savedAt)}` : ''}）。要救回修改，還是用檔案？用檔案會丟掉這些修改。`}
@@ -1346,6 +1384,10 @@
 	}
 	.cloud-saved {
 		color: #b8c4dc;
+		white-space: nowrap;
+	}
+	.cloud-offline {
+		color: #fcd34d;
 		white-space: nowrap;
 	}
 	.present {

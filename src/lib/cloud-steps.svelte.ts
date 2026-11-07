@@ -7,7 +7,10 @@
 // 誰開著（#253）：伺服器說的在場名單（自己不列）；換編輯、檢視模式就告訴伺服器（setEditing）。
 // 擁有者刪了這支（#252）：叫 ondeleted（回首頁並說原因）。
 // 改到同一個東西（#254）：被退回時伺服器說最後改到的人（by），提示寫「王教練剛改了同一個地方，你的「改流程名字」沒改成」，
-// 被規則擋下再加上原因。斷線在 #255。
+// 被規則擋下再加上原因。
+// 斷線（#255）：房間自己重連。斷線時不能改（跟檢視模式一樣），還沒送到的步只留在這個分頁；連上重新打招呼，
+// 伺服器先補上斷線期間別人的改動（補不上就給現在的樣子），再說可以送步，這時把還沒送到的步再送（步驟 id 擋重複）。
+// 每一步帶它做的時候看到第幾步：補上的別人的改動不會讓伺服器以為我看過了。
 // 成功率紀錄（#257，ADR 0008）：記一次（session 的「記」交給 onrecord）把新的那幾次送進同一個房間，不算一步。
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄。
@@ -36,6 +39,8 @@ import type { CloudRecord, FlowRoom, Present, Role, RoomMessage } from '#lib/ser
 export const NEW_VERSION = '有新版，請重新整理';
 /** 記錄者、檢視者不能改的原因。 */
 export const ONLY_VIEW = '你只能看這支流程';
+/** 斷線時不能改的原因。 */
+export const OFFLINE = '斷線了，連上才能改';
 
 /** 這個分頁的 id：伺服器記每一步是哪個分頁送的（同一個人的兩個分頁也算別人）。 */
 const TAB_ID = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
@@ -44,7 +49,7 @@ export class CloudSteps {
 	readonly #room: FlowRoom;
 	readonly #session: EditorSession;
 	/** 還沒被伺服器收的步和它改了什麼（第一個送出去了，等它回答）。 */
-	#queue = $state.raw<(SentStep & { label: string })[]>([]);
+	#queue = $state.raw<(SentStep & { label: string; seen: number })[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
 	#ready = false;
 	/** 上次看到第幾步。 */
@@ -55,6 +60,10 @@ export class CloudSteps {
 	#batches: string[][] = [];
 	/** 指紋不一樣：有新版。 */
 	newVersion = $state(false);
+	/** 斷線了，還沒連回來（連回來是伺服器說可以送步的時候）。 */
+	offline = $state(false);
+	/** 連回來時補不上、換成伺服器的樣子：沒存進去的步的提示，跟「連上了。」一起說。 */
+	#lostOnReconnect = '';
 	/** 我對這支流程的權限。 */
 	role = $state<Role>('owner');
 	/** 現在還有誰開著（自己不列），照進來的先後。 */
@@ -74,15 +83,21 @@ export class CloudSteps {
 		this.role = role;
 		this.#lock();
 		room.onmessage = (m) => this.#heard(m);
+		room.onconnection = (connected) => (connected ? this.#hello() : this.#lost());
 		this.#editing = !session.viewing && canEdit(role);
-		room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: step, editing: this.#editing });
-		session.onstep = (s, label) => this.#push({ ...s, label });
+		this.#hello();
+		session.onstep = (s, label) => this.#push({ ...s, label, seen: this.#seen });
 		session.onrecord = (before, after) => this.#recorded(before, after);
 	}
 
-	/** 只能看（有新版，或我是記錄者、檢視者）：一律檢視模式，「編輯」按不了。 */
+	/** 只能看（有新版、斷線了，或我是記錄者、檢視者）：一律檢視模式，「編輯」按不了。 */
 	get viewOnly(): boolean {
-		return this.newVersion || !canEdit(this.role);
+		return this.newVersion || this.offline || !canEdit(this.role);
+	}
+
+	/** 還沒送到伺服器的步有幾步（送出去還沒收到回答的也算）：離開時問、關分頁時讓瀏覽器問。 */
+	get unsent(): number {
+		return this.#queue.length;
 	}
 
 	/** 還有步在送（名字旁「存中…」）。 */
@@ -94,12 +109,14 @@ export class CloudSteps {
 	setEditing(editing: boolean) {
 		if (editing === this.#editing) return;
 		this.#editing = editing;
-		this.#room.send({ kind: 'mode', editing });
+		// 斷線時不說：連回來打招呼時帶著
+		if (!this.offline) this.#room.send({ kind: 'mode', editing });
 	}
 
 	/** 換流程：不再收發。 */
 	close() {
 		this.#room.onmessage = () => {};
+		this.#room.onconnection = () => {};
 		this.#room.close();
 		this.#session.onstep = null;
 		this.#session.onrecord = null;
@@ -107,13 +124,27 @@ export class CloudSteps {
 		this.#session.cannotRecord = '';
 	}
 
-	/** 不能改的原因放進 session：有新版優先。 */
+	/** 不能改的原因放進 session：有新版優先，再來是斷線。 */
 	#lock() {
-		this.#session.readOnly = this.newVersion ? NEW_VERSION : canEdit(this.role) ? '' : ONLY_VIEW;
+		this.#session.readOnly = this.newVersion ? NEW_VERSION : this.offline ? OFFLINE : canEdit(this.role) ? '' : ONLY_VIEW;
 		this.#session.cannotRecord = this.newVersion ? NEW_VERSION : this.role === 'viewer' ? ONLY_VIEW : '';
 	}
 
-	#push(step: SentStep & { label: string }) {
+	/** 打招呼（連上、連回來）：上次看到第幾步，伺服器先補上之後別人的改動。 */
+	#hello() {
+		this.#room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: this.#seen, editing: this.#editing });
+	}
+
+	/** 斷線了：不能改，等房間連回來；送出去還沒回答的紀錄連回來再送。 */
+	#lost() {
+		this.#ready = false;
+		this.#batches = [];
+		this.offline = true;
+		this.#lock();
+		this.#session.notice = `${OFFLINE}。還沒送出的步，連上後會再送。`;
+	}
+
+	#push(step: SentStep & { label: string; seen: number }) {
 		this.#queue = [...this.#queue, step];
 		if (this.#queue.length === 1) this.#sendHead();
 	}
@@ -121,17 +152,34 @@ export class CloudSteps {
 	#sendHead() {
 		const head = this.#queue[0];
 		if (!head || !this.#ready) return;
-		this.#room.send({ kind: 'step', stepId: head.id, seen: this.#seen, commands: head.commands });
+		this.#room.send({ kind: 'step', stepId: head.id, seen: head.seen, commands: head.commands });
 	}
 
 	#heard(m: RoomMessage) {
 		if (m.kind === 'ready') {
 			this.#ready = true;
+			if (this.offline) {
+				this.offline = false;
+				this.#lock();
+				this.#session.notice = `連上了。${this.#lostOnReconnect}`;
+				this.#lostOnReconnect = '';
+			}
 			this.#sendHead();
 			this.#sendRecords([...this.#unsent.keys()]);
 		} else if (m.kind === 'newVersion') {
 			this.newVersion = true;
+			this.offline = false;
 			this.#lock();
+			// 伺服器不收步了：不再重連
+			this.#room.close();
+		} else if (m.kind === 'current') {
+			// 補不上（斷線太久）：換成伺服器的樣子，還沒送到的步不算；連回來時跟「連上了。」一起說
+			const unsent = this.#queue.length;
+			this.#queue = [];
+			this.#seen = m.step;
+			const lost = unsent ? `換成伺服器現在的樣子，還沒送到的 ${unsent} 步沒存進去。` : '';
+			if (this.offline) this.#lostOnReconnect = lost;
+			this.#reset(m.flow as Flow, this.offline || !lost ? this.#session.notice : lost);
 		} else if (m.kind === 'revoked') {
 			this.#queue = [];
 			this.onrevoked();
@@ -152,7 +200,8 @@ export class CloudSteps {
 		} else if (m.stepId !== this.#queue[0]?.id) {
 			return;
 		} else if (m.kind === 'accepted') {
-			this.#seen = m.step;
+			// 連回來時補上的別人的步可能比我這一步新
+			this.#seen = Math.max(this.#seen, m.step);
 			this.#queue = this.#queue.slice(1);
 			this.#sendHead();
 		} else {
