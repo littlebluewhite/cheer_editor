@@ -7,7 +7,11 @@
 //! 收了的步（#253）：用流程核心比對前後，把改好之後的那些東西送給房間裡的其他連線（不轉送指令）；
 //! 存好、送出去照第幾步的順序（同一支流程的步在這台伺服器上一個一個來）。
 //! 誰開著（#253）：每個連線是誰、在編輯還是檢視；有人進來、離開、換模式就告訴每個連線（自己不列，同一個人只列一次）。
-//! 流程被刪了（#252）每個連線都說，房間關掉。改到同一個東西在 #254。
+//! 流程被刪了（#252）每個連線都說，房間關掉。
+//! 改到同一個東西（#254）：每一步記下改到哪些東西（流程核心的 stepKeys）。這一步改到的東西，在它上次看到之後
+//! 被別的分頁（同一個人的別的分頁也算）改過就退回，寫最後改到的人；合起來被規則擋下也退回，寫上次看到之後最後改過的人。
+//! 一步被退回，這個連線接著送的、上次看到的還在退回那一步之前的，也一起退回（還沒換成伺服器的樣子）。
+//! 上次看到的那一步已經沒留（超過 30 天）：退回，換成伺服器的樣子。
 //! 成功率紀錄（#257）也從這裡送：記一次、別人記的馬上告訴房間裡的人（見 records.rs）。
 
 use std::collections::HashMap;
@@ -31,6 +35,10 @@ use crate::sharing::{Role, role_of};
 
 /// 不能改的人送來的步：退回的原因。
 const VIEW_ONLY: &str = "沒存進去：你只能看這支流程";
+/// 前一步被退回、還沒換成伺服器的樣子就送的步：退回的原因。
+const AFTER_SENT_BACK: &str = "沒存進去：前一步沒存進去，這一步也不算";
+/// 上次看到的那一步已經沒留（超過 30 天）：退回的原因。
+const TOO_OLD: &str = "沒存進去：離你上次看到太久了，換成現在的樣子";
 
 /// 房間裡的事（同一台伺服器上，一支流程開著的連線都收得到）。
 #[derive(Clone, Debug)]
@@ -176,7 +184,7 @@ pub enum RoomRequest {
     Hello {
         fingerprint: String,
         tab_id: String,
-        /// 上次看到第幾步（改到同一個東西時用，#254）。
+        /// 上次看到第幾步（每一步另外帶，在 Step 裡比；打招呼這個斷線重連時用，#255）。
         #[ts(type = "number")]
         #[allow(dead_code)]
         seen: i64,
@@ -188,7 +196,6 @@ pub enum RoomRequest {
     Step {
         step_id: String,
         #[ts(type = "number")]
-        #[allow(dead_code)]
         seen: i64,
         #[ts(type = "unknown[]")]
         commands: serde_json::Value,
@@ -234,9 +241,14 @@ pub enum RoomMessage {
         step: i64,
     },
     /// 這一步退回：原因、伺服器現在的樣子（換上它）、現在第幾步。
+    /// 有 by（#254）：別人在我上次看到之後改過——by 是最後改到同一個東西的人（被規則擋下時是最後改過流程的人），
+    /// message 是規則擋下的原因（改到同一個東西是空的），畫面寫成「王教練剛改了同一個地方，你的「…」沒改成」。
     Rejected {
         step_id: String,
         message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        by: Option<String>,
         #[ts(type = "unknown")]
         flow: Box<RawValue>,
         #[ts(type = "number")]
@@ -378,17 +390,22 @@ async fn serve(
         editing: editing && role.can_edit(),
     };
     state.rooms.update_here(flow_id, |list| list.push(here));
+    // 上一次被退回時伺服器在第幾步：上次看到的還在它之前的步，是還沒換成伺服器的樣子就送的。
+    let mut sent_back: Option<i64> = None;
 
     loop {
         let reply = tokio::select! {
             request = next_request(&mut socket) => match request {
                 None => return Ok(()),
-                Some(RoomRequest::Step { step_id, commands, .. }) => {
+                Some(RoomRequest::Step { step_id, seen, commands }) => {
                     // 存好、告訴別人都在鎖裡：別人收到的改動照第幾步的順序。
                     let steps = state.rooms.steps(flow_id);
                     let _one_at_a_time = steps.lock().await;
-                    let (reply, change) =
-                        take_step(&state, flow_id, user_id, &tab_id, step_id, commands).await?;
+                    let sent = Sent { step_id, seen, commands, tab_id: &tab_id, sent_back };
+                    let (reply, change) = take_step(&state, flow_id, user_id, sent).await?;
+                    if let RoomMessage::Rejected { step, .. } = &reply {
+                        sent_back = Some(*step);
+                    }
                     if let (RoomMessage::Accepted { step, .. }, Some((change, kept))) = (&reply, change) {
                         let event = RoomEvent::Changed {
                             from: conn,
@@ -527,16 +544,30 @@ async fn tell(socket: &mut WebSocket, message: &RoomMessage) -> anyhow::Result<(
 /// 收一步的結果：回送的人的話；收了的帶要送給別人的改動（RemoteChange 的 JSON）和跟著改的紀錄。
 type Taken = (RoomMessage, Option<(String, RecordsChange)>);
 
+/// 送來的一步：步驟 id、上次看到第幾步、指令；哪個分頁送的、這個連線上次被退回時伺服器在第幾步。
+struct Sent<'a> {
+    step_id: String,
+    seen: i64,
+    commands: serde_json::Value,
+    tab_id: &'a str,
+    sent_back: Option<i64>,
+}
+
 /// 收一步。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted；先查權限：被收回回 Revoked，
-/// 不能改的（記錄者、檢視者）退回。收了的連同要送給別人的改動、跟著改的紀錄一起回。
+/// 不能改的（記錄者、檢視者）退回。再看改到同一個東西（#254）。收了的連同要送給別人的改動、跟著改的紀錄一起回。
 async fn take_step(
     state: &AppState,
     flow_id: &str,
     user_id: i64,
-    tab_id: &str,
-    step_id: String,
-    commands: serde_json::Value,
+    sent: Sent<'_>,
 ) -> anyhow::Result<Taken> {
+    let Sent {
+        step_id,
+        seen,
+        commands,
+        tab_id,
+        sent_back,
+    } = sent;
     let mut tx = state.db.begin().await?;
     let Some((content, step)): Option<(String, i64)> =
         sqlx::query_as("SELECT content::text, step FROM flows WHERE id = $1 FOR UPDATE")
@@ -561,21 +592,31 @@ async fn take_step(
         return Ok((RoomMessage::Accepted { step_id, step }, None));
     }
 
-    let rejected = |message: String, content: String| -> anyhow::Result<Taken> {
-        let flow = RawValue::from_string(content)?;
-        let step_id = step_id.clone();
-        Ok((
-            RoomMessage::Rejected {
-                step_id,
-                message,
-                flow,
-                step,
-            },
-            None,
-        ))
-    };
+    let rejected =
+        |message: String, by: Option<String>, content: String| -> anyhow::Result<Taken> {
+            let flow = RawValue::from_string(content)?;
+            let step_id = step_id.clone();
+            Ok((
+                RoomMessage::Rejected {
+                    step_id,
+                    message,
+                    by,
+                    flow,
+                    step,
+                },
+                None,
+            ))
+        };
     if !role.can_edit() {
-        return rejected(VIEW_ONLY.into(), content);
+        return rejected(VIEW_ONLY.into(), None, content);
+    }
+    // 前一步被退回、還沒換成伺服器的樣子就送的：一起退回。
+    if sent_back.is_some_and(|n| seen < n) {
+        return rejected(AFTER_SENT_BACK.into(), None, content);
+    }
+    // 上次看到之後的步已經沒留（超過 30 天）：比不了，換成伺服器的樣子。
+    if seen < step && !kept(&mut tx, flow_id, seen + 1).await? {
+        return rejected(TOO_OLD.into(), None, content);
     }
     // 紀錄放回流程再跑（ADR 0008）：跑完照結果清掉、改掉該改的紀錄。
     let before = records::before_step(&mut tx, flow_id).await?;
@@ -590,17 +631,27 @@ async fn take_step(
         .await
     else {
         // 流程核心看不懂（例：沒有這個指令、參數不對）。
-        return rejected("沒存進去：伺服器看不懂這一步".into(), content);
+        return rejected("沒存進去：伺服器看不懂這一步".into(), None, content);
     };
     let outcome: records::StepOutcome = serde_json::from_str(&result)?;
     let flow = match (outcome.kind.as_str(), outcome.flow) {
         ("ok", Some(flow)) => flow,
-        // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。
-        _ => {
-            let reason = outcome.message.unwrap_or_default();
-            return rejected(format!("沒存進去：{reason}"), content);
+        // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。上次看到之後別人改過，寫最後改的人。
+        (kind, _) => {
+            let mut reason = outcome.message.unwrap_or_default();
+            if kind != "blocked" {
+                reason.push_str("，請再看一次");
+            }
+            return match last_other(&mut tx, flow_id, seen, tab_id, None).await? {
+                Some(by) => rejected(reason, Some(by), content),
+                None => rejected(format!("沒存進去：{reason}"), None, content),
+            };
         }
     };
+    // 這一步改到的東西，上次看到之後被別的分頁改過：退回，寫最後改到的人。
+    if let Some(by) = last_other(&mut tx, flow_id, seen, tab_id, Some(&outcome.watch)).await? {
+        return rejected(String::new(), Some(by), content);
+    }
 
     // 要送給別人的：改好之後的那些東西（比對前後，不轉送指令）。
     let change = state
@@ -617,8 +668,8 @@ async fn take_step(
         .execute(&mut *tx)
         .await?;
     sqlx::query(
-        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(flow_id)
     .bind(step)
@@ -626,9 +677,10 @@ async fn take_step(
     .bind(tab_id)
     .bind(user_id)
     .bind(now)
+    .bind(&outcome.keys)
     .execute(&mut *tx)
     .await?;
-    let kept = records::after_step(
+    let records_change = records::after_step(
         &mut tx,
         flow_id,
         &before,
@@ -641,6 +693,41 @@ async fn take_step(
     tx.commit().await?;
     Ok((
         RoomMessage::Accepted { step_id, step },
-        Some((change, kept)),
+        Some((change, records_change)),
     ))
+}
+
+/// 第 n 步還留著（步驟紀錄留 30 天）。
+async fn kept(tx: &mut sqlx::PgConnection, flow_id: &str, n: i64) -> anyhow::Result<bool> {
+    let (kept,): (bool,) =
+        sqlx::query_as("SELECT EXISTS (SELECT 1 FROM flow_steps WHERE flow_id = $1 AND step = $2)")
+            .bind(flow_id)
+            .bind(n)
+            .fetch_one(tx)
+            .await?;
+    Ok(kept)
+}
+
+/// 上次看到（seen）之後，別的分頁送的步裡最後一步是誰送的（名字）。
+/// 給了 watch：只看改到其中一個鍵的步（最後改到同一個東西的人）。
+async fn last_other(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    seen: i64,
+    tab_id: &str,
+    watch: Option<&[String]>,
+) -> anyhow::Result<Option<String>> {
+    let name: Option<(String,)> = sqlx::query_as(
+        "SELECT u.name FROM flow_steps s JOIN users u ON u.id = s.user_id
+         WHERE s.flow_id = $1 AND s.step > $2 AND s.tab_id <> $3
+           AND ($4::text[] IS NULL OR s.keys && $4)
+         ORDER BY s.step DESC LIMIT 1",
+    )
+    .bind(flow_id)
+    .bind(seen)
+    .bind(tab_id)
+    .bind(watch)
+    .fetch_optional(tx)
+    .await?;
+    Ok(name.map(|(name,)| name))
 }

@@ -258,5 +258,6 @@ export { MIN_TAPS, tapBpm } from './tap-tempo';
 
 export { diffFlows } from './diff';
 export type { ThingChange } from './diff';
+export { stepKeys } from './step-keys';
 export { applyRemoteChange, remoteChange } from './remote-change';
 export type { RemoteChange } from './remote-change';

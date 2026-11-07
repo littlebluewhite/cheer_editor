@@ -208,6 +208,11 @@ pub struct StepOutcome<'a> {
     pub flow: Option<&'a RawValue>,
     pub message: Option<String>,
     pub records: Option<Vec<Stored>>,
+    /// 成功時：這一步記下的鍵、要查別的分頁改過沒有的鍵（流程核心的 stepKeys，#254）。
+    #[serde(default)]
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub watch: Vec<String>,
 }
 
 /// 跑完一步：不在了的紀錄清掉（留墓碑），改了的（例：記號少了）存成改好的。回改了哪些（告訴房間裡別人）。
