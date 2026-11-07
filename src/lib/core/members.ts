@@ -8,7 +8,7 @@ import { withWalks, type Position } from './formation';
 import { RECORDS_GONE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { FIXED_ROLES } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
-import { perPerson, recordItems, squadNumber, type Attempt } from './success-rate';
+import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
 import { atText, segmentSpans } from './time';
 
@@ -307,9 +307,8 @@ export function deleteMember(
 		const spans = segmentSpans(flow);
 		const cueCount = (list: Action[]) => list.reduce((n, a) => n + (a.cues?.length ?? 0), 0);
 		const dropped = cueCount(flow.actions.filter((a) => !emptied.includes(a))) - cueCount(actions);
-		const records = (list: Action[]) => list.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
 		// 一定清掉的（他自己的、整個刪掉的動作的）；換了人的組要問，不算在這裡。
-		const cleared = records(flow.actions) - records(actions) - changed;
+		const cleared = recordCount(flow.actions) - recordCount(actions) - changed;
 		const role = GLOBAL_ROLES.find((r) => r.key === member.globalRole)?.label;
 		const where = !inActions.length
 			? '他不在任何動作裡'

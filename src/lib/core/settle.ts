@@ -219,6 +219,10 @@ function falloutMessage(
 	const more = phases ? `，${phaseFalloutText(phases)}` : '';
 	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${cues.removed} 個拍點${more}`;
 	const why = [shorter, cues.orphaned ? '換了人或任務角色' : '', offBeat].filter(Boolean);
-	const parts = [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean);
-	return `${label}${why.join('、')}，會${parts.join('、')}拍點${more}`;
+	return `${label}${why.join('、')}，會${cueFalloutText(cues)}${more}`;
+}
+
+/** 「拿掉 1 個、切短 1 個拍點」（確認訊息裡拍點那一段）。 */
+export function cueFalloutText({ removed, cut }: CueFallout): string {
+	return [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean).join('、') + '拍點';
 }

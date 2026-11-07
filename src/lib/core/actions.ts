@@ -13,7 +13,7 @@ import { cueFallout, cueProblem } from './cues';
 import { memberName, type Flow } from './flow';
 import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
-import { falloutQuestion, settle, type Settled } from './settle';
+import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
 import { tooLong } from './text-length';
@@ -57,19 +57,30 @@ export function updateAction(
 	changes: ActionChanges,
 	options: ConfirmOption = {}
 ): CommandResult {
+	const r = changeAction(flow, id, changes, options);
+	if (r.kind === 'blocked') return r;
+	return falloutQuestion(flow, r.old, r.action, r.cues, r.fallout, options) ?? ok(replaceAction(r.flow, r.action));
+}
+
+/**
+ * updateAction 還沒問之前的那一步：改好、檢查、收好的動作（還沒換進流程）和拍點、環節、紀錄的後果。
+ * 段縮短裁短動作時用它拿後果組確認清單，不用再算一次。
+ */
+export function changeAction(
+	flow: Flow,
+	id: string,
+	changes: ActionChanges,
+	options: ConfirmOption = {}
+): (Settled & { kind: 'ok'; old: Action; cues: CueFallout | null }) | (Settled & { kind: 'blocked' }) {
 	const old = flow.actions.find((a) => a.id === id);
-	if (!old) return blocked('找不到這個動作');
+	if (!old) return { kind: 'blocked', message: '找不到這個動作' };
 	let action = normalize({ ...old, ...changes, id });
 	const from = flow.segments.find((s) => s.id === old.segmentId);
 	const to = flow.segments.find((s) => s.id === action.segmentId);
 	const cues = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (cues) action = { ...action, cues: cues.cues };
 	const settled = checked(flow, old, action, options);
-	if (settled.kind === 'blocked') return settled;
-	return (
-		falloutQuestion(flow, old, settled.action, cues, settled.fallout, options) ??
-		ok(replaceAction(settled.flow, settled.action))
-	);
+	return settled.kind === 'blocked' ? settled : { ...settled, old, cues };
 }
 
 /**

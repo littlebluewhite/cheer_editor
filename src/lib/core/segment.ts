@@ -2,14 +2,15 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
-import { actionLabel, type Action } from './action-types';
-import { updateAction } from './actions';
-import { cueFallout } from './cues';
+import { actionLabel, replaceAction, type Action } from './action-types';
+import { changeAction } from './actions';
 import type { Flow } from './flow';
 import { nextId } from './ids';
-import { phaseFallout, phaseFalloutText } from './phase-beats';
+import { phaseFalloutText } from './phase-beats';
+import { cueFalloutText } from './settle';
+import { recordCount } from './success-rate';
 import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atText, lengthTextWithUnit, parseNumber, segmentSpans, units } from './time';
+import { atText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -256,19 +257,24 @@ export function updateSegment(
 		formations
 	};
 	const trimItems: string[] = [];
-	let records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
+	let records = recordCount(droppedActions);
 	let marks = 0;
 	for (const a of trimmed) {
 		const cut = trimAction(result, a, end - a.start);
 		if (cut.kind === 'blocked') return blocked(`動作「${actionLabel(a)}」裁短後：${cut.message}`);
 		result = cut.flow;
 		records += cut.records;
-		marks += cut.marks;
+		// 整次不見的紀錄已經算在 records，記號只算還留著的那幾次
+		marks += Math.max(0, cut.marks - cut.records);
 		trimItems.push(cut.item);
 	}
 	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
-		const lost = records ? `會一起清掉 ${records} 次紀錄` : marks ? `會清掉 ${marks} 次的記號` : '';
+		const lost = records
+			? `會一起清掉 ${records} 次紀錄${marks ? `和 ${marks} 次的記號` : ''}`
+			: marks
+				? `會清掉 ${marks} 次的記號`
+				: '';
 		const cleared = lost && `，${lost}${RECORDS_GONE}`;
 		return needsConfirm(`${label} 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉${cleared}`, [
 			...trimItems,
@@ -289,24 +295,19 @@ function trimAction(
 	length: number
 ): { kind: 'ok'; flow: Flow; item: string; records: number; marks: number } | { kind: 'blocked'; message: string } {
 	const segment = flow.segments.find((s) => s.id === before.segmentId)!;
-	const after = { ...before, length };
-	const r = updateAction(flow, before.id, { length }, { confirmed: true });
-	if (r.kind !== 'ok') return { kind: 'blocked', message: r.message };
-	const cues = cueFallout(segment, segment, before, after, flow);
-	const phases = phaseFallout(segment, segment, before, after);
-	const fallout = [
-		cues && [cues.removed ? `拿掉 ${cues.removed} 個` : '', cues.cut ? `切短 ${cues.cut} 個` : ''].filter(Boolean).join('、') + '拍點',
-		phases && phaseFalloutText(phases)
-	].filter(Boolean);
-	const trimmedRecords = r.flow.actions.find((a) => a.id === before.id)?.successRate?.records.length ?? 0;
+	const r = changeAction(flow, before.id, { length }, { confirmed: true });
+	if (r.kind !== 'ok') return r;
+	const { cues } = r;
+	const { phases } = r.fallout;
+	const fallout = [cues && cueFalloutText(cues), phases && phaseFalloutText(phases)].filter(Boolean);
 	return {
 		kind: 'ok',
-		flow: r.flow,
+		flow: replaceAction(r.flow, r.action),
 		item:
 			`裁短：動作「${actionLabel(before)}」（${atText(segment, before.start)} 起）` +
 			`${lengthTextWithUnit(segment, before.length)} → ${lengthTextWithUnit(segment, length)}` +
 			(fallout.length ? `，會${fallout.join('，')}` : ''),
-		records: (before.successRate?.records.length ?? 0) - trimmedRecords,
+		records: (before.successRate?.records.length ?? 0) - (r.action.successRate?.records.length ?? 0),
 		marks: phases?.marked ?? 0
 	};
 }
@@ -389,12 +390,15 @@ const DEFAULT_CHANT_TENTHS = 100;
 /**
  * 編排畫面加的新口號段多長（0.1 秒數）：預設 10 秒；規則警告開著、口號段加起來還不到最少秒數時，
  * 補到剛好夠（不會一加就跳「口號段太短」），最長到口號段的上限。
+ * 再加 10 秒整支流程會太長時，縮到剛好不超過；口號段要補的比整支剩下的多（怎樣都會有警告）就照補到夠。
  */
 export function newChantTenths(flow: Flow): number {
 	if (!flow.timeRules.on) return DEFAULT_CHANT_TENTHS;
 	const have = flow.segments.reduce((sum, s) => sum + (s.kind === 'chant' ? s.tenths : 0), 0);
 	const missing = Math.ceil(flow.timeRules.minChantSec * 10 - have);
-	return Math.min(Math.max(DEFAULT_CHANT_TENTHS, missing), MAX_CHANT_SEC * 10);
+	const tenths = Math.min(Math.max(DEFAULT_CHANT_TENTHS, missing), MAX_CHANT_SEC * 10);
+	const room = Math.floor((flow.timeRules.maxTotalSec - totalSeconds(flow)) * 10 + 1e-6);
+	return tenths > room && room >= Math.max(1, missing) ? room : tenths;
 }
 
 /**

@@ -121,6 +121,11 @@ export function replacePhases(action: Action, phases: Phase[]): Action {
 	return fitRecords({ ...action, successRate: { records: action.successRate?.records ?? [], phases } });
 }
 
+/** 這些動作加起來有幾次紀錄。 */
+export function recordCount(actions: readonly Action[]): number {
+	return actions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
+}
+
 /** 有幾次打了這些環節的記號。 */
 export function markedCount(action: Action, phases: Phase[]): number {
 	return (action.successRate?.records ?? []).filter((r) => phases.some((p) => p.id in r.marks)).length;
