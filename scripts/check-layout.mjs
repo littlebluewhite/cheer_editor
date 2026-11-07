@@ -934,6 +934,37 @@ await check('390×844（觸控）檢視畫面：播放前後播放鈕位置不�
 	return { ok: moved.length === 0 && paused, value: { 播放前: before, 跳到: moved.slice(0, 3), 第二下暫停了: paused } };
 });
 
+for (const [w, h] of [[320, 640], [390, 844], [844, 390]]) {
+	await check(`${w}×${h}（觸控）手機跳時間：回開頭、上一個／下一個八拍點得到、點了會跳；點時間打字的欄位在畫面裡、不溢出（#228）`, async () => {
+		await setTouchViewport(w, h);
+		await openSample();
+		const spot = (sel) => js(`const el = document.querySelector('${sel}');
+			if (!el) return null;
+			const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: Math.round(r.height),
+				self: !!t && el.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
+		const at = () => js(`return document.querySelector('.phone-view .pos')?.textContent ?? null`);
+		const names = ['回開頭', '上一個八拍', '下一個八拍'];
+		const buttons = {};
+		for (const n of names) buttons[n] = await spot(`.phone-view .jump button[aria-label="${n}"]`);
+		if (!names.every((n) => buttons[n]?.self && buttons[n].h >= 40)) return { ok: false, value: { 按鈕: buttons } };
+		const start = await at();
+		await tap(buttons['下一個八拍'].x, buttons['下一個八拍'].y);
+		const next = await at();
+		await tap(buttons['回開頭'].x, buttons['回開頭'].y);
+		const back = await at();
+		const board = await spot('.phone-view button.board');
+		if (!board?.self) return { ok: false, value: { 時間點不到: board } };
+		await tap(board.x, board.y);
+		const box = await spot('.phone-view .jump-to input');
+		const o = await overflow();
+		await js(`document.activeElement?.blur()`);
+		await sleep(200);
+		const jumped = next !== start && back === start;
+		return { ok: jumped && !!box?.self && noOverflow(o), value: { 開頭: start, 下一個八拍: next, 回開頭: back, 打字的欄位: box, ...o } };
+	});
+}
+
 await check('844×390（手機橫拿）：檢視畫面和練習畫面都不溢出、播放鈕點得到', async () => {
 	await setTouchViewport(844, 390);
 	await openSample();
