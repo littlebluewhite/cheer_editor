@@ -16,6 +16,7 @@ import {
 	recordAttempt,
 	remoteChange,
 	runCommands,
+	stepKeys,
 	takeRecords,
 	setSquad,
 	updateSegment,
@@ -172,6 +173,8 @@ export interface FakeCloudFlow {
  * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
+ * 改到同一個東西（#254）照真的規則：上次看到之後別的分頁改過同一個東西退回、寫最後改的人；被規則擋下也寫那個人和原因；
+ * 一步被退回後，同一個房間上次看到的還在那之前的步也退回（步驟紀錄沒有 30 天的限制）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
@@ -220,16 +223,38 @@ export function fakeServer(
 		if (state.holdRoom) held.push(send);
 		else queueMicrotask(send);
 	};
-	/** 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉）。收了就把改好的東西送給同一支流程其他開著的房間。 */
-	const takeStep = (f: FakeCloudFlow, stepId: string, commands: Command[], from: OpenRoom): RoomMessage => {
+	/** 收過的步（每支流程）：第幾步、哪個分頁、改到的東西（stepKeys）、送的人的名字。 */
+	const stepLog = new Map<string, { step: number; tab: string; keys: string[]; by: string }[]>();
+	/**
+	 * 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉；改到同一個東西退回）。
+	 * 收了就把改好的東西送給同一支流程其他開著的房間。
+	 */
+	const takeStep = (f: FakeCloudFlow, sent: { stepId: string; seen: number; commands: Command[] }, from: OpenRoom): RoomMessage => {
+		const { stepId, seen, commands } = sent;
 		const taken = f.stepIds?.[stepId];
 		if (taken !== undefined) return { kind: 'accepted', stepId, step: taken };
+		const step = f.step ?? 0;
+		const rejected = (message: string, by?: string): RoomMessage => {
+			from.sentBack = step;
+			return { kind: 'rejected', stepId, message, ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
+		};
+		if (from.sentBack !== undefined && seen < from.sentBack) return rejected('沒存進去：前一步沒存進去，這一步也不算');
+		const log = stepLog.get(f.id) ?? [];
+		/** 上次看到之後別的分頁送的最後一步是誰送的；給了 watch 只看改到其中一個的。 */
+		const lastOther = (watch?: string[]) =>
+			log.findLast((l) => l.step > seen && l.tab !== from.tab && (!watch || l.keys.some((k) => watch.includes(k))))?.by;
 		const live = (f.records ?? []).filter((r) => !r.gone);
 		const full = putRecords(structuredClone(f.flow), structuredClone(live));
 		const r = runCommands(full, structuredClone(commands), stepId);
-		const step = f.step ?? 0;
-		if (r.kind !== 'ok') return { kind: 'rejected', stepId, message: `沒存進去：${r.message}`, flow: structuredClone(f.flow), step };
+		if (r.kind !== 'ok') {
+			const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
+			const by = lastOther();
+			return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
+		}
 		const after = takeRecords(r.flow);
+		const { keys, watch } = stepKeys(f.flow, after.flow);
+		const changedBy = lastOther(watch);
+		if (changedBy !== undefined) return rejected('', changedBy);
 		const kept = new Map(after.records.map((a) => [a.attempt.id, a]));
 		f.records = (f.records ?? []).map((old) => {
 			if (old.gone) return old;
@@ -241,6 +266,7 @@ export function fakeServer(
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
+		stepLog.set(f.id, [...log, { step: step + 1, tab: from.tab, keys, by }]);
 		f.flow = after.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
@@ -615,6 +641,7 @@ export function fakeServer(
 					const editor = role === 'owner' || role === 'editor';
 					if (request.kind === 'hello') {
 						ready = request.fingerprint === state.fingerprint;
+						open.tab = request.tabId;
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
 						if (!ready) return;
 						open.here = true;
@@ -627,7 +654,8 @@ export function fakeServer(
 						const attempts = request.attempts as StoredAttempt[];
 						deliver(room, () => (ready ? store(f, email, attempts, room) : null));
 					} else if (editor) {
-						deliver(room, () => (ready ? takeStep(f, request.stepId, request.commands as Command[], open) : null));
+						const sent = { ...request, commands: request.commands as Command[] };
+						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
 					} else {
 						const { stepId } = request;
 						const message = '沒存進去：你只能看這支流程';
@@ -640,7 +668,7 @@ export function fakeServer(
 					tellPresent(flowId);
 				}
 			};
-			const open: OpenRoom = { flowId, email, room, here: false, editing: false };
+			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '' };
 			rooms.push(open);
 			return room;
 		},
@@ -697,23 +725,31 @@ export function fakeServer(
 		room.onmessage = (m) => heard.push(m);
 		room.send({ kind: 'hello', fingerprint: state.fingerprint, tabId: `tab-${email}`, seen: 0, editing });
 		let n = 0;
+		/** 上次看到第幾步：聽到的最後一步（換成伺服器的樣子也算）。 */
+		const seen = () => Math.max(0, ...heard.map((m) => ('step' in m ? m.step : 0)));
 		return {
 			room,
 			heard,
-			step: (...commands: { name: string; args: unknown[] }[]) => room.send({ kind: 'step', stepId: `step-${email}-${++n}`, seen: 0, commands }),
+			step: (...commands: { name: string; args: unknown[] }[]) =>
+				room.send({ kind: 'step', stepId: `step-${email}-${++n}`, seen: seen(), commands }),
 			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
 		};
 	};
 	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs };
 }
 
-/** 假的伺服器上開著的一個房間：哪支流程、誰的、打過招呼了沒（在場名單只列打過招呼的）、在編輯嗎。 */
+/**
+ * 假的伺服器上開著的一個房間：哪支流程、誰的、打過招呼了沒（在場名單只列打過招呼的）、在編輯嗎、
+ * 哪個分頁、上次被退回時伺服器在第幾步（#254）。
+ */
 interface OpenRoom {
 	flowId: string;
 	email: string;
 	room: FlowRoom;
 	here: boolean;
 	editing: boolean;
+	tab: string;
+	sentBack?: number;
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

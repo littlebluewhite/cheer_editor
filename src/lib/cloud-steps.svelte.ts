@@ -6,7 +6,8 @@
 // 別人的改動（#253）：伺服器送來改好的東西，套在自己的畫面上（session.applyRemote），不關掉開著的表單。
 // 誰開著（#253）：伺服器說的在場名單（自己不列）；換編輯、檢視模式就告訴伺服器（setEditing）。
 // 擁有者刪了這支（#252）：叫 ondeleted（回首頁並說原因）。
-// 改到同一個東西在 #254；斷線在 #255。
+// 改到同一個東西（#254）：被退回時伺服器說最後改到的人（by），提示寫「王教練剛改了同一個地方，你的「改流程名字」沒改成」，
+// 被規則擋下再加上原因。斷線在 #255。
 // 成功率紀錄（#257，ADR 0008）：記一次（session 的「記」交給 onrecord）把新的那幾次送進同一個房間，不算一步。
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄。
@@ -42,8 +43,8 @@ const TAB_ID = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b 
 export class CloudSteps {
 	readonly #room: FlowRoom;
 	readonly #session: EditorSession;
-	/** 還沒被伺服器收的步（第一個送出去了，等它回答）。 */
-	#queue = $state.raw<SentStep[]>([]);
+	/** 還沒被伺服器收的步和它改了什麼（第一個送出去了，等它回答）。 */
+	#queue = $state.raw<(SentStep & { label: string })[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
 	#ready = false;
 	/** 上次看到第幾步。 */
@@ -75,7 +76,7 @@ export class CloudSteps {
 		room.onmessage = (m) => this.#heard(m);
 		this.#editing = !session.viewing && canEdit(role);
 		room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: step, editing: this.#editing });
-		session.onstep = (s) => this.#push(s);
+		session.onstep = (s, label) => this.#push({ ...s, label });
 		session.onrecord = (before, after) => this.#recorded(before, after);
 	}
 
@@ -112,7 +113,7 @@ export class CloudSteps {
 		this.#session.cannotRecord = this.newVersion ? NEW_VERSION : this.role === 'viewer' ? ONLY_VIEW : '';
 	}
 
-	#push(step: SentStep) {
+	#push(step: SentStep & { label: string }) {
 		this.#queue = [...this.#queue, step];
 		if (this.#queue.length === 1) this.#sendHead();
 	}
@@ -156,9 +157,10 @@ export class CloudSteps {
 			this.#sendHead();
 		} else {
 			// 退回：這一步和後面還沒送的一起不要，換成伺服器的樣子
+			const label = this.#queue[0].label;
 			this.#seen = m.step;
 			this.#queue = [];
-			this.#reset(m.flow as Flow, m.message);
+			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message));
 		}
 	}
 
@@ -229,6 +231,11 @@ export class CloudSteps {
 		const lost = unsent ? `還沒送到的 ${unsent} 步沒存進去。` : '';
 		this.#reset(flow, `你現在是${ROLE_NAMES[role]}，只能看。${lost}`);
 	}
+}
+
+/** 別人在我上次看到之後改過，我的一步被退回的提示：by 是最後改的人，reason 是被規則擋下的原因（改到同一個東西是空的）。 */
+function sentBack(by: string, label: string, reason: string): string {
+	return reason ? `${by}剛改了流程，你的「${label}」沒改成：${reason}` : `${by}剛改了同一個地方，你的「${label}」沒改成`;
 }
 
 /** 伺服器送來的一次（流程核心的 Attempt）。 */

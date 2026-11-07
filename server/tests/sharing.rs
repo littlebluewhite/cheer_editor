@@ -235,9 +235,10 @@ async fn hear(socket: &mut Socket) -> Value {
     next.await.expect("伺服器一直沒說話")
 }
 
-async fn step(socket: &mut Socket, step_id: &str, name: &str) -> Value {
+/// 送一步（改流程名字），回伺服器的回答。seen：上次看到第幾步。
+async fn step(socket: &mut Socket, step_id: &str, seen: i64, name: &str) -> Value {
     let commands = json!([{ "name": "renameFlow", "args": [name] }]);
-    let message = json!({ "kind": "step", "stepId": step_id, "seen": 0, "commands": commands });
+    let message = json!({ "kind": "step", "stepId": step_id, "seen": seen, "commands": commands });
     say(socket, message).await;
     hear(socket).await
 }
@@ -470,7 +471,14 @@ async fn every_role_joins_the_room_but_only_editors_change_the_flow(db: sqlx::Pg
     ] {
         let (mut room, first) = s.join(who, &id).await;
         assert_eq!(first["kind"], "ready", "{}", who.email);
-        let reply = step(&mut room, &format!("step-{n}"), &format!("名字{n}")).await;
+        // 前一個人改好的都看到了（改的是同一個名字，沒看到會被退回）
+        let reply = step(
+            &mut room,
+            &format!("step-{n}"),
+            (n - 1).min(2),
+            &format!("名字{n}"),
+        )
+        .await;
         if can {
             assert_eq!(reply["kind"], "accepted", "{}", who.email);
         } else {
@@ -494,7 +502,10 @@ async fn the_room_is_told_when_a_role_changes_or_is_revoked(db: sqlx::PgPool) {
     s.share(&wang, &id, lin.email, "editor").await;
     let (mut owner_room, _) = s.join(&wang, &id).await;
     let (mut room, _) = s.join(&lin, &id).await;
-    assert_eq!(step(&mut room, "step-a", "改過").await["kind"], "accepted");
+    assert_eq!(
+        step(&mut room, "step-a", 0, "改過").await["kind"],
+        "accepted"
+    );
 
     // 降成檢視者：馬上說，帶伺服器現在的樣子；之後送的步不收
     s.set_role(&wang, &id, lin.email, "viewer").await;
@@ -503,12 +514,18 @@ async fn the_room_is_told_when_a_role_changes_or_is_revoked(db: sqlx::PgPool) {
     assert_eq!(told["role"], "viewer");
     assert_eq!(told["flow"]["name"], "改過");
     assert_eq!(told["step"], 1);
-    assert_eq!(step(&mut room, "step-b", "偷改").await["kind"], "rejected");
+    assert_eq!(
+        step(&mut room, "step-b", 1, "偷改").await["kind"],
+        "rejected"
+    );
 
     // 升回編輯者：又能改
     s.set_role(&wang, &id, lin.email, "editor").await;
     assert_eq!(hear(&mut room).await["role"], "editor");
-    assert_eq!(step(&mut room, "step-c", "又改").await["kind"], "accepted");
+    assert_eq!(
+        step(&mut room, "step-c", 1, "又改").await["kind"],
+        "accepted"
+    );
 
     // 收回：說被收回，房間關掉
     s.revoke(&wang, &id, lin.email).await;
@@ -539,7 +556,7 @@ async fn a_step_after_being_revoked_is_turned_away(db: sqlx::PgPool) {
         .await
         .unwrap();
     assert_eq!(
-        step(&mut room, "step-x", "偷改").await,
+        step(&mut room, "step-x", 0, "偷改").await,
         json!({ "kind": "revoked" })
     );
     let (_, got) = s
@@ -671,7 +688,7 @@ async fn the_room_hears_who_is_owner_now(db: sqlx::PgPool) {
     assert_eq!(hear(&mut owner_room).await["role"], "editor");
     // 記錄者變擁有者：能改了
     assert_eq!(
-        step(&mut room, "step-a", "新名字").await["kind"],
+        step(&mut room, "step-a", 0, "新名字").await["kind"],
         "accepted"
     );
 }
@@ -756,7 +773,7 @@ async fn only_the_owner_deletes_and_everything_goes_with_it(db: sqlx::PgPool) {
     let (mut lin_room, _) = s.join(&lin, &id).await;
     let (mut owner_room, _) = s.join(&wang, &id).await;
     assert_eq!(
-        step(&mut lin_room, "step-a", "改過").await["kind"],
+        step(&mut lin_room, "step-a", 0, "改過").await["kind"],
         "accepted"
     );
     // 一個還在用的音樂、一個早就不用的
