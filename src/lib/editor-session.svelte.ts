@@ -211,8 +211,7 @@ export class EditorSession {
 		this.clearSelection();
 		this.drillMarks = {};
 		this.notice = '';
-		this.ask.clear();
-		this.squadAsk.clear();
+		this.#clearAsks();
 		this.#playback.opened();
 		this.onflow();
 		this.#updated();

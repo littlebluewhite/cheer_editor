@@ -500,6 +500,62 @@ describe('播放：慢速、重複', () => {
 		expect(position()).toBe('音樂 1 4-2');
 	});
 
+	it('重複半拍的動作、延遲校正 +1000 毫秒：播放頭照樣跟著每一圈走，不卡在動作開頭（#205）', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		// 2-1 那半拍（3.2 到 3.4 秒）
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 16, length: 1, note: '', members }));
+		const { session, playback, engine, frames } = setup(flow);
+		session.selectAction('x1');
+		playback.setLatency(1000);
+		playback.setRepeat(true);
+		playback.play();
+		const t0 = engine.clicks[0].when;
+		// 畫面一秒 60 格跑 3 秒；畫面晚 1 秒，播放頭是 1 秒前喇叭播的那一圈裡的位置
+		const shown: number[] = [];
+		for (let t = 0; t < 3; t += 1 / 60) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+			if (t > 1.5) shown.push(playback.sec);
+		}
+		expect(playback.playing).toBe(true);
+		expect(Math.max(...shown) - Math.min(...shown)).toBeGreaterThan(0.1);
+		for (const sec of shown) {
+			expect(sec).toBeGreaterThanOrEqual(3.2 - 1e-6);
+			expect(sec).toBeLessThanOrEqual(3.4 + 1e-6);
+		}
+	});
+
+	it('重複中切到別的分頁 30 秒再回來：錯過的圈不補播，從現在接著播，聲音不疊在一起（#205）', () => {
+		const { playback, engine, frames } = setup();
+		// 排過的每一聲節拍器，連同排的那一刻的時鐘都記下來
+		const heard: { when: number; at: number }[] = [];
+		const click = engine.click;
+		engine.click = (when, accent) => {
+			heard.push({ when, at: engine.time });
+			click(when, accent);
+		};
+		playback.setRepeat(true);
+		playback.seek(3.2); // 2-1：重複第 2 個八拍（3.2 秒）
+		playback.play();
+		const t0 = heard[0].when;
+		// 分頁在背景：30 秒沒有畫面，時鐘照走；回來後一秒 60 格跑 4 秒
+		for (let t = 30; t < 34; t += 1 / 60) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+		}
+		expect(playback.playing).toBe(true);
+		// 沒有排在已經過去的時間（排了就馬上一起響）
+		expect(heard.filter((c) => c.when < c.at)).toEqual([]);
+		// 回來後一拍一聲，隔 0.4 秒，沒有疊在一起
+		const times = heard
+			.filter((c) => c.when > t0 + 30)
+			.map((c) => c.when)
+			.sort((a, b) => a - b);
+		expect(times.length).toBeGreaterThanOrEqual(8);
+		for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeCloseTo(0.4, 6);
+	});
+
 	it('重複開著也照樣能跳：播放頭跳到別的八拍，就重複那一個', () => {
 		const { playback, engine, frames, position } = setup();
 		playback.setRepeat(true);

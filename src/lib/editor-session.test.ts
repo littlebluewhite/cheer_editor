@@ -353,6 +353,18 @@ describe('編輯 session：元件要的問題（「改」或「記」）', () =>
 		expect(s.flow!.name).toBe('練習用');
 	});
 
+	it('「改」的問題還沒回答就換一支流程：問題收掉，新的流程不算沒存、新建不被看不到的問題擋住（#208）', () => {
+		const s = new EditorSession(sampleFlow());
+		// 元件（例：隊員面板）問了還沒答，之後元件被拆掉也還留著
+		const ask = s.changeAsk();
+		ask.send(() => ({ kind: 'confirm', message: '保留還是清掉', items: [] }));
+		expect(s.questionOpen).toBe(true);
+		s.open(sampleFlow(), true);
+		expect(ask.question).toBeNull();
+		expect(s.questionOpen).toBe(false);
+		expect(s.unsavedOrAsking).toBe(false);
+	});
+
 	it('「記」的問題成功：不算一步、不清重做', () => {
 		const s = new EditorSession(sampleFlow());
 		rename(s, 'A');

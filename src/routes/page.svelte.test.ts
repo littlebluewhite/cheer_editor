@@ -1214,6 +1214,30 @@ describe('站位與走位', () => {
 		expect(session.canUndo).toBe(false);
 	});
 
+	it('人已經在場地邊界、再往外拖：不算修改、不多一步復原，但照樣提示「已靠到邊界」（檢視模式提示不能改）（#207）', async () => {
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
+		const outward = async () => {
+			const dot = document.querySelector('[data-member-id="m1"]')!;
+			await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+			await fireEvent.pointerMove(dot, { clientX: -100000, clientY: 0 });
+			await fireEvent.pointerUp(dot, { clientX: -100000, clientY: 0 });
+		};
+		await outward(); // 小美靠到左邊的邊界
+		session.notice = '';
+		await tick();
+		const before = session.flow;
+		await outward();
+		expect(session.flow).toBe(before);
+		expect(screen.getByRole('status').textContent).toBe('已靠到邊界');
+		session.notice = '';
+		session.viewing = true;
+		await tick();
+		await outward();
+		expect(session.flow).toBe(before);
+		expect(screen.getByRole('status').textContent).toContain('檢視模式');
+	});
+
 	it('走位條拖過下一張站位：停在那張站位（最遠合法的地方），提示「已靠到邊界」', async () => {
 		await setup();
 		await seek(8.25);
