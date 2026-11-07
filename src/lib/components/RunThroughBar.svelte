@@ -110,7 +110,8 @@
 			<h3>{recording(run)}</h3>
 			<p class="hint">{startClock(run.startedAt)} 開的。一組在一次全上只能一個人記。</p>
 			<div class="choices">
-				<button type="button" class="primary" data-autofocus onclick={() => ((asking = null), onrecord(run))}
+				<!-- 先交出 run 再清 asking：run 是跟著 asking 的 @const，清掉後再讀就是 null（變成開新的） -->
+				<button type="button" class="primary" data-autofocus onclick={() => (onrecord(run), (asking = null))}
 					>加入這一次：跟{run.people[0].name}一起記，你記別的組</button
 				>
 				<button type="button" onclick={() => ((asking = null), onrecord())}

@@ -127,6 +127,35 @@ describe('使用說明', () => {
 		}
 	});
 
+	it('有一節講雲端：登入、雲端流程和本機流程、傳上雲端、下載、分享和權限、分享連結、移交、一起改、一起記成功率、離線副本', () => {
+		render(Guide);
+		const toc = screen.getByRole('navigation', { name: '目錄' });
+		const link = [...toc.querySelectorAll('a')].find((a) => a.textContent === '4.13 雲端：登入、分享、一起改');
+		expect(link?.getAttribute('href')).toBe('#cloud');
+		const section = document.getElementById('cloud')!;
+		const part = (h4: string) => {
+			const head = [...section.querySelectorAll('h4')].find((h) => h.id === h4);
+			expect(head, h4).toBeTruthy();
+			let text = '';
+			for (let el = head!.nextElementSibling; el && el.tagName !== 'H4'; el = el.nextElementSibling) text += el.textContent;
+			return text;
+		};
+		const has = (h4: string, words: string[]) => {
+			const text = part(h4);
+			for (const w of words) expect(text, `${h4}：${w}`).toContain(w);
+		};
+		has('登入和帳號', ['登入', '管理員', '邀請', '設密碼', '30 天', '忘記密碼', '我的帳號', '登出這台裝置', '不登入也能用']);
+		has('雲端流程和本機流程', ['雲端流程', '本機流程', '我的流程', '分享給我的', '這台電腦', '存在', '✓ 已存', '沒有存檔']);
+		has('傳上雲端', ['☁ 傳上雲端', '草稿', '60 MB', '兩支']);
+		has('下載成流程檔', ['⤓ 下載', '流程檔', '擁有者', '編輯者', '不帶']);
+		has('分享和權限', ['分享', '擁有者', '編輯者', '記錄者', '檢視者', '收回', '離開這支流程', '刪掉這支流程', '這個 email 還沒有帳號']);
+		has('分享連結', ['分享連結', '不用登入', '看不到練習頁', '換一條新的']);
+		has('移交', ['移交', '設為擁有者（移交）', '編輯者', '不用接受', '管理員']);
+		has('一起改', ['同時', '退回', '剛改了同一個地方', '復原', '後來改過，這步不能復原', '斷線了・連上才能改', '連上了。', '沒送到', '誰開著']);
+		has('一起記成功率', ['加入，記別的組', '我記哪幾組', '拿著', '存這次全上（你記的 N 欄）', '已經記了這次全上', '沒傳', '現在再試', '加到主畫面', '先不要登出', '刪掉我的上一次']);
+		has('離線副本', ['離線副本', '5 支', '離線可開', '⚠ 沒有網路', '登出', '草稿']);
+	});
+
 	it('說明跟畫面一樣：練習時播放鍵那一區也藏起來、場上的人按空白鍵是播放、拍點格子一直有環節列', () => {
 		render(Guide);
 		const row = (word: string) =>
