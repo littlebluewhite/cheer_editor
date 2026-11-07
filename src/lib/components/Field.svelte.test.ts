@@ -521,6 +521,26 @@ describe('撞位', () => {
 		expect(screen.getByText('撞位')).toBeTruthy();
 	});
 
+	it('✕ 畫在隊員圓點上面（SVG 後畫的蓋前面）；按在圓點上的 ✕ 照樣拖得動那個人', async () => {
+		const toMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
+		// 小B 站在 ✕ 的位置上
+		const session = renderEditing(members, { m1: [0, 0], m2: [1, 0.5] }, { clashes: [clash], toMeters });
+		const mark = document.querySelector('[data-clash]')!;
+		const dot = document.querySelector('[data-member-id="m2"]')!;
+		expect(dot.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		await fireEvent.pointerDown(mark, { clientX: 100, clientY: 50, button: 0 });
+		await fireEvent.pointerMove(mark, { clientX: 146, clientY: 53 });
+		await fireEvent.pointerUp(mark, { clientX: 146, clientY: 53 });
+		// 往右拖約半公尺：吸到 3/4 格（1.3716 公尺）
+		expect(posOf(session, 'm2')[0]).toBeCloseTo(1.3716, 4);
+	});
+
+	it('圖例寫出走位速度的門檻：很喘、走太快各是每秒幾公尺', () => {
+		renderEditing(members, { m1: [0, 0], m2: [2, 0] });
+		expect(screen.getByText('很喘 >2.5 m/s').title).toMatch(/每秒超過 2\.5 公尺/);
+		expect(screen.getByText('走太快 >4 m/s').title).toMatch(/每秒超過 4 公尺/);
+	});
+
 	it('沒給撞位就不畫', () => {
 		renderEditing(members, { m1: [0, 0], m2: [2, 0] });
 		expect(document.querySelector('[data-clash]')).toBeNull();

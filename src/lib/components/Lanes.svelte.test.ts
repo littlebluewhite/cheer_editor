@@ -401,6 +401,19 @@ describe('走位條', () => {
 		expect(lanes()[2].querySelector('[data-walk-clash]')).toBeNull();
 	});
 
+	it('只撞一下（撞到的第一個和最後一個取樣點同一刻）：紫色段至少 10 px 寬，以那一刻為中心', () => {
+		let flow = walking();
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
+		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
+		const clash: Clash = { memberIds: ['m1', 'm2'], sec: 3.2, pos: [1, 0], startSec: 3.2, endSec: 3.2, formationId: f2 };
+		renderLanes(flow, { clashes: [clash] });
+		const mark = walkBar(0).querySelector<HTMLElement>('[data-walk-clash]')!;
+		// 走位條從 1.6 秒開始，3.2 秒在走位條裡 16 px 的地方（每秒 10 px）：紫段 11–21 px。
+		expect(parseFloat(mark.style.width)).toBeCloseTo(10, 6);
+		expect(parseFloat(mark.style.left)).toBeCloseTo(11, 6);
+	});
+
 	it('走太快的走位條標紅', () => {
 		let flow = walking();
 		const f2 = flow.formations[1].id;

@@ -106,8 +106,8 @@
 	/** 走位條能點的高度（px）：比看到的細條高，往下多出 WALK_HIT_DROP 伸進泳道之間的空隙。 */
 	const WALK_HIT_H = 12;
 	const WALK_HIT_DROP = 3;
-	/** 撞位那段最少畫這麼寬（px）：只撞到一個取樣點時也看得到。 */
-	const CLASH_MIN_W = 4;
+	/** 撞位那段最少畫這麼寬（px）：只撞到一個取樣點時也看得到；撐寬時以撞到的那段中間為中心。 */
+	const CLASH_MIN_W = 10;
 	/** 環節細條的高度（px）。 */
 	const PHASE_H = 3;
 
@@ -494,12 +494,13 @@
 					></span>
 					{#if !d}
 						{#each w.clashes as c, i (i)}
+							{@const cw = Math.max((c.endSec - c.startSec) * pxPerSec, CLASH_MIN_W)}
 							<span
 								class="clash"
 								data-walk-clash
 								title="撞位"
-								style:left={`${(c.startSec - w.departSec) * pxPerSec}px`}
-								style:width={`${Math.max((c.endSec - c.startSec) * pxPerSec, CLASH_MIN_W)}px`}
+								style:left={`${((c.startSec + c.endSec) / 2 - w.departSec) * pxPerSec - cw / 2}px`}
+								style:width={`${cw}px`}
 								style:height={`${WALK_H}px`}
 								style:bottom={`${WALK_HIT_DROP}px`}
 							></span>
@@ -751,11 +752,6 @@
 			position: absolute;
 			inset: -5px 0 -4px;
 		}
-		.end {
-			top: -5px;
-			bottom: -4px;
-			width: min(16px, 40%);
-		}
 	}
 	/* 走位條：按鈕本身透明、比較高（好點），裡面的細條（.strip）貼在泳道下緣，蓋在色條上面；兩端是把手。
 	   疊在播放頭（z 4）上面：播放頭停在端點上時，按下去拖到的是端點。 */
@@ -842,11 +838,12 @@
 	.walk.dragging {
 		cursor: grabbing;
 	}
+	/* 兩端的把手：點得到的範圍 8px，看起來不變。 */
 	.end {
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		width: 6px;
+		width: 8px;
 		cursor: ew-resize;
 	}
 	.end.l {
@@ -854,6 +851,21 @@
 	}
 	.end.r {
 		right: 0;
+	}
+	/* 手指：把手往走位條外面多伸 8px、裡面最多 14px（短的走位條最多四成），上下也伸進泳道之間的空隙；
+	   短的走位條也比滑鼠的大。要寫在上面 .end 後面，不然被它蓋掉。 */
+	@media (pointer: coarse) {
+		.end {
+			top: -5px;
+			bottom: -4px;
+			width: calc(8px + min(14px, 40%));
+		}
+		.end.l {
+			left: -8px;
+		}
+		.end.r {
+			right: -8px;
+		}
 	}
 	/* 選到：貼著色條的深色框（用陰影畫）。外框留給焦點（全站的青色外框），兩個同時出現也分得開。 */
 	.bar.selected {
