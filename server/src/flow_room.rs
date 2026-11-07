@@ -34,7 +34,7 @@ use serde_json::value::RawValue;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, signed_in};
+use crate::accounts::{AppError, SignedIn, signed_in};
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
@@ -445,7 +445,7 @@ pub async fn join(
     if !from_this_site(&headers) {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     if role_of(&state.db, &id, user_id).await?.is_none() {

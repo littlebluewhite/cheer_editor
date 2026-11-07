@@ -11,7 +11,7 @@ use serde_json::value::RawValue;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, signed_in};
+use crate::accounts::{AppError, SignedIn, signed_in};
 use crate::records::{self, CloudRecord, Stored};
 use crate::sharing::{Role, role_of};
 
@@ -83,7 +83,7 @@ pub async fn create(
     headers: HeaderMap,
     Json(input): Json<Box<RawValue>>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let id = new_flow_id()?;
@@ -137,7 +137,7 @@ pub async fn upload(
     headers: HeaderMap,
     Json(doc): Json<Box<RawValue>>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let Ok(result) = state.core.upload_flow(doc.get().to_owned()).await else {
@@ -191,7 +191,7 @@ struct Uploaded<'a> {
 
 /// 我的流程（我擁有的）、分享給我的，最近改的在前。
 pub async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let rows: Vec<(String, String, DateTime<Utc>)> = sqlx::query_as(
@@ -239,7 +239,7 @@ pub async fn get_one(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let Some(role) = role_of(&state.db, &id, user_id).await? else {

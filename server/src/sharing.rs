@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::accounts::{AppError, signed_in};
+use crate::accounts::{AppError, SignedIn, signed_in};
 use crate::flow_room::RoomEvent;
 
 /// 一個人對一支流程的權限。
@@ -135,7 +135,7 @@ async fn caller(
     flow_id: &str,
     only_owner: bool,
 ) -> Result<Result<(i64, Role), Response>, AppError> {
-    let Some((user_id, _)) = signed_in(state, headers).await? else {
+    let Some(SignedIn { user_id, .. }) = signed_in(state, headers).await? else {
         return Ok(Err(StatusCode::UNAUTHORIZED.into_response()));
     };
     let Some(role) = role_of(&state.db, flow_id, user_id).await? else {
