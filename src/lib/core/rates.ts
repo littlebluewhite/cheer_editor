@@ -69,10 +69,10 @@ export function rateCounts(phases: Phase[], attempts: Attempt[]): RateCounts {
 			else t.fail++;
 		}
 		// 當時就有、現在還在的環節：打了記號的，加上 ✗ 後面空著的（blanks）。
-		const then = phases.filter((p) => a.marks[p.id] || a.blanks?.includes(p.id));
-		if (a.whole && then.length) {
+		const phasesThen = phases.filter((p) => a.marks[p.id] || a.blanks?.includes(p.id));
+		if (a.whole && phasesThen.length) {
 			counts.whole.whole++;
-			if (then.every((p) => a.marks[p.id] === '✓')) counts.whole.clean++;
+			if (phasesThen.every((p) => a.marks[p.id] === '✓')) counts.whole.clean++;
 		}
 	}
 	return counts;
