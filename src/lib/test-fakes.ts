@@ -16,6 +16,7 @@ import {
 	recordAttempt,
 	remoteChange,
 	runCommands,
+	runUndo,
 	stepKeys,
 	takeRecords,
 	setSquad,
@@ -23,6 +24,7 @@ import {
 	type Command,
 	type Flow,
 	type Position,
+	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -176,6 +178,8 @@ export interface FakeCloudFlow {
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
  * 改到同一個東西（#254）照真的規則：上次看到之後別的分頁改過同一個東西退回、寫最後改的人；被規則擋下也寫那個人和原因；
  * 一步被退回後，同一個房間上次看到的還在那之前的步也退回（步驟紀錄沒有 30 天的限制）。
+ * 復原、重做（#256）照真的規則：要復原的那一步之後別的分頁改過那些東西退回「王教練後來改過，這步不能復原」；
+ * 放回去整份檢查不合退回「這步不能復原：…」；沒有那一步退回「太久以前的，不能復原」。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
@@ -224,14 +228,18 @@ export function fakeServer(
 		if (state.holdRoom) held.push(send);
 		else queueMicrotask(send);
 	};
-	/** 收過的步（每支流程）：第幾步、哪個分頁、改到的東西（stepKeys）、送的人的名字。 */
-	const stepLog = new Map<string, { step: number; tab: string; keys: string[]; by: string }[]>();
+	/** 收過的步（每支流程）：第幾步、步驟 id、哪個分頁、改到的東西（stepKeys）、送的人的名字。 */
+	const stepLog = new Map<string, { step: number; id: string; tab: string; keys: string[]; by: string }[]>();
 	/**
 	 * 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉；改到同一個東西退回）。
-	 * 收了就把改好的東西送給同一支流程其他開著的房間。
+	 * 有 undo 是復原、重做（#256）。收了就把改好的東西送給同一支流程其他開著的房間。
 	 */
-	const takeStep = (f: FakeCloudFlow, sent: { stepId: string; seen: number; commands: Command[] }, from: OpenRoom): RoomMessage => {
-		const { stepId, seen, commands } = sent;
+	const takeStep = (
+		f: FakeCloudFlow,
+		sent: { stepId: string; seen: number; commands?: Command[]; undo?: { of: string; redo: boolean; change: RemoteChange } },
+		from: OpenRoom
+	): RoomMessage => {
+		const { stepId, seen, commands, undo } = sent;
 		const taken = f.stepIds?.[stepId];
 		if (taken !== undefined) return { kind: 'accepted', stepId, step: taken };
 		const step = f.step ?? 0;
@@ -245,14 +253,27 @@ export function fakeServer(
 		const lastOther = (watch?: string[]) =>
 			log.findLast((l) => l.step > seen && l.tab !== from.tab && (!watch || l.keys.some((k) => watch.includes(k))))?.by;
 		const live = (f.records ?? []).filter((r) => !r.gone);
-		const full = putRecords(structuredClone(f.flow), structuredClone(live));
-		const r = runCommands(full, structuredClone(commands), stepId);
-		if (r.kind !== 'ok') {
-			const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
-			const by = lastOther();
-			return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
+		let after: { flow: Flow; records: StoredAttempt[] };
+		if (undo) {
+			const cannot = undo.redo ? '不能重做' : '不能復原';
+			const of = log.find((l) => l.id === undo.of);
+			if (!of) return rejected(`太久以前的，${cannot}`);
+			const u = runUndo(structuredClone(f.flow), structuredClone(live), structuredClone(undo.change));
+			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
+			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
+			if (by !== undefined) return rejected(`${by}後來改過，這步${cannot}`);
+			if (u.kind !== 'ok') return rejected(`這步${cannot}：${u.message}`);
+			after = u;
+		} else {
+			const full = putRecords(structuredClone(f.flow), structuredClone(live));
+			const r = runCommands(full, structuredClone(commands ?? []), stepId);
+			if (r.kind !== 'ok') {
+				const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
+				const by = lastOther();
+				return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
+			}
+			after = takeRecords(r.flow);
 		}
-		const after = takeRecords(r.flow);
 		const { keys, watch } = stepKeys(f.flow, after.flow);
 		const changedBy = lastOther(watch);
 		if (changedBy !== undefined) return rejected('', changedBy);
@@ -273,7 +294,7 @@ export function fakeServer(
 		}
 		// 紀錄跟著改的接在編排的改動後面（#258）。
 		tellRecords(f, changed, deleted, from.room);
-		stepLog.set(f.id, [...log, { step: step + 1, tab: from.tab, keys, by }]);
+		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by }]);
 		f.flow = after.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
@@ -710,7 +731,11 @@ export function fakeServer(
 						deliver(room, () => (ready ? store(f, email, attempts, room) : null));
 					} else if (request.kind === 'changeRecords' || request.kind === 'deleteRecords' || request.kind === 'restoreRecords') {
 						deliver(room, () => (ready ? amend(f, email, request, room) : null));
-					} else if (editor) {
+					} else if (editor && request.kind === 'undo') {
+						const { stepId, seen, of, redo, change } = request;
+						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange } };
+						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
+					} else if (editor && request.kind === 'step') {
 						const sent = { ...request, commands: request.commands as Command[] };
 						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
 					} else {

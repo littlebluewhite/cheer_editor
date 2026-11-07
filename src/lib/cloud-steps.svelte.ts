@@ -8,6 +8,8 @@
 // 擁有者刪了這支（#252）：叫 ondeleted（回首頁並說原因）。
 // 改到同一個東西（#254）：被退回時伺服器說最後改到的人（by），提示寫「王教練剛改了同一個地方，你的「改流程名字」沒改成」，
 // 被規則擋下再加上原因。斷線在 #255。
+// 復原、重做（#256）：session 交來的復原也是一步（送要放回去的樣子），照順序送；被退回時伺服器說完整的原因
+// （例：「王教練後來改過，這步不能復原」）。被退回、沒送到的步從復原、重做紀錄拿掉（session.dropSteps）。
 // 成功率紀錄（#257，ADR 0008）：記一次（session 的「記」交給 onrecord）把新的那幾次送進同一個房間，不算一步。
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。
@@ -28,9 +30,8 @@ import {
 	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
-import type { SentStep } from '#lib/ask.svelte.js';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import type { DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
+import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomMessage, RoomRequest } from '#lib/server-api.js';
 
@@ -46,7 +47,7 @@ export class CloudSteps {
 	readonly #room: FlowRoom;
 	readonly #session: EditorSession;
 	/** 還沒被伺服器收的步和它改了什麼（第一個送出去了，等它回答）。 */
-	#queue = $state.raw<(SentStep & { label: string })[]>([]);
+	#queue = $state.raw<(CloudStep & { label: string })[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
 	#ready = false;
 	/** 上次看到第幾步。 */
@@ -123,7 +124,7 @@ export class CloudSteps {
 		this.#session.ownRecordsOnly = this.role === 'recorder';
 	}
 
-	#push(step: SentStep & { label: string }) {
+	#push(step: CloudStep & { label: string }) {
 		this.#queue = [...this.#queue, step];
 		if (this.#queue.length === 1) this.#sendHead();
 	}
@@ -131,7 +132,8 @@ export class CloudSteps {
 	#sendHead() {
 		const head = this.#queue[0];
 		if (!head || !this.#ready) return;
-		this.#room.send({ kind: 'step', stepId: head.id, seen: this.#seen, commands: head.commands });
+		if ('undo' in head) this.#room.send({ kind: 'undo', stepId: head.id, seen: this.#seen, ...head.undo });
+		else this.#room.send({ kind: 'step', stepId: head.id, seen: this.#seen, commands: head.commands });
 	}
 
 	#heard(m: RoomMessage) {
@@ -172,9 +174,15 @@ export class CloudSteps {
 			// 退回：這一步和後面還沒送的一起不要，換成伺服器的樣子
 			const label = this.#queue[0].label;
 			this.#seen = m.step;
-			this.#queue = [];
+			this.#dropQueue();
 			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message));
 		}
+	}
+
+	/** 還沒被伺服器收的步都不算：清掉，也從復原、重做紀錄拿掉。 */
+	#dropQueue() {
+		this.#session.dropSteps(this.#queue.map((s) => s.id));
+		this.#queue = [];
 	}
 
 	/** 換成伺服器的樣子（不帶紀錄）：帶著現在的紀錄（對不上的丟掉，跟復原一樣）。 */
@@ -274,7 +282,7 @@ export class CloudSteps {
 			return;
 		}
 		const unsent = this.#queue.length;
-		this.#queue = [];
+		this.#dropQueue();
 		this.#seen = step;
 		const lost = unsent ? `還沒送到的 ${unsent} 步沒存進去。` : '';
 		this.#reset(flow, `你現在是${ROLE_NAMES[role]}，只能看。${lost}`);

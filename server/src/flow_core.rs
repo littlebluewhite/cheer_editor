@@ -158,6 +158,22 @@ impl FlowCore {
         async move { result.await? }
     }
 
+    /// 雲端流程的復原、重做（`runUndoJson`，#256）：records 同 run_step，change 是要放回去的樣子（RemoteChange 的 JSON）。
+    /// 放回去之後跑整份流程檢查；回的 JSON 跟 run_step 一樣（不合規則是 blocked 和原因）。
+    pub fn run_undo(
+        &self,
+        flow: String,
+        records: String,
+        change: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            call(ctx, "runUndoJson", (flow, records, change))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
+
     /// 收紀錄時照「記一次」的規則檢查（`checkRecordsJson`）：records 是 StoredAttempt[] 的 JSON，
     /// 回每一次的結果（照收，或整筆不存和原因）的 JSON，順序一樣。
     pub fn check_records(
