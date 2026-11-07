@@ -52,11 +52,12 @@ interface Kept {
 	typed: Set<SlotField>;
 }
 
-/** 上次跟上的：選到的動作（同一個 id 改過也是新的）、選人（session 每次選都換一個新的陣列）、播放頭那一格、自訂任務角色。 */
+/** 上次跟上的：選到的動作（同一個 id 改過也是新的）、選人（session 每次選都換一個新的陣列）、播放頭那一格和它那段的種類、自訂任務角色。 */
 interface Seen {
 	action: Action | null;
 	selection: string[];
 	slot: string;
+	kind: Segment['kind'] | undefined;
 	roles: Flow['customRoles'];
 }
 
@@ -293,7 +294,7 @@ export class ActionDraft {
 	 * 換了選到的動作（或回到新增）：草稿照動作重設；紅字和問題收掉。
 	 * 回到新增時拿回去選別的動作前收起來的草稿（復原掉剛新增的動作時，拿回送出的草稿），沒有就是空白的。
 	 * 新增時：自訂任務角色改名、刪掉，草稿裡的人跟著換名字、變成沒有任務；人跟著選的人；
-	 * 開始和長度跟著播放頭那一格（打過字、正有焦點的欄位不跟）。
+	 * 開始和長度跟著播放頭那一格（打過字、正有焦點的欄位不跟；換到另一種段時打過字的也跟）。
 	 * （改動作時草稿照動作重設：動作裡的人核心已經改好了。）
 	 */
 	follow() {
@@ -308,7 +309,8 @@ export class ActionDraft {
 		const slot = this.#slot;
 		const slotKey = slot ? `${slot.segmentId}:${slot.start}:${slot.length}` : '';
 		const seen = this.#seen;
-		this.#seen = { action, selection, slot: slotKey, roles: flow.customRoles };
+		const kind = this.#segment?.kind;
+		this.#seen = { action, selection, slot: slotKey, kind, roles: flow.customRoles };
 		if (!seen || action !== seen.action) {
 			if (seen && !seen.action) this.#kept = this.#keep();
 			if (action?.id !== seen?.action?.id) this.#categoryChanged = null;
@@ -322,6 +324,8 @@ export class ActionDraft {
 		if (selection !== seen.selection) {
 			this.#set('members', this.#fromSelection(this.#draft.members, this.#draft.category));
 		}
+		// 播放頭換到另一種段（音樂段八拍、口號段秒）：打過的開始、長度是舊段的寫法，看不懂，改回跟著播放頭。
+		if (kind !== seen.kind) this.#typed.clear();
 		if (slotKey !== seen.slot) this.#toSlot();
 	}
 

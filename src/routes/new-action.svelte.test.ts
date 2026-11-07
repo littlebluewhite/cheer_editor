@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
-import { setSquad } from '#lib/core';
+import { addSegment, segmentSpans, setSquad } from '#lib/core';
 import { editorPage, phasedFlow, teamFlow } from '#lib/test-fakes.js';
 import { flowOf, squadNumbers } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -75,6 +75,22 @@ describe('新動作表單：送出', () => {
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-1');
 		await fireEvent.click(screen.getByRole('button', { name: '開新的動作表單' }));
 		expect(field('開始').value).toBe('3-1');
+	});
+});
+
+describe('新動作表單：開始的寫法跟著段', () => {
+	it('在音樂段打了開始 3-1，播放頭移到口號段：開始換成秒，按新增成功', async () => {
+		const page = editorPage(flowOf(addSegment(teamFlow(), 'chant')));
+		render(Page, page.props);
+		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
+		await fireEvent.change(field('開始'));
+		page.editor.playback.seek(segmentSpans(page.session.flow!)[1].startSec + 1);
+		await tick();
+		expect(field('開始').value).toBe('1.0');
+		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		const added = page.session.flow!.actions[1];
+		expect(added).toMatchObject({ segmentId: 's2', start: 10 });
 	});
 });
 

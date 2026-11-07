@@ -396,6 +396,66 @@ for (const [w, h] of [[1440, 900], [1280, 720], [1024, 768]]) {
 	});
 }
 
+for (const [w, h] of [[1440, 900], [1024, 768]]) {
+	await check(`${w}×${h} 大字卡寫 9 個字的步驟、走到 1/2：字和「1/2」都整個看得到，不被切`, async () => {
+		await setViewport(w, h);
+		await openPracticeFlow(`flow = core.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 4, word: '九個字的步驟名稱長' }).flow;`);
+		const r = await rectOf('[data-ruler]');
+		await click(r.left + 2, r.y);
+		await sleep(300);
+		return js(`const box = document.querySelector('.cues-now');
+			if (!box) return { ok: false, value: '沒有大字卡' };
+			const b = box.getBoundingClientRect();
+			const step = box.querySelector('.now .step');
+			if (!step) return { ok: false, value: '大字卡沒有步驟' };
+			const s = step.getBoundingClientRect();
+			const small = step.querySelector('small');
+			const f = small ? small.getBoundingClientRect() : null;
+			const inBox = (r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5 && r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5;
+			const ok = !!f && small.textContent.trim() === '1/2' && step.textContent.includes('九個字的步驟名稱長')
+				&& inBox(s) && inBox(f) && step.scrollWidth <= step.clientWidth + 1;
+			return { ok, value: { 大字區: [Math.round(b.left), Math.round(b.right)], 步驟: [Math.round(s.left), Math.round(s.right)],
+				'1/2': f && [Math.round(f.left), Math.round(f.right)], 步驟裡面寬: [step.scrollWidth, step.clientWidth] } };`);
+	});
+}
+
+await check('1440×900 拍點小窗貼不下時：錯誤訊息在畫面裡、看得到（小窗開在格子各個高度都是）', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow(`flow = core.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 4, word: '下手' }).flow;`);
+	await js(`document.querySelector('[data-lane="m1"] [data-action-id="x1"]').click()`);
+	await waitFor(() => js(`return !!document.querySelector('.cues .cell[aria-label="1-8"]')`));
+	await sleep(200);
+	const cell = (n) => `.cues .cell[aria-label="${n}"]`;
+	// 複製 1-1 到 1-2（下手兩拍），貼在最後一拍 1-8：貼不下
+	await scrollPanelTo(cell('1-1'), 0.3);
+	const a = await rectOf(cell('1-1'));
+	await click(a.x, a.y);
+	const b = await rectOf(cell('1-2'));
+	await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', buttons: 1, clickCount: 1, modifiers: 8 });
+	await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers: 8 });
+	await sleep(300);
+	await js(`document.querySelector('.cues .pop [aria-label="複製選的拍點"]').click()`);
+	const bad = [];
+	let seen = 0;
+	for (const k of [0.2, 0.4, 0.6, 0.75, 0.9]) {
+		await js(`if (document.querySelector('.cues .pop')) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		const at = await scrollPanelTo(cell('1-8'), k);
+		const c = await rectOf(cell('1-8'));
+		await click(c.x, c.y);
+		const paste = await rectOf('.cues .pop [aria-label="貼上拍點"]');
+		await click(paste.x, paste.y);
+		const res = await js(`const err = document.querySelector('.cues .pop .error');
+			if (!err) return { ok: false, value: '沒有錯誤訊息' };
+			const r = err.getBoundingClientRect();
+			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { ok: r.top >= 0 && r.bottom <= innerHeight && !!t && err.contains(t),
+				value: { 錯誤訊息: [Math.round(r.top), Math.round(r.bottom)], 畫面高: innerHeight, 中心點上面是: t ? t.outerHTML.slice(0, 60) : '畫面外' } };`);
+		if (res.value !== '沒有錯誤訊息') seen++;
+		if (!res.ok) bad.push({ 那一排在右邊欄的: at, ...(typeof res.value === 'string' ? { 量到: res.value } : res.value) });
+	}
+	return { ok: seen > 0 && bad.length === 0, value: { 有錯誤訊息幾次: seen, 沒過: bad } };
+});
+
 await check('1440×900 把右邊欄拖到最寬，換成 1024×768：場地本身還有 360 px 寬（右邊欄寬度照比例記）', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow();

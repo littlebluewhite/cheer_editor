@@ -205,3 +205,18 @@ describe('複製、貼上拍點', () => {
 		expect(cuesOf(session, 'x2')).toEqual(['step 上 0+2']);
 	});
 });
+
+describe('泳道上的拍點', () => {
+	it('同一拍有給全部的 down 和只給小美的 up：小美的泳道上兩個都畫出來，上下分開，都在泳道裡', () => {
+		open(flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 2, word: 'up', who: { member: 'm1' } })));
+		const lane = document.querySelector<HTMLElement>('[data-lane="m1"]')!;
+		const counts = [...lane.querySelectorAll<HTMLElement>('[data-action-id="x1"] [data-cue="count"]')];
+		const firstBeat = counts.filter((c) => c.style.left === '0px');
+		expect(firstBeat.map((c) => c.textContent?.trim()).toSorted()).toEqual(['down', 'up']);
+		const [a, b] = firstBeat.map((c) => parseFloat(c.style.top));
+		expect(Math.abs(a - b)).toBeGreaterThanOrEqual(parseFloat(firstBeat[0].style.height));
+		// 色條離泳道上緣 3 px，下緣留 5 px 給走位條
+		const bottom = Math.max(...firstBeat.map((c) => 3 + parseFloat(c.style.top) + parseFloat(c.style.height)));
+		expect(bottom).toBeLessThanOrEqual(parseFloat(lane.style.height) - 5);
+	});
+});
