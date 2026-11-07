@@ -2248,6 +2248,36 @@ await check('1440×900 選到人：工具列浮在場地正上方，場地不跳
 	};
 });
 
+await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正下方、整個在畫面裡；選「排成一橫排」後兩人在場上同一高度（#223）', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	for (const [id, modifiers] of [['m1', 0], ['m3', 8]]) {
+		const d = await rectOf(`.field-host [data-member-id="${id}"]`);
+		await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: d.x, y: d.y, button: 'left', buttons: 1, clickCount: 1, modifiers });
+		await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: d.x, y: d.y, button: 'left', buttons: 0, clickCount: 1, modifiers });
+		await sleep(150);
+	}
+	const btn = `[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '對齊 ▾')`;
+	const at = await js(`const b = ${btn}; if (!b) return null; const r = b.getBoundingClientRect();
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2, 下緣: r.bottom, 左: r.left };`);
+	if (!at) return { ok: false, value: '工具列上沒有「對齊 ▾」' };
+	await click(at.x, at.y);
+	const menu = await js(`const m = document.querySelector('[role="menu"][aria-label="對齊"]'); if (!m) return null;
+		const r = m.getBoundingClientRect();
+		return { 上: Math.round(r.top), 左: Math.round(r.left), 右: Math.round(r.right), 下: Math.round(r.bottom), 項: [...m.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()) };`);
+	if (!menu) return { ok: false, value: '小選單沒開' };
+	const row = await rectOf('[role="menu"][aria-label="對齊"] [role="menuitem"]');
+	await click(row.x, row.y);
+	await sleep(300);
+	const ys = await js(`return ['m1', 'm3'].map((id) => { const r = document.querySelector('.field-host [data-member-id="' + id + '"]').getBoundingClientRect(); return Math.round(r.top + r.height / 2); });`);
+	await press('Escape');
+	const inView = menu.上 >= at.下緣 && menu.上 - at.下緣 <= 8 && menu.左 >= 8 && menu.右 <= 1440 - 8 && menu.下 <= 900 - 8;
+	return {
+		ok: inView && String(menu.項) === '排成一橫排,排成一直排' && Math.abs(ys[0] - ys[1]) <= 1,
+		value: { 鈕下緣: Math.round(at.下緣), 小選單: menu, 對齊後兩人高度: ys }
+	};
+});
+
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
