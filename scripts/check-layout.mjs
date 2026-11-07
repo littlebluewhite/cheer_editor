@@ -1444,23 +1444,6 @@ await check('1440×1000 左欄規則警告的撞位總表：卡片點得到、�
 	return { ok: head.self && row.self && inside && r.位置 === '音樂 1 2-1', value: { 卡片: head, 清單一行: row, ...r } };
 });
 
-await check('1440×1000 左欄的「跟上一張一樣」：播放頭在站位上和不在站位上，按鈕位置一樣', async () => {
-	await setViewport(1440, 1000);
-	await openSample();
-	const spot = () => js(`const b = [...document.querySelectorAll('.rail button')].find((x) => x.textContent.trim() === '跟上一張一樣');
-		const r = b.getBoundingClientRect();
-		return { 在站位上: !!document.querySelector('.rail .here.on'), 位置: [Math.round(r.left), Math.round(r.top)] };`);
-	await js(`[...document.querySelectorAll('.row.film .pick')][1].click()`);
-	await sleep(300);
-	const on = await spot();
-	// 往後一拍：離開站位
-	await js(`document.activeElement?.blur(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
-	await sleep(300);
-	const off = await spot();
-	const ok = on.在站位上 && !off.在站位上 && on.位置[0] === off.位置[0] && on.位置[1] === off.位置[1];
-	return { ok, value: { 在站位上: on, 不在站位上: off } };
-});
-
 // ---------- 長的拍點文字（#146） ----------
 
 await check('很長的手位：拍點格子、泳道、八拍表上都待在自己那一拍，不蓋到下一個拍點', async () => {
@@ -2215,6 +2198,22 @@ await check('1440×900 選到人：工具列浮在場地正上方，場地不跳
 		ok: !!bar && bar.上 >= 0 && bar.上 <= 8 && Math.abs(bar.置中差) <= 1 && same && toast !== null && toast >= bar.下緣 && !hidden.工具列,
 		value: { 之前: before, 工具列出現: { 場地: shown, 工具列: bar }, 提示上緣: toast, 收起: hidden }
 	};
+});
+
+await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框和字排一行、工具列不換行、整條在場地裡', async () => {
+	await setViewport(1024, 768);
+	await openPracticeFlow();
+	const d = await rectOf('.field-host [data-member-id="m1"]');
+	await click(d.x, d.y);
+	const r = await js(`const b = document.querySelector('.field-host [role="toolbar"]');
+		const n = b?.querySelector('.nth'), box = n?.querySelector('input');
+		if (!n || !box) return null;
+		const br = b.getBoundingClientRect(), s = document.querySelector('.field-host .stage').getBoundingClientRect();
+		const rows = new Set([...n.children, n].map((e) => Math.round(e.getBoundingClientRect().top + e.getBoundingClientRect().height / 2)));
+		return { 高: Math.round(br.height), 在場地裡: br.left >= s.left - 1 && br.right <= s.right + 1, 框寬: Math.round(box.getBoundingClientRect().width),
+			一行: Math.max(...rows) - Math.min(...rows) <= 2, 字: n.textContent.replace(/\s+/g, '') };`);
+	await press('Escape');
+	return { ok: !!r && r.高 === 36 && r.在場地裡 && r.一行 && r.框寬 >= 32, value: r };
 });
 
 if (pageErrors.length) {

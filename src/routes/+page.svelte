@@ -399,6 +399,14 @@
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
 		if (covered() || on(TYPING)) return;
+		// ⌘C／⌘V（Ctrl+C／V）：複製選到的站位卡片、貼到播放頭；沒選站位、沒複製過就照瀏覽器的。
+		// 拍點格子自己用了（複製、貼拍點）就不算
+		if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (key === 'c' || key === 'v')) {
+			if (e.defaultPrevented) return;
+			if (key === 'v') playback.pauseOnBeat();
+			if (key === 'c' ? session.copyFormation() : session.pasteFormation(playback.sec)) e.preventDefault();
+			return;
+		}
 		// 選單自己用方向鍵、Home／End（例：任務角色選單）時不算
 		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
 		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
@@ -1577,7 +1585,7 @@
 		width: 1px;
 		height: 1px;
 	}
-	/* 左欄（場地左邊）的東西：警告、跟上一張一樣、拖人會改。 */
+	/* 左欄（場地左邊）的東西：警告、拖人會改。 */
 	.warn {
 		list-style: none;
 		margin: 0;

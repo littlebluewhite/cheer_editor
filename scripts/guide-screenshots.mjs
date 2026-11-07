@@ -287,14 +287,12 @@ await shot(
 		[1, `q('.rail .tools')`],
 		[2, `q('.now-formation')`],
 		[3, `q('.rail .warn')`],
-		// 號碼放右邊中間：放右上角會蓋到上面 5 的框
-		[4, `q('.match-prev')`, { x: 1, y: 0.5 }],
-		[5, `q('.here')`],
-		// 號碼放右邊中間：放右上角會蓋到上面 7 的框
-		[6, `q('.rail > .walk-tools')`, { x: 1, y: 0.5 }],
-		[7, `q('.rail .legend-box')`],
+		[4, `q('.here')`],
+		// 號碼放右邊中間：放右上角會蓋到上面 6 的框
+		[5, `q('.rail > .walk-tools')`, { x: 1, y: 0.5 }],
+		[6, `q('.rail .legend-box')`],
 		// 只框小美：她的走位線，和線上那個影子（另外兩人沒動，影子在自己的點底下）
-		[8, `(() => {
+		[7, `(() => {
 			const lines = [...document.querySelectorAll('.walk-line')];
 			const r = lines[0].getBoundingClientRect();
 			const near = (g) => { const b = g.getBoundingClientRect(); return b.right > r.left - 2 && b.left < r.right + 2; };

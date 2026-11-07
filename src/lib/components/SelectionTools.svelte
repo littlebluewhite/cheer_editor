@@ -7,7 +7,8 @@
 	// 選人工具列和右鍵選單：選到人時固定浮在場地正上方（不佔位置，場地不跳）；右鍵選單是同一份清單（selectionActions）。
 	// 按一項：選到的人照那一項算新位置，走 moveGroup（跟拖人同一條路）：這一拍沒有站位就插一張、往後帶、算一步復原，
 	// 提示和播放頭也跟拖人一樣（session.moved）。播放中就先暫停在整拍（跟開始拖人一樣）。
-	import { moveGroup } from '#lib/core';
+	// 沒選人時工具列收起來；在場上空白處按右鍵，選單上是套用全隊的項目（跟第 [_] 張一樣）。
+	import { currentFormation, formationAt, moveGroup } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { menuKeys, popover } from '#lib/popover.svelte.js';
@@ -27,15 +28,28 @@
 
 	const session = getEditorSession();
 	const { playback } = getEditor();
-	const actions = $derived(selectionActions(session.selectedMemberIds.length));
+	const count = $derived(session.selectedMemberIds.length);
+	const actions = $derived(selectionActions(count));
+
+	/** 「第幾張站位」框打的數字；沒打過（null）就是播放頭前面那一張（以前的「跟上一張一樣」）。 */
+	let typedNth = $state<number | null>(null);
+	const nth = $derived.by(() => {
+		if (typedNth !== null) return typedNth;
+		const { number } = currentFormation(session.flow!, playback.sec);
+		return Math.max(1, formationAt(session.flow!, playback.sec) ? number - 1 : number);
+	});
+	/** 按鈕的名字：[_] 換成框裡的數字；沒選人是全隊。 */
+	const nameOf = (a: SelectionAction) => (count ? '' : '全隊') + a.label.replace('[_]', String(nth));
 
 	function run(a: SelectionAction) {
 		onclosemenu();
 		playback.pauseOnBeat();
 		const flow = session.flow!;
 		const sec = playback.sec;
-		const ids = session.selectedMemberIds;
-		session.ask.send(() => moveGroup(flow, sec, ids, (pos) => a.place(flow, pos, zoom)), {
+		const ids = count ? session.selectedMemberIds : flow.members.map((m) => m.id);
+		const n = nth;
+		if (a.nth && !flow.formations[n - 1]) return void (session.notice = `沒有站位 ${n}`);
+		session.ask.send(() => moveGroup(flow, sec, ids, (pos) => a.place(flow, pos, zoom, n)), {
 			done: (r) => session.moved(r)
 		});
 	}
@@ -47,10 +61,32 @@
 	});
 </script>
 
-{#if actions.length}
+<!-- 跟第 [_] 張一樣：[_] 是數字框，後半段是按鈕（按 Enter 也算按） -->
+{#snippet item(a: SelectionAction, role: 'menuitem' | undefined)}
+	{#if a.nth}
+		{@const [before, after] = a.label.split('[_]')}
+		<span class="nth">
+			{count ? '' : '全隊'}{before.trim()}
+			<input
+				type="number"
+				min="1"
+				max={session.flow!.formations.length}
+				aria-label="跟第幾張站位一樣"
+				value={nth}
+				oninput={(e) => (typedNth = e.currentTarget.valueAsNumber || null)}
+				onkeydown={(e) => e.key === 'Enter' && run(a)}
+			/>
+			<button type="button" {role} title={a.title} aria-label={nameOf(a)} onclick={() => run(a)}>{after.trim()}</button>
+		</span>
+	{:else}
+		<button type="button" {role} title={a.title} onclick={() => run(a)}>{a.label}</button>
+	{/if}
+{/snippet}
+
+{#if count && actions.length}
 	<div class="tools-bar" role="toolbar" aria-label="選人工具列">
 		{#each actions as a (a.label)}
-			<button type="button" title={a.title} onclick={() => run(a)}>{a.label}</button>
+			{@render item(a, undefined)}
 		{/each}
 	</div>
 {/if}
@@ -65,7 +101,7 @@
 		{@attach menuKeys}
 	>
 		{#each actions as a (a.label)}
-			<button type="button" role="menuitem" title={a.title} onclick={() => run(a)}>{a.label}</button>
+			{@render item(a, 'menuitem')}
 		{/each}
 	</div>
 {/if}
@@ -91,6 +127,18 @@
 	.tools-bar button {
 		border: none;
 		padding: 0 12px;
+	}
+	/* 跟第 [_] 張一樣：字、數字框、按鈕排一行 */
+	.nth {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding-left: 8px;
+		white-space: nowrap;
+	}
+	.nth input {
+		width: 3.5em;
+		text-align: center;
 	}
 	.menu {
 		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、顏色 */

@@ -860,35 +860,6 @@ describe('站位與走位', () => {
 		expect(document.activeElement).not.toBe(box);
 	});
 
-	it('跟上一張一樣：沒選人、在開頭那張時按不下去並說原因；在站位上改成上一張的位置；不在站位上先插一張', async () => {
-		const button = () => screen.getByRole('button', { name: '跟上一張一樣' }) as HTMLButtonElement;
-		const at = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');
-		await setup();
-		const start = at('m1');
-		expect(button().disabled).toBe(true);
-		expect(screen.getByText('先選人')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		expect(button().disabled).toBe(true);
-		expect(screen.getByText('開頭那張前面沒有站位')).toBeTruthy();
-
-		await seek(8.25);
-		await fireEvent.click(screen.getByRole('button', { name: '不選人' }));
-		await dragFirstMember(); // 插站位 2，小A 換位置
-		expect(at('m1')).not.toBe(start);
-		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		expect(button().disabled).toBe(false);
-		await fireEvent.click(button());
-		expect(at('m1')).toBe(start);
-		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
-
-		await seek(4);
-		await fireEvent.click(button());
-		expect(thumbs()).toHaveLength(3);
-		expect(screen.getByRole('status').textContent).toBe('插了一張站位，大家的位置自動帶入');
-		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-3');
-	});
-
 	it('影子和走位線：在站位上畫上一張的影子和線、在兩張中間只畫線、有選人只畫選到的人', async () => {
 		const marked = (attr: string) =>
 			[...document.querySelectorAll(`.field [${attr}]`)].map((el) => el.getAttribute(attr));
@@ -1767,14 +1738,14 @@ describe('復原和重做', () => {
 		expect(redoButton().disabled).toBe(true);
 	});
 
-	it('跟上一張一樣（自動插站位）算一步：按一次「復原」整個回去', async () => {
+	it('跟第 [_] 張一樣（自動插站位）算一步：按一次「復原」整個回去', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember(); // 插站位 2
 		await seek(7); // 小A 正走向站位 2（最後一個八拍才走）
 		const before = dotAt();
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		await fireEvent.click(screen.getByRole('button', { name: '跟上一張一樣' }));
+		await fireEvent.click(screen.getByRole('button', { name: '跟第 1 張一樣' }));
 		expect(thumbs()).toHaveLength(3);
 		expect(dotAt()).not.toBe(before);
 
