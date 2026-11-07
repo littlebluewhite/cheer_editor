@@ -175,7 +175,7 @@ export interface SegmentPatch {
 export type SegmentNumberField = 'bpm' | 'firstBeatSec' | 'eights' | 'lastBeats' | 'seconds';
 
 /** 每個數字欄位超出範圍時說的話（說能填的範圍）；看不懂也說這一句。 */
-const OUT_OF_RANGE: Record<SegmentNumberField, string> = {
+export const OUT_OF_RANGE: Record<SegmentNumberField, string> = {
 	bpm: `BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`,
 	firstBeatSec: '第一拍要是 0 秒以上',
 	eights: `八拍數要在 1 到 ${MAX_EIGHTS} 之間`,

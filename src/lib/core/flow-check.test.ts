@@ -1,0 +1,231 @@
+// 整份流程檢查（ADR 0011）：每一條規則不合時回對的原因；「讓它留著」的規則只擋這一步新出現的毛病。
+import { describe, expect, it } from 'vitest';
+import {
+	addMembers,
+	checkFlowDocument,
+	FORMAT_VERSION,
+	flowProblem,
+	MAX_EIGHTS,
+	MAX_MEMBERS,
+	readFlowFile,
+	writeFlowFile,
+	type Flow
+} from './index';
+import { flowOf, ratedSample } from '../test-flows';
+
+/** 再加人加到 n 個人（用指令加，所以合規則）。 */
+function withMembers(flow: Flow, n: number): Flow {
+	const more = Array.from({ length: n - flow.members.length }, (_, i) => ({
+		name: `隊員${i + 1}`,
+		gender: 'F' as const,
+		globalRole: 'base' as const
+	}));
+	return flowOf(addMembers(flow, more));
+}
+
+/** 不經過指令直接加 n 個人（舊檔、或兩個分頁的改動合起來才會有的樣子）。 */
+function forceMembers(flow: Flow, n: number): Flow {
+	const start = flow.members.length;
+	const members = [
+		...flow.members,
+		...Array.from({ length: n }, (_, i) => ({ id: `m${start + i + 1}`, name: `多${i + 1}`, gender: 'F' as const, globalRole: 'base' as const }))
+	];
+	const pos = { ...flow.formations[0].pos };
+	for (const m of members) pos[m.id] ??= [0, 0];
+	return { ...flow, members, formations: flow.formations.map((f) => ({ ...f, pos: { ...pos, ...f.pos } })) };
+}
+
+describe('整份流程檢查：人數上限（讓它留著）', () => {
+	it('合規則的流程是 null', () => {
+		expect(flowProblem(ratedSample())).toBeNull();
+	});
+
+	it('復原後超過上限：你刪 5 個、別人加 5 個（40 人），復原變 45 人，擋下', () => {
+		const full = withMembers(ratedSample(), MAX_MEMBERS);
+		expect(flowProblem(forceMembers(full, 5), full)).toBe(`一支流程最多 ${MAX_MEMBERS} 人`);
+	});
+
+	it('之前就超過上限的舊流程，傳上雲端（沒有之前）、或復原不相干的東西，照收', () => {
+		const old = forceMembers(withMembers(ratedSample(), MAX_MEMBERS), 5);
+		expect(flowProblem(old)).toBeNull();
+		expect(flowProblem({ ...old, name: '改名' }, old)).toBeNull();
+	});
+});
+
+describe('檢查一整支流程（checkFlowDocument）：讀流程檔和傳上雲端共用', () => {
+	it('舊版的流程升到現在的版本', () => {
+		const flow = ratedSample();
+		expect(checkFlowDocument({ formatVersion: 8, flow })).toEqual({ kind: 'ok', flow });
+	});
+
+	it('新版編輯器存的不收', () => {
+		expect(checkFlowDocument({ formatVersion: FORMAT_VERSION + 1, flow: ratedSample() })).toEqual({
+			kind: 'error',
+			message: '是新版編輯器存的，請重新整理，更新編輯器'
+		});
+	});
+
+	it.each([
+		['不是物件', 'flow'],
+		['沒有版本', { flow: ratedSample() }],
+		['型別不對', { formatVersion: FORMAT_VERSION, flow: { ...ratedSample(), members: {} } }],
+		['指到不存在的段', { formatVersion: FORMAT_VERSION, flow: { ...ratedSample(), segments: [] } }]
+	])('%s：壞掉了', (_, doc) => {
+		expect(checkFlowDocument(doc)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+	});
+
+	it('段太長：寫出上限', () => {
+		const flow = ratedSample();
+		const segments = flow.segments.map((s) => ({ ...s, halfBeats: (MAX_EIGHTS + 1) * 16 }));
+		expect(checkFlowDocument({ formatVersion: FORMAT_VERSION, flow: { ...flow, segments } })).toEqual({
+			kind: 'error',
+			message: `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`
+		});
+	});
+});
+
+describe('整份流程檢查：開檔就擋的規則（跟讀流程檔一樣，之前就有也擋）', () => {
+	const flow = ratedSample();
+	const x1 = flow.actions[0];
+	const broken: [string, Flow, string][] = [
+		['型別不對', { ...flow, name: 3 as unknown as string }, '流程的資料格式不對'],
+		['沒有開頭站位', { ...flow, formations: [] }, '流程開頭一定有一張站位'],
+		[
+			'開頭那張有走位',
+			{ ...flow, formations: [{ ...flow.formations[0], walks: {} }] },
+			'開頭那張站位不能有走位'
+		],
+		['段指到不存在的音樂檔', { ...flow, audio: [], segments: flow.segments.map((s) => ({ ...s, audioId: 'a9' })) }, '有段指到不存在的音樂檔'],
+		['動作指到不存在的段', { ...flow, actions: [{ ...x1, segmentId: 's9' }] }, '有動作指到不存在的段'],
+		[
+			'動作指到不存在的隊員',
+			{ ...flow, actions: [{ ...x1, members: [{ memberId: 'm9', role: null }] }] },
+			'有動作指到不存在的隊員'
+		],
+		[
+			'拍點不守規則',
+			{ ...flow, actions: [{ ...x1, cues: [{ kind: 'count', at: 99, len: 2, word: 'down', who: null }] }] },
+			'動作「技巧·Lib」：拍點要在動作裡面'
+		],
+		[
+			'成功率設定不守規則',
+			{ ...flow, actions: [{ ...x1, successRate: { phases: [], records: [] } }] },
+			'動作「技巧·Lib」：記成功率的動作至少要有一個環節'
+		],
+		[
+			'段太長',
+			{ ...flow, segments: flow.segments.map((s) => ({ ...s, halfBeats: (MAX_EIGHTS + 1) * 16 })) },
+			`音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`
+		]
+	];
+	it.each(broken)('%s', (_, bad, message) => {
+		expect(flowProblem(bad)).toBe(message);
+		expect(flowProblem(bad, bad)).toBe(message);
+	});
+});
+
+/** x1 換成 change 過的樣子。 */
+function withX1(flow: Flow, change: Partial<Flow['actions'][number]>): Flow {
+	return { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, ...change } : a)) };
+}
+
+/**
+ * 讓它留著的規則：[規則, 把合規則的流程改成不合, 原因]。
+ * 每一條都看三件事：這一步新出現就擋、寫對原因；傳上雲端（沒有之前）不擋；之前就有的（舊檔）不擋。
+ */
+const kept: [string, (flow: Flow) => Flow, string][] = [
+	['流程名字太長', (f) => ({ ...f, name: '流'.repeat(41) }), '流程名字最多 40 個字'],
+	['流程沒有名字', (f) => ({ ...f, name: ' ' }), '請幫流程取名字'],
+	[
+		'隊員名字太長',
+		(f) => ({ ...f, members: f.members.map((m) => (m.id === 'm1' ? { ...m, name: '美'.repeat(21) } : m)) }),
+		'隊員名字最多 20 個字'
+	],
+	['隊員沒有名字', (f) => ({ ...f, members: f.members.map((m) => (m.id === 'm1' ? { ...m, name: '' } : m)) }), '請填隊員名字'],
+	['動作名稱太長', (f) => withX1(f, { name: 'L'.repeat(21) }), `動作「技巧·${'L'.repeat(21)}」：動作名稱最多 20 個字`],
+	['備註太長', (f) => withX1(f, { note: '慢'.repeat(201) }), '動作「技巧·Lib」：備註最多 200 個字'],
+	[
+		'站位名稱太長',
+		(f) => ({ ...f, formations: f.formations.map((x, i) => (i === 0 ? { ...x, name: '開'.repeat(21) } : x)) }),
+		'站位 1：站位名稱最多 20 個字'
+	],
+	['任務角色名稱太長', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '飛'.repeat(9), meaning: '' }] }), '任務角色名稱最多 8 個字'],
+	['任務角色沒有名稱', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '', meaning: '' }] }), '請填任務角色名稱'],
+	['任務角色重複', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '上層', meaning: '' }] }), '已經有「上層」這個任務角色了'],
+	['場地條數', (f) => ({ ...f, field: { ...f.field, strips: 13 } }), '條數要是 1–12 的整數'],
+	['時間規則的秒數', (f) => ({ ...f, timeRules: { ...f.timeRules, minChantSec: 0 } }), '秒數要大於 0'],
+	[
+		'口號段最少不比整支最多少',
+		(f) => ({ ...f, timeRules: { ...f.timeRules, minChantSec: 200 } }),
+		'「口號段加起來最少」要比「整支流程最多」少'
+	],
+	[
+		'音樂段最多超過整支最多',
+		(f) => ({ ...f, timeRules: { ...f.timeRules, maxMusicSec: 200 } }),
+		'「音樂段加起來最多」不能超過「整支流程最多」'
+	],
+	['BPM', (f) => ({ ...f, segments: f.segments.map((s) => ({ ...s, bpm: 200 })) }), '音樂 1：BPM 要在 60 到 170 之間'],
+	['第一拍', (f) => ({ ...f, segments: f.segments.map((s) => ({ ...s, firstBeatSec: -1 })) }), '音樂 1：第一拍要是 0 秒以上'],
+	[
+		'站到場地外太遠',
+		(f) => ({ ...f, formations: f.formations.map((x) => ({ ...x, pos: { ...x.pos, m1: [100, 100] } })) }),
+		'站位 1：小美 只能站到場地外 1 公尺以內'
+	],
+	[
+		'站位不在段裡',
+		(f) => ({ ...f, formations: [...f.formations, { id: 'f9', segmentId: 's1', at: 999, pos: f.formations[0].pos }] }),
+		'站位 2 要在站位 1 之後、段的時間裡'
+	],
+	[
+		'兩張站位同一拍',
+		(f) => ({ ...f, formations: [...f.formations, { id: 'f9', segmentId: 's1', at: 0, pos: f.formations[0].pos }] }),
+		'站位 2 要在站位 1 之後、段的時間裡'
+	],
+	[
+		'動作的時間',
+		(f) => ({ ...f, actions: f.actions.map((a) => (a.id === 'x2' ? { ...a, start: 56 } : a)) }),
+		'動作「騰翻」：超過這段的結尾，最多 4 拍'
+	],
+	[
+		'動作沒有人',
+		(f) => ({ ...f, actions: f.actions.map((a) => (a.id === 'x2' ? { ...a, members: [] } : a)) }),
+		'動作「騰翻」：一個動作至少要有 1 個人'
+	],
+	[
+		'同一個人放兩次',
+		(f) => ({ ...f, actions: f.actions.map((a) => (a.id === 'x2' ? { ...a, members: [a.members[0], a.members[0]] } : a)) }),
+		'動作「騰翻」：同一個人只能放一次'
+	],
+	[
+		'沒有這個任務角色',
+		(f) => ({
+			...f,
+			actions: f.actions.map((a) => (a.id === 'x2' ? { ...a, members: [{ memberId: 'm1', role: '飛人' }] } : a))
+		}),
+		'動作「騰翻」：沒有「飛人」這個任務角色'
+	],
+	[
+		'同一個人兩個動作撞在一起',
+		(f) => ({ ...f, actions: f.actions.map((a) => (a.id === 'x2' ? { ...a, start: 0 } : a)) }),
+		'小美 同一時間在「技巧·Lib」和「騰翻」裡'
+	]
+];
+
+describe('整份流程檢查：讓它留著的規則', () => {
+	it.each(kept)('%s', (_, spoil, message) => {
+		const good = ratedSample();
+		const bad = spoil(good);
+		expect(flowProblem(bad, good)).toBe(message);
+		expect(flowProblem(bad)).toBeNull();
+		expect(flowProblem({ ...bad, markers: 'initial' }, bad)).toBeNull();
+	});
+});
+
+describe('整份流程檢查：開得了的流程檔都過得了（傳上雲端）', () => {
+	it('舊檔帶著每一種讓它留著的毛病：開得了，也過得了', () => {
+		const old = kept.reduce((flow, [, spoil]) => spoil(flow), forceMembers(withMembers(ratedSample(), MAX_MEMBERS), 5));
+		const opened = readFlowFile(writeFlowFile(old, {}));
+		expect(opened.kind).toBe('ok');
+		if (opened.kind === 'ok') expect(flowProblem(opened.flow)).toBeNull();
+	});
+});
