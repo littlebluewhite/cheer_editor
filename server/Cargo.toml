@@ -8,9 +8,22 @@ publish = false
 # 版號 2026-11-07 從 crates.io 查的（研究筆記〈rust-stack〉第 9 節）。
 [dependencies]
 anyhow = "1.0.104"
-axum = "0.8.9"
+argon2 = "0.6.0"
+axum = { version = "0.8.9", features = ["json"] }
+base64 = "0.23.1"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 dotenvy = "0.15.7"
-sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
+getrandom = "0.4.3"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
+resend-rs = { version = "0.35.2", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha1 = "0.11"
+sha2 = "0.11.1"
+ts-rs = "12.0.1"
+unicode-normalization = "0.1.26"
+unicode-segmentation = "1.13.3"
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "chrono"] }
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 tower-http = { version = "0.7.1", features = ["fs", "trace"] }
@@ -21,3 +34,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 http-body-util = "0.1.5"
 tempfile = "3"
 tower = { version = "0.5.3", features = ["util"] }
+
+# 測試用 debug 建置，Argon2（故意算很慢）不最佳化的話一次要好幾秒。
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

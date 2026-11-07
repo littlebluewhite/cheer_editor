@@ -11,12 +11,16 @@ pub enum ConfigError {
     Invalid { name: &'static str, value: String },
 }
 
-/// 不 derive Debug：`database_url` 裡有密碼，不能被印進 log。
+/// 不 derive Debug：`database_url` 裡有密碼、`resend` 有金鑰，不能被印進 log。
 pub struct Config {
     pub database_url: String,
     pub listen_addr: SocketAddr,
     /// 前端建好的檔案（`npm run build` 的 `build/`）。
     pub site_dir: PathBuf,
+    /// 這個網站的網址（信裡的連結用），最後沒有 `/`。
+    pub site_url: String,
+    /// Resend 的金鑰和寄件人；沒設金鑰時信印在終端機（本機開發）。
+    pub resend: Option<(String, String)>,
 }
 
 impl Config {
@@ -31,10 +35,23 @@ impl Config {
             Err(_) => SocketAddr::from(([127, 0, 0, 1], 8080)),
         };
         let site_dir = std::env::var("SITE_DIR").unwrap_or_else(|_| "../build".into());
+        let site_url = std::env::var("SITE_URL")
+            .unwrap_or_else(|_| format!("http://{listen_addr}"))
+            .trim_end_matches('/')
+            .to_owned();
+        let resend = match std::env::var("RESEND_API_KEY") {
+            Ok(key) => Some((
+                key,
+                std::env::var("MAIL_FROM").map_err(|_| ConfigError::Missing("MAIL_FROM"))?,
+            )),
+            Err(_) => None,
+        };
         Ok(Self {
             database_url,
             listen_addr,
             site_dir: site_dir.into(),
+            site_url,
+            resend,
         })
     }
 }

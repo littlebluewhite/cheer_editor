@@ -39,6 +39,21 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 - `/health` 是健康檢查，不碰資料庫（Neon 免費版沒人用時才睡得著）。
 - 前端每頁建成 `<名字>.html`，所以 `/guide` 重新整理也打得開。其他找不到的路徑回 `200.html`（adapter 的 `fallback`），讓前端自己處理路由。
 - log 只記請求的方法和路徑，不記查詢字串、標頭、內容。之後寫 log 也一樣：不記密碼、token、cookie、信的內容、流程內容；人用使用者 id，不寫 email。
+- 寄信：`server/.env` 沒設 `RESEND_API_KEY` 時，信（含設密碼連結）印在終端機。信裡連結的網址是 `SITE_URL`（預設 `http://` 加 `LISTEN_ADDR`）。
+- 登入的 cookie 是 `__Host-` 開頭、`Secure`：本機用 `http://127.0.0.1` 或 `http://localhost` 開，Chrome 照樣收；Safari 要 https。
+- 改資料的 API 會看 `Sec-Fetch-Site`（沒有就看 `Origin`）擋別的網站送來的請求；用 curl 試要自己帶 `-H 'Sec-Fetch-Site: same-origin'`。
+
+第一個管理員（也用來救進不去的管理員、換人當管理員）。沒有預設帳號、預設密碼：
+
+```sh
+cd server && cargo run -- create-admin --email 你的@email --name 你的名字
+```
+
+這個人變成管理員（原本的管理員不再是），收到一封設密碼信：還沒設過密碼是邀請（24 小時），設過是設新密碼（1 小時）。他之前沒用的連結作廢。
+正式機用 `fly ssh console` 在機器上跑同一個指令。
+
+前後端共用的訊息型別寫在 Rust（`#[derive(TS)]`），`cargo test` 時 ts-rs 把它們寫成 `src/lib/api-types/*.ts`（路徑設在 `server/.cargo/config.toml`）。
+改了型別要跑一次 `cargo test`，產生的 .ts 一起 commit。
 
 測試：
 
