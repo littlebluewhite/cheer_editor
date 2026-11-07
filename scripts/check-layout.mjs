@@ -198,9 +198,9 @@ await send('Runtime.enable');
 await setViewport(1440, 1000);
 await openSample();
 
-/** 真的按一個鍵（送到有焦點的地方，跟人按一樣）：Enter、Escape。 */
+/** 真的按一個鍵（送到有焦點的地方，跟人按一樣）：Enter、Escape、Tab。 */
 async function press(key) {
-	const code = { Enter: 13, Escape: 27 }[key];
+	const code = { Enter: 13, Escape: 27, Tab: 9 }[key];
 	for (const type of ['keyDown', 'keyUp'])
 		await send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code, text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
 	await sleep(300);
@@ -1587,11 +1587,6 @@ const fieldCount = (selector) =>
 		probe.remove();
 		return { value: i.value, count: c.textContent, color: getComputedStyle(c).color, fail, chars: [...new Intl.Segmenter().segment(i.value)].length };`);
 /** 真的按 Tab 離開欄位。 */
-async function tabOut() {
-	for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-	await sleep(300);
-}
-
 await check('字數上限（B20）：貼上、輸入法打超過上限，停在上限、計數變紅；按 Tab 離開後字還在', async () => {
 	await setViewport(1440, 900);
 	await openSample();
@@ -1604,7 +1599,7 @@ await check('字數上限（B20）：貼上、輸入法打超過上限，停在�
 	await send('Input.insertText', { text: '一二三四五六七八九十'.repeat(3) });
 	await sleep(200);
 	const pasted = await fieldCount(sel);
-	await tabOut();
+	await press('Tab');
 	const left = await fieldCount(sel);
 	await js(`const i = document.querySelector(${JSON.stringify(sel)}); i.focus(); i.select();`);
 	const ime = '字'.repeat(25);
@@ -1612,7 +1607,7 @@ await check('字數上限（B20）：貼上、輸入法打超過上限，停在�
 	await send('Input.insertText', { text: ime });
 	await sleep(200);
 	const composed = await fieldCount(sel);
-	await tabOut();
+	await press('Tab');
 	const composedLeft = await fieldCount(sel);
 	const ok =
 		pasted.chars === 20 && pasted.count === '20/20' && pasted.color === pasted.fail &&
@@ -1629,7 +1624,7 @@ await check('名字被退回（B28）：流程名字清成空白再離開，字�
 	const sel = '.flow-dialog input[aria-label="流程名字"]';
 	await js(`const i = document.querySelector(${JSON.stringify(sel)}); i.focus(); i.select();`);
 	await send('Input.insertText', { text: '   ' });
-	await tabOut();
+	await press('Tab');
 	const after = await fieldCount(sel);
 	await press('Escape');
 	return { ok: after.value.trim() !== '' && after.count === `${after.chars}/40`, value: after };
