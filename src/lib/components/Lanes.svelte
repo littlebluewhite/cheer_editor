@@ -11,7 +11,7 @@
 	// 走位條看起來是細條，能點的範圍比較高（WALK_HIT_H）。
 	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（頁面算好的 clashes），拖的時候先藏起來。
 	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
-	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
+	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條（同一拍同一種有好幾個就多開一條），佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
 	// 環節：標了拍的環節在色條最上緣畫一條細條（環節的顏色），那幾拍鋪同色淡底；不吃滑鼠，名稱、拍點畫在上面。
 	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
@@ -128,7 +128,7 @@
 		Object.fromEntries(
 			flow.members.map((m) => [
 				m.id,
-				cues[m.id].kinds.length &&
+				cues[m.id].tracks &&
 				flow.actions.some((a) => phaseBars[a.id].length && a.members.some((x) => x.memberId === m.id))
 					? PHASE_H
 					: 0
@@ -138,25 +138,49 @@
 
 	/**
 	 * 手位最多撐幾個半拍：往右撐到下一個手位（或動作結尾）為止；最後一拍的往左撐到上一個手位為止。
-	 * 字再長就用「…」截斷，不蓋到下一個手位。
+	 * 字再長就用「…」截斷，不蓋到下一個手位（同一條上的）。
 	 */
-	function motionRoom(mine: Cue[], c: Cue, length: number, atEnd: boolean): number {
-		const others = mine.filter((d) => d.kind === 'motion' && d !== c);
+	function motionRoom(mine: Cue[], track: Map<Cue, number>, c: Cue, length: number, atEnd: boolean): number {
+		const others = mine.filter((d) => d.kind === 'motion' && d !== c && track.get(d) === track.get(c));
 		if (atEnd) return c.at + c.len - Math.max(0, ...others.filter((d) => d.at < c.at).map((d) => d.at + d.len));
 		return Math.min(length, ...others.filter((d) => d.at > c.at).map((d) => d.at)) - c.at;
 	}
 
-	/** 每個人：每個動作裡給他的拍點，和他用到哪幾種（照拍子、步驟、手位排，一種一條）。 */
+	/**
+	 * 每個人：每個動作裡給他的拍點，一共幾條、每個拍點畫在第幾條（照拍子、步驟、手位排，一種一條）。
+	 * 同一種在同一拍有好幾個（給全部的和給他的、給他角色的）：那一種多開一條，一個畫一條，不互相蓋住。
+	 */
 	const cues = $derived.by(() => {
-		const byMember: Record<string, { mine: Record<string, Cue[]>; kinds: CueKind[] }> = {};
+		const byMember: Record<string, { mine: Record<string, Cue[]>; tracks: number; track: Map<Cue, number> }> = {};
 		for (const m of flow.members) {
 			const mine: Record<string, Cue[]> = {};
 			for (const a of flow.actions) {
 				const given = (a.cues ?? []).filter((c) => cueForMember(c, a, m.id));
 				if (given.length) mine[a.id] = given;
 			}
-			const used = new Set(Object.values(mine).flatMap((cs) => cs.map((c) => c.kind)));
-			byMember[m.id] = { mine, kinds: CUE_KINDS.filter((k) => used.has(k)) };
+			// 每種幾條、每個拍點在那一種的第幾條：照開始排，放進第一條空著的。
+			const rows = new Map<Cue, number>();
+			const rowCount: Partial<Record<CueKind, number>> = {};
+			for (const given of Object.values(mine)) {
+				for (const kind of CUE_KINDS) {
+					const ends: number[] = [];
+					for (const c of given.filter((x) => x.kind === kind).toSorted((x, y) => x.at - y.at)) {
+						const free = ends.findIndex((end) => end <= c.at);
+						const row = free < 0 ? ends.length : free;
+						ends[row] = c.at + c.len;
+						rows.set(c, row);
+					}
+					if (ends.length) rowCount[kind] = Math.max(rowCount[kind] ?? 0, ends.length);
+				}
+			}
+			let tracks = 0;
+			const first = {} as Record<CueKind, number>;
+			for (const kind of CUE_KINDS) {
+				first[kind] = tracks;
+				tracks += rowCount[kind] ?? 0;
+			}
+			const track = new Map([...rows].map(([c, row]) => [c, first[c.kind] + row]));
+			byMember[m.id] = { mine, tracks, track };
 		}
 		return byMember;
 	});
@@ -340,12 +364,12 @@
 </script>
 
 {#each flow.members as m, i (m.id)}
-	{@const kinds = cues[m.id].kinds}
+	{@const tracks = cues[m.id].tracks}
 	<div
 		class="row"
 		data-lane={m.id}
-		style:height={kinds.length
-			? `${BAR_TOP + lift[m.id] + NAME_H + kinds.length * TRACK_H + WALK_H}px`
+		style:height={tracks
+			? `${BAR_TOP + lift[m.id] + NAME_H + tracks * TRACK_H + WALK_H}px`
 			: undefined}
 	>
 		<button
@@ -424,8 +448,8 @@
 								style:transform={atEnd ? 'translateX(-100%)' : undefined}
 								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
-								style:max-width={c.kind === 'motion' ? `${motionRoom(mine, c, p.action.length, atEnd) * p.halfPx}px` : undefined}
-								style:top={`${lift[m.id] + NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
+								style:max-width={c.kind === 'motion' ? `${motionRoom(mine, cues[m.id].track, c, p.action.length, atEnd) * p.halfPx}px` : undefined}
+								style:top={`${lift[m.id] + NAME_H + (cues[m.id].track.get(c) ?? 0) * TRACK_H}px`}
 								style:height={`${TRACK_H - 1}px`}>{c.word}</span
 							>
 						{/each}
