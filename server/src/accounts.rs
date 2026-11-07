@@ -155,11 +155,12 @@ pub async fn create_admin(state: &AppState, email: &str, name: Option<&str>) -> 
     state
         .mailer
         .send(password_mail(&state.site_url, to, &name, purpose, &token))
-        .await
+        .await?;
+    Ok(())
 }
 
 /// 換一條新的設密碼連結：這個人之前沒用的連結作廢。回 token（只在信裡，資料庫存雜湊）。
-async fn new_link(
+pub(crate) async fn new_link(
     tx: &mut sqlx::PgConnection,
     user_id: i64,
     purpose: LinkPurpose,
@@ -186,7 +187,7 @@ async fn new_link(
     Ok(token)
 }
 
-fn password_mail(
+pub(crate) fn password_mail(
     site_url: &str,
     to: String,
     name: &str,
@@ -265,6 +266,20 @@ pub async fn set_password(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    // 重設後寄通知信：帳號被別人用了，他也會知道。密碼已經設好，寄不出去只記在 log。
+    if link.purpose == LinkPurpose::Reset {
+        let mail = Mail {
+            to: link.email,
+            subject: "你的密碼改了：競技啦啦隊流程編輯器".into(),
+            text: format!(
+                "{}，你好：\n\n你的密碼剛剛重設了，你在其他裝置都登出了。\n\n不是你改的，請馬上找管理員。\n",
+                link.name
+            ),
+        };
+        if let Err(err) = state.mailer.send(mail).await {
+            tracing::warn!(%err, "重設密碼的通知信寄不出去");
+        }
+    }
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -354,6 +369,24 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> anyhow::Resu
         name,
         is_admin,
     }))
+}
+
+/// 帶著的 cookie 是誰（id、是不是管理員）；沒登入、到期、被停用是 None。
+pub(crate) async fn current_user_id(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> anyhow::Result<Option<(i64, bool)>> {
+    let Some(token) = session_token(headers) else {
+        return Ok(None);
+    };
+    Ok(sqlx::query_as(
+        "SELECT u.id, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+         WHERE s.token_hash = $1 AND s.expires_at > $2 AND u.disabled_at IS NULL",
+    )
+    .bind(sha256(&token))
+    .bind(state.clock.now())
+    .fetch_optional(&state.db)
+    .await?)
 }
 
 // ---------- 小工具 ----------
