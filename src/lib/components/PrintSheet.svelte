@@ -7,6 +7,7 @@
 		actionLabel,
 		charCount,
 		eightCountRows,
+		eightCountView,
 		memberMarkers,
 		type EightCountRow,
 		type Flow
@@ -21,7 +22,7 @@
 	interface Props {
 		flow: Flow;
 		onclose: () => void;
-		/** 編輯畫面只選了一個人時是他的 id：預設印他。 */
+		/** 預設印他：編輯畫面只選了一個人時是他，不然是「我」。 */
 		selected?: string | null;
 		/** 叫瀏覽器列印；測試換成假的（jsdom 沒有列印）。 */
 		print?: () => void;
@@ -54,6 +55,8 @@
 			: [validChoice]
 	);
 	const markers = $derived(memberMarkers(flow));
+	/** 每張小站位圖都用同一個範圍，比得出前後張的差別。 */
+	const miniView = $derived(eightCountView(flow));
 
 	/**
 	 * 這一列印在 A4 直的大約多高（px，估得偏高）。放得下一頁的才標「不切開」：
@@ -119,6 +122,9 @@
 						{/each}
 					</ul>
 				{/if}
+				{#if !flow.actions.length}
+					<p class="empty" role="note">還沒有動作。到「編排」加了動作，這裡會一個八拍一列寫出誰在做什麼。</p>
+				{/if}
 				<table>
 					<thead>
 						<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
@@ -155,7 +161,7 @@
 													positions={f.pos}
 													controls={false}
 													marked={memberId ? [memberId] : []}
-													crop
+													crop={miniView}
 												/>
 											</div>
 											<figcaption>{f.caption}</figcaption>
@@ -278,6 +284,13 @@
 		font-size: 12px;
 		color: #4a5368;
 		white-space: pre-wrap;
+	}
+	.empty {
+		margin: 0 0 12px;
+		padding: 10px 12px;
+		border: 1px dashed #c9ced8;
+		border-radius: 4px;
+		color: #4a5368;
 	}
 	figure {
 		margin: 0 0 4px;
