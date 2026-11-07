@@ -279,7 +279,8 @@ export interface FakeCloudFlow {
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
  * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆（斷線 1 分鐘當他離開沒做）。
  * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
- * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，再說可以送步。
+ * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，
+ * 要紀錄的（連回來的）再給現在的紀錄，再說可以送步。
  */
 export function fakeServer(
 	init: {
@@ -955,6 +956,10 @@ export function fakeServer(
 						open.tab = request.tabId;
 						open.sentBack = undefined;
 						if (ready) catchUp(f, request.seen, open);
+						if (ready && request.records) {
+							const records = (f.records ?? []).filter((r) => !r.gone).map((r) => cloudRecord(r, email));
+							deliver(room, () => ({ kind: 'records', records }));
+						}
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
 						if (!ready) return;
 						open.here = true;
@@ -1077,7 +1082,7 @@ export function fakeServer(
 		state.signedIn = signedIn;
 		const heard: RoomMessage[] = [];
 		room.onmessage = (m) => heard.push(m);
-		room.send({ kind: 'hello', fingerprint: state.fingerprint, tabId: `tab-${email}`, seen: 0, editing });
+		room.send({ kind: 'hello', fingerprint: state.fingerprint, tabId: `tab-${email}`, seen: 0, editing, records: false });
 		let n = 0;
 		/** 上次看到第幾步：聽到的最後一步（換成伺服器的樣子也算）。 */
 		const seen = () => Math.max(0, ...heard.map((m) => ('step' in m ? m.step : 0)));

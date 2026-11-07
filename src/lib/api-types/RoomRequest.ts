@@ -11,4 +11,8 @@ seen: number,
 /**
  * 在編輯（不是檢視模式）：在場名單用。
  */
-editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "undo", stepId: string, seen: number, of: string, redo: boolean, change: unknown, } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], } | { "kind": "changeRecords", attempts: unknown[], } | { "kind": "deleteRecords", ids: Array<string>, } | { "kind": "restoreRecords", ids: Array<string>, } | { "kind": "runThrough", id: string, date: string, startedAt: number, keys: Array<string>, touched: Array<string>, joining: boolean, } | { "kind": "claim", run: string, key: string, from: number | null, } | { "kind": "release", run: string, key: string, } | { "kind": "touch", run: string, key: string, } | { "kind": "leaveRun", run: string, };
+editing: boolean, 
+/**
+ * 連回來的（#255）：現在的紀錄也要（斷線時別人記的、改的、刪的）。第一次打開不用（打開時拿過了）。
+ */
+records: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "undo", stepId: string, seen: number, of: string, redo: boolean, change: unknown, } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], } | { "kind": "changeRecords", attempts: unknown[], } | { "kind": "deleteRecords", ids: Array<string>, } | { "kind": "restoreRecords", ids: Array<string>, } | { "kind": "runThrough", id: string, date: string, startedAt: number, keys: Array<string>, touched: Array<string>, joining: boolean, } | { "kind": "claim", run: string, key: string, from: number | null, } | { "kind": "release", run: string, key: string, } | { "kind": "touch", run: string, key: string, } | { "kind": "leaveRun", run: string, };

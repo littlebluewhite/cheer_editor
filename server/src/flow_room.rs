@@ -17,6 +17,7 @@
 //! 成功率紀錄（#257）也從這裡送：記一次、別人記的馬上告訴房間裡的人（見 records.rs）。
 //! 斷線重連（#255）：打招呼帶上次看到第幾步，先照順序補上之後別的分頁收了的步（每一步存著改好之後的東西），
 //! 再說可以送步；補不上（步驟紀錄沒留、之前的步沒存改好的東西）就給伺服器現在的樣子。
+//! 連回來的打招呼也要紀錄：可以送步之前先給現在的紀錄（斷線時別人記的、改的、刪的）。
 //! 漏聽了房間裡的事（落後超過 256 件）也照這樣從資料庫補。
 //! 一起記全上（#262，ADR 0012）：誰在表裡、誰拿著哪幾組放在房間裡（見 run_together.rs），變了就告訴能記的人
 //! （檢視者不說）；連線斷了記下時間，1 分鐘後再說一次（當他離開）；被收回、降成檢視者踢出表。
@@ -261,6 +262,9 @@ pub enum RoomRequest {
         /// 在編輯（不是檢視模式）：在場名單用。
         #[serde(default)]
         editing: bool,
+        /// 連回來的（#255）：現在的紀錄也要（斷線時別人記的、改的、刪的）。第一次打開不用（打開時拿過了）。
+        #[serde(default)]
+        records: bool,
     },
     /// 一步：步驟 id（亂數）、上次看到第幾步、一串指令（名字＋參數，教練的回答在 options）。
     Step {
@@ -380,6 +384,9 @@ pub enum RoomMessage {
         #[ts(type = "unknown")]
         change: Box<RawValue>,
     },
+    /// 現在伺服器上的紀錄（連回來時要的，或漏聽了房間裡的事）：全部還在的（別人記的帶名字）。
+    /// 不在這裡的、我也沒有還沒傳的，就是斷線時被刪掉、清掉了。
+    Records { records: Vec<CloudRecord> },
     /// 斷線太久補不上（#255）：伺服器現在的樣子、現在第幾步（換上它，還沒送到的步不算）。
     Current {
         #[ts(type = "unknown")]
@@ -507,19 +514,20 @@ async fn serve(
     };
     // 打招呼前就開始聽：連上之後的權限改動不會漏掉。
     let mut events = state.rooms.listen(flow_id);
-    let (tab_id, seen, editing) = loop {
+    let (tab_id, seen, editing, want_records) = loop {
         match next_request(&mut socket).await {
             Some(RoomRequest::Hello {
                 fingerprint,
                 tab_id,
                 seen,
                 editing,
+                records,
             }) => {
                 if fingerprint != FINGERPRINT {
                     tell(&mut socket, &RoomMessage::NewVersion).await?;
                     return Ok(());
                 }
-                break (tab_id, seen, editing);
+                break (tab_id, seen, editing, records);
             }
             Some(_) => continue,
             None => return Ok(()),
@@ -536,6 +544,9 @@ async fn serve(
     let mut known = seen;
     for message in catch_up(&state, flow_id, &tab_id, &mut known).await? {
         tell(&mut socket, &message).await?;
+    }
+    if want_records {
+        tell(&mut socket, &records_now(&state, flow_id, user_id).await?).await?;
     }
     tell(&mut socket, &RoomMessage::Ready { step: known }).await?;
     let here = Here {
@@ -697,6 +708,7 @@ async fn serve(
                         for message in catch_up(&state, flow_id, &tab_id, &mut known).await? {
                             tell(&mut socket, &message).await?;
                         }
+                        tell(&mut socket, &records_now(&state, flow_id, user_id).await?).await?;
                         let people = present_for(&state.rooms.here(flow_id), user_id);
                         tell(&mut socket, &RoomMessage::Present { people }).await?;
                     }
@@ -778,6 +790,13 @@ async fn catch_up(
             Ok(RoomMessage::Changed { step, by, change })
         })
         .collect()
+}
+
+/// 現在伺服器上的紀錄（viewer 看到的：別人記的帶名字）。
+async fn records_now(state: &AppState, flow_id: &str, viewer: i64) -> anyhow::Result<RoomMessage> {
+    Ok(RoomMessage::Records {
+        records: records::for_viewer(&state.db, flow_id, viewer).await?,
+    })
 }
 
 /// 這支流程現在的樣子、第幾步。
