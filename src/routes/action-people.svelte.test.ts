@@ -110,3 +110,59 @@ describe('把選的人加進動作', () => {
 		expect(screen.queryByRole('button', { name: /把選的/ })).toBeNull();
 	});
 });
+
+describe('一次設好幾個人的任務角色（#229）', () => {
+	const form = () => document.querySelector<HTMLElement>('.action-form')!;
+	const row = (name: string) => within(form()).getByRole('button', { name });
+	const rolesOf = (page: ReturnType<typeof editorPage>) => page.session.flow!.actions[0].members.map((m) => m.role);
+
+	it('Shift 點選 3 人、選「側底」→ 3 人都是側底；⌘Z 一步回去', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		await fireEvent.click(row('小B'), { shiftKey: true });
+		expect(within(form()).getByRole('note', { name: '一起設任務角色' }).textContent).toContain('選了 3 人');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		await fireEvent.click(screen.getByRole('option', { name: /^側底/ }));
+		expect(rolesOf(page)).toEqual(['側底', '側底', '上層', '側底']);
+		// 焦點還在剛選的任務角色選單上
+		await fireEvent.keyDown(screen.getByRole('combobox', { name: '小A 的任務角色' }), { key: 'z', metaKey: true });
+		expect(rolesOf(page)).toEqual(['上層', '主底', '上層', '主底']);
+	});
+
+	it('沒按 Shift 點名字只選那一個；選到以外的人改角色只改他自己', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		await fireEvent.click(row('小B'));
+		expect(row('小B').getAttribute('aria-pressed')).toBe('true');
+		expect(row('小美').getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小芳 的任務角色' }));
+		await fireEvent.click(screen.getByRole('option', { name: /^側底/ }));
+		expect(rolesOf(page)).toEqual(['上層', '主底', '側底', '主底']);
+	});
+
+	it('Shift 再點一次選到的人：從選取拿掉', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		expect(row('小A').getAttribute('aria-pressed')).toBe('false');
+		expect(within(form()).queryByRole('note', { name: '一起設任務角色' })).toBeNull();
+	});
+});
+
+describe('從別的動作複製人', () => {
+	it('旁邊寫清楚會連組一起帶過來', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+		const copy = screen.getByRole('combobox', { name: '從別的動作複製人' });
+		const desc = document.getElementById(copy.getAttribute('aria-describedby') ?? '');
+		expect(desc?.textContent).toContain('會連組一起帶過來');
+	});
+});

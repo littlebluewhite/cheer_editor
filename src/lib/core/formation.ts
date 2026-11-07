@@ -107,7 +107,33 @@ export function matchPrevious(
 	});
 }
 
-/** moveMembers 和 matchPrevious 共用：插站位（需要時）、改位置、往後帶。movesFor 拿到插好站位的流程和要改的那張。 */
+/**
+ * 一組人移到新位置（選人工具列的鏡像、對齊……都走這裡）：跟拖人同一條路，這一拍沒有站位就先插一張（自動帶入），
+ * place 拿選到的人在這一拍站位裡的位置，回傳他們的新位置；改完往後帶。回傳跟 moveMembers 一樣。
+ * 沒選人、找不到隊員就擋下；位置都沒變、也不用插站位，就擋下（不記一步復原）。
+ */
+export function moveGroup(
+	flow: Flow,
+	sec: number,
+	memberIds: string[],
+	place: (pos: Record<string, Position>) => Record<string, Position>
+): CommandResult<MoveResult> {
+	if (memberIds.length === 0) return blocked('先選人');
+	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
+	const here = formationAt(flow, sec);
+	if (here) {
+		const moves = place(pick(here.pos, memberIds));
+		if (Object.entries(moves).every(([id, p]) => samePos(here.pos[id], p))) return blocked('位置都沒變');
+	}
+	return moveAt(flow, sec, (_, target) => place(pick(target.pos, memberIds)));
+}
+
+/** pos 裡這幾個人的位置。 */
+function pick(pos: Record<string, Position>, ids: string[]): Record<string, Position> {
+	return Object.fromEntries(ids.map((id) => [id, pos[id]]));
+}
+
+/** moveMembers、matchPrevious、moveGroup 共用：插站位（需要時）、改位置、往後帶。movesFor 拿到插好站位的流程和要改的那張。 */
 function moveAt(
 	flow: Flow,
 	sec: number,

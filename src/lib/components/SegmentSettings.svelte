@@ -7,7 +7,7 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
 		BROKEN_AUDIO,
@@ -148,6 +148,8 @@
 	const TAP_RESET_SEC = 2;
 	let taps = $state<number[]>([]);
 	const tapped = $derived(tapBpm(taps));
+	/** 算出來的 BPM 超出範圍：不給套用，旁邊說為什麼。 */
+	const tapOutOfRange = $derived(tapped !== null && (tapped < MIN_BPM || tapped > MAX_BPM));
 
 	function tap() {
 		const now = Date.now() / 1000;
@@ -157,10 +159,13 @@
 
 	function applyTap() {
 		const bpm = tapped;
-		if (bpm === null) return;
+		if (bpm === null || tapOutOfRange) return;
 		taps = [];
 		update({ bpm });
 	}
+
+	/** 打開段設定時的 BPM：改了以後 BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
+	const openedBpm = untrack(() => music?.bpm);
 
 	function fitToAudio() {
 		const lengths = editor.music.lengths;
@@ -195,6 +200,10 @@
 							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${BROKEN_AUDIO}）` : '（找不到音樂，請重新選檔）'}`
 							: '還沒載入'}
 					</span>
+					<!-- 段留著、變成沒有音樂檔的音樂段，播放只剩節拍器；算一步，可以復原。 -->
+					{#if music.audioId !== null}
+						<button type="button" onclick={() => update({ audioId: null })}>拿掉音樂</button>
+					{/if}
 				</div>
 				{#if otherAudio.length}
 					<div class="row">
@@ -220,6 +229,9 @@
 						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
+					{#if music.bpm !== openedBpm}
+						<button type="button" onclick={fitToAudio}>照音樂長度重算八拍數</button>
+					{/if}
 					<label class="inline">
 						第一拍（秒）
 						<input
@@ -238,12 +250,12 @@
 					<button type="button" onclick={tap}>敲擊測速</button>
 					<span class="hint" aria-live="polite">
 						{tapped !== null
-							? `點了 ${taps.length} 下，約 ${tapped} BPM`
+							? `點了 ${taps.length} 下，約 ${tapped} BPM${tapOutOfRange ? `：超出 ${MIN_BPM}–${MAX_BPM}，不能套用` : ''}`
 							: taps.length
 								? `再點 ${MIN_TAPS - taps.length} 下`
 								: `跟著音樂的拍子連點 ${MIN_TAPS} 下以上；停 ${TAP_RESET_SEC} 秒再點就重新算`}
 					</span>
-					<button type="button" disabled={tapped === null} onclick={applyTap}>套用{tapped !== null ? ` ${tapped} BPM` : ''}</button>
+					<button type="button" disabled={tapped === null || tapOutOfRange} onclick={applyTap}>套用{tapped !== null ? ` ${tapped} BPM` : ''}</button>
 				</div>
 				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
