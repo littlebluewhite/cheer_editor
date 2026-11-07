@@ -105,6 +105,15 @@ describe('刪動作', () => {
 		expect(action(after, 'x1').successRate!.records.map((r) => r.marks)).toEqual([{ p1: '✓' }]);
 	});
 
+	it('段縮短又刪掉有紀錄的動作、又清掉別次的記號：確認訊息兩個都寫', () => {
+		// 3 拍：x2 在段外整個刪掉（2 次紀錄）；x1 的 p3（1-4）刪掉，新記的那次還有 p1，只清掉記號
+		const flow = flowOf(recordAttempt(recorded(), 'x1', drill('g1', { p1: '✓', p3: '✗' })));
+		const r = updateSegment(flow, 's1', { eights: 1, lastBeats: 3 });
+		expect(r.kind === 'confirm' && r.message).toBe(
+			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄和 1 次的記號（紀錄救不回來）'
+		);
+	});
+
 	it('段縮短裁短動作，切到的環節沒有記號：確認訊息不說紀錄', () => {
 		// 3 拍：p3（1-4）刪掉，沒有記號
 		const r = updateSegment(recorded(), 's1', { eights: 1, lastBeats: 3 });

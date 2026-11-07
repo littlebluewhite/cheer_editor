@@ -263,12 +263,17 @@ export function updateSegment(
 		if (cut.kind === 'blocked') return blocked(`動作「${actionLabel(a)}」裁短後：${cut.message}`);
 		result = cut.flow;
 		records += cut.records;
-		marks += cut.marks;
+		// 整次不見的紀錄已經算在 records，記號只算還留著的那幾次
+		marks += Math.max(0, cut.marks - cut.records);
 		trimItems.push(cut.item);
 	}
 	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
-		const lost = records ? `會一起清掉 ${records} 次紀錄` : marks ? `會清掉 ${marks} 次的記號` : '';
+		const lost = records
+			? `會一起清掉 ${records} 次紀錄${marks ? `和 ${marks} 次的記號` : ''}`
+			: marks
+				? `會清掉 ${marks} 次的記號`
+				: '';
 		const cleared = lost && `，${lost}${RECORDS_GONE}`;
 		return needsConfirm(`${label} 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉${cleared}`, [
 			...trimItems,
