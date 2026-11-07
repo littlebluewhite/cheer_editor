@@ -13,7 +13,8 @@ export default defineConfig({
 					runes: ({ filename }) =>
 						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 				},
-				adapter: adapter(),
+				// 200.html：沒有預先建好的路徑，Rust 伺服器回這頁，讓前端自己處理路由（server/src/lib.rs）。
+				adapter: adapter({ fallback: '200.html' }),
 				// GitHub Pages 放在 /cheer_editor/ 底下；部署時由 BASE_PATH 帶入，本機開發是 /。
 				paths: { base: base() }
 			},

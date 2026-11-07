@@ -247,3 +247,6 @@ export { clashes } from './clash';
 export type { Clash } from './clash';
 
 export { MIN_TAPS, tapBpm } from './tap-tempo';
+
+export { diffFlows } from './diff';
+export type { ThingChange } from './diff';
