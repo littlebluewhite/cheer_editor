@@ -40,10 +40,8 @@ use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
 use crate::run_together::{Answer, Ask, Report, RunView, Runs, Who};
-use crate::sharing::{Role, role_of};
+use crate::sharing::{Role, VIEW_ONLY, role_of};
 
-/// 不能改的人送來的步：退回的原因。
-const VIEW_ONLY: &str = "沒存進去：你只能看這支流程";
 /// 前一步被退回、還沒換成伺服器的樣子就送的步：退回的原因。
 const AFTER_SENT_BACK: &str = "沒存進去：前一步沒存進去，這一步也不算";
 /// 上次看到的那一步已經沒留（超過 30 天）：退回的原因。
@@ -890,7 +888,7 @@ async fn take_step(
             ))
         };
     if !role.can_edit() {
-        return rejected(VIEW_ONLY.into(), None, content);
+        return rejected(format!("沒存進去：{VIEW_ONLY}"), None, content);
     }
     // 前一步被退回、還沒換成伺服器的樣子就送的：一起退回。
     if sent_back.is_some_and(|n| seen < n) {

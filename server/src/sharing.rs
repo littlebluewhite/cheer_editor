@@ -15,6 +15,9 @@ use crate::AppState;
 use crate::accounts::{AppError, SignedIn, signed_in};
 use crate::flow_room::RoomEvent;
 
+/// 不能做的人（記錄者、檢視者送來的步，檢視者送來的紀錄）的原因。
+pub const VIEW_ONLY: &str = "你只能看這支流程";
+
 /// 一個人對一支流程的權限。
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]

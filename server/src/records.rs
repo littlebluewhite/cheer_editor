@@ -16,10 +16,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::flow_room::{RoomEvent, RoomMessage};
-use crate::sharing::{Role, role_of};
-
-/// 檢視者送來的紀錄：每一筆的原因。
-const VIEW_ONLY: &str = "你只能看這支流程";
+use crate::sharing::{Role, VIEW_ONLY, role_of};
 
 /// 前端拿到的一次：記在哪個動作、那一次（流程核心的 Attempt）、別人記的寫名字、是不是自己記的。
 #[derive(Serialize, TS, Clone, Debug)]
