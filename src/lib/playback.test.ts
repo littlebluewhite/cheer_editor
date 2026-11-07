@@ -500,6 +500,32 @@ describe('播放：慢速、重複', () => {
 		expect(position()).toBe('音樂 1 4-2');
 	});
 
+	it('重複半拍的動作、延遲校正 +1000 毫秒：播放頭照樣跟著每一圈走，不卡在動作開頭（#205）', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		// 2-1 那半拍（3.2 到 3.4 秒）
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 16, length: 1, note: '', members }));
+		const { session, playback, engine, frames } = setup(flow);
+		session.selectAction('x1');
+		playback.setLatency(1000);
+		playback.setRepeat(true);
+		playback.play();
+		const t0 = engine.clicks[0].when;
+		// 畫面一秒 60 格跑 3 秒；畫面晚 1 秒，播放頭是 1 秒前喇叭播的那一圈裡的位置
+		const shown: number[] = [];
+		for (let t = 0; t < 3; t += 1 / 60) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+			if (t > 1.5) shown.push(playback.sec);
+		}
+		expect(playback.playing).toBe(true);
+		expect(Math.max(...shown) - Math.min(...shown)).toBeGreaterThan(0.1);
+		for (const sec of shown) {
+			expect(sec).toBeGreaterThanOrEqual(3.2 - 1e-6);
+			expect(sec).toBeLessThanOrEqual(3.4 + 1e-6);
+		}
+	});
+
 	it('重複開著也照樣能跳：播放頭跳到別的八拍，就重複那一個', () => {
 		const { playback, engine, frames, position } = setup();
 		playback.setRepeat(true);

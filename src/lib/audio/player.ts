@@ -60,7 +60,7 @@ export function createPlayer(engine: AudioEngine): Player {
 
 	/**
 	 * 重複：喇叭（audible）快播到最後排好的那一圈結尾，就跟 loop 要下一圈，緊接著排在結尾。
-	 * 留著前兩圈：延遲校正時畫面上還在播上一圈的尾巴。
+	 * 舊的圈留到畫面（扣掉延遲校正）播過它才丟（tick 裡丟）：圈很短、延遲校正很大時，畫面還在好幾圈前。
 	 */
 	function queueLap(audible: number) {
 		if (!session?.loop) return;
@@ -72,7 +72,7 @@ export function createPlayer(engine: AudioEngine): Player {
 			session.loop = null;
 			return;
 		}
-		session.laps = [...session.laps.slice(-2), schedule(lap, t0, session.rate, session.metronome)];
+		session.laps = [...session.laps, schedule(lap, t0, session.rate, session.metronome)];
 	}
 
 	return {
@@ -97,6 +97,8 @@ export function createPlayer(engine: AudioEngine): Player {
 			queueLap(audible);
 			// 畫面上的播放頭扣掉延遲校正；延遲校正是真的時間，慢速時換成流程秒數也要乘上速度
 			const shownAt = audible - latencyMs / 1000;
+			// 畫面已經播過的圈丟掉（最後一圈留著）
+			while (session.laps.length > 1 && session.laps[1].t0 <= shownAt) session.laps.shift();
 			// 剛好在接縫（差一點點浮點誤差）算下一圈的開頭，不顯示成上一圈的結尾
 			const lap = session.laps.findLast((l) => l.t0 <= shownAt + 1e-6) ?? session.laps[0];
 			const { t0, fromSec, endSec } = lap;
