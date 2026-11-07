@@ -59,6 +59,14 @@ export interface SessionPlayback {
 
 const NO_PLAYBACK: SessionPlayback = { opened() {}, changed() {}, jump() {} };
 
+/** 提示旁邊的一個按鈕：label 是按鈕上的字，name 是唸給螢幕閱讀器的名字（沒給就是 label）；
+ *  run 是按了做什麼，沒給就是按一次復原（頁面的復原，開著的段設定也跟著收）。 */
+export interface NoticeButton {
+	label: string;
+	name?: string;
+	run?: () => void;
+}
+
 export class EditorSession {
 	readonly #playback: SessionPlayback;
 	readonly #updated: () => void;
@@ -121,30 +129,32 @@ export class EditorSession {
 	/** 拍點格子選的拍（選到的動作的）。 */
 	readonly beats = new BeatSelection(() => this.selectedAction);
 
-	#notice = new Flash<string>();
-	/** 提示旁邊「復原」的名字（剛刪掉站位、動作，例：「復原刪掉的站位」）；沒有是空字串。換了提示就沒有。 */
-	#noticeUndo = $state('');
+	/** 編輯器唯一的提示（編排、練習共用）：同時只有一則，新的取代舊的。 */
+	#notice = new Flash<{ text: string; button?: NoticeButton }>();
 
-	/** 提示（存檔、開檔的結果、被擋的原因…），浮在場地或練習畫面上；過幾秒（換了一句就重算）或頁面看到下一個操作就收掉。 */
+	/** 提示（存檔、開檔的結果、被擋的原因、已存…），浮在場地或練習畫面上；過幾秒（換了一句就重算）或頁面看到下一個操作就收掉。 */
 	get notice(): string {
-		return this.#notice.value ?? '';
+		return this.#notice.value?.text ?? '';
 	}
 
 	set notice(text: string) {
 		if (!text) this.#notice.clear();
-		else if (text !== this.#notice.value) this.#notice.show(text);
-		this.#noticeUndo = '';
+		else if (text !== this.#notice.value?.text || this.#notice.value.button) this.#notice.show({ text });
 	}
 
-	/** 提示旁邊「復原」的名字（空字串是沒有「復原」）：按了等於按一次復原。 */
-	get noticeUndo(): string {
-		return this.#noticeUndo;
+	/** 提示旁邊的按鈕（「復原」「救回」）；沒有是 null。換了提示就沒有。 */
+	get noticeButton(): NoticeButton | null {
+		return this.#notice.value?.button ?? null;
 	}
 
-	/** 剛刪掉東西：提示旁邊放「復原」（undoLabel 是它的名字），留久一點（UNDO_FLASH_MS）。 */
+	/** 「已做了・復原」：提示帶一個按鈕，留久一點（UNDO_FLASH_MS）。取代現在那一則。 */
+	toast(text: string, button: NoticeButton) {
+		this.#notice.show({ text, button }, UNDO_FLASH_MS);
+	}
+
+	/** 剛刪掉東西：提示旁邊放「復原」（undoLabel 是它的名字），按了等於按一次復原。 */
 	#undoNotice(text: string, undoLabel: string) {
-		this.#notice.show(text, UNDO_FLASH_MS);
-		this.#noticeUndo = undoLabel;
+		this.toast(text, { label: '復原', name: undoLabel });
 	}
 
 	/** 滑鼠在提示上：先不收（停住倒數）；移開了把剩下的時間走完。 */

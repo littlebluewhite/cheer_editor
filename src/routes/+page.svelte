@@ -39,6 +39,7 @@
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
+	import NoticeToast from '#lib/components/NoticeToast.svelte';
 	import NowEightCount from '#lib/components/NowEightCount.svelte';
 	import Practice from '#lib/components/Practice.svelte';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
@@ -440,22 +441,7 @@
 	>
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
 		{#snippet noticeToast()}
-			{#if session.notice}
-				<div
-					class="toast"
-					role="presentation"
-					onpointerenter={() => session.holdNotice(true)}
-					onpointerleave={() => session.holdNotice(false)}
-				>
-					<span role="status">{session.notice}</span>
-					{#if session.noticeUndo}
-						<button type="button" class="ghost undo" aria-label={session.noticeUndo} onclick={undo}>復原</button>
-					{/if}
-					<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (session.notice = '')}
-						><Icon name="close" size={14} /></button
-					>
-				</div>
-			{/if}
+			<NoticeToast onundo={undo} />
 		{/snippet}
 		{#snippet transport()}
 			<div class="transport" hidden={view === 'practice'}>
@@ -1563,25 +1549,6 @@
 		color: var(--text);
 		font-size: 14px;
 	}
-	/* 練習畫面、手機的檢視畫面：放在下方。編輯畫面場地上的放在上方（見 .field-toasts）。 */
-	.toast {
-		position: absolute;
-		bottom: 14px;
-		left: 50%;
-		transform: translateX(-50%);
-		z-index: 10;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		max-width: min(560px, calc(100% - 32px));
-		padding: 6px 6px 6px 14px;
-		border-radius: 10px;
-		background: var(--ink);
-		color: #fff;
-		font-size: 13px;
-		box-shadow: var(--shadow-pop);
-		animation: drop 0.18s ease-out;
-	}
 	/* 場地上的確認框和提示：從上方往下排，不蓋到下面的「正面／裁判」和正面場外的人。 */
 	.field-toasts {
 		position: absolute;
@@ -1598,7 +1565,8 @@
 	.field-toasts > :global(*) {
 		pointer-events: auto;
 	}
-	.field-toasts .toast {
+	/* 提示（NoticeToast）平常浮在下方；放在場地上時跟確認框一起從上方往下排（div 讓它蓋過元件自己的樣式）。 */
+	.field-toasts :global(div.toast) {
 		position: static;
 		transform: none;
 		max-width: min(560px, 100%);
@@ -1614,28 +1582,6 @@
 		width: min(420px, 100%);
 		box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
 		border-radius: 10px;
-	}
-	.toast button {
-		color: #b8c3da;
-		width: 24px;
-		height: 24px;
-	}
-	.toast .undo {
-		width: auto;
-		padding: 0 8px;
-		color: #fff;
-		font-weight: 700;
-		text-decoration: underline;
-	}
-	.toast button:hover {
-		background: rgba(255, 255, 255, 0.12);
-		color: #fff;
-	}
-	@keyframes drop {
-		from {
-			opacity: 0;
-			transform: translate(-50%, 6px);
-		}
 	}
 
 	/* ---------- 右邊欄 ---------- */
@@ -1791,8 +1737,7 @@
 			height: auto;
 			background: none;
 		}
-		.editor.practicing > .topbar,
-		.toast {
+		.editor.practicing > .topbar {
 			display: none;
 		}
 	}

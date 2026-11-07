@@ -267,7 +267,7 @@ describe('練習：紀錄不進復原', () => {
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
-		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '救回' }));
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');

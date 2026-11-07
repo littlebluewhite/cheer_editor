@@ -1341,6 +1341,35 @@ await check('記錄頁：點第一個環節前後「存這一次」不動；存�
 	};
 });
 
+// ---------- 「已做了・復原」提示不推動版面（#211） ----------
+
+await check('記錄頁：「已存」「已刪掉…救回」提示出現、換掉、收掉時，卡片、上面那一排和左邊清單都不動；同時只有一則，浮在畫面上', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow(`flow = (await import('/src/lib/test-flows.ts')).ratedSample();`);
+	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
+	await sleep(300);
+	const press = async (selector) => { const p = await rectOf(selector); await click(p.x, p.y); await sleep(200); };
+	const spots = () => js(`return ['.run', '.record .list', '.card', '.card .undo-last'].map((s) => {
+		const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.height)].join(','); });`);
+	// 看得到的提示（編排畫面藏起來時，場地上那一份不算）
+	const toasts = () => js(`return [...document.querySelectorAll('.toast')].filter((t) => t.getClientRects().length).map((t) => t.textContent.trim() + '｜' + getComputedStyle(t).position)`);
+	await press('.card button[aria-label$="上法 成功"]');
+	const before = await spots();
+	await press('.card .save');
+	const saved = { 位置: await spots(), 提示: await toasts() };
+	await press('.card .undo-last');
+	const removed = { 位置: await spots(), 提示: await toasts() };
+	await js(`document.querySelector('.toast button[aria-label="收起提示"]').click()`);
+	await sleep(200);
+	const gone = { 位置: await spots(), 提示: await toasts() };
+	const same = [saved, removed, gone].every((v) => String(v.位置) === String(before));
+	const one = (v, text) => v.提示.length === 1 && v.提示[0].startsWith(text) && v.提示[0].endsWith('｜absolute');
+	return {
+		ok: same && one(saved, '已存') && one(removed, '已刪掉') && gone.提示.length === 0,
+		value: { 之前: before, 存好: saved, 刪掉: removed, 收掉: gone }
+	};
+});
+
 // ---------- 時間軸：自動符合寬度、刻度不擠、站位小圖（#152） ----------
 
 /** 時間軸看得到的寬、捲得到的寬、流程（八拍尺）多寬、最後一張縮圖的右緣（從時間軸左緣算）。 */

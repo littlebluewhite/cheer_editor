@@ -19,9 +19,7 @@
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
-	import { Flash } from '#lib/flash.svelte.js';
 	import RunThroughBar from './RunThroughBar.svelte';
-	import type { Notice } from './RecordNotice.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -42,12 +40,10 @@
 	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
-	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
-	const saved = new Flash<Notice>();
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) saved.show({ text: '已存這次全上' });
+		if (done) session.notice = '已存這次全上';
 	}
 
 	/** 卡片那一塊：手機從下拉選好動作就捲過去。 */
@@ -81,7 +77,7 @@
 {#if recording}
 	<RunThroughSheet {date} onclose={closeSheet} />
 {:else if action}
-	<RunThroughBar {date} notice={saved} onrecord={() => (recording = true)} />
+	<RunThroughBar {date} onrecord={() => (recording = true)} />
 	<div class="record" class:narrow>
 		{#if narrow}
 			<label class="pick"

@@ -6,7 +6,7 @@ import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
-import { answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_GONE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import {
 	allSquadIds,
@@ -178,12 +178,13 @@ function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Att
 		perPerson(old.category) === perPerson(next.category)
 			? '換了人'
 			: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
-	return [
+	const asked = [
 		lost.length ? `${why}，會清掉 ${lost.length} 次紀錄` : '',
 		changed.length ? '有紀錄的組換了人：保留舊紀錄，還是清掉重算？' : ''
 	]
 		.filter(Boolean)
 		.join('；');
+	return asked && asked + RECORDS_GONE;
 }
 
 /**

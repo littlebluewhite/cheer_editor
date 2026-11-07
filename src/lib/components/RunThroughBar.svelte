@@ -1,21 +1,18 @@
 <script lang="ts">
-	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」和提示。
+	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」。提示走編輯器唯一的提示（session.notice）。
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），提示寫出刪了這天第幾次全上，幾秒內可以救回。
 	import { deleteLastRunThrough, lastRunThrough, restoreRunThrough } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import type { Flash } from '#lib/flash.svelte.js';
-	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
+	import { removeWithRestore } from './record-notice';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD）。 */
 		date: string;
-		/** 這一排的提示（存好全上的「已存這次全上」也放這裡）。 */
-		notice: Flash<Notice>;
 		/** 按「＋ 記一次全上」。 */
 		onrecord: () => void;
 	}
 
-	let { date, notice, onrecord }: Props = $props();
+	let { date, onrecord }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -35,7 +32,7 @@
 	function removeRun() {
 		removeWithRestore(
 			ask,
-			notice,
+			session,
 			`已刪掉第 ${runsOn()} 次全上`,
 			() => deleteLastRunThrough(flow, date),
 			({ removed }) => restoreRunThrough(flow, removed)
@@ -46,7 +43,6 @@
 <div class="run">
 	<button type="button" class="primary" onclick={onrecord}>＋ 記一次全上</button>
 	<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
-	<RecordNotice {notice} />
 	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
 </div>
 
