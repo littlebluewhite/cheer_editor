@@ -1,4 +1,5 @@
 //! 帳號：第一個管理員（`create-admin`）、設密碼連結、設密碼、登入、登入狀態、登出（#244）。
+//! 登入猜錯太多次的「鎖住」在 `lockout`；忘記密碼、我的帳號在 `my_account`（#246）。
 //! 規矩照 #234「帳號」那段：token 和登入狀態的號碼只存 SHA-256；密碼用 Argon2id；30 天一定要重登。
 
 use std::sync::LazyLock;
@@ -20,6 +21,7 @@ use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::AppState;
+use crate::lockout;
 use crate::mail::Mail;
 
 /// 密碼最少幾個字（看得到的字：一個中文字、一個空白、一個 emoji 都算一個）。
@@ -30,6 +32,9 @@ const RESET_LIFETIME: Duration = Duration::hours(1);
 const SESSION_LIFETIME: Duration = Duration::days(30);
 /// `__Host-`：瀏覽器強制 Secure、Path=/、沒有 Domain，只送回這台主機。
 const SESSION_COOKIE: &str = "__Host-id";
+/// 瀏覽器留 cookie 比登入狀態久（400 天是瀏覽器收的上限）：30 天到期後還帶得來，
+/// 伺服器才說得出「登入超過 30 天了」，不是沒登入過。
+const COOKIE_MAX_AGE: Duration = Duration::days(400);
 
 // ---------- 前後端共用的訊息（ts-rs 產生 src/lib/api-types/ 底下的 .ts） ----------
 
@@ -71,6 +76,13 @@ impl LinkPurpose {
             Self::Reset => "reset",
         }
     }
+}
+
+/// 沒登入（`/api/me` 的 401）：`expired` 是帶來的登入狀態滿 30 天了（登入頁寫黃色那行）。
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct SignedOut {
+    pub expired: bool,
 }
 
 /// 打開設密碼連結看到的：是誰的、哪一種。
@@ -159,7 +171,7 @@ pub async fn create_admin(state: &AppState, email: &str, name: Option<&str>) -> 
 }
 
 /// 換一條新的設密碼連結：這個人之前沒用的連結作廢。回 token（只在信裡，資料庫存雜湊）。
-async fn new_link(
+pub(crate) async fn new_link(
     tx: &mut sqlx::PgConnection,
     user_id: i64,
     purpose: LinkPurpose,
@@ -186,7 +198,7 @@ async fn new_link(
     Ok(token)
 }
 
-fn password_mail(
+pub(crate) fn password_mail(
     site_url: &str,
     to: String,
     name: &str,
@@ -260,6 +272,8 @@ pub async fn set_password(
         .bind(link.user_id)
         .execute(&mut *tx)
         .await?;
+    // 重設好了：鎖住解開
+    lockout::clear(&mut *tx, &link.email).await?;
     sqlx::query("DELETE FROM sessions WHERE user_id = $1")
         .bind(link.user_id)
         .execute(&mut *tx)
@@ -270,11 +284,16 @@ pub async fn set_password(
 
 /// 登入：成功回 204 和新的登入狀態 cookie（帶來的舊號碼作廢）；email 不對、密碼不對、
 /// 還沒設密碼、被停用都回一樣的 401，花的時間也差不多（都算一次雜湊）。
+/// 猜錯太多次回 429 和要等幾秒（`lockout`），有沒有這個帳號都一樣。
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Result<Response, AppError> {
+    let now = state.clock.now();
+    if let Some(wait) = lockout::check(&state.db, &req.email, now).await? {
+        return Ok((StatusCode::TOO_MANY_REQUESTS, Json(wait)).into_response());
+    }
     let user: Option<(i64, Option<String>, bool)> = sqlx::query_as(
         "SELECT id, password_hash, disabled_at IS NOT NULL FROM users WHERE lower(email) = lower($1)",
     )
@@ -286,9 +305,13 @@ pub async fn login(
         _ => (None, DUMMY_HASH.clone(), true),
     };
     let ok = verify_password(req.password, hash).await?;
+    if !ok {
+        lockout::failed(&state.db, &req.email, now).await?;
+    }
     let (Some(user_id), true, false) = (user_id, ok, disabled) else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
+    lockout::clear(&state.db, &req.email).await?;
 
     if let Some(old) = session_token(&headers) {
         sqlx::query("DELETE FROM sessions WHERE token_hash = $1")
@@ -297,7 +320,6 @@ pub async fn login(
             .await?;
     }
     let token = random_token()?;
-    let now = state.clock.now();
     sqlx::query("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)")
         .bind(sha256(&token))
         .bind(user_id)
@@ -308,17 +330,28 @@ pub async fn login(
     // Max-Age 只是讓瀏覽器關掉後還留著；到期與否是伺服器照 sessions.expires_at 算。
     let cookie = format!(
         "{SESSION_COOKIE}={token}; Max-Age={}; Path=/; Secure; HttpOnly; SameSite=Lax",
-        SESSION_LIFETIME.num_seconds()
+        COOKIE_MAX_AGE.num_seconds()
     );
     Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response())
 }
 
-/// 我是誰：沒登入、登入狀態到期或被刪了回 401。
+/// 我是誰：沒登入、登入狀態到期或被刪了回 401（`SignedOut`：是不是滿 30 天到期的）。
 pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
-    Ok(match current_user(&state, &headers).await? {
-        Some(me) => Json(me).into_response(),
-        None => StatusCode::UNAUTHORIZED.into_response(),
-    })
+    if let Some(me) = current_user(&state, &headers).await? {
+        return Ok(Json(me).into_response());
+    }
+    let expired = match session_token(&headers) {
+        Some(token) => {
+            sqlx::query("SELECT 1 FROM sessions WHERE token_hash = $1 AND expires_at <= $2")
+                .bind(sha256(&token))
+                .bind(state.clock.now())
+                .fetch_optional(&state.db)
+                .await?
+                .is_some()
+        }
+        None => false,
+    };
+    Ok((StatusCode::UNAUTHORIZED, Json(SignedOut { expired })).into_response())
 }
 
 /// 登出這台裝置：刪掉這個登入狀態，cookie 清掉。沒登入也回 204。
@@ -388,7 +421,7 @@ async fn live_link(state: &AppState, token: &str) -> anyhow::Result<Option<LiveL
 }
 
 /// 密碼收不收：至少 15 個看得到的字（空白、中文都算），不能是常見或外洩過的。沒有上限的規則（至少收 64 個字）。
-async fn password_problem(state: &AppState, password: &str) -> Option<PasswordProblem> {
+pub(crate) async fn password_problem(state: &AppState, password: &str) -> Option<PasswordProblem> {
     let chars = password.graphemes(true).count();
     if chars < MIN_PASSWORD_CHARS {
         return Some(PasswordProblem::TooShort {
@@ -404,7 +437,7 @@ async fn password_problem(state: &AppState, password: &str) -> Option<PasswordPr
 
 /// Argon2id（argon2 的預設就是 OWASP 最低：m=19456、t=2、p=1），鹽 128 bits，存 PHC 字串。
 /// 先做 NFC：看起來一樣的字在不同裝置打出來，算出一樣的雜湊。算雜湊很吃 CPU，放到別的執行緒。
-async fn hash_password(password: String) -> anyhow::Result<String> {
+pub(crate) async fn hash_password(password: String) -> anyhow::Result<String> {
     tokio::task::spawn_blocking(move || {
         let normalized: String = password.nfc().collect();
         Argon2::default()
@@ -415,7 +448,7 @@ async fn hash_password(password: String) -> anyhow::Result<String> {
     .await?
 }
 
-async fn verify_password(password: String, hash: String) -> anyhow::Result<bool> {
+pub(crate) async fn verify_password(password: String, hash: String) -> anyhow::Result<bool> {
     Ok(tokio::task::spawn_blocking(move || {
         let normalized: String = password.nfc().collect();
         PasswordHash::new(&hash).is_ok_and(|parsed| {
@@ -444,11 +477,11 @@ fn random_token() -> anyhow::Result<String> {
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
 }
 
-fn sha256(token: &str) -> Vec<u8> {
+pub(crate) fn sha256(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 
-fn session_token(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn session_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get_all(header::COOKIE)
         .iter()

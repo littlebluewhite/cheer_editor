@@ -1,17 +1,30 @@
 <script lang="ts">
-	// 登入、設密碼（之後還有忘記密碼）的頁面：上面一條（左邊網站名字回首頁、右邊「回首頁」），中間一張卡片（#190 的 A）。
+	// 登入、設密碼、忘記密碼、我的帳號的頁面：上面一條（左邊網站名字回首頁；右邊沒登入時「回首頁」、
+	// 登入了是帳號選單），中間一張卡片（#190 的 A）。
 	// 卡片裡的表單長一樣：欄位、密碼的「顯示」、錯誤、提示的樣子都在這裡。
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
+	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import type { Me } from '#lib/server-api.js';
 
-	let { children }: { children: Snippet } = $props();
+	interface Props {
+		children: Snippet;
+		/** 登入的是誰：給了右上角放帳號選單，沒給放「回首頁」。 */
+		me?: Me | null;
+		onlogout?: () => void;
+	}
+	let { children, me = null, onlogout = () => {} }: Props = $props();
 </script>
 
 <div class="page">
 	<header class="top">
 		<a class="brand" href={resolve('/')}>競技啦啦隊流程編輯器</a>
-		<a class="btn ghost" href={resolve('/')}><Icon name="home" />回首頁</a>
+		{#if me}
+			<AccountMenu {me} {onlogout} />
+		{:else}
+			<a class="btn ghost" href={resolve('/')}><Icon name="home" />回首頁</a>
+		{/if}
 	</header>
 	<main class="card">
 		{@render children()}
@@ -97,6 +110,13 @@
 	.card :global(.error small) {
 		color: var(--ink-3);
 		font-size: 12px;
+	}
+	.card :global(.warn) {
+		padding: 8px 10px;
+		border-radius: 8px;
+		background: #fff4d6;
+		color: #7a5300;
+		font-size: 13px;
 	}
 	.card :global(.ok) {
 		padding: 8px 10px;

@@ -119,6 +119,8 @@ export interface FakeUser extends Me {
  * 假的連伺服器：使用者、設密碼連結（token → 那條連結）放在記憶體，規則跟真的一樣
  * （email 不分大小寫；密碼至少 15 個看得到的字、不在外洩清單 breached 裡；連結用一次就不能用）。
  * signedIn：現在登入的是誰（沒登入是 null）。unreachable 設成 true 就是連不上伺服器。
+ * expired 設成 true：沒登入是因為登入超過 30 天了。retryAfter 設成秒數：猜密碼試太多次（鎖住），登入、改密碼都回要等幾秒。
+ * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  */
 export function fakeServer(
 	init: { users?: FakeUser[]; links?: Record<string, { email: string; purpose: LinkInfo['purpose'] }>; signedIn?: string | null; breached?: string[] } = {}
@@ -128,7 +130,11 @@ export function fakeServer(
 		links: { ...init.links },
 		signedIn: init.signedIn ?? null,
 		breached: init.breached ?? [],
-		unreachable: false
+		unreachable: false,
+		expired: false,
+		retryAfter: null as number | null,
+		forgot: [] as string[],
+		otherDevices: 1
 	};
 	const find = (email: string) => state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
 	const reachable = () => {
@@ -139,8 +145,12 @@ export function fakeServer(
 			const u = !state.unreachable && state.signedIn ? find(state.signedIn) : undefined;
 			return u ? { email: u.email, name: u.name, isAdmin: u.isAdmin } : null;
 		},
+		async loginExpired() {
+			return !state.unreachable && !state.signedIn && state.expired;
+		},
 		async login(email, password) {
 			reachable();
+			if (state.retryAfter !== null) return { retryAfter: state.retryAfter };
 			const u = find(email);
 			if (!u?.password || u.password !== password) return 'wrong';
 			state.signedIn = u.email;
@@ -166,6 +176,29 @@ export function fakeServer(
 			if (state.breached.includes(password)) return { kind: 'breached' };
 			u.password = password;
 			delete state.links[token];
+			return 'ok';
+		},
+		async forgotPassword(email) {
+			reachable();
+			state.forgot.push(email);
+		},
+		async changeName(name) {
+			reachable();
+			const u = state.signedIn ? find(state.signedIn) : undefined;
+			if (!u) return null;
+			u.name = name.trim();
+			return { email: u.email, name: u.name, isAdmin: u.isAdmin };
+		},
+		async changePassword(current, password) {
+			reachable();
+			if (state.retryAfter !== null) return { retryAfter: state.retryAfter };
+			const u = state.signedIn ? find(state.signedIn) : undefined;
+			if (!u || u.password !== current) return 'wrong';
+			const n = charCount(password);
+			if (n < 15) return { kind: 'tooShort', missing: 15 - n };
+			if (state.breached.includes(password)) return { kind: 'breached' };
+			u.password = password;
+			state.otherDevices = 0;
 			return 'ok';
 		}
 	};

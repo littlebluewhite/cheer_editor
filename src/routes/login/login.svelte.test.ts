@@ -67,6 +67,45 @@ describe('登入頁', () => {
 		expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('lin@example.com');
 	});
 
+	it('「忘記密碼？」到忘記密碼頁，帶著打好的 email', async () => {
+		loginPage();
+		const forgot = () => screen.getByRole('link', { name: '忘記密碼？' }).getAttribute('href');
+		expect(forgot()).toBe('/forgot-password');
+		await fireEvent.input(screen.getByLabelText('Email'), { target: { value: 'lin@example.com' } });
+		expect(forgot()).toBe('/forgot-password?email=lin%40example.com');
+	});
+
+	it('試太多次：「試太多次了，請 N 秒後再試」，下面「忘記密碼的話，按『忘記密碼』重設。」；一分鐘以上寫分鐘', async () => {
+		const { state, went } = loginPage();
+		state.retryAfter = 30;
+		await submit('nobody@example.com', lin.password);
+		let alert = screen.getByRole('alert');
+		expect(alert.textContent).toContain('試太多次了，請 30 秒後再試');
+		expect(alert.textContent).toContain('忘記密碼的話，按『忘記密碼』重設。');
+		expect(alert.textContent).not.toContain('email 或密碼不對');
+
+		state.retryAfter = 90;
+		await submit('lin@example.com', lin.password);
+		alert = screen.getByRole('alert');
+		expect(alert.textContent).toContain('試太多次了，請 2 分鐘後再試');
+		expect(went).toEqual([]);
+	});
+
+	it('登入超過 30 天：上面黃色一行「登入超過 30 天了，請再登入一次。」；沒到期不寫', async () => {
+		history.replaceState(null, '', '/login');
+		const fake = fakeServer({ users: [lin] });
+		fake.state.expired = true;
+		render(Login, { server: fake.server, go: () => {} });
+		await flush();
+		expect(screen.getByText('登入超過 30 天了，請再登入一次。').classList.contains('warn')).toBe(true);
+	});
+
+	it('沒到期：沒有黃色那一行', async () => {
+		loginPage();
+		await flush();
+		expect(screen.queryByText('登入超過 30 天了，請再登入一次。')).toBeNull();
+	});
+
 	it('連不上伺服器：說連不上，不說密碼不對', async () => {
 		const { state } = loginPage();
 		state.unreachable = true;

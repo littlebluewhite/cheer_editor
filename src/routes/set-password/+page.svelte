@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 設密碼頁（#190 的 A）：信裡的連結點進來，token 在 # 後面（不會送到伺服器的 log）。邀請和重設密碼同一頁。
 	// 打開只看是誰，送出才用掉連結。設好不自動登入：跳登入頁、email 填好。
-	// 連結不能用時的「重寄一封信」（到忘記密碼頁）在 #246 加。
+	// 連結不能用時「重寄一封信」到忘記密碼頁（邀請過期也走這條）。
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { charCount } from '#lib/core';
@@ -62,6 +62,7 @@
 	{#if link === null}
 		<h1>這個連結不能用了</h1>
 		<p class="lead">可能超過時間（邀請 24 小時、重設密碼 1 小時），或已經用過了。</p>
+		<a class="btn primary wide" href={resolve('/forgot-password')}>重寄一封信</a>
 	{:else if link}
 		<form onsubmit={submit}>
 			<h1>{link.purpose === 'reset' ? '設新密碼' : '設密碼'}</h1>

@@ -47,6 +47,7 @@ async fn main() -> anyhow::Result<()> {
         breach: BreachCheck::pwned(),
         clock: Clock::system(),
         site_url: config.site_url.clone(),
+        mail_limit: Default::default(),
     };
 
     if let Some((email, name)) = command {

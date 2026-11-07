@@ -18,6 +18,7 @@ fn unreachable_pool() -> cheer_server::AppState {
         breach: cheer_server::breach::BreachCheck::list([]),
         clock: cheer_server::clock::Clock::system(),
         site_url: "https://cheer.example".into(),
+        mail_limit: Default::default(),
     }
 }
 
