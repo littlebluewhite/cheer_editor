@@ -9,7 +9,7 @@ import type { Flow } from './flow';
 import { nextId } from './ids';
 import { phaseFallout, phaseFalloutText } from './phase-beats';
 import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atText, lengthTextWithUnit, parseNumber, segmentSpans, units } from './time';
+import { atText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -394,12 +394,15 @@ const DEFAULT_CHANT_TENTHS = 100;
 /**
  * 編排畫面加的新口號段多長（0.1 秒數）：預設 10 秒；規則警告開著、口號段加起來還不到最少秒數時，
  * 補到剛好夠（不會一加就跳「口號段太短」），最長到口號段的上限。
+ * 再加 10 秒整支流程會太長時，縮到剛好不超過；口號段要補的比整支剩下的多（怎樣都會有警告）就照補到夠。
  */
 export function newChantTenths(flow: Flow): number {
 	if (!flow.timeRules.on) return DEFAULT_CHANT_TENTHS;
 	const have = flow.segments.reduce((sum, s) => sum + (s.kind === 'chant' ? s.tenths : 0), 0);
 	const missing = Math.ceil(flow.timeRules.minChantSec * 10 - have);
-	return Math.min(Math.max(DEFAULT_CHANT_TENTHS, missing), MAX_CHANT_SEC * 10);
+	const tenths = Math.min(Math.max(DEFAULT_CHANT_TENTHS, missing), MAX_CHANT_SEC * 10);
+	const room = Math.floor((flow.timeRules.maxTotalSec - totalSeconds(flow)) * 10 + 1e-6);
+	return tenths > room && room >= Math.max(1, missing) ? room : tenths;
 }
 
 /**

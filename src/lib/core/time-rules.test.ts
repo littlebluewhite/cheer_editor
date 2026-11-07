@@ -3,6 +3,7 @@ import {
 	addSegment,
 	createFlow,
 	DEFAULT_TIME_RULES,
+	newChantTenths,
 	timeRuleWarnings,
 	updateSegment,
 	updateTimeRules,
@@ -106,5 +107,19 @@ describe('時間規則警告', () => {
 	it('恢復預設：開關和三個數字都回到預設', () => {
 		const changed = flowOf(updateTimeRules(routine(240, 30), { on: false, minChantSec: 10, maxMusicSec: 90 }));
 		expect(flowOf(updateTimeRules(changed, DEFAULT_TIME_RULES)).timeRules).toEqual(DEFAULT_TIME_RULES);
+	});
+});
+
+describe('新口號段的預設長度不一加就跳警告（#196 故事 105）', () => {
+	it('整支流程快到上限：預設縮到剛好不超過整支流程最多', () => {
+		// 120 秒音樂 + 55 秒口號 = 175 秒；再加 10 秒會超過 180 秒
+		const flow = routine(240, 55);
+		expect(newChantTenths(flow)).toBe(50);
+		expect(timeRuleWarnings(flowOf(addSegment(flow, 'chant', undefined, newChantTenths(flow))))).toEqual([]);
+	});
+
+	it('口號段要補的比整支流程剩下的多（怎樣都會有警告）：照舊補到口號段夠長', () => {
+		// 160 秒音樂 + 5 秒口號 = 165 秒；口號段還差 25 秒，整支只剩 15 秒
+		expect(newChantTenths(routine(320, 5))).toBe(250);
 	});
 });
