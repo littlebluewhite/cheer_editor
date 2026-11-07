@@ -13,6 +13,7 @@ pub mod mail;
 pub mod music;
 pub mod my_account;
 pub mod records;
+pub mod run_together;
 pub mod share_link;
 pub mod sharing;
 

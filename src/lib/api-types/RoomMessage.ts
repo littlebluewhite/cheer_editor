@@ -3,8 +3,9 @@ import type { CloudRecord } from "./CloudRecord";
 import type { DroppedRecord } from "./DroppedRecord";
 import type { Present } from "./Present";
 import type { Role } from "./Role";
+import type { RunView } from "./RunView";
 
 /**
  * 伺服器送給用戶端的。
  */
-export type RoomMessage = { "kind": "ready", step: number, } | { "kind": "newVersion" } | { "kind": "accepted", stepId: string, step: number, } | { "kind": "rejected", stepId: string, message: string, by?: string, flow: unknown, step: number, } | { "kind": "roleChanged", role: Role, flow: unknown, step: number, } | { "kind": "revoked" } | { "kind": "deleted" } | { "kind": "changed", step: number, by: string, change: unknown, } | { "kind": "current", flow: unknown, step: number, } | { "kind": "present", people: Array<Present>, } | { "kind": "recordsSaved", saved: Array<CloudRecord>, dropped: Array<DroppedRecord>, } | { "kind": "newRecords", records: Array<CloudRecord>, } | { "kind": "recordsChanged", changed: Array<CloudRecord>, deleted: Array<string>, };
+export type RoomMessage = { "kind": "ready", step: number, } | { "kind": "newVersion" } | { "kind": "accepted", stepId: string, step: number, } | { "kind": "rejected", stepId: string, message: string, by?: string, flow: unknown, step: number, } | { "kind": "roleChanged", role: Role, flow: unknown, step: number, } | { "kind": "revoked" } | { "kind": "deleted" } | { "kind": "changed", step: number, by: string, change: unknown, } | { "kind": "current", flow: unknown, step: number, } | { "kind": "present", people: Array<Present>, } | { "kind": "recordsSaved", saved: Array<CloudRecord>, dropped: Array<DroppedRecord>, } | { "kind": "newRecords", records: Array<CloudRecord>, } | { "kind": "recordsChanged", changed: Array<CloudRecord>, deleted: Array<string>, } | { "kind": "runThroughs", runs: Array<RunView>, } | { "kind": "claimRefused", run: string, key: string, by: string, touched: boolean, } | { "kind": "runClosed", run: string, };

@@ -2,9 +2,16 @@
 	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」和提示。
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），提示寫出刪了這天第幾次全上，幾秒內可以救回。
 	// 雲端流程的記錄者（#258）換成「刪掉我上一次全上記的」：只刪自己在這天最後記過的那次全上記的組（別人記的不刪）。
+	// 一起記全上（#262）：有人在記（自己不在表裡）時上面一條藍的「● 王教練在記今天第 3 次全上（1:43 開的）」＋「加入，記別的組」
+	// （斷網時按不了）；按「＋ 記一次全上」先跳框問「加入這一次」「開新的一次」「取消」（斷網時不問）。
 	import { lastRunThrough, runThroughsOn } from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import type { Flash } from '#lib/flash.svelte.js';
+	import { localDate } from '#lib/local-date.js';
+	import { runNumber, startClock } from '#lib/run-keys.js';
+	import type { RunView } from '#lib/server-api.js';
+	import Modal from './Modal.svelte';
 	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
 
 	interface Props {
@@ -12,13 +19,34 @@
 		date: string;
 		/** 這一排的提示（存好全上的「已存這次全上」也放這裡）。 */
 		notice: Flash<Notice>;
-		/** 按「＋ 記一次全上」。 */
-		onrecord: () => void;
+		/** 按「＋ 記一次全上」：join 是要加入的那次（雲端流程，#262），沒給是開新的。 */
+		onrecord: (join?: RunView) => void;
 	}
 
 	let { date, notice, onrecord }: Props = $props();
 
 	const session = getEditorSession();
+	/** 開著的雲端流程（本機流程是 null）。 */
+	const cloud = $derived(getEditor().file.cloud);
+	/** 連著（斷網時不能加入、不問）。 */
+	const online = $derived(!!cloud && cloud.link === 'online' && !cloud.offline);
+	/** 有人在記、自己不在表裡的全上。 */
+	const others = $derived(
+		session.cannotRecord ? [] : (cloud?.runs ?? []).filter((r) => r.people.length && !r.people.some((p) => p.me))
+	);
+	/** 按了「＋ 記一次全上」、有人在記：問加入還是開新的。 */
+	let asking = $state<RunView | null>(null);
+
+	/** 「王教練在記今天第 3 次全上」。 */
+	function recording(run: RunView): string {
+		const day = run.date === localDate() ? '今天' : run.date;
+		return `${run.people[0].name}在記${day}第 ${runNumber(flow, cloud?.runs ?? [], run.date, run)} 次全上`;
+	}
+
+	function record() {
+		if (online && others.length) asking = others[0];
+		else onrecord();
+	}
 	const flow = $derived(session.flow!);
 	/** 刪掉上一次全上、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
 	const ask = session.recordAsk();
@@ -69,8 +97,32 @@
 	}
 </script>
 
+{#each others as run (run.id)}
+	<p class="live" role="status" aria-label="有人在記全上">
+		<span>● {recording(run)}（{startClock(run.startedAt)} 開的）</span>
+		<button type="button" disabled={!online} onclick={() => onrecord(run)}>加入，記別的組</button>
+	</p>
+{/each}
+{#if asking}
+	{@const run = asking}
+	<Modal label={recording(run)} class="dialog join" onclose={() => (asking = null)}>
+		{#snippet children(close)}
+			<h3>{recording(run)}</h3>
+			<p class="hint">{startClock(run.startedAt)} 開的。一組在一次全上只能一個人記。</p>
+			<div class="choices">
+				<button type="button" class="primary" data-autofocus onclick={() => ((asking = null), onrecord(run))}
+					>加入這一次：跟{run.people[0].name}一起記，你記別的組</button
+				>
+				<button type="button" onclick={() => ((asking = null), onrecord())}
+					>開新的一次：只有你記，算第 {runNumber(flow, cloud?.runs ?? [], date)} 次</button
+				>
+				<button type="button" onclick={close}>取消</button>
+			</div>
+		{/snippet}
+	</Modal>
+{/if}
 <div class="run">
-	<button type="button" class="primary" onclick={onrecord}>＋ 記一次全上</button>
+	<button type="button" class="primary" onclick={record}>＋ 記一次全上</button>
 	{#if session.ownRecordsOnly}
 		<button type="button" disabled={!myLastRun} title="只刪你在這天最後一次全上記的那幾組（別人記的不刪）" onclick={removeMyRun}
 			>刪掉我上一次全上記的</button
@@ -83,6 +135,29 @@
 </div>
 
 <style>
+	.live {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px;
+		margin: 0;
+		padding: 8px 12px;
+		border-radius: 8px;
+		background: #dbeafe;
+		color: #1e3a8a;
+	}
+	h3 {
+		margin: 0;
+	}
+	.hint {
+		margin: 4px 0 12px;
+		color: var(--muted);
+		font-size: 13px;
+	}
+	.choices {
+		display: grid;
+		gap: 8px;
+	}
 	.run {
 		display: flex;
 		flex-wrap: wrap;
@@ -95,7 +170,8 @@
 	}
 	/* 印總表時只印表格 */
 	@media print {
-		.run {
+		.run,
+		.live {
 			display: none;
 		}
 	}

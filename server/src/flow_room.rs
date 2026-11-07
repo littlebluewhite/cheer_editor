@@ -18,6 +18,8 @@
 //! 斷線重連（#255）：打招呼帶上次看到第幾步，先照順序補上之後別的分頁收了的步（每一步存著改好之後的東西），
 //! 再說可以送步；補不上（步驟紀錄沒留、之前的步沒存改好的東西）就給伺服器現在的樣子。
 //! 漏聽了房間裡的事（落後超過 256 件）也照這樣從資料庫補。
+//! 一起記全上（#262，ADR 0012）：誰在表裡、誰拿著哪幾組放在房間裡（見 run_together.rs），變了就告訴能記的人
+//! （檢視者不說）；連線斷了記下時間，1 分鐘後再說一次（當他離開）；被收回、降成檢視者踢出表。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -36,6 +38,7 @@ use crate::accounts::{AppError, signed_in};
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
+use crate::run_together::{Answer, Ask, Report, RunView, Runs, Who};
 use crate::sharing::{Role, role_of};
 
 /// 不能改的人送來的步：退回的原因。
@@ -75,6 +78,8 @@ pub enum RoomEvent {
         from: u64,
         change: Arc<RecordsChange>,
     },
+    /// 一起記全上的人、組變了（#262）：能記的人照自己看到的樣子送。
+    Runs,
 }
 
 /// 開著這支流程的一個連線：誰、在編輯還是檢視。
@@ -94,6 +99,8 @@ struct Room {
     steps: Arc<tokio::sync::Mutex<()>>,
     /// 開著的連線，照進來的先後。
     here: Vec<Here>,
+    /// 一起記全上（#262）：只放記憶體。
+    runs: Runs,
 }
 
 /// 開著的房間：流程 id → 那支流程的房間。
@@ -116,6 +123,7 @@ impl Rooms {
                 events: tokio::sync::broadcast::channel(256).0,
                 steps: Default::default(),
                 here: Vec::new(),
+                runs: Runs::default(),
             })
             .events
             .subscribe()
@@ -163,6 +171,54 @@ impl Rooms {
                 h.editing = editing;
             }
         });
+    }
+
+    /// 改一起記全上的人、組；變了就告訴每個連線（能記的人自己照 run_views 拿）。
+    fn runs<R>(&self, flow_id: &str, change: impl FnOnce(&mut Runs) -> R) -> Option<R> {
+        let mut rooms = self.lock();
+        let room = rooms.get_mut(flow_id)?;
+        let before = room.runs.clone();
+        let answer = change(&mut room.runs);
+        if room.runs != before {
+            let _ = room.events.send(RoomEvent::Runs);
+        }
+        Some(answer)
+    }
+
+    /// viewer 看到的一起記全上。
+    fn run_views(
+        &self,
+        flow_id: &str,
+        viewer: i64,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Vec<RunView> {
+        self.lock()
+            .get(flow_id)
+            .map(|room| room.runs.view(viewer, now))
+            .unwrap_or_default()
+    }
+
+    /// 一個連線斷了（#262）：在表上的記下斷線的時間、告訴別人；1 分鐘後再說一次（當他離開）。
+    fn run_disconnect(&self, flow_id: &str, conn: u64, now: chrono::DateTime<chrono::Utc>) {
+        let changed = {
+            let mut rooms = self.lock();
+            let Some(room) = rooms.get_mut(flow_id) else {
+                return;
+            };
+            let changed = room.runs.disconnect(conn, now);
+            if changed {
+                let _ = room.events.send(RoomEvent::Runs);
+            }
+            changed
+        };
+        if changed {
+            let rooms = self.clone();
+            let flow_id = flow_id.to_owned();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(61)).await;
+                rooms.tell(&flow_id, RoomEvent::Runs);
+            });
+        }
     }
 
     /// 一個連線走了：從在場名單拿掉；沒人開著就拿掉這支的房間。
@@ -233,6 +289,31 @@ pub enum RoomRequest {
     DeleteRecords { ids: Vec<String> },
     /// 救回剛刪掉的幾次（#258）：一次的 id。
     RestoreRecords { ids: Vec<String> },
+    /// 我在這次全上的表裡（#262）：開、加入（joining）、連上時再報。全上 id（手機發的亂數）、日期、開的時間、
+    /// 拿著哪幾組、點過哪幾組。
+    RunThrough {
+        id: String,
+        date: String,
+        #[ts(type = "number")]
+        started_at: i64,
+        keys: Vec<String>,
+        touched: Vec<String>,
+        #[serde(default)]
+        joining: bool,
+    },
+    /// 拿一組（或接手）：from 是我看到拿著的人（沒人拿著是 null）。
+    Claim {
+        run: String,
+        key: String,
+        #[ts(type = "number | null")]
+        from: Option<i64>,
+    },
+    /// 放掉一組。
+    Release { run: String, key: String },
+    /// 一欄第一次點記號。
+    Touch { run: String, key: String },
+    /// 離開表（存好、取消）。
+    LeaveRun { run: String },
 }
 
 /// 伺服器送給用戶端的。
@@ -313,6 +394,17 @@ pub enum RoomMessage {
         changed: Vec<CloudRecord>,
         deleted: Vec<String>,
     },
+    /// 現在有人在記的全上（#262，只送給能記的人）：誰在表裡、誰拿著哪幾組。
+    RunThroughs { runs: Vec<RunView> },
+    /// 拿不到這一組（#262）：拿著的人、他點過了沒（點過是拿不走，沒點過是他先拿了）。
+    ClaimRefused {
+        run: String,
+        key: String,
+        by: String,
+        touched: bool,
+    },
+    /// 這次全上表裡的人都離開了，不能加入（#262）。
+    RunClosed { run: String },
 }
 
 /// 在場名單的一個人：在編輯還是檢視（他有一個分頁在編輯就算在編輯）。
@@ -361,10 +453,12 @@ pub async fn join(
     }
     Ok(ws.on_upgrade(move |socket| async move {
         let rooms = state.rooms.clone();
+        let clock = state.clock.clone();
         let conn = rooms.next_conn.fetch_add(1, Ordering::Relaxed);
         if let Err(e) = serve(state, socket, &id, user_id, conn).await {
             tracing::error!(err = %e, "房間出錯");
         }
+        rooms.run_disconnect(&id, conn, clock.now());
         rooms.leave(&id, conn);
     }))
 }
@@ -418,6 +512,15 @@ async fn serve(
         editing: editing && role.can_edit(),
     };
     state.rooms.update_here(flow_id, |list| list.push(here));
+    let views = state.rooms.run_views(flow_id, user_id, state.clock.now());
+    if role.can_record() && !views.is_empty() {
+        tell(&mut socket, &RoomMessage::RunThroughs { runs: views }).await?;
+    }
+    let who = Who {
+        user_id,
+        conn,
+        name: &name,
+    };
     // 上一次被退回時伺服器在第幾步：上次看到的還在它之前的步，是還沒換成伺服器的樣子就送的。
     let mut sent_back: Option<i64> = None;
 
@@ -469,6 +572,36 @@ async fn serve(
                 Some(RoomRequest::RestoreRecords { ids }) => {
                     records::amend(&state, flow_id, user_id, conn, Amend::Restore(ids)).await?
                 }
+                Some(RoomRequest::RunThrough { id, date, started_at, keys, touched, joining }) => {
+                    if !role.can_record() {
+                        continue;
+                    }
+                    let report = Report { id: id.clone(), date, started_at, keys, touched, joining };
+                    let now = state.clock.now();
+                    let answer = state.rooms.runs(flow_id, |runs| runs.report(&who, report, now));
+                    match told_run(id, None, answer) {
+                        Some(message) => message,
+                        None => continue,
+                    }
+                }
+                Some(request @ (RoomRequest::Claim { .. } | RoomRequest::Release { .. } | RoomRequest::Touch { .. } | RoomRequest::LeaveRun { .. })) => {
+                    if !role.can_record() {
+                        continue;
+                    }
+                    let (run, key, ask) = match request {
+                        RoomRequest::Claim { run, key, from } => (run, Some(key.clone()), Ask::Claim { key, from }),
+                        RoomRequest::Release { run, key } => (run, Some(key.clone()), Ask::Release { key }),
+                        RoomRequest::Touch { run, key } => (run, Some(key.clone()), Ask::Touch { key }),
+                        RoomRequest::LeaveRun { run } => (run, None, Ask::Leave),
+                        _ => unreachable!(),
+                    };
+                    let now = state.clock.now();
+                    let answer = state.rooms.runs(flow_id, |runs| runs.ask(&who, &run, ask, now));
+                    match told_run(run, key, answer) {
+                        Some(message) => message,
+                        None => continue,
+                    }
+                }
                 Some(RoomRequest::Mode { editing }) => {
                     state.rooms.set_editing(flow_id, conn, editing && role.can_edit());
                     continue;
@@ -477,6 +610,11 @@ async fn serve(
             },
             event = events.recv() => match event {
                 Ok(RoomEvent::Permission { user_id: who, role: changed }) if who == user_id => {
+                    // 被收回、降成檢視者：踢出表，拿著的組放掉（#262）。
+                    if !changed.is_some_and(|r| r.can_record()) {
+                        let now = state.clock.now();
+                        state.rooms.runs(flow_id, |runs| runs.kick(user_id, now));
+                    }
                     if let Some(r) = changed {
                         role = r;
                         if !r.can_edit() {
@@ -490,6 +628,9 @@ async fn serve(
                     known = step;
                     RoomMessage::Changed { step, by, change: RawValue::from_string(change.to_string())? }
                 }
+                Ok(RoomEvent::Runs) if role.can_record() => RoomMessage::RunThroughs {
+                    runs: state.rooms.run_views(flow_id, user_id, state.clock.now()),
+                },
                 Ok(RoomEvent::Present(here)) => RoomMessage::Present { people: present_for(&here, user_id) },
                 Ok(RoomEvent::Recorded { from, user_id: by, name, records }) if from != conn => {
                     let records = records
@@ -528,6 +669,20 @@ async fn serve(
         if matches!(reply, RoomMessage::Revoked | RoomMessage::Deleted) {
             return Ok(());
         }
+    }
+}
+
+/// 一起記全上做完要跟送的人說的：拿不到、加入不了；好了不用說（全上變了另外送）。
+fn told_run(run: String, key: Option<String>, answer: Option<Answer>) -> Option<RoomMessage> {
+    match answer? {
+        Answer::Done => None,
+        Answer::Refused { by, touched } => Some(RoomMessage::ClaimRefused {
+            run,
+            key: key.unwrap_or_default(),
+            by,
+            touched,
+        }),
+        Answer::Closed => Some(RoomMessage::RunClosed { run }),
     }
 }
 

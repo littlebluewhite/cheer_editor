@@ -22,6 +22,10 @@
 // 還沒送到伺服器的那一次直接改、刪（不用送）；送過的連上再送。斷著時說為什麼（link：斷網、伺服器沒回應、登入過期），
 // 連上後傳的時候「傳中…（N 筆）」，傳完一下子「都傳上去了。」。被收回時還有沒傳的：unsentRows 列出來（擋住的框），forget 丟掉。
 // iPhone、iPad 的 Safari（不是從主畫面打開的）打開這支後第一次記，提醒加到主畫面（homeHint）。
+// 一起記全上（#262，ADR 0012）：伺服器說現在誰在記哪次全上、誰拿著哪幾組（runs，只有能記的人收得到）。
+// 開、加入全上表（enterRun）把全上 id、日期、開的時間和拿著、點過的組報給伺服器，連上（斷線回來、伺服器重開）再報一次；
+// 拿、放掉、點了一組也送（斷線時先記在這台）；拿不到、加入不了的放在 runRefused。存好、取消就離開（leaveRun）。
+// 同一次全上的同一組別人先存了：沒存進去的那一列寫「王教練已經記了這次全上的第 2 組」。
 
 import {
 	actionLabel,
@@ -41,7 +45,8 @@ import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-sessio
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { Flash } from '#lib/flash.svelte.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
-import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest } from '#lib/server-api.js';
+import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView } from '#lib/server-api.js';
+import { runKey, runKeyLabel } from '#lib/run-keys.js';
 
 /** 有新版時不能改的原因。 */
 export const NEW_VERSION = '有新版，請重新整理';
@@ -62,6 +67,18 @@ export interface KeepUnsent {
 	store: OfflineStore;
 	saved?: UnsentRecords;
 }
+
+/** 我在的那次全上（#262）：id、日期、開的時間、拿著的組、點過的組。 */
+export interface MyRun {
+	id: string;
+	date: string;
+	startedAt: number;
+	keys: string[];
+	touched: string[];
+}
+
+/** 拿不到一組（拿著的人、他點過了沒），或那次全上的人都離開了、加入不了（'closed'）。 */
+export type RunRefused = { key: string; by: string; touched: boolean } | 'closed';
 
 /** 這個分頁的 id：伺服器記每一步是哪個分頁送的（同一個人的兩個分頁也算別人）。 */
 const TAB_ID = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
@@ -113,6 +130,14 @@ export class CloudSteps {
 	onrevoked: () => void = () => {};
 	/** 擁有者刪了這支流程（#252）：流程檔接上（回首頁說原因）。 */
 	ondeleted: () => void = () => {};
+	/** 現在有人在記的全上（#262，伺服器說的）。 */
+	runs = $state.raw<RunView[]>([]);
+	/** 我在的那次全上（開著全上表）；連上時再報。 */
+	myRun = $state.raw<MyRun | null>(null);
+	/** 還沒報給伺服器的加入（加入不了要說）。 */
+	#joining = false;
+	/** 拿不到一組、加入不了（全上表上的提示）。 */
+	runRefused = $state.raw<RunRefused | null>(null);
 	/** 斷線後又連上了（伺服器說可以送步，#261）：從離線副本打開的，流程檔接上換成最新的。 */
 	onback: () => void = () => {};
 
@@ -188,6 +213,74 @@ export class CloudSteps {
 		return rows;
 	}
 
+	/**
+	 * 開、加入全上表（#262）：報給伺服器這次全上和要拿的組（開的是全部的組，加入的是沒人拿著的）。
+	 * 斷線時先記著，連上再報。
+	 */
+	enterRun(run: { id: string; date: string; startedAt: number }, keys: string[], joining: boolean) {
+		this.myRun = { ...run, keys, touched: [] };
+		this.#joining = joining;
+		this.runRefused = null;
+		this.#reportRun();
+	}
+
+	/** 拿一組（或接手）：from 是我看到拿著的人（沒人拿著是 null）。斷線時先當成我的。 */
+	claim(key: string, from: number | null) {
+		const run = this.myRun;
+		if (!run) return;
+		this.runRefused = null;
+		if (this.#ready) this.#room.send({ kind: 'claim', run: run.id, key, from });
+		else this.myRun = { ...run, keys: [...run.keys, key] };
+	}
+
+	/** 放掉一組。 */
+	release(key: string) {
+		const run = this.myRun;
+		if (!run) return;
+		this.myRun = { ...run, keys: run.keys.filter((k) => k !== key) };
+		if (this.#ready) this.#room.send({ kind: 'release', run: run.id, key });
+	}
+
+	/** 一欄第一次點記號：送一次「我點了這一組」（斷線時點的連上再報）。 */
+	touch(key: string) {
+		const run = this.myRun;
+		if (!run || run.touched.includes(key)) return;
+		this.myRun = { ...run, touched: [...run.touched, key] };
+		if (this.#ready) this.#room.send({ kind: 'touch', run: run.id, key });
+	}
+
+	/** 存好、取消：離開這次全上，拿著的組放掉。 */
+	leaveRun() {
+		const run = this.myRun;
+		if (!run) return;
+		this.myRun = null;
+		this.runRefused = null;
+		if (this.#ready) this.#room.send({ kind: 'leaveRun', run: run.id });
+	}
+
+	/** 報我在的那次全上（連上了才報；加入只報一次，之後是重報）。 */
+	#reportRun() {
+		const run = this.myRun;
+		if (!run || !this.#ready) return;
+		const { id, date, startedAt, keys, touched } = run;
+		this.#room.send({ kind: 'runThrough', id, date, startedAt, keys, touched, joining: this.#joining });
+		this.#joining = false;
+	}
+
+	/** 伺服器說的全上：我在的那次換成伺服器說我拿著的組、點過的組。 */
+	#heardRuns(runs: RunView[]) {
+		this.runs = runs;
+		const run = this.myRun;
+		const mine = runs.find((r) => r.id === run?.id)?.keys.filter((k) => k.mine);
+		if (!run || !mine) return;
+		const touched = mine.filter((k) => k.touched).map((k) => k.key);
+		this.myRun = {
+			...run,
+			keys: mine.map((k) => k.key),
+			touched: [...new Set([...run.touched.filter((k) => mine.some((m) => m.key === k)), ...touched])]
+		};
+	}
+
 	/** 這支流程這台存著的都丟掉（被收回、流程被刪了：傳不上去了）。 */
 	forget() {
 		this.#unsent.clear();
@@ -222,6 +315,7 @@ export class CloudSteps {
 
 	/** 換流程：不再收發。 */
 	close() {
+		this.leaveRun();
 		this.#room.onmessage = () => {};
 		this.#room.onconnection = () => {};
 		this.#room.close();
@@ -323,6 +417,7 @@ export class CloudSteps {
 				this.#lostOnReconnect = '';
 			}
 			this.#sendHead();
+			this.#reportRun();
 			this.syncing = this.unsentIds.length > 0;
 			this.#sendRecords([...this.#unsent.keys()]);
 			for (const { ids, request } of this.#amends.splice(0)) this.#send(ids, request);
@@ -361,6 +456,12 @@ export class CloudSteps {
 			this.#others(m.records, []);
 		} else if (m.kind === 'recordsChanged') {
 			this.#others(m.changed, m.deleted);
+		} else if (m.kind === 'runThroughs') {
+			this.#heardRuns(m.runs);
+		} else if (m.kind === 'claimRefused') {
+			if (m.run === this.myRun?.id) this.runRefused = { key: m.key, by: m.by, touched: m.touched };
+		} else if (m.kind === 'runClosed') {
+			if (m.run === this.myRun?.id) this.runRefused = 'closed';
 		} else if (m.stepId !== this.#queue[0]?.id) {
 			return;
 		} else if (m.kind === 'accepted') {
@@ -441,11 +542,14 @@ export class CloudSteps {
 	 * 伺服器回我送的那一批：收了的換成伺服器存的樣子，沒存進去的拿掉、列進紅條；收過又被清掉的也拿掉。
 	 * 改、刪、救回：伺服器上還在的換成它的樣子（刪不掉的放回來），不在的拿掉。後面還有一批在等的那幾次先不動（等那一批的回答）。
 	 */
-	#saved(saved: CloudRecord[], dropped: { id: string }[]) {
+	#saved(saved: CloudRecord[], dropped: { id: string; by?: string }[]) {
 		const batch = new Set(this.#batches.shift()?.ids ?? []);
 		const later = new Set(this.#batches.flatMap((b) => b.ids));
 		const kept = new Map(saved.map((r) => [attemptOf(r).id, r]));
-		const rows = dropped.flatMap((d) => this.#unsent.get(d.id)?.row ?? []);
+		const rows = dropped.flatMap((d) => {
+			const u = this.#unsent.get(d.id);
+			return u ? [d.by === undefined ? u.row : { ...u.row, note: alreadyRecorded(this.#session.flow, u.record, d.by) }] : [];
+		});
 		for (const id of batch) this.#unsent.delete(id);
 		const flow = this.#session.flow;
 		if (!flow) return this.#touch();
@@ -503,6 +607,13 @@ export class CloudSteps {
 /** 別人在我上次看到之後改過，我的一步被退回的提示：by 是最後改的人，reason 是被規則擋下的原因（改到同一個東西是空的）。 */
 function sentBack(by: string, label: string, reason: string): string {
 	return reason ? `${by}剛改了流程，你的「${label}」沒改成：${reason}` : `${by}剛改了同一個地方，你的「${label}」沒改成`;
+}
+
+/** 同一次全上的同一組別人先存了（#262）：「王教練已經記了這次全上的第 2 組」。 */
+function alreadyRecorded(flow: Flow | null, { actionId, attempt }: StoredAttempt, by: string): string {
+	const action = flow?.actions.find((a) => a.id === actionId);
+	const which = flow && action ? runKeyLabel(flow, runKey(action, attempt.who)) : '這一組';
+	return `${by}已經記了這次全上的${which}`;
 }
 
 /** 伺服器送來的一次（流程核心的 Attempt）。 */

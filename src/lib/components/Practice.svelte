@@ -4,7 +4,7 @@
 	// 流程從 session 拿；記一次、刪掉上一次、記一次全上交給 session 的「記」（不算復原的一步）。
 	// 雲端流程（#257）：檢視者只看總表、不能記；沒存進去的紀錄（教練改了流程）在日期那一排下面紅色一條，按「知道了」才清。
 	// 斷網照記（#260）：日期那一排下面一件事一條：斷網（黃）、傳不上去（紅，「現在再試」）、登入超過 30 天（紅，「再登入」）、
-	// 傳中、都傳上去了（綠，一下就收）。iPhone、iPad 的 Safari 第一次記之後，下面滑上來提醒加到主畫面。
+	// 傳中、都傳上去了（綠，一下就收）。同一次全上同一組別人先存了（#262）：沒存進去的那一列寫「王教練已經記了…」。iPhone、iPad 的 Safari 第一次記之後，下面滑上來提醒加到主畫面。
 	import { resolve } from '$app/paths';
 	import { recordableActions } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
@@ -100,7 +100,11 @@
 	{#if dropped.length}
 		<div class="dropped" role="alert">
 			<div class="dropped-head">
-				<p><b>教練改了流程，這 {dropped.length} 筆沒存進去</b><small>你記的時候，教練刪掉了這些環節或組。</small></p>
+				{#if dropped.every((d) => d.note)}
+					<p><b>這 {dropped.length} 筆沒存進去</b></p>
+				{:else}
+					<p><b>教練改了流程，這 {dropped.length} 筆沒存進去</b><small>你記的時候，教練刪掉了這些環節或組。</small></p>
+				{/if}
 				<button type="button" onclick={() => (cloud ? cloud.dismissDropped() : (session.droppedRecords = []))}>知道了</button>
 			</div>
 			<table>
@@ -111,7 +115,10 @@
 							<td>{d.date}</td>
 							<td>{d.action}</td>
 							<td>{d.who}</td>
-							<td>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}</td>
+							<td
+								>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}{#if d.note}<small class="note">{d.note}</small
+									>{/if}</td
+							>
 						</tr>
 					{/each}
 				</tbody>
@@ -240,6 +247,9 @@
 	.dropped .run {
 		margin-left: 4px;
 		color: var(--muted);
+	}
+	.dropped .note {
+		display: block;
 	}
 	@media print {
 		.practice {
