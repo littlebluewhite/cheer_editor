@@ -14,6 +14,7 @@
 		changeAttempt,
 		deleteAttempt,
 		deleteLastAttempt,
+		fillOk,
 		keptAttempt,
 		phaseColor,
 		phaseLabel,
@@ -234,7 +235,7 @@
 			<button
 				type="button"
 				class="primary all-ok"
-				onclick={() => save({ ...Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])), ...shown })}>全部 ✓ 存</button
+				onclick={() => save(fillOk(action, shown))}>全部 ✓ 存</button
 			>
 		{/if}
 	</div>

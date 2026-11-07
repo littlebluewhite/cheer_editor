@@ -14,6 +14,7 @@ import {
 	restoreAttempt,
 	restoreRunThrough,
 	keptAttempt,
+	fillOk,
 	lastRunThrough,
 	addPhase,
 	deletePhase,
@@ -124,6 +125,13 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 		const flow = sample();
 		const saved = recordsOf(flowOf(recordAttempt(flow, 'x1', drill(marks, { whole }))))[0];
 		expect(keptAttempt(flow.actions[0], whole, marks)).toEqual({ whole: saved.whole, marks: saved.marks, blanks: saved.blanks });
+	});
+
+	it('「全部 ✓ 存」：已點的照點的，空著的環節補 ✓', () => {
+		const action = sample().actions[0];
+		expect(fillOk(action, { p2: '△' })).toEqual({ p1: '✓', p2: '△', p3: '✓' });
+		expect(fillOk(action, { p1: '✗' })).toEqual({ p1: '✗', p2: '✓', p3: '✓' });
+		expect(fillOk(action, {})).toEqual({ p1: '✓', p2: '✓', p3: '✓' });
 	});
 
 	it('讀流程檔不套這兩條：後來加在前面的環節，舊的一次照樣打得開、還是整個做', () => {

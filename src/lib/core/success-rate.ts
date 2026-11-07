@@ -261,6 +261,12 @@ export function keptAttempt(
 	return kept.whole && after.length ? { ...kept, blanks: after } : kept;
 }
 
+/** 「全部 ✓ 存」要存的記號：已點的照點的（△、✗ 不蓋掉），空著的環節補 ✓。存的時候一樣照 keptAttempt 留。 */
+export function fillOk(action: Action, marks: Record<string, Mark>): Record<string, Mark> {
+	const phases = action.successRate?.phases ?? [];
+	return { ...Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])), ...marks };
+}
+
 /**
  * 改一次會存下來的樣子：給動作、原本的那一次、改好的記號。只練幾個環節的照記一次的規則留（keptAttempt）。
  * 整個做的只看那一次當時就有、現在還在的環節（打了記號的加上空著的）：之後才加的環節不變成空著的，打了記號也不存。
