@@ -165,6 +165,8 @@ export interface FakeCloudFlow {
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
+ * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
+ * deleteFlow(flowId)：擁有者（在別的地方）刪了這支，開著的房間都馬上知道。
  * 音樂檔（#249）放在那支流程的 audio：超過 60 MB 不收（'tooBig'）；audioTooBig 設成 true 就是伺服器傳完才查到太大。
  */
 export function fakeServer(
@@ -266,6 +268,26 @@ export function fakeServer(
 			);
 		}
 	};
+	/** 把 from 擁有的流程（only：只交這幾支）交給 to，from 變編輯者；告訴兩個人開著的房間。回交出去幾支。 */
+	const handOverFlows = (from: string, to: string, only: FakeCloudFlow[] = state.flows) => {
+		const moved = only.filter((f) => same(f.owner, from));
+		for (const f of moved) {
+			const people = Object.fromEntries(Object.entries(f.people ?? {}).filter(([e]) => !same(e, to)));
+			f.owner = to;
+			f.people = { ...people, [from]: 'editor' };
+			for (const [email, role] of [[to, 'owner'], [from, 'editor']] as const) {
+				for (const r of rooms.filter((r) => r.flowId === f.id && same(r.email, email))) {
+					deliver(r.room, () => ({ kind: 'roleChanged', role, flow: structuredClone(f.flow), step: f.step ?? 0 }));
+				}
+			}
+		}
+		return moved.length;
+	};
+	/** 刪掉一支，告訴開著的房間。 */
+	const deleteFlow = (flowId: string) => {
+		state.flows = state.flows.filter((f) => f.id !== flowId);
+		for (const r of rooms.filter((r) => r.flowId === flowId)) deliver(r.room, () => ({ kind: 'deleted' }));
+	};
 	/** 叫的人是這支的擁有者（不是擁有者跟真的伺服器回 403、404 一樣當作出錯）。 */
 	const owned = (flowId: string) => {
 		const r = reach(flowId);
@@ -284,7 +306,7 @@ export function fakeServer(
 		state.links[`fake-token-${nextToken++}`] = { email, purpose };
 	};
 	const status = (u: FakeUser): UserStatus => {
-		if (u.disabled) return { kind: 'disabled' };
+		if (u.disabled) return { kind: 'disabled', flows: state.flows.filter((f) => same(f.owner, u.email)).length };
 		if (u.password) return { kind: 'active' };
 		const invite = linksOf(u.email).find(([, l]) => l.purpose === 'invite')?.[1];
 		return invite ? { kind: 'invited', hoursLeft: invite.hoursLeft ?? 24 } : { kind: 'inviteExpired' };
@@ -384,6 +406,16 @@ export function fakeServer(
 				u.disabled = false;
 			});
 		},
+		async adminHandOver(id, email) {
+			const r = adminDoes(id, false, (u) => (u.disabled ? undefined : { kind: 'notAllowed' }));
+			if (r !== 'ok') return r;
+			const from = state.users[id - 1];
+			const to = find(email);
+			if (!to) return { kind: 'noAccount' };
+			if (to === from) return { kind: 'sameUser' };
+			if (to.disabled) return { kind: 'disabled', name: to.name };
+			return { flows: handOverFlows(from.email, to.email) };
+		},
 		async myFlows() {
 			const email = signedInEmail();
 			const recent = (list: FakeCloudFlow[]) => [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -440,6 +472,18 @@ export function fakeServer(
 			const r = reach(flowId);
 			if (!r || r.role === 'owner') throw new ServerUnreachable();
 			changeRole(flowId, r.email, null);
+		},
+		async handOver(flowId, userId) {
+			const { f, email: me } = owned(flowId);
+			const u = find(emailOf(userId));
+			if (!u || !roleOf(f, u.email) || same(u.email, me)) throw new ServerUnreachable();
+			if (u.disabled) return { kind: 'disabled', name: u.name };
+			handOverFlows(me, u.email, [f]);
+			return peopleOf(f, me);
+		},
+		async deleteFlow(flowId) {
+			owned(flowId);
+			deleteFlow(flowId);
 		},
 		openRoom(flowId) {
 			let ready = false;
@@ -513,7 +557,7 @@ export function fakeServer(
 		held = [];
 		for (const send of now) send();
 	};
-	return { server, state, releaseRoom, changeRole };
+	return { server, state, releaseRoom, changeRole, deleteFlow };
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

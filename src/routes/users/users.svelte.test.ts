@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { fakeServer, flush, type FakeUser } from '#lib/test-fakes.js';
+import { fakeServer, flush, type FakeCloudFlow, type FakeUser } from '#lib/test-fakes.js';
+import { libSample } from '#lib/test-flows.js';
 import Users from './+page.svelte';
 
 const PW = '我們這一隊今年一定會贏 go go';
@@ -164,5 +165,64 @@ describe('管理使用者頁', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: '寄邀請' }));
 		await flush();
 		expect(within(dialog).getByRole('alert').textContent).toBe('今天寄不出去，明天再試。');
+	});
+});
+
+describe('管理員移交（#252）', () => {
+	/** 黃教練（被停用）有 2 支流程，其中一支分享給王教練；陳小美也被停用。 */
+	async function withFlows() {
+		const flow = (id: string, people: FakeCloudFlow['people'] = {}): FakeCloudFlow => ({
+			id,
+			owner: huang.email,
+			flow: libSample(),
+			updatedAt: new Date(2026, 10, 6).toISOString(),
+			people
+		});
+		const fake = fakeServer({
+			users: [lin, wang, { ...mei, disabled: true }, fang, huang].map((u) => ({ ...u })),
+			signedIn: lin.email,
+			flows: [flow('c1', { [wang.email]: 'viewer' }), flow('c2')]
+		});
+		render(Users, { server: fake.server });
+		await flush();
+		return fake;
+	}
+
+	it('被停用又有流程：「已停用・他有 N 支流程」和［移交 N 支流程］；沒流程的只有「已停用」', async () => {
+		await withFlows();
+		expect(within(row('黃教練')).getByText('已停用・他有 2 支流程')).toBeTruthy();
+		expect(buttons('黃教練')).toEqual(['恢復', '移交 2 支流程', '改 email']);
+		expect(within(row('陳小美')).getByText('已停用')).toBeTruthy();
+		expect(buttons('陳小美')).toEqual(['恢復', '改 email']);
+	});
+
+	it('對話框輸入接手的人的 email；擋沒帳號、交給他自己、接手的人被停用；全部交給同一個人', async () => {
+		const { state } = await withFlows();
+		await fireEvent.click(within(row('黃教練')).getByRole('button', { name: '移交 2 支流程' }));
+		const dialog = screen.getByRole('dialog', { name: '移交黃教練的流程' });
+		expect(within(dialog).getByText('接手的人變成擁有者，黃教練變成這些流程的編輯者。你看不到是哪幾支流程。')).toBeTruthy();
+		const email = within(dialog).getByLabelText('黃教練有 2 支流程。全部交給：');
+		const submit = async (value: string) => {
+			await fireEvent.input(email, { target: { value } });
+			await fireEvent.click(within(dialog).getByRole('button', { name: '移交 2 支流程' }));
+			await flush();
+		};
+		await submit('nobody@example.com');
+		expect(within(dialog).getByRole('alert').textContent).toBe('這個 email 沒有帳號。');
+		await submit('HUANG@example.com');
+		expect(within(dialog).getByRole('alert').textContent).toBe('不能交給他自己。');
+		await submit('mei@example.com');
+		expect(within(dialog).getByRole('alert').textContent).toBe('陳小美被停用了，不能移交給他。');
+		expect(state.flows.map((f) => f.owner)).toEqual([huang.email, huang.email]);
+
+		await submit('wang@example.com');
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(green()).toBe('移交了黃教練的 2 支流程給 wang@example.com。');
+		expect(state.flows.map((f) => [f.owner, f.people])).toEqual([
+			[wang.email, { [huang.email]: 'editor' }],
+			[wang.email, { [huang.email]: 'editor' }]
+		]);
+		expect(within(row('黃教練')).getByText('已停用')).toBeTruthy();
+		expect(buttons('黃教練')).toEqual(['恢復', '改 email']);
 	});
 });

@@ -4,4 +4,4 @@ import type { Role } from "./Role";
 /**
  * 伺服器送給用戶端的。
  */
-export type RoomMessage = { "kind": "ready", step: number, } | { "kind": "newVersion" } | { "kind": "accepted", stepId: string, step: number, } | { "kind": "rejected", stepId: string, message: string, flow: unknown, step: number, } | { "kind": "roleChanged", role: Role, flow: unknown, step: number, } | { "kind": "revoked" };
+export type RoomMessage = { "kind": "ready", step: number, } | { "kind": "newVersion" } | { "kind": "accepted", stepId: string, step: number, } | { "kind": "rejected", stepId: string, message: string, flow: unknown, step: number, } | { "kind": "roleChanged", role: Role, flow: unknown, step: number, } | { "kind": "revoked" } | { "kind": "deleted" };

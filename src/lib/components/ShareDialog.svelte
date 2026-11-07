@@ -2,7 +2,8 @@
 	// 分享對話框（#250，照〈登入、設密碼、分享對話框長什麼樣〉的 A）：每個人都叫「分享」。
 	// 擁有者：最上面 email、權限（預設編輯者）、「加入」（Enter 也算）；每個人右邊一個選單改權限、「收回」（不用確認）。
 	// 不是擁有者：只看得到名字、權限（沒有 email），最下面「離開這支流程」（要確認）。右下「完成」。
-	// 分享連結在 #251、移交在 #252。
+	// 移交（#252）：選單裡「設為擁有者（移交）」（被停用的人選不到），要確認；擁有者最下面「刪掉這支流程」，問一次。
+	// 分享連結在 #251。
 	import { onMount } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { ROLE_NAMES } from '#lib/role-names.js';
@@ -21,7 +22,7 @@
 	const editor = getEditor();
 	const server = editor.adapters.server;
 	const UNREACHABLE = '連不上伺服器，再試一次。';
-	/** 能分享出去的權限（擁有者不在這裡選：移交在 #252）。 */
+	/** 能分享出去的權限（擁有者不在這裡選：選單另外有「設為擁有者（移交）」）。 */
 	const GRANTS = ['editor', 'recorder', 'viewer'] as const;
 
 	/** 有權限的人；還沒拿到是 null。 */
@@ -32,8 +33,8 @@
 	let error = $state('');
 	/** 做好了什麼（綠字，例：收回了王教練的權限。）。 */
 	let done = $state('');
-	/** 「離開這支流程」按了，在問。 */
-	let leaving = $state(false);
+	/** 在問的事：離開、刪掉這支流程、移交給誰。 */
+	let asking = $state.raw<{ kind: 'leave' } | { kind: 'delete' } | { kind: 'handOver'; to: Person } | null>(null);
 
 	const amOwner = $derived(people?.some((p) => p.me && p.role === 'owner') ?? false);
 
@@ -73,10 +74,16 @@
 		}
 	}
 
-	/** 每列右邊的選單：換權限，或收回（不用確認，收錯了再加回來）。 */
-	async function pick(p: Person, value: string) {
+	/** 每列右邊的選單：換權限，或收回（不用確認，收錯了再加回來）；移交要先確認。 */
+	async function pick(p: Person, menu: HTMLSelectElement) {
+		const value = menu.value;
 		error = '';
 		done = '';
+		if (value === 'owner') {
+			menu.value = p.role;
+			asking = { kind: 'handOver', to: p };
+			return;
+		}
 		try {
 			if (value === 'revoke') {
 				people = await server.revoke(flowId, p.userId);
@@ -93,10 +100,54 @@
 		try {
 			await editor.file.leaveCloud();
 		} catch {
-			leaving = false;
+			asking = null;
 			error = UNREACHABLE;
 		}
 	}
+
+	async function deleteFlow() {
+		try {
+			await editor.file.deleteCloud();
+		} catch {
+			asking = null;
+			error = UNREACHABLE;
+		}
+	}
+
+	/** 移交（確認過了）：對方是擁有者，我變編輯者。 */
+	async function handOver(to: Person) {
+		asking = null;
+		try {
+			const r = await server.handOver(flowId, to.userId);
+			if (Array.isArray(r)) {
+				people = r;
+				done = `移交了：${to.name}現在是擁有者，你是編輯者。`;
+			} else error = problemText(r);
+		} catch {
+			error = UNREACHABLE;
+		}
+	}
+
+	/** 確認框的字、確定鈕、按了做什麼。 */
+	const confirm = $derived.by(() => {
+		if (!asking) return null;
+		if (asking.kind === 'leave') {
+			return {
+				message: `離開「${flowName}」？它不會再出現在「分享給我的」，要擁有者再分享給你才能打開。`,
+				label: '離開',
+				run: leave
+			};
+		}
+		if (asking.kind === 'delete') {
+			return { message: `刪掉「${flowName}」？所有人都打不開，成功率紀錄一起刪，不能復原。`, label: '刪掉', run: deleteFlow };
+		}
+		const { to } = asking;
+		return {
+			message: `把「${flowName}」移交給${to.name}？交出去後${to.name}是擁有者，你變成編輯者，不能再分享、改別人的權限、刪這支流程。${to.name}不用接受，馬上生效。`,
+			label: '移交',
+			run: () => handOver(to)
+		};
+	});
 </script>
 
 <Modal label={`分享「${flowName}」`} class="dialog share-dialog" {onclose}>
@@ -130,27 +181,24 @@
 					{#if p.role === 'owner' || !amOwner}
 						<span class="role">{ROLE_NAMES[p.role]}</span>
 					{:else}
-						<select aria-label={`${p.name}的權限`} value={p.role} onchange={(e) => pick(p, e.currentTarget.value)}>
+						<select aria-label={`${p.name}的權限`} value={p.role} onchange={(e) => pick(p, e.currentTarget)}>
 							{#each GRANTS as r (r)}<option value={r}>{ROLE_NAMES[r]}</option>{/each}
+							<hr />
+							<option value="owner" disabled={p.disabled}>設為擁有者（移交）</option>
 							<option value="revoke">收回</option>
 						</select>
 					{/if}
 				</li>
 			{/each}
 		</ul>
-		{#if leaving}
-			<ConfirmList
-				message={`離開「${flowName}」？它不會再出現在「分享給我的」，要擁有者再分享給你才能打開。`}
-				items={[]}
-				confirmLabel="離開"
-				onconfirm={leave}
-				oncancel={() => (leaving = false)}
-				focusCancel
-			/>
+		{#if confirm}
+			<ConfirmList message={confirm.message} items={[]} confirmLabel={confirm.label} onconfirm={confirm.run} oncancel={() => (asking = null)} focusCancel />
 		{:else}
 			<footer>
-				{#if people && !amOwner}
-					<button type="button" class="ghost" onclick={() => (leaving = true)}>離開這支流程</button>
+				{#if amOwner}
+					<button type="button" class="ghost danger" onclick={() => (asking = { kind: 'delete' })}>刪掉這支流程</button>
+				{:else if people}
+					<button type="button" class="ghost" onclick={() => (asking = { kind: 'leave' })}>離開這支流程</button>
 				{/if}
 				<button type="button" class="primary done-btn" onclick={close}>完成</button>
 			</footer>

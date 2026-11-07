@@ -542,3 +542,280 @@ async fn a_step_after_being_revoked_is_turned_away(db: sqlx::PgPool) {
         .await;
     assert_eq!(got["flow"]["name"], "全國賽");
 }
+
+// ---------- 移交、刪流程（#252） ----------
+
+impl Server {
+    /// 擁有者把流程移交給名單上的一個人。
+    async fn hand_over(&self, owner: &User, id: &str, email: &str) -> (StatusCode, Value) {
+        let user = self.user_id(email).await;
+        let path = format!("/api/flows/{id}/people/{user}/owner");
+        self.send("POST", &path, None, &owner.cookie).await
+    }
+
+    /// 管理員把一個（被停用的）人的流程全部移交給 to。
+    async fn admin_hand_over(&self, admin: &User, from: &str, to: &str) -> (StatusCode, Value) {
+        let user = self.user_id(from).await;
+        let path = format!("/api/admin/users/{user}/transfer");
+        self.send("POST", &path, Some(json!({ "email": to })), &admin.cookie)
+            .await
+    }
+
+    async fn delete(&self, who: &User, id: &str) -> StatusCode {
+        self.send(
+            "POST",
+            &format!("/api/flows/{id}/delete"),
+            None,
+            &who.cookie,
+        )
+        .await
+        .0
+    }
+
+    async fn role(&self, who: &User, id: &str) -> Value {
+        let (_, got) = self
+            .send("GET", &format!("/api/flows/{id}"), None, &who.cookie)
+            .await;
+        got["role"].clone()
+    }
+
+    /// 管理使用者頁上這個人那一列的狀態。
+    async fn status(&self, admin: &User, email: &str) -> Value {
+        let (_, users) = self
+            .send("GET", "/api/admin/users", None, &admin.cookie)
+            .await;
+        users
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["email"] == email)
+            .unwrap()["status"]
+            .clone()
+    }
+}
+
+#[sqlx::test]
+async fn the_owner_hands_over_only_to_someone_on_the_list_who_is_not_disabled(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let chen = s.user("chen@example.com", "陳教練").await;
+    let mei = s.user("mei@example.com", "小美").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "viewer").await;
+    s.share(&wang, &id, chen.email, "editor").await;
+    s.disable(chen.email).await;
+
+    // 不在名單上：404；被停用：409；不是擁有者：403
+    assert_eq!(
+        s.hand_over(&wang, &id, mei.email).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, why) = s.hand_over(&wang, &id, chen.email).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(why, json!({ "kind": "disabled", "name": "陳教練" }));
+    assert_eq!(
+        s.hand_over(&lin, &id, lin.email).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(s.role(&wang, &id).await, "owner");
+
+    // 哪一級都能接：檢視者接手，原擁有者變編輯者；回的名單沒有 email（他已經不是擁有者）
+    let (status, people) = s.hand_over(&wang, &id, lin.email).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        names(&people),
+        ["林教練 owner", "陳教練 editor", "王教練 editor"]
+    );
+    assert_eq!(people[0].get("email"), None);
+    assert_eq!(s.role(&lin, &id).await, "owner");
+    assert_eq!(s.role(&wang, &id).await, "editor");
+    let (_, list) = s.send("GET", "/api/flows", None, &lin.cookie).await;
+    assert_eq!(list["mine"][0]["id"], id.as_str());
+    assert_eq!(list["shared"], json!([]));
+    let (_, list) = s.send("GET", "/api/flows", None, &wang.cookie).await;
+    assert_eq!(list["mine"], json!([]));
+    assert_eq!(list["shared"][0]["ownerName"], "林教練");
+    assert_eq!(list["shared"][0]["role"], "editor");
+
+    // 原擁有者已經不能移交；新擁有者能分享
+    assert_eq!(
+        s.hand_over(&wang, &id, lin.email).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        s.share(&lin, &id, mei.email, "viewer").await.0,
+        StatusCode::OK
+    );
+}
+
+#[sqlx::test]
+async fn the_room_hears_who_is_owner_now(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "recorder").await;
+    let (mut owner_room, _) = s.join(&wang, &id).await;
+    let (mut room, _) = s.join(&lin, &id).await;
+
+    s.hand_over(&wang, &id, lin.email).await;
+    let told = hear(&mut room).await;
+    assert_eq!(told["kind"], "roleChanged");
+    assert_eq!(told["role"], "owner");
+    assert_eq!(hear(&mut owner_room).await["role"], "editor");
+    // 記錄者變擁有者：能改了
+    assert_eq!(
+        step(&mut room, "step-a", "新名字").await["kind"],
+        "accepted"
+    );
+}
+
+#[sqlx::test]
+async fn the_admin_hands_over_everything_of_a_disabled_user_to_one_person(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let huang = s.user("huang@example.com", "黃教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let chen = s.user("chen@example.com", "陳教練").await;
+    let one = s.create(&huang, "全國賽").await;
+    s.create(&huang, "校慶表演").await;
+    let others = s.create(&lin, "林的").await;
+    // 林教練本來就是其中一支的記錄者；黃教練在林教練的流程裡是檢視者
+    s.share(&huang, &one, lin.email, "recorder").await;
+    s.share(&lin, &others, huang.email, "viewer").await;
+    let admin = s.user("admin@example.com", "管理員").await;
+
+    // 還沒被停用：不能做
+    let (status, why) = s.admin_hand_over(&admin, huang.email, lin.email).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(why, json!({ "kind": "notAllowed" }));
+    // 不是管理員：403
+    let (status, _) = s.admin_hand_over(&lin, huang.email, lin.email).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    s.disable(huang.email).await;
+    // 管理員那頁：「已停用・他有 2 支流程」
+    assert_eq!(
+        s.status(&admin, huang.email).await,
+        json!({ "kind": "disabled", "flows": 2 })
+    );
+
+    // 擋：沒帳號、交給他自己、接手的人被停用
+    let (_, why) = s
+        .admin_hand_over(&admin, huang.email, "nobody@example.com")
+        .await;
+    assert_eq!(why, json!({ "kind": "noAccount" }));
+    let (_, why) = s
+        .admin_hand_over(&admin, huang.email, "HUANG@example.com")
+        .await;
+    assert_eq!(why, json!({ "kind": "sameUser" }));
+    s.disable(chen.email).await;
+    let (_, why) = s.admin_hand_over(&admin, huang.email, chen.email).await;
+    assert_eq!(why, json!({ "kind": "disabled", "name": "陳教練" }));
+
+    // 全部交給林教練：回的只有支數
+    let (status, done) = s
+        .admin_hand_over(&admin, huang.email, " LIN@example.com")
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(done, json!({ "flows": 2 }));
+    let (_, list) = s.send("GET", "/api/flows", None, &lin.cookie).await;
+    let mut mine: Vec<&str> = list["mine"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["name"].as_str().unwrap())
+        .collect();
+    mine.sort();
+    assert_eq!(mine, ["全國賽", "林的", "校慶表演"]);
+    assert_eq!(list["shared"], json!([]));
+    // 原擁有者變這兩支的編輯者；他在別人流程裡的權限不動
+    let (_, people) = s.people(&lin, &one).await;
+    assert_eq!(names(&people), ["林教練 owner", "黃教練 editor"]);
+    assert_eq!(people[1]["disabled"], true);
+    let (_, people) = s.people(&lin, &others).await;
+    assert_eq!(names(&people), ["林教練 owner", "黃教練 viewer"]);
+    assert_eq!(
+        s.status(&admin, huang.email).await,
+        json!({ "kind": "disabled", "flows": 0 })
+    );
+}
+
+#[sqlx::test]
+async fn only_the_owner_deletes_and_everything_goes_with_it(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "editor").await;
+    let (mut lin_room, _) = s.join(&lin, &id).await;
+    let (mut owner_room, _) = s.join(&wang, &id).await;
+    assert_eq!(
+        step(&mut lin_room, "step-a", "改過").await["kind"],
+        "accepted"
+    );
+    // 一個還在用的音樂、一個早就不用的
+    let early = Utc.with_ymd_and_hms(2026, 11, 1, 9, 0, 0).unwrap();
+    for (audio, unused) in [("a1", None), ("a2", Some(early))] {
+        sqlx::query(
+            "INSERT INTO flow_audio (flow_id, audio_id, object_key, size, created_at, unused_since)
+             VALUES ($1, $2, $3, 10, $4, $5)",
+        )
+        .bind(&id)
+        .bind(audio)
+        .bind(format!("flows/{id}/{audio}.mp3"))
+        .bind(early)
+        .bind(unused)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    }
+
+    // 編輯者不能刪（403），沒權限的 404
+    assert_eq!(s.delete(&lin, &id).await, StatusCode::FORBIDDEN);
+    let admin = s.user("admin@example.com", "管理員").await;
+    assert_eq!(s.delete(&admin, &id).await, StatusCode::NOT_FOUND);
+
+    assert_eq!(s.delete(&wang, &id).await, StatusCode::NO_CONTENT);
+    // 開著的人都被通知，房間關掉
+    assert_eq!(hear(&mut lin_room).await, json!({ "kind": "deleted" }));
+    assert_eq!(hear(&mut lin_room).await, Value::Null);
+    assert_eq!(hear(&mut owner_room).await, json!({ "kind": "deleted" }));
+    // 所有人都打不開
+    for who in [&wang, &lin] {
+        let (status, _) = s
+            .send("GET", &format!("/api/flows/{id}"), None, &who.cookie)
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (_, list) = s.send("GET", "/api/flows", None, &who.cookie).await;
+        assert_eq!(list, json!({ "mine": [], "shared": [] }));
+    }
+    assert_eq!(
+        s.connect(&lin, &id).await.err(),
+        Some(StatusCode::NOT_FOUND)
+    );
+    // 紀錄一起刪
+    for sql in [
+        "SELECT count(*) FROM flow_steps WHERE flow_id = $1",
+        "SELECT count(*) FROM flow_permissions WHERE flow_id = $1",
+    ] {
+        let (n,): (i64,) = sqlx::query_as(sql)
+            .bind(&id)
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap();
+        assert_eq!(n, 0, "{sql}");
+    }
+    // 音樂記下哪天不用了（30 天後真的刪在 #266）；早就不用的不動
+    let audio: Vec<(String, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT audio_id, unused_since FROM flow_audio WHERE flow_id = $1 ORDER BY audio_id",
+    )
+    .bind(&id)
+    .fetch_all(&s.state.db)
+    .await
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 11, 7, 9, 0, 0).unwrap();
+    assert_eq!(audio, [("a1".to_owned(), now), ("a2".to_owned(), early)]);
+    // 再刪一次：沒有這支了
+    assert_eq!(s.delete(&wang, &id).await, StatusCode::NOT_FOUND);
+}

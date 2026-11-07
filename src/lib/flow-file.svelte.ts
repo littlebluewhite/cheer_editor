@@ -282,15 +282,17 @@ export class FlowFile {
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
 		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
-		cloud.onrevoked = () => {
+		const goneHome = (why: (name: string) => string) => () => {
 			const name = this.#editor.session.flow?.name ?? '';
 			this.#editor.session.open(null);
-			this.#revoked = `你已經不能打開「${name}」。`;
+			this.#revoked = why(name);
 		};
+		cloud.onrevoked = goneHome((name) => `你已經不能打開「${name}」。`);
+		cloud.ondeleted = goneHome((name) => `「${name}」被擁有者刪掉了。`);
 		this.#cloud = cloud;
 	}
 
-	/** 被收回回首頁時，首頁最上面黃的那條（「你已經不能打開「…」。」）；沒有是空字串。 */
+	/** 被收回、被刪掉回首頁時，首頁最上面黃的那條（「你已經不能打開「…」。」）；沒有是空字串。 */
 	#revoked = $state('');
 	get revoked(): string {
 		return this.#revoked;
@@ -312,6 +314,23 @@ export class FlowFile {
 			await this.#editor.adapters.server.leave(id);
 		} catch (e) {
 			cloud.onrevoked = revoked;
+			throw e;
+		}
+		if (this.#cloudId === id) this.#editor.session.open(null);
+	}
+
+	/** 分享對話框的「刪掉這支流程」（擁有者，確認過了，#252）：伺服器刪掉，回首頁。連不上伺服器丟錯。 */
+	async deleteCloud() {
+		const id = this.#cloudId;
+		const cloud = this.#cloud;
+		if (!id || !cloud) return;
+		// 自己刪的：房間說「被刪掉了」時直接回首頁，不寫黃條
+		const deleted = cloud.ondeleted;
+		cloud.ondeleted = () => this.#editor.session.open(null);
+		try {
+			await this.#editor.adapters.server.deleteFlow(id);
+		} catch (e) {
+			cloud.ondeleted = deleted;
 			throw e;
 		}
 		if (this.#cloudId === id) this.#editor.session.open(null);

@@ -72,6 +72,7 @@ pub fn app(state: AppState, site: &Path) -> Router {
         .route("/api/admin/users/{id}/email", post(admin::change_email))
         .route("/api/admin/users/{id}/disable", post(admin::disable))
         .route("/api/admin/users/{id}/enable", post(admin::enable))
+        .route("/api/admin/users/{id}/transfer", post(admin::hand_over))
         .route(
             "/api/flows",
             get(cloud_flows::mine).post(cloud_flows::create),
@@ -90,7 +91,12 @@ pub fn app(state: AppState, site: &Path) -> Router {
             "/api/flows/{id}/people/{user}/remove",
             post(sharing::revoke),
         )
+        .route(
+            "/api/flows/{id}/people/{user}/owner",
+            post(sharing::hand_over),
+        )
         .route("/api/flows/{id}/leave", post(sharing::leave))
+        .route("/api/flows/{id}/delete", post(sharing::delete))
         .route("/api/flows/{id}/audio", post(music::start_upload))
         .route("/api/flows/{id}/audio/{audio_id}", get(music::download))
         .route(

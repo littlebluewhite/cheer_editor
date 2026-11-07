@@ -3,4 +3,4 @@
 /**
  * 管理的事做不成的原因（4xx、503 的內容）。
  */
-export type AdminProblem = { "kind": "emailTaken" } | { "kind": "mailQuota" } | { "kind": "notAllowed" };
+export type AdminProblem = { "kind": "emailTaken" } | { "kind": "mailQuota" } | { "kind": "notAllowed" } | { "kind": "noAccount" } | { "kind": "sameUser" } | { "kind": "disabled", name: string, };

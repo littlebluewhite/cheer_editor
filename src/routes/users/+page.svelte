@@ -1,12 +1,20 @@
 <script lang="ts">
 	// 管理使用者（#245，#190 的 A）：只有管理員看得到，一頁一張表。字照 #190 的結論留言。
 	// 寄重設密碼信、重寄邀請、恢復：按了直接做，表上面綠色一行說做了什麼。加使用者、改 email、停用：跳對話框。
-	// 只有停用，沒有刪除使用者。「已停用・他有 N 支流程」和［移交］在 #252 加。
+	// 只有停用，沒有刪除使用者。被停用又有流程的寫「已停用・他有 N 支流程」，多［移交 N 支流程］（#252）：
+	// 對話框輸入接手的人的 email，全部交給同一個人；管理員只看到支數，看不到流程名字。
 	import { onMount } from 'svelte';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
-	import { httpServer, type AdminResult, type ServerAdapter, type UserRow, type UserStatus } from '#lib/server-api.js';
+	import {
+		httpServer,
+		type AdminProblem,
+		type AdminResult,
+		type ServerAdapter,
+		type UserRow,
+		type UserStatus
+	} from '#lib/server-api.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -24,7 +32,11 @@
 	let failed = $state('');
 	let busy = $state(false);
 
-	type Dialog = { kind: 'add' } | { kind: 'email'; user: UserRow } | { kind: 'disable'; user: UserRow };
+	type Dialog =
+		| { kind: 'add' }
+		| { kind: 'email'; user: UserRow }
+		| { kind: 'disable'; user: UserRow }
+		| { kind: 'handOver'; user: UserRow; flows: number };
 	let dialog = $state.raw<Dialog | null>(null);
 	let dialogError = $state('');
 	let email = $state('');
@@ -49,7 +61,7 @@
 			case 'inviteExpired':
 				return '邀請過期，他還沒設密碼';
 			case 'disabled':
-				return '已停用';
+				return s.flows ? `已停用・他有 ${s.flows} 支流程` : '已停用';
 		}
 	}
 
@@ -62,13 +74,28 @@
 				await load();
 				return null;
 			}
-			if (result.kind === 'mailQuota') return QUOTA;
-			if (result.kind === 'emailTaken') return problems.emailTaken ?? '這個 email 已經有帳號了。';
-			return '這個人現在不能這樣做，請重新整理再看看。';
+			return problemText(result, problems);
 		} catch {
 			return UNREACHABLE;
 		} finally {
 			busy = false;
+		}
+	}
+
+	function problemText(p: AdminProblem, problems: { emailTaken?: string } = {}): string {
+		switch (p.kind) {
+			case 'mailQuota':
+				return QUOTA;
+			case 'emailTaken':
+				return problems.emailTaken ?? '這個 email 已經有帳號了。';
+			case 'noAccount':
+				return '這個 email 沒有帳號。';
+			case 'sameUser':
+				return '不能交給他自己。';
+			case 'disabled':
+				return `${p.name}被停用了，不能移交給他。`;
+			case 'notAllowed':
+				return '這個人現在不能這樣做，請重新整理再看看。';
 		}
 	}
 
@@ -101,6 +128,13 @@
 			const to = email.trim();
 			problem = await run(() => server.changeEmail(d.user.id, to), { emailTaken: '這個 email 已經是別人的了。' });
 			message = `改好了：${d.user.name}的 email 是 ${to}，新舊兩個信箱都寄了通知。`;
+		} else if (d.kind === 'handOver') {
+			const to = email.trim();
+			problem = await run(async () => {
+				const r = await server.adminHandOver(d.user.id, to);
+				return 'flows' in r ? 'ok' : r;
+			});
+			message = `移交了${d.user.name}的 ${d.flows} 支流程給 ${to}。`;
 		} else {
 			problem = await run(() => server.disableUser(d.user.id));
 			message = `停用了${d.user.name}。`;
@@ -146,9 +180,13 @@
 											>寄重設密碼信</button
 										>
 									{:else if u.status.kind === 'disabled'}
+										{@const flows = u.status.flows}
 										<button type="button" disabled={busy} onclick={() => now(() => server.enableUser(u.id), `恢復了${u.name}，他用原本的密碼就能登入。`)}
 											>恢復</button
 										>
+										{#if flows}
+											<button type="button" onclick={() => open({ kind: 'handOver', user: u, flows })}>移交 {flows} 支流程</button>
+										{/if}
 									{:else}
 										<button
 											type="button"
@@ -172,7 +210,14 @@
 
 {#if dialog}
 	{@const d = dialog}
-	{@const title = d.kind === 'add' ? '加使用者' : d.kind === 'email' ? `改 email：${d.user.name}` : `停用${d.user.name}？`}
+	{@const title =
+		d.kind === 'add'
+			? '加使用者'
+			: d.kind === 'email'
+				? `改 email：${d.user.name}`
+				: d.kind === 'handOver'
+					? `移交${d.user.name}的流程`
+					: `停用${d.user.name}？`}
 	<Modal label={title} class="dialog admin-dialog" onclose={() => (dialog = null)}>
 		{#snippet children(close)}
 			<header class="dialog-head">
@@ -188,6 +233,17 @@
 					<p>現在：{d.user.email}</p>
 					<label class="field"><span>新的 email</span><input type="email" required data-autofocus bind:value={email} /></label>
 					<p class="hint">改好後新舊兩個信箱都會收到通知，他下次用新的 email 登入。不能跟別人重複。</p>
+				{:else if d.kind === 'handOver'}
+					<label class="field"
+						><span>{d.user.name}有 {d.flows} 支流程。全部交給：</span><input
+							type="email"
+							required
+							placeholder="接手的人的 email"
+							data-autofocus
+							bind:value={email}
+						/></label
+					>
+					<p class="hint">接手的人變成擁有者，{d.user.name}變成這些流程的編輯者。你看不到是哪幾支流程。</p>
 				{:else}
 					<ul>
 						<li>他每台裝置馬上登出，還沒用的連結都不能用。</li>
@@ -199,7 +255,7 @@
 				<div class="buttons">
 					<button type="button" data-autofocus={d.kind === 'disable' || undefined} onclick={close}>取消</button>
 					<button type="submit" class={d.kind === 'disable' ? 'danger' : 'primary'} disabled={busy}>
-						{d.kind === 'add' ? '寄邀請' : d.kind === 'email' ? '改 email' : '停用'}
+						{d.kind === 'add' ? '寄邀請' : d.kind === 'email' ? '改 email' : d.kind === 'handOver' ? `移交 ${d.flows} 支流程` : '停用'}
 					</button>
 				</div>
 			</form>

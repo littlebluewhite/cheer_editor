@@ -309,7 +309,7 @@ async fn list_shows_each_status(db: sqlx::PgPool) {
     );
     assert_eq!(
         s.row(&admin, "huang@example.com").await["status"],
-        json!({ "kind": "disabled" })
+        json!({ "kind": "disabled", "flows": 0 })
     );
 
     s.pass(Duration::hours(21));

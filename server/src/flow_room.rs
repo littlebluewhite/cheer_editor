@@ -3,7 +3,7 @@
 //! 連上先打招呼（指紋、分頁 id、上次看到第幾步）：指紋不一樣就說有新版、不收步。
 //! 之後每一步：步驟 id、上次看到第幾步、一串指令（名字＋參數）。伺服器在現在的樣子上用流程核心照順序跑，
 //! 被擋、要問（教練那邊沒問）就退回並帶原因和伺服器現在的樣子；收了就存起來、第幾步加 1（ADR 0007、0011）。
-//! 步驟 id 收過：回原本的結果，不套兩次。別人的改動、改到同一個東西在 #253、#254。
+//! 步驟 id 收過：回原本的結果，不套兩次。流程被刪了（#252）每個連線都說，房間關掉。別人的改動、改到同一個東西在 #253、#254。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -31,6 +31,8 @@ const VIEW_ONLY: &str = "沒存進去：你只能看這支流程";
 pub enum RoomEvent {
     /// 這個人的權限改了；None 是被收回（或離開）。
     Permission { user_id: i64, role: Option<Role> },
+    /// 擁有者把這支流程刪了（#252）：每個人都要知道。
+    Deleted,
 }
 
 /// 開著的房間：流程 id → 發給那支流程每個連線的頻道。
@@ -133,6 +135,8 @@ pub enum RoomMessage {
     },
     /// 我被收回了（或離開了）：房間關掉，回首頁。
     Revoked,
+    /// 擁有者把這支流程刪了（#252）：房間關掉，回首頁並說原因。
+    Deleted,
 }
 
 /// 連房間：別的網站叫的擋（403）、沒登入 401、不是我的或沒有這支 404。
@@ -206,6 +210,7 @@ async fn serve(
                 Ok(RoomEvent::Permission { user_id: who, role }) if who == user_id => {
                     told_role(&state, flow_id, role).await?
                 }
+                Ok(RoomEvent::Deleted) => RoomMessage::Deleted,
                 Ok(_) => continue,
                 // 漏聽了幾件：照資料庫重新看一次自己的權限。
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
@@ -216,7 +221,7 @@ async fn serve(
             },
         };
         tell(&mut socket, &reply).await?;
-        if matches!(reply, RoomMessage::Revoked) {
+        if matches!(reply, RoomMessage::Revoked | RoomMessage::Deleted) {
             return Ok(());
         }
     }
@@ -270,7 +275,7 @@ async fn tell(socket: &mut WebSocket, message: &RoomMessage) -> anyhow::Result<(
     Ok(())
 }
 
-/// 收一步。同一支流程的步鎖著那一列一步一步來。先查權限：被收回（或流程不見了）回 Revoked，
+/// 收一步。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted；先查權限：被收回回 Revoked，
 /// 不能改的（記錄者、檢視者）退回。
 async fn take_step(
     state: &AppState,
@@ -287,7 +292,7 @@ async fn take_step(
             .fetch_optional(&mut *tx)
             .await?
     else {
-        return Ok(RoomMessage::Revoked);
+        return Ok(RoomMessage::Deleted);
     };
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
         return Ok(RoomMessage::Revoked);
