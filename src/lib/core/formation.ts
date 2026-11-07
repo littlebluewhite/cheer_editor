@@ -6,7 +6,7 @@ import { actionSeconds } from './action-types';
 import { fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
-import { nextId } from './ids';
+import { newId } from './ids';
 import { tooLong } from './text-length';
 import {
 	EPS,
@@ -472,7 +472,7 @@ export function insertFormation(flow: Flow, sec: number): CommandResult {
 	if (formationAt(flow, sec)) return blocked('這一拍已經有站位');
 	const t = toSeconds(flow, p);
 	const formation: Formation = {
-		id: nextId('f', flow.formations.map((f) => f.id)),
+		id: newId('f', flow.formations.map((f) => f.id)),
 		...p,
 		pos: { ...positionsAt(flow, t) }
 	};

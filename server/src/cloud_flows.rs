@@ -64,8 +64,14 @@ pub async fn create(
     let Some((user_id, _)) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
+    let id = new_flow_id()?;
     let commands = format!(r#"[{{"name":"createFlow","args":[{}]}}]"#, input.get());
-    let Ok(result) = state.core.run_commands("null".into(), commands).await else {
+    // 建這支流程的那一步：步驟 id 用這支流程的 id（亂數），新東西的 id 由它算出來（ADR 0011）。
+    let Ok(result) = state
+        .core
+        .run_commands("null".into(), commands, id.clone())
+        .await
+    else {
         // 流程核心讀不懂（例：不是物件）。
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
@@ -82,7 +88,6 @@ pub async fn create(
         }
     };
 
-    let id = new_flow_id()?;
     let now = state.clock.now();
     let (name,): (String,) = sqlx::query_as(
         "INSERT INTO flows (id, owner_id, content, updated_at) VALUES ($1, $2, $3::json, $4)

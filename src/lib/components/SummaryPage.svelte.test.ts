@@ -20,13 +20,13 @@ function sampleFlow(): Flow {
 	);
 	const tumbling = flow.actions[1].successRate!.phases[0].id;
 	flow = flowOf(
-		recordRunThrough(flow, DATE, [
+		recordRunThrough(flow, DATE, 1794036000000, [
 			{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } },
 			{ actionId: 'x2', who: 'm1', marks: { [tumbling]: '✓' } }
 		])
 	);
 	return flowOf(
-		recordRunThrough(flow, DATE, [
+		recordRunThrough(flow, DATE, 1794036000000, [
 			{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } },
 			{ actionId: 'x2', who: 'm1', marks: { [tumbling]: '✗' } }
 		])

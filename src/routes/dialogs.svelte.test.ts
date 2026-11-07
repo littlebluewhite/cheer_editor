@@ -2,9 +2,16 @@
 // Esc、×、點背景結果一樣；焦點進去、Tab 只在裡面轉、關掉回到打開它的按鈕；填錯退回實際值並說哪一格。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { editorPage } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
+
+// 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
+// 所以不算步驟 id：新東西照舊發下一個編號。亂數的 id 在核心測試（commands、flow-file）和 ask-ids.test.ts 測。
+vi.mock('#lib/core/ids.js', async (load) => ({
+	...(await load<typeof import('#lib/core/ids.js')>()),
+	inStep: <R>(_stepId: string, run: () => R) => run()
+}));
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};

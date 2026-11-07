@@ -107,16 +107,17 @@ export class Ask {
 
 	/**
 	 * 每次都跑在那時候的流程上。要問時記下是第幾個指令問的，
-	 * 回答放進那個指令的 options（前面回答過的留著），整串再送一次。
+	 * 回答放進那個指令的 options（前面回答過的留著），整串再送一次。整串是同一步，用同一個步驟 id。
 	 */
 	#byName(what: Command | Command[]): (o: ConfirmOption) => CommandResult {
 		const single = !Array.isArray(what);
 		let commands = single ? [what] : what;
 		let asking = -1;
+		const stepId = newStepId();
 		return (o) => {
 			if (asking >= 0) commands = commands.map((c, i) => (i === asking ? { ...c, options: o } : c));
 			const flow = this.#flow();
-			const r = single ? runCommand(flow, commands[0]) : runCommands(flow, commands);
+			const r = single ? runCommand(flow, commands[0], stepId) : runCommands(flow, commands, stepId);
 			asking = r.kind === 'confirm' || r.kind === 'choose' ? ('at' in r ? r.at : 0) : -1;
 			return r;
 		};
@@ -174,4 +175,9 @@ export class Ask {
 			this.#onfail?.(this.error);
 		}
 	}
+}
+
+/** 一步的步驟 id：12 個字的亂數（小寫字母、數字）。一步裡新東西的 id 由它算出來（ADR 0011）。 */
+function newStepId(): string {
+	return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
 }

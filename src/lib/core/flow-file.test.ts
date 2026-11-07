@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
+	inStep,
 	addAction,
 	addCustomRole,
 	addMembers,
@@ -15,6 +16,8 @@ import {
 	placeCue,
 	readFlowFile,
 	recordAttempt,
+	recordRunThrough,
+	runThroughsOn,
 	setMarkers,
 	setPositions,
 	setSquad,
@@ -161,7 +164,6 @@ describe('流程檔：存了再開', () => {
 			'hold',
 			'dismount'
 		]);
-		expect(r.kind === 'ok' && r.flow.lastIds).toEqual({ p: 3, g: 2 });
 	});
 
 	it('紀錄存了再開也一樣', () => {
@@ -181,7 +183,7 @@ describe('流程檔：存了再開', () => {
 		expect(r.kind === 'ok' && r.flow.markers).toBe('initial');
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 9 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('zip 裡是一份 flow.json（formatVersion 10 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -189,7 +191,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(9);
+		expect(json.formatVersion).toBe(10);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -214,7 +216,7 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 10, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 11, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -390,7 +392,9 @@ describe('流程檔：版本', () => {
 		['騰翻的動作有組', brokenRate((f) => (f.actions[0].category = 'tumbling'))],
 		['跳躍的動作有組', brokenRate((f) => (f.actions[0].category = 'jump'))],
 		['沒打開記成功率卻有組', brokenRate((f) => delete f.actions[0].successRate)],
-		['發到第幾號不是數字', brokenRate((f) => (f.lastIds = { p: 'x' }))]
+		['組的先後不是清單', brokenRate((f) => (f.actions[0].squadOrder = 'g1'))],
+		['全上開的時間不是整數', brokenRecord((_, records) => (records[2].runThroughStartedAt = 1.5))],
+		['分段練有全上開的時間', brokenRecord((r) => (r.runThroughStartedAt = 1794036000000))]
 	])('欄位壞掉（%s）：不是流程檔', (_, file) => {
 		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
 	});
@@ -529,7 +533,7 @@ describe('流程檔：版本', () => {
 		expect(r.kind === 'ok' && r.flow).toEqual(flow);
 	});
 
-	it('第 7 版的檔：組號、組的名字、紀錄、總表數字都跟原本一樣；組發了組 id，id 發號記上 g', () => {
+	it('第 7 版的檔：組號、組的名字、紀錄、總表數字都跟原本一樣；組發了組 id', () => {
 		const flow = withRecords();
 		const r = readFlowFile(zipOf({ formatVersion: 7, flow: numbered(flow) }));
 		expect(r.kind).toBe('ok');
@@ -537,8 +541,6 @@ describe('流程檔：版本', () => {
 		const [before, after] = [flow.actions[0], r.flow.actions[0]];
 		expect(squadNumbers(after)).toEqual([1, 2]);
 		expect(after.members.map((m) => m.squad)).toEqual(['g1', 'g2']);
-		expect(r.flow.lastIds).toEqual(flow.lastIds);
-		expect(r.flow.lastIds?.g).toBe(2);
 		expect(attemptWhos(r.flow, after)).toEqual(attemptWhos(flow, before));
 		expect(after.successRate?.records.map((a) => squadName(r.flow, after, a.who))).toEqual(['第 1 組 小A', '第 2 組 小B', '第 1 組 小A']);
 		expect(after.successRate?.records).toEqual(before.successRate?.records);
@@ -561,10 +563,9 @@ describe('流程檔：版本', () => {
 		const actions = r.kind === 'ok' ? r.flow.actions : [];
 		expect(actions.map((a) => a.members.map((m) => m.squad))).toEqual([['g1', 'g2'], [undefined], ['g3', 'g4']]);
 		expect(actions[1].successRate?.records.map((a) => a.who)).toEqual(['m1']);
-		expect(r.kind === 'ok' && r.flow.lastIds?.g).toBe(4);
 	});
 
-	it('第 7 版的檔沒有組：資料不用動，不記 g', () => {
+	it('第 7 版的檔沒有組：資料不用動', () => {
 		const flow = sample();
 		const r = readFlowFile(zipOf({ formatVersion: 7, flow }));
 		expect(r.kind === 'ok' && r.flow).toEqual(flow);
@@ -597,7 +598,7 @@ describe('流程檔：版本', () => {
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2、3、4、5、6、7、8、9 版資料不用動。
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 10 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
@@ -609,7 +610,8 @@ describe('流程檔：版本', () => {
 		5: (doc: FlowDocument) => ({ formatVersion: 6, flow: doc.flow }),
 		6: (doc: FlowDocument) => ({ formatVersion: 7, flow: doc.flow }),
 		7: (doc: FlowDocument) => ({ formatVersion: 8, flow: doc.flow }),
-		8: (doc: FlowDocument) => ({ formatVersion: 9, flow: doc.flow })
+		8: (doc: FlowDocument) => ({ formatVersion: 9, flow: doc.flow }),
+		9: (doc: FlowDocument) => ({ formatVersion: 10, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {
@@ -633,6 +635,79 @@ describe('流程檔：版本', () => {
 			kind: 'error',
 			message: 'flow.json 壞掉了'
 		});
+	});
+});
+
+describe('流程檔：第 10 版（新的 id、全上開的時間）', () => {
+	const date = '2026-11-04';
+	/** 每一步用不同的步驟 id：新東西的 id 都是亂數。 */
+	let steps = 0;
+	const step = <R>(run: () => R): R => inStep(`step${++steps}`, run);
+
+	/** withRecords() 再在新的步裡加隊員、動作、環節、組（小C 第 1 組、小A 換到第 2 組），記一次全上。 */
+	const withNewIds = () => withNewIdsOn(withRecords());
+
+	it('新版存了再讀回來一樣（亂數的 id、組的先後、全上開的時間都在）', () => {
+		const flow = withNewIds();
+		const x = flow.actions.at(-1)!;
+		expect(x.id).toMatch(/^x[a-z0-9]{12}$/);
+		expect(x.squadOrder).toHaveLength(2);
+		expect(x.successRate!.records[0].runThroughStartedAt).toBe(1794036000000);
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		// 小A 在後發的組：第 2 組。
+		expect(r.kind === 'ok' && squadNumbers(r.flow.actions.at(-1)!)).toEqual([2, 1]);
+	});
+
+	it('第 9 版的檔：id 不變，拿掉發到第幾號（lastIds）', () => {
+		const flow = withRecords();
+		const r = readFlowFile(zipOf({ formatVersion: 9, flow: { ...flow, lastIds: { p: 3, t: 3, g: 2 } } }));
+		expect(r).toMatchObject({ kind: 'ok', flow });
+		expect(r.kind === 'ok' && 'lastIds' in r.flow).toBe(false);
+	});
+
+	it('第 9 版的檔升上來之後加的東西：不會撞到舊的 id', () => {
+		const r = readFlowFile(zipOf({ formatVersion: 9, flow: { ...withRecords(), lastIds: { p: 3, t: 3, g: 2 } } }));
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		const old = JSON.stringify(r.flow);
+		const flow = withNewIdsOn(r.flow);
+		const ids = [
+			...flow.members.map((m) => m.id),
+			...flow.actions.map((a) => a.id),
+			...flow.actions.flatMap((a) => a.successRate?.phases.map((p) => p.id) ?? []),
+			...flow.actions.flatMap((a) => a.successRate?.records.map((t) => t.id) ?? []),
+			...flow.actions.flatMap((a) => a.members.flatMap((m) => m.squad ?? []))
+		];
+		const fresh = ids.filter((id) => !old.includes(`"${id}"`));
+		expect(fresh.length).toBeGreaterThanOrEqual(6);
+		for (const id of fresh) expect(id).toMatch(/^[a-z][a-z0-9]{12}$/);
+		expect(new Set(ids.filter((id) => !id.startsWith('g'))).size).toBe(ids.filter((id) => !id.startsWith('g')).length);
+	});
+
+	/** 在 start 上，每一步用新的步驟 id：加隊員小C、加動作（小A、小C）、加環節、小A 換到第 2 組，記一次全上。 */
+	function withNewIdsOn(start: Flow): Flow {
+		const flow = step(() => flowOf(addMembers(start, [{ name: '小C', gender: 'F', globalRole: 'top' }])));
+		const r = step(() =>
+			addAction(flow, { segmentId: 's3', category: 'stunt', name: '', start: 0, length: 8, note: '', members: [{ memberId: 'm1', role: null }, { memberId: flow.members[2].id, role: null }] })
+		);
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		const phased = step(() => flowOf(addPhase(r.flow, r.id, { kind: 'whole', name: '', beats: { at: 0, len: 8 } })));
+		const grouped = step(() => flowOf(setSquad(phased, r.id, ['m1'], 2)));
+		const action = grouped.actions.find((a) => a.id === r.id)!;
+		const marks = { [action.successRate!.phases[0].id]: '✓' as const };
+		return step(() => flowOf(recordRunThrough(grouped, date, 1794036000000, [{ actionId: r.id, who: squadsOf(action)[1], marks }])));
+	}
+
+	it('全上照開的時間排第幾次；舊的（沒有開的時間）照號碼排，排在前面', () => {
+		// withRecords 有一次舊寫法的全上 u1（沒有開的時間）。先存晚開的，再存早開的。
+		const old = withRecords();
+		const late = step(() => flowOf(recordRunThrough(old, date, 2000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }])));
+		const lateId = runThroughsOn(late, date).at(-1)!;
+		const both = step(() => flowOf(recordRunThrough(late, date, 1000, [{ actionId: 'x1', who: 'g2', marks: { p1: '✓', p2: '✓', p3: '✓' } }])));
+		const earlyId = runThroughsOn(both, date).find((id) => id !== 'u1' && id !== lateId)!;
+		expect(runThroughsOn(both, date)).toEqual(['u1', earlyId, lateId]);
+		const r = readFlowFile(writeFlowFile(both, {}));
+		expect(r.kind === 'ok' && runThroughsOn(r.flow, date)).toEqual(['u1', earlyId, lateId]);
 	});
 });
 

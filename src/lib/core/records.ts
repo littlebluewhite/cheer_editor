@@ -3,7 +3,7 @@
 
 import { actionLabel, actionSeconds, replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
-import { freshIds } from './ids';
+import { isRandomId, newId } from './ids';
 import { blocked, ok, type CommandResult } from './result';
 import { settle } from './settle';
 import {
@@ -31,10 +31,9 @@ export function recordAttempt(
 	const kept = { ...input, ...keptAttempt(action, input.whole, input.marks) };
 	const problem = attemptProblem(action, kept);
 	if (problem) return blocked(problem);
-	const issued = freshIds('t', 1, flow.lastIds, attemptIds(flow));
-	const attempt = { id: issued.ids[0], ...kept };
+	const attempt = { id: newId('t', attemptIds(flow)), ...kept };
 	const records = [...action.successRate.records, attempt];
-	return { kind: 'ok', flow: withRecords({ ...flow, lastIds: issued.lastIds }, action, records), id: attempt.id };
+	return { kind: 'ok', flow: withRecords(flow, action, records), id: attempt.id };
 }
 
 /** 記一次全上裡的一格：一個動作、一組（騰翻、跳躍是一個人）的記號。 */
@@ -45,23 +44,24 @@ export interface RunThroughMarks {
 }
 
 /**
- * 記一次全上：給日期和每個動作、每組的記號（按了「沒做」的動作不給），一次存成很多次，
- * 都標成全上、帶同一個全上 id（刪了也不重用，例：r2）、都是整個做。每一次照記一次的規則檢查，有一次不對就一次都不存。
+ * 記一次全上：給日期、開的時間（手機的時間，毫秒）和每個動作、每組的記號（按了「沒做」的動作不給），一次存成很多次，
+ * 都標成全上、帶同一個全上 id 和開的時間、都是整個做。每一次照記一次的規則檢查，有一次不對就一次都不存。
  */
 export function recordRunThrough(
 	flow: Flow,
 	date: string,
+	startedAt: number,
 	entries: RunThroughMarks[]
 ): CommandResult<{ runThroughId: string }> {
 	if (entries.length === 0) return blocked('每個動作都沒做，沒有要存的');
 	const runIds = flow.actions.flatMap((a) => a.successRate?.records.flatMap((r) => r.runThroughId ?? []) ?? []);
-	const run = freshIds('r', 1, flow.lastIds, runIds);
-	const runThroughId = run.ids[0];
-	let next: Flow = { ...flow, lastIds: run.lastIds };
+	const runThroughId = newId('r', runIds);
+	let next = flow;
 	for (const { actionId, who, marks } of entries) {
 		const action = next.actions.find((a) => a.id === actionId);
 		if (!action) return blocked('找不到這個動作');
-		const r = recordAttempt(next, actionId, { date, who, practice: 'runThrough', runThroughId, whole: true, marks });
+		const run = { practice: 'runThrough', runThroughId, runThroughStartedAt: startedAt } as const;
+		const r = recordAttempt(next, actionId, { date, who, ...run, whole: true, marks });
 		if (r.kind !== 'ok') return blocked(`${actionLabel(action)}：${r.message}`);
 		next = r.flow;
 	}
@@ -140,15 +140,31 @@ export function restoreAttempt(flow: Flow, actionId: string, attempt: Attempt, i
 export type RemovedRunThrough = { actionId: string; attempt: Attempt; index: number }[];
 
 /**
- * 這天有沒有全上：有就回傳這天最後存的那次全上的 id，沒有是 undefined。
- * 「最後存的」看全上 id：每存一次全上發一個新的、刪了也不重用，所以號碼最大的就是最後存的。
+ * 這天的每次全上（全上 id），照第幾次排：照開的時間排；舊的沒有開的時間，照舊的號碼排（r2 在 r10 前面），
+ * 排在有開的時間的前面。開的時間一樣的照號碼、再照 id 排，所以每台算出來一樣。
  */
+export function runThroughsOn(flow: Flow, date: string): string[] {
+	const runs = new Map<string, number | undefined>();
+	for (const a of flow.actions) {
+		for (const r of a.successRate?.records ?? []) {
+			if (r.date === date && r.runThroughId !== undefined) runs.set(r.runThroughId, r.runThroughStartedAt);
+		}
+	}
+	const legacyNumber = (id: string) => (isRandomId(id) ? 0 : Number(id.slice(1)) || 0);
+	return [...runs]
+		.sort(
+			([a, at], [b, bt]) =>
+				Number(at !== undefined) - Number(bt !== undefined) ||
+				(at ?? 0) - (bt ?? 0) ||
+				legacyNumber(a) - legacyNumber(b) ||
+				(a < b ? -1 : a > b ? 1 : 0)
+		)
+		.map(([id]) => id);
+}
+
+/** 這天有沒有全上：有就回傳這天最後一次全上（照 runThroughsOn 排）的 id，沒有是 undefined。 */
 export function lastRunThrough(flow: Flow, date: string): string | undefined {
-	const runIds = flow.actions.flatMap(
-		(a) => a.successRate?.records.flatMap((r) => (r.date === date && r.runThroughId) || []) ?? []
-	);
-	if (runIds.length === 0) return undefined;
-	return runIds.reduce((a, b) => (Number(b.slice(1)) > Number(a.slice(1)) ? b : a));
+	return runThroughsOn(flow, date).at(-1);
 }
 
 /** 刪掉上一次全上：拿掉這一天最後存的那次全上（lastRunThrough），整次一起拿（每個動作、每組的都拿掉，不拆開）。 */
@@ -184,11 +200,10 @@ export function restoreRunThrough(flow: Flow, removed: RemovedRunThrough): Comma
 /**
  * 把現在的紀錄帶到這份流程上：復原、重做換上 next 時用。紀錄不算復原的一步，所以每個動作的紀錄用 current 的；
  * 指到 next 裡已經不在的動作、環節、組 id、隊員的紀錄或記號丟掉，丟到一個記號都沒有的那一次整筆拿掉（重做也救不回）。
- * 發過的 id 號碼也帶過來，免得換上舊的流程後又發一次。沒有東西要帶就回傳 next 本身。
+ * 沒有東西要帶就回傳 next 本身。
  */
 export function carryRecords(next: Flow, current: Flow): Flow {
-	const lastIds = higherIds(next.lastIds, current.lastIds);
-	let changed = lastIds !== next.lastIds;
+	let changed = false;
 	const actions = next.actions.map((a) => {
 		if (!a.successRate) return a;
 		const from = current.actions.find((c) => c.id === a.id);
@@ -200,16 +215,7 @@ export function carryRecords(next: Flow, current: Flow): Flow {
 		const settled = settle(next, a, { ...a, successRate: { ...a.successRate, records } }, { records: 'keep' });
 		return settled.kind === 'ok' ? settled.action : a;
 	});
-	return changed ? { ...next, actions, ...(lastIds && { lastIds }) } : next;
-}
-
-/** 兩份「id 發到第幾號」取大的；跟 a 一樣就回傳 a。 */
-function higherIds(
-	a: Record<string, number> | undefined,
-	b: Record<string, number> | undefined
-): Record<string, number> | undefined {
-	const higher = Object.entries(b ?? {}).filter(([k, n]) => n > (a?.[k] ?? 0));
-	return higher.length ? { ...a, ...Object.fromEntries(higher) } : a;
+	return changed ? { ...next, actions } : next;
 }
 
 /** 練習畫面要記的動作：有環節的，照流程順序（開始的時間）排。 */

@@ -202,9 +202,9 @@ describe('記錄頁的卡', () => {
 
 	/** 第 1 組這天：全上 ✓✗、分段練 ✗、全上 △✓✓。 */
 	function mixed() {
-		let flow = flowOf(recordRunThrough(libSample(), DATE, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } }]));
+		let flow = flowOf(recordRunThrough(libSample(), DATE, 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } }]));
 		flow = flowOf(recordAttempt(flow, 'x1', { date: DATE, who: 'g1', practice: 'drill', whole: true, marks: { p1: '✗' } }));
-		return flowOf(recordRunThrough(flow, DATE, [{ actionId: 'x1', who: 'g1', marks: { p1: '△', p2: '✓', p3: '✓' } }]));
+		return flowOf(recordRunThrough(flow, DATE, 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '△', p2: '✓', p3: '✓' } }]));
 	}
 
 	it('全上記的那幾筆用另一種外框', () => {
@@ -227,7 +227,7 @@ describe('記錄頁的卡', () => {
 	});
 
 	it('這天只有全上：「刪掉上一次」不能按', () => {
-		setup(flowOf(recordRunThrough(libSample(), DATE, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } }])));
+		setup(flowOf(recordRunThrough(libSample(), DATE, 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } }])));
 		expect((screen.getByRole('button', { name: '刪掉上一次' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 

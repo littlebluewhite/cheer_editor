@@ -6,7 +6,7 @@
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
-import { nextId } from './ids';
+import { newId } from './ids';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { EPS, HALF_BEATS_PER_EIGHT, atText, segmentSpans, toPosition, totalSeconds } from './time';
@@ -68,7 +68,7 @@ export function splitSegment(flow: Flow, segmentId: string, sec: number): Comman
 	if (across) {
 		return blocked(`動作「${actionLabel(across)}」（${atText(old, across.start)} 起）跨過 ${atText(old, cut)}，切不開`);
 	}
-	const id = nextId('s', flow.segments.map((s) => s.id));
+	const id = newId('s', flow.segments.map((s) => s.id));
 	const firstBeatSec = old.firstBeatSec + (cut * 30) / old.bpm;
 	const after: Segment = { ...old, id, firstBeatSec, halfBeats: old.halfBeats - cut };
 	const segments = flow.segments.with(index, { ...old, halfBeats: cut }).toSpliced(index + 1, 0, after);

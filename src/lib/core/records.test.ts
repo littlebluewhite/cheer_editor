@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	inStep,
 	addAction,
 	attemptText,
 	attemptWhos,
@@ -102,7 +103,7 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 
 	it('全上裡 ✗ 後面空著，仍然是整個做；✗ 後面給了記號也不存', () => {
 		const flow = flowOf(
-			recordRunThrough(sample(), '2026-11-04', [
+			recordRunThrough(sample(), '2026-11-04', 1794036000000, [
 				{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } },
 				{ actionId: 'x1', who: 'g2', marks: { p1: '✗', p2: '✓', p3: '✓' } }
 			])
@@ -143,7 +144,7 @@ describe('刪掉上一次', () => {
 		for (const input of [drill({ p1: '✓' }), drill({ p1: '✓' }, { who: 'g2' }), drill({ p1: '✗' })]) {
 			flow = flowOf(recordAttempt(flow, 'x1', input));
 		}
-		flow = flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
+		flow = flowOf(recordRunThrough(flow, '2026-11-04', 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
 		return flowOf(recordAttempt(flow, 'x1', drill({ p1: '△' }, { date: '2026-11-05' })));
 	}
 
@@ -175,10 +176,11 @@ describe('刪掉上一次', () => {
 		});
 	});
 
-	it('刪掉的 id 不再發', () => {
+	it('刪掉的 id 不再發：新的一次的 id 是亂數', () => {
 		let flow = flowOf(deleteLastAttempt(recorded(), 'x1', 'g1', '2026-11-05', 'drill'));
-		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' })));
-		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't4', 't6']);
+		const deleted = flow;
+		flow = flowOf(inStep('k3m9q2w7', () => recordAttempt(deleted, 'x1', drill({ p2: '✓' }))));
+		expect(recordsOf(flow).map((r) => r.id)).toEqual(['t1', 't2', 't3', 't4', expect.stringMatching(/^t[a-z0-9]{12}$/)]);
 	});
 });
 
@@ -187,7 +189,7 @@ describe('改某一次、刪掉某一次', () => {
 	function recorded(): Flow {
 		let flow = sample();
 		for (let i = 0; i < 3; i++) flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' })));
-		return flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
+		return flowOf(recordRunThrough(flow, '2026-11-04', 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '✓' } }]));
 	}
 	const lowest = (flow: Flow) => {
 		const w = weakestPhase(flow.actions[0], '2026-11-04');
@@ -351,13 +353,14 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		expect(recordsOf(carried, 'x2')).toEqual([]);
 	});
 
-	it('發過的 id 不會因為換上舊的流程又發一次', () => {
+	it('發過的 id 不會因為換上舊的流程又發一次：新的 id 是亂數', () => {
 		const older = sample();
-		let current = recorded();
-		current = flowOf(deleteLastAttempt(current, 'x2', 'm2', '2026-11-04', 'drill'));
+		const current = flowOf(deleteLastAttempt(recorded(), 'x2', 'm2', '2026-11-04', 'drill'));
 		const carried = carryRecords(older, current);
-		const again = flowOf(recordAttempt(carried, 'x2', drill({ p4: '△' }, { who: 'm1' })));
-		expect(recordsOf(again, 'x2').map((r) => r.id)).toEqual(['t5']);
+		const again = flowOf(inStep('k3m9q2w7', () => recordAttempt(carried, 'x2', drill({ p4: '△' }, { who: 'm1' }))));
+		const ids = recordsOf(again, 'x2').map((r) => r.id);
+		expect(ids).toEqual([expect.stringMatching(/^t[a-z0-9]{12}$/)]);
+		expect(recordsOf(recorded(), 'x2').map((r) => r.id)).not.toContain(ids[0]);
 	});
 
 	it('動作的 id 刪了又用：舊的那個動作不會拿到新動作的紀錄（環節的 id 不重用）', () => {
@@ -373,8 +376,12 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		let older = flowOf(addPhase(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
 		older = flowOf(setSquad(older, 'x3', ['m3'], 1));
 		let current = flowOf(deleteAction(older, 'x3'));
-		current = flowOf(addPhase(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
-		current = flowOf(setSquad(current, 'x3', ['m4'], 1));
+		// 動作 id 照舊的寫法又發 x3；加環節、設組是新的一步，新的 id 由步驟 id 算出來。
+		const added = flowOf(addAction(current, toss('m4')));
+		current = inStep('k3m9q2w7', () => {
+			const phased = flowOf(addPhase(added, 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
+			return flowOf(setSquad(phased, 'x3', ['m4'], 1));
+		});
 		const x3 = current.actions.find((a) => a.id === 'x3')!;
 		const phase = x3.successRate!.phases[0].id;
 		current = flowOf(recordAttempt(current, 'x3', drill({ [phase]: '✓' }, { who: squadsOf(x3)[0] })));
@@ -573,7 +580,7 @@ describe('記一次全上', () => {
 	];
 
 	it('一次存成很多次：都標成全上、帶同一個全上 id、整個做，日期是給的那天', () => {
-		const r = recordRunThrough(sample(), date, sheet());
+		const r = recordRunThrough(sample(), date, 1794036000000, sheet());
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
 		expect(r.runThroughId).toBe('r1');
@@ -586,34 +593,34 @@ describe('記一次全上', () => {
 	});
 
 	it('第二次全上帶新的全上 id；刪掉了也不重用', () => {
-		let flow = flowOf(recordRunThrough(sample(), date, sheet().slice(0, 1)));
+		let flow = flowOf(recordRunThrough(sample(), date, 1794036000000, sheet().slice(0, 1)));
 		flow = flowOf(deleteLastAttempt(flow, 'x1', 'g1', date, 'runThrough'));
-		const r = recordRunThrough(flow, date, sheet().slice(0, 1));
-		expect(r.kind === 'ok' && r.runThroughId).toBe('r2');
+		const r = inStep('k3m9q2w7', () => recordRunThrough(flow, date, 1794036000000, sheet().slice(0, 1)));
+		expect(r.kind === 'ok' && r.runThroughId).toMatch(/^r[a-z0-9]{12}$/);
 	});
 
 	it('沒做的動作（沒給）沒有紀錄', () => {
-		const flow = flowOf(recordRunThrough(sample(), date, sheet().slice(0, 2)));
+		const flow = flowOf(recordRunThrough(sample(), date, 1794036000000, sheet().slice(0, 2)));
 		expect(recordsOf(flow)).toHaveLength(2);
 		expect(recordsOf(flow, 'x2')).toEqual([]);
 	});
 
 	it('每個動作都沒做：擋下來，什麼都不存', () => {
-		expect(recordRunThrough(sample(), date, [])).toMatchObject({ kind: 'blocked' });
+		expect(recordRunThrough(sample(), date, 1794036000000, [])).toMatchObject({ kind: 'blocked' });
 	});
 
 	it('有一次不守記一次的規則：擋下來寫出是哪個動作，一次都不存', () => {
 		const bad = [...sheet().slice(0, 1), { actionId: 'x2', who: 'm3', marks: { p4: '✓' } } as const];
-		expect(recordRunThrough(sample(), date, bad)).toEqual({ kind: 'blocked', message: '騰翻：這個隊員不在動作裡' });
-		expect(recordRunThrough(sample(), '11/4', sheet())).toMatchObject({ kind: 'blocked' });
-		expect(recordRunThrough(sample(), date, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toMatchObject({
+		expect(recordRunThrough(sample(), date, 1794036000000, bad)).toEqual({ kind: 'blocked', message: '騰翻：這個隊員不在動作裡' });
+		expect(recordRunThrough(sample(), '11/4', 1794036000000, sheet())).toMatchObject({ kind: 'blocked' });
+		expect(recordRunThrough(sample(), date, 1794036000000, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toMatchObject({
 			kind: 'blocked'
 		});
 	});
 
 	it('算進整次成功率；練法篩選分得開全上和分段練', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' }, { who: 'g2' })));
-		flow = flowOf(recordRunThrough(flow, date, sheet()));
+		flow = flowOf(recordRunThrough(flow, date, 1794036000000, sheet()));
 		const lib = flow.actions[0];
 		const squad2 = (practice?: 'drill' | 'runThrough') =>
 			rateTable(flow, lib, { practice }).columns.find((c) => c.who === 'g2')!;
@@ -638,9 +645,9 @@ describe('刪掉上一次全上', () => {
 	/** 分段練一次、全上 r1、再分段練一次、全上 r2。 */
 	const recorded = () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' }, { whole: false })));
-		flow = flowOf(recordRunThrough(flow, date, run1));
+		flow = flowOf(recordRunThrough(flow, date, 1794036000000, run1));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' }, { whole: false })));
-		return flowOf(recordRunThrough(flow, date, run2));
+		return flowOf(recordRunThrough(flow, date, 1794036000000, run2));
 	};
 	const runIds = (flow: Flow) => [...recordsOf(flow), ...recordsOf(flow, 'x2')].map((r) => r.runThroughId ?? '-');
 
@@ -652,7 +659,7 @@ describe('刪掉上一次全上', () => {
 	});
 
 	it('只看這一天：別天的全上不刪', () => {
-		const other = flowOf(recordRunThrough(recorded(), '2026-11-05', run1));
+		const other = flowOf(recordRunThrough(recorded(), '2026-11-05', 1794036000000, run1));
 		const flow = flowOf(deleteLastRunThrough(other, date));
 		expect(runIds(flow)).toEqual(['-', 'r1', '-', 'r3', 'r1', 'r3']);
 	});
@@ -672,7 +679,7 @@ describe('刪掉上一次全上', () => {
 
 	it('全上 id 照號碼比，不照字：r10 比 r9 晚', () => {
 		let flow = sample();
-		for (let i = 0; i < 10; i++) flow = flowOf(recordRunThrough(flow, date, run1));
+		for (let i = 0; i < 10; i++) flow = flowOf(recordRunThrough(flow, date, 1794036000000, run1));
 		expect(lastRunThrough(flow, date)).toBe('r10');
 	});
 
@@ -688,7 +695,7 @@ describe('刪掉上一次全上', () => {
 	it('救回之前又記了一次：放回原本排第幾，又記的排在後面', () => {
 		const r = deleteLastRunThrough(recorded(), date);
 		if (r.kind !== 'ok') throw new Error(r.kind);
-		const more = flowOf(recordAttempt(r.flow, 'x1', drill({ p3: '✓' }, { whole: false })));
+		const more = flowOf(inStep('k3m9q2w7', () => recordAttempt(r.flow, 'x1', drill({ p3: '✓' }, { whole: false }))));
 		const back = flowOf(restoreRunThrough(more, r.removed));
 		expect(runIds(back)).toEqual(['-', 'r1', '-', 'r2', '-', 'r1', 'r2']);
 	});

@@ -5,7 +5,10 @@ import { runCommands, type Command, type Flow } from './index';
 
 export * from './index';
 
-/** runCommands 的 JSON 版：flow 是流程（沒有開著的流程是 null）、commands 是指令串，回結果的 JSON。 */
-export function runCommandsJson(flow: string, commands: string): string {
-	return JSON.stringify(runCommands(JSON.parse(flow) as Flow | null, JSON.parse(commands) as Command[]));
+/**
+ * runCommands 的 JSON 版：flow 是流程（沒有開著的流程是 null）、commands 是指令串、stepId 是步驟 id（字串，不是 JSON），
+ * 回結果的 JSON。
+ */
+export function runCommandsJson(flow: string, commands: string, stepId: string): string {
+	return JSON.stringify(runCommands(JSON.parse(flow) as Flow | null, JSON.parse(commands) as Command[], stepId));
 }

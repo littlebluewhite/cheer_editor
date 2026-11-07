@@ -4,6 +4,7 @@
 
 import { ACTION_CATEGORIES, type Action, type ActionCategory, type ActionMember } from './action-types';
 import { memberName, type Flow } from './flow';
+import { isRandomId } from './ids';
 import type { Segment } from './segment';
 import { rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
@@ -35,6 +36,8 @@ export interface Attempt {
 	practice: PracticeKind;
 	/** 全上才有：同一次全上記的都帶一樣的 id。 */
 	runThroughId?: string;
+	/** 全上才有：這次全上開的時間（手機的時間，毫秒），一天裡的全上照它排第幾次。第 10 版以前的全上沒有。 */
+	runThroughStartedAt?: number;
 	/** 整個做；false 是只練幾個環節。 */
 	whole: boolean;
 	/** 每個環節的記號，key 是環節 id；沒有就是空的（沒做到、沒練）。 */
@@ -65,10 +68,28 @@ export function groupsPeople(action: Action): boolean {
 	return !!action.successRate?.phases.length && !perPerson(action.category);
 }
 
-/** 動作裡現在有人的組的 id，照 id 發出的先後排：第一個是第 1 組。 */
+/**
+ * 動作裡現在有人的組的 id，照 id 發出的先後排：第一個是第 1 組。
+ * 舊的組 id（g1、g2…）照號碼排、排在前面；新的（亂數）照動作記的發出先後（squadOrder），沒記到的排最後、照 id 排。
+ */
 export function squadsOf(action: Action): string[] {
 	const ids = new Set(action.members.flatMap((m) => (m.squad === undefined ? [] : [m.squad])));
-	return [...ids].sort((a, b) => idNumber(a) - idNumber(b));
+	const order = action.squadOrder ?? [];
+	const key = (id: string): [number, number] =>
+		isRandomId(id) ? [1, order.includes(id) ? order.indexOf(id) : order.length] : [0, idNumber(id)];
+	return [...ids].sort((a, b) => {
+		const [ka, kb] = [key(a), key(b)];
+		return ka[0] - kb[0] || ka[1] - kb[1] || (a < b ? -1 : a > b ? 1 : 0);
+	});
+}
+
+/** 發了新的組 id 之後，動作記下發出的先後：squadOrder 只留現在有人的新寫法組 id，沒有就拿掉欄位。 */
+export function withSquadOrder(action: Action, issued: string[] = []): Action {
+	const { squadOrder: old, ...rest } = action;
+	const used = new Set(action.members.map((m) => m.squad));
+	const order = [...(old ?? []), ...issued].filter((id) => isRandomId(id) && used.has(id));
+	if (order.length === (old ?? []).length && order.every((id, i) => id === old![i])) return action;
+	return order.length ? { ...rest, squadOrder: order } : rest;
 }
 
 /** 這一組是第幾組（1 起），照 squadsOf 算；動作裡沒有人在這一組是 0。 */
@@ -92,9 +113,9 @@ export function squadBadge(action: Action, member: Pick<ActionMember, 'squad'>):
 	return n ? { number: n, text: String(n), color: squadColor(n) } : { number: 0, text: '?', color: NO_SQUAD_COLOR };
 }
 
-/** 組 id 的寫法：g 加編號（g1、g2…），由流程的 id 發號，刪了不重用。 */
+/** 組 id 的寫法：g 加 12 個字的亂數，或舊的 g 加編號（g1、g2…）。刪了不重用。 */
 export function isSquadId(v: unknown): v is string {
-	return typeof v === 'string' && /^g[1-9]\d*$/.test(v);
+	return typeof v === 'string' && (/^g[1-9]\d*$/.test(v) || (v.startsWith('g') && isRandomId(v)));
 }
 
 const idNumber = (id: string) => Number(String(id).slice(1));
@@ -229,6 +250,9 @@ export function attemptProblem(action: Action, attempt: NewAttempt): string | nu
 	if (!isDate(attempt.date)) return '日期要寫成 2026-11-04 這樣';
 	if (!PRACTICE_KINDS.includes(attempt.practice)) return '沒有這種練法';
 	if ((attempt.practice === 'runThrough') !== (attempt.runThroughId !== undefined)) return '全上要帶同一次全上的 id';
+	const at = attempt.runThroughStartedAt;
+	if (at !== undefined && (attempt.practice !== 'runThrough' || !Number.isSafeInteger(at) || at < 0))
+		return '全上開的時間不對';
 	if (attempt.practice === 'runThrough' && !attempt.whole) return '全上記的每一次都算整個做';
 	return null;
 }

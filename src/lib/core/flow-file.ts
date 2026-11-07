@@ -9,11 +9,10 @@ import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
-import { freshIds } from './ids';
 import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 9;
+export const FORMAT_VERSION = 10;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -38,9 +37,11 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  *   沒有就是沒分組；流程多了可有可無的 lastIds（不重用的 id 發到第幾號）。所以資料不用動。
  * 第 7 版：記成功率的動作至少有一個環節、音樂段的環節一定有拍、組號從 1 連續。升級時整理環節和組（見 tidySuccessRate）。
  * 第 8 版：人身上的組從第幾組（數字）換成組 id（g1、g2…，字串），分組動作的紀錄的「誰」也換成組 id；組號照 id 發出的先後算，
- *   不存。升級時每個動作的組照號碼順序發組 id，流程的 lastIds 記上 g（見 squadIds）。
+ *   不存。升級時每個動作的組照號碼順序發組 id（見 squadIds）。
  * 第 9 版：還沒有環節的動作（騰翻、跳躍除外）也可以有組（從別的動作複製人帶來的，加第一個環節時照用）。資料不用動；
  *   第 8 版以前沒有環節的動作有組就是壞掉的檔，升級時交給 isFlow 擋下來（見 squadsWithoutPhases）。
+ * 第 10 版：新的 id 是種類字母加 12 個字的亂數（ADR 0011），不再記 lastIds（升級時拿掉）；舊的 id 不用改。
+ *   全上的一次多了可有可無的 runThroughStartedAt（開的時間），動作多了可有可無的 squadOrder（新寫法的組 id 發出的先後）。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -50,8 +51,16 @@ const UPGRADES: Record<number, Upgrade> = {
 	5: (doc) => ({ formatVersion: 6, flow: doc.flow }),
 	6: (doc) => ({ formatVersion: 7, flow: tidySuccessRate(doc.flow) }),
 	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) }),
-	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow })
+	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow }),
+	9: (doc) => ({ formatVersion: 10, flow: withoutLastIds(doc.flow) })
 };
+
+/** 第 9 → 10 版：拿掉「已經發到第幾號」（lastIds）。新的 id 是亂數，不會撞到舊的 x1 這種 id。 */
+function withoutLastIds(v: unknown): unknown {
+	if (!isObject(v) || !('lastIds' in v)) return v;
+	const { lastIds: _, ...flow } = v;
+	return flow;
+}
 
 /** 有沒有動作沒打開記成功率卻有組（第 8 版以前不行）。 */
 function squadsWithoutPhases(v: unknown): boolean {
@@ -82,21 +91,21 @@ function tidySuccessRate(v: unknown): unknown {
 }
 
 /**
- * 第 7 → 8 版：每個動作的組照號碼順序發組 id（刪了不重用的 g，照動作的順序一直往下發），分組動作的紀錄的「誰」跟著換成那一組的 id；
- * 流程的 lastIds 記上 g。組號不是 1、2、3 連續的動作不換（數字留著，交給 isFlow 擋下來）。
+ * 第 7 → 8 版：每個動作的組照號碼順序發組 id（g1、g2…，照動作的順序一直往下發），分組動作的紀錄的「誰」跟著換成那一組的 id；
+ * 組號不是 1、2、3 連續的動作不換（數字留著，交給 isFlow 擋下來）。（第 9 版以前還在流程的 lastIds 記上 g，第 10 版不記了。）
  */
 function squadIds(v: unknown): unknown {
 	if (!flowShape(v)) return v;
 	const flow = v as Flow;
-	let lastIds = flow.lastIds;
+	let last = 0;
 	const actions = flow.actions.map((a) => {
 		const numbers = squadNumbers(a);
 		if (!numbers?.length || numbers.some((n, i) => n !== i + 1)) return a;
-		const issued = freshIds('g', numbers.length, lastIds, []);
-		lastIds = issued.lastIds;
-		return renameSquads(a, (n) => issued.ids[(n as number) - 1] ?? n);
+		const base = last;
+		last += numbers.length;
+		return renameSquads(a, (n) => `g${base + (n as number)}`);
 	});
-	return lastIds === flow.lastIds ? flow : { ...flow, actions, lastIds };
+	return { ...flow, actions };
 }
 
 /** 舊版檔（第 7 版以前）動作裡的組號，由小到大不重複；有不是正整數的組號是 null。 */
@@ -266,6 +275,7 @@ const attempt = shape({
 	who: (v) => int(v) || str(v),
 	practice: oneOf(PRACTICE_KINDS),
 	runThroughId: (v) => v === undefined || str(v),
+	runThroughStartedAt: (v) => v === undefined || int(v),
 	whole: bool,
 	marks: isObject
 });
@@ -302,7 +312,6 @@ const flowShape = shape({
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
 	markers: (v) => v === undefined || oneOf(['number', 'initial'])(v),
-	lastIds: (v) => v === undefined || (isObject(v) && Object.values(v).every(int)),
 	actions: listOf(
 		shape({
 			id: str,
@@ -316,7 +325,8 @@ const flowShape = shape({
 			members: listOf(shape({ memberId: str, role: nullOr(str), squad: (v) => v === undefined || int(v) || str(v) })),
 			color,
 			cues,
-			successRate
+			successRate,
+			squadOrder: (v) => v === undefined || listOf(str)(v)
 		})
 	)
 });

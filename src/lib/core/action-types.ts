@@ -46,13 +46,18 @@ export interface Action {
 	cues?: Cue[];
 	/** 成功率的設定：有環節才有；沒有就是不記成功率（舊流程檔沒有這個欄位）。 */
 	successRate?: SuccessRate;
+	/**
+	 * 新寫法（亂數）的組 id 照發出的先後排（組號照這個算，見 squadsOf）；只留現在有人的組，沒有就不留欄位。
+	 * 舊的 g1、g2 照號碼排、排在前面，不列在這裡。
+	 */
+	squadOrder?: string[];
 }
 
 /** 加動作的輸入：新動作一定沒有環節，所以不收成功率設定；人身上只收別的動作的組（從別的動作複製人）。 */
-export type NewActionInput = Omit<Action, 'id' | 'successRate'>;
+export type NewActionInput = Omit<Action, 'id' | 'successRate' | 'squadOrder'>;
 
 /** 改動作的欄位（成功率設定由環節的指令改；人身上的組可以帶，例：從別的動作複製人）。 */
-export type ActionChanges = Partial<Omit<Action, 'id' | 'successRate'>>;
+export type ActionChanges = Partial<Omit<Action, 'id' | 'successRate' | 'squadOrder'>>;
 
 /** 流程裡換掉這個動作（照 id 找）。 */
 export function replaceAction(flow: Flow, action: Action): Flow {

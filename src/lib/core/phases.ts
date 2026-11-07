@@ -6,7 +6,7 @@
 
 import { replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
-import { freshIds } from './ids';
+import { newId } from './ids';
 import { cut, ordered } from './phase-beats';
 import { phaseLabel, type Phase, type PhaseKind } from './phase-types';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
@@ -46,11 +46,10 @@ export function addPhase(
 	if (segment.kind === 'music' && !beats) return blocked('音樂段的環節要選拍標');
 	const problem = beats && beatsProblem(segment, action, beats);
 	if (problem) return blocked(problem);
-	const issued = freshIds('p', 1, flow.lastIds, allPhaseIds(flow));
-	const phase: Phase = { id: issued.ids[0], kind: input.kind, name: input.name.trim(), ...(beats && { beats: { ...beats } }) };
+	const phase: Phase = { id: newId('p', allPhaseIds(flow)), kind: input.kind, name: input.name.trim(), ...(beats && { beats: { ...beats } }) };
 	const old = action.successRate?.phases ?? [];
 	const phases = beats ? [...cut(old, beats.at, beats.at + beats.len), phase] : [...old, phase];
-	const r = withPhases({ ...flow, lastIds: issued.lastIds }, segment, action, phases, options);
+	const r = withPhases(flow, segment, action, phases, options);
 	return r.kind === 'ok' ? { ...r, id: phase.id } : r;
 }
 
@@ -148,5 +147,5 @@ function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[
 	}
 	const after: Action = { ...action, successRate: { records: action.successRate?.records ?? [], phases: ordered(kept) } };
 	const settled = settle(flow, action, after, options);
-	return settled.kind === 'blocked' ? settled : ok(replaceAction(settled.flow, settled.action));
+	return settled.kind === 'blocked' ? settled : ok(replaceAction(flow, settled.action));
 }
