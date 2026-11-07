@@ -520,13 +520,17 @@ export class EditorSession {
 
 	/**
 	 * ⌘V：播放頭（sec）那一拍的站位改成複製的那張，沒有站位就插一張；跟拖人一樣往後帶、算一步復原（moveGroup）。
-	 * 複製之後才加的人沒有位置，不動。回傳有沒有處理（沒複製過就沒有）。
+	 * 複製之後才加的人沒有位置，不動；複製的人都刪掉了就不貼，提示一聲。回傳有沒有處理（沒複製過就沒有）。
 	 */
 	pasteFormation(sec: number): boolean {
 		const copied = this.#copied;
 		const flow = this.#flow;
 		if (!copied || !flow) return false;
 		const ids = flow.members.map((m) => m.id).filter((id) => copied[id]);
+		if (!ids.length) {
+			this.notice = '複製的人都不在隊上了，沒有貼上';
+			return true;
+		}
 		this.ask.send(() => moveGroup(flow, sec, ids, () => Object.fromEntries(ids.map((id) => [id, copied[id]]))), {
 			done: (r) => this.moved(r)
 		});

@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
-import { insertFormation, setPositions, type Flow } from '#lib/core';
+import { deleteMember, insertFormation, setPositions, type Flow } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -153,6 +153,21 @@ describe('站位卡片 ⌘C／⌘V', () => {
 		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
 		expect(page.session.flow).toEqual(before);
 		expect(thumbs()).toHaveLength(3);
+	});
+
+	it('複製後那些人都刪掉了：⌘V 不動流程，提示說複製的人都不在隊上，不是「先選人」', async () => {
+		const page = editorPage(threeFormations());
+		render(Page, page.props);
+		await fireEvent.click(thumbs()[2]);
+		await fireEvent.keyDown(window, { key: 'c', metaKey: true });
+		let flow = page.session.flow!;
+		for (const m of flow.members) flow = flowOf(deleteMember(flow, m.id, { confirmed: true }));
+		page.session.change(flow);
+
+		page.editor.playback.seek(2);
+		await fireEvent.keyDown(window, { key: 'v', metaKey: true });
+		expect(page.session.flow).toBe(flow);
+		expect(screen.getByRole('status').textContent).toBe('複製的人都不在隊上了，沒有貼上');
 	});
 
 	it('在拍點格子上按 ⌘V 是貼拍點，不貼站位', async () => {
