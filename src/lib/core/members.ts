@@ -321,7 +321,8 @@ export function deleteMember(
 				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_GONE}` : '') +
 				(lost.length ? `，${lost.join('、')}` : '') +
 				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : '') +
-				(changed ? `；${CHANGED_SQUADS_QUESTION}` : ''),
+				// 清掉重算也救不回來：前面寫過了就不重複
+				(changed ? `；${CHANGED_SQUADS_QUESTION}${cleared ? '' : RECORDS_GONE}` : ''),
 			inActions.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				const mine = a.members.find((m) => m.memberId === id)!;

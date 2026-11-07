@@ -282,6 +282,12 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 		expect(flowOf(deleteMember(flow, 'm2', { confirmed: true }))).toEqual(cleared);
 	});
 
+	it('沒有一定清掉的、只有要選的組：問句後面照樣寫「紀錄救不回來」', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x1', drill('g1', { p1: '✓' })));
+		const r = deleteMember(flow, 'm1');
+		expect(r.kind === 'choose' && r.message).toMatch(/有紀錄的組換了人：保留舊紀錄，還是清掉重算？（紀錄救不回來）$/);
+	});
+
 	it('沒有紀錄：不寫紀錄', () => {
 		const r = deleteMember(sample(), 'm2');
 		expect(r.kind === 'confirm' && r.message).toBe(
