@@ -16,7 +16,6 @@ import {
 	type Command,
 	type CommandName,
 	type CommandOutcome,
-	type CommandResult,
 	type Flow,
 	type MoveResult
 } from '#lib/core';
@@ -308,16 +307,13 @@ export class EditorSession {
 	}
 
 	/**
-	 * 方向鍵移人：跟場上的問題一樣送出去（指令名字＋參數，或包好的函式），成功時連續同一個 key（同一批人、同一拍）、
+	 * 方向鍵移人：跟場上的問題一樣送出去（指令名字＋參數），成功時連續同一個 key（同一批人、同一拍）、
 	 * 中間沒有別的改動，就合成復原的一步。
 	 */
-	nudge<N extends CommandName>(key: string, command: Command<N>, handlers?: Handlers<CommandOutcome<N>>): CommandOutcome<N>;
-	nudge<R extends CommandResult>(key: string, send: () => R, handlers?: Handlers<R>): R;
-	nudge(key: string, send: object, handlers: Handlers<never> = {}): unknown {
+	nudge<N extends CommandName>(key: string, command: Command<N>, handlers?: Handlers<CommandOutcome<N>>): CommandOutcome<N> {
 		this.#joining = key;
 		try {
-			// 名字還是函式，ask 自己分。
-			return this.ask.send(send as Command[], handlers as Handlers<CommandResult>);
+			return this.ask.send(command, handlers);
 		} finally {
 			this.#joining = null;
 		}
