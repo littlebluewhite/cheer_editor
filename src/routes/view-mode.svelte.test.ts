@@ -73,6 +73,24 @@ describe('檢視模式', () => {
 		expect(playing()).toBe(true);
 	});
 
+	it('檢視模式拖走位條中間：提示「檢視模式」不能改，不是「已靠到邊界」', async () => {
+		const session = setup();
+		// 播放頭停在 3-5&（時間軸 1 秒 16 px），拖小美：插站位 2，小美有一條走位條
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 8.25 * 16, button: 0, altKey: true });
+		await fireEvent.pointerUp(window);
+		await drag('m1');
+		await fireEvent.click(viewBtn());
+		const before = session.flow;
+		// 往後拖：走位條本來就貼著站位 2，在編輯模式會停在邊界
+		const bar = document.querySelector('[data-lane="m1"] [data-walk]')!;
+		await fireEvent.pointerDown(bar, { clientX: 300, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 400 });
+		await fireEvent.pointerUp(window, { clientX: 400 });
+		expect(session.flow).toBe(before);
+		expect(screen.getByRole('status').textContent).toContain('檢視模式');
+		expect(screen.getByRole('status').textContent).not.toContain('已靠到邊界');
+	});
+
 	it('檢視模式改站位名稱被擋下：名稱框變回流程裡的名字', async () => {
 		const session = setup();
 		await fireEvent.click(viewBtn());

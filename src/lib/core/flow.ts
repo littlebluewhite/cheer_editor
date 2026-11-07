@@ -88,7 +88,7 @@ export function renameFlow(flow: Flow, name: string): CommandResult {
 }
 
 /**
- * 調整場地：改條數或鋪向。墊子上的人照比例放大縮小，再吸到最近的 1/4 格；
+ * 調整場地：改條數或鋪向。墊子上的人照比例放大縮小，再吸到最近的 1/4 格（對中線對稱的人吸完還是對稱）；
  * 站在墊子外的人，跟最近那個邊的距離不變（還是在場外）。
  */
 export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
@@ -101,11 +101,16 @@ export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
 		if (v > lo + len) return newLo + newLen + (v - lo - len);
 		return newLo + ((v - lo) / len) * newLen;
 	};
-	const move = ([x, y]: Position): Position => {
+	const moveOneSide = ([x, y]: Position): Position => {
 		const p: Position = [axis(x, from.x, from.width, to.x, to.width), axis(y, from.y, from.height, to.y, to.height)];
 		const snapped = snapPosition(field, p, 1);
 		const onMat = (v: number, lo: number, len: number) => v >= lo && v <= lo + len;
 		return [onMat(x, from.x, from.width) ? snapped[0] : p[0], onMat(y, from.y, from.height) ? snapped[1] : p[1]];
+	};
+	// 場地和格子都對中線左右、前後對稱：照離中線多遠算，再放回原本那一邊，對稱的站位換完還是對稱
+	const move = ([x, y]: Position): Position => {
+		const [ax, ay] = moveOneSide([Math.abs(x), Math.abs(y)]);
+		return [Math.sign(x) * ax, Math.sign(y) * ay];
 	};
 	const formations = flow.formations.map((f) => ({
 		...f,

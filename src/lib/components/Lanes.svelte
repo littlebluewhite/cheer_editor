@@ -47,7 +47,7 @@
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
-	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
+	import { AT_EDGE, getEditorSession, VIEW_ONLY } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { isLongMarker } from './marker';
@@ -309,7 +309,8 @@
 	function dropWalk(d: NonNullable<typeof walkDrag>) {
 		const { walks: next, clamped, shiftSec } = draggedWalks(d);
 		if (Math.abs(shiftSec) < 1e-9) {
-			if (clamped) session.notice = AT_EDGE;
+			// 檢視模式：說不能改，不說已靠到邊界
+			if (clamped) session.notice = session.viewing ? VIEW_ONLY : AT_EDGE;
 			return;
 		}
 		session.ask.send(() => setWalks(flow, d.formationId, next), {
@@ -502,7 +503,7 @@
 	.row:hover .trk {
 		background-color: rgba(47, 102, 184, 0.03);
 	}
-	/* 名字欄疊在播放頭（z 5）上面，橫向捲動時播放頭從名字底下過去。 */
+	/* 名字欄疊在播放頭（z 4）和走位條（z 5）上面，橫向捲動時從名字底下過去。 */
 	.lab {
 		position: sticky;
 		left: 0;
@@ -734,10 +735,11 @@
 			width: min(16px, 40%);
 		}
 	}
-	/* 走位條：按鈕本身透明、比較高（好點），裡面的細條（.strip）貼在泳道下緣，蓋在色條上面；兩端是把手。 */
+	/* 走位條：按鈕本身透明、比較高（好點），裡面的細條（.strip）貼在泳道下緣，蓋在色條上面；兩端是把手。
+	   疊在播放頭（z 4）上面：播放頭停在端點上時，按下去拖到的是端點。 */
 	.walk {
 		position: absolute;
-		z-index: 3;
+		z-index: 5;
 		padding: 0;
 		border: none;
 		border-radius: 0;

@@ -1187,6 +1187,33 @@ describe('站位與走位', () => {
 		expect(thumbLeft(1)).toBe(0);
 	});
 
+	it('兩張站位之間點人、手抖 5 px：不算拖，不插站位、人不動（不吸到別的格點）', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2：小A 從原地走到左上
+		await seek(4); // 兩張站位中間：小A 在半路上，不在格點上
+		const dot = document.querySelector('[data-member-id="m1"]')!;
+		const where = dot.getAttribute('transform');
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 3, clientY: 4 });
+		await fireEvent.pointerUp(dot, { clientX: 3, clientY: 4 });
+		expect(thumbs()).toHaveLength(2);
+		expect(document.querySelector('[data-member-id="m1"]')!.getAttribute('transform')).toBe(where);
+	});
+
+	it('拖人拖了一圈放回原本的格點：不算修改，不多一步復原', async () => {
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
+		const before = session.flow;
+		const dot = document.querySelector('[data-member-id="m1"]')!;
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 60, clientY: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 1, clientY: 0 });
+		await fireEvent.pointerUp(dot, { clientX: 1, clientY: 0 });
+		expect(session.flow).toBe(before);
+		expect(session.canUndo).toBe(false);
+	});
+
 	it('走位條拖過下一張站位：停在那張站位（最遠合法的地方），提示「已靠到邊界」', async () => {
 		await setup();
 		await seek(8.25);

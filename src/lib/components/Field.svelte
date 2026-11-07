@@ -135,8 +135,8 @@
 	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
 	const MIN_DOT_PX = touchScreen ? 32 : 22;
 	const ZOOM_STEP = 1.25;
-	/** 按下後移動不到這麼多 px 算點一下。 */
-	const CLICK_PX = 4;
+	/** 按下後移動不到這麼多 px 算點一下（手抖幾 px 不算拖，不插站位、不吸到別的格點）。 */
+	const CLICK_PX = 8;
 	const MAX_ZOOM = 8;
 
 	const g = $derived(fieldGeometry(field));
@@ -464,8 +464,11 @@
 	function up(e: PointerEvent) {
 		liftFinger(e);
 		stopEdgeScroll();
-		if (drag?.cur) drop(dragged, drag.atEdge);
-		else if (drag) session?.pickMember(drag.id, drag.shift);
+		if (drag?.cur) {
+			// 拖完吸附回原本的位置：不算修改
+			const [x, y] = drag.orig[drag.id];
+			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge);
+		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
 		box = null;

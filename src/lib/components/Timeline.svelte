@@ -500,7 +500,7 @@
 		display: flex;
 		border-bottom: 1px solid var(--line-soft, #e8ecf3);
 	}
-	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 5）上面。 */
+	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 4）上面。 */
 	.segs,
 	.ruler-row {
 		position: sticky;
@@ -811,7 +811,8 @@
 		width: 2px;
 		margin-left: -1px;
 		background: var(--now, #f2542d);
-		z-index: 5;
+		/* 在走位條（z 5）底下：播放頭停在走位條端點上時，按到的是端點 */
+		z-index: 4;
 		cursor: ew-resize;
 	}
 	/* 拖得到的範圍比線寬一點 */
