@@ -150,7 +150,7 @@ export {
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 
-export { mirrorPositions } from './group-moves';
+export { alignColumn, alignRow, mirrorPositions, spreadEvenly } from './group-moves';
 
 export { FINE_ZOOM, fieldPositionText, snapGroup, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';
