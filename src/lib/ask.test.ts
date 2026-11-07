@@ -336,10 +336,31 @@ describe('不用送指令就被擋（教練打的字看不懂）', () => {
 		expect(ask.failures).toBe(2);
 		expect(onfail).toHaveBeenCalledWith('看不懂到達');
 	});
+});
+
+describe('送之前就看得出不行', () => {
+	it('當被擋：留下原因，給了還原就加「，已還原」並還原，回傳被擋', () => {
+		const onchange = vi.fn();
+		const onfail = vi.fn();
+		const ask = new Ask(onchange, { onfail });
+		const revert = vi.fn();
+		const r = ask.block('長度看不懂', { revert });
+		expect(r).toEqual({ kind: 'blocked', message: '長度看不懂' });
+		expect(ask.error).toBe('長度看不懂，已還原');
+		expect(revert).toHaveBeenCalledOnce();
+		expect(onfail).toHaveBeenCalledWith('長度看不懂，已還原');
+		expect(onchange).not.toHaveBeenCalled();
+	});
+
+	it('給了格名：原因記在那一格', () => {
+		const ask = new Ask(vi.fn());
+		ask.block('看不懂', { field: '開始' });
+		expect(ask.fieldErrors).toEqual({ 開始: '「開始」退回原本的值：看不懂' });
+	});
 
 	it('鎖著：原因是鎖給的那句', () => {
 		const ask = new Ask(vi.fn(), { locked: () => '檢視模式' });
-		ask.block('看不懂出發');
+		ask.block('長度看不懂');
 		expect(ask.error).toBe('檢視模式');
 	});
 });

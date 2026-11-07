@@ -12,10 +12,8 @@
 	import {
 		HALF_BEATS_PER_BEAT,
 		HALF_BEATS_PER_EIGHT,
-		addSegment,
 		atTextWithUnit,
 		formationTimes,
-		insertBeats,
 		lengthTextWithUnit,
 		readLength,
 		rulerMarks,
@@ -228,7 +226,7 @@
 		// 選單項目要不見了：焦點先回「＋」，段設定關掉時焦點才回得來（不掉回頁面最上面）。
 		menu?.anchor.focus();
 		menu = null;
-		session.ask.send(() => addSegment(flow, kind, after), {
+		session.ask.send({ name: 'addSegment', args: [kind, after] }, {
 			done: (r) => {
 				if (fill !== 'fit') fill = 'auto';
 				onopensegment(r.id);
@@ -263,7 +261,8 @@
 		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
 		const length = read.kind === 'ok' ? read.value * scale : 0;
 		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
-		insertAsk.send(() => (read.kind === 'ok' ? insertBeats(flow, at, length) : read), {
+		if (read.kind === 'blocked') return void insertAsk.block(read.message);
+		insertAsk.send({ name: 'insertBeats', args: [at, length] }, {
 			done: () => {
 				inserting = null;
 				session.notice = `在${span.label} ${atTextWithUnit(span.segment, at.at)} 插入了 ${amount}，後面的站位和動作往後延`;
