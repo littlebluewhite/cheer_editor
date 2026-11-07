@@ -45,6 +45,29 @@ describe('插入八拍', () => {
 		expect(left('x2')).toBe(`${32 * 3.2}px`);
 	});
 
+	it('⌘Z 復原的提示寫「插入八拍」', async () => {
+		const { editor } = setup();
+		editor.playback.seek(16 * 0.2);
+		await fireEvent.click(screen.getByRole('button', { name: '插入八拍' }));
+		await fireEvent.click(screen.getByRole('button', { name: '插入' }));
+		await fireEvent.keyDown(document.activeElement ?? window, { key: 'z', metaKey: true });
+		expect(screen.getByRole('status').textContent).toContain('已復原：插入八拍');
+	});
+
+	it('段尾後面沒有東西：沒插到，不說插入了，也不多一步復原', async () => {
+		const { session, editor } = setup();
+		const before = session.flow;
+		// 4-8&：最後一個半拍，後面沒有站位、動作
+		editor.playback.seek(63 * 0.2);
+		await fireEvent.click(screen.getByRole('button', { name: '插入八拍' }));
+		await fireEvent.input(screen.getByLabelText('插入幾個'), { target: { value: '1' } });
+		await fireEvent.change(screen.getByLabelText('單位'), { target: { value: 'beat' } });
+		await fireEvent.click(screen.getByRole('button', { name: '插入' }));
+		expect(screen.getByRole('status').textContent).toBe('音樂 1 4-8& 後面沒有站位或動作，沒有東西要往後延');
+		expect(session.flow).toBe(before);
+		expect(session.canUndo).toBe(false);
+	});
+
 	it('可以改成插幾拍', async () => {
 		const { editor } = setup();
 		editor.playback.seek(16 * 0.2);

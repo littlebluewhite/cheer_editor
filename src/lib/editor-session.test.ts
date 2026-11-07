@@ -70,6 +70,19 @@ describe('編輯 session：流程和復原', () => {
 		expect(s.unsaved).toBe(false);
 	});
 
+	it('改之前和改之後內容一樣（換了物件也一樣）不算一步，重做還在', () => {
+		const s = new EditorSession(sampleFlow());
+		rename(s, 'A');
+		s.undo();
+		const before = s.flow!;
+		const copy = JSON.parse(JSON.stringify(before)) as Flow;
+		expect(s.change({ ...copy, actions: copy.actions.map((a) => ({ ...a })) })).toBe(false);
+		expect(s.flow).toBe(before);
+		expect(s.canUndo).toBe(false);
+		expect(s.canRedo).toBe(true);
+		expect(s.unsaved).toBe(false);
+	});
+
 	it('沒東西可以復原、重做時什麼都不做', () => {
 		const s = new EditorSession(sampleFlow());
 		const before = s.flow;
