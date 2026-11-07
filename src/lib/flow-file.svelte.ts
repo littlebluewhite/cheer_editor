@@ -54,6 +54,8 @@ export class FlowFile {
 	#draftTimer: ReturnType<typeof setTimeout> | undefined;
 	/** 分頁頻道：頁面打開時開。沒有（瀏覽器沒有 BroadcastChannel、頁面還沒打開）就當作沒有別的分頁。 */
 	#channel: TabChannel | null = null;
+	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
+	#announced: string | null = null;
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -69,6 +71,7 @@ export class FlowFile {
 			this.#openApproved = false;
 			this.#saveDraftLater();
 			this.#dropMissingNotice();
+			this.#announce();
 			if (!editor.session.flow) void this.#readRecent();
 		};
 	}
@@ -84,9 +87,18 @@ export class FlowFile {
 			if (message.kind === 'editing?' && this.#editor.session.flow && message.id === this.#draftId) {
 				channel.post({ kind: 'editing', id: message.id });
 			}
+			// 別的分頁打開、離開一支流程：首頁的「另一個分頁正在編」跟著改
+			if (message.kind === 'editing' || message.kind === 'released') {
+				const busy = message.kind === 'editing';
+				if (this.#recent.some((f) => f.id === message.id && f.busy !== busy)) {
+					this.#recent = this.#recent.map((f) => (f.id === message.id ? { ...f, busy } : f));
+				}
+			}
 		});
+		this.#announce();
 		void this.#checkDraft();
 		return () => {
+			this.pageClosed();
 			channel?.close();
 			this.#channel = null;
 			clearTimeout(this.#draftTimer);
@@ -127,6 +139,7 @@ export class FlowFile {
 			const oldId = this.#draftId;
 			this.#draftId = fileDraftId(bytes);
 			if (oldId !== this.#draftId) void this.#dropDraft(oldId);
+			this.#announce();
 			this.#saveDraftLater();
 			session.notice = [
 				savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch),
@@ -265,10 +278,11 @@ export class FlowFile {
 	#start(flow: Flow, from: 'file' | 'draft' | 'new', draftId: string, music?: MusicLibrary, saver: FileSaver | null = null) {
 		const editor = this.#editor;
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
+		// 草稿 id 先換：session 換流程時就跟別的分頁說正在編的是這支
+		this.#draftId = draftId;
 		editor.session.open(flow, from !== 'draft');
 		editor.actionDraft.restart();
 		this.#onDisk = from === 'file';
-		this.#draftId = draftId;
 		this.#fileBytes = null;
 		editor.adapters.pendingInput.settle();
 		this.onswitch();
@@ -388,13 +402,17 @@ export class FlowFile {
 		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, null, id);
 	}
 
-	/** 丟掉最近的流程裡的一支（頁面先問過教練了）：先問別的分頁有沒有在編它，有就不丟，標成正在編。 */
-	async discardRecent(id: string) {
+	/**
+	 * 丟掉最近的流程裡的一支（頁面先問過教練了）：先問別的分頁有沒有在編它，有就不丟，標成正在編。
+	 * 回傳丟掉了沒（頁面照這個說「已丟掉」或為什麼沒丟）。
+	 */
+	async discardRecent(id: string): Promise<boolean> {
 		if (await this.#otherTabEditing(id)) {
 			this.#recent = this.#recent.map((f) => (f.id === id ? { ...f, busy: true } : f));
-			return;
+			return false;
 		}
 		this.#clearDraft(id);
+		return true;
 	}
 
 	/** 另一個分頁回答它正在編這支流程（草稿 id）嗎（等一下下，沒人回就是沒有）。 */
@@ -473,6 +491,26 @@ export class FlowFile {
 		if (!f) return;
 		if (this.ownsDraft) void this.#saveDraft(writeFlowFile(f, music.bytes(f)));
 		else if (this.#fileBytes) void this.#saveDraft(this.#fileBytes);
+	}
+
+	/** 跟別的分頁說現在正在編哪支流程：跟上次說的不一樣，先說上一支「不編了」。 */
+	#announce() {
+		const id = this.#editor.session.flow ? this.#draftId : null;
+		if (id === this.#announced) return;
+		if (this.#announced) this.#channel?.post({ kind: 'released', id: this.#announced });
+		if (id) this.#channel?.post({ kind: 'editing', id });
+		this.#announced = id;
+	}
+
+	/** 分頁要關了（pagehide、頁面拆掉）：跟別的分頁說這支流程不編了，首頁不用等重新整理就點得開。 */
+	pageClosed() {
+		if (this.#announced) this.#channel?.post({ kind: 'released', id: this.#announced });
+		this.#announced = null;
+	}
+
+	/** 分頁從上一頁快取回來（pageshow persisted）：又在編這支流程，再跟別的分頁說一聲。 */
+	pageShown() {
+		this.#announce();
 	}
 
 	/**
