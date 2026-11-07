@@ -2,7 +2,7 @@
 // 選了動作再點人，動作表單照舊是那個動作，可以改裡面的人。
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { insertFormation } from '#lib/core';
+import { insertFormation, setPositions } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -52,6 +52,19 @@ describe('Delete 只刪最後點的那一個', () => {
 		await fireEvent.click(document.querySelector('[data-lane="m2"] .lab')!, { shiftKey: true });
 		expect(session.selectedMemberIds).toEqual([]);
 		expect(session.selectedAction?.id).toBe('x1');
+		await fireEvent.keyDown(window, { key: 'Delete' });
+		expect(session.flow!.actions).toHaveLength(1);
+		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');
+	});
+
+	it('點人 → 選動作 → 點同一個人的走位條 → Delete：動作還在，出現提示', async () => {
+		const flow = flowOf(insertFormation(libSample(), 8));
+		const f2 = flow.formations[1];
+		const { session, props } = editorPage(flowOf(setPositions(flow, f2.id, { m1: f2.pos.m2, m2: f2.pos.m1 })));
+		render(Page, props);
+		await pickLane('m1');
+		await fireEvent.click(bar()!);
+		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-walk]')!);
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(session.flow!.actions).toHaveLength(1);
 		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');

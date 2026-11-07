@@ -268,10 +268,13 @@
 		);
 	}
 
-	/** 點一下走位條：選這個人（已經選到就不動，選到的一組才拖得動）；Shift＋點加進來或拿掉。 */
+	/**
+	 * 點一下走位條：選這個人（已經選到就不改選的人，選到的一組才拖得動，但照樣算最後點的是人）；Shift＋點加進來或拿掉。
+	 */
 	function tapWalk(e: MouseEvent, memberId: string) {
 		if (walkMoved) return;
 		if (e.shiftKey || !selected.has(memberId)) session.pickMember(memberId, e.shiftKey);
+		else session.selectMembers(session.selectedMemberIds);
 	}
 
 	/**

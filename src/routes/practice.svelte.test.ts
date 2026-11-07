@@ -131,6 +131,20 @@ describe('練習：記錄頁記分段練', () => {
 		expect(pressed()).toBe('true');
 	});
 
+	it('點了還沒存的記號、別天改成只練別的環節：回來點完要練的環節，沒選的環節的記號不存', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		await tap(who, '上法', '成功');
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: '2026-11-04' } });
+		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
+		await fireEvent.click(card(who).getByRole('checkbox', { name: '中段' }));
+		await fireEvent.click(card(who).getByRole('checkbox', { name: '下法' }));
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
+		await tap(who, '中段', '成功');
+		await tap(who, '下法', '成功');
+		expect(dayRow(who)).toEqual(['·✓✓']);
+	});
+
 	it('「只練幾個環節」切到總表、編排再回來還是它', async () => {
 		await practice();
 		const who = '第 1 組 小美';
