@@ -1078,6 +1078,25 @@ await check('1440×900 記一次全上 40 人：只有表格左右捲，不撐�
 		return { ok: v.頁寬 <= innerWidth && practice.scrollWidth <= practice.clientWidth + 1 && r.right <= innerWidth && v.表格自己捲 && date.right <= innerWidth, value: v };`);
 });
 
+/** 表格往右捲到底：第一欄（環節）還在表格看得到的左邊，沒被捲走。 */
+const firstColumnStays = (block) =>
+	js(`const scroll = document.querySelector(${JSON.stringify(block)} + ' .scroll');
+		scroll.scrollLeft = scroll.scrollWidth;
+		await new Promise((r) => setTimeout(r, 100));
+		const box = scroll.getBoundingClientRect();
+		const heads = [...scroll.querySelectorAll('tr > th:first-child')].map((th) => Math.round(th.getBoundingClientRect().left - box.left));
+		scroll.scrollLeft = 0;
+		return { ok: scroll.scrollWidth > scroll.clientWidth && heads.every((x) => Math.abs(x) <= 1), value: { 第一欄離表格左邊: heads } };`);
+
+await check('1440×900 記一次全上 40 人：往右捲時「環節」那一欄留在左邊；整張表一個畫面看得完，「存這次全上」不用捲整頁就按得到', async () => {
+	// 上一條已經開著 40 人的全上表
+	const first = await firstColumnStays('.sheet .block');
+	const r = await js(`const sheet = document.querySelector('.sheet').getBoundingClientRect();
+		const save = [...document.querySelectorAll('.sheet footer button')].find((b) => b.textContent.trim() === '存這次全上').getBoundingClientRect();
+		return { 全上表高: Math.round(sheet.height), 存的鈕下緣: Math.round(save.bottom), 畫面高: innerHeight };`);
+	return { ok: first.ok && r.存的鈕下緣 <= r.畫面高, value: { ...first.value, ...r } };
+});
+
 /** 用列印的媒體查詢量：A4 直的扣掉邊界大約 718px 寬。 */
 async function asPrinted(fn) {
 	await setViewport(718, 1000);
@@ -1105,6 +1124,11 @@ await check('列印：總表 40 人只印表格，欄位不超出紙寬，不印
 	await js(`[...document.querySelectorAll('.practice .pages button')].find((b) => b.textContent.trim() === '總表').click()`);
 	await sleep(300);
 	return asPrinted(printedTables);
+});
+
+await check('1440×900 總表 40 人：往右捲時「環節」那一欄留在左邊', async () => {
+	// 上一條開著 40 人的總表
+	return firstColumnStays('.summary .block');
 });
 
 await check('列印：八拍表的拍點、環節換行不截斷，背景是白的', async () => {
@@ -1825,6 +1849,21 @@ await check('1440×900 播放頭停在走位條右端（點站位 2）：按住�
 	const ok = Math.abs(before.播放頭 - before.right) <= 2 && Math.abs(after.left - before.left) < 1 && after.right < before.right - 10 && after.位置 === before.位置;
 	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title.startsWith('復原')).click()`);
 	return { ok, value: { 拖之前: before, 拖之後: after } };
+});
+
+await check('1440×900 40 人：時間軸往下捲到最後的泳道，站位列還在八拍尺下面，縮圖看得到', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	return js(`const t = document.querySelector('.timeline');
+		t.scrollTop = t.scrollHeight;
+		await new Promise((r) => setTimeout(r, 200));
+		const ruler = document.querySelector('.timeline .ruler-row').getBoundingClientRect();
+		const film = document.querySelector('.timeline .row.film').getBoundingClientRect();
+		const thumb = document.querySelector('.timeline .row.film .th').getBoundingClientRect();
+		const hit = document.elementFromPoint(thumb.left + thumb.width / 2, thumb.top + thumb.height / 2);
+		const v = { 捲了: Math.round(t.scrollTop), 八拍尺下緣: Math.round(ruler.bottom), 站位列上緣: Math.round(film.top), 點縮圖點到縮圖: !!hit?.closest('.th') };
+		t.scrollTop = 0;
+		return { ok: v.捲了 > 0 && Math.abs(v.站位列上緣 - v.八拍尺下緣) <= 1 && v.點縮圖點到縮圖, value: v };`);
 });
 
 await check('1440×900 40 人：點場上最後一個人，泳道捲到他那一行（不藏在段列、八拍尺底下，不左右捲）；再點第一個人也是（#215）', async () => {

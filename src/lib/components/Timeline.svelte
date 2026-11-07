@@ -414,7 +414,11 @@
 				<div class="ph-head" style:left={`${playback.sec * px}px`}></div>
 			</div>
 		</div>
-		<FormationRow pxPerSec={px} />
+		<!-- 站位列跟段列、八拍尺一起固定在上面（40 人時往下捲泳道，站位列不跟著捲走）；它蓋住播放頭的線，自己畫一段 -->
+		<div class="film-pin">
+			<FormationRow pxPerSec={px} />
+			<div class="ph-film" style:left={`${LABEL_W + playback.sec * px}px`}></div>
+		</div>
 		<Lanes pxPerSec={px} {clashes} />
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
@@ -483,6 +487,8 @@
 <style>
 	.timeline {
 		overflow: auto;
+		/* 捲到某一條泳道（scrollIntoView、Tab 到）時，扣掉固定在上面的段列、八拍尺、站位列（32 + 26 + 76），不停在它們底下 */
+		scroll-padding-top: 134px;
 		background: var(--surface, #fff);
 		border-top: 1px solid var(--line, #d8dee9);
 		box-shadow: 0 -1px 0 rgba(22, 33, 58, 0.03);
@@ -512,6 +518,23 @@
 	.ruler-row {
 		top: 32px;
 		height: 26px;
+	}
+	/* 站位列在八拍尺下面；疊在泳道的名字欄（z 6）和走位條上面，在段列、八拍尺底下。 */
+	.film-pin {
+		position: sticky;
+		top: 58px;
+		z-index: 7;
+		background: var(--surface, #fff);
+	}
+	/* 站位列裡的播放頭線：在名字欄底下，點不到（不擋點縮圖） */
+	.ph-film {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		margin-left: -1px;
+		background: var(--now, #f2542d);
+		pointer-events: none;
 	}
 	.lab {
 		position: sticky;

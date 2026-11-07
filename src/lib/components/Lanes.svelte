@@ -755,8 +755,9 @@
 	}
 	/* 手指：泳道（名字）至少 32px 高；拉長短的把手、走位條和兩端點得到的範圍變大，看起來不變。 */
 	@media (pointer: coarse) {
+		/* 名字 32px ＋ 下框線 1px（站位列固定在上面後，差的那 1px 會被它蓋到） */
 		.row {
-			min-height: 32px;
+			min-height: 33px;
 		}
 		.rz {
 			width: min(16px, 40%);

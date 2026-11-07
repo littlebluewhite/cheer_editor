@@ -134,3 +134,18 @@ describe('打號碼排順序', () => {
 		expect(screen.queryByRole('button', { name: '暫停' })).toBeNull();
 	});
 });
+
+describe('加隊員表單', () => {
+	it('滿 40 人：名字、性別、全局角色、加隊員鈕都停用，寫為什麼；刪掉一個人就能再加', async () => {
+		const people = Array.from({ length: 36 }, (_, i) => ({ name: `隊員${i + 1}`, gender: 'F' as const, globalRole: 'top' as const }));
+		await setup(flowOf(addMembers(libSample(), people)));
+		const form = screen.getByRole('button', { name: '加隊員' }).closest('form')!;
+		const fields = () => [...form.querySelectorAll('textarea, select, button')];
+		expect(fields().every((el) => el.matches(':disabled'))).toBe(true);
+		expect(form.textContent).toContain('已經 40 人了（一支流程最多 40 人），刪掉隊員才能再加');
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 40 位隊員' }));
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		expect(fields().some((el) => el.matches(':disabled'))).toBe(false);
+		expect(form.textContent).not.toContain('刪掉隊員才能再加');
+	});
+});

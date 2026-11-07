@@ -171,6 +171,9 @@ export function falloutQuestion(
 	return asked ? needsConfirm(asked, items) : null;
 }
 
+/** 有紀錄的組換了人時的問法（在動作裡移人、刪隊員共用）。 */
+export const CHANGED_SQUADS_QUESTION = '有紀錄的組換了人：保留舊紀錄，還是清掉重算？';
+
 /** 「換了人，會清掉 2 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？」；換了算法是「換成騰翻，變成每個人自己算，會清掉…」。 */
 function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Attempt[]): string {
 	const category = ACTION_CATEGORIES.find((c) => c.key === next.category)?.label ?? '';
@@ -180,7 +183,7 @@ function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Att
 			: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
 	const asked = [
 		lost.length ? `${why}，會清掉 ${lost.length} 次紀錄` : '',
-		changed.length ? '有紀錄的組換了人：保留舊紀錄，還是清掉重算？' : ''
+		changed.length ? CHANGED_SQUADS_QUESTION : ''
 	]
 		.filter(Boolean)
 		.join('；');
