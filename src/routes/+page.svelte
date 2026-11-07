@@ -91,6 +91,8 @@
 
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
+	/** 點規則警告打開流程設定時，焦點要放的那一格（關掉時收掉）。 */
+	let settingsFocus = $state<ComponentProps<typeof FlowSettings>['focus']>();
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
@@ -690,12 +692,18 @@
 							</div>
 						{/if}
 						{#if warnings.length}
-							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定 -->
+							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定，焦點在那條規則的數字 -->
 							<ul class="warn" aria-label="規則警告">
 								{#each warnings as w (w.title)}
 									<li>
 										{#if view === 'edit' && !session.viewing}
-											<button type="button" title="規則警告（只提醒，不擋）：按一下打開流程設定" onclick={() => (settingsOpen = true)}
+											<button
+												type="button"
+												title="規則警告（只提醒，不擋）：按一下到流程設定改這個數字"
+												onclick={() => {
+													settingsFocus = w.rule;
+													settingsOpen = true;
+												}}
 												><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></button
 											>
 										{:else}
@@ -704,6 +712,21 @@
 									</li>
 								{/each}
 							</ul>
+						{:else if flow && !flow.timeRules.on}
+							<!-- 關掉的規則警告：看得出是關著的，能改設定時點了到流程設定的開關 -->
+							<div class="warn off">
+								{#if view === 'edit' && !session.viewing}
+									<button
+										type="button"
+										onclick={() => {
+											settingsFocus = 'on';
+											settingsOpen = true;
+										}}><Icon name="warn" /><span><b>規則警告關著</b>按一下到流程設定打開</span></button
+									>
+								{:else}
+									<span class="row"><Icon name="warn" /><span><b>規則警告關著</b>到流程設定打開</span></span>
+								{/if}
+							</div>
 						{/if}
 						{#if flow}
 							{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
@@ -839,7 +862,13 @@
 		/>
 	{/if}
 	{#if settingsOpen}
-		<FlowSettings onclose={() => (settingsOpen = false)} />
+		<FlowSettings
+			focus={settingsFocus}
+			onclose={() => {
+				settingsOpen = false;
+				settingsFocus = undefined;
+			}}
+		/>
 	{/if}
 	{#if printOpen}
 		<PrintSheet
@@ -1466,6 +1495,12 @@
 	.warn b {
 		display: block;
 		font-weight: 700;
+	}
+	/* 關著的規則警告：灰的，看得出是關著、不是沒問題。 */
+	.warn.off {
+		background: var(--surface-2, #f6f8fb);
+		border-color: var(--line, #dfe4ee);
+		color: var(--muted, #66718a);
 	}
 	/* 左欄最上面：播放頭這一刻用的站位。號碼跟站位縮圖列一樣是深色小方塊，左邊一條墊子藍。 */
 	.now-formation {
