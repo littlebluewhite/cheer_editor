@@ -19,7 +19,7 @@ import {
 	type Flow,
 	type MoveResult
 } from '#lib/core';
-import { Ask, type Handlers } from '#lib/ask.svelte.js';
+import { Ask, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
@@ -99,6 +99,13 @@ export class EditorSession {
 	}
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
+	/**
+	 * 雲端流程：改好的一步交給它送伺服器（#248）。接著它時改的步不進復原紀錄（雲端的復原在 #256），也不算未存。
+	 * 本機流程是 null。
+	 */
+	onstep: ((step: SentStep) => void) | null = null;
+	/** 不能改的原因（例：有新版，請重新整理）：有的話改流程的指令都擋下說這句，比檢視模式優先。空字串是沒有。 */
+	readOnly = $state('');
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};
 	/** 拍點格子選的拍（選到的動作的）。 */
@@ -140,8 +147,8 @@ export class EditorSession {
 	 * 被擋的原因（拖的加「，已還原」）放進提示。成功就算一步、提示收掉。
 	 */
 	readonly ask = new Ask(
-		(f) => {
-			this.change(f, this.#joining ?? undefined);
+		(f, step) => {
+			this.change(f, this.#joining ?? undefined, step);
 			this.notice = '';
 		},
 		{
@@ -153,11 +160,11 @@ export class EditorSession {
 	);
 
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
-	readonly squadAsk = new Ask((f) => this.change(f), { locked: () => this.#locked(), flow: () => this.#flow });
+	readonly squadAsk = new Ask((f, step) => this.change(f, undefined, step), { locked: () => this.#locked(), flow: () => this.#flow });
 
-	/** 改流程鎖著的原因：檢視模式是 VIEW_ONLY，編輯是空字串。 */
+	/** 改流程鎖著的原因：不能改的原因（readOnly）、檢視模式是 VIEW_ONLY，編輯是空字串。 */
 	#locked(): string {
-		return this.viewing ? VIEW_ONLY : '';
+		return this.readOnly || (this.viewing ? VIEW_ONLY : '');
 	}
 
 	/**
@@ -213,18 +220,24 @@ export class EditorSession {
 	/**
 	 * 「改」：算復原的一步（拖人連帶插站位、往後帶也只呼叫一次）。同一個流程不算。清掉重做。
 	 * 給了 join：上一步也是同一個 join、中間沒有別的改動，就跟上一步合成一步。
-	 * 回傳有沒有換上新的流程。
+	 * 回傳有沒有換上新的流程。step：這一步送了什麼（雲端流程交給 onstep 送伺服器）。
 	 */
-	change(flow: Flow, join?: string): boolean {
+	change(flow: Flow, join?: string, step?: SentStep): boolean {
 		if (!this.#flow || flow === this.#flow) return false;
 		const before = this.#flow;
-		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
-		// 合成一步的：說的是從合之前到現在改了什麼
-		const from = joined ? this.#undo.at(-1)!.flow : this.#flow;
-		const step = { flow: from, label: changeLabel(from, flow) };
-		this.#undo = (joined ? [...this.#undo.slice(0, -1), step] : [...this.#undo, step]).slice(-UNDO_LIMIT);
-		this.#joinable = join !== undefined ? { key: join, flow } : null;
-		this.#redo = [];
+		if (this.onstep) {
+			// 雲端流程：送伺服器（存好了由它說），不進復原紀錄
+			if (step) this.onstep(step);
+			this.#saved = flow;
+		} else {
+			const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
+			// 合成一步的：說的是從合之前到現在改了什麼
+			const from = joined ? this.#undo.at(-1)!.flow : this.#flow;
+			const undoStep = { flow: from, label: changeLabel(from, flow) };
+			this.#undo = (joined ? [...this.#undo.slice(0, -1), undoStep] : [...this.#undo, undoStep]).slice(-UNDO_LIMIT);
+			this.#joinable = join !== undefined ? { key: join, flow } : null;
+			this.#redo = [];
+		}
 		this.#flow = flow;
 		this.ask.clear();
 		this.#trim(flow);
@@ -247,7 +260,7 @@ export class EditorSession {
 
 	/** 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。 */
 	changeAsk(options: { confirmLabel?: string; onfail?: (error: string) => void } = {}): Ask {
-		const ask = new Ask((f) => this.change(f), { ...options, locked: () => this.#locked(), flow: () => this.#flow });
+		const ask = new Ask((f, step) => this.change(f, undefined, step), { ...options, locked: () => this.#locked(), flow: () => this.#flow });
 		this.#changeAsks.add(new WeakRef(ask));
 		return ask;
 	}
@@ -269,6 +282,18 @@ export class EditorSession {
 	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
 	recordAsk(): Ask {
 		return new Ask((f) => this.record(f), { flow: () => this.#flow });
+	}
+
+	/**
+	 * 換成伺服器上的樣子（雲端流程的一步被退回）：不算一步，選取修剪、問題收掉，原因放進提示。
+	 */
+	reset(flow: Flow, message: string) {
+		const before = this.#flow;
+		if (!before) return;
+		this.#flow = flow;
+		this.#saved = flow;
+		this.#restored(flow, before);
+		this.notice = message;
 	}
 
 	/** 復原：換上前一份編排，帶著現在的紀錄，提示「已復原：…」。回傳有沒有復原（檢視模式擋下，說原因）。 */

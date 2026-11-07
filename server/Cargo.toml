@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 anyhow = "1.0.104"
 argon2 = "0.6.0"
-axum = { version = "0.8.9", features = ["json"] }
+axum = { version = "0.8.9", features = ["json", "ws"] }
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 dotenvy = "0.15.7"
@@ -33,9 +33,11 @@ unicode-segmentation = "1.13.3"
 governor = { version = "0.10.4", default-features = false, features = ["std", "quanta"] }
 
 [dev-dependencies]
+futures-util = "0.3.34"
 http-body-util = "0.1.5"
 serde_json = { version = "1", features = ["raw_value"] }
 tempfile = "3"
+tokio-tungstenite = "0.29.0"
 tower = { version = "0.5.3", features = ["util"] }
 
 # 測試用 debug 建置，Argon2（故意算很慢）不最佳化的話一次要好幾秒。

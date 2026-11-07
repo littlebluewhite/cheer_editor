@@ -8,13 +8,35 @@ import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { Me } from '#lib/api-types/Me.js';
 import type { MyFlows } from '#lib/api-types/MyFlows.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
+import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
+import type { RoomRequest } from '#lib/api-types/RoomRequest.js';
 import type { SignedOut } from '#lib/api-types/SignedOut.js';
 import type { TooManyTries } from '#lib/api-types/TooManyTries.js';
 import type { AdminProblem } from '#lib/api-types/AdminProblem.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
 
-export type { AdminProblem, CloudFlow, CloudFlowSummary, LinkInfo, Me, PasswordProblem, TooManyTries, UserRow, UserStatus };
+export type {
+	AdminProblem,
+	CloudFlow,
+	CloudFlowSummary,
+	LinkInfo,
+	Me,
+	PasswordProblem,
+	RoomMessage,
+	RoomRequest,
+	TooManyTries,
+	UserRow,
+	UserStatus
+};
+
+/** 一支雲端流程的房間（WebSocket）：送步、收伺服器的回答。還沒連上時送的先排著，連上就送。 */
+export interface FlowRoom {
+	send(request: RoomRequest): void;
+	/** 收到伺服器說的話（房間建好後接上）。 */
+	onmessage: (message: RoomMessage) => void;
+	close(): void;
+}
 
 /** 管理的事的結果：做好了，或做不成的原因（email 撞到別人、今天寄不出去、這個人現在不能這樣做）。 */
 export type AdminResult = 'ok' | AdminProblem;
@@ -74,6 +96,8 @@ export interface ServerAdapter {
 	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
 	/** 拿一支雲端流程；沒有這支、不是我的是 null。 */
 	cloudFlow(id: string): Promise<CloudFlow | null>;
+	/** 連一支雲端流程的房間（#248）：先送打招呼（指紋、分頁 id、上次看到第幾步），再一步一步送。 */
+	openRoom(flowId: string): FlowRoom;
 
 	/** 忘記密碼：寄設密碼信。有沒有這個帳號都一樣（伺服器不說）。 */
 	forgotPassword(email: string): Promise<void>;
@@ -194,6 +218,26 @@ export function httpServer(base = ''): ServerAdapter {
 			if (res.ok) return (await res.json()) as CloudFlow;
 			if (res.status === 404) return null;
 			throw new ServerUnreachable();
+		},
+		openRoom(flowId) {
+			const url = new URL(`${base}/api/flows/${encodeURIComponent(flowId)}/room`, location.href);
+			url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+			const socket = new WebSocket(url);
+			const waiting: string[] = [];
+			const room: FlowRoom = {
+				onmessage: () => {},
+				send(request) {
+					const text = JSON.stringify(request);
+					if (socket.readyState === WebSocket.OPEN) socket.send(text);
+					else waiting.push(text);
+				},
+				close: () => socket.close()
+			};
+			socket.onopen = () => {
+				for (const text of waiting.splice(0)) socket.send(text);
+			};
+			socket.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
+			return room;
 		},
 		async forgotPassword(email) {
 			const res = await post('forgot-password', { email });

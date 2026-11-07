@@ -6,6 +6,7 @@ pub mod cloud_flows;
 pub mod config;
 pub mod csrf;
 pub mod flow_core;
+pub mod flow_room;
 pub mod lockout;
 pub mod mail;
 pub mod my_account;
@@ -69,6 +70,7 @@ pub fn app(state: AppState, site: &Path) -> Router {
             get(cloud_flows::mine).post(cloud_flows::create),
         )
         .route("/api/flows/{id}", get(cloud_flows::get_one))
+        .route("/api/flows/{id}/room", get(flow_room::join))
         .route("/api/forgot-password", post(my_account::forgot_password))
         .route("/api/account/name", post(my_account::change_name))
         .route("/api/account/password", post(my_account::change_password))

@@ -161,11 +161,11 @@ pub async fn get_one(
 
 /// 流程核心跑完的結果：成功帶流程（原樣的字），被擋、要問帶原因。
 #[derive(Deserialize)]
-struct Outcome<'a> {
-    kind: String,
+pub(crate) struct Outcome<'a> {
+    pub kind: String,
     #[serde(borrow)]
-    flow: Option<&'a RawValue>,
-    message: Option<String>,
+    pub flow: Option<&'a RawValue>,
+    pub message: Option<String>,
 }
 
 /// 時間寫成跟 JS `toISOString` 一樣：`2026-11-07T09:00:00.000Z`。

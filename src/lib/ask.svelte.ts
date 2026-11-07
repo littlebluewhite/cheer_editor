@@ -40,6 +40,18 @@ export interface Handlers<R extends CommandResult> {
 	field?: string;
 }
 
+/** 成功的一步送了什麼：步驟 id、一串指令（帶著教練的回答）。雲端流程把它送給伺服器（#248）。 */
+export interface SentStep {
+	id: string;
+	commands: Command[];
+}
+
+/** 送一次指令：照回答跑；step 是最後一次跑的是哪一步（還沒到指令就被擋的沒有）。 */
+interface Sender {
+	(o: ConfirmOption): CommandResult;
+	step?: () => SentStep;
+}
+
 const OPTIONS: Record<Exclude<Answer, 'cancel'>, ConfirmOption> = {
 	confirm: { confirmed: true },
 	keep: { records: 'keep' },
@@ -55,19 +67,20 @@ export class Ask {
 	failures = $state(0);
 	/** 要確認時確定鈕的字。 */
 	readonly confirmLabel: string;
-	#onchange: (flow: Flow) => void;
+	#onchange: (flow: Flow, step?: SentStep) => void;
 	#onfail: ((error: string) => void) | undefined;
 	#locked: (() => string) | undefined;
 	#flow: () => Flow | null;
-	#pending: { send: (o: ConfirmOption) => CommandResult; handlers: Handlers<CommandResult> } | null = null;
+	#pending: { send: Sender; handlers: Handlers<CommandResult> } | null = null;
 
 	/**
 	 * onfail：沒成功（被擋、要問）之後呼叫，給 error（要問時是空的）。
 	 * locked：鎖著的原因（空字串是沒鎖）；鎖著時送什麼都當被擋。
 	 * flow：現在的流程，指令跑在它上面（沒給是 null，只有新建流程叫得動）。
+	 * onchange 收新的流程和這一步送了什麼。
 	 */
 	constructor(
-		onchange: (flow: Flow) => void,
+		onchange: (flow: Flow, step?: SentStep) => void,
 		{
 			confirmLabel = '確定',
 			onfail,
@@ -109,18 +122,20 @@ export class Ask {
 	 * 每次都跑在那時候的流程上。要問時記下是第幾個指令問的，
 	 * 回答放進那個指令的 options（前面回答過的留著），整串再送一次。整串是同一步，用同一個步驟 id。
 	 */
-	#byName(what: Command | Command[]): (o: ConfirmOption) => CommandResult {
+	#byName(what: Command | Command[]): Sender {
 		const single = !Array.isArray(what);
 		let commands = single ? [what] : what;
 		let asking = -1;
 		const stepId = newStepId();
-		return (o) => {
+		const send: Sender = (o) => {
 			if (asking >= 0) commands = commands.map((c, i) => (i === asking ? { ...c, options: o } : c));
 			const flow = this.#flow();
 			const r = single ? runCommand(flow, commands[0], stepId) : runCommands(flow, commands, stepId);
 			asking = r.kind === 'confirm' || r.kind === 'choose' ? ('at' in r ? r.at : 0) : -1;
 			return r;
 		};
+		send.step = () => ({ id: stepId, commands });
+		return send;
 	}
 
 	answer(answer: Answer) {
@@ -136,9 +151,9 @@ export class Ask {
 	}
 
 	/** 送一次：鎖著就不送，當被擋。 */
-	#run<R extends CommandResult>(send: (o: ConfirmOption) => R, o: ConfirmOption): R {
+	#run(send: Sender, o: ConfirmOption): CommandResult {
 		const locked = this.#locked?.();
-		return locked ? ({ kind: 'blocked', message: locked } as R) : send(o);
+		return locked ? { kind: 'blocked', message: locked } : send(o);
 	}
 
 	/** 教練改了一格：收掉那一格的紅字，別格的留著。
@@ -155,12 +170,12 @@ export class Ask {
 		this.#pending = null;
 	}
 
-	#settle(r: CommandResult, send: (o: ConfirmOption) => CommandResult, handlers: Handlers<CommandResult>) {
+	#settle(r: CommandResult, send: Sender, handlers: Handlers<CommandResult>) {
 		this.clear();
 		const field = handlers.field;
 		if (r.kind === 'ok') {
 			this.fieldErrors = {};
-			this.#onchange(r.flow);
+			this.#onchange(r.flow, send.step?.());
 			handlers.done?.(r);
 		} else if (r.kind === 'blocked') {
 			if (field !== undefined) this.fieldErrors[field] = `「${field}」退回原本的值：${r.message}`;

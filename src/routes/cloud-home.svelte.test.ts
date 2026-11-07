@@ -1,5 +1,5 @@
 // 頁面：登入後的首頁兩欄（雲端的「我的流程」、這台電腦的「最近的流程」）、新建表單「存在：雲端／這台」、
-// 新建和打開雲端流程（#247）。伺服器換成測試共用的假伺服器（fakeServer）。
+// 新建和打開雲端流程（#247；打開就能改，#248）。伺服器換成測試共用的假伺服器（fakeServer）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFlow, writeFlowFile } from '#lib/core';
@@ -106,7 +106,7 @@ describe('新建表單：存在雲端／這台', () => {
 		expect(cloud.disabled).toBe(false);
 	});
 
-	it('新建雲端流程：伺服器存起來，打開的是它（檢視模式），沒有存草稿；回首頁列在我的流程，不在最近的流程', async () => {
+	it('新建雲端流程：伺服器存起來，打開的是它（能改），沒有存草稿；回首頁列在我的流程，不在最近的流程', async () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const s = signedIn();
 		await vi.advanceTimersByTimeAsync(0);
@@ -117,14 +117,13 @@ describe('新建表單：存在雲端／這台', () => {
 		expect(s.state.flows.map((f) => [f.owner, f.flow.name])).toEqual([[lin.email, '全國賽']]);
 		expect(s.page.editor.file.cloudId).toBe(s.state.flows[0].id);
 		expect(s.page.session.flow?.name).toBe('全國賽');
-		expect(s.page.session.viewing).toBe(true);
-		expect(document.querySelector('.field-host')!.textContent).toContain('檢視模式・只能看');
+		expect(s.page.session.viewing).toBe(false);
 
 		// 停手好幾秒也不存草稿
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(s.drafts.all.size).toBe(0);
 
-		await fireEvent.click(screen.getByRole('button', { name: /新建/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '首頁' }));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(screen.getByRole('list', { name: '我的流程' }).textContent).toContain('全國賽');
 		expect(screen.queryByRole('list', { name: '最近的流程' })?.textContent ?? '').not.toContain('全國賽');
@@ -144,7 +143,7 @@ describe('新建表單：存在雲端／這台', () => {
 });
 
 describe('打開雲端流程', () => {
-	it('點「我的流程」的一列：從伺服器拿編排，用檢視模式打開，「編輯」按不了', async () => {
+	it('點「我的流程」的一列：從伺服器拿編排打開，能改', async () => {
 		const flow = newFlowOf('校慶表演');
 		const s = signedIn([{ id: 'c2', owner: lin.email, flow, updatedAt: at(11, 6, 15, 20) }]);
 		await flush();
@@ -152,8 +151,8 @@ describe('打開雲端流程', () => {
 		await flush();
 		expect(s.page.session.flow).toEqual(flow);
 		expect(s.page.editor.file.cloudId).toBe('c2');
-		expect(s.page.session.viewing).toBe(true);
-		expect((screen.getByRole('button', { name: '編輯' }) as HTMLButtonElement).disabled).toBe(true);
+		expect(s.page.session.viewing).toBe(false);
+		expect((screen.getByRole('button', { name: '編輯' }) as HTMLButtonElement).disabled).toBe(false);
 		await flush();
 		expect(s.drafts.all.size).toBe(0);
 	});

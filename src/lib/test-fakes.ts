@@ -12,11 +12,14 @@ import {
 	loadSegmentAudio,
 	addPhase,
 	recordAttempt,
+	runCommands,
 	setSquad,
 	updateSegment,
+	type Command,
 	type Flow,
 	type Position
 } from '#lib/core';
+import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { flowOf } from '#lib/test-flows.js';
 import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
@@ -24,7 +27,16 @@ import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
-import { ServerUnreachable, type AdminResult, type LinkInfo, type Me, type ServerAdapter, type UserStatus } from '#lib/server-api.js';
+import {
+	ServerUnreachable,
+	type AdminResult,
+	type FlowRoom,
+	type LinkInfo,
+	type Me,
+	type RoomMessage,
+	type ServerAdapter,
+	type UserStatus
+} from '#lib/server-api.js';
 
 /** 假的存檔：每次存的位元組和檔名照順序記下來，回傳給的結果。 */
 export function fakeSaver(outcome: SaveOutcome = 'saved') {
@@ -123,12 +135,14 @@ export interface FakeLink {
 	hoursLeft?: number;
 }
 
-/** 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）。 */
+/** 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）、現在第幾步（沒寫是 0）、收過的步驟 id（→ 收了之後第幾步）。 */
 export interface FakeCloudFlow {
 	id: string;
 	owner: string;
 	flow: Flow;
 	updatedAt: string;
+	step?: number;
+	stepIds?: Record<string, number>;
 }
 
 /**
@@ -138,6 +152,8 @@ export interface FakeCloudFlow {
  * 管理使用者：使用者的 id 是他在 users 裡的位置 + 1；mailQuota 設成 true 就是寄信服務今天的額度用完了。
  * expired 設成 true：沒登入是因為登入超過 30 天了。retryAfter 設成秒數：猜密碼試太多次（鎖住），登入、改密碼都回要等幾秒。
  * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
+ * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
+ * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
  */
 export function fakeServer(
 	init: {
@@ -159,7 +175,32 @@ export function fakeServer(
 		expired: false,
 		retryAfter: null as number | null,
 		forgot: [] as string[],
-		otherDevices: 1
+		otherDevices: 1,
+		fingerprint: CORE_FINGERPRINT,
+		holdRoom: false
+	};
+	/** 留著還沒處理的（holdRoom 時）。 */
+	let held: (() => void)[] = [];
+	const deliver = (room: FlowRoom, answer: () => RoomMessage | null) => {
+		const send = () => {
+			const message = answer();
+			if (message) room.onmessage(message);
+		};
+		if (state.holdRoom) held.push(send);
+		else queueMicrotask(send);
+	};
+	/** 房間收到一步：照真的伺服器的規則。 */
+	const takeStep = (f: FakeCloudFlow, stepId: string, commands: Command[]): RoomMessage => {
+		const taken = f.stepIds?.[stepId];
+		if (taken !== undefined) return { kind: 'accepted', stepId, step: taken };
+		const r = runCommands(structuredClone(f.flow), structuredClone(commands), stepId);
+		const step = f.step ?? 0;
+		if (r.kind !== 'ok') return { kind: 'rejected', stepId, message: `沒存進去：${r.message}`, flow: structuredClone(f.flow), step };
+		f.flow = r.flow;
+		f.step = step + 1;
+		f.stepIds = { ...f.stepIds, [stepId]: f.step };
+		f.updatedAt = new Date().toISOString();
+		return { kind: 'accepted', stepId, step: f.step };
 	};
 	let nextToken = 1;
 	const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -297,7 +338,25 @@ export function fakeServer(
 		},
 		async cloudFlow(id) {
 			const f = mine().find((g) => g.id === id);
-			return f ? { id: f.id, flow: structuredClone(f.flow), step: 0, updatedAt: f.updatedAt } : null;
+			return f ? { id: f.id, flow: structuredClone(f.flow), step: f.step ?? 0, updatedAt: f.updatedAt } : null;
+		},
+		openRoom(flowId) {
+			let ready = false;
+			const room: FlowRoom = {
+				onmessage: () => {},
+				send(request) {
+					const f = mine().find((g) => g.id === flowId);
+					if (!f) return;
+					if (request.kind === 'hello') {
+						ready = request.fingerprint === state.fingerprint;
+						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
+					} else {
+						deliver(room, () => (ready ? takeStep(f, request.stepId, request.commands as Command[]) : null));
+					}
+				},
+				close() {}
+			};
+			return room;
 		},
 		async forgotPassword(email) {
 			reachable();
@@ -323,7 +382,14 @@ export function fakeServer(
 			return 'ok';
 		}
 	};
-	return { server, state };
+	/** 留著的處理掉、回答（holdRoom 不再留）。 */
+	const releaseRoom = () => {
+		state.holdRoom = false;
+		const now = held;
+		held = [];
+		for (const send of now) send();
+	};
+	return { server, state, releaseRoom };
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

@@ -26,6 +26,7 @@
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
+	import { NEW_VERSION } from '#lib/cloud-steps.svelte.js';
 	import type { CloudFlowSummary, Me } from '#lib/server-api.js';
 	import { localDate } from '#lib/local-date.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
@@ -164,9 +165,11 @@
 		narrowQuery.addEventListener('change', changed);
 		return () => narrowQuery.removeEventListener('change', changed);
 	});
-	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。雲端流程這時只能看（能改在 #248）
+	/** 開著的雲端流程：每一步送伺服器存（名字旁「存中…」「✓ 已存」）；本機流程是 null。 */
+	const cloud = $derived(editor.file.cloud);
+	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。雲端流程有新版時不能改
 	$effect(() => {
-		session.viewing = narrow || !!editor.file.cloudId;
+		session.viewing = narrow || !!cloud?.newVersion;
 	});
 	/** 「我」：手機檢視畫面標亮的人。這台裝置照流程記住（local-settings），不進流程檔；換流程時讀那支的。 */
 	let me = $state(session.flow ? loadFlowSetting('me', session.flow.name) : '');
@@ -580,7 +583,10 @@
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}</span
+					>{#if cloud}{#if !cloud.newVersion}<span class="cloud-saved">{cloud.saving ? '存中…' : '✓ 已存'}</span>{/if}{:else if unsaved}<span
+							class="unsaved"
+							title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span
+						>{/if}</span
 				>
 				<div class="view" role="group" aria-label="編排｜練習">
 					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
@@ -602,7 +608,7 @@
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
 					<div class="mode" role="group" aria-label="編輯｜檢視">
-						<button type="button" aria-pressed={!session.viewing} disabled={!!editor.file.cloudId} onclick={() => (session.viewing = false)}
+						<button type="button" aria-pressed={!session.viewing} disabled={!!cloud?.newVersion} onclick={() => (session.viewing = false)}
 							><Icon name="pencil" />編輯</button
 						>
 						<button
@@ -635,14 +641,21 @@
 					>
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
-				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-				{#if narrow}
-					<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
-					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
+				{#if cloud}
+					<!-- 雲端流程每一步都存了：沒有存檔、開啟、新建，只回首頁 -->
+					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}
+						><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
+					>
 				{:else}
-					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+					<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+					{#if narrow}
+						<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
+						<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
+					{:else}
+						<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+					{/if}
+					<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 				{/if}
-				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 		</header>
 
@@ -676,14 +689,16 @@
 						</select>
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
-					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
+					<p class="phone-why">{cloud?.newVersion ? NEW_VERSION : viewOnlyReason(windowW, windowH, touchScreen)}</p>
 				</main>
 			{/if}
 		{:else}
 			<main class="field-host" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>
 				{#if session.viewing}
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
-					<div class="view-badge"><Icon name="eye" />檢視模式・只能看</div>
+					<div class="view-badge">
+						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : '檢視模式・只能看'}
+					</div>
 				{/if}
 				<Field
 					field={flow.field}
@@ -1243,6 +1258,10 @@
 		line-clamp: 1;
 		overflow-wrap: anywhere;
 		overflow: hidden;
+	}
+	.cloud-saved {
+		color: #b8c4dc;
+		white-space: nowrap;
 	}
 	.unsaved-slot {
 		flex: none;

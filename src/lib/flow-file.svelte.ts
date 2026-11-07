@@ -3,9 +3,11 @@
 // 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
 // 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁；
 // 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
-// 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247）。
+// 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247），
+// 每一步送伺服器存（cloud，#248），沒有存檔。
 
 import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { CloudSteps } from '#lib/cloud-steps.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
@@ -57,6 +59,8 @@ export class FlowFile {
 	#channel: TabChannel | null = null;
 	/** 開著的是雲端流程：它在伺服器上的 id；本機流程、在首頁是 null。 */
 	#cloudId = $state<string | null>(null);
+	/** 開著的雲端流程一步一步送伺服器存；本機流程、在首頁是 null。 */
+	#cloud = $state.raw<CloudSteps | null>(null);
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -73,7 +77,7 @@ export class FlowFile {
 			this.#saveDraftLater();
 			this.#dropMissingNotice();
 			if (!editor.session.flow) {
-				this.#cloudId = null;
+				this.#closeCloud();
 				void this.#readRecent();
 			}
 		};
@@ -110,7 +114,8 @@ export class FlowFile {
 	 */
 	async save() {
 		const { session, adapters, music } = this.#editor;
-		if (!session.flow || this.#saving) return;
+		// 雲端流程每一步都存了，沒有存檔（下載在 #259）
+		if (!session.flow || this.#saving || this.#cloudId) return;
 		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
 		adapters.pendingInput.flush();
 		const f = session.flow;
@@ -235,6 +240,17 @@ export class FlowFile {
 		return this.#cloudId;
 	}
 
+	/** 開著的雲端流程的一步一步存（名字旁「存中…」「✓ 已存」、有新版）；本機流程、在首頁是 null。 */
+	get cloud(): CloudSteps | null {
+		return this.#cloud;
+	}
+
+	#closeCloud() {
+		this.#cloud?.close();
+		this.#cloud = null;
+		this.#cloudId = null;
+	}
+
 	/** 新建表單選了存在雲端：伺服器照表單的名字、場地建一支，再打開它（沒有草稿）。 */
 	async createCloud(flow: Flow) {
 		let made;
@@ -247,7 +263,7 @@ export class FlowFile {
 		await this.openCloud(made.id);
 	}
 
-	/** 打開一支雲端流程：從伺服器拿編排。這時只能看（檢視模式由頁面設，能改在 #248）；沒有草稿。 */
+	/** 打開一支雲端流程：從伺服器拿編排，連它的房間，每一步送伺服器存；沒有草稿。 */
 	async openCloud(id: string) {
 		let found;
 		try {
@@ -262,6 +278,7 @@ export class FlowFile {
 		}
 		this.#start(found.flow as Flow, 'cloud', newDraftId());
 		this.#cloudId = id;
+		this.#cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session);
 	}
 
 	/** 上方列「新建」：回到新建流程的畫面。 */
@@ -306,7 +323,7 @@ export class FlowFile {
 		const editor = this.#editor;
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		editor.session.open(flow, from !== 'draft');
-		this.#cloudId = null;
+		this.#closeCloud();
 		this.#onDisk = from === 'file';
 		this.#draftId = draftId;
 		this.#fileBytes = null;
