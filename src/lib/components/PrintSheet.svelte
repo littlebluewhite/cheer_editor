@@ -45,13 +45,13 @@
 	);
 
 	/** 選的人（或那個角色最後一個人）被復原退掉了：回到印全隊。 */
-	const shown = $derived(valid(choice) ? choice : '');
+	const validChoice = $derived(valid(choice) ? choice : '');
 
 	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
 	const sheets = $derived(
-		shown.startsWith('role:')
-			? flow.members.filter((m) => `role:${m.globalRole}` === shown).map((m) => m.id)
-			: [shown]
+		validChoice.startsWith('role:')
+			? flow.members.filter((m) => `role:${m.globalRole}` === validChoice).map((m) => m.id)
+			: [validChoice]
 	);
 	const markers = $derived(memberMarkers(flow));
 
@@ -87,7 +87,7 @@
 			<label>
 				印誰
 				<select
-					value={shown}
+					value={validChoice}
 					onchange={(e) => {
 						choice = e.currentTarget.value;
 						saveFlowSetting('print', flow.name, choice);
