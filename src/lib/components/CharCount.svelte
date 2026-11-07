@@ -34,6 +34,8 @@
 		const el = input;
 		el.setAttribute('aria-describedby', uid);
 
+		/** 正在離開欄位前切（beforechange 裡）。 */
+		let changing = false;
 		/** 太長就把這次打進去的字切到放得下（舊的字超過上限的話，至少保持原本的長度），再當作打了一次字。 */
 		function clip() {
 			const now = el.value;
@@ -51,7 +53,9 @@
 				el.setSelectionRange(head + typed.length, head + typed.length);
 				el.dispatchEvent(new Event('input', { bubbles: true }));
 			}
-			text = accepted = el.value;
+			accepted = el.value;
+			// 離開欄位前切的（beforechange）不改狀態，等 window 的 onchange 晚一點再改。
+			if (!changing) text = accepted;
 		}
 		// 輸入法選字中（compositionstart 到 compositionend）先只算字數，選好再切。
 		let composing = false;
@@ -64,9 +68,12 @@
 		// 畫面先把打進去的字當成「欄位現在該有的字」帶回來，accepted 變成太長的字，就不切了（B20）。
 		const oninput = () => (composing ? (text = el.value) : clip());
 		// 離開欄位前先切：沒經過打字就變太長的字（自動填入之類）也照上限存，不整段被退回。
-		// capture：比畫面的 onchange 先跑。沒太長就不碰狀態（畫面換掉時也會 change，那一刻不能改狀態）。
+		// capture：比畫面的 onchange 先跑，切好的字照常送出。切了也只改欄位上的字、不碰狀態（畫面換掉時也會 change，那一刻不能改狀態）。
 		const beforechange = () => {
-			if (!composing && charCount(el.value) > Math.max(max, charCount(accepted))) clip();
+			if (composing || charCount(el.value) <= Math.max(max, charCount(accepted))) return;
+			changing = true;
+			clip();
+			changing = false;
 		};
 		// 畫面在 change 時可能把欄位退回原本的字：等它退完再算。掛在 window，排在畫面的 onchange 後面
 		// （只在 el 上排 microtask 不夠：瀏覽器在同一個事件的兩個 listener 之間就會跑 microtask，那時還沒退回）；

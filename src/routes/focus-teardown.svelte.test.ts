@@ -106,6 +106,19 @@ describe('欄位有焦點時畫面把它換掉', () => {
 		expect(session.flow!.formations[1].name).toBeUndefined();
 	});
 
+	it('站位名稱沒經過打字就變太長（自動填入）、焦點還在裡面時刪掉這張站位：沒有例外；「未存」不卡住', async () => {
+		const session = setup(flowOf(moveMembers(libSample(), 8, { m1: [3, 3] })));
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		const name = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		name.focus();
+		name.value = '一'.repeat(30);
+		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
+
+		expect(errors).toEqual([]);
+		expect(session.flow!.formations).toHaveLength(1);
+		expect(domPendingInput.pending).toBe(false);
+	});
+
 	it('動作名稱打了字、焦點還在裡面時按「刪除動作」（不搶焦點）：沒有例外；打的字先送出、「未存」不卡住；⌘Z 動作回來', async () => {
 		const session = setup();
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
