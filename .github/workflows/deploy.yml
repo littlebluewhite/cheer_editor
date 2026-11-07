@@ -1,4 +1,5 @@
-# 推上 main 就建置並部署到 GitHub Pages（https://<owner>.github.io/<repo>/）。
+# 推上 main 就跑前端和 Rust 伺服器的測試，再建置並部署到 GitHub Pages（https://<owner>.github.io/<repo>/）。
+# 搬到 Fly 之前（#264），伺服器只跑測試，不部署。
 # 第一次使用前要到 GitHub 設定，見 docs/deploy.md。
 name: Deploy to GitHub Pages
 
@@ -17,7 +18,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Rust 伺服器（server/）的測試。沒過的話 build 不會跑，也就不會部署。
+  server:
+    runs-on: ubuntu-latest
+    services:
+      # #[sqlx::test] 每個測試在這裡開一個新的資料庫。只給 CI 用的帳號，不是金鑰。
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo test --locked
+
   build:
+    needs: server
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
