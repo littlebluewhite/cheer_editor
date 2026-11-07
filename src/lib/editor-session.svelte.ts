@@ -273,6 +273,12 @@ export class EditorSession {
 	/** 給元件的「改」的問題（changeAsk）：復原、重做時一起收掉。元件拆掉了就放掉（WeakRef）。 */
 	#changeAsks = new Set<WeakRef<Ask>>();
 
+	/** 有「改」的問題等教練回答（例：改了有紀錄的人的名字，還沒選保留或清掉）：答了才會改進流程。 */
+	get questionOpen(): boolean {
+		if (this.ask.question || this.squadAsk.question) return true;
+		return [...this.#changeAsks].some((ref) => !!ref.deref()?.question);
+	}
+
 	/** 問題都收掉：問的是換掉之前的流程，留著會冒出舊內容，按下去還會清掉重做。 */
 	#clearAsks() {
 		this.ask.clear();

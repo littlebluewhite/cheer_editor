@@ -288,6 +288,13 @@ export class ActionDraft {
 		);
 	}
 
+	/** 換成另一支流程（開檔、救回草稿）：上一支沒送出的草稿、收起來的草稿都不要了，從空白的重來。 */
+	restart() {
+		this.#seen = null;
+		this.#kept = this.#added = null;
+		this.follow();
+	}
+
 	/**
 	 * session 換了流程或選取、播放頭動了：草稿跟上。
 	 * 換了選到的動作（或回到新增）：草稿照動作重設；紅字和問題收掉。
