@@ -95,7 +95,7 @@ export class EditorSession {
 	 */
 	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
 	/**
-	 * 記錄頁每張卡點了還沒存的記號（環節 id → 記號），key 跟 drillScopes 一樣。
+	 * 記錄頁每張卡點了還沒存的記號（環節 id → 記號），key 是 drillScopes 的 key 加上日期（一天一份）。
 	 * 換動作、切頁再回來還在；換一支流程就清掉；不存進流程檔。
 	 */
 	drillMarks: Record<string, Record<string, Mark>> = $state({});

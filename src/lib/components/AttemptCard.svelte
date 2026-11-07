@@ -56,13 +56,16 @@
 	/** 只有一個環節就是整個做（選「整個／只練幾個環節」的地方不見了，之前選的不算）。 */
 	const whole = $derived(scope.whole || (action.successRate?.phases.length ?? 0) < 2);
 	const picked = $derived(scope.picked);
-	/** 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在。 */
-	const marks = $derived(session.drillMarks[scopeKey] ?? {});
-	function setMarks(next: Record<string, Mark>) {
-		session.drillMarks[scopeKey] = next;
-	}
-
 	const phases = $derived(action.successRate?.phases ?? []);
+	/** 這張卡這一天點的記號在 session 裡的 key（換日期是另一份）。 */
+	const marksKey = $derived(`${scopeKey} ${date}`);
+	/** 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在；環節在編排刪掉了，它的記號不算。 */
+	const marks = $derived(
+		Object.fromEntries(Object.entries(session.drillMarks[marksKey] ?? {}).filter(([id]) => phases.some((p) => p.id === id)))
+	);
+	function setMarks(next: Record<string, Mark>) {
+		session.drillMarks[marksKey] = next;
+	}
 	/** 這一次要練的環節，照順序。 */
 	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
 	/** 會存下來的樣子（核心決定留哪些記號、算不算整個做）。 */

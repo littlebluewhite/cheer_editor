@@ -4,6 +4,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import {
+	deletePhase,
 	readFlowFile,
 	recordAttempt,
 	writeFlowFile,
@@ -97,6 +98,37 @@ describe('練習：記錄頁記分段練', () => {
 		await save(who);
 		expect(dayRow(who)).toEqual(['△✓✓']);
 		expect(card(who).queryByText('還沒存')).toBeNull();
+	});
+
+	it('點了還沒存的記號、那個環節在編排刪掉了：記號拿掉，照樣存得下來', async () => {
+		const { session } = await practice();
+		const who = '第 1 組 小美';
+		await tap(who, '上法', '成功');
+		await tap(who, '中段', '小失誤');
+		await toArrange();
+		session.ask.send(() => deletePhase(session.flow!, 'x1', 'p2', { confirmed: true }));
+		await toPractice();
+		await save(who);
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(dayRow(who)).toEqual(['✓·']);
+
+		await tap(who, '上法', '成功');
+		await toArrange();
+		session.ask.send(() => deletePhase(session.flow!, 'x1', 'p1', { confirmed: true }));
+		await toPractice();
+		expect(card(who).queryByText('還沒存')).toBeNull();
+	});
+
+	it('點了還沒存的記號只在那一天：換日期就不見，換回來還在', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		const pressed = () => screen.getByRole('button', { name: `${who} 上法 成功` }).getAttribute('aria-pressed');
+		await tap(who, '上法', '成功');
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: '2026-11-04' } });
+		expect(pressed()).toBe('false');
+		expect(card(who).queryByText('還沒存')).toBeNull();
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
+		expect(pressed()).toBe('true');
 	});
 
 	it('「只練幾個環節」切到總表、編排再回來還是它', async () => {
