@@ -1017,10 +1017,21 @@
 			min-height: 32px;
 		}
 	}
+	/* 走位線和圓點的圖例放在同一塊白底裡：左欄很矮時（時間軸拖到最大）少佔一點高度 */
 	.legend-box {
 		display: grid;
-		gap: 8px;
-		justify-items: start;
+		gap: 4px;
+		justify-self: start;
+		padding: 5px 10px;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
+	}
+	.legend-box > .walk-tools,
+	.legend-box > .legend {
+		padding: 0;
+		background: none;
+		box-shadow: none;
 	}
 	.legend-box[hidden] {
 		display: none;
