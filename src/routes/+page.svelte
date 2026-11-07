@@ -1041,8 +1041,12 @@
 							const id = f.id;
 							discarding = null;
 							discardNote = '';
-							void editor.file.discardRecent(id).then((dropped) => {
-								discardNote = dropped ? `已丟掉「${f.name}」的草稿` : `另一個分頁正在編「${f.name}」，沒有丟掉`;
+							void editor.file.discardRecent(id).then((outcome) => {
+								discardNote = {
+									dropped: `已丟掉「${f.name}」的草稿`,
+									busy: `另一個分頁正在編「${f.name}」，沒有丟掉`,
+									failed: `「${f.name}」的草稿刪不掉，沒有丟掉`
+								}[outcome];
 							});
 						}}
 						oncancel={() => (discarding = null)}

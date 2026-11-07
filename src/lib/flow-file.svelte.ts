@@ -404,15 +404,20 @@ export class FlowFile {
 
 	/**
 	 * 丟掉最近的流程裡的一支（頁面先問過教練了）：先問別的分頁有沒有在編它，有就不丟，標成正在編。
-	 * 回傳丟掉了沒（頁面照這個說「已丟掉」或為什麼沒丟）。
+	 * 回傳丟掉了沒（頁面照這個說「已丟掉」或為什麼沒丟）：dropped 丟掉了；busy 另一個分頁正在編；failed 瀏覽器刪不掉。
 	 */
-	async discardRecent(id: string): Promise<boolean> {
+	async discardRecent(id: string): Promise<'dropped' | 'busy' | 'failed'> {
 		if (await this.#otherTabEditing(id)) {
 			this.#recent = this.#recent.map((f) => (f.id === id ? { ...f, busy: true } : f));
-			return false;
+			return 'busy';
 		}
-		this.#clearDraft(id);
-		return true;
+		try {
+			await this.#editor.adapters.draftStore.clear(id);
+		} catch {
+			return 'failed';
+		}
+		this.#draftsChanged();
+		return 'dropped';
 	}
 
 	/** 另一個分頁回答它正在編這支流程（草稿 id）嗎（等一下下，沒人回就是沒有）。 */

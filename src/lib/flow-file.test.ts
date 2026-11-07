@@ -646,6 +646,15 @@ describe('流程檔：打開時讀草稿', () => {
 		expect(editor.file.recent).toEqual([]);
 		expect(drafts.latest()).toBeNull();
 	});
+
+	it('丟掉時瀏覽器刪不掉草稿：回報沒丟掉（failed），草稿還在', async () => {
+		const { editor, drafts } = await connected(writeFlowFile(audioFlow(), {}));
+		drafts.store.clear = () => Promise.reject(new Error('IndexedDB 壞了'));
+		const outcome = editor.file.discardRecent('current');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await outcome).toBe('failed');
+		expect(drafts.latest()).not.toBeNull();
+	});
 });
 
 describe('流程檔：兩個分頁（每支流程一份草稿）', () => {
