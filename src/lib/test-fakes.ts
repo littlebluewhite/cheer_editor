@@ -44,6 +44,7 @@ import {
 	type Present,
 	type Role,
 	type RoomMessage,
+	type RoomRequest,
 	type ServerAdapter,
 	type UserStatus
 } from '#lib/server-api.js';
@@ -256,9 +257,13 @@ export function fakeServer(
 		const changedBy = lastOther(watch);
 		if (changedBy !== undefined) return rejected('', changedBy);
 		const kept = new Map(after.records.map((a) => [a.attempt.id, a]));
+		const changed: string[] = [];
+		const deleted: string[] = [];
 		f.records = (f.records ?? []).map((old) => {
 			if (old.gone) return old;
 			const now = kept.get(old.attempt.id);
+			if (!now) deleted.push(old.attempt.id);
+			else if (JSON.stringify(now) !== JSON.stringify({ actionId: old.actionId, attempt: old.attempt })) changed.push(old.attempt.id);
 			return now ? { ...old, ...now } : { ...old, gone: true };
 		});
 		const change = remoteChange(f.flow, after.flow);
@@ -266,6 +271,8 @@ export function fakeServer(
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
+		// 紀錄跟著改的接在編排的改動後面（#258）。
+		tellRecords(f, changed, deleted, from.room);
 		stepLog.set(f.id, [...log, { step: step + 1, tab: from.tab, keys, by }]);
 		f.flow = after.flow;
 		f.step = step + 1;
@@ -335,8 +342,56 @@ export function fakeServer(
 	const cloudRecord = (r: StoredAttempt & { by?: string }, viewer: string) => ({
 		actionId: r.actionId,
 		attempt: structuredClone(r.attempt),
-		by: r.by && !same(r.by, viewer) ? (find(r.by)?.name ?? null) : null
+		by: r.by && !same(r.by, viewer) ? (find(r.by)?.name ?? null) : null,
+		mine: !!r.by && same(r.by, viewer)
 	});
+	/** 紀錄跟著改了（改、刪、救回、別人的一步）：告訴這支流程開著的別的房間（from 是送來的房間）。 */
+	const tellRecords = (f: FakeCloudFlow, changed: string[], deleted: string[], from?: FlowRoom) => {
+		if (!changed.length && !deleted.length) return;
+		const records = (f.records ?? []).filter((r) => !r.gone && changed.includes(r.attempt.id));
+		for (const other of rooms.filter((o) => o.flowId === f.id && o.room !== from)) {
+			const message = { kind: 'recordsChanged', changed: records.map((r) => cloudRecord(r, other.email)), deleted } as const;
+			deliver(other.room, () => structuredClone(message));
+		}
+	};
+	/** 用流程核心對一次跑改記號、救回（跟真的伺服器一樣）：收了回跑完的那一次，被擋是 undefined。 */
+	const runOne = (f: FakeCloudFlow, records: StoredAttempt[], command: Command) => {
+		const r = runCommands(putRecords(structuredClone(f.flow), structuredClone(records)), [command], '');
+		return r.kind === 'ok' ? takeRecords(r.flow).records[0] : undefined;
+	};
+	/**
+	 * 這個人改、刪、救回幾次（#258）：記錄者只能動自己記的，擁有者、編輯者都能；刪掉的改、刪都不算，救回才拿回來。
+	 * 回那幾次現在的樣子（還在的），告訴別的房間。
+	 */
+	const amend = (f: FakeCloudFlow, email: string, request: AmendRequest, from?: FlowRoom): RoomMessage => {
+		const role = roleOf(f, email);
+		const may = (r: { by?: string }) => role === 'owner' || role === 'editor' || (role === 'recorder' && !!r.by && same(r.by, email));
+		const sent = request.kind === 'changeRecords' ? (request.attempts as StoredAttempt[]) : [];
+		const asked = request.kind === 'changeRecords' ? sent.map((s) => s.attempt.id) : request.ids;
+		const changed: string[] = [];
+		const deleted: string[] = [];
+		f.records = (f.records ?? []).map((r) => {
+			const id = r.attempt.id;
+			if (!asked.includes(id) || !may(r)) return r;
+			if (request.kind === 'deleteRecords' && !r.gone) {
+				deleted.push(id);
+				return { ...r, gone: true };
+			}
+			const marks = sent.find((s) => s.attempt.id === id)?.attempt.marks ?? {};
+			const after =
+				request.kind === 'changeRecords' && !r.gone
+					? runOne(f, [r], { name: 'changeAttempt', args: [r.actionId, id, marks] })
+					: request.kind === 'restoreRecords' && r.gone
+						? runOne(f, [], { name: 'restoreAttempt', args: [r.actionId, r.attempt, 0] })
+						: undefined;
+			if (!after) return r;
+			changed.push(id);
+			return { ...r, ...after, gone: false };
+		});
+		tellRecords(f, changed, deleted, from);
+		const saved = f.records.filter((r) => !r.gone && asked.includes(r.attempt.id)).map((r) => cloudRecord(r, email));
+		return { kind: 'recordsSaved', saved, dropped: [] };
+	};
 	/** 這個人記了幾次：照記一次的規則檢查、存起來，告訴這支流程開著的別的房間（from 是送來的房間）。 */
 	const store = (f: FakeCloudFlow, email: string, incoming: StoredAttempt[], from?: FlowRoom): RoomMessage => {
 		const role = roleOf(f, email);
@@ -653,6 +708,8 @@ export function fakeServer(
 					} else if (request.kind === 'record') {
 						const attempts = request.attempts as StoredAttempt[];
 						deliver(room, () => (ready ? store(f, email, attempts, room) : null));
+					} else if (request.kind === 'changeRecords' || request.kind === 'deleteRecords' || request.kind === 'restoreRecords') {
+						deliver(room, () => (ready ? amend(f, email, request, room) : null));
 					} else if (editor) {
 						const sent = { ...request, commands: request.commands as Command[] };
 						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
@@ -737,6 +794,9 @@ export function fakeServer(
 	};
 	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs };
 }
+
+/** 房間收到的改、刪、救回紀錄（#258）。 */
+type AmendRequest = Extract<RoomRequest, { kind: 'changeRecords' | 'deleteRecords' | 'restoreRecords' }>;
 
 /**
  * 假的伺服器上開著的一個房間：哪支流程、誰的、打過招呼了沒（在場名單只列打過招呼的）、在編輯嗎、

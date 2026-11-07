@@ -184,6 +184,25 @@ export function deleteLastRunThrough(flow: Flow, date: string): CommandResult<{ 
 	return { kind: 'ok', flow: next, removed };
 }
 
+/**
+ * 刪掉這幾次（雲端流程記錄者的「刪掉我上一次全上記的」：只刪自己在那次記的組）。
+ * 回傳刪掉的每一次和原本排第幾，給「救回」（restoreRunThrough）用。
+ */
+export function deleteAttempts(flow: Flow, ids: string[]): CommandResult<{ removed: RemovedRunThrough }> {
+	const removed: RemovedRunThrough = [];
+	let next = flow;
+	for (const action of flow.actions) {
+		const records = action.successRate?.records ?? [];
+		if (!records.some((r) => ids.includes(r.id))) continue;
+		records.forEach((attempt, index) => {
+			if (ids.includes(attempt.id)) removed.push({ actionId: action.id, attempt, index });
+		});
+		next = withRecords(next, action, records.filter((r) => !ids.includes(r.id)));
+	}
+	if (removed.length === 0) return blocked('找不到這幾次');
+	return { kind: 'ok', flow: next, removed };
+}
+
 /** 救回剛刪掉的那次全上：整次放回原本排第幾，每一次照記一次的規則檢查；有一次放不回去就一次都不放。 */
 export function restoreRunThrough(flow: Flow, removed: RemovedRunThrough): CommandResult {
 	const ids = attemptIds(flow);

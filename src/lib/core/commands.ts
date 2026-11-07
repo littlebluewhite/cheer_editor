@@ -26,6 +26,7 @@ import { addPhase, clearPhaseBeats, deletePhase, markPhaseBeats, updatePhase } f
 import {
 	changeAttempt,
 	deleteAttempt,
+	deleteAttempts,
 	deleteLastAttempt,
 	deleteLastRunThrough,
 	recordAttempt,
@@ -94,6 +95,7 @@ const COMMANDS = {
 	recordAttempt: plain(recordAttempt),
 	changeAttempt: plain(changeAttempt),
 	deleteAttempt: plain(deleteAttempt),
+	deleteAttempts: plain(deleteAttempts),
 	restoreAttempt: plain(restoreAttempt),
 	deleteLastAttempt: plain(deleteLastAttempt),
 	recordRunThrough: plain(recordRunThrough),

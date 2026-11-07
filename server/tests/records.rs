@@ -272,7 +272,7 @@ async fn a_recording_is_saved_with_who_recorded_it_and_others_see_it_right_away(
     assert_eq!(reply["dropped"], json!([]));
     assert_eq!(
         reply["saved"],
-        json!([{ "actionId": LIB, "attempt": one["attempt"], "by": null }])
+        json!([{ "actionId": LIB, "attempt": one["attempt"], "by": null, "mine": true }])
     );
 
     // 王教練開著的房間馬上收到，寫林教練的名字。
@@ -280,7 +280,7 @@ async fn a_recording_is_saved_with_who_recorded_it_and_others_see_it_right_away(
     assert_eq!(
         heard,
         json!({ "kind": "newRecords", "records": [
-        { "actionId": LIB, "attempt": one["attempt"], "by": "林教練" }
+        { "actionId": LIB, "attempt": one["attempt"], "by": "林教練", "mine": false }
     ] })
     );
 
@@ -522,6 +522,315 @@ async fn a_viewer_cannot_record_but_a_recorder_can(db: sqlx::PgPool) {
     // 檢視者看得到（總表）。
     assert_eq!(ids(&s.records(&view, &id).await), vec!["trecorder0010"]);
     assert_eq!(s.rows(&id).await.len(), 1);
+}
+
+/// 改幾次的記號（送手機上改好的那幾次），回伺服器的回答。
+async fn change(socket: &mut Socket, attempts: Value) -> Value {
+    say(
+        socket,
+        json!({ "kind": "changeRecords", "attempts": attempts }),
+    )
+    .await;
+    hear(socket).await
+}
+
+/// 刪幾次，回伺服器的回答。
+async fn delete(socket: &mut Socket, ids: Value) -> Value {
+    say(socket, json!({ "kind": "deleteRecords", "ids": ids })).await;
+    hear(socket).await
+}
+
+/// 救回剛刪掉的幾次，回伺服器的回答。
+async fn restore(socket: &mut Socket, ids: Value) -> Value {
+    say(socket, json!({ "kind": "restoreRecords", "ids": ids })).await;
+    hear(socket).await
+}
+
+/// 從流程檔傳上來的一次（沒有記的人）：直接放進資料庫（傳上雲端帶紀錄不在這張）。
+async fn from_file(s: &Server, flow_id: &str, one: &Value) {
+    let a = &one["attempt"];
+    sqlx::query(
+        "INSERT INTO flow_records (flow_id, id, action_id, who, marks, whole, date, updated_at)
+         VALUES ($1, $2, $3, $4, $5::json, $6, $7, now())",
+    )
+    .bind(flow_id)
+    .bind(a["id"].as_str().unwrap())
+    .bind(one["actionId"].as_str().unwrap())
+    .bind(a["who"].as_str().unwrap())
+    .bind(a["marks"].to_string())
+    .bind(a["whole"].as_bool().unwrap())
+    .bind(a["date"].as_str().unwrap())
+    .execute(&s.state.db)
+    .await
+    .unwrap();
+}
+
+/// 一次換了記號。
+fn remarked(one: &Value, marks: Value) -> Value {
+    let mut changed = one.clone();
+    changed["attempt"]["marks"] = marks;
+    changed
+}
+
+/// 每一次的某個環節的記號。
+fn marks_of<'a>(records: &'a Value, phase: &str) -> Vec<&'a Value> {
+    records
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| &r["attempt"]["marks"][phase])
+        .collect()
+}
+
+#[sqlx::test]
+async fn a_recorder_cannot_change_or_delete_others_records_but_an_editor_can(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s
+        .sample(&wang, &[(&rec, "recorder"), (&lin, "editor")])
+        .await;
+    let wangs = drill("twang11111110", SQUAD_1, json!({ LOAD: "✓" }));
+    let recs = drill("trec222222220", SQUAD_1, json!({ LOAD: "✓" }));
+    let filed = drill("tfile33333330", SQUAD_2, json!({ LOAD: "✓" }));
+    let (mut coach, _) = s.join(&wang, &id).await;
+    record(&mut coach, json!([wangs])).await;
+    let (mut phone, _) = s.join(&rec, &id).await;
+    record(&mut phone, json!([recs])).await;
+    from_file(&s, &id, &filed).await;
+
+    // 記錄者：別人記的、沒有記的人的都動不了（回伺服器現在的樣子）；自己記的可以。
+    let reply = change(
+        &mut phone,
+        json!([
+            remarked(&wangs, json!({ LOAD: "✗" })),
+            remarked(&filed, json!({ LOAD: "✗" })),
+            remarked(&recs, json!({ LOAD: "△" }))
+        ]),
+    )
+    .await;
+    assert_eq!(reply["kind"], "recordsSaved");
+    assert_eq!(
+        ids(reply["saved"].as_array().unwrap()),
+        vec!["twang11111110", "trec222222220", "tfile33333330"]
+    );
+    assert_eq!(marks_of(&reply["saved"], LOAD), vec!["✓", "△", "✓"]);
+    let reply = delete(&mut phone, json!(["twang11111110", "tfile33333330"])).await;
+    assert_eq!(
+        ids(reply["saved"].as_array().unwrap()),
+        vec!["twang11111110", "tfile33333330"]
+    );
+    assert_eq!(s.records(&wang, &id).await.len(), 3);
+
+    // 打開時拿得到哪幾次是自己記的。
+    let got = s.records(&rec, &id).await;
+    let mine: Vec<&Value> = got.iter().map(|r| &r["mine"]).collect();
+    assert_eq!(mine, vec![&json!(false), &json!(true), &json!(false)]);
+
+    // 編輯者：誰記的都能改、刪，沒有記的人的也可以。
+    let (mut editor, _) = s.join(&lin, &id).await;
+    let reply = change(&mut editor, json!([remarked(&wangs, json!({ LOAD: "✗" }))])).await;
+    assert_eq!(reply["saved"][0]["attempt"]["marks"], json!({ LOAD: "✗" }));
+    assert_eq!(reply["saved"][0]["by"], "王教練");
+    let reply = delete(&mut editor, json!(["tfile33333330", "trec222222220"])).await;
+    assert_eq!(reply["saved"], json!([]));
+    assert_eq!(ids(&s.records(&wang, &id).await), vec!["twang11111110"]);
+}
+
+#[sqlx::test]
+async fn only_editors_and_the_owner_can_touch_records_with_no_recorder(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
+    let filed = drill("tfile33333330", SQUAD_2, json!({ LOAD: "✓" }));
+    from_file(&s, &id, &filed).await;
+
+    let (mut phone, _) = s.join(&rec, &id).await;
+    delete(&mut phone, json!(["tfile33333330"])).await;
+    assert_eq!(s.records(&wang, &id).await.len(), 1);
+
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let reply = change(&mut coach, json!([remarked(&filed, json!({ LOAD: "△" }))])).await;
+    assert_eq!(reply["saved"][0]["attempt"]["marks"], json!({ LOAD: "△" }));
+    assert_eq!(reply["saved"][0]["by"], Value::Null);
+    delete(&mut coach, json!(["tfile33333330"])).await;
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+}
+
+#[sqlx::test]
+async fn when_two_people_change_the_same_record_the_later_one_wins(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "editor")]).await;
+    let one = drill("tone111111110", SQUAD_1, json!({ LOAD: "✓" }));
+    let (mut a, _) = s.join(&wang, &id).await;
+    let (mut b, _) = s.join(&lin, &id).await;
+    record(&mut a, json!([one])).await;
+    hear(&mut b).await;
+
+    let first = change(&mut a, json!([remarked(&one, json!({ LOAD: "✗" }))])).await;
+    assert_eq!(first["saved"][0]["attempt"]["marks"], json!({ LOAD: "✗" }));
+    // 林教練馬上看到王教練改的。
+    let heard = hear(&mut b).await;
+    assert_eq!(heard["kind"], "recordsChanged");
+    assert_eq!(
+        heard["changed"][0]["attempt"]["marks"],
+        json!({ LOAD: "✗" })
+    );
+    assert_eq!(heard["changed"][0]["by"], "王教練");
+    assert_eq!(heard["deleted"], json!([]));
+
+    // 林教練後送到：不退回，他的算。
+    let second = change(&mut b, json!([remarked(&one, json!({ LOAD: "△" }))])).await;
+    assert_eq!(second["saved"][0]["attempt"]["marks"], json!({ LOAD: "△" }));
+    assert_eq!(second["dropped"], json!([]));
+    assert_eq!(
+        hear(&mut a).await["changed"][0]["attempt"]["marks"],
+        json!({ LOAD: "△" })
+    );
+    assert_eq!(
+        s.records(&wang, &id).await[0]["attempt"]["marks"],
+        json!({ LOAD: "△" })
+    );
+}
+
+#[sqlx::test]
+async fn a_deleted_record_does_not_come_back_from_late_adds_or_changes(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "editor")]).await;
+    let one = drill("tone111111110", SQUAD_1, json!({ LOAD: "✓" }));
+    let (mut a, _) = s.join(&wang, &id).await;
+    let (mut b, _) = s.join(&lin, &id).await;
+    record(&mut a, json!([one])).await;
+    hear(&mut b).await;
+
+    let reply = delete(&mut a, json!(["tone111111110"])).await;
+    assert_eq!(reply["saved"], json!([]));
+    assert_eq!(
+        hear(&mut b).await,
+        json!({ "kind": "recordsChanged", "changed": [], "deleted": ["tone111111110"] })
+    );
+
+    // 林教練斷網時改的、重送的新增，晚到：都不算。
+    let late = change(&mut b, json!([remarked(&one, json!({ LOAD: "✗" }))])).await;
+    assert_eq!(late["saved"], json!([]));
+    let again = record(&mut b, json!([one])).await;
+    assert_eq!(again["saved"], json!([]));
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+    assert!(s.rows(&id).await[0].2);
+
+    // 刪的人按「救回」才拿回來，別人也看到。
+    let back = restore(&mut a, json!(["tone111111110"])).await;
+    assert_eq!(
+        ids(back["saved"].as_array().unwrap()),
+        vec!["tone111111110"]
+    );
+    assert_eq!(
+        hear(&mut b).await["changed"][0]["attempt"]["id"],
+        "tone111111110"
+    );
+    assert_eq!(ids(&s.records(&wang, &id).await), vec!["tone111111110"]);
+}
+
+#[sqlx::test]
+async fn records_from_a_revoked_recorder_are_not_taken(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
+    let (mut phone, _) = s.join(&rec, &id).await;
+    record(
+        &mut phone,
+        json!([drill("trec222222220", SQUAD_1, json!({ LOAD: "✓" }))]),
+    )
+    .await;
+
+    // 剛被收回、房間還沒說之前送到的（收回的通知跟紀錄同時到）：伺服器照資料庫的權限擋。
+    sqlx::query("DELETE FROM flow_permissions WHERE flow_id = $1")
+        .bind(&id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    let late = drill("tlate11111110", SQUAD_1, json!({ LOAD: "✓" }));
+    assert_eq!(record(&mut phone, json!([late])).await["kind"], "revoked");
+    assert_eq!(
+        s.connect(&rec, &id).await.err(),
+        Some(StatusCode::NOT_FOUND)
+    );
+    assert_eq!(ids(&s.records(&wang, &id).await), vec!["trec222222220"]);
+    assert_eq!(s.rows(&id).await.len(), 1);
+}
+
+#[sqlx::test]
+async fn a_revoked_recorder_cannot_delete(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
+    let (mut phone, _) = s.join(&rec, &id).await;
+    record(
+        &mut phone,
+        json!([drill("trec222222220", SQUAD_1, json!({ LOAD: "✓" }))]),
+    )
+    .await;
+    sqlx::query("DELETE FROM flow_permissions WHERE flow_id = $1")
+        .bind(&id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        delete(&mut phone, json!(["trec222222220"])).await["kind"],
+        "revoked"
+    );
+    assert_eq!(ids(&s.records(&wang, &id).await), vec!["trec222222220"]);
+}
+
+#[sqlx::test]
+async fn others_see_records_a_step_cleared_or_trimmed(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let (mut phone, _) = s.join(&lin, &id).await;
+    record(
+        &mut phone,
+        json!([
+            drill(
+                "tboth11111110",
+                SQUAD_1,
+                json!({ LOAD: "✓", DISMOUNT: "✗" })
+            ),
+            drill("tonly22222220", SQUAD_1, json!({ DISMOUNT: "✓" })),
+        ]),
+    )
+    .await;
+    hear(&mut coach).await;
+
+    let delete = json!([{ "name": "deletePhase", "args": [LIB, DISMOUNT], "options": { "confirmed": true } }]);
+    assert_eq!(
+        step(&mut coach, "stepdelete01", 6, delete).await["kind"],
+        "accepted"
+    );
+
+    // 林教練收到編排的改動，接著是紀錄跟著改的（不用重新整理）。
+    let heard = hear(&mut phone).await;
+    assert_eq!(heard["kind"], "recordsChanged");
+    assert_eq!(
+        ids(heard["changed"].as_array().unwrap()),
+        vec!["tboth11111110"]
+    );
+    assert_eq!(
+        heard["changed"][0]["attempt"]["marks"],
+        json!({ LOAD: "✓" })
+    );
+    assert_eq!(heard["changed"][0]["mine"], true);
+    assert_eq!(heard["deleted"], json!(["tonly22222220"]));
 }
 
 async fn say(socket: &mut Socket, message: Value) {

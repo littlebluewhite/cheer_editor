@@ -10,6 +10,7 @@ import {
 	deleteAction,
 	deleteAttempt,
 	deleteLastAttempt,
+	deleteAttempts,
 	deleteLastRunThrough,
 	deleteMember,
 	restoreAttempt,
@@ -698,5 +699,15 @@ describe('刪掉上一次全上', () => {
 		const more = flowOf(inStep('k3m9q2w7', () => recordAttempt(r.flow, 'x1', drill({ p3: '✓' }, { whole: false }))));
 		const back = flowOf(restoreRunThrough(more, r.removed));
 		expect(runIds(back)).toEqual(['-', 'r1', '-', 'r2', '-', 'r1', 'r2']);
+	});
+
+	it('只刪那幾次（記錄者刪自己在那次記的組）：別的留著；救回放回原本的位置', () => {
+		const before = recorded();
+		const mine = recordsOf(before, 'x2').filter((r) => r.runThroughId === 'r2').map((r) => r.id);
+		const r = deleteAttempts(before, mine);
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		expect(runIds(r.flow)).toEqual(['-', 'r1', '-', 'r2', 'r1']);
+		expect(restoreRunThrough(r.flow, r.removed)).toEqual({ kind: 'ok', flow: before });
+		expect(deleteAttempts(before, ['tnothere0001'])).toEqual({ kind: 'blocked', message: '找不到這幾次' });
 	});
 });
