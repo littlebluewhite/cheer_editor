@@ -145,6 +145,35 @@ describe('改隊員名字時問保留還是清掉', () => {
 	});
 });
 
+describe('從名單刪隊員時問保留還是清掉（跟換組同一個問法）', () => {
+	/** 隊員分頁按刪除第 1 位（小美，第 1 組還有小A）。 */
+	async function deleteMei() {
+		await fireEvent.click(screen.getByRole('tab', { name: /隊員/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
+	}
+
+	it('問保留舊紀錄、清掉重算、取消；按保留：小美刪掉，第 1 組的紀錄還在', async () => {
+		const session = openRecorded();
+		await deleteMei();
+		expect(dialog().textContent).toContain('刪掉隊員「小美」');
+		expect(dialog().textContent).toContain('有紀錄的組換了人');
+		expect(within(dialog()).getAllByRole('button').map((b) => b.textContent)).toEqual(['保留舊紀錄', '清掉重算', '取消']);
+		await press('保留舊紀錄');
+		const { flow, records } = libOf(session);
+		expect(flow.members.map((m) => m.name)).not.toContain('小美');
+		expect(records).toEqual([1, 1, 2]);
+	});
+
+	it('按清掉重算：小美刪掉，第 1 組的紀錄沒了，第 2 組的留著', async () => {
+		const session = openRecorded();
+		await deleteMei();
+		await press('清掉重算');
+		const { flow, records } = libOf(session);
+		expect(flow.members.map((m) => m.name)).not.toContain('小美');
+		expect(records).toEqual([2]);
+	});
+});
+
 describe('刪動作', () => {
 	it('有紀錄：先確認，寫會清掉幾次；確定才刪', async () => {
 		const session = openRecorded();

@@ -37,6 +37,8 @@
 		snapGroup,
 		snapPointsNear,
 		snapPosition,
+		TIRING_MPS,
+		TOO_FAST_MPS,
 		toPosition,
 		type Clash,
 		type FormationWalk,
@@ -395,9 +397,10 @@
 				return;
 			}
 		}
+		const target = e.target as Element;
 		const id =
-			(e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
-			(e.pointerType === 'touch' ? nearestDot(e) : null);
+			target.closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
+			(e.pointerType === 'touch' || target.closest?.('[data-clash]') ? nearestDot(e) : null);
 		const client: [number, number] = [e.clientX, e.clientY];
 		if (!session) return;
 		if (id && positions[id]) {
@@ -568,8 +571,13 @@
 				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
 					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
 				</label>
-				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
-				<span aria-hidden="true"><i class="fast"></i>走太快</span>
+				<!-- 門檻寫短（m/s），左欄維持兩行，時間軸拉高時還捲得到；滑鼠移上去寫完整的。 -->
+				<span aria-hidden="true" title="走位每秒超過 {TIRING_MPS} 公尺、沒到 {TOO_FAST_MPS} 公尺：跑得到但很喘"
+					><i class="tiring"></i>很喘 &gt;{TIRING_MPS} m/s</span
+				>
+				<span aria-hidden="true" title="走位每秒超過 {TOO_FAST_MPS} 公尺：跑不到"
+					><i class="fast"></i>走太快 &gt;{TOO_FAST_MPS} m/s</span
+				>
 				<span aria-hidden="true"><b class="clash-mark">✕</b>撞位</span>
 			</div>
 			<div class="legend" aria-hidden="true">
@@ -631,15 +639,6 @@
 				y2={w.to[1]}
 			/>
 		{/each}
-		{#each clashes as c, i (i)}
-			<path
-				data-clash={c.memberIds.join(',')}
-				class="clash"
-				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
-				transform="translate({c.pos[0]},{c.pos[1]})"
-				><title>撞位：{c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '').join('、')}</title></path
-			>
-		{/each}
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
@@ -679,6 +678,16 @@
 					{/if}
 				</g>
 			</g>
+		{/each}
+		<!-- 撞位的 ✕ 在圓點後面畫：蓋在人上面看得到（按在 ✕ 上拖到的是附近的人，見 down）。 -->
+		{#each clashes as c, i (i)}
+			<path
+				data-clash={c.memberIds.join(',')}
+				class="clash"
+				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
+				transform="translate({c.pos[0]},{c.pos[1]})"
+				><title>撞位：{c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '').join('、')}</title></path
+			>
 		{/each}
 		{#if lasso}
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
@@ -820,7 +829,7 @@
 		stroke-opacity: 0.9;
 		stroke-width: 0.08;
 	}
-	/* 撞位的 ✕：紫色粗線，蓋在走位線上面；滑鼠移上去看得到是誰撞誰。 */
+	/* 撞位的 ✕：紫色粗線，蓋在走位線和圓點上面；滑鼠移上去看得到是誰撞誰。 */
 	.clash {
 		fill: none;
 		stroke: var(--walk-clash, #a855f7);
