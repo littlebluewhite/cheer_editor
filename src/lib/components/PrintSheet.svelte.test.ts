@@ -221,11 +221,11 @@ describe('八拍表列印', () => {
 		expect(screen.getByRole('heading').textContent).toContain('小B');
 	});
 
-	it('選一個隊員時，他出發的那一列在動作下面多寫一行走位；全隊不寫', async () => {
+	it('選一個隊員時，他出發的那一列在動作下面多寫一行走位；全隊不寫（出發只寫在站位圖的說明，#217）', async () => {
 		let flow = sample();
 		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
 		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
-		expect(screen.queryByText(/出發/)).toBeNull();
+		expect(actionsCell(bodyRows()[0])).not.toContain('出發');
 		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
 		const first = actionsCell(bodyRows()[0]);
 		expect(first).toContain('Lib');
@@ -244,7 +244,7 @@ describe('八拍表列印', () => {
 		const first = actionsCell(bodyRows()[0]);
 		expect(first).toContain('1-1& 到 1-8&・8 拍');
 		expect(first).toContain('1-1 出發 → 站位 2（2-1 到達）');
-		expect([...document.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['站位 1・1-1', '站位 2・2-1']);
+		expect([...document.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['站位 1・1-1', '站位 2・2-1（1-1 出發）']);
 		const down = within(screen.getByRole('group', { name: '技巧·Lib 的拍點' })).getByLabelText('拍子 down 1-1&・1 拍');
 		expect(down.textContent).toContain('1-1&');
 		// 別的寫法都沒有：「3 的 &」「第 5 拍」「1& 到 2」

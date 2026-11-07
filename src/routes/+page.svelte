@@ -835,7 +835,7 @@
 	{#if printOpen}
 		<PrintSheet
 			{flow}
-			selected={session.selectedMemberIds.length === 1 ? session.selectedMemberIds[0] : null}
+			selected={session.selectedMemberIds.length === 1 ? session.selectedMemberIds[0] : myId || null}
 			onclose={() => (printOpen = false)}
 		/>
 	{/if}

@@ -149,8 +149,9 @@ async function openPracticeFlow(more = '') {
 /**
  * 開首頁，打開一份 40 人的流程：音樂 1（4 個八拍），x1 全隊跳躍（環節「整個」整個動作，可以記全上），
  * 上面一個很長的步驟拍點（量八拍表印出來有沒有被截斷）。
+ * more 是在頁面裡改 flow 的程式（c 是 core、of 拿出成功的流程），例如加站位。
  */
-async function openBigFlow() {
+async function openBigFlow(more = '') {
 	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
 	await sleep(300);
@@ -164,6 +165,7 @@ async function openBigFlow() {
 			members: flow.members.map((m) => ({ memberId: m.id, role: null })) }));
 		flow = of(c.addPhase(flow, 'x1', { kind: 'whole', name: '整個跳', beats: { at: 0, len: 16 } }));
 		flow = of(c.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '左腳往前踩一步然後手臂拉到高V再往下收回胸前' }));
+		${more}
 		const input = document.querySelector('.home-open input[type=file]');
 		const dt = new DataTransfer();
 		dt.items.add(new File([c.writeFlowFile(flow, {})], '40人.zip', { type: 'application/zip' }));
@@ -1166,6 +1168,24 @@ await check('列印 A4 直印八拍表：動作欄每行超過一個字', async 
 		const lines = await actionLines();
 		return { ok: manyChars(lines.最少一行幾個字) && lines.動作欄寬 >= 240, value: lines };
 	});
+});
+
+await check('列印八拍表（40 人）：每張小站位圖範圍一樣（所有站位有人處合起來），圓點上的號碼看得清楚（#217）', async () => {
+	// 站位 1 全隊往中間縮一半，第 2 個八拍開頭的站位 2 散回原本的位置：兩張合起來的範圍比站位 1 大
+	await setViewport(1440, 900);
+	await openBigFlow(`const spread = flow.formations[0].pos;
+		const half = Object.fromEntries(Object.entries(spread).map(([id, [x, y]]) => [id, [x / 2, y / 2]]));
+		flow = of(c.setPositions(flow, flow.formations[0].id, half));
+		flow = of(c.insertFormation(flow, 3.2));
+		flow = of(c.setPositions(flow, flow.formations[1].id, spread));`);
+	await openEightCount();
+	return asPrinted(() =>
+		js(`const figs = [...document.querySelectorAll('.print-sheet figure svg')];
+			const boxes = [...new Set(figs.map((s) => s.getAttribute('viewBox')))];
+			const nums = [...document.querySelectorAll('.print-sheet figure .dot text')].map((t) => t.getBoundingClientRect().height);
+			const 號碼最小高 = Math.round(Math.min(...nums) * 10) / 10;
+			return { ok: figs.length === 2 && boxes.length === 1 && 號碼最小高 >= 9, value: { 圖: figs.length, 範圍: boxes, 號碼最小高 } };`)
+	);
 });
 
 await check('列印八拍表：沒有焦點外框；放得下一頁的列不切開，比一頁長的列可以切（不整列推到下一頁）', async () => {

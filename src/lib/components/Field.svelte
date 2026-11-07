@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import { fieldGeometry, type FieldConfig } from '#lib/core';
+	import { fieldGeometry, type FieldConfig, type Rect } from '#lib/core';
 
 	/** 外圍框外寫條編號的那一邊（直放在後面、橫放在左右）留多寬（公尺）：放大了的場外圓點也蓋不到編號。 */
 	export const NUMBER_BAND = 0.8;
@@ -78,7 +78,7 @@
 		below,
 		badges = {},
 		marked = [],
-		crop = false
+		crop = null
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -111,8 +111,8 @@
 		badges?: Record<string, { text: string; color: string }>;
 		/** 沒有編輯器時（八拍表的個人表）標出這些人，畫得跟選到一樣。 */
 		marked?: string[];
-		/** 只畫有人站的那一塊（八拍表的小站位圖），標的人塗滿；沒有人時畫整個場地。 */
-		crop?: boolean;
+		/** 只畫這一塊（八拍表的小站位圖，見 eightCountView），標的人塗滿；null 畫整個場地。 */
+		crop?: Rect | null;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -151,14 +151,12 @@
 	let center = $state<Position | null>(null);
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
+	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
+	const MINI_DOTS_ACROSS = 12;
 	const view = $derived.by(() => {
-		const placed = Object.values(positions);
-		if (crop && placed.length) {
-			const xs = placed.map(([x]) => x);
-			const ys = placed.map(([, y]) => y);
-			const x = Math.min(...xs) - CROP_MARGIN;
-			const y = Math.min(...ys) - CROP_MARGIN;
-			return { x, y, width: Math.max(...xs) + CROP_MARGIN - x, height: Math.max(...ys) + CROP_MARGIN - y };
+		if (crop) {
+			const m = CROP_MARGIN;
+			return { x: crop.x - m, y: crop.y - m, width: crop.width + 2 * m, height: crop.height + 2 * m };
 		}
 		const width = full.width / zoom;
 		const height = full.height / zoom;
@@ -170,10 +168,11 @@
 
 	/**
 	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
-	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。八拍表的小站位圖不放大。
+	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。
+	 * 八拍表的小站位圖：範圍大時放大到圓點直徑是長邊的 1/MINI_DOTS_ACROSS，號碼才看得清楚。
 	 */
 	const dotScale = $derived.by(() => {
-		if (!controls) return 1;
+		if (!controls) return crop ? Math.max(1, Math.max(view.width, view.height) / MINI_DOTS_ACROSS / (2 * DOT_R)) : 1;
 		const [w, h] = stageSize;
 		const shrink = 1 / Math.sqrt(zoom);
 		if (!w || !h) return shrink;
@@ -580,6 +579,7 @@
 	<svg
 		bind:this={svg}
 		class="field"
+		class:mini={!!crop}
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
 		role={session ? 'group' : 'img'}
@@ -644,7 +644,7 @@
 				class="dot"
 				class:raised={up}
 				class:selected={sel}
-				class:filled={crop && sel}
+				class:filled={!!crop && sel}
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
 				data-member-id={m.id}
 				role="button"
@@ -665,7 +665,7 @@
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}
-					<text y={pill ? 0.085 : 0.11} class:long={!!pill}>{mark}</text>
+					<text y={pill ? 0.085 : crop ? 0.145 : 0.11} class:long={!!pill}>{mark}</text>
 					{#if badges[m.id]}
 						<g class="badge" transform="translate({Math.max(pill / 2 - 0.03, 0.27)},-0.27)">
 							<circle r="0.17" style:fill={badges[m.id].color} />
@@ -890,6 +890,10 @@
 	}
 	.dot text.long {
 		font-size: 0.24px;
+	}
+	/* 八拍表小站位圖：號碼字放大到差不多塞滿圓點，印出來才看得清楚 */
+	.field.mini .dot > g > text:not(.long) {
+		font-size: 0.4px;
 	}
 	.dot .badge circle {
 		stroke: #fff;

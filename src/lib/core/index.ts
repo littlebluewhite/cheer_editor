@@ -109,7 +109,7 @@ export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, 
 export { actionEights, beatSpanText } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows } from './eight-count';
+export { eightCountRows, eightCountView } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,

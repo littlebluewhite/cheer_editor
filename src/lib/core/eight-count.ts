@@ -5,15 +5,18 @@
 import { categoryLabel, type Action, type ActionCategory } from './action-types';
 import { actionEights, beatSpanText } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
+import type { Rect } from './field';
 import { memberName, type Flow } from './flow';
 import { formationWalks, memberWalk, type Position, type Walk } from './formation';
 import { phaseColor, phaseLabel } from './phase-types';
 import { squadNumber } from './success-rate';
 import {
+	EPS,
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
 	atTextWithUnit,
+	lengthTextWithUnit,
 	segmentSpans,
 	timeTextWithUnit,
 	toSeconds,
@@ -23,7 +26,7 @@ import {
 
 /** 八拍表一列裡的一個動作（這一列開始的）。 */
 export interface EightCountAction {
-	/** 什麼時候：音樂段跟拍點小窗一樣寫「1-3& 到 2-2&・8 拍」；口號段段內秒數「12.3 秒」。 */
+	/** 什麼時候：音樂段跟拍點小窗一樣寫「1-3& 到 2-2&・8 拍」；口號段段內秒數和長度「12.3 到 14.3 秒・2.0 秒」。 */
 	at: string;
 	category: ActionCategory;
 	name: string;
@@ -45,7 +48,10 @@ export interface EightCountFormation {
 	/** 站位名稱，沒取就沒有。 */
 	name?: string;
 	at: string;
-	/** 給人看的：「站位 2 金字塔・2-5」，口號段「站位 3・2.5 秒」。 */
+	/**
+	 * 給人看的：「站位 2 金字塔・2-5」，口號段「站位 3・2.5 秒」。有人走過來時後面寫出發：「站位 2・3-1（2-1 出發）」，
+	 * 大家出發不一樣寫最早的「（最早 2-1 出發）」；個人表只看他自己的走位。
+	 */
 	caption: string;
 	pos: Record<string, Position>;
 }
@@ -148,7 +154,10 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 							role: m.role
 						}));
 						return {
-							at: segment.kind === 'music' ? beatSpanText(segment, a.start, a.length) : at(a.start),
+							at:
+								segment.kind === 'music'
+									? beatSpanText(segment, a.start, a.length)
+									: `${atText(segment, a.start)} 到 ${at(a.start + a.length)}・${lengthTextWithUnit(segment, a.length)}`,
 							category: a.category,
 							name: a.name,
 							members,
@@ -161,7 +170,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 					.map((a) => a.name || categoryLabel(a.category)),
 				formations: flow.formations.flatMap((f, i) => {
 					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
-					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}`;
+					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}${departText(flow, f.id, memberId)}`;
 					return [{ number: i + 1, name: f.name, at: at(f.at), caption, pos: f.pos }];
 				}),
 				walks: walks
@@ -250,6 +259,31 @@ function memberWho(flow: Flow, action: Action, memberId: string): string {
 		if (mates.length) parts.push(`同組：${mates.join('、')}`);
 	}
 	return parts.join('・');
+}
+
+/**
+ * 八拍表小站位圖的範圍（公尺）：所有站位裡有人的地方合起來，同一張表每張圖都用它，才比得出前後張的差別。
+ * 哪一張都沒有人是 null（畫整個場地）。
+ */
+export function eightCountView(flow: Flow): Rect | null {
+	const placed = flow.formations.flatMap((f) => Object.values(f.pos));
+	if (!placed.length) return null;
+	const xs = placed.map(([x]) => x);
+	const ys = placed.map(([, y]) => y);
+	const x = Math.min(...xs);
+	const y = Math.min(...ys);
+	return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+}
+
+/** 走到這張站位的出發（見 EightCountFormation.caption）：「（2-1 出發）」「（最早 2-1 出發）」；沒人走是空的。 */
+function departText(flow: Flow, formationId: string, memberId: string | null): string {
+	const walks = formationWalks(flow, formationId).filter((w) => memberId === null || w.memberId === memberId);
+	if (!walks.length) return '';
+	const first = walks.reduce((a, b) => (b.departSec < a.departSec ? b : a));
+	const late = walks.some((w) => w.departSec > first.departSec + EPS);
+	const home = flow.formations.find((f) => f.id === formationId)!.segmentId!;
+	const depart = memberWalk(flow, formationId, first.memberId)!.depart;
+	return `（${late ? '最早 ' : ''}${timeTextWithUnit(flow, home, depart)} 出發）`;
 }
 
 /** 這一列沒有新東西：沒有動作開始、沒有站位、沒有走位、沒有拍點或環節（只有延續的動作也算）。 */
