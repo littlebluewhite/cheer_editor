@@ -459,6 +459,18 @@ describe('流程檔：自動存草稿', () => {
 		expect(editor.file.recent).toMatchObject([{ name: '練習用', unsaved: false, busy: false }]);
 	});
 
+	it('改完不到 1 秒就重新整理、關分頁（頁面隱藏）：當下就開始寫最新的流程，不等任何非同步步驟（卸載前來不及）', async () => {
+		const { editor, session, drafts } = await connected();
+		editor.file.create(newFlow('全國賽'));
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(300);
+		editor.file.pageHidden();
+		// 不 await：頁面卸載後不會再跑任何東西
+		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
+	});
+
 	it('記成功率（不算復原的一步）也存草稿', async () => {
 		const { editor, session, drafts } = await connected();
 		await editor.file.open(zip(recordedFlow()));
