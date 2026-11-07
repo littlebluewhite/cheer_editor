@@ -1430,6 +1430,20 @@ await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、
 	};
 });
 
+await check('1440×1000 左欄規則警告的撞位總表：卡片點得到、打開的清單一行點得到，點了播放頭跳到撞位那一拍；卡片不超出左欄（#226）', async () => {
+	// 接著上一條的撞位流程。
+	const head = await hitAndClick('.rail .summary .head');
+	await sleep(200);
+	const row = (await js(`return !!document.querySelector('.rail .summary li button')`)) ? await hitAndClick('.rail .summary li button') : { self: false, top: '沒打開' };
+	await sleep(200);
+	const r = await js(`const rail = document.querySelector('.rail').getBoundingClientRect();
+		const card = document.querySelector('.rail .summary').getBoundingClientRect();
+		return { 位置: document.querySelector('[aria-label="目前位置"]').textContent, 左欄: [Math.round(rail.left), Math.round(rail.right)],
+			卡片: [Math.round(card.left), Math.round(card.right)] };`);
+	const inside = r.卡片[0] >= r.左欄[0] - 1 && r.卡片[1] <= r.左欄[1] + 1;
+	return { ok: head.self && row.self && inside && r.位置 === '音樂 1 2-1', value: { 卡片: head, 清單一行: row, ...r } };
+});
+
 await check('1440×1000 左欄的「跟上一張一樣」：播放頭在站位上和不在站位上，按鈕位置一樣', async () => {
 	await setViewport(1440, 1000);
 	await openSample();
