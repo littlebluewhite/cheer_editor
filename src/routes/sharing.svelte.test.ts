@@ -60,7 +60,7 @@ describe('分享對話框：擁有者', () => {
 		await fireEvent.input(email, { target: { value: 'LIN@example.com' } });
 		await fireEvent.submit(email.closest('form')!);
 		await flush();
-		expect(rows(dialog)).toEqual(['王 王教練（你） wang@example.com 擁有者', '林 林教練 lin@example.com 編輯者記錄者檢視者收回']);
+		expect(rows(dialog)).toEqual(['王 王教練（你） wang@example.com 擁有者', '林 林教練 lin@example.com 編輯者記錄者檢視者設為擁有者（移交）收回']);
 		expect((within(dialog).getByLabelText('林教練的權限') as HTMLSelectElement).value).toBe('editor');
 	});
 
@@ -192,5 +192,86 @@ describe('權限和檢視模式', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: '關掉這條' }));
 		expect(screen.queryByRole('alert')).toBeNull();
+	});
+});
+
+describe('移交（#252）', () => {
+	const ownerOption = (dialog: HTMLElement, name: string) =>
+		[...(within(dialog).getByLabelText(`${name}的權限`) as HTMLSelectElement).options].find((o) => o.value === 'owner')!;
+
+	it('選單多「設為擁有者（移交）」，被停用的人選不到', async () => {
+		await signedIn(wang.email, [wangsFlow({ [lin.email]: 'viewer', [chen.email]: 'editor' })]);
+		await openIt();
+		const dialog = await openShare();
+		expect(ownerOption(dialog, '林教練').textContent).toBe('設為擁有者（移交）');
+		expect(ownerOption(dialog, '林教練').disabled).toBe(false);
+		expect(ownerOption(dialog, '陳教練').disabled).toBe(true);
+	});
+
+	it('要確認；移交後對方是擁有者、我變編輯者（不能再分享，最下面是「離開這支流程」）', async () => {
+		const s = await signedIn(wang.email, [wangsFlow({ [lin.email]: 'viewer' })]);
+		await openIt();
+		const dialog = await openShare();
+		const menu = within(dialog).getByLabelText('林教練的權限') as HTMLSelectElement;
+
+		// 取消：什麼都沒變，選單回到原本的權限
+		await fireEvent.change(menu, { target: { value: 'owner' } });
+		const ask = within(dialog).getByRole('alertdialog');
+		expect(ask.textContent).toContain(
+			'把「測試」移交給林教練？交出去後林教練是擁有者，你變成編輯者，不能再分享、改別人的權限、刪這支流程。林教練不用接受，馬上生效。'
+		);
+		await fireEvent.click(within(ask).getByRole('button', { name: '取消' }));
+		expect(menu.value).toBe('viewer');
+		expect(s.state.flows[0].owner).toBe(wang.email);
+
+		await fireEvent.change(menu, { target: { value: 'owner' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '移交' }));
+		await flush();
+		await flush();
+		expect(s.state.flows[0].owner).toBe(lin.email);
+		expect(s.state.flows[0].people).toEqual({ [wang.email]: 'editor' });
+		expect(rows(dialog)).toEqual(['林 林教練 擁有者', '王 王教練（你） 編輯者']);
+		expect(within(dialog).getByRole('status').textContent).toBe('移交了：林教練現在是擁有者，你是編輯者。');
+		expect(within(dialog).queryByLabelText('Email')).toBeNull();
+		expect(within(dialog).queryByRole('button', { name: '刪掉這支流程' })).toBeNull();
+		expect(within(dialog).getByRole('button', { name: '離開這支流程' })).toBeTruthy();
+		// 還能改（編輯者）
+		expect(s.page.session.viewing).toBe(false);
+	});
+});
+
+describe('刪流程（#252）', () => {
+	it('擁有者在分享對話框最下面「刪掉這支流程」，問一次；刪了回首頁、清單沒有它', async () => {
+		const s = await signedIn(wang.email, [wangsFlow({ [lin.email]: 'editor' })]);
+		await openIt();
+		const dialog = await openShare();
+		expect(within(dialog).queryByRole('button', { name: '離開這支流程' })).toBeNull();
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: '刪掉這支流程' }));
+		const ask = within(dialog).getByRole('alertdialog');
+		expect(ask.textContent).toContain('刪掉「測試」？所有人都打不開，成功率紀錄一起刪，不能復原。');
+		await fireEvent.click(within(ask).getByRole('button', { name: '取消' }));
+		expect(s.state.flows).toHaveLength(1);
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: '刪掉這支流程' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '刪掉' }));
+		await flush();
+		await flush();
+		expect(s.state.flows).toEqual([]);
+		expect(s.page.session.flow).toBeNull();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(screen.getByRole('list', { name: '我的流程' }).textContent).not.toContain('測試');
+	});
+
+	it('開著的人：回首頁，最上面黃的說被擁有者刪掉了', async () => {
+		const s = await signedIn(lin.email, [wangsFlow({ [lin.email]: 'editor' })]);
+		await openIt();
+		s.deleteFlow('c1');
+		await flush();
+		await flush();
+		expect(s.page.session.flow).toBeNull();
+		expect(screen.getByRole('alert').textContent).toContain('「測試」被擁有者刪掉了。');
+		expect(screen.getByRole('list', { name: '分享給我的' }).textContent).not.toContain('測試');
 	});
 });

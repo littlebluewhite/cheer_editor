@@ -21,11 +21,13 @@ import type { SignedOut } from '#lib/api-types/SignedOut.js';
 import type { StartUpload } from '#lib/api-types/StartUpload.js';
 import type { TooManyTries } from '#lib/api-types/TooManyTries.js';
 import type { AdminProblem } from '#lib/api-types/AdminProblem.js';
+import type { HandedOver } from '#lib/api-types/HandedOver.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
 
 export type {
 	AdminProblem,
+	HandedOver,
 	CloudFlow,
 	CloudFlowSummary,
 	LinkInfo,
@@ -103,6 +105,8 @@ export interface ServerAdapter {
 	disableUser(id: number): Promise<AdminResult>;
 	/** 恢復：用原本的密碼就能登入。 */
 	enableUser(id: number): Promise<AdminResult>;
+	/** 移交（#252）：被停用的人擁有的流程全部交給 email 那個人；回交出去幾支，或做不成的原因。 */
+	adminHandOver(id: number, email: string): Promise<HandedOver | AdminProblem>;
 
 	/** 我的流程（我擁有的雲端流程）、分享給我的，最近改的在前。 */
 	myFlows(): Promise<MyFlows>;
@@ -122,6 +126,10 @@ export interface ServerAdapter {
 	revoke(flowId: string, userId: number): Promise<Person[]>;
 	/** 離開這支流程。 */
 	leave(flowId: string): Promise<void>;
+	/** 移交（#252）：把流程交給名單上的一個人，我變編輯者；回新的名單（沒有 email），他被停用了回原因。 */
+	handOver(flowId: string, userId: number): Promise<Person[] | ShareProblem>;
+	/** 刪掉這支流程（#252，只有擁有者）：所有人都打不開。 */
+	deleteFlow(flowId: string): Promise<void>;
 
 	// 分享連結（#251）：一支流程一條，只有擁有者能開、關；有權限的人都看得到。
 	/** 分享連結開著是連結的那串字，關著是 null。 */
@@ -261,6 +269,11 @@ export function httpServer(base = ''): ServerAdapter {
 		changeEmail: (id, email) => admin(`/${id}/email`, { email }),
 		disableUser: (id) => admin(`/${id}/disable`),
 		enableUser: (id) => admin(`/${id}/enable`),
+		async adminHandOver(id, email) {
+			const res = await post(`admin/users/${id}/transfer`, { email });
+			if (res.ok || res.status === 409) return (await res.json()) as HandedOver | AdminProblem;
+			throw new ServerUnreachable();
+		},
 		async myFlows() {
 			const res = await get('flows');
 			if (res.ok) return (await res.json()) as MyFlows;
@@ -300,6 +313,15 @@ export function httpServer(base = ''): ServerAdapter {
 		},
 		async leave(flowId) {
 			const res = await post(`flows/${encodeURIComponent(flowId)}/leave`, {});
+			if (!res.ok) throw new ServerUnreachable();
+		},
+		async handOver(flowId, userId) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/people/${userId}/owner`, {});
+			if (res.ok || res.status === 409) return (await res.json()) as Person[] | ShareProblem;
+			throw new ServerUnreachable();
+		},
+		async deleteFlow(flowId) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/delete`, {});
 			if (!res.ok) throw new ServerUnreachable();
 		},
 		openRoom(flowId) {

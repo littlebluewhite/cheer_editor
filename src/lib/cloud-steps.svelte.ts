@@ -3,6 +3,7 @@
 // 畫面先改、不等伺服器；一次送一步，伺服器收了才送下一步。
 // 被退回：還沒送的步一起不要，畫面換成伺服器的樣子，原因放進提示。指紋不一樣：有新版，請重新整理，先不能改。
 // 權限（#250）：記錄者、檢視者只能看；被降級馬上換檢視模式、還沒送到的步不算並提示；被收回叫 onrevoked（回首頁）。
+// 擁有者刪了這支（#252）：叫 ondeleted（回首頁並說原因）。
 // 別人的改動、改到同一個東西在 #253、#254；斷線在 #255。
 
 import type { Flow } from '#lib/core';
@@ -35,6 +36,8 @@ export class CloudSteps {
 	role = $state<Role>('owner');
 	/** 被收回了（或在別的分頁離開了）：流程檔接上（回首頁說原因）。 */
 	onrevoked: () => void = () => {};
+	/** 擁有者刪了這支流程（#252）：流程檔接上（回首頁說原因）。 */
+	ondeleted: () => void = () => {};
 
 	/** 連 room（這支流程的房間），從第 step 步開始，我的權限是 role；session 改好的步交給它。 */
 	constructor(room: FlowRoom, step: number, session: EditorSession, role: Role = 'owner') {
@@ -92,6 +95,9 @@ export class CloudSteps {
 		} else if (m.kind === 'revoked') {
 			this.#queue = [];
 			this.onrevoked();
+		} else if (m.kind === 'deleted') {
+			this.#queue = [];
+			this.ondeleted();
 		} else if (m.kind === 'roleChanged') {
 			this.#roleChanged(m.role, m.flow as Flow, m.step);
 		} else if (m.stepId !== this.#queue[0]?.id) {
@@ -110,10 +116,12 @@ export class CloudSteps {
 
 	/** 擁有者改了我的權限。降成記錄者、檢視者：還沒送到的步不算，換成伺服器的樣子並提示。 */
 	#roleChanged(role: Role, flow: Flow, step: number) {
+		const could = canEdit(this.role);
 		this.role = role;
 		this.#lock();
 		if (canEdit(role)) {
-			this.#session.notice = `你現在是${ROLE_NAMES[role]}，可以改了。`;
+			// 移交（#252）：擁有者、編輯者之間換，本來就能改
+			this.#session.notice = could ? `你現在是${ROLE_NAMES[role]}。` : `你現在是${ROLE_NAMES[role]}，可以改了。`;
 			return;
 		}
 		const unsent = this.#queue.length;

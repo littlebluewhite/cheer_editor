@@ -2,6 +2,7 @@
 //! 權限從多到少：擁有者、編輯者、記錄者、檢視者；一個人對一支流程只有一種。擁有者記在 flows 上，
 //! 其他人在 flow_permissions。伺服器擋，不只畫面鎖。管理員沒有特權：沒分享給他的流程跟沒有一樣（404）。
 //! 只有擁有者能分享、改權限、收回；不是擁有者的能離開。改權限、收回、離開都馬上告訴那個人開著的房間。
+//! 移交、刪流程（#252）：只有擁有者；移交給名單上沒被停用的人，原擁有者變編輯者。刪了告訴開著的每個人。
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -305,6 +306,122 @@ pub async fn leave(
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
     remove(&state, &id, me).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// 移交（#252）：擁有者把流程交給名單上的一個人（哪一級都行）。對方不用接受、不寄信；原擁有者變編輯者。
+/// 名單上沒有他 404；他被停用了 409（`disabled`）。告訴兩個人開著的房間。回新的名單（叫的人已經不是擁有者，沒有 email）。
+pub async fn hand_over(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, user)): Path<(String, i64)>,
+) -> Result<Response, AppError> {
+    let me = match caller(&state, &headers, &id, true).await? {
+        Ok((me, _)) => me,
+        Err(res) => return Ok(res),
+    };
+    let found: Option<(String, bool)> = sqlx::query_as(
+        "SELECT u.name, u.disabled_at IS NOT NULL
+         FROM flow_permissions p JOIN users u ON u.id = p.user_id
+         WHERE p.flow_id = $1 AND p.user_id = $2",
+    )
+    .bind(&id)
+    .bind(user)
+    .fetch_optional(&state.db)
+    .await?;
+    match found {
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+        Some((name, true)) => {
+            let problem = ShareProblem::Disabled { name };
+            return Ok((StatusCode::CONFLICT, Json(problem)).into_response());
+        }
+        Some(_) => {}
+    }
+    let mut tx = state.db.begin().await?;
+    let moved = hand_over_flows(&mut tx, me, user, Some(&id), state.clock.now()).await?;
+    tx.commit().await?;
+    tell_new_owner(&state, &moved, me, user);
+    Ok(Json(list(&state, &id, me, false).await?).into_response())
+}
+
+/// 把 from 擁有的流程交給 to（only：只交這一支；None 是全部）：to 是擁有者（他原本的權限拿掉），
+/// from 變編輯者。回交出去的流程 id。不查誰能做，叫的人查。
+pub(crate) async fn hand_over_flows(
+    tx: &mut sqlx::PgConnection,
+    from: i64,
+    to: i64,
+    only: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<Vec<String>> {
+    let moved: Vec<(String,)> = sqlx::query_as(
+        "UPDATE flows SET owner_id = $2 WHERE owner_id = $1 AND ($3::text IS NULL OR id = $3)
+         RETURNING id",
+    )
+    .bind(from)
+    .bind(to)
+    .bind(only)
+    .fetch_all(&mut *tx)
+    .await?;
+    let moved: Vec<String> = moved.into_iter().map(|(id,)| id).collect();
+    sqlx::query("DELETE FROM flow_permissions WHERE user_id = $1 AND flow_id = ANY($2)")
+        .bind(to)
+        .bind(&moved)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO flow_permissions (flow_id, user_id, role, added_at)
+         SELECT id, $1, 'editor', $3 FROM unnest($2::text[]) AS id",
+    )
+    .bind(from)
+    .bind(&moved)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    Ok(moved)
+}
+
+/// 移交後告訴開著的房間：新擁有者、原擁有者（變編輯者）。
+pub(crate) fn tell_new_owner(state: &AppState, flows: &[String], from: i64, to: i64) {
+    for id in flows {
+        for (user_id, role) in [(to, Role::Owner), (from, Role::Editor)] {
+            let event = RoomEvent::Permission {
+                user_id,
+                role: Some(role),
+            };
+            state.rooms.tell(id, event);
+        }
+    }
+}
+
+/// 刪流程（#252）：只有擁有者。所有人都打不開，步驟紀錄、權限跟著刪（外鍵 ON DELETE CASCADE）；
+/// 音樂記下哪天不用了（30 天後真的刪在 #266）。開著的房間都說被刪了。
+pub async fn delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if let Err(res) = caller(&state, &headers, &id, true).await? {
+        return Ok(res);
+    }
+    let mut tx = state.db.begin().await?;
+    // 鎖住這一列：正在收的步先收完（房間收步也鎖這一列）。
+    sqlx::query("SELECT 1 FROM flows WHERE id = $1 FOR UPDATE")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "UPDATE flow_audio SET unused_since = COALESCE(unused_since, $2) WHERE flow_id = $1",
+    )
+    .bind(&id)
+    .bind(state.clock.now())
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM flows WHERE id = $1")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    state.rooms.tell(&id, RoomEvent::Deleted);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

@@ -1,4 +1,5 @@
 //! 管理使用者（#245）：只有管理員能叫。名單、加使用者、重寄邀請、寄重設密碼信、改 email、停用、恢復。
+//! 移交（#252）：只有使用者被停用時，把他擁有的流程全部交給同一個人；管理員只看到支數，看不到流程名字。
 //! 只有停用，沒有刪除使用者。管理員不能幫人決定密碼（只能寄信讓他自己設）。
 //! 要寄信的事，信寄不出去就什麼都不改（信在交易裡寄，寄不出去就退回）。
 
@@ -14,6 +15,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::accounts::{LinkPurpose, current_user_id, new_link, password_mail};
 use crate::mail::{Mail, MailError};
+use crate::sharing::{hand_over_flows, tell_new_owner};
 
 // ---------- 前後端共用的訊息 ----------
 
@@ -45,8 +47,8 @@ pub enum UserStatus {
     },
     /// 邀請過期，他還沒設密碼。
     InviteExpired,
-    /// 已停用。
-    Disabled,
+    /// 已停用：他擁有幾支流程（有的話寫「已停用・他有 N 支流程」，可以移交）。
+    Disabled { flows: u32 },
 }
 
 #[derive(Deserialize, TS)]
@@ -62,6 +64,20 @@ pub struct ChangeEmailRequest {
     pub email: String,
 }
 
+/// 管理員移交：接手的人的 email。
+#[derive(Deserialize, TS)]
+#[ts(export)]
+pub struct HandOverRequest {
+    pub email: String,
+}
+
+/// 管理員移交好了：交出去幾支（看不到是哪幾支）。
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct HandedOver {
+    pub flows: u32,
+}
+
 /// 管理的事做不成的原因（4xx、503 的內容）。
 #[derive(Serialize, TS, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -71,8 +87,14 @@ pub enum AdminProblem {
     EmailTaken,
     /// 寄信服務今天的額度用完了：今天寄不出去，明天再試。503。
     MailQuota,
-    /// 這個人現在不能這樣做（例：停用自己、幫已停用的人寄重設密碼信）。409。
+    /// 這個人現在不能這樣做（例：停用自己、幫已停用的人寄重設密碼信、移交沒被停用的人的流程）。409。
     NotAllowed,
+    /// 移交：這個 email 沒有帳號。409。
+    NoAccount,
+    /// 移交：不能交給他自己。409。
+    SameUser,
+    /// 移交：接手的人被停用了，不能移交給他。409。
+    Disabled { name: String },
 }
 
 // ---------- 只有管理員 ----------
@@ -105,6 +127,8 @@ struct StoredUser {
     disabled: bool,
     /// 還沒用的邀請連結到期的時間（沒有是空的）。
     invite_until: Option<DateTime<Utc>>,
+    /// 他擁有幾支流程。
+    flows: i64,
 }
 
 /// 所有使用者（照加進來的順序）。
@@ -116,7 +140,8 @@ pub async fn list(
         "SELECT u.id, u.name, u.email, u.password_hash IS NOT NULL AS has_password,
                 u.disabled_at IS NOT NULL AS disabled,
                 (SELECT max(l.expires_at) FROM password_links l
-                 WHERE l.user_id = u.id AND l.purpose = 'invite') AS invite_until
+                 WHERE l.user_id = u.id AND l.purpose = 'invite') AS invite_until,
+                (SELECT count(*) FROM flows f WHERE f.owner_id = u.id) AS flows
          FROM users u ORDER BY u.id",
     )
     .fetch_all(&state.db)
@@ -125,7 +150,7 @@ pub async fn list(
     Ok(Json(
         rows.into_iter()
             .map(|u| UserRow {
-                status: status(now, u.has_password, u.disabled, u.invite_until),
+                status: status(now, &u),
                 me: u.id == me,
                 id: u.id,
                 name: u.name,
@@ -135,19 +160,16 @@ pub async fn list(
     ))
 }
 
-fn status(
-    now: DateTime<Utc>,
-    has_password: bool,
-    disabled: bool,
-    invite_until: Option<DateTime<Utc>>,
-) -> UserStatus {
-    if disabled {
-        return UserStatus::Disabled;
+fn status(now: DateTime<Utc>, u: &StoredUser) -> UserStatus {
+    if u.disabled {
+        return UserStatus::Disabled {
+            flows: u.flows as u32,
+        };
     }
-    if has_password {
+    if u.has_password {
         return UserStatus::Active;
     }
-    match invite_until {
+    match u.invite_until {
         Some(until) if until > now => {
             let seconds = (until - now).num_seconds();
             UserStatus::Invited {
@@ -319,6 +341,42 @@ pub async fn enable(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+/// 移交：只有被停用的人（不然 409 notAllowed）。他擁有的流程全部交給 email 那個人，他變這些流程的編輯者。
+/// 擋：沒帳號、交給他自己、接手的人被停用。回交出去幾支。
+pub async fn hand_over(
+    Admin(_): Admin,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(req): Json<HandOverRequest>,
+) -> Result<Response, AdminError> {
+    let mut tx = state.db.begin().await?;
+    let Some((_, _, _, disabled)) = user(&mut tx, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    if !disabled {
+        return Err(AdminProblem::NotAllowed.into());
+    }
+    let to: Option<(i64, String, bool)> = sqlx::query_as(
+        "SELECT id, name, disabled_at IS NOT NULL FROM users WHERE lower(email) = lower($1)",
+    )
+    .bind(req.email.trim())
+    .fetch_optional(&mut *tx)
+    .await?;
+    let to = match to {
+        None => return Err(AdminProblem::NoAccount.into()),
+        Some((to, ..)) if to == id => return Err(AdminProblem::SameUser.into()),
+        Some((_, name, true)) => return Err(AdminProblem::Disabled { name }.into()),
+        Some((to, ..)) => to,
+    };
+    let moved = hand_over_flows(&mut tx, id, to, None, state.clock.now()).await?;
+    tx.commit().await?;
+    tell_new_owner(&state, &moved, id, to);
+    Ok(Json(HandedOver {
+        flows: moved.len() as u32,
+    })
+    .into_response())
+}
+
 // ---------- 小工具 ----------
 
 /// email、名字、設過密碼沒、停用了沒。
@@ -388,7 +446,7 @@ impl IntoResponse for AdminError {
             Self::Problem(problem) => {
                 let status = match problem {
                     AdminProblem::MailQuota => StatusCode::SERVICE_UNAVAILABLE,
-                    AdminProblem::EmailTaken | AdminProblem::NotAllowed => StatusCode::CONFLICT,
+                    _ => StatusCode::CONFLICT,
                 };
                 (status, Json(problem)).into_response()
             }
