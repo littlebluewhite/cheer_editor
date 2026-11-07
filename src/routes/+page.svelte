@@ -131,6 +131,8 @@
 	let opened = $state(0);
 	/** 首頁按了「丟掉」的那支最近的流程：先問。 */
 	let discarding = $state.raw<RecentFlow | null>(null);
+	/** 丟掉以後的回饋：「已丟掉」，或另一個分頁正在編、沒丟掉。 */
+	let discardNote = $state('');
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
@@ -251,6 +253,9 @@
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
+		// 一律回到「編排・編輯」，不沿用上一支的練習分頁、檢視模式（窄螢幕照樣只能看）
+		view = 'edit';
+		session.viewing = narrow;
 	};
 
 	function undo() {
@@ -419,7 +424,11 @@
 		if (e.key === ' ') spaceUsed = false;
 	}}
 	{onbeforeunload}
-	onpagehide={() => editor.file.pageHidden()}
+	onpagehide={() => {
+		editor.file.pageHidden();
+		editor.file.pageClosed();
+	}}
+	onpageshow={(e) => e.persisted && editor.file.pageShown()}
 	onpointerdowncapture={dismissNotice}
 	onkeydowncapture={dismissNotice}
 	bind:innerWidth={windowW}
@@ -876,11 +885,16 @@
 			</p>
 		</section>
 
-		<section class="start">
-			<NewFlowForm oncreate={(f) => editor.file.create(f)} />
+		<section class="start" class:narrow>
+			{#if narrow}
+				<!-- 窄螢幕不能編：不放新建，最大的是「開啟流程檔」（docs/adr/0005-ipad-touch.md） -->
+				<p class="home-view-only"><Icon name="eye" />檢視模式・只能看：這個畫面太小，不能新建、編輯。請用電腦，或把 iPad 轉成橫的。</p>
+			{:else}
+				<NewFlowForm oncreate={(f) => editor.file.create(f)} />
+			{/if}
 			<div class="home-open">
-				<span>已經有流程檔？</span>
-				<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+				{#if !narrow}<span>已經有流程檔？</span>{/if}
+				<label class="open btn" class:primary={narrow}><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 			</div>
 			{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
 			{#if editor.file.recent.length}
@@ -888,16 +902,19 @@
 					<h2 id="recent-title">最近的流程</h2>
 					<ul aria-labelledby="recent-title">
 						{#each editor.file.recent as f (f.id)}
+							{@const edited = f.savedAt ? `最後改 ${draftTime(f.savedAt)}` : ''}
+							<!-- 同名的不只一支：「丟掉」也寫最後改的時間，聽得出是哪一支 -->
+							{@const twin = edited && editor.file.recent.some((g) => g !== f && g.name === f.name)}
 							<li>
 								<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
 									<span class="recent-name">{f.name}</span>
 									<span class="recent-meta"
-										>{[f.savedAt ? draftTime(f.savedAt) : '', f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
+										>{[edited, f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
 											.filter(Boolean)
 											.join('・')}</span
 									>
 								</button>
-								<button type="button" class="link recent-drop" aria-label={`丟掉「${f.name}」`} onclick={() => (discarding = f)}>丟掉</button>
+								<button type="button" class="link recent-drop" aria-label={`丟掉「${f.name}」${twin ? `（${edited}）` : ''}`} onclick={() => (discarding = f)}>丟掉</button>
 							</li>
 						{/each}
 					</ul>
@@ -907,6 +924,7 @@
 					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 				</div>
 			{/if}
+			<p class="recent-note" role="status">{discardNote}</p>
 		</section>
 		{#if discarding}
 			{@const f = discarding}
@@ -922,7 +940,10 @@
 						onconfirm={() => {
 							const id = f.id;
 							discarding = null;
-							void editor.file.discardRecent(id);
+							discardNote = '';
+							void editor.file.discardRecent(id).then((dropped) => {
+								discardNote = dropped ? `已丟掉「${f.name}」的草稿` : `另一個分頁正在編「${f.name}」，沒有丟掉`;
+							});
 						}}
 						oncancel={() => (discarding = null)}
 						focusCancel
@@ -1979,6 +2000,26 @@
 	.home .error {
 		text-align: center;
 	}
+	/* 窄螢幕：沒有新建，「開啟流程檔」是最大的一塊 */
+	.home-view-only {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 10px 12px;
+		border-radius: 8px;
+		border-left: 3px solid #3b2a6b;
+		background: #efeaf8;
+		color: var(--ink);
+		font-size: 14px;
+		line-height: 1.6;
+	}
+	.start.narrow .open {
+		flex: 1;
+		justify-content: center;
+		padding: 18px 16px;
+		font-size: 18px;
+		font-weight: 700;
+	}
 	.recent {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -2027,6 +2068,10 @@
 	.recent-note {
 		color: var(--muted);
 		font-size: 12px;
+	}
+	/* 丟掉的回饋還沒有字：不佔格子的間距（留在畫面上，報讀才唸得到後來的字） */
+	.start > .recent-note:empty {
+		position: absolute;
 	}
 	@media (max-width: 760px) {
 		.home {
