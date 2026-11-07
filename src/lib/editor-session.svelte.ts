@@ -16,6 +16,9 @@ import {
 	squadsOf,
 	timeTextWithUnit,
 	type Action,
+	type Command,
+	type CommandName,
+	type CommandOutcome,
 	type CommandResult,
 	type ConfirmOption,
 	type Flow,
@@ -146,11 +149,16 @@ export class EditorSession {
 			this.change(f, this.#joining ?? undefined);
 			this.notice = '';
 		},
-		{ confirmLabel: '確定', onfail: (error) => (this.notice = error), locked: () => this.#locked() }
+		{
+			confirmLabel: '確定',
+			onfail: (error) => (this.notice = error),
+			locked: () => this.#locked(),
+			flow: () => this.#flow
+		}
 	);
 
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
-	readonly squadAsk = new Ask((f) => this.change(f), { locked: () => this.#locked() });
+	readonly squadAsk = new Ask((f) => this.change(f), { locked: () => this.#locked(), flow: () => this.#flow });
 
 	/** 改流程鎖著的原因：檢視模式是 VIEW_ONLY，編輯是空字串。 */
 	#locked(): string {
@@ -244,7 +252,7 @@ export class EditorSession {
 
 	/** 給元件一個「改」的問題：成功就交給 change（算一步）。onfail：沒成功之後（例：原因放進提示）。 */
 	changeAsk(options: { confirmLabel?: string; onfail?: (error: string) => void } = {}): Ask {
-		const ask = new Ask((f) => this.change(f), { ...options, locked: () => this.#locked() });
+		const ask = new Ask((f) => this.change(f), { ...options, locked: () => this.#locked(), flow: () => this.#flow });
 		this.#changeAsks.add(new WeakRef(ask));
 		return ask;
 	}
@@ -265,7 +273,7 @@ export class EditorSession {
 
 	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
 	recordAsk(): Ask {
-		return new Ask((f) => this.record(f));
+		return new Ask((f) => this.record(f), { flow: () => this.#flow });
 	}
 
 	/** 復原：換上前一份編排，帶著現在的紀錄，提示「已復原：…」。回傳有沒有復原（檢視模式擋下，說原因）。 */
@@ -304,13 +312,16 @@ export class EditorSession {
 	}
 
 	/**
-	 * 方向鍵移人：跟場上的問題一樣送出去，成功時連續同一個 key（同一批人、同一拍）、
+	 * 方向鍵移人：跟場上的問題一樣送出去（指令名字＋參數，或包好的函式），成功時連續同一個 key（同一批人、同一拍）、
 	 * 中間沒有別的改動，就合成復原的一步。
 	 */
-	nudge<R extends CommandResult>(key: string, send: () => R, handlers: Handlers<R> = {}): R {
+	nudge<N extends CommandName>(key: string, command: Command<N>, handlers?: Handlers<CommandOutcome<N>>): CommandOutcome<N>;
+	nudge<R extends CommandResult>(key: string, send: () => R, handlers?: Handlers<R>): R;
+	nudge(key: string, send: object, handlers: Handlers<never> = {}): unknown {
 		this.#joining = key;
 		try {
-			return this.ask.send(send, handlers);
+			// 名字還是函式，ask 自己分。
+			return this.ask.send(send as Command[], handlers as Handlers<CommandResult>);
 		} finally {
 			this.#joining = null;
 		}

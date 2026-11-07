@@ -152,6 +152,16 @@ describe('編輯 session：流程和復原', () => {
 		expect(s.canUndo).toBe(false);
 	});
 
+	it('nudge 用名字送：成功時用給的 key 合成一步', () => {
+		const s = new EditorSession(sampleFlow());
+		s.nudge('k', { name: 'renameFlow', args: ['A'] });
+		s.nudge('k', { name: 'renameFlow', args: ['B'] });
+		expect(s.flow!.name).toBe('B');
+		s.undo();
+		expect(s.flow!.name).toBe('練習用');
+		expect(s.canUndo).toBe(false);
+	});
+
 	it('換一支流程：清掉復原和重做；從檔案開的算存過，救回的草稿不算', () => {
 		const s = new EditorSession(sampleFlow());
 		rename(s, 'A');
@@ -350,6 +360,26 @@ describe('編輯 session：元件要的問題（「改」或「記」）', () =>
 		expect(s.unsaved).toBe(true);
 		expect(s.canUndo).toBe(false);
 		expect(s.canRedo).toBe(true);
+	});
+
+	it('用名字送：跑在 session 現在的流程上；「改」算一步，「記」不算', () => {
+		const s = new EditorSession(sampleFlow());
+		s.changeAsk().send({ name: 'renameFlow', args: ['全國賽'] });
+		expect(s.flow!.name).toBe('全國賽');
+		const attempt = { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
+		s.recordAsk().send({ name: 'recordAttempt', args: ['x1', attempt] });
+		expect(records(s)).toBe(1);
+		expect(s.flow!.name).toBe('全國賽');
+		s.undo();
+		expect(s.flow!.name).toBe('練習用');
+		expect(records(s)).toBe(1);
+	});
+
+	it('場上和分組的問題也能用名字送', () => {
+		const s = new EditorSession(sampleFlow());
+		s.ask.send({ name: 'renameFlow', args: ['A'] });
+		s.squadAsk.send({ name: 'renameFlow', args: ['B'] });
+		expect(s.flow!.name).toBe('B');
 	});
 });
 
