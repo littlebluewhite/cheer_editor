@@ -11,9 +11,13 @@
 // 斷線（#255）：房間自己重連。斷線時不能改（跟檢視模式一樣），還沒送到的步只留在這個分頁；連上重新打招呼，
 // 伺服器先補上斷線期間別人的改動（補不上就給現在的樣子），再說可以送步，這時把還沒送到的步再送（步驟 id 擋重複）。
 // 每一步帶它做的時候看到第幾步：補上的別人的改動不會讓伺服器以為我看過了。
+// 復原、重做（#256）：session 交來的復原也是一步（送要放回去的樣子），照順序送；被退回時伺服器說完整的原因
+// （例：「王教練後來改過，這步不能復原」）。被退回、沒送到的步從復原、重做紀錄拿掉（session.dropSteps）。
 // 成功率紀錄（#257，ADR 0008）：記一次（session 的「記」交給 onrecord）把新的那幾次送進同一個房間，不算一步。
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
-// 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄。
+// 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。
+// 改、刪、救回（#258）也從這裡送；伺服器回那幾次現在的樣子（記錄者動別人的不算，換回來）。別人改的、刪的，
+// 別人的一步跟著改、清掉的紀錄，馬上換掉。記錄者只能改、刪自己記的（session.ownRecordsOnly）。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄。
 // 斷網時記的（還沒傳的留在這台）在 #260。
 
 import {
@@ -29,11 +33,10 @@ import {
 	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
-import type { SentStep } from '#lib/ask.svelte.js';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import type { DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
+import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
-import type { CloudRecord, FlowRoom, Present, Role, RoomMessage } from '#lib/server-api.js';
+import type { CloudRecord, FlowRoom, Present, Role, RoomMessage, RoomRequest } from '#lib/server-api.js';
 
 /** 有新版時不能改的原因。 */
 export const NEW_VERSION = '有新版，請重新整理';
@@ -49,15 +52,19 @@ export class CloudSteps {
 	readonly #room: FlowRoom;
 	readonly #session: EditorSession;
 	/** 還沒被伺服器收的步和它改了什麼（第一個送出去了，等它回答）。 */
-	#queue = $state.raw<(SentStep & { label: string; seen: number })[]>([]);
+	#queue = $state.raw<(CloudStep & { label: string; seen: number })[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
 	#ready = false;
 	/** 上次看到第幾步。 */
 	#seen: number;
 	/** 記了、伺服器還沒回答的那幾次：id → 送的那一次和沒存進去時表上那一列（記的當下的動作、組的名字）。 */
 	#unsent = new Map<string, { record: StoredAttempt; row: DroppedRecord }>();
-	/** 送出去、等回答的每一批（照送的先後，伺服器照順序回）。 */
-	#batches: string[][] = [];
+	/** 送出去、等回答的每一批（照送的先後，伺服器照順序回）：那一批的 id 和送的。 */
+	#batches: { ids: string[]; request: RoomRequest }[] = [];
+	/** 還沒連上時改、刪、救回的（連上就送）：那一批的 id 和要送的。 */
+	#amends: { ids: string[]; request: RoomRequest }[] = [];
+	/** 這個分頁刪掉的那幾次：又出現（救回）就送「救回」，不是新增。 */
+	#deleted = new Set<string>();
 	/** 指紋不一樣：有新版。 */
 	newVersion = $state(false);
 	/** 斷線了，還沒連回來（連回來是伺服器說可以送步的時候）。 */
@@ -81,6 +88,7 @@ export class CloudSteps {
 		this.#session = session;
 		this.#seen = step;
 		this.role = role;
+		session.sharedRecords = true;
 		this.#lock();
 		room.onmessage = (m) => this.#heard(m);
 		room.onconnection = (connected) => (connected ? this.#hello() : this.#lost());
@@ -122,12 +130,15 @@ export class CloudSteps {
 		this.#session.onrecord = null;
 		this.#session.readOnly = '';
 		this.#session.cannotRecord = '';
+		this.#session.sharedRecords = false;
+		this.#session.ownRecordsOnly = false;
 	}
 
-	/** 不能改的原因放進 session：有新版優先，再來是斷線。 */
+	/** 不能改的原因放進 session：有新版優先，再來是斷線。記錄者只能改、刪自己記的。 */
 	#lock() {
 		this.#session.readOnly = this.newVersion ? NEW_VERSION : this.offline ? OFFLINE : canEdit(this.role) ? '' : ONLY_VIEW;
 		this.#session.cannotRecord = this.newVersion ? NEW_VERSION : this.role === 'viewer' ? ONLY_VIEW : '';
+		this.#session.ownRecordsOnly = this.role === 'recorder';
 	}
 
 	/** 打招呼（連上、連回來）：上次看到第幾步，伺服器先補上之後別人的改動。 */
@@ -135,16 +146,17 @@ export class CloudSteps {
 		this.#room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: this.#seen, editing: this.#editing });
 	}
 
-	/** 斷線了：不能改，等房間連回來；送出去還沒回答的紀錄連回來再送。 */
+	/** 斷線了：不能改，等房間連回來；送出去還沒回答的紀錄連回來再送（記的從 #unsent 送，改、刪、救回放回 #amends）。 */
 	#lost() {
 		this.#ready = false;
+		this.#amends = [...this.#batches.filter((b) => b.request.kind !== 'record'), ...this.#amends];
 		this.#batches = [];
 		this.offline = true;
 		this.#lock();
 		this.#session.notice = `${OFFLINE}。還沒送出的步，連上後會再送。`;
 	}
 
-	#push(step: SentStep & { label: string; seen: number }) {
+	#push(step: CloudStep & { label: string; seen: number }) {
 		this.#queue = [...this.#queue, step];
 		if (this.#queue.length === 1) this.#sendHead();
 	}
@@ -152,7 +164,8 @@ export class CloudSteps {
 	#sendHead() {
 		const head = this.#queue[0];
 		if (!head || !this.#ready) return;
-		this.#room.send({ kind: 'step', stepId: head.id, seen: head.seen, commands: head.commands });
+		if ('undo' in head) this.#room.send({ kind: 'undo', stepId: head.id, seen: head.seen, ...head.undo });
+		else this.#room.send({ kind: 'step', stepId: head.id, seen: head.seen, commands: head.commands });
 	}
 
 	#heard(m: RoomMessage) {
@@ -166,6 +179,7 @@ export class CloudSteps {
 			}
 			this.#sendHead();
 			this.#sendRecords([...this.#unsent.keys()]);
+			for (const { ids, request } of this.#amends.splice(0)) this.#send(ids, request);
 		} else if (m.kind === 'newVersion') {
 			this.newVersion = true;
 			this.offline = false;
@@ -175,7 +189,7 @@ export class CloudSteps {
 		} else if (m.kind === 'current') {
 			// 補不上（斷線太久）：換成伺服器的樣子，還沒送到的步不算；連回來時跟「連上了。」一起說
 			const unsent = this.#queue.length;
-			this.#queue = [];
+			this.#dropQueue();
 			this.#seen = m.step;
 			const lost = unsent ? `換成伺服器現在的樣子，還沒送到的 ${unsent} 步沒存進去。` : '';
 			if (this.offline) this.#lostOnReconnect = lost;
@@ -196,7 +210,9 @@ export class CloudSteps {
 		} else if (m.kind === 'recordsSaved') {
 			this.#saved(m.saved, m.dropped);
 		} else if (m.kind === 'newRecords') {
-			this.#others(m.records);
+			this.#others(m.records, []);
+		} else if (m.kind === 'recordsChanged') {
+			this.#others(m.changed, m.deleted);
 		} else if (m.stepId !== this.#queue[0]?.id) {
 			return;
 		} else if (m.kind === 'accepted') {
@@ -208,9 +224,15 @@ export class CloudSteps {
 			// 退回：這一步和後面還沒送的一起不要，換成伺服器的樣子
 			const label = this.#queue[0].label;
 			this.#seen = m.step;
-			this.#queue = [];
+			this.#dropQueue();
 			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message));
 		}
+	}
+
+	/** 還沒被伺服器收的步都不算：清掉，也從復原、重做紀錄拿掉。 */
+	#dropQueue() {
+		this.#session.dropSteps(this.#queue.map((s) => s.id));
+		this.#queue = [];
 	}
 
 	/** 換成伺服器的樣子（不帶紀錄）：帶著現在的紀錄（對不上的丟掉，跟復原一樣）。 */
@@ -219,23 +241,49 @@ export class CloudSteps {
 		this.#session.reset(now ? carryRecords(flow, now) : flow, message);
 	}
 
-	/** 記了：新的那幾次（id 不在記之前的）送伺服器。刪、改在 #258。 */
+	/**
+	 * 記了：比對記之前、之後，新的那幾次送「記」，改了記號的送「改」，不見的送「刪」，
+	 * 這個分頁刪過又出現的（救回）送「救回」（#258）。
+	 */
 	#recorded(before: Flow, after: Flow) {
-		const had = new Set(takeRecords(before).records.map((r) => r.attempt.id));
-		const added = takeRecords(after).records.filter((r) => !had.has(r.attempt.id));
+		const old = new Map(takeRecords(before).records.map((r) => [r.attempt.id, r]));
+		const now = takeRecords(after).records;
+		const ids = new Set(now.map((r) => r.attempt.id));
+		const added = now.filter((r) => !old.has(r.attempt.id) && !this.#deleted.has(r.attempt.id));
+		const restored = now.filter((r) => !old.has(r.attempt.id) && this.#deleted.has(r.attempt.id)).map((r) => r.attempt.id);
+		const changed = now.filter((r) => old.has(r.attempt.id) && old.get(r.attempt.id)!.attempt !== r.attempt);
+		const removed = [...old.keys()].filter((id) => !ids.has(id));
 		for (const record of added) this.#unsent.set(record.attempt.id, { record, row: droppedRow(after, record) });
 		if (this.#ready) this.#sendRecords(added.map((r) => r.attempt.id));
+		for (const id of restored) this.#deleted.delete(id);
+		for (const id of removed) this.#deleted.add(id);
+		if (changed.length) this.#send(changed.map((r) => r.attempt.id), { kind: 'changeRecords', attempts: changed });
+		if (removed.length) this.#send(removed, { kind: 'deleteRecords', ids: removed });
+		if (restored.length) this.#send(restored, { kind: 'restoreRecords', ids: restored });
 	}
 
 	#sendRecords(ids: string[]) {
 		if (!ids.length) return;
-		this.#batches.push(ids);
-		this.#room.send({ kind: 'record', attempts: ids.map((id) => this.#unsent.get(id)!.record) });
+		this.#send(ids, { kind: 'record', attempts: ids.map((id) => this.#unsent.get(id)!.record) });
 	}
 
-	/** 伺服器回我送的那一批：收了的換成伺服器存的樣子，沒存進去的拿掉、列進紅條；收過又被清掉的也拿掉。 */
+	/** 送一批紀錄（ids 是這一批的那幾次，等伺服器照順序回）；還沒連上就先留著，連上再送。 */
+	#send(ids: string[], request: RoomRequest) {
+		if (!this.#ready) {
+			if (request.kind !== 'record') this.#amends.push({ ids, request });
+			return;
+		}
+		this.#batches.push({ ids, request });
+		this.#room.send(request);
+	}
+
+	/**
+	 * 伺服器回我送的那一批：收了的換成伺服器存的樣子，沒存進去的拿掉、列進紅條；收過又被清掉的也拿掉。
+	 * 改、刪、救回：伺服器上還在的換成它的樣子（刪不掉的放回來），不在的拿掉。後面還有一批在等的那幾次先不動（等那一批的回答）。
+	 */
 	#saved(saved: CloudRecord[], dropped: { id: string }[]) {
-		const batch = new Set(this.#batches.shift() ?? []);
+		const batch = new Set(this.#batches.shift()?.ids ?? []);
+		const later = new Set(this.#batches.flatMap((b) => b.ids));
 		const kept = new Map(saved.map((r) => [attemptOf(r).id, r]));
 		const rows = dropped.flatMap((d) => this.#unsent.get(d.id)?.row ?? []);
 		for (const id of batch) this.#unsent.delete(id);
@@ -243,25 +291,34 @@ export class CloudSteps {
 		if (!flow) return;
 		const records = takeRecords(flow).records.flatMap((r) => {
 			const server = kept.get(r.attempt.id);
-			if (server) return [{ actionId: server.actionId, attempt: attemptOf(server) }];
+			if (later.has(r.attempt.id)) return [r];
+			if (server) return [stored(server)];
 			return batch.has(r.attempt.id) ? [] : [r];
 		});
-		this.#session.serverRecords(putRecords(flow, records));
+		const have = new Set(records.map((r) => r.attempt.id));
+		const back = saved.filter((r) => !have.has(attemptOf(r).id) && !later.has(attemptOf(r).id));
+		this.#session.serverRecords(putRecords(flow, [...records, ...back.map(stored)]));
 		if (rows.length) this.#session.droppedRecords = [...this.#session.droppedRecords, ...rows];
 	}
 
-	/** 別人（或我在別的分頁）記的：放進畫面（已經有的不重複），別人記的記下名字。 */
-	#others(incoming: CloudRecord[]) {
+	/**
+	 * 別人（或我在別的分頁）記的、改的、刪的，或別人的一步跟著改、清掉的（#258）：
+	 * 有的換成伺服器的樣子，沒有的放進畫面，刪掉的拿掉；不是自己記的記下名字。
+	 */
+	#others(incoming: CloudRecord[], deleted: string[]) {
 		const flow = this.#session.flow;
 		if (!flow) return;
-		const { records } = takeRecords(flow);
-		const have = new Set(records.map((r) => r.attempt.id));
-		const added = incoming.filter((r) => !have.has(attemptOf(r).id));
-		if (!added.length) return;
-		const names = Object.fromEntries(added.flatMap((r) => (r.by ? [[attemptOf(r).id, r.by]] : [])));
+		const gone = new Set(deleted);
+		const fresh = new Map(incoming.map((r) => [attemptOf(r).id, r]));
+		const records = takeRecords(flow).records.flatMap((r) => {
+			if (gone.has(r.attempt.id)) return [];
+			const server = fresh.get(r.attempt.id);
+			fresh.delete(r.attempt.id);
+			return [server ? stored(server) : r];
+		});
+		const names = Object.fromEntries(incoming.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
 		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
-		const more = added.map((r) => ({ actionId: r.actionId, attempt: attemptOf(r) }));
-		this.#session.serverRecords(putRecords(flow, [...records, ...more]));
+		this.#session.serverRecords(putRecords(flow, [...records, ...[...fresh.values()].map(stored)]));
 	}
 
 	/** 擁有者改了我的權限。降成記錄者、檢視者：還沒送到的步不算，換成伺服器的樣子並提示。 */
@@ -275,7 +332,7 @@ export class CloudSteps {
 			return;
 		}
 		const unsent = this.#queue.length;
-		this.#queue = [];
+		this.#dropQueue();
 		this.#seen = step;
 		const lost = unsent ? `還沒送到的 ${unsent} 步沒存進去。` : '';
 		this.#reset(flow, `你現在是${ROLE_NAMES[role]}，只能看。${lost}`);
@@ -289,6 +346,8 @@ function sentBack(by: string, label: string, reason: string): string {
 
 /** 伺服器送來的一次（流程核心的 Attempt）。 */
 const attemptOf = (r: CloudRecord) => r.attempt as StoredAttempt['attempt'];
+/** 伺服器送來的一次放回流程的樣子。 */
+const stored = (r: CloudRecord): StoredAttempt => ({ actionId: r.actionId, attempt: attemptOf(r) });
 
 /** 沒存進去時表上那一列：記的當下的日期、動作、組（或隊員）、記號（之後動作、組可能被刪掉，名字先記下來）。 */
 function droppedRow(flow: Flow, { actionId, attempt }: StoredAttempt): DroppedRecord {

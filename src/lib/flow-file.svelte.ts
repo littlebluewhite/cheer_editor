@@ -304,7 +304,7 @@ export class FlowFile {
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
 		this.#editor.session.recordedBy = Object.fromEntries(
-			found.records.flatMap((r) => (r.by ? [[(r.attempt as Attempt).id, r.by]] : []))
+			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
 		);
 		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
 		const goneHome = (why: (name: string) => string) => () => {

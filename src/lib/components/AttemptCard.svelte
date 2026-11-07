@@ -9,6 +9,7 @@
 	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	// 雲端流程別人記的那一次，記號後面小字寫名字（自己記的不寫，#257）。
+	// 雲端流程（#258）：「刪掉上一次」寫成「刪掉我的上一次」，只刪自己記的（編輯者也是）；記錄者點別人記的那一次只看得到是誰記的，不能改、刪。
 	import {
 		MARKS,
 		attemptText,
@@ -157,12 +158,20 @@
 		);
 	}
 
+	/** 自己記的（本機流程全是自己的；雲端流程別人記的、沒有記的人的在 session.recordedBy 裡）。 */
+	const mine = (r: Attempt) => !(r.id in session.recordedBy);
+	/** 「刪掉（我的）上一次」刪的那一次：這天自己最後記的一次分段練。 */
+	const lastMine = $derived(today.findLast((r) => r.practice === 'drill' && mine(r)));
+	/** 記錄者點到別人記的那一次：不能改、刪，寫是誰記的。 */
+	const othersOnly = $derived(edited && session.ownRecordsOnly && !mine(edited) ? edited : null);
+
 	function removeLast() {
+		const last = lastMine!;
 		removeWithRestore(
 			ask,
 			flash,
-			removedText(today.findLast((r) => r.practice === 'drill')!),
-			{ name: 'deleteLastAttempt', args: [action.id, who, date, 'drill'] },
+			removedText(last),
+			{ name: 'deleteAttempt', args: [action.id, last.id] },
 			({ attempt, index }) => ({ name: 'restoreAttempt', args: [action.id, attempt, index] })
 		);
 	}
@@ -253,9 +262,11 @@
 		<button
 			type="button"
 			class="undo-last"
-			disabled={!today.some((r) => r.practice === 'drill')}
-			title="刪掉這張卡這天最後記的一次分段練（全上的不刪）"
-			onclick={removeLast}>刪掉上一次</button
+			disabled={!lastMine}
+			title={session.sharedRecords
+				? '刪掉你在這張卡這天最後記的一次分段練（別人記的、全上的不刪）'
+				: '刪掉這張卡這天最後記的一次分段練（全上的不刪）'}
+			onclick={removeLast}>{session.sharedRecords ? '刪掉我的上一次' : '刪掉上一次'}</button
 		>
 	</footer>
 	{#if edited}
@@ -278,10 +289,14 @@
 					</div>
 				</div>
 			{/each}
+			{#if othersOnly}
+				{@const by = session.recordedBy[othersOnly.id]}
+				<p class="hint">{by ? `這一次是${by}記的` : '這一次是從流程檔來的'}：你只能改、刪自己記的。</p>
+			{/if}
 			<div class="edit-row">
-				<button type="button" class="danger" onclick={() => removeEdited(edited)}>刪掉這一次</button>
-				<button type="button" onclick={() => (editing = null)}>不改了</button>
-				<button type="button" class="primary" onclick={() => saveEdit(edited)}>存修改</button>
+				{#if !othersOnly}<button type="button" class="danger" onclick={() => removeEdited(edited)}>刪掉這一次</button>{/if}
+				<button type="button" onclick={() => (editing = null)}>{othersOnly ? '收起來' : '不改了'}</button>
+				{#if !othersOnly}<button type="button" class="primary" onclick={() => saveEdit(edited)}>存修改</button>{/if}
 			</div>
 		</div>
 	{/if}
