@@ -141,7 +141,7 @@ export interface FakeLink {
 /**
  * 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）、現在第幾步（沒寫是 0）、收過的步驟 id（→ 收了之後第幾步）、
  * 分享給誰（email → 權限，照加進來的順序）。
- * 傳上雲端的音樂檔（audio id → 位元組，假的 R2）。
+ * 傳上雲端的音樂檔（audio id → 位元組，假的 R2）。分享連結（沒寫、null 是關著）。
  */
 export interface FakeCloudFlow {
 	id: string;
@@ -152,6 +152,7 @@ export interface FakeCloudFlow {
 	stepIds?: Record<string, number>;
 	people?: Record<string, Exclude<Role, 'owner'>>;
 	audio?: Record<string, Uint8Array>;
+	link?: string | null;
 }
 
 /**
@@ -167,6 +168,8 @@ export interface FakeCloudFlow {
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
  * deleteFlow(flowId)：擁有者（在別的地方）刪了這支，開著的房間都馬上知道。
+ * 分享連結（#251）照真的規則：只有擁有者能開、關（關掉再打開是新的一條），有權限的人看得到；用連結打開不用登入、
+ * 拿不到紀錄，已經有權限的帶自己的權限。
  * 音樂檔（#249）放在那支流程的 audio：超過 60 MB 不收（'tooBig'）；audioTooBig 設成 true 就是伺服器傳完才查到太大。
  */
 export function fakeServer(
@@ -218,6 +221,12 @@ export function fakeServer(
 		return { kind: 'accepted', stepId, step: f.step };
 	};
 	let nextToken = 1;
+	let nextShareLink = 1;
+	/** 用分享連結找那支流程（連得上才算）。 */
+	const linked = (token: string) => {
+		reachable();
+		return state.flows.find((f) => f.link && f.link === token);
+	};
 	const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 	const find = (email: string) => state.users.find((u) => same(u.email, email));
 	/** 登入的人（沒登入丟錯，跟真的伺服器回 401 一樣當作出錯）。 */
@@ -484,6 +493,28 @@ export function fakeServer(
 		async deleteFlow(flowId) {
 			owned(flowId);
 			deleteFlow(flowId);
+		},
+		async shareLink(flowId) {
+			const r = reach(flowId);
+			if (!r) throw new ServerUnreachable();
+			return r.f.link ?? null;
+		},
+		async switchShareLink(flowId, on) {
+			const { f } = owned(flowId);
+			f.link = on ? (f.link ?? `share-${nextShareLink++}`) : null;
+			return f.link;
+		},
+		async linkedFlow(token) {
+			const f = linked(token);
+			if (!f) return null;
+			const flow = structuredClone(f.flow);
+			for (const a of flow.actions) if (a.successRate) a.successRate.records = [];
+			const role = state.signedIn ? roleOf(f, state.signedIn) : undefined;
+			return { id: f.id, flow, updatedAt: f.updatedAt, ...(role && { role }) };
+		},
+		async linkAudioBytes(token, audioId) {
+			const bytes = linked(token)?.audio?.[audioId];
+			return bytes ? bytes.slice() : null;
 		},
 		openRoom(flowId) {
 			let ready = false;

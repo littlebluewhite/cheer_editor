@@ -771,6 +771,18 @@ async fn only_the_owner_deletes_and_everything_goes_with_it(db: sqlx::PgPool) {
         .unwrap();
     }
 
+    // 分享連結開著
+    let (_, link) = s
+        .send(
+            "POST",
+            &format!("/api/flows/{id}/link"),
+            Some(json!({ "on": true })),
+            &wang.cookie,
+        )
+        .await;
+    let link = format!("/api/links/{}", link["token"].as_str().unwrap());
+    assert_eq!(s.send("GET", &link, None, "").await.0, StatusCode::OK);
+
     // 編輯者不能刪（403），沒權限的 404
     assert_eq!(s.delete(&lin, &id).await, StatusCode::FORBIDDEN);
     let admin = s.user("admin@example.com", "管理員").await;
@@ -793,6 +805,10 @@ async fn only_the_owner_deletes_and_everything_goes_with_it(db: sqlx::PgPool) {
     assert_eq!(
         s.connect(&lin, &id).await.err(),
         Some(StatusCode::NOT_FOUND)
+    );
+    assert_eq!(
+        s.send("GET", &link, None, "").await.0,
+        StatusCode::NOT_FOUND
     );
     // 紀錄一起刪
     for sql in [

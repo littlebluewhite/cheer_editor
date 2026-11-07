@@ -499,3 +499,39 @@ async fn replaced_music_records_when_it_stopped_being_used(db: sqlx::PgPool) {
     .await;
     assert_eq!(s.unused_since(&id).await[&first], Some(replaced_at));
 }
+
+#[sqlx::test]
+async fn the_share_link_plays_music_without_signing_in(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    s.upload(&lin, &id, "a1", vec![1, 2, 3]).await;
+    let link_path = format!("/api/flows/{id}/link");
+    let switch = |on: bool| s.send("POST", &link_path, Some(json!({ "on": on })), Some(&lin));
+    let (_, link) = switch(true).await;
+    let token = link["token"].as_str().unwrap();
+
+    // 用連結（沒登入）拿下載的預簽網址（#251）。
+    let (status, got) = s
+        .send("GET", &format!("/api/links/{token}/audio/a1"), None, None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let bytes = reqwest::get(got["url"].as_str().unwrap())
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), [1, 2, 3]);
+    let (status, _) = s
+        .send("GET", &format!("/api/links/{token}/audio/a2"), None, None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // 連結關掉：拿不到。
+    switch(false).await;
+    let (status, _) = s
+        .send("GET", &format!("/api/links/{token}/audio/a1"), None, None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
