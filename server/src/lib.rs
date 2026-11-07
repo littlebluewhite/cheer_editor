@@ -1,6 +1,8 @@
 pub mod accounts;
+pub mod admin;
 pub mod breach;
 pub mod clock;
+pub mod cloud_flows;
 pub mod config;
 pub mod csrf;
 pub mod flow_core;
@@ -16,6 +18,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::breach::BreachCheck;
 use crate::clock::Clock;
+use crate::flow_core::FlowCore;
 use crate::mail::Mailer;
 
 /// 前端建置時另外產生的入口頁（`vite.config.ts` 裡 adapter 的 `fallback`）。
@@ -33,6 +36,8 @@ pub struct AppState {
     pub clock: Clock,
     /// 這個網站的網址（信裡的連結用），例：`https://cheer.example`，最後沒有 `/`。
     pub site_url: String,
+    /// 跑流程核心（QuickJS，ADR 0010）。
+    pub core: FlowCore,
 }
 
 /// 整個網站：API 和前端建好的檔案（`site`）在同一個網址（ADR 0009）。
@@ -45,6 +50,20 @@ pub fn app(state: AppState, site: &Path) -> Router {
         .route("/api/logout", post(accounts::logout))
         .route("/api/password-link", post(accounts::password_link))
         .route("/api/set-password", post(accounts::set_password))
+        .route("/api/admin/users", get(admin::list).post(admin::add))
+        .route(
+            "/api/admin/users/{id}/resend-invite",
+            post(admin::resend_invite),
+        )
+        .route("/api/admin/users/{id}/send-reset", post(admin::send_reset))
+        .route("/api/admin/users/{id}/email", post(admin::change_email))
+        .route("/api/admin/users/{id}/disable", post(admin::disable))
+        .route("/api/admin/users/{id}/enable", post(admin::enable))
+        .route(
+            "/api/flows",
+            get(cloud_flows::mine).post(cloud_flows::create),
+        )
+        .route("/api/flows/{id}", get(cloud_flows::get_one))
         // 建置把每頁存成 <名字>.html（例：/guide → guide.html），重新整理才打得開。
         // 找不到的路徑回前端的入口頁，讓前端自己處理路由。
         .fallback_service(

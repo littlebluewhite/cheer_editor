@@ -3,6 +3,7 @@
 // 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
 // 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁；
 // 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
+// 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247）。
 
 import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import type { DraftInfo } from '#lib/file/draft.js';
@@ -54,6 +55,8 @@ export class FlowFile {
 	#draftTimer: ReturnType<typeof setTimeout> | undefined;
 	/** 分頁頻道：頁面打開時開。沒有（瀏覽器沒有 BroadcastChannel、頁面還沒打開）就當作沒有別的分頁。 */
 	#channel: TabChannel | null = null;
+	/** 開著的是雲端流程：它在伺服器上的 id；本機流程、在首頁是 null。 */
+	#cloudId = $state<string | null>(null);
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -69,7 +72,10 @@ export class FlowFile {
 			this.#openApproved = false;
 			this.#saveDraftLater();
 			this.#dropMissingNotice();
-			if (!editor.session.flow) void this.#readRecent();
+			if (!editor.session.flow) {
+				this.#cloudId = null;
+				void this.#readRecent();
+			}
 		};
 	}
 
@@ -224,6 +230,40 @@ export class FlowFile {
 		if (this.#draftChecked) this.#saveDraft(writeFlowFile(flow, {}));
 	}
 
+	/** 開著的雲端流程在伺服器上的 id；開著本機流程、在首頁是 null。 */
+	get cloudId(): string | null {
+		return this.#cloudId;
+	}
+
+	/** 新建表單選了存在雲端：伺服器照表單的名字、場地建一支，再打開它（沒有草稿）。 */
+	async createCloud(flow: Flow) {
+		let made;
+		try {
+			made = await this.#editor.adapters.server.createFlow({ name: flow.name, field: flow.field });
+		} catch {
+			this.#openError = '連不上伺服器，沒存到雲端：再試一次，或選存在這台';
+			return;
+		}
+		await this.openCloud(made.id);
+	}
+
+	/** 打開一支雲端流程：從伺服器拿編排。這時只能看（檢視模式由頁面設，能改在 #248）；沒有草稿。 */
+	async openCloud(id: string) {
+		let found;
+		try {
+			found = await this.#editor.adapters.server.cloudFlow(id);
+		} catch {
+			this.#openError = '連不上伺服器，打不開雲端的流程';
+			return;
+		}
+		if (!found) {
+			this.#openError = '這支流程打不開了';
+			return;
+		}
+		this.#start(found.flow as Flow, 'cloud', newDraftId());
+		this.#cloudId = id;
+	}
+
 	/** 上方列「新建」：回到新建流程的畫面。 */
 	startNew() {
 		this.#unlessUnsaved(false, false, () => this.#editor.session.open(null));
@@ -262,10 +302,11 @@ export class FlowFile {
 	 * 換成另一支流程（新建、開檔、救回草稿）。選取、提示由 session 清掉。
 	 * draftId：這支流程的草稿 id。music：這支流程的音樂檔庫（開檔、救回草稿時解碼好的；沒給是空的）。
 	 */
-	#start(flow: Flow, from: 'file' | 'draft' | 'new', draftId: string, music?: MusicLibrary, saver: FileSaver | null = null) {
+	#start(flow: Flow, from: 'file' | 'draft' | 'new' | 'cloud', draftId: string, music?: MusicLibrary, saver: FileSaver | null = null) {
 		const editor = this.#editor;
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		editor.session.open(flow, from !== 'draft');
+		this.#cloudId = null;
 		this.#onDisk = from === 'file';
 		this.#draftId = draftId;
 		this.#fileBytes = null;
@@ -457,7 +498,7 @@ export class FlowFile {
 		clearTimeout(this.#draftTimer);
 		this.#draftTimer = undefined;
 		const f = session.flow;
-		if (!f) return;
+		if (!f || this.#cloudId) return;
 		if (this.ownsDraft) void this.#saveDraft(writeFlowFile(f, music.bytes(f)));
 		else if (this.#fileBytes) void this.#saveDraft(this.#fileBytes);
 	}
@@ -526,10 +567,10 @@ export class FlowFile {
 		if (!this.#editor.session.flow) void this.#readRecent();
 	}
 
-	/** 這個分頁的流程要不要放在草稿裡：開著流程，有未存的修改或不在檔案裡。 */
+	/** 這個分頁的流程要不要放在草稿裡：開著本機流程，有未存的修改或不在檔案裡。雲端流程沒有草稿。 */
 	get ownsDraft(): boolean {
 		const { session } = this.#editor;
-		return !!session.flow && (session.unsaved || !this.#onDisk);
+		return !!session.flow && !this.#cloudId && (session.unsaved || !this.#onDisk);
 	}
 }
 

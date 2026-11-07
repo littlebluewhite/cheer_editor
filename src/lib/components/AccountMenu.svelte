@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 帳號選單「名字 ▾」：上面一行 email，下面「登出」。放在首頁和帳號的頁面，不放編輯頁的上方列（#190）。
-	// 「我的帳號」（#246）、「管理使用者」（#245，只有管理員有）之後加在登出上面。
+	// 「管理使用者」只有管理員有（#245）；「我的帳號」（#246）之後加在它上面。
+	import { resolve } from '$app/paths';
 	import type { Me } from '#lib/server-api.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 
@@ -39,6 +40,7 @@
 			{@attach popover({ place: below(button!, { gap: 4, align: 'right', flip: false }), close, inside: [button] })}
 		>
 			<div class="who">{me.email}</div>
+			{#if me.isAdmin}<a role="menuitem" href={resolve('/users')}>管理使用者</a>{/if}
 			<button
 				type="button"
 				role="menuitem"
@@ -65,6 +67,17 @@
 		border: 1px solid var(--line);
 		border-radius: 8px;
 		box-shadow: var(--shadow-pop);
+	}
+	.menu a {
+		padding: 4px 10px;
+		border-radius: var(--radius-sm);
+		color: var(--text);
+		font-size: 13px;
+		line-height: 20px;
+		text-decoration: none;
+	}
+	.menu a:hover {
+		background: var(--surface-2);
 	}
 	.menu button {
 		justify-content: flex-start;

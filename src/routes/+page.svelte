@@ -26,7 +26,7 @@
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
-	import type { Me } from '#lib/server-api.js';
+	import type { CloudFlowSummary, Me } from '#lib/server-api.js';
 	import { localDate } from '#lib/local-date.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -96,6 +96,48 @@
 	onMount(() => {
 		editor.adapters.server.me().then((m) => (account = m));
 	});
+	/** 登入後首頁「雲端」的「我的流程」：在首頁時（打開、回到首頁）跟伺服器拿。還沒拿到是 null；連不上伺服器 cloudError。 */
+	let myFlows = $state.raw<CloudFlowSummary[] | null>(null);
+	let cloudError = $state(false);
+	$effect(() => {
+		if (!account || flow) return;
+		let stale = false;
+		editor.adapters.server.myFlows().then(
+			(list) => {
+				if (stale) return;
+				myFlows = list;
+				cloudError = false;
+			},
+			() => {
+				if (!stale) cloudError = true;
+			}
+		);
+		return () => (stale = true);
+	});
+
+	/** 有沒有網路（瀏覽器說的）：沒網路時新建不能存在雲端。 */
+	const isOnline = () => typeof navigator === 'undefined' || navigator.onLine;
+	let online = $state(isOnline());
+	/** 新建表單「存在」選哪個（登入時才有這格）：預設雲端；沒網路時自動選這台。 */
+	let saveTo = $state<'cloud' | 'here'>(isOnline() ? 'cloud' : 'here');
+	onMount(() => {
+		const changed = () => {
+			online = isOnline();
+			if (!online) saveTo = 'here';
+		};
+		window.addEventListener('online', changed);
+		window.addEventListener('offline', changed);
+		return () => {
+			window.removeEventListener('online', changed);
+			window.removeEventListener('offline', changed);
+		};
+	});
+	/** 新建表單建好了：登入、選存在雲端就請伺服器建一支打開它，不然跟以前一樣是本機流程。 */
+	function created(f: Flow) {
+		if (account && online && saveTo === 'cloud') void editor.file.createCloud(f);
+		else editor.file.create(f);
+	}
+
 	/** 登出這台裝置。連不上伺服器時還是登入著（選單留著，可以再按一次）。 */
 	async function logout() {
 		try {
@@ -122,9 +164,9 @@
 		narrowQuery.addEventListener('change', changed);
 		return () => narrowQuery.removeEventListener('change', changed);
 	});
-	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯
+	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。雲端流程這時只能看（能改在 #248）
 	$effect(() => {
-		session.viewing = narrow;
+		session.viewing = narrow || !!editor.file.cloudId;
 	});
 	/** 「我」：手機檢視畫面標亮的人。這台裝置照流程記住（local-settings），不進流程檔；換流程時讀那支的。 */
 	let me = $state(session.flow ? loadFlowSetting('me', session.flow.name) : '');
@@ -560,7 +602,7 @@
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
 					<div class="mode" role="group" aria-label="編輯｜檢視">
-						<button type="button" aria-pressed={!session.viewing} onclick={() => (session.viewing = false)}
+						<button type="button" aria-pressed={!session.viewing} disabled={!!editor.file.cloudId} onclick={() => (session.viewing = false)}
 							><Icon name="pencil" />編輯</button
 						>
 						<button
@@ -866,84 +908,142 @@
 		</Modal>
 	{/if}
 {:else}
-	<div class="home">
-		<div class="home-top">
-			<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
-			{#if account}
-				<AccountMenu me={account} onlogout={logout} />
-			{:else if account === null}
-				<a class="btn" href={resolve('/login')}>登入</a>
-			{/if}
+	{#snippet startForm()}
+		<NewFlowForm oncreate={created} extra={account ? whereField : undefined} />
+		<div class="home-open">
+			<span>已經有流程檔？</span>
+			<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 		</div>
-		<section class="intro">
-			<svg class="intro-mat" viewBox="0 0 90 70" aria-hidden="true">
-				{#each Array.from({ length: 9 }, (_, i) => i) as i (i)}
-					<rect x={i * 10} y="0" width="9.4" height="70" rx="0.6" />
-				{/each}
-				<circle class="b" cx="25" cy="44" r="3.2" />
-				<circle class="t" cx="35" cy="30" r="3.2" />
-				<circle class="b" cx="45" cy="44" r="3.2" />
-				<circle class="t" cx="55" cy="30" r="3.2" />
-				<circle class="b" cx="65" cy="44" r="3.2" />
-			</svg>
-			<h1>競技啦啦隊<br />流程編輯器</h1>
-			<p>
-				音樂、八拍、站位和每個人的角色，排在同一條時間軸上。存成一個流程檔，傳給隊員用同一個編輯器打開。
-			</p>
-		</section>
-
-		<section class="start">
-			<NewFlowForm oncreate={(f) => editor.file.create(f)} />
-			<div class="home-open">
-				<span>已經有流程檔？</span>
-				<label class="open btn"><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-			</div>
-			{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
-			{#if editor.file.recent.length}
-				<div class="recent">
-					<h2 id="recent-title">最近的流程</h2>
-					<ul aria-labelledby="recent-title">
-						{#each editor.file.recent as f (f.id)}
-							<li>
-								<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
-									<span class="recent-name">{f.name}</span>
-									<span class="recent-meta"
-										>{[f.savedAt ? draftTime(f.savedAt) : '', f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
-											.filter(Boolean)
-											.join('・')}</span
-									>
-								</button>
-								<button type="button" class="link recent-drop" aria-label={`丟掉「${f.name}」`} onclick={() => (discarding = f)}>丟掉</button>
-							</li>
-						{/each}
+		{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
+	{/snippet}
+	{#snippet whereField()}
+		<fieldset class="where">
+			<legend>存在</legend>
+			<label
+				><input type="radio" name="save-to" value="cloud" bind:group={saveTo} disabled={!online} /><b>雲端</b>
+				<small>{online ? '換台電腦也打得開，可以分享' : '沒有網路，現在不能存在雲端'}</small></label
+			>
+			<label
+				><input type="radio" name="save-to" value="here" bind:group={saveTo} /><b>這台</b>
+				<small>只在這台電腦，靠草稿和流程檔留著</small></label
+			>
+		</fieldset>
+	{/snippet}
+	{#snippet recentList()}
+		<ul aria-labelledby="recent-title">
+			{#each editor.file.recent as f (f.id)}
+				<li>
+					<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
+						<span class="recent-name">{f.name}</span>
+						<span class="recent-meta"
+							>{[f.savedAt ? draftTime(f.savedAt) : '', f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
+								.filter(Boolean)
+								.join('・')}</span
+						>
+					</button>
+					<button type="button" class="link recent-drop" aria-label={`丟掉「${f.name}」`} onclick={() => (discarding = f)}>丟掉</button>
+				</li>
+			{:else}
+				<li class="empty">還沒有。</li>
+			{/each}
+		</ul>
+		<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
+	{/snippet}
+	{#if account}
+		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->
+		<div class="home signed-in">
+			<header class="home-bar">
+				<span class="brand">競技啦啦隊流程編輯器</span>
+				<a class="btn ghost" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
+				<AccountMenu me={account} onlogout={logout} />
+			</header>
+			<div class="home-lists">
+				<section class="area" aria-labelledby="cloud-title">
+					<h2 id="cloud-title">雲端</h2>
+					<h3 id="mine-title">我的流程</h3>
+					<ul class="cloud-list" aria-labelledby="mine-title">
+						{#if cloudError}
+							<li class="empty">連不上伺服器，現在看不到雲端的流程。</li>
+						{:else if myFlows}
+							{#each myFlows as c (c.id)}
+								<li>
+									<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
+										<span class="recent-name">{c.name}</span>
+										<span class="recent-meta">{draftTime(new Date(c.updatedAt))} 改過</span>
+									</button>
+								</li>
+							{:else}
+								<li class="empty">還沒有。新建時選「存在：雲端」，或打開一支本機流程按「傳上雲端」。</li>
+							{/each}
+						{/if}
 					</ul>
-					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
-				</div>
-			{/if}
-		</section>
-		{#if discarding}
-			{@const f = discarding}
-			{@const message = f.unsaved
-				? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
-				: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
-			<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
-				{#snippet children()}
-					<ConfirmList
-						{message}
-						items={[]}
-						confirmLabel="丟掉"
-						onconfirm={() => {
-							const id = f.id;
-							discarding = null;
-							void editor.file.discardRecent(id);
-						}}
-						oncancel={() => (discarding = null)}
-						focusCancel
-					/>
-				{/snippet}
-			</Modal>
-		{/if}
-	</div>
+				</section>
+				<section class="area recent" aria-labelledby="here-title">
+					<h2 id="here-title">這台電腦</h2>
+					<h3 id="recent-title">最近的流程</h3>
+					{@render recentList()}
+				</section>
+			</div>
+			<section class="start">{@render startForm()}</section>
+		</div>
+	{:else}
+		<div class="home">
+			<div class="home-top">
+				<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
+				{#if account === null}
+					<a class="btn" href={resolve('/login')}>登入</a>
+				{/if}
+			</div>
+			<section class="intro">
+				<svg class="intro-mat" viewBox="0 0 90 70" aria-hidden="true">
+					{#each Array.from({ length: 9 }, (_, i) => i) as i (i)}
+						<rect x={i * 10} y="0" width="9.4" height="70" rx="0.6" />
+					{/each}
+					<circle class="b" cx="25" cy="44" r="3.2" />
+					<circle class="t" cx="35" cy="30" r="3.2" />
+					<circle class="b" cx="45" cy="44" r="3.2" />
+					<circle class="t" cx="55" cy="30" r="3.2" />
+					<circle class="b" cx="65" cy="44" r="3.2" />
+				</svg>
+				<h1>競技啦啦隊<br />流程編輯器</h1>
+				<p>
+					音樂、八拍、站位和每個人的角色，排在同一條時間軸上。存成一個流程檔，傳給隊員用同一個編輯器打開。
+				</p>
+			</section>
+
+			<section class="start">
+				{@render startForm()}
+				{#if editor.file.recent.length}
+					<div class="recent">
+						<h2 id="recent-title">最近的流程</h2>
+						{@render recentList()}
+					</div>
+				{/if}
+			</section>
+		</div>
+	{/if}
+	{#if discarding}
+		{@const f = discarding}
+		{@const message = f.unsaved
+			? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
+			: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+		<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
+			{#snippet children()}
+				<ConfirmList
+					{message}
+					items={[]}
+					confirmLabel="丟掉"
+					onconfirm={() => {
+						const id = f.id;
+						discarding = null;
+						void editor.file.discardRecent(id);
+					}}
+					oncancel={() => (discarding = null)}
+					focusCancel
+				/>
+			{/snippet}
+		</Modal>
+	{/if}
 {/if}
 {#if editor.file.draftAsk}
 	{@const ask = editor.file.draftAsk}
@@ -1999,7 +2099,8 @@
 		font-weight: 600;
 		color: var(--muted);
 	}
-	.recent ul {
+	.recent ul,
+	.cloud-list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
@@ -2007,7 +2108,8 @@
 		grid-template-columns: minmax(0, 1fr);
 		gap: 6px;
 	}
-	.recent li {
+	.recent li,
+	.cloud-list li {
 		display: flex;
 		align-items: center;
 		gap: 16px;
@@ -2037,11 +2139,107 @@
 		color: var(--muted);
 		font-size: 12px;
 	}
+	.empty {
+		color: var(--muted);
+		font-size: 13px;
+	}
+
+	/* ---------- 登入後的首頁：兩欄（左邊清單、右邊新建），最上面一條 ---------- */
+	.home.signed-in {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+		grid-template-rows: auto 1fr;
+		gap: 24px 40px;
+		max-width: 1100px;
+		padding: 0 24px 48px;
+	}
+	.home-bar {
+		grid-column: 1 / -1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.home-bar > a {
+		text-decoration: none;
+	}
+	.brand {
+		flex: 1;
+		min-width: 0;
+		font-weight: 800;
+		color: var(--ink);
+	}
+	.home-lists {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 24px;
+	}
+	.area {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 8px;
+		margin: 0;
+		padding: 16px 18px;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: 14px;
+	}
+	.area h2 {
+		font-size: 18px;
+		font-weight: 700;
+		color: var(--ink);
+	}
+	.area h3 {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+	.where {
+		border: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 6px;
+	}
+	.where legend {
+		padding: 0;
+		margin-bottom: 6px;
+		font-size: 13px;
+		font-weight: 600;
+	}
+	.where label {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 6px;
+		padding: 6px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font-size: 14px;
+	}
+	.where label:has(input:checked) {
+		border-color: var(--mat);
+		background: var(--mat-soft);
+	}
+	.where label:has(input:disabled) {
+		opacity: 0.6;
+	}
+	.where small {
+		color: var(--muted);
+		font-size: 12px;
+	}
+
 	@media (max-width: 760px) {
 		.home {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 28px;
 			padding: 32px 16px;
+		}
+		/* 手機：一欄，清單在上、新建在下 */
+		.home.signed-in {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 20px;
+			padding: 0 16px 32px;
 		}
 		.intro h1 {
 			font-size: 30px;
