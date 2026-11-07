@@ -451,7 +451,7 @@ describe('編輯 session：改完跳播放頭', () => {
 		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		s.ask.send(() => moveMembers(s.flow!, 0, { m1: [1, 1] }), { done: (r) => s.moved(r) });
-		expect(s.notice).toBe('後面 1 張站位也跟著改了');
+		expect(s.notice).toBe('往後帶了 1 張');
 		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
 

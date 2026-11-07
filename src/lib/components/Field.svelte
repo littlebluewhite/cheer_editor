@@ -30,6 +30,7 @@
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
+	// 選到人時場地正上方浮出選人工具列；在人身上按右鍵是同一份清單的選單（SelectionTools）。
 	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
@@ -53,6 +54,7 @@
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
+	import SelectionTools, { TOOLS_H_PX } from './SelectionTools.svelte';
 	import { isLongMarker, markerWidth } from './marker';
 	import { onEscape } from './pointer';
 
@@ -443,8 +445,27 @@
 		lastPointer = null;
 	}
 
+	/** 右鍵選單開在哪（畫面座標）；null = 沒開。 */
+	let menu = $state<{ x: number; y: number } | null>(null);
+	/** 選人工具列出現著（編輯頁、能改、有選人）：場上的提示往下排（--tools-h）。 */
+	const toolsOn = $derived(!!session && !session.viewing && selected.length > 0);
+
+	/** 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。空白處照舊是瀏覽器的選單。 */
+	function contextMenu(e: MouseEvent) {
+		if (!session || session.viewing) return;
+		const el = (e.target as Element).closest?.('[data-member-id]');
+		const id = el?.getAttribute('data-member-id');
+		if (!el || !id) return;
+		e.preventDefault();
+		if (!selected.includes(id)) session.selectMembers([id]);
+		// 鍵盤的選單鍵沒有指標位置：開在那個人旁邊
+		const r = el.getBoundingClientRect();
+		menu = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.right, y: r.bottom };
+	}
+
 	function down(e: PointerEvent) {
-		if (e.button !== 0) return;
+		// Mac 的 Control＋點是右鍵：不選人、不拖（交給 contextMenu）
+		if (e.button !== 0 || (e.ctrlKey && e.pointerType === 'mouse')) return;
 		if (e.pointerType === 'touch' && controls) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
@@ -550,7 +571,7 @@
 		if (drag?.cur) {
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
-			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge);
+			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge, e.altKey);
 			else if (drag.atEdge) session!.notice = session!.viewing ? VIEW_ONLY : AT_EDGE;
 		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
@@ -559,11 +580,14 @@
 		pan = null;
 	}
 
-	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。 */
-	function drop(moves: Record<string, Position>, atEdge: boolean) {
+	/**
+	 * 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。
+	 * onlyThis = 放開時按著 Alt：只改這張，不往後帶。
+	 */
+	function drop(moves: Record<string, Position>, atEdge: boolean, onlyThis: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r, atEdge) });
+		s.ask.send(() => moveMembers(s.flow!, sec, moves, !onlyThis), { done: (r) => s.moved(r, atEdge) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
@@ -693,7 +717,7 @@
 			</div>
 		</div>
 	{/if}
-	<div class="stage" {@attach watchStage}>
+	<div class="stage" {@attach watchStage} style:--tools-h={toolsOn ? `${TOOLS_H_PX}px` : null}>
 	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
@@ -709,6 +733,7 @@
 		onpointerdown={down}
 		onpointermove={move}
 		onpointerup={up}
+		oncontextmenu={contextMenu}
 		onpointercancel={(e) => {
 			liftFinger(e);
 			cancelDrag();
@@ -805,6 +830,9 @@
 	</svg>
 	{#if readout}<div class="readout">{readout}</div>{/if}
 	{#if picked}<div class="picked" role="note" aria-label="選到的人在哪">{picked}</div>{/if}
+	{#if session && !session.viewing}
+		<SelectionTools {zoom} {menu} onclosemenu={() => (menu = null)} />
+	{/if}
 	{@render children?.()}
 	<div class="below">{@render below?.()}</div>
 	</div>

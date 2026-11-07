@@ -17,6 +17,7 @@ import {
 	memberWalk,
 	moveFormation,
 	moveFormationHint,
+	moveGroup,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
@@ -850,6 +851,41 @@ describe('跟上一張一樣', () => {
 
 	it('找不到隊員就擋下', () => {
 		expect(matchPrevious(walking(), 20, ['nobody']).kind).toBe('blocked');
+	});
+});
+
+describe('一組人移到新位置（鏡像、對齊…共用）', () => {
+	/** 把每個人往右挪 1 m。 */
+	const right1 = (pos: Record<string, [number, number]>) =>
+		Object.fromEntries(Object.entries(pos).map(([id, [x, y]]) => [id, [x + 1, y] as [number, number]]));
+
+	it('播放頭在站位上：拿選到的人在那張的位置算新位置，改那張', () => {
+		const r = moveGroup(walking(), 20.1, [A, B], right1);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.flow.formations[1].pos).toEqual({ [A]: [5, 0], [B]: [-1, 0] });
+		expect(r.inserted).toBe(false);
+		expect(r.sec).toBe(20);
+	});
+
+	it('播放頭不在站位上：先插一張（大家帶入走到的地方），拿那一刻的位置算；改完往後帶', () => {
+		// 18 秒小A 正走到一半（[1.5, 0] 附近），小B 站在 [-2, 0]。
+		const r = moveGroup(walking(), 18.05, [B], right1);
+		if (r.kind !== 'ok') throw new Error(r.message);
+		expect(r.inserted).toBe(true);
+		expect(r.flow.formations.map((f) => f.pos[B])).toEqual([
+			[-2, 0],
+			[-1, 0],
+			[-1, 0],
+			[-1, 0]
+		]);
+		expect(r.carried).toBe(2);
+	});
+
+	it('沒選人、找不到隊員就擋下；位置都沒變（也不用插站位）就擋下，不記一步', () => {
+		expect(moveGroup(walking(), 20, [], right1)).toEqual({ kind: 'blocked', message: '先選人' });
+		expect(moveGroup(walking(), 20, ['nobody'], right1).kind).toBe('blocked');
+		expect(moveGroup(walking(), 20, [A], (pos) => pos)).toEqual({ kind: 'blocked', message: '位置都沒變' });
+		expect(moveGroup(walking(), 18.05, [A], (pos) => pos).kind).toBe('ok');
 	});
 });
 

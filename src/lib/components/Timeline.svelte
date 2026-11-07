@@ -30,7 +30,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { below, popover } from '#lib/popover.svelte.js';
+	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
 	import FormationRow, { THUMB_W } from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
@@ -206,21 +206,6 @@
 		const anchor = menu?.anchor;
 		menu = null;
 		if (by === 'escape') anchor?.focus();
-	}
-
-	/** 加段選單打開時焦點進第一項；上下鍵在幾項之間輪流換。 */
-	function menuKeys(el: HTMLElement) {
-		const items = () => [...el.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-		items()[0]?.focus();
-		const keys = (e: KeyboardEvent) => {
-			if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-			e.preventDefault();
-			const all = items();
-			const i = all.indexOf(document.activeElement as HTMLElement);
-			all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus();
-		};
-		el.addEventListener('keydown', keys);
-		return () => el.removeEventListener('keydown', keys);
 	}
 
 	/** 加一段（加在選單的那一段後面，或加在最後），加好就打開它的段設定。 */

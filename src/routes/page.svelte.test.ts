@@ -787,12 +787,12 @@ describe('站位與走位', () => {
 		await dragFirstMember(); // 插站位 2；小B 在站位 1、2 都站在原地
 		await seek(0);
 		await dragFirstMember('m2');
-		expect(screen.getByRole('status').textContent).toBe('後面 1 張站位也跟著改了');
+		expect(screen.getByRole('status').textContent).toBe('往後帶了 1 張');
 
 		await seek(4);
 		await dragFirstMember('m2');
 		expect(screen.getByRole('status').textContent).toBe(
-			'插了一張站位，大家的位置自動帶入；後面 1 張站位也跟著改了'
+			'插了一張站位，大家的位置自動帶入；往後帶了 1 張'
 		);
 	});
 
