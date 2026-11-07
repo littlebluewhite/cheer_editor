@@ -3,7 +3,7 @@
 // 開頭那張（formations[0]）一定在第一段的時間 0；還沒有段時 segmentId 是 null。
 
 import { actionSeconds } from './action-types';
-import { fieldGeometry } from './field';
+import { fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { nextId } from './ids';
@@ -51,6 +51,15 @@ export interface MoveResult {
 	carried: number;
 }
 
+export const OFF_FIELD = '只能站到場地外 1 公尺以內';
+
+/** 位置在場地外 1 m 以內（含邊上）。 */
+export function onField(field: FieldConfig, [x, y]: Position): boolean {
+	const { outer } = fieldGeometry(field);
+	const eps = 1e-9;
+	return x >= outer.x - eps && x <= outer.x + outer.width + eps && y >= outer.y - eps && y <= outer.y + outer.height + eps;
+}
+
 /** 改一張站位裡一個或多個隊員的位置。位置可以在場地外 1 m 以內。 */
 export function setPositions(
 	flow: Flow,
@@ -59,16 +68,9 @@ export function setPositions(
 ): CommandResult {
 	const formation = flow.formations.find((f) => f.id === formationId);
 	if (!formation) return blocked('找不到這張站位');
-	const { outer } = fieldGeometry(flow.field);
-	const eps = 1e-9;
-	for (const [id, [x, y]] of Object.entries(moves)) {
+	for (const [id, p] of Object.entries(moves)) {
 		if (!flow.members.some((m) => m.id === id)) return blocked('找不到這個隊員');
-		const inside =
-			x >= outer.x - eps &&
-			x <= outer.x + outer.width + eps &&
-			y >= outer.y - eps &&
-			y <= outer.y + outer.height + eps;
-		if (!inside) return blocked('只能站到場地外 1 公尺以內');
+		if (!onField(flow.field, p)) return blocked(OFF_FIELD);
 	}
 	const updated = { ...formation, pos: { ...formation.pos, ...moves } };
 	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });
@@ -217,7 +219,7 @@ export function snapPlayhead(flow: Flow, sec: number, nearSec: number, half = fa
 }
 
 /** 站位的全域秒數。開頭那張還沒有段時是 0。 */
-function formationSec(flow: Flow, f: Formation): number {
+export function formationSec(flow: Flow, f: Formation): number {
 	return f.segmentId === null ? 0 : toSeconds(flow, { segmentId: f.segmentId, at: f.at });
 }
 
@@ -589,7 +591,7 @@ function shortened(before: Flow, after: Flow, formationIds: string[]): string[] 
 }
 
 /** 段內時間在不在那一段的格子上（音樂段半拍、口號段 0.1 秒，不超出段）。 */
-function inGrid(flow: Flow, { segmentId, at }: TimePosition): boolean {
+export function inGrid(flow: Flow, { segmentId, at }: TimePosition): boolean {
 	const segment = flow.segments.find((s) => s.id === segmentId);
 	return !!segment && Number.isInteger(at) && at >= 0 && at < units(segment);
 }

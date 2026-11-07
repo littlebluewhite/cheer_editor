@@ -2,7 +2,7 @@
 // zip 裡是 flow.json（{ formatVersion, flow }）和 flow.audio 列出的音樂檔（audio/a1.mp3 …）。
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
-import { ACTION_CATEGORIES, type Action } from './action-types';
+import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
 import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
@@ -142,7 +142,7 @@ export function writeFlowFile(flow: Flow, audio: AudioBytes): Uint8Array {
 }
 
 /**
- * 流程檔（zip 位元組）→ 流程 ＋ 音樂資料。舊版自動升級，比編輯器新的不打開。
+ * 流程檔（zip 位元組）→ 流程 ＋ 音樂資料。舊版自動升級，比編輯器新的不打開（見 checkFlowDocument）。
  * flow.json 不在最上層、而在唯一一層資料夾裡（電腦重新壓縮過）也打得開，音樂檔照那個資料夾找。
  * upgrades 只有測試會換。
  */
@@ -158,35 +158,52 @@ export function readFlowFile(
 	}
 	const folder = folderOf(files);
 	if (folder === null) return { kind: 'error', message: NO_JSON };
-	let doc: FlowDocument;
+	let doc: unknown;
 	try {
 		doc = JSON.parse(strFromU8(files[folder + JSON_FILE]));
 	} catch {
 		return { kind: 'error', message: BROKEN };
 	}
+	const checked = checkFlowDocument(doc, upgrades);
+	if (checked.kind === 'error') return checked;
+	const flow = checked.flow;
+	const audio: AudioBytes = {};
+	for (const ref of flow.audio) if (files[folder + ref.file]) audio[ref.id] = files[folder + ref.file];
+	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
+}
+
+export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | { kind: 'error'; message: string };
+
+/**
+ * 檢查一整支流程：flow.json 的內容（JSON.parse 過的）→ 現在這一版的流程。讀流程檔和傳上雲端（伺服器）共用。
+ * 舊版一步一步升級；比編輯器新的不收；型別、參照、拍點、成功率設定不對算壞掉；段太長寫出上限（見 segmentLengthProblem）。
+ * upgrades 只有測試會換。
+ */
+export function checkFlowDocument(
+	doc: unknown,
+	upgrades: Record<number, Upgrade> = UPGRADES
+): CheckFlowDocumentResult {
 	if (!isDocument(doc)) return { kind: 'error', message: BROKEN };
 	if (doc.formatVersion > FORMAT_VERSION) {
 		return { kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' };
 	}
-	while (doc.formatVersion < FORMAT_VERSION) {
-		const upgrade = upgrades[doc.formatVersion];
+	let current = doc;
+	while (current.formatVersion < FORMAT_VERSION) {
+		const upgrade = upgrades[current.formatVersion];
 		if (!upgrade) return { kind: 'error', message: BROKEN };
-		doc = upgrade(doc);
+		current = upgrade(current);
 	}
-	if (!isFlow(doc.flow)) return { kind: 'error', message: BROKEN };
-	const flow = doc.flow;
-	const tooLong = segmentLengthProblem(flow);
+	if (!isFlow(current.flow)) return { kind: 'error', message: BROKEN };
+	const tooLong = segmentLengthProblem(current.flow);
 	if (tooLong) return { kind: 'error', message: tooLong };
-	const audio: AudioBytes = {};
-	for (const ref of flow.audio) if (files[folder + ref.file]) audio[ref.id] = files[folder + ref.file];
-	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
+	return { kind: 'ok', flow: current.flow };
 }
 
 /**
  * 段的長度超出編輯器能設的範圍（跟改段一樣的上限，不是正的也算）：
  * 照樣打開會把分頁卡住，所以擋下來，寫出上限。沒問題是 null。
  */
-function segmentLengthProblem(flow: Flow): string | null {
+export function segmentLengthProblem(flow: Flow): string | null {
 	for (const s of flow.segments) {
 		const problem = fileLengthProblem(s);
 		if (problem) return problem;
@@ -306,33 +323,39 @@ const flowShape = shape({
 
 /** 每個欄位的型別都對、指到的段／音樂檔／隊員都在、拍點和成功率設定守規則（成功率規則見 successRateProblem），而且有開頭那張站位（它沒有走位）。 */
 function isFlow(v: unknown): v is Flow {
-	if (!flowShape(v)) return false;
+	return structureProblem(v) === null;
+}
+
+/**
+ * isFlow 哪裡不對（給教練看的原因）；沒問題是 null。讀流程檔一律說壞掉了，整份流程檢查（flow-check）用這裡的原因。
+ */
+export function structureProblem(v: unknown): string | null {
+	if (!flowShape(v)) return '流程的資料格式不對';
 	const flow = v as Flow;
 	const segmentIds = new Set(flow.segments.map((s) => s.id));
 	const audioIds = new Set(flow.audio.map((a) => a.id));
 	const memberIds = new Set(flow.members.map((m) => m.id));
-	return (
-		flow.formations.length > 0 &&
-		flow.segments.every((s) => s.kind !== 'music' || s.audioId === null || audioIds.has(s.audioId)) &&
-		flow.formations.every((f) => f.segmentId === null || segmentIds.has(f.segmentId)) &&
-		flow.formations[0].walks === undefined &&
-		flow.formations.every((f) =>
-			Object.entries(f.walks ?? {}).every(
-				([id, w]) =>
-					memberIds.has(id) && segmentIds.has(w.depart.segmentId) && segmentIds.has(w.arrive.segmentId)
-			)
-		) &&
-		flow.actions.every(
-			(a) => segmentIds.has(a.segmentId) && a.members.every((m) => memberIds.has(m.memberId))
-		) &&
-		flow.actions.every((a) => {
-			const segment = flow.segments.find((s) => s.id === a.segmentId)!;
-			return (
-				(a.cues ?? []).every((c) => cueProblem(segment, a, c) === null) &&
-				successRateProblem(segment, a) === null
-			);
-		})
+	if (flow.formations.length === 0) return '流程開頭一定有一張站位';
+	if (flow.segments.some((s) => s.kind === 'music' && s.audioId !== null && !audioIds.has(s.audioId))) {
+		return '有段指到不存在的音樂檔';
+	}
+	if (flow.formations.some((f) => f.segmentId !== null && !segmentIds.has(f.segmentId))) return '有站位指到不存在的段';
+	if (flow.formations[0].walks !== undefined) return '開頭那張站位不能有走位';
+	const badWalk = flow.formations.some((f) =>
+		Object.entries(f.walks ?? {}).some(
+			([id, w]) => !memberIds.has(id) || !segmentIds.has(w.depart.segmentId) || !segmentIds.has(w.arrive.segmentId)
+		)
 	);
+	if (badWalk) return '有走位指到不存在的隊員或段';
+	if (flow.actions.some((a) => !segmentIds.has(a.segmentId))) return '有動作指到不存在的段';
+	if (flow.actions.some((a) => a.members.some((m) => !memberIds.has(m.memberId)))) return '有動作指到不存在的隊員';
+	for (const a of flow.actions) {
+		const segment = flow.segments.find((s) => s.id === a.segmentId)!;
+		const problem =
+			(a.cues ?? []).map((c) => cueProblem(segment, a, c)).find((p) => p !== null) ?? successRateProblem(segment, a);
+		if (problem) return `動作「${actionLabel(a)}」：${problem}`;
+	}
+	return null;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
