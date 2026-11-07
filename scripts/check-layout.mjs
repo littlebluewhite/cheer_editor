@@ -934,6 +934,37 @@ await check('390×844（觸控）檢視畫面：播放前後播放鈕位置不�
 	return { ok: moved.length === 0 && paused, value: { 播放前: before, 跳到: moved.slice(0, 3), 第二下暫停了: paused } };
 });
 
+for (const [w, h] of [[320, 640], [390, 844], [844, 390]]) {
+	await check(`${w}×${h}（觸控）手機跳時間：回開頭、上一個／下一個八拍點得到、點了會跳；點時間打字的欄位在畫面裡、不溢出（#228）`, async () => {
+		await setTouchViewport(w, h);
+		await openSample();
+		const spot = (sel) => js(`const el = document.querySelector('${sel}');
+			if (!el) return null;
+			const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: Math.round(r.height),
+				self: !!t && el.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
+		const at = () => js(`return document.querySelector('.phone-view .pos')?.textContent ?? null`);
+		const names = ['回開頭', '上一個八拍', '下一個八拍'];
+		const buttons = {};
+		for (const n of names) buttons[n] = await spot(`.phone-view .jump button[aria-label="${n}"]`);
+		if (!names.every((n) => buttons[n]?.self && buttons[n].h >= 40)) return { ok: false, value: { 按鈕: buttons } };
+		const start = await at();
+		await tap(buttons['下一個八拍'].x, buttons['下一個八拍'].y);
+		const next = await at();
+		await tap(buttons['回開頭'].x, buttons['回開頭'].y);
+		const back = await at();
+		const board = await spot('.phone-view button.board');
+		if (!board?.self) return { ok: false, value: { 時間點不到: board } };
+		await tap(board.x, board.y);
+		const box = await spot('.phone-view .jump-to input');
+		const o = await overflow();
+		await js(`document.activeElement?.blur()`);
+		await sleep(200);
+		const jumped = next !== start && back === start;
+		return { ok: jumped && !!box?.self && noOverflow(o), value: { 開頭: start, 下一個八拍: next, 回開頭: back, 打字的欄位: box, ...o } };
+	});
+}
+
 await check('844×390（手機橫拿）：檢視畫面和練習畫面都不溢出、播放鈕點得到', async () => {
 	await setTouchViewport(844, 390);
 	await openSample();
@@ -2214,6 +2245,36 @@ await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框�
 			一行: Math.max(...rows) - Math.min(...rows) <= 2, 字: n.textContent.replace(/\s+/g, '') };`);
 	await press('Escape');
 	return { ok: !!r && r.高 === 36 && r.在場地裡 && r.一行 && r.框寬 >= 32, value: r };
+});
+
+await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正下方、整個在畫面裡；選「排成一橫排」後兩人在場上同一高度（#223）', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	for (const [id, modifiers] of [['m1', 0], ['m3', 8]]) {
+		const d = await rectOf(`.field-host [data-member-id="${id}"]`);
+		await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: d.x, y: d.y, button: 'left', buttons: 1, clickCount: 1, modifiers });
+		await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: d.x, y: d.y, button: 'left', buttons: 0, clickCount: 1, modifiers });
+		await sleep(150);
+	}
+	const btn = `[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '對齊 ▾')`;
+	const at = await js(`const b = ${btn}; if (!b) return null; const r = b.getBoundingClientRect();
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2, 下緣: r.bottom, 左: r.left };`);
+	if (!at) return { ok: false, value: '工具列上沒有「對齊 ▾」' };
+	await click(at.x, at.y);
+	const menu = await js(`const m = document.querySelector('[role="menu"][aria-label="對齊"]'); if (!m) return null;
+		const r = m.getBoundingClientRect();
+		return { 上: Math.round(r.top), 左: Math.round(r.left), 右: Math.round(r.right), 下: Math.round(r.bottom), 項: [...m.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent.trim()) };`);
+	if (!menu) return { ok: false, value: '小選單沒開' };
+	const row = await rectOf('[role="menu"][aria-label="對齊"] [role="menuitem"]');
+	await click(row.x, row.y);
+	await sleep(300);
+	const ys = await js(`return ['m1', 'm3'].map((id) => { const r = document.querySelector('.field-host [data-member-id="' + id + '"]').getBoundingClientRect(); return Math.round(r.top + r.height / 2); });`);
+	await press('Escape');
+	const inView = menu.上 >= at.下緣 && menu.上 - at.下緣 <= 8 && menu.左 >= 8 && menu.右 <= 1440 - 8 && menu.下 <= 900 - 8;
+	return {
+		ok: inView && String(menu.項) === '排成一橫排,排成一直排' && Math.abs(ys[0] - ys[1]) <= 1,
+		value: { 鈕下緣: Math.round(at.下緣), 小選單: menu, 對齊後兩人高度: ys }
+	};
 });
 
 if (pageErrors.length) {

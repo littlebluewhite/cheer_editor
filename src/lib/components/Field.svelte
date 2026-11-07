@@ -519,7 +519,7 @@
 		if (drag?.cur) {
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
-			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge);
+			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge, e.altKey);
 			else if (drag.atEdge) session!.notice = session!.viewing ? VIEW_ONLY : AT_EDGE;
 		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
@@ -527,11 +527,14 @@
 		box = null;
 	}
 
-	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。 */
-	function drop(moves: Record<string, Position>, atEdge: boolean) {
+	/**
+	 * 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。
+	 * onlyThis = 放開時按著 Alt：只改這張，不往後帶。
+	 */
+	function drop(moves: Record<string, Position>, atEdge: boolean, onlyThis: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send(() => moveMembers(s.flow!, sec, moves), { done: (r) => s.moved(r, atEdge) });
+		s.ask.send(() => moveMembers(s.flow!, sec, moves, !onlyThis), { done: (r) => s.moved(r, atEdge) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */

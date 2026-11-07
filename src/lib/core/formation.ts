@@ -79,13 +79,15 @@ export function setPositions(
  * 在播放頭（全域秒數）拖人：改這一拍的站位；這一拍沒有站位就先插一張（位置帶入那一刻大家走到的地方）。
  * 改完往後帶（見 carryForward）。被擋就什麼都不改。
  * inserted = 有插新的站位；sec = 改到的那張站位的全域秒數（這一拍開始的時間）；carried = 往後帶到幾張站位。
+ * carry = false：只改這張，不往後帶（按住 Alt 拖）。
  */
 export function moveMembers(
 	flow: Flow,
 	sec: number,
-	moves: Record<string, Position>
+	moves: Record<string, Position>,
+	carry = true
 ): CommandResult<MoveResult> {
-	return moveAt(flow, sec, () => moves);
+	return moveAt(flow, sec, () => moves, carry);
 }
 
 /**
@@ -114,11 +116,15 @@ function pick(pos: Record<string, Position>, ids: string[]): Record<string, Posi
 	return Object.fromEntries(ids.map((id) => [id, pos[id]]));
 }
 
-/** moveMembers、moveGroup 共用：插站位（需要時）、改位置、往後帶。movesFor 拿到插好站位的流程和要改的那張。 */
+/**
+ * moveMembers、moveGroup 共用：插站位（需要時）、改位置、往後帶（carry = false 就不帶）。
+ * movesFor 拿到插好站位的流程和要改的那張。
+ */
 function moveAt(
 	flow: Flow,
 	sec: number,
-	movesFor: (flow: Flow, target: Formation) => Record<string, Position>
+	movesFor: (flow: Flow, target: Formation) => Record<string, Position>,
+	carry = true
 ): CommandResult<MoveResult> {
 	let f = flow;
 	const inserted = !formationAt(f, sec);
@@ -131,7 +137,7 @@ function moveAt(
 	const moves = movesFor(f, target);
 	const r = setPositions(f, target.id, moves);
 	if (r.kind !== 'ok') return r;
-	const { flow: carriedFlow, carried } = carryForward(r.flow, target, moves);
+	const { flow: carriedFlow, carried } = carry ? carryForward(r.flow, target, moves) : { flow: r.flow, carried: 0 };
 	return ok(carriedFlow, { inserted, sec: formationSec(r.flow, target), carried });
 }
 

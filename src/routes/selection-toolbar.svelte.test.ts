@@ -65,7 +65,7 @@ describe('選人工具列', () => {
 		expect(after.formations[2].pos.m3).toEqual(after.formations[1].pos.m3);
 		expect(after.formations[1].pos.m4).toEqual(before.formations[0].pos.m4);
 		expect(thumbs()).toHaveLength(3);
-		expect(screen.getByRole('status').textContent).toBe('插了一張站位，大家的位置自動帶入；後面 1 張站位也跟著改了');
+		expect(screen.getByRole('status').textContent).toBe('插了一張站位，大家的位置自動帶入；往後帶了 1 張');
 
 		await fireEvent.keyDown(document.body, { key: 'z', metaKey: true });
 		expect(page.session.flow).toEqual(before);

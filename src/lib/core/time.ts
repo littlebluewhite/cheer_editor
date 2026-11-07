@@ -263,7 +263,7 @@ export function timeTextWithUnit(flow: Flow, homeSegmentId: string, p: TimePosit
 }
 
 /** 用 timeText 寫法打時間的欄位：走位的出發、到達，站位小編輯的站位時間。 */
-export type TimeField = '出發' | '到達' | '站位時間';
+export type TimeField = '出發' | '到達' | '站位時間' | '時間';
 
 /**
  * 出發、到達、站位時間：timeText 的反向。只有段內時間就是 homeSegmentId 那一段；
@@ -272,6 +272,25 @@ export type TimeField = '出發' | '到達' | '站位時間';
  */
 export function readTime(flow: Flow, homeSegmentId: string, text: string, field: TimeField): ReadResult<TimePosition> {
 	return readOr(parseTime(flow, homeSegmentId, text), `${field}看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）`);
+}
+
+/**
+ * 手機點時間打字跳過去：readTime 的寫法，只有段內時間就是播放頭（sec）所在那一段。
+ * 看得懂就是那一刻的全域秒數；看不懂、超出那一段都擋下來說原因。
+ */
+export function readJump(flow: Flow, sec: number, text: string): ReadResult<number> {
+	const here = toPosition(flow, sec);
+	if (!here) return { kind: 'blocked', message: '還沒有段' };
+	const read = readTime(flow, here.segmentId, text, '時間');
+	if (read.kind !== 'ok') return read;
+	const span = segmentSpans(flow).find((s) => s.segment.id === read.value.segmentId)!;
+	const { segment } = span;
+	if (read.value.at < units(segment)) return { kind: 'ok', value: toSeconds(flow, read.value) };
+	const size =
+		segment.kind === 'music'
+			? `${Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT)} 個八拍`
+			: `${lengthText(segment, segment.tenths)} 秒`;
+	return { kind: 'blocked', message: `${span.label} 只有 ${size}` };
 }
 
 /** readTime 讀的那一步：看不懂或沒有這一段是 null。 */

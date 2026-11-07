@@ -11,7 +11,7 @@
 	import { currentFormation, formationAt, moveGroup } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { menuKeys, popover } from '#lib/popover.svelte.js';
+	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
 	import { selectionActions, type SelectionAction } from '#lib/selection-actions.js';
 
 	let {
@@ -41,8 +41,36 @@
 	/** 按鈕的名字：[_] 換成框裡的數字；沒選人是全隊。 */
 	const nameOf = (a: SelectionAction) => (count ? '' : '全隊') + a.label.replace('[_]', String(nth));
 
+	/** 畫出來的一項：一個動作自己一顆鈕；同一組（group）的收成一顆「組名 ▾」，點了才看到裡面幾項。 */
+	interface Item {
+		label: string;
+		title: string;
+		actions: SelectionAction[];
+	}
+	const items = $derived(
+		actions.reduce<Item[]>((list, a) => {
+			if (!a.group) return [...list, { label: a.label, title: a.title, actions: [a] }];
+			const label = `${a.group} ▾`;
+			const at = list.find((i) => i.label === label);
+			if (at) {
+				at.actions.push(a);
+				at.title = at.actions.map((x) => x.label).join('或');
+				return list;
+			}
+			return [...list, { label, title: a.label, actions: [a] }];
+		}, [])
+	);
+	const isGroup = (i: Item) => i.label.endsWith(' ▾');
+
+	/** 工具列上打開的那一組（▾ 小選單）和它的鈕。 */
+	let openGroup = $state<{ label: string; button: HTMLElement } | null>(null);
+	let open = $state<{ menu: typeof menu; label: string } | null>(null);
+	/** 右鍵選單裡展開的那一組（換一次右鍵選單就收回去）。 */
+	const expanded = $derived(open && open.menu === menu ? open.label : null);
+
 	function run(a: SelectionAction) {
 		onclosemenu();
+		openGroup = null;
 		playback.pauseOnBeat();
 		const flow = session.flow!;
 		const sec = playback.sec;
@@ -85,10 +113,45 @@
 
 {#if count && actions.length}
 	<div class="tools-bar" role="toolbar" aria-label="選人工具列">
-		{#each actions as a (a.label)}
-			{@render item(a, undefined)}
+		{#each items as i (i.label)}
+			{#if isGroup(i)}
+				<button
+					type="button"
+					title={i.title}
+					aria-haspopup="menu"
+					aria-expanded={openGroup?.label === i.label}
+					onclick={(e) =>
+						(openGroup = openGroup?.label === i.label ? null : { label: i.label, button: e.currentTarget })}
+				>
+					{i.label}
+				</button>
+			{:else}
+				{@render item(i.actions[0], undefined)}
+			{/if}
 		{/each}
 	</div>
+{/if}
+
+{#if openGroup}
+	{@const group = items.find((i) => i.label === openGroup?.label)}
+	{#if group}
+		<!-- 工具列上「組名 ▾」的小選單：點外面、按 Esc 就收 -->
+		<div
+			class="menu"
+			role="menu"
+			aria-label={group.label.replace(' ▾', '')}
+			{@attach popover({
+				place: below(openGroup.button, { gap: 4, align: 'left', flip: true }),
+				close: () => (openGroup = null),
+				inside: [openGroup.button]
+			})}
+			{@attach menuKeys}
+		>
+			{#each group.actions as a (a.label)}
+				<button type="button" role="menuitem" title={a.title} onclick={() => run(a)}>{a.label}</button>
+			{/each}
+		</div>
+	{/if}
 {/if}
 
 {#if menu && actions.length}
@@ -100,8 +163,25 @@
 		{@attach popover({ place: at(menu), close: onclosemenu })}
 		{@attach menuKeys}
 	>
-		{#each actions as a (a.label)}
-			{@render item(a, 'menuitem')}
+		{#each items as i (i.label)}
+			{#if isGroup(i)}
+				<button
+					type="button"
+					role="menuitem"
+					title={i.title}
+					aria-expanded={expanded === i.label}
+					onclick={() => (open = expanded === i.label ? null : { menu, label: i.label })}
+				>
+					{i.label}
+				</button>
+				{#if expanded === i.label}
+					{#each i.actions as a (a.label)}
+						<button type="button" role="menuitem" class="sub" title={a.title} onclick={() => run(a)}>{a.label}</button>
+					{/each}
+				{/if}
+			{:else}
+				{@render item(i.actions[0], 'menuitem')}
+			{/if}
 		{/each}
 	</div>
 {/if}
@@ -160,5 +240,8 @@
 		justify-content: flex-start;
 		border: none;
 		padding: 6px 10px;
+	}
+	.menu button.sub {
+		padding-left: 22px;
 	}
 </style>

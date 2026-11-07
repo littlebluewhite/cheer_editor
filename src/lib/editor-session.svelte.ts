@@ -31,6 +31,9 @@ import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
 
+/** 「只改這張」跟往後帶的那一步合成一步復原用的 key。 */
+const ONLY_THIS = 'only-this';
+
 /** 復原、重做紀錄的一步：要換上的流程、那一步改了什麼（例：「插入站位 3」）。 */
 interface Step {
 	flow: Flow;
@@ -401,15 +404,18 @@ export class EditorSession {
 
 	/**
 	 * 拖人、選人工具列、貼上站位改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。
-	 * atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。
+	 * 有往後帶：提示旁邊放「只改這張」（見 #onlyThis）。atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。
 	 */
 	moved(r: MoveResult, atEdge = false) {
 		const said = [
 			r.inserted && '插了一張站位，大家的位置自動帶入',
-			r.carried > 0 && `後面 ${r.carried} 張站位也跟著改了`,
+			r.carried > 0 && `往後帶了 ${r.carried} 張`,
 			atEdge && AT_EDGE
 		];
-		this.notice = said.filter(Boolean).join('；');
+		const text = said.filter(Boolean).join('；');
+		const after = this.#flow;
+		if (r.carried > 0 && after) this.toast(text, { label: '只改這張', run: () => this.#onlyThis(after, r.sec) });
+		else this.notice = text;
 		this.#carriedInsertId =
 			r.inserted && r.carried > 0 && this.#flow ? currentFormation(this.#flow, r.sec).formation.id : null;
 		// 選著的縮圖不是剛改的那張：選取清掉，不然 Delete 會刪到眼睛沒在看的那張
@@ -417,6 +423,24 @@ export class EditorSession {
 			this.#formationId = null;
 		}
 		this.#playback.jump(r.sec, false);
+	}
+
+	/**
+	 * 「只改這張」：剛才往後帶改到的站位（sec 那張之後的）改回這一步之前的位置，跟那一步合成一步復原。
+	 * after 是往後帶完的流程；流程已經換了（中間有別的改動）就不做。
+	 */
+	#onlyThis(after: Flow, sec: number) {
+		if (this.#blocked() || this.#flow !== after) return;
+		const before = this.#undo.at(-1)!.flow;
+		const at = after.formations.indexOf(currentFormation(after, sec).formation);
+		const formations = after.formations.map((f, i) => {
+			const old = i > at && before.formations.find((b) => b.id === f.id);
+			return old ? { ...f, pos: old.pos } : f;
+		});
+		this.#joinable = { key: ONLY_THIS, flow: after };
+		this.change({ ...after, formations }, ONLY_THIS);
+		this.#carriedInsertId = null;
+		this.notice = '只改了這張，後面的站位改回去了';
 	}
 
 	/**
