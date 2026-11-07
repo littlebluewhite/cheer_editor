@@ -11,8 +11,17 @@ export type { LimitedText } from './text-length';
 
 export { changeLabel } from './change-label';
 
-export { missingAudioNames, readFlowFile, segmentsMissingAudio, writeFlowFile } from './flow-file';
-export type { AudioBytes, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
+export {
+	checkFlowDocument,
+	FORMAT_VERSION,
+	missingAudioNames,
+	readFlowFile,
+	segmentsMissingAudio,
+	writeFlowFile
+} from './flow-file';
+export type { AudioBytes, CheckFlowDocumentResult, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
+
+export { flowProblem } from './flow-check';
 
 export {
 	GENDERS,
