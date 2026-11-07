@@ -290,8 +290,9 @@ await shot(
 		// 號碼放右邊中間：放右上角會蓋到上面 5 的框
 		[4, `q('.match-prev')`, { x: 1, y: 0.5 }],
 		[5, `q('.here')`],
-		[6, `q('.walk-tools')`],
-		[7, `q('.rail .legend')`],
+		// 號碼放右邊中間：放右上角會蓋到上面 7 的框
+		[6, `q('.rail > .walk-tools')`, { x: 1, y: 0.5 }],
+		[7, `q('.rail .legend-box')`],
 		// 只框小美：她的走位線，和線上那個影子（另外兩人沒動，影子在自己的點底下）
 		[8, `(() => {
 			const lines = [...document.querySelectorAll('.walk-line')];

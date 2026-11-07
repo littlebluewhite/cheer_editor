@@ -124,6 +124,7 @@ describe('從播放頭切段（#167）', () => {
 describe('延遲校正', () => {
 	it('打 5000 按 Enter：夾到 1000，提示範圍；欄位旁看得到「毫秒」', async () => {
 		await open(oneMusic(), 30);
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		const input = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
 		expect(input.closest('label')!.textContent).toContain('毫秒');
 		input.value = '5000';

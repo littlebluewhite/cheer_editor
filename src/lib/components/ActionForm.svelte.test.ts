@@ -58,9 +58,13 @@ function setup(flow: Flow, actionId: string | null, playheadSec = 0, selected: s
 	return session;
 }
 
+/** 沒選人時新動作表單收起來：按「＋ 新動作」打開。 */
+const openNewForm = () => fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+
 describe('動作表單：新增', () => {
 	it('從播放頭開始，填大類、名稱、長度、人和任務角色、備註，按新增', async () => {
 		const session = setup(sample(), null, 1);
+		await openNewForm();
 		const start = screen.getByLabelText('開始') as HTMLInputElement;
 		expect(start.value).toBe('1-3&');
 
@@ -88,8 +92,9 @@ describe('動作表單：新增', () => {
 		expect(session.selectedActionId).toBe('x1');
 	});
 
-	it('卡片標「新動作」、換了底色；標題就是名稱輸入框', () => {
+	it('卡片標「新動作」、換了底色；標題就是名稱輸入框', async () => {
 		setup(sample(), null);
+		await openNewForm();
 		const card = document.querySelector('section.action-form')!;
 		expect(card.classList.contains('creating')).toBe(true);
 		const header = card.querySelector('header')!;
@@ -100,6 +105,7 @@ describe('動作表單：新增', () => {
 
 	it('人那一區的小標寫「人（n）・任務角色」，不像新增按鈕', async () => {
 		setup(sample(), null);
+		await openNewForm();
 		expect(screen.getByText('人（0）・任務角色')).toBeTruthy();
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		expect(screen.getByText('人（1）・任務角色')).toBeTruthy();
@@ -107,6 +113,7 @@ describe('動作表單：新增', () => {
 
 	it('新增時挑辨識色，新動作帶著它', async () => {
 		const session = setup(sample(), null);
+		await openNewForm();
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.click(screen.getByRole('radio', { name: '藍' }));
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
@@ -115,6 +122,7 @@ describe('動作表單：新增', () => {
 
 	it('沒選人時「新增動作」是灰的，旁邊寫原因；選了人就能按', async () => {
 		setup(sample(), null);
+		await openNewForm();
 		const add = screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement;
 		expect(add.disabled).toBe(true);
 		expect(document.getElementById(add.getAttribute('aria-describedby')!)!.textContent).toBe(
@@ -146,30 +154,34 @@ describe('動作表單：新增', () => {
 		expect(session.flow!.actions).toHaveLength(1);
 	});
 
-	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
+	it('在開始欄按 Enter 被擋：原因寫在開始欄旁邊，右邊欄不自己捲（#214）', async () => {
 		scrolled.length = 0;
 		setup(sample(), null, 0, ['m2']);
-		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		const start = screen.getByLabelText('開始');
+		await fireEvent.input(start, { target: { value: 'abc' } });
+		await fireEvent.keyDown(start, { key: 'Enter' });
+		await frame();
+		const alert = screen.getByRole('alert');
+		expect(alert.textContent).toContain('開始看不懂');
+		expect(start.parentElement!.contains(alert)).toBe(true);
 		expect(scrolled).toEqual([]);
-		await frame();
-		expect(scrolled).toEqual([screen.getByRole('alert')]);
 	});
 
-	it('原因還留著時又被擋一次（同一句），也再捲一次', async () => {
+	it('按「新增動作」被擋：原因寫在「新增動作」鈕旁邊（黏在底部那一條裡），右邊欄不自己捲（#214）', async () => {
+		scrolled.length = 0;
 		setup(sample(), null, 0, ['m2']);
 		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
+		const add = screen.getByRole('button', { name: '新增動作' });
+		await fireEvent.click(add);
 		await frame();
-		scrolled.length = 0;
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		await frame();
-		expect(scrolled).toEqual([screen.getByRole('alert')]);
+		expect(add.parentElement!.contains(screen.getByRole('alert'))).toBe(true);
+		expect(scrolled).toEqual([]);
 	});
 
-	it('還沒有段時不能加動作', () => {
+	it('還沒有段時不能加動作', async () => {
 		const flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
 		setup(flow, null);
+		await openNewForm();
 		expect(screen.queryByRole('button', { name: '新增動作' })).toBeNull();
 		expect(screen.getByText(/先加一段/)).toBeTruthy();
 	});
@@ -201,6 +213,17 @@ describe('動作表單：改選到的動作', () => {
 
 		await pickRole('小A', '');
 		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
+	});
+
+	it('改長度被擋：原因寫在長度欄旁邊，右邊欄不自己捲（#214）', async () => {
+		scrolled.length = 0;
+		setup(withTwo(), 'x1');
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '6' } });
+		await fireEvent.change(length);
+		await frame();
+		expect(length.parentElement!.contains(screen.getByRole('alert'))).toBe(true);
+		expect(scrolled).toEqual([]);
 	});
 
 	it('名字底色照性別、旁邊標底層或上層；「?」說明顏色和快捷鍵', () => {

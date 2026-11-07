@@ -140,7 +140,7 @@ describe('段、八拍尺、上方列', () => {
 		expect(position()).toBe('音樂 1 2-1');
 		await fireEvent.keyDown(window, { key: 'ArrowLeft' });
 		expect(position()).toBe('音樂 1 1-8');
-		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'ArrowRight' });
+		await fireEvent.keyDown(screen.getByLabelText(/^名字/), { key: 'ArrowRight' });
 		expect(position()).toBe('音樂 1 1-8');
 	});
 
@@ -291,6 +291,7 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await pickRole('小A', '上層');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
@@ -328,7 +329,7 @@ describe('動作', () => {
 		expect(bar()?.classList.contains('selected')).toBe(true);
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(bar()?.classList.contains('selected')).toBe(false);
-		expect(screen.getByRole('button', { name: '新增動作' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(bar()).toBeTruthy();
 	});
@@ -656,6 +657,7 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		await pickRole('小A', '上層');
@@ -1649,9 +1651,30 @@ describe('播放', () => {
 		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
 	});
 
+	/** 播放列的「⋯」小窗打開，拿延遲校正欄位。 */
+	async function latencyField() {
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		return screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
+	}
+
+	it('延遲校正收在播放列的「⋯」小窗裡：平常看不到，按了才出來，照樣能改；Esc 關掉，焦點回到「⋯」（#214）', async () => {
+		await sample();
+		expect(screen.queryByLabelText('延遲校正（毫秒）')).toBeNull();
+		const more = screen.getByRole('button', { name: '更多播放選項' });
+		expect(more.getAttribute('aria-expanded')).toBe('false');
+		const field = await latencyField();
+		expect(more.getAttribute('aria-expanded')).toBe('true');
+		await fireEvent.change(field, { target: { value: '120' } });
+		expect(localStorage.getItem('cheer-editor:latencyMs')).toBe('120');
+		await fireEvent.keyDown(field, { key: 'Escape' });
+		expect(screen.queryByLabelText('延遲校正（毫秒）')).toBeNull();
+		expect(document.activeElement).toBe(more);
+		localStorage.clear();
+	});
+
 	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
 		await sample();
-		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
+		const field = await latencyField();
 		expect(field.value).toBe('0');
 		await fireEvent.change(field, { target: { value: '200' } });
 		await fireEvent.change(field, { target: { value: '' } });
@@ -1662,12 +1685,12 @@ describe('播放', () => {
 
 		cleanup();
 		await newFlow();
-		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('200');
+		expect((await latencyField()).value).toBe('200');
 
 		cleanup();
 		localStorage.setItem('cheer-editor:latencyMs', '99999');
 		await newFlow();
-		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('0');
+		expect((await latencyField()).value).toBe('0');
 	});
 
 	it('段設定的試聽：按「▶ 從第一拍聽」響、按「■ 停止試聽」停、播完換回來；關掉段設定就停', async () => {
@@ -1795,6 +1818,7 @@ describe('復原和重做', () => {
 		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
 		// 新動作表單的字還不在流程裡，⌘Z 交給瀏覽器（見 undo 測試）；別的文字框照樣退回流程
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		expect(await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'y', ctrlKey: true })).toBe(false);
 		expect(thumbs()).toHaveLength(2);
 	});
@@ -2151,6 +2175,7 @@ describe('動作設定：任務角色先照全局角色填、角色說明、Esc�
 
 	it('沒選人時「新增動作」是灰的、寫原因；按「全隊」後任務角色照全局角色填好，選單每項有說明', async () => {
 		await withSample();
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		const add = screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement;
 		expect(add.disabled).toBe(true);
 		expect(screen.getByText('還沒有人：先選人才能新增')).toBeTruthy();

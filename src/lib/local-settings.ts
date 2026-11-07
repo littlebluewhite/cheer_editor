@@ -24,6 +24,26 @@ export function saveLatencyMs(ms: number): void {
 	}
 }
 
+const LEGEND_KEY = 'cheer-editor:legendOpen';
+
+/** 場地左下的圖例開著嗎；預設開著，收起來才存。 */
+export function loadLegendOpen(): boolean {
+	try {
+		return localStorage.getItem(LEGEND_KEY) !== '0';
+	} catch {
+		return true;
+	}
+}
+
+export function saveLegendOpen(open: boolean): void {
+	try {
+		if (open) localStorage.removeItem(LEGEND_KEY);
+		else localStorage.setItem(LEGEND_KEY, '0');
+	} catch {
+		// 存不了就只在這次用
+	}
+}
+
 /** 拖分界改的大小：時間軸的高度（px）、右邊欄的寬度（視窗寬的比例）。存在 `cheer-editor:<名字>`。 */
 export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthRatio';
 
