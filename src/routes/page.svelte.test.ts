@@ -208,7 +208,7 @@ describe('段、八拍尺、上方列', () => {
 		const seconds = screen.getByLabelText('長度（秒）') as HTMLInputElement;
 		await fireEvent.change(seconds, { target: { value: '99999999' } });
 		expect(screen.getByRole('alert').textContent).toBe('「長度（秒）」退回原本的值：口號段長度要在 0.1 到 300 秒之間');
-		expect(seconds.value).toBe('10');
+		expect(seconds.value).toBe('30');
 		await fireEvent.change(seconds, { target: { value: '-3' } });
 		expect(screen.getByRole('alert').textContent).toContain('要在 0.1 到 300 秒之間');
 		await fireEvent.pointerDown(screen.getByRole('button', { name: '關閉' }));

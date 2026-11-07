@@ -23,6 +23,7 @@
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
+	import { dodgeSelected } from '#lib/toast-dodge.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
@@ -204,13 +205,19 @@
 
 	// ---------- 場地和時間軸的分界：拖它（或 ↑↓）改時間軸多高，存在這台電腦；雙擊回到預設 ----------
 	const TIMELINE_MIN_PX = 160;
-	/** 場地和上方列至少留這麼高。 */
-	const FIELD_KEEP_PX = 300;
+	/** 場地那一塊（含分界）至少留這麼高：時間軸拖到最高，場地也不會只剩一小條。 */
+	const FIELD_MIN_PX = 340;
+	let topbar = $state<HTMLElement>();
+	/** 時間軸上面至少要留多高：上方列（一行或兩行，跟著視窗寬換）加上場地那一塊。 */
+	function fieldKeepPx(): number {
+		void windowW; // 視窗寬變了，上方列可能換成一行或兩行：重算
+		return (topbar?.offsetHeight ?? 0) + FIELD_MIN_PX;
+	}
 	let timelineHost = $state<HTMLElement>();
 	const timelineDivider = new Divider({
 		name: 'timelineHeightPx',
 		axis: 'y',
-		clamp: (px) => Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - FIELD_KEEP_PX)),
+		clamp: (px) => Math.round(Math.min(Math.max(px, TIMELINE_MIN_PX), window.innerHeight - fieldKeepPx())),
 		size: currentTimelineH
 	});
 
@@ -224,6 +231,8 @@
 	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
 	let windowH = $state(0);
+	/** 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1670px 一樣）。 */
+	const transportBelow = $derived(windowW <= 1670);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
 		name: 'inspectorWidthRatio',
@@ -397,7 +406,16 @@
 			else playback.toEnd();
 		} else if (e.key === 'Delete' || e.key === 'Backspace') {
 			// Mac 的 delete 鍵送的是 Backspace；只刪最後點的那一個
-			if (session.deleteKey()) e.preventDefault();
+			// 刪掉的是有焦點的站位小圖或色條：焦點給前一張站位的小圖、那一列的名字，不掉回 body
+			const lost = document.activeElement;
+			const next =
+				lost?.closest('.th')?.previousElementSibling?.querySelector<HTMLElement>('.pick') ??
+				lost?.closest('[data-lane]')?.querySelector<HTMLElement>('.lab');
+			if (session.deleteKey()) {
+				e.preventDefault();
+				flushSync();
+				if (lost && !lost.isConnected) next?.focus();
+			}
 		} else if (
 			(e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
 			!e.defaultPrevented &&
@@ -466,7 +484,7 @@
 		class:viewing={session.viewing && !narrow}
 		class:narrow
 		class:print-hidden={printOpen}
-		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${FIELD_KEEP_PX}px))`}
+		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${fieldKeepPx()}px))`}
 		style:--inspector-w="{inspectorPx}px"
 	>
 		<!-- 提示（存檔、開檔的結果…）：編排時浮在場地上，練習時浮在練習畫面上 -->
@@ -569,7 +587,7 @@
 			<button type="button" class="skip" onclick={() => timelineHost?.focus()}>跳到時間軸</button>
 		{/if}
 		<!-- 檢視模式時上方列換成紫色：整個畫面一看就知道現在只能看 -->
-		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow}>
+		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow} bind:this={topbar}>
 			<div class="title">
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
@@ -587,7 +605,7 @@
 			</div>
 
 			<!-- 播放區：寬的時候在上方列中間；窄螢幕放在手機檢視畫面的場地下面 -->
-			{#if !narrow}{@render transport()}{/if}
+			{#if !narrow && !transportBelow}{@render transport()}{/if}
 
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
@@ -643,6 +661,8 @@
 				{/if}
 				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
+			<!-- 播放區換到第二行時放在按鈕後面：Tab 照畫面由上到下 -->
+			{#if !narrow && transportBelow}{@render transport()}{/if}
 		</header>
 
 		{#if narrow}
@@ -784,8 +804,12 @@
 						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 					</div>
 				{/if}
-				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人 -->
-				<div class="field-toasts">
+				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人；
+				     會蓋住選到、正在拖的人時換到下方（dodgeSelected） -->
+				<div
+					class="field-toasts"
+					{@attach dodgeSelected(() => [session.notice, session.ask.question, session.selectedMemberIds, playback.sec, flow])}
+				>
 					{#if session.ask.question}
 						<div class="toast-confirm">
 							<ConfirmList ask={session.ask} />
@@ -983,7 +1007,7 @@
 							{@const twin = edited && editor.file.recent.some((g) => g !== f && g.name === f.name)}
 							<li>
 								<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
-									<span class="recent-name">{f.name}</span>
+									<span class="recent-name" title={f.name}>{f.name}</span>
 									<span class="recent-meta"
 										>{[edited, f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
 											.filter(Boolean)
@@ -1380,7 +1404,7 @@
 	}
 	.clock i {
 		font-style: normal;
-		color: #5d6a88;
+		color: #8b99b8;
 	}
 	.toggle,
 	.latency {
@@ -1403,15 +1427,11 @@
 			min-height: 32px;
 		}
 	}
+	/* 節拍器、重複開著：亮的底色、深色的字，跟關著的（透明底）一眼分得出來 */
 	.toggle:has(input:checked) {
-		background: #24304c;
-		border-color: #4a5a80;
-		color: #fff;
-	}
-	/* 節拍器開著：亮的底色，跟關著的一眼分得出來 */
-	.toggle.metronome:has(input:checked) {
 		background: var(--sel);
 		border-color: var(--sel);
+		color: var(--ink);
 		font-weight: 600;
 	}
 	.toggle input {
@@ -1724,6 +1744,11 @@
 		gap: 8px;
 		pointer-events: none;
 	}
+	/* 放在上方會蓋住選到、正在拖的人：換到場地下方 */
+	.field-toasts:global(.below) {
+		top: auto;
+		bottom: 14px;
+	}
 	.field-toasts > :global(*) {
 		pointer-events: auto;
 	}
@@ -1818,7 +1843,7 @@
 		padding: 0 6px;
 		border-radius: 999px;
 		background: var(--line-soft);
-		color: var(--muted);
+		color: #4f5a73;
 		font-size: 11px;
 		line-height: 18px;
 	}
@@ -1979,6 +2004,7 @@
 	}
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
+	   換行時播放區在 HTML 裡也放到按鈕後面（transportBelow），Tab 才照畫面順序。
 	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1670px 就換。 */
 	@media (max-width: 1670px) {
 		.topbar {

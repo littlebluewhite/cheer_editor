@@ -93,7 +93,7 @@
 		onclick={toggle}
 		{onkeydown}
 	>
-		<span class:none={!value}>{value ?? '（沒有任務）'}</span>
+		<span class:none={!value} title={value ?? undefined}>{value ?? '（沒有任務）'}</span>
 	</button>
 	{#if open}
 		<!-- 按下去不要搶走按鈕的焦點，不然 focusout 先把選單關掉。 -->

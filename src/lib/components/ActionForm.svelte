@@ -442,7 +442,7 @@
 						<li>
 							<span class="who">
 								{#if who}<i class="gr {who.globalRole}">{who.globalRole === 'top' ? '上' : '底'}</i>{/if}
-								<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
+								<span class="name {who?.gender ?? ''}" title={nameOf(m.memberId)}>{nameOf(m.memberId)}</span>
 								{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
 							</span>
 							<RolePicker

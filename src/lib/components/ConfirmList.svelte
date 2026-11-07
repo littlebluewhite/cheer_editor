@@ -42,7 +42,18 @@
 	});
 </script>
 
-<div class="confirm" role="alertdialog" aria-labelledby="{id}-q">
+<!-- 焦點在問句裡按 Esc＝取消（跟對話框一樣） -->
+<div
+	class="confirm"
+	role="alertdialog"
+	aria-labelledby="{id}-q"
+	tabindex="-1"
+	onkeydown={(e) => {
+		if (e.key !== 'Escape') return;
+		e.stopPropagation();
+		view.oncancel();
+	}}
+>
 	<p id="{id}-q">{view.message}</p>
 	{#if view.items.length}
 		<ul>

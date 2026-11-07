@@ -23,7 +23,7 @@
 </script>
 
 <div class="cue-line" role="group" aria-label="{name} 的拍點">
-	<span class="cue-name">{name}</span>
+	<span class="cue-name" title={name}>{name}</span>
 	<div class="beats">
 		{#if line.phases.length}
 			<div class="phases">

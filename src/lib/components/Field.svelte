@@ -51,6 +51,7 @@
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
 	import { isLongMarker, markerWidth } from './marker';
+	import { onEscape } from './pointer';
 
 	/** 螢幕座標 → 場地公尺座標。測試換成假的（見 docs/adr/0002-component-tests-jsdom.md）。 */
 	type ToMeters = (e: { clientX: number; clientY: number }, svg: SVGSVGElement) => Position;
@@ -419,6 +420,19 @@
 			box = { client, shift: e.shiftKey || session.multiSelect, a: toMeters(e, svg), b: null };
 		} else return;
 		svg.setPointerCapture?.(e.pointerId);
+		offEscape();
+		offEscape = onEscape(cancelDrag);
+	}
+
+	/** 拖人、框選到一半按 Esc 時拿掉監聽的函式（沒在拖時什麼都不做）。 */
+	let offEscape = () => {};
+
+	/** 不拖了（拖到一半按 Esc、觸控被系統打斷）：人回到原位，框選不算。 */
+	function cancelDrag() {
+		offEscape();
+		stopEdgeScroll();
+		drag = null;
+		box = null;
 	}
 
 	/** 手指沒剛好按在點上時，離手指這麼多 px 以內最近的人也算按到（點看起來不變）。 */
@@ -477,6 +491,7 @@
 	function up(e: PointerEvent) {
 		liftFinger(e);
 		stopEdgeScroll();
+		offEscape();
 		if (drag?.cur) {
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
@@ -623,9 +638,7 @@
 		onpointerup={up}
 		onpointercancel={(e) => {
 			liftFinger(e);
-			stopEdgeScroll();
-			drag = null;
-			box = null;
+			cancelDrag();
 		}}
 	>
 		<rect class="margin" x={g.outer.x} y={g.outer.y} width={g.outer.width} height={g.outer.height} />

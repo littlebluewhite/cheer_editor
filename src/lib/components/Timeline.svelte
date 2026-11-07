@@ -17,6 +17,7 @@
 		formationTimes,
 		insertBeats,
 		lengthTextWithUnit,
+		newChantTenths,
 		readLength,
 		rulerMarks,
 		segmentSpans,
@@ -228,7 +229,7 @@
 		// 選單項目要不見了：焦點先回「＋」，段設定關掉時焦點才回得來（不掉回頁面最上面）。
 		menu?.anchor.focus();
 		menu = null;
-		session.ask.send(() => addSegment(flow, kind, after), {
+		session.ask.send(() => addSegment(flow, kind, after, newChantTenths(flow)), {
 			done: (r) => {
 				if (fill !== 'fit') fill = 'auto';
 				onopensegment(r.id);
@@ -734,7 +735,6 @@
 	}
 	.seg .meta {
 		flex: 0 100 auto;
-		opacity: 0.8;
 		font-variant-numeric: tabular-nums;
 	}
 	.seg.music {
@@ -743,11 +743,12 @@
 	.seg.music:hover {
 		background: var(--mat-deep, #1d4489);
 	}
+	/* 夠深：白字（段名、秒數）看得清楚 */
 	.seg.chant {
-		background: #a26a22;
+		background: #8e5a1a;
 	}
 	.seg.chant:hover {
-		background: #87581a;
+		background: #774b15;
 	}
 	.seg.missing,
 	.seg.missing:hover {
