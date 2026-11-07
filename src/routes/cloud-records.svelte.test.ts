@@ -74,6 +74,18 @@ describe('雲端流程記一次', () => {
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 	});
 
+	it('記了一次（存在伺服器）不算還沒存：按「首頁」直接回首頁，不問', async () => {
+		const s = await open(wangsFlow('recorder'));
+		await tap('第 1 組 小美', '上法', '成功');
+		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '存這一次' }));
+		await flush();
+		expect(s.page.session.unsaved).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: '首頁' }));
+		await flush();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(s.page.session.flow).toBeNull();
+	});
+
 	it('打開時拿到紀錄：別人記的記號後面寫名字，總表的明細也是', async () => {
 		await open(wangsFlow('recorder', [wangs('tabc123def456', 'g1', { p1: '✓', p2: '✗' })]));
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✗·王教練']);
