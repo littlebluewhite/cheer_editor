@@ -19,6 +19,7 @@ import {
 	type CommandResult,
 	type ConfirmOption,
 	type Flow,
+	type Mark,
 	type MoveResult
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
@@ -93,6 +94,11 @@ export class EditorSession {
 	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
 	 */
 	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
+	/**
+	 * 記錄頁每張卡點了還沒存的記號（環節 id → 記號），key 跟 drillScopes 一樣。
+	 * 換動作、切頁再回來還在；換一支流程就清掉；不存進流程檔。
+	 */
+	drillMarks: Record<string, Record<string, Mark>> = $state({});
 	/**
 	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
 	 * 不存進流程檔。
@@ -199,6 +205,7 @@ export class EditorSession {
 		this.#redo = [];
 		this.#joinable = null;
 		this.clearSelection();
+		this.drillMarks = {};
 		this.notice = '';
 		this.ask.clear();
 		this.squadAsk.clear();

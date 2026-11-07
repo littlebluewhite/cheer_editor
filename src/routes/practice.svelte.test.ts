@@ -55,7 +55,7 @@ describe('練習：記錄頁記分段練', () => {
 		expect(pressed()).toBe('false');
 	});
 
-	it('點到一半就換到編排：這一次不存', async () => {
+	it('點到一半就換到編排再回來：點了的記號還在，接著點完一起存', async () => {
 		await practice();
 		const who = '第 1 組 小美';
 		await tap(who, '上法', '成功');
@@ -64,7 +64,39 @@ describe('練習：記錄頁記分段練', () => {
 		await toPractice();
 		await tap(who, '下法', '成功');
 		await save(who);
-		expect(dayRow(who)).toEqual(['··✓']);
+		expect(dayRow(who)).toEqual(['✓✓✓']);
+	});
+
+	it('點了 △ 再按「全部 ✓ 存」：△ 照點的存，空著的補 ✓', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		await tap(who, '中段', '小失誤');
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		expect(dayRow(who)).toEqual(['✓△✓']);
+	});
+
+	it('點了還沒存的記號：換動作、切總表再回來還在，卡片標「還沒存」；存了就不標', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		const pressed = () => screen.getByRole('button', { name: `${who} 上法 小失誤` }).getAttribute('aria-pressed');
+		expect(card(who).queryByText('還沒存')).toBeNull();
+		await tap(who, '上法', '小失誤');
+		expect(card(who).getByText('還沒存')).toBeTruthy();
+
+		await pickAction('騰翻');
+		await pickAction('技巧·Lib');
+		expect(pressed()).toBe('true');
+		expect(card(who).getByText('還沒存')).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+		expect(pressed()).toBe('true');
+
+		await tap(who, '中段', '成功');
+		await tap(who, '下法', '成功');
+		await save(who);
+		expect(dayRow(who)).toEqual(['△✓✓']);
+		expect(card(who).queryByText('還沒存')).toBeNull();
 	});
 
 	it('「只練幾個環節」切到總表、編排再回來還是它', async () => {
