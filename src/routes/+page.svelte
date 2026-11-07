@@ -268,6 +268,12 @@
 		if (session.redo()) restore(session.flow!);
 	}
 
+	/** 復原、重做按鈕的提示：下一步會退（做回）什麼、快捷鍵，和方向鍵連按移人只算一步。 */
+	function stepTitle(verb: '復原' | '重做', label: string, keys: string) {
+		const what = label ? `${verb}：${label}` : verb;
+		return `${what}（${keys}）\n方向鍵連按移人合成一步，${verb}一次就整段${verb === '復原' ? '退回' : '做回'}`;
+	}
+
 	/** 復原、重做換上的流程：開著的段設定可能指到已經不在的段（選取、提示、播放頭由 session、播放處理）。 */
 	function restore(f: Flow) {
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
@@ -572,13 +578,18 @@
 						>
 					</div>
 					<!-- 檢視時復原、重做不拿掉，只變灰：換模式時旁邊的按鈕不會跑 -->
-					<button type="button" class="ghost" title="復原（⌘Z／Ctrl+Z）" disabled={session.viewing || !session.canUndo} onclick={undo}
+					<button
+						type="button"
+						class="ghost"
+						title={stepTitle('復原', session.undoLabel, '⌘Z／Ctrl+Z')}
+						disabled={session.viewing || !session.canUndo}
+						onclick={undo}
 						><Icon name="undo" /><span class="narrow-hide">復原</span></button
 					>
 					<button
 						type="button"
 						class="ghost"
-						title="重做（⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y）"
+						title={stepTitle('重做', session.redoLabel, '⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y')}
 						disabled={session.viewing || !session.canRedo}
 						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
 					>

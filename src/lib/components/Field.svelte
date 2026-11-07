@@ -497,6 +497,7 @@
 	 * 鍵盤操作焦點所在的人：Enter 跟點一下一樣；方向鍵移 1/4 格（Shift 一格），跟拖人一樣吸附、改播放頭這一拍的站位。
 	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把方向鍵當移播放頭。
 	 * 空白鍵往外傳：焦點在人身上時，空白鍵跟頁面其他地方一樣是播放／暫停。
+	 * 檢視模式不能移人：方向鍵也往外傳，跟頁面其他地方一樣移播放頭。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
 		if (!session) return;
@@ -506,6 +507,7 @@
 			session.pickMember(id, e.shiftKey);
 			return;
 		}
+		if (session.viewing) return;
 		const dir = ARROWS[e.key];
 		if (!dir || e.ctrlKey || e.metaKey || e.altKey || !positions[id]) return;
 		e.preventDefault();

@@ -21,6 +21,9 @@ import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import Lanes from './Lanes.svelte';
 
+// jsdom 沒有 scrollIntoView（選到一個人時名單捲到他那一行）。
+Element.prototype.scrollIntoView = () => {};
+
 /** 音樂 1（150 BPM，一個半拍 0.2 秒）：Lib（小A 上層、小B 沒任務）0–3.2 秒，小C 騰翻 1.6–2.4 秒、跳躍 3.2–4.0 秒。 */
 function sample(): Flow {
 	let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));

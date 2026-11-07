@@ -198,6 +198,16 @@ export class EditorSession {
 		return this.#redo.length > 0;
 	}
 
+	/** 按復原會退的那一步改了什麼（例：「插入站位 2」）；沒有可以復原的是空字串。 */
+	get undoLabel(): string {
+		return this.#undo.at(-1)?.label ?? '';
+	}
+
+	/** 按重做會做回的那一步改了什麼；沒有可以重做的是空字串。 */
+	get redoLabel(): string {
+		return this.#redo.at(-1)?.label ?? '';
+	}
+
 	/**
 	 * 換一支流程（開檔、新建、救回草稿；null 是回到首頁）：清掉復原和重做、選取、提示、問題。
 	 * id 會跟上一支重複，所以選取全部清掉。saved = 從檔案開的，算存過。

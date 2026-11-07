@@ -1760,6 +1760,50 @@ await check('1440×900 播放頭停在走位條右端（點站位 2）：按住�
 	return { ok, value: { 拖之前: before, 拖之後: after } };
 });
 
+await check('1440×900 40 人：點場上最後一個人，泳道捲到他那一行（不藏在段列、八拍尺底下，不左右捲）；再點第一個人也是（#215）', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	const scroller = '.timeline';
+	/** 那一行的名字在時間軸看得到的地方（扣掉黏在上面的段列、八拍尺）。 */
+	const seen = (id) =>
+		js(`const t = document.querySelector('${scroller}'), box = t.getBoundingClientRect();
+			const lab = document.querySelector('[data-lane="${id}"] .lab').getBoundingClientRect();
+			const head = document.querySelector('.ruler-row').getBoundingClientRect().bottom;
+			return { 看得到: lab.top >= head - 1 && lab.bottom <= box.bottom + 1, 名字上緣: Math.round(lab.top), 尺下緣: Math.round(head),
+				時間軸下緣: Math.round(box.bottom), 上下捲: Math.round(t.scrollTop), 左右捲: Math.round(t.scrollLeft) };`);
+	const ids = await js(`return [...document.querySelectorAll('[data-lane]')].map((r) => r.dataset.lane)`);
+	const [first, last] = [ids[0], ids.at(-1)];
+	await js(`const t = document.querySelector('${scroller}'); t.scrollTop = 0; t.scrollLeft = 40;`);
+	await sleep(200);
+	const left = await js(`return Math.round(document.querySelector('${scroller}').scrollLeft)`);
+	const tap = async (id) => {
+		const p = await rectOf(`.field [data-member-id="${id}"]`);
+		await click(p.x, p.y);
+	};
+	const before = await seen(last);
+	await tap(last);
+	const toLast = await seen(last);
+	await tap(first);
+	const toFirst = await seen(first);
+	const ok = !before.看得到 && toLast.看得到 && toFirst.看得到 && toLast.左右捲 === left && toFirst.左右捲 === left;
+	return { ok, value: { 點之前: before, 點最後一個: toLast, 再點第一個: toFirst } };
+});
+
+await check('1440×900 場上選到的人有明顯的框：選取框的線至少 2 px 粗、比圓點大一圈（#215）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const p = await rectOf('.field [data-member-id="m1"]');
+	await click(p.x, p.y);
+	const m = await js(`const g = document.querySelector('.field [data-member-id="m1"]');
+		const ring = g.querySelector('.ring'), dot = g.querySelector('circle.base, circle.top, rect.base, rect.top');
+		if (!ring) return { 有框: false };
+		const scale = g.getScreenCTM().a * g.querySelector('g').transform.baseVal[0].matrix.a;
+		const s = getComputedStyle(ring);
+		return { 有框: true, 線粗: +(parseFloat(s.strokeWidth) * scale).toFixed(1), 線色: s.stroke,
+			多出來: +((ring.getBoundingClientRect().width - dot.getBoundingClientRect().width) / 2).toFixed(1) };`);
+	return { ok: m.有框 && m.線粗 >= 2 && m.多出來 >= 3, value: m };
+});
+
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
