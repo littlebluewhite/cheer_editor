@@ -11,14 +11,9 @@
 	import {
 		MARKS,
 		attemptText,
-		changeAttempt,
-		deleteAttempt,
-		deleteLastAttempt,
 		keptAttempt,
 		phaseColor,
 		phaseLabel,
-		recordAttempt,
-		restoreAttempt,
 		type Action,
 		type Attempt,
 		type Mark
@@ -113,7 +108,7 @@
 	/** 存這一次（留哪些記號、算不算整個做由核心決定）；給了 next 就存它，不看點了的。 */
 	function save(next = marks) {
 		marks = {};
-		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
+		ask.send({ name: 'recordAttempt', args: [action.id, { date, who, practice: 'drill', whole, marks: next }] }, {
 			done: () => flash.show({ text: '已存' })
 		});
 	}
@@ -139,7 +134,7 @@
 	}
 
 	function saveEdit(attempt: Attempt) {
-		ask.send(() => changeAttempt(flow, action.id, attempt.id, draft), {
+		ask.send({ name: 'changeAttempt', args: [action.id, attempt.id, draft] }, {
 			done: () => {
 				editing = null;
 				flash.show({ text: '已改' });
@@ -156,8 +151,8 @@
 			ask,
 			flash,
 			removedText(attempt),
-			() => deleteAttempt(flow, action.id, attempt.id),
-			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
+			{ name: 'deleteAttempt', args: [action.id, attempt.id] },
+			({ attempt, index }) => ({ name: 'restoreAttempt', args: [action.id, attempt, index] })
 		);
 	}
 
@@ -166,8 +161,8 @@
 			ask,
 			flash,
 			removedText(today.findLast((r) => r.practice === 'drill')!),
-			() => deleteLastAttempt(flow, action.id, who, date, 'drill'),
-			({ attempt, index }) => restoreAttempt(flow, action.id, attempt, index)
+			{ name: 'deleteLastAttempt', args: [action.id, who, date, 'drill'] },
+			({ attempt, index }) => ({ name: 'restoreAttempt', args: [action.id, attempt, index] })
 		);
 	}
 </script>

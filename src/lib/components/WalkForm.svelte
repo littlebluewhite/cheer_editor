@@ -7,12 +7,9 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
-		clearWalks,
 		formationWalks,
 		memberWalk,
 		readTime,
-		setTeamWalks,
-		setWalks,
 		timeText,
 		walkSpanAt,
 		walkSpeedText,
@@ -84,13 +81,15 @@
 		const home = formation.segmentId!;
 		const depart = readTime(flow, home, departText, '出發');
 		const arrive = readTime(flow, home, arriveText, '到達');
-		if (depart.kind === 'blocked') return void ask.send(() => depart);
-		if (arrive.kind === 'blocked') return void ask.send(() => arrive);
+		if (depart.kind === 'blocked') return void ask.block(depart.message);
+		if (arrive.kind === 'blocked') return void ask.block(arrive.message);
 		const walk: Walk = { depart: depart.value, arrive: arrive.value };
 		const id = formation.id;
 		const ids = selectedMemberIds;
-		ask.send(() =>
-			ids.length ? setWalks(flow, id, Object.fromEntries(ids.map((m) => [m, walk]))) : setTeamWalks(flow, id, walk)
+		ask.send(
+			ids.length
+				? { name: 'setWalks', args: [id, Object.fromEntries(ids.map((m) => [m, walk]))] }
+				: { name: 'setTeamWalks', args: [id, walk] }
 		);
 	}
 
@@ -104,7 +103,7 @@
 	function useDefault() {
 		if (!formation) return;
 		const id = formation.id;
-		ask.send(() => clearWalks(flow, id, memberIds));
+		ask.send({ name: 'clearWalks', args: [id, memberIds] });
 	}
 </script>
 
