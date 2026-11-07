@@ -48,6 +48,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
 	import { isLongMarker, markerWidth } from './marker';
 
@@ -253,6 +254,13 @@
 	);
 	/** false：只畫太快和很喘的走位線，正常的白線藏起來，場地比較乾淨。 */
 	let allWalkLines = $state(true);
+	/** 左下的圖例開著嗎（存在這台電腦）。 */
+	let legendOpen = $state(loadLegendOpen());
+	const legendId = $props.id();
+	function toggleLegend() {
+		legendOpen = !legendOpen;
+		saveLegendOpen(legendOpen);
+	}
 	const walkLines = $derived(
 		walks.filter((w) => shown(w.memberId) && (allWalkLines || w.tooFast || w.tiring))
 	);
@@ -567,23 +575,35 @@
 			{@render railTop?.()}
 			<div class="rail-gap"></div>
 			{@render railBottom?.()}
+			<!-- 圖例在「只看橘紅走位線」上面：左欄很矮（時間軸拖到最大）時，捲到底最下面那一行工具一定看得到、點得到 -->
+			<div class="legend-box" id={legendId} hidden={!legendOpen}>
+				<div class="walk-tools" aria-hidden="true">
+					<!-- 門檻寫短（m/s），時間軸拉高時左欄還捲得到；滑鼠移上去寫完整的。 -->
+					<span title="走位每秒超過 {TIRING_MPS} 公尺、沒到 {TOO_FAST_MPS} 公尺：跑得到但很喘"
+						><i class="tiring"></i>很喘 &gt;{TIRING_MPS} m/s</span
+					>
+					<span title="走位每秒超過 {TOO_FAST_MPS} 公尺：跑不到"><i class="fast"></i>走太快 &gt;{TOO_FAST_MPS} m/s</span>
+					<span><b class="clash-mark">✕</b>撞位</span>
+				</div>
+				<div class="legend" aria-hidden="true">
+					<span><i class="base"></i>底層</span>
+					<span><i class="top"></i>上層</span>
+					<span><i class="up"></i>正在上面</span>
+				</div>
+			</div>
 			<div class="walk-tools">
 				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
 					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
 				</label>
-				<!-- 門檻寫短（m/s），左欄維持兩行，時間軸拉高時還捲得到；滑鼠移上去寫完整的。 -->
-				<span aria-hidden="true" title="走位每秒超過 {TIRING_MPS} 公尺、沒到 {TOO_FAST_MPS} 公尺：跑得到但很喘"
-					><i class="tiring"></i>很喘 &gt;{TIRING_MPS} m/s</span
+				<!-- 圖例可以收起來（存在這台電腦）；收著時箭頭朝上，看得出還能打開 -->
+				<button
+					type="button"
+					class="ghost legend-toggle"
+					aria-expanded={legendOpen}
+					aria-controls={legendId}
+					title={legendOpen ? '收起圖例' : '打開圖例'}
+					onclick={toggleLegend}>圖例<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▴'}</span></button
 				>
-				<span aria-hidden="true" title="走位每秒超過 {TOO_FAST_MPS} 公尺：跑不到"
-					><i class="fast"></i>走太快 &gt;{TOO_FAST_MPS} m/s</span
-				>
-				<span aria-hidden="true"><b class="clash-mark">✕</b>撞位</span>
-			</div>
-			<div class="legend" aria-hidden="true">
-				<span><i class="base"></i>底層</span>
-				<span><i class="top"></i>上層</span>
-				<span><i class="up"></i>正在上面</span>
 			</div>
 		</div>
 	{/if}
@@ -990,6 +1010,39 @@
 	.walk-tools .clash-mark {
 		color: var(--walk-clash, #a855f7);
 		font-size: 12px;
+	}
+	.legend-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		padding: 1px 6px;
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	/* 手指：「圖例」至少 32px 高 */
+	@media (pointer: coarse) {
+		.legend-toggle {
+			min-height: 32px;
+		}
+	}
+	/* 走位線和圓點的圖例放在同一塊白底裡：左欄很矮時（時間軸拖到最大）少佔一點高度 */
+	.legend-box {
+		display: grid;
+		gap: 4px;
+		justify-self: start;
+		padding: 5px 10px;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
+	}
+	.legend-box > .walk-tools,
+	.legend-box > .legend {
+		padding: 0;
+		background: none;
+		box-shadow: none;
+	}
+	.legend-box[hidden] {
+		display: none;
 	}
 	.legend {
 		display: flex;

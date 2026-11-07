@@ -66,6 +66,7 @@ describe('撞到別的動作的人', () => {
 
 	it('「＋加人…」的選項標出同一時間在別的動作裡的人', async () => {
 		render(Page, editorPage(biggerTeam()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		const options = within(screen.getByLabelText('加人')).getAllByRole('option').map((o) => o.textContent);
 		expect(options).toContain('小美（在「技巧·Lib」裡）');
 		expect(options).toContain('小C');

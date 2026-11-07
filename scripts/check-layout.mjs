@@ -1300,6 +1300,94 @@ await check('1440×900 右邊欄是新動作表單：「新增動作」不用捲
 	return { ok: r.點得到 && r.按鈕[1] <= r.右邊欄[1] && r.右邊欄要捲, value: r };
 });
 
+// ---------- 舊畫面整理：錯誤訊息貼著欄位、黏底按鈕不蓋欄位、「⋯」小窗（#214） ----------
+
+/** 開範例流程、選全隊：右邊欄是打開的新動作表單，捲回最上面。 */
+async function newActionForm(w, h) {
+	await setViewport(w, h);
+	await openSample();
+	await js(`[...document.querySelectorAll('.inspector button')].find((b) => b.textContent.trim() === '全隊').click()`);
+	await sleep(300);
+	await js(`document.querySelector('#panel-action').scrollTop = 0`);
+	await sleep(150);
+}
+
+/**
+ * 欄位跟黏底的「新增動作」那一條有沒有疊到；欄位在右邊欄看得到的範圍外（還沒捲到）不算被蓋。
+ * 看得到的欄位要整個在那一條上面。
+ */
+const fieldClear = (label) =>
+	js(`const el = document.querySelector('.action-form input[aria-label="${label}"]');
+		const r = el.getBoundingClientRect();
+		const bar = document.querySelector('.action-form .add-bar').getBoundingClientRect();
+		const panel = document.querySelector('#panel-action').getBoundingClientRect();
+		const inView = r.bottom > panel.top && r.top < panel.bottom;
+		return { 沒被蓋: !inView || r.bottom <= bar.top, 看得到: inView, 欄位: [Math.round(r.top), Math.round(r.bottom)], 那一條: [Math.round(bar.top), Math.round(bar.bottom)] };`);
+
+await check('1280×720 新動作表單：黏底的「新增動作」不蓋住開始、長度（剛打開時、欄位在那一條後面時 Tab 進去）', async () => {
+	await newActionForm(1280, 720);
+	const seen = { 剛打開: { 開始: await fieldClear('開始'), 長度: await fieldClear('長度') } };
+	for (const label of ['開始', '長度']) {
+		// 把欄位捲到黏底那一條後面，再讓它拿到焦點（跟 Tab 進去一樣）：瀏覽器捲進來時要躲開那一條
+		await js(`const panel = document.querySelector('#panel-action');
+			const el = document.querySelector('.action-form input[aria-label="${label}"]');
+			const bar = document.querySelector('.action-form .add-bar').getBoundingClientRect();
+			panel.scrollTop += el.getBoundingClientRect().bottom - bar.bottom + 2;
+			document.activeElement?.blur();
+			el.focus();`);
+		await sleep(300);
+		seen[`Tab 進${label}`] = await fieldClear(label);
+	}
+	const ok = seen.剛打開.開始.沒被蓋 && seen.剛打開.長度.沒被蓋 &&
+		['開始', '長度'].every((l) => seen[`Tab 進${l}`].看得到 && seen[`Tab 進${l}`].沒被蓋);
+	return { ok, value: seen };
+});
+
+await check('1280×720 新動作表單：開始欄打看不懂的按 Enter，原因就寫在開始欄下面、看得到，右邊欄沒有自己捲', async () => {
+	await newActionForm(1280, 720);
+	await js(`const el = document.querySelector('.action-form input[aria-label="開始"]');
+		el.focus(); el.value = 'abc'; el.dispatchEvent(new Event('input', { bubbles: true }));`);
+	const before = await js(`return document.querySelector('#panel-action').scrollTop`);
+	await press('Enter');
+	await sleep(300);
+	const r = await js(`const start = document.querySelector('.action-form input[aria-label="開始"]').getBoundingClientRect();
+		const alert = document.querySelector('.action-form [role=alert]');
+		if (!alert) return { 有原因: false };
+		const a = alert.getBoundingClientRect();
+		const t = document.elementFromPoint(a.left + 10, a.top + a.height / 2);
+		return { 有原因: true, 原因: alert.textContent, 開始欄: [Math.round(start.left), Math.round(start.bottom)],
+			原因的位置: [Math.round(a.left), Math.round(a.top)], 看得到: !!t && alert.contains(t),
+			右邊欄捲: document.querySelector('#panel-action').scrollTop };`);
+	const ok = r.有原因 && r.看得到 && r.原因的位置[1] - r.開始欄[1] >= 0 && r.原因的位置[1] - r.開始欄[1] <= 40 &&
+		Math.abs(r.原因的位置[0] - r.開始欄[0]) <= 20 && r.右邊欄捲 === before;
+	return { ok, value: { ...r, 原本捲: before } };
+});
+
+await check('1280×720 場地左下的「圖例」點得到：收起來後圖例不佔位置，「圖例」鈕還在、再點打開', async () => {
+	await setViewport(1280, 720);
+	await openSample();
+	const rail = await rectOf('.rail');
+	await wheel(rail.x, rail.y, 2000);
+	const first = await hitAndClick('.rail .legend-toggle');
+	const shut = await js(`const box = document.querySelector('.rail .legend-box');
+		const t = document.querySelector('.rail .legend-toggle');
+		return { 收起來: box.getBoundingClientRect().height === 0, 箭頭: t.textContent.trim(), 開著: t.getAttribute('aria-expanded') };`);
+	await wheel(rail.x, rail.y, 2000);
+	const again = await hitAndClick('.rail .legend-toggle');
+	const open = await js(`return document.querySelector('.rail .legend-box').getBoundingClientRect().height > 0`);
+	return { ok: first.self && again.self && shut.收起來 && shut.開著 === 'false' && open, value: { 第一次點: first, 收起來: shut, 再點: again, 打開了: open } };
+});
+
+await check('1280×720 播放列的「⋯」點得到，打開的小窗（延遲校正）整個在畫面裡', async () => {
+	await setViewport(1280, 720);
+	await openSample();
+	const hit = await hitAndClick('.transport .more');
+	await sleep(200);
+	const corners = await js(`return !!document.querySelector('.more-pop')`) ? await cornersVisible('.more-pop') : { ok: false, value: '沒打開' };
+	await press('Escape');
+	return { ok: hit.self && corners.ok, value: { 點到: hit, 小窗: corners.value } };
+});
+
 // ---------- 撞位的 ✕、場地中心記號（#133） ----------
 
 await check('1440×1000 滑鼠移到場上撞位的 ✕ 上，接得到滑鼠、有「撞位：誰、誰」；場地中心記號是「＋」不是 ✕', async () => {

@@ -106,8 +106,8 @@ describe('刪動作的提示', () => {
 		remove.focus();
 		await fireEvent.click(remove);
 		expect(bar()).toBeNull();
-		// 焦點留在動作表單裡，不掉到頁面最上面；⌘Z 退回流程，不是交給瀏覽器退字
-		expect(document.querySelector('.action-form')!.contains(document.activeElement)).toBe(true);
+		// 焦點留在右邊欄（收起來的「＋ 新動作」），不掉到頁面最上面；⌘Z 退回流程，不是交給瀏覽器退字
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '＋ 新動作' }));
 		expect(await fireEvent.keyDown(document.activeElement!, { key: 'z', metaKey: true })).toBe(false);
 		expect(bar()).not.toBeNull();
 		expect(session.flow!.actions).toHaveLength(1);

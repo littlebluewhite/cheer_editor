@@ -37,6 +37,7 @@ describe('空白鍵', () => {
 		editable.setAttribute('contenteditable', 'true');
 		editable.tabIndex = 0;
 		document.querySelector('.inspector')!.append(editable);
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		const targets = [
 			screen.getByRole('combobox', { name: '小美 的任務角色' }),
 			screen.getByLabelText('延遲校正（毫秒）'),
@@ -277,6 +278,7 @@ describe('Home／End、分頁', () => {
 		await fireEvent.keyDown(window, { key: 'Home' });
 		expect(position()).toBe('音樂 1 1-1');
 		// 輸入框裡的 Home／End 是移游標
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'End' });
 		expect(position()).toBe('音樂 1 1-1');
 	});

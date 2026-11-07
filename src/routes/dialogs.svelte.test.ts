@@ -109,6 +109,7 @@ describe('三種關法結果一樣', () => {
 		await newFlow();
 		await addSegment('＋音樂段');
 		await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.click(screen.getByRole('button', { name: '名詞對照表' }));
 		await closers['背景']();
 		expect(screen.queryByRole('dialog', { name: '名詞對照表' })).toBeNull();
@@ -137,6 +138,8 @@ describe('焦點', () => {
 			await newFlow();
 			await addSegment('＋音樂段');
 			await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
+			// 名詞對照表在新動作表單裡：沒選人時表單收起來，先打開
+			await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 			const button = opener();
 			await press(button);
 			const box = dialog(name);
@@ -184,6 +187,7 @@ describe('對話框裡的確認框', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '加隊員' }));
 		await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
 		await addSegment('＋音樂段');
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 
