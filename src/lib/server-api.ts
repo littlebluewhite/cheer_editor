@@ -73,6 +73,12 @@ export interface FlowRoom {
 	close(): void;
 }
 
+/** 傳上雲端的流程（flow.json 的內容，不含音樂）最多幾個 byte：跟伺服器的 UPLOAD_LIMIT（server/src/lib.rs）一樣。 */
+export const MAX_CLOUD_FLOW_BYTES = 16 * 1024 * 1024;
+
+/** 流程超過 MAX_CLOUD_FLOW_BYTES，傳不上去的原因（前面接「傳不上去：」）。 */
+export const FLOW_TOO_BIG = '這支流程太大了（音樂檔以外超過 16 MB）';
+
 /** 斷線後隔多久重連（伺服器沒回應時也是多久自動再試一次，#260）：1、2、4、8 秒，之後每 10 秒。 */
 const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
 
@@ -136,7 +142,7 @@ export interface ServerAdapter {
 	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
 	/**
 	 * 傳上雲端（#259）：送流程檔的 flow.json 內容（帶成功率紀錄），伺服器檢查整支流程，過了建一支新的雲端流程（我是擁有者）。
-	 * 不收回原因。音樂檔另外用 uploadAudio 傳。
+	 * 不收回原因（超過 16 MB 也是，FLOW_TOO_BIG）。音樂檔另外用 uploadAudio 傳。
 	 */
 	uploadFlow(doc: FlowDocument): Promise<CloudFlowSummary | FlowBlocked>;
 	/** 拿一支雲端流程（帶我的權限）；沒有這支、沒有權限是 null。 */
@@ -315,7 +321,10 @@ export function httpServer(base = ''): ServerAdapter {
 			throw new ServerUnreachable();
 		},
 		async uploadFlow(doc) {
+			// 伺服器只收 16 MB 以下：先擋，不然它回 413 會被當成連不上
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
 			const res = await post('flows/upload', doc);
+			if (res.status === 413) return { message: FLOW_TOO_BIG };
 			if (res.ok || res.status === 422) return (await res.json()) as CloudFlowSummary | FlowBlocked;
 			throw new ServerUnreachable();
 		},

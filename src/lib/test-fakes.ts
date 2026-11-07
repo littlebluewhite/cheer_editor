@@ -49,6 +49,8 @@ import {
 	type UnsentRecords
 } from '#lib/offline-store.js';
 import {
+	FLOW_TOO_BIG,
+	MAX_CLOUD_FLOW_BYTES,
 	ServerUnreachable,
 	type AdminResult,
 	type FlowRoom,
@@ -848,6 +850,7 @@ export function fakeServer(
 		},
 		async uploadFlow(doc) {
 			mine();
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
 			const checked = checkFlowDocument(structuredClone(doc));
 			if (checked.kind === 'error') return { message: checked.message };
 			const problem = flowProblem(checked.flow);
