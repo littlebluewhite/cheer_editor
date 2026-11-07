@@ -1,13 +1,13 @@
 // 問教練 module：畫面上「送指令 → 問 → 再送」只寫這一次。一個實例管一個地方的問題，ConfirmList 收它就畫。
 // 編輯頁的元件跟 session 要（changeAsk 是「改」、recordAsk 是「記」），不自己接；沒有 session 的（新建流程）才自己給 onchange。
-// 送一個指令：給它指令名字＋參數（一步也可以帶好幾個，照順序跑、全算或全不算），或「帶著回答再送一次」的函式。照結果：
+// 送一個指令：給它指令名字＋參數（一步也可以帶好幾個，照順序跑、全算或全不算）。照結果：
 //   成功：把新流程交給 onchange；被擋：留下原因（給了還原就加「，已還原」並還原）；要確認、要選：留下問題。
 //   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到任何一格成功送出為止（改好了就收，不疊著）。
 // 送之前就看得出不行（表單的字讀不懂）：block 給原因，當被擋，不送指令。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
 // 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
 // 給了鎖（locked，例：檢視模式）：鎖著時指令不送，直接當被擋，原因是鎖給的那句。
-// 用名字送的指令跑在 flow（建它時給的）那時候的流程上；回答放進要問的那個指令的 options，整串再送一次。
+// 指令跑在 flow（建它時給的）那時候的流程上；回答放進要問的那個指令的 options，整串再送一次。
 // 還沒到指令就被擋（例：教練打的字看不懂）用 block：跟送出被擋一樣留下原因。
 
 import {
@@ -64,7 +64,7 @@ export class Ask {
 	/**
 	 * onfail：沒成功（被擋、要問）之後呼叫，給 error（要問時是空的）。
 	 * locked：鎖著的原因（空字串是沒鎖）；鎖著時送什麼都當被擋。
-	 * flow：現在的流程，用名字送的指令跑在它上面（沒給是 null，只有新建流程叫得動）。
+	 * flow：現在的流程，指令跑在它上面（沒給是 null，只有新建流程叫得動）。
 	 */
 	constructor(
 		onchange: (flow: Flow) => void,
@@ -87,15 +87,11 @@ export class Ask {
 		this.confirmLabel = confirmLabel;
 	}
 
-	/** 送指令（名字＋參數、一串指令，或包好的函式）；回第一次送出的結果。 */
+	/** 送指令（名字＋參數，或一串指令）；回第一次送出的結果。 */
 	send<N extends CommandName>(command: Command<N>, handlers?: Handlers<CommandOutcome<N>>): CommandOutcome<N>;
 	send(commands: Command[], handlers?: Handlers<CommandResult>): CommandResult;
-	send<R extends CommandResult>(send: (o?: ConfirmOption) => R, handlers?: Handlers<R>): R;
 	send(what: object, handlers: Handlers<never> = {}): unknown {
-		const send =
-			typeof what === 'function'
-				? (what as (o?: ConfirmOption) => CommandResult)
-				: this.#byName(what as Command | Command[]);
+		const send = this.#byName(what as Command | Command[]);
 		const r = this.#run(send, {});
 		this.#settle(r, send, handlers as Handlers<CommandResult>);
 		return r;
@@ -110,7 +106,7 @@ export class Ask {
 	}
 
 	/**
-	 * 用名字送：每次都跑在那時候的流程上。要問時記下是第幾個指令問的，
+	 * 每次都跑在那時候的流程上。要問時記下是第幾個指令問的，
 	 * 回答放進那個指令的 options（前面回答過的留著），整串再送一次。
 	 */
 	#byName(what: Command | Command[]): (o: ConfirmOption) => CommandResult {
