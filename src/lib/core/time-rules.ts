@@ -18,6 +18,13 @@ export const DEFAULT_TIME_RULES: TimeRules = {
 	maxTotalSec: 180
 };
 
+/** 時間規則的數字不合時說的話。 */
+export const TIME_RULE_PROBLEMS = {
+	positive: '秒數要大於 0',
+	chant: '「口號段加起來最少」要比「整支流程最多」少',
+	music: '「音樂段加起來最多」不能超過「整支流程最多」'
+};
+
 /**
  * 流程設定：改規則警告的開關和三個數字。秒數要大於 0；口號段最少要比整支最多少；音樂段最多不能超過整支最多。
  * 只檢查這次改到的數字：舊檔存著 0 或互相矛盾的值照留，改開關、改不相干的那一格不會被它擋。
@@ -27,12 +34,12 @@ export function updateTimeRules(flow: Flow, patch: Partial<TimeRules>): CommandR
 	const { minChantSec, maxMusicSec, maxTotalSec } = timeRules;
 	const changed = (...keys: (keyof TimeRules)[]) => keys.some((k) => k in patch);
 	const seconds = (['minChantSec', 'maxMusicSec', 'maxTotalSec'] as const).filter((k) => changed(k));
-	if (!seconds.every((k) => Number.isFinite(timeRules[k]) && timeRules[k] > 0)) return blocked('秒數要大於 0');
+	if (!seconds.every((k) => Number.isFinite(timeRules[k]) && timeRules[k] > 0)) return blocked(TIME_RULE_PROBLEMS.positive);
 	if (changed('minChantSec', 'maxTotalSec') && minChantSec >= maxTotalSec - EPS) {
-		return blocked('「口號段加起來最少」要比「整支流程最多」少');
+		return blocked(TIME_RULE_PROBLEMS.chant);
 	}
 	if (changed('maxMusicSec', 'maxTotalSec') && maxMusicSec > maxTotalSec + EPS) {
-		return blocked('「音樂段加起來最多」不能超過「整支流程最多」');
+		return blocked(TIME_RULE_PROBLEMS.music);
 	}
 	return ok({ ...flow, timeRules });
 }
