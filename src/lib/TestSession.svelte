@@ -2,7 +2,9 @@
 	// 元件測試用：把一個編輯器 module（和它的 session）放進 context，再畫要測的元件。只給測試用，頁面不 import。
 	// 用法：const { editor, session } = testEditor(flow)（#lib/test-fakes.js）；
 	// render(TestSession, { props: { editor, component: AttemptCard, props: { ... } } })，操作後讀 session.flow。
+	// 編輯器的提示（NoticeToast）也畫出來，跟頁面一樣看得到「已存」「救回」。
 	import type { Component } from 'svelte';
+	import NoticeToast from './components/NoticeToast.svelte';
 	import { setEditor, type Editor } from './editor.svelte.js';
 
 	interface Props {
@@ -18,3 +20,4 @@
 </script>
 
 <Inner {...props} />
+<NoticeToast />
