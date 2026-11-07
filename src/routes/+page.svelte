@@ -192,6 +192,13 @@
 		history.replaceState(history.state, '', location.pathname + location.search);
 		fromLink = false;
 	});
+	/** 誰開著的頭像顏色：照使用者 id 一人一個（同一個人換分頁、重新整理還是同一個顏色）。 */
+	const FACE_COLORS = ['#1d4ed8', '#be185d', '#047857', '#b45309', '#6d28d9', '#0e7490', '#b91c1c', '#4d7c0f'];
+	const faceColor = (userId: number) => FACE_COLORS[userId % FACE_COLORS.length];
+	// 換編輯、檢視模式：告訴伺服器（別人的在場名單寫「編輯中」「檢視中」，#253）
+	$effect(() => {
+		cloud?.setEditing(!session.viewing);
+	});
 	/** 「我」：手機檢視畫面標亮的人。這台裝置照流程記住（local-settings），不進流程檔；換流程時讀那支的。 */
 	let me = $state(session.flow ? loadFlowSetting('me', session.flow.name) : '');
 	/** 「我」還在名單裡才算（教練刪了那個人就沒有）。 */
@@ -344,6 +351,14 @@
 	function redo() {
 		if (session.redo()) restore(session.flow!);
 	}
+
+	// 別人的改動（雲端流程，#253）：開著的表單不關；開著的段設定指到被刪掉的段才關掉並說原因
+	session.onremote = (f, by) => {
+		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
+			restore(f);
+			session.notice = `${by}刪掉了你在改的段`;
+		}
+	};
 
 	/** 復原、重做換上的流程：開著的段設定可能指到已經不在的段（選取、提示、播放頭由 session、播放處理）。 */
 	function restore(f: Flow) {
@@ -671,6 +686,18 @@
 					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}
 						><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
 					>
+					<!-- 誰開著（#253）：別人的頭像放在「分享」左邊，一人一個顏色，右下小圖示是在編輯（筆）還是檢視（眼睛）；自己不列 -->
+					{#if cloud?.present.length}
+						<ul class="present" aria-label="誰開著">
+							{#each cloud.present as p (p.userId)}
+								{@const doing = `${p.name}・${p.editing ? '編輯中' : '檢視中'}`}
+								<li class="present-face" style:--face={faceColor(p.userId)} title={doing} aria-label={doing}>
+									<span aria-hidden="true">{p.name.slice(0, 1)}</span>
+									<span class="present-mode" aria-hidden="true"><Icon name={p.editing ? 'pencil' : 'eye'} size={10} /></span>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 					<!-- 放在原本存檔的地方；每個人都叫「分享」，不是擁有者打開是只能看的名單。用分享連結看的沒有 -->
 					{#if cloud}
 						<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />分享</button>
@@ -1320,6 +1347,38 @@
 	.cloud-saved {
 		color: #b8c4dc;
 		white-space: nowrap;
+	}
+	.present {
+		display: flex;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.present-face {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: var(--face);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 700;
+	}
+	.present-mode {
+		position: absolute;
+		right: -3px;
+		bottom: -3px;
+		display: grid;
+		place-items: center;
+		width: 15px;
+		height: 15px;
+		border-radius: 50%;
+		background: #fff;
+		color: var(--face);
+		box-shadow: 0 0 0 1px var(--face);
 	}
 	.unsaved-slot {
 		flex: none;

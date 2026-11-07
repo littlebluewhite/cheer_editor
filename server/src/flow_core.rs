@@ -121,12 +121,45 @@ impl FlowCore {
         });
         async move { result.await? }
     }
+
+    /// 比對改之前、改之後的流程（`remoteChangeJson`）：回要送給房間裡其他人的改動的 JSON（#253）。
+    pub fn remote_change(
+        &self,
+        before: String,
+        after: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        self.call_two("remoteChangeJson", before, after)
+    }
+
+    /// 把別人的改動套在一份流程上（`applyRemoteChangeJson`），回套好的流程的 JSON。
+    /// 前端收到改動時做的事；伺服器只在測試用（套上去要跟伺服器一樣）。
+    pub fn apply_remote_change(
+        &self,
+        flow: String,
+        change: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        self.call_two("applyRemoteChangeJson", flow, change)
+    }
+
+    fn call_two(
+        &self,
+        name: &'static str,
+        a: String,
+        b: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            call(ctx, name, (a, b))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
 }
 
 fn call<'js>(
     ctx: &Ctx<'js>,
     name: &str,
-    args: (String, String, String),
+    args: impl rquickjs::function::IntoArgs<'js>,
 ) -> rquickjs::Result<String> {
     let core: Object = ctx.globals().get("flowCore")?;
     let f: Function = core.get(name)?;

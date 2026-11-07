@@ -12,6 +12,7 @@ import {
 	loadSegmentAudio,
 	addPhase,
 	recordAttempt,
+	remoteChange,
 	runCommands,
 	setSquad,
 	updateSegment,
@@ -35,6 +36,7 @@ import {
 	type LinkInfo,
 	type Me,
 	type Person,
+	type Present,
 	type Role,
 	type RoomMessage,
 	type ServerAdapter,
@@ -171,6 +173,8 @@ export interface FakeCloudFlow {
  * 分享連結（#251）照真的規則：只有擁有者能開、關（關掉再打開是新的一條），有權限的人看得到；用連結打開不用登入、
  * 拿不到紀錄，已經有權限的帶自己的權限。
  * 音樂檔（#249）放在那支流程的 audio：超過 60 MB 不收（'tooBig'）；audioTooBig 設成 true 就是伺服器傳完才查到太大。
+ * 別人的改動、誰開著（#253）照真的規則：收了一步就把改好的東西送給同一支流程其他開著的房間；有人進來、離開、換模式就說在場名單
+ * （自己不列，同一個人只列一次）。joinAs(flowId, email, editing)：別人（在別的地方）打開這支流程，回他的房間，可以送步、換模式。
  */
 export function fakeServer(
 	init: {
@@ -207,13 +211,18 @@ export function fakeServer(
 		if (state.holdRoom) held.push(send);
 		else queueMicrotask(send);
 	};
-	/** 房間收到一步：照真的伺服器的規則。 */
-	const takeStep = (f: FakeCloudFlow, stepId: string, commands: Command[]): RoomMessage => {
+	/** 房間收到一步：照真的伺服器的規則。收了就把改好的東西送給同一支流程其他開著的房間。 */
+	const takeStep = (f: FakeCloudFlow, stepId: string, commands: Command[], from: OpenRoom): RoomMessage => {
 		const taken = f.stepIds?.[stepId];
 		if (taken !== undefined) return { kind: 'accepted', stepId, step: taken };
 		const r = runCommands(structuredClone(f.flow), structuredClone(commands), stepId);
 		const step = f.step ?? 0;
 		if (r.kind !== 'ok') return { kind: 'rejected', stepId, message: `沒存進去：${r.message}`, flow: structuredClone(f.flow), step };
+		const change = remoteChange(f.flow, r.flow);
+		const by = find(from.email)?.name ?? '';
+		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
+			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
+		}
 		f.flow = r.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
@@ -261,8 +270,23 @@ export function fakeServer(
 			return p;
 		});
 	};
-	/** 開著的房間：哪支流程、誰的。 */
-	const rooms: { flowId: string; email: string; room: FlowRoom }[] = [];
+	/** 開著的房間。 */
+	const rooms: OpenRoom[] = [];
+	/** 告訴這支流程每個打過招呼的房間現在誰開著（自己不列，同一個人只列一次）。 */
+	const tellPresent = (flowId: string) => {
+		const here = rooms.filter((r) => r.flowId === flowId && r.here);
+		for (const r of here) {
+			const people: Present[] = [];
+			for (const o of here.filter((o) => !same(o.email, r.email))) {
+				const u = find(o.email)!;
+				const userId = state.users.indexOf(u) + 1;
+				const seen = people.find((p) => p.userId === userId);
+				if (seen) seen.editing ||= o.editing;
+				else people.push({ userId, name: u.name, editing: o.editing });
+			}
+			deliver(r.room, () => ({ kind: 'present', people }));
+		}
+	};
 	/** 改這個人的權限（null 是收回），告訴他開著的房間。 */
 	const changeRole = (flowId: string, email: string, role: Exclude<Role, 'owner'> | null) => {
 		const f = state.flows.find((g) => g.id === flowId)!;
@@ -275,7 +299,9 @@ export function fakeServer(
 			deliver(r.room, () =>
 				role ? { kind: 'roleChanged', role, flow: structuredClone(f.flow), step: f.step ?? 0 } : { kind: 'revoked' }
 			);
+			if (role !== 'editor') r.editing = false;
 		}
+		tellPresent(flowId);
 	};
 	/** 把 from 擁有的流程（only：只交這幾支）交給 to，from 變編輯者；告訴兩個人開著的房間。回交出去幾支。 */
 	const handOverFlows = (from: string, to: string, only: FakeCloudFlow[] = state.flows) => {
@@ -526,11 +552,19 @@ export function fakeServer(
 					const role = f && roleOf(f, email);
 					if (!f) return;
 					if (!role) return deliver(room, () => ({ kind: 'revoked' }));
+					const editor = role === 'owner' || role === 'editor';
 					if (request.kind === 'hello') {
 						ready = request.fingerprint === state.fingerprint;
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
-					} else if (role === 'owner' || role === 'editor') {
-						deliver(room, () => (ready ? takeStep(f, request.stepId, request.commands as Command[]) : null));
+						if (!ready) return;
+						open.here = true;
+						open.editing = request.editing && editor;
+						tellPresent(flowId);
+					} else if (request.kind === 'mode') {
+						open.editing = request.editing && editor;
+						tellPresent(flowId);
+					} else if (editor) {
+						deliver(room, () => (ready ? takeStep(f, request.stepId, request.commands as Command[], open) : null));
 					} else {
 						const { stepId } = request;
 						const message = '沒存進去：你只能看這支流程';
@@ -540,9 +574,11 @@ export function fakeServer(
 				close() {
 					const i = rooms.findIndex((r) => r.room === room);
 					if (i >= 0) rooms.splice(i, 1);
+					tellPresent(flowId);
 				}
 			};
-			rooms.push({ flowId, email, room });
+			const open: OpenRoom = { flowId, email, room, here: false, editing: false };
+			rooms.push(open);
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {
@@ -588,7 +624,33 @@ export function fakeServer(
 		held = [];
 		for (const send of now) send();
 	};
-	return { server, state, releaseRoom, changeRole, deleteFlow };
+	/** 別人（email）在別的地方打開這支流程：回他的房間（打過招呼了）、送一步、換模式。 */
+	const joinAs = (flowId: string, email: string, editing = true) => {
+		const signedIn = state.signedIn;
+		state.signedIn = email;
+		const room = server.openRoom(flowId);
+		state.signedIn = signedIn;
+		const heard: RoomMessage[] = [];
+		room.onmessage = (m) => heard.push(m);
+		room.send({ kind: 'hello', fingerprint: state.fingerprint, tabId: `tab-${email}`, seen: 0, editing });
+		let n = 0;
+		return {
+			room,
+			heard,
+			step: (...commands: { name: string; args: unknown[] }[]) => room.send({ kind: 'step', stepId: `step-${email}-${++n}`, seen: 0, commands }),
+			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
+		};
+	};
+	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs };
+}
+
+/** 假的伺服器上開著的一個房間：哪支流程、誰的、打過招呼了沒（在場名單只列打過招呼的）、在編輯嗎。 */
+interface OpenRoom {
+	flowId: string;
+	email: string;
+	room: FlowRoom;
+	here: boolean;
+	editing: boolean;
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

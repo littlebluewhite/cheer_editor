@@ -1,11 +1,16 @@
 //! 雲端流程的房間（WebSocket，#248）：一支流程一個，登入、有權限的人才能連（#250：每一級都能連，
 //! 只有擁有者、編輯者送的步收；權限被改、被收回馬上告訴他）。
-//! 連上先打招呼（指紋、分頁 id、上次看到第幾步）：指紋不一樣就說有新版、不收步。
+//! 連上先打招呼（指紋、分頁 id、上次看到第幾步、在編輯還是檢視）：指紋不一樣就說有新版、不收步。
 //! 之後每一步：步驟 id、上次看到第幾步、一串指令（名字＋參數）。伺服器在現在的樣子上用流程核心照順序跑，
 //! 被擋、要問（教練那邊沒問）就退回並帶原因和伺服器現在的樣子；收了就存起來、第幾步加 1（ADR 0007、0011）。
-//! 步驟 id 收過：回原本的結果，不套兩次。流程被刪了（#252）每個連線都說，房間關掉。別人的改動、改到同一個東西在 #253、#254。
+//! 步驟 id 收過：回原本的結果，不套兩次。
+//! 收了的步（#253）：用流程核心比對前後，把改好之後的那些東西送給房間裡的其他連線（不轉送指令）；
+//! 存好、送出去照第幾步的順序（同一支流程的步在這台伺服器上一個一個來）。
+//! 誰開著（#253）：每個連線是誰、在編輯還是檢視；有人進來、離開、換模式就告訴每個連線（自己不列，同一個人只列一次）。
+//! 流程被刪了（#252）每個連線都說，房間關掉。改到同一個東西在 #254。
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -33,33 +38,113 @@ pub enum RoomEvent {
     Permission { user_id: i64, role: Option<Role> },
     /// 擁有者把這支流程刪了（#252）：每個人都要知道。
     Deleted,
+    /// 收了一步：哪個連線送的、送的人的名字、收了之後第幾步、改好之後的東西（RemoteChange 的 JSON）。
+    Changed {
+        from: u64,
+        by: String,
+        step: i64,
+        change: Arc<str>,
+    },
+    /// 在場名單變了：現在開著的每個連線。
+    Present(Arc<Vec<Here>>),
 }
 
-/// 開著的房間：流程 id → 發給那支流程每個連線的頻道。
+/// 開著這支流程的一個連線：誰、在編輯還是檢視。
+#[derive(Clone, Debug)]
+pub struct Here {
+    conn: u64,
+    user_id: i64,
+    name: String,
+    editing: bool,
+}
+
+/// 一支流程開著的房間。
+struct Room {
+    /// 發給這支流程每個連線的頻道。
+    events: tokio::sync::broadcast::Sender<RoomEvent>,
+    /// 收步一個一個來：存好、告訴別人照第幾步的順序。
+    steps: Arc<tokio::sync::Mutex<()>>,
+    /// 開著的連線，照進來的先後。
+    here: Vec<Here>,
+}
+
+/// 開著的房間：流程 id → 那支流程的房間。
 #[derive(Clone, Default)]
-pub struct Rooms(Arc<Mutex<HashMap<String, tokio::sync::broadcast::Sender<RoomEvent>>>>);
+pub struct Rooms {
+    rooms: Arc<Mutex<HashMap<String, Room>>>,
+    /// 下一個連線的號碼。
+    next_conn: Arc<AtomicU64>,
+}
 
 impl Rooms {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Room>> {
+        self.rooms.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn listen(&self, flow_id: &str) -> tokio::sync::broadcast::Receiver<RoomEvent> {
-        let mut rooms = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        rooms
+        self.lock()
             .entry(flow_id.to_owned())
-            .or_insert_with(|| tokio::sync::broadcast::channel(64).0)
+            .or_insert_with(|| Room {
+                events: tokio::sync::broadcast::channel(256).0,
+                steps: Default::default(),
+                here: Vec::new(),
+            })
+            .events
             .subscribe()
     }
 
     /// 告訴這支流程開著的連線；沒人開著就算了。
     pub fn tell(&self, flow_id: &str, event: RoomEvent) {
-        let rooms = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(sender) = rooms.get(flow_id) {
-            let _ = sender.send(event);
+        if let Some(room) = self.lock().get(flow_id) {
+            let _ = room.events.send(event);
         }
     }
 
-    /// 一個連線走了：沒人開著就拿掉這支的頻道。
-    fn forget(&self, flow_id: &str) {
-        let mut rooms = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        if rooms.get(flow_id).is_some_and(|s| s.receiver_count() == 0) {
+    /// 這支流程收步的鎖（連著的人才會叫，房間一定在）。
+    fn steps(&self, flow_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.lock()
+            .get(flow_id)
+            .map(|room| room.steps.clone())
+            .unwrap_or_default()
+    }
+
+    /// 改在場名單，再告訴每個連線。
+    fn update_here(&self, flow_id: &str, change: impl FnOnce(&mut Vec<Here>)) {
+        let mut rooms = self.lock();
+        let Some(room) = rooms.get_mut(flow_id) else {
+            return;
+        };
+        change(&mut room.here);
+        let _ = room
+            .events
+            .send(RoomEvent::Present(Arc::new(room.here.clone())));
+    }
+
+    /// 現在的在場名單。
+    fn here(&self, flow_id: &str) -> Vec<Here> {
+        self.lock()
+            .get(flow_id)
+            .map(|room| room.here.clone())
+            .unwrap_or_default()
+    }
+
+    /// 這個連線換成編輯或檢視。
+    fn set_editing(&self, flow_id: &str, conn: u64, editing: bool) {
+        self.update_here(flow_id, |here| {
+            for h in here.iter_mut().filter(|h| h.conn == conn) {
+                h.editing = editing;
+            }
+        });
+    }
+
+    /// 一個連線走了：從在場名單拿掉；沒人開著就拿掉這支的房間。
+    fn leave(&self, flow_id: &str, conn: u64) {
+        self.update_here(flow_id, |here| here.retain(|h| h.conn != conn));
+        let mut rooms = self.lock();
+        if rooms
+            .get(flow_id)
+            .is_some_and(|room| room.events.receiver_count() == 0)
+        {
             rooms.remove(flow_id);
         }
     }
@@ -74,7 +159,7 @@ impl Rooms {
 )]
 #[ts(export)]
 pub enum RoomRequest {
-    /// 連上時第一句：流程核心那包的指紋、這個分頁的 id、上次看到第幾步。
+    /// 連上時第一句：流程核心那包的指紋、這個分頁的 id、上次看到第幾步、在編輯還是檢視。
     Hello {
         fingerprint: String,
         tab_id: String,
@@ -82,6 +167,9 @@ pub enum RoomRequest {
         #[ts(type = "number")]
         #[allow(dead_code)]
         seen: i64,
+        /// 在編輯（不是檢視模式）：在場名單用。
+        #[serde(default)]
+        editing: bool,
     },
     /// 一步：步驟 id（亂數）、上次看到第幾步、一串指令（名字＋參數，教練的回答在 options）。
     Step {
@@ -92,6 +180,8 @@ pub enum RoomRequest {
         #[ts(type = "unknown[]")]
         commands: serde_json::Value,
     },
+    /// 換成編輯或檢視模式（在場名單用）。
+    Mode { editing: bool },
 }
 
 /// 伺服器送給用戶端的。
@@ -137,6 +227,43 @@ pub enum RoomMessage {
     Revoked,
     /// 擁有者把這支流程刪了（#252）：房間關掉，回首頁並說原因。
     Deleted,
+    /// 別人的一步收了：收了之後第幾步、送的人的名字、改好之後的東西（RemoteChange，套在自己的畫面上）。
+    Changed {
+        #[ts(type = "number")]
+        step: i64,
+        by: String,
+        #[ts(type = "unknown")]
+        change: Box<RawValue>,
+    },
+    /// 現在誰開著（自己不列，同一個人只列一次），照進來的先後。
+    Present { people: Vec<Present> },
+}
+
+/// 在場名單的一個人：在編輯還是檢視（他有一個分頁在編輯就算在編輯）。
+#[derive(Serialize, TS, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Present {
+    #[ts(type = "number")]
+    pub user_id: i64,
+    pub name: String,
+    pub editing: bool,
+}
+
+/// 給 me 看的在場名單：自己不列，同一個人只列一次。
+fn present_for(here: &[Here], me: i64) -> Vec<Present> {
+    let mut people: Vec<Present> = Vec::new();
+    for h in here.iter().filter(|h| h.user_id != me) {
+        match people.iter_mut().find(|p| p.user_id == h.user_id) {
+            Some(p) => p.editing |= h.editing,
+            None => people.push(Present {
+                user_id: h.user_id,
+                name: h.name.clone(),
+                editing: h.editing,
+            }),
+        }
+    }
+    people
 }
 
 /// 連房間：別的網站叫的擋（403）、沒登入 401、不是我的或沒有這支 404。
@@ -158,64 +285,113 @@ pub async fn join(
     }
     Ok(ws.on_upgrade(move |socket| async move {
         let rooms = state.rooms.clone();
-        if let Err(e) = serve(state, socket, &id, user_id).await {
+        let conn = rooms.next_conn.fetch_add(1, Ordering::Relaxed);
+        if let Err(e) = serve(state, socket, &id, user_id, conn).await {
             tracing::error!(err = %e, "房間出錯");
         }
-        rooms.forget(&id);
+        rooms.leave(&id, conn);
     }))
 }
 
-/// 一個連線：先打招呼，再一步一步收；權限被改、被收回馬上說。對方斷線、被收回就結束。
+/// 一個連線：先打招呼，再一步一步收；權限被改、被收回馬上說；別人的改動、在場名單送過來。
+/// 對方斷線、被收回就結束。
 async fn serve(
     state: AppState,
     mut socket: WebSocket,
     flow_id: &str,
     user_id: i64,
+    conn: u64,
 ) -> anyhow::Result<()> {
     // 打招呼前就開始聽：連上之後的權限改動不會漏掉。
     let mut events = state.rooms.listen(flow_id);
-    let tab_id = loop {
+    let (tab_id, editing) = loop {
         match next_request(&mut socket).await {
             Some(RoomRequest::Hello {
                 fingerprint,
                 tab_id,
+                editing,
                 ..
             }) => {
                 if fingerprint != FINGERPRINT {
                     tell(&mut socket, &RoomMessage::NewVersion).await?;
                     return Ok(());
                 }
-                break tab_id;
+                break (tab_id, editing);
             }
             Some(_) => continue,
             None => return Ok(()),
         }
     };
-    if role_of(&state.db, flow_id, user_id).await?.is_none() {
+    let Some(mut role) = role_of(&state.db, flow_id, user_id).await? else {
         return tell(&mut socket, &RoomMessage::Revoked).await;
-    }
+    };
+    let (name,): (String,) = sqlx::query_as("SELECT name FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
     let (_, step) = current(&state, flow_id).await?;
     tell(&mut socket, &RoomMessage::Ready { step }).await?;
+    let here = Here {
+        conn,
+        user_id,
+        name: name.clone(),
+        editing: editing && role.can_edit(),
+    };
+    state.rooms.update_here(flow_id, |list| list.push(here));
 
     loop {
         let reply = tokio::select! {
             request = next_request(&mut socket) => match request {
                 None => return Ok(()),
                 Some(RoomRequest::Step { step_id, commands, .. }) => {
-                    take_step(&state, flow_id, user_id, &tab_id, step_id, commands).await?
+                    // 存好、告訴別人都在鎖裡：別人收到的改動照第幾步的順序。
+                    let steps = state.rooms.steps(flow_id);
+                    let _one_at_a_time = steps.lock().await;
+                    let (reply, change) =
+                        take_step(&state, flow_id, user_id, &tab_id, step_id, commands).await?;
+                    if let (RoomMessage::Accepted { step, .. }, Some(change)) = (&reply, change) {
+                        let event = RoomEvent::Changed {
+                            from: conn,
+                            by: name.clone(),
+                            step: *step,
+                            change: change.into(),
+                        };
+                        state.rooms.tell(flow_id, event);
+                    }
+                    reply
                 }
-                Some(_) => continue,
+                Some(RoomRequest::Mode { editing }) => {
+                    state.rooms.set_editing(flow_id, conn, editing && role.can_edit());
+                    continue;
+                }
+                Some(RoomRequest::Hello { .. }) => continue,
             },
             event = events.recv() => match event {
-                Ok(RoomEvent::Permission { user_id: who, role }) if who == user_id => {
-                    told_role(&state, flow_id, role).await?
+                Ok(RoomEvent::Permission { user_id: who, role: changed }) if who == user_id => {
+                    if let Some(r) = changed {
+                        role = r;
+                        if !r.can_edit() {
+                            state.rooms.set_editing(flow_id, conn, false);
+                        }
+                    }
+                    told_role(&state, flow_id, changed).await?
                 }
                 Ok(RoomEvent::Deleted) => RoomMessage::Deleted,
+                Ok(RoomEvent::Changed { from, by, step, change }) if from != conn => {
+                    RoomMessage::Changed { step, by, change: RawValue::from_string(change.to_string())? }
+                }
+                Ok(RoomEvent::Present(here)) => RoomMessage::Present { people: present_for(&here, user_id) },
                 Ok(_) => continue,
-                // 漏聽了幾件：照資料庫重新看一次自己的權限。
+                // 漏聽了幾件：照資料庫重新看一次自己的權限，再說一次在場名單。
+                // 漏掉的別人的改動要重新連才拿得到（斷線、重新連在 #255）。
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    let role = role_of(&state.db, flow_id, user_id).await?;
-                    told_role(&state, flow_id, role).await?
+                    let changed = role_of(&state.db, flow_id, user_id).await?;
+                    let told = told_role(&state, flow_id, changed).await?;
+                    if !matches!(told, RoomMessage::Revoked) {
+                        let people = present_for(&state.rooms.here(flow_id), user_id);
+                        tell(&mut socket, &RoomMessage::Present { people }).await?;
+                    }
+                    told
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => return Ok(()),
             },
@@ -276,7 +452,7 @@ async fn tell(socket: &mut WebSocket, message: &RoomMessage) -> anyhow::Result<(
 }
 
 /// 收一步。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted；先查權限：被收回回 Revoked，
-/// 不能改的（記錄者、檢視者）退回。
+/// 不能改的（記錄者、檢視者）退回。收了的連同要送給別人的改動（RemoteChange 的 JSON）一起回。
 async fn take_step(
     state: &AppState,
     flow_id: &str,
@@ -284,7 +460,7 @@ async fn take_step(
     tab_id: &str,
     step_id: String,
     commands: serde_json::Value,
-) -> anyhow::Result<RoomMessage> {
+) -> anyhow::Result<(RoomMessage, Option<String>)> {
     let mut tx = state.db.begin().await?;
     let Some((content, step)): Option<(String, i64)> =
         sqlx::query_as("SELECT content::text, step FROM flows WHERE id = $1 FOR UPDATE")
@@ -292,10 +468,10 @@ async fn take_step(
             .fetch_optional(&mut *tx)
             .await?
     else {
-        return Ok(RoomMessage::Deleted);
+        return Ok((RoomMessage::Deleted, None));
     };
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
-        return Ok(RoomMessage::Revoked);
+        return Ok((RoomMessage::Revoked, None));
     };
 
     // 收過的步驟 id（斷線重送）：回原本的結果。
@@ -306,17 +482,23 @@ async fn take_step(
             .fetch_optional(&mut *tx)
             .await?;
     if let Some((step,)) = taken {
-        return Ok(RoomMessage::Accepted { step_id, step });
+        return Ok((RoomMessage::Accepted { step_id, step }, None));
     }
 
-    let rejected = |message: String, content: String| -> anyhow::Result<RoomMessage> {
-        Ok(RoomMessage::Rejected {
-            step_id: step_id.clone(),
-            message,
-            flow: RawValue::from_string(content)?,
-            step,
-        })
-    };
+    let rejected =
+        |message: String, content: String| -> anyhow::Result<(RoomMessage, Option<String>)> {
+            let flow = RawValue::from_string(content)?;
+            let step_id = step_id.clone();
+            Ok((
+                RoomMessage::Rejected {
+                    step_id,
+                    message,
+                    flow,
+                    step,
+                },
+                None,
+            ))
+        };
     if !role.can_edit() {
         return rejected(VIEW_ONLY.into(), content);
     }
@@ -338,6 +520,11 @@ async fn take_step(
         }
     };
 
+    // 要送給別人的：改好之後的那些東西（比對前後，不轉送指令）。
+    let change = state
+        .core
+        .remote_change(content, flow.get().to_owned())
+        .await?;
     let now = state.clock.now();
     let step = step + 1;
     sqlx::query("UPDATE flows SET content = $2::json, step = $3, updated_at = $4 WHERE id = $1")
@@ -362,5 +549,5 @@ async fn take_step(
     // 換掉、刪掉的音樂記下哪天不用了（#249）。
     crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;
     tx.commit().await?;
-    Ok(RoomMessage::Accepted { step_id, step })
+    Ok((RoomMessage::Accepted { step_id, step }, Some(change)))
 }
