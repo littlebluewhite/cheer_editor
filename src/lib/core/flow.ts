@@ -118,3 +118,19 @@ export function adjustField(flow: Flow, field: FieldConfig): CommandResult {
 	}));
 	return ok({ ...flow, field: { ...field }, formations });
 }
+
+/** 兩份流程內容一不一樣（不看是不是同一個物件；沒有的欄位和 undefined 算一樣）。復原用它判斷「改」有沒有改到東西。 */
+export function sameFlow(a: Flow, b: Flow): boolean {
+	return same(a, b);
+}
+
+function same(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+	if (Array.isArray(a) || Array.isArray(b)) {
+		return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => same(x, b[i]));
+	}
+	const x = a as Record<string, unknown>;
+	const y = b as Record<string, unknown>;
+	return [...new Set([...Object.keys(x), ...Object.keys(y)])].every((k) => same(x[k], y[k]));
+}

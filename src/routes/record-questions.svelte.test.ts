@@ -107,6 +107,18 @@ describe('改隊員名字時問保留還是清掉', () => {
 		await press('取消');
 		expect(nameBox().value).toBe('小美');
 	});
+
+	it('還沒選保留或清掉就按「新建」：先問還沒存；取消就留著，還能選保留', async () => {
+		const session = openRecorded();
+		await openRoster();
+		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
+		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		const unsaved = screen.getAllByRole('alertdialog').find((d) => d.textContent?.includes('還沒存'));
+		expect(unsaved).toBeTruthy();
+		await fireEvent.click(within(unsaved!).getByRole('button', { name: '取消' }));
+		await press('保留舊紀錄');
+		expect(session.flow!.members[0].name).toBe('小芳芳');
+	});
 });
 
 describe('刪動作', () => {
