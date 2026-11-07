@@ -19,6 +19,7 @@ import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
 import { browserTabChannel, type OpenTabChannel } from '#lib/tab-channel.js';
+import { httpServer, type ServerAdapter } from '#lib/server-api.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -38,9 +39,11 @@ export interface EditorAdapters {
 	pendingInput: PendingInput;
 	/** 畫面時鐘：播放時每一格畫面移一次播放頭。 */
 	nextFrame: NextFrame;
+	/** 連伺服器：登入、我是誰。 */
+	server: ServerAdapter;
 }
 
-/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、BroadcastChannel、焦點所在的欄位、requestAnimationFrame。 */
+/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch。 */
 export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
@@ -50,7 +53,8 @@ export function browserAdapters(): EditorAdapters {
 		draftStore: createIndexedDbDraftStore(),
 		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
-		nextFrame: animationFrame
+		nextFrame: animationFrame,
+		server: httpServer()
 	};
 }
 
