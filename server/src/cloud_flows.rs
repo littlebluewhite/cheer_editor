@@ -1,5 +1,5 @@
-//! 雲端流程：新建、列出我的流程、拿一支（#247）。
-//! 這時只有擁有者拿得到自己的流程；別人拿跟沒有這支一樣，回 404（權限在 #250）。
+//! 雲端流程：新建、列出我的流程和分享給我的、拿一支（#247、#250）。
+//! 有權限的人才拿得到；沒權限跟沒有這支一樣，回 404（管理員也一樣）。
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -12,6 +12,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, signed_in};
+use crate::sharing::{Role, role_of};
 
 /// 「我的流程」裡的一支。
 #[derive(Serialize, TS)]
@@ -24,12 +25,28 @@ pub struct CloudFlowSummary {
     pub updated_at: String,
 }
 
+/// 「分享給我的」裡的一支：別人的流程寫「王教練的・編輯者」；擁有者被停用寫「黃教練的（已停用）」。
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SharedFlowSummary {
+    pub id: String,
+    pub name: String,
+    pub updated_at: String,
+    pub owner_name: String,
+    pub owner_disabled: bool,
+    /// 我的權限。
+    pub role: Role,
+}
+
 /// 首頁「雲端」那一塊。
 #[derive(Serialize, TS)]
 #[ts(export)]
 pub struct MyFlows {
     /// 我擁有的，最近改的在前。
     pub mine: Vec<CloudFlowSummary>,
+    /// 分享給我的，最近改的在前。
+    pub shared: Vec<SharedFlowSummary>,
 }
 
 /// 打開一支雲端流程拿到的。
@@ -45,6 +62,8 @@ pub struct CloudFlow {
     #[ts(type = "number")]
     pub step: i64,
     pub updated_at: String,
+    /// 我的權限（記錄者、檢視者打開一律是檢視模式）。
+    pub role: Role,
 }
 
 /// 流程核心不收時（422）的原因。
@@ -107,7 +126,7 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(made)).into_response())
 }
 
-/// 我的流程：我擁有的，最近改的在前。
+/// 我的流程（我擁有的）、分享給我的，最近改的在前。
 pub async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
     let Some((user_id, _)) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
@@ -127,10 +146,31 @@ pub async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<R
             updated_at: iso(at),
         })
         .collect();
-    Ok(Json(MyFlows { mine }).into_response())
+    let rows: Vec<(String, String, DateTime<Utc>, String, bool, String)> = sqlx::query_as(
+        "SELECT f.id, f.content->>'name', f.updated_at, u.name, u.disabled_at IS NOT NULL, p.role
+         FROM flow_permissions p JOIN flows f ON f.id = p.flow_id JOIN users u ON u.id = f.owner_id
+         WHERE p.user_id = $1 ORDER BY f.updated_at DESC, f.id",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+    let shared = rows
+        .into_iter()
+        .filter_map(|(id, name, at, owner_name, owner_disabled, role)| {
+            Some(SharedFlowSummary {
+                id,
+                name,
+                updated_at: iso(at),
+                owner_name,
+                owner_disabled,
+                role: Role::parse(&role)?,
+            })
+        })
+        .collect();
+    Ok(Json(MyFlows { mine, shared }).into_response())
 }
 
-/// 拿一支：編排、現在第幾步。不是我的、沒有這支都回 404。
+/// 拿一支：編排、現在第幾步、我的權限。沒權限、沒有這支都回 404。
 pub async fn get_one(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -139,22 +179,21 @@ pub async fn get_one(
     let Some((user_id, _)) = signed_in(&state, &headers).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
-    let found: Option<(String, i64, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT content::text, step, updated_at FROM flows WHERE id = $1 AND owner_id = $2",
-    )
-    .bind(&id)
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await?;
-    let Some((content, step, at)) = found else {
+    let Some(role) = role_of(&state.db, &id, user_id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let (content, step, at): (String, i64, DateTime<Utc>) =
+        sqlx::query_as("SELECT content::text, step, updated_at FROM flows WHERE id = $1")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await?;
     let flow = RawValue::from_string(content)?;
     Ok(Json(CloudFlow {
         id,
         flow,
         step,
         updated_at: iso(at),
+        role,
     })
     .into_response())
 }

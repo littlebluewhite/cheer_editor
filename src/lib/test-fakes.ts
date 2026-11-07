@@ -34,6 +34,8 @@ import {
 	type FlowRoom,
 	type LinkInfo,
 	type Me,
+	type Person,
+	type Role,
 	type RoomMessage,
 	type ServerAdapter,
 	type UserStatus
@@ -138,6 +140,7 @@ export interface FakeLink {
 
 /**
  * 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）、現在第幾步（沒寫是 0）、收過的步驟 id（→ 收了之後第幾步）、
+ * 分享給誰（email → 權限，照加進來的順序）。
  * 傳上雲端的音樂檔（audio id → 位元組，假的 R2）。
  */
 export interface FakeCloudFlow {
@@ -147,6 +150,7 @@ export interface FakeCloudFlow {
 	updatedAt: string;
 	step?: number;
 	stepIds?: Record<string, number>;
+	people?: Record<string, Exclude<Role, 'owner'>>;
 	audio?: Record<string, Uint8Array>;
 }
 
@@ -159,6 +163,8 @@ export interface FakeCloudFlow {
  * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
+ * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
+ * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
  * 音樂檔（#249）放在那支流程的 audio：超過 60 MB 不收（'tooBig'）；audioTooBig 設成 true 就是伺服器傳完才查到太大。
  */
 export function fakeServer(
@@ -212,13 +218,61 @@ export function fakeServer(
 	let nextToken = 1;
 	const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 	const find = (email: string) => state.users.find((u) => same(u.email, email));
-	/** 登入的人擁有的雲端流程（沒登入丟錯，跟真的伺服器回 401 一樣當作出錯）。 */
-	const mine = () => {
+	/** 登入的人（沒登入丟錯，跟真的伺服器回 401 一樣當作出錯）。 */
+	const signedInEmail = () => {
 		reachable();
 		const me = state.signedIn && find(state.signedIn);
 		if (!me) throw new ServerUnreachable();
-		return state.flows.filter((f) => f.owner === me.email);
+		return me.email;
 	};
+	/** 這個人對這支流程的權限；沒有是 undefined。 */
+	const roleOf = (f: FakeCloudFlow, email: string): Role | undefined =>
+		same(f.owner, email) ? 'owner' : Object.entries(f.people ?? {}).find(([e]) => same(e, email))?.[1];
+	/** 登入的人拿得到的這支流程（有權限）和他的權限。 */
+	const reach = (id: string) => {
+		const email = signedInEmail();
+		const f = state.flows.find((g) => g.id === id);
+		const role = f && roleOf(f, email);
+		return f && role ? { f, role, email } : null;
+	};
+	/** 登入的人擁有的雲端流程。 */
+	const mine = () => {
+		const email = signedInEmail();
+		return state.flows.filter((f) => same(f.owner, email));
+	};
+	/** 有權限的人：擁有者在前；只有擁有者看得到 email。 */
+	const peopleOf = (f: FakeCloudFlow, viewer: string): Person[] => {
+		const withEmail = same(f.owner, viewer);
+		return [[f.owner, 'owner'] as const, ...Object.entries(f.people ?? {})].map(([email, role]) => {
+			const u = find(email)!;
+			const p: Person = { userId: state.users.indexOf(u) + 1, name: u.name, role, me: same(email, viewer), disabled: !!u.disabled };
+			if (withEmail) p.email = u.email;
+			return p;
+		});
+	};
+	/** 開著的房間：哪支流程、誰的。 */
+	const rooms: { flowId: string; email: string; room: FlowRoom }[] = [];
+	/** 改這個人的權限（null 是收回），告訴他開著的房間。 */
+	const changeRole = (flowId: string, email: string, role: Exclude<Role, 'owner'> | null) => {
+		const f = state.flows.find((g) => g.id === flowId)!;
+		const people = { ...f.people };
+		const key = Object.keys(people).find((e) => same(e, email)) ?? email;
+		if (role) people[key] = role;
+		else delete people[key];
+		f.people = people;
+		for (const r of rooms.filter((r) => r.flowId === flowId && same(r.email, email))) {
+			deliver(r.room, () =>
+				role ? { kind: 'roleChanged', role, flow: structuredClone(f.flow), step: f.step ?? 0 } : { kind: 'revoked' }
+			);
+		}
+	};
+	/** 叫的人是這支的擁有者（不是擁有者跟真的伺服器回 403、404 一樣當作出錯）。 */
+	const owned = (flowId: string) => {
+		const r = reach(flowId);
+		if (r?.role !== 'owner') throw new ServerUnreachable();
+		return r;
+	};
+	const emailOf = (userId: number) => state.users[userId - 1]?.email ?? '';
 	const reachable = () => {
 		if (state.unreachable) throw new ServerUnreachable();
 	};
@@ -331,9 +385,16 @@ export function fakeServer(
 			});
 		},
 		async myFlows() {
-			return [...mine()]
-				.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-				.map((f) => ({ id: f.id, name: f.flow.name, updatedAt: f.updatedAt }));
+			const email = signedInEmail();
+			const recent = (list: FakeCloudFlow[]) => [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+			return {
+				mine: recent(mine()).map((f) => ({ id: f.id, name: f.flow.name, updatedAt: f.updatedAt })),
+				shared: recent(state.flows.filter((f) => roleOf(f, email) && !same(f.owner, email))).map((f) => {
+					const owner = find(f.owner)!;
+					const role = roleOf(f, email)!;
+					return { id: f.id, name: f.flow.name, updatedAt: f.updatedAt, ownerName: owner.name, ownerDisabled: !!owner.disabled, role };
+				})
+			};
 		},
 		async createFlow(input) {
 			mine();
@@ -344,36 +405,81 @@ export function fakeServer(
 			return { id: made.id, name: made.flow.name, updatedAt: made.updatedAt };
 		},
 		async cloudFlow(id) {
-			const f = mine().find((g) => g.id === id);
-			return f ? { id: f.id, flow: structuredClone(f.flow), step: f.step ?? 0, updatedAt: f.updatedAt } : null;
+			const r = reach(id);
+			return r ? { id, flow: structuredClone(r.f.flow), step: r.f.step ?? 0, updatedAt: r.f.updatedAt, role: r.role } : null;
+		},
+		async people(flowId) {
+			const r = reach(flowId);
+			return r ? peopleOf(r.f, r.email) : null;
+		},
+		async share(flowId, email, role) {
+			const { f, email: me } = owned(flowId);
+			const u = find(email);
+			if (!u) return { kind: 'noAccount' };
+			if (same(u.email, me)) return { kind: 'yourself' };
+			const already = roleOf(f, u.email);
+			if (already) return { kind: 'already', name: u.name, role: already };
+			if (u.disabled) return { kind: 'disabled', name: u.name };
+			if (role === 'owner') throw new ServerUnreachable();
+			f.people = { ...f.people, [u.email]: role };
+			return peopleOf(f, me);
+		},
+		async setRole(flowId, userId, role) {
+			const { f, email: me } = owned(flowId);
+			if (role === 'owner' || !f.people?.[emailOf(userId)]) throw new ServerUnreachable();
+			changeRole(flowId, emailOf(userId), role);
+			return peopleOf(f, me);
+		},
+		async revoke(flowId, userId) {
+			const { f, email: me } = owned(flowId);
+			if (!f.people?.[emailOf(userId)]) throw new ServerUnreachable();
+			changeRole(flowId, emailOf(userId), null);
+			return peopleOf(f, me);
+		},
+		async leave(flowId) {
+			const r = reach(flowId);
+			if (!r || r.role === 'owner') throw new ServerUnreachable();
+			changeRole(flowId, r.email, null);
 		},
 		openRoom(flowId) {
 			let ready = false;
+			const email = state.signedIn ?? '';
 			const room: FlowRoom = {
 				onmessage: () => {},
 				send(request) {
-					const f = mine().find((g) => g.id === flowId);
+					const f = state.flows.find((g) => g.id === flowId);
+					const role = f && roleOf(f, email);
 					if (!f) return;
+					if (!role) return deliver(room, () => ({ kind: 'revoked' }));
 					if (request.kind === 'hello') {
 						ready = request.fingerprint === state.fingerprint;
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
-					} else {
+					} else if (role === 'owner' || role === 'editor') {
 						deliver(room, () => (ready ? takeStep(f, request.stepId, request.commands as Command[]) : null));
+					} else {
+						const { stepId } = request;
+						const message = '沒存進去：你只能看這支流程';
+						deliver(room, () => ({ kind: 'rejected', stepId, message, flow: structuredClone(f.flow), step: f.step ?? 0 }));
 					}
 				},
-				close() {}
+				close() {
+					const i = rooms.findIndex((r) => r.room === room);
+					if (i >= 0) rooms.splice(i, 1);
+				}
 			};
+			rooms.push({ flowId, email, room });
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {
-			const f = mine().find((g) => g.id === flowId);
-			if (!f) throw new ServerUnreachable();
+			const r = reach(flowId);
+			if (!r || (r.role !== 'owner' && r.role !== 'editor')) throw new ServerUnreachable();
+			const f = r.f;
 			if (state.audioTooBig || file.size > MAX_CLOUD_AUDIO_BYTES) return 'tooBig';
 			f.audio = { ...f.audio, [audioId]: new Uint8Array(await file.arrayBuffer()) };
 			return 'ok';
 		},
 		async audioBytes(flowId, audioId) {
-			const bytes = mine().find((g) => g.id === flowId)?.audio?.[audioId];
+			const bytes = reach(flowId)?.f.audio?.[audioId];
 			return bytes ? bytes.slice() : null;
 		},
 		async forgotPassword(email) {
@@ -407,7 +513,7 @@ export function fakeServer(
 		held = [];
 		for (const send of now) send();
 	};
-	return { server, state, releaseRoom };
+	return { server, state, releaseRoom, changeRole };
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

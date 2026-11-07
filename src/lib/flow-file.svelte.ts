@@ -281,7 +281,40 @@ export class FlowFile {
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
-		this.#cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session);
+		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
+		cloud.onrevoked = () => {
+			const name = this.#editor.session.flow?.name ?? '';
+			this.#editor.session.open(null);
+			this.#revoked = `你已經不能打開「${name}」。`;
+		};
+		this.#cloud = cloud;
+	}
+
+	/** 被收回回首頁時，首頁最上面黃的那條（「你已經不能打開「…」。」）；沒有是空字串。 */
+	#revoked = $state('');
+	get revoked(): string {
+		return this.#revoked;
+	}
+	/** 黃條右邊的 ×。 */
+	dismissRevoked() {
+		this.#revoked = '';
+	}
+
+	/** 分享對話框的「離開這支流程」（確認過了）：伺服器拿掉我的權限，回首頁。連不上伺服器丟錯。 */
+	async leaveCloud() {
+		const id = this.#cloudId;
+		const cloud = this.#cloud;
+		if (!id || !cloud) return;
+		// 自己離開的：房間說「被收回」時直接回首頁，不寫「你已經不能打開」
+		const revoked = cloud.onrevoked;
+		cloud.onrevoked = () => this.#editor.session.open(null);
+		try {
+			await this.#editor.adapters.server.leave(id);
+		} catch (e) {
+			cloud.onrevoked = revoked;
+			throw e;
+		}
+		if (this.#cloudId === id) this.#editor.session.open(null);
 	}
 
 	/** 雲端流程用到的音樂檔，從雲端拿下來（#249）。雲端上沒有、拿不到的不放：那段標「找不到音樂」。 */
@@ -347,6 +380,7 @@ export class FlowFile {
 		this.#saver = saver;
 		editor.switchMusic(music);
 		this.#openError = '';
+		this.#revoked = '';
 		// 還沒有隊員的流程先開名單，有人了才開動作
 		editor.inspectorTab = flow.members.length ? 'action' : 'members';
 	}

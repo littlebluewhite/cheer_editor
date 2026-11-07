@@ -271,20 +271,18 @@ enum Access {
     Edit,
 }
 
-/// 這個人能不能這樣碰這支流程。這時只有擁有者能打開、能改，所以還不用看 access（權限在 #250）。
+/// 這個人能不能這樣碰這支流程：有權限的都能打開（聽音樂），擁有者、編輯者才能改（放音樂，#250）。
 async fn allowed(
     state: &AppState,
     flow_id: &str,
     user_id: i64,
-    _access: Access,
+    access: Access,
 ) -> anyhow::Result<bool> {
-    let found: Option<(i32,)> =
-        sqlx::query_as("SELECT 1 FROM flows WHERE id = $1 AND owner_id = $2")
-            .bind(flow_id)
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await?;
-    Ok(found.is_some())
+    let role = crate::sharing::role_of(&state.db, flow_id, user_id).await?;
+    Ok(match access {
+        Access::Open => role.is_some(),
+        Access::Edit => role.is_some_and(|r| r.can_edit()),
+    })
 }
 
 /// 檔名的副檔名（小寫）是放得下的音樂檔就回它。

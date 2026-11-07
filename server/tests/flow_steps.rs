@@ -44,6 +44,7 @@ impl Server {
             site_url: SITE.into(),
             core: FlowCore::start().unwrap(),
             mail_limit: Default::default(),
+            rooms: Default::default(),
             music: None,
         };
         let site = tempfile::tempdir().unwrap();

@@ -27,7 +27,8 @@
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { NEW_VERSION } from '#lib/cloud-steps.svelte.js';
-	import type { CloudFlowSummary, Me } from '#lib/server-api.js';
+	import type { Me, MyFlows } from '#lib/server-api.js';
+	import { ROLE_NAMES } from '#lib/role-names.js';
 	import { localDate } from '#lib/local-date.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -46,6 +47,7 @@
 	import Practice from '#lib/components/Practice.svelte';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
+	import ShareDialog from '#lib/components/ShareDialog.svelte';
 	import SquadBar from '#lib/components/SquadBar.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import WalkForm from '#lib/components/WalkForm.svelte';
@@ -97,8 +99,8 @@
 	onMount(() => {
 		editor.adapters.server.me().then((m) => (account = m));
 	});
-	/** 登入後首頁「雲端」的「我的流程」：在首頁時（打開、回到首頁）跟伺服器拿。還沒拿到是 null；連不上伺服器 cloudError。 */
-	let myFlows = $state.raw<CloudFlowSummary[] | null>(null);
+	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：在首頁時（打開、回到首頁）跟伺服器拿。還沒拿到是 null；連不上伺服器 cloudError。 */
+	let myFlows = $state.raw<MyFlows | null>(null);
 	let cloudError = $state(false);
 	$effect(() => {
 		if (!account || flow) return;
@@ -151,6 +153,8 @@
 
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
+	/** 雲端流程的分享對話框開著。 */
+	let shareOpen = $state(false);
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
@@ -167,9 +171,9 @@
 	});
 	/** 開著的雲端流程：每一步送伺服器存（名字旁「存中…」「✓ 已存」）；本機流程是 null。 */
 	const cloud = $derived(editor.file.cloud);
-	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。雲端流程有新版時不能改
+	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。雲端流程有新版、我是記錄者或檢視者時不能改
 	$effect(() => {
-		session.viewing = narrow || !!cloud?.newVersion;
+		session.viewing = narrow || !!cloud?.viewOnly;
 	});
 	/** 「我」：手機檢視畫面標亮的人。這台裝置照流程記住（local-settings），不進流程檔；換流程時讀那支的。 */
 	let me = $state(session.flow ? loadFlowSetting('me', session.flow.name) : '');
@@ -313,6 +317,7 @@
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
+		shareOpen = false;
 	};
 
 	function undo() {
@@ -608,7 +613,7 @@
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
 					<div class="mode" role="group" aria-label="編輯｜檢視">
-						<button type="button" aria-pressed={!session.viewing} disabled={!!cloud?.newVersion} onclick={() => (session.viewing = false)}
+						<button type="button" aria-pressed={!session.viewing} disabled={!!cloud?.viewOnly} onclick={() => (session.viewing = false)}
 							><Icon name="pencil" />編輯</button
 						>
 						<button
@@ -646,6 +651,8 @@
 					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}
 						><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
 					>
+					<!-- 放在原本存檔的地方；每個人都叫「分享」，不是擁有者打開是只能看的名單 -->
+					<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />分享</button>
 				{:else}
 					<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 					{#if narrow}
@@ -898,6 +905,9 @@
 	{#if settingsOpen}
 		<FlowSettings onclose={() => (settingsOpen = false)} />
 	{/if}
+	{#if shareOpen && editor.file.cloudId}
+		<ShareDialog flowId={editor.file.cloudId} flowName={flow.name} onclose={() => (shareOpen = false)} />
+	{/if}
 	{#if printOpen}
 		<PrintSheet
 			{flow}
@@ -967,6 +977,13 @@
 	{#if account}
 		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->
 		<div class="home signed-in">
+			{#if editor.file.revoked}
+				<!-- 被收回回首頁：最上面一條黃的，右邊 × -->
+				<p class="revoked" role="alert">
+					<span>{editor.file.revoked}</span>
+					<button type="button" class="ghost icon" aria-label="關掉這條" onclick={() => editor.file.dismissRevoked()}><Icon name="close" /></button>
+				</p>
+			{/if}
 			<header class="home-bar">
 				<span class="brand">競技啦啦隊流程編輯器</span>
 				<a class="btn ghost" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
@@ -980,7 +997,7 @@
 						{#if cloudError}
 							<li class="empty">連不上伺服器，現在看不到雲端的流程。</li>
 						{:else if myFlows}
-							{#each myFlows as c (c.id)}
+							{#each myFlows.mine as c (c.id)}
 								<li>
 									<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
 										<span class="recent-name">{c.name}</span>
@@ -992,6 +1009,25 @@
 							{/each}
 						{/if}
 					</ul>
+					{#if myFlows}
+						<h3 id="shared-title">分享給我的</h3>
+						<ul class="cloud-list" aria-labelledby="shared-title">
+							{#each myFlows.shared as c (c.id)}
+								<li>
+									<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
+										<span class="recent-name">{c.name}</span>
+										<span class="recent-meta"
+											>{c.ownerDisabled ? `${c.ownerName}的（已停用）` : `${c.ownerName}的・${ROLE_NAMES[c.role]}`}・{draftTime(
+												new Date(c.updatedAt)
+											)} 改過</span
+										>
+									</button>
+								</li>
+							{:else}
+								<li class="empty">還沒有人分享給你。</li>
+							{/each}
+						</ul>
+					{/if}
 				</section>
 				<section class="area recent" aria-labelledby="here-title">
 					<h2 id="here-title">這台電腦</h2>
@@ -2187,6 +2223,21 @@
 		min-width: 0;
 		font-weight: 800;
 		color: var(--ink);
+	}
+	.revoked {
+		grid-column: 1 / -1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 12px 0 0;
+		padding: 8px 8px 8px 14px;
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		border-radius: var(--radius);
+		font-size: 14px;
+	}
+	.revoked span {
+		flex: 1;
 	}
 	.home-lists {
 		display: grid;

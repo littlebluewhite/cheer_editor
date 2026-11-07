@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         site_url: config.site_url.clone(),
         core: FlowCore::start().context("流程核心載入失敗")?,
         mail_limit: Default::default(),
+        rooms: Default::default(),
         music: match config.r2 {
             Some(r2) => Some(
                 MusicStore::new(r2.endpoint, &r2.bucket, &r2.access_key, &r2.secret)

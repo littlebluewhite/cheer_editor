@@ -95,6 +95,7 @@ impl Server {
             site_url: SITE.into(),
             core: FlowCore::start().unwrap(),
             mail_limit: Default::default(),
+            rooms: Default::default(),
             music: Some(MusicStore::new(endpoint, BUCKET, "test-key", "test-secret").unwrap()),
         };
         let site = tempfile::tempdir().unwrap();
@@ -359,6 +360,28 @@ async fn no_permission_no_presigned_url(db: sqlx::PgPool) {
             Some(&lin),
         )
         .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // 分享給他當檢視者（#250）：能聽，不能放音樂。
+    let body = json!({ "email": "wang@example.com", "role": "viewer" });
+    let (status, _) = s
+        .send(
+            "POST",
+            &format!("/api/flows/{id}/people"),
+            Some(body),
+            Some(&lin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, got) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&wang),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{got}");
+    let (status, _) = s.start_upload(Some(&wang), &id, "a2", 3).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
