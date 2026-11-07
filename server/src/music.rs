@@ -80,7 +80,7 @@ impl MusicStore {
         Ok(Some(length))
     }
 
-    async fn delete(&self, key: &str) -> anyhow::Result<()> {
+    pub(crate) async fn delete(&self, key: &str) -> anyhow::Result<()> {
         let url = self
             .bucket
             .delete_object(Some(&self.credentials), key)

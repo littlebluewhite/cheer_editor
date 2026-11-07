@@ -3,6 +3,7 @@ use cheer_server::AppState;
 use cheer_server::breach::BreachCheck;
 use cheer_server::clock::Clock;
 use cheer_server::config::Config;
+use cheer_server::daily::{self, AwakeMeter};
 use cheer_server::flow_core::FlowCore;
 use cheer_server::mail::Mailer;
 use cheer_server::music::MusicStore;
@@ -32,7 +33,22 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let config = Config::from_env()?;
-    let db = sqlx::PgPool::connect(&config.database_url)
+    // 每次用完一條連線（查過資料庫）就記一下，估 Neon 醒著多久（#266）；一段結束時用這條連線存起來。
+    let awake = AwakeMeter::default();
+    let meter = awake.clone();
+    let db = sqlx::postgres::PgPoolOptions::new()
+        .after_release(move |conn, _| {
+            let ended = meter.touch(chrono::Utc::now());
+            Box::pin(async move {
+                if let Some(ended) = ended
+                    && let Err(err) = daily::save_awake(conn, &ended).await
+                {
+                    tracing::warn!(error = %err, "Neon 醒著的時間存不進去");
+                }
+                Ok(true)
+            })
+        })
+        .connect(&config.database_url)
         .await
         .context("連不上資料庫")?;
     cheer_server::MIGRATOR
@@ -70,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(config.listen_addr)
         .await
         .with_context(|| format!("開不了 {}", config.listen_addr))?;
+    tokio::spawn(daily::every_day(state.clone(), awake));
     tracing::info!(addr = %config.listen_addr, site = %config.site_dir.display(), "伺服器開好了");
     axum::serve(listener, cheer_server::app(state, &config.site_dir))
         .with_graceful_shutdown(async {
