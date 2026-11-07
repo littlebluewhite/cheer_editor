@@ -65,8 +65,10 @@ export function createPlayer(engine: AudioEngine): Player {
 	function queueLap(audible: number) {
 		if (!session?.loop) return;
 		const last = session.laps.at(-1)!;
-		const t0 = last.t0 + (last.endSec - last.fromSec) / session.rate;
+		let t0 = last.t0 + (last.endSec - last.fromSec) / session.rate;
 		if (audible < t0 - LAP_AHEAD_SEC) return;
+		// 分頁在背景、好一陣子沒有畫面：錯過的圈不補，從現在接著播（排在過去的時間會馬上一起響）
+		if (t0 < engine.currentTime()) t0 = engine.currentTime() + LEAD_SEC;
 		const lap = session.loop();
 		if (!lap) {
 			session.loop = null;
