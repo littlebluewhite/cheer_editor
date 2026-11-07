@@ -10,7 +10,7 @@ import {
 	type Command,
 	type Flow
 } from '#lib/core';
-import { Ask } from './ask.svelte';
+import { Ask, type SentStep } from './ask.svelte';
 import { flowOf, ratedSample } from './test-flows';
 
 // 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
@@ -34,11 +34,17 @@ function recorded(): Flow {
 	);
 }
 
-/** 跟著 onchange 換流程的問教練（跟編輯 session 一樣）。 */
+/** 跟著 onchange 換流程的問教練（跟編輯 session 一樣）。onchange 記新的流程；state.step 是最後成功的那一步送了什麼。 */
 function asker(flow: Flow = recorded(), options: { locked?: () => string; onfail?: (error: string) => void } = {}) {
-	const state = { flow };
+	const state: { flow: Flow; step?: SentStep } = { flow };
 	const onchange = vi.fn((f: Flow) => (state.flow = f));
-	const ask = new Ask(onchange, { ...options, flow: () => state.flow });
+	const ask = new Ask(
+		(f, step) => {
+			state.step = step;
+			onchange(f);
+		},
+		{ ...options, flow: () => state.flow }
+	);
 	return { ask, onchange, state };
 }
 
@@ -221,6 +227,20 @@ describe('用名字送指令', () => {
 		ask.answer('confirm');
 		expect(onchange).toHaveBeenCalledWith(flowOf(deleteAction(flow, 'x1', { confirmed: true })));
 		expect(ask.question).toBeNull();
+	});
+
+	it('成功的一步交出去送了什麼：步驟 id（問之前、之後同一個）、帶著回答的指令（雲端流程送給伺服器）', () => {
+		const { ask, state } = asker(recorded());
+		ask.send(rename);
+		const first = state.step!;
+		expect(first.commands).toEqual([rename]);
+		expect(first.id).toMatch(/^[a-z0-9]{12}$/);
+
+		ask.send({ name: 'deleteAction', args: ['x1'] });
+		expect(state.step).toBe(first);
+		ask.answer('confirm');
+		expect(state.step!.commands).toEqual([{ name: 'deleteAction', args: ['x1'], options: { confirmed: true } }]);
+		expect(state.step!.id).not.toBe(first.id);
 	});
 
 	it('要選，選清掉：帶著清掉再送一次', () => {
