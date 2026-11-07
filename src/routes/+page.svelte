@@ -757,7 +757,8 @@
 					<ActionForm {cellAt} />
 				</div>
 				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={editor.inspectorTab !== 'members'}>
-					<MemberPanel />
+					<!-- 換一份流程就重開：上一支沒送出的加隊員名單不帶過去 -->
+					{#key opened}<MemberPanel />{/key}
 				</div>
 			</aside>
 

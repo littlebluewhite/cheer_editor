@@ -234,7 +234,7 @@ export class FlowFile {
 	 * 回傳現在就能選檔（沒有未存的修改、剛答應過）。
 	 */
 	mayChoose(choose: () => void): boolean {
-		if (this.#openApproved || !this.#editor.session.unsaved) return true;
+		if (this.#openApproved || !this.#unsaved()) return true;
 		this.#asking = {
 			open: true,
 			then: () => {
@@ -251,7 +251,7 @@ export class FlowFile {
 	 */
 	async leaveToHome() {
 		const { session, music } = this.#editor;
-		if (session.unsaved) return this.startNew();
+		if (this.#unsaved()) return this.startNew();
 		const f = session.flow;
 		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
 		session.open(null);
@@ -266,6 +266,7 @@ export class FlowFile {
 		const editor = this.#editor;
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		editor.session.open(flow, from !== 'draft');
+		editor.actionDraft.restart();
 		this.#onDisk = from === 'file';
 		this.#draftId = draftId;
 		this.#fileBytes = null;
@@ -336,6 +337,12 @@ export class FlowFile {
 		this.#draftAsk?.resolve(choice);
 	}
 
+	/** 換流程前要先問：有還沒存的修改，或改了還在等教練回答（例：改名後還沒選保留或清掉），換掉就不見了。 */
+	#unsaved(): boolean {
+		const { session } = this.#editor;
+		return session.unsaved || session.questionOpen;
+	}
+
 	/** 會換掉現在的流程（open：開檔；不然是新建、回首頁）：有還沒存的修改、又還沒答應過（approved）就先問，確定才做。 */
 	#unlessUnsaved(open: boolean, approved: boolean, then: () => void) {
 		// 換掉的流程是這個分頁放在草稿裡的：它的草稿跟著丟掉（「不存了，繼續」、剛建好沒改就新建），重新整理不會又問要不要救回。
@@ -344,7 +351,7 @@ export class FlowFile {
 			if (this.ownsDraft) void this.#dropDraft(this.#draftId);
 			then();
 		};
-		if (this.#editor.session.unsaved && !approved) this.#asking = { then: go, open };
+		if (this.#unsaved() && !approved) this.#asking = { then: go, open };
 		else go();
 	}
 
