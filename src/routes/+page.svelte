@@ -26,7 +26,9 @@
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
+	import type { Me } from '#lib/server-api.js';
 	import { localDate } from '#lib/local-date.js';
+	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import type CueGrid from '#lib/components/CueGrid.svelte';
@@ -88,6 +90,21 @@
 	}
 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
 	onMount(() => editor.file.connect());
+
+	/** 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。 */
+	let account = $state.raw<Me | null | undefined>(undefined);
+	onMount(() => {
+		editor.adapters.server.me().then((m) => (account = m));
+	});
+	/** 登出這台裝置。連不上伺服器時還是登入著（選單留著，可以再按一次）。 */
+	async function logout() {
+		try {
+			await editor.adapters.server.logout();
+			account = null;
+		} catch {
+			// 沒登出成功：什麼都不變
+		}
+	}
 
 	let openSegmentId = $state<string | null>(null);
 	let settingsOpen = $state(false);
@@ -850,7 +867,14 @@
 	{/if}
 {:else}
 	<div class="home">
-		<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
+		<div class="home-top">
+			<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
+			{#if account}
+				<AccountMenu me={account} onlogout={logout} />
+			{:else if account === null}
+				<a class="btn" href={resolve('/login')}>登入</a>
+			{/if}
+		</div>
 		<section class="intro">
 			<svg class="intro-mat" viewBox="0 0 90 70" aria-hidden="true">
 				{#each Array.from({ length: 9 }, (_, i) => i) as i (i)}
@@ -1897,10 +1921,14 @@
 		margin: 0 auto;
 		padding: max(48px, 10dvh) 32px 48px;
 	}
-	.home-guide {
+	.home-top {
 		position: absolute;
 		top: 16px;
 		right: 16px;
+		display: flex;
+		gap: 8px;
+	}
+	.home-top > a {
 		text-decoration: none;
 	}
 	.intro {

@@ -6,12 +6,19 @@ use http_body_util::BodyExt;
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 
-/// 連不到的資料庫：用到它的請求一定會失敗，所以拿來證明「沒查資料庫」。
-fn unreachable_pool() -> sqlx::PgPool {
-    PgPoolOptions::new()
+/// 接著連不到的資料庫：用到它的請求一定會失敗，所以拿來證明「沒查資料庫」。
+fn unreachable_pool() -> cheer_server::AppState {
+    let db = PgPoolOptions::new()
         .acquire_timeout(std::time::Duration::from_millis(200))
         .connect_lazy("postgres://nobody@127.0.0.1:1/nothing")
-        .unwrap()
+        .unwrap();
+    cheer_server::AppState {
+        db,
+        mailer: cheer_server::mail::Mailer::memory(),
+        breach: cheer_server::breach::BreachCheck::list([]),
+        clock: cheer_server::clock::Clock::system(),
+        site_url: "https://cheer.example".into(),
+    }
 }
 
 async fn get(app: axum::Router, path: &str) -> (StatusCode, String) {

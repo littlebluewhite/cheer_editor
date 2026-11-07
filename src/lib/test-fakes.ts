@@ -1,10 +1,11 @@
-// 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
+// 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算、連伺服器（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標，前端測試不開真的伺服器），
 // 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
 // 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
 import { fireEvent, screen } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
+	charCount,
 	addMembers,
 	addSegment,
 	createFlow,
@@ -23,6 +24,7 @@ import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
+import { ServerUnreachable, type LinkInfo, type Me, type ServerAdapter } from '#lib/server-api.js';
 
 /** 假的存檔：每次存的位元組和檔名照順序記下來，回傳給的結果。 */
 export function fakeSaver(outcome: SaveOutcome = 'saved') {
@@ -108,6 +110,68 @@ export function fakePendingInput(): PendingInput & { pending: boolean; onflush: 
 	};
 }
 
+/** 假的伺服器上的一個使用者：設好密碼的才有 password。 */
+export interface FakeUser extends Me {
+	password?: string;
+}
+
+/**
+ * 假的連伺服器：使用者、設密碼連結（token → 那條連結）放在記憶體，規則跟真的一樣
+ * （email 不分大小寫；密碼至少 15 個看得到的字、不在外洩清單 breached 裡；連結用一次就不能用）。
+ * signedIn：現在登入的是誰（沒登入是 null）。unreachable 設成 true 就是連不上伺服器。
+ */
+export function fakeServer(
+	init: { users?: FakeUser[]; links?: Record<string, { email: string; purpose: LinkInfo['purpose'] }>; signedIn?: string | null; breached?: string[] } = {}
+) {
+	const state = {
+		users: init.users ?? [],
+		links: { ...init.links },
+		signedIn: init.signedIn ?? null,
+		breached: init.breached ?? [],
+		unreachable: false
+	};
+	const find = (email: string) => state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+	const reachable = () => {
+		if (state.unreachable) throw new ServerUnreachable();
+	};
+	const server: ServerAdapter = {
+		async me() {
+			const u = !state.unreachable && state.signedIn ? find(state.signedIn) : undefined;
+			return u ? { email: u.email, name: u.name, isAdmin: u.isAdmin } : null;
+		},
+		async login(email, password) {
+			reachable();
+			const u = find(email);
+			if (!u?.password || u.password !== password) return 'wrong';
+			state.signedIn = u.email;
+			return 'ok';
+		},
+		async logout() {
+			reachable();
+			state.signedIn = null;
+		},
+		async passwordLink(token) {
+			reachable();
+			const link = state.links[token];
+			const u = link && find(link.email);
+			return u ? { email: u.email, name: u.name, purpose: link.purpose } : null;
+		},
+		async setPassword(token, password) {
+			reachable();
+			const link = state.links[token];
+			const u = link && find(link.email);
+			if (!u) return 'gone';
+			const n = charCount(password);
+			if (n < 15) return { kind: 'tooShort', missing: 15 - n };
+			if (state.breached.includes(password)) return { kind: 'breached' };
+			u.password = password;
+			delete state.links[token];
+			return 'ok';
+		}
+	};
+	return { server, state };
+}
+
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */
 export function manualFrames() {
 	let queued: (() => void)[] = [];
@@ -127,6 +191,7 @@ export function manualFrames() {
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
+ * 伺服器預設是沒人登入的假伺服器（fakeServer）。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
@@ -140,6 +205,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			openTabChannel: null,
 			pendingInput: fakePendingInput(),
 			nextFrame: manualFrames().nextFrame,
+			server: fakeServer().server,
 			...adapters
 		},
 		flow
