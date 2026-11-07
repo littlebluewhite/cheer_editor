@@ -1,0 +1,3 @@
+# ts-rs：`cargo test` 時把前後端共用的訊息型別寫成 .ts，放到前端那邊（產生的檔要一起 commit）。
+[env]
+TS_RS_EXPORT_DIR = { value = "../src/lib/api-types", relative = true }

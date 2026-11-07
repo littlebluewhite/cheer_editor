@@ -607,6 +607,24 @@ await check('首頁有 5 支最近的流程（名字很長）：1440×900、390�
 	return { ok: bad.length === 0, value: bad };
 });
 
+await check('首頁沒登入（電腦、手機）：右上角「使用說明」「登入」點得到，不蓋到標題和說明', async () => {
+	const bad = [];
+	for (const [w, h] of [[1440, 900], [390, 844]]) {
+		await setViewport(w, h);
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		// vite dev 沒有伺服器：/api/me 回 404，當作沒登入
+		await waitFor(() => js(`return !!window.__svelte && [...document.querySelectorAll('.home-top a')].some((a) => a.textContent.trim() === '登入')`), 30).catch(() => {});
+		const r = await js(`const links = [...document.querySelectorAll('.home-top a')];
+			const hit = (el) => { const b = el.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!top && el.contains(top); };
+			const box = document.querySelector('.home-top').getBoundingClientRect();
+			const covered = [...document.querySelectorAll('.intro h1, .intro p, .intro svg')].filter((el) => { const b = el.getBoundingClientRect();
+				return b.left < box.right && b.right > box.left && b.top < box.bottom && b.bottom > box.top; }).map((el) => el.tagName);
+			return { 寬: ${w}, 鈕: links.map((a) => a.textContent.trim() + (hit(a) ? '' : '（點不到）')), 蓋到: covered };`);
+		if (r.鈕.join() !== '使用說明,登入' || r.蓋到.length) bad.push(r);
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
 // ---------- 窄螢幕（寬不到 1024 或高不到 600，ADR 0005 的 2026-11 更新） ----------
 
 /** 觸控螢幕（手機、iPad）：pointer: coarse，點下去是手指。 */
