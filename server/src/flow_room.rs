@@ -15,6 +15,9 @@
 //! 復原、重做（#256）也是一步：送要復原的那一步（of）改到的東西改之前的樣子（重做送改之後的）。
 //! of 那一步之後，別的分頁改過那些東西就退回；放回去之後跑整份流程檢查，不合就退回；of 超過 30 天（或已經沒留）不能復原。
 //! 成功率紀錄（#257）也從這裡送：記一次、別人記的馬上告訴房間裡的人（見 records.rs）。
+//! 斷線重連（#255）：打招呼帶上次看到第幾步，先照順序補上之後別的分頁收了的步（每一步存著改好之後的東西），
+//! 再說可以送步；補不上（步驟紀錄沒留、之前的步沒存改好的東西）就給伺服器現在的樣子。
+//! 漏聽了房間裡的事（落後超過 256 件）也照這樣從資料庫補。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -188,9 +191,8 @@ pub enum RoomRequest {
     Hello {
         fingerprint: String,
         tab_id: String,
-        /// 上次看到第幾步（每一步另外帶，在 Step 裡比；打招呼這個斷線重連時用，#255）。
+        /// 上次看到第幾步：之後別人的步先補給我（斷線重連，#255）。
         #[ts(type = "number")]
-        #[allow(dead_code)]
         seen: i64,
         /// 在編輯（不是檢視模式）：在場名單用。
         #[serde(default)]
@@ -242,7 +244,7 @@ pub enum RoomRequest {
 )]
 #[ts(export)]
 pub enum RoomMessage {
-    /// 指紋對了，可以送步：現在第幾步。
+    /// 指紋對了，可以送步：現在第幾步。上次看到之後別人的步在這之前補完（Changed 或 Current）。
     Ready {
         #[ts(type = "number")]
         step: i64,
@@ -288,6 +290,13 @@ pub enum RoomMessage {
         by: String,
         #[ts(type = "unknown")]
         change: Box<RawValue>,
+    },
+    /// 斷線太久補不上（#255）：伺服器現在的樣子、現在第幾步（換上它，還沒送到的步不算）。
+    Current {
+        #[ts(type = "unknown")]
+        flow: Box<RawValue>,
+        #[ts(type = "number")]
+        step: i64,
     },
     /// 現在誰開著（自己不列，同一個人只列一次），照進來的先後。
     Present { people: Vec<Present> },
@@ -371,19 +380,19 @@ async fn serve(
 ) -> anyhow::Result<()> {
     // 打招呼前就開始聽：連上之後的權限改動不會漏掉。
     let mut events = state.rooms.listen(flow_id);
-    let (tab_id, editing) = loop {
+    let (tab_id, seen, editing) = loop {
         match next_request(&mut socket).await {
             Some(RoomRequest::Hello {
                 fingerprint,
                 tab_id,
+                seen,
                 editing,
-                ..
             }) => {
                 if fingerprint != FINGERPRINT {
                     tell(&mut socket, &RoomMessage::NewVersion).await?;
                     return Ok(());
                 }
-                break (tab_id, editing);
+                break (tab_id, seen, editing);
             }
             Some(_) => continue,
             None => return Ok(()),
@@ -396,8 +405,12 @@ async fn serve(
         .bind(user_id)
         .fetch_one(&state.db)
         .await?;
-    let (_, step) = current(&state, flow_id).await?;
-    tell(&mut socket, &RoomMessage::Ready { step }).await?;
+    // 上次看到之後別人的步先補上，再說可以送步。之後房間裡的改動只送比這新的（補過的不再送）。
+    let mut known = seen;
+    for message in catch_up(&state, flow_id, &tab_id, &mut known).await? {
+        tell(&mut socket, &message).await?;
+    }
+    tell(&mut socket, &RoomMessage::Ready { step: known }).await?;
     let here = Here {
         conn,
         user_id,
@@ -473,7 +486,8 @@ async fn serve(
                     told_role(&state, flow_id, changed).await?
                 }
                 Ok(RoomEvent::Deleted) => RoomMessage::Deleted,
-                Ok(RoomEvent::Changed { from, by, step, change }) if from != conn => {
+                Ok(RoomEvent::Changed { from, by, step, change }) if from != conn && step > known => {
+                    known = step;
                     RoomMessage::Changed { step, by, change: RawValue::from_string(change.to_string())? }
                 }
                 Ok(RoomEvent::Present(here)) => RoomMessage::Present { people: present_for(&here, user_id) },
@@ -494,12 +508,14 @@ async fn serve(
                     deleted: change.deleted.clone(),
                 },
                 Ok(_) => continue,
-                // 漏聽了幾件：照資料庫重新看一次自己的權限，再說一次在場名單。
-                // 漏掉的別人的改動要重新連才拿得到（斷線、重新連在 #255）。
+                // 漏聽了幾件：照資料庫補上漏掉的別人的步，重新看一次自己的權限，再說一次在場名單。
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                     let changed = role_of(&state.db, flow_id, user_id).await?;
                     let told = told_role(&state, flow_id, changed).await?;
                     if !matches!(told, RoomMessage::Revoked) {
+                        for message in catch_up(&state, flow_id, &tab_id, &mut known).await? {
+                            tell(&mut socket, &message).await?;
+                        }
                         let people = present_for(&state.rooms.here(flow_id), user_id);
                         tell(&mut socket, &RoomMessage::Present { people }).await?;
                     }
@@ -530,6 +546,43 @@ async fn told_role(
         flow: RawValue::from_string(content)?,
         step,
     })
+}
+
+/// 從第 known 步補到現在：之後別的分頁收了的步（改好之後的東西，照順序；這個分頁自己送的不補），
+/// known 換成現在第幾步。中間有一步沒留或沒存改好的東西：補不上，給伺服器現在的樣子。
+async fn catch_up(
+    state: &AppState,
+    flow_id: &str,
+    tab_id: &str,
+    known: &mut i64,
+) -> anyhow::Result<Vec<RoomMessage>> {
+    let (content, step) = current(state, flow_id).await?;
+    let since = std::mem::replace(known, step);
+    if since >= step {
+        return Ok(Vec::new());
+    }
+    let missed: Vec<(i64, String, Option<String>, String)> = sqlx::query_as(
+        "SELECT s.step, s.tab_id, s.change::text, u.name FROM flow_steps s JOIN users u ON u.id = s.user_id
+         WHERE s.flow_id = $1 AND s.step > $2 AND s.step <= $3 ORDER BY s.step",
+    )
+    .bind(flow_id)
+    .bind(since)
+    .bind(step)
+    .fetch_all(&state.db)
+    .await?;
+    let whole = missed.len() as i64 == step - since && missed.iter().all(|m| m.2.is_some());
+    if !whole {
+        let flow = RawValue::from_string(content)?;
+        return Ok(vec![RoomMessage::Current { flow, step }]);
+    }
+    missed
+        .into_iter()
+        .filter(|(_, tab, _, _)| tab != tab_id)
+        .map(|(step, _, change, by)| {
+            let change = RawValue::from_string(change.unwrap_or_default())?;
+            Ok(RoomMessage::Changed { step, by, change })
+        })
+        .collect()
 }
 
 /// 這支流程現在的樣子、第幾步。
@@ -729,8 +782,8 @@ async fn take_step(
         .execute(&mut *tx)
         .await?;
     sqlx::query(
-        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json)",
     )
     .bind(flow_id)
     .bind(step)
@@ -739,6 +792,7 @@ async fn take_step(
     .bind(user_id)
     .bind(now)
     .bind(&outcome.keys)
+    .bind(&change)
     .execute(&mut *tx)
     .await?;
     let records_change = records::after_step(
