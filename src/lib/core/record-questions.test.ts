@@ -231,13 +231,18 @@ describe('改隊員名字：他在動作裡沒分組', () => {
 	});
 });
 
-describe('刪隊員：當成真的換人', () => {
-	it('確認訊息加上會清掉幾次紀錄；確定後清掉他在的每一組和他自己的紀錄', () => {
+describe('刪隊員：跟在動作裡移人一樣問', () => {
+	it('他在的組還有人、有紀錄：要選，訊息寫一定清掉的幾次（他自己的）；保留留著組的紀錄，清掉（或只按確定）一起清', () => {
 		const flow = recorded();
 		const r = deleteMember(flow, 'm2');
-		expect(r.kind === 'confirm' && r.message).toBe('刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 3 次紀錄，「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補');
-		const after = flowOf(deleteMember(flow, 'm2', { confirmed: true }));
-		expect([ids(after, 'x1'), ids(after, 'x2')]).toEqual([['t2'], ['t4']]);
+		expect(r.kind === 'choose' && r.message).toBe(
+			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄，「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
+		);
+		const kept = flowOf(deleteMember(flow, 'm2', { records: 'keep' }));
+		expect([ids(kept, 'x1'), ids(kept, 'x2')]).toEqual([['t1', 't2', 't3'], ['t4']]);
+		const cleared = flowOf(deleteMember(flow, 'm2', { records: 'clear' }));
+		expect([ids(cleared, 'x1'), ids(cleared, 'x2')]).toEqual([['t2'], ['t4']]);
+		expect(flowOf(deleteMember(flow, 'm2', { confirmed: true }))).toEqual(cleared);
 	});
 
 	it('沒有紀錄：不寫紀錄', () => {

@@ -325,6 +325,15 @@
 		text-align: left;
 		font-weight: 600;
 	}
+	/* 40 人時表格很寬：「環節」那一欄往右捲也留在左邊，看得出每一列是哪個環節。 */
+	tr > th:first-child {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+	}
+	tbody th {
+		background: var(--surface);
+	}
 	.cell {
 		width: 100%;
 		min-width: 72px;
@@ -447,6 +456,9 @@
 		}
 		.scroll {
 			overflow: visible;
+		}
+		tr > th:first-child {
+			position: static;
 		}
 		table {
 			width: 100%;
