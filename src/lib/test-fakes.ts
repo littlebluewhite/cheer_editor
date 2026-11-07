@@ -275,7 +275,7 @@ export interface FakeCloudFlow {
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
  * 跑一步時紀錄放回流程再跑、跑完清掉該清的；收了告訴同一支流程開著的別的房間（別人記的帶名字）。
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
- * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的（斷線 1 分鐘當他離開沒做）。
+ * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆（斷線 1 分鐘當他離開沒做）。
  * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
  * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，再說可以送步。
  */
@@ -577,6 +577,17 @@ export function fakeServer(
 		const r = runCommands(putRecords(structuredClone(f.flow), structuredClone(records)), [command], '');
 		return r.kind === 'ok' ? takeRecords(r.flow).records[0] : undefined;
 	};
+	/** 同一次全上的同一個動作、同一組，別的一筆已經存了（沒清掉的）：那一筆（#262）。 */
+	const firstInRun = (f: FakeCloudFlow, r: StoredAttempt) =>
+		(f.records ?? []).find(
+			(o) =>
+				!o.gone &&
+				o.attempt.id !== r.attempt.id &&
+				r.attempt.runThroughId !== undefined &&
+				o.attempt.runThroughId === r.attempt.runThroughId &&
+				o.actionId === r.actionId &&
+				o.attempt.who === r.attempt.who
+		);
 	/**
 	 * 這個人改、刪、救回幾次（#258）：記錄者只能動自己記的，擁有者、編輯者都能；刪掉的改、刪都不算，救回才拿回來。
 	 * 回那幾次現在的樣子（還在的），告訴別的房間。
@@ -599,7 +610,7 @@ export function fakeServer(
 			const after =
 				request.kind === 'changeRecords' && !r.gone
 					? runOne(f, [r], { name: 'changeAttempt', args: [r.actionId, id, marks] })
-					: request.kind === 'restoreRecords' && r.gone
+					: request.kind === 'restoreRecords' && r.gone && !firstInRun(f, r)
 						? runOne(f, [], { name: 'restoreAttempt', args: [r.actionId, r.attempt, 0] })
 						: undefined;
 			if (!after) return r;
@@ -621,15 +632,7 @@ export function fakeServer(
 		const added: StoredAttempt[] = [];
 		for (const r of structuredClone(incoming)) {
 			// 同一次全上的同一組只收先存的（#262）
-			const first = (f.records ?? []).find(
-				(o) =>
-					!o.gone &&
-					o.attempt.id !== r.attempt.id &&
-					r.attempt.runThroughId !== undefined &&
-					o.attempt.runThroughId === r.attempt.runThroughId &&
-					o.actionId === r.actionId &&
-					o.attempt.who === r.attempt.who
-			);
+			const first = firstInRun(f, r);
 			if (first) {
 				const by = first.by ? nameOf(first.by) : '別人';
 				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by });

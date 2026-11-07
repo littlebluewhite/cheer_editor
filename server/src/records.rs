@@ -5,6 +5,7 @@
 //! 跑一步時把紀錄放回流程再跑，跑完照結果清掉（留墓碑）、改掉該改的（例：清掉重算、刪掉環節），也告訴房間裡別人。
 //! 改、刪、救回（#258）：記錄者只能動自己記的；擁有者、編輯者能動任何人的（沒有記的人的只有他們能動）。
 //! 同一筆兩個人都改，照收到的先後，後到的贏（不退回）。刪掉的留墓碑：晚到的新增、改都不算，只有「救回」拿得回來。
+//! 一起記全上（#262，ADR 0012）：同一次全上的同一個動作、同一組只算先存的：存、救回都先查，資料庫也擋（遷移 0014）。
 
 use std::collections::{HashMap, HashSet};
 
@@ -243,6 +244,12 @@ pub async fn after_step(
                 change.deleted.push(id.to_owned());
             }
             Some(new) if new.attempt != old.attempt || new.action_id != old.action_id => {
+                // 換了動作、組之後跟同一次全上別人存的那一筆撞在一起：只算先存的，這一筆清掉。
+                if recorded_in_run(tx, flow_id, new, id).await?.is_some() {
+                    bury(tx, flow_id, id, now).await?;
+                    change.deleted.push(id.to_owned());
+                    continue;
+                }
                 update(tx, flow_id, new, now).await?;
                 changed.insert(id.to_owned());
             }
@@ -407,7 +414,7 @@ pub async fn record(
                 }),
                 Checked::Ok { record } => {
                     // 同一次全上的同一個動作、同一組只收先存的（ADR 0012）。
-                    if let Some(by) = recorded_in_run(&mut tx, flow_id, &record).await? {
+                    if let Some(by) = recorded_in_run(&mut tx, flow_id, &record, &id).await? {
                         let message = format!("{by}已經記了這次全上的這一組");
                         dropped.push(DroppedRecord {
                             id,
@@ -448,12 +455,13 @@ pub async fn record(
     Ok(RoomMessage::RecordsSaved { saved, dropped })
 }
 
-/// 這一次是全上的：同一次全上的同一個動作、同一組（騰翻、跳躍是同一個人）已經存了（沒清掉的），回先記的人的名字
-/// （沒有記的人的寫「別人」）。
+/// 這一次是全上的：同一次全上的同一個動作、同一組（騰翻、跳躍是同一個人）已經存了別的一筆（沒清掉的，id 不是 own），
+/// 回先記的人的名字（沒有記的人的寫「別人」）。資料庫也擋（遷移 0014）：存、救回、改之前先查，不會撞到。
 async fn recorded_in_run(
     tx: &mut sqlx::PgConnection,
     flow_id: &str,
     record: &Stored,
+    own: &str,
 ) -> anyhow::Result<Option<String>> {
     let Some(run) = record.attempt.get("runThroughId").and_then(Value::as_str) else {
         return Ok(None);
@@ -462,12 +470,13 @@ async fn recorded_in_run(
     let found: Option<(Option<String>,)> = sqlx::query_as(
         "SELECT u.name FROM flow_records r LEFT JOIN users u ON u.id = r.recorded_by
          WHERE r.flow_id = $1 AND r.run_through_id = $2 AND r.action_id = $3 AND r.who = $4
-           AND r.deleted_at IS NULL LIMIT 1",
+           AND r.id <> $5 AND r.deleted_at IS NULL LIMIT 1",
     )
     .bind(flow_id)
     .bind(run)
     .bind(&record.action_id)
     .bind(who)
+    .bind(own)
     .fetch_optional(&mut *tx)
     .await?;
     Ok(found.map(|(name,)| name.unwrap_or_else(|| "別人".into())))
@@ -553,6 +562,13 @@ pub async fn amend(
                 let Some(r) = targets.get(&id).filter(|r| r.gone) else {
                     continue;
                 };
+                // 刪掉之後同一次全上的這一組別人記了：只算先存的，不救回來。
+                if recorded_in_run(&mut tx, flow_id, &r.stored, &id)
+                    .await?
+                    .is_some()
+                {
+                    continue;
+                }
                 let command = json!({ "name": "restoreAttempt", "args": [r.stored.action_id, r.stored.attempt, 0] });
                 if let Some(new) = run_one(state, &content, None, command).await? {
                     update(&mut tx, flow_id, &new, now).await?;
@@ -617,6 +633,7 @@ async fn run_one(
 }
 
 /// 傳上雲端（#259）：流程檔裡的紀錄（整份流程檢查過的）一次一筆存起來，沒有記的人。
+/// 同一次全上的同一組有兩筆：只存前面那筆（遷移 0014）。
 pub(crate) async fn from_file(
     tx: &mut sqlx::PgConnection,
     flow_id: &str,

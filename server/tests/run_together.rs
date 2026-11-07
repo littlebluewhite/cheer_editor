@@ -335,7 +335,11 @@ async fn joiners_get_free_squads_untouched_ones_can_be_taken_over_touched_ones_c
         json!({ "kind": "touch", "run": RUN, "key": "n:2" }),
     )
     .await;
-    let wang_id = holders_ids(&until(&mut phone, "runThroughs").await, "n:2");
+    let touched = until_with(&mut phone, |m| {
+        holders(m).iter().any(|h| h.0 == "n:2" && h.2)
+    })
+    .await;
+    let wang_id = holders_ids(&touched, "n:2");
     say(
         &mut phone,
         json!({ "kind": "claim", "run": RUN, "key": "n:2", "from": wang_id }),
@@ -420,6 +424,84 @@ async fn the_same_squad_in_the_same_run_through_keeps_only_the_first_saved(db: s
         .send("GET", &format!("/api/flows/{id}"), None, &lin.cookie)
         .await;
     assert_eq!(got["records"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn the_database_also_refuses_a_second_live_record_of_the_same_squad_in_a_run_through(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let insert = |record_id: &'static str| {
+        sqlx::query(
+            "INSERT INTO flow_records (flow_id, id, action_id, who, marks, whole, date, run_through_id, updated_at)
+             VALUES ($1, $2, $3, $4, '{}', true, '2026-11-07', $5, now())",
+        )
+        .bind(id.clone())
+        .bind(record_id)
+        .bind(LIB)
+        .bind(SQUAD_2)
+        .bind(RUN)
+    };
+    insert("tfirst0000001").execute(&s.state.db).await.unwrap();
+    // 鎖之外再擋一道：同一次全上、同一個動作、同一組，沒清掉的只能有一筆
+    assert!(insert("tsecond000001").execute(&s.state.db).await.is_err());
+    // 清掉的不算
+    sqlx::query("UPDATE flow_records SET deleted_at = now() WHERE id = 'tfirst0000001'")
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    insert("tsecond000001").execute(&s.state.db).await.unwrap();
+}
+
+#[sqlx::test]
+async fn restoring_a_deleted_record_does_not_double_count_a_squad_someone_else_recorded(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut coach = s.join(&wang, &id).await;
+    let mut phone = s.join(&lin, &id).await;
+
+    // 王教練記了第 2 組又刪掉；林教練接著記了同一組
+    say(
+        &mut coach,
+        json!({ "kind": "record", "attempts": [entry("twang11111110", SQUAD_2)] }),
+    )
+    .await;
+    until(&mut coach, "recordsSaved").await;
+    say(
+        &mut coach,
+        json!({ "kind": "deleteRecords", "ids": ["twang11111110"] }),
+    )
+    .await;
+    until(&mut coach, "recordsSaved").await;
+    say(
+        &mut phone,
+        json!({ "kind": "record", "attempts": [entry("tlin222222220", SQUAD_2)] }),
+    )
+    .await;
+    assert_eq!(
+        until(&mut phone, "recordsSaved").await["dropped"],
+        json!([])
+    );
+
+    // 王教練按救回：那一組已經有林教練的，不救回來
+    say(
+        &mut coach,
+        json!({ "kind": "restoreRecords", "ids": ["twang11111110"] }),
+    )
+    .await;
+    assert_eq!(until(&mut coach, "recordsSaved").await["saved"], json!([]));
+    let (_, got) = s
+        .send("GET", &format!("/api/flows/{id}"), None, &lin.cookie)
+        .await;
+    let records = got["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1, "{records:?}");
+    assert_eq!(records[0]["attempt"]["id"], "tlin222222220");
 }
 
 #[sqlx::test]
