@@ -218,7 +218,11 @@
 					<time datetime={day.date}>{day.date}</time>
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
-							<li class:run={m.runThrough}>{m.mark}{#if m.runThrough}<small>全上</small>{/if}</li>
+							<li class:run={m.runThrough}>
+								{m.mark}{#if m.runThrough}<small>全上</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
+										>{session.recordedBy[m.id]}</small
+									>{/if}
+							</li>
 						{/each}
 					</ol>
 				</li>

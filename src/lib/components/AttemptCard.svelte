@@ -8,6 +8,7 @@
 	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
 	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
+	// 雲端流程別人記的那一次，記號後面小字寫名字（自己記的不寫，#257）。
 	import {
 		MARKS,
 		attemptText,
@@ -242,7 +243,7 @@
 							aria-expanded={editing === r.id}
 							aria-label="改第 {i + 1} 次（{kind} {attemptText(action, r)}）"
 							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
-						>
+						>{#if session.recordedBy[r.id]}<small class="by">{session.recordedBy[r.id]}</small>{/if}
 					</li>
 				{/each}
 			</ol>
@@ -474,6 +475,12 @@
 	}
 	.day button[aria-expanded='true'] {
 		box-shadow: 0 0 0 2px var(--sel);
+	}
+	/* 雲端流程別人記的：記號後面小字寫名字 */
+	.day .by {
+		padding-right: 5px;
+		font-size: 11px;
+		color: var(--muted);
 	}
 	/* 全上記的那幾筆：虛線框，跟分段練分開。 */
 	.day li.run {

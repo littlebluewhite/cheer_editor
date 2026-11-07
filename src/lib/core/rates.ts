@@ -159,7 +159,8 @@ export function periodRange(date: string, period: Period): { from?: string; to?:
 /** 一格的明細的一天：那天的每一次記號（照記的先後），標出哪幾次是全上。整次的格子是整排記號（例：✓✗·）。 */
 export interface DetailDay {
 	date: string;
-	marks: { mark: string; runThrough: boolean }[];
+	/** id 是那一次的 id（雲端流程別人記的，畫面照它寫名字）。 */
+	marks: { mark: string; runThrough: boolean; id: string }[];
 }
 
 /**
@@ -173,7 +174,7 @@ export function cellDetail(action: Action, who: string, phaseId: string | null, 
 		const mark = phaseId === null ? r.whole && attemptText(action, r) : r.marks[phaseId];
 		if (r.who !== who || !mark || !passes(r, filter)) continue;
 		if (!days.has(r.date)) days.set(r.date, []);
-		days.get(r.date)!.push({ mark, runThrough: r.practice === 'runThrough' });
+		days.get(r.date)!.push({ mark, runThrough: r.practice === 'runThrough', id: r.id });
 	}
 	return [...days].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, marks]) => ({ date, marks }));
 }

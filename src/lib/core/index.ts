@@ -99,6 +99,8 @@ export {
 	restoreRunThrough
 } from './records';
 export type { RemovedRunThrough, RunThroughMarks } from './records';
+export { checkRecord, putRecords, takeRecords } from './stored-records';
+export type { CheckedAttempt, StoredAttempt } from './stored-records';
 
 export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';

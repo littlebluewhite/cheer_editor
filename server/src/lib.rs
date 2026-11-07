@@ -11,6 +11,7 @@ pub mod lockout;
 pub mod mail;
 pub mod music;
 pub mod my_account;
+pub mod records;
 pub mod sharing;
 
 use std::path::Path;

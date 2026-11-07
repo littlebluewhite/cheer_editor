@@ -4,6 +4,7 @@
 import type { NewFlowInput } from '#lib/core';
 import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
 import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
+import type { CloudRecord } from '#lib/api-types/CloudRecord.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { Me } from '#lib/api-types/Me.js';
 import type { MyFlows } from '#lib/api-types/MyFlows.js';
@@ -26,6 +27,7 @@ export type {
 	AdminProblem,
 	CloudFlow,
 	CloudFlowSummary,
+	CloudRecord,
 	LinkInfo,
 	Me,
 	MyFlows,

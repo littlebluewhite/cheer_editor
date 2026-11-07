@@ -7,4 +7,4 @@ export type RoomRequest = { "kind": "hello", fingerprint: string, tabId: string,
 /**
  * 上次看到第幾步（改到同一個東西時用，#254）。
  */
-seen: number, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], };
+seen: number, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "record", attempts: unknown[], };

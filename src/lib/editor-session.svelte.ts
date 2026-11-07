@@ -25,6 +25,16 @@ import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
 
+/** 沒存進去的一次（練習畫面紅條下面的表一列）：日期、動作、組（或隊員）、記號，全上記的標出來。 */
+export interface DroppedRecord {
+	id: string;
+	date: string;
+	action: string;
+	who: string;
+	marks: string;
+	runThrough: boolean;
+}
+
 /** 復原、重做紀錄的一步：要換上的流程、那一步改了什麼（例：「插入站位 3」）。 */
 interface Step {
 	flow: Flow;
@@ -106,6 +116,16 @@ export class EditorSession {
 	onstep: ((step: SentStep) => void) | null = null;
 	/** 不能改的原因（例：有新版，請重新整理）：有的話改流程的指令都擋下說這句，比檢視模式優先。空字串是沒有。 */
 	readOnly = $state('');
+	/**
+	 * 雲端流程：紀錄改了（記一次）交給它送伺服器（#257），給記之前、記之後的流程。本機流程是 null。
+	 */
+	onrecord: ((before: Flow, after: Flow) => void) | null = null;
+	/** 不能記的原因（雲端流程的檢視者：你只能看這支流程）：有的話「記」都擋下說這句。空字串是能記。 */
+	cannotRecord = $state('');
+	/** 雲端流程別人記的那幾次：一次的 id → 記的人的名字（卡片、總表明細的記號後面寫）。自己記的不在裡面。 */
+	recordedBy = $state.raw<Record<string, string>>({});
+	/** 雲端流程沒存進去的紀錄（教練改了流程）：練習畫面上紅色一條，按「知道了」才清掉。 */
+	droppedRecords = $state.raw<DroppedRecord[]>([]);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};
 	/** 拍點格子選的拍（選到的動作的）。 */
@@ -203,6 +223,8 @@ export class EditorSession {
 		this.#undo = [];
 		this.#redo = [];
 		this.#joinable = null;
+		this.recordedBy = {};
+		this.droppedRecords = [];
 		this.clearSelection();
 		this.notice = '';
 		this.ask.clear();
@@ -249,9 +271,17 @@ export class EditorSession {
 
 	/**
 	 * 「記」：紀錄改了（記一次、刪掉上一次、記一次全上）。不算復原的一步，不清重做。
-	 * 復原、重做換上的流程都帶著現在的紀錄（carryRecords）。
+	 * 復原、重做換上的流程都帶著現在的紀錄（carryRecords）。雲端流程交給 onrecord 送伺服器。
 	 */
 	record(flow: Flow) {
+		const before = this.#flow;
+		if (!before) return;
+		this.serverRecords(flow);
+		this.onrecord?.(before, flow);
+	}
+
+	/** 換上伺服器送來的紀錄（雲端流程：別人記的、伺服器存的樣子、沒存進去的拿掉）：跟「記」一樣不算一步，不再送伺服器。 */
+	serverRecords(flow: Flow) {
 		if (!this.#flow) return;
 		this.#flow = flow;
 		this.onflow();
@@ -281,7 +311,7 @@ export class EditorSession {
 
 	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
 	recordAsk(): Ask {
-		return new Ask((f) => this.record(f), { flow: () => this.#flow });
+		return new Ask((f) => this.record(f), { locked: () => this.cannotRecord, flow: () => this.#flow });
 	}
 
 	/**

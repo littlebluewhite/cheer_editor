@@ -49,6 +49,11 @@ impl Role {
     pub fn can_edit(self) -> bool {
         matches!(self, Self::Owner | Self::Editor)
     }
+
+    /// 能記成功率（擁有者、編輯者、記錄者；檢視者只能看總表）。
+    pub fn can_record(self) -> bool {
+        !matches!(self, Self::Viewer)
+    }
 }
 
 /// 這個人對這支流程的權限；沒有權限、沒有這支流程都是 None。

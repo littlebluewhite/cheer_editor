@@ -4,8 +4,10 @@
 //! 之後每一步：步驟 id、上次看到第幾步、一串指令（名字＋參數）。伺服器在現在的樣子上用流程核心照順序跑，
 //! 被擋、要問（教練那邊沒問）就退回並帶原因和伺服器現在的樣子；收了就存起來、第幾步加 1（ADR 0007、0011）。
 //! 步驟 id 收過：回原本的結果，不套兩次。別人的改動、改到同一個東西在 #253、#254。
+//! 成功率紀錄（#257）也從這裡送：記一次、別人記的馬上告訴房間裡的人（見 records.rs）。
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -18,9 +20,9 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, signed_in};
-use crate::cloud_flows::Outcome;
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
+use crate::records::{self, CloudRecord, DroppedRecord, Stored};
 use crate::sharing::{Role, role_of};
 
 /// 不能改的人送來的步：退回的原因。
@@ -31,7 +33,17 @@ const VIEW_ONLY: &str = "沒存進去：你只能看這支流程";
 pub enum RoomEvent {
     /// 這個人的權限改了；None 是被收回（或離開）。
     Permission { user_id: i64, role: Option<Role> },
+    /// 有人記了幾次（收了的）：from 是送來的那個連線，user_id、name 是記的人。
+    Recorded {
+        from: u64,
+        user_id: i64,
+        name: String,
+        records: Vec<Stored>,
+    },
 }
+
+/// 每個連線一個號碼：別人記的才轉給它（自己送的已經回過了）。
+static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
 /// 開著的房間：流程 id → 發給那支流程每個連線的頻道。
 #[derive(Clone, Default)]
@@ -90,6 +102,11 @@ pub enum RoomRequest {
         #[ts(type = "unknown[]")]
         commands: serde_json::Value,
     },
+    /// 記一次（分段練，或一個人記的全上的每一次）：流程核心的 StoredAttempt（動作 id、那一次，id 是手機發的）。
+    Record {
+        #[ts(type = "unknown[]")]
+        attempts: serde_json::Value,
+    },
 }
 
 /// 伺服器送給用戶端的。
@@ -133,6 +150,14 @@ pub enum RoomMessage {
     },
     /// 我被收回了（或離開了）：房間關掉，回首頁。
     Revoked,
+    /// 我送的紀錄：收了的（伺服器存的樣子，記號可能少了）、沒存進去的和原因。
+    /// 送過、後來被清掉的兩邊都不放。
+    RecordsSaved {
+        saved: Vec<CloudRecord>,
+        dropped: Vec<DroppedRecord>,
+    },
+    /// 別人（或我在別的分頁）記的。
+    NewRecords { records: Vec<CloudRecord> },
 }
 
 /// 連房間：別的網站叫的擋（403）、沒登入 401、不是我的或沒有這支 404。
@@ -170,6 +195,7 @@ async fn serve(
 ) -> anyhow::Result<()> {
     // 打招呼前就開始聽：連上之後的權限改動不會漏掉。
     let mut events = state.rooms.listen(flow_id);
+    let me = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
     let tab_id = loop {
         match next_request(&mut socket).await {
             Some(RoomRequest::Hello {
@@ -200,11 +226,25 @@ async fn serve(
                 Some(RoomRequest::Step { step_id, commands, .. }) => {
                     take_step(&state, flow_id, user_id, &tab_id, step_id, commands).await?
                 }
+                Some(RoomRequest::Record { attempts }) => {
+                    records::record(&state, flow_id, user_id, me, attempts).await?
+                }
                 Some(_) => continue,
             },
             event = events.recv() => match event {
                 Ok(RoomEvent::Permission { user_id: who, role }) if who == user_id => {
                     told_role(&state, flow_id, role).await?
+                }
+                Ok(RoomEvent::Recorded { from, user_id: by, name, records }) if from != me => {
+                    let records = records
+                        .into_iter()
+                        .map(|s| CloudRecord {
+                            action_id: s.action_id,
+                            attempt: s.attempt,
+                            by: (by != user_id).then(|| name.clone()),
+                        })
+                        .collect();
+                    RoomMessage::NewRecords { records }
                 }
                 Ok(_) => continue,
                 // 漏聽了幾件：照資料庫重新看一次自己的權限。
@@ -315,15 +355,22 @@ async fn take_step(
     if !role.can_edit() {
         return rejected(VIEW_ONLY.into(), content);
     }
+    // 紀錄放回流程再跑（ADR 0008）：跑完照結果清掉、改掉該改的紀錄。
+    let before = records::before_step(&mut tx, flow_id).await?;
     let Ok(result) = state
         .core
-        .run_commands(content.clone(), commands.to_string(), step_id.clone())
+        .run_step(
+            content.clone(),
+            serde_json::to_string(&before)?,
+            commands.to_string(),
+            step_id.clone(),
+        )
         .await
     else {
         // 流程核心看不懂（例：沒有這個指令、參數不對）。
         return rejected("沒存進去：伺服器看不懂這一步".into(), content);
     };
-    let outcome: Outcome = serde_json::from_str(&result)?;
+    let outcome: records::StepOutcome = serde_json::from_str(&result)?;
     let flow = match (outcome.kind.as_str(), outcome.flow) {
         ("ok", Some(flow)) => flow,
         // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。
@@ -353,6 +400,14 @@ async fn take_step(
     .bind(user_id)
     .bind(now)
     .execute(&mut *tx)
+    .await?;
+    records::after_step(
+        &mut tx,
+        flow_id,
+        &before,
+        outcome.records.unwrap_or_default(),
+        now,
+    )
     .await?;
     // 換掉、刪掉的音樂記下哪天不用了（#249）。
     crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;

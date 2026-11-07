@@ -6,7 +6,16 @@
 // 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247），
 // 每一步送伺服器存（cloud，#248），沒有存檔。
 
-import { audioExtension, missingAudioNames, readFlowFile, writeFlowFile, type AudioBytes, type Flow } from '#lib/core';
+import {
+	audioExtension,
+	missingAudioNames,
+	putRecords,
+	readFlowFile,
+	writeFlowFile,
+	type Attempt,
+	type AudioBytes,
+	type Flow
+} from '#lib/core';
 import { CloudSteps } from '#lib/cloud-steps.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
@@ -276,11 +285,16 @@ export class FlowFile {
 			this.#openError = '這支流程打不開了';
 			return;
 		}
-		const flow = found.flow as Flow;
+		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。
+		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
+		const flow = putRecords(found.flow as Flow, records);
 		const music = await this.#editor.readMusic(await this.#cloudAudio(id, flow));
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = id;
+		this.#editor.session.recordedBy = Object.fromEntries(
+			found.records.flatMap((r) => (r.by ? [[(r.attempt as Attempt).id, r.by]] : []))
+		);
 		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
 		cloud.onrevoked = () => {
 			const name = this.#editor.session.flow?.name ?? '';
