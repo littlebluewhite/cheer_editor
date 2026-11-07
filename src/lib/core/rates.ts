@@ -1,7 +1,8 @@
 // 成功率怎麼算。記錄頁的每天的表、總表都用這裡的算法。
 // 查詢都回傳次數，百分比由次數算：
 // - 成功率 = ✓ ÷ 有打記號的次數；完成率 =（✓＋△）÷ 有打記號的次數。空的不算。
-// - 整次成功率 = 整個做的次裡，打的記號全是 ✓ 的次 ÷ 整個做的次。只練幾個環節的次不算；中途 ✗、後面空著的也算。
+// - 整次成功率 = 整個做的次裡，那一次當時就有、現在還在的環節全是 ✓ 的次 ÷ 整個做的次。只練幾個環節的次不算；
+//   中途 ✗、後面空著的也算（空著的不算成功）。之後才加的、已經刪掉的環節不看；當時就有的環節全被刪光的那一次不算。
 // - 合計把次數加起來再算，不是把每組的百分比平均。
 
 import type { Action } from './action-types';
@@ -67,9 +68,11 @@ export function rateCounts(phases: Phase[], attempts: Attempt[]): RateCounts {
 			else if (mark === '△') t.minor++;
 			else t.fail++;
 		}
-		if (a.whole) {
+		// 當時就有、現在還在的環節：打了記號的，加上 ✗ 後面空著的（blanks）。
+		const then = phases.filter((p) => a.marks[p.id] || a.blanks?.includes(p.id));
+		if (a.whole && then.length) {
 			counts.whole.whole++;
-			if (Object.values(a.marks).every((m) => m === '✓')) counts.whole.clean++;
+			if (then.every((p) => a.marks[p.id] === '✓')) counts.whole.clean++;
 		}
 	}
 	return counts;

@@ -128,11 +128,11 @@ describe('記錄頁的卡', () => {
 		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✗' }]]);
 	});
 
-	it('「全部 ✓ 存」：每個環節都成功，存成一次整個做', async () => {
+	it('「全部 ✓ 存」：點了的照點的存，空著的補 ✓，存成一次整個做', async () => {
 		const { session, name } = setup();
 		await tap(name, '中段', '小失誤');
 		await fireEvent.click(screen.getByRole('button', { name: '全部 ✓ 存' }));
-		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✓', p2: '✓', p3: '✓' }]]);
+		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✓', p2: '△', p3: '✓' }]]);
 		expect(pressed(name, '中段', '小失誤')).toBe('false');
 	});
 

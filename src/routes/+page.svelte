@@ -359,13 +359,9 @@
 			e.preventDefault();
 			if (e.key === 'Home') playback.toStart();
 			else playback.toEnd();
-		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
-			e.preventDefault();
-			session.removeFormation(session.selectedFormationId);
-		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedActionId) {
-			// Mac 的 delete 鍵送的是 Backspace
-			e.preventDefault();
-			session.removeAction(session.selectedActionId);
+		} else if (e.key === 'Delete' || e.key === 'Backspace') {
+			// Mac 的 delete 鍵送的是 Backspace；只刪最後點的那一個
+			if (session.deleteKey()) e.preventDefault();
 		} else if (
 			(e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
 			!e.defaultPrevented &&
@@ -893,6 +889,9 @@
 							</li>
 						{/each}
 					</ul>
+					{#if editor.file.unsavedOverLimit}
+						<p class="recent-note" role="status">有 {editor.file.unsavedOverLimit} 支還沒存。編輯器不會自動丟掉還沒存的，用不到的按「丟掉」。</p>
+					{/if}
 					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 				</div>
 			{/if}

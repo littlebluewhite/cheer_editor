@@ -13,7 +13,7 @@ import { freshIds } from './ids';
 import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 9;
+export const FORMAT_VERSION = 10;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -41,6 +41,7 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  *   不存。升級時每個動作的組照號碼順序發組 id，流程的 lastIds 記上 g（見 squadIds）。
  * 第 9 版：還沒有環節的動作（騰翻、跳躍除外）也可以有組（從別的動作複製人帶來的，加第一個環節時照用）。資料不用動；
  *   第 8 版以前沒有環節的動作有組就是壞掉的檔，升級時交給 isFlow 擋下來（見 squadsWithoutPhases）。
+ * 第 10 版：一次多了可有可無的 blanks（整個做、中途 ✗ 時，那時就有、✗ 後面空著的環節），沒有就是沒有空著的，所以資料不用動。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -50,7 +51,8 @@ const UPGRADES: Record<number, Upgrade> = {
 	5: (doc) => ({ formatVersion: 6, flow: doc.flow }),
 	6: (doc) => ({ formatVersion: 7, flow: tidySuccessRate(doc.flow) }),
 	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) }),
-	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow })
+	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow }),
+	9: (doc) => ({ formatVersion: 10, flow: doc.flow })
 };
 
 /** 有沒有動作沒打開記成功率卻有組（第 8 版以前不行）。 */
@@ -250,7 +252,8 @@ const attempt = shape({
 	practice: oneOf(PRACTICE_KINDS),
 	runThroughId: (v) => v === undefined || str(v),
 	whole: bool,
-	marks: isObject
+	marks: isObject,
+	blanks: (v) => v === undefined || listOf(str)(v)
 });
 const successRate: Check = (v) =>
 	v === undefined || shape({ phases: listOf(phase), records: listOf(attempt) })(v);

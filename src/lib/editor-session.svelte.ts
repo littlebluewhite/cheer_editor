@@ -19,6 +19,7 @@ import {
 	type CommandResult,
 	type ConfirmOption,
 	type Flow,
+	type Mark,
 	type MoveResult
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
@@ -38,6 +39,9 @@ export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上
 
 /** 拖過頭（走位條、縮圖、場上的人）停在最遠的合法位置時的提示。 */
 export const AT_EDGE = '已靠到邊界';
+
+/** 最後點的是人時按 Delete 的提示：不刪任何東西。 */
+export const PICK_ACTION_FIRST = '要刪動作，先點動作';
 
 /** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
 export interface SessionPlayback {
@@ -78,6 +82,8 @@ export class EditorSession {
 	#actionId = $state<string | null>(null);
 	/** 選到的人（選人捷徑、點人、框選、點泳道名字）：新增動作用的人，也是場上整組拖的那一組。跟動作、站位的選取分開。 */
 	#memberIds = $state.raw<string[]>([]);
+	/** 最後點的是哪一種：Delete／Backspace 只看它（點了人以後，之前選的站位、動作還在，但不刪）。 */
+	#picked: 'formation' | 'action' | 'member' | null = null;
 	/**
 	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 VIEW_ONLY；
 	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
@@ -88,6 +94,11 @@ export class EditorSession {
 	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
 	 */
 	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
+	/**
+	 * 記錄頁每張卡點了還沒存的記號（環節 id → 記號），key 跟 drillScopes 一樣。
+	 * 換動作、切頁再回來還在；換一支流程就清掉；不存進流程檔。
+	 */
+	drillMarks: Record<string, Record<string, Mark>> = $state({});
 	/**
 	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
 	 * 不存進流程檔。
@@ -194,6 +205,7 @@ export class EditorSession {
 		this.#redo = [];
 		this.#joinable = null;
 		this.clearSelection();
+		this.drillMarks = {};
 		this.notice = '';
 		this.ask.clear();
 		this.squadAsk.clear();
@@ -417,6 +429,18 @@ export class EditorSession {
 		});
 	}
 
+	/**
+	 * Delete／Backspace：只刪最後點的那一個（站位或動作）。最後點的是人時不刪，提示要刪動作先點動作。
+	 * 回傳有沒有處理（頁面拿來 preventDefault）。
+	 */
+	deleteKey(): boolean {
+		if (this.#picked === 'formation' && this.#formationId) this.removeFormation(this.#formationId);
+		else if (this.#picked === 'action' && this.#actionId) this.removeAction(this.#actionId);
+		else if (this.#picked === 'member' && this.#memberIds.length) this.notice = PICK_ACTION_FIRST;
+		else return false;
+		return true;
+	}
+
 	// ---------- 選取 ----------
 
 	get selectedFormationId(): string | null {
@@ -444,6 +468,7 @@ export class EditorSession {
 	selectFormation(id: string | null) {
 		this.#formationId = id;
 		if (id) this.#actionId = null;
+		this.#pick('formation', !!id);
 		this.#updated();
 	}
 
@@ -452,13 +477,21 @@ export class EditorSession {
 		const changed = id !== this.#actionId;
 		this.#actionId = id;
 		if (id) this.#formationId = null;
+		this.#pick('action', !!id);
 		if (changed) this.beats.reset();
 		this.#updated();
 	}
 
 	selectMembers(ids: string[]) {
 		this.#memberIds = ids;
+		this.#pick('member', ids.length > 0);
 		this.#updated();
+	}
+
+	/** 選了（on）就記成最後點的這一種；清掉的剛好是最後點的那一種，就變成沒有。 */
+	#pick(kind: 'formation' | 'action' | 'member', on: boolean) {
+		if (on) this.#picked = kind;
+		else if (this.#picked === kind) this.#picked = null;
 	}
 
 	/** 點人（場地、泳道名字）：只選他；Shift 或多選開著是加進來或拿掉。 */
@@ -473,6 +506,7 @@ export class EditorSession {
 		this.#formationId = null;
 		this.#actionId = null;
 		this.#memberIds = [];
+		this.#picked = null;
 		this.#updated();
 	}
 

@@ -5,6 +5,7 @@ import {
 	dailyTable,
 	cellDetail,
 	addPhase,
+	deletePhase,
 	percent,
 	periodRange,
 	rateBand,
@@ -110,6 +111,57 @@ describe('每天的表', () => {
 		const table = dailyTable(lib());
 		expect(table.days).toEqual([]);
 		expect(table.total).toEqual({ phases: { p1: none, p2: none, p3: none }, whole: { clean: 0, whole: 0 } });
+	});
+});
+
+describe('整次只看那一次當時就有、現在還在的環節', () => {
+	/** 照順序記好這些次，再刪掉這些環節（有記號照樣刪），回傳 Lib。 */
+	function libWithout(phaseIds: string[], ...attempts: NewAttempt[]): Action {
+		let flow = sample();
+		for (const a of attempts) flow = flowOf(recordAttempt(flow, 'x1', a));
+		for (const id of phaseIds) flow = flowOf(deletePhase(flow, 'x1', id, { confirmed: true }));
+		return flow.actions.find((a) => a.id === 'x1')!;
+	}
+
+	it('✓✗· 刪掉中段：下法當時就有、空著，不算成功', () => {
+		expect(dailyTable(libWithout(['p2'], attempt('✓✗·'))).total.whole).toEqual({ clean: 0, whole: 1 });
+	});
+
+	it('✗·· 刪掉上法：那一次不算成功', () => {
+		expect(dailyTable(libWithout(['p1'], attempt('✗··'))).total.whole.clean).toBe(0);
+	});
+
+	it('✓✓✗ 刪掉下法：剩下當時就有的都是 ✓，算成功', () => {
+		expect(dailyTable(libWithout(['p3'], attempt('✓✓✗'))).total.whole).toEqual({ clean: 1, whole: 1 });
+	});
+
+	it('之後才加的環節不看：✓✓✓ 之後加一個環節，那一次還是成功', () => {
+		let flow = flowOf(recordAttempt(sample(), 'x1', attempt('✓✓✓')));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		const action = flow.actions.find((a) => a.id === 'x1')!;
+		expect(action.successRate!.phases).toHaveLength(4);
+		expect(dailyTable(action).total.whole).toEqual({ clean: 1, whole: 1 });
+	});
+
+	it('之後才加的環節不看：✓✗ 之後加一個環節、再刪掉 ✗ 的那個，那一次算成功', () => {
+		let flow = flowOf(recordAttempt(sample(), 'x1', attempt('✓✓✗')));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		flow = flowOf(deletePhase(flow, 'x1', 'p3', { confirmed: true }));
+		const action = flow.actions.find((a) => a.id === 'x1')!;
+		expect(dailyTable(action).total.whole).toEqual({ clean: 1, whole: 1 });
+	});
+
+	it('當時就有的環節全被刪光：那一次不算進整次', () => {
+		let flow = flowOf(recordAttempt(sample(), 'x1', attempt('✓✗·')));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		for (const id of ['p1', 'p2', 'p3']) flow = flowOf(deletePhase(flow, 'x1', id, { confirmed: true }));
+		const action = flow.actions.find((a) => a.id === 'x1')!;
+		expect(dailyTable(action).total.whole).toEqual({ clean: 0, whole: 0 });
+	});
+
+	it('成功率表的整次跟每天的表一樣', () => {
+		const action = libWithout(['p2'], attempt('✓✗·'), attempt('✓✓✓'));
+		expect(rateTable(sample(), action).total.whole).toEqual({ clean: 1, whole: 2 });
 	});
 });
 
