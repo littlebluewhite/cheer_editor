@@ -50,11 +50,28 @@ export type {
 	UserStatus
 };
 
-/** 一支雲端流程的房間（WebSocket）：送步、收伺服器的回答。還沒連上時送的先排著，連上就送。 */
+/**
+ * 房間連不上的原因（#260）：斷網、伺服器沒回應、登入超過 30 天（或在別的地方登出了）；'open' 是斷了又連上（要再打招呼）。
+ */
+export type RoomStatus = 'open' | 'offline' | 'unreachable' | 'expired';
+
+/** 伺服器沒回應時多久自動再連一次（斷了之後第一次很快再試：部署切換時 WebSocket 也會斷）。 */
+export const ROOM_RETRY_MS = 15_000;
+const ROOM_FIRST_RETRY_MS = 1_000;
+
+/**
+ * 一支雲端流程的房間（WebSocket）：送步、收伺服器的回答。第一次連上前送的先排著，連上就送。
+ * 斷了（#260）：說為什麼（onstatus），自己再連（斷網等連上網路、伺服器沒回應過一下再試；登入過期不試）；
+ * 斷著時送的不算，連上了說 'open'，由用的人重新打招呼、再送。
+ */
 export interface FlowRoom {
 	send(request: RoomRequest): void;
 	/** 收到伺服器說的話（房間建好後接上）。 */
 	onmessage: (message: RoomMessage) => void;
+	/** 斷了（為什麼）、又連上了（'open'）。 */
+	onstatus: (status: RoomStatus) => void;
+	/** 「現在再試」：斷著的話馬上再連一次。 */
+	retry(): void;
 	close(): void;
 }
 
@@ -334,21 +351,80 @@ export function httpServer(base = ''): ServerAdapter {
 		openRoom(flowId) {
 			const url = new URL(`${base}/api/flows/${encodeURIComponent(flowId)}/room`, location.href);
 			url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-			const socket = new WebSocket(url);
+			/** 現在的連線；斷著是 null。 */
+			let socket: WebSocket | null = null;
+			/** 還沒斷過：第一次連上前送的排著。 */
+			let first = true;
+			/** 用的人關掉了。 */
+			let closed = false;
+			let timer: ReturnType<typeof setTimeout> | undefined;
 			const waiting: string[] = [];
 			const room: FlowRoom = {
 				onmessage: () => {},
+				onstatus: () => {},
 				send(request) {
 					const text = JSON.stringify(request);
-					if (socket.readyState === WebSocket.OPEN) socket.send(text);
-					else waiting.push(text);
+					if (socket?.readyState === WebSocket.OPEN) socket.send(text);
+					else if (first) waiting.push(text);
 				},
-				close: () => socket.close()
+				retry() {
+					if (!closed && !socket) connect();
+				},
+				close() {
+					closed = true;
+					clearTimeout(timer);
+					window.removeEventListener('online', online);
+					window.removeEventListener('offline', offline);
+					socket?.close();
+				}
 			};
-			socket.onopen = () => {
-				for (const text of waiting.splice(0)) socket.send(text);
+			/** 連上網路了：斷著就馬上再連。 */
+			const online = () => room.retry();
+			/** 瀏覽器說斷網了：WebSocket 不一定馬上發現，自己關掉。 */
+			const offline = () => socket?.close();
+			window.addEventListener('online', online);
+			window.addEventListener('offline', offline);
+			/** 斷了：問問看為什麼（斷網、登入過期、被收回或流程刪了、伺服器沒回應）。 */
+			const why = async (): Promise<RoomStatus | 'gone'> => {
+				if (!navigator.onLine) return 'offline';
+				try {
+					const me = await fetch(`${base}/api/me`);
+					if (me.status === 401) return 'expired';
+					if (!me.ok) return 'unreachable';
+					const flow = await fetch(`${base}/api/flows/${encodeURIComponent(flowId)}`);
+					return flow.status === 404 ? 'gone' : 'unreachable';
+				} catch {
+					return navigator.onLine ? 'unreachable' : 'offline';
+				}
 			};
-			socket.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
+			const connect = (): void => {
+				clearTimeout(timer);
+				const s = new WebSocket(url);
+				let opened = false;
+				socket = s;
+				s.onopen = () => {
+					opened = true;
+					if (first) for (const text of waiting.splice(0)) s.send(text);
+					else room.onstatus('open');
+					first = false;
+				};
+				s.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
+				s.onclose = () => {
+					if (closed || socket !== s) return;
+					socket = null;
+					first = false;
+					waiting.length = 0;
+					void why().then((status) => {
+						if (closed || socket) return;
+						// 被收回、流程被刪了：房間連不上了，當作被收回（回首頁說原因）
+						if (status === 'gone') return room.onmessage({ kind: 'revoked' });
+						room.onstatus(status);
+						// 登入過期等再登入；其他過一下再試（剛斷的那次很快再試一次）
+						if (status !== 'expired') timer = setTimeout(connect, opened ? ROOM_FIRST_RETRY_MS : ROOM_RETRY_MS);
+					});
+				};
+			};
+			connect();
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {

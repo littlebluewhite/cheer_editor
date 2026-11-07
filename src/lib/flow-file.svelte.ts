@@ -6,6 +6,8 @@
 // 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247），
 // 每一步送伺服器存（cloud，#248），沒有存檔。
 // 用分享連結打開的（#251）：已經有權限的照自己的權限打開；沒有的只能看（linkOnly）：不連房間、沒有草稿、沒有練習頁。
+// 雲端流程這台還沒傳的成功率紀錄（#260）：打開時從離線存放拿出來放回流程、接著傳；被收回時還有沒傳的，先擋住列出來（lost），
+// 按「知道了」才丟掉、回首頁。
 
 import {
 	audioExtension,
@@ -17,7 +19,8 @@ import {
 	type AudioBytes,
 	type Flow
 } from '#lib/core';
-import { CloudSteps, ONLY_VIEW } from '#lib/cloud-steps.svelte.js';
+import { CloudSteps, ONLY_VIEW, withUnsent } from '#lib/cloud-steps.svelte.js';
+import type { DroppedRecord } from '#lib/editor-session.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
@@ -295,9 +298,12 @@ export class FlowFile {
 			this.#openError = '這支流程打不開了';
 			return;
 		}
-		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。
+		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
-		const flow = putRecords(found.flow as Flow, records);
+		const store = this.#editor.adapters.offline;
+		const saved = (await store.unsent()).find((u) => u.flowId === id);
+		const fromServer = putRecords(found.flow as Flow, records);
+		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
 		const server = this.#editor.adapters.server;
 		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId)));
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
@@ -306,13 +312,22 @@ export class FlowFile {
 		this.#editor.session.recordedBy = Object.fromEntries(
 			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
 		);
-		const cloud = new CloudSteps(this.#editor.adapters.server.openRoom(id), found.step, this.#editor.session, found.role);
+		const room = this.#editor.adapters.server.openRoom(id);
+		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved });
+		// 傳不上去了：這台存著的丟掉，回首頁說原因
 		const goneHome = (why: (name: string) => string) => () => {
 			const name = this.#editor.session.flow?.name ?? '';
+			cloud.forget();
 			this.#editor.session.open(null);
 			this.#revoked = why(name);
 		};
-		cloud.onrevoked = goneHome((name) => `你已經不能打開「${name}」。`);
+		const revoked = goneHome((name) => `你已經不能打開「${name}」。`);
+		// 被收回時還有沒傳的：先擋住列出來，按「知道了」才丟掉、回首頁
+		cloud.onrevoked = () => {
+			const rows = cloud.unsentRows;
+			if (rows.length) this.#lost = { rows, then: revoked };
+			else revoked();
+		};
 		cloud.ondeleted = goneHome((name) => `「${name}」被擁有者刪掉了。`);
 		this.#cloud = cloud;
 	}
@@ -341,6 +356,18 @@ export class FlowFile {
 		this.#cloudId = found.id;
 		this.#linkOnly = true;
 		this.#editor.session.readOnly = ONLY_VIEW;
+	}
+
+	/** 被收回時還沒傳的（#260）：擋住畫面的框列出來；按「知道了」（lostKnown）才丟掉、回首頁。沒有是 null。 */
+	#lost = $state.raw<{ rows: DroppedRecord[]; then: () => void } | null>(null);
+	get lost(): DroppedRecord[] | null {
+		return this.#lost?.rows ?? null;
+	}
+	/** 被收回的框按「知道了」：沒傳的丟掉，回首頁。 */
+	lostKnown() {
+		const then = this.#lost?.then;
+		this.#lost = null;
+		then?.();
 	}
 
 	/** 被收回、被刪掉回首頁時，首頁最上面黃的那條（「你已經不能打開「…」。」）；沒有是空字串。 */

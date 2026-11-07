@@ -34,10 +34,12 @@ import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
+import { isEmptyUnsent, readUnsent, storedUnsent, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
 import {
 	ServerUnreachable,
 	type AdminResult,
 	type FlowRoom,
+	type RoomStatus,
 	type LinkInfo,
 	type Me,
 	type Person,
@@ -88,6 +90,34 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt: Date 
 	};
 	const latest = () => [...all.values()].at(-1)?.bytes ?? null;
 	return { store, all, latest };
+}
+
+/**
+ * 假的離線存放（#260）：存在記憶體（all：流程 id → 存進去的樣子，跟真的一樣帶版號、讀回來時用 readUnsent），
+ * 一開始可以先放幾份（unsent）。volatile：這台是 iPhone、iPad 的 Safari（不是從主畫面打開的），提醒加到主畫面；按過「知道了」就不提醒。
+ */
+export function fakeOfflineStore(init: { unsent?: UnsentRecords[]; volatile?: boolean } = {}) {
+	const all = new Map<string, unknown>((init.unsent ?? []).map((u) => [u.flowId, storedUnsent(u)]));
+	let known = false;
+	const store: OfflineStore = {
+		async unsent() {
+			return [...all.values()].flatMap((v) => readUnsent(structuredClone(v)) ?? []);
+		},
+		async saveUnsent(u) {
+			if (isEmptyUnsent(u)) all.delete(u.flowId);
+			else all.set(u.flowId, storedUnsent(u));
+		},
+		async clearUnsent() {
+			all.clear();
+		},
+		needsHomeScreen: () => !!init.volatile && !known,
+		homeScreenKnown() {
+			known = true;
+		}
+	};
+	/** 這支流程現在存著的（沒有是 null）。 */
+	const of = (flowId: string) => readUnsent(all.get(flowId));
+	return { store, all, of };
 }
 
 /**
@@ -174,6 +204,7 @@ export interface FakeCloudFlow {
  * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
+ * 網路（#260）：network() 讓開著的房間斷網、伺服器沒回應、登入過期，或又連上（斷著的房間說 'open'，等它再打招呼）。
  * 改到同一個東西（#254）照真的規則：上次看到之後別的分頁改過同一個東西退回、寫最後改的人；被規則擋下也寫那個人和原因；
  * 一步被退回後，同一個房間上次看到的還在那之前的步也退回（步驟紀錄沒有 30 天的限制）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
@@ -212,7 +243,9 @@ export function fakeServer(
 		otherDevices: 1,
 		fingerprint: CORE_FINGERPRINT,
 		holdRoom: false,
-		audioTooBig: false
+		audioTooBig: false,
+		/** 房間連得上嗎（#260）：network() 換；直接改它不會通知房間（等房間自己再試，例：按「現在再試」）。 */
+		link: 'online' as 'online' | Exclude<RoomStatus, 'open'>
 	};
 	/** 留著還沒處理的（holdRoom 時）。 */
 	let held: (() => void)[] = [];
@@ -688,7 +721,15 @@ export function fakeServer(
 			const email = state.signedIn ?? '';
 			const room: FlowRoom = {
 				onmessage: () => {},
+				onstatus: () => {},
+				retry() {
+					if (!open.down) return;
+					if (state.link === 'online') reconnect(open);
+					else queueMicrotask(() => room.onstatus(state.link as Exclude<RoomStatus, 'open'>));
+				},
 				send(request) {
+					// 斷著時送的不算（跟真的一樣）
+					if (open.down) return;
 					const f = state.flows.find((g) => g.id === flowId);
 					const role = f && roleOf(f, email);
 					if (!f) return;
@@ -727,6 +768,7 @@ export function fakeServer(
 			};
 			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '' };
 			rooms.push(open);
+			if (state.link !== 'online') drop(open, state.link);
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {
@@ -765,9 +807,37 @@ export function fakeServer(
 			return 'ok';
 		}
 	};
-	/** 留著的處理掉、回答（holdRoom 不再留）。 */
-	const releaseRoom = () => {
-		state.holdRoom = false;
+	/** 一個房間斷了（為什麼）：不在場了，斷著時送的不算。 */
+	function drop(open: OpenRoom, status: Exclude<RoomStatus, 'open'>) {
+		open.down = true;
+		open.here = false;
+		queueMicrotask(() => open.room.onstatus(status));
+		tellPresent(open.flowId);
+	}
+	/** 一個斷了的房間又連上：說 'open'，等它再打招呼。 */
+	function reconnect(open: OpenRoom) {
+		open.down = false;
+		queueMicrotask(() => open.room.onstatus('open'));
+	}
+	/**
+	 * 網路換了（#260）：斷網（'offline'）、伺服器沒回應（'unreachable'，HTTP 也連不上）、登入超過 30 天（'expired'，登出了），
+	 * 開著的房間都斷；'online' 是又連上了，斷著的房間馬上再連（跟真的自己再試一樣）。
+	 */
+	const network = (status: 'online' | Exclude<RoomStatus, 'open'>) => {
+		state.link = status;
+		state.unreachable = status === 'offline' || status === 'unreachable';
+		if (status === 'expired') {
+			state.expired = true;
+			state.signedIn = null;
+		}
+		for (const open of rooms) {
+			if (status === 'online' && open.down) reconnect(open);
+			else if (status !== 'online' && !open.down) drop(open, status);
+		}
+	};
+	/** 留著的處理掉、回答（holdRoom 不再留；hold：之後送來的照樣留著）。 */
+	const releaseRoom = (hold = false) => {
+		state.holdRoom = hold;
 		const now = held;
 		held = [];
 		for (const send of now) send();
@@ -792,7 +862,7 @@ export function fakeServer(
 			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
 		};
 	};
-	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs };
+	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs, network };
 }
 
 /** 房間收到的改、刪、救回紀錄（#258）。 */
@@ -810,6 +880,8 @@ interface OpenRoom {
 	editing: boolean;
 	tab: string;
 	sentBack?: number;
+	/** 斷著（#260）。 */
+	down?: boolean;
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */
@@ -846,6 +918,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			pendingInput: fakePendingInput(),
 			nextFrame: manualFrames().nextFrame,
 			server: fakeServer().server,
+			offline: fakeOfflineStore().store,
 			...adapters
 		},
 		flow

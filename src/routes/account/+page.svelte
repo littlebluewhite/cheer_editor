@@ -1,11 +1,14 @@
 <script lang="ts">
 	// 我的帳號（#190）：名字（自己改）、Email 只顯示、改密碼（現在的密碼、新密碼）、「登出這台裝置」。
+	// 這台還有沒傳的成功率紀錄時，登出先跳小框（#260）。
 	// 沒登入就到登入頁。
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { charCount } from '#lib/core';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import UnsentLogout, { unsentFlows } from '#lib/components/UnsentLogout.svelte';
+	import { createIndexedDbOfflineStore, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
 	import {
 		httpServer,
 		tooManyTriesText,
@@ -19,8 +22,10 @@
 		server?: ServerAdapter;
 		/** 換頁；測試記下網址。 */
 		go?: (url: string) => void;
+		/** 離線存放（#260）：登出前看這台還有沒有沒傳的紀錄；測試放假的。 */
+		offline?: OfflineStore;
 	}
-	let { server = httpServer(), go = (url) => location.assign(url) }: Props = $props();
+	let { server = httpServer(), go = (url) => location.assign(url), offline = createIndexedDbOfflineStore() }: Props = $props();
 
 	/** 跟伺服器一樣：至少 15 個看得到的字。 */
 	const MIN = 15;
@@ -82,10 +87,20 @@
 		return r.kind === 'tooShort' ? `還差 ${r.missing} 個字。` : '這個密碼太常見，或在別的網站外洩過。換一個。';
 	}
 
-	/** 登出這台裝置，回首頁。連不上伺服器時還是登入著（可以再按一次）。 */
+	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
+	let unsentAtLogout = $state.raw<UnsentRecords[] | null>(null);
+	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
 	async function logout() {
+		const left = await unsentFlows(offline);
+		if (left.length) unsentAtLogout = left;
+		else await signOut();
+	}
+	/** 登出這台裝置（discard：先丟掉這台沒傳的紀錄），回首頁。連不上伺服器時還是登入著（可以再按一次）。 */
+	async function signOut(discard = false) {
+		unsentAtLogout = null;
 		try {
 			await server.logout();
+			if (discard) await offline.clearUnsent();
 			go(resolve('/'));
 		} catch {
 			// 沒登出成功：什麼都不變
@@ -146,6 +161,9 @@
 		</div>
 	{/if}
 </AccountCard>
+{#if unsentAtLogout}
+	<UnsentLogout flows={unsentAtLogout} onstay={() => (unsentAtLogout = null)} ondiscard={() => signOut(true)} />
+{/if}
 
 <style>
 	.account {
