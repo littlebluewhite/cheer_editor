@@ -29,6 +29,7 @@
 	import { NEW_VERSION } from '#lib/cloud-steps.svelte.js';
 	import type { Me, MyFlows } from '#lib/server-api.js';
 	import { ROLE_NAMES } from '#lib/role-names.js';
+	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -171,9 +172,25 @@
 	});
 	/** 開著的雲端流程：每一步送伺服器存（名字旁「存中…」「✓ 已存」）；本機流程是 null。 */
 	const cloud = $derived(editor.file.cloud);
-	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。雲端流程有新版、我是記錄者或檢視者時不能改
+	/** 用分享連結看的（沒有權限，#251）：只能看、沒有練習頁、分享。 */
+	const linkOnly = $derived(editor.file.linkOnly);
+	/** 只能看：雲端流程有新版、我是記錄者或檢視者、用分享連結看的。 */
+	const viewOnly = $derived(!!cloud?.viewOnly || linkOnly);
+	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到編輯。只能看的時候不能改
 	$effect(() => {
-		session.viewing = narrow || !!cloud?.viewOnly;
+		session.viewing = narrow || viewOnly;
+	});
+	/** 這次是從分享連結（網址 #share=…）打開的：回首頁時把網址上的連結拿掉，重新整理才不會又打開。 */
+	let fromLink = $state(false);
+	onMount(() => {
+		const token = shareTokenIn(location.hash);
+		if (!token) return;
+		void editor.file.openLink(token).then(() => (fromLink = true));
+	});
+	$effect(() => {
+		if (!fromLink || flow) return;
+		history.replaceState(history.state, '', location.pathname + location.search);
+		fromLink = false;
 	});
 	/** 誰開著的頭像顏色：照使用者 id 一人一個（同一個人換分頁、重新整理還是同一個顏色）。 */
 	const FACE_COLORS = ['#1d4ed8', '#be185d', '#047857', '#b45309', '#6d28d9', '#0e7490', '#b91c1c', '#4d7c0f'];
@@ -608,10 +625,13 @@
 							title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span
 						>{/if}</span
 				>
-				<div class="view" role="group" aria-label="編排｜練習">
-					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
-					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
-				</div>
+				<!-- 用分享連結看的沒有練習頁（看不到成功率） -->
+				{#if !linkOnly}
+					<div class="view" role="group" aria-label="編排｜練習">
+						<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
+						<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
+					</div>
+				{/if}
 				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
 				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
 					><Icon name="help" /><span class="guide-text">使用說明</span></a
@@ -628,7 +648,7 @@
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
 					<div class="mode" role="group" aria-label="編輯｜檢視">
-						<button type="button" aria-pressed={!session.viewing} disabled={!!cloud?.viewOnly} onclick={() => (session.viewing = false)}
+						<button type="button" aria-pressed={!session.viewing} disabled={viewOnly} onclick={() => (session.viewing = false)}
 							><Icon name="pencil" />編輯</button
 						>
 						<button
@@ -661,13 +681,13 @@
 					>
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
-				{#if cloud}
+				{#if cloud || linkOnly}
 					<!-- 雲端流程每一步都存了：沒有存檔、開啟、新建，只回首頁 -->
 					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}
 						><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button
 					>
 					<!-- 誰開著（#253）：別人的頭像放在「分享」左邊，一人一個顏色，右下小圖示是在編輯（筆）還是檢視（眼睛）；自己不列 -->
-					{#if cloud.present.length}
+					{#if cloud?.present.length}
 						<ul class="present" aria-label="誰開著">
 							{#each cloud.present as p (p.userId)}
 								{@const doing = `${p.name}・${p.editing ? '編輯中' : '檢視中'}`}
@@ -678,8 +698,10 @@
 							{/each}
 						</ul>
 					{/if}
-					<!-- 放在原本存檔的地方；每個人都叫「分享」，不是擁有者打開是只能看的名單 -->
-					<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />分享</button>
+					<!-- 放在原本存檔的地方；每個人都叫「分享」，不是擁有者打開是只能看的名單。用分享連結看的沒有 -->
+					{#if cloud}
+						<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />分享</button>
+					{/if}
 				{:else}
 					<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 					{#if narrow}
@@ -906,7 +928,7 @@
 		<div class="cover-ways">
 			<button type="button" onclick={() => editor.file.leaveToHome()}>回首頁</button>
 			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
-			<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>
+			{#if !linkOnly}<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>{/if}
 		</div>
 	{/snippet}
 	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來。窄螢幕是手機的檢視畫面，不擋 -->

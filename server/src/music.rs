@@ -56,7 +56,7 @@ impl MusicStore {
         action.sign(PRESIGN_FOR).to_string()
     }
 
-    fn download_url(&self, key: &str) -> String {
+    pub(crate) fn download_url(&self, key: &str) -> String {
         let action = self.bucket.get_object(Some(&self.credentials), key);
         action.sign(PRESIGN_FOR).to_string()
     }

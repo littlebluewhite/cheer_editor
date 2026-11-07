@@ -11,6 +11,7 @@ pub mod lockout;
 pub mod mail;
 pub mod music;
 pub mod my_account;
+pub mod share_link;
 pub mod sharing;
 
 use std::path::Path;
@@ -91,6 +92,15 @@ pub fn app(state: AppState, site: &Path) -> Router {
             post(sharing::revoke),
         )
         .route("/api/flows/{id}/leave", post(sharing::leave))
+        .route(
+            "/api/flows/{id}/link",
+            get(share_link::get).post(share_link::switch),
+        )
+        .route("/api/links/{token}", get(share_link::open))
+        .route(
+            "/api/links/{token}/audio/{audio_id}",
+            get(share_link::audio),
+        )
         .route("/api/flows/{id}/audio", post(music::start_upload))
         .route("/api/flows/{id}/audio/{audio_id}", get(music::download))
         .route(
