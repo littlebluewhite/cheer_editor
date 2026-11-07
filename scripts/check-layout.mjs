@@ -1042,7 +1042,7 @@ await check('1024×768（觸控）：圓點和按鈕、輸入框、勾選框點�
 	const ok = dot >= 32 && Object.values(res).every((r) => r.量了幾個 > 0 && r.太小的.length === 0);
 	return { ok, value: { 圓點直徑: dot, ...res } };
 });
-await check('1024×768（觸控）：40 人、場外排了人時，條編號不被（放大了的）圓點蓋住', async () => {
+await check('1024×768（觸控）：40 人、場外排了人時，條編號、格號不被（放大了的）圓點蓋住', async () => {
 	await setTouchViewport(1024, 768);
 	const bad = [];
 	for (const field of [{ strips: 1, layout: 'vertical' }, { strips: 1, layout: 'horizontal' }]) {
@@ -1061,7 +1061,7 @@ await check('1024×768（觸控）：40 人、場外排了人時，條編號不�
 		await waitFor(() => js(`return !!document.querySelector('.rail')`));
 		await sleep(500);
 		const covered = await js(`const dots = [...document.querySelectorAll('.field g.dot')].map((d) => d.getBoundingClientRect());
-			return [...document.querySelectorAll('[data-strip-number]')].flatMap((t) => {
+			return [...document.querySelectorAll('[data-strip-number], [data-cell-number]')].flatMap((t) => {
 				const r = t.getBoundingClientRect();
 				const box = (b) => [b.left, b.top, b.right, b.bottom].map(Math.round);
 				const hits = dots.filter((d) => d.left < r.right && d.right > r.left && d.top < r.bottom && d.bottom > r.top);
@@ -1696,6 +1696,111 @@ await check('場地放大後拖人到畫面邊上停著：自動捲', async () =
 	const after = await fieldViewBox();
 	await mouse('mouseReleased', p.right - 4, p.y, 0);
 	return { ok: before !== after, value: { 按下時: before, 拖到右邊停一下: after } };
+});
+
+// ---------- ✋ 平移、按住 H、格號（#227） ----------
+
+/** 場地上一個空白處（最上面的東西不是人）的螢幕座標：從場地中間附近找。 */
+const emptyFieldPoint = () =>
+	js(`const s = document.querySelector('svg.field').getBoundingClientRect();
+		for (let dy = 0; dy < s.height / 3; dy += 7) for (const sy of [1, -1]) for (let dx = 0; dx < s.width / 3; dx += 7) for (const sx of [1, -1]) {
+			const x = s.left + s.width / 2 + sx * dx, y = s.top + s.height / 2 + sy * dy;
+			const el = document.elementFromPoint(x, y);
+			if (el && el.closest('svg.field') && !el.closest('[data-member-id], [data-clash]')) return { x, y };
+		}
+		return null;`);
+/** 真的滑鼠從空白處往左拖 120px；回傳拖到一半有沒有框選的框、畫面範圍前後。 */
+async function dragEmptyField() {
+	const p = await emptyFieldPoint();
+	if (!p) return { 找不到空白處: true };
+	const before = await fieldViewBox();
+	await mouse('mousePressed', p.x, p.y);
+	await mouse('mouseMoved', p.x - 20, p.y);
+	await mouse('mouseMoved', p.x - 120, p.y);
+	await sleep(100);
+	const lasso = await js(`return !!document.querySelector('[data-lasso]')`);
+	await mouse('mouseReleased', p.x - 120, p.y, 0);
+	await sleep(100);
+	return { 框選: lasso, 移了: before !== (await fieldViewBox()) };
+}
+const hKey = async (type) => {
+	await send('Input.dispatchKeyEvent', { type, key: 'h', code: 'KeyH', windowsVirtualKeyCode: 72, text: type === 'keyDown' ? 'h' : undefined });
+	await sleep(100);
+};
+
+await check('放大後開 ✋ 拖空白處：看到的範圍移動、沒有框選；再按 ✋ 拖空白處是框選', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await hitAndClick('.rail button[aria-label="放大"]');
+	await hitAndClick('.rail button[aria-label="放大"]');
+	const seen = { 點得到: (await hitAndClick('.rail button[aria-label="平移"]')).self };
+	seen.開著 = await dragEmptyField();
+	await hitAndClick('.rail button[aria-label="平移"]');
+	seen.關掉 = await dragEmptyField();
+	const ok = seen.點得到 && seen.開著.移了 && !seen.開著.框選 && !seen.關掉.移了 && seen.關掉.框選;
+	return { ok, value: seen };
+});
+
+await check('放大後按住 H 拖空白處：看到的範圍移動、沒有框選；放開 H 拖空白處是框選', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await hitAndClick('.rail button[aria-label="放大"]');
+	await hitAndClick('.rail button[aria-label="放大"]');
+	await hKey('keyDown');
+	const seen = { 按住H: await dragEmptyField() };
+	await hKey('keyUp');
+	seen.放開H = await dragEmptyField();
+	const ok = seen.按住H.移了 && !seen.按住H.框選 && !seen.放開H.移了 && seen.放開H.框選;
+	return { ok, value: seen };
+});
+
+/**
+ * 格號跟格子對得上：每個看得到的格號，中心在它那一格裡（直放：前後範圍，正面起；橫放：左右範圍，左起）。
+ * 墊子的螢幕外框照格數切成格子。
+ */
+const cellNumbersOff = () =>
+	js(`const mat = document.querySelector('svg.field rect.mat').getBoundingClientRect();
+		const svg = document.querySelector('svg.field').getBoundingClientRect();
+		const els = [...document.querySelectorAll('svg.field [data-cell-number]')];
+		const shown = els.filter((t) => { const r = t.getBoundingClientRect(); return r.top >= svg.top && r.bottom <= svg.bottom && r.left >= svg.left && r.right <= svg.right; });
+		// 號碼排成直的一排（直放，寫在左邊）還是橫的一排（橫放，寫在後面）：放大後固定在畫面邊上時，不一定在墊子外面
+		const xs = els.map((t) => t.getBoundingClientRect().left);
+		const side = Math.max(...xs) - Math.min(...xs) < 1;
+		const bad = shown.flatMap((t) => {
+			const r = t.getBoundingClientRect(), k = Number(t.textContent), n = els.length;
+			const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+			const [lo, hi, v] = side
+				? [mat.bottom - (k * mat.height) / n, mat.bottom - ((k - 1) * mat.height) / n, cy]
+				: [mat.left + ((k - 1) * mat.width) / n, mat.left + (k * mat.width) / n, cx];
+			return v > lo && v < hi ? [] : [{ 格號: k, 中心: Math.round(v), 那一格: [Math.round(lo), Math.round(hi)] }];
+		});
+		return { 看得到幾個: shown.length, 對不上: bad };`);
+
+await check('格號跟格子對得上：直放、橫放，整個場地和放大後都是', async () => {
+	await setViewport(1440, 900);
+	const seen = {};
+	await openSample();
+	seen.範例整個 = await cellNumbersOff();
+	for (let i = 0; i < 3; i++) await hitAndClick('.rail button[aria-label="放大"]');
+	seen.範例放大 = await cellNumbersOff();
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.home-open input[type=file]')`));
+	await sleep(300);
+	await js(`const core = await import('/src/lib/core/index.ts');
+		let f = core.createFlow({ name: '橫放', field: { strips: 5, layout: 'horizontal' } }).flow;
+		const input = document.querySelector('.home-open input[type=file]');
+		const dt = new DataTransfer();
+		dt.items.add(new File([core.writeFlowFile(f, {})], '橫放.zip', { type: 'application/zip' }));
+		input.files = dt.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));`);
+	await waitFor(() => js(`return !!document.querySelector('.rail')`));
+	await sleep(500);
+	seen.橫放整個 = await cellNumbersOff();
+	for (let i = 0; i < 3; i++) await hitAndClick('.rail button[aria-label="放大"]');
+	seen.橫放放大 = await cellNumbersOff();
+	const v = Object.values(seen);
+	const ok = v.every((s) => s.看得到幾個 > 0 && s.對不上.length === 0) && seen.範例整個.看得到幾個 === 7 && seen.橫放整個.看得到幾個 === 7;
+	return { ok, value: seen };
 });
 
 await check('左欄捲到底，「版面回原狀」還固定在上面點得到', async () => {

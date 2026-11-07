@@ -81,4 +81,83 @@ describe('放大後平移', () => {
 			expect(n).toBeLessThan(y + h);
 		}
 	});
+
+	it('放大後格號也固定在畫面邊上（直放在左邊）：捲到哪都看得到', async () => {
+		open();
+		await zoomIn(8);
+		const [x, , w] = viewBox();
+		const els = [...document.querySelectorAll<SVGTextElement>('[data-cell-number]')];
+		expect(els).toHaveLength(7);
+		for (const el of els) {
+			const n = Number(el.getAttribute('x'));
+			expect(n).toBeGreaterThan(x);
+			expect(n).toBeLessThan(x + w);
+		}
+	});
+});
+
+describe('✋ 平移（#227）', () => {
+	const hand = () => screen.queryByRole('button', { name: '平移' }) as HTMLButtonElement | null;
+
+	it('沒放大時沒有 ✋，放大後有；縮回整個場地又沒有', async () => {
+		open();
+		expect(hand()).toBeNull();
+		await zoomIn(1);
+		expect(hand()).not.toBeNull();
+		await fireEvent.click(button('整個場地'));
+		expect(hand()).toBeNull();
+	});
+
+	/** 從場地的空白處（svg 本身）拖一段，回傳拖的時候有沒有畫出框選的框。 */
+	async function dragEmpty(dx: number, dy: number) {
+		await fireEvent.pointerDown(svg(), { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(svg(), { clientX: dx, clientY: dy });
+		const lasso = !!document.querySelector('[data-lasso]');
+		await fireEvent.pointerUp(svg(), { clientX: dx, clientY: dy });
+		return lasso;
+	}
+
+	it('開 ✋ 拖空白處：看到的範圍跟著手移、沒有框選；再按一次變回框選', async () => {
+		open();
+		await zoomIn(4);
+		await fireEvent.click(hand()!);
+		expect(hand()!.getAttribute('aria-pressed')).toBe('true');
+		const [x, y] = viewBox();
+		expect(await dragEmpty(-100, -50)).toBe(false);
+		// 往左上拖：畫面往右下看（1 px = 1 cm）
+		expect(viewBox()[0]).toBeCloseTo(x + 1, 6);
+		expect(viewBox()[1]).toBeCloseTo(y + 0.5, 6);
+		expect(zoomText()).toBe('×2.4');
+		await fireEvent.click(hand()!);
+		const moved = viewBox();
+		expect(await dragEmpty(-100, -50)).toBe(true);
+		expect(viewBox()).toEqual(moved);
+	});
+
+	it('按住 H 拖是平移，放開 H 拖空白處是框選；空白鍵照舊只管播放、不平移', async () => {
+		open();
+		await zoomIn(4);
+		const [x] = viewBox();
+		await fireEvent.keyDown(window, { key: 'h' });
+		expect(await dragEmpty(-100, 0)).toBe(false);
+		expect(viewBox()[0]).toBeCloseTo(x + 1, 6);
+		await fireEvent.keyUp(window, { key: 'h' });
+		const moved = viewBox();
+		expect(await dragEmpty(-100, 0)).toBe(true);
+		expect(viewBox()).toEqual(moved);
+		await fireEvent.keyDown(window, { key: ' ' });
+		expect(await dragEmpty(-100, 0)).toBe(true);
+		expect(viewBox()).toEqual(moved);
+		expect(screen.queryByRole('button', { name: '暫停' })).not.toBeNull();
+	});
+
+	it('在打字的地方按 H 只是打字，不會變成平移', async () => {
+		open();
+		await zoomIn(4);
+		const input = document.createElement('input');
+		document.body.append(input);
+		await fireEvent.keyDown(input, { key: 'h' });
+		expect(await dragEmpty(-100, 0)).toBe(true);
+		input.remove();
+	});
 });

@@ -1,18 +1,20 @@
 <script lang="ts" module>
 	import { fieldGeometry, type FieldConfig, type Rect } from '#lib/core';
 
-	/** 外圍框外寫條編號的那一邊（直放在後面、橫放在左右）留多寬（公尺）：放大了的場外圓點也蓋不到編號。 */
+	/**
+	 * 外圍框外寫條編號、格號的那一條留多寬（公尺）：放大了的場外圓點也蓋不到編號。
+	 * 後面寫左右那一軸的號碼（直放的條號、橫放的格號），左邊寫前後那一軸的（直放的格號、橫放的條號）。
+	 */
 	export const NUMBER_BAND = 0.8;
 
 	/**
-	 * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號（NUMBER_BAND）和「正面／裁判」字樣的空間。
+	 * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號、格號（NUMBER_BAND，左右都留，場地才置中）和「正面／裁判」字樣的空間。
 	 * 編輯頁拿它的長寬比分配右邊欄的寬度。
 	 */
 	export function fullView(field: FieldConfig) {
 		const { outer } = fieldGeometry(field);
-		const side = field.layout === 'horizontal' ? NUMBER_BAND : 0.3;
-		const back = field.layout === 'vertical' ? NUMBER_BAND : 0.3;
-		return { x: outer.x - side, y: outer.y - back, width: outer.width + 2 * side, height: outer.height + back + 1 };
+		const b = NUMBER_BAND;
+		return { x: outer.x - b, y: outer.y - b, width: outer.width + 2 * b, height: outer.height + b + 1 };
 	}
 </script>
 
@@ -22,7 +24,8 @@
 	// 拖人：吸附和位置文字都問流程核心；放開時把新位置（公尺）改進播放頭這一拍的站位，送到 session 的 ask，
 	// 改好了 session 說插了站位或往後帶了幾張、播放頭停到那張（session.moved）。
 	// 放大縮小：按鈕（到上下限停用）、Ctrl／⌘＋滾輪、兩指捏合。放大後滾輪、觸控板兩指滑、兩指一起拖是平移（Shift＋滾輪左右移），
-	// 拖人拖到畫面邊上會自動捲。圓點照倍數開根號放大（×4 看起來大 2 倍），條號固定在畫面邊上。
+	// 拖人拖到畫面邊上會自動捲。圓點照倍數開根號放大（×4 看起來大 2 倍），條號、格號固定在畫面邊上。
+	// 放大後放大縮小旁邊有 ✋：按下去拖空白處是平移（不框選），再按變回框選；按住 H 是暫時平移。空白鍵不管，照舊播放。
 	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移；
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
@@ -190,15 +193,32 @@
 		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM)) * shrink;
 	});
 
-	/** 條編號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
+	/** 條編號、格號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
 	const numScale = $derived(controls ? 1 / Math.sqrt(zoom) : 1);
+	/** 後面那一排號碼（cx 是那一條或那一格左右的中間）。 */
+	const topNumberAt = (cx: number): Position => [
+		cx,
+		Math.max(g.outer.y - NUMBER_BAND / 2, view.y + (NUMBER_BAND / 2) * numScale)
+	];
+	/** 左邊那一排號碼（cy 是那一條或那一格前後的中間）。 */
+	const sideNumberAt = (cy: number): Position => [
+		Math.max(g.outer.x - NUMBER_BAND * 0.7, view.x + NUMBER_BAND * 0.3 * numScale),
+		cy + 0.09 * numScale
+	];
 	const numberAt = (s: { rect: { x: number; y: number; width: number; height: number } }): Position =>
-		vertical
-			? [s.rect.x + s.rect.width / 2, Math.max(g.outer.y - NUMBER_BAND / 2, view.y + (NUMBER_BAND / 2) * numScale)]
-			: [
-					Math.max(g.outer.x - NUMBER_BAND * 0.7, view.x + NUMBER_BAND * 0.3 * numScale),
-					s.rect.y + s.rect.height / 2 + 0.09 * numScale
-				];
+		vertical ? topNumberAt(s.rect.x + s.rect.width / 2) : sideNumberAt(s.rect.y + s.rect.height / 2);
+	/**
+	 * 格號：跟位置文字一樣，直放正面起（寫在左邊）、橫放左起（寫在後面）。
+	 * 八拍表的小站位圖（crop）不寫：擠在裁切的邊上會跟條號疊在一起。
+	 */
+	const cellNumbers = $derived(
+		Array.from({ length: crop ? 0 : vertical ? g.rows : g.cols }, (_, i) => ({
+			n: i + 1,
+			at: vertical
+				? sideNumberAt(g.mat.y + g.mat.height - (i + 0.5) * CELL_M)
+				: topNumberAt(g.mat.x + (i + 0.5) * CELL_M)
+		}))
+	);
 
 	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
 	function watchStage(el: HTMLElement) {
@@ -300,7 +320,37 @@
 			clamp(cy - pan[1], full.y + h / 2, full.y + full.height - h / 2)
 		];
 		zoom = z;
-		if (z === 1) center = null;
+		if (z === 1) {
+			center = null;
+			handTool = false;
+		}
+	}
+
+	// ---------- ✋ 平移：放大後拖空白處移動畫面（不框選）。按 ✋ 切換，或按住 H 暫時用。 ----------
+	/** ✋ 按下去了（縮回整個場地就放掉）。 */
+	let handTool = $state(false);
+	/** 正按著 H。 */
+	let holdingH = $state(false);
+	/** 現在拖空白處是平移。 */
+	const panMode = $derived(zoom > 1 && (handTool || holdingH));
+	/** 平移中：上一次指標的螢幕座標。 */
+	let pan = $state<[number, number] | null>(null);
+
+	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
+	function panTo(e: PointerEvent) {
+		const perPx = metersPerPx(e);
+		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
+		pan = [e.clientX, e.clientY];
+	}
+
+	/** 打字的地方按 H 是打字，不是平移。 */
+	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+
+	/** 按住 H（沒按 Ctrl／⌘／Alt、不在打字的地方）：暫時平移。空白鍵不管，照舊是播放。 */
+	function hKey(e: KeyboardEvent, down: boolean) {
+		if (e.key.toLowerCase() !== 'h') return;
+		if (down && (e.ctrlKey || e.metaKey || e.altKey || (e.target as Element | null)?.closest?.(TYPING))) return;
+		holdingH = down;
 	}
 
 	// ---------- 兩根手指：捏合放大縮小、一起拖移動畫面（iPad）。只有一根時照舊點人、拖人、框選。 ----------
@@ -426,6 +476,7 @@
 				pinching = true;
 				drag = null;
 				box = null;
+				pan = null;
 				svg.setPointerCapture?.(e.pointerId);
 				return;
 			}
@@ -436,7 +487,9 @@
 			(e.pointerType === 'touch' || target.closest?.('[data-clash]') ? nearestDot(e) : null);
 		const client: [number, number] = [e.clientX, e.clientY];
 		if (!session) return;
-		if (id && positions[id]) {
+		if (!id && panMode) {
+			pan = client;
+		} else if (id && positions[id]) {
 			const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
 			const orig = Object.fromEntries(ids.map((i) => [i, positions[i]]));
 			drag = { id, ids, client, shift: e.shiftKey, start: toMeters(e, svg), orig, cur: null, atEdge: false };
@@ -457,6 +510,7 @@
 		stopEdgeScroll();
 		drag = null;
 		box = null;
+		pan = null;
 	}
 
 	/** 手指沒剛好按在點上時，離手指這麼多 px 以內最近的人也算按到（點看起來不變）。 */
@@ -485,7 +539,8 @@
 			if (fingers.size === 2 && fingers.has(e.pointerId)) pinchMove(e);
 			return;
 		}
-		if (drag && (drag.cur || !still(e, drag.client))) {
+		if (pan) panTo(e);
+		else if (drag && (drag.cur || !still(e, drag.client))) {
 			// 拖一個沒選到的人：選取換成他，畫的影子和走位線才是他的。
 			if (!drag.cur && !selected.includes(drag.id)) session?.selectMembers([drag.id]);
 			if (!drag.cur && playback?.playing) {
@@ -525,6 +580,7 @@
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
 		box = null;
+		pan = null;
 	}
 
 	/**
@@ -588,6 +644,11 @@
 	}
 </script>
 
+<svelte:window
+	onkeydown={(e) => session && hKey(e, true)}
+	onkeyup={(e) => session && hKey(e, false)}
+	onblur={() => (holdingH = false)}
+/>
 <div class="field-wrap" class:with-rail={controls && rail}>
 	{#if controls}
 		<div class="rail" hidden={!rail}>
@@ -611,6 +672,16 @@
 					<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
 						><Icon name="fit" />整個場地</button
 					>
+					{#if zoom > 1}
+						<button
+							type="button"
+							class="ghost icon"
+							aria-label="平移"
+							aria-pressed={handTool}
+							title="按下去以後拖空白處是移動畫面，再按一次變回框選（按住 H 拖也可以）"
+							onclick={() => (handTool = !handTool)}>✋</button
+						>
+					{/if}
 				</div>
 				{@render railHead?.()}
 			</div>
@@ -655,6 +726,8 @@
 		bind:this={svg}
 		class="field"
 		class:mini={!!crop}
+		class:pan-mode={panMode}
+		class:panning={!!pan}
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
 		role={session ? 'group' : 'img'}
@@ -683,6 +756,10 @@
 		{#each g.strips as s (s.number)}
 			{@const [nx, ny] = numberAt(s)}
 			<text class="num" data-strip-number x={nx} y={ny} style:font-size="{0.3 * numScale}px">{s.number}</text>
+		{/each}
+		<!-- 格號（條號的另一軸）：細一點、淡一點，跟條號分得出來 -->
+		{#each cellNumbers as { n, at } (n)}
+			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{0.26 * numScale}px">{n}</text>
 		{/each}
 		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
@@ -819,6 +896,13 @@
 		user-select: none;
 		touch-action: none;
 	}
+	/* ✋、按住 H：空白處是抓著移的手 */
+	.field.pan-mode {
+		cursor: grab;
+	}
+	.field.panning {
+		cursor: grabbing;
+	}
 	.margin {
 		fill: #e4e8ef;
 		stroke: #c3cad7;
@@ -859,6 +943,10 @@
 		stroke: #fff;
 		stroke-width: 0.06px;
 		stroke-opacity: 0.8;
+	}
+	.num.cell-num {
+		font-weight: 400;
+		fill-opacity: 0.85;
 	}
 	.front {
 		font-size: 0.42px;
