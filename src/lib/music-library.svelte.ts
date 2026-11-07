@@ -3,7 +3,15 @@
 // 每個音樂的長度和波形、哪幾段找不到音樂、給音訊引擎的 buffer。
 // 給一段選音樂檔也在這裡：解碼、跟核心拿 id（核心的「選音樂」只有這裡在叫，還留著哪些由這裡報）。
 
-import { fitSegmentToAudio, loadSegmentAudio, segmentsMissingAudio, type AudioBytes, type AudioLengths, type Flow } from '#lib/core';
+import {
+	fitSegmentToAudio,
+	loadSegmentAudio,
+	segmentsMissingAudio,
+	type AudioBytes,
+	type AudioLengths,
+	type Command,
+	type Flow
+} from '#lib/core';
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
 import type { Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
@@ -74,7 +82,7 @@ export class MusicLibrary {
 	 */
 	async pick(segmentId: string, file: File, ask: Ask): Promise<void> {
 		const check = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
-		if (check.kind === 'blocked') return void ask.send(() => check);
+		if (check.kind === 'blocked') return void ask.block(check.message);
 		const pick = {};
 		this.#picks.add(pick);
 		const bytes = await file.arrayBuffer();
@@ -82,7 +90,7 @@ export class MusicLibrary {
 		try {
 			decoded = await this.#decode(bytes);
 		} catch {
-			if (this.#picks.delete(pick)) ask.send(() => ({ kind: 'blocked', message: '這個音樂檔讀不出來' }) as const);
+			if (this.#picks.delete(pick)) ask.block('這個音樂檔讀不出來');
 			return;
 		}
 		// 解碼時段設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
@@ -90,11 +98,16 @@ export class MusicLibrary {
 		// 解碼要一點時間，用那時候的流程再送一次指令。
 		// 音樂先放進來再換流程：流程換了時這段已經有音樂（流程檔看要不要收掉「找不到音樂」的提示）。
 		const first = this.#flow.segments.some((s) => s.id === segmentId && s.kind === 'music' && s.audioId === null);
-		const r = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
-		if (r.kind !== 'ok') return void ask.send(() => r);
+		// 還留著哪些先記下來：音樂放進來之後再算，核心會給另一個 id。
+		const held = this.#heldIds;
+		const load: Command<'loadSegmentAudio'> = { name: 'loadSegmentAudio', args: [segmentId, file.name, held] };
+		const r = loadSegmentAudio(this.#flow, segmentId, file.name, held);
+		if (r.kind !== 'ok') return void ask.send(load);
 		this.#audios = { ...this.#audios, [r.audioId]: { bytes, ...decoded } };
-		const fit = first ? fitSegmentToAudio(r.flow, segmentId, { [r.audioId]: decoded.durationSec }) : null;
-		ask.send(() => (fit?.kind === 'ok' ? fit : r));
+		const lengths = { [r.audioId]: decoded.durationSec };
+		const fit = first ? fitSegmentToAudio(r.flow, segmentId, lengths) : null;
+		if (fit?.kind === 'ok') ask.send([load, { name: 'fitSegmentToAudio', args: [segmentId, lengths] }]);
+		else ask.send(load);
 	}
 
 	/** 還在解碼的選檔都不要了：段設定關了、換了流程。 */

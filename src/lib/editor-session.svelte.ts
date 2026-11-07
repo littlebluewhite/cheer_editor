@@ -8,11 +8,8 @@ import {
 	carryRecords,
 	changeLabel,
 	currentFormation,
-	deleteAction,
-	deleteFormation,
 	formationTimes,
 	groupsPeople,
-	setSquad,
 	squadsOf,
 	timeTextWithUnit,
 	type Action,
@@ -20,7 +17,6 @@ import {
 	type CommandName,
 	type CommandOutcome,
 	type CommandResult,
-	type ConfirmOption,
 	type Flow,
 	type MoveResult
 } from '#lib/core';
@@ -400,7 +396,7 @@ export class EditorSession {
 		const flow = this.#flow;
 		if (!flow) return;
 		const number = flow.formations.findIndex((f) => f.id === formationId) + 1;
-		this.ask.send(() => deleteFormation(flow, formationId), {
+		this.ask.send({ name: 'deleteFormation', args: [formationId] }, {
 			done: () =>
 				this.#undoNotice(
 					formationId === this.#carriedInsertId
@@ -420,7 +416,7 @@ export class EditorSession {
 		const action = flow?.actions.find((a) => a.id === actionId);
 		if (!flow || !action) return;
 		// 按確定時用那時候的流程再送一次。
-		ask.send((o: ConfirmOption = {}) => deleteAction(this.#flow ?? flow, actionId, o), {
+		ask.send({ name: 'deleteAction', args: [actionId] }, {
 			done: () => {
 				this.selectAction(null);
 				this.#undoNotice(`已刪掉動作 ${actionLabel(action)}`, '復原刪掉的動作');
@@ -510,7 +506,7 @@ export class EditorSession {
 		const ids = this.squadPicked;
 		if (!action || !ids.length || n > squadsOf(action).length + 1) return false;
 		// 按回答時用那時候的流程再送一次。
-		this.squadAsk.send((o: ConfirmOption = {}) => setSquad(this.#flow!, action.id, ids, n === 0 ? null : n, o));
+		this.squadAsk.send({ name: 'setSquad', args: [action.id, ids, n === 0 ? null : n] });
 		return true;
 	}
 }

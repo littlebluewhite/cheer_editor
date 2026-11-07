@@ -3,6 +3,7 @@
 // 送一個指令：給它指令名字＋參數（一步也可以帶好幾個，照順序跑、全算或全不算），或「帶著回答再送一次」的函式。照結果：
 //   成功：把新流程交給 onchange；被擋：留下原因（給了還原就加「，已還原」並還原）；要確認、要選：留下問題。
 //   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到任何一格成功送出為止（改好了就收，不疊著）。
+// 送之前就看得出不行（表單的字讀不懂）：block 給原因，當被擋，不送指令。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
 // 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
 // 給了鎖（locked，例：檢視模式）：鎖著時指令不送，直接當被擋，原因是鎖給的那句。
@@ -96,6 +97,14 @@ export class Ask {
 				: this.#byName(what as Command | Command[]);
 		const r = this.#run(send, {});
 		this.#settle(r, send, handlers as Handlers<CommandResult>);
+		return r;
+	}
+
+	/** 送之前就看得出不行（例：表單的字讀不懂）：不送指令，當被擋，原因是 message（鎖著時是鎖給的那句）。 */
+	block(message: string, handlers: Handlers<CommandResult> = {}): CommandResult {
+		const send = (): CommandResult => ({ kind: 'blocked', message });
+		const r = this.#run(send, {});
+		this.#settle(r, send, handlers);
 		return r;
 	}
 

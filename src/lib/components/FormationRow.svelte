@@ -17,7 +17,6 @@
 		fieldGeometry,
 		formationAt,
 		formationTimes,
-		insertFormation,
 		moveFormation,
 		nearestPosition,
 		timeTextWithUnit,
@@ -136,7 +135,7 @@
 					return;
 				}
 				// 被擋時縮圖已經彈回原位，還原不用再做什麼。
-				session.ask.send(() => moveFormation(flow, id, to), {
+				session.ask.send({ name: 'moveFormation', args: [id, to] }, {
 					revert: () => {},
 					done: (r) => session.formationMoved(id, r, clamped)
 				});
@@ -153,7 +152,7 @@
 		const raw = (e.clientX - trk.getBoundingClientRect().left) / pxPerSec;
 		if (raw < 0 || raw >= totalSeconds(flow)) return;
 		const sec = toSeconds(flow, nearestPosition(flow, raw));
-		session.ask.send(() => insertFormation(flow, sec), {
+		session.ask.send({ name: 'insertFormation', args: [sec] }, {
 			done: () => {
 				session.moved({ inserted: true, sec, carried: 0 });
 				session.selectFormation(formationAt(session.flow!, sec)!.id);

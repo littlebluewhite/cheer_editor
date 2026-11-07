@@ -7,11 +7,9 @@
 	import {
 		formationAt,
 		matchPrevious,
-		moveFormation,
 		moveFormationHint,
 		moveTargetText,
 		readTime,
-		renameFormation,
 		timeText,
 		type Formation,
 		type TimePosition
@@ -34,17 +32,16 @@
 
 	/** ① 跟上一張一樣：選到的人改成上一張站位的位置（沒有站位就先插一張），提示和播放頭跟拖人一樣。 */
 	function matchPrev() {
-		const f = flow;
 		const sec = playback.sec;
 		const ids = session.selectedMemberIds;
-		session.ask.send(() => matchPrevious(f, sec, ids), { done: (r) => session.moved(r) });
+		session.ask.send({ name: 'matchPrevious', args: [sec, ids] }, { done: (r) => session.moved(r) });
 	}
 
 	/** 幫播放頭所在的站位取名；名字沒變就不記一步復原。 */
 	function renameHere(formationId: string, name: string) {
 		const before = flow.formations.find((f) => f.id === formationId)?.name ?? '';
 		if (name.trim() === before) return;
-		ask.send(() => renameFormation(flow, formationId, name));
+		ask.send({ name: 'renameFormation', args: [formationId, name] });
 	}
 
 	/**
@@ -55,9 +52,8 @@
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
 		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
-		if (to.kind === 'blocked') return void ask.send(() => to);
-		const f = flow;
-		session.ask.send(() => moveFormation(f, formation.id, to.value), {
+		if (to.kind === 'blocked') return void ask.block(to.message);
+		session.ask.send({ name: 'moveFormation', args: [formation.id, to.value] }, {
 			revert: () => {},
 			done: (r) => session.formationMoved(formation.id, r)
 		});

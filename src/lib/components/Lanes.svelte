@@ -27,7 +27,6 @@
 		lengthTextWithUnit,
 		memberMarkers,
 		memberWalk,
-		moveAction,
 		nearestPosition,
 		phaseColor,
 		phaseLabel,
@@ -38,7 +37,6 @@
 		totalSeconds,
 		walkSpeedText,
 		type Clash,
-		type ConfirmOption,
 		type Cue,
 		type CueKind,
 		type Flow,
@@ -219,12 +217,10 @@
 		if (!action || Math.abs(dx) < DRAG_PX) return;
 		const { startSec, endSec } = actionSeconds(flow, action);
 		const dSec = dx / pxPerSec;
-		const run = (options?: ConfirmOption) =>
-			mode === 'move'
-				? moveAction(flow, id, startSec + dSec, options)
-				: resizeAction(flow, id, endSec + dSec, options);
 		// 放開時色條已經彈回原位，還原不用再做什麼。
-		session.ask.send(run, { revert: () => {} });
+		const revert = () => {};
+		if (mode === 'move') session.ask.send({ name: 'moveAction', args: [id, startSec + dSec] }, { revert });
+		else session.ask.send({ name: 'resizeAction', args: [id, endSec + dSec] }, { revert });
 	}
 
 	/** 拉右邊時新的長度和結束拍（「16.5 拍・在 3-1& 結束」，口號段「2.5 秒・在 3.5 秒 結束」）；out = 放開會被擋。 */
@@ -309,7 +305,7 @@
 			if (clamped) session.notice = AT_EDGE;
 			return;
 		}
-		session.ask.send(() => setWalks(flow, d.formationId, next), {
+		session.ask.send({ name: 'setWalks', args: [d.formationId, next] }, {
 			revert: () => {},
 			done: () => {
 				if (clamped) session.notice = AT_EDGE;
