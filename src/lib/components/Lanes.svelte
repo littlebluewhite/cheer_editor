@@ -36,6 +36,7 @@
 		timeText,
 		toSeconds,
 		totalSeconds,
+		units,
 		walkSpeedText,
 		type Clash,
 		type ConfirmOption,
@@ -269,7 +270,8 @@
 		const p = placed.find((x) => x.action.id === d.id);
 		const segment = p && flow.segments.find((s) => s.id === p.action.segmentId);
 		if (!p || !segment) return null;
-		const length = p.action.length + Math.round(d.dx / p.halfPx);
+		// 拉過段尾停在段尾（裁短）。
+		const length = Math.min(p.action.length + Math.round(d.dx / p.halfPx), units(segment) - p.action.start);
 		const end = atTextWithUnit(segment, p.action.start + length);
 		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
 		return { text: `${lengthTextWithUnit(segment, length)}・在 ${end} 結束`, out };
