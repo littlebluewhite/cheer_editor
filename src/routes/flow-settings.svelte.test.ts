@@ -3,7 +3,7 @@
 // 恢復預設；在流程設定新增、改名、刪除自訂任務角色。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addCustomRole, DEFAULT_TIME_RULES, updateTimeRules, type Flow } from '#lib/core';
+import { addCustomRole, CELL_M, DEFAULT_TIME_RULES, updateTimeRules, type Flow } from '#lib/core';
 import { editorPage, teamFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -140,5 +140,123 @@ describe('調整場地（#169）', () => {
 		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '13' } });
 		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
 		expect(within(dialog).getByRole('alert').textContent).toContain('條數要是 1–12 的整數');
+	});
+});
+
+/** teamFlow 的開頭那張只放小美、小A，相隔一格：9 條改 1 條時寬度縮成 1/9，兩人吸到同一點。 */
+function closePair(): Flow {
+	const flow = teamFlow();
+	return { ...flow, formations: [{ ...flow.formations[0], pos: { m1: [0, 0], m2: [CELL_M, 0] } }] };
+}
+
+describe('流程設定：關掉就套用、Enter 套用、改小先提醒（#219）', () => {
+	it('改了場地沒按「調整場地」就關：照樣調整', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '5' } });
+		await fireEvent.click(within(dialog).getByLabelText('橫放'));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		expect(page.session.flow!.field).toEqual({ strips: 5, layout: 'horizontal' });
+		expect(screen.queryByRole('dialog', { name: '流程設定' })).toBeNull();
+	});
+
+	it('關掉時條數不對：不關、退回原本的條數並說原因；再關就關了', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		const input = within(dialog).getByLabelText('條數') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: '13' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		expect(screen.getByRole('dialog', { name: '流程設定' })).toBeTruthy();
+		expect(within(dialog).getByRole('alert').textContent).toContain('條數要是 1–12 的整數');
+		expect(input.value).toBe('9');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '流程設定' })).toBeNull();
+		expect(page.session.flow!.field).toEqual({ strips: 9, layout: 'vertical' });
+	});
+
+	it('條數欄按 Enter：調整場地', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		const input = within(dialog).getByLabelText('條數');
+		input.focus();
+		await fireEvent.input(input, { target: { value: '7' } });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+		expect(page.session.flow!.field).toEqual({ strips: 7, layout: 'vertical' });
+	});
+
+	it('流程名字、秒數欄按 Enter：套用', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		const name = within(dialog).getByLabelText('流程名字');
+		name.focus();
+		await fireEvent.input(name, { target: { value: '決賽' } });
+		await fireEvent.keyDown(name, { key: 'Enter' });
+		expect(page.session.flow!.name).toBe('決賽');
+		const total = within(dialog).getByLabelText('整支流程最多（秒）');
+		total.focus();
+		await fireEvent.input(total, { target: { value: '150' } });
+		await fireEvent.keyDown(total, { key: 'Enter' });
+		expect(page.session.flow!.timeRules.maxTotalSec).toBe(150);
+	});
+
+	it('改小會讓人疊在一起：先列出哪張站位誰疊在一起，按「照樣調整」才調整', async () => {
+		const page = editorPage(closePair());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '1' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
+		expect(page.session.flow!.field.strips).toBe(9);
+		expect(dialog.textContent).toContain('會疊在同一點');
+		expect(dialog.textContent).toContain('站位 1：小美、小A');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '照樣調整' }));
+		expect(page.session.flow!.field.strips).toBe(1);
+	});
+
+	it('改小會疊人時直接關：先問、不關；取消就退回原本的條數', async () => {
+		const page = editorPage(closePair());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		const input = within(dialog).getByLabelText('條數') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: '1' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		expect(screen.getByRole('dialog', { name: '流程設定' })).toBeTruthy();
+		expect(dialog.textContent).toContain('會疊在同一點');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+		expect(input.value).toBe('9');
+		expect(page.session.flow!.field.strips).toBe(9);
+	});
+});
+
+describe('點規則警告帶到出問題的地方、關掉的警告看得出來（#219）', () => {
+	it('點「音樂段太長」：打開流程設定，焦點在「音樂段加起來最多」', async () => {
+		render(Page, editorPage(flowOf(updateTimeRules(teamFlow(), { maxMusicSec: 1 }))).props);
+		const item = within(warningList())
+			.getAllByRole('listitem')
+			.find((li) => li.textContent!.includes('音樂段太長'))!;
+		await fireEvent.click(within(item).getByRole('button'));
+		const dialog = screen.getByRole('dialog', { name: '流程設定' });
+		expect(document.activeElement).toBe(within(dialog).getByLabelText('音樂段加起來最多（秒）'));
+	});
+
+	it('點「還沒有口號段」：焦點在「口號段加起來最少」', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(within(warningList()).getByRole('button'));
+		const dialog = screen.getByRole('dialog', { name: '流程設定' });
+		expect(document.activeElement).toBe(within(dialog).getByLabelText('口號段加起來最少（秒）'));
+	});
+
+	it('關掉的規則警告：左邊欄寫「規則警告關著」，點了到流程設定的開關', async () => {
+		render(Page, editorPage(flowOf(updateTimeRules(teamFlow(), { on: false }))).props);
+		expect(screen.queryByRole('list', { name: '規則警告' })).toBeNull();
+		const off = screen.getByRole('button', { name: /規則警告關著/ });
+		expect(off.textContent).toContain('流程設定');
+		await fireEvent.click(off);
+		const dialog = screen.getByRole('dialog', { name: '流程設定' });
+		expect(document.activeElement).toBe(within(dialog).getByRole('checkbox', { name: /規則警告/ }));
+		expect(dialog.textContent).toContain('關著');
 	});
 });

@@ -82,6 +82,21 @@ describe('調整場地', () => {
 		}
 	});
 
+	it('調完會有人疊在一起：先問，列出哪張站位誰疊在一起；本來就疊著的不算；確定才調（#219）', () => {
+		const flow = {
+			...flowWith([{ a: [0, 0], b: [1, 0], c: [-3, 0], d: [-3, 0] }]),
+			members: (['a', 'b', 'c', 'd'] as const).map((id) => ({ id, name: id.toUpperCase(), gender: 'F' as const, globalRole: 'base' as const }))
+		};
+		const ONE_V: FieldConfig = { strips: 1, layout: 'vertical' };
+		// 寬 9 → 1 格：a、b 相隔 1/9 格，吸到同一點；c、d 本來就疊著
+		expect(adjustField(flow, ONE_V)).toEqual({
+			kind: 'confirm',
+			message: '這樣調整，這些人會疊在同一點（之後可以再拖開）：',
+			items: ['站位 1：A、B']
+		});
+		expect(flowOf(adjustField(flow, ONE_V, { confirmed: true })).field).toEqual(ONE_V);
+	});
+
 	it('條數不對就擋下', () => {
 		expect(adjustField(before, { strips: 0, layout: 'vertical' })).toEqual({
 			kind: 'blocked',
