@@ -27,6 +27,7 @@
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import RunThroughBar from './RunThroughBar.svelte';
+	import type { RunView } from '#lib/server-api.js';
 	import type { Notice } from './RecordNotice.svelte';
 	import { Flash } from '#lib/flash.svelte.js';
 
@@ -42,6 +43,8 @@
 
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
+	/** 加入別人在記的那次全上（雲端流程，#262）；開新的是 null。 */
+	let join = $state<RunView | null>(null);
 	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
 	const saved = new Flash<Notice>();
 
@@ -128,9 +131,9 @@
 
 <div class="summary">
 	{#if recording}
-		<RunThroughSheet {date} onclose={closeSheet} />
+		<RunThroughSheet {date} {join} onclose={closeSheet} />
 	{:else}
-		<RunThroughBar {date} notice={saved} onrecord={() => ((recording = true), (open = null))} />
+		<RunThroughBar {date} notice={saved} onrecord={(run) => ((join = run ?? null), (recording = true), (open = null))} />
 		<div class="filters">
 			<div class="seg" role="group" aria-label="期間">
 				<span>期間</span>

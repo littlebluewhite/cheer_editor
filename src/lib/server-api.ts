@@ -19,6 +19,7 @@ import type { Present } from '#lib/api-types/Present.js';
 import type { Presigned } from '#lib/api-types/Presigned.js';
 import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
 import type { RoomRequest } from '#lib/api-types/RoomRequest.js';
+import type { RunView } from '#lib/api-types/RunView.js';
 import type { ShareLink } from '#lib/api-types/ShareLink.js';
 import type { SignedOut } from '#lib/api-types/SignedOut.js';
 import type { StartUpload } from '#lib/api-types/StartUpload.js';
@@ -44,6 +45,7 @@ export type {
 	Role,
 	RoomMessage,
 	RoomRequest,
+	RunView,
 	ShareProblem,
 	SharedFlowSummary,
 	TooManyTries,

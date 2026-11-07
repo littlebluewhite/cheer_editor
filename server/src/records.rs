@@ -40,6 +40,10 @@ pub struct CloudRecord {
 pub struct DroppedRecord {
     pub id: String,
     pub message: String,
+    /// 同一次全上的同一組別人先存了（#262，ADR 0012）：先記的人的名字。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub by: Option<String>,
 }
 
 /// 流程核心的 StoredAttempt：記在哪個動作、那一次。
@@ -343,6 +347,7 @@ pub async fn record(
             .map(|(id, _)| DroppedRecord {
                 id,
                 message: VIEW_ONLY.into(),
+                by: None,
             })
             .collect();
         return Ok(RoomMessage::RecordsSaved {
@@ -395,8 +400,22 @@ pub async fn record(
         let now = state.clock.now();
         for ((id, _), result) in fresh.into_iter().zip(checked) {
             match result {
-                Checked::Dropped { message } => dropped.push(DroppedRecord { id, message }),
+                Checked::Dropped { message } => dropped.push(DroppedRecord {
+                    id,
+                    message,
+                    by: None,
+                }),
                 Checked::Ok { record } => {
+                    // 同一次全上的同一個動作、同一組只收先存的（ADR 0012）。
+                    if let Some(by) = recorded_in_run(&mut tx, flow_id, &record).await? {
+                        let message = format!("{by}已經記了這次全上的這一組");
+                        dropped.push(DroppedRecord {
+                            id,
+                            message,
+                            by: Some(by),
+                        });
+                        continue;
+                    }
                     insert(&mut tx, flow_id, Some(user_id), &record, now).await?;
                     added.push(record);
                 }
@@ -427,6 +446,31 @@ pub async fn record(
         mine: true,
     }));
     Ok(RoomMessage::RecordsSaved { saved, dropped })
+}
+
+/// 這一次是全上的：同一次全上的同一個動作、同一組（騰翻、跳躍是同一個人）已經存了（沒清掉的），回先記的人的名字
+/// （沒有記的人的寫「別人」）。
+async fn recorded_in_run(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    record: &Stored,
+) -> anyhow::Result<Option<String>> {
+    let Some(run) = record.attempt.get("runThroughId").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    let who = record.attempt.get("who").and_then(Value::as_str);
+    let found: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT u.name FROM flow_records r LEFT JOIN users u ON u.id = r.recorded_by
+         WHERE r.flow_id = $1 AND r.run_through_id = $2 AND r.action_id = $3 AND r.who = $4
+           AND r.deleted_at IS NULL LIMIT 1",
+    )
+    .bind(flow_id)
+    .bind(run)
+    .bind(&record.action_id)
+    .bind(who)
+    .fetch_optional(&mut *tx)
+    .await?;
+    Ok(found.map(|(name,)| name.unwrap_or_else(|| "別人".into())))
 }
 
 /// 改、刪、救回幾次（#258）。改只拿記號（照流程核心的「改某一次的記號」規則留）；救回照「救回」的規則檢查。

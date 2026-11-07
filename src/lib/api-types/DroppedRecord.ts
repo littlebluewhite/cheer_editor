@@ -3,4 +3,8 @@
 /**
  * 沒存進去的一次：id 和原因（例：「這一組沒有人了」）。
  */
-export type DroppedRecord = { id: string, message: string, };
+export type DroppedRecord = { id: string, message: string, 
+/**
+ * 同一次全上的同一組別人先存了（#262，ADR 0012）：先記的人的名字。
+ */
+by?: string, };

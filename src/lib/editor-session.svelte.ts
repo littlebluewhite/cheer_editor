@@ -39,6 +39,8 @@ export interface DroppedRecord {
 	who: string;
 	marks: string;
 	runThrough: boolean;
+	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」）；沒寫是教練改了流程。 */
+	note?: string;
 }
 
 /**

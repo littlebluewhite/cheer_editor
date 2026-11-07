@@ -46,16 +46,18 @@ export interface RunThroughMarks {
 /**
  * 記一次全上：給日期、開的時間（手機的時間，毫秒）和每個動作、每組的記號（按了「沒做」的動作不給），一次存成很多次，
  * 都標成全上、帶同一個全上 id 和開的時間、都是整個做。每一次照記一次的規則檢查，有一次不對就一次都不存。
+ * 給了 id（雲端流程一起記全上，#262：開表時手機發的、加入的人用開的人的）就用它，沒給發一個新的。
  */
 export function recordRunThrough(
 	flow: Flow,
 	date: string,
 	startedAt: number,
-	entries: RunThroughMarks[]
+	entries: RunThroughMarks[],
+	id?: string
 ): CommandResult<{ runThroughId: string }> {
 	if (entries.length === 0) return blocked('每個動作都沒做，沒有要存的');
 	const runIds = flow.actions.flatMap((a) => a.successRate?.records.flatMap((r) => r.runThroughId ?? []) ?? []);
-	const runThroughId = newId('r', runIds);
+	const runThroughId = id ?? newId('r', runIds);
 	let next = flow;
 	for (const { actionId, who, marks } of entries) {
 		const action = next.actions.find((a) => a.id === actionId);
