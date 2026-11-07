@@ -19,13 +19,15 @@
 				extra?: { label: string; onclick: () => void };
 				/** 放在對話框裡：打開時焦點放在取消鈕，按 Enter 不會丟掉東西。 */
 				focusCancel?: boolean;
+				/** 取消鈕放在確定鈕前面（例：［留下來］［離開（丟掉 N 步）］）。 */
+				cancelFirst?: boolean;
 			};
 
 	let props: Props = $props();
 	const id = $props.id();
 
 	const view = $derived.by(() => {
-		if (!props.ask) return { cancelLabel: '取消', focusCancel: false, ...props, onkeep: undefined };
+		if (!props.ask) return { cancelLabel: '取消', focusCancel: false, cancelFirst: false, ...props, onkeep: undefined };
 		const ask = props.ask;
 		const q = ask.question;
 		return {
@@ -37,7 +39,8 @@
 			oncancel: () => ask.answer('cancel'),
 			cancelLabel: '取消',
 			extra: undefined,
-			focusCancel: false
+			focusCancel: false,
+			cancelFirst: false
 		};
 	});
 </script>
@@ -52,8 +55,12 @@
 	<div class="buttons">
 		{#if view.onkeep}<button type="button" onclick={view.onkeep}>保留舊紀錄</button>{/if}
 		{#if view.extra}<button type="button" class="primary" onclick={view.extra.onclick}>{view.extra.label}</button>{/if}
+		{#snippet cancel()}
+			<button type="button" onclick={view.oncancel} data-autofocus={view.focusCancel || undefined}>{view.cancelLabel}</button>
+		{/snippet}
+		{#if view.cancelFirst}{@render cancel()}{/if}
 		<button type="button" class="confirm-btn" onclick={view.onconfirm}>{view.confirmLabel}</button>
-		<button type="button" onclick={view.oncancel} data-autofocus={view.focusCancel || undefined}>{view.cancelLabel}</button>
+		{#if !view.cancelFirst}{@render cancel()}{/if}
 	</div>
 </div>
 

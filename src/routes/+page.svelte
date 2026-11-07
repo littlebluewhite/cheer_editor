@@ -1316,6 +1316,7 @@
 				items={[]}
 				confirmLabel={`離開（丟掉 ${n} 步）`}
 				cancelLabel="留下來"
+				cancelFirst
 				onconfirm={() => {
 					leavingUnsent = 0;
 					void editor.file.leaveToHome();

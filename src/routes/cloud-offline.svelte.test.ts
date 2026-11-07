@@ -2,7 +2,7 @@
 // 房間自己重連，連上提示「連上了。」、回到斷線前的模式。還沒送到的步連上後再送，被退回的就提示；
 // 斷線期間別人的改動連上後補上。還有沒送到的步時按「首頁」先問。
 // 伺服器換成測試共用的假伺服器（fakeServer）：disconnect() 斷掉我的房間，reconnect() 連回來。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { editorPage, fakeServer, flush } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
@@ -171,7 +171,10 @@ describe('雲端流程斷線', () => {
 		await flush();
 
 		await fireEvent.click(screen.getByRole('button', { name: '首頁' }));
-		expect(screen.getByRole('alertdialog').textContent).toContain('還有 2 步沒送到，離開就不見了');
+		const box = screen.getByRole('alertdialog');
+		expect(box.textContent).toContain('還有 2 步沒送到，離開就不見了');
+		// 按鈕照 #255：［留下來］［離開（丟掉 N 步）］
+		expect(within(box).getAllByRole('button').map((b) => b.textContent)).toEqual(['留下來', '離開（丟掉 2 步）']);
 		await fireEvent.click(screen.getByRole('button', { name: '留下來' }));
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(s.page.session.flow!.name).toBe('全國賽');
