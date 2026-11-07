@@ -459,6 +459,18 @@ describe('流程檔：自動存草稿', () => {
 		expect(editor.file.recent).toMatchObject([{ name: '練習用', unsaved: false, busy: false }]);
 	});
 
+	it('改完不到 1 秒就重新整理、關分頁（頁面隱藏）：當下就開始寫最新的流程，不等任何非同步步驟（卸載前來不及）', async () => {
+		const { editor, session, drafts } = await connected();
+		editor.file.create(newFlow('全國賽'));
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(300);
+		editor.file.pageHidden();
+		// 不 await：頁面卸載後不會再跑任何東西
+		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
+	});
+
 	it('記成功率（不算復原的一步）也存草稿', async () => {
 		const { editor, session, drafts } = await connected();
 		await editor.file.open(zip(recordedFlow()));
@@ -717,30 +729,31 @@ describe('流程檔：兩個分頁（每支流程一份草稿）', () => {
 		expect(b.editor.file.openError).toBe('打不開「全國賽.zip」：另一個分頁正在編這支流程');
 	});
 
-	it('編第 6 支流程：最舊的那份草稿刪掉，只留最近編過的 5 支', async () => {
+	it('6 支都改過沒存：一支都不刪', async () => {
 		const drafts = fakeDraftStore();
-		const ages = [3, 5, 1, 4, 2];
-		for (const day of ages) {
+		for (const day of [3, 5, 1, 4, 2]) {
 			drafts.all.set(`d${day}`, { bytes: writeFlowFile(newFlow(`第 ${day} 支`), {}), savedAt: new Date(2026, 10, day) });
 		}
 		const tab = await openTab(drafts, fakeTabs());
 		tab.editor.file.create(newFlow('全國賽'));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftNames(drafts)).toEqual(['全國賽', '第 2 支', '第 3 支', '第 4 支', '第 5 支']);
+		expect(draftNames(drafts)).toEqual(['全國賽', '第 1 支', '第 2 支', '第 3 支', '第 4 支', '第 5 支']);
 	});
 
-	it('超過 5 支：先丟跟檔案一樣（沒改過）的草稿，就算它比較新；改過沒存的留著', async () => {
+	it('超過 5 支、有沒改過也有改過沒存的：只刪沒改過的，先刪最舊的；改過沒存的就算比較舊也留著', async () => {
 		const drafts = fakeDraftStore();
-		for (const day of [1, 2, 3, 4]) {
+		for (const day of [1, 2, 3]) {
 			drafts.all.set(`d${day}`, { bytes: writeFlowFile(newFlow(`第 ${day} 支`), {}), savedAt: new Date(2026, 9, day) });
 		}
 		const tab = await openTab(drafts, fakeTabs());
-		const opening = tab.editor.file.open(zip(audioFlow()));
-		await vi.advanceTimersByTimeAsync(300);
-		await opening;
+		for (const f of [zip(newFlow('區賽'), {}, '區賽.zip'), zip(audioFlow())]) {
+			const opening = tab.editor.file.open(f);
+			await vi.advanceTimersByTimeAsync(300);
+			await opening;
+		}
 		tab.editor.file.create(newFlow('全國賽'));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftNames(drafts)).toEqual(['全國賽', '第 1 支', '第 2 支', '第 3 支', '第 4 支']);
+		expect(draftNames(drafts)).toEqual(['全國賽', '第 1 支', '第 2 支', '第 3 支', '練習用']);
 	});
 
 	it('另一個分頁正在編這份草稿：「丟掉」不刪，提示說它正在被編', async () => {
