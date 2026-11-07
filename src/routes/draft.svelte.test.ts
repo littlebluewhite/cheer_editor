@@ -225,7 +225,9 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 		vi.useFakeTimers();
 		try {
 			// 先改了別的（備註），停手 1 秒就要存草稿；這 1 秒裡去打名稱
-			await fireEvent.change(screen.getByLabelText('備註'), { target: { value: '慢慢來' } });
+			const note = screen.getByLabelText('備註');
+			await fireEvent.input(note, { target: { value: '慢慢來' } });
+			await fireEvent.change(note);
 			const name = await typeName('高 Lib');
 			await vi.advanceTimersByTimeAsync(1000);
 			expect(draftName(drafts.latest())).toBe('高 Lib');
