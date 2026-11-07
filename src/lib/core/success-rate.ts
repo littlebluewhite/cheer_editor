@@ -302,11 +302,16 @@ export function fitRecords(action: Action): Action {
 		const blanks = r.blanks?.filter((id) => phaseIds.has(id));
 		if (marks.length === Object.keys(r.marks).length && blanks?.length === r.blanks?.length) return [r];
 		if (!marks.length) return [];
-		const { blanks: _old, ...rest } = r;
-		return [{ ...rest, marks: Object.fromEntries(marks), ...(blanks?.length && { blanks }) }];
+		return [{ ...withoutBlanks(r), marks: Object.fromEntries(marks), ...(blanks?.length && { blanks }) }];
 	});
 	const same = records.length === rate.records.length && records.every((r, i) => r === rate.records[i]);
 	return same ? action : { ...action, successRate: { ...rate, records } };
+}
+
+/** 拿掉空著的環節（blanks），換上新的記號時用：新的空著的由算的人給，沒給就是沒有。 */
+export function withoutBlanks<T extends { blanks?: string[] }>(attempt: T): Omit<T, 'blanks'> {
+	const { blanks: _blanks, ...rest } = attempt;
+	return rest;
 }
 
 /**

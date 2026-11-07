@@ -14,6 +14,7 @@ import {
 	squadName,
 	squadPeople,
 	squadsOf,
+	withoutBlanks,
 	type Attempt,
 	type Mark,
 	type NewAttempt,
@@ -29,8 +30,7 @@ export function recordAttempt(
 	const action = flow.actions.find((a) => a.id === actionId);
 	if (!action) return blocked('找不到這個動作');
 	if (!action.successRate) return blocked('這個動作沒有記成功率');
-	const { blanks: _given, ...rest } = input;
-	const kept = { ...rest, ...keptAttempt(action, input.whole, input.marks) };
+	const kept = { ...withoutBlanks(input), ...keptAttempt(action, input.whole, input.marks) };
 	const problem = attemptProblem(action, kept);
 	if (problem) return blocked(problem);
 	const issued = freshIds('t', 1, flow.lastIds, attemptIds(flow));
@@ -107,8 +107,7 @@ export function changeAttempt(
 	const records = action?.successRate?.records ?? [];
 	const index = records.findIndex((r) => r.id === attemptId);
 	if (!action || index < 0) return blocked('找不到這一次');
-	const { blanks: _old, ...rest } = records[index];
-	const attempt = { ...rest, ...changedAttempt(action, records[index], marks) };
+	const attempt = { ...withoutBlanks(records[index]), ...changedAttempt(action, records[index], marks) };
 	if (attempt.practice === 'runThrough' && !attempt.whole && Object.keys(attempt.marks).length)
 		return blocked('全上的一次每個環節都要有記號（✗ 後面的不用）');
 	const problem = attemptProblem(action, attempt);
