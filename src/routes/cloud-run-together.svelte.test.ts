@@ -93,6 +93,18 @@ describe('有人在記全上', () => {
 		expect(picks()).toEqual(['第 1 組 你記', '第 2 組 你記', '小美 你記', '小A 你記']);
 	});
 
+	it('按「＋ 記一次全上」再按「加入這一次」：加入王教練那一次，不是開新的', async () => {
+		const s = await open();
+		wangOpens(s, ['n:1', 'm:m1'], ['n:1']);
+		await settle();
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
+		await fireEvent.click(screen.getByRole('button', { name: '加入這一次：跟王教練一起記，你記別的組' }));
+		await settle();
+
+		expect(screen.getByRole('heading', { name: '加入王教練的第 1 次全上' })).toBeTruthy();
+		expect(picks()).toEqual(['第 1 組 王教練在記', '第 2 組 你記', '小美 王教練拿著', '小A 你記']);
+	});
+
 	it('加入：沒人拿著的組先勾好；別人記的欄變灰、格子「—」；存檔鈕寫你記的幾欄；被接手馬上變灰', async () => {
 		const s = await open();
 		const coach = wangOpens(s, ['n:1', 'm:m1'], ['n:1']);

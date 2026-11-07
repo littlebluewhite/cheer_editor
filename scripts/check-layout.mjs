@@ -635,7 +635,7 @@ await check('首頁沒登入（電腦、手機）：右上角「使用說明」�
 	return { ok: bad.length === 0, value: bad };
 });
 
-await check('首頁登入後：電腦兩欄（清單在左、新建在右），手機一欄（清單在上、新建在下），「分享給我的」名字很長也不溢出', async () => {
+await check('首頁登入後：電腦、iPad 兩欄（清單在左、新建在右），手機一欄（清單在上、新建在下），「分享給我的」名字很長也不溢出', async () => {
 	const bad = [];
 	fakeApi = {
 		'/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: true },
@@ -647,7 +647,7 @@ await check('首頁登入後：電腦兩欄（清單在左、新建在右），�
 		] }
 	};
 	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
-	for (const [w, h, cols] of [[1440, 900, 2], [390, 844, 1]]) {
+	for (const [w, h, cols] of [[1440, 900, 2], [1024, 768, 2], [768, 1024, 2], [390, 844, 1]]) {
 		await setViewport(w, h);
 		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 		await waitFor(() => js(`return !!window.__svelte && document.querySelectorAll('.cloud-list li').length === 3`), 30).catch(() => {});
@@ -1613,11 +1613,15 @@ await check('色條：用 Tab 停在選到的色條上，跟滑鼠點選的樣�
 	return { ok, value: { 滑鼠點選: clicked, Tab回來: tabbed } };
 });
 
-await check('390×844 iPhone Safari 雲端流程練習頁（#260）：傳不上去的提示條、記好後滑上來的「加到主畫面」提醒，不蓋住記錄的按鈕；捲到底按鈕在提醒上面', async () => {
-	await setTouchViewport(390, 844);
-	await send('Emulation.setUserAgentOverride', {
-		userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
-	});
+// iPad 的 Safari 說自己是 Mac，用觸控點分出來（offline-store.ts 的 isVolatileSafari）
+for (const [w, h, device, userAgent] of [
+	[390, 844, 'iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'],
+	[768, 1024, 'iPad', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15'],
+	[1024, 768, 'iPad', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15']
+])
+await check(`${w}×${h} ${device} Safari 雲端流程練習頁（#260）：傳不上去的提示條、記好後滑上來的「加到主畫面」提醒，不蓋住記錄的按鈕；捲到底按鈕在提醒上面`, async () => {
+	await setTouchViewport(w, h);
+	await send('Emulation.setUserAgentOverride', { userAgent });
 	// vite dev 沒有伺服器：房間的 WebSocket 一連就斷（連不上），/api/me、流程照假的回，所以是「傳不上去（伺服器沒回應）」
 	const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', {
 		source: `window.WebSocket = class { static OPEN = 1; readyState = 0; constructor() { setTimeout(() => this.onclose?.({}), 20); } send() {} close() {} };`
@@ -1669,6 +1673,196 @@ await check('390×844 iPhone Safari 雲端流程練習頁（#260）：傳不上�
 		await send('Emulation.setUserAgentOverride', { userAgent: '' });
 		await clearTouch();
 	}
+});
+
+// ---------- 登入、分享、一起記（#268）：手機、iPad 寬度 ----------
+
+/** 手機、iPad（直的、橫的），觸控。 */
+const TOUCH_SIZES = [[390, 844], [768, 1024], [1024, 768]];
+/**
+ * 頁面不溢出，而且 selector 的每個（看得到的）東西捲過去以後整個在畫面裡、中心點到的是它自己。
+ * 回 { 溢出, 點不到 }：都空才算過。
+ */
+const allReachable = (selector) =>
+	js(`const bad = [];
+		for (const el of document.querySelectorAll(${JSON.stringify(selector)})) {
+			if (!el.checkVisibility()) continue;
+			el.scrollIntoView({ block: 'center', inline: 'nearest' });
+			await new Promise((r) => setTimeout(r, 30));
+			const r = el.getBoundingClientRect();
+			const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			const inside = r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1;
+			const self = !!top && (el.contains(top) || (el.labels && [...el.labels].some((l) => l.contains(top))));
+			if (!inside || !self) bad.push((el.getAttribute('aria-label') || el.textContent.trim() || el.outerHTML).slice(0, 30) + (inside ? '（被蓋住）' : '（出畫面）'));
+		}
+		const out = [...document.querySelectorAll('body *')].filter((el) => { const r = el.getBoundingClientRect();
+			return r.width && r.height && el.checkVisibility() && (r.right > innerWidth + 1 || r.left < -1); }).map((el) => el.outerHTML.slice(0, 60));
+		return { 溢出: document.scrollingElement.scrollWidth > innerWidth ? out.slice(0, 4) : [], 點不到: bad };`);
+
+await check('登入那幾頁（登入、忘記密碼、設密碼、我的帳號、管理使用者）在手機、iPad：不溢出，按鈕、欄位、連結都點得到', async () => {
+	const bad = [];
+	const long = '很長的名字'.repeat(4);
+	const email = 'a-very-long-email-address-for-testing@example.com';
+	fakeApi = {
+		'/api/me': { email, name: long, isAdmin: true },
+		'/api/password-link': { email, name: long, purpose: 'invite' },
+		'/api/admin/users': [
+			{ id: 1, name: long, email, status: { kind: 'active' }, me: true },
+			{ id: 2, name: '王教練', email: 'wang@example.com', status: { kind: 'invited', hoursLeft: 23 }, me: false },
+			{ id: 3, name: '陳小美', email: 'chen.xiaomei.long.address@example.com', status: { kind: 'inviteExpired' }, me: false },
+			{ id: 4, name: '黃教練', email: 'huang@example.com', status: { kind: 'disabled', flows: 3 }, me: false }
+		]
+	};
+	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
+	try {
+		for (const [w, h] of TOUCH_SIZES) {
+			await setTouchViewport(w, h);
+			for (const [path, ready] of [
+				['/login', 'form button[type=submit]'],
+				['/forgot-password', 'form button[type=submit]'],
+				['/set-password#tok', 'form button[type=submit]'],
+				['/account', 'form button'],
+				['/users', 'table tbody tr:nth-child(4) button']
+			]) {
+				await send('Page.navigate', { url: `http://127.0.0.1:${PORT}${path}` });
+				const shown = await waitFor(() => js(`return !!window.__svelte && !!document.querySelector(${JSON.stringify(ready)})`), 30).catch(() => false);
+				await sleep(200);
+				const r = shown ? await allReachable('button, input, select, a') : { 沒出來: ready };
+				if (!shown || r.溢出.length || r.點不到.length) bad.push({ 畫面: `${w}×${h}`, 頁: path, ...r });
+			}
+		}
+	} finally {
+		await send('Fetch.disable');
+		fakeApi = null;
+		await clearTouch();
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
+/**
+ * 用 role 打開雲端流程 c1（libSample：有能記的動作）。房間的 WebSocket 換成假的：連上就說 ready，
+ * 送出去的記在 window.__sent，window.__ws.onmessage 能塞伺服器說的話。回收拾的函式。
+ */
+async function openCloudFlow(role) {
+	const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', {
+		source: `window.__sent = []; window.WebSocket = class { static OPEN = 1; readyState = 0;
+			constructor() { window.__ws = this; setTimeout(() => { this.readyState = 1; this.onopen?.({});
+				this.onmessage?.({ data: JSON.stringify({ kind: 'ready', step: 0 }) }); }, 20); }
+			send(t) { window.__sent.push(JSON.parse(t)); } close() {} };`
+	});
+	const done = async () => {
+		await send('Fetch.disable');
+		fakeApi = null;
+		await send('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+	};
+	try {
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte`));
+		const flow = await js(`const { libSample } = await import('/src/lib/test-flows.ts'); return libSample();`);
+		const at = '2026-11-06T07:20:00.000Z';
+		fakeApi = {
+			'/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: false },
+			'/api/flows': { mine: [], shared: [{ id: 'c1', name: '測試', updatedAt: at, ownerName: '王教練', ownerDisabled: false, role }] },
+			'/api/flows/c1': { id: 'c1', flow, step: 0, updatedAt: at, role, records: [] },
+			'/api/flows/c1/people': [
+				{ userId: 1, name: '王教練', ...(role === 'owner' ? { email: 'wang@example.com' } : {}), role: 'owner', me: false, disabled: false },
+				{ userId: 2, name: '林教練', email: 'lin@example.com', role, me: true, disabled: false },
+				{ userId: 3, name: '很長的名字'.repeat(4), email: 'a-very-long-email-address-for-testing@example.com', role: 'recorder', me: false, disabled: true }
+			],
+			'/api/flows/c1/link': { token: 'abcdefghijklmnopqrstuvwxyz0123456789' }
+		};
+		await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.cloud-list .recent-open')`), 50);
+		await js(`document.querySelector('.cloud-list .recent-open').click()`);
+		await waitFor(() => js(`return !!document.querySelector('.topbar') && window.__ws?.readyState === 1`), 50);
+		await sleep(300);
+	} catch (e) {
+		await done();
+		throw e;
+	}
+	return done;
+}
+
+await check('分享對話框在手機、iPad（擁有者、編輯者）：不溢出，欄位、選單、複製、刪掉／離開、完成都點得到', async () => {
+	const bad = [];
+	try {
+		for (const role of ['owner', 'editor']) {
+			for (const [w, h] of TOUCH_SIZES) {
+				await setTouchViewport(w, h);
+				let done = null;
+				try {
+					done = await openCloudFlow(role);
+					await waitFor(() => js(`const b = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '分享'); b?.click(); return !!b;`), 30);
+					await waitFor(() => js(`return document.querySelectorAll('.share-dialog .people li').length === 3 && !!document.querySelector('.share-dialog .link-part')`), 30);
+					await sleep(300);
+					const r = await allReachable('.share-dialog button, .share-dialog input, .share-dialog select');
+					const box = await js(`const r = document.querySelector('.share-dialog').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1;`);
+					if (r.溢出.length || r.點不到.length || !box) bad.push({ 權限: role, 畫面: `${w}×${h}`, 對話框在畫面裡: box, ...r });
+				} catch (e) {
+					bad.push({ 權限: role, 畫面: `${w}×${h}`, 錯: String(e.message ?? e) });
+				} finally {
+					await done?.();
+				}
+			}
+		}
+	} finally {
+		await clearTouch();
+	}
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('一起記全上在手機、iPad：記錄頁上方「王教練在記…」藍條、「加入這一次／開新的一次」框、全上表的「我記哪幾組」（別人拿著、在記、斷線了）不溢出，按鈕都點得到', async () => {
+	const bad = [];
+	const other = '王教練王教練王教練';
+	try {
+		for (const [w, h] of TOUCH_SIZES) {
+			await setTouchViewport(w, h);
+			let done = null;
+			try {
+				done = await openCloudFlow('recorder');
+				await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
+				// 別人（名字很長）在記今天的一次全上
+				await js(`const now = new Date();
+					const date = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+					window.__run = { id: 'r-other', date, startedAt: Date.now() - 60000 };
+					window.__ws.onmessage({ data: JSON.stringify({ kind: 'runThroughs', runs: [{ ...window.__run,
+						people: [{ name: '${other}', me: false, away: false }], keys: [] }] }) });`);
+				await waitFor(() => js(`return [...document.querySelectorAll('.practice button')].some((b) => b.textContent.includes('加入，記別的組'))`), 30);
+				await sleep(200);
+				const bar = await allReachable('.practice .live button, .practice .run button');
+				if (bar.溢出.length || bar.點不到.length) bad.push({ 畫面: `${w}×${h}`, 哪裡: '藍條', ...bar });
+				// 按「＋ 記一次全上」：問加入還是開新的
+				await js(`[...document.querySelectorAll('.practice button')].find((b) => b.textContent.trim() === '＋ 記一次全上').click()`);
+				const asked = await waitFor(() => js(`return !!document.querySelector('.dialog.join')`), 20).catch(() => false);
+				await sleep(200);
+				const ask = asked ? await allReachable('.dialog.join button') : { 溢出: [], 點不到: ['沒有問加入還是開新的'] };
+				if (ask.溢出.length || ask.點不到.length) bad.push({ 畫面: `${w}×${h}`, 哪裡: '加入這一次的框', ...ask });
+				// 加入：伺服器說表上的組一半我記，一半王教練拿著（還沒點、在記、斷線了）
+				await js(`[...document.querySelectorAll('.dialog.join button')].find((b) => b.textContent.includes('加入這一次')).click()`);
+				await waitFor(() => js(`return !!document.querySelector('.picks') && window.__sent.some((m) => m.kind === 'runThrough')`), 30);
+				await js(`const sent = window.__sent.filter((m) => m.kind === 'runThrough').at(-1);
+					const all = sent.keys;
+					const held = all.map((key, i) => i % 2 === 0
+						? { key, userId: 2, name: '林教練', mine: true, touched: false, away: false }
+						: { key, userId: 1, name: '${other}', mine: false, touched: i % 4 === 1, away: i % 4 === 3 });
+					window.__ws.onmessage({ data: JSON.stringify({ kind: 'runThroughs', runs: [{ ...window.__run,
+						people: [{ name: '${other}', me: false, away: false }, { name: '林教練', me: true, away: false }], keys: held }] }) });`);
+				await sleep(400);
+				const sheet = await js(`return { 組: document.querySelectorAll('.picks button').length,
+					別人的: [...document.querySelectorAll('.picks button small')].filter((s) => s.textContent.includes('${other}')).length };`);
+				const r = await allReachable('.picks button, section.sheet > footer button, .block .head button');
+				if (!(sheet.組 >= 2) || !(sheet.別人的 >= 1) || r.溢出.length || r.點不到.length) bad.push({ 畫面: `${w}×${h}`, 哪裡: '我記哪幾組', ...sheet, ...r });
+			} catch (e) {
+				bad.push({ 畫面: `${w}×${h}`, 錯: String(e.message ?? e) });
+			} finally {
+				await done?.();
+			}
+		}
+	} finally {
+		await clearTouch();
+	}
+	return { ok: bad.length === 0, value: bad };
 });
 
 await check('從時間軸左下角的空白處一路拖到上方列：不會把介面上的字反白', async () => {
