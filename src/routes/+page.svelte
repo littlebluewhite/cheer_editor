@@ -359,13 +359,9 @@
 			e.preventDefault();
 			if (e.key === 'Home') playback.toStart();
 			else playback.toEnd();
-		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedFormationId) {
-			e.preventDefault();
-			session.removeFormation(session.selectedFormationId);
-		} else if ((e.key === 'Delete' || e.key === 'Backspace') && session.selectedActionId) {
-			// Mac 的 delete 鍵送的是 Backspace
-			e.preventDefault();
-			session.removeAction(session.selectedActionId);
+		} else if (e.key === 'Delete' || e.key === 'Backspace') {
+			// Mac 的 delete 鍵送的是 Backspace；只刪最後點的那一個
+			if (session.deleteKey()) e.preventDefault();
 		} else if (
 			(e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
 			!e.defaultPrevented &&
