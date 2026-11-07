@@ -1,14 +1,18 @@
 // 連伺服器的 adapter：所有 HTTP 呼叫都經過它（ADR 0009：API 跟網頁同一個網址，cookie 由瀏覽器帶）。
 // 真的是 httpServer；假的是 #lib/test-fakes.js 的 fakeServer（前端測試不開真的伺服器）。
 // 訊息的型別從 Rust 產生（src/lib/api-types/，見 docs/deploy.md），對不上就編譯不過。
+import type { NewFlowInput } from '#lib/core';
+import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
+import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { Me } from '#lib/api-types/Me.js';
+import type { MyFlows } from '#lib/api-types/MyFlows.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
 import type { AdminProblem } from '#lib/api-types/AdminProblem.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
 
-export type { AdminProblem, LinkInfo, Me, PasswordProblem, UserRow, UserStatus };
+export type { AdminProblem, CloudFlow, CloudFlowSummary, LinkInfo, Me, PasswordProblem, UserRow, UserStatus };
 
 /** 管理的事的結果：做好了，或做不成的原因（email 撞到別人、今天寄不出去、這個人現在不能這樣做）。 */
 export type AdminResult = 'ok' | AdminProblem;
@@ -50,6 +54,13 @@ export interface ServerAdapter {
 	disableUser(id: number): Promise<AdminResult>;
 	/** 恢復：用原本的密碼就能登入。 */
 	enableUser(id: number): Promise<AdminResult>;
+
+	/** 我的流程（我擁有的雲端流程），最近改的在前。 */
+	myFlows(): Promise<CloudFlowSummary[]>;
+	/** 新建一支雲端流程（伺服器用流程核心照新建表單的名字、場地建）。 */
+	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
+	/** 拿一支雲端流程；沒有這支、不是我的是 null。 */
+	cloudFlow(id: string): Promise<CloudFlow | null>;
 }
 
 /** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。 */
@@ -80,6 +91,16 @@ export function httpServer(base = ''): ServerAdapter {
 			}
 		}
 		throw new ServerUnreachable();
+	}
+	async function get(path: string): Promise<Response> {
+		let res: Response;
+		try {
+			res = await fetch(`${base}/api/${path}`);
+		} catch {
+			throw new ServerUnreachable();
+		}
+		if (res.status >= 500) throw new ServerUnreachable();
+		return res;
 	}
 	return {
 		async me() {
@@ -128,6 +149,22 @@ export function httpServer(base = ''): ServerAdapter {
 		sendReset: (id) => admin(`/${id}/send-reset`),
 		changeEmail: (id, email) => admin(`/${id}/email`, { email }),
 		disableUser: (id) => admin(`/${id}/disable`),
-		enableUser: (id) => admin(`/${id}/enable`)
+		enableUser: (id) => admin(`/${id}/enable`),
+		async myFlows() {
+			const res = await get('flows');
+			if (res.ok) return ((await res.json()) as MyFlows).mine;
+			throw new ServerUnreachable();
+		},
+		async createFlow(input) {
+			const res = await post('flows', input);
+			if (res.ok) return (await res.json()) as CloudFlowSummary;
+			throw new ServerUnreachable();
+		},
+		async cloudFlow(id) {
+			const res = await get(`flows/${encodeURIComponent(id)}`);
+			if (res.ok) return (await res.json()) as CloudFlow;
+			if (res.status === 404) return null;
+			throw new ServerUnreachable();
+		}
 	};
 }

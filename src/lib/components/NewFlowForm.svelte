@@ -13,8 +13,10 @@
 	} from '#lib/core';
 	import { Ask } from '#lib/ask.svelte.js';
 	import CharCount from './CharCount.svelte';
+	import type { Snippet } from 'svelte';
 
-	let { oncreate }: { oncreate: (flow: Flow) => void } = $props();
+	/** extra：建立鈕上面多一格（登入時的「存在：雲端／這台」）。 */
+	let { oncreate, extra }: { oncreate: (flow: Flow) => void; extra?: Snippet } = $props();
 
 	let name = $state('');
 	let nameInput = $state<HTMLInputElement>();
@@ -132,6 +134,8 @@
 			</div>
 		{/if}
 	</fieldset>
+
+	{@render extra?.()}
 
 	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
 

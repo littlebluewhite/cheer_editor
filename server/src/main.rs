@@ -3,6 +3,7 @@ use cheer_server::AppState;
 use cheer_server::breach::BreachCheck;
 use cheer_server::clock::Clock;
 use cheer_server::config::Config;
+use cheer_server::flow_core::FlowCore;
 use cheer_server::mail::Mailer;
 use tracing_subscriber::EnvFilter;
 
@@ -47,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
         breach: BreachCheck::pwned(),
         clock: Clock::system(),
         site_url: config.site_url.clone(),
+        core: FlowCore::start().context("流程核心載入失敗")?,
     };
 
     if let Some((email, name)) = command {

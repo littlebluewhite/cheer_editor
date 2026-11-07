@@ -123,26 +123,48 @@ export interface FakeLink {
 	hoursLeft?: number;
 }
 
+/** 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）。 */
+export interface FakeCloudFlow {
+	id: string;
+	owner: string;
+	flow: Flow;
+	updatedAt: string;
+}
+
 /**
  * 假的連伺服器：使用者、設密碼連結（token → 那條連結）放在記憶體，規則跟真的一樣
  * （email 不分大小寫；密碼至少 15 個看得到的字、不在外洩清單 breached 裡；連結用一次就不能用；被停用的登不進去）。
- * signedIn：現在登入的是誰（沒登入是 null）。unreachable 設成 true 就是連不上伺服器。
+ * signedIn：現在登入的是誰（沒登入是 null）。flows：雲端流程（只有擁有者拿得到）。unreachable 設成 true 就是連不上伺服器。
  * 管理使用者：使用者的 id 是他在 users 裡的位置 + 1；mailQuota 設成 true 就是寄信服務今天的額度用完了。
  */
 export function fakeServer(
-	init: { users?: FakeUser[]; links?: Record<string, FakeLink>; signedIn?: string | null; breached?: string[] } = {}
+	init: {
+		users?: FakeUser[];
+		links?: Record<string, FakeLink>;
+		signedIn?: string | null;
+		breached?: string[];
+		flows?: FakeCloudFlow[];
+	} = {}
 ) {
 	const state = {
 		users: init.users ?? [],
 		links: { ...init.links },
 		signedIn: init.signedIn ?? null,
 		breached: init.breached ?? [],
+		flows: [...(init.flows ?? [])],
 		unreachable: false,
 		mailQuota: false
 	};
 	let nextToken = 1;
 	const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 	const find = (email: string) => state.users.find((u) => same(u.email, email));
+	/** 登入的人擁有的雲端流程（沒登入丟錯，跟真的伺服器回 401 一樣當作出錯）。 */
+	const mine = () => {
+		reachable();
+		const me = state.signedIn && find(state.signedIn);
+		if (!me) throw new ServerUnreachable();
+		return state.flows.filter((f) => f.owner === me.email);
+	};
 	const reachable = () => {
 		if (state.unreachable) throw new ServerUnreachable();
 	};
@@ -249,6 +271,23 @@ export function fakeServer(
 			return adminDoes(id, false, (u) => {
 				u.disabled = false;
 			});
+		},
+		async myFlows() {
+			return [...mine()]
+				.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+				.map((f) => ({ id: f.id, name: f.flow.name, updatedAt: f.updatedAt }));
+		},
+		async createFlow(input) {
+			mine();
+			const r = createFlow(input);
+			if (r.kind !== 'ok') throw new Error(r.kind === 'blocked' ? r.message : r.kind);
+			const made = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow: r.flow, updatedAt: new Date().toISOString() };
+			state.flows.push(made);
+			return { id: made.id, name: made.flow.name, updatedAt: made.updatedAt };
+		},
+		async cloudFlow(id) {
+			const f = mine().find((g) => g.id === id);
+			return f ? { id: f.id, flow: structuredClone(f.flow), step: 0, updatedAt: f.updatedAt } : null;
 		}
 	};
 	return { server, state };
