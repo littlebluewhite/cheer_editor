@@ -14,8 +14,10 @@ import {
 	restoreAttempt,
 	restoreRunThrough,
 	keptAttempt,
+	fillOk,
 	lastRunThrough,
 	addPhase,
+	deletePhase,
 	readFlowFile,
 	recordableActions,
 	recordAttempt,
@@ -125,6 +127,13 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 		expect(keptAttempt(flow.actions[0], whole, marks)).toEqual({ whole: saved.whole, marks: saved.marks, blanks: saved.blanks });
 	});
 
+	it('「全部 ✓ 存」：已點的照點的，空著的環節補 ✓', () => {
+		const action = sample().actions[0];
+		expect(fillOk(action, { p2: '△' })).toEqual({ p1: '✓', p2: '△', p3: '✓' });
+		expect(fillOk(action, { p1: '✗' })).toEqual({ p1: '✗', p2: '✓', p3: '✓' });
+		expect(fillOk(action, {})).toEqual({ p1: '✓', p2: '✓', p3: '✓' });
+	});
+
 	it('讀流程檔不套這兩條：後來加在前面的環節，舊的一次照樣打得開、還是整個做', () => {
 		let flow = flowOf(clearPhaseBeats(sample(), 'x1', 0, 4));
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓', p3: '✓' })));
@@ -220,6 +229,31 @@ describe('改某一次、刪掉某一次', () => {
 		expect(changeAttempt(flow, 'x1', 't4', { p1: '✓', p3: '✓' })).toEqual({
 			kind: 'blocked',
 			message: '全上的一次每個環節都要有記號（✗ 後面的不用）'
+		});
+	});
+
+	describe('只看那一次當時就有的環節', () => {
+		const later = (flow: Flow) =>
+			flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		const p4 = (flow: Flow) => flow.actions[0].successRate!.phases[3].id;
+
+		it('之後才加的環節不變成空著的，打了記號也不存；整個做還是整個做', () => {
+			const flow = later(flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' }))));
+			const changed = flowOf(changeAttempt(flow, 'x1', 't1', { p1: '✓', p2: '△', p3: '✓', [p4(flow)]: '✓' }));
+			expect(recordsOf(changed)[0]).toEqual({ ...recordsOf(flow)[0], marks: { p1: '✓', p2: '△', p3: '✓' } });
+		});
+
+		it('中途 ✗ 的一次：空著的只留當時就有的，之後才加的不算進去', () => {
+			const flow = later(flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✗' }))));
+			const changed = flowOf(changeAttempt(flow, 'x1', 't1', { p1: '△', p2: '✗' }));
+			expect(recordsOf(changed)[0]).toMatchObject({ whole: true, marks: { p1: '△', p2: '✗' }, blanks: ['p3'] });
+		});
+
+		it('✗ 的環節刪掉了：改前面的記號，空著的照樣空著、還是整個做', () => {
+			let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✗' })));
+			flow = flowOf(deletePhase(flow, 'x1', 'p2', { confirmed: true }));
+			const changed = flowOf(changeAttempt(flow, 'x1', 't1', { p1: '△', p3: '✓' }));
+			expect(recordsOf(changed)[0]).toMatchObject({ whole: true, marks: { p1: '△' }, blanks: ['p3'] });
 		});
 	});
 

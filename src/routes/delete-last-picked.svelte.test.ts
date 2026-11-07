@@ -45,6 +45,18 @@ describe('Delete 只刪最後點的那一個', () => {
 		expect(session.flow!.actions[0].members.map((m) => m.memberId)).toEqual(['m1', 'm3', 'm4']);
 	});
 
+	it('選動作 → 點人 → 再點一次取消那個人：動作還看得到選著，Delete 不刪，出現提示', async () => {
+		const session = setup();
+		await fireEvent.click(bar()!);
+		await pickLane('m2');
+		await fireEvent.click(document.querySelector('[data-lane="m2"] .lab')!, { shiftKey: true });
+		expect(session.selectedMemberIds).toEqual([]);
+		expect(session.selectedAction?.id).toBe('x1');
+		await fireEvent.keyDown(window, { key: 'Delete' });
+		expect(session.flow!.actions).toHaveLength(1);
+		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');
+	});
+
 	it('最後點的是動作：Delete 刪那個動作', async () => {
 		const session = setup();
 		await pickLane('m2');

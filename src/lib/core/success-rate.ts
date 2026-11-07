@@ -261,6 +261,39 @@ export function keptAttempt(
 	return kept.whole && after.length ? { ...kept, blanks: after } : kept;
 }
 
+/** 「全部 ✓ 存」要存的記號：已點的照點的（△、✗ 不蓋掉），空著的環節補 ✓。存的時候一樣照 keptAttempt 留。 */
+export function fillOk(action: Action, marks: Record<string, Mark>): Record<string, Mark> {
+	const phases = action.successRate?.phases ?? [];
+	return { ...Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])), ...marks };
+}
+
+/**
+ * 改一次會存下來的樣子：給動作、原本的那一次、改好的記號。只練幾個環節的照記一次的規則留（keptAttempt）。
+ * 整個做的只看那一次當時就有、現在還在的環節（打了記號的加上空著的）：之後才加的環節不變成空著的，打了記號也不存。
+ * ✗ 的環節已經刪掉了，原本空著的照樣空著（打了記號也不存），前面的都有記號就還是整個做。
+ */
+export function changedAttempt(
+	action: Action,
+	attempt: Attempt,
+	marks: Record<string, Mark>
+): { whole: boolean; marks: Record<string, Mark>; blanks?: string[] } {
+	const rate = action.successRate;
+	if (!attempt.whole || !rate) return keptAttempt(action, attempt.whole, marks);
+	const blanks = attempt.blanks ?? [];
+	const phasesThen = rate.phases.filter((p) => attempt.marks[p.id] || blanks.includes(p.id));
+	const failGone = blanks.length > 0 && !phasesThen.some((p) => attempt.marks[p.id] === '✗');
+	const open = failGone ? phasesThen.filter((p) => !blanks.includes(p.id)) : phasesThen;
+	const shut = new Set(rate.phases.filter((p) => !open.includes(p)).map((p) => p.id));
+	const kept = keptAttempt(
+		{ ...action, successRate: { ...rate, phases: open } },
+		true,
+		Object.fromEntries(Object.entries(marks).filter(([id]) => !shut.has(id)))
+	);
+	if (!failGone || !kept.whole) return kept;
+	const empty = phasesThen.filter((p) => blanks.includes(p.id) || kept.blanks?.includes(p.id)).map((p) => p.id);
+	return { ...kept, blanks: empty };
+}
+
 /**
  * 動作的紀錄裡對不上現在的環節、組、隊員的拿掉：指到不在的環節的記號和空著的環節丟掉，丟到一個記號都沒有的那一次整筆拿掉；
  * 誰對不上（組沒人了、人不在動作裡、大類換成騰翻或換掉騰翻）的那一次也拿掉。都對得上就回傳原來的動作。
@@ -275,11 +308,16 @@ export function fitRecords(action: Action): Action {
 		const blanks = r.blanks?.filter((id) => phaseIds.has(id));
 		if (marks.length === Object.keys(r.marks).length && blanks?.length === r.blanks?.length) return [r];
 		if (!marks.length) return [];
-		const { blanks: _old, ...rest } = r;
-		return [{ ...rest, marks: Object.fromEntries(marks), ...(blanks?.length && { blanks }) }];
+		return [{ ...withoutBlanks(r), marks: Object.fromEntries(marks), ...(blanks?.length && { blanks }) }];
 	});
 	const same = records.length === rate.records.length && records.every((r, i) => r === rate.records[i]);
 	return same ? action : { ...action, successRate: { ...rate, records } };
+}
+
+/** 拿掉空著的環節（blanks），換上新的記號時用：新的空著的由算的人給，沒給就是沒有。 */
+export function withoutBlanks<T extends { blanks?: string[] }>(attempt: T): Omit<T, 'blanks'> {
+	const { blanks: _blanks, ...rest } = attempt;
+	return rest;
 }
 
 /**
