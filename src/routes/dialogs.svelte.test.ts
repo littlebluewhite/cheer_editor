@@ -3,7 +3,9 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
+import { addAction, addSegment as addSegmentTo } from '#lib/core';
 import { editorPage } from '#lib/test-fakes.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -224,6 +226,19 @@ describe('被擋下的欄位', () => {
 		expect(screen.getByRole('alert').textContent).toContain('「口號段加起來最少（秒）」');
 
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
+	it('口號段長度填錯留下紅字，再按「刪除這一段」：確認框出現時舊紅字已收掉（#210）', async () => {
+		let flow = flowOf(addSegmentTo(libSample(), 'chant'));
+		flow = flowOf(addAction(flow, { segmentId: 's2', category: 'other', name: '口號', start: 0, length: 10, note: '', members: [{ memberId: 'm1', role: '上層' }] }));
+		render(Page, editorPage(flow).props);
+		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
+		await fireEvent.change(screen.getByLabelText('長度（秒）'), { target: { value: '99999' } });
+		expect(screen.getByRole('alert').textContent).toContain('「長度（秒）」');
+
+		await fireEvent.click(screen.getByRole('button', { name: '刪除這一段' }));
+		expect(screen.getByRole('alertdialog')).toBeTruthy();
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 });

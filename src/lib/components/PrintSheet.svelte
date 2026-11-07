@@ -44,11 +44,14 @@
 		untrack(() => [selected ?? '', loadFlowSetting('print', flow.name)].find((c) => c && valid(c)) ?? '')
 	);
 
+	/** 選的人（或那個角色最後一個人）被復原退掉了：回到印全隊。 */
+	const shown = $derived(valid(choice) ? choice : '');
+
 	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
 	const sheets = $derived(
-		choice.startsWith('role:')
-			? flow.members.filter((m) => `role:${m.globalRole}` === choice).map((m) => m.id)
-			: [choice]
+		shown.startsWith('role:')
+			? flow.members.filter((m) => `role:${m.globalRole}` === shown).map((m) => m.id)
+			: [shown]
 	);
 	const markers = $derived(memberMarkers(flow));
 
@@ -83,7 +86,13 @@
 			<b class="tool-title">八拍表</b>
 			<label>
 				印誰
-				<select bind:value={choice} onchange={() => saveFlowSetting('print', flow.name, choice)}>
+				<select
+					value={shown}
+					onchange={(e) => {
+						choice = e.currentTarget.value;
+						saveFlowSetting('print', flow.name, choice);
+					}}
+				>
 					<option value="">全隊</option>
 					{#each roleChoices as r (r.value)}
 						<option value={r.value}>{r.label}</option>

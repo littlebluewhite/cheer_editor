@@ -776,6 +776,8 @@
 		font-weight: 700;
 		color: var(--text, #1a2238);
 		font-variant-numeric: tabular-nums;
+		/* 刻度只有 1px 寬：不擋的話「0 秒」會在空白處斷成兩行 */
+		white-space: nowrap;
 	}
 	/* 播放頭：八拍尺上的三角形，和往下貫穿整個時間軸的線。 */
 	.ph-head {

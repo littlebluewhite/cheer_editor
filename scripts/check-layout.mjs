@@ -817,6 +817,23 @@ await check('390×844（觸控）檢視畫面：點播放鈕，播放頭會走',
 	return { ok: before !== after, value: { 播放前: before, 播放後: after } };
 });
 
+await check('390×844（觸控）檢視畫面：播放前後播放鈕位置不變，第二下點同一個地方是暫停（#210）', async () => {
+	await setTouchViewport(390, 844);
+	await openSample();
+	const btn = () => js(`const r = document.querySelector('.phone-view .transport .play').getBoundingClientRect();
+		return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };`);
+	const before = await btn();
+	await tap(before.x, before.y);
+	// 播著的時候每隔一下量一次：八拍表這一列換列、時鐘變長都不能讓它跳（範例流程 9 秒，量 6 秒，還在播）
+	const seen = [];
+	for (let i = 0; i < 12; i++) { await sleep(500); seen.push(await btn()); }
+	const moved = seen.filter((p) => p.x !== before.x || p.y !== before.y);
+	await tap(before.x, before.y);
+	const paused = await js(`return document.querySelector('.phone-view .transport .play').getAttribute('aria-label') === '播放'`);
+	if (!paused) await js(`document.querySelector('.phone-view .transport .play').click()`);
+	return { ok: moved.length === 0 && paused, value: { 播放前: before, 跳到: moved.slice(0, 3), 第二下暫停了: paused } };
+});
+
 await check('844×390（手機橫拿）：檢視畫面和練習畫面都不溢出、播放鈕點得到', async () => {
 	await setTouchViewport(844, 390);
 	await openSample();
@@ -1295,6 +1312,17 @@ await check('時間軸縮到最小：八拍號碼不疊在一起；音樂段最�
 	seen.倍數 = await js(`return document.querySelector('.timeline .zoom-val').textContent`);
 	const ok = Object.values(seen).every((v) => typeof v === 'string' || (v.字 > 0 && v.疊到的.length === 0));
 	return { ok, value: seen };
+});
+
+await check('八拍尺上口號段的「0 秒」只有一行，不斷成兩行（#210）', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow(`flow = core.addSegment(flow, 'chant').flow;`);
+	const v = await js(`const s = [...document.querySelectorAll('.timeline .ruler .tk span')].find((s) => s.textContent.trim() === '0 秒');
+		if (!s) return null;
+		const range = document.createRange(); range.selectNodeContents(s);
+		const tops = new Set([...range.getClientRects()].map((r) => Math.round(r.top)));
+		return { 行數: tops.size, 高: Math.round(s.getBoundingClientRect().height) };`);
+	return { ok: !!v && v.行數 === 1, value: v ?? '找不到「0 秒」' };
 });
 
 await check('兩張站位只差 2 拍：沒選到、滑鼠沒移上去時 ✕ 不蓋在縮圖上（放滿和 ×1 都是）', async () => {
