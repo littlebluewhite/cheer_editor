@@ -14,7 +14,7 @@
 //     });
 //   先在修之前跑一次，確定它會失敗，再去修。
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -659,6 +659,64 @@ await check('首頁登入後：電腦兩欄（清單在左、新建在右），�
 			return { 寬: ${w}, 欄: side ? 2 : stacked ? 1 : 0, 雲端: document.querySelectorAll('.cloud-list li').length,
 				溢出: document.scrollingElement.scrollWidth > innerWidth };`);
 		if (r.欄 !== cols || r.雲端 !== 3 || r.溢出) bad.push(r);
+	}
+	await send('Fetch.disable');
+	fakeApi = null;
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('登入後打開本機流程（1024–1440 寬）：上方列多「這台」「傳上雲端」也放得下，按鈕不疊、不出畫面，名字還看得到（#259）', async () => {
+	const bad = [];
+	fakeApi = { '/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: true }, '/api/flows': { mine: [], shared: [] } };
+	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
+	for (const [w, h] of [[1024, 768], [1280, 800], [1440, 900]]) {
+		await setViewport(w, h);
+		await openSample();
+		await waitFor(() => js(`return [...document.querySelectorAll('.topbar button')].some((b) => b.textContent.includes('傳上雲端'))`), 30).catch(() => {});
+		const r = await js(`const bar = document.querySelector('.topbar');
+			const buttons = [...bar.querySelectorAll('.actions > button, .actions > label, .actions > div')].map((b) => b.getBoundingClientRect());
+			const overlap = buttons.some((a, i) => buttons.slice(i + 1).some((b) => a.right > b.left + 1 && b.right > a.left + 1 && a.bottom > b.top + 1 && b.bottom > a.top + 1));
+			const up = [...bar.querySelectorAll('button')].find((b) => b.textContent.includes('傳上雲端'));
+			return { 寬: ${w}, 有傳上雲端: !!up, 有這台: !!bar.querySelector('.here-tag'),
+				出畫面: buttons.some((b) => b.right > innerWidth + 0.5), 疊: overlap,
+				名字寬: Math.round(bar.querySelector('.title b').getBoundingClientRect().width),
+				溢出: document.scrollingElement.scrollWidth > innerWidth };`);
+		if (!r.有傳上雲端 || !r.有這台 || r.出畫面 || r.疊 || r.溢出 || r.名字寬 < 40) bad.push(r);
+	}
+	await send('Fetch.disable');
+	fakeApi = null;
+	return { ok: bad.length === 0, value: bad };
+});
+
+await check('擁有者打開雲端流程（1024–1440 寬）：上方列多「下載」也放得下，按鈕不疊、不出畫面，名字還看得到（#259）', async () => {
+	const bad = [];
+	// 範例流程用流程核心（vite dev 送得出它的原始碼）升到現在的版本，當作雲端上的那支
+	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+	await waitFor(() => js(`return !!window.__svelte`));
+	const flow = await js(`const core = await import('/src/lib/core/index.ts');
+		const bytes = Uint8Array.from(atob('${readFileSync(SAMPLE).toString('base64')}'), (c) => c.charCodeAt(0));
+		const r = core.readFlowFile(bytes); if (r.kind !== 'ok') throw new Error('讀不出範例 ' + bytes.length + ' ' + r.message); return r.flow;`);
+	const at = '2026-11-06T07:20:00.000Z';
+	fakeApi = {
+		'/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: true },
+		'/api/flows': { mine: [{ id: 'c1', name: flow.name, updatedAt: at }], shared: [] },
+		'/api/flows/c1': { id: 'c1', flow, step: 0, updatedAt: at, role: 'owner', records: [] }
+	};
+	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
+	for (const [w, h] of [[1024, 768], [1280, 800], [1440, 900]]) {
+		await setViewport(w, h);
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`const b = document.querySelector('.cloud-list button'); if (b) b.click(); return !!b;`), 30).catch(() => {});
+		await waitFor(() => js(`return [...document.querySelectorAll('.topbar button')].some((b) => b.textContent.includes('下載'))`), 30).catch(() => {});
+		const r = await js(`const bar = document.querySelector('.topbar');
+			if (!bar) return { 寬: ${w}, 沒打開: true };
+			const buttons = [...bar.querySelectorAll('.actions > button, .actions > ul, .actions > div')].map((b) => b.getBoundingClientRect());
+			const overlap = buttons.some((a, i) => buttons.slice(i + 1).some((b) => a.right > b.left + 1 && b.right > a.left + 1 && a.bottom > b.top + 1 && b.bottom > a.top + 1));
+			return { 寬: ${w}, 有下載: [...bar.querySelectorAll('button')].some((b) => b.textContent.includes('下載')),
+				出畫面: buttons.some((b) => b.right > innerWidth + 0.5), 疊: overlap,
+				名字寬: Math.round(bar.querySelector('.title b').getBoundingClientRect().width),
+				溢出: document.scrollingElement.scrollWidth > innerWidth };`);
+		if (!r.有下載 || r.出畫面 || r.疊 || r.溢出 || !(r.名字寬 >= 40)) bad.push(r);
 	}
 	await send('Fetch.disable');
 	fakeApi = null;

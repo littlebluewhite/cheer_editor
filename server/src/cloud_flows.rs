@@ -1,4 +1,4 @@
-//! 雲端流程：新建、列出我的流程和分享給我的、拿一支（#247、#250）。
+//! 雲端流程：新建、傳上雲端、列出我的流程和分享給我的、拿一支（#247、#250、#259）。
 //! 有權限的人才拿得到；沒權限跟沒有這支一樣，回 404（管理員也一樣）。
 
 use axum::Json;
@@ -12,7 +12,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, signed_in};
-use crate::records::{self, CloudRecord};
+use crate::records::{self, CloudRecord, Stored};
 use crate::sharing::{Role, role_of};
 
 /// 「我的流程」裡的一支。
@@ -127,6 +127,66 @@ pub async fn create(
         updated_at: iso(now),
     };
     Ok((StatusCode::CREATED, Json(made)).into_response())
+}
+
+/// 傳上雲端（#259）：收流程檔裡 flow.json 的內容，跑「檢查一整支流程」和「整份流程檢查」（流程核心），
+/// 過了就變成一支新的雲端流程，傳的人是擁有者（同一個檔傳兩次就是兩支）。紀錄拆出來分開存，沒有記的人（ADR 0008）。
+/// 音樂檔不經過這裡：建好後前端照放音樂的路（#249）一個一個傳。不收回 422 和原因；建好回 201 和這支的摘要。
+pub async fn upload(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(doc): Json<Box<RawValue>>,
+) -> Result<Response, AppError> {
+    let Some((user_id, _)) = signed_in(&state, &headers).await? else {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    };
+    let Ok(result) = state.core.upload_flow(doc.get().to_owned()).await else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
+    let uploaded: Uploaded = serde_json::from_str(&result)?;
+    let (flow, records) = match (uploaded.kind.as_str(), uploaded.flow, uploaded.records) {
+        ("ok", Some(flow), Some(records)) => (flow, records),
+        _ => {
+            let message = uploaded.message.unwrap_or_default();
+            return Ok((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(FlowBlocked { message }),
+            )
+                .into_response());
+        }
+    };
+
+    let id = new_flow_id()?;
+    let now = state.clock.now();
+    let mut tx = state.db.begin().await?;
+    let (name,): (String,) = sqlx::query_as(
+        "INSERT INTO flows (id, owner_id, content, updated_at) VALUES ($1, $2, $3::json, $4)
+         RETURNING content->>'name'",
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(flow.get())
+    .bind(now)
+    .fetch_one(&mut *tx)
+    .await?;
+    records::from_file(&mut tx, &id, &records, now).await?;
+    tx.commit().await?;
+    let made = CloudFlowSummary {
+        id,
+        name,
+        updated_at: iso(now),
+    };
+    Ok((StatusCode::CREATED, Json(made)).into_response())
+}
+
+/// 流程核心檢查傳上來的流程的結果（`uploadFlowJson`）：收了帶不帶紀錄的編排和紀錄，不收帶原因。
+#[derive(Deserialize)]
+struct Uploaded<'a> {
+    kind: String,
+    #[serde(borrow)]
+    flow: Option<&'a RawValue>,
+    records: Option<Vec<Stored>>,
+    message: Option<String>,
 }
 
 /// 我的流程（我擁有的）、分享給我的，最近改的在前。

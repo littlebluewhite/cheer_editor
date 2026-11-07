@@ -397,7 +397,7 @@ pub async fn record(
             match result {
                 Checked::Dropped { message } => dropped.push(DroppedRecord { id, message }),
                 Checked::Ok { record } => {
-                    insert(&mut tx, flow_id, user_id, &record, now).await?;
+                    insert(&mut tx, flow_id, Some(user_id), &record, now).await?;
                     added.push(record);
                 }
             }
@@ -572,11 +572,24 @@ async fn run_one(
     Ok(outcome.records.unwrap_or_default().into_iter().next())
 }
 
-/// 存一次（檢查過的）；全上那次第一次見到時記下日期、開的時間。
+/// 傳上雲端（#259）：流程檔裡的紀錄（整份流程檢查過的）一次一筆存起來，沒有記的人。
+pub(crate) async fn from_file(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    records: &[Stored],
+    now: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<()> {
+    for record in records {
+        insert(tx, flow_id, None, record, now).await?;
+    }
+    Ok(())
+}
+
+/// 存一次（檢查過的）；全上那次第一次見到時記下日期、開的時間。記的人：從流程檔來的沒有。
 async fn insert(
     tx: &mut sqlx::PgConnection,
     flow_id: &str,
-    user_id: i64,
+    recorded_by: Option<i64>,
     record: &Stored,
     now: chrono::DateTime<chrono::Utc>,
 ) -> anyhow::Result<()> {
@@ -606,7 +619,7 @@ async fn insert(
     .bind(a.whole)
     .bind(&a.date)
     .bind(&a.run_through_id)
-    .bind(user_id)
+    .bind(recorded_by)
     .bind(now)
     .execute(&mut *tx)
     .await?;

@@ -1,8 +1,9 @@
 // 連伺服器的 adapter：所有 HTTP 呼叫都經過它（ADR 0009：API 跟網頁同一個網址，cookie 由瀏覽器帶）。
 // 真的是 httpServer；假的是 #lib/test-fakes.js 的 fakeServer（前端測試不開真的伺服器）。
 // 訊息的型別從 Rust 產生（src/lib/api-types/，見 docs/deploy.md），對不上就編譯不過。
-import type { NewFlowInput } from '#lib/core';
+import type { FlowDocument, NewFlowInput } from '#lib/core';
 import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
+import type { FlowBlocked } from '#lib/api-types/FlowBlocked.js';
 import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
 import type { CloudRecord } from '#lib/api-types/CloudRecord.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
@@ -131,6 +132,11 @@ export interface ServerAdapter {
 	myFlows(): Promise<MyFlows>;
 	/** 新建一支雲端流程（伺服器用流程核心照新建表單的名字、場地建）。 */
 	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
+	/**
+	 * 傳上雲端（#259）：送流程檔的 flow.json 內容（帶成功率紀錄），伺服器檢查整支流程，過了建一支新的雲端流程（我是擁有者）。
+	 * 不收回原因。音樂檔另外用 uploadAudio 傳。
+	 */
+	uploadFlow(doc: FlowDocument): Promise<CloudFlowSummary | FlowBlocked>;
 	/** 拿一支雲端流程（帶我的權限）；沒有這支、沒有權限是 null。 */
 	cloudFlow(id: string): Promise<CloudFlow | null>;
 
@@ -304,6 +310,11 @@ export function httpServer(base = ''): ServerAdapter {
 		async createFlow(input) {
 			const res = await post('flows', input);
 			if (res.ok) return (await res.json()) as CloudFlowSummary;
+			throw new ServerUnreachable();
+		},
+		async uploadFlow(doc) {
+			const res = await post('flows/upload', doc);
+			if (res.ok || res.status === 422) return (await res.json()) as CloudFlowSummary | FlowBlocked;
 			throw new ServerUnreachable();
 		},
 		async cloudFlow(id) {

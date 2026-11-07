@@ -19,6 +19,7 @@ pub mod sharing;
 use std::path::Path;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::Request;
 use axum::routing::{get, post};
 use tower_http::services::{ServeDir, ServeFile};
@@ -33,6 +34,9 @@ use crate::my_account::MailLimit;
 
 /// 前端建置時另外產生的入口頁（`vite.config.ts` 裡 adapter 的 `fallback`）。
 const SPA_ENTRY: &str = "200.html";
+
+/// 傳上雲端的流程（flow.json 的內容，不含音樂）最大幾個位元組。
+const UPLOAD_LIMIT: usize = 16 * 1024 * 1024;
 
 /// `migrations/` 底下的遷移，編譯時包進程式；伺服器啟動時跑。
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
@@ -79,6 +83,11 @@ pub fn app(state: AppState, site: &Path) -> Router {
         .route(
             "/api/flows",
             get(cloud_flows::mine).post(cloud_flows::create),
+        )
+        // 傳上雲端帶整支流程（含成功率紀錄），比預設的 2 MB 大。
+        .route(
+            "/api/flows/upload",
+            post(cloud_flows::upload).layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
         )
         .route("/api/flows/{id}", get(cloud_flows::get_one))
         .route("/api/flows/{id}/room", get(flow_room::join))

@@ -11,9 +11,11 @@
 
 import {
 	audioExtension,
+	FORMAT_VERSION,
 	missingAudioNames,
 	putRecords,
 	readFlowFile,
+	segmentSpans,
 	writeFlowFile,
 	type Attempt,
 	type AudioBytes,
@@ -24,8 +26,13 @@ import type { DroppedRecord } from '#lib/editor-session.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
-import type { MusicLibrary } from '#lib/music-library.svelte.js';
+import { MAX_CLOUD_AUDIO_BYTES, type MusicLibrary } from '#lib/music-library.svelte.js';
+import { canEdit } from '#lib/role-names.js';
 import type { TabChannel } from '#lib/tab-channel.js';
+
+/** 傳上雲端傳好的提示。 */
+export const UPLOADED = '傳上雲端了：現在開的是雲端那支，可以分享了。這台的草稿丟掉了，資料夾裡的流程檔沒動。';
+const UPLOAD_UNREACHABLE = '連不上伺服器，沒傳上雲端';
 
 /** 停手多久才存草稿。 */
 const DRAFT_DELAY_MS = 1000;
@@ -76,6 +83,10 @@ export class FlowFile {
 	#cloud = $state.raw<CloudSteps | null>(null);
 	/** 開著的雲端流程是用分享連結看的（沒有權限）：只能看，重新整理才看到新的。 */
 	#linkOnly = $state(false);
+	/** 正在傳上雲端：傳好之前再按不算。 */
+	#uploading = false;
+	/** 傳上雲端時有音樂檔太大：跳框寫是哪一段、幾 MB（按「知道了」清掉）。 */
+	#tooBig = $state.raw<AudioTooBig | null>(null);
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -129,7 +140,7 @@ export class FlowFile {
 	 */
 	async save() {
 		const { session, adapters, music } = this.#editor;
-		// 雲端流程每一步都存了，沒有存檔（下載在 #259）
+		// 雲端流程每一步都存了，沒有存檔（要流程檔用 download）
 		if (!session.flow || this.#saving || this.#cloudId) return;
 		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
 		adapters.pendingInput.flush();
@@ -412,6 +423,89 @@ export class FlowFile {
 			throw e;
 		}
 		if (this.#cloudId === id) this.#editor.session.open(null);
+	}
+
+	/**
+	 * 本機流程「☁ 傳上雲端」（#259，登入時）：搬過去。有音樂檔超過 60 MB 先擋（跳框，tooBig）；
+	 * 送流程（帶紀錄），伺服器檢查整支流程、建一支新的雲端流程，再把音樂檔一個一個傳上去。
+	 * 傳好打開雲端那支、丟掉這台的草稿（資料夾裡的流程檔不動）。音樂沒傳上去就把建好的那支刪掉，還是本機流程。
+	 */
+	async upload() {
+		const { session, adapters, music } = this.#editor;
+		if (!session.flow || this.#cloudId || this.#uploading) return;
+		adapters.pendingInput.flush();
+		const flow = session.flow;
+		const audio = music.bytes(flow);
+		const big = flow.audio.find((a) => (audio[a.id]?.length ?? 0) > MAX_CLOUD_AUDIO_BYTES);
+		if (big) return void (this.#tooBig = tooBig(flow, big.id, audio[big.id].length));
+		const server = adapters.server;
+		this.#uploading = true;
+		session.notice = '傳上雲端中…';
+		let id: string | null = null;
+		try {
+			const made = await server.uploadFlow({ formatVersion: FORMAT_VERSION, flow });
+			if ('message' in made) return void (session.notice = `傳不上去：${made.message}`);
+			id = made.id;
+			for (const ref of flow.audio) {
+				if (!audio[ref.id]) continue;
+				const file = new File([audio[ref.id] as Uint8Array<ArrayBuffer>], ref.file);
+				if ((await server.uploadAudio(id, ref.id, file)) === 'tooBig') {
+					session.notice = '';
+					this.#tooBig = tooBig(flow, ref.id, file.size);
+					return void server.deleteFlow(id).catch(() => {});
+				}
+			}
+		} catch {
+			session.notice = UPLOAD_UNREACHABLE;
+			if (id) void server.deleteFlow(id).catch(() => {});
+			return;
+		} finally {
+			this.#uploading = false;
+		}
+		const draftId = this.#draftId;
+		await this.openCloud(id);
+		if (this.#cloudId !== id) {
+			session.notice = '傳上雲端了，但打不開雲端那支：回首頁從「我的流程」打開';
+			return;
+		}
+		this.#clearDraft(draftId);
+		session.notice = UPLOADED;
+	}
+
+	/** 傳上雲端時太大的音樂檔（跳框）；沒有是 null。 */
+	get tooBig(): AudioTooBig | null {
+		return this.#tooBig;
+	}
+	/** 太大的框按「知道了」。 */
+	dismissTooBig() {
+		this.#tooBig = null;
+	}
+
+	/**
+	 * 雲端流程「⤓ 下載」（#259，擁有者、編輯者）：跟伺服器拿流程和紀錄，加上手上的音樂，包成流程檔存下來（每次一個新檔）。
+	 * 帶紀錄、不帶記的人；擁有者、權限、分享連結本來就不在流程裡。下載的那份跟雲端流程不再有關係。
+	 */
+	async download() {
+		const { session, adapters, music } = this.#editor;
+		const id = this.#cloudId;
+		if (!id || !this.#cloud || !canEdit(this.#cloud.role)) return;
+		let found;
+		try {
+			found = await adapters.server.cloudFlow(id);
+		} catch {
+			found = null;
+		}
+		if (!found) return void (session.notice = '連不上伺服器，沒下載');
+		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
+		const flow = putRecords(found.flow as Flow, records);
+		const fileName = flowFileName(flow.name);
+		const saver = adapters.createSaver();
+		try {
+			const outcome = await saver.save(writeFlowFile(flow, music.bytes(flow)), fileName);
+			if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
+		} catch {
+			session.notice = '下載失敗，請再試一次';
+		}
 	}
 
 	/** 雲端流程用到的音樂檔，從雲端拿下來（#249；get 拿一個）。雲端上沒有、拿不到的不放：那段標「找不到音樂」。 */
@@ -742,6 +836,18 @@ export interface DraftAsk {
 	name: string;
 	/** 草稿什麼時候存的；舊版編輯器存的是 null。 */
 	savedAt: Date | null;
+}
+
+/** 傳上雲端時太大的音樂檔：哪一段（例：「音樂 1」）、幾 MB（無條件進位）。 */
+export interface AudioTooBig {
+	segment: string;
+	mb: number;
+}
+
+function tooBig(flow: Flow, audioId: string, bytes: number): AudioTooBig {
+	const span = segmentSpans(flow).find(({ segment: s }) => s.kind === 'music' && s.audioId === audioId);
+	const name = span?.label ?? flow.audio.find((a) => a.id === audioId)?.name ?? '';
+	return { segment: name, mb: Math.ceil(bytes / 1024 / 1024) };
 }
 
 /** 回答「有改過沒存的草稿」：救回修改、用檔案（丟掉修改）、取消。 */

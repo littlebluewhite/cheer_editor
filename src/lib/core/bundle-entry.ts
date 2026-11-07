@@ -3,7 +3,9 @@
 
 import {
 	applyRemoteChange,
+	checkFlowDocument,
 	checkRecord,
+	flowProblem,
 	putRecords,
 	remoteChange,
 	runCommands,
@@ -54,6 +56,19 @@ export function runStepJson(flow: string, records: string, commands: string, ste
 export function checkRecordsJson(flow: string, records: string): string {
 	const f = JSON.parse(flow) as Flow;
 	return JSON.stringify((JSON.parse(records) as StoredAttempt[]).map((r) => checkRecord(f, r)));
+}
+
+/**
+ * 傳上雲端（#259）：doc 是流程檔裡 flow.json 的內容（JSON 字串）。先「檢查一整支流程」（舊版升級、壞掉的不收），
+ * 再「整份流程檢查」（傳上雲端沒有之前）。不收回 { kind: 'error', message }；收了回 { kind: 'ok', flow, records }：
+ * 不帶紀錄的編排和拿出來的紀錄（伺服器分開存，ADR 0008）。
+ */
+export function uploadFlowJson(doc: string): string {
+	const checked = checkFlowDocument(JSON.parse(doc));
+	if (checked.kind === 'error') return JSON.stringify(checked);
+	const problem = flowProblem(checked.flow);
+	if (problem) return JSON.stringify({ kind: 'error', message: problem });
+	return JSON.stringify({ kind: 'ok', ...takeRecords(checked.flow) });
 }
 
 /**
