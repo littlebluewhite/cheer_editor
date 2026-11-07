@@ -5,6 +5,7 @@ pub mod clock;
 pub mod cloud_flows;
 pub mod config;
 pub mod csrf;
+pub mod daily;
 pub mod flow_core;
 pub mod flow_room;
 pub mod lockout;

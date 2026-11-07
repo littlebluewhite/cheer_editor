@@ -16,6 +16,7 @@ import {
 	recordAttempt,
 	remoteChange,
 	runCommands,
+	runUndo,
 	stepKeys,
 	takeRecords,
 	setSquad,
@@ -23,6 +24,7 @@ import {
 	type Command,
 	type Flow,
 	type Position,
+	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -39,7 +41,7 @@ import {
 	ServerUnreachable,
 	type AdminResult,
 	type FlowRoom,
-	type RoomStatus,
+	type RoomDown,
 	type LinkInfo,
 	type Me,
 	type Person,
@@ -204,9 +206,11 @@ export interface FakeCloudFlow {
  * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
- * 網路（#260）：network() 讓開著的房間斷網、伺服器沒回應、登入過期，或又連上（斷著的房間說 'open'，等它再打招呼）。
+ * 網路（#260）：network() 讓開著的房間斷網、伺服器沒回應、登入過期（斷線帶原因），或又連上（重新打招呼）。
  * 改到同一個東西（#254）照真的規則：上次看到之後別的分頁改過同一個東西退回、寫最後改的人；被規則擋下也寫那個人和原因；
  * 一步被退回後，同一個房間上次看到的還在那之前的步也退回（步驟紀錄沒有 30 天的限制）。
+ * 復原、重做（#256）照真的規則：要復原的那一步之後別的分頁改過那些東西退回「王教練後來改過，這步不能復原」；
+ * 放回去整份檢查不合退回「這步不能復原：…」；沒有那一步退回「太久以前的，不能復原」。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
@@ -219,6 +223,8 @@ export interface FakeCloudFlow {
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
  * 跑一步時紀錄放回流程再跑、跑完清掉該清的；收了告訴同一支流程開著的別的房間（別人記的帶名字）。
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
+ * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
+ * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，再說可以送步。
  */
 export function fakeServer(
 	init: {
@@ -245,26 +251,33 @@ export function fakeServer(
 		holdRoom: false,
 		audioTooBig: false,
 		/** 房間連得上嗎（#260）：network() 換；直接改它不會通知房間（等房間自己再試，例：按「現在再試」）。 */
-		link: 'online' as 'online' | Exclude<RoomStatus, 'open'>
+		link: 'online' as 'online' | RoomDown
 	};
 	/** 留著還沒處理的（holdRoom 時）。 */
-	let held: (() => void)[] = [];
+	let held: { room: FlowRoom; send: () => void }[] = [];
+	/** 斷線的房間：送來的不收，還沒送到的回答不見。 */
+	const down = new Set<FlowRoom>();
 	const deliver = (room: FlowRoom, answer: () => RoomMessage | null) => {
 		const send = () => {
+			if (down.has(room)) return;
 			const message = answer();
 			if (message) room.onmessage(message);
 		};
-		if (state.holdRoom) held.push(send);
+		if (state.holdRoom) held.push({ room, send });
 		else queueMicrotask(send);
 	};
-	/** 收過的步（每支流程）：第幾步、哪個分頁、改到的東西（stepKeys）、送的人的名字。 */
-	const stepLog = new Map<string, { step: number; tab: string; keys: string[]; by: string }[]>();
+	/** 收過的步（每支流程）：第幾步、步驟 id、哪個分頁、改到的東西（stepKeys）、送的人的名字、改好之後的東西。 */
+	const stepLog = new Map<string, { step: number; id: string; tab: string; keys: string[]; by: string; change: RemoteChange }[]>();
 	/**
 	 * 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉；改到同一個東西退回）。
-	 * 收了就把改好的東西送給同一支流程其他開著的房間。
+	 * 有 undo 是復原、重做（#256）。收了就把改好的東西送給同一支流程其他開著的房間。
 	 */
-	const takeStep = (f: FakeCloudFlow, sent: { stepId: string; seen: number; commands: Command[] }, from: OpenRoom): RoomMessage => {
-		const { stepId, seen, commands } = sent;
+	const takeStep = (
+		f: FakeCloudFlow,
+		sent: { stepId: string; seen: number; commands?: Command[]; undo?: { of: string; redo: boolean; change: RemoteChange } },
+		from: OpenRoom
+	): RoomMessage => {
+		const { stepId, seen, commands, undo } = sent;
 		const taken = f.stepIds?.[stepId];
 		if (taken !== undefined) return { kind: 'accepted', stepId, step: taken };
 		const step = f.step ?? 0;
@@ -278,14 +291,27 @@ export function fakeServer(
 		const lastOther = (watch?: string[]) =>
 			log.findLast((l) => l.step > seen && l.tab !== from.tab && (!watch || l.keys.some((k) => watch.includes(k))))?.by;
 		const live = (f.records ?? []).filter((r) => !r.gone);
-		const full = putRecords(structuredClone(f.flow), structuredClone(live));
-		const r = runCommands(full, structuredClone(commands), stepId);
-		if (r.kind !== 'ok') {
-			const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
-			const by = lastOther();
-			return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
+		let after: { flow: Flow; records: StoredAttempt[] };
+		if (undo) {
+			const cannot = undo.redo ? '不能重做' : '不能復原';
+			const of = log.find((l) => l.id === undo.of);
+			if (!of) return rejected(`太久以前的，${cannot}`);
+			const u = runUndo(structuredClone(f.flow), structuredClone(live), structuredClone(undo.change));
+			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
+			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
+			if (by !== undefined) return rejected(`${by}後來改過，這步${cannot}`);
+			if (u.kind !== 'ok') return rejected(`這步${cannot}：${u.message}`);
+			after = u;
+		} else {
+			const full = putRecords(structuredClone(f.flow), structuredClone(live));
+			const r = runCommands(full, structuredClone(commands ?? []), stepId);
+			if (r.kind !== 'ok') {
+				const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
+				const by = lastOther();
+				return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
+			}
+			after = takeRecords(r.flow);
 		}
-		const after = takeRecords(r.flow);
 		const { keys, watch } = stepKeys(f.flow, after.flow);
 		const changedBy = lastOther(watch);
 		if (changedBy !== undefined) return rejected('', changedBy);
@@ -306,7 +332,7 @@ export function fakeServer(
 		}
 		// 紀錄跟著改的接在編排的改動後面（#258）。
 		tellRecords(f, changed, deleted, from.room);
-		stepLog.set(f.id, [...log, { step: step + 1, tab: from.tab, keys, by }]);
+		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by, change }]);
 		f.flow = after.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
@@ -370,6 +396,44 @@ export function fakeServer(
 			}
 			deliver(r.room, () => ({ kind: 'present', people }));
 		}
+	};
+	/** 打招呼帶上次看到第 seen 步：之後別的分頁收了的步照順序補給他；中間的步沒留就給伺服器現在的樣子。 */
+	const catchUp = (f: FakeCloudFlow, seen: number, to: OpenRoom) => {
+		const step = f.step ?? 0;
+		const missed = (stepLog.get(f.id) ?? []).filter((l) => l.step > seen && l.step <= step);
+		if (missed.length !== step - seen) {
+			const flow = structuredClone(f.flow);
+			if (seen < step) deliver(to.room, () => ({ kind: 'current', flow, step }));
+			return;
+		}
+		for (const l of missed.filter((l) => l.tab !== to.tab)) {
+			deliver(to.room, () => ({ kind: 'changed', step: l.step, by: l.by, change: structuredClone(l.change) }));
+		}
+	};
+	/** 一個房間斷線（why：為什麼，#260；已經斷著就只換原因）：還沒處理的、還沒送到的回答都不見；別人的在場名單拿掉他。 */
+	const cut = (r: OpenRoom, why?: RoomDown) => {
+		if (down.has(r.room)) {
+			if (why) r.room.onconnection(false, why);
+			return;
+		}
+		down.add(r.room);
+		r.here = false;
+		r.room.onconnection(false, why);
+		tellPresent(r.flowId);
+		held = held.filter((h) => !down.has(h.room));
+	};
+	/** 斷線的房間連回來（房間重新打招呼）。 */
+	const bringBack = (r: OpenRoom) => {
+		if (!down.delete(r.room)) return;
+		r.room.onconnection(true);
+	};
+	/** 斷掉這個人開著的房間。 */
+	const disconnect = (email = state.signedIn ?? '') => {
+		for (const r of rooms.filter((r) => same(r.email, email))) cut(r);
+	};
+	/** 這個人斷掉的房間連回來。 */
+	const reconnect = (email = state.signedIn ?? '') => {
+		for (const r of rooms.filter((r) => same(r.email, email))) bringBack(r);
 	};
 	/** 伺服器送給前端的一次：別人記的帶名字。 */
 	const cloudRecord = (r: StoredAttempt & { by?: string }, viewer: string) => ({
@@ -721,23 +785,23 @@ export function fakeServer(
 			const email = state.signedIn ?? '';
 			const room: FlowRoom = {
 				onmessage: () => {},
-				onstatus: () => {},
+				onconnection: () => {},
 				retry() {
-					if (!open.down) return;
-					if (state.link === 'online') reconnect(open);
-					else queueMicrotask(() => room.onstatus(state.link as Exclude<RoomStatus, 'open'>));
+					if (!down.has(room)) return;
+					if (state.link === 'online') bringBack(open);
+					else room.onconnection(false, state.link);
 				},
 				send(request) {
-					// 斷著時送的不算（跟真的一樣）
-					if (open.down) return;
 					const f = state.flows.find((g) => g.id === flowId);
 					const role = f && roleOf(f, email);
-					if (!f) return;
+					if (!f || down.has(room)) return;
 					if (!role) return deliver(room, () => ({ kind: 'revoked' }));
 					const editor = role === 'owner' || role === 'editor';
 					if (request.kind === 'hello') {
 						ready = request.fingerprint === state.fingerprint;
 						open.tab = request.tabId;
+						open.sentBack = undefined;
+						if (ready) catchUp(f, request.seen, open);
 						deliver(room, () => (ready ? { kind: 'ready', step: f.step ?? 0 } : { kind: 'newVersion' }));
 						if (!ready) return;
 						open.here = true;
@@ -751,7 +815,11 @@ export function fakeServer(
 						deliver(room, () => (ready ? store(f, email, attempts, room) : null));
 					} else if (request.kind === 'changeRecords' || request.kind === 'deleteRecords' || request.kind === 'restoreRecords') {
 						deliver(room, () => (ready ? amend(f, email, request, room) : null));
-					} else if (editor) {
+					} else if (editor && request.kind === 'undo') {
+						const { stepId, seen, of, redo, change } = request;
+						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange } };
+						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
+					} else if (editor && request.kind === 'step') {
 						const sent = { ...request, commands: request.commands as Command[] };
 						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
 					} else {
@@ -768,7 +836,7 @@ export function fakeServer(
 			};
 			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '' };
 			rooms.push(open);
-			if (state.link !== 'online') drop(open, state.link);
+			if (state.link !== 'online') cut(open, state.link);
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {
@@ -807,32 +875,21 @@ export function fakeServer(
 			return 'ok';
 		}
 	};
-	/** 一個房間斷了（為什麼）：不在場了，斷著時送的不算。 */
-	function drop(open: OpenRoom, status: Exclude<RoomStatus, 'open'>) {
-		open.down = true;
-		open.here = false;
-		queueMicrotask(() => open.room.onstatus(status));
-		tellPresent(open.flowId);
-	}
-	/** 一個斷了的房間又連上：說 'open'，等它再打招呼。 */
-	function reconnect(open: OpenRoom) {
-		open.down = false;
-		queueMicrotask(() => open.room.onstatus('open'));
-	}
 	/**
 	 * 網路換了（#260）：斷網（'offline'）、伺服器沒回應（'unreachable'，HTTP 也連不上）、登入超過 30 天（'expired'，登出了），
-	 * 開著的房間都斷；'online' 是又連上了，斷著的房間馬上再連（跟真的自己再試一樣）。
+	 * 開著的房間都斷線（帶原因）；'online' 是又連上了，斷線的房間馬上連回來（跟真的自己重連一樣）。
+	 * 直接改 state.link 不會通知房間：等房間自己再試（例：按「現在再試」）。
 	 */
-	const network = (status: 'online' | Exclude<RoomStatus, 'open'>) => {
+	const network = (status: 'online' | RoomDown) => {
 		state.link = status;
 		state.unreachable = status === 'offline' || status === 'unreachable';
 		if (status === 'expired') {
 			state.expired = true;
 			state.signedIn = null;
 		}
-		for (const open of rooms) {
-			if (status === 'online' && open.down) reconnect(open);
-			else if (status !== 'online' && !open.down) drop(open, status);
+		for (const open of [...rooms]) {
+			if (status === 'online') bringBack(open);
+			else cut(open, status);
 		}
 	};
 	/** 留著的處理掉、回答（holdRoom 不再留；hold：之後送來的照樣留著）。 */
@@ -840,7 +897,7 @@ export function fakeServer(
 		state.holdRoom = hold;
 		const now = held;
 		held = [];
-		for (const send of now) send();
+		for (const { send } of now) send();
 	};
 	/** 別人（email）在別的地方打開這支流程：回他的房間（打過招呼了）、送一步、換模式。 */
 	const joinAs = (flowId: string, email: string, editing = true) => {
@@ -862,7 +919,7 @@ export function fakeServer(
 			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
 		};
 	};
-	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs, network };
+	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs, disconnect, reconnect, network };
 }
 
 /** 房間收到的改、刪、救回紀錄（#258）。 */
@@ -880,8 +937,6 @@ interface OpenRoom {
 	editing: boolean;
 	tab: string;
 	sentBack?: number;
-	/** 斷著（#260）。 */
-	down?: boolean;
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

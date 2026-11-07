@@ -5,10 +5,10 @@
  */
 export type RoomRequest = { "kind": "hello", fingerprint: string, tabId: string, 
 /**
- * 上次看到第幾步（每一步另外帶，在 Step 裡比；打招呼這個斷線重連時用，#255）。
+ * 上次看到第幾步：之後別人的步先補給我（斷線重連，#255）。
  */
 seen: number, 
 /**
  * 在編輯（不是檢視模式）：在場名單用。
  */
-editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], } | { "kind": "changeRecords", attempts: unknown[], } | { "kind": "deleteRecords", ids: Array<string>, } | { "kind": "restoreRecords", ids: Array<string>, };
+editing: boolean, } | { "kind": "step", stepId: string, seen: number, commands: unknown[], } | { "kind": "undo", stepId: string, seen: number, of: string, redo: boolean, change: unknown, } | { "kind": "mode", editing: boolean, } | { "kind": "record", attempts: unknown[], } | { "kind": "changeRecords", attempts: unknown[], } | { "kind": "deleteRecords", ids: Array<string>, } | { "kind": "restoreRecords", ids: Array<string>, };
