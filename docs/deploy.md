@@ -27,7 +27,7 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
 `server/` 是 Rust 伺服器（axum）。前端建好的檔案和 API 由它在同一個網址送出（ADR 0009）。
 新網址底下沒有子路徑，所以建前端時**不要**設 `BASE_PATH`。
 
-要先裝 Rust（`rustup`）和一個 PostgreSQL。本機開發用 Neon 另開的 branch，連線字串寫進 `server/.env`：
+要先裝 Rust（`rustup`）、Node（在專案根目錄 `npm ci`）和一個 PostgreSQL。本機開發用 Neon 另開的 branch，連線字串寫進 `server/.env`：
 
 ```sh
 npm run build                       # 建前端到 build/（不設 BASE_PATH）
@@ -36,6 +36,7 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 ```
 
 - 啟動時會先跑 `server/migrations/` 的資料庫遷移。新的遷移加新檔（`0002_*.sql`…），已經上線的不要改。
+- 伺服器用 QuickJS 跑流程核心（ADR 0010）：`cargo build` 時 `server/build.rs` 叫 `node scripts/core-bundle.mjs` 把 `src/lib/core/` 打包成一個 JS 檔、算指紋，編進程式。前端建置用同一支算指紋，兩邊一樣。所以 `cargo` 之前要先 `npm ci`；`cargo test` 也會叫 `node` 比對 QuickJS 和 Node 跑出來的結果。
 - `/health` 是健康檢查，不碰資料庫（Neon 免費版沒人用時才睡得著）。
 - 前端每頁建成 `<名字>.html`，所以 `/guide` 重新整理也打得開。其他找不到的路徑回 `200.html`（adapter 的 `fallback`），讓前端自己處理路由。
 - log 只記請求的方法和路徑，不記查詢字串、標頭、內容。之後寫 log 也一樣：不記密碼、token、cookie、信的內容、流程內容；人用使用者 id，不寫 email。

@@ -1,0 +1,41 @@
+[
+  [{ "name": "createFlow", "args": [{ "name": "測試", "field": { "strips": 9, "layout": "vertical" } }] }],
+  [{ "name": "addMembers", "args": [[
+    { "name": "小美", "gender": "F", "globalRole": "top" },
+    { "name": "小A", "gender": "M", "globalRole": "base" },
+    { "name": "小B", "gender": "M", "globalRole": "base" },
+    { "name": "小芳", "gender": "F", "globalRole": "top" }
+  ]] }],
+  [
+    { "name": "addSegment", "args": ["music"] },
+    { "name": "updateSegment", "args": ["s1", { "eights": 4, "lastBeats": 8 }] }
+  ],
+  [{ "name": "addAction", "args": [{
+    "segmentId": "s1", "category": "stunt", "name": "Lib", "start": 0, "length": 16, "note": "",
+    "members": [
+      { "memberId": "m1", "role": "上層" },
+      { "memberId": "m2", "role": "主底" },
+      { "memberId": "m3", "role": "主底" },
+      { "memberId": "m4", "role": "上層" }
+    ]
+  }] }],
+  [
+    { "name": "addPhase", "args": ["x1", { "kind": "load", "name": "", "beats": { "at": 0, "len": 4 } }] },
+    { "name": "addPhase", "args": ["x1", { "kind": "hold", "name": "", "beats": { "at": 4, "len": 8 } }] },
+    { "name": "addPhase", "args": ["x1", { "kind": "dismount", "name": "", "beats": { "at": 12, "len": 4 } }] }
+  ],
+  [
+    { "name": "setSquad", "args": ["x1", ["m1", "m2"], 1] },
+    { "name": "setSquad", "args": ["x1", ["m3", "m4"], 2] }
+  ],
+  [{ "name": "recordAttempt", "args": ["x1", { "date": "2026-11-04", "who": "g1", "practice": "drill", "whole": true, "marks": { "p1": "✓", "p2": "△", "p3": "✗" } }] }],
+  [{ "name": "placeCue", "args": ["x1", { "kind": "count", "at": 0, "len": 2, "word": "down" }] }],
+  [{ "name": "addCustomRole", "args": [{ "name": "飛人", "meaning": "" }] }],
+  [{ "name": "insertFormation", "args": [2] }],
+  [{ "name": "setPositions", "args": ["f2", { "m1": [1.5, 2], "m2": [3, 4.25] }] }],
+  [{ "name": "updateMember", "args": ["m1", { "name": "小美美" }] }],
+  [{ "name": "updateMember", "args": ["m1", { "name": "小美美" }], "options": { "records": "keep" } }],
+  [{ "name": "deleteMember", "args": ["m4"] }],
+  [{ "name": "renameFlow", "args": ["決賽"] }, { "name": "renameFlow", "args": [""] }],
+  [{ "name": "renameFlow", "args": ["決賽 2026"] }]
+]
