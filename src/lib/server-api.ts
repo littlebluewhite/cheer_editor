@@ -7,6 +7,10 @@ import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { Me } from '#lib/api-types/Me.js';
 import type { MyFlows } from '#lib/api-types/MyFlows.js';
+import type { Person } from '#lib/api-types/Person.js';
+import type { Role } from '#lib/api-types/Role.js';
+import type { ShareProblem } from '#lib/api-types/ShareProblem.js';
+import type { SharedFlowSummary } from '#lib/api-types/SharedFlowSummary.js';
 import type { PasswordProblem } from '#lib/api-types/PasswordProblem.js';
 import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
 import type { RoomRequest } from '#lib/api-types/RoomRequest.js';
@@ -22,9 +26,14 @@ export type {
 	CloudFlowSummary,
 	LinkInfo,
 	Me,
+	MyFlows,
 	PasswordProblem,
+	Person,
+	Role,
 	RoomMessage,
 	RoomRequest,
+	ShareProblem,
+	SharedFlowSummary,
 	TooManyTries,
 	UserRow,
 	UserStatus
@@ -90,12 +99,24 @@ export interface ServerAdapter {
 	/** 恢復：用原本的密碼就能登入。 */
 	enableUser(id: number): Promise<AdminResult>;
 
-	/** 我的流程（我擁有的雲端流程），最近改的在前。 */
-	myFlows(): Promise<CloudFlowSummary[]>;
+	/** 我的流程（我擁有的雲端流程）、分享給我的，最近改的在前。 */
+	myFlows(): Promise<MyFlows>;
 	/** 新建一支雲端流程（伺服器用流程核心照新建表單的名字、場地建）。 */
 	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
-	/** 拿一支雲端流程；沒有這支、不是我的是 null。 */
+	/** 拿一支雲端流程（帶我的權限）；沒有這支、沒有權限是 null。 */
 	cloudFlow(id: string): Promise<CloudFlow | null>;
+
+	// 分享（#250）：分享、改權限、收回只有擁有者能做；離開只有不是擁有者的能做。
+	/** 有權限的人（擁有者在最前面）；只有擁有者拿得到別人的 email。沒有權限是 null。 */
+	people(flowId: string): Promise<Person[] | null>;
+	/** 用 email 分享：加好回新的名單；加不進去回原因。 */
+	share(flowId: string, email: string, role: Role): Promise<Person[] | ShareProblem>;
+	/** 改一個人的權限，回新的名單。 */
+	setRole(flowId: string, userId: number, role: Role): Promise<Person[]>;
+	/** 收回一個人的權限（不用確認），回新的名單。 */
+	revoke(flowId: string, userId: number): Promise<Person[]>;
+	/** 離開這支流程。 */
+	leave(flowId: string): Promise<void>;
 	/** 連一支雲端流程的房間（#248）：先送打招呼（指紋、分頁 id、上次看到第幾步），再一步一步送。 */
 	openRoom(flowId: string): FlowRoom;
 
@@ -205,7 +226,7 @@ export function httpServer(base = ''): ServerAdapter {
 		enableUser: (id) => admin(`/${id}/enable`),
 		async myFlows() {
 			const res = await get('flows');
-			if (res.ok) return ((await res.json()) as MyFlows).mine;
+			if (res.ok) return (await res.json()) as MyFlows;
 			throw new ServerUnreachable();
 		},
 		async createFlow(input) {
@@ -218,6 +239,31 @@ export function httpServer(base = ''): ServerAdapter {
 			if (res.ok) return (await res.json()) as CloudFlow;
 			if (res.status === 404) return null;
 			throw new ServerUnreachable();
+		},
+		async people(flowId) {
+			const res = await get(`flows/${encodeURIComponent(flowId)}/people`);
+			if (res.ok) return (await res.json()) as Person[];
+			if (res.status === 404) return null;
+			throw new ServerUnreachable();
+		},
+		async share(flowId, email, role) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/people`, { email, role });
+			if (res.ok || res.status === 409) return (await res.json()) as Person[] | ShareProblem;
+			throw new ServerUnreachable();
+		},
+		async setRole(flowId, userId, role) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/people/${userId}/role`, { role });
+			if (res.ok) return (await res.json()) as Person[];
+			throw new ServerUnreachable();
+		},
+		async revoke(flowId, userId) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/people/${userId}/remove`, {});
+			if (res.ok) return (await res.json()) as Person[];
+			throw new ServerUnreachable();
+		},
+		async leave(flowId) {
+			const res = await post(`flows/${encodeURIComponent(flowId)}/leave`, {});
+			if (!res.ok) throw new ServerUnreachable();
 		},
 		openRoom(flowId) {
 			const url = new URL(`${base}/api/flows/${encodeURIComponent(flowId)}/room`, location.href);

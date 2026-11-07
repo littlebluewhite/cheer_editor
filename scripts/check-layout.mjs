@@ -635,20 +635,22 @@ await check('首頁沒登入（電腦、手機）：右上角「使用說明」�
 	return { ok: bad.length === 0, value: bad };
 });
 
-await check('首頁登入後：電腦兩欄（清單在左、新建在右），手機一欄（清單在上、新建在下），不溢出', async () => {
+await check('首頁登入後：電腦兩欄（清單在左、新建在右），手機一欄（清單在上、新建在下），「分享給我的」名字很長也不溢出', async () => {
 	const bad = [];
 	fakeApi = {
 		'/api/me': { email: 'lin@example.com', name: '林教練', isAdmin: true },
 		'/api/flows': { mine: [
 			{ id: 'c1', name: '校慶表演'.repeat(8), updatedAt: '2026-11-06T07:20:00.000Z' },
 			{ id: 'c2', name: '全國賽', updatedAt: '2026-11-05T01:03:00.000Z' }
+		], shared: [
+			{ id: 'c3', name: '隊內練習'.repeat(8), updatedAt: '2026-11-04T01:03:00.000Z', ownerName: '王教練', ownerDisabled: false, role: 'recorder' }
 		] }
 	};
 	await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/*' }] });
 	for (const [w, h, cols] of [[1440, 900, 2], [390, 844, 1]]) {
 		await setViewport(w, h);
 		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
-		await waitFor(() => js(`return !!window.__svelte && document.querySelectorAll('.cloud-list li').length === 2`), 30).catch(() => {});
+		await waitFor(() => js(`return !!window.__svelte && document.querySelectorAll('.cloud-list li').length === 3`), 30).catch(() => {});
 		const r = await js(`const box = (s) => document.querySelector(s)?.getBoundingClientRect();
 			const lists = box('.home-lists'), start = box('.home.signed-in .start');
 			if (!lists || !start) return { 寬: ${w}, 沒有兩塊: true };
@@ -656,7 +658,7 @@ await check('首頁登入後：電腦兩欄（清單在左、新建在右），�
 			const stacked = lists.bottom <= start.top;
 			return { 寬: ${w}, 欄: side ? 2 : stacked ? 1 : 0, 雲端: document.querySelectorAll('.cloud-list li').length,
 				溢出: document.scrollingElement.scrollWidth > innerWidth };`);
-		if (r.欄 !== cols || r.雲端 !== 2 || r.溢出) bad.push(r);
+		if (r.欄 !== cols || r.雲端 !== 3 || r.溢出) bad.push(r);
 	}
 	await send('Fetch.disable');
 	fakeApi = null;
