@@ -49,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
         clock: Clock::system(),
         site_url: config.site_url.clone(),
         core: FlowCore::start().context("流程核心載入失敗")?,
+        mail_limit: Default::default(),
     };
 
     if let Some((email, name)) = command {

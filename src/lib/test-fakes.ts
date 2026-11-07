@@ -136,6 +136,8 @@ export interface FakeCloudFlow {
  * （email 不分大小寫；密碼至少 15 個看得到的字、不在外洩清單 breached 裡；連結用一次就不能用；被停用的登不進去）。
  * signedIn：現在登入的是誰（沒登入是 null）。flows：雲端流程（只有擁有者拿得到）。unreachable 設成 true 就是連不上伺服器。
  * 管理使用者：使用者的 id 是他在 users 裡的位置 + 1；mailQuota 設成 true 就是寄信服務今天的額度用完了。
+ * expired 設成 true：沒登入是因為登入超過 30 天了。retryAfter 設成秒數：猜密碼試太多次（鎖住），登入、改密碼都回要等幾秒。
+ * forgot：按過忘記密碼的 email（照順序）。otherDevices：改密碼時其他裝置都登出，記成 0。
  */
 export function fakeServer(
 	init: {
@@ -153,7 +155,11 @@ export function fakeServer(
 		breached: init.breached ?? [],
 		flows: [...(init.flows ?? [])],
 		unreachable: false,
-		mailQuota: false
+		mailQuota: false,
+		expired: false,
+		retryAfter: null as number | null,
+		forgot: [] as string[],
+		otherDevices: 1
 	};
 	let nextToken = 1;
 	const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -195,8 +201,12 @@ export function fakeServer(
 			const u = signedInUser();
 			return u && !u.disabled ? { email: u.email, name: u.name, isAdmin: u.isAdmin } : null;
 		},
+		async loginExpired() {
+			return !state.unreachable && !state.signedIn && state.expired;
+		},
 		async login(email, password) {
 			reachable();
+			if (state.retryAfter !== null) return { retryAfter: state.retryAfter };
 			const u = find(email);
 			if (!u?.password || u.password !== password || u.disabled) return 'wrong';
 			state.signedIn = u.email;
@@ -288,6 +298,29 @@ export function fakeServer(
 		async cloudFlow(id) {
 			const f = mine().find((g) => g.id === id);
 			return f ? { id: f.id, flow: structuredClone(f.flow), step: 0, updatedAt: f.updatedAt } : null;
+		},
+		async forgotPassword(email) {
+			reachable();
+			state.forgot.push(email);
+		},
+		async changeName(name) {
+			reachable();
+			const u = state.signedIn ? find(state.signedIn) : undefined;
+			if (!u) return null;
+			u.name = name.trim();
+			return { email: u.email, name: u.name, isAdmin: u.isAdmin };
+		},
+		async changePassword(current, password) {
+			reachable();
+			if (state.retryAfter !== null) return { retryAfter: state.retryAfter };
+			const u = state.signedIn ? find(state.signedIn) : undefined;
+			if (!u || u.password !== current) return 'wrong';
+			const n = charCount(password);
+			if (n < 15) return { kind: 'tooShort', missing: 15 - n };
+			if (state.breached.includes(password)) return { kind: 'breached' };
+			u.password = password;
+			state.otherDevices = 0;
+			return 'ok';
 		}
 	};
 	return { server, state };

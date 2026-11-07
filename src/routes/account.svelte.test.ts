@@ -15,7 +15,7 @@ describe('首頁的登入、帳號選單', () => {
 		expect(screen.queryByRole('button', { name: /▾/ })).toBeNull();
 	});
 
-	it('登入後：「名字 ▾」選單，裡面有 email 和「登出」；沒有「登入」', async () => {
+	it('登入後：「名字 ▾」選單，裡面有 email、「我的帳號」和「登出」；沒有「登入」', async () => {
 		const { server } = fakeServer({ users: [lin], signedIn: lin.email });
 		render(Page, editorPage(null, { server }).props);
 		await flush();
@@ -24,6 +24,7 @@ describe('首頁的登入、帳號選單', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '林教練 ▾' }));
 		const menu = screen.getByRole('menu');
 		expect(within(menu).getByText('lin@example.com')).toBeTruthy();
+		expect(within(menu).getByRole('menuitem', { name: '我的帳號' }).getAttribute('href')).toBe('/account');
 		expect(within(menu).getByRole('menuitem', { name: '登出' })).toBeTruthy();
 	});
 

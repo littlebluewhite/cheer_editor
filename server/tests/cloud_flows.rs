@@ -39,6 +39,7 @@ impl Server {
             clock: Clock::new(move || *clock_now.lock().unwrap()),
             site_url: SITE.into(),
             core: FlowCore::start().unwrap(),
+            mail_limit: Default::default(),
         };
         let site = tempfile::tempdir().unwrap();
         std::fs::write(site.path().join("200.html"), "spa entry").unwrap();

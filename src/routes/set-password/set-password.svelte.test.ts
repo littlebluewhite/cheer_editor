@@ -87,6 +87,7 @@ describe('設密碼頁', () => {
 		expect(screen.getByRole('heading', { name: '這個連結不能用了' })).toBeTruthy();
 		expect(screen.getByText('可能超過時間（邀請 24 小時、重設密碼 1 小時），或已經用過了。')).toBeTruthy();
 		expect(screen.queryByLabelText('密碼')).toBeNull();
+		expect(screen.getByRole('link', { name: '重寄一封信' }).getAttribute('href')).toBe('/forgot-password');
 	});
 
 	it('送出時連結剛好不能用了：換成「這個連結不能用了」', async () => {

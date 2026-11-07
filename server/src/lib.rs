@@ -6,7 +6,9 @@ pub mod cloud_flows;
 pub mod config;
 pub mod csrf;
 pub mod flow_core;
+pub mod lockout;
 pub mod mail;
+pub mod my_account;
 
 use std::path::Path;
 
@@ -20,6 +22,7 @@ use crate::breach::BreachCheck;
 use crate::clock::Clock;
 use crate::flow_core::FlowCore;
 use crate::mail::Mailer;
+use crate::my_account::MailLimit;
 
 /// 前端建置時另外產生的入口頁（`vite.config.ts` 裡 adapter 的 `fallback`）。
 const SPA_ENTRY: &str = "200.html";
@@ -38,6 +41,8 @@ pub struct AppState {
     pub site_url: String,
     /// 跑流程核心（QuickJS，ADR 0010）。
     pub core: FlowCore,
+    /// 同一個 email 的忘記密碼信寄幾封的限制。
+    pub mail_limit: MailLimit,
 }
 
 /// 整個網站：API 和前端建好的檔案（`site`）在同一個網址（ADR 0009）。
@@ -64,6 +69,9 @@ pub fn app(state: AppState, site: &Path) -> Router {
             get(cloud_flows::mine).post(cloud_flows::create),
         )
         .route("/api/flows/{id}", get(cloud_flows::get_one))
+        .route("/api/forgot-password", post(my_account::forgot_password))
+        .route("/api/account/name", post(my_account::change_name))
+        .route("/api/account/password", post(my_account::change_password))
         // 建置把每頁存成 <名字>.html（例：/guide → guide.html），重新整理才打得開。
         // 找不到的路徑回前端的入口頁，讓前端自己處理路由。
         .fallback_service(

@@ -19,6 +19,7 @@ fn unreachable_pool() -> cheer_server::AppState {
         clock: cheer_server::clock::Clock::system(),
         site_url: "https://cheer.example".into(),
         core: cheer_server::flow_core::FlowCore::start().unwrap(),
+        mail_limit: Default::default(),
     }
 }
 
