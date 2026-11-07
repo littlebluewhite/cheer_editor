@@ -51,13 +51,22 @@ export type {
 	UserStatus
 };
 
-/** 一支雲端流程的房間（WebSocket）：送步、收伺服器的回答。還沒連上時送的先排著，連上就送。 */
+/**
+ * 一支雲端流程的房間（WebSocket）：送步、收伺服器的回答。第一次還沒連上時送的先排著，連上就送。
+ * 斷線了（網路斷、部署切換）自己重連（#255）；斷線時送的丟掉，連回來要重新打招呼。
+ */
 export interface FlowRoom {
 	send(request: RoomRequest): void;
 	/** 收到伺服器說的話（房間建好後接上）。 */
 	onmessage: (message: RoomMessage) => void;
+	/** 斷線了（false），又連上了（true）。 */
+	onconnection: (connected: boolean) => void;
+	/** 不用了：關掉，不再重連。 */
 	close(): void;
 }
+
+/** 斷線後隔多久重連：1、2、4、8 秒，之後每 10 秒。 */
+const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
 
 /** 管理的事的結果：做好了，或做不成的原因（email 撞到別人、今天寄不出去、這個人現在不能這樣做）。 */
 export type AdminResult = 'ok' | AdminProblem;
@@ -345,21 +354,49 @@ export function httpServer(base = ''): ServerAdapter {
 		openRoom(flowId) {
 			const url = new URL(`${base}/api/flows/${encodeURIComponent(flowId)}/room`, location.href);
 			url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-			const socket = new WebSocket(url);
 			const waiting: string[] = [];
+			/** 連著（或第一次還在連）；斷線後到連回來之前是 false。 */
+			let up = true;
+			let closed = false;
+			let tries = 0;
+			let socket: WebSocket;
 			const room: FlowRoom = {
 				onmessage: () => {},
+				onconnection: () => {},
 				send(request) {
 					const text = JSON.stringify(request);
 					if (socket.readyState === WebSocket.OPEN) socket.send(text);
-					else waiting.push(text);
+					else if (up) waiting.push(text);
 				},
-				close: () => socket.close()
+				close() {
+					closed = true;
+					socket.close();
+				}
 			};
-			socket.onopen = () => {
-				for (const text of waiting.splice(0)) socket.send(text);
+			const connect = () => {
+				if (closed) return;
+				socket = new WebSocket(url);
+				socket.onopen = () => {
+					tries = 0;
+					if (up) {
+						for (const text of waiting.splice(0)) socket.send(text);
+						return;
+					}
+					up = true;
+					room.onconnection(true);
+				};
+				socket.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
+				socket.onclose = () => {
+					if (closed) return;
+					waiting.length = 0;
+					if (up) {
+						up = false;
+						room.onconnection(false);
+					}
+					setTimeout(connect, RECONNECT_MS[Math.min(tries++, RECONNECT_MS.length - 1)]);
+				};
 			};
-			socket.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
+			connect();
 			return room;
 		},
 		async uploadAudio(flowId, audioId, file) {

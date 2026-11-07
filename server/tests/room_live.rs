@@ -353,3 +353,105 @@ async fn the_present_list_follows_who_comes_goes_and_switches_mode(db: sqlx::PgP
     drop(b);
     present_until(&mut a2, &[]).await;
 }
+
+/// 打招呼帶上次看到第幾步（斷線重連，#255），回連上之後伺服器說的（到「可以送步」為止，在場名單跳過）。
+async fn rejoin(s: &Server, who: &User, id: &str, tab: &str, seen: i64) -> (Socket, Vec<Value>) {
+    let mut socket = s.connect(who, id).await.unwrap();
+    let hello = json!({ "kind": "hello", "fingerprint": FINGERPRINT, "tabId": tab, "seen": seen, "editing": true });
+    say(&mut socket, hello).await;
+    let mut heard = Vec::new();
+    loop {
+        let message = reply(&mut socket).await;
+        let ready = message["kind"] == "ready";
+        heard.push(message);
+        if ready {
+            return (socket, heard);
+        }
+    }
+}
+
+#[sqlx::test]
+async fn reconnecting_catches_up_on_what_others_changed_meanwhile(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "editor").await;
+    let (mut a, _) = join_as(&s, &wang, &id, "tab-a", true).await;
+    let (mut b, _) = join_as(&s, &lin, &id, "tab-b", true).await;
+    let mut seen_by_b = flow_of(&s, &lin, &id).await["flow"].to_string();
+
+    // 林教練送了一步，伺服器收了，可是他還沒收到回答就斷線
+    let mine = json!([{ "name": "addSegment", "args": ["chant"] }]);
+    say(
+        &mut b,
+        json!({ "kind": "step", "stepId": "step-b", "seen": 0, "commands": mine }),
+    )
+    .await;
+    let changed = reply(&mut a).await;
+    assert_eq!(changed["kind"], "changed", "{changed}");
+    seen_by_b = s
+        .state
+        .core
+        .apply_remote_change(seen_by_b, changed["change"].to_string())
+        .await
+        .unwrap();
+    drop(b);
+
+    // 斷線期間王教練改了兩步
+    let steps = [
+        json!([{ "name": "renameFlow", "args": ["全國賽決賽"] }]),
+        json!([{ "name": "adjustField", "args": [{ "strips": 7, "layout": "horizontal" }] }]),
+    ];
+    for (n, commands) in steps.into_iter().enumerate() {
+        let message = json!({ "kind": "step", "stepId": format!("step-a{n}"), "seen": n + 1, "commands": commands });
+        say(&mut a, message).await;
+        assert_eq!(reply(&mut a).await["kind"], "accepted");
+    }
+
+    // 連回來（上次看到第 0 步）：先補上別人改的（這個分頁自己送的不補），再說可以送步
+    let (mut b, heard) = rejoin(&s, &lin, &id, "tab-b", 0).await;
+    let kinds: Vec<_> = heard.iter().map(|m| m["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["changed", "changed", "ready"], "{heard:?}");
+    assert_eq!(heard[0]["step"], 2);
+    assert_eq!(heard[1]["step"], 3);
+    assert_eq!(heard[1]["by"], "王教練");
+    assert_eq!(heard[2]["step"], 3);
+    for changed in &heard[..2] {
+        seen_by_b = s
+            .state
+            .core
+            .apply_remote_change(seen_by_b, changed["change"].to_string())
+            .await
+            .unwrap();
+    }
+    let server = flow_of(&s, &wang, &id).await["flow"].clone();
+    assert_eq!(serde_json::from_str::<Value>(&seen_by_b).unwrap(), server);
+
+    // 斷線前送的那一步再送一次：回原本的結果，不套兩次
+    let again = json!([{ "name": "addSegment", "args": ["chant"] }]);
+    say(
+        &mut b,
+        json!({ "kind": "step", "stepId": "step-b", "seen": 0, "commands": again }),
+    )
+    .await;
+    let accepted = reply(&mut b).await;
+    assert_eq!(accepted["kind"], "accepted", "{accepted}");
+    assert_eq!(accepted["step"], 1);
+
+    // 已經是最新的：直接可以送步
+    let (_, heard) = rejoin(&s, &lin, &id, "tab-b", 3).await;
+    assert_eq!(heard.len(), 1, "{heard:?}");
+
+    // 上次看到之後的步已經沒留（超過 30 天）：補不上，給伺服器現在的樣子
+    sqlx::query("DELETE FROM flow_steps WHERE flow_id = $1 AND step = 2")
+        .bind(&id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    let (_, heard) = rejoin(&s, &lin, &id, "tab-b", 1).await;
+    let kinds: Vec<_> = heard.iter().map(|m| m["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["current", "ready"], "{heard:?}");
+    assert_eq!(heard[0]["flow"], server);
+    assert_eq!(heard[0]["step"], 3);
+}

@@ -9,6 +9,7 @@ import {
 	putRecords,
 	remoteChange,
 	runCommands,
+	runUndo,
 	stepKeys,
 	takeRecords,
 	type Command,
@@ -68,4 +69,14 @@ export function uploadFlowJson(doc: string): string {
 	const problem = flowProblem(checked.flow);
 	if (problem) return JSON.stringify({ kind: 'error', message: problem });
 	return JSON.stringify({ kind: 'ok', ...takeRecords(checked.flow) });
+}
+
+/**
+ * 雲端流程的復原、重做（#256）：flow 是現在的樣子、records 是分開存的紀錄（StoredAttempt[] 的 JSON）、
+ * change 是要放回去的樣子（RemoteChange 的 JSON）。回 runUndo 的結果的 JSON（跟 runStepJson 一樣的樣子）。
+ */
+export function runUndoJson(flow: string, records: string, change: string): string {
+	return JSON.stringify(
+		runUndo(JSON.parse(flow) as Flow, JSON.parse(records) as StoredAttempt[], JSON.parse(change) as RemoteChange)
+	);
 }

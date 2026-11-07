@@ -261,3 +261,5 @@ export type { ThingChange } from './diff';
 export { stepKeys } from './step-keys';
 export { applyRemoteChange, remoteChange } from './remote-change';
 export type { RemoteChange } from './remote-change';
+export { joinUndo, runUndo, undoChanges, undone } from './cloud-undo';
+export type { UndoChanges, UndoOutcome } from './cloud-undo';
