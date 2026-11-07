@@ -514,7 +514,7 @@ export class EditorSession {
 		const index = this.#flow?.formations.findIndex((f) => f.id === this.#formationId) ?? -1;
 		if (this.#picked !== 'formation' || index < 0) return false;
 		this.#copied = this.#flow!.formations[index].pos;
-		this.notice = `已複製站位 ${index + 1}；移到別的地方按 ⌘V 貼上`;
+		this.notice = `記下站位 ${index + 1} 的位置；移到別的地方按 ⌘V 貼上`;
 		return true;
 	}
 
