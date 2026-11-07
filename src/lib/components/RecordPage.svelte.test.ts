@@ -63,7 +63,7 @@ describe('記錄頁', () => {
 		expect(dayRow('第 1 組 小美')).toEqual([]);
 		await save('第 1 組 小美');
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
-		expect(card('第 1 組 小美').getByRole('status').textContent).toBe('已存');
+		expect(screen.getByRole('status').textContent).toBe('已存');
 		expect(dayRow('第 2 組 小芳')).toEqual([]);
 	});
 
@@ -80,10 +80,10 @@ describe('記錄頁', () => {
 		expect(dayRow(who)).toEqual(['✗··', '✓✗·']);
 		await fireEvent.click(removeLast());
 		expect(dayRow(who)).toEqual(['✗··']);
-		expect(card(who).getByRole('status').textContent).toContain('已刪掉');
-		await fireEvent.click(card(who).getByRole('button', { name: '救回' }));
+		expect(screen.getByRole('status').textContent).toContain('已刪掉');
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		expect(dayRow(who)).toEqual(['✗··', '✓✗·']);
-		expect(card(who).getByRole('status').textContent).toBe('已救回');
+		expect(screen.getByRole('status').textContent).toBe('已救回');
 		await fireEvent.click(removeLast());
 		expect(dayRow(who)).toEqual(['✗··']);
 		await fireEvent.click(removeLast());

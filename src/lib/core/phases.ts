@@ -9,7 +9,7 @@ import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { cut, ordered } from './phase-beats';
 import { phaseLabel, type Phase, type PhaseKind } from './phase-types';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { settle } from './settle';
 import { allPhaseIds, beatsProblem, markedCount } from './success-rate';
@@ -142,7 +142,7 @@ function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[
 	if (marked && !answered(options)) {
 		const empty = kept.length ? '' : '；動作沒有環節了，不再記成功率';
 		return needsConfirm(
-			`會刪掉 ${gone.length} 個環節，清掉 ${marked} 次的記號${empty}，確定就刪掉`,
+			`會刪掉 ${gone.length} 個環節，清掉 ${marked} 次的記號${RECORDS_GONE}${empty}，確定就刪掉`,
 			gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`)
 		);
 	}

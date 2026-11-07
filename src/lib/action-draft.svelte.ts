@@ -4,6 +4,7 @@
 // 送出時開始、長度由核心讀（readStart、readLength），看不懂就是被擋，原因跟指令被擋一樣交給 ask。
 
 import {
+	actionLabel,
 	actionSeconds,
 	actionSlotAt,
 	addAction,
@@ -238,12 +239,24 @@ export class ActionDraft {
 		this.#setMembers(this.#draft.members.filter((_, j) => j !== i));
 	}
 
-	/** 「從別的動作複製人」：連任務角色和組一起換進來。 */
+	/**
+	 * 「從別的動作複製人」：連任務角色和組一起換進來。改動作時馬上送出（整批取代不問，會動到紀錄才問），
+	 * 換成功就提示「已取代…」，旁邊有「復原」。新增時只換草稿的人。
+	 */
 	copyMembers(source: Action) {
 		this.#setMembers(source.members.map((m) => ({ ...m })));
+		const before = this.#session.flow;
+		this.update(() => {
+			if (this.#session.flow === before) return;
+			const text = `已取代：人換成「${actionLabel(source)}」的 ${source.members.length} 人`;
+			this.#session.toast(text, { label: '復原', name: '復原取代的人' });
+		});
 	}
 
-	/** 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。 */
+	/**
+	 * 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。
+	 * 選到的人清掉：下一次拖人不會整隊一起走。
+	 */
 	add() {
 		const segment = this.#segment;
 		if (this.#action || !segment) return;
@@ -252,6 +265,7 @@ export class ActionDraft {
 		this.ask.send(() => (input.kind === 'blocked' ? input : addAction(this.#session.flow!, input.value)), {
 			done: (r) => {
 				this.#session.selectAction(r.id);
+				this.#session.selectMembers([]);
 				const flow = this.#session.flow!;
 				this.#playhead.seek(actionSeconds(flow, flow.actions.find((a) => a.id === r.id)!).endSec);
 				this.#kept = null;
@@ -275,8 +289,8 @@ export class ActionDraft {
 		this.#session.selectAction(null);
 	}
 
-	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
-	update() {
+	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原，成功就叫 done。新增時什麼都不做（等按「新增動作」）。 */
+	update(done?: () => void) {
 		const action = this.#action;
 		const segment = this.#segment;
 		if (!action || !segment) return;
@@ -285,7 +299,7 @@ export class ActionDraft {
 		this.ask.send(
 			(o: ConfirmOption = {}) =>
 				input.kind === 'blocked' ? input : updateAction(this.#session.flow!, id, input.value, o),
-			{ revert: () => this.#reset() }
+			{ revert: () => this.#reset(), done }
 		);
 	}
 
@@ -322,6 +336,8 @@ export class ActionDraft {
 			if (seen && !seen.action) this.#kept = this.#keep();
 			if (action?.id !== seen?.action?.id) this.#categoryChanged = null;
 			const undone = seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
+			// 復原掉剛新增的動作：新增時清掉的人也選回來（草稿的人跟著選取）
+			if (undone) this.#session.selectMembers(this.#added!.kept.draft.members.map((m) => m.memberId));
 			this.#reset(undone ? this.#added!.kept : this.#kept);
 			this.ask.clear();
 			return;

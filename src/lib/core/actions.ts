@@ -11,7 +11,7 @@ import {
 } from './action-types';
 import { cueFallout, cueProblem } from './cues';
 import { memberName, type Flow } from './flow';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
@@ -111,7 +111,7 @@ export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}
 	const action = flow.actions.find((a) => a.id === id);
 	if (!action) return blocked('找不到這個動作');
 	const count = action.successRate?.records.length ?? 0;
-	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄`, []);
+	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄${RECORDS_GONE}`, []);
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 

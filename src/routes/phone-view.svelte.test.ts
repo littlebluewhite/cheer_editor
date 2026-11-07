@@ -125,7 +125,7 @@ describe('手機的檢視模式', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
-		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+		expect(screen.getByLabelText('開啟流程檔')).toBeTruthy();
 	});
 });
 

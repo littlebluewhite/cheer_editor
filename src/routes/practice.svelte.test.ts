@@ -53,6 +53,8 @@ describe('練習：記錄頁記分段練', () => {
 		const pressed = () => screen.getByRole('button', { name: '第 1 組 小美 上法 成功' }).getAttribute('aria-pressed');
 		expect(pressed()).toBe('true');
 		await openFile(writeFlowFile(practiceFlow(), {}), '開啟');
+		// 開檔回到編排（#218），再切回練習看
+		await toPractice();
 		expect(pressed()).toBe('false');
 	});
 
@@ -175,6 +177,7 @@ describe('練習：記錄頁記分段練', () => {
 		]);
 
 		await openFile(saves[0], '開啟');
+		await toPractice();
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 	});
 
@@ -267,7 +270,7 @@ describe('練習：紀錄不進復原', () => {
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
-		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '救回' }));
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');

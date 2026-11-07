@@ -7,7 +7,7 @@ import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { nextId } from './ids';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { EPS, HALF_BEATS_PER_EIGHT, atText, segmentSpans, toPosition, totalSeconds } from './time';
 
@@ -26,7 +26,7 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 	);
 	if (!answered(option) && (droppedActions.length || droppedFormations.length)) {
 		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
-		const cleared = records ? `，會一起清掉 ${records} 次紀錄` : '';
+		const cleared = records ? `，會一起清掉 ${records} 次紀錄${RECORDS_GONE}` : '';
 		return needsConfirm(`刪掉${segmentSpans(flow)[index].label}，下面這些也會一起刪掉${cleared}`, [
 			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${atText(segment, a.start)} 起）`),
 			...droppedFormations.map((f) => `站位 ${flow.formations.indexOf(f) + 1}（${atText(segment, f.at)}）`)

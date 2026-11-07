@@ -98,6 +98,17 @@
 	);
 	const selected = $derived(new Set(selectedMemberIds));
 
+	/** 每個人泳道上的名字按鈕。 */
+	const labs: Record<string, HTMLElement> = {};
+	/** 上一次看到的選取：多選進來的只有一個人（場上點人、Shift 加一個）時，名單捲到他那一行。 */
+	let seenSelection: string[] = [];
+	$effect(() => {
+		const before = new Set(seenSelection);
+		seenSelection = selectedMemberIds;
+		const added = selectedMemberIds.filter((id) => !before.has(id));
+		if (added.length === 1) labs[added[0]]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	});
+
 	/** 色條離泳道上緣、名稱那一行、一條拍點的高度、泳道下緣留給走位條（px）。 */
 	const BAR_TOP = 3;
 	const NAME_H = 12;
@@ -375,6 +386,7 @@
 		<button
 			type="button"
 			class="lab"
+			bind:this={labs[m.id]}
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
@@ -530,6 +542,8 @@
 		position: sticky;
 		left: 0;
 		z-index: 6;
+		/* 捲到這一行時（點場上的人）停在時間軸黏在上面的段列（32px）、八拍尺（26px）下面 */
+		scroll-margin-top: 58px;
 		width: var(--lab-w, 120px);
 		flex: none;
 		justify-content: flex-start;

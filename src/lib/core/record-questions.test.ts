@@ -72,7 +72,7 @@ describe('刪動作', () => {
 		const flow = recorded();
 		expect(deleteAction(flow, 'x2')).toEqual({
 			kind: 'confirm',
-			message: '刪掉動作「騰翻」會清掉 2 次紀錄',
+			message: '刪掉動作「騰翻」會清掉 2 次紀錄（紀錄救不回來）',
 			items: []
 		});
 		expect(flowOf(deleteAction(flow, 'x2', { confirmed: true })).actions.map((a) => a.id)).toEqual(['x1']);
@@ -81,7 +81,7 @@ describe('刪動作', () => {
 	it('段縮短連帶刪動作：確認訊息加上會清掉幾次', () => {
 		const r = updateSegment(recorded(), 's1', { eights: 2 });
 		expect(r.kind).toBe('confirm');
-		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，下面這些放不進段裡，確定就刪掉，會一起清掉 2 次紀錄');
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，下面這些放不進段裡，確定就刪掉，會一起清掉 2 次紀錄（紀錄救不回來）');
 	});
 });
 
@@ -90,7 +90,7 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		const flow = recorded();
 		expect(updateAction(flow, 'x1', { category: 'tumbling' })).toEqual({
 			kind: 'confirm',
-			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄',
+			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄（紀錄救不回來）',
 			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次']
 		});
 		const changed = action(flowOf(updateAction(flow, 'x1', { category: 'tumbling' }, { confirmed: true })), 'x1');
@@ -101,7 +101,7 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 	it('騰翻換成技巧：要確認；確定後清掉紀錄，動作裡的人全部進第 1 組', () => {
 		const flow = recorded();
 		const r = updateAction(flow, 'x2', { category: 'stunt' });
-		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄');
+		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄（紀錄救不回來）');
 		const changed = flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true }));
 		expect(ids(changed, 'x2')).toEqual([]);
 		expect(squadNumbers(action(changed, 'x2'))).toEqual([1, 1]);
@@ -112,11 +112,11 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 	});
 });
 
-describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重算', () => {
+describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重算（紀錄救不回來）', () => {
 	it('設組把小美換到第 3 組：問保留還是清掉，列出那組幾次', () => {
 		expect(setSquad(recorded(), 'x1', ['m1'], 3)).toEqual({
 			kind: 'choose',
-			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？',
+			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？（紀錄救不回來）',
 			items: ['第 1 組 小美：2 次']
 		});
 	});
@@ -160,7 +160,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		const flow = recorded();
 		expect(updateAction(flow, 'x1', { members })).toEqual({
 			kind: 'confirm',
-			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄',
+			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄（紀錄救不回來）',
 			items: ['第 2 組 小芳：1 次']
 		});
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })), 'x1')).toEqual(['t1', 't3']);
@@ -173,7 +173,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		const r = updateAction(flow, 'x1', { members, length: 8 });
 		expect(r.kind).toBe('choose');
 		expect(r.kind === 'choose' && r.message).toBe(
-			'動作「技巧·Lib」變短，會拿掉 1 個拍點；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
+			'動作「技巧·Lib」變短，會拿掉 1 個拍點；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（紀錄救不回來）'
 		);
 		const kept = action(flowOf(updateAction(flow, 'x1', { members, length: 8 }, { records: 'keep' })), 'x1');
 		expect(kept.cues).toEqual([]);
@@ -187,7 +187,7 @@ describe('騰翻、跳躍的動作拿掉有紀錄的人', () => {
 		const members = [{ memberId: 'm1', role: '騰翻' }];
 		expect(updateAction(flow, 'x2', { members })).toEqual({
 			kind: 'confirm',
-			message: '動作「騰翻」換了人，會清掉 1 次紀錄',
+			message: '動作「騰翻」換了人，會清掉 1 次紀錄（紀錄救不回來）',
 			items: ['小A：1 次']
 		});
 		expect(ids(flowOf(updateAction(flow, 'x2', { members }, { confirmed: true })), 'x2')).toEqual(['t4']);
@@ -198,7 +198,7 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 	it('問保留還是清掉，列出他在的組和他自己的紀錄', () => {
 		expect(updateMember(recorded(), 'm1', { name: '小芳芳' })).toEqual({
 			kind: 'choose',
-			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算',
+			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（紀錄救不回來）',
 			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
 		});
 	});
@@ -236,7 +236,7 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 		const flow = recorded();
 		const r = deleteMember(flow, 'm2');
 		expect(r.kind === 'choose' && r.message).toBe(
-			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄，「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
+			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄（紀錄救不回來），「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
 		);
 		const kept = flowOf(deleteMember(flow, 'm2', { records: 'keep' }));
 		expect([ids(kept, 'x1'), ids(kept, 'x2')]).toEqual([['t1', 't2', 't3'], ['t4']]);
