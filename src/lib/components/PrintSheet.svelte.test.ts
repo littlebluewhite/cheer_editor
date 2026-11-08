@@ -221,6 +221,17 @@ describe('八拍表列印', () => {
 		expect(screen.getByRole('heading').textContent).toContain('小B');
 	});
 
+	it('什麼都沒有的八拍不是一條空白：寫「這幾拍沒有動作」，個人表寫他的名字（N59）', async () => {
+		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+		expect(actionsCell(bodyRows()[2]).trim()).toBe('這幾拍沒有動作，也不用走位');
+		expect(actionsCell(bodyRows()[0])).not.toContain('沒有動作');
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+		const rows = bodyRows();
+		expect(actionsCell(rows.at(-1)!).trim()).toBe('這幾拍小B沒有動作，也不用走位');
+		// 有站位圖的那一列不是空白，不寫
+		expect(actionsCell(rows[1]).trim()).toBe('');
+	});
+
 	it('選一個隊員時，他出發的那一列在動作下面多寫一行走位；全隊不寫（出發只寫在站位圖的說明，#217）', async () => {
 		let flow = sample();
 		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
