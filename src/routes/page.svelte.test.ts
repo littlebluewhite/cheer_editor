@@ -1267,9 +1267,8 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(76.8);
 
 		await fireEvent.change(box()!, { target: { value: 'abc' } });
-		expect(screen.getByRole('status').textContent).toBe(
-			'站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
-		);
+		// 這支流程只有一段：例子不提別的段
+		expect(screen.getByRole('status').textContent).toBe('站位時間看不懂，例：2-5');
 		expect(box()!.value).toBe('2-5');
 
 		await fireEvent.change(box()!, { target: { value: '1-1' } });

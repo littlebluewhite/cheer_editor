@@ -82,9 +82,8 @@ describe("手機跳時間", () => {
     const box = screen.getByRole("textbox", { name: "跳到哪裡" });
     await fireEvent.input(box, { target: { value: "第三個" } });
     await fireEvent.keyDown(box, { key: "Enter" });
-    expect(screen.getByRole("alert").textContent).toBe(
-      "時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）",
-    );
+    // 範例流程只有一段：例子不提不存在的「口號 1」
+    expect(screen.getByRole("alert").textContent).toBe("時間看不懂，例：2-5");
     expect(screen.getByRole("textbox", { name: "跳到哪裡" })).toBeTruthy();
     await fireEvent.keyDown(box, { key: "Escape" });
     expect(where()).toBe("音樂 1 2-1");

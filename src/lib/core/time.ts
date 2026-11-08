@@ -251,10 +251,13 @@ export function readStart(segment: Segment, text: string): ReadResult<number> {
 	return readOr(parseAt(segment, text), `開始看不懂，${hint}`);
 }
 
+/** 八拍寫法「3-5&」：第幾個八拍、第幾拍、有沒有半拍。 */
+const EIGHT_TEXT = /^(\d+)-([1-8])(&?)$/;
+
 /** atText 的反向：教練打的時間點 → 段內整數時間；看不懂是 null。不檢查有沒有超出段（指令會擋）。 */
 function parseAt(segment: Segment, text: string): number | null {
 	if (segment.kind === 'chant') return parseScaled(text, 10);
-	const m = /^(\d+)-([1-8])(&?)$/.exec(halfWidth(text).trim());
+	const m = EIGHT_TEXT.exec(halfWidth(text).trim());
 	if (!m || Number(m[1]) < 1) return null;
 	return ((Number(m[1]) - 1) * 8 + Number(m[2]) - 1) * 2 + (m[3] ? 1 : 0);
 }
@@ -285,9 +288,28 @@ export type TimeField = '出發' | '到達' | '站位時間' | '時間';
  * 不檢查有沒有超出段（指令會擋）。
  */
 export function readTime(flow: Flow, homeSegmentId: string, text: string, field: TimeField): ReadResult<TimePosition> {
-	const chant = flow.segments.find((s) => s.id === homeSegmentId)?.kind === 'chant';
-	const hint = chant ? '12.3（別的段前面加段名，例：音樂 1 2-5）' : '2-5（別的段前面加段名，例：口號 1 12.3）';
+	const { here, other } = timeExamples(flow, homeSegmentId);
+	const hint = other ? `${here}（別的段前面加段名，例：${other}）` : here;
 	return readOr(parseTime(flow, homeSegmentId, text), `${field}看不懂，例：${hint}`);
+}
+
+/**
+ * 打時間的例子，照這支流程真的有的段：here 是 homeSegmentId 那一段的段內時間，other 是別的段加段名
+ * （先找另一種段，沒有就找同種的別段；只有一段時是 ''）。例子都落在那一段裡面。
+ */
+export function timeExamples(flow: Flow, homeSegmentId: string): { here: string; other: string } {
+	const spans = segmentSpans(flow);
+	const home = spans.find((s) => s.segment.id === homeSegmentId);
+	if (!home) return { here: '', other: '' };
+	const rest = spans.filter((s) => s !== home);
+	const span = rest.find((s) => s.segment.kind !== home.segment.kind) ?? rest[0];
+	return { here: exampleAt(home.segment), other: span ? `${span.label} ${exampleAt(span.segment)}` : '' };
+}
+
+/** 一段裡的例子：音樂段「2-5」、口號段「12.3」，段太短就取一半的地方。 */
+function exampleAt(segment: Segment): string {
+	const preferred = segment.kind === 'music' ? 24 : 123;
+	return atText(segment, Math.min(preferred, Math.floor(units(segment) / 2)));
 }
 
 /**
@@ -297,7 +319,16 @@ export function readTime(flow: Flow, homeSegmentId: string, text: string, field:
 export function readJump(flow: Flow, sec: number, text: string): ReadResult<number> {
 	const here = toPosition(flow, sec);
 	if (!here) return { kind: 'blocked', message: '還沒有段' };
-	const read = readTime(flow, here.segmentId, text, '時間');
+	let read = readTime(flow, here.segmentId, text, '時間');
+	// 在口號段打了八拍寫法（沒加段名）：只有一個音樂段就是那一段；好幾個就說要加段名。
+	const spans = segmentSpans(flow);
+	const musics = spans.filter((s) => s.segment.kind === 'music');
+	const homeSpan = spans.find((s) => s.segment.id === here.segmentId)!;
+	if (read.kind !== 'ok' && homeSpan.segment.kind === 'chant' && musics.length && EIGHT_TEXT.test(halfWidth(text).trim())) {
+		const named = `${musics[0].label} ${halfWidth(text).trim()}`;
+		if (musics.length > 1) return { kind: 'blocked', message: `${homeSpan.label} 是口號段，要打秒數；八拍寫法前面加段名，例：${named}` };
+		read = readTime(flow, here.segmentId, named, '時間');
+	}
 	if (read.kind !== 'ok') return read;
 	const span = segmentSpans(flow).find((s) => s.segment.id === read.value.segmentId)!;
 	const { segment } = span;
