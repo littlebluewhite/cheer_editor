@@ -5,7 +5,6 @@
 import { createContext } from 'svelte';
 import {
 	actionLabel,
-	carryRecords,
 	changeLabel,
 	currentFormation,
 	deleteAction,
@@ -13,10 +12,12 @@ import {
 	formationTimes,
 	groupsPeople,
 	moveGroup,
+	redoRecords,
 	sameFlow,
 	setSquad,
 	squadsOf,
 	timeTextWithUnit,
+	undoRecords,
 	type Action,
 	type CommandResult,
 	type ConfirmOption,
@@ -34,9 +35,13 @@ const UNDO_LIMIT = 100;
 /** 「只改這張」跟往後帶的那一步合成一步復原用的 key。 */
 const ONLY_THIS = 'only-this';
 
-/** 復原、重做紀錄的一步：要換上的流程、那一步改了什麼（例：「插入站位 3」）。 */
+/**
+ * 復原、重做紀錄的一步：改之前的流程（flow）、改之後的流程（after）、那一步改了什麼（例：「插入站位 3」）。
+ * 存改之後的，復原時才算得出這一步清掉了哪些紀錄、加回去（ADR 0007）。
+ */
 interface Step {
 	flow: Flow;
+	after: Flow;
 	label: string;
 }
 
@@ -79,11 +84,11 @@ export class EditorSession {
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
 	/**
-	 * 復原紀錄：改之前的流程（最舊的在前）和那一步改了什麼（復原、重做的提示用）。
+	 * 復原紀錄：每一步改之前、改之後的流程（最舊的在前）和那一步改了什麼（復原、重做的提示用）。
 	 * 指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。
 	 */
 	#undo = $state.raw<Step[]>([]);
-	/** 重做紀錄：復原掉的流程（最近復原的在後）和那一步改了什麼。做了新的一步就清掉。 */
+	/** 重做紀錄：復原掉的那幾步（最近復原的在後）。做了新的一步就清掉。 */
 	#redo = $state.raw<Step[]>([]);
 
 	/** 上一步可以接著合的：哪一種（key）、合完的流程。流程換了（中間有別的改動）就接不上。 */
@@ -263,7 +268,7 @@ export class EditorSession {
 		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
 		// 合成一步的：說的是從合之前到現在改了什麼
 		const from = joined ? this.#undo.at(-1)!.flow : this.#flow;
-		const step = { flow: from, label: label ?? changeLabel(from, flow) };
+		const step = { flow: from, after: flow, label: label ?? changeLabel(from, flow) };
 		this.#undo = (joined ? [...this.#undo.slice(0, -1), step] : [...this.#undo, step]).slice(-UNDO_LIMIT);
 		this.#joinable = join !== undefined ? { key: join, flow } : null;
 		this.#redo = [];
@@ -278,7 +283,7 @@ export class EditorSession {
 
 	/**
 	 * 「記」：紀錄改了（記一次、刪掉上一次、記一次全上）。不算復原的一步，不清重做。
-	 * 復原、重做換上的流程都帶著現在的紀錄（carryRecords）。
+	 * 復原、重做換上的流程都帶著現在的紀錄（undoRecords、redoRecords）。
 	 */
 	record(flow: Flow) {
 		if (!this.#flow) return;
@@ -327,29 +332,35 @@ export class EditorSession {
 		return new Ask((f) => this.record(f));
 	}
 
-	/** 復原：換上前一份編排，帶著現在的紀錄，提示「已復原：…」。回傳有沒有復原（檢視模式擋下，說原因）。 */
+	/**
+	 * 復原：換上前一份編排，帶著現在的紀錄，這一步清掉的紀錄加回來（ADR 0007），提示「已復原：…」。
+	 * 回傳有沒有復原（檢視模式擋下，說原因）。
+	 */
 	undo(): boolean {
 		if (this.#blocked()) return false;
 		const prev = this.#undo.at(-1);
 		if (!this.#flow || !prev) return false;
 		const before = this.#flow;
-		this.#redo = [...this.#redo, { flow: this.#flow, label: prev.label }];
+		this.#redo = [...this.#redo, prev];
 		this.#undo = this.#undo.slice(0, -1);
-		this.#flow = carryRecords(prev.flow, this.#flow);
+		this.#flow = undoRecords(prev.flow, prev.after, this.#flow);
 		this.#restored(this.#flow, before);
 		this.notice = `已復原：${prev.label}`;
 		return true;
 	}
 
-	/** 重做：換上復原掉的編排，帶著現在的紀錄，提示「已重做：…」。回傳有沒有重做（檢視模式擋下，說原因）。 */
+	/**
+	 * 重做：換上復原掉的編排，帶著現在的紀錄，這一步清掉的紀錄再清一次，提示「已重做：…」。
+	 * 回傳有沒有重做（檢視模式擋下，說原因）。
+	 */
 	redo(): boolean {
 		if (this.#blocked()) return false;
 		const next = this.#redo.at(-1);
 		if (!this.#flow || !next) return false;
 		const before = this.#flow;
-		this.#undo = [...this.#undo, { flow: this.#flow, label: next.label }];
+		this.#undo = [...this.#undo, next];
 		this.#redo = this.#redo.slice(0, -1);
-		this.#flow = carryRecords(next.flow, this.#flow);
+		this.#flow = redoRecords(next.flow, next.after, this.#flow);
 		this.#restored(this.#flow, before);
 		this.notice = `已重做：${next.label}`;
 		return true;

@@ -1,5 +1,5 @@
 // 「已做了・復原」提示和確認框（#211）：能復原的事不問，跳一則提示帶一個按鈕（「復原」「救回」）；
-// 會丟練習紀錄的事（紀錄不能復原，ADR 0006）才跳確認框，寫明紀錄救不回來。
+// 會清掉練習紀錄的事跳確認框，寫明按「復原」紀錄會一起回來（ADR 0007）。
 // 編輯器只有一個提示位置：同時只有一則，新的取代舊的；練習畫面的提示也浮在上面，不擠在卡片裡推動版面。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -54,15 +54,18 @@ describe('能復原的事不問，跳「已做了・復原」', () => {
 });
 
 describe('會丟紀錄的事才跳確認框', () => {
-	it('刪有紀錄的動作：確認框寫紀錄救不回來；確定才刪', async () => {
+	it('刪有紀錄的動作：確認框寫按「復原」紀錄會回來；確定才刪；按「復原」動作和紀錄都回來（N25）', async () => {
 		const { session, props } = editorPage(recordedFlow());
 		render(Page, props);
 		await fireEvent.click(bar('x1')!);
 		await fireEvent.click(screen.getByRole('button', { name: '刪除動作' }));
-		expect(dialog().textContent).toContain('紀錄救不回來');
+		expect(dialog().textContent).toContain('清掉的紀錄按「復原」會回來');
 		expect(session.flow!.actions).toHaveLength(1);
+		const records = session.flow!.actions[0].successRate!.records;
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '確定' }));
 		expect(session.flow!.actions).toHaveLength(0);
+		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的動作' }));
+		expect(session.flow!.actions[0].successRate!.records).toEqual(records);
 	});
 });
 

@@ -5,7 +5,7 @@ import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
-import { RECORDS_GONE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { FIXED_ROLES } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
@@ -233,7 +233,7 @@ export function updateMember(
 	if (mine.length && !answered(options)) {
 		const count = mine.reduce((n, s) => n + s.records.length, 0);
 		return needsChoice(
-			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算${RECORDS_GONE}`,
+			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算${RECORDS_UNDOABLE}`,
 			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
 		);
 	}
@@ -318,11 +318,11 @@ export function deleteMember(
 		return (changed ? needsChoice : needsConfirm)(
 			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_GONE}` : '') +
+				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_UNDOABLE}` : '') +
 				(lost.length ? `，${lost.join('、')}` : '') +
 				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : '') +
-				// 清掉重算也救不回來：前面寫過了就不重複
-				(changed ? `；${CHANGED_SQUADS_QUESTION}${cleared ? '' : RECORDS_GONE}` : ''),
+				// 清掉重算的也是按復原會回來：前面寫過了就不重複
+				(changed ? `；${CHANGED_SQUADS_QUESTION}${cleared ? '' : RECORDS_UNDOABLE}` : ''),
 			inActions.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				const mine = a.members.find((m) => m.memberId === id)!;
