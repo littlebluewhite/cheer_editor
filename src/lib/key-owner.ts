@@ -21,7 +21,7 @@ export function isTextField(el: EventTarget | null): el is HTMLInputElement | HT
 
 /** 打字的地方：打字的欄位，或可以編輯的文字（contenteditable）。 */
 export function isTextEntry(el: EventTarget | null): boolean {
-	return isTextField(el) || (el instanceof HTMLElement && el.isContentEditable);
+	return isTextField(el) || (el instanceof Element && !!el.closest('[contenteditable]:not([contenteditable="false"])'));
 }
 
 /**

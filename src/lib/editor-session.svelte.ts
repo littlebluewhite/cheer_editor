@@ -314,6 +314,17 @@ export class EditorSession {
 		return [...this.#changeAsks].some((ref) => !!ref.deref()?.question);
 	}
 
+	/**
+	 * 頁面按 Esc：開著的「改」的問題都按取消（跟在確認框裡按 Esc 一樣，會還原的照樣還原）。回傳有沒有收掉問題
+	 * （有的話這一下 Esc 就用掉了，不再清選取，N18）。
+	 */
+	cancelQuestion(): boolean {
+		const asks = [this.ask, this.squadAsk, ...[...this.#changeAsks].map((ref) => ref.deref())];
+		const open = asks.filter((ask) => !!ask?.question);
+		for (const ask of open) ask!.answer('cancel');
+		return open.length > 0;
+	}
+
 	/** 換掉流程、關分頁就會不見的：有還沒存的修改，或改了還在等教練回答（例：改名後還沒選保留或清掉）。 */
 	get unsavedOrAsking(): boolean {
 		return this.unsaved || this.questionOpen;

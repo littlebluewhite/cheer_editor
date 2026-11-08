@@ -52,6 +52,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { ownsKey } from '#lib/key-owner.js';
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
 	import SelectionTools from './SelectionTools.svelte';
@@ -343,13 +344,10 @@
 		pan = [e.clientX, e.clientY];
 	}
 
-	/** 打字的地方按 H 是打字，不是平移。 */
-	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
-
-	/** 按住 H（沒按 Ctrl／⌘／Alt、不在打字的地方）：暫時平移。空白鍵不管，照舊是播放。 */
+	/** 按住 H（沒按 Ctrl／⌘／Alt、焦點所在的東西不用 H，例：打字的地方）：暫時平移。空白鍵不管，照舊是播放。 */
 	function hKey(e: KeyboardEvent, down: boolean) {
 		if (e.key.toLowerCase() !== 'h') return;
-		if (down && (e.ctrlKey || e.metaKey || e.altKey || (e.target as Element | null)?.closest?.(TYPING))) return;
+		if (down && (e.ctrlKey || e.metaKey || e.altKey || ownsKey(e.target, e.key))) return;
 		holdingH = down;
 	}
 

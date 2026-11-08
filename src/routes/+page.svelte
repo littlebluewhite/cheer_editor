@@ -32,6 +32,7 @@
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
 	import { composing } from '#lib/ime.js';
+	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -356,24 +357,10 @@
 		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
 	}
 
-	/** 按得下去、選得了、打得了字的東西。 */
-	const NATIVE_KEYS =
-		'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), ' +
-		'[role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"]';
-	/**
-	 * 空白鍵照瀏覽器原本的行為的地方：打字的地方、選單，和對話框、選單裡的東西。
-	 * 其他按鈕（節拍器、重複、檢視、段按鈕、對話框的觸發按鈕…）都不吃空白鍵，空白鍵一律播放／暫停（Enter 照樣按下）。
-	 */
-	const SPACE_NATIVE =
-		'input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"]), select, textarea, ' +
-		'[contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"], ' +
-		`:is(dialog, [role="dialog"], [role="alertdialog"]) :is(${NATIVE_KEYS})`;
+	// 焦點所在的東西自己用不用這個鍵（打字的地方、選單、對話框裡的按鈕…）只看 #lib/key-owner.js 一份規則（G 群）。
+	// 空白鍵：它不用（按鈕、勾選框、節拍器、重複、檢視、段按鈕…）就一律播放／暫停（Enter 照樣按下）。
 	/** 按下的空白鍵拿去播放／暫停了：放開時也攔下來。 */
 	let spaceUsed = false;
-	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
-	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
-	/** 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字。 */
-	const NATIVE_UNDO = '[data-native-undo] :is(textarea, input:not([type="checkbox"], [type="radio"]))';
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
@@ -397,13 +384,13 @@
 		// 復原、重做只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄
 		if (view === 'practice') return;
 		const target = e.target as Element | null;
-		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
 		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
 		// 還沒送出的表單（新動作、加隊員）的輸入框除外：字不在流程裡，交給瀏覽器退字。
 		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
-			if (on(NATIVE_UNDO)) return;
+			// 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字
+			if (isTextEntry(target) && target?.closest('[data-native-undo]')) return;
 			e.preventDefault();
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
@@ -413,12 +400,19 @@
 			// 元件自己用了空白鍵（例：隊員號碼的圓圈）就不播放
 			if (e.repeat || e.defaultPrevented) return;
 			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
-			spaceUsed = !on(SPACE_NATIVE) && playback.space(covered());
+			spaceUsed = !ownsKey(target, ' ') && playback.space(covered());
 			if (spaceUsed) e.preventDefault();
 			return;
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
-		if (covered() || on(TYPING)) return;
+		if (covered()) return;
+		// Esc 先收掉開著的問題（確認框），沒有問題才清選取（N18）；焦點在打字的地方也一樣
+		if (e.key === 'Escape' && !composing(e) && session.cancelQuestion()) {
+			e.preventDefault();
+			return;
+		}
+		// 焦點所在的東西自己要用這個鍵（打字的地方、選單、radio 的方向鍵…）：快捷鍵讓給它
+		if (ownsKey(target, e.key)) return;
 		// ⌘C／⌘V（Ctrl+C／V）：複製選到的站位卡片、貼到播放頭；沒選站位、沒複製過就照瀏覽器的。
 		// 拍點格子自己用了（複製、貼拍點）就不算
 		if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (key === 'c' || key === 'v')) {
@@ -427,9 +421,8 @@
 			if (key === 'c' ? session.copyFormation() : session.pasteFormation(playback.sec)) e.preventDefault();
 			return;
 		}
-		// 選單自己用方向鍵、Home／End（例：任務角色選單）時不算
-		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
-		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
+		// 元件自己用了 Home／End（已經 preventDefault）時不算
+		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented) {
 			e.preventDefault();
 			if (e.key === 'Home') playback.toStart();
 			else playback.toEnd();
@@ -453,14 +446,12 @@
 			!e.altKey
 		) {
 			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單、分頁自己用方向鍵時（已經 preventDefault）不算。
-			if (on(ownKeys)) return;
 			e.preventDefault();
 			playback.step(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-			// 分組：選好人按 1–9 放進那組、0 移出組。任務角色選單也用數字鍵，焦點在那裡不算。
-			if (on('[role="combobox"]')) return;
+			// 分組：選好人按 1–9 放進那組、0 移出組。任務角色選單也用數字鍵（ownsKey 已經讓給它）。
 			if (session.squadKey(Number(e.key))) e.preventDefault();
 		}
 	}
