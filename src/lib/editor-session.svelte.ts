@@ -154,6 +154,19 @@ export class EditorSession {
 	 */
 	drillMarks: Record<string, Record<string, Mark>> = $state({});
 	/**
+	 * 記錄頁一張卡（動作、組或隊員 who）這一天點了還沒存的記號：
+	 * 不是這次要練的環節（在編排刪掉了、別天改成只練別的環節）的記號不算。卡上和左邊動作清單都看它標「還沒存」。
+	 */
+	unsavedMarks(action: Action, who: string, date: string): Record<string, Mark> {
+		const scopeKey = `${action.id} ${who}`;
+		const scope = this.drillScopes[scopeKey] ?? { whole: true, picked: [] };
+		const phases = action.successRate?.phases ?? [];
+		const whole = scope.whole || phases.length < 2;
+		const planned = whole ? phases : phases.filter((p) => scope.picked.includes(p.id));
+		const marks = this.drillMarks[`${scopeKey} ${date}`] ?? {};
+		return Object.fromEntries(Object.entries(marks).filter(([id]) => planned.some((p) => p.id === id)));
+	}
+	/**
 	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
 	 * 不存進流程檔。
 	 */
@@ -166,7 +179,7 @@ export class EditorSession {
 	}
 	/** 跟著這支流程的畫面狀態（freshView）。 */
 	view = $state(freshView());
-	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+	/** 多選開著：場上點人、框選、點泳道名字、點動作表單裡的名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};

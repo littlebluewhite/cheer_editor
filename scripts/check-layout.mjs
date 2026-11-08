@@ -1511,6 +1511,24 @@ await check('1440×1000 左欄規則警告的撞位總表：卡片點得到、�
 	return { ok: head.self && row.self && inside && r.位置 === '音樂 1 2-1', value: { 卡片: head, 清單一行: row, ...r } };
 });
 
+await check('1180×820（觸控）左欄撞位總表打開的清單：每行的字在那一行的上下中間，不貼上緣（N32）', async () => {
+	// 接著上一條：撞位流程、清單打開著。觸控時按鈕至少 40px 高（ADR 0005）。
+	await setTouchViewport(1180, 820);
+	const r = await js(`if (!matchMedia('(pointer: coarse)').matches) return '不是觸控';
+		const b = document.querySelector('.rail .summary li button');
+		if (!b) return '清單沒打開';
+		const box = b.getBoundingClientRect();
+		const range = document.createRange();
+		range.selectNodeContents(b);
+		const t = range.getBoundingClientRect();
+		return { 那一行: [Math.round(box.top), Math.round(box.bottom)], 字: [Math.round(t.top), Math.round(t.bottom)] };`);
+	await clearTouch();
+	await setViewport(1440, 1000);
+	if (typeof r === 'string') return { ok: false, value: r };
+	const 上 = r.字[0] - r.那一行[0], 下 = r.那一行[1] - r.字[1];
+	return { ok: Math.abs(上 - 下) <= 2, value: { ...r, 上, 下 } };
+});
+
 // ---------- 長的拍點文字（#146） ----------
 
 await check('很長的手位：拍點格子、泳道、八拍表上都待在自己那一拍，不蓋到下一個拍點', async () => {

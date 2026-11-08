@@ -101,6 +101,8 @@
 	}
 	li button {
 		flex-wrap: wrap;
+		/* 觸控時按鈕至少 40px 高：字放在上下中間，不貼上緣（N32） */
+		align-content: center;
 		gap: 0 4px;
 	}
 	.at {

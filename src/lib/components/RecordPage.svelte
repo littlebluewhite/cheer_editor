@@ -71,6 +71,10 @@
 		const weakest = weakestPhase(a, date);
 		return weakest ? `最弱：${phaseLabel(weakest.phase)} ${successPercent(weakest.tally)}%` : '';
 	}
+	/** 這天有哪張卡點了記號還沒存：清單上標「還沒存」，換到別的動作也看得出來。 */
+	function unsaved(a: Action): boolean {
+		return attemptWhos(flow, a).some(({ who }) => Object.keys(session.unsavedMarks(a, who, date)).length > 0);
+	}
 </script>
 
 {#if recording}
@@ -82,7 +86,7 @@
 			<label class="pick"
 				>記哪個動作<select value={action.id} onchange={(e) => choose(e.currentTarget.value)}>
 					{#each actions as a (a.id)}
-						<option value={a.id}>{actionLabel(a)}</option>
+						<option value={a.id}>{actionLabel(a)}{unsaved(a) ? '（還沒存）' : ''}</option>
 					{/each}
 				</select></label
 			>
@@ -93,7 +97,8 @@
 					<li>
 						<button type="button" aria-pressed={a === action} onclick={() => (session.view.recordActionId = a.id)}>
 							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
-							<small>{countText(a)}</small>
+							<!-- 標在次數同一行：標上、拿掉都不會讓下面的動作上下移 -->
+							<small>{countText(a)}{#if unsaved(a)}<span class="unsaved">還沒存</span>{/if}</small>
 							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
 							<small class="weakest">{weakest}</small>
 						</button>
@@ -160,6 +165,16 @@
 		height: 10px;
 		border-radius: 3px;
 		background: var(--c);
+	}
+	/* 跟卡上的「還沒存」同一個樣子 */
+	.list .unsaved {
+		margin-left: 6px;
+		padding: 0 5px;
+		border-radius: 4px;
+		background: var(--surface-2);
+		color: var(--minor);
+		font-size: 12px;
+		font-weight: 400;
 	}
 	.list small {
 		color: var(--muted);
