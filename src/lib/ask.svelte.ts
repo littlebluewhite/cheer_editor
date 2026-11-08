@@ -12,11 +12,12 @@ import type { CommandResult, ConfirmOption, Flow } from '#lib/core';
 /** 教練的回答。 */
 export type Answer = 'confirm' | 'keep' | 'clear' | 'cancel';
 
-/** 等教練回答的問題：訊息、會被動到的清單、是不是要選（保留舊紀錄／清掉重算）。 */
+/** 等教練回答的問題：訊息、會被動到的清單、是不是要選（保留舊紀錄／清掉重算）、確定鈕的字（指令給的，沒給是這個 Ask 的）。 */
 export interface Question {
 	message: string;
 	items: string[];
 	choose: boolean;
+	confirmLabel: string;
 }
 
 /** 送指令時可以給的事：成功之後再做什麼、怎麼還原畫面（被擋、取消時）、只在按取消時做什麼、
@@ -41,7 +42,7 @@ export class Ask {
 	fieldErrors = $state<Record<string, string>>({});
 	/** 沒成功（被擋、要問）幾次：同一句原因又出現一次時，畫面靠它知道要再捲過去。 */
 	failures = $state(0);
-	/** 要確認時確定鈕的字。 */
+	/** 要確認時確定鈕的字（指令的結果自己帶了就用它的）。 */
 	readonly confirmLabel: string;
 	#onchange: (flow: Flow) => void;
 	#onfail: ((error: string) => void) | undefined;
@@ -119,7 +120,8 @@ export class Ask {
 		} else {
 			// 要問了：舊的紅字收掉，確認框旁邊不留跟這次無關的原因。
 			this.fieldErrors = {};
-			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose' };
+			const confirmLabel = (r.kind === 'confirm' && r.confirmLabel) || this.confirmLabel;
+			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose', confirmLabel };
 			this.#pending = { send, handlers };
 		}
 		if (r.kind !== 'ok') {

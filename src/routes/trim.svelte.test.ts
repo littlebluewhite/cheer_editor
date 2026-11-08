@@ -99,4 +99,19 @@ describe('段變短的確認清單', () => {
 		expect(lib.successRate!.records).toEqual([]);
 		expect(session.flow!.formations).toHaveLength(1);
 	});
+
+	it('只會裁短、沒有要刪的：訊息不寫刪掉、按鈕寫「確定裁短」；按了提示「已改第 1 段的八拍數」旁邊有復原（N19、N21）', async () => {
+		const { session, props } = editorPage(flowOf(updateSegment(libSample(), 's1', { eights: 1, lastBeats: 8 })));
+		render(Page, props);
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+		const settings = within(screen.getByRole('dialog', { name: '音樂 1 設定' }));
+		await fireEvent.change(settings.getByLabelText('最後一個八拍有幾拍'), { target: { value: '6' } });
+		const confirm = screen.getByRole('alertdialog');
+		expect(within(confirm).getByText(/縮短後/).textContent).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾');
+		expect(within(confirm).queryByRole('button', { name: '確定刪除' })).toBeNull();
+		await fireEvent.click(within(confirm).getByRole('button', { name: '確定裁短' }));
+		expect(session.flow!.actions[0].length).toBe(12);
+		expect(session.notice).toBe('已改第 1 段的八拍數');
+		expect(session.noticeButton?.label).toBe('復原');
+	});
 });

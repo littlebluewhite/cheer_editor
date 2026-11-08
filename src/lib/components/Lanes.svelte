@@ -359,7 +359,7 @@
 		session.ask.send(() => setWalks(flow, d.formationId, next), {
 			revert: () => {},
 			done: () => {
-				if (clamped) session.notice = AT_EDGE;
+				if (clamped) session.noteChange(AT_EDGE);
 			}
 		});
 	}

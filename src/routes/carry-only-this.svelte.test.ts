@@ -46,7 +46,7 @@ describe("往後帶：只改這張", () => {
     const moved = page.session.flow!.formations.map((f) => f.pos.m3);
     expect(moved[0]).not.toEqual(old);
     expect(moved.slice(1)).toEqual([moved[0], moved[0], moved[0]]);
-    expect(status().textContent).toMatch(/^往後帶了 3 張/);
+    expect(status().textContent).toMatch(/^已改站位 1；往後帶了 3 張/);
 
     await fireEvent.click(onlyThisButton());
     const after = page.session.flow!;
@@ -70,7 +70,7 @@ describe("往後帶：只改這張", () => {
 
     await drag("m3");
     expect(status().textContent).toBe(
-      "插了一張站位，大家的位置自動帶入；往後帶了 1 張",
+      "已插入站位 2；大家的位置自動帶入；往後帶了 1 張",
     );
     const moved = page.session.flow!.formations[1].pos.m3;
     await fireEvent.click(onlyThisButton());
@@ -100,7 +100,7 @@ describe("往後帶：只改這張", () => {
         { name: "鏡像" },
       ),
     );
-    expect(status().textContent).toMatch(/^往後帶了 3 張/);
+    expect(status().textContent).toMatch(/^已改站位 1；往後帶了 3 張/);
     await fireEvent.click(onlyThisButton());
     expect(page.session.flow!.formations.slice(1).map((f) => f.pos.m3)).toEqual(
       before.formations.slice(1).map((f) => f.pos.m3),

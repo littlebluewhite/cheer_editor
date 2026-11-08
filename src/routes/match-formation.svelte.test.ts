@@ -163,7 +163,7 @@ describe('站位卡片 ⌘C／⌘V', () => {
 		expect(after.formations).toHaveLength(4);
 		expect(after.formations[1].pos).toEqual(before.formations[2].pos);
 		expect(thumbs()).toHaveLength(4);
-		expect(screen.getByRole('status').textContent).toMatch(/^插了一張站位/);
+		expect(screen.getByRole('status').textContent).toMatch(/^已插入站位 \d；貼上複製的站位/);
 
 		await fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
 		expect(page.session.flow).toEqual(before);

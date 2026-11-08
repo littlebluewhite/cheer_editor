@@ -275,7 +275,7 @@ describe('段、八拍尺、上方列', () => {
 		]);
 
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		await fireEvent.click(screen.getByRole('button', { name: /復原/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(dots()).toEqual(['1', '2', '3']);
 	});
 });
@@ -736,13 +736,14 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(1);
 		await seek(8.25);
 		await dragFirstMember();
-		expect(screen.getByRole('status').textContent).toMatch(/插了一張站位/);
+		expect(screen.getByRole('status').textContent).toMatch(/^已插入站位 2；大家的位置自動帶入/);
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 
 		await dragFirstMember();
 		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
+		// 改現有的那張：沒插、沒往後帶也說改了哪張（N21）
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2');
 	});
 
 	it('播放中一開始拖人就先暫停，播放頭停到最近的整拍：新站位插在整拍上，不插在半拍', async () => {
@@ -787,12 +788,12 @@ describe('站位與走位', () => {
 		await dragFirstMember(); // 插站位 2；小B 在站位 1、2 都站在原地
 		await seek(0);
 		await dragFirstMember('m2');
-		expect(screen.getByRole('status').textContent).toBe('往後帶了 1 張');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 1；往後帶了 1 張');
 
 		await seek(4);
 		await dragFirstMember('m2');
 		expect(screen.getByRole('status').textContent).toBe(
-			'插了一張站位，大家的位置自動帶入；往後帶了 1 張'
+			'已插入站位 2；大家的位置自動帶入；往後帶了 1 張'
 		);
 	});
 
@@ -804,7 +805,7 @@ describe('站位與走位', () => {
 		await dragFirstMember('m2'); // 插站位 2，往後帶改了站位 3
 		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
 		expect(screen.getByRole('status').textContent).toBe(
-			'已刪掉站位 2；後面站位的改動還在，要整個還原按復原'
+			'已刪站位 2；後面站位的改動還在，要整個還原按復原'
 		);
 	});
 
@@ -837,15 +838,15 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('button', { name: '站位 1' })).toBeTruthy();
 	});
 
-	it('站位名稱改好了：別的提示照舊留著（場上的問題成功才收掉提示）', async () => {
+	it('站位名稱改好了：提示換成改了哪張，旁邊有復原（能復原的都有提示，N21）', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
-		const notice = screen.getByRole('status').textContent;
-		expect(notice).toMatch(/插了一張站位/);
+		expect(screen.getByRole('status').textContent).toMatch(/^已插入站位 2；大家的位置自動帶入/);
 		await fireEvent.change(screen.getByLabelText('站位名稱'), { target: { value: '開場' } });
 		expect(screen.getByRole('button', { name: '站位 2 開場' })).toBeTruthy();
-		expect(screen.getByRole('status').textContent).toBe(notice);
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2');
+		expect(screen.getByRole('button', { name: '復原：改站位 2' })).toBeTruthy();
 	});
 
 	it('站位名稱：中文輸入法選字時按的 Enter 不離開輸入框（不然字會重複），選完再按 Enter 才離開', async () => {
@@ -984,13 +985,13 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(1);
 	});
 
-	it('刪站位後提示「已刪掉站位 N」和「復原」；按「復原」等於按一次復原', async () => {
+	it('刪站位後提示「已刪站位 N」和「復原」；按「復原」等於按一次復原', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
 		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
-		expect(screen.getByRole('status').textContent).toBe('已刪掉站位 2');
-		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的站位' }));
+		expect(screen.getByRole('status').textContent).toBe('已刪站位 2');
+		await fireEvent.click(screen.getByRole('button', { name: '復原：刪站位 2' }));
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByRole('status').textContent).toBe('已復原：刪站位 2');
 		// 只復原一步：拖人插的站位還在，再按上方列的復原才退掉拖人
@@ -1107,9 +1108,9 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(80);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-5&');
 		expect(screen.getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（2-5&）');
-		expect(screen.getByRole('status').textContent).toBe('站位 2 改到 2-5&');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2；改到 2-5&');
 		// 提示的「復原」：站位回原本的時間，播放頭跟著回去（不然接著拖人會多插一張）
-		await fireEvent.click(screen.getByRole('button', { name: '復原改站位時間' }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原：改站位 2' }));
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 	});
@@ -1154,7 +1155,7 @@ describe('站位與走位', () => {
 		// 站位 1 在 1-1（0 秒）：最早挪到 1-1&（0.2 秒）
 		expect(thumbLeft(2)).toBeCloseTo(3.2);
 		const notice = screen.getByRole('status').textContent!;
-		expect(notice).toMatch(/^站位 2 改到 1-1&；/);
+		expect(notice).toMatch(/^已改站位 2；改到 1-1&；/);
 		expect(notice).toMatch(/；已靠到邊界$/);
 		await dragThumb(1, 50);
 		expect(thumbLeft(1)).toBe(0);
@@ -1229,7 +1230,7 @@ describe('站位與走位', () => {
 		await drag(bar(), 100);
 		expect(right()).toBeCloseTo(131.2);
 		expect(parseFloat(bar().style.width)).toBeCloseTo(width);
-		expect(screen.getByRole('status').textContent).toBe('已靠到邊界');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2；已靠到邊界');
 	});
 
 	it('拖縮圖被系統打斷（pointercancel）就彈回去，之後別處放開也不會挪', async () => {
@@ -1284,7 +1285,7 @@ describe('站位與走位', () => {
 
 		// 小A 本來最後一個八拍才走（3.2 秒），挪到 1-2（0.4 秒）只剩 0.4 秒
 		await fireEvent.change(box()!, { target: { value: '1-2' } });
-		expect(screen.getByRole('status').textContent).toBe('站位 2 改到 1-2；走位被壓短：小A');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2；改到 1-2；走位被壓短：小A');
 	});
 
 	const depart = () => screen.queryByLabelText<HTMLInputElement>('出發');

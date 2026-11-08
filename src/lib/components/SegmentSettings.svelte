@@ -30,6 +30,7 @@
 		tapBpm,
 		updateSegment,
 		type ConfirmOption,
+		type Flow,
 		type SegmentNumberField,
 		type SegmentPatch
 	} from '#lib/core';
@@ -95,6 +96,14 @@
 	});
 	/** 跟這一段用同一個音樂檔、時間重疊的段：那一截會播兩次。 */
 	const overlaps = $derived(music ? audioOverlaps(flow, segmentId) : []);
+
+	/** 切好的那份流程：還是它（沒復原、沒再改）就在切段鈕下面寫切好了。提示泡泡被對話框蓋住，所以寫在這裡（N21）。 */
+	let splitFlow = $state.raw<Flow | null>(null);
+	const splitNote = $derived(splitFlow && session.flow === splitFlow ? `已${session.undoLabel}；要回原狀請按復原` : '');
+
+	function split() {
+		ask.send(() => splitSegment(flow, segmentId, playback.sec), { done: () => (splitFlow = session.flow) });
+	}
 
 	/** 取消時換一個值，讓欄位照流程重畫，回到原本的值。 */
 	let fieldsKey = $state(0);
@@ -326,9 +335,10 @@
 					</p>
 				{/if}
 				<div class="row">
-					<button type="button" onclick={() => ask.send(() => splitSegment(flow, segmentId, playback.sec))}>從播放頭這個八拍切成兩段</button>
+					<button type="button" onclick={split}>從播放頭這個八拍切成兩段</button>
 					<span class="hint">切點在播放頭那個八拍的第 1 拍；後面的動作和站位搬到新的一段，BPM、第一拍接著算</span>
 				</div>
+				{#if splitNote}<p class="hint" role="status">{splitNote}</p>{/if}
 				{#each overlaps as o (o.label)}
 					<p class="hint-warn" role="note">
 						跟{o.label} 用同一個音樂檔，有 {o.sec.toFixed(1)} 秒重疊：那一截音樂會播兩次。

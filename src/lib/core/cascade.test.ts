@@ -110,9 +110,24 @@ describe('段縮短', () => {
 				'刪掉：動作「跳躍·T」（3-1 起）',
 				'刪掉：站位 2（2-1）',
 				'刪掉：站位 3（4-1）'
-			]
+			],
+			confirmLabel: '確定刪除'
 		});
 		expect(flow).toEqual(before);
+	});
+
+	it('只會裁短、沒有要刪的：訊息不寫「刪掉」，確定鈕寫「確定裁短」（N19）', () => {
+		// libSample：Lib 1-1 到 1-8；只剩 6 拍就裁短 Lib，沒有東西在段外
+		const r = updateSegment(libSample(), 's1', { eights: 1, lastBeats: 6 });
+		expect(r).toMatchObject({ kind: 'confirm', message: '音樂 1 縮短後，超出段尾的動作裁短到段尾', confirmLabel: '確定裁短' });
+	});
+
+	it('只會刪掉：訊息只寫刪掉；裁短又刪掉：兩樣都寫；確定鈕都寫「確定刪除」（N19）', () => {
+		expect(updateSegment(sample(), 's1', { eights: 3, lastBeats: 8 })).toMatchObject({
+			message: '音樂 1 縮短後，放不進段裡的刪掉',
+			confirmLabel: '確定刪除'
+		});
+		expect(updateSegment(sample(), 's1', { eights: 1, lastBeats: 6 })).toMatchObject({ confirmLabel: '確定刪除' });
 	});
 
 	it('帶「已確認」再送一次：跨出段尾的動作只留到段尾，在段外的動作和站位刪掉，其他不動', () => {
