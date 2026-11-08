@@ -42,10 +42,10 @@ export interface NewFlowInput {
 
 const NO_NAME = '請幫流程取名字';
 
-/** 流程名字哪裡不行（頭尾空白先去掉）；沒問題是 null。 */
-export function flowNameProblem(name: string): string | null {
+/** 流程名字哪裡不行（頭尾空白先去掉；before：改之前的名字，開檔進來就超過上限的可以留著，不能更長）；沒問題是 null。 */
+export function flowNameProblem(name: string, before?: string): string | null {
 	const trimmed = name.trim();
-	return trimmed ? tooLong('flowName', trimmed) : NO_NAME;
+	return trimmed ? tooLong('flowName', trimmed, before) : NO_NAME;
 }
 
 /** 條數的毛病：不是 1–12 的整數；沒問題是 null。 */
@@ -83,7 +83,7 @@ export function memberName(flow: Flow, id: string): string {
 /** 流程設定：改流程名字。存檔的檔名跟著變。 */
 export function renameFlow(flow: Flow, name: string): CommandResult {
 	const trimmed = name.trim();
-	const problem = flowNameProblem(trimmed);
+	const problem = flowNameProblem(trimmed, flow.name);
 	if (problem) return blocked(problem);
 	return ok({ ...flow, name: trimmed });
 }

@@ -190,7 +190,7 @@ export function renameFormation(flow: Flow, formationId: string, name: string): 
 	if (!formation) return blocked('找不到這張站位');
 	const { name: _, ...rest } = formation;
 	const trimmed = name.trim();
-	const problem = trimmed !== formation.name ? tooLong('formationName', trimmed) : null;
+	const problem = tooLong('formationName', trimmed, formation.name);
 	if (problem) return blocked(problem);
 	const updated: Formation = { ...rest, ...(trimmed ? { name: trimmed } : {}) };
 	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });
