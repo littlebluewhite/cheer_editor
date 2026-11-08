@@ -83,7 +83,7 @@ describe('刪動作', () => {
 	it('段縮短連帶刪動作：確認訊息加上會清掉幾次', () => {
 		const r = updateSegment(recorded(), 's1', { eights: 2 });
 		expect(r.kind).toBe('confirm');
-		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，放不進段裡的刪掉，會一起清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
 	});
 
 	it('段縮短裁短動作：環節照動作變短的規則切短或刪掉；有紀錄的環節會不見時，確認訊息寫會清掉幾次', () => {
@@ -91,7 +91,8 @@ describe('刪動作', () => {
 		expect(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 })).toEqual({
 			kind: 'confirm',
 			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
-			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）']
+			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）'],
+			confirmLabel: '確定刪除'
 		});
 		const flow = flowOf(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 }, { confirmed: true }));
 		expect(action(flow, 'x1').successRate!.phases.map((p) => [p.id, p.beats])).toEqual([['p1', { at: 0, len: 2 }]]);

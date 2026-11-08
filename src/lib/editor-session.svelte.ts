@@ -4,7 +4,6 @@
 
 import { createContext } from 'svelte';
 import {
-	actionLabel,
 	changeLabel,
 	currentFormation,
 	deleteAction,
@@ -169,9 +168,31 @@ export class EditorSession {
 		this.#notice.show({ text, button }, UNDO_FLASH_MS);
 	}
 
-	/** 剛刪掉東西：提示旁邊放「復原」（undoLabel 是它的名字），按了等於按一次復原。 */
-	#undoNotice(text: string, undoLabel: string) {
-		this.toast(text, { label: '復原', name: undoLabel });
+	/**
+	 * 剛改的那一步要說的：change 換上 flow 時記下 label，提示「已＋label」，旁邊有「復原」（F 群）。
+	 * 各處用 noteChange 補一句（例：往後帶了幾張）或換掉按鈕；流程又換了就不再補到它身上。
+	 */
+	#said: { flow: Flow; label: string; extra: string[]; button: NoticeButton } | null = null;
+
+	/** 剛改的那一步的提示：「已＋label」加上補的話，旁邊是它的按鈕（預設「復原」）。 */
+	#showSaid() {
+		const { label, extra, button } = this.#said!;
+		this.toast([`已${label}`, ...extra].join('；'), button);
+	}
+
+	/**
+	 * 剛改完那一步（還沒有別的改動）要多說一句：接在「已＋label」後面，button 換掉「復原」。
+	 * 沒有剛改的那一步（例：拖 0 距離只碰到邊界）就只提示 text。
+	 */
+	noteChange(text: string, button?: NoticeButton) {
+		const said = this.#said;
+		if (!said || said.flow !== this.#flow) {
+			if (text) this.notice = text;
+			return;
+		}
+		if (text) said.extra.push(text);
+		if (button) said.button = button;
+		this.#showSaid();
 	}
 
 	/** 滑鼠在提示上：先不收（停住倒數）；移開了把剩下的時間走完。 */
@@ -181,12 +202,11 @@ export class EditorSession {
 
 	/**
 	 * 場上那一個問題：拖色條、走位條、挪站位、Delete 刪動作都送到這裡。要問就畫在場上，
-	 * 被擋的原因（拖的加「，已還原」）放進提示。成功就算一步、提示收掉。
+	 * 被擋的原因（拖的加「，已還原」）放進提示。成功就算一步（提示換成「已…」，改成一樣的就收掉）。
 	 */
 	readonly ask = new Ask(
 		(f) => {
-			this.change(f, this.#joining ?? undefined);
-			this.notice = '';
+			if (!this.change(f, this.#joining ?? undefined)) this.notice = '';
 		},
 		{ confirmLabel: '確定', onfail: (error) => (this.notice = error), locked: () => this.#locked() }
 	);
@@ -269,6 +289,7 @@ export class EditorSession {
 	 * 改之前和改之後內容一樣（例：拖 0 距離、在段尾插入八拍）不算：不換流程、不清重做。
 	 * 給了 join：上一步也是同一個 join、中間沒有別的改動，就跟上一步合成一步。
 	 * label：復原、重做提示寫的（例：「插入八拍」）；沒給就比對改了什麼（changeLabel）。
+	 * 換上了就提示「已＋label」，旁邊有「復原」：能復原的都有提示，各處只用 noteChange 補話（F 群）。
 	 * 回傳有沒有換上新的流程。
 	 */
 	change(flow: Flow, join?: string, label?: string): boolean {
@@ -284,6 +305,8 @@ export class EditorSession {
 		this.#flow = flow;
 		this.ask.clear();
 		this.#trim(flow);
+		this.#said = { flow, label: step.label, extra: [], button: { label: '復原', name: `復原：${step.label}` } };
+		this.#showSaid();
 		this.#playback.changed(before);
 		this.onflow();
 		this.#updated('change');
@@ -435,19 +458,20 @@ export class EditorSession {
 	// ---------- 改完跳播放頭 ----------
 
 	/**
-	 * 拖人、選人工具列、貼上站位改好了（送到 ask 的 done）：說插了站位或往後帶了幾張，播放頭停到改的那張。
-	 * 有往後帶：提示旁邊放「只改這張」（見 #onlyThis）。atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。
+	 * 拖人、選人工具列、貼上站位改好了（送到 ask 的 done）：「已插入站位 N」「已改站位 N」後面補插了站位的位置從哪來、
+	 * 往後帶了幾張，播放頭停到改的那張。有往後帶：提示旁邊放「只改這張」（見 #onlyThis）。
+	 * atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。pasted = ⌘V 貼上的（插的站位是貼上的位置，不是自動帶入，N46）。
 	 */
-	moved(r: MoveResult, atEdge = false) {
+	moved(r: MoveResult, atEdge = false, pasted = false) {
 		const said = [
-			r.inserted && '插了一張站位，大家的位置自動帶入',
+			pasted ? '貼上複製的站位' : r.inserted && '大家的位置自動帶入',
 			r.carried > 0 && `往後帶了 ${r.carried} 張`,
 			atEdge && AT_EDGE
 		];
 		const text = said.filter(Boolean).join('；');
 		const after = this.#flow;
-		if (r.carried > 0 && after) this.toast(text, { label: '只改這張', run: () => this.#onlyThis(after, r.sec) });
-		else this.notice = text;
+		const onlyThis = r.carried > 0 && after ? { label: '只改這張', run: () => this.#onlyThis(after, r.sec) } : undefined;
+		this.noteChange(text, onlyThis);
 		this.#carriedInsertId =
 			r.inserted && r.carried > 0 && this.#flow ? currentFormation(this.#flow, r.sec).formation.id : null;
 		// 選著的縮圖不是剛改的那張：選取清掉，不然 Delete 會刪到眼睛沒在看的那張
@@ -472,11 +496,11 @@ export class EditorSession {
 		this.#joinable = { key: ONLY_THIS, flow: after };
 		this.change({ ...after, formations }, ONLY_THIS);
 		this.#carriedInsertId = null;
-		this.notice = '只改了這張，後面的站位改回去了';
+		this.noteChange('只改了這張，後面的站位改回去了');
 	}
 
 	/**
-	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：提示改到哪（旁邊有「復原」）和走位被壓短的人，
+	 * 挪好站位了（拖縮圖、打站位時間，送到 ask 的 done）：「已改站位 N」後面補改到哪和走位被壓短的人，
 	 * 選著這張，播放頭跳到新的站位時間。atEdge = 拖過頭停在邊界，提示多一句「已靠到邊界」。
 	 */
 	formationMoved(formationId: string, r: { sec: number; squeezed: string[] }, atEdge = false) {
@@ -486,34 +510,29 @@ export class EditorSession {
 		const f = flow.formations[index];
 		const names = r.squeezed.map((id) => flow.members.find((m) => m.id === id)?.name);
 		const said = [
-			`站位 ${index + 1} 改到 ${timeTextWithUnit(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })}`,
+			`改到 ${timeTextWithUnit(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })}`,
 			names.length && `走位被壓短：${names.join('、')}`,
 			atEdge && AT_EDGE
 		];
-		this.#undoNotice(said.filter(Boolean).join('；'), '復原改站位時間');
+		this.noteChange(said.filter(Boolean).join('；'));
 		this.selectFormation(formationId);
 		this.#playback.jump(r.sec, true);
 	}
 
-	/** 刪一張站位（縮圖的 ✕、Delete）：不問，提示「已刪掉站位 N」，旁邊有「復原」。 */
+	/** 刪一張站位（縮圖的 ✕、Delete）：不問，提示「已刪站位 N」，旁邊有「復原」。 */
 	removeFormation(formationId: string) {
 		const flow = this.#flow;
 		if (!flow) return;
-		const number = flow.formations.findIndex((f) => f.id === formationId) + 1;
 		this.ask.send(() => deleteFormation(flow, formationId), {
-			done: () =>
-				this.#undoNotice(
-					formationId === this.#carriedInsertId
-						? `已刪掉站位 ${number}；後面站位的改動還在，要整個還原按復原`
-						: `已刪掉站位 ${number}`,
-					'復原刪掉的站位'
-				)
+			done: () => {
+				if (formationId === this.#carriedInsertId) this.noteChange('後面站位的改動還在，要整個還原按復原');
+			}
 		});
 	}
 
 	/**
 	 * 刪一個動作（Delete、表單的「刪除動作」）：有紀錄時 ask 先問（預設在場上問），確定才刪；
-	 * 刪了提示「已刪掉動作 …」，旁邊有「復原」。
+	 * 刪了提示「已刪動作 …」，旁邊有「復原」；清掉了紀錄就寫幾次、按復原會回來（N25）。
 	 */
 	removeAction(actionId: string, ask: Ask = this.ask) {
 		const flow = this.#flow;
@@ -522,8 +541,11 @@ export class EditorSession {
 		// 按確定時用那時候的流程再送一次。
 		ask.send((o: ConfirmOption = {}) => deleteAction(this.#flow ?? flow, actionId, o), {
 			done: () => {
+				// 刪之前（這一步的改之前）那個動作的紀錄
+				const was = this.#undo.at(-1)?.flow.actions.find((a) => a.id === actionId);
+				const records = was?.successRate?.records.length ?? 0;
 				this.selectAction(null);
-				this.#undoNotice(`已刪掉動作 ${actionLabel(action)}`, '復原刪掉的動作');
+				if (records) this.noteChange(`${records} 次紀錄一起清掉，按復原會回來`);
 			}
 		});
 	}
@@ -564,7 +586,7 @@ export class EditorSession {
 			return true;
 		}
 		this.ask.send(() => moveGroup(flow, sec, ids, () => Object.fromEntries(ids.map((id) => [id, copied[id]]))), {
-			done: (r) => this.moved(r)
+			done: (r) => this.moved(r, false, true)
 		});
 		return true;
 	}

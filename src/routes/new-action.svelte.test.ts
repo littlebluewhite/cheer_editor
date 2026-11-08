@@ -180,7 +180,7 @@ describe('新動作表單：打到一半的內容', () => {
 		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(field('名稱').value).toBe('金字塔');
-		await fireEvent.click(screen.getByRole('button', { name: /^復原/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(screen.queryByRole('button', { name: '開新的動作表單' })).toBeNull();
 		expect(field('名稱').value).toBe('金字塔');
 		expect(field('開始').value).toBe('3-1');

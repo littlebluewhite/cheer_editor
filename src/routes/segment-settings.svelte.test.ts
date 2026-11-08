@@ -1,5 +1,6 @@
 // 段設定（#153）：波形畫整個音樂檔、八拍數和長度好算、同一個檔沿用 BPM、延遲校正好輸入。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { addSegment, createFlow, loadSegmentAudio, recordAttempt, updateSegment, type Flow } from '#lib/core';
 import type { DecodedAudio } from '#lib/audio/decode.js';
@@ -120,6 +121,17 @@ describe('從播放頭切段（#167）', () => {
 		expect(field(dialog, '八拍數').value).toBe('4');
 		expect(screen.getByRole('button', { name: /^音樂 2/ })).toBeTruthy();
 	});
+
+	it('切好了：對話框裡寫「已把第 1 段切成兩段」（提示泡泡被對話框蓋住）；復原了就不寫（N21）', async () => {
+		const { editor, session } = await open(oneMusic(), 30);
+		editor.playback.seek(13.6);
+		const dialog = await settings('音樂 1');
+		await fireEvent.click(dialog.getByRole('button', { name: '從播放頭這個八拍切成兩段' }));
+		expect(dialog.getByRole('status').textContent).toBe('已把第 1 段切成兩段；要回原狀請按復原');
+		session.undo();
+		await tick();
+		expect(dialog.queryByRole('status')).toBeNull();
+	});
 });
 
 describe('延遲校正', () => {
@@ -205,7 +217,7 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 			'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍，會刪掉 1 個環節（清掉 1 次的記號）'
 		]);
 		expect(session.flow).toBe(before);
-		await fireEvent.click(confirm.getByRole('button', { name: '確定刪除' }));
+		await fireEvent.click(confirm.getByRole('button', { name: '確定裁短' }));
 		expect(session.flow!.actions[0].length).toBe(12);
 		expect(session.flow!.actions[0].successRate!.records).toEqual([]);
 		expect(field(dialog, '八拍數').value).toBe('1');

@@ -53,14 +53,22 @@ describe('送指令', () => {
 	it('要確認：留下問題（訊息、清單、不用選）', () => {
 		const ask = new Ask(vi.fn());
 		ask.send(command(confirm('會刪掉拍點', ['3-5'])).send);
-		expect(ask.question).toEqual({ message: '會刪掉拍點', items: ['3-5'], choose: false });
+		expect(ask.question).toEqual({ message: '會刪掉拍點', items: ['3-5'], choose: false, confirmLabel: '確定' });
 		expect(ask.error).toBe('');
+	});
+
+	it('要確認的結果自己帶了確定鈕的字：照它的，不照問的地方給的（N19）', () => {
+		const ask = new Ask(vi.fn(), { confirmLabel: '確定刪除' });
+		ask.send(() => ({ kind: 'confirm', message: '會裁短', items: [], confirmLabel: '確定裁短' }));
+		expect(ask.question?.confirmLabel).toBe('確定裁短');
+		ask.send(command(confirm('會刪掉')).send);
+		expect(ask.question?.confirmLabel).toBe('確定刪除');
 	});
 
 	it('要選：留下問題（要選）', () => {
 		const ask = new Ask(vi.fn());
 		ask.send(command(choose('換了人', ['第 1 組'])).send);
-		expect(ask.question).toEqual({ message: '換了人', items: ['第 1 組'], choose: true });
+		expect(ask.question).toEqual({ message: '換了人', items: ['第 1 組'], choose: true, confirmLabel: '確定' });
 	});
 
 	it('再送一個指令：上一個的原因和問題收掉', () => {
@@ -157,7 +165,7 @@ describe('回答', () => {
 		const c = command(confirm('會刪掉拍點'), choose('換了人', ['第 2 組']), ok(flowB));
 		ask.send(c.send);
 		ask.answer('confirm');
-		expect(ask.question).toEqual({ message: '換了人', items: ['第 2 組'], choose: true });
+		expect(ask.question).toEqual({ message: '換了人', items: ['第 2 組'], choose: true, confirmLabel: '確定' });
 		ask.answer('keep');
 		expect(c.options[2]).toEqual({ records: 'keep' });
 		expect(onchange).toHaveBeenCalledWith(flowB);

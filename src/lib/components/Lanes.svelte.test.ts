@@ -503,7 +503,7 @@ describe('走位條', () => {
 		await dragBy(end(1, 'arrive'), -4);
 		await dragBy(end(1, 'arrive'), 40);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(8), arrive: at(24) }, m2: { depart: at(8), arrive: at(24) } });
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 2；已靠到邊界');
 		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
 		session.notice = '';
 		session.undo();
@@ -519,7 +519,7 @@ describe('走位條', () => {
 		// 往左 20 px = 2 秒：出發 -0.4 秒，在流程開頭之前
 		await dragBy(end(0, 'depart'), -20);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(0), arrive: at(24) } });
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 2；已靠到邊界');
 		session.undo();
 		await dragBy(walkBar(0), -20);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(0), arrive: at(16) } });
@@ -541,7 +541,7 @@ describe('走位條', () => {
 		const { session } = setupWalks();
 		await dragBy(end(0, 'depart'), 40);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(23), arrive: at(24) } });
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 2；已靠到邊界');
 	});
 
 	it('只是點一下，不改流程', async () => {

@@ -10,8 +10,9 @@ export type CommandResult<Extra extends object = object> =
 	/**
 	 * 要確認：這樣改會連帶刪掉別的東西（段縮短、刪人）。流程沒變；
 	 * 給教練看 message 和 items（會被刪掉的清單），按確定就帶 { confirmed: true } 再送一次同一個指令。
+	 * confirmLabel：確定鈕的字跟著這個問題（例：只裁短是「確定裁短」）；沒給就照問的地方的（N19）。
 	 */
-	| { kind: 'confirm'; message: string; items: string[] }
+	| { kind: 'confirm'; message: string; items: string[]; confirmLabel?: string }
 	/**
 	 * 要選保留還是清掉：有紀錄的組換了人、有紀錄的隊員改名。流程沒變；
 	 * 給教練看 message 和 items（會被動到的紀錄），兩個選擇是「保留舊紀錄」「清掉重算」，
@@ -46,10 +47,11 @@ export const ok = <Extra extends object = object>(
 	extra?: Extra
 ): CommandResult<Extra> => ({ kind: 'ok', flow, ...(extra as Extra) });
 export const blocked = (message: string): CommandResult<never> => ({ kind: 'blocked', message });
-export const needsConfirm = (message: string, items: string[]): CommandResult => ({
+export const needsConfirm = (message: string, items: string[], confirmLabel?: string): CommandResult => ({
 	kind: 'confirm',
 	message,
-	items
+	items,
+	...(confirmLabel && { confirmLabel })
 });
 export const needsChoice = (message: string, items: string[]): CommandResult => ({
 	kind: 'choose',
