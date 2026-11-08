@@ -62,6 +62,10 @@ export interface SessionPlayback {
 	jump(sec: number, replay: boolean): void;
 }
 
+/** session 為什麼叫 updated：換了流程（open）、改（change）、記（record）、復原（undo）、重做（redo）、換了選取（select）。
+ *  動作表單的草稿靠它分「復原掉剛新增的動作」和「剛新增的動作被刪掉」，不用猜（N20）。 */
+export type UpdateReason = 'open' | 'change' | 'record' | 'undo' | 'redo' | 'select';
+
 const NO_PLAYBACK: SessionPlayback = { opened() {}, changed() {}, jump() {} };
 
 /** 提示旁邊的一個按鈕：label 是按鈕上的字，name 是唸給螢幕閱讀器的名字（沒給就是 label）；
@@ -74,7 +78,7 @@ export interface NoticeButton {
 
 export class EditorSession {
 	readonly #playback: SessionPlayback;
-	readonly #updated: () => void;
+	readonly #updated: (reason: UpdateReason) => void;
 	#flow = $state.raw<Flow | null>(null);
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
@@ -191,9 +195,13 @@ export class EditorSession {
 
 	/**
 	 * 給的流程算存過的（跟從檔案開的一樣）。playback：改完要叫的播放。
-	 * updated：換了流程或選取之後要叫的（編輯器 module 接上：動作表單的草稿跟上）。
+	 * updated：換了流程或選取之後要叫的，帶著為什麼（編輯器 module 接上：動作表單的草稿跟上）。
 	 */
-	constructor(flow: Flow | null = null, playback: SessionPlayback = NO_PLAYBACK, updated: () => void = () => {}) {
+	constructor(
+		flow: Flow | null = null,
+		playback: SessionPlayback = NO_PLAYBACK,
+		updated: (reason: UpdateReason) => void = () => {}
+	) {
 		this.#playback = playback;
 		this.#updated = updated;
 		this.open(flow, true);
@@ -242,7 +250,7 @@ export class EditorSession {
 		this.#clearAsks();
 		this.#playback.opened();
 		this.onflow();
-		this.#updated();
+		this.#updated('open');
 	}
 
 	/** 存好了：存的是 flow 這一份。 */
@@ -272,7 +280,7 @@ export class EditorSession {
 		this.#trim(flow);
 		this.#playback.changed(before);
 		this.onflow();
-		this.#updated();
+		this.#updated('change');
 		return true;
 	}
 
@@ -284,7 +292,7 @@ export class EditorSession {
 		if (!this.#flow) return;
 		this.#flow = flow;
 		this.onflow();
-		this.#updated();
+		this.#updated('record');
 	}
 
 	/**
@@ -336,7 +344,7 @@ export class EditorSession {
 		this.#redo = [...this.#redo, { flow: this.#flow, label: prev.label }];
 		this.#undo = this.#undo.slice(0, -1);
 		this.#flow = carryRecords(prev.flow, this.#flow);
-		this.#restored(this.#flow, before);
+		this.#restored(this.#flow, before, 'undo');
 		this.notice = `已復原：${prev.label}`;
 		return true;
 	}
@@ -350,7 +358,7 @@ export class EditorSession {
 		this.#undo = [...this.#undo, { flow: this.#flow, label: next.label }];
 		this.#redo = this.#redo.slice(0, -1);
 		this.#flow = carryRecords(next.flow, this.#flow);
-		this.#restored(this.#flow, before);
+		this.#restored(this.#flow, before, 'redo');
 		this.notice = `已重做：${next.label}`;
 		return true;
 	}
@@ -376,7 +384,7 @@ export class EditorSession {
 	}
 
 	/** 復原、重做換上的流程：提示、場上和元件的問題收掉，選取修剪，播放頭夾回流程。 */
-	#restored(flow: Flow, before: Flow) {
+	#restored(flow: Flow, before: Flow, reason: 'undo' | 'redo') {
 		this.#joinable = null;
 		this.#carriedInsertId = null;
 		this.#trim(flow);
@@ -388,7 +396,7 @@ export class EditorSession {
 		const now = sec(flow);
 		if (now !== undefined && now !== sec(before)) this.#playback.jump(now, false);
 		this.onflow();
-		this.#updated();
+		this.#updated(reason);
 	}
 
 	/** 換上流程（改的、復原、重做）。被刪掉（含連帶刪掉）的人、動作、站位從選取拿掉，免得之後重用的 id 被選到。 */
@@ -566,7 +574,7 @@ export class EditorSession {
 		this.#formationId = id;
 		if (id) this.#actionId = null;
 		this.#pick('formation', !!id);
-		this.#updated();
+		this.#updated('select');
 	}
 
 	/** 選動作：站位的選取清掉。換了動作，選的拍從頭來。 */
@@ -576,13 +584,13 @@ export class EditorSession {
 		if (id) this.#formationId = null;
 		this.#pick('action', !!id);
 		if (changed) this.beats.reset();
-		this.#updated();
+		this.#updated('select');
 	}
 
 	selectMembers(ids: string[]) {
 		this.#memberIds = ids;
 		this.#pick('member', ids.length > 0);
-		this.#updated();
+		this.#updated('select');
 	}
 
 	/** 選了（on）就記成最後點的這一種；清掉的剛好是最後點的那一種，就變成沒有。 */
@@ -604,7 +612,7 @@ export class EditorSession {
 		this.#actionId = null;
 		this.#memberIds = [];
 		this.#picked = null;
-		this.#updated();
+		this.#updated('select');
 	}
 
 	// ---------- 分組 ----------

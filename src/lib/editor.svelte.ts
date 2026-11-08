@@ -13,7 +13,7 @@ import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile } from '#lib/file/save.js';
-import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
+import { EditorSession, setEditorSession, type UpdateReason } from '#lib/editor-session.svelte.js';
 import { FlowFile } from '#lib/flow-file.svelte.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
@@ -73,12 +73,12 @@ export class Editor {
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
 		this.adapters = adapters;
 		// 建 session 時（開給的流程）草稿還沒建：它建好時自己跟上一次。
-		const follow = () => this.actionDraft?.follow();
+		const follow = (reason?: UpdateReason) => this.actionDraft?.follow(reason);
 		this.playback = new Playback(
 			() => this.session.flow,
 			() => adapters.createEngine((id) => this.music.buffer(id)),
 			adapters.nextFrame,
-			follow,
+			() => follow(),
 			() => this.session.selectedAction
 		);
 		this.session = new EditorSession(flow, this.playback, follow);
