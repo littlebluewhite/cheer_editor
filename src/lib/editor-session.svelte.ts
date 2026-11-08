@@ -27,6 +27,7 @@ import {
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
+import { KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
@@ -515,7 +516,7 @@ export class EditorSession {
 		const index = this.#flow?.formations.findIndex((f) => f.id === this.#formationId) ?? -1;
 		if (this.#picked !== 'formation' || index < 0) return false;
 		this.#copied = this.#flow!.formations[index].pos;
-		this.notice = `記下站位 ${index + 1} 的位置；移到別的地方按 ⌘V 貼上`;
+		this.notice = `記下站位 ${index + 1} 的位置；移到別的地方按 ${KEYS.paste.mac} 貼上`;
 		return true;
 	}
 

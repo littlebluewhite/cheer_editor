@@ -30,6 +30,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { KEYS, others } from '#lib/shortcuts.js';
 	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
 	import FormationRow, { THUMB_W } from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
@@ -363,7 +364,7 @@
 		<div class="row ruler-row">
 			<div class="lab zoom">
 				<span>八拍</span>
-				<span class="zoom-btns" title="Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合，也可以放大縮小">
+				<span class="zoom-btns" title={`${others(KEYS.zoom)}／${KEYS.zoom.mac}＋滾輪、觸控板或 iPad 兩指捏合，也可以放大縮小`}>
 					<button
 						type="button"
 						class="ghost"
