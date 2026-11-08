@@ -43,9 +43,9 @@ describe('檢視模式：畫面能不能改只看 session.editable（D）', () =
 			// 檢視模式的標示：上方列變紫
 			"routes/+page.svelte: <header class=\"topbar\" class:viewing={session.viewing && view === 'edit' && !narrow} bind:this={topbar}>",
 			// 「編輯｜檢視」切換：顯示並切換這個狀態
-			'routes/+page.svelte: <button type="button" aria-pressed={!session.viewing} onclick={() => (session.viewing = false)}',
+			'routes/+page.svelte: <button type="button" aria-pressed={!session.viewing} title="編輯" onclick={() => (session.viewing = false)}',
 			'routes/+page.svelte: aria-pressed={session.viewing}',
-			'routes/+page.svelte: onclick={() => (session.viewing = true)}><Icon name="eye" />檢視</button',
+			'routes/+page.svelte: onclick={() => (session.viewing = true)}><Icon name="eye" /><span class="tight-hide">檢視</span></button',
 			// 檢視模式的標示：場地框黃色、角落寫「檢視模式・只能看」
 			"routes/+page.svelte: <main class=\"field-host\" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>",
 			'routes/+page.svelte: {#if session.viewing}'

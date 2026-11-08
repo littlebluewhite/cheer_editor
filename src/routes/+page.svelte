@@ -28,7 +28,15 @@
 	import { SPEEDS } from '#lib/playback.svelte.js';
 	import { dodgeKeepVisible } from '#lib/toast-dodge.js';
 	import { below, popover } from '#lib/popover.svelte.js';
-	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
+	import {
+		autoInspectorWidth,
+		clampInspectorWidth,
+		INSPECTOR_MIN_PX,
+		isTouchScreen,
+		NARROW_SCREEN,
+		SHORT_SCREEN_MAX_H,
+		viewOnlyReason
+	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
@@ -267,8 +275,11 @@
 	let windowH = $state(0);
 	/** 手機的檢視畫面為什麼不能編（寫在「檢視模式・只能看」後面）。 */
 	const whyViewOnly = $derived(viewOnlyReason(windowW, windowH, touchScreen));
-	/** 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1670px 一樣）。 */
-	const transportBelow = $derived(windowW <= 1670);
+	/**
+	 * 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1670px、min-height: 861px 一樣）。
+	 * 螢幕矮（高 860px 以下）時不換行：播放區併進上方列那一行，幾個按鈕只留圖示，省下的高度給場地（N55）。
+	 */
+	const transportBelow = $derived(windowW <= 1670 && windowH > SHORT_SCREEN_MAX_H);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
 		name: 'inspectorWidthRatio',
@@ -584,21 +595,21 @@
 				{:else}
 					<div class="board">{@render board()}</div>
 				{/if}
-				<label class="toggle metronome" title="播放時每拍響一聲">
+				<label class="toggle metronome" title="節拍器：播放時每拍響一聲">
 					<input
 						type="checkbox"
 						checked={playback.metronome}
 						onchange={(e) => playback.setMetronome(e.currentTarget.checked)}
 					/>
-					<Icon name="metronome" />節拍器
+					<Icon name="metronome" /><span class="short-hide">節拍器</span>
 				</label>
-				<label class="toggle repeat" title="有選動作就重複那個動作；沒選就重複目前的八拍（口號段是目前的 5 秒）">
+				<label class="toggle repeat" title="重複：有選動作就重複那個動作；沒選就重複目前的八拍（口號段是目前的 5 秒）">
 					<input
 						type="checkbox"
 						checked={playback.repeat}
 						onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
 					/>
-					<Icon name="repeat" />重複
+					<Icon name="repeat" /><span class="short-hide">重複</span>
 				</label>
 				<select
 					class="speed"
@@ -679,14 +690,14 @@
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
 					<div class="mode" role="group" aria-label="編輯｜檢視">
-						<button type="button" aria-pressed={!session.viewing} onclick={() => (session.viewing = false)}
-							><Icon name="pencil" />編輯</button
+						<button type="button" aria-pressed={!session.viewing} title="編輯" onclick={() => (session.viewing = false)}
+							><Icon name="pencil" /><span class="tight-hide">編輯</span></button
 						>
 						<button
 							type="button"
 							aria-pressed={session.viewing}
 							title="檢視模式：只能看、只能播放，不會不小心改到"
-							onclick={() => (session.viewing = true)}><Icon name="eye" />檢視</button
+							onclick={() => (session.viewing = true)}><Icon name="eye" /><span class="tight-hide">檢視</span></button
 						>
 					</div>
 					<!-- 檢視時復原、重做不拿掉，只變灰：換模式時旁邊的按鈕不會跑 -->
@@ -709,20 +720,20 @@
 				{/if}
 				<!-- 八拍表的字一直留著：使用說明都叫它「八拍表」，只有印表機圖示認不出來 -->
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
-					><Icon name="print" />八拍表</button
+					><Icon name="print" /><span class="tightest-hide">八拍表</span></button
 				>
 				{#if view === 'edit' && !narrow}
 					<button type="button" class="ghost" title="流程設定" disabled={!session.editable} onclick={() => (settingsOpen = true)}
-						><Icon name="settings" /><span class="narrow-hide">流程</span>設定</button
+						><Icon name="settings" /><span class="short-hide"><span class="narrow-hide">流程</span>設定</span></button
 					>
 				{/if}
 				<span class="sep" aria-hidden="true"></span>
-				<label class="open btn ghost"><Icon name="open" />開啟<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+				<label class="open btn ghost" title="開啟"><Icon name="open" /><span class="short-hide">開啟</span><input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 				{#if narrow}
 					<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
 					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
 				{:else}
-					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
+					<button type="button" class="ghost" title="新建" onclick={() => editor.file.startNew()}><Icon name="new" /><span class="short-hide">新建</span></button>
 				{/if}
 				<!-- 窄螢幕不能編，存檔不用搶眼的藍色（練習的紀錄照樣要存） -->
 				<button type="button" class={['save', narrow ? 'ghost' : 'primary']} title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
@@ -2144,7 +2155,7 @@
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
 	   換行時播放區在 HTML 裡也放到按鈕後面（transportBelow），Tab 才照畫面順序。
 	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1670px 就換。 */
-	@media (max-width: 1670px) {
+	@media (max-width: 1670px) and (min-height: 861px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
@@ -2152,6 +2163,75 @@
 			grid-row: 2;
 			grid-column: 1 / -1;
 			justify-content: center;
+		}
+	}
+	/* 螢幕矮（高 860px 以下，SHORT_SCREEN_MAX_H）：不換行，播放區併進上方列那一行，省下約 50px 給場地（N55）。
+	   擠得下才行：節拍器、重複、開啟、新建、流程設定只留圖示（滑鼠移上去有名字，讀屏照樣讀得到），間距收小。 */
+	@media (max-width: 1670px) and (max-height: 860px) {
+		.topbar {
+			gap: 10px;
+			padding-block: 6px;
+		}
+		.short-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		.transport {
+			gap: 6px;
+		}
+		.toggle {
+			padding-inline: 8px;
+		}
+	}
+	/* 又矮又窄（橫拿的 iPad 1180×820）：「編輯｜檢視」也只留圖示（檢視時上方列變紫、場地角落寫「檢視模式」，看得出在哪個模式），
+	   分隔線不留空、時間那一格窄一點、只有圖示的按鈕左右收小（還是至少 32px，手指點得到）。 */
+	@media (max-width: 1180px) and (max-height: 860px) {
+		.tight-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		.sep {
+			margin: 0;
+		}
+		.board {
+			min-width: 132px;
+			padding-inline: 8px;
+		}
+		.actions :global(button.ghost),
+		.actions .btn.ghost,
+		.guide-link {
+			padding-inline: 7px;
+		}
+	}
+	/* 1024×768：八拍表最後才只留圖示（使用說明都叫它「八拍表」）；「編排｜練習」、速度、「⋯」左右收小。 */
+	@media (max-width: 1100px) and (max-height: 860px) {
+		.tightest-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		.view button {
+			padding-inline: 8px;
+		}
+		.speed {
+			padding-inline: 3px;
+		}
+		.more {
+			padding-inline: 7px;
+		}
+		.title {
+			gap: 6px;
 		}
 	}
 	@media (max-width: 1280px) {

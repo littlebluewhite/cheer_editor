@@ -291,6 +291,49 @@ await check('時間軸拖到最大時，場地左欄最下面的工具捲得到�
 	return res;
 });
 
+/**
+ * 上方列：多高、播放區在不在上方列第一行，每個按得到的東西（按鈕、勾選、選單、連結）整個在畫面裡、中心點到的是它自己、
+ * 彼此不疊；流程名字至少露出幾個字寬。
+ */
+const topbarLayout = () =>
+	js(`const bar = document.querySelector('.topbar');
+		const b = bar.getBoundingClientRect();
+		const els = [...bar.querySelectorAll('button, label, select, a')].filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 2);
+		const rects = els.map((el) => [el, el.getBoundingClientRect()]);
+		const name = (el) => (el.getAttribute('aria-label') || el.title || el.textContent).trim().slice(0, 12);
+		const bad = rects.filter(([el, r]) => {
+			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return r.left < -1 || r.right > innerWidth + 1 || !t || !el.contains(t);
+		}).map(([el]) => name(el));
+		const overlap = [];
+		for (const [a, ra] of rects) for (const [c, rc] of rects)
+			if (a !== c && !a.contains(c) && !c.contains(a) && ra.left < rc.right - 1 && rc.left < ra.right - 1 && ra.top < rc.bottom - 1 && rc.top < ra.bottom - 1 && name(a) < name(c))
+				overlap.push(name(a) + '｜' + name(c));
+		const play = document.querySelector('.topbar .play').getBoundingClientRect();
+		const save = document.querySelector('.topbar .save').getBoundingClientRect();
+		const title = document.querySelector('.topbar .title b').getBoundingClientRect();
+		return { 上方列高: Math.round(b.height), 播放鈕和存檔同一行: Math.abs((play.top + play.bottom) / 2 - (save.top + save.bottom) / 2) < 8,
+			名字寬: Math.round(title.width), 點不到或出畫面: bad, 疊在一起: overlap };`);
+
+// 螢幕矮（高 860px 以下，例：1024×768、1280×720、橫拿的 iPad 1180×820）時，播放區併進上方列那一行，省下來的高度給場地（N55）。
+for (const [w, h, touch] of [[1024, 768], [1280, 720], [1366, 768], [1180, 820, true]]) {
+	await check(`${w}×${h}${touch ? '（觸控）' : ''} 螢幕矮：播放區併進上方列，上方列只有一行（64px 以下）；每個按鈕點得到、不疊、不出畫面，流程名字至少露出 3 個字（N55）`, async () => {
+		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
+		await openSample();
+		const r = await topbarLayout();
+		if (touch) await clearTouch();
+		const ok = r.上方列高 <= 64 && r.播放鈕和存檔同一行 && r.名字寬 >= 45 && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0;
+		return { ok, value: r };
+	});
+}
+
+await check('1440×900 不算矮：上方列照舊兩行，播放區在第二行；按鈕點得到、不疊（N55）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const r = await topbarLayout();
+	return { ok: r.上方列高 > 90 && !r.播放鈕和存檔同一行 && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0, value: r };
+});
+
 /** 元素的四個角（往內縮 6px，避開圓角）最上面的東西是不是它自己：被裁掉或被蓋住的角會是別的東西。 */
 const cornersVisible = (selector) =>
 	js(`const el = document.querySelector(${JSON.stringify(selector)});
@@ -548,13 +591,13 @@ for (const w of [1141, 1200, 1300, 1670, 1671, 1800, 1801]) {
 await check('1400 寬：「八拍表」按鈕有字，不是只有圖示', async () => {
 	await setViewport(1400, 900);
 	await openSample();
-	// 字有沒有真的畫出來：包著「八拍表」三個字的那一層夠寬（只給讀屏的字包在縮成 1px 的框裡）
+	// 字有沒有真的畫出來：包著「八拍表」三個字的那一層夠寬（三個字約 39px；只給讀屏的字包在縮成 1px 的框裡）
 	const r = await js(`const b = [...document.querySelectorAll('.topbar button')].find((x) => x.title === '八拍表');
 		const walker = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
 		let node; while ((node = walker.nextNode()) && !node.textContent.includes('八拍表'));
 		if (!node) return { 包著字的寬: 0 };
 		return { 包著字的寬: Math.round(node.parentElement.getBoundingClientRect().width), 按鈕寬: Math.round(b.getBoundingClientRect().width) };`);
-	return { ok: r.包著字的寬 >= 40, value: r };
+	return { ok: r.包著字的寬 >= 30, value: r };
 });
 
 for (const w of [1920, 1400]) {

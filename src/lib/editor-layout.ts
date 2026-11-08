@@ -38,6 +38,13 @@ export function isTouchScreen(): boolean {
 	return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 }
 
+/**
+ * 螢幕矮：畫面高這麼多以下時，場地被高度卡住（1024×768 只剩約 390×360），上方列省一行就多給場地約 50px（N55）。
+ * 量過的：1440×900 場地那一欄高 513，左欄放得下、不用捲；1180×820（橫拿的 iPad）只有 457，1024×768、1366×768 是 420。
+ * 860 夾在中間：常見的 1440×900 以上照舊，橫拿的 iPad、768 高的筆電都算矮。上方列的樣式（+page.svelte）用一樣的數字。
+ */
+export const SHORT_SCREEN_MAX_H = 860;
+
 /** 編輯畫面至少要這麼寬、這麼高（跟 NARROW_SCREEN 一樣）。 */
 const EDIT_MIN_W_PX = 1024;
 const EDIT_MIN_H_PX = 600;
