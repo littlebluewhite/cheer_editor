@@ -7,8 +7,11 @@ export const INSPECTOR_MIN_PX = 360;
 export const INSPECTOR_AUTO_MAX_PX = 960;
 /** 場地那一欄除了場地本身還要的寬度：左邊工具欄 236、間隔 12、左右內距各 12。 */
 export const FIELD_CHROME_PX = 236 + 12 + 24;
-/** 場地那一欄上下的內距（各 12）。 */
-const FIELD_PAD_Y_PX = 24;
+/**
+ * 場地那一欄除了場地本身還要的高度：上下的內距（各 12），和場地上面固定留給選人工具列的那一條
+ * （40，跟 Field 的 .stage.band 一樣：工具列出不出現，場地都不跳、不被蓋住）。
+ */
+const FIELD_PAD_Y_PX = 24 + 40;
 /** 場地最小多寬（不算左邊工具欄）：右邊欄拖得再寬，1024 寬的小筆電、iPad 上場地也不會被擠到看不清楚。 */
 export const FIELD_MIN_W_PX = 360;
 /** 自己拖的時候，場地那一欄至少留這麼寬。 */

@@ -30,8 +30,8 @@
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
-	// 選到人時場地正上方浮出選人工具列；在人身上按右鍵是同一份清單的選單（SelectionTools）。
-	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
+	// 選到人時場地上面固定留的那一條浮出選人工具列（場地不跳、不被蓋住）；在人身上按右鍵是同一份清單的選單（SelectionTools）。
+	// children 疊在場地上（提示、確認框，自己找不蓋住 data-keep-visible 的地方）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
 		CELL_M,
@@ -220,10 +220,10 @@
 		}))
 	);
 
-	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
+	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量；不算上面留給選人工具列的那一條）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
 	function watchStage(el: HTMLElement) {
 		if (typeof ResizeObserver === 'undefined') return;
-		const ro = new ResizeObserver(() => (stageSize = [el.clientWidth, el.clientHeight]));
+		const ro = new ResizeObserver(([e]) => (stageSize = [e.contentRect.width, e.contentRect.height]));
 		ro.observe(el);
 		return () => ro.disconnect();
 	}
@@ -447,8 +447,11 @@
 
 	/** 右鍵選單開在哪（畫面座標）；null = 沒開。 */
 	let menu = $state<{ x: number; y: number } | null>(null);
-	/** 選人工具列出現著（編輯頁、能改、有選人）：場上的提示往下排（--tools-h）。 */
-	const toolsOn = $derived(!!session && !session.viewing && selected.length > 0);
+	/**
+	 * 編輯頁、能改：場地上面固定留一條給選人工具列（--tools-h）。工具列出不出現，場地都不跳，
+	 * 工具列也不蓋住場上的人和條號（N05）。檢視模式不會有工具列，不留。
+	 */
+	const band = $derived(!!session && !session.viewing);
 
 	/**
 	 * 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。
@@ -720,7 +723,7 @@
 			</div>
 		</div>
 	{/if}
-	<div class="stage" class:tools-on={toolsOn} {@attach watchStage}>
+	<div class="stage" class:band {@attach watchStage}>
 	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
@@ -755,13 +758,13 @@
 		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
 		{#each g.strips as s (s.number)}
 			{@const [nx, ny] = numberAt(s)}
-			<text class="num" data-strip-number x={nx} y={ny} style:font-size="{0.3 * numScale}px">{s.number}</text>
+			<text class="num" data-strip-number data-keep-visible x={nx} y={ny} style:font-size="{0.3 * numScale}px">{s.number}</text>
 		{/each}
 		<!-- 格號（條號的另一軸）：細一點、淡一點，跟條號分得出來 -->
 		{#each cellNumbers as { n, at } (n)}
 			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{0.26 * numScale}px">{n}</text>
 		{/each}
-		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
+		<text class="front" data-keep-visible x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
 			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r={DOT_R * dotScale} />
 		{/each}
@@ -789,6 +792,7 @@
 				class:filled={!!crop && sel}
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
 				data-member-id={m.id}
+				data-keep-visible
 				role="button"
 				tabindex={session ? 0 : undefined}
 				aria-label={session ? whereText(m, p) : m.name}
@@ -831,10 +835,10 @@
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
 		{/if}
 	</svg>
-	{#if readout}<div class="readout">{readout}</div>{/if}
-	{#if picked}<div class="picked" role="note" aria-label="選到的人在哪">{picked}</div>{/if}
+	{#if readout}<div class="readout" data-keep-visible>{readout}</div>{/if}
+	{#if picked}<div class="picked" data-keep-visible role="note" aria-label="選到的人在哪">{picked}</div>{/if}
 	{#if session && !session.viewing}
-		<SelectionTools {zoom} {menu} onclosemenu={() => (menu = null)} />
+		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
 	{/if}
 	{@render children?.()}
 	<div class="below">{@render below?.()}</div>
@@ -859,12 +863,15 @@
 		min-width: 0;
 		min-height: 0;
 	}
-	/* 選人工具列佔場地上緣多高（含上面的空隙）：場上的提示往下排這麼多，不蓋到工具列（SelectionTools 的 .tools-bar） */
-	.stage.tools-on {
+	/* 場地上面固定留給選人工具列的那一條（含上面的空隙，SelectionTools 的 .tools-bar 浮在這裡）：場地畫在它下面。
+	   工具列出不出現都留著，場地不跳。高度跟 editor-layout.ts 的 FIELD_PAD_Y_PX 一起改。 */
+	.stage.band {
 		--tools-h: 40px;
+		box-sizing: border-box;
+		padding-top: var(--tools-h);
 	}
 	@media (pointer: coarse) {
-		.stage.tools-on {
+		.stage.band {
 			--tools-h: 52px;
 		}
 	}
@@ -1252,11 +1259,16 @@
 		font-variant-numeric: tabular-nums;
 		pointer-events: none;
 	}
-	/* 選人工具列出現時（--tools-h）排在它下面，拖人時不被蓋住 */
+	/* 拖人時寫在場地上面那一條（拖人時工具列收起來，讓給它）：不蓋住條號和場上的人。只寫一行，太長的尾巴變「…」 */
 	.readout {
 		position: absolute;
 		left: 4px;
-		top: calc(4px + var(--tools-h, 0px));
+		top: 4px;
+		max-width: calc(100% - 8px);
+		box-sizing: border-box;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		padding: 5px 10px;
 		background: rgba(22, 33, 58, 0.92);
 		color: #fff;

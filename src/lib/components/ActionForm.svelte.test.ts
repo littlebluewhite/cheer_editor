@@ -154,7 +154,16 @@ describe('動作表單：新增', () => {
 		expect(session.flow!.actions).toHaveLength(1);
 	});
 
-	it('在開始欄按 Enter 被擋：原因寫在開始欄旁邊，右邊欄不自己捲（#214）', async () => {
+	it('新動作表單一打開，就把開始、長度捲出來，不停在黏底的「新增動作」後面（N03，故事 67）', async () => {
+		scrolled.length = 0;
+		setup(sample(), null, 0, ['m2']);
+		await frame();
+		expect(scrolled).toContain(screen.getByLabelText('長度').parentElement);
+	});
+
+	// 原因寫在欄位旁邊；被黏底的「新增動作」擋住、或在看得到的範圍外時自己捲出來（N03）。
+	// 捲是 block: 'nearest'，已經看得到就不動（真瀏覽器裡由 check-layout 量）。
+	it('在開始欄按 Enter 被擋：原因寫在開始欄旁邊，自己捲出來（#214、N03）', async () => {
 		scrolled.length = 0;
 		setup(sample(), null, 0, ['m2']);
 		const start = screen.getByLabelText('開始');
@@ -164,10 +173,10 @@ describe('動作表單：新增', () => {
 		const alert = screen.getByRole('alert');
 		expect(alert.textContent).toContain('開始看不懂');
 		expect(start.parentElement!.contains(alert)).toBe(true);
-		expect(scrolled).toEqual([]);
+		expect(scrolled.at(-1)).toBe(alert);
 	});
 
-	it('按「新增動作」被擋：原因寫在「新增動作」鈕旁邊（黏在底部那一條裡），右邊欄不自己捲（#214）', async () => {
+	it('按「新增動作」被擋：原因寫在「新增動作」鈕旁邊（黏在底部那一條裡），自己捲出來（#214、N03）', async () => {
 		scrolled.length = 0;
 		setup(sample(), null, 0, ['m2']);
 		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
@@ -175,7 +184,7 @@ describe('動作表單：新增', () => {
 		await fireEvent.click(add);
 		await frame();
 		expect(add.parentElement!.contains(screen.getByRole('alert'))).toBe(true);
-		expect(scrolled).toEqual([]);
+		expect(scrolled.at(-1)).toBe(screen.getByRole('alert'));
 	});
 
 	it('還沒有段時不能加動作', async () => {
@@ -215,7 +224,7 @@ describe('動作表單：改選到的動作', () => {
 		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
-	it('改長度被擋：原因寫在長度欄旁邊，右邊欄不自己捲（#214）', async () => {
+	it('改長度被擋：原因寫在長度欄旁邊，自己捲出來（#214、N03）', async () => {
 		scrolled.length = 0;
 		setup(withTwo(), 'x1');
 		const length = screen.getByLabelText('長度') as HTMLInputElement;
@@ -223,7 +232,7 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.change(length);
 		await frame();
 		expect(length.parentElement!.contains(screen.getByRole('alert'))).toBe(true);
-		expect(scrolled).toEqual([]);
+		expect(scrolled.at(-1)).toBe(screen.getByRole('alert'));
 	});
 
 	it('名字底色照性別、旁邊標底層或上層；「?」說明顏色和快捷鍵', () => {

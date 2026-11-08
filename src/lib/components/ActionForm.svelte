@@ -36,7 +36,7 @@
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
-	import { reveal } from './reveal';
+	import { reveal, stickyBottom } from './reveal';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 	import RolePicker, { roleKey } from './RolePicker.svelte';
@@ -305,9 +305,9 @@
 	<p class="muted collapsed-hint">在場上點人或用上面的「選人」，表單就會打開。</p>
 {:else}
 
-<!-- 被擋的原因寫在教練剛改的那一格（或按的鈕）旁邊：不用捲去找，右邊欄也不會自己捲走。 -->
+<!-- 被擋的原因寫在教練剛改的那一格（或按的鈕）旁邊：不用捲去找。在看得到的範圍外、或在黏底的「新增動作」後面，就捲出來（N03）。 -->
 {#snippet errorAtSpot(at: Spot, wide = false)}
-	{#if ask.error && errorAt === at}<p class="error" class:wide role="alert">{ask.error}</p>{/if}
+	{#if ask.error && errorAt === at}<p class="error" class:wide role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
 {/snippet}
 
 <!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
@@ -401,7 +401,8 @@
 				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
 				{@render errorAtSpot('start')}
 			</div>
-			<div class="field">
+			<!-- 新動作表單一打開，就把開始、長度捲出來，不停在黏底的「新增動作」後面（N03，故事 67） -->
+			<div class="field" {@attach !action && reveal()}>
 				<span class="cap" aria-hidden="true">長度</span>
 				<input
 						aria-label="長度"
@@ -555,7 +556,7 @@
 			<CueGrid {action} {cellAt} />
 		{:else}
 			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
-			<div class="add-bar">
+			<div class="add-bar" {@attach stickyBottom}>
 				{@render errorAtSpot('add')}
 				<button
 					type="button"
@@ -1033,10 +1034,6 @@
 		padding: 10px 14px;
 		background: var(--new-bg);
 		box-shadow: 0 -6px 8px -6px rgb(0 0 0 / 0.15);
-	}
-	/* Tab 進一格時瀏覽器把它捲進來：留出黏底那一條（和右邊欄底下的留白）的高度，欄位不會停在那一條後面 */
-	.action-form.creating :is(input, select, textarea) {
-		scroll-margin-bottom: 110px;
 	}
 	.add {
 		width: 100%;

@@ -25,7 +25,7 @@
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
-	import { dodgeSelected } from '#lib/toast-dodge.js';
+	import { dodgeKeepVisible } from '#lib/toast-dodge.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import { autoInspectorWidth, clampInspectorWidth, INSPECTOR_MIN_PX, isTouchScreen, NARROW_SCREEN, viewOnlyReason } from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
@@ -747,7 +747,6 @@
 							walks={trail.walks}
 							clashes={trail.clashes}
 						/>
-						{@render noticeToast()}
 					</div>
 					{@render transport()}
 					<div class="phone-me">
@@ -755,6 +754,8 @@
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
 					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
+					<!-- 提示浮在畫面最下面，不疊在場地上：手機的場地沒有空的地方，放哪都會蓋到條號或「正面／裁判」（N52） -->
+					<div class="phone-toasts">{@render noticeToast()}</div>
 				</main>
 			{/if}
 		{:else}
@@ -872,11 +873,11 @@
 						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
 					</div>
 				{/if}
-				<!-- 場上的確認框和提示疊在場地上方：不蓋到「正面／裁判」和站在正面場外的人；
-				     會蓋住選到、正在拖的人時換到下方（dodgeSelected） -->
+				<!-- 場上的確認框和提示：找一個不蓋住場上的人、條號、「正面／裁判」、選人工具列的地方
+				     （標了 data-keep-visible 的都躲，先試上面那一條，見 dodgeKeepVisible） -->
 				<div
 					class="field-toasts"
-					{@attach dodgeSelected(() => [session.notice, session.ask.question, session.selectedMemberIds, playback.sec, flow])}
+					{@attach dodgeKeepVisible(() => [session.notice, session.ask.question, session.selectedMemberIds, playback.sec, flow])}
 				>
 					{#if session.ask.question}
 						<div class="toast-confirm">
@@ -1174,6 +1175,7 @@
 	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲）。
 	   八拍表這一列固定高（畫面夠高時 25dvh，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
 	.phone-view {
+		position: relative;
 		grid-column: 1 / -1;
 		min-height: 0;
 		display: grid;
@@ -1195,6 +1197,26 @@
 		position: relative;
 		min-height: 0;
 		padding: 8px;
+	}
+	/* 手機的提示：畫面最下面置中，整個寬都能用（一行放得下就一行）；橫拿時在右邊那一欄（.phone-view > * 的 grid-column） */
+	.phone-toasts {
+		position: absolute;
+		left: 12px;
+		right: 12px;
+		bottom: 14px;
+		z-index: 10;
+		display: flex;
+		justify-content: center;
+		pointer-events: none;
+	}
+	.phone-toasts > :global(*) {
+		pointer-events: auto;
+	}
+	.phone-toasts :global(div.toast) {
+		position: static;
+		transform: none;
+		max-width: 100%;
+		animation-name: drop-in;
 	}
 	.phone-view .transport {
 		flex-wrap: wrap;
@@ -1839,24 +1861,18 @@
 		color: var(--text);
 		font-size: 14px;
 	}
-	/* 場地上的確認框和提示：從上方往下排，不蓋到下面的「正面／裁判」和正面場外的人。 */
+	/* 場地上的確認框和提示：一則一則往下排；放哪由 dodgeKeepVisible 量了再擺（left、top、width），這裡是量之前攤開的樣子。 */
 	.field-toasts {
 		position: absolute;
-		/* 選人工具列出現時（--tools-h，Field 給）排在它下面 */
-		top: calc(14px + var(--tools-h, 0px));
-		left: 16px;
-		right: 16px;
+		top: 4px;
+		left: 4px;
+		right: 4px;
 		z-index: 10;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 8px;
 		pointer-events: none;
-	}
-	/* 放在上方會蓋住選到、正在拖的人：換到場地下方 */
-	.field-toasts:global(.below) {
-		top: auto;
-		bottom: 14px;
 	}
 	.field-toasts > :global(*) {
 		pointer-events: auto;
@@ -1965,6 +1981,9 @@
 		container-type: inline-size;
 		min-height: 0;
 		overflow-y: auto;
+		/* 黏底的那一條（新動作表單的「新增動作」，stickyBottom 量了寫進 --sticky-bottom）蓋住的那一塊：
+		   聚焦、捲出錯誤訊息時都停在它上面（WCAG 2.4.11 的 C43） */
+		scroll-padding-bottom: calc(var(--sticky-bottom, 0px) + 8px);
 		padding: 14px 16px 24px;
 		display: grid;
 		align-content: start;
@@ -1987,8 +2006,10 @@
 		flex: 1;
 		min-width: 0;
 	}
+	/* 整列照內容高（右邊欄自己捲）：min-height 不能是 0，不然動作細節很長時這一列被擠扁、內容疊到動作細節上（N09） */
 	.view-panel :global(.now-eight) {
 		overflow: visible;
+		min-height: auto;
 		border: 1px solid var(--line);
 		border-radius: 8px;
 	}

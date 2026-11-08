@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 選人工具列和右鍵選單：選到人時固定浮在場地正上方（不佔位置，場地不跳）；右鍵選單是同一份清單（selectionActions）。
+	// 選人工具列和右鍵選單：選到人時浮在場地上面固定留給它的那一條（Field 的 .stage.band：場地不跳，也不蓋住人和條號；拖人時先收起來，那一條讓給位置文字）；右鍵選單是同一份清單（selectionActions）。
 	// 按一項：選到的人照那一項算新位置，走 moveGroup（跟拖人同一條路）：這一拍沒有站位就插一張、往後帶、算一步復原，
 	// 提示和播放頭也跟拖人一樣（session.moved）。播放中就先暫停在整拍（跟開始拖人一樣）。
 	// 沒選人時工具列收起來；在場上空白處按右鍵，選單上是套用全隊的項目（跟第 [_] 張一樣）。
@@ -11,11 +11,14 @@
 
 	let {
 		zoom,
+		dragging,
 		menu,
 		onclosemenu
 	}: {
 		/** 場地放大倍數：新位置照它吸附（跟拖人一樣）。 */
 		zoom: number;
+		/** 正在拖人：工具列先收起來，那一條讓給位置文字（Field 的 .readout）。 */
+		dragging: boolean;
 		/** 右鍵選單開在哪（畫面座標）；null = 沒開。 */
 		menu: { x: number; y: number } | null;
 		onclosemenu: () => void;
@@ -114,8 +117,8 @@
 	{/if}
 {/snippet}
 
-{#if count && actions.length}
-	<div class="tools-bar" role="toolbar" aria-label="選人工具列">
+{#if count && actions.length && !dragging}
+	<div class="tools-bar" role="toolbar" aria-label="選人工具列" data-keep-visible>
 		{#each items as i (i.label)}
 			{#if i.group}
 				<button
@@ -190,7 +193,7 @@
 {/if}
 
 <style>
-	/* 固定浮在場地正上方的中間：出現、收起都不推動場地。 */
+	/* 浮在場地上面留給它的那一條的中間（Field 的 .stage.band）：出現、收起都不推動場地，也不蓋到場地。 */
 	.tools-bar {
 		position: absolute;
 		top: 4px;

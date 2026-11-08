@@ -235,9 +235,6 @@
 						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
-					{#if music.bpm !== openedBpm}
-						<button type="button" onclick={fitToAudio}>照音樂長度重算八拍數</button>
-					{/if}
 					<label class="inline">
 						第一拍（秒）
 						<input
@@ -251,6 +248,8 @@
 					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
 						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
 					>
+					<!-- 改了 BPM 才看得到；沒改時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
+					<button type="button" class:unchanged={music.bpm === openedBpm} aria-hidden={music.bpm === openedBpm || undefined} onclick={fitToAudio}>照音樂長度重算八拍數</button>
 				</div>
 				<div class="row">
 					<button type="button" onclick={tap}>敲擊測速</button>
@@ -424,6 +423,10 @@
 	}
 	.listen {
 		margin-left: auto;
+	}
+	/* 「照音樂長度重算八拍數」沒改 BPM 時藏起來，但還佔著位置 */
+	.unchanged {
+		visibility: hidden;
 	}
 	.hint {
 		margin: 0;
