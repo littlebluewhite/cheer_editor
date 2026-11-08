@@ -3,8 +3,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { domPendingInput } from '#lib/pending-input.js';
-import { editorPage, practiceFlow } from '#lib/test-fakes.js';
-import { addAction, moveMembers } from '#lib/core';
+import { editorPage, openFile, practiceFlow } from '#lib/test-fakes.js';
+import { addAction, moveMembers, writeFlowFile } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -181,5 +181,21 @@ describe('欄位有焦點時畫面把它換掉', () => {
 		expect(errors).toEqual([]);
 		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
 		expect(session.flow!.actions.some((a) => a.successRate?.records.length)).toBe(true);
+	});
+
+	it('站位名稱打了字、焦點還在裡面時開另一個檔（編排區整個重開）：沒有例外；打的字不進新的流程、「未存」不卡住', async () => {
+		const session = setup(flowOf(moveMembers(libSample(), 8, { m1: [3, 3] })));
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		const name = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		name.focus();
+		await fireEvent.input(name, { target: { value: '開場' } });
+		const other = flowOf(moveMembers(libSample(), 8, { m1: [4, 4] }));
+		await openFile(writeFlowFile(other, {}), '開啟');
+
+		expect(errors).toEqual([]);
+		expect(name.isConnected).toBe(false);
+		expect(session.flow!.formations.map((f) => f.name)).toEqual([undefined, undefined]);
+		expect(session.canUndo).toBe(false);
+		expect(domPendingInput.pending).toBe(false);
 	});
 });

@@ -10,7 +10,7 @@ import {
 	type CommandResult,
 	type Flow
 } from '#lib/core';
-import { testEditor } from '#lib/test-fakes.js';
+import { recordedFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import MemberPanel from './MemberPanel.svelte';
 
@@ -109,6 +109,22 @@ describe('隊員名單', () => {
 		expect(second.value).toBe('小B');
 		await fireEvent.change(second, { target: { value: '候補小C' } });
 		expect(session.flow!.members.map((m) => m.name)).toEqual(['小A', '候補小C']);
+	});
+
+	it('改有紀錄的人的名字：問「保留／清掉」時名字框留著新名字，按取消才退回（N33）', async () => {
+		const session = setup(recordedFlow());
+		const input = screen.getByLabelText('第 1 位隊員的名字') as HTMLInputElement;
+		await fireEvent.change(input, { target: { value: '小美美' } });
+		expect(screen.getByRole('alertdialog').textContent).toContain('小美 改名成「小美美」');
+		expect(input.value).toBe('小美美');
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(input.value).toBe('小美');
+		expect(session.canUndo).toBe(false);
+
+		await fireEvent.change(input, { target: { value: '小美美' } });
+		await fireEvent.click(screen.getByRole('button', { name: '保留舊紀錄' }));
+		expect(input.value).toBe('小美美');
+		expect(session.flow!.members[0].name).toBe('小美美');
 	});
 
 	it('滿 40 人時加隊員表單停用，寫為什麼', () => {

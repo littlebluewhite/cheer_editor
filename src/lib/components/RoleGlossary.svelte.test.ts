@@ -67,7 +67,7 @@ describe('名詞對照表', () => {
 		setup(flow);
 		const box = screen.getByLabelText('「丟人的」的名稱') as HTMLInputElement;
 		await fireEvent.change(box, { target: { value: '抬腳的' } });
-		expect(screen.getByRole('alert').textContent).toBe('已經有「抬腳的」這個任務角色了');
+		expect(screen.getByRole('alert').textContent).toBe('已經有「抬腳的」這個任務角色了，已還原');
 		expect(box.value).toBe('丟人的');
 	});
 

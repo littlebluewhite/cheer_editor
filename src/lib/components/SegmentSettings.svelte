@@ -5,6 +5,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
+	import { commitField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { tick, untrack } from 'svelte';
@@ -46,6 +47,8 @@
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 檢視模式：只能看設定、試聽，欄位和按鈕整塊停用。 */
+	const readonly = $derived(!session.editable);
 	/** 音樂檔（解碼好的、壞的、多長）從編輯器 module 的音樂檔庫拿：換流程會換一個，所以每次用都從 editor.music 拿。 */
 	const editor = getEditor();
 	/**
@@ -113,14 +116,16 @@
 	}
 
 	/**
-	 * 一格數字欄位送出（key 是改段的哪個欄位）：打的字先由核心讀，讀得懂才改段。
-	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。
+	 * 一格數字欄位（key 是改段的哪個欄位）：送出時打的字先由核心讀，讀得懂才改段。
+	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格；再打字就收掉。
 	 */
-	function updateField(input: HTMLInputElement, field: string, key: SegmentNumberField, actual: () => number | undefined) {
-		const value = readSegmentNumber(key, input.value);
-		ask.send((o: ConfirmOption = {}) => (value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o, editor.music.lengths)), {
-			field,
-			revert: () => (input.value = String(actual() ?? '')),
+	function numberField(field: string, key: SegmentNumberField, actual: () => number | undefined) {
+		return commitField(ask, field, {
+			send: (text, o) => {
+				const value = readSegmentNumber(key, text);
+				return value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o, editor.music.lengths);
+			},
+			actual: () => String(actual() ?? ''),
 			cancel: () => (fieldsKey += 1)
 		});
 	}
@@ -190,16 +195,27 @@
 	}
 </script>
 
-<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose}>
-	{#snippet children(close)}
+<!-- 試聽不改流程：檢視模式（readonly，欄位整塊停用）時放到標題列，照樣能聽 -->
+{#snippet listen()}
+	<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
+	<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
+		>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
+	>
+{/snippet}
+
+<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose} {readonly}>
+	{#snippet head(close)}
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
-			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
+			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒{readonly ? '・檢視模式只能看' : ''}</span>{/if}
+			{#if readonly && music}{@render listen()}{/if}
 			{#if playback.playing}
 				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={() => playback.pause()}><Icon name="pause" size={14} />暫停</button>
 			{/if}
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
+	{/snippet}
+	{#snippet children()}
 
 		{#key fieldsKey}
 		{#if music && length}
@@ -241,7 +257,7 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
+						<input type="text" inputmode="decimal" value={music.bpm} {@attach numberField('BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					{#if music.bpm !== openedBpm}
@@ -253,13 +269,10 @@
 							type="text"
 							inputmode="decimal"
 							value={music.firstBeatSec}
-							onchange={(e) => updateField(e.currentTarget, '第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
+							{@attach numberField('第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>
-					<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
-					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
-						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
-					>
+					{#if !readonly}{@render listen()}{/if}
 				</div>
 				<div class="row">
 					<button type="button" onclick={tap}>敲擊測速</button>
@@ -280,7 +293,7 @@
 					aria-label="波形"
 					viewBox={`${wave.startSec} 0 ${wave.lengthSec} 2`}
 					preserveAspectRatio="none"
-					onclick={clickWave}
+					onclick={readonly ? undefined : clickWave}
 				>
 					<rect class="used" x={used.startSec} width={used.endSec - used.startSec} y="0" height="2" />
 					<line class="mid" x1={wave.startSec} x2={wave.startSec + wave.lengthSec} y1="1" y2="1" />
@@ -300,7 +313,7 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', 'eights', () => length?.eights)} />
+						<input type="text" inputmode="numeric" value={length.eights} {@attach numberField('八拍數', 'eights', () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
@@ -308,7 +321,7 @@
 							type="text"
 							inputmode="numeric"
 							value={length.lastBeats}
-							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
+							{@attach numberField('最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
 						/>
 					</label>
 					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
@@ -341,7 +354,7 @@
 							type="text"
 							inputmode="decimal"
 							value={span?.durationSec}
-							onchange={(e) => updateField(e.currentTarget, '長度（秒）', 'seconds', () => span?.durationSec)}
+							{@attach numberField('長度（秒）', 'seconds', () => span?.durationSec)}
 						/>
 					</label>
 					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>

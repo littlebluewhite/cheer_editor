@@ -236,6 +236,9 @@
 	function toggleInsert(e: MouseEvent) {
 		const anchor = e.currentTarget as HTMLElement;
 		insertAsk.clear();
+		// 打開時從預設開始：上次在口號段打的秒數，換到音樂段不會變成八拍數（N30）
+		insertCount = '1';
+		insertUnit = 'eight';
 		inserting = inserting ? null : { anchor };
 	}
 
@@ -310,6 +313,7 @@
 				<button
 					type="button"
 					class="insert"
+					data-edit
 					aria-expanded={!!inserting}
 					disabled={spans.length === 0}
 					title="在播放頭空出時間，這段後面的站位、動作一起往後延"
@@ -318,6 +322,7 @@
 				<button
 					type="button"
 					class="add"
+					data-edit
 					aria-label="在最後加一段"
 					aria-haspopup="menu"
 					aria-expanded={!!menu && menu.after === null}
@@ -348,6 +353,7 @@
 					<button
 						type="button"
 						class="add-after"
+						data-edit
 						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
 						aria-label="在這段後面加一段"
 						title={`加在${span.label} 後面`}

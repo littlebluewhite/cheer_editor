@@ -248,6 +248,31 @@ describe('流程設定：關掉就套用、Enter 套用、改小先提醒（#219
 		expect(input.value).toBe('9');
 		expect(page.session.flow!.field.strips).toBe(9);
 	});
+
+	it('疊人的確認框開著時按 ×：不調整、對話框就關了，不會默默把條數改回去還要再按一次 ×（N39）', async () => {
+		const page = editorPage(closePair());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '1' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
+		expect(dialog.textContent).toContain('會疊在同一點');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '流程設定' })).toBeNull();
+		expect(page.session.flow!.field.strips).toBe(9);
+	});
+
+	it('疊人的確認框開著時按 Esc：只收掉確認框、條數退回，對話框還開著', async () => {
+		const page = editorPage(closePair());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		const input = within(dialog).getByLabelText('條數') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: '1' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(dialog.textContent).not.toContain('會疊在同一點');
+		expect(input.value).toBe('9');
+		expect(screen.getByRole('dialog', { name: '流程設定' })).toBeTruthy();
+	});
 });
 
 describe('點規則警告帶到出問題的地方、關掉的警告看得出來（#219）', () => {

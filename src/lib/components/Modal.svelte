@@ -14,6 +14,7 @@
 	// - Esc、×、點背景走同一條路 close()：先把還沒離開的欄位送出去（跟離開欄位一樣），
 	//   這一下有欄位被擋（退回實際值、顯示原因）或要問教練，就先不關，讓教練看到是哪一格。
 	// - 裡面有確認框時，Esc 只關確認框。
+	// - readonly（檢視模式）：內容包在 <fieldset disabled> 裡，欄位、按鈕整塊停用；head（標題列的 ×、試聽）放在外面照樣能按。
 	import { composing } from '#lib/ime.js';
 	import type { Snippet } from 'svelte';
 	import { getEditor, hasEditor } from '#lib/editor.svelte.js';
@@ -27,14 +28,27 @@
 		onclose: () => void;
 		/** 這個對話框的問教練：看有沒有被擋、有沒有確認框。 */
 		ask?: Ask;
+		/** 對話框裡別的、只會開確認框的問題（例：流程設定的調整場地）：Esc 先關它的確認框，× 當取消再關。 */
+		confirms?: Ask[];
 		/** false：沒有背景那一層（八拍表自己蓋滿畫面）。 */
 		backdrop?: boolean;
 		/** 關之前再送出對話框自己的東西（例：流程設定還沒按「調整場地」的場地）；回 false 就先不關。 */
 		beforeclose?: () => boolean;
+		/** 只能看：內容（children）整塊停用；head 不停用。 */
+		readonly?: boolean;
+		/** 放在內容前面、readonly 也照樣能按的（標題列：×、試聽）。 */
+		head?: Snippet<[close: () => void]>;
 		children: Snippet<[close: () => void]>;
 	}
 
-	let { label, class: cls, onclose, ask, backdrop = true, beforeclose, children }: Props = $props();
+	let { label, class: cls, onclose, ask, confirms = [], backdrop = true, beforeclose, readonly = false, head, children }: Props = $props();
+
+	/** 開著的確認框都按取消；回傳有沒有。 */
+	function cancelQuestions(): boolean {
+		const open = [ask, ...confirms].filter((a) => a?.question);
+		for (const a of open) a!.answer('cancel');
+		return open.length > 0;
+	}
 
 	/** 沒送出的字：編輯頁用編輯器 module 的；沒有編輯器的地方（八拍表單獨畫）直接看焦點所在的欄位。 */
 	const pendingInput = hasEditor() ? getEditor().adapters.pendingInput : domPendingInput;
@@ -66,8 +80,9 @@
 		failuresAtGesture = ask?.failures ?? 0;
 	}
 
+	/** 確認框開著時按 ×、點背景：當作取消，照樣關（N39）。 */
 	function close() {
-		if (ask?.question) ask.answer('cancel');
+		cancelQuestions();
 		pendingInput.flush();
 		if (ask && ask.failures !== failuresAtGesture) return;
 		if (beforeclose && !beforeclose()) return;
@@ -78,7 +93,7 @@
 
 	function trapTab(e: KeyboardEvent) {
 		const items = [...box.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-			(el) => !(el as HTMLButtonElement).disabled && !el.closest('[inert]')
+			(el) => !el.matches(':disabled') && !el.closest('[inert]')
 		);
 		if (!items.length) return;
 		const first = items[0];
@@ -102,8 +117,7 @@
 		if (e.key !== 'Escape' || composing(e)) return;
 		e.stopPropagation();
 		e.preventDefault();
-		if (ask?.question) ask.answer('cancel');
-		else close();
+		if (!cancelQuestions()) close();
 	}
 
 	function onpointerdown(e: PointerEvent) {
@@ -122,7 +136,12 @@
 
 {#snippet dialog()}
 	<div class={cls} role="dialog" aria-label={label} aria-modal="true" tabindex="-1" {@attach modal}>
-		{@render children(close)}
+		{@render head?.(close)}
+		{#if readonly}
+			<fieldset class="readonly" disabled>{@render children(close)}</fieldset>
+		{:else}
+			{@render children(close)}
+		{/if}
 	</div>
 {/snippet}
 
@@ -135,3 +154,10 @@
 {:else}
 	{@render dialog()}
 {/if}
+
+<style>
+	/* 只是停用用的：不加框、不佔一層版面，裡面的段落照樣是對話框的格子 */
+	.readonly {
+		display: contents;
+	}
+</style>

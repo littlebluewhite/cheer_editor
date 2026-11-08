@@ -224,6 +224,7 @@
 					<button
 						type="button"
 						class="del"
+						data-edit
 						aria-label={`刪除站位 ${i + 1}`}
 						onclick={() => session.removeFormation(formation.id)}><Icon name="close" size={11} /></button
 					>
