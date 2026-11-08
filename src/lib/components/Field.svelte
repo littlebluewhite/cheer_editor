@@ -833,7 +833,7 @@
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
 		{/if}
 	</svg>
-	{#if readout}<div class="readout" data-keep-visible>{readout}</div>{/if}
+	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
 	{#if picked}<div class="picked" data-keep-visible role="note" aria-label="選到的人在哪">{picked}</div>{/if}
 	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
