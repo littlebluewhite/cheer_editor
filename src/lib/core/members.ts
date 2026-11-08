@@ -185,14 +185,16 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 	}
 	const grid = gridPoints(flow.field);
 	const spots = waitingSpots(flow.field);
-	const formations = flow.formations.map((f) => {
-		const pos = { ...f.pos };
-		for (const m of added) {
-			const taken = Object.values(pos);
-			pos[m.id] = grid.find((g) => !taken.some((t) => overlaps(g, t))) ?? freeSpot(spots, taken);
-		}
-		return { ...f, pos };
-	});
+	const formations = flow.formations.map((f) => ({ ...f, pos: { ...f.pos } }));
+	for (const m of added) {
+		const taken = formations.map((f) => Object.values(f.pos));
+		const free = (g: Position, i: number) => !taken[i].some((t) => overlaps(g, t));
+		// 先找每張站位都空著的格點：新人每張站同一點，不會冒出走太快、很喘；找不到才每張各自找
+		const everywhere = grid.find((g) => taken.every((_, i) => free(g, i)));
+		formations.forEach((f, i) => {
+			f.pos[m.id] = everywhere ?? grid.find((g) => free(g, i)) ?? freeSpot(spots, taken[i]);
+		});
+	}
 	return ok({ ...flow, members: [...flow.members, ...added], formations }, { errors, rejected: bad.map((e) => e.text) });
 }
 

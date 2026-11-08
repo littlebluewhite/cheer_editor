@@ -126,7 +126,7 @@ describe('加隊員', () => {
 		return { ...before, formations: [f1, { ...f1, id: 'f2', at: 8, pos }] };
 	}
 
-	it('有好幾張站位時加 8 人：每一張站位各找各的空位，沒有兩人站同一點', () => {
+	it('有好幾張站位時加 8 人：每一張站位都沒有兩人站同一點', () => {
 		const start = twoFormations(1);
 		expect(start.formations[1].pos.m1).toEqual([expect.closeTo(0, 6), expect.closeTo(C, 6)]);
 		const flow = okFlow(addMembers(start, Array(8).fill(xiaoA)));
@@ -135,6 +135,14 @@ describe('加隊員', () => {
 			expect(piledUp(f.pos)).toBe(false);
 		}
 		expect(flow.formations[1].pos.m1).toEqual(start.formations[1].pos.m1);
+	});
+
+	it('有好幾張站位時加人：先找每張站位都空著的格點，新人每張站同一點，不會冒出走太快、很喘（N10）', () => {
+		const start = twoFormations(3);
+		const flow = okFlow(addMembers(start, Array(5).fill(xiaoA)));
+		const [f1, f2] = flow.formations;
+		for (const m of flow.members.slice(3)) expect(f2.pos[m.id]).toEqual(f1.pos[m.id]);
+		for (const f of flow.formations) expect(piledUp(f.pos)).toBe(false);
 	});
 
 	it('一次加 37 人：原本 3 人在每一張站位都沒被蓋住', () => {

@@ -43,6 +43,12 @@ describe('鏡像', () => {
 const C = CELL_M;
 type Pos = Record<string, [number, number]>;
 
+/** 所有的排列順序。 */
+function permutations<T>(xs: T[]): T[][] {
+	if (xs.length <= 1) return [xs];
+	return xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]));
+}
+
 describe('對齊', () => {
 	it('一橫排：前後位置取平均再吸附，左右不變', () => {
 		// 前後 -2、1、0.5 格：平均 -1/6 格，吸到 -1/4 格
@@ -89,6 +95,26 @@ describe('平均分開', () => {
 		expect(got.mid1[1]).toBeCloseTo(-0.25 * C, 9);
 		expect(got.mid2[0]).toBeCloseTo(1 * C, 9);
 		expect(got.mid2[1]).toBeCloseTo(0.25 * C, 9);
+	});
+
+	it('L 形（左右、前後攤得一樣開）：兩端是距離最遠的兩個人；輸入順序打亂、座標差 ±1e-9 結果都一樣（N44）', () => {
+		// 轉角 a、往右 b、c，往後 d：最遠的是 c 和 d
+		const base: Pos = { a: [0, 0], b: [1 * C, 0], c: [2 * C, 0], d: [0, 2 * C] };
+		const want = spreadEvenly(vertical9, base, 1);
+		expect(want.c).toEqual(base.c);
+		expect(want.d).toEqual(base.d);
+		const ids = Object.keys(base);
+		const orders = permutations(ids);
+		for (const [k, order] of orders.entries()) {
+			const pos: Pos = Object.fromEntries(
+				order.map((id, i) => [id, [base[id][0] + ((i + k) % 3 - 1) * 1e-9, base[id][1] + ((i * 2 + k) % 3 - 1) * 1e-9]])
+			);
+			const got = spreadEvenly(vertical9, pos, 1);
+			for (const id of ids) {
+				expect(got[id][0]).toBeCloseTo(want[id][0], 6);
+				expect(got[id][1]).toBeCloseTo(want[id][1], 6);
+			}
+		}
 	});
 
 	it('前後攤得比左右開：照前後的順序排', () => {
