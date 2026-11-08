@@ -5,7 +5,7 @@ import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
-import { RECORDS_GONE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { FIXED_ROLES } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
@@ -185,14 +185,16 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 	}
 	const grid = gridPoints(flow.field);
 	const spots = waitingSpots(flow.field);
-	const formations = flow.formations.map((f) => {
-		const pos = { ...f.pos };
-		for (const m of added) {
-			const taken = Object.values(pos);
-			pos[m.id] = grid.find((g) => !taken.some((t) => overlaps(g, t))) ?? freeSpot(spots, taken);
-		}
-		return { ...f, pos };
-	});
+	const formations = flow.formations.map((f) => ({ ...f, pos: { ...f.pos } }));
+	for (const m of added) {
+		const taken = formations.map((f) => Object.values(f.pos));
+		const free = (g: Position, i: number) => !taken[i].some((t) => overlaps(g, t));
+		// 先找每張站位都空著的格點：新人每張站同一點，不會冒出走太快、很喘；找不到才每張各自找
+		const everywhere = grid.find((g) => taken.every((_, i) => free(g, i)));
+		formations.forEach((f, i) => {
+			f.pos[m.id] = everywhere ?? grid.find((g) => free(g, i)) ?? freeSpot(spots, taken[i]);
+		});
+	}
 	return ok({ ...flow, members: [...flow.members, ...added], formations }, { errors, rejected: bad.map((e) => e.text) });
 }
 
@@ -225,7 +227,7 @@ export function updateMember(
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
 	// 名字有改才檢查：開檔進來名字太長的人還是可以改性別和全局角色。
-	const problem = updated.name === member.name ? null : memberNameProblem(updated.name);
+	const problem = updated.name === member.name ? null : memberNameProblem(updated.name, member.name);
 	if (problem) return blocked(problem);
 	// 改名字當成可能換了人：先照「換人」走收尾，看會動到哪些紀錄（他在的組的、他自己的）。
 	const swapped = updated.name === member.name ? [] : flow.actions.map((a) => replaced(flow, a, id));
@@ -233,7 +235,7 @@ export function updateMember(
 	if (mine.length && !answered(options)) {
 		const count = mine.reduce((n, s) => n + s.records.length, 0);
 		return needsChoice(
-			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算${RECORDS_GONE}`,
+			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算${RECORDS_UNDOABLE}`,
 			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
 		);
 	}
@@ -318,11 +320,11 @@ export function deleteMember(
 		return (changed ? needsChoice : needsConfirm)(
 			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
 				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_GONE}` : '') +
+				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_UNDOABLE}` : '') +
 				(lost.length ? `，${lost.join('、')}` : '') +
 				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : '') +
-				// 清掉重算也救不回來：前面寫過了就不重複
-				(changed ? `；${CHANGED_SQUADS_QUESTION}${cleared ? '' : RECORDS_GONE}` : ''),
+				// 清掉重算的也是按復原會回來：前面寫過了就不重複
+				(changed ? `；${CHANGED_SQUADS_QUESTION}${cleared ? '' : RECORDS_UNDOABLE}` : ''),
 			inActions.map((a) => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				const mine = a.members.find((m) => m.memberId === id)!;
@@ -460,10 +462,10 @@ function samePlace(a: Position, b: Position): boolean {
 	return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
 }
 
-/** 名字的毛病：空的、太長；沒問題是 null。名字先去掉前後空白再傳進來。 */
-function memberNameProblem(name: string): string | null {
+/** 名字的毛病：空的、太長（before：改之前的名字，開檔進來就超過的可以留著，不能更長）；沒問題是 null。名字先去掉前後空白再傳進來。 */
+function memberNameProblem(name: string, before?: string): string | null {
 	if (!name) return '請填隊員名字';
-	return tooLong('memberName', name);
+	return tooLong('memberName', name, before);
 }
 
 /** 下一個沒用過的 m 編號。 */

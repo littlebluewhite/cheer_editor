@@ -61,7 +61,7 @@ export function updateCustomRole(flow: Flow, id: string, input: { name: string; 
 	if (!old) return blocked('找不到這個任務角色');
 	const name = input.name.trim();
 	if (!name) return blocked('請填任務角色名稱');
-	const tooLongName = name !== old.name ? tooLong('roleName', name) : null;
+	const tooLongName = tooLong('roleName', name, old.name);
 	if (tooLongName) return blocked(tooLongName);
 	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
 		return blocked(`已經有「${name}」這個任務角色了`);

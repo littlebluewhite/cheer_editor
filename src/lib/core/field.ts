@@ -3,6 +3,8 @@
 
 /** 一格的邊長 = 一條的寬 = 6 呎。 */
 export const CELL_M = 6 * 0.3048;
+/** 位置（公尺）的浮點數誤差容許值：差這麼一點點當成一樣遠、一樣前後（跟 time.ts 的 EPS 同一種做法）。 */
+export const POS_EPS = 1e-6;
 /** 一條的長 = 42 呎 = 7 格。 */
 const CELLS_PER_STRIP = 7;
 /** 墊子外可以站人的寬度。 */

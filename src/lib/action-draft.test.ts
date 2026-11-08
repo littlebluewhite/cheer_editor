@@ -284,6 +284,29 @@ describe('動作表單的草稿：送出（開始、長度由核心讀）', () =
 		expect(draft.action).toBe(session.flow!.actions[0]);
 	});
 
+	it('復原掉剛新增的動作：送出的草稿拿回來（名字、人都在）', () => {
+		const { draft, session } = setup();
+		session.selectMembers(['m2']);
+		draft.name = '收尾';
+		draft.add();
+		session.undo();
+		expect([draft.action, draft.name]).toEqual([null, '收尾']);
+		expect(session.selectedMemberIds).toEqual(['m2']);
+	});
+
+	it('剛新增的動作被刪掉（不是復原：按刪除、段縮短刪掉它）：新動作表單是空白的，不帶它的名字（N20）', () => {
+		const { draft, session } = setup();
+		session.selectMembers(['m2']);
+		draft.name = '收尾';
+		draft.add();
+		session.removeAction('x1');
+		expect([draft.action, draft.name]).toEqual([null, '']);
+		// 再 ⌘Z 讓它回來、回到新增：名稱也不會接著舊的字
+		session.undo();
+		session.selectAction(null);
+		expect(draft.name).toBe('');
+	});
+
 	it('「從別的動作複製人」再新增：組跟著過去，新動作加第一個環節後還是那幾組', () => {
 		const { draft, session, playback } = setup(libSample());
 		playback.seek(6.4);

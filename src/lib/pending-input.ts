@@ -5,6 +5,8 @@
 // 真的 pending 是畫面看得到的（上方列的「未存」一打字就出現）：焦點、打字、送出都通知在看它的地方。
 
 import { createSubscriber } from 'svelte/reactivity';
+import { composing } from '#lib/ime.js';
+import { isTextField } from '#lib/key-owner.js';
 
 export interface PendingInput {
 	/** 焦點所在的欄位打了字還沒送出（打了又刪回原來的字也算）。 */
@@ -39,13 +41,6 @@ function changed() {
 	});
 }
 
-function isTextField(el: EventTarget | null): el is Field {
-	return (
-		(el instanceof HTMLInputElement && !['checkbox', 'radio', 'file', 'button', 'submit', 'reset'].includes(el.type)) ||
-		el instanceof HTMLTextAreaElement
-	);
-}
-
 /** 送出了（或當作送出了）：現在的值算上次送出的。 */
 function sent(t: NonNullable<typeof typing>) {
 	t.value = t.el.value;
@@ -54,10 +49,12 @@ function sent(t: NonNullable<typeof typing>) {
 }
 
 if (typeof window !== 'undefined') {
+	// 標了 data-scratch 的框（跳時間這類）不改流程：裡面打的字不算沒送出，不出現「未存」（N12）。
 	window.addEventListener(
 		'focusin',
 		(e) => {
-			typing = isTextField(e.target) ? { el: e.target, value: e.target.value, typed: false, composing: false } : null;
+			const field = isTextField(e.target) && !e.target.hasAttribute('data-scratch') ? e.target : null;
+			typing = field && { el: field, value: field.value, typed: false, composing: false };
 			changed();
 		},
 		true
@@ -86,6 +83,23 @@ if (typeof window !== 'undefined') {
 		'change',
 		(e) => {
 			if (typing && e.target === typing.el && typing.el.value === typing.value) e.stopImmediatePropagation();
+		},
+		true
+	);
+	// Esc 是丟掉沒送出的字（Apple 的 abortEditing）：欄位退回上次送出的字，當作已經送出了。之後欄位被拆掉時 Chrome 發的 change
+	// 值沒變，上面那條就吞掉，不會被當成送出（N06）。發 input 讓 bind:value 的狀態跟著退回。捕獲階段，比元件自己的 Esc 早。
+	// 對話框裡不退：Esc 是關對話框，跟按 ×、點背景一樣送出（#93）。還沒送出的表單（新動作、加隊員）也不退：字不在流程裡。
+	window.addEventListener(
+		'keydown',
+		(e) => {
+			const t = typing;
+			if (e.key !== 'Escape' || composing(e) || t?.composing) return;
+			if (!t || e.target !== t.el || t.el.closest('[aria-modal="true"], dialog, [data-native-undo]')) return;
+			if (t.el.value !== t.value) {
+				t.el.value = t.value;
+				t.el.dispatchEvent(new Event('input', { bubbles: true }));
+			}
+			sent(t);
 		},
 		true
 	);

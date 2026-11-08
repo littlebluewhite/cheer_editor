@@ -21,6 +21,7 @@
 	} from '#lib/core';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
+	import { both, KEYS } from '#lib/shortcuts.js';
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
@@ -32,6 +33,7 @@
 	import { setUnsavedCheck } from '#lib/unsaved.js';
 	import { localDate } from '#lib/local-date.js';
 	import { composing } from '#lib/ime.js';
+	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -137,7 +139,7 @@
 	let view = $state<'edit' | 'practice'>('edit');
 	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
 	let practiceDate = $state(localDate());
-	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；練習畫面照這個重開。 */
+	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；編排區和練習畫面照這個重開。 */
 	let opened = $state(0);
 	/** 首頁按了「丟掉」的那支最近的流程：先問。 */
 	let discarding = $state.raw<RecentFlow | null>(null);
@@ -284,16 +286,10 @@
 	}
 
 
-	/** 右邊欄的兩頁（動作、隊員）：換流程時捲回最上面。 */
-	let actionPanel = $state<HTMLElement>();
-	let membersPanel = $state<HTMLElement>();
-
-	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
-	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
+	// 換成另一支流程（新建、開檔、救回草稿）：編排區和練習畫面重開（opened 的 {#key}）、對話框都關掉。
+	// 換上流程由編輯器 module 的流程檔做；選取、提示、session.view 由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
-		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
-		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
 		me = session.flow ? loadFlowSetting('me', session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
@@ -356,24 +352,10 @@
 		if (session.notice && !(e.target as Element | null)?.closest?.('.toast')) session.notice = '';
 	}
 
-	/** 按得下去、選得了、打得了字的東西。 */
-	const NATIVE_KEYS =
-		'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), ' +
-		'[role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"]';
-	/**
-	 * 空白鍵照瀏覽器原本的行為的地方：打字的地方、選單，和對話框、選單裡的東西。
-	 * 其他按鈕（節拍器、重複、檢視、段按鈕、對話框的觸發按鈕…）都不吃空白鍵，空白鍵一律播放／暫停（Enter 照樣按下）。
-	 */
-	const SPACE_NATIVE =
-		'input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"]), select, textarea, ' +
-		'[contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"], ' +
-		`:is(dialog, [role="dialog"], [role="alertdialog"]) :is(${NATIVE_KEYS})`;
+	// 焦點所在的東西自己用不用這個鍵（打字的地方、選單、對話框裡的按鈕…）只看 #lib/key-owner.js 一份規則（G 群）。
+	// 空白鍵：它不用（按鈕、勾選框、節拍器、重複、檢視、段按鈕…）就一律播放／暫停（Enter 照樣按下）。
 	/** 按下的空白鍵拿去播放／暫停了：放開時也攔下來。 */
 	let spaceUsed = false;
-	/** 打字的地方：快捷鍵（Delete、方向鍵、Home／End、數字鍵）留給它。 */
-	const TYPING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
-	/** 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字。 */
-	const NATIVE_UNDO = '[data-native-undo] :is(textarea, input:not([type="checkbox"], [type="radio"]))';
 
 	/** 復原、重做：焦點在輸入框裡時，先把打了還沒送出的字送出去，再退回流程，欄位照退回的流程重畫。 */
 	function undoKey(redoing: boolean) {
@@ -397,13 +379,13 @@
 		// 復原、重做只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄
 		if (view === 'practice') return;
 		const target = e.target as Element | null;
-		const on = (selector: string) => !!target?.closest?.(selector);
 		const key = e.key.toLowerCase();
 		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
 		// 還沒送出的表單（新動作、加隊員）的輸入框除外：字不在流程裡，交給瀏覽器退字。
 		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
-			if (on(NATIVE_UNDO)) return;
+			// 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字
+			if (isTextEntry(target) && target?.closest('[data-native-undo]')) return;
 			e.preventDefault();
 			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
@@ -413,12 +395,19 @@
 			// 元件自己用了空白鍵（例：隊員號碼的圓圈）就不播放
 			if (e.repeat || e.defaultPrevented) return;
 			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
-			spaceUsed = !on(SPACE_NATIVE) && playback.space(covered());
+			spaceUsed = !ownsKey(target, ' ') && playback.space(covered());
 			if (spaceUsed) e.preventDefault();
 			return;
 		}
 		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
-		if (covered() || on(TYPING)) return;
+		if (covered()) return;
+		// Esc 先收掉開著的問題（確認框），沒有問題才清選取（N18）；焦點在打字的地方也一樣
+		if (e.key === 'Escape' && !composing(e) && session.cancelQuestion()) {
+			e.preventDefault();
+			return;
+		}
+		// 焦點所在的東西自己要用這個鍵（打字的地方、選單、radio 的方向鍵…）：快捷鍵讓給它
+		if (ownsKey(target, e.key)) return;
 		// ⌘C／⌘V（Ctrl+C／V）：複製選到的站位卡片、貼到播放頭；沒選站位、沒複製過就照瀏覽器的。
 		// 拍點格子自己用了（複製、貼拍點）就不算
 		if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (key === 'c' || key === 'v')) {
@@ -427,9 +416,8 @@
 			if (key === 'c' ? session.copyFormation() : session.pasteFormation(playback.sec)) e.preventDefault();
 			return;
 		}
-		// 選單自己用方向鍵、Home／End（例：任務角色選單）時不算
-		const ownKeys = '[role="combobox"], [role="listbox"], [role="radiogroup"]';
-		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented && !on(ownKeys)) {
+		// 元件自己用了 Home／End（已經 preventDefault）時不算
+		if ((e.key === 'Home' || e.key === 'End') && !e.defaultPrevented) {
 			e.preventDefault();
 			if (e.key === 'Home') playback.toStart();
 			else playback.toEnd();
@@ -453,14 +441,12 @@
 			!e.altKey
 		) {
 			// 方向鍵移播放頭：一拍（Shift 一個八拍）。分界、選單、分頁自己用方向鍵時（已經 preventDefault）不算。
-			if (on(ownKeys)) return;
 			e.preventDefault();
 			playback.step(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
 		} else if (e.key === 'Escape') {
 			session.clearSelection();
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-			// 分組：選好人按 1–9 放進那組、0 移出組。任務角色選單也用數字鍵，焦點在那裡不算。
-			if (on('[role="combobox"]')) return;
+			// 分組：選好人按 1–9 放進那組、0 移出組。任務角色選單也用數字鍵（ownsKey 已經讓給它）。
 			if (session.squadKey(Number(e.key))) e.preventDefault();
 		}
 	}
@@ -569,6 +555,7 @@
 							<input
 								type="text"
 								aria-label="跳到哪裡"
+								data-scratch
 								placeholder="例：3-1"
 								enterkeyhint="go"
 								autocomplete="off"
@@ -657,7 +644,7 @@
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}</span
+					>{#if unsaved}<span class="unsaved" title={`有還沒存的修改（${both(KEYS.save)} 存檔）`}>未存</span>{/if}</span
 				>
 				<div class="view" role="group" aria-label="編排｜練習">
 					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
@@ -693,7 +680,7 @@
 					<button
 						type="button"
 						class="ghost"
-						title={stepTitle('復原', session.undoLabel, '⌘Z／Ctrl+Z')}
+						title={stepTitle('復原', session.undoLabel, both(KEYS.undo))}
 						disabled={session.viewing || !session.canUndo}
 						onclick={undo}
 						><Icon name="undo" /><span class="narrow-hide">復原</span></button
@@ -701,7 +688,7 @@
 					<button
 						type="button"
 						class="ghost"
-						title={stepTitle('重做', session.redoLabel, '⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y')}
+						title={stepTitle('重做', session.redoLabel, both(KEYS.redo))}
 						disabled={session.viewing || !session.canRedo}
 						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
 					>
@@ -724,12 +711,15 @@
 				{:else}
 					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
 				{/if}
-				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
+				<button type="button" class="primary save" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 			<!-- 播放區換到第二行時放在按鈕後面：Tab 照畫面由上到下 -->
 			{#if !narrow && transportBelow}{@render transport()}{/if}
 		</header>
 
+		<!-- 編排區和練習畫面：換一份流程就整個重開。時間軸、泳道、右邊欄的捲動，場地的放大，還沒送出的加隊員名單
+		     都不帶到別的檔（跟著流程、切頁要留的放在 session.view） -->
+		{#key opened}
 		{#if narrow}
 			{#if view === 'edit'}
 				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面八拍表這一列。只能看、只能播放；場上的人拖不動 -->
@@ -922,14 +912,13 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
-					<!-- 換一份流程就重開：上一支沒送出的加隊員名單不帶過去 -->
-					{#key opened}<MemberPanel />{/key}
+				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
+					<MemberPanel />
 				</div>
 				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
 				{#if session.viewing}
@@ -965,13 +954,11 @@
 		{/if}
 		{#if view === 'practice'}
 			<div class="practice-host">
-				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
-				{#key opened}
-					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
-				{/key}
+				<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
 				{@render noticeToast()}
 			</div>
 		{/if}
+		{/key}
 	</div>
 	<!-- 大的 iPad 拿直的（不算窄）：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
@@ -1110,14 +1097,14 @@
 						items={[]}
 						confirmLabel="丟掉"
 						onconfirm={() => {
-							const id = f.id;
+							const { id, name } = f; // 關掉對話框後 f 不能再讀（Svelte derived_inert）
 							discarding = null;
 							discardNote = '';
 							void editor.file.discardRecent(id).then((outcome) => {
 								discardNote = {
-									dropped: `已丟掉「${f.name}」的草稿`,
-									busy: `另一個分頁正在編「${f.name}」，沒有丟掉`,
-									failed: `「${f.name}」的草稿刪不掉，沒有丟掉`
+									dropped: `已丟掉「${name}」的草稿`,
+									busy: `另一個分頁正在編「${name}」，沒有丟掉`,
+									failed: `「${name}」的草稿刪不掉，沒有丟掉`
 								}[outcome];
 							});
 						}}

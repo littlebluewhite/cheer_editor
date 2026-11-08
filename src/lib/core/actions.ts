@@ -11,7 +11,7 @@ import {
 } from './action-types';
 import { cueFallout, cueProblem } from './cues';
 import { memberName, type Flow } from './flow';
-import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
 import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
@@ -134,7 +134,7 @@ export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}
 	const action = flow.actions.find((a) => a.id === id);
 	if (!action) return blocked('找不到這個動作');
 	const count = action.successRate?.records.length ?? 0;
-	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄${RECORDS_GONE}`, []);
+	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄${RECORDS_UNDOABLE}`, []);
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 
@@ -181,12 +181,9 @@ function checked(flow: Flow, before: Action | undefined, action: Action, options
 	return people ? { kind: 'blocked', message: people } : settled;
 }
 
-/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收（名稱會去掉頭尾空白，跟去掉空白的比）。 */
+/** 名稱、備註太長；開檔進來就超過上限的照收，改了不能更長（N08）。 */
 function textProblem(before: Action | undefined, action: Action): string | null {
-	return (
-		(action.name !== before?.name.trim() ? tooLong('actionName', action.name) : null) ??
-		(action.note !== before?.note ? tooLong('note', action.note) : null)
-	);
+	return tooLong('actionName', action.name, before?.name) ?? tooLong('note', action.note, before?.note);
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */

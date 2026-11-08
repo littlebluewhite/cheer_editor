@@ -26,7 +26,8 @@
 		{ key: 'record', label: '記錄' },
 		{ key: 'summary', label: '總表' }
 	] as const;
-	let page = $state<(typeof PAGES)[number]['key']>('record');
+	/** 在哪一頁：放在 session，切到編排再回來還是這一頁。 */
+	const page = $derived(session.view.practicePage);
 
 	/** 最晚選到今天（未來還沒練）。 */
 	const today = localDate();
@@ -45,7 +46,7 @@
 				<button
 					type="button"
 					aria-pressed={page === p.key}
-					onclick={() => p.key !== page && session.leavePracticePage(() => (page = p.key))}>{p.label}</button
+					onclick={() => p.key !== page && session.leavePracticePage(() => (session.view.practicePage = p.key))}>{p.label}</button
 				>
 			{/each}
 		</div>

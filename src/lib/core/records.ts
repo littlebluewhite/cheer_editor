@@ -1,4 +1,4 @@
-// 成功率的紀錄：記一次、刪掉上一次，和復原、重做時把現在的紀錄帶過去。
+// 成功率的紀錄：記一次、刪掉上一次，和復原、重做時把現在的紀錄帶過去、這一步清掉的紀錄加回來或再清一次。
 // 紀錄存在動作的成功率設定裡（Action.successRate.records），一次一筆，照記的先後排。
 
 import { actionLabel, actionSeconds, replaceAction, type Action } from './action-types';
@@ -185,7 +185,8 @@ export function restoreRunThrough(flow: Flow, removed: RemovedRunThrough): Comma
 
 /**
  * 把現在的紀錄帶到這份流程上：復原、重做換上 next 時用。紀錄不算復原的一步，所以每個動作的紀錄用 current 的；
- * 指到 next 裡已經不在的動作、環節、組 id、隊員的紀錄或記號丟掉，丟到一個記號都沒有的那一次整筆拿掉（重做也救不回）。
+ * 指到 next 裡已經不在的動作、環節、組 id、隊員的紀錄或記號丟掉，丟到一個記號都沒有的那一次整筆拿掉。
+ * 那一步自己清掉的紀錄由 undoRecords 加回來、redoRecords 再清一次（ADR 0007）。
  * 發過的 id 號碼也帶過來，免得換上舊的流程後又發一次。沒有東西要帶就回傳 next 本身。
  */
 export function carryRecords(next: Flow, current: Flow): Flow {
@@ -203,6 +204,119 @@ export function carryRecords(next: Flow, current: Flow): Flow {
 		return settled.kind === 'ok' ? settled.action : a;
 	});
 	return changed ? { ...next, actions, ...(lastIds && { lastIds }) } : next;
+}
+
+/**
+ * 一步改動拿掉的紀錄（ADR 0007）：每個動作改之前、改之後的紀錄，只放有拿掉東西的動作
+ * （整筆拿掉的一次，或還在但少了記號、空著的環節的一次）。
+ */
+export type RecordsPatch = { actionId: string; before: Attempt[]; after: Attempt[] }[];
+
+/** 從改之前、改之後的流程算出這一步拿掉了哪些紀錄：有一次整筆不見、少了記號或空著的環節的動作。 */
+export function recordsPatch(before: Flow, after: Flow): RecordsPatch {
+	return before.actions.flatMap((action) => {
+		const was = action.successRate?.records ?? [];
+		const now = after.actions.find((a) => a.id === action.id)?.successRate?.records ?? [];
+		const then = new Map(now.map((r) => [r.id, r]));
+		const lost = was.some((b) => {
+			const a = then.get(b.id);
+			return !a || lostMarks(b, a).length > 0 || lostBlanks(b, a).length > 0;
+		});
+		return lost ? [{ actionId: action.id, before: was, after: now }] : [];
+	});
+}
+
+/**
+ * 一個動作的紀錄從 was 變成 now 清掉了什麼（確認框寫的次數）：整筆不見的（removed），
+ * 和還在但少了記號的（stripped，改之前的樣子）。只少了空著的環節的不算，成功率不會變。
+ */
+export function recordsLoss(was: Attempt[], now: Attempt[]): { removed: Attempt[]; stripped: Attempt[] } {
+	const after = new Map(now.map((r) => [r.id, r]));
+	const removed = was.filter((r) => !after.has(r.id));
+	const stripped = was.filter((r) => {
+		const a = after.get(r.id);
+		return a && lostMarks(r, a).length > 0;
+	});
+	return { removed, stripped };
+}
+
+/** 確認框裡清掉多少紀錄：「一起清掉 2 次紀錄和 1 次的記號」「清掉 1 次的記號」；沒有清掉是空字串。 */
+export function recordsLossText(records: number, marks: number): string {
+	if (records) return `一起清掉 ${records} 次紀錄${marks ? `和 ${marks} 次的記號` : ''}`;
+	return marks ? `清掉 ${marks} 次的記號` : '';
+}
+
+/**
+ * 復原一步：換上改之前的流程（before），帶著現在的紀錄（carryRecords），再把這一步（before → after）拿掉的紀錄加回去。
+ * 加回去的照原本的先後排，之後才記的排在後面；這一步之後用「記」刪掉的不加回。
+ */
+export function undoRecords(before: Flow, after: Flow, current: Flow): Flow {
+	let flow = carryRecords(before, current);
+	for (const { actionId, before: was, after: now } of recordsPatch(before, after)) {
+		const action = flow.actions.find((a) => a.id === actionId);
+		if (!action?.successRate) continue;
+		const has = new Map(action.successRate.records.map((r) => [r.id, r]));
+		const then = new Map(now.map((r) => [r.id, r]));
+		const back = was.flatMap((b) => {
+			const c = has.get(b.id);
+			const a = then.get(b.id);
+			if (!c) return a ? [] : [b];
+			if (!a || sameAttempt(c, a)) return [a ? b : c];
+			return [putBack(action, b, a, c)];
+		});
+		const later = action.successRate.records.filter((r) => !was.some((b) => b.id === r.id));
+		flow = withRecords(flow, action, [...back, ...later]);
+	}
+	return flow;
+}
+
+/** 重做一步：換上改之後的流程（after），帶著現在的紀錄，再把這一步（before → after）拿掉的紀錄拿掉一次。 */
+export function redoRecords(before: Flow, after: Flow, current: Flow): Flow {
+	let flow = carryRecords(after, current);
+	for (const { actionId, before: was, after: now } of recordsPatch(before, after)) {
+		const action = flow.actions.find((a) => a.id === actionId);
+		if (!action?.successRate) continue;
+		const then = new Map(was.map((r) => [r.id, r]));
+		const done = new Map(now.map((r) => [r.id, r]));
+		const records = action.successRate.records.flatMap((r) => {
+			const b = then.get(r.id);
+			const a = done.get(r.id);
+			if (!b) return [r];
+			if (!a) return [];
+			if (sameAttempt(r, b) || sameAttempt(r, a)) return [a];
+			return stripAgain(r, b, a);
+		});
+		flow = withRecords(flow, action, records);
+	}
+	return flow;
+}
+
+/** b 有、a 沒有的記號（環節 id）。 */
+const lostMarks = (b: Attempt, a: Attempt) => Object.keys(b.marks).filter((id) => !(id in a.marks));
+/** b 有、a 沒有的空著的環節。 */
+const lostBlanks = (b: Attempt, a: Attempt) => (b.blanks ?? []).filter((id) => !a.blanks?.includes(id));
+
+const sameAttempt = (x: Attempt, y: Attempt) => x === y || JSON.stringify(x) === JSON.stringify(y);
+
+/**
+ * 這一步之後用「記」改過的一次（c）：把這一步拿掉的記號、空著的環節（b 有、a 沒有）加回去。
+ * 加回去不守記一次的規則（例：改成只練幾個環節了）就照 c 留著。
+ */
+function putBack(action: Action, b: Attempt, a: Attempt, c: Attempt): Attempt {
+	const marks = { ...c.marks, ...Object.fromEntries(lostMarks(b, a).map((id) => [id, b.marks[id]])) };
+	const blanks = [...(c.blanks ?? []), ...lostBlanks(b, a)];
+	const merged = { ...withoutBlanks(c), marks, ...(blanks.length && { blanks }) };
+	return attemptProblem(action, merged) ? c : merged;
+}
+
+/** 復原之後用「記」改過的一次（r）：再拿掉一次這一步拿掉的記號、空著的環節；拿到都沒有就整筆拿掉。 */
+function stripAgain(r: Attempt, b: Attempt, a: Attempt): Attempt[] {
+	const marks = lostMarks(b, a);
+	const blanks = lostBlanks(b, a);
+	const kept = Object.entries(r.marks).filter(([id]) => !marks.includes(id));
+	const left = r.blanks?.filter((id) => !blanks.includes(id)) ?? [];
+	if (!kept.length && !left.length) return [];
+	return [{ ...withoutBlanks(r), marks: Object.fromEntries(kept), ...(left.length && { blanks: left }) }];
 }
 
 /** 兩份「id 發到第幾號」取大的；跟 a 一樣就回傳 a。 */

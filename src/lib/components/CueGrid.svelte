@@ -23,6 +23,7 @@
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { both, KEYS } from '#lib/shortcuts.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { cellIn, firstCell, fits } from '#lib/beat-selection.svelte.js';
 	import { popover } from '#lib/popover.svelte.js';
@@ -328,7 +329,7 @@
 		hold = pop;
 		const cues = copyCues(action, sel.from, sel.to + BEAT);
 		if (cues.length) beats.copied = cues;
-		copyNote = cues.length ? `複製了 ${cues.length} 個拍點，選一拍按「貼上」或 ⌘V` : '選的拍裡沒有拍點';
+		copyNote = cues.length ? `複製了 ${cues.length} 個拍點，選一拍按「貼上」或 ${KEYS.paste.mac}` : '選的拍裡沒有拍點';
 	}
 
 	/** 把複製的拍點從選的第一拍開始貼上。 */
@@ -662,12 +663,12 @@
 							>＋</button
 						>
 						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
-						<button type="button" class="tool" aria-label="複製選的拍點" title="複製（⌘C／Ctrl+C）" onclick={copy}>複製</button>
+						<button type="button" class="tool" aria-label="複製選的拍點" title={`複製（${both(KEYS.copy)}）`} onclick={copy}>複製</button>
 						<button
 							type="button"
 							class="tool"
 							aria-label="貼上拍點"
-							title="貼上（⌘V／Ctrl+V）"
+							title={`貼上（${both(KEYS.paste)}）`}
 							disabled={!beats.copied.length}
 							onclick={paste}>貼上</button
 						>

@@ -3,43 +3,16 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { domPendingInput } from '#lib/pending-input.js';
-import { editorPage, practiceFlow } from '#lib/test-fakes.js';
-import { addAction, moveMembers } from '#lib/core';
+import { editorPage, openFile, practiceFlow } from '#lib/test-fakes.js';
+import { addAction, moveMembers, writeFlowFile } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
 Element.prototype.scrollIntoView = () => {};
 
-// 跟 Chrome 一樣：拿掉有焦點的欄位（或包著它的東西）時，當下就發 change（字改過的話）、blur、focusout（jsdom 都不發）。
-/** 有焦點的欄位上次送出（或拿到焦點）時的字：拿掉時字不一樣就跟離開欄位一樣發 change。 */
-const lastSent = new WeakMap<EventTarget, string>();
-for (const type of ['focusin', 'change'])
-	window.addEventListener(type, (e) => lastSent.set(e.target!, (e.target as HTMLInputElement).value), true);
-for (const [proto, name] of [
-	[Element.prototype, 'remove'],
-	[CharacterData.prototype, 'remove']
-] as const) {
-	const original = proto[name];
-	proto[name] = function (this: ChildNode) {
-		blurIfInside(this);
-		original.call(this);
-	};
-}
-const removeChild = Node.prototype.removeChild;
-Node.prototype.removeChild = function <T extends Node>(this: Node, child: T): T {
-	blurIfInside(child);
-	return removeChild.call(this, child) as T;
-};
-function blurIfInside(node: Node) {
-	const el = document.activeElement;
-	if (el && el !== document.body && node.contains(el)) {
-		const value = (el as HTMLInputElement).value;
-		if (value !== undefined && value !== lastSent.get(el)) el.dispatchEvent(new Event('change', { bubbles: true }));
-		el.dispatchEvent(new FocusEvent('blur'));
-		el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-	}
-}
+// 跟 Chrome 一樣：拿掉有焦點的欄位時當下就發 change、blur、focusout。
+import '#lib/test-chrome-removal.js';
 
 /** 事件處理裡丟出來的例外（jsdom 不往外丟，只發 window 的 error）。 */
 let errors: unknown[] = [];
@@ -208,5 +181,21 @@ describe('欄位有焦點時畫面把它換掉', () => {
 		expect(errors).toEqual([]);
 		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
 		expect(session.flow!.actions.some((a) => a.successRate?.records.length)).toBe(true);
+	});
+
+	it('站位名稱打了字、焦點還在裡面時開另一個檔（編排區整個重開）：沒有例外；打的字不進新的流程、「未存」不卡住', async () => {
+		const session = setup(flowOf(moveMembers(libSample(), 8, { m1: [3, 3] })));
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		const name = screen.getByLabelText('站位名稱') as HTMLInputElement;
+		name.focus();
+		await fireEvent.input(name, { target: { value: '開場' } });
+		const other = flowOf(moveMembers(libSample(), 8, { m1: [4, 4] }));
+		await openFile(writeFlowFile(other, {}), '開啟');
+
+		expect(errors).toEqual([]);
+		expect(name.isConnected).toBe(false);
+		expect(session.flow!.formations.map((f) => f.name)).toEqual([undefined, undefined]);
+		expect(session.canUndo).toBe(false);
+		expect(domPendingInput.pending).toBe(false);
 	});
 });

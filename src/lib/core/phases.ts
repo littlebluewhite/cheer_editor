@@ -9,10 +9,11 @@ import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { cut, ordered } from './phase-beats';
 import { phaseLabel, type Phase, type PhaseKind } from './phase-types';
-import { RECORDS_GONE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
+import { recordsLoss, recordsLossText } from './records';
 import { settle } from './settle';
-import { allPhaseIds, beatsProblem, markedCount } from './success-rate';
+import { allPhaseIds, beatsProblem } from './success-rate';
 
 /** 加環節要給的東西：種類、名字；音樂段要給標的拍（從動作開始算第幾個半拍、幾個半拍長），口號段不能給。 */
 export interface NewPhaseInput {
@@ -132,21 +133,23 @@ function findPhase(flow: Flow, actionId: string, phaseId: string): { action: Act
 
 /**
  * 換掉動作的環節清單，走收尾；不守規則就擋下來。音樂段沒標拍的環節刪掉。
- * 會刪到有記號的環節時，這是唯一的確認：「會刪掉 N 個環節，清掉 M 次的記號，確定就刪掉」（刪光時在「，確定就刪掉」前面加
+ * 會清掉紀錄時，這是唯一的確認：「會刪掉 N 個環節，一起清掉 R 次紀錄和 M 次的記號，確定就刪掉」，次數照真的會不見的算
+ * （整筆不見的一次，連只剩空著的環節的也算；還在但少了記號的另外算，見 recordsLoss）；刪光時在「，確定就刪掉」前面加
  * 「；動作沒有環節了，不再記成功率」），清單一行一個「刪掉：環節 上法 延伸」；帶 { confirmed: true } 或 { records } 再送一次才刪。
  */
 function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[], options: ConfirmOption): CommandResult {
 	const kept = segment.kind === 'music' ? phases.filter((p) => p.beats) : phases;
 	const gone = (action.successRate?.phases ?? []).filter((p) => !kept.some((k) => k.id === p.id));
-	const marked = markedCount(action, gone);
-	if (marked && !answered(options)) {
+	const after: Action = { ...action, successRate: { records: action.successRate?.records ?? [], phases: ordered(kept) } };
+	const settled = settle(flow, action, after, options);
+	if (settled.kind === 'blocked') return settled;
+	const { removed, stripped } = recordsLoss(action.successRate?.records ?? [], settled.action.successRate?.records ?? []);
+	if ((removed.length || stripped.length) && !answered(options)) {
 		const empty = kept.length ? '' : '；動作沒有環節了，不再記成功率';
 		return needsConfirm(
-			`會刪掉 ${gone.length} 個環節，清掉 ${marked} 次的記號${RECORDS_GONE}${empty}，確定就刪掉`,
+			`會刪掉 ${gone.length} 個環節，${recordsLossText(removed.length, stripped.length)}${RECORDS_UNDOABLE}${empty}，確定就刪掉`,
 			gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`)
 		);
 	}
-	const after: Action = { ...action, successRate: { records: action.successRate?.records ?? [], phases: ordered(kept) } };
-	const settled = settle(flow, action, after, options);
-	return settled.kind === 'blocked' ? settled : ok(replaceAction(settled.flow, settled.action));
+	return ok(replaceAction(settled.flow, settled.action));
 }

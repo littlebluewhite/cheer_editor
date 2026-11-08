@@ -217,12 +217,15 @@ describe('動作名稱和備註的字數', () => {
 		});
 	});
 
-	it('開檔進來名稱、備註超過上限的動作：沒改那一欄就照收，可以改別的', () => {
+	it('開檔進來名稱、備註超過上限的動作：沒改那一欄就照收，可以改別的；改短一點（還是超過）照收，變長才擋（N08）', () => {
 		const added = flowOf(addAction(sample(), lib()));
 		const long = { name: '字'.repeat(600), note: '字'.repeat(600) };
 		const flow = { ...added, actions: added.actions.map((a) => ({ ...a, ...long })) };
 		expect(flowOf(updateAction(flow, 'x1', { ...long, start: 2 })).actions[0]).toMatchObject({ ...long, start: 2 });
-		expect(updateAction(flow, 'x1', { name: '字'.repeat(599) }).kind).toBe('blocked');
+		expect(updateAction(flow, 'x1', { name: '字'.repeat(599) }).kind).toBe('ok');
+		expect(updateAction(flow, 'x1', { note: '字'.repeat(599) }).kind).toBe('ok');
+		expect(updateAction(flow, 'x1', { name: '字'.repeat(601) }).kind).toBe('blocked');
+		expect(updateAction(flow, 'x1', { note: '字'.repeat(601) }).kind).toBe('blocked');
 	});
 
 	it('開檔進來名稱超過上限、頭尾還有空白的動作：改備註不會因為名稱被去掉空白就擋下', () => {

@@ -57,6 +57,15 @@ describe("手機跳時間", () => {
     expect(session.unsaved).toBe(false);
   });
 
+  it("在跳時間的框裡打字：不算沒存的工作，上方列不出現「未存」（N12）", async () => {
+    const { editor } = await openOnPhone();
+    await click("跳到哪裡");
+    const box = screen.getByRole("textbox", { name: "跳到哪裡" });
+    await fireEvent.input(box, { target: { value: "3-" } });
+    expect(editor.hasUnsavedWork).toBe(false);
+    expect(screen.queryByText("未存")).toBeNull();
+  });
+
   it("全形「３－５」也看得懂", async () => {
     await openOnPhone();
     await click("跳到哪裡");

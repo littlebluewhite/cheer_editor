@@ -150,7 +150,7 @@ describe('刪環節', () => {
 		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✗' })));
 		expect(deletePhase(flow, 'x1', 'p2')).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 1 個環節，清掉 2 次的記號（紀錄救不回來），確定就刪掉',
+			message: '會刪掉 1 個環節，清掉 2 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
 			items: ['刪掉：環節 中段']
 		});
 	});
@@ -161,12 +161,36 @@ describe('刪環節', () => {
 		flow = flowOf(updatePhase(flow, 'x1', 'p1', { name: '延伸' }));
 		expect(deletePhase(flow, 'x1', 'p1')).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 1 個環節，清掉 2 次的記號（紀錄救不回來），確定就刪掉',
+			message: '會刪掉 1 個環節，一起清掉 1 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
 			items: ['刪掉：環節 上法 延伸']
 		});
 		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
 		expect(phasesOf(flow).map((p) => p.id)).toEqual(['p2', 'p3']);
 		expect(lib(flow).successRate!.records.map((r) => r.marks)).toEqual([{ p2: '✓', p3: '✓' }]);
+	});
+
+	it('確認框寫的次數跟真的不見的一樣：只剩空著的環節的那一次整筆不見也算進去（N26）', () => {
+		// t1 上法 ✗、中段和下法空著；t2 只練下法 ✓。先刪上法，t1 只剩空著的中段、下法。
+		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✗' })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p3: '✓' }, { whole: false })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓', p3: '✓' }, { whole: false })));
+		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
+		flow = flowOf(deletePhase(flow, 'x1', 'p2', { confirmed: true }));
+		expect(lib(flow).successRate!.records).toHaveLength(3);
+		expect(deletePhase(flow, 'x1', 'p3')).toEqual({
+			kind: 'confirm',
+			message: '會刪掉 1 個環節，一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
+			items: ['刪掉：環節 下法']
+		});
+	});
+
+	it('有的整筆不見、有的只少了記號：分開寫幾次紀錄、幾次的記號', () => {
+		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p1: '✗' }, { whole: false })));
+		flow = flowOf(recordAttempt(flow, 'x1', drill({ p2: '✓' }, { whole: false })));
+		expect(deletePhase(flow, 'x1', 'p1')).toMatchObject({
+			message: '會刪掉 1 個環節，一起清掉 1 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉'
+		});
 	});
 
 	it('刪了的環節 id 不再發', () => {
@@ -204,7 +228,7 @@ describe('口號段刪環節', () => {
 		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' }, { who: 'g3' })));
 		expect(deletePhase(flow, 'x2', 'p4')).toEqual({
 			kind: 'confirm',
-			message: '會刪掉 1 個環節，清掉 1 次的記號（紀錄救不回來）；動作沒有環節了，不再記成功率，確定就刪掉',
+			message: '會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
 			items: ['刪掉：環節 整體']
 		});
 		flow = flowOf(deletePhase(flow, 'x2', 'p4', { confirmed: true }));

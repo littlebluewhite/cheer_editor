@@ -1,6 +1,8 @@
 // 編輯畫面的鍵盤（#95）：空白鍵照一般網頁、輸入框裡的 ⌘Z 退回流程、方向鍵移人合成一步、Home／End、分頁。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
+import { needsConfirm } from '#lib/core/result.js';
 import { editorPage } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -303,6 +305,75 @@ describe('Home／End、分頁', () => {
 		expect(tab('隊員').getAttribute('aria-selected')).toBe('true');
 		expect(document.activeElement).toBe(tab('隊員'));
 		expect(position()).toBe('音樂 1 1-1');
+	});
+});
+
+describe('焦點在哪、按哪個鍵：誰用這個鍵只有一份規則（G 群）', () => {
+	type Effect = '移播放頭' | '播放' | '清選取' | '不動';
+	const targets: Record<string, () => Promise<HTMLElement>> = {
+		// 剛點過的勾選框（N22）：它只用空白鍵，但編輯頁的空白鍵是播放（#205）
+		勾選框: async () => screen.getByLabelText('節拍器'),
+		下拉選單: async () => (await fireEvent.click(tab('隊員')), screen.getByLabelText('第 1 位隊員的性別')),
+		按鈕: async () => screen.getByRole('button', { name: '流程設定' }),
+		文字欄: async () => (await fireEvent.click(tab('隊員')), screen.getByLabelText('第 1 位隊員的名字'))
+	};
+	const table: [string, string, Effect][] = [
+		['勾選框', 'Home', '移播放頭'],
+		['勾選框', 'ArrowLeft', '移播放頭'],
+		['勾選框', ' ', '播放'],
+		['勾選框', 'Escape', '清選取'],
+		['下拉選單', 'Home', '不動'],
+		['下拉選單', 'ArrowLeft', '不動'],
+		['下拉選單', ' ', '不動'],
+		['下拉選單', 'Escape', '清選取'],
+		['按鈕', 'Home', '移播放頭'],
+		['按鈕', 'ArrowLeft', '移播放頭'],
+		['按鈕', ' ', '播放'],
+		['按鈕', 'Escape', '清選取'],
+		['文字欄', 'Home', '不動'],
+		['文字欄', 'ArrowLeft', '不動'],
+		['文字欄', ' ', '不動'],
+		['文字欄', 'Escape', '不動']
+	];
+
+	it.each(table)('%s 按 %j：%s', async (target, key, effect) => {
+		const session = setup();
+		const el = await targets[target]();
+		await fireEvent.keyDown(window, { key: 'End' });
+		session.selectMembers(['m1']);
+		el.focus();
+		await fireEvent.keyDown(el, { key });
+		const now: Effect =
+			playing() ? '播放' : position() !== '結尾' ? '移播放頭' : !session.selectedMemberIds.length ? '清選取' : '不動';
+		expect(now).toBe(effect);
+	});
+
+	it('有問題（確認框）開著、焦點不在框裡時按 Esc：先收掉問題，選取還在（N18）', async () => {
+		const session = setup();
+		session.selectMembers(['m1']);
+		session.ask.send(() => needsConfirm('拖過段尾會裁短', ['Lib 的拍點']));
+		await tick();
+		expect(screen.getByRole('alertdialog')).toBeTruthy();
+		(document.activeElement as HTMLElement | null)?.blur();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(session.selectedMemberIds).toEqual([]);
+	});
+
+	it('問題出現時焦點進到確認框，放在「取消」（最不會出事的那顆）；按 Esc 取消，焦點回到原本的地方', async () => {
+		const session = setup();
+		const opener = screen.getByRole('button', { name: '流程設定' });
+		opener.focus();
+		session.ask.send(() => needsConfirm('拖過段尾會裁短', ['Lib 的拍點']));
+		await tick();
+		const box = screen.getByRole('alertdialog');
+		expect(document.activeElement).toBe(within(box).getByRole('button', { name: '取消' }));
+		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+		await tick();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(document.activeElement).toBe(opener);
 	});
 });
 

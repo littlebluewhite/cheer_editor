@@ -5,6 +5,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
+	import { commitField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { tick, untrack } from 'svelte';
@@ -104,14 +105,16 @@
 	}
 
 	/**
-	 * 一格數字欄位送出（key 是改段的哪個欄位）：打的字先由核心讀，讀得懂才改段。
-	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。
+	 * 一格數字欄位（key 是改段的哪個欄位）：送出時打的字先由核心讀，讀得懂才改段。
+	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格；再打字就收掉。
 	 */
-	function updateField(input: HTMLInputElement, field: string, key: SegmentNumberField, actual: () => number | undefined) {
-		const value = readSegmentNumber(key, input.value);
-		ask.send((o: ConfirmOption = {}) => (value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o, editor.music.lengths)), {
-			field,
-			revert: () => (input.value = String(actual() ?? '')),
+	function numberField(field: string, key: SegmentNumberField, actual: () => number | undefined) {
+		return commitField(ask, field, {
+			send: (text, o) => {
+				const value = readSegmentNumber(key, text);
+				return value.kind === 'blocked' ? value : updateSegment(flow, segmentId, { [key]: value.value }, o, editor.music.lengths);
+			},
+			actual: () => String(actual() ?? ''),
 			cancel: () => (fieldsKey += 1)
 		});
 	}
@@ -232,7 +235,7 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
+						<input type="text" inputmode="decimal" value={music.bpm} {@attach numberField('BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
@@ -241,7 +244,7 @@
 							type="text"
 							inputmode="decimal"
 							value={music.firstBeatSec}
-							onchange={(e) => updateField(e.currentTarget, '第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
+							{@attach numberField('第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>
 					<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
@@ -290,7 +293,7 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', 'eights', () => length?.eights)} />
+						<input type="text" inputmode="numeric" value={length.eights} {@attach numberField('八拍數', 'eights', () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
@@ -298,7 +301,7 @@
 							type="text"
 							inputmode="numeric"
 							value={length.lastBeats}
-							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
+							{@attach numberField('最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
 						/>
 					</label>
 					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
@@ -330,7 +333,7 @@
 							type="text"
 							inputmode="decimal"
 							value={span?.durationSec}
-							onchange={(e) => updateField(e.currentTarget, '長度（秒）', 'seconds', () => span?.durationSec)}
+							{@attach numberField('長度（秒）', 'seconds', () => span?.durationSec)}
 						/>
 					</label>
 					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>

@@ -6,7 +6,7 @@ export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './
 export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, sameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
-export { MAX_CHARS, charCount, charStart, firstChars } from './text-length';
+export { MAX_CHARS, charCount, charLimit, charStart, firstChars, tooLong } from './text-length';
 export type { LimitedText } from './text-length';
 
 export { changeLabel } from './change-label';
@@ -81,10 +81,14 @@ export {
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
+	recordsLoss,
+	recordsPatch,
+	redoRecords,
 	restoreAttempt,
-	restoreRunThrough
+	restoreRunThrough,
+	undoRecords
 } from './records';
-export type { RemovedRunThrough, RunThroughMarks } from './records';
+export type { RecordsPatch, RemovedRunThrough, RunThroughMarks } from './records';
 
 export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';

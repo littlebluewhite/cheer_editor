@@ -13,6 +13,7 @@
 		type Flow
 	} from '#lib/core';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
+	import { both, KEYS } from '#lib/shortcuts.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
@@ -105,7 +106,7 @@
 					{/each}
 				</select>
 			</label>
-			<span class="muted">用瀏覽器列印（⌘P／Ctrl+P），也可以存成 PDF。</span>
+			<span class="muted">用瀏覽器列印（{both(KEYS.print)}），也可以存成 PDF。</span>
 			<span class="grow"></span>
 			<button type="button" class="primary" onclick={print}><Icon name="print" />列印</button>
 			<button type="button" onclick={close}>關閉</button>
