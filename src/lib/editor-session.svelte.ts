@@ -179,7 +179,7 @@ export class EditorSession {
 	}
 	/** 跟著這支流程的畫面狀態（freshView）。 */
 	view = $state(freshView());
-	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+	/** 多選開著：場上點人、框選、點泳道名字、點動作表單裡的名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};

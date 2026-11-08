@@ -790,7 +790,7 @@
 						{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
 							<div class="select-tools">
 								{#if touchScreen}
-									<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字都是加選或拿掉（跟按著 Shift 一樣）">
+									<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字、點動作表單裡的名字都是加選或拿掉（跟按著 Shift 一樣）">
 										<input type="checkbox" bind:checked={session.multiSelect} />多選
 									</label>
 									<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
