@@ -1252,10 +1252,11 @@
 		font-variant-numeric: tabular-nums;
 		pointer-events: none;
 	}
+	/* 選人工具列出現時（--tools-h）排在它下面，拖人時不被蓋住 */
 	.readout {
 		position: absolute;
 		left: 4px;
-		top: 4px;
+		top: calc(4px + var(--tools-h, 0px));
 		padding: 5px 10px;
 		background: rgba(22, 33, 58, 0.92);
 		color: #fff;

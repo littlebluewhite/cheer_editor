@@ -2361,6 +2361,26 @@ await check('1440×900 選到人：工具列浮在場地正上方，場地不跳
 	};
 });
 
+await check('1440×900 拖選到的人：左上角的位置文字排在工具列下面，不被工具列蓋住', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	const d = await rectOf('.field-host [data-member-id="m1"]');
+	await click(d.x, d.y);
+	await mouse('mousePressed', d.x, d.y);
+	await mouse('mouseMoved', d.x + 20, d.y + 10);
+	await mouse('mouseMoved', d.x + 40, d.y + 20);
+	await sleep(100);
+	const r = await js(`const box = (s) => { const e = document.querySelector(s); if (!e) return null;
+			const r = e.getBoundingClientRect(); return { 左: Math.round(r.left), 右: Math.round(r.right), 上: Math.round(r.top), 下: Math.round(r.bottom) }; };
+		return { 文字: box('.field-host .readout'), 工具列: box('.field-host [role="toolbar"]') };`);
+	await press('Escape');
+	await mouse('mouseReleased', d.x + 40, d.y + 20, 0);
+	await press('Escape');
+	const { 文字: t, 工具列: b } = r;
+	const overlap = !!t && !!b && t.左 < b.右 && b.左 < t.右 && t.上 < b.下 && b.上 < t.下;
+	return { ok: !!t && !!b && !overlap, value: r };
+});
+
 await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框和字排一行、工具列不換行、整條在場地裡', async () => {
 	await setViewport(1024, 768);
 	await openPracticeFlow();
