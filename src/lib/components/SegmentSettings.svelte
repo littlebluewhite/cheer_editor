@@ -170,7 +170,7 @@
 		update({ bpm });
 	}
 
-	/** 打開段設定時的 BPM：改了以後 BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
+	/** 打開段設定時的 BPM：改了以後（而且有音樂檔）BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
 	const openedBpm = untrack(() => music?.bpm);
 
 	function fitToAudio() {
@@ -235,7 +235,7 @@
 						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
-					{#if music.bpm !== openedBpm}
+					{#if music.bpm !== openedBpm && audio}
 						<button type="button" onclick={fitToAudio}>照音樂長度重算八拍數</button>
 					{/if}
 					<label class="inline">

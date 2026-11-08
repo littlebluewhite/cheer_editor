@@ -171,6 +171,14 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 		expect(field(dialog, '最後一個八拍有幾拍').value).toBe('4');
 	});
 
+	it('拿掉音樂後改 BPM：不出現「照音樂長度重算八拍數」（沒有音樂按了也只會說先載入音樂檔）（N47）', async () => {
+		await open(flowOf(loadSegmentAudio(oneMusic(), 's1', '歌.mp3')), 30, true);
+		const dialog = await settings('音樂 1');
+		await fireEvent.click(dialog.getByRole('button', { name: '拿掉音樂' }));
+		await fireEvent.change(field(dialog, 'BPM'), { target: { value: '120' } });
+		expect(dialog.queryByRole('button', { name: '照音樂長度重算八拍數' })).toBeNull();
+	});
+
 	it('段設定開著時從時間軸點另一段：「照音樂長度重算八拍數」照新的那段的 BPM 判斷，沒改 BPM 就不出現', async () => {
 		let flow = flowOf(loadSegmentAudio(oneMusic(), 's1', '歌.mp3'));
 		flow = flowOf(addSegment(flow, 'music'));
