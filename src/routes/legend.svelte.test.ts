@@ -1,6 +1,6 @@
 // 頁面：場地左下的圖例可以收起來，收起來的狀態存在這台電腦（#214）。
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { editorPage, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
@@ -10,6 +10,7 @@ Element.prototype.scrollIntoView = () => {};
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
+	vi.unstubAllGlobals();
 });
 
 const toggle = () => screen.getByRole('button', { name: '圖例' });
@@ -48,5 +49,42 @@ describe('場地左下的圖例', () => {
 		render(Page, editorPage(teamFlow()).props);
 		expect(toggle().getAttribute('aria-expanded')).toBe('false');
 		expect(legend().hidden).toBe(true);
+	});
+});
+
+describe('觸控又矮的螢幕（橫拿的 iPad 1180×820）：左欄放不下，圖例預設收起來（N58）', () => {
+	/** 觸控螢幕、畫面高 h。 */
+	function touchScreen(h: number) {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+		vi.stubGlobal('innerHeight', h);
+	}
+
+	it('沒動過圖例：預設收著，「圖例」按了打開', async () => {
+		touchScreen(820);
+		render(Page, editorPage(teamFlow()).props);
+		expect(toggle().getAttribute('aria-expanded')).toBe('false');
+		expect(legend().hidden).toBe(true);
+		await fireEvent.click(toggle());
+		expect(legend().hidden).toBe(false);
+	});
+
+	it('自己打開過：記住，重開頁面還是開著', async () => {
+		touchScreen(820);
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(toggle());
+		cleanup();
+		render(Page, editorPage(teamFlow()).props);
+		expect(toggle().getAttribute('aria-expanded')).toBe('true');
+	});
+
+	it('觸控但夠高（1366×1024 橫拿的大 iPad）、或滑鼠的矮螢幕：照舊打開', () => {
+		touchScreen(1024);
+		render(Page, editorPage(teamFlow()).props);
+		expect(toggle().getAttribute('aria-expanded')).toBe('true');
+		cleanup();
+		vi.unstubAllGlobals();
+		vi.stubGlobal('innerHeight', 768);
+		render(Page, editorPage(teamFlow()).props);
+		expect(toggle().getAttribute('aria-expanded')).toBe('true');
 	});
 });

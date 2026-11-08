@@ -1572,6 +1572,51 @@ await check('1180×820（觸控）左欄撞位總表打開的清單：每行的�
 	return { ok: Math.abs(上 - 下) <= 2, value: { ...r, 上, 下 } };
 });
 
+/** 左欄：要不要捲、底部的淡出漸層看不看得到、「只看橘紅走位線」整個在左欄看得到的範圍裡而且點得到。 */
+const railFade = () =>
+	js(`const rail = document.querySelector('.rail');
+		const r = rail.getBoundingClientRect();
+		const fade = document.querySelector('.rail-fade');
+		const tool = document.querySelector('.rail .walk-tools label');
+		const p = tool.getBoundingClientRect();
+		const t = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
+		return { 要捲: rail.scrollHeight > rail.clientHeight + 1, 漸層: !!fade && fade.checkVisibility() && fade.getBoundingClientRect().height > 0,
+			漸層貼左欄底: !!fade && Math.abs(fade.getBoundingClientRect().bottom - r.bottom) <= 1,
+			圖例開著: document.querySelector('.rail .legend-toggle').getAttribute('aria-expanded') === 'true',
+			只看橘紅走位線整個看得到: p.top >= r.top - 1 && p.bottom <= r.bottom + 1 && !!t && tool.contains(t) };`);
+
+// 橫拿的 iPad：左欄塞不下，最下面「只看橘紅走位線／圖例」被擠出去（N58）。
+await check('1180×820（觸控）沒按過「圖例」：圖例收著，不用捲就看得到、點得到「只看橘紅走位線」（N58）', async () => {
+	await setTouchViewport(1180, 820);
+	await openSample();
+	await js(`localStorage.removeItem('cheer-editor:legendOpen')`);
+	await openSample();
+	const r = await railFade();
+	await clearTouch();
+	return { ok: !r.圖例開著 && !r.要捲 && r.只看橘紅走位線整個看得到, value: r };
+});
+
+await check('1180×820（觸控）打開圖例、左欄要捲：底部有淡出漸層提示下面還有東西，捲到底漸層不見、「只看橘紅走位線」點得到（N58）', async () => {
+	await setTouchViewport(1180, 820);
+	await js(`localStorage.setItem('cheer-editor:legendOpen', '1')`);
+	await openSample();
+	// 時間軸往上拉一點，保證左欄要捲
+	await js(`const s = document.querySelector('[aria-label="場地和時間軸的分界"]');
+		for (let i = 0; i < 4; i++) s.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));`);
+	await sleep(300);
+	await js(`document.querySelector('.rail').scrollTop = 0`);
+	await sleep(200);
+	const top = await railFade();
+	await js(`const r = document.querySelector('.rail'); r.scrollTop = r.scrollHeight`);
+	await sleep(200);
+	const bottom = await railFade();
+	await js(`document.querySelector('[aria-label="場地和時間軸的分界"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+	await js(`localStorage.removeItem('cheer-editor:legendOpen')`);
+	await clearTouch();
+	const ok = top.要捲 && top.漸層 && top.漸層貼左欄底 && !bottom.漸層 && bottom.只看橘紅走位線整個看得到;
+	return { ok, value: { 在最上面: top, 捲到底: bottom } };
+});
+
 // ---------- 長的拍點文字（#146） ----------
 
 await check('很長的手位：拍點格子、泳道、八拍表上都待在自己那一拍，不蓋到下一個拍點', async () => {
