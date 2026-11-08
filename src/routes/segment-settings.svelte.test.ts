@@ -159,6 +159,18 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 		expect(engine.clips.map((c) => c.audioId)).toEqual(['a1']);
 	});
 
+	it('載入音樂後說八拍數是照現在的 BPM 算的，BPM 不對先改 BPM 再重算，不讓人以為 150 是偵測出來的（N57）', async () => {
+		await open(oneMusic(), 30);
+		const dialog = await settings('音樂 1');
+		const file = new File([new Uint8Array([1])], '主歌.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(dialog.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await vi.waitFor(() => expect(field(dialog, '八拍數').value).toBe('10'));
+		expect(dialog.getByText(/八拍數照 150 BPM 算的/).textContent).toBe(
+			'八拍數照 150 BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」'
+		);
+		expect(dialog.getByRole('button', { name: '照音樂長度重算八拍數' })).toBeTruthy();
+	});
+
 	it('改了 BPM，旁邊才出現「照音樂長度重算八拍數」；改 BPM 本身不動八拍數', async () => {
 		await open(flowOf(loadSegmentAudio(oneMusic(), 's1', '歌.mp3')), 30, true);
 		const dialog = await settings('音樂 1');

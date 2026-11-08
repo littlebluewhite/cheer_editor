@@ -172,6 +172,9 @@
 
 	/** 打開段設定時的 BPM：改了以後（而且有音樂檔）BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
 	const openedBpm = untrack(() => music?.bpm);
+	/** 打開時還沒有音樂、這次才第一次載入：八拍數是照那時的 BPM 自動算的，提醒先設好 BPM 再重算（不偵測 BPM）。 */
+	const openedAudioId = untrack(() => music?.audioId);
+	const firstLoaded = $derived(openedAudioId === null && !!music?.audioId && !!audio);
 
 	function fitToAudio() {
 		const lengths = editor.music.lengths;
@@ -235,7 +238,7 @@
 						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
-					{#if music.bpm !== openedBpm && audio}
+					{#if (music.bpm !== openedBpm || firstLoaded) && audio}
 						<button type="button" onclick={fitToAudio}>照音樂長度重算八拍數</button>
 					{/if}
 					<label class="inline">
@@ -252,6 +255,9 @@
 						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
 					>
 				</div>
+				{#if firstLoaded}
+					<p class="hint">八拍數照 {music.bpm} BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」</p>
+				{/if}
 				<div class="row">
 					<button type="button" onclick={tap}>敲擊測速</button>
 					<span class="hint" aria-live="polite">
