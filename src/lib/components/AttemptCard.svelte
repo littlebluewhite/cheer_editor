@@ -26,6 +26,7 @@
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { removeWithRestore } from './record-notice';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -59,13 +60,8 @@
 	const marksKey = $derived(`${scopeKey} ${date}`);
 	/** 這一次要練的環節，照順序。 */
 	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
-	/**
-	 * 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在；
-	 * 不是這次要練的環節（在編排刪掉了、別天改成只練別的環節）的記號不算。
-	 */
-	const marks = $derived(
-		Object.fromEntries(Object.entries(session.drillMarks[marksKey] ?? {}).filter(([id]) => planned.some((p) => p.id === id)))
-	);
+	/** 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在；不是這次要練的環節的記號不算。 */
+	const marks = $derived(session.unsavedMarks(action, who, date));
 	function setMarks(next: Record<string, Mark>) {
 		session.drillMarks[marksKey] = next;
 	}
@@ -235,7 +231,7 @@
 		</div>
 	{/if}
 	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	<footer>
 		{#if today.length}

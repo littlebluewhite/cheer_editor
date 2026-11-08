@@ -9,6 +9,7 @@
 		eightCountRows,
 		eightCountView,
 		memberMarkers,
+		memberName,
 		type EightCountRow,
 		type Flow
 	} from '#lib/core';
@@ -150,6 +151,10 @@
 									{#each row.walks as w, j (j)}
 										<div>{w}</div>
 									{/each}
+									<!-- 什麼都沒有的八拍（手機上是一張卡）不留一條空白，像沒載入 -->
+									{#if !row.actions.length && !row.continuing.length && !row.walks.length && !row.formations.length && !row.cues.length}
+										<div class="muted">這幾拍{memberId ? memberName(flow, memberId) : ''}沒有動作，也不用走位</div>
+									{/if}
 								</td>
 								<td class="formations">
 									{#each row.formations as f (f.number)}

@@ -125,6 +125,19 @@ describe('記錄頁', () => {
 		expect((card(who).getByRole('checkbox', { name: '下法' }) as HTMLInputElement).checked).toBe(true);
 		expect((card('第 2 組 小芳').getByRole('radio', { name: '整個' }) as HTMLInputElement).checked).toBe(true);
 	});
+
+	it('卡上點了記號還沒存：換到別的動作，左邊清單那個動作標「還沒存」；存了就拿掉（N27）', async () => {
+		setup();
+		const list = within(screen.getByRole('list', { name: '記成功率的動作' }));
+		const lib = () => list.getByRole('button', { name: /^技巧·Lib/ }).textContent ?? '';
+		await tap('第 2 組 小芳', '上法', '成功');
+		await pickAction('騰翻');
+		expect(lib()).toContain('還沒存');
+		expect(list.getByRole('button', { name: /^騰翻/ }).textContent).not.toContain('還沒存');
+		await pickAction('技巧·Lib');
+		await save('第 2 組 小芳');
+		expect(lib()).not.toContain('還沒存');
+	});
 });
 
 describe('記錄頁改某一次、刪掉某一次', () => {

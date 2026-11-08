@@ -12,7 +12,7 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from './marker';
-	import { reveal } from './reveal';
+	import { reveal, revealAlert } from './reveal';
 	import {
 		GENDERS,
 		GLOBAL_ROLES,
@@ -250,7 +250,7 @@
 					{#if ask.question && askingId === m.id}
 						<div class="asking" {@attach reveal(ask.failures)}><ConfirmList {ask} /></div>
 					{:else if ask.error && askingId === m.id}
-						<p class="error asking" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>
+						<p class="error asking" {@attach revealAlert(ask.failures)}>{ask.error}</p>
 					{/if}
 				</li>
 			{/each}
@@ -287,7 +287,7 @@
 
 	<!-- 那一列送的被擋下：原因畫在那一列下面（上面），這裡不畫。 -->
 	{#if ask.error && !flow.members.some((m) => m.id === askingId)}
-		<p class="error" role="alert" {@attach reveal(ask.failures)}>
+		<p class="error" {@attach revealAlert(ask.failures)}>
 			{#each ask.error.split('\n') as line, i (i)}<span>{line}</span>{/each}
 		</p>
 	{/if}

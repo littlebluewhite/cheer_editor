@@ -29,7 +29,7 @@ import {
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
-import { KEYS } from '#lib/shortcuts.js';
+import { both, KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
@@ -154,6 +154,19 @@ export class EditorSession {
 	 */
 	drillMarks: Record<string, Record<string, Mark>> = $state({});
 	/**
+	 * 記錄頁一張卡（動作、組或隊員 who）這一天點了還沒存的記號：
+	 * 不是這次要練的環節（在編排刪掉了、別天改成只練別的環節）的記號不算。卡上和左邊動作清單都看它標「還沒存」。
+	 */
+	unsavedMarks(action: Action, who: string, date: string): Record<string, Mark> {
+		const scopeKey = `${action.id} ${who}`;
+		const scope = this.drillScopes[scopeKey] ?? { whole: true, picked: [] };
+		const phases = action.successRate?.phases ?? [];
+		const whole = scope.whole || phases.length < 2;
+		const planned = whole ? phases : phases.filter((p) => scope.picked.includes(p.id));
+		const marks = this.drillMarks[`${scopeKey} ${date}`] ?? {};
+		return Object.fromEntries(Object.entries(marks).filter(([id]) => planned.some((p) => p.id === id)));
+	}
+	/**
 	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
 	 * 不存進流程檔。
 	 */
@@ -166,7 +179,7 @@ export class EditorSession {
 	}
 	/** 跟著這支流程的畫面狀態（freshView）。 */
 	view = $state(freshView());
-	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
+	/** 多選開著：場上點人、框選、點泳道名字、點動作表單裡的名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};
@@ -490,9 +503,9 @@ export class EditorSession {
 	/**
 	 * 拖人、選人工具列、貼上站位改好了（送到 ask 的 done）：「已插入站位 N」「已改站位 N」後面補插了站位的位置從哪來、
 	 * 往後帶了幾張，播放頭停到改的那張。有往後帶：提示旁邊放「只改這張」（見 #onlyThis）。
-	 * atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。pasted = ⌘V 貼上的（插的站位是貼上的位置，不是自動帶入，N46）。
+	 * 選項 atEdge：拖過頭停在邊界，多一句「已靠到邊界」。pasted：⌘V 貼上的（插的站位是貼上的位置，不是自動帶入，N46）。
 	 */
-	moved(r: MoveResult, atEdge = false, pasted = false) {
+	moved(r: MoveResult, { atEdge = false, pasted = false }: { atEdge?: boolean; pasted?: boolean } = {}) {
 		const said = [
 			pasted ? '貼上複製的站位' : r.inserted && '大家的位置自動帶入',
 			r.carried > 0 && `往後帶了 ${r.carried} 張`,
@@ -598,7 +611,7 @@ export class EditorSession {
 		const index = this.#flow?.formations.findIndex((f) => f.id === this.#formationId) ?? -1;
 		if (this.#picked !== 'formation' || index < 0) return false;
 		this.#copied = this.#flow!.formations[index].pos;
-		this.notice = `記下站位 ${index + 1} 的位置；移到別的地方按 ${KEYS.paste.mac} 貼上`;
+		this.notice = `記下站位 ${index + 1} 的位置；移到別的地方按 ${both(KEYS.paste)} 貼上`;
 		return true;
 	}
 
@@ -616,7 +629,7 @@ export class EditorSession {
 			return true;
 		}
 		this.ask.send(() => moveGroup(flow, sec, ids, () => Object.fromEntries(ids.map((id) => [id, copied[id]]))), {
-			done: (r) => this.moved(r, false, true)
+			done: (r) => this.moved(r, { pasted: true })
 		});
 		return true;
 	}

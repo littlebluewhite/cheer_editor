@@ -8,6 +8,7 @@
 	import { commitField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
+	import { revealAlert } from './reveal';
 	import { tick, untrack } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
@@ -379,8 +380,8 @@
 
 		{#if ask.question}<ConfirmList {ask} />{/if}
 
-		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" {@attach revealAlert(ask.failures)}>{error}</p>{/each}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}
 </Modal>
 

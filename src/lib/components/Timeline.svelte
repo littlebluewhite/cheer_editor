@@ -36,6 +36,7 @@
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
 	import { followPointer } from './pointer';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 放大 ×1 時，時間軸 1 秒幾 px。 */
@@ -473,7 +474,7 @@
 			{/if}
 			<button type="submit" class="primary">插入</button>
 		</div>
-		{#if insertAsk.error}<p class="error" role="alert">{insertAsk.error}</p>{/if}
+		{#if insertAsk.error}<p class="error" {@attach revealAlert(insertAsk.failures)}>{insertAsk.error}</p>{/if}
 	</form>
 {/if}
 

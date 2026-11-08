@@ -155,6 +155,20 @@ describe('一次設好幾個人的任務角色（#229）', () => {
 		expect(row('小A').getAttribute('aria-pressed')).toBe('false');
 		expect(within(form()).queryByRole('note', { name: '一起設任務角色' })).toBeNull();
 	});
+
+	it('iPad 沒有 Shift：開著「多選」點名字也是加選、拿掉（N49）', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		page.session.multiSelect = true;
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'));
+		await fireEvent.click(row('小B'));
+		expect(within(form()).getByRole('note', { name: '一起設任務角色' }).textContent).toContain('選了 3 人');
+		await fireEvent.click(row('小A'));
+		expect(row('小A').getAttribute('aria-pressed')).toBe('false');
+		expect(row('小美').getAttribute('aria-pressed')).toBe('true');
+	});
 });
 
 describe('從別的動作複製人', () => {

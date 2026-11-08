@@ -22,6 +22,15 @@ function musicFlow(): Flow {
 	return flowOf(addSegment(flow, 'music'));
 }
 
+// jsdom 沒有 scrollIntoView：記下被捲過去的元素。
+const scrolled: Element[] = [];
+Element.prototype.scrollIntoView = function () {
+	scrolled.push(this);
+};
+
+/** 等畫面跑一格（捲過去是等下一格才捲）。 */
+const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+
 const loaded = (durationSec: number): DecodedAudio => ({ durationSec, peaks: [0.2, 0.8, 0.5] });
 
 /**
@@ -161,6 +170,17 @@ describe('音樂段設定', () => {
 		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
 		expect(session.canUndo).toBe(false);
 		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60 到 170 之間');
+	});
+
+	it('被擋下的原因在對話框下面看不到時，捲過去讓它看得到；再被擋一次也再捲', async () => {
+		await setup(musicFlow());
+		scrolled.length = 0;
+		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
+		await frame();
+		expect(scrolled).toEqual([screen.getByRole('alert')]);
+		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '300' } });
+		await frame();
+		expect(scrolled).toHaveLength(2);
 	});
 
 	it('載入音樂檔：解碼後流程記一筆音樂檔，位元組放在音樂檔庫', async () => {
