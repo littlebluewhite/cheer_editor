@@ -88,6 +88,18 @@ describe('首頁：最近的流程', () => {
 		expect(drafts.all.has('n2')).toBe(true);
 	});
 
+	it('同名、同一分鐘改的兩支：時間寫到秒分得出來，「丟掉」的確認框也寫是哪一支，不只寫名字（N40）', async () => {
+		const drafts = fakeDraftStore();
+		drafts.all.set('n1', { bytes: writeFlowFile(newFlowOf('全國賽'), {}), savedAt: new Date(2026, 10, 4, 9, 0, 5) });
+		drafts.all.set('n2', { bytes: writeFlowFile(newFlowOf('全國賽'), {}), savedAt: new Date(2026, 10, 4, 9, 0, 40) });
+		home(drafts.store);
+		await flush();
+		const names = screen.getAllByRole('button', { name: /^全國賽/ }).map((b) => b.textContent);
+		expect(names).toEqual([expect.stringContaining('最後改 11/4 09:00:40'), expect.stringContaining('最後改 11/4 09:00:05')]);
+		await fireEvent.click(screen.getByRole('button', { name: '丟掉「全國賽」（最後改 11/4 09:00:05）' }));
+		expect(screen.getByRole('alertdialog').textContent).toContain('丟掉「全國賽」（最後改 11/4 09:00:05）的草稿？');
+	});
+
 	it('另一個分頁打開、離開一支流程：首頁的「另一個分頁正在編」跟著出現、消失，不用重新整理', async () => {
 		const drafts = fakeDraftStore();
 		const tabs = fakeTabs();
