@@ -158,8 +158,8 @@
 		border-radius: 999px;
 		color: var(--cue-motion-ink);
 	}
-	@media print {
-		/* 長拍點、環節名字換行，不用「...」截掉 */
+	/* 長拍點、環節名字換行，不用「...」截掉：印出來和手機、iPad（沒有滑鼠，移上去看 title 這招不能用，N35） */
+	@media print, (hover: none) {
 		.cue,
 		.phase {
 			white-space: normal;
@@ -167,6 +167,8 @@
 			text-overflow: clip;
 			overflow-wrap: anywhere;
 		}
+	}
+	@media print {
 		.cue-line {
 			break-inside: avoid;
 		}

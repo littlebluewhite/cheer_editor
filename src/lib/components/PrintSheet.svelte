@@ -357,6 +357,10 @@
 		.eight::before {
 			content: '八拍 ';
 		}
+		/* 口號段寫「整段 5.0 秒」：開始的秒數寫明是開始，兩個秒數才分得出來（N38） */
+		.num::before {
+			content: '開始 ';
+		}
 		.num::after {
 			content: ' 秒';
 		}
