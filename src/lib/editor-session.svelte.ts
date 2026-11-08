@@ -47,6 +47,12 @@ interface Step {
 	label: string;
 }
 
+/**
+ * 復原、重做過的一步，改之前、改之後換成剛剛真的換上的兩份：中間用「記」刪掉、改過的紀錄，
+ * 下次重做、復原照這兩份算，不會拿最早存的紀錄蓋回去（ADR 0007）。
+ */
+const replayed = (step: Step, flow: Flow, after: Flow): Step => ({ ...step, flow, after });
+
 /** 選得到的三種東西：站位、動作、人。 */
 type PickKind = 'formation' | 'action' | 'member';
 
@@ -427,9 +433,9 @@ export class EditorSession {
 		const prev = this.#undo.at(-1);
 		if (!this.#flow || !prev) return false;
 		const before = this.#flow;
-		this.#redo = [...this.#redo, prev];
 		this.#undo = this.#undo.slice(0, -1);
 		this.#flow = undoRecords(prev.flow, prev.after, this.#flow);
+		this.#redo = [...this.#redo, replayed(prev, this.#flow, before)];
 		this.#restored(this.#flow, before, 'undo');
 		this.notice = `已復原：${prev.label}`;
 		return true;
@@ -444,9 +450,9 @@ export class EditorSession {
 		const next = this.#redo.at(-1);
 		if (!this.#flow || !next) return false;
 		const before = this.#flow;
-		this.#undo = [...this.#undo, next];
 		this.#redo = this.#redo.slice(0, -1);
 		this.#flow = redoRecords(next.flow, next.after, this.#flow);
+		this.#undo = [...this.#undo, replayed(next, before, this.#flow)];
 		this.#restored(this.#flow, before, 'redo');
 		this.notice = `已重做：${next.label}`;
 		return true;

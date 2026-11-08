@@ -3,8 +3,10 @@ import {
 	addAction,
 	addMembers,
 	addSegment,
+	changeAttempt,
 	createFlow,
 	deleteAction,
+	deleteAttempt,
 	deleteMember,
 	deletePhase,
 	addPhase,
@@ -598,6 +600,32 @@ describe('編輯 session：復原把這一步清掉的紀錄一起帶回來（AD
 		const x1 = s.flow!.actions.find((a) => a.id === 'x1')!.successRate!;
 		const g1 = x1.records.filter((r) => r.who === 'g1');
 		expect(rateCounts(x1.phases, g1).whole).toEqual({ clean: 0, whole: 1 });
+	});
+
+	/** 只練下法 ✗ 的那一次：刪掉下法時整筆不見，復原後回來。 */
+	const onlyLoad = (s: EditorSession) => s.flow!.actions.find((a) => a.id === 'x1')!.successRate!.records[1];
+	const x1Records = (s: EditorSession) => s.flow!.actions.find((a) => a.id === 'x1')!.successRate!.records;
+
+	it('復原回來的一次，用「記」刪掉，再重做、復原：不會又跑回來', () => {
+		const s = new EditorSession(recordedFlow());
+		s.change(flowOf(deletePhase(s.flow!, 'x1', 'p3', { confirmed: true })));
+		s.undo();
+		const gone = onlyLoad(s);
+		s.record(flowOf(deleteAttempt(s.flow!, 'x1', gone.id)));
+		s.redo();
+		s.undo();
+		expect(x1Records(s).map((r) => r.id)).not.toContain(gone.id);
+	});
+
+	it('復原回來的一次，用「記」改了記號，再重做、復原：回來的是改過的，不是原本的', () => {
+		const s = new EditorSession(recordedFlow());
+		s.change(flowOf(deletePhase(s.flow!, 'x1', 'p3', { confirmed: true })));
+		s.undo();
+		const id = onlyLoad(s).id;
+		s.record(flowOf(changeAttempt(s.flow!, 'x1', id, { p3: '✓' })));
+		s.redo();
+		s.undo();
+		expect(x1Records(s).find((r) => r.id === id)?.marks).toEqual({ p3: '✓' });
 	});
 });
 
