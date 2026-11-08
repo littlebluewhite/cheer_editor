@@ -205,4 +205,11 @@ describe('為什麼不能編：照螢幕寫轉成橫的、太窄或太矮', () =
 		await openOnPhone();
 		expect(why()).toContain('太窄');
 	});
+
+	it('手機（390×844 觸控）：跟電腦叫法一樣寫「檢視模式・只能看」，為什麼不能編不寫「像素」這種技術用語（N37）', async () => {
+		screenOf(390, 844, true);
+		await openOnPhone();
+		expect(why()).toContain('檢視模式・只能看');
+		expect(why()).not.toContain('像素');
+	});
 });

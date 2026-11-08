@@ -45,6 +45,8 @@
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 檢視模式：只能看設定、試聽，欄位和按鈕整塊停用。 */
+	const readonly = $derived(!session.editable);
 	/** 音樂檔（解碼好的、壞的、多長）從編輯器 module 的音樂檔庫拿：換流程會換一個，所以每次用都從 editor.music 拿。 */
 	const editor = getEditor();
 	/**
@@ -181,16 +183,27 @@
 	}
 </script>
 
-<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose}>
-	{#snippet children(close)}
+<!-- 試聽不改流程：檢視模式（readonly，欄位整塊停用）時放到標題列，照樣能聽 -->
+{#snippet listen()}
+	<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
+	<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
+		>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
+	>
+{/snippet}
+
+<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose} {readonly}>
+	{#snippet head(close)}
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
-			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
+			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒{readonly ? '・檢視模式只能看' : ''}</span>{/if}
+			{#if readonly && music}{@render listen()}{/if}
 			{#if playback.playing}
 				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={() => playback.pause()}><Icon name="pause" size={14} />暫停</button>
 			{/if}
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
+	{/snippet}
+	{#snippet children()}
 
 		{#key fieldsKey}
 		{#if music && length}
@@ -247,10 +260,7 @@
 							onchange={(e) => updateField(e.currentTarget, '第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>
-					<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
-					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
-						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
-					>
+					{#if !readonly}{@render listen()}{/if}
 				</div>
 				<div class="row">
 					<button type="button" onclick={tap}>敲擊測速</button>
@@ -271,7 +281,7 @@
 					aria-label="波形"
 					viewBox={`${wave.startSec} 0 ${wave.lengthSec} 2`}
 					preserveAspectRatio="none"
-					onclick={clickWave}
+					onclick={readonly ? undefined : clickWave}
 				>
 					<rect class="used" x={used.startSec} width={used.endSec - used.startSec} y="0" height="2" />
 					<line class="mid" x1={wave.startSec} x2={wave.startSec + wave.lengthSec} y1="1" y2="1" />
