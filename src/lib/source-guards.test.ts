@@ -52,3 +52,15 @@ describe('檢視模式：畫面能不能改只看 session.editable（D）', () =
 		]);
 	});
 });
+
+describe('錯誤訊息自己捲出來（C1）', () => {
+	it('role="alert" 只在 reveal.ts 的 revealAlert 標：每個被擋下的原因出現時都捲進看得到的範圍', () => {
+		expect(linesMatching(/\brole\b\W{1,4}alert\b/)).toEqual(["lib/components/reveal.ts: el.setAttribute('role', 'alert');"]);
+	});
+});
+
+describe('鍵盤路由只有一份定義（G）', () => {
+	it("「焦點在不在打字的地方」都問 key-owner.ts，不自己寫 closest('input, …')", () => {
+		expect(linesMatching(/closest\(\s*['"`]\s*(input|textarea|select)\b/)).toEqual([]);
+	});
+});

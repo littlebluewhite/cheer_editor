@@ -14,6 +14,7 @@
 	} from '#lib/core';
 	import { Ask } from '#lib/ask.svelte.js';
 	import CharCount from './CharCount.svelte';
+	import { revealAlert } from './reveal';
 
 	let { oncreate }: { oncreate: (flow: Flow) => void } = $props();
 
@@ -83,7 +84,7 @@
 			oninput={() => (nameError = '')}
 			placeholder="例：2027 全國賽"
 		/>
-		{#if nameError}<p class="error" id="{uid}-name-error" role="alert">{nameError}</p>{/if}
+		{#if nameError}<p class="error" id="{uid}-name-error" {@attach revealAlert(nameError)}>{nameError}</p>{/if}
 	</div>
 
 	<fieldset>
@@ -129,12 +130,12 @@
 					<label><input type="radio" name="layout" value="vertical" bind:group={customLayout} />直放</label>
 					<label><input type="radio" name="layout" value="horizontal" bind:group={customLayout} />橫放</label>
 				</span>
-				{#if customError}<p class="error" id="{uid}-strips-error" role="alert">{customError}</p>{/if}
+				{#if customError}<p class="error" id="{uid}-strips-error" {@attach revealAlert()}>{customError}</p>{/if}
 			</div>
 		{/if}
 	</fieldset>
 
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	<button type="submit" class="primary">建立</button>
 </form>

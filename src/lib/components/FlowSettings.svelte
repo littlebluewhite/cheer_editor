@@ -29,6 +29,7 @@
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		onclose: () => void;
@@ -180,7 +181,7 @@
 			</div>
 			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。沒按就關掉，也會照樣調整。</span>
 			{#if fieldAsk.question}<ConfirmList ask={fieldAsk} />{/if}
-			{#if fieldAsk.error}<p class="error" role="alert">{fieldAsk.error}</p>{/if}
+			{#if fieldAsk.error}<p class="error" {@attach revealAlert(fieldAsk.failures)}>{fieldAsk.error}</p>{/if}
 			{#if fieldNote}<p class="note" role="status">{fieldNote}</p>{/if}
 		</section>
 		<section class="rules" class:off={!flow.timeRules.on}>
@@ -282,8 +283,8 @@
 			</form>
 			<span class="note">改名時，動作裡的人、給這個角色的拍點一起改；意思在名詞對照表填。</span>
 		</section>
-		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" {@attach revealAlert(ask.failures)}>{error}</p>{/each}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}
 </Modal>
 

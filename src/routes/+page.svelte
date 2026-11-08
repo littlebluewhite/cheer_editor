@@ -56,6 +56,7 @@
 	import SquadBar from '#lib/components/SquadBar.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import WalkForm from '#lib/components/WalkForm.svelte';
+	import { revealAlert } from '#lib/components/reveal.js';
 
 	interface Props {
 		/**
@@ -577,7 +578,7 @@
 								onblur={closeJump}
 								{@attach (el) => el.focus()}
 							/>
-							{#if jumpError}<p class="jump-error" role="alert">{jumpError}</p>{/if}
+							{#if jumpError}<p class="jump-error" {@attach revealAlert(jumpError)}>{jumpError}</p>{/if}
 						</div>
 					{/if}
 				{:else}
@@ -1069,7 +1070,7 @@
 				{#if !narrow}<span>已經有流程檔？</span>{/if}
 				<label class="open btn" class:primary={narrow}><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 			</div>
-			{#if editor.file.openError}<p class="error" role="alert">{editor.file.openError}</p>{/if}
+			{#if editor.file.openError}<p class="error" {@attach revealAlert(editor.file.openError)}>{editor.file.openError}</p>{/if}
 			{#if editor.file.recent.length}
 				<div class="recent">
 					<h2 id="recent-title">最近的流程</h2>

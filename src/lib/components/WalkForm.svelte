@@ -6,6 +6,7 @@
 	import { untrack } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { revealAlert } from './reveal';
 	import {
 		clearWalks,
 		formationWalks,
@@ -145,7 +146,7 @@
 			<button type="button" class="primary" disabled={noWalk} onclick={apply}>套用</button>
 			<button type="button" disabled={noWalk} onclick={useDefault} title="清掉設定：最後一個八拍才出發">用預設</button>
 		</div>
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	</section>
 {/if}
 

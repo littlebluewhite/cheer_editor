@@ -15,6 +15,7 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		onclose: () => void;
@@ -133,7 +134,7 @@
 			</div>
 			<p class="muted">自訂任務角色只存在這一支流程裡。在上面的表裡可以直接改名稱、意思，或按垃圾桶刪掉。</p>
 		</form>
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}
 </Modal>
 

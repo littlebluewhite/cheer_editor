@@ -29,6 +29,8 @@
 	import { popover } from '#lib/popover.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { touchOnUnpicked } from './pointer';
+	import { ownsKey } from '#lib/key-owner.js';
+	import { revealAlert } from './reveal';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -343,7 +345,7 @@
 	 * ⌘C／Ctrl+C 複製、⌘V／Ctrl+V 貼上。
 	 */
 	function sheetKey(e: KeyboardEvent) {
-		if ((e.target as Element).closest('input, textarea, select')) return;
+		if (ownsKey(e.target, e.key)) return;
 		const key = e.key.toLowerCase();
 		const mod = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
 		if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -806,7 +808,7 @@
 <!-- 等確認的環節改動、被擋的原因。 -->
 {#snippet asks()}
 	{#if ask.question}<ConfirmList {ask} />{/if}
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 {/snippet}
 
 <svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onkeydown={shiftKey} onkeyup={shiftKey} onblur={() => (through = false)} />
