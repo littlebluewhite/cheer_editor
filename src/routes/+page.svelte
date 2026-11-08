@@ -693,7 +693,7 @@
 						type="button"
 						class="ghost"
 						title={stepTitle('復原', session.undoLabel, both(KEYS.undo))}
-						disabled={session.viewing || !session.canUndo}
+						disabled={!session.editable || !session.canUndo}
 						onclick={undo}
 						><Icon name="undo" /><span class="narrow-hide">復原</span></button
 					>
@@ -701,7 +701,7 @@
 						type="button"
 						class="ghost"
 						title={stepTitle('重做', session.redoLabel, both(KEYS.redo))}
-						disabled={session.viewing || !session.canRedo}
+						disabled={!session.editable || !session.canRedo}
 						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
 					>
 					<span class="sep" aria-hidden="true"></span>
@@ -711,7 +711,7 @@
 					><Icon name="print" />八拍表</button
 				>
 				{#if view === 'edit' && !narrow}
-					<button type="button" class="ghost" title="流程設定" disabled={session.viewing} onclick={() => (settingsOpen = true)}
+					<button type="button" class="ghost" title="流程設定" disabled={!session.editable} onclick={() => (settingsOpen = true)}
 						><Icon name="settings" /><span class="narrow-hide">流程</span>設定</button
 					>
 				{/if}
@@ -775,7 +775,7 @@
 					positions={positionsAt(flow, playback.sec)}
 					raised={raisedAt(flow, playback.sec)}
 					{toMeters}
-					rail={!session.viewing}
+					rail={session.editable}
 					ghosts={trail.ghosts}
 					walks={trail.walks}
 					clashes={trail.clashes}
@@ -821,7 +821,7 @@
 							<ul class="warn" aria-label="規則警告">
 								{#each warnings as w (w.title)}
 									<li>
-										{#if view === 'edit' && !session.viewing}
+										{#if view === 'edit' && session.editable}
 											<button
 												type="button"
 												title="規則警告（只提醒，不擋）：按一下到流程設定改這個數字"
@@ -840,7 +840,7 @@
 						{:else if flow && !flow.timeRules.on}
 							<!-- 關掉的規則警告：看得出是關著的，能改設定時點了到流程設定的開關 -->
 							<div class="warn off">
-								{#if view === 'edit' && !session.viewing}
+								{#if view === 'edit' && session.editable}
 									<button
 										type="button"
 										onclick={() => {
@@ -893,7 +893,7 @@
 				</Field>
 			</main>
 
-			<aside class="inspector" class:viewing={session.viewing} aria-label="右邊欄" hidden={view === 'practice'}>
+			<aside class="inspector" class:viewing={!session.editable} aria-label="右邊欄" hidden={view === 'practice'}>
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 				<div
 					class="col-split"
@@ -907,7 +907,7 @@
 					{@attach inspectorDivider.attach}
 				></div>
 				<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
-				<div class="tabs" role="tablist" aria-label="右邊欄" hidden={session.viewing} onkeydown={tabKey}>
+				<div class="tabs" role="tablist" aria-label="右邊欄" hidden={!session.editable} onkeydown={tabKey}>
 					<button
 						type="button"
 						role="tab"
@@ -926,16 +926,16 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={!session.editable || editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
+				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={!session.editable || editor.inspectorTab !== 'members'}>
 					<MemberPanel />
 				</div>
 				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
-				{#if session.viewing}
+				{#if !session.editable}
 					<div class="panel view-panel">
 						<div class="view-me">{@render mePicker('（選自己：八拍表這一列只看我的）')}</div>
 						<NowEightCount {flow} memberId={myId} sec={playback.sec} />

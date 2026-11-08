@@ -353,7 +353,7 @@
 		const { walks: next, clamped, shiftSec } = draggedWalks(d);
 		if (Math.abs(shiftSec) < 1e-9) {
 			// 檢視模式：說不能改，不說已靠到邊界
-			if (clamped) session.notice = session.viewing ? VIEW_ONLY : AT_EDGE;
+			if (clamped) session.notice = session.editable ? AT_EDGE : VIEW_ONLY;
 			return;
 		}
 		session.ask.send(() => setWalks(flow, d.formationId, next), {
