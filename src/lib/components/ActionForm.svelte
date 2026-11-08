@@ -37,7 +37,7 @@
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
-	import { reveal, stickyBottom } from './reveal';
+	import { reveal, revealAlert, stickyBottom } from './reveal';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
 	import RolePicker, { roleKey } from './RolePicker.svelte';
@@ -308,7 +308,7 @@
 
 <!-- 被擋的原因寫在教練剛改的那一格（或按的鈕）旁邊：不用捲去找。在看得到的範圍外、或在黏底的「新增動作」後面，就捲出來（N03）。 -->
 {#snippet errorAtSpot(at: Spot, wide = false)}
-	{#if ask.error && errorAt === at}<p class="error" class:wide role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
+	{#if ask.error && errorAt === at}<p class="error" class:wide {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 {/snippet}
 
 <!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
@@ -584,7 +584,7 @@
 	{/if}
 
 	<!-- 不是哪一格送的（例：刪除動作被擋）：寫在最下面。右邊欄很長時會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
-	{#if ask.error && errorAt === null}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
+	{#if ask.error && errorAt === null}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 </section>
 {/if}
 

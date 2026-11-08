@@ -137,11 +137,11 @@ describe('跟第 [_] 張一樣', () => {
 });
 
 describe('站位卡片 ⌘C／⌘V', () => {
-	it('⌘C 的提示寫「記下站位 N 的位置」，不用要避開的「複製站位」', async () => {
+	it('⌘C 的提示寫「記下站位 N 的位置」，不用要避開的「複製站位」；貼上的鍵 Mac、Windows 都寫（不只寫 ⌘V）', async () => {
 		render(Page, editorPage(threeFormations()).props);
 		await fireEvent.click(thumbs()[2]);
 		await fireEvent.keyDown(window, { key: 'c', metaKey: true });
-		expect(screen.getByRole('status').textContent).toBe('記下站位 3 的位置；移到別的地方按 ⌘V 貼上');
+		expect(screen.getByRole('status').textContent).toBe('記下站位 3 的位置；移到別的地方按 ⌘V／Ctrl+V 貼上');
 	});
 
 	it('播放頭那一拍有站位：改成複製的那張，往後帶，⌘Z 一步回去', async () => {

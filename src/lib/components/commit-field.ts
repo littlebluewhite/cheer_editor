@@ -8,7 +8,7 @@
 // - Esc 丟掉打的字：pending-input 在中央處理（退回上次送出的值），這裡不用再接。
 
 import type { Attachment } from 'svelte/attachments';
-import type { CommandResult, ConfirmOption } from '#lib/core';
+import { updateCustomRole, type CommandResult, type ConfirmOption, type CustomRole, type Flow } from '#lib/core';
 import type { Ask } from '#lib/ask.svelte.js';
 
 export interface FieldCommit<R extends CommandResult> {
@@ -38,4 +38,12 @@ export function commitField<R extends CommandResult>(
 			input.removeEventListener('input', oninput);
 		};
 	};
+}
+
+/** 自訂任務角色的名稱欄（流程設定、名詞對照表共用）：意思不變；被擋就退回原本的名稱，原因寫在表單上。 */
+export function customRoleNameField(ask: Ask, flow: () => Flow, role: CustomRole): Attachment<HTMLInputElement> {
+	return commitField(ask, null, {
+		send: (text) => updateCustomRole(flow(), role.id, { name: text, meaning: role.meaning }),
+		actual: () => role.name
+	});
 }

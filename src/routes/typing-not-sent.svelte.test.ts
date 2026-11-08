@@ -26,7 +26,13 @@ interface FlowField {
 	inDialog?: boolean;
 }
 
-const pickLib = () => fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
+/** 點時間軸上的音樂 1，打開段設定，拿裡面的一格。 */
+async function segmentField(label: string) {
+	await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+	return within(screen.getByRole('dialog')).getByLabelText(label) as HTMLInputElement;
+}
+
+const pickLib = () =>fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
 const membersTab = () => fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
 
 const FIELDS: FlowField[] = [
@@ -57,7 +63,9 @@ const FIELDS: FlowField[] = [
 			await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 			return within(screen.getByRole('dialog', { name: '流程設定' })).getByLabelText('流程名字');
 		}
-	}
+	},
+	{ name: '段的八拍數（段設定）', typed: '6', inDialog: true, open: () => segmentField('八拍數') },
+	{ name: '段的 BPM（段設定）', typed: '120', inDialog: true, open: () => segmentField('BPM') }
 ];
 
 /** 開著 Lib 範例（兩張站位），草稿讀過了。 */

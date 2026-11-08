@@ -215,14 +215,14 @@ export type RecordsPatch = { actionId: string; before: Attempt[]; after: Attempt
 /** 從改之前、改之後的流程算出這一步拿掉了哪些紀錄：有一次整筆不見、少了記號或空著的環節的動作。 */
 export function recordsPatch(before: Flow, after: Flow): RecordsPatch {
 	return before.actions.flatMap((action) => {
-		const was = action.successRate?.records ?? [];
-		const now = after.actions.find((a) => a.id === action.id)?.successRate?.records ?? [];
-		const then = new Map(now.map((r) => [r.id, r]));
-		const lost = was.some((b) => {
-			const a = then.get(b.id);
-			return !a || lostMarks(b, a).length > 0 || lostBlanks(b, a).length > 0;
+		const beforeRecords = action.successRate?.records ?? [];
+		const afterRecords = after.actions.find((a) => a.id === action.id)?.successRate?.records ?? [];
+		const afterById = byId(afterRecords);
+		const lost = beforeRecords.some((beforeRec) => {
+			const afterRec = afterById.get(beforeRec.id);
+			return !afterRec || lostMarks(beforeRec, afterRec).length > 0 || lostBlanks(beforeRec, afterRec).length > 0;
 		});
-		return lost ? [{ actionId: action.id, before: was, after: now }] : [];
+		return lost ? [{ actionId: action.id, before: beforeRecords, after: afterRecords }] : [];
 	});
 }
 
@@ -251,45 +251,59 @@ export function recordsLossText(records: number, marks: number): string {
  * 加回去的照原本的先後排，之後才記的排在後面；這一步之後用「記」刪掉的不加回。
  */
 export function undoRecords(before: Flow, after: Flow, current: Flow): Flow {
-	let flow = carryRecords(before, current);
-	for (const { actionId, before: was, after: now } of recordsPatch(before, after)) {
-		const action = flow.actions.find((a) => a.id === actionId);
-		if (!action?.successRate) continue;
-		const has = new Map(action.successRate.records.map((r) => [r.id, r]));
-		const then = new Map(now.map((r) => [r.id, r]));
-		const back = was.flatMap((b) => {
-			const c = has.get(b.id);
-			const a = then.get(b.id);
-			if (!c) return a ? [] : [b];
-			if (!a || sameAttempt(c, a)) return [a ? b : c];
-			return [putBack(action, b, a, c)];
+	return replayRecords(before, before, after, current, (action, currentRecords, lost) => {
+		const currentById = byId(currentRecords);
+		const afterById = byId(lost.after);
+		const restored = lost.before.flatMap((beforeRec) => {
+			const currentRec = currentById.get(beforeRec.id);
+			const afterRec = afterById.get(beforeRec.id);
+			if (!currentRec) return afterRec ? [] : [beforeRec];
+			if (!afterRec || sameAttempt(currentRec, afterRec)) return [afterRec ? beforeRec : currentRec];
+			return [putBack(action, beforeRec, afterRec, currentRec)];
 		});
-		const later = action.successRate.records.filter((r) => !was.some((b) => b.id === r.id));
-		flow = withRecords(flow, action, [...back, ...later]);
-	}
-	return flow;
+		const later = currentRecords.filter((r) => !lost.before.some((beforeRec) => beforeRec.id === r.id));
+		return [...restored, ...later];
+	});
 }
 
 /** 重做一步：換上改之後的流程（after），帶著現在的紀錄，再把這一步（before → after）拿掉的紀錄拿掉一次。 */
 export function redoRecords(before: Flow, after: Flow, current: Flow): Flow {
-	let flow = carryRecords(after, current);
-	for (const { actionId, before: was, after: now } of recordsPatch(before, after)) {
-		const action = flow.actions.find((a) => a.id === actionId);
-		if (!action?.successRate) continue;
-		const then = new Map(was.map((r) => [r.id, r]));
-		const done = new Map(now.map((r) => [r.id, r]));
-		const records = action.successRate.records.flatMap((r) => {
-			const b = then.get(r.id);
-			const a = done.get(r.id);
-			if (!b) return [r];
-			if (!a) return [];
-			if (sameAttempt(r, b) || sameAttempt(r, a)) return [a];
-			return stripAgain(r, b, a);
+	return replayRecords(after, before, after, current, (_action, currentRecords, lost) => {
+		const beforeById = byId(lost.before);
+		const afterById = byId(lost.after);
+		return currentRecords.flatMap((currentRec) => {
+			const beforeRec = beforeById.get(currentRec.id);
+			const afterRec = afterById.get(currentRec.id);
+			if (!beforeRec) return [currentRec];
+			if (!afterRec) return [];
+			if (sameAttempt(currentRec, beforeRec) || sameAttempt(currentRec, afterRec)) return [afterRec];
+			return stripAgain(currentRec, beforeRec, afterRec);
 		});
-		flow = withRecords(flow, action, records);
+	});
+}
+
+/**
+ * 復原、重做共用的骨架：換上 base（復原是 before、重做是 after），帶著現在的紀錄；
+ * 這一步（before → after）拿掉紀錄的每個動作，紀錄換成 fix 給的（傳入那個動作現在的紀錄和這一步拿掉了什麼）。
+ */
+function replayRecords(
+	base: Flow,
+	before: Flow,
+	after: Flow,
+	current: Flow,
+	fix: (action: Action, currentRecords: Attempt[], lost: RecordsPatch[number]) => Attempt[]
+): Flow {
+	let flow = carryRecords(base, current);
+	for (const lost of recordsPatch(before, after)) {
+		const action = flow.actions.find((a) => a.id === lost.actionId);
+		if (!action?.successRate) continue;
+		flow = withRecords(flow, action, fix(action, action.successRate.records, lost));
 	}
 	return flow;
 }
+
+/** 一次一次照 id 找。 */
+const byId = (records: Attempt[]) => new Map(records.map((r) => [r.id, r]));
 
 /** b 有、a 沒有的記號（環節 id）。 */
 const lostMarks = (b: Attempt, a: Attempt) => Object.keys(b.marks).filter((id) => !(id in a.marks));

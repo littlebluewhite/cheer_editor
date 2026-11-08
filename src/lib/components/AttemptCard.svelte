@@ -26,6 +26,7 @@
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { removeWithRestore } from './record-notice';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -235,7 +236,7 @@
 		</div>
 	{/if}
 	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	<footer>
 		{#if today.length}

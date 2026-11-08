@@ -449,14 +449,14 @@
 	 * 編輯頁、能改：場地上面固定留一條給選人工具列（--tools-h；沒選人時是「全隊跟第 [_] 張一樣」）。場地不跳，
 	 * 工具列也不蓋住場上的人和條號（N05）。檢視模式不會有工具列，不留。
 	 */
-	const band = $derived(!!session && !session.viewing);
+	const band = $derived(!!session?.editable);
 
 	/**
 	 * 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。
 	 * 沒選人時在空白處按：開套用全隊的選單（跟第 [_] 張一樣）；有選人時空白處照舊是瀏覽器的選單。
 	 */
 	function contextMenu(e: MouseEvent) {
-		if (!session || session.viewing) return;
+		if (!session?.editable) return;
 		const el = (e.target as Element).closest?.('[data-member-id]') ?? (selected.length ? null : svg);
 		const id = el?.getAttribute('data-member-id');
 		if (!el) return;
@@ -576,7 +576,7 @@
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
 			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge, e.altKey);
-			else if (drag.atEdge) session!.notice = session!.viewing ? VIEW_ONLY : AT_EDGE;
+			else if (drag.atEdge) session!.notice = session!.editable ? AT_EDGE : VIEW_ONLY;
 		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
@@ -591,7 +591,7 @@
 	function drop(moves: Record<string, Position>, atEdge: boolean, onlyThis: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send(() => moveMembers(s.flow!, sec, moves, !onlyThis), { done: (r) => s.moved(r, atEdge) });
+		s.ask.send(() => moveMembers(s.flow!, sec, moves, !onlyThis), { done: (r) => s.moved(r, { atEdge }) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
@@ -619,7 +619,7 @@
 			session.pickMember(id, e.shiftKey);
 			return;
 		}
-		if (session.viewing) return;
+		if (!session.editable) return;
 		const dir = ARROWS[e.key];
 		if (!dir || e.ctrlKey || e.metaKey || e.altKey || !positions[id]) return;
 		e.preventDefault();
@@ -833,9 +833,9 @@
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
 		{/if}
 	</svg>
-	{#if readout}<div class="readout" data-keep-visible>{readout}</div>{/if}
+	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
 	{#if picked}<div class="picked" data-keep-visible role="note" aria-label="選到的人在哪">{picked}</div>{/if}
-	{#if session && !session.viewing}
+	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
 	{/if}
 	{@render children?.()}

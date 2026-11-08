@@ -4,6 +4,7 @@
 	import { deleteLastRunThrough, lastRunThrough, restoreRunThrough } from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { removeWithRestore } from './record-notice';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD）。 */
@@ -43,7 +44,7 @@
 <div class="run">
 	<button type="button" class="primary" onclick={onrecord}>＋ 記一次全上</button>
 	<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
-	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
+	{#if ask.error}<span class="error" {@attach revealAlert(ask.failures)}>{ask.error}</span>{/if}
 </div>
 
 <style>
