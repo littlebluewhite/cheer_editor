@@ -49,10 +49,12 @@ function sent(t: NonNullable<typeof typing>) {
 }
 
 if (typeof window !== 'undefined') {
+	// 標了 data-scratch 的框（跳時間這類）不改流程：裡面打的字不算沒送出，不出現「未存」（N12）。
 	window.addEventListener(
 		'focusin',
 		(e) => {
-			typing = isTextField(e.target) ? { el: e.target, value: e.target.value, typed: false, composing: false } : null;
+			const field = isTextField(e.target) && !e.target.hasAttribute('data-scratch') ? e.target : null;
+			typing = field && { el: field, value: field.value, typed: false, composing: false };
 			changed();
 		},
 		true

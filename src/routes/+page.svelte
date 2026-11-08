@@ -569,6 +569,7 @@
 							<input
 								type="text"
 								aria-label="跳到哪裡"
+								data-scratch
 								placeholder="例：3-1"
 								enterkeyhint="go"
 								autocomplete="off"
