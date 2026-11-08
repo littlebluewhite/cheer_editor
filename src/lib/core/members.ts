@@ -10,7 +10,7 @@ import { FIXED_ROLES } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
-import { atText, segmentSpans } from './time';
+import { fromText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
 export const MAX_MEMBERS = 40;
@@ -331,7 +331,7 @@ export function deleteMember(
 					: mine.role
 						? `：他是${mine.squad === undefined ? '' : `第 ${squadNumber(a, mine.squad)} 組的`}${mine.role}`
 						: '';
-				return `動作「${actionLabel(a)}」（${span.label} ${atText(span.segment, a.start)} 起）${what}`;
+				return `動作「${actionLabel(a)}」（${span.label} ${fromText(span.segment, a.start)}）${what}`;
 			})
 		);
 	}

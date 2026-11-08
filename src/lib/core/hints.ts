@@ -49,10 +49,10 @@ export function actionHints(action: Pick<Action, 'category' | 'members'>): strin
 	return [];
 }
 
-/** 音樂段比音樂檔長幾秒（從第一拍算段的長度）；沒有比較長是 0。 */
+/** 音樂段比音樂檔長幾秒（從第一拍算段的長度），最多是整段的長度；沒有比較長是 0。 */
 export function musicOverrunSec(segment: Segment, audioDurationSec: number): number {
 	if (segment.kind !== 'music') return 0;
-	const end = segment.firstBeatSec + (segment.halfBeats * 30) / segment.bpm;
-	const over = end - audioDurationSec;
-	return over > 0.05 ? over : 0;
+	const length = (segment.halfBeats * 30) / segment.bpm;
+	const over = segment.firstBeatSec + length - audioDurationSec;
+	return over > 0.05 ? Math.min(over, length) : 0;
 }

@@ -118,6 +118,25 @@ describe('插入八拍', () => {
 		});
 	});
 
+	it('教練選的單位是八拍：照八拍講；不到 1 個八拍就說最多幾拍（T09）', () => {
+		const flow = sample();
+		const noActions = { ...flow, actions: flow.actions.slice(0, 1) };
+		expect(insertBeats(noActions, at('s1', 64), 64, 'eight')).toEqual({
+			kind: 'blocked',
+			message: '站位 4 會超過這段的結尾，最多插 2 個八拍'
+		});
+		expect(insertBeats(flow, at('s1', 64), 32, 'eight')).toEqual({
+			kind: 'blocked',
+			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍'
+		});
+		// x96 拉長到 1 個半八拍：段尾後面只剩 4 拍
+		const longer = { ...flow, actions: flow.actions.map((a) => (a.start === 96 ? { ...a, length: 24 } : a)) };
+		expect(insertBeats(longer, at('s1', 64), 16, 'eight')).toEqual({
+			kind: 'blocked',
+			message: '「技巧·x96」會超過這段的結尾，最多插 4 拍（不到 1 個八拍，單位改成拍）'
+		});
+	});
+
 	it('口號段：最多插幾秒', () => {
 		const flow = sample();
 		expect(insertBeats(flow, at('s2', 0), 80)).toEqual({

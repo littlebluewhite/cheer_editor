@@ -67,13 +67,13 @@ describe('會丟紀錄的事才跳確認框', () => {
 });
 
 describe('同時只有一則提示', () => {
-	it('練習：一張卡存好的「已存」，被另一張卡「刪掉上一次」的提示換掉；提示不擠在卡片裡', async () => {
+	it('練習：一張卡存好的「已記下」，被另一張卡「刪掉上一次」的提示換掉；提示不擠在卡片裡', async () => {
 		render(Page, editorPage(practiceFlow()).props);
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		// 騰翻只有一個環節：點了就存
 		await fireEvent.click(screen.getByRole('button', { name: /^騰翻/ }));
 		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));
-		expect(screen.getAllByRole('status').map((s) => s.textContent)).toEqual(['已存']);
+		expect(screen.getAllByRole('status').map((s) => s.textContent)).toEqual(['已記下']);
 		await fireEvent.click(screen.getByRole('button', { name: /^小A .* 失敗$/ }));
 		await fireEvent.click(card('小美').getByRole('button', { name: '刪掉上一次' }));
 		expect(screen.getAllByRole('status').map((s) => s.textContent)).toEqual(['已刪掉 ✓（第 1 次）']);
@@ -84,7 +84,7 @@ describe('同時只有一則提示', () => {
 		expect(screen.getAllByRole('status').map((s) => s.textContent)).toEqual(['已救回']);
 	});
 
-	it('編排刪了動作的提示，到練習存一次就換成「已存」，不會兩則一起出現', async () => {
+	it('編排刪了動作的提示，到練習存一次就換成「已記下」，不會兩則一起出現', async () => {
 		const flow = flowOf(
 			addAction(practiceFlow(), {
 				segmentId: 's1',
@@ -103,6 +103,15 @@ describe('同時只有一則提示', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		await fireEvent.click(screen.getByRole('button', { name: /^騰翻/ }));
 		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));
-		expect(screen.getAllByRole('status').map((s) => s.textContent)).toEqual(['已存']);
+		expect(screen.getAllByRole('status').map((s) => s.textContent)).toEqual(['已記下']);
+	});
+
+	it('練習存好一次寫「已記下」，不寫「已存」：上方列這時寫「未存」（流程檔還沒存），兩句不打架（T07）', async () => {
+		render(Page, editorPage(practiceFlow()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		await fireEvent.click(screen.getByRole('button', { name: /^騰翻/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));
+		expect(screen.getByRole('status').textContent).toBe('已記下');
+		expect(document.querySelector('.unsaved')?.textContent).toBe('未存');
 	});
 });

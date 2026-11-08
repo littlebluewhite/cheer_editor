@@ -1259,7 +1259,7 @@ describe('站位與走位', () => {
 		await seek(8.25);
 		await dragFirstMember(); // 站位 2 在 3-5&
 		expect(box()!.value).toBe('3-5&');
-		expect(screen.getByText('可以挪到 1-1 之後')).toBeTruthy();
+		expect(screen.getByText('可以挪到 音樂 1 1-1 之後')).toBeTruthy();
 
 		await fireEvent.change(box()!, { target: { value: '2-5' } });
 		expect(box()!.value).toBe('2-5');
@@ -1274,7 +1274,7 @@ describe('站位與走位', () => {
 
 		await fireEvent.change(box()!, { target: { value: '1-1' } });
 		expect(screen.getByRole('status').textContent).toBe(
-			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前，已還原'
+			'站位 2 要挪到站位 1（音樂 1 1-1）之後、流程結尾之前，已還原'
 		);
 		expect(box()!.value).toBe('2-5');
 

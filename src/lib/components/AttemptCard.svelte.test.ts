@@ -50,12 +50,12 @@ describe('記錄頁的卡', () => {
 		expect(pressed(name, '下法', '小失誤')).toBe('false');
 	});
 
-	it('存好顯示「已存」，幾秒後消失', async () => {
+	it('存好顯示「已記下」（不寫「已存」，免得跟上方列的「未存」打架，T07），幾秒後消失', async () => {
 		vi.useFakeTimers();
 		const { name } = setup();
 		await tap(name, '上法', '成功');
 		await save();
-		expect(screen.getByRole('status').textContent).toBe('已存');
+		expect(screen.getByRole('status').textContent).toBe('已記下');
 		await vi.advanceTimersByTimeAsync(6000);
 		expect(screen.queryByRole('status')).toBeNull();
 	});
@@ -188,7 +188,7 @@ describe('記錄頁的卡', () => {
 		expect(screen.queryByRole('button', { name: '全部 ✓ 存' })).toBeNull();
 		await tap(name, '整體 騰翻', '小失誤');
 		expect(records(session, 1).map((r) => [r.whole, r.marks])).toEqual([[true, { p4: '△' }]]);
-		expect(screen.getByRole('status').textContent).toBe('已存');
+		expect(screen.getByRole('status').textContent).toBe('已記下');
 	});
 
 	it('之前選了「只練幾個環節」、後來環節刪到剩一個：照樣存成整個做', async () => {

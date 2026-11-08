@@ -189,7 +189,7 @@ describe('複製、貼上拍點', () => {
 		await fireEvent.click(pop().getByRole('button', { name: '複製選的拍點' }));
 		await select('1-8');
 		await fireEvent.click(pop().getByRole('button', { name: '貼上拍點' }));
-		expect(pop().getByRole('alert').textContent).toContain('動作裡面');
+		expect(pop().getByRole('alert').textContent).toBe('貼不下：拍點會超出動作的結尾 1 拍');
 		expect(cuesOf(session, 'x1')).toHaveLength(3);
 	});
 

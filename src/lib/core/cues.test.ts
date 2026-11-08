@@ -549,10 +549,11 @@ describe('複製、貼上拍點', () => {
 		]);
 	});
 
-	it('有一個放不下（超出動作）就整個擋下，說原因', () => {
+	it('有一個放不下（超出動作）就整個擋下，說差幾拍（T11）', () => {
 		const flow = withCues();
+		// 動作 4 拍，從第 4 拍貼 2 拍長的 down：多出 1 拍
 		const r = pasteCues(flow, 'x1', 6, copyCues(action(flow), 0, 4));
-		expect(r).toEqual({ kind: 'blocked', message: expect.stringContaining('動作裡面') });
+		expect(r).toEqual({ kind: 'blocked', message: '貼不下：拍點會超出動作的結尾 1 拍' });
 	});
 
 	it('沒有拍點可以貼就擋下', () => {

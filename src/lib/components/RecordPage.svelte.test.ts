@@ -55,7 +55,7 @@ describe('記錄頁', () => {
 		expect(dayRow('小A')).toEqual(['✓']);
 	});
 
-	it('卡上點 ✓ ✓ △ 再按「存這一次」才存成一次，卡片下面出現 ✓✓△，寫「已存」；別組的卡不動', async () => {
+	it('卡上點 ✓ ✓ △ 再按「存這一次」才存成一次，卡片下面出現 ✓✓△，寫「已記下」；別組的卡不動', async () => {
 		setup();
 		await tap('第 1 組 小美', '上法', '成功');
 		await tap('第 1 組 小美', '中段', '成功');
@@ -63,7 +63,7 @@ describe('記錄頁', () => {
 		expect(dayRow('第 1 組 小美')).toEqual([]);
 		await save('第 1 組 小美');
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
-		expect(screen.getByRole('status').textContent).toBe('已存');
+		expect(screen.getByRole('status').textContent).toBe('已記下');
 		expect(dayRow('第 2 組 小芳')).toEqual([]);
 	});
 
@@ -150,7 +150,7 @@ describe('記錄頁改某一次、刪掉某一次', () => {
 });
 
 describe('記錄頁記一次全上', () => {
-	it('按「＋ 記一次全上」打開全上表；存好回到記錄頁，寫「已存這次全上」，卡片和流程裡都有這次全上', async () => {
+	it('按「＋ 記一次全上」打開全上表；存好回到記錄頁，寫「已記下這次全上」，卡片和流程裡都有這次全上', async () => {
 		const session = setup();
 		await openSheet();
 		await tapSlot('第 2 組 小芳', '下法', 2);
@@ -158,7 +158,7 @@ describe('記錄頁記一次全上', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
 
 		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
-		expect(screen.getByRole('status').textContent).toBe('已存這次全上');
+		expect(screen.getByRole('status').textContent).toBe('已記下這次全上');
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓✓']);
 		expect(dayRow('第 2 組 小芳')).toEqual(['✓✓✗']);
 		expect(session.flow!.actions.map((a) => a.successRate?.records.map((r) => [r.who, r.practice]) ?? [])).toEqual([

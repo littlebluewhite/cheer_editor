@@ -977,7 +977,7 @@ describe('挪站位', () => {
 
 	it('要在前一張之後、後一張之前；開頭那張不能挪', () => {
 		const flow = walking();
-		const between = '站位 2 要挪到站位 1（1-1）之後、站位 3（口號 1 4.4 秒）之前';
+		const between = '站位 2 要挪到站位 1（音樂 1 1-1）之後、站位 3（口號 1 4.4 秒）之前';
 		const blocked = (message: string) => ({ kind: 'blocked', message });
 		expect(moveFormation(flow, 'f2', at('s1', 0))).toEqual(blocked(between));
 		expect(moveFormation(flow, 'f2', at('s2', 44))).toEqual(blocked(between));
@@ -1074,9 +1074,9 @@ describe('挪站位', () => {
 		}
 	});
 
-	it('能挪的範圍：前一張和後一張的站位時間，在別段就加段名', () => {
+	it('能挪的範圍：前一張和後一張的站位時間，一律寫是哪一段（T11）', () => {
 		const flow = walking();
-		expect(moveFormationHint(flow, 'f2')).toBe('可以挪到 1-1 之後、口號 1 4.4 秒 之前');
+		expect(moveFormationHint(flow, 'f2')).toBe('可以挪到 音樂 1 1-1 之後、口號 1 4.4 秒 之前');
 		expect(moveFormationHint(flow, 'f3')).toBe('可以挪到 音樂 1 7-3 之後');
 		expect(moveFormationHint(flow, 'f1')).toBe('開頭那張不能挪');
 	});

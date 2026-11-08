@@ -10,7 +10,7 @@ import { phaseFalloutText } from './phase-beats';
 import { cueFalloutText } from './settle';
 import { recordCount } from './success-rate';
 import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
+import { atTextWithUnit, fromText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -80,7 +80,8 @@ export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>
 	// 兩格各說各的：教練才知道是哪一格錯。
 	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return OUT_OF_RANGE.eights;
 	if (!Number.isInteger(eights)) return '八拍數要是整數';
-	if (!(Number.isInteger(lastBeats) && lastBeats >= 1 && lastBeats <= 8)) return OUT_OF_RANGE.lastBeats;
+	if (!(lastBeats >= 1 && lastBeats <= 8)) return OUT_OF_RANGE.lastBeats;
+	if (!Number.isInteger(lastBeats)) return '最後一個八拍的拍數要是整數';
 	return null;
 }
 
@@ -278,8 +279,8 @@ export function updateSegment(
 		const cleared = lost && `，${lost}${RECORDS_GONE}`;
 		return needsConfirm(`${label} 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉${cleared}`, [
 			...trimItems,
-			...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${atText(old, a.start)} 起）`),
-			...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atText(old, f.at)}）`)
+			...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
+			...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(old, f.at)}）`)
 		]);
 	}
 	return ok(withoutUnusedAudio(result));
@@ -304,7 +305,7 @@ function trimAction(
 		kind: 'ok',
 		flow: replaceAction(r.flow, r.action),
 		item:
-			`裁短：動作「${actionLabel(before)}」（${atText(segment, before.start)} 起）` +
+			`裁短：動作「${actionLabel(before)}」（${fromText(segment, before.start)}）` +
 			`${lengthTextWithUnit(segment, before.length)} → ${lengthTextWithUnit(segment, length)}` +
 			(fallout.length ? `，會${fallout.join('，')}` : ''),
 		records: (before.successRate?.records.length ?? 0) - (r.action.successRate?.records.length ?? 0),

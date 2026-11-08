@@ -170,7 +170,8 @@ describe('段縮短', () => {
 		expect(updateSegment(flow, 's2', { seconds: 5 })).toMatchObject({
 			kind: 'confirm',
 			message: '口號 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
-			items: ['裁短：動作「舞蹈」（3.0 起）5.0 秒 → 2.0 秒', '刪掉：站位 4（7.0）']
+			// 口號段的時間寫「秒」（T11）
+			items: ['裁短：動作「舞蹈」（3.0 秒起）5.0 秒 → 2.0 秒', '刪掉：站位 4（7.0 秒）']
 		});
 		const after = flowOf(updateSegment(flow, 's2', { seconds: 5 }, { confirmed: true }));
 		expect(after.formations.map((f) => f.id)).toEqual(['f1', 'f2', 'f3']);

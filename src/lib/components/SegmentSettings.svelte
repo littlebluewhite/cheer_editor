@@ -72,6 +72,12 @@
 	const length = $derived(music && musicLength(music));
 	/** 段比音樂檔長幾秒（從第一拍算）；還沒載入音樂是 0。 */
 	const overrun = $derived(music && audio ? musicOverrunSec(music, audio.durationSec) : 0);
+	/** 「照音樂長度算」按了也會被擋的原因（例如第一拍在音樂結束之後）：提醒就不叫人去按。 */
+	const fitBlocked = $derived.by(() => {
+		if (!overrun) return null;
+		const r = fitSegmentToAudio(flow, segmentId, editor.music.lengths);
+		return r.kind === 'blocked' ? r.message : null;
+	});
 	/** 這一段用到的那一截：音樂檔裡從第一拍到段尾（波形上標亮）。 */
 	const used = $derived({ startSec: music?.firstBeatSec ?? 0, endSec: (music?.firstBeatSec ?? 0) + (span?.durationSec ?? 0) });
 	/** 波形畫整個音樂檔（段比音樂長就畫到段尾），第一拍前面也點得到。 */
@@ -301,7 +307,9 @@
 				</div>
 				{#if overrun > 0}
 					<p class="hint-warn" role="note">
-						這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。要剛好就按「照音樂長度算」。
+						{#if overrun >= (span?.durationSec ?? 0) - 0.05}這一段整段都在音樂檔結尾之後：播放時沒有聲音。{:else}這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。{/if}{fitBlocked
+							? `${fitBlocked}。`
+							: '要剛好就按「照音樂長度算」。'}
 					</p>
 				{/if}
 				<div class="row">

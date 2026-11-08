@@ -231,6 +231,11 @@ export function atTextWithUnit(segment: Segment, at: number): string {
 	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
 }
 
+/** 清單上動作從哪裡開始：「3-1 起」，口號段「3.0 秒起」。 */
+export function fromText(segment: Segment, at: number): string {
+	return segment.kind === 'chant' ? `${atText(segment, at)} 秒起` : `${atText(segment, at)} 起`;
+}
+
 /** 動作的開始：atText 的反向，教練打的時間點 → 段內整數時間。不檢查有沒有超出段（指令會擋）。 */
 export function readStart(segment: Segment, text: string): ReadResult<number> {
 	const hint = segment.kind === 'music' ? '例：3-5&' : '請打秒數';
@@ -271,7 +276,9 @@ export type TimeField = '出發' | '到達' | '站位時間' | '時間';
  * 不檢查有沒有超出段（指令會擋）。
  */
 export function readTime(flow: Flow, homeSegmentId: string, text: string, field: TimeField): ReadResult<TimePosition> {
-	return readOr(parseTime(flow, homeSegmentId, text), `${field}看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）`);
+	const chant = flow.segments.find((s) => s.id === homeSegmentId)?.kind === 'chant';
+	const hint = chant ? '12.3（別的段前面加段名，例：音樂 1 2-5）' : '2-5（別的段前面加段名，例：口號 1 12.3）';
+	return readOr(parseTime(flow, homeSegmentId, text), `${field}看不懂，例：${hint}`);
 }
 
 /**
@@ -287,11 +294,14 @@ export function readJump(flow: Flow, sec: number, text: string): ReadResult<numb
 	const { segment } = span;
 	if (read.value.at < 0) return { kind: 'blocked', message: '時間不能是負的' };
 	if (read.value.at < units(segment)) return { kind: 'ok', value: toSeconds(flow, read.value) };
-	const size =
-		segment.kind === 'music'
-			? `${Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT)} 個八拍`
-			: `${lengthText(segment, segment.tenths)} 秒`;
-	return { kind: 'blocked', message: `${span.label} 只有 ${size}` };
+	return { kind: 'blocked', message: `${span.label} 只有 ${sizeText(segment)}` };
+}
+
+/** 一段有多長，給人看：音樂段「4 個八拍」（最後一個不滿也算一個），口號段「10.0 秒」。 */
+export function sizeText(segment: Segment): string {
+	return segment.kind === 'music'
+		? `${Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT)} 個八拍`
+		: `${lengthText(segment, segment.tenths)} 秒`;
 }
 
 /** readTime 讀的那一步：看不懂或沒有這一段是 null。 */

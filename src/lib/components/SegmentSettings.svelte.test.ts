@@ -133,6 +133,16 @@ describe('音樂段設定', () => {
 		expect(screen.queryByRole('note')).toBeNull();
 	});
 
+	it('第一拍在音樂結束之後：說整段沒有聲音、先改第一拍，不叫人按會失敗的「照音樂長度算」（T06）', async () => {
+		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 25 }));
+		// 25.6 秒的段、音樂 20 秒：段從 25 秒開始，整段都在音樂後面，不是「長 30.6 秒」
+		await setup(flow, loaded(20));
+		const note = screen.getByRole('note').textContent!;
+		expect(note).toContain('這一段整段都在音樂檔結尾之後：播放時沒有聲音。第一拍要在音樂結束（20.0 秒）之前');
+		expect(note).not.toContain('照音樂長度算');
+	});
+
 	it('還沒載入音樂就按照音樂長度算，提醒先載入', async () => {
 		const { session } = await setup(musicFlow());
 		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));

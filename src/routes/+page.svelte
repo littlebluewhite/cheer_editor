@@ -598,7 +598,7 @@
 					/>
 					<Icon name="metronome" />節拍器
 				</label>
-				<label class="toggle repeat" title="有選動作就重複那個動作，沒選就重複目前的八拍">
+				<label class="toggle repeat" title="有選動作就重複那個動作；沒選就重複目前的八拍（口號段是目前的 5 秒）">
 					<input
 						type="checkbox"
 						checked={playback.repeat}

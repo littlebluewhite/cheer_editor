@@ -268,6 +268,13 @@ describe('出發和到達的時間文字', () => {
 		expect(readTime(flow, 's1', '音樂 2-5', '出發')).toEqual(departHint);
 	});
 
+	it('這一段是口號段：例子用秒，別的段的例子換成音樂段（T04）', () => {
+		expect(readTime(sample(), 's2', 'abc', '站位時間')).toEqual({
+			kind: 'blocked',
+			message: '站位時間看不懂，例：12.3（別的段前面加段名，例：音樂 1 2-5）'
+		});
+	});
+
 	it('出發、到達、站位時間看不懂時用同一個例子', () => {
 		const flow = sample();
 		expect(readTime(flow, 's1', 'abc', '到達')).toEqual({

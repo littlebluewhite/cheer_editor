@@ -545,7 +545,7 @@ describe('練習：總表', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
 
 			expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
-			expect(screen.getByRole('status').textContent).toBe('已存這次全上');
+			expect(screen.getByRole('status').textContent).toBe('已記下這次全上');
 			await filter('練法', '只看全上');
 			expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '50% 2 次', '0% 1 次', '33% 3 次']);
 			expect(blockRows('技巧·Lib')[4]).toEqual(['整次', '50% 2 次', '0% 1 次', '33% 3 次']);

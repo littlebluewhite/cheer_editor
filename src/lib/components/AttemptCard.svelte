@@ -121,7 +121,7 @@
 	function save(next = marks) {
 		setMarks({});
 		ask.send(() => recordAttempt(flow, action.id, { date, who, practice: 'drill', whole, marks: next }), {
-			done: () => (session.notice = '已存')
+			done: () => (session.notice = '已記下')
 		});
 	}
 
@@ -227,7 +227,7 @@
 		{/each}
 	</div>
 
-	<!-- 存檔鈕在右（靠近 ✓）。提示（已存、已刪掉…救回）浮在練習畫面下方，不在卡上推動版面 -->
+	<!-- 存檔鈕在右（靠近 ✓）。提示（已記下、已刪掉…救回）浮在練習畫面下方，不在卡上推動版面 -->
 	{#if whole && phases.length > 1}
 		<div class="save-row">
 			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>存這一次</button>

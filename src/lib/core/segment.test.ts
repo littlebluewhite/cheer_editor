@@ -116,10 +116,17 @@ describe('改音樂段', () => {
 		expect(musicLength(flow.segments[0] as MusicSegment)).toEqual({ eights: 4, lastBeats: 8 });
 	});
 
-	it.each([0, -1, 9, 2.5, Number.NaN])('最後一個八拍 %s 拍不合理就擋下，訊息只講這一格', (lastBeats) => {
+	it.each([0, -1, 9, Number.NaN])('最後一個八拍 %s 拍不合理就擋下，訊息只講這一格', (lastBeats) => {
 		expect(updateSegment(withMusic(), 's1', { lastBeats })).toEqual({
 			kind: 'blocked',
 			message: '最後一個八拍的拍數要在 1 到 8 之間'
+		});
+	});
+
+	it('最後一個八拍打 4.5：說要整數，不說要在 1 到 8 之間（T10）', () => {
+		expect(updateSegment(withMusic(), 's1', { lastBeats: 4.5 })).toEqual({
+			kind: 'blocked',
+			message: '最後一個八拍的拍數要是整數'
 		});
 	});
 });

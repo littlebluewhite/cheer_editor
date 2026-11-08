@@ -17,7 +17,7 @@ import { falloutQuestion, settle, type CueFallout, type Settled } from './settle
 import { allSquadIds, squadProblem, squadsOf } from './success-rate';
 import { freshIds, nextId } from './ids';
 import { tooLong } from './text-length';
-import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, toPosition, toSeconds, unitSec, units } from './time';
+import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, sizeText, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -203,6 +203,7 @@ function shapeProblem(flow: Flow, action: Action): string | null {
 		const max = lengthText(segment, Math.max(1, units(segment) - action.start));
 		return `動作長度要在 ${lengthText(segment, 1)} 到 ${max} ${music ? '拍' : '秒'}之間`;
 	}
+	if (action.start >= units(segment)) return `動作的開始在段外：這段只有 ${sizeText(segment)}`;
 	if (action.start + action.length > units(segment)) {
 		// 最後一段後面沒有段可以拆：寫還剩多長。
 		const room = units(segment) - action.start;

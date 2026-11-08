@@ -588,12 +588,11 @@ export function moveFormationHint(flow: Flow, formationId: string): string {
 
 /**
  * 挪 formations[index]（不是開頭那張）時，前一張和後一張的站位時間給教練看：
- * 在這張那一段只寫段內時間，別段前面加段名。沒有後一張是 null。
+ * 一律前面加段名（同一段也加），教練才知道是哪一段的時間。沒有後一張是 null。
  */
 function neighbourTimes(flow: Flow, index: number): { before: string; after: string | null } {
-	// 有前一張表示已經有段，segmentId 一定有值。
-	const home = flow.formations[index].segmentId!;
-	const text = (f: Formation) => timeTextWithUnit(flow, home, f as TimePosition);
+	// home 給空字串：沒有一段的 id 是空的，所以每個時間都帶段名。
+	const text = (f: Formation) => timeTextWithUnit(flow, '', f as TimePosition);
 	const c = flow.formations[index + 1];
 	return { before: text(flow.formations[index - 1]), after: c ? text(c) : null };
 }

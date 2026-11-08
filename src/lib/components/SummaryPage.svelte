@@ -43,7 +43,7 @@
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) session.notice = '已存這次全上';
+		if (done) session.notice = '已記下這次全上';
 	}
 
 	/** YYYY-MM-DD 寫成「11/4」。 */

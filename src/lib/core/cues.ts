@@ -11,6 +11,7 @@ import {
 	EPS,
 	HALF_BEATS_PER_BEAT as BEAT,
 	HALF_BEATS_PER_EIGHT,
+	lengthTextWithUnit,
 	toSeconds,
 	unitSec
 } from './time';
@@ -177,6 +178,8 @@ export function pasteCues(flow: Flow, actionId: string, at: number, copied: Cue[
 	if (!found) return blocked('找不到這個動作');
 	if (!copied.length) return blocked('沒有複製的拍點');
 	const { action, segment } = found;
+	const over = at + Math.max(...copied.map((c) => c.at + c.len)) - action.length;
+	if (segment.kind === 'music' && over > 0) return blocked(`貼不下：拍點會超出動作的結尾 ${lengthTextWithUnit(segment, over)}`);
 	let cues = action.cues ?? [];
 	for (const c of copied) {
 		const cue: Cue = { ...c, at: at + c.at, who: givenToSomeone(c, action) ? c.who : null };

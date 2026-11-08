@@ -250,7 +250,7 @@
 		const length = read.kind === 'ok' ? read.value * scale : 0;
 		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
 		const before = session.flow;
-		insertAsk.send(() => (read.kind === 'ok' ? insertBeats(flow, at, length) : read), {
+		insertAsk.send(() => (read.kind === 'ok' ? insertBeats(flow, at, length, music ? insertUnit : 'beat') : read), {
 			done: () => {
 				inserting = null;
 				const where = `${span.label} ${atTextWithUnit(span.segment, at.at)}`;

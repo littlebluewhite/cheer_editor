@@ -96,6 +96,17 @@ describe('新增動作', () => {
 		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 5 })).kind).toBe('ok');
 	});
 
+	it('開始已經在段外：說在段外、這段有多長，不說不能跨段（T05）', () => {
+		expect(addAction(sample(), lib({ start: 32, length: 4 }))).toEqual({
+			kind: 'blocked',
+			message: '動作的開始在段外：這段只有 2 個八拍'
+		});
+		expect(addAction(sample(), lib({ segmentId: 's2', start: 100, length: 5 }))).toEqual({
+			kind: 'blocked',
+			message: '動作的開始在段外：這段只有 10.0 秒'
+		});
+	});
+
 	it('最後一段超出段尾：後面沒有段可以拆，寫最多還剩多長', () => {
 		expect(addAction(sample(), lib({ segmentId: 's2', start: 70, length: 40 }))).toEqual({
 			kind: 'blocked',
@@ -370,7 +381,7 @@ describe('拖色條：移動、改長度', () => {
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 16, length: 8 })));
 		expect(moveAction(flow, 'x1', 6.4)).toEqual({
 			kind: 'blocked',
-			message: '動作不能跨段，要跨就拆成兩個'
+			message: '動作的開始在段外：這段只有 2 個八拍'
 		});
 		expect(moveAction(flow, 'x1', -0.4)).toEqual({
 			kind: 'blocked',

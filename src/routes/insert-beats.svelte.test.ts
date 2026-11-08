@@ -85,7 +85,18 @@ describe('插入八拍', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '插入八拍' }));
 		await fireEvent.input(screen.getByLabelText('插入幾個'), { target: { value: '2' } });
 		await fireEvent.click(screen.getByRole('button', { name: '插入' }));
-		expect(screen.getByRole('alert').textContent).toBe('「騰翻」會超過這段的結尾，最多插 12 拍');
+		// 選的單位是八拍：照八拍講（T09）
+		expect(screen.getByRole('alert').textContent).toBe('「騰翻」會超過這段的結尾，最多插 1 個八拍');
 		expect(session.flow).toBe(before);
+	});
+
+	it('選「拍」時照拍講（T09）', async () => {
+		const { editor } = setup();
+		editor.playback.seek(16 * 0.2);
+		await fireEvent.click(screen.getByRole('button', { name: '插入八拍' }));
+		await fireEvent.input(screen.getByLabelText('插入幾個'), { target: { value: '13' } });
+		await fireEvent.change(screen.getByLabelText('單位'), { target: { value: 'beat' } });
+		await fireEvent.click(screen.getByRole('button', { name: '插入' }));
+		expect(screen.getByRole('alert').textContent).toBe('「騰翻」會超過這段的結尾，最多插 12 拍');
 	});
 });

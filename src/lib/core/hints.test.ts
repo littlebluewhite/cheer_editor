@@ -61,6 +61,10 @@ describe('音樂段比音樂檔長', () => {
 		expect(musicOverrunSec(music(2, 128), 30)).toBeCloseTo(4);
 	});
 
+	it('第一拍在音樂結束之後：最多就是整段的長度（T06）', () => {
+		expect(musicOverrunSec(music(40, 128), 30)).toBeCloseTo(32);
+	});
+
 	it('剛好或比較短是 0', () => {
 		expect(musicOverrunSec(music(0, 120), 30)).toBe(0);
 		expect(musicOverrunSec(music(0, 64), 30)).toBe(0);

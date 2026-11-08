@@ -7,14 +7,16 @@ import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { formationWalks, memberWalk, type Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
-import { lengthTextWithUnit, units, type TimePosition } from './time';
+import type { Segment } from './segment';
+import { HALF_BEATS_PER_EIGHT, lengthTextWithUnit, units, type TimePosition } from './time';
 
 /**
  * 在 at 插入 length 格：這一段裡從 at 起（含 at）開始的站位、動作、出發、到達都晚 length 格。
  * 在 at 以前開始、跨過 at 的動作不動；開頭那張站位不動。
  * 擋下：length 不是正整數、at 不在段的格子上、有東西會超過段尾（說卡最緊的那個和最多插多少）。
+ * unit 是教練選的單位，只用來寫「最多插多少」。
  */
-export function insertBeats(flow: Flow, at: TimePosition, length: number): CommandResult {
+export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 'eight' | 'beat' = 'beat'): CommandResult {
 	const segment = flow.segments.find((s) => s.id === at.segmentId);
 	if (!segment) return blocked('找不到這一段');
 	if (!Number.isInteger(length) || length < 1) return blocked('插入的長度要大於 0');
@@ -55,8 +57,17 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number): Comma
 
 	const limit = rooms.reduce<(typeof rooms)[number] | null>((t, r) => (!t || r.room < t.room ? r : t), null);
 	if (limit && limit.room < length) {
-		const most = limit.room > 0 ? `最多插 ${lengthTextWithUnit(segment, limit.room)}` : '這段後面已經沒有空了';
-		return blocked(`${limit.name}會超過這段的結尾，${most}`);
+		return blocked(`${limit.name}會超過這段的結尾，${roomText(segment, limit.room, unit)}`);
 	}
 	return ok({ ...flow, formations, actions });
 }
+
+/** 被擋時說還能插多少：教練選八拍（音樂段）就照八拍講，不到 1 個八拍才說幾拍。 */
+function roomText(segment: Segment, room: number, unit: 'eight' | 'beat'): string {
+	if (room <= 0) return '這段後面已經沒有空了';
+	const beats = `最多插 ${lengthTextWithUnit(segment, room)}`;
+	if (segment.kind !== 'music' || unit !== 'eight') return beats;
+	const eights = Math.floor(room / HALF_BEATS_PER_EIGHT);
+	return eights > 0 ? `最多插 ${eights} 個八拍` : `${beats}（不到 1 個八拍，單位改成拍）`;
+}
+
