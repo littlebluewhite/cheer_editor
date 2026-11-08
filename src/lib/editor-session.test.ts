@@ -187,6 +187,13 @@ describe('編輯 session：流程和復原', () => {
 		expect(s.flow).toBeNull();
 		expect(s.unsaved).toBe(false);
 	});
+
+	it('換一支流程：記錄頁每張卡選的「這次練」清掉，不會套到新流程裡 id 一樣的動作', () => {
+		const s = new EditorSession(sampleFlow());
+		s.drillScopes['x1'] = { whole: false, picked: ['p1'] };
+		s.open(sampleFlow());
+		expect(s.drillScopes).toEqual({});
+	});
 });
 
 describe('編輯 session：選取', () => {

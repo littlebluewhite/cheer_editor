@@ -145,9 +145,9 @@ export class EditorSession {
 	}
 	/**
 	 * 記錄頁每張卡上次選的「這次練」，key 是「動作 id 組或隊員 id」：whole 整個做，不是就只練 picked 這幾個環節。
-	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
+	 * 換動作、切頁（卡不見了）再回來還是它；換一支流程就清掉；不存進流程檔。
 	 */
-	readonly drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
+	drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
 	/**
 	 * 記錄頁每張卡點了還沒存的記號（環節 id → 記號），key 是 drillScopes 的 key 加上日期（一天一份）。
 	 * 換動作、切頁再回來還在；換一支流程就清掉；不存進流程檔。
@@ -300,6 +300,7 @@ export class EditorSession {
 		this.#copied = null;
 		this.clearSelection();
 		this.drillMarks = {};
+		this.drillScopes = {};
 		this.view = freshView();
 		this.notice = '';
 		this.#clearAsks();
