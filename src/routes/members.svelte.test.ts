@@ -59,7 +59,7 @@ describe('改名字被擋下', () => {
 		await fireEvent.change(input, { target: { value: '  ' } });
 		const alert = screen.getByRole('alert');
 		expect(alert.closest('li')).toBe(document.querySelectorAll('.members li')[1]);
-		expect(alert.textContent).toBe('請填隊員名字');
+		expect(alert.textContent).toBe('請填隊員名字，已還原');
 		expect(input.value).toBe('小A');
 		await frame();
 		expect(scrolled.every((el) => el.closest('li'))).toBe(true);

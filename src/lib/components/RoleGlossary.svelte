@@ -11,6 +11,7 @@
 		type CustomRole
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
+	import { commitField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -34,10 +35,18 @@
 	/** 被擋的原因，和刪有人用的角色時等教練確認的清單。 */
 	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 
-	/** 改自訂角色的名稱或意思；被擋就把輸入框還原。 */
-	function edit(role: CustomRole, patch: Partial<Pick<CustomRole, 'name' | 'meaning'>>, input: HTMLInputElement) {
-		const r = ask.send(() => updateCustomRole(flow, role.id, { name: role.name, meaning: role.meaning, ...patch }));
-		if (r.kind !== 'ok') input.value = patch.name !== undefined ? role.name : role.meaning;
+	/** 改自訂角色的名稱；被擋就把輸入框還原，原因寫在表下面。 */
+	function nameField(role: CustomRole) {
+		return commitField(ask, null, {
+			send: (text) => updateCustomRole(flow, role.id, { name: text, meaning: role.meaning }),
+			actual: () => role.name
+		});
+	}
+
+	/** 改自訂角色的意思；被擋就把輸入框還原。 */
+	function editMeaning(role: CustomRole, input: HTMLInputElement) {
+		const r = ask.send(() => updateCustomRole(flow, role.id, { name: role.name, meaning: input.value }));
+		if (r.kind !== 'ok') input.value = role.meaning;
 	}
 
 	function remove(role: CustomRole) {
@@ -78,7 +87,7 @@
 									aria-label="「{custom.name}」的名稱"
 									value={custom.name}
 									bind:this={roleInputs[custom.id]}
-									onchange={(e) => edit(custom, { name: e.currentTarget.value }, e.currentTarget)}
+									{@attach nameField(custom)}
 								/><CharCount field="roleName" input={roleInputs[custom.id]} value={custom.name} quiet /><small
 									class="tag">自訂</small
 								>
@@ -87,7 +96,7 @@
 								<input
 									aria-label="「{custom.name}」的意思"
 									value={custom.meaning}
-									onchange={(e) => edit(custom, { meaning: e.currentTarget.value }, e.currentTarget)}
+									onchange={(e) => editMeaning(custom, e.currentTarget)}
 								/>
 							</td>
 							<td>

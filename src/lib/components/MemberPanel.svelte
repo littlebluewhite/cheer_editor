@@ -7,6 +7,7 @@
 	import { tick } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import CharCount from './CharCount.svelte';
+	import { commitField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from './marker';
@@ -63,11 +64,24 @@
 		});
 	}
 
-	function edit(id: string, changes: MemberChanges, input?: HTMLInputElement) {
+	/** 改性別、全局角色。 */
+	function edit(id: string, changes: MemberChanges) {
 		askingId = id;
-		const r = ask.send((o: ConfirmOption = {}) => updateMember(flow, id, changes, o));
-		// 被擋下（或要問）時把輸入框還原成原本的名字；選好了核心改的名字會再畫上去。
-		if (r.kind !== 'ok' && input) input.value = memberName(flow, id);
+		ask.send((o: ConfirmOption = {}) => updateMember(flow, id, changes, o));
+	}
+
+	/**
+	 * 改名字：被擋下時名字框還原成原本的名字，原因寫在那一列下面；再打字就收掉。
+	 * 要問（保留／清掉）時名字框留著新名字，跟問句對得上；按取消才還原（N33）。
+	 */
+	function nameField(id: string) {
+		return commitField(ask, null, {
+			send: (text, o) => {
+				askingId = id;
+				return updateMember(flow, id, { name: text }, o);
+			},
+			actual: () => memberName(flow, id)
+		});
 	}
 
 	/** 移到名單上第 to 個。按的那顆變灰（移到頭、尾）時，焦點換到同一列的另一顆，不掉到 body。 */
@@ -188,7 +202,7 @@
 							aria-label="第 {i + 1} 位隊員的名字"
 							value={m.name}
 							bind:this={nameInputs[i]}
-							onchange={(e) => edit(m.id, { name: e.currentTarget.value }, e.currentTarget)}
+							{@attach nameField(m.id)}
 						/>
 						<CharCount field="memberName" input={nameInputs[i]} value={m.name} quiet />
 					</span>
