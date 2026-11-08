@@ -18,6 +18,7 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { actionColor } from './category-colors';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 記在哪一天（練習畫面選的日期）。 */
@@ -177,7 +178,7 @@
 		</section>
 	{/each}
 
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	{#if confirming}
 		<ConfirmList

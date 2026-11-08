@@ -232,6 +232,14 @@ describe('在場上拖人', () => {
 		expect(document.querySelectorAll('[data-snap-point]')).toHaveLength(0);
 	});
 
+	it('拖的時候的位置文字太長、尾巴變「…」時，title 照樣寫完整的位置（N42）', async () => {
+		const { dot } = setup();
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 46, clientY: 3 });
+		const readout = document.querySelector('.readout')!;
+		expect(readout.getAttribute('title')).toBe(readout.textContent);
+	});
+
 	it('點一下沒有拖，就不改位置', async () => {
 		const { session, dot } = setup();
 		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
