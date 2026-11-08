@@ -242,6 +242,10 @@ describe('動作表單：改選到的動作', () => {
 		expect(tip.textContent).toContain('底層');
 		expect(tip.textContent).toContain('上層');
 		expect(tip.textContent).toContain('1 底層');
+		// 這裡只列任務角色的快捷鍵：其他快捷鍵連到使用說明的快捷鍵表（T17）
+		const all = within(tip).getByRole('link', { name: /全部的快捷鍵/, hidden: true });
+		expect(all.getAttribute('href')).toMatch(/\/guide\?from=editor#keys$/);
+		expect(all.getAttribute('target')).toBe('_blank');
 	});
 
 	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
