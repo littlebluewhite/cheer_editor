@@ -61,6 +61,15 @@ describe('跟第 [_] 張一樣', () => {
 		expect(screen.queryByRole('button', { name: '跟上一張一樣' })).toBeNull();
 	});
 
+	it('滑鼠停在「跟第 [_] 張一樣」任何一處（字、數字框、按鈕）都看得到一句說明（T15）', async () => {
+		const page = editorPage(threeFormations());
+		render(Page, page.props);
+		page.editor.playback.seek(8);
+		await click('m1');
+		const box = within(toolbar()).getByRole('spinbutton', { name: '跟第幾張站位一樣' });
+		expect(box.closest('[title]')?.getAttribute('title')).toBe('選到的人改到那一張站位裡的位置；沒選人就是全隊');
+	});
+
 	it('打過數字後移播放頭、換選人：框回到預設（播放頭前面那一張），不留著舊數字', async () => {
 		const page = editorPage(threeFormations());
 		render(Page, page.props);

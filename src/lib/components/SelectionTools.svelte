@@ -92,7 +92,8 @@
 {#snippet item(a: SelectionAction, role: 'menuitem' | undefined)}
 	{#if a.nth}
 		{@const [before, after] = a.label.split('[_]')}
-		<span class="nth">
+		<!-- 說明掛在整組上：滑鼠停在字、數字框、按鈕上都看得到 -->
+		<span class="nth" title={a.title}>
 			{team}{before.trim()}
 			<input
 				type="number"

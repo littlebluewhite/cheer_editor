@@ -291,13 +291,13 @@ await shot(
 		// 號碼放右邊中間：放右上角會蓋到上面 6 的框
 		[5, `q('.rail > .walk-tools')`, { x: 1, y: 0.5 }],
 		[6, `q('.rail .legend-box')`],
-		// 只框小美：她的走位線，和線上那個影子（另外兩人沒動，影子在自己的點底下）
+		// 只框小美：她的走位線、線上那個影子（另外兩人沒動，影子在自己的點底下）和她的點；號碼放右邊中間，不蓋到影子
 		[7, `(() => {
 			const lines = [...document.querySelectorAll('.walk-line')];
 			const r = lines[0].getBoundingClientRect();
 			const near = (g) => { const b = g.getBoundingClientRect(); return b.right > r.left - 2 && b.left < r.right + 2; };
-			return [...lines, ...[...document.querySelectorAll('[data-ghost]')].filter(near)];
-		})()`]
+			return [...lines, ...[...document.querySelectorAll('[data-ghost]')].filter(near), $member('小美')];
+		})()`, { x: 1, y: 0.5 }]
 	],
 	`q('.field-host')`
 );
@@ -349,12 +349,12 @@ await shot('editor', [
 await shot(
 	'timeline',
 	[
-		[1, `q('.row.segs')`, { x: 1, y: 0.5 }],
-		[2, `q('.row.ruler-row')`, { x: 1, y: 0.5 }],
-		[3, `q('.row.film')`, { x: 1, y: 0.5 }],
-		[4, `[...document.querySelectorAll('[data-lane]')]`, { x: 1, y: 0.5 }],
-		[5, `q('.timeline-host .ph')`],
-		[6, `q('.walk[data-walk]')`, { x: 0, y: 1 }]
+		[1, `q('.row.segs')`, { x: 0.75, y: 0.5 }],
+		[2, `q('.row.ruler-row')`, { x: 0.9, y: 0.5 }],
+		[3, `q('.row.film')`, { x: 0.9, y: 0.5 }],
+		[4, `[...document.querySelectorAll('[data-lane]')]`, { x: 0.9, y: 0.5 }],
+		[5, `q('.timeline-host .ph')`, { x: 1, y: 0.4 }],
+		[6, `q('.walk[data-walk]')`, { x: 1, y: 0.5 }]
 	],
 	`[q('.row.segs'), ...document.querySelectorAll('[data-lane]')]`
 );
@@ -364,7 +364,7 @@ await js(`$btn('八拍表').click();`);
 await waitFor(() => js(`return !!q('.print-sheet .action')`));
 await shot('print', [
 	[1, `$label('印誰')`, { x: 0.5, y: 1 }],
-	[2, `$btn('列印', q('.print-sheet'))`, { x: 0.5, y: 1 }],
+	[2, `$btn('列印', q('.print-sheet'))`, { x: 0, y: 0.5 }],
 	[3, `q('.print-sheet .action')`],
 	// 連圖下面那行「站位 1・第 1 拍」一起框（說明寫的是圖和它下面的字）
 	[4, `q('.print-sheet figure')`]
@@ -405,9 +405,9 @@ await shot(
 		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.55, y: 1 }],
 		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
 		[3, `q('.cues .pop')`, { x: 0, y: 0.55 }],
-		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 0, y: 1 }],
-		[5, `q('.cues .who-sel')`, { x: 0.5, y: 0 }],
-		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0, y: 0 }],
+		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 1, y: 0 }],
+		[5, `q('.cues .who-sel')`, { x: 1, y: 0.5 }],
+		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0.75, y: 0 }],
 		[7, `[...document.querySelectorAll('.cues .pop-row .clear')]`, { x: 1, y: 1 }]
 	],
 	`[q('.cues .pop'), q('.cues .sheet')]`
@@ -477,12 +477,31 @@ await shot(
 	'squads',
 	[
 		[6, `[...document.querySelectorAll('svg[aria-label="場地"] .badge')]`],
-		[7, `q('.squad-bar .who')`, { x: 0, y: 0 }],
-		[8, `[...document.querySelectorAll('.squad-bar .num:not(.new):not(.out)')]`, { x: 0.5, y: 0 }],
-		[9, `[q('.squad-bar .num.new'), q('.squad-bar .num.out')]`]
+		[7, `q('.squad-bar .who')`, { x: 0.5, y: -0.7 }],
+		[8, `[...document.querySelectorAll('.squad-bar .num:not(.new):not(.out)')]`, { x: 0.5, y: -0.7 }],
+		[9, `[q('.squad-bar .num.new'), q('.squad-bar .num.out')]`, { x: 0.5, y: -0.7 }]
 	],
 	`q('.field-host')`
 );
+// 選人工具列：還選著那三個人，打開「對齊 ▾」，連場地上面一截一起拍
+await js(`$btn('對齊 ▾', q('.tools-bar')).click();`);
+await sleep(200);
+await shot(
+	'tools',
+	[
+		// 號碼放在工具列上面，不蓋到按鈕的字
+		[1, `$btn('鏡像', q('.tools-bar'))`, { x: 0.5, y: -0.9 }],
+		[2, `q('.tools-bar .nth')`, { x: 0.5, y: -0.9 }],
+		[3, `[$btn('對齊 ▾', q('.tools-bar')), q('.menu[aria-label="對齊"]')]`, { x: 0, y: 0.6 }],
+		[4, `$btn('平均分開', q('.tools-bar'))`, { x: 0.5, y: -0.9 }]
+	],
+	`(() => {
+		const bar = q('.tools-bar').getBoundingClientRect();
+		const menu = q('.menu[aria-label="對齊"]').getBoundingClientRect();
+		return { getBoundingClientRect: () => ({ left: bar.left - 40, top: bar.top - 40, right: bar.right + 40, bottom: menu.bottom + 12 }) };
+	})()`
+);
+await js(esc);
 // 點環節那一條上的「上法 延伸」：選到它的拍，拍點小窗的環節列多出改環節
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
 await sleep(300);
@@ -492,7 +511,7 @@ await sleep(200);
 await shot(
 	'rate',
 	[
-		[1, `[q('.cues .lane-lbl.phase'), ...document.querySelectorAll('.cues .item.phase')]`, { x: 1, y: 0.5 }],
+		[1, `[q('.cues .lane-lbl.phase'), ...document.querySelectorAll('.cues .item.phase')]`, { x: 0.62, y: 1 }],
 		[2, `[...document.querySelectorAll('.cues .pop [aria-label^="把這幾拍標給"]')]`, { x: 0, y: 0 }],
 		[3, `[...document.querySelectorAll('.cues .pop [aria-label="環節的種類"], .cues .pop [aria-label="環節的名字"], .cues .pop [aria-label="加入環節"]')]`, { x: 0, y: 0.5 }],
 		[4, `q('.cues .pop [aria-label="清掉環節"]')`, { x: 1, y: 0 }],

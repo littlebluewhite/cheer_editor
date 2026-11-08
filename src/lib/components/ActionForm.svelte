@@ -14,6 +14,7 @@
 	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列），勾「照組排」就照組號排。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
 	import { flushSync, tick, type ComponentProps } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { composing } from '#lib/ime.js';
@@ -451,6 +452,8 @@
 							{#each roles as r, k (r.name)}{#if roleKey(k)}<kbd>{roleKey(k)} {r.name}</kbd>{/if}{/each}
 							<kbd>Backspace 沒有任務</kbd>
 						</span>
+						<!-- 其他快捷鍵（⌘C／⌘V、按住 H、Alt＋拖…）不在這裡列，連到使用說明的快捷鍵表 -->
+						<a href={`${resolve('/guide')}?from=editor#keys`} target="_blank" rel="noopener">全部的快捷鍵：看使用說明</a>
 					</span>
 				</span>
 				{#if grouped}

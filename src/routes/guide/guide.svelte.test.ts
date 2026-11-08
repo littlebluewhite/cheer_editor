@@ -19,7 +19,7 @@ describe('使用說明', () => {
 	it('每張圖都有替代文字', () => {
 		render(Guide);
 		const images = document.querySelectorAll('img');
-		expect(images.length).toBe(20);
+		expect(images.length).toBe(21);
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
 	});
 
@@ -113,7 +113,9 @@ describe('使用說明', () => {
 		for (const a of links) expect(document.getElementById(decodeURIComponent(a.hash.slice(1))), a.textContent!).not.toBeNull();
 		// 小標題都有 id，可以直接連過去
 		for (const h4 of document.querySelectorAll('main h4')) expect(h4.id, h4.textContent!).not.toBe('');
-		expect(document.querySelector('a[href="#最近的流程"]')?.textContent).toBe('4.1 的「最近的流程」');
+		// 小節目錄的連結只寫小標題，不算
+		const recent = [...document.querySelectorAll('a[href="#最近的流程"]')].filter((a) => !a.closest('.mini-toc'));
+		expect(recent[0]?.textContent).toBe('4.1 的「最近的流程」');
 	});
 
 	it('有一節「隊員怎麼看流程」：開檔、手機的檢視畫面、「我」、八拍表只看自己，不會改到流程', () => {
@@ -198,5 +200,114 @@ describe('使用說明', () => {
 		expect(document.querySelector('.head-hint-short')?.textContent).toBe('關掉分頁回編輯器');
 		const top = screen.getByRole('link', { name: '回目錄' });
 		expect(document.getElementById(top.getAttribute('href')!.slice(1))).toBe(screen.getByRole('navigation', { name: '目錄' }));
+	});
+});
+
+describe('第 5 批：說明跟現在的畫面一樣（#232）', () => {
+	/** 第 5 章第 n 步（從 1 數）的整段字。 */
+	const trialStep = (n: number) => document.querySelectorAll('#cold-read ol.trial > li')[n - 1].textContent!;
+
+	it('八拍表的寫法跟現在一樣：時間寫「八拍-拍 到 八拍-拍・幾拍」，不再寫「第幾拍開始」「3 的 &」（T01）', () => {
+		render(Guide);
+		const text = document.body.textContent!;
+		for (const old of ['第幾拍開始', '的 &」']) expect(text, old).not.toContain(old);
+		const sheet = document.getElementById('八拍表')!.parentElement!.textContent!;
+		expect(sheet).toContain('「4-1 到 4-8・8 拍」');
+		expect(sheet).toContain('「站位 2 開場・3-1（2-1 出發）」');
+		const step = trialStep(13);
+		expect(step).toContain('技巧·Lib：全隊：阿明（主底）、阿強（側底）、小美（上層）');
+		expect(step).toContain('「站位 2・2-1（1-1 出發）」');
+		expect(step).toContain('↳ Lib 繼續');
+	});
+
+	it('第 5 章：加完動作播放頭在動作結束（5-1），要點回 4 才看得到黃框；挪站位不說小圖變窄（T02、T03）', () => {
+		render(Guide);
+		const add = trialStep(11);
+		expect(add).toContain('目前位置寫「音樂 1 5-1」');
+		const back = add.indexOf('點八拍尺上的「4」');
+		expect(back).toBeGreaterThan(-1);
+		expect(add.indexOf('黃框')).toBeGreaterThan(back);
+		expect(trialStep(10)).not.toContain('變窄');
+	});
+
+	it('有 iPhone、LINE 怎麼開流程檔和另存新檔，目錄連得到（T18）', () => {
+		render(Guide);
+		const toc = screen.getByRole('navigation', { name: '目錄' });
+		const label = (id: string) => toc.querySelector(`a[href="#${id}"]`)?.textContent;
+		expect(label('手機開流程檔')).toBe('用 iPhone 開 LINE 傳來的流程檔');
+		expect(label('另存新檔')).toBe('另存新檔（留一份舊的）');
+		const phone = document.getElementById('手機開流程檔')!.parentElement!.textContent!;
+		for (const words of ['LINE', '儲存到「檔案」', '開啟流程檔', '不要解壓縮']) expect(phone, words).toContain(words);
+		const saveAs = document.getElementById('另存新檔')!.nextElementSibling!.textContent!;
+		expect(saveAs).toContain('沒有「另存新檔」');
+	});
+
+	it('第 4 章每一節開頭有小節目錄，連到這一節的每個小標題（T18）', async () => {
+		render(Guide);
+		await tick();
+		for (const section of document.querySelectorAll('#features ~ section')) {
+			const heads = [...section.querySelectorAll('h4')];
+			if (heads.length < 2) continue;
+			const nav = section.querySelector('nav.mini-toc');
+			expect(nav, section.id).not.toBeNull();
+			expect(nav!.getAttribute('aria-label')).toBe(`${section.querySelector('h3')!.textContent} 的小節`);
+			const links = [...nav!.querySelectorAll('a')];
+			expect(links.map((a) => decodeURIComponent(a.hash.slice(1)))).toEqual(heads.map((h) => h.id));
+			expect(links.map((a) => a.textContent)).toEqual(heads.map((h) => h.textContent));
+		}
+	});
+
+	it('段落不要太密：一段（換行分開的也算一段）最多 250 個字（T18）', () => {
+		render(Guide);
+		const blocks = [...document.querySelectorAll('main p, main li, main td')].filter((e) => !e.querySelector('p, li, ul, ol'));
+		for (const el of blocks) {
+			for (const piece of el.innerHTML.split(/<br\s*\/?>/)) {
+				const text = piece.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/g, '&').replace(/\s+/g, '');
+				expect(text.length, text.slice(0, 40)).toBeLessThanOrEqual(250);
+			}
+		}
+	});
+
+	it('寫到這次的新功能和新版面', () => {
+		render(Guide);
+		const text = document.body.textContent!;
+		for (const words of [
+			'看的版面', '裁短', '「復原」', '選人工具列', '鏡像', '排成一橫排', '排成一直排', '平均分開', '跟第 [_] 張一樣',
+			'⌘C', '⌘V', '只改這張', '撞位 N・走太快 N・很喘 N', '格的號碼', '✋', '⏮', '「‹ 八拍」', '拿掉音樂', '右鍵'
+		]) {
+			expect(text, words).toContain(words);
+		}
+		const tools = document.getElementById('選人工具列')!.parentElement!.textContent!;
+		for (const words of ['選 1 人以上', '選 2 人以上', '選 3 人以上', '右鍵', '往後帶', '復原的一步', '自動帶入']) {
+			expect(tools, words).toContain(words);
+		}
+		expect([...document.querySelectorAll('img')].some((img) => img.alt.includes('選人工具列'))).toBe(true);
+	});
+
+	it('名詞表有鏡像、對齊、平均分開、裁短，意思跟 GLOSSARY 一樣', () => {
+		render(Guide);
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)?.textContent ?? '';
+		expect(row('鏡像')).toContain('左右照正面看的方向對調，前後位置不變');
+		expect(row('對齊')).toContain('一橫排（前後位置一樣）或一直排（左右位置一樣）');
+		expect(row('平均分開')).toContain('兩端的人不動，中間的人照順序排在兩端之間，間隔都一樣');
+		expect(row('裁短')).toContain('整個動作都在段外時才刪掉');
+	});
+
+	it('「跟第 [_] 張一樣」有一句說明（T15）', () => {
+		render(Guide);
+		const tools = document.getElementById('選人工具列')!.parentElement!.textContent!;
+		expect(tools).toContain('「跟第 [_] 張一樣」：把選到的人放回第幾張站位裡他們站的位置');
+	});
+
+	it('快捷鍵表列出全部快捷鍵：站位 ⌘C／⌘V、按住 H、Alt（Mac：Option）＋拖、右鍵；Alt 寫得讓 Mac 看得懂（T17）', () => {
+		render(Guide);
+		const keys = document.getElementById('keys')!.textContent!;
+		for (const words of ['⌘C', '⌘V', '選了站位小圖', '按住 H', 'Alt（Mac：Option）＋拖場上的人', 'Alt（Mac：Option）＋點八拍尺', '右鍵', '「跟第 [_] 張一樣」的框裡']) {
+			expect(keys, words).toContain(words);
+		}
+		const text = document.body.textContent!;
+		expect(text).not.toContain('Option（Windows：Alt）');
+		expect(text).not.toMatch(/(?<!Ctrl\+)(?<!（)Alt(?!（Mac：Option）)/);
 	});
 });
