@@ -201,7 +201,8 @@ export function readSegmentNumber(field: SegmentNumberField, text: string): Read
 /**
  * 改段。改 BPM 時動作和站位存的是拍，所以拍不變、秒數跟著變。
  * 段縮短時跨出段尾的動作裁短到段尾（拍點、環節照動作變短的規則），整個在段外的動作和站位刪掉：
- * 先回「要確認」，清單分「裁短：」和「刪掉：」兩組，會清掉紀錄時寫幾次；帶 { confirmed: true } 再送一次才改。
+ * 先回「要確認」，清單分「裁短：」和「刪掉：」兩組，會清掉紀錄時寫幾次，確定鈕寫「確定刪除」（只裁短是「確定裁短」）；
+ * 帶 { confirmed: true } 再送一次才改。
  * lengths：音樂多長（音樂檔庫給的），改第一拍時擋在音樂結束之後的。
  */
 export function updateSegment(
@@ -273,11 +274,18 @@ export function updateSegment(
 		const label = segmentSpans(flow)[index].label;
 		const lost = recordsLossText(records, marks);
 		const cleared = lost && `，會${lost}${RECORDS_UNDOABLE}`;
-		return needsConfirm(`${label} 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉${cleared}`, [
-			...trimItems,
-			...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
-			...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(old, f.at)}）`)
-		]);
+		// 只裁短、沒有要刪的：不寫刪掉，確定鈕寫「確定裁短」（N19）
+		const drops = droppedActions.length + droppedFormations.length > 0;
+		const what = [trimmed.length && '超出段尾的動作裁短到段尾', drops && '放不進段裡的刪掉'].filter(Boolean).join('，');
+		return needsConfirm(
+			`${label} 縮短後，${what}${cleared}`,
+			[
+				...trimItems,
+				...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
+				...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(old, f.at)}）`)
+			],
+			drops ? '確定刪除' : '確定裁短'
+		);
 	}
 	return ok(withoutUnusedAudio(result));
 }

@@ -30,6 +30,7 @@
 		roleGlossary,
 		segmentSpans,
 		squadBadge,
+		timeExamples,
 		type ActionCategory
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
@@ -398,7 +399,7 @@
 						onfocus={() => draft.focusSlotField('startText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
-				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
+				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : `從這一段開頭算的秒數，例：${timeExamples(flow, segment.id).here}`}</small>
 				{@render errorAtSpot('start')}
 			</div>
 			<!-- 新動作表單一打開，就把開始、長度捲出來，不停在黏底的「新增動作」後面（N03，故事 67） -->

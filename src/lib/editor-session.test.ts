@@ -273,13 +273,13 @@ describe('編輯 session：選取', () => {
 describe('編輯 session：頁面層級的問題', () => {
 	const result = (r: CommandResult) => () => r;
 
-	it('成功：算一步，提示收掉', () => {
+	it('成功：算一步，舊的提示換成「已…」', () => {
 		const s = new EditorSession(libSample());
 		s.notice = '舊的提示';
 		s.ask.send(() => renameFlow(s.flow!, '全國賽'));
 		expect(s.flow!.name).toBe('全國賽');
 		expect(s.canUndo).toBe(true);
-		expect(s.notice).toBe('');
+		expect(s.notice).toBe('已改流程名字');
 	});
 
 	it('被擋：原因放進提示；給了還原就加「，已還原」並還原', () => {
@@ -444,12 +444,12 @@ describe('編輯 session：改完跳播放頭', () => {
 		return { s, jumps };
 	}
 
-	it('拖人插了站位：提示說插了一張，播放頭停到那張（播放中不重播）', () => {
+	it('拖人插了站位：提示說插了第幾張，播放頭停到那張（播放中不重播）', () => {
 		const { s, jumps } = withJumps(libSample());
 		s.ask.send(() => moveMembers(s.flow!, 2, { m1: [1, 1] }), { done: (r) => s.moved(r) });
 		expect(s.flow!.formations).toHaveLength(2);
 		expect(s.canUndo).toBe(true);
-		expect(s.notice).toBe('插了一張站位，大家的位置自動帶入');
+		expect(s.notice).toBe('已插入站位 2；大家的位置自動帶入');
 		expect(jumps).toEqual([{ sec: 2, replay: false }]);
 	});
 
@@ -457,7 +457,7 @@ describe('編輯 session：改完跳播放頭', () => {
 		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		s.ask.send(() => moveMembers(s.flow!, 0, { m1: [1, 1] }), { done: (r) => s.moved(r) });
-		expect(s.notice).toBe('往後帶了 1 張');
+		expect(s.notice).toBe('已改站位 1；往後帶了 1 張');
 		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
 
@@ -468,8 +468,8 @@ describe('編輯 session：改完跳播放頭', () => {
 		const to = { segmentId: 's1', at: 16 };
 		s.ask.send(() => moveFormation(s.flow!, id, to), { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
-		expect(s.notice).toBe('站位 2 改到 2-1');
-		expect(s.noticeButton?.name).toBe('復原改站位時間');
+		expect(s.notice).toBe('已改站位 2；改到 2-1');
+		expect(s.noticeButton?.name).toBe('復原：改站位 2');
 		expect(jumps).toEqual([{ sec: toSeconds(s.flow!, to), replay: true }]);
 	});
 
@@ -591,5 +591,125 @@ describe('編輯 session：復原把這一步清掉的紀錄一起帶回來（AD
 		const x1 = s.flow!.actions.find((a) => a.id === 'x1')!.successRate!;
 		const g1 = x1.records.filter((r) => r.who === 'g1');
 		expect(rateCounts(x1.phases, g1).whole).toEqual({ clean: 0, whole: 1 });
+	});
+});
+
+describe('編輯 session：能復原的事做完都有提示（F 群）', () => {
+	/** libSample 再插一張站位 2（第 2 秒）。 */
+	const twoFormations = () => flowOf(insertFormation(libSample(), 2));
+	const dragged = (s: EditorSession, sec: number) =>
+		s.ask.send(() => moveMembers(s.flow!, sec, { m1: [1, 1] }), { done: (r) => s.moved(r) });
+	const copyFirst = (s: EditorSession) => {
+		s.selectFormation(s.flow!.formations[0].id);
+		s.copyFormation();
+	};
+
+	/** 每個會算一步復原的指令（名字、開頭的流程、做一次）。 */
+	const steps: [string, () => Flow, (s: EditorSession) => void][] = [
+		['直接 change', libSample, (s) => s.change(flowOf(renameFlow(s.flow!, 'A')))],
+		['場上的問題', libSample, (s) => s.ask.send(() => renameFlow(s.flow!, 'A'))],
+		['元件的「改」的問題', libSample, (s) => s.changeAsk().send(() => renameFlow(s.flow!, 'A'))],
+		[
+			'元件的問題問了再確定',
+			ratedSample,
+			(s) => {
+				const ask = s.changeAsk({ confirmLabel: '確定刪除' });
+				ask.send((o: ConfirmOption = {}): CommandResult =>
+					o.confirmed ? deleteAction(s.flow!, 'x2', o) : { kind: 'confirm', message: '確定嗎', items: [] }
+				);
+				ask.answer('confirm');
+			}
+		],
+		[
+			'分組數字鍵',
+			libSample,
+			(s) => {
+				s.selectAction('x1');
+				s.selectMembers(['m1']);
+				s.squadKey(2);
+			}
+		],
+		['方向鍵移人', twoFormations, (s) => s.nudge('k', () => moveMembers(s.flow!, 2, { m1: [1, 1] }), { done: (r) => s.moved(r) })],
+		['拖人插了站位', libSample, (s) => dragged(s, 2)],
+		['拖人改現有的最後一張（沒插、沒往後帶）', twoFormations, (s) => dragged(s, 2)],
+		['拖人往後帶', twoFormations, (s) => dragged(s, 0)],
+		[
+			'只改這張',
+			twoFormations,
+			(s) => {
+				dragged(s, 0);
+				s.noticeButton!.run!();
+			}
+		],
+		[
+			'挪站位',
+			twoFormations,
+			(s) => {
+				const id = s.flow!.formations[1].id;
+				s.ask.send(() => moveFormation(s.flow!, id, { segmentId: 's1', at: 16 }), { done: (r) => s.formationMoved(id, r) });
+			}
+		],
+		['刪站位', twoFormations, (s) => s.removeFormation(s.flow!.formations[1].id)],
+		['刪動作', libSample, (s) => s.removeAction('x1')],
+		[
+			'⌘V 貼到新的一拍',
+			libSample,
+			(s) => {
+				copyFirst(s);
+				s.pasteFormation(4);
+			}
+		],
+		[
+			'⌘V 貼到現有的站位',
+			twoFormations,
+			(s) => {
+				copyFirst(s);
+				s.change(flowOf(moveMembers(s.flow!, 2, { m1: [1, 1] })));
+				s.pasteFormation(2);
+			}
+		]
+	];
+
+	it.each(steps)('%s：提示寫出這一步做了什麼（含復原的名字），旁邊有按鈕（N21）', (_, start, step) => {
+		const s = new EditorSession(start());
+		s.notice = '舊的提示';
+		step(s);
+		expect(s.canUndo).toBe(true);
+		expect(s.undoLabel).not.toBe('');
+		expect(s.notice).toContain(s.undoLabel);
+		expect(s.noticeButton).not.toBeNull();
+	});
+
+	it('拖人改現有的最後一張：沒插、沒往後帶也說「已改站位 N」，旁邊有復原（N21）', () => {
+		const s = new EditorSession(twoFormations());
+		dragged(s, 2);
+		expect(s.notice).toBe('已改站位 2');
+		expect(s.noticeButton?.label).toBe('復原');
+	});
+
+	it('拖人插了站位寫大家的位置自動帶入；⌘V 寫貼上複製的站位，不說自動帶入（N46）', () => {
+		const drag = new EditorSession(libSample());
+		dragged(drag, 2);
+		expect(drag.notice).toBe('已插入站位 2；大家的位置自動帶入');
+		const paste = new EditorSession(libSample());
+		copyFirst(paste);
+		paste.pasteFormation(4);
+		expect(paste.notice).toBe('已插入站位 2；貼上複製的站位');
+	});
+
+	it('刪有紀錄的動作：提示寫清掉幾次紀錄、按復原會回來（N25）', () => {
+		const s = new EditorSession(ratedSample());
+		const input = { date: '2026-11-05', who: 'm1', practice: 'drill', whole: true, marks: { p4: '✓' } } as const;
+		s.record(flowOf(recordAttempt(s.flow!, 'x2', input)));
+		s.removeAction('x2');
+		s.ask.answer('confirm');
+		expect(s.flow!.actions.some((a) => a.id === 'x2')).toBe(false);
+		expect(s.notice).toBe('已刪動作 騰翻；1 次紀錄一起清掉，按復原會回來');
+	});
+
+	it('改成一樣的不算一步：不出「已…」的提示', () => {
+		const s = new EditorSession(libSample());
+		s.ask.send(() => renameFlow(s.flow!, s.flow!.name));
+		expect(s.notice).toBe('');
 	});
 });

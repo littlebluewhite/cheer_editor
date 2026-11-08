@@ -483,6 +483,14 @@ describe('動作表單：拍點格子', () => {
 		expect(session.flow).toBe(changed);
 	});
 
+	it('口號段的動作：「開始」下面的小字說是從這一段開頭算的秒數、給例子，不是看不懂的「秒，到 0.1」（N60）', () => {
+		let flow = flowOf(addSegment(sample(), 'chant'));
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
+		setup(flow, 'x1');
+		// 口號段 10 秒：例子取在段裡
+		expect(screen.getByLabelText('開始').nextElementSibling!.textContent).toBe('從這一段開頭算的秒數，例：5.0');
+	});
+
 	it('口號段的動作沒有格子：寫一句，只有環節那一列', () => {
 		let flow = flowOf(addSegment(sample(), 'chant'));
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));

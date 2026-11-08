@@ -35,7 +35,7 @@
 		return {
 			message: q?.message ?? '',
 			items: q?.items ?? [],
-			confirmLabel: q?.choose ? '清掉重算' : ask.confirmLabel,
+			confirmLabel: q?.choose ? '清掉重算' : (q?.confirmLabel ?? ask.confirmLabel),
 			onconfirm: () => ask.answer(q?.choose ? 'clear' : 'confirm'),
 			onkeep: q?.choose ? () => ask.answer('keep') : undefined,
 			oncancel: () => ask.answer('cancel'),

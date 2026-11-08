@@ -159,12 +159,12 @@ describe('流程檔：存檔', () => {
 		expect(session.unsaved).toBe(false);
 	});
 
-	it('在存檔對話框按取消：還是沒存，不寫提示', async () => {
+	it('在存檔對話框按取消：還是沒存，不寫存檔的提示', async () => {
 		const { editor, session } = testEditor(audioFlow(), { createSaver: savers('cancelled').create });
 		session.change(flowOf(renameFlow(session.flow!, '全國賽')));
 		await editor.file.save();
 		expect(session.unsaved).toBe(true);
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已改流程名字');
 	});
 
 	it('存回檔案（Chrome、Edge）：提示寫存到的那個檔（教練在存檔對話框改過名字的話是改過的）', async () => {
@@ -345,16 +345,16 @@ describe('流程檔：沒存先問', () => {
 describe('流程檔：缺音樂、壞音樂', () => {
 	const mp3 = () => new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 
-	it('開檔時有段找不到音樂：照開，提示寫出少了哪個檔；那段補好音樂，提示自己收掉', async () => {
+	it('開檔時有段找不到音樂：照開，提示寫出少了哪個檔；那段補好音樂，提示換成補好的這一步', async () => {
 		const { editor, session } = testEditor();
 		await editor.file.open(zip(audioFlow()));
 		expect(session.flow!.name).toBe('練習用');
 		expect(session.notice).toBe('「練習用.zip」裡少了音樂檔「主歌.mp3」：點紅色的段重新選檔');
 		await editor.music.pick('s1', mp3(), session.changeAsk());
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已換第 1 段的音樂');
 	});
 
-	it('存檔時有段找不到音樂：照樣存，提示存出來的檔裡沒有那些音樂（接在存好的提示後面）；那段補好音樂，提示自己收掉', async () => {
+	it('存檔時有段找不到音樂：照樣存，提示存出來的檔裡沒有那些音樂（接在存好的提示後面）；那段補好音樂，提示換成補好的這一步', async () => {
 		const made = savers('downloaded');
 		const { editor, session } = testEditor(audioFlow(), { createSaver: made.create });
 		await editor.file.save();
@@ -364,22 +364,14 @@ describe('流程檔：缺音樂、壞音樂', () => {
 				'有 1 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次'
 		);
 		await editor.music.pick('s1', mp3(), session.changeAsk());
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已換第 1 段的音樂');
 	});
 
-	it('缺音樂的段刪掉了（缺的都沒了）：提示也自己收掉', async () => {
+	it('缺音樂的段刪掉了（缺的都沒了）：缺音樂的提示換成刪段的這一步', async () => {
 		const { editor, session } = testEditor();
 		await editor.file.open(zip(audioFlow()));
 		session.change(flowOf(deleteSegment(session.flow!, 's1', { confirmed: true })));
-		expect(session.notice).toBe('');
-	});
-
-	it('提示已經換成別的了：補好音樂也不動它', async () => {
-		const { editor, session } = testEditor();
-		await editor.file.open(zip(audioFlow()));
-		session.notice = '已刪掉站位 2';
-		await editor.music.pick('s1', mp3(), session.changeAsk());
-		expect(session.notice).toBe('已刪掉站位 2');
+		expect(session.notice).toBe('已刪第 1 段');
 	});
 
 	it('音樂都在：開好、存好的提示只寫檔名，音樂照樣存進去', async () => {

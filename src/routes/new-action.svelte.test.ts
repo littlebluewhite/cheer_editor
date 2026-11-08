@@ -60,7 +60,7 @@ describe('新動作表單：送出', () => {
 	it.each(['名稱', '開始', '長度'])('在%s欄按 Enter：動作新增；選字中的 Enter 不算', async (name) => {
 		const page = editorPage(teamFlow());
 		render(Page, page.props);
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
 		await fireEvent.keyDown(field(name), { key: 'Enter', isComposing: true });
 		expect(page.session.flow!.actions).toHaveLength(1);
@@ -72,7 +72,7 @@ describe('新動作表單：送出', () => {
 	it('新增後沒有選到的人：場上、泳道名字都沒選，下一次拖人不會整隊一起走', async () => {
 		const page = editorPage(teamFlow());
 		render(Page, page.props);
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		expect(page.session.selectedMemberIds.length).toBeGreaterThan(1);
 		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
@@ -84,7 +84,7 @@ describe('新動作表單：送出', () => {
 
 	it('新增後播放頭跳到新動作結束；下一張新表單的開始接在後面', async () => {
 		render(Page, editorPage(teamFlow()).props);
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.input(field('開始'), { target: { value: '2-1' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-1');
@@ -99,7 +99,7 @@ describe('新動作表單：選到人才打開（#214）', () => {
 		expect(screen.queryByLabelText('名稱')).toBeNull();
 		expect(screen.queryByRole('button', { name: '新增動作' })).toBeNull();
 		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		expect(field('名稱')).toBeTruthy();
 		expect(screen.getByRole('button', { name: '新增動作' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: '＋ 新動作' })).toBeNull();
@@ -127,7 +127,7 @@ describe('新動作表單：開始的寫法跟著段', () => {
 	it('在音樂段打了開始 3-1，播放頭移到口號段：開始換成秒，按新增成功', async () => {
 		const page = editorPage(flowOf(addSegment(teamFlow(), 'chant')));
 		render(Page, page.props);
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
 		await fireEvent.change(field('開始'));
 		page.editor.playback.seek(segmentSpans(page.session.flow!)[1].startSec + 1);
@@ -153,7 +153,7 @@ describe('換大類', () => {
 
 	it('任務角色已經是新大類的預設值：不用提示', async () => {
 		render(Page, editorPage(teamFlow()).props);
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.change(screen.getByLabelText('大類'), { target: { value: 'tumbling' } });
 		expect(screen.queryByRole('button', { name: /預設任務角色/ })).toBeNull();
 	});
@@ -175,12 +175,12 @@ describe('新動作表單：打到一半的內容', () => {
 
 	it('復原「新增動作」：回到新表單，名稱和開始都回來；新增後再開新表單是空白的', async () => {
 		render(Page, editorPage(teamFlow()).props);
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.input(field('名稱'), { target: { value: '金字塔' } });
 		await fireEvent.input(field('開始'), { target: { value: '3-1' } });
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
 		expect(field('名稱').value).toBe('金字塔');
-		await fireEvent.click(screen.getByRole('button', { name: /^復原/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(screen.queryByRole('button', { name: '開新的動作表單' })).toBeNull();
 		expect(field('名稱').value).toBe('金字塔');
 		expect(field('開始').value).toBe('3-1');

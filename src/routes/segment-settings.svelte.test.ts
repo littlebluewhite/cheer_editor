@@ -1,5 +1,6 @@
 // 段設定（#153）：波形畫整個音樂檔、八拍數和長度好算、同一個檔沿用 BPM、延遲校正好輸入。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { addSegment, createFlow, loadSegmentAudio, recordAttempt, updateSegment, type Flow } from '#lib/core';
 import type { DecodedAudio } from '#lib/audio/decode.js';
@@ -120,6 +121,17 @@ describe('從播放頭切段（#167）', () => {
 		expect(field(dialog, '八拍數').value).toBe('4');
 		expect(screen.getByRole('button', { name: /^音樂 2/ })).toBeTruthy();
 	});
+
+	it('切好了：對話框裡寫「已把第 1 段切成兩段」（提示泡泡被對話框蓋住）；復原了就不寫（N21）', async () => {
+		const { editor, session } = await open(oneMusic(), 30);
+		editor.playback.seek(13.6);
+		const dialog = await settings('音樂 1');
+		await fireEvent.click(dialog.getByRole('button', { name: '從播放頭這個八拍切成兩段' }));
+		expect(dialog.getByRole('status').textContent).toBe('已把第 1 段切成兩段；要回原狀請按復原');
+		session.undo();
+		await tick();
+		expect(dialog.queryByRole('status')).toBeNull();
+	});
 });
 
 describe('延遲校正', () => {
@@ -159,6 +171,18 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 		expect(engine.clips.map((c) => c.audioId)).toEqual(['a1']);
 	});
 
+	it('載入音樂後說八拍數是照現在的 BPM 算的，BPM 不對先改 BPM 再重算，不讓人以為 150 是偵測出來的（N57）', async () => {
+		await open(oneMusic(), 30);
+		const dialog = await settings('音樂 1');
+		const file = new File([new Uint8Array([1])], '主歌.mp3', { type: 'audio/mpeg' });
+		await fireEvent.change(dialog.getByLabelText('載入音樂檔'), { target: { files: [file] } });
+		await vi.waitFor(() => expect(field(dialog, '八拍數').value).toBe('10'));
+		expect(dialog.getByText(/八拍數照 150 BPM 算的/).textContent).toBe(
+			'八拍數照 150 BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」'
+		);
+		expect(dialog.getByRole('button', { name: '照音樂長度重算八拍數' })).toBeTruthy();
+	});
+
 	it('改了 BPM，旁邊才出現「照音樂長度重算八拍數」；改 BPM 本身不動八拍數', async () => {
 		await open(flowOf(loadSegmentAudio(oneMusic(), 's1', '歌.mp3')), 30, true);
 		const dialog = await settings('音樂 1');
@@ -169,6 +193,14 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 		// 30 秒 × 120 ÷ 60 = 60 拍 = 7 個滿的八拍 + 4 拍
 		expect(field(dialog, '八拍數').value).toBe('8');
 		expect(field(dialog, '最後一個八拍有幾拍').value).toBe('4');
+	});
+
+	it('拿掉音樂後改 BPM：不出現「照音樂長度重算八拍數」（沒有音樂按了也只會說先載入音樂檔）（N47）', async () => {
+		await open(flowOf(loadSegmentAudio(oneMusic(), 's1', '歌.mp3')), 30, true);
+		const dialog = await settings('音樂 1');
+		await fireEvent.click(dialog.getByRole('button', { name: '拿掉音樂' }));
+		await fireEvent.change(field(dialog, 'BPM'), { target: { value: '120' } });
+		expect(dialog.queryByRole('button', { name: '照音樂長度重算八拍數' })).toBeNull();
 	});
 
 	it('段設定開著時從時間軸點另一段：「照音樂長度重算八拍數」照新的那段的 BPM 判斷，沒改 BPM 就不出現', async () => {
@@ -205,7 +237,7 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 			'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍，會刪掉 1 個環節（清掉 1 次的記號）'
 		]);
 		expect(session.flow).toBe(before);
-		await fireEvent.click(confirm.getByRole('button', { name: '確定刪除' }));
+		await fireEvent.click(confirm.getByRole('button', { name: '確定裁短' }));
 		expect(session.flow!.actions[0].length).toBe(12);
 		expect(session.flow!.actions[0].successRate!.records).toEqual([]);
 		expect(field(dialog, '八拍數').value).toBe('1');

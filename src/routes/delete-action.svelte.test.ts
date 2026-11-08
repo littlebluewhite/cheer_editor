@@ -1,5 +1,5 @@
 // 刪動作不再無聲無息（#134）：拍點格子、小窗、動作表單裡按 Delete／Backspace 不刪整個動作；
-// 名詞對照表開著時快捷鍵不穿過去；刪了動作有「已刪掉…・復原」提示，有反悔按鈕的提示留 10 秒、滑鼠在上面時不收。
+// 名詞對照表開著時快捷鍵不穿過去；刪了動作有「已刪…・復原」提示，有反悔按鈕的提示留 10 秒、滑鼠在上面時不收。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { placeCue } from '#lib/core';
@@ -81,12 +81,12 @@ describe('名詞對照表開著時', () => {
 });
 
 describe('刪動作的提示', () => {
-	it('在泳道選動作按 Delete：刪掉、提示「已刪掉動作 技巧·Lib」，按「復原」動作回來', async () => {
+	it('在泳道選動作按 Delete：刪掉、提示「已刪動作 技巧·Lib」，按「復原」動作回來', async () => {
 		await setup();
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(bar()).toBeNull();
-		expect(screen.getByRole('status').textContent).toBe('已刪掉動作 技巧·Lib');
-		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的動作' }));
+		expect(screen.getByRole('status').textContent).toBe('已刪動作 技巧·Lib');
+		await fireEvent.click(screen.getByRole('button', { name: '復原：刪動作 技巧·Lib' }));
 		expect(bar()).not.toBeNull();
 		expect(screen.getByRole('status').textContent).toBe('已復原：刪動作 技巧·Lib');
 	});
@@ -95,8 +95,8 @@ describe('刪動作的提示', () => {
 		await setup();
 		await fireEvent.click(screen.getByRole('button', { name: '刪除動作' }));
 		expect(bar()).toBeNull();
-		expect(screen.getByRole('status').textContent).toBe('已刪掉動作 技巧·Lib');
-		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的動作' }));
+		expect(screen.getByRole('status').textContent).toBe('已刪動作 技巧·Lib');
+		await fireEvent.click(screen.getByRole('button', { name: '復原：刪動作 技巧·Lib' }));
 		expect(bar()).not.toBeNull();
 	});
 

@@ -149,7 +149,8 @@ describe('調整場地（#169）', () => {
 		const dialog = await openSettings();
 		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '4' } });
 		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
-		expect(page.session.notice).toBe(SNAPPED);
+		expect(page.session.notice).toBe('已調整場地；大家吸附到新格子，改回原本的場地也不會回原位');
+		expect(page.session.noticeButton?.label).toBe('復原');
 	});
 
 	it('條數不對：被擋、說原因', async () => {

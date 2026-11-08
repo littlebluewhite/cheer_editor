@@ -371,4 +371,31 @@ describe('readJump', () => {
 	it('口號段打負的秒數：擋下來，不會跳回前一段', () => {
 		expect(readJump(sample(), 30, '-1')).toEqual({ kind: 'blocked', message: '時間不能是負的' });
 	});
+
+	it('播放頭在口號段、只有一個音樂段：打八拍寫法「1-3」就跳到那個音樂段，不說看不懂（N13）', () => {
+		let flow = flowOf(createFlow({ name: '一段音樂', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(addSegment(flow, 'chant'));
+		const chantSec = segmentSpans(flow)[1].startSec + 1;
+		expect(readJump(flow, chantSec, '1-3')).toEqual({ kind: 'ok', value: toSeconds(flow, { segmentId: 's1', at: 4 }) });
+	});
+
+	it('播放頭在口號段、有好幾個音樂段：打八拍寫法說要加段名，例子用真的段名（N13）', () => {
+		expect(readJump(sample(), 30, '1-3')).toEqual({
+			kind: 'blocked',
+			message: '口號 1 是口號段，要打秒數；八拍寫法前面加段名，例：音樂 1 1-3'
+		});
+	});
+
+	it('看不懂時的例子照這支流程的段：只有一段就不提別的段，口號段的例子不比那一段長（N36）', () => {
+		const one = flowOf(addSegment(flowOf(createFlow({ name: '一段', field: { strips: 9, layout: 'vertical' } })), 'music'));
+		expect(readJump(one, 0, 'abc')).toEqual({ kind: 'blocked', message: '時間看不懂，例：2-5' });
+
+		let flow = flowOf(addSegment(one, 'chant'));
+		flow = flowOf(updateSegment(flow, 's2', { seconds: 5 }));
+		expect(readTime(flow, 's1', 'abc', '出發')).toEqual({
+			kind: 'blocked',
+			message: '出發看不懂，例：2-5（別的段前面加段名，例：口號 1 2.5）'
+		});
+	});
 });

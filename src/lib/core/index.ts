@@ -212,6 +212,7 @@ export {
 	segmentSpans,
 	snapToBeat,
 	stepPlayhead,
+	timeExamples,
 	timeText,
 	timeTextWithUnit,
 	toPosition,

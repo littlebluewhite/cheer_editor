@@ -16,15 +16,15 @@ const dialog = () => screen.getByRole('alertdialog');
 const card = (who: string) => within(screen.getByRole('region', { name: who }));
 
 describe('能復原的事不問，跳「已做了・復原」', () => {
-	it('刪動作：不跳確認框，提示「已刪掉動作…」；按「復原」動作回來', async () => {
+	it('刪動作：不跳確認框，提示「已刪動作…」；按「復原」動作回來', async () => {
 		const { session, props } = editorPage(teamFlow());
 		render(Page, props);
 		await fireEvent.click(bar('x1')!);
 		await fireEvent.click(screen.getByRole('button', { name: '刪除動作' }));
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(session.flow!.actions).toHaveLength(0);
-		expect(screen.getByRole('status').textContent).toBe('已刪掉動作 技巧·Lib');
-		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的動作' }));
+		expect(screen.getByRole('status').textContent).toBe('已刪動作 技巧·Lib');
+		await fireEvent.click(screen.getByRole('button', { name: '復原：刪動作 技巧·Lib' }));
 		expect(session.flow!.actions.map((a) => a.id)).toEqual(['x1']);
 	});
 
@@ -64,7 +64,7 @@ describe('會丟紀錄的事才跳確認框', () => {
 		const records = session.flow!.actions[0].successRate!.records;
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '確定' }));
 		expect(session.flow!.actions).toHaveLength(0);
-		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的動作' }));
+		await fireEvent.click(screen.getByRole('button', { name: /^復原：刪動作/ }));
 		expect(session.flow!.actions[0].successRate!.records).toEqual(records);
 	});
 });
@@ -102,7 +102,7 @@ describe('同時只有一則提示', () => {
 		render(Page, editorPage(flow).props);
 		await fireEvent.click(bar('x4')!);
 		await fireEvent.click(screen.getByRole('button', { name: '刪除動作' }));
-		expect(screen.getByRole('status').textContent).toBe('已刪掉動作 技巧·多的');
+		expect(screen.getByRole('status').textContent).toBe('已刪動作 技巧·多的');
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		await fireEvent.click(screen.getByRole('button', { name: /^騰翻/ }));
 		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));

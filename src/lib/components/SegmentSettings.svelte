@@ -30,6 +30,7 @@
 		tapBpm,
 		updateSegment,
 		type ConfirmOption,
+		type Flow,
 		type SegmentNumberField,
 		type SegmentPatch
 	} from '#lib/core';
@@ -95,6 +96,14 @@
 	});
 	/** 跟這一段用同一個音樂檔、時間重疊的段：那一截會播兩次。 */
 	const overlaps = $derived(music ? audioOverlaps(flow, segmentId) : []);
+
+	/** 切好的那份流程：還是它（沒復原、沒再改）就在切段鈕下面寫切好了。提示泡泡被對話框蓋住，所以寫在這裡（N21）。 */
+	let splitFlow = $state.raw<Flow | null>(null);
+	const splitNote = $derived(splitFlow && session.flow === splitFlow ? `已${session.undoLabel}；要回原狀請按復原` : '');
+
+	function split() {
+		ask.send(() => splitSegment(flow, segmentId, playback.sec), { done: () => (splitFlow = session.flow) });
+	}
 
 	/** 取消時換一個值，讓欄位照流程重畫，回到原本的值。 */
 	let fieldsKey = $state(0);
@@ -175,8 +184,11 @@
 		update({ bpm });
 	}
 
-	/** 打開段設定時的 BPM：改了以後 BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
+	/** 打開段設定時的 BPM：改了以後（而且有音樂檔）BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
 	const openedBpm = untrack(() => music?.bpm);
+	/** 打開時還沒有音樂、這次才第一次載入：八拍數是照那時的 BPM 自動算的，提醒先設好 BPM 再重算（不偵測 BPM）。 */
+	const openedAudioId = untrack(() => music?.audioId);
+	const firstLoaded = $derived(openedAudioId === null && !!music?.audioId && !!audio);
 
 	function fitToAudio() {
 		const lengths = editor.music.lengths;
@@ -261,9 +273,15 @@
 						/>
 					</label>
 					{#if !readonly}{@render listen()}{/if}
-					<!-- 改了 BPM 才看得到；沒改時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
-					<button type="button" class:unchanged={music.bpm === openedBpm} aria-hidden={music.bpm === openedBpm || undefined} onclick={fitToAudio}>照音樂長度重算八拍數</button>
+					{#if audio}
+						<!-- 改了 BPM（或剛載入音樂）才看得到；沒出現時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
+						{@const hide = music.bpm === openedBpm && !firstLoaded}
+						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} onclick={fitToAudio}>照音樂長度重算八拍數</button>
+					{/if}
 				</div>
+				{#if firstLoaded}
+					<p class="hint">八拍數照 {music.bpm} BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」</p>
+				{/if}
 				<div class="row">
 					<button type="button" onclick={tap}>敲擊測速</button>
 					<span class="hint" aria-live="polite">
@@ -325,9 +343,10 @@
 					</p>
 				{/if}
 				<div class="row">
-					<button type="button" onclick={() => ask.send(() => splitSegment(flow, segmentId, playback.sec))}>從播放頭這個八拍切成兩段</button>
+					<button type="button" onclick={split}>從播放頭這個八拍切成兩段</button>
 					<span class="hint">切點在播放頭那個八拍的第 1 拍；後面的動作和站位搬到新的一段，BPM、第一拍接著算</span>
 				</div>
+				{#if splitNote}<p class="hint" role="status">{splitNote}</p>{/if}
 				{#each overlaps as o (o.label)}
 					<p class="hint-warn" role="note">
 						跟{o.label} 用同一個音樂檔，有 {o.sec.toFixed(1)} 秒重疊：那一截音樂會播兩次。

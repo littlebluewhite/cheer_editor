@@ -292,6 +292,8 @@ const ruler = await js(`return $rect(q('[data-ruler]'))`);
 await click(ruler.l + 2, ruler.y);
 const field = await js(`return $rect(q('svg[aria-label="場地"]'))`);
 for (const [name, dx, dy] of [['阿明', -60, 0], ['阿強', 60, 0], ['小美', 0, -40]]) {
+	// 上一個拖完的「已改站位 1」提示會蓋住場地上方的人：先收掉
+	await js(`q('button[aria-label="收起提示"]')?.click();`);
 	const d = await js(`return $dot('${name}')`);
 	await drag(d.x, d.y, field.x + dx, field.y + dy);
 }
@@ -494,6 +496,8 @@ await js(esc);
 	await click(r.l + 2, r.y);
 	const f = await js(`return $rect(q('svg[aria-label="場地"]'))`);
 	for (const [name, dx, dy] of [['小芳', 0, 160], ['阿偉', 100, 210], ['阿華', -100, 210]]) {
+		// 上一個拖完的「已改站位 1」提示會蓋住場地上方的人：先收掉
+		await js(`q('button[aria-label="收起提示"]')?.click();`);
 		const d = await js(`return $dot('${name}')`);
 		await drag(d.x, d.y, f.x + dx, f.y + dy);
 	}

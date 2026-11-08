@@ -354,7 +354,7 @@ describe('在場上選人、整組拖', () => {
 		const [m1, m2] = [posOf(session, 'm1'), posOf(session, 'm2')];
 		expect(m2[0]).toBeCloseTo(-8.2296, 4);
 		expect(m2[0] - m1[0]).toBeCloseTo(1, 6);
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 1；已靠到邊界');
 	});
 
 	it('兩根手指：捏合放大、一起拖移動畫面；不會選人、拖人', async () => {
