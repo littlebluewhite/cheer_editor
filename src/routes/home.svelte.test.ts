@@ -33,6 +33,16 @@ describe('手機首頁', () => {
 		expect(screen.getByLabelText('開啟流程檔')).toBeTruthy();
 		expect(screen.getByText(/檢視模式/).textContent).toContain('只能看');
 	});
+
+	it('手機首頁說草稿存在哪裡：不寫「這台電腦」（N37）', async () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
+		const drafts = fakeDraftStore();
+		drafts.all.set('n1', { bytes: writeFlowFile(newFlowOf('全國賽'), {}), savedAt: new Date(2026, 10, 4, 9, 0) });
+		home(drafts.store);
+		await flush();
+		const note = screen.getByText(/草稿只存在/).textContent!;
+		expect(note).not.toContain('電腦');
+	});
 });
 
 describe('新建和開檔以後回到編排・編輯', () => {

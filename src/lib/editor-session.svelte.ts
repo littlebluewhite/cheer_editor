@@ -24,7 +24,9 @@ import {
 	type Flow,
 	type Mark,
 	type MoveResult,
-	type Position
+	type Period,
+	type Position,
+	type PracticeKind
 } from '#lib/core';
 import { Ask, type Handlers } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
@@ -71,6 +73,23 @@ export interface SessionPlayback {
 /** session 為什麼叫 updated：換了流程（open）、改（change）、記（record）、復原（undo）、重做（redo）、換了選取（select）。
  *  動作表單的草稿靠它分「復原掉剛新增的動作」和「剛新增的動作被刪掉」，不用猜（N20）。 */
 export type UpdateReason = 'open' | 'change' | 'record' | 'undo' | 'redo' | 'select';
+
+/**
+ * 跟著這支流程的畫面狀態：元件拆掉（切練習的頁、切編排和練習）再回來還在；換流程（open）整份重設。不存進流程檔。
+ * 換流程就該重設的（時間軸、泳道的捲動、場地的放大）跟著編排區的 {#key} 重開；重開小窗就重設的由小窗打開時初始化。
+ */
+function freshView() {
+	return {
+		/** 練習畫面在哪一頁：記錄、總表。 */
+		practicePage: 'record' as 'record' | 'summary',
+		/** 記錄頁選到的動作；null（或它不在清單上了）是第一個。 */
+		recordActionId: null as string | null,
+		/** 總表的篩選：期間、練法、大字看成功率還是完成率。 */
+		summary: { period: 'today' as Period, practice: 'all' as PracticeKind | 'all', rate: 'success' as 'success' | 'completion' },
+		/** 記錄頁「每天的成功率」看哪一組（或人），key 是動作 id；沒有、空字串是全部。 */
+		dailyWho: {} as Record<string, string>
+	};
+}
 
 const NO_PLAYBACK: SessionPlayback = { opened() {}, changed() {}, jump() {} };
 
@@ -119,6 +138,13 @@ export class EditorSession {
 	 */
 	viewing = $state(false);
 	/**
+	 * 畫面能不能出現改編排的控制項：檢視模式就不能。畫面只看這一個（不各自讀 viewing）：
+	 * 只能編輯的控制項標 data-edit（編輯頁一條 CSS 藏起來），對話框給 readonly（內容整塊停用）。
+	 */
+	get editable(): boolean {
+		return !this.viewing;
+	}
+	/**
 	 * 記錄頁每張卡上次選的「這次練」，key 是「動作 id 組或隊員 id」：whole 整個做，不是就只練 picked 這幾個環節。
 	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
 	 */
@@ -139,6 +165,8 @@ export class EditorSession {
 		if (this.practiceLeave) this.practiceLeave(go);
 		else go();
 	}
+	/** 跟著這支流程的畫面狀態（freshView）。 */
+	view = $state(freshView());
 	/** 多選開著：場上點人、框選、點泳道名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
@@ -252,6 +280,7 @@ export class EditorSession {
 		this.#copied = null;
 		this.clearSelection();
 		this.drillMarks = {};
+		this.view = freshView();
 		this.notice = '';
 		this.#clearAsks();
 		this.#playback.opened();

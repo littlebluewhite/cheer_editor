@@ -24,8 +24,8 @@
 	const flow = $derived(session.flow!);
 
 	const whos = $derived(attemptWhos(flow, action));
-	/** 選的組（或人），存成 select 的值；空字串是全部。 */
-	let picked = $state('');
+	/** 選的組（或人），存成 select 的值；空字串是全部。放在 session（照動作記）：切頁再回來還是它。 */
+	const picked = $derived(session.view.dailyWho[action.id] ?? '');
 	/** 選的組不在了（例如復原掉了）就看全部。 */
 	const who = $derived(whos.find((w) => w.who === picked)?.who);
 	const phases = $derived(action.successRate?.phases ?? []);
@@ -39,7 +39,7 @@
 		<h3>每天的成功率</h3>
 		<label
 			>{pickLabel}
-			<select bind:value={picked}>
+			<select value={picked} onchange={(e) => (session.view.dailyWho[action.id] = e.currentTarget.value)}>
 				<option value="">全部</option>
 				{#each whos as w (w.who)}
 					<option value={w.who}>{w.name}</option>

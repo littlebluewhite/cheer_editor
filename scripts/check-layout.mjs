@@ -590,6 +590,34 @@ for (const [w, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
 	});
 }
 
+await check('1440 寬按「檢視」：時間軸的加段、插入八拍、站位 ✕、拉長度的把手看不到；點段名打開的段設定欄位停用、版面跟編輯時一樣、試聽按得到（N04）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	const press = (name) => `[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '${name}').click();`;
+	const shown = `return ['.timeline .insert', '.timeline .add', '.timeline .add-after', '.film .del', '.lanes .rz, [data-resize]']
+		.filter((s) => [...document.querySelectorAll(s)].some((e) => e.checkVisibility())).join(',');`;
+	const openSeg = async () => {
+		await js(`document.querySelector('.timeline .seg').click();`);
+		await sleep(200);
+		return js(`const d = document.querySelector('.seg-dialog'); const bpm = [...d.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('BPM')).querySelector('input');
+			const listen = d.querySelector('.listen');
+			return { 高: Math.round(d.getBoundingClientRect().height), BPM停用: bpm.matches(':disabled'), 試聽停用: listen.matches(':disabled') };`);
+	};
+	const closeSeg = () => js(`document.querySelector('.seg-dialog .close').click();`);
+	const editShown = await js(shown);
+	const editSeg = await openSeg();
+	await closeSeg();
+	await sleep(200);
+	await js(press('檢視'));
+	await sleep(200);
+	const viewShown = await js(shown);
+	const viewSeg = await openSeg();
+	await closeSeg();
+	await js(press('編輯'));
+	const ok = editShown !== '' && viewShown === '' && viewSeg.BPM停用 && !viewSeg.試聽停用 && Math.abs(viewSeg.高 - editSeg.高) < 40;
+	return { ok, value: { 編輯看得到: editShown, 檢視看得到: viewShown, 編輯段設定: editSeg, 檢視段設定: viewSeg } };
+});
+
 await check('1440 寬：播放頭到結尾（位置只寫「結尾」）時，上方列高度不變（#205）', async () => {
 	await setViewport(1440, 900);
 	await openSample();
@@ -795,7 +823,7 @@ await check('768×1024（觸控，直拿的 iPad）：檢視畫面寫「請轉�
 	await openPracticeFlow();
 	const why = await viewOnlyWhy();
 	await clearTouch();
-	return { ok: !!why && why.startsWith('請轉成橫的') && !why.includes('太窄'), value: why };
+	return { ok: !!why && why.includes('請轉成橫的') && !why.includes('太窄'), value: why };
 });
 
 await check('1440×500（矮的桌面視窗）：檢視畫面寫「太矮」，不寫太窄', async () => {

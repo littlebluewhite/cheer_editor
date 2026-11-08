@@ -139,7 +139,7 @@
 	let view = $state<'edit' | 'practice'>('edit');
 	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
 	let practiceDate = $state(localDate());
-	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；練習畫面照這個重開。 */
+	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；編排區和練習畫面照這個重開。 */
 	let opened = $state(0);
 	/** 首頁按了「丟掉」的那支最近的流程：先問。 */
 	let discarding = $state.raw<RecentFlow | null>(null);
@@ -264,6 +264,8 @@
 	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
 	let windowH = $state(0);
+	/** 手機的檢視畫面為什麼不能編（寫在「檢視模式・只能看」後面）。 */
+	const whyViewOnly = $derived(viewOnlyReason(windowW, windowH, touchScreen));
 	/** 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1670px 一樣）。 */
 	const transportBelow = $derived(windowW <= 1670);
 	let fieldHostH = $state(0);
@@ -296,16 +298,10 @@
 	}
 
 
-	/** 右邊欄的兩頁（動作、隊員）：換流程時捲回最上面。 */
-	let actionPanel = $state<HTMLElement>();
-	let membersPanel = $state<HTMLElement>();
-
-	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
-	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
+	// 換成另一支流程（新建、開檔、救回草稿）：編排區和練習畫面重開（opened 的 {#key}）、對話框都關掉。
+	// 換上流程由編輯器 module 的流程檔做；選取、提示、session.view 由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
-		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
-		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
 		me = session.flow ? loadFlowSetting('me', session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
@@ -512,7 +508,7 @@
 		class="editor"
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
-		class:viewing={session.viewing && !narrow}
+		class:viewing={!session.editable && !narrow}
 		class:narrow
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${fieldKeepPx()}px))`}
@@ -727,12 +723,16 @@
 				{:else}
 					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
 				{/if}
-				<button type="button" class="primary save" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
+				<!-- 窄螢幕不能編，存檔不用搶眼的藍色（練習的紀錄照樣要存） -->
+				<button type="button" class={['save', narrow ? 'ghost' : 'primary']} title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 			<!-- 播放區換到第二行時放在按鈕後面：Tab 照畫面由上到下 -->
 			{#if !narrow && transportBelow}{@render transport()}{/if}
 		</header>
 
+		<!-- 編排區和練習畫面：換一份流程就整個重開。時間軸、泳道、右邊欄的捲動，場地的放大，還沒送出的加隊員名單
+		     都不帶到別的檔（跟著流程、切頁要留的放在 session.view） -->
+		{#key opened}
 		{#if narrow}
 			{#if view === 'edit'}
 				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面八拍表這一列。只能看、只能播放；場上的人拖不動 -->
@@ -757,7 +757,8 @@
 						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
-					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
+					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編 -->
+					<p class="phone-why"><Icon name="eye" />檢視模式・只能看{whyViewOnly ? `（${whyViewOnly}）` : ''}</p>
 				</main>
 			{/if}
 		{:else}
@@ -924,14 +925,13 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
-					<!-- 換一份流程就重開：上一支沒送出的加隊員名單不帶過去 -->
-					{#key opened}<MemberPanel />{/key}
+				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
+					<MemberPanel />
 				</div>
 				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
 				{#if session.viewing}
@@ -967,13 +967,11 @@
 		{/if}
 		{#if view === 'practice'}
 			<div class="practice-host">
-				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
-				{#key opened}
-					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
-				{/key}
+				<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
 				{@render noticeToast()}
 			</div>
 		{/if}
+		{/key}
 	</div>
 	<!-- 大的 iPad 拿直的（不算窄）：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
@@ -1094,7 +1092,7 @@
 					{#if editor.file.unsavedOverLimit}
 						<p class="recent-note" role="status">有 {editor.file.unsavedOverLimit} 支還沒存。編輯器不會自動丟掉還沒存的，用不到的按「丟掉」。</p>
 					{/if}
-					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
+					<p class="recent-note">草稿只存在這個瀏覽器裡。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 				</div>
 			{/if}
 			<p class="recent-note" role="status">{discardNote}</p>
@@ -1166,6 +1164,11 @@
 	.editor.viewing {
 		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(160px, 22vh));
 	}
+	/* 檢視模式：只能編輯的控制項（標了 data-edit 的：時間軸的加段、插入八拍、站位 ✕、拉長度的把手、分組列…）
+	   一條規則藏起來，不用每個元件自己讀模式。播放頭、選取、練習的「記」照樣能用，所以不整塊 inert */
+	.editor.viewing :global([data-edit]) {
+		display: none !important;
+	}
 	/* 練習：主畫面換成練習畫面，編排的東西藏起來（不拆掉：場地、時間軸的縮放還在） */
 	.editor.practicing {
 		grid-template-rows: auto minmax(0, 1fr);
@@ -1186,14 +1189,14 @@
 	}
 	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行字放最下面，不跟場地搶位置；黃底深字，看得出是提醒 */
 	.phone-why {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		margin: 0;
 		padding: 6px 12px;
 		background: var(--warn-bg);
 		color: var(--warn-text);
 		font-size: 13px;
-	}
-	.phone-why:empty {
-		display: none;
 	}
 	.phone-field {
 		position: relative;
