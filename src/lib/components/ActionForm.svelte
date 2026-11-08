@@ -8,7 +8,9 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 同一時間在別的動作裡的人標出來（「拿掉這幾個人」一次拿掉）；改動作時選了別的人，「把選的 N 人加進來」。
 	// 從任務角色選單的「＋自訂任務角色…」新增的角色，套給打開選單的那個人。
-	// 清單上 Shift＋點名字（iPad 開著「多選」點）選好幾個人，在其中一人選任務角色就一起設（算一步復原）。
+	// 清單上 Shift＋點名字（iPad 開著「多選」點）選好幾個人，在其中一人選任務角色就一起設（算一步復原）；怎麼多選常駐寫一行。
+	// 改動作時，清單上點名字就是選人（session 的選取，場上跟著亮；場上選的人清單也框起來）。
+	// 新增時人就是選到的人，點名字不能改選取（人會跟著縮），只在表單裡框起來。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時「開始」旁邊有「跳到開始」（播放頭跳到動作開始）。
 	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列），勾「照組排」就照組號排。
@@ -17,6 +19,7 @@
 	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { composing } from '#lib/ime.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import {
@@ -192,7 +195,10 @@
 		if (!formEl!.contains(document.activeElement)) (to === 'form' ? formEl : nameInput)?.focus();
 	}
 
-	/** 清單上點名字選到的人（隊員 id）：Shift＋點加減，選到 2 人以上時，在其中一人選任務角色就一起設。 */
+	/**
+	 * 新動作表單上點名字選到的人（隊員 id）：新增時人就是場上選的人，點名字不能改選取，另外記在這裡。
+	 * 改動作時用 session 的選取，場上跟著亮。選到 2 人以上時，在其中一人選任務角色就一起設。
+	 */
 	let rowPicked = $state<string[]>([]);
 	const actionId = $derived(action?.id);
 	$effect.pre(() => {
@@ -200,10 +206,20 @@
 		rowPicked = [];
 	});
 	/** 選到、而且還在清單裡的人。 */
-	const together = $derived(rowPicked.filter((id) => draft.members.some((d) => d.memberId === id)));
+	const together = $derived(
+		(action ? session.selectedMemberIds : rowPicked).filter((id) => draft.members.some((d) => d.memberId === id))
+	);
+	/** 觸控螢幕沒有 Shift，多選要開場地左邊的「多選」（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = isTouchScreen();
 
 	/** 點名字：沒按 Shift 只選他（再點一次取消）；按 Shift（或開著「多選」，iPad 沒有 Shift）加進來或拿掉。 */
 	function pickRow(id: string, shift: boolean) {
+		if (action) {
+			// 跟場上點人一樣：Shift 加減時場上選的其他人留著
+			if (shift) session.pickMember(id, true);
+			else session.selectMembers(together.length === 1 && together[0] === id ? [] : [id]);
+			return;
+		}
 		if (shift) rowPicked = together.includes(id) ? together.filter((x) => x !== id) : [...together, id];
 		else rowPicked = together.length === 1 && together[0] === id ? [] : [id];
 	}
@@ -463,9 +479,14 @@
 				{/if}
 				<button type="button" class="link" onclick={() => openGlossary(null)}>名詞對照表</button>
 			</div>
+			<!-- 常駐一行（觸控的人看不到 title）；選了 2 人以上換成選了幾人，這一行不跳 -->
 			{#if together.length > 1}
 				<p class="together" role="note" aria-label="一起設任務角色">
 					選了 {together.length} 人：在其中一人選任務角色，{together.length} 人一起設
+				</p>
+			{:else if draft.members.length > 1}
+				<p class="together">
+					{touchScreen ? '打開場地左邊的「多選」再點名字' : 'Shift 點名字'}選好幾個人，在其中一人選任務角色，就一起設好
 				</p>
 			{/if}
 			{#if draft.members.length}

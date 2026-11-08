@@ -3,7 +3,7 @@
 // 最後一段超過段尾寫最多幾拍、從任務角色選單新增的自訂角色套給那個人、把選的人一次加進動作。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { actionSeconds, addMembers } from '#lib/core';
 import { editorPage, teamFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
@@ -168,6 +168,56 @@ describe('一次設好幾個人的任務角色（#229）', () => {
 		await fireEvent.click(row('小A'));
 		expect(row('小A').getAttribute('aria-pressed')).toBe('false');
 		expect(row('小美').getAttribute('aria-pressed')).toBe('true');
+	});
+});
+
+describe('動作表單裡選的人也在場上亮（N49）', () => {
+	const form = () => document.querySelector<HTMLElement>('.action-form')!;
+	const row = (name: string) => within(form()).getByRole('button', { name });
+
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('表單裡點名字、Shift 加選：場上那幾個人也選到；場上 Shift 點別人，表單的名字跟著框起來', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小A'));
+		await fireEvent.click(row('小B'), { shiftKey: true });
+		expect(page.session.selectedMemberIds).toEqual(['m2', 'm4']);
+		expect(dot('m2').getAttribute('aria-pressed')).toBe('true');
+		expect(dot('m4').getAttribute('aria-pressed')).toBe('true');
+		expect(dot('m1').getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.keyDown(dot('m1'), { key: 'Enter', shiftKey: true });
+		expect(row('小美').getAttribute('aria-pressed')).toBe('true');
+		expect(within(form()).getByRole('note', { name: '一起設任務角色' }).textContent).toContain('選了 3 人');
+		// 還在改同一個動作，表單沒換
+		expect(page.session.selectedActionId).toBe('x1');
+	});
+
+	it('新動作表單：點名字選一個人，表單裡的人不會變少（人就是場上選的人，不能跟著點名字縮）', async () => {
+		const page = editorPage(teamFlow());
+		page.session.selectMembers(['m1', 'm2', 'm3']);
+		render(Page, page.props);
+		await tick();
+		await fireEvent.click(row('小A'));
+		expect(page.session.selectedMemberIds).toEqual(['m1', 'm2', 'm3']);
+		expect(within(form()).getAllByRole('combobox', { name: /的任務角色$/ })).toHaveLength(3);
+		expect(row('小A').getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('多選的說明常駐一行：滑鼠寫「Shift 點」', async () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: fine)' }));
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		expect(within(form()).getByText(/Shift 點名字選好幾個人/)).toBeTruthy();
+	});
+
+	it('多選的說明常駐一行：觸控寫「打開場地左邊的「多選」再點」，不提 Shift', async () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		const hint = within(form()).getByText(/打開場地左邊的「多選」再點名字/);
+		expect(hint.textContent).not.toContain('Shift');
 	});
 });
 
