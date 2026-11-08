@@ -25,6 +25,7 @@
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
+	import { commitField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
@@ -51,10 +52,11 @@
 		(Object.keys(DEFAULT_TIME_RULES) as (keyof TimeRules)[]).every((k) => flow.timeRules[k] === DEFAULT_TIME_RULES[k])
 	);
 
-	/** 改自訂任務角色的名稱；被擋就把輸入框還原。 */
-	function renameRole(role: CustomRole, input: HTMLInputElement) {
-		ask.send(() => updateCustomRole(flow, role.id, { name: input.value, meaning: role.meaning }), {
-			revert: () => (input.value = role.name)
+	/** 改自訂任務角色的名稱；被擋就把輸入框還原，原因寫在下面。 */
+	function roleNameField(role: CustomRole) {
+		return commitField(ask, null, {
+			send: (text) => updateCustomRole(flow, role.id, { name: text, meaning: role.meaning }),
+			actual: () => role.name
 		});
 	}
 
@@ -111,18 +113,16 @@
 		ask.send(() => updateTimeRules(flow, patch));
 	}
 
-	/** 改一個秒數；被擋就把那一格還原成實際的值，原因記在那一格。 */
-	function setSeconds(key: (typeof fields)[number][0], label: string, input: HTMLInputElement) {
-		ask.send(() => updateTimeRules(flow, { [key]: input.valueAsNumber }), {
-			field: label,
-			revert: () => (input.value = String(flow.timeRules[key]))
+	/** 一個秒數；被擋就把那一格還原成實際的值，原因記在那一格（空白、看不懂是 NaN，交給流程核心擋）。 */
+	function secondsField(key: (typeof fields)[number][0], label: string) {
+		return commitField(ask, label, {
+			send: (text) => updateTimeRules(flow, { [key]: parseFloat(text) }),
+			actual: () => String(flow.timeRules[key])
 		});
 	}
 
-	function rename(input: HTMLInputElement) {
-		// 被擋下時把輸入框還原成原本的名字。
-		ask.send(() => renameFlow(flow, input.value), { field: '流程名字', revert: () => (input.value = flow.name) });
-	}
+	/** 流程名字；被擋下時把輸入框還原成原本的名字。 */
+	const nameField = commitField(ask, '流程名字', { send: (text) => renameFlow(flow, text), actual: () => flow.name });
 
 	const markers = $derived(memberMarkers(flow));
 	const MARKER_STYLES: { key: MarkerStyle; label: string }[] = [
@@ -149,7 +149,7 @@
 				aria-label="流程名字"
 				value={flow.name}
 				bind:this={nameInput}
-				onchange={(e) => rename(e.currentTarget)}
+				{@attach nameField}
 				onkeydown={onenter}
 			/>
 		</label>
@@ -208,7 +208,7 @@
 						min="1"
 						data-autofocus={focus === key || undefined}
 						value={flow.timeRules[key]}
-						onchange={(e) => setSeconds(key, label, e.currentTarget)}
+						{@attach secondsField(key, label)}
 						onkeydown={onenter}
 					/>
 				</label>
@@ -252,7 +252,7 @@
 								aria-label="「{role.name}」的名稱"
 								value={role.name}
 								bind:this={roleInputs[role.id]}
-								onchange={(e) => renameRole(role, e.currentTarget)}
+								{@attach roleNameField(role)}
 								onkeydown={onenter}
 							/><CharCount field="roleName" input={roleInputs[role.id]} value={role.name} quiet />
 							<button

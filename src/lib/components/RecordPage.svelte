@@ -35,9 +35,8 @@
 	const flow = $derived(session.flow!);
 
 	const actions = $derived(recordableActions(flow));
-	/** 選到的動作；沒選過、或它不在清單上了（復原掉了）就是第一個。 */
-	let chosenId = $state<string | null>(null);
-	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
+	/** 選到的動作；沒選過、或它不在清單上了（復原掉了）就是第一個。放在 session：切到總表、編排再回來還是它（N07）。 */
+	const action = $derived(actions.find((a) => a.id === session.view.recordActionId) ?? actions[0]);
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
 
@@ -50,7 +49,7 @@
 	let cards = $state<HTMLElement>();
 
 	function choose(id: string) {
-		chosenId = id;
+		session.view.recordActionId = id;
 		cards?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
 
@@ -92,7 +91,7 @@
 				{#each actions as a (a.id)}
 					{@const weakest = weakestText(a)}
 					<li>
-						<button type="button" aria-pressed={a === action} onclick={() => (chosenId = a.id)}>
+						<button type="button" aria-pressed={a === action} onclick={() => (session.view.recordActionId = a.id)}>
 							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
 							<small>{countText(a)}</small>
 							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
