@@ -313,6 +313,7 @@
 				<button
 					type="button"
 					class="insert"
+					data-edit
 					aria-expanded={!!inserting}
 					disabled={spans.length === 0}
 					title="在播放頭空出時間，這段後面的站位、動作一起往後延"
@@ -321,6 +322,7 @@
 				<button
 					type="button"
 					class="add"
+					data-edit
 					aria-label="在最後加一段"
 					aria-haspopup="menu"
 					aria-expanded={!!menu && menu.after === null}
@@ -351,6 +353,7 @@
 					<button
 						type="button"
 						class="add-after"
+						data-edit
 						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
 						aria-label="在這段後面加一段"
 						title={`加在${span.label} 後面`}

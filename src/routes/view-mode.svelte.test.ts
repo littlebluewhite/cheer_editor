@@ -1,7 +1,9 @@
 // 檢視模式（電腦，#174）：上方列「編輯｜檢視」按「檢視」就只能看、只能播放；改流程的指令都擋下（不只藏按鈕），按回「編輯」又能改。
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { placeCue, updateAction } from '#lib/core';
+import { Ask } from '#lib/ask.svelte.js';
+import { VIEW_ONLY } from '#lib/editor-session.svelte.js';
 import { editorPage } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -163,5 +165,87 @@ describe('檢視模式', () => {
 		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
 		expect(screen.queryByRole('region', { name: '八拍表這一列' })).toBeNull();
 		expect(screen.queryByRole('combobox', { name: '我' })).toBeNull();
+	});
+});
+
+/** 看得到、按得到的控制項：不在藏起來（hidden、inert）的地方，沒停用。
+ *  檢視模式下標了 data-edit 的整塊藏起來（+page.svelte 的 `.editor.viewing [data-edit]`），jsdom 不算 CSS，這裡照那條規則跳過。 */
+function usable(el: Element): boolean {
+	if (el.closest('[hidden], [inert]')) return false;
+	if (el.closest('.viewing [data-edit]')) return false;
+	return !el.matches(':disabled');
+}
+
+/** 離開這個畫面的（換流程、回首頁、切回編輯、切到練習、蓋滿畫面的八拍表）：不按，掃的是檢視模式的編排畫面。 */
+const LEAVES = ['編輯', '新建', '開啟', '回首頁', '編排', '練習', '去練習', '八拍表', '看八拍表'];
+
+function nameOf(el: Element): string {
+	const label = el.getAttribute('aria-label') ?? (el as HTMLInputElement).labels?.[0]?.textContent ?? el.textContent ?? '';
+	return label.trim().replace(/\s+/g, ' ').slice(0, 30);
+}
+
+/** 文字欄打字、按 Enter、送出；下拉選別的；其他按一下。 */
+async function use(el: HTMLElement) {
+	if (el instanceof HTMLSelectElement) {
+		const other = [...el.options].find((o) => o.value !== el.value);
+		if (other) await fireEvent.change(el, { target: { value: other.value } });
+		return;
+	}
+	const typing = el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !['checkbox', 'radio', 'file', 'button', 'submit'].includes(el.type));
+	if (!typing) return void (await fireEvent.click(el));
+	el.focus();
+	await fireEvent.input(el, { target: { value: '9' } });
+	await fireEvent.keyDown(el, { key: 'Enter' });
+	await fireEvent.change(el);
+	el.blur();
+}
+
+describe('檢視模式：看得到的都按一遍，不會按了才說「檢視模式」（N04）', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('時間軸、段設定、站位縮圖、動作條、分組列：看得到、按得到的都不會被 VIEW_ONLY 擋下', async () => {
+		const session = setup();
+		// 有第二張站位（有 ✕、拖得動）：播放頭到 3-5&，拖小美
+		await fireEvent.pointerDown(document.querySelector('[data-ruler]')!, { clientX: 8.25 * 16, button: 0, altKey: true });
+		await fireEvent.pointerUp(window);
+		await drag('m1');
+		await fireEvent.click(viewBtn());
+		// 選第二張站位、動作 Lib（有環節，分組列出來）
+		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
+		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
+		const before = session.flow;
+		// 送到問題（Ask）的指令被檢視模式擋下幾次：表單旁的紅字同一句不會變多，所以數擋下的次數
+		let locked = 0;
+		const send = Ask.prototype.send;
+		vi.spyOn(Ask.prototype, 'send').mockImplementation(function (this: Ask, ...args) {
+			const r = send.apply(this, args);
+			if (r.kind === 'blocked' && r.message === VIEW_ONLY) locked++;
+			return r;
+		});
+
+		const tried = new WeakSet<Element>();
+		const names: string[] = [];
+		const blocked: string[] = [];
+		for (let i = 0; i < 400; i++) {
+			const left = [...document.querySelectorAll<HTMLElement>('button, input, select, textarea, [role=button]')].filter(
+				(e) => !tried.has(e) && usable(e) && !LEAVES.includes(nameOf(e))
+			);
+			// 「關閉」最後才按：對話框裡的東西先按完
+			const el = left.find((e) => nameOf(e) !== '關閉') ?? left[0];
+			if (!el) break;
+			tried.add(el);
+			names.push(nameOf(el));
+			const already = locked;
+			await use(el);
+			if (session.notice.includes(VIEW_ONLY) || locked > already) blocked.push(nameOf(el));
+			session.notice = '';
+		}
+		expect(blocked).toEqual([]);
+		expect(session.flow).toBe(before);
+		// 真的掃到了：播放、時間軸縮放、站位縮圖、動作條，和點段名打開的只能看的段設定（試聽照樣能按）
+		for (const name of ['播放', '時間軸放大', '站位 2', 'Lib 上層', '▶ 從第一拍聽 2 個八拍']) expect(names).toContain(name);
+		// 段設定的欄位是停用的：按不到
+		expect(names).not.toContain('BPM');
+		expect(names).not.toContain('刪除這一段');
 	});
 });

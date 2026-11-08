@@ -44,7 +44,7 @@ describe('自己拖的寬度', () => {
 
 describe('窄螢幕上為什麼不能編', () => {
 	it('手機橫拿（844×390 觸控）又窄又矮：寫太小，不叫人轉', () => {
-		expect(viewOnlyReason(844, 390, true)).toBe('畫面太小了（不到 1024×600 像素），只能看、不能編');
+		expect(viewOnlyReason(844, 390, true)).toBe('畫面太小');
 	});
 
 	it('夠大就不寫', () => {

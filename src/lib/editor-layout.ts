@@ -43,17 +43,15 @@ const EDIT_MIN_W_PX = 1024;
 const EDIT_MIN_H_PX = 600;
 
 /**
- * 窄螢幕上為什麼不能編，寫在手機的檢視畫面上：觸控螢幕拿直的、轉成橫的就夠大 → 請轉成橫的；
- * 不然照寬或高分開寫太窄、太矮（兩個都不夠寫太小）。夠大就是 ''。
+ * 窄螢幕上為什麼不能編，寫在手機的檢視畫面「檢視模式・只能看」後面：觸控螢幕拿直的、轉成橫的就夠大 → 請轉成橫的；
+ * 不然照寬或高分開寫太窄、太矮（兩個都不夠寫太小）。夠大就是 ''。不寫幾像素：看的人多半是隊員，用不到（N37）。
  */
 export function viewOnlyReason(w: number, h: number, touch: boolean): string {
 	const narrow = w < EDIT_MIN_W_PX;
 	const short = h < EDIT_MIN_H_PX;
 	if (!narrow && !short) return '';
-	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return '請轉成橫的，才能編輯';
-	if (narrow && short) return `畫面太小了（不到 ${EDIT_MIN_W_PX}×${EDIT_MIN_H_PX} 像素），只能看、不能編`;
-	if (narrow) return `畫面太窄了（不到 ${EDIT_MIN_W_PX} 像素寬），只能看、不能編`;
-	return `畫面太矮了（不到 ${EDIT_MIN_H_PX} 像素高），只能看、不能編`;
+	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return '請轉成橫的才能編輯';
+	return `畫面太${narrow && short ? '小' : narrow ? '窄' : '矮'}`;
 }
 
 /** 自己拖的寬度夾在 INSPECTOR_MIN_PX 和「場地那一欄留 FIELD_KEEP_W_PX」之間。 */

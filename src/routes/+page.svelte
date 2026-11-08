@@ -254,6 +254,8 @@
 	// 拖它（或 ←→）自己定寬度，照視窗寬的比例存在這台電腦；雙擊回到自動 ----------
 	let windowW = $state(0);
 	let windowH = $state(0);
+	/** 手機的檢視畫面為什麼不能編（寫在「檢視模式・只能看」後面）。 */
+	const whyViewOnly = $derived(viewOnlyReason(windowW, windowH, touchScreen));
 	/** 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1670px 一樣）。 */
 	const transportBelow = $derived(windowW <= 1670);
 	let fieldHostH = $state(0);
@@ -496,7 +498,7 @@
 		class="editor"
 		inert={overlayOpen}
 		class:practicing={view === 'practice'}
-		class:viewing={session.viewing && !narrow}
+		class:viewing={!session.editable && !narrow}
 		class:narrow
 		class:print-hidden={printOpen}
 		style:--timeline-h={timelineDivider.px === null ? undefined : `clamp(${TIMELINE_MIN_PX}px, ${timelineDivider.px}px, calc(100dvh - ${fieldKeepPx()}px))`}
@@ -711,7 +713,8 @@
 				{:else}
 					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
 				{/if}
-				<button type="button" class="primary save" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
+				<!-- 窄螢幕不能編，存檔不用搶眼的藍色（練習的紀錄照樣要存） -->
+				<button type="button" class={['save', narrow ? 'ghost' : 'primary']} title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 			<!-- 播放區換到第二行時放在按鈕後面：Tab 照畫面由上到下 -->
 			{#if !narrow && transportBelow}{@render transport()}{/if}
@@ -743,7 +746,8 @@
 						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
 					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
-					<p class="phone-why">{viewOnlyReason(windowW, windowH, touchScreen)}</p>
+					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編 -->
+					<p class="phone-why"><Icon name="eye" />檢視模式・只能看{whyViewOnly ? `（${whyViewOnly}）` : ''}</p>
 					<!-- 提示浮在畫面最下面，不疊在場地上：手機的場地沒有空的地方，放哪都會蓋到條號或「正面／裁判」（N52） -->
 					<div class="phone-toasts">{@render noticeToast()}</div>
 				</main>
@@ -1080,7 +1084,7 @@
 					{#if editor.file.unsavedOverLimit}
 						<p class="recent-note" role="status">有 {editor.file.unsavedOverLimit} 支還沒存。編輯器不會自動丟掉還沒存的，用不到的按「丟掉」。</p>
 					{/if}
-					<p class="recent-note">草稿只存在這台電腦的瀏覽器。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
+					<p class="recent-note">草稿只存在這個瀏覽器裡。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 				</div>
 			{/if}
 			<p class="recent-note" role="status">{discardNote}</p>
@@ -1150,6 +1154,11 @@
 	.editor.viewing {
 		grid-template-rows: auto minmax(0, 1fr) auto var(--timeline-h, minmax(160px, 22vh));
 	}
+	/* 檢視模式：只能編輯的控制項（標了 data-edit 的：時間軸的加段、插入八拍、站位 ✕、拉長度的把手、分組列…）
+	   一條規則藏起來，不用每個元件自己讀模式。播放頭、選取、練習的「記」照樣能用，所以不整塊 inert */
+	.editor.viewing :global([data-edit]) {
+		display: none !important;
+	}
 	/* 練習：主畫面換成練習畫面，編排的東西藏起來（不拆掉：場地、時間軸的縮放還在） */
 	.editor.practicing {
 		grid-template-rows: auto minmax(0, 1fr);
@@ -1171,14 +1180,14 @@
 	}
 	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行字放最下面，不跟場地搶位置；黃底深字，看得出是提醒 */
 	.phone-why {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		margin: 0;
 		padding: 6px 12px;
 		background: var(--warn-bg);
 		color: var(--warn-text);
 		font-size: 13px;
-	}
-	.phone-why:empty {
-		display: none;
 	}
 	.phone-field {
 		position: relative;

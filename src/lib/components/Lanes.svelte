@@ -471,7 +471,7 @@
 								style:height={`${TRACK_H - 1}px`}>{c.word}</span
 							>
 						{/each}
-						<span class="rz" data-resize title="拉這裡改長度"></span>
+						<span class="rz" data-resize data-edit title="拉這裡改長度"></span>
 					</button>
 					{#if d?.mode === 'resize' && d.memberId === m.id && resizeReadout}
 						<span

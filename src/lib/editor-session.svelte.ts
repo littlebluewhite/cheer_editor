@@ -138,6 +138,13 @@ export class EditorSession {
 	 */
 	viewing = $state(false);
 	/**
+	 * 畫面能不能出現改編排的控制項：檢視模式就不能。畫面只看這一個（不各自讀 viewing）：
+	 * 只能編輯的控制項標 data-edit（編輯頁一條 CSS 藏起來），對話框給 readonly（內容整塊停用）。
+	 */
+	get editable(): boolean {
+		return !this.viewing;
+	}
+	/**
 	 * 記錄頁每張卡上次選的「這次練」，key 是「動作 id 組或隊員 id」：whole 整個做，不是就只練 picked 這幾個環節。
 	 * 換動作、切頁（卡不見了）再回來還是它；不存進流程檔。
 	 */
