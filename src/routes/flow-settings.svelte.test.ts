@@ -115,6 +115,7 @@ describe('流程設定的自訂任務角色', () => {
 
 describe('調整場地（#169）', () => {
 	const strips = () => document.querySelectorAll('[data-strip-number]').length;
+	const SNAPPED = '已調整場地：大家吸附到新格子，改回原本的場地也不會回原位；要回原狀請按復原';
 
 	it('9 條直放改 5 條橫放：場地條數變了；關掉按 ⌘Z 回來', async () => {
 		const page = editorPage(teamFlow());
@@ -132,6 +133,23 @@ describe('調整場地（#169）', () => {
 		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
 		expect(page.session.flow!.field).toEqual({ strips: 9, layout: 'vertical' });
 		expect(strips()).toBe(9);
+	});
+
+	it('調整好了：說大家吸到新格子、改回去不會回原位，要回原狀按復原（N31）', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '4' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '調整場地' }));
+		expect(within(dialog).getByRole('status').textContent).toBe(SNAPPED);
+	});
+
+	it('改了場地直接關（關掉就套用）：關掉後提示一樣說改回去不會回原位（N31）', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const dialog = await openSettings();
+		await fireEvent.input(within(dialog).getByLabelText('條數'), { target: { value: '4' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
+		expect(page.session.notice).toBe(SNAPPED);
 	});
 
 	it('條數不對：被擋、說原因', async () => {

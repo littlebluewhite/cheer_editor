@@ -70,9 +70,19 @@
 	/** 調整場地自己的問題：會有人疊在一起時問「照樣調整」，被擋的原因寫在場地旁邊。 */
 	const fieldAsk = session.changeAsk({ confirmLabel: '照樣調整' });
 
+	/** 調整好了的提醒：吸附會丟掉原本的位置，再調回原本的場地也回不去（N31）。對話框裡寫一次，關掉就套用的話留在提示上。 */
+	const SNAPPED = '已調整場地：大家吸附到新格子，改回原本的場地也不會回原位；要回原狀請按復原';
+	let fieldNote = $state('');
+
 	/** 調整場地；被擋或取消就把兩個欄位退回現在的場地。 */
 	function applyField() {
+		fieldNote = '';
 		return fieldAsk.send((o: ConfirmOption = {}) => adjustField(flow, { strips, layout }, o), {
+			done: () => {
+				if (!flow.members.length) return;
+				fieldNote = SNAPPED;
+				session.notice = SNAPPED;
+			},
 			revert: () => {
 				strips = flow.field.strips;
 				layout = flow.field.layout;
@@ -173,6 +183,7 @@
 			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。沒按就關掉，也會照樣調整。</span>
 			{#if fieldAsk.question}<ConfirmList ask={fieldAsk} />{/if}
 			{#if fieldAsk.error}<p class="error" role="alert">{fieldAsk.error}</p>{/if}
+			{#if fieldNote}<p class="note" role="status">{fieldNote}</p>{/if}
 		</section>
 		<section class="rules" class:off={!flow.timeRules.on}>
 			<div class="switch">

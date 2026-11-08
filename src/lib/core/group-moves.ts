@@ -1,7 +1,7 @@
 // 一組人一起移到新位置的算法（選人工具列用）：拿選到的人現在的位置，算出新位置。
 // 只算位置；插站位、往後帶、復原交給 moveGroup（formation.ts），跟拖人同一條路。
 
-import type { FieldConfig } from './field';
+import { POS_EPS, type FieldConfig } from './field';
 import type { Position } from './formation';
 import { snapPosition } from './snap';
 
@@ -50,26 +50,41 @@ function alignAxis(
 }
 
 /**
- * 平均分開：照左右或前後（哪個方向攤得比較開就照哪個）的順序排，兩端的人不動，
- * 中間的人照順序排在兩端的連線上、間隔一樣，再吸附。
+ * 平均分開：距離最遠的兩個人當兩端，不動；中間的人照在兩端連線上的先後排，間隔一樣，再吸附。
+ * 比距離、比先後都有容差（POS_EPS），比不出來再看離連線的左右、再看 id：
+ * 結果跟選的順序、浮點數誤差都無關（L 形時不會由誤差決定誰是兩端）。
  */
 export function spreadEvenly(
 	field: FieldConfig,
 	pos: Record<string, Position>,
 	zoom: number
 ): Record<string, Position> {
-	const all = Object.values(pos);
-	const span = (i: 0 | 1) => Math.max(...all.map((p) => p[i])) - Math.min(...all.map((p) => p[i]));
-	const axis = span(1) > span(0) ? 1 : 0;
-	const order = Object.entries(pos).sort((a, b) => a[1][axis] - b[1][axis]);
-	const [first, last] = [order[0][1], order[order.length - 1][1]];
-	const n = order.length - 1;
-	return Object.fromEntries(
-		order.map(([id, p], i) => {
-			if (i === 0 || i === n) return [id, p];
-			const t = i / n;
-			const at: Position = [first[0] + (last[0] - first[0]) * t, first[1] + (last[1] - first[1]) * t];
-			return [id, snapPosition(field, at, zoom)];
-		})
-	);
+	const people = Object.entries(pos).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	const dist = (p: Position, q: Position) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+	const pairs = people.flatMap(([, p], i) => people.slice(i + 1).map(([, q], k) => ({ i, j: i + 1 + k, d: dist(p, q) })));
+	const far = Math.max(...pairs.map((pair) => pair.d));
+	const ends = pairs.find((pair) => pair.d >= far - POS_EPS)!;
+	const [first, last] = [people[ends.i][1], people[ends.j][1]];
+	const u = [last[0] - first[0], last[1] - first[1]];
+	// 沿著連線多遠、離連線多遠（都乘了 far，所以容差也乘 far）
+	const along = (p: Position) => (p[0] - first[0]) * u[0] + (p[1] - first[1]) * u[1];
+	const across = (p: Position) => (p[1] - first[1]) * u[0] - (p[0] - first[0]) * u[1];
+	const tol = POS_EPS * far;
+	const middle = people
+		.filter((_, k) => k !== ends.i && k !== ends.j)
+		.sort(([, p], [, q]) => {
+			const a = along(p) - along(q);
+			if (Math.abs(a) > tol) return a;
+			const b = across(p) - across(q);
+			return Math.abs(b) > tol ? b : 0; // 還是一樣：照 id（people 已經照 id 排好，sort 不換順序）
+		});
+	const n = middle.length + 1;
+	return Object.fromEntries([
+		people[ends.i],
+		...middle.map(([id], k): [string, Position] => {
+			const t = (k + 1) / n;
+			return [id, snapPosition(field, [first[0] + u[0] * t, first[1] + u[1] * t], zoom)];
+		}),
+		people[ends.j]
+	]);
 }

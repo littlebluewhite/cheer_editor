@@ -101,7 +101,7 @@
 	const selected = $derived(new Set(selectedMemberIds));
 
 	/** 每個人泳道上的名字按鈕。 */
-	const labs: Record<string, HTMLElement> = {};
+	const labs: Record<string, HTMLElement> = $state({});
 	/** 上一次看到的選取：多選進來的只有一個人（場上點人、Shift 加一個）時，名單捲到他那一行。 */
 	let seenSelection: string[] = [];
 	$effect(() => {
