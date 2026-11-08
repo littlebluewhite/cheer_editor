@@ -2,13 +2,16 @@
 // 每一格跑同一套：打錯送出 → 退回、紅字 → 再打錯 → 改回原本的值送出 → 紅字不見、流程沒變。
 // 改回原本的值時 change 被 pending-input 吞掉（值跟上次送出的一樣），所以紅字不能等送出才收。
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import type { Component } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addSegment, createFlow, type Flow } from '#lib/core';
+import { addCustomRole, addMembers, addSegment, createFlow, type Flow } from '#lib/core';
 import { domPendingInput } from '#lib/pending-input.js';
 import { flowOf } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import FlowSettings from './FlowSettings.svelte';
+import MemberPanel from './MemberPanel.svelte';
+import RoleGlossary from './RoleGlossary.svelte';
 import SegmentSettings from './SegmentSettings.svelte';
 
 afterEach(cleanup);
@@ -60,6 +63,37 @@ describe('欄位被退回後，打回原本的值送出：紅字收掉（N34）'
 		await fireEvent.input(input, { target: { value: original } });
 		await fireEvent.change(input);
 		expect(fieldAlert(label)).toBeUndefined();
+		expect(session.canUndo).toBe(false);
+	});
+});
+
+// 被擋的原因寫在表單上（沒有格名，ask.error）的欄位：一樣打字就收紅字。
+// 名詞對照表的「意思」、站位名稱沒放進來：編輯模式下擋不到（意思沒有規則；站位名稱太長的字打的時候就切掉），檢視模式又看不到這些欄位。
+const ERROR_FIELDS: { name: string; component: Component<any>; label: string }[] = [
+	{ name: '流程設定的自訂任務角色名稱', component: FlowSettings, label: '「旗手」的名稱' },
+	{ name: '名詞對照表的自訂任務角色名稱', component: RoleGlossary, label: '「旗手」的名稱' },
+	{ name: '隊員名字', component: MemberPanel, label: '第 1 位隊員的名字' }
+];
+
+describe('表單上的紅字：欄位被退回後，打回原本的值送出，紅字收掉（N34）', () => {
+	it.each(ERROR_FIELDS)('$name', async ({ component, label }) => {
+		let flow = flowOf(addMembers(twoSegments(), [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+		flow = flowOf(addCustomRole(flow, { name: '旗手', meaning: '拿旗' }));
+		const { editor, session } = testEditor(flow, { pendingInput: domPendingInput });
+		render(TestSession, { props: { editor, component, props: { onclose: () => {} } } });
+		const input = screen.getByLabelText(label) as HTMLInputElement;
+		input.focus();
+
+		await fireEvent.input(input, { target: { value: '' } });
+		await fireEvent.change(input);
+		expect(input.value).not.toBe('');
+		const original = input.value;
+		expect(screen.queryAllByRole('alert')).not.toHaveLength(0);
+
+		await fireEvent.input(input, { target: { value: '  ' } });
+		await fireEvent.input(input, { target: { value: original } });
+		await fireEvent.change(input);
+		expect(screen.queryAllByRole('alert')).toHaveLength(0);
 		expect(session.canUndo).toBe(false);
 	});
 });

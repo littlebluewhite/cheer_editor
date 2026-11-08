@@ -52,10 +52,11 @@
 		(Object.keys(DEFAULT_TIME_RULES) as (keyof TimeRules)[]).every((k) => flow.timeRules[k] === DEFAULT_TIME_RULES[k])
 	);
 
-	/** 改自訂任務角色的名稱；被擋就把輸入框還原。 */
-	function renameRole(role: CustomRole, input: HTMLInputElement) {
-		ask.send(() => updateCustomRole(flow, role.id, { name: input.value, meaning: role.meaning }), {
-			revert: () => (input.value = role.name)
+	/** 改自訂任務角色的名稱；被擋就把輸入框還原，原因寫在下面。 */
+	function roleNameField(role: CustomRole) {
+		return commitField(ask, null, {
+			send: (text) => updateCustomRole(flow, role.id, { name: text, meaning: role.meaning }),
+			actual: () => role.name
 		});
 	}
 
@@ -254,7 +255,7 @@
 								aria-label="「{role.name}」的名稱"
 								value={role.name}
 								bind:this={roleInputs[role.id]}
-								onchange={(e) => renameRole(role, e.currentTarget)}
+								{@attach roleNameField(role)}
 								onkeydown={onenter}
 							/><CharCount field="roleName" input={roleInputs[role.id]} value={role.name} quiet />
 							<button

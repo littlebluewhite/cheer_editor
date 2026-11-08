@@ -1,6 +1,9 @@
-// 有自己紅字的欄位（被擋時 ask 寫「「格名」退回原本的值：…」）的接線，只寫這一次：`{@attach commitField(ask, '八拍數', {...})}`。
-// - change（離開欄位、按 Enter）送出：打的字交給 send，被擋就把欄位退回 actual()，原因記在這一格。
-// - 打字（input）就收掉這一格的紅字：退回之後再打回原本的值送出時，change 被 pending-input 吞掉（值跟上次送出的一樣），
+// 改了離開就送出的欄位的接線，只寫這一次：`{@attach commitField(ask, '八拍數', {...})}`。
+// 格名（field）：有自己紅字的欄位（被擋時 ask 寫「「格名」退回原本的值：…」）。
+// null：紅字是表單上那一句（ask.error，被擋時寫「…，已還原」），例：一列一列的名字欄。
+// - change（離開欄位、按 Enter）送出：打的字交給 send，被擋就把欄位退回 actual()，原因記在這一格（或表單上）。
+//   要問（確認、保留／清掉）時欄位留著打的字，按取消才退回（N33）。
+// - 打字（input）就收掉這一格的紅字（null：表單上的）：退回之後再打回原本的值送出時，change 被 pending-input 吞掉（值跟上次送出的一樣），
 //   等送出才收紅字會一直留著（N34）。
 // - Esc 丟掉打的字：pending-input 在中央處理（退回上次送出的值），這裡不用再接。
 
@@ -17,13 +20,17 @@ export interface FieldCommit<R extends CommandResult> {
 	cancel?: () => void;
 }
 
-export function commitField<R extends CommandResult>(ask: Ask, field: string, { send, actual, cancel }: FieldCommit<R>): Attachment<HTMLInputElement> {
+export function commitField<R extends CommandResult>(
+	ask: Ask,
+	field: string | null,
+	{ send, actual, cancel }: FieldCommit<R>
+): Attachment<HTMLInputElement> {
 	return (input) => {
 		const onchange = () => {
 			const text = input.value;
-			ask.send((o: ConfirmOption = {}) => send(text, o), { field, revert: () => (input.value = actual()), cancel });
+			ask.send((o: ConfirmOption = {}) => send(text, o), { field: field ?? undefined, revert: () => (input.value = actual()), cancel });
 		};
-		const oninput = () => ask.edited(field);
+		const oninput = () => ask.edited(field ?? undefined);
 		input.addEventListener('change', onchange);
 		input.addEventListener('input', oninput);
 		return () => {
