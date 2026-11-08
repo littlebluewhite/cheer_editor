@@ -4,8 +4,9 @@
 	/**
 	 * 外圍框外寫條編號、格號的那一條留多寬（公尺）：放大了的場外圓點也蓋不到編號。
 	 * 後面寫左右那一軸的號碼（直放的條號、橫放的格號），左邊寫前後那一軸的（直放的格號、橫放的條號）。
+	 * 號碼在螢幕上至少 11px（見 MIN_TEXT_PX），iPad 上場地小、圓點 32px 時也要放得下，所以比圓點伸出外圍框的那一截再寬一個號碼。
 	 */
-	export const NUMBER_BAND = 0.8;
+	export const NUMBER_BAND = 1.3;
 
 	/**
 	 * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號、格號（NUMBER_BAND，左右都留，場地才置中）和「正面／裁判」字樣的空間。
@@ -142,11 +143,15 @@
 	const DOT_R = 0.3;
 	/** 多字標記的字高（公尺）：寫在橫的膠囊裡。 */
 	const LONG_FONT = 0.24;
-	/** 多字標記的膠囊寬（公尺）：放得下字、至少跟圓點一樣寬；一兩格寬的標記畫圓點，是 0。 */
-	const pillWidth = (mark: string) =>
-		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * LONG_FONT + 0.14) : 0;
 	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
 	const MIN_DOT_PX = touchScreen ? 32 : 22;
+	/**
+	 * 手機的檢視畫面（沒有按鈕、不裁）圓點最少這麼大：號碼跟著到 11px。
+	 * 觸控也是 22，不用 MIN_DOT_PX 的 32：只能看、不用點，32 的話擠的地方疊得更多。
+	 */
+	const VIEW_MIN_DOT_PX = 22;
+	/** 場地上的字（條號、格號、「正面／裁判」、多字標記）在螢幕上最少幾 px（Apple HIG 的最小字級 11 pt）。 */
+	const MIN_TEXT_PX = 11;
 	const ZOOM_STEP = 1.25;
 	/** 按下後移動不到這麼多 px 算點一下（手抖幾 px 不算拖，不插站位、不吸到別的格點）。 */
 	const CLICK_PX = 8;
@@ -182,32 +187,56 @@
 	/**
 	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
 	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。
+	 * 手機的檢視畫面也照編輯頁放大到有最小尺寸（VIEW_MIN_DOT_PX），號碼才看得清楚。
 	 * 八拍表的小站位圖：範圍大時放大到圓點直徑是長邊的 1/MINI_DOTS_ACROSS，號碼才看得清楚。
 	 */
 	const dotScale = $derived.by(() => {
-		if (!controls) return crop ? Math.max(1, Math.max(view.width, view.height) / MINI_DOTS_ACROSS / (2 * DOT_R)) : 1;
+		if (crop) return Math.max(1, Math.max(view.width, view.height) / MINI_DOTS_ACROSS / (2 * DOT_R));
 		const [w, h] = stageSize;
 		const shrink = 1 / Math.sqrt(zoom);
 		if (!w || !h) return shrink;
 		// preserveAspectRatio meet：看整個場地時 1 公尺幾 px 看比較緊的那一邊
 		const pxPerM = Math.min(w / full.width, h / full.height);
-		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM)) * shrink;
+		return Math.max(1, (controls ? MIN_DOT_PX : VIEW_MIN_DOT_PX) / (2 * DOT_R * pxPerM)) * shrink;
 	});
+
+	/** 現在螢幕上 1 公尺幾 px（preserveAspectRatio meet 看比較緊的那一邊）；jsdom 量不到是 0。 */
+	const pxPerMeter = $derived(stageSize[0] && stageSize[1] ? Math.min(stageSize[0] / view.width, stageSize[1] / view.height) : 0);
+	/**
+	 * 場地上的字多大（公尺）：本來 m 公尺，在螢幕上小於 minPx 時放大到 minPx。SVG 沒有「字不跟著縮」的設定，只能自己算。
+	 * 八拍表的小站位圖不放大：印出來的大小跟螢幕量到的不一樣，字跟著圓點放大（見 dotScale）。
+	 */
+	const fontM = (m: number, minPx: number) => (crop || !pxPerMeter ? m : Math.max(m, minPx / pxPerMeter));
 
 	/** 條編號、格號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
 	const numScale = $derived(controls ? 1 / Math.sqrt(zoom) : 1);
-	/** 後面那一排號碼（cx 是那一條或那一格左右的中間）。 */
-	const topNumberAt = (cx: number): Position => [
-		cx,
-		Math.max(g.outer.y - NUMBER_BAND / 2, view.y + (NUMBER_BAND / 2) * numScale)
-	];
-	/** 左邊那一排號碼（cy 是那一條或那一格前後的中間）。 */
-	const sideNumberAt = (cy: number): Position => [
-		Math.max(g.outer.x - NUMBER_BAND * 0.7, view.x + NUMBER_BAND * 0.3 * numScale),
-		cy + 0.09 * numScale
+	/**
+	 * 條編號、格號的字高（公尺）：至少 MIN_TEXT_PX。
+	 * 小站位圖跟圓點上的號碼一樣大（0.4 乘圓點放大的倍數，見 .field.mini 的號碼）：圓點的號碼印出來看得清楚，條號也是（N38）。
+	 */
+	const stripFont = $derived(crop ? 0.4 * dotScale : fontM(0.3 * numScale, MIN_TEXT_PX));
+	const cellFont = $derived(fontM(0.26 * numScale, MIN_TEXT_PX));
+	/** 「正面／裁判」的字高（公尺）。 */
+	const frontFont = $derived(fontM(0.42, MIN_TEXT_PX));
+	/** 多字標記膠囊裡的字高（圓點放大前的公尺）：放大後也至少 MIN_TEXT_PX。 */
+	const longFont = $derived(fontM(LONG_FONT * dotScale, MIN_TEXT_PX) / dotScale);
+	/** 場地中心記號「＋」每一臂多長（公尺）：比圓點的半徑短。 */
+	const centerArm = $derived(Math.min(0.4, 0.9 * DOT_R * dotScale));
+	/** 多字標記的膠囊寬（公尺）：放得下字、至少跟圓點一樣寬；一兩格寬的標記畫圓點，是 0。 */
+	const pillWidth = (mark: string) =>
+		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * longFont + 0.14) : 0;
+	/**
+	 * 後面那一排號碼（cx 是那一條或那一格左右的中間；f 是字高）：貼著那一條靠外的邊（離伸出外圍框的圓點最遠），
+	 * 放大後那一條捲出去了就貼著畫面邊上。字放大了也整個在畫面裡。
+	 */
+	const topNumberAt = (cx: number, f: number): Position => [cx, Math.max(g.outer.y - NUMBER_BAND, view.y) + 1.1 * f];
+	/** 左邊那一排號碼（cy 是那一條或那一格前後的中間；f 是字高）：一樣貼著靠外的邊，兩位數也放得下。 */
+	const sideNumberAt = (cy: number, f: number): Position => [
+		Math.max(g.outer.x - NUMBER_BAND, view.x) + 0.65 * f,
+		cy + 0.3 * f
 	];
 	const numberAt = (s: { rect: { x: number; y: number; width: number; height: number } }): Position =>
-		vertical ? topNumberAt(s.rect.x + s.rect.width / 2) : sideNumberAt(s.rect.y + s.rect.height / 2);
+		vertical ? topNumberAt(s.rect.x + s.rect.width / 2, stripFont) : sideNumberAt(s.rect.y + s.rect.height / 2, stripFont);
 	/**
 	 * 格號：跟位置文字一樣，直放正面起（寫在左邊）、橫放左起（寫在後面）。
 	 * 八拍表的小站位圖（crop）不寫：擠在裁切的邊上會跟條號疊在一起。
@@ -216,8 +245,8 @@
 		Array.from({ length: crop ? 0 : vertical ? g.rows : g.cols }, (_, i) => ({
 			n: i + 1,
 			at: vertical
-				? sideNumberAt(g.mat.y + g.mat.height - (i + 0.5) * CELL_M)
-				: topNumberAt(g.mat.x + (i + 0.5) * CELL_M)
+				? sideNumberAt(g.mat.y + g.mat.height - (i + 0.5) * CELL_M, cellFont)
+				: topNumberAt(g.mat.x + (i + 0.5) * CELL_M, cellFont)
 		}))
 	);
 
@@ -782,18 +811,19 @@
 		{#each g.seams as l, i (i)}
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
-		<path class="center" d="M-.4,0L.4,0M0,-.4L0,.4"><title>場地正中心</title></path>
+		<!-- 中心記號的兩臂比圓點短：站在正中心的人身上不露出十字，看起來不會像特別標了他（N56） -->
+		<path class="center" d="M{-centerArm},0L{centerArm},0M0,{-centerArm}L0,{centerArm}"><title>場地正中心</title></path>
 		<!-- 條編號寫在外圍框外面那一條（NUMBER_BAND，直放在後面、橫放在左邊）靠外的地方、每條的中間：
 		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
 		{#each g.strips as s (s.number)}
 			{@const [nx, ny] = numberAt(s)}
-			<text class="num" data-strip-number data-keep-visible x={nx} y={ny} style:font-size="{0.3 * numScale}px">{s.number}</text>
+			<text class="num" data-strip-number data-keep-visible x={nx} y={ny} style:font-size="{stripFont}px">{s.number}</text>
 		{/each}
-		<!-- 格號（條號的另一軸）：細一點、淡一點，跟條號分得出來 -->
+		<!-- 格號（條號的另一軸）：細一點，跟條號分得出來 -->
 		{#each cellNumbers as { n, at } (n)}
-			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{0.26 * numScale}px">{n}</text>
+			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{cellFont}px">{n}</text>
 		{/each}
-		<text class="front" data-keep-visible x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
+		<text class="front" data-keep-visible x="0" y={g.outer.y + g.outer.height + 0.7} style:font-size="{frontFont}px">▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
 			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r={DOT_R * dotScale} />
 		{/each}
@@ -840,7 +870,9 @@
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}
-					<text y={pill ? 0.085 : crop ? 0.145 : 0.11} class:long={!!pill}>{mark}</text>
+					<text y={pill ? 0.35 * longFont : crop ? 0.145 : 0.11} class:long={!!pill} style:font-size={pill ? `${longFont}px` : undefined}
+						>{mark}</text
+					>
 					{#if badges[m.id]}
 						<g class="badge" transform="translate({Math.max(pill / 2 - 0.03, 0.27)},-0.27)">
 							<circle r="0.17" style:fill={badges[m.id].color} />
@@ -994,25 +1026,29 @@
 		font-family: inherit;
 	}
 	.num {
-		font-size: 0.3px;
 		fill: var(--muted, #66718a);
 		font-weight: 700;
 		pointer-events: none;
 		/* 放大後固定在畫面邊上時可能疊在墊子上：白邊才看得清楚 */
 		paint-order: stroke;
 		stroke: #fff;
-		stroke-width: 0.06px;
+		stroke-width: 0.2em;
 		stroke-opacity: 0.8;
 	}
+	/* 格號只細一點，不調淡：淡灰的字在場地外的灰底上看不清楚（對比要 4.5:1，N50） */
 	.num.cell-num {
 		font-weight: 400;
-		fill-opacity: 0.85;
 	}
+	/* 八拍表小站位圖：條號疊在藍墊子上，深色字加不透明的白邊才看得清楚（N38） */
+	.field.mini .num {
+		fill: var(--ink, #16213a);
+		stroke-opacity: 1;
+	}
+	/* 字比播放頭的朱紅深一點：朱紅字在灰底上對比只有 3:1 */
 	.front {
-		font-size: 0.42px;
-		fill: var(--now, #f2542d);
+		fill: #b93a1a;
 		font-weight: 700;
-		letter-spacing: 0.08px;
+		letter-spacing: 0.19em;
 	}
 	/* 影子和走位線：淡淡的，不擋點，也不吃滑鼠（點人、拖人、框選照舊）。 */
 	.ghost-dot {
@@ -1116,9 +1152,6 @@
 		font-weight: 700;
 		fill: #16213a;
 		pointer-events: none;
-	}
-	.dot text.long {
-		font-size: 0.24px;
 	}
 	/* 八拍表小站位圖：號碼字放大到差不多塞滿圓點，印出來才看得清楚 */
 	.field.mini .dot > g > text:not(.long) {

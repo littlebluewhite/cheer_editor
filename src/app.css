@@ -12,7 +12,8 @@
 	--line: #d8dee9;
 	--line-soft: #e8ecf3;
 	--text: #1a2238;
-	--muted: #66718a;
+	/* 次要的字：在 --paper 上對比也有 4.5:1（WCAG 1.4.3；scripts/check-layout.mjs 的對比掃描會擋）。 */
+	--muted: #5c677f;
 
 	--mat: #2f66b8;
 	--mat-deep: #1d4489;
