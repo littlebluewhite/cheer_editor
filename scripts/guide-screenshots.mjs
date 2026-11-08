@@ -115,9 +115,28 @@ async function shot(name, marks, clip) {
 		// 用 popover 放在最上層：拍點小窗、選單也是 popover，一般的 z-index 蓋不過它們
 		layer.popover = 'manual';
 		layer.style.cssText = 'position:fixed;inset:0;width:auto;height:auto;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none';
-		for (const [n, expr, at = { x: 1, y: 0 }] of ${JSON.stringify(marks)}) {
+		const all = ${JSON.stringify(marks)}.map(([n, expr, at = { x: 1, y: 0 }]) => {
 			const els = [].concat(eval(expr)).filter(Boolean);
 			if (!els.length) throw new Error('找不到要框的東西：' + expr);
+			return { n, els, at };
+		});
+		// 號碼不能蓋的東西：要一直看得到的（data-keep-visible：場上的人、條號…）、走位線、按鈕和欄位、別的號碼框住的東西、放好的號碼（N54）
+		const obstacles = [
+			...[...document.querySelectorAll('[data-keep-visible], [data-walk-line], button, input, select, textarea, a[href], [role=button]')]
+				.filter((e) => e.checkVisibility({ visibilityProperty: true })),
+			...all.flatMap((m) => m.els)
+		].map((el) => ({ el, rect: el.getBoundingClientRect() })).filter((o) => o.rect.width > 0 && o.rect.height > 0);
+		// 字也不能蓋，框住的東西裡面的字也一樣（號碼蓋掉「走位線」的「走」就看不懂了）
+		const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (t) => (t.data.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+		for (let t; (t = walker.nextNode()); ) {
+			if (!t.parentElement?.checkVisibility({ visibilityProperty: true })) continue;
+			const range = document.createRange();
+			range.selectNodeContents(t);
+			for (const rect of range.getClientRects()) if (rect.width > 0 && rect.height > 0) obstacles.push({ text: true, rect });
+		}
+		/** 號碼不管放哪都會蓋到別的東西、只好挑蓋最少的號碼。 */
+		const stuck = [];
+		for (const { n, els, at } of all) {
 			const rs = els.map((e) => e.getBoundingClientRect());
 			const l = Math.max(Math.min(...rs.map((r) => r.left)) - pad, clip.l + 2);
 			const t = Math.max(Math.min(...rs.map((r) => r.top)) - pad, clip.t + 2);
@@ -129,15 +148,34 @@ async function shot(name, marks, clip) {
 			const badge = document.createElement('div');
 			badge.textContent = n;
 			badge.style.cssText = 'position:fixed;width:26px;height:26px;border-radius:50%;background:#e5197e;color:#fff;font:700 15px/26px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff';
-			const cx = Math.min(Math.max(l + at.x * (r - l), clip.l + 15), clip.l + clip.w - 15);
-			const cy = Math.min(Math.max(t + at.y * (b - t), clip.t + 15), clip.t + clip.h - 15);
-			Object.assign(badge.style, { left: cx - 13 + 'px', top: cy - 13 + 'px' });
+			// 號碼放的地方：先試給的位置，蓋到東西就沿著框換（四角、四邊中間，再往框外推一點），挑蓋到最少的。
+			// 框住的東西自己、包著它的不算；它裡面的按鈕算一點（號碼本來就貼在框上）。
+			const weight = (o) =>
+				o.text ? 1 : els.some((e) => o.el === e || o.el.contains?.(e)) ? 0 : els.some((e) => e.contains(o.el)) ? 0.25 : 1;
+			const spot = (p) => {
+				const cx = Math.min(Math.max(l + p.x * (r - l) + (p.dx ?? 0), clip.l + 15), clip.l + clip.w - 15);
+				const cy = Math.min(Math.max(t + p.y * (b - t) + (p.dy ?? 0), clip.t + 15), clip.t + clip.h - 15);
+				const box = { left: cx - 15, top: cy - 15, right: cx + 15, bottom: cy + 15 };
+				const cost = obstacles.reduce((sum, o) => {
+					const w = Math.max(0, Math.min(box.right, o.rect.right) - Math.max(box.left, o.rect.left));
+					const h = Math.max(0, Math.min(box.bottom, o.rect.bottom) - Math.max(box.top, o.rect.top));
+					return sum + w * h * weight(o);
+				}, 0);
+				return { cx, cy, box, cost };
+			};
+			const around = [[1, 0], [1, 0.5], [1, 1], [0.5, 1], [0, 1], [0, 0.5], [0, 0], [0.5, 0]];
+			const tries = [at, ...around.map(([x, y]) => ({ x, y })), ...around.map(([x, y]) => ({ x, y, dx: (x - 0.5) * 32, dy: (y - 0.5) * 32 }))].map(spot);
+			const best = tries.reduce((a, c) => (c.cost < a.cost ? c : a));
+			if (best.cost > 0) stuck.push(n);
+			Object.assign(badge.style, { left: best.cx - 13 + 'px', top: best.cy - 13 + 'px' });
+			obstacles.push({ el: badge, rect: best.box });
 			layer.append(frame, badge);
 		}
 		document.body.append(layer);
 		layer.showPopover();
-		return clip;
+		return { ...clip, stuck };
 	`);
+	if (box.stuck.length) console.log(`  ${name}：號碼 ${box.stuck.join('、')} 放哪都會蓋到一點東西，放在蓋最少的地方（重拍後看一下）`);
 	await sleep(100);
 	const r = await send('Page.captureScreenshot', {
 		format: 'webp',
