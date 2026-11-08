@@ -677,7 +677,7 @@
 							type="button"
 							class="ghost icon"
 							aria-label="平移"
-							aria-pressed={handTool}
+							aria-pressed={handTool || holdingH}
 							title="按下去以後拖空白處是移動畫面，再按一次變回框選（按住 H 拖也可以）"
 							onclick={() => (handTool = !handTool)}>✋</button
 						>
@@ -1097,7 +1097,7 @@
 		height: 28px;
 		font-size: 12px;
 	}
-	/* ✋ 按下去了：跟選到的東西一樣的顏色，看得出來現在拖空白處是平移 */
+	/* ✋ 按下去了（或按住 H）：跟選到的東西一樣的顏色，看得出來現在拖空白處是平移 */
 	.tools button[aria-pressed='true'] {
 		background: var(--sel-soft);
 		border-color: var(--sel);

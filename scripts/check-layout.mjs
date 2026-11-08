@@ -1741,7 +1741,7 @@ await check('放大後開 ✋ 拖空白處：看到的範圍移動、沒有框�
 	return { ok, value: seen };
 });
 
-await check('放大後按 ✋：看得出來按下去了（底色、框跟沒按不一樣），再按一次變回原樣', async () => {
+await check('放大後按 ✋：看得出來按下去了（底色、框跟沒按不一樣），再按一次變回原樣；按住 H 時也一樣變色，放開變回來', async () => {
 	await setViewport(1440, 900);
 	await openSample();
 	await hitAndClick('.rail button[aria-label="放大"]');
@@ -1758,7 +1758,12 @@ await check('放大後按 ✋：看得出來按下去了（底色、框跟沒按
 	const on = await look();
 	await hitAndClick('.rail button[aria-label="平移"]');
 	const back = await look();
-	return { ok: on !== off && back === off, value: { 沒按: off, 按下去: on, 再按一次: back } };
+	await hKey('keyDown');
+	const holdH = await look();
+	await hKey('keyUp');
+	const letGo = await look();
+	const ok = on !== off && back === off && holdH === on && letGo === off;
+	return { ok, value: { 沒按: off, 按下去: on, 再按一次: back, 按住H: holdH, 放開H: letGo } };
 });
 
 await check('放大後按住 H 拖空白處：看到的範圍移動、沒有框選；放開 H 拖空白處是框選', async () => {

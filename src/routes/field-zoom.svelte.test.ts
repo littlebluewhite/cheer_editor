@@ -151,6 +151,16 @@ describe('✋ 平移（#227）', () => {
 		expect(screen.queryByRole('button', { name: '暫停' })).not.toBeNull();
 	});
 
+	it('按住 H 時 ✋ 算按著，放開 H 就不算', async () => {
+		open();
+		await zoomIn(4);
+		expect(hand()!.getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.keyDown(window, { key: 'h' });
+		expect(hand()!.getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.keyUp(window, { key: 'h' });
+		expect(hand()!.getAttribute('aria-pressed')).toBe('false');
+	});
+
 	it('在打字的地方按 H 只是打字，不會變成平移', async () => {
 		open();
 		await zoomIn(4);
