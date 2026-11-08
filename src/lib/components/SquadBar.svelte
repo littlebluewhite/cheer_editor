@@ -47,7 +47,7 @@
 	}
 </script>
 
-<div class="squad-bar" role="group" aria-label="分組">
+<div class="squad-bar" role="group" aria-label="分組" data-edit>
 	{#if ask.question}
 		<div class="ask">
 			<ConfirmList {ask} />

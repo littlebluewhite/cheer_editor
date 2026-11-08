@@ -92,12 +92,9 @@
 		});
 	}
 
-	/** 關之前：場地改了沒按「調整場地」就照樣調整；被擋、要問就先不關。正在問時關＝取消（退回）。 */
+	/** 關之前：場地改了沒按「調整場地」就照樣調整；被擋、要問就先不關。
+	 *  正在問時按 ×＝取消（退回）並關掉：Modal 先把 fieldAsk 的確認框取消，這裡就跟沒改一樣（N39）。 */
 	function beforeclose(): boolean {
-		if (fieldAsk.question) {
-			fieldAsk.answer('cancel');
-			return false;
-		}
 		return fieldSame || applyField().kind === 'ok';
 	}
 
@@ -140,7 +137,7 @@
 	] as const;
 </script>
 
-<Modal label="流程設定" class="dialog flow-dialog" {ask} {onclose} {beforeclose}>
+<Modal label="流程設定" class="dialog flow-dialog" {ask} confirms={[fieldAsk]} {onclose} {beforeclose}>
 	{#snippet children(close)}
 		<header class="dialog-head">
 			<h2>流程設定</h2>
