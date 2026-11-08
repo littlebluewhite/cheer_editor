@@ -6,6 +6,7 @@
 	// 改名字而他有紀錄時，核心回「要選」：保留舊紀錄（改錯字）、清掉重算（換人了）、取消（名字還原）。
 	import { tick } from 'svelte';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { truncate } from '#lib/truncate.js';
 	import CharCount from './CharCount.svelte';
 	import { commitField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
@@ -203,6 +204,7 @@
 							value={m.name}
 							bind:this={nameInputs[i]}
 							{@attach nameField(m.id)}
+							{@attach truncate}
 						/>
 						<CharCount field="memberName" input={nameInputs[i]} value={m.name} quiet />
 					</span>
@@ -372,9 +374,10 @@
 		border-radius: 999px;
 		font-size: 10px;
 	}
+	/* 深色的字：白字在橘底上對比只有 3.4:1（跟泳道的號碼圓圈一樣） */
 	.no.top {
 		background: var(--top, #e0664f);
-		color: #fff;
+		color: #16213a;
 	}
 	li input,
 	li select {

@@ -2215,13 +2215,16 @@ await check('1440×900 場上選到的人有明顯的框：選取框的線至少
 /**
  * 在頁面裡跑：contrast(el) 是 el 的字和它後面的底色的對比（WCAG，1 到 21）。
  * 底色從自己往外找，半透明的一層層疊上去；字的透明度（含外層的 opacity）也算進去。
+ * 外層的框沒蓋到 el 的中心就不算它的底色（例：八拍尺上 1px 寬的刻度線，字寫在它旁邊）。
  */
 const CONTRAST_JS = `
 	const rgba = (c) => { const m = c.match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p[3] ?? 1]; };
 	const over = (top, bottom) => [0, 1, 2].map((i) => top[i] * top[3] + bottom[i] * (1 - top[3])).concat(1);
 	const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
 	const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-	const backdrop = (el) => { const layers = []; for (let e = el; e; e = e.parentElement) { const c = rgba(getComputedStyle(e).backgroundColor); if (c && c[3] > 0) { layers.push(c); if (c[3] >= 1) break; } } return layers.reverse().reduce((bg, l) => over(l, bg), [255, 255, 255, 1]); };
+	const backdrop = (el) => { const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+		const covers = (e) => { const b = e.getBoundingClientRect(); return e === el || (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom); };
+		const layers = []; for (let e = el; e; e = e.parentElement) { if (e !== document.documentElement && e !== document.body && !covers(e)) continue; const c = rgba(getComputedStyle(e).backgroundColor); if (c && c[3] > 0) { layers.push(c); if (c[3] >= 1) break; } } return layers.reverse().reduce((bg, l) => over(l, bg), [255, 255, 255, 1]); };
 	const contrast = (el) => { let op = 1; for (let e = el; e; e = e.parentElement) op *= Number(getComputedStyle(e).opacity);
 		const c = rgba(getComputedStyle(el).color); const bg = backdrop(el); return +ratio(over([c[0], c[1], c[2], c[3] * op], bg), bg).toFixed(2); };
 	const bgContrast = (a, b) => +ratio(backdrop(a), backdrop(b)).toFixed(2);`;
@@ -2828,6 +2831,203 @@ for (const [w, h] of [[1440, 900], [1024, 768]]) {
 		return { ok: !shownBefore && shown && JSON.stringify(before) === JSON.stringify(after), value: { 改之前就有重算鈕: shownBefore, 重算鈕出現: shown, 之前: before, 之後: after } };
 	});
 }
+
+// ---------- 小螢幕的字太小、對比不夠、截短的字（I 群，#233） ----------
+// Apple HIG 最小字級 11 pt；WCAG 2.2 的 1.4.3 一般字至少 4.5:1。
+// 場地上的字用公尺當單位，場地畫得小字就跟著小：量螢幕上的字級（font-size 乘上 SVG 的縮放），不是公尺。
+
+/** 場地上的字最小幾 px（Field.svelte 的 MIN_TEXT_PX）。 */
+const MIN_FIELD_TEXT_PX = 11;
+/** host 裡的場地：每個看得到的字的螢幕字級（px）、有沒有整個在場地畫的範圍（viewBox）裡；還有圓點直徑。 */
+const fieldTexts = (host) =>
+	js(`const svg = document.querySelector(${JSON.stringify(host + ' svg.field')});
+		const m = svg.getScreenCTM(), vb = svg.viewBox.baseVal;
+		const box = { left: m.e + vb.x * m.a, top: m.f + vb.y * m.d, right: m.e + (vb.x + vb.width) * m.a, bottom: m.f + (vb.y + vb.height) * m.d };
+		const texts = [...svg.querySelectorAll('text')].filter((t) => t.checkVisibility()).map((t) => {
+			const r = t.getBoundingClientRect();
+			return { 字: t.textContent.trim(), px: Math.round(parseFloat(getComputedStyle(t).fontSize) * t.getScreenCTM().a * 10) / 10,
+				在場地裡: r.left >= box.left - 0.5 && r.right <= box.right + 0.5 && r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5 };
+		});
+		const dot = svg.querySelector('g.dot :is(circle, rect):is(.base, .top)');
+		return { texts, 圓點直徑: dot ? Math.round(dot.getBoundingClientRect().height * 10) / 10 : null };`);
+/** 太小或跑出場地的字（一樣的只列一次）、量了幾個、最小的字級。 */
+const badFieldTexts = ({ texts }) => {
+	const bad = texts.filter((t) => t.px < MIN_FIELD_TEXT_PX - 0.05 || !t.在場地裡).map((t) => `${t.字} ${t.px}px${t.在場地裡 ? '' : ' 跑出場地'}`);
+	return { 量了幾個: texts.length, 不合格: [...new Set(bad)].slice(0, 8), 最小: Math.min(...texts.map((t) => t.px)) };
+};
+
+for (const [w, h, touch] of [[390, 844, true], [1024, 768, false], [1440, 900, false]]) {
+	await check(`${w}×${h}${touch ? '（觸控）' : ''}：場地上每個字（隊員號碼、條號、格號、「正面／裁判」）至少 ${MIN_FIELD_TEXT_PX} px、都在場地裡${touch ? '；手機的圓點是 22 px，不是觸控的 32 px' : ''}（N15、N50）`, async () => {
+		const host = touch ? '.phone-field' : '.field-host';
+		const value = {};
+		if (touch) await setTouchViewport(w, h);
+		else await setViewport(w, h);
+		await openSample();
+		const sample = await fieldTexts(host);
+		value.範例流程 = { ...badFieldTexts(sample), 圓點直徑: sample.圓點直徑 };
+		// 40 人：兩位數的號碼、場外排的人；名字都是「隊員…」，號碼寫名字縮寫時是多字的膠囊
+		await openBigFlow(`flow = { ...flow, markers: 'initial' };`);
+		await waitFor(() => js(`return !!document.querySelector(${JSON.stringify(host + ' svg.field')})`));
+		await sleep(300);
+		const big = await fieldTexts(host);
+		value['40 人、名字縮寫'] = { ...badFieldTexts(big), 圓點直徑: big.圓點直徑 };
+		if (touch) await clearTouch();
+		const all = [value.範例流程, value['40 人、名字縮寫']];
+		const dotOk = !touch || all.every((v) => Math.abs(v.圓點直徑 - 22) <= 1);
+		return { ok: dotOk && all.every((v) => v.量了幾個 > 0 && v.不合格.length === 0), value };
+	});
+}
+
+/**
+ * 在頁面裡跑：被截短（「…」、輸入框裝不下）、自己和外層的 title 都沒寫出整段字的東西。
+ * 沒有滑鼠的螢幕（手機、iPad）移不上去看 title：截短的字（輸入框以外）有 title 也不行（N35）。
+ */
+const CUT_JS = `
+	const noHover = matchMedia('(hover: none)').matches;
+	const cut = [...document.querySelectorAll('body *')].filter((el) => !(el instanceof SVGElement) && el.checkVisibility({ visibilityProperty: true })).filter((el) => {
+		const s = getComputedStyle(el);
+		const input = el.matches('input:not([type]), input[type=text], input[type=search]');
+		if (!input && !(s.textOverflow === 'ellipsis' && s.overflowX !== 'visible')) return false;
+		const full = (input ? el.value : el.textContent).trim();
+		if (!full || el.scrollWidth <= el.clientWidth + 1) return false;
+		if (noHover && !input) return true;
+		return !(el.closest('[title]')?.title ?? '').includes(full);
+	});
+	return cut.map((el) => (el.outerHTML.match(/^<[^>]*>/)?.[0] ?? el.tagName).slice(0, 90) + '「' + (el.value ?? el.textContent).trim().slice(0, 20) + '」');`;
+
+await check('被截短的字（「…」、輸入框裝不下）都有 title 寫出整段：1030 寬的隊員名單（名字 18 個字）、1440 寬的編排頁；390 寬的手機（觸控）沒有截短的字，長拍點換行（N42、N35）', async () => {
+	const value = {};
+	await setViewport(1030, 800);
+	await openPracticeFlow(`flow = core.updateMember(flow, 'm1', { name: '名字有十八個字的隊員一二三四五六七八' }).flow;`);
+	await js(`document.getElementById('tab-members').click()`);
+	await sleep(400);
+	value['1030 隊員'] = await js(CUT_JS);
+	await setViewport(1440, 900);
+	await sleep(300);
+	value['1440 隊員'] = await js(CUT_JS);
+	await js(`document.getElementById('tab-actions')?.click()`);
+	await sleep(300);
+	value['1440 編排'] = await js(CUT_JS);
+	// 手機：第一個八拍有一個很長的步驟拍點，「八拍表這一列」和八拍表都寫得到
+	await setTouchViewport(390, 844);
+	await openBigFlow();
+	value['390 檢視畫面'] = await js(CUT_JS);
+	await openEightCount();
+	value['390 八拍表'] = await js(CUT_JS);
+	await clearTouch();
+	return { ok: Object.values(value).every((v) => v.length === 0), value };
+});
+
+/**
+ * 對比可以低於 4.5:1 的字（刻意調淡的、其實是圖形的）：selector、原因、最少多少。
+ * 不在這裡的字一律要 4.5:1。
+ */
+const CONTRAST_ALLOW = [
+	{ sel: '.lab.idle .name', 原因: '泳道裡這一刻「閒」的人名字刻意調淡：淡下去才一眼看出誰在忙（旁邊有深色的「閒」字）', 最少: 2 },
+	{ sel: '.walk-tools .clash-mark', 原因: '圖例的 ✕ 是圖形不是字（WCAG 1.4.11 只要 3:1），顏色要跟場上的撞位 ✕ 一樣才對得起來', 最少: 3 },
+	{
+		sel: 'button.bar > b, button.bar > .role',
+		原因: '還沒決定（I 群回報）：泳道色條是大類或辨識色（辨識色存在流程檔裡），白字和深色字在好幾種顏色上都到不了 4.5:1，要改配色才修得好',
+		最少: 2.5
+	}
+];
+/**
+ * 在頁面裡跑：畫面上每個有字的東西（停用的不算，WCAG 1.4.3 的例外），對比低於 4.5:1、又不在白名單裡的。
+ * 場地 SVG 上的條號、格號、「正面／裁判」也算：字有夠粗的白邊時，白邊就是它的底色。
+ */
+const LOW_CONTRAST_JS = `${CONTRAST_JS}
+	const allow = ${JSON.stringify(CONTRAST_ALLOW)};
+	const inactive = (el) => !!el.closest(':disabled, [aria-disabled="true"], [inert]') || !!el.closest('label')?.querySelector(':disabled');
+	const own = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+	const out = [];
+	for (const el of document.querySelectorAll('body *')) {
+		if (el instanceof SVGElement || !own(el) || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || inactive(el)) continue;
+		const c = contrast(el);
+		const a = allow.find((a) => el.matches(a.sel));
+		// 寫出它和外層的 class（svelte-xxx 不寫），看得出是哪個元件
+		const name = (e) => e.tagName.toLowerCase() + [...e.classList].filter((k) => !k.startsWith('svelte-')).map((k) => '.' + k).join('');
+		if (c < (a ? a.最少 : 4.5)) out.push(name(el.parentElement) + ' > ' + name(el) + '「' + el.textContent.trim().slice(0, 12) + '」' + c);
+	}
+	for (const t of document.querySelectorAll('svg.field text.num, svg.field text.front')) {
+		if (!t.checkVisibility()) continue;
+		const s = getComputedStyle(t);
+		const fill = rgba(s.fill); fill[3] *= parseFloat(s.fillOpacity);
+		const r = t.getBoundingClientRect();
+		const stroke = rgba(s.stroke);
+		const halo = stroke && s.paintOrder.startsWith('stroke') && parseFloat(s.strokeWidth) >= 0.15 * parseFloat(s.fontSize) ? [stroke[0], stroke[1], stroke[2], stroke[3] * parseFloat(s.strokeOpacity)] : null;
+		const under = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+			.find((e) => e !== t && e instanceof SVGGeometryElement && !(e instanceof SVGTextElement) && (rgba(getComputedStyle(e).fill)?.[3] ?? 0) > 0 && parseFloat(getComputedStyle(e).fillOpacity) > 0);
+		let bg = backdrop(t.ownerSVGElement);
+		if (under) { const f = rgba(getComputedStyle(under).fill); f[3] *= parseFloat(getComputedStyle(under).fillOpacity); bg = over(f, bg); }
+		if (halo) bg = over(halo, bg);
+		const c = +ratio(over(fill, bg), bg).toFixed(2);
+		if (c < 4.5) out.push('場地 ' + t.getAttribute('class') + '「' + t.textContent.trim() + '」' + c);
+	}
+	return [...new Set(out)];`;
+
+await check('字的對比都至少 4.5:1（白名單：刻意調淡的、其實是圖形的）：首頁、編排頁、隊員、八拍表、手機的首頁和檢視畫面（N41、N50）', async () => {
+	const value = {};
+	const scan = async (name) => {
+		const v = await js(LOW_CONTRAST_JS);
+		if (v.length) value[name] = v.slice(0, 20);
+	};
+	const home = async () => {
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(() => js(`return !!document.querySelector('.home-open input[type=file]')`));
+		await sleep(300);
+	};
+	await setViewport(1440, 900);
+	await home();
+	await scan('1440 首頁');
+	await openSample();
+	await scan('1440 編排');
+	await js(`document.getElementById('tab-members').click()`);
+	await sleep(300);
+	await scan('1440 隊員');
+	await openEightCount();
+	await scan('1440 八拍表');
+	await setTouchViewport(390, 844);
+	await home();
+	await scan('390 首頁');
+	await openSample();
+	await scan('390 檢視畫面');
+	await clearTouch();
+	return { ok: Object.keys(value).length === 0, value };
+});
+
+await check('八拍表的小站位圖：條號不比圓點上的號碼小、對比至少 4.5:1（畫面上和印出來）；手機卡片上開始的秒數寫「開始 N 秒」，跟口號段的「整段 N 秒」分得出來（N38）', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	await openEightCount();
+	const mini = () =>
+		js(`const h = (sel) => Math.round(Math.min(...[...document.querySelectorAll('.print-sheet figure ' + sel)].map((t) => t.getBoundingClientRect().height)) * 10) / 10;
+			return { 條號最小高: h('[data-strip-number]'), 號碼最小高: h('.dot text') };`);
+	const lowMini = async () => (await js(LOW_CONTRAST_JS)).filter((t) => t.startsWith('場地'));
+	const screen = { ...(await mini()), 對比不夠: await lowMini() };
+	const printed = await asPrinted(async () => ({ ...(await mini()), 對比不夠: await lowMini() }));
+	await setTouchViewport(390, 844);
+	await fullSheetFlow();
+	await openEightCount();
+	const card = await js(`const chant = [...document.querySelectorAll('.print-sheet tbody')].find((b) => b.textContent.includes('整段'));
+		const num = chant?.querySelector('td.num');
+		return num ? getComputedStyle(num, '::before').content + num.textContent + getComputedStyle(num, '::after').content : '沒有口號段那一張卡';`);
+	await clearTouch();
+	const fine = (m) => m.條號最小高 >= m.號碼最小高 - 0.5 && m.對比不夠.length === 0;
+	return { ok: fine(screen) && fine(printed) && /^"開始 "[\d.]+" 秒"$/.test(card), value: { 畫面上: screen, 印出來: printed, 手機卡片的開始秒數: card } };
+});
+
+await check('390×844（觸控）檢視畫面：站在場地正中心的人身上看不到中心記號的十字（N56）', async () => {
+	await setTouchViewport(390, 844);
+	await openPracticeFlow(`flow = core.setPositions(flow, flow.formations[0].id, { [flow.members[0].id]: [0, 0] }).flow;`);
+	const r = await js(`const svg = document.querySelector('.phone-field svg.field');
+		const cross = svg.querySelector('path.center').getBoundingClientRect();
+		const dot = [...svg.querySelectorAll('g.dot')].find((g) => g.getAttribute('transform') === 'translate(0,0)')?.querySelector(':is(circle, rect):is(.base, .top)').getBoundingClientRect();
+		if (!dot) return null;
+		const round = (b) => [b.left, b.top, b.right, b.bottom].map((v) => Math.round(v * 10) / 10);
+		return { 十字: round(cross), 圓點: round(dot), 露出來: cross.left < dot.left || cross.right > dot.right || cross.top < dot.top || cross.bottom > dot.bottom };`);
+	await clearTouch();
+	return { ok: !!r && !r.露出來, value: r ?? '正中心沒有人' };
+});
 
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
