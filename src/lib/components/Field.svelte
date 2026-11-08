@@ -54,7 +54,7 @@
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
-	import SelectionTools, { TOOLS_H_PX } from './SelectionTools.svelte';
+	import SelectionTools from './SelectionTools.svelte';
 	import { isLongMarker, markerWidth } from './marker';
 	import { onEscape } from './pointer';
 
@@ -720,7 +720,7 @@
 			</div>
 		</div>
 	{/if}
-	<div class="stage" {@attach watchStage} style:--tools-h={toolsOn ? `${TOOLS_H_PX}px` : null}>
+	<div class="stage" class:tools-on={toolsOn} {@attach watchStage}>
 	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
@@ -858,6 +858,15 @@
 		height: 100%;
 		min-width: 0;
 		min-height: 0;
+	}
+	/* 選人工具列佔場地上緣多高（含上面的空隙）：場上的提示往下排這麼多，不蓋到工具列（SelectionTools 的 .tools-bar） */
+	.stage.tools-on {
+		--tools-h: 40px;
+	}
+	@media (pointer: coarse) {
+		.stage.tools-on {
+			--tools-h: 52px;
+		}
 	}
 	/* 左欄：上面是放大縮小和提示，下面是拖人會改、圖例。 */
 	.rail {

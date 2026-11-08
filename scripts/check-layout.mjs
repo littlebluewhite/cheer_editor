@@ -2352,6 +2352,27 @@ await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框�
 	return { ok: !!r && r.高 === 36 && r.在場地裡 && r.一行 && r.框寬 >= 32, value: r };
 });
 
+await check('1024×768（觸控）選人工具列：按鈕至少 40px 高（ADR 0005）、整條在場地裡；按「鏡像」後的提示排在工具列下面', async () => {
+	await setTouchViewport(1024, 768);
+	await openPracticeFlow();
+	const d = await rectOf('.field-host [data-member-id="m1"]');
+	await tap(d.x, d.y);
+	const r = await js(`const b = document.querySelector('.field-host [role="toolbar"]');
+		if (!b) return null;
+		const br = b.getBoundingClientRect(), s = document.querySelector('.field-host .stage').getBoundingClientRect();
+		return { 下緣: Math.round(br.bottom), 在場地裡: br.left >= s.left - 1 && br.right <= s.right + 1,
+			按鈕高: [...b.querySelectorAll('button')].map((e) => Math.round(e.getBoundingClientRect().height)) };`);
+	if (!r) return { ok: false, value: '點了人沒出現工具列' };
+	await js(`[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '鏡像').click()`);
+	await sleep(300);
+	const toast = await js(`const t = [...document.querySelectorAll('.field-toasts > *')].find((e) => e.getClientRects().length);
+		return t ? Math.round(t.getBoundingClientRect().top) : null;`);
+	await clearTouch();
+	await press('Escape');
+	const ok = r.按鈕高.length > 0 && r.按鈕高.every((h) => h >= 40) && r.在場地裡 && toast !== null && toast >= r.下緣;
+	return { ok, value: { ...r, 提示上緣: toast } };
+});
+
 await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正下方、整個在畫面裡；選「排成一橫排」後兩人在場上同一高度（#223）', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow();

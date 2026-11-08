@@ -1,8 +1,3 @@
-<script lang="ts" module>
-	/** 工具列佔場地上緣多高（px，含上面的空隙）：場上的提示往下排這麼多，不蓋到工具列（見 Field 的 --tools-h）。 */
-	export const TOOLS_H_PX = 40;
-</script>
-
 <script lang="ts">
 	// 選人工具列和右鍵選單：選到人時固定浮在場地正上方（不佔位置，場地不跳）；右鍵選單是同一份清單（selectionActions）。
 	// 按一項：選到的人照那一項算新位置，走 moveGroup（跟拖人同一條路）：這一拍沒有站位就插一張、往後帶、算一步復原，
@@ -250,5 +245,15 @@
 	}
 	.menu button.sub {
 		padding-left: 22px;
+	}
+	/* 觸控（iPad）：按鈕至少 40px 高，跟上方列、右邊欄一樣（ADR 0005）；工具列跟著變高（Field 的 --tools-h 也跟著） */
+	@media (pointer: coarse) {
+		.tools-bar {
+			height: 48px;
+		}
+		.tools-bar button,
+		.menu button {
+			min-height: 40px;
+		}
 	}
 </style>
