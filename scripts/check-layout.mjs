@@ -2777,19 +2777,37 @@ for (const [w, h] of [[1440, 900], [1024, 768]]) {
 			await new Promise((r) => setTimeout(r, 50));
 			[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '＋音樂段').click();`);
 		await waitFor(() => js(`return !!document.querySelector('.seg-dialog')`));
+		// 有音樂檔才有重算鈕：載入一段 8 秒的靜音 wav，關掉再打開段設定（剛載入時重算鈕本來就在）
+		await js(`const rate = 8000, n = rate * 8, b = new DataView(new ArrayBuffer(44 + n * 2));
+			const str = (o, s) => [...s].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+			str(0, 'RIFF'); b.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt '); b.setUint32(16, 16, true);
+			b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, rate, true); b.setUint32(28, rate * 2, true);
+			b.setUint16(32, 2, true); b.setUint16(34, 16, true); str(36, 'data'); b.setUint32(40, n * 2, true);
+			const input = document.querySelector('.seg-dialog label.file input');
+			const dt = new DataTransfer();
+			dt.items.add(new File([b.buffer], '靜音.wav', { type: 'audio/wav' }));
+			input.files = dt.files;
+			input.dispatchEvent(new Event('change', { bubbles: true }));`);
+		await waitFor(() => js(`const d = document.querySelector('.seg-dialog'); return !!d && !d.textContent.includes('沒有音樂檔')`));
+		await js(`document.querySelector('.seg-dialog .close').click();`);
+		await waitFor(() => js(`return !document.querySelector('.seg-dialog')`));
+		await js(`[...document.querySelectorAll('.timeline .seg')].at(-1).click();`);
+		await waitFor(() => js(`const d = document.querySelector('.seg-dialog'); return !!d && !d.textContent.includes('沒有音樂檔')`));
 		await sleep(200);
 		const spots = () => js(`const at = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; };
 			const first = [...document.querySelectorAll('.seg-dialog label')].find((l) => l.textContent.trim().startsWith('第一拍')).querySelector('input');
 			const tap = [...document.querySelectorAll('.seg-dialog button')].find((b) => b.textContent.trim() === '敲擊測速');
 			return { 第一拍: at(first), 敲擊測速: at(tap) };`);
 		const before = await spots();
+		const recalcShown = `return [...document.querySelectorAll('.seg-dialog button')].some((b) => b.textContent.trim() === '照音樂長度重算八拍數' && b.checkVisibility({ visibilityProperty: true }))`;
+		const shownBefore = await js(recalcShown);
 		await js(`const i = [...document.querySelectorAll('.seg-dialog label')].find((l) => l.textContent.trim().startsWith('BPM')).querySelector('input');
 			i.value = String(Number(i.value) === 120 ? 130 : 120); i.dispatchEvent(new Event('change', { bubbles: true }));`);
 		await sleep(200);
-		const shown = await js(`return [...document.querySelectorAll('.seg-dialog button')].some((b) => b.textContent.trim() === '照音樂長度重算八拍數' && b.checkVisibility({ visibilityProperty: true }))`);
+		const shown = await js(recalcShown);
 		const after = await spots();
 		await press('Escape');
-		return { ok: shown && JSON.stringify(before) === JSON.stringify(after), value: { 重算鈕出現: shown, 之前: before, 之後: after } };
+		return { ok: !shownBefore && shown && JSON.stringify(before) === JSON.stringify(after), value: { 改之前就有重算鈕: shownBefore, 重算鈕出現: shown, 之前: before, 之後: after } };
 	});
 }
 
