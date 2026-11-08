@@ -32,3 +32,45 @@ describe('CharCount 跟 tooLong 一樣', () => {
 		expect(kept).toBe(tooLong('memberName', typed, before) === null);
 	});
 });
+
+describe('CharCount：送出後按取消、欄位退回原本的字', () => {
+	it('舊檔超過的名字，刪短送出、確認框按取消退回原本的長度，再換一個字：不會被切短（流程照收）', async () => {
+		const before = chars(25);
+		const input = document.createElement('input');
+		input.value = before;
+		document.body.append(input);
+		render(CharCount, { props: { field: 'memberName', input, value: before } });
+		input.focus();
+		await fireEvent.input(input, { target: { value: chars(24) } });
+		await fireEvent.change(input);
+		await Promise.resolve();
+		// 確認框按取消：commitField 的 revert 直接把欄位寫回流程裡的字，不發事件，流程（value）也沒變
+		input.value = before;
+		const typed = chars(24) + '名';
+		// 真的打字時瀏覽器先發 beforeinput（欄位上還是退回的字），再發 input
+		await fireEvent(input, new InputEvent('beforeinput', { bubbles: true, cancelable: true }));
+		await fireEvent.input(input, { target: { value: typed } });
+		expect(tooLong('memberName', typed, before)).toBeNull();
+		expect(input.value).toBe(typed);
+	});
+
+	it('同上，換的那個字用輸入法打：選好字也不會被切短', async () => {
+		const before = chars(25);
+		const input = document.createElement('input');
+		input.value = before;
+		document.body.append(input);
+		render(CharCount, { props: { field: 'memberName', input, value: before } });
+		input.focus();
+		await fireEvent.input(input, { target: { value: chars(24) } });
+		await fireEvent.change(input);
+		await Promise.resolve();
+		input.value = before;
+		// 輸入法：compositionstart 比 beforeinput 先到（欄位上還是退回的字）
+		const typed = chars(24) + '名';
+		await fireEvent.compositionStart(input);
+		await fireEvent(input, new InputEvent('beforeinput', { bubbles: true, isComposing: true }));
+		await fireEvent.input(input, { target: { value: typed } });
+		await fireEvent.compositionEnd(input);
+		expect(input.value).toBe(typed);
+	});
+});

@@ -60,9 +60,18 @@
 			// 離開欄位前切的（beforechange）不改狀態，等 window 的 onchange 晚一點再改。
 			if (!changing) text = accepted;
 		}
+		// 程式直接改了欄位上的字、不發事件（確認框按取消退回流程裡的字、Esc 退回）：打字前看到欄位上的字跟上次留下的不一樣，
+		// 就把它當作上次送出的字。不然 committed 還是送出被取消的那串，舊檔超過上限的字換一個字就被切短。
+		// 打字前是 beforeinput；輸入法的 compositionstart 比 beforeinput 先到，在那裡對。
+		const sync = () => {
+			if (el.value !== accepted) accepted = committed = el.value;
+		};
 		// 輸入法選字中（compositionstart 到 compositionend）先只算字數，選好再切。
 		let composing = false;
-		const onstart = () => (composing = true);
+		const onstart = () => {
+			sync();
+			composing = true;
+		};
 		const onend = () => {
 			composing = false;
 			clip();
@@ -70,6 +79,9 @@
 		// capture：比欄位的 bind:value 先跑。不然瀏覽器在兩個 listener 之間跑 microtask，
 		// 畫面先把打進去的字當成「欄位現在該有的字」帶回來，accepted 變成太長的字，就不切了（B20）。
 		const oninput = () => (composing ? (text = el.value) : clip());
+		const onbeforeinput = () => {
+			if (!composing) sync();
+		};
 		// 離開欄位前先切：沒經過打字就變太長的字（自動填入之類）也照上限存，不整段被退回。
 		// capture：比畫面的 onchange 先跑，切好的字照常送出。切了也只改欄位上的字、不碰狀態（畫面換掉時也會 change，那一刻不能改狀態）。
 		const beforechange = () => {
@@ -87,6 +99,7 @@
 		const onfocus = () => (focused = true);
 		// 晚一點才改：欄位可能是畫面換掉時才失去焦點，那一刻不能改狀態（B01）。
 		const onblur = () => queueMicrotask(() => (focused = document.activeElement === el));
+		el.addEventListener('beforeinput', onbeforeinput);
 		el.addEventListener('input', oninput, true);
 		el.addEventListener('compositionstart', onstart);
 		el.addEventListener('compositionend', onend);
@@ -95,6 +108,7 @@
 		el.addEventListener('focus', onfocus);
 		el.addEventListener('blur', onblur);
 		return () => {
+			el.removeEventListener('beforeinput', onbeforeinput);
 			el.removeEventListener('input', oninput, true);
 			el.removeEventListener('compositionstart', onstart);
 			el.removeEventListener('compositionend', onend);
