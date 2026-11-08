@@ -83,13 +83,24 @@ describe('口號段加環節（不標拍）', () => {
 		});
 	});
 
-	it('後來才加的環節：之前記的那幾次，這一格是空的', () => {
+	it('後來才加的環節：之前整個做的那幾次寫「—」（這次還沒有這個環節），不寫像空著、像沒成功的「·」', () => {
 		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
 		flow = flowOf(recordAttempt(flow, 'x2', drill({ p4: '✓' }, { who: 'g3' })));
 		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '二層' }));
 		const [attempt] = toss(flow).successRate!.records;
 		expect(attempt.marks).toEqual({ p4: '✓' });
-		expect(attemptText(toss(flow), attempt)).toBe('✓·');
+		expect(attemptText(toss(flow), attempt)).toBe('✓—');
+	});
+
+	it('後來才加的環節：中途 ✗ 後面空著的還是「·」，只有那時還沒有的寫「—」', () => {
+		let flow = flowOf(addPhase(chant(), 'x2', { kind: 'whole', name: '' }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '二層' }));
+		const [p1, p2] = toss(flow).successRate!.phases.map((p) => p.id);
+		flow = flowOf(recordAttempt(flow, 'x2', drill({ [p1]: '✗' }, { who: 'g3' })));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'dismount', name: '' }));
+		const [attempt] = toss(flow).successRate!.records;
+		expect(attempt.blanks).toEqual([p2]);
+		expect(attemptText(toss(flow), attempt)).toBe('✗·—');
 	});
 });
 

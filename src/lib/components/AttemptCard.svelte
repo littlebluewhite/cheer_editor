@@ -10,6 +10,8 @@
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	import {
 		MARKS,
+		NOT_YET_MARK,
+		NOT_YET_TITLE,
 		attemptText,
 		changeAttempt,
 		deleteAttempt,
@@ -239,12 +241,13 @@
 				{#each today as r, i (r.id)}
 					{@const run = r.practice === 'runThrough'}
 					{@const kind = run ? '全上' : r.whole ? '分段練' : '只練幾個環節'}
-					<li class:run class:partial={!r.whole} title={kind}>
+					{@const text = attemptText(action, r)}
+					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? `${kind}；${NOT_YET_TITLE}` : kind}>
 						<button
 							type="button"
 							aria-expanded={editing === r.id}
-							aria-label="改第 {i + 1} 次（{kind} {attemptText(action, r)}）"
-							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
+							aria-label="改第 {i + 1} 次（{kind} {text}）"
+							onclick={() => openEdit(r)}>{text}</button
 						>
 					</li>
 				{/each}

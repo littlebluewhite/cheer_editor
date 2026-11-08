@@ -26,19 +26,20 @@ export function saveLatencyMs(ms: number): void {
 
 const LEGEND_KEY = 'cheer-editor:legendOpen';
 
-/** 場地左下的圖例開著嗎；預設開著，收起來才存。 */
-export function loadLegendOpen(): boolean {
+/** 場地左下的圖例開著嗎；沒按過「圖例」是 fallback（觸控又矮的螢幕收著，其他開著，N58）。 */
+export function loadLegendOpen(fallback = true): boolean {
 	try {
-		return localStorage.getItem(LEGEND_KEY) !== '0';
+		const v = localStorage.getItem(LEGEND_KEY);
+		return v === null ? fallback : v !== '0';
 	} catch {
-		return true;
+		return fallback;
 	}
 }
 
+/** 按過「圖例」就記下開或關（預設看螢幕，所以開著也要記）。 */
 export function saveLegendOpen(open: boolean): void {
 	try {
-		if (open) localStorage.removeItem(LEGEND_KEY);
-		else localStorage.setItem(LEGEND_KEY, '0');
+		localStorage.setItem(LEGEND_KEY, open ? '1' : '0');
 	} catch {
 		// 存不了就只在這次用
 	}

@@ -94,4 +94,15 @@ describe('總表', () => {
 		const days = detail.getAllByRole('listitem').filter((li) => li.querySelector('time'));
 		expect(days.map((li) => li.textContent?.replace(/\s+/g, ''))).toEqual(['2026-11-04✓✓△✓✓✓全上✓✗·全上']);
 	});
+
+	it('「整次」明細：舊的一次碰到後來才加的環節寫「—」，滑鼠移上去說「這次還沒有這個環節」（N28）', async () => {
+		const flow = sampleFlow();
+		flow.actions[0].successRate!.records.push({ id: 't9', date: DATE, who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓' } });
+		setup(flow);
+		await fireEvent.click(screen.getByRole('button', { name: /^第 1 組 小美 整次 / }));
+		const marks = within(screen.getByRole('complementary', { name: '明細' })).getAllByRole('listitem');
+		const old = marks.find((li) => li.textContent === '✓✓—')!;
+		expect(old.title).toContain('這次還沒有這個環節');
+		expect(marks.find((li) => li.textContent === '✓✓△')!.title).toBe('');
+	});
 });

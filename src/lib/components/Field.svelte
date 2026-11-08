@@ -52,7 +52,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
-	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { isTouchScreen, SHORT_SCREEN_MAX_H } from '#lib/editor-layout.js';
 	import { ownsKey } from '#lib/key-owner.js';
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
@@ -307,12 +307,41 @@
 	);
 	/** false：只畫太快和很喘的走位線，正常的白線藏起來，場地比較乾淨。 */
 	let allWalkLines = $state(true);
-	/** 左下的圖例開著嗎（存在這台電腦）。 */
-	let legendOpen = $state(loadLegendOpen());
+	/**
+	 * 左下的圖例開著嗎（存在這台電腦）。沒按過「圖例」時，觸控又矮的螢幕（橫拿的 iPad）收著：
+	 * 左欄放不下，最下面的「只看橘紅走位線」會被擠出去（N58）。
+	 */
+	let legendOpen = $state(loadLegendOpen(!(isTouchScreen() && typeof innerHeight === 'number' && innerHeight <= SHORT_SCREEN_MAX_H)));
 	const legendId = $props.id();
 	function toggleLegend() {
 		legendOpen = !legendOpen;
 		saveLegendOpen(legendOpen);
+	}
+	/** 左欄最下面的工具（「只看橘紅走位線」「圖例」）沒整個捲出來：底部畫淡出漸層提示（N58）。 */
+	let railMore = $state(false);
+	/**
+	 * 量左欄最下面那一塊的勾選和按鈕有沒有整個露出來：捲動、左欄或裡面的東西變大變小都重量。
+	 * 只看勾選和按鈕：那一塊只差幾 px 的留白被裁掉時不算，不然漸層會白白蓋在看得到的工具上。jsdom 沒有 ResizeObserver，測試裡不量。
+	 */
+	function watchRail(el: HTMLElement) {
+		if (typeof ResizeObserver === 'undefined') return;
+		const update = () => {
+			const bottom = el.getBoundingClientRect().bottom;
+			const tools = el.lastElementChild?.querySelectorAll('input, button') ?? [];
+			railMore = [...tools].some((t) => t.getBoundingClientRect().bottom > bottom + 1);
+		};
+		const ro = new ResizeObserver(update);
+		const observeAll = () => [el, ...el.children].forEach((c) => ro.observe(c));
+		const mo = new MutationObserver(() => (observeAll(), update()));
+		observeAll();
+		mo.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+		el.addEventListener('scroll', update, { passive: true });
+		update();
+		return () => {
+			ro.disconnect();
+			mo.disconnect();
+			el.removeEventListener('scroll', update);
+		};
 	}
 	const walkLines = $derived(
 		walks.filter((w) => shown(w.memberId) && (allWalkLines || w.tooFast || w.tiring))
@@ -681,7 +710,7 @@
 />
 <div class="field-wrap" class:with-rail={controls && rail}>
 	{#if controls}
-		<div class="rail" hidden={!rail}>
+		<div class="rail" hidden={!rail} {@attach watchRail}>
 			<div class="rail-head">
 				<div class="tools">
 					<button
@@ -749,6 +778,8 @@
 				>
 			</div>
 		</div>
+		<!-- 左欄下面還有東西（觸控又矮的螢幕放不下）：底部淡出，看得出要往下捲；捲到底就不畫（N58）。不吃滑鼠 -->
+		<div class="rail-fade" aria-hidden="true" hidden={!rail || !railMore}></div>
 	{/if}
 	<div class="stage" class:band {@attach watchStage}>
 	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
@@ -934,6 +965,21 @@
 	}
 	.rail-gap {
 		flex: 1;
+	}
+	/* 蓋在左欄最下面（左欄那一欄的寬，跟 .field-wrap.with-rail 的 236px 一樣），不佔版面 */
+	.rail-fade {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: 236px;
+		height: 32px;
+		pointer-events: none;
+		background: linear-gradient(to bottom, transparent, var(--paper, #eceff5) 85%);
+	}
+	/* 用鍵盤在左欄裡移動時不畫：聚焦的東西會捲進來，漸層不要蓋在它上面（捲動後才重量，會慢一格） */
+	.rail-fade[hidden],
+	.rail:has(:focus-visible) + .rail-fade {
+		display: none;
 	}
 	.field {
 		display: block;

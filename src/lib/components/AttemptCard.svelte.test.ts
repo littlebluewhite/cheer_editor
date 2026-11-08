@@ -216,6 +216,25 @@ describe('記錄頁的卡', () => {
 		]);
 	});
 
+	it('後來才加的環節：舊的一次那格寫「—」，滑鼠移上去說「這次還沒有這個環節」，不像空著、像沒成功（N28）', () => {
+		const flow = libSample();
+		// 第三個環節是記完之後才加的：那一次只有前兩個環節的記號、整個做。
+		flow.actions[0].successRate!.records = [
+			{ id: 't1', date: DATE, who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓' } }
+		];
+		setup(flow);
+		const [li] = screen.getAllByRole('listitem');
+		expect(li.textContent).toBe('✓✓—');
+		expect(li.title).toContain('這次還沒有這個環節');
+	});
+
+	it('中途 ✗ 後面空著的還是「·」，不說「還沒有這個環節」', () => {
+		setup(mixed());
+		const li = screen.getAllByRole('listitem')[1];
+		expect(li.textContent).toBe('✗··');
+		expect(li.title).not.toContain('這次還沒有這個環節');
+	});
+
 	it('刪掉上一次：只刪這張卡記的分段練，全上的不動', async () => {
 		const { session } = setup(mixed());
 		await removeLast();
