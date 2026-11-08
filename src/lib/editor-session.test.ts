@@ -5,18 +5,24 @@ import {
 	addSegment,
 	createFlow,
 	deleteAction,
+	deleteMember,
+	deletePhase,
 	addPhase,
 	insertFormation,
 	moveFormation,
 	moveMembers,
+	rateCounts,
 	recordAttempt,
 	renameFlow,
 	toSeconds,
+	updateMember,
+	updateSegment,
 	type CommandResult,
 	type ConfirmOption,
-	type Flow
+	type Flow,
+	type Mark
 } from '#lib/core';
-import { flowOf, libSample, squadNumbers } from '#lib/test-flows.js';
+import { flowOf, libSample, ratedSample, squadNumbers } from '#lib/test-flows.js';
 import { EditorSession, VIEW_ONLY } from './editor-session.svelte.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
@@ -508,5 +514,82 @@ describe('編輯 session：站位 ⌘C 換流程', () => {
 		const before = s.flow;
 		expect(s.pasteFormation(0)).toBe(false);
 		expect(s.flow).toBe(before);
+	});
+});
+
+describe('編輯 session：復原把這一步清掉的紀錄一起帶回來（ADR 0007）', () => {
+	/**
+	 * ratedSample 加上紀錄：x1 第 1 組整個做 ✓✓△（整次不成功）、只練下法 ✗；第 2 組整個做 ✓✗（下法空著）、只練上法 ✓；
+	 * x2 騰翻小美 ✓。
+	 */
+	function recordedFlow(): Flow {
+		let flow = ratedSample();
+		const add = (actionId: string, who: string, whole: boolean, marks: Record<string, Mark>) => {
+			flow = flowOf(recordAttempt(flow, actionId, { date: '2026-11-05', who, practice: 'drill', whole, marks }));
+		};
+		add('x1', 'g1', true, { p1: '✓', p2: '✓', p3: '△' });
+		add('x1', 'g1', false, { p3: '✗' });
+		add('x1', 'g2', true, { p1: '✓', p2: '✗' });
+		add('x1', 'g2', false, { p1: '✓' });
+		add('x2', 'm1', true, { p4: '✓' });
+		return flow;
+	}
+
+	/** 每個記成功率的動作：紀錄和算出來的次數。 */
+	const rates = (flow: Flow) =>
+		flow.actions
+			.filter((a) => a.successRate)
+			.map((a) => ({
+				id: a.id,
+				records: a.successRate!.records,
+				counts: rateCounts(a.successRate!.phases, a.successRate!.records)
+			}));
+
+	const steps: [string, (f: Flow) => CommandResult][] = [
+		['段裁短（裁掉下法、刪掉騰翻）', (f) => updateSegment(f, 's1', { eights: 1, lastBeats: 6 }, { confirmed: true })],
+		['刪環節（下法）', (f) => deletePhase(f, 'x1', 'p3', { confirmed: true })],
+		['刪動作（Lib）', (f) => deleteAction(f, 'x1', { confirmed: true })],
+		['刪隊員（小芳，第 2 組選清掉）', (f) => deleteMember(f, 'm4', { records: 'clear' })],
+		['改名選清掉（小美）', (f) => updateMember(f, 'm1', { name: '小芳芳' }, { records: 'clear' })]
+	];
+
+	it.each(steps)('%s：做 → 復原，紀錄和成功率跟做之前一樣；再重做跟做之後一樣', (_, step) => {
+		const s = new EditorSession(recordedFlow());
+		const before = rates(s.flow!);
+		expect(s.change(flowOf(step(s.flow!)))).toBe(true);
+		const after = rates(s.flow!);
+		expect(after).not.toEqual(before);
+		s.undo();
+		expect(rates(s.flow!)).toEqual(before);
+		s.redo();
+		expect(rates(s.flow!)).toEqual(after);
+	});
+
+	it.each(steps)('%s：做了之後才「記」的一次，復原、重做都還在', (_, step) => {
+		const s = new EditorSession(recordedFlow());
+		const before = rates(s.flow!);
+		s.change(flowOf(step(s.flow!)));
+		const after = rates(s.flow!);
+		// 騰翻還在就記小A 的騰翻；騰翻被裁掉了就記 Lib 第 1 組的上法
+		const target = s.flow!.actions.some((a) => a.id === 'x2') ? 'x2' : 'x1';
+		const [who, phase] = target === 'x2' ? ['m2', 'p4'] : ['g1', 'p1'];
+		const input = { date: '2026-11-06', who, practice: 'drill', whole: false, marks: { [phase]: '✓' } } as const;
+		s.record(flowOf(recordAttempt(s.flow!, target, input)));
+		const added = s.flow!.actions.find((a) => a.id === target)!.successRate!.records.at(-1)!;
+		const plusAdded = (list: ReturnType<typeof rates>) =>
+			list.map((r) => (r.id === target ? [...r.records, added] : r.records));
+		s.undo();
+		expect(rates(s.flow!).map((r) => r.records)).toEqual(plusAdded(before));
+		s.redo();
+		expect(rates(s.flow!).map((r) => r.records)).toEqual(plusAdded(after));
+	});
+
+	it('刪掉有記號的環節再復原：整次成功率還是 0%，不會變 100%（N02）', () => {
+		const s = new EditorSession(recordedFlow());
+		s.change(flowOf(deletePhase(s.flow!, 'x1', 'p3', { confirmed: true })));
+		s.undo();
+		const x1 = s.flow!.actions.find((a) => a.id === 'x1')!.successRate!;
+		const g1 = x1.records.filter((r) => r.who === 'g1');
+		expect(rateCounts(x1.phases, g1).whole).toEqual({ clean: 0, whole: 1 });
 	});
 });

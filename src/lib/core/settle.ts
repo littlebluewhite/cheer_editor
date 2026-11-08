@@ -6,7 +6,7 @@ import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
-import { RECORDS_GONE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import {
 	allSquadIds,
@@ -187,7 +187,7 @@ function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Att
 	]
 		.filter(Boolean)
 		.join('；');
-	return asked && asked + RECORDS_GONE;
+	return asked && asked + RECORDS_UNDOABLE;
 }
 
 /**

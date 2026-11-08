@@ -200,7 +200,7 @@ describe('段設定的拿掉音樂、重算八拍數、測速範圍（#230）', 
 		await fireEvent.click(dialog.getByRole('button', { name: '照音樂長度重算八拍數' }));
 		// 3 秒 × 120 ÷ 60 = 6 拍：Lib 裁短到 1-6，下法刪掉、紀錄不見
 		const confirm = within(screen.getByRole('alertdialog'));
-		expect(confirm.getByText(/縮短後/).textContent).toContain('會一起清掉 1 次紀錄（紀錄救不回來）');
+		expect(confirm.getByText(/縮短後/).textContent).toContain('會一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）');
 		expect(confirm.getAllByRole('listitem').map((li) => li.textContent)).toEqual([
 			'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍，會刪掉 1 個環節（清掉 1 次的記號）'
 		]);

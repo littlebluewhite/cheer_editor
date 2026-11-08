@@ -75,7 +75,7 @@ describe('段變短的確認清單', () => {
 		return session;
 	}
 
-	it('分「裁短」和「刪掉」兩組列出；下法有紀錄會不見，先問、寫紀錄救不回來；按確定才改', async () => {
+	it('分「裁短」和「刪掉」兩組列出；下法有紀錄會不見，先問、寫按「復原」紀錄會回來；按確定才改', async () => {
 		const session = open();
 		const before = session.flow;
 		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
@@ -84,7 +84,7 @@ describe('段變短的確認清單', () => {
 		await fireEvent.change(settings.getByLabelText('最後一個八拍有幾拍'), { target: { value: '6' } });
 		const confirm = screen.getByRole('alertdialog');
 		expect(within(confirm).getByText(/縮短後/).textContent).toBe(
-			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 1 次紀錄（紀錄救不回來）'
+			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）'
 		);
 		expect(within(confirm).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
 			'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍，會刪掉 1 個環節（清掉 1 次的記號）',
