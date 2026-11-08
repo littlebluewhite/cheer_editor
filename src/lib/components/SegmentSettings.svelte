@@ -263,9 +263,6 @@
 						<input type="text" inputmode="decimal" value={music.bpm} {@attach numberField('BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
-					{#if (music.bpm !== openedBpm || firstLoaded) && audio}
-						<button type="button" onclick={fitToAudio}>照音樂長度重算八拍數</button>
-					{/if}
 					<label class="inline">
 						第一拍（秒）
 						<input
@@ -276,6 +273,11 @@
 						/>
 					</label>
 					{#if !readonly}{@render listen()}{/if}
+					{#if audio}
+						<!-- 改了 BPM（或剛載入音樂）才看得到；沒出現時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
+						{@const hide = music.bpm === openedBpm && !firstLoaded}
+						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} onclick={fitToAudio}>照音樂長度重算八拍數</button>
+					{/if}
 				</div>
 				{#if firstLoaded}
 					<p class="hint">八拍數照 {music.bpm} BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」</p>
@@ -453,6 +455,10 @@
 	}
 	.listen {
 		margin-left: auto;
+	}
+	/* 「照音樂長度重算八拍數」沒改 BPM 時藏起來，但還佔著位置 */
+	.unchanged {
+		visibility: hidden;
 	}
 	.hint {
 		margin: 0;

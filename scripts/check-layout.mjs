@@ -1099,7 +1099,8 @@ await check('1024×768（觸控）：40 人、場外排了人時，條編號、�
 			return [...document.querySelectorAll('[data-strip-number], [data-cell-number]')].flatMap((t) => {
 				const r = t.getBoundingClientRect();
 				const box = (b) => [b.left, b.top, b.right, b.bottom].map(Math.round);
-				const hits = dots.filter((d) => d.left < r.right && d.right > r.left && d.top < r.bottom && d.bottom > r.top);
+				// 圓點的框是圓外面的正方形：框只擦到編號的邊（1px 以內）不算蓋到（場地上面留了工具列那一條後，1 條的小場地會剛好貼著）
+				const hits = dots.filter((d) => d.left < r.right - 1 && d.right > r.left + 1 && d.top < r.bottom - 1 && d.bottom > r.top + 1);
 				return hits.length ? [{ 編號: t.textContent, 編號的框: box(r), 蓋到的圓點: hits.map(box) }] : [];
 			});`);
 		if (covered.length) bad.push({ 場地: field, 被蓋住的條編號: covered });
@@ -2369,7 +2370,7 @@ await check('走位條兩端的把手：觸控（1024×768）時每個點得到�
 
 // ---------- 選人工具列（#222） ----------
 
-await check('1440×900 選到人：工具列浮在場地正上方，場地不跳；按「鏡像」後的提示排在工具列下面，不蓋住它；不選人後工具列只剩全隊那一項（N11）', async () => {
+await check('1440×900 選到人：工具列浮在場地上面留給它的那一條，場地不跳；按「鏡像」後的提示不蓋住工具列；不選人後工具列只剩全隊那一項（N11）', async () => {
 	await setViewport(1440, 900);
 	// 小美站在中線上：鏡像一定跳提示（位置都沒變）
 	await openPracticeFlow();
@@ -2381,12 +2382,14 @@ await check('1440×900 選到人：工具列浮在場地正上方，場地不跳
 	const bar = await js(`const b = document.querySelector('.field-host [role="toolbar"]');
 		if (!b) return null;
 		const r = b.getBoundingClientRect(), s = document.querySelector('.field-host .stage').getBoundingClientRect();
-		return { 上: Math.round(r.top - s.top), 下緣: Math.round(r.bottom), 置中差: Math.round((r.left + r.right) / 2 - (s.left + s.right) / 2) };`);
+		return { 上: Math.round(r.top - s.top), 下緣: Math.round(r.bottom), 左: Math.round(r.left), 右: Math.round(r.right), 置中差: Math.round((r.left + r.right) / 2 - (s.left + s.right) / 2) };`);
 	const shown = await fieldAt();
 	await js(`[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '鏡像').click()`);
 	await sleep(300);
 	const toast = await js(`const t = [...document.querySelectorAll('.field-toasts > *')].find((e) => e.getClientRects().length);
-		return t ? Math.round(t.getBoundingClientRect().top) : null;`);
+		if (!t) return null; const r = t.getBoundingClientRect();
+		return { 上: Math.round(r.top), 下: Math.round(r.bottom), 左: Math.round(r.left), 右: Math.round(r.right) };`);
+	const apart = !!bar && !!toast && (toast.上 >= bar.下緣 || toast.左 >= bar.右 || toast.右 <= bar.左);
 	await press('Escape');
 	const hidden = {
 		工具列: await js(`return [...document.querySelectorAll('.field-host [role="toolbar"] button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())`),
@@ -2394,12 +2397,12 @@ await check('1440×900 選到人：工具列浮在場地正上方，場地不跳
 	};
 	const same = [shown, hidden.場地].every((v) => String(v) === String(before));
 	return {
-		ok: !!bar && bar.上 >= 0 && bar.上 <= 8 && Math.abs(bar.置中差) <= 1 && same && toast !== null && toast >= bar.下緣 && hidden.工具列.length === 1 && /^全隊跟第 \d+ 張一樣$/.test(hidden.工具列[0]),
-		value: { 之前: before, 工具列出現: { 場地: shown, 工具列: bar }, 提示上緣: toast, 收起: hidden }
+		ok: !!bar && bar.上 >= 0 && bar.上 <= 8 && Math.abs(bar.置中差) <= 1 && same && apart && hidden.工具列.length === 1 && /^全隊跟第 \d+ 張一樣$/.test(hidden.工具列[0]),
+		value: { 之前: before, 工具列出現: { 場地: shown, 工具列: bar }, 提示: toast, 收起: hidden }
 	};
 });
 
-await check('1440×900 拖選到的人：左上角的位置文字排在工具列下面，不被工具列蓋住', async () => {
+await check('1440×900 拖選到的人：工具列收起來，左上角的位置文字寫在場地上面那一條，不蓋到場地（N05）', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow();
 	const d = await rectOf('.field-host [data-member-id="m1"]');
@@ -2410,14 +2413,14 @@ await check('1440×900 拖選到的人：左上角的位置文字排在工具列
 	await sleep(100);
 	const r = await js(`const box = (s) => { const e = document.querySelector(s); if (!e) return null;
 			const r = e.getBoundingClientRect(); return { 左: Math.round(r.left), 右: Math.round(r.right), 上: Math.round(r.top), 下: Math.round(r.bottom) }; };
-		return { 文字: box('.field-host .readout'), 工具列: box('.field-host [role="toolbar"]') };`);
+		return { 文字: box('.field-host .readout'), 工具列: box('.field-host [role="toolbar"]'), 場地: box('.field-host svg.field') };`);
 	await press('Escape');
 	await mouse('mouseReleased', d.x + 40, d.y + 20, 0);
 	await press('Escape');
-	const { 文字: t, 工具列: b } = r;
-	// 文字要真的看得到（有大小），而且整個在工具列下面
+	const { 文字: t, 工具列: b, 場地: f } = r;
+	// 文字要真的看得到（有大小），而且整個在場地上面那一條裡
 	const shown = !!t && t.右 - t.左 > 20 && t.下 - t.上 > 10;
-	return { ok: shown && !!b && t.上 >= b.下, value: r };
+	return { ok: shown && !b && t.下 <= f.上, value: r };
 });
 
 await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框和字排一行、工具列不換行、整條在場地裡', async () => {
@@ -2436,7 +2439,7 @@ await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框�
 	return { ok: !!r && r.高 === 36 && r.在場地裡 && r.一行 && r.框寬 >= 32, value: r };
 });
 
-await check('1024×768（觸控）選人工具列：按鈕至少 40px 高（ADR 0005）、整條在場地裡；按「鏡像」後的提示排在工具列下面', async () => {
+await check('1024×768（觸控）選人工具列：按鈕至少 40px 高（ADR 0005）、整條在場地裡；按「鏡像」後的提示不蓋住工具列', async () => {
 	await setTouchViewport(1024, 768);
 	await openPracticeFlow();
 	const d = await rectOf('.field-host [data-member-id="m1"]');
@@ -2444,17 +2447,19 @@ await check('1024×768（觸控）選人工具列：按鈕至少 40px 高（ADR 
 	const r = await js(`const b = document.querySelector('.field-host [role="toolbar"]');
 		if (!b) return null;
 		const br = b.getBoundingClientRect(), s = document.querySelector('.field-host .stage').getBoundingClientRect();
-		return { 下緣: Math.round(br.bottom), 在場地裡: br.left >= s.left - 1 && br.right <= s.right + 1,
+		return { 下緣: Math.round(br.bottom), 左: Math.round(br.left), 右: Math.round(br.right), 在場地裡: br.left >= s.left - 1 && br.right <= s.right + 1,
 			按鈕高: [...b.querySelectorAll('button')].map((e) => Math.round(e.getBoundingClientRect().height)) };`);
 	if (!r) return { ok: false, value: '點了人沒出現工具列' };
 	await js(`[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '鏡像').click()`);
 	await sleep(300);
 	const toast = await js(`const t = [...document.querySelectorAll('.field-toasts > *')].find((e) => e.getClientRects().length);
-		return t ? Math.round(t.getBoundingClientRect().top) : null;`);
+		if (!t) return null; const r = t.getBoundingClientRect();
+		return { 上: Math.round(r.top), 左: Math.round(r.left), 右: Math.round(r.right) };`);
 	await clearTouch();
 	await press('Escape');
-	const ok = r.按鈕高.length > 0 && r.按鈕高.every((h) => h >= 40) && r.在場地裡 && toast !== null && toast >= r.下緣;
-	return { ok, value: { ...r, 提示上緣: toast } };
+	const apart = !!toast && (toast.上 >= r.下緣 || toast.左 >= r.右 || toast.右 <= r.左);
+	const ok = r.按鈕高.length > 0 && r.按鈕高.every((h) => h >= 40) && r.在場地裡 && apart;
+	return { ok, value: { ...r, 提示: toast } };
 });
 
 await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正下方、整個在畫面裡；選「排成一橫排」後兩人在場上同一高度（#223）', async () => {
@@ -2514,6 +2519,297 @@ await check('390×844（觸控）手機上的小字看得清楚（T19）：口�
 		value: { 跳到口號段: chant, ...phone, 列印說明: sheet }
 	};
 });
+
+// ---------- 浮動的元件不蓋住東西：通用的遮擋掃描（C 群，#233） ----------
+// WCAG 2.2 的 2.4.11：拿到焦點的東西不能被作者自己做的浮動內容（黏底列、工具列、提示）蓋住。
+// 不一個一個元件寫：在幾種寬度和狀態下，掃畫面上每個能聚焦的東西、每個 [role=alert]、每個標了 [data-keep-visible] 的東西
+// （場上的人、條號、「正面／裁判」、位置文字），在中心和四個角（往內 2px）看最上面畫出來的是不是它自己。
+// 量法：elementsFromPoint 拿到那一點從上到下的每一層（暫時讓每個元素都接滑鼠，pointer-events: none 的提示也量得到），
+// 它上面的那幾層只要有一層真的畫了東西（底色、框線、字、圖、表單元件、SVG 的填色或線）就算被蓋住；
+// 透明的容器（例：提示那一層的外框）不算。場地 SVG 裡自己的東西（人跟人、✕ 疊在人上）不算，那不是浮動的元件。
+// 點不在它身上（圓點的外框角、圓角外面）就跳過；在捲動容器或畫面外面（被裁掉）算看不到。
+
+/** 在頁面裡跑的掃描：scan({ focus, alerts, keep }) 回傳看不到的東西和原因。 */
+const OCCLUSION_JS = `
+	const PAD = 2;
+	const alpha = (c) => {
+		if (!c || c === 'none' || c === 'transparent') return 0;
+		const m = c.match(/rgba?\\(([^)]*)\\)/);
+		if (!m) return 1;
+		const p = m[1].split(/[\\s,\\/]+/).filter(Boolean);
+		return p.length > 3 ? parseFloat(p[3]) * (p[3].endsWith('%') ? 0.01 : 1) : 1;
+	};
+	const desc = (e) => {
+		const tag = (e.outerHTML.match(/^<[^>]*>/)?.[0] ?? e.tagName).replace(/ (style|class:[a-z-]+)="[^"]*"/g, '');
+		const t = e.textContent.trim().replace(/\\s+/g, ' ');
+		return tag.slice(0, 100) + (t ? ' 「' + t.slice(0, 20) + '」' : '');
+	};
+	/** 這個元素在 (x, y) 有沒有畫東西（透明的容器沒有）。 */
+	function paints(e, x, y) {
+		const s = getComputedStyle(e);
+		if (s.visibility !== 'visible' || parseFloat(s.opacity) === 0) return false;
+		if (e instanceof SVGElement) {
+			if (e instanceof SVGSVGElement || e instanceof SVGGElement) return false;
+			const fill = alpha(s.fill) > 0 && parseFloat(s.fillOpacity) > 0;
+			const stroke = alpha(s.stroke) > 0 && parseFloat(s.strokeOpacity) > 0 && parseFloat(s.strokeWidth) > 0;
+			return fill || stroke;
+		}
+		// 很細的線（播放頭、分隔線，3px 以下）擋不住看
+		const r = e.getBoundingClientRect();
+		if (r.width <= 3 || r.height <= 3) return false;
+		if (/^(IMG|INPUT|SELECT|TEXTAREA|VIDEO|CANVAS|IFRAME)$/.test(e.tagName)) return true;
+		if (alpha(s.backgroundColor) > 0 || s.backgroundImage !== 'none') return true;
+		const edge = { Top: y - r.top, Bottom: r.bottom - y, Left: x - r.left, Right: r.right - x };
+		for (const k in edge)
+			if (s['border' + k + 'Style'] !== 'none' && alpha(s['border' + k + 'Color']) > 0 && edge[k] < parseFloat(s['border' + k + 'Width'])) return true;
+		for (const n of e.childNodes) {
+			if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+			const range = document.createRange();
+			range.selectNodeContents(n);
+			for (const b of range.getClientRects()) if (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom) return true;
+		}
+		return false;
+	}
+	/** 看得到的範圍：畫面和每個會裁切的祖先（overflow 不是 visible）的交集；fixed 的不被外面裁。 */
+	function clipOf(el) {
+		let c = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+		for (let n = el; n; n = n.parentElement) {
+			const s = getComputedStyle(n);
+			if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
+				const r = n.getBoundingClientRect();
+				c = { left: Math.max(c.left, r.left), top: Math.max(c.top, r.top), right: Math.min(c.right, r.right), bottom: Math.min(c.bottom, r.bottom) };
+			}
+			if (s.position === 'fixed') break;
+		}
+		return c;
+	}
+	/** 中心和四個角（往內 PAD）看不到的點和原因；整個看得到是 []。比看得到的範圍還大的（例：整條泳道）量看得到的那一塊。 */
+	function blocked(el) {
+		const r0 = el.getBoundingClientRect();
+		if (r0.width < 1 || r0.height < 1) return [];
+		const c = clipOf(el);
+		const r = {
+			left: r0.width > c.right - c.left ? c.left : r0.left, right: r0.width > c.right - c.left ? c.right : r0.right,
+			top: r0.height > c.bottom - c.top ? c.top : r0.top, bottom: r0.height > c.bottom - c.top ? c.bottom : r0.bottom
+		};
+		const svg = el instanceof SVGElement && !(el instanceof SVGSVGElement) ? el.ownerSVGElement : null;
+		const pts = [[(r.left + r.right) / 2, (r.top + r.bottom) / 2], [r.left + PAD, r.top + PAD], [r.right - PAD, r.top + PAD], [r.left + PAD, r.bottom - PAD], [r.right - PAD, r.bottom - PAD]];
+		const bad = [];
+		let on = 0;
+		for (const [x, y] of pts) {
+			const at = Math.round(x) + ',' + Math.round(y);
+			if (x < c.left || x > c.right || y < c.top || y > c.bottom) { bad.push(at + ' 被裁掉（在看得到的範圍外）'); continue; }
+			const stack = document.elementsFromPoint(x, y);
+			const i = stack.findIndex((e) => el.contains(e));
+			if (i === -1) continue;
+			on++;
+			const cover = stack.slice(0, i).find((e) => !e.contains(el) && !(svg && svg.contains(e)) && paints(e, x, y));
+			if (cover) bad.push(at + ' 被蓋住：' + desc(cover));
+		}
+		if (!on && !bad.length) bad.push('五個點都點不到它');
+		return bad;
+	}
+	const FOCUSABLE = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+	const shown = (e) => e.isConnected && e.getClientRects().length > 0 && e.checkVisibility({ visibilityProperty: true }) && !e.closest('[inert]') && !e.disabled;
+	/** 藏起來的表單元件（透明、很小，例：色塊裡的 radio）看的是包著它的 label。 */
+	const proxy = (e) => {
+		const r = e.getBoundingClientRect();
+		return parseFloat(getComputedStyle(e).opacity) === 0 || r.width < 4 || r.height < 4 ? (e.closest('label') ?? e) : e;
+	};
+	async function scan({ focus, alerts, keep, now = [] }) {
+		const style = document.createElement('style');
+		style.textContent = '*, *::before, *::after { pointer-events: auto !important; }';
+		document.head.append(style);
+		const out = [];
+		try {
+			// 先量現在的樣子（app 自己要把錯誤捲出來、人和條號本來就要看得到），再一個一個聚焦
+			if (keep) for (const e of document.querySelectorAll('[data-keep-visible]')) {
+				if (!shown(e)) continue;
+				const bad = blocked(e);
+				if (bad.length) out.push({ 要看得到的: desc(e), 點: bad });
+			}
+			for (const sel of now) {
+				const e = document.querySelector(sel);
+				const bad = !e ? ['畫面上沒有'] : blocked(e);
+				if (bad.length) out.push({ 現在就要看得到: sel, 點: bad });
+			}
+			if (alerts) for (const e of document.querySelectorAll('[role=alert]')) {
+				if (!shown(e) || !e.textContent.trim()) continue;
+				const bad = blocked(e);
+				if (bad.length) out.push({ 錯誤訊息: desc(e), 點: bad });
+			}
+			if (focus) {
+				for (const e of [...document.querySelectorAll(FOCUSABLE)]) {
+					if (!shown(e)) continue;
+					e.focus();
+					if (document.activeElement !== e) continue;
+					const bad = blocked(proxy(e));
+					if (bad.length) out.push({ 聚焦: desc(e), 點: bad });
+				}
+				document.activeElement?.blur();
+			}
+		} finally {
+			style.remove();
+		}
+		return out;
+	}
+`;
+/**
+ * 掃一次：keep 掃 [data-keep-visible]、alerts 掃 [role=alert]、focus 一個一個聚焦再掃、now 是現在就要整個看得到的 selector。
+ * 有問題時每一種印前 3 個（全部印太長）。
+ */
+async function occlusion(what) {
+	// 先真的按一次 Tab：瀏覽器記得是用鍵盤，之後程式 focus() 的東西也算 :focus-visible（例：「跳到時間軸」聚焦時才出現）
+	if (what.focus) await press('Tab');
+	const out = await js(`${OCCLUSION_JS} return scan(${JSON.stringify(what)});`);
+	const value = {};
+	for (const kind of ['現在就要看得到', '要看得到的', '錯誤訊息', '聚焦']) {
+		const of = out.filter((o) => kind in o);
+		if (of.length) value[kind] = { 幾個: of.length, 前幾個: of.slice(0, 3).map((o) => ({ [kind]: o[kind], 點: o.點.slice(0, 2) })) };
+	}
+	return { ok: out.length === 0, value };
+}
+
+/**
+ * 電腦寬：40 人，第一個人站在場地正中間最後面（外圍框上緣），點他：選到人、工具列出現、新動作表單打開。
+ * 先收起「已開啟」的提示，量的時候場上沒有別的提示。
+ */
+async function crowdedPick(w, h) {
+	await setViewport(w, h);
+	await openBigFlow(`const g = c.fieldGeometry(flow.field);
+		flow = of(c.setPositions(flow, flow.formations[0].id, { [flow.members[0].id]: [0, g.outer.y + 0.25] }));`);
+	await js(`document.querySelector('.field-toasts [aria-label="收起提示"]')?.click()`);
+	await sleep(200);
+	const p = await rectOf('.field-host [data-member-id="m1"]');
+	await click(p.x, p.y);
+	await waitFor(() => js(`return !!document.querySelector('.field-host [role="toolbar"]') && !!document.querySelector('.action-form input[aria-label="開始"]')`));
+	await sleep(300);
+	return p;
+}
+
+for (const [w, h] of [[1440, 900], [1024, 768]]) {
+	await check(`${w}×${h} 選到站在最後面的人（工具列、新動作表單都出現）：表單一打開開始、長度就看得到；能聚焦的東西、場上的人和條號都沒被浮動的元件蓋住（N03、N05）`, async () => {
+		await crowdedPick(w, h);
+		const res = await occlusion({ focus: true, alerts: true, keep: true, now: ['.action-form input[aria-label="開始"]', '.action-form input[aria-label="長度"]'] });
+		await press('Escape');
+		return res;
+	});
+
+	await check(`${w}×${h} 新動作表單開始欄打 99 按 Enter：紅字看得到，不在黏底的「新增動作」後面（N03，故事 67、68）`, async () => {
+		await crowdedPick(w, h);
+		await js(`const el = document.querySelector('.action-form input[aria-label="開始"]');
+			el.focus(); el.value = '99'; el.dispatchEvent(new Event('input', { bubbles: true }));`);
+		await press('Enter');
+		await sleep(300);
+		const has = await js(`return !!document.querySelector('.action-form [role=alert]')`);
+		const res = await occlusion({ alerts: true, keep: true });
+		await press('Escape');
+		return has ? res : { ok: false, value: '沒有紅字' };
+	});
+
+	await check(`${w}×${h} 選到人按「鏡像」跳提示：提示不蓋住場上的人、條號、「正面／裁判」（N23、N24）`, async () => {
+		await crowdedPick(w, h);
+		await js(`[...document.querySelectorAll('.field-host [role="toolbar"] button')].find((b) => b.textContent.trim() === '鏡像').click()`);
+		await sleep(400);
+		const has = await js(`return !!document.querySelector('.field-toasts .toast')`);
+		const res = await occlusion({ focus: true, alerts: true, keep: true });
+		await press('Escape');
+		return has ? res : { ok: false, value: '沒有提示' };
+	});
+
+	await check(`${w}×${h} 拖人中：位置文字、工具列不蓋住場上的人和條號（N05）`, async () => {
+		const p = await crowdedPick(w, h);
+		await mouse('mousePressed', p.x, p.y);
+		for (let i = 1; i <= 4; i++) await mouse('mouseMoved', p.x + 10 * i, p.y + 15 * i);
+		const has = await waitFor(() => js(`return !!document.querySelector('.field-host .readout')`), 10).catch(() => false);
+		const res = await occlusion({ keep: true });
+		await press('Escape');
+		await mouse('mouseReleased', p.x + 40, p.y + 60, 0);
+		await press('Escape');
+		return has ? res : { ok: false, value: '拖了沒出現位置文字' };
+	});
+}
+
+await check('390×844（觸控）手機開檔跳提示：提示不蓋住「正面／裁判」和場上的人；能聚焦的東西都沒被蓋住（N52）', async () => {
+	await setTouchViewport(390, 844);
+	await openSample();
+	const has = await js(`return !!document.querySelector('.phone-view .toast')`);
+	const res = await occlusion({ focus: true, alerts: true, keep: true });
+	await clearTouch();
+	return has ? res : { ok: false, value: '沒有提示' };
+});
+
+
+await check('1440×900 檢視模式右邊欄，40 人的動作、播放頭在動作中間：「八拍表這一列」整列看得到，不疊到動作細節上（N09）', async () => {
+	await setViewport(1440, 900);
+	await openBigFlow();
+	await js(`document.querySelector('[data-action-id="x1"]').click()`);
+	await sleep(200);
+	// 播放頭點到動作中間（八拍尺上，動作條中間那一點）
+	const bar = await rectOf('[data-action-id="x1"]');
+	const ruler = await rectOf('[data-ruler]');
+	await click(bar.x, ruler.y);
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
+	await sleep(400);
+	const r = await js(`const row = document.querySelector('.view-panel .now-eight'), detail = row?.nextElementSibling;
+		if (!row || !detail) return null;
+		const a = row.getBoundingClientRect(), b = detail.getBoundingClientRect();
+		return { 這一列: [Math.round(a.top), Math.round(a.bottom)], 內容高: row.scrollHeight, 框高: row.clientHeight, 動作細節: [Math.round(b.top), Math.round(b.bottom)] };`);
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
+	await sleep(200);
+	return { ok: !!r && r.內容高 <= r.框高 + 1 && r.這一列[1] <= r.動作細節[0], value: r };
+});
+
+for (const [w, h] of [[1440, 900], [1024, 768]]) {
+	await check(`${w}×${h} 段設定改 BPM 後出現「照音樂長度重算八拍數」：第一拍、敲擊測速不被推走（N48）`, async () => {
+		await setViewport(w, h);
+		// 新建一支流程，在最後加一個音樂段：段設定自己打開
+		await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+		await waitFor(async () => {
+			await js(`const name = document.querySelector('.new-flow input[aria-label="流程名字"]');
+				if (!name) return;
+				name.value = '版面'; name.dispatchEvent(new Event('input', { bubbles: true }));
+				document.querySelector('.new-flow button[type=submit]').click();`);
+			await sleep(500);
+			return js(`return !!document.querySelector('button[aria-label="在最後加一段"]')`);
+		});
+		await js(`document.querySelector('button[aria-label="在最後加一段"]').click();
+			await new Promise((r) => setTimeout(r, 50));
+			[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '＋音樂段').click();`);
+		await waitFor(() => js(`return !!document.querySelector('.seg-dialog')`));
+		// 有音樂檔才有重算鈕：載入一段 8 秒的靜音 wav，關掉再打開段設定（剛載入時重算鈕本來就在）
+		await js(`const rate = 8000, n = rate * 8, b = new DataView(new ArrayBuffer(44 + n * 2));
+			const str = (o, s) => [...s].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+			str(0, 'RIFF'); b.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt '); b.setUint32(16, 16, true);
+			b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, rate, true); b.setUint32(28, rate * 2, true);
+			b.setUint16(32, 2, true); b.setUint16(34, 16, true); str(36, 'data'); b.setUint32(40, n * 2, true);
+			const input = document.querySelector('.seg-dialog label.file input');
+			const dt = new DataTransfer();
+			dt.items.add(new File([b.buffer], '靜音.wav', { type: 'audio/wav' }));
+			input.files = dt.files;
+			input.dispatchEvent(new Event('change', { bubbles: true }));`);
+		await waitFor(() => js(`const d = document.querySelector('.seg-dialog'); return !!d && !d.textContent.includes('沒有音樂檔')`));
+		await js(`document.querySelector('.seg-dialog .close').click();`);
+		await waitFor(() => js(`return !document.querySelector('.seg-dialog')`));
+		await js(`[...document.querySelectorAll('.timeline .seg')].at(-1).click();`);
+		await waitFor(() => js(`const d = document.querySelector('.seg-dialog'); return !!d && !d.textContent.includes('沒有音樂檔')`));
+		await sleep(200);
+		const spots = () => js(`const at = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; };
+			const first = [...document.querySelectorAll('.seg-dialog label')].find((l) => l.textContent.trim().startsWith('第一拍')).querySelector('input');
+			const tap = [...document.querySelectorAll('.seg-dialog button')].find((b) => b.textContent.trim() === '敲擊測速');
+			return { 第一拍: at(first), 敲擊測速: at(tap) };`);
+		const before = await spots();
+		const recalcShown = `return [...document.querySelectorAll('.seg-dialog button')].some((b) => b.textContent.trim() === '照音樂長度重算八拍數' && b.checkVisibility({ visibilityProperty: true }))`;
+		const shownBefore = await js(recalcShown);
+		await js(`const i = [...document.querySelectorAll('.seg-dialog label')].find((l) => l.textContent.trim().startsWith('BPM')).querySelector('input');
+			i.value = String(Number(i.value) === 120 ? 130 : 120); i.dispatchEvent(new Event('change', { bubbles: true }));`);
+		await sleep(200);
+		const shown = await js(recalcShown);
+		const after = await spots();
+		await press('Escape');
+		return { ok: !shownBefore && shown && JSON.stringify(before) === JSON.stringify(after), value: { 改之前就有重算鈕: shownBefore, 重算鈕出現: shown, 之前: before, 之後: after } };
+	});
+}
 
 if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
