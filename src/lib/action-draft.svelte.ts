@@ -25,7 +25,7 @@ import {
 	type Segment
 } from '#lib/core';
 import type { Ask } from '#lib/ask.svelte.js';
-import type { EditorSession } from '#lib/editor-session.svelte.js';
+import type { EditorSession, UpdateReason } from '#lib/editor-session.svelte.js';
 
 /** 播放頭（全域秒數）。 */
 interface Playhead {
@@ -314,11 +314,13 @@ export class ActionDraft {
 	 * session 換了流程或選取、播放頭動了：草稿跟上。
 	 * 換了選到的動作（或回到新增）：草稿照動作重設；紅字和問題收掉。
 	 * 回到新增時拿回去選別的動作前收起來的草稿（復原掉剛新增的動作時，拿回送出的草稿），沒有就是空白的。
+	 * reason：session 為什麼叫（播放頭動了是沒給）。只有復原（undo）才算「復原掉剛新增的動作」；
+	 * 按刪除、段縮短刪掉它不算，表單不帶它的字（N20）。
 	 * 新增時：自訂任務角色改名、刪掉，草稿裡的人跟著換名字、變成沒有任務；人跟著選的人；
 	 * 開始和長度跟著播放頭那一格（打過字、正有焦點的欄位不跟；換到另一種段時打過字的也跟）。
 	 * （改動作時草稿照動作重設：動作裡的人核心已經改好了。）
 	 */
-	follow() {
+	follow(reason?: UpdateReason) {
 		const flow = this.#session.flow;
 		if (!flow) {
 			this.#seen = null;
@@ -335,7 +337,7 @@ export class ActionDraft {
 		if (!seen || action !== seen.action) {
 			if (seen && !seen.action) this.#kept = this.#keep();
 			if (action?.id !== seen?.action?.id) this.#categoryChanged = null;
-			const undone = seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
+			const undone = reason === 'undo' && seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
 			// 復原掉剛新增的動作：新增時清掉的人也選回來（草稿的人跟著選取）
 			if (undone) this.#session.selectMembers(this.#added!.kept.draft.members.map((m) => m.memberId));
 			this.#reset(undone ? this.#added!.kept : this.#kept);

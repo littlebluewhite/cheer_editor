@@ -48,8 +48,23 @@ export function charStart(text: string, i: number): number {
 	return start;
 }
 
-/** 太長時的原因（「動作名稱最多 20 個字」）；沒超過是 null。頭尾空白不算。 */
-export function tooLong(field: LimitedText, text: string): string | null {
+/**
+ * 這一格最多可以有幾個字：上限，或原本的字（before，開檔進來就超過的）有幾個字，取大的。頭尾空白不算。
+ * 流程核心（tooLong）和欄位旁邊的字數（CharCount）都用它，規則只有一條（N08）。
+ */
+export function charLimit(field: LimitedText, before = ''): number {
+	return Math.max(MAX_CHARS[field], charCount(before.trim()));
+}
+
+/**
+ * 太長時的原因（「動作名稱最多 20 個字」）；沒超過是 null。頭尾空白不算。
+ * before：改之前的字。照 HTML 的 tooLong：舊的字超過上限照收，但這次的改動不能讓它更長（N08）。
+ */
+export function tooLong(field: LimitedText, text: string, before = ''): string | null {
 	const max = MAX_CHARS[field];
-	return charCount(text.trim()) > max ? `${LABELS[field]}最多 ${max} 個字` : null;
+	const limit = charLimit(field, before);
+	if (charCount(text.trim()) <= limit) return null;
+	return limit > max
+		? `${LABELS[field]}最多 ${max} 個字（原本就有 ${limit} 個字，不能再變長）`
+		: `${LABELS[field]}最多 ${max} 個字`;
 }

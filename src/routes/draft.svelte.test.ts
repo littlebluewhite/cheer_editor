@@ -220,18 +220,22 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 		expect(screen.getByText('未存')).toBeTruthy();
 	});
 
-	it('停手 1 秒存草稿時還在打字：先送出，草稿裡有打的字；焦點還在欄位裡', async () => {
-		const { drafts } = await opened();
+	it('停手 1 秒存草稿時還在打字（N01）：不送出，流程、復原、草稿都沒有打到一半的字；焦點和字還在欄位裡', async () => {
+		const { drafts, session } = await opened();
 		vi.useFakeTimers();
 		try {
 			// 先改了別的（備註），停手 1 秒就要存草稿；這 1 秒裡去打名稱
 			const note = screen.getByLabelText('備註');
 			await fireEvent.input(note, { target: { value: '慢慢來' } });
 			await fireEvent.change(note);
+			const before = session.flow;
 			const name = await typeName('高 Lib');
-			await vi.advanceTimersByTimeAsync(1000);
-			expect(draftName(drafts.latest())).toBe('高 Lib');
+			await vi.advanceTimersByTimeAsync(1100);
+			expect(session.flow).toBe(before);
+			expect(draftName(drafts.latest())).toBe('Lib');
 			expect(document.activeElement).toBe(name);
+			expect((name as HTMLInputElement).value).toBe('高 Lib');
+			expect(screen.getByText('未存')).toBeTruthy();
 		} finally {
 			vi.useRealTimers();
 		}
@@ -246,8 +250,11 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 				document.dispatchEvent(new Event('visibilitychange'));
 			}
 		]
-	])('%s：送出打到一半的字，馬上存草稿（不等 1 秒）', async (_, hide) => {
+	])('%s（N01）：不送出打到一半的字（跟停手 1 秒一樣），已經送出的改動照樣馬上存草稿', async (_, hide) => {
 		const { drafts, session } = await opened();
+		const note = screen.getByLabelText('備註');
+		await fireEvent.input(note, { target: { value: '慢慢來' } });
+		await fireEvent.change(note);
 		await typeName('高 Lib');
 		try {
 			hide();
@@ -255,8 +262,18 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 		} finally {
 			Reflect.deleteProperty(document, 'visibilityState');
 		}
+		expect(session.flow!.actions[0].name).toBe('Lib');
+		expect(draftName(drafts.latest())).toBe('Lib');
+		const r = readFlowFile(drafts.latest()!);
+		expect(r.kind === 'ok' && r.flow.actions[0].note).toBe('慢慢來');
+	});
+
+	it('按存檔（⌘S）：打到一半的字先送出，存的檔有它', async () => {
+		const { session } = await opened();
+		await typeName('高 Lib');
+		await fireEvent.keyDown(window, { key: 's', metaKey: true });
+		await flush();
 		expect(session.flow!.actions[0].name).toBe('高 Lib');
-		expect(draftName(drafts.latest())).toBe('高 Lib');
 	});
 
 	it('切回這個分頁（visibilitychange 變 visible）：不送出', async () => {

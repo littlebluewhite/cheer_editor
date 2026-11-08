@@ -181,12 +181,9 @@ function checked(flow: Flow, before: Action | undefined, action: Action, options
 	return people ? { kind: 'blocked', message: people } : settled;
 }
 
-/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收（名稱會去掉頭尾空白，跟去掉空白的比）。 */
+/** 名稱、備註太長；開檔進來就超過上限的照收，改了不能更長（N08）。 */
 function textProblem(before: Action | undefined, action: Action): string | null {
-	return (
-		(action.name !== before?.name.trim() ? tooLong('actionName', action.name) : null) ??
-		(action.note !== before?.note ? tooLong('note', action.note) : null)
-	);
+	return tooLong('actionName', action.name, before?.name) ?? tooLong('note', action.note, before?.note);
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */

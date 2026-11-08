@@ -227,7 +227,7 @@ export function updateMember(
 	if (!member) return blocked('找不到這個隊員');
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
 	// 名字有改才檢查：開檔進來名字太長的人還是可以改性別和全局角色。
-	const problem = updated.name === member.name ? null : memberNameProblem(updated.name);
+	const problem = updated.name === member.name ? null : memberNameProblem(updated.name, member.name);
 	if (problem) return blocked(problem);
 	// 改名字當成可能換了人：先照「換人」走收尾，看會動到哪些紀錄（他在的組的、他自己的）。
 	const swapped = updated.name === member.name ? [] : flow.actions.map((a) => replaced(flow, a, id));
@@ -462,10 +462,10 @@ function samePlace(a: Position, b: Position): boolean {
 	return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
 }
 
-/** 名字的毛病：空的、太長；沒問題是 null。名字先去掉前後空白再傳進來。 */
-function memberNameProblem(name: string): string | null {
+/** 名字的毛病：空的、太長（before：改之前的名字，開檔進來就超過的可以留著，不能更長）；沒問題是 null。名字先去掉前後空白再傳進來。 */
+function memberNameProblem(name: string, before?: string): string | null {
 	if (!name) return '請填隊員名字';
-	return tooLong('memberName', name);
+	return tooLong('memberName', name, before);
 }
 
 /** 下一個沒用過的 m 編號。 */
