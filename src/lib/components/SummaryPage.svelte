@@ -73,16 +73,14 @@
 		{ key: 'completion', label: '完成率' }
 	] as const;
 
-	let period = $state<Period>('today');
-	let practice = $state<PracticeKind | 'all'>('all');
-	let rate = $state<(typeof RATES)[number]['key']>('success');
-
-	const filter = $derived({ ...periodRange(date, period), practice: practice === 'all' ? undefined : practice });
+	/** 篩選放在 session：切到記錄、編排再回來還是它。 */
+	const picks = $derived(session.view.summary);
+	const filter = $derived({ ...periodRange(date, picks.period), practice: picks.practice === 'all' ? undefined : picks.practice });
 	const blocks = $derived(recordableActions(flow).map((action) => ({ action, table: rateTable(flow, action, filter) })));
 
 	/** 一格：大字的 %（沒有紀錄是 null）和次數。 */
 	function phaseCell(t: Tally): { pct: number | null; count: number } {
-		return { pct: rate === 'success' ? successPercent(t) : completionPercent(t), count: t.marked };
+		return { pct: picks.rate === 'success' ? successPercent(t) : completionPercent(t), count: t.marked };
 	}
 	const wholeCell = (c: RateCounts) => ({ pct: percent(c.whole.clean, c.whole.whole), count: c.whole.whole });
 	const cellText = (c: { pct: number | null; count: number }) => (c.pct === null ? '—' : `${c.pct}% ${c.count} 次`);
@@ -131,19 +129,19 @@
 			<div class="seg" role="group" aria-label="期間">
 				<span>期間</span>
 				{#each PERIODS as p (p.key)}
-					<button type="button" aria-pressed={period === p.key} onclick={() => (period = p.key)}>{p.label}</button>
+					<button type="button" aria-pressed={picks.period === p.key} onclick={() => (picks.period = p.key)}>{p.label}</button>
 				{/each}
 			</div>
 			<div class="seg" role="group" aria-label="練法">
 				<span>練法</span>
 				{#each PRACTICES as p (p.key)}
-					<button type="button" aria-pressed={practice === p.key} onclick={() => (practice = p.key)}>{p.label}</button>
+					<button type="button" aria-pressed={picks.practice === p.key} onclick={() => (picks.practice = p.key)}>{p.label}</button>
 				{/each}
 			</div>
 			<div class="seg" role="group" aria-label="大字看">
 				<span>大字看</span>
 				{#each RATES as r (r.key)}
-					<button type="button" aria-pressed={rate === r.key} onclick={() => (rate = r.key)}>{r.label}</button>
+					<button type="button" aria-pressed={picks.rate === r.key} onclick={() => (picks.rate = r.key)}>{r.label}</button>
 				{/each}
 			</div>
 		</div>
@@ -185,7 +183,7 @@
 							{#if phases.length > 1}
 								<tr class="whole">
 									<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
-									<th scope="row">{rate === 'completion' ? '整次成功率' : '整次'}</th>
+									<th scope="row">{picks.rate === 'completion' ? '整次成功率' : '整次'}</th>
 									{#each table.columns as col (col.who)}
 										{@render cellButton(action.id, col.who, null, `${col.name} 整次`, wholeCell(col))}
 									{/each}

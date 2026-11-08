@@ -236,6 +236,9 @@
 	function toggleInsert(e: MouseEvent) {
 		const anchor = e.currentTarget as HTMLElement;
 		insertAsk.clear();
+		// 打開時從預設開始：上次在口號段打的秒數，換到音樂段不會變成八拍數（N30）
+		insertCount = '1';
+		insertUnit = 'eight';
 		inserting = inserting ? null : { anchor };
 	}
 

@@ -139,7 +139,7 @@
 	let view = $state<'edit' | 'practice'>('edit');
 	/** 練習記在哪一天：預設今天，可以改（練完補打）；切換編排、練習時留著，不存進流程檔。 */
 	let practiceDate = $state(localDate());
-	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；練習畫面照這個重開。 */
+	/** 第幾份打開的流程（開檔、新建、救回草稿各算一次）；編排區和練習畫面照這個重開。 */
 	let opened = $state(0);
 	/** 首頁按了「丟掉」的那支最近的流程：先問。 */
 	let discarding = $state.raw<RecentFlow | null>(null);
@@ -286,16 +286,10 @@
 	}
 
 
-	/** 右邊欄的兩頁（動作、隊員）：換流程時捲回最上面。 */
-	let actionPanel = $state<HTMLElement>();
-	let membersPanel = $state<HTMLElement>();
-
-	// 換成另一支流程（新建、開檔、救回草稿）：練習畫面重開、對話框都關掉。
-	// 換上流程由編輯器 module 的流程檔做；選取、提示由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
+	// 換成另一支流程（新建、開檔、救回草稿）：編排區和練習畫面重開（opened 的 {#key}）、對話框都關掉。
+	// 換上流程由編輯器 module 的流程檔做；選取、提示、session.view 由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
 	editor.file.onswitch = () => {
 		opened++;
-		// 右邊欄捲回最上面：看得到「選人」，不停在上一支流程捲到的地方
-		for (const panel of [actionPanel, membersPanel]) if (panel) panel.scrollTop = 0;
 		me = session.flow ? loadFlowSetting('me', session.flow.name) : '';
 		openSegmentId = null;
 		settingsOpen = false;
@@ -723,6 +717,9 @@
 			{#if !narrow && transportBelow}{@render transport()}{/if}
 		</header>
 
+		<!-- 編排區和練習畫面：換一份流程就整個重開。時間軸、泳道、右邊欄的捲動，場地的放大，還沒送出的加隊員名單
+		     都不帶到別的檔（跟著流程、切頁要留的放在 session.view） -->
+		{#key opened}
 		{#if narrow}
 			{#if view === 'edit'}
 				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面八拍表這一列。只能看、只能播放；場上的人拖不動 -->
@@ -914,14 +911,13 @@
 						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
 					>
 				</div>
-				<div class="panel" id="panel-action" bind:this={actionPanel} role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
+				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={session.viewing || editor.inspectorTab !== 'action'}>
 					<MemberPicker />
 					<WalkForm />
 					<ActionForm {cellAt} />
 				</div>
-				<div class="panel" id="panel-members" bind:this={membersPanel} role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
-					<!-- 換一份流程就重開：上一支沒送出的加隊員名單不帶過去 -->
-					{#key opened}<MemberPanel />{/key}
+				<div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden={session.viewing || editor.inspectorTab !== 'members'}>
+					<MemberPanel />
 				</div>
 				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
 				{#if session.viewing}
@@ -957,13 +953,11 @@
 		{/if}
 		{#if view === 'practice'}
 			<div class="practice-host">
-				<!-- 換一份流程就重開，點了還沒存的記號不會帶到別的檔 -->
-				{#key opened}
-					<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
-				{/key}
+				<Practice date={practiceDate} ondate={(d) => (practiceDate = d)} {narrow} />
 				{@render noticeToast()}
 			</div>
 		{/if}
+		{/key}
 	</div>
 	<!-- 大的 iPad 拿直的（不算窄）：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
