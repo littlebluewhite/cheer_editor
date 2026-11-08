@@ -86,7 +86,7 @@ describe('插入八拍', () => {
 		await fireEvent.input(screen.getByLabelText('插入幾個'), { target: { value: '2' } });
 		await fireEvent.click(screen.getByRole('button', { name: '插入' }));
 		// 選的單位是八拍：照八拍講（T09）
-		expect(screen.getByRole('alert').textContent).toBe('「騰翻」會超過這段的結尾，最多插 1 個八拍');
+		expect(screen.getByRole('alert').textContent).toBe('「騰翻」會超過這段的結尾，最多插 1 個八拍又 4 拍');
 		expect(session.flow).toBe(before);
 	});
 

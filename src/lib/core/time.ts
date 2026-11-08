@@ -233,8 +233,10 @@ export function atTextWithUnit(segment: Segment, at: number): string {
 
 /** 播放器的時間寫法：秒數寫成「1:05.3」。規則警告也用這個，教練對得起來。 */
 export function clockText(sec: number): string {
-	const m = Math.floor(sec / 60);
-	const s = (sec - m * 60).toFixed(1).padStart(4, '0');
+	// 先取到 0.1 秒再分分秒：59.95 秒是 1:00.0，不是 0:60.0
+	const tenths = Math.round(sec * 10);
+	const m = Math.floor(tenths / 600);
+	const s = ((tenths - m * 600) / 10).toFixed(1).padStart(4, '0');
 	return `${m}:${s}`;
 }
 

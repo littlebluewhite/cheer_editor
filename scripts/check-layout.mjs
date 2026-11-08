@@ -2377,8 +2377,9 @@ await check('1440×900 拖選到的人：左上角的位置文字排在工具列
 	await mouse('mouseReleased', d.x + 40, d.y + 20, 0);
 	await press('Escape');
 	const { 文字: t, 工具列: b } = r;
-	const overlap = !!t && !!b && t.左 < b.右 && b.左 < t.右 && t.上 < b.下 && b.上 < t.下;
-	return { ok: !!t && !!b && !overlap, value: r };
+	// 文字要真的看得到（有大小），而且整個在工具列下面
+	const shown = !!t && t.右 - t.左 > 20 && t.下 - t.上 > 10;
+	return { ok: shown && !!b && t.上 >= b.下, value: r };
 });
 
 await check('1024×768 選人工具列的「跟第 [_] 張一樣」：數字框和字排一行、工具列不換行、整條在場地裡', async () => {
@@ -2450,7 +2451,7 @@ await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正�
 
 // ---------- 第 5 批的文字（#231） ----------
 
-await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭比內容大（至少 15 px）、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
+await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭至少 15 px、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
 	await setTouchViewport(390, 844);
 	await openSample();
 	// 一個八拍一個八拍往後跳，跳到口號段那一列

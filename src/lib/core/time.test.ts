@@ -3,6 +3,7 @@ import {
 	addSegment,
 	atText,
 	atTextWithUnit,
+	clockText,
 	createFlow,
 	farthestLegal,
 	lengthText,
@@ -355,6 +356,14 @@ describe('拖過頭停在最遠的合法格子', () => {
 
 	it('跨段：停在別段的格子上', () => {
 		expect(farthestLegal(flow, 0, 50, upTo(27))).toEqual({ to: { segmentId: 's2', at: 14 }, clamped: true });
+	});
+});
+
+describe('clockText', () => {
+	it('59.95 秒進位成 1:00.0，不會寫成 0:60.0', () => {
+		expect(clockText(59.95004)).toBe('1:00.0');
+		expect(clockText(119.96)).toBe('2:00.0');
+		expect(clockText(130)).toBe('2:10.0');
 	});
 });
 

@@ -68,6 +68,8 @@ function roomText(segment: Segment, room: number, unit: 'eight' | 'beat'): strin
 	const beats = `最多插 ${lengthTextWithUnit(segment, room)}`;
 	if (segment.kind !== 'music' || unit !== 'eight') return beats;
 	const eights = Math.floor(room / HALF_BEATS_PER_EIGHT);
-	return eights > 0 ? `最多插 ${eights} 個八拍` : `${beats}（不到 1 個八拍，單位改成拍）`;
+	if (eights === 0) return `${beats}（不到 1 個八拍，單位改成拍）`;
+	const rest = room - eights * HALF_BEATS_PER_EIGHT;
+	return `最多插 ${eights} 個八拍${rest ? `又 ${lengthTextWithUnit(segment, rest)}` : ''}`;
 }
 
