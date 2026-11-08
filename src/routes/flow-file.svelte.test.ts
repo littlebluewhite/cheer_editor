@@ -153,7 +153,9 @@ describe('開檔', () => {
 		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
 		await openFile(writeFlowFile(other, {}), '開啟');
 		expect(screen.getByText('另一支')).toBeTruthy();
-		expect(panels.map((p) => p.scrollTop)).toEqual([0, 0]);
+		// 編排區整個重開（#233 E 群）：右邊欄是新的，從最上面開始
+		const after = [...document.querySelectorAll('.panel')];
+		expect(after.map((p) => p.scrollTop)).toEqual([0, 0]);
 	});
 
 	it('開另一個流程檔：上一支沒送出的新動作名稱、加隊員名單不帶過去', async () => {
@@ -168,6 +170,8 @@ describe('開檔', () => {
 		expect(screen.getByText('另一支')).toBeTruthy();
 		expect((screen.getByLabelText(/^名字/) as HTMLInputElement).value).toBe('');
 		await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
+		// 編排區整個重開：新動作表單收起來，打開也是空的
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		expect((screen.getByLabelText('名稱') as HTMLInputElement).value).toBe('');
 	});
 
