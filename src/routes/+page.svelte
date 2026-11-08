@@ -21,6 +21,7 @@
 	} from '#lib/core';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
+	import { both, KEYS } from '#lib/shortcuts.js';
 	import { flushSync, onMount, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
@@ -649,7 +650,7 @@
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if unsaved}<span class="unsaved" title="有還沒存的修改（⌘S／Ctrl+S 存檔）">未存</span>{/if}</span
+					>{#if unsaved}<span class="unsaved" title={`有還沒存的修改（${both(KEYS.save)} 存檔）`}>未存</span>{/if}</span
 				>
 				<div class="view" role="group" aria-label="編排｜練習">
 					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
@@ -685,7 +686,7 @@
 					<button
 						type="button"
 						class="ghost"
-						title={stepTitle('復原', session.undoLabel, '⌘Z／Ctrl+Z')}
+						title={stepTitle('復原', session.undoLabel, both(KEYS.undo))}
 						disabled={session.viewing || !session.canUndo}
 						onclick={undo}
 						><Icon name="undo" /><span class="narrow-hide">復原</span></button
@@ -693,7 +694,7 @@
 					<button
 						type="button"
 						class="ghost"
-						title={stepTitle('重做', session.redoLabel, '⌘⇧Z／Ctrl+Shift+Z、Ctrl+Y')}
+						title={stepTitle('重做', session.redoLabel, both(KEYS.redo))}
 						disabled={session.viewing || !session.canRedo}
 						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
 					>
@@ -716,7 +717,7 @@
 				{:else}
 					<button type="button" class="ghost" onclick={() => editor.file.startNew()}><Icon name="new" />新建</button>
 				{/if}
-				<button type="button" class="primary save" title="⌘S／Ctrl+S" onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
+				<button type="button" class="primary save" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
 			<!-- 播放區換到第二行時放在按鈕後面：Tab 照畫面由上到下 -->
 			{#if !narrow && transportBelow}{@render transport()}{/if}
@@ -1101,14 +1102,14 @@
 						items={[]}
 						confirmLabel="丟掉"
 						onconfirm={() => {
-							const id = f.id;
+							const { id, name } = f; // 關掉對話框後 f 不能再讀（Svelte derived_inert）
 							discarding = null;
 							discardNote = '';
 							void editor.file.discardRecent(id).then((outcome) => {
 								discardNote = {
-									dropped: `已丟掉「${f.name}」的草稿`,
-									busy: `另一個分頁正在編「${f.name}」，沒有丟掉`,
-									failed: `「${f.name}」的草稿刪不掉，沒有丟掉`
+									dropped: `已丟掉「${name}」的草稿`,
+									busy: `另一個分頁正在編「${name}」，沒有丟掉`,
+									failed: `「${name}」的草稿刪不掉，沒有丟掉`
 								}[outcome];
 							});
 						}}

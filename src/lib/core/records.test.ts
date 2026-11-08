@@ -22,6 +22,10 @@ import {
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
+	recordsLoss,
+	recordsPatch,
+	redoRecords,
+	undoRecords,
 	rateTable,
 	setSquad,
 	squadName,
@@ -377,7 +381,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		expect(carried.actions.map((a) => [a.id, a.successRate])).toEqual([['x1', undefined]]);
 	});
 
-	it('換上的流程有、現在沒有的紀錄不會回來', () => {
+	it('只帶現在的：換上的流程有、現在沒有的紀錄不帶（這一步清掉的由 undoRecords 加回）', () => {
 		const current = recorded();
 		const off = flowOf(clearPhaseBeats(current, 'x2', 0, 999, { confirmed: true }));
 		const cleared = flowOf(addPhase(off, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
@@ -452,6 +456,56 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 		const older = flowOf(updateAction(sample(), 'x1', { name: '舊的名字' }));
 		const current = flowOf(updateAction(older, 'x1', { name: '新的名字' }));
 		expect(carryRecords(older, current)).toBe(older);
+	});
+});
+
+describe('復原把這一步清掉的紀錄加回來、重做再清一次（ADR 0007）', () => {
+	/** x1：t1 第 1 組 ✓✓△、t2 第 2 組只有上法 ✓、t3 第 1 組只有下法 ✗。刪掉下法：t1 少了 △、t3 整筆不見。 */
+	function stepped(): { before: Flow; after: Flow } {
+		let before = sample();
+		before = flowOf(recordAttempt(before, 'x1', drill({ p1: '✓', p2: '✓', p3: '△' })));
+		before = flowOf(recordAttempt(before, 'x1', drill({ p1: '✓' }, { who: 'g2', whole: false })));
+		before = flowOf(recordAttempt(before, 'x1', drill({ p3: '✗' }, { whole: false })));
+		return { before, after: flowOf(deletePhase(before, 'x1', 'p3', { confirmed: true })) };
+	}
+
+	it('沒有拿掉紀錄的一步：沒有要加回去的', () => {
+		const { before } = stepped();
+		expect(recordsPatch(before, flowOf(updateAction(before, 'x1', { name: '新的名字' })))).toEqual([]);
+	});
+
+	it('這一步之後用「記」改了少了記號的那一次：加回拿掉的那格，改過的照改過的', () => {
+		const { before, after } = stepped();
+		const changed = flowOf(changeAttempt(after, 'x1', 't1', { p1: '△', p2: '✓' }));
+		const undone = undoRecords(before, after, changed);
+		expect(recordsOf(undone).map((r) => [r.id, r.marks])).toEqual([
+			['t1', { p1: '△', p2: '✓', p3: '△' }],
+			['t2', { p1: '✓' }],
+			['t3', { p3: '✗' }]
+		]);
+	});
+
+	it('這一步之後用「記」刪掉的那一次，復原不加回來', () => {
+		const { before, after } = stepped();
+		const fewer = flowOf(deleteAttempt(after, 'x1', 't1'));
+		expect(recordsOf(undoRecords(before, after, fewer)).map((r) => r.id)).toEqual(['t2', 't3']);
+	});
+
+	it('復原後又改了加回來的那一次，重做：只再拿掉這一步拿掉的那格', () => {
+		const { before, after } = stepped();
+		const undone = undoRecords(before, after, after);
+		const changed = flowOf(changeAttempt(undone, 'x1', 't1', { p1: '△', p2: '✓', p3: '✓' }));
+		expect(recordsOf(redoRecords(before, after, changed)).map((r) => [r.id, r.marks])).toEqual([
+			['t1', { p1: '△', p2: '✓' }],
+			['t2', { p1: '✓' }]
+		]);
+	});
+
+	it('拿掉了什麼：整筆不見的、少了記號的（改之前的樣子）', () => {
+		const { before, after } = stepped();
+		const { removed, stripped } = recordsLoss(recordsOf(before), recordsOf(after));
+		expect(removed.map((r) => r.id)).toEqual(['t3']);
+		expect(stripped.map((r) => r.id)).toEqual(['t1']);
 	});
 });
 

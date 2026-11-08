@@ -2,8 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import {
 	addMembers,
+	addPhase,
 	deleteAction,
 	deleteMember,
+	deletePhase,
 	markPhaseBeats,
 	recordAttempt,
 	setSquad,
@@ -72,7 +74,7 @@ describe('刪動作', () => {
 		const flow = recorded();
 		expect(deleteAction(flow, 'x2')).toEqual({
 			kind: 'confirm',
-			message: '刪掉動作「騰翻」會清掉 2 次紀錄（紀錄救不回來）',
+			message: '刪掉動作「騰翻」會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）',
 			items: []
 		});
 		expect(flowOf(deleteAction(flow, 'x2', { confirmed: true })).actions.map((a) => a.id)).toEqual(['x1']);
@@ -81,14 +83,14 @@ describe('刪動作', () => {
 	it('段縮短連帶刪動作：確認訊息加上會清掉幾次', () => {
 		const r = updateSegment(recorded(), 's1', { eights: 2 });
 		expect(r.kind).toBe('confirm');
-		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（紀錄救不回來）');
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
 	});
 
 	it('段縮短裁短動作：環節照動作變短的規則切短或刪掉；有紀錄的環節會不見時，確認訊息寫會清掉幾次', () => {
 		// 1 拍 = 2 個半拍：x1 裁短成 1 拍，p1（1-1）留著，p2（1-2 到 1-3）、p3（1-4）刪掉；t3 只記了 p2，整次不見。x2 在段外。
 		expect(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 })).toEqual({
 			kind: 'confirm',
-			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 3 次紀錄（紀錄救不回來）',
+			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
 			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）']
 		});
 		const flow = flowOf(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 }, { confirmed: true }));
@@ -100,7 +102,7 @@ describe('刪動作', () => {
 		// 3 拍：p3（1-4）刪掉；那次還記了 p1，紀錄留著
 		const flow = flowOf(recordAttempt(sample(), 'x1', drill('g1', { p1: '✓', p3: '✗' })));
 		const r = updateSegment(flow, 's1', { eights: 1, lastBeats: 3 });
-		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會清掉 1 次的記號（紀錄救不回來）');
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會清掉 1 次的記號（清掉的紀錄按「復原」會回來）');
 		const after = flowOf(updateSegment(flow, 's1', { eights: 1, lastBeats: 3 }, { confirmed: true }));
 		expect(action(after, 'x1').successRate!.records.map((r) => r.marks)).toEqual([{ p1: '✓' }]);
 	});
@@ -110,14 +112,28 @@ describe('刪動作', () => {
 		const flow = flowOf(recordAttempt(recorded(), 'x1', drill('g1', { p1: '✓', p3: '✗' })));
 		const r = updateSegment(flow, 's1', { eights: 1, lastBeats: 3 });
 		expect(r.kind === 'confirm' && r.message).toBe(
-			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄和 1 次的記號（紀錄救不回來）'
+			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來）'
+		);
+	});
+
+	it('段縮短：只剩空著的環節的那一次整筆不見，另一次少了記號，兩個次數都照真的算（N26）', () => {
+		// t1 上法 ✗、中段和下法空著；刪掉上法、在 1-1 加一個新的上法，t1 只剩空著的中段、下法。t2 新上法 ✓、下法 ✓。
+		let flow = flowOf(recordAttempt(sample(), 'x1', drill('g1', { p1: '✗' })));
+		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
+		const added = addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 2 } });
+		if (added.kind !== 'ok') throw new Error('加不了環節');
+		flow = flowOf(recordAttempt(added.flow, 'x1', drill('g1', { [added.id]: '✓', p3: '✓' })));
+		// 1 拍：中段、下法刪掉；t1 整筆不見，t2 少了下法的記號
+		const r = updateSegment(flow, 's1', { eights: 1, lastBeats: 1 });
+		expect(r.kind === 'confirm' && r.message).toBe(
+			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 1 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來）'
 		);
 	});
 
 	it('段縮短裁短動作，切到的環節沒有記號：確認訊息不說紀錄', () => {
 		// 3 拍：p3（1-4）刪掉，沒有記號
 		const r = updateSegment(recorded(), 's1', { eights: 1, lastBeats: 3 });
-		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（紀錄救不回來）');
+		expect(r.kind === 'confirm' && r.message).toBe('音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
 		expect(r.kind === 'confirm' && r.items[0]).toBe('裁短：動作「技巧·Lib」（1-1 起）8 拍 → 3 拍，會刪掉 1 個環節');
 	});
 });
@@ -127,7 +143,7 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		const flow = recorded();
 		expect(updateAction(flow, 'x1', { category: 'tumbling' })).toEqual({
 			kind: 'confirm',
-			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄（紀錄救不回來）',
+			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
 			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次']
 		});
 		const changed = action(flowOf(updateAction(flow, 'x1', { category: 'tumbling' }, { confirmed: true })), 'x1');
@@ -138,7 +154,7 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 	it('騰翻換成技巧：要確認；確定後清掉紀錄，動作裡的人全部進第 1 組', () => {
 		const flow = recorded();
 		const r = updateAction(flow, 'x2', { category: 'stunt' });
-		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄（紀錄救不回來）');
+		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
 		const changed = flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true }));
 		expect(ids(changed, 'x2')).toEqual([]);
 		expect(squadNumbers(action(changed, 'x2'))).toEqual([1, 1]);
@@ -149,11 +165,11 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 	});
 });
 
-describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重算（紀錄救不回來）', () => {
+describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重算（清掉的紀錄按「復原」會回來）', () => {
 	it('設組把小美換到第 3 組：問保留還是清掉，列出那組幾次', () => {
 		expect(setSquad(recorded(), 'x1', ['m1'], 3)).toEqual({
 			kind: 'choose',
-			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？（紀錄救不回來）',
+			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
 			items: ['第 1 組 小美：2 次']
 		});
 	});
@@ -197,7 +213,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		const flow = recorded();
 		expect(updateAction(flow, 'x1', { members })).toEqual({
 			kind: 'confirm',
-			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄（紀錄救不回來）',
+			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
 			items: ['第 2 組 小芳：1 次']
 		});
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })), 'x1')).toEqual(['t1', 't3']);
@@ -210,7 +226,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		const r = updateAction(flow, 'x1', { members, length: 8 });
 		expect(r.kind).toBe('choose');
 		expect(r.kind === 'choose' && r.message).toBe(
-			'動作「技巧·Lib」變短，會拿掉 1 個拍點；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（紀錄救不回來）'
+			'動作「技巧·Lib」變短，會拿掉 1 個拍點；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）'
 		);
 		const kept = action(flowOf(updateAction(flow, 'x1', { members, length: 8 }, { records: 'keep' })), 'x1');
 		expect(kept.cues).toEqual([]);
@@ -224,7 +240,7 @@ describe('騰翻、跳躍的動作拿掉有紀錄的人', () => {
 		const members = [{ memberId: 'm1', role: '騰翻' }];
 		expect(updateAction(flow, 'x2', { members })).toEqual({
 			kind: 'confirm',
-			message: '動作「騰翻」換了人，會清掉 1 次紀錄（紀錄救不回來）',
+			message: '動作「騰翻」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
 			items: ['小A：1 次']
 		});
 		expect(ids(flowOf(updateAction(flow, 'x2', { members }, { confirmed: true })), 'x2')).toEqual(['t4']);
@@ -235,7 +251,7 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 	it('問保留還是清掉，列出他在的組和他自己的紀錄', () => {
 		expect(updateMember(recorded(), 'm1', { name: '小芳芳' })).toEqual({
 			kind: 'choose',
-			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（紀錄救不回來）',
+			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（清掉的紀錄按「復原」會回來）',
 			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
 		});
 	});
@@ -273,7 +289,7 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 		const flow = recorded();
 		const r = deleteMember(flow, 'm2');
 		expect(r.kind === 'choose' && r.message).toBe(
-			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄（紀錄救不回來），「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
+			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來），「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
 		);
 		const kept = flowOf(deleteMember(flow, 'm2', { records: 'keep' }));
 		expect([ids(kept, 'x1'), ids(kept, 'x2')]).toEqual([['t1', 't2', 't3'], ['t4']]);
@@ -282,10 +298,10 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 		expect(flowOf(deleteMember(flow, 'm2', { confirmed: true }))).toEqual(cleared);
 	});
 
-	it('沒有一定清掉的、只有要選的組：問句後面照樣寫「紀錄救不回來」', () => {
+	it('沒有一定清掉的、只有要選的組：問句後面照樣寫按「復原」紀錄會回來', () => {
 		const flow = flowOf(recordAttempt(sample(), 'x1', drill('g1', { p1: '✓' })));
 		const r = deleteMember(flow, 'm1');
-		expect(r.kind === 'choose' && r.message).toMatch(/有紀錄的組換了人：保留舊紀錄，還是清掉重算？（紀錄救不回來）$/);
+		expect(r.kind === 'choose' && r.message).toMatch(/有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）$/);
 	});
 
 	it('沒有紀錄：不寫紀錄', () => {

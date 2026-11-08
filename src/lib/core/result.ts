@@ -57,8 +57,8 @@ export const needsChoice = (message: string, items: string[]): CommandResult => 
 	items
 });
 
-/** 會清掉練習紀錄的確認框、選擇都寫這句：紀錄不算復原的一步（ADR 0006），清掉就救不回來。 */
-export const RECORDS_GONE = '（紀錄救不回來）';
+/** 會清掉練習紀錄的確認框、選擇都寫這句：按復原，這一步清掉的紀錄會一起回來（ADR 0007）。 */
+export const RECORDS_UNDOABLE = '（清掉的紀錄按「復原」會回來）';
 
 /** 教練回答過了：按了確定、或選了保留／清掉。 */
 export const answered = ({ confirmed, records }: ConfirmOption): boolean => !!confirmed || records !== undefined;

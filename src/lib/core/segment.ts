@@ -7,9 +7,10 @@ import { changeAction } from './actions';
 import type { Flow } from './flow';
 import { nextId } from './ids';
 import { phaseFalloutText } from './phase-beats';
+import { recordsLoss, recordsLossText } from './records';
 import { cueFalloutText } from './settle';
 import { recordCount } from './success-rate';
-import { RECORDS_GONE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
 import { atTextWithUnit, fromText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
 
 export interface MusicSegment {
@@ -265,18 +266,13 @@ export function updateSegment(
 		if (cut.kind === 'blocked') return blocked(`動作「${actionLabel(a)}」裁短後：${cut.message}`);
 		result = cut.flow;
 		records += cut.records;
-		// 整次不見的紀錄已經算在 records，記號只算還留著的那幾次
-		marks += Math.max(0, cut.marks - cut.records);
+		marks += cut.marks;
 		trimItems.push(cut.item);
 	}
 	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
-		const lost = records
-			? `會一起清掉 ${records} 次紀錄${marks ? `和 ${marks} 次的記號` : ''}`
-			: marks
-				? `會清掉 ${marks} 次的記號`
-				: '';
-		const cleared = lost && `，${lost}${RECORDS_GONE}`;
+		const lost = recordsLossText(records, marks);
+		const cleared = lost && `，會${lost}${RECORDS_UNDOABLE}`;
 		return needsConfirm(`${label} 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉${cleared}`, [
 			...trimItems,
 			...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
@@ -288,7 +284,7 @@ export function updateSegment(
 
 /**
  * 裁短一個動作：只留到 length（段已經換成變短的那一段）。拍點、環節照動作變短的規則切短或刪掉（見 updateAction）。
- * 回裁短好的流程、確認清單上「裁短」那一行、整次不見的紀錄和清掉記號的次數。
+ * 回裁短好的流程、確認清單上「裁短」那一行、整筆不見的紀錄和還在但少了記號的次數（見 recordsLoss）。
  */
 function trimAction(
 	flow: Flow,
@@ -301,6 +297,7 @@ function trimAction(
 	const { cues } = r;
 	const { phases } = r.fallout;
 	const fallout = [cues && cueFalloutText(cues), phases && phaseFalloutText(phases)].filter(Boolean);
+	const { removed, stripped } = recordsLoss(before.successRate?.records ?? [], r.action.successRate?.records ?? []);
 	return {
 		kind: 'ok',
 		flow: replaceAction(r.flow, r.action),
@@ -308,8 +305,8 @@ function trimAction(
 			`裁短：動作「${actionLabel(before)}」（${fromText(segment, before.start)}）` +
 			`${lengthTextWithUnit(segment, before.length)} → ${lengthTextWithUnit(segment, length)}` +
 			(fallout.length ? `，會${fallout.join('，')}` : ''),
-		records: (before.successRate?.records.length ?? 0) - (r.action.successRate?.records.length ?? 0),
-		marks: phases?.marked ?? 0
+		records: removed.length,
+		marks: stripped.length
 	};
 }
 

@@ -81,10 +81,14 @@ export {
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
+	recordsLoss,
+	recordsPatch,
+	redoRecords,
 	restoreAttempt,
-	restoreRunThrough
+	restoreRunThrough,
+	undoRecords
 } from './records';
-export type { RemovedRunThrough, RunThroughMarks } from './records';
+export type { RecordsPatch, RemovedRunThrough, RunThroughMarks } from './records';
 
 export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';
