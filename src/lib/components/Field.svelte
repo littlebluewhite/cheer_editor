@@ -30,7 +30,7 @@
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
-	// 選到人時場地正上方浮出選人工具列；在人身上按右鍵是同一份清單的選單（SelectionTools）。
+	// 場地正上方浮著選人工具列（沒選人時只有「全隊跟第 [_] 張一樣」）；在人身上按右鍵是同一份清單的選單（SelectionTools）。
 	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
 	import {
@@ -445,8 +445,8 @@
 
 	/** 右鍵選單開在哪（畫面座標）；null = 沒開。 */
 	let menu = $state<{ x: number; y: number } | null>(null);
-	/** 選人工具列出現著（編輯頁、能改、有選人）：場上的提示往下排（--tools-h）。 */
-	const toolsOn = $derived(!!session && !session.viewing && selected.length > 0);
+	/** 選人工具列出現著（編輯頁、能改；沒選人時是「全隊跟第 [_] 張一樣」）：場上的提示往下排（--tools-h）。 */
+	const toolsOn = $derived(!!session && !session.viewing);
 
 	/**
 	 * 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。

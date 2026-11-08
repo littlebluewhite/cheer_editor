@@ -2341,7 +2341,7 @@ await check('走位條兩端的把手：觸控（1024×768）時每個點得到�
 
 // ---------- 選人工具列（#222） ----------
 
-await check('1440×900 選到人：工具列浮在場地正上方，場地不跳；按「鏡像」後的提示排在工具列下面，不蓋住它', async () => {
+await check('1440×900 選到人：工具列浮在場地正上方，場地不跳；按「鏡像」後的提示排在工具列下面，不蓋住它；不選人後工具列只剩全隊那一項（N11）', async () => {
 	await setViewport(1440, 900);
 	// 小美站在中線上：鏡像一定跳提示（位置都沒變）
 	await openPracticeFlow();
@@ -2360,10 +2360,13 @@ await check('1440×900 選到人：工具列浮在場地正上方，場地不跳
 	const toast = await js(`const t = [...document.querySelectorAll('.field-toasts > *')].find((e) => e.getClientRects().length);
 		return t ? Math.round(t.getBoundingClientRect().top) : null;`);
 	await press('Escape');
-	const hidden = { 工具列: await js(`return !!document.querySelector('.field-host [role="toolbar"]')`), 場地: await fieldAt() };
+	const hidden = {
+		工具列: await js(`return [...document.querySelectorAll('.field-host [role="toolbar"] button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())`),
+		場地: await fieldAt()
+	};
 	const same = [shown, hidden.場地].every((v) => String(v) === String(before));
 	return {
-		ok: !!bar && bar.上 >= 0 && bar.上 <= 8 && Math.abs(bar.置中差) <= 1 && same && toast !== null && toast >= bar.下緣 && !hidden.工具列,
+		ok: !!bar && bar.上 >= 0 && bar.上 <= 8 && Math.abs(bar.置中差) <= 1 && same && toast !== null && toast >= bar.下緣 && hidden.工具列.length === 1 && /^全隊跟第 \d+ 張一樣$/.test(hidden.工具列[0]),
 		value: { 之前: before, 工具列出現: { 場地: shown, 工具列: bar }, 提示上緣: toast, 收起: hidden }
 	};
 });

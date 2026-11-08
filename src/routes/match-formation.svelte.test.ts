@@ -91,12 +91,25 @@ describe('跟第 [_] 張一樣', () => {
 		expect(within(toolbar()).getByRole('button', { name: '跟第 2 張一樣' })).toBeTruthy();
 	});
 
+	it('沒選人時工具列上就有「全隊跟第 [_] 張一樣」，不用右鍵也找得到（N11）', async () => {
+		const page = editorPage(threeFormations());
+		render(Page, page.props);
+		const before = page.session.flow!;
+		page.editor.playback.seek(4);
+		const bar = within(toolbar());
+		expect(bar.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual([
+			'全隊跟第 1 張一樣'
+		]);
+		await fireEvent.input(bar.getByRole('spinbutton', { name: '跟第幾張站位一樣' }), { target: { value: '3' } });
+		await fireEvent.click(bar.getByRole('button', { name: '全隊跟第 3 張一樣' }));
+		expect(page.session.flow!.formations[1].pos).toEqual(before.formations[2].pos);
+	});
+
 	it('沒選人時套用全隊：在場上空白處按右鍵，選單裡的「跟第 [_] 張一樣」改全部的人', async () => {
 		const page = editorPage(threeFormations());
 		render(Page, page.props);
 		const before = page.session.flow!;
 		page.editor.playback.seek(4);
-		expect(screen.queryByRole('toolbar', { name: '選人工具列' })).toBeNull();
 
 		await fireEvent.contextMenu(document.querySelector('svg.field')!, { clientX: 30, clientY: 40 });
 		const menu = screen.getByRole('menu', { name: '選人選單' });

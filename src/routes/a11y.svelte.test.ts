@@ -94,7 +94,7 @@ describe('按鈕消失後焦點不掉回 body', () => {
 
 	it('按「新增動作」：焦點在新動作的名稱', async () => {
 		setup(teamFlow());
-		await fireEvent.click(screen.getByRole('button', { name: /全隊/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
 		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '3-1' } });
 		await press(screen.getByRole('button', { name: '新增動作' }));
 		expect(screen.queryByRole('button', { name: '新增動作' })).toBeNull();
