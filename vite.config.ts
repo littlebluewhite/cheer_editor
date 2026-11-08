@@ -60,7 +60,9 @@ export default defineConfig({
 				test: {
 					name: 'components',
 					environment: 'jsdom',
-					include: ['src/**/*.svelte.test.ts']
+					include: ['src/**/*.svelte.test.ts'],
+					// Svelte 執行期警告算失敗（見檔案開頭）。
+					setupFiles: ['./src/svelte-warnings.setup.ts']
 				}
 			}
 		]

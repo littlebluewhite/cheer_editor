@@ -14,7 +14,7 @@
 //     });
 //   先在修之前跑一次，確定它會失敗，再去修。
 //
-// 共用規則：整個腳本跑完，中間頁面只要丟過例外（沒接住的錯誤、沒處理的 rejection）就算失敗，
+// 共用規則：整個腳本跑完，中間頁面只要丟過例外（沒接住的錯誤、沒處理的 rejection）或印過 console 警告就算失敗，
 // 印出例外和是哪一條檢查時發生的（單元測試抓不到的那一類，例：拆元件途中失去焦點改到狀態）。
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
@@ -80,9 +80,16 @@ ws.addEventListener('message', (e) => {
 		const d = m.params.exceptionDetails;
 		pageErrors.push({ check: current, error: (d.exception?.description ?? d.text).split('\n').slice(0, 4).join('\n') });
 	}
+	// console 警告也算（例：Svelte 開發版的 binding_property_non_reactive、derived_inert）
+	if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'warning') {
+		const text = m.params.args.map((a) => a.value ?? a.description ?? '').join(' ').replaceAll('%c', '');
+		pageWarnings.push({ check: current, error: text.split('\n').slice(0, 4).join('\n') });
+	}
 });
 /** 頁面丟過的例外，和那時在跑哪一條檢查。 */
 const pageErrors = [];
+/** 頁面印過的 console 警告，和那時在跑哪一條檢查。 */
+const pageWarnings = [];
 let current = '（還沒開始檢查）';
 const send = (method, params = {}) =>
 	new Promise((r, j) => {
@@ -2481,6 +2488,11 @@ if (pageErrors.length) {
 	console.log(`失敗  整個腳本跑完，頁面沒丟過例外`);
 	for (const e of pageErrors) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
 	failed.push('頁面例外');
+}
+if (pageWarnings.length) {
+	console.log(`失敗  整個腳本跑完，頁面沒印過 console 警告`);
+	for (const e of pageWarnings) console.log(`      在「${e.check}」時：${e.error.replaceAll('\n', '\n        ')}`);
+	failed.push('console 警告');
 }
 console.log(failed.length ? `\n${failed.length} 條沒過` : '\n全部通過');
 stop(failed.length ? 1 : 0);

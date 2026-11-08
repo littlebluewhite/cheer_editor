@@ -1109,14 +1109,14 @@
 						items={[]}
 						confirmLabel="丟掉"
 						onconfirm={() => {
-							const id = f.id;
+							const { id, name } = f; // 關掉對話框後 f 不能再讀（Svelte derived_inert）
 							discarding = null;
 							discardNote = '';
 							void editor.file.discardRecent(id).then((outcome) => {
 								discardNote = {
-									dropped: `已丟掉「${f.name}」的草稿`,
-									busy: `另一個分頁正在編「${f.name}」，沒有丟掉`,
-									failed: `「${f.name}」的草稿刪不掉，沒有丟掉`
+									dropped: `已丟掉「${name}」的草稿`,
+									busy: `另一個分頁正在編「${name}」，沒有丟掉`,
+									failed: `「${name}」的草稿刪不掉，沒有丟掉`
 								}[outcome];
 							});
 						}}
