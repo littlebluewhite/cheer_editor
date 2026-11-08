@@ -13,19 +13,17 @@
 		memberMarkers,
 		renameFlow,
 		setMarkers,
-		updateCustomRole,
 		updateTimeRules,
 		MAX_STRIPS,
 		MIN_STRIPS,
 		type ConfirmOption,
 		type FieldLayout,
-		type CustomRole,
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
-	import { commitField } from './commit-field';
+	import { commitField, customRoleNameField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from './marker';
@@ -52,14 +50,6 @@
 	const isDefault = $derived(
 		(Object.keys(DEFAULT_TIME_RULES) as (keyof TimeRules)[]).every((k) => flow.timeRules[k] === DEFAULT_TIME_RULES[k])
 	);
-
-	/** 改自訂任務角色的名稱；被擋就把輸入框還原，原因寫在下面。 */
-	function roleNameField(role: CustomRole) {
-		return commitField(ask, null, {
-			send: (text) => updateCustomRole(flow, role.id, { name: text, meaning: role.meaning }),
-			actual: () => role.name
-		});
-	}
 
 	function addRole(e: SubmitEvent) {
 		e.preventDefault();
@@ -254,7 +244,7 @@
 								aria-label="「{role.name}」的名稱"
 								value={role.name}
 								bind:this={roleInputs[role.id]}
-								{@attach roleNameField(role)}
+								{@attach customRoleNameField(ask, () => flow, role)}
 								onkeydown={onenter}
 							/><CharCount field="roleName" input={roleInputs[role.id]} value={role.name} quiet />
 							<button

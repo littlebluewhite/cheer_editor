@@ -490,9 +490,9 @@ export class EditorSession {
 	/**
 	 * 拖人、選人工具列、貼上站位改好了（送到 ask 的 done）：「已插入站位 N」「已改站位 N」後面補插了站位的位置從哪來、
 	 * 往後帶了幾張，播放頭停到改的那張。有往後帶：提示旁邊放「只改這張」（見 #onlyThis）。
-	 * atEdge = 拖過頭停在邊界，多一句「已靠到邊界」。pasted = ⌘V 貼上的（插的站位是貼上的位置，不是自動帶入，N46）。
+	 * 選項 atEdge：拖過頭停在邊界，多一句「已靠到邊界」。pasted：⌘V 貼上的（插的站位是貼上的位置，不是自動帶入，N46）。
 	 */
-	moved(r: MoveResult, atEdge = false, pasted = false) {
+	moved(r: MoveResult, { atEdge = false, pasted = false }: { atEdge?: boolean; pasted?: boolean } = {}) {
 		const said = [
 			pasted ? '貼上複製的站位' : r.inserted && '大家的位置自動帶入',
 			r.carried > 0 && `往後帶了 ${r.carried} 張`,
@@ -616,7 +616,7 @@ export class EditorSession {
 			return true;
 		}
 		this.ask.send(() => moveGroup(flow, sec, ids, () => Object.fromEntries(ids.map((id) => [id, copied[id]]))), {
-			done: (r) => this.moved(r, false, true)
+			done: (r) => this.moved(r, { pasted: true })
 		});
 		return true;
 	}

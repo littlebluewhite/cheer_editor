@@ -591,7 +591,7 @@
 	function drop(moves: Record<string, Position>, atEdge: boolean, onlyThis: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send(() => moveMembers(s.flow!, sec, moves, !onlyThis), { done: (r) => s.moved(r, atEdge) });
+		s.ask.send(() => moveMembers(s.flow!, sec, moves, !onlyThis), { done: (r) => s.moved(r, { atEdge }) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
