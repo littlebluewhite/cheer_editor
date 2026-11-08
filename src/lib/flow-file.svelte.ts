@@ -484,12 +484,11 @@ export class FlowFile {
 	}
 
 	/**
-	 * 現在存草稿（停手 1 秒到了、分頁藏起來了）：先送出欄位裡打到一半的字，草稿才有剛打的字
-	 * （送出會改流程、又排一次 1 秒後存，這裡一起存掉）。
+	 * 現在存草稿（停手 1 秒到了、分頁藏起來了）：只存已經送出的流程。欄位裡打到一半的字不送出（N01）：
+	 * 自動存不是教練說「好了」，送出會改流程、多一步復原、還可能跳確認框（Apple NSDocument 自動存也不送出）。
 	 */
 	#saveDraftNow() {
-		const { session, adapters, music } = this.#editor;
-		adapters.pendingInput.flush();
+		const { session, music } = this.#editor;
 		clearTimeout(this.#draftTimer);
 		this.#draftTimer = undefined;
 		const f = session.flow;
@@ -519,12 +518,11 @@ export class FlowFile {
 	}
 
 	/**
-	 * 分頁藏起來了、要關了（pagehide、visibilitychange 變 hidden）：送出欄位裡打到一半的字，
-	 * 還沒進草稿的改動現在就存，不等停手 1 秒（iPad 收掉分頁不會問 beforeunload）。
+	 * 分頁藏起來了、要關了（pagehide、visibilitychange 變 hidden）：還沒進草稿的改動現在就存，不等停手 1 秒
+	 * （iPad 收掉分頁不會問 beforeunload）。欄位裡打到一半的字跟停手 1 秒一樣不送出（N01）。
 	 */
 	pageHidden() {
 		if (!this.#editor.session.flow) return;
-		this.#editor.adapters.pendingInput.flush();
 		if (this.#draftTimer !== undefined) this.#saveDraftNow();
 	}
 
