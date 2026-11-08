@@ -22,33 +22,37 @@ function routine(beats: number, chantSec: number): Flow {
 }
 
 describe('時間規則警告', () => {
+	it('時間跟播放器一樣寫成「分:秒」（T16）', () => {
+		expect(timeRuleWarnings(routine(260, 32.4))[0].text).toBe('音樂段共 2:10.0，超過 2:00.0');
+	});
+
 	it('都在規則內就沒有警告（剛好 120 秒、30 秒不算超過）', () => {
 		// 240 拍 ÷ 2 拍/秒 = 120 秒
 		expect(timeRuleWarnings(routine(240, 30))).toEqual([]);
 	});
 
 	it('口號段加起來少於 30 秒', () => {
-		expect(timeRuleWarnings(routine(200, 20))).toEqual([{ title: '口號段太短', text: '口號段共 20.0 秒，少於 30 秒', rule: 'minChantSec' }]);
+		expect(timeRuleWarnings(routine(200, 20))).toEqual([{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' }]);
 	});
 
 	it('音樂段加起來超過 120 秒', () => {
 		expect(timeRuleWarnings(routine(260, 32.4))).toEqual([
-			{ title: '音樂段太長', text: '音樂段共 130.0 秒，超過 120 秒', rule: 'maxMusicSec' }
+			{ title: '音樂段太長', text: '音樂段共 2:10.0，超過 2:00.0', rule: 'maxMusicSec' }
 		]);
 	});
 
 	it('整支流程超過 180 秒', () => {
 		expect(timeRuleWarnings(routine(240, 70))).toEqual([
-			{ title: '整支流程太長', text: '整支流程共 190.0 秒，超過 180 秒', rule: 'maxTotalSec' }
+			{ title: '整支流程太長', text: '整支流程共 3:10.0，超過 3:00.0', rule: 'maxTotalSec' }
 		]);
 	});
 
 	it('三條可以同時出現，每條有自己的標題', () => {
 		const flow = flowOf(updateTimeRules(routine(260, 20), { maxMusicSec: 100, maxTotalSec: 100 }));
 		expect(timeRuleWarnings(flow)).toEqual([
-			{ title: '口號段太短', text: '口號段共 20.0 秒，少於 30 秒', rule: 'minChantSec' },
-			{ title: '音樂段太長', text: '音樂段共 130.0 秒，超過 100 秒', rule: 'maxMusicSec' },
-			{ title: '整支流程太長', text: '整支流程共 150.0 秒，超過 100 秒', rule: 'maxTotalSec' }
+			{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' },
+			{ title: '音樂段太長', text: '音樂段共 2:10.0，超過 1:40.0', rule: 'maxMusicSec' },
+			{ title: '整支流程太長', text: '整支流程共 2:30.0，超過 1:40.0', rule: 'maxTotalSec' }
 		]);
 	});
 
@@ -59,7 +63,7 @@ describe('時間規則警告', () => {
 
 	it('只有音樂段、沒有口號段：照樣提醒，但寫法中性（不說「少於」）', () => {
 		const flow = flowOf(addSegment(flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } })), 'music'));
-		expect(timeRuleWarnings(flow)).toEqual([{ title: '還沒有口號段', text: '口號段加起來最少要 30 秒', rule: 'minChantSec' }]);
+		expect(timeRuleWarnings(flow)).toEqual([{ title: '還沒有口號段', text: '口號段加起來最少要 0:30.0', rule: 'minChantSec' }]);
 	});
 
 	it('關掉就沒有警告', () => {

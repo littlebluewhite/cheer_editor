@@ -12,6 +12,7 @@
 		timeRuleWarnings,
 		stackedMembers,
 		totalSeconds,
+		clockText,
 		walkSpanAt,
 		type Flow,
 		type Clash,
@@ -221,13 +222,6 @@
 		}
 		playback.seek(read.value);
 		closeJump();
-	}
-
-	/** 秒數寫成「1:05.3」。 */
-	function clock(sec: number): string {
-		const m = Math.floor(sec / 60);
-		const s = (sec - m * 60).toFixed(1).padStart(4, '0');
-		return `${m}:${s}`;
 	}
 
 	// ---------- 場地和時間軸的分界：拖它（或 ↑↓）改時間軸多高，存在這台電腦；雙擊回到預設 ----------
@@ -552,7 +546,7 @@
 						>{#if position}<span class="pos-seg">{position.segment}</span
 							>{#if position.at}{' '}<span class="pos-at">{position.at}</span>{/if}{:else}<span class="pos-seg">還沒有段</span>{/if}</span
 					>
-					<span class="clock">{clock(playback.sec)} <i>/ {clock(totalSeconds(flow))}</i></span>
+					<span class="clock">{clockText(playback.sec)} <i>/ {clockText(totalSeconds(flow))}</i></span>
 				{/snippet}
 				{#if narrow}
 					<!-- 手機跳時間（#228）：回開頭、上一個／下一個八拍；點時間打「3-1」跳過去。只是看，不改流程 -->
@@ -1186,12 +1180,13 @@
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, 25dvh) auto;
 	}
-	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行小字放最下面，不跟場地搶位置 */
+	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行字放最下面，不跟場地搶位置；黃底深字，看得出是提醒 */
 	.phone-why {
 		margin: 0;
-		padding: 4px 12px;
-		color: var(--muted);
-		font-size: 12px;
+		padding: 6px 12px;
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: 13px;
 	}
 	.phone-why:empty {
 		display: none;

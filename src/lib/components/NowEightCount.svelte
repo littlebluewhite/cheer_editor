@@ -60,10 +60,13 @@
 		background: var(--surface);
 		font-size: 13px;
 	}
+	/* 這一列在哪（口號段寫整段幾秒）：比內容大一號，手機上一眼看得到 */
 	header {
 		display: flex;
 		gap: 8px;
 		align-items: baseline;
+		font-size: 15px;
+		font-weight: 600;
 	}
 	.at {
 		font-variant-numeric: tabular-nums;

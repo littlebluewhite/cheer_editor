@@ -323,6 +323,11 @@ describe('走位條', () => {
 		expect(session.canUndo).toBe(true);
 	});
 
+	it('走位條按鈕有名字：誰走到哪一張、幾拍出發、幾拍到達（只用鍵盤、螢幕報讀器也知道是什麼，T21）', () => {
+		setupWalks();
+		expect(walkBar(0).getAttribute('aria-label')).toBe('小A 走到站位 2：音樂 1 1-5 出發、音樂 1 2-5 到達');
+	});
+
 	it('走位條能點的範圍至少 12 px 高，看到的還是細條', () => {
 		setupWalks();
 		expect(parseFloat(walkBar(0).style.height)).toBeGreaterThanOrEqual(12);

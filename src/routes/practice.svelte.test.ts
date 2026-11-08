@@ -319,6 +319,14 @@ describe('練習：每天的表和最弱的環節', () => {
 		await save(who);
 	}
 
+	it('只有一個環節：不放「整次」那一欄，不會兩欄一樣的數字（T20）', async () => {
+		await practice();
+		await pickAction('騰翻');
+		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));
+		expect(tableRows()[0]).toEqual(['日期', '整體 騰翻']);
+		expect(tableRows()[1]).toEqual([localDate(), '100% 完成率 100%・1 次']);
+	});
+
 	it('記三次後：今天那一列上法 100%、中段 67%、下法 50%（完成率 100%，2 次），整次 33%；左邊寫最弱的環節', async () => {
 		await practice();
 		await threeAttempts();
@@ -361,7 +369,7 @@ describe('練習：每天的表和最弱的環節', () => {
 		const pick = screen.getByLabelText('看哪一個人') as HTMLSelectElement;
 		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '小美', '小A']);
 		await fireEvent.change(pick, { target: { value: 'm1' } });
-		expect(tableRows().at(-1)).toEqual(['合計', '—', '—']);
+		expect(tableRows().at(-1)).toEqual(['合計', '—']);
 	});
 });
 

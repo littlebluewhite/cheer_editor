@@ -1,5 +1,6 @@
 <script lang="ts">
-	// 記錄頁下面：選到的動作每天的成功率。一列一天，最後一列「合計」；一欄一個環節，最後一欄「整次」。
+	// 記錄頁下面：選到的動作每天的成功率。一列一天，最後一列「合計」；一欄一個環節，最後一欄「整次」
+	// （只有一個環節時整次跟那一欄一樣，不放，跟總表一樣）。
 	// 大字是成功率，小字是完成率和次數；沒有紀錄寫「—」。可以看全部的組，或只看某一組（騰翻、跳躍是某一個人）。
 	import {
 		attemptWhos,
@@ -54,7 +55,7 @@
 					{#each phases as p (p.id)}
 						<th scope="col">{phaseLabel(p)}</th>
 					{/each}
-					<th scope="col">整次</th>
+					{#if phases.length > 1}<th scope="col">整次</th>{/if}
 				</tr>
 			</thead>
 			<tbody>
@@ -70,12 +71,14 @@
 								{:else}—{/if}
 							</td>
 						{/each}
-						<td>
-							{#if row.whole.whole}
-								<strong>{percent(row.whole.clean, row.whole.whole)}%</strong>
-								<small>{row.whole.whole} 次</small>
-							{:else}—{/if}
-						</td>
+						{#if phases.length > 1}
+							<td>
+								{#if row.whole.whole}
+									<strong>{percent(row.whole.clean, row.whole.whole)}%</strong>
+									<small>{row.whole.whole} 次</small>
+								{:else}—{/if}
+							</td>
+						{/if}
 					</tr>
 				{/each}
 			</tbody>

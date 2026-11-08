@@ -696,7 +696,7 @@
 						><i class="tiring"></i>很喘 &gt;{TIRING_MPS} m/s</span
 					>
 					<span title="走位每秒超過 {TOO_FAST_MPS} 公尺：跑不到"><i class="fast"></i>走太快 &gt;{TOO_FAST_MPS} m/s</span>
-					<span><b class="clash-mark">✕</b>撞位</span>
+					<span title="至少一人正在騰翻中走位，跟別人靠得不到半格；一般走位靠很近不算"><b class="clash-mark">✕</b>撞位（只看騰翻）</span>
 				</div>
 				<div class="legend" aria-hidden="true">
 					<span><i class="base"></i>底層</span>

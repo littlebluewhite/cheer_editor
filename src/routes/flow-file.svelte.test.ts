@@ -226,6 +226,20 @@ describe('新建', () => {
 		expect(screen.getByRole('alert').textContent).toBe('打不開「broken.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 	});
 
+	it('選到照片：直說這是圖片，不提 flow.json（T12）', async () => {
+		setup();
+		await openFile(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), '開啟流程檔', 'IMG_0001.jpg');
+		expect(screen.getByRole('alert').textContent).toBe('打不開「IMG_0001.jpg」：這是圖片，不是流程檔');
+	});
+
+	it('zip 裡不是流程：原因用教練懂的話，不出現 flow.json（T12）', async () => {
+		setup();
+		await openFile(zipSync({ 'a.txt': strToU8('hi') }), '開啟流程檔', '照片.zip');
+		const text = screen.getByRole('alert').textContent!;
+		expect(text).toBe('打不開「照片.zip」：zip 裡沒有流程，不是這個編輯器存的流程檔');
+		expect(text).not.toContain('flow.json');
+	});
+
 	it('開到音樂檔：提示音樂要在段設定裡載入', async () => {
 		setup();
 		await openFile(new TextEncoder().encode('RIFF....WAVE'), '開啟流程檔', '主歌.wav');

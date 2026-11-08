@@ -167,10 +167,10 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		expect(screen.getByText('口號段加起來最少要 30 秒')).toBeTruthy();
+		expect(screen.getByText('口號段加起來最少要 0:30.0')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
 		await fireEvent.change(screen.getByLabelText('口號段加起來最少（秒）'), { target: { value: '20' } });
-		expect(screen.getByText('口號段加起來最少要 20 秒')).toBeTruthy();
+		expect(screen.getByText('口號段加起來最少要 0:20.0')).toBeTruthy();
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
 		expect(screen.queryByText('還沒有口號段')).toBeNull();
 	});

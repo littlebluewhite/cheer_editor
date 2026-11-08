@@ -2,7 +2,7 @@
 
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
-import { EPS, segmentSpans } from './time';
+import { clockText, EPS, segmentSpans } from './time';
 
 export interface TimeRules {
 	on: boolean;
@@ -57,15 +57,15 @@ export function timeRuleWarnings(flow: Flow): TimeRuleWarning[] {
 	const total = chant + music;
 	const warnings: TimeRuleWarning[] = [];
 	if (!flow.segments.some((s) => s.kind === 'chant')) {
-		warnings.push({ title: '還沒有口號段', text: `口號段加起來最少要 ${rules.minChantSec} 秒`, rule: 'minChantSec' });
+		warnings.push({ title: '還沒有口號段', text: `口號段加起來最少要 ${clockText(rules.minChantSec)}`, rule: 'minChantSec' });
 	} else if (chant < rules.minChantSec - EPS) {
-		warnings.push({ title: '口號段太短', text: `口號段共 ${chant.toFixed(1)} 秒，少於 ${rules.minChantSec} 秒`, rule: 'minChantSec' });
+		warnings.push({ title: '口號段太短', text: `口號段共 ${clockText(chant)}，少於 ${clockText(rules.minChantSec)}`, rule: 'minChantSec' });
 	}
 	if (music > rules.maxMusicSec + EPS) {
-		warnings.push({ title: '音樂段太長', text: `音樂段共 ${music.toFixed(1)} 秒，超過 ${rules.maxMusicSec} 秒`, rule: 'maxMusicSec' });
+		warnings.push({ title: '音樂段太長', text: `音樂段共 ${clockText(music)}，超過 ${clockText(rules.maxMusicSec)}`, rule: 'maxMusicSec' });
 	}
 	if (total > rules.maxTotalSec + EPS) {
-		warnings.push({ title: '整支流程太長', text: `整支流程共 ${total.toFixed(1)} 秒，超過 ${rules.maxTotalSec} 秒`, rule: 'maxTotalSec' });
+		warnings.push({ title: '整支流程太長', text: `整支流程共 ${clockText(total)}，超過 ${clockText(rules.maxTotalSec)}`, rule: 'maxTotalSec' });
 	}
 	return warnings;
 }

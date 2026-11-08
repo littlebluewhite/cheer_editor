@@ -553,7 +553,7 @@ describe('撞位', () => {
 		expect(marks[0].getAttribute('transform')).toBe('translate(1,0.5)');
 		expect(marks[0].textContent).toContain('小A');
 		expect(marks[0].textContent).toContain('小B');
-		expect(screen.getByText('撞位')).toBeTruthy();
+		expect(screen.getByText('撞位（只看騰翻）')).toBeTruthy();
 	});
 
 	it('✕ 畫在隊員圓點上面（SVG 後畫的蓋前面）；按在圓點上的 ✕ 照樣拖得動那個人', async () => {

@@ -193,6 +193,7 @@ export {
 	HALF_BEATS_PER_EIGHT,
 	atText,
 	atTextWithUnit,
+	clockText,
 	farthestLegal,
 	lengthText,
 	lengthTextWithUnit,

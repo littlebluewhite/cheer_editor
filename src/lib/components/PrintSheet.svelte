@@ -219,8 +219,8 @@
 		align-items: center;
 	}
 	.toolbar .muted {
-		color: #9fb0d4;
-		font-size: 12px;
+		color: #c9d4ea;
+		font-size: 13px;
 	}
 	.grow {
 		flex: 1;

@@ -31,6 +31,7 @@
 		nearestPosition,
 		phaseColor,
 		phaseLabel,
+		positionText,
 		resizeAction,
 		setWalks,
 		timeText,
@@ -209,20 +210,25 @@
 		dx: number;
 	} | null>(null);
 
-	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘、撞位的那幾段。 */
+	/**
+	 * 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘、撞位的那幾段，
+	 * 和走位條按鈕的名字（只用鍵盤、螢幕報讀器的人聽得到是誰走到哪一張、什麼時候）。
+	 */
 	const walks = $derived.by(() => {
 		const byMember: Record<
 			string,
-			({ formationId: string; speed: string; clashes: { startSec: number; endSec: number }[] } & Pick<
+			({ formationId: string; speed: string; label: string; clashes: { startSec: number; endSec: number }[] } & Pick<
 				FormationWalk,
 				'departSec' | 'arriveSec' | 'tooFast' | 'tiring'
 			>)[]
 		> = {};
-		for (const b of flow.formations) {
+		for (const [i, b] of flow.formations.entries()) {
 			for (const w of formationWalks(flow, b.id)) {
 				const { memberId, departSec, arriveSec, tooFast, tiring } = w;
 				const speed = walkSpeedText(flow, w);
-				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, clashes: [] });
+				const name = flow.members.find((m) => m.id === memberId)?.name ?? '';
+				const label = `${name} 走到站位 ${i + 1}：${positionText(flow, departSec)} 出發、${positionText(flow, arriveSec)} 到達`;
+				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, label, clashes: [] });
 			}
 		}
 		for (const c of clashes) {
@@ -492,6 +498,7 @@
 					class:tiring={w.tiring}
 					class:out={d?.memberId === m.id && walkPreview?.out}
 					data-walk={w.formationId}
+					aria-label={w.label}
 					style:left={`${w.departSec * pxPerSec + dl}px`}
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
 					style:height={`${WALK_HIT_H}px`}

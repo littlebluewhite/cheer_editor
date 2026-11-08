@@ -1528,7 +1528,7 @@ await check('記錄頁：點第一個環節前後「存這一次」不動；存�
 
 // ---------- 「已做了・復原」提示不推動版面（#211） ----------
 
-await check('記錄頁：「已存」「已刪掉…救回」提示出現、換掉、收掉時，卡片、上面那一排和左邊清單都不動；同時只有一則，浮在畫面上', async () => {
+await check('記錄頁：「已記下」「已刪掉…救回」提示出現、換掉、收掉時，卡片、上面那一排和左邊清單都不動；同時只有一則，浮在畫面上', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow(`flow = (await import('/src/lib/test-flows.ts')).ratedSample();`);
 	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '練習').click()`);
@@ -1550,7 +1550,7 @@ await check('記錄頁：「已存」「已刪掉…救回」提示出現、換�
 	const same = [saved, removed, gone].every((v) => String(v.位置) === String(before));
 	const one = (v, text) => v.提示.length === 1 && v.提示[0].startsWith(text) && v.提示[0].endsWith('｜absolute');
 	return {
-		ok: same && one(saved, '已存') && one(removed, '已刪掉') && gone.提示.length === 0,
+		ok: same && one(saved, '已記下') && one(removed, '已刪掉') && gone.提示.length === 0,
 		value: { 之前: before, 存好: saved, 刪掉: removed, 收掉: gone }
 	};
 });
@@ -2425,6 +2425,34 @@ await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正�
 	return {
 		ok: inView && String(menu.項) === '排成一橫排,排成一直排' && Math.abs(ys[0] - ys[1]) <= 1,
 		value: { 鈕下緣: Math.round(at.下緣), 小選單: menu, 對齊後兩人高度: ys }
+	};
+});
+
+// ---------- 第 5 批的文字（#231） ----------
+
+await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭比內容大（至少 15 px）、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
+	await setTouchViewport(390, 844);
+	await openSample();
+	// 一個八拍一個八拍往後跳，跳到口號段那一列
+	const chant = await js(`for (let i = 0; i < 20; i++) {
+			const head = document.querySelector('.phone-view .now-eight header');
+			if (head?.textContent.includes('口號')) return true;
+			[...document.querySelectorAll('.phone-view button')].find((b) => b.getAttribute('aria-label') === '下一個八拍' || b.title === '下一個八拍')?.click();
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		return false;`);
+	const measure = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((el) => ({ 字: contrast(el), 大小: parseFloat(getComputedStyle(el).fontSize), 字是: el.textContent.trim().slice(0, 12) }))`;
+	const phone = await js(`${CONTRAST_JS} return { 口號標頭: ${measure('.phone-view .now-eight header > *')}, 為什麼不能編: ${measure('.phone-view .phone-why')} };`);
+	const go = await js(`const b = document.querySelector('.topbar button[title="八拍表"]');
+		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
+	await tap(go.x, go.y);
+	const sheet = await js(`${CONTRAST_JS} return ${measure('.print-sheet .toolbar .muted')};`);
+	await js(`[...document.querySelectorAll('.print-sheet button')].find((b) => b.textContent.trim() === '關閉')?.click()`);
+	await clearTouch();
+	const all = [...phone.口號標頭, ...phone.為什麼不能編, ...sheet];
+	return {
+		ok: chant && phone.口號標頭.length >= 2 && phone.為什麼不能編.length === 1 && sheet.length === 1 && all.every((m) => m.字 >= 4.5 && m.大小 >= 13) && phone.口號標頭.every((m) => m.大小 >= 15),
+		value: { 跳到口號段: chant, ...phone, 列印說明: sheet }
 	};
 });
 

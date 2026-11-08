@@ -24,6 +24,13 @@ describe('場地左下的圖例', () => {
 		for (const word of ['底層', '上層', '很喘', '走太快', '撞位']) expect(legend().textContent).toContain(word);
 	});
 
+	it('撞位寫明只看騰翻，滑鼠移上去有完整說明（T14）', () => {
+		render(Page, editorPage(teamFlow()).props);
+		const clash = [...legend().querySelectorAll('span')].find((s) => s.textContent?.includes('撞位'))!;
+		expect(clash.textContent).toBe('✕撞位（只看騰翻）');
+		expect(clash.title).toBe('至少一人正在騰翻中走位，跟別人靠得不到半格；一般走位靠很近不算');
+	});
+
 	it('按「圖例」收起來，再按打開；收起來時「只看橘紅走位線」還在', async () => {
 		render(Page, editorPage(teamFlow()).props);
 		await fireEvent.click(toggle());

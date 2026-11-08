@@ -129,8 +129,22 @@ export type ReadFlowFileResult =
 
 // 打不開的原因（頁面前面加上檔名）。
 const NOT_A_ZIP = '檔案壞掉了，或不是這個編輯器存的流程檔';
-const NO_JSON = `zip 裡沒有 ${JSON_FILE}`;
-const BROKEN = `${JSON_FILE} 壞掉了`;
+// 不提 flow.json：教練不知道那是什麼。
+const NO_JSON = 'zip 裡沒有流程，不是這個編輯器存的流程檔';
+const BROKEN = '流程檔裡的資料壞掉了';
+const IMAGE = '這是圖片，不是流程檔';
+
+/** 檔頭是常見的圖片（PNG、JPEG、GIF、WebP、iPhone 的 HEIC）：選錯成照片時直說。 */
+function isImage(bytes: Uint8Array): boolean {
+	const text = (from: number, to: number) => String.fromCharCode(...bytes.subarray(from, to));
+	return (
+		(bytes[0] === 0x89 && text(1, 4) === 'PNG') ||
+		(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) ||
+		text(0, 4) === 'GIF8' ||
+		(text(0, 4) === 'RIFF' && text(8, 12) === 'WEBP') ||
+		(text(4, 8) === 'ftyp' && ['heic', 'heix', 'mif1', 'msf1', 'avif'].includes(text(8, 12)))
+	);
+}
 
 /** 流程 ＋ 音樂資料 → 流程檔（zip 位元組）。沒給位元組的音樂檔就不放（開的時候算缺音樂）。 */
 export function writeFlowFile(flow: Flow, audio: AudioBytes): Uint8Array {
@@ -156,7 +170,7 @@ export function readFlowFile(
 	try {
 		files = unzipSync(bytes);
 	} catch {
-		return { kind: 'error', message: NOT_A_ZIP };
+		return { kind: 'error', message: isImage(bytes) ? IMAGE : NOT_A_ZIP };
 	}
 	const folder = folderOf(files);
 	if (folder === null) return { kind: 'error', message: NO_JSON };

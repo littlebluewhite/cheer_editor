@@ -231,6 +231,13 @@ export function atTextWithUnit(segment: Segment, at: number): string {
 	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
 }
 
+/** 播放器的時間寫法：秒數寫成「1:05.3」。規則警告也用這個，教練對得起來。 */
+export function clockText(sec: number): string {
+	const m = Math.floor(sec / 60);
+	const s = (sec - m * 60).toFixed(1).padStart(4, '0');
+	return `${m}:${s}`;
+}
+
 /** 清單上動作從哪裡開始：「3-1 起」，口號段「3.0 秒起」。 */
 export function fromText(segment: Segment, at: number): string {
 	return segment.kind === 'chant' ? `${atText(segment, at)} 秒起` : `${atText(segment, at)} 起`;
