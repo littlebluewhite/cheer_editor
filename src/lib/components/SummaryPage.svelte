@@ -7,6 +7,8 @@
 	// 最上面一排（RunThroughBar，跟記錄頁一樣）：「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表；
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（記完才發現記錯，不用切回記錄頁）。
 	import {
+		NOT_YET_MARK,
+		NOT_YET_TITLE,
 		actionLabel,
 		cellDetail,
 		completionPercent,
@@ -212,7 +214,7 @@
 					<time datetime={day.date}>{day.date}</time>
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
-							<li class:run={m.runThrough}>{m.mark}{#if m.runThrough}<small>全上</small>{/if}</li>
+							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? NOT_YET_TITLE : undefined}>{m.mark}{#if m.runThrough}<small>全上</small>{/if}</li>
 						{/each}
 					</ol>
 				</li>

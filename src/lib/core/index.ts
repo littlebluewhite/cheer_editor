@@ -72,6 +72,8 @@ export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate }
 export {
 	attemptText,
 	attemptWhos,
+	NOT_YET_MARK,
+	NOT_YET_TITLE,
 	carryRecords,
 	changeAttempt,
 	deleteAttempt,
