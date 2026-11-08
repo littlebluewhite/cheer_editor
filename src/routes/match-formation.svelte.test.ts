@@ -121,7 +121,7 @@ describe('跟第 [_] 張一樣', () => {
 		expect(screen.queryByRole('menu')).toBeNull();
 	});
 
-	it('沒有那一張站位：不改，提示說沒有', async () => {
+	it('打超過張數：不改，提示說只有幾張、要打幾到幾，不只說「沒有站位 9」（N45）', async () => {
 		const page = editorPage(threeFormations());
 		render(Page, page.props);
 		const before = page.session.flow!;
@@ -132,7 +132,7 @@ describe('跟第 [_] 張一樣', () => {
 		});
 		await fireEvent.click(within(toolbar()).getByRole('button', { name: '跟第 9 張一樣' }));
 		expect(page.session.flow).toBe(before);
-		expect(screen.getByRole('status').textContent).toBe('沒有站位 9');
+		expect(screen.getByRole('status').textContent).toBe('只有 3 張站位，打 1–3');
 	});
 });
 

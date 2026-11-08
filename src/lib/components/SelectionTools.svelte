@@ -75,7 +75,8 @@
 		const sec = playback.sec;
 		const ids = count ? session.selectedMemberIds : flow.members.map((m) => m.id);
 		const n = nth;
-		if (a.nth && !flow.formations[n - 1]) return void (session.notice = `沒有站位 ${n}`);
+		const total = flow.formations.length;
+		if (a.nth && !flow.formations[n - 1]) return void (session.notice = `只有 ${total} 張站位，打 1–${total}`);
 		session.ask.send(() => moveGroup(flow, sec, ids, (pos) => a.place(flow, pos, zoom, n)), {
 			done: (r) => session.moved(r)
 		});
