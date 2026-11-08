@@ -1,8 +1,8 @@
 <script lang="ts">
-	// 選人工具列和右鍵選單：選到人時固定浮在場地正上方（不佔位置，場地不跳）；右鍵選單是同一份清單（selectionActions）。
+	// 選人工具列和右鍵選單：固定浮在場地正上方（不佔位置，場地不跳）；右鍵選單是同一份清單（selectionActions）。
 	// 按一項：選到的人照那一項算新位置，走 moveGroup（跟拖人同一條路）：這一拍沒有站位就插一張、往後帶、算一步復原，
 	// 提示和播放頭也跟拖人一樣（session.moved）。播放中就先暫停在整拍（跟開始拖人一樣）。
-	// 沒選人時工具列收起來；在場上空白處按右鍵，選單上是套用全隊的項目（跟第 [_] 張一樣）。
+	// 沒選人時工具列只剩套用全隊的項目（全隊跟第 [_] 張一樣）；在場上空白處按右鍵，選單上也是它。
 	import { currentFormation, formationAt, moveGroup } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -75,7 +75,8 @@
 		const sec = playback.sec;
 		const ids = count ? session.selectedMemberIds : flow.members.map((m) => m.id);
 		const n = nth;
-		if (a.nth && !flow.formations[n - 1]) return void (session.notice = `沒有站位 ${n}`);
+		const total = flow.formations.length;
+		if (a.nth && !flow.formations[n - 1]) return void (session.notice = `只有 ${total} 張站位，打 1–${total}`);
 		session.ask.send(() => moveGroup(flow, sec, ids, (pos) => a.place(flow, pos, zoom, n)), {
 			done: (r) => session.moved(r)
 		});
@@ -114,7 +115,7 @@
 	{/if}
 {/snippet}
 
-{#if count && actions.length}
+{#if actions.length}
 	<div class="tools-bar" role="toolbar" aria-label="選人工具列">
 		{#each items as i (i.label)}
 			{#if i.group}

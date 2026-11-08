@@ -1268,9 +1268,8 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(76.8);
 
 		await fireEvent.change(box()!, { target: { value: 'abc' } });
-		expect(screen.getByRole('status').textContent).toBe(
-			'站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
-		);
+		// 這支流程只有一段：例子不提別的段
+		expect(screen.getByRole('status').textContent).toBe('站位時間看不懂，例：2-5');
 		expect(box()!.value).toBe('2-5');
 
 		await fireEvent.change(box()!, { target: { value: '1-1' } });
@@ -1424,6 +1423,21 @@ describe('站位與走位', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		// 復原的是拖人，表單跟著消失：被擋的那幾次沒有改流程
 		expect(depart()).toBeNull();
+	});
+
+	it('口號段的站位：出發和到達下面的小字寫打秒數、別的段的例子用真的段名，不寫「這一段打 2-5」（N51）', async () => {
+		let flow = flowOf(addSegmentTo(libSample(), 'chant'));
+		flow = flowOf(insertFormation(flow, 20));
+		const f2 = flow.formations[1];
+		flow = flowOf(setPositions(flow, f2.id, { m1: [f2.pos.m1[0] + 1, f2.pos.m1[1]] }));
+		const page = editorPage(flow);
+		render(Page, page.props);
+		page.editor.playback.seek(20);
+		await tick();
+		// 口號 1 是 10 秒：例子取在段裡（5.0），不寫比它長的 12.3
+		expect(depart()!.closest('section')!.querySelector('small')!.textContent).toBe(
+			'這一段打秒數，例：5.0；別的段前面加段名，例：音樂 1 2-5'
+		);
 	});
 
 	async function setEights(eights: string, confirm: boolean) {

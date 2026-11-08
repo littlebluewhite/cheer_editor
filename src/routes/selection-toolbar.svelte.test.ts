@@ -20,13 +20,14 @@ async function click(id: string, shiftKey = false) {
 }
 
 describe('選人工具列', () => {
-	it('選到人才出現，沒選人收起來', async () => {
+	it('選到人才有鏡像等項目，沒選人只剩「全隊跟第 [_] 張一樣」', async () => {
 		render(Page, editorPage(libSample()).props);
-		expect(toolbar()).toBeNull();
+		expect(within(toolbar()!).queryByRole('button', { name: '鏡像' })).toBeNull();
 		await click('m1');
 		expect(within(toolbar()!).getByRole('button', { name: '鏡像' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '不選人' }));
-		expect(toolbar()).toBeNull();
+		expect(within(toolbar()!).queryByRole('button', { name: '鏡像' })).toBeNull();
+		expect(within(toolbar()!).getByRole('button', { name: /^全隊跟第 \d+ 張一樣$/ })).toBeTruthy();
 	});
 
 	it('在選到的人身上按右鍵：出現跟工具列一樣的選單；在沒選到的人身上按，選取換成他', async () => {

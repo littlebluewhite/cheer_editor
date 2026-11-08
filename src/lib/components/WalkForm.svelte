@@ -13,6 +13,7 @@
 		readTime,
 		setTeamWalks,
 		setWalks,
+		timeExamples,
 		timeText,
 		walkSpanAt,
 		walkSpeedText,
@@ -62,6 +63,15 @@
 		});
 		const same = (k: 'depart' | 'arrive') => (texts.every((t) => t[k] === texts[0][k]) ? texts[0][k] : '');
 		return { depart: texts.length ? same('depart') : '', arrive: texts.length ? same('arrive') : '' };
+	});
+
+	/** 欄位下面的寫法說明：這一段怎麼打、別的段加段名，例子照這支流程真的有的段。 */
+	const howTo = $derived.by(() => {
+		if (!formation) return '';
+		const home = formation.segmentId!;
+		const { here, other } = timeExamples(flow, home);
+		const unit = flow.segments.find((s) => s.id === home)?.kind === 'chant' ? '秒數' : '八拍-拍';
+		return `這一段打${unit}，例：${here}${other ? `；別的段前面加段名，例：${other}` : ''}`;
 	});
 
 	let departText = $state('');
@@ -129,7 +139,7 @@
 					{#each speedLines as line, i (i)}<span>{line}</span>{/each}
 				</p>
 			{/if}
-			<small class="muted">這一段打「2-5」，口號段打秒數；別的段前面加段名，例：口號 1 12.3</small>
+			<small class="muted">{howTo}</small>
 		{/if}
 		<div class="buttons">
 			<button type="button" class="primary" disabled={noWalk} onclick={apply}>套用</button>

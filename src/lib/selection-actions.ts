@@ -58,7 +58,7 @@ const ACTIONS: SelectionAction[] = [
 	}
 ];
 
-/** 選了 count 個人時，工具列和右鍵選單上有的項目（照順序）。沒選人（0）時是套用全隊的項目，只在右鍵選單上。 */
+/** 選了 count 個人時，工具列和右鍵選單上有的項目（照順序）。沒選人（0）時是套用全隊的項目。 */
 export function selectionActions(count: number): SelectionAction[] {
 	return ACTIONS.filter((a) => count >= a.min);
 }

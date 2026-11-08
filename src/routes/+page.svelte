@@ -145,6 +145,16 @@
 	let discarding = $state.raw<RecentFlow | null>(null);
 	/** 丟掉以後的回饋：「已丟掉」，或另一個分頁正在編、沒丟掉。 */
 	let discardNote = $state('');
+	/**
+	 * 最近的流程裡同名的另一支：有的話「丟掉」和它的確認框也寫最後改的時間，分得出是哪一支。
+	 * 時間照最後改的時間寫；同名的又在同一分鐘改，就寫到秒。
+	 */
+	function recentEdited(f: RecentFlow): { text: string; twin: boolean } {
+		if (!f.savedAt) return { text: '', twin: false };
+		const twins = editor.file.recent.filter((g) => g !== f && g.name === f.name);
+		const sameMinute = twins.some((g) => g.savedAt && draftTime(g.savedAt) === draftTime(f.savedAt!));
+		return { text: `最後改 ${draftTime(f.savedAt, sameMinute)}`, twin: twins.length > 0 };
+	}
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
@@ -1064,9 +1074,8 @@
 					<h2 id="recent-title">最近的流程</h2>
 					<ul aria-labelledby="recent-title">
 						{#each editor.file.recent as f (f.id)}
-							{@const edited = f.savedAt ? `最後改 ${draftTime(f.savedAt)}` : ''}
 							<!-- 同名的不只一支：「丟掉」也寫最後改的時間，聽得出是哪一支 -->
-							{@const twin = edited && editor.file.recent.some((g) => g !== f && g.name === f.name)}
+							{@const { text: edited, twin } = recentEdited(f)}
 							<li>
 								<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
 									<span class="recent-name" title={f.name}>{f.name}</span>
@@ -1090,9 +1099,11 @@
 		</section>
 		{#if discarding}
 			{@const f = discarding}
+			{@const { text: edited, twin } = recentEdited(f)}
+			{@const which = `「${f.name}」${twin ? `（${edited}）` : ''}`}
 			{@const message = f.unsaved
-				? `丟掉「${f.name}」的草稿？還沒存的修改會不見，不能復原。`
-				: `丟掉「${f.name}」的草稿？流程檔不會動，只是不列在最近的流程。`}
+				? `丟掉${which}的草稿？還沒存的修改會不見，不能復原。`
+				: `丟掉${which}的草稿？流程檔不會動，只是不列在最近的流程。`}
 			<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
 				{#snippet children()}
 					<ConfirmList

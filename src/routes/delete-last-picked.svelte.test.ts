@@ -1,4 +1,4 @@
-// Delete 只刪最後點的那一個（#204）：最後點的是人時不刪任何東西，跳提示「要刪動作，先點動作」；
+// Delete 只刪最後點的那一個（#204）：最後點的是人時不刪任何東西，跳提示「Delete 不刪人；要刪站位或動作，先點那張站位或那個動作」；
 // 選了動作再點人，動作表單照舊是那個動作，可以改裡面的人。
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -23,13 +23,13 @@ const thumbs = () => screen.queryAllByRole('button', { name: /^站位 \d+$/ });
 const pickLane = (id: string) => fireEvent.click(document.querySelector(`[data-lane="${id}"] .lab`)!);
 
 describe('Delete 只刪最後點的那一個', () => {
-	it('選站位 → 點人 → Delete：站位還在，出現提示', async () => {
+	it('選站位 → 點人 → Delete：站位還在，提示說 Delete 不刪人、站位也要先點，不只說「先點動作」（N29）', async () => {
 		setup();
 		await fireEvent.click(screen.getByRole('button', { name: '站位 2' }));
 		await pickLane('m2');
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(thumbs()).toHaveLength(2);
-		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');
+		expect(screen.getByRole('status').textContent).toBe('Delete 不刪人；要刪站位或動作，先點那張站位或那個動作');
 	});
 
 	it('選動作 → 點人 → Backspace：動作還在；動作表單照舊是這個動作，點人改人照舊可用', async () => {
@@ -39,7 +39,7 @@ describe('Delete 只刪最後點的那一個', () => {
 		await fireEvent.keyDown(window, { key: 'Backspace' });
 		expect(bar()).not.toBeNull();
 		expect(session.flow!.actions).toHaveLength(1);
-		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');
+		expect(screen.getByRole('status').textContent).toBe('Delete 不刪人；要刪站位或動作，先點那張站位或那個動作');
 
 		await fireEvent.click(screen.getByRole('button', { name: '把 小A 移出這個動作' }));
 		expect(session.flow!.actions[0].members.map((m) => m.memberId)).toEqual(['m1', 'm3', 'm4']);
@@ -54,7 +54,7 @@ describe('Delete 只刪最後點的那一個', () => {
 		expect(session.selectedAction?.id).toBe('x1');
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(session.flow!.actions).toHaveLength(1);
-		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');
+		expect(screen.getByRole('status').textContent).toBe('Delete 不刪人；要刪站位或動作，先點那張站位或那個動作');
 	});
 
 	it('點人 → 選動作 → 點同一個人的走位條 → Delete：動作還在，出現提示', async () => {
@@ -67,7 +67,7 @@ describe('Delete 只刪最後點的那一個', () => {
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-walk]')!);
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(session.flow!.actions).toHaveLength(1);
-		expect(screen.getByRole('status').textContent).toBe('要刪動作，先點動作');
+		expect(screen.getByRole('status').textContent).toBe('Delete 不刪人；要刪站位或動作，先點那張站位或那個動作');
 	});
 
 	it('最後點的是動作：Delete 刪那個動作', async () => {

@@ -57,7 +57,7 @@ export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上
 export const AT_EDGE = '已靠到邊界';
 
 /** 最後點的是人時按 Delete 的提示：不刪任何東西。 */
-export const PICK_ACTION_FIRST = '要刪動作，先點動作';
+export const PICK_TO_DELETE = 'Delete 不刪人；要刪站位或動作，先點那張站位或那個動作';
 
 /** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
 export interface SessionPlayback {
@@ -580,14 +580,14 @@ export class EditorSession {
 	}
 
 	/**
-	 * Delete／Backspace：只刪最後點的那一個（站位或動作）。最後點的是人時不刪，提示要刪動作先點動作；
+	 * Delete／Backspace：只刪最後點的那一個（站位或動作）。最後點的是人時不刪，提示 Delete 不刪人、要刪的先點；
 	 * 點了人又把人取消掉（最後點的沒了，之前選的動作還亮著）也一樣不刪、提示。
 	 * 回傳有沒有處理（頁面拿來 preventDefault）。
 	 */
 	deleteKey(): boolean {
 		if (this.#picked === 'formation' && this.#formationId) this.removeFormation(this.#formationId);
 		else if (this.#picked === 'action' && this.#actionId) this.removeAction(this.#actionId);
-		else if (this.#memberIds.length || this.#actionId || this.#formationId) this.notice = PICK_ACTION_FIRST;
+		else if (this.#memberIds.length || this.#actionId || this.#formationId) this.notice = PICK_TO_DELETE;
 		else return false;
 		return true;
 	}

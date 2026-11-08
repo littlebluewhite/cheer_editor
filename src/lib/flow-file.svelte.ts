@@ -640,7 +640,8 @@ function newestFirst(drafts: DraftInfo[]): DraftInfo[] {
 	return [...drafts].sort((a, b) => (b.savedAt?.getTime() ?? -Infinity) - (a.savedAt?.getTime() ?? -Infinity));
 }
 
-/** 草稿存的時間寫成「11/5 14:03」。 */
-export function draftTime(d: Date): string {
-	return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** 草稿存的時間寫成「11/5 14:03」；seconds 是寫到秒（「11/5 14:03:27」）。 */
+export function draftTime(d: Date, seconds = false): string {
+	const two = (n: number) => String(n).padStart(2, '0');
+	return `${d.getMonth() + 1}/${d.getDate()} ${two(d.getHours())}:${two(d.getMinutes())}${seconds ? `:${two(d.getSeconds())}` : ''}`;
 }
