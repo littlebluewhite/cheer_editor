@@ -1097,6 +1097,12 @@
 		height: 28px;
 		font-size: 12px;
 	}
+	/* ✋ 按下去了：跟選到的東西一樣的顏色，看得出來現在拖空白處是平移 */
+	.tools button[aria-pressed='true'] {
+		background: var(--sel-soft);
+		border-color: var(--sel);
+		box-shadow: inset 0 0 0 1px var(--sel);
+	}
 	.zoom {
 		min-width: 3.2em;
 		text-align: center;

@@ -1741,6 +1741,26 @@ await check('放大後開 ✋ 拖空白處：看到的範圍移動、沒有框�
 	return { ok, value: seen };
 });
 
+await check('放大後按 ✋：看得出來按下去了（底色、框跟沒按不一樣），再按一次變回原樣', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await hitAndClick('.rail button[aria-label="放大"]');
+	await hitAndClick('.rail button[aria-label="放大"]');
+	// 滑鼠移開，量的是按下去的樣子，不是滑過去的樣子
+	const look = async () => {
+		await mouse('mouseMoved', 5, 5, 0);
+		await sleep(200);
+		return js(`const s = getComputedStyle(document.querySelector('.rail button[aria-label="平移"]'));
+			return [s.backgroundColor, s.borderColor, s.boxShadow, s.color].join(' | ');`);
+	};
+	const off = await look();
+	await hitAndClick('.rail button[aria-label="平移"]');
+	const on = await look();
+	await hitAndClick('.rail button[aria-label="平移"]');
+	const back = await look();
+	return { ok: on !== off && back === off, value: { 沒按: off, 按下去: on, 再按一次: back } };
+});
+
 await check('放大後按住 H 拖空白處：看到的範圍移動、沒有框選；放開 H 拖空白處是框選', async () => {
 	await setViewport(1440, 900);
 	await openSample();
