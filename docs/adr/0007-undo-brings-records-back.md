@@ -22,7 +22,7 @@
 
 ## Consequences
 
-- 確認框不再寫「紀錄救不回來」，改寫「清掉的紀錄按「復原」會回來」（`RECORDS_UNDOABLE`）。確認框先留著；既然能復原，要不要照 Apple HIG 改成不問、做完給「已清掉・復原」的提示，之後再決定（"Avoid displaying alerts for common, undoable actions, even when they're destructive."，[Alerts](https://developer.apple.com/design/human-interface-guidelines/alerts)）。
+- 確認框不再寫「紀錄救不回來」，改寫「清掉的紀錄按「復原」會回來」（`RECORDS_UNDOABLE`）。確認框留著，不照 Apple HIG 改成不問、做完給「已清掉・復原」的提示（"Avoid displaying alerts for common, undoable actions, even when they're destructive."，[Alerts](https://developer.apple.com/design/human-interface-guidelines/alerts)）：復原紀錄不存進檔案，關掉分頁、換流程以後就救不回來，所以還是先問（#233 決定，見 `docs/research/ux-root-causes.md`）。
 - 確認框寫的次數照真的會不見的算：整筆不見的幾次（只剩空著的環節的那一次也算），和還在但少了記號的幾次，分開寫（N26）。
 - 流程檔格式不變。復原紀錄不存進草稿或檔案，關掉分頁、換流程以後就沒有了，清掉的紀錄也一樣回不來。
 - 用「記」刪掉上一次、刪掉某一次，還是不算復原的一步，照舊用「救回」。
