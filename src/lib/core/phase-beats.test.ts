@@ -112,13 +112,13 @@ describe('蓋到別的環節', () => {
 	});
 
 	it('整個蓋住：原來那個環節自動刪掉', () => {
-		const flow = flowOf(addPhase(sample(), 'x1', { kind: 'whole', name: '', beats: { at: 24, len: 8 } }));
+		const flow = flowOf(addPhase(sample(), 'x1', { kind: 'hold', name: '', beats: { at: 24, len: 8 } }));
 		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+14', 'p4 24+8']);
 	});
 
 	it('加新的環節蓋掉有記號的環節：一樣先問，確定後才加', () => {
 		const recorded = record(sample(), { p3: '✓' });
-		const add = (o = {}) => addPhase(recorded, 'x1', { kind: 'whole', name: '', beats: { at: 24, len: 8 } }, o);
+		const add = (o = {}) => addPhase(recorded, 'x1', { kind: 'hold', name: '', beats: { at: 24, len: 8 } }, o);
 		expect(add()).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來），確定就刪掉',
@@ -158,7 +158,8 @@ describe('標拍擋下來的情況', () => {
 		['超出動作', sample, 'x1', 30, 4, '環節要在動作裡面'],
 		['在動作之前', sample, 'x1', -2, 4, '環節要在動作裡面']
 	])('%s', (_, make, id, at, len, message) => {
-		expect(addPhase(make(), id, { kind: 'whole', name: '', beats: { at, len } })).toEqual({ kind: 'blocked', message });
+		const kind = make === chant ? 'toss' : 'hold';
+		expect(addPhase(make(), id, { kind, name: '', beats: { at, len } })).toEqual({ kind: 'blocked', message });
 	});
 
 	it('動作被拖半拍後：要對齊音樂的整拍', () => {
@@ -188,21 +189,19 @@ describe('沒記成功率的動作標拍加環節', () => {
 	});
 
 	it.each([
-		['stunt', [1, 1]],
-		['pyramid', [1, 1]],
-		['toss', [1, 1]],
-		['dance', [1, 1]],
-		['other', [1, 1]],
-		['tumbling', [undefined, undefined]],
-		['jump', [undefined, undefined]]
-	] as const)('%s：分組的大類全部的人進第 1 組；騰翻、跳躍不分組', (category, squads) => {
-		const flow = flowOf(addPhase(unrated(category), 'x2', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }));
+		['stunt', 'hold', [1, 1]],
+		['pyramid', 'hold', [1, 1]],
+		['toss', 'toss', [1, 1]],
+		['tumbling', 'tumble', [undefined, undefined]],
+		['jump', 'jump', [undefined, undefined]]
+	] as const)('%s：分組的大類全部的人進第 1 組；騰翻、跳躍不分組', (category, kind, squads) => {
+		const flow = flowOf(addPhase(unrated(category), 'x2', { kind, name: '', beats: { at: 0, len: 4 } }));
 		expect(squadNumbers(x2(flow))).toEqual(squads);
 	});
 
 	it('已經記成功率的動作加環節：組不動', () => {
 		const split = flowOf(setSquad(sample(), 'x1', ['m2'], 2));
-		const flow = flowOf(addPhase(split, 'x1', { kind: 'whole', name: '', beats: { at: 8, len: 4 } }));
+		const flow = flowOf(addPhase(split, 'x1', { kind: 'hold', name: '', beats: { at: 8, len: 4 } }));
 		expect(squadNumbers(lib(flow))).toEqual([1, 2]);
 	});
 

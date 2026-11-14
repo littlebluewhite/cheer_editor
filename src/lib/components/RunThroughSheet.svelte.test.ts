@@ -45,7 +45,7 @@ describe('記一次全上的表', () => {
 		]);
 		expect(sheetRows('騰翻')).toEqual([
 			['環節', '小美', '小A'],
-			['整體 騰翻', '✓', '✓']
+			['翻法 騰翻', '✓', '✓']
 		]);
 		expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 成功');
 	});
@@ -70,9 +70,9 @@ describe('記一次全上的表', () => {
 		setup();
 		await fireEvent.click(stopped('騰翻'));
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
-		expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '', '']);
+		expect(sheetRows('騰翻')[1]).toEqual(['翻法 騰翻', '', '']);
 		await fireEvent.click(stopped('騰翻'));
-		expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '✓', '✓']);
+		expect(sheetRows('騰翻')[1]).toEqual(['翻法 騰翻', '✓', '✓']);
 	});
 
 	it('第 2 組下法點成 ✗、騰翻沒做，存：session 的流程裡 Lib 每組多一次全上，騰翻沒有；表關掉；不算復原的一步', async () => {
@@ -121,7 +121,7 @@ describe('記一次全上的表', () => {
 		expect(stopped('技巧·Lib').getAttribute('aria-pressed')).toBe('true');
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
 		expect(sheetRows('技巧·Lib')[1]).toEqual(['上法', '', '']);
-		expect(sheetRows('騰翻')[1]).toEqual(['整體 騰翻', '', '']);
+		expect(sheetRows('騰翻')[1]).toEqual(['翻法 騰翻', '', '']);
 		await fireEvent.click(rest());
 		expect(stopped('技巧·Lib').getAttribute('aria-pressed')).toBe('false');
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('false');

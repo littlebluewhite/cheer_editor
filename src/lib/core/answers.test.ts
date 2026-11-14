@@ -34,7 +34,7 @@ const asking: [string, (flow: Flow, o: ConfirmOption) => CommandResult][] = [
 	['updateMember', (f, o) => updateMember(f, 'm1', { name: '小美美' }, o)],
 	['deleteMember', (f, o) => deleteMember(f, 'm4', o)],
 	['updateSegment', (f, o) => updateSegment(f, 's1', { eights: 1 }, o)],
-	['addPhase', (f, o) => addPhase(f, 'x1', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }, o)],
+	['addPhase', (f, o) => addPhase(f, 'x1', { kind: 'hold', name: '', beats: { at: 0, len: 4 } }, o)],
 	['deletePhase', (f, o) => deletePhase(f, 'x1', 'p3', o)],
 	['markPhaseBeats', (f, o) => markPhaseBeats(f, 'x1', 'p1', 0, 16, o)],
 	['clearPhaseBeats', (f, o) => clearPhaseBeats(f, 'x1', 12, 16, o)]

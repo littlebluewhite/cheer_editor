@@ -13,7 +13,7 @@ import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResu
 import type { Segment } from './segment';
 import { recordsLoss, recordsLossText } from './records';
 import { settle } from './settle';
-import { allPhaseIds, beatsProblem } from './success-rate';
+import { allPhaseIds, beatsProblem, phaseKindProblem } from './success-rate';
 
 /** 加環節要給的東西：種類、名字；音樂段要給標的拍（從動作開始算第幾個半拍、幾個半拍長），口號段不能給。 */
 export interface NewPhaseInput {
@@ -33,6 +33,7 @@ export interface PhaseChange {
  * 加環節：給種類和名字（名字去掉頭尾空白，可以空），發新的 id，回傳新環節的 id。
  * 音樂段要給標的拍：蓋到別的環節的部分從那個環節拿掉（剩兩段留前面那段），拍清光的環節刪掉（有記號先問）。
  * 口號段不標拍，加在最後。動作還沒記成功率時，這就是第一個環節：動作開始記成功率（分組交給收尾）。
+ * 種類要是動作的大類能用的（見 phaseKindsFor），舞蹈、其他不能加。
  */
 export function addPhase(
 	flow: Flow,
@@ -44,6 +45,8 @@ export function addPhase(
 	if (typeof found === 'string') return blocked(found);
 	const { action, segment } = found;
 	const { beats } = input;
+	const kindProblem = phaseKindProblem(action.category, input.kind);
+	if (kindProblem) return blocked(kindProblem);
 	if (segment.kind === 'music' && !beats) return blocked('音樂段的環節要選拍標');
 	const problem = beats && beatsProblem(segment, action, beats);
 	if (problem) return blocked(problem);
@@ -91,11 +94,13 @@ export function clearPhaseBeats(
 	return withPhases(flow, segment, action, cut(action.successRate.phases, from, to), options);
 }
 
-/** 改環節：種類、名字（去掉頭尾空白）、顏色（PHASE_COLORS 裡的，或 null 回到種類的顏色）。 */
+/** 改環節：種類（動作的大類能用的）、名字（去掉頭尾空白）、顏色（PHASE_COLORS 裡的，或 null 回到種類的顏色）。 */
 export function updatePhase(flow: Flow, actionId: string, phaseId: string, change: PhaseChange): CommandResult {
 	const found = findPhase(flow, actionId, phaseId);
 	if (typeof found === 'string') return blocked(found);
 	const { action, segment, phase } = found;
+	const kindProblem = change.kind === undefined ? null : phaseKindProblem(action.category, change.kind);
+	if (kindProblem) return blocked(kindProblem);
 	const { color: _, ...rest } = phase;
 	const color = change.color === undefined ? phase.color : (change.color ?? undefined);
 	const next: Phase = {

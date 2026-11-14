@@ -186,7 +186,7 @@ describe('記錄頁的卡', () => {
 		expect(screen.queryByText('只練幾個環節')).toBeNull();
 		expect(screen.queryByRole('button', { name: '存這一次' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '全部 ✓ 存' })).toBeNull();
-		await tap(name, '整體 騰翻', '小失誤');
+		await tap(name, '翻法 騰翻', '小失誤');
 		expect(records(session, 1).map((r) => [r.whole, r.marks])).toEqual([[true, { p4: '△' }]]);
 		expect(screen.getByRole('status').textContent).toBe('已記下');
 	});
@@ -196,7 +196,7 @@ describe('記錄頁的卡', () => {
 		const { session, name } = setup(flow, 1);
 		const { who } = attemptWhos(flow, flow.actions[1])[0];
 		session.drillScopes[`${flow.actions[1].id} ${who}`] = { whole: false, picked: [] };
-		await tap(name, '整體 騰翻', '成功');
+		await tap(name, '翻法 騰翻', '成功');
 		expect(records(session, 1).map((r) => r.whole)).toEqual([true]);
 	});
 

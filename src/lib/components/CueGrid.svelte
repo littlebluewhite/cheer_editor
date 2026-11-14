@@ -39,6 +39,7 @@
 		MOTION_WORDS,
 		PHASE_COLORS,
 		PHASE_KINDS,
+		phaseKindsFor,
 		phaseLabel,
 		STEP_WORDS,
 		actionEights,
@@ -117,6 +118,9 @@
 		].filter((g) => g.options.length);
 	});
 	const phases = $derived(action.successRate?.phases ?? []);
+	/** 這個動作的大類能用的環節種類；只有一種就不給選，沒有（舞蹈、其他）就不能加環節。 */
+	const kinds = $derived(phaseKindsFor(action.category));
+	const kindLabel = (k: PhaseKind) => PHASE_KINDS.find((x) => x.key === k)?.label ?? '';
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
 	let phaseName = $state('');
@@ -189,7 +193,16 @@
 			ask.clear();
 			pop = false;
 			chosen = null;
-			phaseKind = nextPhaseKind(phases.at(-1)?.kind);
+			phaseKind = nextPhaseKind(action.category, phases.at(-1)?.kind) ?? 'load';
+		});
+	});
+
+	// 換了大類，選的種類不能用了就換成新大類預設的。
+	const category = $derived(action.category);
+	$effect(() => {
+		void category;
+		untrack(() => {
+			if (!kinds.includes(phaseKind)) phaseKind = nextPhaseKind(category, phases.at(-1)?.kind) ?? 'load';
 		});
 	});
 
@@ -299,7 +312,7 @@
 			(o) => addPhase(flow, action.id, { kind, name: phaseName, beats }, o),
 			() => {
 				phaseName = '';
-				phaseKind = nextPhaseKind(kind);
+				phaseKind = nextPhaseKind(action.category, kind) ?? kind;
 			}
 		);
 	}
@@ -495,7 +508,7 @@
 	<span class="cap">拍點</span>
 	{#if segment?.kind !== 'music'}
 		<p class="muted">口號段不數拍，不能放拍點</p>
-		<div class="pop-row phase" role="group" aria-label="環節">
+		{#if kinds.length}<div class="pop-row phase" role="group" aria-label="環節">
 			<span class="lbl">環節</span>
 			<div class="words">
 				{#each phases as p (p.id)}
@@ -512,7 +525,7 @@
 			</div>
 			<button type="button" class="clear" aria-label="清掉環節" disabled={!editing} onclick={deleteChosen}>清掉</button>
 			{#if editing}{@render edit(editing)}{/if}
-		</div>
+		</div>{/if}
 		{@render asks()}
 	{:else if !hasCells}
 		<p class="muted">動作不到一拍，不能放拍點</p>
@@ -725,7 +738,7 @@
 							<button type="button" class="clear" aria-label="清掉{row.label}" onclick={() => clear(row.kind)}>清掉</button>
 						</div>
 					{/each}
-					<div class="pop-row phase" role="group" aria-label="環節">
+					{#if kinds.length}<div class="pop-row phase" role="group" aria-label="環節">
 						<span class="lbl">環節</span>
 						<div class="words">
 							{#each phases as p (p.id)}
@@ -746,7 +759,7 @@
 							onclick={clearPhases}>清掉</button
 						>
 						{#if editing}{@render edit(editing)}{/if}
-					</div>
+					</div>{/if}
 					{#if copyNote}<p class="hint" role="status">{copyNote}</p>{/if}
 					{@render asks()}
 				</div>
@@ -758,9 +771,13 @@
 <!-- 加新環節：種類、名字、加入。 -->
 {#snippet adder(add: () => void)}
 	<span class="own">
-		<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
-			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-		</select>
+		{#if kinds.length > 1}
+			<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
+				{#each kinds as k (k)}<option value={k}>{kindLabel(k)}</option>{/each}
+			</select>
+		{:else}
+			<span class="kind fixed" aria-label="環節的種類">{kindLabel(phaseKind)}</span>
+		{/if}
 		<input
 			class="custom"
 			aria-label="環節的名字"
@@ -787,14 +804,16 @@
 				{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
 			</select>
 		</span>
-		<select
-			class="kind"
-			aria-label="這個環節的種類"
-			value={p.kind}
-			onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
-		>
-			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-		</select>
+		{#if kinds.length > 1}
+			<select
+				class="kind"
+				aria-label="這個環節的種類"
+				value={p.kind}
+				onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
+			>
+				{#each kinds as k (k)}<option value={k}>{kindLabel(k)}</option>{/each}
+			</select>
+		{/if}
 		<input
 			class="custom"
 			aria-label="這個環節的名字"
@@ -1099,6 +1118,12 @@
 	.kind {
 		min-height: 26px;
 		font-size: 12px;
+	}
+	/* 只能用一種環節的大類（拋投、騰翻、跳躍）：種類直接寫好，不能選。 */
+	.kind.fixed {
+		display: inline-flex;
+		align-items: center;
+		padding: 0 4px;
 	}
 	/* 改環節：在環節列下面另起一行，跟按鈕那一欄對齊。 */
 	.edit {

@@ -7,13 +7,13 @@ import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
-import { PHASE_KINDS } from './phase-types';
+import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
 import { freshIds } from './ids';
-import { perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
+import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 10;
+export const FORMAT_VERSION = 11;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -42,6 +42,9 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 第 9 版：還沒有環節的動作（騰翻、跳躍除外）也可以有組（從別的動作複製人帶來的，加第一個環節時照用）。資料不用動；
  *   第 8 版以前沒有環節的動作有組就是壞掉的檔，升級時交給 isFlow 擋下來（見 squadsWithoutPhases）。
  * 第 10 版：一次多了可有可無的 blanks（整個做、中途 ✗ 時，那時就有、✗ 後面空著的環節），沒有就是沒有空著的，所以資料不用動。
+ * 第 11 版：環節的種類拿掉整體，多了拋法、翻法、跳法，每個大類只能用自己的種類（見 phaseKindsFor）。升級時照大類換種類
+ *   （見 fitPhaseKinds）：拋投都換成拋法、騰翻都換成翻法、跳躍都換成跳法，技巧、金字塔的整體換成中段；名字、id、紀錄照留。
+ *   舞蹈、其他的環節和紀錄拿掉，不記成功率，組也拿掉。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -52,8 +55,16 @@ const UPGRADES: Record<number, Upgrade> = {
 	6: (doc) => ({ formatVersion: 7, flow: tidySuccessRate(doc.flow) }),
 	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) }),
 	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow }),
-	9: (doc) => ({ formatVersion: 10, flow: doc.flow })
+	9: (doc) => ({ formatVersion: 10, flow: doc.flow }),
+	10: (doc) => ({ formatVersion: 11, flow: fitKinds(doc.flow) })
 };
+
+/** 第 10 → 11 版：每個動作的環節種類換成大類能用的（見 fitPhaseKinds）。 */
+function fitKinds(v: unknown): unknown {
+	if (!flowShape(v)) return v;
+	const flow = v as Flow;
+	return { ...flow, actions: flow.actions.map(fitPhaseKinds) };
+}
 
 /** 有沒有動作沒打開記成功率卻有組（第 8 版以前不行）。 */
 function squadsWithoutPhases(v: unknown): boolean {
@@ -254,7 +265,8 @@ const color: Check = (v) => v === undefined || (str(v) && /^#[0-9a-f]{6}$/i.test
 
 const phase = shape({
 	id: str,
-	kind: oneOf(PHASE_KINDS.map((k) => k.key)),
+	// 舊版的整體也收（升級時換掉）；種類對不對得上大類由 successRateProblem 看。
+	kind: oneOf([...PHASE_KINDS.map((k) => k.key), ...V10_PHASE_KINDS]),
 	name: str,
 	color,
 	beats: (v) => v === undefined || shape({ at: int, len: int })(v)

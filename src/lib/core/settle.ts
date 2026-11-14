@@ -1,5 +1,5 @@
 // 成功率收尾：一個動作改了之後，它的環節、組、紀錄怎麼收。
-// 順序固定在這裡：拿掉對不上的紀錄 → 算要問什麼 → 照回答清掉 → 換上新的環節 → 組的規則 → 成功率規則檢查。
+// 順序固定在這裡：環節種類換成大類能用的 → 拿掉對不上的紀錄 → 算要問什麼 → 照回答清掉 → 換上新的環節 → 組的規則 → 成功率規則檢查。
 // 指令只給改之前、改好的動作和教練的回答，拿回收好的動作和有結構的後果；要問的話由 falloutQuestion 組字。
 
 import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
@@ -10,6 +10,7 @@ import { RECORDS_UNDOABLE, answered, needsChoice, needsConfirm, type CommandResu
 import type { Segment } from './segment';
 import {
 	allSquadIds,
+	fitPhaseKinds,
 	fitRecords,
 	groupsPeople,
 	perPerson,
@@ -56,7 +57,8 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const to = flow.segments.find((s) => s.id === after.segmentId);
 	if (!to) return { kind: 'blocked', message: '找不到這一段' };
 	const from = before && flow.segments.find((s) => s.id === before.segmentId);
-	const grouped = squadRules(flow, before, after);
+	// 先把環節的種類換成大類能用的（換大類時）；換到舞蹈、其他就沒有環節，紀錄算在一定清掉的裡面。
+	const grouped = squadRules(flow, before, fitPhaseKinds(after));
 	const fitted = fitRecords(grouped.action);
 	const { lost, changed } = before ? recordsFallout(before, fitted) : { lost: [], changed: [] };
 	const settled = answer.records === 'clear' ? withoutRecords(fitted, changed) : fitted;
@@ -174,13 +176,18 @@ export function falloutQuestion(
 /** 有紀錄的組換了人時的問法（在動作裡移人、刪隊員共用）。 */
 export const CHANGED_SQUADS_QUESTION = '有紀錄的組換了人：保留舊紀錄，還是清掉重算？';
 
-/** 「換了人，會清掉 2 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？」；換了算法是「換成騰翻，變成每個人自己算，會清掉…」。 */
+/**
+ * 「換了人，會清掉 2 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？」；換了算法是「換成騰翻，變成每個人自己算，會清掉…」；
+ * 換成舞蹈、其他是「換成舞蹈，不記成功率，會清掉…」。
+ */
 function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Attempt[]): string {
 	const category = ACTION_CATEGORIES.find((c) => c.key === next.category)?.label ?? '';
 	const why =
-		perPerson(old.category) === perPerson(next.category)
-			? '換了人'
-			: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
+		old.successRate && !next.successRate && old.category !== next.category
+			? `換成${category}，不記成功率`
+			: perPerson(old.category) === perPerson(next.category)
+				? '換了人'
+				: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
 	const asked = [
 		lost.length ? `${why}，會清掉 ${lost.length} 次紀錄` : '',
 		changed.length ? CHANGED_SQUADS_QUESTION : ''

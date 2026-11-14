@@ -7,7 +7,7 @@ import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
 import { rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
-import { PHASE_KINDS, type Phase } from './phase-types';
+import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
@@ -170,12 +170,13 @@ function perPersonProblem(action: Action): string | null {
 /**
  * 成功率規則（只有這一份）：動作的成功率設定、組和紀錄哪裡不守規則（給教練看的原因）；沒問題是 null。
  * 收尾最後照這個檢查，讀流程檔也照這個檢查。第 6 版就有的規則（v6RateProblem）再加：
- * 有成功率設定就至少一個環節；音樂段的環節一定有標的拍、照拍的先後排；組 id 是 g 加編號。
+ * 有成功率設定就至少一個環節；環節的種類是動作的大類能用的（第 11 版起，見 phaseKindsFor）；音樂段的環節一定有標的拍、照拍的先後排；組 id 是 g 加編號。
  * 只有組放寬（第 9 版起）：還沒有環節的動作也可以有組（從別的動作複製人帶來的，加第一個環節時照用），騰翻、跳躍還是不分組。
  */
 export function successRateProblem(segment: Segment, action: Action): string | null {
 	const grouped = action.members.some((m) => m.squad !== undefined);
-	const problem = (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action);
+	const keys = PHASE_KINDS.map((k) => k.key as string);
+	const problem = (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action, keys) || kindsProblem(action);
 	if (problem) return problem;
 	const phases = action.successRate?.phases;
 	if (phases && !phases.length) return '記成功率的動作至少要有一個環節';
@@ -196,15 +197,46 @@ export function v6RateProblem(segment: Segment, action: Action): string | null {
 		const problem = groupingProblem(action);
 		if (problem) return problem;
 	}
-	return phasesAndRecordsProblem(segment, action);
+	return phasesAndRecordsProblem(segment, action, V10_PHASE_KINDS);
+}
+
+/** 環節的種類要是這個大類能用的（見 phaseKindsFor）：舞蹈、其他不記成功率，拋投只用拋法…（給教練看的原因）。 */
+function kindsProblem(action: Action): string | null {
+	for (const p of action.successRate?.phases ?? []) {
+		const problem = phaseKindProblem(action.category, p.kind);
+		if (problem) return problem;
+	}
+	return null;
+}
+
+/** 這個大類的動作能不能用這種環節：「舞蹈的動作不記成功率」「拋投的環節只能用拋法」；能用是 null。加環節、改環節也照這個擋。 */
+export function phaseKindProblem(category: ActionCategory, kind: string): string | null {
+	const kinds = phaseKindsFor(category);
+	if ((kinds as string[]).includes(kind)) return null;
+	const label = ACTION_CATEGORIES.find((c) => c.key === category)?.label;
+	if (!kinds.length) return `${label}的動作不記成功率`;
+	return `${label}的環節只能用${kinds.map((k) => PHASE_KINDS.find((x) => x.key === k)!.label).join('、')}`;
+}
+
+/**
+ * 環節的種類換成動作的大類能用的（見 fitPhaseKind），名字、id、紀錄照留；大類是舞蹈、其他就拿掉環節，
+ * 不記成功率，組也拿掉。換大類時收尾用，升級舊檔也用。
+ */
+export function fitPhaseKinds(action: Action): Action {
+	const rate = action.successRate;
+	if (!rate) return action;
+	if (!phaseKindsFor(action.category).length) return replacePhases(action, []);
+	if (rate.phases.every((p) => fitPhaseKind(action.category, p.kind) === p.kind)) return action;
+	const phases = rate.phases.map((p) => ({ ...p, kind: fitPhaseKind(action.category, p.kind)! }));
+	return { ...action, successRate: { ...rate, phases } };
 }
 
 /** 第 6 版就有的規則裡組以外的：環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。 */
-function phasesAndRecordsProblem(segment: Segment, action: Action): string | null {
+function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string[]): string | null {
 	const phases = action.successRate?.phases ?? [];
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
 	for (const p of phases) {
-		if (!PHASE_KINDS.some((k) => k.key === p.kind)) return '沒有這種環節';
+		if (!kinds.includes(p.kind)) return '沒有這種環節';
 		if (p.name !== p.name.trim()) return '環節的名字頭尾不能有空白';
 		if (p.color !== undefined && !PHASE_COLORS.some((c) => c.value === p.color)) {
 			return '環節的顏色只能挑辨識色或石板灰';

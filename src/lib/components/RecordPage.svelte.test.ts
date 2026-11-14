@@ -51,7 +51,7 @@ describe('記錄頁', () => {
 
 		await pickAction('騰翻');
 		expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['小美', '小A']);
-		await tap('小A', '整體 騰翻', '成功');
+		await tap('小A', '翻法 騰翻', '成功');
 		expect(dayRow('小A')).toEqual(['✓']);
 	});
 
@@ -108,10 +108,10 @@ describe('記錄頁', () => {
 		const item = () => screen.getByRole('button', { name: /^騰翻/ }).textContent?.replace(/\s+/g, ' ').trim();
 		expect(item()).toBe('騰翻 這天每人 0 次');
 		await pickAction('騰翻');
-		for (const who of ['小美', '小A', '小美', '小A']) await tap(who, '整體 騰翻', '成功');
+		for (const who of ['小美', '小A', '小美', '小A']) await tap(who, '翻法 騰翻', '成功');
 		expect(item()).toBe('騰翻 這天每人 2 次');
-		await tap('小美', '整體 騰翻', '失敗');
-		expect(item()).toBe('騰翻 這天每人 2–3 次 最弱：整體 騰翻 80%');
+		await tap('小美', '翻法 騰翻', '失敗');
+		expect(item()).toBe('騰翻 這天每人 2–3 次 最弱：翻法 騰翻 80%');
 	});
 
 	it('選了「只練幾個環節」和要練的環節：換動作再回來還是它', async () => {

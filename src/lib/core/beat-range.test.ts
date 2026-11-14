@@ -133,11 +133,11 @@ describe('切進每個八拍', () => {
 	it('給了拍點就只切那些（例：個人表只切給他的），環節照樣切', () => {
 		let flow = flowOf(placeCue(withAction(0, 16), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 2, len: 2, word: 'up', who: { member: 'm2' } }));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 0, len: 16 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 0, len: 16 } }));
 		const action = flow.actions[0];
 		const [, up] = action.cues!;
 		const [only] = actionEights(action, [up]);
 		expect(only.cues).toEqual([{ cue: up, start: 2, end: 4, first: true, last: true, track: 0 }]);
-		expect(only.phases.map((p) => p.phase.kind)).toEqual(['whole']);
+		expect(only.phases.map((p) => p.phase.kind)).toEqual(['hold']);
 	});
 });

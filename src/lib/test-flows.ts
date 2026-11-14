@@ -55,7 +55,7 @@ export function libSample(): Flow {
 
 /**
  * 成功率的範例流程：libSample 再加
- * x2：騰翻（第 3 個八拍），環節 p4 整體「騰翻」整個動作；小美、小A 在裡面。
+ * x2：騰翻（第 3 個八拍），環節 p4 翻法「騰翻」整個動作；小美、小A 在裡面。
  */
 export function ratedSample(): Flow {
 	const flow = flowOf(
@@ -72,7 +72,7 @@ export function ratedSample(): Flow {
 			]
 		})
 	);
-	return flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
+	return flowOf(addPhase(flow, 'x2', { kind: 'tumble', name: '騰翻', beats: { at: 0, len: 16 } }));
 }
 
 /** 動作裡每個人的組號（照組 id 的先後算，見 squadNumber）；沒分組是 undefined。 */

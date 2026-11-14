@@ -257,7 +257,7 @@ export function recordedFlow(): Flow {
 /**
  * squadFlow 再加：
  * x2：拋投（第 2 個八拍的前 4 拍），還沒有環節；小芳。
- * x3：騰翻（第 3 個八拍），環節整體「騰翻」整個動作；小美、小A。
+ * x3：騰翻（第 3 個八拍），環節翻法「騰翻」整個動作；小美、小A。
  */
 export function practiceFlow(): Flow {
 	let flow = squadFlow();
@@ -268,5 +268,5 @@ export function practiceFlow(): Flow {
 		{ memberId: 'm2', role: '騰翻' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members: tumbling }));
-	return flowOf(addPhase(flow, 'x3', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
+	return flowOf(addPhase(flow, 'x3', { kind: 'tumble', name: '騰翻', beats: { at: 0, len: 16 } }));
 }

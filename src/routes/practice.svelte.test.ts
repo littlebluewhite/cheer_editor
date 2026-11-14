@@ -210,7 +210,7 @@ describe('練習：記錄頁記分段練', () => {
 });
 
 describe('練習：紀錄不進復原', () => {
-	/** 在編排幫拋投的拍點格子選 2-1 到 2-4 加環節「整體 拋投」（復原紀錄多一步），再切到練習。 */
+	/** 在編排幫拋投的拍點格子選 2-1 到 2-4 加環節「拋法 拋投」（復原紀錄多一步），再切到練習。 */
 	async function withOneStep() {
 		render(Page, editorPage(practiceFlow()).props);
 		await fireEvent.click(document.querySelector('[data-lane="m3"] [data-action-id="x2"]')!);
@@ -218,7 +218,7 @@ describe('練習：紀錄不進復原', () => {
 		await fireEvent.click(grid.getByRole('button', { name: '2-1' }));
 		await fireEvent.click(grid.getByRole('button', { name: '2-4' }), { shiftKey: true });
 		const phase = within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
-		await fireEvent.change(phase.getByRole('combobox', { name: '環節的種類' }), { target: { value: 'whole' } });
+		expect(phase.getByLabelText('環節的種類').textContent).toBe('拋法');
 		await fireEvent.input(phase.getByRole('textbox', { name: '環節的名字' }), { target: { value: '拋投' } });
 		await fireEvent.click(phase.getByRole('button', { name: '加入環節' }));
 		await toPractice();
@@ -323,7 +323,7 @@ describe('練習：每天的表和最弱的環節', () => {
 		await practice();
 		await pickAction('騰翻');
 		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));
-		expect(tableRows()[0]).toEqual(['日期', '整體 騰翻']);
+		expect(tableRows()[0]).toEqual(['日期', '翻法 騰翻']);
 		expect(tableRows()[1]).toEqual([localDate(), '100% 完成率 100%・1 次']);
 	});
 
@@ -365,7 +365,7 @@ describe('練習：每天的表和最弱的環節', () => {
 	it('騰翻的動作：可以只看某一個人', async () => {
 		await practice();
 		await pickAction('騰翻');
-		await tap('小A', '整體 騰翻', '成功');
+		await tap('小A', '翻法 騰翻', '成功');
 		const pick = screen.getByLabelText('看哪一個人') as HTMLSelectElement;
 		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '小美', '小A']);
 		await fireEvent.change(pick, { target: { value: 'm1' } });
@@ -436,7 +436,7 @@ describe('練習：總表', () => {
 		]);
 		expect(blockRows('騰翻')).toEqual([
 			['環節', '小美', '小A', '合計'],
-			['整體 騰翻', '100% 1 次', '—', '100% 1 次']
+			['翻法 騰翻', '100% 1 次', '—', '100% 1 次']
 		]);
 	});
 
@@ -557,7 +557,7 @@ describe('練習：總表', () => {
 			await filter('練法', '只看全上');
 			expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '50% 2 次', '0% 1 次', '33% 3 次']);
 			expect(blockRows('技巧·Lib')[4]).toEqual(['整次', '50% 2 次', '0% 1 次', '33% 3 次']);
-			expect(blockRows('騰翻')[1]).toEqual(['整體 騰翻', '—', '—', '—']);
+			expect(blockRows('騰翻')[1]).toEqual(['翻法 騰翻', '—', '—', '—']);
 
 			await fireEvent.click(cell('第 2 組 小芳', '下法'));
 			const marks = within(screen.getByRole('complementary', { name: '明細' })).getAllByRole('listitem');

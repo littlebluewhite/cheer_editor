@@ -313,7 +313,7 @@ describe('動作表單的草稿：送出（開始、長度由核心讀）', () =
 		draft.copyMembers(session.flow!.actions[0]);
 		draft.add();
 		const id = session.selectedActionId!;
-		session.change(flowOf(addPhase(session.flow!, id, { kind: 'whole', name: '', beats: { at: 0, len: 16 } })));
+		session.change(flowOf(addPhase(session.flow!, id, { kind: 'hold', name: '', beats: { at: 0, len: 16 } })));
 		expect(squadNumbers(session.flow!.actions.find((a) => a.id === id)!)).toEqual([1, 1, 2, 2]);
 	});
 

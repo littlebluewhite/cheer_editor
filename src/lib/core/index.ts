@@ -92,7 +92,7 @@ export {
 } from './records';
 export type { RecordsPatch, RemovedRunThrough, RunThroughMarks } from './records';
 
-export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
+export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseKindsFor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';
 export { addPhase, clearPhaseBeats, deletePhase, markPhaseBeats, updatePhase } from './phases';
 export type { NewPhaseInput, PhaseChange } from './phases';

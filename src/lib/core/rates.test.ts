@@ -141,7 +141,7 @@ describe('整次只看那一次當時就有、現在還在的環節', () => {
 
 	it('之後才加的環節不看：✓✓✓ 之後加一個環節，那一次還是成功', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', attempt('✓✓✓')));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
 		const action = flow.actions.find((a) => a.id === 'x1')!;
 		expect(action.successRate!.phases).toHaveLength(4);
 		expect(dailyTable(action).total.whole).toEqual({ clean: 1, whole: 1 });
@@ -149,7 +149,7 @@ describe('整次只看那一次當時就有、現在還在的環節', () => {
 
 	it('之後才加的環節不看：✓✗ 之後加一個環節、再刪掉 ✗ 的那個，那一次算成功', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', attempt('✓✓✗')));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
 		flow = flowOf(deletePhase(flow, 'x1', 'p3', { confirmed: true }));
 		const action = flow.actions.find((a) => a.id === 'x1')!;
 		expect(dailyTable(action).total.whole).toEqual({ clean: 1, whole: 1 });
@@ -157,7 +157,7 @@ describe('整次只看那一次當時就有、現在還在的環節', () => {
 
 	it('當時就有的環節全被刪光：那一次不算進整次', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', attempt('✓✗·')));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
 		for (const id of ['p1', 'p2', 'p3']) flow = flowOf(deletePhase(flow, 'x1', id, { confirmed: true }));
 		const action = flow.actions.find((a) => a.id === 'x1')!;
 		expect(dailyTable(action).total.whole).toEqual({ clean: 0, whole: 0 });
@@ -278,7 +278,7 @@ describe('成功率表', () => {
 			{ memberId: 'm1', role: '騰翻' }
 		];
 		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members }));
-		flow = flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'tumble', name: '騰翻', beats: { at: 0, len: 16 } }));
 		const tumbling = () => flow.actions.find((a) => a.id === 'x2')!;
 		const phase = tumbling().successRate!.phases[0].id;
 		const mark = (who: string, m: Mark): NewAttempt => ({ date: '2026-11-04', who, practice: 'drill', whole: true, marks: { [phase]: m } });

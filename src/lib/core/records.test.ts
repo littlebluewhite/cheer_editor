@@ -238,7 +238,7 @@ describe('改某一次、刪掉某一次', () => {
 
 	describe('只看那一次當時就有的環節', () => {
 		const later = (flow: Flow) =>
-			flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
+			flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 14, len: 2 } }, { confirmed: true }));
 		const p4 = (flow: Flow) => flow.actions[0].successRate!.phases[3].id;
 
 		it('之後才加的環節不變成空著的，打了記號也不存；整個做還是整個做', () => {
@@ -384,7 +384,7 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 	it('只帶現在的：換上的流程有、現在沒有的紀錄不帶（這一步清掉的由 undoRecords 加回）', () => {
 		const current = recorded();
 		const off = flowOf(clearPhaseBeats(current, 'x2', 0, 999, { confirmed: true }));
-		const cleared = flowOf(addPhase(off, 'x2', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
+		const cleared = flowOf(addPhase(off, 'x2', { kind: 'tumble', name: '騰翻', beats: { at: 0, len: 16 } }));
 		const carried = carryRecords(current, cleared);
 		expect(recordsOf(carried, 'x2')).toEqual([]);
 	});
@@ -408,10 +408,10 @@ describe('把現在的紀錄帶到這份流程上（復原、重做）', () => {
 			note: '',
 			members: [{ memberId, role: null }]
 		});
-		let older = flowOf(addPhase(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
+		let older = flowOf(addPhase(flowOf(addAction(sample(), toss('m3'))), 'x3', { kind: 'toss', name: '拋投', beats: { at: 0, len: 8 } }));
 		older = flowOf(setSquad(older, 'x3', ['m3'], 1));
 		let current = flowOf(deleteAction(older, 'x3'));
-		current = flowOf(addPhase(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 8 } }));
+		current = flowOf(addPhase(flowOf(addAction(current, toss('m4'))), 'x3', { kind: 'toss', name: '拋投', beats: { at: 0, len: 8 } }));
 		current = flowOf(setSquad(current, 'x3', ['m4'], 1));
 		const x3 = current.actions.find((a) => a.id === 'x3')!;
 		const phase = x3.successRate!.phases[0].id;
@@ -573,7 +573,7 @@ describe('記錄頁要的清單', () => {
 					members: [{ memberId, role: null }]
 				})
 			);
-		flow = flowOf(addPhase(add('toss', 16, 'm1'), 'x3', { kind: 'whole', name: '拋投', beats: { at: 0, len: 4 } }));
+		flow = flowOf(addPhase(add('toss', 16, 'm1'), 'x3', { kind: 'toss', name: '拋投', beats: { at: 0, len: 4 } }));
 		flow = add('jump', 20, 'm2'); // 跳躍：沒有環節
 		flow = add('dance', 24, 'm3'); // 沒打開
 		expect(recordableActions(flow).map((a) => a.id)).toEqual(['x1', 'x3', 'x2']);

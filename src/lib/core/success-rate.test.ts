@@ -8,6 +8,7 @@ import {
 	deletePhase,
 	attemptWhos,
 	addPhase,
+	nextPhaseKind,
 	phaseColor,
 	setSquad,
 	squadBadge,
@@ -44,8 +45,11 @@ function sample(category: ActionCategory = 'stunt'): Flow {
 
 const actionOf = (flow: Flow, id = 'x1') => flow.actions.find((a) => a.id === id)!;
 
-/** x1 加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
-const rated = (flow: Flow, id = 'x1') => flowOf(addPhase(flow, id, { kind: 'whole', name: '', beats: { at: 0, len: 16 } }));
+/** x1 加一個整個動作的環節，種類是大類預設的（開始記成功率；分組的大類全部的人先進第 1 組）。 */
+const rated = (flow: Flow, id = 'x1') => {
+	const kind = nextPhaseKind(actionOf(flow, id).category, undefined)!;
+	return flowOf(addPhase(flow, id, { kind, name: '', beats: { at: 0, len: 16 } }));
+};
 
 describe('環節的 id', () => {
 	it('刪掉的環節的 id 不重用：清光再加，是新的 id', () => {
@@ -306,7 +310,8 @@ describe('組跟著改動作', () => {
 		const before = twoActions('stunt', false);
 		const flow = flowOf(updateAction(before, 'x1', { category: 'tumbling' }));
 		expect(actionOf(flow).members.some((m) => 'squad' in m)).toBe(false);
-		expect(actionOf(flow).successRate).toEqual(actionOf(before).successRate);
+		const rate = actionOf(before).successRate!;
+		expect(actionOf(flow).successRate).toEqual({ ...rate, phases: rate.phases.map((p) => ({ ...p, kind: 'tumble' })) });
 	});
 
 	it('組 id 不對被擋', () => {
@@ -317,19 +322,21 @@ describe('組跟著改動作', () => {
 });
 
 describe('環節的顏色', () => {
-	it('沒挑顏色用種類的顏色：上法青、中段石板灰、轉接金、下法紫、整體灰', () => {
-		const kinds = ['load', 'hold', 'transition', 'dismount', 'whole'] as const;
+	it('沒挑顏色用種類的顏色：上法青、中段石板灰、轉接金、下法紫、拋法洋紅、翻法棕、跳法灰', () => {
+		const kinds = ['load', 'hold', 'transition', 'dismount', 'toss', 'tumble', 'jump'] as const;
 		expect(kinds.map((kind) => phaseColor({ id: 'p1', kind, name: '' }))).toEqual([
 			'#00796b',
 			'#475569',
 			'#8d6200',
 			'#7b1fa2',
+			'#c2185b',
+			'#6d4c41',
 			'#6b7280'
 		]);
 	});
 
 	it('種類的顏色不撞拍子的 down 藍（#1f5fbf）、up 綠（#2b7a2f）', () => {
-		const kinds = ['load', 'hold', 'transition', 'dismount', 'whole'] as const;
+		const kinds = ['load', 'hold', 'transition', 'dismount', 'toss', 'tumble', 'jump'] as const;
 		const colors = kinds.map((kind) => phaseColor({ id: 'p1', kind, name: '' }));
 		expect(colors).not.toContain('#1f5fbf');
 		expect(colors).not.toContain('#2b7a2f');

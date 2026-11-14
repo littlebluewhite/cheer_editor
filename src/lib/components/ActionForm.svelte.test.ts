@@ -5,6 +5,7 @@ import {
 	addSegment,
 	createFlow,
 	addPhase,
+	nextPhaseKind,
 	placeCue,
 	setSquad,
 	updateSegment,
@@ -451,7 +452,7 @@ describe('動作表單：拍點格子', () => {
 			within(grid.getByRole('group', { name: lane }))
 				.getAllByRole('button')
 				.map((b) => b.textContent);
-		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '抬腳', '加入', '清掉']);
+		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '拋', '抬腳', '加入', '清掉']);
 		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏', '拳頭', '加入', '清掉']);
 	});
 
@@ -517,9 +518,11 @@ describe('動作表單：成功率', () => {
 		return flowOf(addAction(flow, { ...base, category: 'stunt', start: 16, members: [members[0]] }));
 	}
 
-	/** 動作加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
-	const rated = (flow: Flow, actionId = 'x1') =>
-		flowOf(addPhase(flow, actionId, { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
+	/** 動作加一個整個動作的環節，種類是大類預設的（開始記成功率；分組的大類全部的人先進第 1 組）。 */
+	const rated = (flow: Flow, actionId = 'x1') => {
+		const kind = nextPhaseKind(flow.actions.find((a) => a.id === actionId)!.category, undefined)!;
+		return flowOf(addPhase(flow, actionId, { kind, name: '', beats: { at: 0, len: 8 } }));
+	};
 
 	/** 畫面跟著 session 的流程更新，像在編輯頁裡一樣。 */
 	const live = (flow: Flow, actionId: string | null) => setup(flow, actionId);
@@ -533,7 +536,7 @@ describe('動作表單：成功率', () => {
 		expect(screen.queryByRole('checkbox', { name: '記成功率' })).toBeNull();
 		expect(screen.queryByRole('group', { name: '成功率' })).toBeNull();
 		expect(screen.queryByRole('list', { name: '環節' })).toBeNull();
-		expect(screen.getByRole('button', { name: /^環節 整體/ })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /^環節 上法/ })).toBeTruthy();
 	});
 
 	it('有環節後每個人旁邊寫第幾組（唯讀，沒有選單）；沒分組寫「沒分組」', () => {
