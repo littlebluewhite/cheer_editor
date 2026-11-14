@@ -307,7 +307,7 @@
 	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。下一個環節的種類預設接在它後面。 */
 	function addNewPhase() {
 		const beats = segment?.kind === 'music' ? { at: sel.from, len: selLen } : undefined;
-		const kind = phaseKind;
+		const kind = kinds.length > 1 ? phaseKind : kinds[0];
 		send(
 			(o) => addPhase(flow, action.id, { kind, name: phaseName, beats }, o),
 			() => {
@@ -493,7 +493,8 @@
 
 	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，第 2 列是環節。 */
 	function layout(e: number) {
-		let row = 3;
+		// 第 2 行是環節列；舞蹈、其他沒有環節，拍子列往上補。
+		let row = kinds.length ? 3 : 2;
 		return LANES.map((lane) => {
 			const ps = inEight(e).cues.filter((p) => p.cue.kind === lane.kind);
 			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
@@ -557,7 +558,7 @@
 					{@const bottom = lanes[lanes.length - 1].row + lanes[lanes.length - 1].tracks}
 					<div class="row">
 						<span class="eight" aria-hidden="true">{e + 1}</span>
-						<span class="lane-lbl phase" style:grid-row="2">環節</span>
+						{#if kinds.length}<span class="lane-lbl phase" style:grid-row="2">環節</span>{/if}
 						{#each lanes as lane (lane.kind)}
 							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
@@ -582,16 +583,18 @@
 								openPop();
 							}}>{c + 1}</button
 							>
-							<span
-								class="slot phase"
-								data-at={at}
-								class:out={!fits(action, at)}
-								class:sel={isSel(at)}
-								class:left={isSel(at) && !covered(at + 1)}
-								class:right={isSel(at) && !covered(at)}
-								style:grid-column="{c * 2 + 2} / span 2"
-								style:grid-row="2"
-							></span>
+							{#if kinds.length}
+								<span
+									class="slot phase"
+									data-at={at}
+									class:out={!fits(action, at)}
+									class:sel={isSel(at)}
+									class:left={isSel(at) && !covered(at + 1)}
+									class:right={isSel(at) && !covered(at)}
+									style:grid-column="{c * 2 + 2} / span 2"
+									style:grid-row="2"
+								></span>
+							{/if}
 							{#each lanes as lane (lane.kind)}
 								<span
 									class="slot {lane.kind}"
@@ -776,7 +779,7 @@
 				{#each kinds as k (k)}<option value={k}>{kindLabel(k)}</option>{/each}
 			</select>
 		{:else}
-			<span class="kind fixed" aria-label="環節的種類">{kindLabel(phaseKind)}</span>
+			<span class="kind fixed" aria-label="環節的種類">{kindLabel(kinds[0])}</span>
 		{/if}
 		<input
 			class="custom"

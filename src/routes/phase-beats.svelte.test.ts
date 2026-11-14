@@ -13,6 +13,7 @@ import {
 	readFlowFile,
 	recordAttempt,
 	nextPhaseKind,
+	updateAction,
 	updateSegment,
 	type ActionCategory,
 	type Flow
@@ -370,5 +371,17 @@ describe('口號段的環節（不用標拍）', () => {
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '確定刪除' }));
 		expect(gridPhases()).toEqual(['環節 上法']);
+	});
+});
+
+describe('音樂段的舞蹈、其他：沒有環節', () => {
+	it.each(['dance', 'other'] as const)('%s：格子沒有環節列，拍點小窗沒有「環節」那一排', async (category) => {
+		await open(flowOf(updateAction(plainFlow(), 'x1', { category })));
+		expect(document.querySelector('.cues .lane-lbl.phase')).toBeNull();
+		expect(document.querySelector('.cues .slot.phase')).toBeNull();
+		await fireEvent.click(grid().getByRole('button', { name: '1-1' }));
+		const pop = within(screen.getByRole('dialog', { name: '拍點小窗' }));
+		expect(pop.getByRole('group', { name: '步驟' })).toBeTruthy();
+		expect(pop.queryByRole('group', { name: '環節' })).toBeNull();
 	});
 });
