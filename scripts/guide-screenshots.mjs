@@ -327,12 +327,11 @@ await shot(
 		[1, `q('.rail .tools')`],
 		[2, `q('.now-formation')`],
 		[3, `q('.rail .warn')`],
-		[4, `q('.here')`],
-		// 號碼放右邊中間：放右上角會蓋到上面 6 的框
-		[5, `q('.rail > .walk-tools')`, { x: 1, y: 0.5 }],
-		[6, `q('.rail .legend-box')`],
+		// 號碼放右邊中間：放右上角會蓋到上面 5 的框
+		[4, `q('.rail > .walk-tools')`, { x: 1, y: 0.5 }],
+		[5, `q('.rail .legend-box')`],
 		// 只框小美：她的走位線、線上那個影子（另外兩人沒動，影子在自己的點底下）和她的點；號碼放右邊中間，不蓋到影子
-		[7, `(() => {
+		[6, `(() => {
 			const lines = [...document.querySelectorAll('.walk-line')];
 			const r = lines[0].getBoundingClientRect();
 			const near = (g) => { const b = g.getBoundingClientRect(); return b.right > r.left - 2 && b.left < r.right + 2; };

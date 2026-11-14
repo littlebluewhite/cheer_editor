@@ -821,6 +821,25 @@ describe('站位與走位', () => {
 		expect(line()).toBe('拖人會在 2-3 插一張新站位');
 	});
 
+	it('現在站位和站位編輯合成一張卡：在站位上能改名稱和時間；不在站位上寫號碼和名稱、會插在哪', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2（3-5&）
+		await fireEvent.change(screen.getByLabelText('站位名稱'), { target: { value: '原地翻' } });
+		const card = () => within(screen.getByLabelText('現在的站位'));
+		expect(card().getByText('2')).toBeTruthy();
+		expect((card().getByLabelText('站位名稱') as HTMLInputElement).value).toBe('原地翻');
+		expect((card().getByLabelText('站位時間') as HTMLInputElement).value).toBe('3-5&');
+		expect(card().getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（3-5&）');
+		// 站位卡只有一張
+		expect(screen.getAllByText(/^拖人會/)).toHaveLength(1);
+
+		await seek(9.6);
+		expect(card().queryByLabelText('站位名稱')).toBeNull();
+		expect(card().getByText('原地翻')).toBeTruthy();
+		expect(card().getByText(/^拖人會/).textContent).toBe('拖人會在 4-1 插一張新站位');
+	});
+
 	it('站位名稱：播放頭在站位上才能取名；縮圖跟著寫名字；可以復原；不在站位上沒有名稱欄', async () => {
 		const nameBox = () => screen.queryByLabelText('站位名稱') as HTMLInputElement | null;
 		await setup();
@@ -861,7 +880,7 @@ describe('站位與走位', () => {
 		expect(document.activeElement).not.toBe(box);
 	});
 
-	it('影子和走位線：在站位上畫上一張的影子和線、在兩張中間只畫線、有選人只畫選到的人', async () => {
+	it('影子和走位線：在站位上畫上一張的影子和線、在兩張中間都不畫、有選人只畫選到的人', async () => {
 		const marked = (attr: string) =>
 			[...document.querySelectorAll(`.field [${attr}]`)].map((el) => el.getAttribute(attr));
 		await setup();
@@ -877,7 +896,7 @@ describe('站位與走位', () => {
 
 		await seek(4);
 		expect(marked('data-ghost')).toEqual([]);
-		expect(marked('data-walk-line')).toEqual(['m1']);
+		expect(marked('data-walk-line')).toEqual([]);
 
 		await seek(8.25);
 		const dot = document.querySelector('[data-member-id="m2"]')!;
@@ -929,7 +948,7 @@ describe('站位與走位', () => {
 	it('撞位只看騰翻：兩個人一般走位交錯，場上沒有 ✕、走位條沒有紫色', async () => {
 		render(Page, editorPage(swapping()).props);
 		await seek(3.2);
-		expect(document.querySelector('[data-walk-line]')).not.toBeNull();
+		expect(document.querySelector('[data-walk]')).not.toBeNull();
 		expect(document.querySelectorAll('.field [data-clash]')).toHaveLength(0);
 		expect(document.querySelectorAll('[data-walk-clash]')).toHaveLength(0);
 	});

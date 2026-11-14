@@ -522,16 +522,9 @@ describe('影子和走位線', () => {
 		expect(line.classList.contains('fast')).toBe(false);
 	});
 
-	it('勾「只看橘紅走位線」：白線藏起來，紅、橘照畫；取消勾全部回來', async () => {
-		const { ghosts, lines } = setup([]);
-		const toggle = screen.getByRole<HTMLInputElement>('checkbox', { name: '只看橘紅走位線' });
-		expect(toggle.checked).toBe(false);
-		await fireEvent.click(toggle);
-		expect(toggle.checked).toBe(true);
-		expect(lines()).toEqual(['m2', 'm3']);
-		// 影子不受影響。
-		expect(ghosts()).toEqual(['m1', 'm2', 'm3']);
-		await fireEvent.click(toggle);
+	it('沒有「只看橘紅走位線」的勾選：白、紅、橘的線一律都畫', () => {
+		const { lines } = setup([]);
+		expect(screen.queryByRole('checkbox', { name: '只看橘紅走位線' })).toBeNull();
 		expect(lines()).toEqual(['m1', 'm2', 'm3']);
 	});
 

@@ -32,12 +32,11 @@ describe('場地左下的圖例', () => {
 		expect(clash.title).toBe('至少一人正在騰翻中走位，跟別人靠得不到半格；一般走位靠很近不算');
 	});
 
-	it('按「圖例」收起來，再按打開；收起來時「只看橘紅走位線」還在', async () => {
+	it('按「圖例」收起來，再按打開；收起來時「圖例」鈕還在', async () => {
 		render(Page, editorPage(teamFlow()).props);
 		await fireEvent.click(toggle());
 		expect(toggle().getAttribute('aria-expanded')).toBe('false');
 		expect(legend().hidden).toBe(true);
-		expect(screen.getByRole('checkbox', { name: '只看橘紅走位線' })).toBeTruthy();
 		await fireEvent.click(toggle());
 		expect(legend().hidden).toBe(false);
 	});

@@ -256,7 +256,7 @@ await check('影子圓點不擋滑鼠', async () => {
 
 /**
  * 用滾輪把場地左欄滾到底，量最下面的東西（圖例）有沒有整個在左欄和畫面裡，
- * 最下面那個點得到的工具（「只看橘紅走位線」）中心點是不是它自己。圖例本身不吃滑鼠，所以只量位置。
+ * 最下面那個點得到的工具（「圖例」鈕）中心點是不是它自己。圖例本身不吃滑鼠，所以只量位置。
  */
 async function railBottomVisible() {
 	const rail = await rectOf('.rail');
@@ -264,11 +264,11 @@ async function railBottomVisible() {
 	return js(`
 		const rail = document.querySelector('.rail').getBoundingClientRect();
 		const r = document.querySelector('.rail > :last-child').getBoundingClientRect();
-		const tool = document.querySelector('.rail .walk-tools label');
+		const tool = document.querySelector('.rail .legend-toggle');
 		const p = tool.getBoundingClientRect();
 		const top = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
 		const ok = r.bottom <= Math.min(rail.bottom, innerHeight) + 1 && r.top >= rail.top - 1 && !!top && tool.contains(top);
-		return { ok, value: { 圖例: [Math.round(r.top), Math.round(r.bottom)], 左欄: [Math.round(rail.top), Math.round(rail.bottom)], 畫面高: innerHeight, 只看橘紅走位線中心點上面是: top ? top.outerHTML.slice(0, 80) : null } };`);
+		return { ok, value: { 圖例: [Math.round(r.top), Math.round(r.bottom)], 左欄: [Math.round(rail.top), Math.round(rail.bottom)], 畫面高: innerHeight, 圖例鈕中心點上面是: top ? top.outerHTML.slice(0, 80) : null } };`);
 }
 
 for (const [w, h] of [[1024, 768], [1280, 720]]) {
@@ -1572,31 +1572,31 @@ await check('1180×820（觸控）左欄撞位總表打開的清單：每行的�
 	return { ok: Math.abs(上 - 下) <= 2, value: { ...r, 上, 下 } };
 });
 
-/** 左欄：要不要捲、底部的淡出漸層看不看得到、「只看橘紅走位線」整個在左欄看得到的範圍裡而且點得到。 */
+/** 左欄：要不要捲、底部的淡出漸層看不看得到、「圖例」鈕整個在左欄看得到的範圍裡而且點得到。 */
 const railFade = () =>
 	js(`const rail = document.querySelector('.rail');
 		const r = rail.getBoundingClientRect();
 		const fade = document.querySelector('.rail-fade');
-		const tool = document.querySelector('.rail .walk-tools label');
+		const tool = document.querySelector('.rail .legend-toggle');
 		const p = tool.getBoundingClientRect();
 		const t = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
 		return { 要捲: rail.scrollHeight > rail.clientHeight + 1, 漸層: !!fade && fade.checkVisibility() && fade.getBoundingClientRect().height > 0,
 			漸層貼左欄底: !!fade && Math.abs(fade.getBoundingClientRect().bottom - r.bottom) <= 1,
 			圖例開著: document.querySelector('.rail .legend-toggle').getAttribute('aria-expanded') === 'true',
-			只看橘紅走位線整個看得到: p.top >= r.top - 1 && p.bottom <= r.bottom + 1 && !!t && tool.contains(t) };`);
+			圖例鈕整個看得到: p.top >= r.top - 1 && p.bottom <= r.bottom + 1 && !!t && tool.contains(t) };`);
 
-// 橫拿的 iPad：左欄塞不下，最下面「只看橘紅走位線／圖例」被擠出去（N58）。
-await check('1180×820（觸控）沒按過「圖例」：圖例收著，不用捲就看得到、點得到「只看橘紅走位線」（N58）', async () => {
+// 橫拿的 iPad：左欄塞不下，最下面「圖例」鈕被擠出去（N58）。
+await check('1180×820（觸控）沒按過「圖例」：圖例收著，不用捲就看得到、點得到「圖例」鈕（N58）', async () => {
 	await setTouchViewport(1180, 820);
 	await openSample();
 	await js(`localStorage.removeItem('cheer-editor:legendOpen')`);
 	await openSample();
 	const r = await railFade();
 	await clearTouch();
-	return { ok: !r.圖例開著 && !r.要捲 && r.只看橘紅走位線整個看得到, value: r };
+	return { ok: !r.圖例開著 && !r.要捲 && r.圖例鈕整個看得到, value: r };
 });
 
-await check('1180×820（觸控）打開圖例、左欄要捲：底部有淡出漸層提示下面還有東西，捲到底漸層不見、「只看橘紅走位線」點得到（N58）', async () => {
+await check('1180×820（觸控）打開圖例、左欄要捲：底部有淡出漸層提示下面還有東西，捲到底漸層不見、「圖例」鈕點得到（N58）', async () => {
 	await setTouchViewport(1180, 820);
 	await js(`localStorage.setItem('cheer-editor:legendOpen', '1')`);
 	await openSample();
@@ -1613,7 +1613,7 @@ await check('1180×820（觸控）打開圖例、左欄要捲：底部有淡出�
 	await js(`document.querySelector('[aria-label="場地和時間軸的分界"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
 	await js(`localStorage.removeItem('cheer-editor:legendOpen')`);
 	await clearTouch();
-	const ok = top.要捲 && top.漸層 && top.漸層貼左欄底 && !bottom.漸層 && bottom.只看橘紅走位線整個看得到;
+	const ok = top.要捲 && top.漸層 && top.漸層貼左欄底 && !bottom.漸層 && bottom.圖例鈕整個看得到;
 	return { ok, value: { 在最上面: top, 捲到底: bottom } };
 });
 

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		currentFormation,
 		clashes,
 		formationWalks,
 		memberMarkers,
@@ -178,7 +177,7 @@
 
 	/**
 	 * 場上的影子、走位線和撞位：播放頭在站位 B 上（不是開頭那張）畫上一張的影子和這段的走位線、撞位；
-	 * 在兩張站位中間只畫這段的走位線和撞位；開頭那張、最後一張之後都不畫。
+	 * 在兩張站位中間只畫這段的撞位（走位線只在站位那一拍畫）；開頭那張、最後一張之後都不畫。
 	 */
 	const trail = $derived.by(() => {
 		const none = { ghosts: {} as Record<string, Position>, walks: [] as FormationWalk[], clashes: [] as Clash[] };
@@ -187,7 +186,7 @@
 		if (!span) return none;
 		return {
 			ghosts: span.on ? span.from.pos : none.ghosts,
-			walks: formationWalks(flow, span.to.id),
+			walks: span.on ? formationWalks(flow, span.to.id) : none.walks,
 			clashes: allClashes.filter((c) => c.formationId === span.to.id)
 		};
 	});
@@ -815,18 +814,7 @@
 					{/snippet}
 					{#snippet railTop()}
 						{#if flow}
-							{@const now = currentFormation(flow, playback.sec)}
-							<div class="now-formation" aria-label="現在的站位">
-								<span class="now-label">現在站位</span>
-								<div class="now-row">
-									<span class="now-no">{now.number}</span>
-									{#if now.formation.name}
-										<strong class="now-name" title={now.formation.name}>{now.formation.name}</strong>
-									{:else}
-										<span class="now-name unnamed">站位 {now.number}</span>
-									{/if}
-								</div>
-							</div>
+							<FormationEditor />
 						{/if}
 						{#if warnings.length}
 							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定，焦點在那條規則的數字 -->
@@ -876,11 +864,6 @@
 								</p>
 							{/if}
 							<CueOverlay {flow} />
-						{/if}
-					{/snippet}
-					{#snippet railBottom()}
-						{#if flow?.members.length}
-							<FormationEditor />
 						{/if}
 					{/snippet}
 				{#if flow.members.length === 0}
@@ -1718,7 +1701,7 @@
 		width: 1px;
 		height: 1px;
 	}
-	/* 左欄（場地左邊）的東西：警告、拖人會改。 */
+	/* 左欄（場地左邊）的東西：警告。 */
 	.warn {
 		list-style: none;
 		margin: 0;
@@ -1762,55 +1745,6 @@
 		background: var(--surface-2, #f6f8fb);
 		border-color: var(--line, #dfe4ee);
 		color: var(--muted, #66718a);
-	}
-	/* 左欄最上面：播放頭這一刻用的站位。號碼跟站位縮圖列一樣是深色小方塊，左邊一條墊子藍。 */
-	.now-formation {
-		align-self: stretch;
-		display: grid;
-		gap: 4px;
-		padding: 8px 12px 10px;
-		border-radius: 10px;
-		background: var(--surface, #fff);
-		border: 1px solid var(--line, #d8dee9);
-		border-left: 4px solid var(--mat, #2f66b8);
-		box-shadow: 0 1px 2px rgba(22, 33, 58, 0.06);
-	}
-	.now-label {
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-	}
-	.now-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
-	}
-	.now-no {
-		flex: none;
-		min-width: 22px;
-		padding: 0 5px;
-		border-radius: 5px;
-		background: var(--ink, #16213a);
-		color: #fff;
-		font-size: 12px;
-		font-weight: 700;
-		line-height: 22px;
-		text-align: center;
-	}
-	.now-name {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 18px;
-		font-weight: 700;
-		color: var(--ink, #16213a);
-	}
-	.now-name.unnamed {
-		font-weight: 600;
-		color: var(--muted);
 	}
 	.warn :global(svg) {
 		flex: none;

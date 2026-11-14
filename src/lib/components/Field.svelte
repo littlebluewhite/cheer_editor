@@ -30,7 +30,7 @@
 	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移；
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
-	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
+	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、圖例），場地在右邊，工具不會蓋到場地；
 	// 場地上面固定留的那一條浮出選人工具列（沒選人時只有「全隊跟第 [_] 張一樣」；場地不跳、不被蓋住）；在人身上按右鍵是同一份清單的選單（SelectionTools）。
 	// children 疊在場地上（提示、確認框，自己找不蓋住 data-keep-visible 的地方）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
 	import type { Snippet } from 'svelte';
@@ -85,7 +85,6 @@
 		clashes = [],
 		railHead,
 		railTop,
-		railBottom,
 		children,
 		below,
 		badges = {},
@@ -113,10 +112,8 @@
 		clashes?: Clash[];
 		/** 左欄放大縮小旁邊、固定在上面不捲走的東西（多選、版面回原狀）。 */
 		railHead?: Snippet;
-		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
+		/** 左欄放大縮小下面的東西（現在站位、警告、這一拍的拍點）。 */
 		railTop?: Snippet;
-		/** 左欄圖例上面的東西（拖人會改、站位名稱）。 */
-		railBottom?: Snippet;
 		/** 疊在場地上的東西。 */
 		children?: Snippet;
 		/** 場地下面另外一排的東西（分組浮動列）：佔自己的位置，不蓋到場地。 */
@@ -305,11 +302,9 @@
 	const ghostDots = $derived(
 		members.flatMap((m) => (ghosts[m.id] && shown(m.id) ? [{ id: m.id, p: ghosts[m.id] }] : []))
 	);
-	/** false：只畫太快和很喘的走位線，正常的白線藏起來，場地比較乾淨。 */
-	let allWalkLines = $state(true);
 	/**
 	 * 左下的圖例開著嗎（存在這台電腦）。沒按過「圖例」時，觸控又矮的螢幕（橫拿的 iPad）收著：
-	 * 左欄放不下，最下面的「只看橘紅走位線」會被擠出去（N58）。
+	 * 左欄放不下，最下面的「圖例」鈕會被擠出去（N58）。
 	 */
 	let legendOpen = $state(loadLegendOpen(!(isTouchScreen() && typeof innerHeight === 'number' && innerHeight <= SHORT_SCREEN_MAX_H)));
 	const legendId = $props.id();
@@ -317,17 +312,17 @@
 		legendOpen = !legendOpen;
 		saveLegendOpen(legendOpen);
 	}
-	/** 左欄最下面的工具（「只看橘紅走位線」「圖例」）沒整個捲出來：底部畫淡出漸層提示（N58）。 */
+	/** 左欄最下面的工具（「圖例」鈕）沒整個捲出來：底部畫淡出漸層提示（N58）。 */
 	let railMore = $state(false);
 	/**
-	 * 量左欄最下面那一塊的勾選和按鈕有沒有整個露出來：捲動、左欄或裡面的東西變大變小都重量。
-	 * 只看勾選和按鈕：那一塊只差幾 px 的留白被裁掉時不算，不然漸層會白白蓋在看得到的工具上。jsdom 沒有 ResizeObserver，測試裡不量。
+	 * 量左欄最下面那一塊的按鈕有沒有整個露出來：捲動、左欄或裡面的東西變大變小都重量。
+	 * 只看按鈕：那一塊只差幾 px 的留白被裁掉時不算，不然漸層會白白蓋在看得到的工具上。jsdom 沒有 ResizeObserver，測試裡不量。
 	 */
 	function watchRail(el: HTMLElement) {
 		if (typeof ResizeObserver === 'undefined') return;
 		const update = () => {
 			const bottom = el.getBoundingClientRect().bottom;
-			const tools = el.lastElementChild?.querySelectorAll('input, button') ?? [];
+			const tools = el.lastElementChild?.querySelectorAll('button') ?? [];
 			railMore = [...tools].some((t) => t.getBoundingClientRect().bottom > bottom + 1);
 		};
 		const ro = new ResizeObserver(update);
@@ -343,9 +338,7 @@
 			el.removeEventListener('scroll', update);
 		};
 	}
-	const walkLines = $derived(
-		walks.filter((w) => shown(w.memberId) && (allWalkLines || w.tooFast || w.tiring))
-	);
+	const walkLines = $derived(walks.filter((w) => shown(w.memberId)));
 	const snapDots = $derived(drag?.cur ? snapPointsNear(field, drag.cur, zoom) : []);
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
@@ -746,8 +739,7 @@
 			</div>
 			{@render railTop?.()}
 			<div class="rail-gap"></div>
-			{@render railBottom?.()}
-			<!-- 圖例在「只看橘紅走位線」上面：左欄很矮（時間軸拖到最大）時，捲到底最下面那一行工具一定看得到、點得到 -->
+			<!-- 圖例在「圖例」鈕上面：左欄很矮（時間軸拖到最大）時，捲到底最下面那一行工具一定看得到、點得到 -->
 			<div class="legend-box" id={legendId} hidden={!legendOpen}>
 				<div class="walk-tools" aria-hidden="true">
 					<!-- 門檻寫短（m/s），時間軸拉高時左欄還捲得到；滑鼠移上去寫完整的。 -->
@@ -764,9 +756,6 @@
 				</div>
 			</div>
 			<div class="walk-tools">
-				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
-					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
-				</label>
 				<!-- 圖例可以收起來（存在這台電腦）；收著時箭頭朝上，看得出還能打開 -->
 				<button
 					type="button"
@@ -1205,22 +1194,6 @@
 		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
 		font-size: 12px;
 		color: var(--muted, #66718a);
-	}
-	.walk-tools label {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		color: var(--text, #1a2238);
-		cursor: pointer;
-	}
-	.walk-tools input {
-		margin: 0;
-	}
-	/* 手指：勾選框那一行至少 32px 高。 */
-	@media (pointer: coarse) {
-		.walk-tools label {
-			min-height: 32px;
-		}
 	}
 	.walk-tools span {
 		display: inline-flex;
