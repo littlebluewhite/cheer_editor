@@ -218,6 +218,13 @@ describe('拍點格子：拍點小窗', () => {
 		expect(pop()).toBeNull();
 	});
 
+	it('點格子下面留給小窗的空白，小窗關掉', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(pop()!.parentElement!, { button: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+	});
+
 	it('Shift 放開沒收到（例如 Cmd+Shift 截圖），滑鼠一動小窗就不再半透明', async () => {
 		const { grid, pop } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));

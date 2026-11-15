@@ -148,6 +148,8 @@
 	let pop = $state(false);
 	let dragging = $state(false);
 	let wrapEl = $state<HTMLElement>();
+	/** 數字格那一塊：在這裡按下由 dragStart 決定選拍還是收小窗；下面留給小窗的空白不算。 */
+	let sheetEl = $state<HTMLElement>();
 	let popEl = $state<HTMLElement>();
 	/** 小窗在格子框裡的位置（小窗開在最上層，放的時候再加上格子框在畫面上的左上角）。 */
 	let popPos = $state({ top: 0, left: 0, arrow: 0, above: false });
@@ -549,6 +551,7 @@
 		>
 			<div
 				class="sheet"
+				bind:this={sheetEl}
 				role="presentation"
 				onpointerdown={dragStart}
 				onpointermove={dragMove}
@@ -678,7 +681,7 @@
 					style:--arrow="{popPos.arrow}px"
 					role="dialog"
 					aria-label="拍點小窗"
-					{@attach popover({ place: placePop, close: () => (pop = false), inside: [wrapEl] })}
+					{@attach popover({ place: placePop, close: () => (pop = false), inside: [sheetEl] })}
 				>
 					<div class="pop-head">
 						<!-- －／＋ 放在字前面：字會變長，放後面按鈕就會被擠走 -->
