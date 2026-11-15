@@ -662,6 +662,19 @@ describe('流程檔：版本', () => {
 		expect(after.members.some((m) => 'squad' in m)).toBe(false);
 	});
 
+	it.each([
+		['標的拍在動作外面', (sr: any) => (sr.phases[0].beats = { at: -2, len: 4 })],
+		['紀錄指到沒有的環節', (sr: any) => (sr.records[0].marks = { p9: '✓' })],
+		['組 id 不是 g 加編號', (_: any, a: any) => (a.members[0].squad = 'squad1')],
+		['記成功率卻沒有環節', (sr: any) => ((sr.phases = []), (sr.records = []))]
+	])('第 10 版的檔：舞蹈本來就壞掉（%s），升級不會把壞的地方拿掉，照樣不是流程檔', (_, edit) => {
+		const file = v10(withRecords(), (f) => {
+			f.actions[0].category = 'dance';
+			edit(f.actions[0].successRate, f.actions[0]);
+		});
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+	});
+
 	it('第 6 版的檔有整體、又要整理：照樣打得開，整體換成中段', () => {
 		const file = v6((_, sr) => {
 			sr.phases[1].kind = 'whole';

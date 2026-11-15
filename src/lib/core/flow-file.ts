@@ -10,7 +10,7 @@ import { settle } from './settle';
 import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
 import { freshIds } from './ids';
-import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v6RateProblem } from './success-rate';
+import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v10RateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
 export const FORMAT_VERSION = 11;
@@ -59,11 +59,18 @@ const UPGRADES: Record<number, Upgrade> = {
 	10: (doc) => ({ formatVersion: 11, flow: fitKinds(doc.flow) })
 };
 
-/** 第 10 → 11 版：每個動作的環節種類換成大類能用的（見 fitPhaseKinds）。 */
+/**
+ * 第 10 → 11 版：每個動作的環節種類換成大類能用的（見 fitPhaseKinds）。本來就不守第 10 版規則的動作不換（交給 isFlow 擋下來），
+ * 免得舞蹈、其他壞掉的環節和紀錄被拿掉，看起來像好的檔。
+ */
 function fitKinds(v: unknown): unknown {
 	if (!flowShape(v)) return v;
 	const flow = v as Flow;
-	return { ...flow, actions: flow.actions.map(fitPhaseKinds) };
+	const actions = flow.actions.map((a) => {
+		const segment = flow.segments.find((s) => s.id === a.segmentId);
+		return segment && v10RateProblem(segment, a) === null ? fitPhaseKinds(a) : a;
+	});
+	return { ...flow, actions };
 }
 
 /** 有沒有動作沒打開記成功率卻有組（第 8 版以前不行）。 */

@@ -174,10 +174,22 @@ function perPersonProblem(action: Action): string | null {
  * 只有組放寬（第 9 版起）：還沒有環節的動作也可以有組（從別的動作複製人帶來的，加第一個環節時照用），騰翻、跳躍還是不分組。
  */
 export function successRateProblem(segment: Segment, action: Action): string | null {
-	const grouped = action.members.some((m) => m.squad !== undefined);
 	const keys = PHASE_KINDS.map((k) => k.key as string);
-	const problem = (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action, keys) || kindsProblem(action);
-	if (problem) return problem;
+	return rateProblem(segment, action, keys) || kindsProblem(action) || laterRateProblem(segment, action);
+}
+
+/** 第 10 版流程檔的成功率規則：跟現在一樣，只是種類是第 10 版那五種、哪個大類都能用。第 10 → 11 版換種類前先看它：本來就不守的檔不換。 */
+export function v10RateProblem(segment: Segment, action: Action): string | null {
+	return rateProblem(segment, action, V10_PHASE_KINDS) || laterRateProblem(segment, action);
+}
+
+function rateProblem(segment: Segment, action: Action, kinds: string[]): string | null {
+	const grouped = action.members.some((m) => m.squad !== undefined);
+	return (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action, kinds);
+}
+
+/** 第 7 版起加的規則。 */
+function laterRateProblem(segment: Segment, action: Action): string | null {
 	const phases = action.successRate?.phases;
 	if (phases && !phases.length) return '記成功率的動作至少要有一個環節';
 	if (segment.kind === 'music' && phases) {
