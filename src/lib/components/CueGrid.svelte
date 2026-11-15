@@ -237,7 +237,11 @@
 		if (e.button !== 0) return;
 		const el = (e.target as Element).closest<HTMLElement>('[data-at]');
 		const at = Number(el?.dataset.at);
-		if (!el || !fits(action, at)) return;
+		// 點到格子的空白、標籤，或不是這個動作的拍：收掉小窗。
+		if (!el || !fits(action, at)) {
+			pop = false;
+			return;
+		}
 		pointerSel = true;
 		// 手指：選到的格子上才拖得動（拖過幾拍）；沒選到的一滑是捲動（docs/adr/0005-ipad-touch.md）。
 		if (touchOnUnpicked(e, isSel(at))) {
@@ -376,6 +380,10 @@
 	/** 按住、放開 Shift（視窗失焦也算放開）。 */
 	function shiftKey(e: KeyboardEvent) {
 		if (e.key === 'Shift') through = e.type === 'keydown';
+	}
+	/** 滑鼠一動就照實對一次 Shift：放開沒收到（Cmd+Shift 截圖會吃掉 keyup）也不會一直半透明。 */
+	function shiftSync(e: PointerEvent) {
+		through = e.shiftKey;
 	}
 
 	/** 點一個拍點或環節：選回它原本的範圍（從 & 開始的也照實）；拍點的「給誰」也換成它的。 */
@@ -833,7 +841,7 @@
 	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 {/snippet}
 
-<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onkeydown={shiftKey} onkeyup={shiftKey} onblur={() => (through = false)} />
+<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onkeydown={shiftKey} onkeyup={shiftKey} onpointermove={shiftSync} onpointerdown={shiftSync} onblur={() => (through = false)} />
 
 <style>
 	.cues {
@@ -914,6 +922,8 @@
 	.cell:disabled {
 		opacity: 0.3;
 		border-style: dashed;
+		/* 有些瀏覽器不把變淡的按鈕的按下送出來：讓它落到格子上，才收得掉小窗。 */
+		pointer-events: none;
 	}
 	.cell.sel {
 		outline: 2px solid var(--sel, #19b4d8);

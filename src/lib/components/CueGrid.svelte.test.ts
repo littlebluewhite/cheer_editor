@@ -208,6 +208,25 @@ describe('拍點格子：拍點小窗', () => {
 		expect(pop()).toBeNull();
 	});
 
+	it('點格子裡的空白（標籤）或不是這個動作的拍，小窗關掉', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(grid.getAllByText('步驟')[0], { button: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(grid.getByRole('button', { name: '3-1' }), { button: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+	});
+
+	it('Shift 放開沒收到（例如 Cmd+Shift 截圖），滑鼠一動小窗就不再半透明', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.keyDown(window, { key: 'Shift', shiftKey: true });
+		expect(pop()!.classList).toContain('through');
+		await fireEvent.pointerMove(window, { shiftKey: false });
+		expect(pop()!.classList).not.toContain('through');
+	});
+
 	it('給誰在小窗裡選：選了隊員再放，拍點給那個人', async () => {
 		const { grid, session } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
