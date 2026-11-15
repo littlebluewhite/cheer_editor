@@ -170,7 +170,7 @@ async function openBigFlow(more = '') {
 		flow = of(c.updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
 		flow = of(c.addAction(flow, { segmentId: 's1', category: 'jump', name: '跳', start: 0, length: 16, note: '',
 			members: flow.members.map((m) => ({ memberId: m.id, role: null })) }));
-		flow = of(c.addPhase(flow, 'x1', { kind: 'whole', name: '整個跳', beats: { at: 0, len: 16 } }));
+		flow = of(c.addPhase(flow, 'x1', { kind: 'jump', name: '整個跳', beats: { at: 0, len: 16 } }));
 		flow = of(c.placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '左腳往前踩一步然後手臂拉到高V再往下收回胸前' }));
 		${more}
 		const input = document.querySelector('.home-open input[type=file]');
@@ -392,6 +392,8 @@ await check('拍點格子在畫面中間時，點一拍再 Shift 點下一拍，
 		const b = await rectOf(cell(next));
 		await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', buttons: 1, clickCount: 1, modifiers: 8 });
 		await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers: 8 });
+		// 放開 Shift：滑鼠沒按 Shift 動一下，小窗才不再半透明、點得到（按著 Shift 時小窗故意不吃點擊）
+		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y, modifiers: 0 });
 		await sleep(300);
 		const above = await js(`return document.querySelector('.cues .pop').classList.contains('above')`);
 		if (!above) continue;
@@ -942,7 +944,7 @@ await check('390×844（觸控）練習記錄頁有 12 個動作：選動作是�
 	await openPracticeFlow(`flow = core.updateSegment(flow, 's1', { eights: 16, lastBeats: 8 }).flow;
 		for (let i = 1; i < 12; i++) {
 			const r = core.addAction(flow, { segmentId: 's1', category: 'jump', name: '跳' + i, start: 16 * i, length: 16, note: '', members: [{ memberId: 'm1', role: null }] });
-			flow = core.addPhase(r.flow, r.id, { kind: 'whole', name: '', beats: { at: 0, len: 16 } }).flow;
+			flow = core.addPhase(r.flow, r.id, { kind: 'jump', name: '', beats: { at: 0, len: 16 } }).flow;
 		}`);
 	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
 	await sleep(300);
