@@ -249,7 +249,11 @@
 			if (k === i || (all && together.includes(m.memberId))) draft.setRole(k, role);
 		});
 		changed('people');
-		if (byKey && !all && next !== undefined) rolePickers[next]?.focus();
+		if (byKey && !all && next !== undefined) {
+			// 先把列換好位置再給焦點：換位置時被搬動的列會掉焦點
+			flushSync();
+			rolePickers[next]?.focus();
+		}
 	}
 
 	/** 名詞對照表新增了自訂任務角色：是從任務角色選單打開的，就套給那個人。 */
