@@ -26,7 +26,7 @@
 	import { commitField, customRoleNameField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { isLongMarker } from './marker';
+	import { isLongMarker } from '#lib/marker.js';
 	import { revealAlert } from './reveal';
 
 	interface Props {

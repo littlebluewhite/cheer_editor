@@ -7,10 +7,11 @@
 	import { onDestroy } from 'svelte';
 	import { VIDEO_FPS, missingAudioNames, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { failureDetail } from '#lib/error-detail.js';
 	import { saveFailureReason, videoFileName } from '#lib/file/save.js';
 	import { canvasMeasure, drawFrame } from '#lib/video/draw.js';
 	import { layoutFrame, overflowEights, type Measure } from '#lib/video/layout.js';
-	import { failureDetail, failureReason } from '#lib/video/encoder.js';
+	import { failureReason } from '#lib/video/encoder.js';
 	import { mixClips, renderSoundtrack } from '#lib/video/soundtrack.js';
 	import Modal from './Modal.svelte';
 

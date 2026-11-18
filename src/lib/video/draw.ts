@@ -16,10 +16,11 @@ export function canvasMeasure(): Measure {
 	};
 }
 
-/** 圓點的半徑（公尺），跟 Field.svelte 的 DOT_R 一樣；圓點的線寬、陰影都照這個比例放大。 */
-const DOT_R = 0.3;
-
 const color = (key: ColorKey) => VIDEO_COLORS[key];
+
+/** 圓點的框照層：地上細的深框，中層、上層、支撐黃框，三層橘框（線寬是沒放大時的公尺）。 */
+const ringOf = (level: number): { color: ColorKey; width: number } =>
+	level >= 3 ? { color: 'lv3', width: 0.1 } : level >= 2 ? { color: 'raised', width: 0.08 } : { color: 'dotLine', width: 0.04 };
 
 /**
  * 畫一格。roles 是每個隊員的底層、上層（frame 沒有，圓點的顏色要用）。
@@ -72,7 +73,7 @@ function drawField(
 	layout: FrameLayout,
 	roles: Record<string, GlobalRole>
 ): void {
-	const { box, pxPerM, dotPx, markerPx, numberPx } = layout.field;
+	const { box, pxPerM, dotPx, numberPx, dotUnit } = layout.field;
 	const view = fullView(field);
 	const g = fieldGeometry(field);
 	const px = (mx: number) => box.x + (mx - view.x) * pxPerM;
@@ -147,8 +148,7 @@ function drawField(
 	ctx.fillText('▼ 正面／裁判 ▼', px(fx), py(fy));
 	ctx.letterSpacing = '0px';
 
-	// 圓點照層畫（layout 排好順序、錯開、縮小）：第 2 層以上黃框加陰影，三層橘框；縮小時線寬、陰影、字一起縮
-	const unit = dotPx / (2 * DOT_R);
+	// 圓點照層畫（layout 排好順序、錯開、縮小）：中層、上層、支撐黃框，三層橘框，在空中的都加陰影；縮小時線寬、陰影、字一起縮
 	const capsule = (d: { c: [number, number]; r: number; h: number }) => {
 		ctx.beginPath();
 		ctx.roundRect(d.c[0] - d.h - d.r, d.c[1] - d.r, 2 * (d.h + d.r), 2 * d.r, d.r);
@@ -156,8 +156,9 @@ function drawField(
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	for (const d of layout.field.dots) {
-		const k = unit * d.s;
+		const k = dotUnit * d.scale;
 		const up = d.level >= 2;
+		const ring = ringOf(d.level);
 		const top = roles[d.id] === 'top';
 		capsule(d);
 		if (up) {
@@ -170,10 +171,10 @@ function drawField(
 		ctx.shadowColor = 'transparent';
 		ctx.shadowOffsetY = 0;
 		ctx.shadowBlur = 0;
-		ctx.strokeStyle = color(d.level >= 3 ? 'lv3' : up ? 'raised' : 'dotLine');
-		ctx.lineWidth = (d.level >= 3 ? 0.1 : up ? 0.08 : 0.04) * k;
+		ctx.strokeStyle = color(ring.color);
+		ctx.lineWidth = ring.width * k;
 		ctx.stroke();
-		ctx.font = `700 ${markerPx * d.s}px ${FONT}`;
+		ctx.font = `700 ${d.font}px ${FONT}`;
 		ctx.fillStyle = color(top ? 'dotTopInk' : 'dotInk');
 		ctx.fillText(frame.markers[d.id] ?? '', d.c[0], d.c[1]);
 	}

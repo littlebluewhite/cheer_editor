@@ -14,10 +14,16 @@ export interface LayerDot {
 	font: number;
 }
 
-/** 錯開多少（d，圓點沒放大時的公尺，乘 unit 才是呼叫一方的單位）、縮成幾倍（s）。 */
+/** 錯開多少（offset，圓點沒放大時的公尺，乘 unit 才是呼叫一方的單位）、縮成幾倍（scale）。 */
 export interface LayerShift {
-	d: number;
-	s: number;
+	offset: number;
+	scale: number;
+}
+
+/** 一個圓點畫出來的樣子（錯開、縮小後）：縮成幾倍 scale（線寬、陰影跟著縮）、covered 要不要畫虛線圈。 */
+export interface StaggeredDot extends LayerDot {
+	scale: number;
+	covered: boolean;
 }
 
 /** 兩個圓點或膠囊有沒有碰到。 */
@@ -36,20 +42,26 @@ export function layerStagger(
 	dots: LayerDot[],
 	unit: number,
 	minScale: (font: number) => number
-): { shifts: Record<string, LayerShift>; drawn: LayerDot[]; covered: LayerDot[] } {
+): { shifts: Record<string, LayerShift>; drawn: StaggeredDot[] } {
 	const shifts: Record<string, LayerShift> = {};
 	for (const a of dots) {
 		if (a.level < 2) continue;
 		if (dots.some((b) => b.level < a.level && touches(a, b))) {
-			shifts[a.id] = { d: 0.22 * (a.level - 1), s: Math.min(1, Math.max(0.85 ** (a.level - 1), minScale(a.font))) };
+			shifts[a.id] = {
+				offset: 0.22 * (a.level - 1),
+				scale: Math.min(1, Math.max(0.85 ** (a.level - 1), minScale(a.font)))
+			};
 		}
 	}
-	const drawn = dots.map((a) => {
+	const moved = dots.map((a) => {
 		const sh = shifts[a.id];
-		const off = (sh?.d ?? 0) * unit;
-		const s = sh?.s ?? 1;
-		return { ...a, c: [a.c[0] + off, a.c[1] - off] as Position, r: a.r * s, h: a.h * s, font: a.font * s };
+		const off = (sh?.offset ?? 0) * unit;
+		const scale = sh?.scale ?? 1;
+		return { ...a, c: [a.c[0] + off, a.c[1] - off] as Position, r: a.r * scale, h: a.h * scale, font: a.font * scale, scale };
 	});
-	const covered = drawn.filter((a, i) => drawn.slice(i + 1).some((b) => b.level !== a.level && touches(a, b)));
-	return { shifts, drawn, covered };
+	const drawn = moved.map((a, i) => ({
+		...a,
+		covered: moved.slice(i + 1).some((b) => b.level !== a.level && touches(a, b))
+	}));
+	return { shifts, drawn };
 }

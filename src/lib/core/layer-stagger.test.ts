@@ -23,21 +23,25 @@ describe('layerStagger：照層錯開、縮小（場上和流程影片共用）'
 			[[0, 0], 0.3],
 			[[3, 0], 0.3]
 		]);
-		expect(out.covered).toEqual([]);
+		expect(out.drawn.filter((d) => d.covered)).toEqual([]);
 	});
 
 	it('三層金字塔疊在同一點：第 2 層錯開 0.22、縮成 0.85；三層錯開 0.44、縮成 0.85²；下面兩個人有虛線圈', () => {
 		const dots = [dot('base', 1, [0, 0]), dot('mid', 2, [0, 0]), dot('top', 3, [0, 0])];
 		const out = layerStagger(dots, 1, noFloor);
 		expect(out.shifts.base).toBeUndefined();
-		expect(out.shifts.mid).toEqual({ d: 0.22, s: 0.85 });
-		expect(out.shifts.top.d).toBeCloseTo(0.44);
-		expect(out.shifts.top.s).toBeCloseTo(0.7225);
+		expect(out.shifts.mid).toEqual({ offset: 0.22, scale: 0.85 });
+		expect(out.shifts.top.offset).toBeCloseTo(0.44);
+		expect(out.shifts.top.scale).toBeCloseTo(0.7225);
 		const mid = out.drawn.find((d) => d.id === 'mid')!;
 		expect(mid.c[0]).toBeCloseTo(0.22);
 		expect(mid.c[1]).toBeCloseTo(-0.22);
 		expect(mid.r).toBeCloseTo(0.255);
-		expect(out.covered.map((d) => d.id)).toEqual(['base', 'mid']);
+		expect(out.drawn.map((d) => [d.id, d.scale, d.covered])).toEqual([
+			['base', 1, true],
+			['mid', 0.85, true],
+			['top', expect.closeTo(0.7225), false]
+		]);
 	});
 
 	it('錯開的距離照 unit 放大（影片用 px）', () => {
@@ -50,19 +54,19 @@ describe('layerStagger：照層錯開、縮小（場上和流程影片共用）'
 	it('字的下限：縮小後字不夠大就少縮一點', () => {
 		const dots = [dot('base', 1, [0, 0]), dot('top', 3, [0, 0], { font: 32 })];
 		const out = layerStagger(dots, 1, (font) => 28 / font);
-		expect(out.shifts.top.s).toBeCloseTo(0.875);
+		expect(out.shifts.top.scale).toBeCloseTo(0.875);
 	});
 
 	it('旁邊沒碰到下面一層的人不動；同一層擠在一起不畫虛線圈', () => {
 		const dots = [dot('a', 2, [0, 0]), dot('b', 2, [0.1, 0]), dot('c', 1, [5, 0])];
 		const out = layerStagger(dots, 1, noFloor);
 		expect(out.shifts).toEqual({});
-		expect(out.covered).toEqual([]);
+		expect(out.drawn.filter((d) => d.covered)).toEqual([]);
 	});
 
 	it('膠囊只有兩端碰到：照膠囊的形狀算碰到', () => {
 		const dots = [dot('base', 1, [0, 0]), dot('mid', 2, [0.8, 0], { h: 0.4 })];
 		const out = layerStagger(dots, 1, noFloor);
-		expect(out.shifts.mid).toEqual({ d: 0.22, s: 0.85 });
+		expect(out.shifts.mid).toEqual({ offset: 0.22, scale: 0.85 });
 	});
 });

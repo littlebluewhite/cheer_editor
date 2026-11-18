@@ -10,10 +10,11 @@ import {
 	type EightCountCueLine,
 	type FieldConfig,
 	type Flow,
+	type StaggeredDot,
 	type VideoFrameData,
 	type VideoRow
 } from '#lib/core';
-import { isLongMarker, markerWidth } from '../components/marker';
+import { isLongMarker, markerWidth } from '#lib/marker.js';
 import type { ColorKey } from './colors';
 
 export const VIDEO_W = 1080;
@@ -57,25 +58,18 @@ export interface VideoFieldLayout {
 	dotPx: number;
 	markerPx: number;
 	numberPx: number;
+	/** 1 公尺的圓點在影片上幾 px（圓點放大的倍數）：圓點的線寬、陰影照它，再乘圓點的 scale。 */
+	dotUnit: number;
 	/** 圓點照這個順序畫（層高的在後面、蓋在上面）。 */
 	dots: VideoDot[];
 }
 
 /**
- * 一個圓點畫出來的樣子（px，錯開、縮小後）：中心 c、半徑 r、多字膠囊直的那段一半長 h、縮成幾倍 s（線寬、字、陰影一起縮）。
- * 錯開、縮小、虛線圈都問流程核心的 layerStagger，跟場上一樣。
+ * 一個圓點畫出來的樣子（px，錯開、縮小後）：中心 c、半徑 r、多字膠囊直的那段一半長 h、標記的字高 font、
+ * 縮成幾倍 scale（線寬、陰影一起縮）、covered（被不同層蓋到：在所有圓點上面畫一圈虛線）。
+ * level 1 是地上，2 黃框，3 橘框。錯開、縮小、虛線圈都問流程核心的 layerStagger，跟場上一樣。
  */
-export interface VideoDot {
-	id: string;
-	/** 第幾層：1 是地上，2 黃框，3 橘框。 */
-	level: number;
-	c: [number, number];
-	r: number;
-	h: number;
-	s: number;
-	/** 被不同層蓋到：在所有圓點上面畫一圈虛線。 */
-	covered: boolean;
-}
+export type VideoDot = StaggeredDot;
 
 /** 照順序畫：boxes 先畫，texts 畫在上面。 */
 export interface FrameLayout {
@@ -232,17 +226,8 @@ function layoutField(field: FieldConfig, frame: VideoFrameData): VideoFieldLayou
 		// 後畫的蓋在上面：層高的排後面（同一層照原本的順序）
 		.toSorted((a, b) => a.level - b.level);
 	// 縮小後標記的字還是要至少 MIN_TEXT_PX：不夠大就少縮一點
-	const { shifts, drawn, covered } = layerStagger(plain, unit, (font) => MIN_TEXT_PX / font);
-	const dots = drawn.map((d) => ({
-		id: d.id,
-		level: d.level,
-		c: d.c,
-		r: d.r,
-		h: d.h,
-		s: shifts[d.id]?.s ?? 1,
-		covered: covered.includes(d)
-	}));
-	return { box, pxPerM, dotPx, markerPx, numberPx: Math.max(NUMBER_M * pxPerM, MIN_TEXT_PX), dots };
+	const { drawn } = layerStagger(plain, unit, (font) => MIN_TEXT_PX / font);
+	return { box, pxPerM, dotPx, markerPx, numberPx: Math.max(NUMBER_M * pxPerM, MIN_TEXT_PX), dotUnit: unit, dots: drawn };
 }
 
 /** 放不下時拿掉多少：從最下面縮幾個還在做的動作、拿掉幾個備註、留前面幾個動作。 */
@@ -451,7 +436,7 @@ function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { text
 				...cellWrap(p.text, px, p.style.weight, inner, measure).map((text) => ({ text, weight: p.style.weight })),
 				...cellWrap(p.who, px, WHO_WEIGHT, inner, measure).map((text) => ({ text, weight: WHO_WEIGHT }))
 			];
-			split ||= [p.text, p.who].some((t) => breaksWord(t, px, inner, measure));
+			split ||= breaksWord(p.text, px, p.style.weight, inner, measure) || breaksWord(p.who, px, WHO_WEIGHT, inner, measure);
 			const h = Math.max(1, lines.length) * lh;
 			rowH = Math.max(rowH, h);
 			boxes.push(...p.style.boxes(x, sub, w, h));
@@ -541,10 +526,10 @@ function cellWrap(text: string, px: number, weight: number, width: number, measu
 
 /**
  * 有沒有一個字（照空白分）比格子寬、要從中間斷開，而且縮到 28 px 就不用斷（縮字才有用）。
- * 量的是粗體，比細的寬，給誰也一起算。格子的寬不隨字級變。
+ * 照畫的字重量（拍點的字照它的樣子、給誰 WHO_WEIGHT），跟 cellWrap 換行一樣。格子的寬不隨字級變。
  */
-const breaksWord = (text: string, px: number, width: number, measure: Measure) =>
-	text.split(' ').some((word) => word && measure(word, px, 700) > width && measure(word, MIN_TEXT_PX, 700) <= width);
+const breaksWord = (text: string, px: number, weight: number, width: number, measure: Measure) =>
+	text.split(' ').some((word) => word && measure(word, px, weight) > width && measure(word, MIN_TEXT_PX, weight) <= width);
 
 /** 分排：放進第一個格子沒被佔到的排，都佔到就另起一排。 */
 function pack<T extends { from: number; to: number }>(pieces: T[]): T[][] {

@@ -272,7 +272,7 @@ export type {
 } from './field';
 
 export { layerStagger } from './layer-stagger';
-export type { LayerDot, LayerShift } from './layer-stagger';
+export type { LayerDot, LayerShift, StaggeredDot } from './layer-stagger';
 
 export { clashes } from './clash';
 export type { Clash } from './clash';

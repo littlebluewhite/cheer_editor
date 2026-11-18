@@ -48,7 +48,7 @@
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
 	import SelectionTools from './SelectionTools.svelte';
-	import { isLongMarker, markerWidth } from './marker';
+	import { isLongMarker, markerWidth } from '#lib/marker.js';
 	import { onEscape } from './pointer';
 
 	/** 螢幕座標 → 場地公尺座標。測試換成假的（見 docs/adr/0002-component-tests-jsdom.md）。 */
@@ -302,7 +302,7 @@
 	);
 	const shifts = $derived(stagger.shifts);
 	const drawnAt = $derived(Object.fromEntries(stagger.drawn.map((a) => [a.id, a.c])));
-	const covered = $derived(stagger.covered);
+	const covered = $derived(stagger.drawn.filter((a) => a.covered));
 	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
 	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
@@ -859,7 +859,7 @@
 				transform="translate({p[0]},{p[1]})"
 			>
 				<title>{session ? whereText(m, p) : m.name}</title>
-				<g transform="scale({dotScale}){sh ? ` translate(${sh.d},${-sh.d}) scale(${sh.s})` : ''}">
+				<g transform="scale({dotScale}){sh ? ` translate(${sh.offset},${-sh.offset}) scale(${sh.scale})` : ''}">
 					{#if pill}
 						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}

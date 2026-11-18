@@ -11,7 +11,7 @@
 	import { commitField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
-	import { isLongMarker } from './marker';
+	import { isLongMarker } from '#lib/marker.js';
 	import { reveal, revealAlert } from './reveal';
 	import {
 		GENDERS,

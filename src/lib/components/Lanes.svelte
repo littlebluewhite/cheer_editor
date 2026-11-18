@@ -52,7 +52,7 @@
 	import { AT_EDGE, getEditorSession, VIEW_ONLY } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
-	import { isLongMarker } from './marker';
+	import { isLongMarker } from '#lib/marker.js';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {

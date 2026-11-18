@@ -154,7 +154,7 @@ describe('場地：照層畫圓點（跟場上一樣）', () => {
 		expect(field.dots.map((d) => d.id)).toEqual(['a', 'b', 'c']);
 		for (const d of field.dots) {
 			expect(d.c).toEqual(at(field, positions[d.id]));
-			expect(d.s).toBe(1);
+			expect(d.scale).toBe(1);
 			expect(d.level).toBe(1);
 			expect(d.r).toBe(field.dotPx / 2);
 			expect(d.covered).toBe(false);
@@ -179,9 +179,9 @@ describe('場地：照層畫圓點（跟場上一樣）', () => {
 		expect(mid.c[1]).toBeLessThan(base.c[1]);
 		expect(top.c[0]).toBeGreaterThan(mid.c[0]);
 		expect(top.c[1]).toBeLessThan(mid.c[1]);
-		expect(mid.s).toBeLessThan(1);
-		expect(top.s).toBeLessThan(1);
-		expect(top.r).toBeCloseTo((field.dotPx / 2) * top.s, 6);
+		expect(mid.scale).toBeLessThan(1);
+		expect(top.scale).toBeLessThan(1);
+		expect(top.r).toBeCloseTo((field.dotPx / 2) * top.scale, 6);
 		expect(field.dots.map((d) => d.covered)).toEqual([true, true, false]);
 	});
 
@@ -195,7 +195,7 @@ describe('場地：照層畫圓點（跟場上一樣）', () => {
 					frame(row({ empty: true }), { positions, levels: { top: 3, mid: 2 }, markers: { top: '12', mid: '小美', base: '3' } }),
 					measure
 				);
-				for (const d of field.dots) expect(field.markerPx * d.s).toBeGreaterThanOrEqual(MIN_TEXT_PX);
+				for (const d of field.dots) expect(d.font).toBeGreaterThanOrEqual(MIN_TEXT_PX);
 			}
 		}
 	});
@@ -484,6 +484,14 @@ describe('下面那一列：拍點格子', () => {
 		const down = layout(row({ cues: [cueLine('Lib', 'down', 1, 1)] }));
 		expect(rowPx(down)).toBeLessThan(40);
 		expect(strings(down)).toContain('down');
+	});
+
+	it('給誰照畫的細字量要不要斷開：細字放得下、粗字才放不下的名字不縮字', () => {
+		// 粗字（700 以上）寬 1.2 倍；兩拍的格子裡字寬 188，「ABCDEFG」40 px 細字 168、粗字 201.6
+		const weighted: typeof measure = (t, px, weight) => measure(t, px, weight) * (weight >= 700 ? 1.2 : 1);
+		const l = layoutFrame(FIELD, frame(row({ cues: [cueLine('Lib', 'down', 1, 2, { who: 'ABCDEFG' })] })), weighted);
+		expect(rowPx(l)).toBe(40);
+		expect(strings(l)).toContain('ABCDEFG');
 	});
 
 	it('拍點多到整區放不下的八拍：輸出前列出來；拍點少的八拍不列', () => {
