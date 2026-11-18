@@ -133,6 +133,8 @@
 	const playback = session ? getEditor().playback : null;
 	/** 選到的人。 */
 	const selected = $derived(session?.selectedMemberIds ?? marked);
+	/** 畫成選到的人：選了人就是選到的；沒選人時是標亮的「我」（marked，檢視模式）。點、拖照樣只看 selected。 */
+	const lit = $derived(selected.length ? selected : marked);
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
 	const touchScreen = isTouchScreen();
@@ -291,14 +293,14 @@
 			.flatMap((m, i) => {
 				const p = dragged[m.id] ?? positions[m.id];
 				return p
-					? [{ m, mark: markers[m.id] ?? String(i + 1), p, up: raised.includes(m.id), sel: selected.includes(m.id) }]
+					? [{ m, mark: markers[m.id] ?? String(i + 1), p, up: raised.includes(m.id), sel: lit.includes(m.id) }]
 					: [];
 			})
 			// SVG 後畫的蓋在上面：上層、中層排最後。
 			.sort((a, b) => Number(a.up) - Number(b.up))
 	);
 	/** 有選人時只畫選到的人的影子和線；沒選人時畫全隊。 */
-	const shown = (id: string) => selected.length === 0 || selected.includes(id);
+	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
 		members.flatMap((m) => (ghosts[m.id] && shown(m.id) ? [{ id: m.id, p: ghosts[m.id] }] : []))
 	);

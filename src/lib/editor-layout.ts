@@ -29,7 +29,7 @@ export function autoInspectorWidth(windowW: number, fieldHostH: number, aspect: 
 
 /**
  * 窄螢幕（手機、直拿的 iPad、縮小的視窗）：編輯畫面放不下，一律是檢視模式，換成手機的檢視畫面
- * （上面場地、中間播放鈕、下面八拍表這一列，docs/adr/0005-ipad-touch.md）。
+ * （上面場地、中間播放鈕、下面前後八拍，docs/adr/0005-ipad-touch.md）。
  * 只看 screen：列印時紙比較窄，不能因為這樣換畫面。
  */
 export const NARROW_SCREEN = 'screen and (max-width: 1023px), screen and (max-height: 599px)';

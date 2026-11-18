@@ -19,6 +19,7 @@ import {
 	lengthTextWithUnit,
 	segmentSpans,
 	timeTextWithUnit,
+	toPosition,
 	toSeconds,
 	units,
 	type TimePosition
@@ -109,6 +110,8 @@ export interface EightCountRow {
 	actions: EightCountAction[];
 	/** 前面的列開始、延續到這一列的動作名字（沒取名字寫大類），印成「↳ Lib 繼續」。 */
 	continuing: string[];
+	/** 同 continuing 那幾個動作，寫完整（什麼時候、人、任務角色）：檢視模式的前後八拍用，動作開始那一列可能不在畫面上。 */
+	ongoing: EightCountAction[];
 	formations: EightCountFormation[];
 	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到達）」。全隊是空的。 */
 	walks: string[];
@@ -120,7 +123,7 @@ export interface EightCountRow {
  * 八拍表的列。memberId 是 null 印全隊；給一個隊員就只列他參加的動作和他的任務角色
  * （列還是每個八拍都有，站位也照樣附）。動作和站位只寫在它開始的那一列。
  */
-export function eightCountRows(flow: Flow, memberId: string | null): EightCountRow[] {
+export function eightCountRows(flow: Flow, memberId: string | null, merge = true): EightCountRow[] {
 	const rows: EightCountRow[] = [];
 	const walks = memberId === null ? [] : memberWalks(flow, memberId);
 	const original = (id: string) => flow.actions.find((a) => a.id === id)!;
@@ -134,10 +137,26 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 			.filter((a) => a.members.length > 0)
 			.toSorted((a, b) => a.start - b.start);
 		const at = (u: number) => atTextWithUnit(segment, u);
+		const describe = (a: (typeof inSegment)[number]): EightCountAction => ({
+			at:
+				segment.kind === 'music'
+					? beatSpanText(segment, a.start, a.length)
+					: `${atText(segment, a.start)} 到 ${at(a.start + a.length)}・${lengthTextWithUnit(segment, a.length)}`,
+			category: a.category,
+			name: a.name,
+			members: a.members.map((m) => ({
+				memberId: m.memberId,
+				name: memberName(flow, m.memberId),
+				role: m.role
+			})),
+			who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId),
+			note: a.note
+		});
 		const rowOf = (from: number, to: number, eight: number | null): EightCountRow => {
 			const sec = toSeconds(flow, { segmentId: segment.id, at: from });
 			const end = Math.min(to, units(segment));
 			const durationSec = toSeconds(flow, { segmentId: segment.id, at: end }) - sec;
+			const carried = inSegment.filter((a) => a.start < from && a.start + a.length > from);
 			return {
 				segmentLabel: label,
 				eight,
@@ -145,29 +164,9 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 				eightText: eight === null ? `整段 ${durationSec.toFixed(1)} 秒` : `${eight}`,
 				startSec: sec,
 				durationSec,
-				actions: inSegment
-					.filter((a) => a.start >= from && a.start < to)
-					.map((a) => {
-						const members = a.members.map((m) => ({
-							memberId: m.memberId,
-							name: memberName(flow, m.memberId),
-							role: m.role
-						}));
-						return {
-							at:
-								segment.kind === 'music'
-									? beatSpanText(segment, a.start, a.length)
-									: `${atText(segment, a.start)} 到 ${at(a.start + a.length)}・${lengthTextWithUnit(segment, a.length)}`,
-							category: a.category,
-							name: a.name,
-							members,
-							who: memberId === null ? teamWho(flow, a) : memberWho(flow, original(a.id), memberId),
-							note: a.note
-						};
-					}),
-				continuing: inSegment
-					.filter((a) => a.start < from && a.start + a.length > from)
-					.map((a) => a.name || categoryLabel(a.category)),
+				actions: inSegment.filter((a) => a.start >= from && a.start < to).map(describe),
+				continuing: carried.map((a) => a.name || categoryLabel(a.category)),
+				ongoing: carried.map(describe),
 				formations: flow.formations.flatMap((f, i) => {
 					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
 					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}${departText(flow, f.id, memberId)}`;
@@ -214,6 +213,7 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 				const prev = rows.at(-1);
 				// 連著沒有新東西、延續的動作也一樣的八拍合成一列（同一段裡）
 				if (
+					merge &&
 					prev &&
 					prev.segmentLabel === label &&
 					prev.eight !== null &&
@@ -235,7 +235,38 @@ export function eightCountRows(flow: Flow, memberId: string | null): EightCountR
 	return rows;
 }
 
-const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
+/** 前後八拍：播放頭那個八拍和它前後幾個八拍（見 nearbyEights）。 */
+export interface NearbyEights {
+	/** before ＋ 1 ＋ after 格，播放頭那個八拍在第 before 格；流程開頭、結尾不夠的格是 null。 */
+	rows: (EightCountRow | null)[];
+	/** 播放頭在這個八拍的第幾拍（1–8）；口號段不數拍是 null。 */
+	beat: number | null;
+}
+
+/**
+ * 前後八拍：檢視模式跟著播放頭看的那幾列。一個八拍一列（空的八拍不合起來，才數得出前後幾個），
+ * 可以跨段；口號段整段一列。rows 是 eightCountRows(flow, memberId, false)，跟著流程和「我」先算好傳進來。
+ */
+export function nearbyEights(
+	flow: Flow,
+	memberId: string | null,
+	sec: number,
+	before: number,
+	after: number,
+	rows: EightCountRow[] = eightCountRows(flow, memberId, false)
+): NearbyEights {
+	const i = Math.max(rows.findLastIndex((r) => r.startSec <= sec + EPS), 0);
+	const slots = Array.from({ length: before + 1 + after }, (_, k) => rows[i - before + k] ?? null);
+	const pos = rows.length ? toPosition(flow, sec) : null;
+	const segment = pos && flow.segments.find((s) => s.id === pos.segmentId);
+	const beat =
+		segment?.kind === 'music'
+			? Math.floor((pos!.at % HALF_BEATS_PER_EIGHT) / HALF_BEATS_PER_BEAT) + 1
+			: null;
+	return { rows: slots, beat };
+}
+
+const withRole = (m:{ name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
 
 /** 全隊的表：「小A（上層）、小C」；全隊都在寫「全隊」，有任務角色再列出來「全隊：小A（上層）、小B（主底）」。 */
 function teamWho(flow: Flow, action: Action): string {

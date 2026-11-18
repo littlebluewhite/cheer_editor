@@ -124,7 +124,7 @@ describe('使用說明', () => {
 		const link = [...toc.querySelectorAll('a')].find((a) => a.textContent === '4.12 隊員怎麼看流程');
 		expect(link?.getAttribute('href')).toBe('#viewers');
 		const text = document.getElementById('viewers')!.textContent!;
-		for (const words of ['開啟流程檔', '檢視模式', '八拍表這一列', '我', '播放', '印誰', '「編輯」', '只能看、只能播放', '最近的流程', '丟掉']) {
+		for (const words of ['開啟流程檔', '檢視模式', '前後八拍', '我', '播放', '印誰', '「編輯」', '只能看、只能播放', '最近的流程', '丟掉']) {
 			expect(text, words).toContain(words);
 		}
 	});

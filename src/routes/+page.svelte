@@ -746,7 +746,7 @@
 		{#key opened}
 		{#if narrow}
 			{#if view === 'edit'}
-				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面八拍表這一列。只能看、只能播放；場上的人拖不動 -->
+				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面前後八拍（這個和下一個）。只能看、只能播放；場上的人拖不動 -->
 				<main class="phone-view">
 					<div class="phone-field">
 						<Field
@@ -766,7 +766,8 @@
 					<div class="phone-me">
 						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
-					<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+					<!-- 手機放不下七列：只放這個八拍和下一個 -->
+					<NowEightCount {flow} memberId={myId} sec={playback.sec} before={0} after={1} onjump={(s) => playback.seek(s)} />
 					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編 -->
 					<p class="phone-why"><Icon name="eye" />檢視模式・只能看{whyViewOnly ? `（${whyViewOnly}）` : ''}</p>
 					<!-- 提示浮在畫面最下面，不疊在場地上：手機的場地沒有空的地方，放哪都會蓋到條號或「正面／裁判」（N52） -->
@@ -787,6 +788,7 @@
 					raised={raisedAt(flow, playback.sec)}
 					{toMeters}
 					rail={session.editable}
+					marked={!session.editable && myId ? [myId] : []}
 					ghosts={trail.ghosts}
 					walks={trail.walks}
 					clashes={trail.clashes}
@@ -932,8 +934,8 @@
 				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
 				{#if !session.editable}
 					<div class="panel view-panel">
-						<div class="view-me">{@render mePicker('（選自己：八拍表這一列只看我的）')}</div>
-						<NowEightCount {flow} memberId={myId} sec={playback.sec} />
+						<div class="view-me">{@render mePicker('（選自己：場上標亮我、前後八拍只看我的）')}</div>
+						<NowEightCount {flow} memberId={myId} sec={playback.sec} before={3} after={3} onjump={(s) => playback.seek(s)} />
 						{#if session.selectedAction}
 							<ActionDetail {flow} action={session.selectedAction} />
 						{:else}
@@ -1174,8 +1176,8 @@
 		grid-template-rows: auto minmax(0, 1fr);
 		grid-template-columns: minmax(0, 1fr);
 	}
-	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面八拍表這一列（太長自己捲）。
-	   八拍表這一列固定高（畫面夠高時 25dvh，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
+	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面前後八拍（太長自己捲）。
+	   前後八拍固定高（畫面夠高時 25dvh，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
 	.phone-view {
 		position: relative;
 		grid-column: 1 / -1;

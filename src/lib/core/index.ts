@@ -115,14 +115,15 @@ export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, 
 export { actionEights, beatSpanText } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows, eightCountView } from './eight-count';
+export { eightCountRows, eightCountView, nearbyEights } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,
 	EightCountCueLine,
 	EightCountFormation,
 	EightCountPhase,
-	EightCountRow
+	EightCountRow,
+	NearbyEights
 } from './eight-count';
 
 export { addCustomRole, defaultRoles, deleteCustomRole, roleGlossary, updateCustomRole } from './roles';

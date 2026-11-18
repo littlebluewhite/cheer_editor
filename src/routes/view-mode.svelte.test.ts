@@ -1,5 +1,6 @@
 // 檢視模式（電腦，#174）：上方列「編輯｜檢視」按「檢視」就只能看、只能播放；改流程的指令都擋下（不只藏按鈕），按回「編輯」又能改。
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { placeCue, updateAction } from '#lib/core';
 import { Ask } from '#lib/ask.svelte.js';
@@ -133,7 +134,7 @@ describe('檢視模式', () => {
 		expect(screen.queryByRole('button', { name: '放大' })).toBeNull();
 		// 看的東西：「我」選單、八拍表這一列、還沒點動作時說怎麼看
 		const me = screen.getByRole('combobox', { name: '我' }) as HTMLSelectElement;
-		const now = screen.getByRole('region', { name: '八拍表這一列' });
+		const now = screen.getByRole('region', { name: '前後八拍' });
 		expect(now.textContent).toContain('Lib');
 		const panel = screen.getByRole('complementary', { name: '右邊欄' });
 		expect(panel.textContent).toContain('點時間軸上的動作');
@@ -155,6 +156,37 @@ describe('檢視模式', () => {
 		expect(detail.querySelectorAll('input, select, textarea, button')).toHaveLength(0);
 	});
 
+	it('前後八拍：前三個、這個、後三個八拍，這個在中間；這一拍那格亮；點別的八拍跳過去', async () => {
+		// 範例流程：音樂 1 有 4 個八拍（150 BPM，一個八拍 3.2 秒、一拍 0.4 秒），Lib 在第 1 個八拍
+		const { editor, props } = editorPage(libSample());
+		render(Page, props);
+		await fireEvent.click(viewBtn());
+		editor.playback.seek(3.2 + 2 * 0.4 + 0.1); // 2-3
+		await tick();
+		const near = screen.getByRole('region', { name: '前後八拍' });
+		const slots = near.querySelectorAll('[data-slot]');
+		expect(slots).toHaveLength(7);
+		// 開頭前面不夠兩格：空的
+		expect([...slots].map((s) => s.getAttribute('data-slot'))).toEqual(['', '', '1', '2', '3', '4', '']);
+		const now = near.querySelector('[aria-current="step"]')!;
+		expect(now.getAttribute('data-slot')).toBe('2');
+		// 這一拍：第 3 格亮
+		expect([...now.querySelectorAll('[data-now]')].map((n) => n.textContent)).toEqual(['3']);
+
+		// 點第 4 個八拍：播放頭跳到 4-1
+		await fireEvent.click(within(near).getByRole('button', { name: /第 4 個八拍/ }));
+		expect(screen.getByLabelText('目前位置').textContent).toContain('4-1');
+		expect(near.querySelector('[aria-current="step"]')!.getAttribute('data-slot')).toBe('4');
+	});
+
+	it('電腦的檢視模式選「我」：場上也標亮我', async () => {
+		setup();
+		await fireEvent.click(viewBtn());
+		await fireEvent.change(screen.getByRole('combobox', { name: '我' }), { target: { value: 'm2' } });
+		expect(dot('m2').classList.contains('selected')).toBe(true);
+		expect(dot('m1').classList.contains('selected')).toBe(false);
+	});
+
 	it('切回編輯：站位編輯欄、分頁、動作表單、放大縮小都回來', async () => {
 		setup();
 		await fireEvent.click(viewBtn());
@@ -163,7 +195,7 @@ describe('檢視模式', () => {
 		expect(screen.getByRole('button', { name: '放大' })).toBeTruthy();
 		expect(screen.getByRole('tab', { name: '動作' }).getAttribute('aria-selected')).toBe('true');
 		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
-		expect(screen.queryByRole('region', { name: '八拍表這一列' })).toBeNull();
+		expect(screen.queryByRole('region', { name: '前後八拍' })).toBeNull();
 		expect(screen.queryByRole('combobox', { name: '我' })).toBeNull();
 	});
 });
@@ -173,6 +205,8 @@ describe('檢視模式', () => {
 function usable(el: Element): boolean {
 	if (el.closest('[hidden], [inert]')) return false;
 	if (el.closest('.viewing [data-edit]')) return false;
+	// 前後八拍的「跳到…」：跳了整串換一批新的，掃不完；只是移播放頭，另外測
+	if (el.closest('[aria-label="前後八拍"]')) return false;
 	return !el.matches(':disabled');
 }
 

@@ -29,7 +29,7 @@ async function openOnPhone(flow: Flow = libSample()) {
 	return { ...page, engine, frames };
 }
 
-const row = () => screen.getByRole('region', { name: '八拍表這一列' });
+const row = () => screen.getByRole('region', { name: '前後八拍' });
 const me = () => screen.getByLabelText('我') as HTMLSelectElement;
 const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
 
@@ -40,6 +40,8 @@ describe('手機的檢視模式', () => {
 		expect(screen.queryByRole('region', { name: '視窗太窄了' })).toBeNull();
 		expect(screen.getByRole('img', { name: '場地' })).toBeTruthy();
 		expect(row().textContent).toContain('Lib');
+		// 手機放不下七列：只有這個八拍和下一個
+		expect([...row().querySelectorAll('[data-slot]')].map((s) => s.getAttribute('data-slot'))).toEqual(['1', '2']);
 		const at = screen.getByLabelText('目前位置').textContent;
 
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
@@ -97,7 +99,7 @@ describe('手機的檢視模式', () => {
 		await openOnPhone();
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		expect(screen.getByRole('region', { name: '練習' })).toBeTruthy();
-		expect(screen.queryByRole('region', { name: '八拍表這一列' })).toBeNull();
+		expect(screen.queryByRole('region', { name: '前後八拍' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '編排' }));
 		expect(row()).toBeTruthy();
 	});

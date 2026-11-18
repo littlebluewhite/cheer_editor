@@ -837,7 +837,7 @@ const overflow = () =>
 		return { 頁寬: document.scrollingElement.scrollWidth, 畫面寬: innerWidth, 跑出去的: out.slice(0, 5) };`);
 const noOverflow = (o) => o.頁寬 <= o.畫面寬 && o.跑出去的.length === 0;
 /**
- * 手機的檢視畫面（#175）：上面場地、中間播放鈕、下面八拍表這一列（橫拿時場地在左），都在畫面裡；
+ * 手機的檢視畫面（#175）：上面場地、中間播放鈕、下面前後八拍（橫拿時場地在左），都在畫面裡；
  * 播放鈕和「我」整顆在畫面裡、中心點是它自己；上方列每顆按鈕點到的是它自己；沒有「編輯｜檢視」切換。
  */
 const phoneView = () =>
@@ -849,7 +849,7 @@ const phoneView = () =>
 		const field = box(view.querySelector('.phone-field svg.field'));
 		const play = view.querySelector('.transport .play');
 		const row = box(view.querySelector('.now-eight'));
-		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#me-pick')), 八拍表這一列: row,
+		const v = { 場地: field, 播放鈕點得到: hit(play), 我點得到: hit(view.querySelector('#me-pick')), 前後八拍: row,
 			有編輯開關: !!document.querySelector('.topbar .mode'), 畫面高: innerHeight };
 		// 直拿：場地在播放鈕上面；橫拿：場地在左邊
 		const f = view.querySelector('.phone-field svg.field').getBoundingClientRect(), p = play.getBoundingClientRect();
@@ -1004,7 +1004,7 @@ await check('390×844（觸控）檢視畫面：播放前後播放鈕位置不�
 		return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };`);
 	const before = await btn();
 	await tap(before.x, before.y);
-	// 播著的時候每隔一下量一次：八拍表這一列換列、時鐘變長都不能讓它跳（範例流程 9 秒，量 6 秒，還在播）
+	// 播著的時候每隔一下量一次：前後八拍換列、時鐘變長都不能讓它跳（範例流程 9 秒，量 6 秒，還在播）
 	const seen = [];
 	for (let i = 0; i < 12; i++) { await sleep(500); seen.push(await btn()); }
 	const moved = seen.filter((p) => p.x !== before.x || p.y !== before.y);
@@ -2851,7 +2851,7 @@ await check('390×844（觸控）手機開檔跳提示：提示不蓋住「正�
 });
 
 
-await check('1440×900 檢視模式右邊欄，40 人的動作、播放頭在動作中間：「八拍表這一列」整列看得到，不疊到動作細節上（N09）', async () => {
+await check('1440×900 檢視模式右邊欄，40 人的動作、播放頭在動作中間：「前後八拍」整列看得到，不疊到動作細節上（N09）', async () => {
 	await setViewport(1440, 900);
 	await openBigFlow();
 	await js(`document.querySelector('[data-action-id="x1"]').click()`);
@@ -2870,6 +2870,40 @@ await check('1440×900 檢視模式右邊欄，40 人的動作、播放頭在動
 	await sleep(200);
 	return { ok: !!r && r.內容高 <= r.框高 + 1 && r.這一列[1] <= r.動作細節[0], value: r };
 });
+
+for (const [w, h] of [[1440, 900], [1180, 820]]) {
+	await check(`${w}×${h} 檢視模式的前後八拍：七格都在右邊欄裡看得到、前後的八拍靠左；點後面的八拍跳過去，這個八拍的框不移位`, async () => {
+		await setViewport(w, h);
+		await openBigFlow(`flow = of(c.updateSegment(flow, 's1', { eights: 12, lastBeats: 8 }));`);
+		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
+		await sleep(400);
+		const measure = () => js(`const box = document.querySelector('.inspector').getBoundingClientRect();
+			const now = document.querySelector('.view-panel .slot.now').getBoundingClientRect();
+			const slots = [...document.querySelectorAll('.view-panel [data-slot]')].map((s) => s.getBoundingClientRect());
+			return { 這個八拍: [Math.round(now.top), Math.round(now.bottom)], 格數: slots.length,
+				靠左: [...document.querySelectorAll('.view-panel .slot.near')].every((s) => s.firstElementChild.getBoundingClientRect().left - s.getBoundingClientRect().left < 12),
+				都看得到: slots.every((s) => s.top >= box.top && s.bottom <= box.bottom), 第幾個: document.querySelector('.view-panel .slot.now').dataset.slot };`);
+		// 點最後一格跳兩次（前面三格都有東西了），再點一次量前後
+		await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
+		await sleep(300);
+		await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
+		await sleep(300);
+		const a = await measure();
+		await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
+		await sleep(300);
+		const b = await measure();
+		if (process.env.LAYOUT_SHOT) {
+			const { data } = await send('Page.captureScreenshot', { format: 'png' });
+			(await import('node:fs')).writeFileSync(`${process.env.LAYOUT_SHOT}-${w}.png`, Buffer.from(data, 'base64'));
+		}
+		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
+		await sleep(200);
+		return {
+			ok: a.格數 === 7 && a.靠左 && a.都看得到 && b.都看得到 && a.第幾個 !== b.第幾個 && Math.abs(a.這個八拍[0] - b.這個八拍[0]) <= 1,
+			value: { 點之前: a, 點之後: b }
+		};
+	});
+}
 
 for (const [w, h] of [[1440, 900], [1024, 768]]) {
 	await check(`${w}×${h} 段設定改 BPM 後出現「照音樂長度重算八拍數」：第一拍、敲擊測速不被推走（N48）`, async () => {
@@ -2998,7 +3032,7 @@ await check('被截短的字（「…」、輸入框裝不下）都有 title 寫
 	await js(`document.getElementById('tab-actions')?.click()`);
 	await sleep(300);
 	value['1440 編排'] = await js(CUT_JS);
-	// 手機：第一個八拍有一個很長的步驟拍點，「八拍表這一列」和八拍表都寫得到
+	// 手機：第一個八拍有一個很長的步驟拍點，「前後八拍」和八拍表都寫得到
 	await setTouchViewport(390, 844);
 	await openBigFlow();
 	value['390 檢視畫面'] = await js(CUT_JS);

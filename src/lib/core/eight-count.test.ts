@@ -6,6 +6,7 @@ import {
 	createFlow,
 	eightCountRows,
 	eightCountView,
+	nearbyEights,
 	clearPhaseBeats,
 	addPhase,
 	insertFormation,
@@ -484,5 +485,27 @@ describe('八拍表的小站位圖範圍', () => {
 		let flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
 		flow = flowOf(addSegment(flow, 'music'));
 		expect(eightCountView(flow)).toBeNull();
+	});
+});
+
+describe('前後八拍：檢視模式跟著播放頭看前三個、這個、後三個八拍', () => {
+	it('一個八拍一格（空的八拍不合起來），這個八拍在中間；開頭不夠的是空格；寫第幾拍', () => {
+		// 音樂 1：3 個八拍（最後一個 4 拍），一個八拍 3.2 秒、一拍 0.4 秒；口號 1 一整段。播放頭在 2-3
+		const near = nearbyEights(sample(), null, 3.2 + 2 * 0.4 + 0.1, 3, 3);
+		expect(near.rows.map((r) => r && r.eightText)).toEqual([null, null, '1', '2', '3', '整段 10.0 秒', null]);
+		expect(near.beat).toBe(3);
+	});
+
+	it('做到一半的動作：後面的八拍也寫得出人和任務角色（開始那一列可能不在畫面上）', () => {
+		const flow = flowOf(addAction(sample(), action({ length: 40 })));
+		const [first, , third] = eightCountRows(flow, null, false);
+		expect(first.ongoing).toEqual([]);
+		expect(third.ongoing.map((a) => [a.at, a.name, a.who])).toEqual([['1-1 到 3-4・20 拍', 'Lib', '小A（上層）、小B（主底）']]);
+		// 個人表：小B 只看他自己的任務角色
+		expect(eightCountRows(flow, 'm2', false)[2].ongoing.map((a) => a.who)).toEqual(['主底']);
+	});
+
+	it('口號段沒有第幾拍', () => {
+		expect(nearbyEights(sample(), null, 8 + 5, 3, 3).beat).toBeNull();
 	});
 });

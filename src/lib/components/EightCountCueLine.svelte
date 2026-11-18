@@ -1,16 +1,21 @@
 <script lang="ts">
-	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和手機的「八拍表這一列」共用。
+	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和檢視模式的「前後八拍」共用。
 	import { actionLabel, cueText, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
 
 	interface Props {
-		line: EightCountCueLine;
+		/** null：沒有動作，只畫 1–8 的空格（前後八拍裡這一拍照樣有格子亮）。 */
+		line: EightCountCueLine | null;
 		/** 這一列是第幾個八拍（環節的讀屏名字寫「1-1 到 1-3」）。 */
 		eight: number | null;
+		/** 播放頭在第幾拍（1–8）：那格的數字和蓋到那格的拍點亮。八拍表（列印）不給。 */
+		now?: number | null;
 	}
 
-	let { line, eight }: Props = $props();
+	let { line, eight, now = null }: Props = $props();
 
-	const name = $derived(actionLabel(line));
+	const name = $derived(line ? actionLabel(line) : '');
+	const cues = $derived(line?.cues ?? []);
+	const phases = $derived(line?.phases ?? []);
 
 	/** 「拍子 down 1-6 到 1-7・2 拍」「手位 high V 1-8・1 拍・給上層」。 */
 	const cueLabel = (c: EightCountCue) => cueText(c.kind, c.word, c.span, c.who ?? '');
@@ -22,12 +27,12 @@
 	}
 </script>
 
-<div class="cue-line" role="group" aria-label="{name} 的拍點">
-	<span class="cue-name" title={name}>{name}</span>
+<div class="cue-line" role="group" aria-label={line ? `${name} 的拍點` : '這個八拍的拍'}>
+	{#if line}<span class="cue-name" title={name}>{name}</span>{/if}
 	<div class="beats">
-		{#if line.phases.length}
+		{#if phases.length}
 			<div class="phases">
-				{#each line.phases as p, k (k)}
+				{#each phases as p, k (k)}
 					<span
 						class="phase"
 						data-phase
@@ -40,11 +45,12 @@
 		{/if}
 		<div class="cells">
 			{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-				<span class="n" style:grid-column={n}>{n}</span>
+				<span class="n" class:lit={n === now} data-now={n === now ? '' : undefined} style:grid-column={n}>{n}</span>
 			{/each}
-			{#each line.cues as c, k (k)}
+			{#each cues as c, k (k)}
 				<span
 					class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
+					class:lit={now !== null && c.from <= now && now <= c.to}
 					style:grid-column="{c.from} / {c.to + 1}"
 					aria-label={cueLabel(c)}
 					title={c.who ? `${c.word}（${c.who}）` : c.word}
@@ -112,6 +118,15 @@
 		font-size: 10px;
 		color: #7a8296;
 		border-bottom: 1px solid #c9ced8;
+	}
+	/* 播放頭在的那一拍（檢視模式）：數字格塗滿播放頭的顏色（深一點，白字對比才夠 4.5:1），蓋到那格的拍點外面一圈 */
+	.n.lit {
+		background: #c4401f;
+		color: #fff;
+		font-weight: 700;
+	}
+	.cue.lit {
+		box-shadow: 0 0 0 2px var(--now);
 	}
 	.cue {
 		margin: 0 2px;
