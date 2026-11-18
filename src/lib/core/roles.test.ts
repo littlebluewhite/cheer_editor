@@ -7,6 +7,7 @@ import {
 	createFlow,
 	defaultRoles,
 	deleteCustomRole,
+	pickableRoles,
 	placeCue,
 	roleGlossary,
 	updateCustomRole
@@ -16,17 +17,32 @@ import { flowOf } from '../test-flows';
 const empty = () => flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
 
 describe('任務角色', () => {
-	it('名詞對照表先列 11 個固定角色（名稱、意思、規則上的叫法）', () => {
+	it('名詞對照表先列 12 個固定角色（名稱、意思、規則上的叫法）；三層排最後，原本的快捷鍵不動', () => {
 		const rows = roleGlossary(empty());
 		expect(rows.map((r) => r.name)).toEqual([
-			'底層', '主底', '側底', '上層', '中層', '保護', '前保', '後保', '接者', '支撐', '騰翻'
+			'底層', '主底', '側底', '上層', '中層', '保護', '前保', '後保', '接者', '支撐', '騰翻', '三層'
 		]);
+		expect(rows.at(-1)).toEqual({
+			name: '三層',
+			meaning: '金字塔裡站在中層身上、最上面的人。只有金字塔有。',
+			ruleName: '3 層人員、3 層隊員',
+			custom: false
+		});
 		expect(rows[1]).toEqual({
 			name: '主底',
 			meaning: '主要撐住上層腳的底層。單底層技巧的那位底層。',
 			ruleName: '底層人員（台灣規則沒有「主底」）',
 			custom: false
 		});
+	});
+
+	it('任務角色選單：三層只有金字塔有；已經是三層的人換了大類也看得到這一項', () => {
+		const names = (category: Parameters<typeof pickableRoles>[1], current?: string) =>
+			pickableRoles(empty(), category, current ? [current] : []).map((r) => r.name);
+		expect(names('pyramid')).toContain('三層');
+		expect(names('stunt')).not.toContain('三層');
+		expect(names('toss')).not.toContain('三層');
+		expect(names('stunt', '三層')).toContain('三層');
 	});
 
 	it('自訂角色存在這支流程裡，接在對照表後面', () => {

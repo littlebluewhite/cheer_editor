@@ -76,7 +76,7 @@
 		members = [],
 		markers = {},
 		positions = {},
-		raised = [],
+		levels = {},
 		toMeters = screenCtmToMeters,
 		controls = true,
 		rail = true,
@@ -97,8 +97,8 @@
 		/** 點上寫的標記（隊員 id → 字）；沒給的人寫名單裡第幾個。 */
 		markers?: Record<string, string>;
 		positions?: Record<string, Position>;
-		/** 這一刻任務角色是上層或中層的人：畫在最上面，黃框加陰影。 */
-		raised?: string[];
+		/** 這一刻在空中的人第幾層（2、3；沒寫是地上的第 1 層）：高的層畫在上面，黃框加陰影，三層再加橘框。 */
+		levels?: Record<string, number>;
 		toMeters?: ToMeters;
 		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
 		controls?: boolean;
@@ -302,12 +302,38 @@
 			.flatMap((m, i) => {
 				const p = dragged[m.id] ?? positions[m.id];
 				return p
-					? [{ m, mark: markers[m.id] ?? String(i + 1), p, up: raised.includes(m.id), sel: lit.includes(m.id) }]
+					? [{ m, mark: markers[m.id] ?? String(i + 1), p, level: levels[m.id] ?? 1, sel: lit.includes(m.id) }]
 					: [];
 			})
-			// SVG 後畫的蓋在上面：上層、中層排最後。
-			.sort((a, b) => Number(a.up) - Number(b.up))
+			// SVG 後畫的蓋在上面：層高的排後面。
+			.sort((a, b) => a.level - b.level)
 	);
+	/**
+	 * 蓋到下面一層的人（圓點碰到）：往右上錯開、縮小，下面的人露得出來。單位是沒放大的公尺（在 scale 裡面）。
+	 * 位置照真的，只改畫法。
+	 */
+	const shifts = $derived.by(() => {
+		const out: Record<string, { d: number; s: number }> = {};
+		const touch = 2 * DOT_R * dotScale;
+		for (const a of dots) {
+			if (a.level < 2) continue;
+			if (dots.some((b) => b.level < a.level && Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1]) < touch)) {
+				out[a.m.id] = { d: 0.22 * (a.level - 1), s: 0.85 ** (a.level - 1) };
+			}
+		}
+		return out;
+	});
+	/** 被不同層蓋到的人：在所有圓點上面多畫一圈虛線（中心、大小照畫出來的樣子）。同一層擠在一起的不畫。 */
+	const covered = $derived.by(() => {
+		const drawn = dots.map((d) => {
+			const sh = shifts[d.m.id];
+			const off = (sh?.d ?? 0) * dotScale;
+			return { id: d.m.id, level: d.level, c: [d.p[0] + off, d.p[1] - off] as Position, r: DOT_R * dotScale * (sh?.s ?? 1) };
+		});
+		return drawn.filter((a, i) =>
+			drawn.slice(i + 1).some((b) => b.level !== a.level && Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1]) < a.r + b.r)
+		);
+	});
 	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
 	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
@@ -764,6 +790,8 @@
 					<span><i class="base"></i>底層</span>
 					<span><i class="top"></i>上層</span>
 					<span><i class="up"></i>正在上面</span>
+					<span><i class="up lv3"></i>三層</span>
+					<span><i class="under"></i>被蓋到</span>
 				</div>
 			</div>
 			<div class="walk-tools">
@@ -842,11 +870,14 @@
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
-		{#each dots as { m, mark, p, up, sel } (m.id)}
+		{#each dots as { m, mark, p, level, sel } (m.id)}
 			{@const pill = pillWidth(mark)}
+			{@const sh = shifts[m.id]}
 			<g
 				class="dot"
-				class:raised={up}
+				class:raised={level >= 2}
+				class:lv3={level >= 3}
+				class:outlined={!crop}
 				class:selected={sel}
 				class:filled={!!crop && sel}
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
@@ -860,7 +891,7 @@
 				transform="translate({p[0]},{p[1]})"
 			>
 				<title>{session ? whereText(m, p) : m.name}</title>
-				<g transform="scale({dotScale})">
+				<g transform="scale({dotScale}){sh ? ` translate(${sh.d},${-sh.d}) scale(${sh.s})` : ''}">
 					{#if pill}
 						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
@@ -881,6 +912,10 @@
 					{/if}
 				</g>
 			</g>
+		{/each}
+		<!-- 被不同層蓋到的人：虛線圈畫在所有圓點上面 -->
+		{#each covered as { id, c, r } (id)}
+			<circle class="covered" cx={c[0]} cy={c[1]} {r} />
 		{/each}
 		<!-- 撞位的 ✕ 在圓點後面畫：蓋在人上面看得到（按在 ✕ 上拖到的是附近的人，見 down）。 -->
 		{#each clashes as c, i (i)}
@@ -1147,6 +1182,23 @@
 		stroke: #ffd400;
 		stroke-width: 0.08;
 	}
+	/* 三層：橘框，跟第 2 層的黃框分得出來 */
+	.dot.lv3 :is(circle, rect):not(.ring):not(.focus-ring) {
+		stroke: #ff7a00;
+		stroke-width: 0.1;
+	}
+	/* 地上的人細深色外框：疊在一起時看得出邊 */
+	.dot.outlined:not(.raised) :is(circle, rect):not(.ring):not(.focus-ring) {
+		stroke: #16213a;
+		stroke-width: 0.035;
+	}
+	.covered {
+		fill: none;
+		stroke: #16213a;
+		stroke-width: 0.04;
+		stroke-dasharray: 0.08 0.06;
+		pointer-events: none;
+	}
 	.dot text {
 		font-size: 0.3px;
 		font-weight: 700;
@@ -1261,7 +1313,8 @@
 	}
 	.legend {
 		display: flex;
-		gap: 12px;
+		flex-wrap: wrap;
+		gap: 4px 12px;
 		padding: 5px 10px;
 		background: rgba(255, 255, 255, 0.94);
 		border-radius: 10px;
@@ -1274,6 +1327,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
+		white-space: nowrap;
 	}
 	.legend i {
 		width: 11px;
@@ -1291,6 +1345,13 @@
 		background: #fff;
 		border: 2px solid #ffd400;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+	}
+	.legend .up.lv3 {
+		border-color: #ff7a00;
+	}
+	.legend .under {
+		background: #fff;
+		border: 1.5px dashed #16213a;
 	}
 	/* 「正面／裁判」那一排在畫面最下面（見 fullView）：浮動列貼著它置中。 */
 	.below {

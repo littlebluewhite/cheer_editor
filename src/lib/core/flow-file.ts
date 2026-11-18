@@ -13,7 +13,7 @@ import { freshIds } from './ids';
 import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v10RateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 11;
+export const FORMAT_VERSION = 12;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -45,6 +45,8 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  * 第 11 版：環節的種類拿掉整體，多了拋法、翻法、跳法，每個大類只能用自己的種類（見 phaseKindsFor）。升級時照大類換種類
  *   （見 fitPhaseKinds）：拋投都換成拋法、騰翻都換成翻法、跳躍都換成跳法，技巧、金字塔的整體換成中段；名字、id、紀錄照留。
  *   舞蹈、其他的環節和紀錄拿掉，不記成功率，組也拿掉。
+ * 第 12 版：多了固定的任務角色「三層」（舊版編輯器不認得）。升級時拿掉叫「三層」的自訂任務角色（見 fixedThird）；
+ *   動作裡的人、拍點存的是名稱，照留，變成固定的三層。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -56,8 +58,16 @@ const UPGRADES: Record<number, Upgrade> = {
 	7: (doc) => ({ formatVersion: 8, flow: squadIds(doc.flow) }),
 	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow }),
 	9: (doc) => ({ formatVersion: 10, flow: doc.flow }),
-	10: (doc) => ({ formatVersion: 11, flow: fitKinds(doc.flow) })
+	10: (doc) => ({ formatVersion: 11, flow: fitKinds(doc.flow) }),
+	11: (doc) => ({ formatVersion: 12, flow: fixedThird(doc.flow) })
 };
+
+/** 第 11 → 12 版：拿掉叫「三層」的自訂任務角色，換成固定的三層。 */
+function fixedThird(v: unknown): unknown {
+	if (!flowShape(v)) return v;
+	const flow = v as Flow;
+	return { ...flow, customRoles: flow.customRoles.filter((r) => r.name !== '三層') };
+}
 
 /**
  * 第 10 → 11 版：每個動作的環節種類換成大類能用的（見 fitPhaseKinds）。本來就不守第 10 版規則的動作不換（交給 isFlow 擋下來），

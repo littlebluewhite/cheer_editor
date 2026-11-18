@@ -30,7 +30,7 @@
 		groupsPeople,
 		memberName,
 		positionText,
-		roleGlossary,
+		pickableRoles,
 		segmentSpans,
 		squadBadge,
 		timeExamples,
@@ -65,7 +65,8 @@
 	const segmentLabel = $derived(
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
-	const roles = $derived(roleGlossary(flow));
+	/** 選單的任務角色：三層只有金字塔有（已經是三層的人換了大類也照列）。 */
+	const roles = $derived(pickableRoles(flow, draft.category, draft.members.map((m) => m.role)));
 	const categoryLabel = $derived(ACTION_CATEGORIES.find((c) => c.key === draft.category)?.label ?? '');
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);

@@ -144,22 +144,49 @@ describe('上層、中層畫在最上面', () => {
 		expect(texts.map((t) => t.classList.contains('long'))).toEqual([true, false]);
 	});
 
-	it('raised 裡的人最後畫（蓋在別人上面），有黃框和陰影的樣式', () => {
-		const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
-			id: `m${i + 1}`,
-			name,
-			gender: 'F',
-			globalRole: 'base'
-		}));
+	const trio: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const dotOf = (id: string) => document.querySelector<SVGGElement>(`[data-member-id="${id}"]`)!;
+	/** 圓點裡那一層 g 的 transform（放大，蓋到下面的人時再錯開、縮小）。 */
+	const inner = (id: string) => dotOf(id).querySelector(':scope > g')!.getAttribute('transform')!;
+
+	it('照層畫：高的層後畫（蓋在上面）；第 2 層以上黃框加陰影，三層再加橘框', () => {
 		render(Field, {
 			field: { strips: 9, layout: 'vertical' },
-			members,
+			members: trio,
 			positions: { m1: [0, 0], m2: [0, 0], m3: [1, 0] },
-			raised: ['m1']
+			levels: { m1: 3, m3: 2 }
 		});
 		const dots = [...document.querySelectorAll<SVGGElement>('[data-member-id]')];
 		expect(dots.map((d) => d.dataset.memberId)).toEqual(['m2', 'm3', 'm1']);
-		expect(dots.map((d) => d.classList.contains('raised'))).toEqual([false, false, true]);
+		expect(dots.map((d) => d.classList.contains('raised'))).toEqual([false, true, true]);
+		expect(dots.map((d) => d.classList.contains('lv3'))).toEqual([false, false, true]);
+	});
+
+	it('蓋到下面一層的人時往右上錯開、縮小，層越高錯越多；旁邊沒人的不動', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio,
+			positions: { m1: [0, 0], m2: [0, 0], m3: [3, 0] },
+			levels: { m1: 2, m3: 3 }
+		});
+		expect(inner('m2')).not.toContain('translate');
+		expect(inner('m1')).toMatch(/translate\(0\.22,-0\.22\) scale\(0\.85\)$/);
+		expect(inner('m3')).not.toContain('translate');
+	});
+
+	it('被不同層蓋到的人多畫一圈虛線；同一層擠在一起的不畫', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: [...trio, { id: 'm4', name: '小D', gender: 'F', globalRole: 'base' }],
+			positions: { m1: [0, 0], m2: [0, 0], m3: [3, 0], m4: [3.1, 0] },
+			levels: { m1: 2 }
+		});
+		expect(document.querySelectorAll('circle.covered')).toHaveLength(1);
 	});
 });
 

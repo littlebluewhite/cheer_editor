@@ -6,10 +6,14 @@ import {
 	actionSeconds,
 	replaceAction,
 	type Action,
+	type ActionCategory,
 	type ActionChanges,
 	type NewActionInput
 } from './action-types';
 import { cueFallout, cueProblem } from './cues';
+import { positionsAt } from './formation';
+import { stackedMembers } from './hints';
+import type { Member } from './members';
 import { memberName, type Flow } from './flow';
 import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
@@ -323,12 +327,35 @@ export function memberGroup(flow: Flow, group: MemberGroup, sec: number): string
 	return flow.members.filter((m) => group === 'all' || m.globalRole === group).map((m) => m.id);
 }
 
-/** 場上要畫在最上面的任務角色。 */
-const RAISED_ROLES = ['上層', '中層'];
+/** 在空中第幾層的任務角色（地上是第 1 層，不列）：被底層撐起來的第 2 層，站在中層身上的三層第 3 層。 */
+const LAYERS: Record<string, number> = { 中層: 2, 上層: 2, 支撐: 2, 三層: 3 };
 
-/** 這一刻任務角色是上層或中層的隊員 id（場上畫在最上面），照名單順序。看任務角色，不看全局角色。 */
-export function raisedAt(flow: Flow, sec: number): string[] {
-	return flow.members
-		.filter((m) => RAISED_ROLES.includes(memberActionAt(flow, m.id, sec)?.role ?? ''))
-		.map((m) => m.id);
+/** 撐人的大類：同一個動作裡不同層疊在一起是正常的。 */
+const LIFTING: readonly ActionCategory[] = ['stunt', 'pyramid', 'toss'];
+
+/** 這一刻在空中的隊員 id → 第幾層（2 或 3；場上照層畫，高的畫在上面）。看任務角色，不看全局角色；地上的人不列。 */
+export function layersAt(flow: Flow, sec: number): Record<string, number> {
+	return Object.fromEntries(
+		flow.members.flatMap((m) => {
+			const layer = LAYERS[memberActionAt(flow, m.id, sec)?.role ?? ''];
+			return layer ? [[m.id, layer]] : [];
+		})
+	);
+}
+
+/**
+ * 這一刻疊在同一點、要提醒的人（每一組照名單順序）。
+ * 一組裡每兩個人都在同一個撐人的動作裡、又在不同層（例如底層、中層、三層疊在一起）是正常的，不提醒；
+ * 有兩個人同一層、不在同一個動作裡、或動作不是撐人的，整組照樣提醒。
+ */
+export function stackedAt(flow: Flow, sec: number): Member[][] {
+	const layers = layersAt(flow, sec);
+	const at = (id: string) => memberActionAt(flow, id, sec)?.action;
+	const apart = (a: Member, b: Member) => {
+		const action = at(a.id);
+		return !!action && action === at(b.id) && LIFTING.includes(action.category) && (layers[a.id] ?? 1) !== (layers[b.id] ?? 1);
+	};
+	return stackedMembers(flow.members, positionsAt(flow, sec)).filter((g) =>
+		g.some((a, i) => g.slice(i + 1).some((b) => !apart(a, b)))
+	);
 }

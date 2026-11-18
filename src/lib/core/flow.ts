@@ -26,7 +26,7 @@ export interface Flow {
 	segments: Segment[];
 	/** 照時間排。第一張是流程開頭那張（第一段的時間 0），一定在、不能刪。 */
 	formations: Formation[];
-	/** 這支流程自己加的任務角色（固定的 11 個不存）。 */
+	/** 這支流程自己加的任務角色（固定的 12 個不存）。 */
 	customRoles: CustomRole[];
 	actions: Action[];
 	/** 隊員的標記用號碼還是開頭字；沒有就是號碼。 */

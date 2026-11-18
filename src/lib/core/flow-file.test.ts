@@ -190,7 +190,7 @@ describe('流程檔：存了再開', () => {
 		expect(r.kind === 'ok' && r.flow.markers).toBe('initial');
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 11 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('zip 裡是一份 flow.json（formatVersion 12 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -198,7 +198,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(11);
+		expect(json.formatVersion).toBe(12);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -227,7 +227,7 @@ const BROKEN = '流程檔裡的資料壞掉了';
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 12, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 13, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -696,6 +696,19 @@ describe('流程檔：版本', () => {
 		expect(readFlowFile(zipOf({ formatVersion: 11, flow: toss }))).toEqual({ kind: 'error', message: BROKEN });
 	});
 
+	it('第 11 版的檔自己加過「三層」這個自訂任務角色：換成固定的三層，用到的人照留', () => {
+		const old = JSON.parse(JSON.stringify(sample()));
+		old.customRoles = [
+			{ id: 'r1', name: '三層', meaning: '最上面的' },
+			{ id: 'r2', name: '旗手', meaning: '拿隊旗' }
+		];
+		old.actions[0].category = 'pyramid';
+		old.actions[0].members[0].role = '三層';
+		const flow = opened(zipOf({ formatVersion: 11, flow: old }));
+		expect(flow.customRoles).toEqual([{ id: 'r2', name: '旗手', meaning: '拿隊旗' }]);
+		expect(flow.actions[0].members[0].role).toBe('三層');
+	});
+
 	/** 第 8 版的檔改壞一個地方；sr 是 Lib 的成功率設定。 */
 	function v8(edit: (flow: any, sr: any) => void): Uint8Array {
 		const flow = JSON.parse(JSON.stringify(withRecords()));
@@ -714,7 +727,7 @@ describe('流程檔：版本', () => {
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 11 版資料不用動。
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 12 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
@@ -728,7 +741,8 @@ describe('流程檔：版本', () => {
 		7: (doc: FlowDocument) => ({ formatVersion: 8, flow: doc.flow }),
 		8: (doc: FlowDocument) => ({ formatVersion: 9, flow: doc.flow }),
 		9: (doc: FlowDocument) => ({ formatVersion: 10, flow: doc.flow }),
-		10: (doc: FlowDocument) => ({ formatVersion: 11, flow: doc.flow })
+		10: (doc: FlowDocument) => ({ formatVersion: 11, flow: doc.flow }),
+		11: (doc: FlowDocument) => ({ formatVersion: 12, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {

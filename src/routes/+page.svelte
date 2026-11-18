@@ -6,10 +6,10 @@
 		positionText,
 		positionsAt,
 		readJump,
-		raisedAt,
+		layersAt,
 		squadBadge,
 		timeRuleWarnings,
-		stackedMembers,
+		stackedAt,
 		totalSeconds,
 		clockText,
 		walkSpanAt,
@@ -753,7 +753,7 @@
 							members={flow.members}
 							markers={memberMarkers(flow)}
 							positions={positionsAt(flow, playback.sec)}
-							raised={raisedAt(flow, playback.sec)}
+							levels={layersAt(flow, playback.sec)}
 							controls={false}
 							marked={myId ? [myId] : []}
 							ghosts={trail.ghosts}
@@ -784,7 +784,7 @@
 					members={flow.members}
 					markers={memberMarkers(flow)}
 					positions={positionsAt(flow, playback.sec)}
-					raised={raisedAt(flow, playback.sec)}
+					levels={layersAt(flow, playback.sec)}
 					{toMeters}
 					rail={session.editable}
 					marked={!session.editable && myId ? [myId] : []}
@@ -858,7 +858,7 @@
 							<RuleSummary {flow} clashes={allClashes} />
 						{/if}
 						{#if flow}
-							{@const stacked = stackedMembers(flow.members, positionsAt(flow, playback.sec))}
+							{@const stacked = stackedAt(flow, playback.sec)}
 							{#if stacked.length}
 								<p class="hint-warn" role="note">
 									{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好

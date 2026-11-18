@@ -11,7 +11,10 @@ import {
 	moveAction,
 	moveSegment,
 	previousActions,
-	raisedAt,
+	layersAt,
+	setPositions,
+	stackedAt,
+	type Position,
 	resizeAction,
 	updateAction,
 	addSegment,
@@ -285,23 +288,75 @@ describe('某一刻誰在做什麼、誰閒著', () => {
 		expect(idleAt(flow, 0)).toEqual(['m1']);
 	});
 
-	it('某一刻任務角色是上層或中層的人（畫在最上面），跟全局角色無關', () => {
+	it('某一刻在空中第幾層（看任務角色，跟全局角色無關）：中層、上層、支撐第 2 層，三層第 3 層，地上的人不列', () => {
 		let flow = sample();
+		flow = flowOf(addMembers(flow, ['小D', '小E', '小F'].map((name) => ({ name, gender: 'F' as const, globalRole: 'base' as const }))));
 		flow = flowOf(
 			addAction(
 				flow,
 				lib({
 					category: 'pyramid',
 					members: [
-						{ memberId: 'm1', role: '底層' },
+						{ memberId: 'm1', role: '三層' },
 						{ memberId: 'm2', role: '中層' },
-						{ memberId: 'm3', role: '上層' }
+						{ memberId: 'm3', role: '底層' },
+						{ memberId: 'm4', role: '支撐' },
+						{ memberId: 'm5', role: '上層' },
+						{ memberId: 'm6', role: '保護' }
 					]
 				})
 			)
 		);
-		expect(raisedAt(flow, 1)).toEqual(['m2', 'm3']);
-		expect(raisedAt(flow, 4)).toEqual([]);
+		expect(layersAt(flow, 1)).toEqual({ m1: 3, m2: 2, m4: 2, m5: 2 });
+		expect(layersAt(flow, 4)).toEqual({});
+	});
+});
+
+describe('疊在同一點的提醒', () => {
+	/** m1–m6 站在 at 給的位置，沒寫的站在遠遠的不同地方。 */
+	function placed(at: Record<string, Position>): Flow {
+		let flow = sample();
+		flow = flowOf(addMembers(flow, ['小D', '小E', '小F'].map((name) => ({ name, gender: 'F' as const, globalRole: 'base' as const }))));
+		const pos = Object.fromEntries(flow.members.map((m, i) => [m.id, at[m.id] ?? ([i * 2 - 5, 3] as Position)]));
+		return flowOf(setPositions(flow, flow.formations[0].id, pos));
+	}
+	const names = (groups: { name: string }[][]) => groups.map((g) => g.map((m) => m.name));
+
+	it('同一個金字塔裡不同層疊在一起是正常的，不提醒', () => {
+		let flow = placed({ m1: [0, 0], m2: [0, 0], m3: [0, 0] });
+		const members = [
+			{ memberId: 'm1', role: '三層' },
+			{ memberId: 'm2', role: '中層' },
+			{ memberId: 'm3', role: '底層' }
+		];
+		flow = flowOf(addAction(flow, lib({ category: 'pyramid', members })));
+		expect(stackedAt(flow, 1)).toEqual([]);
+		// 動作結束後還疊著：提醒
+		expect(names(stackedAt(flow, 4))).toEqual([['小A', '小B', '小C']]);
+	});
+
+	it('同一層的兩個人疊在一起照樣提醒，把整疊的人都寫出來', () => {
+		let flow = placed({ m1: [0, 0], m2: [0, 0], m3: [0, 0] });
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '底層' },
+			{ memberId: 'm3', role: '主底' }
+		];
+		flow = flowOf(addAction(flow, lib({ members })));
+		expect(names(stackedAt(flow, 1))).toEqual([['小A', '小B', '小C']]);
+	});
+
+	it('不同動作的人、或不是撐人的動作，不同層疊在一起也提醒', () => {
+		let flow = placed({ m1: [0, 0], m2: [0, 0], m4: [2, 0], m5: [2, 0] });
+		flow = flowOf(addAction(flow, lib({ members: [{ memberId: 'm1', role: '上層' }] })));
+		flow = flowOf(addAction(flow, lib({ name: '另一個', members: [{ memberId: 'm2', role: '底層' }] })));
+		flow = flowOf(
+			addAction(
+				flow,
+				lib({ category: 'dance', name: '舞', members: [{ memberId: 'm4', role: '上層' }, { memberId: 'm5', role: '底層' }] })
+			)
+		);
+		expect(names(stackedAt(flow, 1))).toEqual([['小A', '小B'], ['小D', '小E']]);
 	});
 });
 

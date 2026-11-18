@@ -258,6 +258,16 @@ describe('動作表單：改選到的動作', () => {
 		expect(all.getAttribute('target')).toBe('_blank');
 	});
 
+	it.each([
+		['pyramid', true],
+		['stunt', false]
+	] as const)('任務角色選單：%s 有沒有三層', async (category, has) => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category, name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		expect(!!screen.queryByRole('option', { name: /^三層/ })).toBe(has);
+	});
+
 	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
 		const session = setup(flow, 'x1');
@@ -265,7 +275,7 @@ describe('動作表單：改選到的動作', () => {
 		const pickB = screen.getByRole('combobox', { name: '小B 的任務角色' });
 		// 選單打開時按鍵也是直接選好、關掉選單，不用再按確認。
 		await fireEvent.click(pickA);
-		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4被撐在最上面的人。');
+		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。');
 		pickA.focus();
 		await fireEvent.keyDown(pickA, { key: '4' });
 		expect(session.flow!.actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });

@@ -40,7 +40,8 @@ export {
 	memberGroup,
 	moveAction,
 	previousActions,
-	raisedAt,
+	layersAt,
+	stackedAt,
 	resizeAction,
 	setSquad,
 	updateAction
@@ -126,7 +127,7 @@ export type {
 	NearbyEights
 } from './eight-count';
 
-export { addCustomRole, defaultRoles, deleteCustomRole, roleGlossary, updateCustomRole } from './roles';
+export { addCustomRole, defaultRoles, deleteCustomRole, pickableRoles, roleGlossary, updateCustomRole } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {

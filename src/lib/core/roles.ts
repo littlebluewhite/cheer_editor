@@ -1,4 +1,4 @@
-// 任務角色：隊員在某個動作裡要做的事。11 個固定的 ＋ 這支流程自己加的。
+// 任務角色：隊員在某個動作裡要做的事。12 個固定的 ＋ 這支流程自己加的。
 // 跟全局角色互不影響；只有加人進動作時的預設值（defaultRoles）照全局角色先填。
 
 import { actionLabel, type ActionCategory, type ActionMember } from './action-types';
@@ -24,19 +24,20 @@ export interface RoleEntry {
 	custom: boolean;
 }
 
-/** 11 個固定任務角色，照規格（#15）的「任務角色名詞對照表」。 */
+/** 12 個固定任務角色，照規格（#15）的「任務角色名詞對照表」。三層後來才加，排最後，前面角色的快捷鍵不動。 */
 export const FIXED_ROLES: readonly RoleEntry[] = [
 	['底層', '在下面撐住別人的人。不分主底、側底時用。', '底層人員'],
 	['主底', '主要撐住上層腳的底層。單底層技巧的那位底層。', '底層人員（台灣規則沒有「主底」）'],
 	['側底', '多底層技巧裡，在主底旁邊一起撐的底層。', '底層人員（台灣規則沒有「側底」）'],
-	['上層', '被撐在最上面的人。', '上層人員'],
-	['中層', '金字塔裡站在底層身上、又撐住上面的人的人。', '中層人員'],
+	['上層', '被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。', '上層人員'],
+	['中層', '金字塔裡站在底層身上、又撐住三層的人。', '中層人員'],
 	['保護', '站在旁邊保護上層，可扶腳踝、小腿、膝蓋，不能撐腳底，不算底層。', '保護人員（保護員）'],
 	['前保', '站在上層前方的保護。', '前方保護人員'],
 	['後保', '站在上層背後的人，技巧和籃型拋投都是。', '輔助人員（籃型拋投）；金字塔轉接寫「後保」'],
 	['接者', '接住落下或被拋的上層的人。', '接者'],
-	['支撐', '金字塔裡穩住別的上層的人。', '支撐者'],
-	['騰翻', '做騰翻的人。', '騰翻人員']
+	['支撐', '金字塔裡自己也被撐著、伸手穩住別的上層的人。', '支撐者'],
+	['騰翻', '做騰翻的人。', '騰翻人員'],
+	['三層', '金字塔裡站在中層身上、最上面的人。只有金字塔有。', '3 層人員、3 層隊員']
 ].map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false }));
 
 /** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複、不能跟隊員同名。 */
@@ -108,12 +109,25 @@ function memberNameTaken(name: string): string {
 	return `已經有叫「${name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人`;
 }
 
-/** 名詞對照表：固定的 11 個在前，這支流程的自訂角色接在後面。 */
+/** 名詞對照表：固定的 12 個在前，這支流程的自訂角色接在後面。 */
 export function roleGlossary(flow: Flow): RoleEntry[] {
 	return [
 		...FIXED_ROLES,
 		...flow.customRoles.map((r) => ({ name: r.name, meaning: r.meaning, ruleName: '', custom: true }))
 	];
+}
+
+/** 只有金字塔有的任務角色。 */
+const PYRAMID_ONLY = '三層';
+
+/**
+ * 任務角色選單裡的角色：名詞對照表，三層只有金字塔有。
+ * used（動作裡的人現在的任務角色）裡有三層時照列，換了大類也看得到、選得回來。
+ */
+export function pickableRoles(flow: Flow, category: ActionCategory, used: (string | null)[]): RoleEntry[] {
+	return roleGlossary(flow).filter(
+		(r) => r.custom || r.name !== PYRAMID_ONLY || category === 'pyramid' || used.includes(r.name)
+	);
 }
 
 /** 這個大類裡，全局角色是 globalRole 的人先填哪個任務角色；null 是不填。 */
