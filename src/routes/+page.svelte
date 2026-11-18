@@ -740,7 +740,7 @@
 							// 輸出時不能播放：在播的先停
 							playback.pause();
 							videoOpen = true;
-						}}><Icon name="video" /><span class="short-hide">輸出影片</span></button
+						}}><Icon name="video" /><span class="short-hide one-row-hide">輸出影片</span></button
 					>
 				{/if}
 				{#if view === 'edit' && !narrow}
@@ -2113,6 +2113,18 @@
 		}
 	}
 
+	/* 1671～1800px 播放區還在第一行：「輸出影片」只留圖示，長的流程名字才露得出 8 個字；再窄播放區換行，字又放得下 */
+	@media (min-width: 1671px) and (max-width: 1800px) {
+		.one-row-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+	}
+
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
 	   換行時播放區在 HTML 裡也放到按鈕後面（transportBelow），Tab 才照畫面順序。
 	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1670px 就換。 */
@@ -2193,6 +2205,10 @@
 		}
 		.title {
 			gap: 6px;
+		}
+		/* 多了「輸出影片」的圖示：間距再收 2px，流程名字才露得出 3 個字 */
+		.topbar {
+			gap: 8px;
 		}
 	}
 	@media (max-width: 1280px) {

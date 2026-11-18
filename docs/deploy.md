@@ -32,6 +32,10 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
 
 手動檢查離線：用 preview 或正式網址開一次，等頁面載完，開發者工具 Network 勾 Offline（或關掉 preview），重新整理，編輯器還能打開。
 
+輸出影片用的 `mediabunny` 是動態 `import()`，建置後自己一個 chunk（2026-11-18 量：約 235 KiB，gzip 約 60 KiB），
+不在首頁一開就載的檔案裡（`build/index.html` 的 modulepreload 沒有它）。它跟其他 `_app/immutable` 的檔一樣被 service worker 先存起來，
+（`sw.js` 的先存清單裡有它），所以離線應該也能輸出影片（推論，沒有真的離線輸出過）；編輯器打開時不會去載它。
+
 ## App 圖示
 
 圖示畫在 `static/favicon.svg`（墊子條紋加圓點，用 `src/app.css` 的顏色）。分頁上的 favicon、

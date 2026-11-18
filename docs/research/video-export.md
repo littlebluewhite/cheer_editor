@@ -216,6 +216,23 @@ npm 資料 2026-11-18 查。「最後發布」是最新版本的時間。
 - 推論：3 分鐘的流程約 1.5 分鐘做完、約 13 MB（照這次的比例算，畫面更複雜會變）。
 - 還沒測：手機上能不能播、經過 LINE 等通訊軟體傳送後會怎樣、iPad。
 
+### 編輯器的「輸出影片」（2026-11-18，Task 8）
+
+同一台 Mac、headless Chrome，`npm run dev`（開發版，沒壓縮），從對話框按「開始」到寫「做好了」。
+
+| 流程 | 影片長 | 格數 | 花了 | 檔案 | 記憶體 |
+|---|---|---|---|---|---|
+| `docs/samples/sample-flow.zip`（3 人、音樂 4 秒＋口號 5 秒） | 12.0 秒 | 360 | 約 4.6–4.8 秒 | 682,070 bytes（0.65 MiB） | JS heap 最高約 18 MB；Chrome 全部程序 RSS 1,375 → 1,446 MB（+71） |
+| 另外做的 3 分鐘流程（20 人、音樂 150 秒＋口號 30 秒、4 張站位、3 個動作，音樂是程式產生的 44.1 kHz 單聲道 WAV） | 183.0 秒 | 5,490 | 約 31–32 秒 | 13,564,925 bytes（12.9 MiB） | JS heap 最高約 32 MB；Chrome 全部程序 RSS 1,651 → 1,768 MB（+117） |
+
+- ffprobe（兩支一樣）：`h264` profile `Baseline`、level 40、1080×1920、`r_frame_rate=30/1`；`aac` profile `LC`、48000 Hz、2 聲道；
+  長度 = 流程長 + 3 秒（9 → 12.0、180 → 183.0）。關鍵格在 0、2、4、6、8、10 秒。檔頭 `ftyp` 之後就是 `moov`（第 32 byte），`mdat` 在後面。
+- `ffmpeg -v error -i out.mp4 -f null -` 沒有輸出。
+- 範例流程兩次輸出的檔一模一樣大。
+- 記憶體：JS heap 是 CDP `Performance.getMetrics` 的 `JSHeapUsedSize`，每 0.25 秒取一次的最大值；RSS 是 headless Chrome 和它所有子程序 `ps` 的 RSS 加起來（含開發版 vite 載的模組，所以起點很高），只看增加的量。
+  `encoder.ts` 先把影像全部編完、聲音最後才加，編好的影像會在記憶體裡等聲音 [MB-WRITING]；`fastStart: 'in-memory'` 本來也把整支檔放在記憶體裡。3 分鐘的流程只多出約 120 MB，現在不用改成輪流加。
+- 推論：正式版（壓縮過）會快一點；比較慢的筆電、人多的流程會慢一些，沒測。
+
 ## 沒找到
 
 - LINE、WhatsApp、Messenger、iMessage 收到 MP4 怎麼處理（重新壓縮、大小或長度上限、收哪些 H.264 profile）。只有 Meta 商用 API 頁（16 MB、H.264 + AAC、Android 不收 High 和 B-frame）[META-WA]；一般 app 未確認。LINE 沒找到官方資料。

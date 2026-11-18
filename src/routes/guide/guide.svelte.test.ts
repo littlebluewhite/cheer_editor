@@ -36,6 +36,18 @@ describe('使用說明', () => {
 		expect(section.querySelector('img')?.alt).toContain('拍點');
 	});
 
+	it('4.9 有一小節「輸出影片」：做什麼、哪些瀏覽器可以、放不下時會怎樣、流程改了要再輸出一次', () => {
+		render(Guide);
+		const head = document.getElementById('輸出影片')!;
+		expect(head.closest('section')?.id).toBe('save');
+		let text = '';
+		for (let el = head.nextElementSibling; el && el.tagName !== 'H4'; el = el.nextElementSibling) text += el.textContent;
+		for (const words of ['流程影片', 'MP4', '手機', '「開始」', '流程名字.mp4', 'Chrome、Edge', '這個瀏覽器不能輸出影片，請用電腦的 Chrome 或 Edge', '放不下', '⋯還有 N 個動作', '再輸出一次']) {
+			expect(text, words).toContain(words);
+		}
+		for (const avoid of ['匯出', '錄影', '動畫']) expect(text, avoid).not.toContain(avoid);
+	});
+
 	it('有一節講練習：在拍點格子加環節、在場上分組、記錄頁、總表、怎麼算、會清掉紀錄的情況', () => {
 		render(Guide);
 		const toc = screen.getByRole('navigation', { name: '目錄' });

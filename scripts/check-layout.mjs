@@ -334,6 +334,56 @@ await check('1440×900 不算矮：上方列照舊兩行，播放區在第二行
 	return { ok: r.上方列高 > 90 && !r.播放鈕和存檔同一行 && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0, value: r };
 });
 
+// 1024×768 螢幕矮：「輸出影片」只剩圖示；1280×1024 不矮：字整個露出來
+for (const [w, h, label] of [[1024, 768, false], [1280, 1024, true]]) {
+	await check(`${w}×${h} 輸出影片按鈕整個在上方列裡、點得到${label ? '，「輸出影片」四個字整個看得到' : ''}`, async () => {
+		await setViewport(w, h);
+		await openSample();
+		const r = await js(`const b = document.querySelector('.topbar button[aria-label="輸出影片"]');
+			if (!b) return null;
+			const r = b.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
+			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			const span = b.querySelector('span');
+			const s = span.getBoundingClientRect();
+			return { 在上方列裡: r.left >= bar.left - 1 && r.right <= bar.right + 1 && r.top >= bar.top - 1 && r.bottom <= bar.bottom + 1,
+				中心點到自己: !!t && b.contains(t), 字: span.textContent, 字的寬: Math.round(s.width),
+				字整個在按鈕裡: s.width > 20 && s.left >= r.left && s.right <= r.right && span.scrollWidth <= Math.ceil(s.width) };`);
+		if (!r) return { ok: false, value: '上方列沒有輸出影片按鈕' };
+		return { ok: r.在上方列裡 && r.中心點到自己 && (!label || r.字整個在按鈕裡), value: r };
+	});
+}
+
+await check('輸出影片：用 docs/samples/sample-flow.zip 做出來的檔，開頭是 ftyp，有 avc1 和 mp4a', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	// 不真的跳存檔對話框：換成假的，把寫進去的位元組留在 window.__videoBytes
+	await js(`window.__videoBytes = null;
+		window.showSaveFilePicker = async () => {
+			const parts = [];
+			return { createWritable: async () => ({ write: async (b) => { parts.push(new Uint8Array(b)); }, close: async () => {
+				const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+				let k = 0;
+				for (const p of parts) { all.set(p, k); k += p.length; }
+				window.__videoBytes = all;
+			} }) };
+		};`);
+	const button = (text) => `[...document.querySelectorAll('.video-dialog button')].find((b) => b.textContent.trim() === '${text}')`;
+	await hitAndClick('.topbar button[aria-label="輸出影片"]');
+	await waitFor(() => js(`return !!${button('開始')}`));
+	await js(`${button('開始')}.click()`);
+	// 範例流程 12 秒、360 格，這台約 5 秒做完；機器忙時等久一點
+	await waitFor(() => js(`return /做好了|沒做成/.test(document.querySelector('.video-dialog').textContent)`), 600);
+	const said = await js(`return document.querySelector('.video-dialog p').textContent.trim()`);
+	await js(`${button('存檔')}?.click()`);
+	await waitFor(() => js(`return !!window.__videoBytes || !document.querySelector('.video-dialog')`), 50).catch(() => {});
+	const r = await js(`const b = window.__videoBytes;
+		if (!b) return null;
+		const head = new TextDecoder('latin1').decode(b.subarray(0, 65536));
+		return { 大小: b.length, 開頭: head.slice(4, 8), avc1: head.includes('avc1'), mp4a: head.includes('mp4a'), 對話框關了: !document.querySelector('.video-dialog') };`);
+	if (!r) return { ok: false, value: { 對話框寫: said, 存檔: '沒拿到位元組' } };
+	return { ok: r.開頭 === 'ftyp' && r.avc1 && r.mp4a && r.對話框關了, value: { 對話框寫: said, ...r } };
+});
+
 /** 元素的四個角（往內縮 6px，避開圓角）最上面的東西是不是它自己：被裁掉或被蓋住的角會是別的東西。 */
 const cornersVisible = (selector) =>
 	js(`const el = document.querySelector(${JSON.stringify(selector)});
