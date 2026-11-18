@@ -116,7 +116,7 @@ export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, 
 export { actionEights, beatSpanText } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows, eightCountView, nearbyEights } from './eight-count';
+export { eightCountRows, eightCountView, nearbyEights, teamWho } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,
@@ -225,6 +225,17 @@ export {
 	units
 } from './time';
 export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
+
+export {
+	VIDEO_FPS,
+	VIDEO_INTRO_SEC,
+	VIDEO_OUTRO_SEC,
+	videoAudioClips,
+	videoDurationSec,
+	videoFrame,
+	videoRows
+} from './video-frame';
+export type { VideoFrameData, VideoRow } from './video-frame';
 
 export { firstBeatPreview, playbackPlan, playStartSec, repeatSpan, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';

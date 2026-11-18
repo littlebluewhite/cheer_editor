@@ -274,7 +274,7 @@ export function nearbyEights(
 const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
 
 /** 全隊的表：「小A（上層）、小C」；全隊都在寫「全隊」，有任務角色再列出來「全隊：小A（上層）、小B（主底）」。 */
-function teamWho(flow: Flow, action: Action): string {
+export function teamWho(flow: Flow, action: Action): string {
 	const members = action.members.map((m) => ({ name: memberName(flow, m.memberId), role: m.role }));
 	const wholeTeam = flow.members.every((m) => action.members.some((x) => x.memberId === m.id));
 	if (!wholeTeam) return members.map(withRole).join('、');
