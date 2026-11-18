@@ -2,9 +2,12 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { withPwa } from '@vite-pwa/sveltekit';
 import { svelteTesting } from '@testing-library/svelte/vite';
+import { thirdPartyLicenses } from './scripts/third-party-licenses.ts';
 
 export default defineConfig({
 	plugins: [
+		// 建置時產生 third-party-licenses.txt（第三方套件的授權），見檔案開頭。
+		thirdPartyLicenses(),
 		// withPwa 包住 sveltekit()：產生 service worker（可離線）和 manifest。
 		withPwa(
 			{

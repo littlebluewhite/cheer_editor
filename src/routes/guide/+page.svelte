@@ -1455,6 +1455,16 @@
 					</p>
 				</details>
 			</section>
+
+			<!-- 檔案是建置時產生的（scripts/third-party-licenses.ts），npm run dev 底下沒有。
+			     不在 static/ 裡，asset() 不收；說明頁和它都在網站根目錄，用相對路徑。 -->
+			<p class="credits">
+				這個編輯器用到別人寫的套件（例如輸出影片用的 mediabunny）。各套件的授權和原始碼網址：<a
+					href="third-party-licenses.txt"
+					target="_blank"
+					rel="noopener">第三方套件授權</a
+				>。
+			</p>
 		</main>
 	</div>
 	<!-- 窄螢幕：目錄只在頁首，整頁很長，浮一顆回目錄 -->
@@ -1462,6 +1472,11 @@
 </div>
 
 <style>
+	.credits {
+		margin-top: 48px;
+		color: var(--muted);
+		font-size: 13px;
+	}
 	.guide {
 		min-height: 100vh;
 		background: var(--paper);
