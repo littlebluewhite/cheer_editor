@@ -3,16 +3,35 @@
 // 窄不窄、是不是觸控螢幕是媒體查詢：jsdom 沒有 matchMedia，換一個假的。
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { VIDEO_FPS, createFlow, updateSegment, videoDurationSec, type Flow } from '#lib/core';
+import {
+	VIDEO_FPS,
+	addAction,
+	addCustomRole,
+	addMembers,
+	addSegment,
+	createFlow,
+	renameFlow,
+	updateSegment,
+	videoDurationSec,
+	type Flow
+} from '#lib/core';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { audioFlow, editorPage, teamFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
+import { drawFrame } from '#lib/video/draw.js';
+import type { VideoJob } from '#lib/video/encoder.js';
 import { createFakeVideoEncoder } from '#lib/video/fake-encoder.js';
 import Page from './+page.svelte';
 
+// 假編碼器不畫圖：把 drawFrame 換成記下參數的，直接叫 job.draw 看它拿到什麼（jsdom 沒有 Canvas）
+vi.mock('#lib/video/draw.js', async (original) => ({ ...(await original<typeof import('#lib/video/draw.js')>()), drawFrame: vi.fn() }));
+
 Element.prototype.scrollIntoView = () => {};
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+	localStorage.clear();
+	vi.mocked(drawFrame).mockClear();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 /** teamFlow 只留一個八拍（3 秒）：影片 6 秒、180 格，假編碼器一格等一次 setTimeout，才不會等太久。 */
@@ -157,5 +176,62 @@ describe('輸出影片', () => {
 	it('沒選音樂的音樂段：寫段名', async () => {
 		await openDialog(shortFlow());
 		expect(await within(dialog()).findByText('這幾段找不到音樂，影片裡沒有聲音：音樂 1（還沒選音樂）')).toBeTruthy();
+	});
+	it('輸出中按 ⌘Z、Ctrl+Z：不退流程', async () => {
+		const page = editorPage(shortFlow());
+		page.session.change(flowOf(renameFlow(page.session.flow!, '改過的名字')));
+		render(Page, page.props);
+		const before = page.session.flow;
+		await fireEvent.click(button());
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		await within(dialog()).findByRole('progressbar');
+		// 一次一個鍵看：連按的話復原再重做會回到原樣，看不出有沒有退
+		await fireEvent.keyDown(document.body, { key: 'z', metaKey: true });
+		expect(page.session.flow).toBe(before);
+		expect(page.session.canUndo).toBe(true);
+		await fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+		expect(page.session.flow).toBe(before);
+		expect(page.session.canUndo).toBe(true);
+	});
+
+	it('在播放時按「輸出影片」：先停下來', async () => {
+		const page = editorPage(shortFlow());
+		render(Page, page.props);
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		expect(page.editor.playback.playing).toBe(true);
+		await fireEvent.click(button());
+		expect(page.editor.playback.playing).toBe(false);
+	});
+
+	it('畫每一格：給 drawFrame 每個隊員的底層、上層，用按「開始」那時的流程；沒有音樂就沒有聲音軌', async () => {
+		const page = editorPage(shortFlow());
+		const encode = vi.spyOn(page.videoEncoder, 'encode');
+		render(Page, page.props);
+		await fireEvent.click(button());
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		await within(dialog()).findByRole('progressbar');
+		const job = encode.mock.calls[0][0] as VideoJob;
+		// 開始之後流程才改：影片照樣用開始那時的
+		page.session.change(flowOf(renameFlow(page.session.flow!, '改過的名字')));
+
+		job.draw(0, { getContext: () => ({}) } as unknown as OffscreenCanvas);
+		const [, field, frame, , roles] = vi.mocked(drawFrame).mock.calls[0];
+		expect(roles).toEqual({ m1: 'top', m2: 'base', m3: 'top', m4: 'base' });
+		expect(frame.title).toBe('練習用');
+		expect(field).toEqual(shortFlow().field);
+		expect(await job.audio()).toBeNull();
+	});
+
+	it('有八拍放不下：對話框列出來', async () => {
+		let flow = flowOf(createFlow({ name: '全隊', field: { strips: 9, layout: 'vertical' } }));
+		const names = Array.from({ length: 25 }, (_, i) => `第${String(i + 1).padStart(2, '0')}位` + '名'.repeat(16));
+		flow = flowOf(addMembers(flow, names.map((name) => ({ name, gender: 'F' as const, globalRole: 'base' as const }))));
+		flow = flowOf(addCustomRole(flow, { name: '後保側底主底上層', meaning: '' }));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 2, lastBeats: 8 }));
+		const members = flow.members.map((m) => ({ memberId: m.id, role: '後保側底主底上層' }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: '金字塔', start: 0, length: 16, note: '', members }));
+		await openDialog(flow);
+		expect(await within(dialog()).findByText('這幾個八拍有東西放不下，會縮成一行或拿掉：音樂 1 第 1 個八拍')).toBeTruthy();
 	});
 });

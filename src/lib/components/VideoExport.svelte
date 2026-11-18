@@ -120,38 +120,38 @@
 </script>
 
 <Modal label="輸出影片" class="dialog video-dialog" onclose={close}>
-	{#snippet children(close)}
+	{#snippet children(closeModal)}
 		<header class="dialog-head"><h2>輸出影片</h2></header>
 		{#if step.kind === 'checking'}
 			<p class="hint">看看這個瀏覽器能不能輸出影片⋯</p>
-			<div class="buttons"><button type="button" onclick={close}>取消</button></div>
+			<div class="buttons"><button type="button" onclick={closeModal}>取消</button></div>
 		{:else if step.kind === 'unsupported'}
 			<p>這個瀏覽器不能輸出影片，請用電腦的 Chrome 或 Edge</p>
-			<div class="buttons"><button type="button" onclick={close}>關閉</button></div>
+			<div class="buttons"><button type="button" onclick={closeModal}>關閉</button></div>
 		{:else if step.kind === 'ready'}
 			<p>影片長 {duration}</p>
 			{#if overflow.length}<p class="warn">這幾個八拍有東西放不下，會縮成一行或拿掉：{overflow.join('、')}</p>{/if}
 			{#if silent.length}<p class="warn">這幾段找不到音樂，影片裡沒有聲音：{silent.join('、')}</p>{/if}
 			<div class="buttons">
-				<button type="button" onclick={close}>取消</button>
+				<button type="button" onclick={closeModal}>取消</button>
 				<button type="button" class="primary" onclick={start}>開始</button>
 			</div>
 		{:else if step.kind === 'encoding'}
 			<progress max={step.frames} value={done}></progress>
 			<p>做到第 {done} 格／一共 {step.frames} 格</p>
-			<div class="buttons"><button type="button" onclick={close}>取消</button></div>
+			<div class="buttons"><button type="button" onclick={closeModal}>取消</button></div>
 		{:else if step.kind === 'done'}
 			{@const { bytes, fileName } = step}
 			<p>做好了，{(bytes.length / 1024 / 1024).toFixed(1)} MB</p>
 			{#if saveError}<p class="error">{saveError}</p>{/if}
 			<div class="buttons">
-				<button type="button" onclick={close}>關閉</button>
+				<button type="button" onclick={closeModal}>關閉</button>
 				<button type="button" class="primary" onclick={() => saveFile(bytes, fileName)}>存檔</button>
 			</div>
 		{:else}
 			<p class="error">沒做成：{step.reason}</p>
 			<div class="buttons">
-				<button type="button" onclick={close}>關閉</button>
+				<button type="button" onclick={closeModal}>關閉</button>
 				<button type="button" class="primary" onclick={start}>再試一次</button>
 			</div>
 		{/if}

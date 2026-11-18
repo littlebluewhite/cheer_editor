@@ -411,12 +411,13 @@
 		const key = e.key.toLowerCase();
 		// 復原、重做：輸入框裡、對話框開著時也是退回流程，不讓瀏覽器自己復原（畫面和資料才不會對不上）。
 		// 還沒送出的表單（新動作、加隊員）的輸入框除外：字不在流程裡，交給瀏覽器退字。
-		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本
+		// 「還沒存」的問題開著時不退：問的是現在這支流程，退了再按「先存檔」會存到退回的版本。
+		// 輸出影片時也不退：輸出時不能改流程
 		if ((e.ctrlKey || e.metaKey) && (key === 'z' || (key === 'y' && e.ctrlKey))) {
 			// 還沒送出的表單（標了 data-native-undo）裡打字的地方：⌘Z 交給瀏覽器退字
 			if (isTextEntry(target) && target?.closest('[data-native-undo]')) return;
 			e.preventDefault();
-			if (!editor.file.asking) undoKey(!(key === 'z' && !e.shiftKey));
+			if (!editor.file.asking && !videoOpen) undoKey(!(key === 'z' && !e.shiftKey));
 			return;
 		}
 		// 空白鍵：焦點在打字的地方、選單、對話框裡時照一般網頁；其他時候（包括按鈕上）播放／暫停
@@ -735,7 +736,11 @@
 						title={flow.segments.length ? '輸出影片' : '先加一段'}
 						aria-label="輸出影片"
 						disabled={!flow.segments.length}
-						onclick={() => (videoOpen = true)}><Icon name="video" /><span class="short-hide">輸出影片</span></button
+						onclick={() => {
+							// 輸出時不能播放：在播的先停
+							playback.pause();
+							videoOpen = true;
+						}}><Icon name="video" /><span class="short-hide">輸出影片</span></button
 					>
 				{/if}
 				{#if view === 'edit' && !narrow}
