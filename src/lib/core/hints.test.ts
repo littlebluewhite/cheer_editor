@@ -32,13 +32,14 @@ describe('動作的提醒', () => {
 
 	it('技巧有上層卻沒有底層', () => {
 		expect(actionHints({ category: 'stunt', members: roles('上層', '上層', '保護') })).toEqual([
-			'有上層，但沒有底層（底層、主底、側底）'
+			'有上層，但沒有底層（底層、主底、側底、肩底）'
 		]);
 	});
 
-	it('有主底或側底就不提醒；還沒掛上層也不提醒', () => {
+	it('有主底、側底或肩底就不提醒；還沒掛上層也不提醒', () => {
 		expect(actionHints({ category: 'stunt', members: roles('上層', '主底') })).toEqual([]);
 		expect(actionHints({ category: 'pyramid', members: roles('上層', '側底') })).toEqual([]);
+		expect(actionHints({ category: 'pyramid', members: roles('上層', '肩底') })).toEqual([]);
 		expect(actionHints({ category: 'stunt', members: roles(null, null) })).toEqual([]);
 	});
 

@@ -13,7 +13,7 @@ import { freshIds } from './ids';
 import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v10RateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 12;
+export const FORMAT_VERSION = 13;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -47,6 +47,8 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  *   舞蹈、其他的環節和紀錄拿掉，不記成功率，組也拿掉。
  * 第 12 版：多了固定的任務角色「三層」（舊版編輯器不認得）。升級時拿掉叫「三層」的自訂任務角色（見 fixedThird）；
  *   動作裡的人、拍點存的是名稱，照留，變成固定的三層。
+ * 第 13 版：多了固定的任務角色「肩底」（舊版編輯器不認得）。升級時拿掉叫「肩底」的自訂任務角色（見 fixedShoulderBase）；
+ *   動作裡的人、拍點存的是名稱，照留，變成固定的肩底。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -59,8 +61,16 @@ const UPGRADES: Record<number, Upgrade> = {
 	8: (doc) => ({ formatVersion: 9, flow: squadsWithoutPhases(doc.flow) ? null : doc.flow }),
 	9: (doc) => ({ formatVersion: 10, flow: doc.flow }),
 	10: (doc) => ({ formatVersion: 11, flow: fitKinds(doc.flow) }),
-	11: (doc) => ({ formatVersion: 12, flow: fixedThird(doc.flow) })
+	11: (doc) => ({ formatVersion: 12, flow: fixedThird(doc.flow) }),
+	12: (doc) => ({ formatVersion: 13, flow: fixedShoulderBase(doc.flow) })
 };
+
+/** 第 12 → 13 版：拿掉叫「肩底」的自訂任務角色，換成固定的肩底。 */
+function fixedShoulderBase(v: unknown): unknown {
+	if (!flowShape(v)) return v;
+	const flow = v as Flow;
+	return { ...flow, customRoles: flow.customRoles.filter((r) => r.name !== '肩底') };
+}
 
 /** 第 11 → 12 版：拿掉叫「三層」的自訂任務角色，換成固定的三層。 */
 function fixedThird(v: unknown): unknown {

@@ -17,32 +17,45 @@ import { flowOf } from '../test-flows';
 const empty = () => flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
 
 describe('任務角色', () => {
-	it('名詞對照表先列 12 個固定角色（名稱、意思、規則上的叫法）；三層排最後，原本的快捷鍵不動', () => {
+	it('名詞對照表先列 13 個固定角色（名稱、意思、規則上的叫法），照撐人的、被撐的、保護的、其他分群', () => {
 		const rows = roleGlossary(empty());
 		expect(rows.map((r) => r.name)).toEqual([
-			'底層', '主底', '側底', '上層', '中層', '保護', '前保', '後保', '接者', '支撐', '騰翻', '三層'
+			'底層', '主底', '側底', '肩底', '上層', '中層', '三層', '支撐', '保護', '前保', '後保', '接者', '騰翻'
 		]);
-		expect(rows.at(-1)).toEqual({
-			name: '三層',
-			meaning: '金字塔裡站在中層身上、最上面的人。只有金字塔有。',
-			ruleName: '3 層人員、3 層隊員',
-			custom: false
+		expect(rows.map((r) => r.group)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]);
+		expect(rows[3]).toEqual({
+			name: '肩底',
+			meaning: '金字塔裡站在地上、讓中層站在自己肩上的底層。只有金字塔有。',
+			ruleName: '底層人員（規則沒有「肩底」）',
+			custom: false,
+			group: 0
 		});
 		expect(rows[1]).toEqual({
 			name: '主底',
 			meaning: '主要撐住上層腳的底層。單底層技巧的那位底層。',
 			ruleName: '底層人員（台灣規則沒有「主底」）',
-			custom: false
+			custom: false,
+			group: 0
 		});
 	});
 
-	it('任務角色選單：三層只有金字塔有；已經是三層的人換了大類也看得到這一項', () => {
+	it('任務角色選單：三層、肩底只有金字塔有；已經是的人換了大類也看得到這一項', () => {
 		const names = (category: Parameters<typeof pickableRoles>[1], current?: string) =>
 			pickableRoles(empty(), category, current ? [current] : []).map((r) => r.name);
-		expect(names('pyramid')).toContain('三層');
-		expect(names('stunt')).not.toContain('三層');
-		expect(names('toss')).not.toContain('三層');
-		expect(names('stunt', '三層')).toContain('三層');
+		for (const role of ['三層', '肩底']) {
+			expect(names('pyramid')).toContain(role);
+			expect(names('stunt')).not.toContain(role);
+			expect(names('toss')).not.toContain(role);
+			expect(names('stunt', role)).toContain(role);
+		}
+	});
+
+	it('快捷鍵跟著角色固定：技巧沒有肩底，上層還是 5；自訂角色接在固定的後面', () => {
+		const flow = flowOf(addCustomRole(empty(), { name: '旗手', meaning: '' }));
+		const keys = (category: Parameters<typeof pickableRoles>[1]) =>
+			Object.fromEntries(pickableRoles(flow, category, []).map((r) => [r.name, r.key]));
+		expect(keys('stunt')).toMatchObject({ 底層: '1', 上層: '5', 中層: '6', 支撐: '8', 騰翻: 'e', 旗手: 'r' });
+		expect(keys('pyramid')).toMatchObject({ 肩底: '4', 上層: '5', 三層: '7', 旗手: 'r' });
 	});
 
 	it('自訂角色存在這支流程裡，接在對照表後面', () => {
@@ -52,7 +65,8 @@ describe('任務角色', () => {
 			name: '丟人的',
 			meaning: '把上層丟給中層接',
 			ruleName: '',
-			custom: true
+			custom: true,
+			group: 4
 		});
 	});
 

@@ -146,7 +146,7 @@ describe('動作表單：新增', () => {
 	it('技巧有上層卻沒有底層：黃字提醒，照樣可以新增', async () => {
 		const session = setup(sample(), null, 0, ['m1']);
 		await pickRole('小A', '上層');
-		expect(screen.getByRole('note').textContent).toBe('有上層，但沒有底層（底層、主底、側底）');
+		expect(screen.getByRole('note').textContent).toBe('有上層，但沒有底層（底層、主底、側底、肩底）');
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		await pickRole('小B', '主底');
 		expect(screen.queryByRole('note')).toBeNull();

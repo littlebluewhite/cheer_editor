@@ -10,7 +10,7 @@ const STACK_M = 0.05;
 
 /** 撐人的大類：有上層就要有底層。 */
 const LIFTING = new Set(['stunt', 'pyramid', 'toss']);
-const BASE_ROLES = new Set(['底層', '主底', '側底']);
+const BASE_ROLES = new Set(['底層', '主底', '側底', '肩底']);
 
 /** 名單裡重複的名字（去掉頭尾空白比），照第一次出現的順序。 */
 export function duplicateNames(members: Member[]): string[] {
@@ -46,7 +46,7 @@ export function stackedMembers(members: Member[], positions: Record<string, Posi
 export function actionHints(action: Pick<Action, 'category' | 'members'>): string[] {
 	const roles = action.members.map((m) => m.role);
 	if (LIFTING.has(action.category) && roles.includes('上層') && !roles.some((r) => r && BASE_ROLES.has(r))) {
-		return ['有上層，但沒有底層（底層、主底、側底）'];
+		return ['有上層，但沒有底層（底層、主底、側底、肩底）'];
 	}
 	return [];
 }
