@@ -512,6 +512,35 @@ describe('播放：慢速、重複', () => {
 		expect(position()).toBe('音樂 1 3-1');
 	});
 
+	it('播放中按 B：馬上跳回 A 開始重複（B 吸到後面那一拍也一樣）', () => {
+		const { playback, position } = setup();
+		playback.seek(3.3); // 2-1 再過一點
+		playback.setA();
+		playback.play();
+		playback.seek(6.3); // 2-8&，B 吸到 3-1，在播放頭後面
+		playback.setB();
+		expect(playback.range).toEqual({ a: 3.2, b: expect.closeTo(6.4, 6) });
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-1');
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+	});
+
+	it('播放中拖範圍：吸到的整拍沒變就不重排聲音（拖的時候不會一直斷）', () => {
+		const { playback, engine } = setup();
+		playback.setRange(3.2, 6.4);
+		playback.play();
+		const scheduled = engine.clicks;
+		playback.setRange(3.25, 6.45);
+		expect(engine.clicks).toBe(scheduled);
+	});
+
+	it('A 不能放在流程結尾', () => {
+		const { playback } = setup();
+		playback.toEnd();
+		playback.setA();
+		expect(playback.range).toBeNull();
+	});
+
 	it('A 放到 B 後面：B 拿掉、重複關掉，再放一次 B', () => {
 		const { playback } = setup();
 		playback.setRange(3.2, 6.4);

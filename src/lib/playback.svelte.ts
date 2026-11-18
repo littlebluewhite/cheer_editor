@@ -15,7 +15,8 @@ import {
 	totalSeconds,
 	type Action,
 	type Flow,
-	type RepeatRange
+	type RepeatRange,
+	type TimePosition
 } from '#lib/core';
 import type { AudioEngine } from '#lib/audio/engine.js';
 import { createPlayer, type Lap, type Player } from '#lib/audio/player.js';
@@ -290,10 +291,11 @@ export class Playback implements SessionPlayback {
 		this.#setLoop(on);
 	}
 
-	/** A：重複範圍從播放頭最近的整拍開始。原本的 B 不在它後面就拿掉（重複也關掉），再放一次 B。 */
+	/** A：重複範圍從播放頭最近的整拍開始（流程結尾不行，後面放不了 B）。原本的 B 不在它後面就拿掉（重複也關掉），再放一次 B。 */
 	setA() {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
+		if (snapToBeat(f, this.#sec) >= totalSeconds(f) - 1e-6) return;
 		const a = rangeEnd(f, this.#sec);
 		const range = this.#range && rangeSeconds(f, { a, b: this.#range.b });
 		this.#range = { a, b: range ? this.#range!.b : null };
@@ -303,11 +305,12 @@ export class Playback implements SessionPlayback {
 		} else if (this.#repeat && this.#playing) this.#run();
 	}
 
-	/** B：重複範圍到播放頭最近的整拍為止，重複自己打開。要先有 A，B 要在 A 後面；不然不動。 */
+	/** B：重複範圍到播放頭最近的整拍為止，重複自己打開；播放中就馬上跳回 A 開始重複。要先有 A，B 要在 A 後面；不然不動。 */
 	setB() {
 		const f = this.#flow();
 		if (!f || !this.#range) return;
-		this.#setRange(f, { a: this.#range.a, b: rangeEnd(f, this.#sec) });
+		if (!this.#setRange(f, { a: this.#range.a, b: rangeEnd(f, this.#sec) })) return;
+		if (this.#playing) this.seek(this.range!.a);
 	}
 
 	/** B 按得下去：有 A，播放頭最近的整拍在 A 後面。 */
@@ -323,10 +326,14 @@ export class Playback implements SessionPlayback {
 		this.#setRange(f, { a: rangeEnd(f, Math.min(fromSec, toSec)), b: rangeEnd(f, Math.max(fromSec, toSec)) });
 	}
 
-	#setRange(f: Flow, range: RepeatRange) {
-		if (!rangeSeconds(f, range)?.b) return;
+	/** 換成這個範圍、打開重複；不到一格就不動，回傳 false。 */
+	#setRange(f: Flow, range: RepeatRange): boolean {
+		if (!rangeSeconds(f, range)?.b) return false;
+		// 拖的時候每動一下都會叫；吸到的整拍沒變就不重排聲音
+		if (this.#repeat && samePosition(this.#range?.a, range.a) && samePosition(this.#range?.b, range.b)) return true;
 		this.#range = range;
 		this.#setLoop(true);
+		return true;
 	}
 
 	/** ✕：拿掉重複範圍，重複也關掉（播放中就接著往下播）。 */
@@ -432,6 +439,10 @@ export class Playback implements SessionPlayback {
 }
 
 /** sec 在不在重複範圍外面（剛好在 B 也算外面：從 B 播沒東西可以播）。 */
+function samePosition(p: TimePosition | null | undefined, q: TimePosition | null | undefined): boolean {
+	return !!p && !!q && p.segmentId === q.segmentId && Math.abs(p.at - q.at) < 1e-6;
+}
+
 function outside(span: { a: number; b: number }, sec: number): boolean {
 	return sec < span.a - 1e-6 || sec >= span.b - 0.01;
 }
