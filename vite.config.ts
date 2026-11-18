@@ -53,6 +53,7 @@ export default defineConfig({
 						'src/lib/core/**/*.test.ts',
 						'src/lib/audio/**/*.test.ts',
 						'src/lib/video/**/*.test.ts',
+						'src/lib/file/**/*.test.ts',
 						'src/lib/*.test.ts'
 					],
 					exclude: ['src/**/*.svelte.test.ts']

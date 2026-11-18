@@ -12,9 +12,10 @@ import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
-import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile } from '#lib/file/save.js';
+import { browserFilePicker, createBrowserSaver, saveVideo, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import { EditorSession, setEditorSession, type UpdateReason } from '#lib/editor-session.svelte.js';
 import { FlowFile } from '#lib/flow-file.svelte.js';
+import { browserVideoEncoder, type VideoEncoderAdapter } from '#lib/video/encoder.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
@@ -38,6 +39,8 @@ export interface EditorAdapters {
 	pendingInput: PendingInput;
 	/** 畫面時鐘：播放時每一格畫面移一次播放頭。 */
 	nextFrame: NextFrame;
+	/** 流程影片：編碼，和存成 流程名.mp4（跟流程檔的存檔是兩套）。 */
+	video: { encoder: VideoEncoderAdapter; save: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome> };
 }
 
 /** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB、BroadcastChannel、焦點所在的欄位、requestAnimationFrame。 */
@@ -50,7 +53,8 @@ export function browserAdapters(): EditorAdapters {
 		draftStore: createIndexedDbDraftStore(),
 		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
-		nextFrame: animationFrame
+		nextFrame: animationFrame,
+		video: { encoder: browserVideoEncoder(), save: saveVideo }
 	};
 }
 

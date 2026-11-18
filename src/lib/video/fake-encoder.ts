@@ -25,7 +25,11 @@ export function createFakeVideoEncoder(o: { supported?: boolean; fail?: string }
 			for (let i = 0; i < job.frames; i++) {
 				if (job.signal.aborted) throw abort();
 				if (i === job.frames - 1) {
-					await released;
+					// 停著的時候取消也要醒來，不然沒人 release() 就卡死
+					await Promise.race([
+						released,
+						new Promise<void>((resolve) => job.signal.addEventListener('abort', () => resolve(), { once: true }))
+					]);
 					if (job.signal.aborted) throw abort();
 				}
 				// 失敗在第一格：還沒畫就失敗

@@ -20,6 +20,7 @@ import { flowOf } from '#lib/test-flows.js';
 import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
+import { createFakeVideoEncoder } from '#lib/video/fake-encoder.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
@@ -125,11 +126,14 @@ export function manualFrames() {
 /**
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
+ * videoSaves 是預設的假影片存檔存下來的（位元組和檔名）；videoEncoder 是預設的假編碼器（release()、drawn、aborted）。
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
+	const videoSaves: { bytes: Uint8Array; fileName: string }[] = [];
+	const videoEncoder = createFakeVideoEncoder();
 	const editor = new Editor(
 		{
 			createEngine: () => createFakeEngine(),
@@ -140,11 +144,18 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			openTabChannel: null,
 			pendingInput: fakePendingInput(),
 			nextFrame: manualFrames().nextFrame,
+			video: {
+				encoder: videoEncoder,
+				save: async (bytes, fileName) => {
+					videoSaves.push({ bytes, fileName });
+					return 'saved';
+				}
+			},
 			...adapters
 		},
 		flow
 	);
-	return { editor, session: editor.session, saves };
+	return { editor, session: editor.session, saves, videoSaves, videoEncoder };
 }
 
 /** 等 async 的存檔、開檔跑完。 */
