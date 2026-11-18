@@ -643,6 +643,15 @@ describe('下面那一列：截掉時', () => {
 		expect(bottom(l).filter((t) => t.y < gridTop).map((t) => t.text)).toEqual(['⋯還有 18 個動作']);
 	});
 
+	it('站位那幾行就佔滿、只有一個動作：那個動作整個沒寫出來，也寫「⋯還有 1 個動作」', () => {
+		const l = layout(row({ formations: [lines(20)], actions: [act('1-1　舞蹈·甲', '')] }));
+		const s = strings(l);
+		expect(s).toHaveLength(LINES);
+		expect(s).not.toContain('1-1　舞蹈·甲');
+		expect(s.at(-2)!.endsWith('⋯')).toBe(true);
+		expect(s.at(-1)).toBe('⋯還有 1 個動作');
+	});
+
 	it('站位那幾行就佔滿留給字的行：「⋯還有 N 個動作」算全部的動作', () => {
 		const l = layout(row({ formations: [lines(19)], actions: [act('1-1　技巧·甲', ''), act('1-1　技巧·乙', '')] }));
 		const s = strings(l);

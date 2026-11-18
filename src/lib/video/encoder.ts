@@ -100,9 +100,20 @@ export function browserVideoEncoder(): VideoEncoderAdapter {
 					job.onProgress(i + 1);
 				}
 				if (job.signal.aborted) return await cancel();
-				if (audio && soundtrack) await audio.add(soundtrack);
-				// 聲音整軌編好要一點時間：這中間按的取消也不包成 MP4
-				if (job.signal.aborted) return await cancel();
+				// 聲音整軌編好要一點時間：這中間按取消就馬上叫 mediabunny 取消（放掉編碼器），不等聲音編完
+				if (audio && soundtrack) {
+					const adding = audio.add(soundtrack);
+					adding.catch(() => {});
+					await new Promise<void>((resolve, reject) => {
+						const onAbort = () => {
+							output.cancel().catch(() => {});
+							reject(abortError());
+						};
+						job.signal.addEventListener('abort', onAbort, { once: true });
+						if (job.signal.aborted) onAbort();
+						adding.then(resolve, reject).finally(() => job.signal.removeEventListener('abort', onAbort));
+					});
+				}
 				await output.finalize();
 			} catch (e) {
 				if (!(e instanceof DOMException && e.name === 'AbortError')) await output.cancel().catch(() => {});

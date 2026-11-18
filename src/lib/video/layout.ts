@@ -271,11 +271,15 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 	// 都拿了還放不下（例：一個動作的「誰」本身就比整塊長）：截在區塊底，最後一行加「⋯」。
 	// 拿掉了動作時「⋯還有 N 個動作」那一行留著，截它上面的
 	const dropped = row.actions.length > 1;
-	let more = dropped ? lines.slice(-1) : [];
-	const shown = lines.slice(0, maxLines - more.length);
-	// 第一個動作的標題也截掉了（格子、站位佔滿了）：一個動作都沒寫出來，算全部
+	// 第一個動作的標題也截掉了（格子、站位佔滿了）：一個動作都沒寫出來，算全部（只有一個動作也留一行寫）
 	const firstTitle = textLines({ ...row, actions: [], continuing: [] }, { collapsed: 0, notesDropped: 0, kept: 0 }, px, measure).length;
-	if (dropped && shown.length <= firstTitle) more = [{ ...more[0], text: `⋯還有 ${row.actions.length} 個動作` }];
+	const noneShown = row.actions.length > 0 && maxLines - (dropped ? 1 : 0) <= firstTitle;
+	const more: Para[] = noneShown
+		? [{ text: `⋯還有 ${row.actions.length} 個動作`, weight: 700, color: 'muted' }]
+		: dropped
+			? lines.slice(-1)
+			: [];
+	const shown = lines.slice(0, maxLines - more.length);
 	if (shown.length) {
 		const last = shown[shown.length - 1];
 		shown[shown.length - 1] = { ...last, text: withEllipsis(last.text, px, last.weight, WIDTH, measure) };

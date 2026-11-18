@@ -62,6 +62,43 @@ describe('browserVideoEncoder（mediabunny 換成假的：jsdom 沒有 WebCodecs
 		expect(cancel).toHaveBeenCalledOnce();
 	});
 
+	it('聲音還在編時按取消：馬上叫 mediabunny 取消、throw AbortError，不等聲音編完', async () => {
+		const run = new AbortController();
+		const cancel = vi.fn(async () => {});
+		let adding = () => {};
+		const started = new Promise<void>((resolve) => (adding = resolve));
+		vi.stubGlobal('OffscreenCanvas', class {});
+		vi.doMock('mediabunny', () => ({
+			Output: class {
+				addVideoTrack() {}
+				addAudioTrack() {}
+				async start() {}
+				async finalize() {}
+				cancel = cancel;
+			},
+			Mp4OutputFormat: class {},
+			BufferTarget: class {
+				buffer = new ArrayBuffer(1);
+			},
+			CanvasSource: class {
+				async add() {}
+			},
+			AudioBufferSource: class {
+				add() {
+					adding();
+					return new Promise<void>(() => {});
+				}
+			},
+			QUALITY_HIGH: {}
+		}));
+		const job = { frames: 1, draw: () => {}, audio: async () => ({}) as AudioBuffer, onProgress: () => {}, signal: run.signal };
+		const encoding = browserVideoEncoder().encode(job);
+		await started;
+		run.abort();
+		await expect(encoding).rejects.toMatchObject({ name: 'AbortError' });
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
 	it('問做不做得出來：用跟真的編碼一樣的畫質、聲音的 bitrate 問', async () => {
 		const QUALITY_HIGH = { high: true };
 		const canEncodeVideo = vi.fn(async () => true);
