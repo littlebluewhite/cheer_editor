@@ -1627,6 +1627,32 @@ describe('播放', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '暫停' }));
 		expect(engine.clicks).toEqual([]);
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+		// 停下來回到起播點（開頭）
+		expect(position()).toBe('音樂 1 1-1');
+	});
+
+	it('Shift＋空白鍵：停在原地；「⋯」裡關掉「停下來回到起播點」，空白鍵也停在原地，下次打開頁面還記得', async () => {
+		const engine = await sample();
+		await fireEvent.keyDown(window, { key: ' ' });
+		engine.audible = engine.clicks[0].when + 8.2;
+		await nextFrame();
+		await fireEvent.keyDown(window, { key: ' ', shiftKey: true });
+		expect(position()).toBe('音樂 1 3-5&');
+
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		const back = screen.getByLabelText('停下來回到起播點') as HTMLInputElement;
+		expect(back.checked).toBe(true);
+		await fireEvent.click(back);
+		await fireEvent.keyDown(window, { key: ' ' });
+		engine.audible = engine.clicks[0].when + 1.2;
+		await nextFrame();
+		await fireEvent.keyDown(window, { key: ' ' });
+		expect(position()).toBe('音樂 1 4-1');
+
+		cleanup();
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		expect((screen.getByLabelText('停下來回到起播點') as HTMLInputElement).checked).toBe(false);
 	});
 
 	it('節拍器勾選框：關掉就不響', async () => {

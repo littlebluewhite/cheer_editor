@@ -17,7 +17,13 @@ import {
 import type { AudioEngine } from '#lib/audio/engine.js';
 import { createPlayer, type Lap, type Player } from '#lib/audio/player.js';
 import type { SessionPlayback } from '#lib/editor-session.svelte.js';
-import { loadLatencyMs, MAX_LATENCY_MS, saveLatencyMs } from '#lib/local-settings.js';
+import {
+	loadLatencyMs,
+	loadReturnOnStop,
+	MAX_LATENCY_MS,
+	saveLatencyMs,
+	saveReturnOnStop
+} from '#lib/local-settings.js';
 
 /** 播放速度可以選的：正常、0.75x、0.5x（慢速時音高不變）。 */
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -49,6 +55,10 @@ export class Playback implements SessionPlayback {
 	#previewing = $state(false);
 	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
 	#latencyMs = $state(loadLatencyMs());
+	/** 起播點：這次從哪一秒開始播（播放中點八拍尺跳過去也算）。停下來回到這裡。 */
+	#startSec = $state(0);
+	/** 停下來回到起播點：存在這台電腦，預設開著。 */
+	#returnOnStop = $state(loadReturnOnStop());
 
 	/**
 	 * flow：現在的流程；createEngine：建音訊引擎（第一次播放時才建）。
@@ -108,6 +118,15 @@ export class Playback implements SessionPlayback {
 		return this.#latencyMs;
 	}
 
+	/** 起播點（全域秒數）；沒在播是 null。 */
+	get startSec(): number | null {
+		return this.#playing ? this.#startSec : null;
+	}
+
+	get returnOnStop(): boolean {
+		return this.#returnOnStop;
+	}
+
 	#getPlayer(): Player {
 		this.#player ??= createPlayer(this.#createEngine());
 		return this.#player;
@@ -118,6 +137,12 @@ export class Playback implements SessionPlayback {
 	 * 重複開著：只播到那段的結尾，接著從那段開頭一直重複（下一圈先排好，圈和圈之間不停）；播放頭不在那段裡就從那段開始。
 	 */
 	play() {
+		this.#run();
+		this.#startSec = this.#at;
+	}
+
+	/** 照現在的設定從播放頭排聲音（開始播，或播放中改了節拍器、速度、流程時重排）；起播點不動。 */
+	#run() {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
 		this.#sec = playStartSec(f, this.#sec);
@@ -154,23 +179,42 @@ export class Playback implements SessionPlayback {
 		this.#sec = snapToBeat(f, this.#sec);
 	}
 
-	/** 播放鍵：播放中就暫停，不然播放。 */
-	toggle() {
-		if (this.#playing) this.pause();
-		else this.play();
+	/**
+	 * 播放鍵：播放中就停下，不然播放。停下時照「停下來回到起播點」的開關回去或留在原地；
+	 * flip（Shift＋空白鍵）：做跟開關相反的事。
+	 */
+	toggle(flip = false) {
+		if (!this.#playing) return this.play();
+		this.pause();
+		if (this.#returnOnStop !== flip) this.#backToStart();
 	}
 
 	/**
-	 * 空白鍵：跟播放鍵一樣。dialogOpen：對話框開著時只能暫停（不在對話框後面開始播）。
+	 * 空白鍵：跟播放鍵一樣（flip：按著 Shift）。dialogOpen：對話框開著時只能停（不在對話框後面開始播）。
 	 * 回傳有沒有用到這個鍵（沒用到就照瀏覽器原本的）。
 	 */
-	space(dialogOpen: boolean): boolean {
+	space(dialogOpen: boolean, flip = false): boolean {
 		if (dialogOpen && !this.#playing) return false;
-		this.toggle();
+		this.toggle(flip);
 		return true;
 	}
 
-	/** 跳到某一秒（夾在 0 到流程結尾之間）；播放中就從那裡重新排聲音，跳到結尾就是播完了，停下（不從頭重播）。 */
+	/** 開關「停下來回到起播點」；存在這台電腦。 */
+	setReturnOnStop(on: boolean) {
+		this.#returnOnStop = on;
+		saveReturnOnStop(on);
+	}
+
+	/** 播放頭回到起播點（段變短了就夾回流程裡）。 */
+	#backToStart() {
+		const f = this.#flow();
+		if (f) this.#sec = resumeSec(f, this.#startSec).sec;
+	}
+
+	/**
+	 * 跳到某一秒（夾在 0 到流程結尾之間）；播放中就從那裡重新排聲音（起播點跟著過去），
+	 * 跳到結尾就是播完了，停下（不從頭重播，也不回起播點）。
+	 */
 	seek(sec: number) {
 		const f = this.#flow();
 		if (!f) return;
@@ -217,19 +261,19 @@ export class Playback implements SessionPlayback {
 	/** 開關節拍器；播放中就照新的設定重排。 */
 	setMetronome(on: boolean) {
 		this.#metronome = on;
-		if (this.#playing) this.play();
+		if (this.#playing) this.#run();
 	}
 
 	/** 開關重複；播放中就照新的設定重排。 */
 	setRepeat(on: boolean) {
 		this.#repeat = on;
-		if (this.#playing) this.play();
+		if (this.#playing) this.#run();
 	}
 
 	/** 換播放速度；播放中就照新的速度重排。 */
 	setRate(rate: number) {
 		this.#rate = rate;
-		if (this.#playing) this.play();
+		if (this.#playing) this.#run();
 	}
 
 	/**
@@ -272,7 +316,7 @@ export class Playback implements SessionPlayback {
 		this.#sec = sec;
 		if (!this.#playing) return;
 		if (ended) this.pause();
-		else this.play();
+		else this.#run();
 	}
 
 	/** 重複的下一圈：照現在的流程和選的動作（播放中改了、換選了，下一圈就聽得到）。算不出來就不再重複。 */
@@ -284,12 +328,16 @@ export class Playback implements SessionPlayback {
 		return { plan: playbackPlan(f, span.startSec, span.endSec), fromSec: span.startSec };
 	};
 
-	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停（重複開著時播放器自己一圈接一圈播，不會停）。 */
+	/**
+	 * 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停，開著「停下來回到起播點」就回去
+	 * （重複開著時播放器自己一圈接一圈播，不會停）。
+	 */
 	#frame = () => {
 		if (!this.#playing || !this.#player) return;
 		this.#sec = this.#player.tick(this.#latencyMs);
-		if (!this.#player.playing) this.#playing = false;
-		else this.#nextFrame(this.#frame);
+		if (this.#player.playing) return this.#nextFrame(this.#frame);
+		this.#playing = false;
+		if (this.#returnOnStop) this.#backToStart();
 	};
 
 	/** 試聽播完了沒（播放頭不動，只看播完）。 */

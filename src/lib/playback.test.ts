@@ -123,7 +123,7 @@ describe('播放：播放中改了流程', () => {
 });
 
 describe('播放：播放、暫停、從哪裡播', () => {
-	it('按播放，播放頭跟著喇叭的時間走，口號段時間照走；再按一次暫停，聲音停掉、播放頭不動', () => {
+	it('按播放，播放頭跟著喇叭的時間走，口號段時間照走；再按一次停下，聲音停掉、播放頭回到起播點', () => {
 		const { playback, engine, frames, position } = setup();
 		playback.toggle();
 		expect(engine.resumed).toBe(true);
@@ -141,9 +141,74 @@ describe('播放：播放、暫停、從哪裡播', () => {
 		playback.toggle();
 		expect(playback.playing).toBe(false);
 		expect(engine.clicks).toEqual([]);
+		expect(position()).toBe('音樂 1 1-1');
 		engine.audible = t0 + 50;
 		frames.step();
-		expect(position()).toBe('音樂 2 1-2');
+		expect(position()).toBe('音樂 1 1-1');
+	});
+
+	it('起播點：停下來回到開始播的地方；播放中改節拍器、速度不算重新開始播', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.seek(3.2); // 2-1
+		playback.play();
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+		const t0 = engine.clicks[0].when;
+		engine.audible = t0 + 2;
+		frames.step();
+		expect(position()).toBe('音樂 1 2-6');
+		playback.setMetronome(false);
+		playback.setRate(0.75);
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+		playback.toggle();
+		expect(position()).toBe('音樂 1 2-1');
+		expect(playback.startSec).toBeNull();
+	});
+
+	it('起播點：播放中點八拍尺跳過去，起播點跟著過去（停下來回到點的地方）', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.play();
+		playback.seek(12.8); // 5-1
+		engine.audible = engine.clicks[0].when + 1;
+		frames.step();
+		playback.toggle();
+		expect(position()).toBe('音樂 1 5-1');
+	});
+
+	it('Shift＋空白鍵：停在原地；開關關掉時反過來，Shift＋空白鍵才回去', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.play();
+		engine.audible = engine.clicks[0].when + 8.2;
+		frames.step();
+		expect(playback.space(false, true)).toBe(true);
+		expect(playback.playing).toBe(false);
+		expect(position()).toBe('音樂 1 3-5&');
+
+		playback.setReturnOnStop(false);
+		expect(playback.returnOnStop).toBe(false);
+		playback.space(false);
+		engine.audible = engine.clicks[0].when + 1.2; // 3-6 再 3 拍
+		frames.step();
+		playback.space(false);
+		expect(position()).toBe('音樂 1 4-1');
+		playback.space(false);
+		engine.audible = engine.clicks[0].when + 1;
+		frames.step();
+		playback.space(false, true);
+		expect(position()).toBe('音樂 1 4-1');
+	});
+
+	it('播放中拖人（停到整拍）、試聽、切到練習：停在原地，不回起播點', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.play();
+		engine.audible = engine.clicks[0].when + 8.3;
+		frames.step();
+		playback.pauseOnBeat();
+		expect(position()).toBe('音樂 1 3-6');
+		playback.play();
+		engine.audible = engine.clicks[0].when + 0.4;
+		frames.step();
+		playback.pause();
+		expect(position()).toBe('音樂 1 3-7');
 	});
 
 	it('從播放頭開始播：口號段沒有節拍器，第一聲是下一個音樂段的第一拍', () => {
@@ -233,8 +298,16 @@ describe('播放：播放、暫停、從哪裡播', () => {
 		expect(engine.resumed).toBe(false);
 	});
 
-	it('播到結尾自己停，播放頭停在結尾', () => {
+	it('播到結尾自己停，播放頭回到起播點；開關關掉就停在結尾', () => {
 		const { playback, engine, frames } = setup();
+		playback.seek(3.2);
+		playback.play();
+		engine.audible = engine.clicks[0].when + 70;
+		frames.step();
+		expect(playback.playing).toBe(false);
+		expect(playback.sec).toBeCloseTo(3.2, 6);
+
+		playback.setReturnOnStop(false);
 		playback.play();
 		engine.audible = engine.clicks[0].when + 70;
 		frames.step();

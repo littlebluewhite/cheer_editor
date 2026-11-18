@@ -425,7 +425,8 @@
 			// 元件自己用了空白鍵（例：隊員號碼的圓圈）就不播放
 			if (e.repeat || e.defaultPrevented) return;
 			// 對話框開著時只能暫停（播放自己管，頁面告訴它對話框有沒有開）
-			spaceUsed = !ownsKey(target, ' ') && playback.space(covered());
+			// Shift＋空白鍵：停的時候做跟「停下來回到起播點」相反的事
+			spaceUsed = !ownsKey(target, ' ') && playback.space(covered(), e.shiftKey);
 			if (spaceUsed) e.preventDefault();
 			return;
 		}
@@ -660,6 +661,15 @@
 							<span class="unit" aria-hidden="true">毫秒</span>
 						</label>
 						<p class="more-hint">用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。</p>
+						<label class="return-on-stop">
+							<input
+								type="checkbox"
+								checked={playback.returnOnStop}
+								onchange={(e) => playback.setReturnOnStop(e.currentTarget.checked)}
+							/>
+							<span>停下來回到起播點</span>
+						</label>
+						<p class="more-hint">起播點是這次開始播的地方。Shift＋空白鍵做相反的事。存在這台電腦。</p>
 					</div>
 				{/if}
 			</div>
@@ -1651,6 +1661,16 @@
 		margin: 0;
 		font-size: 11px;
 		color: #8b99b8;
+	}
+	.return-on-stop {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+		padding-top: 8px;
+		border-top: 1px solid #36425f;
+		font-size: 12px;
+		cursor: pointer;
 	}
 	.speed {
 		width: auto;

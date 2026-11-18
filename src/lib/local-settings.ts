@@ -24,6 +24,25 @@ export function saveLatencyMs(ms: number): void {
 	}
 }
 
+const RETURN_ON_STOP_KEY = 'cheer-editor:returnOnStop';
+
+/** 停下來回到起播點，預設開著。 */
+export function loadReturnOnStop(): boolean {
+	try {
+		return localStorage.getItem(RETURN_ON_STOP_KEY) !== '0';
+	} catch {
+		return true;
+	}
+}
+
+export function saveReturnOnStop(on: boolean): void {
+	try {
+		localStorage.setItem(RETURN_ON_STOP_KEY, on ? '1' : '0');
+	} catch {
+		// 存不了就只在這次用
+	}
+}
+
 const LEGEND_KEY = 'cheer-editor:legendOpen';
 
 /** 場地左下的圖例開著嗎；沒按過「圖例」是 fallback（觸控又矮的螢幕收著，其他開著，N58）。 */
