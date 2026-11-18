@@ -63,18 +63,21 @@ export function createPlayer(engine: AudioEngine): Player {
 	 * 舊的圈留到畫面（扣掉延遲校正）播過它才丟（tick 裡丟）：圈很短、延遲校正很大時，畫面還在好幾圈前。
 	 */
 	function queueLap(audible: number) {
-		if (!session?.loop) return;
-		const last = session.laps.at(-1)!;
-		let t0 = last.t0 + (last.endSec - last.fromSec) / session.rate;
-		if (audible < t0 - LAP_AHEAD_SEC) return;
-		// 分頁在背景、好一陣子沒有畫面：錯過的圈不補，從現在接著播（排在過去的時間會馬上一起響）
-		if (t0 < engine.currentTime()) t0 = engine.currentTime() + LEAD_SEC;
-		const lap = session.loop();
-		if (!lap) {
-			session.loop = null;
-			return;
+		// 圈比 LAP_AHEAD_SEC 短、畫面又卡（一格比一圈久）時，一次要排好幾圈才接得上
+		while (session?.loop) {
+			const last = session.laps.at(-1)!;
+			let t0 = last.t0 + (last.endSec - last.fromSec) / session.rate;
+			if (audible < t0 - LAP_AHEAD_SEC) return;
+			// 分頁在背景、好一陣子沒有畫面：錯過的圈不補，從現在接著播（排在過去的時間會馬上一起響）
+			if (t0 < engine.currentTime()) t0 = engine.currentTime() + LEAD_SEC;
+			const lap = session.loop();
+			// 沒有下一圈，或下一圈沒有長度（排不完）：不再重複
+			if (!lap || lap.plan.endSec <= lap.fromSec) {
+				session.loop = null;
+				return;
+			}
+			session.laps = [...session.laps, schedule(lap, t0, session.rate, session.metronome)];
 		}
-		session.laps = [...session.laps, schedule(lap, t0, session.rate, session.metronome)];
 	}
 
 	return {

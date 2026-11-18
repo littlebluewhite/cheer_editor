@@ -4,7 +4,15 @@
 import { actionSeconds, type Action } from './action-types';
 import type { Flow } from './flow';
 import type { MusicSegment } from './segment';
-import { EPS, HALF_BEATS_PER_EIGHT, segmentSpans, toPosition, toSeconds, totalSeconds, units } from './time';
+import {
+	EPS,
+	nearestPosition,
+	segmentSpans,
+	snapToBeat,
+	toSeconds,
+	totalSeconds,
+	type TimePosition
+} from './time';
 
 /** 一段要播的音樂：流程第 sec 秒開始，從音樂檔第 fileSec 秒播 durationSec 秒。 */
 export interface PlaybackClip {
@@ -73,25 +81,36 @@ export function playbackPlan(flow: Flow, fromSec: number, untilSec = Infinity): 
 }
 
 /**
- * 「重複」播哪一段（全域秒數）：選了動作就是那個動作；沒選就是 sec 所在的八拍
- * （口號段沒有八拍，是 sec 所在的 5 秒，跟 Shift＋方向鍵一次跳的一樣）。沒有段時是 null。
+ * 重複範圍：A 到 B，記成哪一段的第幾格（不是秒數），改 BPM、插入八拍時才跟著音樂走。
+ * 只放了 A 時 b 是 null。
  */
-export function repeatSpan(flow: Flow, sec: number, action: Action | null): { startSec: number; endSec: number } | null {
-	if (action) return actionSeconds(flow, action);
-	const p = toPosition(flow, sec);
-	const segment = p && flow.segments.find((s) => s.id === p.segmentId);
-	if (!p || !segment) return null;
-	const size = segment.kind === 'music' ? HALF_BEATS_PER_EIGHT : CHANT_BLOCK;
-	const start = Math.floor(p.at / size) * size;
-	const end = Math.min(start + size, units(segment));
-	return {
-		startSec: toSeconds(flow, { segmentId: segment.id, at: start }),
-		endSec: toSeconds(flow, { segmentId: segment.id, at: end })
-	};
+export interface RepeatRange {
+	a: TimePosition;
+	b: TimePosition | null;
 }
 
-/** 口號段重複播一次幾格（0.1 秒）。 */
-const CHANT_BLOCK = 50;
+/** 重複範圍的一頭：sec 最近的整拍（口號段 0.1 秒）在哪一段的第幾格。要先有段。 */
+export function rangeEnd(flow: Flow, sec: number): TimePosition {
+	return nearestPosition(flow, snapToBeat(flow, sec));
+}
+
+/** 動作拉成的重複範圍。 */
+export function actionRange(flow: Flow, action: Action): RepeatRange {
+	const { startSec, endSec } = actionSeconds(flow, action);
+	return { a: nearestPosition(flow, startSec), b: nearestPosition(flow, endSec) };
+}
+
+/**
+ * 重複範圍現在在哪（全域秒數）。A、B 所在的段不見了，或段換了順序、B 跑到 A 前面，就不能用了：null。
+ */
+export function rangeSeconds(flow: Flow, range: RepeatRange): { a: number; b: number | null } | null {
+	const sec = (p: TimePosition) => (flow.segments.some((s) => s.id === p.segmentId) ? toSeconds(flow, p) : null);
+	const a = sec(range.a);
+	if (a === null) return null;
+	if (!range.b) return { a, b: null };
+	const b = sec(range.b);
+	return b === null || b <= a + EPS ? null : { a, b };
+}
 
 /** 段設定的「▶ 從第一拍聽 2 個八拍」：從第一拍播 16 拍的音樂加節拍器，時間從 0 算。 */
 export function firstBeatPreview(flow: Flow, segmentId: string): PlaybackPlan {

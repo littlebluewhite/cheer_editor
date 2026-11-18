@@ -1,5 +1,6 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定；左邊「＋」在最後加一段，段旁的「＋」加在這段後面）、
+	// 重複範圍那一條（拖出 A 到 B，拖 A、B 的把手改；吸到整拍）、
 	// 八拍尺（點或拖＝移動播放頭，先停站位再停整拍；點八拍數字停在那個八拍的 1；播放頭的線也能拖）、
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
 	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準），
@@ -292,6 +293,18 @@
 		);
 	}
 
+	/** 在重複範圍那一條上按下去：拖出一段新的重複範圍；按在 A、B 的把手上就只拖那一頭（另一頭不動）。 */
+	function startRange(e: PointerEvent) {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
+		const end = (e.target as HTMLElement).closest<HTMLElement>('[data-repeat-end]')?.dataset.repeatEnd;
+		const range = playback.range;
+		// 拖把手：不動的是另一頭；拖新的一段：不動的是按下去的地方
+		const fixed = range?.b != null && end ? (end === 'a' ? range.b : range.a) : toSec(e);
+		followPointer(e, (ev) => playback.setRange(fixed, toSec(ev)));
+	}
+
 	// 播放頭跑出畫面（播放中、或從別的地方跳過去）就捲過去，放在看得到的範圍的左邊四分之一。
 	// 只跟著播放頭；放大縮小自己管捲動，不然用滾輪放大時會被拉回播放頭。
 	$effect(() => {
@@ -365,6 +378,32 @@
 				{/each}
 				{#if spans.length === 0}
 					<span class="empty">按左邊的 ＋ 加第一段：跟著音樂的「音樂段」，或喊口號的「口號段」。</span>
+				{/if}
+			</div>
+		</div>
+		<div class="row range-row">
+			<div class="lab"><span>重複</span></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="trk range-strip"
+				data-repeat-strip
+				style:width={`${width}px`}
+				title="拖出一段重複範圍（吸到整拍），重複自己打開；拖 A、B 改兩頭"
+				onpointerdown={startRange}
+			>
+				{#if playback.range}
+					{@const { a, b } = playback.range}
+					{#if b !== null}
+						<div class="range" class:off={!playback.repeat} data-repeat-range style:left={`${a * px}px`} style:width={`${(b - a) * px}px`}>
+							<span class="grip a" data-repeat-end="a">A</span>
+							<span class="grip b" data-repeat-end="b">B</span>
+						</div>
+					{:else}
+						<div class="range only-a" style:left={`${a * px}px`}><span class="grip a">A</span></div>
+					{/if}
+				{/if}
+				{#if playback.startSec !== null && playback.returnOnStop}
+					<div class="start-mark" style:left={`${playback.startSec * px}px`} title="起播點：停下來回到這裡"></div>
 				{/if}
 			</div>
 		</div>
@@ -481,8 +520,8 @@
 <style>
 	.timeline {
 		overflow: auto;
-		/* 捲到某一條泳道（scrollIntoView、Tab 到）時，扣掉固定在上面的段列、八拍尺、站位列（32 + 26 + 76），不停在它們底下 */
-		scroll-padding-top: 134px;
+		/* 捲到某一條泳道（scrollIntoView、Tab 到）時，扣掉固定在上面的段列、重複範圍那一條、八拍尺、站位列（32 + 16 + 26 + 76），不停在它們底下 */
+		scroll-padding-top: 150px;
 		background: var(--surface, #fff);
 		border-top: 1px solid var(--line, #d8dee9);
 		box-shadow: 0 -1px 0 rgba(22, 33, 58, 0.03);
@@ -499,6 +538,7 @@
 	}
 	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 4）上面。 */
 	.segs,
+	.range-row,
 	.ruler-row {
 		position: sticky;
 		z-index: 7;
@@ -509,14 +549,18 @@
 		height: 32px;
 		z-index: 8;
 	}
-	.ruler-row {
+	.range-row {
 		top: 32px;
+		height: 16px;
+	}
+	.ruler-row {
+		top: 48px;
 		height: 26px;
 	}
 	/* 站位列在八拍尺下面；疊在泳道的名字欄（z 6）和走位條上面，在段列、八拍尺底下。 */
 	.film-pin {
 		position: sticky;
-		top: 58px;
+		top: 74px;
 		z-index: 7;
 		background: var(--surface, #fff);
 	}
@@ -643,8 +687,12 @@
 		.segs {
 			height: 44px;
 		}
-		.ruler-row {
+		.range-row {
 			top: 44px;
+			height: 24px;
+		}
+		.ruler-row {
+			top: 68px;
 			height: 34px;
 		}
 		.add,
@@ -771,6 +819,69 @@
 	}
 	.lanes-empty span {
 		left: calc(var(--lab-w) + 12px);
+	}
+	/* 重複範圍那一條：拖出 A 到 B。範圍是藍色的帶子，重複關著時變淡；A、B 是兩頭的把手。 */
+	.range-row .lab {
+		font-size: 11px;
+	}
+	.range-strip {
+		cursor: crosshair;
+		touch-action: none;
+		user-select: none;
+		background: var(--surface-2, #f6f8fb);
+	}
+	.range {
+		position: absolute;
+		top: 2px;
+		bottom: 2px;
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--mat, #2f66b8) 30%, transparent);
+		border: 1px solid var(--mat, #2f66b8);
+	}
+	.range.off {
+		background: color-mix(in srgb, var(--mat, #2f66b8) 10%, transparent);
+		border-style: dashed;
+	}
+	.range.only-a {
+		width: 0;
+		border-width: 0 0 0 2px;
+		border-radius: 0;
+		background: none;
+	}
+	.grip {
+		position: absolute;
+		top: -1px;
+		bottom: -1px;
+		display: flex;
+		align-items: center;
+		padding: 0 3px;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1;
+		color: #fff;
+		background: var(--mat, #2f66b8);
+		cursor: ew-resize;
+	}
+	.grip.a {
+		left: -1px;
+		border-radius: 4px 0 0 4px;
+	}
+	.grip.b {
+		right: -1px;
+		border-radius: 0 4px 4px 0;
+	}
+	.only-a .grip.a {
+		left: -2px;
+	}
+	/* 起播點：播放中在那一條上畫一個小三角，停下來播放頭回到這裡 */
+	.start-mark {
+		position: absolute;
+		bottom: 0;
+		margin-left: -5px;
+		border: 5px solid transparent;
+		border-bottom: 7px solid var(--now, #f2542d);
+		border-top: none;
+		pointer-events: none;
 	}
 	.ruler {
 		cursor: ew-resize;

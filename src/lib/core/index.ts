@@ -238,7 +238,7 @@ export {
 } from './video-frame';
 export type { VideoFrameData, VideoRow } from './video-frame';
 
-export { firstBeatPreview, playbackPlan, playStartSec, repeatSpan, resumeSec } from './playback';
+export { actionRange, firstBeatPreview, playbackPlan, playStartSec, rangeEnd, rangeSeconds, resumeSec, type RepeatRange } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
 export { actionHints, duplicateNames, musicOverrunSec, samePoint, stackedMembers } from './hints';

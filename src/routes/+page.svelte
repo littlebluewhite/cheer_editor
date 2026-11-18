@@ -214,6 +214,13 @@
 		if (!Number.isNaN(ms) && used !== ms) session.notice = `延遲校正要在 -${MAX_LATENCY_MS} 到 ${MAX_LATENCY_MS} 毫秒之間，改成 ${used}`;
 	}
 
+	/** 「重複」滑鼠移上去的說明：照現在按下去會怎樣寫。 */
+	function repeatTitle(): string {
+		if (playback.range?.b != null) return '重複：一直播重複範圍（A 到 B）';
+		if (playback.canRepeat) return '重複：把重複範圍拉成選的動作，一直播';
+		return '重複：先在八拍尺上面那一條拖出重複範圍（或按 A、B），或選一個動作';
+	}
+
 	/** 播放列的「⋯」小窗（延遲校正）：平常收著，不佔播放列的位置。 */
 	let moreOpen = $state(false);
 	let moreBtn = $state<HTMLButtonElement>();
@@ -610,14 +617,28 @@
 					/>
 					<Icon name="metronome" /><span class="short-hide">節拍器</span>
 				</label>
-				<label class="toggle repeat" title="重複：有選動作就重複那個動作；沒選就重複目前的八拍（口號段是目前的 5 秒）">
-					<input
-						type="checkbox"
-						checked={playback.repeat}
-						onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
-					/>
-					<Icon name="repeat" /><span class="short-hide">重複</span>
-				</label>
+				<span class="repeat-group">
+					<label class="toggle repeat" title={repeatTitle()}>
+						<input
+							type="checkbox"
+							checked={playback.repeat}
+							disabled={!playback.canRepeat}
+							onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
+						/>
+						<Icon name="repeat" /><span class="short-hide">重複</span>
+					</label>
+					<!-- 重複範圍：A、B 放在播放頭（播放中也能按），✕ 拿掉 -->
+					<button type="button" class="ab" aria-label="A：重複從播放頭開始" title="A：重複從播放頭開始" disabled={!flow.segments.length} onclick={() => playback.setA()}>A</button>
+					<button
+						type="button"
+						class="ab"
+						aria-label="B：重複到播放頭"
+						title={playback.range ? (playback.canSetB ? 'B：重複到播放頭' : 'B 要在 A 後面') : '先放 A'}
+						disabled={!playback.canSetB}
+						onclick={() => playback.setB()}>B</button
+					>
+					<button type="button" class="ab" aria-label="拿掉重複範圍" title="拿掉重複範圍" disabled={!playback.range} onclick={() => playback.clearRange()}>✕</button>
+				</span>
 				<select
 					class="speed"
 					aria-label="播放速度"
@@ -1608,6 +1629,38 @@
 		opacity: 0;
 		width: 1px;
 		height: 1px;
+	}
+	/* 重複按不下去（沒有重複範圍、沒選動作）：虛線框、淡字 */
+	.toggle:has(input:disabled) {
+		border-style: dashed;
+		color: #6b7896;
+		cursor: not-allowed;
+	}
+	.repeat-group {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.ab {
+		min-width: 26px;
+		height: 26px;
+		padding: 0 6px;
+		border-radius: 999px;
+		border: 1px solid #36425f;
+		background: transparent;
+		color: #c9d2e6;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	.ab:disabled {
+		color: #5d6985;
+		border-color: #2c3651;
+	}
+	@media (pointer: coarse) {
+		.ab {
+			min-width: 32px;
+			height: 32px;
+		}
 	}
 	.toggle:focus-within {
 		outline: 2px solid var(--sel);

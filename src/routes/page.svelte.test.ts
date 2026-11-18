@@ -1671,15 +1671,56 @@ describe('播放', () => {
 		expect(position()).toBe('音樂 1 2-1');
 	});
 
-	it('重複開著、沒選動作：播到這個八拍結尾跳回這個八拍的 1', async () => {
+	it('重複：沒有重複範圍、沒選動作時按不下去；播放中按 A、B 拉好範圍，重複自己打開，尺上畫出範圍；✕ 拿掉', async () => {
 		const engine = await sample();
-		await fireEvent.click(screen.getByLabelText('重複'));
+		const repeat = screen.getByLabelText('重複') as HTMLInputElement;
+		expect(repeat.disabled).toBe(true);
+		const b = screen.getByRole('button', { name: 'B：重複到播放頭' }) as HTMLButtonElement;
+		const clear = screen.getByRole('button', { name: '拿掉重複範圍' }) as HTMLButtonElement;
+		expect(b.disabled).toBe(true);
+		expect(clear.disabled).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		// 第 1 個八拍 3.2 秒
+		engine.audible = engine.clicks[0].when + 3.2;
+		await nextFrame();
+		await fireEvent.click(screen.getByRole('button', { name: 'A：重複從播放頭開始' }));
+		engine.audible = engine.clicks[0].when + 6.4;
+		await nextFrame();
+		expect(b.disabled).toBe(false);
+		expect(position()).toBe('音樂 1 3-1');
+		await fireEvent.click(b);
+		expect(repeat.checked).toBe(true);
+		expect(repeat.disabled).toBe(false);
+		const band = document.querySelector<HTMLElement>('[data-repeat-range]')!;
+		// 時間軸 1 秒 16 px：2-1（3.2 秒）到 3-1（6.4 秒）
+		expect(band.style.left).toBe('51.2px');
+		expect(band.style.width).toBe('51.2px');
+		// 播到 B 跳回 A
 		engine.audible = engine.clicks[0].when + 3.3;
 		await nextFrame();
-		expect(position()).toBe('音樂 1 1-1');
-		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+		expect(position()).toBe('音樂 1 2-1');
+		// 關掉重複：範圍還在（變淡）
+		await fireEvent.click(repeat);
+		expect(document.querySelector('[data-repeat-range]')!.classList.contains('off')).toBe(true);
+		await fireEvent.click(clear);
+		expect(document.querySelector('[data-repeat-range]')).toBeNull();
+		expect(repeat.disabled).toBe(true);
+	});
+
+	it('重複範圍：在八拍尺上面那一條拖出來（吸到整拍）；拖 B 的把手改長度', async () => {
+		await sample();
+		const strip = document.querySelector('[data-repeat-strip]')!;
+		await fireEvent.pointerDown(strip, { clientX: 3.3 * 16, button: 0, pointerId: 1 });
+		await fireEvent.pointerMove(window, { clientX: 6.3 * 16, pointerId: 1 });
+		await fireEvent.pointerUp(window, { clientX: 6.3 * 16, pointerId: 1 });
+		const band = () => document.querySelector<HTMLElement>('[data-repeat-range]')!;
+		expect(band().style.left).toBe('51.2px');
+		expect(band().style.width).toBe('51.2px');
+		expect((screen.getByLabelText('重複') as HTMLInputElement).checked).toBe(true);
+		await fireEvent.pointerDown(document.querySelector('[data-repeat-end="b"]')!, { clientX: 6.4 * 16, button: 0, pointerId: 2 });
+		await fireEvent.pointerMove(window, { clientX: 9.7 * 16, pointerId: 2 });
+		await fireEvent.pointerUp(window, { clientX: 9.7 * 16, pointerId: 2 });
+		expect(band().style.left).toBe('51.2px');
+		expect(parseFloat(band().style.width)).toBeCloseTo(102.4, 6);
 	});
 
 	/** 播放列的「⋯」小窗打開，拿延遲校正欄位。 */
