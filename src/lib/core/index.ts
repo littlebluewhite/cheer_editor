@@ -233,6 +233,7 @@ export {
 	videoAudioClips,
 	videoDurationSec,
 	videoFrame,
+	videoFrames,
 	videoRows
 } from './video-frame';
 export type { VideoFrameData, VideoRow } from './video-frame';

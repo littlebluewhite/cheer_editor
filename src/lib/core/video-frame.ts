@@ -14,6 +14,7 @@ import {
 	HALF_BEATS_PER_EIGHT,
 	clockText,
 	segmentSpans,
+	type SegmentSpan,
 	toPosition,
 	toSeconds,
 	totalSeconds,
@@ -64,8 +65,8 @@ export interface VideoFrameData {
 
 const EMPTY_ROW: VideoRow = { formations: [], actions: [], continuing: [], cues: [], empty: true };
 
-function videoRow(flow: Flow, row: EightCountRow): VideoRow {
-	const span = segmentSpans(flow).find((s) => s.label === row.segmentLabel)!;
+function videoRow(flow: Flow, spans: SegmentSpan[], row: EightCountRow): VideoRow {
+	const span = spans.find((s) => s.label === row.segmentLabel)!;
 	// 合起來的列延續的動作都一樣，用第一個八拍算；口號段整段一列，沒有前面開始的動作
 	const from = row.eight === null ? 0 : (row.eight - 1) * HALF_BEATS_PER_EIGHT;
 	const continuing = flow.actions
@@ -83,54 +84,69 @@ function videoRow(flow: Flow, row: EightCountRow): VideoRow {
 	};
 }
 
-/** 每個不同的列一份（合起來的八拍一份）。label：「音樂 1 第 6 個八拍」，口號段只有段名。 */
+/** 列的名字：「音樂 1 第 6 個八拍」，合起來的列「音樂 1 第 6–8 個八拍」，口號段只有段名。 */
+function rowLabel(row: EightCountRow): string {
+	if (row.eight === null) return row.segmentLabel;
+	const eights = row.lastEight !== null && row.lastEight !== row.eight ? `${row.eight}–${row.lastEight}` : `${row.eight}`;
+	return `${row.segmentLabel} 第 ${eights} 個八拍`;
+}
+
+/** 每個不同的列一份（合起來的八拍一份）。 */
 export function videoRows(flow: Flow): { label: string; row: VideoRow }[] {
-	return eightCountRows(flow, null).map((row) => ({
-		label: row.eight === null ? row.segmentLabel : `${row.segmentLabel} 第 ${row.eight} 個八拍`,
-		row: videoRow(flow, row)
-	}));
+	const spans = segmentSpans(flow);
+	return eightCountRows(flow, null).map((row) => ({ label: rowLabel(row), row: videoRow(flow, spans, row) }));
 }
 
 /**
- * 影片第 videoSec 秒的一格：影片第 t 秒 = 流程第 t − 2 秒（夾在 0 到結尾）。
- * 結尾跟流程最後一刻一樣：停在最後一拍，不畫不存在的拍或八拍。
+ * 一支影片用的「影片第幾秒 → 一格」。整支用同一份流程，八拍表、列的字、隊員標記先算好一次，
+ * 每一格只算會動的（八拍表每格重算的話，人多、動作多的流程每格要多花好幾毫秒）。
+ * 影片第 t 秒 = 流程第 t − 2 秒（夾在 0 到結尾）。結尾跟流程最後一刻一樣：停在最後一拍，不畫不存在的拍或八拍。
  */
-export function videoFrame(flow: Flow, videoSec: number): VideoFrameData {
+export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 	const total = totalSeconds(flow);
-	const raw = videoSec - VIDEO_INTRO_SEC;
-	const part: VideoFrameData['part'] = raw < 0 ? 'intro' : raw >= total - EPS ? 'outro' : 'play';
-	const flowSec = Math.min(Math.max(raw, 0), total);
-	// 拍和列都看這一刻所在的那一格；結尾 toPosition 會夾回最後一格
-	const pos = toPosition(flow, flowSec);
-	const span = pos && segmentSpans(flow).find((s) => s.segment.id === pos.segmentId)!;
-	const rows = eightCountRows(flow, null);
-	const lookSec = pos ? toSeconds(flow, pos) : 0;
-	const rowNow = rows.findLast((r) => r.startSec <= lookSec + EPS);
-	const base = {
-		part,
-		flowSec,
-		title: flow.name,
-		clock: clockText(flowSec),
-		positions: positionsAt(flow, flowSec),
-		raised: raisedAt(flow, flowSec),
-		markers: memberMarkers(flow),
-		row: rowNow ? videoRow(flow, rowNow) : EMPTY_ROW
-	};
-	if (part === 'intro') return { ...base, where: '開場站位', beats: null };
-	if (!pos || !span) return { ...base, where: '', beats: null };
-	if (span.segment.kind === 'chant') {
-		return { ...base, where: `${span.label}・${(flowSec - span.startSec).toFixed(1)} 秒`, beats: null };
-	}
-	const eightIndex = Math.floor(pos.at / HALF_BEATS_PER_EIGHT);
-	const halfBeatsInEight = Math.min(HALF_BEATS_PER_EIGHT, units(span.segment) - eightIndex * HALF_BEATS_PER_EIGHT);
-	return {
-		...base,
-		where: `${span.label}・第 ${eightIndex + 1} 個八拍`,
-		beats: {
-			count: Math.ceil(halfBeatsInEight / HALF_BEATS_PER_BEAT),
-			lit: Math.floor((pos.at % HALF_BEATS_PER_EIGHT) / HALF_BEATS_PER_BEAT) + 1
+	const spans = segmentSpans(flow);
+	const rows = eightCountRows(flow, null).map((r) => ({ startSec: r.startSec, row: videoRow(flow, spans, r) }));
+	const markers = memberMarkers(flow);
+	return (videoSec) => {
+		const raw = videoSec - VIDEO_INTRO_SEC;
+		const part: VideoFrameData['part'] = raw < 0 ? 'intro' : raw >= total - EPS ? 'outro' : 'play';
+		const flowSec = Math.min(Math.max(raw, 0), total);
+		// 拍和列都看這一刻所在的那一格；結尾 toPosition 會夾回最後一格
+		const pos = toPosition(flow, flowSec);
+		const span = pos && spans.find((s) => s.segment.id === pos.segmentId)!;
+		const lookSec = pos ? toSeconds(flow, pos) : 0;
+		const rowNow = rows.findLast((r) => r.startSec <= lookSec + EPS);
+		const base = {
+			part,
+			flowSec,
+			title: flow.name,
+			clock: clockText(flowSec),
+			positions: positionsAt(flow, flowSec),
+			raised: raisedAt(flow, flowSec),
+			markers,
+			row: rowNow ? rowNow.row : EMPTY_ROW
+		};
+		if (part === 'intro') return { ...base, where: '開場站位', beats: null };
+		if (!pos || !span) return { ...base, where: '', beats: null };
+		if (span.segment.kind === 'chant') {
+			return { ...base, where: `${span.label}・${(flowSec - span.startSec).toFixed(1)} 秒`, beats: null };
 		}
+		const eightIndex = Math.floor(pos.at / HALF_BEATS_PER_EIGHT);
+		const halfBeatsInEight = Math.min(HALF_BEATS_PER_EIGHT, units(span.segment) - eightIndex * HALF_BEATS_PER_EIGHT);
+		return {
+			...base,
+			where: `${span.label}・第 ${eightIndex + 1} 個八拍`,
+			beats: {
+				count: Math.ceil(halfBeatsInEight / HALF_BEATS_PER_BEAT),
+				lit: Math.floor((pos.at % HALF_BEATS_PER_EIGHT) / HALF_BEATS_PER_BEAT) + 1
+			}
+		};
 	};
+}
+
+/** 只要一格時用（每次都重算八拍表）；一支影片一格一格畫的用 videoFrames。 */
+export function videoFrame(flow: Flow, videoSec: number): VideoFrameData {
+	return videoFrames(flow)(videoSec);
 }
 
 /** 影片要混的音樂：跟編輯器從頭播一樣，開始秒數都加上開頭停的那 2 秒。 */

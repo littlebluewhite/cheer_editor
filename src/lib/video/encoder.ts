@@ -18,6 +18,7 @@ export interface VideoJob {
 }
 
 export interface VideoEncoderAdapter {
+	/** 這個瀏覽器做不做得出來。影片工具（mediabunny）載不下來時 reject。 */
 	supported(): Promise<boolean>;
 	/** 回傳 MP4 的位元組。signal 中止時 throw AbortError。 */
 	encode(job: VideoJob): Promise<Uint8Array>;
@@ -35,14 +36,24 @@ function abortError(): DOMException {
 	return new DOMException('已取消輸出', 'AbortError');
 }
 
+/** 沒做成的原因：瀏覽器、mediabunny 的訊息是英文，教練看不懂，換成白話（原文對話框另外用小字寫）。 */
+export function failureReason(e: unknown): string {
+	const name = typeof e === 'object' && e !== null && 'name' in e ? String(e.name) : '';
+	const message = e instanceof Error ? e.message : String(e);
+	if (name === 'QuotaExceededError' || name === 'RangeError' || /out.of.memory/i.test(message)) return '記憶體不夠，關掉其他分頁再試一次';
+	if (name === 'EncodingError' || name === 'NotSupportedError') return '這台電腦的編碼器做不出這支影片';
+	return '做影片時出了問題';
+}
+
 export function browserVideoEncoder(): VideoEncoderAdapter {
 	return {
 		async supported() {
+			// 只開 Chromium（Chrome、Edge）；別的瀏覽器做不出 AAC
+			const brands = (navigator as UserAgentDataNavigator).userAgentData?.brands ?? [];
+			if (!brands.some((b) => b.brand === 'Chromium')) return false;
+			// 載不下來（離線、部署後舊的檔不在了）不是瀏覽器不行：讓它 reject，對話框另外說
+			const { canEncodeVideo, canEncodeAudio } = await import('mediabunny');
 			try {
-				// 只開 Chromium（Chrome、Edge）；別的瀏覽器做不出 AAC
-				const brands = (navigator as UserAgentDataNavigator).userAgentData?.brands ?? [];
-				if (!brands.some((b) => b.brand === 'Chromium')) return false;
-				const { canEncodeVideo, canEncodeAudio } = await import('mediabunny');
 				const video = await canEncodeVideo('avc', {
 					width: VIDEO_W,
 					height: VIDEO_H,

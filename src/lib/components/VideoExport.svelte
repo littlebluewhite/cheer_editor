@@ -1,14 +1,16 @@
 <script lang="ts">
 	// 輸出影片（流程影片）的對話框：準備（影片多長、放不下的八拍、沒聲音的段）→ 輸出中（進度、取消）→ 做好了（存檔）／失敗（再試一次）。
-	// 瀏覽器做不做得出來，打開時當場問編碼器：做不出來就不給「開始」。
+	// 瀏覽器做不做得出來，打開時當場問編碼器：做不出來就不給「開始」；影片工具載不下來另外說，可以再試。
 	// 按「開始」那一刻的流程存一份，整支用它（流程改了，影片不會一半新一半舊）。
 	// 取消、Esc、點背景都走 Modal 的關閉：中止編碼、丟掉做到一半的。
+	// 做好了以後 Esc、點背景不關：做了半天的影片不能一下就丟掉，只有「存檔」「關閉」關。
 	import { onDestroy } from 'svelte';
-	import { VIDEO_FPS, missingAudioNames, segmentSpans, videoDurationSec, videoFrame, type Flow, type GlobalRole } from '#lib/core';
+	import { VIDEO_FPS, missingAudioNames, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { videoFileName } from '#lib/file/save.js';
 	import { canvasMeasure, drawFrame } from '#lib/video/draw.js';
 	import { layoutFrame, overflowEights, type Measure } from '#lib/video/layout.js';
+	import { failureReason } from '#lib/video/encoder.js';
 	import { mixClips, renderSoundtrack } from '#lib/video/soundtrack.js';
 	import Modal from './Modal.svelte';
 
@@ -30,9 +32,10 @@
 		| { kind: 'checking' }
 		| { kind: 'ready' }
 		| { kind: 'unsupported' }
+		| { kind: 'unloaded' }
 		| { kind: 'encoding'; frames: number }
 		| { kind: 'done'; bytes: Uint8Array; fileName: string }
-		| { kind: 'failed'; reason: string };
+		| { kind: 'failed'; reason: string; detail: string };
 	let step = $state<Step>({ kind: 'checking' });
 	/** 輸出中：已經編好幾格。 */
 	let done = $state(0);
@@ -40,9 +43,18 @@
 	/** 現在這一次輸出；關掉、再試一次時換掉，舊的那次回來的結果就不算。 */
 	let controller: AbortController | null = null;
 
-	void encoder.supported().then((ok) => {
-		if (step.kind === 'checking') step = { kind: ok ? 'ready' : 'unsupported' };
-	});
+	function check() {
+		step = { kind: 'checking' };
+		encoder.supported().then(
+			(ok) => {
+				if (step.kind === 'checking') step = { kind: ok ? 'ready' : 'unsupported' };
+			},
+			() => {
+				if (step.kind === 'checking') step = { kind: 'unloaded' };
+			}
+		);
+	}
+	check();
 
 	/** 影片長「m:ss」。 */
 	const duration = $derived.by(() => {
@@ -69,6 +81,8 @@
 		const frames = Math.round(videoDurationSec(snapshot) * VIDEO_FPS);
 		// 圓點的顏色看底層、上層：沒給的話全部畫成底層
 		const roles: Record<string, GlobalRole> = Object.fromEntries(snapshot.members.map((x) => [x.id, x.globalRole]));
+		// 八拍表整支只算一次，每一格只算會動的
+		const frameAt = videoFrames(snapshot);
 		const run = new AbortController();
 		controller?.abort();
 		controller = run;
@@ -81,7 +95,7 @@
 				draw: (i, canvas) => {
 					// OffscreenCanvas 的 2D 跟 <canvas> 的畫法一樣，drawFrame 用到的都有
 					ctx ??= canvas.getContext('2d') as CanvasRenderingContext2D;
-					const frame = videoFrame(snapshot, i / VIDEO_FPS);
+					const frame = frameAt(i / VIDEO_FPS);
 					drawFrame(ctx, snapshot.field, frame, layoutFrame(snapshot.field, frame, m), roles);
 				},
 				// 整支都沒有音樂：沒有聲音軌
@@ -96,7 +110,7 @@
 			step = { kind: 'done', bytes, fileName: videoFileName(snapshot.name) };
 		} catch (e) {
 			if (controller !== run || run.signal.aborted) return;
-			step = { kind: 'failed', reason: reasonOf(e) };
+			step = { kind: 'failed', reason: failureReason(e), detail: reasonOf(e) };
 		}
 	}
 
@@ -119,7 +133,7 @@
 	onDestroy(() => controller?.abort());
 </script>
 
-<Modal label="輸出影片" class="dialog video-dialog" onclose={close}>
+<Modal label="輸出影片" class="dialog video-dialog" onclose={close} beforeclose={() => step.kind !== 'done'}>
 	{#snippet children(closeModal)}
 		<header class="dialog-head"><h2>輸出影片</h2></header>
 		{#if step.kind === 'checking'}
@@ -128,6 +142,12 @@
 		{:else if step.kind === 'unsupported'}
 			<p>這個瀏覽器不能輸出影片，請用電腦的 Chrome 或 Edge</p>
 			<div class="buttons"><button type="button" onclick={closeModal}>關閉</button></div>
+		{:else if step.kind === 'unloaded'}
+			<p>影片工具載不下來，請連上網路再試一次</p>
+			<div class="buttons">
+				<button type="button" onclick={closeModal}>關閉</button>
+				<button type="button" class="primary" onclick={check}>再試一次</button>
+			</div>
 		{:else if step.kind === 'ready'}
 			<p>影片長 {duration}</p>
 			{#if overflow.length}<p class="warn">這幾個八拍有東西放不下，會縮成一行或拿掉：{overflow.join('、')}</p>{/if}
@@ -145,11 +165,13 @@
 			<p>做好了，{(bytes.length / 1024 / 1024).toFixed(1)} MB</p>
 			{#if saveError}<p class="error">{saveError}</p>{/if}
 			<div class="buttons">
-				<button type="button" onclick={closeModal}>關閉</button>
+				<!-- Modal 的關閉在做好了時被擋（Esc、點背景不關），這顆直接關 -->
+				<button type="button" onclick={close}>關閉</button>
 				<button type="button" class="primary" onclick={() => saveFile(bytes, fileName)}>存檔</button>
 			</div>
 		{:else}
 			<p class="error">沒做成：{step.reason}</p>
+			<p class="detail">{step.detail}</p>
 			<div class="buttons">
 				<button type="button" onclick={closeModal}>關閉</button>
 				<button type="button" class="primary" onclick={start}>再試一次</button>
@@ -169,6 +191,12 @@
 	.warn {
 		color: var(--muted);
 		font-size: 13px;
+	}
+	/* 瀏覽器原本的訊息（英文）：給要回報問題的人看，小字 */
+	.detail {
+		color: var(--muted);
+		font-size: 12px;
+		overflow-wrap: anywhere;
 	}
 	.buttons {
 		display: flex;

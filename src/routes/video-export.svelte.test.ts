@@ -96,16 +96,64 @@ describe('輸出影片', () => {
 		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeNull();
 	});
 
-	it('失敗：寫原因，「再試一次」重新編一次', async () => {
-		const encoder = createFakeVideoEncoder({ fail: '記憶體不夠' });
+	it('失敗：寫看得懂的原因、小字寫原本的訊息，「再試一次」重新編一次', async () => {
+		const encoder = createFakeVideoEncoder({ fail: 'Encoder failed: out of memory' });
 		const encode = vi.spyOn(encoder, 'encode');
 		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
 		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
-		expect(await within(dialog()).findByText('沒做成：記憶體不夠')).toBeTruthy();
+		expect(await within(dialog()).findByText('沒做成：記憶體不夠，關掉其他分頁再試一次')).toBeTruthy();
+		expect(within(dialog()).getByText('Encoder failed: out of memory')).toBeTruthy();
 		expect(encode).toHaveBeenCalledTimes(1);
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '再試一次' }));
 		await waitFor(() => expect(encode).toHaveBeenCalledTimes(2));
-		expect(await within(dialog()).findByText('沒做成：記憶體不夠')).toBeTruthy();
+		expect(await within(dialog()).findByText('沒做成：記憶體不夠，關掉其他分頁再試一次')).toBeTruthy();
+	});
+
+	it('失敗的原因認不出來：寫一般的說法', async () => {
+		const encoder = createFakeVideoEncoder({ fail: 'something broke' });
+		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		expect(await within(dialog()).findByText('沒做成：做影片時出了問題')).toBeTruthy();
+		expect(within(dialog()).getByText('something broke')).toBeTruthy();
+	});
+
+	it('影片工具載不下來：不說瀏覽器不行，「再試一次」再問一次', async () => {
+		const encoder = createFakeVideoEncoder();
+		const supported = vi
+			.spyOn(encoder, 'supported')
+			.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module'));
+		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
+		expect(await within(dialog()).findByText('影片工具載不下來，請連上網路再試一次')).toBeTruthy();
+		expect(within(dialog()).queryByText(/這個瀏覽器不能輸出影片/)).toBeNull();
+		expect(within(dialog()).queryByRole('button', { name: '開始' })).toBeNull();
+		await fireEvent.click(within(dialog()).getByRole('button', { name: '再試一次' }));
+		expect(await within(dialog()).findByRole('button', { name: '開始' })).toBeTruthy();
+		expect(supported).toHaveBeenCalledTimes(2);
+	});
+
+	it('影片工具載不下來：「關閉」關掉', async () => {
+		const encoder = createFakeVideoEncoder();
+		vi.spyOn(encoder, 'supported').mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
+		await within(dialog()).findByText('影片工具載不下來，請連上網路再試一次');
+		await fireEvent.click(within(dialog()).getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeNull();
+	});
+
+	it('做好了：Esc、點背景不關（不丟掉做好的影片），按「關閉」才關', async () => {
+		const page = await openDialog(shortFlow());
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		page.videoEncoder.release();
+		await within(dialog()).findByText(/^做好了/, {}, DONE);
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(within(dialog()).getByText(/^做好了/)).toBeTruthy();
+		const backdrop = dialog().parentElement!;
+		await fireEvent.pointerDown(backdrop);
+		await fireEvent.click(backdrop);
+		expect(within(dialog()).getByText(/^做好了/)).toBeTruthy();
+		await fireEvent.click(within(dialog()).getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeNull();
+		expect(page.videoSaves).toHaveLength(0);
 	});
 
 	it('輸出中按「取消」：編碼中止、對話框關掉；再開、再按開始，從第 0 格重新畫到最後一格', async () => {

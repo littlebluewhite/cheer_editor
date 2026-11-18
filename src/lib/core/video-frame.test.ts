@@ -15,6 +15,7 @@ import {
 	videoAudioClips,
 	videoDurationSec,
 	videoFrame,
+	videoFrames,
 	videoRows,
 	type Flow
 } from './index';
@@ -156,7 +157,7 @@ describe('videoFrame：播放中', () => {
 		// 站位 1 在第 1 個八拍，第 2、3 個八拍沒有新東西，合成一列
 		const flow = sample();
 		const rows = videoRows(flow);
-		expect(rows[1].label).toBe('音樂 1 第 2 個八拍');
+		expect(rows[1].label).toBe('音樂 1 第 2–3 個八拍');
 		const f = videoFrame(flow, VIDEO_INTRO_SEC + 7);
 		expect(f.where).toBe('音樂 1・第 3 個八拍');
 		expect(f.row).toEqual(rows[1].row);
@@ -203,9 +204,30 @@ describe('row', () => {
 });
 
 describe('videoRows', () => {
-	it('音樂段寫第幾個八拍（合起來的列用第一個），口號段只有段名', () => {
+	it('音樂段寫第幾個八拍（合起來的列寫「2–3」），口號段只有段名', () => {
 		const rows = videoRows(sample());
-		expect(rows.map((r) => r.label)).toEqual(['音樂 1 第 1 個八拍', '音樂 1 第 2 個八拍', '口號 1', '音樂 2 第 1 個八拍']);
+		expect(rows.map((r) => r.label)).toEqual(['音樂 1 第 1 個八拍', '音樂 1 第 2–3 個八拍', '口號 1', '音樂 2 第 1 個八拍']);
+	});
+});
+
+describe('videoFrames', () => {
+	it('先算好八拍表的那一份，每一秒都跟 videoFrame 一樣', () => {
+		// 開頭、剛好 2 秒、合起來的列、延續的動作、口號段、第二個音樂段、結尾、超過結尾
+		const flow = flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'stunt',
+				name: 'Lib',
+				start: 0,
+				length: 40,
+				note: '',
+				members: [{ memberId: 'm1', role: '上層' }]
+			})
+		);
+		const at = videoFrames(flow);
+		for (const sec of [0, 1.5, 2, 2.1, 5.3, 9, 10.1, 25, 30.05, 33.2, 34, 40]) {
+			expect(at(sec), `第 ${sec} 秒`).toEqual(videoFrame(flow, sec));
+		}
 	});
 });
 
