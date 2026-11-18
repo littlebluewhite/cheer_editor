@@ -2,7 +2,7 @@
 // 站位、拍、八拍表的字都用編輯器播放用的同一批核心函式，影片才不會跟編輯器不一樣。
 
 import { actionLabel, categoryLabel } from './action-types';
-import { raisedAt } from './actions';
+import { layersAt } from './actions';
 import { eightCountRows, teamWho, type EightCountCueLine, type EightCountRow } from './eight-count';
 import type { Flow } from './flow';
 import { positionsAt, type Position } from './formation';
@@ -122,7 +122,8 @@ export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 			title: flow.name,
 			clock: clockText(flowSec),
 			positions: positionsAt(flow, flowSec),
-			raised: raisedAt(flow, flowSec),
+			// 在空中的人（第 2、3 層都算）；影片還沒照層分開畫
+			raised: Object.keys(layersAt(flow, flowSec)),
 			markers,
 			row: rowNow ? rowNow.row : EMPTY_ROW
 		};

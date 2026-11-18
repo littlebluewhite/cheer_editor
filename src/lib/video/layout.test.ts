@@ -66,7 +66,7 @@ function cueLine(
 		category: 'stunt',
 		name,
 		cues: [
-			{ kind: 'count', from, to, span: `1-${from} 到 1-${to}・${to - from + 1} 拍`, lead: '', continued: false, word, who: null, ...more }
+			{ kind: 'count', from, to, start: (from - 1) * 2, end: to * 2, span: `1-${from} 到 1-${to}・${to - from + 1} 拍`, lead: '', continued: false, word, who: null, ...more }
 		],
 		phases: []
 	};

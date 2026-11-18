@@ -8,7 +8,7 @@ import {
 	createFlow,
 	loadSegmentAudio,
 	positionsAt,
-	raisedAt,
+	layersAt,
 	teamWho,
 	totalSeconds,
 	updateSegment,
@@ -85,7 +85,7 @@ describe('videoFrame：開頭和結尾', () => {
 		expect(f.part).toBe('outro');
 		expect(f.flowSec).toBe(totalSeconds(flow));
 		expect(f.positions).toEqual(positionsAt(flow, totalSeconds(flow)));
-		expect(f.raised).toEqual(raisedAt(flow, totalSeconds(flow)));
+		expect(f.raised).toEqual(Object.keys(layersAt(flow, totalSeconds(flow))));
 	});
 
 	it('結尾停在最後一個音樂段的最後一個八拍的最後一拍，不畫不存在的拍', () => {
@@ -150,7 +150,7 @@ describe('videoFrame：播放中', () => {
 		const flow = sample();
 		const f = videoFrame(flow, VIDEO_INTRO_SEC + 4.3);
 		expect(f.positions).toEqual(positionsAt(flow, 4.3));
-		expect(f.raised).toEqual(raisedAt(flow, 4.3));
+		expect(f.raised).toEqual(Object.keys(layersAt(flow, 4.3)));
 	});
 
 	it('八拍表合起來的列：where 還是現在這一個八拍', () => {
