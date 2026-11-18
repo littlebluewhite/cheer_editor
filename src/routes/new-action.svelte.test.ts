@@ -210,7 +210,8 @@ describe('接下一個動作', () => {
 		expect(screen.queryByRole('button', { name: '開新的動作表單' })).toBeNull();
 		expect(field('開始').value).toBe('2-1');
 		expect(field('名稱').value).toBe('');
-		expect(roles()).toEqual(['小美 的任務角色：上層', '小A 的任務角色：主底', '小芳 的任務角色：上層', '小B 的任務角色：主底']);
+		// 清單照任務角色排：主底在上層前面
+		expect(roles()).toEqual(['小A 的任務角色：主底', '小B 的任務角色：主底', '小美 的任務角色：上層', '小芳 的任務角色：上層']);
 	});
 
 	it('新增後加第一個環節：組跟 Lib 一樣', async () => {

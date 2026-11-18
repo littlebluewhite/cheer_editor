@@ -31,6 +31,7 @@
 		memberName,
 		positionText,
 		pickableRoles,
+		roleGlossary,
 		segmentSpans,
 		squadBadge,
 		timeExamples,
@@ -43,7 +44,7 @@
 	import { reveal, revealAlert, stickyBottom } from './reveal';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
-	import RolePicker, { roleKey } from './RolePicker.svelte';
+	import RolePicker from './RolePicker.svelte';
 
 	interface Props {
 		/** 拍點格子的「指標位置 → 格子」；沒給用格子預設的（ADR 0002）。 */
@@ -65,9 +66,9 @@
 	const segmentLabel = $derived(
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
-	/** 選單的任務角色：三層只有金字塔有。快捷鍵的說明照這個列。 */
+	/** 選單的任務角色：三層、肩底只有金字塔有。快捷鍵的說明照這個列。 */
 	const roles = $derived(pickableRoles(flow, draft.category, []));
-	/** 這個人的選單：已經是三層的人換了大類，他自己的選單照列三層，別人的沒有。 */
+	/** 這個人的選單：已經是三層（肩底）的人換了大類，他自己的選單照列，別人的沒有。 */
 	const rolesFor = (role: string | null) => pickableRoles(flow, draft.category, [role]);
 	const categoryLabel = $derived(ACTION_CATEGORIES.find((c) => c.key === draft.category)?.label ?? '');
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
@@ -99,17 +100,29 @@
 			: []
 	);
 
-	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
+	/** 動作有環節、要分組（騰翻跳躍以外）：一組一張卡片（唯讀，分組在場上的分組浮動列）。 */
 	const grouped = $derived(!!action && groupsPeople(action));
-	/** 人員清單照組號排（沒分組的排最後）；只在分組的動作有用。 */
-	let bySquad = $state(false);
-	/** 清單上的順序：draft.members 的第幾個。 */
-	const order = $derived.by(() => {
-		const all = draft.members.map((_, i) => i);
-		if (!grouped || !bySquad || !action) return all;
-		const num = (i: number) => squadBadge(action, draft.members[i]).number || Infinity;
-		return all.toSorted((a, b) => num(a) - num(b));
+	/** 任務角色排第幾（名詞對照表的順序），沒有任務排最後。 */
+	const roleRank = $derived(new Map(roleGlossary(flow).map((r, k) => [r.name, k])));
+	/**
+	 * 清單分成卡片：分組的動作一組一張（照組號，沒分組的最後一張）；不分組就一張沒有標題的。
+	 * 卡片裡照任務角色排，一樣的照加進來的順序。rows 是 draft.members 的第幾個。
+	 */
+	const cards = $derived.by(() => {
+		const rank = (i: number) => roleRank.get(draft.members[i].role ?? '') ?? Infinity;
+		const rows = draft.members.map((_, i) => i).toSorted((a, b) => rank(a) - rank(b));
+		if (!grouped || !action) return [{ head: '', color: '', rows }];
+		const byNumber = new Map<number, { head: string; color: string; rows: number[] }>();
+		for (const i of rows) {
+			const b = squadBadge(action, draft.members[i]);
+			const card = byNumber.get(b.number) ?? { head: b.number ? `第 ${b.number} 組` : '沒分組', color: b.number ? b.color : '', rows: [] };
+			card.rows.push(i);
+			byNumber.set(b.number, card);
+		}
+		return [...byNumber].toSorted(([a], [b]) => (a || Infinity) - (b || Infinity)).map(([, card]) => card);
 	});
+	/** 清單上的順序（卡片接起來）：按快捷鍵選好後跳到下一個人用。 */
+	const order = $derived(cards.flatMap((c) => c.rows));
 
 	/**
 	 * 新動作表單沒選人時收起來，只有「＋ 新動作」（選了人就打開）。
@@ -230,11 +243,13 @@
 	/** 選了任務角色；按快捷鍵選的就跳到下一個人。他在一起選到的人裡：那幾個人一起設，算一步。 */
 	function setRole(i: number, role: string | null, byKey: boolean) {
 		const all = together.length > 1 && together.includes(draft.members[i].memberId);
+		// 改了角色那一列會換位置：下一個人照改之前的順序找
+		const next = order[order.indexOf(i) + 1];
 		draft.members.forEach((m, k) => {
 			if (k === i || (all && together.includes(m.memberId))) draft.setRole(k, role);
 		});
 		changed('people');
-		if (byKey && !all) rolePickers[order[order.indexOf(i) + 1]]?.focus();
+		if (byKey && !all && next !== undefined) rolePickers[next]?.focus();
 	}
 
 	/** 名詞對照表新增了自訂任務角色：是從任務角色選單打開的，就套給那個人。 */
@@ -466,20 +481,16 @@
 							popover({ place: below(bangEl!, { gap: 6, align: 'right', flip: true }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
-						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
 						<span>Shift＋點名字選好幾個人，再選其中一人的任務角色，就一起設好</span>
 						<span>點任務角色選單後按鍵就選好，跳到下一個人：</span>
 						<span class="keys">
-							{#each roles as r, k (r.name)}{#if roleKey(k)}<kbd>{roleKey(k)} {r.name}</kbd>{/if}{/each}
+							{#each roles as r (r.name)}{#if r.key}<kbd>{r.key} {r.name}</kbd>{/if}{/each}
 							<kbd>Backspace 沒有任務</kbd>
 						</span>
 						<!-- 其他快捷鍵（⌘C／⌘V、按住 H、Alt＋拖…）不在這裡列，連到使用說明的快捷鍵表 -->
 						<a href={`${resolve('/guide')}?from=editor#keys`} target="_blank" rel="noopener">全部的快捷鍵：看使用說明</a>
 					</span>
 				</span>
-				{#if grouped}
-					<label class="by-squad"><input type="checkbox" bind:checked={bySquad} />照組排</label>
-				{/if}
 				<button type="button" class="link" onclick={() => openGlossary(null)}>名詞對照表</button>
 			</div>
 			<!-- 常駐一行（觸控的人看不到 title）；選了 2 人以上換成選了幾人，這一行不跳 -->
@@ -493,46 +504,47 @@
 				</p>
 			{/if}
 			{#if draft.members.length}
-				<ul class:grouped>
-					{#each order.map((i) => ({ m: draft.members[i], i })) as { m, i } (m.memberId)}
-						{@const who = memberOf(m.memberId)}
-						<li>
-							<span class="who">
-								<button
-									type="button"
-									class="pick"
-									aria-label={nameOf(m.memberId)}
-									aria-pressed={together.includes(m.memberId)}
-									title="{nameOf(m.memberId)}（Shift＋點：選好幾個人，一起設任務角色）"
-									onclick={(e) => pickRow(m.memberId, e.shiftKey || session.multiSelect)}
-								>
-									{#if who}<i class="gr {who.globalRole}">{who.globalRole === 'top' ? '上' : '底'}</i>{/if}
-									<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
-								</button>
-								{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
-							</span>
-							<RolePicker
-								bind:this={rolePickers[i]}
-								label="{nameOf(m.memberId)} 的任務角色"
-								value={m.role}
-								roles={rolesFor(m.role)}
-								onpick={(role, byKey) => setRole(i, role, byKey)}
-								onnew={() => openGlossary(i)}
-							/>
-							{#if grouped}
-								{@const badge = action && squadBadge(action, m)}
-								{#if badge?.number}<span class="squad-tag" style:--c={badge.color}>第 {badge.number} 組</span>
-								{:else}<span class="squad-tag none">沒分組</span>{/if}
-							{/if}
-							<button
-								type="button"
-								class="ghost icon"
-								aria-label="把 {nameOf(m.memberId)} 移出這個動作"
-								onclick={() => removeMember(i)}><Icon name="close" size={14} /></button
-							>
-						</li>
+				<div class="squads" class:grouped>
+					{#each cards as card (card.head)}
+						<section class="squad" style:--c={card.color || null} aria-label={card.head || undefined}>
+							{#if card.head}<h4 class="squad-head" class:none={!card.color}>{card.head}</h4>{/if}
+							<ul>
+								{#each card.rows.map((i) => ({ m: draft.members[i], i })) as { m, i } (m.memberId)}
+									{@const who = memberOf(m.memberId)}
+									<li>
+										<span class="who">
+											<button
+												type="button"
+												class="pick"
+												aria-label={nameOf(m.memberId)}
+												aria-pressed={together.includes(m.memberId)}
+												title="{nameOf(m.memberId)}（Shift＋點：選好幾個人，一起設任務角色）"
+												onclick={(e) => pickRow(m.memberId, e.shiftKey || session.multiSelect)}
+											>
+												<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
+											</button>
+											{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
+										</span>
+										<RolePicker
+											bind:this={rolePickers[i]}
+											label="{nameOf(m.memberId)} 的任務角色"
+											value={m.role}
+											roles={rolesFor(m.role)}
+											onpick={(role, byKey) => setRole(i, role, byKey)}
+											onnew={() => openGlossary(i)}
+										/>
+										<button
+											type="button"
+											class="ghost icon"
+											aria-label="把 {nameOf(m.memberId)} 移出這個動作"
+											onclick={() => removeMember(i)}><Icon name="close" size={14} /></button
+										>
+									</li>
+								{/each}
+							</ul>
+						</section>
 					{/each}
-				</ul>
+				</div>
 			{:else}
 				<p class="muted none">還沒有人：用上面的「選人」，或在場上點人。</p>
 			{/if}
@@ -849,14 +861,6 @@
 	.people-head .link {
 		font-size: 12px;
 	}
-	.by-squad {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-right: 8px;
-		font-size: 12px;
-		color: var(--muted, #66718a);
-	}
 	.none {
 		font-size: 12px;
 	}
@@ -923,24 +927,6 @@
 	}
 	.name.M {
 		background: var(--male-bg, #dcebff);
-	}
-	.gr {
-		flex: none;
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		display: inline-grid;
-		place-items: center;
-		font-size: 11px;
-		font-style: normal;
-		font-weight: 700;
-		color: #fff;
-	}
-	.gr.base {
-		background: var(--base, #2c3e66);
-	}
-	.gr.top {
-		background: var(--top, #e0664f);
 	}
 	.people-head .cap {
 		margin-right: auto;
@@ -1013,9 +999,30 @@
 		height: 26px;
 		color: var(--muted, #66718a);
 	}
-	/* 動作有環節時：任務角色和移出鈕中間多一個唯讀的「第 n 組」標籤 */
-	ul.grouped li {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
+	.squads {
+		display: grid;
+		gap: 8px;
+	}
+	/* 一組一張小卡：標題用組的顏色寫一次 */
+	.grouped .squad {
+		display: grid;
+		gap: 4px;
+		align-content: start;
+		padding: 6px 8px 8px;
+		border: 1px solid var(--line-soft, #e8ecf3);
+		border-top: 3px solid var(--c, var(--line, #d8dee9));
+		border-radius: 8px;
+		min-width: 0;
+	}
+	.squad-head {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--c);
+	}
+	.squad-head.none {
+		color: var(--muted, #66718a);
+		font-weight: 400;
 	}
 	.busy-tag {
 		font-size: 11px;
@@ -1024,21 +1031,6 @@
 	}
 	.add-picked {
 		justify-self: start;
-	}
-	.squad-tag {
-		font-size: 12px;
-		font-weight: 700;
-		color: #fff;
-		background: var(--c);
-		border-radius: 999px;
-		padding: 1px 8px;
-		white-space: nowrap;
-	}
-	.squad-tag.none {
-		color: var(--muted, #66718a);
-		background: none;
-		font-weight: 400;
-		padding-inline: 0;
 	}
 	.adders {
 		display: grid;
@@ -1084,7 +1076,9 @@
 		.grid > .colors {
 			grid-row: 2;
 		}
-		ul {
+		/* 不分組：人分兩欄；分組：卡片分兩欄，卡片裡一欄 */
+		.squads:not(.grouped) ul,
+		.squads.grouped {
 			grid-template-columns: 1fr 1fr;
 			column-gap: 16px;
 		}

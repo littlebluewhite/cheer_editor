@@ -70,11 +70,11 @@ const grid = () => within(screen.getByRole('group', { name: '拍點' }));
 const gridPhases = () => grid().queryAllByRole('button', { name: /^環節 / }).map((b) => b.getAttribute('aria-label'));
 /** 拍點小窗裡的「環節」那一列。 */
 const popPhase = () => within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
-/** 人員清單上某個人的組標籤寫的號碼（沒有標籤是 null，沒分組是 ''）。 */
+/** 人員清單上某個人那張組卡片寫的號碼（沒有卡片是 null，沒分組是 ''）。 */
 const squad = (who: string) => {
 	const tag = [...document.querySelectorAll('.action-form .people li')]
 		.find((li) => li.querySelector('.name')?.textContent === who)
-		?.querySelector('.squad-tag')?.textContent;
+		?.closest('.squad')?.querySelector('.squad-head')?.textContent;
 	return tag === undefined ? null : (tag.match(/\d+/)?.[0] ?? '');
 };
 /** 三個環節都在。 */

@@ -1,5 +1,5 @@
 // 頁面：環節和拍點的小事。環節名字按 Enter 就加入、預設接上一個環節後面的種類；
-// 分組浮動列標出選的人在哪一組、人員清單可以照組排；放手位、步驟也跳下一拍、新選取「給誰」回到全部、
+// 分組浮動列標出選的人在哪一組、人員清單一組一張卡片；放手位、步驟也跳下一拍、新選取「給誰」回到全部、
 // 「給誰」分任務角色和隊員兩組、按住 Shift 小窗不擋點擊；拍點可以複製、貼上（同一個動作、別的動作都行）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -93,15 +93,17 @@ describe('分組', () => {
 		expect(bar.getByRole('button', { name: '放進第 2 組' }).getAttribute('aria-pressed')).toBe('false');
 	});
 
-	it('人員清單打勾「照組排」就照組號排', async () => {
+	it('人員清單一組一張卡片，卡片裡照任務角色排', async () => {
 		let flow = flowOf(setSquad(libSample(), 'x1', ['m1', 'm3'], 1));
 		flow = flowOf(setSquad(flow, 'x1', ['m2', 'm4'], 2));
 		open(flow);
 		await selectAction('x1');
 		const names = () => [...document.querySelectorAll('.action-form .people li .name')].map((n) => n.textContent);
-		expect(names()).toEqual(['小美', '小A', '小B', '小芳']);
-		await fireEvent.click(screen.getByRole('checkbox', { name: '照組排' }));
-		expect(names()).toEqual(['小美', '小B', '小A', '小芳']);
+		expect(screen.queryByRole('checkbox', { name: '照組排' })).toBeNull();
+		const heads = () => [...document.querySelectorAll('.action-form .people .squad-head')].map((n) => n.textContent);
+		expect(heads()).toEqual(['第 1 組', '第 2 組']);
+		// 第 1 組：小美上層、小B主底；第 2 組：小A主底、小芳上層
+		expect(names()).toEqual(['小B', '小美', '小A', '小芳']);
 	});
 });
 

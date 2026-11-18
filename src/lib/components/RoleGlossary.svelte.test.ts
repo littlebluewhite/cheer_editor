@@ -21,14 +21,14 @@ describe('名詞對照表', () => {
 		setup(flow);
 
 		const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
-		expect(rows).toHaveLength(13);
-		expect(rows[3].textContent).toContain('上層');
-		expect(rows[3].textContent).toContain('被底層撐起來、離開地面的人。');
-		expect(rows[3].textContent).toContain('上層人員');
+		expect(rows).toHaveLength(14);
+		expect(rows[4].textContent).toContain('上層');
+		expect(rows[4].textContent).toContain('被底層撐起來、離開地面的人。');
+		expect(rows[4].textContent).toContain('上層人員');
 		// 自訂角色的名稱、意思是可以改的輸入框
-		expect((within(rows[12]).getByLabelText('「丟人的」的名稱') as HTMLInputElement).value).toBe('丟人的');
-		expect((within(rows[12]).getByLabelText('「丟人的」的意思') as HTMLInputElement).value).toBe('把上層丟給中層接');
-		expect(rows[12].textContent).toContain('自訂');
+		expect((within(rows[13]).getByLabelText('「丟人的」的名稱') as HTMLInputElement).value).toBe('丟人的');
+		expect((within(rows[13]).getByLabelText('「丟人的」的意思') as HTMLInputElement).value).toBe('把上層丟給中層接');
+		expect(rows[13].textContent).toContain('自訂');
 	});
 
 	it('新增自訂任務角色；名稱重複時顯示原因', async () => {

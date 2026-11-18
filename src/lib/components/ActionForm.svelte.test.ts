@@ -236,22 +236,22 @@ describe('動作表單：改選到的動作', () => {
 		expect(scrolled.at(-1)).toBe(screen.getByRole('alert'));
 	});
 
-	it('名字底色照性別、旁邊標底層或上層；「?」說明顏色和快捷鍵', () => {
+	it('名字底色照性別，沒有全局角色的圓點；「?」說明顏色和快捷鍵', () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
 		setup(flow, 'x1');
 		const rowA = screen.getByLabelText('小A 的任務角色').closest('li')!;
 		const rowB = screen.getByLabelText('小B 的任務角色').closest('li')!;
 		expect(rowA.querySelector('.name.F')?.textContent).toBe('小A');
 		expect(rowB.querySelector('.name.M')?.textContent).toBe('小B');
-		expect(rowA.querySelector('.gr.top')?.textContent).toBe('上');
-		expect(rowB.querySelector('.gr.base')?.textContent).toBe('底');
+		expect(document.querySelector('.people .gr')).toBeNull();
 		const legend = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
 		const tip = document.getElementById(legend.getAttribute('aria-describedby')!)!;
 		expect(tip.textContent).toContain('女');
 		expect(tip.textContent).toContain('男');
-		expect(tip.textContent).toContain('底層');
-		expect(tip.textContent).toContain('上層');
 		expect(tip.textContent).toContain('1 底層');
+		// 技巧沒有肩底（4）：上層還是 5
+		expect(tip.textContent).not.toContain('4 肩底');
+		expect(tip.textContent).toContain('5 上層');
 		// 這裡只列任務角色的快捷鍵：其他快捷鍵連到使用說明的快捷鍵表（T17）
 		const all = within(tip).getByRole('link', { name: /全部的快捷鍵/, hidden: true });
 		expect(all.getAttribute('href')).toMatch(/\/guide\?from=editor#keys$/);
@@ -287,9 +287,9 @@ describe('動作表單：改選到的動作', () => {
 		const pickB = screen.getByRole('combobox', { name: '小B 的任務角色' });
 		// 選單打開時按鍵也是直接選好、關掉選單，不用再按確認。
 		await fireEvent.click(pickA);
-		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。');
+		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層5被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。');
 		pickA.focus();
-		await fireEvent.keyDown(pickA, { key: '4' });
+		await fireEvent.keyDown(pickA, { key: '5' });
 		expect(session.flow!.actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
 		expect(screen.queryByRole('listbox')).toBeNull();
 		expect(pickA.textContent).toBe('上層');
@@ -303,6 +303,37 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.keyDown(pickB, { key: '1', isComposing: true });
 		await fireEvent.keyDown(pickB, { key: '1', keyCode: 229 });
 		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+	});
+
+	it('快捷鍵跟著角色固定：技巧沒有肩底，按 4 沒反應，也不交給頁面', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		const session = setup(flow, 'x1');
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		pickA.focus();
+		expect(await fireEvent.keyDown(pickA, { key: '4' })).toBe(false);
+		expect(session.flow!.actions[0].members[0].role).toBeNull();
+	});
+
+	it('任務角色選單分群：上層、保護、騰翻前面畫線', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'pyramid', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		const starts = screen.getAllByRole('option').filter((o) => o.classList.contains('group-start'));
+		expect(starts.map((o) => o.textContent!.slice(0, 2))).toEqual(['上層', '保護', '騰翻']);
+	});
+
+	it('清單照任務角色的順序排；按快捷鍵改了角色，那一列移過去，跳到改之前排在他下面的人', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'top' }]));
+		const members = ['m1', 'm2', 'm3'].map((memberId) => ({ memberId, role: null }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members }));
+		setup(flow, 'x1');
+		const rows = () => [...document.querySelectorAll('.people li .name')].map((n) => n.textContent);
+		const pick = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` });
+		expect(rows()).toEqual(['小A', '小B', '小C']);
+		pick('小B').focus();
+		await fireEvent.keyDown(pick('小B'), { key: '1' });
+		expect(rows()).toEqual(['小B', '小A', '小C']);
+		expect(document.activeElement).toBe(pick('小C'));
 	});
 
 	it('任務角色選單每一項有一句說明，取自名詞對照表（自訂角色用教練寫的意思）', async () => {
@@ -549,9 +580,9 @@ describe('動作表單：成功率', () => {
 	/** 畫面跟著 session 的流程更新，像在編輯頁裡一樣。 */
 	const live = (flow: Flow, actionId: string | null) => setup(flow, actionId);
 
-	/** 每個人旁邊的唯讀組標籤（沒有標籤是 null）。 */
+	/** 每個人在哪一張組卡片（卡片標題；沒有卡片是 null）。 */
 	const squadTags = () =>
-		[...document.querySelectorAll('.people li')].map((li) => li.querySelector('.squad-tag')?.textContent ?? null);
+		[...document.querySelectorAll('.people li')].map((li) => li.closest('.squad')?.querySelector('.squad-head')?.textContent ?? null);
 
 	it('沒有「記成功率」勾勾、沒有環節清單：環節在拍點格子上', () => {
 		live(rated(withLib()), 'x1');
@@ -561,7 +592,7 @@ describe('動作表單：成功率', () => {
 		expect(screen.getByRole('button', { name: /^環節 上法/ })).toBeTruthy();
 	});
 
-	it('有環節後每個人旁邊寫第幾組（唯讀，沒有選單）；沒分組寫「沒分組」', () => {
+	it('有環節後一組一張卡片，標題寫第幾組（唯讀，沒有選單）；沒分組的在最後一張「沒分組」', () => {
 		live(withLib(), 'x1');
 		expect(squadTags()).toEqual([null, null]);
 

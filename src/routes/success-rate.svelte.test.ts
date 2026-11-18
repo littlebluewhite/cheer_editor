@@ -29,11 +29,11 @@ const picked = () =>
 	NAMES.filter((_, i) => document.querySelector(`[data-lane="m${i + 1}"] .lab`)!.getAttribute('aria-pressed') === 'true');
 const bar = () => screen.queryByRole('group', { name: '分組' });
 const tap = (name: string) => fireEvent.click(within(bar()!).getByRole('button', { name }));
-/** 人員清單上的唯讀組標籤。 */
+/** 人員清單上他在哪一張組卡片（卡片標題）。 */
 const tagOf = (who: string) =>
 	[...document.querySelectorAll('.action-form .people li')]
 		.find((li) => li.querySelector('.name')?.textContent === who)
-		?.querySelector('.squad-tag')?.textContent ?? null;
+		?.closest('.squad')?.querySelector('.squad-head')?.textContent ?? null;
 const tags = () => NAMES.map(tagOf);
 const badge = (who: string) => document.querySelector(`[data-member-id="${ids([who])[0]}"] .badge`);
 
