@@ -70,6 +70,8 @@ const SOURCES: Record<ColorKey, () => string> = {
 	dotInk: fieldRule('.dot text', 'fill'),
 	dotTopInk: fieldRule('.dot .top + text', 'fill'),
 	raised: fieldRule('.dot.raised :is(circle, rect)', 'stroke'),
+	lv3: fieldRule('.dot.lv3 > g > :is(circle, rect):not(.ring):not(.focus-ring)', 'stroke'),
+	covered: fieldRule('.covered', 'stroke'),
 	front: fieldRule('.front', 'fill')
 };
 

@@ -25,6 +25,7 @@
 		fieldPositionText,
 		frontLabelAt,
 		fullView,
+		layerStagger,
 		moveMembers,
 		positionsAt,
 		snapGroup,
@@ -280,13 +281,6 @@
 			// SVG 後畫的蓋在上面：層高的排後面。
 			.sort((a, b) => a.level - b.level)
 	);
-	/**
-	 * 蓋到下面一層的人（圓點碰到）：往右上錯開、縮小，下面的人露得出來。單位是沒放大的公尺（在 scale 裡面）。
-	 * 位置照真的，只改畫法。
-	 */
-	/** 兩個圓點或膠囊（中心 c、半徑 r、膠囊直的那段一半長 h）有沒有碰到。 */
-	const touches = (a: { c: Position; r: number; h: number }, b: { c: Position; r: number; h: number }) =>
-		Math.hypot(Math.max(0, Math.abs(a.c[0] - b.c[0]) - a.h - b.h), a.c[1] - b.c[1]) < a.r + b.r;
 	/** 每個圓點沒錯開時的樣子（場地公尺）：多字的膠囊有直的一段。 */
 	const plain = $derived(
 		dots.map((d) => ({
@@ -298,32 +292,17 @@
 			font: (isLongMarker(d.mark) ? longFont : DOT_FONT) * dotScale
 		}))
 	);
-	const shifts = $derived.by(() => {
-		const out: Record<string, { d: number; s: number }> = {};
-		for (const a of plain) {
-			if (a.level < 2) continue;
-			if (plain.some((b) => b.level < a.level && touches(a, b))) {
-				// 縮小後字還是要至少 MIN_TEXT_PX：螢幕上不夠大就少縮一點（只錯開）
-				const minS = crop || !pxPerMeter ? 0 : MIN_TEXT_PX / (a.font * pxPerMeter);
-				out[a.id] = { d: 0.22 * (a.level - 1), s: Math.min(1, Math.max(0.85 ** (a.level - 1), minS)) };
-			}
-		}
-		return out;
-	});
-	/** 每個圓點畫出來的樣子（錯開、縮小後）：框選、手指按到、虛線圈都照這個。 */
-	const drawn = $derived(
-		plain.map((a) => {
-			const sh = shifts[a.id];
-			const off = (sh?.d ?? 0) * dotScale;
-			const s = sh?.s ?? 1;
-			return { ...a, c: [a.c[0] + off, a.c[1] - off] as Position, r: a.r * s, h: a.h * s };
-		})
+	/**
+	 * 蓋到下面一層的人往右上錯開、縮小，被不同層蓋到的人畫虛線圈：公式在流程核心（流程影片也用）。
+	 * 縮小後字還是要至少 MIN_TEXT_PX：螢幕上不夠大就少縮一點（只錯開）。
+	 * drawn 是畫出來的樣子：框選、手指按到、虛線圈都照這個。
+	 */
+	const stagger = $derived(
+		layerStagger(plain, dotScale, (font) => (crop || !pxPerMeter ? 0 : MIN_TEXT_PX / (font * pxPerMeter)))
 	);
-	const drawnAt = $derived(Object.fromEntries(drawn.map((a) => [a.id, a.c])));
-	/** 被不同層蓋到的人：在所有圓點上面多畫一圈虛線（照畫出來的形狀）。同一層擠在一起的不畫。 */
-	const covered = $derived(
-		drawn.filter((a, i) => drawn.slice(i + 1).some((b) => b.level !== a.level && touches(a, b)))
-	);
+	const shifts = $derived(stagger.shifts);
+	const drawnAt = $derived(Object.fromEntries(stagger.drawn.map((a) => [a.id, a.c])));
+	const covered = $derived(stagger.covered);
 	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
 	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(

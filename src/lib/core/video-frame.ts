@@ -58,7 +58,8 @@ export interface VideoFrameData {
 	/** 音樂段才有。count 是這個八拍有幾拍（最後不滿的比 8 少），lit 是現在第幾拍（開頭是 null）。 */
 	beats: { count: number; lit: number | null } | null;
 	positions: Record<string, Position>;
-	raised: string[];
+	/** 這一刻在空中的人第幾層（2、3；地上的不列），跟場上一樣照層畫。 */
+	levels: Record<string, number>;
 	markers: Record<string, string>;
 	row: VideoRow;
 }
@@ -122,8 +123,7 @@ export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 			title: flow.name,
 			clock: clockText(flowSec),
 			positions: positionsAt(flow, flowSec),
-			// 在空中的人（第 2、3 層都算）；影片還沒照層分開畫
-			raised: Object.keys(layersAt(flow, flowSec)),
+			levels: layersAt(flow, flowSec),
 			markers,
 			row: rowNow ? rowNow.row : EMPTY_ROW
 		};

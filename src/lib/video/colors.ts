@@ -35,13 +35,15 @@ export type ColorKey =
 	| 'matGrid'
 	| 'seam'
 	| 'center'
-	// 圓點：底層、上層、框、標記的字（上層反白）、上層和中層的黃框；「正面／裁判」
+	// 圓點：底層、上層、框、標記的字（上層反白）、第 2 層的黃框、三層的橘框、被別層蓋到的虛線圈；「正面／裁判」
 	| 'dotBase'
 	| 'dotTop'
 	| 'dotLine'
 	| 'dotInk'
 	| 'dotTopInk'
 	| 'raised'
+	| 'lv3'
+	| 'covered'
 	| 'front';
 
 /**
@@ -84,5 +86,7 @@ export const VIDEO_COLORS: Record<ColorKey, string> = {
 	dotInk: '#16213a',
 	dotTopInk: '#fff',
 	raised: '#ffd400',
+	lv3: '#ff7a00',
+	covered: '#16213a',
 	front: '#b93a1a'
 };

@@ -45,7 +45,7 @@ function frame(r: VideoRow, more: Partial<VideoFrameData> = {}): VideoFrameData 
 		clock: '0:01.0',
 		beats: { count: 8, lit: 3 },
 		positions: {},
-		raised: [],
+		levels: {},
 		markers: {},
 		row: r,
 		...more
@@ -137,6 +137,74 @@ describe('場地', () => {
 				expect(field.numberPx).toBeGreaterThanOrEqual(MIN_TEXT_PX);
 			}
 		}
+	});
+});
+
+describe('場地：照層畫圓點（跟場上一樣）', () => {
+	/** 公尺換成影片上的 px。 */
+	const at = (f: FrameLayout['field'], [mx, my]: [number, number]) => {
+		const view = fullView(FIELD);
+		return [f.box.x + (mx - view.x) * f.pxPerM, f.box.y + (my - view.y) * f.pxPerM];
+	};
+
+	it('沒有人在空中：照原本的順序畫在真的位置，不縮小、沒有虛線圈', () => {
+		const positions = { a: [0, 0], b: [0, 0], c: [3, 1] } as Record<string, [number, number]>;
+		const { field } = layout(row({ empty: true }), { positions, markers: { a: '1', b: '2', c: '3' } });
+		expect(field.dots.map((d) => d.id)).toEqual(['a', 'b', 'c']);
+		for (const d of field.dots) {
+			expect(d.c).toEqual(at(field, positions[d.id]));
+			expect(d.s).toBe(1);
+			expect(d.level).toBe(1);
+			expect(d.r).toBe(field.dotPx / 2);
+			expect(d.covered).toBe(false);
+		}
+	});
+
+	it('三層金字塔疊在同一點：層高的後畫、往右上錯開、縮小；下面兩個人有虛線圈', () => {
+		const positions = { top: [0, 0], mid: [0, 0], base: [0, 0] } as Record<string, [number, number]>;
+		const { field } = layout(row({ empty: true }), {
+			positions,
+			levels: { top: 3, mid: 2 },
+			markers: { top: '1', mid: '2', base: '3' }
+		});
+		expect(field.dots.map((d) => [d.id, d.level])).toEqual([
+			['base', 1],
+			['mid', 2],
+			['top', 3]
+		]);
+		const [base, mid, top] = field.dots;
+		expect(base.c).toEqual(at(field, [0, 0]));
+		expect(mid.c[0]).toBeGreaterThan(base.c[0]);
+		expect(mid.c[1]).toBeLessThan(base.c[1]);
+		expect(top.c[0]).toBeGreaterThan(mid.c[0]);
+		expect(top.c[1]).toBeLessThan(mid.c[1]);
+		expect(mid.s).toBeLessThan(1);
+		expect(top.s).toBeLessThan(1);
+		expect(top.r).toBeCloseTo((field.dotPx / 2) * top.s, 6);
+		expect(field.dots.map((d) => d.covered)).toEqual([true, true, false]);
+	});
+
+	it('上面那層縮小後，標記的字還是不小於 28 px（1–12 條、直放橫放）', () => {
+		const positions = { top: [0, 0], mid: [0, 0], base: [0, 0] } as Record<string, [number, number]>;
+		for (const layoutKind of ['vertical', 'horizontal'] as const) {
+			for (let strips = 1; strips <= 12; strips++) {
+				const f: FieldConfig = { strips, layout: layoutKind };
+				const { field } = layoutFrame(
+					f,
+					frame(row({ empty: true }), { positions, levels: { top: 3, mid: 2 }, markers: { top: '12', mid: '小美', base: '3' } }),
+					measure
+				);
+				for (const d of field.dots) expect(field.markerPx * d.s).toBeGreaterThanOrEqual(MIN_TEXT_PX);
+			}
+		}
+	});
+
+	it('多字標記：膠囊直的那段（h）照字寬，縮小時一起縮', () => {
+		const positions = { mid: [0, 0], base: [0, 0] } as Record<string, [number, number]>;
+		const { field } = layout(row({ empty: true }), { positions, levels: { mid: 2 }, markers: { mid: '小美美', base: '3' } });
+		const mid = field.dots.find((d) => d.id === 'mid')!;
+		expect(mid.h).toBeGreaterThan(0);
+		expect(field.dots.find((d) => d.id === 'base')!.h).toBe(0);
 	});
 });
 

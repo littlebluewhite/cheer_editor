@@ -85,7 +85,7 @@ describe('videoFrame：開頭和結尾', () => {
 		expect(f.part).toBe('outro');
 		expect(f.flowSec).toBe(totalSeconds(flow));
 		expect(f.positions).toEqual(positionsAt(flow, totalSeconds(flow)));
-		expect(f.raised).toEqual(Object.keys(layersAt(flow, totalSeconds(flow))));
+		expect(f.levels).toEqual(layersAt(flow, totalSeconds(flow)));
 	});
 
 	it('結尾停在最後一個音樂段的最後一個八拍的最後一拍，不畫不存在的拍', () => {
@@ -146,11 +146,32 @@ describe('videoFrame：播放中', () => {
 		expect(f.beats).toEqual({ count: 8, lit: 1 });
 	});
 
-	it('positions、raised、markers 跟編輯器用的核心函式一樣', () => {
+	it('三層金字塔：levels 寫每個在空中的人第幾層（三層 3、中層 2），地上的人不列', () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'base' }]));
+		flow = flowOf(
+			addAction(flow, {
+				segmentId: 's1',
+				category: 'pyramid',
+				name: '金字塔',
+				start: 0,
+				length: 16,
+				note: '',
+				members: [
+					{ memberId: 'm1', role: '三層' },
+					{ memberId: 'm3', role: '中層' },
+					{ memberId: 'm2', role: '底層' }
+				]
+			})
+		);
+		expect(videoFrame(flow, VIDEO_INTRO_SEC + 1).levels).toEqual({ m1: 3, m3: 2 });
+		expect(videoFrame(flow, VIDEO_INTRO_SEC + 5).levels).toEqual({});
+	});
+
+	it('positions、levels、markers 跟編輯器用的核心函式一樣', () => {
 		const flow = sample();
 		const f = videoFrame(flow, VIDEO_INTRO_SEC + 4.3);
 		expect(f.positions).toEqual(positionsAt(flow, 4.3));
-		expect(f.raised).toEqual(Object.keys(layersAt(flow, 4.3)));
+		expect(f.levels).toEqual(layersAt(flow, 4.3));
 	});
 
 	it('八拍表合起來的列：where 還是現在這一個八拍', () => {
