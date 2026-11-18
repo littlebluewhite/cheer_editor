@@ -4,9 +4,18 @@
 import { fieldGeometry, fieldNumbers, frontLabelAt, fullView, type FieldConfig, type GlobalRole, type VideoFrameData } from '#lib/core';
 import { isLongMarker, markerWidth } from '../components/marker';
 import { VIDEO_COLORS, type ColorKey } from './colors';
-import { VIDEO_H, VIDEO_W, type Box, type FrameLayout, type TextItem } from './layout';
+import { VIDEO_H, VIDEO_W, type Box, type FrameLayout, type Measure, type TextItem } from './layout';
 
 const FONT = '"PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+
+/** 真的量字：一個 OffscreenCanvas 的 measureText，字型跟畫的時候一樣，量的和畫的才一樣寬。只在瀏覽器用。 */
+export function canvasMeasure(): Measure {
+	const ctx = new OffscreenCanvas(1, 1).getContext('2d')!;
+	return (text, px, weight) => {
+		ctx.font = `${weight} ${px}px ${FONT}`;
+		return ctx.measureText(text).width;
+	};
+}
 
 /** 圓點的半徑（公尺），跟 Field.svelte 的 DOT_R 一樣；圓點的線寬、陰影都照這個比例放大。 */
 const DOT_R = 0.3;

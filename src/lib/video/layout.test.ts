@@ -14,11 +14,9 @@ import {
 	type VideoFrameData,
 	type VideoRow
 } from '#lib/core';
+import { fakeMeasure as measure } from '../test-fakes';
 import { flowOf } from '../test-flows';
-import { MIN_TEXT_PX, VIDEO_H, VIDEO_W, layoutFrame, overflowEights, type FrameLayout, type Measure } from './layout';
-
-/** 假的量字：英數字 0.6 個字高寬，其他（中文、全形符號）1 個字高寬。 */
-const measure: Measure = (t, px) => [...t].reduce((w, c) => w + (/[\x00-\x7f]/.test(c) ? 0.6 : 1) * px, 0);
+import { MIN_TEXT_PX, VIDEO_H, VIDEO_W, layoutFrame, overflowEights, type FrameLayout } from './layout';
 
 const FIELD: FieldConfig = { strips: 9, layout: 'vertical' };
 /** 三塊：上方 0–320、場地 320–1160、下面那一列 1160–1880。 */

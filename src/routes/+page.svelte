@@ -62,6 +62,7 @@
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import SquadBar from '#lib/components/SquadBar.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
+	import VideoExport from '#lib/components/VideoExport.svelte';
 	import WalkForm from '#lib/components/WalkForm.svelte';
 	import { revealAlert } from '#lib/components/reveal.js';
 
@@ -78,9 +79,11 @@
 		cellAt?: ComponentProps<typeof CueGrid>['cellAt'];
 		/** 段設定的波形：滑鼠位置換成音樂檔的秒數。 */
 		waveXToSec?: ComponentProps<typeof SegmentSettings>['waveXToSec'];
+		/** 流程影片的量字：預設用 Canvas 量；jsdom 沒有 Canvas，測試換成假的。 */
+		measure?: ComponentProps<typeof VideoExport>['measure'];
 	}
 
-	let { editor: given, toMeters, cellAt, waveXToSec }: Props = $props();
+	let { editor: given, toMeters, cellAt, waveXToSec, measure }: Props = $props();
 	// 編輯器 module 一開始給了就不換：放進 context 的就是這一個。
 	// svelte-ignore state_referenced_locally
 	const editor = given ?? new Editor(browserAdapters());
@@ -113,6 +116,8 @@
 	let settingsFocus = $state<ComponentProps<typeof FlowSettings>['focus']>();
 	/** 八拍表列印畫面開著：印的時候只印它，不印編輯畫面。 */
 	let printOpen = $state(false);
+	/** 輸出影片的對話框開著：輸出時不能改流程、不能播放。 */
+	let videoOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = isTouchScreen();
 
@@ -364,8 +369,10 @@
 		}
 	}
 
-	/** 段設定、流程設定、八拍表、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
-	const overlayOpen = $derived(!!openSegmentId || settingsOpen || printOpen || editor.file.asking || !!editor.file.draftAsk);
+	/** 段設定、流程設定、八拍表、輸出影片、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
+	const overlayOpen = $derived(
+		!!openSegmentId || settingsOpen || printOpen || videoOpen || editor.file.asking || !!editor.file.draftAsk
+	);
 	/** 有東西蓋在上面（上面那些，或表單裡打開的名詞對照表這種對話框）：快捷鍵不動底下的編輯畫面。 */
 	const covered = () => overlayOpen || modalOpen();
 
@@ -720,6 +727,17 @@
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" /><span class="tightest-hide">八拍表</span></button
 				>
+				<!-- 輸出影片只在電腦：窄螢幕、觸控螢幕（手機、iPad）不出現。檢視模式也能輸出（不改流程） -->
+				{#if view === 'edit' && !narrow && !touchScreen}
+					<button
+						type="button"
+						class="ghost"
+						title={flow.segments.length ? '輸出影片' : '先加一段'}
+						aria-label="輸出影片"
+						disabled={!flow.segments.length}
+						onclick={() => (videoOpen = true)}><Icon name="video" /><span class="short-hide">輸出影片</span></button
+					>
+				{/if}
 				{#if view === 'edit' && !narrow}
 					<button type="button" class="ghost" title="流程設定" disabled={!session.editable} onclick={() => (settingsOpen = true)}
 						><Icon name="settings" /><span class="short-hide"><span class="narrow-hide">流程</span>設定</span></button
@@ -1009,6 +1027,9 @@
 				settingsFocus = undefined;
 			}}
 		/>
+	{/if}
+	{#if videoOpen}
+		<VideoExport {flow} {measure} onclose={() => (videoOpen = false)} />
 	{/if}
 	{#if printOpen}
 		<PrintSheet

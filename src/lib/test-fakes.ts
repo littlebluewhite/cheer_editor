@@ -21,6 +21,7 @@ import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
 import { createFakeVideoEncoder } from '#lib/video/fake-encoder.js';
+import type { Measure } from '#lib/video/layout.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
@@ -169,15 +170,18 @@ export async function openFile(bytes: Uint8Array, label = '開啟流程檔', nam
 }
 
 /**
- * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算也是假的：`render(Page, page.props)`。
+ * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算、量字也是假的：`render(Page, page.props)`。
  * adapters 跟 testEditor 一樣，只有沒送出的字用真的（jsdom 有焦點和 change，存檔、⌘Z、關分頁要看到欄位裡打的字），
  * 畫面時鐘也用真的（jsdom 的 requestAnimationFrame，測試等下一格畫面）。
  * 測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
  */
 export function editorPage(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const t = testEditor(flow, { pendingInput: domPendingInput, nextFrame: animationFrame, ...adapters });
-	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt } };
+	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt, measure: fakeMeasure } };
 }
+
+/** 假的量字（流程影片的版面；jsdom 沒有 Canvas，見 ADR 0002）：英數字 0.6 個字高寬，其他（中文、全形符號）1 個字高寬。 */
+export const fakeMeasure: Measure = (t, px) => [...t].reduce((w, c) => w + (/[\x00-\x7f]/.test(c) ? 0.6 : 1) * px, 0);
 
 /** 假的座標換算：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */
 export const fakeToMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
