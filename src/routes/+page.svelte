@@ -630,7 +630,7 @@
 					<!-- 重複範圍：A、B 放在播放頭（播放中也能按），✕ 拿掉 -->
 					<button
 						type="button"
-						class="ab"
+						class="ab set-end"
 						aria-label="A：重複從播放頭開始"
 						title={!flow.segments.length || playback.canSetA ? 'A：重複從播放頭開始' : 'A 不能放在結尾'}
 						disabled={!playback.canSetA}
@@ -638,7 +638,7 @@
 					>
 					<button
 						type="button"
-						class="ab"
+						class="ab set-end"
 						aria-label="B：重複到播放頭"
 						title={playback.range ? (playback.canSetB ? 'B：重複到播放頭' : 'B 要在 A 後面') : '先放 A'}
 						disabled={!playback.canSetB}
@@ -2340,6 +2340,28 @@
 		.ab {
 			min-width: 20px;
 			padding-inline: 3px;
+		}
+	}
+	/* 1024×768（手指）：A、B 各要 32px，右邊的按鈕會擠出畫面、流程名字被擠掉。
+	   藏起 A、B（用手指在八拍尺上面那一條拖出範圍）；✕ 留著，才拿得掉範圍。右邊的按鈕、名字那一欄靠緊，
+	   只有圖示的按鈕從 40px 寬收成 34px（手指照樣至少 32px）。 */
+	@media (max-width: 1100px) and (max-height: 860px) and (pointer: coarse) {
+		.set-end {
+			display: none;
+		}
+		.actions {
+			gap: 2px;
+		}
+		.title {
+			gap: 4px;
+		}
+		.topbar .actions :global(button.ghost),
+		.topbar .actions .btn.ghost,
+		.topbar .guide-link,
+		.topbar .more,
+		.topbar .ab {
+			min-width: 34px;
+			padding-inline: 5px;
 		}
 	}
 	@media (max-width: 1280px) {

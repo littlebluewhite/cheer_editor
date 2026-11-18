@@ -303,7 +303,8 @@ const topbarLayout = () =>
 		const name = (el) => (el.getAttribute('aria-label') || el.title || el.textContent).trim().slice(0, 12);
 		const bad = rects.filter(([el, r]) => {
 			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-			return r.left < -1 || r.right > innerWidth + 1 || !t || !el.contains(t);
+			// 跟上方列的右邊比：手指的畫面（mobile）東西擠出去時 innerWidth 會跟著變寬，跟 innerWidth 比看不出來
+			return r.left < -1 || r.right > Math.min(innerWidth, b.right) + 1 || !t || !el.contains(t);
 		}).map(([el]) => name(el));
 		const overlap = [];
 		for (const [a, ra] of rects) for (const [c, rc] of rects)
@@ -316,7 +317,7 @@ const topbarLayout = () =>
 			名字寬: Math.round(title.width), 點不到或出畫面: bad, 疊在一起: overlap };`);
 
 // 螢幕矮（高 860px 以下，例：1024×768、1280×720、橫拿的 iPad 1180×820）時，播放區併進上方列那一行，省下來的高度給場地（N55）。
-for (const [w, h, touch] of [[1024, 768], [1280, 720], [1366, 768], [1180, 820, true]]) {
+for (const [w, h, touch] of [[1024, 768], [1280, 720], [1366, 768], [1180, 820, true], [1024, 768, true]]) {
 	await check(`${w}×${h}${touch ? '（觸控）' : ''} 螢幕矮：播放區併進上方列，上方列只有一行（64px 以下）；每個按鈕點得到、不疊、不出畫面，流程名字至少露出 3 個字（N55）`, async () => {
 		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
 		await openSample();
