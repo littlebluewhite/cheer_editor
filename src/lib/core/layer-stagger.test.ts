@@ -5,6 +5,7 @@ import { layerStagger, type LayerDot } from './layer-stagger';
 const dot = (id: string, level: number, c: [number, number], more: Partial<LayerDot> = {}): LayerDot => ({
 	id,
 	level,
+	at: c,
 	c,
 	r: 0.3,
 	h: 0,
@@ -64,9 +65,17 @@ describe('layerStagger：照層錯開、縮小（場上和流程影片共用）'
 		expect(out.drawn.filter((d) => d.covered)).toEqual([]);
 	});
 
-	it('膠囊只有兩端碰到：照膠囊的形狀算碰到', () => {
-		const dots = [dot('base', 1, [0, 0]), dot('mid', 2, [0.8, 0], { h: 0.4 })];
+	it('只是站在隔壁（圓點、膠囊邊緣碰到）不算疊在一起：不錯開、沒有虛線圈', () => {
+		const dots = [dot('base', 1, [0, 0]), dot('mid', 2, [0.5, 0]), dot('top', 3, [0.8, 0], { h: 0.4 })];
 		const out = layerStagger(dots, 1, noFloor);
+		expect(out.shifts).toEqual({});
+		expect(out.drawn.filter((d) => d.covered)).toEqual([]);
+	});
+
+	it('影片的 c 是 px：疊不疊照場上真的位置 at（公尺）算', () => {
+		const dots = [dot('base', 1, [100, 100], { at: [3, 3] }), dot('mid', 2, [102, 100], { at: [3.02, 3] })];
+		const out = layerStagger(dots, 100, noFloor);
 		expect(out.shifts.mid).toEqual({ offset: 0.22, scale: 0.85 });
+		expect(out.drawn.map((d) => d.covered)).toEqual([true, false]);
 	});
 });

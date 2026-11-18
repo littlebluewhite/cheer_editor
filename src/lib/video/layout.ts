@@ -249,7 +249,7 @@ function layoutField(field: FieldConfig, frame: VideoFrameData): VideoFieldLayou
 			const mark = frame.markers[id] ?? '';
 			const pill = isLongMarker(mark) ? Math.max(dotPx, (markerWidth(mark) / 2) * markerPx + 0.14 * unit) : dotPx;
 			const c: [number, number] = [box.x + (mx - view.x) * pxPerM, box.y + (my - view.y) * pxPerM];
-			return { id, level: frame.levels[id] ?? 1, c, r: dotPx / 2, h: (pill - dotPx) / 2, font: markerPx };
+			return { id, level: frame.levels[id] ?? 1, at: frame.positions[id], c, r: dotPx / 2, h: (pill - dotPx) / 2, font: markerPx };
 		})
 		// 後畫的蓋在上面：層高的排後面（同一層照原本的順序）
 		.toSorted((a, b) => a.level - b.level);

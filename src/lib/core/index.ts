@@ -241,7 +241,7 @@ export type { VideoFrameData, VideoRow } from './video-frame';
 export { firstBeatPreview, playbackPlan, playStartSec, repeatSpan, resumeSec } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
-export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
+export { actionHints, duplicateNames, musicOverrunSec, samePoint, stackedMembers } from './hints';
 
 export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 

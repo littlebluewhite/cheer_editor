@@ -151,7 +151,7 @@ describe('上層、中層畫在最上面', () => {
 		globalRole: 'base'
 	}));
 	const dotOf = (id: string) => document.querySelector<SVGGElement>(`[data-member-id="${id}"]`)!;
-	/** 圓點裡那一層 g 的 transform（放大，蓋到下面的人時再錯開、縮小）。 */
+	/** 圓點裡那一層 g 的 transform（放大，跟下面的人疊在同一點時再錯開、縮小）。 */
 	const inner = (id: string) => dotOf(id).querySelector(':scope > g')!.getAttribute('transform')!;
 
 	it('照層畫：高的層後畫（蓋在上面）；第 2 層以上黃框加陰影，三層再加橘框', () => {
@@ -167,7 +167,7 @@ describe('上層、中層畫在最上面', () => {
 		expect(dots.map((d) => d.classList.contains('lv3'))).toEqual([false, false, true]);
 	});
 
-	it('蓋到下面一層的人時往右上錯開、縮小，層越高錯越多；旁邊沒人的不動', () => {
+	it('跟下面一層的人疊在同一點時往右上錯開、縮小，層越高錯越多；旁邊沒人的不動', () => {
 		render(Field, {
 			field: { strips: 9, layout: 'vertical' },
 			members: trio,
@@ -177,6 +177,19 @@ describe('上層、中層畫在最上面', () => {
 		expect(inner('m2')).not.toContain('translate');
 		expect(inner('m1')).toMatch(/translate\(0\.22,-0\.22\) scale\(0\.85\)$/);
 		expect(inner('m3')).not.toContain('translate');
+	});
+
+	it('只是站在隔壁（圓點碰到邊，位置沒疊在同一點）：不錯開、不縮小、不畫虛線圈', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio,
+			// 隔 1/4 格（約 0.46 公尺）比圓點（0.6 公尺）窄：隔壁的圓點一定碰到
+			positions: { m1: [0, 0], m2: [0.45, 0], m3: [0, 0.45] },
+			levels: { m1: 2 }
+		});
+		expect(inner('m1')).not.toContain('translate');
+		expect(inner('m1')).not.toContain('scale(0.85)');
+		expect(document.querySelectorAll('.covered')).toHaveLength(0);
 	});
 
 	it('被不同層蓋到的人多畫一圈虛線；同一層擠在一起的不畫', () => {
@@ -189,11 +202,19 @@ describe('上層、中層畫在最上面', () => {
 		expect(document.querySelectorAll('circle.covered')).toHaveLength(1);
 	});
 
-	it('多字膠囊只有兩端碰到下面一層：照樣錯開，下面的人照膠囊的形狀畫虛線框', () => {
+	it('多字膠囊：疊在同一點才錯開，下面的人照膠囊的形狀畫虛線框；只有兩端碰到的不錯開、不畫', () => {
 		const markers = { m1: '隊員二十五', m2: '隊員二十六' };
 		const positions = { m1: [0, 0] as Position, m2: [0, 0] as Position };
-		render(Field, { field: { strips: 9, layout: 'vertical' }, members: trio.slice(0, 2), markers, positions });
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio.slice(0, 2),
+			markers,
+			positions,
+			levels: { m1: 2 }
+		});
 		const w = Number(dotOf('m1').querySelector('rect')!.getAttribute('width'));
+		expect(inner('m1')).toContain('translate');
+		expect(document.querySelectorAll('rect.covered')).toHaveLength(1);
 		document.body.innerHTML = '';
 		// 中心隔得比兩個圓點遠、比兩個膠囊近：只有兩端疊在一起
 		render(Field, {
@@ -204,8 +225,8 @@ describe('上層、中層畫在最上面', () => {
 			levels: { m1: 2 }
 		});
 		expect(w - 0.1).toBeGreaterThan(0.6);
-		expect(inner('m1')).toContain('translate');
-		expect(document.querySelectorAll('rect.covered')).toHaveLength(1);
+		expect(inner('m1')).not.toContain('translate');
+		expect(document.querySelectorAll('.covered')).toHaveLength(0);
 	});
 });
 

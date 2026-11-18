@@ -24,16 +24,18 @@ export function duplicateNames(members: Member[]): string[] {
 	return [...dup];
 }
 
+/** 兩個位置是不是疊在同一點（差不到 STACK_M）。場上「照層錯開畫」也用這個：只是站在隔壁的不算。 */
+export function samePoint(p: Position, q: Position): boolean {
+	return Math.hypot(p[0] - q[0], p[1] - q[1]) < STACK_M;
+}
+
 /** 這一刻疊在同一點的人：每一組照名單順序，至少 2 個人。 */
 export function stackedMembers(members: Member[], positions: Record<string, Position>): Member[][] {
 	const groups: Member[][] = [];
 	for (const m of members) {
 		const p = positions[m.id];
 		if (!p) continue;
-		const group = groups.find((g) => {
-			const q = positions[g[0].id];
-			return Math.hypot(p[0] - q[0], p[1] - q[1]) < STACK_M;
-		});
+		const group = groups.find((g) => samePoint(p, positions[g[0].id]));
 		if (group) group.push(m);
 		else groups.push([m]);
 	}
