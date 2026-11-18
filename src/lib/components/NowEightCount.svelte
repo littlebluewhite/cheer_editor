@@ -33,12 +33,8 @@
 			...r.walks,
 			...r.formations.map((f) => f.caption)
 		].join('　');
-	/** 換段的那一列前面寫段名（這一列的標題本來就寫）。 */
-	const newSegment = (i: number) => {
-		const r = near.rows[i]!;
-		const prev = near.rows[i - 1];
-		return !prev || prev.segmentLabel !== r.segmentLabel;
-	};
+	/** 換段的那一列（段的第一個八拍、口號段）前面寫段名（這個八拍的標題本來就寫）。 */
+	const newSegment = (r: EightCountRow) => r.eight === null || r.eight === 1;
 </script>
 
 <section class="now-eight" aria-label="前後八拍">
@@ -76,7 +72,7 @@
 				</div>
 			{:else}
 				<button type="button" class="slot near" data-slot={row.eight ?? '整段'} aria-label="跳到{where(row)}：{summary(row)}" onclick={() => onjump(row.startSec)}>
-					{#if newSegment(i)}<span class="seg">{row.segmentLabel}</span>{/if}
+					{#if newSegment(row)}<span class="seg">{row.segmentLabel}</span>{/if}
 					<span class="num">{row.eight ?? '整段'}</span>
 					<span class="sum">{summary(row)}</span>
 				</button>

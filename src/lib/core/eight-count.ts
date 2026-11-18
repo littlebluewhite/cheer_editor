@@ -266,7 +266,7 @@ export function nearbyEights(
 	return { rows: slots, beat };
 }
 
-const withRole = (m:{ name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
+const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
 
 /** 全隊的表：「小A（上層）、小C」；全隊都在寫「全隊」，有任務角色再列出來「全隊：小A（上層）、小B（主底）」。 */
 function teamWho(flow: Flow, action: Action): string {

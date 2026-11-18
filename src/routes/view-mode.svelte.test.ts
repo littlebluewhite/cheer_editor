@@ -132,7 +132,7 @@ describe('檢視模式', () => {
 		expect(screen.queryByRole('textbox', { name: '名稱' })).toBeNull();
 		expect(screen.queryByRole('tab', { name: '動作' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '放大' })).toBeNull();
-		// 看的東西：「我」選單、八拍表這一列、還沒點動作時說怎麼看
+		// 看的東西：「我」選單、前後八拍、還沒點動作時說怎麼看
 		const me = screen.getByRole('combobox', { name: '我' }) as HTMLSelectElement;
 		const now = screen.getByRole('region', { name: '前後八拍' });
 		expect(now.textContent).toContain('Lib');

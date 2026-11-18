@@ -299,7 +299,7 @@
 			// SVG 後畫的蓋在上面：上層、中層排最後。
 			.sort((a, b) => Number(a.up) - Number(b.up))
 	);
-	/** 有選人時只畫選到的人的影子和線；沒選人時畫全隊。 */
+	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
 	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
 		members.flatMap((m) => (ghosts[m.id] && shown(m.id) ? [{ id: m.id, p: ghosts[m.id] }] : []))

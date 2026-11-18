@@ -1,4 +1,4 @@
-// 手機（窄螢幕）的檢視模式（#175，docs/adr/0005-ipad-touch.md）：上面場地、中間播放鈕、下面現在這一列八拍表；
+// 手機（窄螢幕）的檢視模式（#175，docs/adr/0005-ipad-touch.md）：上面場地、中間播放鈕、下面前後八拍（這個和下一個八拍）；
 // 從名單選一次「我」，這台裝置照流程記住（不進流程檔），之後打開就把我標亮。
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
@@ -34,7 +34,7 @@ const me = () => screen.getByLabelText('我') as HTMLSelectElement;
 const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
 
 describe('手機的檢視模式', () => {
-	it('開檔直接看到場地、播放鈕、八拍表這一列；按播放，播放頭和八拍表跟著走', async () => {
+	it('開檔直接看到場地、播放鈕、前後八拍；按播放，播放頭和八拍表跟著走', async () => {
 		const { engine, frames } = await openOnPhone();
 		// 不停在被擋住的編排畫面
 		expect(screen.queryByRole('region', { name: '視窗太窄了' })).toBeNull();
@@ -61,7 +61,7 @@ describe('手機的檢視模式', () => {
 		expect(screen.queryByRole('button', { name: /設定/ })).toBeNull();
 	});
 
-	it('選「我」是小A：場上標亮小A，八拍表這一列只寫小A的；不算改流程', async () => {
+	it('選「我」是小A：場上標亮小A，前後八拍只寫小A的；不算改流程', async () => {
 		const { session } = await openOnPhone();
 		expect(dot('m2').classList.contains('selected')).toBe(false);
 		await fireEvent.change(me(), { target: { value: 'm2' } });
