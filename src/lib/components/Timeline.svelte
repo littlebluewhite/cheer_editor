@@ -520,8 +520,8 @@
 <style>
 	.timeline {
 		overflow: auto;
-		/* 捲到某一條泳道（scrollIntoView、Tab 到）時，扣掉固定在上面的段列、重複範圍那一條、八拍尺、站位列（32 + 16 + 26 + 76），不停在它們底下 */
-		scroll-padding-top: 150px;
+		/* 捲到某一條泳道（scrollIntoView、Tab 到）時，扣掉固定在上面的段列、重複範圍那一條、八拍尺、站位列（32 + 22 + 26 + 76），不停在它們底下 */
+		scroll-padding-top: 156px;
 		background: var(--surface, #fff);
 		border-top: 1px solid var(--line, #d8dee9);
 		box-shadow: 0 -1px 0 rgba(22, 33, 58, 0.03);
@@ -551,16 +551,16 @@
 	}
 	.range-row {
 		top: 32px;
-		height: 16px;
+		height: 22px;
 	}
 	.ruler-row {
-		top: 48px;
+		top: 54px;
 		height: 26px;
 	}
 	/* 站位列在八拍尺下面；疊在泳道的名字欄（z 6）和走位條上面，在段列、八拍尺底下。 */
 	.film-pin {
 		position: sticky;
-		top: 74px;
+		top: 80px;
 		z-index: 7;
 		background: var(--surface, #fff);
 	}
@@ -689,11 +689,14 @@
 		}
 		.range-row {
 			top: 44px;
-			height: 24px;
+			height: 28px;
 		}
 		.ruler-row {
-			top: 68px;
+			top: 72px;
 			height: 34px;
+		}
+		.film-pin {
+			top: 106px;
 		}
 		.add,
 		.insert,

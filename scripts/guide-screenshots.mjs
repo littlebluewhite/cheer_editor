@@ -384,19 +384,29 @@ await shot('editor', [
 	[4, `q('.timeline-host')`]
 ]);
 
-// 7 時間軸
+// 7 時間軸：在八拍尺上面那一條拉出 4-1 到 5-1 的重複範圍（Lib 那一段），拍完拿掉
+{
+	const strip = await js(`return $rect(q('[data-repeat-strip]'))`);
+	const a = await js(`return $tick('4')`);
+	const b = await js(`return $tick('5')`);
+	await drag(a.l + 2, strip.y, b.l + 2, strip.y);
+	await sleep(200);
+}
 await shot(
 	'timeline',
 	[
 		[1, `q('.row.segs')`, { x: 0.75, y: 0.5 }],
-		[2, `q('.row.ruler-row')`, { x: 0.9, y: 0.5 }],
+		[2, `q('.row.ruler-row')`, { x: 0.8, y: 1 }],
 		[3, `q('.row.film')`, { x: 0.9, y: 0.5 }],
 		[4, `[...document.querySelectorAll('[data-lane]')]`, { x: 0.9, y: 0.5 }],
 		[5, `q('.timeline-host .ph')`, { x: 1, y: 0.4 }],
-		[6, `q('.walk[data-walk]')`, { x: 1, y: 0.5 }]
+		[6, `q('.walk[data-walk]')`, { x: 1, y: 0.5 }],
+		[7, `q('[data-repeat-range]')`, { x: 1, y: 0.5 }]
 	],
 	`[q('.row.segs'), ...document.querySelectorAll('[data-lane]')]`
 );
+await js(`q('button[aria-label="拿掉重複範圍"]').click();`);
+await sleep(200);
 
 // 8 八拍表
 await js(`$btn('八拍表').click();`);

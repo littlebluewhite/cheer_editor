@@ -2257,8 +2257,9 @@
 			padding-inline: 7px;
 		}
 	}
-	/* 1024×768：八拍表最後才只留圖示（使用說明都叫它「八拍表」）；「編排｜練習」、速度、「⋯」左右收小。 */
-	@media (max-width: 1100px) and (max-height: 860px) {
+	/* 1024×768：八拍表最後才只留圖示（使用說明都叫它「八拍表」）；「編排｜練習」、速度、「⋯」左右收小。
+	   橫拿的 iPad（1180×820，手指）也是：重複旁邊的 A、B、✕ 要 32px 才點得到，八拍表的字放不下。 */
+	@media (max-width: 1100px) and (max-height: 860px), (max-width: 1180px) and (max-height: 860px) and (pointer: coarse) {
 		.tightest-hide {
 			position: absolute;
 			width: 1px;
@@ -2282,6 +2283,18 @@
 		/* 多了「輸出影片」的圖示：間距再收 2px，流程名字才露得出 3 個字 */
 		.topbar {
 			gap: 8px;
+		}
+	}
+	/* 螢幕矮、播放區併進上方列那一行時：重複旁邊的 A、B、✕ 靠緊一點；滑鼠才收窄，手指照樣至少 32px */
+	@media (max-width: 1670px) and (max-height: 860px) {
+		.repeat-group {
+			gap: 2px;
+		}
+	}
+	@media (max-width: 1670px) and (max-height: 860px) and (pointer: fine) {
+		.ab {
+			min-width: 22px;
+			padding-inline: 4px;
 		}
 	}
 	@media (max-width: 1280px) {

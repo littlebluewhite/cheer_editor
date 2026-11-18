@@ -552,8 +552,8 @@
 		position: sticky;
 		left: 0;
 		z-index: 6;
-		/* 捲到這一行時（點場上的人）停在時間軸黏在上面的段列（32px）、重複範圍那一條（16px）、八拍尺（26px）下面 */
-		scroll-margin-top: 74px;
+		/* 捲到這一行時（點場上的人）停在時間軸黏在上面的段列（32px）、重複範圍那一條（22px）、八拍尺（26px）下面 */
+		scroll-margin-top: 80px;
 		width: var(--lab-w, 120px);
 		flex: none;
 		justify-content: flex-start;
