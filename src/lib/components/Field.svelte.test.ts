@@ -394,8 +394,10 @@ describe('在場上選人、整組拖', () => {
 	it('框選照畫出來的位置：框住錯開畫的三層就選到他，沒框到他真正的位置也算', async () => {
 		const session = renderEditing(members, { m1: [0, 0], m2: [0, 0] }, { toMeters, levels: { m1: 3 } });
 		const svg = screen.getByRole('group', { name: '場地' });
-		await fireEvent.pointerDown(svg, { clientX: 30, clientY: -60, button: 0 });
+		// 從空地開始框（不在錯開畫的圓點上）
+		await fireEvent.pointerDown(svg, { clientX: 10, clientY: -70, button: 0 });
 		await fireEvent.pointerMove(svg, { clientX: 60, clientY: -30 });
+		expect(document.querySelector('[data-lasso]')).not.toBeNull();
 		await fireEvent.pointerUp(svg, { clientX: 60, clientY: -30 });
 		expect(session.selectedMemberIds).toEqual(['m1']);
 	});
