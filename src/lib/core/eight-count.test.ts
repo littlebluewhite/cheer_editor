@@ -313,10 +313,10 @@ describe('八拍表的列：拍點', () => {
 				category: 'stunt',
 				name: 'Cradle',
 				cues: [
-					{ kind: 'step', from: 5, to: 5, span: '2-5・1 拍', lead: '', continued: false, word: '下手', who: null },
-					{ kind: 'count', from: 6, to: 6, span: '2-6・1 拍', lead: '', continued: false, word: 'down', who: null },
-					{ kind: 'count', from: 7, to: 7, span: '2-7・1 拍', lead: '', continued: false, word: 'up', who: null },
-					{ kind: 'motion', from: 8, to: 8, span: '2-8・1 拍', lead: '', continued: false, word: 'high V', who: '上層' }
+					{ kind: 'step', from: 5, to: 5, start: 8, end: 10, span: '2-5・1 拍', lead: '', continued: false, word: '下手', who: null },
+					{ kind: 'count', from: 6, to: 6, start: 10, end: 12, span: '2-6・1 拍', lead: '', continued: false, word: 'down', who: null },
+					{ kind: 'count', from: 7, to: 7, start: 12, end: 14, span: '2-7・1 拍', lead: '', continued: false, word: 'up', who: null },
+					{ kind: 'motion', from: 8, to: 8, start: 14, end: 16, span: '2-8・1 拍', lead: '', continued: false, word: 'high V', who: '上層' }
 				],
 				phases: []
 			}
@@ -331,13 +331,13 @@ describe('八拍表的列：拍點', () => {
 		const rows = eightCountRows(flow, null);
 		const span = '1-7 到 2-2・4 拍';
 		expect(rows[0].cues[0].cues).toEqual([
-			{ kind: 'count', from: 7, to: 8, span, lead: '', continued: false, word: 'down', who: null }
+			{ kind: 'count', from: 7, to: 8, start: 12, end: 16, span, lead: '', continued: false, word: 'down', who: null }
 		]);
 		expect(rows[1].cues).toEqual([
 			{
 				category: 'stunt',
 				name: 'Lib',
-				cues: [{ kind: 'count', from: 1, to: 2, span, lead: '', continued: true, word: 'down', who: null }],
+				cues: [{ kind: 'count', from: 1, to: 2, start: 0, end: 4, span, lead: '', continued: true, word: 'down', who: null }],
 				phases: []
 			}
 		]);
@@ -351,7 +351,7 @@ describe('八拍表的列：拍點', () => {
 		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 1 })) };
 		// 下手從 1-2& 佔 2 拍：格子佔 2 到 4，結束拍跟拍點小窗一樣寫 1-3&
 		expect(eightCountRows(flow, null)[0].cues[0].cues).toEqual([
-			{ kind: 'step', from: 2, to: 4, span: '1-2& 到 1-3&・2 拍', lead: '1-2&', continued: false, word: '下手', who: null }
+			{ kind: 'step', from: 2, to: 4, start: 3, end: 7, span: '1-2& 到 1-3&・2 拍', lead: '1-2&', continued: false, word: '下手', who: null }
 		]);
 	});
 
@@ -423,7 +423,7 @@ describe('八拍表的列：環節', () => {
 			{
 				category: 'stunt',
 				name: 'Lib',
-				cues: [{ kind: 'count', from: 8, to: 8, span: '1-8・1 拍', lead: '', continued: false, word: 'down', who: null }],
+				cues: [{ kind: 'count', from: 8, to: 8, start: 14, end: 16, span: '1-8・1 拍', lead: '', continued: false, word: 'down', who: null }],
 				phases: [
 					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b' },
 					{ label: '中段', from: 7, to: 8, color: '#475569' }
@@ -494,6 +494,7 @@ describe('前後八拍：檢視模式跟著播放頭看前三個、這個、後�
 		const near = nearbyEights(sample(), null, 3.2 + 2 * 0.4 + 0.1, 3, 3);
 		expect(near.rows.map((r) => r && r.eightText)).toEqual([null, null, '1', '2', '3', '整段 10.0 秒', null]);
 		expect(near.beat).toBe(3);
+		expect(near.half).toBe(4);
 	});
 
 	it('做到一半的動作：後面的八拍也寫得出人和任務角色（開始那一列可能不在畫面上）', () => {

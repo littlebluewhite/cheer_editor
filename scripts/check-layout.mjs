@@ -2905,6 +2905,26 @@ for (const [w, h] of [[1440, 900], [1180, 820]]) {
 	});
 }
 
+await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍：從第 1 個八拍（上面三個空格）跳到第 4 個，這個八拍的框不往下掉', async () => {
+	// 觸控時前後的八拍是至少 40px 的按鈕（app.css），空格要跟著一樣高
+	await setTouchViewport(1180, 820);
+	await openBigFlow(`flow = of(c.updateSegment(flow, 's1', { eights: 12, lastBeats: 8 }));`);
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
+	await sleep(400);
+	const top = () => js(`if (!matchMedia('(pointer: coarse)').matches) return '不是觸控';
+		const now = document.querySelector('.view-panel .slot.now');
+		return { 第幾個: now.dataset.slot, 上緣: Math.round(now.getBoundingClientRect().top) };`);
+	const a = await top();
+	await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
+	await sleep(300);
+	const b = await top();
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
+	await clearTouch();
+	await setViewport(1440, 900);
+	if (typeof a === 'string') return { ok: false, value: a };
+	return { ok: a.第幾個 === '1' && b.第幾個 === '4' && Math.abs(a.上緣 - b.上緣) <= 1, value: { 跳之前: a, 跳之後: b } };
+});
+
 for (const [w, h] of [[1440, 900], [1024, 768]]) {
 	await check(`${w}×${h} 段設定改 BPM 後出現「照音樂長度重算八拍數」：第一拍、敲擊測速不被推走（N48）`, async () => {
 		await setViewport(w, h);

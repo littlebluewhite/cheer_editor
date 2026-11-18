@@ -63,6 +63,9 @@ export interface EightCountCue {
 	/** 這一列的第幾格到第幾格（1–8）。 */
 	from: number;
 	to: number;
+	/** 這一列的第幾個半拍到第幾個半拍（0–16，不含 end）：從 & 開始、結束的拍點佔不滿頭尾那兩格。 */
+	start: number;
+	end: number;
 	/** 整個拍點，跟拍點小窗一樣：「1-6 到 1-7・2 拍」「2-1&・1 拍」（跨列的兩列都寫整個）。 */
 	span: string;
 	/** 從 & 開始的拍點在開始那一列寫在字前面的拍：「1-1&」（格子只能整格）；其他是空的。 */
@@ -189,6 +192,8 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 						kind: cue.kind,
 						from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
 						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
+						start,
+						end,
 						span: beatSpanText(segment, a.start + cue.at, cue.len),
 						lead: first && (a.start + cue.at) % HALF_BEATS_PER_BEAT === 1 ? atText(segment, a.start + cue.at) : '',
 						continued: !first,
@@ -241,6 +246,8 @@ export interface NearbyEights {
 	rows: (EightCountRow | null)[];
 	/** 播放頭在這個八拍的第幾拍（1–8）；口號段不數拍是 null。 */
 	beat: number | null;
+	/** 播放頭在這個八拍的第幾個半拍（0–15，對 EightCountCue 的 start、end）；口號段是 null。 */
+	half: number | null;
 }
 
 /**
@@ -259,11 +266,9 @@ export function nearbyEights(
 	const slots = Array.from({ length: before + 1 + after }, (_, k) => rows[i - before + k] ?? null);
 	const pos = rows.length ? toPosition(flow, sec) : null;
 	const segment = pos && flow.segments.find((s) => s.id === pos.segmentId);
-	const beat =
-		segment?.kind === 'music'
-			? Math.floor((pos!.at % HALF_BEATS_PER_EIGHT) / HALF_BEATS_PER_BEAT) + 1
-			: null;
-	return { rows: slots, beat };
+	const half = segment?.kind === 'music' ? Math.floor(pos!.at % HALF_BEATS_PER_EIGHT) : null;
+	const beat = half === null ? null : Math.floor(half / HALF_BEATS_PER_BEAT) + 1;
+	return { rows: slots, beat, half };
 }
 
 const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);

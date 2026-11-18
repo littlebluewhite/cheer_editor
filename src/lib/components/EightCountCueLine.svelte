@@ -7,11 +7,13 @@
 		line: EightCountCueLine | null;
 		/** 這一列是第幾個八拍（環節的讀屏名字寫「1-1 到 1-3」）。 */
 		eight: number | null;
-		/** 播放頭在第幾拍（1–8）：那格的數字和蓋到那格的拍點亮。八拍表（列印）不給。 */
+		/** 播放頭在第幾個半拍（0–15）：那一拍的數字格和正在響的拍點亮。八拍表（列印）不給。 */
 		now?: number | null;
 	}
 
 	let { line, eight, now = null }: Props = $props();
+
+	const beat = $derived(now === null ? null : Math.floor(now / 2) + 1);
 
 	const name = $derived(line ? actionLabel(line) : '');
 	const cues = $derived(line?.cues ?? []);
@@ -45,12 +47,12 @@
 		{/if}
 		<div class="cells">
 			{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-				<span class="n" class:lit={n === now} data-now={n === now ? '' : undefined} style:grid-column={n}>{n}</span>
+				<span class="n" class:lit={n === beat} data-now={n === beat ? '' : undefined} style:grid-column={n}>{n}</span>
 			{/each}
 			{#each cues as c, k (k)}
 				<span
 					class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
-					class:lit={now !== null && c.from <= now && now <= c.to}
+					class:lit={now !== null && c.start <= now && now < c.end}
 					style:grid-column="{c.from} / {c.to + 1}"
 					aria-label={cueLabel(c)}
 					title={c.who ? `${c.word}（${c.who}）` : c.word}

@@ -187,6 +187,29 @@ describe('檢視模式', () => {
 		expect(dot('m1').classList.contains('selected')).toBe(false);
 	});
 
+	it('場上先點了小美，再選「我」是小A：場上改標小A（跟前後八拍寫的是同一個人）', async () => {
+		const session = setup();
+		session.selectMembers(['m1']);
+		await fireEvent.click(viewBtn());
+		await fireEvent.change(screen.getByRole('combobox', { name: '我' }), { target: { value: 'm2' } });
+		expect(dot('m2').classList.contains('selected')).toBe(true);
+		expect(dot('m1').classList.contains('selected')).toBe(false);
+	});
+
+	it('前後八拍：兩個從 & 開始、接在一起的拍點，只亮播放頭蓋到的那一個', async () => {
+		// 1-1& 起 1 拍、1-2& 起 1 拍；播放頭在 1-2（0.4 秒）：只有第一個在響
+		let flow = flowOf(placeCue(libSample(), 'x1', { kind: 'step', at: 1, len: 2, word: '第一個' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 3, len: 2, word: '第二個' }));
+		const { editor, props } = editorPage(flow);
+		render(Page, props);
+		await fireEvent.click(viewBtn());
+		editor.playback.seek(0.41);
+		await tick();
+		const lit = [...document.querySelectorAll('.now-eight .cue.lit')].map((el) => el.getAttribute('aria-label'));
+		expect(lit).toHaveLength(1);
+		expect(lit[0]).toContain('第一個');
+	});
+
 	it('切回編輯：站位編輯欄、分頁、動作表單、放大縮小都回來', async () => {
 		setup();
 		await fireEvent.click(viewBtn());

@@ -64,10 +64,10 @@
 						<div class="muted">這個八拍沒有新的動作、站位</div>
 					{/if}
 					{#each row.cues as line, j (j)}
-						<EightCountCueLine {line} eight={row.eight} now={near.beat} />
+						<EightCountCueLine {line} eight={row.eight} now={near.half} />
 					{:else}
 						<!-- 沒有拍點也畫 1–8，這一拍那格照樣亮 -->
-						{#if row.eight !== null}<EightCountCueLine line={null} eight={row.eight} now={near.beat} />{/if}
+						{#if row.eight !== null}<EightCountCueLine line={null} eight={row.eight} now={near.half} />{/if}
 					{/each}
 				</div>
 			{:else}
@@ -99,6 +99,13 @@
 	.slot.near,
 	.slot.blank {
 		height: 26px;
+	}
+	/* 觸控螢幕的按鈕至少 40px（app.css）：空格跟著一樣高，不然開頭幾個八拍這個八拍會往下掉 */
+	@media (pointer: coarse) {
+		.slot.near,
+		.slot.blank {
+			height: 40px;
+		}
 	}
 	.slot.near {
 		display: flex;
