@@ -33,7 +33,7 @@
 	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、圖例），場地在右邊，工具不會蓋到場地；
 	// 場地上面固定留的那一條浮出選人工具列（沒選人時只有「全隊跟第 [_] 張一樣」；場地不跳、不被蓋住）；在人身上按右鍵是同一份清單的選單（SelectionTools）。
 	// children 疊在場地上（提示、確認框，自己找不蓋住 data-keep-visible 的地方）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import {
 		CELL_M,
 		fieldPositionText,
@@ -133,8 +133,17 @@
 	const playback = session ? getEditor().playback : null;
 	/** 選到的人。 */
 	const selected = $derived(session?.selectedMemberIds ?? marked);
-	/** 畫成選到的人：選了人就是選到的；沒選人時是標亮的「我」（marked，檢視模式）。點、拖照樣只看 selected。 */
-	const lit = $derived(selected.length ? selected : marked);
+	/** 換「我」（marked）那時的選取：之後沒再點人，就標「我」。 */
+	let selectedWhenMarked = $state.raw<string[] | null>(null);
+	$effect.pre(() => {
+		void marked;
+		selectedWhenMarked = untrack(() => selected);
+	});
+	/**
+	 * 畫成選到的人：「我」和場上點的人，後選的算（選「我」不清掉選取，動作表單的參加的人跟著選取）；
+	 * 都沒有就是沒標。點、拖照樣只看 selected。
+	 */
+	const lit = $derived(marked.length && (!selected.length || selected === selectedWhenMarked) ? marked : selected);
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
 	const touchScreen = isTouchScreen();

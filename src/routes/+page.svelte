@@ -135,10 +135,7 @@
 	const myId = $derived(flow?.members.some((m) => m.id === me) ? me : '');
 	function pickMe(id: string) {
 		me = id;
-		if (flow) saveFlowSetting('me', flow.name, id);
-		// 場上點過的人會蓋過「我」：選了「我」就放掉，場上標的才跟前後八拍寫的是同一個人
-		if (session.selectedMemberIds.length) session.selectMembers([]);
-	}
+		if (flow) saveFlowSetting('me', flow.name, id);	}
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived(session.groupingAction);
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */

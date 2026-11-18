@@ -194,6 +194,16 @@ describe('檢視模式', () => {
 		await fireEvent.change(screen.getByRole('combobox', { name: '我' }), { target: { value: 'm2' } });
 		expect(dot('m2').classList.contains('selected')).toBe(true);
 		expect(dot('m1').classList.contains('selected')).toBe(false);
+		// 選「我」不動編輯的選取（動作表單的參加的人跟著選取，清掉就不見了）：回編輯小美還選著
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		// 後選的算：再點場上的小B，標小B
+		await fireEvent.pointerDown(dot('m3'), { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(dot('m3'), { clientX: 0, clientY: 0, button: 0 });
+		expect(dot('m3').classList.contains('selected')).toBe(true);
+		expect(dot('m2').classList.contains('selected')).toBe(false);
+		session.selectMembers(['m1']);
+		await fireEvent.click(editBtn());
+		expect(dot('m1').classList.contains('selected')).toBe(true);
 	});
 
 	it('前後八拍：兩個從 & 開始、接在一起的拍點，只亮播放頭蓋到的那一個', async () => {
