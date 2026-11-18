@@ -4,6 +4,7 @@
 import {
 	actionLabel,
 	fullView,
+	layerStagger,
 	videoRows,
 	type CueKind,
 	type EightCountCueLine,
@@ -12,6 +13,7 @@ import {
 	type VideoFrameData,
 	type VideoRow
 } from '#lib/core';
+import { isLongMarker, markerWidth } from '../components/marker';
 import type { ColorKey } from './colors';
 
 export const VIDEO_W = 1080;
@@ -55,6 +57,24 @@ export interface VideoFieldLayout {
 	dotPx: number;
 	markerPx: number;
 	numberPx: number;
+	/** 圓點照這個順序畫（層高的在後面、蓋在上面）。 */
+	dots: VideoDot[];
+}
+
+/**
+ * 一個圓點畫出來的樣子（px，錯開、縮小後）：中心 c、半徑 r、多字膠囊直的那段一半長 h、縮成幾倍 s（線寬、字、陰影一起縮）。
+ * 錯開、縮小、虛線圈都問流程核心的 layerStagger，跟場上一樣。
+ */
+export interface VideoDot {
+	id: string;
+	/** 第幾層：1 是地上，2 黃框，3 橘框。 */
+	level: number;
+	c: [number, number];
+	r: number;
+	h: number;
+	s: number;
+	/** 被不同層蓋到：在所有圓點上面畫一圈虛線。 */
+	covered: boolean;
 }
 
 /** 照順序畫：boxes 先畫，texts 畫在上面。 */
@@ -124,7 +144,7 @@ export function layoutFrame(field: FieldConfig, frame: VideoFrameData, measure: 
 	return {
 		texts: [...top.texts, ...row.texts],
 		boxes: [...top.boxes, ...row.boxes],
-		field: layoutField(field),
+		field: layoutField(field, frame),
 		overflow: top.overflow || row.overflow
 	};
 }
@@ -190,20 +210,39 @@ function layoutTitle(title: string, measure: Measure): Part {
 	return { texts: shown.map((t, i) => item(t, px, TITLE_TOP + i * lh + (lh - px) / 2)), boxes: [], overflow: cut };
 }
 
-function layoutField(field: FieldConfig): VideoFieldLayout {
+function layoutField(field: FieldConfig, frame: VideoFrameData): VideoFieldLayout {
 	const view = fullView(field);
 	const pxPerM = Math.min(FIELD_ZONE.w / view.width, FIELD_ZONE.h / view.height);
 	const w = view.width * pxPerM;
 	const h = view.height * pxPerM;
+	const box = { x: FIELD_ZONE.x + (FIELD_ZONE.w - w) / 2, y: FIELD_ZONE.y + (FIELD_ZONE.h - h) / 2, w, h };
 	// 圓點照手機檢視畫面的做法放大到有最小尺寸，站得近的人會疊到，可以接受
 	const dotPx = Math.max(2 * DOT_R * pxPerM, MIN_DOT_PX);
-	return {
-		box: { x: FIELD_ZONE.x + (FIELD_ZONE.w - w) / 2, y: FIELD_ZONE.y + (FIELD_ZONE.h - h) / 2, w, h },
-		pxPerM,
-		dotPx,
-		markerPx: dotPx / 2,
-		numberPx: Math.max(NUMBER_M * pxPerM, MIN_TEXT_PX)
-	};
+	const markerPx = dotPx / 2;
+	// 1 公尺的圓點在影片上幾 px：錯開的距離、膠囊的留白都照它
+	const unit = dotPx / (2 * DOT_R);
+	const plain = Object.keys(frame.positions)
+		.map((id) => {
+			const [mx, my] = frame.positions[id];
+			const mark = frame.markers[id] ?? '';
+			const pill = isLongMarker(mark) ? Math.max(dotPx, (markerWidth(mark) / 2) * markerPx + 0.14 * unit) : dotPx;
+			const c: [number, number] = [box.x + (mx - view.x) * pxPerM, box.y + (my - view.y) * pxPerM];
+			return { id, level: frame.levels[id] ?? 1, c, r: dotPx / 2, h: (pill - dotPx) / 2, font: markerPx };
+		})
+		// 後畫的蓋在上面：層高的排後面（同一層照原本的順序）
+		.toSorted((a, b) => a.level - b.level);
+	// 縮小後標記的字還是要至少 MIN_TEXT_PX：不夠大就少縮一點
+	const { shifts, drawn, covered } = layerStagger(plain, unit, (font) => MIN_TEXT_PX / font);
+	const dots = drawn.map((d) => ({
+		id: d.id,
+		level: d.level,
+		c: d.c,
+		r: d.r,
+		h: d.h,
+		s: shifts[d.id]?.s ?? 1,
+		covered: covered.includes(d)
+	}));
+	return { box, pxPerM, dotPx, markerPx, numberPx: Math.max(NUMBER_M * pxPerM, MIN_TEXT_PX), dots };
 }
 
 /** 放不下時拿掉多少：從最下面縮幾個還在做的動作、拿掉幾個備註、留前面幾個動作。 */

@@ -2,7 +2,6 @@
 // 瀏覽器才有 Canvas 2D，jsdom 沒有，所以沒有自動測試；輸出影片時用真的瀏覽器看（見實作計畫 Task 8）。
 
 import { fieldGeometry, fieldNumbers, frontLabelAt, fullView, type FieldConfig, type GlobalRole, type VideoFrameData } from '#lib/core';
-import { isLongMarker, markerWidth } from '../components/marker';
 import { VIDEO_COLORS, type ColorKey } from './colors';
 import { VIDEO_H, VIDEO_W, type Box, type FrameLayout, type Measure, type TextItem } from './layout';
 
@@ -24,7 +23,7 @@ const color = (key: ColorKey) => VIDEO_COLORS[key];
 
 /**
  * 畫一格。roles 是每個隊員的底層、上層（frame 沒有，圓點的顏色要用）。
- * 順序：底色、場地（外圍、墊子、格線、接縫、中心、號碼）、圓點（上層、中層最後畫）、版面的框、版面的字。
+ * 順序：底色、場地（外圍、墊子、格線、接縫、中心、號碼）、圓點（照層畫，高的層最後畫）、虛線圈、版面的框、版面的字。
  */
 export function drawFrame(
 	ctx: CanvasRenderingContext2D,
@@ -148,38 +147,44 @@ function drawField(
 	ctx.fillText('▼ 正面／裁判 ▼', px(fx), py(fy));
 	ctx.letterSpacing = '0px';
 
-	// 圓點：上層、中層（raised）最後畫、蓋在上面，加黃框
-	const ids = Object.keys(frame.positions).toSorted((a, b) => Number(isRaised(frame, a)) - Number(isRaised(frame, b)));
-	// 圓點的線寬、陰影照 Field.svelte 的公尺數，隨圓點放大
+	// 圓點照層畫（layout 排好順序、錯開、縮小）：第 2 層以上黃框加陰影，三層橘框；縮小時線寬、陰影、字一起縮
 	const unit = dotPx / (2 * DOT_R);
+	const capsule = (d: { c: [number, number]; r: number; h: number }) => {
+		ctx.beginPath();
+		ctx.roundRect(d.c[0] - d.h - d.r, d.c[1] - d.r, 2 * (d.h + d.r), 2 * d.r, d.r);
+	};
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
-	for (const id of ids) {
-		const [mx, my] = frame.positions[id];
-		const [cx, cy] = [px(mx), py(my)];
-		const up = isRaised(frame, id);
-		const top = roles[id] === 'top';
-		const mark = frame.markers[id] ?? '';
-		const pill = isLongMarker(mark) ? Math.max(dotPx, (markerWidth(mark) / 2) * markerPx + 0.14 * unit) : dotPx;
-		ctx.beginPath();
-		ctx.roundRect(cx - pill / 2, cy - dotPx / 2, pill, dotPx, dotPx / 2);
+	for (const d of layout.field.dots) {
+		const k = unit * d.s;
+		const up = d.level >= 2;
+		const top = roles[d.id] === 'top';
+		capsule(d);
 		if (up) {
 			ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-			ctx.shadowOffsetY = 0.08 * unit;
-			ctx.shadowBlur = 0.1 * unit;
+			ctx.shadowOffsetY = 0.08 * k;
+			ctx.shadowBlur = 0.1 * k;
 		}
 		ctx.fillStyle = color(top ? 'dotTop' : 'dotBase');
 		ctx.fill();
 		ctx.shadowColor = 'transparent';
 		ctx.shadowOffsetY = 0;
 		ctx.shadowBlur = 0;
-		ctx.strokeStyle = color(up ? 'raised' : 'dotLine');
-		ctx.lineWidth = (up ? 0.08 : 0.04) * unit;
+		ctx.strokeStyle = color(d.level >= 3 ? 'lv3' : up ? 'raised' : 'dotLine');
+		ctx.lineWidth = (d.level >= 3 ? 0.1 : up ? 0.08 : 0.04) * k;
 		ctx.stroke();
-		ctx.font = `700 ${markerPx}px ${FONT}`;
+		ctx.font = `700 ${markerPx * d.s}px ${FONT}`;
 		ctx.fillStyle = color(top ? 'dotTopInk' : 'dotInk');
-		ctx.fillText(mark, cx, cy);
+		ctx.fillText(frame.markers[d.id] ?? '', d.c[0], d.c[1]);
 	}
+	// 被不同層蓋到的人：虛線圈畫在所有圓點上面（照畫出來的形狀；線寬、虛線照 Field.svelte 的 .covered，單位是場地公尺）
+	ctx.strokeStyle = color('covered');
+	ctx.lineWidth = 0.04 * pxPerM;
+	ctx.setLineDash([0.08 * pxPerM, 0.06 * pxPerM]);
+	for (const d of layout.field.dots) {
+		if (!d.covered) continue;
+		capsule(d);
+		ctx.stroke();
+	}
+	ctx.setLineDash([]);
 }
-
-const isRaised = (frame: VideoFrameData, id: string) => frame.raised.includes(id);
