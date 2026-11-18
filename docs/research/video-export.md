@@ -202,6 +202,8 @@ npm 資料 2026-11-18 查。「最後發布」是最新版本的時間。
 5. **全部放記憶體**（`BufferTarget`，預設 metadata 在檔頭，符合 Meta 的建議），做完顯示「存檔／分享」按鈕，接現在的存檔程式。除非真的檔案接近 100 MB，否則不用直接寫檔；真要寫，用 `StreamTarget` 加 `fastStart: 'reserve'`，因為它預設 metadata 在檔尾。
 6. 不用 `mp4-muxer`（已棄用、沒繞 bug）、ffmpeg.wasm（GPL 核心、幾十 MB）、Opus 或 MP3 聲音。
 
+**後來怎麼做（2026-11-19 做完，#270）**：照 1、3、4、5 做，但只開電腦的 Chrome、Edge：第 2 點的 `@mediabunny/aac-encoder` 沒帶（LGPL），做不出 AAC 的瀏覽器直接寫不能輸出；iPad、手機不能輸出，所以也沒有「分享」，做完只有「存檔」。下面這段 iPad 的風險因此沒有去測。現在的行為見 `docs/superpowers/specs/2026-11-18-video-export-design.md`。
+
 **最大風險：iPad、iPhone 上的 Safari。** 這是最需要分享的平台，編碼最弱：26 以前沒有聲音編碼器，26／27 有兩個 AAC bug，27.0.x H.264 會卡。只能靠 Mediabunny 繞過（或 8 個月大的 wasm AAC 編碼器），而且這份調查都沒在裝置上跑過。決定前先做小原型，拿真的 iPad（一台 iPadOS 18、一台 26／27）測，再經真的通訊軟體傳到 iPhone 和 Android 手機看。
 
 ## 實測（2026-11-18）
@@ -209,12 +211,12 @@ npm 資料 2026-11-18 查。「最後發布」是最新版本的時間。
 只有一台機器，不能代表其他瀏覽器或裝置。
 
 - 機器：這台 Mac，headless Chrome 157（Chrome 157.0.8103.79）。
-- 試驗頁：`prototypes/video-export-spike/index.html`，mediabunny 1.66.0，Canvas 2D 畫 1080×1920、每秒 30 格，聲音用 OfflineAudioContext 做拍子聲。
+- 試驗頁：`prototypes/video-export-spike/index.html`（用完已經刪了，在 commit 036ff8e），mediabunny 1.66.0，Canvas 2D 畫 1080×1920、每秒 30 格，聲音用 OfflineAudioContext 做拍子聲。
 - `canEncodeVideo('avc', avc1.424028)` 和 `canEncodeAudio('aac', 48 kHz 雙聲道)` 都是 true。
 - 10.0 秒、300 格，做了約 5 秒，檔案 0.72 MB。
 - ffprobe：H.264 Baseline level 4.0、1080×1920、30 fps、300 格；AAC LC 48 kHz 雙聲道；ffmpeg 從頭解到尾沒有錯誤。
 - 推論：3 分鐘的流程約 1.5 分鐘做完、約 13 MB（照這次的比例算，畫面更複雜會變）。這是試驗頁的估計，編輯器真的輸出的實測見下面兩節（3 分鐘約 33 秒；動作少的 12.9 MiB，動作多的 34.0 MiB）。
-- 還沒測：手機上能不能播、經過 LINE 等通訊軟體傳送後會怎樣、iPad。
+- 還沒測：手機上能不能播、經過 LINE 等通訊軟體傳送後會怎樣、iPad。（手機和 LINE 後來試過，見「網站主人試過」那一節；iPad 不做輸出。）
 
 ### 編輯器的「輸出影片」（2026-11-18）
 
@@ -272,12 +274,18 @@ npm 資料 2026-11-18 查。「最後發布」是最新版本的時間。
 
   舊的放慢 4 倍還是 33 秒：這台上它卡在編碼器，不在頁面。動作多的跟著放慢的倍數變慢：每一格在頁面裡畫（排版、量字、畫圖）要花的時間在這台已經跟編碼差不多（推論：約 6 ms 一格），
   頁面的 CPU 慢的電腦上會更明顯。上一節在 Node 量到算內容只要每格約 0.33 ms，所以花時間的主要是畫圖和量字（推論，沒有分開量）。放慢 4 倍時超過原本估的 1.5 分鐘。
-- 還沒量：真的一般筆電（Windows、Intel／AMD）、輸出中切到別的分頁。
+- 還沒量：真的一般筆電（Windows、Intel／AMD）。（輸出中切到別的分頁後來試過，見下一節。）
 - **沒有另開 issue**：不放慢時約 33 秒，在估的 1.5 分鐘以內；放慢 4 倍的 131 秒是模擬，不是真的電腦。34 MiB 的檔案和多出來約 0.5 GB 的 RSS 記下來，讓網站主人在真的電腦上試（#275）時一起看。
+
+### 網站主人試過（2026-11-19，#275）
+
+- **Chrome（同一台 Mac，不是 headless）**：用另外做的 3 分鐘流程（9 人、37 個動作、音樂 150 秒＋口號 30 秒，聲音是 22.05 kHz 單聲道的拍子聲 WAV）輸出：約 33 秒做完、15,983,315 bytes（15.2 MiB）、183.04 秒，檔裡有 `ftyp`、`avc1`、`mp4a`。進度條每秒約前進 175 格，最久一次隔 154 ms 才更新。做到第 4,243／5,490 格按「取消」，10 ms 內對話框就關了，console 沒有錯誤。縮成手機大小（426×757）看 0:20、2:50 兩格，字看得清楚。
+- **網站主人自己試**：輸出中切到別的分頁、手機打開影片（下面那一列的字、場地上的標記、條號、格號、拍子）、經 LINE 傳到手機再打開，都沒問題。
+- **沒試**：Windows（沒有機器可以試）。
 
 ## 沒找到
 
-- LINE、WhatsApp、Messenger、iMessage 收到 MP4 怎麼處理（重新壓縮、大小或長度上限、收哪些 H.264 profile）。只有 Meta 商用 API 頁（16 MB、H.264 + AAC、Android 不收 High 和 B-frame）[META-WA]；一般 app 未確認。LINE 沒找到官方資料。
+- LINE、WhatsApp、Messenger、iMessage 收到 MP4 怎麼處理（重新壓縮、大小或長度上限、收哪些 H.264 profile）。LINE 實際傳過一次，手機打得開也看得清楚（見「網站主人試過」），有沒有重新壓縮還是不知道。只有 Meta 商用 API 頁（16 MB、H.264 + AAC、Android 不收 High 和 B-frame）[META-WA]；一般 app 未確認。LINE 沒找到官方資料。
 - iOS 播 MP4 裡的 Opus、MP3：沒有 Apple 一手來源，只有一則論壇貼文 [APPLE-FORUM]。
 - Chrome 從哪一版開始能編 AAC。
 - 哪一版 Safari 帶 WebKit PR 74602（H.264 卡住）和 302253（AAC 描述）的修正。
@@ -296,7 +304,7 @@ npm 資料 2026-11-18 查。「最後發布」是最新版本的時間。
 - GitHub Pages 能不能設 COOP／COEP header：只在搜尋結果看到社群討論，沒看到 GitHub 文件。
 - 軟體 AAC 編碼器的專利授權、wasm 編碼器的 LGPL 合規：沒查，要人工審查。MDN 對 H.264 也有同樣提醒 [MDN-CODEC]。
 - `mp4box`、`libav.js`、`@remotion/webcodecs`、`@webav/av-cliper`：只有套件資料，API 和打包大小沒評估。
-- 打包大小是在專案外用 rolldown 1.2.16 最小 import 量的；這個 app 實際增加多少沒量。
+- 打包大小是在專案外用 rolldown 1.2.16 最小 import 量的。（這個 app 實際的：影片工具那一塊約 235 KiB、gzip 約 60 KiB，見 `docs/deploy.md`。）
 
 ## 來源
 

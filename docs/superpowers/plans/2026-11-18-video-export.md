@@ -1,5 +1,15 @@
 # 流程影片 Implementation Plan
 
+> **已經做完（2026-11-19，#270、#271–#274）。這是當時的計畫，不要照著再做一次。** 現在的行為看設計文件 `docs/superpowers/specs/2026-11-18-video-export-design.md`，介面看程式碼。做的時候和審查後改掉、跟下面不一樣的地方：
+> - `VideoFrame` 改叫 `VideoFrameData`；`raised: string[]` 換成每個人在第幾層（`levels`）和名單順序（`order`），疊起來的人錯開、縮小在 `src/lib/core/layer-stagger.ts`。
+> - 多了 `videoFrames(flow)`：整支影片只算一次八拍表，不是每一格重算 `videoFrame`。
+> - `FieldLayout` 改叫 `VideoFieldLayout`，多了 `dotUnit`、`dots`；場地區塊是 320–1140，不是 320–1160。`drawFrame` 多收一個 `roles`。
+> - 多了 `markerOverflowMembers`（標記會超出影片的隊員）；沒有 `missingAudioNames`，沒有聲音的段在 `VideoExport.svelte` 裡列。
+> - 拍點格子不是「一律在」：放不下的那幾行拍點不畫，寫「⋯還有 N 行拍點」。
+> - 對話框多了「影片工具載不下來」和「做好了以後 Esc、點背景不關」；失敗寫三種看得懂的原因之一，不是直接寫錯誤訊息。
+> - 按鈕窄的時候用 `short-hide one-row-hide`，跟八拍表的 `tightest-hide` 不一樣。
+> - 試驗頁 `prototypes/video-export-spike/` 已經刪了（在 commit 036ff8e）。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 編輯器多一個「輸出影片」按鈕，把整支流程做成一支直式 1080×1920 的 MP4（流程影片），給隊員用手機看。
