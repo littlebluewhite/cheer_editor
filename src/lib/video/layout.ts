@@ -7,7 +7,6 @@ import {
 	layerStagger,
 	videoRows,
 	type CueKind,
-	type EightCountCue,
 	type EightCountCueLine,
 	type FieldConfig,
 	type Flow,
@@ -126,10 +125,16 @@ const NAME_W = 192;
 const NAME_GAP = 8;
 const CELL_W = (WIDTH - NAME_W - NAME_GAP) / 8;
 const CELLS_X = LEFT + NAME_W + NAME_GAP;
-/** 拍點、環節的框離格線多遠、字離框多遠、上下兩排之間多遠。 */
-const CUE_INSET = 3;
-const CUE_PAD = 8;
+/**
+ * 拍點、環節的框離格線多遠、字離框多遠、上下兩排之間多遠。留白小一點：一拍的格子 28 px 時
+ * 一行寫得下 3 個中文字（步驟左邊多一條粗線，還是寫得下）。
+ */
+const CUE_INSET = 1;
+const CUE_PAD = 3;
 const SUB_GAP = 4;
+/** 步驟左邊那條粗線多寬；字再往右讓開一點。 */
+const STEP_BAR = 4;
+const STEP_BAR_GAP = 2;
 
 const EMPTY_TEXT = '這一列沒有新的動作、站位';
 
@@ -264,8 +269,8 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 	for (let px = ROW_PX_START; px > MIN_TEXT_PX; px -= ROW_PX_STEP) {
 		const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure);
 		const lines = textLines(row, full, px, measure);
-		// 拍點格子截掉了什麼也算放不下：先縮字
-		if (!grid.overflow && lines.length * px * LINE + gridSpace(grid) <= room) return placeRow(lines, grid, px, false);
+		// 拍點格子有沒畫的、或格子裡有字（「down」、名字）要從中間斷開：先縮字
+		if (!grid.overflow && !grid.split && lines.length * px * LINE + gridSpace(grid) <= room) return placeRow(lines, grid, px, false);
 	}
 	const px = MIN_TEXT_PX;
 	const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure);
@@ -356,24 +361,26 @@ function placeRow(lines: Para[], grid: Grid, px: number, overflow: boolean): Par
 	return { texts, boxes, overflow };
 }
 
-/** 拍點格子：位置從 y = 0 算起，h 是總高；沒有拍點的列是空的。overflow：有字截掉或有拍點那一排沒畫。 */
+/**
+ * 拍點格子：位置從 y = 0 算起，h 是總高；沒有拍點的列是空的。overflow：有拍點那一排沒畫。
+ * split：格子裡有一個字（「down」、一個名字）寬過格子、從中間斷開（字還是寫完，只是縮小字比較好看）。
+ */
 interface Grid {
 	texts: TextItem[];
 	boxes: Box[];
 	h: number;
 	overflow: boolean;
+	split: boolean;
 }
-
-/** 一個格子裡的字最多幾行，再多截掉加「⋯」。 */
-const CELL_LINES = 2;
 
 /**
  * 拍點和環節：上面一排 1–8，每個動作一段，左邊寫動作名字，右邊 8 格；
- * 環節在上、拍點在下，同一格疊到的往下另起一排。字比格子寬就在格子裡換行，最多兩行。
+ * 環節在上、拍點在下，同一格疊到的往下另起一排。拍點的字寫在上面、給誰寫在下面一行；
+ * 比格子寬就在格子裡換行，那一格長高，不截。
  * 比 maxH 高時，超出的那幾段不畫，最後一行寫「⋯還有 N 行拍點」。
  */
 function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: number, maxH: number, measure: Measure): Grid {
-	if (!cueLines.length) return { texts: [], boxes: [], h: 0, overflow: false };
+	if (!cueLines.length) return { texts: [], boxes: [], h: 0, overflow: false, split: false };
 	const lh = px * LINE;
 	const cellX = (n: number) => CELLS_X + (n - 1) * CELL_W;
 	const texts: TextItem[] = [];
@@ -383,7 +390,7 @@ function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: numbe
 	const blocks = cueLines.map((line) => cueBlock(line, px, measure));
 	const total = lh + blocks.reduce((h, b) => h + b.h, 0);
 	const items: Box[] = [];
-	let overflow = blocks.some((b) => b.cut);
+	let overflow = false;
 	let y = lh;
 	let shown = 0;
 	for (const b of blocks) {
@@ -406,20 +413,30 @@ function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: numbe
 		if (n !== lit) columns.push({ x: cellX(n), y: 0, w: CELL_W, h: columnsH, fill: 'bg', stroke: 'gridLine', lineWidth: 2 });
 	}
 	if (lit) columns.push({ x: cellX(lit), y: 0, w: CELL_W, h: columnsH, fill: 'gridNow', stroke: 'beatLit', lineWidth: 6 });
-	return { texts, boxes: [...columns, ...items], h: y, overflow };
+	return { texts, boxes: [...columns, ...items], h: y, overflow, split: blocks.some((b) => b.split) };
 }
 
-/** 一個動作的那一段（從 y = 0 算起）：左邊名字，右邊環節和拍點。cut：有格子裡的字截掉了。 */
-function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { texts: TextItem[]; boxes: Box[]; h: number; cut: boolean } {
+/** 給誰那一行的字重：比拍點的字細，看得出哪一行是哪個。 */
+const WHO_WEIGHT = 400;
+
+/** 一個動作的那一段（從 y = 0 算起）：左邊名字，右邊環節和拍點。split：格子裡有字從中間斷開。 */
+function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { texts: TextItem[]; boxes: Box[]; h: number; split: boolean } {
 	const lh = px * LINE;
 	const cellX = (n: number) => CELLS_X + (n - 1) * CELL_W;
 	const texts: TextItem[] = [];
 	const boxes: Box[] = [];
-	let cut = false;
+	let split = false;
 	const name = wrap(actionLabel(line), px, 700, NAME_W, measure);
 	name.forEach((text, i) => texts.push({ text, x: LEFT, y: i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
-	const phases = line.phases.map((p) => ({ from: p.from, to: p.to, text: p.label, style: PHASE_STYLE }));
-	const cues = line.cues.map((c) => ({ from: c.from, to: c.to, text: cueWords(c), style: CUE_STYLES[c.kind](c.word) }));
+	const phases = line.phases.map((p) => ({ from: p.from, to: p.to, text: p.label, who: '', style: PHASE_STYLE }));
+	// 從上一列接過來的不再寫字和給誰
+	const cues = line.cues.map((c) => ({
+		from: c.from,
+		to: c.to,
+		text: [c.lead, c.continued ? '' : c.word].filter(Boolean).join(' '),
+		who: c.continued ? '' : (c.who ?? ''),
+		style: CUE_STYLES[c.kind](c.word)
+	}));
 	let sub = 0;
 	// 環節和拍點各自分排，環節在上
 	for (const r of [...pack(phases), ...pack(cues)]) {
@@ -427,34 +444,31 @@ function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { text
 		for (const p of r) {
 			const x = cellX(p.from) + CUE_INSET;
 			const w = (p.to - p.from + 1) * CELL_W - 2 * CUE_INSET;
-			const inner = w - 2 * CUE_PAD;
-			const words = p.text ? wrap(p.text, px, p.style.weight, inner, measure) : [];
-			if (words.length > CELL_LINES) {
-				words.length = CELL_LINES;
-				words[CELL_LINES - 1] = withEllipsis(words[CELL_LINES - 1], px, p.style.weight, inner, measure);
-				cut = true;
-			}
-			const h = Math.max(1, words.length) * lh;
+			const left = CUE_PAD + p.style.indent;
+			const inner = w - left - CUE_PAD;
+			// 字在上、給誰在下，各自換行
+			const lines = [
+				...cellWrap(p.text, px, p.style.weight, inner, measure).map((text) => ({ text, weight: p.style.weight })),
+				...cellWrap(p.who, px, WHO_WEIGHT, inner, measure).map((text) => ({ text, weight: WHO_WEIGHT }))
+			];
+			split ||= [p.text, p.who].some((t) => breaksWord(t, px, inner, measure));
+			const h = Math.max(1, lines.length) * lh;
 			rowH = Math.max(rowH, h);
 			boxes.push(...p.style.boxes(x, sub, w, h));
-			words.forEach((text, i) =>
-				texts.push({ text, x: x + CUE_PAD, y: sub + i * lh + (lh - px) / 2, px, weight: p.style.weight, color: p.style.ink })
+			lines.forEach((l, i) =>
+				texts.push({ text: l.text, x: x + left, y: sub + i * lh + (lh - px) / 2, px, weight: l.weight, color: p.style.ink })
 			);
 		}
 		sub += rowH + SUB_GAP;
 	}
-	return { texts, boxes, h: Math.max(name.length * lh, sub), cut };
-}
-
-/** 一個拍點格子裡寫的字：「1-1& down（上層）」；從上一列接過來的不再寫字和給誰。 */
-function cueWords(c: EightCountCue): string {
-	const word = c.continued ? '' : c.who ? `${c.word}（${c.who}）` : c.word;
-	return [c.lead, word].filter(Boolean).join(' ');
+	return { texts, boxes, h: Math.max(name.length * lh, sub), split };
 }
 
 interface PieceStyle {
 	weight: number;
 	ink: ColorKey;
+	/** 字比平常多往右讓多少（步驟左邊的粗線）。 */
+	indent: number;
 	boxes: (x: number, y: number, w: number, h: number) => Box[];
 }
 
@@ -462,30 +476,75 @@ interface PieceStyle {
 const PHASE_STYLE: PieceStyle = {
 	weight: 600,
 	ink: 'ink',
+	indent: 0,
 	boxes: (x, y, w, h) => [{ x, y, w, h, fill: 'bg', stroke: 'phaseLine', lineWidth: 2 }]
 };
 
-/** 拍點照八拍表的樣子：拍子實心、步驟左邊粗線、手位圓角小牌子。 */
+/**
+ * 拍點照八拍表的樣子：拍子實心、步驟左邊粗線、手位圓角小牌子。
+ * 拍點的字一律粗體，下面的給誰是細的（WHO_WEIGHT）。
+ */
 const CUE_STYLES: Record<CueKind, (word: string) => PieceStyle> = {
 	count: (word) => ({
 		weight: 700,
 		ink: 'cueCountInk',
+		indent: 0,
 		boxes: (x, y, w, h) => [{ x, y, w, h, fill: word === 'up' ? 'cueUp' : 'cueDown', radius: 4 }]
 	}),
 	step: () => ({
-		weight: 400,
+		weight: 700,
 		ink: 'cueStepInk',
+		indent: STEP_BAR + STEP_BAR_GAP,
 		boxes: (x, y, w, h) => [
 			{ x, y, w, h, fill: 'cueStepBg', stroke: 'cueStepLine', lineWidth: 2, radius: 4 },
-			{ x, y, w: 6, h, fill: 'cueStepLine' }
+			{ x, y, w: STEP_BAR, h, fill: 'cueStepLine' }
 		]
 	}),
+	// 一行時是圓角小牌子；長高了圓角不變大，字才不跑出圓角外面
 	motion: () => ({
-		weight: 400,
+		weight: 700,
 		ink: 'cueMotionInk',
-		boxes: (x, y, w, h) => [{ x, y, w, h, fill: 'cueMotionBg', stroke: 'cueMotionLine', lineWidth: 2, radius: h / 2 }]
+		indent: 0,
+		boxes: (x, y, w, h) => [{ x, y, w, h, fill: 'cueMotionBg', stroke: 'cueMotionLine', lineWidth: 2, radius: MOTION_RADIUS }]
 	})
 };
+
+/** 手位小牌子的圓角：28 px 一行高 35，圓角接近半個行高。 */
+const MOTION_RADIUS = 16;
+
+/**
+ * 格子裡的換行：照空白分成一個一個字（「high V」是兩個、一個名字是一個），整個放得下就不拆；
+ * 一個字本身就比格子寬，才一個字母一個字母斷開。
+ */
+function cellWrap(text: string, px: number, weight: number, width: number, measure: Measure): string[] {
+	const lines: string[] = [];
+	let line = '';
+	for (const word of text.split(' ').filter(Boolean)) {
+		const joined = line ? `${line} ${word}` : word;
+		if (measure(joined, px, weight) <= width) {
+			line = joined;
+			continue;
+		}
+		if (line) lines.push(line);
+		line = '';
+		if (measure(word, px, weight) <= width) {
+			line = word;
+			continue;
+		}
+		const parts = wrap(word, px, weight, width, measure);
+		line = parts.pop()!;
+		lines.push(...parts);
+	}
+	if (line) lines.push(line);
+	return lines;
+}
+
+/**
+ * 有沒有一個字（照空白分）比格子寬、要從中間斷開，而且縮到 28 px 就不用斷（縮字才有用）。
+ * 量的是粗體，比細的寬，給誰也一起算。格子的寬不隨字級變。
+ */
+const breaksWord = (text: string, px: number, width: number, measure: Measure) =>
+	text.split(' ').some((word) => word && measure(word, px, 700) > width && measure(word, MIN_TEXT_PX, 700) <= width);
 
 /** 分排：放進第一個格子沒被佔到的排，都佔到就另起一排。 */
 function pack<T extends { from: number; to: number }>(pieces: T[]): T[][] {
