@@ -286,10 +286,10 @@
 	/** 手機的檢視畫面為什麼不能編（寫在「檢視模式・只能看」後面）。 */
 	const whyViewOnly = $derived(viewOnlyReason(windowW, windowH, touchScreen));
 	/**
-	 * 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1670px、min-height: 861px 一樣）。
+	 * 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1760px、min-height: 861px 一樣）。
 	 * 螢幕矮（高 860px 以下）時不換行：播放區併進上方列那一行，幾個按鈕只留圖示，省下的高度給場地（N55）。
 	 */
-	const transportBelow = $derived(windowW <= 1670 && windowH > SHORT_SCREEN_MAX_H);
+	const transportBelow = $derived(windowW <= 1760 && windowH > SHORT_SCREEN_MAX_H);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
 		name: 'inspectorWidthRatio',
@@ -2184,8 +2184,8 @@
 	}
 
 	/* 窄一點的視窗：上方列多了「編排｜練習」、播放區多了「重複」和速度，右邊的「編輯｜檢視」兩格比一個開關寬，
-	   所以從 1800px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
-	@media (max-width: 1800px) {
+	   重複旁邊還有 A、B、✕，所以從 1890px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
+	@media (max-width: 1890px) {
 		/* 復原、重做只留圖示，流程設定只留「設定」，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
 			position: absolute;
@@ -2197,8 +2197,8 @@
 		}
 	}
 
-	/* 1671～1800px 播放區還在第一行：「輸出影片」只留圖示，長的流程名字才露得出 8 個字；再窄播放區換行，字又放得下 */
-	@media (min-width: 1671px) and (max-width: 1800px) {
+	/* 1761～1890px 播放區還在第一行：「輸出影片」只留圖示，長的流程名字才露得出 8 個字；再窄播放區換行，字又放得下 */
+	@media (min-width: 1761px) and (max-width: 1890px) {
 		.one-row-hide {
 			position: absolute;
 			width: 1px;
@@ -2211,8 +2211,8 @@
 
 	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
 	   換行時播放區在 HTML 裡也放到按鈕後面（transportBelow），Tab 才照畫面順序。
-	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」和速度，所以從 1670px 就換。 */
-	@media (max-width: 1670px) and (min-height: 861px) {
+	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」（和它旁邊的 A、B、✕）和速度，所以從 1760px 就換。 */
+	@media (max-width: 1760px) and (min-height: 861px) {
 		.topbar {
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
@@ -2224,7 +2224,7 @@
 	}
 	/* 螢幕矮（高 860px 以下，SHORT_SCREEN_MAX_H）：不換行，播放區併進上方列那一行，省下約 50px 給場地（N55）。
 	   擠得下才行：節拍器、重複、開啟、新建、流程設定只留圖示（滑鼠移上去有名字，讀屏照樣讀得到），間距收小。 */
-	@media (max-width: 1670px) and (max-height: 860px) {
+	@media (max-width: 1760px) and (max-height: 860px) {
 		.topbar {
 			gap: 10px;
 			padding-block: 6px;
@@ -2297,19 +2297,19 @@
 		}
 	}
 	/* 螢幕矮、播放區併進上方列那一行時：重複旁邊的 A、B、✕ 靠緊一點；滑鼠才收窄，手指照樣至少 32px */
-	@media (max-width: 1670px) and (max-height: 860px) {
+	@media (max-width: 1760px) and (max-height: 860px) {
 		.repeat-group {
 			gap: 2px;
 		}
 	}
-	@media (max-width: 1670px) and (max-height: 860px) and (pointer: fine) {
+	@media (max-width: 1760px) and (max-height: 860px) and (pointer: fine) {
 		.ab {
 			min-width: 22px;
 			padding-inline: 4px;
 		}
 	}
-	/* A、B、✕ 多占的寬度從間距省回來，流程名字才至少露出 3 個字（N55）：時間那一格 1280 寬就收窄、播放區和上方列的間距小一點 */
-	@media (max-width: 1280px) and (max-height: 860px) {
+	/* A、B、✕ 多占的寬度從間距省回來，流程名字才至少露出 3 個字（N55）：螢幕矮時時間那一格收窄、播放區和上方列的間距小一點 */
+	@media (max-width: 1760px) and (max-height: 860px) {
 		.topbar {
 			gap: 8px;
 		}
@@ -2321,12 +2321,25 @@
 			padding-inline: 8px;
 		}
 	}
-	/* 1024×768（滑鼠）：只有圖示的按鈕左右再收小（手指的照樣至少 32px） */
-	@media (max-width: 1100px) and (max-height: 860px) and (pointer: fine) {
+	/* 1280 寬以下的矮螢幕（滑鼠）：只有圖示的按鈕左右再收小（手指的照樣至少 32px） */
+	@media (max-width: 1280px) and (max-height: 860px) and (pointer: fine) {
 		.actions :global(button.ghost),
 		.actions .btn.ghost,
 		.guide-link {
 			padding-inline: 5px;
+		}
+	}
+	/* 1024×768（滑鼠）：右邊的按鈕、名字那一欄靠緊一點，A、B、✕ 再窄一點，流程名字才至少露出 3 個字（N55） */
+	@media (max-width: 1100px) and (max-height: 860px) and (pointer: fine) {
+		.actions {
+			gap: 2px;
+		}
+		.title {
+			gap: 4px;
+		}
+		.ab {
+			min-width: 20px;
+			padding-inline: 3px;
 		}
 	}
 	@media (max-width: 1280px) {
