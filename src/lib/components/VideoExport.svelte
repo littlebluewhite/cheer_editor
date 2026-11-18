@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 輸出影片（流程影片）的對話框：準備（影片多長、放不下的八拍、沒聲音的段）→ 輸出中（進度、取消）→ 做好了（存檔）／失敗（再試一次）。
+	// 輸出影片（流程影片）的對話框：準備（影片多長、放不下的八拍、標記會被切到的隊員、沒聲音的段）→ 輸出中（進度、取消）→ 做好了（存檔）／失敗（再試一次）。
 	// 瀏覽器做不做得出來，打開時當場問編碼器：做不出來就不給「開始」；影片工具載不下來另外說，可以再試。
 	// 按「開始」那一刻的流程存一份，整支用它（流程改了，影片不會一半新一半舊）。
 	// 取消、Esc、點背景都走 Modal 的關閉：中止編碼、丟掉做到一半的。
@@ -10,7 +10,7 @@
 	import { failureDetail } from '#lib/error-detail.js';
 	import { saveFailureReason, videoFileName } from '#lib/file/save.js';
 	import { canvasMeasure, drawFrame } from '#lib/video/draw.js';
-	import { layoutFrame, overflowEights, type Measure } from '#lib/video/layout.js';
+	import { layoutFrame, markerOverflowMembers, overflowEights, type Measure } from '#lib/video/layout.js';
 	import { failureReason } from '#lib/video/encoder.js';
 	import { mixClips, renderSoundtrack } from '#lib/video/soundtrack.js';
 	import Modal from './Modal.svelte';
@@ -66,6 +66,8 @@
 		return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 	});
 	const overflow = $derived(overflowEights(flow, measure));
+	/** 標記太長、站在邊上會超出影片左右邊的隊員（圓點不移位，跟場上一樣）。 */
+	const cropped = $derived(markerOverflowMembers(flow, measure));
 	/** 找不到音樂的段：寫段名和音樂檔名（兩段用同一個檔也各寫一次）；音樂段根本還沒選音樂，寫「還沒選音樂」。 */
 	const silent = $derived.by(() => {
 		const ids = mixClips(flow, (id) => editor.music.buffer(id) !== undefined).silentSegments;
@@ -159,6 +161,7 @@
 		{:else if step.kind === 'ready'}
 			<p>影片長 {duration}</p>
 			{#if overflow.length}<p class="warn">這幾個八拍有東西放不下，會縮成一行或拿掉：{overflow.join('、')}</p>{/if}
+			{#if cropped.length}<p class="warn">這幾個隊員的標記太長，影片裡會被切到：{cropped.join('、')}</p>{/if}
 			{#if silent.length}<p class="warn">這幾段找不到音樂，影片裡沒有聲音：{silent.join('、')}</p>{/if}
 			<div class="buttons">
 				<button type="button" onclick={closeModal}>取消</button>

@@ -2,9 +2,12 @@
 // 不碰 Canvas：字寬由呼叫端給（measure），測試換成假的（跟 ADR 0002 的 toMeters 同一種做法）。
 
 import {
+	VIDEO_FPS,
 	actionLabel,
 	fullView,
 	layerStagger,
+	videoDurationSec,
+	videoFrames,
 	videoRows,
 	type CueKind,
 	type EightCountCueLine,
@@ -148,6 +151,31 @@ export function overflowEights(flow: Flow, measure: Measure): string[] {
 	return videoRows(flow)
 		.filter(({ row }) => layoutRow(row, null, measure).overflow)
 		.map(({ label }) => label);
+}
+
+/**
+ * 標記畫出來會超出影片左右邊的隊員（名字，照名單），給輸出前的對話框列出來。
+ * 每一格都看（走位、錯開都算），寬度取膠囊和標記的字（照畫的字級、粗細量）比較寬的那個。圓點不移位，跟場上一樣。
+ */
+export function markerOverflowMembers(flow: Flow, measure: Measure): string[] {
+	const frameAt = videoFrames(flow);
+	const frames = Math.round(videoDurationSec(flow) * VIDEO_FPS);
+	const out = new Set<string>();
+	// 標記的字級只有幾種（縮小的倍數）：同一個標記、同一個字級只量一次
+	const widths = new Map<string, number>();
+	const width = (text: string, px: number) => {
+		const key = `${px} ${text}`;
+		if (!widths.has(key)) widths.set(key, measure(text, px, 700));
+		return widths.get(key)!;
+	};
+	for (let i = 0; i < frames; i++) {
+		const frame = frameAt(i / VIDEO_FPS);
+		for (const d of layoutField(flow.field, frame).dots) {
+			const half = Math.max(d.h + d.r, width(frame.markers[d.id] ?? '', d.font) / 2);
+			if (d.c[0] - half < 0 || d.c[0] + half > VIDEO_W) out.add(d.id);
+		}
+	}
+	return flow.members.filter((m) => out.has(m.id)).map((m) => m.name);
 }
 
 interface Part {

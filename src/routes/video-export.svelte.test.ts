@@ -10,7 +10,10 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	fieldGeometry,
 	renameFlow,
+	setMarkers,
+	setPositions,
 	updateSegment,
 	videoDurationSec,
 	type Flow
@@ -353,5 +356,23 @@ describe('輸出影片', () => {
 		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: '金字塔', start: 0, length: 16, note: '', members }));
 		await openDialog(flow);
 		expect(await within(dialog()).findByText('這幾個八拍有東西放不下，會縮成一行或拿掉：音樂 1 第 1 個八拍')).toBeTruthy();
+	});
+
+	it('有人的標記太長、站在邊上會超出影片：對話框寫出是誰', async () => {
+		const field = { strips: 12, layout: 'vertical' as const };
+		let flow = flowOf(createFlow({ name: '標記', field }));
+		flow = flowOf(
+			addMembers(flow, [
+				{ name: '新1234567890123456789', gender: 'F', globalRole: 'base' },
+				{ name: '新人', gender: 'F', globalRole: 'base' }
+			])
+		);
+		flow = flowOf(setMarkers(flow, 'initial'));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 1, lastBeats: 8 }));
+		const { outer } = fieldGeometry(field);
+		flow = flowOf(setPositions(flow, flow.formations[0].id, { m1: [outer.x + outer.width, outer.y + 1] }));
+		await openDialog(flow);
+		expect(await within(dialog()).findByText('這幾個隊員的標記太長，影片裡會被切到：新1234567890123456789')).toBeTruthy();
 	});
 });

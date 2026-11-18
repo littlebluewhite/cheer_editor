@@ -5,8 +5,11 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
+	fieldGeometry,
 	fullView,
 	placeCue,
+	setMarkers,
+	setPositions,
 	updateSegment,
 	videoFrame,
 	type EightCountCueLine,
@@ -17,7 +20,7 @@ import {
 } from '#lib/core';
 import { fakeMeasure as measure } from '../test-fakes';
 import { flowOf } from '../test-flows';
-import { MIN_TEXT_PX, VIDEO_H, VIDEO_W, layoutFrame, overflowEights, type FrameLayout } from './layout';
+import { MIN_TEXT_PX, VIDEO_H, VIDEO_W, layoutFrame, markerOverflowMembers, overflowEights, type FrameLayout } from './layout';
 
 const FIELD: FieldConfig = { strips: 9, layout: 'vertical' };
 /** 三塊：上方 0–320、場地 320–1160、下面那一列 1160–1880。 */
@@ -206,6 +209,30 @@ describe('場地：照層畫圓點（跟場上一樣）', () => {
 		const mid = field.dots.find((d) => d.id === 'mid')!;
 		expect(mid.h).toBeGreaterThan(0);
 		expect(field.dots.find((d) => d.id === 'base')!.h).toBe(0);
+	});
+});
+
+describe('標記超出影片左右邊（輸出前列出來）', () => {
+	/** 12 條直放；新1234567890123456789、新人，標記用開頭字（「新1234567890123456789」、「新人」），x 是第一個人站的公尺。 */
+	function longMarker(x: (outer: { x: number; width: number }) => number): Flow {
+		const field: FieldConfig = { strips: 12, layout: 'vertical' };
+		let flow = flowOf(createFlow({ name: '標記', field }));
+		flow = flowOf(
+			addMembers(flow, [
+				{ name: '新1234567890123456789', gender: 'F', globalRole: 'base' },
+				{ name: '新人', gender: 'F', globalRole: 'base' }
+			])
+		);
+		flow = flowOf(setMarkers(flow, 'initial'));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 1, lastBeats: 8 }));
+		const { outer } = fieldGeometry(field);
+		return flowOf(setPositions(flow, flow.formations[0].id, { m1: [x(outer), outer.y + 1], m2: [outer.x + outer.width / 2, outer.y + 3] }));
+	}
+
+	it('站在右邊邊上、標記 21 格寬：列出這個人；站在中間就不列', () => {
+		expect(markerOverflowMembers(longMarker((o) => o.x + o.width), measure)).toEqual(['新1234567890123456789']);
+		expect(markerOverflowMembers(longMarker((o) => o.x + o.width / 2), measure)).toEqual([]);
 	});
 });
 
