@@ -2308,6 +2308,27 @@
 			padding-inline: 4px;
 		}
 	}
+	/* A、B、✕ 多占的寬度從間距省回來，流程名字才至少露出 3 個字（N55）：時間那一格 1280 寬就收窄、播放區和上方列的間距小一點 */
+	@media (max-width: 1280px) and (max-height: 860px) {
+		.topbar {
+			gap: 8px;
+		}
+		.transport {
+			gap: 4px;
+		}
+		.board {
+			min-width: 132px;
+			padding-inline: 8px;
+		}
+	}
+	/* 1024×768（滑鼠）：只有圖示的按鈕左右再收小（手指的照樣至少 32px） */
+	@media (max-width: 1100px) and (max-height: 860px) and (pointer: fine) {
+		.actions :global(button.ghost),
+		.actions .btn.ghost,
+		.guide-link {
+			padding-inline: 5px;
+		}
+	}
 	@media (max-width: 1280px) {
 		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字 */
 		.guide-text {

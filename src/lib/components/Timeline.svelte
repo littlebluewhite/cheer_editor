@@ -693,6 +693,10 @@
 	}
 	/* 手指：段列和八拍尺高一點，「＋」和放大縮小點得到的範圍（32px）放得進去，看起來不變。 */
 	@media (pointer: coarse) {
+		/* 捲到某一條泳道時扣掉的也跟著變高（44 + 28 + 34 + 76） */
+		.timeline {
+			scroll-padding-top: 182px;
+		}
 		.segs {
 			height: 44px;
 		}
