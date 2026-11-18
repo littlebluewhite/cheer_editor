@@ -107,8 +107,9 @@ export function createPlayer(engine: AudioEngine): Player {
 			// 重複：快播完排好的最後一圈，就再排下一圈。看喇叭的時間，不看扣掉延遲校正的，才不會排晚；
 			// 延遲校正是負的（畫面提早）時看畫面的，畫面才不會跑到排好的圈後面、卡在 B
 			queueLap(Math.max(audible, shownAt));
-			// 畫面已經播過的圈丟掉（最後一圈留著）
-			while (session.laps.length > 1 && session.laps[1].t0 <= shownAt) session.laps.shift();
+			// 畫面和喇叭都播過的圈丟掉（最後一圈留著）。播放中改延遲校正，畫面會退回喇叭那一圈
+			const passed = Math.min(audible, shownAt);
+			while (session.laps.length > 1 && session.laps[1].t0 <= passed) session.laps.shift();
 			// 剛好在接縫（差一點點浮點誤差）算下一圈的開頭，不顯示成上一圈的結尾
 			const lap = session.laps.findLast((l) => l.t0 <= shownAt + 1e-6) ?? session.laps[0];
 			const { t0, fromSec, endSec } = lap;

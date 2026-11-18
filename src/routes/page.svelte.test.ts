@@ -1734,6 +1734,21 @@ describe('播放', () => {
 		expect(parseFloat(band().style.width)).toBeCloseTo(102.4, 6);
 	});
 
+	it('拖 B 的把手：按在把手中間、只上下移，B 不會跑掉（照手指移了多少算，不照手指在哪）', async () => {
+		await sample();
+		const strip = document.querySelector('[data-repeat-strip]')!;
+		await fireEvent.pointerDown(strip, { clientX: 3.3 * 16, button: 0, pointerId: 1 });
+		await fireEvent.pointerMove(window, { clientX: 6.3 * 16, pointerId: 1 });
+		await fireEvent.pointerUp(window, { clientX: 6.3 * 16, pointerId: 1 });
+		const band = () => document.querySelector<HTMLElement>('[data-repeat-range]')!;
+		expect(band().style.width).toBe('51.2px'); // B 在 102.4px
+		const grip = document.querySelector('[data-repeat-end="b"]')!;
+		await fireEvent.pointerDown(grip, { clientX: 96.4, clientY: 40, button: 0, pointerId: 2 });
+		await fireEvent.pointerMove(window, { clientX: 96.4, clientY: 60, pointerId: 2 });
+		await fireEvent.pointerUp(window, { clientX: 96.4, clientY: 60, pointerId: 2 });
+		expect(band().style.width).toBe('51.2px');
+	});
+
 	/** 播放列的「⋯」小窗打開，拿延遲校正欄位。 */
 	async function latencyField() {
 		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));

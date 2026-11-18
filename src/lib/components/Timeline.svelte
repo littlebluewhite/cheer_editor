@@ -302,9 +302,12 @@
 		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
 		const end = (e.target as HTMLElement).closest<HTMLElement>('[data-repeat-end]')?.dataset.repeatEnd;
 		// 拖把手：不動的是另一頭（照原本的位置）；拖新的一段：不動的是按下去的地方
-		if (playback.range?.b != null && (end === 'a' || end === 'b')) {
+		const range = playback.range;
+		if (range?.b != null && (end === 'a' || end === 'b')) {
 			const drag = playback.dragRangeEnd(end);
-			followPointer(e, (ev) => drag(toSec(ev)));
+			// 照手指移了多少算：按在把手中間（離 A、B 有一點距離），只上下移也不會跳一拍
+			const grab = (end === 'a' ? range.a : range.b) - toSec(e);
+			followPointer(e, (ev) => drag(toSec(ev) + grab));
 			return;
 		}
 		const fixed = toSec(e);
@@ -400,7 +403,7 @@
 				{#if playback.range}
 					{@const { a, b } = playback.range}
 					{#if b !== null}
-						<div class="range" class:off={!playback.repeat} class:narrow={(b - a) * px < NARROW_RANGE_PX} data-repeat-range style:left={`${a * px}px`} style:width={`${(b - a) * px}px`}>
+						<div class="range" class:off={!playback.repeat} class:narrow={(b - a) * px < NARROW_RANGE_PX} class:at-start={a * px < NARROW_RANGE_PX / 2} data-repeat-range style:left={`${a * px}px`} style:width={`${(b - a) * px}px`}>
 							<span class="grip a" data-repeat-end="a">A</span>
 							<span class="grip b" data-repeat-end="b">B</span>
 						</div>
@@ -887,6 +890,14 @@
 	.range.narrow .grip.b {
 		right: auto;
 		left: 100%;
+	}
+	/* 窄範圍貼著流程開頭：A 外面沒地方（會躲到左邊名字欄底下），A 留在裡面，B 往右讓開 */
+	.range.narrow.at-start .grip.a {
+		left: -1px;
+		right: auto;
+	}
+	.range.narrow.at-start .grip.b {
+		left: max(100%, 16px);
 	}
 	.only-a .grip.a {
 		left: -2px;

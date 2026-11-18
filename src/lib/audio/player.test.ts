@@ -134,6 +134,16 @@ describe('播放器', () => {
 		expect(player.tick(-1000)).toBeCloseTo(0.05, 6);
 	});
 
+	it('重複、播放中把負的延遲校正改回 0：播放頭跟著喇叭走，不會卡在 A', () => {
+		const engine = createFakeEngine();
+		const player = createPlayer(engine);
+		const lap = { plan: { clips: [], clicks: [], endSec: 0.4 }, fromSec: 0 };
+		player.start(lap.plan, { fromSec: 0, metronome: false, loop: () => lap });
+		engine.audible = 0.35; // 喇叭在第一圈的 0.25 秒
+		player.tick(-1000);
+		expect(player.tick(0)).toBeCloseTo(0.25, 6);
+	});
+
 	it('慢速重複：下一圈要用的音樂檔也先拉長（不然第一次跳回 A 時才拉，聲音會晚）', () => {
 		const engine = createFakeEngine();
 		const prepared: string[] = [];
