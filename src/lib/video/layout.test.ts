@@ -8,10 +8,12 @@ import {
 	fieldGeometry,
 	fullView,
 	placeCue,
+	readFlowFile,
 	setMarkers,
 	setPositions,
 	updateSegment,
 	videoFrame,
+	writeFlowFile,
 	type EightCountCueLine,
 	type FieldConfig,
 	type Flow,
@@ -41,8 +43,8 @@ function row(r: Partial<VideoRow>): VideoRow {
 }
 
 function frame(r: VideoRow, more: Partial<VideoFrameData> = {}): VideoFrameData {
-	return {
-		part: 'play',
+	const f = {
+		part: 'play' as const,
 		flowSec: 1,
 		title: '測試流程',
 		where: '音樂 1・第 1 個八拍',
@@ -54,6 +56,8 @@ function frame(r: VideoRow, more: Partial<VideoFrameData> = {}): VideoFrameData 
 		row: r,
 		...more
 	};
+	// 沒給 order 就照 positions 寫的順序
+	return { order: Object.keys(f.positions), ...f };
 }
 
 const act = (title: string, who: string, note = '') => ({ title, who, note });
@@ -233,6 +237,27 @@ describe('標記超出影片左右邊（輸出前列出來）', () => {
 	it('站在右邊邊上、標記 21 格寬：列出這個人；站在中間就不列', () => {
 		expect(markerOverflowMembers(longMarker((o) => o.x + o.width), measure)).toEqual(['新1234567890123456789']);
 		expect(markerOverflowMembers(longMarker((o) => o.x + o.width / 2), measure)).toEqual([]);
+	});
+});
+
+describe('疊在一起的同一層照名單畫', () => {
+	it('流程檔裡隊員的 id 是數字（名單 2、1）：還是照名單畫，不會變成 1、2', () => {
+		let flow = flowOf(createFlow({ name: '數字 id', field: FIELD }));
+		flow = flowOf(
+			addMembers(flow, [
+				{ name: '小A', gender: 'F', globalRole: 'base' },
+				{ name: '小B', gender: 'F', globalRole: 'base' }
+			])
+		);
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(setPositions(flow, flow.formations[0].id, { m1: [0, 0], m2: [0, 0] }));
+		// 別的工具存的流程檔：m1 → "2"、m2 → "1"，打得開
+		const file = writeFlowFile(JSON.parse(JSON.stringify(flow).replaceAll('"m1"', '"2"').replaceAll('"m2"', '"1"')), {});
+		const opened = readFlowFile(file);
+		if (opened.kind !== 'ok') throw new Error(opened.kind);
+		expect(opened.flow.members.map((m) => m.id)).toEqual(['2', '1']);
+		const { field } = layoutFrame(FIELD, videoFrame(opened.flow, 0), measure);
+		expect(field.dots.map((d) => d.id)).toEqual(['2', '1']);
 	});
 });
 

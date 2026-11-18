@@ -58,6 +58,11 @@ export interface VideoFrameData {
 	/** 音樂段才有。count 是這個八拍有幾拍（最後不滿的比 8 少），lit 是現在第幾拍（開頭是 null）。 */
 	beats: { count: number; lit: number | null } | null;
 	positions: Record<string, Position>;
+	/**
+	 * 場上有站位的人，照名單的順序：同一層疊在一起時照名單畫，跟場上一樣。
+	 * 不能靠 positions 的 key 順序：站位裡是加進來的順序，數字 id（"1"、"2"）還會被排成數字大小。
+	 */
+	order: string[];
 	/** 這一刻在空中的人第幾層（2、3；地上的不列），跟場上一樣照層畫。 */
 	levels: Record<string, number>;
 	markers: Record<string, string>;
@@ -123,8 +128,8 @@ export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 			flowSec,
 			title: flow.name,
 			clock: clockText(flowSec),
-			// 照名單的順序：同一層疊在一起時照名單畫，跟場上一樣（站位裡的順序是加進來的順序，換過名單順序就不一樣）
-			positions: Object.fromEntries(flow.members.flatMap((m) => (at[m.id] ? [[m.id, at[m.id]]] : []))),
+			positions: at,
+			order: flow.members.flatMap((m) => (at[m.id] ? [m.id] : [])),
 			levels: layersAt(flow, flowSec),
 			markers,
 			row: rowNow ? rowNow.row : EMPTY_ROW

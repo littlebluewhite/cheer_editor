@@ -243,7 +243,7 @@ function layoutField(field: FieldConfig, frame: VideoFrameData): VideoFieldLayou
 	const markerPx = dotPx / 2;
 	// 1 公尺的圓點在影片上幾 px：錯開的距離、膠囊的留白都照它
 	const unit = dotPx / (2 * DOT_R);
-	const plain = Object.keys(frame.positions)
+	const plain = frame.order
 		.map((id) => {
 			const [mx, my] = frame.positions[id];
 			const mark = frame.markers[id] ?? '';

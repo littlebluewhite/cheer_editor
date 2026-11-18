@@ -175,11 +175,11 @@ describe('videoFrame：播放中', () => {
 		expect(f.levels).toEqual(layersAt(flow, 4.3));
 	});
 
-	it('名單換過順序：positions 照名單的順序（疊在一起的同一層照名單畫，跟場上一樣）', () => {
+	it('名單換過順序：order 照名單的順序（疊在一起的同一層照名單畫，跟場上一樣）', () => {
 		const flow = flowOf(moveMember(sample(), 'm2', 0));
 		expect(flow.members.map((m) => m.id)).toEqual(['m2', 'm1']);
-		expect(Object.keys(videoFrame(flow, 0).positions)).toEqual(['m2', 'm1']);
-		expect(Object.keys(videoFrame(flow, VIDEO_INTRO_SEC + 4.3).positions)).toEqual(['m2', 'm1']);
+		expect(videoFrame(flow, 0).order).toEqual(['m2', 'm1']);
+		expect(videoFrame(flow, VIDEO_INTRO_SEC + 4.3).order).toEqual(['m2', 'm1']);
 	});
 
 	it('八拍表合起來的列：where 還是現在這一個八拍', () => {
