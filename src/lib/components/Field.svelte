@@ -1,22 +1,6 @@
 <script lang="ts" module>
-	import { fieldGeometry, type FieldConfig, type Rect } from '#lib/core';
-
-	/**
-	 * 外圍框外寫條編號、格號的那一條留多寬（公尺）：放大了的場外圓點也蓋不到編號。
-	 * 後面寫左右那一軸的號碼（直放的條號、橫放的格號），左邊寫前後那一軸的（直放的格號、橫放的條號）。
-	 * 號碼在螢幕上至少 11px（見 MIN_TEXT_PX），iPad 上場地小、圓點 32px 時也要放得下，所以比圓點伸出外圍框的那一截再寬一個號碼。
-	 */
-	export const NUMBER_BAND = 1.3;
-
-	/**
-	 * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號、格號（NUMBER_BAND，左右都留，場地才置中）和「正面／裁判」字樣的空間。
-	 * 編輯頁拿它的長寬比分配右邊欄的寬度。
-	 */
-	export function fullView(field: FieldConfig) {
-		const { outer } = fieldGeometry(field);
-		const b = NUMBER_BAND;
-		return { x: outer.x - b, y: outer.y - b, width: outer.width + 2 * b, height: outer.height + b + 1 };
-	}
+	// 號碼條的寬和整個場地的範圍搬進流程核心了（流程影片也用）；編輯頁別處還從這裡 import。
+	export { NUMBER_BAND, fullView } from '#lib/core';
 </script>
 
 <script lang="ts">
@@ -36,7 +20,11 @@
 	import { untrack, type Snippet } from 'svelte';
 	import {
 		CELL_M,
+		fieldGeometry,
+		fieldNumbers,
 		fieldPositionText,
+		frontLabelAt,
+		fullView,
 		moveMembers,
 		positionsAt,
 		snapGroup,
@@ -46,9 +34,11 @@
 		TOO_FAST_MPS,
 		toPosition,
 		type Clash,
+		type FieldConfig,
 		type FormationWalk,
 		type Member,
-		type Position
+		type Position,
+		type Rect
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
@@ -235,30 +225,10 @@
 	/** 多字標記的膠囊寬（公尺）：放得下字、至少跟圓點一樣寬；一兩格寬的標記畫圓點，是 0。 */
 	const pillWidth = (mark: string) =>
 		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * longFont + 0.14) : 0;
-	/**
-	 * 後面那一排號碼（cx 是那一條或那一格左右的中間；f 是字高）：貼著那一條靠外的邊（離伸出外圍框的圓點最遠），
-	 * 放大後那一條捲出去了就貼著畫面邊上。字放大了也整個在畫面裡。
-	 */
-	const topNumberAt = (cx: number, f: number): Position => [cx, Math.max(g.outer.y - NUMBER_BAND, view.y) + 1.1 * f];
-	/** 左邊那一排號碼（cy 是那一條或那一格前後的中間；f 是字高）：一樣貼著靠外的邊，兩位數也放得下。 */
-	const sideNumberAt = (cy: number, f: number): Position => [
-		Math.max(g.outer.x - NUMBER_BAND, view.x) + 0.65 * f,
-		cy + 0.3 * f
-	];
-	const numberAt = (s: { rect: { x: number; y: number; width: number; height: number } }): Position =>
-		vertical ? topNumberAt(s.rect.x + s.rect.width / 2, stripFont) : sideNumberAt(s.rect.y + s.rect.height / 2, stripFont);
-	/**
-	 * 格號：跟位置文字一樣，直放正面起（寫在左邊）、橫放左起（寫在後面）。
-	 * 八拍表的小站位圖（crop）不寫：擠在裁切的邊上會跟條號疊在一起。
-	 */
-	const cellNumbers = $derived(
-		Array.from({ length: crop ? 0 : vertical ? g.rows : g.cols }, (_, i) => ({
-			n: i + 1,
-			at: vertical
-				? sideNumberAt(g.mat.y + g.mat.height - (i + 0.5) * CELL_M, cellFont)
-				: topNumberAt(g.mat.x + (i + 0.5) * CELL_M, cellFont)
-		}))
-	);
+	/** 條號、格號寫在哪：公式在流程核心（流程影片也用）。八拍表的小站位圖（crop）不寫格號：擠在裁切的邊上會跟條號疊在一起。 */
+	const numbers = $derived(fieldNumbers(field, view, stripFont, cellFont));
+	const cellNumbers = $derived(crop ? [] : numbers.cells);
+	const frontLabel = $derived(frontLabelAt(field));
 
 	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量；不算上面留給選人工具列的那一條）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
 	function watchStage(el: HTMLElement) {
@@ -863,15 +833,14 @@
 		<path class="center" d="M{-centerArm},0L{centerArm},0M0,{-centerArm}L0,{centerArm}"><title>場地正中心</title></path>
 		<!-- 條編號寫在外圍框外面那一條（NUMBER_BAND，直放在後面、橫放在左邊）靠外的地方、每條的中間：
 		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
-		{#each g.strips as s (s.number)}
-			{@const [nx, ny] = numberAt(s)}
-			<text class="num" data-strip-number data-keep-visible x={nx} y={ny} style:font-size="{stripFont}px">{s.number}</text>
+		{#each numbers.strips as { n, at } (n)}
+			<text class="num" data-strip-number data-keep-visible x={at[0]} y={at[1]} style:font-size="{stripFont}px">{n}</text>
 		{/each}
 		<!-- 格號（條號的另一軸）：細一點，跟條號分得出來 -->
 		{#each cellNumbers as { n, at } (n)}
 			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{cellFont}px">{n}</text>
 		{/each}
-		<text class="front" data-keep-visible x="0" y={g.outer.y + g.outer.height + 0.7} style:font-size="{frontFont}px">▼ 正面／裁判 ▼</text>
+		<text class="front" data-keep-visible x={frontLabel[0]} y={frontLabel[1]} style:font-size="{frontFont}px">▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
 			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r={DOT_R * dotScale} />
 		{/each}

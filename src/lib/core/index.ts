@@ -238,7 +238,17 @@ export { insertBeats } from './insert-beats';
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules, TimeRuleWarning } from './time-rules';
 
-export { CELL_M, FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
+export {
+	CELL_M,
+	FIELD_TEMPLATES,
+	MAX_STRIPS,
+	MIN_STRIPS,
+	NUMBER_BAND,
+	fieldGeometry,
+	fieldNumbers,
+	frontLabelAt,
+	fullView
+} from './field';
 export type {
 	FieldConfig,
 	FieldGeometry,

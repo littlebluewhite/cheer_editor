@@ -121,6 +121,65 @@ export function fieldGeometry(field: FieldConfig): FieldGeometry {
 	};
 }
 
+/**
+ * 外圍框外寫條編號、格號的那一條留多寬（公尺）：放大了的場外圓點也蓋不到編號。
+ * 後面寫左右那一軸的號碼（直放的條號、橫放的格號），左邊寫前後那一軸的（直放的格號、橫放的條號）。
+ * 號碼在螢幕上至少 11px，iPad 上場地小、圓點 32px 時也要放得下，所以比圓點伸出外圍框的那一截再寬一個號碼。
+ */
+export const NUMBER_BAND = 1.3;
+
+/**
+ * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號、格號（NUMBER_BAND，左右都留，場地才置中）和「正面／裁判」字樣的空間。
+ * 編輯頁拿它的長寬比分配右邊欄的寬度；流程影片的場地也用它。
+ */
+export function fullView(field: FieldConfig): Rect {
+	const { outer } = fieldGeometry(field);
+	const b = NUMBER_BAND;
+	return { x: outer.x - b, y: outer.y - b, width: outer.width + 2 * b, height: outer.height + b + 1 };
+}
+
+/** 場地上一個點（公尺）；跟 formation.ts 的 Position 一樣，那邊 import 這個檔，這裡不能反過來 import。 */
+type Point = [number, number];
+
+/**
+ * 條號、格號寫在哪（公尺，字的基線起點）：貼著號碼條靠外的邊（離伸出外圍框的圓點最遠），
+ * 放大後號碼條捲出 view 了就貼著畫面邊上。stripFont、cellFont 是字高（公尺）。
+ * 直放：條號在後面、格號在左邊（正面起算）；橫放：條號在左邊、格號在後面（左起算）。
+ */
+export function fieldNumbers(
+	field: FieldConfig,
+	view: Rect,
+	stripFont: number,
+	cellFont: number
+): { strips: { n: number; at: Point }[]; cells: { n: number; at: Point }[] } {
+	const g = fieldGeometry(field);
+	const vertical = field.layout === 'vertical';
+	// 後面那一排：cx 是那一條或那一格左右的中間
+	const topAt = (cx: number, f: number): Point => [cx, Math.max(g.outer.y - NUMBER_BAND, view.y) + 1.1 * f];
+	// 左邊那一排：cy 是那一條或那一格前後的中間，兩位數也放得下
+	const sideAt = (cy: number, f: number): Point => [Math.max(g.outer.x - NUMBER_BAND, view.x) + 0.65 * f, cy + 0.3 * f];
+	return {
+		strips: g.strips.map((s) => ({
+			n: s.number,
+			at: vertical
+				? topAt(s.rect.x + s.rect.width / 2, stripFont)
+				: sideAt(s.rect.y + s.rect.height / 2, stripFont)
+		})),
+		cells: Array.from({ length: vertical ? g.rows : g.cols }, (_, i) => ({
+			n: i + 1,
+			at: vertical
+				? sideAt(g.mat.y + g.mat.height - (i + 0.5) * CELL_M, cellFont)
+				: topAt(g.mat.x + (i + 0.5) * CELL_M, cellFont)
+		}))
+	};
+}
+
+/** 「正面／裁判」寫在哪：外圍框下面、正中間。 */
+export function frontLabelAt(field: FieldConfig): Point {
+	const { outer } = fieldGeometry(field);
+	return [0, outer.y + outer.height + 0.7];
+}
+
 /** [from, to) 的整數。 */
 function range(from: number, to: number): number[] {
 	return Array.from({ length: Math.max(0, to - from) }, (_, i) => from + i);
