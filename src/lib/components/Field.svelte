@@ -1183,12 +1183,12 @@
 		stroke-width: 0.08;
 	}
 	/* 三層：橘框，跟第 2 層的黃框分得出來 */
-	.dot.lv3 :is(circle, rect):not(.ring):not(.focus-ring) {
+	.dot.lv3 > g > :is(circle, rect):not(.ring):not(.focus-ring) {
 		stroke: #ff7a00;
 		stroke-width: 0.1;
 	}
 	/* 地上的人細深色外框：疊在一起時看得出邊 */
-	.dot.outlined:not(.raised) :is(circle, rect):not(.ring):not(.focus-ring) {
+	.dot.outlined:not(.raised) > g > :is(circle, rect):not(.ring):not(.focus-ring) {
 		stroke: #16213a;
 		stroke-width: 0.035;
 	}
