@@ -57,13 +57,27 @@ function frame(r: VideoRow, more: Partial<VideoFrameData> = {}): VideoFrameData 
 const act = (title: string, who: string, note = '') => ({ title, who, note });
 
 /** 一個動作的拍點那一排：第 1、2 格一個 down。 */
-function cueLine(name: string, word = 'down', from = 1, to = 2): EightCountCueLine {
+function cueLine(
+	name: string,
+	word = 'down',
+	from = 1,
+	to = 2,
+	more: Partial<EightCountCueLine['cues'][number]> = {}
+): EightCountCueLine {
 	return {
 		category: 'stunt',
 		name,
-		cues: [{ kind: 'count', from, to, span: `1-${from} 到 1-${to}・${to - from + 1} 拍`, lead: '', continued: false, word, who: null }],
+		cues: [
+			{ kind: 'count', from, to, span: `1-${from} 到 1-${to}・${to - from + 1} 拍`, lead: '', continued: false, word, who: null, ...more }
+		],
 		phases: []
 	};
+}
+
+/** 每個字、每個框都在區塊底（1880）以內。 */
+function expectAboveBottom(l: FrameLayout) {
+	for (const t of l.texts) expect(t.y + t.px).toBeLessThanOrEqual(ROW_BOTTOM);
+	for (const b of l.boxes) expect(b.y + b.h).toBeLessThanOrEqual(ROW_BOTTOM);
 }
 
 const layout = (r: VideoRow, more: Partial<VideoFrameData> = {}) => layoutFrame(FIELD, frame(r, more), measure);
@@ -284,11 +298,12 @@ describe('下面那一列：拍點格子', () => {
 		for (const b of gridBoxes(l)) expect(b.y + b.h).toBeLessThanOrEqual(ROW_BOTTOM);
 	});
 
-	it('拍點的字比格子寬：在格子裡換行，不截掉、不蓋到下一格', () => {
-		const word = '一二三四五六七八九十';
+	it('拍點的字比格子寬：在格子裡換行（兩行內），不截掉、不蓋到下一格', () => {
+		// 40 px 一格一行只放 1 個字、要 4 行，縮到 30 px 一行 2 個字、2 行就放得下
+		const word = '一二三四';
 		const l = layout(row({ cues: [cueLine('Lib', word, 1, 1)] }));
-		const parts = bottom(l).filter((t) => /^[一二三四五六七八九十]+$/.test(t.text));
-		expect(parts.length).toBeGreaterThan(1);
+		const parts = bottom(l).filter((t) => /^[一二三四]+$/.test(t.text));
+		expect(parts).toHaveLength(2);
 		expect(parts.map((t) => t.text).join('')).toBe(word);
 		const cue = gridBoxes(l).find((b) => b.fill === 'cueDown')!;
 		for (const t of parts) {
@@ -297,6 +312,63 @@ describe('下面那一列：拍點格子', () => {
 			expect(t.y + t.px).toBeLessThanOrEqual(cue.y + cue.h);
 		}
 		expect(l.overflow).toBe(false);
+	});
+
+	it('一格的字 28 px 也要 3 行以上：留 2 行，第 2 行結尾「⋯」，算放不下', () => {
+		const l = layout(row({ cues: [cueLine('Lib', '一二三四五六七八九十', 1, 1)] }));
+		const parts = bottom(l).filter((t) => /^[一二三四五六七八九十]+⋯?$/.test(t.text));
+		expect(rowPx(l)).toBe(MIN_TEXT_PX);
+		expect(parts.map((t) => t.text)).toEqual(['一二', '三⋯']);
+		expect(l.overflow).toBe(true);
+		expectInside(l);
+	});
+
+	it('換行後不用空白開頭：「high V」換成「high」「V」', () => {
+		// 誰很長，縮到 28 px：一格裡「high」放得下、再加空白就放不下
+		const base = cueLine('Lib', 'high V', 1, 1);
+		const motion: EightCountCueLine = { ...base, cues: [{ ...base.cues[0], kind: 'motion' }] };
+		const l = layout(row({ actions: [act('1-1　技巧·Lib', lines(15))], cues: [motion] }));
+		expect(rowPx(l)).toBe(MIN_TEXT_PX);
+		const s = strings(l);
+		expect(s).toContain('high');
+		expect(s).toContain('V');
+		expect(s.some((t) => t.startsWith(' ') || t.endsWith(' '))).toBe(false);
+	});
+
+	it('6 個動作、每個拍點只佔一格又有給誰和 &：字至少留一行，什麼都不超出 1880', () => {
+		const names = ['甲', '乙', '丙', '丁', '戊', '己'];
+		const l = layout(
+			row({
+				actions: names.map((n) => act(`1-1 到 1-8・8 拍　技巧·${n}`, `${n}1（上層）、${n}2（主底）`)),
+				cues: names.map((n) => cueLine(n, 'down', 1, 1, { who: '上層', lead: '1-1&' }))
+			})
+		);
+		const gridTop = Math.min(...gridBoxes(l).map((b) => b.y));
+		const above = bottom(l).filter((t) => t.y < gridTop);
+		expect(above.length).toBeGreaterThanOrEqual(1);
+		expect(above[0].text).toBe('1-1 到 1-8・8 拍　技巧·甲');
+		expect(l.overflow).toBe(true);
+		expectAboveBottom(l);
+		expectInside(l);
+	});
+
+	it('25 個動作的拍點：放不下的那幾段不畫，寫「⋯還有 N 行拍點」，什麼都不超出 1880', () => {
+		const cues = Array.from({ length: 25 }, (_, i) => cueLine(`第${i + 1}`));
+		const l = layout(row({ actions: [act('1-1　技巧·Lib', '小A')], cues }));
+		const s = strings(l);
+		const more = s.find((t) => /^⋯還有 \d+ 行拍點$/.test(t))!;
+		expect(more).toBeDefined();
+		const n = Number(more.match(/\d+/)![0]);
+		expect(n).toBeGreaterThan(0);
+		// 畫出來的段數 ＋ 沒畫的 ＝ 25
+		expect(s.filter((t) => /^技巧·第\d+$/.test(t)).length + n).toBe(25);
+		expect(s.filter((t) => t === 'down').length + n).toBe(25);
+		// 格子佔到只剩一行字：標題那一行留著，下面的「誰」截掉，結尾「⋯」
+		const gridTop = Math.min(...gridBoxes(l).map((b) => b.y));
+		expect(bottom(l).filter((t) => t.y < gridTop).map((t) => t.text)).toEqual(['1-1　技巧·Lib⋯']);
+		expect(l.overflow).toBe(true);
+		expectAboveBottom(l);
+		expectInside(l);
 	});
 
 	it('環節寫在拍點上面一行，佔它的格子', () => {
@@ -385,6 +457,20 @@ describe('下面那一列：放不下時照順序拿掉', () => {
 		expect(s).not.toContain('1-1　技巧·乙');
 		expect(s.at(-1)).toBe('⋯還有 2 個動作');
 		expect(bottom(l).length).toBeLessThanOrEqual(LINES);
+	});
+});
+
+describe('下面那一列：截掉時', () => {
+	it('拿掉了動作還要截：「⋯還有 N 個動作」那一行留著，截它上面的', () => {
+		const l = layout(row({ actions: [act('1-1　技巧·甲', lines(30)), act('1-1　技巧·乙', '小B')] }));
+		const s = strings(l);
+		expect(l.overflow).toBe(true);
+		expect(s).toHaveLength(LINES);
+		expect(s.at(-1)).toBe('⋯還有 1 個動作');
+		expect(s.at(-2)!.endsWith('⋯')).toBe(true);
+		expect(s[0]).toBe('1-1　技巧·甲');
+		expectStacked(l);
+		expectInside(l);
 	});
 });
 

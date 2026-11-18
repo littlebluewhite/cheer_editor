@@ -34,7 +34,7 @@ export interface TextItem {
 	align?: 'left' | 'center' | 'right';
 }
 
-interface Box {
+export interface Box {
 	x: number;
 	y: number;
 	w: number;
@@ -223,28 +223,36 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 	const room = ROW_BOTTOM - ROW_TOP;
 	const full: Squeeze = { collapsed: 0, notesDropped: 0, kept: row.actions.length };
 	for (let px = ROW_PX_START; px > MIN_TEXT_PX; px -= ROW_PX_STEP) {
-		const grid = layoutGrid(row.cues, lit, px, measure);
+		const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure);
 		const lines = textLines(row, full, px, measure);
-		if (lines.length * px * LINE + gridSpace(grid) <= room) return placeRow(lines, grid, px, false);
+		// 拍點格子截掉了什麼也算放不下：先縮字
+		if (!grid.overflow && lines.length * px * LINE + gridSpace(grid) <= room) return placeRow(lines, grid, px, false);
 	}
 	const px = MIN_TEXT_PX;
-	const grid = layoutGrid(row.cues, lit, px, measure);
-	const maxLines = Math.floor((room - gridSpace(grid)) / (px * LINE));
+	const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure);
+	// 格子最多佔到只剩一行字（gridRoom），這裡至少是 1
+	const maxLines = Math.floor((room - gridSpace(grid)) / (px * LINE) + 1e-9);
 	let lines: Para[] = [];
 	let first = true;
 	for (const s of squeezes(row)) {
 		lines = textLines(row, s, px, measure);
-		if (lines.length <= maxLines) return placeRow(lines, grid, px, !first);
+		if (lines.length <= maxLines) return placeRow(lines, grid, px, grid.overflow || !first);
 		first = false;
 	}
-	// 都拿了還放不下（例：一個動作的「誰」本身就比整塊長）：截在區塊底，最後一行加「⋯」
-	const shown = lines.slice(0, Math.max(maxLines, 0));
+	// 都拿了還放不下（例：一個動作的「誰」本身就比整塊長）：截在區塊底，最後一行加「⋯」。
+	// 拿掉了動作時「⋯還有 N 個動作」那一行留著，截它上面的
+	const dropped = row.actions.length > 1;
+	const more = dropped ? lines.slice(-1) : [];
+	const shown = lines.slice(0, maxLines - more.length);
 	if (shown.length) {
 		const last = shown[shown.length - 1];
 		shown[shown.length - 1] = { ...last, text: withEllipsis(last.text, px, last.weight, WIDTH, measure) };
 	}
-	return placeRow(shown, grid, px, true);
+	return placeRow([...shown, ...more], grid, px, true);
 }
+
+/** 拍點格子最多多高：下面那一列至少留一行字。 */
+const gridRoom = (px: number) => ROW_BOTTOM - ROW_TOP - GRID_GAP - px * LINE;
 
 /** 拍點格子佔多高（連上面的空隙）；沒有拍點是 0。 */
 const gridSpace = (grid: Grid) => (grid.h ? GRID_GAP + grid.h : 0);
@@ -306,63 +314,97 @@ function placeRow(lines: Para[], grid: Grid, px: number, overflow: boolean): Par
 	const gridTop = ROW_TOP + lines.length * lh + GRID_GAP;
 	texts.push(...grid.texts.map((t) => ({ ...t, y: t.y + gridTop })));
 	const boxes = grid.boxes.map((b) => ({ ...b, y: b.y + gridTop }));
-	// 拍點格子一律留著：多到本身就比整塊高時會超出區塊，算放不下
-	return { texts, boxes, overflow: overflow || (grid.h > 0 && gridTop + grid.h > ROW_BOTTOM) };
+	return { texts, boxes, overflow };
 }
 
-/** 拍點格子：位置從 y = 0 算起，h 是總高；沒有拍點的列是空的。 */
+/** 拍點格子：位置從 y = 0 算起，h 是總高；沒有拍點的列是空的。overflow：有字截掉或有拍點那一排沒畫。 */
 interface Grid {
 	texts: TextItem[];
 	boxes: Box[];
 	h: number;
+	overflow: boolean;
 }
+
+/** 一個格子裡的字最多幾行，再多截掉加「⋯」。 */
+const CELL_LINES = 2;
 
 /**
  * 拍點和環節：上面一排 1–8，每個動作一段，左邊寫動作名字，右邊 8 格；
- * 環節在上、拍點在下，同一格疊到的往下另起一排。字比格子寬就在格子裡換行。
+ * 環節在上、拍點在下，同一格疊到的往下另起一排。字比格子寬就在格子裡換行，最多兩行。
+ * 比 maxH 高時，超出的那幾段不畫，最後一行寫「⋯還有 N 行拍點」。
  */
-function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: number, measure: Measure): Grid {
-	if (!cueLines.length) return { texts: [], boxes: [], h: 0 };
+function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: number, maxH: number, measure: Measure): Grid {
+	if (!cueLines.length) return { texts: [], boxes: [], h: 0, overflow: false };
 	const lh = px * LINE;
 	const cellX = (n: number) => CELLS_X + (n - 1) * CELL_W;
 	const texts: TextItem[] = [];
-	const items: Box[] = [];
 	for (let n = 1; n <= 8; n++) {
 		texts.push({ text: String(n), x: cellX(n) + CELL_W / 2, y: (lh - px) / 2, px, weight: 600, color: 'muted', align: 'center' });
 	}
+	const blocks = cueLines.map((line) => cueBlock(line, px, measure));
+	const total = lh + blocks.reduce((h, b) => h + b.h, 0);
+	const items: Box[] = [];
+	let overflow = blocks.some((b) => b.cut);
 	let y = lh;
-	for (const line of cueLines) {
-		const name = wrap(actionLabel(line), px, 700, NAME_W, measure);
-		name.forEach((text, i) => texts.push({ text, x: LEFT, y: y + i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
-		let sub = y;
-		const phases = line.phases.map((p) => ({ from: p.from, to: p.to, text: p.label, style: PHASE_STYLE }));
-		const cues = line.cues.map((c) => ({ from: c.from, to: c.to, text: cueWords(c), style: CUE_STYLES[c.kind](c.word) }));
-		// 環節和拍點各自分排，環節在上
-		const rows = [...pack(phases), ...pack(cues)];
-		for (const r of rows) {
-			let rowH = lh;
-			for (const p of r) {
-				const x = cellX(p.from) + CUE_INSET;
-				const w = (p.to - p.from + 1) * CELL_W - 2 * CUE_INSET;
-				const words = p.text ? wrap(p.text, px, p.style.weight, w - 2 * CUE_PAD, measure) : [];
-				const h = Math.max(1, words.length) * lh;
-				rowH = Math.max(rowH, h);
-				items.push(...p.style.boxes(x, sub, w, h));
-				words.forEach((text, i) =>
-					texts.push({ text, x: x + CUE_PAD, y: sub + i * lh + (lh - px) / 2, px, weight: p.style.weight, color: p.style.ink })
-				);
-			}
-			sub += rowH + SUB_GAP;
-		}
-		y = Math.max(y + name.length * lh, sub);
+	let shown = 0;
+	for (const b of blocks) {
+		// 放不下全部時，留一行給「⋯還有 N 行拍點」
+		if (total > maxH && y + b.h + lh > maxH) break;
+		texts.push(...b.texts.map((t) => ({ ...t, y: t.y + y })));
+		items.push(...b.boxes.map((x) => ({ ...x, y: x.y + y })));
+		y += b.h;
+		shown++;
+	}
+	const columnsH = y;
+	if (shown < blocks.length) {
+		overflow = true;
+		texts.push({ text: `⋯還有 ${blocks.length - shown} 行拍點`, x: LEFT, y: y + (lh - px) / 2, px, weight: 700, color: 'muted' });
+		y += lh;
 	}
 	// 8 欄的格線先畫，現在這拍那一欄最後畫（框才不被旁邊蓋住），拍點畫在格線上面
 	const columns: Box[] = [];
 	for (let n = 1; n <= 8; n++) {
-		if (n !== lit) columns.push({ x: cellX(n), y: 0, w: CELL_W, h: y, fill: 'bg', stroke: 'gridLine', lineWidth: 2 });
+		if (n !== lit) columns.push({ x: cellX(n), y: 0, w: CELL_W, h: columnsH, fill: 'bg', stroke: 'gridLine', lineWidth: 2 });
 	}
-	if (lit) columns.push({ x: cellX(lit), y: 0, w: CELL_W, h: y, fill: 'gridNow', stroke: 'beatLit', lineWidth: 6 });
-	return { texts, boxes: [...columns, ...items], h: y };
+	if (lit) columns.push({ x: cellX(lit), y: 0, w: CELL_W, h: columnsH, fill: 'gridNow', stroke: 'beatLit', lineWidth: 6 });
+	return { texts, boxes: [...columns, ...items], h: y, overflow };
+}
+
+/** 一個動作的那一段（從 y = 0 算起）：左邊名字，右邊環節和拍點。cut：有格子裡的字截掉了。 */
+function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { texts: TextItem[]; boxes: Box[]; h: number; cut: boolean } {
+	const lh = px * LINE;
+	const cellX = (n: number) => CELLS_X + (n - 1) * CELL_W;
+	const texts: TextItem[] = [];
+	const boxes: Box[] = [];
+	let cut = false;
+	const name = wrap(actionLabel(line), px, 700, NAME_W, measure);
+	name.forEach((text, i) => texts.push({ text, x: LEFT, y: i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
+	const phases = line.phases.map((p) => ({ from: p.from, to: p.to, text: p.label, style: PHASE_STYLE }));
+	const cues = line.cues.map((c) => ({ from: c.from, to: c.to, text: cueWords(c), style: CUE_STYLES[c.kind](c.word) }));
+	let sub = 0;
+	// 環節和拍點各自分排，環節在上
+	for (const r of [...pack(phases), ...pack(cues)]) {
+		let rowH = lh;
+		for (const p of r) {
+			const x = cellX(p.from) + CUE_INSET;
+			const w = (p.to - p.from + 1) * CELL_W - 2 * CUE_INSET;
+			const inner = w - 2 * CUE_PAD;
+			const words = p.text ? wrap(p.text, px, p.style.weight, inner, measure) : [];
+			if (words.length > CELL_LINES) {
+				words.length = CELL_LINES;
+				words[CELL_LINES - 1] = withEllipsis(words[CELL_LINES - 1], px, p.style.weight, inner, measure);
+				cut = true;
+			}
+			const h = Math.max(1, words.length) * lh;
+			rowH = Math.max(rowH, h);
+			boxes.push(...p.style.boxes(x, sub, w, h));
+			words.forEach((text, i) =>
+				texts.push({ text, x: x + CUE_PAD, y: sub + i * lh + (lh - px) / 2, px, weight: p.style.weight, color: p.style.ink })
+			);
+		}
+		sub += rowH + SUB_GAP;
+	}
+	return { texts, boxes, h: Math.max(name.length * lh, sub), cut };
 }
 
 /** 一個拍點格子裡寫的字：「1-1& down（上層）」；從上一列接過來的不再寫字和給誰。 */
@@ -427,14 +469,16 @@ function wrap(text: string, px: number, weight: number, width: number, measure: 
 	for (const { segment } of graphemes.segment(text)) {
 		const cw = measure(segment, px, weight);
 		if (line && w + cw > width) {
-			lines.push(line);
+			lines.push(line.trimEnd());
 			line = '';
 			w = 0;
 		}
+		// 換行後不用空白開頭：「high V」換成「high」「V」
+		if (!line && lines.length && !segment.trim()) continue;
 		line += segment;
 		w += cw;
 	}
-	if (line) lines.push(line);
+	if (line) lines.push(line.trimEnd());
 	return lines;
 }
 
