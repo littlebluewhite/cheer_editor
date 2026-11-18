@@ -34,7 +34,17 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
 
 輸出影片用的 `mediabunny` 是動態 `import()`，建置後自己一個 chunk（2026-11-18 量：約 235 KiB，gzip 約 60 KiB），
 不在首頁一開就載的檔案裡（`build/index.html` 的 modulepreload 沒有它）。它跟其他 `_app/immutable` 的檔一樣被 service worker 先存起來
-（`sw.js` 的先存清單裡有它），所以離線應該也能輸出影片（推論，沒有真的離線輸出過）；編輯器打開時不會去載它。
+（`sw.js` 的先存清單裡有它）；編輯器打開時不會去載它。
+
+離線輸出影片實測過（2026-11-19，Mac、headless Chrome 157，`npm run build` 加 `vite preview`）：先開一次網站，等 service worker 接手、
+快取裡有影片工具那一塊，再把 preview 關掉（連不上伺服器）、頁面也設成離線（CDP `Network.emulateNetworkConditions`，`navigator.onLine` 是 false），
+重新開首頁、用 `docs/samples/sample-flow.zip` 輸出：影片工具從 service worker 拿到，對話框寫「影片長 0:12」，約 5 秒做完（兩次：4.7、5.1 秒）「做好了，0.7 MB」，
+存下來的檔開頭是 `ftyp`、有 `avc1` 和 `mp4a`。只試過這一台。
+
+影片工具載不下來（例：service worker 還沒存好就斷網）時，對話框寫「影片工具載不下來，請連上網路再試一次；還是不行，請重新整理頁面」。
+同一天實測（同一台，service worker 不回、改從網路拿）：斷網或擋掉那一塊時打開對話框是這句話，恢復網路後按「再試一次」就到「開始」，
+不用重新整理（Chrome 沒記住上次載入失敗）。網站剛更新、舊的那一塊已經不在時，再試一次也沒用，要重新整理才拿到新版，所以話裡留著重新整理。
+`npm run check:layout` 有一條在開發模式擋掉再放行，看「再試一次」走得到「開始」。
 
 ## App 圖示
 
