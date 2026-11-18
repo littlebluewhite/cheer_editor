@@ -2396,6 +2396,9 @@ const CONTRAST_JS = `
 await check('上方列「重複」「節拍器」開著和關著一眼分得出來：開著的底色跟關著的對比至少 3:1，開著的字也看得清楚（4.5:1）（#221）', async () => {
 	await setViewport(1440, 1000);
 	await openSample();
+	// 「重複」要有範圍或選著動作才按得下去：先選一個動作
+	await js(`document.querySelector('[data-action-id]').click()`);
+	await sleep(200);
 	const m = await js(`${CONTRAST_JS}
 		const out = {};
 		for (const name of ['repeat', 'metronome']) {
@@ -2405,12 +2408,12 @@ await check('上方列「重複」「節拍器」開著和關著一眼分得出�
 			const off = state(); const offEl = label.cloneNode(true); label.after(offEl);
 			input.click();
 			const on = state();
-			out[name] = { 關著: off, 開著: on, 開關底色對比: bgContrast(label, offEl) };
+			out[name] = { 關著: off, 開著: on, 開關底色對比: bgContrast(label, offEl), 真的打開: input.checked };
 			offEl.remove();
 			input.click();
 		}
 		return out;`);
-	const ok = Object.values(m).every((t) => t.開關底色對比 >= 3 && t.開著.字 >= 4.5 && t.關著.字 >= 4.5);
+	const ok = Object.values(m).every((t) => t.真的打開 && t.開關底色對比 >= 3 && t.開著.字 >= 4.5 && t.關著.字 >= 4.5);
 	return { ok, value: m };
 });
 

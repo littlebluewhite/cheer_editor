@@ -87,8 +87,12 @@ export function createPlayer(engine: AudioEngine): Player {
 		start(plan, { fromSec, metronome, rate = 1, loop }) {
 			stop();
 			engine.resume();
-			// 慢速的音樂先拉長（可能要一點時間），拉好才定 t0，第一個音才對得上
-			if (rate !== 1) engine.prepare(plan.clips.map((c) => c.audioId), rate);
+			// 慢速的音樂先拉長（可能要一點時間），拉好才定 t0，第一個音才對得上。
+			// 重複時下一圈的也先拉（範圍跨兩個音樂檔時，跳回 A 才拉會來不及）
+			if (rate !== 1) {
+				const clips = [...plan.clips, ...(loop?.()?.plan.clips ?? [])];
+				engine.prepare([...new Set(clips.map((c) => c.audioId))], rate);
+			}
 			const t0 = engine.currentTime() + LEAD_SEC;
 			session = { laps: [schedule({ plan, fromSec }, t0, rate, metronome)], rate, metronome, loop: loop ?? null };
 			queueLap(t0);
@@ -98,10 +102,11 @@ export function createPlayer(engine: AudioEngine): Player {
 			if (!session) return 0;
 			const { rate } = session;
 			const audible = engine.audibleTime();
-			// 重複：快播完排好的最後一圈，就再排下一圈（看喇叭的時間，不看扣掉延遲校正的，才不會排晚）
-			queueLap(audible);
 			// 畫面上的播放頭扣掉延遲校正；延遲校正是真的時間，慢速時換成流程秒數也要乘上速度
 			const shownAt = audible - latencyMs / 1000;
+			// 重複：快播完排好的最後一圈，就再排下一圈。看喇叭的時間，不看扣掉延遲校正的，才不會排晚；
+			// 延遲校正是負的（畫面提早）時看畫面的，畫面才不會跑到排好的圈後面、卡在 B
+			queueLap(Math.max(audible, shownAt));
 			// 畫面已經播過的圈丟掉（最後一圈留著）
 			while (session.laps.length > 1 && session.laps[1].t0 <= shownAt) session.laps.shift();
 			// 剛好在接縫（差一點點浮點誤差）算下一圈的開頭，不顯示成上一圈的結尾

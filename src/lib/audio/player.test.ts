@@ -123,4 +123,26 @@ describe('播放器', () => {
 		expect(engine.clips.map((c) => c.audioId)).toEqual(['a2']);
 		expect(engine.clicks).toEqual([]);
 	});
+
+	it('重複、延遲校正是負的（畫面提早）：圈很短時播放頭照樣一圈一圈走，不會卡在 B', () => {
+		const engine = createFakeEngine();
+		const player = createPlayer(engine);
+		const lap = { plan: { clips: [], clicks: [], endSec: 0.4 }, fromSec: 0 };
+		player.start(lap.plan, { fromSec: 0, metronome: false, loop: () => lap });
+		// t0 = 0.1；喇叭在第一圈的 0.25 秒，畫面提早 1 秒 = 第 1.25 秒 = 第 4 圈的 0.05 秒
+		engine.audible = 0.35;
+		expect(player.tick(-1000)).toBeCloseTo(0.05, 6);
+	});
+
+	it('慢速重複：下一圈要用的音樂檔也先拉長（不然第一次跳回 A 時才拉，聲音會晚）', () => {
+		const engine = createFakeEngine();
+		const prepared: string[] = [];
+		engine.prepare = (ids) => void prepared.push(...ids);
+		const player = createPlayer(engine);
+		const first = { clips: [plan.clips[1]], clicks: [], endSec: 6.7 };
+		const lap = { plan: { clips: [plan.clips[0]], clicks: [], endSec: 6.7 }, fromSec: 0 };
+		player.start(first, { fromSec: 5.2, metronome: false, rate: 0.5, loop: () => lap });
+		expect(prepared).toContain('a1');
+		expect(prepared).toContain('a2');
+	});
 });

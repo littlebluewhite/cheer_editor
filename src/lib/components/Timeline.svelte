@@ -68,6 +68,8 @@
 
 	/** 尺上點到站位這麼近（px）就停到站位。 */
 	const NEAR_FORMATION_PX = 8;
+	/** 重複範圍比這窄，A、B 把手擺到帶子外面（兩個把手各十幾 px，放裡面會疊在一起）。 */
+	const NARROW_RANGE_PX = 32;
 	/** 時間軸最後面多留的空白（px）；「符合寬度」時只留一點點，不出現橫向捲軸。 */
 	const TAIL_PX = 200;
 	const FIT_TAIL_PX = 16;
@@ -299,9 +301,13 @@
 		e.preventDefault();
 		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
 		const end = (e.target as HTMLElement).closest<HTMLElement>('[data-repeat-end]')?.dataset.repeatEnd;
-		const range = playback.range;
-		// 拖把手：不動的是另一頭；拖新的一段：不動的是按下去的地方
-		const fixed = range?.b != null && end ? (end === 'a' ? range.b : range.a) : toSec(e);
+		// 拖把手：不動的是另一頭（照原本的位置）；拖新的一段：不動的是按下去的地方
+		if (playback.range?.b != null && (end === 'a' || end === 'b')) {
+			const drag = playback.dragRangeEnd(end);
+			followPointer(e, (ev) => drag(toSec(ev)));
+			return;
+		}
+		const fixed = toSec(e);
 		followPointer(e, (ev) => playback.setRange(fixed, toSec(ev)));
 	}
 
@@ -394,7 +400,7 @@
 				{#if playback.range}
 					{@const { a, b } = playback.range}
 					{#if b !== null}
-						<div class="range" class:off={!playback.repeat} data-repeat-range style:left={`${a * px}px`} style:width={`${(b - a) * px}px`}>
+						<div class="range" class:off={!playback.repeat} class:narrow={(b - a) * px < NARROW_RANGE_PX} data-repeat-range style:left={`${a * px}px`} style:width={`${(b - a) * px}px`}>
 							<span class="grip a" data-repeat-end="a">A</span>
 							<span class="grip b" data-repeat-end="b">B</span>
 						</div>
@@ -872,6 +878,15 @@
 	.grip.b {
 		right: -1px;
 		border-radius: 0 4px 4px 0;
+	}
+	/* 範圍很窄（例：一拍）時，兩個把手擺到帶子外面，才不會疊在一起、按不到 A */
+	.range.narrow .grip.a {
+		left: auto;
+		right: 100%;
+	}
+	.range.narrow .grip.b {
+		right: auto;
+		left: 100%;
 	}
 	.only-a .grip.a {
 		left: -2px;

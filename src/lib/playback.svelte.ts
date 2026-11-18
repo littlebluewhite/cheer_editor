@@ -286,7 +286,7 @@ export class Playback implements SessionPlayback {
 		const action = this.#selectedAction();
 		if (on && this.range?.b == null) {
 			if (!f || !action) return;
-			this.#range = actionRange(f, action);
+			this.#range = actionRange(action);
 		}
 		this.#setRepeatOn(on);
 	}
@@ -329,6 +329,20 @@ export class Playback implements SessionPlayback {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
 		this.#setRange(f, { a: rangeEnd(f, Math.min(fromSec, toSec)), b: rangeEnd(f, Math.max(fromSec, toSec)) });
+	}
+
+	/**
+	 * 開始拖重複範圍的一頭（end）：回傳拖的時候每動一下叫的函式。另一頭照按下去時存的位置不動（不重新吸整拍），
+	 * 拖過另一頭就對調。還沒有完整的範圍時不動。
+	 */
+	dragRangeEnd(end: 'a' | 'b'): (sec: number) => void {
+		const fixed = end === 'a' ? this.#range?.b : this.#range?.a;
+		return (sec) => {
+			const f = this.#flow();
+			if (!f?.segments.length || !fixed) return;
+			const moved = rangeEnd(f, sec);
+			if (!this.#setRange(f, { a: fixed, b: moved })) this.#setRange(f, { a: moved, b: fixed });
+		};
 	}
 
 	/** 換成這個範圍、打開重複；不到一格就不動，回傳 false。 */

@@ -694,6 +694,10 @@
 								type="checkbox"
 								checked={playback.returnOnStop}
 								onchange={(e) => playback.setReturnOnStop(e.currentTarget.checked)}
+								onkeydown={(e) => {
+									// 小窗裡的勾選框：空白鍵照一般網頁勾、取消勾，不給頁面拿去播放
+									if (e.key === ' ') e.stopPropagation();
+								}}
 							/>
 							<span>停下來回到起播點</span>
 						</label>

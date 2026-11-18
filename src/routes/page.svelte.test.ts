@@ -1655,6 +1655,17 @@ describe('播放', () => {
 		expect((screen.getByLabelText('停下來回到起播點') as HTMLInputElement).checked).toBe(false);
 	});
 
+	it('「⋯」裡的「停下來回到起播點」：焦點在上面時空白鍵是勾、取消勾，不是播放', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		const back = screen.getByLabelText('停下來回到起播點') as HTMLInputElement;
+		back.focus();
+		// 沒被擋下（瀏覽器照常勾、取消勾）
+		expect(await fireEvent.keyDown(back, { key: ' ' })).toBe(true);
+		expect(engine.clicks).toEqual([]);
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+	});
+
 	it('節拍器勾選框：關掉就不響', async () => {
 		const engine = await sample();
 		await fireEvent.click(screen.getByLabelText('節拍器'));

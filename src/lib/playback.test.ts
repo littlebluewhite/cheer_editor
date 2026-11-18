@@ -534,6 +534,54 @@ describe('播放：慢速、重複', () => {
 		expect(engine.clicks).toBe(scheduled);
 	});
 
+	it('段縮短，重複範圍落到段尾後面：範圍拿掉、重複關掉（不然按播放馬上停）', () => {
+		const { session, playback } = setup();
+		playback.setRange(33.6, 34.6); // 口號 1 的 8 到 9 秒
+		session.change(flowOf(updateSegment(session.flow!, 's2', { seconds: 5 })));
+		expect(playback.range).toBeNull();
+		expect(playback.repeat).toBe(false);
+	});
+
+	it('B 放在流程結尾：整拍不會被浮點誤差算成前一個半拍；口號段結尾的 0.1 秒也一樣', () => {
+		const short = flowOf(updateSegment(flowOf(addSegment(flowOf(createFlow({ name: '短', field: { strips: 9, layout: 'vertical' } })), 'music')), 's1', { eights: 3 }));
+		const { playback } = setup(short); // 24 拍 = 9.6 秒
+		playback.setRange(8, 9.6);
+		expect(playback.range).toEqual({ a: 8, b: expect.closeTo(9.6, 6) });
+		const chant = flowOf(addSegment(flowOf(createFlow({ name: '口號', field: { strips: 9, layout: 'vertical' } })), 'chant', undefined, 3));
+		const c = setup(chant).playback; // 0.3 秒
+		c.seek(0.2);
+		c.setA();
+		c.seek(0.3);
+		expect(c.canSetB).toBe(true);
+	});
+
+	it('動作拉成的範圍：B 是動作自己那一段的結尾，後面插一段也不會跑到下一段去', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 96, length: 32, note: '', members }));
+		const { session, playback } = setup(flow);
+		session.selectAction('x1');
+		playback.setRepeat(true);
+		expect(playback.range).toEqual({ a: expect.closeTo(19.2, 6), b: expect.closeTo(25.6, 6) });
+		session.change(flowOf(addSegment(session.flow!, 'chant', 's1')));
+		expect(playback.range).toEqual({ a: expect.closeTo(19.2, 6), b: expect.closeTo(25.6, 6) });
+	});
+
+	it('拖範圍的一頭：另一頭照原本的位置不動，不會被重新吸到整拍；拖過另一頭就對調', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 1, length: 20, note: '', members }));
+		const { session, playback } = setup(flow);
+		session.selectAction('x1');
+		playback.setRepeat(true);
+		expect(playback.range).toEqual({ a: expect.closeTo(0.2, 6), b: expect.closeTo(4.2, 6) });
+		const drag = playback.dragRangeEnd('b');
+		drag(6.3);
+		expect(playback.range).toEqual({ a: expect.closeTo(0.2, 6), b: expect.closeTo(6.4, 6) });
+		drag(0);
+		expect(playback.range).toEqual({ a: 0, b: expect.closeTo(0.2, 6) });
+	});
+
 	it('A 不能放在流程結尾', () => {
 		const { playback } = setup();
 		expect(playback.canSetA).toBe(true);
