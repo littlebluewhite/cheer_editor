@@ -628,7 +628,14 @@
 						<Icon name="repeat" /><span class="short-hide">重複</span>
 					</label>
 					<!-- 重複範圍：A、B 放在播放頭（播放中也能按），✕ 拿掉 -->
-					<button type="button" class="ab" aria-label="A：重複從播放頭開始" title="A：重複從播放頭開始" disabled={!flow.segments.length} onclick={() => playback.setA()}>A</button>
+					<button
+						type="button"
+						class="ab"
+						aria-label="A：重複從播放頭開始"
+						title={!flow.segments.length || playback.canSetA ? 'A：重複從播放頭開始' : 'A 不能放在結尾'}
+						disabled={!playback.canSetA}
+						onclick={() => playback.setA()}>A</button
+					>
 					<button
 						type="button"
 						class="ab"

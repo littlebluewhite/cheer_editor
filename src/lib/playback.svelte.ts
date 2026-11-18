@@ -161,7 +161,7 @@ export class Playback implements SessionPlayback {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
 		this.#sec = playStartSec(f, this.#sec);
-		const span = this.#loop();
+		const span = this.#activeRange();
 		// 重複開著只在範圍裡播：播放頭、起播點在外面就是 A
 		if (span && outside(span, this.#sec)) this.#sec = span.a;
 		if (span && outside(span, this.#startSec)) this.#startSec = span.a;
@@ -234,7 +234,7 @@ export class Playback implements SessionPlayback {
 		const { sec: at, ended } = resumeSec(f, sec);
 		this.#sec = at;
 		if (!this.#playing) return;
-		if (ended && !this.#loop()) this.pause();
+		if (ended && !this.#activeRange()) this.pause();
 		else this.play();
 	}
 
@@ -288,20 +288,19 @@ export class Playback implements SessionPlayback {
 			if (!f || !action) return;
 			this.#range = actionRange(f, action);
 		}
-		this.#setLoop(on);
+		this.#setRepeatOn(on);
 	}
 
 	/** A：重複範圍從播放頭最近的整拍開始（流程結尾不行，後面放不了 B）。原本的 B 不在它後面就拿掉（重複也關掉），再放一次 B。 */
 	setA() {
 		const f = this.#flow();
-		if (!f?.segments.length) return;
-		if (snapToBeat(f, this.#sec) >= totalSeconds(f) - 1e-6) return;
+		if (!f || !this.canSetA) return;
 		const a = rangeEnd(f, this.#sec);
 		const range = this.#range && rangeSeconds(f, { a, b: this.#range.b });
 		this.#range = { a, b: range ? this.#range!.b : null };
 		// 範圍變了才重排（重複關著時聲音不受影響，不用重排）
 		if (!range) {
-			if (this.#repeat) this.#setLoop(false);
+			if (this.#repeat) this.#setRepeatOn(false);
 		} else if (this.#repeat && this.#playing) this.#run();
 	}
 
@@ -311,6 +310,12 @@ export class Playback implements SessionPlayback {
 		if (!f || !this.#range) return;
 		if (!this.#setRange(f, { a: this.#range.a, b: rangeEnd(f, this.#sec) })) return;
 		if (this.#playing) this.seek(this.range!.a);
+	}
+
+	/** A 按得下去：有段，播放頭最近的整拍不是流程結尾。 */
+	get canSetA(): boolean {
+		const f = this.#flow();
+		return !!f?.segments.length && snapToBeat(f, this.#sec) < totalSeconds(f) - 1e-6;
 	}
 
 	/** B 按得下去：有 A，播放頭最近的整拍在 A 後面。 */
@@ -332,23 +337,23 @@ export class Playback implements SessionPlayback {
 		// 拖的時候每動一下都會叫；吸到的整拍沒變就不重排聲音
 		if (this.#repeat && samePosition(this.#range?.a, range.a) && samePosition(this.#range?.b, range.b)) return true;
 		this.#range = range;
-		this.#setLoop(true);
+		this.#setRepeatOn(true);
 		return true;
 	}
 
 	/** ✕：拿掉重複範圍，重複也關掉（播放中就接著往下播）。 */
 	clearRange() {
 		this.#range = null;
-		this.#setLoop(false);
+		this.#setRepeatOn(false);
 	}
 
-	#setLoop(on: boolean) {
+	#setRepeatOn(on: boolean) {
 		this.#repeat = on;
 		if (this.#playing) this.#run();
 	}
 
 	/** 正在重複的範圍（全域秒數）；重複關著、範圍不完整是 null。 */
-	#loop(): { a: number; b: number } | null {
+	#activeRange(): { a: number; b: number } | null {
 		const range = this.#repeat ? this.range : null;
 		return range?.b == null ? null : { a: range.a, b: range.b };
 	}
@@ -412,7 +417,7 @@ export class Playback implements SessionPlayback {
 	/** 重複的下一圈：照現在的流程和重複範圍。重複關掉了、範圍不能用了就不再重複。 */
 	#nextLap = (): Lap | null => {
 		const f = this.#flow();
-		const span = this.#loop();
+		const span = this.#activeRange();
 		if (!f || !span) return null;
 		return { plan: playbackPlan(f, span.a, span.b), fromSec: span.a };
 	};

@@ -536,7 +536,9 @@ describe('播放：慢速、重複', () => {
 
 	it('A 不能放在流程結尾', () => {
 		const { playback } = setup();
+		expect(playback.canSetA).toBe(true);
 		playback.toEnd();
+		expect(playback.canSetA).toBe(false);
 		playback.setA();
 		expect(playback.range).toBeNull();
 	});
