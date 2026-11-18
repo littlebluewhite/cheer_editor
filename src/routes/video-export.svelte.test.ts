@@ -117,13 +117,59 @@ describe('輸出影片', () => {
 		expect(within(dialog()).getByText('something broke')).toBeTruthy();
 	});
 
+	it('失敗的原因沒有內容：不寫小字', async () => {
+		const encoder = createFakeVideoEncoder({ fail: '' });
+		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		expect(await within(dialog()).findByText('沒做成：做影片時出了問題')).toBeTruthy();
+		expect(dialog().querySelector('.detail')).toBeNull();
+		expect(within(dialog()).queryByText('Error')).toBeNull();
+	});
+
+	/** 做好了、按「存檔」：存檔丟出 e。 */
+	async function saveFails(e: unknown) {
+		const encoder = createFakeVideoEncoder();
+		await openDialog(shortFlow(), {
+			video: {
+				encoder,
+				save: async () => {
+					throw e;
+				}
+			}
+		});
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		encoder.release();
+		await within(dialog()).findByText(/^做好了/, {}, DONE);
+		await fireEvent.click(within(dialog()).getByRole('button', { name: '存檔' }));
+	}
+
+	it('存檔失敗：寫看得懂的中文原因，小字寫原本的訊息，影片還在、可以再按存檔', async () => {
+		await saveFails(new DOMException('The request is not allowed by the user agent or the platform in the current context.', 'NotAllowedError'));
+		expect(await within(dialog()).findByText('沒存成：瀏覽器不讓存，再按一次「存檔」')).toBeTruthy();
+		expect(within(dialog()).getByText('The request is not allowed by the user agent or the platform in the current context.')).toBeTruthy();
+		expect(within(dialog()).getByRole('button', { name: '存檔' })).toBeTruthy();
+	});
+
+	it('存檔失敗：空間不夠', async () => {
+		await saveFails(new DOMException('', 'QuotaExceededError'));
+		expect(await within(dialog()).findByText('沒存成：電腦的空間不夠，清出空間再存一次')).toBeTruthy();
+		expect(dialog().querySelector('.detail')).toBeNull();
+	});
+
+	it('存檔失敗的原因認不出來：寫一般的說法，沒有訊息就不寫小字', async () => {
+		await saveFails(new Error());
+		expect(await within(dialog()).findByText('沒存成：存檔時出了問題，再按一次「存檔」')).toBeTruthy();
+		expect(dialog().querySelector('.detail')).toBeNull();
+		expect(within(dialog()).queryByText(/^沒存成：Error/)).toBeNull();
+	});
+
 	it('影片工具載不下來：不說瀏覽器不行，「再試一次」再問一次', async () => {
 		const encoder = createFakeVideoEncoder();
 		const supported = vi
 			.spyOn(encoder, 'supported')
 			.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module'));
 		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
-		expect(await within(dialog()).findByText('影片工具載不下來，請連上網路再試一次')).toBeTruthy();
+		expect(await within(dialog()).findByText('影片工具載不下來，請連上網路再試一次；還是不行，請重新整理頁面')).toBeTruthy();
 		expect(within(dialog()).queryByText(/這個瀏覽器不能輸出影片/)).toBeNull();
 		expect(within(dialog()).queryByRole('button', { name: '開始' })).toBeNull();
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '再試一次' }));
@@ -135,7 +181,7 @@ describe('輸出影片', () => {
 		const encoder = createFakeVideoEncoder();
 		vi.spyOn(encoder, 'supported').mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
 		await openDialog(shortFlow(), { video: { encoder, save: async () => 'saved' } });
-		await within(dialog()).findByText('影片工具載不下來，請連上網路再試一次');
+		await within(dialog()).findByText('影片工具載不下來，請連上網路再試一次；還是不行，請重新整理頁面');
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '關閉' }));
 		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeNull();
 	});

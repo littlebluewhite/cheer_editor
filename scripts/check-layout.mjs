@@ -384,6 +384,30 @@ await check('輸出影片：用 docs/samples/sample-flow.zip 做出來的檔，�
 	return { ok: r.開頭 === 'ftyp' && r.avc1 && r.mp4a && r.對話框關了, value: { 對話框寫: said, ...r } };
 });
 
+await check('輸出影片：影片工具載不下來（擋掉 mediabunny），放行後按「再試一次」走得到「開始」（瀏覽器沒記住上次失敗）', async () => {
+	await setViewport(1440, 900);
+	await openSample();
+	await send('Network.enable');
+	await send('Network.setCacheDisabled', { cacheDisabled: true });
+	await send('Network.setBlockedURLs', { urls: ['*mediabunny*'] });
+	const text = () => js(`return document.querySelector('.video-dialog')?.textContent ?? ''`);
+	const button = (t) => `[...document.querySelectorAll('.video-dialog button')].find((b) => b.textContent.trim() === '${t}')`;
+	try {
+		await hitAndClick('.topbar button[aria-label="輸出影片"]');
+		await waitFor(async () => /載不下來|開始/.test(await text()), 100).catch(() => {});
+		const blocked = await text();
+		await send('Network.setBlockedURLs', { urls: [] });
+		await js(`${button('再試一次')}?.click()`);
+		await waitFor(() => js(`return !!${button('開始')}`), 100).catch(() => {});
+		const after = await text();
+		await js(`${button('取消')}?.click()`);
+		return { ok: blocked.includes('影片工具載不下來') && after.includes('影片長'), value: { 擋掉時: blocked, 再試一次後: after } };
+	} finally {
+		await send('Network.setBlockedURLs', { urls: [] });
+		await send('Network.setCacheDisabled', { cacheDisabled: false });
+	}
+});
+
 /** 元素的四個角（往內縮 6px，避開圓角）最上面的東西是不是它自己：被裁掉或被蓋住的角會是別的東西。 */
 const cornersVisible = (selector) =>
 	js(`const el = document.querySelector(${JSON.stringify(selector)});

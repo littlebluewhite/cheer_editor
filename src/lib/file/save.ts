@@ -144,6 +144,15 @@ export async function saveVideo(bytes: Uint8Array, fileName: string): Promise<Sa
 	}
 }
 
+/** 影片沒存成的原因：瀏覽器的訊息是英文，換成白話（原文對話框另外用小字寫）。 */
+export function saveFailureReason(e: unknown): string {
+	const name = typeof e === 'object' && e !== null && 'name' in e ? String(e.name) : '';
+	if (name === 'NotAllowedError' || name === 'SecurityError') return '瀏覽器不讓存，再按一次「存檔」';
+	if (name === 'QuotaExceededError') return '電腦的空間不夠，清出空間再存一次';
+	if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') return '檔案被別的程式打開了，關掉它或換個檔名再存一次';
+	return '存檔時出了問題，再按一次「存檔」';
+}
+
 function download(bytes: Uint8Array, fileName: string, type = 'application/zip') {
 	const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type }));
 	const a = document.createElement('a');

@@ -7,10 +7,10 @@
 	import { onDestroy } from 'svelte';
 	import { VIDEO_FPS, missingAudioNames, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { videoFileName } from '#lib/file/save.js';
+	import { saveFailureReason, videoFileName } from '#lib/file/save.js';
 	import { canvasMeasure, drawFrame } from '#lib/video/draw.js';
 	import { layoutFrame, overflowEights, type Measure } from '#lib/video/layout.js';
-	import { failureReason } from '#lib/video/encoder.js';
+	import { failureDetail, failureReason } from '#lib/video/encoder.js';
 	import { mixClips, renderSoundtrack } from '#lib/video/soundtrack.js';
 	import Modal from './Modal.svelte';
 
@@ -39,7 +39,8 @@
 	let step = $state<Step>({ kind: 'checking' });
 	/** 輸出中：已經編好幾格。 */
 	let done = $state(0);
-	let saveError = $state('');
+	/** 沒存成：看得懂的原因和原文（原文可能是空的）。 */
+	let saveError = $state<{ reason: string; detail: string } | null>(null);
 	/** 現在這一次輸出；關掉、再試一次時換掉，舊的那次回來的結果就不算。 */
 	let controller: AbortController | null = null;
 
@@ -70,8 +71,6 @@
 			.map(({ label }) => `${label}（還沒選音樂）`);
 		return [...missingAudioNames(flow, ids).map((n) => `「${n}」`), ...unpicked];
 	});
-
-	const reasonOf = (e: unknown) => (e instanceof Error && e.message) || String(e) || '不知道為什麼';
 
 	async function start() {
 		const snapshot = flow;
@@ -110,17 +109,17 @@
 			step = { kind: 'done', bytes, fileName: videoFileName(snapshot.name) };
 		} catch (e) {
 			if (controller !== run || run.signal.aborted) return;
-			step = { kind: 'failed', reason: failureReason(e), detail: reasonOf(e) };
+			step = { kind: 'failed', reason: failureReason(e), detail: failureDetail(e) };
 		}
 	}
 
 	/** 存檔要使用者剛按過按鈕才叫得出存檔對話框，所以做好了再按「存檔」才存。存好就關；在存檔對話框按取消就留著。 */
 	async function saveFile(bytes: Uint8Array, fileName: string) {
-		saveError = '';
+		saveError = null;
 		try {
 			if ((await save(bytes, fileName)) !== 'cancelled') onclose();
 		} catch (e) {
-			saveError = `沒存成：${reasonOf(e)}`;
+			saveError = { reason: saveFailureReason(e), detail: failureDetail(e) };
 		}
 	}
 
@@ -143,7 +142,7 @@
 			<p>這個瀏覽器不能輸出影片，請用電腦的 Chrome 或 Edge</p>
 			<div class="buttons"><button type="button" onclick={closeModal}>關閉</button></div>
 		{:else if step.kind === 'unloaded'}
-			<p>影片工具載不下來，請連上網路再試一次</p>
+			<p>影片工具載不下來，請連上網路再試一次；還是不行，請重新整理頁面</p>
 			<div class="buttons">
 				<button type="button" onclick={closeModal}>關閉</button>
 				<button type="button" class="primary" onclick={check}>再試一次</button>
@@ -163,7 +162,10 @@
 		{:else if step.kind === 'done'}
 			{@const { bytes, fileName } = step}
 			<p>做好了，{(bytes.length / 1024 / 1024).toFixed(1)} MB</p>
-			{#if saveError}<p class="error">{saveError}</p>{/if}
+			{#if saveError}
+				<p class="error">沒存成：{saveError.reason}</p>
+				{#if saveError.detail}<p class="detail">{saveError.detail}</p>{/if}
+			{/if}
 			<div class="buttons">
 				<!-- Modal 的關閉在做好了時被擋（Esc、點背景不關），這顆直接關 -->
 				<button type="button" onclick={close}>關閉</button>
@@ -171,7 +173,7 @@
 			</div>
 		{:else}
 			<p class="error">沒做成：{step.reason}</p>
-			<p class="detail">{step.detail}</p>
+			{#if step.detail}<p class="detail">{step.detail}</p>{/if}
 			<div class="buttons">
 				<button type="button" onclick={closeModal}>關閉</button>
 				<button type="button" class="primary" onclick={start}>再試一次</button>
