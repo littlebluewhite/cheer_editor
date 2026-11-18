@@ -271,8 +271,11 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 	// 都拿了還放不下（例：一個動作的「誰」本身就比整塊長）：截在區塊底，最後一行加「⋯」。
 	// 拿掉了動作時「⋯還有 N 個動作」那一行留著，截它上面的
 	const dropped = row.actions.length > 1;
-	const more = dropped ? lines.slice(-1) : [];
+	let more = dropped ? lines.slice(-1) : [];
 	const shown = lines.slice(0, maxLines - more.length);
+	// 第一個動作的標題也截掉了（格子、站位佔滿了）：一個動作都沒寫出來，算全部
+	const firstTitle = textLines({ ...row, actions: [], continuing: [] }, { collapsed: 0, notesDropped: 0, kept: 0 }, px, measure).length;
+	if (dropped && shown.length <= firstTitle) more = [{ ...more[0], text: `⋯還有 ${row.actions.length} 個動作` }];
 	if (shown.length) {
 		const last = shown[shown.length - 1];
 		shown[shown.length - 1] = { ...last, text: withEllipsis(last.text, px, last.weight, WIDTH, measure) };
@@ -379,8 +382,8 @@ function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: numbe
 	let y = lh;
 	let shown = 0;
 	for (const b of blocks) {
-		// 放不下全部時，留一行給「⋯還有 N 行拍點」
-		if (total > maxH && y + b.h + lh > maxH) break;
+		// 放不下全部時，留一行給「⋯還有 N 行拍點」；這段太高就跳過，後面放得下的照畫
+		if (total > maxH && y + b.h + lh > maxH) continue;
 		texts.push(...b.texts.map((t) => ({ ...t, y: t.y + y })));
 		items.push(...b.boxes.map((x) => ({ ...x, y: x.y + y })));
 		y += b.h;

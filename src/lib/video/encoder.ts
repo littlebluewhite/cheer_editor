@@ -52,15 +52,17 @@ export function browserVideoEncoder(): VideoEncoderAdapter {
 			const brands = (navigator as UserAgentDataNavigator).userAgentData?.brands ?? [];
 			if (!brands.some((b) => b.brand === 'Chromium')) return false;
 			// 載不下來（離線、部署後舊的檔不在了）不是瀏覽器不行：讓它 reject，對話框另外說
-			const { canEncodeVideo, canEncodeAudio } = await import('mediabunny');
+			const { canEncodeVideo, canEncodeAudio, QUALITY_HIGH } = await import('mediabunny');
 			try {
 				const video = await canEncodeVideo('avc', {
 					width: VIDEO_W,
 					height: VIDEO_H,
 					frameRate: VIDEO_FPS,
+					// 跟 encode 一樣的畫質、bitrate 問：只做得出低畫質的編碼器不能過
+					quality: QUALITY_HIGH,
 					fullCodecString: VIDEO_CODEC
 				});
-				const audio = await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: VIDEO_SAMPLE_RATE });
+				const audio = await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: VIDEO_SAMPLE_RATE, bitrate: AUDIO_BITRATE });
 				return video && audio;
 			} catch {
 				return false;
@@ -99,6 +101,8 @@ export function browserVideoEncoder(): VideoEncoderAdapter {
 				}
 				if (job.signal.aborted) return await cancel();
 				if (audio && soundtrack) await audio.add(soundtrack);
+				// 聲音整軌編好要一點時間：這中間按的取消也不包成 MP4
+				if (job.signal.aborted) return await cancel();
 				await output.finalize();
 			} catch (e) {
 				if (!(e instanceof DOMException && e.name === 'AbortError')) await output.cancel().catch(() => {});

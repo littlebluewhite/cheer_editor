@@ -5,7 +5,7 @@
 	// 取消、Esc、點背景都走 Modal 的關閉：中止編碼、丟掉做到一半的。
 	// 做好了以後 Esc、點背景不關：做了半天的影片不能一下就丟掉，只有「存檔」「關閉」關。
 	import { onDestroy } from 'svelte';
-	import { VIDEO_FPS, missingAudioNames, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
+	import { VIDEO_FPS, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { failureDetail } from '#lib/error-detail.js';
 	import { saveFailureReason, videoFileName } from '#lib/file/save.js';
@@ -44,6 +44,8 @@
 	let saveError = $state<{ reason: string; detail: string } | null>(null);
 	/** 現在這一次輸出；關掉、再試一次時換掉，舊的那次回來的結果就不算。 */
 	let controller: AbortController | null = null;
+	/** 對話框關掉了：存檔還沒存完就關掉、再開一個時，舊的存完不能去關新的。 */
+	let closed = false;
 
 	function check() {
 		step = { kind: 'checking' };
@@ -64,13 +66,15 @@
 		return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 	});
 	const overflow = $derived(overflowEights(flow, measure));
-	/** 找不到音樂的段：寫音樂檔名；音樂段根本還沒選音樂，沒有檔名，寫段名。 */
+	/** 找不到音樂的段：寫段名和音樂檔名（兩段用同一個檔也各寫一次）；音樂段根本還沒選音樂，寫「還沒選音樂」。 */
 	const silent = $derived.by(() => {
 		const ids = mixClips(flow, (id) => editor.music.buffer(id) !== undefined).silentSegments;
-		const unpicked = segmentSpans(flow)
-			.filter(({ segment }) => ids.includes(segment.id) && segment.kind === 'music' && segment.audioId === null)
-			.map(({ label }) => `${label}（還沒選音樂）`);
-		return [...missingAudioNames(flow, ids).map((n) => `「${n}」`), ...unpicked];
+		return segmentSpans(flow)
+			.filter(({ segment }) => ids.includes(segment.id) && segment.kind === 'music')
+			.map(({ segment, label }) => {
+				const name = segment.kind === 'music' && flow.audio.find((a) => a.id === segment.audioId)?.name;
+				return name ? `${label}「${name}」` : `${label}（還沒選音樂）`;
+			});
 	});
 
 	async function start() {
@@ -118,7 +122,7 @@
 	async function saveFile(bytes: Uint8Array, fileName: string) {
 		saveError = null;
 		try {
-			if ((await save(bytes, fileName)) !== 'cancelled') onclose();
+			if ((await save(bytes, fileName)) !== 'cancelled' && !closed) onclose();
 		} catch (e) {
 			saveError = { reason: saveFailureReason(e), detail: failureDetail(e) };
 		}
@@ -127,10 +131,14 @@
 	function close() {
 		controller?.abort();
 		controller = null;
+		closed = true;
 		onclose();
 	}
 
-	onDestroy(() => controller?.abort());
+	onDestroy(() => {
+		closed = true;
+		controller?.abort();
+	});
 </script>
 
 <Modal label="輸出影片" class="dialog video-dialog" onclose={close} beforeclose={() => step.kind !== 'done'}>

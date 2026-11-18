@@ -478,6 +478,19 @@ describe('下面那一列：拍點格子', () => {
 		expectInside(l);
 	});
 
+	it('前面一個動作的拍點多到一段放不下：後面放得下的那段照畫，「⋯還有 N 行拍點」只算沒畫的', () => {
+		// 第一段：同一拍 10 個給不同人的 down，疊成 10 排、每排兩行，比整區高
+		const crowded: EightCountCueLine = {
+			...cueLine('甲'),
+			cues: Array.from({ length: 10 }, (_, i) => ({ ...cueLine('甲', 'down', 1, 1, { who: `隊員${i + 1}` }).cues[0] }))
+		};
+		const l = layout(row({ actions: [act('1-1　技巧·甲', ''), act('1-1　技巧·乙', '')], cues: [crowded, cueLine('乙', 'up', 1, 1)] }));
+		const s = strings(l);
+		expect(s).toContain('up');
+		expect(s).toContain('⋯還有 1 行拍點');
+		expectAboveBottom(l);
+	});
+
 	it('一個字縮到 28 px 也比格子寬（要斷開）：不為它縮字；「down」縮一點就放得下，才縮', () => {
 		const long = layout(row({ cues: [cueLine('Lib', '一二三四五六七八九十', 1, 1)] }));
 		expect(rowPx(long)).toBe(40);
@@ -621,6 +634,21 @@ describe('下面那一列：截掉時', () => {
 		expect(s[0]).toBe('1-1　技巧·甲');
 		expectStacked(l);
 		expectInside(l);
+	});
+
+	it('拍點格子佔到只剩一行字、一個動作都沒寫出來：「⋯還有 N 個動作」算全部的動作', () => {
+		const names = Array.from({ length: 18 }, (_, i) => `第${i + 1}`);
+		const l = layout(row({ actions: names.map((n) => act(`1-1　技巧·${n}`, '')), cues: names.map((n) => cueLine(n)) }));
+		const gridTop = Math.min(...l.boxes.filter((b) => b.y >= ROW_TOP).map((b) => b.y));
+		expect(bottom(l).filter((t) => t.y < gridTop).map((t) => t.text)).toEqual(['⋯還有 18 個動作']);
+	});
+
+	it('站位那幾行就佔滿留給字的行：「⋯還有 N 個動作」算全部的動作', () => {
+		const l = layout(row({ formations: [lines(19)], actions: [act('1-1　技巧·甲', ''), act('1-1　技巧·乙', '')] }));
+		const s = strings(l);
+		expect(s).toHaveLength(LINES);
+		expect(s).not.toContain('1-1　技巧·甲');
+		expect(s.at(-1)).toBe('⋯還有 2 個動作');
 	});
 });
 

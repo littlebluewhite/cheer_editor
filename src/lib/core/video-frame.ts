@@ -117,12 +117,14 @@ export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 		const span = pos && spans.find((s) => s.segment.id === pos.segmentId)!;
 		const lookSec = pos ? toSeconds(flow, pos) : 0;
 		const rowNow = rows.findLast((r) => r.startSec <= lookSec + EPS);
+		const at = positionsAt(flow, flowSec);
 		const base = {
 			part,
 			flowSec,
 			title: flow.name,
 			clock: clockText(flowSec),
-			positions: positionsAt(flow, flowSec),
+			// 照名單的順序：同一層疊在一起時照名單畫，跟場上一樣（站位裡的順序是加進來的順序，換過名單順序就不一樣）
+			positions: Object.fromEntries(flow.members.flatMap((m) => (at[m.id] ? [[m.id, at[m.id]]] : []))),
 			levels: layersAt(flow, flowSec),
 			markers,
 			row: rowNow ? rowNow.row : EMPTY_ROW

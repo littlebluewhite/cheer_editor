@@ -69,6 +69,25 @@ describe('輸出影片', () => {
 		expect(page.videoSaves[0].fileName).toBe('練習用.mp4');
 	});
 
+	it('存檔還沒存完就關掉、再開一次：舊的存檔存完不會關掉新開的對話框', async () => {
+		let finish: (v: 'saved') => void = () => {};
+		const save = () => new Promise<'saved'>((resolve) => (finish = resolve));
+		const encoder = createFakeVideoEncoder();
+		await openDialog(shortFlow(), { video: { encoder, save } });
+		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
+		await within(dialog()).findByRole('progressbar');
+		encoder.release();
+		await within(dialog()).findByText(/^做好了/, {}, DONE);
+		await fireEvent.click(within(dialog()).getByRole('button', { name: '存檔' }));
+		await fireEvent.click(within(dialog()).getByRole('button', { name: '關閉' }));
+		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeNull();
+		await fireEvent.click(button());
+		await within(dialog()).findByRole('button', { name: '開始' });
+		finish('saved');
+		await new Promise((r) => setTimeout(r, 0));
+		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeTruthy();
+	});
+
 	it('沒有段：按鈕停用', () => {
 		render(Page, editorPage(flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }))).props);
 		expect((button() as HTMLButtonElement).disabled).toBe(true);
@@ -262,9 +281,16 @@ describe('輸出影片', () => {
 		expect(await within(dialog()).findByText(/^做好了/, {}, DONE)).toBeTruthy();
 	});
 
-	it('找不到音樂的段：寫出音樂檔名', async () => {
+	it('找不到音樂的段：寫段名和音樂檔名', async () => {
 		await openDialog(audioFlow());
-		expect(await within(dialog()).findByText('這幾段找不到音樂，影片裡沒有聲音：「主歌.mp3」')).toBeTruthy();
+		expect(await within(dialog()).findByText('這幾段找不到音樂，影片裡沒有聲音：音樂 1「主歌.mp3」')).toBeTruthy();
+	});
+
+	it('兩段用同一個找不到的音樂檔：兩段都寫出來，看得出哪幾段沒有聲音', async () => {
+		let flow = flowOf(addSegment(audioFlow(), 'music'));
+		flow = flowOf(updateSegment(flow, 's2', { audioId: 'a1' }));
+		await openDialog(flow);
+		expect(await within(dialog()).findByText('這幾段找不到音樂，影片裡沒有聲音：音樂 1「主歌.mp3」、音樂 2「主歌.mp3」')).toBeTruthy();
 	});
 
 	it('沒選音樂的音樂段：寫段名', async () => {
