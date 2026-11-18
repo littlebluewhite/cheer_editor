@@ -122,7 +122,7 @@ const PYRAMID_ONLY = '三層';
 
 /**
  * 任務角色選單裡的角色：名詞對照表，三層只有金字塔有。
- * used（動作裡的人現在的任務角色）裡有三層時照列，換了大類也看得到、選得回來。
+ * used（這個人現在的任務角色）是三層時照列：換了大類，他自己的選單看得到、選得回來。
  */
 export function pickableRoles(flow: Flow, category: ActionCategory, used: (string | null)[]): RoleEntry[] {
 	return roleGlossary(flow).filter(

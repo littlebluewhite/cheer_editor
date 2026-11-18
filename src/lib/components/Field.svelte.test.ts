@@ -188,6 +188,25 @@ describe('上層、中層畫在最上面', () => {
 		});
 		expect(document.querySelectorAll('circle.covered')).toHaveLength(1);
 	});
+
+	it('多字膠囊只有兩端碰到下面一層：照樣錯開，下面的人照膠囊的形狀畫虛線框', () => {
+		const markers = { m1: '隊員二十五', m2: '隊員二十六' };
+		const positions = { m1: [0, 0] as Position, m2: [0, 0] as Position };
+		render(Field, { field: { strips: 9, layout: 'vertical' }, members: trio.slice(0, 2), markers, positions });
+		const w = Number(dotOf('m1').querySelector('rect')!.getAttribute('width'));
+		document.body.innerHTML = '';
+		// 中心隔得比兩個圓點遠、比兩個膠囊近：只有兩端疊在一起
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio.slice(0, 2),
+			markers,
+			positions: { m1: [0, 0], m2: [w - 0.1, 0] },
+			levels: { m1: 2 }
+		});
+		expect(w - 0.1).toBeGreaterThan(0.6);
+		expect(inner('m1')).toContain('translate');
+		expect(document.querySelectorAll('rect.covered')).toHaveLength(1);
+	});
 });
 
 describe('組號小圓', () => {
@@ -370,6 +389,15 @@ describe('在場上選人、整組拖', () => {
 
 		await dragFrom(svg, [250, 250], [350, 350], true);
 		expect(session.selectedMemberIds).toEqual(['m1', 'm2', 'm3']);
+	});
+
+	it('框選照畫出來的位置：框住錯開畫的三層就選到他，沒框到他真正的位置也算', async () => {
+		const session = renderEditing(members, { m1: [0, 0], m2: [0, 0] }, { toMeters, levels: { m1: 3 } });
+		const svg = screen.getByRole('group', { name: '場地' });
+		await fireEvent.pointerDown(svg, { clientX: 30, clientY: -60, button: 0 });
+		await fireEvent.pointerMove(svg, { clientX: 60, clientY: -30 });
+		await fireEvent.pointerUp(svg, { clientX: 60, clientY: -30 });
+		expect(session.selectedMemberIds).toEqual(['m1']);
 	});
 
 	it('多選開著：不按 Shift，點人、框選也是加進來或拿掉（iPad 沒有 Shift）', async () => {

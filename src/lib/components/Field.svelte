@@ -151,6 +151,8 @@
 	const DOT_R = 0.3;
 	/** 多字標記的字高（公尺）：寫在橫的膠囊裡。 */
 	const LONG_FONT = 0.24;
+	/** 一兩格寬的標記的字高（公尺）：跟 .dot text 的 font-size 一樣。 */
+	const DOT_FONT = 0.3;
 	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
 	const MIN_DOT_PX = touchScreen ? 32 : 22;
 	/**
@@ -312,28 +314,46 @@
 	 * 蓋到下面一層的人（圓點碰到）：往右上錯開、縮小，下面的人露得出來。單位是沒放大的公尺（在 scale 裡面）。
 	 * 位置照真的，只改畫法。
 	 */
+	/** 兩個圓點或膠囊（中心 c、半徑 r、膠囊直的那段一半長 h）有沒有碰到。 */
+	const touches = (a: { c: Position; r: number; h: number }, b: { c: Position; r: number; h: number }) =>
+		Math.hypot(Math.max(0, Math.abs(a.c[0] - b.c[0]) - a.h - b.h), a.c[1] - b.c[1]) < a.r + b.r;
+	/** 每個圓點沒錯開時的樣子（場地公尺）：多字的膠囊有直的一段。 */
+	const plain = $derived(
+		dots.map((d) => ({
+			id: d.m.id,
+			level: d.level,
+			c: d.p,
+			r: DOT_R * dotScale,
+			h: Math.max(0, pillWidth(d.mark) / 2 - DOT_R) * dotScale,
+			font: (isLongMarker(d.mark) ? longFont : DOT_FONT) * dotScale
+		}))
+	);
 	const shifts = $derived.by(() => {
 		const out: Record<string, { d: number; s: number }> = {};
-		const touch = 2 * DOT_R * dotScale;
-		for (const a of dots) {
+		for (const a of plain) {
 			if (a.level < 2) continue;
-			if (dots.some((b) => b.level < a.level && Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1]) < touch)) {
-				out[a.m.id] = { d: 0.22 * (a.level - 1), s: 0.85 ** (a.level - 1) };
+			if (plain.some((b) => b.level < a.level && touches(a, b))) {
+				// 縮小後字還是要至少 MIN_TEXT_PX：螢幕上不夠大就少縮一點（只錯開）
+				const minS = crop || !pxPerMeter ? 0 : MIN_TEXT_PX / (a.font * pxPerMeter);
+				out[a.id] = { d: 0.22 * (a.level - 1), s: Math.min(1, Math.max(0.85 ** (a.level - 1), minS)) };
 			}
 		}
 		return out;
 	});
-	/** 被不同層蓋到的人：在所有圓點上面多畫一圈虛線（中心、大小照畫出來的樣子）。同一層擠在一起的不畫。 */
-	const covered = $derived.by(() => {
-		const drawn = dots.map((d) => {
-			const sh = shifts[d.m.id];
+	/** 每個圓點畫出來的樣子（錯開、縮小後）：框選、手指按到、虛線圈都照這個。 */
+	const drawn = $derived(
+		plain.map((a) => {
+			const sh = shifts[a.id];
 			const off = (sh?.d ?? 0) * dotScale;
-			return { id: d.m.id, level: d.level, c: [d.p[0] + off, d.p[1] - off] as Position, r: DOT_R * dotScale * (sh?.s ?? 1) };
-		});
-		return drawn.filter((a, i) =>
-			drawn.slice(i + 1).some((b) => b.level !== a.level && Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1]) < a.r + b.r)
-		);
-	});
+			const s = sh?.s ?? 1;
+			return { ...a, c: [a.c[0] + off, a.c[1] - off] as Position, r: a.r * s, h: a.h * s };
+		})
+	);
+	const drawnAt = $derived(Object.fromEntries(drawn.map((a) => [a.id, a.c])));
+	/** 被不同層蓋到的人：在所有圓點上面多畫一圈虛線（照畫出來的形狀）。同一層擠在一起的不畫。 */
+	const covered = $derived(
+		drawn.filter((a, i) => drawn.slice(i + 1).some((b) => b.level !== a.level && touches(a, b)))
+	);
 	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
 	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
@@ -611,7 +631,7 @@
 		let best: string | null = null;
 		let bestD = FINGER_PX * Math.abs(x1 - x);
 		for (const m of members) {
-			const p = positions[m.id];
+			const p = drawnAt[m.id] ?? positions[m.id];
 			const d = p ? Math.hypot(p[0] - x, p[1] - y) : Infinity;
 			if (d <= bestD) [best, bestD] = [m.id, d];
 		}
@@ -720,12 +740,12 @@
 		nudge(Object.fromEntries(ids.map((i) => [i, [positions[i][0] + dx, positions[i][1] + dy] as Position])));
 	}
 
-	/** 框裡的人（Shift 時加上原本選的），照名單順序。 */
+	/** 框裡的人（照畫出來的位置；Shift 時加上原本選的），照名單順序。 */
 	function inBox(a: Position, b: Position, shift: boolean): string[] {
 		const within = (v: number, p: number, q: number) => v >= Math.min(p, q) && v <= Math.max(p, q);
 		return members
 			.filter((m) => {
-				const p = positions[m.id];
+				const p = drawnAt[m.id] ?? positions[m.id];
 				const hit = p && within(p[0], a[0], b[0]) && within(p[1], a[1], b[1]);
 				return hit || (shift && selected.includes(m.id));
 			})
@@ -914,8 +934,12 @@
 			</g>
 		{/each}
 		<!-- 被不同層蓋到的人：虛線圈畫在所有圓點上面 -->
-		{#each covered as { id, c, r } (id)}
-			<circle class="covered" cx={c[0]} cy={c[1]} {r} />
+		{#each covered as { id, c, r, h } (id)}
+			{#if h}
+				<rect class="covered" x={c[0] - h - r} y={c[1] - r} width={2 * (h + r)} height={2 * r} rx={r} />
+			{:else}
+				<circle class="covered" cx={c[0]} cy={c[1]} {r} />
+			{/if}
 		{/each}
 		<!-- 撞位的 ✕ 在圓點後面畫：蓋在人上面看得到（按在 ✕ 上拖到的是附近的人，見 down）。 -->
 		{#each clashes as c, i (i)}

@@ -65,8 +65,10 @@
 	const segmentLabel = $derived(
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
-	/** 選單的任務角色：三層只有金字塔有（已經是三層的人換了大類也照列）。 */
-	const roles = $derived(pickableRoles(flow, draft.category, draft.members.map((m) => m.role)));
+	/** 選單的任務角色：三層只有金字塔有。快捷鍵的說明照這個列。 */
+	const roles = $derived(pickableRoles(flow, draft.category, []));
+	/** 這個人的選單：已經是三層的人換了大類，他自己的選單照列三層，別人的沒有。 */
+	const rolesFor = (role: string | null) => pickableRoles(flow, draft.category, [role]);
 	const categoryLabel = $derived(ACTION_CATEGORIES.find((c) => c.key === draft.category)?.label ?? '');
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
@@ -513,7 +515,7 @@
 								bind:this={rolePickers[i]}
 								label="{nameOf(m.memberId)} 的任務角色"
 								value={m.role}
-								{roles}
+								roles={rolesFor(m.role)}
 								onpick={(role, byKey) => setRole(i, role, byKey)}
 								onnew={() => openGlossary(i)}
 							/>

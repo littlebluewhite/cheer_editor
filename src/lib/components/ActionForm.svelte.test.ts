@@ -268,6 +268,18 @@ describe('動作表單：改選到的動作', () => {
 		expect(!!screen.queryByRole('option', { name: /^三層/ })).toBe(has);
 	});
 
+	it('不是金字塔時，只有本來就是三層的那個人選單裡有三層，同一個動作的別人沒有', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: '三層' }, { memberId: 'm2', role: null }] }));
+		setup(flow, 'x1');
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		await fireEvent.click(pickA);
+		expect(screen.queryByRole('option', { name: /^三層/ })).not.toBeNull();
+		await fireEvent.keyDown(pickA, { key: 'Escape' });
+		expect(screen.queryByRole('listbox')).toBeNull();
+		await fireEvent.click(screen.getByRole('combobox', { name: '小B 的任務角色' }));
+		expect(screen.queryByRole('option', { name: /^三層/ })).toBeNull();
+	});
+
 	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
 		const session = setup(flow, 'x1');
