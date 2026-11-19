@@ -3,7 +3,7 @@
 // 伺服器換成測試共用的假伺服器（fakeServer）：別人用 joinAs 在別的地方打開、送步。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { takeRecords, type Attempt } from '#lib/core';
+import { takeRecords, undoChanges, type Attempt } from '#lib/core';
 import { editorPage, fromMenu, fakeServer, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -12,7 +12,7 @@ const pw = '我們這一隊今年一定會贏 go go';
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: pw };
 const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: pw };
 
-/** 林教練登入，打開他的「測試」（libSample，紀錄是 records）；王教練是編輯者，也開著。 */
+/** 林教練登入，打開他的「測試」（libSample，紀錄是 records）；王教練是編輯者，也開著。room 是林教練的房間。 */
 async function bothOpen(records: FakeCloudFlow['records'] = []) {
 	const fake = fakeServer({
 		users: [lin, wang],
@@ -28,14 +28,18 @@ async function bothOpen(records: FakeCloudFlow['records'] = []) {
 			}
 		]
 	});
+	const open = fake.server.openRoom.bind(fake.server);
+	let room: ReturnType<typeof open> | null = null;
+	fake.server.openRoom = (id) => (room ??= open(id));
 	const page = editorPage(null, { server: fake.server });
 	render(Page, page.props);
 	await flush();
 	await fireEvent.click(screen.getByRole('button', { name: /^測試/ }));
 	await flush();
+	fake.server.openRoom = open;
 	const w = fake.joinAs('c1', wang.email);
 	await flush();
-	return { ...fake, page, w };
+	return { ...fake, page, w, room: room! };
 }
 
 /** 流程設定改流程名字。 */
@@ -237,6 +241,56 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		const server = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.marks);
 		expect(server).toEqual([{ p1: '✓' }]);
 		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.marks)).toEqual(server);
+	});
+
+	it('a step\'s own recordsChanged does not undo a mark correction in flight：刪環節還沒收到就改了一個記號，跟著改的紀錄到了再照畫面改另一個，兩個都留著', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✓' })]);
+		const t1 = () => takeRecords(s.page.session.flow!).records[0].attempt.marks;
+		const heard = s.room.onmessage;
+		// 刪環節跟著改的紀錄到了（第一個記號的回答還沒到）：再改另一個記號
+		s.room.onmessage = (m) => {
+			heard(m);
+			if (m.kind !== 'recordsChanged') return;
+			s.room.onmessage = heard;
+			s.page.session.recordAsk().send({ name: 'changeAttempt', args: ['x1', 't1', { ...t1(), p2: '△' }] });
+		};
+		s.page.session.ask.send({ name: 'deletePhase', args: ['x1', 'p3'], options: { confirmed: true } });
+		s.page.session.recordAsk().send({ name: 'changeAttempt', args: ['x1', 't1', { ...t1(), p1: '△' }] });
+		await flush();
+		await flush();
+
+		// 第二次是照畫面上的改的：畫面上要是被舊的記號蓋掉，伺服器的 p1 又變回 ✓
+		const server = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.marks);
+		expect(server).toEqual([{ p1: '△', p2: '△' }]);
+		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.marks)).toEqual(server);
+	});
+
+	it('rollback of a rejected offline phase deletion keeps a mark another editor restored：斷線時刪環節，王教練復原他刪的環節、記號回來，連回來被退回，記號還在', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✓' })]);
+		// 王教練刪 p2（記號一起清掉），林教練看到了
+		const was = s.state.flows[0].flow;
+		s.w.room.send({ kind: 'step', stepId: 'swangdelp2aa', seen: 0, commands: [{ name: 'deletePhase', args: ['x1', 'p2'], options: { confirmed: true } }] });
+		await flush();
+		expect(takeRecords(s.page.session.flow!).records[0].attempt.marks).toEqual({ p1: '✓', p3: '✓' });
+		// 林教練刪 p3 還沒送到就斷線
+		s.state.holdRoom = true;
+		s.page.session.ask.send({ name: 'deletePhase', args: ['x1', 'p3'], options: { confirmed: true } });
+		s.disconnect(lin.email);
+		s.releaseRoom();
+		await flush();
+		// 王教練復原：p2 和 t1 的 p2 回來
+		const { undo } = undoChanges(was, s.state.flows[0].flow);
+		s.w.room.send({ kind: 'undo', stepId: 'swangundop2a', seen: 1, of: 'swangdelp2aa', redo: false, change: undo });
+		await flush();
+		expect((s.state.flows[0].records ?? []).map((r) => r.attempt.marks)).toEqual([{ p1: '✓', p2: '✓', p3: '✓' }]);
+
+		s.reconnect(lin.email);
+		await flush();
+		await flush();
+		expect(status()).toBe('王教練剛改了同一個地方，你的「改動作 技巧·Lib」沒改成');
+		const server = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.marks);
+		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.marks)).toEqual(server);
+		expect(takeRecords(s.page.session.flow!).flow).toEqual(s.state.flows[0].flow);
 	});
 
 	it('reconnect keeps an attempt on a phase added meanwhile：改名清掉重算沒收到就斷線，王教練加了環節、記了另一組，連回來那一次還在', async () => {

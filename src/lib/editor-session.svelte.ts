@@ -604,8 +604,9 @@ export class EditorSession {
 			back = redo ? replayed(step, before, this.#flow) : replayed(step, this.#flow, before);
 		} else {
 			const id = newStepId();
-			const change = redo ? step.changes.redo : step.changes.undo;
-			back = { label: step.label, ids: [id], changes: step.changes };
+			const change = redo ? redoOrders(before, step.changes.redo) : step.changes.undo;
+			// 復原：重做的順序記成復原前畫面上的（加回來的照這裡的位置放）
+			back = { label: step.label, ids: [id], changes: redo ? step.changes : withOrders(step.changes, before) };
 			this.#flow = undone(before, change);
 			this.#saved = this.#flow;
 			this.onstep?.({ id, undo: { of: step.ids[0], redo, change } }, step.label, before, this.#flow);
@@ -913,6 +914,35 @@ export class EditorSession {
 		this.squadAsk.send({ name: 'setSquad', args: [action.id, ids, n === 0 ? null : n] });
 		return true;
 	}
+}
+
+/** 清單的 id 順序。 */
+const idsOf = (flow: Flow, list: string) => (flow[list as keyof RemoteChange['orders']] as { id: string }[]).map((x) => x.id);
+
+/** 重做要排的清單換成復原前畫面上（flow）的順序。 */
+function withOrders(changes: UndoChanges, flow: Flow): UndoChanges {
+	const orders = Object.fromEntries(Object.keys(changes.redo.orders).map((list) => [list, idsOf(flow, list)]));
+	return { ...changes, redo: { ...changes.redo, orders } };
+}
+
+/**
+ * 雲端流程重做時的清單順序：存著的是復原前畫面上的（withOrders），別人之後可能又加、又調了順序。
+ * 這一步加回來的（現在畫面上沒有的）接在存著的順序裡它前一個的後面，其他照現在畫面上的；
+ * 沒加回東西的清單（例：調順序的那一步）照存著的。
+ */
+function redoOrders(flow: Flow, change: RemoteChange): RemoteChange {
+	const back = new Set(change.things.flatMap((t) => (t.after === null ? [] : [t.key.split(':')[1]])));
+	const orders = Object.entries(change.orders).map(([list, order]) => {
+		const ids = idsOf(flow, list);
+		const added = order.filter((id) => back.has(id) && !ids.includes(id));
+		if (!added.length) return [list, order];
+		for (const id of added) {
+			const prev = order.slice(0, order.indexOf(id)).findLast((p) => ids.includes(p));
+			ids.splice(prev === undefined ? 0 : ids.indexOf(prev) + 1, 0, id);
+		}
+		return [list, ids];
+	});
+	return { ...change, orders: Object.fromEntries(orders) };
 }
 
 /** 頁面放進 context、元件拿出來用的 session。has：有沒有放（場地在八拍表上只畫、不編）。 */

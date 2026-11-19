@@ -316,11 +316,10 @@ export function fakeServer(
 	let held: { room: FlowRoom; send: () => void }[] = [];
 	/** 斷線的房間：送來的不收，還沒送到的回答不見。 */
 	const down = new Set<FlowRoom>();
-	const deliver = (room: FlowRoom, answer: () => RoomMessage | null) => {
+	const deliver = (room: FlowRoom, answer: () => RoomMessage | RoomMessage[] | null) => {
 		const send = () => {
 			if (down.has(room)) return;
-			const message = answer();
-			if (message) room.onmessage(message);
+			for (const message of [answer() ?? []].flat()) room.onmessage(message);
 		};
 		if (state.holdRoom) held.push({ room, send });
 		else queueMicrotask(send);
@@ -364,7 +363,7 @@ export function fakeServer(
 		f: FakeCloudFlow,
 		sent: { stepId: string; seen: number; commands?: Command[]; undo?: { of: string; redo: boolean; change: RemoteChange } },
 		from: OpenRoom
-	): RoomMessage => {
+	): RoomMessage | RoomMessage[] => {
 		const { stepId, seen, commands, undo } = sent;
 		const taken = f.stepIds?.[stepId];
 		if (taken !== undefined) {
@@ -441,14 +440,16 @@ export function fakeServer(
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
 		// 紀錄跟著改的接在編排的改動後面（#258）。送的人也收到（ADR 0007）：復原、重做加回來的；一般的步，進房間拿到的紀錄還沒算到這一步。
-		tellRecords(f, changed, deleted);
+		// 送的人的那一則跟真的伺服器一樣緊跟在「收了」後面，處理下一個送來的之前。
+		tellRecords(f, changed, deleted, from.room);
+		const own = changed.length || deleted.length ? [recordsChanged(f, changed, deleted, from.email)] : [];
 		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by, change, cleared }]);
 		f.flow = after.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
 		f.updatedAt = new Date().toISOString();
 		// 送的人也拿到伺服器做出來的改動：可能跟他自己畫面上的不一樣（例：同時加的隊員放的位置）
-		return { kind: 'accepted', stepId, step: f.step, change: structuredClone(change) };
+		return [{ kind: 'accepted', stepId, step: f.step, change: structuredClone(change) }, ...own];
 	};
 	let nextToken = 1;
 	let nextShareLink = 1;
@@ -624,11 +625,15 @@ export function fakeServer(
 	/** 紀錄跟著改了（改、刪、救回、別人的一步）：告訴這支流程開著的別的房間（from 是送來的房間）。 */
 	const tellRecords = (f: FakeCloudFlow, changed: string[], deleted: string[], from?: FlowRoom) => {
 		if (!changed.length && !deleted.length) return;
-		const records = (f.records ?? []).filter((r) => !r.gone && changed.includes(r.attempt.id));
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.room !== from)) {
-			const message = { kind: 'recordsChanged', changed: records.map((r) => cloudRecord(r, other.email)), deleted } as const;
-			deliver(other.room, () => structuredClone(message));
+			const message = recordsChanged(f, changed, deleted, other.email);
+			deliver(other.room, () => message);
 		}
+	};
+	/** 紀錄跟著改的那一則（給 viewer 看的）。 */
+	const recordsChanged = (f: FakeCloudFlow, changed: string[], deleted: string[], viewer: string): RoomMessage => {
+		const records = (f.records ?? []).filter((r) => !r.gone && changed.includes(r.attempt.id));
+		return structuredClone({ kind: 'recordsChanged', changed: records.map((r) => cloudRecord(r, viewer)), deleted });
 	};
 	/** 用流程核心對一次跑改記號、救回（跟真的伺服器一樣）：收了回跑完的那一次，被擋是 undefined。 */
 	const runOne = (f: FakeCloudFlow, records: StoredAttempt[], command: Command) => {
