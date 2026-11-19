@@ -528,12 +528,17 @@ pub async fn record(
     .into_iter()
     .map(|(id,)| id)
     .collect();
-    let mut saved: Vec<CloudRecord> = rows(&mut *tx, flow_id, false)
-        .await?
-        .iter()
-        .filter(|r| taken.contains(r.id()))
-        .map(|r| r.seen_by(user_id))
-        .collect();
+    // 沒有收過的就不讀整份紀錄（鎖著流程，別人在等）
+    let mut saved: Vec<CloudRecord> = if taken.is_empty() {
+        vec![]
+    } else {
+        rows(&mut *tx, flow_id, false)
+            .await?
+            .iter()
+            .filter(|r| taken.contains(r.id()))
+            .map(|r| r.seen_by(user_id))
+            .collect()
+    };
 
     let fresh: Vec<(String, Stored)> = incoming
         .into_iter()

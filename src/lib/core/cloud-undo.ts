@@ -42,7 +42,7 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
 	const after = applyRemoteChange(flow, change);
-	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : after, flow));
+	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : pastEarlier(after, flow), flow));
 }
 
 const inTimeOrder = (flow: Flow) =>
@@ -55,6 +55,21 @@ const inTimeOrder = (flow: Flow) =>
 function byTime(flow: Flow): Flow {
 	const sorted = [...flow.formations].sort((a, b) => formationSec(flow, a) - formationSec(flow, b));
 	return sorted.every((f, i) => f === flow.formations[i]) ? flow : { ...flow, formations: sorted };
+}
+
+/**
+ * 沒照時間排的流程：放回去的站位往後挪過後面時間比它早的（例：0、16、8 加回 32，別人後來加了 24，32 放 24 後面），
+ * 不然放回去的那張和後面那張多一個新的毛病、整步被擋；其他站位照現在的順序不動。
+ */
+function pastEarlier(after: Flow, flow: Flow): Flow {
+	const had = new Set(flow.formations.map((f) => f.id));
+	const list = [...after.formations];
+	for (let i = list.length - 1; i >= 0; i--) {
+		if (had.has(list[i].id)) continue;
+		for (let j = i; j + 1 < list.length && formationSec(after, list[j + 1]) < formationSec(after, list[j]); j++)
+			[list[j], list[j + 1]] = [list[j + 1], list[j]];
+	}
+	return list.every((f, i) => f === after.formations[i]) ? after : { ...after, formations: list };
 }
 
 /** 每個動作的紀錄對上它現在的環節、組（對不上的記號拿掉，拿光了整筆拿掉）。 */

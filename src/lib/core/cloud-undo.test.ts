@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	addMembers,
 	deleteAction,
+	deleteFormation,
 	deleteMember,
 	deletePhase,
 	renameFlow,
@@ -100,6 +101,28 @@ describe('runUndo（伺服器跑復原）', () => {
 		if (r.kind !== 'ok') return;
 		expect(r.flow.name).toBe(start.name);
 		expect(r.flow.formations.map((f) => f.id)).toEqual(start.formations.map((f) => f.id));
+	});
+
+	it('匯入的舊檔站位沒照時間排（0、16、8、32 拍）：刪 32、別人加了 24，復原把 32 放在 24 後面', () => {
+		const sample = ratedSample();
+		const pos = sample.formations[0].pos;
+		const start: Flow = {
+			...sample,
+			formations: [
+				sample.formations[0],
+				...[16, 8, 32].map((at, i) => ({ id: `old${i + 1}`, segmentId: 's1', at, pos }))
+			]
+		};
+		const gone = flowOf(deleteFormation(start, 'old3'));
+		const now: Flow = { ...gone, formations: [...gone.formations, { id: 'new', segmentId: 's1', at: 24, pos }] };
+		const undo = undoChanges(start, gone).undo;
+		// 畫面算的順序：32 接在它前一個（8）的後面，別人加的 24 在最後
+		const change = { ...undo, orders: { ...undo.orders, formations: [...start.formations.map((f) => f.id), 'new'] } };
+		const server = takeRecords(now);
+		const r = runUndo(server.flow, server.records, change);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old1', 'old2', 'new', 'old3']);
 	});
 
 	it('重做刪環節：復原時加回來的記號再清一次，只剩那個環節的記號的那一次整筆清掉（ADR 0007）', () => {

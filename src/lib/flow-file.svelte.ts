@@ -103,7 +103,9 @@ export class FlowFile {
 	#uploading = false;
 	/** 雲端流程下載過幾次；存好的是第幾次、存到哪（同一個檔後來又存好了，前一次失敗不說它變空的）。 */
 	#downloads = 0;
-	#savedTo: { n: number; saver: FileSaver }[] = [];
+	/** 還沒做完的下載在等的時候，各個檔最後一次被清空（選檔）、寫好（存成）：沒在等的就清掉，不會越積越多。 */
+	#fileEvents: { n: number; saver: FileSaver; saved: boolean }[] = [];
+	#pending = 0;
 	/** 傳上雲端時有音樂檔太大：跳框寫是哪一段、幾 MB（按「知道了」清掉）。 */
 	#tooBig = $state.raw<AudioTooBig | null>(null);
 	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
@@ -677,39 +679,46 @@ export class FlowFile {
 		} catch {
 			return void (session.notice = '下載失敗，請再試一次');
 		}
-		// 存檔對話框選了舊檔，瀏覽器當下就清空它（File System Access 規格）：沒存成要說那個檔變空的
+		// 存檔對話框選了舊檔，瀏覽器當下就清空它（File System Access 規格）：沒存成、那個檔最後一次又是被清空的，要說它變空的
 		const mine = ++this.#downloads;
 		const chosen = saver.fileName;
+		this.#fileEvents.push({ n: mine, saver, saved: false });
+		this.#pending++;
 		const failed = async (text: string) => {
-			let refilled = false;
-			for (const s of this.#savedTo) if (s.n > mine && (await saver.sameFile?.(s.saver))) refilled = true;
-			session.notice = chosen && !refilled ? `${text}；選的「${chosen}」已經變成空的檔案，請再下載一次` : text;
+			let last = { n: mine, saved: false };
+			for (const e of this.#fileEvents)
+				if (e.n > last.n && e.saver !== saver && (await saver.sameFile?.(e.saver))) last = e;
+			session.notice = chosen && !last.saved ? `${text}；選的「${chosen}」已經變成空的檔案，請再下載一次` : text;
 		};
-		let found;
 		try {
-			found = await adapters.server.cloudFlow(id);
-		} catch {
-			found = null;
-		}
-		if (!found) return failed('連不上伺服器，沒下載');
-		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
-		const flow = putRecords(found.flow as Flow, records);
-		const audio = { ...music.bytes(flow) };
-		try {
-			for (const a of flow.audio) {
-				if (audio[a.id]) continue;
-				const bytes = await adapters.server.audioBytes(id, a.id);
-				if (bytes) audio[a.id] = bytes;
+			let found;
+			try {
+				found = await adapters.server.cloudFlow(id);
+			} catch {
+				found = null;
 			}
-		} catch {
-			return failed('連不上伺服器，沒下載');
-		}
-		try {
-			const outcome = await saver.save(writeFlowFile(flow, audio), fileName);
-			if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
-			if (outcome === 'saved') this.#savedTo.push({ n: mine, saver });
-		} catch {
-			await failed('下載失敗，請再試一次');
+			if (!found) return await failed('連不上伺服器，沒下載');
+			const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
+			const flow = putRecords(found.flow as Flow, records);
+			const audio = { ...music.bytes(flow) };
+			try {
+				for (const a of flow.audio) {
+					if (audio[a.id]) continue;
+					const bytes = await adapters.server.audioBytes(id, a.id);
+					if (bytes) audio[a.id] = bytes;
+				}
+			} catch {
+				return await failed('連不上伺服器，沒下載');
+			}
+			try {
+				const outcome = await saver.save(writeFlowFile(flow, audio), fileName);
+				if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
+				if (outcome === 'saved') this.#fileEvents.push({ n: ++this.#downloads, saver, saved: true });
+			} catch {
+				await failed('下載失敗，請再試一次');
+			}
+		} finally {
+			if (--this.#pending === 0) this.#fileEvents = [];
 		}
 	}
 

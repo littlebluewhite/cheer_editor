@@ -317,6 +317,31 @@ describe('改到同一個東西', () => {
 		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 
+	it('redo of a move whose moved segment is gone leaves the rest alone：我把第二段調到第三段後面，復原，王教練在它後面插一段再刪掉它，我重做，順序不動', async () => {
+		const s = await bothOpen();
+		s.page.session.ask.send({ name: 'addSegment', args: ['chant'] });
+		await flush();
+		s.page.session.ask.send({ name: 'addSegment', args: ['chant'] });
+		await flush();
+		const second = s.page.session.flow!.segments[1].id;
+		s.page.session.ask.send({ name: 'moveSegment', args: [second, 1] });
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		s.w.step({ name: 'addSegment', args: ['chant', second] });
+		await flush();
+		s.w.step({ name: 'deleteSegment', args: [second, { confirmed: true }] });
+		await flush();
+		const order = s.state.flows[0].flow.segments.map((x) => x.id);
+		expect(order).toHaveLength(3);
+
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.segments.map((x) => x.id)).toEqual(order);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
 	it('undo of an add leaves a roster move alone：我加隊員，王教練把第二個調到最前面，我復原只拿掉我加的', async () => {
 		const s = await bothOpen();
 		s.page.session.ask.send(add('小華'));

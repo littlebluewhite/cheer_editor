@@ -416,7 +416,7 @@ describe('下載成流程檔', () => {
 	});
 
 	/** 雲端流程開著，每次存檔對話框選 picks 裡的下一個檔；第 1、2 次下載拿音樂卡住，fails[0]、fails[1] 讓它失敗。 */
-	async function twoExports(picks: { name: string; dir: string }[]) {
+	async function exportsTo(picks: { name: string; dir: string }[]) {
 		vi.stubGlobal('matchMedia', () => ({ matches: false }));
 		const handles = picks.map((p) => ({
 			...p,
@@ -437,22 +437,22 @@ describe('下載成流程檔', () => {
 		const oks: (() => void)[] = [];
 		let calls = 0;
 		fake.server.audioBytes = async (...args) => {
-			if (++calls <= 2)
+			if (++calls <= picks.length)
 				await new Promise<void>((ok, reject) => {
 					fails.push(() => reject(new ServerUnreachable()));
 					oks.push(ok);
 				});
 			return audioBytes(...args);
 		};
-		await fromMenu('下載成流程檔');
-		await flush();
-		await fromMenu('下載成流程檔');
-		await flush();
+		for (let i = 0; i < picks.length; i++) {
+			await fromMenu('下載成流程檔');
+			await flush();
+		}
 		return { fails, oks };
 	}
 
 	it('a failed export still warns when a later export saved a same-named file elsewhere：A、B 兩個資料夾都有「備份.zip」，存 B 的成功、存 A 的失敗，還是說 A 的變空了', async () => {
-		const { fails, oks } = await twoExports([
+		const { fails, oks } = await exportsTo([
 			{ name: '備份.zip', dir: 'A' },
 			{ name: '備份.zip', dir: 'B' }
 		]);
@@ -465,7 +465,7 @@ describe('下載成流程檔', () => {
 	});
 
 	it('both exports to one file fail newer first, the older failure still warns：同一個檔下載兩次都失敗，後一次先失敗，前一次失敗還是說那個檔變空的', async () => {
-		const { fails } = await twoExports([
+		const { fails } = await exportsTo([
 			{ name: '備份.zip', dir: 'A' },
 			{ name: '備份.zip', dir: 'A' }
 		]);
@@ -475,6 +475,18 @@ describe('下載成流程檔', () => {
 		await flush();
 
 		expect(screen.getByRole('status').textContent).toContain('「備份.zip」已經變成空的檔案');
+	});
+
+	it('a failed export does not warn when an export chosen before it saved afterwards：同一個檔下載三次，第一次存好了、第二次失敗、第三次還在等，不說那個檔變空的', async () => {
+		const same = { name: '備份.zip', dir: 'A' };
+		const { fails, oks } = await exportsTo([same, same, same]);
+		oks[0]();
+		await flush();
+		fails[1]();
+		await flush();
+
+		expect(screen.getByRole('status').textContent).not.toContain('變成空的檔案');
+		expect(screen.getByRole('status').textContent).toContain('連不上伺服器');
 	});
 
 	it('export fails when a track not cached here is unreachable：拿不到別人換的音樂，不存、說原因', async () => {
