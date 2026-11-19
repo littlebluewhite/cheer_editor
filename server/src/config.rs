@@ -23,6 +23,14 @@ pub struct Config {
     pub resend: Option<(String, String)>,
     /// 放雲端流程音樂檔的 R2；沒設 R2_ENDPOINT 時是 None（放音樂的 API 回 503）。
     pub r2: Option<R2Config>,
+    /// 每天的備份（#265）：放備份的 R2 bucket（跟音樂同一個 `R2_ENDPOINT`）；沒設 BACKUP_R2_BUCKET 時不備份。
+    pub backup: Option<BackupConfig>,
+}
+
+pub struct BackupConfig {
+    pub r2: R2Config,
+    /// Better Stack 的報到網址（網址本身就是 token）；沒設時照樣備份，只是不報到。
+    pub heartbeat: Option<reqwest::Url>,
 }
 
 /// R2（S3 相容）的 bucket 和只管這個 bucket 的 token。
@@ -70,6 +78,28 @@ impl Config {
             }),
             Err(_) => None,
         };
+        let backup = match std::env::var("BACKUP_R2_BUCKET") {
+            Ok(bucket) => Some(BackupConfig {
+                r2: R2Config {
+                    endpoint: r2
+                        .as_ref()
+                        .map(|r2| r2.endpoint.clone())
+                        .ok_or(ConfigError::Missing("R2_ENDPOINT"))?,
+                    bucket,
+                    access_key: need("BACKUP_R2_ACCESS_KEY_ID")?,
+                    secret: need("BACKUP_R2_SECRET_ACCESS_KEY")?,
+                },
+                heartbeat: match std::env::var("BACKUP_HEARTBEAT_URL") {
+                    Ok(value) => Some(value.parse().map_err(|_| ConfigError::Invalid {
+                        name: "BACKUP_HEARTBEAT_URL",
+                        // 網址就是 token，不印出來。
+                        value: "（不是網址）".into(),
+                    })?),
+                    Err(_) => None,
+                },
+            }),
+            Err(_) => None,
+        };
         Ok(Self {
             database_url,
             listen_addr,
@@ -77,6 +107,7 @@ impl Config {
             site_url,
             resend,
             r2,
+            backup,
         })
     }
 }

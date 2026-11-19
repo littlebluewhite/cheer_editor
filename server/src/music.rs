@@ -80,6 +80,24 @@ impl MusicStore {
         Ok(Some(length))
     }
 
+    /// 把本機的一個檔放上去（每天的備份用，#265）。邊讀邊傳，不整個放進記憶體；R2 要先說多大。
+    pub(crate) async fn put_file(&self, key: &str, path: &std::path::Path) -> anyhow::Result<()> {
+        let file = tokio::fs::File::open(path).await?;
+        let size = file.metadata().await?.len();
+        let url = self
+            .bucket
+            .put_object(Some(&self.credentials), key)
+            .sign(PRESIGN_FOR);
+        self.http
+            .put(url)
+            .header(reqwest::header::CONTENT_LENGTH, size)
+            .body(file)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
     pub(crate) async fn delete(&self, key: &str) -> anyhow::Result<()> {
         let url = self
             .bucket

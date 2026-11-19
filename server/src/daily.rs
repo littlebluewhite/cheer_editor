@@ -38,11 +38,16 @@ pub async fn every_day(state: AppState, awake: AwakeMeter) {
 
 /// 下一次跑的時間：`now` 之後第一個台灣時間 5 點。
 pub fn next_run(now: DateTime<Utc>) -> DateTime<Utc> {
+    next_taiwan_hour(now, 5)
+}
+
+/// `now` 之後第一個台灣時間 `hour` 點整（每天的備份也用）。
+pub(crate) fn next_taiwan_hour(now: DateTime<Utc>, hour: u32) -> DateTime<Utc> {
     let taiwan = FixedOffset::east_opt(8 * 3600).unwrap();
     let today = now
         .with_timezone(&taiwan)
         .date_naive()
-        .and_hms_opt(5, 0, 0)
+        .and_hms_opt(hour, 0, 0)
         .unwrap()
         .and_local_timezone(taiwan)
         .unwrap()

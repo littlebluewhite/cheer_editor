@@ -75,6 +75,7 @@ repo 是公開的：金鑰、密碼、連線字串都不放進 repo、issue、co
 | `DATABASE_URL` | Neon 正式資料庫的連線字串（不經過 pooler） |
 | `R2_ENDPOINT`、`R2_BUCKET`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY` | 放音樂檔的 R2 bucket 和只管它的 token |
 | `BACKUP_R2_BUCKET`、`BACKUP_R2_ACCESS_KEY_ID`、`BACKUP_R2_SECRET_ACCESS_KEY` | 放備份的 R2 bucket 和只管它的 token（每天的備份用，#265） |
+| `BACKUP_HEARTBEAT_URL` | Better Stack 的備份報到網址（網址本身就是 token；**還沒設**，Better Stack 開好 heartbeat 後網站主人加，#269） |
 | `RESEND_API_KEY`、`MAIL_FROM` | Resend 的金鑰和寄件人 |
 | `SITE_URL` | 網站的網址（信裡的連結用） |
 
@@ -116,13 +117,37 @@ Neon 免費版留 6 小時內的紀錄，可以倒回到這段時間的任何一
 2. 整個 branch 被蓋掉；Neon 自己多留一份倒回前的 branch，要找東西去那份找。
 3. 連線字串不變，不用改 Fly secrets。
 
+### 每天的備份
+
+伺服器自己每天台灣時間凌晨 4 點備份一次（`server/src/backup.rs`，#265），不用 GitHub 排程：
+
+1. 跑 `pg_dump --format=custom --no-owner --no-acl`（custom 格式本身就壓縮過，不另外加密），連 `DATABASE_URL`（不經過 pooler）。
+   映像檔裝的是 PostgreSQL 官方套件庫的 `postgresql-client-18`，跟資料庫同一版（`Dockerfile`；Debian 自己的、Neon 備份範本寫的是 17，不能用）。
+2. 放上 R2 的備份 bucket（`BACKUP_R2_BUCKET`，跟音樂同一個 `R2_ENDPOINT`），名字是 `cheer-<台灣日期>-<時分>.dump`，例 `cheer-2026-11-20-0400.dump`。bucket 的生命週期規則 30 天自動刪。
+3. 在資料表 `backups` 記一列多大（每天的工作算 R2 用量用，#266）。
+4. 去 Better Stack 報到：打 `BACKUP_HEARTBEAT_URL`（Fly secret，網址本身就是 token）。**哪一步失敗就不報到**，Better Stack 等不到就寄信給網站主人（死人開關）。
+   沒設 `BACKUP_HEARTBEAT_URL` 時照樣備份，log 寫「沒去 Better Stack 報到」。沒設 `BACKUP_R2_BUCKET` 時不備份（本機開發）。
+
+現在就備份一次（例：試設定對不對）：
+
+```sh
+fly ssh console -C "/app/cheer-server backup"
+```
+
 ### 資料庫：更早的
 
-用每天凌晨 4 點（台灣時間）的備份（`pg_dump`，放 R2 的備份 bucket，留 30 天；伺服器怎麼做、檔案長什麼樣見 #265）：
+用每天凌晨 4 點（台灣時間）的備份（上面「每天的備份」，留 30 天）：
 
-1. Cloudflare → R2 → 備份的 bucket，下載要的那一天。
+1. Cloudflare → R2 → 備份的 bucket，下載要的那一天（`cheer-<日期>-0400.dump`）。
 2. Neon Console 開一個新的 branch（空的，不要從正式的複製），拿它的連線字串（不經過 pooler）。
-3. 用 PostgreSQL 18 的工具還原到這個新的 branch（跟資料庫同一版）。
+3. 用 PostgreSQL 18 的 `pg_restore` 還原到這個新的 branch（跟資料庫同一版；自己電腦沒有 18 就用 docker 的 `postgres:18`）：
+
+```sh
+pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" cheer-2026-11-20-0400.dump
+# 或：docker run --rm -i postgres:18 pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" < cheer-2026-11-20-0400.dump
+```
+
+   連線字串有密碼，打在指令上會留在 shell 的歷史紀錄：做完清掉，或先 `read -s DB` 再用 `--dbname="$DB"`。
 4. 檢查：連上新的 branch 看使用者、流程、紀錄對不對。
 5. 對了才換過去：`fly secrets import` 把 `DATABASE_URL` 換成新 branch 的連線字串（會重開機器）。舊的 branch 先留著，確定沒事再刪。
 

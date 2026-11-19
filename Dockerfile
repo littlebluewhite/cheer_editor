@@ -18,9 +18,14 @@ RUN cd server && cargo build --release --locked
 
 FROM debian:trixie-slim
 # 連 Neon、Resend、R2、Pwned Passwords 都走 TLS，要有根憑證。
+# 每天的備份（#265）跑 pg_dump：版本要跟資料庫一樣是 18。Debian trixie 自己的是 17（Neon 的備份範本也寫 17，不能照抄），
+# 所以從 PostgreSQL 官方的 apt 套件庫（PGDG）裝 postgresql-client-18，PATH 指到它，不會拿到別版。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
+ENV PATH=/usr/lib/postgresql/18/bin:$PATH
 WORKDIR /app
 COPY --from=server /src/server/target/release/cheer-server /app/cheer-server
 COPY --from=frontend /src/build /app/build
