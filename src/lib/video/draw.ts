@@ -1,7 +1,7 @@
 // 把版面（layoutFrame 排好的一格）畫在 Canvas 上。不排版、不量字：位置、字級都在 layout 裡。
 // 瀏覽器才有 Canvas 2D，jsdom 沒有，所以沒有自動測試；輸出影片時用真的瀏覽器看（見實作計畫 Task 8）。
 
-import { fieldGeometry, fieldNumbers, frontLabelAt, fullView, type FieldConfig, type GlobalRole, type VideoFrameData } from '#lib/core';
+import { RAISED_FILL_OPACITY, fieldGeometry, fieldNumbers, frontLabelAt, fullView, type FieldConfig, type GlobalRole, type VideoFrameData } from '#lib/core';
 import { VIDEO_COLORS, type ColorKey } from './colors';
 import { VIDEO_H, VIDEO_W, type Box, type FrameLayout, type Measure, type TextItem } from './layout';
 
@@ -148,7 +148,7 @@ function drawField(
 	ctx.fillText('▼ 正面／裁判 ▼', px(fx), py(fy));
 	ctx.letterSpacing = '0px';
 
-	// 圓點照層畫（layout 排好順序、錯開、縮小）：中層、上層、支撐黃框，三層橘框，在空中的都加陰影；縮小時線寬、陰影、字一起縮
+	// 圓點照層畫（layout 排好順序，都在真的位置）：中層、上層、支撐黃框，三層橘框，在空中的都加陰影、底色半透明（跟場上一樣）
 	const capsule = (d: { c: [number, number]; r: number; h: number }) => {
 		ctx.beginPath();
 		ctx.roundRect(d.c[0] - d.h - d.r, d.c[1] - d.r, 2 * (d.h + d.r), 2 * d.r, d.r);
@@ -156,23 +156,24 @@ function drawField(
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	for (const d of layout.field.dots) {
-		const k = dotUnit * d.scale;
 		const up = d.level >= 2;
 		const ring = ringOf(d.level);
 		const top = roles[d.id] === 'top';
 		capsule(d);
 		if (up) {
 			ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-			ctx.shadowOffsetY = 0.08 * k;
-			ctx.shadowBlur = 0.1 * k;
+			ctx.shadowOffsetY = 0.08 * dotUnit;
+			ctx.shadowBlur = 0.1 * dotUnit;
 		}
 		ctx.fillStyle = color(top ? 'dotTop' : 'dotBase');
+		if (up) ctx.globalAlpha = RAISED_FILL_OPACITY;
 		ctx.fill();
+		ctx.globalAlpha = 1;
 		ctx.shadowColor = 'transparent';
 		ctx.shadowOffsetY = 0;
 		ctx.shadowBlur = 0;
 		ctx.strokeStyle = color(ring.color);
-		ctx.lineWidth = ring.width * k;
+		ctx.lineWidth = ring.width * dotUnit;
 		ctx.stroke();
 		ctx.font = `700 ${d.font}px ${FONT}`;
 		ctx.fillStyle = color(top ? 'dotTopInk' : 'dotInk');

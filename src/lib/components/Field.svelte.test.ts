@@ -151,7 +151,7 @@ describe('上層、中層畫在最上面', () => {
 		globalRole: 'base'
 	}));
 	const dotOf = (id: string) => document.querySelector<SVGGElement>(`[data-member-id="${id}"]`)!;
-	/** 圓點裡那一層 g 的 transform（放大，跟下面的人疊在同一點時再錯開、縮小）。 */
+	/** 圓點裡那一層 g 的 transform（放大）。 */
 	const inner = (id: string) => dotOf(id).querySelector(':scope > g')!.getAttribute('transform')!;
 
 	it('照層畫：高的層後畫（蓋在上面）；第 2 層以上黃框加陰影，三層再加橘框', () => {
@@ -167,19 +167,18 @@ describe('上層、中層畫在最上面', () => {
 		expect(dots.map((d) => d.classList.contains('lv3'))).toEqual([false, false, true]);
 	});
 
-	it('跟下面一層的人疊在同一點時往右上錯開、縮小，層越高錯越多；旁邊沒人的不動', () => {
+	it('跟下面一層的人疊在同一點時還是畫在真的位置、原本大小（走位時不會跳）', () => {
 		render(Field, {
 			field: { strips: 9, layout: 'vertical' },
 			members: trio,
 			positions: { m1: [0, 0], m2: [0, 0], m3: [3, 0] },
 			levels: { m1: 2, m3: 3 }
 		});
-		expect(inner('m2')).not.toContain('translate');
-		expect(inner('m1')).toMatch(/translate\(0\.22,-0\.22\) scale\(0\.85\)$/);
-		expect(inner('m3')).not.toContain('translate');
+		for (const id of ['m1', 'm2', 'm3']) expect(inner(id)).toMatch(/^scale\([\d.]+\)$/);
+		expect(dotOf('m1').getAttribute('transform')).toBe('translate(0,0)');
 	});
 
-	it('只是站在隔壁（圓點碰到邊，位置沒疊在同一點）：不錯開、不縮小、不畫虛線圈', () => {
+	it('只是站在隔壁（圓點碰到邊，位置沒疊在同一點）：不畫虛線圈', () => {
 		render(Field, {
 			field: { strips: 9, layout: 'vertical' },
 			members: trio,
@@ -187,8 +186,6 @@ describe('上層、中層畫在最上面', () => {
 			positions: { m1: [0, 0], m2: [0.45, 0], m3: [0, 0.45] },
 			levels: { m1: 2 }
 		});
-		expect(inner('m1')).not.toContain('translate');
-		expect(inner('m1')).not.toContain('scale(0.85)');
 		expect(document.querySelectorAll('.covered')).toHaveLength(0);
 	});
 
@@ -202,7 +199,7 @@ describe('上層、中層畫在最上面', () => {
 		expect(document.querySelectorAll('circle.covered')).toHaveLength(1);
 	});
 
-	it('多字膠囊：疊在同一點才錯開，下面的人照膠囊的形狀畫虛線框；只有兩端碰到的不錯開、不畫', () => {
+	it('多字膠囊：疊在同一點時下面的人照膠囊的形狀畫虛線框；只有兩端碰到的不畫', () => {
 		const markers = { m1: '隊員二十五', m2: '隊員二十六' };
 		const positions = { m1: [0, 0] as Position, m2: [0, 0] as Position };
 		render(Field, {
@@ -213,7 +210,6 @@ describe('上層、中層畫在最上面', () => {
 			levels: { m1: 2 }
 		});
 		const w = Number(dotOf('m1').querySelector('rect')!.getAttribute('width'));
-		expect(inner('m1')).toContain('translate');
 		expect(document.querySelectorAll('rect.covered')).toHaveLength(1);
 		document.body.innerHTML = '';
 		// 中心隔得比兩個圓點遠、比兩個膠囊近：只有兩端疊在一起
@@ -225,7 +221,6 @@ describe('上層、中層畫在最上面', () => {
 			levels: { m1: 2 }
 		});
 		expect(w - 0.1).toBeGreaterThan(0.6);
-		expect(inner('m1')).not.toContain('translate');
 		expect(document.querySelectorAll('.covered')).toHaveLength(0);
 	});
 });
@@ -410,17 +405,6 @@ describe('在場上選人、整組拖', () => {
 
 		await dragFrom(svg, [250, 250], [350, 350], true);
 		expect(session.selectedMemberIds).toEqual(['m1', 'm2', 'm3']);
-	});
-
-	it('框選照畫出來的位置：框住錯開畫的三層就選到他，沒框到他真正的位置也算', async () => {
-		const session = renderEditing(members, { m1: [0, 0], m2: [0, 0] }, { toMeters, levels: { m1: 3 } });
-		const svg = screen.getByRole('group', { name: '場地' });
-		// 從空地開始框（不在錯開畫的圓點上）
-		await fireEvent.pointerDown(svg, { clientX: 10, clientY: -70, button: 0 });
-		await fireEvent.pointerMove(svg, { clientX: 60, clientY: -30 });
-		expect(document.querySelector('[data-lasso]')).not.toBeNull();
-		await fireEvent.pointerUp(svg, { clientX: 60, clientY: -30 });
-		expect(session.selectedMemberIds).toEqual(['m1']);
 	});
 
 	it('多選開著：不按 Shift，點人、框選也是加進來或拿掉（iPad 沒有 Shift）', async () => {

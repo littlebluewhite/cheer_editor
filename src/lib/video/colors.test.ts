@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { RAISED_FILL_OPACITY } from '#lib/core';
 import { VIDEO_COLORS, type ColorKey } from './colors';
 
 const SRC = join(import.meta.dirname, '..', '..');
@@ -83,4 +84,9 @@ describe('VIDEO_COLORS 跟編輯器的 CSS 一樣', () => {
 	it.each(Object.keys(SOURCES) as ColorKey[])('%s', (key) => {
 		expect(VIDEO_COLORS[key].toLowerCase()).toBe(SOURCES[key]().toLowerCase());
 	});
+});
+
+it('在空中的人底色半透明：影片跟場上的 .dot.raised 一樣', () => {
+	const css = rule(field, '.dot.raised > g > :is(circle, rect):not(.ring):not(.focus-ring)', 'fill-opacity');
+	expect(Number(css)).toBe(RAISED_FILL_OPACITY);
 });
