@@ -95,7 +95,7 @@ export function deleteLastAttempt(
 
 /**
  * 改某一次的記號（點歷史裡的那一次）：還在原來的位置、id、日期、誰、練法都不變；只看那一次當時就有的環節、照記一次的規則留（changedAttempt），
- * 原本整個做、改了卻空了一格就變只練幾個環節。全上的一次一定整個做，空了一格就擋下來。
+ * 原本整個做、改了卻空了一格就變只練幾個環節。全上的一次一定整個做，該有記號的空了一格就擋下來（空著的環節不用有記號）。
  */
 export function changeAttempt(
 	flow: Flow,
@@ -375,7 +375,7 @@ export const NOT_YET_TITLE = '— 是這次還沒有這個環節';
 
 /**
  * 一次寫成一排記號，照環節順序，空的寫「·」，例：✓✓△、✗··。
- * 整個做的一次，那時還沒有的環節（沒記號、也不是 ✗ 後面空著的）寫 NOT_YET_MARK，例：✓✓—。
+ * 整個做的一次，那時還沒有的環節（沒記號、也不是空著的 blanks）寫 NOT_YET_MARK，例：✓✓—。
  */
 export function attemptText(action: Action, attempt: Attempt): string {
 	const notYet = (id: string) => attempt.whole && !attempt.blanks?.includes(id);

@@ -157,12 +157,16 @@ describe('金字塔的環節佔同樣的拍：記一次、全上、改一次都�
 
 	it('上法「第一個」✓、上法「第二個」✗，其他沒打：存成整個做，空著的是中段「第一個」、中段「第二個」、下法', () => {
 		const flow = pyramidSample();
+		expect(who(flow)).toBe('g3');
 		const saved = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, { [上一]: '✓', [上二]: '✗' })));
-		expect(recordsOf(saved, 'x2')[0]).toMatchObject({
+		const attempt = recordsOf(saved, 'x2')[0];
+		expect(attempt).toMatchObject({
 			whole: true,
 			marks: { [上一]: '✓', [上二]: '✗' },
 			blanks: [中一, 中二, 下]
 		});
+		// 排在 ✗ 前面的空著的環節寫「·」，不寫成那時還沒有的「—」
+		expect(attemptText(saved.actions.find((a) => a.id === 'x2')!, attempt)).toBe('✓·✗··');
 	});
 
 	it('「全部 ✓ 存」：還能打、沒打的都補 ✓（跟 ✗ 佔同樣拍的也補），按不了的不存', () => {
