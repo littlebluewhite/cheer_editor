@@ -48,8 +48,12 @@ impl Backup {
     /// 備份一次：`pg_dump` → 放上 R2 → 記一列 `backups`（算 R2 用量，#266）→ 報到。
     /// 哪一步失敗就停，不報到。
     pub async fn run(&self, db: &sqlx::PgPool, now: DateTime<Utc>) -> anyhow::Result<()> {
+        // 後面加一段亂數：手動的 `cheer-server backup` 碰上同一分鐘的排程時，暫存檔、R2 的名字各用各的。
+        let mut suffix = [0u8; 3];
+        getrandom::fill(&mut suffix).map_err(|e| anyhow::anyhow!("拿不到亂數：{e}"))?;
+        let suffix: String = suffix.iter().map(|b| format!("{b:02x}")).collect();
         let key = format!(
-            "cheer-{}.dump",
+            "cheer-{}-{suffix}.dump",
             now.with_timezone(&TAIWAN).format("%Y-%m-%d-%H%M")
         );
         let file = std::env::temp_dir().join(&key);

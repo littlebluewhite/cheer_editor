@@ -376,10 +376,15 @@ pub async fn logout(
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
     if let Some(token) = session_token(&headers) {
-        sqlx::query("DELETE FROM sessions WHERE token_hash = $1")
-            .bind(sha256(&token))
-            .execute(&state.db)
-            .await?;
+        let gone: Option<(i64,)> =
+            sqlx::query_as("DELETE FROM sessions WHERE token_hash = $1 RETURNING user_id")
+                .bind(sha256(&token))
+                .fetch_optional(&state.db)
+                .await?;
+        // 開著的房間（只看不改的也是）重查自己的登入狀態，這台的就關掉。
+        if let Some((user_id,)) = gone {
+            signed_out(&state, user_id);
+        }
     }
     let cleared = format!("{SESSION_COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax");
     Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cleared)]).into_response())
@@ -481,8 +486,14 @@ pub(crate) async fn password_problem(state: &AppState, password: &str) -> Option
 
 /// Argon2id（argon2 的預設就是 OWASP 最低：m=19456、t=2、p=1），鹽 128 bits，存 PHC 字串。
 /// 先做 NFC：看起來一樣的字在不同裝置打出來，算出一樣的雜湊。算雜湊很吃 CPU，放到別的執行緒。
+/// 同時最多算幾個 Argon2（一個約 19 MiB；機器只有 512 MB，一堆人同時登入不能把記憶體用光）。
+static ARGON2_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 pub(crate) async fn hash_password(password: String) -> anyhow::Result<String> {
+    // 名額跟著算的那條執行緒走：請求被取消了，Argon2 還在算，名額也還占著。
+    let slot = ARGON2_SLOTS.acquire().await?;
     tokio::task::spawn_blocking(move || {
+        let _slot = slot;
         let normalized: String = password.nfc().collect();
         Argon2::default()
             .hash_password(normalized.as_bytes())
@@ -493,7 +504,9 @@ pub(crate) async fn hash_password(password: String) -> anyhow::Result<String> {
 }
 
 pub(crate) async fn verify_password(password: String, hash: String) -> anyhow::Result<bool> {
+    let slot = ARGON2_SLOTS.acquire().await?;
     Ok(tokio::task::spawn_blocking(move || {
+        let _slot = slot;
         let normalized: String = password.nfc().collect();
         PasswordHash::new(&hash).is_ok_and(|parsed| {
             Argon2::default()

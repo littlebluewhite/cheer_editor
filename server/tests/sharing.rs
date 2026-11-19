@@ -865,3 +865,66 @@ async fn only_the_owner_deletes_and_everything_goes_with_it(db: sqlx::PgPool) {
     // 再刪一次：沒有這支了
     assert_eq!(s.delete(&wang, &id).await, StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test]
+async fn former_owner_cannot_delete_after_handover(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "editor").await;
+    let lin_id = s.user_id(lin.email).await;
+
+    // 移交還沒 commit（拿著這一列的鎖）時，原擁有者按了刪：查權限時他還是擁有者，等鎖；移交 commit 之後才輪到刪。
+    // 移交、看刪在不在等鎖都用自己的連線：平行跑的測試共用 sqlx 的 20 條連線，從 pool 拿可能等很久。
+    use sqlx::{Connection, PgConnection};
+    let options = s.state.db.connect_options();
+    let mut watcher = PgConnection::connect_with(&options).await.unwrap();
+    let mut handover_conn = PgConnection::connect_with(&options).await.unwrap();
+    let mut handover = handover_conn.begin().await.unwrap();
+    sqlx::query("UPDATE flows SET owner_id = $1 WHERE id = $2")
+        .bind(lin_id)
+        .bind(&id)
+        .execute(&mut *handover)
+        .await
+        .unwrap();
+    let commit_once_delete_waits = async {
+        let waiting = async {
+            loop {
+                let (n,): (i64,) = sqlx::query_as(
+                    "SELECT count(*) FROM pg_stat_activity
+                     WHERE datname = current_database() AND wait_event_type = 'Lock'",
+                )
+                .fetch_one(&mut watcher)
+                .await
+                .unwrap();
+                if n > 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        // 刪本身從 pool 拿連線，可能要等一陣子，所以等久一點。
+        tokio::time::timeout(Duration::from_secs(60), waiting)
+            .await
+            .expect("刪一直沒在等鎖");
+        handover.commit().await.unwrap();
+    };
+    let (status, ()) = tokio::join!(s.delete(&wang, &id), commit_once_delete_waits);
+
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(s.role(&lin, &id).await, "owner");
+}
+
+#[sqlx::test]
+async fn logout_signs_out_open_rooms(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    let (mut room, _) = s.join(&wang, &id).await;
+
+    let (status, _) = s.send("POST", "/api/logout", None, &wang.cookie).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // 只看不改的分頁也關掉，不再收到別人的改動
+    assert_eq!(hear(&mut room).await, Value::Null);
+}

@@ -153,6 +153,11 @@ pub fn app(state: AppState, site: &Path) -> Router {
 }
 
 /// 每個請求的 log 只記方法和路徑：不記查詢字串、標頭（cookie、token 會在裡面）、內容。
+/// 路徑記路由的樣子（`/api/links/{token}`）：分享連結的 token 就在路徑裡。對不到路由的才記原本的路徑。
 fn request_span<B>(req: &Request<B>) -> tracing::Span {
-    tracing::info_span!("request", method = %req.method(), path = %req.uri().path())
+    let path = match req.extensions().get::<axum::extract::MatchedPath>() {
+        Some(matched) => matched.as_str(),
+        None => req.uri().path(),
+    };
+    tracing::info_span!("request", method = %req.method(), path = %path)
 }

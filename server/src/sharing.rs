@@ -438,15 +438,23 @@ pub async fn delete(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    if let Err(res) = caller(&state, &headers, &id, true).await? {
-        return Ok(res);
-    }
+    let me = match caller(&state, &headers, &id, true).await? {
+        Ok((me, _)) => me,
+        Err(res) => return Ok(res),
+    };
     let mut tx = state.db.begin().await?;
     // 鎖住這一列：正在收的步先收完（房間收步也鎖這一列）。
-    sqlx::query("SELECT 1 FROM flows WHERE id = $1 FOR UPDATE")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
+    // 拿到鎖再看一次擁有者：等鎖的時候可能剛移交給別人。
+    let owner: Option<(i64,)> =
+        sqlx::query_as("SELECT owner_id FROM flows WHERE id = $1 FOR UPDATE")
+            .bind(&id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    match owner {
+        Some((owner,)) if owner == me => {}
+        Some(_) => return Ok(StatusCode::FORBIDDEN.into_response()),
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+    }
     sqlx::query(
         "UPDATE flow_audio SET unused_since = COALESCE(unused_since, $2) WHERE flow_id = $1",
     )

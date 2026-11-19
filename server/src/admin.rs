@@ -273,6 +273,11 @@ pub async fn change_email(
         .execute(&mut *tx)
         .await
         .map_err(taken)?;
+    // 寄到舊信箱的邀請、重設密碼連結作廢（email 打錯時，舊信箱不是他的）。
+    sqlx::query("DELETE FROM password_links WHERE user_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     let text = format!(
         "{name}，你好：\n\n管理員把你登入用的 email 從 {old} 改成 {new}。之後請用 {new} 登入。\n\n不是你要的，請找管理員。\n"
     );
