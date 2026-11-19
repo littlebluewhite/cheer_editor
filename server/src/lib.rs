@@ -39,8 +39,16 @@ const SPA_ENTRY: &str = "200.html";
 /// 傳上雲端的流程（flow.json 的內容，不含音樂）最大幾個位元組。前端先擋、413 也說太大（src/lib/server-api.ts 的 MAX_CLOUD_FLOW_BYTES）。
 const UPLOAD_LIMIT: usize = 16 * 1024 * 1024;
 
-/// `migrations/` 底下的遷移，編譯時包進程式；伺服器啟動時跑。
+/// `migrations/` 底下的遷移，編譯時包進程式；部署前（`cheer-server migrate`）和伺服器啟動時跑（[`migrate`]）。
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+
+/// 跑還沒跑過的遷移。資料庫裡多了這版沒有的遷移（新版部署過，又倒回舊版）照樣過：
+/// 一次部署只加不刪（docs/deploy.md），舊版用多出來的表、欄位也沒事。
+pub async fn migrate(db: &sqlx::PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+    let mut migrator = sqlx::migrate!();
+    migrator.set_ignore_missing(true);
+    migrator.run(db).await
+}
 
 /// 每個請求拿得到的共用東西。寄信、外洩密碼、時鐘在測試換成假的。
 #[derive(Clone)]

@@ -11,6 +11,7 @@ use tracing_subscriber::EnvFilter;
 
 const USAGE: &str = "用法：
   cheer-server                                   開伺服器
+  cheer-server migrate                           只跑資料庫遷移就結束（部署前 Fly 的 release_command 跑它）
   cheer-server create-admin --email EMAIL [--name 名字]
       讓這個 email 的人當管理員，寄設密碼信（還沒有帳號時要給名字）。
       管理員進不去、或要換人當管理員，也用這個。";
@@ -26,13 +27,23 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let command = match args.first().map(String::as_str) {
-        None => None,
-        Some("create-admin") => Some(admin_args(&args[1..])?),
+    let (migrate_only, command) = match args.first().map(String::as_str) {
+        None => (false, None),
+        Some("migrate") if args.len() == 1 => (true, None),
+        Some("create-admin") => (false, Some(admin_args(&args[1..])?)),
         Some(_) => anyhow::bail!("{USAGE}"),
     };
 
     let config = Config::from_env()?;
+    if migrate_only {
+        // 沒跑成就回非 0，Fly 就不部署（舊版照常接流量）。
+        let db = sqlx::PgPool::connect(&config.database_url)
+            .await
+            .context("連不上資料庫")?;
+        cheer_server::migrate(&db).await.context("資料庫遷移失敗")?;
+        println!("資料庫遷移跑完了。");
+        return Ok(());
+    }
     // 每次用完一條連線（查過資料庫）就記一下，估 Neon 醒著多久（#266）；一段結束時用這條連線存起來。
     let awake = AwakeMeter::default();
     let meter = awake.clone();
@@ -51,8 +62,7 @@ async fn main() -> anyhow::Result<()> {
         .connect(&config.database_url)
         .await
         .context("連不上資料庫")?;
-    cheer_server::MIGRATOR
-        .run(&db)
+    cheer_server::migrate(&db)
         .await
         .context("資料庫遷移失敗")?;
     let mailer = match &config.resend {
