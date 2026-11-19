@@ -118,6 +118,8 @@
 	const NAME_H = 12;
 	const TRACK_H = 10;
 	const WALK_H = 5;
+	/** 泳道平常的高度（跟 .row 的 height 一樣）。 */
+	const LANE_H = 26;
 	/** 走位條能點的高度（px）：比看到的細條高，往下多出 WALK_HIT_DROP 伸進泳道之間的空隙。 */
 	const WALK_HIT_H = 12;
 	const WALK_HIT_DROP = 3;
@@ -145,18 +147,25 @@
 		Object.fromEntries(flow.actions.map((a) => [a.id, Math.max(0, ...phaseBars[a.id].map((p) => p.row + 1))]))
 	);
 
-	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px），讓開他的動作裡最多的那幾排。 */
-	const lift = $derived(
+	/** 每個人的動作裡，環節細條最多幾排。 */
+	const memberPhaseRows = $derived(
 		Object.fromEntries(
 			flow.members.map((m) => [
 				m.id,
-				cues[m.id].tracks
-					? PHASE_H *
-						Math.max(0, ...flow.actions.filter((a) => a.members.some((x) => x.memberId === m.id)).map((a) => phaseRows[a.id]))
-					: 0
+				Math.max(0, ...flow.actions.filter((a) => a.members.some((x) => x.memberId === m.id)).map((a) => phaseRows[a.id]))
 			])
 		)
 	);
+	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px），讓開他的動作裡最多的那幾排。 */
+	const lift = $derived(
+		Object.fromEntries(flow.members.map((m) => [m.id, cues[m.id].tracks ? PHASE_H * memberPhaseRows[m.id] : 0]))
+	);
+	/** 沒拍點的人：細條疊太多排（4 排以上），泳道變高，名稱那一行才放得下。 */
+	function laneHeight(memberId: string, tracks: number): string | undefined {
+		if (tracks) return `${BAR_TOP + lift[memberId] + NAME_H + tracks * TRACK_H + WALK_H}px`;
+		const h = 2 * BAR_TOP + memberPhaseRows[memberId] * PHASE_H + NAME_H;
+		return h > LANE_H ? `${h}px` : undefined;
+	}
 	/** 色條名稱那一行往下讓開細條：有拍點時名稱靠上、讓開全部的排；沒拍點時名稱置中，一排讓得開，疊了才往下讓。 */
 	const namePad = (actionId: string, hasCues: boolean) => {
 		const rows = phaseRows[actionId];
@@ -403,9 +412,7 @@
 	<div
 		class="row"
 		data-lane={m.id}
-		style:height={tracks
-			? `${BAR_TOP + lift[m.id] + NAME_H + tracks * TRACK_H + WALK_H}px`
-			: undefined}
+		style:height={laneHeight(m.id, tracks)}
 	>
 		<button
 			type="button"

@@ -523,13 +523,14 @@ await check('1440×900 拍點格子：金字塔兩條佔同樣拍的環節不互
 // ---------- 金字塔疊著的環節：八拍表、前後八拍、泳道也分排（#288） ----------
 
 /**
- * libSample 的 Lib 換成金字塔，加上法「第二個」佔中段同樣的拍（1-3 到 1-6，往下多一排），
- * 再放一個給上層的 down（1-1 到 1-2）：小美、小芳的色條有拍點，小A、小B 沒有。
+ * libSample 的 Lib 換成金字塔、拉長到 2-8，加上法「第二個」1-5 到 2-4，疊在中段（1-3 到 1-6）上、往下多一排；
+ * 第 2 個八拍只有「第二個」（上面那排空著）。再放一個給上層的 down（1-1 到 1-2）：小美、小芳的色條有拍點，小A、小B 沒有。
  */
 const openStackedPyramid = () =>
 	openPracticeFlow(`const ok = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
 		flow = ok(core.updateAction(flow, 'x1', { category: 'pyramid' }));
-		flow = ok(core.addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 4, len: 8 } }));
+		flow = ok(core.resizeAction(flow, 'x1', 6.4));
+		flow = ok(core.addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 8, len: 16 } }));
 		flow = ok(core.placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down', who: { role: '上層' } }));`);
 
 /**
@@ -578,12 +579,56 @@ await check('列印：八拍表裡金字塔疊著的環節分兩排都在紙上�
 	// 上一條開著疊著的金字塔
 	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
 	await sleep(400);
-	const screenSheet = await stackedPhaseLine('.print-sheet');
-	const printed = await asPrinted(() => stackedPhaseLine('.print-sheet'));
+	// 第 2 個八拍只有下面那排的「第二個」：上面那排照樣留高度，「第二個」跟第 1 個八拍一樣在第二排
+	const lone = () =>
+		js(`const line = [...document.querySelectorAll('.print-sheet .cue-line')].filter((l) => l.querySelector('[data-phase]'))[1];
+			const p = line.querySelector('[data-phase]'), top = line.querySelector('.phases').getBoundingClientRect().top;
+			return { 字: p.textContent.trim(), 離環節那行上緣: Math.round(p.getBoundingClientRect().top - top) };`);
+	const both = async () => {
+		const r = await stackedPhaseLine('.print-sheet');
+		const l = await lone();
+		return { ok: r.ok && l.字 === '上法 第二個' && l.離環節那行上緣 >= 18, value: { ...r.value, 第二個八拍: l } };
+	};
+	const screenSheet = await both();
+	const printed = await asPrinted(both);
 	await js(`[...document.querySelectorAll('.print-sheet button')].find((b) => b.textContent.trim() === '關閉')?.click()`);
 	await sleep(200);
 	await setViewport(1440, 900);
 	return { ok: screenSheet.ok && printed.ok, value: { 畫面上: screenSheet.value, 印出來: printed.value } };
+});
+
+await check('1440×900 拍點格子：疊著的金字塔，選疊著的那兩拍，拍點小窗整個看得到、不蓋住選的拍，down、up、✕ 點得到', async () => {
+	await setViewport(1440, 900);
+	await openStackedPyramid();
+	await js(`document.querySelector('[data-action-id="x1"]').click()`);
+	await waitFor(() => js(`return !!document.querySelector('.cues .cell')`));
+	const [first, next] = await js(`const cells = [...document.querySelector('.cues .row').querySelectorAll('.cell:not(:disabled)')];
+		return [cells[4].getAttribute('aria-label'), cells[5].getAttribute('aria-label')];`);
+	const cell = (n) => `.cues .cell[aria-label="${n}"]`;
+	const bad = [];
+	for (const k of [0.3, 0.8]) {
+		await js(`if (document.querySelector('.cues .pop')) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		const at = await scrollPanelTo(cell(first), k);
+		const a = await rectOf(cell(first));
+		await click(a.x, a.y);
+		const b = await rectOf(cell(next));
+		await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', buttons: 1, clickCount: 1, modifiers: 8 });
+		await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers: 8 });
+		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y, modifiers: 0 });
+		await sleep(300);
+		const res = await cornersVisible('.cues .pop');
+		const more = await js(`const pop = document.querySelector('.cues .pop'), r = pop.getBoundingClientRect();
+			const btns = [...pop.querySelectorAll('button')].filter((b) => ['down', 'up', '✕'].includes(b.textContent.trim()))
+				.map((b) => { const q = b.getBoundingClientRect(); const t = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return [b.textContent.trim(), !!t && b.contains(t)]; });
+			const covered = [${JSON.stringify(first)}, ${JSON.stringify(next)}].filter((n) => {
+				const c = document.querySelector('.cues .cell[aria-label="' + n + '"]').getBoundingClientRect();
+				return c.bottom > r.top && c.top < r.bottom && c.right > r.left && c.left < r.right;
+			});
+			return { 按鈕: btns, 蓋住選的拍: covered, 開在上面: pop.classList.contains('above') };`);
+		if (!res.ok || more.按鈕.length !== 3 || !more.按鈕.every(([, v]) => v) || more.蓋住選的拍.length)
+			bad.push({ 那一排在右邊欄的: at, ...res.value, ...more });
+	}
+	return { ok: bad.length === 0, value: { 選: `${first} 到 ${next}`, 沒過: bad } };
 });
 
 await check('1440×900 檢視模式的前後八拍：這個八拍裡金字塔疊著的環節分兩排，都看得到、不疊在一起', async () => {

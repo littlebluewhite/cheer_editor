@@ -799,6 +799,22 @@ describe('色條上的環節', () => {
 		expect(parseFloat(lane.style.height)).toBe(oneRow + 3);
 	});
 
+	it('金字塔疊四層、沒拍點：名稱讓開四排細條，泳道變高放得下名稱', () => {
+		let flow = stacked();
+		for (const name of ['第三個', '第四個']) {
+			flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name, beats: { at: 6, len: 4 } }));
+		}
+		setupPhases(flow);
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		expect(tops(bar).map(([, top]) => top)).toEqual(['0px', '0px', '3px', '6px', '9px']);
+		expect(bar.style.paddingTop).toBe('12px');
+		// 色條上下各留 3 px：細條 12 px ＋ 名稱那一行 12 px
+		expect(lane.style.height).toBe('30px');
+		// 沒疊那麼多的人（小C 不在這個動作裡）泳道照舊
+		expect(lanes()[2].style.height).toBe('');
+	});
+
 	it('沒疊的環節細條都在最上面一排，名稱的位置照舊', () => {
 		setupPhases(phased());
 		const bar = bars(lanes()[0])[0];
