@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { addCustomRole, CELL_M, DEFAULT_TIME_RULES, updateTimeRules, type Flow } from '#lib/core';
-import { editorPage, teamFlow } from '#lib/test-fakes.js';
+import { editorPage, teamFlow, fromMenu } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -16,7 +16,7 @@ afterEach(cleanup);
 const warningList = () => screen.getByRole('list', { name: '規則警告' });
 
 async function openSettings() {
-	await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+	await fromMenu('流程設定');
 	return screen.getByRole('dialog', { name: '流程設定' });
 }
 

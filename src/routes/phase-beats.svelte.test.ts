@@ -236,7 +236,7 @@ describe('沒記成功率的動作也能加環節', () => {
 		]);
 		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1]);
 
-		await openFile(saves[0], '開啟');
+		await openFile(saves[0]);
 		await selectLib();
 		expect(gridPhases()).toEqual(['環節 上法 延伸 1-1 到 1-3']);
 	});

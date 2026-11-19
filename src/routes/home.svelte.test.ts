@@ -6,7 +6,7 @@ import { createFlow, writeFlowFile } from '#lib/core';
 import type { DraftStore } from '#lib/file/draft.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import type { OpenTabChannel } from '#lib/tab-channel.js';
-import { audioFlow, editorPage, fakeDraftStore, fakeTabs, flush, openFile, testEditor } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fakeDraftStore, fakeTabs, flush, openFile, testEditor, fromMenu } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -54,7 +54,7 @@ describe('新建和開檔以後回到編排・編輯', () => {
 		render(Page, props);
 		await fireEvent.click(screen.getByRole('button', { name: '檢視' }));
 		expect(session.viewing).toBe(true);
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
 		await flush();
@@ -66,7 +66,7 @@ describe('新建和開檔以後回到編排・編輯', () => {
 		const { session, props } = editorPage(libSample());
 		render(Page, props);
 		await fireEvent.click(screen.getByRole('button', { name: '檢視' }));
-		await openFile(writeFlowFile(audioFlow(), {}), '開啟');
+		await openFile(writeFlowFile(audioFlow(), {}));
 		expect(session.flow!.name).toBe('練習用');
 		expect(session.viewing).toBe(false);
 		expect(editPressed()).toBe('true');
@@ -77,7 +77,7 @@ describe('新建和開檔以後回到編排・編輯', () => {
 		render(Page, props);
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		expect(arrangePressed()).toBe('false');
-		await openFile(writeFlowFile(audioFlow(), {}), '開啟');
+		await openFile(writeFlowFile(audioFlow(), {}));
 		expect(arrangePressed()).toBe('true');
 		expect(editPressed()).toBe('true');
 	});

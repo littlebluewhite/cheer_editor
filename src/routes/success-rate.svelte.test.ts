@@ -121,7 +121,7 @@ describe('分組浮動列', () => {
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1, 2, 2]);
-		await openFile(saves[0], '開啟');
+		await openFile(saves[0]);
 		await selectLib();
 		expect(tags()).toEqual(['第 1 組', '第 1 組', '第 2 組', '第 2 組']);
 	});

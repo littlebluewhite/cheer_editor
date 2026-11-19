@@ -226,6 +226,15 @@ async function hitAndClick(selector) {
 	return hit;
 }
 
+/** 上方列「選單」小窗裡寫著 text 的那一項（放在 js 裡用；打開選單後才有）。 */
+const menuItem = (text) => `[...document.querySelectorAll('.menu-pop button, .menu-pop a')].find((b) => b.textContent.trim() === '${text}')`;
+/** 打開上方列的「選單」，點裡面的那一項（開啟流程檔、新建、輸出影片、流程設定）。 */
+async function fromMenu(text) {
+	await js(`document.querySelector('.topbar .menu').click()`);
+	await waitFor(() => js(`return !!document.querySelector('.menu-pop')`));
+	await js(`${menuItem(text)}.click()`);
+}
+
 await check('場地的放大、縮小、整個場地按鈕點得到，點了倍率會變', async () => {
 	const seen = {};
 	const before = await zoomText();
@@ -335,25 +344,6 @@ await check('1440×900 不算矮：上方列照舊兩行，播放區在第二行
 	return { ok: r.上方列高 > 90 && !r.播放鈕和存檔同一行 && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0, value: r };
 });
 
-// 1024×768 螢幕矮：「輸出影片」只剩圖示；1280×1024 不矮：字整個露出來
-for (const [w, h, label] of [[1024, 768, false], [1280, 1024, true]]) {
-	await check(`${w}×${h} 輸出影片按鈕整個在上方列裡、點得到${label ? '，「輸出影片」四個字整個看得到' : ''}`, async () => {
-		await setViewport(w, h);
-		await openSample();
-		const r = await js(`const b = document.querySelector('.topbar button[aria-label="輸出影片"]');
-			if (!b) return null;
-			const r = b.getBoundingClientRect(), bar = document.querySelector('.topbar').getBoundingClientRect();
-			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-			const span = b.querySelector('span');
-			const s = span.getBoundingClientRect();
-			return { 在上方列裡: r.left >= bar.left - 1 && r.right <= bar.right + 1 && r.top >= bar.top - 1 && r.bottom <= bar.bottom + 1,
-				中心點到自己: !!t && b.contains(t), 字: span.textContent, 字的寬: Math.round(s.width),
-				字整個在按鈕裡: s.width > 20 && s.left >= r.left && s.right <= r.right && span.scrollWidth <= Math.ceil(s.width) };`);
-		if (!r) return { ok: false, value: '上方列沒有輸出影片按鈕' };
-		return { ok: r.在上方列裡 && r.中心點到自己 && (!label || r.字整個在按鈕裡), value: r };
-	});
-}
-
 await check('輸出影片：用 docs/samples/sample-flow.zip 做出來的檔，開頭是 ftyp，有 avc1 和 mp4a', async () => {
 	await setViewport(1440, 900);
 	await openSample();
@@ -369,7 +359,8 @@ await check('輸出影片：用 docs/samples/sample-flow.zip 做出來的檔，�
 			} }) };
 		};`);
 	const button = (text) => `[...document.querySelectorAll('.video-dialog button')].find((b) => b.textContent.trim() === '${text}')`;
-	await hitAndClick('.topbar button[aria-label="輸出影片"]');
+	await hitAndClick('.topbar .menu');
+	await hitAndClick('.menu-pop button[title="輸出影片"]');
 	await waitFor(() => js(`return !!${button('開始')}`));
 	await js(`${button('開始')}.click()`);
 	// 範例流程 12 秒、360 格，這台約 5 秒做完；機器忙時等久一點
@@ -394,7 +385,8 @@ await check('輸出影片：影片工具載不下來（擋掉 mediabunny），�
 	const text = () => js(`return document.querySelector('.video-dialog')?.textContent ?? ''`);
 	const button = (t) => `[...document.querySelectorAll('.video-dialog button')].find((b) => b.textContent.trim() === '${t}')`;
 	try {
-		await hitAndClick('.topbar button[aria-label="輸出影片"]');
+		await hitAndClick('.topbar .menu');
+		await hitAndClick('.menu-pop button[title="輸出影片"]');
 		await waitFor(async () => /載不下來|開始/.test(await text()), 100).catch(() => {});
 		const blocked = await text();
 		await send('Network.setBlockedURLs', { urls: [] });
@@ -417,6 +409,33 @@ const cornersVisible = (selector) =>
 		const bad = pts.filter(([x, y]) => { const t = document.elementFromPoint(x, y); return !t || !el.contains(t); })
 			.map(([x, y]) => { const t = document.elementFromPoint(x, y); return [Math.round(x), Math.round(y), t ? t.outerHTML.slice(0, 60) : '畫面外']; });
 		return { ok: bad.length === 0, value: { 小窗: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], 畫面: [innerWidth, innerHeight], 被擋住的角: bad } };`);
+
+// 上方列的「選單」（#279）：小窗整個在畫面裡、蓋在場地和右邊欄上面，每一項的中心點到的是它自己、字整個看得到；
+// 最小的電腦和觸控的寬高各量一次（觸控的選單裡沒有輸出影片）。
+for (const [w, h, touch] of [[1024, 768], [1180, 820, true], [1024, 768, true]]) {
+	await check(`${w}×${h}${touch ? '（觸控）' : ''} 選單打開：小窗整個在畫面裡，每一項點得到、字整個看得到，不被場地和右邊欄蓋住`, async () => {
+		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
+		await openSample();
+		const opened = await hitAndClick('.topbar .menu');
+		await waitFor(() => js(`return !!document.querySelector('.menu-pop')`)).catch(() => {});
+		if (!(await js(`return !!document.querySelector('.menu-pop')`))) {
+			if (touch) await clearTouch();
+			return { ok: false, value: { 選單沒打開: opened } };
+		}
+		const corners = await cornersVisible('.menu-pop');
+		const items = await js(`return [...document.querySelectorAll('.menu-pop button, .menu-pop a')].map((el) => {
+			const r = el.getBoundingClientRect();
+			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { 項: el.textContent.trim(), 點得到: !!t && el.contains(t), 在畫面裡: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+				字整個看得到: el.scrollWidth <= Math.ceil(r.width), 高: Math.round(r.height) };
+		});`);
+		await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		if (touch) await clearTouch();
+		const want = touch ? ['開啟流程檔', '新建', '流程設定', '使用說明'] : ['開啟流程檔', '新建', '輸出影片', '流程設定', '使用說明'];
+		const ok = corners.ok && items.map((i) => i.項).join() === want.join() && items.every((i) => i.點得到 && i.在畫面裡 && i.字整個看得到 && (!touch || i.高 >= 40));
+		return { ok, value: { ...corners.value, 項目: items } };
+	});
+}
 
 /** 開範例流程，在泳道上點第一個動作，右邊欄出現動作表單。 */
 async function pickFirstAction(w, h) {
@@ -684,7 +703,7 @@ await check('1024×768「段」那一格的「插入八拍」和「＋」都點�
 
 /** 用流程設定把流程名字改成 name（關掉對話框）。 */
 async function renameFlowTo(name) {
-	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title === '流程設定').click()`);
+	await fromMenu('流程設定');
 	await waitFor(() => js(`return !!document.querySelector('.flow-dialog')`));
 	await js(`const i = [...document.querySelectorAll('.flow-dialog label')].find((l) => l.textContent.includes('流程名字')).querySelector('input');
 		i.value = ${JSON.stringify(name)}; i.dispatchEvent(new Event('change', { bubbles: true }));`);
@@ -790,19 +809,6 @@ await check('1440 寬：播放頭到結尾（位置只寫「結尾」）時，�
 	return { ok: end.位置 === '結尾' && end.高 === start.高, value: { 開頭: start, 結尾: end } };
 });
 
-await check('1440 寬：「使用說明」「設定」按鈕有字，不是只有圖示', async () => {
-	await setViewport(1440, 900);
-	await openSample();
-	const r = await js(`const textW = (el, word) => {
-			const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-			let node; while ((node = walker.nextNode()) && !node.textContent.includes(word));
-			return node ? Math.round(node.parentElement.getBoundingClientRect().width) : 0; };
-		const guide = document.querySelector('.topbar a[title="使用說明"]');
-		const gear = [...document.querySelectorAll('.topbar button')].find((x) => x.title === '流程設定');
-		return { 使用說明: textW(guide, '使用說明'), 設定: textW(gear, '設定') };`);
-	return { ok: r.使用說明 >= 40 && r.設定 >= 20, value: r };
-});
-
 /** 上方列每顆看得到的按鈕、連結：中心點最上面的東西是不是它自己。 */
 const topbarHits = () =>
 	js(`return [...document.querySelectorAll('.topbar button, .topbar a, .topbar label.btn')].filter((el) => el.checkVisibility()).flatMap((el) => {
@@ -856,7 +862,7 @@ await check('1440 寬編排頁：出現「未存」前後，「編排｜練習�
 	await setViewport(1440, 900);
 	await openSample();
 	const spot = await viewSpot();
-	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title === '流程設定').click()`);
+	await fromMenu('流程設定');
 	await waitFor(() => js(`return !!document.querySelector('.flow-dialog')`));
 	await js(`document.querySelector('.flow-dialog input[type=checkbox]').click()`);
 	await sleep(100);
@@ -1230,7 +1236,7 @@ await check('1024×768（觸控）：圓點和按鈕、輸入框、勾選框點�
 	await js(`document.querySelector('[data-action-id]').click()`);
 	await sleep(300);
 	res.選了動作 = await smallTargets();
-	await js(`[...document.querySelectorAll('.topbar button')].find((b) => b.title === '流程設定').click()`);
+	await fromMenu('流程設定');
 	await sleep(300);
 	res.流程設定 = await smallTargets();
 	const ok = dot >= 32 && Object.values(res).every((r) => r.量了幾個 > 0 && r.太小的.length === 0);
@@ -2248,7 +2254,7 @@ await check('欄位有焦點時畫面把它換掉（首頁名字欄按 Enter 建
 	await send('Input.insertText', { text: '例外測試' });
 	await press('Enter');
 	const created = await waitFor(() => js(`return !!document.querySelector('.rail')`), 25).catch(() => false);
-	await js(`document.querySelector('.topbar button[title="流程設定"]').click()`);
+	await fromMenu('流程設定');
 	await sleep(300);
 	await js(`document.querySelector('.flow-dialog input[aria-label="流程名字"], .flow-dialog input').focus()`);
 	await send('Input.insertText', { text: '2' });
@@ -2322,7 +2328,7 @@ await check('字數上限（B20）：貼上、輸入法打超過上限，停在�
 await check('名字被退回（B28）：流程名字清成空白再離開，字數寫的是欄位裡留下來的字', async () => {
 	await setViewport(1440, 900);
 	await openSample();
-	await js(`document.querySelector('.topbar button[title="流程設定"]').click()`);
+	await fromMenu('流程設定');
 	await sleep(300);
 	const sel = '.flow-dialog input[aria-label="流程名字"]';
 	await js(`const i = document.querySelector(${JSON.stringify(sel)}); i.focus(); i.select();`);

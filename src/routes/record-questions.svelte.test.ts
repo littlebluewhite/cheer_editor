@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { squadNumber } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
-import { editorPage, flush, recordedFlow } from '#lib/test-fakes.js';
+import { editorPage, flush, recordedFlow, fromMenu } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -112,7 +112,7 @@ describe('改隊員名字時問保留還是清掉', () => {
 		const session = openRecorded();
 		await openRoster();
 		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		const unsaved = screen.getAllByRole('alertdialog').find((d) => d.textContent?.includes('還沒存'));
 		expect(unsaved).toBeTruthy();
 		await fireEvent.click(within(unsaved!).getByRole('button', { name: '取消' }));
@@ -125,7 +125,7 @@ describe('改隊員名字時問保留還是清掉', () => {
 		render(Page, props);
 		await openRoster();
 		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		const unsaved = screen.getAllByRole('alertdialog').find((d) => d.textContent?.includes('還沒存'))!;
 		await fireEvent.click(within(unsaved).getByRole('button', { name: '先存檔' }));
 		await flush();

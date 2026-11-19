@@ -37,7 +37,7 @@ describe('畫面狀態的壽命', () => {
 		render(Page, editorPage(practiceFlow()).props);
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		await fireEvent.click(screen.getByRole('button', { name: /^騰翻/ }));
-		await openFile(writeFlowFile(practiceFlow(), {}), '開啟');
+		await openFile(writeFlowFile(practiceFlow(), {}));
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		expect(screen.getByRole('button', { name: /^技巧·Lib/ }).getAttribute('aria-pressed')).toBe('true');
 	});
@@ -50,7 +50,7 @@ describe('畫面狀態的壽命', () => {
 		// 段名跟著捲到看得到的左邊
 		expect(screen.getByRole('button', { name: /^音樂 1/ }).style.paddingLeft).toBe('58px');
 
-		await openFile(writeFlowFile(libSample(), {}), '開啟');
+		await openFile(writeFlowFile(libSample(), {}));
 		expect(document.querySelector<HTMLElement>('.timeline')!.scrollLeft).toBe(0);
 		expect(screen.getByRole('button', { name: /^音樂 1/ }).style.paddingLeft).toBe('8px');
 	});

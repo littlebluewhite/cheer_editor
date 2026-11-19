@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { placeCue, updateAction } from '#lib/core';
 import { Ask } from '#lib/ask.svelte.js';
 import { VIEW_ONLY } from '#lib/editor-session.svelte.js';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, menuItem } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -61,10 +61,11 @@ describe('檢視模式', () => {
 
 		await fireEvent.keyDown(window, { key: 'z', metaKey: true });
 		expect(session.flow).toBe(before);
-		// 復原、重做、流程設定留在原地、變灰：換模式時按鈕不會跑
+		// 復原、重做留在原地、變灰：換模式時按鈕不會跑；選單裡的流程設定也變灰
 		expect(undoBtn().disabled).toBe(true);
 		expect((screen.getByRole('button', { name: '重做' }) as HTMLButtonElement).disabled).toBe(true);
-		expect((screen.getByRole('button', { name: /設定/ }) as HTMLButtonElement).disabled).toBe(true);
+		expect(((await menuItem('流程設定')) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '選單' }));
 
 		await fireEvent.change(nameBox(), { target: { value: '美美' } });
 		expect(session.flow).toBe(before);
@@ -244,7 +245,7 @@ function usable(el: Element): boolean {
 }
 
 /** 離開這個畫面的（換流程、回首頁、切回編輯、切到練習、蓋滿畫面的八拍表）：不按，掃的是檢視模式的編排畫面。 */
-const LEAVES = ['編輯', '新建', '開啟', '回首頁', '編排', '練習', '去練習', '八拍表', '看八拍表'];
+const LEAVES = ['編輯', '新建', '開啟', '開啟流程檔', '回首頁', '編排', '練習', '去練習', '八拍表', '看八拍表'];
 
 function nameOf(el: Element): string {
 	const label = el.getAttribute('aria-label') ?? (el as HTMLInputElement).labels?.[0]?.textContent ?? el.textContent ?? '';

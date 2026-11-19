@@ -1,4 +1,4 @@
-// 輸出影片（流程影片）：上方列的按鈕和對話框。準備 → 輸出中 → 做好了／失敗，取消、再試一次、存檔、瀏覽器不支援。
+// 輸出影片（流程影片）：上方列「選單」裡的那一項和對話框。準備 → 輸出中 → 做好了／失敗，取消、再試一次、存檔、瀏覽器不支援。
 // 用假的編碼器（#lib/video/fake-encoder.js）：不畫圖，只記畫了哪幾格，release() 之前停在最後一格前。
 // 窄不窄、是不是觸控螢幕是媒體查詢：jsdom 沒有 matchMedia，換一個假的。
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
@@ -19,7 +19,7 @@ import {
 	type Flow
 } from '#lib/core';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
-import { audioFlow, editorPage, teamFlow } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fromMenu, menuItem, teamFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 import { drawFrame } from '#lib/video/draw.js';
 import type { VideoJob } from '#lib/video/encoder.js';
@@ -44,7 +44,6 @@ function shortFlow(): Flow {
 const framesOf = (flow: Flow) => Math.round(videoDurationSec(flow) * VIDEO_FPS);
 
 const dialog = () => screen.getByRole('dialog', { name: '輸出影片' });
-const button = () => screen.getByRole('button', { name: '輸出影片' });
 
 /** 等做完：180 格每格一次 setTimeout，可能比預設的 1 秒久。 */
 const DONE = { timeout: 5000 };
@@ -52,7 +51,7 @@ const DONE = { timeout: 5000 };
 async function openDialog(flow: Flow, adapters: Parameters<typeof editorPage>[1] = {}) {
 	const page = editorPage(flow, adapters);
 	render(Page, page.props);
-	await fireEvent.click(button());
+	await fromMenu('輸出影片');
 	return page;
 }
 
@@ -84,29 +83,31 @@ describe('輸出影片', () => {
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '存檔' }));
 		await fireEvent.click(within(dialog()).getByRole('button', { name: '關閉' }));
 		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeNull();
-		await fireEvent.click(button());
+		await fromMenu('輸出影片');
 		await within(dialog()).findByRole('button', { name: '開始' });
 		finish('saved');
 		await new Promise((r) => setTimeout(r, 0));
 		expect(screen.queryByRole('dialog', { name: '輸出影片' })).toBeTruthy();
 	});
 
-	it('沒有段：按鈕停用', () => {
+	it('沒有段：按鈕停用', async () => {
 		render(Page, editorPage(flowOf(createFlow({ name: '練習用', field: { strips: 9, layout: 'vertical' } }))).props);
-		expect((button() as HTMLButtonElement).disabled).toBe(true);
+		expect(((await menuItem('輸出影片')) as HTMLButtonElement).disabled).toBe(true);
 	});
 
 	it('窄螢幕沒有這個按鈕', () => {
 		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
 		render(Page, editorPage(shortFlow()).props);
+		expect(screen.queryByRole('button', { name: '選單' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '輸出影片' })).toBeNull();
 	});
 
-	it('觸控螢幕（iPad 橫拿，不窄）沒有這個按鈕', () => {
+	it('觸控螢幕（iPad 橫拿，不窄）沒有這個按鈕', async () => {
 		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
 		render(Page, editorPage(shortFlow()).props);
 		expect(screen.queryByRole('button', { name: '八拍表' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: '輸出影片' })).toBeNull();
+		expect(await menuItem('流程設定')).toBeTruthy();
+		expect(await menuItem('輸出影片')).toBeNull();
 	});
 
 	it('瀏覽器做不出來：還沒按開始就說，沒有「開始」，只有「關閉」', async () => {
@@ -234,7 +235,7 @@ describe('輸出影片', () => {
 		await waitFor(() => expect(page.videoEncoder.aborted).toBe(true));
 		const before = page.videoEncoder.drawn.length;
 
-		await fireEvent.click(button());
+		await fromMenu('輸出影片');
 		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
 		await waitFor(() => expect(page.videoEncoder.drawn.length - before).toBe(framesOf(flow) - 1), DONE);
 		page.videoEncoder.release();
@@ -278,7 +279,7 @@ describe('輸出影片', () => {
 		render(Page, page.props);
 		await fireEvent.click(screen.getByRole('button', { name: '檢視' }));
 		expect(page.session.viewing).toBe(true);
-		await fireEvent.click(button());
+		await fromMenu('輸出影片');
 		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
 		page.videoEncoder.release();
 		expect(await within(dialog()).findByText(/^做好了/, {}, DONE)).toBeTruthy();
@@ -305,7 +306,7 @@ describe('輸出影片', () => {
 		page.session.change(flowOf(renameFlow(page.session.flow!, '改過的名字')));
 		render(Page, page.props);
 		const before = page.session.flow;
-		await fireEvent.click(button());
+		await fromMenu('輸出影片');
 		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
 		await within(dialog()).findByRole('progressbar');
 		// 一次一個鍵看：連按的話復原再重做會回到原樣，看不出有沒有退
@@ -322,7 +323,7 @@ describe('輸出影片', () => {
 		render(Page, page.props);
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
 		expect(page.editor.playback.playing).toBe(true);
-		await fireEvent.click(button());
+		await fromMenu('輸出影片');
 		expect(page.editor.playback.playing).toBe(false);
 	});
 
@@ -330,7 +331,7 @@ describe('輸出影片', () => {
 		const page = editorPage(shortFlow());
 		const encode = vi.spyOn(page.videoEncoder, 'encode');
 		render(Page, page.props);
-		await fireEvent.click(button());
+		await fromMenu('輸出影片');
 		await fireEvent.click(await within(dialog()).findByRole('button', { name: '開始' }));
 		await within(dialog()).findByRole('progressbar');
 		const job = encode.mock.calls[0][0] as VideoJob;

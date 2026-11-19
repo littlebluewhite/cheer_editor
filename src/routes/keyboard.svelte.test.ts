@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import { needsConfirm } from '#lib/core/result.js';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, menuItem } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -91,7 +91,7 @@ describe('空白鍵', () => {
 
 	it('其他按鈕、連結、分頁上也一樣：空白鍵播放／暫停', async () => {
 		setup();
-		const targets = [screen.getByRole('button', { name: '流程設定' }), screen.getByRole('link', { name: /使用說明/ }), tab('隊員')];
+		const targets = [screen.getByRole('button', { name: '八拍表' }), (await menuItem('使用說明'))!, tab('隊員')];
 		for (const el of targets) {
 			const was = playing();
 			expect(await space(el), el.outerHTML.slice(0, 60)).toBe(false);
@@ -314,7 +314,7 @@ describe('焦點在哪、按哪個鍵：誰用這個鍵只有一份規則（G �
 		// 剛點過的勾選框（N22）：它只用空白鍵，但編輯頁的空白鍵是播放（#205）
 		勾選框: async () => screen.getByLabelText('節拍器'),
 		下拉選單: async () => (await fireEvent.click(tab('隊員')), screen.getByLabelText('第 1 位隊員的性別')),
-		按鈕: async () => screen.getByRole('button', { name: '流程設定' }),
+		按鈕: async () => screen.getByRole('button', { name: '八拍表' }),
 		文字欄: async () => (await fireEvent.click(tab('隊員')), screen.getByLabelText('第 1 位隊員的名字'))
 	};
 	const table: [string, string, Effect][] = [
@@ -364,7 +364,7 @@ describe('焦點在哪、按哪個鍵：誰用這個鍵只有一份規則（G �
 
 	it('問題出現時焦點進到確認框，放在「取消」（最不會出事的那顆）；按 Esc 取消，焦點回到原本的地方', async () => {
 		const session = setup();
-		const opener = screen.getByRole('button', { name: '流程設定' });
+		const opener = screen.getByRole('button', { name: '八拍表' });
 		opener.focus();
 		session.ask.send(() => needsConfirm('拖過段尾會裁短', ['Lib 的拍點']));
 		await tick();
