@@ -16,7 +16,8 @@
 	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入（名字欄按 Enter 也行）、清掉。
 	// 種類預設接在上一個環節後面（上法 → 中段 → 轉接 → 下法）。
 	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
-	// 選的拍剛好是一個環節的拍（例：點環節的色條）時，環節列多出改它名字、種類、顏色的地方。
+	// 點環節的色條：選到它的拍，記住點的是這一條，環節列多出改它名字、種類、顏色的地方，「清掉」只清（刪掉）這一條；
+	// 選的拍變了就不記了。自己選的拍剛好是環節的拍時改它，有兩個以上（金字塔佔同樣的拍）改排前面的那個。
 	// 口號段不數拍、沒有格子：直接一列「環節」，環節按鈕照加的先後排、種類、名字、加入；
 	// 點一個環節選它，可以改名字、種類、顏色，或按清掉刪掉它（有記號先問）。
 	import { composing } from '#lib/ime.js';
@@ -178,10 +179,24 @@
 		return pos?.segmentId === segment.id ? cellIn(action, pos.at - action.start) : null;
 	});
 	const selLen = $derived(beats.len);
-	/** 可以改的環節：音樂段是選的拍剛好是它的拍的那個，口號段是點選的那個；沒有就 null。 */
+	/** 音樂段點色條選到的環節 id，和點的時候選到的拍；選的拍變了就不記了（見下面的 $effect）。 */
+	let picked = $state<{ id: string; at: number; len: number } | null>(null);
+	$effect(() => {
+		const { from } = sel;
+		const len = selLen;
+		untrack(() => {
+			if (picked && (picked.at !== from || picked.len !== len)) picked = null;
+		});
+	});
+	/** 點色條選到、還在的那條環節。 */
+	const pickedPhase = $derived(phases.find((p) => p.id === picked?.id));
+	/**
+	 * 可以改的環節：音樂段是點色條選到的那條，不然是選的拍剛好是它的拍的那個（有兩個以上改排前面的）；
+	 * 口號段是點選的那個；沒有就 null。
+	 */
 	const editing = $derived(
 		(segment?.kind === 'music'
-			? phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen)
+			? (pickedPhase ?? phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen))
 			: phases.find((p) => p.id === chosen)) ?? null
 	);
 
@@ -304,10 +319,12 @@
 		send((o) => markPhaseBeats(flow, action.id, phaseId, from, len, o));
 	}
 
-	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
+	/** 清掉環節：點了色條就只清那一條（拍整個清光，刪掉）；不然清掉選的拍裡環節標的拍，拍清光的環節刪掉。有記號先問。 */
 	function clearPhases() {
+		const id = pickedPhase?.id;
 		const { from, to } = sel;
-		send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
+		if (id) send((o) => deletePhase(flow, action.id, id, o));
+		else send((o) => clearPhaseBeats(flow, action.id, from, to + BEAT, o));
 	}
 
 	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。下一個環節的種類預設接在它後面。 */
@@ -392,6 +409,12 @@
 	function pick(range: { at: number; len: number }, cueWho?: Who) {
 		beats.pick(range, cueWho);
 		openPop();
+	}
+
+	/** 點環節的色條：選到它的拍，記住點的是這一條。 */
+	function pickPhase(id: string, range: { at: number; len: number }) {
+		pick(range);
+		picked = { id, at: sel.from, len: selLen };
 	}
 
 	/** 方向鍵：左右移選取；加 Shift 延長或縮短（規則在 session）。焦點跟著動的那一端。 */
@@ -645,7 +668,7 @@
 								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}
-								onclick={() => pick(p.beats)}
+								onclick={() => pickPhase(p.phase.id, p.beats)}
 								>{p.first ? label : `…${label}`}</button
 							>
 						{/each}
