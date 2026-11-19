@@ -59,10 +59,8 @@ fly deploy --remote-only --ha=false
 
 ### 舊網址（GitHub Pages）
 
-舊網址 `https://littlebluewhite.github.io/cheer_editor/` 照舊用 `.github/workflows/deploy.yml` 部署（測試全過才部署到 GitHub Pages）。
-推 `main` 建的是一般版，跟新網址一樣。上線那天建一份舊網址版就凍住，那個 workflow 拿掉（#267、#269）。
-
-那個 workflow 第一次用要在 GitHub 上設定一次：Settings → Pages → Build and deployment → Source 選 **GitHub Actions**。
+舊網址 `https://littlebluewhite.github.io/cheer_editor/` 凍在上線那天（2026-11-20，#269）建的舊網址版（`99fa1f7`）。
+部署它的 `.github/workflows/deploy.yml` 已經拿掉，推 `main` 不會再動到舊網址（#267、#269）。要再建一次，從 git 紀錄把那個檔拿回來。
 
 **舊網址版**（`src/lib/old-site.ts`）：建置時設 `OLD_SITE=1`。沒有「登入」，也不碰伺服器（不 fetch、不開 WebSocket，當作沒登入）；
 首頁最上面一條黃的搬家提示，右邊「到新網址」（`https://littlebluewhite.com/`）。登入才用得到的頁（登入、帳號、管理使用者、忘記密碼、設密碼，`src/lib/login-only.ts`）打開直接回首頁；使用說明不變。在本機建、看：
@@ -178,7 +176,7 @@ pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" cheer-2026-
 ## 網址底下的路徑（base path）
 
 新網址（Fly）放在網址根目錄 `/`，建置時不設 `BASE_PATH`（`Dockerfile` 也不設）。
-舊網址（GitHub Pages）放在 `/cheer_editor/` 底下，由建置時的環境變數 `BASE_PATH` 決定（`deploy.yml` 會帶 `/cheer_editor`）。
+舊網址（GitHub Pages）放在 `/cheer_editor/` 底下，由建置時的環境變數 `BASE_PATH` 決定（當時的 `deploy.yml` 帶 `/cheer_editor`）。
 本機 `npm run dev`、`npm run build` 不設，就是 `/`。
 
 要在本機看舊網址部署後的樣子：
