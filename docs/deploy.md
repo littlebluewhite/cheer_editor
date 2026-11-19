@@ -273,6 +273,11 @@ cd server && cargo test
 更新：部署新版後，使用者重新整理時新的 service worker 會裝好並接手，頁面自動再載入一次，就是新版。
 `npm run dev` 不會啟用 service worker，要試離線請用上面的 build + preview。
 
+service worker 只給建置時存好的頁面，網址後面的 `?…` 不看（`vite.config.ts` 的 `generateSW.ignoreURLParametersMatching`）：
+不這樣的話，`guide?from=editor` 對不到存好的 `guide`，會掉到「其他網址都給首頁」那一條，按「使用說明」卻開出初始畫面。
+`npm run check:sw` 照部署的樣子建置、開 preview 和 headless Chrome，等 service worker 接手後開使用說明的各種連結，看拿到的是不是對的頁
+（check:layout 用 vite dev，沒有 service worker，看不到這一類錯）。
+
 手動檢查離線：用 preview 或正式網址開一次，等頁面載完，開發者工具 Network 勾 Offline（或關掉 preview），重新整理，編輯器還能打開。
 
 輸出影片用的 `mediabunny` 是動態 `import()`，建置後自己一個 chunk（2026-11-18 量：約 235 KiB，gzip 約 60 KiB），
