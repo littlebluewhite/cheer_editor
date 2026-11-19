@@ -29,16 +29,16 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (migrate_only, command) = match args.first().map(String::as_str) {
-        None => (false, None),
-        Some("migrate") if args.len() == 1 => (true, None),
-        Some("backup") if args.len() == 1 => (false, Some(Command::Backup)),
-        Some("create-admin") => (false, Some(admin_args(&args[1..])?)),
+    let command = match args.first().map(String::as_str) {
+        None => Command::Serve,
+        Some("migrate") if args.len() == 1 => Command::Migrate,
+        Some("backup") if args.len() == 1 => Command::Backup,
+        Some("create-admin") => admin_args(&args[1..])?,
         Some(_) => anyhow::bail!("{USAGE}"),
     };
 
     let config = Config::from_env()?;
-    if migrate_only {
+    if let Command::Migrate = command {
         // 沒跑成就回非 0，Fly 就不部署（舊版照常接流量）。
         let db = sqlx::PgPool::connect(&config.database_url)
             .await
@@ -100,18 +100,19 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match command {
-        Some(Command::CreateAdmin { email, name }) => {
+        Command::CreateAdmin { email, name } => {
             cheer_server::accounts::create_admin(&state, &email, name.as_deref()).await?;
             println!("{email} 是管理員了，設密碼信寄出去了。");
             return Ok(());
         }
-        Some(Command::Backup) => {
+        Command::Backup => {
             let backup = backup.context("沒設 BACKUP_R2_BUCKET，不能備份")?;
             backup.run(&state.db, state.clock.now()).await?;
             println!("備份好了，放上 R2 了。");
             return Ok(());
         }
-        None => {}
+        Command::Migrate => unreachable!("上面跑完遷移就結束了"),
+        Command::Serve => {}
     }
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr)
@@ -133,9 +134,15 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 跑完就結束的指令（`migrate` 另外處理：不用開伺服器的其他東西）。
+/// 命令列要做的事（見 USAGE）。`migrate` 最先處理：不用開伺服器的其他東西。
 enum Command {
-    CreateAdmin { email: String, name: Option<String> },
+    /// 開伺服器。
+    Serve,
+    Migrate,
+    CreateAdmin {
+        email: String,
+        name: Option<String>,
+    },
     Backup,
 }
 
