@@ -225,6 +225,14 @@
 	const together = $derived(
 		(action ? session.selectedMemberIds : rowPicked).filter((id) => draft.members.some((d) => d.memberId === id))
 	);
+	/** 一起選到的人裡，有人的任務角色這個大類的選單沒有（不是金字塔的三層、肩底）：只留給本來就是的人。 */
+	const keptOnly = $derived([
+		...new Set(
+			draft.members
+				.filter((m) => m.role && together.includes(m.memberId) && !roles.some((r) => r.name === m.role))
+				.map((m) => m.role!)
+		)
+	]);
 	/** 觸控螢幕沒有 Shift，多選要開場地左邊的「多選」（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = isTouchScreen();
 
@@ -503,7 +511,7 @@
 			<!-- 常駐一行（觸控的人看不到 title）；選了 2 人以上換成選了幾人，這一行不跳 -->
 			{#if together.length > 1}
 				<p class="together" role="note" aria-label="一起設任務角色">
-					選了 {together.length} 人：在其中一人選任務角色，{together.length} 人一起設
+					選了 {together.length} 人：在其中一人選任務角色，{together.length} 人一起設{#if keptOnly.length}（{keptOnly.join('、')}只有金字塔有，只留給本來就是的人）{/if}
 				</p>
 			{:else if draft.members.length > 1}
 				<p class="together">

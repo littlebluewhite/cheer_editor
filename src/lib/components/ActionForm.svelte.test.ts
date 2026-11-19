@@ -366,6 +366,8 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '小A' }), { shiftKey: true });
 		await fireEvent.click(screen.getByRole('button', { name: '小B' }), { shiftKey: true });
 		expect(screen.getByRole('button', { name: '小B' }).getAttribute('aria-pressed')).toBe('true');
+		// 先說清楚：肩底只留給本來就是的人，不是兩個人都會變肩底
+		expect(screen.getByRole('note', { name: '一起設任務角色' }).textContent).toContain('肩底只有金字塔有，只留給本來就是的人');
 		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
 		pickA.focus();
 		await fireEvent.keyDown(pickA, { key: '4' });

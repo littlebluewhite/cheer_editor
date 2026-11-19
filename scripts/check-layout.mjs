@@ -602,6 +602,27 @@ await check('1440×900 把右邊欄拖到最寬，換成 1024×768：場地本�
 	return { ok: wide >= 360 && small >= 360, value: { 拖完的場地寬: wide, '1024×768 的場地寬': small } };
 });
 
+await check('動作表單「人」：分組的動作一組一張卡；右邊欄窄時卡片上下疊，拖到夠寬（600 px 以上）時兩張卡左右並排', async () => {
+	await setViewport(1440, 900);
+	await openPracticeFlow();
+	await js(`document.querySelector('[data-action-id="x1"]').click()`);
+	await waitFor(() => js(`return document.querySelectorAll('.action-form .squad').length === 2`));
+	await sleep(200);
+	const cards = () => js(`const f = document.querySelector('.action-form');
+		const [a, b] = [...f.querySelectorAll('.squad')].map((s) => s.getBoundingClientRect());
+		return { 表單寬: Math.round(f.getBoundingClientRect().width), 疊起來: b.top >= a.bottom - 1, 並排: Math.abs(a.top - b.top) < 1 && b.left >= a.right - 1 };`);
+	const narrow = await cards();
+	const bar = await rectOf('.col-split');
+	await mouse('mousePressed', bar.x, bar.y);
+	await mouse('mouseMoved', 0, bar.y);
+	await mouse('mouseReleased', 0, bar.y, 0);
+	await sleep(300);
+	const wide = await cards();
+	// 拖過的寬度記在這台電腦：清掉，後面的檢查從預設版面開始
+	await js(`for (const k of Object.keys(localStorage)) if (k.startsWith('cheer-editor:inspectorWidth')) localStorage.removeItem(k)`);
+	return { ok: narrow.表單寬 < 600 && narrow.疊起來 && wide.表單寬 >= 600 && wide.並排, value: { 窄: narrow, 寬: wide } };
+});
+
 await check('超寬螢幕（2560 寬）按「符合寬度」：整支流程放滿時間軸，沒有橫向捲軸', async () => {
 	await setViewport(2560, 1200);
 	await openSample();
