@@ -951,14 +951,9 @@ async fn take_step(
             let Some((n, keys)) = undoable(&mut tx, flow_id, &of, state.clock.now()).await? else {
                 return rejected(format!("太久以前的，{}", cannot(redo)), None, content);
             };
-            // 復原：那一步清掉的紀錄一起放回去（ADR 0007）。重做不用：跑完照結果再清一次。
-            let records = if redo {
-                before.clone()
-            } else {
-                let (records, back) = records::brought_back(&mut tx, flow_id, &of, &before).await?;
-                revived = back;
-                records
-            };
+            // 那一步清掉的紀錄一起放回去、加回來的再清掉（ADR 0007）：重做是復原那一步復原的。
+            let (records, back) = records::brought_back(&mut tx, flow_id, &of, &before).await?;
+            revived = back;
             let ran = state
                 .core
                 .run_undo(

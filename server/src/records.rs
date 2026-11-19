@@ -224,15 +224,17 @@ pub struct StepOutcome<'a> {
     pub watch: Vec<String>,
 }
 
-/// 一步清掉、改掉的一次（ADR 0007，存在 flow_steps.cleared）：改之前的樣子（was），這一步之後的樣子（now，整筆清掉是 None）。
+/// 一步清掉、改掉的一次（ADR 0007，存在 flow_steps.cleared）：改之前的樣子（was，復原加回來的是 None），
+/// 這一步之後的樣子（now，整筆清掉是 None）。
 #[derive(Serialize, Deserialize)]
 struct Cleared {
-    was: Stored,
+    was: Option<Stored>,
     now: Option<Stored>,
 }
 
 /// 復原第 of 步（步驟 id）時給流程核心的紀錄（ADR 0007）：現在的紀錄（before），加上那一步清掉、到現在還清掉著的，
-/// 那一步改掉、到現在沒再動過的換回改之前的樣子。之後才改過、刪掉、救回的照現在的。
+/// 那一步改掉、到現在沒再動過的換回改之前的樣子，那一步加回來（復原）、到現在沒再動過的再清掉（重做）。
+/// 之後才改過、刪掉、救回的照現在的。
 /// 回給流程核心的紀錄、加回來的（現在清掉著的）id。
 pub async fn brought_back(
     tx: &mut sqlx::PgConnection,
@@ -258,19 +260,27 @@ pub async fn brought_back(
     let mut records = before.to_vec();
     let mut revived = vec![];
     for Cleared { was, now } in cleared {
-        let Some(id) = was.attempt.get("id").and_then(Value::as_str) else {
+        let Some(id) = was
+            .as_ref()
+            .or(now.as_ref())
+            .and_then(|s| s.attempt.get("id")?.as_str())
+            .map(str::to_owned)
+        else {
             continue;
         };
-        let Some(r) = current.get(id) else { continue };
-        match now {
-            None if r.gone => {
-                revived.push(id.to_owned());
+        let Some(r) = current.get(&id) else { continue };
+        match (was, now) {
+            (Some(was), None) if r.gone => {
+                revived.push(id);
                 records.push(was);
             }
-            Some(now) if !r.gone && same(&r.stored, &now) => {
-                for s in records.iter_mut().filter(|s| same_id(s, id)) {
+            (Some(was), Some(now)) if !r.gone && same(&r.stored, &now) => {
+                for s in records.iter_mut().filter(|s| same_id(s, &id)) {
                     *s = was.clone();
                 }
+            }
+            (None, Some(now)) if !r.gone && same(&r.stored, &now) => {
+                records.retain(|s| !same_id(s, &id));
             }
             _ => {}
         }
@@ -343,20 +353,33 @@ pub async fn after_step(
             .filter(|r| changed.contains(r.id()))
             .collect();
     }
-    // 這一步之後的樣子照存好的（改掉的），清掉的是 None。
-    let cleared: Vec<Cleared> = before
+    // 這一步之後的樣子照存好的（改掉的、加回來的），清掉的是 None。
+    let stored = |id: &str| {
+        change
+            .changed
+            .iter()
+            .find(|r| r.id() == id)
+            .map(|r| r.stored.clone())
+    };
+    let mut cleared: Vec<Cleared> = before
         .iter()
         .filter_map(|old| {
             let id = old.attempt.get("id")?.as_str()?;
             let was = was.remove(id)?;
-            let now = change
-                .changed
-                .iter()
-                .find(|r| r.id() == id)
-                .map(|r| r.stored.clone());
-            Some(Cleared { was, now })
+            Some(Cleared {
+                was: Some(was),
+                now: stored(id),
+            })
         })
         .collect();
+    // 加回來的也記：重做（復原這一步）時再清掉。
+    cleared.extend(revived.iter().filter_map(|id| {
+        let now = stored(id)?;
+        Some(Cleared {
+            was: None,
+            now: Some(now),
+        })
+    }));
     if !cleared.is_empty() {
         sqlx::query("UPDATE flow_steps SET cleared = $3::json WHERE flow_id = $1 AND step = $2")
             .bind(flow_id)
