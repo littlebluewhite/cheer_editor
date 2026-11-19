@@ -224,6 +224,96 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(takeRecords(page.session.flow!).records).toEqual([]);
 	});
 
+	it('two queued clears on one action end like the server：連刪兩個環節，第一步跟著改的紀錄先到、第二步還在等，最後跟伺服器一樣', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]);
+		s.state.holdRoom = true;
+		s.page.session.ask.send({ name: 'deletePhase', args: ['x1', 'p3'], options: { confirmed: true } });
+		s.page.session.ask.send({ name: 'deletePhase', args: ['x1', 'p2'], options: { confirmed: true } });
+		expect(takeRecords(s.page.session.flow!).records[0].attempt.marks).toEqual({ p1: '✓' });
+
+		s.releaseRoom();
+		await flush();
+		await flush();
+		const server = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.marks);
+		expect(server).toEqual([{ p1: '✓' }]);
+		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.marks)).toEqual(server);
+	});
+
+	it('reconnect keeps an attempt on a phase added meanwhile：改名清掉重算沒收到就斷線，王教練加了環節、記了另一組，連回來那一次還在', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓' })]);
+		s.state.holdRoom = true;
+		s.page.session.ask.send({ name: 'updateMember', args: ['m1', { name: '小琪' }], options: { records: 'clear' } });
+		s.disconnect(lin.email);
+		await flush();
+		s.w.step({ name: 'addPhase', args: ['x1', { kind: 'hold', name: '再一次', beats: { at: 12, len: 4 } }] });
+		s.releaseRoom();
+		await flush();
+		const phase = s.state.flows[0].flow.actions[0].successRate!.phases.at(-1)!.id;
+		const t2 = { id: 'tphase2222220', date: '2026-11-04', who: 'g2', practice: 'drill' as const, whole: false, marks: { [phase]: '✓' as const } };
+		s.recordAs('c1', wang.email, [{ actionId: 'x1', attempt: t2 }]);
+
+		s.reconnect(lin.email);
+		await flush();
+		await flush();
+		const live = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.id);
+		expect(live).toEqual(['tphase2222220']);
+		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.id)).toEqual(live);
+	});
+
+	it('reconnect keeps an attempt restored after a clear whose ack was lost：清掉重算收了、「收了」沒收到就斷線，王教練救回那一次，連回來還在', async () => {
+		const fake = fakeServer({
+			users: [lin, wang],
+			signedIn: lin.email,
+			flows: [
+				{
+					id: 'c1',
+					owner: lin.email,
+					flow: libSample(),
+					updatedAt: new Date(2026, 10, 7).toISOString(),
+					people: { [wang.email]: 'editor' },
+					records: [wangs('t1', { p1: '✓' })]
+				}
+			]
+		});
+		// 林教練的房間：第一次的「收了」在路上不見，接著斷線
+		const open = fake.server.openRoom.bind(fake.server);
+		let mine: ReturnType<typeof open> | null = null;
+		fake.server.openRoom = (id) => {
+			const room = open(id);
+			mine ??= room;
+			return room;
+		};
+		const page = editorPage(null, { server: fake.server });
+		render(Page, page.props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: /^測試/ }));
+		await flush();
+		const w = fake.joinAs('c1', wang.email);
+		await flush();
+		const room = mine!;
+		const heard = room.onmessage;
+		room.onmessage = (m) => (m.kind === 'accepted' ? fake.disconnect(lin.email) : heard(m));
+
+		// 王教練刪了 t1，林教練還沒聽到就改名清掉重算；伺服器收了，「收了」不見
+		fake.state.holdRoom = true;
+		w.room.send({ kind: 'deleteRecords', ids: ['t1'] });
+		page.session.ask.send({ name: 'updateMember', args: ['m1', { name: '小琪' }], options: { records: 'clear' } });
+		fake.releaseRoom();
+		await flush();
+		expect(fake.state.flows[0].flow.members[0].name).toBe('小琪');
+		// 王教練救回 t1
+		w.room.send({ kind: 'restoreRecords', ids: ['t1'] });
+		await flush();
+		room.onmessage = heard;
+
+		fake.reconnect(lin.email);
+		await flush();
+		await flush();
+		const live = (fake.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.id);
+		expect(live).toEqual(['t1']);
+		expect(takeRecords(page.session.flow!).records.map((r) => r.attempt.id)).toEqual(live);
+	});
+
 	it('復原刪動作：動作和它的紀錄都回來', async () => {
 		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]);
 		const kept = takeRecords(s.page.session.flow!).records;

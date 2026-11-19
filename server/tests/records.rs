@@ -427,6 +427,7 @@ async fn clearing_and_recounting_clears_stored_records_and_late_old_ones_still_c
         step(&mut room, "stepmove0001", 6, mv).await["kind"],
         "accepted"
     );
+    hear(&mut room).await;
     assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
     assert!(s.rows(&id).await.iter().all(|(_, _, gone)| *gone));
 
@@ -963,6 +964,7 @@ async fn undoing_a_phase_delete_brings_its_marks_back_and_redo_clears_them_again
         step(&mut coach, "stepdelete01", 6, delete).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     hear(&mut phone).await;
     let records_after = s.records(&wang, &id).await;
     let flow_after = s.flow(&wang, &id).await;
@@ -1014,6 +1016,11 @@ async fn redo_clears_records_the_step_cleared(db: sqlx::PgPool) {
         step(&mut coach, "steprename01", 6, rename).await["kind"],
         "accepted"
     );
+    // 送的人也收到跟著清掉的紀錄：進房間拿到的紀錄可能還沒算到這一步。
+    assert_eq!(
+        hear(&mut coach).await,
+        json!({ "kind": "recordsChanged", "changed": [], "deleted": ["tsquad1111110"] })
+    );
     assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
     let flow_after = s.flow(&wang, &id).await;
 
@@ -1054,6 +1061,7 @@ async fn undoing_an_action_delete_brings_its_records_back(db: sqlx::PgPool) {
         step(&mut coach, "stepdelete01", 6, remove).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
     let flow_after = s.flow(&wang, &id).await;
 
@@ -1088,6 +1096,7 @@ async fn undo_does_not_bring_back_records_changed_or_deleted_after_the_step(db: 
         step(&mut coach, "stepdelete01", 6, phase).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     let flow_after = s.flow(&wang, &id).await;
     // 刪環節之後：改了第一次的記號、刪掉第三次。
     change(&mut coach, json!([remarked(&both, json!({ LOAD: "△" }))])).await;
@@ -1126,6 +1135,7 @@ async fn redo_keeps_a_record_deleted_and_restored_after_the_undo(db: sqlx::PgPoo
         step(&mut coach, "steprename01", 6, rename).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     hear(&mut other).await;
     let flow_after = s.flow(&wang, &id).await;
     let change = s.back_to(&flow_after, &flow_before).await;
@@ -1221,6 +1231,7 @@ async fn undoing_two_trimming_steps_in_a_row_brings_every_mark_back(db: sqlx::Pg
         step(&mut coach, "stepphase001", 6, first).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     let flow_1 = s.flow(&wang, &id).await;
     let second =
         json!([{ "name": "deletePhase", "args": [LIB, HOLD], "options": { "confirmed": true } }]);
@@ -1228,6 +1239,7 @@ async fn undoing_two_trimming_steps_in_a_row_brings_every_mark_back(db: sqlx::Pg
         step(&mut coach, "stepphase002", 7, second).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     let flow_2 = s.flow(&wang, &id).await;
 
     // 連按兩次復原：兩個記號都回來。

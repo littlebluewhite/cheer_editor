@@ -41,7 +41,6 @@ import {
 	perPerson,
 	putRecords,
 	recordsPatch,
-	redoRecords,
 	runCommands,
 	squadName,
 	takeRecords,
@@ -726,22 +725,7 @@ export class CloudSteps {
 		}
 		const names = Object.fromEntries(server.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
 		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
-		this.#session.serverRecords(putRecords(flow, this.#clearedAgain(flow, records)));
-	}
-
-	/**
-	 * 伺服器的紀錄還沒算到還沒收的步：那幾步清掉的（例：改名選清掉重算）照順序像重做一樣再清一次，
-	 * 只動那幾步清過紀錄的動作，其他動作照 records。
-	 */
-	#clearedAgain(flow: Flow, records: StoredAttempt[]): StoredAttempt[] {
-		const patched = new Set(this.#queue.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));
-		if (!patched.size) return records;
-		let again = putRecords(flow, records);
-		for (const step of this.#queue) again = redoRecords(step.before, step.after, again);
-		return [
-			...records.filter((r) => !patched.has(r.actionId)),
-			...takeRecords(again).records.filter((r) => patched.has(r.actionId))
-		];
+		this.#session.serverRecords(putRecords(flow, records));
 	}
 
 	/** 擁有者改了我的權限。降成記錄者、檢視者：還沒送到的步不算，換成伺服器的樣子並提示。 */

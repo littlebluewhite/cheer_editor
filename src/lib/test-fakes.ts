@@ -440,8 +440,8 @@ export function fakeServer(
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
-		// 紀錄跟著改的接在編排的改動後面（#258）。復原、重做送的人那邊只帶現在的紀錄，加回來的也告訴他（ADR 0007）。
-		tellRecords(f, changed, deleted, undo ? undefined : from.room);
+		// 紀錄跟著改的接在編排的改動後面（#258）。送的人也收到（ADR 0007）：復原、重做加回來的；一般的步，進房間拿到的紀錄還沒算到這一步。
+		tellRecords(f, changed, deleted);
 		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by, change, cleared }]);
 		f.flow = after.flow;
 		f.step = step + 1;
