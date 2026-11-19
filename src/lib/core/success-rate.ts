@@ -5,9 +5,9 @@
 import { ACTION_CATEGORIES, type Action, type ActionCategory, type ActionMember } from './action-types';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
-import { phasesOverlap, rangeProblem, type BeatRange } from './beat-range';
+import { phasesOverlap, phasesShareBeats, rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
-import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, V10_PHASE_KINDS, type Phase } from './phase-types';
+import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
@@ -257,7 +257,7 @@ function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string
 		if (problem) return problem;
 	}
 	// 金字塔的環節可以佔同樣的拍（docs/adr/0009）。
-	if (action.category !== 'pyramid' && phasesOverlap(phases)) return '環節標的拍不能重疊';
+	if (!phasesMayShareBeats(action.category) && phasesOverlap(phases)) return '環節標的拍不能重疊';
 	const records = action.successRate?.records ?? [];
 	if (new Set(records.map((r) => r.id)).size !== records.length) return '一次的 id 重複了';
 	for (const r of records) {
@@ -305,7 +305,7 @@ export function blankPhases(
 	const fails = open.filter((p) => kept[p.id] === '✗');
 	/** 跟留下來的 ✗ 佔同樣的拍、沒打的：可以打，不打就空著，不害這一次變成只練幾個環節。 */
 	const sharing = new Set(
-		open.filter((p) => !kept[p.id] && fails.some((f) => phasesOverlap([p, f]))).map((p) => p.id)
+		open.filter((p) => !kept[p.id] && fails.some((f) => phasesShareBeats(p, f))).map((p) => p.id)
 	);
 	const blanks = phases.filter((p) => shut.includes(p.id) || sharing.has(p.id)).map((p) => p.id);
 	const needed = open.map((p) => p.id).filter((id) => !sharing.has(id));
@@ -346,7 +346,7 @@ export function pickedAutoSave(
 	const last = planned.at(-1);
 	const anchors = planned.filter((p) => kept[p.id] === '✗' || (p === last && kept[p.id]));
 	const waiting = planned.filter(
-		(p) => !shut.includes(p.id) && !kept[p.id] && anchors.some((a) => phasesOverlap([p, a]))
+		(p) => !shut.includes(p.id) && !kept[p.id] && anchors.some((a) => phasesShareBeats(p, a))
 	);
 	return { due: anchors.length > 0, waiting: waiting.map((p) => p.id) };
 }

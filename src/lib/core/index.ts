@@ -113,7 +113,7 @@ export {
 } from './rates';
 export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
 
-export { actionEights, beatSpanText } from './beat-range';
+export { actionEights, beatSpanText, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
 export { eightCountRows, eightCountView, nearbyEights, teamWho } from './eight-count';

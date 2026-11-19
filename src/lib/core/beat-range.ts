@@ -142,11 +142,16 @@ export function phasesOverlap(phases: readonly Phase[]): boolean {
 	return marked.some((b, i) => i > 0 && b.at < marked[i - 1].at + marked[i - 1].len);
 }
 
+/** 兩個環節佔不佔同樣的拍（標的拍有重疊的部分；一個做完、下一個才開始不算）。有一個沒標拍就不算。 */
+export function phasesShareBeats(a: Phase, b: Phase): boolean {
+	return !!a.beats && !!b.beats && a.beats.at < b.beats.at + b.beats.len && b.beats.at < a.beats.at + a.beats.len;
+}
+
 /**
  * 環節第幾排（從 0 起）：照環節的順序一個一個放，放進最上面還空著的那一排（剛好接著的不算疊）。
  * 整個動作算一次，不照八拍重排。沒疊就都是第 0 排。沒標拍的不放。
  */
-function phaseRows(phases: readonly Phase[]): Map<string, number> {
+export function phaseRows(phases: readonly Phase[]): Map<string, number> {
 	const ends: number[] = [];
 	const rows = new Map<string, number>();
 	for (const { id, beats } of phases) {
