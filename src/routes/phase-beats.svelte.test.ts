@@ -374,6 +374,48 @@ describe('口號段的環節（不用標拍）', () => {
 	});
 });
 
+describe('金字塔的環節佔同樣的拍', () => {
+	const pyramidFlow = () => flowOf(updateAction(libFlow(), 'x1', { category: 'pyramid' }));
+	/** 格子第一個八拍裡每個環節的「名字 第幾列」（格子的 grid-row）。 */
+	const phaseRowsInFirstEight = () =>
+		[...document.querySelectorAll<HTMLElement>('.cues .row')[0].querySelectorAll<HTMLElement>('.item.phase')].map(
+			(b) => `${b.getAttribute('aria-label') ?? b.textContent} ${b.style.gridRow}`
+		);
+
+	it('選中段佔的幾拍加新環節：中段不變，兩條都在、在不同排，拍點往下讓', async () => {
+		await open(pyramidFlow());
+		const step = () => document.querySelector<HTMLElement>('.cues .row .item.step')!.style.gridRow;
+		expect(step()).toBe('4');
+		await select('1-5', '1-8');
+		await addNew('load', '第二個');
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 第二個 1-5 到 1-8', ALL[2]]);
+		expect(phaseRowsInFirstEight()).toEqual([
+			'環節 上法 延伸 1-1 到 1-3 2',
+			'環節 中段 1-4 到 2-3 2',
+			'環節 上法 第二個 1-5 到 1-8 3'
+		]);
+		expect(step()).toBe('5');
+	});
+
+	it('技巧照舊：蓋到中段就切', async () => {
+		await open();
+		await select('1-5', '1-8');
+		await addNew('load', '第二個');
+		expect(gridPhases()).toEqual([ALL[0], '環節 中段 1-4', '環節 上法 第二個 1-5 到 1-8', ALL[2]]);
+	});
+
+	it('有環節佔同樣的拍時換成技巧：擋下來說原因，大類退回金字塔，環節都在', async () => {
+		const flow = flowOf(addPhase(pyramidFlow(), 'x1', { kind: 'load', name: '第二個', beats: { at: 8, len: 8 } }));
+		await open(flow);
+		const category = screen.getByLabelText('大類') as HTMLSelectElement;
+		category.value = 'stunt';
+		await fireEvent.change(category);
+		expect(screen.getByText(/^有環節佔同樣的拍，先分開才能換成技巧/)).toBeTruthy();
+		expect(category.value).toBe('pyramid');
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 第二個 1-5 到 1-8', ALL[2]]);
+	});
+});
+
 describe('音樂段的舞蹈、其他：沒有環節', () => {
 	it.each(['dance', 'other'] as const)('%s：格子沒有環節列，拍點小窗沒有「環節」那一排', async (category) => {
 		await open(flowOf(updateAction(plainFlow(), 'x1', { category })));
