@@ -673,7 +673,9 @@ export function fakeServer(
 						: undefined;
 			if (!after) return r;
 			changed.push(id);
-			return { ...r, ...after, gone: false, amendedStep: f.step ?? 0 };
+			// 再送一次一樣的記號（回答沒收到）不算用手動過（跟真的伺服器一樣）。
+			const amendedStep = r.gone || !sameRecord(r, after) ? (f.step ?? 0) : r.amendedStep;
+			return { ...r, ...after, gone: false, amendedStep };
 		});
 		tellRecords(f, changed, deleted, from);
 		const saved = f.records.filter((r) => !r.gone && asked.includes(r.attempt.id)).map((r) => cloudRecord(r, email));

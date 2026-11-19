@@ -1149,6 +1149,59 @@ async fn redo_keeps_a_record_deleted_and_restored_after_the_undo(db: sqlx::PgPoo
 }
 
 #[sqlx::test]
+async fn redo_clears_again_a_record_whose_mark_change_was_resent_unchanged(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let one = drill("tresend111110", SQUAD_1, json!({ LOAD: "✓" }));
+    record(&mut coach, json!([one.clone()])).await;
+    // 改記號（回答沒收到，手機之後會再送一次）。
+    let fixed = remarked(&one, json!({ LOAD: "✗" }));
+    change(&mut coach, json!([fixed.clone()])).await;
+    let records_before = s.records(&wang, &id).await;
+    let flow_before = s.flow(&wang, &id).await;
+
+    // 改名選清掉重算：清掉；復原：加回來。
+    let rename = json!([{ "name": "updateMember", "args": ["mzk52d2cu1vww", { "name": "小琪" }], "options": { "records": "clear" } }]);
+    assert_eq!(
+        step(&mut coach, "steprename01", 6, rename).await["kind"],
+        "accepted"
+    );
+    let flow_after = s.flow(&wang, &id).await;
+    let change_back = s.back_to(&flow_after, &flow_before).await;
+    let reply = undo(
+        &mut coach,
+        "stepundo0001",
+        7,
+        "steprename01",
+        false,
+        change_back,
+    )
+    .await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    hear(&mut coach).await;
+    assert_eq!(s.records(&wang, &id).await, records_before);
+
+    // 手機再送一次一樣的記號：沒改到東西，不算之後用手動過。
+    change(&mut coach, json!([fixed])).await;
+
+    // 重做：復原加回來的再清掉。
+    let change_again = s.back_to(&flow_before, &flow_after).await;
+    let reply = undo(
+        &mut coach,
+        "stepredo0001",
+        8,
+        "stepundo0001",
+        true,
+        change_again,
+    )
+    .await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    assert_eq!(ids(&s.records(&wang, &id).await), Vec::<&str>::new());
+}
+
+#[sqlx::test]
 async fn undoing_two_trimming_steps_in_a_row_brings_every_mark_back(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;
