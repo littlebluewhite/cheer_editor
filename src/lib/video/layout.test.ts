@@ -161,14 +161,13 @@ describe('場地：照層畫圓點（跟場上一樣）', () => {
 		expect(field.dots.map((d) => d.id)).toEqual(['a', 'b', 'c']);
 		for (const d of field.dots) {
 			expect(d.c).toEqual(at(field, positions[d.id]));
-			expect(d.scale).toBe(1);
 			expect(d.level).toBe(1);
 			expect(d.r).toBe(field.dotPx / 2);
 			expect(d.covered).toBe(false);
 		}
 	});
 
-	it('三層金字塔疊在同一點：層高的後畫、往右上錯開、縮小；下面兩個人有虛線圈', () => {
+	it('三層金字塔疊在同一點：層高的後畫，都在真的位置、原本大小（走位時不會跳）；下面兩個人有虛線圈', () => {
 		const positions = { top: [0, 0], mid: [0, 0], base: [0, 0] } as Record<string, [number, number]>;
 		const { field } = layout(row({ empty: true }), {
 			positions,
@@ -180,34 +179,15 @@ describe('場地：照層畫圓點（跟場上一樣）', () => {
 			['mid', 2],
 			['top', 3]
 		]);
-		const [base, mid, top] = field.dots;
-		expect(base.c).toEqual(at(field, [0, 0]));
-		expect(mid.c[0]).toBeGreaterThan(base.c[0]);
-		expect(mid.c[1]).toBeLessThan(base.c[1]);
-		expect(top.c[0]).toBeGreaterThan(mid.c[0]);
-		expect(top.c[1]).toBeLessThan(mid.c[1]);
-		expect(mid.scale).toBeLessThan(1);
-		expect(top.scale).toBeLessThan(1);
-		expect(top.r).toBeCloseTo((field.dotPx / 2) * top.scale, 6);
+		for (const d of field.dots) {
+			expect(d.c).toEqual(at(field, [0, 0]));
+			expect(d.r).toBe(field.dotPx / 2);
+			expect(d.font).toBe(field.markerPx);
+		}
 		expect(field.dots.map((d) => d.covered)).toEqual([true, true, false]);
 	});
 
-	it('上面那層縮小後，標記的字還是不小於 28 px（1–12 條、直放橫放）', () => {
-		const positions = { top: [0, 0], mid: [0, 0], base: [0, 0] } as Record<string, [number, number]>;
-		for (const layoutKind of ['vertical', 'horizontal'] as const) {
-			for (let strips = 1; strips <= 12; strips++) {
-				const f: FieldConfig = { strips, layout: layoutKind };
-				const { field } = layoutFrame(
-					f,
-					frame(row({ empty: true }), { positions, levels: { top: 3, mid: 2 }, markers: { top: '12', mid: '小美', base: '3' } }),
-					measure
-				);
-				for (const d of field.dots) expect(d.font).toBeGreaterThanOrEqual(MIN_TEXT_PX);
-			}
-		}
-	});
-
-	it('多字標記：膠囊直的那段（h）照字寬，縮小時一起縮', () => {
+	it('多字標記：膠囊直的那段（h）照字寬', () => {
 		const positions = { mid: [0, 0], base: [0, 0] } as Record<string, [number, number]>;
 		const { field } = layout(row({ empty: true }), { positions, levels: { mid: 2 }, markers: { mid: '小美美', base: '3' } });
 		const mid = field.dots.find((d) => d.id === 'mid')!;

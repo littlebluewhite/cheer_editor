@@ -24,7 +24,7 @@ export function duplicateNames(members: Member[]): string[] {
 	return [...dup];
 }
 
-/** 兩個位置是不是疊在同一點（差不到 STACK_M）。場上「照層錯開畫」也用這個：只是站在隔壁的不算。 */
+/** 兩個位置是不是疊在同一點（差不到 STACK_M）。場上「照層畫圓點」的虛線圈也用這個：只是站在隔壁的不算。 */
 export function samePoint(p: Position, q: Position): boolean {
 	return Math.hypot(p[0] - q[0], p[1] - q[1]) < STACK_M;
 }

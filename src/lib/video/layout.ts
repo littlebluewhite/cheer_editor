@@ -5,7 +5,7 @@ import {
 	VIDEO_FPS,
 	actionLabel,
 	fullView,
-	layerStagger,
+	markCovered,
 	videoDurationSec,
 	videoFrames,
 	videoRows,
@@ -13,7 +13,7 @@ import {
 	type EightCountCueLine,
 	type FieldConfig,
 	type Flow,
-	type StaggeredDot,
+	type CoveredDot,
 	type VideoFrameData,
 	type VideoRow
 } from '#lib/core';
@@ -61,18 +61,18 @@ export interface VideoFieldLayout {
 	dotPx: number;
 	markerPx: number;
 	numberPx: number;
-	/** 1 公尺的圓點在影片上幾 px（圓點放大的倍數）：圓點的線寬、陰影照它，再乘圓點的 scale。 */
+	/** 1 公尺的圓點在影片上幾 px（圓點放大的倍數）：圓點的線寬、陰影照它。 */
 	dotUnit: number;
 	/** 圓點照這個順序畫（層高的在後面、蓋在上面）。 */
 	dots: VideoDot[];
 }
 
 /**
- * 一個圓點畫出來的樣子（px，錯開、縮小後）：中心 c、半徑 r、多字膠囊直的那段一半長 h、標記的字高 font、
- * 縮成幾倍 scale（線寬、陰影一起縮）、covered（被不同層蓋到：在所有圓點上面畫一圈虛線）。
- * level 1 是地上，2 黃框，3 橘框。錯開、縮小、虛線圈都問流程核心的 layerStagger，跟場上一樣。
+ * 一個圓點畫出來的樣子（px，畫在真的位置）：中心 c、半徑 r、多字膠囊直的那段一半長 h、標記的字高 font、
+ * covered（被不同層蓋到：在所有圓點上面畫一圈虛線）。
+ * level 1 是地上，2 黃框，3 橘框，在空中的底色半透明。虛線圈問流程核心的 markCovered，跟場上一樣。
  */
-export type VideoDot = StaggeredDot;
+export type VideoDot = CoveredDot;
 
 /** 照順序畫：boxes 先畫，texts 畫在上面。 */
 export interface FrameLayout {
@@ -155,13 +155,13 @@ export function overflowEights(flow: Flow, measure: Measure): string[] {
 
 /**
  * 標記畫出來會超出影片左右邊的隊員（名字，照名單），給輸出前的對話框列出來。
- * 每一格都看（走位、錯開都算），寬度取膠囊和標記的字（照畫的字級、粗細量）比較寬的那個。圓點不移位，跟場上一樣。
+ * 每一格都看（走位也算），寬度取膠囊和標記的字（照畫的字級、粗細量）比較寬的那個。圓點不移位，跟場上一樣。
  */
 export function markerOverflowMembers(flow: Flow, measure: Measure): string[] {
 	const frameAt = videoFrames(flow);
 	const frames = Math.round(videoDurationSec(flow) * VIDEO_FPS);
 	const out = new Set<string>();
-	// 標記的字級只有幾種（縮小的倍數）：同一個標記、同一個字級只量一次
+	// 標記的字級只有幾種：同一個標記、同一個字級只量一次
 	const widths = new Map<string, number>();
 	const width = (text: string, px: number) => {
 		const key = `${px} ${text}`;
@@ -241,7 +241,7 @@ function layoutField(field: FieldConfig, frame: VideoFrameData): VideoFieldLayou
 	// 圓點照手機檢視畫面的做法放大到有最小尺寸，站得近的人會疊到，可以接受
 	const dotPx = Math.max(2 * DOT_R * pxPerM, MIN_DOT_PX);
 	const markerPx = dotPx / 2;
-	// 1 公尺的圓點在影片上幾 px：錯開的距離、膠囊的留白都照它
+	// 1 公尺的圓點在影片上幾 px：膠囊的留白、線寬都照它
 	const unit = dotPx / (2 * DOT_R);
 	const plain = frame.order
 		.map((id) => {
@@ -253,9 +253,7 @@ function layoutField(field: FieldConfig, frame: VideoFrameData): VideoFieldLayou
 		})
 		// 後畫的蓋在上面：層高的排後面（同一層照原本的順序）
 		.toSorted((a, b) => a.level - b.level);
-	// 縮小後標記的字還是要至少 MIN_TEXT_PX：不夠大就少縮一點
-	const { drawn } = layerStagger(plain, unit, (font) => MIN_TEXT_PX / font);
-	return { box, pxPerM, dotPx, markerPx, numberPx: Math.max(NUMBER_M * pxPerM, MIN_TEXT_PX), dotUnit: unit, dots: drawn };
+	return { box, pxPerM, dotPx, markerPx, numberPx: Math.max(NUMBER_M * pxPerM, MIN_TEXT_PX), dotUnit: unit, dots: markCovered(plain) };
 }
 
 /** 放不下時拿掉多少：從最下面縮幾個還在做的動作、拿掉幾個備註、留前面幾個動作。 */

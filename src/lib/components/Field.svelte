@@ -25,7 +25,7 @@
 		fieldPositionText,
 		frontLabelAt,
 		fullView,
-		layerStagger,
+		markCovered,
 		moveMembers,
 		positionsAt,
 		snapGroup,
@@ -281,30 +281,23 @@
 			// SVG 後畫的蓋在上面：層高的排後面。
 			.sort((a, b) => a.level - b.level)
 	);
-	/** 每個圓點沒錯開時的樣子（場地公尺）：多字的膠囊有直的一段。 */
-	const plain = $derived(
-		dots.map((d) => ({
-			id: d.m.id,
-			level: d.level,
-			at: d.p,
-			c: d.p,
-			r: DOT_R * dotScale,
-			h: Math.max(0, pillWidth(d.mark) / 2 - DOT_R) * dotScale,
-			font: (isLongMarker(d.mark) ? longFont : DOT_FONT) * dotScale
-		}))
-	);
 	/**
-	 * 跟下面一層的人疊在同一點的往右上錯開、縮小，被不同層蓋到的人畫虛線圈：公式在流程核心（流程影片也用）。
-	 * 只是站在隔壁（圓點碰到邊）的不錯開：錯開了看起來像疊在一起。
-	 * 縮小後字還是要至少 MIN_TEXT_PX：螢幕上不夠大就少縮一點（只錯開）。
-	 * drawn 是畫出來的樣子：框選、手指按到、虛線圈都照這個。
+	 * 被不同層蓋到的人畫虛線圈：公式在流程核心（流程影片也用）。圓點都畫在真的位置、原本大小（走位時不會跳），
+	 * 在空中的人底色半透明（.dot.raised）。只是站在隔壁（圓點碰到邊）的不算被蓋到。多字的膠囊有直的一段。
 	 */
-	const stagger = $derived(
-		layerStagger(plain, dotScale, (font) => (crop || !pxPerMeter ? 0 : MIN_TEXT_PX / (font * pxPerMeter)))
+	const covered = $derived(
+		markCovered(
+			dots.map((d) => ({
+				id: d.m.id,
+				level: d.level,
+				at: d.p,
+				c: d.p,
+				r: DOT_R * dotScale,
+				h: Math.max(0, pillWidth(d.mark) / 2 - DOT_R) * dotScale,
+				font: (isLongMarker(d.mark) ? longFont : DOT_FONT) * dotScale
+			}))
+		).filter((a) => a.covered)
 	);
-	const shifts = $derived(stagger.shifts);
-	const drawnAt = $derived(Object.fromEntries(stagger.drawn.map((a) => [a.id, a.c])));
-	const covered = $derived(stagger.drawn.filter((a) => a.covered));
 	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
 	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
@@ -582,7 +575,7 @@
 		let best: string | null = null;
 		let bestD = FINGER_PX * Math.abs(x1 - x);
 		for (const m of members) {
-			const p = drawnAt[m.id] ?? positions[m.id];
+			const p = positions[m.id];
 			const d = p ? Math.hypot(p[0] - x, p[1] - y) : Infinity;
 			if (d <= bestD) [best, bestD] = [m.id, d];
 		}
@@ -696,7 +689,7 @@
 		const within = (v: number, p: number, q: number) => v >= Math.min(p, q) && v <= Math.max(p, q);
 		return members
 			.filter((m) => {
-				const p = drawnAt[m.id] ?? positions[m.id];
+				const p = positions[m.id];
 				const hit = p && within(p[0], a[0], b[0]) && within(p[1], a[1], b[1]);
 				return hit || (shift && selected.includes(m.id));
 			})
@@ -842,7 +835,6 @@
 		{/each}
 		{#each dots as { m, mark, p, level, sel } (m.id)}
 			{@const pill = pillWidth(mark)}
-			{@const sh = shifts[m.id]}
 			<g
 				class="dot"
 				class:raised={level >= 2}
@@ -861,7 +853,7 @@
 				transform="translate({p[0]},{p[1]})"
 			>
 				<title>{session ? whereText(m, p) : m.name}</title>
-				<g transform="scale({dotScale}){sh ? ` translate(${sh.offset},${-sh.offset}) scale(${sh.scale})` : ''}">
+				<g transform="scale({dotScale})">
 					{#if pill}
 						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
@@ -1155,6 +1147,10 @@
 	.dot.raised :is(circle, rect) {
 		stroke: #ffd400;
 		stroke-width: 0.08;
+	}
+	/* 在空中的人底色半透明：疊在下面的人透得出來，圓點不用錯開（走位時不會跳）。框、字還是實的。跟 RAISED_FILL_OPACITY 一樣。 */
+	.dot.raised > g > :is(circle, rect):not(.ring):not(.focus-ring) {
+		fill-opacity: 0.6;
 	}
 	/* 三層：橘框，跟第 2 層的黃框分得出來 */
 	.dot.lv3 > g > :is(circle, rect):not(.ring):not(.focus-ring) {

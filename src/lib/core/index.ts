@@ -271,8 +271,8 @@ export type {
 	Strip
 } from './field';
 
-export { layerStagger } from './layer-stagger';
-export type { LayerDot, LayerShift, StaggeredDot } from './layer-stagger';
+export { markCovered, RAISED_FILL_OPACITY } from './layer-cover';
+export type { LayerDot, CoveredDot } from './layer-cover';
 
 export { clashes } from './clash';
 export type { Clash } from './clash';
