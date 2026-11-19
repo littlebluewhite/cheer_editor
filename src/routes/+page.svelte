@@ -782,6 +782,7 @@
 						type="file"
 						accept=".zip"
 						aria-label="開啟流程檔"
+						aria-hidden="true"
 						tabindex="-1"
 						onclick={pickOpen}
 						onchange={open}
@@ -1760,21 +1761,24 @@
 			min-height: 32px;
 		}
 	}
-	.more-pop {
+	.more-pop,
+	.menu-pop {
 		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、顏色；跟上方列一樣深底 */
 		position: fixed;
 		inset: auto;
 		margin: 0;
 		display: grid;
-		gap: 6px;
 		width: max-content;
-		max-width: min(280px, 80vw);
-		padding: 10px 12px;
 		border: 1px solid #36425f;
 		border-radius: 8px;
 		background: var(--ink);
-		color: #c9d2e6;
 		box-shadow: var(--shadow-pop);
+	}
+	.more-pop {
+		gap: 6px;
+		max-width: min(280px, 80vw);
+		padding: 10px 12px;
+		color: #c9d2e6;
 	}
 	/* 上方列最左邊的「選單」：跟旁邊的按鈕一樣透明底，開著時看得出是按下的 */
 	.menu {
@@ -1795,21 +1799,12 @@
 		background: #24304c;
 		color: #fff;
 	}
-	/* 選單的小窗：跟「⋯」小窗一樣的深底；一項一行（圖示＋字），組和組中間一條線 */
+	/* 選單的小窗：跟「⋯」小窗同一個樣子；一項一行（圖示＋字），組和組中間一條線 */
 	.menu-pop {
-		position: fixed;
-		inset: auto;
-		margin: 0;
-		display: grid;
 		gap: 2px;
-		width: max-content;
 		min-width: 168px;
 		padding: 6px;
-		border: 1px solid #36425f;
-		border-radius: 8px;
-		background: var(--ink);
 		color: #d6ddec;
-		box-shadow: var(--shadow-pop);
 	}
 	.menu-pop button,
 	.menu-pop a {
