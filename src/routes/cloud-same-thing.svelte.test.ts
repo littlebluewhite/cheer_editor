@@ -372,6 +372,37 @@ describe('改到同一個東西', () => {
 		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 
+	it('redo after only the mover is left still moves it：王教練刪了第一個，我把第二個調到最後，王教練加回第一個、刪第三個，我復原，王教練刪第四個，我重做，還是排在後面', async () => {
+		const s = await bothOpen();
+		const [x, a, b, c] = s.page.session.flow!.members.map((m) => m.id);
+		const withX = structuredClone(s.state.flows[0].flow);
+		s.w.step({ name: 'deleteMember', args: [x, { confirmed: true }] });
+		await flush();
+		const withoutX = structuredClone(s.state.flows[0].flow);
+		s.page.session.ask.send({ name: 'moveMember', args: [a, 2] });
+		await flush();
+		// 王教練的畫面算的順序（跟 travelled 一樣）：加回來的放最前面，其他照現在的
+		const undo = undoChanges(withX, withoutX).undo;
+		const now = s.state.flows[0].flow.members.map((m) => m.id);
+		const change = { ...undo, orders: { ...undo.orders, members: [x, ...now] } };
+		s.w.room.send({ kind: 'undo', stepId: 'wang-undo', seen: s.state.flows[0].step ?? 0, of: 'step-wang@example.com-1', redo: false, change });
+		await flush();
+		s.w.step({ name: 'deleteMember', args: [b, { confirmed: true }] });
+		await flush();
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual([x, c, a]);
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual([a, x, c]);
+		s.w.step({ name: 'deleteMember', args: [c, { confirmed: true }] });
+		await flush();
+
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual([x, a]);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
 	it('undo of an add leaves a roster move alone：我加隊員，王教練把第二個調到最前面，我復原只拿掉我加的', async () => {
 		const s = await bothOpen();
 		s.page.session.ask.send(add('小華'));
