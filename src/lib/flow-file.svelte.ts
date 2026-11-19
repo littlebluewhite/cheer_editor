@@ -36,6 +36,8 @@ import type { TabChannel } from '#lib/tab-channel.js';
 /** 傳上雲端傳好的提示。 */
 export const UPLOADED = '傳上雲端了：現在開的是雲端那支，可以分享了。這台的草稿丟掉了，資料夾裡的流程檔沒動。';
 const UPLOAD_UNREACHABLE = '連不上伺服器，沒傳上雲端';
+/** 傳上雲端的時候這個分頁又改了流程（或換了流程）：雲端那支是按下去時的樣子，不換掉開著的、不丟草稿。 */
+const UPLOAD_CHANGED = '傳上雲端了，但傳的時候流程又改了：這台的草稿留著，雲端那支沒有剛剛的修改（回首頁從「我的流程」打開）';
 /** 被收回回首頁時，黃條說的。 */
 const revokedText = (name: string) => `你已經不能打開「${name}」。`;
 /** 流程被擁有者刪了回首頁時，黃條說的（#252）。 */
@@ -330,8 +332,9 @@ export class FlowFile {
 	 * 打開一支雲端流程：從伺服器拿編排，連它的房間，每一步送伺服器存；沒有草稿。
 	 * 打開了就在這台留一份離線副本（#261，含音樂），只留最近打開的 5 支。連不上伺服器、這台有離線副本：打開那份
 	 * （斷線的樣子：只能看、能記），連上了就換成最新的（refresh：換的時候不關練習畫面、對話框）。
+	 * still：拿完了要換上之前再問一次還要不要（傳上雲端時又改了就不換）。
 	 */
-	async openCloud(id: string, refresh = false) {
+	async openCloud(id: string, refresh = false, still = () => true) {
 		const { server, offline: store } = this.#editor.adapters;
 		let found: CloudFlow | null;
 		let copy: OfflineCopy | null = null;
@@ -356,6 +359,7 @@ export class FlowFile {
 		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
 		const audio = copy ? await store.copyAudio(id) : await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId));
 		const music = await this.#editor.readMusic(audio);
+		if (!still()) return;
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music, null, !refresh);
 		this.#cloudId = id;
@@ -594,12 +598,14 @@ export class FlowFile {
 	 * 本機流程「☁ 傳上雲端」（#259，登入時）：搬過去。有音樂檔超過 60 MB 先擋（跳框，tooBig）；
 	 * 送流程（帶紀錄），伺服器檢查整支流程、建一支新的雲端流程，再把音樂檔一個一個傳上去。
 	 * 傳好打開雲端那支、丟掉這台的草稿（資料夾裡的流程檔不動）。音樂沒傳上去就把建好的那支刪掉，還是本機流程。
+	 * 傳的時候又改了、換了流程：雲端那支留著，開著的不換、草稿不丟，說一聲（UPLOAD_CHANGED）。
 	 */
 	async upload() {
 		const { session, adapters, music } = this.#editor;
 		if (!session.flow || this.#cloudId || this.#uploading) return;
 		adapters.pendingInput.flush();
 		const flow = session.flow;
+		const draftId = this.#draftId;
 		const audio = music.bytes(flow);
 		const big = flow.audio.find((a) => (audio[a.id]?.length ?? 0) > MAX_CLOUD_AUDIO_BYTES);
 		if (big) return void (this.#tooBig = tooBig(flow, big.id, audio[big.id].length));
@@ -627,10 +633,12 @@ export class FlowFile {
 		} finally {
 			this.#uploading = false;
 		}
-		const draftId = this.#draftId;
-		await this.openCloud(id);
+		adapters.pendingInput.flush();
+		const unchanged = () => this.#editor.session.flow === flow && this.#draftId === draftId;
+		if (!unchanged()) return void (session.notice = UPLOAD_CHANGED);
+		await this.openCloud(id, false, unchanged);
 		if (this.#cloudId !== id) {
-			session.notice = '傳上雲端了，但打不開雲端那支：回首頁從「我的流程」打開';
+			session.notice = unchanged() ? '傳上雲端了，但打不開雲端那支：回首頁從「我的流程」打開' : UPLOAD_CHANGED;
 			return;
 		}
 		this.#clearDraft(draftId);
@@ -648,6 +656,7 @@ export class FlowFile {
 
 	/**
 	 * 雲端流程「⤓ 下載」（#259，擁有者、編輯者）：跟伺服器拿流程和紀錄，加上手上的音樂，包成流程檔存下來（每次一個新檔）。
+	 * 手上沒有的音樂檔（別人換的）跟雲端拿；雲端上沒有的不放，拿不到（連不上）就不存。
 	 * 帶紀錄、不帶記的人；擁有者、權限、分享連結本來就不在流程裡。下載的那份跟雲端流程不再有關係。
 	 */
 	async download() {
@@ -663,10 +672,20 @@ export class FlowFile {
 		if (!found) return void (session.notice = '連不上伺服器，沒下載');
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
 		const flow = putRecords(found.flow as Flow, records);
+		const audio = { ...music.bytes(flow) };
+		try {
+			for (const a of flow.audio) {
+				if (audio[a.id]) continue;
+				const bytes = await adapters.server.audioBytes(id, a.id);
+				if (bytes) audio[a.id] = bytes;
+			}
+		} catch {
+			return void (session.notice = '連不上伺服器，沒下載');
+		}
 		const fileName = flowFileName(flow.name);
 		const saver = adapters.createSaver();
 		try {
-			const outcome = await saver.save(writeFlowFile(flow, music.bytes(flow)), fileName);
+			const outcome = await saver.save(writeFlowFile(flow, audio), fileName);
 			if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
 		} catch {
 			session.notice = '下載失敗，請再試一次';

@@ -187,6 +187,22 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect((s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt)).toEqual(kept.map((r) => r.attempt));
 		expect(takeRecords(s.page.session.flow!).records).toEqual(kept);
 	});
+
+	it('rejected delete keeps saved attempts：刪動作被退回，動作回來，它的紀錄也回來', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' }), wangs('t2', { p1: '✓' })]);
+		const kept = takeRecords(s.page.session.flow!).records;
+		s.state.holdRoom = true;
+		s.w.step({ name: 'updateAction', args: ['x1', { note: '注意手' }] });
+		s.page.session.ask.send({ name: 'deleteAction', args: ['x1'], options: { confirmed: true } });
+		await flush();
+		expect(takeRecords(s.page.session.flow!).records).toEqual([]);
+
+		s.releaseRoom();
+		await flush();
+		expect(status()).toBe('王教練剛改了同一個地方，你的「刪動作 技巧·Lib」沒改成');
+		expect(s.page.session.flow!.actions[0].note).toBe('注意手');
+		expect(takeRecords(s.page.session.flow!).records).toEqual(kept);
+	});
 });
 
 describe('方向鍵連按', () => {

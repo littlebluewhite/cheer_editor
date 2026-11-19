@@ -207,10 +207,11 @@ export class EditorSession {
 	/** 多選開著：場上點人、框選、點泳道名字、點動作表單裡的名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
 	/**
-	 * 雲端流程：改好的一步交給它送伺服器（#248），帶這一步改了什麼（changeLabel，被退回時的提示用，#254）。
+	 * 雲端流程：改好的一步交給它送伺服器（#248），帶這一步改了什麼（changeLabel，被退回時的提示用，#254）
+	 * 和改之前、改之後的流程（被退回時把這一步清掉的紀錄帶回來）。
 	 * 復原、重做也交給它（#256）。接著它時不算未存，復原紀錄存改到的東西。本機流程是 null。
 	 */
-	onstep: ((step: CloudStep, label: string) => void) | null = null;
+	onstep: ((step: CloudStep, label: string, before: Flow, after: Flow) => void) | null = null;
 	/** 不能改的原因（例：有新版，請重新整理）：有的話改流程的指令都擋下說這句，比檢視模式優先。空字串是沒有。 */
 	readOnly = $state('');
 	/**
@@ -403,7 +404,7 @@ export class EditorSession {
 		if (this.onstep) {
 			// 雲端流程：送伺服器（存好了由它說）；復原紀錄存改到的東西（#256），合成一步的照第一步之前到現在
 			const said = label ?? changeLabel(before, flow);
-			if (step) this.onstep(step, said);
+			if (step) this.onstep(step, said, before, flow);
 			this.#saved = flow;
 			const changes = undoChanges(before, flow);
 			if (step && last && 'ids' in last) undoStep = { label: said, ids: [...last.ids, step.id], changes: joinUndo(last.changes, changes) };
@@ -578,7 +579,7 @@ export class EditorSession {
 			back = { label: step.label, ids: [id], changes: step.changes };
 			this.#flow = undone(before, change);
 			this.#saved = this.#flow;
-			this.onstep?.({ id, undo: { of: step.ids[0], redo, change } }, step.label);
+			this.onstep?.({ id, undo: { of: step.ids[0], redo, change } }, step.label, before, this.#flow);
 		}
 		const to = [...(redo ? this.#undo : this.#redo), back];
 		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];

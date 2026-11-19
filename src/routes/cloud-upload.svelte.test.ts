@@ -4,8 +4,9 @@
 // 伺服器換成測試共用的假伺服器（fakeServer）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadSegmentAudio, putRecords, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { loadSegmentAudio, putRecords, readFlowFile, renameFlow, writeFlowFile, type Flow } from '#lib/core';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
+import { ServerUnreachable } from '#lib/server-api.js';
 import { editorPage, fakeDraftStore, fakeServer, flush, fromMenu, menuItem, openFile, recordedFlow, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -127,6 +128,55 @@ describe('傳上雲端', () => {
 		expect(s.page.editor.file.cloudId).toBeNull();
 		expect(s.drafts.all.size).toBe(1);
 	});
+
+	/** 按「傳上雲端」，音樂檔傳到一半停著：回傳讓它傳完的。 */
+	async function uploadHeld(s: Awaited<ReturnType<typeof openLocal>>) {
+		let go = () => {};
+		const gate = new Promise<void>((r) => (go = r));
+		const uploadAudio = s.server.uploadAudio;
+		s.server.uploadAudio = async (...args) => {
+			await gate;
+			return uploadAudio(...args);
+		};
+		await fireEvent.click(screen.getByRole('button', { name: /傳上雲端/ }));
+		await flush();
+		return async () => {
+			go();
+			await flush();
+			await flush();
+		};
+	}
+
+	const CHANGED = '傳上雲端了，但傳的時候流程又改了：這台的草稿留著，雲端那支沒有剛剛的修改（回首頁從「我的流程」打開）';
+
+	it('upload keeps edits made during upload：傳音樂的時候改了，還是本機流程、改的留著，草稿沒丟', async () => {
+		const s = await openLocal(new Uint8Array([7, 2, 3]));
+		const done = await uploadHeld(s);
+		s.page.session.ask.send({ name: 'renameFlow', args: ['全國賽'] });
+		await flush();
+		await done();
+
+		expect(s.state.flows).toHaveLength(1);
+		expect(s.page.editor.file.cloudId).toBeNull();
+		expect(s.page.session.flow!.name).toBe('全國賽');
+		expect(s.drafts.all.size).toBe(1);
+		expect(screen.getByRole('status').textContent).toBe(CHANGED);
+	});
+
+	it('upload keeps a draft opened during upload：傳音樂的時候開了別的檔，開著的不換掉、它的草稿不清', async () => {
+		const s = await openLocal(new Uint8Array([7, 2, 3]));
+		const done = await uploadHeld(s);
+		const other = flowOf(renameFlow(localFlow(), '區賽'));
+		await openFile(writeFlowFile(other, { a1: new Uint8Array([7, 2, 3]) }));
+		await flush();
+		const drafts = [...s.drafts.all.keys()];
+		await done();
+
+		expect(s.page.editor.file.cloudId).toBeNull();
+		expect(s.page.session.flow!.name).toBe('區賽');
+		expect([...s.drafts.all.keys()]).toEqual(drafts);
+		expect(screen.getByRole('status').textContent).toBe(CHANGED);
+	});
 });
 
 /** 王教練的「練習用」（recordedFlow 加音樂；紀錄王教練記 2 次、從流程檔來的 1 次），林教練的權限是 role，開著分享連結。 */
@@ -194,5 +244,41 @@ describe('下載成流程檔', () => {
 		await openCloud(wangsFlow('owner'));
 		expect(screen.getByRole('button', { name: /回首頁/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /下載/ })).toBeNull();
+	});
+
+	/** 王教練（在別的地方）把音樂 1 換成新的音樂檔：伺服器上的流程和音樂檔都換了，這個分頁沒拿過。 */
+	function replaceTrack(s: Awaited<ReturnType<typeof openCloud>>, bytes: Uint8Array) {
+		const f = s.state.flows[0];
+		const r = loadSegmentAudio(f.flow, 's1', '新歌.mp3');
+		if (r.kind !== 'ok') throw new Error(r.kind);
+		f.flow = r.flow;
+		f.audio = { ...f.audio, [r.audioId]: bytes };
+		return r.audioId;
+	}
+
+	it('export fetches a track not cached here：別人換了音樂，下載的流程檔帶著新的音樂檔', async () => {
+		const s = await openCloud(wangsFlow('owner'));
+		const id = replaceTrack(s, new Uint8Array([9, 9, 9]));
+		await fromMenu('下載成流程檔');
+		await flush();
+
+		expect(s.page.saves).toHaveLength(1);
+		const read = readFlowFile(s.page.saves[0]);
+		expect(read.kind).toBe('ok');
+		if (read.kind !== 'ok') return;
+		expect(read.audio[id]).toEqual(new Uint8Array([9, 9, 9]));
+	});
+
+	it('export fails when a track not cached here is unreachable：拿不到別人換的音樂，不存、說原因', async () => {
+		const s = await openCloud(wangsFlow('owner'));
+		replaceTrack(s, new Uint8Array([9, 9, 9]));
+		s.server.audioBytes = async () => {
+			throw new ServerUnreachable();
+		};
+		await fromMenu('下載成流程檔');
+		await flush();
+
+		expect(s.page.saves).toHaveLength(0);
+		expect(screen.getByRole('status').textContent).toBe('連不上伺服器，沒下載');
 	});
 });
