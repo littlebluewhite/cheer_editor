@@ -2,13 +2,13 @@
 
 ## 部署（Fly.io）
 
-網站在 `https://littlebluewhite.com`：一台 Rust 伺服器同時送前端和 API，同一個網址（ADR 0009）。
+網站在 `https://littlebluewhite.com`：一台 Rust 伺服器同時送前端和 API，同一個網址（ADR 0012）。
 Fly app `littlebluewhite`，新加坡 `sin`，一台 shared-cpu-1x 512 MB，一直開著（#188、#194）。
 
 推上 `main` 後，`.github/workflows/fly-deploy.yml` 會：
 
 1. 跑前端測試和型別檢查（`npm test`、`npm run check`），和 Rust 伺服器的測試（`cargo test`）。任何一個沒過就停，不部署。
-2. 全過才 `flyctl deploy --ha=false`（只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0012）：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
+2. 全過才 `flyctl deploy --ha=false`（只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0015）：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
 3. `fly.toml` 的 `release_command` 在一台臨時機器上跑 `/app/cheer-server migrate`（資料表遷移）。**沒跑成就不部署**，舊版照常接流量。
 4. `bluegreen`：在旁邊開一台新的，`/health` 過了才切過去，不停機。切的時候 WebSocket 會斷，前端自己重連。
 
@@ -84,7 +84,7 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
    service worker 換版要重新整理一兩次。
 4. 馬上（推別的上 `main` 之前）拿掉 `.github/workflows/deploy.yml`，commit 推上 `main`。不拿掉的話，下一次推 `main` 又會建一般版蓋掉舊網址版。
    拿掉那個 workflow 的那次推上去，它不會再跑；舊網址就凍在步驟 2 那份。
-5. 大家搬好後，網站主人再關舊網址：Settings → Pages 停掉（ADR 0009）。
+5. 大家搬好後，網站主人再關舊網址：Settings → Pages 停掉（ADR 0012）。
 
 ## 金鑰
 
@@ -124,7 +124,7 @@ fly secrets import   # 貼上 名字=值，一行一個，按 Ctrl+D
 
 ## 倒回
 
-只有網站主人做。倒回時間之後改的、記的都沒了，第一版不補回。手機上還沒傳的紀錄照樣傳上來（id 由手機發、不會撞，ADR 0008）。
+只有網站主人做。倒回時間之後改的、記的都沒了，第一版不補回。手機上還沒傳的紀錄照樣傳上來（id 由手機發、不會撞，ADR 0011）。
 開著的頁面要重新整理。伺服器的指紋還沒加「倒回第幾次」（#194 寫的「有新版，請重新整理」提示），所以倒回資料庫後，請大家自己重新整理。
 
 ### 程式
@@ -192,7 +192,7 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
 
 ## 本機跑伺服器
 
-`server/` 是 Rust 伺服器（axum）。前端建好的檔案和 API 由它在同一個網址送出（ADR 0009）。
+`server/` 是 Rust 伺服器（axum）。前端建好的檔案和 API 由它在同一個網址送出（ADR 0012）。
 新網址底下沒有子路徑，所以建前端時**不要**設 `BASE_PATH`。
 
 要先裝 Rust（`rustup`）、Node（在專案根目錄 `npm ci`）和一個 PostgreSQL。本機開發**不碰正式的資料**：
@@ -210,7 +210,7 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 
 - 啟動時會先跑 `server/migrations/` 的資料庫遷移（正式機在部署前就跑過了，啟動時沒事做）。只跑遷移就結束：`cargo run -- migrate`。新的遷移加新檔，已經上線的不要改（上面「一次部署只加不刪」）。
 - 要在本機試正式機的映像檔（不會部署）：`docker build -t cheer-server .`，再 `docker run --rm -p 8080:8080 -e DATABASE_URL=… cheer-server`。
-- 伺服器用 QuickJS 跑流程核心（ADR 0010）：`cargo build` 時 `server/build.rs` 叫 `node scripts/core-bundle.mjs` 把 `src/lib/core/` 打包成一個 JS 檔、算指紋，編進程式。前端建置用同一支算指紋，兩邊一樣。所以 `cargo` 之前要先 `npm ci`；`cargo test` 也會叫 `node` 比對 QuickJS 和 Node 跑出來的結果。
+- 伺服器用 QuickJS 跑流程核心（ADR 0013）：`cargo build` 時 `server/build.rs` 叫 `node scripts/core-bundle.mjs` 把 `src/lib/core/` 打包成一個 JS 檔、算指紋，編進程式。前端建置用同一支算指紋，兩邊一樣。所以 `cargo` 之前要先 `npm ci`；`cargo test` 也會叫 `node` 比對 QuickJS 和 Node 跑出來的結果。
 - `/health` 是健康檢查，不碰資料庫（Neon 免費版沒人用時才睡得著）。
 - 前端每頁建成 `<名字>.html`，所以 `/guide` 重新整理也打得開。其他找不到的路徑回 `200.html`（adapter 的 `fallback`），讓前端自己處理路由。
 - log 只記請求的方法和路徑，不記查詢字串、標頭、內容。之後寫 log 也一樣：不記密碼、token、cookie、信的內容、流程內容；人用使用者 id，不寫 email。

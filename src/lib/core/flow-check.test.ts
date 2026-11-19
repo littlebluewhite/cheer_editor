@@ -1,4 +1,4 @@
-// 整份流程檢查（ADR 0011）：每一條規則不合時回對的原因；「讓它留著」的規則只擋這一步新出現的毛病。
+// 整份流程檢查（ADR 0014）：每一條規則不合時回對的原因；「讓它留著」的規則只擋這一步新出現的毛病。
 import { describe, expect, it } from 'vitest';
 import {
 	addMembers,

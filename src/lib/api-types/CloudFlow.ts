@@ -19,6 +19,6 @@ step: number, updatedAt: string,
  */
 role: Role, 
 /**
- * 成功率紀錄（跟編排分開存，ADR 0008），照收到的先後；別人記的帶名字。
+ * 成功率紀錄（跟編排分開存，ADR 0011），照收到的先後；別人記的帶名字。
  */
 records: Array<CloudRecord>, };

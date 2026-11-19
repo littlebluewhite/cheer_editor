@@ -1,4 +1,4 @@
-// 伺服器用 QuickJS 跑流程核心：同一串指令，結果跟 Node 跑的逐位元組一樣（ADR 0010）。
+// 伺服器用 QuickJS 跑流程核心：同一串指令，結果跟 Node 跑的逐位元組一樣（ADR 0013）。
 // Node 那邊跑的是同一包（cheer_server::flow_core::CODE），所以跑這些測試要裝 node。
 
 use std::collections::HashMap;

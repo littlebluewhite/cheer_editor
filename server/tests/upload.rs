@@ -214,7 +214,7 @@ async fn uploaded_records_are_kept_apart_without_a_recorder(db: sqlx::PgPool) {
     let (_, made) = s.upload(&lin, doc(&flow)).await;
     let id = made["id"].as_str().unwrap();
 
-    // 編排裡沒有紀錄（ADR 0008）；紀錄分開拿，不是誰記的（沒有名字、不是自己記的）。
+    // 編排裡沒有紀錄（ADR 0011）；紀錄分開拿，不是誰記的（沒有名字、不是自己記的）。
     let (_, got) = s
         .send("GET", &format!("/api/flows/{id}"), None, Some(&lin))
         .await;

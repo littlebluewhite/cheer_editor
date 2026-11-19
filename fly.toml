@@ -25,7 +25,7 @@ RUST_LOG = "info"
 [http_service]
 internal_port = 8080
 force_https = true
-# 一直開著（WebSocket，ADR 0007）：不自動停機。
+# 一直開著（WebSocket，ADR 0010）：不自動停機。
 auto_stop_machines = "off"
 auto_start_machines = true
 min_machines_running = 1

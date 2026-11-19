@@ -17,7 +17,7 @@ import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import SegmentSettings from './SegmentSettings.svelte';
 
-// 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
+// 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0014）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
 // 所以不算步驟 id：新東西照舊發下一個編號。亂數的 id 在核心測試（commands、flow-file）和 ask-ids.test.ts 測。
 vi.mock('#lib/core/ids.js', async (load) => ({
 	...(await load<typeof import('#lib/core/ids.js')>()),

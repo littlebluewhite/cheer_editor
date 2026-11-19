@@ -1,4 +1,4 @@
-// 問教練送的每一步帶一個亂數的步驟 id：新東西的 id 由它算出來（ADR 0011）。要問、回答後再送還是同一步、同一個步驟 id。
+// 問教練送的每一步帶一個亂數的步驟 id：新東西的 id 由它算出來（ADR 0014）。要問、回答後再送還是同一步、同一個步驟 id。
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { recordAttempt, runCommands, type Command, type Flow } from '#lib/core';

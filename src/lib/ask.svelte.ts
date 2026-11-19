@@ -197,7 +197,7 @@ export class Ask {
 	}
 }
 
-/** 一步的步驟 id：12 個字的亂數（小寫字母、數字）。一步裡新東西的 id 由它算出來（ADR 0011）。 */
+/** 一步的步驟 id：12 個字的亂數（小寫字母、數字）。一步裡新東西的 id 由它算出來（ADR 0014）。 */
 export function newStepId(): string {
 	return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
 }

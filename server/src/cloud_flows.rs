@@ -70,7 +70,7 @@ pub struct CloudFlow {
     pub updated_at: String,
     /// 我的權限（記錄者、檢視者打開一律是檢視模式）。
     pub role: Role,
-    /// 成功率紀錄（跟編排分開存，ADR 0008），照收到的先後；別人記的帶名字。
+    /// 成功率紀錄（跟編排分開存，ADR 0011），照收到的先後；別人記的帶名字。
     pub records: Vec<CloudRecord>,
 }
 
@@ -93,7 +93,7 @@ pub async fn create(
     };
     let id = random_id(FLOW_ID_LEN)?;
     let commands = format!(r#"[{{"name":"createFlow","args":[{}]}}]"#, input.get());
-    // 建這支流程的那一步：步驟 id 用這支流程的 id（亂數），新東西的 id 由它算出來（ADR 0011）。
+    // 建這支流程的那一步：步驟 id 用這支流程的 id（亂數），新東西的 id 由它算出來（ADR 0014）。
     let Ok(result) = state
         .core
         .run_commands("null".into(), commands, id.clone())
@@ -135,7 +135,7 @@ pub async fn create(
 }
 
 /// 傳上雲端（#259）：收流程檔裡 flow.json 的內容，跑「檢查一整支流程」和「整份流程檢查」（流程核心），
-/// 過了就變成一支新的雲端流程，傳的人是擁有者（同一個檔傳兩次就是兩支）。紀錄拆出來分開存，沒有記的人（ADR 0008）。
+/// 過了就變成一支新的雲端流程，傳的人是擁有者（同一個檔傳兩次就是兩支）。紀錄拆出來分開存，沒有記的人（ADR 0011）。
 /// 音樂檔不經過這裡：建好後前端照放音樂的路（#249）一個一個傳。不收回 422 和原因；建好回 201 和這支的摘要。
 pub async fn upload(
     State(state): State<AppState>,

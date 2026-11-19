@@ -349,7 +349,7 @@ export class FlowFile {
 			this.#openError = '這支流程打不開了';
 			return;
 		}
-		// 紀錄跟編排分開存（ADR 0008）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
+		// 紀錄跟編排分開存（ADR 0011）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
 		const saved = (await store.unsent()).find((u) => u.flowId === id);
 		const fromServer = putRecords(found.flow as Flow, records);

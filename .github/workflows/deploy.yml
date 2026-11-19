@@ -47,7 +47,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
-      # build.rs 用 node 打包流程核心（ADR 0010），測試也用 node 比對結果。
+      # build.rs 用 node 打包流程核心（ADR 0013），測試也用 node 比對結果。
       - uses: actions/setup-node@v7
         with:
           node-version: 26

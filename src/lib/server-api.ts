@@ -1,4 +1,4 @@
-// 連伺服器的 adapter：所有 HTTP 呼叫都經過它（ADR 0009：API 跟網頁同一個網址，cookie 由瀏覽器帶）。
+// 連伺服器的 adapter：所有 HTTP 呼叫都經過它（ADR 0012：API 跟網頁同一個網址，cookie 由瀏覽器帶）。
 // 真的是 httpServer；假的是 #lib/test-fakes.js 的 fakeServer（前端測試不開真的伺服器）。
 // 訊息的型別從 Rust 產生（src/lib/api-types/，見 docs/deploy.md），對不上就編譯不過。
 import type { FlowDocument, NewFlowInput } from '#lib/core';

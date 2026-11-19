@@ -1,4 +1,4 @@
-// 舊網址版（GitHub Pages 上的那份，#267、ADR 0009）：建置時設 OLD_SITE=1 才是（vite.config.ts）。
+// 舊網址版（GitHub Pages 上的那份，#267、ADR 0012）：建置時設 OLD_SITE=1 才是（vite.config.ts）。
 // 不能登入、不碰伺服器；首頁最上面一條黃的搬家提示。
 
 /** 這次建的是舊網址版。 */

@@ -1,4 +1,4 @@
-// 雲端流程的復原、重做（#256，ADR 0011）：不能整份換回去（會蓋掉別人的改動）。復原堆疊存每一步改到的東西
+// 雲端流程的復原、重做（#256，ADR 0014）：不能整份換回去（會蓋掉別人的改動）。復原堆疊存每一步改到的東西
 // 改之前、改之後的樣子（比對前後，diff.ts），復原是送改之前的樣子（重做送改之後的），用 applyRemoteChange 套上去。
 // 伺服器放回去之後跑整份流程檢查（flowProblem），不合就擋下；那些東西後來有沒有被別的分頁改過由伺服器查。
 
@@ -45,7 +45,7 @@ export type UndoOutcome =
 	| { kind: 'blocked'; message: string };
 
 /**
- * 伺服器跑復原、重做：flow 是現在的樣子（不帶紀錄）、records 是分開存的紀錄（ADR 0008）。
+ * 伺服器跑復原、重做：flow 是現在的樣子（不帶紀錄）、records 是分開存的紀錄（ADR 0011）。
  * 套上去之後整份檢查（現在已經有的毛病不算）；合規則回不帶紀錄的流程、跑完還在的紀錄、這一步記下的鍵和要查的鍵。
  */
 export function runUndo(flow: Flow, records: StoredAttempt[], change: RemoteChange): UndoOutcome {

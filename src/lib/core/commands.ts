@@ -1,8 +1,8 @@
-// 指令表：指令名字 → 指令。畫面和伺服器都用「名字＋參數」叫同一個指令（ADR 0010、0011）。
+// 指令表：指令名字 → 指令。畫面和伺服器都用「名字＋參數」叫同一個指令（ADR 0013、0014）。
 // 參數是指令除了流程、教練的回答以外的那些，照順序放成一串；教練的回答（確定、保留／清掉）放在 options。
 // 參數、回答都要能轉成 JSON 再轉回來（送到伺服器）。
 // 一步可以帶好幾個指令（runCommands）：照順序跑，全算或全不算。
-// 一步帶一個步驟 id（亂數，由外面發）：一步裡新東西的 id 由它算出來，同一個步驟 id 跑同一步算出一樣的 id（ADR 0011）。
+// 一步帶一個步驟 id（亂數，由外面發）：一步裡新東西的 id 由它算出來，同一個步驟 id 跑同一步算出一樣的 id（ADR 0014）。
 
 import { inStep } from './ids';
 import { addAction, deleteAction, moveAction, resizeAction, setSquad, updateAction } from './actions';

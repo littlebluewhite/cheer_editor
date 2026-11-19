@@ -1,11 +1,11 @@
-//! 雲端流程的成功率紀錄（#257，ADR 0008）：跟編排分開存，一次一筆（資料表 flow_records、flow_run_throughs）。
+//! 雲端流程的成功率紀錄（#257，ADR 0011）：跟編排分開存，一次一筆（資料表 flow_records、flow_run_throughs）。
 //! 記一次從房間送來（同一條 WebSocket），伺服器照流程核心的「記一次」規則檢查：打在不在的環節上的記號丟掉；
 //! 丟光了、或動作、組、隊員不在了，整筆不存並說原因。同一個 id 重送不會變兩筆。記下誰記的。
 //! 擁有者、編輯者、記錄者能記；檢視者不能（伺服器擋）。收了馬上告訴房間裡別人。
 //! 跑一步時把紀錄放回流程再跑，跑完照結果清掉（留墓碑）、改掉該改的（例：清掉重算、刪掉環節），也告訴房間裡別人。
 //! 改、刪、救回（#258）：記錄者只能動自己記的；擁有者、編輯者能動任何人的（沒有記的人的只有他們能動）。
 //! 同一筆兩個人都改，照收到的先後，後到的贏（不退回）。刪掉的留墓碑：晚到的新增、改都不算，只有「救回」拿得回來。
-//! 一起記全上（#262，ADR 0012）：同一次全上的同一個動作、同一組只算先存的：存、救回都先查，資料庫也擋（遷移 0014）。
+//! 一起記全上（#262，ADR 0015）：同一次全上的同一個動作、同一組只算先存的：存、救回都先查，資料庫也擋（遷移 0014）。
 
 use std::collections::{HashMap, HashSet};
 
@@ -38,7 +38,7 @@ pub struct CloudRecord {
 pub struct DroppedRecord {
     pub id: String,
     pub message: String,
-    /// 同一次全上的同一組別人先存了（#262，ADR 0012）：先記的人的名字。
+    /// 同一次全上的同一組別人先存了（#262，ADR 0015）：先記的人的名字。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub by: Option<String>,
@@ -417,7 +417,7 @@ pub async fn record(
                     by: None,
                 }),
                 Checked::Ok { record } => {
-                    // 同一次全上的同一個動作、同一組只收先存的（ADR 0012）。
+                    // 同一次全上的同一個動作、同一組只收先存的（ADR 0015）。
                     if let Some(by) = recorded_in_run(&mut tx, flow_id, &record, &id).await? {
                         let message = format!("{by}已經記了這次全上的這一組");
                         dropped.push(DroppedRecord {

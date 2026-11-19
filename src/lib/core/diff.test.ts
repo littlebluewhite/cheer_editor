@@ -1,4 +1,4 @@
-// 比對前後：一步改到哪些東西（ADR 0011 的「同一個東西」那張表）。
+// 比對前後：一步改到哪些東西（ADR 0014 的「同一個東西」那張表）。
 import { describe, expect, it } from 'vitest';
 import {
 	addCustomRole,

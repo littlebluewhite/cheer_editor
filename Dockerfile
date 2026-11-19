@@ -1,4 +1,4 @@
-# 正式機的映像檔（fly.toml、docs/deploy.md）：建好前端，放進 Rust 伺服器的映像檔，同一個網址送出（ADR 0009）。
+# 正式機的映像檔（fly.toml、docs/deploy.md）：建好前端，放進 Rust 伺服器的映像檔，同一個網址送出（ADR 0012）。
 
 # 前端：網址底下沒有子路徑，不設 BASE_PATH。
 FROM node:26-trixie-slim AS frontend
@@ -8,7 +8,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# 伺服器：build.rs 用 node 打包流程核心、算指紋（ADR 0010），所以要 node 和上面裝好的 node_modules；
+# 伺服器：build.rs 用 node 打包流程核心、算指紋（ADR 0013），所以要 node 和上面裝好的 node_modules；
 # 跟前端用同一份，兩邊的指紋才一樣。
 FROM rust:1.98-trixie AS server
 COPY --from=frontend /usr/local/bin/node /usr/local/bin/node

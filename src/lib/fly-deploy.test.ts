@@ -49,7 +49,7 @@ describe('部署到 Fly 的 workflow', () => {
 		const deploy = job('deploy');
 		expect(deploy).toContain('needs: [frontend, server]');
 		expect(deploy).toContain("if: github.ref == 'refs/heads/main'");
-		// 只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體（ADR 0012）。flyctl 預設會開兩台。
+		// 只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體（ADR 0015）。flyctl 預設會開兩台。
 		expect(deploy).toContain('flyctl deploy --remote-only --ha=false');
 	});
 
@@ -99,7 +99,7 @@ describe('fly.toml', () => {
 });
 
 describe('Dockerfile', () => {
-	it('前端建在網址根目錄，不設 BASE_PATH（ADR 0009）', () => {
+	it('前端建在網址根目錄，不設 BASE_PATH（ADR 0012）', () => {
 		expect(dockerfile).not.toContain('BASE_PATH');
 		expect(dockerfile).toContain('npm run build');
 	});

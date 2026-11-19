@@ -1,4 +1,4 @@
-// 把流程核心打包成一個 JS 檔，給伺服器的 QuickJS 跑（ADR 0010），並算出這包的指紋。
+// 把流程核心打包成一個 JS 檔，給伺服器的 QuickJS 跑（ADR 0013），並算出這包的指紋。
 // 前端（vite.config.ts）和伺服器（server/build.rs）都用這支算指紋，連上時比對；不用人改版本號。
 //
 //   node scripts/core-bundle.mjs <輸出資料夾>

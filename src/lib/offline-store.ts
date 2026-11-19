@@ -1,4 +1,4 @@
-// 離線存放的 adapter（#260，ADR 0008）：雲端流程還沒傳的成功率紀錄、沒存進去的清單存在這台，撐得過重新整理和關掉網頁。
+// 離線存放的 adapter（#260，ADR 0011）：雲端流程還沒傳的成功率紀錄、沒存進去的清單存在這台，撐得過重新整理和關掉網頁。
 // 一支雲端流程一份（key 是流程的 id），帶著流程的名字（首頁、登出的框、登入頁列幾筆用）。
 // 真的是 createIndexedDbOfflineStore（IndexedDB，跟草稿分開一個資料庫）；假的是 #lib/test-fakes.js 的 fakeOfflineStore。
 // 存的樣子帶版號（v）：之後的新版用 readUnsent 讀得懂舊版存的（讀不懂的不算）。

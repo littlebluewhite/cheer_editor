@@ -5,6 +5,6 @@
  */
 export type DroppedRecord = { id: string, message: string, 
 /**
- * 同一次全上的同一組別人先存了（#262，ADR 0012）：先記的人的名字。
+ * 同一次全上的同一組別人先存了（#262，ADR 0015）：先記的人的名字。
  */
 by?: string, };

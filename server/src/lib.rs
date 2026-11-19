@@ -63,7 +63,7 @@ pub struct AppState {
     pub clock: Clock,
     /// 這個網站的網址（信裡的連結用），例：`https://cheer.example`，最後沒有 `/`。
     pub site_url: String,
-    /// 跑流程核心（QuickJS，ADR 0010）。
+    /// 跑流程核心（QuickJS，ADR 0013）。
     pub core: FlowCore,
     /// 同一個 email 的忘記密碼信寄幾封的限制。
     pub mail_limit: MailLimit,
@@ -73,7 +73,7 @@ pub struct AppState {
     pub music: Option<R2Bucket>,
 }
 
-/// 整個網站：API 和前端建好的檔案（`site`）在同一個網址（ADR 0009）。
+/// 整個網站：API 和前端建好的檔案（`site`）在同一個網址（ADR 0012）。
 pub fn app(state: AppState, site: &Path) -> Router {
     Router::new()
         // 健康檢查不碰資料庫：Neon 免費版沒人用時才睡得著。

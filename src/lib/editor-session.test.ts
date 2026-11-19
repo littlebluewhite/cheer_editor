@@ -613,7 +613,7 @@ describe('編輯 session：復原把這一步清掉的紀錄一起帶回來（AD
 		const target = s.flow!.actions.some((a) => a.id === 'x2') ? 'x2' : 'x1';
 		const [who, phase] = target === 'x2' ? ['m2', 'p4'] : ['g1', 'p1'];
 		const input = { date: '2026-11-06', who, practice: 'drill', whole: false, marks: { [phase]: '✓' } } as const;
-		// 新的一次在一步裡記（亂數 id）：不會撞到這一步清掉的那幾次的 id（ADR 0011）
+		// 新的一次在一步裡記（亂數 id）：不會撞到這一步清掉的那幾次的 id（ADR 0014）
 		s.record(flowOf(inStep('later', () => recordAttempt(s.flow!, target, input))));
 		const added = s.flow!.actions.find((a) => a.id === target)!.successRate!.records.at(-1)!;
 		const plusAdded = (list: ReturnType<typeof rates>) =>

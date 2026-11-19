@@ -1,4 +1,4 @@
-// 流程核心那包的指紋：前端帶的跟伺服器打包出來的是同一個；核心改一行，指紋就變（ADR 0010）。
+// 流程核心那包的指紋：前端帶的跟伺服器打包出來的是同一個；核心改一行，指紋就變（ADR 0013）。
 import { describe, expect, it } from 'vitest';
 import { bundleCore } from '../../scripts/core-bundle.mjs';
 import { CORE_FINGERPRINT } from './core-fingerprint';

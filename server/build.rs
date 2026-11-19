@@ -7,7 +7,7 @@ fn main() {
     bundle_flow_core();
 }
 
-/// 把流程核心打包成一個 JS 檔、算好指紋，放進 OUT_DIR（src/flow_core.rs 編進程式；ADR 0010）。
+/// 把流程核心打包成一個 JS 檔、算好指紋，放進 OUT_DIR（src/flow_core.rs 編進程式；ADR 0013）。
 /// 前端建置用同一支 scripts/core-bundle.mjs 算指紋，所以兩邊一樣。要先在專案根目錄 `npm ci`。
 fn bundle_flow_core() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");

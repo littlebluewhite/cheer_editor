@@ -9,7 +9,7 @@ export default defineConfig({
 	// 舊網址版（GitHub Pages，#267）：建置時設 OLD_SITE=1 才是。見 src/lib/old-site.ts、docs/deploy.md。
 	define: { __OLD_SITE__: JSON.stringify(process.env.OLD_SITE === '1') },
 	plugins: [
-		// 流程核心那包的指紋（__CORE_FINGERPRINT__），伺服器帶的是同一個（scripts/core-bundle.mjs、ADR 0010）。
+		// 流程核心那包的指紋（__CORE_FINGERPRINT__），伺服器帶的是同一個（scripts/core-bundle.mjs、ADR 0013）。
 		{
 			name: 'core-fingerprint',
 			config: async () => ({

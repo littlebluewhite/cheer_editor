@@ -52,7 +52,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
-      # build.rs 用 node 打包流程核心（ADR 0010），測試也用 node 比對結果。
+      # build.rs 用 node 打包流程核心（ADR 0013），測試也用 node 比對結果。
       - uses: actions/setup-node@v7
         with:
           node-version: 26
@@ -71,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1（1.6）
-      # --ha=false：只要一台（在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0012；每天的工作也只能跑一次）。
+      # --ha=false：只要一台（在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0015；每天的工作也只能跑一次）。
       - run: flyctl deploy --remote-only --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

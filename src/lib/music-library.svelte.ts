@@ -113,7 +113,7 @@ export class MusicLibrary {
 		// 還留著哪些先記下來：音樂放進來之後再算，核心會給另一個 id。
 		const held = this.#heldIds;
 		const load: Command<'loadSegmentAudio'> = { name: 'loadSegmentAudio', args: [segmentId, file.name, held] };
-		// 步驟 id 先發好：音樂檔的 id 由它算出來（ADR 0011），音樂檔庫、雲端都用這個 id 記。
+		// 步驟 id 先發好：音樂檔的 id 由它算出來（ADR 0014），音樂檔庫、雲端都用這個 id 記。
 		const stepId = newStepId();
 		if (upload) {
 			const r = runCommand(this.#flow, load, stepId);

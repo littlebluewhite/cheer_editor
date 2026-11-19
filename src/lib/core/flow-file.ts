@@ -51,7 +51,7 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  *   動作裡的人、拍點存的是名稱，照留，變成固定的肩底。
  * 第 14 版：金字塔的環節可以佔同樣的拍（舊版編輯器會說成資料壞掉）。舊檔沒有佔同樣拍的環節，所以資料不用動；
  *   有就是壞掉的檔，升級時交給 isFlow 擋下來（見 phasesShareBeatsBefore14）。
- * 第 15 版：新的 id 是種類字母加 12 個字的亂數（ADR 0011），不再記 lastIds（升級時拿掉）；舊的 id 不用改。
+ * 第 15 版：新的 id 是種類字母加 12 個字的亂數（ADR 0014），不再記 lastIds（升級時拿掉）；舊的 id 不用改。
  *   全上的一次多了可有可無的 runThroughStartedAt（開的時間），動作多了可有可無的 squadOrder（新寫法的組 id 發出的先後）。
  */
 const UPGRADES: Record<number, Upgrade> = {

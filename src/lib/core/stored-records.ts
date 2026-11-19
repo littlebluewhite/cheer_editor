@@ -1,4 +1,4 @@
-// 雲端流程的紀錄跟編排分開存，一次一筆（ADR 0008）。伺服器和前端都用這裡：
+// 雲端流程的紀錄跟編排分開存，一次一筆（ADR 0011）。伺服器和前端都用這裡：
 // 把分開存的紀錄放回流程（打開時、伺服器跑一步之前）、跑完再拿出來（伺服器照結果清掉、改掉該改的），
 // 和伺服器收一次時「記一次」的檢查（教練可能在手機記的時候改了流程）。
 
@@ -42,7 +42,7 @@ export function takeRecords(flow: Flow): { flow: Flow; records: StoredAttempt[] 
 
 /**
  * 伺服器收一次時的檢查（照記一次的規則）：打在不在的環節上的記號丟掉；丟光了、或動作、組、隊員不在了，整筆不存。
- * 一次的 id、全上 id 是手機發的亂數（ADR 0008、0011）。
+ * 一次的 id、全上 id 是手機發的亂數（ADR 0011、0014）。
  */
 export function checkRecord(flow: Flow, record: StoredAttempt): CheckedAttempt {
 	const dropped = (message: string): CheckedAttempt => ({ kind: 'dropped', message });

@@ -1,7 +1,7 @@
-//! 用 QuickJS 跑流程核心（`src/lib/core/`，ADR 0010）：前端和伺服器跑同一份規則。
+//! 用 QuickJS 跑流程核心（`src/lib/core/`，ADR 0013）：前端和伺服器跑同一份規則。
 //!
 //! QuickJS 的 runtime 不能跨執行緒，所以開一條專用執行緒擁有它；要跑核心的事都排隊交給它，
-//! 照收到的先後一次一件（ADR 0007 本來就照收到的先後套）。
+//! 照收到的先後一次一件（ADR 0010 本來就照收到的先後套）。
 
 use std::sync::mpsc;
 
@@ -106,7 +106,7 @@ impl FlowCore {
     }
 
     /// 用名字＋參數跑一串指令（`runCommands`）：flow 是流程的 JSON（沒有開著的流程是 `null`），
-    /// commands 是指令串的 JSON，step_id 是這一步的步驟 id（新東西的 id 由它算出來，ADR 0011）。
+    /// commands 是指令串的 JSON，step_id 是這一步的步驟 id（新東西的 id 由它算出來，ADR 0014）。
     /// 回結果的 JSON，跟前端用同一個步驟 id 跑出來的逐位元組一樣。
     pub fn run_commands(
         &self,
@@ -141,7 +141,7 @@ impl FlowCore {
         self.call_two("applyRemoteChangeJson", flow, change)
     }
 
-    /// 雲端流程跑一步（`runStepJson`，ADR 0008）：records 是分開存的紀錄（StoredAttempt[] 的 JSON），
+    /// 雲端流程跑一步（`runStepJson`，ADR 0011）：records 是分開存的紀錄（StoredAttempt[] 的 JSON），
     /// 先放回 flow 再跑 commands，跑完拿出來。成功時結果的 flow 不帶紀錄，records 是跑完還在的紀錄。
     pub fn run_step(
         &self,

@@ -1,4 +1,4 @@
-// 打包流程核心的入口（scripts/core-bundle.mjs）：伺服器用 QuickJS 跑這一包（ADR 0010）。
+// 打包流程核心的入口（scripts/core-bundle.mjs）：伺服器用 QuickJS 跑這一包（ADR 0013）。
 // 進出伺服器的都是 JSON 字串，所以多一個收 JSON、回 JSON 的版本。
 
 import {
@@ -39,7 +39,7 @@ export function applyRemoteChangeJson(flow: string, change: string): string {
 }
 
 /**
- * 雲端流程跑一步（ADR 0008）：先把分開存的紀錄（records，StoredAttempt[] 的 JSON）放回編排，跑完再拿出來。
+ * 雲端流程跑一步（ADR 0011）：先把分開存的紀錄（records，StoredAttempt[] 的 JSON）放回編排，跑完再拿出來。
  * 成功時結果的 flow 是不帶紀錄的編排，多一個 records：跑完還在的紀錄（清掉的不在、記號可能少了），
  * 和 keys、watch：這一步記下的鍵、要查別的分頁改過沒有的鍵（stepKeys，#254）。
  */
@@ -61,7 +61,7 @@ export function checkRecordsJson(flow: string, records: string): string {
 /**
  * 傳上雲端（#259）：doc 是流程檔裡 flow.json 的內容（JSON 字串）。先「檢查一整支流程」（舊版升級、壞掉的不收），
  * 再「整份流程檢查」（傳上雲端沒有之前）。不收回 { kind: 'error', message }；收了回 { kind: 'ok', flow, records }：
- * 不帶紀錄的編排和拿出來的紀錄（伺服器分開存，ADR 0008）。
+ * 不帶紀錄的編排和拿出來的紀錄（伺服器分開存，ADR 0011）。
  */
 export function uploadFlowJson(doc: string): string {
 	const checked = checkFlowDocument(JSON.parse(doc));
