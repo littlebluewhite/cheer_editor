@@ -67,7 +67,7 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
+export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
 export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
