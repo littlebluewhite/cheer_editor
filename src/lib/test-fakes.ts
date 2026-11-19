@@ -365,7 +365,11 @@ export function fakeServer(
 	): RoomMessage => {
 		const { stepId, seen, commands, undo } = sent;
 		const taken = f.stepIds?.[stepId];
-		if (taken !== undefined) return { kind: 'accepted', stepId, step: taken };
+		if (taken !== undefined) {
+			// 斷線重送：回原本的結果，帶那一步的改動（跟真的伺服器一樣）
+			const was = stepLog.get(f.id)?.find((l) => l.id === stepId)?.change;
+			return { kind: 'accepted', stepId, step: taken, ...(was ? { change: structuredClone(was) } : {}) };
+		}
 		const step = f.step ?? 0;
 		const rejected = (message: string, by?: string): RoomMessage => {
 			from.sentBack = step;
@@ -441,7 +445,8 @@ export function fakeServer(
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
 		f.updatedAt = new Date().toISOString();
-		return { kind: 'accepted', stepId, step: f.step };
+		// 送的人也拿到伺服器做出來的改動：可能跟他自己畫面上的不一樣（例：同時加的隊員放的位置）
+		return { kind: 'accepted', stepId, step: f.step, change: structuredClone(change) };
 	};
 	let nextToken = 1;
 	let nextShareLink = 1;

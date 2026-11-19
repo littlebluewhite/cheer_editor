@@ -344,11 +344,16 @@ pub enum RoomMessage {
     },
     /// 指紋不一樣：有新版，請重新整理；不收步。
     NewVersion,
-    /// 這一步收了：收了之後是第幾步。
+    /// 這一步收了：收了之後是第幾步、伺服器做出來的改動（跟送給別人的 Changed 一樣的 RemoteChange）。
+    /// 伺服器跑出來的可能跟送的人自己畫面上的不一樣（例：兩個人同時加隊員，後到的被放在別的位置），送的人照它換上。
+    /// change 是後來加的：部署前開著的分頁不看它；沒記改動的舊步（重送）不帶。
     Accepted {
         step_id: String,
         #[ts(type = "number")]
         step: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[ts(type = "unknown", optional)]
+        change: Option<Box<RawValue>>,
     },
     /// 這一步退回：原因、伺服器現在的樣子（換上它）、現在第幾步。
     /// 有 by（#254）：別人在我上次看到之後改過——by 是最後改到同一個東西的人（被規則擋下時是最後改過流程的人），
@@ -911,14 +916,23 @@ async fn take_step(
     };
 
     // 收過的步驟 id（斷線重送）：回原本的結果。
-    let taken: Option<(i64,)> =
-        sqlx::query_as("SELECT step FROM flow_steps WHERE flow_id = $1 AND step_id = $2")
-            .bind(flow_id)
-            .bind(&step_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-    if let Some((step,)) = taken {
-        return Ok((RoomMessage::Accepted { step_id, step }, None));
+    let taken: Option<(i64, Option<String>)> = sqlx::query_as(
+        "SELECT step, change::text FROM flow_steps WHERE flow_id = $1 AND step_id = $2",
+    )
+    .bind(flow_id)
+    .bind(&step_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some((step, change)) = taken {
+        let change = change.map(RawValue::from_string).transpose()?;
+        return Ok((
+            RoomMessage::Accepted {
+                step_id,
+                step,
+                change,
+            },
+            None,
+        ));
     }
 
     let rejected =
@@ -1060,7 +1074,11 @@ async fn take_step(
     crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;
     tx.commit().await?;
     Ok((
-        RoomMessage::Accepted { step_id, step },
+        RoomMessage::Accepted {
+            step_id,
+            step,
+            change: Some(RawValue::from_string(change.clone())?),
+        },
         Some((change, records_change)),
     ))
 }

@@ -27,17 +27,24 @@
 // 開、加入全上表（enterRun）把全上 id、日期、開的時間和拿著、點過的組報給伺服器，連上（斷線回來、伺服器重開）再報一次；
 // 拿、放掉、點了一組也送（斷線時先記在這台）；拿不到、加入不了的放在 runRefused。存好、取消就離開（leaveRun）。
 // 同一次全上的同一組別人先存了：沒存進去的那一列寫「王教練已經記了這次全上的第 2 組」。
+// 自己的一步收了：伺服器也給它做出來的改動（跟送給別人的一樣）。伺服器跑出來的可能跟這邊畫面上的不一樣
+// （例：兩個人同時加隊員，後到的被放在別的位置、排在後面），所以這裡記著伺服器的樣子（收了的、別人的改動照第幾步接上），
+// 收了之後畫面換成伺服器的樣子再跑一次還沒收的步。房間不一定照第幾步的順序說（別人的步可能在我的「收了」之後才到），
+// 接不上的先留著，接上了再換。
 
 import {
 	actionLabel,
+	applyRemoteChange,
 	attemptText,
 	carryRecords,
 	memberName,
 	perPerson,
 	putRecords,
 	recordsPatch,
+	runCommands,
 	squadName,
 	takeRecords,
+	undone,
 	undoRecords,
 	type Flow,
 	type RemoteChange,
@@ -98,6 +105,12 @@ export class CloudSteps {
 	#ready = false;
 	/** 上次看到第幾步。 */
 	#seen: number;
+	/** 伺服器的樣子（照第幾步接上收了的步）；我的步收了卻沒帶改動，就不知道了（null，照以前只改畫面）。 */
+	#server: { flow: Flow; step: number } | null;
+	/** 比伺服器的樣子新、還接不上的改動：第幾步 → 改動。 */
+	#later = new Map<number, RemoteChange>();
+	/** 我的步收了，畫面還沒換成伺服器做出來的樣子（等接上）。 */
+	#settle = false;
 	/** 記了、伺服器還沒回答的那幾次：id → 送的那一次和沒存進去時表上那一列（記的當下的動作、組的名字）。 */
 	#unsent = new Map<string, { record: StoredAttempt; row: DroppedRecord }>();
 	/** 送出去、等回答的每一批（照送的先後，伺服器照順序回）：那一批的 id 和送的。 */
@@ -155,6 +168,7 @@ export class CloudSteps {
 		this.#room = room;
 		this.#session = session;
 		this.#seen = step;
+		this.#server = session.flow ? { flow: session.flow, step } : null;
 		this.role = role;
 		this.#keep = keep;
 		session.sharedRecords = true;
@@ -458,6 +472,8 @@ export class CloudSteps {
 		} else if (m.kind === 'changed') {
 			this.#seen = Math.max(this.#seen, m.step);
 			this.#session.applyRemote(m.change as RemoteChange, m.by);
+			this.#heardChange(m.step, m.change as RemoteChange);
+			this.#settleScreen();
 		} else if (m.kind === 'recordsSaved') {
 			this.#saved(m.saved, m.dropped);
 		} else if (m.kind === 'newRecords') {
@@ -477,7 +493,13 @@ export class CloudSteps {
 		} else if (m.kind === 'accepted') {
 			// 連回來時補上的別人的步可能比我這一步新
 			this.#seen = Math.max(this.#seen, m.step);
+			if (m.change === undefined) this.#server = null;
+			else {
+				this.#heardChange(m.step, m.change as RemoteChange);
+				this.#settle = true;
+			}
 			this.#queue = this.#queue.slice(1);
+			this.#settleScreen();
 			this.#sendHead();
 		} else {
 			// 退回：這一步和後面還沒送的一起不要，換成伺服器的樣子
@@ -486,6 +508,42 @@ export class CloudSteps {
 			const dropped = this.#dropQueue();
 			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message), dropped);
 		}
+	}
+
+	/** 伺服器收了第 step 步、做出來的改動：接得上就接到伺服器的樣子上（接上之後留著的也接），接不上先留著。 */
+	#heardChange(step: number, change: RemoteChange) {
+		const server = this.#server;
+		if (!server || step <= server.step) return;
+		this.#later.set(step, change);
+		let { flow, step: at } = server;
+		for (let next = this.#later.get(at + 1); next; next = this.#later.get(at + 1)) {
+			this.#later.delete(at + 1);
+			flow = applyRemoteChange(flow, next);
+			at++;
+		}
+		this.#server = { flow, step: at };
+	}
+
+	/**
+	 * 我的步收了、伺服器的樣子都接上了：畫面換成伺服器的樣子，再跑一次還沒收的步（同一個步驟 id，新東西的 id 一樣），
+	 * 帶著現在的紀錄。還沒收的步跑不過（被擋、要問）就先不換：伺服器會退回它，那時換成伺服器的樣子。
+	 */
+	#settleScreen() {
+		const server = this.#server;
+		const now = this.#session.flow;
+		if (!this.#settle || !server || this.#later.size || !now) return;
+		this.#settle = false;
+		let flow = carryRecords(server.flow, now);
+		for (const step of this.#queue) {
+			if ('undo' in step) {
+				flow = undone(flow, step.undo.change);
+				continue;
+			}
+			const r = runCommands(flow, structuredClone(step.commands), step.id);
+			if (r.kind !== 'ok') return;
+			flow = r.flow;
+		}
+		this.#session.settle(flow);
 	}
 
 	/** 還沒被伺服器收的步都不算：清掉，也從復原、重做紀錄拿掉。回傳清掉的步。 */
@@ -502,6 +560,9 @@ export class CloudSteps {
 	 * 其他動作照現在的（之後才有的動作、組、環節的紀錄不丟）。
 	 */
 	#reset(flow: Flow, message: string, dropped: Queued[]) {
+		this.#server = { flow, step: this.#seen };
+		for (const step of this.#later.keys()) if (step <= this.#seen) this.#later.delete(step);
+		this.#settle = false;
 		const now = this.#session.flow;
 		if (!now) return this.#session.reset(flow, message);
 		const patched = new Set(dropped.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));

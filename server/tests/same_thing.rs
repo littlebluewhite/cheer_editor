@@ -441,3 +441,69 @@ async fn each_step_keeps_what_it_changed(db: sqlx::PgPool) {
             .unwrap();
     assert_eq!(keys, vec!["name"]);
 }
+
+#[sqlx::test]
+async fn the_sender_gets_what_the_server_made_of_its_step(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = s.sample(&wang, &lin).await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+    let mut b = s.join(&lin, &id, "tab-b").await;
+    let start = s.flow(&lin, &id).await["flow"].to_string();
+    let add = |name: &str| json!([{ "name": "addMembers", "args": [[{ "name": name, "gender": "F", "globalRole": "top" }]] }]);
+
+    // 兩個人都看到第 6 步，各加一個隊員：都收，伺服器把後到的放在別的位置
+    let first = step(&mut a, "add-a", 6, add("小新")).await;
+    assert_eq!(first["kind"], "accepted", "{first}");
+    let ack = step(&mut b, "add-b", 6, add("小華")).await;
+    assert_eq!(ack["kind"], "accepted", "{ack}");
+
+    // 林教練的分頁：先在自己的畫面上跑自己的一步，再套上王教練的那一步（房間送來的），再套「收了」帶的改動
+    let mine = s
+        .state
+        .core
+        .run_step(start, "[]".into(), add("小華").to_string(), "add-b".into())
+        .await
+        .unwrap();
+    let mine = serde_json::from_str::<Value>(&mine).unwrap()["flow"].to_string();
+    let theirs: (String,) =
+        sqlx::query_as("SELECT change::text FROM flow_steps WHERE flow_id = $1 AND step = 7")
+            .bind(&id)
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap();
+    let mut seen = s
+        .state
+        .core
+        .apply_remote_change(mine, theirs.0)
+        .await
+        .unwrap();
+    if let Some(change) = ack.get("change") {
+        seen = s
+            .state
+            .core
+            .apply_remote_change(seen, change.to_string())
+            .await
+            .unwrap();
+    }
+
+    let server = s.flow(&wang, &id).await["flow"].clone();
+    let seen: Value = serde_json::from_str(&seen).unwrap();
+    let names = |flow: &Value| -> Vec<String> {
+        let members = flow["members"].as_array().unwrap();
+        members
+            .iter()
+            .map(|m| m["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(names(&seen), names(&server));
+    assert_eq!(seen["formations"], server["formations"]);
+    assert_eq!(seen, server);
+
+    assert!(ack["change"].is_object(), "{ack}");
+    // 斷線重送同一步（步驟 id 一樣）：一樣帶那一步的改動
+    let again = step(&mut b, "add-b", 6, add("小華")).await;
+    assert_eq!(again["kind"], "accepted", "{again}");
+    assert_eq!(again["change"], ack["change"], "{again}");
+}
