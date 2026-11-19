@@ -402,7 +402,7 @@ describe('環節：金字塔的環節可以佔同樣的拍', () => {
 		}
 		// 環節佔的是「拍」，不叫拍點
 		expect(text).not.toMatch(/環節(佔|標|的)的?拍點/);
-		const shot = [...document.querySelectorAll('#practice img')].find((img) => img.alt.includes('佔同樣的拍'));
+		const shot = [...document.querySelectorAll<HTMLImageElement>('#practice img')].find((img) => img.alt.includes('佔同樣的拍'));
 		expect(shot?.alt).toContain('兩排');
 	});
 
