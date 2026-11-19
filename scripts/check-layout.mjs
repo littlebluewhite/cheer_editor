@@ -365,7 +365,7 @@ const topbarColors = () =>
 		const lum = (c) => { const [r, g, b] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
 		const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 		const solid = [...bar.querySelectorAll('button, label.btn, a')].filter((el) => el.checkVisibility() && el.getAttribute('aria-pressed') !== 'true' && rgba(getComputedStyle(el).backgroundColor)[3] > 0.9)
-			.map((el) => (el.getAttribute('aria-label') || el.title || el.textContent).trim().slice(0, 8));
+			.map((el) => (el.getAttribute('aria-label') || el.textContent.trim() || el.title).trim().slice(0, 8));
 		const low = [];
 		const walker = document.createTreeWalker(bar, NodeFilter.SHOW_TEXT);
 		let node;
@@ -793,7 +793,8 @@ async function renameFlowTo(name) {
 	await sleep(200);
 }
 
-for (const w of [1101, 1181, 1281, 1301, 1601, 1761, 1920]) {
+// 上方列一行（#280）之後，1180 寬以下放得下 3 個字以上就好（上面那幾條量），8 個字從收字的寬度 1181 起算
+for (const w of [1181, 1281, 1301, 1601, 1761, 1920]) {
 	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
 		await setViewport(w, 900);
 		await openSample();
