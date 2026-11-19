@@ -42,8 +42,11 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
 	const after = applyRemoteChange(flow, change);
-	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : pastEarlier(after, flow), flow));
+	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : unsorted(after, flow), flow));
 }
+
+/** 沒照時間排的流程：放在原來的位置沒冒出新的毛病就放那裡，不然把放回去的站位往後挪過時間早的。 */
+const unsorted = (after: Flow, flow: Flow) => (flowProblem(after, flow) ? pastEarlier(after, flow) : after);
 
 const inTimeOrder = (flow: Flow) =>
 	flow.formations.every((f, i) => i === 0 || formationSec(flow, f) >= formationSec(flow, flow.formations[i - 1]));
@@ -58,7 +61,7 @@ function byTime(flow: Flow): Flow {
 }
 
 /**
- * 沒照時間排的流程：放回去的站位往後挪過後面時間比它早的（例：0、16、8 加回 32，別人後來加了 24，32 放 24 後面），
+ * 放回去的站位往後挪過後面時間比它早的（例：0、16、8 加回 32，別人後來加了 24，32 放 24 後面），
  * 不然放回去的那張和後面那張多一個新的毛病、整步被擋；其他站位照現在的順序不動。
  */
 function pastEarlier(after: Flow, flow: Flow): Flow {

@@ -125,6 +125,24 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old1', 'old2', 'new', 'old3']);
 	});
 
+	it('匯入的舊檔（0、16、24、8、24 拍）：刪第一個 24 馬上復原，放回原來的位置，不挪到另一個 24 旁邊被擋', () => {
+		const sample = ratedSample();
+		const pos = sample.formations[0].pos;
+		const start: Flow = {
+			...sample,
+			formations: [
+				sample.formations[0],
+				...[16, 24, 8, 24].map((at, i) => ({ id: `old${i + 1}`, segmentId: 's1', at, pos }))
+			]
+		};
+		const gone = flowOf(deleteFormation(start, 'old2'));
+		const server = takeRecords(gone);
+		const r = runUndo(server.flow, server.records, undoChanges(start, gone).undo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => f.id)).toEqual(start.formations.map((f) => f.id));
+	});
+
 	it('重做刪環節：復原時加回來的記號再清一次，只剩那個環節的記號的那一次整筆清掉（ADR 0007）', () => {
 		const before = libSample();
 		const who = before.actions[0].members[0].squad!;
