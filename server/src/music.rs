@@ -1,6 +1,6 @@
 //! 雲端流程的音樂檔（#249）：檔放 Cloudflare R2，不經過伺服器。
 //! 上傳：伺服器查權限、發一個幾分鐘內有效的預簽網址，瀏覽器直接 PUT 到暫放的名字（`uploading/` 開頭）；
-//! 傳完告訴伺服器，伺服器在 R2 複製到正式的名字、刪掉暫放的，再查正式的那份多大，超過 60 MB 就刪掉、退回。
+//! 傳完告訴伺服器，伺服器在 R2 複製到正式的名字，查正式的那份多大，超過 60 MB 就刪掉、退回；收了才刪暫放的。
 //! 預簽網址收了之後還有效，但只寫得到暫放的，收好的不會被換掉（codex review）。播放：能打開流程的人拿下載的預簽網址。
 //! 換掉、刪掉的音樂（流程裡不再有）記下哪天不用了（收一步時，見 flow_room）；30 天後真的刪在 #266。
 
@@ -84,8 +84,8 @@ pub async fn start_upload(
     Ok(Json(Presigned { url }).into_response())
 }
 
-/// 傳完了：在 R2 把暫放的複製到正式的名字、刪掉暫放的，查正式的那份多大（之後再 PUT 也只寫到暫放的）。
-/// 超過 60 MB 就刪掉（R2 上的和這一列）、回 413；還沒傳上去 409；收了 204。
+/// 傳完了：在 R2 把暫放的複製到正式的名字，查正式的那份多大（之後再 PUT 也只寫到暫放的），記下來再刪暫放的。
+/// 超過 60 MB 就刪掉（R2 上的和這一列）、回 413；還沒傳上去 409；收了 204。中間出錯可以再說一次傳完。
 /// 同一個音樂檔同時說兩次傳完：鎖住這一列，一個做完另一個才做。
 pub async fn finish_upload(
     State(state): State<AppState>,
@@ -115,17 +115,16 @@ pub async fn finish_upload(
     if size.is_some() {
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
-    if !store.copy(&uploading(&key), &key).await? {
-        return Ok(StatusCode::CONFLICT.into_response());
-    }
-    store.delete(&uploading(&key)).await?;
+    // 暫放的要記下來之後才刪：中間出錯時再說一次傳完，從暫放的重新複製。
+    // 暫放的沒了（例：放了一天被 R2 刪掉），就用之前複製好的那份。
+    store.copy(&uploading(&key), &key).await?;
     // 查複製好的那份（不是暫放的）：查完到記下來之間沒人寫得到它。
-    let size = store
-        .size(&key)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("R2 上剛複製的不見了"))?;
+    let Some(size) = store.size(&key).await? else {
+        return Ok(StatusCode::CONFLICT.into_response());
+    };
     if size > MAX_AUDIO_BYTES {
         store.delete(&key).await?;
+        store.delete(&uploading(&key)).await?;
         sqlx::query("DELETE FROM flow_audio WHERE flow_id = $1 AND audio_id = $2")
             .bind(&flow_id)
             .bind(&audio_id)
@@ -141,6 +140,7 @@ pub async fn finish_upload(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    store.delete(&uploading(&key)).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
