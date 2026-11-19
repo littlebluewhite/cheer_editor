@@ -357,6 +357,28 @@ describe('下載成流程檔', () => {
 		expect(screen.getByRole('status').textContent).toContain('練習用.zip');
 	});
 
+	it('export failing after choosing a file says the file is now empty：Chrome 選了舊檔當下就清空，拿不到東西時要說選的檔變空的', async () => {
+		vi.stubGlobal('matchMedia', () => ({ matches: false }));
+		vi.stubGlobal('showSaveFilePicker', async () => ({
+			name: '上週備份.zip',
+			createWritable: async () => ({ write: async () => {}, close: async () => {} })
+		}));
+		const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows: [wangsFlow('owner')] });
+		const page = editorPage(null, { server: fake.server, createSaver: () => createBrowserSaver() });
+		render(Page, page.props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: /^練習用/ }));
+		await flush();
+		replaceTrack({ ...fake, page }, new Uint8Array([9, 9, 9]));
+		fake.server.audioBytes = async () => {
+			throw new ServerUnreachable();
+		};
+		await fromMenu('下載成流程檔');
+		await flush();
+
+		expect(screen.getByRole('status').textContent).toBe('連不上伺服器，沒下載；選的「上週備份.zip」已經變成空的檔案，請再下載一次');
+	});
+
 	it('export fails when a track not cached here is unreachable：拿不到別人換的音樂，不存、說原因', async () => {
 		const s = await openCloud(wangsFlow('owner'));
 		replaceTrack(s, new Uint8Array([9, 9, 9]));
