@@ -5,7 +5,7 @@
 import { ACTION_CATEGORIES, type Action, type ActionCategory, type ActionMember } from './action-types';
 import { memberName, type Flow } from './flow';
 import type { Segment } from './segment';
-import { rangeProblem, type BeatRange } from './beat-range';
+import { phasesOverlap, rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
 import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
@@ -243,7 +243,7 @@ export function fitPhaseKinds(action: Action): Action {
 	return { ...action, successRate: { ...rate, phases } };
 }
 
-/** 第 6 版就有的規則裡組以外的：環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。 */
+/** 第 6 版就有的規則裡組以外的：環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊（金字塔除外）；紀錄的環節、誰都對得上。 */
 function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string[]): string | null {
 	const phases = action.successRate?.phases ?? [];
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
@@ -256,10 +256,8 @@ function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string
 		const problem = p.beats ? beatsProblem(segment, action, p.beats) : null;
 		if (problem) return problem;
 	}
-	const marked = phases.flatMap((p) => (p.beats ? [p.beats] : [])).sort((a, b) => a.at - b.at);
-	if (marked.some((b, i) => i > 0 && b.at < marked[i - 1].at + marked[i - 1].len)) {
-		return '環節標的拍不能重疊';
-	}
+	// 金字塔的環節可以佔同樣的拍（docs/adr/0009）。
+	if (action.category !== 'pyramid' && phasesOverlap(phases)) return '環節標的拍不能重疊';
 	const records = action.successRate?.records ?? [];
 	if (new Set(records.map((r) => r.id)).size !== records.length) return '一次的 id 重複了';
 	for (const r of records) {

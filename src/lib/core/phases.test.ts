@@ -329,6 +329,38 @@ describe('換大類：環節的種類跟著換', () => {
 	});
 });
 
+describe('換大類：金字塔有環節佔同樣的拍', () => {
+	/** sample 換成金字塔，再加 p4 上法「第二個」佔 p2 的 1-3 到 1-4。 */
+	const overlapped = () => {
+		const flow = flowOf(updateAction(sample(), 'x1', { category: 'pyramid' }));
+		return flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 4, len: 4 } }));
+	};
+
+	it.each([
+		['技巧', 'stunt'],
+		['拋投', 'toss'],
+		['騰翻', 'tumbling'],
+		['跳躍', 'jump']
+	] as const)('換成%s：擋下來，說先分開；流程不變', (label, category) => {
+		expect(updateAction(overlapped(), 'x1', { category })).toEqual({
+			kind: 'blocked',
+			message: `有環節佔同樣的拍，先分開才能換成${label}`
+		});
+		expect(updateAction(overlapped(), 'x1', { category }, { confirmed: true }).kind).toBe('blocked');
+	});
+
+	it('換成舞蹈、其他照舊：環節拿掉', () => {
+		for (const category of ['dance', 'other'] as const) {
+			expect(lib(flowOf(updateAction(overlapped(), 'x1', { category }))).successRate).toBeUndefined();
+		}
+	});
+
+	it('金字塔沒有環節佔同樣的拍：照舊換，環節跟著換種類', () => {
+		const flow = flowOf(updateAction(sample(), 'x1', { category: 'pyramid' }));
+		expect(phasesOf(flowOf(updateAction(flow, 'x1', { category: 'toss' }))).map((p) => p.kind)).toEqual(['toss', 'toss', 'toss']);
+	});
+});
+
 describe('復原：只換環節，紀錄照「把現在的紀錄帶到這份流程上」', () => {
 	it('刪了有紀錄的環節再復原：環節回來，它的記號已經清掉了', () => {
 		const before = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '△' })));

@@ -4,6 +4,7 @@
 
 import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
 import type { Flow } from './flow';
+import { phasesOverlap } from './beat-range';
 import { freshIds } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { RECORDS_UNDOABLE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
@@ -67,6 +68,11 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const rate = settled.successRate;
 	const phased = rate ? replacePhases(settled, phases?.phases ?? rate.phases) : settled;
 	const action = ungroup(phased);
+	// 金字塔有環節佔同樣的拍，換到還留著環節、不能疊的大類：擋下來，不偷偷切掉（docs/adr/0009）。
+	if (action.category !== 'pyramid' && phasesOverlap(action.successRate?.phases ?? [])) {
+		const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
+		return { kind: 'blocked', message: `有環節佔同樣的拍，先分開才能換成${label}` };
+	}
 	const problem = successRateProblem(to, action);
 	if (problem) return { kind: 'blocked', message: problem };
 	return { kind: 'ok', action, flow: grouped.flow, fallout: { phases, lost, changed } };

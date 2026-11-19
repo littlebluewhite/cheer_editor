@@ -383,3 +383,51 @@ describe('不動拍點', () => {
 		expect(lib(flow).cues).toEqual(before);
 	});
 });
+
+describe('金字塔：環節可以佔同樣的拍', () => {
+	/** sample 換成金字塔：p1 0+6、p2 6+14、p3 24+8。 */
+	const pyramid = () => flowOf(updateAction(sample(), 'x1', { category: 'pyramid' }));
+
+	it('加環節佔一部分同樣的拍：原本的環節不變，照開始的拍排', () => {
+		const flow = flowOf(addPhase(pyramid(), 'x1', { kind: 'load', name: '第二個', beats: { at: 8, len: 8 } }));
+		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+14', 'p4 8+8', 'p3 24+8']);
+	});
+
+	it('加環節佔一模一樣的拍：兩個都留著，新加的排後面', () => {
+		const flow = flowOf(addPhase(pyramid(), 'x1', { kind: 'load', name: '第二個', beats: { at: 6, len: 14 } }));
+		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+14', 'p4 6+14', 'p3 24+8']);
+	});
+
+	it('把拍標給現有的環節：別的環節不變，被標的環節照拍重排', () => {
+		const flow = flowOf(markPhaseBeats(pyramid(), 'x1', 'p3', 4, 8));
+		expect(brief(flow)).toEqual(['p1 0+6', 'p3 4+8', 'p2 6+14']);
+	});
+
+	it('有記號的環節被佔同樣的拍：不用問，記號留著', () => {
+		const recorded = record(pyramid(), { p2: '✓' });
+		const flow = flowOf(addPhase(recorded, 'x1', { kind: 'load', name: '', beats: { at: 6, len: 14 } }));
+		expect(lib(flow).successRate!.records[0].marks).toEqual({ p2: '✓' });
+	});
+
+	it('同一拍開始的：維持原本的先後，標給前面那個也不換位置', () => {
+		let flow = flowOf(addPhase(pyramid(), 'x1', { kind: 'load', name: '第二個', beats: { at: 6, len: 4 } }));
+		flow = flowOf(markPhaseBeats(flow, 'x1', 'p2', 6, 8));
+		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+8', 'p4 6+4', 'p3 24+8']);
+	});
+
+	it('自己選一段拍清掉：那段拍上的環節照舊都清', () => {
+		const added = flowOf(addPhase(pyramid(), 'x1', { kind: 'load', name: '', beats: { at: 8, len: 8 } }));
+		expect(brief(flowOf(clearPhaseBeats(added, 'x1', 8, 16)))).toEqual(['p1 0+6', 'p2 6+2', 'p3 24+8']);
+	});
+
+	it('動作變短：佔同樣拍的環節各自照舊切短、刪掉', () => {
+		const added = flowOf(addPhase(pyramid(), 'x1', { kind: 'load', name: '', beats: { at: 8, len: 16 } }));
+		const flow = flowOf(updateAction(added, 'x1', { length: 20 }, { confirmed: true }));
+		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+14', 'p4 8+12']);
+	});
+
+	it('技巧照舊：蓋到就切', () => {
+		const flow = flowOf(addPhase(sample(), 'x1', { kind: 'load', name: '', beats: { at: 8, len: 8 } }));
+		expect(brief(flow)).toEqual(['p1 0+6', 'p2 6+2', 'p4 8+8', 'p3 24+8']);
+	});
+});
