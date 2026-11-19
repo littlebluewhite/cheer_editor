@@ -995,6 +995,42 @@ async fn undoing_a_phase_delete_brings_its_marks_back_and_redo_clears_them_again
 }
 
 #[sqlx::test]
+async fn redo_clears_records_the_step_cleared(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    record(
+        &mut coach,
+        json!([drill("tsquad1111110", SQUAD_1, json!({ LOAD: "✓" }))]),
+    )
+    .await;
+    let records_before = s.records(&wang, &id).await;
+    let flow_before = s.flow(&wang, &id).await;
+
+    // 第 1 組的小美換人（改名選清掉重算）：第 1 組的紀錄清掉。
+    let rename = json!([{ "name": "updateMember", "args": ["mzk52d2cu1vww", { "name": "小琪" }], "options": { "records": "clear" } }]);
+    assert_eq!(
+        step(&mut coach, "steprename01", 6, rename).await["kind"],
+        "accepted"
+    );
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+    let flow_after = s.flow(&wang, &id).await;
+
+    let change = s.back_to(&flow_after, &flow_before).await;
+    let reply = undo(&mut coach, "stepundo0001", 7, "steprename01", false, change).await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    assert_eq!(s.records(&wang, &id).await, records_before);
+    hear(&mut coach).await;
+
+    // 重做：換上來的人不接前一個人的紀錄，再清一次。
+    let change = s.back_to(&flow_before, &flow_after).await;
+    let reply = undo(&mut coach, "stepredo0001", 8, "stepundo0001", true, change).await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+}
+
+#[sqlx::test]
 async fn undoing_an_action_delete_brings_its_records_back(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;
