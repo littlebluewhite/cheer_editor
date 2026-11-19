@@ -57,7 +57,8 @@ describe('部署到 Fly 的 workflow', () => {
 		const deploy = job('deploy');
 		expect(deploy).toContain('needs: [frontend, server]');
 		expect(deploy).toContain("if: github.ref == 'refs/heads/main'");
-		expect(deploy).toContain('flyctl deploy');
+		// 只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體（ADR 0012）。flyctl 預設會開兩台。
+		expect(deploy).toContain('flyctl deploy --remote-only --ha=false');
 	});
 
 	it('只用那把 Fly 部署 token', () => {

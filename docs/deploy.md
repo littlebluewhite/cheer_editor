@@ -8,7 +8,7 @@ Fly app `littlebluewhite`，新加坡 `sin`，一台 shared-cpu-1x 512 MB，一�
 推上 `main` 後，`.github/workflows/fly-deploy.yml` 會：
 
 1. 跑前端測試和型別檢查（`npm test`、`npm run check`），和 Rust 伺服器的測試（`cargo test`）。任何一個沒過就停，不部署。
-2. 全過才 `flyctl deploy`：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
+2. 全過才 `flyctl deploy --ha=false`（只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0012）：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
 3. `fly.toml` 的 `release_command` 在一台臨時機器上跑 `/app/cheer-server migrate`（資料表遷移）。**沒跑成就不部署**，舊版照常接流量。
 4. `bluegreen`：在旁邊開一台新的，`/health` 過了才切過去，不停機。切的時候 WebSocket 會斷，前端自己重連。
 
@@ -24,7 +24,7 @@ Actions 頁也能手動按 Run workflow（只部署 `main`）。沒有測試站�
 Fly secrets、GitHub 的 `FLY_API_TOKEN` 已經設好（#263）。
 
 1. 推 `main`（或 Actions 頁按 Run workflow），等 `Deploy to Fly` 跑完。
-2. 看一次：打開 `https://littlebluewhite.fly.dev/`（網域接好後 `https://littlebluewhite.com/`）是編輯器；`/health` 回 `ok`；`fly status` 有一台機器、健康檢查過。
+2. 看一次：打開 `https://littlebluewhite.fly.dev/`（網域接好後 `https://littlebluewhite.com/`）是編輯器；`/health` 回 `ok`；`fly status` **剛好一台**機器、健康檢查過。多了一台就 `fly scale count 1`。
 3. 建第一個管理員（見「本機跑伺服器」的 `create-admin`）：
 
 ```sh
@@ -46,11 +46,11 @@ fly ssh console -C "/app/cheer-server create-admin --email 你的@email --name �
 
 推一個壞的遷移試不了：`cargo test` 會先失敗，根本不會部署。所以第一次部署成功後，從自己電腦部署一次：
 
-1. 在 repo 裡加一個一定會失敗的遷移，**不要 commit**：
+1. 先切到 `main`、跟現在線上那版同一個 commit（`git pull`）。加一個一定會失敗的遷移，**不要 commit**：
 
 ```sh
 echo 'SELECT 1/0;' > server/migrations/99990000_deploy_fail_trial.sql
-fly deploy --remote-only
+fly deploy --remote-only --ha=false
 ```
 
 2. 應該看到 release command 失敗、部署停下來；`fly releases` 最新那次是失敗的。

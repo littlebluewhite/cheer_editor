@@ -1,5 +1,5 @@
 # 推上 main 就跑前端和 Rust 伺服器的測試，再建置並部署到 GitHub Pages（https://<owner>.github.io/<repo>/）。
-# 搬到 Fly 之前（#264），伺服器只跑測試，不部署。
+# 伺服器部署到 Fly 是另一個 workflow（fly-deploy.yml）；這個只給舊網址，上線那天拿掉（#269）。
 # 第一次使用前要到 GitHub 設定，見 docs/deploy.md。
 name: Deploy to GitHub Pages
 
