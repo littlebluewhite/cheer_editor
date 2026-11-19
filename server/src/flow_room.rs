@@ -567,6 +567,8 @@ async fn serve(
     };
     // 上一次被退回時伺服器在第幾步：上次看到的還在它之前的步，是還沒換成伺服器的樣子就送的。
     let mut sent_back: Option<i64> = None;
+    // 回答之後還要跟送的人說的（復原跟著改的紀錄）。
+    let mut also: Option<RoomMessage> = None;
 
     loop {
         let reply = tokio::select! {
@@ -577,6 +579,7 @@ async fn serve(
                     // 存好、告訴別人都在鎖裡：別人收到的改動照第幾步的順序。
                     let steps = state.rooms.steps(flow_id);
                     let _one_at_a_time = steps.lock().await;
+                    let undoing = matches!(request, RoomRequest::Undo { .. });
                     let (step_id, seen, work) = match request {
                         RoomRequest::Undo { step_id, seen, of, redo, change } => {
                             (step_id, seen, Work::Undo { of, redo, change })
@@ -599,6 +602,13 @@ async fn serve(
                         state.rooms.tell(flow_id, event);
                         // 紀錄跟著改的接在編排的改動後面（別人先套編排，再換紀錄）。
                         if !kept.is_empty() {
+                            // 復原、重做：送的人那邊只帶現在的紀錄，加回來的也告訴他（ADR 0007）。
+                            if undoing {
+                                also = Some(RoomMessage::RecordsChanged {
+                                    changed: kept.changed.iter().map(|r| r.seen_by(user_id)).collect(),
+                                    deleted: kept.deleted.clone(),
+                                });
+                            }
                             state.rooms.tell(flow_id, RoomEvent::RecordsChanged { from: conn, change: kept.into() });
                         }
                     }
@@ -720,6 +730,9 @@ async fn serve(
         tell(&mut socket, &reply).await?;
         if matches!(reply, RoomMessage::Revoked | RoomMessage::Deleted) {
             return Ok(());
+        }
+        if let Some(message) = also.take() {
+            tell(&mut socket, &message).await?;
         }
     }
 }
@@ -919,14 +932,14 @@ async fn take_step(
     }
     // 紀錄放回流程再跑（ADR 0011）：跑完照結果清掉、改掉該改的紀錄。
     let before = records::before_step(&mut tx, flow_id).await?;
-    let records_json = serde_json::to_string(&before)?;
+    let mut revived = vec![];
     let (ran, undoing) = match work {
         Work::Commands(commands) => {
             let ran = state
                 .core
                 .run_step(
                     content.clone(),
-                    records_json,
+                    serde_json::to_string(&before)?,
                     commands.to_string(),
                     step_id.clone(),
                 )
@@ -938,9 +951,21 @@ async fn take_step(
             let Some((n, keys)) = undoable(&mut tx, flow_id, &of, state.clock.now()).await? else {
                 return rejected(format!("太久以前的，{}", cannot(redo)), None, content);
             };
+            // 復原：那一步清掉的紀錄一起放回去（ADR 0007）。重做不用：跑完照結果再清一次。
+            let records = if redo {
+                before.clone()
+            } else {
+                let (records, back) = records::brought_back(&mut tx, flow_id, &of, &before).await?;
+                revived = back;
+                records
+            };
             let ran = state
                 .core
-                .run_undo(content.clone(), records_json, change.to_string())
+                .run_undo(
+                    content.clone(),
+                    serde_json::to_string(&records)?,
+                    change.to_string(),
+                )
                 .await;
             (ran, Some((n, keys, redo)))
         }
@@ -1012,8 +1037,10 @@ async fn take_step(
     let records_change = records::after_step(
         &mut tx,
         flow_id,
+        step,
         &before,
         outcome.records.unwrap_or_default(),
+        &revived,
         now,
     )
     .await?;

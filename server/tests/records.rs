@@ -898,6 +898,142 @@ async fn reconnecting_gets_the_records_others_added_changed_or_deleted_meanwhile
     assert_eq!(first["kind"], "ready");
 }
 
+/// 送復原（redo 是重做）：of 是要復原的那一步的步驟 id，change 是要放回去的樣子（RemoteChange）。回伺服器的回答。
+async fn undo(
+    socket: &mut Socket,
+    step_id: &str,
+    seen: i64,
+    of: &str,
+    redo: bool,
+    change: Value,
+) -> Value {
+    let message = json!({ "kind": "undo", "stepId": step_id, "seen": seen, "of": of, "redo": redo, "change": change });
+    say(socket, message).await;
+    hear(socket).await
+}
+
+impl Server {
+    /// 伺服器上現在的編排（不帶紀錄）。
+    async fn flow(&self, who: &User, id: &str) -> Value {
+        let (_, got) = self
+            .send("GET", &format!("/api/flows/{id}"), None, &who.cookie)
+            .await;
+        got["flow"].clone()
+    }
+
+    /// 從 from 放回 to 的改動（RemoteChange）。
+    async fn back_to(&self, from: &Value, to: &Value) -> Value {
+        let change = self
+            .state
+            .core
+            .remote_change(from.to_string(), to.to_string())
+            .await
+            .unwrap();
+        serde_json::from_str(&change).unwrap()
+    }
+}
+
+#[sqlx::test]
+async fn undoing_a_phase_delete_brings_its_marks_back_and_redo_clears_them_again(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let (mut phone, _) = s.join(&lin, &id).await;
+    // 兩次都在下法失敗（ADR 0007 的 N02：記號被清掉、環節卻回來，整次就從 0% 變 100%）。
+    record(
+        &mut phone,
+        json!([
+            drill(
+                "tboth11111110",
+                SQUAD_1,
+                json!({ LOAD: "✓", DISMOUNT: "✗" })
+            ),
+            drill("tonly22222220", SQUAD_1, json!({ DISMOUNT: "✗" })),
+        ]),
+    )
+    .await;
+    hear(&mut coach).await;
+    let records_before = s.records(&wang, &id).await;
+    let flow_before = s.flow(&wang, &id).await;
+
+    let delete = json!([{ "name": "deletePhase", "args": [LIB, DISMOUNT], "options": { "confirmed": true } }]);
+    assert_eq!(
+        step(&mut coach, "stepdelete01", 6, delete).await["kind"],
+        "accepted"
+    );
+    hear(&mut phone).await;
+    let records_after = s.records(&wang, &id).await;
+    let flow_after = s.flow(&wang, &id).await;
+    assert_eq!(ids(&records_after), vec!["tboth11111110"]);
+
+    // 復原：環節回來，清掉的記號、整筆清掉的那一次也回來，跟刪之前一模一樣（成功率一樣）。
+    let change = s.back_to(&flow_after, &flow_before).await;
+    let reply = undo(&mut coach, "stepundo0001", 7, "stepdelete01", false, change).await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    assert_eq!(s.records(&wang, &id).await, records_before);
+    // 送的人和房間裡別人都收到回來的紀錄。
+    for socket in [&mut coach, &mut phone] {
+        let heard = hear(socket).await;
+        assert_eq!(heard["kind"], "recordsChanged", "{heard}");
+        assert_eq!(
+            ids(heard["changed"].as_array().unwrap()),
+            vec!["tboth11111110", "tonly22222220"]
+        );
+        assert_eq!(
+            heard["changed"][1]["attempt"]["marks"],
+            json!({ DISMOUNT: "✗" })
+        );
+    }
+
+    // 重做：再清一次。
+    let change = s.back_to(&flow_before, &flow_after).await;
+    let reply = undo(&mut coach, "stepredo0001", 8, "stepundo0001", true, change).await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    assert_eq!(s.records(&wang, &id).await, records_after);
+}
+
+#[sqlx::test]
+async fn undo_does_not_bring_back_records_changed_or_deleted_after_the_step(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let both = drill(
+        "tboth11111110",
+        SQUAD_1,
+        json!({ LOAD: "✓", DISMOUNT: "✗" }),
+    );
+    let only = drill("tonly22222220", SQUAD_1, json!({ DISMOUNT: "✗" }));
+    let kept = drill(
+        "tkept33333330",
+        SQUAD_1,
+        json!({ LOAD: "✓", DISMOUNT: "✓" }),
+    );
+    record(&mut coach, json!([both, only, kept])).await;
+    let flow_before = s.flow(&wang, &id).await;
+
+    let phase = json!([{ "name": "deletePhase", "args": [LIB, DISMOUNT], "options": { "confirmed": true } }]);
+    assert_eq!(
+        step(&mut coach, "stepdelete01", 6, phase).await["kind"],
+        "accepted"
+    );
+    let flow_after = s.flow(&wang, &id).await;
+    // 刪環節之後：改了第一次的記號、刪掉第三次。
+    change(&mut coach, json!([remarked(&both, json!({ LOAD: "△" }))])).await;
+    delete(&mut coach, json!(["tkept33333330"])).await;
+
+    let change = s.back_to(&flow_after, &flow_before).await;
+    let reply = undo(&mut coach, "stepundo0001", 7, "stepdelete01", false, change).await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    let got = s.records(&wang, &id).await;
+    // 之後改過的照改過的；之後刪掉的不加回來；這一步整筆清掉的回來。
+    assert_eq!(ids(&got), vec!["tboth11111110", "tonly22222220"]);
+    assert_eq!(got[0]["attempt"]["marks"], json!({ LOAD: "△" }));
+    assert_eq!(got[1]["attempt"]["marks"], json!({ DISMOUNT: "✗" }));
+}
+
 async fn say(socket: &mut Socket, message: Value) {
     socket
         .send(Message::Text(message.to_string().into()))

@@ -3,6 +3,7 @@
 //! 丟光了、或動作、組、隊員不在了，整筆不存並說原因。同一個 id 重送不會變兩筆。記下誰記的。
 //! 擁有者、編輯者、記錄者能記；檢視者不能（伺服器擋）。收了馬上告訴房間裡別人。
 //! 跑一步時把紀錄放回流程再跑，跑完照結果清掉（留墓碑）、改掉該改的（例：清掉重算、刪掉環節），也告訴房間裡別人。
+//! 每一步記下清掉、改掉了哪些（遷移 0017）：復原時這一步清掉的加回來，重做再清一次（ADR 0007）。
 //! 改、刪、救回（#258）：記錄者只能動自己記的；擁有者、編輯者能動任何人的（沒有記的人的只有他們能動）。
 //! 同一筆兩個人都改，照收到的先後，後到的贏（不退回）。刪掉的留墓碑：晚到的新增、改都不算，只有「救回」拿得回來。
 //! 一起記全上（#262，ADR 0015）：同一次全上的同一個動作、同一組只算先存的：存、救回都先查，資料庫也擋（遷移 0014）。
@@ -223,12 +224,77 @@ pub struct StepOutcome<'a> {
     pub watch: Vec<String>,
 }
 
-/// 跑完一步：不在了的紀錄清掉（留墓碑），改了的（例：記號少了）存成改好的。回改了哪些（告訴房間裡別人）。
+/// 一步清掉、改掉的一次（ADR 0007，存在 flow_steps.cleared）：改之前的樣子（was），這一步之後的樣子（now，整筆清掉是 None）。
+#[derive(Serialize, Deserialize)]
+struct Cleared {
+    was: Stored,
+    now: Option<Stored>,
+}
+
+/// 復原第 of 步（步驟 id）時給流程核心的紀錄（ADR 0007）：現在的紀錄（before），加上那一步清掉、到現在還清掉著的，
+/// 那一步改掉、到現在沒再動過的換回改之前的樣子。之後才改過、刪掉、救回的照現在的。
+/// 回給流程核心的紀錄、加回來的（現在清掉著的）id。
+pub async fn brought_back(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    of: &str,
+    before: &[Stored],
+) -> anyhow::Result<(Vec<Stored>, Vec<String>)> {
+    let found: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT cleared::text FROM flow_steps WHERE flow_id = $1 AND step_id = $2")
+            .bind(flow_id)
+            .bind(of)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(cleared) = found.and_then(|(c,)| c) else {
+        return Ok((before.to_vec(), vec![]));
+    };
+    let cleared: Vec<Cleared> = serde_json::from_str(&cleared)?;
+    let current: HashMap<String, Kept> = rows(&mut *tx, flow_id, true)
+        .await?
+        .into_iter()
+        .map(|r| (r.id().to_owned(), r))
+        .collect();
+    let mut records = before.to_vec();
+    let mut revived = vec![];
+    for Cleared { was, now } in cleared {
+        let Some(id) = was.attempt.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(r) = current.get(id) else { continue };
+        match now {
+            None if r.gone => {
+                revived.push(id.to_owned());
+                records.push(was);
+            }
+            Some(now) if !r.gone && same(&r.stored, &now) => {
+                for s in records.iter_mut().filter(|s| same_id(s, id)) {
+                    *s = was.clone();
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok((records, revived))
+}
+
+fn same(a: &Stored, b: &Stored) -> bool {
+    a.action_id == b.action_id && a.attempt == b.attempt
+}
+
+fn same_id(s: &Stored, id: &str) -> bool {
+    s.attempt.get("id").and_then(Value::as_str) == Some(id)
+}
+
+/// 跑完第 step 步：不在了的紀錄清掉（留墓碑），改了的（例：記號少了）存成改好的；revived（復原加回來、現在清掉著的）
+/// 還在的拿回來。清掉、改掉了哪些記在這一步（復原時加回來）。回改了哪些（告訴房間裡別人）。
 pub async fn after_step(
     tx: &mut sqlx::PgConnection,
     flow_id: &str,
+    step: i64,
     before: &[Stored],
     after: Vec<Stored>,
+    revived: &[String],
     now: chrono::DateTime<chrono::Utc>,
 ) -> anyhow::Result<RecordsChange> {
     let after: HashMap<String, Stored> = after
@@ -237,6 +303,7 @@ pub async fn after_step(
         .collect();
     let mut change = RecordsChange::default();
     let mut changed = HashSet::new();
+    let mut was: HashMap<String, Stored> = HashMap::new();
     for old in before {
         let Some(id) = old.attempt.get("id").and_then(Value::as_str) else {
             continue;
@@ -245,8 +312,10 @@ pub async fn after_step(
             None => {
                 bury(tx, flow_id, id, now).await?;
                 change.deleted.push(id.to_owned());
+                was.insert(id.to_owned(), old.clone());
             }
-            Some(new) if new.attempt != old.attempt || new.action_id != old.action_id => {
+            Some(new) if !same(new, old) => {
+                was.insert(id.to_owned(), old.clone());
                 // 換了動作、組之後跟同一次全上別人存的那一筆撞在一起：只算先存的，這一筆清掉。
                 if recorded_in_run(tx, flow_id, new, id).await?.is_some() {
                     bury(tx, flow_id, id, now).await?;
@@ -259,12 +328,42 @@ pub async fn after_step(
             Some(_) => {}
         }
     }
+    for id in revived {
+        // 清掉之後同一次全上的這一組別人記了：只算先存的，不拿回來。
+        let Some(new) = after.get(id) else { continue };
+        if recorded_in_run(tx, flow_id, new, id).await?.is_none() {
+            update(tx, flow_id, new, now).await?;
+            changed.insert(id.clone());
+        }
+    }
     if !changed.is_empty() {
         change.changed = rows(&mut *tx, flow_id, false)
             .await?
             .into_iter()
             .filter(|r| changed.contains(r.id()))
             .collect();
+    }
+    // 這一步之後的樣子照存好的（改掉的），清掉的是 None。
+    let cleared: Vec<Cleared> = before
+        .iter()
+        .filter_map(|old| {
+            let id = old.attempt.get("id")?.as_str()?;
+            let was = was.remove(id)?;
+            let now = change
+                .changed
+                .iter()
+                .find(|r| r.id() == id)
+                .map(|r| r.stored.clone());
+            Some(Cleared { was, now })
+        })
+        .collect();
+    if !cleared.is_empty() {
+        sqlx::query("UPDATE flow_steps SET cleared = $3::json WHERE flow_id = $1 AND step = $2")
+            .bind(flow_id)
+            .bind(step)
+            .bind(serde_json::to_string(&cleared)?)
+            .execute(&mut *tx)
+            .await?;
     }
     Ok(change)
 }

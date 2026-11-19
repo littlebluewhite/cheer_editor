@@ -5,6 +5,7 @@ import {
 	addMembers,
 	deleteAction,
 	deleteMember,
+	deletePhase,
 	renameFlow,
 	setPositions,
 	takeRecords,
@@ -12,7 +13,7 @@ import {
 } from './index';
 import { joinUndo, runUndo, undoChanges, undone } from './cloud-undo';
 import { inStep } from './ids';
-import { flowOf, ratedSample } from '../test-flows';
+import { flowOf, libSample, ratedSample } from '../test-flows';
 
 const json = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
@@ -80,6 +81,20 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.flow.name).toBe(before.name);
 		expect(r.records).toEqual(server.records);
 		expect(r.keys).toEqual(['name']);
+	});
+
+	it('重做刪環節：復原時加回來的記號再清一次，只剩那個環節的記號的那一次整筆清掉（ADR 0007）', () => {
+		const before = libSample();
+		const who = before.actions[0].members[0].squad!;
+		const once = (id: string, marks: Record<string, '✓' | '✗'>) => ({
+			actionId: 'x1',
+			attempt: { id, date: '2026-11-04', who, practice: 'drill' as const, whole: true, marks }
+		});
+		const after = flowOf(deletePhase(before, 'x1', 'p3', { confirmed: true }));
+		const r = runUndo(before, [once('t1', { p1: '✓', p3: '✗' }), once('t2', { p3: '✗' })], undoChanges(before, after).redo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.records).toEqual([once('t1', { p1: '✓' })]);
 	});
 
 	it('你刪了 5 個人（35），別人加了 5 個（40），你復原變 45 人：擋下', () => {

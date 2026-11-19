@@ -324,8 +324,35 @@ export function fakeServer(
 		if (state.holdRoom) held.push({ room, send });
 		else queueMicrotask(send);
 	};
-	/** 收過的步（每支流程）：第幾步、步驟 id、哪個分頁、改到的東西（stepKeys）、送的人的名字、改好之後的東西。 */
-	const stepLog = new Map<string, { step: number; id: string; tab: string; keys: string[]; by: string; change: RemoteChange }[]>();
+	/** 一步清掉、改掉的一次（ADR 0007）：改之前的樣子、這一步之後的樣子（整筆清掉是 null）。 */
+	type Cleared = { was: StoredAttempt; now: StoredAttempt | null };
+	/** 收過的步（每支流程）：第幾步、步驟 id、哪個分頁、改到的東西（stepKeys）、送的人的名字、改好之後的東西、清掉改掉的紀錄。 */
+	const stepLog = new Map<
+		string,
+		{ step: number; id: string; tab: string; keys: string[]; by: string; change: RemoteChange; cleared: Cleared[] }[]
+	>();
+	const sameRecord = (a: StoredAttempt, b: StoredAttempt) =>
+		JSON.stringify({ actionId: a.actionId, attempt: a.attempt }) === JSON.stringify({ actionId: b.actionId, attempt: b.attempt });
+	/**
+	 * 復原時給流程核心的紀錄（跟真的伺服器一樣，ADR 0007）：現在的紀錄，加上那一步清掉、到現在還清掉著的，
+	 * 那一步改掉、到現在沒再動過的換回改之前的樣子。回紀錄和加回來的（現在清掉著的）id。
+	 */
+	const broughtBack = (f: FakeCloudFlow, cleared: Cleared[], live: StoredAttempt[]) => {
+		let records = [...live];
+		const revived: string[] = [];
+		for (const { was, now } of cleared) {
+			const id = was.attempt.id;
+			const current = (f.records ?? []).find((r) => r.attempt.id === id);
+			if (!current) continue;
+			if (!now && current.gone) {
+				revived.push(id);
+				records.push(was);
+			} else if (now && !current.gone && sameRecord(current, now)) {
+				records = records.map((r) => (r.attempt.id === id ? was : r));
+			}
+		}
+		return { records, revived };
+	};
 	/**
 	 * 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉；改到同一個東西退回）。
 	 * 有 undo 是復原、重做（#256）。收了就把改好的東西送給同一支流程其他開著的房間。
@@ -350,11 +377,15 @@ export function fakeServer(
 			log.findLast((l) => l.step > seen && l.tab !== from.tab && (!watch || l.keys.some((k) => watch.includes(k))))?.by;
 		const live = (f.records ?? []).filter((r) => !r.gone);
 		let after: { flow: Flow; records: StoredAttempt[] };
+		let revived: string[] = [];
 		if (undo) {
 			const cannot = undo.redo ? '不能重做' : '不能復原';
 			const of = log.find((l) => l.id === undo.of);
 			if (!of) return rejected(`太久以前的，${cannot}`);
-			const u = runUndo(structuredClone(f.flow), structuredClone(live), structuredClone(undo.change));
+			// 復原：那一步清掉的紀錄一起放回去（ADR 0007）；重做不用，跑完照結果再清一次
+			const back = undo.redo ? { records: live, revived: [] } : broughtBack(f, of.cleared, live);
+			revived = back.revived;
+			const u = runUndo(structuredClone(f.flow), structuredClone(back.records), structuredClone(undo.change));
 			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
 			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
 			if (by !== undefined) return rejected(`${by}後來改過，這步${cannot}`);
@@ -376,11 +407,23 @@ export function fakeServer(
 		const kept = new Map(after.records.map((a) => [a.attempt.id, a]));
 		const changed: string[] = [];
 		const deleted: string[] = [];
+		const cleared: Cleared[] = [];
 		f.records = (f.records ?? []).map((old) => {
-			if (old.gone) return old;
 			const now = kept.get(old.attempt.id);
-			if (!now) deleted.push(old.attempt.id);
-			else if (JSON.stringify(now) !== JSON.stringify({ actionId: old.actionId, attempt: old.attempt })) changed.push(old.attempt.id);
+			const was = { actionId: old.actionId, attempt: old.attempt };
+			if (old.gone) {
+				// 復原加回來的：還在就拿回來（同一次全上的這一組別人記了就不算）
+				if (!now || !revived.includes(old.attempt.id) || firstInRun(f, now)) return old;
+				changed.push(old.attempt.id);
+				return { ...old, ...now, gone: false };
+			}
+			if (!now) {
+				deleted.push(old.attempt.id);
+				cleared.push({ was, now: null });
+			} else if (!sameRecord(now, was)) {
+				changed.push(old.attempt.id);
+				cleared.push({ was, now });
+			}
 			return now ? { ...old, ...now } : { ...old, gone: true };
 		});
 		const change = remoteChange(f.flow, after.flow);
@@ -388,9 +431,9 @@ export function fakeServer(
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
-		// 紀錄跟著改的接在編排的改動後面（#258）。
-		tellRecords(f, changed, deleted, from.room);
-		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by, change }]);
+		// 紀錄跟著改的接在編排的改動後面（#258）。復原、重做送的人那邊只帶現在的紀錄，加回來的也告訴他（ADR 0007）。
+		tellRecords(f, changed, deleted, undo ? undefined : from.room);
+		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by, change, cleared }]);
 		f.flow = after.flow;
 		f.step = step + 1;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };

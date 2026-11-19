@@ -8,6 +8,7 @@ import { carryRecords } from './records';
 import { applyRemoteChange, remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
 import { putRecords, takeRecords, type StoredAttempt } from './stored-records';
+import { fitRecords } from './success-rate';
 
 /** 復原堆疊的一步：undo 放回改之前的樣子，redo 放回改之後的樣子（都只有改到的東西）。 */
 export interface UndoChanges {
@@ -34,9 +35,14 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
 	};
 }
 
-/** 把復原、重做的改動套上去：沒改到的保持現在的樣子，紀錄帶現在的（對不上的丟掉，跟本機的復原一樣）。 */
+/**
+ * 把復原、重做的改動套上去：沒改到的保持現在的樣子，紀錄帶現在的（對不上的丟掉，跟本機的復原一樣）。
+ * 記號打在不在的環節上的拿掉、拿光了整筆拿掉（例：重做刪環節，復原時加回來的記號再清一次，ADR 0007）。
+ */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	return carryRecords(applyRemoteChange(flow, change), flow);
+	const next = carryRecords(applyRemoteChange(flow, change), flow);
+	const actions = next.actions.map(fitRecords);
+	return actions.every((a, i) => a === next.actions[i]) ? next : { ...next, actions };
 }
 
 /** 伺服器跑復原、重做的結果：跟一般的一步一樣（runStepJson），不合規則是 blocked。 */
