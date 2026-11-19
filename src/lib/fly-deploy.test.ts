@@ -24,20 +24,12 @@ function table(name: string): string {
 	return match![1];
 }
 
-// Fly secrets 裡已經放好的金鑰（網站主人設的，見 docs/deploy.md）：不能出現在公開的設定檔裡。
-const SECRETS = [
-	'DATABASE_URL',
-	'R2_ENDPOINT',
-	'R2_BUCKET',
-	'R2_ACCESS_KEY_ID',
-	'R2_SECRET_ACCESS_KEY',
-	'BACKUP_R2_BUCKET',
-	'BACKUP_R2_ACCESS_KEY_ID',
-	'BACKUP_R2_SECRET_ACCESS_KEY',
-	'RESEND_API_KEY',
-	'MAIL_FROM',
-	'SITE_URL'
-];
+// 伺服器讀的環境變數（server/src/config.rs 的 env::var、need）。除了 fly.toml [env] 那幾條不是祕密，
+// 其他都是 Fly secrets 裡的金鑰（網站主人設的，見 docs/deploy.md）：不能出現在公開的設定檔裡。
+// 從 config.rs 讀，伺服器多讀一個環境變數時這裡自動跟上。
+const SERVER_ENV = [...read('server/src/config.rs').matchAll(/(?:env::var|need)\("([A-Z0-9_]+)"\)/g)].map((m) => m[1]);
+const NOT_SECRET = ['LISTEN_ADDR', 'SITE_DIR'];
+const SECRETS = [...new Set(SERVER_ENV)].filter((name) => !NOT_SECRET.includes(name));
 
 describe('部署到 Fly 的 workflow', () => {
 	it('只在推 main 和手動按的時候跑，fork 來的 PR 不會跑', () => {
@@ -95,6 +87,9 @@ describe('fly.toml', () => {
 		expect(env).toContain('LISTEN_ADDR = "0.0.0.0:8080"');
 		expect(env).toContain('SITE_DIR = "/app/build"');
 		expect(table('http_service')).toContain('internal_port = 8080');
+		// 讀得到 config.rs 才算數（正規式壞了、檔案搬了不會變成什麼都沒檢查）。
+		expect(SECRETS).toEqual(expect.arrayContaining(['DATABASE_URL', 'R2_SECRET_ACCESS_KEY', 'BACKUP_HEARTBEAT_URL']));
+		for (const name of NOT_SECRET) expect(SERVER_ENV).toContain(name);
 		for (const name of SECRETS) expect(flyToml).not.toMatch(new RegExp(`\\b${name}\\b`));
 	});
 
