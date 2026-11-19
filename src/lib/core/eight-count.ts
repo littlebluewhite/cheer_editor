@@ -86,6 +86,8 @@ export interface EightCountPhase {
 	to: number;
 	/** 環節的顏色（畫面上用；黑白印靠框線和字）。 */
 	color: string;
+	/** 第幾排（從 0 起）：金字塔疊著的環節往下多一排，跟拍點格子同一排（流程核心整個動作算一次）。沒疊就是 0。 */
+	row: number;
 }
 
 /** 八拍表一列裡、一個有拍點或標了拍的環節的動作那一排 8 格。 */
@@ -200,11 +202,12 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 						word: cue.word,
 						who: memberId === null ? whoName(flow, cue.who) || null : null
 					}));
-					const phases = (slice?.phases ?? []).map(({ phase, start, end }) => ({
+					const phases = (slice?.phases ?? []).map(({ phase, start, end, row }) => ({
 						label: phaseLabel(phase),
 						from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
 						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
-						color: phaseColor(phase)
+						color: phaseColor(phase),
+						row
 					}));
 					return cues.length || phases.length
 						? [{ category: a.category, name: a.name, cues, phases }]

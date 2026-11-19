@@ -425,8 +425,8 @@ describe('八拍表的列：環節', () => {
 				name: 'Lib',
 				cues: [{ kind: 'count', from: 8, to: 8, start: 14, end: 16, span: '1-8・1 拍', lead: '', continued: false, word: 'down', who: null }],
 				phases: [
-					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b' },
-					{ label: '中段', from: 7, to: 8, color: '#475569' }
+					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b', row: 0 },
+					{ label: '中段', from: 7, to: 8, color: '#475569', row: 0 }
 				]
 			}
 		]);
@@ -439,7 +439,7 @@ describe('八拍表的列：環節', () => {
 				category: 'stunt',
 				name: 'Lib',
 				cues: [],
-				phases: [{ label: '中段', from: 1, to: 2, color: '#475569' }]
+				phases: [{ label: '中段', from: 1, to: 2, color: '#475569', row: 0 }]
 			}
 		]);
 	});
@@ -463,6 +463,27 @@ describe('八拍表的列：環節', () => {
 		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '', beats: { at: 0, len: 8 } }));
 		flow = flowOf(clearPhaseBeats(flow, 'x1', 0, 8));
 		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
+	});
+
+	it('金字塔疊著的環節在不同排，跨列的每一列都在同一排；沒疊的都是第 0 排', () => {
+		// 1-5 開始的金字塔：上法「第一個」1-5 到 1-6、中段「第一個」1-7 到 2-4、上法「第二個」1-7 到 2-2（疊在中段上）
+		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
+		flow = flowOf(updateAction(flow, 'x1', { category: 'pyramid' }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第一個', beats: { at: 0, len: 4 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '第一個', beats: { at: 4, len: 12 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 4, len: 8 } }));
+		const rows = eightCountRows(flow, null);
+		const placed = (i: number) => rows[i].cues[0].phases.map((p) => [p.label, p.from, p.to, p.row]);
+		expect(placed(0)).toEqual([
+			['上法 第一個', 5, 6, 0],
+			['中段 第一個', 7, 8, 0],
+			['上法 第二個', 7, 8, 1]
+		]);
+		expect(placed(1)).toEqual([
+			['中段 第一個', 1, 4, 0],
+			['上法 第二個', 1, 2, 1]
+		]);
+		expect(eightCountRows(phased(), null)[0].cues[0].phases.map((p) => p.row)).toEqual([0, 0]);
 	});
 
 	it('個人表也印環節（環節不分給誰）；不在動作裡的人沒有', () => {

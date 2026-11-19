@@ -39,6 +39,7 @@
 						class="phase"
 						data-phase
 						style:grid-column="{p.from} / {p.to + 1}"
+						style:grid-row={p.row + 1}
 						style:border-top-color={p.color}
 						aria-label={phaseAria(p)}>{p.label}</span
 					>
@@ -81,14 +82,15 @@
 		flex: 1;
 		min-width: 0;
 	}
-	/* 環節：拍點上面一行，左右直線框出範圍、上緣是環節的顏色，寫種類和名字（黑白印靠線和字）。 */
+	/* 環節：拍點上面一行，左右直線框出範圍、上緣是環節的顏色，寫種類和名字（黑白印靠線和字）。
+	   金字塔疊著的往下多一排（第幾排流程核心算好）；這個八拍只有下面那排有東西時，上面那排照樣留高度，同一個環節才每列都在同一排。 */
 	.phases {
 		display: grid;
 		grid-template-columns: repeat(8, 1fr);
+		grid-auto-rows: minmax(19px, auto);
 		margin-bottom: 2px;
 	}
 	.phase {
-		grid-row: 1;
 		margin: 0 1px;
 		padding: 1px 4px;
 		font-size: 11px;
