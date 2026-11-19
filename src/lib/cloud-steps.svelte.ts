@@ -584,7 +584,8 @@ export class CloudSteps {
 		if (!now) return this.#session.reset(flow, message);
 		const patched = new Set(dropped.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));
 		let back = now;
-		for (const step of [...dropped].reverse()) back = undoRecords(step.before, step.after, back);
+		// 照伺服器的樣子帶回來（不是那一步之前的）：別人後來加回來的環節、組上的記號不會被拿掉
+		for (const step of [...dropped].reverse()) back = undoRecords(putRecords(flow, takeRecords(step.before).records), step.after, back);
 		const shown = new Set(takeRecords(now).records.map((r) => r.attempt.id));
 		const records = [
 			...takeRecords(now).records.filter((r) => !patched.has(r.actionId)),
@@ -677,14 +678,16 @@ export class CloudSteps {
 	}
 
 	/**
-	 * 別人（或我在別的分頁）記的、改的、刪的，或別人的一步跟著改、清掉的（#258）：
+	 * 別人（或我在別的分頁）記的、改的、刪的，或一步跟著改、清掉的（#258）：
 	 * 有的換成伺服器的樣子，沒有的放進畫面，刪掉的拿掉；不是自己記的記下名字。
+	 * 我改了、還在等回答的那幾次先不動（伺服器的樣子比我的改動舊，等那一批的回答）。
 	 */
 	#others(incoming: CloudRecord[], deleted: string[]) {
 		const flow = this.#session.flow;
 		if (!flow) return;
-		const gone = new Set(deleted);
-		const fresh = new Map(incoming.map((r) => [attemptOf(r).id, r]));
+		const pending = new Set(this.#pendingAmends().flatMap((a) => a.ids));
+		const gone = new Set(deleted.filter((id) => !pending.has(id)));
+		const fresh = new Map(incoming.flatMap((r) => (pending.has(attemptOf(r).id) ? [] : [[attemptOf(r).id, r] as const])));
 		if (this.#queue.length) {
 			const shown = new Set(takeRecords(flow).records.map((r) => r.attempt.id));
 			for (const id of deleted) if (!shown.has(id)) this.#hidden.set(id, null);

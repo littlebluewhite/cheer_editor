@@ -165,6 +165,7 @@ describe('改到同一個東西', () => {
 		s.w.step({ name: 'moveMember', args: [xin, 0] });
 		await flush();
 		expect(s.state.flows[0].flow.members[0].name).toBe('小新');
+		const order = s.state.flows[0].flow.members.map((m) => m.name);
 
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		await flush();
@@ -172,9 +173,67 @@ describe('改到同一個東西', () => {
 		await flush();
 
 		const server = s.state.flows[0].flow;
-		expect(server.members.map((m) => m.name)).toContain('小華');
-		expect(server.members[0].name).toBe('小新');
+		expect(server.members.map((m) => m.name)).toEqual(order);
 		expect(s.page.session.flow).toEqual(server);
+	});
+
+	it('redo after undo keeps the accepted segment order：兩個人同時在同一段後面加段，我復原再重做，播的順序還是 A、我的、他的', async () => {
+		const s = await bothOpen();
+		const a = s.state.flows[0].flow.segments[0].id;
+		s.state.holdRoom = true;
+		s.w.step({ name: 'addSegment', args: ['chant', a] });
+		s.page.session.ask.send({ name: 'addSegment', args: ['chant', a] });
+		s.releaseRoom();
+		await flush();
+		const order = s.state.flows[0].flow.segments.map((g) => g.id);
+		const mine = s.page.session.flow!.segments[1].id;
+		expect(order.indexOf(mine)).toBe(1);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.segments.map((g) => g.id)).toEqual(order);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
+	it('redo after undo puts a teammate back where the server had it：同時加隊員，沒人調順序，我復原再重做，名單跟收了的時候一樣', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		s.w.step(add('小新'));
+		s.page.session.ask.send(add('小華'));
+		s.releaseRoom();
+		await flush();
+		const order = s.state.flows[0].flow.members.map((m) => m.name);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.members.map((m) => m.name)).toEqual(order);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
+	it('redo of a roster move still moves：王教練加了隊員，我調順序、復原再重做，還是調好的順序', async () => {
+		const s = await bothOpen();
+		s.w.step(add('小新'));
+		await flush();
+		const last = s.page.session.flow!.members.at(-2)!.id;
+		s.page.session.ask.send({ name: 'moveMember', args: [last, 0] });
+		await flush();
+		const moved = s.state.flows[0].flow.members.map((m) => m.id);
+		expect(moved[0]).toBe(last);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual(moved);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 
 	it('收了的時候後面還有沒送到的步：換成伺服器的樣子，再跑一次後面的步；全部收了跟伺服器一樣', async () => {
