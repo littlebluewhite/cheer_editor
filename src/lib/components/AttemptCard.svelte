@@ -197,7 +197,7 @@
 			</div>
 		{/if}
 	</header>
-	{#if waiting}<p class="hint">還有同時在做的環節沒打。打完會自動存，也可以按『存這一次』</p>
+	{#if waiting}<p class="hint">還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」</p>
 	{:else if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
 
 	<div class="phases">

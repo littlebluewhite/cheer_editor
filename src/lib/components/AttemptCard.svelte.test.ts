@@ -377,7 +377,7 @@ describe('記錄頁的卡：金字塔的環節佔同樣的拍（打 ✗ 之後�
 });
 
 describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打就先不自動存', () => {
-	const WAIT = '還有同時在做的環節沒打。打完會自動存，也可以按『存這一次』';
+	const WAIT = '還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」';
 	const enabled = (name: string, phase: string) =>
 		!(screen.getByRole('button', { name: `${name} ${phase} 成功` }) as HTMLButtonElement).disabled;
 

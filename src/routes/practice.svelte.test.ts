@@ -630,7 +630,7 @@ describe('練習：金字塔的環節佔同樣的拍', () => {
 	}
 
 	const who = '第 1 組 小美';
-	const WAIT = '還有同時在做的環節沒打。打完會自動存，也可以按『存這一次』';
+	const WAIT = '還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」';
 	const enabled = (phase: string) => !disabled(screen.getByRole('button', { name: `${who} ${phase} 成功` }));
 	const phases = ['上法 第一個', '中段 第一個', '上法 第二個', '中段 第二個', '下法'];
 
@@ -659,6 +659,10 @@ describe('練習：金字塔的環節佔同樣的拍', () => {
 		expect(enabled('中段 第二個')).toBe(false);
 		expect(card(who).getByText(WAIT)).toBeTruthy();
 		expect(card(who).getByRole('button', { name: '存這一次' })).toBeTruthy();
+		// 換到編排再回來：點到一半的記號還在，還在等
+		await toArrange();
+		await toPractice();
+		expect(card(who).getByText(WAIT)).toBeTruthy();
 		await tap(who, '中段 第一個', '成功');
 		expect(dayRow(who)).toEqual(['·✓✗··']);
 		expect(card(who).queryByRole('button', { name: '存這一次' })).toBeNull();
