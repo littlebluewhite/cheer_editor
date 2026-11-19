@@ -1,6 +1,7 @@
 //! 雲端流程的音樂檔（#249）：檔放 Cloudflare R2，不經過伺服器。
-//! 上傳：伺服器查權限、發一個幾分鐘內有效的預簽網址，瀏覽器直接 PUT 上去；傳完告訴伺服器，
-//! 伺服器在 R2 查一次大小，超過 60 MB 就刪掉、退回。播放：能打開流程的人拿下載的預簽網址。
+//! 上傳：伺服器查權限、發一個幾分鐘內有效的預簽網址，瀏覽器直接 PUT 到暫放的名字（`uploading/` 開頭）；
+//! 傳完告訴伺服器，伺服器在 R2 複製到正式的名字、刪掉暫放的，再查正式的那份多大，超過 60 MB 就刪掉、退回。
+//! 預簽網址收了之後還有效，但只寫得到暫放的，收好的不會被換掉（codex review）。播放：能打開流程的人拿下載的預簽網址。
 //! 換掉、刪掉的音樂（流程裡不再有）記下哪天不用了（收一步時，見 flow_room）；30 天後真的刪在 #266。
 
 use axum::Json;
@@ -79,11 +80,13 @@ pub async fn start_upload(
     if added.is_none() {
         return Ok(StatusCode::CONFLICT.into_response());
     }
-    let url = store.upload_url(&key);
+    let url = store.upload_url(&uploading(&key));
     Ok(Json(Presigned { url }).into_response())
 }
 
-/// 傳完了：在 R2 查大小。超過 60 MB 就刪掉（R2 上的和這一列）、回 413；還沒傳上去 409；收了 204。
+/// 傳完了：在 R2 把暫放的複製到正式的名字、刪掉暫放的，查正式的那份多大（之後再 PUT 也只寫到暫放的）。
+/// 超過 60 MB 就刪掉（R2 上的和這一列）、回 413；還沒傳上去 409；收了 204。
+/// 同一個音樂檔同時說兩次傳完：鎖住這一列，一個做完另一個才做。
 pub async fn finish_upload(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -98,12 +101,13 @@ pub async fn finish_upload(
     let Some(store) = &state.music else {
         return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
     };
+    let mut tx = state.db.begin().await?;
     let found: Option<(String, Option<i64>)> = sqlx::query_as(
-        "SELECT object_key, size FROM flow_audio WHERE flow_id = $1 AND audio_id = $2",
+        "SELECT object_key, size FROM flow_audio WHERE flow_id = $1 AND audio_id = $2 FOR UPDATE",
     )
     .bind(&flow_id)
     .bind(&audio_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((key, size)) = found else {
         return Ok(StatusCode::NOT_FOUND.into_response());
@@ -111,24 +115,32 @@ pub async fn finish_upload(
     if size.is_some() {
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
-    let Some(size) = store.size(&key).await? else {
+    if !store.copy(&uploading(&key), &key).await? {
         return Ok(StatusCode::CONFLICT.into_response());
-    };
+    }
+    store.delete(&uploading(&key)).await?;
+    // 查複製好的那份（不是暫放的）：查完到記下來之間沒人寫得到它。
+    let size = store
+        .size(&key)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("R2 上剛複製的不見了"))?;
     if size > MAX_AUDIO_BYTES {
         store.delete(&key).await?;
         sqlx::query("DELETE FROM flow_audio WHERE flow_id = $1 AND audio_id = $2")
             .bind(&flow_id)
             .bind(&audio_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
     }
     sqlx::query("UPDATE flow_audio SET size = $3 WHERE flow_id = $1 AND audio_id = $2")
         .bind(&flow_id)
         .bind(&audio_id)
         .bind(size)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -213,6 +225,11 @@ async fn allowed(
         Access::Open => role.is_some(),
         Access::Edit => role.is_some_and(|r| r.can_edit()),
     })
+}
+
+/// 瀏覽器 PUT 的暫放名字：收了才複製到正式的 `key`。沒收的留在這裡，R2 的生命週期規則過幾天刪掉（docs/deploy.md）。
+fn uploading(key: &str) -> String {
+    format!("uploading/{key}")
 }
 
 /// 檔名的副檔名（小寫）是放得下的音樂檔就回它。
