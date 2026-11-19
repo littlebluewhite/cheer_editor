@@ -404,6 +404,9 @@ describe('環節：金字塔的環節可以佔同樣的拍', () => {
 		expect(text).not.toMatch(/環節(佔|標|的)的?拍點/);
 		const shot = [...document.querySelectorAll<HTMLImageElement>('#practice img')].find((img) => img.alt.includes('佔同樣的拍'));
 		expect(shot?.alt).toContain('兩排');
+		// 圖跟截圖一樣：點的是中段 第二個那一條（跟中段 第一個都佔 7-1 到 7-4）
+		expect(shot?.alt).toContain('點了中段 第二個');
+		expect(shot?.closest('figure')?.textContent).toContain('點了中段「第二個」那一條');
 	});
 
 	it('練習那一段：打 ✗ 之後哪些空著、什麼時候先不自動存、「存這一次」在哪', () => {

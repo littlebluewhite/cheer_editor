@@ -167,7 +167,7 @@ async function shot(name, marks, clip) {
 			const around = [[1, 0], [1, 0.5], [1, 1], [0.5, 1], [0, 1], [0, 0.5], [0, 0], [0.5, 0]];
 			const tries = [at, ...around.map(([x, y]) => ({ x, y })), ...around.map(([x, y]) => ({ x, y, dx: (x - 0.5) * 32, dy: (y - 0.5) * 32 }))].map(spot);
 			const best = at.fixed ? tries[0] : tries.reduce((a, c) => (c.cost < a.cost ? c : a));
-			if (best.cost > 0) stuck.push(n);
+			if (best.cost > 0 && !at.fixed) stuck.push(n);
 			Object.assign(badge.style, { left: best.cx - 13 + 'px', top: best.cy - 13 + 'px' });
 			obstacles.push({ el: badge, rect: best.box });
 			layer.append(frame, badge);
@@ -646,7 +646,7 @@ await shot('summary', [
 
 // 13 金字塔的環節佔同樣的拍（不在第 5 章的試跑裡，試跑只有技巧）：回編排，在 6-1 加一個 16 拍的金字塔，
 // 五個環節照規格的例子：上法「第一個」6-1 到 6-4、中段「第一個」6-5 到 7-4、上法「第二個」6-5 到 6-8、
-// 中段「第二個」7-1 到 7-4、下法 7-5 到 7-8。點上法「第二個」那一條，拍疊著的往下多一排、改環節改的是它。
+// 中段「第二個」7-1 到 7-4、下法 7-5 到 7-8。拍疊著的往下多一排；點中段「第二個」那一條，改環節改的是它。
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
 await js(`$btn('編排').click();`);
 await waitFor(() => js(`return !!q('[data-ruler]')`));
