@@ -75,6 +75,30 @@ export function ratedSample(): Flow {
 	return flowOf(addPhase(flow, 'x2', { kind: 'tumble', name: '騰翻', beats: { at: 0, len: 16 } }));
 }
 
+/**
+ * 金字塔的範例（#278 的例子）：libSample 再加 x2 金字塔（第 3、4 個八拍），小美、小A 在裡面（第 1 組 g3），
+ * 環節照這個順序：p4 上法「第一個」1-1 到 1-4、p5 中段「第一個」1-5 到 2-4、p6 上法「第二個」1-5 到 1-8、
+ * p7 中段「第二個」2-1 到 2-4、p8 下法 2-5 到 2-8。
+ */
+export function pyramidSample(): Flow {
+	const members = [
+		{ memberId: 'm1', role: '上層' },
+		{ memberId: 'm2', role: '主底' }
+	];
+	let flow = flowOf(
+		addAction(libSample(), { segmentId: 's1', category: 'pyramid', name: '金字塔', start: 32, length: 32, note: '', members })
+	);
+	const phases = [
+		['load', '第一個', 0, 8],
+		['hold', '第一個', 8, 16],
+		['load', '第二個', 8, 8],
+		['hold', '第二個', 16, 8],
+		['dismount', '', 24, 8]
+	] as const;
+	for (const [kind, name, at, len] of phases) flow = flowOf(addPhase(flow, 'x2', { kind, name, beats: { at, len } }));
+	return flow;
+}
+
 /** 動作裡每個人的組號（照組 id 的先後算，見 squadNumber）；沒分組是 undefined。 */
 export function squadNumbers(action: Action): (number | undefined)[] {
 	return action.members.map((m) => (m.squad === undefined ? undefined : squadNumber(action, m.squad)));

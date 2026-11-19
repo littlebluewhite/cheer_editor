@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 記錄頁、總表的「＋ 記一次全上」打開的表（照台灣教練的全上表）：每個要記的動作一塊，照流程順序；一列一個環節，一欄一組。
-	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組空著的環節（問核心 blankPhases）變空的；改回來，回到 ✓。
+	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組按不了的環節（✗ 做完之後才開始的，問核心 blankPhases）變空的，佔同樣拍的留著；改回來，回到 ✓。
 	// 有個動作沒做，在它那裡按「這個沒做」：整個動作變空的，不存；中途停了，在第一個沒做的動作按「後面都沒做」，它和後面的一次變空的。
 	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問，切頁也一樣）。
 	import {
@@ -55,7 +55,7 @@
 		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, picked[key(action.id, who, p.id)] ?? '✓']));
 	}
 
-	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（核心 keptAttempt）：✗ 後面的、沒做的動作是空的（null）。 */
+	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（核心 keptAttempt）：✗ 做完之後才開始的、沒做的動作是空的（null）。 */
 	function column(action: Action, who: string): (Mark | null)[] {
 		const phaseIds = action.successRate!.phases.map((p) => p.id);
 		if (skipped.includes(action.id)) return phaseIds.map(() => null);
