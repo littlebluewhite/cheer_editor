@@ -313,6 +313,33 @@ async fn the_same_id_twice_is_one_record(db: sqlx::PgPool) {
 }
 
 #[sqlx::test]
+async fn a_resend_after_being_made_a_viewer_still_returns_the_stored_record(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
+    let one = drill("tdowngrade010", SQUAD_1, json!({ LOAD: "✓" }));
+    let (mut phone, _) = s.join(&rec, &id).await;
+    let first = record(&mut phone, json!([one])).await;
+
+    // 「收了」沒收到就斷線，這時被改成只能看；連回來重送：回存著的那一筆，新的才不收
+    sqlx::query("UPDATE flow_permissions SET role = 'viewer' WHERE flow_id = $1")
+        .bind(&id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    let (mut again, _) = s.join(&rec, &id).await;
+    let fresh = drill("tdowngrade020", SQUAD_1, json!({ LOAD: "✓" }));
+    let second = record(&mut again, json!([one, fresh])).await;
+
+    assert_eq!(second["saved"], first["saved"]);
+    assert_eq!(
+        second["dropped"],
+        json!([{ "id": "tdowngrade020", "message": "你只能看這支流程" }])
+    );
+}
+
+#[sqlx::test]
 async fn a_run_through_recorded_alone_keeps_its_id_and_start_time(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;

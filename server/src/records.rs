@@ -516,21 +516,6 @@ pub async fn record(
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
         return Ok(RoomMessage::Revoked);
     };
-    if !role.can_record() {
-        let dropped = incoming
-            .into_iter()
-            .map(|(id, _)| DroppedRecord {
-                id,
-                message: VIEW_ONLY.into(),
-                by: None,
-            })
-            .collect();
-        return Ok(RoomMessage::RecordsSaved {
-            saved: vec![],
-            dropped,
-        });
-    }
-
     // 收過的 id（斷線重送）：沒清掉的回存著的那一筆。
     let ids: Vec<String> = incoming.iter().map(|(id, _)| id.clone()).collect();
     let taken: HashSet<String> = sqlx::query_as::<_, (String,)>(
@@ -554,6 +539,18 @@ pub async fn record(
         .into_iter()
         .filter(|(id, _)| !taken.contains(id))
         .collect();
+    // 只能看的：新的不收；收過的（收了才降成只能看，重送）照樣回存著的那一筆，不然手機當成沒存
+    if !role.can_record() {
+        let dropped = fresh
+            .into_iter()
+            .map(|(id, _)| DroppedRecord {
+                id,
+                message: VIEW_ONLY.into(),
+                by: None,
+            })
+            .collect();
+        return Ok(RoomMessage::RecordsSaved { saved, dropped });
+    }
     let mut dropped = vec![];
     let mut added = vec![];
     if !fresh.is_empty() {
