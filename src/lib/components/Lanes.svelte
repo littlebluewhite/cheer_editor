@@ -15,7 +15,9 @@
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
 	// 環節：標了拍的環節在色條最上緣畫一條細條（環節的顏色），那幾拍鋪同色淡底；不吃滑鼠，名稱、拍點畫在上面。
 	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
+	// 金字塔疊著的環節：細條往下多一排（第幾排流程核心算好，跟拍點格子同一排），名稱和拍點再往下讓。
 	import {
+		actionEights,
 		actionLabel,
 		actionSeconds,
 		atTextWithUnit,
@@ -124,30 +126,44 @@
 	/** 環節細條的高度（px）。 */
 	const PHASE_H = 3;
 
-	/** 每個動作標了拍的環節：名字、顏色、從動作開始第幾個半拍、幾個半拍長。 */
+	/** 每個動作標了拍的環節：名字、顏色、從動作開始第幾個半拍、幾個半拍長、第幾排（流程核心算的）。 */
 	const phaseBars = $derived(
 		Object.fromEntries(
-			flow.actions.map((a) => [
-				a.id,
-				(a.successRate?.phases ?? []).flatMap((p) =>
-					p.beats ? [{ id: p.id, label: phaseLabel(p), color: phaseColor(p), ...p.beats }] : []
-				)
-			])
+			flow.actions.map((a) => {
+				const rows = new Map(actionEights(a).flatMap((e) => e.phases.map((p) => [p.phase.id, p.row] as const)));
+				return [
+					a.id,
+					(a.successRate?.phases ?? []).flatMap((p) =>
+						p.beats ? [{ id: p.id, label: phaseLabel(p), color: phaseColor(p), row: rows.get(p.id) ?? 0, ...p.beats }] : []
+					)
+				];
+			})
 		)
 	);
+	/** 每個動作的環節細條有幾排（沒有環節是 0）。 */
+	const phaseRows = $derived(
+		Object.fromEntries(flow.actions.map((a) => [a.id, Math.max(0, ...phaseBars[a.id].map((p) => p.row + 1))]))
+	);
 
-	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px）。 */
+	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px），讓開他的動作裡最多的那幾排。 */
 	const lift = $derived(
 		Object.fromEntries(
 			flow.members.map((m) => [
 				m.id,
-				cues[m.id].tracks &&
-				flow.actions.some((a) => phaseBars[a.id].length && a.members.some((x) => x.memberId === m.id))
-					? PHASE_H
+				cues[m.id].tracks
+					? PHASE_H *
+						Math.max(0, ...flow.actions.filter((a) => a.members.some((x) => x.memberId === m.id)).map((a) => phaseRows[a.id]))
 					: 0
 			])
 		)
 	);
+	/** 色條名稱那一行往下讓開細條：有拍點時名稱靠上、讓開全部的排；沒拍點時名稱置中，一排讓得開，疊了才往下讓。 */
+	const namePad = (actionId: string, hasCues: boolean) => {
+		const rows = phaseRows[actionId];
+		if (!rows) return undefined;
+		if (hasCues) return `${1 + rows * PHASE_H}px`;
+		return rows > 1 ? `${rows * PHASE_H}px` : undefined;
+	};
 
 	/**
 	 * 手位最多撐幾個半拍：往右撐到下一個手位（或動作結尾）為止；最後一拍的往左撐到上一個手位為止。
@@ -427,6 +443,7 @@
 						style:left={`${p.left + (d?.mode === 'move' ? d.dx : 0)}px`}
 						style:width={`${Math.max(p.width + (d?.mode === 'resize' ? d.dx : 0), 2)}px`}
 						style:background={actionColor(p.action)}
+						style:padding-top={namePad(p.action.id, mine.length > 0)}
 						style:--tint={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
 						onclick={() => editor.pickAction(p.action.id)}
@@ -448,7 +465,7 @@
 								aria-hidden="true"
 								style:left={`${ph.at * p.halfPx}px`}
 								style:width={`${ph.len * p.halfPx}px`}
-								style:top="0px"
+								style:top={`${ph.row * PHASE_H}px`}
 								style:height={`${PHASE_H}px`}
 								style:background={ph.color}
 							></span>
@@ -700,9 +717,6 @@
 	}
 	.role {
 		flex: 0 100 auto;
-	}
-	.bar.has-cues.has-phases {
-		padding-top: 4px;
 	}
 	/* 拍點：不吃滑鼠，按下去還是按在色條上。down 藍、up 綠實心；步驟淡橘、左邊粗線；手位粉紅小字（跟拍點表單同色）。 */
 	.cue {
