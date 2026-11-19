@@ -852,15 +852,24 @@ describe('流程檔：第 15 版（新的 id、全上開的時間）', () => {
 		expect(r.kind === 'ok' && 'lastIds' in r.flow).toBe(false);
 	});
 
-	it('第 14 版的檔（編號的 id、lastIds、整個做的 ✗ 記著空著的環節）：升到第 15 版只拿掉 lastIds，空著的環節照留', () => {
-		const flow = withRecords();
+	it('第 14 版的檔（main 發的：編號的 id、lastIds、沒有 squadOrder、空著的環節、金字塔環節疊著、拋法）：升到第 15 版只拿掉 lastIds', () => {
+		let flow = withRecords();
 		const rate = flow.actions[0].successRate!;
 		const failed = { id: 't4', date: '2026-11-04', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✗' as const }, blanks: ['p2', 'p3'] };
-		const v14 = { ...flow, actions: [{ ...flow.actions[0], successRate: { ...rate, records: [...rate.records, failed] } }, ...flow.actions.slice(1)] };
-		const r = readFlowFile(zipOf({ formatVersion: 14, flow: { ...v14, lastIds: { p: 3, t: 4, g: 2 } } }));
+		flow = { ...flow, actions: [{ ...flow.actions[0], successRate: { ...rate, records: [...rate.records, failed] } }, ...flow.actions.slice(1)] };
+		flow = flowOf(addAction(flow, { segmentId: 's3', category: 'pyramid', name: '金字塔', start: 0, length: 16, note: '', members: [{ memberId: 'm1', role: null }] }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '', beats: { at: 0, len: 8 } }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '', beats: { at: 4, len: 8 } }));
+		flow = flowOf(addAction(flow, { segmentId: 's3', category: 'toss', name: '拋', start: 16, length: 8, note: '', members: [{ memberId: 'm2', role: null }] }));
+		flow = flowOf(addPhase(flow, 'x3', { kind: 'toss', name: '', beats: { at: 0, len: 4 } }));
+		// 第 14 版沒有的欄位拿掉：main 的編輯器寫出來的就是這樣
+		const v14: Flow = JSON.parse(JSON.stringify(flow, (k, v) => (k === 'squadOrder' || k === 'runThroughStartedAt' ? undefined : v)));
+		const r = readFlowFile(zipOf({ formatVersion: 14, flow: { ...v14, lastIds: { p: 6, t: 4, g: 2 } } }));
 		if (r.kind !== 'ok') throw new Error(JSON.stringify(r));
 		expect(r.flow).toEqual(v14);
-		expect(r.flow.actions[0].successRate!.records.at(-1)).toEqual(failed);
+		expect('lastIds' in r.flow).toBe(false);
+		expect(squadNumbers(r.flow.actions[0])).toEqual(squadNumbers(flow.actions[0]));
+		expect(r.flow.actions[1].successRate!.phases.map((p) => p.beats)).toEqual([{ at: 0, len: 8 }, { at: 4, len: 8 }]);
 		expect(attemptText(r.flow.actions[0], failed)).toBe('✗··');
 		// 存回去是第 15 版，再開一樣。
 		expect(readFlowFile(writeFlowFile(r.flow, {}))).toMatchObject({ kind: 'ok', flow: r.flow });

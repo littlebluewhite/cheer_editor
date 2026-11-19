@@ -346,6 +346,7 @@ async fn blank_phases_are_kept_when_saved_and_changed(db: sqlx::PgPool) {
 
     let reply = record(&mut phone, json!([fail])).await;
     assert_eq!(reply["saved"].as_array().unwrap().len(), 1);
+    assert_eq!(reply["saved"][0]["attempt"], fail["attempt"]);
     assert_eq!(s.records(&wang, &id).await[0]["attempt"], fail["attempt"]);
 
     let mut fixed = fail.clone();
