@@ -28,6 +28,7 @@ import type { AdminProblem } from '#lib/api-types/AdminProblem.js';
 import type { HandedOver } from '#lib/api-types/HandedOver.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
+import { OLD_SITE } from '#lib/old-site.js';
 
 export type {
 	AdminProblem,
@@ -194,8 +195,24 @@ export interface ServerAdapter {
 	changePassword(current: string, password: string): Promise<ChangePasswordResult>;
 }
 
-/** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。 */
+/**
+ * 舊網址版（#267）：沒有伺服器，不 fetch、不開 WebSocket。我是誰：沒登入；其他都是連不上（ServerUnreachable）。
+ */
+function noServer(): ServerAdapter {
+	const unreachable = () => Promise.reject(new ServerUnreachable());
+	const known: Partial<ServerAdapter> = {
+		me: async () => null,
+		loginExpired: async () => false,
+		openRoom: () => {
+			throw new ServerUnreachable();
+		}
+	};
+	return new Proxy(known, { get: (t, k) => t[k as keyof ServerAdapter] ?? unreachable }) as ServerAdapter;
+}
+
+/** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。舊網址版不連（noServer）。 */
 export function httpServer(base = ''): ServerAdapter {
+	if (OLD_SITE) return noServer();
 	async function post(path: string, body: unknown): Promise<Response> {
 		let res: Response;
 		try {

@@ -60,9 +60,31 @@ fly deploy --remote-only --ha=false
 ### 舊網址（GitHub Pages）
 
 舊網址 `https://littlebluewhite.github.io/cheer_editor/` 照舊用 `.github/workflows/deploy.yml` 部署（測試全過才部署到 GitHub Pages）。
-上線那天建一份舊網址版（不能登入、首頁黃色搬家條）就凍住，那個 workflow 拿掉（#267、#269）。
+推 `main` 建的是一般版，跟新網址一樣。上線那天建一份舊網址版就凍住，那個 workflow 拿掉（#267、#269）。
 
 那個 workflow 第一次用要在 GitHub 上設定一次：Settings → Pages → Build and deployment → Source 選 **GitHub Actions**。
+
+**舊網址版**（`src/lib/old-site.ts`）：建置時設 `OLD_SITE=1`。沒有「登入」，也不碰伺服器（不 fetch、不開 WebSocket，當作沒登入）；
+首頁最上面一條黃的搬家提示，右邊「到新網址」（`https://littlebluewhite.com/`）。其他頁面不變。在本機建、看：
+
+```sh
+OLD_SITE=1 BASE_PATH=/cheer_editor npm run build
+BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_editor/
+```
+
+建出來的連結、檔案路徑都在 `/cheer_editor/` 底下。不設 `OLD_SITE`（或設成 `1` 以外）就是一般版。
+
+#### 上線那天（網站主人，#269）
+
+新網址 `https://littlebluewhite.com/` 打得開、能登入之後才做（黃條叫大家去那裡）：
+
+1. 確定 `main` 最新的 commit 已經由 `Deploy to Fly` 部署好（新網址跑的就是它）。
+2. GitHub → Actions → **Deploy to GitHub Pages** → Run workflow，分支選 `main`，勾 **舊網址版**，按 Run。用的是同一個 commit。
+3. 跑完打開 `https://littlebluewhite.github.io/cheer_editor/`：最上面有黃條、「到新網址」打得開新網址，右上角沒有「登入」。
+   service worker 換版要重新整理一兩次。
+4. 馬上（推別的上 `main` 之前）拿掉 `.github/workflows/deploy.yml`，commit 推上 `main`。不拿掉的話，下一次推 `main` 又會建一般版蓋掉舊網址版。
+   拿掉那個 workflow 的那次推上去，它不會再跑；舊網址就凍在步驟 2 那份。
+5. 大家搬好後，網站主人再關舊網址：Settings → Pages 停掉（ADR 0009）。
 
 ## 金鑰
 
