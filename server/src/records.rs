@@ -76,6 +76,8 @@ pub struct Kept {
     recorder: Option<String>,
     /// 清掉了（墓碑）。
     gone: bool,
+    /// 最後一次用手改、刪、救回時流程是第幾步（遷移 0018）；沒動過是 None。
+    amended_step: Option<i64>,
 }
 
 impl Kept {
@@ -137,9 +139,11 @@ async fn rows<'e>(
         Option<String>,
         bool,
         Option<String>,
+        Option<i64>,
     )> = sqlx::query_as(
         "SELECT r.id, r.action_id, r.who, r.marks::text, r.whole, r.date, r.run_through_id,
-                t.started_at, r.recorded_by, u.name, r.deleted_at IS NOT NULL, r.blanks::text
+                t.started_at, r.recorded_by, u.name, r.deleted_at IS NOT NULL, r.blanks::text,
+                r.amended_step
          FROM flow_records r
          LEFT JOIN flow_run_throughs t ON t.flow_id = r.flow_id AND t.id = r.run_through_id
          LEFT JOIN users u ON u.id = r.recorded_by
@@ -152,7 +156,21 @@ async fn rows<'e>(
     found
         .into_iter()
         .map(
-            |(id, action_id, who, marks, whole, date, run, started, by, name, gone, blanks)| {
+            |(
+                id,
+                action_id,
+                who,
+                marks,
+                whole,
+                date,
+                run,
+                started,
+                by,
+                name,
+                gone,
+                blanks,
+                amended,
+            )| {
                 let mut a = serde_json::Map::new();
                 a.insert("id".into(), id.into());
                 a.insert("date".into(), date.into());
@@ -178,6 +196,7 @@ async fn rows<'e>(
                     recorded_by: by,
                     recorder: name,
                     gone,
+                    amended_step: amended,
                 })
             },
         )
@@ -234,7 +253,7 @@ struct Cleared {
 
 /// 復原第 of 步（步驟 id）時給流程核心的紀錄（ADR 0007）：現在的紀錄（before），加上那一步清掉、到現在還清掉著的，
 /// 那一步改掉、到現在沒再動過的換回改之前的樣子，那一步加回來（復原）、到現在沒再動過的再清掉（重做）。
-/// 之後才改過、刪掉、救回的照現在的。
+/// 之後才改過、刪掉、救回的照現在的（內容一樣也算，例：刪掉再救回）。
 /// 回給流程核心的紀錄、加回來的（現在清掉著的）id。
 pub async fn brought_back(
     tx: &mut sqlx::PgConnection,
@@ -242,13 +261,14 @@ pub async fn brought_back(
     of: &str,
     before: &[Stored],
 ) -> anyhow::Result<(Vec<Stored>, Vec<String>)> {
-    let found: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT cleared::text FROM flow_steps WHERE flow_id = $1 AND step_id = $2")
-            .bind(flow_id)
-            .bind(of)
-            .fetch_optional(&mut *tx)
-            .await?;
-    let Some(cleared) = found.and_then(|(c,)| c) else {
+    let found: Option<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT cleared::text, step FROM flow_steps WHERE flow_id = $1 AND step_id = $2",
+    )
+    .bind(flow_id)
+    .bind(of)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((Some(cleared), step)) = found else {
         return Ok((before.to_vec(), vec![]));
     };
     let cleared: Vec<Cleared> = serde_json::from_str(&cleared)?;
@@ -268,7 +288,13 @@ pub async fn brought_back(
         else {
             continue;
         };
-        let Some(r) = current.get(&id) else { continue };
+        // 那一步之後用手改、刪、救回過的照現在的。
+        let Some(r) = current
+            .get(&id)
+            .filter(|r| r.amended_step.is_none_or(|a| a < step))
+        else {
+            continue;
+        };
         match (was, now) {
             (Some(was), None) if r.gone => {
                 revived.push(id);
@@ -431,6 +457,22 @@ async fn update(
     .bind(a.blanks.as_ref().map(Value::to_string))
     .execute(&mut *tx)
     .await?;
+    Ok(())
+}
+
+/// 記下這一次是流程第 step 步時用手改、刪、救回的（復原、重做那一步以前的步不動它）。
+async fn amended(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    id: &str,
+    step: i64,
+) -> anyhow::Result<()> {
+    sqlx::query("UPDATE flow_records SET amended_step = $3 WHERE flow_id = $1 AND id = $2")
+        .bind(flow_id)
+        .bind(id)
+        .bind(step)
+        .execute(&mut *tx)
+        .await?;
     Ok(())
 }
 
@@ -626,8 +668,8 @@ pub async fn amend(
     amend: Amend,
 ) -> anyhow::Result<RoomMessage> {
     let mut tx = state.db.begin().await?;
-    let Some((content,)): Option<(String,)> =
-        sqlx::query_as("SELECT content::text FROM flows WHERE id = $1 FOR UPDATE")
+    let Some((content, step)): Option<(String, i64)> =
+        sqlx::query_as("SELECT content::text, step FROM flows WHERE id = $1 FOR UPDATE")
             .bind(flow_id)
             .fetch_optional(&mut *tx)
             .await?
@@ -659,6 +701,7 @@ pub async fn amend(
             for id in ids {
                 if targets.get(&id).is_some_and(|r| !r.gone) && !change.deleted.contains(&id) {
                     bury(&mut tx, flow_id, &id, now).await?;
+                    amended(&mut tx, flow_id, &id, step).await?;
                     change.deleted.push(id);
                 }
             }
@@ -679,6 +722,7 @@ pub async fn amend(
                     json!({ "name": "changeAttempt", "args": [r.stored.action_id, r.id(), marks] });
                 if let Some(new) = run_one(state, &content, Some(&r.stored), command).await? {
                     update(&mut tx, flow_id, &new, now).await?;
+                    amended(&mut tx, flow_id, r.id(), step).await?;
                     changed.insert(r.id().to_owned());
                 }
             }
@@ -698,6 +742,7 @@ pub async fn amend(
                 let command = json!({ "name": "restoreAttempt", "args": [r.stored.action_id, r.stored.attempt, 0] });
                 if let Some(new) = run_one(state, &content, None, command).await? {
                     update(&mut tx, flow_id, &new, now).await?;
+                    amended(&mut tx, flow_id, &id, step).await?;
                     changed.insert(id);
                 }
             }

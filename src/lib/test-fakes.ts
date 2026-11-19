@@ -237,7 +237,8 @@ export interface FakeLink {
  * 假的伺服器上的一支雲端流程：擁有者的 email、編排、最後改的時間（ISO）、現在第幾步（沒寫是 0）、收過的步驟 id（→ 收了之後第幾步）、
  * 分享給誰（email → 權限，照加進來的順序）。
  * 傳上雲端的音樂檔（audio id → 位元組，假的 R2）。分享連結（沒寫、null 是關著）。
- * 成功率紀錄（#257）跟編排分開放（flow 裡的紀錄是空的）：記的人的 email（沒有是從流程檔來的）、清掉了沒。
+ * 成功率紀錄（#257）跟編排分開放（flow 裡的紀錄是空的）：記的人的 email（沒有是從流程檔來的）、清掉了沒、
+ * 最後一次用手改、刪、救回時流程是第幾步（沒動過沒寫）。
  */
 export interface FakeCloudFlow {
 	id: string;
@@ -248,7 +249,7 @@ export interface FakeCloudFlow {
 	stepIds?: Record<string, number>;
 	people?: Record<string, Exclude<Role, 'owner'>>;
 	audio?: Record<string, Uint8Array>;
-	records?: (StoredAttempt & { by?: string; gone?: boolean })[];
+	records?: (StoredAttempt & { by?: string; gone?: boolean; amendedStep?: number })[];
 	link?: string | null;
 }
 
@@ -336,15 +337,16 @@ export function fakeServer(
 	/**
 	 * 復原時給流程核心的紀錄（跟真的伺服器一樣，ADR 0007）：現在的紀錄，加上那一步清掉、到現在還清掉著的，
 	 * 那一步改掉、到現在沒再動過的換回改之前的樣子，那一步加回來（復原）、到現在沒再動過的再清掉（重做）。
+	 * 第 step 步之後用手改、刪、救回過的照現在的（內容一樣也算，例：刪掉再救回）。
 	 * 回紀錄和加回來的（現在清掉著的）id。
 	 */
-	const broughtBack = (f: FakeCloudFlow, cleared: Cleared[], live: StoredAttempt[]) => {
+	const broughtBack = (f: FakeCloudFlow, step: number, cleared: Cleared[], live: StoredAttempt[]) => {
 		let records = [...live];
 		const revived: string[] = [];
 		for (const { was, now } of cleared) {
 			const id = (was ?? now)?.attempt.id;
 			const current = (f.records ?? []).find((r) => r.attempt.id === id);
-			if (!current) continue;
+			if (!current || (current.amendedStep ?? -1) >= step) continue;
 			if (was && !now && current.gone) {
 				revived.push(current.attempt.id);
 				records.push(was);
@@ -388,7 +390,7 @@ export function fakeServer(
 			const of = log.find((l) => l.id === undo.of);
 			if (!of) return rejected(`太久以前的，${cannot}`);
 			// 復原：那一步清掉的紀錄一起放回去；重做（復原那一步）：那時加回來的再清掉（ADR 0007）
-			const back = broughtBack(f, of.cleared, live);
+			const back = broughtBack(f, of.step, of.cleared, live);
 			revived = back.revived;
 			const u = runUndo(structuredClone(f.flow), structuredClone(back.records), structuredClone(undo.change));
 			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
@@ -660,7 +662,7 @@ export function fakeServer(
 			if (!asked.includes(id) || !may(r)) return r;
 			if (request.kind === 'deleteRecords' && !r.gone) {
 				deleted.push(id);
-				return { ...r, gone: true };
+				return { ...r, gone: true, amendedStep: f.step ?? 0 };
 			}
 			const marks = sent.find((s) => s.attempt.id === id)?.attempt.marks ?? {};
 			const after =
@@ -671,7 +673,7 @@ export function fakeServer(
 						: undefined;
 			if (!after) return r;
 			changed.push(id);
-			return { ...r, ...after, gone: false };
+			return { ...r, ...after, gone: false, amendedStep: f.step ?? 0 };
 		});
 		tellRecords(f, changed, deleted, from);
 		const saved = f.records.filter((r) => !r.gone && asked.includes(r.attempt.id)).map((r) => cloudRecord(r, email));
