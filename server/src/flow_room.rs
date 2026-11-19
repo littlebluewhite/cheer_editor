@@ -463,6 +463,7 @@ pub async fn join(
     let Some(SignedIn {
         user_id,
         token_hash,
+        expires_at,
         ..
     }) = signed_in(&state, &headers).await?
     else {
@@ -478,6 +479,7 @@ pub async fn join(
         let who = Connected {
             user_id,
             token_hash,
+            expires_at,
             conn,
         };
         if let Err(e) = serve(state, socket, &id, who).await {
@@ -488,16 +490,17 @@ pub async fn join(
     }))
 }
 
-/// 連上的是誰：使用者 id、他的登入狀態（號碼雜湊）、這個連線的號碼。
+/// 連上的是誰：使用者 id、他的登入狀態（號碼雜湊、什麼時候到期）、這個連線的號碼。
 struct Connected {
     user_id: i64,
     token_hash: Vec<u8>,
+    expires_at: chrono::DateTime<chrono::Utc>,
     conn: u64,
 }
 
 /// 一個連線：先打招呼，再一步一步收；權限被改、被收回馬上說；別人的改動、在場名單送過來。
 /// 對方斷線、被收回就結束。登入狀態不算了（被停用、改密碼、30 天到期、登出）就關掉，不再收（#234）：
-/// 每次送來的都先重查，被停用、改密碼時也馬上重查。前端連不回來時問 /api/me 就知道是沒登入了。
+/// 每次送來的都先重查，被停用、改密碼時也馬上重查，到期的時候也重查（只開著看的分頁也關）。前端連不回來時問 /api/me 就知道是沒登入了。
 async fn serve(
     state: AppState,
     mut socket: WebSocket,
@@ -507,11 +510,15 @@ async fn serve(
     let Connected {
         user_id,
         token_hash,
+        expires_at,
         conn,
     } = connected;
     let still_signed_in = async || -> anyhow::Result<bool> {
         Ok(session(&state, token_hash.clone()).await?.is_some())
     };
+    // 離 at 還有多久（照伺服器的鐘；已經過了是 0）。
+    let until =
+        |at: chrono::DateTime<chrono::Utc>| (at - state.clock.now()).to_std().unwrap_or_default();
     // 打招呼前就開始聽：連上之後的權限改動不會漏掉。
     let mut events = state.rooms.listen(flow_id);
     let (tab_id, seen, editing, want_records) = loop {
@@ -569,9 +576,19 @@ async fn serve(
     let mut sent_back: Option<i64> = None;
     // 回答之後還要跟送的人說的（復原跟著改的紀錄）。
     let mut also: Option<RoomMessage> = None;
+    // 到期的時候也重查一次：只開著看、什麼都沒送的分頁也會關掉。
+    let expiry = tokio::time::sleep(until(expires_at));
+    tokio::pin!(expiry);
 
     loop {
         let reply = tokio::select! {
+            () = &mut expiry => match session(&state, token_hash.clone()).await? {
+                Some(s) => {
+                    expiry.as_mut().reset(tokio::time::Instant::now() + until(s.expires_at));
+                    continue;
+                }
+                None => return Ok(()),
+            },
             request = next_request(&mut socket) => match request {
                 None => return Ok(()),
                 Some(_) if !still_signed_in().await? => return Ok(()),

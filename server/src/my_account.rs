@@ -134,6 +134,7 @@ pub async fn change_password(
         user_id,
         me,
         token_hash,
+        ..
     }) = signed_in(&state, &headers).await?
     else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
