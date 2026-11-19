@@ -145,7 +145,7 @@ describe('使用說明', () => {
 		render(Guide);
 		const row = (word: string) =>
 			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
-		expect(row('上方列')).toContain('練習時沒有播放鍵那一區');
+		expect(row('上方列')).toContain('練習時沒有播放區');
 		expect(row('拍點格子')).toContain('環節列');
 		const keys = document.getElementById('keys')!.textContent!;
 		expect(keys).toContain('Tab 停到場上的人，再按 Enter');
@@ -321,5 +321,47 @@ describe('第 5 批：說明跟現在的畫面一樣（#232）', () => {
 		const text = document.body.textContent!;
 		expect(text).not.toContain('Option（Windows：Alt）');
 		expect(text).not.toMatch(/(?<!Ctrl\+)(?<!（)Alt(?!（Mac：Option）)/);
+	});
+});
+
+describe('上方列：永遠一行，不常按的五樣在「選單」裡（#281）', () => {
+	it('沒有句子還說開啟、新建、輸出影片、流程設定、使用說明在上方列外面', () => {
+		render(Guide);
+		const text = document.querySelector('main')!.textContent!;
+		for (const name of ['開啟', '開啟流程檔', '新建', '輸出影片', '流程設定', '使用說明']) {
+			expect(text, name).not.toMatch(new RegExp(`上方列(的|右邊的?|左邊的?)?「${name}」`));
+		}
+	});
+
+	it('開檔、新建、流程設定、輸出影片的步驟都寫在「選單」裡', () => {
+		render(Guide);
+		const section = (id: string) => document.getElementById(id)!.textContent!;
+		expect(section('start')).toContain('「選單」的「新建」');
+		expect(section('start')).toContain('「選單」的「開啟流程檔」');
+		expect(section('settings')).toContain('「選單」的「流程設定」');
+		expect(section('save')).toContain('「選單」的「輸出影片」');
+		expect(section('cold-read')).toContain('「選單」的「開啟流程檔」');
+	});
+
+	it('「畫面上的名稱」的上方列和圖：左邊選單、流程名字、編排｜練習，中間播放區，右邊編輯｜檢視、復原、重做、八拍表、存檔', () => {
+		render(Guide);
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
+		const top = row('上方列');
+		expect(top).toContain('左邊是「選單」、流程名字、「編排」「練習」切換');
+		expect(top).toContain('右邊是「編輯｜檢視」切換、「復原」「重做」「八拍表」「存檔」');
+		expect(row('選單')).toContain('「開啟流程檔」「新建」「輸出影片」「流程設定」「使用說明」');
+		const map = [...document.querySelectorAll('img')].find((img) => img.alt.startsWith('編輯畫面的四個區域'))!;
+		for (const words of ['選單', '流程名字', '編排｜練習', '播放區', '編輯｜檢視', '復原', '重做', '八拍表', '存檔']) {
+			expect(map.alt, words).toContain(words);
+		}
+		expect(map.alt).not.toContain('使用說明');
+	});
+
+	it('沒有句子還說電腦的上方列會變兩行、播放區換到第二行', () => {
+		render(Guide);
+		const text = document.querySelector('main')!.textContent!;
+		expect(text).not.toContain('第二行');
+		expect(text).toContain('上方列永遠一行');
 	});
 });
