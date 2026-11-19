@@ -812,3 +812,31 @@ async fn a_first_upload_does_not_need_a_delete_to_succeed(db: sqlx::PgPool) {
     assert_eq!(status, StatusCode::OK);
     assert!(got["url"].is_string());
 }
+
+#[sqlx::test]
+async fn a_recording_left_in_r2_without_its_row_is_not_taken(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    // 資料庫還原成備份之後：R2 上有正式的那份，資料庫沒有這一列。
+    s.r2.lock()
+        .unwrap()
+        .insert(format!("flows/{id}/a1.mp3"), vec![1, 2, 3]);
+
+    // 重新傳同一個 id，暫放的被 R2 的生命週期規則刪掉了才說傳完：不能收成留下來的那份。
+    let (status, _) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::CONFLICT
+    );
+    let (status, _) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&lin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

@@ -125,8 +125,11 @@ pub async fn finish_upload(
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     // 暫放的要記下來之後才刪：中間出錯時再說一次傳完，從暫放的重新複製。
-    // 暫放的沒了（例：放了一天被 R2 刪掉），就用之前複製好的那份。
-    store.copy(&uploading(&key), &key).await?;
+    // 暫放的沒了（例：放了一天被 R2 刪掉）就是還沒傳上去：正式名字上的可能是別次的（上次沒收的、
+    // 資料庫還原成備份前的），不能收（codex review）。
+    if !store.copy(&uploading(&key), &key).await? {
+        return Ok(StatusCode::CONFLICT.into_response());
+    }
     // 查複製好的那份（不是暫放的）：查完到記下來之間沒人寫得到它。
     let Some(size) = store.size(&key).await? else {
         return Ok(StatusCode::CONFLICT.into_response());
