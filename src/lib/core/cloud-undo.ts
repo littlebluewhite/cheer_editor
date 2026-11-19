@@ -40,9 +40,13 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  * 記號打在不在的環節上的拿掉、拿光了整筆拿掉（例：重做刪環節，復原時加回來的記號再清一次，ADR 0007）。
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	const next = carryRecords(applyRemoteChange(flow, change), flow);
-	const actions = next.actions.map(fitRecords);
-	return actions.every((a, i) => a === next.actions[i]) ? next : { ...next, actions };
+	return fitted(carryRecords(applyRemoteChange(flow, change), flow));
+}
+
+/** 每個動作的紀錄對上它現在的環節、組（對不上的記號拿掉，拿光了整筆拿掉）。 */
+function fitted(flow: Flow): Flow {
+	const actions = flow.actions.map(fitRecords);
+	return actions.every((a, i) => a === flow.actions[i]) ? flow : { ...flow, actions };
 }
 
 /** 伺服器跑復原、重做的結果：跟一般的一步一樣（runStepJson），不合規則是 blocked。 */
@@ -56,7 +60,11 @@ export type UndoOutcome =
  */
 export function runUndo(flow: Flow, records: StoredAttempt[], change: RemoteChange): UndoOutcome {
 	const now = putRecords(flow, records);
-	const after = undone(now, change);
+	// 現在放不進去的（動作不在、不記成功率了，例：伺服器加回來的刪動作清掉的紀錄）：放回去之後再放進復原回來的動作
+	const placed = new Set(takeRecords(now).records.map((r) => r.attempt.id));
+	const waiting = records.filter((r) => !placed.has(r.attempt.id));
+	const back = undone(now, change);
+	const after = waiting.length ? fitted(putRecords(back, [...takeRecords(back).records, ...waiting])) : back;
 	const problem = flowProblem(after, now);
 	if (problem) return { kind: 'blocked', message: problem };
 	const taken = takeRecords(after);

@@ -97,6 +97,17 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.records).toEqual([once('t1', { p1: '✓' })]);
 	});
 
+	it('復原刪動作：伺服器加回來的紀錄放進復原回來的動作（ADR 0007）', () => {
+		const before = libSample();
+		const who = before.actions[0].members[0].squad!;
+		const once = { actionId: 'x1', attempt: { id: 't1', date: '2026-11-04', who, practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const after = flowOf(deleteAction(before, 'x1', { confirmed: true }));
+		const r = runUndo(after, [once], undoChanges(before, after).undo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.records).toEqual([once]);
+	});
+
 	it('你刪了 5 個人（35），別人加了 5 個（40），你復原變 45 人：擋下', () => {
 		const forty = full();
 		const gone = forty.members.slice(-5).map((m) => m.id);

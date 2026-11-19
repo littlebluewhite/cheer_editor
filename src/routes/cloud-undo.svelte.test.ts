@@ -175,6 +175,18 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(server().map((a) => a.marks)).toEqual([{ p1: '✓', p2: '✓' }, { p1: '✓' }]);
 		expect(records().map((r) => r.attempt.marks)).toEqual([{ p1: '✓', p2: '✓' }, { p1: '✓' }]);
 	});
+
+	it('復原刪動作：動作和它的紀錄都回來', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]);
+		const kept = takeRecords(s.page.session.flow!).records;
+		s.page.session.ask.send({ name: 'deleteAction', args: ['x1'], options: { confirmed: true } });
+		await flush();
+		expect(takeRecords(s.page.session.flow!).records).toEqual([]);
+
+		await press('復原');
+		expect((s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt)).toEqual(kept.map((r) => r.attempt));
+		expect(takeRecords(s.page.session.flow!).records).toEqual(kept);
+	});
 });
 
 describe('方向鍵連按', () => {

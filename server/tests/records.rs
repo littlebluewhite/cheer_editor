@@ -995,6 +995,39 @@ async fn undoing_a_phase_delete_brings_its_marks_back_and_redo_clears_them_again
 }
 
 #[sqlx::test]
+async fn undoing_an_action_delete_brings_its_records_back(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut coach, _) = s.join(&wang, &id).await;
+    record(
+        &mut coach,
+        json!([drill(
+            "tboth11111110",
+            SQUAD_1,
+            json!({ LOAD: "✓", DISMOUNT: "✗" })
+        )]),
+    )
+    .await;
+    let records_before = s.records(&wang, &id).await;
+    let flow_before = s.flow(&wang, &id).await;
+
+    let remove =
+        json!([{ "name": "deleteAction", "args": [LIB], "options": { "confirmed": true } }]);
+    assert_eq!(
+        step(&mut coach, "stepdelete01", 6, remove).await["kind"],
+        "accepted"
+    );
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+    let flow_after = s.flow(&wang, &id).await;
+
+    let change = s.back_to(&flow_after, &flow_before).await;
+    let reply = undo(&mut coach, "stepundo0001", 7, "stepdelete01", false, change).await;
+    assert_eq!(reply["kind"], "accepted", "{reply}");
+    assert_eq!(s.records(&wang, &id).await, records_before);
+}
+
+#[sqlx::test]
 async fn undo_does_not_bring_back_records_changed_or_deleted_after_the_step(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;
