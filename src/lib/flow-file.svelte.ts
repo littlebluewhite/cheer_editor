@@ -101,6 +101,9 @@ export class FlowFile {
 	#linkOnly = $state(false);
 	/** 正在傳上雲端：傳好之前再按不算。 */
 	#uploading = false;
+	/** 雲端流程下載過幾次；每個選過的檔最後是第幾次選的（同一個檔後來又下載了，前一次失敗不說它變空的）。 */
+	#downloads = 0;
+	#chosen = new Map<string, number>();
 	/** 傳上雲端時有音樂檔太大：跳框寫是哪一段、幾 MB（按「知道了」清掉）。 */
 	#tooBig = $state.raw<AudioTooBig | null>(null);
 	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
@@ -675,8 +678,12 @@ export class FlowFile {
 			return void (session.notice = '下載失敗，請再試一次');
 		}
 		// 存檔對話框選了舊檔，瀏覽器當下就清空它（File System Access 規格）：沒存成要說那個檔變空的
+		const mine = ++this.#downloads;
+		const chosen = saver.fileName;
+		if (chosen) this.#chosen.set(chosen, mine);
 		const failed = (text: string) =>
-			void (session.notice = saver.fileName ? `${text}；選的「${saver.fileName}」已經變成空的檔案，請再下載一次` : text);
+			void (session.notice =
+				chosen && this.#chosen.get(chosen) === mine ? `${text}；選的「${chosen}」已經變成空的檔案，請再下載一次` : text);
 		let found;
 		try {
 			found = await adapters.server.cloudFlow(id);

@@ -379,6 +379,38 @@ describe('下載成流程檔', () => {
 		expect(screen.getByRole('status').textContent).toBe('連不上伺服器，沒下載；選的「上週備份.zip」已經變成空的檔案，請再下載一次');
 	});
 
+	it('a failed export does not call the file empty after a later export saved it：同一個檔下載兩次，後一次存好了、前一次才失敗，不說那個檔變空的', async () => {
+		vi.stubGlobal('matchMedia', () => ({ matches: false }));
+		vi.stubGlobal('showSaveFilePicker', async () => ({
+			name: '上週備份.zip',
+			createWritable: async () => ({ write: async () => {}, close: async () => {} })
+		}));
+		const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows: [wangsFlow('owner')] });
+		const page = editorPage(null, { server: fake.server, createSaver: () => createBrowserSaver() });
+		render(Page, page.props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: /^練習用/ }));
+		await flush();
+		replaceTrack({ ...fake, page }, new Uint8Array([9, 9, 9]));
+		const audioBytes = fake.server.audioBytes;
+		let fail = () => {};
+		let calls = 0;
+		fake.server.audioBytes = async (...args) => {
+			if (++calls === 1) await new Promise<void>((_, reject) => (fail = () => reject(new ServerUnreachable())));
+			return audioBytes(...args);
+		};
+		await fromMenu('下載成流程檔');
+		await flush();
+		await fromMenu('下載成流程檔');
+		await flush();
+		expect(screen.getByRole('status').textContent).toContain('上週備份.zip');
+
+		fail();
+		await flush();
+
+		expect(screen.getByRole('status').textContent).toBe('連不上伺服器，沒下載');
+	});
+
 	it('export fails when a track not cached here is unreachable：拿不到別人換的音樂，不存、說原因', async () => {
 		const s = await openCloud(wangsFlow('owner'));
 		replaceTrack(s, new Uint8Array([9, 9, 9]));
