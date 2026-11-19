@@ -289,9 +289,38 @@ export function attemptProblem(action: Action, attempt: NewAttempt): string | nu
 }
 
 /**
- * 記一次會存下來的樣子：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回會存的記號和算不算整個做。
- * 照環節的順序，第一個 ✗ 後面的記號不存；整個做卻有環節沒點（有 ✗ 時看 ✗ 和它前面的，沒有 ✗ 時看全部），算只練幾個環節。
- * 整個做、✗ 後面還有環節時，那些環節記成空著的（blanks）。
+ * 打 ✗ 之後哪些環節空著：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回
+ * 會留下來的記號（空著的環節點過的不留）、算不算整個做、空著按不了的環節（shut）、
+ * 跳過了前面的環節（skipped：選整個做時，排在最後一個留下來的記號前面、沒打的；沒選整個做是空的）。
+ * 練習的卡、全上的表、記一次、改一次都問這裡，不自己數第幾個。哪些空著只在 shutAfterFail 算。
+ */
+export function blankPhases(
+	action: Action,
+	whole: boolean,
+	marks: Record<string, Mark>
+): { whole: boolean; marks: Record<string, Mark>; shut: string[]; skipped: string[] } {
+	const phaseIds = action.successRate?.phases.map((p) => p.id) ?? [];
+	const shut = shutAfterFail(phaseIds, marks);
+	const open = phaseIds.filter((id) => !shut.includes(id));
+	const kept = Object.fromEntries(Object.entries(marks).filter(([id]) => !shut.includes(id)));
+	const last = open.findLastIndex((id) => kept[id]);
+	return {
+		whole: whole && open.every((id) => kept[id]),
+		marks: kept,
+		shut,
+		skipped: whole ? open.slice(0, Math.max(last, 0)).filter((id) => !kept[id]) : []
+	};
+}
+
+/** 空著的環節（規則只在這裡）：照環節的順序，第一個 ✗ 後面的都空著。沒有 ✗ 就沒有。 */
+function shutAfterFail(phaseIds: string[], marks: Record<string, Mark>): string[] {
+	const fail = phaseIds.findIndex((id) => marks[id] === '✗');
+	return fail < 0 ? [] : phaseIds.slice(fail + 1);
+}
+
+/**
+ * 記一次會存下來的樣子：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回會存的記號和算不算整個做（照 blankPhases）。
+ * 整個做、有空著的環節（✗ 後面的）時，那些環節記成空著的（blanks）。
  * 只在記的時候套，讀流程檔不檢查：之後才加的環節、標拍換了順序，會讓舊的一次看起來不合。不是環節的記號原樣留著，交給 attemptProblem 擋。
  */
 export function keptAttempt(
@@ -299,15 +328,9 @@ export function keptAttempt(
 	whole: boolean,
 	marks: Record<string, Mark>
 ): { whole: boolean; marks: Record<string, Mark>; blanks?: string[] } {
-	const phaseIds = action.successRate?.phases.map((p) => p.id) ?? [];
-	const fail = phaseIds.findIndex((id) => marks[id] === '✗');
-	const after = fail < 0 ? [] : phaseIds.slice(fail + 1);
-	const counted = fail < 0 ? phaseIds : phaseIds.slice(0, fail + 1);
-	const kept = {
-		whole: whole && counted.every((id) => marks[id]),
-		marks: Object.fromEntries(Object.entries(marks).filter(([id]) => !after.includes(id)))
-	};
-	return kept.whole && after.length ? { ...kept, blanks: after } : kept;
+	const kept = blankPhases(action, whole, marks);
+	const saved = { whole: kept.whole, marks: kept.marks };
+	return saved.whole && kept.shut.length ? { ...saved, blanks: kept.shut } : saved;
 }
 
 /** 「全部 ✓ 存」要存的記號：已點的照點的（△、✗ 不蓋掉），空著的環節補 ✓。存的時候一樣照 keptAttempt 留。 */
