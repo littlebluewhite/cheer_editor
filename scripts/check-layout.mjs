@@ -520,6 +520,91 @@ await check('1440×900 拍點格子：金字塔兩條佔同樣拍的環節不互
 	return { ok: bars.length === 4 && tops.size === 2 && bars.every(([, , self]) => self), value: bars };
 });
 
+// ---------- 金字塔疊著的環節：八拍表、前後八拍、泳道也分排（#288） ----------
+
+/**
+ * libSample 的 Lib 換成金字塔，加上法「第二個」佔中段同樣的拍（1-3 到 1-6，往下多一排），
+ * 再放一個給上層的 down（1-1 到 1-2）：小美、小芳的色條有拍點，小A、小B 沒有。
+ */
+const openStackedPyramid = () =>
+	openPracticeFlow(`const ok = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		flow = ok(core.updateAction(flow, 'x1', { category: 'pyramid' }));
+		flow = ok(core.addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 4, len: 8 } }));
+		flow = ok(core.placeCue(flow, 'x1', { kind: 'count', at: 0, len: 4, word: 'down', who: { role: '上層' } }));`);
+
+/**
+ * 八拍表一排裡的環節（root 底下第一個有環節的 .cue-line）：分成兩排、上下不疊、每條整條看得到（字沒被切、在畫面或紙裡），
+ * 都在 1–8 那排格子上面。
+ */
+const stackedPhaseLine = (root) =>
+	js(`const line = [...document.querySelectorAll(${JSON.stringify(root + ' .cue-line')})].find((l) => l.querySelector('[data-phase]'));
+		if (!line) return { ok: false, value: '沒有環節' };
+		const cells = line.querySelector('.cells').getBoundingClientRect();
+		const ps = [...line.querySelectorAll('[data-phase]')].map((el) => {
+			const r = el.getBoundingClientRect();
+			const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { 字: el.textContent.trim(), 上: Math.round(r.top), 下: Math.round(r.bottom), 左: Math.round(r.left), 右: Math.round(r.right),
+				看得到: !!t && el.contains(t), 切掉: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1 };
+		});
+		const tops = [...new Set(ps.map((p) => p.上))].sort((a, b) => a - b);
+		const upper = ps.filter((p) => p.上 === tops[0]), lower = ps.filter((p) => p.上 === tops[1]);
+		const ok = tops.length === 2 && lower.every((p) => upper.every((q) => p.上 >= q.下 - 1))
+			&& ps.every((p) => p.看得到 && !p.切掉 && p.右 <= innerWidth && p.下 <= cells.top + 1);
+		return { ok, value: { 環節: ps, 格子上緣: Math.round(cells.top) } };`);
+
+await check('1440×900 泳道：金字塔疊著的環節細條分兩排都看得到，名稱和拍點往下讓開沒被蓋住（有拍點、沒拍點的人都量）', async () => {
+	await setViewport(1440, 900);
+	await openStackedPyramid();
+	const r = await js(`return ['m1', 'm2'].map((id) => {
+		const bar = document.querySelector('[data-lane="' + id + '"] [data-action-id="x1"]');
+		const box = bar.getBoundingClientRect();
+		const strips = [...bar.querySelectorAll('[data-phase]')].map((s) => s.getBoundingClientRect());
+		const name = bar.querySelector('b').getBoundingClientRect();
+		const cues = [...bar.querySelectorAll('[data-cue]')].map((c) => c.getBoundingClientRect());
+		const low = Math.max(...strips.map((s) => s.bottom));
+		return { 人: id, 細條上緣: strips.map((s) => Math.round((s.top - box.top) * 10) / 10),
+			細條都在色條裡: strips.every((s) => s.height >= 2 && s.top >= box.top - 0.5 && s.bottom <= box.bottom + 0.5),
+			細條最下: Math.round((low - box.top) * 10) / 10, 名稱上緣: Math.round((name.top - box.top) * 10) / 10, 名稱下緣: Math.round((name.bottom - box.top) * 10) / 10,
+			名稱在色條裡: name.bottom <= box.bottom + 0.5,
+			拍點上緣: cues.map((c) => Math.round((c.top - box.top) * 10) / 10), 拍點在色條裡: cues.every((c) => c.bottom <= box.bottom + 0.5) };
+	});`);
+	const ok = r.every((b) => new Set(b.細條上緣).size === 2 && b.細條都在色條裡 && b.名稱上緣 >= b.細條最下 - 0.5 && b.名稱在色條裡
+		&& b.拍點在色條裡 && b.拍點上緣.every((t) => t >= b.名稱下緣 - 0.5))
+		&& r[0].拍點上緣.length > 0 && r[1].拍點上緣.length === 0;
+	return { ok, value: r };
+});
+
+await check('列印：八拍表裡金字塔疊著的環節分兩排都在紙上，沒被切掉、不疊在一起', async () => {
+	// 上一條開著疊著的金字塔
+	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await sleep(400);
+	const screenSheet = await stackedPhaseLine('.print-sheet');
+	const printed = await asPrinted(() => stackedPhaseLine('.print-sheet'));
+	await js(`[...document.querySelectorAll('.print-sheet button')].find((b) => b.textContent.trim() === '關閉')?.click()`);
+	await sleep(200);
+	await setViewport(1440, 900);
+	return { ok: screenSheet.ok && printed.ok, value: { 畫面上: screenSheet.value, 印出來: printed.value } };
+});
+
+await check('1440×900 檢視模式的前後八拍：這個八拍裡金字塔疊著的環節分兩排，都看得到、不疊在一起', async () => {
+	await setViewport(1440, 900);
+	await openStackedPyramid();
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
+	await sleep(400);
+	const r = await stackedPhaseLine('.view-panel .now-eight .slot.now');
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
+	await sleep(200);
+	return r;
+});
+
+await check('390×844 手機的檢視畫面：前後八拍裡金字塔疊著的環節分兩排，都看得到、不疊在一起', async () => {
+	await setViewport(390, 844);
+	await openStackedPyramid();
+	const r = await stackedPhaseLine('.phone-view .now-eight .slot.now');
+	await setViewport(1440, 900);
+	return r;
+});
+
 await check('總表點一格：右邊的明細不蓋住上方列，存檔點得到', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow();
