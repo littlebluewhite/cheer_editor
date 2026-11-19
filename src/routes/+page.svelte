@@ -33,7 +33,6 @@
 		INSPECTOR_MIN_PX,
 		isTouchScreen,
 		NARROW_SCREEN,
-		SHORT_SCREEN_MAX_H,
 		viewOnlyReason
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
@@ -304,11 +303,6 @@
 	let windowH = $state(0);
 	/** 手機的檢視畫面為什麼不能編（寫在「檢視模式・只能看」後面）。 */
 	const whyViewOnly = $derived(viewOnlyReason(windowW, windowH, touchScreen));
-	/**
-	 * 上方列一行放不下、播放區換到第二行（跟樣式的 max-width: 1760px、min-height: 861px 一樣）。
-	 * 螢幕矮（高 860px 以下）時不換行：播放區併進上方列那一行，幾個按鈕只留圖示，省下的高度給場地（N55）。
-	 */
-	const transportBelow = $derived(windowW <= 1760 && windowH > SHORT_SCREEN_MAX_H);
 	let fieldHostH = $state(0);
 	const inspectorDivider = new Divider({
 		name: 'inspectorWidthRatio',
@@ -739,7 +733,7 @@
 						title="選單"
 						aria-expanded={menuOpen}
 						bind:this={menuBtn}
-						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span>選單</span></button
+						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class="tight-hide">選單</span></button
 					>
 					<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
 					{#if menuOpen}
@@ -806,7 +800,7 @@
 			</div>
 
 			<!-- 播放區：寬的時候在上方列中間；窄螢幕放在手機檢視畫面的場地下面 -->
-			{#if !narrow && !transportBelow}{@render transport()}{/if}
+			{#if !narrow}{@render transport()}{/if}
 
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
@@ -832,14 +826,14 @@
 						title={stepTitle('復原', session.undoLabel, both(KEYS.undo))}
 						disabled={!session.editable || !session.canUndo}
 						onclick={undo}
-						><Icon name="undo" /><span class="narrow-hide">復原</span></button
+						><Icon name="undo" /><span class="sr-only">復原</span></button
 					>
 					<button
 						type="button"
 						class="ghost"
 						title={stepTitle('重做', session.redoLabel, both(KEYS.redo))}
 						disabled={!session.editable || !session.canRedo}
-						onclick={redo}><Icon name="redo" /><span class="narrow-hide">重做</span></button
+						onclick={redo}><Icon name="redo" /><span class="sr-only">重做</span></button
 					>
 					<span class="sep" aria-hidden="true"></span>
 				{/if}
@@ -857,8 +851,6 @@
 				<!-- 窄螢幕不能編，存檔不用搶眼的藍色（練習的紀錄照樣要存） -->
 				<button type="button" class={['save', narrow ? 'ghost' : 'primary']} title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 			</div>
-			<!-- 播放區換到第二行時放在按鈕後面：Tab 照畫面由上到下 -->
-			{#if !narrow && transportBelow}{@render transport()}{/if}
 		</header>
 
 		<!-- 編排區和練習畫面：換一份流程就整個重開。時間軸、泳道、右邊欄的捲動，場地的放大，還沒送出的加隊員名單
@@ -2311,41 +2303,23 @@
 		}
 	}
 
-	/* 窄一點的視窗：上方列多了「編排｜練習」、播放區多了「重複」和速度，右邊的「編輯｜檢視」兩格比一個開關寬，
-	   重複旁邊還有 A、B、✕，所以從 1890px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
-	@media (max-width: 1890px) {
-		/* 復原、重做只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
-		.narrow-hide {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-	}
+	/* ---------- 上方列永遠一行（#280）：電腦、橫拿的 iPad ----------
+	   視窗窄的時候不換行，字照這個順序收成圖示（只看寬度，不看高矮）：
+	   1600px 以下節拍器、重複；1300px 以下選單、編輯、檢視；1100px 以下八拍表（觸控的 1180px 以下就收：A、B、✕ 要 32px）。
+	   一直有字的：編排｜練習、存檔、流程名字。收掉字的按鈕都有 title，報讀軟體照樣讀得到字。
+	   窄螢幕（手機檢視畫面）不走這裡，照下面「窄螢幕」那幾段。 */
 
-	/* 再窄就一行放不下：播放區換到第二行，名字和按鈕留在第一行（一行硬塞的話，流程名字只剩四五個字）。
-	   換行時播放區在 HTML 裡也放到按鈕後面（transportBelow），Tab 才照畫面順序。
-	   右邊多了「編輯｜檢視」兩格、延遲校正多了「毫秒」、播放區多了「重複」（和它旁邊的 A、B、✕）和速度，所以從 1760px 就換。 */
-	@media (max-width: 1760px) and (min-height: 861px) {
-		.topbar {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-		.topbar .transport {
-			grid-row: 2;
-			grid-column: 1 / -1;
-			justify-content: center;
-		}
+	/* 只給報讀軟體讀的字：復原、重做一律只有圖示（滑鼠移上去寫會復原什麼和快捷鍵） */
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
-	/* 螢幕矮（高 860px 以下，SHORT_SCREEN_MAX_H）：不換行，播放區併進上方列那一行，省下約 50px 給場地（N55）。
-	   擠得下才行：節拍器、重複（窄螢幕的開啟）只留圖示（滑鼠移上去有名字，讀屏照樣讀得到），間距收小。 */
-	@media (max-width: 1760px) and (max-height: 860px) {
-		.topbar {
-			gap: 10px;
-			padding-block: 6px;
-		}
-		.short-hide {
+	@media (max-width: 1600px) {
+		:where(.editor:not(.narrow)) .short-hide {
 			position: absolute;
 			width: 1px;
 			height: 1px;
@@ -2353,133 +2327,232 @@
 			clip-path: inset(50%);
 			white-space: nowrap;
 		}
-		.transport {
-			gap: 6px;
+	}
+	@media (max-width: 1300px) {
+		:where(.editor:not(.narrow)) .tight-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
 		}
-		.toggle {
+	}
+	@media (max-width: 1100px), (max-width: 1180px) and (pointer: coarse) {
+		:where(.editor:not(.narrow)) .tightest-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+	}
+	/* 一行放得下：間距、時間那一格、重複旁邊的 A、B、✕ 收小一點（流程名字才至少露出 3 個字） */
+	@media (max-width: 1760px) {
+		:where(.editor:not(.narrow)) .topbar {
+			gap: 8px;
+		}
+		:where(.editor:not(.narrow)) .transport {
+			gap: 4px;
+		}
+		:where(.editor:not(.narrow)) .toggle {
 			padding-inline: 8px;
 		}
-	}
-	/* 又矮又窄（橫拿的 iPad 1180×820）：「編輯｜檢視」也只留圖示（檢視時上方列變紫、場地角落寫「檢視模式」，看得出在哪個模式），
-	   分隔線不留空、時間那一格窄一點、只有圖示的按鈕左右收小（還是至少 32px，手指點得到）。 */
-	@media (max-width: 1180px) and (max-height: 860px) {
-		.tight-hide {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-		.sep {
-			margin: 0;
-		}
-		.board {
+		:where(.editor:not(.narrow)) .board {
 			min-width: 132px;
 			padding-inline: 8px;
 		}
-		.actions :global(button.ghost),
-		.actions .btn.ghost,
-		.guide-link {
-			padding-inline: 7px;
-		}
-	}
-	/* 1024×768：八拍表最後才只留圖示（使用說明都叫它「八拍表」）；「編排｜練習」、速度、「⋯」左右收小。
-	   橫拿的 iPad（1180×820，手指）也是：重複旁邊的 A、B、✕ 要 32px 才點得到，八拍表的字放不下。 */
-	@media (max-width: 1100px) and (max-height: 860px), (max-width: 1180px) and (max-height: 860px) and (pointer: coarse) {
-		.tightest-hide {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-		.view button {
-			padding-inline: 8px;
-		}
-		.speed {
-			padding-inline: 3px;
-		}
-		.more {
-			padding-inline: 7px;
-		}
-		.title {
-			gap: 6px;
-		}
-		/* 間距再收 2px，流程名字才露得出 3 個字 */
-		.topbar {
-			gap: 8px;
-		}
-	}
-	/* 螢幕矮、播放區併進上方列那一行時：重複旁邊的 A、B、✕ 靠緊一點；滑鼠才收窄，手指照樣至少 32px */
-	@media (max-width: 1760px) and (max-height: 860px) {
-		.repeat-group {
+		:where(.editor:not(.narrow)) .repeat-group {
 			gap: 2px;
 		}
 	}
-	@media (max-width: 1760px) and (max-height: 860px) and (pointer: fine) {
-		.ab {
+	/* 滑鼠才收窄，手指照樣至少 32px */
+	@media (max-width: 1760px) and (pointer: fine) {
+		:where(.editor:not(.narrow)) .ab {
 			min-width: 22px;
 			padding-inline: 4px;
 		}
 	}
-	/* A、B、✕ 多占的寬度從間距省回來，流程名字才至少露出 3 個字（N55）：螢幕矮時時間那一格收窄、播放區和上方列的間距小一點 */
-	@media (max-width: 1760px) and (max-height: 860px) {
-		.topbar {
-			gap: 8px;
+	/* 1180 寬以下（橫拿的 iPad 1180×820）：分隔線不留空、只有圖示的按鈕左右收小（還是至少 32px，手指點得到） */
+	@media (max-width: 1180px) {
+		:where(.editor:not(.narrow)) .sep {
+			margin: 0;
 		}
-		.transport {
-			gap: 4px;
-		}
-		.board {
-			min-width: 132px;
-			padding-inline: 8px;
+		:where(.editor:not(.narrow)) .actions :global(button.ghost),
+		:where(.editor:not(.narrow)) .actions .btn.ghost {
+			padding-inline: 7px;
 		}
 	}
-	/* 1280 寬以下的矮螢幕（滑鼠）：只有圖示的按鈕左右再收小（手指的照樣至少 32px） */
-	@media (max-width: 1280px) and (max-height: 860px) and (pointer: fine) {
-		.actions :global(button.ghost),
-		.actions .btn.ghost,
-		.guide-link {
+	/* 1280 寬以下（滑鼠）：只有圖示的按鈕左右再收小 */
+	@media (max-width: 1280px) and (pointer: fine) {
+		:where(.editor:not(.narrow)) .actions :global(button.ghost),
+		:where(.editor:not(.narrow)) .actions .btn.ghost {
 			padding-inline: 5px;
 		}
 	}
-	/* 1024×768（滑鼠）：右邊的按鈕、名字那一欄靠緊一點，A、B、✕ 再窄一點，流程名字才至少露出 3 個字（N55） */
-	@media (max-width: 1100px) and (max-height: 860px) and (pointer: fine) {
-		.actions {
+	/* 1024 寬（滑鼠、手指）和觸控的 1180 寬：「編排｜練習」、速度、「⋯」、名字那一欄左右收小 */
+	@media (max-width: 1100px), (max-width: 1180px) and (pointer: coarse) {
+		:where(.editor:not(.narrow)) .view button {
+			padding-inline: 8px;
+		}
+		:where(.editor:not(.narrow)) .speed {
+			padding-inline: 3px;
+		}
+		:where(.editor:not(.narrow)) .more {
+			padding-inline: 7px;
+		}
+		:where(.editor:not(.narrow)) .title {
+			gap: 6px;
+		}
+	}
+	/* 1024 寬（滑鼠）：右邊的按鈕、名字那一欄靠緊一點，A、B、✕ 再窄一點，流程名字才至少露出 3 個字（N55） */
+	@media (max-width: 1100px) and (pointer: fine) {
+		:where(.editor:not(.narrow)) .actions {
 			gap: 2px;
 		}
-		.title {
+		:where(.editor:not(.narrow)) .title {
 			gap: 4px;
 		}
-		.ab {
+		:where(.editor:not(.narrow)) .ab {
 			min-width: 20px;
 			padding-inline: 3px;
 		}
 	}
-	/* 1024×768（手指）：A、B 各要 32px，右邊的按鈕會擠出畫面、流程名字被擠掉。
+	/* 1024 寬（手指）：A、B 各要 32px，右邊的按鈕會擠出畫面、流程名字被擠掉。
 	   藏起 A、B（用手指在八拍尺上面那一條拖出範圍）；✕ 留著，才拿得掉範圍。右邊的按鈕、名字那一欄靠緊，
 	   只有圖示的按鈕從 40px 寬收成 34px（手指照樣至少 32px）。 */
-	@media (max-width: 1100px) and (max-height: 860px) and (pointer: coarse) {
-		.set-end {
+	@media (max-width: 1100px) and (pointer: coarse) {
+		:where(.editor:not(.narrow)) .set-end {
 			display: none;
 		}
-		.actions {
+		:where(.editor:not(.narrow)) .actions {
 			gap: 2px;
 		}
-		.title {
+		:where(.editor:not(.narrow)) .title {
 			gap: 4px;
 		}
-		.topbar .actions :global(button.ghost),
-		.topbar .actions .btn.ghost,
-		.topbar .guide-link,
-		.topbar .more,
-		.topbar .ab {
+		:where(.editor:not(.narrow)) .topbar .actions :global(button.ghost),
+		:where(.editor:not(.narrow)) .topbar .actions .btn.ghost,
+		:where(.editor:not(.narrow)) .topbar .more,
+		:where(.editor:not(.narrow)) .topbar .ab {
 			min-width: 34px;
 			padding-inline: 5px;
 		}
 	}
+
+	/* ---------- 窄螢幕（手機檢視畫面）：上方列和播放區照舊（#280 不動） ----------
+	   播放區不在上方列裡（在場地下面），上方列只有名字和按鈕兩欄。
+	   螢幕矮（高 860px 以下）時：開啟、節拍器、重複只留圖示，間距收小。 */
+	@media (max-width: 1760px) and (min-height: 861px) {
+		:where(.narrow) .topbar {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+	}
+	@media (max-width: 1760px) and (max-height: 860px) {
+		:where(.narrow) .topbar {
+			gap: 8px;
+			padding-block: 6px;
+		}
+		:where(.narrow) .short-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		:where(.narrow) .transport {
+			gap: 4px;
+		}
+		:where(.narrow) .toggle {
+			padding-inline: 8px;
+		}
+		:where(.narrow) .repeat-group {
+			gap: 2px;
+		}
+		:where(.narrow) .board {
+			min-width: 132px;
+			padding-inline: 8px;
+		}
+	}
+	@media (max-width: 1760px) and (max-height: 860px) and (pointer: fine) {
+		:where(.narrow) .ab {
+			min-width: 22px;
+			padding-inline: 4px;
+		}
+	}
+	@media (max-width: 1180px) and (max-height: 860px) {
+		:where(.narrow) .sep {
+			margin: 0;
+		}
+		:where(.narrow) .actions :global(button.ghost),
+		:where(.narrow) .actions .btn.ghost,
+		:where(.narrow) .guide-link {
+			padding-inline: 7px;
+		}
+	}
+	@media (max-width: 1100px) and (max-height: 860px), (max-width: 1180px) and (max-height: 860px) and (pointer: coarse) {
+		:where(.narrow) .tightest-hide {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		:where(.narrow) .view button {
+			padding-inline: 8px;
+		}
+		:where(.narrow) .speed {
+			padding-inline: 3px;
+		}
+		:where(.narrow) .more {
+			padding-inline: 7px;
+		}
+		:where(.narrow) .title {
+			gap: 6px;
+		}
+	}
+	@media (max-width: 1280px) and (max-height: 860px) and (pointer: fine) {
+		:where(.narrow) .actions :global(button.ghost),
+		:where(.narrow) .actions .btn.ghost,
+		:where(.narrow) .guide-link {
+			padding-inline: 5px;
+		}
+	}
+	@media (max-width: 1100px) and (max-height: 860px) and (pointer: fine) {
+		:where(.narrow) .actions {
+			gap: 2px;
+		}
+		:where(.narrow) .title {
+			gap: 4px;
+		}
+		:where(.narrow) .ab {
+			min-width: 20px;
+			padding-inline: 3px;
+		}
+	}
+	@media (max-width: 1100px) and (max-height: 860px) and (pointer: coarse) {
+		:where(.narrow) .set-end {
+			display: none;
+		}
+		:where(.narrow) .actions {
+			gap: 2px;
+		}
+		:where(.narrow) .title {
+			gap: 4px;
+		}
+		:where(.narrow) .topbar .actions :global(button.ghost),
+		:where(.narrow) .topbar .actions .btn.ghost,
+		:where(.narrow) .topbar .guide-link,
+		:where(.narrow) .topbar .more,
+		:where(.narrow) .topbar .ab {
+			min-width: 34px;
+			padding-inline: 5px;
+		}
+	}
+
 	@media (max-width: 1280px) {
 		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字 */
 		.guide-text {

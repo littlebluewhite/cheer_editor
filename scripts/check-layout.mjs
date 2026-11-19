@@ -301,7 +301,7 @@ await check('時間軸拖到最大時，場地左欄最下面的工具捲得到�
 });
 
 /**
- * 上方列：多高、播放區在不在上方列第一行，每個按得到的東西（按鈕、勾選、選單、連結）整個在畫面裡、中心點到的是它自己、
+ * 上方列：多高、播放鍵和存檔在不在同一行，每個按得到的東西（按鈕、勾選、選單、連結）整個在畫面裡、中心點到的是它自己、
  * 彼此不疊；流程名字至少露出幾個字寬。
  */
 const topbarLayout = () =>
@@ -325,9 +325,9 @@ const topbarLayout = () =>
 		return { 上方列高: Math.round(b.height), 播放鈕和存檔同一行: Math.abs((play.top + play.bottom) / 2 - (save.top + save.bottom) / 2) < 8,
 			名字寬: Math.round(title.width), 點不到或出畫面: bad, 疊在一起: overlap };`);
 
-// 螢幕矮（高 860px 以下，例：1024×768、1280×720、橫拿的 iPad 1180×820）時，播放區併進上方列那一行，省下來的高度給場地（N55）。
-for (const [w, h, touch] of [[1024, 768], [1280, 720], [1366, 768], [1180, 820, true], [1024, 768, true]]) {
-	await check(`${w}×${h}${touch ? '（觸控）' : ''} 螢幕矮：播放區併進上方列，上方列只有一行（64px 以下）；每個按鈕點得到、不疊、不出畫面，流程名字至少露出 3 個字（N55）`, async () => {
+// 上方列永遠一行（#280）：不管寬高，播放區和存檔在同一行，高 64px 以下，省下來的高度給場地（N55）。
+for (const [w, h, touch] of [[1024, 768], [1280, 720], [1366, 768], [1440, 900], [1728, 1000], [1920, 1080], [1180, 820, true], [1024, 768, true]]) {
+	await check(`${w}×${h}${touch ? '（觸控）' : ''}：上方列只有一行（64px 以下），播放鍵和存檔同一行；每個按鈕點得到、不疊、不出畫面，流程名字至少露出 3 個字（#280）`, async () => {
 		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
 		await openSample();
 		const r = await topbarLayout();
@@ -337,11 +337,92 @@ for (const [w, h, touch] of [[1024, 768], [1280, 720], [1366, 768], [1180, 820, 
 	});
 }
 
-await check('1440×900 不算矮：上方列照舊兩行，播放區在第二行；按鈕點得到、不疊（N55）', async () => {
+// 收字的寬度剛好還沒到的那一點最擠（字還在、間距還沒收）：長名字加「未存」、檢視模式也量（#280）
+for (const [w, h, touch] of [[1101, 768], [1181, 800], [1281, 800], [1301, 800], [1601, 900], [1761, 900], [1194, 834, true], [1366, 1024, true]]) {
+	await check(`${w}×${h}${touch ? '（觸控）' : ''} 長名字、有「未存」、編輯和檢視模式：上方列一行，每個按鈕點得到、不疊、不出畫面，名字至少露出 3 個字（#280）`, async () => {
+		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
+		await openSample();
+		await renameFlowTo('二〇二七全國賽決賽版本第三版');
+		const edit = await topbarLayout();
+		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
+		await sleep(100);
+		const view = await topbarLayout();
+		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
+		const unsaved = await js(`return !!document.querySelector('.topbar .unsaved')`);
+		if (touch) await clearTouch();
+		const fine = (r) => r.上方列高 <= 64 && r.播放鈕和存檔同一行 && r.名字寬 >= 45 && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0;
+		return { ok: unsaved && fine(edit) && fine(view), value: { 有未存: unsaved, 編輯: edit, 檢視: view } };
+	});
+}
+
+/**
+ * 上方列的顏色：哪些按鈕是實心底（不算開關裡現在亮的那格），每個字和它後面的底色對比（底色一層一層疊上去算；按不下去的不算）。
+ */
+const topbarColors = () =>
+	js(`const bar = document.querySelector('.topbar');
+		const rgba = (c) => { const m = c.match(/[\\d.]+/g).map(Number); return [m[0], m[1], m[2], m[3] ?? 1]; };
+		const over = (top, below) => [0, 1, 2].map((i) => top[i] * top[3] + below[i] * (1 - top[3])).concat(1);
+		const lum = (c) => { const [r, g, b] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+		const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+		const solid = [...bar.querySelectorAll('button, label.btn, a')].filter((el) => el.checkVisibility() && el.getAttribute('aria-pressed') !== 'true' && rgba(getComputedStyle(el).backgroundColor)[3] > 0.9)
+			.map((el) => (el.getAttribute('aria-label') || el.textContent.trim() || el.title).trim().slice(0, 8));
+		const low = [];
+		const walker = document.createTreeWalker(bar, NodeFilter.SHOW_TEXT);
+		let node;
+		while ((node = walker.nextNode())) {
+			const el = node.parentElement;
+			if (!node.textContent.trim() || !el.checkVisibility() || el.getBoundingClientRect().width < 10 || el.closest(':disabled, :has(> input:disabled)')) continue;
+			const chain = []; for (let e = el; e && e !== bar.parentElement; e = e.parentElement) chain.unshift(e);
+			let bg = [255, 255, 255, 1];
+			for (const e of chain) { const c = rgba(getComputedStyle(e).backgroundColor); if (c[3] > 0) bg = over(c, bg); }
+			const r = ratio(rgba(getComputedStyle(el).color), bg);
+			if (r < 4.5) low.push(node.textContent.trim().slice(0, 10) + '：' + r.toFixed(2));
+		}
+		return { 實心底: solid, 對比不夠: low };`);
+for (const viewing of [false, true]) {
+	await check(`1440×900 ${viewing ? '檢視' : '編輯'}模式上方列：實心底的只有播放鍵（橘）和存檔（藍）；字和底色的對比至少 4.5:1（#280）`, async () => {
+		await setViewport(1440, 900);
+		await openSample();
+		const mode = (name) => js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '${name}').click()`);
+		if (viewing) { await mode('檢視'); await sleep(100); }
+		const r = await topbarColors();
+		if (viewing) await mode('編輯');
+		return { ok: r.實心底.join() === ['播放', '存檔'].join() && r.對比不夠.length === 0, value: r };
+	});
+}
+
+/** 上方列這幾顆按鈕的字有沒有真的畫出來（只給報讀軟體的字包在縮成 1px 的框裡）。 */
+const topbarWords = () =>
+	js(`const words = ['選單', '節拍器', '重複', '編輯', '檢視', '八拍表', '存檔'];
+		const out = {};
+		for (const w of words) {
+			const walker = document.createTreeWalker(document.querySelector('.topbar'), NodeFilter.SHOW_TEXT);
+			let node; while ((node = walker.nextNode()) && node.textContent.trim() !== w);
+			out[w] = !!node && node.parentElement.getBoundingClientRect().width >= 10;
+		}
+		return out;`);
+// 字收成圖示的順序（#280）：寬的時候每個字都在；先收節拍器、重複，再收選單、編輯、檢視，最後才收八拍表；存檔一直有字。
+for (const [w, h, shown, hidden] of [
+	[1728, 1000, ['選單', '節拍器', '重複', '編輯', '檢視', '八拍表', '存檔'], []],
+	[1440, 900, ['選單', '編輯', '檢視', '八拍表', '存檔'], ['節拍器', '重複']],
+	[1024, 768, ['存檔'], ['節拍器', '重複', '選單', '編輯', '檢視', '八拍表']]
+]) {
+	await check(`${w}×${h} 上方列的字：${shown.join('、')}有字${hidden.length ? `；${hidden.join('、')}只剩圖示` : ''}（#280）`, async () => {
+		await setViewport(w, h);
+		await openSample();
+		const r = await topbarWords();
+		return { ok: shown.every((x) => r[x]) && hidden.every((x) => !r[x]), value: r };
+	});
+}
+
+await check('1440×900 檢視模式：上方列整條是紫色（#280）', async () => {
 	await setViewport(1440, 900);
 	await openSample();
-	const r = await topbarLayout();
-	return { ok: r.上方列高 > 90 && !r.播放鈕和存檔同一行 && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0, value: r };
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
+	await sleep(100);
+	const bg = await js(`return getComputedStyle(document.querySelector('.topbar')).backgroundColor`);
+	await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
+	return { ok: bg === 'rgb(59, 42, 107)', value: bg };
 });
 
 await check('輸出影片：用 docs/samples/sample-flow.zip 做出來的檔，開頭是 ftyp，有 avc1 和 mp4a', async () => {
@@ -842,7 +923,8 @@ async function renameFlowTo(name) {
 	await sleep(200);
 }
 
-for (const w of [1141, 1200, 1300, 1760, 1761, 1890, 1891]) {
+// 上方列一行（#280）之後，1180 寬以下放得下 3 個字以上就好（上面那幾條量），8 個字從收字的寬度 1181 起算
+for (const w of [1181, 1281, 1301, 1601, 1761, 1920]) {
 	await check(`${w} 寬：長的流程名字至少看得到 8 個字，不被壓到四五個字`, async () => {
 		await setViewport(w, 900);
 		await openSample();
