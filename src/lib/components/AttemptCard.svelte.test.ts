@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attemptWhos, recordAttempt, recordRunThrough } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { libSample, ratedSample } from '#lib/test-flows.js';
+import { libSample, pyramidSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
@@ -318,7 +318,7 @@ describe('記錄頁的卡', () => {
 		const edit = within(screen.getByRole('group', { name: '改第 3 次' }));
 		await fireEvent.click(edit.getByRole('button', { name: '第 3 次 中段 成功' }));
 		await fireEvent.click(edit.getByRole('button', { name: '存修改' }));
-		expect(screen.getByRole('alert').textContent).toBe('全上的一次每個環節都要有記號（✗ 後面的不用）');
+		expect(screen.getByRole('alert').textContent).toBe('全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）');
 		expect(records(session)).toBe(before);
 	});
 
@@ -329,5 +329,49 @@ describe('記錄頁的卡', () => {
 		setup({ ...flow, actions: [{ ...flow.actions[0], members }] });
 		const card = screen.getByRole('region', { name: '第 1 組 小A' });
 		expect(card.querySelector('header')?.textContent).toContain('小美・小A');
+	});
+});
+
+describe('記錄頁的卡：金字塔的環節佔同樣的拍（打 ✗ 之後照拍算）', () => {
+	const enabled = (name: string, phase: string) =>
+		!(screen.getByRole('button', { name: `${name} ${phase} 成功` }) as HTMLButtonElement).disabled;
+	const phases = ['上法 第一個', '中段 第一個', '上法 第二個', '中段 第二個', '下法'];
+
+	it('上法「第二個」✗：之後才開始的按不了，佔同樣拍的還可以按；取消 ✗ 又可以按', async () => {
+		const { name } = setup(pyramidSample(), 1);
+		await tap(name, '上法 第一個', '成功');
+		await tap(name, '上法 第二個', '失敗');
+		expect(phases.map((p) => enabled(name, p))).toEqual([true, true, true, false, false]);
+		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
+		await tap(name, '上法 第二個', '失敗');
+		expect(phases.map((p) => enabled(name, p))).toEqual([true, true, true, true, true]);
+	});
+
+	it('改成 ✓ 也又可以按', async () => {
+		const { name } = setup(pyramidSample(), 1);
+		await tap(name, '上法 第二個', '失敗');
+		await tap(name, '上法 第二個', '成功');
+		expect(phases.map((p) => enabled(name, p))).toEqual([true, true, true, true, true]);
+	});
+
+	it('「跳過了前面的環節」：只有 ✗ 之前的沒打才提醒，佔同樣拍的沒打不提醒', async () => {
+		const { session, name } = setup(pyramidSample(), 1);
+		await tap(name, '上法 第二個', '失敗');
+		expect(screen.getByText(/跳過了前面的環節/)).toBeTruthy();
+		await tap(name, '上法 第一個', '成功');
+		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
+		await save();
+		expect(records(session, 1).map((r) => [r.whole, r.marks, r.blanks])).toEqual([
+			[true, { p4: '✓', p6: '✗' }, ['p5', 'p7', 'p8']]
+		]);
+	});
+
+	it('「全部 ✓ 存」：還能打、沒打的補 ✓（佔同樣拍的也補），按不了的空著', async () => {
+		const { session, name } = setup(pyramidSample(), 1);
+		await tap(name, '上法 第二個', '失敗');
+		await fireEvent.click(screen.getByRole('button', { name: '全部 ✓ 存' }));
+		expect(records(session, 1).map((r) => [r.whole, r.marks, r.blanks])).toEqual([
+			[true, { p4: '✓', p5: '✓', p6: '✗' }, ['p7', 'p8']]
+		]);
 	});
 });

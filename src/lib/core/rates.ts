@@ -68,7 +68,7 @@ export function rateCounts(phases: Phase[], attempts: Attempt[]): RateCounts {
 			else if (mark === '△') t.minor++;
 			else t.fail++;
 		}
-		// 當時就有、現在還在的環節：打了記號的，加上 ✗ 後面空著的（blanks）。
+		// 當時就有、現在還在的環節：打了記號的，加上空著的（blanks）。
 		const phasesThen = phases.filter((p) => a.marks[p.id] || a.blanks?.includes(p.id));
 		if (a.whole && phasesThen.length) {
 			counts.whole.whole++;

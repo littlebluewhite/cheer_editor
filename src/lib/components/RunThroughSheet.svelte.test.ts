@@ -1,7 +1,7 @@
 // 記一次全上的表：放一個真的 session 進去，點格子、存，讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { ratedSample } from '#lib/test-flows.js';
+import { pyramidSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
@@ -165,5 +165,28 @@ describe('記一次全上的表', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
 		expect(screen.getByRole('alertdialog')).toBeTruthy();
 		expect(onclose).not.toHaveBeenCalled();
+	});
+});
+
+describe('記一次全上的表：金字塔的環節佔同樣的拍', () => {
+	it('一格變 ✗：之後才開始的格子變空的，佔同樣拍的留著；改回來，變空的回到 ✓', async () => {
+		const { editor } = testEditor(pyramidSample());
+		render(TestSession, { props: { editor, component: RunThroughSheet, props: { date: DATE, onclose: vi.fn() } } });
+		const block = screen.getAllByRole('region').find((r) => r.getAttribute('aria-label')?.includes('金字塔'))!;
+		const column = () =>
+			within(block)
+				.getAllByRole('row')
+				.slice(1)
+				.map((row) => [row.children[0].textContent?.trim(), row.children[1].textContent?.trim()]);
+		await tapSlot('第 1 組 小美', '上法 第二個', 2);
+		expect(column()).toEqual([
+			['上法 第一個', '✓'],
+			['中段 第一個', '✓'],
+			['上法 第二個', '✗'],
+			['中段 第二個', ''],
+			['下法', '']
+		]);
+		await tapSlot('第 1 組 小美', '上法 第二個');
+		expect(column().map(([, mark]) => mark)).toEqual(['✓', '✓', '✓', '✓', '✓']);
 	});
 });

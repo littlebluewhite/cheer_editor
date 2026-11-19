@@ -38,7 +38,7 @@ import {
 	type NewAttempt,
 	type RunThroughMarks
 } from './index';
-import { flowOf, ratedSample } from '../test-flows';
+import { flowOf, pyramidSample, ratedSample } from '../test-flows';
 
 const sample = ratedSample;
 
@@ -149,6 +149,94 @@ describe('記一次：留哪些記號、算不算整個做', () => {
 	});
 });
 
+describe('金字塔的環節佔同樣的拍：記一次、全上、改一次都照拍算空著的環節', () => {
+	/** pyramidSample 的 x2：p4 上法「第一個」、p5 中段「第一個」、p6 上法「第二個」、p7 中段「第二個」、p8 下法。 */
+	const [上一, 中一, 上二, 中二, 下] = ['p4', 'p5', 'p6', 'p7', 'p8'];
+	const who = (flow: Flow) => squadsOf(flow.actions.find((a) => a.id === 'x2')!)[0];
+	const pyramidDrill = (flow: Flow, marks: NewAttempt['marks']) => drill(marks, { who: who(flow) });
+
+	it('上法「第一個」✓、上法「第二個」✗，其他沒打：存成整個做，空著的是中段「第一個」、中段「第二個」、下法', () => {
+		const flow = pyramidSample();
+		expect(who(flow)).toBe('g3');
+		const saved = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, { [上一]: '✓', [上二]: '✗' })));
+		const attempt = recordsOf(saved, 'x2')[0];
+		expect(attempt).toMatchObject({
+			whole: true,
+			marks: { [上一]: '✓', [上二]: '✗' },
+			blanks: [中一, 中二, 下]
+		});
+		// 排在 ✗ 前面的空著的環節寫「·」，不寫成那時還沒有的「—」
+		expect(attemptText(saved.actions.find((a) => a.id === 'x2')!, attempt)).toBe('✓·✗··');
+	});
+
+	it('「全部 ✓ 存」：還能打、沒打的都補 ✓（跟 ✗ 佔同樣拍的也補），按不了的不存', () => {
+		const flow = pyramidSample();
+		const marks = fillOk(flow.actions.find((a) => a.id === 'x2')!, { [上二]: '✗' });
+		const saved = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, marks)));
+		expect(recordsOf(saved, 'x2')[0]).toMatchObject({
+			whole: true,
+			marks: { [上一]: '✓', [中一]: '✓', [上二]: '✗' },
+			blanks: [中二, 下]
+		});
+	});
+
+	it('全上：一格 ✗，之後才開始的空著，佔同樣拍的照記', () => {
+		const flow = pyramidSample();
+		const tapped = { [上一]: '✓', [中一]: '✓', [上二]: '✗', [中二]: '✓', [下]: '✓' } as const;
+		const saved = flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x2', who: who(flow), marks: tapped }]));
+		expect(recordsOf(saved, 'x2')[0]).toMatchObject({
+			whole: true,
+			marks: { [上一]: '✓', [中一]: '✓', [上二]: '✗' },
+			blanks: [中二, 下]
+		});
+	});
+
+	it('改分段練的一次：可以補記跟 ✗ 佔同樣拍的環節，之後才開始的打了也不存', () => {
+		let flow = pyramidSample();
+		flow = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, { [上一]: '✓', [上二]: '✗' })));
+		const changed = flowOf(changeAttempt(flow, 'x2', 't1', { [上一]: '✓', [中一]: '△', [上二]: '✗', [下]: '✓' }));
+		expect(recordsOf(changed, 'x2')[0]).toMatchObject({
+			whole: true,
+			marks: { [上一]: '✓', [中一]: '△', [上二]: '✗' },
+			blanks: [中二, 下]
+		});
+	});
+
+	it('改全上記的一次：跟 ✗ 佔同樣拍的拿掉記號也可以；✗ 之前的空了就擋下來，訊息說哪些不用', () => {
+		let flow = pyramidSample();
+		const tapped = { [上一]: '✓', [中一]: '✓', [上二]: '✗' } as const;
+		flow = flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x2', who: who(flow), marks: tapped }]));
+		const changed = flowOf(changeAttempt(flow, 'x2', 't1', { [上一]: '✓', [上二]: '✗' }));
+		expect(recordsOf(changed, 'x2')[0]).toMatchObject({
+			practice: 'runThrough',
+			whole: true,
+			marks: { [上一]: '✓', [上二]: '✗' },
+			blanks: [中一, 中二, 下]
+		});
+		expect(changeAttempt(flow, 'x2', 't1', { [中一]: '✓', [上二]: '✗' })).toEqual({
+			kind: 'blocked',
+			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）'
+		});
+	});
+
+	it.each([
+		['上法「第二個」✗', { [上一]: '✓', [上二]: '✗' }],
+		['中段「第一個」✗，佔同樣拍的有打', { [上一]: '✓', [中一]: '✗', [中二]: '△', [下]: '✓' }],
+		['兩個 ✗', { [上一]: '✓', [中一]: '✗', [上二]: '✗' }]
+	] as const)('記一次、全上、改一次對同一組記號存下來的一樣：%s', (_, marks) => {
+		const flow = pyramidSample();
+		const g = who(flow);
+		const drilled = recordsOf(flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, marks))), 'x2')[0];
+		const run = recordsOf(flowOf(recordRunThrough(flow, '2026-11-04', [{ actionId: 'x2', who: g, marks }])), 'x2')[0];
+		const allOk = { [上一]: '✓', [中一]: '✓', [上二]: '✓', [中二]: '✓', [下]: '✓' } as const;
+		const first = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, allOk)));
+		const changed = recordsOf(flowOf(changeAttempt(first, 'x2', 't1', marks)), 'x2')[0];
+		const result = (r: { whole: boolean; marks: object; blanks?: string[] }) => [r.whole, r.marks, r.blanks];
+		expect(result(run)).toEqual(result(drilled));
+		expect(result(changed)).toEqual(result(drilled));
+	});
+});
+
 describe('刪掉上一次', () => {
 	/** 11/04：第 1 組 t1、第 2 組 t2、第 1 組 t3、第 1 組全上 t4；11/05：第 1 組 t5。 */
 	function recorded(): Flow {
@@ -232,7 +320,7 @@ describe('改某一次、刪掉某一次', () => {
 		expect(recordsOf(flow)[3]).toMatchObject({ practice: 'runThrough', runThroughId: 'r1', marks: { p2: '△' } });
 		expect(changeAttempt(flow, 'x1', 't4', { p1: '✓', p3: '✓' })).toEqual({
 			kind: 'blocked',
-			message: '全上的一次每個環節都要有記號（✗ 後面的不用）'
+			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）'
 		});
 	});
 

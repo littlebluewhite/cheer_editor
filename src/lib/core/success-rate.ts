@@ -40,7 +40,7 @@ export interface Attempt {
 	/** 每個環節的記號，key 是環節 id；沒有就是空的（沒做到、沒練）。 */
 	marks: Record<string, Mark>;
 	/**
-	 * 整個做、中途 ✗ 時，那時就有、在 ✗ 後面空著的環節 id（照記號的規則一定是空的）；沒有就不寫。
+	 * 整個做、中途 ✗ 時，那時就有、空著的環節 id（✗ 做完之後才開始的，和跟 ✗ 佔同樣的拍、沒打的；見 blankPhases）；沒有就不寫。
 	 * 整次成功率靠它分出「那一次當時就有」：之後刪掉 ✗ 的環節，空著的還在就不算成功。
 	 */
 	blanks?: string[];
@@ -288,37 +288,52 @@ export function attemptProblem(action: Action, attempt: NewAttempt): string | nu
 
 /**
  * 打 ✗ 之後哪些環節空著：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回
- * 會留下來的記號（空著的環節點過的不留）、算不算整個做、空著按不了的環節（shut）、
- * 跳過了前面的環節（skipped：選整個做時，排在最後一個留下來的記號前面、沒打的；沒選整個做是空的）。
- * 練習的卡、全上的表、記一次、改一次都問這裡，不自己數第幾個。哪些空著只在 shutAfterFail 算。
+ * 會留下來的記號（按不了的環節點過的不留）、算不算整個做、按不了的環節（shut）、
+ * 空著的環節（blanks：按不了的，加上跟 ✗ 佔同樣的拍、沒打的；整個做時存成那一次的 blanks）、
+ * 跳過了前面的環節（skipped：選整個做時，排在最後一個留下來的記號前面、沒打、不是跟 ✗ 佔同樣拍的；沒選整個做是空的）。
+ * 練習的卡、全上的表、記一次、改一次都問這裡，不自己算。哪些按不了只在 shutAfterFail 算。
  */
 export function blankPhases(
 	action: Action,
 	whole: boolean,
 	marks: Record<string, Mark>
-): { whole: boolean; marks: Record<string, Mark>; shut: string[]; skipped: string[] } {
-	const phaseIds = action.successRate?.phases.map((p) => p.id) ?? [];
-	const shut = shutAfterFail(phaseIds, marks);
-	const open = phaseIds.filter((id) => !shut.includes(id));
+): { whole: boolean; marks: Record<string, Mark>; shut: string[]; blanks: string[]; skipped: string[] } {
+	const phases = action.successRate?.phases ?? [];
+	const shut = shutAfterFail(phases, marks);
+	const open = phases.filter((p) => !shut.includes(p.id));
 	const kept = Object.fromEntries(Object.entries(marks).filter(([id]) => !shut.includes(id)));
-	const last = open.findLastIndex((id) => kept[id]);
+	const fails = open.filter((p) => kept[p.id] === '✗');
+	/** 跟留下來的 ✗ 佔同樣的拍、沒打的：可以打，不打就空著，不害這一次變成只練幾個環節。 */
+	const sharing = new Set(
+		open.filter((p) => !kept[p.id] && fails.some((f) => phasesOverlap([p, f]))).map((p) => p.id)
+	);
+	const blanks = phases.filter((p) => shut.includes(p.id) || sharing.has(p.id)).map((p) => p.id);
+	const needed = open.map((p) => p.id).filter((id) => !sharing.has(id));
+	const last = needed.findLastIndex((id) => kept[id]);
 	return {
-		whole: whole && open.every((id) => kept[id]),
+		whole: whole && needed.every((id) => kept[id]),
 		marks: kept,
 		shut,
-		skipped: whole ? open.slice(0, Math.max(last, 0)).filter((id) => !kept[id]) : []
+		blanks,
+		skipped: whole ? needed.slice(0, Math.max(last, 0)).filter((id) => !kept[id]) : []
 	};
 }
 
-/** 空著的環節（規則只在這裡）：照環節的順序，第一個 ✗ 後面的都空著。沒有 ✗ 就沒有。 */
-function shutAfterFail(phaseIds: string[], marks: Record<string, Mark>): string[] {
-	const fail = phaseIds.findIndex((id) => marks[id] === '✗');
-	return fail < 0 ? [] : phaseIds.slice(fail + 1);
+/**
+ * 按不了的環節（規則只在這裡）：打 ✗ 的環節裡最早做完的那一個，它做完之後才開始的（剛好接著開始的也算）。沒有 ✗ 就沒有。
+ * 環節沒標拍（口號段）：照清單的先後，第一個 ✗ 後面的都按不了。環節沒有疊時兩個算法一樣。
+ */
+function shutAfterFail(phases: readonly Phase[], marks: Record<string, Mark>): string[] {
+	const fails = phases.filter((p) => marks[p.id] === '✗');
+	if (!fails.length) return [];
+	if (phases.some((p) => !p.beats)) return phases.slice(phases.indexOf(fails[0]) + 1).map((p) => p.id);
+	const end = Math.min(...fails.map((p) => p.beats!.at + p.beats!.len));
+	return phases.filter((p) => p.beats!.at >= end).map((p) => p.id);
 }
 
 /**
  * 記一次會存下來的樣子：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回會存的記號和算不算整個做（照 blankPhases）。
- * 整個做、有空著的環節（✗ 後面的）時，那些環節記成空著的（blanks）。
+ * 整個做、有空著的環節（✗ 做完之後才開始的、跟 ✗ 佔同樣的拍沒打的）時，那些環節記成空著的（blanks）。
  * 只在記的時候套，讀流程檔不檢查：之後才加的環節、標拍換了順序，會讓舊的一次看起來不合。不是環節的記號原樣留著，交給 attemptProblem 擋。
  */
 export function keptAttempt(
@@ -328,10 +343,10 @@ export function keptAttempt(
 ): { whole: boolean; marks: Record<string, Mark>; blanks?: string[] } {
 	const kept = blankPhases(action, whole, marks);
 	const saved = { whole: kept.whole, marks: kept.marks };
-	return saved.whole && kept.shut.length ? { ...saved, blanks: kept.shut } : saved;
+	return saved.whole && kept.blanks.length ? { ...saved, blanks: kept.blanks } : saved;
 }
 
-/** 「全部 ✓ 存」要存的記號：已點的照點的（△、✗ 不蓋掉），空著的環節補 ✓。存的時候一樣照 keptAttempt 留。 */
+/** 「全部 ✓ 存」要存的記號：已點的照點的（△、✗ 不蓋掉），沒打的環節補 ✓。存的時候一樣照 keptAttempt 留：按不了的不存，跟 ✗ 佔同樣拍的存 ✓。 */
 export function fillOk(action: Action, marks: Record<string, Mark>): Record<string, Mark> {
 	const phases = action.successRate?.phases ?? [];
 	return { ...Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])), ...marks };
