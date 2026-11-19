@@ -674,13 +674,16 @@ export class FlowFile {
 		} catch {
 			return void (session.notice = '下載失敗，請再試一次');
 		}
+		// 存檔對話框選了舊檔，瀏覽器當下就清空它（File System Access 規格）：沒存成要說那個檔變空的
+		const failed = (text: string) =>
+			void (session.notice = saver.fileName ? `${text}；選的「${saver.fileName}」已經變成空的檔案，請再下載一次` : text);
 		let found;
 		try {
 			found = await adapters.server.cloudFlow(id);
 		} catch {
 			found = null;
 		}
-		if (!found) return void (session.notice = '連不上伺服器，沒下載');
+		if (!found) return failed('連不上伺服器，沒下載');
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
 		const flow = putRecords(found.flow as Flow, records);
 		const audio = { ...music.bytes(flow) };
@@ -691,13 +694,13 @@ export class FlowFile {
 				if (bytes) audio[a.id] = bytes;
 			}
 		} catch {
-			return void (session.notice = '連不上伺服器，沒下載');
+			return failed('連不上伺服器，沒下載');
 		}
 		try {
 			const outcome = await saver.save(writeFlowFile(flow, audio), fileName);
 			if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
 		} catch {
-			session.notice = '下載失敗，請再試一次';
+			failed('下載失敗，請再試一次');
 		}
 	}
 
