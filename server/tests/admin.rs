@@ -698,3 +698,52 @@ async fn mail_service_429_comes_back_as_cannot_send_today_and_changes_nothing(db
         "email 沒改"
     );
 }
+
+#[sqlx::test]
+async fn email_change_revokes_password_links(db: sqlx::PgPool) {
+    let s = Server::new(db);
+    let admin = s.admin().await;
+    let (wang, _) = s
+        .add_with_password(&admin, "wang@example.com", "王教練")
+        .await;
+    s.post(
+        &format!("/api/admin/users/{wang}/send-reset"),
+        json!({}),
+        &admin,
+    )
+    .await;
+    let reset = s.link_token_to("wang@example.com");
+    let mei = s.add(&admin, "mei@example.com", "陳小美").await;
+    let invite = s.link_token_to("mei@example.com");
+
+    // email 打錯了改掉：寄到舊信箱的連結都不能用
+    for (id, new) in [(wang, "wang2@example.com"), (mei, "mei2@example.com")] {
+        let (status, _) = s
+            .post(
+                &format!("/api/admin/users/{id}/email"),
+                json!({ "email": new }),
+                &admin,
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    assert!(!s.link_works(&reset).await);
+    assert!(!s.link_works(&invite).await);
+    assert_eq!(s.set_password(&invite, GOOD).await, StatusCode::GONE);
+
+    // 還沒設密碼的人看起來是邀請過期，重寄一封到新信箱就能用
+    assert_eq!(
+        s.row(&admin, "mei2@example.com").await["status"],
+        json!({ "kind": "inviteExpired" })
+    );
+    let (status, _) = s
+        .post(
+            &format!("/api/admin/users/{mei}/resend-invite"),
+            json!({}),
+            &admin,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let fresh = s.link_token_to("mei2@example.com");
+    assert_eq!(s.set_password(&fresh, GOOD).await, StatusCode::NO_CONTENT);
+}

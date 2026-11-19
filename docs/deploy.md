@@ -145,7 +145,7 @@ Neon 免費版留 6 小時內的紀錄，可以倒回到這段時間的任何一
 
 1. 跑 `pg_dump --format=custom --no-owner --no-acl`（custom 格式本身就壓縮過，不另外加密），連 `DATABASE_URL`（不經過 pooler）。
    映像檔裝的是 PostgreSQL 官方套件庫的 `postgresql-client-18`，跟資料庫同一版（`Dockerfile`；Debian 自己的、Neon 備份範本寫的是 17，不能用）。
-2. 放上 R2 的備份 bucket（`BACKUP_R2_BUCKET`，跟音樂同一個 `R2_ENDPOINT`），名字是 `cheer-<台灣日期>-<時分>.dump`，例 `cheer-2026-11-20-0400.dump`。bucket 的生命週期規則 30 天自動刪。
+2. 放上 R2 的備份 bucket（`BACKUP_R2_BUCKET`，跟音樂同一個 `R2_ENDPOINT`），名字是 `cheer-<台灣日期>-<時分>-<6 個 16 進位的亂數>.dump`，例 `cheer-2026-11-20-0400-3fa9c1.dump`（亂數讓手動備份碰上同一分鐘的排程時不會互蓋）。bucket 的生命週期規則 30 天自動刪。
 3. 在資料表 `backups` 記一列多大（每天的工作算 R2 用量用，#266）。
 4. 去 Better Stack 報到：打 `BACKUP_HEARTBEAT_URL`（Fly secret，網址本身就是 token）。**哪一步失敗就不報到**，Better Stack 等不到就寄信給網站主人（死人開關）。
    沒設 `BACKUP_HEARTBEAT_URL` 時照樣備份，log 寫「沒去 Better Stack 報到」。沒設 `BACKUP_R2_BUCKET` 時不備份（本機開發）。
@@ -160,13 +160,13 @@ fly ssh console -C "/app/cheer-server backup"
 
 用每天凌晨 4 點（台灣時間）的備份（上面「每天的備份」，留 30 天）：
 
-1. Cloudflare → R2 → 備份的 bucket，下載要的那一天（`cheer-<日期>-0400.dump`）。
+1. Cloudflare → R2 → 備份的 bucket，下載要的那一天（`cheer-<日期>-0400-<亂數>.dump`）。
 2. Neon Console 開一個新的 branch（空的，不要從正式的複製），拿它的連線字串（不經過 pooler）。
 3. 用 PostgreSQL 18 的 `pg_restore` 還原到這個新的 branch（跟資料庫同一版；自己電腦沒有 18 就用 docker 的 `postgres:18`）：
 
 ```sh
-pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" cheer-2026-11-20-0400.dump
-# 或：docker run --rm -i postgres:18 pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" < cheer-2026-11-20-0400.dump
+pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" cheer-2026-11-20-0400-3fa9c1.dump
+# 或：docker run --rm -i postgres:18 pg_restore --no-owner --no-acl --dbname="新 branch 的連線字串" < cheer-2026-11-20-0400-3fa9c1.dump
 ```
 
    連線字串有密碼，打在指令上會留在 shell 的歷史紀錄：做完清掉，或先 `read -s DB` 再用 `--dbname="$DB"`。
@@ -213,7 +213,7 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 - 伺服器用 QuickJS 跑流程核心（ADR 0013）：`cargo build` 時 `server/build.rs` 叫 `node scripts/core-bundle.mjs` 把 `src/lib/core/` 打包成一個 JS 檔、算指紋，編進程式。前端建置用同一支算指紋，兩邊一樣。所以 `cargo` 之前要先 `npm ci`；`cargo test` 也會叫 `node` 比對 QuickJS 和 Node 跑出來的結果。
 - `/health` 是健康檢查，不碰資料庫（Neon 免費版沒人用時才睡得著）。
 - 前端每頁建成 `<名字>.html`，所以 `/guide` 重新整理也打得開。其他找不到的路徑回 `200.html`（adapter 的 `fallback`），讓前端自己處理路由。
-- log 只記請求的方法和路徑，不記查詢字串、標頭、內容。之後寫 log 也一樣：不記密碼、token、cookie、信的內容、流程內容；人用使用者 id，不寫 email。
+- log 只記請求的方法和路徑（路由的樣子，例 `/api/links/{token}`，不記 token 本身），不記查詢字串、標頭、內容。之後寫 log 也一樣：不記密碼、token、cookie、信的內容、流程內容；人用使用者 id，不寫 email。
 - 寄信：`server/.env` 沒設 `RESEND_API_KEY` 時，信（含設密碼連結）印在終端機。信裡連結的網址是 `SITE_URL`（預設 `http://` 加 `LISTEN_ADDR`）。
 - 登入的 cookie 是 `__Host-` 開頭、`Secure`：本機用 `http://127.0.0.1` 或 `http://localhost` 開，Chrome 照樣收；Safari 要 https。
 - 改資料的 API 會看 `Sec-Fetch-Site`（沒有就看 `Origin`）擋別的網站送來的請求；用 curl 試要自己帶 `-H 'Sec-Fetch-Site: same-origin'`。

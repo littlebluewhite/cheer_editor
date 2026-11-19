@@ -160,8 +160,18 @@ async fn a_backup_is_uploaded_then_checks_in(db: sqlx::PgPool) {
     trial.result.unwrap();
     let objects = trial.r2.lock().unwrap().clone();
     let names: Vec<&String> = objects.keys().collect();
-    assert_eq!(names, ["cheer-2026-11-20-0400.dump"]);
-    let dump = String::from_utf8(objects["cheer-2026-11-20-0400.dump"].to_vec()).unwrap();
+    assert_eq!(names.len(), 1);
+    // cheer-<台灣日期>-<時分>-<6 個 16 進位的亂數>.dump
+    let name = names[0];
+    let suffix = name
+        .strip_prefix("cheer-2026-11-20-0400-")
+        .and_then(|s| s.strip_suffix(".dump"))
+        .unwrap_or_else(|| panic!("{name}"));
+    assert!(
+        suffix.len() == 6 && suffix.chars().all(|c| c.is_ascii_hexdigit()),
+        "{name}"
+    );
+    let dump = String::from_utf8(objects[name].to_vec()).unwrap();
     assert!(dump.contains("--format=custom"), "{dump}");
     assert!(dump.contains(DATABASE_URL), "{dump}");
     assert_eq!(trial.hits.load(Ordering::SeqCst), 1);
@@ -217,4 +227,28 @@ async fn without_a_heartbeat_url_it_still_backs_up(db: sqlx::PgPool) {
     trial.result.unwrap();
     assert_eq!(trial.r2.lock().unwrap().len(), 1);
     assert_eq!(trial.hits.load(Ordering::SeqCst), 0);
+}
+
+#[sqlx::test]
+async fn two_backups_in_the_same_minute_do_not_share_a_file(db: sqlx::PgPool) {
+    // 手動的 `cheer-server backup` 剛好碰上凌晨 4 點那次：pg_dump 寫完停一下，兩個一起跑。
+    const DUMP_SLOW: &str = r#"for a in "$@"; do case "$a" in --file=*) out="${a#--file=}";; esac; done
+printf '%s\n' "$@" > "$out"; sleep 0.3"#;
+    let (endpoint, r2) = fake_r2(false).await;
+    let (pg_dump, _dir) = fake_pg_dump(DUMP_SLOW);
+    let store = R2Bucket::new(endpoint, BUCKET, "test-key", "test-secret").unwrap();
+    let backup = Backup::new(store, DATABASE_URL.into(), None).pg_dump(pg_dump);
+    let later = nov(19, 20, 0) + chrono::Duration::seconds(30);
+
+    let (a, b) = tokio::join!(backup.run(&db, nov(19, 20, 0)), backup.run(&db, later));
+
+    a.unwrap();
+    b.unwrap();
+    let objects = r2.lock().unwrap().clone();
+    assert_eq!(objects.len(), 2, "{:?}", objects.keys());
+    for key in objects.keys() {
+        assert!(key.starts_with("cheer-2026-11-20-0400-"), "{key}");
+        assert!(key.ends_with(".dump"), "{key}");
+    }
+    assert_eq!(backups(&db).await.len(), 2);
 }
