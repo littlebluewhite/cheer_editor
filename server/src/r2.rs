@@ -96,7 +96,11 @@ impl R2Bucket {
         if res.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(false);
         }
-        res.error_for_status()?;
+        // S3 的 CopyObject 複製到一半出錯時回 200、錯誤寫在內容裡（AWS 文件 API_CopyObject）。
+        let body = res.error_for_status()?.text().await?;
+        if body.contains("<Error>") {
+            anyhow::bail!("R2 複製出錯：{body}");
+        }
         Ok(true)
     }
 

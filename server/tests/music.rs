@@ -1,6 +1,6 @@
 // 雲端流程的音樂檔放 R2（#249）：伺服器查權限、發預簽網址，瀏覽器直接傳；傳完伺服器查大小；換掉的記下哪天不用了。
 // R2 換成假的：開一台本機的 HTTP 伺服器，照 S3 的路徑（/bucket/key）收 PUT、HEAD、GET、DELETE，
-// 和複製（PUT 加 x-amz-copy-source），不驗簽名。
+// 和複製（PUT 加 x-amz-copy-source），不驗簽名。可以叫它下一次查大小、複製時出錯（見 Fault）。
 // 開一台真的伺服器（網路埠），步用 WebSocket 送。要有 PostgreSQL：見 tests/db.rs 開頭。
 
 use std::collections::HashMap;
@@ -36,11 +36,23 @@ type Socket =
 /// 假的 R2 裡的檔：key → 內容。
 type Objects = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
-/// 開一台假的 R2，回它的網址（給 R2Bucket 當 endpoint）和裡面的檔。
-async fn fake_r2() -> (reqwest::Url, Objects) {
+/// 叫假的 R2 下一次出錯（只錯一次）。
+#[derive(Clone, Copy, PartialEq)]
+enum Fault {
+    /// 查大小（HEAD）回 500。
+    Size,
+    /// 複製回 200，但內容是錯誤（S3 的 CopyObject 複製到一半出錯會這樣回），沒複製。
+    CopyErrorIn200,
+}
+
+type Faults = Arc<Mutex<Vec<Fault>>>;
+
+/// 開一台假的 R2，回它的網址（給 R2Bucket 當 endpoint）、裡面的檔和要它出的錯。
+async fn fake_r2() -> (reqwest::Url, Objects, Faults) {
     let objects = Objects::default();
+    let faults = Faults::default();
     async fn object(
-        State(objects): State<Objects>,
+        State((objects, faults)): State<(Objects, Faults)>,
         Path((bucket, key)): Path<(String, String)>,
         method: Method,
         headers: axum::http::HeaderMap,
@@ -48,7 +60,20 @@ async fn fake_r2() -> (reqwest::Url, Objects) {
     ) -> Response {
         assert_eq!(bucket, BUCKET);
         let mut all = objects.lock().unwrap();
+        let fail = |fault: Fault| {
+            let mut faults = faults.lock().unwrap();
+            let at = faults.iter().position(|f| *f == fault);
+            at.map(|at| faults.remove(at)).is_some()
+        };
         match method {
+            Method::HEAD if fail(Fault::Size) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            Method::PUT
+                if headers.contains_key("x-amz-copy-source") && fail(Fault::CopyErrorIn200) =>
+            {
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+                 <Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message></Error>"
+                    .into_response()
+            }
             Method::PUT if headers.contains_key("x-amz-copy-source") => {
                 let source = headers["x-amz-copy-source"].to_str().unwrap();
                 let from = source.strip_prefix(&format!("{BUCKET}/")).unwrap();
@@ -78,12 +103,12 @@ async fn fake_r2() -> (reqwest::Url, Objects) {
     }
     let fake = axum::Router::new()
         .route("/{bucket}/{*key}", axum::routing::any(object))
-        .with_state(objects.clone())
+        .with_state((objects.clone(), faults.clone()))
         .layer(axum::extract::DefaultBodyLimit::disable());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, fake).await.unwrap() });
-    (format!("http://{addr}").parse().unwrap(), objects)
+    (format!("http://{addr}").parse().unwrap(), objects, faults)
 }
 
 struct Server {
@@ -92,6 +117,7 @@ struct Server {
     site: tempfile::TempDir,
     addr: std::net::SocketAddr,
     r2: Objects,
+    faults: Faults,
 }
 
 impl Server {
@@ -100,7 +126,7 @@ impl Server {
             Utc.with_ymd_and_hms(2026, 11, 7, 9, 0, 0).unwrap(),
         ));
         let clock_now = now.clone();
-        let (endpoint, r2) = fake_r2().await;
+        let (endpoint, r2, faults) = fake_r2().await;
         let state = AppState {
             db,
             mailer: Mailer::memory(),
@@ -124,7 +150,13 @@ impl Server {
             site,
             addr,
             r2,
+            faults,
         }
+    }
+
+    /// 假的 R2 下一次這樣出錯。
+    fn fail_next(&self, fault: Fault) {
+        self.faults.lock().unwrap().push(fault);
     }
 
     fn pass(&self, d: Duration) {
@@ -594,4 +626,100 @@ async fn a_late_put_cannot_replace_finished_music(db: sqlx::PgPool) {
         .await
         .unwrap();
     assert_eq!(size, 3);
+}
+
+#[sqlx::test]
+async fn finishing_again_after_a_failed_size_check_succeeds(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    let put = reqwest::Client::new().put(got["url"].as_str().unwrap());
+    assert!(
+        put.body(vec![1, 2, 3])
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
+
+    // 複製好了，查大小時 R2 出錯：這次失敗。
+    s.fail_next(Fault::Size);
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+
+    // 瀏覽器再說一次傳完：收了，聽得到，暫放的刪掉了。
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (status, got) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&lin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let bytes = reqwest::get(got["url"].as_str().unwrap())
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), [1, 2, 3]);
+    let keys: Vec<String> = s.r2.lock().unwrap().keys().cloned().collect();
+    assert_eq!(keys, [format!("flows/{id}/a1.mp3")]);
+}
+
+#[sqlx::test]
+async fn a_copy_that_fails_inside_a_200_is_not_taken_as_done(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    let put = |url: String, bytes: Vec<u8>| reqwest::Client::new().put(url).body(bytes).send();
+
+    // 第一次：複製好了，查大小出錯，沒收。
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    put(got["url"].as_str().unwrap().into(), vec![1, 2, 3])
+        .await
+        .unwrap();
+    s.fail_next(Fault::Size);
+    s.finish_upload(&lin, &id, "a1").await;
+
+    // 重傳一次別的內容；R2 複製回 200，內容卻是錯誤：不能當成收了（不然收的是上一次的）。
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    put(got["url"].as_str().unwrap().into(), vec![4, 5, 6])
+        .await
+        .unwrap();
+    s.fail_next(Fault::CopyErrorIn200);
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+
+    // 再說一次傳完：收的是這次傳的。
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, got) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&lin),
+        )
+        .await;
+    let bytes = reqwest::get(got["url"].as_str().unwrap())
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), [4, 5, 6]);
 }
