@@ -664,6 +664,14 @@ export class CloudSteps {
 		for (const id of batch) this.#unsent.delete(id);
 		const flow = this.#session.flow;
 		if (!flow) return this.#touch();
+		if (this.#queue.length) {
+			// 不在畫面上的（還沒收的步清掉的）：記下伺服器的樣子，那一步退回時照這個帶回來
+			const shown = new Set(takeRecords(flow).records.map((r) => r.attempt.id));
+			for (const id of batch) {
+				const server = kept.get(id);
+				if (!shown.has(id) && !later.has(id)) this.#hidden.set(id, server ? stored(server) : null);
+			}
+		}
 		const records = takeRecords(flow).records.flatMap((r) => {
 			const server = kept.get(r.attempt.id);
 			if (later.has(r.attempt.id)) return [r];

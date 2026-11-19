@@ -56,9 +56,13 @@ const ONLY_THIS = 'only-this';
 /**
  * 復原、重做紀錄的一步：那一步改了什麼（例：「插入站位 3」）。
  * 本機流程存改之前的流程（flow）和改之後的流程（after）：復原時才算得出這一步清掉了哪些紀錄、加回去（ADR 0007）。
- * 雲端流程（#256）不存整份，存那一步改到的東西改之前、改之後的樣子（changes），和送出去的步驟 id（ids，方向鍵合成的有好幾個）。
+ * 雲端流程（#256）不存整份，存那一步改到的東西改之前、改之後的樣子（changes），和送出去的步驟 id（ids，方向鍵合成的有好幾個）；
+ * 復原過的還存復原前畫面上的清單順序（shown，重做時加回來的照這裡的位置放）。
  */
-type Step = { label: string } & ({ flow: Flow; after: Flow } | { ids: string[]; changes: UndoChanges });
+type Step = { label: string } & (
+	| { flow: Flow; after: Flow }
+	| { ids: string[]; changes: UndoChanges; shown?: RemoteChange['orders'] }
+);
 
 /**
  * 本機流程復原、重做過的一步，改之前、改之後換成剛剛真的換上的兩份：中間用「記」刪掉、改過的紀錄，
@@ -604,9 +608,11 @@ export class EditorSession {
 			back = redo ? replayed(step, before, this.#flow) : replayed(step, this.#flow, before);
 		} else {
 			const id = newStepId();
-			const change = redo ? redoOrders(before, step.changes.redo) : step.changes.undo;
-			// 復原：重做的順序記成復原前畫面上的（加回來的照這裡的位置放）
-			back = { label: step.label, ids: [id], changes: redo ? step.changes : withOrders(step.changes, before) };
+			const { undo, redo: again } = step.changes;
+			const change = redo ? travelled(before, undo, again, step.shown ?? again.orders) : travelled(before, again, undo, undo.orders);
+			back = { label: step.label, ids: [id], changes: step.changes };
+			// 復原：記下復原前畫面上的順序（重做時加回來的照這裡的位置放）
+			if (!redo) back.shown = Object.fromEntries(Object.keys(again.orders).map((list) => [list, idsOf(before, list)]));
 			this.#flow = undone(before, change);
 			this.#saved = this.#flow;
 			this.onstep?.({ id, undo: { of: step.ids[0], redo, change } }, step.label, before, this.#flow);
@@ -919,30 +925,46 @@ export class EditorSession {
 /** 清單的 id 順序。 */
 const idsOf = (flow: Flow, list: string) => (flow[list as keyof RemoteChange['orders']] as { id: string }[]).map((x) => x.id);
 
-/** 重做要排的清單換成復原前畫面上（flow）的順序。 */
-function withOrders(changes: UndoChanges, flow: Flow): UndoChanges {
-	const orders = Object.fromEntries(Object.keys(changes.redo.orders).map((list) => [list, idsOf(flow, list)]));
-	return { ...changes, redo: { ...changes.redo, orders } };
-}
-
 /**
- * 雲端流程重做時的清單順序：存著的是復原前畫面上的（withOrders），別人之後可能又加、又調了順序。
- * 這一步加回來的（現在畫面上沒有的）接在存著的順序裡它前一個的後面，其他照現在畫面上的；
- * 沒加回東西的清單（例：調順序的那一步）照存著的。
+ * 雲端流程復原、重做要送的改動（from 是另一個方向的，to 是這個方向的）：清單順序只動這一步加的、刪的、
+ * 調了位置的（比 from、to 的順序），其他照現在畫面上的（別人後來加的、調的不動）；動到的放在 anchor 裡它前一個的後面。
  */
-function redoOrders(flow: Flow, change: RemoteChange): RemoteChange {
-	const back = new Set(change.things.flatMap((t) => (t.after === null ? [] : [t.key.split(':')[1]])));
-	const orders = Object.entries(change.orders).map(([list, order]) => {
-		const ids = idsOf(flow, list);
-		const added = order.filter((id) => back.has(id) && !ids.includes(id));
-		if (!added.length) return [list, order];
-		for (const id of added) {
+function travelled(flow: Flow, from: RemoteChange, to: RemoteChange, anchor: RemoteChange['orders']): RemoteChange {
+	const orders = Object.entries(to.orders).map(([list, wanted]) => {
+		const was = from.orders[list as keyof RemoteChange['orders']] ?? [];
+		const gone = new Set(was.filter((id) => !wanted.includes(id)));
+		const moving = new Set([...wanted.filter((id) => !was.includes(id)), ...moved(was, wanted)]);
+		const ids = idsOf(flow, list).filter((id) => !gone.has(id) && !moving.has(id));
+		const order = anchor[list as keyof RemoteChange['orders']] ?? wanted;
+		for (const id of order) {
+			if (!moving.has(id)) continue;
 			const prev = order.slice(0, order.indexOf(id)).findLast((p) => ids.includes(p));
 			ids.splice(prev === undefined ? 0 : ids.indexOf(prev) + 1, 0, id);
 		}
 		return [list, ids];
 	});
-	return { ...change, orders: Object.fromEntries(orders) };
+	return { ...to, orders: Object.fromEntries(orders) };
+}
+
+/** b 比 a 調了位置的：兩邊都有的裡面，最長的一串同順序以外的。 */
+function moved(a: string[], b: string[]): string[] {
+	const x = a.filter((id) => b.includes(id));
+	const y = b.filter((id) => a.includes(id));
+	// longest[i][j]：x 從 i、y 從 j 起最長的同順序有幾個
+	const longest = Array.from({ length: x.length + 1 }, () => new Array<number>(y.length + 1).fill(0));
+	for (let i = x.length - 1; i >= 0; i--)
+		for (let j = y.length - 1; j >= 0; j--)
+			longest[i][j] = x[i] === y[j] ? longest[i + 1][j + 1] + 1 : Math.max(longest[i + 1][j], longest[i][j + 1]);
+	const kept = new Set<string>();
+	for (let i = 0, j = 0; i < x.length && j < y.length; ) {
+		if (x[i] === y[j]) {
+			kept.add(x[i]);
+			i++;
+			j++;
+		} else if (longest[i + 1][j] >= longest[i][j + 1]) i++;
+		else j++;
+	}
+	return y.filter((id) => !kept.has(id));
 }
 
 /** 頁面放進 context、元件拿出來用的 session。has：有沒有放（場地在八拍表上只畫、不編）。 */

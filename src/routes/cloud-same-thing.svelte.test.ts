@@ -236,6 +236,99 @@ describe('改到同一個東西', () => {
 		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 
+	it('redo keeps formations in time order：我在 3.2 秒加站位、復原，王教練在 1.6 秒加一張，我重做，站位照時間排、伺服器收了', async () => {
+		const s = await bothOpen();
+		s.page.session.ask.send({ name: 'insertFormation', args: [3.2] });
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		s.w.step({ name: 'insertFormation', args: [1.6] });
+		await flush();
+		const count = s.state.flows[0].flow.formations.length;
+
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		const server = s.state.flows[0].flow;
+		expect(server.formations).toHaveLength(count + 1);
+		expect(s.page.session.flow).toEqual(server);
+	});
+
+	it('redo of a deletion leaves a roster move alone：我刪隊員、王教練加人、我復原、他把他的人調到最前面，我重做還是刪掉了', async () => {
+		const s = await bothOpen();
+		const gone = s.page.session.flow!.members[1];
+		s.page.session.ask.send({ name: 'deleteMember', args: [gone.id], options: { confirmed: true } });
+		await flush();
+		s.w.step(add('小新'));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		const xin = s.state.flows[0].flow.members.find((m) => m.name === '小新')!.id;
+		s.w.step({ name: 'moveMember', args: [xin, 0] });
+		await flush();
+
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		const server = s.state.flows[0].flow;
+		expect(server.members.map((m) => m.id)).not.toContain(gone.id);
+		expect(server.members[0].name).toBe('小新');
+		expect(s.page.session.flow).toEqual(server);
+	});
+
+	it('redo of one step that adds and reorders keeps the reorder：一步加隊員又把第二個調到最前面，復原再重做還是同一個順序', async () => {
+		const s = await bothOpen();
+		const second = s.page.session.flow!.members[1].id;
+		s.page.session.ask.send([add('小華'), { name: 'moveMember', args: [second, 0] }]);
+		await flush();
+		const order = s.state.flows[0].flow.members.map((m) => m.id);
+		expect(order[0]).toBe(second);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual(order);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
+	it('undo of an add leaves a roster move alone：我加隊員，王教練把第二個調到最前面，我復原只拿掉我加的', async () => {
+		const s = await bothOpen();
+		s.page.session.ask.send(add('小華'));
+		await flush();
+		const second = s.state.flows[0].flow.members[1].id;
+		s.w.step({ name: 'moveMember', args: [second, 0] });
+		await flush();
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+
+		const server = s.state.flows[0].flow;
+		expect(server.members.map((m) => m.name)).not.toContain('小華');
+		expect(server.members[0].id).toBe(second);
+		expect(s.page.session.flow).toEqual(server);
+	});
+
+	it('undo of a formation deletion keeps time order：我刪 1.6 秒的站位，王教練在 3.2 秒加一張，我復原，站位照時間排', async () => {
+		const s = await bothOpen();
+		s.page.session.ask.send({ name: 'insertFormation', args: [1.6] });
+		await flush();
+		const early = s.state.flows[0].flow.formations.find((f) => !libSample().formations.some((g) => g.id === f.id))!.id;
+		s.page.session.ask.send({ name: 'deleteFormation', args: [early] });
+		await flush();
+		s.w.step({ name: 'insertFormation', args: [3.2] });
+		await flush();
+		const count = s.state.flows[0].flow.formations.length;
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+
+		const server = s.state.flows[0].flow;
+		expect(server.formations).toHaveLength(count + 1);
+		expect(s.page.session.flow).toEqual(server);
+	});
+
 	it('收了的時候後面還有沒送到的步：換成伺服器的樣子，再跑一次後面的步；全部收了跟伺服器一樣', async () => {
 		const s = await bothOpen();
 		const settled = vi.spyOn(s.page.session, 'settle');

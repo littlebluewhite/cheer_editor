@@ -293,6 +293,25 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(takeRecords(s.page.session.flow!).flow).toEqual(s.state.flows[0].flow);
 	});
 
+	it('rollback after a downgrade shows the mark the server kept：改了記號又刪動作，擁有者改了那個記號、把我降成檢視者，退回後是伺服器的記號', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓' })]);
+		const t1 = () => takeRecords(s.page.session.flow!).records[0];
+		// 假伺服器的回答都先留著，照下面的順序一個一個說
+		s.state.holdRoom = true;
+		s.page.session.recordAsk().send({ name: 'changeAttempt', args: ['x1', 't1', { p1: '△' }] });
+		await flush();
+		const kept = { actionId: 'x1', attempt: { ...t1().attempt, marks: { p1: '✗' as const } }, mine: false, by: wang.name };
+		s.page.session.ask.send({ name: 'deleteAction', args: ['x1'], options: { confirmed: true } });
+		await flush();
+
+		s.room.onmessage({ kind: 'recordsChanged', changed: [kept], deleted: [] });
+		s.room.onmessage({ kind: 'recordsSaved', saved: [kept], dropped: [] });
+		s.room.onmessage({ kind: 'roleChanged', role: 'viewer', flow: libSample(), step: 0 });
+		await flush();
+
+		expect(t1().attempt.marks).toEqual({ p1: '✗' });
+	});
+
 	it('reconnect keeps an attempt on a phase added meanwhile：改名清掉重算沒收到就斷線，王教練加了環節、記了另一組，連回來那一次還在', async () => {
 		const s = await bothOpen([wangs('t1', { p1: '✓' })]);
 		s.state.holdRoom = true;

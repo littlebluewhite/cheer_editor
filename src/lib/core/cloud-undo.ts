@@ -4,6 +4,7 @@
 
 import { flowProblem } from './flow-check';
 import type { Flow } from './flow';
+import { formationSec } from './formation';
 import { carryRecords } from './records';
 import { applyRemoteChange, remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
@@ -40,7 +41,13 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  * 記號打在不在的環節上的拿掉、拿光了整筆拿掉（例：重做刪環節，復原時加回來的記號再清一次，ADR 0007）。
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	return fitted(carryRecords(applyRemoteChange(flow, change), flow));
+	return fitted(carryRecords(byTime(applyRemoteChange(flow, change)), flow));
+}
+
+/** 站位照時間排：放回去的站位接在它前一個的後面，別人後來在中間加了站位就排錯了。 */
+function byTime(flow: Flow): Flow {
+	const sorted = [...flow.formations].sort((a, b) => formationSec(flow, a) - formationSec(flow, b));
+	return sorted.every((f, i) => f === flow.formations[i]) ? flow : { ...flow, formations: sorted };
 }
 
 /** 每個動作的紀錄對上它現在的環節、組（對不上的記號拿掉，拿光了整筆拿掉）。 */
