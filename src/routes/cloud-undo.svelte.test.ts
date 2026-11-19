@@ -176,6 +176,22 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(records().map((r) => r.attempt.marks)).toEqual([{ p1: '✓', p2: '✓' }, { p1: '✓' }]);
 	});
 
+	it('redo clears records the step cleared：換人選清掉重算 → 復原 → 重做，換上來的人不接前一個人的紀錄', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]);
+		const kept = takeRecords(s.page.session.flow!).records;
+		const server = () => (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt);
+		s.page.session.ask.send({ name: 'updateMember', args: ['m1', { name: '小琪' }], options: { records: 'clear' } });
+		await flush();
+		expect(server()).toEqual([]);
+
+		await press('復原');
+		expect(server()).toEqual(kept.map((r) => r.attempt));
+
+		await press('重做');
+		expect(server()).toEqual([]);
+		expect(takeRecords(s.page.session.flow!).records).toEqual([]);
+	});
+
 	it('復原刪動作：動作和它的紀錄都回來', async () => {
 		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]);
 		const kept = takeRecords(s.page.session.flow!).records;

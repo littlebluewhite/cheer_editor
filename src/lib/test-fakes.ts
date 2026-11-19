@@ -324,8 +324,8 @@ export function fakeServer(
 		if (state.holdRoom) held.push({ room, send });
 		else queueMicrotask(send);
 	};
-	/** 一步清掉、改掉的一次（ADR 0007）：改之前的樣子、這一步之後的樣子（整筆清掉是 null）。 */
-	type Cleared = { was: StoredAttempt; now: StoredAttempt | null };
+	/** 一步清掉、改掉的一次（ADR 0007）：改之前的樣子（復原加回來的是 null）、這一步之後的樣子（整筆清掉是 null）。 */
+	type Cleared = { was: StoredAttempt | null; now: StoredAttempt | null };
 	/** 收過的步（每支流程）：第幾步、步驟 id、哪個分頁、改到的東西（stepKeys）、送的人的名字、改好之後的東西、清掉改掉的紀錄。 */
 	const stepLog = new Map<
 		string,
@@ -335,20 +335,21 @@ export function fakeServer(
 		JSON.stringify({ actionId: a.actionId, attempt: a.attempt }) === JSON.stringify({ actionId: b.actionId, attempt: b.attempt });
 	/**
 	 * 復原時給流程核心的紀錄（跟真的伺服器一樣，ADR 0007）：現在的紀錄，加上那一步清掉、到現在還清掉著的，
-	 * 那一步改掉、到現在沒再動過的換回改之前的樣子。回紀錄和加回來的（現在清掉著的）id。
+	 * 那一步改掉、到現在沒再動過的換回改之前的樣子，那一步加回來（復原）、到現在沒再動過的再清掉（重做）。
+	 * 回紀錄和加回來的（現在清掉著的）id。
 	 */
 	const broughtBack = (f: FakeCloudFlow, cleared: Cleared[], live: StoredAttempt[]) => {
 		let records = [...live];
 		const revived: string[] = [];
 		for (const { was, now } of cleared) {
-			const id = was.attempt.id;
+			const id = (was ?? now)?.attempt.id;
 			const current = (f.records ?? []).find((r) => r.attempt.id === id);
 			if (!current) continue;
-			if (!now && current.gone) {
-				revived.push(id);
+			if (was && !now && current.gone) {
+				revived.push(current.attempt.id);
 				records.push(was);
 			} else if (now && !current.gone && sameRecord(current, now)) {
-				records = records.map((r) => (r.attempt.id === id ? was : r));
+				records = was ? records.map((r) => (r.attempt.id === id ? was : r)) : records.filter((r) => r.attempt.id !== id);
 			}
 		}
 		return { records, revived };
@@ -382,8 +383,8 @@ export function fakeServer(
 			const cannot = undo.redo ? '不能重做' : '不能復原';
 			const of = log.find((l) => l.id === undo.of);
 			if (!of) return rejected(`太久以前的，${cannot}`);
-			// 復原：那一步清掉的紀錄一起放回去（ADR 0007）；重做不用，跑完照結果再清一次
-			const back = undo.redo ? { records: live, revived: [] } : broughtBack(f, of.cleared, live);
+			// 復原：那一步清掉的紀錄一起放回去；重做（復原那一步）：那時加回來的再清掉（ADR 0007）
+			const back = broughtBack(f, of.cleared, live);
 			revived = back.revived;
 			const u = runUndo(structuredClone(f.flow), structuredClone(back.records), structuredClone(undo.change));
 			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
@@ -415,6 +416,8 @@ export function fakeServer(
 				// 復原加回來的：還在就拿回來（同一次全上的這一組別人記了就不算）
 				if (!now || !revived.includes(old.attempt.id) || firstInRun(f, now)) return old;
 				changed.push(old.attempt.id);
+				// 記下加回來的：重做（復原這一步）時再清掉
+				cleared.push({ was: null, now: { actionId: now.actionId, attempt: now.attempt } });
 				return { ...old, ...now, gone: false };
 			}
 			if (!now) {
