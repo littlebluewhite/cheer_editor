@@ -722,7 +722,10 @@ pub async fn amend(
                     json!({ "name": "changeAttempt", "args": [r.stored.action_id, r.id(), marks] });
                 if let Some(new) = run_one(state, &content, Some(&r.stored), command).await? {
                     update(&mut tx, flow_id, &new, now).await?;
-                    amended(&mut tx, flow_id, r.id(), step).await?;
+                    // 再送一次一樣的（回答沒收到）不算用手動過，不然之後復原、重做會照現在的留著。
+                    if new.attempt != r.stored.attempt {
+                        amended(&mut tx, flow_id, r.id(), step).await?;
+                    }
                     changed.insert(r.id().to_owned());
                 }
             }
