@@ -2,7 +2,7 @@
 // 房間連不上時分得出被收回、被刪掉（不一直重連）。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FORMAT_VERSION, type Flow } from '#lib/core';
-import { FLOW_TOO_BIG, httpServer } from '#lib/server-api.js';
+import { FLOW_TOO_BIG, ServerUnreachable, httpServer } from '#lib/server-api.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -75,4 +75,19 @@ describe('拿一支雲端流程', () => {
 		vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 410 })));
 		expect(await httpServer().cloudFlow('c1')).toBeNull();
 	});
+});
+
+describe('登出', () => {
+	it('伺服器回 204：登出了', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+		await expect(httpServer().logout()).resolves.toBeUndefined();
+	});
+
+	// 403 是擋 CSRF 的 middleware（server/src/csrf.rs）擋下的：沒走到登出，伺服器上還登入著。
+	for (const status of [403, 503]) {
+		it(`伺服器回 ${status}：沒登出成，說連不上（畫面別當作登出了）`, async () => {
+			vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status })));
+			await expect(httpServer().logout()).rejects.toThrow(ServerUnreachable);
+		});
+	}
 });
