@@ -3,6 +3,7 @@ import {
 	addSegment,
 	createFlow,
 	DEFAULT_TIME_RULES,
+	newChantTenths,
 	timeRuleWarnings,
 	updateSegment,
 	updateTimeRules,
@@ -21,33 +22,37 @@ function routine(beats: number, chantSec: number): Flow {
 }
 
 describe('時間規則警告', () => {
+	it('時間跟播放器一樣寫成「分:秒」（T16）', () => {
+		expect(timeRuleWarnings(routine(260, 32.4))[0].text).toBe('音樂段共 2:10.0，超過 2:00.0');
+	});
+
 	it('都在規則內就沒有警告（剛好 120 秒、30 秒不算超過）', () => {
 		// 240 拍 ÷ 2 拍/秒 = 120 秒
 		expect(timeRuleWarnings(routine(240, 30))).toEqual([]);
 	});
 
 	it('口號段加起來少於 30 秒', () => {
-		expect(timeRuleWarnings(routine(200, 20))).toEqual([{ title: '口號段太短', text: '口號段共 20.0 秒，少於 30 秒' }]);
+		expect(timeRuleWarnings(routine(200, 20))).toEqual([{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' }]);
 	});
 
 	it('音樂段加起來超過 120 秒', () => {
 		expect(timeRuleWarnings(routine(260, 32.4))).toEqual([
-			{ title: '音樂段太長', text: '音樂段共 130.0 秒，超過 120 秒' }
+			{ title: '音樂段太長', text: '音樂段共 2:10.0，超過 2:00.0', rule: 'maxMusicSec' }
 		]);
 	});
 
 	it('整支流程超過 180 秒', () => {
 		expect(timeRuleWarnings(routine(240, 70))).toEqual([
-			{ title: '整支流程太長', text: '整支流程共 190.0 秒，超過 180 秒' }
+			{ title: '整支流程太長', text: '整支流程共 3:10.0，超過 3:00.0', rule: 'maxTotalSec' }
 		]);
 	});
 
 	it('三條可以同時出現，每條有自己的標題', () => {
 		const flow = flowOf(updateTimeRules(routine(260, 20), { maxMusicSec: 100, maxTotalSec: 100 }));
 		expect(timeRuleWarnings(flow)).toEqual([
-			{ title: '口號段太短', text: '口號段共 20.0 秒，少於 30 秒' },
-			{ title: '音樂段太長', text: '音樂段共 130.0 秒，超過 100 秒' },
-			{ title: '整支流程太長', text: '整支流程共 150.0 秒，超過 100 秒' }
+			{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' },
+			{ title: '音樂段太長', text: '音樂段共 2:10.0，超過 1:40.0', rule: 'maxMusicSec' },
+			{ title: '整支流程太長', text: '整支流程共 2:30.0，超過 1:40.0', rule: 'maxTotalSec' }
 		]);
 	});
 
@@ -58,7 +63,7 @@ describe('時間規則警告', () => {
 
 	it('只有音樂段、沒有口號段：照樣提醒，但寫法中性（不說「少於」）', () => {
 		const flow = flowOf(addSegment(flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } })), 'music'));
-		expect(timeRuleWarnings(flow)).toEqual([{ title: '還沒有口號段', text: '口號段加起來最少要 30 秒' }]);
+		expect(timeRuleWarnings(flow)).toEqual([{ title: '還沒有口號段', text: '口號段加起來最少要 0:30.0', rule: 'minChantSec' }]);
 	});
 
 	it('關掉就沒有警告', () => {
@@ -106,5 +111,19 @@ describe('時間規則警告', () => {
 	it('恢復預設：開關和三個數字都回到預設', () => {
 		const changed = flowOf(updateTimeRules(routine(240, 30), { on: false, minChantSec: 10, maxMusicSec: 90 }));
 		expect(flowOf(updateTimeRules(changed, DEFAULT_TIME_RULES)).timeRules).toEqual(DEFAULT_TIME_RULES);
+	});
+});
+
+describe('新口號段的預設長度不一加就跳警告（#196 故事 105）', () => {
+	it('整支流程快到上限：預設縮到剛好不超過整支流程最多', () => {
+		// 120 秒音樂 + 55 秒口號 = 175 秒；再加 10 秒會超過 180 秒
+		const flow = routine(240, 55);
+		expect(newChantTenths(flow)).toBe(50);
+		expect(timeRuleWarnings(flowOf(addSegment(flow, 'chant', undefined, newChantTenths(flow))))).toEqual([]);
+	});
+
+	it('口號段要補的比整支流程剩下的多（怎樣都會有警告）：照舊補到口號段夠長', () => {
+		// 160 秒音樂 + 5 秒口號 = 165 秒；口號段還差 25 秒，整支只剩 15 秒
+		expect(newChantTenths(routine(320, 5))).toBe(250);
 	});
 });

@@ -5,6 +5,7 @@ import {
 	addSegment,
 	createFlow,
 	addPhase,
+	nextPhaseKind,
 	placeCue,
 	setSquad,
 	updateSegment,
@@ -65,9 +66,13 @@ function setup(flow: Flow, actionId: string | null, playheadSec = 0, selected: s
 	return session;
 }
 
+/** 沒選人時新動作表單收起來：按「＋ 新動作」打開。 */
+const openNewForm = () => fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+
 describe('動作表單：新增', () => {
 	it('從播放頭開始，填大類、名稱、長度、人和任務角色、備註，按新增', async () => {
 		const session = setup(sample(), null, 1);
+		await openNewForm();
 		const start = screen.getByLabelText('開始') as HTMLInputElement;
 		expect(start.value).toBe('1-3&');
 
@@ -95,8 +100,9 @@ describe('動作表單：新增', () => {
 		expect(session.selectedActionId).toBe('x1');
 	});
 
-	it('卡片標「新動作」、換了底色；標題就是名稱輸入框', () => {
+	it('卡片標「新動作」、換了底色；標題就是名稱輸入框', async () => {
 		setup(sample(), null);
+		await openNewForm();
 		const card = document.querySelector('section.action-form')!;
 		expect(card.classList.contains('creating')).toBe(true);
 		const header = card.querySelector('header')!;
@@ -107,6 +113,7 @@ describe('動作表單：新增', () => {
 
 	it('人那一區的小標寫「人（n）・任務角色」，不像新增按鈕', async () => {
 		setup(sample(), null);
+		await openNewForm();
 		expect(screen.getByText('人（0）・任務角色')).toBeTruthy();
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		expect(screen.getByText('人（1）・任務角色')).toBeTruthy();
@@ -114,6 +121,7 @@ describe('動作表單：新增', () => {
 
 	it('新增時挑辨識色，新動作帶著它', async () => {
 		const session = setup(sample(), null);
+		await openNewForm();
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.click(screen.getByRole('radio', { name: '藍' }));
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
@@ -122,6 +130,7 @@ describe('動作表單：新增', () => {
 
 	it('沒選人時「新增動作」是灰的，旁邊寫原因；選了人就能按', async () => {
 		setup(sample(), null);
+		await openNewForm();
 		const add = screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement;
 		expect(add.disabled).toBe(true);
 		expect(document.getElementById(add.getAttribute('aria-describedby')!)!.textContent).toBe(
@@ -144,7 +153,7 @@ describe('動作表單：新增', () => {
 	it('技巧有上層卻沒有底層：黃字提醒，照樣可以新增', async () => {
 		const session = setup(sample(), null, 0, ['m1']);
 		await pickRole('小A', '上層');
-		expect(screen.getByRole('note').textContent).toBe('有上層，但沒有底層（底層、主底、側底）');
+		expect(screen.getByRole('note').textContent).toBe('有上層，但沒有底層（底層、主底、側底、肩底）');
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		await pickRole('小B', '主底');
 		expect(screen.queryByRole('note')).toBeNull();
@@ -153,30 +162,43 @@ describe('動作表單：新增', () => {
 		expect(session.flow!.actions).toHaveLength(1);
 	});
 
-	it('被擋下的原因在右邊欄看不到的地方時，捲過去讓它看得到', async () => {
+	it('新動作表單一打開，就把開始、長度捲出來，不停在黏底的「新增動作」後面（N03，故事 67）', async () => {
+		scrolled.length = 0;
+		setup(sample(), null, 0, ['m2']);
+		await frame();
+		expect(scrolled).toContain(screen.getByLabelText('長度').parentElement);
+	});
+
+	// 原因寫在欄位旁邊；被黏底的「新增動作」擋住、或在看得到的範圍外時自己捲出來（N03）。
+	// 捲是 block: 'nearest'，已經看得到就不動（真瀏覽器裡由 check-layout 量）。
+	it('在開始欄按 Enter 被擋：原因寫在開始欄旁邊，自己捲出來（#214、N03）', async () => {
+		scrolled.length = 0;
+		setup(sample(), null, 0, ['m2']);
+		const start = screen.getByLabelText('開始');
+		await fireEvent.input(start, { target: { value: 'abc' } });
+		await fireEvent.keyDown(start, { key: 'Enter' });
+		await frame();
+		const alert = screen.getByRole('alert');
+		expect(alert.textContent).toContain('開始看不懂');
+		expect(start.parentElement!.contains(alert)).toBe(true);
+		expect(scrolled.at(-1)).toBe(alert);
+	});
+
+	it('按「新增動作」被擋：原因寫在「新增動作」鈕旁邊（黏在底部那一條裡），自己捲出來（#214、N03）', async () => {
 		scrolled.length = 0;
 		setup(sample(), null, 0, ['m2']);
 		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		expect(scrolled).toEqual([]);
+		const add = screen.getByRole('button', { name: '新增動作' });
+		await fireEvent.click(add);
 		await frame();
-		expect(scrolled).toEqual([screen.getByRole('alert')]);
+		expect(add.parentElement!.contains(screen.getByRole('alert'))).toBe(true);
+		expect(scrolled.at(-1)).toBe(screen.getByRole('alert'));
 	});
 
-	it('原因還留著時又被擋一次（同一句），也再捲一次', async () => {
-		setup(sample(), null, 0, ['m2']);
-		await fireEvent.input(screen.getByLabelText('開始'), { target: { value: '9-9' } });
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		await frame();
-		scrolled.length = 0;
-		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
-		await frame();
-		expect(scrolled).toEqual([screen.getByRole('alert')]);
-	});
-
-	it('還沒有段時不能加動作', () => {
+	it('還沒有段時不能加動作', async () => {
 		const flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
 		setup(flow, null);
+		await openNewForm();
 		expect(screen.queryByRole('button', { name: '新增動作' })).toBeNull();
 		expect(screen.getByText(/先加一段/)).toBeTruthy();
 	});
@@ -210,22 +232,59 @@ describe('動作表單：改選到的動作', () => {
 		expect(session.flow!.actions[0].members).toEqual([{ memberId: 'm1', role: null }]);
 	});
 
-	it('名字底色照性別、旁邊標底層或上層；「?」說明顏色和快捷鍵', () => {
+	it('改長度被擋：原因寫在長度欄旁邊，自己捲出來（#214、N03）', async () => {
+		scrolled.length = 0;
+		setup(withTwo(), 'x1');
+		const length = screen.getByLabelText('長度') as HTMLInputElement;
+		await fireEvent.input(length, { target: { value: '6' } });
+		await fireEvent.change(length);
+		await frame();
+		expect(length.parentElement!.contains(screen.getByRole('alert'))).toBe(true);
+		expect(scrolled.at(-1)).toBe(screen.getByRole('alert'));
+	});
+
+	it('名字底色照性別，沒有全局角色的圓點；「?」說明顏色和快捷鍵', () => {
 		let flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
 		setup(flow, 'x1');
 		const rowA = screen.getByLabelText('小A 的任務角色').closest('li')!;
 		const rowB = screen.getByLabelText('小B 的任務角色').closest('li')!;
 		expect(rowA.querySelector('.name.F')?.textContent).toBe('小A');
 		expect(rowB.querySelector('.name.M')?.textContent).toBe('小B');
-		expect(rowA.querySelector('.gr.top')?.textContent).toBe('上');
-		expect(rowB.querySelector('.gr.base')?.textContent).toBe('底');
+		expect(document.querySelector('.people .gr')).toBeNull();
 		const legend = screen.getByRole('button', { name: '顏色和快捷鍵說明' });
 		const tip = document.getElementById(legend.getAttribute('aria-describedby')!)!;
 		expect(tip.textContent).toContain('女');
 		expect(tip.textContent).toContain('男');
-		expect(tip.textContent).toContain('底層');
-		expect(tip.textContent).toContain('上層');
 		expect(tip.textContent).toContain('1 底層');
+		// 技巧沒有肩底（4）：上層還是 5
+		expect(tip.textContent).not.toContain('4 肩底');
+		expect(tip.textContent).toContain('5 上層');
+		// 這裡只列任務角色的快捷鍵：其他快捷鍵連到使用說明的快捷鍵表（T17）
+		const all = within(tip).getByRole('link', { name: /全部的快捷鍵/, hidden: true });
+		expect(all.getAttribute('href')).toMatch(/\/guide\?from=editor#keys$/);
+		expect(all.getAttribute('target')).toBe('_blank');
+	});
+
+	it.each([
+		['pyramid', true],
+		['stunt', false]
+	] as const)('任務角色選單：%s 有沒有三層', async (category, has) => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category, name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		expect(!!screen.queryByRole('option', { name: /^三層/ })).toBe(has);
+	});
+
+	it('不是金字塔時，只有本來就是三層的那個人選單裡有三層，同一個動作的別人沒有', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: '三層' }, { memberId: 'm2', role: null }] }));
+		setup(flow, 'x1');
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		await fireEvent.click(pickA);
+		expect(screen.queryByRole('option', { name: /^三層/ })).not.toBeNull();
+		await fireEvent.keyDown(pickA, { key: 'Escape' });
+		expect(screen.queryByRole('listbox')).toBeNull();
+		await fireEvent.click(screen.getByRole('combobox', { name: '小B 的任務角色' }));
+		expect(screen.queryByRole('option', { name: /^三層/ })).toBeNull();
 	});
 
 	it('任務角色選單按快捷鍵就選好，跳到下一個人；Backspace 是沒有任務', async () => {
@@ -235,9 +294,9 @@ describe('動作表單：改選到的動作', () => {
 		const pickB = screen.getByRole('combobox', { name: '小B 的任務角色' });
 		// 選單打開時按鍵也是直接選好、關掉選單，不用再按確認。
 		await fireEvent.click(pickA);
-		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層4被撐在最上面的人。');
+		expect(screen.getByRole('option', { name: /^上層/ }).textContent).toBe('上層5被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。');
 		pickA.focus();
-		await fireEvent.keyDown(pickA, { key: '4' });
+		await fireEvent.keyDown(pickA, { key: '5' });
 		expect(session.flow!.actions[0].members[0]).toEqual({ memberId: 'm1', role: '上層' });
 		expect(screen.queryByRole('listbox')).toBeNull();
 		expect(pickA.textContent).toBe('上層');
@@ -251,6 +310,75 @@ describe('動作表單：改選到的動作', () => {
 		await fireEvent.keyDown(pickB, { key: '1', isComposing: true });
 		await fireEvent.keyDown(pickB, { key: '1', keyCode: 229 });
 		expect(session.flow!.actions[0].members[1]).toEqual({ memberId: 'm2', role: null });
+	});
+
+	it('快捷鍵跟著角色固定：技巧沒有肩底，按 4 沒反應，也不交給頁面', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		const session = setup(flow, 'x1');
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		pickA.focus();
+		expect(await fireEvent.keyDown(pickA, { key: '4' })).toBe(false);
+		expect(session.flow!.actions[0].members[0].role).toBeNull();
+	});
+
+	it('任務角色選單分群：上層、保護、騰翻前面畫線', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'pyramid', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: null }] }));
+		setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		const starts = screen.getAllByRole('option').filter((o) => o.classList.contains('group-start'));
+		expect(starts.map((o) => o.textContent!.slice(0, 2))).toEqual(['上層', '保護', '騰翻']);
+	});
+
+	it('清單照任務角色的順序排；按快捷鍵改了角色，那一列移過去，跳到改之前排在他下面的人', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'top' }]));
+		const members = ['m1', 'm2', 'm3'].map((memberId) => ({ memberId, role: null }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members }));
+		setup(flow, 'x1');
+		const rows = () => [...document.querySelectorAll('.people li .name')].map((n) => n.textContent);
+		const pick = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` });
+		expect(rows()).toEqual(['小A', '小B', '小C']);
+		pick('小B').focus();
+		await fireEvent.keyDown(pick('小B'), { key: '1' });
+		expect(rows()).toEqual(['小B', '小A', '小C']);
+		expect(document.activeElement).toBe(pick('小C'));
+	});
+
+	it('最後一個人按快捷鍵、那一列移到上面：焦點留在他自己的選單，接著按 Backspace 不會刪掉整個動作', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'top' }]));
+		const members = ['m1', 'm2', 'm3'].map((memberId) => ({ memberId, role: null }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members }));
+		setup(flow, 'x1');
+		const rows = () => [...document.querySelectorAll('.people li .name')].map((n) => n.textContent);
+		const pick = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` });
+		pick('小C').focus();
+		await fireEvent.keyDown(pick('小C'), { key: '1' });
+		expect(rows()).toEqual(['小C', '小A', '小B']);
+		expect(document.activeElement).toBe(pick('小C'));
+	});
+
+	it('移出一個人：焦點給畫面上排在他下面那個人的 ✕（清單照任務角色排，不是加進來的順序）', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'top' }]));
+		const members = [{ memberId: 'm1', role: '保護' }, { memberId: 'm2', role: '上層' }, { memberId: 'm3', role: '底層' }];
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members }));
+		setup(flow, 'x1');
+		const rows = () => [...document.querySelectorAll('.people li .name')].map((n) => n.textContent);
+		expect(rows()).toEqual(['小C', '小B', '小A']);
+		await fireEvent.click(screen.getByRole('button', { name: '把 小C 移出這個動作' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
+	});
+
+	it('不是金字塔時，肩底的人和別人一起選、按 4：只有他自己是肩底，別人不會變成肩底', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: '肩底' }, { memberId: 'm2', role: null }] }));
+		const session = setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('button', { name: '小A' }), { shiftKey: true });
+		await fireEvent.click(screen.getByRole('button', { name: '小B' }), { shiftKey: true });
+		expect(screen.getByRole('button', { name: '小B' }).getAttribute('aria-pressed')).toBe('true');
+		// 先說清楚：肩底只留給本來就是的人，不是兩個人都會變肩底
+		expect(screen.getByRole('note', { name: '一起設任務角色' }).textContent).toContain('肩底只有金字塔有，只留給本來就是的人');
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		pickA.focus();
+		await fireEvent.keyDown(pickA, { key: '4' });
+		expect(session.flow!.actions[0].members.map((m) => m.role)).toEqual(['肩底', null]);
 	});
 
 	it('任務角色選單每一項有一句說明，取自名詞對照表（自訂角色用教練寫的意思）', async () => {
@@ -422,7 +550,7 @@ describe('動作表單：拍點格子', () => {
 			within(grid.getByRole('group', { name: lane }))
 				.getAllByRole('button')
 				.map((b) => b.textContent);
-		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '抬腳', '加入', '清掉']);
+		expect(words('步驟')).toEqual(['下手', '落地', '放', '上', '直下', '跳', '拋', '抬腳', '加入', '清掉']);
 		expect(words('手位')).toEqual(['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏', '拳頭', '加入', '清掉']);
 	});
 
@@ -454,6 +582,14 @@ describe('動作表單：拍點格子', () => {
 		expect(session.flow).toBe(changed);
 	});
 
+	it('口號段的動作：「開始」下面的小字說是從這一段開頭算的秒數、給例子，不是看不懂的「秒，到 0.1」（N60）', () => {
+		let flow = flowOf(addSegment(sample(), 'chant'));
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
+		setup(flow, 'x1');
+		// 口號段 10 秒：例子取在段裡
+		expect(screen.getByLabelText('開始').nextElementSibling!.textContent).toBe('從這一段開頭算的秒數，例：5.0');
+	});
+
 	it('口號段的動作沒有格子：寫一句，只有環節那一列', () => {
 		let flow = flowOf(addSegment(sample(), 'chant'));
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
@@ -480,26 +616,28 @@ describe('動作表單：成功率', () => {
 		return flowOf(addAction(flow, { ...base, category: 'stunt', start: 16, members: [members[0]] }));
 	}
 
-	/** 動作加一個整個動作的環節（開始記成功率；分組的大類全部的人先進第 1 組）。 */
-	const rated = (flow: Flow, actionId = 'x1') =>
-		flowOf(addPhase(flow, actionId, { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
+	/** 動作加一個整個動作的環節，種類是大類預設的（開始記成功率；分組的大類全部的人先進第 1 組）。 */
+	const rated = (flow: Flow, actionId = 'x1') => {
+		const kind = nextPhaseKind(flow.actions.find((a) => a.id === actionId)!.category, undefined)!;
+		return flowOf(addPhase(flow, actionId, { kind, name: '', beats: { at: 0, len: 8 } }));
+	};
 
 	/** 畫面跟著 session 的流程更新，像在編輯頁裡一樣。 */
 	const live = (flow: Flow, actionId: string | null) => setup(flow, actionId);
 
-	/** 每個人旁邊的唯讀組標籤（沒有標籤是 null）。 */
+	/** 每個人在哪一張組卡片（卡片標題；沒有卡片是 null）。 */
 	const squadTags = () =>
-		[...document.querySelectorAll('.people li')].map((li) => li.querySelector('.squad-tag')?.textContent ?? null);
+		[...document.querySelectorAll('.people li')].map((li) => li.closest('.squad')?.querySelector('.squad-head')?.textContent ?? null);
 
 	it('沒有「記成功率」勾勾、沒有環節清單：環節在拍點格子上', () => {
 		live(rated(withLib()), 'x1');
 		expect(screen.queryByRole('checkbox', { name: '記成功率' })).toBeNull();
 		expect(screen.queryByRole('group', { name: '成功率' })).toBeNull();
 		expect(screen.queryByRole('list', { name: '環節' })).toBeNull();
-		expect(screen.getByRole('button', { name: /^環節 整體/ })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /^環節 上法/ })).toBeTruthy();
 	});
 
-	it('有環節後每個人旁邊寫第幾組（唯讀，沒有選單）；沒分組寫「沒分組」', () => {
+	it('有環節後一組一張卡片，標題寫第幾組（唯讀，沒有選單）；沒分組的在最後一張「沒分組」', () => {
 		live(withLib(), 'x1');
 		expect(squadTags()).toEqual([null, null]);
 
@@ -574,5 +712,13 @@ describe('動作表單：改人會動到紀錄時（真的 session，好幾步�
 		await press('清掉重算');
 		expect(people(session)).toEqual(['m2', 'm3', 'm4']);
 		expect(records(session.flow!)).toHaveLength(1);
+	});
+});
+
+describe('新動作表單：移出最後一個人', () => {
+	it('選一個人打開表單，把他移出：不出錯，表單收起來，焦點到「＋ 新動作」', async () => {
+		setup(sample(), null, 0, ['m1']);
+		await fireEvent.click(screen.getByRole('button', { name: '把 小A 移出這個動作' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '＋ 新動作' }));
 	});
 });

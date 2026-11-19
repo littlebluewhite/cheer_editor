@@ -20,7 +20,10 @@ export interface DraftStore {
 	list(): Promise<DraftInfo[]>;
 	/** 沒有這份草稿回 null。 */
 	load(id: string): Promise<Draft | null>;
-	/** 存這支流程的草稿，蓋掉它舊的那份；存的時間用現在。 */
+	/**
+	 * 存這支流程的草稿，蓋掉它舊的那份；存的時間用現在。
+	 * 要在呼叫當下就開始寫（不先等別的非同步步驟）：關分頁時呼叫完頁面就卸載了。
+	 */
 	save(id: string, bytes: Uint8Array): Promise<void>;
 	/** 清掉這支流程的草稿。 */
 	clear(id: string): Promise<void>;
@@ -66,29 +69,61 @@ function toDraft(id: string, value: unknown): Draft | null {
 	return { id, bytes: v.bytes, savedAt: typeof v.savedAt === 'number' ? new Date(v.savedAt) : null };
 }
 
+/**
+ * 連線開一次就一直留著：關分頁、重新整理時（pagehide）寫草稿要在當下就開好交易，
+ * 每次先開資料庫再寫的話，頁面卸載前來不及開好，最後一筆修改就丟了（B02）。
+ * 別的分頁要升級資料庫、瀏覽器關掉連線時丟掉，下次再開。
+ */
+let db: IDBDatabase | null = null;
+let opening: Promise<IDBDatabase> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
-	return new Promise((resolve, reject) => {
+	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
 		const req = indexedDB.open(DB_NAME, 1);
 		req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-		req.onsuccess = () => resolve(req.result);
-		req.onerror = () => reject(req.error);
+		req.onsuccess = () => {
+			const opened = req.result;
+			opened.onversionchange = () => {
+				opened.close();
+				forget(opened);
+			};
+			opened.onclose = () => forget(opened);
+			db = opened;
+			resolve(opened);
+		};
+		req.onerror = () => {
+			opening = null;
+			reject(req.error);
+		};
 	});
+	return opening;
 }
 
-/** 開一個交易做一件事，等交易寫完（不只是 request 成功）才算數。 */
-async function run(
+function forget(closed: IDBDatabase) {
+	if (db !== closed) return;
+	db = null;
+	opening = null;
+}
+
+/**
+ * 開一個交易做一件事，等交易寫完（不只是 request 成功）才算數。
+ * 連線已經開好時，交易在呼叫當下就開好、送出（不先等別的非同步步驟）。
+ */
+function run(mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest): Promise<unknown> {
+	return db ? inTransaction(db, mode, op) : openDb().then((opened) => inTransaction(opened, mode, op));
+}
+
+function inTransaction(
+	opened: IDBDatabase,
 	mode: IDBTransactionMode,
 	op: (store: IDBObjectStore) => IDBRequest
 ): Promise<unknown> {
-	const db = await openDb();
-	try {
-		return await new Promise((resolve, reject) => {
-			const tx = db.transaction(STORE, mode);
-			const req = op(tx.objectStore(STORE));
-			tx.oncomplete = () => resolve(req.result);
-			tx.onerror = tx.onabort = () => reject(tx.error);
-		});
-	} finally {
-		db.close();
-	}
+	return new Promise((resolve, reject) => {
+		const tx = opened.transaction(STORE, mode);
+		const req = op(tx.objectStore(STORE));
+		tx.oncomplete = () => resolve(req.result);
+		tx.onerror = tx.onabort = () => reject(tx.error);
+		// 寫的交易只有一個 request，馬上送出；讀的（list 的游標）還要繼續發 request，不能先送出
+		if (mode === 'readwrite') tx.commit?.();
+	});
 }

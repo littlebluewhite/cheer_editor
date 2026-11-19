@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import { httpServer, type ServerAdapter } from '#lib/server-api.js';
+	import { revealAlert } from '#lib/components/reveal.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -51,7 +52,7 @@
 			<p class="ok" role="status">如果 {sentTo} 有帳號，我們已經寄出一封信。</p>
 			<p class="hint">沒收到？看看垃圾信，或請管理員幫你寄。</p>
 		{/if}
-		{#if unreachable}<p class="error" role="alert">連不上伺服器，請稍後再試。</p>{/if}
+		{#if unreachable}<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>{/if}
 		<button type="submit" class="btn primary wide" disabled={busy}>寄信</button>
 	</form>
 </AccountCard>

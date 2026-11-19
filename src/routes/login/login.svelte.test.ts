@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeOfflineStore, fakeServer, flush } from '#lib/test-fakes.js';
 import Login from './+page.svelte';
 
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
+
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: '我們這一隊今年一定會贏 go go' };
 
 /** 登入頁；went 是登入後要去的網址。 */

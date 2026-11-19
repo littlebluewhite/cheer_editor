@@ -15,6 +15,7 @@
 		type UserRow,
 		type UserStatus
 	} from '#lib/server-api.js';
+	import { revealAlert } from '#lib/components/reveal.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -161,7 +162,7 @@
 			{#if users}<button type="button" class="btn primary" onclick={() => open({ kind: 'add' })}>＋ 加使用者</button>{/if}
 		</header>
 		{#if done}<p class="ok" role="status">{done}</p>{/if}
-		{#if failed}<p class="error" role="alert">{failed}</p>{/if}
+		{#if failed}<p class="error" {@attach revealAlert()}>{failed}</p>{/if}
 		{#if users}
 			<div class="scroll">
 				<table>
@@ -251,7 +252,7 @@
 						<li>之後可以恢復，他用原本的密碼登入。</li>
 					</ul>
 				{/if}
-				{#if dialogError}<p class="error" role="alert">{dialogError}</p>{/if}
+				{#if dialogError}<p class="error" {@attach revealAlert()}>{dialogError}</p>{/if}
 				<div class="buttons">
 					<button type="button" data-autofocus={d.kind === 'disable' || undefined} onclick={close}>取消</button>
 					<button type="submit" class={d.kind === 'disable' ? 'danger' : 'primary'} disabled={busy}>

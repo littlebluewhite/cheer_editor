@@ -30,7 +30,7 @@ import {
 	insertFormation,
 	loadSegmentAudio,
 	markPhaseBeats,
-	matchPrevious,
+	moveGroup,
 	moveAction,
 	moveFormation,
 	moveMember,
@@ -308,18 +308,18 @@ const cases: Case[] = [
 		{ name: 'restoreRunThrough', args: [deletedRun().removed] },
 		(f) => restoreRunThrough(f, deletedRun().removed)
 	),
-	at('addPhase', base, { name: 'addPhase', args: ['x3', { kind: 'whole', name: '拋' }] }, (f) =>
-		addPhase(f, 'x3', { kind: 'whole', name: '拋' })
+	at('addPhase', base, { name: 'addPhase', args: ['x3', { kind: 'toss', name: '拋' }] }, (f) =>
+		addPhase(f, 'x3', { kind: 'toss', name: '拋' })
 	),
 	at(
 		'addPhase 帶著確定',
 		base,
 		{
 			name: 'addPhase',
-			args: ['x1', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }],
+			args: ['x1', { kind: 'hold', name: '', beats: { at: 0, len: 4 } }],
 			options: { confirmed: true }
 		},
-		(f) => addPhase(f, 'x1', { kind: 'whole', name: '', beats: { at: 0, len: 4 } }, { confirmed: true })
+		(f) => addPhase(f, 'x1', { kind: 'hold', name: '', beats: { at: 0, len: 4 } }, { confirmed: true })
 	),
 	at('updatePhase', base, { name: 'updatePhase', args: ['x1', 'p2', { name: '撐住' }] }, (f) =>
 		updatePhase(f, 'x1', 'p2', { name: '撐住' })
@@ -349,7 +349,7 @@ const cases: Case[] = [
 		setPositions(f, 'f2', { m1: [1, 1] })
 	),
 	at('moveMembers', base, { name: 'moveMembers', args: [4, { m1: [1, 1] }] }, (f) => moveMembers(f, 4, { m1: [1, 1] })),
-	at('matchPrevious', base, { name: 'matchPrevious', args: [4, ['m1']] }, (f) => matchPrevious(f, 4, ['m1'])),
+	at('moveGroup', base, { name: 'moveGroup', args: [4, { m1: [1, 1] }] }, (f) => moveGroup(f, 4, { m1: [1, 1] })),
 	at('renameFormation', base, { name: 'renameFormation', args: ['f2', '開場'] }, (f) =>
 		renameFormation(f, 'f2', '開場')
 	),

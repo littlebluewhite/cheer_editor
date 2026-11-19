@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 記錄頁、總表的「＋ 記一次全上」打開的表（照台灣教練的全上表）：每個要記的動作一塊，照流程順序；一列一個環節，一欄一組。
-	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組後面的環節變空的；改回來，後面回到 ✓。
+	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組按不了的環節（✗ 做完之後才開始的，問核心 blankPhases）變空的，佔同樣拍的留著；改回來，回到 ✓。
 	// 有個動作沒做，在它那裡按「這個沒做」：整個動作變空的，不存；中途停了，在第一個沒做的動作按「後面都沒做」，它和後面的一次變空的。
 	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問，切頁也一樣）。
 	// 雲端流程能記的人一起記（#262，ADR 0012）：開表就把全上 id、日期、開的時間和要拿的組報給伺服器（開新的拿全部的組，
@@ -10,6 +10,7 @@
 	import {
 		actionLabel,
 		attemptWhos,
+		blankPhases,
 		keptAttempt,
 		MARKS,
 		phaseLabel,
@@ -24,6 +25,7 @@
 	import type { RunView } from '#lib/server-api.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { actionColor } from './category-colors';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 記在哪一天（練習畫面選的日期）。 */
@@ -136,7 +138,7 @@
 		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, picked[key(action.id, who, p.id)] ?? '✓']));
 	}
 
-	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（核心 keptAttempt）：✗ 後面的、沒做的動作是空的（null）。 */
+	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（問核心 keptAttempt，存的時候也照它）：按不了的環節（blankPhases 的 shut）、沒做的動作是空的（null），跟 ✗ 佔同樣拍的照點的留著。 */
 	function column(action: Action, who: string): (Mark | null)[] {
 		const phaseIds = action.successRate!.phases.map((p) => p.id);
 		if (skipped.includes(action.id)) return phaseIds.map(() => null);
@@ -144,13 +146,13 @@
 		return phaseIds.map((id) => kept[id] ?? null);
 	}
 
-	/** 點一格換下一個記號；變 ✗ 就把同一組後面點過的清掉（改回來時後面是 ✓）。 */
-	function tap(action: Action, phaseIds: string[], who: string, index: number, mark: Mark) {
-		const actionId = action.id;
+	/** 點一格換下一個記號；變 ✗ 就把同一組空著的環節點過的清掉（核心 blankPhases 說哪些；改回來時是 ✓）。 */
+	function tap(action: Action, who: string, phaseId: string, mark: Mark) {
 		together?.touch(runKey(action, who));
 		const next = NEXT[mark];
-		picked[key(actionId, who, phaseIds[index])] = next;
-		if (next === '✗') for (const id of phaseIds.slice(index + 1)) delete picked[key(actionId, who, id)];
+		picked[key(action.id, who, phaseId)] = next;
+		if (next !== '✗') return;
+		for (const id of blankPhases(action, true, tapped(action, who)).shut) delete picked[key(action.id, who, id)];
 	}
 
 	function toggleSkip(actionId: string) {
@@ -238,12 +240,11 @@
 			{/each}
 		</div>
 		{#if allTaken}<p class="hint">都有人記了：點『拿著』的組，就換你記（他還沒點過記號的才換得走）。</p>{/if}
-		{#if refused}<p class="error" role="alert">{refused}</p>{/if}
+		{#if refused}<p class="error" {@attach revealAlert()}>{refused}</p>{/if}
 	{/if}
 
 	{#each blocks as { action, whos }, index (action.id)}
 		{@const phases = action.successRate?.phases ?? []}
-		{@const phaseIds = phases.map((p) => p.id)}
 		{@const off = skipped.includes(action.id)}
 		{@const columns = whos.map((w) => ({ ...w, marks: column(action, w.who), mine: isMine(action, w.who) }))}
 		<section class="block" class:off aria-label={actionLabel(action)}>
@@ -282,7 +283,7 @@
 												class="slot {m === '✓' ? 'ok' : m === '△' ? 'minor' : m === '✗' ? 'fail' : ''}"
 												aria-label="{col.name} {phaseLabel(p)} {markLabel(m)}"
 												disabled={m === null}
-												onclick={() => m && tap(action, phaseIds, col.who, i, m)}>{m ?? ''}</button
+												onclick={() => m && tap(action, col.who, p.id, m)}>{m ?? ''}</button
 											>
 										{:else}
 											<button type="button" class="slot" aria-label="{col.name} {phaseLabel(p)} 別人記的" disabled>—</button>
@@ -297,7 +298,7 @@
 		</section>
 	{/each}
 
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	{#if confirming}
 		<ConfirmList
@@ -325,7 +326,6 @@
 	.sheet {
 		--ok: #15803d;
 		--minor: #b45309;
-		--fail: #b91c1c;
 		display: grid;
 		/* 人多時只有表格自己左右捲（.scroll），不把畫面撐開 */
 		grid-template-columns: minmax(0, 1fr);
@@ -397,6 +397,15 @@
 	th[scope='row'] {
 		text-align: left;
 		font-weight: 600;
+	}
+	/* 40 人時表格很寬：「環節」那一欄往右捲也留在左邊，看得出每一列是哪個環節。 */
+	tr > th:first-child {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+	}
+	tbody th {
+		background: var(--surface);
 	}
 	/* 格子要大、好點；記號用顏色之外也寫出來。 */
 	.slot {
@@ -486,6 +495,9 @@
 		}
 		.scroll {
 			overflow: visible;
+		}
+		tr > th:first-child {
+			position: static;
 		}
 		table {
 			width: 100%;

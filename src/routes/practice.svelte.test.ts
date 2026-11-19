@@ -11,7 +11,7 @@ import {
 	type Mark,
 	type NewAttempt
 } from '#lib/core';
-import { flowOf } from '#lib/test-flows.js';
+import { flowOf, pyramidSample } from '#lib/test-flows.js';
 import { editorPage, openFile, practiceFlow, flush } from '#lib/test-fakes.js';
 import { localDate } from '#lib/local-date.js';
 import Page from './+page.svelte';
@@ -58,11 +58,13 @@ describe('練習：記錄頁記分段練', () => {
 		await tap('第 1 組 小美', '上法', '成功');
 		const pressed = () => screen.getByRole('button', { name: '第 1 組 小美 上法 成功' }).getAttribute('aria-pressed');
 		expect(pressed()).toBe('true');
-		await openFile(writeFlowFile(practiceFlow(), {}), '開啟');
+		await openFile(writeFlowFile(practiceFlow(), {}));
+		// 開檔回到編排（#218），再切回練習看
+		await toPractice();
 		expect(pressed()).toBe('false');
 	});
 
-	it('點到一半就換到編排：這一次不存', async () => {
+	it('點到一半就換到編排再回來：點了的記號還在，接著點完一起存', async () => {
 		await practice();
 		const who = '第 1 組 小美';
 		await tap(who, '上法', '成功');
@@ -71,7 +73,84 @@ describe('練習：記錄頁記分段練', () => {
 		await toPractice();
 		await tap(who, '下法', '成功');
 		await save(who);
-		expect(dayRow(who)).toEqual(['··✓']);
+		expect(dayRow(who)).toEqual(['✓✓✓']);
+	});
+
+	it('點了 △ 再按「全部 ✓ 存」：△ 照點的存，空著的補 ✓', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		await tap(who, '中段', '小失誤');
+		await fireEvent.click(card(who).getByRole('button', { name: '全部 ✓ 存' }));
+		expect(dayRow(who)).toEqual(['✓△✓']);
+	});
+
+	it('點了還沒存的記號：換動作、切總表再回來還在，卡片標「還沒存」；存了就不標', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		const pressed = () => screen.getByRole('button', { name: `${who} 上法 小失誤` }).getAttribute('aria-pressed');
+		expect(card(who).queryByText('還沒存')).toBeNull();
+		await tap(who, '上法', '小失誤');
+		expect(card(who).getByText('還沒存')).toBeTruthy();
+
+		await pickAction('騰翻');
+		await pickAction('技巧·Lib');
+		expect(pressed()).toBe('true');
+		expect(card(who).getByText('還沒存')).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '總表' }));
+		await fireEvent.click(screen.getByRole('button', { name: '記錄' }));
+		expect(pressed()).toBe('true');
+
+		await tap(who, '中段', '成功');
+		await tap(who, '下法', '成功');
+		await save(who);
+		expect(dayRow(who)).toEqual(['△✓✓']);
+		expect(card(who).queryByText('還沒存')).toBeNull();
+	});
+
+	it('點了還沒存的記號、那個環節在編排刪掉了：記號拿掉，照樣存得下來', async () => {
+		const { session } = await practice();
+		const who = '第 1 組 小美';
+		await tap(who, '上法', '成功');
+		await tap(who, '中段', '小失誤');
+		await toArrange();
+		session.ask.send({ name: 'deletePhase', args: ['x1', 'p2'], options: { confirmed: true } });
+		await toPractice();
+		await save(who);
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(dayRow(who)).toEqual(['✓·']);
+
+		await tap(who, '上法', '成功');
+		await toArrange();
+		session.ask.send({ name: 'deletePhase', args: ['x1', 'p1'], options: { confirmed: true } });
+		await toPractice();
+		expect(card(who).queryByText('還沒存')).toBeNull();
+	});
+
+	it('點了還沒存的記號只在那一天：換日期就不見，換回來還在', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		const pressed = () => screen.getByRole('button', { name: `${who} 上法 成功` }).getAttribute('aria-pressed');
+		await tap(who, '上法', '成功');
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: '2026-11-04' } });
+		expect(pressed()).toBe('false');
+		expect(card(who).queryByText('還沒存')).toBeNull();
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
+		expect(pressed()).toBe('true');
+	});
+
+	it('點了還沒存的記號、別天改成只練別的環節：回來點完要練的環節，沒選的環節的記號不存', async () => {
+		await practice();
+		const who = '第 1 組 小美';
+		await tap(who, '上法', '成功');
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: '2026-11-04' } });
+		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
+		await fireEvent.click(card(who).getByRole('checkbox', { name: '中段' }));
+		await fireEvent.click(card(who).getByRole('checkbox', { name: '下法' }));
+		await fireEvent.change(screen.getByLabelText('日期'), { target: { value: localDate() } });
+		await tap(who, '中段', '成功');
+		await tap(who, '下法', '成功');
+		expect(dayRow(who)).toEqual(['·✓✓']);
 	});
 
 	it('「只練幾個環節」切到總表、編排再回來還是它', async () => {
@@ -103,13 +182,14 @@ describe('練習：記錄頁記分段練', () => {
 			{ id: 't1', date: localDate(), who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
 		]);
 
-		await openFile(saves[0], '開啟');
+		await openFile(saves[0]);
+		await toPractice();
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 	});
 
 	it('練習時開檔、存檔照舊，提示也看得到', async () => {
 		await practice();
-		await openFile(new TextEncoder().encode('不是 zip'), '開啟');
+		await openFile(new TextEncoder().encode('不是 zip'));
 		expect(screen.getByRole('status').textContent).toBe('打不開「練習用.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 	});
 
@@ -136,7 +216,7 @@ describe('練習：記錄頁記分段練', () => {
 });
 
 describe('練習：紀錄不進復原', () => {
-	/** 在編排幫拋投的拍點格子選 2-1 到 2-4 加環節「整體 拋投」（復原紀錄多一步），再切到練習。 */
+	/** 在編排幫拋投的拍點格子選 2-1 到 2-4 加環節「拋法 拋投」（復原紀錄多一步），再切到練習。 */
 	async function withOneStep() {
 		render(Page, editorPage(practiceFlow()).props);
 		await fireEvent.click(document.querySelector('[data-lane="m3"] [data-action-id="x2"]')!);
@@ -144,7 +224,7 @@ describe('練習：紀錄不進復原', () => {
 		await fireEvent.click(grid.getByRole('button', { name: '2-1' }));
 		await fireEvent.click(grid.getByRole('button', { name: '2-4' }), { shiftKey: true });
 		const phase = within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
-		await fireEvent.change(phase.getByRole('combobox', { name: '環節的種類' }), { target: { value: 'whole' } });
+		expect(phase.getByLabelText('環節的種類').textContent).toBe('拋法');
 		await fireEvent.input(phase.getByRole('textbox', { name: '環節的名字' }), { target: { value: '拋投' } });
 		await fireEvent.click(phase.getByRole('button', { name: '加入環節' }));
 		await toPractice();
@@ -196,7 +276,7 @@ describe('練習：紀錄不進復原', () => {
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
-		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '救回' }));
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉上一次' }));
 		await tap('第 1 組 小美', '上法', '失敗');
 		await save('第 1 組 小美');
@@ -245,6 +325,14 @@ describe('練習：每天的表和最弱的環節', () => {
 		await save(who);
 	}
 
+	it('只有一個環節：不放「整次」那一欄，不會兩欄一樣的數字（T20）', async () => {
+		await practice();
+		await pickAction('騰翻');
+		await fireEvent.click(screen.getByRole('button', { name: /^小美 .* 成功$/ }));
+		expect(tableRows()[0]).toEqual(['日期', '翻法 騰翻']);
+		expect(tableRows()[1]).toEqual([localDate(), '100% 完成率 100%・1 次']);
+	});
+
 	it('記三次後：今天那一列上法 100%、中段 67%、下法 50%（完成率 100%，2 次），整次 33%；左邊寫最弱的環節', async () => {
 		await practice();
 		await threeAttempts();
@@ -283,11 +371,11 @@ describe('練習：每天的表和最弱的環節', () => {
 	it('騰翻的動作：可以只看某一個人', async () => {
 		await practice();
 		await pickAction('騰翻');
-		await tap('小A', '整體 騰翻', '成功');
+		await tap('小A', '翻法 騰翻', '成功');
 		const pick = screen.getByLabelText('看哪一個人') as HTMLSelectElement;
 		expect(Array.from(pick.options).map((o) => o.text)).toEqual(['全部', '小美', '小A']);
 		await fireEvent.change(pick, { target: { value: 'm1' } });
-		expect(tableRows().at(-1)).toEqual(['合計', '—', '—']);
+		expect(tableRows().at(-1)).toEqual(['合計', '—']);
 	});
 });
 
@@ -354,7 +442,7 @@ describe('練習：總表', () => {
 		]);
 		expect(blockRows('騰翻')).toEqual([
 			['環節', '小美', '小A', '合計'],
-			['整體 騰翻', '100% 1 次', '—', '100% 1 次']
+			['翻法 騰翻', '100% 1 次', '—', '100% 1 次']
 		]);
 	});
 
@@ -471,11 +559,11 @@ describe('練習：總表', () => {
 			await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
 
 			expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
-			expect(screen.getByRole('status').textContent).toBe('已存這次全上');
+			expect(screen.getByRole('status').textContent).toBe('已記下這次全上');
 			await filter('練法', '只看全上');
 			expect(blockRows('技巧·Lib')[3]).toEqual(['下法', '50% 2 次', '0% 1 次', '33% 3 次']);
 			expect(blockRows('技巧·Lib')[4]).toEqual(['整次', '50% 2 次', '0% 1 次', '33% 3 次']);
-			expect(blockRows('騰翻')[1]).toEqual(['整體 騰翻', '—', '—', '—']);
+			expect(blockRows('騰翻')[1]).toEqual(['翻法 騰翻', '—', '—', '—']);
 
 			await fireEvent.click(cell('第 2 組 小芳', '下法'));
 			const marks = within(screen.getByRole('complementary', { name: '明細' })).getAllByRole('listitem');
@@ -534,5 +622,63 @@ describe('練習：日期', () => {
 		expect(date().value).toBe(localDate());
 		await fireEvent.change(date(), { target: { value: '2026-11-01' } });
 		expect(date().value).toBe('2026-11-01');
+	});
+});
+
+describe('練習：金字塔的環節佔同樣的拍', () => {
+	/** 開編輯頁、放 pyramidSample()、切到練習、點金字塔。 */
+	async function pyramid() {
+		const page = editorPage(pyramidSample());
+		render(Page, page.props);
+		await toPractice();
+		await pickAction('金字塔');
+		return page;
+	}
+
+	const who = '第 1 組 小美';
+	const WAIT = '還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」';
+	const enabled = (phase: string) => !disabled(screen.getByRole('button', { name: `${who} ${phase} 成功` }));
+	const phases = ['上法 第一個', '中段 第一個', '上法 第二個', '中段 第二個', '下法'];
+
+	/** 選「只練幾個環節」、勾這幾個環節。 */
+	async function pickSome(...names: string[]) {
+		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
+		for (const n of names) await fireEvent.click(card(who).getByRole('checkbox', { name: n }));
+	}
+
+	it('整個做，上法「第二個」✗：之後才開始的按不了，佔同樣拍的還可以按；存下來沒打的空著，還是整個做', async () => {
+		await pyramid();
+		await tap(who, '上法 第一個', '成功');
+		await tap(who, '上法 第二個', '失敗');
+		expect(phases.map(enabled)).toEqual([true, true, true, false, false]);
+		await save(who);
+		expect(dayRow(who)).toEqual(['✓·✗··']);
+		expect(card(who).getByRole('listitem').classList.contains('partial')).toBe(false);
+	});
+
+	it('只練幾個環節，打了 ✗ 還有佔同樣拍的沒打：之後才開始的按不了，先不自動存、出現「存這一次」；打完自動存', async () => {
+		await pyramid();
+		await pickSome('中段 第一個', '上法 第二個', '中段 第二個');
+		await tap(who, '上法 第二個', '失敗');
+		expect(dayRow(who)).toEqual([]);
+		expect(enabled('中段 第一個')).toBe(true);
+		expect(enabled('中段 第二個')).toBe(false);
+		expect(card(who).getByText(WAIT)).toBeTruthy();
+		expect(card(who).getByRole('button', { name: '存這一次' })).toBeTruthy();
+		// 換到編排再回來：點到一半的記號還在，還在等
+		await toArrange();
+		await toPractice();
+		expect(card(who).getByText(WAIT)).toBeTruthy();
+		await tap(who, '中段 第一個', '成功');
+		expect(dayRow(who)).toEqual(['·✓✗··']);
+		expect(card(who).queryByRole('button', { name: '存這一次' })).toBeNull();
+	});
+
+	it('只練幾個環節在等的時候按「存這一次」：照現在點的存，沒打的不記', async () => {
+		await pyramid();
+		await pickSome('中段 第一個', '上法 第二個');
+		await tap(who, '上法 第二個', '失敗');
+		await save(who);
+		expect(dayRow(who)).toEqual(['··✗··']);
 	});
 });

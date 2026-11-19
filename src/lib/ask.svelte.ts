@@ -2,7 +2,7 @@
 // 編輯頁的元件跟 session 要（changeAsk 是「改」、recordAsk 是「記」），不自己接；沒有 session 的（新建流程）才自己給 onchange。
 // 送一個指令：給它指令名字＋參數（一步也可以帶好幾個，照順序跑、全算或全不算）。照結果：
 //   成功：把新流程交給 onchange；被擋：留下原因（給了還原就加「，已還原」並還原）；要確認、要選：留下問題。
-//   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到任何一格成功送出為止（改好了就收，不疊著）。
+//   給了格名（field）：被擋的原因記在那一格（寫出哪一格退回），留到任何一格成功送出、或又要問為止（改好了就收，不疊著）。
 // 送之前就看得出不行（表單的字讀不懂）：block 給原因，當被擋，不送指令。
 // 回答取消：問題收掉，給了還原就還原（沒有原因），給了 cancel 也呼叫它（只有取消時）。
 // 表單告訴它哪一格改了（edited）：收掉那一格的紅字，別格的留著。
@@ -24,11 +24,12 @@ import {
 /** 教練的回答。 */
 export type Answer = 'confirm' | 'keep' | 'clear' | 'cancel';
 
-/** 等教練回答的問題：訊息、會被動到的清單、是不是要選（保留舊紀錄／清掉重算）。 */
+/** 等教練回答的問題：訊息、會被動到的清單、是不是要選（保留舊紀錄／清掉重算）、確定鈕的字（指令給的，沒給是這個 Ask 的）。 */
 export interface Question {
 	message: string;
 	items: string[];
 	choose: boolean;
+	confirmLabel: string;
 }
 
 /** 送指令時可以給的事：成功之後再做什麼、怎麼還原畫面（被擋、取消時）、只在按取消時做什麼、
@@ -63,11 +64,11 @@ const OPTIONS: Record<Exclude<Answer, 'cancel'>, ConfirmOption> = {
 export class Ask {
 	question = $state<Question | null>(null);
 	error = $state('');
-	/** 每一格被擋的原因（格名 → 原因）：教練改了那一格、或任何一個指令成功就收掉。 */
+	/** 每一格被擋的原因（格名 → 原因）：教練改了那一格、任何一個指令成功、或又要問就收掉。 */
 	fieldErrors = $state<Record<string, string>>({});
 	/** 沒成功（被擋、要問）幾次：同一句原因又出現一次時，畫面靠它知道要再捲過去。 */
 	failures = $state(0);
-	/** 要確認時確定鈕的字。 */
+	/** 要確認時確定鈕的字（指令的結果自己帶了就用它的）。 */
 	readonly confirmLabel: string;
 	#onchange: (flow: Flow, step?: SentStep) => void;
 	#onfail: ((error: string) => void) | undefined;
@@ -183,7 +184,10 @@ export class Ask {
 			else this.error = handlers.revert ? `${r.message}，已還原` : r.message;
 			handlers.revert?.();
 		} else {
-			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose' };
+			// 要問了：舊的紅字收掉，確認框旁邊不留跟這次無關的原因。
+			this.fieldErrors = {};
+			const confirmLabel = (r.kind === 'confirm' && r.confirmLabel) || this.confirmLabel;
+			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose', confirmLabel };
 			this.#pending = { send, handlers };
 		}
 		if (r.kind !== 'ok') {

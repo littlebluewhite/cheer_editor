@@ -36,10 +36,11 @@ export function placeCuePop(input: CuePopInput): CuePopPos {
 	const { sel, pop, cur } = input;
 	if (cur) {
 		// 按小窗裡的按鈕：選取沒被蓋住、也只隔一個八拍以內，小窗就不動，只有尖角跟著
-		// （＋－跨過八拍來回按，小窗也不會跟著跳）。
+		// （＋－跨過八拍來回按，小窗也不會跟著跳）。小窗變高（例：多了錯誤訊息）原地會超出畫面，就搬。
 		const covered = sel.top < cur.top + pop.h && sel.bottom > cur.top && sel.left < cur.left + pop.w && sel.right > cur.left;
 		const gap = Math.max(sel.top - (cur.top + pop.h), cur.top - sel.bottom);
-		if (!covered && gap <= input.rowH + GAP) {
+		const inView = cur.top >= input.view.top && cur.top + pop.h <= input.view.bottom;
+		if (!covered && gap <= input.rowH + GAP && inView) {
 			const x = cur.above ? input.arrowAbove : input.arrowBelow;
 			return { ...cur, arrow: Math.min(Math.max(x - cur.left, ARROW_EDGE), pop.w - ARROW_EDGE) };
 		}

@@ -208,6 +208,32 @@ describe('拍點格子：拍點小窗', () => {
 		expect(pop()).toBeNull();
 	});
 
+	it('點格子裡的空白（標籤）或不是這個動作的拍，小窗關掉', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(grid.getAllByText('步驟')[0], { button: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(grid.getByRole('button', { name: '3-1' }), { button: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+	});
+
+	it('點格子下面留給小窗的空白，小窗關掉', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.pointerDown(pop()!.parentElement!, { button: 0, pointerId: 1 });
+		expect(pop()).toBeNull();
+	});
+
+	it('Shift 放開沒收到（例如 Cmd+Shift 截圖），滑鼠一動小窗就不再半透明', async () => {
+		const { grid, pop } = setup();
+		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
+		await fireEvent.keyDown(window, { key: 'Shift', shiftKey: true });
+		expect(pop()!.classList).toContain('through');
+		await fireEvent.pointerMove(window, { shiftKey: false });
+		expect(pop()!.classList).not.toContain('through');
+	});
+
 	it('給誰在小窗裡選：選了隊員再放，拍點給那個人', async () => {
 		const { grid, session } = setup();
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
@@ -393,6 +419,22 @@ describe('改環節', () => {
 			target: { value: '' }
 		});
 		expect(sent()[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } });
+	});
+
+	it('點了下面那條環節、關掉小窗，再點那一拍的數字：改的是排前面的那條，不是剛才點的那條', async () => {
+		let flow = flowOf(updateAction(sample(), 'x1', { category: 'pyramid' }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第一個', beats: { at: 0, len: 2 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 0, len: 2 } }));
+		renderGrid(flow);
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const name = () =>
+			(within(grid.getByRole('group', { name: '改環節' })).getByRole('textbox', { name: '這個環節的名字' }) as HTMLInputElement)
+				.value;
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法 第二個/ }));
+		expect(name()).toBe('第二個');
+		await fireEvent.click(grid.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
+		expect(name()).toBe('第一個');
 	});
 
 	it('選的拍不是剛好一個環節時，不出現改的地方', async () => {

@@ -334,6 +334,27 @@ async fn a_run_through_recorded_alone_keeps_its_id_and_start_time(db: sqlx::PgPo
     assert_eq!(got[1]["attempt"], both[1]["attempt"]);
 }
 
+/// 第 10 版起整個做的一次記著空著的環節（blanks，✗ 之後沒做的）：存進去、改記號、打開都帶著，不會變成「那時還沒有這個環節」。
+#[sqlx::test]
+async fn blank_phases_are_kept_when_saved_and_changed(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut phone, _) = s.join(&wang, &id).await;
+    let mut fail = drill("tblank0000001", SQUAD_1, json!({ LOAD: "✗" }));
+    fail["attempt"]["blanks"] = json!([HOLD, DISMOUNT]);
+
+    let reply = record(&mut phone, json!([fail])).await;
+    assert_eq!(reply["saved"].as_array().unwrap().len(), 1);
+    assert_eq!(s.records(&wang, &id).await[0]["attempt"], fail["attempt"]);
+
+    let mut fixed = fail.clone();
+    fixed["attempt"]["marks"] = json!({ LOAD: "△", HOLD: "✗" });
+    fixed["attempt"]["blanks"] = json!([DISMOUNT]);
+    change(&mut phone, json!([fixed])).await;
+    assert_eq!(s.records(&wang, &id).await[0]["attempt"], fixed["attempt"]);
+}
+
 #[sqlx::test]
 async fn marks_on_deleted_phases_are_dropped_and_gone_squads_are_not_saved(db: sqlx::PgPool) {
     let s = Server::new(db).await;

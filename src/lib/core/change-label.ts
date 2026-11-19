@@ -4,6 +4,7 @@
 
 import { actionLabel } from './action-types';
 import type { Flow } from './flow';
+import type { Segment } from './segment';
 
 interface Item {
 	id: string;
@@ -21,6 +22,22 @@ function diff<T extends Item>(before: T[], after: T[]) {
 	return { added, removed, changed, reordered };
 }
 
+/** 改了第 n 段的哪一樣（音樂、BPM、第一拍、八拍數、秒數），好幾樣一起改寫最前面那樣（N62）。 */
+function segmentLabel(was: Segment, now: Segment, n: number): string {
+	const which = `第 ${n} 段`;
+	if (was.kind === 'music' && now.kind === 'music') {
+		if (was.audioId !== now.audioId) {
+			if (was.audioId === null) return `載入${which}的音樂`;
+			return now.audioId === null ? `拿掉${which}的音樂` : `換${which}的音樂`;
+		}
+		if (was.bpm !== now.bpm) return `改${which}的 BPM`;
+		if (was.firstBeatSec !== now.firstBeatSec) return `改${which}的第一拍`;
+		if (was.halfBeats !== now.halfBeats) return `改${which}的八拍數`;
+	}
+	if (was.kind === 'chant' && now.kind === 'chant' && was.tenths !== now.tenths) return `改${which}的秒數`;
+	return `改${which}`;
+}
+
 /** 這一步改了什麼；看不出來（例：只換了內部的東西）就是「修改」。 */
 export function changeLabel(before: Flow, after: Flow): string {
 	if (before.members !== after.members) {
@@ -32,10 +49,15 @@ export function changeLabel(before: Flow, after: Flow): string {
 	}
 	if (before.segments !== after.segments) {
 		const d = diff(before.segments, after.segments);
-		if (d.added.length) return `加第 ${after.segments.indexOf(d.added[0]) + 1} 段`;
+		if (d.added.length) {
+			const at = after.segments.indexOf(d.added[0]);
+			// 切成兩段：新的一段接在剛變短的那一段後面
+			if (d.added.length === 1 && at > 0 && after.segments[at - 1] === d.changed) return `把第 ${at} 段切成兩段`;
+			return `加第 ${at + 1} 段`;
+		}
 		if (d.removed.length) return `刪第 ${before.segments.indexOf(d.removed[0]) + 1} 段`;
 		if (d.reordered) return '排段的順序';
-		if (d.changed) return `改第 ${after.segments.indexOf(d.changed) + 1} 段`;
+		if (d.changed) return segmentLabel(before.segments.find((s) => s.id === d.changed!.id)!, d.changed, after.segments.indexOf(d.changed) + 1);
 	}
 	if (before.customRoles !== after.customRoles) {
 		const d = diff(before.customRoles, after.customRoles);

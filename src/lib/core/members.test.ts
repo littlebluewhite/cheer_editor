@@ -111,16 +111,48 @@ describe('加隊員', () => {
 		}
 	});
 
-	it('後面的站位沒有新人的位置：用開頭那張的同一個位置', () => {
-		const before = okFlow(addMembers(newFlow(), [xiaoA]));
-		const twoFormations = {
-			...before,
-			formations: [...before.formations, { ...before.formations[0], id: 'f2', at: 8, pos: { m1: [3, 3] as [number, number] } }]
-		};
-		const flow = okFlow(addMembers(twoFormations, [xiaoA]));
-		const id = flow.members[1].id;
-		expect(flow.formations[1].pos[id]).toEqual(flow.formations[0].pos[id]);
-		expect(flow.formations[1].pos.m1).toEqual([3, 3]);
+	/** 這張站位裡有沒有兩個人疊到（中心距離不到半格）。 */
+	function piledUp(pos: Record<string, [number, number]>): boolean {
+		const ps = Object.values(pos);
+		return ps.some((a, i) => ps.slice(i + 1).some((b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < C / 2 - 1e-6));
+	}
+
+	/** 開頭那張和第二張站位的人站在不同地方：第二張的人剛好站在開頭那張的空格點上。 */
+	function twoFormations(count: number): Flow {
+		const before = okFlow(addMembers(newFlow(), Array(count).fill(xiaoA)));
+		const f1 = before.formations[0];
+		const pos: Record<string, [number, number]> = {};
+		before.members.forEach((m, i) => (pos[m.id] = [-f1.pos[m.id][0], -f1.pos[m.id][1] + (i === 0 ? C : 0)]));
+		return { ...before, formations: [f1, { ...f1, id: 'f2', at: 8, pos }] };
+	}
+
+	it('有好幾張站位時加 8 人：每一張站位都沒有兩人站同一點', () => {
+		const start = twoFormations(1);
+		expect(start.formations[1].pos.m1).toEqual([expect.closeTo(0, 6), expect.closeTo(C, 6)]);
+		const flow = okFlow(addMembers(start, Array(8).fill(xiaoA)));
+		for (const f of flow.formations) {
+			expect(Object.keys(f.pos)).toHaveLength(9);
+			expect(piledUp(f.pos)).toBe(false);
+		}
+		expect(flow.formations[1].pos.m1).toEqual(start.formations[1].pos.m1);
+	});
+
+	it('有好幾張站位時加人：先找每張站位都空著的格點，新人每張站同一點，不會冒出走太快、很喘（N10）', () => {
+		const start = twoFormations(3);
+		const flow = okFlow(addMembers(start, Array(5).fill(xiaoA)));
+		const [f1, f2] = flow.formations;
+		for (const m of flow.members.slice(3)) expect(f2.pos[m.id]).toEqual(f1.pos[m.id]);
+		for (const f of flow.formations) expect(piledUp(f.pos)).toBe(false);
+	});
+
+	it('一次加 37 人：原本 3 人在每一張站位都沒被蓋住', () => {
+		const start = twoFormations(3);
+		const flow = okFlow(addMembers(start, Array(37).fill(xiaoA)));
+		for (const [i, f] of flow.formations.entries()) {
+			expect(Object.keys(f.pos)).toHaveLength(40);
+			expect(piledUp(f.pos)).toBe(false);
+			for (const id of ['m1', 'm2', 'm3']) expect(f.pos[id]).toEqual(start.formations[i].pos[id]);
+		}
 	});
 
 	it('格點都有人了才排場外：1 條直放只有 7 格，第 8 個人起在正面外從左到右排成一列', () => {
@@ -310,6 +342,15 @@ describe('貼上名單加隊員', () => {
 	it('空白分隔、最後兩段不是性別和全局角色：整行當名字', () => {
 		const flow = okFlow(addMemberLines(newFlow(), 'Amy Chen', picked));
 		expect(flow.members).toMatchObject([{ name: 'Amy Chen', gender: 'F', globalRole: 'top' }]);
+	});
+
+	it('同一個錯不每人重複：每個人都一樣就只寫一次，不寫名字；只有幾個人一樣就把名字列在一起', () => {
+		const none = { gender: null, globalRole: null };
+		expect(addMemberLines(newFlow(), '小A\n小B\n小C', none)).toEqual({ kind: 'blocked', message: '請選性別；請選全局角色' });
+		expect(addMemberLines(newFlow(), '小A\n小B\n小C\t男孩\t底層', none)).toEqual({
+			kind: 'blocked',
+			message: '「小A」、「小B」：請選性別；請選全局角色\n「小C」：性別要寫「男」或「女」'
+		});
 	});
 
 	it('沒選性別、全局角色，名字太長：每一行的錯一次列出；一行都加不了就擋下', () => {

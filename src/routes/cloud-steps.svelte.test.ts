@@ -4,9 +4,12 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { deleteMember, type Flow } from '#lib/core';
-import { editorPage, fakeServer, flush } from '#lib/test-fakes.js';
+import { editorPage, fromMenu, menuItem, fakeServer, flush } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
+
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
 
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: true, password: '我們這一隊今年一定會贏 go go' };
 
@@ -28,7 +31,7 @@ async function openCloud(fingerprint?: string) {
 
 /** 流程設定改流程名字。 */
 async function rename(name: string) {
-	await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+	await fromMenu('流程設定');
 	await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: name } });
 	await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 }
@@ -84,7 +87,7 @@ describe('雲端流程一步一步存', () => {
 		const s = await openCloud('newer-core');
 		expect(s.page.session.viewing).toBe(true);
 		expect((screen.getByRole('button', { name: '編輯' }) as HTMLButtonElement).disabled).toBe(true);
-		expect((screen.getByRole('button', { name: /流程設定/ }) as HTMLButtonElement).disabled).toBe(true);
+		expect(((await menuItem('流程設定')) as HTMLButtonElement).disabled).toBe(true);
 		expect(document.querySelector('.field-host')!.textContent).toContain('有新版，請重新整理');
 
 		// 鍵盤、程式送的改動也擋下

@@ -12,7 +12,7 @@ import {
 	clearWalks,
 	deleteFormation,
 	insertFormation,
-	matchPrevious,
+	moveGroup,
 	moveFormation,
 	moveMembers,
 	renameFormation,
@@ -72,7 +72,7 @@ const COMMANDS = {
 	// 新建流程不用開著的流程。
 	createFlow: ((_, [input]) => createFlow(input)) as Entry<Parameters<typeof createFlow>, CommandResult>,
 	renameFlow: plain(renameFlow),
-	adjustField: plain(adjustField),
+	adjustField: asking(adjustField),
 
 	addMembers: plain(addMembers),
 	addMemberLines: plain(addMemberLines),
@@ -114,7 +114,7 @@ const COMMANDS = {
 
 	setPositions: plain(setPositions),
 	moveMembers: plain(moveMembers),
-	matchPrevious: plain(matchPrevious),
+	moveGroup: plain(moveGroup),
 	renameFormation: plain(renameFormation),
 	deleteFormation: plain(deleteFormation),
 	setWalks: plain(setWalks),

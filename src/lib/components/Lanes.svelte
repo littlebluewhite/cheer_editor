@@ -11,10 +11,11 @@
 	// 走位條看起來是細條，能點的範圍比較高（WALK_HIT_H）。
 	// 走太快的走位條標紅、很喘的標橘（見 formationWalks）；撞位那段疊一段紫色（頁面算好的 clashes），拖的時候先藏起來。
 	// 手指（docs/adr/0005-ipad-touch.md）：沒選中的色條、沒選到的人的走位條，一滑是捲畫面；點一下選中了才拖得動。
-	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條，佔幾拍畫多長；名稱和任務角色移到上半。
+	// 拍點：色條下半畫給這個人的拍點（cueForMember），一種一條（同一拍同一種有好幾個就多開一條），佔幾拍畫多長；名稱和任務角色移到上半。
 	// 有拍點的人泳道變高，放得下他用到的每一種，最下面留給走位條。拍點不吃滑鼠，拖色條照舊。
 	// 環節：標了拍的環節在色條最上緣畫一條細條（環節的顏色），那幾拍鋪同色淡底；不吃滑鼠，名稱、拍點畫在上面。
 	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
+	// 金字塔疊著的環節：細條往下多一排（第幾排流程核心算好，跟拍點格子同一排），名稱和拍點再往下讓。
 	import {
 		actionLabel,
 		actionSeconds,
@@ -30,11 +31,14 @@
 		nearestPosition,
 		phaseColor,
 		phaseLabel,
+		phaseRows,
+		positionText,
 		resizeAction,
 		setWalks,
 		timeText,
 		toSeconds,
 		totalSeconds,
+		units,
 		walkSpeedText,
 		type Clash,
 		type Cue,
@@ -45,10 +49,10 @@
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
-	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
+	import { AT_EDGE, getEditorSession, VIEW_ONLY } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
-	import { isLongMarker } from './marker';
+	import { isLongMarker } from '#lib/marker.js';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
 	interface Props {
@@ -96,65 +100,123 @@
 	);
 	const selected = $derived(new Set(selectedMemberIds));
 
+	/** 每個人泳道上的名字按鈕。 */
+	const labs: Record<string, HTMLElement> = $state({});
+	/** 上一次看到的選取：多選進來的只有一個人（場上點人、Shift 加一個）時，名單捲到他那一行。 */
+	let seenSelection: string[] = [];
+	$effect(() => {
+		const before = new Set(seenSelection);
+		seenSelection = selectedMemberIds;
+		const added = selectedMemberIds.filter((id) => !before.has(id));
+		if (added.length === 1) labs[added[0]]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	});
+
 	/** 色條離泳道上緣、名稱那一行、一條拍點的高度、泳道下緣留給走位條（px）。 */
 	const BAR_TOP = 3;
 	const NAME_H = 12;
 	const TRACK_H = 10;
 	const WALK_H = 5;
+	/** 泳道平常的高度（跟 .row 的 height 一樣）。 */
+	const LANE_H = 26;
 	/** 走位條能點的高度（px）：比看到的細條高，往下多出 WALK_HIT_DROP 伸進泳道之間的空隙。 */
 	const WALK_HIT_H = 12;
 	const WALK_HIT_DROP = 3;
-	/** 撞位那段最少畫這麼寬（px）：只撞到一個取樣點時也看得到。 */
-	const CLASH_MIN_W = 4;
+	/** 撞位那段最少畫這麼寬（px）：只撞到一個取樣點時也看得到；撐寬時以撞到的那段中間為中心。 */
+	const CLASH_MIN_W = 10;
 	/** 環節細條的高度（px）。 */
 	const PHASE_H = 3;
 
-	/** 每個動作標了拍的環節：名字、顏色、從動作開始第幾個半拍、幾個半拍長。 */
+	/** 每個動作標了拍的環節：名字、顏色、從動作開始第幾個半拍、幾個半拍長、第幾排（流程核心算的）。 */
 	const phaseBars = $derived(
 		Object.fromEntries(
-			flow.actions.map((a) => [
-				a.id,
-				(a.successRate?.phases ?? []).flatMap((p) =>
-					p.beats ? [{ id: p.id, label: phaseLabel(p), color: phaseColor(p), ...p.beats }] : []
-				)
-			])
+			flow.actions.map((a) => {
+				const rows = phaseRows(a.successRate?.phases ?? []);
+				return [
+					a.id,
+					(a.successRate?.phases ?? []).flatMap((p) =>
+						p.beats ? [{ id: p.id, label: phaseLabel(p), color: phaseColor(p), row: rows.get(p.id) ?? 0, ...p.beats }] : []
+					)
+				];
+			})
 		)
 	);
+	/** 每個動作的環節細條有幾排（沒有環節是 0）。 */
+	const phaseRowCount = $derived(
+		Object.fromEntries(flow.actions.map((a) => [a.id, Math.max(0, ...phaseBars[a.id].map((p) => p.row + 1))]))
+	);
 
-	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px）。 */
-	const lift = $derived(
+	/** 每個人的動作裡，環節細條最多幾排。 */
+	const memberPhaseRows = $derived(
 		Object.fromEntries(
 			flow.members.map((m) => [
 				m.id,
-				cues[m.id].kinds.length &&
-				flow.actions.some((a) => phaseBars[a.id].length && a.members.some((x) => x.memberId === m.id))
-					? PHASE_H
-					: 0
+				Math.max(0, ...flow.actions.filter((a) => a.members.some((x) => x.memberId === m.id)).map((a) => phaseRowCount[a.id]))
 			])
 		)
 	);
+	/** 有拍點、也在有環節細條的動作裡的人：名稱和拍點往下讓開細條（px），讓開他的動作裡最多的那幾排。 */
+	const lift = $derived(
+		Object.fromEntries(flow.members.map((m) => [m.id, cues[m.id].tracks ? PHASE_H * memberPhaseRows[m.id] : 0]))
+	);
+	/** 沒拍點的人：細條疊太多排（4 排以上），泳道變高，名稱那一行才放得下。 */
+	function laneHeight(memberId: string, tracks: number): string | undefined {
+		if (tracks) return `${BAR_TOP + lift[memberId] + NAME_H + tracks * TRACK_H + WALK_H}px`;
+		const h = 2 * BAR_TOP + memberPhaseRows[memberId] * PHASE_H + NAME_H;
+		return h > LANE_H ? `${h}px` : undefined;
+	}
+	/** 色條名稱那一行往下讓開細條：有拍點時名稱靠上、讓開全部的排；沒拍點時名稱置中，一排讓得開，疊了才往下讓。 */
+	const namePad = (actionId: string, hasCues: boolean) => {
+		const rows = phaseRowCount[actionId];
+		if (!rows) return undefined;
+		if (hasCues) return `${1 + rows * PHASE_H}px`;
+		return rows > 1 ? `${rows * PHASE_H}px` : undefined;
+	};
 
 	/**
 	 * 手位最多撐幾個半拍：往右撐到下一個手位（或動作結尾）為止；最後一拍的往左撐到上一個手位為止。
-	 * 字再長就用「…」截斷，不蓋到下一個手位。
+	 * 字再長就用「…」截斷，不蓋到下一個手位（同一條上的）。
 	 */
-	function motionRoom(mine: Cue[], c: Cue, length: number, atEnd: boolean): number {
-		const others = mine.filter((d) => d.kind === 'motion' && d !== c);
+	function motionRoom(mine: Cue[], track: Map<Cue, number>, c: Cue, length: number, atEnd: boolean): number {
+		const others = mine.filter((d) => d.kind === 'motion' && d !== c && track.get(d) === track.get(c));
 		if (atEnd) return c.at + c.len - Math.max(0, ...others.filter((d) => d.at < c.at).map((d) => d.at + d.len));
 		return Math.min(length, ...others.filter((d) => d.at > c.at).map((d) => d.at)) - c.at;
 	}
 
-	/** 每個人：每個動作裡給他的拍點，和他用到哪幾種（照拍子、步驟、手位排，一種一條）。 */
+	/**
+	 * 每個人：每個動作裡給他的拍點，一共幾條、每個拍點畫在第幾條（照拍子、步驟、手位排，一種一條）。
+	 * 同一種在同一拍有好幾個（給全部的和給他的、給他角色的）：那一種多開一條，一個畫一條，不互相蓋住。
+	 */
 	const cues = $derived.by(() => {
-		const byMember: Record<string, { mine: Record<string, Cue[]>; kinds: CueKind[] }> = {};
+		const byMember: Record<string, { mine: Record<string, Cue[]>; tracks: number; track: Map<Cue, number> }> = {};
 		for (const m of flow.members) {
 			const mine: Record<string, Cue[]> = {};
 			for (const a of flow.actions) {
 				const given = (a.cues ?? []).filter((c) => cueForMember(c, a, m.id));
 				if (given.length) mine[a.id] = given;
 			}
-			const used = new Set(Object.values(mine).flatMap((cs) => cs.map((c) => c.kind)));
-			byMember[m.id] = { mine, kinds: CUE_KINDS.filter((k) => used.has(k)) };
+			// 每種幾條、每個拍點在那一種的第幾條：照開始排，放進第一條空著的。
+			const rows = new Map<Cue, number>();
+			const rowCount: Partial<Record<CueKind, number>> = {};
+			for (const given of Object.values(mine)) {
+				for (const kind of CUE_KINDS) {
+					const ends: number[] = [];
+					for (const c of given.filter((x) => x.kind === kind).toSorted((x, y) => x.at - y.at)) {
+						const free = ends.findIndex((end) => end <= c.at);
+						const row = free < 0 ? ends.length : free;
+						ends[row] = c.at + c.len;
+						rows.set(c, row);
+					}
+					if (ends.length) rowCount[kind] = Math.max(rowCount[kind] ?? 0, ends.length);
+				}
+			}
+			let tracks = 0;
+			const first = {} as Record<CueKind, number>;
+			for (const kind of CUE_KINDS) {
+				first[kind] = tracks;
+				tracks += rowCount[kind] ?? 0;
+			}
+			const track = new Map([...rows].map(([c, row]) => [c, first[c.kind] + row]));
+			byMember[m.id] = { mine, tracks, track };
 		}
 		return byMember;
 	});
@@ -171,20 +233,25 @@
 		dx: number;
 	} | null>(null);
 
-	/** 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘、撞位的那幾段。 */
+	/**
+	 * 每個人的走位（位置有變的才算）：走到哪一張、出發和到達的秒數、是不是太快、是不是很喘、撞位的那幾段，
+	 * 和走位條按鈕的名字（只用鍵盤、螢幕報讀器的人聽得到是誰走到哪一張、什麼時候）。
+	 */
 	const walks = $derived.by(() => {
 		const byMember: Record<
 			string,
-			({ formationId: string; speed: string; clashes: { startSec: number; endSec: number }[] } & Pick<
+			({ formationId: string; speed: string; label: string; clashes: { startSec: number; endSec: number }[] } & Pick<
 				FormationWalk,
 				'departSec' | 'arriveSec' | 'tooFast' | 'tiring'
 			>)[]
 		> = {};
-		for (const b of flow.formations) {
+		for (const [i, b] of flow.formations.entries()) {
 			for (const w of formationWalks(flow, b.id)) {
 				const { memberId, departSec, arriveSec, tooFast, tiring } = w;
 				const speed = walkSpeedText(flow, w);
-				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, clashes: [] });
+				const name = flow.members.find((m) => m.id === memberId)?.name ?? '';
+				const label = `${name} 走到站位 ${i + 1}：${positionText(flow, departSec)} 出發、${positionText(flow, arriveSec)} 到達`;
+				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, label, clashes: [] });
 			}
 		}
 		for (const c of clashes) {
@@ -230,7 +297,8 @@
 		const p = placed.find((x) => x.action.id === d.id);
 		const segment = p && flow.segments.find((s) => s.id === p.action.segmentId);
 		if (!p || !segment) return null;
-		const length = p.action.length + Math.round(d.dx / p.halfPx);
+		// 拉過段尾停在段尾（裁短）。
+		const length = Math.min(p.action.length + Math.round(d.dx / p.halfPx), units(segment) - p.action.start);
 		const end = atTextWithUnit(segment, p.action.start + length);
 		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
 		return { text: `${lengthTextWithUnit(segment, length)}・在 ${end} 結束`, out };
@@ -264,10 +332,13 @@
 		);
 	}
 
-	/** 點一下走位條：選這個人（已經選到就不動，選到的一組才拖得動）；Shift＋點加進來或拿掉。 */
+	/**
+	 * 點一下走位條：選這個人（已經選到就不改選的人，選到的一組才拖得動，但照樣算最後點的是人）；Shift＋點加進來或拿掉。
+	 */
 	function tapWalk(e: MouseEvent, memberId: string) {
 		if (walkMoved) return;
 		if (e.shiftKey || !selected.has(memberId)) session.pickMember(memberId, e.shiftKey);
+		else session.selectMembers(session.selectedMemberIds);
 	}
 
 	/**
@@ -302,13 +373,14 @@
 	function dropWalk(d: NonNullable<typeof walkDrag>) {
 		const { walks: next, clamped, shiftSec } = draggedWalks(d);
 		if (Math.abs(shiftSec) < 1e-9) {
-			if (clamped) session.notice = AT_EDGE;
+			// 檢視模式：說不能改，不說已靠到邊界
+			if (clamped) session.notice = session.editable ? AT_EDGE : VIEW_ONLY;
 			return;
 		}
 		session.ask.send({ name: 'setWalks', args: [d.formationId, next] }, {
 			revert: () => {},
 			done: () => {
-				if (clamped) session.notice = AT_EDGE;
+				if (clamped) session.noteChange(AT_EDGE);
 			}
 		});
 	}
@@ -332,18 +404,16 @@
 </script>
 
 {#each flow.members as m, i (m.id)}
-	{@const kinds = cues[m.id].kinds}
+	{@const tracks = cues[m.id].tracks}
 	<div
 		class="row"
 		data-lane={m.id}
-		style:height={kinds.length
-			? `${BAR_TOP + lift[m.id] + NAME_H + kinds.length * TRACK_H + WALK_H}px`
-			: undefined}
+		style:height={laneHeight(m.id, tracks)}
 	>
 		<button
 			type="button"
 			class="lab"
-			data-space-plays
+			bind:this={labs[m.id]}
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
@@ -355,7 +425,7 @@
 				class:long={isLongMarker(markers[m.id])}
 				title={m.globalRole === 'top' ? '上層' : '底層'}>{markers[m.id]}</b
 			>
-			<span class="name">{m.name}</span>
+			<span class="name" title={m.name}>{m.name}</span>
 			{#if idle.has(m.id)}<span class="idle-tag" title="播放頭這一拍沒在動作裡">閒</span>{/if}
 		</button>
 		<div class="trk" style:width={`${width}px`}>
@@ -367,7 +437,6 @@
 					<button
 						type="button"
 						class="bar"
-						data-space-plays
 						class:selected={p.action.id === selectedActionId}
 						data-action-id={p.action.id}
 						class:dragging={d !== null}
@@ -377,6 +446,7 @@
 						style:left={`${p.left + (d?.mode === 'move' ? d.dx : 0)}px`}
 						style:width={`${Math.max(p.width + (d?.mode === 'resize' ? d.dx : 0), 2)}px`}
 						style:background={actionColor(p.action)}
+						style:padding-top={namePad(p.action.id, mine.length > 0)}
 						style:--tint={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
 						title="{p.label}{member.role ? `（${member.role}）` : ''}"
 						onclick={() => editor.pickAction(p.action.id)}
@@ -398,7 +468,7 @@
 								aria-hidden="true"
 								style:left={`${ph.at * p.halfPx}px`}
 								style:width={`${ph.len * p.halfPx}px`}
-								style:top="0px"
+								style:top={`${ph.row * PHASE_H}px`}
 								style:height={`${PHASE_H}px`}
 								style:background={ph.color}
 							></span>
@@ -416,12 +486,12 @@
 								style:transform={atEnd ? 'translateX(-100%)' : undefined}
 								style:width={c.kind === 'motion' ? undefined : `${c.len * p.halfPx}px`}
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
-								style:max-width={c.kind === 'motion' ? `${motionRoom(mine, c, p.action.length, atEnd) * p.halfPx}px` : undefined}
-								style:top={`${lift[m.id] + NAME_H + kinds.indexOf(c.kind) * TRACK_H}px`}
+								style:max-width={c.kind === 'motion' ? `${motionRoom(mine, cues[m.id].track, c, p.action.length, atEnd) * p.halfPx}px` : undefined}
+								style:top={`${lift[m.id] + NAME_H + (cues[m.id].track.get(c) ?? 0) * TRACK_H}px`}
 								style:height={`${TRACK_H - 1}px`}>{c.word}</span
 							>
 						{/each}
-						<span class="rz" data-resize title="拉這裡改長度"></span>
+						<span class="rz" data-resize data-edit title="拉這裡改長度"></span>
 					</button>
 					{#if d?.mode === 'resize' && d.memberId === m.id && resizeReadout}
 						<span
@@ -448,6 +518,7 @@
 					class:tiring={w.tiring}
 					class:out={d?.memberId === m.id && walkPreview?.out}
 					data-walk={w.formationId}
+					aria-label={w.label}
 					style:left={`${w.departSec * pxPerSec + dl}px`}
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
 					style:height={`${WALK_HIT_H}px`}
@@ -464,12 +535,13 @@
 					></span>
 					{#if !d}
 						{#each w.clashes as c, i (i)}
+							{@const cw = Math.max((c.endSec - c.startSec) * pxPerSec, CLASH_MIN_W)}
 							<span
 								class="clash"
 								data-walk-clash
 								title="撞位"
-								style:left={`${(c.startSec - w.departSec) * pxPerSec}px`}
-								style:width={`${Math.max((c.endSec - c.startSec) * pxPerSec, CLASH_MIN_W)}px`}
+								style:left={`${((c.startSec + c.endSec) / 2 - w.departSec) * pxPerSec - cw / 2}px`}
+								style:width={`${cw}px`}
 								style:height={`${WALK_H}px`}
 								style:bottom={`${WALK_HIT_DROP}px`}
 							></span>
@@ -495,7 +567,7 @@
 	.row:hover .trk {
 		background-color: rgba(47, 102, 184, 0.03);
 	}
-	/* 名字欄疊在播放頭（z 5）上面，橫向捲動時播放頭從名字底下過去。 */
+	/* 名字欄疊在播放頭（z 4）和走位條（z 5）上面，橫向捲動時從名字底下過去。 */
 	.lab {
 		position: sticky;
 		left: 0;
@@ -530,12 +602,12 @@
 	}
 	.no {
 		flex: none;
-		width: 18px;
-		height: 18px;
+		width: 22px;
+		height: 22px;
 		border-radius: 50%;
 		display: inline-grid;
 		place-items: center;
-		font-size: 10px;
+		font-size: 12px;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1;
@@ -545,9 +617,10 @@
 		background: #fff;
 		color: #16213a;
 	}
+	/* 深色的字：白字在橘底上太淡 */
 	.gr.top {
 		background: var(--top, #e0664f);
-		color: #fff;
+		color: #16213a;
 	}
 	.name {
 		overflow: hidden;
@@ -648,9 +721,6 @@
 	.role {
 		flex: 0 100 auto;
 	}
-	.bar.has-cues.has-phases {
-		padding-top: 4px;
-	}
 	/* 拍點：不吃滑鼠，按下去還是按在色條上。down 藍、up 綠實心；步驟淡橘、左邊粗線；手位粉紅小字（跟拍點表單同色）。 */
 	.cue {
 		position: absolute;
@@ -710,8 +780,9 @@
 	}
 	/* 手指：泳道（名字）至少 32px 高；拉長短的把手、走位條和兩端點得到的範圍變大，看起來不變。 */
 	@media (pointer: coarse) {
+		/* 名字 32px ＋ 下框線 1px（站位列固定在上面後，差的那 1px 會被它蓋到） */
 		.row {
-			min-height: 32px;
+			min-height: 33px;
 		}
 		.rz {
 			width: min(16px, 40%);
@@ -721,16 +792,12 @@
 			position: absolute;
 			inset: -5px 0 -4px;
 		}
-		.end {
-			top: -5px;
-			bottom: -4px;
-			width: min(16px, 40%);
-		}
 	}
-	/* 走位條：按鈕本身透明、比較高（好點），裡面的細條（.strip）貼在泳道下緣，蓋在色條上面；兩端是把手。 */
+	/* 走位條：按鈕本身透明、比較高（好點），裡面的細條（.strip）貼在泳道下緣，蓋在色條上面；兩端是把手。
+	   疊在播放頭（z 4）上面：播放頭停在端點上時，按下去拖到的是端點。 */
 	.walk {
 		position: absolute;
-		z-index: 3;
+		z-index: 5;
 		padding: 0;
 		border: none;
 		border-radius: 0;
@@ -811,11 +878,12 @@
 	.walk.dragging {
 		cursor: grabbing;
 	}
+	/* 兩端的把手：點得到的範圍 8px，看起來不變。 */
 	.end {
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		width: 6px;
+		width: 8px;
 		cursor: ew-resize;
 	}
 	.end.l {
@@ -823,6 +891,21 @@
 	}
 	.end.r {
 		right: 0;
+	}
+	/* 手指：把手往走位條外面多伸 8px、裡面最多 14px（短的走位條最多四成），上下也伸進泳道之間的空隙；
+	   短的走位條也比滑鼠的大。要寫在上面 .end 後面，不然被它蓋掉。 */
+	@media (pointer: coarse) {
+		.end {
+			top: -5px;
+			bottom: -4px;
+			width: calc(8px + min(14px, 40%));
+		}
+		.end.l {
+			left: -8px;
+		}
+		.end.r {
+			right: -8px;
+		}
 	}
 	/* 選到：貼著色條的深色框（用陰影畫）。外框留給焦點（全站的青色外框），兩個同時出現也分得開。 */
 	.bar.selected {

@@ -1,6 +1,6 @@
 // 流程檔：編輯器 module 握著（getEditor().file）。開檔、存檔、新建、回首頁、草稿、「沒存先問」都在這裡，頁面只照它的狀態畫對話框和提示。
 // 管：這支流程在不在檔案裡、正在存、「還沒存」的問題、開檔錯誤、缺音樂的提示、
-// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，只留最近編過的 5 支；停手 1 秒自動存，
+// 一支流程一個存檔薄層（記得存到哪個檔，換流程就丟掉）、草稿（每支流程一份，超過 5 支只自動丟沒改過的；停手 1 秒自動存，
 // 從檔案開的、存好的沒改過也留一份；首頁列成「最近的流程」；另一個分頁正在編的流程不能打開，清掉草稿前先問別的分頁；
 // 開檔時那個檔有改過沒存的草稿，先問要救回修改還是用檔案）。
 // 雲端流程（新建時選存在雲端、首頁「我的流程」點的）也從這裡打開：它沒有草稿，不列在最近的流程（#247），
@@ -101,6 +101,8 @@ export class FlowFile {
 	#uploading = false;
 	/** 傳上雲端時有音樂檔太大：跳框寫是哪一段、幾 MB（按「知道了」清掉）。 */
 	#tooBig = $state.raw<AudioTooBig | null>(null);
+	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
+	#announced: string | null = null;
 
 	/**
 	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
@@ -117,6 +119,7 @@ export class FlowFile {
 			this.#saveDraftLater();
 			this.#saveCopyLater();
 			this.#dropMissingNotice();
+			this.#announce();
 			if (!editor.session.flow) {
 				this.#closeCloud();
 				void this.#readRecent();
@@ -135,9 +138,18 @@ export class FlowFile {
 			if (message.kind === 'editing?' && this.#editor.session.flow && message.id === this.#draftId) {
 				channel.post({ kind: 'editing', id: message.id });
 			}
+			// 別的分頁打開、離開一支流程：首頁的「另一個分頁正在編」跟著改
+			if (message.kind === 'editing' || message.kind === 'released') {
+				const busy = message.kind === 'editing';
+				if (this.#recent.some((f) => f.id === message.id && f.busy !== busy)) {
+					this.#recent = this.#recent.map((f) => (f.id === message.id ? { ...f, busy } : f));
+				}
+			}
 		});
+		this.#announce();
 		void this.#checkDraft();
 		return () => {
+			this.pageClosed();
 			channel?.close();
 			this.#channel = null;
 			clearTimeout(this.#draftTimer);
@@ -179,6 +191,7 @@ export class FlowFile {
 			const oldId = this.#draftId;
 			this.#draftId = fileDraftId(bytes);
 			if (oldId !== this.#draftId) void this.#dropDraft(oldId);
+			this.#announce();
 			this.#saveDraftLater();
 			session.notice = [
 				savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch),
@@ -682,7 +695,7 @@ export class FlowFile {
 	 * 回傳現在就能選檔（沒有未存的修改、剛答應過）。
 	 */
 	mayChoose(choose: () => void): boolean {
-		if (this.#openApproved || !this.#editor.session.unsaved) return true;
+		if (this.#openApproved || !this.#editor.session.unsavedOrAsking) return true;
 		this.#asking = {
 			open: true,
 			then: () => {
@@ -699,7 +712,7 @@ export class FlowFile {
 	 */
 	async leaveToHome() {
 		const { session, music } = this.#editor;
-		if (session.unsaved) return this.startNew();
+		if (session.unsavedOrAsking) return this.startNew();
 		const f = session.flow;
 		const bytes = f && this.ownsDraft ? writeFlowFile(f, music.bytes(f)) : null;
 		session.open(null);
@@ -720,10 +733,12 @@ export class FlowFile {
 	) {
 		const editor = this.#editor;
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
+		// 草稿 id 先換：session 換流程時就跟別的分頁說正在編的是這支
+		this.#draftId = draftId;
 		editor.session.open(flow, from !== 'draft');
 		this.#closeCloud();
+		editor.actionDraft.restart();
 		this.#onDisk = from === 'file';
-		this.#draftId = draftId;
 		this.#fileBytes = null;
 		editor.adapters.pendingInput.settle();
 		// 從離線副本換成最新的（同一支流程）：練習畫面、對話框不關
@@ -767,6 +782,7 @@ export class FlowFile {
 	/**
 	 * 回答「還沒存」：丟掉就接著換流程；取消就留著；先存檔要存好了（沒有未存的修改）才接著換，
 	 * 在存檔視窗按取消或存失敗，就留在問的畫面。
+	 * 還有問題等教練回答（例：改名後還沒選保留或清掉）時先存檔不存也不換：存了也沒有那個修改，換掉就不見了；收掉這個問題，提示先回答。
 	 */
 	async answer(choice: 'save' | 'discard' | 'cancel') {
 		const then = this.#asking?.then;
@@ -776,6 +792,11 @@ export class FlowFile {
 			return;
 		}
 		if (choice === 'save') {
+			if (this.#editor.session.questionOpen) {
+				this.#asking = null;
+				this.#editor.session.notice = '還有問題沒回答：先回答了再存檔';
+				return;
+			}
 			await this.save();
 			if (this.#editor.session.unsaved || !this.#asking) return;
 		}
@@ -802,7 +823,7 @@ export class FlowFile {
 			if (this.ownsDraft) void this.#dropDraft(this.#draftId);
 			then();
 		};
-		if (this.#editor.session.unsaved && !approved) this.#asking = { then: go, open };
+		if (this.#editor.session.unsavedOrAsking && !approved) this.#asking = { then: go, open };
 		else go();
 	}
 
@@ -811,6 +832,12 @@ export class FlowFile {
 	/** 首頁列的最近的流程：有草稿的那幾支，最近的在前。 */
 	get recent(): RecentFlow[] {
 		return this.#recent;
+	}
+
+	/** 改過沒存的草稿超過 5 支時，是幾支（首頁提醒教練自己丟）；沒超過是 0。 */
+	get unsavedOverLimit(): number {
+		const n = this.#recent.filter((f) => f.unsaved).length;
+		return n > MAX_DRAFTS ? n : 0;
 	}
 
 	/**
@@ -833,13 +860,22 @@ export class FlowFile {
 		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, null, id);
 	}
 
-	/** 丟掉最近的流程裡的一支（頁面先問過教練了）：先問別的分頁有沒有在編它，有就不丟，標成正在編。 */
-	async discardRecent(id: string) {
+	/**
+	 * 丟掉最近的流程裡的一支（頁面先問過教練了）：先問別的分頁有沒有在編它，有就不丟，標成正在編。
+	 * 回傳丟掉了沒（頁面照這個說「已丟掉」或為什麼沒丟）：dropped 丟掉了；busy 另一個分頁正在編；failed 瀏覽器刪不掉。
+	 */
+	async discardRecent(id: string): Promise<'dropped' | 'busy' | 'failed'> {
 		if (await this.#otherTabEditing(id)) {
 			this.#recent = this.#recent.map((f) => (f.id === id ? { ...f, busy: true } : f));
-			return;
+			return 'busy';
 		}
-		this.#clearDraft(id);
+		try {
+			await this.#editor.adapters.draftStore.clear(id);
+		} catch {
+			return 'failed';
+		}
+		this.#draftsChanged();
+		return 'dropped';
 	}
 
 	/** 另一個分頁回答它正在編這支流程（草稿 id）嗎（等一下下，沒人回就是沒有）。 */
@@ -906,12 +942,11 @@ export class FlowFile {
 	}
 
 	/**
-	 * 現在存草稿（停手 1 秒到了、分頁藏起來了）：先送出欄位裡打到一半的字，草稿才有剛打的字
-	 * （送出會改流程、又排一次 1 秒後存，這裡一起存掉）。
+	 * 現在存草稿（停手 1 秒到了、分頁藏起來了）：只存已經送出的流程。欄位裡打到一半的字不送出（N01）：
+	 * 自動存不是教練說「好了」，送出會改流程、多一步復原、還可能跳確認框（Apple NSDocument 自動存也不送出）。
 	 */
 	#saveDraftNow() {
-		const { session, adapters, music } = this.#editor;
-		adapters.pendingInput.flush();
+		const { session, music } = this.#editor;
 		clearTimeout(this.#draftTimer);
 		this.#draftTimer = undefined;
 		const f = session.flow;
@@ -920,19 +955,38 @@ export class FlowFile {
 		else if (this.#fileBytes) void this.#saveDraft(this.#fileBytes);
 	}
 
+	/** 跟別的分頁說現在正在編哪支流程：跟上次說的不一樣，先說上一支「不編了」。 */
+	#announce() {
+		const id = this.#editor.session.flow ? this.#draftId : null;
+		if (id === this.#announced) return;
+		if (this.#announced) this.#channel?.post({ kind: 'released', id: this.#announced });
+		if (id) this.#channel?.post({ kind: 'editing', id });
+		this.#announced = id;
+	}
+
+	/** 分頁要關了（pagehide、頁面拆掉）：跟別的分頁說這支流程不編了，首頁不用等重新整理就點得開。 */
+	pageClosed() {
+		if (this.#announced) this.#channel?.post({ kind: 'released', id: this.#announced });
+		this.#announced = null;
+	}
+
+	/** 分頁從上一頁快取回來（pageshow persisted）：又在編這支流程，再跟別的分頁說一聲。 */
+	pageShown() {
+		this.#announce();
+	}
+
 	/**
-	 * 分頁藏起來了、要關了（pagehide、visibilitychange 變 hidden）：送出欄位裡打到一半的字，
-	 * 還沒進草稿的改動現在就存，不等停手 1 秒（iPad 收掉分頁不會問 beforeunload）。
+	 * 分頁藏起來了、要關了（pagehide、visibilitychange 變 hidden）：還沒進草稿的改動現在就存，不等停手 1 秒
+	 * （iPad 收掉分頁不會問 beforeunload）。欄位裡打到一半的字跟停手 1 秒一樣不送出（N01）。
 	 */
 	pageHidden() {
 		if (!this.#editor.session.flow) return;
-		this.#editor.adapters.pendingInput.flush();
 		if (this.#draftTimer !== undefined) this.#saveDraftNow();
 	}
 
 	/**
 	 * 存這支流程的草稿。存不了（例：私密視窗）就算了，草稿只是保險。
-	 * 這份草稿第一次存：草稿超過 5 支流程的，先丟跟檔案一樣（沒改過）的、舊的先丟；都丟了還超過，才丟改過沒存的最舊那份。
+	 * 這份草稿第一次存：草稿超過 5 支流程的，丟跟檔案一樣（沒改過）的、舊的先丟；改過沒存的不丟（首頁提醒，教練自己丟）。
 	 */
 	async #saveDraft(bytes: Uint8Array): Promise<void> {
 		const id = this.#draftId;
@@ -947,9 +1001,8 @@ export class FlowFile {
 			if (extra <= 0) return;
 			const loaded = await Promise.all(oldestFirst.map((d) => store.load(d.id)));
 			// 讀不出來的也算沒改過（反正打不開）
-			const unchanged = (i: number) => !loaded[i] || fileDraftId(loaded[i].bytes) === oldestFirst[i].id;
-			const order = [...oldestFirst.filter((_, i) => unchanged(i)), ...oldestFirst.filter((_, i) => !unchanged(i))];
-			for (const old of order.slice(0, extra)) void this.#dropDraft(old.id);
+			const unchanged = oldestFirst.filter((d, i) => !loaded[i] || fileDraftId(loaded[i].bytes) === d.id);
+			for (const old of unchanged.slice(0, extra)) void this.#dropDraft(old.id);
 		} catch {
 			// 草稿只是保險
 		}
@@ -1057,7 +1110,8 @@ function newestFirst(drafts: DraftInfo[]): DraftInfo[] {
 	return [...drafts].sort((a, b) => (b.savedAt?.getTime() ?? -Infinity) - (a.savedAt?.getTime() ?? -Infinity));
 }
 
-/** 草稿存的時間寫成「11/5 14:03」。 */
-export function draftTime(d: Date): string {
-	return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** 草稿存的時間寫成「11/5 14:03」；seconds 是寫到秒（「11/5 14:03:27」）。 */
+export function draftTime(d: Date, seconds = false): string {
+	const two = (n: number) => String(n).padStart(2, '0');
+	return `${d.getMonth() + 1}/${d.getDate()} ${two(d.getHours())}:${two(d.getMinutes())}${seconds ? `:${two(d.getSeconds())}` : ''}`;
 }

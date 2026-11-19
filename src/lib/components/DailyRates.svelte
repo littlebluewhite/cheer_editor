@@ -1,5 +1,6 @@
 <script lang="ts">
-	// 記錄頁下面：選到的動作每天的成功率。一列一天，最後一列「合計」；一欄一個環節，最後一欄「整次」。
+	// 記錄頁下面：選到的動作每天的成功率。一列一天，最後一列「合計」；一欄一個環節，最後一欄「整次」
+	// （只有一個環節時整次跟那一欄一樣，不放，跟總表一樣）。
 	// 大字是成功率，小字是完成率和次數；沒有紀錄寫「—」。可以看全部的組，或只看某一組（騰翻、跳躍是某一個人）。
 	import {
 		attemptWhos,
@@ -23,8 +24,8 @@
 	const flow = $derived(session.flow!);
 
 	const whos = $derived(attemptWhos(flow, action));
-	/** 選的組（或人），存成 select 的值；空字串是全部。 */
-	let picked = $state('');
+	/** 選的組（或人），存成 select 的值；空字串是全部。放在 session（照動作記）：切頁再回來還是它。 */
+	const picked = $derived(session.view.dailyWho[action.id] ?? '');
 	/** 選的組不在了（例如復原掉了）就看全部。 */
 	const who = $derived(whos.find((w) => w.who === picked)?.who);
 	const phases = $derived(action.successRate?.phases ?? []);
@@ -38,7 +39,7 @@
 		<h3>每天的成功率</h3>
 		<label
 			>{pickLabel}
-			<select bind:value={picked}>
+			<select value={picked} onchange={(e) => (session.view.dailyWho[action.id] = e.currentTarget.value)}>
 				<option value="">全部</option>
 				{#each whos as w (w.who)}
 					<option value={w.who}>{w.name}</option>
@@ -54,7 +55,7 @@
 					{#each phases as p (p.id)}
 						<th scope="col">{phaseLabel(p)}</th>
 					{/each}
-					<th scope="col">整次</th>
+					{#if phases.length > 1}<th scope="col">整次</th>{/if}
 				</tr>
 			</thead>
 			<tbody>
@@ -70,12 +71,14 @@
 								{:else}—{/if}
 							</td>
 						{/each}
-						<td>
-							{#if row.whole.whole}
-								<strong>{percent(row.whole.clean, row.whole.whole)}%</strong>
-								<small>{row.whole.whole} 次</small>
-							{:else}—{/if}
-						</td>
+						{#if phases.length > 1}
+							<td>
+								{#if row.whole.whole}
+									<strong>{percent(row.whole.clean, row.whole.whole)}%</strong>
+									<small>{row.whole.whole} 次</small>
+								{:else}—{/if}
+							</td>
+						{/if}
 					</tr>
 				{/each}
 			</tbody>

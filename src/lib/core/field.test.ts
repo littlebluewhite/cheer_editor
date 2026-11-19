@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fieldGeometry } from './index';
+import { CELL_M, fieldGeometry, fieldNumbers, frontLabelAt, fullView, NUMBER_BAND } from './index';
 
 describe('場地幾何', () => {
 	it('9 條直放是 16.46 × 12.80 m、9 × 7 格', () => {
@@ -88,5 +88,60 @@ describe('場地幾何', () => {
 		const h = fieldGeometry({ strips: 5, layout: 'horizontal' });
 		expect(h.gridLines).toHaveLength(6);
 		for (const l of h.gridLines) expect(l.x1).toBe(l.x2);
+	});
+});
+
+describe('場地上的號碼位置', () => {
+	const vertical = { strips: 9, layout: 'vertical' } as const;
+	const horizontal = { strips: 5, layout: 'horizontal' } as const;
+
+	it('整個場地的範圍：外圍以外左右上留號碼條、下面留 1 m 給「正面／裁判」', () => {
+		for (const field of [vertical, horizontal]) {
+			const { outer } = fieldGeometry(field);
+			const b = NUMBER_BAND;
+			expect(fullView(field)).toEqual({
+				x: outer.x - b,
+				y: outer.y - b,
+				width: outer.width + 2 * b,
+				height: outer.height + b + 1
+			});
+		}
+	});
+
+	it('9 條直放：條號在後面（上）、格號在左邊', () => {
+		const { mat, outer } = fieldGeometry(vertical);
+		const { strips, cells } = fieldNumbers(vertical, fullView(vertical), 0.3, 0.26);
+		expect(strips).toHaveLength(9);
+		expect(strips[0].n).toBe(1);
+		expect(strips[0].at[0]).toBeCloseTo(mat.x + CELL_M / 2);
+		expect(strips[0].at[1]).toBeCloseTo(outer.y - NUMBER_BAND + 1.1 * 0.3);
+		expect(cells).toHaveLength(7);
+		expect(cells[0].n).toBe(1);
+		expect(cells[0].at[0]).toBeCloseTo(outer.x - NUMBER_BAND + 0.65 * 0.26);
+		expect(cells[0].at[1]).toBeCloseTo(mat.y + mat.height - 0.5 * CELL_M + 0.3 * 0.26);
+	});
+
+	it('5 條橫放：條號在左邊、格號在後面（上）', () => {
+		const { mat, outer, strips: rects } = fieldGeometry(horizontal);
+		const { strips, cells } = fieldNumbers(horizontal, fullView(horizontal), 0.3, 0.26);
+		expect(strips).toHaveLength(5);
+		expect(strips[0].at[0]).toBeCloseTo(outer.x - NUMBER_BAND + 0.65 * 0.3);
+		expect(strips[0].at[1]).toBeCloseTo(rects[0].rect.y + CELL_M / 2 + 0.3 * 0.3);
+		expect(cells).toHaveLength(7);
+		expect(cells[0].at[0]).toBeCloseTo(mat.x + CELL_M / 2);
+		expect(cells[0].at[1]).toBeCloseTo(outer.y - NUMBER_BAND + 1.1 * 0.26);
+	});
+
+	it('放大後號碼條捲出畫面時，號碼貼著畫面邊上', () => {
+		const { outer } = fieldGeometry(vertical);
+		const view = { x: outer.x + 3, y: outer.y + 2, width: 5, height: 5 };
+		const { strips, cells } = fieldNumbers(vertical, view, 0.3, 0.26);
+		expect(strips[0].at[1]).toBeCloseTo(view.y + 1.1 * 0.3);
+		expect(cells[0].at[0]).toBeCloseTo(view.x + 0.65 * 0.26);
+	});
+
+	it('「正面／裁判」寫在外圍框下面 0.7 m、正中間', () => {
+		const { outer } = fieldGeometry(vertical);
+		expect(frontLabelAt(vertical)).toEqual([0, outer.y + outer.height + 0.7]);
 	});
 });

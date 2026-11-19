@@ -11,7 +11,10 @@ import {
 	moveAction,
 	moveSegment,
 	previousActions,
-	raisedAt,
+	layersAt,
+	setPositions,
+	stackedAt,
+	type Position,
 	resizeAction,
 	updateAction,
 	addSegment,
@@ -94,6 +97,17 @@ describe('新增動作', () => {
 		expect(addAction(flow, lib({ start: 20, length: 12 })).kind).toBe('ok');
 		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 6 })).kind).toBe('blocked');
 		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 5 })).kind).toBe('ok');
+	});
+
+	it('開始已經在段外：說在段外、這段有多長，不說不能跨段（T05）', () => {
+		expect(addAction(sample(), lib({ start: 32, length: 4 }))).toEqual({
+			kind: 'blocked',
+			message: '動作的開始在段外：這段只有 2 個八拍'
+		});
+		expect(addAction(sample(), lib({ segmentId: 's2', start: 100, length: 5 }))).toEqual({
+			kind: 'blocked',
+			message: '動作的開始在段外：這段只有 10.0 秒'
+		});
 	});
 
 	it('最後一段超出段尾：後面沒有段可以拆，寫最多還剩多長', () => {
@@ -206,12 +220,15 @@ describe('動作名稱和備註的字數', () => {
 		});
 	});
 
-	it('開檔進來名稱、備註超過上限的動作：沒改那一欄就照收，可以改別的', () => {
+	it('開檔進來名稱、備註超過上限的動作：沒改那一欄就照收，可以改別的；改短一點（還是超過）照收，變長才擋（N08）', () => {
 		const added = flowOf(addAction(sample(), lib()));
 		const long = { name: '字'.repeat(600), note: '字'.repeat(600) };
 		const flow = { ...added, actions: added.actions.map((a) => ({ ...a, ...long })) };
 		expect(flowOf(updateAction(flow, 'x1', { ...long, start: 2 })).actions[0]).toMatchObject({ ...long, start: 2 });
-		expect(updateAction(flow, 'x1', { name: '字'.repeat(599) }).kind).toBe('blocked');
+		expect(updateAction(flow, 'x1', { name: '字'.repeat(599) }).kind).toBe('ok');
+		expect(updateAction(flow, 'x1', { note: '字'.repeat(599) }).kind).toBe('ok');
+		expect(updateAction(flow, 'x1', { name: '字'.repeat(601) }).kind).toBe('blocked');
+		expect(updateAction(flow, 'x1', { note: '字'.repeat(601) }).kind).toBe('blocked');
 	});
 
 	it('開檔進來名稱超過上限、頭尾還有空白的動作：改備註不會因為名稱被去掉空白就擋下', () => {
@@ -271,23 +288,75 @@ describe('某一刻誰在做什麼、誰閒著', () => {
 		expect(idleAt(flow, 0)).toEqual(['m1']);
 	});
 
-	it('某一刻任務角色是上層或中層的人（畫在最上面），跟全局角色無關', () => {
+	it('某一刻在空中第幾層（看任務角色，跟全局角色無關）：中層、上層、支撐第 2 層，三層第 3 層，地上的人不列', () => {
 		let flow = sample();
+		flow = flowOf(addMembers(flow, ['小D', '小E', '小F'].map((name) => ({ name, gender: 'F' as const, globalRole: 'base' as const }))));
 		flow = flowOf(
 			addAction(
 				flow,
 				lib({
 					category: 'pyramid',
 					members: [
-						{ memberId: 'm1', role: '底層' },
+						{ memberId: 'm1', role: '三層' },
 						{ memberId: 'm2', role: '中層' },
-						{ memberId: 'm3', role: '上層' }
+						{ memberId: 'm3', role: '底層' },
+						{ memberId: 'm4', role: '支撐' },
+						{ memberId: 'm5', role: '上層' },
+						{ memberId: 'm6', role: '保護' }
 					]
 				})
 			)
 		);
-		expect(raisedAt(flow, 1)).toEqual(['m2', 'm3']);
-		expect(raisedAt(flow, 4)).toEqual([]);
+		expect(layersAt(flow, 1)).toEqual({ m1: 3, m2: 2, m4: 2, m5: 2 });
+		expect(layersAt(flow, 4)).toEqual({});
+	});
+});
+
+describe('疊在同一點的提醒', () => {
+	/** m1–m6 站在 at 給的位置，沒寫的站在遠遠的不同地方。 */
+	function placed(at: Record<string, Position>): Flow {
+		let flow = sample();
+		flow = flowOf(addMembers(flow, ['小D', '小E', '小F'].map((name) => ({ name, gender: 'F' as const, globalRole: 'base' as const }))));
+		const pos = Object.fromEntries(flow.members.map((m, i) => [m.id, at[m.id] ?? ([i * 2 - 5, 3] as Position)]));
+		return flowOf(setPositions(flow, flow.formations[0].id, pos));
+	}
+	const names = (groups: { name: string }[][]) => groups.map((g) => g.map((m) => m.name));
+
+	it('同一個金字塔裡不同層疊在一起是正常的，不提醒', () => {
+		let flow = placed({ m1: [0, 0], m2: [0, 0], m3: [0, 0] });
+		const members = [
+			{ memberId: 'm1', role: '三層' },
+			{ memberId: 'm2', role: '中層' },
+			{ memberId: 'm3', role: '底層' }
+		];
+		flow = flowOf(addAction(flow, lib({ category: 'pyramid', members })));
+		expect(stackedAt(flow, 1)).toEqual([]);
+		// 動作結束後還疊著：提醒
+		expect(names(stackedAt(flow, 4))).toEqual([['小A', '小B', '小C']]);
+	});
+
+	it('同一層的兩個人疊在一起照樣提醒，把整疊的人都寫出來', () => {
+		let flow = placed({ m1: [0, 0], m2: [0, 0], m3: [0, 0] });
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '底層' },
+			{ memberId: 'm3', role: '主底' }
+		];
+		flow = flowOf(addAction(flow, lib({ members })));
+		expect(names(stackedAt(flow, 1))).toEqual([['小A', '小B', '小C']]);
+	});
+
+	it('不同動作的人、或不是撐人的動作，不同層疊在一起也提醒', () => {
+		let flow = placed({ m1: [0, 0], m2: [0, 0], m4: [2, 0], m5: [2, 0] });
+		flow = flowOf(addAction(flow, lib({ members: [{ memberId: 'm1', role: '上層' }] })));
+		flow = flowOf(addAction(flow, lib({ name: '另一個', members: [{ memberId: 'm2', role: '底層' }] })));
+		flow = flowOf(
+			addAction(
+				flow,
+				lib({ category: 'dance', name: '舞', members: [{ memberId: 'm4', role: '上層' }, { memberId: 'm5', role: '底層' }] })
+			)
+		);
+		expect(names(stackedAt(flow, 1))).toEqual([['小A', '小B'], ['小D', '小E']]);
 	});
 });
 
@@ -359,12 +428,18 @@ describe('拖色條：移動、改長度', () => {
 		expect(flowOf(moveAction(flow, 'x1', 7.66)).actions[0].start).toBe(13);
 	});
 
-	it('拖到段外（跨段、段之前）或撞到同一人就擋下', () => {
+	it('拖過段尾：動作停在段尾（裁短），不是整個彈回去', () => {
+		const flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
+		// 6 秒是第 30 個半拍，段尾在 32：只留 2 個半拍
+		expect(flowOf(moveAction(flow, 'x1', 6)).actions[0]).toMatchObject({ segmentId: 's1', start: 30, length: 2 });
+	});
+
+	it('拖到段外（開始已經在段尾後面、段之前）或撞到同一人就擋下', () => {
 		let flow = flowOf(addAction(sample(), lib({ start: 0, length: 8 })));
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 16, length: 8 })));
-		expect(moveAction(flow, 'x1', 6)).toEqual({
+		expect(moveAction(flow, 'x1', 6.4)).toEqual({
 			kind: 'blocked',
-			message: '動作不能跨段，要跨就拆成兩個'
+			message: '動作的開始在段外：這段只有 2 個八拍'
 		});
 		expect(moveAction(flow, 'x1', -0.4)).toEqual({
 			kind: 'blocked',
@@ -376,7 +451,7 @@ describe('拖色條：移動、改長度', () => {
 		});
 	});
 
-	it('拉右邊改長度：結束吸到最近的半拍；拉到 0 或超出段尾就擋下', () => {
+	it('拉右邊改長度：結束吸到最近的半拍；拉到 0 就擋下，拉過段尾停在段尾', () => {
 		const flow = flowOf(addAction(sample(), lib({ start: 4, length: 8 })));
 		// 開始 0.8 秒；結束拉到 3.25 秒 → 長度 12 個半拍（結束 3.2 秒）
 		expect(flowOf(resizeAction(flow, 'x1', 3.25)).actions[0]).toMatchObject({ start: 4, length: 12 });
@@ -384,7 +459,7 @@ describe('拖色條：移動、改長度', () => {
 			kind: 'blocked',
 			message: '動作長度要在 0.5 到 14 拍之間'
 		});
-		expect(resizeAction(flow, 'x1', 7).kind).toBe('blocked');
+		expect(flowOf(resizeAction(flow, 'x1', 7)).actions[0]).toMatchObject({ start: 4, length: 28 });
 	});
 
 	it('找不到動作就擋下', () => {

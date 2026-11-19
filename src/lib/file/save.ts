@@ -21,8 +21,18 @@ export interface FileSaver {
  * 頭尾的空白和句點拿掉，提示的檔名才跟實際存下來的一樣。
  */
 export function flowFileName(flowName: string): string {
-	const safe = flowName.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '_').replace(/^[\s.]+|[\s.]+$/g, '');
-	return `${safe || '流程'}.zip`;
+	return `${safeFileBase(flowName, '流程')}.zip`;
+}
+
+/** 流程名 → 檔名不含副檔名的那段：不能用的字換成「_」，頭尾空白和句點拿掉，空的用 fallback。 */
+export function safeFileBase(name: string, fallback: string): string {
+	const safe = name.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '_').replace(/^[\s.]+|[\s.]+$/g, '');
+	return safe || fallback;
+}
+
+/** 流程影片的檔名「流程名.mp4」。 */
+export function videoFileName(flowName: string): string {
+	return `${safeFileBase(flowName, '流程')}.mp4`;
 }
 
 const ZIP_TYPES = [{ description: '流程檔', accept: { 'application/zip': ['.zip'] } }];
@@ -109,8 +119,42 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 	};
 }
 
-function download(bytes: Uint8Array, fileName: string) {
-	const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' }));
+const MP4_TYPES = [{ description: '流程影片', accept: { 'video/mp4': ['.mp4'] } }];
+
+/**
+ * 存流程影片：跟流程檔的存檔是兩套，不記 handle、不碰流程檔記著的那個檔，每次都問存到哪。
+ * 沒有 showSaveFilePicker 的瀏覽器直接下載（影片只在 Chrome、Edge 輸出，這是備用）。
+ */
+export async function saveVideo(bytes: Uint8Array, fileName: string): Promise<SaveOutcome> {
+	if (!('showSaveFilePicker' in window)) {
+		download(bytes, fileName, 'video/mp4');
+		return 'downloaded';
+	}
+	try {
+		const handle = await (
+			window as unknown as { showSaveFilePicker(o: { suggestedName: string; types: typeof MP4_TYPES }): Promise<FileSystemFileHandle> }
+		).showSaveFilePicker({ suggestedName: fileName, types: MP4_TYPES });
+		const writable = await handle.createWritable();
+		await writable.write(bytes as Uint8Array<ArrayBuffer>);
+		await writable.close();
+		return 'saved';
+	} catch (e) {
+		if (e instanceof DOMException && e.name === 'AbortError') return 'cancelled';
+		throw e;
+	}
+}
+
+/** 影片沒存成的原因：瀏覽器的訊息是英文，換成白話（原文對話框另外用小字寫）。 */
+export function saveFailureReason(e: unknown): string {
+	const name = typeof e === 'object' && e !== null && 'name' in e ? String(e.name) : '';
+	if (name === 'NotAllowedError' || name === 'SecurityError') return '瀏覽器不讓存，再按一次「存檔」';
+	if (name === 'QuotaExceededError') return '電腦的空間不夠，清出空間再存一次';
+	if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') return '檔案被別的程式打開了，關掉它或換個檔名再存一次';
+	return '存檔時出了問題，再按一次「存檔」';
+}
+
+function download(bytes: Uint8Array, fileName: string, type = 'application/zip') {
+	const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type }));
 	const a = document.createElement('a');
 	a.href = url;
 	a.download = fileName;

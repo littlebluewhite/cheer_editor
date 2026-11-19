@@ -162,7 +162,7 @@ async fn sample_flow(core: &FlowCore, records: Value) -> Value {
 
 /// flow.json 的內容。
 fn doc(flow: &Value) -> Value {
-    json!({ "formatVersion": 10, "flow": flow })
+    json!({ "formatVersion": 15, "flow": flow })
 }
 
 /// 流程檔裡的兩次：分段練一次（舊的 id），全上一次（帶開的時間）。
@@ -263,7 +263,7 @@ async fn broken_flows_and_flows_failing_the_whole_flow_check_are_not_uploaded(db
     // 檢查一整支流程：不是流程檔、比伺服器新的版本。
     let (status, body) = s.upload(&lin, json!({ "flow": good })).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(body, json!({ "message": "flow.json 壞掉了" }));
+    assert_eq!(body, json!({ "message": "流程檔裡的資料壞掉了" }));
     let (status, body) = s
         .upload(&lin, json!({ "formatVersion": 99, "flow": good }))
         .await;
@@ -275,7 +275,7 @@ async fn broken_flows_and_flows_failing_the_whole_flow_check_are_not_uploaded(db
     ghost["actions"][0]["members"][0]["memberId"] = json!("mnobody000000");
     let (status, body) = s.upload(&lin, doc(&ghost)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(body, json!({ "message": "flow.json 壞掉了" }));
+    assert_eq!(body, json!({ "message": "流程檔裡的資料壞掉了" }));
     let mut long = good.clone();
     long["segments"][0]["halfBeats"] = json!(1_000_000);
     let (status, body) = s.upload(&lin, doc(&long)).await;

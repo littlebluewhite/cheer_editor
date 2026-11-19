@@ -7,8 +7,11 @@ export const INSPECTOR_MIN_PX = 360;
 export const INSPECTOR_AUTO_MAX_PX = 960;
 /** 場地那一欄除了場地本身還要的寬度：左邊工具欄 236、間隔 12、左右內距各 12。 */
 export const FIELD_CHROME_PX = 236 + 12 + 24;
-/** 場地那一欄上下的內距（各 12）。 */
-const FIELD_PAD_Y_PX = 24;
+/**
+ * 場地那一欄除了場地本身還要的高度：上下的內距（各 12），和場地上面固定留給選人工具列的那一條
+ * （40，跟 Field 的 .stage.band 一樣：工具列出不出現，場地都不跳、不被蓋住）。
+ */
+const FIELD_PAD_Y_PX = 24 + 40;
 /** 場地最小多寬（不算左邊工具欄）：右邊欄拖得再寬，1024 寬的小筆電、iPad 上場地也不會被擠到看不清楚。 */
 export const FIELD_MIN_W_PX = 360;
 /** 自己拖的時候，場地那一欄至少留這麼寬。 */
@@ -26,7 +29,7 @@ export function autoInspectorWidth(windowW: number, fieldHostH: number, aspect: 
 
 /**
  * 窄螢幕（手機、直拿的 iPad、縮小的視窗）：編輯畫面放不下，一律是檢視模式，換成手機的檢視畫面
- * （上面場地、中間播放鈕、下面八拍表這一列，docs/adr/0005-ipad-touch.md）。
+ * （上面場地、中間播放鈕、下面前後八拍，docs/adr/0005-ipad-touch.md）。
  * 只看 screen：列印時紙比較窄，不能因為這樣換畫面。
  */
 export const NARROW_SCREEN = 'screen and (max-width: 1023px), screen and (max-height: 599px)';
@@ -35,22 +38,28 @@ export function isTouchScreen(): boolean {
 	return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 }
 
+/**
+ * 螢幕矮：畫面高這麼多以下時，場地被高度卡住（1024×768 只剩約 390×360）。
+ * 量過的：1440×900 場地那一欄高 513，左欄放得下、不用捲；1180×820（橫拿的 iPad）只有 457，1024×768、1366×768 是 420。
+ * 860 夾在中間：常見的 1440×900 以上照舊，橫拿的 iPad、768 高的筆電都算矮。窄螢幕的上方列樣式（+page.svelte）用一樣的數字；
+ * 電腦的上方列不看高矮，永遠一行（#280）。
+ */
+export const SHORT_SCREEN_MAX_H = 860;
+
 /** 編輯畫面至少要這麼寬、這麼高（跟 NARROW_SCREEN 一樣）。 */
 const EDIT_MIN_W_PX = 1024;
 const EDIT_MIN_H_PX = 600;
 
 /**
- * 窄螢幕上為什麼不能編，寫在手機的檢視畫面上：觸控螢幕拿直的、轉成橫的就夠大 → 請轉成橫的；
- * 不然照寬或高分開寫太窄、太矮（兩個都不夠寫太小）。夠大就是 ''。
+ * 窄螢幕上為什麼不能編，寫在手機的檢視畫面「檢視模式・只能看」後面：觸控螢幕拿直的、轉成橫的就夠大 → 請轉成橫的；
+ * 不然照寬或高分開寫太窄、太矮（兩個都不夠寫太小）。夠大就是 ''。不寫幾像素：看的人多半是隊員，用不到（N37）。
  */
 export function viewOnlyReason(w: number, h: number, touch: boolean): string {
 	const narrow = w < EDIT_MIN_W_PX;
 	const short = h < EDIT_MIN_H_PX;
 	if (!narrow && !short) return '';
-	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return '請轉成橫的，才能編輯';
-	if (narrow && short) return `畫面太小了（不到 ${EDIT_MIN_W_PX}×${EDIT_MIN_H_PX} 像素），只能看、不能編`;
-	if (narrow) return `畫面太窄了（不到 ${EDIT_MIN_W_PX} 像素寬），只能看、不能編`;
-	return `畫面太矮了（不到 ${EDIT_MIN_H_PX} 像素高），只能看、不能編`;
+	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return '請轉成橫的才能編輯';
+	return `畫面太${narrow && short ? '小' : narrow ? '窄' : '矮'}`;
 }
 
 /** 自己拖的寬度夾在 INSPECTOR_MIN_PX 和「場地那一欄留 FIELD_KEEP_W_PX」之間。 */

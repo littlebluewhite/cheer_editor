@@ -71,7 +71,7 @@ describe('檢查一整支流程（checkFlowDocument）：讀流程檔和傳上�
 		['型別不對', { formatVersion: FORMAT_VERSION, flow: { ...ratedSample(), members: {} } }],
 		['指到不存在的段', { formatVersion: FORMAT_VERSION, flow: { ...ratedSample(), segments: [] } }]
 	])('%s：壞掉了', (_, doc) => {
-		expect(checkFlowDocument(doc)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+		expect(checkFlowDocument(doc)).toEqual({ kind: 'error', message: '流程檔裡的資料壞掉了' });
 	});
 
 	it('段太長：寫出上限', () => {

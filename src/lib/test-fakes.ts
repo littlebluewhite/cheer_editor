@@ -1,7 +1,7 @@
 // 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算、連伺服器（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標，前端測試不開真的伺服器），
 // 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
 // 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
-import { fireEvent, screen } from '@testing-library/svelte';
+import { fireEvent, screen, within } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
@@ -35,6 +35,8 @@ import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES } from '#lib/music-library.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
 import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
+import { createFakeVideoEncoder } from '#lib/video/fake-encoder.js';
+import type { Measure } from '#lib/video/layout.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
@@ -1154,12 +1156,15 @@ export function manualFrames() {
 /**
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
+ * videoSaves 是預設的假影片存檔存下來的（位元組和檔名）；videoEncoder 是預設的假編碼器（release()、drawn、aborted）。
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  * 伺服器預設是沒人登入的假伺服器（fakeServer）。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
+	const videoSaves: { bytes: Uint8Array; fileName: string }[] = [];
+	const videoEncoder = createFakeVideoEncoder();
 	const editor = new Editor(
 		{
 			createEngine: () => createFakeEngine(),
@@ -1172,33 +1177,59 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			nextFrame: manualFrames().nextFrame,
 			server: fakeServer().server,
 			offline: fakeOfflineStore().store,
+			video: {
+				encoder: videoEncoder,
+				save: async (bytes, fileName) => {
+					videoSaves.push({ bytes, fileName });
+					return 'saved';
+				}
+			},
 			...adapters
 		},
 		flow
 	);
-	return { editor, session: editor.session, saves };
+	return { editor, session: editor.session, saves, videoSaves, videoEncoder };
 }
 
 /** 等 async 的存檔、開檔跑完。 */
 export const flush = () => new Promise((r) => setTimeout(r, 0));
 
-/** 從「開啟流程檔」（首頁）或「開啟」（上方列）開一個檔：只有測檔案本身才用，其他測試用 editorPage 放流程。 */
+/** 從「開啟流程檔」（首頁、上方列選單點的選檔欄位）或「開啟」（窄螢幕的上方列）開一個檔：只有測檔案本身才用，其他測試用 editorPage 放流程。 */
 export async function openFile(bytes: Uint8Array, label = '開啟流程檔', name = '練習用.zip') {
 	const file = new File([bytes as Uint8Array<ArrayBuffer>], name);
 	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
 	await flush();
 }
 
+/** 上方列「選單」的小窗（開著才有）。 */
+export const menuPop = () => screen.queryByRole('dialog', { name: '選單' });
+
+/** 打開上方列的「選單」（開著就不再按），回傳裡面的那一項（使用說明是連結，其他是按鈕）；沒有這一項回 null。 */
+export async function menuItem(name: string): Promise<HTMLElement | null> {
+	if (!menuPop()) await fireEvent.click(screen.getByRole('button', { name: '選單' }));
+	return within(menuPop()!).queryByRole(name === '使用說明' ? 'link' : 'button', { name });
+}
+
+/** 打開上方列的「選單」，點那一項（開啟流程檔、新建、輸出影片、流程設定）。 */
+export async function fromMenu(name: string) {
+	const item = await menuItem(name);
+	if (!item) throw new Error(`選單裡沒有「${name}」`);
+	await fireEvent.click(item);
+}
+
 /**
- * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算也是假的：`render(Page, page.props)`。
+ * 編輯頁放一個 testEditor 建的編輯器 module（給了流程就是開著它，沒給在首頁），座標換算、量字也是假的：`render(Page, page.props)`。
  * adapters 跟 testEditor 一樣，只有沒送出的字用真的（jsdom 有焦點和 change，存檔、⌘Z、關分頁要看到欄位裡打的字），
  * 畫面時鐘也用真的（jsdom 的 requestAnimationFrame，測試等下一格畫面）。
  * 測試讀 `page.session.flow`；`page.saves` 是按存檔存下來的檔，只有測檔案本身才讀。
  */
 export function editorPage(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const t = testEditor(flow, { pendingInput: domPendingInput, nextFrame: animationFrame, ...adapters });
-	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt } };
+	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt, measure: fakeMeasure } };
 }
+
+/** 假的量字（流程影片的版面；jsdom 沒有 Canvas，見 ADR 0002）：英數字 0.6 個字高寬，其他（中文、全形符號）1 個字高寬。 */
+export const fakeMeasure: Measure = (t, px) => [...t].reduce((w, c) => w + (/[\x00-\x7f]/.test(c) ? 0.6 : 1) * px, 0);
 
 /** 假的座標換算：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */
 export const fakeToMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
@@ -1289,7 +1320,7 @@ export function recordedFlow(): Flow {
 /**
  * squadFlow 再加：
  * x2：拋投（第 2 個八拍的前 4 拍），還沒有環節；小芳。
- * x3：騰翻（第 3 個八拍），環節整體「騰翻」整個動作；小美、小A。
+ * x3：騰翻（第 3 個八拍），環節翻法「騰翻」整個動作；小美、小A。
  */
 export function practiceFlow(): Flow {
 	let flow = squadFlow();
@@ -1300,5 +1331,5 @@ export function practiceFlow(): Flow {
 		{ memberId: 'm2', role: '騰翻' }
 	];
 	flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '', start: 32, length: 16, note: '', members: tumbling }));
-	return flowOf(addPhase(flow, 'x3', { kind: 'whole', name: '騰翻', beats: { at: 0, len: 16 } }));
+	return flowOf(addPhase(flow, 'x3', { kind: 'tumble', name: '騰翻', beats: { at: 0, len: 16 } }));
 }

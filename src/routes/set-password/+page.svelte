@@ -8,6 +8,7 @@
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import { httpServer, type LinkInfo, type PasswordProblem, type ServerAdapter } from '#lib/server-api.js';
+	import { revealAlert } from '#lib/components/reveal.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -79,16 +80,16 @@
 			</span>
 			<p class="count" class:enough={count >= MIN}>{count}／至少 {MIN} 個字</p>
 			{#if problem && problem !== 'unreachable'}
-				<p class="error" role="alert">
+				<p class="error" {@attach revealAlert()}>
 					{problem.kind === 'tooShort' ? `還差 ${problem.missing} 個字。` : '這個密碼太常見，或在別的網站外洩過。換一個。'}
 				</p>
 			{/if}
-			{#if problem === 'unreachable'}<p class="error" role="alert">連不上伺服器，請稍後再試。</p>{/if}
+			{#if problem === 'unreachable'}<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>{/if}
 			<p class="hint">可以是一句話，空白、中文都算字。可以用密碼管理器。</p>
 			<button type="submit" class="btn primary wide" disabled={busy}>設好密碼</button>
 		</form>
 	{:else if problem === 'unreachable'}
-		<p class="error" role="alert">連不上伺服器，請稍後再試。</p>
+		<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>
 	{/if}
 </AccountCard>
 

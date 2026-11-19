@@ -1,28 +1,34 @@
 <script lang="ts">
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
 	// 每個環節三顆大按鈕 ✓ △ ✗；再按一次點著的那顆就取消。
-	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著，✗ 後面的按鈕停用）；
-	// 「全部 ✓ 存」一次存成每個環節都成功。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
+	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子；哪些環節按不了，問核心 blankPhases，「只練幾個環節」也一樣）；
+	// 「全部 ✓ 存」已點的照點的存，還能打、沒打的補 ✓。跳過了前面的環節（也問 blankPhases），存之前就提醒。
 	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
-	// 點到一半的記號只在這張卡上，還沒進流程：換動作、換頁（卡不見了）就不存。「這次練」的選擇留在 session，換回來還是它。
-	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來，雲端流程還沒傳上去的後面黃色「沒傳」（#260）；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次）。
+	// 還有勾了、沒打、跟它佔同樣拍的環節就先不存（問核心 pickedAutoSave）：卡上多一顆「存這一次」、提示寫為什麼在等，打完自動存。
+	// 點到一半的記號還沒進流程，跟「這次練」的選擇一樣留在 session：換動作、換頁再回來還在，卡上標「還沒存」。
+	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來，雲端流程還沒傳上去的後面黃色「沒傳」（#260）；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次；提示走編輯器唯一的提示，不在卡上）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
 	// 雲端流程別人記的那一次，記號後面小字寫名字（自己記的不寫，#257）。
 	// 雲端流程（#258）：「刪掉上一次」寫成「刪掉我的上一次」，只刪自己記的（編輯者也是）；記錄者點別人記的那一次只看得到是誰記的，不能改、刪。
 	import {
 		MARKS,
+		NOT_YET_MARK,
+		NOT_YET_TITLE,
 		attemptText,
+		blankPhases,
+		fillOk,
 		keptAttempt,
 		phaseColor,
 		phaseLabel,
+		pickedAutoSave,
 		type Action,
 		type Attempt,
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { Flash } from '#lib/flash.svelte.js';
-	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
+	import { removeWithRestore } from './record-notice';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 有記成功率、至少一個環節的動作。 */
@@ -43,8 +49,6 @@
 	const flow = $derived(session.flow!);
 	/** 記一次、刪掉上一次、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
 	const ask = session.recordAsk();
-	/** 存好、刪掉之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
-	const flash = new Flash<Notice>();
 
 	/** 這張卡的「這次練」在 session 裡的 key。 */
 	const scopeKey = $derived(`${action.id} ${who}`);
@@ -53,37 +57,40 @@
 	/** 只有一個環節就是整個做（選「整個／只練幾個環節」的地方不見了，之前選的不算）。 */
 	const whole = $derived(scope.whole || (action.successRate?.phases.length ?? 0) < 2);
 	const picked = $derived(scope.picked);
-	/** 這一次已經點的記號（還沒存）。 */
-	let marks = $state<Record<string, Mark>>({});
-
 	const phases = $derived(action.successRate?.phases ?? []);
+	/** 這張卡這一天點的記號在 session 裡的 key（換日期是另一份）。 */
+	const marksKey = $derived(`${scopeKey} ${date}`);
 	/** 這一次要練的環節，照順序。 */
 	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
-	/** 會存下來的樣子（核心決定留哪些記號、算不算整個做）。 */
-	const kept = $derived(keptAttempt(action, whole, marks));
+	/** 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在；不是這次要練的環節的記號不算。 */
+	const marks = $derived(session.unsavedMarks(action, who, date));
+	function setMarks(next: Record<string, Mark>) {
+		session.drillMarks[marksKey] = next;
+		if (!Object.keys(next).length) trigger = undefined;
+	}
+	/** 只練幾個環節時最近一次到存的時機點的環節（✗ 或最後一個勾的）：等的是跟它佔同樣拍的（問核心 pickedAutoSave）。 */
+	let trigger = $state<string | undefined>();
+	/** 會存下來的樣子（核心決定留哪些記號、哪些環節空著、跳過了哪些）。 */
+	const kept = $derived(blankPhases(action, whole, marks));
 	/** 卡上亮的記號。 */
 	const shown = $derived(kept.marks);
-	/** 「整個」第一個 ✗ 在第幾個環節（後面的停用）；沒有 ✗ 是 phases.length。 */
-	const failAt = $derived.by(() => {
-		const i = phases.findIndex((p) => shown[p.id] === '✗');
-		return whole && i >= 0 ? i : phases.length;
-	});
-	/** 選「整個」卻跳過前面的環節（最後一個點了的前面還有空著的）：存之前就說。 */
-	const skipping = $derived.by(() => {
-		const last = phases.findLastIndex((p) => shown[p.id]);
-		return whole && last > 0 && phases.slice(0, last).some((p) => !shown[p.id]);
-	});
+	/** 按不了的環節（按鈕停用）：✗ 做完之後才開始的。整個做、只練幾個環節都一樣。 */
+	const shut = $derived(kept.shut);
+	/** 選「整個」卻跳過前面的環節：存之前就說。 */
+	const skipping = $derived(kept.skipped.length > 0);
+	/** 只練幾個環節、到了存的時機，還有同時在做的環節沒打：先不存，等它們打完（點到一半的記號留在 session，換頁回來還在等）。 */
+	const waiting = $derived(!whole && pickedAutoSave(action, picked, shown, trigger).waiting.length > 0);
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
 	function setWhole(value: boolean) {
 		session.drillScopes[scopeKey] = { whole: value, picked };
-		marks = {};
+		setMarks({});
 	}
 
 	function pick(id: string, on: boolean) {
 		session.drillScopes[scopeKey] = { whole, picked: on ? [...picked, id] : picked.filter((p) => p !== id) };
-		marks = {};
+		setMarks({});
 	}
 
 	/** 只練幾個環節時點那一列的空白處（不是勾選框、名字、能按的記號）：跟點勾選框一樣。 */
@@ -93,25 +100,30 @@
 	}
 
 	/**
-	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存。
+	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存
+	 * （只練幾個環節還有同時在做的沒打就先等）。
 	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
 	 */
 	function tap(phaseId: string, mark: Mark) {
-		flash.clear();
+		session.notice = '';
 		if (shown[phaseId] === mark) {
 			const { [phaseId]: _, ...rest } = shown;
-			marks = rest;
+			setMarks(rest);
 			return;
 		}
-		marks = keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks;
-		if (phases.length === 1 || (!whole && (mark === '✗' || phaseId === planned.at(-1)?.id))) save();
+		setMarks(keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks);
+		if (phases.length === 1) return save();
+		if (whole) return;
+		if (mark === '✗' || phaseId === planned.at(-1)?.id) trigger = phaseId;
+		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark }, trigger);
+		if (next.due && !next.waiting.length) save();
 	}
 
 	/** 存這一次（留哪些記號、算不算整個做由核心決定）；給了 next 就存它，不看點了的。 */
 	function save(next = marks) {
-		marks = {};
+		setMarks({});
 		ask.send({ name: 'recordAttempt', args: [action.id, { date, who, practice: 'drill', whole, marks: next }] }, {
-			done: () => flash.show({ text: '已存' })
+			done: () => (session.notice = '已記下')
 		});
 	}
 
@@ -127,19 +139,35 @@
 		draft = { ...attempt.marks };
 	}
 
-	/** 改的時候點記號：再點一次點著的那顆就變空的。 */
+	/**
+	 * 改的時候算 ✗ 的規則用的動作：整個做的一次只有那時就有的環節（打了記號的加上空著的，跟核心 changedAttempt 一樣），
+	 * 之後才加的不算進去，免得它的 ✗ 清掉存著的記號。
+	 */
+	const editAction = $derived.by(() => {
+		const rate = action.successRate;
+		if (!edited?.whole || !rate) return action;
+		const then = rate.phases.filter((p) => edited.marks[p.id] || edited.blanks?.includes(p.id));
+		return { ...action, successRate: { ...rate, phases: then } };
+	});
+	/** 改的時候按不了的環節：之後才加的，和跟記一次一樣 ✗ 做完之後才開始的（問核心 blankPhases）。 */
+	const editShut = $derived([
+		...phases.filter((p) => !editAction.successRate?.phases.includes(p)).map((p) => p.id),
+		...blankPhases(editAction, false, draft).shut
+	]);
+
+	/** 改的時候點記號：再點一次點著的那顆就變空的。點了 ✗，按不了的環節點過的記號不留（跟記一次一樣）。 */
 	function retap(phaseId: string, mark: Mark) {
 		if (draft[phaseId] === mark) {
 			const { [phaseId]: _, ...rest } = draft;
 			draft = rest;
-		} else draft = { ...draft, [phaseId]: mark };
+		} else draft = blankPhases(editAction, false, { ...draft, [phaseId]: mark }).marks;
 	}
 
 	function saveEdit(attempt: Attempt) {
 		ask.send({ name: 'changeAttempt', args: [action.id, attempt.id, draft] }, {
 			done: () => {
 				editing = null;
-				flash.show({ text: '已改' });
+				session.notice = '已改';
 			}
 		});
 	}
@@ -151,7 +179,7 @@
 		editing = null;
 		removeWithRestore(
 			ask,
-			flash,
+			session,
 			removedText(attempt),
 			{ name: 'deleteAttempt', args: [action.id, attempt.id] },
 			({ attempt, index }) => ({ name: 'restoreAttempt', args: [action.id, attempt, index] })
@@ -169,7 +197,7 @@
 		const last = lastMine!;
 		removeWithRestore(
 			ask,
-			flash,
+			session,
 			removedText(last),
 			{ name: 'deleteAttempt', args: [action.id, last.id] },
 			({ attempt, index }) => ({ name: 'restoreAttempt', args: [action.id, attempt, index] })
@@ -180,7 +208,7 @@
 <section class="card" aria-label={name}>
 	<header>
 		<div class="who">
-			<b>{name}</b>
+			<b>{name}{#if Object.keys(marks).length}<span class="unsaved">還沒存</span>{/if}</b>
 			{#if people}<small>{people.join('・')}</small>{/if}
 		</div>
 		<!-- 只有一個環節就沒得選，一定是整個做 -->
@@ -194,11 +222,12 @@
 			</div>
 		{/if}
 	</header>
-	{#if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
+	{#if waiting}<p class="hint">還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」</p>
+	{:else if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
 
 	<div class="phases">
-		{#each phases as p, i (p.id)}
-			{@const on = planned.includes(p) && i <= failAt}
+		{#each phases as p (p.id)}
+			{@const on = planned.includes(p) && !shut.includes(p.id)}
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (鍵盤用勾選框) -->
 			<div class="phase" class:off={!on} class:pickable={!whole} onclick={(e) => pickRow(e, p.id)}>
 				{#if whole}
@@ -225,20 +254,19 @@
 		{/each}
 	</div>
 
-	<!-- 提示在左、存檔鈕在右（靠近 ✓）；這一列高度固定，提示出現、收掉都不位移 -->
-	<div class="save-row">
-		<RecordNotice notice={flash} />
-		{#if whole && phases.length > 1}
+	<!-- 存檔鈕在右（靠近 ✓）。提示（已記下、已刪掉…救回）浮在練習畫面下方，不在卡上推動版面 -->
+	{#if whole && phases.length > 1}
+		<div class="save-row">
 			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>存這一次</button>
-			<button
-				type="button"
-				class="primary all-ok"
-				onclick={() => save(Object.fromEntries(phases.map((p) => [p.id, '✓' as Mark])))}>全部 ✓ 存</button
-			>
-		{/if}
-	</div>
+			<button type="button" class="primary all-ok" onclick={() => save(fillOk(action, shown))}>全部 ✓ 存</button>
+		</div>
+	{:else if waiting}
+		<div class="save-row">
+			<button type="button" class="save" onclick={() => save()}>存這一次</button>
+		</div>
+	{/if}
 	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	<footer>
 		{#if today.length}
@@ -246,12 +274,13 @@
 				{#each today as r, i (r.id)}
 					{@const run = r.practice === 'runThrough'}
 					{@const kind = run ? '全上' : r.whole ? '分段練' : '只練幾個環節'}
-					<li class:run class:partial={!r.whole} title={kind}>
+					{@const text = attemptText(action, r)}
+					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? `${kind}；${NOT_YET_TITLE}` : kind}>
 						<button
 							type="button"
 							aria-expanded={editing === r.id}
-							aria-label="改第 {i + 1} 次（{kind} {attemptText(action, r)}）"
-							onclick={() => openEdit(r)}>{attemptText(action, r)}</button
+							aria-label="改第 {i + 1} 次（{kind} {text}）"
+							onclick={() => openEdit(r)}>{text}</button
 						>{#if session.recordedBy[r.id]}<small class="by">{session.recordedBy[r.id]}</small>{/if}{#if session.unsentRecords.has(r.id)}<small
 								class="unsent">沒傳</small
 							>{/if}
@@ -285,6 +314,7 @@
 								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
 								aria-label="第 {n} 次 {phaseLabel(p)} {m.label}"
 								aria-pressed={draft[p.id] === m.key}
+								disabled={editShut.includes(p.id)}
 								onclick={() => retap(p.id, m.key)}>{m.key}</button
 							>
 						{/each}
@@ -308,7 +338,6 @@
 	.card {
 		--ok: #15803d;
 		--minor: #b45309;
-		--fail: #b91c1c;
 		display: grid;
 		align-content: start;
 		gap: 10px;
@@ -330,6 +359,15 @@
 	}
 	header b {
 		font-size: 15px;
+	}
+	.unsaved {
+		margin-left: 6px;
+		padding: 0 5px;
+		border-radius: 4px;
+		background: var(--surface-2);
+		color: var(--minor);
+		font-size: 12px;
+		font-weight: 400;
 	}
 	.who small {
 		color: var(--muted);
@@ -531,9 +569,6 @@
 		justify-content: flex-end;
 		gap: 8px;
 		min-height: 36px;
-	}
-	.save-row :global(.notice) {
-		margin-right: auto;
 	}
 	.undo-last {
 		flex: none;

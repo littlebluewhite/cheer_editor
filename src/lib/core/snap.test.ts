@@ -72,8 +72,8 @@ describe('位置文字', () => {
 		expect(fieldPositionText(nine, [0, 0])).toBe('第 5 條 左起 1/2｜正面起第 4 格 1/2');
 	});
 
-	it('在格線上寫「線上」；八等分照寫', () => {
-		expect(fieldPositionText(nine, [-4.572, 2.7432])).toBe('第 3 條 左起 線上｜正面起第 3 格 線上');
+	it('在格線上寫在第幾、幾條（格）之間，不寫「線上」（T13）；八等分照寫', () => {
+		expect(fieldPositionText(nine, [-4.572, 2.7432])).toBe('第 2、3 條的接縫｜正面起第 2、3 格之間');
 		expect(fieldPositionText(nine, [-4.3434, 3.8862])).toBe('第 3 條 左起 1/8｜正面起第 2 格 3/8');
 	});
 
@@ -82,7 +82,7 @@ describe('位置文字', () => {
 	});
 
 	it('場地外寫在哪一邊外面幾格', () => {
-		expect(fieldPositionText(nine, [-8.2296, 6.858])).toBe('第 1 條 左起 線上｜場地外正面那邊 1/4 格');
+		expect(fieldPositionText(nine, [-8.2296, 6.858])).toBe('第 1 條 場地左緣｜場地外正面那邊 1/4 格');
 		expect(fieldPositionText(nine, [-9.144, -6.858])).toBe('場地外左邊 1/2 格｜場地外後面 1/4 格');
 		expect(fieldPositionText(nine, [8.6868, 0])).toBe('場地外右邊 1/4 格｜正面起第 4 格 1/2');
 	});
@@ -91,10 +91,16 @@ describe('位置文字', () => {
 		expect(fieldPositionText(five, [-5.9436, 0])).toBe('第 3 條 正面起 1/2｜左起第 1 格 1/4');
 	});
 
-	it('沒在吸附點上（例如舊檔）就寫百分比', () => {
+	it('沒在吸附點上（例如舊檔）：寫最近的八分之幾，前面加「約」，不寫百分比（T13）', () => {
 		expect(fieldPositionText(nine, [-4.572 + 0.3 * 1.8288, 3.6576])).toBe(
-			'第 3 條 左起 30%｜正面起第 2 格 1/2'
+			'第 3 條 左起 約 1/4｜正面起第 2 格 1/2'
 		);
+		expect(fieldPositionText(nine, [-4.572 + 0.02 * 1.8288, 3.6576])).toBe('約 第 2、3 條的接縫｜正面起第 2 格 1/2');
+		expect(fieldPositionText(nine, [-9.144 + 0.3, 0])).toBe('場地外左邊 約 3/8 格｜正面起第 4 格 1/2');
+	});
+
+	it('橫放：開頭那條的正面邊上', () => {
+		expect(fieldPositionText(five, [-5.9436, 5 * 0.9144])).toBe('第 1 條 場地正面緣｜左起第 1 格 1/4');
 	});
 });
 

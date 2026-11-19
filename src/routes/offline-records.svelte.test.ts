@@ -182,7 +182,7 @@ describe('斷網時改、刪自己記的', () => {
 		expect(s.offline.of('c1')).toBeNull();
 
 		// 刪了又救回：還是一筆沒傳的
-		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '救回' }));
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		await settle();
 		expect(dayRow('第 1 組 小美')).toEqual(['✓··沒傳']);
 		s.network('online');

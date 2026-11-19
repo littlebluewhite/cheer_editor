@@ -1,16 +1,23 @@
 <script lang="ts">
-	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和手機的「八拍表這一列」共用。
+	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和檢視模式的「前後八拍」共用。
 	import { actionLabel, cueText, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
 
 	interface Props {
-		line: EightCountCueLine;
+		/** null：沒有動作，只畫 1–8 的空格（前後八拍裡這一拍照樣有格子亮）。 */
+		line: EightCountCueLine | null;
 		/** 這一列是第幾個八拍（環節的讀屏名字寫「1-1 到 1-3」）。 */
 		eight: number | null;
+		/** 播放頭在第幾個半拍（0–15）：那一拍的數字格和正在響的拍點亮。八拍表（列印）不給。 */
+		now?: number | null;
 	}
 
-	let { line, eight }: Props = $props();
+	let { line, eight, now = null }: Props = $props();
 
-	const name = $derived(actionLabel(line));
+	const beat = $derived(now === null ? null : Math.floor(now / 2) + 1);
+
+	const name = $derived(line ? actionLabel(line) : '');
+	const cues = $derived(line?.cues ?? []);
+	const phases = $derived(line?.phases ?? []);
 
 	/** 「拍子 down 1-6 到 1-7・2 拍」「手位 high V 1-8・1 拍・給上層」。 */
 	const cueLabel = (c: EightCountCue) => cueText(c.kind, c.word, c.span, c.who ?? '');
@@ -22,16 +29,17 @@
 	}
 </script>
 
-<div class="cue-line" role="group" aria-label="{name} 的拍點">
-	<span class="cue-name">{name}</span>
+<div class="cue-line" role="group" aria-label={line ? `${name} 的拍點` : '這個八拍的拍'}>
+	{#if line}<span class="cue-name" title={name}>{name}</span>{/if}
 	<div class="beats">
-		{#if line.phases.length}
+		{#if phases.length}
 			<div class="phases">
-				{#each line.phases as p, k (k)}
+				{#each phases as p, k (k)}
 					<span
 						class="phase"
 						data-phase
 						style:grid-column="{p.from} / {p.to + 1}"
+						style:grid-row={p.row + 1}
 						style:border-top-color={p.color}
 						aria-label={phaseAria(p)}>{p.label}</span
 					>
@@ -40,11 +48,12 @@
 		{/if}
 		<div class="cells">
 			{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-				<span class="n" style:grid-column={n}>{n}</span>
+				<span class="n" class:lit={n === beat} data-now={n === beat ? '' : undefined} style:grid-column={n}>{n}</span>
 			{/each}
-			{#each line.cues as c, k (k)}
+			{#each cues as c, k (k)}
 				<span
 					class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
+					class:lit={now !== null && c.start <= now && now < c.end}
 					style:grid-column="{c.from} / {c.to + 1}"
 					aria-label={cueLabel(c)}
 					title={c.who ? `${c.word}（${c.who}）` : c.word}
@@ -73,14 +82,15 @@
 		flex: 1;
 		min-width: 0;
 	}
-	/* 環節：拍點上面一行，左右直線框出範圍、上緣是環節的顏色，寫種類和名字（黑白印靠線和字）。 */
+	/* 環節：拍點上面一行，左右直線框出範圍、上緣是環節的顏色，寫種類和名字（黑白印靠線和字）。
+	   金字塔疊著的往下多一排（第幾排流程核心算好）；這個八拍只有下面那排有東西時，上面那排照樣留高度，同一個環節才每列都在同一排。 */
 	.phases {
 		display: grid;
 		grid-template-columns: repeat(8, 1fr);
+		grid-auto-rows: minmax(19px, auto);
 		margin-bottom: 2px;
 	}
 	.phase {
-		grid-row: 1;
 		margin: 0 1px;
 		padding: 1px 4px;
 		font-size: 11px;
@@ -112,6 +122,15 @@
 		font-size: 10px;
 		color: #7a8296;
 		border-bottom: 1px solid #c9ced8;
+	}
+	/* 播放頭在的那一拍（檢視模式）：數字格塗滿播放頭的顏色（深一點，白字對比才夠 4.5:1），蓋到那格的拍點外面一圈 */
+	.n.lit {
+		background: #c4401f;
+		color: #fff;
+		font-weight: 700;
+	}
+	.cue.lit {
+		box-shadow: 0 0 0 2px var(--now);
 	}
 	.cue {
 		margin: 0 2px;
@@ -158,8 +177,8 @@
 		border-radius: 999px;
 		color: var(--cue-motion-ink);
 	}
-	@media print {
-		/* 長拍點、環節名字換行，不用「...」截掉 */
+	/* 長拍點、環節名字換行，不用「...」截掉：印出來和手機、iPad（沒有滑鼠，移上去看 title 這招不能用，N35） */
+	@media print, (hover: none) {
 		.cue,
 		.phase {
 			white-space: normal;
@@ -167,6 +186,8 @@
 			text-overflow: clip;
 			overflow-wrap: anywhere;
 		}
+	}
+	@media print {
 		.cue-line {
 			break-inside: avoid;
 		}

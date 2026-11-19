@@ -53,6 +53,21 @@ export function popover(o: PopoverOptions): Attachment<HTMLElement> {
 	};
 }
 
+/** attachment：選單（role="menu"）打開時焦點進第一項；上下鍵在幾項之間輪流換。 */
+export function menuKeys(el: HTMLElement) {
+	const items = () => [...el.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+	items()[0]?.focus();
+	const keys = (e: KeyboardEvent) => {
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+		e.preventDefault();
+		const all = items();
+		const i = all.indexOf(document.activeElement as HTMLElement);
+		all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus();
+	};
+	el.addEventListener('keydown', keys);
+	return () => el.removeEventListener('keydown', keys);
+}
+
 export interface BelowInput {
 	/** 錨點（打開小窗的那個鈕），畫面座標。 */
 	anchor: { top: number; bottom: number; left: number; right: number };

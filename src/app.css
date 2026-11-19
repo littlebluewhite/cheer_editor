@@ -12,7 +12,8 @@
 	--line: #d8dee9;
 	--line-soft: #e8ecf3;
 	--text: #1a2238;
-	--muted: #66718a;
+	/* 次要的字：在 --paper 上對比也有 4.5:1（WCAG 1.4.3；scripts/check-layout.mjs 的對比掃描會擋）。 */
+	--muted: #5c677f;
 
 	--mat: #2f66b8;
 	--mat-deep: #1d4489;
@@ -25,6 +26,8 @@
 	--warn-text: #7a5200;
 	--danger: #c8372d;
 	--danger-soft: #fdecea;
+	/* 失敗、滿了：練習的 ✗、字數打到上限。 */
+	--fail: #b91c1c;
 	/* 走位的速度（場地上的走位線、泳道的走位條）：太快正紅、很喘橘色，要跟朱紅的播放頭分得開。 */
 	--walk-fast: #e5202e;
 	--walk-tiring: #ff9500;

@@ -65,6 +65,41 @@ describe('場地', () => {
 		for (const x of coords('x')) expect(x).toBeLessThan(outer('x'));
 	});
 
+	it('格號（#227）：直放寫在左邊外圍框外、正面起 1–7，每個號碼在那一格的前後範圍裡', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' } });
+		const els = [...document.querySelectorAll('[data-cell-number]')];
+		expect(els.map((el) => el.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+		const outerX = Number(document.querySelector('rect.margin')!.getAttribute('x'));
+		// 7 格 × 6 呎 ≈ 12.8 m，中心在 0：第 1 格（正面）在 y 4.6–6.4 m
+		const cell = 6 * 0.3048;
+		els.forEach((el, i) => {
+			const y = Number(el.getAttribute('y'));
+			expect(Number(el.getAttribute('x'))).toBeLessThan(outerX);
+			expect(y).toBeLessThan(3.5 * cell - i * cell);
+			expect(y).toBeGreaterThan(2.5 * cell - i * cell);
+		});
+	});
+
+	it('格號（#227）：橫放寫在後面外圍框外、左起 1–7，每個號碼在那一格的左右範圍裡', () => {
+		render(Field, { field: { strips: 5, layout: 'horizontal' } });
+		const els = [...document.querySelectorAll('[data-cell-number]')];
+		expect(els.map((el) => el.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+		const outerY = Number(document.querySelector('rect.margin')!.getAttribute('y'));
+		const cell = 6 * 0.3048;
+		els.forEach((el, i) => {
+			const x = Number(el.getAttribute('x'));
+			expect(Number(el.getAttribute('y'))).toBeLessThan(outerY);
+			expect(x).toBeGreaterThan(-3.5 * cell + i * cell);
+			expect(x).toBeLessThan(-2.5 * cell + i * cell);
+		});
+	});
+
+	it('八拍表的小站位圖（只畫一塊）不寫格號：擠在裁切的邊上會跟條號疊在一起', () => {
+		render(Field, { field: { strips: 9, layout: 'vertical' }, controls: false, crop: { x: -2, y: -2, width: 4, height: 4 } });
+		expect(document.querySelectorAll('[data-cell-number]')).toHaveLength(0);
+		expect(stripNumbers().length).toBeGreaterThan(0);
+	});
+
 	it('正面在下面，標「正面／裁判」', () => {
 		render(Field, { field: { strips: 9, layout: 'vertical' } });
 		expect(screen.getByText(/正面／裁判/)).toBeTruthy();
@@ -109,22 +144,84 @@ describe('上層、中層畫在最上面', () => {
 		expect(texts.map((t) => t.classList.contains('long'))).toEqual([true, false]);
 	});
 
-	it('raised 裡的人最後畫（蓋在別人上面），有黃框和陰影的樣式', () => {
-		const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
-			id: `m${i + 1}`,
-			name,
-			gender: 'F',
-			globalRole: 'base'
-		}));
+	const trio: Member[] = ['小A', '小B', '小C'].map((name, i) => ({
+		id: `m${i + 1}`,
+		name,
+		gender: 'F',
+		globalRole: 'base'
+	}));
+	const dotOf = (id: string) => document.querySelector<SVGGElement>(`[data-member-id="${id}"]`)!;
+	/** 圓點裡那一層 g 的 transform（放大）。 */
+	const inner = (id: string) => dotOf(id).querySelector(':scope > g')!.getAttribute('transform')!;
+
+	it('照層畫：高的層後畫（蓋在上面）；第 2 層以上黃框加陰影，三層再加橘框', () => {
 		render(Field, {
 			field: { strips: 9, layout: 'vertical' },
-			members,
+			members: trio,
 			positions: { m1: [0, 0], m2: [0, 0], m3: [1, 0] },
-			raised: ['m1']
+			levels: { m1: 3, m3: 2 }
 		});
 		const dots = [...document.querySelectorAll<SVGGElement>('[data-member-id]')];
 		expect(dots.map((d) => d.dataset.memberId)).toEqual(['m2', 'm3', 'm1']);
-		expect(dots.map((d) => d.classList.contains('raised'))).toEqual([false, false, true]);
+		expect(dots.map((d) => d.classList.contains('raised'))).toEqual([false, true, true]);
+		expect(dots.map((d) => d.classList.contains('lv3'))).toEqual([false, false, true]);
+	});
+
+	it('跟下面一層的人疊在同一點時還是畫在真的位置、原本大小（走位時不會跳）', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio,
+			positions: { m1: [0, 0], m2: [0, 0], m3: [3, 0] },
+			levels: { m1: 2, m3: 3 }
+		});
+		for (const id of ['m1', 'm2', 'm3']) expect(inner(id)).toMatch(/^scale\([\d.]+\)$/);
+		expect(dotOf('m1').getAttribute('transform')).toBe('translate(0,0)');
+	});
+
+	it('只是站在隔壁（圓點碰到邊，位置沒疊在同一點）：不畫虛線圈', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio,
+			// 隔 1/4 格（約 0.46 公尺）比圓點（0.6 公尺）窄：隔壁的圓點一定碰到
+			positions: { m1: [0, 0], m2: [0.45, 0], m3: [0, 0.45] },
+			levels: { m1: 2 }
+		});
+		expect(document.querySelectorAll('.covered')).toHaveLength(0);
+	});
+
+	it('被不同層蓋到的人多畫一圈虛線；同一層擠在一起的不畫', () => {
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: [...trio, { id: 'm4', name: '小D', gender: 'F', globalRole: 'base' }],
+			positions: { m1: [0, 0], m2: [0, 0], m3: [3, 0], m4: [3.1, 0] },
+			levels: { m1: 2 }
+		});
+		expect(document.querySelectorAll('circle.covered')).toHaveLength(1);
+	});
+
+	it('多字膠囊：疊在同一點時下面的人照膠囊的形狀畫虛線框；只有兩端碰到的不畫', () => {
+		const markers = { m1: '隊員二十五', m2: '隊員二十六' };
+		const positions = { m1: [0, 0] as Position, m2: [0, 0] as Position };
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio.slice(0, 2),
+			markers,
+			positions,
+			levels: { m1: 2 }
+		});
+		const w = Number(dotOf('m1').querySelector('rect')!.getAttribute('width'));
+		expect(document.querySelectorAll('rect.covered')).toHaveLength(1);
+		document.body.innerHTML = '';
+		// 中心隔得比兩個圓點遠、比兩個膠囊近：只有兩端疊在一起
+		render(Field, {
+			field: { strips: 9, layout: 'vertical' },
+			members: trio.slice(0, 2),
+			markers,
+			positions: { m1: [0, 0], m2: [w - 0.1, 0] },
+			levels: { m1: 2 }
+		});
+		expect(w - 0.1).toBeGreaterThan(0.6);
+		expect(document.querySelectorAll('.covered')).toHaveLength(0);
 	});
 });
 
@@ -195,6 +292,14 @@ describe('在場上拖人', () => {
 		// 拖的人被選到：場地下面改寫「選到的人在哪」
 		expect(screen.queryByText(/第 5 條/, { ignore: 'title, [role=note]' })).toBeNull();
 		expect(document.querySelectorAll('[data-snap-point]')).toHaveLength(0);
+	});
+
+	it('拖的時候的位置文字太長、尾巴變「…」時，title 照樣寫完整的位置（N42）', async () => {
+		const { dot } = setup();
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 46, clientY: 3 });
+		const readout = document.querySelector('.readout')!;
+		expect(readout.getAttribute('title')).toBe(readout.textContent);
 	});
 
 	it('點一下沒有拖，就不改位置', async () => {
@@ -319,7 +424,7 @@ describe('在場上選人、整組拖', () => {
 		const [m1, m2] = [posOf(session, 'm1'), posOf(session, 'm2')];
 		expect(m2[0]).toBeCloseTo(-8.2296, 4);
 		expect(m2[0] - m1[0]).toBeCloseTo(1, 6);
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 1；已靠到邊界');
 	});
 
 	it('兩根手指：捏合放大、一起拖移動畫面；不會選人、拖人', async () => {
@@ -479,16 +584,9 @@ describe('影子和走位線', () => {
 		expect(line.classList.contains('fast')).toBe(false);
 	});
 
-	it('勾「只看橘紅走位線」：白線藏起來，紅、橘照畫；取消勾全部回來', async () => {
-		const { ghosts, lines } = setup([]);
-		const toggle = screen.getByRole<HTMLInputElement>('checkbox', { name: '只看橘紅走位線' });
-		expect(toggle.checked).toBe(false);
-		await fireEvent.click(toggle);
-		expect(toggle.checked).toBe(true);
-		expect(lines()).toEqual(['m2', 'm3']);
-		// 影子不受影響。
-		expect(ghosts()).toEqual(['m1', 'm2', 'm3']);
-		await fireEvent.click(toggle);
+	it('沒有「只看橘紅走位線」的勾選：白、紅、橘的線一律都畫', () => {
+		const { lines } = setup([]);
+		expect(screen.queryByRole('checkbox', { name: '只看橘紅走位線' })).toBeNull();
 		expect(lines()).toEqual(['m1', 'm2', 'm3']);
 	});
 
@@ -518,7 +616,27 @@ describe('撞位', () => {
 		expect(marks[0].getAttribute('transform')).toBe('translate(1,0.5)');
 		expect(marks[0].textContent).toContain('小A');
 		expect(marks[0].textContent).toContain('小B');
-		expect(screen.getByText('撞位')).toBeTruthy();
+		expect(screen.getByText('撞位（只看騰翻）')).toBeTruthy();
+	});
+
+	it('✕ 畫在隊員圓點上面（SVG 後畫的蓋前面）；按在圓點上的 ✕ 照樣拖得動那個人', async () => {
+		const toMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
+		// 小B 站在 ✕ 的位置上
+		const session = renderEditing(members, { m1: [0, 0], m2: [1, 0.5] }, { clashes: [clash], toMeters });
+		const mark = document.querySelector('[data-clash]')!;
+		const dot = document.querySelector('[data-member-id="m2"]')!;
+		expect(dot.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		await fireEvent.pointerDown(mark, { clientX: 100, clientY: 50, button: 0 });
+		await fireEvent.pointerMove(mark, { clientX: 146, clientY: 53 });
+		await fireEvent.pointerUp(mark, { clientX: 146, clientY: 53 });
+		// 往右拖約半公尺：吸到 3/4 格（1.3716 公尺）
+		expect(posOf(session, 'm2')[0]).toBeCloseTo(1.3716, 4);
+	});
+
+	it('圖例寫出走位速度的門檻：很喘、走太快各是每秒幾公尺', () => {
+		renderEditing(members, { m1: [0, 0], m2: [2, 0] });
+		expect(screen.getByText('很喘 >2.5 m/s').title).toMatch(/每秒超過 2\.5 公尺/);
+		expect(screen.getByText('走太快 >4 m/s').title).toMatch(/每秒超過 4 公尺/);
 	});
 
 	it('沒給撞位就不畫', () => {

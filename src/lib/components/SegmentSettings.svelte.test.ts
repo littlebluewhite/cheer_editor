@@ -29,6 +29,15 @@ function musicFlow(): Flow {
 	return flowOf(addSegment(flow, 'music'));
 }
 
+// jsdom 沒有 scrollIntoView：記下被捲過去的元素。
+const scrolled: Element[] = [];
+Element.prototype.scrollIntoView = function () {
+	scrolled.push(this);
+};
+
+/** 等畫面跑一格（捲過去是等下一格才捲）。 */
+const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+
 const loaded = (durationSec: number): DecodedAudio => ({ durationSec, peaks: [0.2, 0.8, 0.5] });
 
 /**
@@ -140,6 +149,16 @@ describe('音樂段設定', () => {
 		expect(screen.queryByRole('note')).toBeNull();
 	});
 
+	it('第一拍在音樂結束之後：說整段沒有聲音、先改第一拍，不叫人按會失敗的「照音樂長度算」（T06）', async () => {
+		let flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		flow = flowOf(updateSegment(flow, 's1', { firstBeatSec: 25 }));
+		// 25.6 秒的段、音樂 20 秒：段從 25 秒開始，整段都在音樂後面，不是「長 30.6 秒」
+		await setup(flow, loaded(20));
+		const note = screen.getByRole('note').textContent!;
+		expect(note).toContain('這一段整段都在音樂檔結尾之後：播放時沒有聲音。第一拍要在音樂結束（20.0 秒）之前');
+		expect(note).not.toContain('照音樂長度算');
+	});
+
 	it('還沒載入音樂就按照音樂長度算，提醒先載入', async () => {
 		const { session } = await setup(musicFlow());
 		await fireEvent.click(screen.getByRole('button', { name: '照音樂長度算' }));
@@ -158,6 +177,17 @@ describe('音樂段設定', () => {
 		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
 		expect(session.canUndo).toBe(false);
 		expect(screen.getByRole('alert').textContent).toBe('「BPM」退回原本的值：BPM 要在 60 到 170 之間');
+	});
+
+	it('被擋下的原因在對話框下面看不到時，捲過去讓它看得到；再被擋一次也再捲', async () => {
+		await setup(musicFlow());
+		scrolled.length = 0;
+		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '200' } });
+		await frame();
+		expect(scrolled).toEqual([screen.getByRole('alert')]);
+		await fireEvent.change(screen.getByLabelText('BPM'), { target: { value: '300' } });
+		await frame();
+		expect(scrolled).toHaveLength(2);
 	});
 
 	it('載入音樂檔：解碼後流程記一筆音樂檔，位元組放在音樂檔庫', async () => {

@@ -7,6 +7,8 @@
 	// 最上面一排（RunThroughBar，跟記錄頁一樣）：「＋ 記一次全上」打開記全上的表（RunThroughSheet），存好或取消再回到總表；
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（記完才發現記錯，不用切回記錄頁）。
 	import {
+		NOT_YET_MARK,
+		NOT_YET_TITLE,
 		actionLabel,
 		cellDetail,
 		completionPercent,
@@ -28,8 +30,6 @@
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import RunThroughBar from './RunThroughBar.svelte';
 	import type { RunView } from '#lib/server-api.js';
-	import type { Notice } from './RecordNotice.svelte';
-	import { Flash } from '#lib/flash.svelte.js';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD），跟記錄頁共用；期間從這天往回算。 */
@@ -45,12 +45,10 @@
 	let recording = $state(false);
 	/** 加入別人在記的那次全上（雲端流程，#262）；開新的是 null。 */
 	let join = $state<RunView | null>(null);
-	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
-	const saved = new Flash<Notice>();
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) saved.show({ text: '已存這次全上' });
+		if (done) session.notice = '已記下這次全上';
 	}
 
 	/** YYYY-MM-DD 寫成「11/4」。 */
@@ -80,16 +78,14 @@
 		{ key: 'completion', label: '完成率' }
 	] as const;
 
-	let period = $state<Period>('today');
-	let practice = $state<PracticeKind | 'all'>('all');
-	let rate = $state<(typeof RATES)[number]['key']>('success');
-
-	const filter = $derived({ ...periodRange(date, period), practice: practice === 'all' ? undefined : practice });
+	/** 篩選放在 session：切到記錄、編排再回來還是它。 */
+	const picks = $derived(session.view.summary);
+	const filter = $derived({ ...periodRange(date, picks.period), practice: picks.practice === 'all' ? undefined : picks.practice });
 	const blocks = $derived(recordableActions(flow).map((action) => ({ action, table: rateTable(flow, action, filter) })));
 
 	/** 一格：大字的 %（沒有紀錄是 null）和次數。 */
 	function phaseCell(t: Tally): { pct: number | null; count: number } {
-		return { pct: rate === 'success' ? successPercent(t) : completionPercent(t), count: t.marked };
+		return { pct: picks.rate === 'success' ? successPercent(t) : completionPercent(t), count: t.marked };
 	}
 	const wholeCell = (c: RateCounts) => ({ pct: percent(c.whole.clean, c.whole.whole), count: c.whole.whole });
 	const cellText = (c: { pct: number | null; count: number }) => (c.pct === null ? '—' : `${c.pct}% ${c.count} 次`);
@@ -133,24 +129,24 @@
 	{#if recording}
 		<RunThroughSheet {date} {join} onclose={closeSheet} />
 	{:else}
-		<RunThroughBar {date} notice={saved} onrecord={(run) => ((join = run ?? null), (recording = true), (open = null))} />
+		<RunThroughBar {date} onrecord={(run) => ((join = run ?? null), (recording = true), (open = null))} />
 		<div class="filters">
 			<div class="seg" role="group" aria-label="期間">
 				<span>期間</span>
 				{#each PERIODS as p (p.key)}
-					<button type="button" aria-pressed={period === p.key} onclick={() => (period = p.key)}>{p.label}</button>
+					<button type="button" aria-pressed={picks.period === p.key} onclick={() => (picks.period = p.key)}>{p.label}</button>
 				{/each}
 			</div>
 			<div class="seg" role="group" aria-label="練法">
 				<span>練法</span>
 				{#each PRACTICES as p (p.key)}
-					<button type="button" aria-pressed={practice === p.key} onclick={() => (practice = p.key)}>{p.label}</button>
+					<button type="button" aria-pressed={picks.practice === p.key} onclick={() => (picks.practice = p.key)}>{p.label}</button>
 				{/each}
 			</div>
 			<div class="seg" role="group" aria-label="大字看">
 				<span>大字看</span>
 				{#each RATES as r (r.key)}
-					<button type="button" aria-pressed={rate === r.key} onclick={() => (rate = r.key)}>{r.label}</button>
+					<button type="button" aria-pressed={picks.rate === r.key} onclick={() => (picks.rate = r.key)}>{r.label}</button>
 				{/each}
 			</div>
 		</div>
@@ -192,7 +188,7 @@
 							{#if phases.length > 1}
 								<tr class="whole">
 									<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
-									<th scope="row">{rate === 'completion' ? '整次成功率' : '整次'}</th>
+									<th scope="row">{picks.rate === 'completion' ? '整次成功率' : '整次'}</th>
 									{#each table.columns as col (col.who)}
 										{@render cellButton(action.id, col.who, null, `${col.name} 整次`, wholeCell(col))}
 									{/each}
@@ -221,7 +217,7 @@
 					<time datetime={day.date}>{day.date}</time>
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
-							<li class:run={m.runThrough}>
+							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? NOT_YET_TITLE : undefined}>
 								{m.mark}{#if m.runThrough}<small>全上</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
 										>{session.recordedBy[m.id]}</small
 									>{/if}
@@ -331,6 +327,15 @@
 	th[scope='row'] {
 		text-align: left;
 		font-weight: 600;
+	}
+	/* 40 人時表格很寬：「環節」那一欄往右捲也留在左邊，看得出每一列是哪個環節。 */
+	tr > th:first-child {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+	}
+	tbody th {
+		background: var(--surface);
 	}
 	.cell {
 		width: 100%;
@@ -454,6 +459,9 @@
 		}
 		.scroll {
 			overflow: visible;
+		}
+		tr > th:first-child {
+			position: static;
 		}
 		table {
 			width: 100%;

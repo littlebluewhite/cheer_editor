@@ -3,9 +3,12 @@
 // 伺服器換成測試共用的假伺服器（fakeServer）：別人用 joinAs 在別的地方打開、送步。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { editorPage, fakeServer, fakeTabs, flush, testEditor } from '#lib/test-fakes.js';
+import { editorPage, fromMenu, fakeServer, fakeTabs, flush, testEditor } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
+
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
 
 const pw = '我們這一隊今年一定會贏 go go';
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: pw };
@@ -54,7 +57,7 @@ describe('別人的改動', () => {
 	it('開著的表單還在（流程設定、在改的動作）', async () => {
 		const s = await linOpens();
 		s.page.session.selectAction('x1');
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const w = s.joinAs('c1', wang.email);
 		await flush();
 		w.step({ name: 'renameFlow', args: ['全國賽'] }, { name: 'updateAction', args: ['x1', { note: '注意手' }] });

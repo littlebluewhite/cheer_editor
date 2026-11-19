@@ -77,7 +77,8 @@
 		font-size: 24px;
 		line-height: 1.2;
 		font-weight: 800;
-		white-space: nowrap;
+		/* 左欄只有 236 px：長的字（9 個字再加「1/2」）放不下就換行，不被切掉 */
+		overflow-wrap: anywhere;
 	}
 	.now i {
 		font-style: normal;
@@ -85,6 +86,7 @@
 		font-weight: 600;
 	}
 	.now small {
+		white-space: nowrap;
 		font-size: 14px;
 		font-weight: 600;
 	}

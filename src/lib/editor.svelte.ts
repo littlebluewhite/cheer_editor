@@ -12,9 +12,10 @@ import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
-import { browserFilePicker, createBrowserSaver, type FileSaver, type PickedFile } from '#lib/file/save.js';
-import { EditorSession, setEditorSession } from '#lib/editor-session.svelte.js';
+import { browserFilePicker, createBrowserSaver, saveVideo, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
+import { EditorSession, setEditorSession, type UpdateReason } from '#lib/editor-session.svelte.js';
 import { FlowFile } from '#lib/flow-file.svelte.js';
+import { browserVideoEncoder, type VideoEncoderAdapter } from '#lib/video/encoder.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
@@ -44,6 +45,8 @@ export interface EditorAdapters {
 	server: ServerAdapter;
 	/** 離線存放（#260）：雲端流程還沒傳的紀錄、沒存進去的清單存在這台。 */
 	offline: OfflineStore;
+	/** 流程影片：編碼，和存成 流程名.mp4（跟流程檔的存檔是兩套）。 */
+	video: { encoder: VideoEncoderAdapter; save: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome> };
 }
 
 /** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB（草稿、離線存放）、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch。 */
@@ -58,7 +61,8 @@ export function browserAdapters(): EditorAdapters {
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame,
 		server: httpServer(),
-		offline: createIndexedDbOfflineStore()
+		offline: createIndexedDbOfflineStore(),
+		video: { encoder: browserVideoEncoder(), save: saveVideo }
 	};
 }
 
@@ -81,12 +85,12 @@ export class Editor {
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
 		this.adapters = adapters;
 		// 建 session 時（開給的流程）草稿還沒建：它建好時自己跟上一次。
-		const follow = () => this.actionDraft?.follow();
+		const follow = (reason?: UpdateReason) => this.actionDraft?.follow(reason);
 		this.playback = new Playback(
 			() => this.session.flow,
 			() => adapters.createEngine((id) => this.music.buffer(id)),
 			adapters.nextFrame,
-			follow,
+			() => follow(),
 			() => this.session.selectedAction
 		);
 		this.session = new EditorSession(flow, this.playback, follow);
@@ -119,11 +123,15 @@ export class Editor {
 	}
 
 	/**
-	 * 有沒有沒存的東西：沒存的改動、欄位裡打了還沒送出的字（在首頁打的不算），或雲端流程還沒送到伺服器的步。
+	 * 有沒有沒存的東西：沒存的改動、改了還在等教練回答的、欄位裡打了還沒送出的字（在首頁打的不算），或雲端流程還沒送到伺服器的步。
 	 * 關分頁前的提醒、service worker 擋重新整理都看這個。
 	 */
 	get hasUnsavedWork(): boolean {
-		return this.session.unsaved || (!!this.session.flow && this.adapters.pendingInput.pending) || !!this.file.cloud?.unsent;
+		return (
+			this.session.unsavedOrAsking ||
+			(!!this.session.flow && this.adapters.pendingInput.pending) ||
+			!!this.file.cloud?.unsent
+		);
 	}
 
 	/** 點時間軸的色條：選這個動作，右邊欄翻到「動作」（再點選著的那條也算）。 */

@@ -12,7 +12,10 @@ import {
 	placeCue,
 	readFlowFile,
 	recordAttempt,
+	nextPhaseKind,
+	updateAction,
 	updateSegment,
+	type ActionCategory,
 	type Flow
 } from '#lib/core';
 import { flowOf, squadNumbers } from '#lib/test-flows.js';
@@ -74,11 +77,11 @@ const grid = () => within(screen.getByRole('group', { name: '拍點' }));
 const gridPhases = () => grid().queryAllByRole('button', { name: /^環節 / }).map((b) => b.getAttribute('aria-label'));
 /** 拍點小窗裡的「環節」那一列。 */
 const popPhase = () => within(within(screen.getByRole('dialog', { name: '拍點小窗' })).getByRole('group', { name: '環節' }));
-/** 人員清單上某個人的組標籤寫的號碼（沒有標籤是 null，沒分組是 ''）。 */
+/** 人員清單上某個人那張組卡片寫的號碼（沒有卡片是 null，沒分組是 ''）。 */
 const squad = (who: string) => {
 	const tag = [...document.querySelectorAll('.action-form .people li')]
 		.find((li) => li.querySelector('.name')?.textContent === who)
-		?.querySelector('.squad-tag')?.textContent;
+		?.closest('.squad')?.querySelector('.squad-head')?.textContent;
 	return tag === undefined ? null : (tag.match(/\d+/)?.[0] ?? '');
 };
 /** 三個環節都在。 */
@@ -141,7 +144,7 @@ describe('拍點格子上標環節', () => {
 		await select('2-5', '2-8');
 		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
 		const dialog = within(screen.getByRole('alertdialog'));
-		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
+		expect(dialog.getByText('會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來），確定就刪掉')).toBeTruthy();
 		expect(dialog.getByText('刪掉：環節 下法 搖籃')).toBeTruthy();
 
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
@@ -240,7 +243,7 @@ describe('沒記成功率的動作也能加環節', () => {
 		]);
 		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1]);
 
-		await openFile(saves[0], '開啟');
+		await openFile(saves[0]);
 		await selectLib();
 		expect(gridPhases()).toEqual(['環節 上法 延伸 1-1 到 1-3']);
 	});
@@ -259,14 +262,14 @@ describe('沒記成功率的動作也能加環節', () => {
 });
 
 describe('口號段的環節（不用標拍）', () => {
-	/** plainFlow 加口號段 s2，裡面 Toss（拋投，小美、小A，0 到 3 秒），還沒有環節。 */
-	function chantFlow(): Flow {
+	/** plainFlow 加口號段 s2，裡面 Toss（大類照給的，預設技巧；小美、小A，0 到 3 秒），還沒有環節。 */
+	function chantFlow(category: ActionCategory = 'stunt'): Flow {
 		const flow = flowOf(addSegment(plainFlow(), 'chant'));
 		const members = [
 			{ memberId: 'm1', role: '上層' },
 			{ memberId: 'm2', role: '主底' }
 		];
-		return flowOf(addAction(flow, { segmentId: 's2', category: 'toss', name: 'Toss', start: 0, length: 30, note: '', members }));
+		return flowOf(addAction(flow, { segmentId: 's2', category, name: 'Toss', start: 0, length: 30, note: '', members }));
 	}
 
 	/** 開編輯頁放 flow、點泳道上 Toss 的色條；回傳 session。 */
@@ -291,13 +294,13 @@ describe('口號段的環節（不用標拍）', () => {
 
 	it('加環節：照加的先後排；加第一個就開始記成功率，全部的人第 1 組；存檔不標拍', async () => {
 		const session = await openChant();
-		await add('whole', '');
+		await add('hold', '');
 		await add('load', '延伸');
-		expect(gridPhases()).toEqual(['環節 整體', '環節 上法 延伸']);
+		expect(gridPhases()).toEqual(['環節 中段', '環節 上法 延伸']);
 
 		const toss = tossOf(session);
 		expect(toss.successRate?.phases).toEqual([
-			{ id: 'p1', kind: 'whole', name: '' },
+			{ id: 'p1', kind: 'hold', name: '' },
 			{ id: 'p2', kind: 'load', name: '延伸' }
 		]);
 		expect(squadNumbers(toss)).toEqual([1, 1]);
@@ -305,8 +308,8 @@ describe('口號段的環節（不用標拍）', () => {
 
 	it('點一個環節選它，改名字、種類、顏色', async () => {
 		await openChant();
-		await add('whole', '');
-		await fireEvent.click(row().getByRole('button', { name: '環節 整體' }));
+		await add('hold', '');
+		await fireEvent.click(row().getByRole('button', { name: '環節 中段' }));
 		await fireEvent.change(row().getByRole('textbox', { name: '這個環節的名字' }), { target: { value: '一趟' } });
 		await fireEvent.change(row().getByRole('combobox', { name: '這個環節的種類' }), { target: { value: 'load' } });
 		await fireEvent.change(row().getByRole('combobox', { name: '這個環節的顏色' }), { target: { value: '#475569' } });
@@ -316,10 +319,10 @@ describe('口號段的環節（不用標拍）', () => {
 
 	it('選一個環節按清掉就刪掉；刪光就不記成功率；可以復原、重做', async () => {
 		const session = await openChant();
-		await add('whole', '');
+		await add('hold', '');
 		await add('load', '');
 		expect(row().getByRole('button', { name: '清掉環節' }).hasAttribute('disabled')).toBe(true);
-		await fireEvent.click(row().getByRole('button', { name: '環節 整體' }));
+		await fireEvent.click(row().getByRole('button', { name: '環節 中段' }));
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		expect(gridPhases()).toEqual(['環節 上法']);
 		await fireEvent.click(row().getByRole('button', { name: '環節 上法' }));
@@ -330,27 +333,177 @@ describe('口號段的環節（不用標拍）', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(gridPhases()).toEqual(['環節 上法']);
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
-		expect(gridPhases()).toEqual(['環節 整體', '環節 上法']);
+		expect(gridPhases()).toEqual(['環節 中段', '環節 上法']);
 		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
 		expect(gridPhases()).toEqual(['環節 上法']);
 	});
 
+	it('拋投只能用拋法、騰翻只能用翻法、跳躍只能用跳法：種類直接寫好，不能選；改環節也沒有種類選單', async () => {
+		for (const [category, label] of [['toss', '拋法'], ['tumbling', '翻法'], ['jump', '跳法']] as const) {
+			document.body.innerHTML = '';
+			const session = await openChant(chantFlow(category));
+			expect(row().queryByRole('combobox', { name: '環節的種類' })).toBeNull();
+			expect(row().getByLabelText('環節的種類').textContent).toBe(label);
+			await fireEvent.input(row().getByRole('textbox', { name: '環節的名字' }), { target: { value: '一次' } });
+			await fireEvent.click(row().getByRole('button', { name: '加入環節' }));
+			expect(gridPhases()).toEqual([`環節 ${label} 一次`]);
+			await fireEvent.click(row().getByRole('button', { name: `環節 ${label} 一次` }));
+			expect(row().queryByRole('combobox', { name: '這個環節的種類' })).toBeNull();
+			expect(tossOf(session).successRate!.phases.map((p) => p.kind)).toEqual([nextPhaseKind(category, undefined)]);
+		}
+	});
+
+	it('舞蹈、其他沒有環節列，不能加環節', async () => {
+		for (const category of ['dance', 'other'] as const) {
+			document.body.innerHTML = '';
+			await openChant(chantFlow(category));
+			expect(grid().queryByRole('group', { name: '環節' })).toBeNull();
+		}
+	});
+
 	it('要刪的環節有記號：先問；取消什麼都不變，確定才刪', async () => {
-		let flow = flowOf(addPhase(chantFlow(), 'x2', { kind: 'whole', name: '' }));
+		let flow = flowOf(addPhase(chantFlow(), 'x2', { kind: 'hold', name: '' }));
 		flow = flowOf(addPhase(flow, 'x2', { kind: 'load', name: '' }));
 		const attempt = { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } as const;
 		await openChant(flowOf(recordAttempt(flow, 'x2', attempt)));
-		await fireEvent.click(row().getByRole('button', { name: '環節 整體' }));
+		await fireEvent.click(row().getByRole('button', { name: '環節 中段' }));
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		const dialog = within(screen.getByRole('alertdialog'));
-		expect(dialog.getByText('會刪掉 1 個環節，清掉 1 次的記號，確定就刪掉')).toBeTruthy();
+		expect(dialog.getByText('會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來），確定就刪掉')).toBeTruthy();
 
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
 		expect(screen.queryByRole('alertdialog')).toBeNull();
-		expect(gridPhases()).toEqual(['環節 整體', '環節 上法']);
+		expect(gridPhases()).toEqual(['環節 中段', '環節 上法']);
 
 		await fireEvent.click(row().getByRole('button', { name: '清掉環節' }));
 		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '確定刪除' }));
 		expect(gridPhases()).toEqual(['環節 上法']);
+	});
+});
+
+describe('金字塔的環節佔同樣的拍', () => {
+	const pyramidFlow = () => flowOf(updateAction(libFlow(), 'x1', { category: 'pyramid' }));
+	/** 格子第一個八拍裡每個環節的「名字 第幾列」（格子的 grid-row）。 */
+	const phaseRowsInFirstEight = () =>
+		[...document.querySelectorAll<HTMLElement>('.cues .row')[0].querySelectorAll<HTMLElement>('.item.phase')].map(
+			(b) => `${b.getAttribute('aria-label') ?? b.textContent} ${b.style.gridRow}`
+		);
+
+	it('選中段佔的幾拍加新環節：中段不變，兩條都在、在不同排，拍點往下讓', async () => {
+		await open(pyramidFlow());
+		const step = () => document.querySelector<HTMLElement>('.cues .row .item.step')!.style.gridRow;
+		expect(step()).toBe('4');
+		await select('1-5', '1-8');
+		await addNew('load', '第二個');
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 第二個 1-5 到 1-8', ALL[2]]);
+		expect(phaseRowsInFirstEight()).toEqual([
+			'環節 上法 延伸 1-1 到 1-3 2',
+			'環節 中段 1-4 到 2-3 2',
+			'環節 上法 第二個 1-5 到 1-8 3'
+		]);
+		expect(step()).toBe('5');
+	});
+
+	it('技巧照舊：蓋到中段就切', async () => {
+		await open();
+		await select('1-5', '1-8');
+		await addNew('load', '第二個');
+		expect(gridPhases()).toEqual([ALL[0], '環節 中段 1-4', '環節 上法 第二個 1-5 到 1-8', ALL[2]]);
+	});
+
+	it('有環節佔同樣的拍時換成技巧：擋下來說原因，大類退回金字塔，環節都在', async () => {
+		const flow = flowOf(addPhase(pyramidFlow(), 'x1', { kind: 'load', name: '第二個', beats: { at: 8, len: 8 } }));
+		await open(flow);
+		const category = screen.getByLabelText('大類') as HTMLSelectElement;
+		category.value = 'stunt';
+		await fireEvent.change(category);
+		expect(screen.getByText(/^有環節佔同樣的拍，先分開才能換成技巧/)).toBeTruthy();
+		expect(category.value).toBe('pyramid');
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 第二個 1-5 到 1-8', ALL[2]]);
+	});
+});
+
+describe('音樂段的舞蹈、其他：沒有環節', () => {
+	it.each(['dance', 'other'] as const)('%s：格子沒有環節列，拍點小窗沒有「環節」那一排', async (category) => {
+		await open(flowOf(updateAction(plainFlow(), 'x1', { category })));
+		expect(document.querySelector('.cues .lane-lbl.phase')).toBeNull();
+		expect(document.querySelector('.cues .slot.phase')).toBeNull();
+		await fireEvent.click(grid().getByRole('button', { name: '1-1' }));
+		const pop = within(screen.getByRole('dialog', { name: '拍點小窗' }));
+		expect(pop.getByRole('group', { name: '步驟' })).toBeTruthy();
+		expect(pop.queryByRole('group', { name: '環節' })).toBeNull();
+	});
+});
+
+describe('金字塔兩條環節佔一模一樣的拍：點哪條改哪條、清哪條', () => {
+	/** libFlow 換成金字塔，再加兩個 1-5 到 1-8 的上法：「第一個」（p4，排前面）、「第二個」（p5）。 */
+	const twinFlow = () => {
+		let flow = flowOf(updateAction(libFlow(), 'x1', { category: 'pyramid' }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第一個', beats: { at: 8, len: 8 } }));
+		return flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 8, len: 8 } }));
+	};
+	const FIRST = '環節 上法 第一個 1-5 到 1-8';
+	const SECOND = '環節 上法 第二個 1-5 到 1-8';
+	const CHANGED = '環節 下法 改過 1-5 到 1-8';
+	const rename = (name: string) =>
+		fireEvent.change(popPhase().getByRole('textbox', { name: '這個環節的名字' }), { target: { value: name } });
+
+	it.each([
+		[FIRST, SECOND, [ALL[0], ALL[1], CHANGED, SECOND, ALL[2]]],
+		[SECOND, FIRST, [ALL[0], ALL[1], FIRST, CHANGED, ALL[2]]]
+	])('點 %s：改名字、種類、顏色都改到它，%s 不變', async (bar, other, changed) => {
+		await open(twinFlow());
+		await fireEvent.click(grid().getByRole('button', { name: bar }));
+		await fireEvent.change(popPhase().getByRole('combobox', { name: '這個環節的顏色' }), { target: { value: '#475569' } });
+		await fireEvent.change(popPhase().getByRole('combobox', { name: '這個環節的種類' }), { target: { value: 'dismount' } });
+		await rename('改過');
+		expect(gridPhases()).toEqual(changed);
+		expect(grid().getByRole('button', { name: CHANGED }).style.getPropertyValue('--c')).toBe('#475569');
+		expect(grid().getByRole('button', { name: other }).style.getPropertyValue('--c')).not.toBe('#475569');
+	});
+
+	it('點下面那條再按清掉：只有它不見，上面那條的拍不變', async () => {
+		await open(twinFlow());
+		await fireEvent.click(grid().getByRole('button', { name: SECOND }));
+		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], FIRST, ALL[2]]);
+	});
+
+	it('點的那條有記號：清掉先問，確定才只刪它', async () => {
+		const marks = { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p5: '✗' } } as const;
+		await open(flowOf(recordAttempt(twinFlow(), 'x1', marks)));
+		await fireEvent.click(grid().getByRole('button', { name: SECOND }));
+		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
+		const dialog = within(screen.getByRole('alertdialog'));
+		expect(dialog.getByText('刪掉：環節 上法 第二個')).toBeTruthy();
+		await fireEvent.click(dialog.getByRole('button', { name: '確定刪除' }));
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], FIRST, ALL[2]]);
+	});
+
+	it('自己選一段拍按清掉：那段上的環節都清，拍被清光的刪掉', async () => {
+		await open(twinFlow());
+		await select('1-5', '1-8');
+		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
+		expect(gridPhases()).toEqual([ALL[0], '環節 中段 1-4', ALL[2]]);
+	});
+
+	it('自己選的拍符合兩個環節：改的是排前面的那個', async () => {
+		await open(twinFlow());
+		await select('1-5', '1-8');
+		await rename('改過');
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 改過 1-5 到 1-8', SECOND, ALL[2]]);
+	});
+
+	it('點了下面那條、再自己選拍：不再動到剛剛點的那條', async () => {
+		await open(twinFlow());
+		await fireEvent.click(grid().getByRole('button', { name: SECOND }));
+		await select('1-5', '1-8');
+		await rename('改過');
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 改過 1-5 到 1-8', SECOND, ALL[2]]);
+
+		await fireEvent.click(grid().getByRole('button', { name: SECOND }));
+		await select('2-5', '2-8');
+		await fireEvent.click(popPhase().getByRole('button', { name: '清掉環節' }));
+		expect(gridPhases()).toEqual([ALL[0], ALL[1], '環節 上法 改過 1-5 到 1-8', SECOND]);
 	});
 });

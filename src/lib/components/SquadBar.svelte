@@ -7,6 +7,7 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { squadBadge, squadsOf, type Action } from '#lib/core';
 	import ConfirmList from './ConfirmList.svelte';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 選到的、要分組的動作（session.groupingAction）。 */
@@ -47,7 +48,7 @@
 	}
 </script>
 
-<div class="squad-bar" role="group" aria-label="分組">
+<div class="squad-bar" role="group" aria-label="分組" data-edit>
 	{#if ask.question}
 		<div class="ask">
 			<ConfirmList {ask} />
@@ -75,7 +76,7 @@
 	{#if loose.length}
 		<button type="button" class="link" onclick={() => session.selectMembers(loose)}>{loose.length} 人沒分組</button>
 	{/if}
-	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
+	{#if ask.error}<span class="error" {@attach revealAlert(ask.failures)}>{ask.error}</span>{/if}
 </div>
 
 <style>

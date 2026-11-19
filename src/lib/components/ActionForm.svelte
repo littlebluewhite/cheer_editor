@@ -8,13 +8,18 @@
 	// 新增時，人就是選到的人（加人、移出也改選取）；「從別的動作複製人」連任務角色和組一起帶。
 	// 同一時間在別的動作裡的人標出來（「拿掉這幾個人」一次拿掉）；改動作時選了別的人，「把選的 N 人加進來」。
 	// 從任務角色選單的「＋自訂任務角色…」新增的角色，套給打開選單的那個人。
+	// 清單上 Shift＋點名字（iPad 開著「多選」點）選好幾個人，在其中一人選任務角色就一起設（算一步復原）；怎麼多選常駐寫一行。
+	// 改動作時，清單上點名字就是選人（session 的選取，場上跟著亮；場上選的人清單也框起來）。
+	// 新增時人就是選到的人，點名字不能改選取（人會跟著縮），只在表單裡框起來。
 	// 加進來的人先照大類和全局角色填任務角色（核心的 defaultRoles）；新增時換大類，沒改過的跟著換。
 	// 改動作時「開始」旁邊有「跳到開始」（播放頭跳到動作開始）。
 	// 改動作時有「接下一個動作」（開新表單接在結束拍，人、任務角色、組帶過去），下面是拍點格子（環節也在那裡加）；動作有環節時（騰翻、跳躍除外）每個人旁邊寫第幾組（唯讀；分組在場上的分組浮動列），勾「照組排」就照組號排。
 	// 表單上的草稿和它的規則（跟著選的人、播放頭、自訂任務角色，送出、紅字）在編輯器 module 的 actionDraft；這裡只畫它、接上欄位和按鈕。
 	import { flushSync, tick, type ComponentProps } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { composing } from '#lib/ime.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import {
@@ -25,19 +30,21 @@
 		groupsPeople,
 		memberName,
 		positionText,
+		pickableRoles,
 		roleGlossary,
 		segmentSpans,
 		squadBadge,
+		timeExamples,
 		type ActionCategory
 	} from '#lib/core';
 	import { ACTION_COLORS, actionColor, CATEGORY_COLORS } from './category-colors';
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
 	import CueGrid from './CueGrid.svelte';
-	import { reveal } from './reveal';
+	import { reveal, revealAlert, stickyBottom } from './reveal';
 	import Icon from './Icon.svelte';
 	import RoleGlossary from './RoleGlossary.svelte';
-	import RolePicker, { roleKey } from './RolePicker.svelte';
+	import RolePicker from './RolePicker.svelte';
 
 	interface Props {
 		/** 拍點格子的「指標位置 → 格子」；沒給用格子預設的（ADR 0002）。 */
@@ -59,7 +66,10 @@
 	const segmentLabel = $derived(
 		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
 	);
-	const roles = $derived(roleGlossary(flow));
+	/** 選單的任務角色：三層、肩底只有金字塔有。快捷鍵的說明照這個列。 */
+	const roles = $derived(pickableRoles(flow, draft.category, []));
+	/** 這個人的選單：已經是三層（肩底）的人換了大類，他自己的選單照列，別人的沒有。 */
+	const rolesFor = (role: string | null) => pickableRoles(flow, draft.category, [role]);
 	const categoryLabel = $derived(ACTION_CATEGORIES.find((c) => c.key === draft.category)?.label ?? '');
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
@@ -90,24 +100,60 @@
 			: []
 	);
 
-	/** 動作有環節、要分組（騰翻跳躍以外）：每個人旁邊寫第幾組（唯讀，分組在場上的分組浮動列）。 */
+	/** 動作有環節、要分組（騰翻跳躍以外）：一組一張卡片（唯讀，分組在場上的分組浮動列）。 */
 	const grouped = $derived(!!action && groupsPeople(action));
-	/** 人員清單照組號排（沒分組的排最後）；只在分組的動作有用。 */
-	let bySquad = $state(false);
-	/** 清單上的順序：draft.members 的第幾個。 */
-	const order = $derived.by(() => {
-		const all = draft.members.map((_, i) => i);
-		if (!grouped || !bySquad || !action) return all;
-		const num = (i: number) => squadBadge(action, draft.members[i]).number || Infinity;
-		return all.toSorted((a, b) => num(a) - num(b));
+	/** 任務角色排第幾（名詞對照表的順序），沒有任務排最後。 */
+	const roleRank = $derived(new Map(roleGlossary(flow).map((r, k) => [r.name, k])));
+	/**
+	 * 清單分成卡片：分組的動作一組一張（照組號，沒分組的最後一張）；不分組就一張沒有標題的。
+	 * 卡片裡照任務角色排，一樣的照加進來的順序。rows 是 draft.members 的第幾個。
+	 */
+	const cards = $derived.by(() => {
+		const rank = (i: number) => roleRank.get(draft.members[i].role ?? '') ?? Infinity;
+		const rows = draft.members.map((_, i) => i).toSorted((a, b) => rank(a) - rank(b));
+		if (!grouped || !action) return [{ head: '', color: '', rows }];
+		const byNumber = new Map<number, { head: string; color: string; rows: number[] }>();
+		for (const i of rows) {
+			const b = squadBadge(action, draft.members[i]);
+			const card = byNumber.get(b.number) ?? { head: b.number ? `第 ${b.number} 組` : '沒分組', color: b.number ? b.color : '', rows: [] };
+			card.rows.push(i);
+			byNumber.set(b.number, card);
+		}
+		return [...byNumber].toSorted(([a], [b]) => (a || Infinity) - (b || Infinity)).map(([, card]) => card);
 	});
+	/** 清單上的順序（卡片接起來）：按快捷鍵選好後跳到下一個人用。 */
+	const order = $derived(cards.flatMap((c) => c.rows));
+
+	/**
+	 * 新動作表單沒選人時收起來，只有「＋ 新動作」（選了人就打開）。
+	 * 按「＋ 新動作」、從選到的動作按「開新的動作表單」：沒選人也打開；換了選到的動作就回到收起來。
+	 */
+	let opened = $state(false);
+	$effect.pre(() => {
+		if (action) opened = false;
+	});
+	const open = $derived(!!action || opened || draft.members.length > 0);
+	let expandEl = $state<HTMLButtonElement>();
+
+	/** 「開新的動作表單」：回到新增，表單打開。 */
+	function openNew() {
+		session.selectAction(null);
+		opened = true;
+	}
+
+	/** 「＋ 新動作」：打開表單，名稱有焦點。 */
+	async function expand() {
+		opened = true;
+		await tick();
+		nameInput?.focus();
+	}
 
 	/** 被擋的原因，和等教練回答的改動（草稿的；換了動作就收掉）。 */
 	const ask = draft.ask;
 	let glossaryOpen = $state(false);
 	/** 從第幾個人的任務角色選單打開名詞對照表（「＋自訂任務角色…」）：新增的角色套給他。 */
 	let roleFor: number | null = null;
-	let formEl: HTMLElement;
+	let formEl = $state<HTMLElement>();
 	/** 「?」說明點了才開（Tab 到它、滑鼠移過去都不開，才不會自己彈出來蓋住東西）。 */
 	let legendOpen = $state(false);
 	let bangEl = $state<HTMLElement>();
@@ -120,40 +166,103 @@
 	let askAtLength = $state(false);
 
 	function lengthChanged() {
-		changed();
+		changed('length');
 		askAtLength = !!ask.question;
 	}
 
-	/** 改了表單：改選到的動作就馬上送出（草稿的 update）；新增時什麼都不做（等按「新增動作」）。 */
-	function changed() {
+	/** 表單上的一格（或「新增動作」鈕）：被擋的原因寫在它旁邊。 */
+	type Spot = 'name' | 'category' | 'color' | 'start' | 'length' | 'people' | 'note' | 'add';
+	/** 被擋的原因寫在哪：教練剛改的那一格、按 Enter 的那一格、或「新增動作」鈕旁邊，右邊欄不用自己捲過去。null：表單最下面。 */
+	let errorAt = $state<Spot | null>(null);
+
+	/** 改了表單（at：改的是哪一格）：改選到的動作就馬上送出（草稿的 update）；新增時什麼都不做（等按「新增動作」）。 */
+	function changed(at: Spot) {
 		askAtLength = false;
+		errorAt = at;
 		draft.update();
 	}
 
 	/** 新動作的名稱、開始、長度欄按 Enter 就新增（選字中的 Enter 不算）。 */
-	function addOnEnter(e: KeyboardEvent) {
+	function addOnEnter(e: KeyboardEvent, at: Spot) {
 		if (action || e.key !== 'Enter' || composing(e) || !draft.members.length) return;
 		e.preventDefault();
+		errorAt = at;
 		draft.add();
 	}
 
 	function remove() {
+		// 點「刪除動作」不搶焦點（例：觸控）時，名稱欄打的字先送出，跟離開欄位一樣；表單換成新動作時「未存」不卡住
+		editor.adapters.pendingInput.flush();
 		askAtLength = false;
+		errorAt = null;
 		if (action) session.removeAction(action.id, ask);
-		keepFocus();
+		keepFocus('form');
 	}
 
-	/** 按的鈕做完就不見了（刪除動作、新增動作、接下一個動作）：焦點給表單的名稱，不掉回頁面最上面。 */
-	async function keepFocus() {
+	/**
+	 * 按的鈕做完就不見了：焦點留在表單裡，不掉回頁面最上面。
+	 * 新增動作、接下一個動作給名稱；「刪除動作」給表單本身（to = 'form'），不給新動作的名稱：
+	 * 那裡的 ⌘Z 是退字，按了刪除馬上 ⌘Z 要讓動作回來。
+	 */
+	async function keepFocus(to: 'name' | 'form' = 'name') {
 		await tick();
-		if (!formEl.contains(document.activeElement)) nameInput?.focus();
+		// 沒選人、表單收起來了（例：刪掉動作）：給「＋ 新動作」
+		if (!open) return expandEl?.focus();
+		if (!formEl!.contains(document.activeElement)) (to === 'form' ? formEl : nameInput)?.focus();
 	}
 
-	/** 選了任務角色；按快捷鍵選的就跳到下一個人。 */
+	/**
+	 * 新動作表單上點名字選到的人（隊員 id）：新增時人就是場上選的人，點名字不能改選取，另外記在這裡。
+	 * 改動作時用 session 的選取，場上跟著亮。選到 2 人以上時，在其中一人選任務角色就一起設。
+	 */
+	let rowPicked = $state<string[]>([]);
+	const actionId = $derived(action?.id);
+	$effect.pre(() => {
+		void actionId;
+		rowPicked = [];
+	});
+	/** 選到、而且還在清單裡的人。 */
+	const together = $derived(
+		(action ? session.selectedMemberIds : rowPicked).filter((id) => draft.members.some((d) => d.memberId === id))
+	);
+	/** 一起選到的人裡，有人的任務角色這個大類的選單沒有（不是金字塔的三層、肩底）：只留給本來就是的人。 */
+	const keptOnly = $derived([
+		...new Set(
+			draft.members
+				.filter((m) => m.role && together.includes(m.memberId) && !roles.some((r) => r.name === m.role))
+				.map((m) => m.role!)
+		)
+	]);
+	/** 觸控螢幕沒有 Shift，多選要開場地左邊的「多選」（docs/adr/0005-ipad-touch.md）。 */
+	const touchScreen = isTouchScreen();
+
+	/** 點名字：沒按 Shift 只選他（再點一次取消）；按 Shift（或開著「多選」，iPad 沒有 Shift）加進來或拿掉。 */
+	function pickRow(id: string, shift: boolean) {
+		if (action) {
+			// 跟場上點人一樣：Shift 加減時場上選的其他人留著
+			if (shift) session.pickMember(id, true);
+			else session.selectMembers(together.length === 1 && together[0] === id ? [] : [id]);
+			return;
+		}
+		if (shift) rowPicked = together.includes(id) ? together.filter((x) => x !== id) : [...together, id];
+		else rowPicked = together.length === 1 && together[0] === id ? [] : [id];
+	}
+
+	/** 選了任務角色；按快捷鍵選的就跳到下一個人。他在一起選到的人裡：那幾個人一起設，算一步。 */
 	function setRole(i: number, role: string | null, byKey: boolean) {
-		draft.setRole(i, role);
-		changed();
-		if (byKey) rolePickers[order[order.indexOf(i) + 1]]?.focus();
+		const all = together.length > 1 && together.includes(draft.members[i].memberId);
+		// 改了角色那一列會換位置：下一個人照改之前的順序找
+		const next = order[order.indexOf(i) + 1];
+		// 一起選到的別人：只換成他自己選單裡有的（不是金字塔時，肩底、三層只留給本來就是的人）
+		const allowed = (m: (typeof draft.members)[number]) => role === null || rolesFor(m.role).some((r) => r.name === role);
+		draft.members.forEach((m, k) => {
+			if (k === i || (all && together.includes(m.memberId) && allowed(m))) draft.setRole(k, role);
+		});
+		changed('people');
+		// 先把列換好位置再給焦點：換位置時被搬動的列會掉焦點，接著按 Backspace 會刪掉整個動作
+		flushSync();
+		if (byKey && !all && next !== undefined) rolePickers[next]?.focus();
+		else if (document.activeElement === document.body) rolePickers[i]?.focus();
 	}
 
 	/** 名詞對照表新增了自訂任務角色：是從任務角色選單打開的，就套給那個人。 */
@@ -170,28 +279,32 @@
 
 	function addSelected() {
 		draft.addMembers(pickedOutside);
-		changed();
+		changed('people');
 	}
 
 	function dropBusy() {
 		draft.dropBusy();
-		changed();
+		changed('people');
 	}
 
 	function addMember(select: HTMLSelectElement) {
 		if (!select.value) return;
 		draft.addMember(select.value);
 		select.value = '';
-		changed();
+		changed('people');
 	}
 
 	/** 移出一個人。焦點留在表單裡（下一個人的 ×，沒人了就「加人」），不掉到頁面上：不然接著按 Backspace 會刪掉整個動作。 */
 	function removeMember(i: number) {
+		// 畫面上排第幾（清單照任務角色排，不是 draft.members 的順序）
+		const at = order.indexOf(i);
 		draft.removeMember(i);
-		changed();
+		changed('people');
 		flushSync();
+		// 新動作移出最後一個人，表單收起來了：給「＋ 新動作」
+		if (!formEl) return expandEl?.focus();
 		const xs = formEl.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
-		(xs[i] ?? xs[i - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
+		(xs[at] ?? xs[at - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
 	}
 
 	/**
@@ -207,23 +320,26 @@
 		const source = flow.actions.find((a) => a.id === select.value);
 		select.value = '';
 		if (!source) return;
+		askAtLength = false;
+		errorAt = 'people';
 		draft.copyMembers(source);
-		changed();
 	}
 
-	function setCategory(category: ActionCategory) {
-		draft.setCategory(category);
-		changed();
+	function setCategory(select: HTMLSelectElement) {
+		draft.setCategory(select.value as ActionCategory);
+		changed('category');
+		// 被擋下來時草稿退回原本的大類，值沒變畫面不會重畫：選單自己對回去
+		select.value = draft.category;
 	}
 
 	function useDefaultRoles() {
 		draft.useDefaultRoles();
-		changed();
+		changed('people');
 	}
 
 	function setColor(color: string | undefined) {
 		draft.setColor(color);
-		changed();
+		changed('color');
 	}
 
 	const nameOf = (id: string) => memberName(flow, id);
@@ -232,8 +348,19 @@
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
-	<button type="button" class="new" onclick={() => session.selectAction(null)}><Icon name="plus" size={14} />開新的動作表單</button>
+	<button type="button" class="new" onclick={openNew}><Icon name="plus" size={14} />開新的動作表單</button>
 {/if}
+
+{#if !open}
+	<!-- 還沒選人：新動作表單收成一個鈕，不佔右邊欄 -->
+	<button type="button" class="new collapsed" bind:this={expandEl} onclick={expand}>＋ 新動作</button>
+	<p class="muted collapsed-hint">在場上點人或用上面的「選人」，表單就會打開。</p>
+{:else}
+
+<!-- 被擋的原因寫在教練剛改的那一格（或按的鈕）旁邊：不用捲去找。在看得到的範圍外、或在黏底的「新增動作」後面，就捲出來（N03）。 -->
+{#snippet errorAtSpot(at: Spot, wide = false)}
+	{#if ask.error && errorAt === at}<p class="error" class:wide {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
+{/snippet}
 
 <!-- 新動作表單裡按 Esc 不往上傳：編輯頁的 Esc 會取消選人，連帶清掉表單裡選好的人和任務角色。 -->
 <!-- 新動作的字還不在流程裡：⌘Z 交給瀏覽器退字（data-native-undo）。 -->
@@ -244,6 +371,7 @@
 	data-native-undo={!action || undefined}
 	style:--cat={actionColor(draft)}
 	bind:this={formEl}
+	tabindex="-1"
 	onkeydown={formKey}
 >
 	<header>
@@ -253,13 +381,14 @@
 			aria-label="名稱"
 			bind:value={draft.name}
 			bind:this={nameInput}
-			onchange={changed}
-			onkeydown={addOnEnter}
+			onchange={() => changed('name')}
+			onkeydown={(e) => addOnEnter(e, 'name')}
 			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
 		/>
 		<CharCount field="actionName" input={nameInput} value={draft.name} />
 		{#if !action}<span class="badge">新動作</span>{/if}
 	</header>
+	{@render errorAtSpot('name')}
 
 	{#if !segment}
 		<p class="empty">先加一段才能加動作：在下面的時間軸按「＋」。</p>
@@ -270,10 +399,11 @@
 				<span class="cap">大類</span>
 				<select
 					value={draft.category}
-					onchange={(e) => setCategory(e.currentTarget.value as ActionCategory)}
+					onchange={(e) => setCategory(e.currentTarget)}
 				>
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
+				{@render errorAtSpot('category')}
 			</label>
 			{#if draft.offerDefaultRoles}
 				<p class="wide roles-offer" role="note">
@@ -304,6 +434,7 @@
 					</label>
 				{/each}
 			</fieldset>
+			{@render errorAtSpot('color', true)}
 			<div class="field">
 				<span class="start-cap">
 					<span class="cap" aria-hidden="true">開始</span>
@@ -314,24 +445,27 @@
 				<input
 						aria-label="開始"
 						bind:value={draft.startText}
-						onchange={changed}
-						onkeydown={addOnEnter}
+						onchange={() => changed('start')}
+						onkeydown={(e) => addOnEnter(e, 'start')}
 						onfocus={() => draft.focusSlotField('startText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
-				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : '秒，到 0.1'}</small>
+				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : `從這一段開頭算的秒數，例：${timeExamples(flow, segment.id).here}`}</small>
+				{@render errorAtSpot('start')}
 			</div>
-			<div class="field">
+			<!-- 新動作表單一打開，就把開始、長度捲出來，不停在黏底的「新增動作」後面（N03，故事 67） -->
+			<div class="field" {@attach !action && reveal()}>
 				<span class="cap" aria-hidden="true">長度</span>
 				<input
 						aria-label="長度"
 						bind:value={draft.lengthText}
 						onchange={lengthChanged}
-						onkeydown={addOnEnter}
+						onkeydown={(e) => addOnEnter(e, 'length')}
 						onfocus={() => draft.focusSlotField('lengthText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
 				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
+				{@render errorAtSpot('length')}
 			</div>
 			<!-- 改長度要確認（會切到拍點）：問句就在長度下面，不用捲到表單最底下找。 -->
 			{#if askAtLength && ask.question}
@@ -364,51 +498,70 @@
 							popover({ place: below(bangEl!, { gap: 6, align: 'right', flip: true }), close: closeLegend, inside: [bangEl] })}
 					>
 						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
-						<span><i class="gr base">底</i>底層　<i class="gr top">上</i>上層（隊員名單裡的全局角色）</span>
+						<span>Shift＋點名字選好幾個人，再選其中一人的任務角色，就一起設好</span>
 						<span>點任務角色選單後按鍵就選好，跳到下一個人：</span>
 						<span class="keys">
-							{#each roles as r, k (r.name)}{#if roleKey(k)}<kbd>{roleKey(k)} {r.name}</kbd>{/if}{/each}
+							{#each roles as r (r.name)}{#if r.key}<kbd>{r.key} {r.name}</kbd>{/if}{/each}
 							<kbd>Backspace 沒有任務</kbd>
 						</span>
+						<!-- 其他快捷鍵（⌘C／⌘V、按住 H、Alt＋拖…）不在這裡列，連到使用說明的快捷鍵表 -->
+						<a href={`${resolve('/guide')}?from=editor#keys`} target="_blank" rel="noopener">全部的快捷鍵：看使用說明</a>
 					</span>
 				</span>
-				{#if grouped}
-					<label class="by-squad"><input type="checkbox" bind:checked={bySquad} />照組排</label>
-				{/if}
 				<button type="button" class="link" onclick={() => openGlossary(null)}>名詞對照表</button>
 			</div>
+			<!-- 常駐一行（觸控的人看不到 title）；選了 2 人以上換成選了幾人，這一行不跳 -->
+			{#if together.length > 1}
+				<p class="together" role="note" aria-label="一起設任務角色">
+					選了 {together.length} 人：在其中一人選任務角色，{together.length} 人一起設{#if keptOnly.length}（{keptOnly.join('、')}只有金字塔有，只留給本來就是的人）{/if}
+				</p>
+			{:else if draft.members.length > 1}
+				<p class="together">
+					{touchScreen ? '打開場地左邊的「多選」再點名字' : 'Shift 點名字'}選好幾個人，在其中一人選任務角色，就一起設好
+				</p>
+			{/if}
 			{#if draft.members.length}
-				<ul class:grouped>
-					{#each order.map((i) => ({ m: draft.members[i], i })) as { m, i } (m.memberId)}
-						{@const who = memberOf(m.memberId)}
-						<li>
-							<span class="who">
-								{#if who}<i class="gr {who.globalRole}">{who.globalRole === 'top' ? '上' : '底'}</i>{/if}
-								<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
-								{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
-							</span>
-							<RolePicker
-								bind:this={rolePickers[i]}
-								label="{nameOf(m.memberId)} 的任務角色"
-								value={m.role}
-								{roles}
-								onpick={(role, byKey) => setRole(i, role, byKey)}
-								onnew={() => openGlossary(i)}
-							/>
-							{#if grouped}
-								{@const badge = action && squadBadge(action, m)}
-								{#if badge?.number}<span class="squad-tag" style:--c={badge.color}>第 {badge.number} 組</span>
-								{:else}<span class="squad-tag none">沒分組</span>{/if}
-							{/if}
-							<button
-								type="button"
-								class="ghost icon"
-								aria-label="把 {nameOf(m.memberId)} 移出這個動作"
-								onclick={() => removeMember(i)}><Icon name="close" size={14} /></button
-							>
-						</li>
+				<div class="squads" class:grouped>
+					{#each cards as card (card.head)}
+						<section class="squad" style:--c={card.color || null} aria-label={card.head || undefined}>
+							{#if card.head}<h4 class="squad-head" class:none={!card.color}>{card.head}</h4>{/if}
+							<ul>
+								{#each card.rows.map((i) => ({ m: draft.members[i], i })) as { m, i } (m.memberId)}
+									{@const who = memberOf(m.memberId)}
+									<li>
+										<span class="who">
+											<button
+												type="button"
+												class="pick"
+												aria-label={nameOf(m.memberId)}
+												aria-pressed={together.includes(m.memberId)}
+												title="{nameOf(m.memberId)}（Shift＋點：選好幾個人，一起設任務角色）"
+												onclick={(e) => pickRow(m.memberId, e.shiftKey || session.multiSelect)}
+											>
+												<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
+											</button>
+											{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
+										</span>
+										<RolePicker
+											bind:this={rolePickers[i]}
+											label="{nameOf(m.memberId)} 的任務角色"
+											value={m.role}
+											roles={rolesFor(m.role)}
+											onpick={(role, byKey) => setRole(i, role, byKey)}
+											onnew={() => openGlossary(i)}
+										/>
+										<button
+											type="button"
+											class="ghost icon"
+											aria-label="把 {nameOf(m.memberId)} 移出這個動作"
+											onclick={() => removeMember(i)}><Icon name="close" size={14} /></button
+										>
+									</li>
+								{/each}
+							</ul>
+						</section>
 					{/each}
-				</ul>
+				</div>
 			{:else}
 				<p class="muted none">還沒有人：用上面的「選人」，或在場上點人。</p>
 			{/if}
@@ -433,17 +586,22 @@
 					{/each}
 				</select>
 				{#if copySources.length}
-					<select aria-label="從別的動作複製人" onchange={(e) => copyFrom(e.currentTarget)}>
-						<option value="">從別的動作複製人（連任務角色和組）…</option>
-						{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
-					</select>
+					<div class="copy">
+						<select aria-label="從別的動作複製人" aria-describedby="copy-why" onchange={(e) => copyFrom(e.currentTarget)}>
+							<option value="">從別的動作複製人（連任務角色和組）…</option>
+							{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
+						</select>
+						<small class="muted" id="copy-why">任務角色會帶過來，也會連組一起帶過來：分組不用每個動作重做</small>
+					</div>
 				{/if}
 			</div>
+			{@render errorAtSpot('people')}
 		</div>
 
 		<label class="note">
 			<span class="cap note-cap">備註<CharCount field="note" input={noteInput} value={draft.note} /></span>
-			<textarea aria-label="備註" rows="2" bind:value={draft.note} bind:this={noteInput} onchange={changed}></textarea>
+			<textarea aria-label="備註" rows="2" bind:value={draft.note} bind:this={noteInput} onchange={() => changed('note')}></textarea>
+			{@render errorAtSpot('note')}
 		</label>
 
 		{#if action}
@@ -452,13 +610,14 @@
 			<CueGrid {action} {cellAt} />
 		{:else}
 			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
-			<div class="add-bar">
+			<div class="add-bar" {@attach stickyBottom}>
+				{@render errorAtSpot('add')}
 				<button
 					type="button"
 					class="primary add"
 					disabled={!draft.members.length}
 					aria-describedby={draft.members.length ? undefined : 'add-why'}
-					onclick={() => (draft.add(), keepFocus())}>新增動作</button
+					onclick={() => ((errorAt = 'add'), draft.add(), keepFocus())}>新增動作</button
 				>
 				{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
 			</div>
@@ -477,15 +636,19 @@
 		</div>
 	{/if}
 
-	<!-- 右邊欄很長時原因會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
-	{#if ask.error}<p class="error" role="alert" {@attach reveal(ask.failures)}>{ask.error}</p>{/if}
+	<!-- 不是哪一格送的（例：刪除動作被擋）：寫在最下面。右邊欄很長時會在看得到的範圍下面，按了像沒反應：出現時捲過去。 -->
+	{#if ask.error && errorAt === null}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 </section>
+{/if}
 
 {#if glossaryOpen}
 	<RoleGlossary onclose={() => (glossaryOpen = false)} onadded={roleAdded} />
 {/if}
 
 <style>
+	.action-form:focus {
+		outline: none;
+	}
 	.action-form {
 		display: grid;
 		/* 標題的名稱輸入框不撐寬右邊欄 */
@@ -562,6 +725,17 @@
 		width: 100%;
 		justify-content: center;
 		border-style: dashed;
+	}
+	.new.collapsed {
+		padding: 10px 12px;
+		font-size: 14px;
+		font-weight: 600;
+		background: var(--new-bg);
+		border-color: var(--new-line);
+	}
+	.collapsed-hint {
+		font-size: 12px;
+		text-align: center;
 	}
 	.next {
 		justify-self: start;
@@ -704,14 +878,6 @@
 	.people-head .link {
 		font-size: 12px;
 	}
-	.by-squad {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-right: 8px;
-		font-size: 12px;
-		color: var(--muted, #66718a);
-	}
 	.none {
 		font-size: 12px;
 	}
@@ -734,6 +900,37 @@
 		gap: 6px;
 		min-width: 0;
 	}
+	/* 點名字選人（Shift＋點選好幾個）：看起來跟原本的名字一樣，選到的框起來 */
+	.pick {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		padding: 1px;
+		font: inherit;
+		color: inherit;
+		background: none;
+		border: 1px solid transparent;
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.pick[aria-pressed='true'] {
+		border-color: var(--sel);
+		box-shadow: 0 0 0 2px var(--sel-soft);
+	}
+	.together {
+		margin: 0;
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	.copy {
+		display: grid;
+		gap: 2px;
+		min-width: 0;
+	}
+	.copy small {
+		font-size: 11px;
+	}
 	.name {
 		font-weight: 500;
 		overflow: hidden;
@@ -747,24 +944,6 @@
 	}
 	.name.M {
 		background: var(--male-bg, #dcebff);
-	}
-	.gr {
-		flex: none;
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		display: inline-grid;
-		place-items: center;
-		font-size: 11px;
-		font-style: normal;
-		font-weight: 700;
-		color: #fff;
-	}
-	.gr.base {
-		background: var(--base, #2c3e66);
-	}
-	.gr.top {
-		background: var(--top, #e0664f);
 	}
 	.people-head .cap {
 		margin-right: auto;
@@ -837,9 +1016,30 @@
 		height: 26px;
 		color: var(--muted, #66718a);
 	}
-	/* 動作有環節時：任務角色和移出鈕中間多一個唯讀的「第 n 組」標籤 */
-	ul.grouped li {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
+	.squads {
+		display: grid;
+		gap: 8px;
+	}
+	/* 一組一張小卡：標題用組的顏色寫一次 */
+	.grouped .squad {
+		display: grid;
+		gap: 4px;
+		align-content: start;
+		padding: 6px 8px 8px;
+		border: 1px solid var(--line-soft, #e8ecf3);
+		border-top: 3px solid var(--c, var(--line, #d8dee9));
+		border-radius: 8px;
+		min-width: 0;
+	}
+	.squad-head {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--c);
+	}
+	.squad-head.none {
+		color: var(--muted, #66718a);
+		font-weight: 400;
 	}
 	.busy-tag {
 		font-size: 11px;
@@ -848,21 +1048,6 @@
 	}
 	.add-picked {
 		justify-self: start;
-	}
-	.squad-tag {
-		font-size: 12px;
-		font-weight: 700;
-		color: #fff;
-		background: var(--c);
-		border-radius: 999px;
-		padding: 1px 8px;
-		white-space: nowrap;
-	}
-	.squad-tag.none {
-		color: var(--muted, #66718a);
-		background: none;
-		font-weight: 400;
-		padding-inline: 0;
 	}
 	.adders {
 		display: grid;
@@ -908,7 +1093,9 @@
 		.grid > .colors {
 			grid-row: 2;
 		}
-		ul {
+		/* 不分組：人分兩欄；分組：卡片分兩欄，卡片裡一欄 */
+		.squads:not(.grouped) ul,
+		.squads.grouped {
 			grid-template-columns: 1fr 1fr;
 			column-gap: 16px;
 		}

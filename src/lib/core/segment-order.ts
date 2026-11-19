@@ -7,9 +7,10 @@ import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
-import { EPS, HALF_BEATS_PER_EIGHT, atText, segmentSpans, toPosition, totalSeconds } from './time';
+import { recordCount } from './success-rate';
+import { EPS, HALF_BEATS_PER_EIGHT, atText, atTextWithUnit, fromText, segmentSpans, toPosition, totalSeconds } from './time';
 
 /** 刪段：段裡的動作、站位一起刪。會刪到東西時先問（列出清單）；空的段直接刪。 */
 export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOption = {}): CommandResult {
@@ -25,11 +26,11 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 		(f, i) => f.segmentId === segmentId && !(i === 0 && !takenOver)
 	);
 	if (!answered(option) && (droppedActions.length || droppedFormations.length)) {
-		const records = droppedActions.reduce((n, a) => n + (a.successRate?.records.length ?? 0), 0);
-		const cleared = records ? `，會一起清掉 ${records} 次紀錄` : '';
+		const records = recordCount(droppedActions);
+		const cleared = records ? `，會一起清掉 ${records} 次紀錄${RECORDS_UNDOABLE}` : '';
 		return needsConfirm(`刪掉${segmentSpans(flow)[index].label}，下面這些也會一起刪掉${cleared}`, [
-			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${atText(segment, a.start)} 起）`),
-			...droppedFormations.map((f) => `站位 ${flow.formations.indexOf(f) + 1}（${atText(segment, f.at)}）`)
+			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${fromText(segment, a.start)}）`),
+			...droppedFormations.map((f) => `站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(segment, f.at)}）`)
 		]);
 	}
 	const segments = flow.segments.toSpliced(index, 1);

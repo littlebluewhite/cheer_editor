@@ -1,19 +1,6 @@
 <script lang="ts" module>
-	import { fieldGeometry, type FieldConfig } from '#lib/core';
-
-	/** 外圍框外寫條編號的那一邊（直放在後面、橫放在左右）留多寬（公尺）：放大了的場外圓點也蓋不到編號。 */
-	export const NUMBER_BAND = 0.8;
-
-	/**
-	 * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號（NUMBER_BAND）和「正面／裁判」字樣的空間。
-	 * 編輯頁拿它的長寬比分配右邊欄的寬度。
-	 */
-	export function fullView(field: FieldConfig) {
-		const { outer } = fieldGeometry(field);
-		const side = field.layout === 'horizontal' ? NUMBER_BAND : 0.3;
-		const back = field.layout === 'vertical' ? NUMBER_BAND : 0.3;
-		return { x: outer.x - side, y: outer.y - back, width: outer.width + 2 * side, height: outer.height + back + 1 };
-	}
+	// 號碼條的寬和整個場地的範圍搬進流程核心了（流程影片也用）；編輯頁別處還從這裡 import。
+	export { NUMBER_BAND, fullView } from '#lib/core';
 </script>
 
 <script lang="ts">
@@ -22,31 +9,46 @@
 	// 拖人：吸附和位置文字都問流程核心；放開時把新位置（公尺）改進播放頭這一拍的站位，送到 session 的 ask，
 	// 改好了 session 說插了站位或往後帶了幾張、播放頭停到那張（session.moved）。
 	// 放大縮小：按鈕（到上下限停用）、Ctrl／⌘＋滾輪、兩指捏合。放大後滾輪、觸控板兩指滑、兩指一起拖是平移（Shift＋滾輪左右移），
-	// 拖人拖到畫面邊上會自動捲。圓點照倍數開根號放大（×4 看起來大 2 倍），條號固定在畫面邊上。
+	// 拖人拖到畫面邊上會自動捲。圓點照倍數開根號放大（×4 看起來大 2 倍），條號、格號固定在畫面邊上。
+	// 放大後放大縮小旁邊有 ✋：按下去拖空白處是平移（不框選），再按變回框選；按住 H 是暫時平移。空白鍵不管，照舊播放。
 	// 選人：點人（Shift＋點或開著多選時多選）、拖空白處框選；選了好幾個人時拖其中一個，整組照他吸附後的位移一起移；
 	// 拖一個沒選到的人，選取換成他。選到一個人時場地下面寫他的名字和位置。
 	// 影子和走位線（編輯頁才給，八拍表的小站位圖不給）：畫在點下面，不吃滑鼠。
-	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、railBottom、圖例），場地在右邊，工具不會蓋到場地；
-	// children 疊在場地上（置中的提示、確認框）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
-	import type { Snippet } from 'svelte';
+	// 有按鈕時（編輯頁）左邊是一欄工具（放大縮小和 railHead 固定在上面、railTop、圖例），場地在右邊，工具不會蓋到場地；
+	// 場地上面固定留的那一條浮出選人工具列（沒選人時只有「全隊跟第 [_] 張一樣」；場地不跳、不被蓋住）；在人身上按右鍵是同一份清單的選單（SelectionTools）。
+	// children 疊在場地上（提示、確認框，自己找不蓋住 data-keep-visible 的地方）；below（分組浮動列）浮在外圍框下面「正面／裁判」那一排，不蓋到場地、也不讓場地變小。
+	import { untrack, type Snippet } from 'svelte';
 	import {
 		CELL_M,
+		fieldGeometry,
+		fieldNumbers,
 		fieldPositionText,
+		frontLabelAt,
+		fullView,
+		markCovered,
 		positionsAt,
 		snapGroup,
 		snapPointsNear,
 		snapPosition,
+		TIRING_MPS,
+		TOO_FAST_MPS,
 		toPosition,
 		type Clash,
+		type FieldConfig,
 		type FormationWalk,
 		type Member,
-		type Position
+		type Position,
+		type Rect
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
-	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
+	import { isTouchScreen, SHORT_SCREEN_MAX_H } from '#lib/editor-layout.js';
+	import { ownsKey } from '#lib/key-owner.js';
+	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
 	import Icon from './Icon.svelte';
-	import { isLongMarker, markerWidth } from './marker';
+	import SelectionTools from './SelectionTools.svelte';
+	import { isLongMarker, markerWidth } from '#lib/marker.js';
+	import { onEscape } from './pointer';
 
 	/** 螢幕座標 → 場地公尺座標。測試換成假的（見 docs/adr/0002-component-tests-jsdom.md）。 */
 	type ToMeters = (e: { clientX: number; clientY: number }, svg: SVGSVGElement) => Position;
@@ -64,20 +66,20 @@
 		members = [],
 		markers = {},
 		positions = {},
-		raised = [],
+		levels = {},
 		toMeters = screenCtmToMeters,
 		controls = true,
+		rail = true,
 		ghosts = {},
 		walks = [],
 		clashes = [],
 		railHead,
 		railTop,
-		railBottom,
 		children,
 		below,
 		badges = {},
 		marked = [],
-		crop = false
+		crop = null
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -85,11 +87,13 @@
 		/** 點上寫的標記（隊員 id → 字）；沒給的人寫名單裡第幾個。 */
 		markers?: Record<string, string>;
 		positions?: Record<string, Position>;
-		/** 這一刻任務角色是上層或中層的人：畫在最上面，黃框加陰影。 */
-		raised?: string[];
+		/** 這一刻在空中的人第幾層（2、3；沒寫是地上的第 1 層）：高的層畫在上面，黃框加陰影，三層再加橘框。 */
+		levels?: Record<string, number>;
 		toMeters?: ToMeters;
 		/** false：不顯示放大縮小的按鈕（八拍表上的小站位圖）。 */
 		controls?: boolean;
+		/** false：左欄藏起來（不拆掉，切回來原樣），場地拿整個寬度（檢視模式）。只在 controls 時有左欄。 */
+		rail?: boolean;
 		/** 上一張站位的位置，畫成淡淡的影子點。有選人時只畫選到的人。 */
 		ghosts?: Record<string, Position>;
 		/** 走位線，從起點畫到終點；太快的標紅、很喘的標橘。有選人時只畫選到的人。 */
@@ -98,10 +102,8 @@
 		clashes?: Clash[];
 		/** 左欄放大縮小旁邊、固定在上面不捲走的東西（多選、版面回原狀）。 */
 		railHead?: Snippet;
-		/** 左欄放大縮小下面的東西（警告、這一拍的拍點）。 */
+		/** 左欄放大縮小下面的東西（現在站位、警告、這一拍的拍點）。 */
 		railTop?: Snippet;
-		/** 左欄圖例上面的東西（跟上一張一樣、拖人會改）。 */
-		railBottom?: Snippet;
 		/** 疊在場地上的東西。 */
 		children?: Snippet;
 		/** 場地下面另外一排的東西（分組浮動列）：佔自己的位置，不蓋到場地。 */
@@ -110,8 +112,8 @@
 		badges?: Record<string, { text: string; color: string }>;
 		/** 沒有編輯器時（八拍表的個人表）標出這些人，畫得跟選到一樣。 */
 		marked?: string[];
-		/** 只畫有人站的那一塊（八拍表的小站位圖），標的人塗滿；沒有人時畫整個場地。 */
-		crop?: boolean;
+		/** 只畫這一塊（八拍表的小站位圖，見 eightCountView），標的人塗滿；null 畫整個場地。 */
+		crop?: Rect | null;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -121,6 +123,17 @@
 	const playback = session ? getEditor().playback : null;
 	/** 選到的人。 */
 	const selected = $derived(session?.selectedMemberIds ?? marked);
+	/** 換「我」（marked）那時的選取：之後沒再點人，就標「我」。 */
+	let selectedWhenMarked = $state.raw<string[] | null>(null);
+	$effect.pre(() => {
+		void marked;
+		selectedWhenMarked = untrack(() => selected);
+	});
+	/**
+	 * 畫成選到的人：「我」和場上點的人，後選的算（選「我」不清掉選取，動作表單的參加的人跟著選取）；
+	 * 都沒有就是沒標。點、拖照樣只看 selected。
+	 */
+	const lit = $derived(marked.length && (!selected.length || selected === selectedWhenMarked) ? marked : selected);
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
 	const touchScreen = isTouchScreen();
@@ -128,14 +141,20 @@
 	const DOT_R = 0.3;
 	/** 多字標記的字高（公尺）：寫在橫的膠囊裡。 */
 	const LONG_FONT = 0.24;
-	/** 多字標記的膠囊寬（公尺）：放得下字、至少跟圓點一樣寬；一兩格寬的標記畫圓點，是 0。 */
-	const pillWidth = (mark: string) =>
-		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * LONG_FONT + 0.14) : 0;
+	/** 一兩格寬的標記的字高（公尺）：跟 .dot text 的 font-size 一樣。 */
+	const DOT_FONT = 0.3;
 	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
 	const MIN_DOT_PX = touchScreen ? 32 : 22;
+	/**
+	 * 手機的檢視畫面（沒有按鈕、不裁）圓點最少這麼大：號碼跟著到 11px。
+	 * 觸控也是 22，不用 MIN_DOT_PX 的 32：只能看、不用點，32 的話擠的地方疊得更多。
+	 */
+	const VIEW_MIN_DOT_PX = 22;
+	/** 場地上的字（條號、格號、「正面／裁判」、多字標記）在螢幕上最少幾 px（Apple HIG 的最小字級 11 pt）。 */
+	const MIN_TEXT_PX = 11;
 	const ZOOM_STEP = 1.25;
-	/** 按下後移動不到這麼多 px 算點一下。 */
-	const CLICK_PX = 4;
+	/** 按下後移動不到這麼多 px 算點一下（手抖幾 px 不算拖，不插站位、不吸到別的格點）。 */
+	const CLICK_PX = 8;
 	const MAX_ZOOM = 8;
 
 	const g = $derived(fieldGeometry(field));
@@ -150,14 +169,12 @@
 	let center = $state<Position | null>(null);
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
+	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
+	const MINI_DOTS_ACROSS = 12;
 	const view = $derived.by(() => {
-		const placed = Object.values(positions);
-		if (crop && placed.length) {
-			const xs = placed.map(([x]) => x);
-			const ys = placed.map(([, y]) => y);
-			const x = Math.min(...xs) - CROP_MARGIN;
-			const y = Math.min(...ys) - CROP_MARGIN;
-			return { x, y, width: Math.max(...xs) + CROP_MARGIN - x, height: Math.max(...ys) + CROP_MARGIN - y };
+		if (crop) {
+			const m = CROP_MARGIN;
+			return { x: crop.x - m, y: crop.y - m, width: crop.width + 2 * m, height: crop.height + 2 * m };
 		}
 		const width = full.width / zoom;
 		const height = full.height / zoom;
@@ -169,32 +186,54 @@
 
 	/**
 	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
-	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。八拍表的小站位圖不放大。
+	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。
+	 * 手機的檢視畫面也照編輯頁放大到有最小尺寸（VIEW_MIN_DOT_PX），號碼才看得清楚。
+	 * 八拍表的小站位圖：範圍大時放大到圓點直徑是長邊的 1/MINI_DOTS_ACROSS，號碼才看得清楚。
 	 */
 	const dotScale = $derived.by(() => {
-		if (!controls) return 1;
+		if (crop) return Math.max(1, Math.max(view.width, view.height) / MINI_DOTS_ACROSS / (2 * DOT_R));
 		const [w, h] = stageSize;
 		const shrink = 1 / Math.sqrt(zoom);
 		if (!w || !h) return shrink;
 		// preserveAspectRatio meet：看整個場地時 1 公尺幾 px 看比較緊的那一邊
 		const pxPerM = Math.min(w / full.width, h / full.height);
-		return Math.max(1, MIN_DOT_PX / (2 * DOT_R * pxPerM)) * shrink;
+		return Math.max(1, (controls ? MIN_DOT_PX : VIEW_MIN_DOT_PX) / (2 * DOT_R * pxPerM)) * shrink;
 	});
 
-	/** 條編號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
-	const numScale = $derived(controls ? 1 / Math.sqrt(zoom) : 1);
-	const numberAt = (s: { rect: { x: number; y: number; width: number; height: number } }): Position =>
-		vertical
-			? [s.rect.x + s.rect.width / 2, Math.max(g.outer.y - NUMBER_BAND / 2, view.y + (NUMBER_BAND / 2) * numScale)]
-			: [
-					Math.max(g.outer.x - NUMBER_BAND * 0.7, view.x + NUMBER_BAND * 0.3 * numScale),
-					s.rect.y + s.rect.height / 2 + 0.09 * numScale
-				];
+	/** 現在螢幕上 1 公尺幾 px（preserveAspectRatio meet 看比較緊的那一邊）；jsdom 量不到是 0。 */
+	const pxPerMeter = $derived(stageSize[0] && stageSize[1] ? Math.min(stageSize[0] / view.width, stageSize[1] / view.height) : 0);
+	/**
+	 * 場地上的字多大（公尺）：本來 m 公尺，在螢幕上小於 minPx 時放大到 minPx。SVG 沒有「字不跟著縮」的設定，只能自己算。
+	 * 八拍表的小站位圖不放大：印出來的大小跟螢幕量到的不一樣，字跟著圓點放大（見 dotScale）。
+	 */
+	const fontM = (m: number, minPx: number) => (crop || !pxPerMeter ? m : Math.max(m, minPx / pxPerMeter));
 
-	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
+	/** 條編號、格號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
+	const numScale = $derived(controls ? 1 / Math.sqrt(zoom) : 1);
+	/**
+	 * 條編號、格號的字高（公尺）：至少 MIN_TEXT_PX。
+	 * 小站位圖跟圓點上的號碼一樣大（0.4 乘圓點放大的倍數，見 .field.mini 的號碼）：圓點的號碼印出來看得清楚，條號也是（N38）。
+	 */
+	const stripFont = $derived(crop ? 0.4 * dotScale : fontM(0.3 * numScale, MIN_TEXT_PX));
+	const cellFont = $derived(fontM(0.26 * numScale, MIN_TEXT_PX));
+	/** 「正面／裁判」的字高（公尺）。 */
+	const frontFont = $derived(fontM(0.42, MIN_TEXT_PX));
+	/** 多字標記膠囊裡的字高（圓點放大前的公尺）：放大後也至少 MIN_TEXT_PX。 */
+	const longFont = $derived(fontM(LONG_FONT * dotScale, MIN_TEXT_PX) / dotScale);
+	/** 場地中心記號「＋」每一臂多長（公尺）：比圓點的半徑短。 */
+	const centerArm = $derived(Math.min(0.4, 0.9 * DOT_R * dotScale));
+	/** 多字標記的膠囊寬（公尺）：放得下字、至少跟圓點一樣寬；一兩格寬的標記畫圓點，是 0。 */
+	const pillWidth = (mark: string) =>
+		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * longFont + 0.14) : 0;
+	/** 條號、格號寫在哪：公式在流程核心（流程影片也用）。八拍表的小站位圖（crop）不寫格號：擠在裁切的邊上會跟條號疊在一起。 */
+	const numbers = $derived(fieldNumbers(field, view, stripFont, cellFont));
+	const cellNumbers = $derived(crop ? [] : numbers.cells);
+	const frontLabel = $derived(frontLabelAt(field));
+
+	/** 量場地那一塊多大（視窗、分界、右欄寬變了就重量；不算上面留給選人工具列的那一條）。jsdom 沒有 ResizeObserver，測試裡就不量。 */
 	function watchStage(el: HTMLElement) {
 		if (typeof ResizeObserver === 'undefined') return;
-		const ro = new ResizeObserver(() => (stageSize = [el.clientWidth, el.clientHeight]));
+		const ro = new ResizeObserver(([e]) => (stageSize = [e.contentRect.width, e.contentRect.height]));
 		ro.observe(el);
 		return () => ro.disconnect();
 	}
@@ -235,22 +274,71 @@
 			.flatMap((m, i) => {
 				const p = dragged[m.id] ?? positions[m.id];
 				return p
-					? [{ m, mark: markers[m.id] ?? String(i + 1), p, up: raised.includes(m.id), sel: selected.includes(m.id) }]
+					? [{ m, mark: markers[m.id] ?? String(i + 1), p, level: levels[m.id] ?? 1, sel: lit.includes(m.id) }]
 					: [];
 			})
-			// SVG 後畫的蓋在上面：上層、中層排最後。
-			.sort((a, b) => Number(a.up) - Number(b.up))
+			// SVG 後畫的蓋在上面：層高的排後面。
+			.sort((a, b) => a.level - b.level)
 	);
-	/** 有選人時只畫選到的人的影子和線；沒選人時畫全隊。 */
-	const shown = (id: string) => selected.length === 0 || selected.includes(id);
+	/**
+	 * 被不同層蓋到的人畫虛線圈：公式在流程核心（流程影片也用）。圓點都畫在真的位置、原本大小（走位時不會跳），
+	 * 在空中的人底色半透明（.dot.raised）。只是站在隔壁（圓點碰到邊）的不算被蓋到。多字的膠囊有直的一段。
+	 */
+	const covered = $derived(
+		markCovered(
+			dots.map((d) => ({
+				id: d.m.id,
+				level: d.level,
+				at: d.p,
+				c: d.p,
+				r: DOT_R * dotScale,
+				h: Math.max(0, pillWidth(d.mark) / 2 - DOT_R) * dotScale,
+				font: (isLongMarker(d.mark) ? longFont : DOT_FONT) * dotScale
+			}))
+		).filter((a) => a.covered)
+	);
+	/** 有選人（或標亮了「我」）時只畫那些人的影子和線；都沒有時畫全隊。 */
+	const shown = (id: string) => lit.length === 0 || lit.includes(id);
 	const ghostDots = $derived(
 		members.flatMap((m) => (ghosts[m.id] && shown(m.id) ? [{ id: m.id, p: ghosts[m.id] }] : []))
 	);
-	/** false：只畫太快和很喘的走位線，正常的白線藏起來，場地比較乾淨。 */
-	let allWalkLines = $state(true);
-	const walkLines = $derived(
-		walks.filter((w) => shown(w.memberId) && (allWalkLines || w.tooFast || w.tiring))
-	);
+	/**
+	 * 左下的圖例開著嗎（存在這台電腦）。沒按過「圖例」時，觸控又矮的螢幕（橫拿的 iPad）收著：
+	 * 左欄放不下，最下面的「圖例」鈕會被擠出去（N58）。
+	 */
+	let legendOpen = $state(loadLegendOpen(!(isTouchScreen() && typeof innerHeight === 'number' && innerHeight <= SHORT_SCREEN_MAX_H)));
+	const legendId = $props.id();
+	function toggleLegend() {
+		legendOpen = !legendOpen;
+		saveLegendOpen(legendOpen);
+	}
+	/** 左欄最下面的工具（「圖例」鈕）沒整個捲出來：底部畫淡出漸層提示（N58）。 */
+	let railMore = $state(false);
+	/**
+	 * 量左欄最下面那一塊的按鈕有沒有整個露出來：捲動、左欄或裡面的東西變大變小都重量。
+	 * 只看按鈕：那一塊只差幾 px 的留白被裁掉時不算，不然漸層會白白蓋在看得到的工具上。jsdom 沒有 ResizeObserver，測試裡不量。
+	 */
+	function watchRail(el: HTMLElement) {
+		if (typeof ResizeObserver === 'undefined') return;
+		const update = () => {
+			const bottom = el.getBoundingClientRect().bottom;
+			const tools = el.lastElementChild?.querySelectorAll('button') ?? [];
+			railMore = [...tools].some((t) => t.getBoundingClientRect().bottom > bottom + 1);
+		};
+		const ro = new ResizeObserver(update);
+		const observeAll = () => [el, ...el.children].forEach((c) => ro.observe(c));
+		const mo = new MutationObserver(() => (observeAll(), update()));
+		observeAll();
+		mo.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+		el.addEventListener('scroll', update, { passive: true });
+		update();
+		return () => {
+			ro.disconnect();
+			mo.disconnect();
+			el.removeEventListener('scroll', update);
+		};
+	}
+	const walkLines = $derived(walks.filter((w) => shown(w.memberId)));
 	const snapDots = $derived(drag?.cur ? snapPointsNear(field, drag.cur, zoom) : []);
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
@@ -284,7 +372,34 @@
 			clamp(cy - pan[1], full.y + h / 2, full.y + full.height - h / 2)
 		];
 		zoom = z;
-		if (z === 1) center = null;
+		if (z === 1) {
+			center = null;
+			handTool = false;
+		}
+	}
+
+	// ---------- ✋ 平移：放大後拖空白處移動畫面（不框選）。按 ✋ 切換，或按住 H 暫時用。 ----------
+	/** ✋ 按下去了（縮回整個場地就放掉）。 */
+	let handTool = $state(false);
+	/** 正按著 H。 */
+	let holdingH = $state(false);
+	/** 現在拖空白處是平移。 */
+	const panMode = $derived(zoom > 1 && (handTool || holdingH));
+	/** 平移中：上一次指標的螢幕座標。 */
+	let pan = $state<[number, number] | null>(null);
+
+	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
+	function panTo(e: PointerEvent) {
+		const perPx = metersPerPx(e);
+		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
+		pan = [e.clientX, e.clientY];
+	}
+
+	/** 按住 H（沒按 Ctrl／⌘／Alt、焦點所在的東西不用 H，例：打字的地方）：暫時平移。空白鍵不管，照舊是播放。 */
+	function hKey(e: KeyboardEvent, down: boolean) {
+		if (e.key.toLowerCase() !== 'h') return;
+		if (down && (e.ctrlKey || e.metaKey || e.altKey || ownsKey(e.target, e.key))) return;
+		holdingH = down;
 	}
 
 	// ---------- 兩根手指：捏合放大縮小、一起拖移動畫面（iPad）。只有一根時照舊點人、拖人、框選。 ----------
@@ -379,8 +494,33 @@
 		lastPointer = null;
 	}
 
+	/** 右鍵選單開在哪（畫面座標）；null = 沒開。 */
+	let menu = $state<{ x: number; y: number } | null>(null);
+	/**
+	 * 編輯頁、能改：場地上面固定留一條給選人工具列（--tools-h；沒選人時是「全隊跟第 [_] 張一樣」）。場地不跳，
+	 * 工具列也不蓋住場上的人和條號（N05）。檢視模式不會有工具列，不留。
+	 */
+	const band = $derived(!!session?.editable);
+
+	/**
+	 * 在人身上按右鍵（或鍵盤的選單鍵）：他沒選到就選取換成他，開選人選單。
+	 * 沒選人時在空白處按：開套用全隊的選單（跟第 [_] 張一樣）；有選人時空白處照舊是瀏覽器的選單。
+	 */
+	function contextMenu(e: MouseEvent) {
+		if (!session?.editable) return;
+		const el = (e.target as Element).closest?.('[data-member-id]') ?? (selected.length ? null : svg);
+		const id = el?.getAttribute('data-member-id');
+		if (!el) return;
+		e.preventDefault();
+		if (id && !selected.includes(id)) session.selectMembers([id]);
+		// 鍵盤的選單鍵沒有指標位置：開在那個人（或場地）旁邊
+		const r = el.getBoundingClientRect();
+		menu = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.right, y: r.bottom };
+	}
+
 	function down(e: PointerEvent) {
-		if (e.button !== 0) return;
+		// Mac 的 Control＋點是右鍵：不選人、不拖（交給 contextMenu）
+		if (e.button !== 0 || (e.ctrlKey && e.pointerType === 'mouse')) return;
 		if (e.pointerType === 'touch' && controls) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
@@ -388,16 +528,20 @@
 				pinching = true;
 				drag = null;
 				box = null;
+				pan = null;
 				svg.setPointerCapture?.(e.pointerId);
 				return;
 			}
 		}
+		const target = e.target as Element;
 		const id =
-			(e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
-			(e.pointerType === 'touch' ? nearestDot(e) : null);
+			target.closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
+			(e.pointerType === 'touch' || target.closest?.('[data-clash]') ? nearestDot(e) : null);
 		const client: [number, number] = [e.clientX, e.clientY];
 		if (!session) return;
-		if (id && positions[id]) {
+		if (!id && panMode) {
+			pan = client;
+		} else if (id && positions[id]) {
 			const ids = selected.includes(id) && selected.length > 1 ? selected.filter((i) => positions[i]) : [id];
 			const orig = Object.fromEntries(ids.map((i) => [i, positions[i]]));
 			drag = { id, ids, client, shift: e.shiftKey, start: toMeters(e, svg), orig, cur: null, atEdge: false };
@@ -405,6 +549,20 @@
 			box = { client, shift: e.shiftKey || session.multiSelect, a: toMeters(e, svg), b: null };
 		} else return;
 		svg.setPointerCapture?.(e.pointerId);
+		offEscape();
+		offEscape = onEscape(cancelDrag);
+	}
+
+	/** 拖人、框選到一半按 Esc 時拿掉監聽的函式（沒在拖時什麼都不做）。 */
+	let offEscape = () => {};
+
+	/** 不拖了（拖到一半按 Esc、觸控被系統打斷）：人回到原位，框選不算。 */
+	function cancelDrag() {
+		offEscape();
+		stopEdgeScroll();
+		drag = null;
+		box = null;
+		pan = null;
 	}
 
 	/** 手指沒剛好按在點上時，離手指這麼多 px 以內最近的人也算按到（點看起來不變）。 */
@@ -433,7 +591,8 @@
 			if (fingers.size === 2 && fingers.has(e.pointerId)) pinchMove(e);
 			return;
 		}
-		if (drag && (drag.cur || !still(e, drag.client))) {
+		if (pan) panTo(e);
+		else if (drag && (drag.cur || !still(e, drag.client))) {
 			// 拖一個沒選到的人：選取換成他，畫的影子和走位線才是他的。
 			if (!drag.cur && !selected.includes(drag.id)) session?.selectMembers([drag.id]);
 			if (!drag.cur && playback?.playing) {
@@ -463,18 +622,27 @@
 	function up(e: PointerEvent) {
 		liftFinger(e);
 		stopEdgeScroll();
-		if (drag?.cur) drop(dragged, drag.atEdge);
-		else if (drag) session?.pickMember(drag.id, drag.shift);
+		offEscape();
+		if (drag?.cur) {
+			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
+			const [x, y] = drag.orig[drag.id];
+			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge, e.altKey);
+			else if (drag.atEdge) session!.notice = session!.editable ? AT_EDGE : VIEW_ONLY;
+		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
 		box = null;
+		pan = null;
 	}
 
-	/** 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。 */
-	function drop(moves: Record<string, Position>, atEdge: boolean) {
+	/**
+	 * 放開拖的人：改播放頭這一拍的站位（沒有就插一張），被擋就說原因（人彈回原位）；atEdge 時提示「已靠到邊界」。
+	 * onlyThis = 放開時按著 Alt：只改這張，不往後帶。
+	 */
+	function drop(moves: Record<string, Position>, atEdge: boolean, onlyThis: boolean) {
 		const s = session!;
 		const sec = playback!.sec;
-		s.ask.send({ name: 'moveMembers', args: [sec, moves] }, { done: (r) => s.moved(r, atEdge) });
+		s.ask.send({ name: 'moveMembers', args: [sec, moves, !onlyThis] }, { done: (r) => s.moved(r, { atEdge }) });
 	}
 
 	/** 方向鍵移人：跟拖人一樣，但連續移同一批人、同一拍（中間沒有別的改動）合成復原的一步。 */
@@ -492,6 +660,7 @@
 	 * 鍵盤操作焦點所在的人：Enter 跟點一下一樣；方向鍵移 1/4 格（Shift 一格），跟拖人一樣吸附、改播放頭這一拍的站位。
 	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把方向鍵當移播放頭。
 	 * 空白鍵往外傳：焦點在人身上時，空白鍵跟頁面其他地方一樣是播放／暫停。
+	 * 檢視模式不能移人：方向鍵也往外傳，跟頁面其他地方一樣移播放頭。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
 		if (!session) return;
@@ -501,6 +670,7 @@
 			session.pickMember(id, e.shiftKey);
 			return;
 		}
+		if (!session.editable) return;
 		const dir = ARROWS[e.key];
 		if (!dir || e.ctrlKey || e.metaKey || e.altKey || !positions[id]) return;
 		e.preventDefault();
@@ -513,7 +683,7 @@
 		nudge(Object.fromEntries(ids.map((i) => [i, [positions[i][0] + dx, positions[i][1] + dy] as Position])));
 	}
 
-	/** 框裡的人（Shift 時加上原本選的），照名單順序。 */
+	/** 框裡的人（照畫出來的位置；Shift 時加上原本選的），照名單順序。 */
 	function inBox(a: Position, b: Position, shift: boolean): string[] {
 		const within = (v: number, p: number, q: number) => v >= Math.min(p, q) && v <= Math.max(p, q);
 		return members
@@ -526,9 +696,14 @@
 	}
 </script>
 
-<div class="field-wrap" class:with-rail={controls}>
+<svelte:window
+	onkeydown={(e) => session && hKey(e, true)}
+	onkeyup={(e) => session && hKey(e, false)}
+	onblur={() => (holdingH = false)}
+/>
+<div class="field-wrap" class:with-rail={controls && rail}>
 	{#if controls}
-		<div class="rail">
+		<div class="rail" hidden={!rail} {@attach watchRail}>
 			<div class="rail-head">
 				<div class="tools">
 					<button
@@ -549,32 +724,62 @@
 					<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
 						><Icon name="fit" />整個場地</button
 					>
+					{#if zoom > 1}
+						<button
+							type="button"
+							class="ghost icon"
+							aria-label="平移"
+							aria-pressed={handTool || holdingH}
+							title="按下去以後拖空白處是移動畫面，再按一次變回框選（按住 H 拖也可以）"
+							onclick={() => (handTool = !handTool)}>✋</button
+						>
+					{/if}
 				</div>
 				{@render railHead?.()}
 			</div>
 			{@render railTop?.()}
 			<div class="rail-gap"></div>
-			{@render railBottom?.()}
-			<div class="walk-tools">
-				<label title="勾起來時，正常的白色走位線藏起來，只畫很喘（橘）和走太快（紅）的線">
-					<input type="checkbox" checked={!allWalkLines} onchange={() => (allWalkLines = !allWalkLines)} />只看橘紅走位線
-				</label>
-				<span aria-hidden="true"><i class="tiring"></i>很喘</span>
-				<span aria-hidden="true"><i class="fast"></i>走太快</span>
-				<span aria-hidden="true"><b class="clash-mark">✕</b>撞位</span>
+			<!-- 圖例在「圖例」鈕上面：左欄很矮（時間軸拖到最大）時，捲到底最下面那一行工具一定看得到、點得到 -->
+			<div class="legend-box" id={legendId} hidden={!legendOpen}>
+				<div class="walk-tools" aria-hidden="true">
+					<!-- 門檻寫短（m/s），時間軸拉高時左欄還捲得到；滑鼠移上去寫完整的。 -->
+					<span title="走位每秒超過 {TIRING_MPS} 公尺、沒到 {TOO_FAST_MPS} 公尺：跑得到但很喘"
+						><i class="tiring"></i>很喘 &gt;{TIRING_MPS} m/s</span
+					>
+					<span title="走位每秒超過 {TOO_FAST_MPS} 公尺：跑不到"><i class="fast"></i>走太快 &gt;{TOO_FAST_MPS} m/s</span>
+					<span title="至少一人正在騰翻中走位，跟別人靠得不到半格；一般走位靠很近不算"><b class="clash-mark">✕</b>撞位（只看騰翻）</span>
+				</div>
+				<div class="legend" aria-hidden="true">
+					<span><i class="base"></i>底層</span>
+					<span><i class="top"></i>上層</span>
+					<span><i class="up"></i>正在上面</span>
+					<span><i class="up lv3"></i>三層</span>
+					<span><i class="under"></i>被蓋到</span>
+				</div>
 			</div>
-			<div class="legend" aria-hidden="true">
-				<span><i class="base"></i>底層</span>
-				<span><i class="top"></i>上層</span>
-				<span><i class="up"></i>正在上面</span>
+			<div class="walk-tools">
+				<!-- 圖例可以收起來（存在這台電腦）；收著時箭頭朝上，看得出還能打開 -->
+				<button
+					type="button"
+					class="ghost legend-toggle"
+					aria-expanded={legendOpen}
+					aria-controls={legendId}
+					title={legendOpen ? '收起圖例' : '打開圖例'}
+					onclick={toggleLegend}>圖例<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▴'}</span></button
+				>
 			</div>
 		</div>
+		<!-- 左欄下面還有東西（觸控又矮的螢幕放不下）：底部淡出，看得出要往下捲；捲到底就不畫（N58）。不吃滑鼠 -->
+		<div class="rail-fade" aria-hidden="true" hidden={!rail || !railMore}></div>
 	{/if}
-	<div class="stage" {@attach watchStage}>
+	<div class="stage" class:band {@attach watchStage}>
 	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
 		class="field"
+		class:mini={!!crop}
+		class:pan-mode={panMode}
+		class:panning={!!pan}
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
 		role={session ? 'group' : 'img'}
@@ -583,11 +788,10 @@
 		onpointerdown={down}
 		onpointermove={move}
 		onpointerup={up}
+		oncontextmenu={contextMenu}
 		onpointercancel={(e) => {
 			liftFinger(e);
-			stopEdgeScroll();
-			drag = null;
-			box = null;
+			cancelDrag();
 		}}
 	>
 		<rect class="margin" x={g.outer.x} y={g.outer.y} width={g.outer.width} height={g.outer.height} />
@@ -598,14 +802,18 @@
 		{#each g.seams as l, i (i)}
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
-		<path class="center" d="M-.4,0L.4,0M0,-.4L0,.4"><title>場地正中心</title></path>
+		<!-- 中心記號的兩臂比圓點短：站在正中心的人身上不露出十字，看起來不會像特別標了他（N56） -->
+		<path class="center" d="M{-centerArm},0L{centerArm},0M0,{-centerArm}L0,{centerArm}"><title>場地正中心</title></path>
 		<!-- 條編號寫在外圍框外面那一條（NUMBER_BAND，直放在後面、橫放在左邊）靠外的地方、每條的中間：
 		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
-		{#each g.strips as s (s.number)}
-			{@const [nx, ny] = numberAt(s)}
-			<text class="num" data-strip-number x={nx} y={ny} style:font-size="{0.3 * numScale}px">{s.number}</text>
+		{#each numbers.strips as { n, at } (n)}
+			<text class="num" data-strip-number data-keep-visible x={at[0]} y={at[1]} style:font-size="{stripFont}px">{n}</text>
 		{/each}
-		<text class="front" x="0" y={g.outer.y + g.outer.height + 0.7}>▼ 正面／裁判 ▼</text>
+		<!-- 格號（條號的另一軸）：細一點，跟條號分得出來 -->
+		{#each cellNumbers as { n, at } (n)}
+			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{cellFont}px">{n}</text>
+		{/each}
+		<text class="front" data-keep-visible x={frontLabel[0]} y={frontLabel[1]} style:font-size="{frontFont}px">▼ 正面／裁判 ▼</text>
 		{#each ghostDots as { id, p } (id)}
 			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r={DOT_R * dotScale} />
 		{/each}
@@ -621,27 +829,21 @@
 				y2={w.to[1]}
 			/>
 		{/each}
-		{#each clashes as c, i (i)}
-			<path
-				data-clash={c.memberIds.join(',')}
-				class="clash"
-				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
-				transform="translate({c.pos[0]},{c.pos[1]})"
-				><title>撞位：{c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '').join('、')}</title></path
-			>
-		{/each}
 		{#each snapDots as p, i (i)}
 			<circle data-snap-point class="snap" class:fine={p.fine} cx={p.x} cy={p.y} r={p.fine ? 0.035 : 0.05} />
 		{/each}
-		{#each dots as { m, mark, p, up, sel } (m.id)}
+		{#each dots as { m, mark, p, level, sel } (m.id)}
 			{@const pill = pillWidth(mark)}
 			<g
 				class="dot"
-				class:raised={up}
+				class:raised={level >= 2}
+				class:lv3={level >= 3}
+				class:outlined={!crop}
 				class:selected={sel}
-				class:filled={crop && sel}
+				class:filled={!!crop && sel}
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
 				data-member-id={m.id}
+				data-keep-visible
 				role="button"
 				tabindex={session ? 0 : undefined}
 				aria-label={session ? whereText(m, p) : m.name}
@@ -660,7 +862,9 @@
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}
-					<text y={pill ? 0.085 : 0.11} class:long={!!pill}>{mark}</text>
+					<text y={pill ? 0.35 * longFont : crop ? 0.145 : 0.11} class:long={!!pill} style:font-size={pill ? `${longFont}px` : undefined}
+						>{mark}</text
+					>
 					{#if badges[m.id]}
 						<g class="badge" transform="translate({Math.max(pill / 2 - 0.03, 0.27)},-0.27)">
 							<circle r="0.17" style:fill={badges[m.id].color} />
@@ -670,12 +874,33 @@
 				</g>
 			</g>
 		{/each}
+		<!-- 被不同層蓋到的人：虛線圈畫在所有圓點上面 -->
+		{#each covered as { id, c, r, h } (id)}
+			{#if h}
+				<rect class="covered" x={c[0] - h - r} y={c[1] - r} width={2 * (h + r)} height={2 * r} rx={r} />
+			{:else}
+				<circle class="covered" cx={c[0]} cy={c[1]} {r} />
+			{/if}
+		{/each}
+		<!-- 撞位的 ✕ 在圓點後面畫：蓋在人上面看得到（按在 ✕ 上拖到的是附近的人，見 down）。 -->
+		{#each clashes as c, i (i)}
+			<path
+				data-clash={c.memberIds.join(',')}
+				class="clash"
+				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
+				transform="translate({c.pos[0]},{c.pos[1]})"
+				><title>撞位：{c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '').join('、')}</title></path
+			>
+		{/each}
 		{#if lasso}
 			<rect data-lasso class="lasso" x={lasso.x} y={lasso.y} width={lasso.width} height={lasso.height} />
 		{/if}
 	</svg>
-	{#if readout}<div class="readout">{readout}</div>{/if}
-	{#if picked}<div class="picked" role="note" aria-label="選到的人在哪">{picked}</div>{/if}
+	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
+	{#if picked}<div class="picked" data-keep-visible role="note" aria-label="選到的人在哪">{picked}</div>{/if}
+	{#if session?.editable}
+		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
+	{/if}
 	{@render children?.()}
 	<div class="below">{@render below?.()}</div>
 	</div>
@@ -699,7 +924,19 @@
 		min-width: 0;
 		min-height: 0;
 	}
-	/* 左欄：上面是放大縮小和提示，下面是跟上一張一樣、拖人會改、圖例。 */
+	/* 場地上面固定留給選人工具列的那一條（含上面的空隙，SelectionTools 的 .tools-bar 浮在這裡）：場地畫在它下面。
+	   工具列出不出現都留著，場地不跳。高度跟 editor-layout.ts 的 FIELD_PAD_Y_PX 一起改。 */
+	.stage.band {
+		--tools-h: 40px;
+		box-sizing: border-box;
+		padding-top: var(--tools-h);
+	}
+	@media (pointer: coarse) {
+		.stage.band {
+			--tools-h: 52px;
+		}
+	}
+	/* 左欄：上面是放大縮小和提示，下面是拖人會改、圖例。 */
 	.rail {
 		display: flex;
 		flex-direction: column;
@@ -707,6 +944,9 @@
 		gap: 8px;
 		min-height: 0;
 		overflow-y: auto;
+	}
+	.rail[hidden] {
+		display: none;
 	}
 	.rail > :global(*) {
 		max-width: 100%;
@@ -726,12 +966,34 @@
 	.rail-gap {
 		flex: 1;
 	}
+	/* 蓋在左欄最下面（左欄那一欄的寬，跟 .field-wrap.with-rail 的 236px 一樣），不佔版面 */
+	.rail-fade {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: 236px;
+		height: 32px;
+		pointer-events: none;
+		background: linear-gradient(to bottom, transparent, var(--paper, #eceff5) 85%);
+	}
+	/* 用鍵盤在左欄裡移動時不畫：聚焦的東西會捲進來，漸層不要蓋在它上面（捲動後才重量，會慢一格） */
+	.rail-fade[hidden],
+	.rail:has(:focus-visible) + .rail-fade {
+		display: none;
+	}
 	.field {
 		display: block;
 		width: 100%;
 		height: 100%;
 		user-select: none;
 		touch-action: none;
+	}
+	/* ✋、按住 H：空白處是抓著移的手 */
+	.field.pan-mode {
+		cursor: grab;
+	}
+	.field.panning {
+		cursor: grabbing;
 	}
 	.margin {
 		fill: #e4e8ef;
@@ -764,21 +1026,29 @@
 		font-family: inherit;
 	}
 	.num {
-		font-size: 0.3px;
 		fill: var(--muted, #66718a);
 		font-weight: 700;
 		pointer-events: none;
 		/* 放大後固定在畫面邊上時可能疊在墊子上：白邊才看得清楚 */
 		paint-order: stroke;
 		stroke: #fff;
-		stroke-width: 0.06px;
+		stroke-width: 0.2em;
 		stroke-opacity: 0.8;
 	}
+	/* 格號只細一點，不調淡：淡灰的字在場地外的灰底上看不清楚（對比要 4.5:1，N50） */
+	.num.cell-num {
+		font-weight: 400;
+	}
+	/* 八拍表小站位圖：條號疊在藍墊子上，深色字加不透明的白邊才看得清楚（N38） */
+	.field.mini .num {
+		fill: var(--ink, #16213a);
+		stroke-opacity: 1;
+	}
+	/* 字比播放頭的朱紅深一點：朱紅字在灰底上對比只有 3:1 */
 	.front {
-		font-size: 0.42px;
-		fill: var(--now, #f2542d);
+		fill: #b93a1a;
 		font-weight: 700;
-		letter-spacing: 0.08px;
+		letter-spacing: 0.19em;
 	}
 	/* 影子和走位線：淡淡的，不擋點，也不吃滑鼠（點人、拖人、框選照舊）。 */
 	.ghost-dot {
@@ -807,7 +1077,7 @@
 		stroke-opacity: 0.9;
 		stroke-width: 0.08;
 	}
-	/* 撞位的 ✕：紫色粗線，蓋在走位線上面；滑鼠移上去看得到是誰撞誰。 */
+	/* 撞位的 ✕：紫色粗線，蓋在走位線和圓點上面；滑鼠移上去看得到是誰撞誰。 */
 	.clash {
 		fill: none;
 		stroke: var(--walk-clash, #a855f7);
@@ -877,14 +1147,36 @@
 		stroke: #ffd400;
 		stroke-width: 0.08;
 	}
+	/* 在空中的人底色半透明：疊在下面的人透得出來，圓點不用錯開（走位時不會跳）。框、字還是實的。跟 RAISED_FILL_OPACITY 一樣。 */
+	.dot.raised > g > :is(circle, rect):not(.ring):not(.focus-ring) {
+		fill-opacity: 0.6;
+	}
+	/* 三層：橘框，跟第 2 層的黃框分得出來 */
+	.dot.lv3 > g > :is(circle, rect):not(.ring):not(.focus-ring) {
+		stroke: #ff7a00;
+		stroke-width: 0.1;
+	}
+	/* 地上的人細深色外框：疊在一起時看得出邊 */
+	.dot.outlined:not(.raised) > g > :is(circle, rect):not(.ring):not(.focus-ring) {
+		stroke: #16213a;
+		stroke-width: 0.035;
+	}
+	.covered {
+		fill: none;
+		stroke: #16213a;
+		stroke-width: 0.04;
+		stroke-dasharray: 0.08 0.06;
+		pointer-events: none;
+	}
 	.dot text {
 		font-size: 0.3px;
 		font-weight: 700;
 		fill: #16213a;
 		pointer-events: none;
 	}
-	.dot text.long {
-		font-size: 0.24px;
+	/* 八拍表小站位圖：號碼字放大到差不多塞滿圓點，印出來才看得清楚 */
+	.field.mini .dot > g > text:not(.long) {
+		font-size: 0.4px;
 	}
 	.dot .badge circle {
 		stroke: #fff;
@@ -910,6 +1202,12 @@
 		height: 28px;
 		font-size: 12px;
 	}
+	/* ✋ 按下去了（或按住 H）：跟選到的東西一樣的顏色，看得出來現在拖空白處是平移 */
+	.tools button[aria-pressed='true'] {
+		background: var(--sel-soft);
+		border-color: var(--sel);
+		box-shadow: inset 0 0 0 1px var(--sel);
+	}
 	.zoom {
 		min-width: 3.2em;
 		text-align: center;
@@ -928,22 +1226,6 @@
 		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
 		font-size: 12px;
 		color: var(--muted, #66718a);
-	}
-	.walk-tools label {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		color: var(--text, #1a2238);
-		cursor: pointer;
-	}
-	.walk-tools input {
-		margin: 0;
-	}
-	/* 手指：勾選框那一行至少 32px 高。 */
-	@media (pointer: coarse) {
-		.walk-tools label {
-			min-height: 32px;
-		}
 	}
 	.walk-tools span {
 		display: inline-flex;
@@ -965,9 +1247,43 @@
 		color: var(--walk-clash, #a855f7);
 		font-size: 12px;
 	}
+	.legend-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		padding: 1px 6px;
+		font-size: 12px;
+		color: var(--muted, #66718a);
+	}
+	/* 手指：「圖例」至少 32px 高 */
+	@media (pointer: coarse) {
+		.legend-toggle {
+			min-height: 32px;
+		}
+	}
+	/* 走位線和圓點的圖例放在同一塊白底裡：左欄很矮時（時間軸拖到最大）少佔一點高度 */
+	.legend-box {
+		display: grid;
+		gap: 4px;
+		justify-self: start;
+		padding: 5px 10px;
+		background: rgba(255, 255, 255, 0.94);
+		border-radius: 10px;
+		box-shadow: 0 1px 4px rgba(22, 33, 58, 0.12);
+	}
+	.legend-box > .walk-tools,
+	.legend-box > .legend {
+		padding: 0;
+		background: none;
+		box-shadow: none;
+	}
+	.legend-box[hidden] {
+		display: none;
+	}
 	.legend {
 		display: flex;
-		gap: 12px;
+		flex-wrap: wrap;
+		gap: 4px 12px;
 		padding: 5px 10px;
 		background: rgba(255, 255, 255, 0.94);
 		border-radius: 10px;
@@ -980,6 +1296,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
+		white-space: nowrap;
 	}
 	.legend i {
 		width: 11px;
@@ -997,6 +1314,13 @@
 		background: #fff;
 		border: 2px solid #ffd400;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+	}
+	.legend .up.lv3 {
+		border-color: #ff7a00;
+	}
+	.legend .under {
+		background: #fff;
+		border: 1.5px dashed #16213a;
 	}
 	/* 「正面／裁判」那一排在畫面最下面（見 fullView）：浮動列貼著它置中。 */
 	.below {
@@ -1026,10 +1350,16 @@
 		font-variant-numeric: tabular-nums;
 		pointer-events: none;
 	}
+	/* 拖人時寫在場地上面那一條（拖人時工具列收起來，讓給它）：不蓋住條號和場上的人。只寫一行，太長的尾巴變「…」 */
 	.readout {
 		position: absolute;
 		left: 4px;
 		top: 4px;
+		max-width: calc(100% - 8px);
+		box-sizing: border-box;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		padding: 5px 10px;
 		background: rgba(22, 33, 58, 0.92);
 		color: #fff;

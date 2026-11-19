@@ -3,6 +3,7 @@ import adapter from '@sveltejs/adapter-static';
 import { withPwa } from '@vite-pwa/sveltekit';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { bundleCore } from './scripts/core-bundle.mjs';
+import { thirdPartyLicenses } from './scripts/third-party-licenses.ts';
 
 export default defineConfig({
 	// 舊網址版（GitHub Pages，#267）：建置時設 OLD_SITE=1 才是。見 src/lib/old-site.ts、docs/deploy.md。
@@ -15,6 +16,8 @@ export default defineConfig({
 				define: { __CORE_FINGERPRINT__: JSON.stringify((await bundleCore()).fingerprint) }
 			})
 		},
+		// 建置時產生 third-party-licenses.txt（第三方套件的授權），見檔案開頭。
+		thirdPartyLicenses(),
 		// withPwa 包住 sveltekit()：產生 service worker（可離線）和 manifest。
 		withPwa(
 			{
@@ -55,11 +58,18 @@ export default defineConfig({
 				// 流程核心：純 TypeScript，在 Node 跑，碰不到 DOM。
 				// 音訊薄層的播放器也在這裡測（Web Audio 換成假的，見 src/lib/audio/player.ts）。
 				// src/lib 底下其他不碰 DOM 的小模組（例：編輯頁左右怎麼分）也在這裡測。
+				// 流程影片的版面（量字換成假的）也是。
 				extends: './vite.config.ts',
 				test: {
 					name: 'core',
 					environment: 'node',
-					include: ['src/lib/core/**/*.test.ts', 'src/lib/audio/**/*.test.ts', 'src/lib/*.test.ts'],
+					include: [
+						'src/lib/core/**/*.test.ts',
+						'src/lib/audio/**/*.test.ts',
+						'src/lib/video/**/*.test.ts',
+						'src/lib/file/**/*.test.ts',
+						'src/lib/*.test.ts'
+					],
 					exclude: ['src/**/*.svelte.test.ts']
 				}
 			},
@@ -71,7 +81,9 @@ export default defineConfig({
 				test: {
 					name: 'components',
 					environment: 'jsdom',
-					include: ['src/**/*.svelte.test.ts']
+					include: ['src/**/*.svelte.test.ts'],
+					// Svelte 執行期警告算失敗（見檔案開頭）。
+					setupFiles: ['./src/svelte-warnings.setup.ts']
 				}
 			}
 		]

@@ -27,12 +27,15 @@ const wangsFlow = (role: 'editor' | 'recorder' | 'viewer', records: FakeCloudFlo
 	records
 });
 
-/** 王教練記的一次：今天、分段練、整個做。 */
-const wangs = (id: string, who: string, marks: Attempt['marks']): StoredAttempt & { by: string } => ({
-	actionId: 'x1',
-	attempt: { id, date: localDate(), who, practice: 'drill', whole: true, marks },
-	by: wang.email
-});
+/** 王教練記的一次：今天、分段練、整個做；沒記號的環節是空著的（blanks，第 10 版起整個做的一次都會記）。 */
+const wangs = (id: string, who: string, marks: Attempt['marks']): StoredAttempt & { by: string } => {
+	const blanks = ['p1', 'p2', 'p3'].filter((p) => !marks[p]);
+	return {
+		actionId: 'x1',
+		attempt: { id, date: localDate(), who, practice: 'drill', whole: true, marks, ...(blanks.length && { blanks }) },
+		by: wang.email
+	};
+};
 
 /** 林教練登入、打開王教練的「測試」、切到練習。 */
 async function open(flow: FakeCloudFlow) {
@@ -243,7 +246,7 @@ describe('雲端流程改、刪紀錄（#258）', () => {
 		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '刪掉我的上一次' }));
 		await flush();
 		expect(storedIds(s)).toEqual([]);
-		await fireEvent.click(card('第 1 組 小美').getByRole('button', { name: '救回' }));
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		await flush();
 		expect(storedIds(s).length).toBe(1);
 		expect(dayRow('第 1 組 小美')).toEqual(['✗··']);
@@ -256,7 +259,7 @@ describe('雲端流程改、刪紀錄（#258）', () => {
 		expect(screen.queryByRole('button', { name: '刪掉上一次全上' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '刪掉我上一次全上記的' }));
 		await flush();
-		expect(screen.getByText('已刪掉你在第 1 次全上記的 1 欄')).toBeTruthy();
+		expect(screen.getAllByRole('status').map((s) => s.textContent)).toContain('已刪掉你在第 1 次全上記的 1 欄');
 		expect(storedIds(s)).toEqual(['trunwang00010']);
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓✓王教練']);
 		expect(dayRow('第 2 組 小芳')).toEqual([]);

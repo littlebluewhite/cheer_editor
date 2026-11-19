@@ -60,6 +60,43 @@ describe('調整場地', () => {
 		}
 	});
 
+	it('左右對稱的站位：9 條換 4 條再換回 9 條，還是左右對稱', () => {
+		const FOUR_V: FieldConfig = { strips: 4, layout: 'vertical' };
+		// 每一對站在中線兩邊一樣遠（格子單位，都在 1/4 格上）
+		const xs = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5];
+		const pairs = Object.fromEntries(
+			xs.flatMap((x, i) => [
+				[`l${i}`, [-x, 1] as [number, number]],
+				[`r${i}`, [x, 1] as [number, number]]
+			])
+		);
+		const there = flowOf(adjustField(flowWith([pairs]), FOUR_V));
+		const back = flowOf(adjustField(there, NINE_V));
+		for (const flow of [there, back]) {
+			const pos = flow.formations[0].pos;
+			for (const i of xs.keys()) {
+				const [lx, ly] = inCells(pos[`l${i}`]);
+				const [rx, ry] = inCells(pos[`r${i}`]);
+				expect([lx + rx + 0, ly - ry + 0]).toEqual([0, 0]);
+			}
+		}
+	});
+
+	it('調完會有人疊在一起：先問，列出哪張站位誰疊在一起；本來就疊著的不算；確定才調（#219）', () => {
+		const flow = {
+			...flowWith([{ a: [0, 0], b: [1, 0], c: [-3, 0], d: [-3, 0] }]),
+			members: (['a', 'b', 'c', 'd'] as const).map((id) => ({ id, name: id.toUpperCase(), gender: 'F' as const, globalRole: 'base' as const }))
+		};
+		const ONE_V: FieldConfig = { strips: 1, layout: 'vertical' };
+		// 寬 9 → 1 格：a、b 相隔 1/9 格，吸到同一點；c、d 本來就疊著
+		expect(adjustField(flow, ONE_V)).toEqual({
+			kind: 'confirm',
+			message: '這樣調整，這些人會疊在同一點（之後可以再拖開）：',
+			items: ['站位 1：A、B']
+		});
+		expect(flowOf(adjustField(flow, ONE_V, { confirmed: true })).field).toEqual(ONE_V);
+	});
+
 	it('條數不對就擋下', () => {
 		expect(adjustField(before, { strips: 0, layout: 'vertical' })).toEqual({
 			kind: 'blocked',

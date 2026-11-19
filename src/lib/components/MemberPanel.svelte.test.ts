@@ -10,7 +10,7 @@ import {
 	type CommandResult,
 	type Flow
 } from '#lib/core';
-import { testEditor } from '#lib/test-fakes.js';
+import { recordedFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import MemberPanel from './MemberPanel.svelte';
 
@@ -111,17 +111,32 @@ describe('隊員名單', () => {
 		expect(session.flow!.members.map((m) => m.name)).toEqual(['小A', '候補小C']);
 	});
 
-	it('滿 40 人時流程核心擋下，顯示原因', async () => {
+	it('改有紀錄的人的名字：問「保留／清掉」時名字框留著新名字，按取消才退回（N33）', async () => {
+		const session = setup(recordedFlow());
+		const input = screen.getByLabelText('第 1 位隊員的名字') as HTMLInputElement;
+		await fireEvent.change(input, { target: { value: '小美美' } });
+		expect(screen.getByRole('alertdialog').textContent).toContain('小美 改名成「小美美」');
+		expect(input.value).toBe('小美美');
+		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+		expect(input.value).toBe('小美');
+		expect(session.canUndo).toBe(false);
+
+		await fireEvent.change(input, { target: { value: '小美美' } });
+		await fireEvent.click(screen.getByRole('button', { name: '保留舊紀錄' }));
+		expect(input.value).toBe('小美美');
+		expect(session.flow!.members[0].name).toBe('小美美');
+	});
+
+	it('滿 40 人時加隊員表單停用，寫為什麼', () => {
 		const forty = Array.from({ length: 40 }, (_, i) => ({
 			name: `隊員${i + 1}`,
 			gender: 'F' as const,
 			globalRole: 'top' as const
 		}));
-		const session = setup(okFlow(addMembers(empty, forty)));
+		setup(okFlow(addMembers(empty, forty)));
 		expect(screen.getByText(/40 \/ 40/)).toBeTruthy();
-		await fillNew('小A', 'F', 'base');
-		expect(session.canUndo).toBe(false);
-		expect(screen.getByRole('alert').textContent).toBe('一支流程最多 40 人，已經滿了');
+		expect(screen.getByRole('button', { name: '加隊員' }).matches(':disabled')).toBe(true);
+		expect(screen.getByText('已經 40 人了（一支流程最多 40 人），刪掉隊員才能再加')).toBeTruthy();
 	});
 
 	it('超過 40 人時寫還能加幾人，一個都不加', async () => {
@@ -165,7 +180,7 @@ describe('隊員名單', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
-	it('名字超過 20 個字：加的時候擋下；改名字時擋下並還原', async () => {
+	it('名字超過 20 個字：加的時候擋下；改名字時切到前 20 個字存進去，不整段退回', async () => {
 		const session = setup();
 		const long = '一二三四五六七八九十一二三四五六七八九十一';
 		await fillNew(long, 'F', 'top');
@@ -174,19 +189,20 @@ describe('隊員名單', () => {
 		await fillNew('小A', 'F', 'top');
 		const input = screen.getByLabelText('第 1 位隊員的名字') as HTMLInputElement;
 		await fireEvent.change(input, { target: { value: long } });
-		expect(screen.getByRole('alert').textContent).toBe('隊員名字最多 20 個字');
-		expect(input.value).toBe('小A');
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(input.value).toBe(long.slice(0, 20));
+		expect(session.flow!.members[0].name).toBe(long.slice(0, 20));
 	});
 
 	it('被擋下的原因在名單下面看不到時，捲過去讓它看得到', async () => {
-		const forty = Array.from({ length: 40 }, (_, i) => ({
+		const forty = Array.from({ length: 39 }, (_, i) => ({
 			name: `隊員${i + 1}`,
 			gender: 'F' as const,
 			globalRole: 'top' as const
 		}));
 		setup(okFlow(addMembers(empty, forty)));
 		scrolled.length = 0;
-		await fillNew('小A', 'F', 'base');
+		await fillNew('小A\n小B', 'F', 'base');
 		await frame();
 		expect(scrolled).toEqual([screen.getByRole('alert')]);
 	});

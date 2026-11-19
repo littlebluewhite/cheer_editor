@@ -49,7 +49,8 @@ describe('刪段', () => {
 		expect(deleteSegment(sample(), 's2')).toEqual({
 			kind: 'confirm',
 			message: '刪掉口號 1，下面這些也會一起刪掉',
-			items: ['動作「舞蹈·喊」（0.0 起）', '站位 3（2.0）']
+			// 口號段的時間寫「秒」（T11）
+			items: ['動作「舞蹈·喊」（0.0 秒起）', '站位 3（2.0 秒）']
 		});
 	});
 

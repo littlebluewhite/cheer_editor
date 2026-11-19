@@ -7,10 +7,10 @@ export { COMMAND_NAMES, runCommand, runCommands } from './commands';
 export { inStep } from './ids';
 export type { Command, CommandArgs, CommandName, CommandOutcome, StepResult } from './commands';
 
-export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, stripsProblem } from './flow';
+export { adjustField, createFlow, flowNameProblem, memberName, renameFlow, sameFlow, stripsProblem } from './flow';
 export type { Flow, NewFlowInput } from './flow';
 
-export { MAX_CHARS, charCount, charStart, firstChars } from './text-length';
+export { MAX_CHARS, charCount, charLimit, charStart, firstChars, tooLong } from './text-length';
 export type { LimitedText } from './text-length';
 
 export { changeLabel } from './change-label';
@@ -53,7 +53,8 @@ export {
 	memberGroup,
 	moveAction,
 	previousActions,
-	raisedAt,
+	layersAt,
+	stackedAt,
 	resizeAction,
 	setSquad,
 	updateAction
@@ -79,12 +80,14 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { groupsPeople, keptAttempt, MARKS, perPerson, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
+export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
 export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
 	attemptText,
 	attemptWhos,
+	NOT_YET_MARK,
+	NOT_YET_TITLE,
 	carryRecords,
 	changeAttempt,
 	deleteAttempt,
@@ -96,14 +99,18 @@ export {
 	recordableActions,
 	recordAttempt,
 	recordRunThrough,
+	recordsLoss,
+	recordsPatch,
+	redoRecords,
 	restoreAttempt,
-	restoreRunThrough
+	restoreRunThrough,
+	undoRecords
 } from './records';
-export type { RemovedRunThrough, RunThroughMarks } from './records';
+export type { RecordsPatch, RemovedRunThrough, RunThroughMarks } from './records';
 export { checkRecord, putRecords, takeRecords } from './stored-records';
 export type { CheckedAttempt, StoredAttempt } from './stored-records';
 
-export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseLabel } from './phase-types';
+export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseKindsFor, phaseLabel } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';
 export { addPhase, clearPhaseBeats, deletePhase, markPhaseBeats, updatePhase } from './phases';
 export type { NewPhaseInput, PhaseChange } from './phases';
@@ -123,20 +130,21 @@ export {
 } from './rates';
 export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
 
-export { actionEights, beatSpanText } from './beat-range';
+export { actionEights, beatSpanText, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows } from './eight-count';
+export { eightCountRows, eightCountView, nearbyEights, teamWho } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,
 	EightCountCueLine,
 	EightCountFormation,
 	EightCountPhase,
-	EightCountRow
+	EightCountRow,
+	NearbyEights
 } from './eight-count';
 
-export { addCustomRole, defaultRoles, deleteCustomRole, roleGlossary, updateCustomRole } from './roles';
+export { addCustomRole, defaultRoles, deleteCustomRole, pickableRoles, roleGlossary, updateCustomRole } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {
@@ -150,10 +158,11 @@ export {
 	formationTimes,
 	formationWalks,
 	insertFormation,
-	matchPrevious,
 	memberWalk,
 	moveFormation,
 	moveFormationHint,
+	groupPositions,
+	moveGroup,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
@@ -165,6 +174,8 @@ export {
 	walkSpeedText
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
+
+export { alignColumn, alignRow, mirrorPositions, spreadEvenly } from './group-moves';
 
 export { FINE_ZOOM, fieldPositionText, snapGroup, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';
@@ -184,6 +195,7 @@ export {
 	fitSegmentToAudio,
 	loadSegmentAudio,
 	musicLength,
+	newChantTenths,
 	readSegmentNumber,
 	updateSegment
 } from './segment';
@@ -207,11 +219,13 @@ export {
 	HALF_BEATS_PER_EIGHT,
 	atText,
 	atTextWithUnit,
+	clockText,
 	farthestLegal,
 	lengthText,
 	lengthTextWithUnit,
 	nearestPosition,
 	positionText,
+	readJump,
 	readLength,
 	readStart,
 	readTime,
@@ -220,18 +234,32 @@ export {
 	segmentSpans,
 	snapToBeat,
 	stepPlayhead,
+	timeExamples,
 	timeText,
 	timeTextWithUnit,
 	toPosition,
 	toSeconds,
-	totalSeconds
+	totalSeconds,
+	units
 } from './time';
 export type { RulerMark, SegmentSpan, TimeField, TimePosition } from './time';
 
-export { firstBeatPreview, playbackPlan, playStartSec, repeatSpan, resumeSec } from './playback';
+export {
+	VIDEO_FPS,
+	VIDEO_INTRO_SEC,
+	VIDEO_OUTRO_SEC,
+	videoAudioClips,
+	videoDurationSec,
+	videoFrame,
+	videoFrames,
+	videoRows
+} from './video-frame';
+export type { VideoFrameData, VideoRow } from './video-frame';
+
+export { actionRange, firstBeatPreview, playbackPlan, playStartSec, rangeEnd, rangeSeconds, resumeSec, type RepeatRange } from './playback';
 export type { MetronomeClick, PlaybackClip, PlaybackPlan } from './playback';
 
-export { actionHints, duplicateNames, musicOverrunSec, stackedMembers } from './hints';
+export { actionHints, duplicateNames, musicOverrunSec, samePoint, stackedMembers } from './hints';
 
 export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
@@ -240,7 +268,17 @@ export { insertBeats } from './insert-beats';
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules, TimeRuleWarning } from './time-rules';
 
-export { CELL_M, FIELD_TEMPLATES, MAX_STRIPS, MIN_STRIPS, fieldGeometry } from './field';
+export {
+	CELL_M,
+	FIELD_TEMPLATES,
+	MAX_STRIPS,
+	MIN_STRIPS,
+	NUMBER_BAND,
+	fieldGeometry,
+	fieldNumbers,
+	frontLabelAt,
+	fullView
+} from './field';
 export type {
 	FieldConfig,
 	FieldGeometry,
@@ -250,6 +288,9 @@ export type {
 	Rect,
 	Strip
 } from './field';
+
+export { markCovered, RAISED_FILL_OPACITY } from './layer-cover';
+export type { LayerDot, CoveredDot } from './layer-cover';
 
 export { clashes } from './clash';
 export type { Clash } from './clash';

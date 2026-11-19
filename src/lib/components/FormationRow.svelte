@@ -185,7 +185,6 @@
 				<button
 					type="button"
 					class="pick"
-					data-space-plays
 					aria-label={formation.name ? `站位 ${i + 1} ${formation.name}` : `站位 ${i + 1}`}
 					title={tag
 						? `站位 ${i + 1}${formation.name ? ` ${formation.name}` : ''}${deletable ? '：選到後按 Delete 刪掉' : ''}`
@@ -224,6 +223,7 @@
 					<button
 						type="button"
 						class="del"
+						data-edit
 						aria-label={`刪除站位 ${i + 1}`}
 						onclick={() => session.removeFormation(formation.id)}><Icon name="close" size={11} /></button
 					>

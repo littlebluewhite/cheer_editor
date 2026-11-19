@@ -5,12 +5,15 @@ import {
 	addSegment,
 	createFlow,
 	eightCountRows,
+	eightCountView,
+	nearbyEights,
 	clearPhaseBeats,
 	addPhase,
 	insertFormation,
 	placeCue,
 	renameFormation,
 	setPositions,
+	setWalks,
 	updateAction,
 	updateSegment,
 	type Flow,
@@ -162,14 +165,14 @@ describe('八拍表的列：全隊', () => {
 		expect(rows[2].actions.map((a) => a.at)).toEqual(['3-1&・0.5 拍']);
 	});
 
-	it('口號段整段一列，寫秒數；口號段的動作寫段內秒數', () => {
+	it('口號段整段一列，寫秒數；口號段的動作寫段內秒數：從幾秒到幾秒和長度', () => {
 		const flow = flowOf(
 			addAction(sample(), action({ segmentId: 's2', category: 'other', name: '口號', start: 23, length: 20 }))
 		);
 		const chant = eightCountRows(flow, null).filter((r) => r.segmentLabel === '口號 1');
 		expect(chant).toHaveLength(1);
 		expect(chant[0]).toMatchObject({ eight: null, startSec: expect.closeTo(8, 6), durationSec: expect.closeTo(10, 6) });
-		expect(chant[0].actions.map((a) => a.at)).toEqual(['2.3 秒']);
+		expect(chant[0].actions.map((a) => a.at)).toEqual(['2.3 到 4.3 秒・2.0 秒']);
 	});
 });
 
@@ -214,7 +217,7 @@ describe('八拍表的列：站位', () => {
 		const rows = eightCountRows(flow, null);
 		expect(rows.map((r) => r.formations.map((f) => [f.number, f.at, f.caption]))).toEqual([
 			[[1, '1-1', '站位 1・1-1']],
-			[[2, '2-5', '站位 2・2-5']],
+			[[2, '2-5', '站位 2・2-5（1-5 出發）']],
 			[],
 			[[3, '2.5 秒', '站位 3・2.5 秒']]
 		]);
@@ -267,6 +270,21 @@ describe('八拍表的列：走位', () => {
 		]);
 	});
 
+	it('站位的說明寫走位的出發時間；大家出發不一樣時寫最早的，個人表寫他自己的；沒人走的不寫', () => {
+		let flow = sample();
+		// 第 3 個八拍開頭（3-1）插站位 2，小A、小B 換位置；預設往前一個八拍出發（2-1），小B 自己設 2-5 出發
+		flow = flowOf(insertFormation(flow, 6.4));
+		const b = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, b, { m1: [1, 2], m2: [2, 2] }));
+		const caption = (memberId: string | null) =>
+			eightCountRows(flow, memberId).flatMap((r) => r.formations.map((f) => f.caption));
+		expect(caption(null)).toEqual(['站位 1・1-1', '站位 2・3-1（2-1 出發）']);
+		flow = flowOf(setWalks(flow, b, { m2: { depart: { segmentId: 's1', at: 24 }, arrive: { segmentId: 's1', at: 32 } } }));
+		expect(caption(null)).toEqual(['站位 1・1-1', '站位 2・3-1（最早 2-1 出發）']);
+		expect(caption('m2')).toEqual(['站位 1・1-1', '站位 2・3-1（2-5 出發）']);
+		expect(caption('m3')).toEqual(['站位 1・1-1', '站位 2・3-1']);
+	});
+
 	it('同一列也有他的動作時，動作和走位都寫', () => {
 		let flow = sample();
 		flow = flowOf(addAction(flow, action({ start: 16, length: 8 })));
@@ -295,10 +313,10 @@ describe('八拍表的列：拍點', () => {
 				category: 'stunt',
 				name: 'Cradle',
 				cues: [
-					{ kind: 'step', from: 5, to: 5, span: '2-5・1 拍', lead: '', continued: false, word: '下手', who: null },
-					{ kind: 'count', from: 6, to: 6, span: '2-6・1 拍', lead: '', continued: false, word: 'down', who: null },
-					{ kind: 'count', from: 7, to: 7, span: '2-7・1 拍', lead: '', continued: false, word: 'up', who: null },
-					{ kind: 'motion', from: 8, to: 8, span: '2-8・1 拍', lead: '', continued: false, word: 'high V', who: '上層' }
+					{ kind: 'step', from: 5, to: 5, start: 8, end: 10, span: '2-5・1 拍', lead: '', continued: false, word: '下手', who: null },
+					{ kind: 'count', from: 6, to: 6, start: 10, end: 12, span: '2-6・1 拍', lead: '', continued: false, word: 'down', who: null },
+					{ kind: 'count', from: 7, to: 7, start: 12, end: 14, span: '2-7・1 拍', lead: '', continued: false, word: 'up', who: null },
+					{ kind: 'motion', from: 8, to: 8, start: 14, end: 16, span: '2-8・1 拍', lead: '', continued: false, word: 'high V', who: '上層' }
 				],
 				phases: []
 			}
@@ -313,13 +331,13 @@ describe('八拍表的列：拍點', () => {
 		const rows = eightCountRows(flow, null);
 		const span = '1-7 到 2-2・4 拍';
 		expect(rows[0].cues[0].cues).toEqual([
-			{ kind: 'count', from: 7, to: 8, span, lead: '', continued: false, word: 'down', who: null }
+			{ kind: 'count', from: 7, to: 8, start: 12, end: 16, span, lead: '', continued: false, word: 'down', who: null }
 		]);
 		expect(rows[1].cues).toEqual([
 			{
 				category: 'stunt',
 				name: 'Lib',
-				cues: [{ kind: 'count', from: 1, to: 2, span, lead: '', continued: true, word: 'down', who: null }],
+				cues: [{ kind: 'count', from: 1, to: 2, start: 0, end: 4, span, lead: '', continued: true, word: 'down', who: null }],
 				phases: []
 			}
 		]);
@@ -333,7 +351,7 @@ describe('八拍表的列：拍點', () => {
 		flow = { ...flow, actions: flow.actions.map((a) => ({ ...a, start: 1 })) };
 		// 下手從 1-2& 佔 2 拍：格子佔 2 到 4，結束拍跟拍點小窗一樣寫 1-3&
 		expect(eightCountRows(flow, null)[0].cues[0].cues).toEqual([
-			{ kind: 'step', from: 2, to: 4, span: '1-2& 到 1-3&・2 拍', lead: '1-2&', continued: false, word: '下手', who: null }
+			{ kind: 'step', from: 2, to: 4, start: 3, end: 7, span: '1-2& 到 1-3&・2 拍', lead: '1-2&', continued: false, word: '下手', who: null }
 		]);
 	});
 
@@ -405,10 +423,10 @@ describe('八拍表的列：環節', () => {
 			{
 				category: 'stunt',
 				name: 'Lib',
-				cues: [{ kind: 'count', from: 8, to: 8, span: '1-8・1 拍', lead: '', continued: false, word: 'down', who: null }],
+				cues: [{ kind: 'count', from: 8, to: 8, start: 14, end: 16, span: '1-8・1 拍', lead: '', continued: false, word: 'down', who: null }],
 				phases: [
-					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b' },
-					{ label: '中段', from: 7, to: 8, color: '#475569' }
+					{ label: '上法 延伸', from: 5, to: 6, color: '#00796b', row: 0 },
+					{ label: '中段', from: 7, to: 8, color: '#475569', row: 0 }
 				]
 			}
 		]);
@@ -421,7 +439,7 @@ describe('八拍表的列：環節', () => {
 				category: 'stunt',
 				name: 'Lib',
 				cues: [],
-				phases: [{ label: '中段', from: 1, to: 2, color: '#475569' }]
+				phases: [{ label: '中段', from: 1, to: 2, color: '#475569', row: 0 }]
 			}
 		]);
 	});
@@ -447,10 +465,69 @@ describe('八拍表的列：環節', () => {
 		expect(eightCountRows(flow, null).map((r) => r.cues)).toEqual([[], [], [], []]);
 	});
 
+	it('金字塔疊著的環節在不同排，跨列的每一列都在同一排；沒疊的都是第 0 排', () => {
+		// 1-5 開始的金字塔：上法「第一個」1-5 到 1-6、中段「第一個」1-7 到 2-4、上法「第二個」1-7 到 2-2（疊在中段上）
+		let flow = flowOf(addAction(sample(), action({ start: 8, length: 16 })));
+		flow = flowOf(updateAction(flow, 'x1', { category: 'pyramid' }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第一個', beats: { at: 0, len: 4 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '第一個', beats: { at: 4, len: 12 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 4, len: 8 } }));
+		const rows = eightCountRows(flow, null);
+		const placed = (i: number) => rows[i].cues[0].phases.map((p) => [p.label, p.from, p.to, p.row]);
+		expect(placed(0)).toEqual([
+			['上法 第一個', 5, 6, 0],
+			['中段 第一個', 7, 8, 0],
+			['上法 第二個', 7, 8, 1]
+		]);
+		expect(placed(1)).toEqual([
+			['中段 第一個', 1, 4, 0],
+			['上法 第二個', 1, 2, 1]
+		]);
+		expect(eightCountRows(phased(), null)[0].cues[0].phases.map((p) => p.row)).toEqual([0, 0]);
+	});
+
 	it('個人表也印環節（環節不分給誰）；不在動作裡的人沒有', () => {
 		const labels = (memberId: string) =>
 			eightCountRows(phased(), memberId).map((r) => r.cues.flatMap((l) => l.phases.map((p) => p.label)));
 		expect(labels('m2')).toEqual([['上法 延伸', '中段'], ['中段'], [], []]);
 		expect(labels('m3')).toEqual([[], [], []]);
+	});
+});
+
+describe('八拍表的小站位圖範圍', () => {
+	it('同一張表的小站位圖用同一個範圍：所有站位裡有人的地方合起來', () => {
+		let flow = flowOf(insertFormation(sample(), 6.4));
+		flow = flowOf(setPositions(flow, flow.formations[0].id, { m1: [-2, 1], m2: [0, 3], m3: [1, 2] }));
+		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [4, -1], m2: [0, 0], m3: [1, 5] }));
+		expect(eightCountView(flow)).toEqual({ x: -2, y: -1, width: 6, height: 6 });
+	});
+
+	it('哪一張站位都沒有人時是 null（畫整個場地）', () => {
+		let flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addSegment(flow, 'music'));
+		expect(eightCountView(flow)).toBeNull();
+	});
+});
+
+describe('前後八拍：檢視模式跟著播放頭看前三個、這個、後三個八拍', () => {
+	it('一個八拍一格（空的八拍不合起來），這個八拍在中間；開頭不夠的是空格；寫第幾拍', () => {
+		// 音樂 1：3 個八拍（最後一個 4 拍），一個八拍 3.2 秒、一拍 0.4 秒；口號 1 一整段。播放頭在 2-3
+		const near = nearbyEights(sample(), null, 3.2 + 2 * 0.4 + 0.1, 3, 3);
+		expect(near.rows.map((r) => r && r.eightText)).toEqual([null, null, '1', '2', '3', '整段 10.0 秒', null]);
+		expect(near.beat).toBe(3);
+		expect(near.half).toBe(4);
+	});
+
+	it('做到一半的動作：後面的八拍也寫得出人和任務角色（開始那一列可能不在畫面上）', () => {
+		const flow = flowOf(addAction(sample(), action({ length: 40 })));
+		const [first, , third] = eightCountRows(flow, null, false);
+		expect(first.ongoing).toEqual([]);
+		expect(third.ongoing.map((a) => [a.at, a.name, a.who])).toEqual([['1-1 到 3-4・20 拍', 'Lib', '小A（上層）、小B（主底）']]);
+		// 個人表：小B 只看他自己的任務角色
+		expect(eightCountRows(flow, 'm2', false)[2].ongoing.map((a) => a.who)).toEqual(['主底']);
+	});
+
+	it('口號段沒有第幾拍', () => {
+		expect(nearbyEights(sample(), null, 8 + 5, 3, 3).beat).toBeNull();
 	});
 });

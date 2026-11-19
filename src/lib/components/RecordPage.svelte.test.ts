@@ -51,11 +51,11 @@ describe('記錄頁', () => {
 
 		await pickAction('騰翻');
 		expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(['小美', '小A']);
-		await tap('小A', '整體 騰翻', '成功');
+		await tap('小A', '翻法 騰翻', '成功');
 		expect(dayRow('小A')).toEqual(['✓']);
 	});
 
-	it('卡上點 ✓ ✓ △ 再按「存這一次」才存成一次，卡片下面出現 ✓✓△，寫「已存」；別組的卡不動', async () => {
+	it('卡上點 ✓ ✓ △ 再按「存這一次」才存成一次，卡片下面出現 ✓✓△，寫「已記下」；別組的卡不動', async () => {
 		setup();
 		await tap('第 1 組 小美', '上法', '成功');
 		await tap('第 1 組 小美', '中段', '成功');
@@ -63,7 +63,7 @@ describe('記錄頁', () => {
 		expect(dayRow('第 1 組 小美')).toEqual([]);
 		await save('第 1 組 小美');
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
-		expect(card('第 1 組 小美').getByRole('status').textContent).toBe('已存');
+		expect(screen.getByRole('status').textContent).toBe('已記下');
 		expect(dayRow('第 2 組 小芳')).toEqual([]);
 	});
 
@@ -80,10 +80,10 @@ describe('記錄頁', () => {
 		expect(dayRow(who)).toEqual(['✗··', '✓✗·']);
 		await fireEvent.click(removeLast());
 		expect(dayRow(who)).toEqual(['✗··']);
-		expect(card(who).getByRole('status').textContent).toContain('已刪掉');
-		await fireEvent.click(card(who).getByRole('button', { name: '救回' }));
+		expect(screen.getByRole('status').textContent).toContain('已刪掉');
+		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		expect(dayRow(who)).toEqual(['✗··', '✓✗·']);
-		expect(card(who).getByRole('status').textContent).toBe('已救回');
+		expect(screen.getByRole('status').textContent).toBe('已救回');
 		await fireEvent.click(removeLast());
 		expect(dayRow(who)).toEqual(['✗··']);
 		await fireEvent.click(removeLast());
@@ -108,10 +108,10 @@ describe('記錄頁', () => {
 		const item = () => screen.getByRole('button', { name: /^騰翻/ }).textContent?.replace(/\s+/g, ' ').trim();
 		expect(item()).toBe('騰翻 這天每人 0 次');
 		await pickAction('騰翻');
-		for (const who of ['小美', '小A', '小美', '小A']) await tap(who, '整體 騰翻', '成功');
+		for (const who of ['小美', '小A', '小美', '小A']) await tap(who, '翻法 騰翻', '成功');
 		expect(item()).toBe('騰翻 這天每人 2 次');
-		await tap('小美', '整體 騰翻', '失敗');
-		expect(item()).toBe('騰翻 這天每人 2–3 次 最弱：整體 騰翻 80%');
+		await tap('小美', '翻法 騰翻', '失敗');
+		expect(item()).toBe('騰翻 這天每人 2–3 次 最弱：翻法 騰翻 80%');
 	});
 
 	it('選了「只練幾個環節」和要練的環節：換動作再回來還是它', async () => {
@@ -126,17 +126,17 @@ describe('記錄頁', () => {
 		expect((card('第 2 組 小芳').getByRole('radio', { name: '整個' }) as HTMLInputElement).checked).toBe(true);
 	});
 
-	it('點到一半就換動作：這一次不存', async () => {
+	it('卡上點了記號還沒存：換到別的動作，左邊清單那個動作標「還沒存」；存了就拿掉（N27）', async () => {
 		setup();
-		const who = '第 1 組 小美';
-		await tap(who, '上法', '成功');
-		await tap(who, '中段', '成功');
+		const list = within(screen.getByRole('list', { name: '記成功率的動作' }));
+		const lib = () => list.getByRole('button', { name: /^技巧·Lib/ }).textContent ?? '';
+		await tap('第 2 組 小芳', '上法', '成功');
 		await pickAction('騰翻');
+		expect(lib()).toContain('還沒存');
+		expect(list.getByRole('button', { name: /^騰翻/ }).textContent).not.toContain('還沒存');
 		await pickAction('技巧·Lib');
-		expect(card(who).getByRole('button', { name: `${who} 上法 成功` }).getAttribute('aria-pressed')).toBe('false');
-		await tap(who, '下法', '成功');
-		await save(who);
-		expect(dayRow(who)).toEqual(['··✓']);
+		await save('第 2 組 小芳');
+		expect(lib()).not.toContain('還沒存');
 	});
 });
 
@@ -163,7 +163,7 @@ describe('記錄頁改某一次、刪掉某一次', () => {
 });
 
 describe('記錄頁記一次全上', () => {
-	it('按「＋ 記一次全上」打開全上表；存好回到記錄頁，寫「已存這次全上」，卡片和流程裡都有這次全上', async () => {
+	it('按「＋ 記一次全上」打開全上表；存好回到記錄頁，寫「已記下這次全上」，卡片和流程裡都有這次全上', async () => {
 		const session = setup();
 		await openSheet();
 		await tapSlot('第 2 組 小芳', '下法', 2);
@@ -171,7 +171,7 @@ describe('記錄頁記一次全上', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
 
 		expect(screen.queryByRole('region', { name: '記一次全上' })).toBeNull();
-		expect(screen.getByRole('status').textContent).toBe('已存這次全上');
+		expect(screen.getByRole('status').textContent).toBe('已記下這次全上');
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓✓']);
 		expect(dayRow('第 2 組 小芳')).toEqual(['✓✓✗']);
 		expect(session.flow!.actions.map((a) => a.successRate?.records.map((r) => [r.who, r.practice]) ?? [])).toEqual([

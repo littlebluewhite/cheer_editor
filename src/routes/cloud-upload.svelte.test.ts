@@ -6,7 +6,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadSegmentAudio, putRecords, readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
-import { editorPage, fakeDraftStore, fakeServer, flush, openFile, recordedFlow, type FakeCloudFlow } from '#lib/test-fakes.js';
+import { editorPage, fakeDraftStore, fakeServer, flush, fromMenu, menuItem, openFile, recordedFlow, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -164,7 +164,7 @@ async function openCloud(flow: FakeCloudFlow) {
 describe('下載成流程檔', () => {
 	it.each(['owner', 'editor'] as const)('%s：按「下載」存成流程檔，讀回來編排和紀錄一樣，沒有記的人、擁有者、權限、分享連結', async (role) => {
 		const s = await openCloud(wangsFlow(role));
-		await fireEvent.click(screen.getByRole('button', { name: /下載/ }));
+		await fromMenu('下載成流程檔');
 		await flush();
 
 		expect(s.page.saves).toHaveLength(1);
@@ -186,7 +186,7 @@ describe('下載成流程檔', () => {
 	it.each(['recorder', 'viewer'] as const)('%s：沒有「下載」', async (role) => {
 		await openCloud(wangsFlow(role));
 		expect(screen.getByRole('button', { name: '分享' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: /下載/ })).toBeNull();
+		expect(await menuItem('下載成流程檔')).toBeNull();
 	});
 
 	it('手機：沒有「下載」，只有回首頁', async () => {

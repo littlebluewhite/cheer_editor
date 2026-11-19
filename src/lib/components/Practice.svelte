@@ -13,6 +13,7 @@
 	import HomeScreenHint from './HomeScreenHint.svelte';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 記在哪一天（YYYY-MM-DD），預設今天；可以改（練完補打）。 */
@@ -40,8 +41,8 @@
 	] as const;
 	/** 不能記（雲端流程的檢視者）只有總表。 */
 	const PAGES = $derived(session.cannotRecord ? ALL_PAGES.filter((p) => p.key === 'summary') : ALL_PAGES);
-	let picked = $state<(typeof ALL_PAGES)[number]['key']>('record');
-	const page = $derived(PAGES.some((p) => p.key === picked) ? picked : PAGES[0].key);
+	/** 在哪一頁：放在 session，切到編排再回來還是這一頁（不能記的只有總表）。 */
+	const page = $derived(PAGES.some((p) => p.key === session.view.practicePage) ? session.view.practicePage : PAGES[0].key);
 	/** 沒存進去的紀錄（雲端流程）。 */
 	const dropped = $derived(session.droppedRecords);
 
@@ -62,7 +63,7 @@
 				<button
 					type="button"
 					aria-pressed={page === p.key}
-					onclick={() => p.key !== page && session.leavePracticePage(() => (picked = p.key))}>{p.label}</button
+					onclick={() => p.key !== page && session.leavePracticePage(() => (session.view.practicePage = p.key))}>{p.label}</button
 				>
 			{/each}
 		</div>
@@ -98,7 +99,7 @@
 		{/if}
 	{/if}
 	{#if dropped.length}
-		<div class="dropped" role="alert">
+		<div class="dropped" {@attach revealAlert()}>
 			<div class="dropped-head">
 				{#if dropped.every((d) => d.note)}
 					<p><b>這 {dropped.length} 筆沒存進去</b></p>

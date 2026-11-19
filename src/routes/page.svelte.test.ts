@@ -13,7 +13,7 @@ import {
 	setPositions
 } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, fromMenu, menuItem } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
@@ -147,7 +147,7 @@ describe('段、八拍尺、上方列', () => {
 		expect(position()).toBe('音樂 1 2-1');
 		await fireEvent.keyDown(window, { key: 'ArrowLeft' });
 		expect(position()).toBe('音樂 1 1-8');
-		await fireEvent.keyDown(screen.getByLabelText('名稱'), { key: 'ArrowRight' });
+		await fireEvent.keyDown(screen.getByLabelText(/^名字/), { key: 'ArrowRight' });
 		expect(position()).toBe('音樂 1 1-8');
 	});
 
@@ -174,37 +174,36 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		expect(screen.getByText('口號段加起來最少要 30 秒')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		expect(screen.getByText('口號段加起來最少要 0:30.0')).toBeTruthy();
+		await fromMenu('流程設定');
 		await fireEvent.change(screen.getByLabelText('口號段加起來最少（秒）'), { target: { value: '20' } });
-		expect(screen.getByText('口號段加起來最少要 20 秒')).toBeTruthy();
+		expect(screen.getByText('口號段加起來最少要 0:20.0')).toBeTruthy();
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
 		expect(screen.queryByText('還沒有口號段')).toBeNull();
 	});
 
-	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
+	it('首頁和上方列的選單裡都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
 		render(Page, editorPage().props);
-		const check = () => {
-			const link = screen.getByRole('link', { name: '使用說明' }) as HTMLAnchorElement;
+		const check = (link: HTMLElement) => {
 			expect(link.getAttribute('href')).toMatch(/\/guide\?from=editor$/);
-			expect(link.target).toBe('_blank');
+			expect((link as HTMLAnchorElement).target).toBe('_blank');
 		};
-		check();
+		check(screen.getByRole('link', { name: '使用說明' }));
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		check();
+		check((await menuItem('使用說明'))!);
 	});
 
-	it('流程名字最多 40 個字：新建時打不下第 41 個字（前 40 個留著）；流程設定送進太長的名字擋下，說最多幾個字', async () => {
+	it('流程名字最多 40 個字：新建時打不下第 41 個字（前 40 個留著）；流程設定送進太長的名字切到前 40 個字存進去，不整段退回', async () => {
 		render(Page, editorPage().props);
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(41) } });
 		expect((screen.getByLabelText('流程名字') as HTMLInputElement).value).toBe('字'.repeat(40));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 		await fireEvent.change(name, { target: { value: '名'.repeat(41) } });
-		expect(screen.getByRole('alert').textContent).toContain('流程名字最多 40 個字');
-		expect(name.value).toBe('字'.repeat(40));
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(name.value).toBe('名'.repeat(40));
 	});
 
 	it('段設定：口號段超過 300 秒、八拍數超過 200 擋下，訊息寫範圍，欄位退回，流程不改', async () => {
@@ -215,7 +214,7 @@ describe('段、八拍尺、上方列', () => {
 		const seconds = screen.getByLabelText('長度（秒）') as HTMLInputElement;
 		await fireEvent.change(seconds, { target: { value: '99999999' } });
 		expect(screen.getByRole('alert').textContent).toBe('「長度（秒）」退回原本的值：口號段長度要在 0.1 到 300 秒之間');
-		expect(seconds.value).toBe('10');
+		expect(seconds.value).toBe('30');
 		await fireEvent.change(seconds, { target: { value: '-3' } });
 		expect(screen.getByRole('alert').textContent).toContain('要在 0.1 到 300 秒之間');
 		await fireEvent.pointerDown(screen.getByRole('button', { name: '關閉' }));
@@ -248,7 +247,7 @@ describe('段、八拍尺、上方列', () => {
 
 	it('流程設定可以改流程名字；空白會被擋，欄位還原', async () => {
 		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 		await fireEvent.change(name, { target: { value: ' 臺灣盃 ' } });
 		expect(document.querySelector('.topbar b')?.textContent).toBe('臺灣盃');
@@ -268,7 +267,7 @@ describe('段、八拍尺、上方列', () => {
 		const lanes = () => [...document.querySelectorAll('[data-lane] .no')].map((el) => el.textContent);
 		expect(dots()).toEqual(['1', '2', '3']);
 
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const dialog = screen.getByRole('dialog', { name: '流程設定' });
 		await fireEvent.click(within(dialog).getByLabelText('開頭字（名字的第一個字）'));
 		// 預覽：每個人的標記和名字
@@ -282,7 +281,7 @@ describe('段、八拍尺、上方列', () => {
 		]);
 
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
-		await fireEvent.click(screen.getByRole('button', { name: /復原/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		expect(dots()).toEqual(['1', '2', '3']);
 	});
 });
@@ -298,6 +297,7 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await pickRole('小A', '上層');
 		await fireEvent.click(screen.getByRole('button', { name: '新增動作' }));
@@ -335,7 +335,7 @@ describe('動作', () => {
 		expect(bar()?.classList.contains('selected')).toBe(true);
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(bar()?.classList.contains('selected')).toBe(false);
-		expect(screen.getByRole('button', { name: '新增動作' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '＋ 新動作' })).toBeTruthy();
 		await fireEvent.keyDown(window, { key: 'Delete' });
 		expect(bar()).toBeTruthy();
 	});
@@ -663,6 +663,7 @@ describe('動作', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '在最後加一段' }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm1' } });
 		await fireEvent.change(screen.getByLabelText('加人'), { target: { value: 'm2' } });
 		await pickRole('小A', '上層');
@@ -741,13 +742,14 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(1);
 		await seek(8.25);
 		await dragFirstMember();
-		expect(screen.getByRole('status').textContent).toMatch(/插了一張站位/);
+		expect(screen.getByRole('status').textContent).toMatch(/^已插入站位 2；大家的位置自動帶入/);
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 
 		await dragFirstMember();
 		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
+		// 改現有的那張：沒插、沒往後帶也說改了哪張（N21）
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2');
 	});
 
 	it('播放中一開始拖人就先暫停，播放頭停到最近的整拍：新站位插在整拍上，不插在半拍', async () => {
@@ -792,12 +794,12 @@ describe('站位與走位', () => {
 		await dragFirstMember(); // 插站位 2；小B 在站位 1、2 都站在原地
 		await seek(0);
 		await dragFirstMember('m2');
-		expect(screen.getByRole('status').textContent).toBe('後面 1 張站位也跟著改了');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 1；往後帶了 1 張');
 
 		await seek(4);
 		await dragFirstMember('m2');
 		expect(screen.getByRole('status').textContent).toBe(
-			'插了一張站位，大家的位置自動帶入；後面 1 張站位也跟著改了'
+			'已插入站位 2；大家的位置自動帶入；往後帶了 1 張'
 		);
 	});
 
@@ -809,7 +811,7 @@ describe('站位與走位', () => {
 		await dragFirstMember('m2'); // 插站位 2，往後帶改了站位 3
 		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
 		expect(screen.getByRole('status').textContent).toBe(
-			'已刪掉站位 2；後面站位的改動還在，要整個還原按復原'
+			'已刪站位 2；後面站位的改動還在，要整個還原按復原'
 		);
 	});
 
@@ -823,6 +825,25 @@ describe('站位與走位', () => {
 		expect(line()).toBe('拖人會改：站位 2（3-5&）');
 		await seek(4);
 		expect(line()).toBe('拖人會在 2-3 插一張新站位');
+	});
+
+	it('現在站位和站位編輯合成一張卡：在站位上能改名稱和時間；不在站位上寫號碼和名稱、會插在哪', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2（3-5&）
+		await fireEvent.change(screen.getByLabelText('站位名稱'), { target: { value: '原地翻' } });
+		const card = () => within(screen.getByLabelText('現在的站位'));
+		expect(card().getByText('2')).toBeTruthy();
+		expect((card().getByLabelText('站位名稱') as HTMLInputElement).value).toBe('原地翻');
+		expect((card().getByLabelText('站位時間') as HTMLInputElement).value).toBe('3-5&');
+		expect(card().getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（3-5&）');
+		// 站位卡只有一張
+		expect(screen.getAllByText(/^拖人會/)).toHaveLength(1);
+
+		await seek(9.6);
+		expect(card().queryByLabelText('站位名稱')).toBeNull();
+		expect(card().getByText('原地翻')).toBeTruthy();
+		expect(card().getByText(/^拖人會/).textContent).toBe('拖人會在 4-1 插一張新站位');
 	});
 
 	it('站位名稱：播放頭在站位上才能取名；縮圖跟著寫名字；可以復原；不在站位上沒有名稱欄', async () => {
@@ -842,15 +863,15 @@ describe('站位與走位', () => {
 		expect(screen.getByRole('button', { name: '站位 1' })).toBeTruthy();
 	});
 
-	it('站位名稱改好了：別的提示照舊留著（場上的問題成功才收掉提示）', async () => {
+	it('站位名稱改好了：提示換成改了哪張，旁邊有復原（能復原的都有提示，N21）', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
-		const notice = screen.getByRole('status').textContent;
-		expect(notice).toMatch(/插了一張站位/);
+		expect(screen.getByRole('status').textContent).toMatch(/^已插入站位 2；大家的位置自動帶入/);
 		await fireEvent.change(screen.getByLabelText('站位名稱'), { target: { value: '開場' } });
 		expect(screen.getByRole('button', { name: '站位 2 開場' })).toBeTruthy();
-		expect(screen.getByRole('status').textContent).toBe(notice);
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2');
+		expect(screen.getByRole('button', { name: '復原：改站位 2' })).toBeTruthy();
 	});
 
 	it('站位名稱：中文輸入法選字時按的 Enter 不離開輸入框（不然字會重複），選完再按 Enter 才離開', async () => {
@@ -865,36 +886,7 @@ describe('站位與走位', () => {
 		expect(document.activeElement).not.toBe(box);
 	});
 
-	it('跟上一張一樣：沒選人、在開頭那張時按不下去並說原因；在站位上改成上一張的位置；不在站位上先插一張', async () => {
-		const button = () => screen.getByRole('button', { name: '跟上一張一樣' }) as HTMLButtonElement;
-		const at = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!.getAttribute('transform');
-		await setup();
-		const start = at('m1');
-		expect(button().disabled).toBe(true);
-		expect(screen.getByText('先選人')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		expect(button().disabled).toBe(true);
-		expect(screen.getByText('開頭那張前面沒有站位')).toBeTruthy();
-
-		await seek(8.25);
-		await fireEvent.click(screen.getByRole('button', { name: '不選人' }));
-		await dragFirstMember(); // 插站位 2，小A 換位置
-		expect(at('m1')).not.toBe(start);
-		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		expect(button().disabled).toBe(false);
-		await fireEvent.click(button());
-		expect(at('m1')).toBe(start);
-		expect(thumbs()).toHaveLength(2);
-		expect(screen.queryByRole('status')).toBeNull();
-
-		await seek(4);
-		await fireEvent.click(button());
-		expect(thumbs()).toHaveLength(3);
-		expect(screen.getByRole('status').textContent).toBe('插了一張站位，大家的位置自動帶入');
-		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-3');
-	});
-
-	it('影子和走位線：在站位上畫上一張的影子和線、在兩張中間只畫線、有選人只畫選到的人', async () => {
+	it('影子和走位線：在站位上畫上一張的影子和線、在兩張中間都不畫、有選人只畫選到的人', async () => {
 		const marked = (attr: string) =>
 			[...document.querySelectorAll(`.field [${attr}]`)].map((el) => el.getAttribute(attr));
 		await setup();
@@ -910,7 +902,7 @@ describe('站位與走位', () => {
 
 		await seek(4);
 		expect(marked('data-ghost')).toEqual([]);
-		expect(marked('data-walk-line')).toEqual(['m1']);
+		expect(marked('data-walk-line')).toEqual([]);
 
 		await seek(8.25);
 		const dot = document.querySelector('[data-member-id="m2"]')!;
@@ -962,7 +954,7 @@ describe('站位與走位', () => {
 	it('撞位只看騰翻：兩個人一般走位交錯，場上沒有 ✕、走位條沒有紫色', async () => {
 		render(Page, editorPage(swapping()).props);
 		await seek(3.2);
-		expect(document.querySelector('[data-walk-line]')).not.toBeNull();
+		expect(document.querySelector('[data-walk]')).not.toBeNull();
 		expect(document.querySelectorAll('.field [data-clash]')).toHaveLength(0);
 		expect(document.querySelectorAll('[data-walk-clash]')).toHaveLength(0);
 	});
@@ -1018,13 +1010,13 @@ describe('站位與走位', () => {
 		expect(thumbs()).toHaveLength(1);
 	});
 
-	it('刪站位後提示「已刪掉站位 N」和「復原」；按「復原」等於按一次復原', async () => {
+	it('刪站位後提示「已刪站位 N」和「復原」；按「復原」等於按一次復原', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember();
 		await fireEvent.click(screen.getByRole('button', { name: '刪除站位 2' }));
-		expect(screen.getByRole('status').textContent).toBe('已刪掉站位 2');
-		await fireEvent.click(screen.getByRole('button', { name: '復原刪掉的站位' }));
+		expect(screen.getByRole('status').textContent).toBe('已刪站位 2');
+		await fireEvent.click(screen.getByRole('button', { name: '復原：刪站位 2' }));
 		expect(thumbs()).toHaveLength(2);
 		expect(screen.getByRole('status').textContent).toBe('已復原：刪站位 2');
 		// 只復原一步：拖人插的站位還在，再按上方列的復原才退掉拖人
@@ -1105,7 +1097,7 @@ describe('站位與走位', () => {
 		expect(screen.queryByRole('dialog')).toBeNull();
 		expect(editor.inert).toBe(false);
 
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		expect(editor.inert).toBe(true);
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(thumbs()).toHaveLength(2);
@@ -1141,9 +1133,9 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(80);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 2-5&');
 		expect(screen.getByText(/^拖人會/).textContent).toBe('拖人會改：站位 2（2-5&）');
-		expect(screen.getByRole('status').textContent).toBe('站位 2 改到 2-5&');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2；改到 2-5&');
 		// 提示的「復原」：站位回原本的時間，播放頭跟著回去（不然接著拖人會多插一張）
-		await fireEvent.click(screen.getByRole('button', { name: '復原改站位時間' }));
+		await fireEvent.click(screen.getByRole('button', { name: '復原：改站位 2' }));
 		expect(thumbLeft(2)).toBeCloseTo(131.2);
 		expect(screen.getByLabelText('目前位置').textContent).toBe('音樂 1 3-5&');
 	});
@@ -1188,10 +1180,61 @@ describe('站位與走位', () => {
 		// 站位 1 在 1-1（0 秒）：最早挪到 1-1&（0.2 秒）
 		expect(thumbLeft(2)).toBeCloseTo(3.2);
 		const notice = screen.getByRole('status').textContent!;
-		expect(notice).toMatch(/^站位 2 改到 1-1&；/);
+		expect(notice).toMatch(/^已改站位 2；改到 1-1&；/);
 		expect(notice).toMatch(/；已靠到邊界$/);
 		await dragThumb(1, 50);
 		expect(thumbLeft(1)).toBe(0);
+	});
+
+	it('兩張站位之間點人、手抖 5 px：不算拖，不插站位、人不動（不吸到別的格點）', async () => {
+		await setup();
+		await seek(8.25);
+		await dragFirstMember(); // 插站位 2：小A 從原地走到左上
+		await seek(4); // 兩張站位中間：小A 在半路上，不在格點上
+		const dot = document.querySelector('[data-member-id="m1"]')!;
+		const where = dot.getAttribute('transform');
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 3, clientY: 4 });
+		await fireEvent.pointerUp(dot, { clientX: 3, clientY: 4 });
+		expect(thumbs()).toHaveLength(2);
+		expect(document.querySelector('[data-member-id="m1"]')!.getAttribute('transform')).toBe(where);
+	});
+
+	it('拖人拖了一圈放回原本的格點：不算修改，不多一步復原', async () => {
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
+		const before = session.flow;
+		const dot = document.querySelector('[data-member-id="m1"]')!;
+		await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 60, clientY: 0 });
+		await fireEvent.pointerMove(dot, { clientX: 1, clientY: 0 });
+		await fireEvent.pointerUp(dot, { clientX: 1, clientY: 0 });
+		expect(session.flow).toBe(before);
+		expect(session.canUndo).toBe(false);
+	});
+
+	it('人已經在場地邊界、再往外拖：不算修改、不多一步復原，但照樣提示「已靠到邊界」（檢視模式提示不能改）（#207）', async () => {
+		const { session, props } = editorPage(libSample());
+		render(Page, props);
+		const outward = async () => {
+			const dot = document.querySelector('[data-member-id="m1"]')!;
+			await fireEvent.pointerDown(dot, { clientX: 0, clientY: 0, button: 0 });
+			await fireEvent.pointerMove(dot, { clientX: -100000, clientY: 0 });
+			await fireEvent.pointerUp(dot, { clientX: -100000, clientY: 0 });
+		};
+		await outward(); // 小美靠到左邊的邊界
+		session.notice = '';
+		await tick();
+		const before = session.flow;
+		await outward();
+		expect(session.flow).toBe(before);
+		expect(screen.getByRole('status').textContent).toBe('已靠到邊界');
+		session.notice = '';
+		session.viewing = true;
+		await tick();
+		await outward();
+		expect(session.flow).toBe(before);
+		expect(screen.getByRole('status').textContent).toContain('檢視模式');
 	});
 
 	it('走位條拖過下一張站位：停在那張站位（最遠合法的地方），提示「已靠到邊界」', async () => {
@@ -1212,7 +1255,7 @@ describe('站位與走位', () => {
 		await drag(bar(), 100);
 		expect(right()).toBeCloseTo(131.2);
 		expect(parseFloat(bar().style.width)).toBeCloseTo(width);
-		expect(screen.getByRole('status').textContent).toBe('已靠到邊界');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2；已靠到邊界');
 	});
 
 	it('拖縮圖被系統打斷（pointercancel）就彈回去，之後別處放開也不會挪', async () => {
@@ -1242,7 +1285,7 @@ describe('站位與走位', () => {
 		await seek(8.25);
 		await dragFirstMember(); // 站位 2 在 3-5&
 		expect(box()!.value).toBe('3-5&');
-		expect(screen.getByText('可以挪到 1-1 之後')).toBeTruthy();
+		expect(screen.getByText('可以挪到 音樂 1 1-1 之後')).toBeTruthy();
 
 		await fireEvent.change(box()!, { target: { value: '2-5' } });
 		expect(box()!.value).toBe('2-5');
@@ -1250,14 +1293,13 @@ describe('站位與走位', () => {
 		expect(thumbLeft(2)).toBeCloseTo(76.8);
 
 		await fireEvent.change(box()!, { target: { value: 'abc' } });
-		expect(screen.getByRole('status').textContent).toBe(
-			'站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
-		);
+		// 這支流程只有一段：例子不提別的段
+		expect(screen.getByRole('status').textContent).toBe('站位時間看不懂，例：2-5');
 		expect(box()!.value).toBe('2-5');
 
 		await fireEvent.change(box()!, { target: { value: '1-1' } });
 		expect(screen.getByRole('status').textContent).toBe(
-			'站位 2 要挪到站位 1（1-1）之後、流程結尾之前，已還原'
+			'站位 2 要挪到站位 1（音樂 1 1-1）之後、流程結尾之前，已還原'
 		);
 		expect(box()!.value).toBe('2-5');
 
@@ -1267,7 +1309,7 @@ describe('站位與走位', () => {
 
 		// 小A 本來最後一個八拍才走（3.2 秒），挪到 1-2（0.4 秒）只剩 0.4 秒
 		await fireEvent.change(box()!, { target: { value: '1-2' } });
-		expect(screen.getByRole('status').textContent).toBe('站位 2 改到 1-2；走位被壓短：小A');
+		expect(screen.getByRole('status').textContent).toBe('已改站位 2；改到 1-2；走位被壓短：小A');
 	});
 
 	const depart = () => screen.queryByLabelText<HTMLInputElement>('出發');
@@ -1406,6 +1448,21 @@ describe('站位與走位', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
 		// 復原的是拖人，表單跟著消失：被擋的那幾次沒有改流程
 		expect(depart()).toBeNull();
+	});
+
+	it('口號段的站位：出發和到達下面的小字寫打秒數、別的段的例子用真的段名，不寫「這一段打 2-5」（N51）', async () => {
+		let flow = flowOf(addSegmentTo(libSample(), 'chant'));
+		flow = flowOf(insertFormation(flow, 20));
+		const f2 = flow.formations[1];
+		flow = flowOf(setPositions(flow, f2.id, { m1: [f2.pos.m1[0] + 1, f2.pos.m1[1]] }));
+		const page = editorPage(flow);
+		render(Page, page.props);
+		page.editor.playback.seek(20);
+		await tick();
+		// 口號 1 是 10 秒：例子取在段裡（5.0），不寫比它長的 12.3
+		expect(depart()!.closest('section')!.querySelector('small')!.textContent).toBe(
+			'這一段打秒數，例：5.0；別的段前面加段名，例：音樂 1 2-5'
+		);
 	});
 
 	async function setEights(eights: string, confirm: boolean) {
@@ -1576,6 +1633,43 @@ describe('播放', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '暫停' }));
 		expect(engine.clicks).toEqual([]);
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+		// 停下來回到起播點（開頭）
+		expect(position()).toBe('音樂 1 1-1');
+	});
+
+	it('Shift＋空白鍵：停在原地；「⋯」裡關掉「停下來回到起播點」，空白鍵也停在原地，下次打開頁面還記得', async () => {
+		const engine = await sample();
+		await fireEvent.keyDown(window, { key: ' ' });
+		engine.audible = engine.clicks[0].when + 8.2;
+		await nextFrame();
+		await fireEvent.keyDown(window, { key: ' ', shiftKey: true });
+		expect(position()).toBe('音樂 1 3-5&');
+
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		const back = screen.getByLabelText('停下來回到起播點') as HTMLInputElement;
+		expect(back.checked).toBe(true);
+		await fireEvent.click(back);
+		await fireEvent.keyDown(window, { key: ' ' });
+		engine.audible = engine.clicks[0].when + 1.2;
+		await nextFrame();
+		await fireEvent.keyDown(window, { key: ' ' });
+		expect(position()).toBe('音樂 1 4-1');
+
+		cleanup();
+		await newFlow();
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		expect((screen.getByLabelText('停下來回到起播點') as HTMLInputElement).checked).toBe(false);
+	});
+
+	it('「⋯」裡的「停下來回到起播點」：焦點在上面時空白鍵是勾、取消勾，不是播放', async () => {
+		const engine = await sample();
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		const back = screen.getByLabelText('停下來回到起播點') as HTMLInputElement;
+		back.focus();
+		// 沒被擋下（瀏覽器照常勾、取消勾）
+		expect(await fireEvent.keyDown(back, { key: ' ' })).toBe(true);
+		expect(engine.clicks).toEqual([]);
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
 	});
 
 	it('節拍器勾選框：關掉就不響', async () => {
@@ -1594,20 +1688,97 @@ describe('播放', () => {
 		expect(position()).toBe('音樂 1 2-1');
 	});
 
-	it('重複開著、沒選動作：播到這個八拍結尾跳回這個八拍的 1', async () => {
+	it('重複：沒有重複範圍、沒選動作時按不下去；播放中按 A、B 拉好範圍，重複自己打開，尺上畫出範圍；✕ 拿掉', async () => {
 		const engine = await sample();
-		await fireEvent.click(screen.getByLabelText('重複'));
+		const repeat = screen.getByLabelText('重複') as HTMLInputElement;
+		expect(repeat.disabled).toBe(true);
+		const b = screen.getByRole('button', { name: 'B：重複到播放頭' }) as HTMLButtonElement;
+		const clear = screen.getByRole('button', { name: '拿掉重複範圍' }) as HTMLButtonElement;
+		expect(b.disabled).toBe(true);
+		expect(clear.disabled).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
-		// 第 1 個八拍 3.2 秒
+		engine.audible = engine.clicks[0].when + 3.2;
+		await nextFrame();
+		await fireEvent.click(screen.getByRole('button', { name: 'A：重複從播放頭開始' }));
+		engine.audible = engine.clicks[0].when + 6.4;
+		await nextFrame();
+		expect(b.disabled).toBe(false);
+		expect(position()).toBe('音樂 1 3-1');
+		await fireEvent.click(b);
+		expect(repeat.checked).toBe(true);
+		expect(repeat.disabled).toBe(false);
+		const band = document.querySelector<HTMLElement>('[data-repeat-range]')!;
+		// 時間軸 1 秒 16 px：2-1（3.2 秒）到 3-1（6.4 秒）
+		expect(band.style.left).toBe('51.2px');
+		expect(band.style.width).toBe('51.2px');
+		// 播到 B 跳回 A
 		engine.audible = engine.clicks[0].when + 3.3;
 		await nextFrame();
-		expect(position()).toBe('音樂 1 1-1');
-		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+		expect(position()).toBe('音樂 1 2-1');
+		// 關掉重複：範圍還在（變淡）
+		await fireEvent.click(repeat);
+		expect(document.querySelector('[data-repeat-range]')!.classList.contains('off')).toBe(true);
+		await fireEvent.click(clear);
+		expect(document.querySelector('[data-repeat-range]')).toBeNull();
+		expect(repeat.disabled).toBe(true);
+	});
+
+	it('重複範圍：在八拍尺上面那一條拖出來（吸到整拍）；拖 B 的把手改長度', async () => {
+		await sample();
+		const strip = document.querySelector('[data-repeat-strip]')!;
+		await fireEvent.pointerDown(strip, { clientX: 3.3 * 16, button: 0, pointerId: 1 });
+		await fireEvent.pointerMove(window, { clientX: 6.3 * 16, pointerId: 1 });
+		await fireEvent.pointerUp(window, { clientX: 6.3 * 16, pointerId: 1 });
+		const band = () => document.querySelector<HTMLElement>('[data-repeat-range]')!;
+		expect(band().style.left).toBe('51.2px');
+		expect(band().style.width).toBe('51.2px');
+		expect((screen.getByLabelText('重複') as HTMLInputElement).checked).toBe(true);
+		await fireEvent.pointerDown(document.querySelector('[data-repeat-end="b"]')!, { clientX: 6.4 * 16, button: 0, pointerId: 2 });
+		await fireEvent.pointerMove(window, { clientX: 9.7 * 16, pointerId: 2 });
+		await fireEvent.pointerUp(window, { clientX: 9.7 * 16, pointerId: 2 });
+		expect(band().style.left).toBe('51.2px');
+		expect(parseFloat(band().style.width)).toBeCloseTo(102.4, 6);
+	});
+
+	it('拖 B 的把手：按在把手中間、只上下移，B 不會跑掉（照手指移了多少算，不照手指在哪）', async () => {
+		await sample();
+		const strip = document.querySelector('[data-repeat-strip]')!;
+		await fireEvent.pointerDown(strip, { clientX: 3.3 * 16, button: 0, pointerId: 1 });
+		await fireEvent.pointerMove(window, { clientX: 6.3 * 16, pointerId: 1 });
+		await fireEvent.pointerUp(window, { clientX: 6.3 * 16, pointerId: 1 });
+		const band = () => document.querySelector<HTMLElement>('[data-repeat-range]')!;
+		expect(band().style.width).toBe('51.2px'); // B 在 102.4px
+		const grip = document.querySelector('[data-repeat-end="b"]')!;
+		await fireEvent.pointerDown(grip, { clientX: 96.4, clientY: 40, button: 0, pointerId: 2 });
+		await fireEvent.pointerMove(window, { clientX: 96.4, clientY: 60, pointerId: 2 });
+		await fireEvent.pointerUp(window, { clientX: 96.4, clientY: 60, pointerId: 2 });
+		expect(band().style.width).toBe('51.2px');
+	});
+
+	/** 播放列的「⋯」小窗打開，拿延遲校正欄位。 */
+	async function latencyField() {
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
+		return screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
+	}
+
+	it('延遲校正收在播放列的「⋯」小窗裡：平常看不到，按了才出來，照樣能改；Esc 關掉，焦點回到「⋯」（#214）', async () => {
+		await sample();
+		expect(screen.queryByLabelText('延遲校正（毫秒）')).toBeNull();
+		const more = screen.getByRole('button', { name: '更多播放選項' });
+		expect(more.getAttribute('aria-expanded')).toBe('false');
+		const field = await latencyField();
+		expect(more.getAttribute('aria-expanded')).toBe('true');
+		await fireEvent.change(field, { target: { value: '120' } });
+		expect(localStorage.getItem('cheer-editor:latencyMs')).toBe('120');
+		await fireEvent.keyDown(field, { key: 'Escape' });
+		expect(screen.queryByLabelText('延遲校正（毫秒）')).toBeNull();
+		expect(document.activeElement).toBe(more);
+		localStorage.clear();
 	});
 
 	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
 		await sample();
-		const field = screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
+		const field = await latencyField();
 		expect(field.value).toBe('0');
 		await fireEvent.change(field, { target: { value: '200' } });
 		await fireEvent.change(field, { target: { value: '' } });
@@ -1618,12 +1789,12 @@ describe('播放', () => {
 
 		cleanup();
 		await newFlow();
-		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('200');
+		expect((await latencyField()).value).toBe('200');
 
 		cleanup();
 		localStorage.setItem('cheer-editor:latencyMs', '99999');
 		await newFlow();
-		expect((screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement).value).toBe('0');
+		expect((await latencyField()).value).toBe('0');
 	});
 
 	it('段設定的試聽：按「▶ 從第一拍聽」響、按「■ 停止試聽」停、播完換回來；關掉段設定就停', async () => {
@@ -1700,14 +1871,14 @@ describe('復原和重做', () => {
 		expect(redoButton().disabled).toBe(true);
 	});
 
-	it('跟上一張一樣（自動插站位）算一步：按一次「復原」整個回去', async () => {
+	it('跟第 [_] 張一樣（自動插站位）算一步：按一次「復原」整個回去', async () => {
 		await setup();
 		await seek(8.25);
 		await dragFirstMember(); // 插站位 2
 		await seek(7); // 小A 正走向站位 2（最後一個八拍才走）
 		const before = dotAt();
 		await fireEvent.click(screen.getByRole('button', { name: '全隊' }));
-		await fireEvent.click(screen.getByRole('button', { name: '跟上一張一樣' }));
+		await fireEvent.click(screen.getByRole('button', { name: '跟第 1 張一樣' }));
 		expect(thumbs()).toHaveLength(3);
 		expect(dotAt()).not.toBe(before);
 
@@ -1751,6 +1922,7 @@ describe('復原和重做', () => {
 		expect(await fireEvent.keyDown(screen.getByLabelText('加人'), z)).toBe(false);
 		expect(thumbs()).toHaveLength(1);
 		// 新動作表單的字還不在流程裡，⌘Z 交給瀏覽器（見 undo 測試）；別的文字框照樣退回流程
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		expect(await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'y', ctrlKey: true })).toBe(false);
 		expect(thumbs()).toHaveLength(2);
 	});
@@ -1811,7 +1983,7 @@ describe('復原和重做', () => {
 	it('新建別的流程時清空復原紀錄', async () => {
 		await setup();
 		expect(undoButton().disabled).toBe(false);
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '第二支' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
@@ -1825,7 +1997,7 @@ describe('放一個帶好流程的 session 進頁面', () => {
 		const { session, props } = editorPage(sessionFlow());
 		render(Page, props);
 		expect(document.querySelector('.topbar b')?.textContent).toBe('全國賽');
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		expect(session.flow!.name).toBe('臺灣盃');
 		expect(session.unsaved).toBe(true);
@@ -2107,6 +2279,7 @@ describe('動作設定：任務角色先照全局角色填、角色說明、Esc�
 
 	it('沒選人時「新增動作」是灰的、寫原因；按「全隊」後任務角色照全局角色填好，選單每項有說明', async () => {
 		await withSample();
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		const add = screen.getByRole('button', { name: '新增動作' }) as HTMLButtonElement;
 		expect(add.disabled).toBe(true);
 		expect(screen.getByText('還沒有人：先選人才能新增')).toBeTruthy();

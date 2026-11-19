@@ -29,11 +29,11 @@ const picked = () =>
 	NAMES.filter((_, i) => document.querySelector(`[data-lane="m${i + 1}"] .lab`)!.getAttribute('aria-pressed') === 'true');
 const bar = () => screen.queryByRole('group', { name: '分組' });
 const tap = (name: string) => fireEvent.click(within(bar()!).getByRole('button', { name }));
-/** 人員清單上的唯讀組標籤。 */
+/** 人員清單上他在哪一張組卡片（卡片標題）。 */
 const tagOf = (who: string) =>
 	[...document.querySelectorAll('.action-form .people li')]
 		.find((li) => li.querySelector('.name')?.textContent === who)
-		?.querySelector('.squad-tag')?.textContent ?? null;
+		?.closest('.squad')?.querySelector('.squad-head')?.textContent ?? null;
 const tags = () => NAMES.map(tagOf);
 const badge = (who: string) => document.querySelector(`[data-member-id="${ids([who])[0]}"] .badge`);
 
@@ -121,7 +121,7 @@ describe('分組浮動列', () => {
 		const r = readFlowFile(saves[0]);
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(squadNumbers(r.flow.actions[0])).toEqual([1, 1, 2, 2]);
-		await openFile(saves[0], '開啟');
+		await openFile(saves[0]);
 		await selectLib();
 		expect(tags()).toEqual(['第 1 組', '第 1 組', '第 2 組', '第 2 組']);
 	});
@@ -131,7 +131,7 @@ describe('分組浮動列', () => {
 		flow = flowOf(
 			addAction(flow, { segmentId: 's1', category, name: '', start: 16, length: 8, note: '', members: [{ memberId: 'm1', role: null }] })
 		);
-		flow = flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: category === 'jump' ? 'jump' : 'tumble', name: '', beats: { at: 0, len: 8 } }));
 		render(Page, editorPage(flow).props);
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x2"]')!);
 		expect(bar()).toBeNull();

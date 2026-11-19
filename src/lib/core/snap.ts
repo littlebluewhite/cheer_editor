@@ -68,6 +68,7 @@ export function fieldPositionText(field: FieldConfig, [x, y]: Position): string 
 		u: (x - mat.x) / CELL_M,
 		n: cols,
 		start: '左起',
+		startLine: '場地左緣',
 		endLine: '場地右緣',
 		near: '左邊',
 		far: '右邊'
@@ -76,6 +77,7 @@ export function fieldPositionText(field: FieldConfig, [x, y]: Position): string 
 		u: (mat.y + mat.height - y) / CELL_M,
 		n: rows,
 		start: '正面起',
+		startLine: '場地正面緣',
 		endLine: '場地後緣',
 		near: '正面那邊',
 		far: '後面'
@@ -131,25 +133,37 @@ interface TextAxis {
 	/** 墊子在這個方向有幾條或幾格。 */
 	n: number;
 	start: string;
+	startLine: string;
 	endLine: string;
 	near: string;
 	far: string;
 }
 
+/**
+ * 一個方向的位置，都用「第幾條、第幾格」講：格裡寫幾分之幾；在格線上寫在哪兩條（格）之間，
+ * 條和條之間就是接縫；不在八等分點上（例如舊檔）寫最近的那一點，前面加「約」。
+ */
 function axisText(a: TextAxis, kind: 'strip' | 'cell'): string {
-	if (a.u < -EPS) return `場地外${a.near} ${fracName(-a.u)} 格`;
-	if (a.u > a.n + EPS) return `場地外${a.far} ${fracName(a.u - a.n)} 格`;
-	const i = Math.min(Math.floor(a.u + EPS), a.n - 1);
-	const f = a.u - i;
-	const atEnd = f > 1 - EPS;
-	if (kind === 'strip') return `第 ${i + 1} 條 ${atEnd ? a.endLine : `${a.start} ${fracName(f)}`}`;
-	return `${a.start}第 ${i + 1} 格 ${atEnd ? a.endLine : fracName(f)}`;
+	if (a.u < -EPS) return `場地外${a.near} ${outside(-a.u)} 格`;
+	if (a.u > a.n + EPS) return `場地外${a.far} ${outside(a.u - a.n)} 格`;
+	const k = Math.round(a.u * 8);
+	const about = Math.abs(a.u - k / 8) < EPS ? '' : '約 ';
+	const i = Math.floor(k / 8);
+	const name = (j: number) => (kind === 'strip' ? `第 ${j} 條` : `${a.start}第 ${j} 格`);
+	if (i >= a.n) return `${about}${name(a.n)} ${a.endLine}`;
+	if (k % 8 === 0) {
+		if (i === 0) return `${about}${name(1)} ${a.startLine}`;
+		return about + (kind === 'strip' ? `第 ${i}、${i + 1} 條的接縫` : `${a.start}第 ${i}、${i + 1} 格之間`);
+	}
+	const f = `${about}${FRACTION_NAMES[k % 8]}`;
+	return kind === 'strip' ? `${name(i + 1)} ${a.start} ${f}` : `${name(i + 1)} ${f}`;
 }
 
-const FRACTION_NAMES = ['線上', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
+const FRACTION_NAMES = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
 
-function fracName(f: number): string {
-	const k = Math.round(f * 8);
-	if (k < 8 && Math.abs(f - k / 8) < EPS) return FRACTION_NAMES[k];
-	return `${Math.round(f * 100)}%`;
+/** 場地外幾格（最多出界 1 m，不到一格）：照八等分寫，不在點上加「約」，太近也算 1/8。 */
+function outside(d: number): string {
+	const k = Math.round(d * 8);
+	const about = Math.abs(d - k / 8) < EPS ? '' : '約 ';
+	return k >= 8 ? `${about}${k / 8}` : `${about}${FRACTION_NAMES[Math.max(k, 1)]}`;
 }

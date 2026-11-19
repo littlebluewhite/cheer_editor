@@ -10,7 +10,7 @@ const STACK_M = 0.05;
 
 /** 撐人的大類：有上層就要有底層。 */
 const LIFTING = new Set(['stunt', 'pyramid', 'toss']);
-const BASE_ROLES = new Set(['底層', '主底', '側底']);
+const BASE_ROLES = new Set(['底層', '主底', '側底', '肩底']);
 
 /** 名單裡重複的名字（去掉頭尾空白比），照第一次出現的順序。 */
 export function duplicateNames(members: Member[]): string[] {
@@ -24,16 +24,18 @@ export function duplicateNames(members: Member[]): string[] {
 	return [...dup];
 }
 
+/** 兩個位置是不是疊在同一點（差不到 STACK_M）。場上「照層畫圓點」的虛線圈也用這個：只是站在隔壁的不算。 */
+export function samePoint(p: Position, q: Position): boolean {
+	return Math.hypot(p[0] - q[0], p[1] - q[1]) < STACK_M;
+}
+
 /** 這一刻疊在同一點的人：每一組照名單順序，至少 2 個人。 */
 export function stackedMembers(members: Member[], positions: Record<string, Position>): Member[][] {
 	const groups: Member[][] = [];
 	for (const m of members) {
 		const p = positions[m.id];
 		if (!p) continue;
-		const group = groups.find((g) => {
-			const q = positions[g[0].id];
-			return Math.hypot(p[0] - q[0], p[1] - q[1]) < STACK_M;
-		});
+		const group = groups.find((g) => samePoint(p, positions[g[0].id]));
 		if (group) group.push(m);
 		else groups.push([m]);
 	}
@@ -44,15 +46,15 @@ export function stackedMembers(members: Member[], positions: Record<string, Posi
 export function actionHints(action: Pick<Action, 'category' | 'members'>): string[] {
 	const roles = action.members.map((m) => m.role);
 	if (LIFTING.has(action.category) && roles.includes('上層') && !roles.some((r) => r && BASE_ROLES.has(r))) {
-		return ['有上層，但沒有底層（底層、主底、側底）'];
+		return ['有上層，但沒有底層（底層、主底、側底、肩底）'];
 	}
 	return [];
 }
 
-/** 音樂段比音樂檔長幾秒（從第一拍算段的長度）；沒有比較長是 0。 */
+/** 音樂段比音樂檔長幾秒（從第一拍算段的長度），最多是整段的長度；沒有比較長是 0。 */
 export function musicOverrunSec(segment: Segment, audioDurationSec: number): number {
 	if (segment.kind !== 'music') return 0;
-	const end = segment.firstBeatSec + (segment.halfBeats * 30) / segment.bpm;
-	const over = end - audioDurationSec;
-	return over > 0.05 ? over : 0;
+	const length = (segment.halfBeats * 30) / segment.bpm;
+	const over = segment.firstBeatSec + length - audioDurationSec;
+	return over > 0.05 ? Math.min(over, length) : 0;
 }

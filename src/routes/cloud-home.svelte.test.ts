@@ -7,6 +7,9 @@ import { editorPage, fakeDraftStore, fakeServer, flush, type FakeCloudFlow } fro
 import { flowOf } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
+
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: true, password: '我們這一隊今年一定會贏 go go' };
 const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: '' };
 const newFlowOf = (name: string) => flowOf(createFlow({ name, field: { strips: 9, layout: 'vertical' } }));

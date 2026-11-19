@@ -7,8 +7,12 @@ import {
 	addSegment,
 	createFlow,
 	placeCue,
+	phaseLabel,
+	updateAction,
 	updateSegment,
-	type Flow
+	type Action,
+	type Flow,
+	type PhaseKind
 } from './index';
 import { flowOf } from '../test-flows';
 
@@ -122,22 +126,68 @@ describe('切進每個八拍', () => {
 				eight: 0,
 				cues: [],
 				phases: [
-					{ phase: load, beats: { at: 0, len: 4 }, start: 8, end: 12, first: true, last: true },
-					{ phase: hold, beats: { at: 4, len: 8 }, start: 12, end: 16, first: true, last: false }
+					{ phase: load, beats: { at: 0, len: 4 }, start: 8, end: 12, first: true, last: true, row: 0 },
+					{ phase: hold, beats: { at: 4, len: 8 }, start: 12, end: 16, first: true, last: false, row: 0 }
 				]
 			},
-			{ eight: 1, cues: [], phases: [{ phase: hold, beats: { at: 4, len: 8 }, start: 0, end: 4, first: false, last: true }] }
+			{ eight: 1, cues: [], phases: [{ phase: hold, beats: { at: 4, len: 8 }, start: 0, end: 4, first: false, last: true, row: 0 }] }
 		]);
 	});
 
 	it('給了拍點就只切那些（例：個人表只切給他的），環節照樣切', () => {
 		let flow = flowOf(placeCue(withAction(0, 16), 'x1', { kind: 'count', at: 0, len: 8, word: 'down' }));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 2, len: 2, word: 'up', who: { member: 'm2' } }));
-		flow = flowOf(addPhase(flow, 'x1', { kind: 'whole', name: '', beats: { at: 0, len: 16 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 0, len: 16 } }));
 		const action = flow.actions[0];
 		const [, up] = action.cues!;
 		const [only] = actionEights(action, [up]);
 		expect(only.cues).toEqual([{ cue: up, start: 2, end: 4, first: true, last: true, track: 0 }]);
-		expect(only.phases.map((p) => p.phase.kind)).toEqual(['whole']);
+		expect(only.phases.map((p) => p.phase.kind)).toEqual(['hold']);
+	});
+});
+
+describe('金字塔佔同樣拍的環節：第幾排', () => {
+	/** 1-1 到 2-8 的金字塔，照順序加這些環節（種類、名字、從第幾個半拍、幾個半拍長）。 */
+	function pyramid(phases: [PhaseKind, string, number, number][]) {
+		let flow = flowOf(updateAction(withAction(0, 32), 'x1', { category: 'pyramid' }));
+		for (const [kind, name, at, len] of phases) flow = flowOf(addPhase(flow, 'x1', { kind, name, beats: { at, len } }));
+		return flow.actions[0];
+	}
+	/** 每個八拍裡每個環節的「名字 第幾排」。 */
+	const rows = (action: Action) => actionEights(action).map((e) => e.phases.map((p) => `${phaseLabel(p.phase)} ${p.row}`));
+
+	it('照環節的順序放進最上面還空著的那一排：規格的例子排成兩排', () => {
+		const action = pyramid([
+			['load', '第一個', 0, 8],
+			['hold', '第一個', 8, 16],
+			['load', '第二個', 8, 8],
+			['hold', '第二個', 16, 8],
+			['dismount', '', 24, 8]
+		]);
+		expect(rows(action)).toEqual([
+			['上法 第一個 0', '中段 第一個 0', '上法 第二個 1'],
+			['中段 第一個 0', '中段 第二個 1', '下法 0']
+		]);
+	});
+
+	it('整個動作算一次：跨八拍的環節在每個八拍都在同一排，不照八拍重排', () => {
+		// 中段 1-3 到 2-4 跟上法疊著，在第二排；下法 2-1 開始時第一排空著，放第一排
+		const action = pyramid([
+			['load', '', 0, 8],
+			['hold', '', 4, 20],
+			['dismount', '', 16, 8]
+		]);
+		expect(rows(action)).toEqual([
+			['上法 0', '中段 1'],
+			['中段 1', '下法 0']
+		]);
+	});
+
+	it('沒有疊就是一排', () => {
+		const action = pyramid([
+			['load', '', 0, 8],
+			['hold', '', 8, 16]
+		]);
+		expect(rows(action).flat()).toEqual(['上法 0', '中段 0', '中段 0']);
 	});
 });

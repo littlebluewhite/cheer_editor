@@ -8,6 +8,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import { httpServer, tooManyTriesText, type ServerAdapter, type TooManyTries } from '#lib/server-api.js';
 	import { createIndexedDbOfflineStore, unsentCount, type OfflineStore } from '#lib/offline-store.js';
+	import { revealAlert } from '#lib/components/reveal.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -73,11 +74,11 @@
 			<button type="button" class="btn ghost" aria-pressed={show} onclick={() => (show = !show)}><Icon name="eye" size={14} />顯示</button>
 		</span>
 		{#if error === 'wrong'}
-			<p class="error" role="alert"><b>email 或密碼不對</b><small>一直進不去？請找管理員。</small></p>
+			<p class="error" {@attach revealAlert()}><b>email 或密碼不對</b><small>一直進不去？請找管理員。</small></p>
 		{:else if error === 'unreachable'}
-			<p class="error" role="alert">連不上伺服器，請稍後再試。</p>
+			<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>
 		{:else if error}
-			<p class="error" role="alert"><b>{tooManyTriesText(error)}</b><small>忘記密碼的話，按『忘記密碼』重設。</small></p>
+			<p class="error" {@attach revealAlert()}><b>{tooManyTriesText(error)}</b><small>忘記密碼的話，按『忘記密碼』重設。</small></p>
 		{/if}
 		<button type="submit" class="btn primary wide" disabled={busy}>登入</button>
 		<a class="forgot" href={forgotHref}>忘記密碼？</a>

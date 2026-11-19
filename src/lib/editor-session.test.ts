@@ -3,17 +3,29 @@ import {
 	addAction,
 	addMembers,
 	addSegment,
+	changeAttempt,
 	createFlow,
 	deleteAction,
+	deleteAttempt,
+	deleteMember,
+	deletePhase,
 	addPhase,
+	inStep,
 	insertFormation,
+	moveFormation,
+	moveMembers,
+	rateCounts,
 	recordAttempt,
 	renameFlow,
 	toSeconds,
 	updateMember,
-	type Flow
+	updateSegment,
+	type CommandResult,
+	type ConfirmOption,
+	type Flow,
+	type Mark
 } from '#lib/core';
-import { flowOf, libSample, squadNumbers } from '#lib/test-flows.js';
+import { flowOf, libSample, ratedSample, squadNumbers } from '#lib/test-flows.js';
 import { EditorSession, VIEW_ONLY } from './editor-session.svelte.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
@@ -64,6 +76,19 @@ describe('編輯 session：流程和復原', () => {
 		const s = new EditorSession(sampleFlow());
 		expect(s.change(s.flow!)).toBe(false);
 		expect(s.canUndo).toBe(false);
+		expect(s.unsaved).toBe(false);
+	});
+
+	it('改之前和改之後內容一樣（換了物件也一樣）不算一步，重做還在', () => {
+		const s = new EditorSession(sampleFlow());
+		rename(s, 'A');
+		s.undo();
+		const before = s.flow!;
+		const copy = JSON.parse(JSON.stringify(before)) as Flow;
+		expect(s.change({ ...copy, actions: copy.actions.map((a) => ({ ...a })) })).toBe(false);
+		expect(s.flow).toBe(before);
+		expect(s.canUndo).toBe(false);
+		expect(s.canRedo).toBe(true);
 		expect(s.unsaved).toBe(false);
 	});
 
@@ -176,6 +201,13 @@ describe('編輯 session：流程和復原', () => {
 		expect(s.flow).toBeNull();
 		expect(s.unsaved).toBe(false);
 	});
+
+	it('換一支流程：記錄頁每張卡選的「這次練」清掉，不會套到新流程裡 id 一樣的動作', () => {
+		const s = new EditorSession(sampleFlow());
+		s.drillScopes['x1'] = { whole: false, picked: ['p1'] };
+		s.open(sampleFlow());
+		expect(s.drillScopes).toEqual({});
+	});
 });
 
 describe('編輯 session：選取', () => {
@@ -260,13 +292,13 @@ describe('編輯 session：選取', () => {
 });
 
 describe('編輯 session：頁面層級的問題', () => {
-	it('成功：算一步，提示收掉', () => {
+	it('成功：算一步，舊的提示換成「已…」', () => {
 		const s = new EditorSession(libSample());
 		s.notice = '舊的提示';
 		s.ask.send({ name: 'renameFlow', args: ['全國賽'] });
 		expect(s.flow!.name).toBe('全國賽');
 		expect(s.canUndo).toBe(true);
-		expect(s.notice).toBe('');
+		expect(s.notice).toBe('已改流程名字');
 	});
 
 	it('被擋：原因放進提示；給了還原就加「，已還原」並還原', () => {
@@ -344,6 +376,18 @@ describe('編輯 session：元件要的問題（「改」或「記」）', () =>
 		expect(s.unsaved).toBe(true);
 		expect(s.undo()).toBe(true);
 		expect(s.flow!.name).toBe('練習用');
+	});
+
+	it('「改」的問題還沒回答就換一支流程：問題收掉，新的流程不算沒存、新建不被看不到的問題擋住（#208）', () => {
+		const s = new EditorSession(sampleFlow());
+		// 元件（例：隊員面板）問了還沒答，之後元件被拆掉也還留著
+		const ask = s.changeAsk();
+		ask.send({ name: 'deleteMember', args: ['m1'] });
+		expect(s.questionOpen).toBe(true);
+		s.open(sampleFlow(), true);
+		expect(ask.question).toBeNull();
+		expect(s.questionOpen).toBe(false);
+		expect(s.unsavedOrAsking).toBe(false);
 	});
 
 	it('「記」的問題成功：不算一步、不清重做', () => {
@@ -439,12 +483,12 @@ describe('編輯 session：改完跳播放頭', () => {
 		return { s, jumps };
 	}
 
-	it('拖人插了站位：提示說插了一張，播放頭停到那張（播放中不重播）', () => {
+	it('拖人插了站位：提示說插了第幾張，播放頭停到那張（播放中不重播）', () => {
 		const { s, jumps } = withJumps(libSample());
 		s.ask.send({ name: 'moveMembers', args: [2, { m1: [1, 1] }] }, { done: (r) => s.moved(r) });
 		expect(s.flow!.formations).toHaveLength(2);
 		expect(s.canUndo).toBe(true);
-		expect(s.notice).toBe('插了一張站位，大家的位置自動帶入');
+		expect(s.notice).toBe('已插入站位 2；大家的位置自動帶入');
 		expect(jumps).toEqual([{ sec: 2, replay: false }]);
 	});
 
@@ -452,7 +496,7 @@ describe('編輯 session：改完跳播放頭', () => {
 		const { s, jumps } = withJumps(flowOf(insertFormation(libSample(), 2)));
 		s.notice = '舊的提示';
 		s.ask.send({ name: 'moveMembers', args: [0, { m1: [1, 1] }] }, { done: (r) => s.moved(r) });
-		expect(s.notice).toBe('後面 1 張站位也跟著改了');
+		expect(s.notice).toBe('已改站位 1；往後帶了 1 張');
 		expect(jumps).toEqual([{ sec: 0, replay: false }]);
 	});
 
@@ -463,8 +507,8 @@ describe('編輯 session：改完跳播放頭', () => {
 		const to = { segmentId: 's1', at: 16 };
 		s.ask.send({ name: 'moveFormation', args: [id, to] }, { done: (r) => s.formationMoved(id, r) });
 		expect(s.selectedFormationId).toBe(id);
-		expect(s.notice).toBe('站位 2 改到 2-1');
-		expect(s.noticeUndo).toBe('復原改站位時間');
+		expect(s.notice).toBe('已改站位 2；改到 2-1');
+		expect(s.noticeButton?.name).toBe('復原：改站位 2');
 		expect(jumps).toEqual([{ sec: toSeconds(s.flow!, to), replay: true }]);
 	});
 
@@ -496,5 +540,241 @@ describe('編輯 session：檢視模式', () => {
 		s.viewing = false;
 		expect(s.undo()).toBe(true);
 		expect(s.flow!.name).toBe('練習用');
+	});
+});
+
+describe('編輯 session：站位 ⌘C 換流程', () => {
+	it('複製站位後開另一支流程：⌘V 不貼（id 會跟上一支重複，不能把別支的位置貼到別人身上）', () => {
+		const flow = flowOf(insertFormation(libSample(), 2));
+		const s = new EditorSession(flow);
+		s.selectFormation(flow.formations[0].id);
+		expect(s.copyFormation()).toBe(true);
+		s.open(flowOf(insertFormation(libSample(), 2)));
+		const before = s.flow;
+		expect(s.pasteFormation(0)).toBe(false);
+		expect(s.flow).toBe(before);
+	});
+});
+
+describe('編輯 session：復原把這一步清掉的紀錄一起帶回來（ADR 0007）', () => {
+	/**
+	 * ratedSample 加上紀錄：x1 第 1 組整個做 ✓✓△（整次不成功）、只練下法 ✗；第 2 組整個做 ✓✗（下法空著）、只練上法 ✓；
+	 * x2 騰翻小美 ✓。
+	 */
+	function recordedFlow(): Flow {
+		let flow = ratedSample();
+		const add = (actionId: string, who: string, whole: boolean, marks: Record<string, Mark>) => {
+			flow = flowOf(recordAttempt(flow, actionId, { date: '2026-11-05', who, practice: 'drill', whole, marks }));
+		};
+		add('x1', 'g1', true, { p1: '✓', p2: '✓', p3: '△' });
+		add('x1', 'g1', false, { p3: '✗' });
+		add('x1', 'g2', true, { p1: '✓', p2: '✗' });
+		add('x1', 'g2', false, { p1: '✓' });
+		add('x2', 'm1', true, { p4: '✓' });
+		return flow;
+	}
+
+	/** 每個記成功率的動作：紀錄和算出來的次數。 */
+	const rates = (flow: Flow) =>
+		flow.actions
+			.filter((a) => a.successRate)
+			.map((a) => ({
+				id: a.id,
+				records: a.successRate!.records,
+				counts: rateCounts(a.successRate!.phases, a.successRate!.records)
+			}));
+
+	const steps: [string, (f: Flow) => CommandResult][] = [
+		['段裁短（裁掉下法、刪掉騰翻）', (f) => updateSegment(f, 's1', { eights: 1, lastBeats: 6 }, { confirmed: true })],
+		['刪環節（下法）', (f) => deletePhase(f, 'x1', 'p3', { confirmed: true })],
+		['刪動作（Lib）', (f) => deleteAction(f, 'x1', { confirmed: true })],
+		['刪隊員（小芳，第 2 組選清掉）', (f) => deleteMember(f, 'm4', { records: 'clear' })],
+		['改名選清掉（小美）', (f) => updateMember(f, 'm1', { name: '小芳芳' }, { records: 'clear' })]
+	];
+
+	it.each(steps)('%s：做 → 復原，紀錄和成功率跟做之前一樣；再重做跟做之後一樣', (_, step) => {
+		const s = new EditorSession(recordedFlow());
+		const before = rates(s.flow!);
+		expect(s.change(flowOf(step(s.flow!)))).toBe(true);
+		const after = rates(s.flow!);
+		expect(after).not.toEqual(before);
+		s.undo();
+		expect(rates(s.flow!)).toEqual(before);
+		s.redo();
+		expect(rates(s.flow!)).toEqual(after);
+	});
+
+	it.each(steps)('%s：做了之後才「記」的一次，復原、重做都還在', (_, step) => {
+		const s = new EditorSession(recordedFlow());
+		const before = rates(s.flow!);
+		s.change(flowOf(step(s.flow!)));
+		const after = rates(s.flow!);
+		// 騰翻還在就記小A 的騰翻；騰翻被裁掉了就記 Lib 第 1 組的上法
+		const target = s.flow!.actions.some((a) => a.id === 'x2') ? 'x2' : 'x1';
+		const [who, phase] = target === 'x2' ? ['m2', 'p4'] : ['g1', 'p1'];
+		const input = { date: '2026-11-06', who, practice: 'drill', whole: false, marks: { [phase]: '✓' } } as const;
+		// 新的一次在一步裡記（亂數 id）：不會撞到這一步清掉的那幾次的 id（ADR 0011）
+		s.record(flowOf(inStep('later', () => recordAttempt(s.flow!, target, input))));
+		const added = s.flow!.actions.find((a) => a.id === target)!.successRate!.records.at(-1)!;
+		const plusAdded = (list: ReturnType<typeof rates>) =>
+			list.map((r) => (r.id === target ? [...r.records, added] : r.records));
+		s.undo();
+		expect(rates(s.flow!).map((r) => r.records)).toEqual(plusAdded(before));
+		s.redo();
+		expect(rates(s.flow!).map((r) => r.records)).toEqual(plusAdded(after));
+	});
+
+	it('刪掉有記號的環節再復原：整次成功率還是 0%，不會變 100%（N02）', () => {
+		const s = new EditorSession(recordedFlow());
+		s.change(flowOf(deletePhase(s.flow!, 'x1', 'p3', { confirmed: true })));
+		s.undo();
+		const x1 = s.flow!.actions.find((a) => a.id === 'x1')!.successRate!;
+		const g1 = x1.records.filter((r) => r.who === 'g1');
+		expect(rateCounts(x1.phases, g1).whole).toEqual({ clean: 0, whole: 1 });
+	});
+
+	/** 只練下法 ✗ 的那一次：刪掉下法時整筆不見，復原後回來。 */
+	const onlyLoad = (s: EditorSession) => s.flow!.actions.find((a) => a.id === 'x1')!.successRate!.records[1];
+	const x1Records = (s: EditorSession) => s.flow!.actions.find((a) => a.id === 'x1')!.successRate!.records;
+
+	it('復原回來的一次，用「記」刪掉，再重做、復原：不會又跑回來', () => {
+		const s = new EditorSession(recordedFlow());
+		s.change(flowOf(deletePhase(s.flow!, 'x1', 'p3', { confirmed: true })));
+		s.undo();
+		const gone = onlyLoad(s);
+		s.record(flowOf(deleteAttempt(s.flow!, 'x1', gone.id)));
+		s.redo();
+		s.undo();
+		expect(x1Records(s).map((r) => r.id)).not.toContain(gone.id);
+	});
+
+	it('復原回來的一次，用「記」改了記號，再重做、復原：回來的是改過的，不是原本的', () => {
+		const s = new EditorSession(recordedFlow());
+		s.change(flowOf(deletePhase(s.flow!, 'x1', 'p3', { confirmed: true })));
+		s.undo();
+		const id = onlyLoad(s).id;
+		s.record(flowOf(changeAttempt(s.flow!, 'x1', id, { p3: '✓' })));
+		s.redo();
+		s.undo();
+		expect(x1Records(s).find((r) => r.id === id)?.marks).toEqual({ p3: '✓' });
+	});
+});
+
+describe('編輯 session：能復原的事做完都有提示（F 群）', () => {
+	/** libSample 再插一張站位 2（第 2 秒）。 */
+	const twoFormations = () => flowOf(insertFormation(libSample(), 2));
+	const dragged = (s: EditorSession, sec: number) =>
+		s.ask.send({ name: 'moveMembers', args: [sec, { m1: [1, 1] }] }, { done: (r) => s.moved(r) });
+	const copyFirst = (s: EditorSession) => {
+		s.selectFormation(s.flow!.formations[0].id);
+		s.copyFormation();
+	};
+
+	/** 每個會算一步復原的指令（名字、開頭的流程、做一次）。 */
+	const steps: [string, () => Flow, (s: EditorSession) => void][] = [
+		['直接 change', libSample, (s) => s.change(flowOf(renameFlow(s.flow!, 'A')))],
+		['場上的問題', libSample, (s) => s.ask.send({ name: 'renameFlow', args: ['A'] })],
+		['元件的「改」的問題', libSample, (s) => s.changeAsk().send({ name: 'renameFlow', args: ['A'] })],
+		[
+			'元件的問題問了再確定',
+			ratedSample,
+			(s) => {
+				const ask = s.changeAsk({ confirmLabel: '確定刪除' });
+				// 音樂 1 縮短到 1 個八拍：裁短、刪掉後面的動作要確認
+				ask.send({ name: 'updateSegment', args: ['s1', { eights: 1 }] });
+				ask.answer('confirm');
+			}
+		],
+		[
+			'分組數字鍵',
+			libSample,
+			(s) => {
+				s.selectAction('x1');
+				s.selectMembers(['m1']);
+				s.squadKey(2);
+			}
+		],
+		['方向鍵移人', twoFormations, (s) => s.nudge('k', { name: 'moveMembers', args: [2, { m1: [1, 1] }] }, { done: (r) => s.moved(r) })],
+		['拖人插了站位', libSample, (s) => dragged(s, 2)],
+		['拖人改現有的最後一張（沒插、沒往後帶）', twoFormations, (s) => dragged(s, 2)],
+		['拖人往後帶', twoFormations, (s) => dragged(s, 0)],
+		[
+			'只改這張',
+			twoFormations,
+			(s) => {
+				dragged(s, 0);
+				s.noticeButton!.run!();
+			}
+		],
+		[
+			'挪站位',
+			twoFormations,
+			(s) => {
+				const id = s.flow!.formations[1].id;
+				s.ask.send({ name: 'moveFormation', args: [id, { segmentId: 's1', at: 16 }] }, { done: (r) => s.formationMoved(id, r) });
+			}
+		],
+		['刪站位', twoFormations, (s) => s.removeFormation(s.flow!.formations[1].id)],
+		['刪動作', libSample, (s) => s.removeAction('x1')],
+		[
+			'⌘V 貼到新的一拍',
+			libSample,
+			(s) => {
+				copyFirst(s);
+				s.pasteFormation(4);
+			}
+		],
+		[
+			'⌘V 貼到現有的站位',
+			twoFormations,
+			(s) => {
+				copyFirst(s);
+				s.change(flowOf(moveMembers(s.flow!, 2, { m1: [1, 1] })));
+				s.pasteFormation(2);
+			}
+		]
+	];
+
+	it.each(steps)('%s：提示寫出這一步做了什麼（含復原的名字），旁邊有按鈕（N21）', (_, start, step) => {
+		const s = new EditorSession(start());
+		s.notice = '舊的提示';
+		step(s);
+		expect(s.canUndo).toBe(true);
+		expect(s.undoLabel).not.toBe('');
+		expect(s.notice).toContain(s.undoLabel);
+		expect(s.noticeButton).not.toBeNull();
+	});
+
+	it('拖人改現有的最後一張：沒插、沒往後帶也說「已改站位 N」，旁邊有復原（N21）', () => {
+		const s = new EditorSession(twoFormations());
+		dragged(s, 2);
+		expect(s.notice).toBe('已改站位 2');
+		expect(s.noticeButton?.label).toBe('復原');
+	});
+
+	it('拖人插了站位寫大家的位置自動帶入；⌘V 寫貼上複製的站位，不說自動帶入（N46）', () => {
+		const drag = new EditorSession(libSample());
+		dragged(drag, 2);
+		expect(drag.notice).toBe('已插入站位 2；大家的位置自動帶入');
+		const paste = new EditorSession(libSample());
+		copyFirst(paste);
+		paste.pasteFormation(4);
+		expect(paste.notice).toBe('已插入站位 2；貼上複製的站位');
+	});
+
+	it('刪有紀錄的動作：提示寫清掉幾次紀錄、按復原會回來（N25）', () => {
+		const s = new EditorSession(ratedSample());
+		const input = { date: '2026-11-05', who: 'm1', practice: 'drill', whole: true, marks: { p4: '✓' } } as const;
+		s.record(flowOf(recordAttempt(s.flow!, 'x2', input)));
+		s.removeAction('x2');
+		s.ask.answer('confirm');
+		expect(s.flow!.actions.some((a) => a.id === 'x2')).toBe(false);
+		expect(s.notice).toBe('已刪動作 騰翻；1 次紀錄一起清掉，按復原會回來');
+	});
+
+	it('改成一樣的不算一步：不出「已…」的提示', () => {
+		const s = new EditorSession(libSample());
+		s.ask.send({ name: 'renameFlow', args: [s.flow!.name] });
+		expect(s.notice).toBe('');
 	});
 });

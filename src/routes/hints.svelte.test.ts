@@ -7,11 +7,18 @@ import { editorPage, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 describe('提醒：疊在同一點', () => {
-	it('播放頭這一拍有人站在同一點，左邊欄寫出是誰；分開了就不寫', () => {
+	it('播放頭這一拍同一層的人站在同一點，左邊欄寫出是誰', () => {
 		const flow = teamFlow();
-		const stacked = flowOf(setPositions(flow, flow.formations[0].id, { m1: [1, 1], m2: [1, 1], m3: [0, 0], m4: [2, 0] }));
+		const stacked = flowOf(setPositions(flow, flow.formations[0].id, { m1: [1, 1], m3: [1, 1], m2: [0, 0], m4: [2, 0] }));
 		render(Page, editorPage(stacked).props);
-		expect(screen.getByRole('note').textContent).toContain('小美、小A 疊在同一點');
+		expect(screen.getByRole('note').textContent).toContain('小美、小芳 疊在同一點');
+	});
+
+	it('同一個技巧裡上層疊在主底身上是正常的，不提醒', () => {
+		const flow = teamFlow();
+		const lifted = flowOf(setPositions(flow, flow.formations[0].id, { m1: [1, 1], m2: [1, 1], m3: [0, 0], m4: [2, 0] }));
+		render(Page, editorPage(lifted).props);
+		expect(screen.queryByText(/疊在同一點/)).toBeNull();
 	});
 
 	it('沒有人疊在一起就沒有提醒', () => {

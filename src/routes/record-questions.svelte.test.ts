@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { squadNumber } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
-import { editorPage, recordedFlow } from '#lib/test-fakes.js';
+import { editorPage, flush, recordedFlow, fromMenu } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView。
@@ -106,6 +106,71 @@ describe('改隊員名字時問保留還是清掉', () => {
 		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
 		await press('取消');
 		expect(nameBox().value).toBe('小美');
+	});
+
+	it('還沒選保留或清掉就按「新建」：先問還沒存；取消就留著，還能選保留', async () => {
+		const session = openRecorded();
+		await openRoster();
+		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
+		await fromMenu('新建');
+		const unsaved = screen.getAllByRole('alertdialog').find((d) => d.textContent?.includes('還沒存'));
+		expect(unsaved).toBeTruthy();
+		await fireEvent.click(within(unsaved!).getByRole('button', { name: '取消' }));
+		await press('保留舊紀錄');
+		expect(session.flow!.members[0].name).toBe('小芳芳');
+	});
+
+	it('還沒選保留或清掉就按「新建」再按「先存檔」：不存、不新建，說先回答問題；還能選保留，改名沒不見（#208）', async () => {
+		const { session, props, saves } = editorPage(recordedFlow());
+		render(Page, props);
+		await openRoster();
+		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
+		await fromMenu('新建');
+		const unsaved = screen.getAllByRole('alertdialog').find((d) => d.textContent?.includes('還沒存'))!;
+		await fireEvent.click(within(unsaved).getByRole('button', { name: '先存檔' }));
+		await flush();
+		expect(saves).toEqual([]);
+		expect(screen.getByRole('status').textContent).toContain('先回答');
+		await press('保留舊紀錄');
+		expect(session.flow!.members[0].name).toBe('小芳芳');
+		expect(session.unsaved).toBe(true);
+	});
+
+	it('還沒選保留或清掉就關分頁：一樣算有沒存的（#208）', async () => {
+		const { editor, props } = editorPage(recordedFlow());
+		render(Page, props);
+		await openRoster();
+		await fireEvent.change(nameBox(), { target: { value: '小芳芳' } });
+		expect(editor.hasUnsavedWork).toBe(true);
+	});
+});
+
+describe('從名單刪隊員時問保留還是清掉（跟換組同一個問法）', () => {
+	/** 隊員分頁按刪除第 1 位（小美，第 1 組還有小A）。 */
+	async function deleteMei() {
+		await fireEvent.click(screen.getByRole('tab', { name: /隊員/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 1 位隊員' }));
+	}
+
+	it('問保留舊紀錄、清掉重算、取消；按保留：小美刪掉，第 1 組的紀錄還在', async () => {
+		const session = openRecorded();
+		await deleteMei();
+		expect(dialog().textContent).toContain('刪掉隊員「小美」');
+		expect(dialog().textContent).toContain('有紀錄的組換了人');
+		expect(within(dialog()).getAllByRole('button').map((b) => b.textContent)).toEqual(['保留舊紀錄', '清掉重算', '取消']);
+		await press('保留舊紀錄');
+		const { flow, records } = libOf(session);
+		expect(flow.members.map((m) => m.name)).not.toContain('小美');
+		expect(records).toEqual([1, 1, 2]);
+	});
+
+	it('按清掉重算：小美刪掉，第 1 組的紀錄沒了，第 2 組的留著', async () => {
+		const session = openRecorded();
+		await deleteMei();
+		await press('清掉重算');
+		const { flow, records } = libOf(session);
+		expect(flow.members.map((m) => m.name)).not.toContain('小美');
+		expect(records).toEqual([2]);
 	});
 });
 

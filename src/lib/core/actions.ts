@@ -6,18 +6,22 @@ import {
 	actionSeconds,
 	replaceAction,
 	type Action,
+	type ActionCategory,
 	type ActionChanges,
 	type NewActionInput
 } from './action-types';
 import { cueFallout, cueProblem } from './cues';
+import { positionsAt } from './formation';
+import { stackedMembers } from './hints';
+import type { Member } from './members';
 import { memberName, type Flow } from './flow';
-import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
-import { falloutQuestion, settle, type Settled } from './settle';
+import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf, withSquadOrder } from './success-rate';
 import { newId } from './ids';
 import { tooLong } from './text-length';
-import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, toPosition, toSeconds, unitSec, units } from './time';
+import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, sizeText, toPosition, toSeconds, unitSec, units } from './time';
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -57,22 +61,36 @@ export function updateAction(
 	changes: ActionChanges,
 	options: ConfirmOption = {}
 ): CommandResult {
+	const r = changeAction(flow, id, changes, options);
+	if (r.kind === 'blocked') return r;
+	return falloutQuestion(flow, r.old, r.action, r.cues, r.fallout, options) ?? ok(replaceAction(flow, r.action));
+}
+
+/**
+ * updateAction 還沒問之前的那一步：改好、檢查、收好的動作（還沒換進流程）和拍點、環節、紀錄的後果。
+ * 段縮短裁短動作時用它拿後果組確認清單，不用再算一次。
+ */
+export function changeAction(
+	flow: Flow,
+	id: string,
+	changes: ActionChanges,
+	options: ConfirmOption = {}
+): (Settled & { kind: 'ok'; old: Action; cues: CueFallout | null }) | (Settled & { kind: 'blocked' }) {
 	const old = flow.actions.find((a) => a.id === id);
-	if (!old) return blocked('找不到這個動作');
+	if (!old) return { kind: 'blocked', message: '找不到這個動作' };
 	let action = normalize({ ...old, ...changes, id });
 	const from = flow.segments.find((s) => s.id === old.segmentId);
 	const to = flow.segments.find((s) => s.id === action.segmentId);
 	const cues = from && to ? cueFallout(from, to, old, action, flow) : null;
 	if (cues) action = { ...action, cues: cues.cues };
 	const settled = checked(flow, old, action, options);
-	if (settled.kind === 'blocked') return settled;
-	return (
-		falloutQuestion(flow, old, settled.action, cues, settled.fallout, options) ??
-		ok(replaceAction(flow, settled.action))
-	);
+	return settled.kind === 'blocked' ? settled : { ...settled, old, cues };
 }
 
-/** 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；跨段、撞到人就擋。要確認時跟 updateAction 一樣。 */
+/**
+ * 拖色條：把動作的開始移到 startSec（全域秒數）最近的那一格，留在原來那一段；拖過段尾就裁短到段尾。
+ * 開始拖到段尾後面、段之前、撞到人就擋。要確認時（裁短切到拍點、環節）跟 updateAction 一樣。
+ */
 export function moveAction(
 	flow: Flow,
 	id: string,
@@ -80,10 +98,14 @@ export function moveAction(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const at = unitAt(flow, id, startSec);
-	return at === null ? blocked('找不到這個動作') : updateAction(flow, id, { start: at }, options);
+	const action = flow.actions.find((a) => a.id === id);
+	if (at === null || !action) return blocked('找不到這個動作');
+	const end = segmentEnd(flow, action);
+	const length = at < end ? Math.min(action.length, end - at) : action.length;
+	return updateAction(flow, id, { start: at, length }, options);
 }
 
-/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格；太短、超出段尾、撞到人就擋。會切到拍點時跟 updateAction 一樣先問。 */
+/** 拉色條右邊：把動作的結束改到 endSec（全域秒數）最近的那一格，拉過段尾就停在段尾；太短、撞到人就擋。會切到拍點時跟 updateAction 一樣先問。 */
 export function resizeAction(
 	flow: Flow,
 	id: string,
@@ -94,7 +116,12 @@ export function resizeAction(
 	const action = flow.actions.find((a) => a.id === id);
 	return at === null || !action
 		? blocked('找不到這個動作')
-		: updateAction(flow, id, { length: at - action.start }, options);
+		: updateAction(flow, id, { length: Math.min(at, segmentEnd(flow, action)) - action.start }, options);
+}
+
+/** 動作那一段的段尾（段內時間）。 */
+function segmentEnd(flow: Flow, action: Action): number {
+	return units(flow.segments.find((s) => s.id === action.segmentId)!);
 }
 
 /** 全域秒數在動作那一段裡最近的整數時間（可以落在段外，交給檢查擋）。 */
@@ -111,7 +138,7 @@ export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}
 	const action = flow.actions.find((a) => a.id === id);
 	if (!action) return blocked('找不到這個動作');
 	const count = action.successRate?.records.length ?? 0;
-	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄`, []);
+	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄${RECORDS_UNDOABLE}`, []);
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 
@@ -159,12 +186,9 @@ function checked(flow: Flow, before: Action | undefined, action: Action, options
 	return people ? { kind: 'blocked', message: people } : settled;
 }
 
-/** 名稱、備註太長；只看這次改到的欄位，開檔進來就超過上限的照收（名稱會去掉頭尾空白，跟去掉空白的比）。 */
+/** 名稱、備註太長；開檔進來就超過上限的照收，改了不能更長（N08）。 */
 function textProblem(before: Action | undefined, action: Action): string | null {
-	return (
-		(action.name !== before?.name.trim() ? tooLong('actionName', action.name) : null) ??
-		(action.note !== before?.note ? tooLong('note', action.note) : null)
-	);
+	return tooLong('actionName', action.name, before?.name) ?? tooLong('note', action.note, before?.note);
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */
@@ -181,6 +205,7 @@ export function shapeProblem(flow: Flow, action: Action): string | null {
 		const max = lengthText(segment, Math.max(1, units(segment) - action.start));
 		return `動作長度要在 ${lengthText(segment, 1)} 到 ${max} ${music ? '拍' : '秒'}之間`;
 	}
+	if (action.start >= units(segment)) return `動作的開始在段外：這段只有 ${sizeText(segment)}`;
 	if (action.start + action.length > units(segment)) {
 		// 最後一段後面沒有段可以拆：寫還剩多長。
 		const room = units(segment) - action.start;
@@ -303,12 +328,35 @@ export function memberGroup(flow: Flow, group: MemberGroup, sec: number): string
 	return flow.members.filter((m) => group === 'all' || m.globalRole === group).map((m) => m.id);
 }
 
-/** 場上要畫在最上面的任務角色。 */
-const RAISED_ROLES = ['上層', '中層'];
+/** 在空中第幾層的任務角色（地上是第 1 層，不列）：被底層撐起來的第 2 層，站在中層身上的三層第 3 層。 */
+const LAYERS: Record<string, number> = { 中層: 2, 上層: 2, 支撐: 2, 三層: 3 };
 
-/** 這一刻任務角色是上層或中層的隊員 id（場上畫在最上面），照名單順序。看任務角色，不看全局角色。 */
-export function raisedAt(flow: Flow, sec: number): string[] {
-	return flow.members
-		.filter((m) => RAISED_ROLES.includes(memberActionAt(flow, m.id, sec)?.role ?? ''))
-		.map((m) => m.id);
+/** 撐人的大類：同一個動作裡不同層疊在一起是正常的。 */
+const LIFTING: readonly ActionCategory[] = ['stunt', 'pyramid', 'toss'];
+
+/** 這一刻在空中的隊員 id → 第幾層（2 或 3；場上照層畫，高的畫在上面）。看任務角色，不看全局角色；地上的人不列。 */
+export function layersAt(flow: Flow, sec: number): Record<string, number> {
+	return Object.fromEntries(
+		flow.members.flatMap((m) => {
+			const layer = LAYERS[memberActionAt(flow, m.id, sec)?.role ?? ''];
+			return layer ? [[m.id, layer]] : [];
+		})
+	);
+}
+
+/**
+ * 這一刻疊在同一點、要提醒的人（每一組照名單順序）。
+ * 一組裡每兩個人都在同一個撐人的動作裡、又在不同層（例如底層、中層、三層疊在一起）是正常的，不提醒；
+ * 有兩個人同一層、不在同一個動作裡、或動作不是撐人的，整組照樣提醒。
+ */
+export function stackedAt(flow: Flow, sec: number): Member[][] {
+	const layers = layersAt(flow, sec);
+	const at = (id: string) => memberActionAt(flow, id, sec)?.action;
+	const apart = (a: Member, b: Member) => {
+		const action = at(a.id);
+		return !!action && action === at(b.id) && LIFTING.includes(action.category) && (layers[a.id] ?? 1) !== (layers[b.id] ?? 1);
+	};
+	return stackedMembers(flow.members, positionsAt(flow, sec)).filter((g) =>
+		g.some((a, i) => g.slice(i + 1).some((b) => !apart(a, b)))
+	);
 }

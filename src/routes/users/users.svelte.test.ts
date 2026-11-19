@@ -4,6 +4,9 @@ import { fakeServer, flush, type FakeCloudFlow, type FakeUser } from '#lib/test-
 import { libSample } from '#lib/test-flows.js';
 import Users from './+page.svelte';
 
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
+
 const PW = '我們這一隊今年一定會贏 go go';
 const lin: FakeUser = { email: 'lin@example.com', name: '林教練', isAdmin: true, password: PW };
 const wang: FakeUser = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: PW };

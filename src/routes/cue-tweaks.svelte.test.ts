@@ -1,5 +1,5 @@
 // 頁面：環節和拍點的小事。環節名字按 Enter 就加入、預設接上一個環節後面的種類；
-// 分組浮動列標出選的人在哪一組、人員清單可以照組排；放手位、步驟也跳下一拍、新選取「給誰」回到全部、
+// 分組浮動列標出選的人在哪一組、人員清單一組一張卡片；放手位、步驟也跳下一拍、新選取「給誰」回到全部、
 // 「給誰」分任務角色和隊員兩組、按住 Shift 小窗不擋點擊；拍點可以複製、貼上（同一個動作、別的動作都行）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
@@ -93,15 +93,17 @@ describe('分組', () => {
 		expect(bar.getByRole('button', { name: '放進第 2 組' }).getAttribute('aria-pressed')).toBe('false');
 	});
 
-	it('人員清單打勾「照組排」就照組號排', async () => {
+	it('人員清單一組一張卡片，卡片裡照任務角色排', async () => {
 		let flow = flowOf(setSquad(libSample(), 'x1', ['m1', 'm3'], 1));
 		flow = flowOf(setSquad(flow, 'x1', ['m2', 'm4'], 2));
 		open(flow);
 		await selectAction('x1');
 		const names = () => [...document.querySelectorAll('.action-form .people li .name')].map((n) => n.textContent);
-		expect(names()).toEqual(['小美', '小A', '小B', '小芳']);
-		await fireEvent.click(screen.getByRole('checkbox', { name: '照組排' }));
-		expect(names()).toEqual(['小美', '小B', '小A', '小芳']);
+		expect(screen.queryByRole('checkbox', { name: '照組排' })).toBeNull();
+		const heads = () => [...document.querySelectorAll('.action-form .people .squad-head')].map((n) => n.textContent);
+		expect(heads()).toEqual(['第 1 組', '第 2 組']);
+		// 第 1 組：小美上層、小B主底；第 2 組：小A主底、小芳上層
+		expect(names()).toEqual(['小B', '小美', '小A', '小芳']);
 	});
 });
 
@@ -189,7 +191,7 @@ describe('複製、貼上拍點', () => {
 		await fireEvent.click(pop().getByRole('button', { name: '複製選的拍點' }));
 		await select('1-8');
 		await fireEvent.click(pop().getByRole('button', { name: '貼上拍點' }));
-		expect(pop().getByRole('alert').textContent).toContain('動作裡面');
+		expect(pop().getByRole('alert').textContent).toBe('貼不下：拍點會超出動作的結尾 1 拍');
 		expect(cuesOf(session, 'x1')).toHaveLength(3);
 	});
 
@@ -203,5 +205,20 @@ describe('複製、貼上拍點', () => {
 		await select('2-1');
 		await fireEvent.click(pop().getByRole('button', { name: '貼上拍點' }));
 		expect(cuesOf(session, 'x2')).toEqual(['step 上 0+2']);
+	});
+});
+
+describe('泳道上的拍點', () => {
+	it('同一拍有給全部的 down 和只給小美的 up：小美的泳道上兩個都畫出來，上下分開，都在泳道裡', () => {
+		open(flowOf(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 2, word: 'up', who: { member: 'm1' } })));
+		const lane = document.querySelector<HTMLElement>('[data-lane="m1"]')!;
+		const counts = [...lane.querySelectorAll<HTMLElement>('[data-action-id="x1"] [data-cue="count"]')];
+		const firstBeat = counts.filter((c) => c.style.left === '0px');
+		expect(firstBeat.map((c) => c.textContent?.trim()).toSorted()).toEqual(['down', 'up']);
+		const [a, b] = firstBeat.map((c) => parseFloat(c.style.top));
+		expect(Math.abs(a - b)).toBeGreaterThanOrEqual(parseFloat(firstBeat[0].style.height));
+		// 色條離泳道上緣 3 px，下緣留 5 px 給走位條
+		const bottom = Math.max(...firstBeat.map((c) => 3 + parseFloat(c.style.top) + parseFloat(c.style.height)));
+		expect(bottom).toBeLessThanOrEqual(parseFloat(lane.style.height) - 5);
 	});
 });

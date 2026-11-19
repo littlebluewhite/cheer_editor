@@ -59,6 +59,7 @@ describe('還沒送出的輸入框裡 ⌘Z 交給瀏覽器退字', () => {
 		await fireEvent.click(tab('隊員'));
 		await fireEvent.change(screen.getByLabelText('第 2 位隊員的名字'), { target: { value: '阿A' } });
 		await fireEvent.click(tab('動作'));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		const before = session.flow;
 		const name = screen.getByLabelText('名稱') as HTMLInputElement;
 		name.focus();
@@ -77,5 +78,18 @@ describe('復原、重做說退了什麼', () => {
 		expect(screen.getByRole('status').textContent).toContain('已復原：插入站位 2');
 		await redoKey();
 		expect(screen.getByRole('status').textContent).toContain('已重做：插入站位 2');
+	});
+
+	it('復原、重做按鈕的提示寫出下一步會退什麼；也說方向鍵連按合成一步', async () => {
+		setup(flowOf(moveMembers(libSample(), 8, { m1: [3, 3] })));
+		const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+		expect(button('復原').title).not.toContain('：');
+		await fireEvent.dblClick(document.querySelector<HTMLElement>('.film .trk')!, { clientX: 102.4 });
+		expect(button('復原').title).toContain('復原：插入站位 2');
+		expect(button('復原').title).toContain('方向鍵連按');
+		expect(button('重做').title).not.toContain('：插入');
+		await undoKey();
+		expect(button('重做').title).toContain('重做：插入站位 2');
+		expect(button('復原').title).not.toContain('插入站位 2');
 	});
 });

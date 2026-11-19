@@ -1,4 +1,4 @@
-// 手機（窄螢幕）的檢視模式（#175，docs/adr/0005-ipad-touch.md）：上面場地、中間播放鈕、下面現在這一列八拍表；
+// 手機（窄螢幕）的檢視模式（#175，docs/adr/0005-ipad-touch.md）：上面場地、中間播放鈕、下面前後八拍（這個和下一個八拍）；
 // 從名單選一次「我」，這台裝置照流程記住（不進流程檔），之後打開就把我標亮。
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
@@ -29,17 +29,19 @@ async function openOnPhone(flow: Flow = libSample()) {
 	return { ...page, engine, frames };
 }
 
-const row = () => screen.getByRole('region', { name: '八拍表這一列' });
+const row = () => screen.getByRole('region', { name: '前後八拍' });
 const me = () => screen.getByLabelText('我') as HTMLSelectElement;
 const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
 
 describe('手機的檢視模式', () => {
-	it('開檔直接看到場地、播放鈕、八拍表這一列；按播放，播放頭和八拍表跟著走', async () => {
+	it('開檔直接看到場地、播放鈕、前後八拍；按播放，播放頭和八拍表跟著走', async () => {
 		const { engine, frames } = await openOnPhone();
 		// 不停在被擋住的編排畫面
 		expect(screen.queryByRole('region', { name: '視窗太窄了' })).toBeNull();
 		expect(screen.getByRole('img', { name: '場地' })).toBeTruthy();
 		expect(row().textContent).toContain('Lib');
+		// 手機放不下七列：只有這個八拍和下一個
+		expect([...row().querySelectorAll('[data-slot]')].map((s) => s.getAttribute('data-slot'))).toEqual(['1', '2']);
 		const at = screen.getByLabelText('目前位置').textContent;
 
 		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
@@ -59,7 +61,7 @@ describe('手機的檢視模式', () => {
 		expect(screen.queryByRole('button', { name: /設定/ })).toBeNull();
 	});
 
-	it('選「我」是小A：場上標亮小A，八拍表這一列只寫小A的；不算改流程', async () => {
+	it('選「我」是小A：場上標亮小A，前後八拍只寫小A的；不算改流程', async () => {
 		const { session } = await openOnPhone();
 		expect(dot('m2').classList.contains('selected')).toBe(false);
 		await fireEvent.change(me(), { target: { value: 'm2' } });
@@ -97,7 +99,7 @@ describe('手機的檢視模式', () => {
 		await openOnPhone();
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		expect(screen.getByRole('region', { name: '練習' })).toBeTruthy();
-		expect(screen.queryByRole('region', { name: '八拍表這一列' })).toBeNull();
+		expect(screen.queryByRole('region', { name: '前後八拍' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '編排' }));
 		expect(row()).toBeTruthy();
 	});
@@ -125,7 +127,7 @@ describe('手機的檢視模式', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
-		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+		expect(screen.getByLabelText('開啟流程檔')).toBeTruthy();
 	});
 });
 
@@ -204,5 +206,12 @@ describe('為什麼不能編：照螢幕寫轉成橫的、太窄或太矮', () =
 		screenOf(800, 900, false);
 		await openOnPhone();
 		expect(why()).toContain('太窄');
+	});
+
+	it('手機（390×844 觸控）：跟電腦叫法一樣寫「檢視模式・只能看」，為什麼不能編不寫「像素」這種技術用語（N37）', async () => {
+		screenOf(390, 844, true);
+		await openOnPhone();
+		expect(why()).toContain('檢視模式・只能看');
+		expect(why()).not.toContain('像素');
 	});
 });

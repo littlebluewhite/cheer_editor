@@ -7,11 +7,14 @@
 		actionLabel,
 		charCount,
 		eightCountRows,
+		eightCountView,
 		memberMarkers,
+		memberName,
 		type EightCountRow,
 		type Flow
 	} from '#lib/core';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
+	import { both, KEYS } from '#lib/shortcuts.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
@@ -21,7 +24,7 @@
 	interface Props {
 		flow: Flow;
 		onclose: () => void;
-		/** 編輯畫面只選了一個人時是他的 id：預設印他。 */
+		/** 預設印他：編輯畫面只選了一個人時是他，不然是「我」。 */
 		selected?: string | null;
 		/** 叫瀏覽器列印；測試換成假的（jsdom 沒有列印）。 */
 		print?: () => void;
@@ -44,13 +47,18 @@
 		untrack(() => [selected ?? '', loadFlowSetting('print', flow.name)].find((c) => c && valid(c)) ?? '')
 	);
 
+	/** 選的人（或那個角色最後一個人）被復原退掉了：回到印全隊。 */
+	const validChoice = $derived(valid(choice) ? choice : '');
+
 	/** 每張表印誰：'' 是全隊的表，其他是那個人的個人版。 */
 	const sheets = $derived(
-		choice.startsWith('role:')
-			? flow.members.filter((m) => `role:${m.globalRole}` === choice).map((m) => m.id)
-			: [choice]
+		validChoice.startsWith('role:')
+			? flow.members.filter((m) => `role:${m.globalRole}` === validChoice).map((m) => m.id)
+			: [validChoice]
 	);
 	const markers = $derived(memberMarkers(flow));
+	/** 每張小站位圖都用同一個範圍，比得出前後張的差別。 */
+	const miniView = $derived(eightCountView(flow));
 
 	/**
 	 * 這一列印在 A4 直的大約多高（px，估得偏高）。放得下一頁的才標「不切開」：
@@ -83,7 +91,13 @@
 			<b class="tool-title">八拍表</b>
 			<label>
 				印誰
-				<select bind:value={choice} onchange={() => saveFlowSetting('print', flow.name, choice)}>
+				<select
+					value={validChoice}
+					onchange={(e) => {
+						choice = e.currentTarget.value;
+						saveFlowSetting('print', flow.name, choice);
+					}}
+				>
 					<option value="">全隊</option>
 					{#each roleChoices as r (r.value)}
 						<option value={r.value}>{r.label}</option>
@@ -93,7 +107,7 @@
 					{/each}
 				</select>
 			</label>
-			<span class="muted">用瀏覽器列印（⌘P／Ctrl+P），也可以存成 PDF。</span>
+			<span class="muted">用瀏覽器列印（{both(KEYS.print)}），也可以存成 PDF。</span>
 			<span class="grow"></span>
 			<button type="button" class="primary" onclick={print}><Icon name="print" />列印</button>
 			<button type="button" onclick={close}>關閉</button>
@@ -109,6 +123,9 @@
 							<li><b>{markers[m.id]}</b> {m.name}</li>
 						{/each}
 					</ul>
+				{/if}
+				{#if !flow.actions.length}
+					<p class="empty" role="note">還沒有動作。到「編排」加了動作，這裡會一個八拍一列寫出誰在做什麼。</p>
 				{/if}
 				<table>
 					<thead>
@@ -134,6 +151,10 @@
 									{#each row.walks as w, j (j)}
 										<div>{w}</div>
 									{/each}
+									<!-- 什麼都沒有的八拍（手機上是一張卡）不留一條空白，像沒載入 -->
+									{#if !row.actions.length && !row.continuing.length && !row.walks.length && !row.formations.length && !row.cues.length}
+										<div class="muted">這幾拍{memberId ? memberName(flow, memberId) : ''}沒有動作，也不用走位</div>
+									{/if}
 								</td>
 								<td class="formations">
 									{#each row.formations as f (f.number)}
@@ -146,7 +167,7 @@
 													positions={f.pos}
 													controls={false}
 													marked={memberId ? [memberId] : []}
-													crop
+													crop={miniView}
 												/>
 											</div>
 											<figcaption>{f.caption}</figcaption>
@@ -204,8 +225,8 @@
 		align-items: center;
 	}
 	.toolbar .muted {
-		color: #9fb0d4;
-		font-size: 12px;
+		color: #c9d4ea;
+		font-size: 13px;
 	}
 	.grow {
 		flex: 1;
@@ -270,6 +291,13 @@
 		color: #4a5368;
 		white-space: pre-wrap;
 	}
+	.empty {
+		margin: 0 0 12px;
+		padding: 10px 12px;
+		border: 1px dashed #c9ced8;
+		border-radius: 4px;
+		color: #4a5368;
+	}
 	figure {
 		margin: 0 0 4px;
 	}
@@ -333,6 +361,10 @@
 		}
 		.eight::before {
 			content: '八拍 ';
+		}
+		/* 口號段寫「整段 5.0 秒」：開始的秒數寫明是開始，兩個秒數才分得出來（N38） */
+		.num::before {
+			content: '開始 ';
 		}
 		.num::after {
 			content: ' 秒';

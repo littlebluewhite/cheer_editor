@@ -8,6 +8,7 @@ import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { newId } from './ids';
 import { tooLong } from './text-length';
+import type { Segment } from './segment';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
@@ -44,7 +45,7 @@ export interface Walk {
 	arrive: TimePosition;
 }
 
-/** moveMembers、matchPrevious 多帶的結果，見 moveMembers。 */
+/** moveMembers、moveGroup 多帶的結果，見 moveMembers。 */
 export interface MoveResult {
 	inserted: boolean;
 	sec: number;
@@ -80,39 +81,56 @@ export function setPositions(
  * 在播放頭（全域秒數）拖人：改這一拍的站位；這一拍沒有站位就先插一張（位置帶入那一刻大家走到的地方）。
  * 改完往後帶（見 carryForward）。被擋就什麼都不改。
  * inserted = 有插新的站位；sec = 改到的那張站位的全域秒數（這一拍開始的時間）；carried = 往後帶到幾張站位。
+ * carry = false：只改這張，不往後帶（按住 Alt 拖）。
  */
 export function moveMembers(
 	flow: Flow,
 	sec: number,
-	moves: Record<string, Position>
+	moves: Record<string, Position>,
+	carry = true
 ): CommandResult<MoveResult> {
+	return moveAt(flow, sec, () => moves, carry);
+}
+
+/**
+ * 一組人移到新位置（選人工具列的鏡像、對齊、⌘V 貼上……都走這裡）：跟拖人同一條路，這一拍沒有站位就先插一張（自動帶入），
+ * moves 是選到的人的新位置（畫面照 groupPositions 算好，參數要能轉成 JSON 送伺服器）；改完往後帶。回傳跟 moveMembers 一樣。
+ * 沒選人、找不到隊員就擋下；位置都沒變、也不用插站位，就擋下（不記一步復原）。
+ */
+export function moveGroup(flow: Flow, sec: number, moves: Record<string, Position>): CommandResult<MoveResult> {
+	const memberIds = Object.keys(moves);
+	if (memberIds.length === 0) return blocked('先選人');
+	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
+	const here = formationAt(flow, sec);
+	if (here && Object.entries(moves).every(([id, p]) => samePos(here.pos[id], p))) return blocked('位置都沒變');
 	return moveAt(flow, sec, () => moves);
 }
 
 /**
- * 跟上一張一樣：選到的人在播放頭這一拍的站位，改成上一張站位的位置；這一拍沒有站位就先插一張
- * （跟拖人一樣），效果就是「他們到這一拍都還站著」。改完往後帶。回傳跟 moveMembers 一樣。
- * 沒選人、播放頭在開頭那張，就擋下。
+ * 選到的人在播放頭（sec）這一拍的位置，給 moveGroup 算新位置用：這一拍有站位就是那張的，
+ * 沒有就是插一張時會帶入的位置（那一刻大家走到的地方）；插不了（還沒有段）是空的。
  */
-export function matchPrevious(
-	flow: Flow,
-	sec: number,
-	memberIds: string[]
-): CommandResult<MoveResult> {
-	if (memberIds.length === 0) return blocked('先選人');
-	if (formationAt(flow, sec) === flow.formations[0]) return blocked('開頭那張前面沒有站位');
-	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
-	return moveAt(flow, sec, (f, target) => {
-		const previous = f.formations[f.formations.indexOf(target) - 1];
-		return Object.fromEntries(memberIds.map((id) => [id, previous.pos[id]]));
-	});
+export function groupPositions(flow: Flow, sec: number, memberIds: string[]): Record<string, Position> {
+	const here = formationAt(flow, sec);
+	if (here) return pick(here.pos, memberIds);
+	const r = insertFormation(flow, sec);
+	return r.kind === 'ok' ? pick(formationAt(r.flow, sec)!.pos, memberIds) : {};
 }
 
-/** moveMembers 和 matchPrevious 共用：插站位（需要時）、改位置、往後帶。movesFor 拿到插好站位的流程和要改的那張。 */
+/** pos 裡這幾個人的位置。 */
+function pick(pos: Record<string, Position>, ids: string[]): Record<string, Position> {
+	return Object.fromEntries(ids.map((id) => [id, pos[id]]));
+}
+
+/**
+ * moveMembers、moveGroup 共用：插站位（需要時）、改位置、往後帶（carry = false 就不帶）。
+ * movesFor 拿到插好站位的流程和要改的那張。
+ */
 function moveAt(
 	flow: Flow,
 	sec: number,
-	movesFor: (flow: Flow, target: Formation) => Record<string, Position>
+	movesFor: (flow: Flow, target: Formation) => Record<string, Position>,
+	carry = true
 ): CommandResult<MoveResult> {
 	let f = flow;
 	const inserted = !formationAt(f, sec);
@@ -125,7 +143,7 @@ function moveAt(
 	const moves = movesFor(f, target);
 	const r = setPositions(f, target.id, moves);
 	if (r.kind !== 'ok') return r;
-	const { flow: carriedFlow, carried } = carryForward(r.flow, target, moves);
+	const { flow: carriedFlow, carried } = carry ? carryForward(r.flow, target, moves) : { flow: r.flow, carried: 0 };
 	return ok(carriedFlow, { inserted, sec: formationSec(r.flow, target), carried });
 }
 
@@ -178,7 +196,7 @@ export function renameFormation(flow: Flow, formationId: string, name: string): 
 	if (!formation) return blocked('找不到這張站位');
 	const { name: _, ...rest } = formation;
 	const trimmed = name.trim();
-	const problem = trimmed !== formation.name ? tooLong('formationName', trimmed) : null;
+	const problem = tooLong('formationName', trimmed, formation.name);
 	if (problem) return blocked(problem);
 	const updated: Formation = { ...rest, ...(trimmed ? { name: trimmed } : {}) };
 	return ok({ ...flow, formations: flow.formations.map((f) => (f === formation ? updated : f)) });
@@ -390,7 +408,8 @@ function walkFormationIndex(flow: Flow, formationId: string): number | string {
  * 一個人在 formations[index - 1]（A）→ formations[index]（B）的出發和到達（全域秒數）。
  * 自己設的（B 的 walks）夾在 A、B 之間；夾完出發不早於到達就當沒設。
  * 預設：到達 = B；出發 = B 往前一個八拍（用 B 所在音樂段的 BPM），落進前一段時往前取到那一段的格子上。
- * B 在口號段，或 A、B 之間不到一個八拍：整段走（出發 = A）。
+ * B 在口號段開頭、前一段是音樂段：用前一段的 BPM 往前一個八拍。
+ * B 在口號段其他地方，或 A、B 之間不到一個八拍：整段走（出發 = A）。
  */
 function walkTimes(flow: Flow, index: number, memberId: string): { depart: number; arrive: number } {
 	return customWalk(flow, index, memberId) ?? defaultWalk(flow, index);
@@ -413,12 +432,21 @@ function customWalk(
 	return depart < arrive - EPS ? { depart, arrive } : null;
 }
 
+/**
+ * 預設出發用哪一段的拍子往前數：B 所在的段；B 在口號段開頭（時間 0）時是它前面那一段（走位都在那一段裡）。
+ */
+function beatSegment(flow: Flow, b: Formation): Segment | undefined {
+	const i = flow.segments.findIndex((s) => s.id === b.segmentId);
+	const segment = flow.segments[i];
+	return segment?.kind === 'chant' && b.at === 0 && i > 0 ? flow.segments[i - 1] : segment;
+}
+
 /** 沒設的人在 formations[index - 1] → formations[index] 的出發和到達（見 walkTimes）。 */
 function defaultWalk(flow: Flow, index: number): { depart: number; arrive: number } {
 	const aSec = formationSec(flow, flow.formations[index - 1]);
 	const b = flow.formations[index];
 	const arrive = formationSec(flow, b);
-	const segment = flow.segments.find((s) => s.id === b.segmentId);
+	const segment = beatSegment(flow, b);
 	if (segment?.kind !== 'music') return { depart: aSec, arrive };
 	const depart = arrive - HALF_BEATS_PER_EIGHT * unitSec(segment);
 	if (depart <= aSec + EPS) return { depart: aSec, arrive };
@@ -566,12 +594,11 @@ export function moveFormationHint(flow: Flow, formationId: string): string {
 
 /**
  * 挪 formations[index]（不是開頭那張）時，前一張和後一張的站位時間給教練看：
- * 在這張那一段只寫段內時間，別段前面加段名。沒有後一張是 null。
+ * 一律前面加段名（同一段也加），教練才知道是哪一段的時間。沒有後一張是 null。
  */
 function neighbourTimes(flow: Flow, index: number): { before: string; after: string | null } {
-	// 有前一張表示已經有段，segmentId 一定有值。
-	const home = flow.formations[index].segmentId!;
-	const text = (f: Formation) => timeTextWithUnit(flow, home, f as TimePosition);
+	// home 給空字串：沒有一段的 id 是空的，所以每個時間都帶段名。
+	const text = (f: Formation) => timeTextWithUnit(flow, '', f as TimePosition);
 	const c = flow.formations[index + 1];
 	return { before: text(flow.formations[index - 1]), after: c ? text(c) : null };
 }

@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeServer, flush } from '#lib/test-fakes.js';
 import SetPassword from './+page.svelte';
 
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
+
 const mei = { email: 'mei@example.com', name: '陳小美', isAdmin: false };
 const LEAKED = 'correct horse battery staple';
 

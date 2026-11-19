@@ -63,6 +63,8 @@ struct Attempt {
     run_through_started_at: Option<i64>,
     whole: bool,
     marks: Value,
+    /// 空著的環節（流程檔第 10 版起）；沒有就是沒有空著的。
+    blanks: Option<Value>,
 }
 
 /// 存著的一次和記的人（送給每個人時照看的人寫名字）。
@@ -133,9 +135,10 @@ async fn rows<'e>(
         Option<i64>,
         Option<String>,
         bool,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT r.id, r.action_id, r.who, r.marks::text, r.whole, r.date, r.run_through_id,
-                t.started_at, r.recorded_by, u.name, r.deleted_at IS NOT NULL
+                t.started_at, r.recorded_by, u.name, r.deleted_at IS NOT NULL, r.blanks::text
          FROM flow_records r
          LEFT JOIN flow_run_throughs t ON t.flow_id = r.flow_id AND t.id = r.run_through_id
          LEFT JOIN users u ON u.id = r.recorded_by
@@ -148,7 +151,7 @@ async fn rows<'e>(
     found
         .into_iter()
         .map(
-            |(id, action_id, who, marks, whole, date, run, started, by, name, gone)| {
+            |(id, action_id, who, marks, whole, date, run, started, by, name, gone, blanks)| {
                 let mut a = serde_json::Map::new();
                 a.insert("id".into(), id.into());
                 a.insert("date".into(), date.into());
@@ -163,6 +166,9 @@ async fn rows<'e>(
                 }
                 a.insert("whole".into(), whole.into());
                 a.insert("marks".into(), serde_json::from_str(&marks)?);
+                if let Some(blanks) = blanks {
+                    a.insert("blanks".into(), serde_json::from_str(&blanks)?);
+                }
                 Ok(Kept {
                     stored: Stored {
                         action_id,
@@ -291,7 +297,7 @@ async fn update(
     let a: Attempt = serde_json::from_value(new.attempt.clone())?;
     sqlx::query(
         "UPDATE flow_records SET action_id = $3, who = $4, marks = $5::json, whole = $6,
-         deleted_at = NULL, updated_at = $7 WHERE flow_id = $1 AND id = $2",
+         deleted_at = NULL, updated_at = $7, blanks = $8::json WHERE flow_id = $1 AND id = $2",
     )
     .bind(flow_id)
     .bind(&a.id)
@@ -300,6 +306,7 @@ async fn update(
     .bind(a.marks.to_string())
     .bind(a.whole)
     .bind(now)
+    .bind(a.blanks.as_ref().map(Value::to_string))
     .execute(&mut *tx)
     .await?;
     Ok(())
@@ -666,8 +673,8 @@ async fn insert(
     }
     sqlx::query(
         "INSERT INTO flow_records
-         (flow_id, id, action_id, who, marks, whole, date, run_through_id, recorded_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5::json, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING",
+         (flow_id, id, action_id, who, marks, whole, date, run_through_id, recorded_by, updated_at, blanks)
+         VALUES ($1, $2, $3, $4, $5::json, $6, $7, $8, $9, $10, $11::json) ON CONFLICT DO NOTHING",
     )
     .bind(flow_id)
     .bind(&a.id)
@@ -679,6 +686,7 @@ async fn insert(
     .bind(&a.run_through_id)
     .bind(recorded_by)
     .bind(now)
+    .bind(a.blanks.as_ref().map(Value::to_string))
     .execute(&mut *tx)
     .await?;
     Ok(())

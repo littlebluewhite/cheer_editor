@@ -1,4 +1,4 @@
-// 任務角色：隊員在某個動作裡要做的事。11 個固定的 ＋ 這支流程自己加的。
+// 任務角色：隊員在某個動作裡要做的事。13 個固定的 ＋ 這支流程自己加的。
 // 跟全局角色互不影響；只有加人進動作時的預設值（defaultRoles）照全局角色先填。
 
 import { actionLabel, type ActionCategory, type ActionMember } from './action-types';
@@ -22,22 +22,46 @@ export interface RoleEntry {
 	/** 規則上的叫法；自訂角色是空字串。 */
 	ruleName: string;
 	custom: boolean;
+	/** 第幾群（選單裡群和群中間畫線）：0 撐人的、1 被撐的、2 保護的、3 其他，自訂角色是 4。 */
+	group: number;
 }
 
-/** 11 個固定任務角色，照規格（#15）的「任務角色名詞對照表」。 */
+/** 任務角色選單裡的一項：多了快捷鍵（超過的角色是空字串）。 */
+export interface PickableRole extends RoleEntry {
+	key: string;
+}
+
+/**
+ * 13 個固定任務角色，照規格（#15）的「任務角色名詞對照表」，分四群：撐人的、被撐的、保護的、其他。
+ * 快捷鍵照這個順序，跟著角色固定（docs/superpowers/specs/2026-11-19-shoulder-base-people-list-design.md）。
+ */
 export const FIXED_ROLES: readonly RoleEntry[] = [
-	['底層', '在下面撐住別人的人。不分主底、側底時用。', '底層人員'],
-	['主底', '主要撐住上層腳的底層。單底層技巧的那位底層。', '底層人員（台灣規則沒有「主底」）'],
-	['側底', '多底層技巧裡，在主底旁邊一起撐的底層。', '底層人員（台灣規則沒有「側底」）'],
-	['上層', '被撐在最上面的人。', '上層人員'],
-	['中層', '金字塔裡站在底層身上、又撐住上面的人的人。', '中層人員'],
-	['保護', '站在旁邊保護上層，可扶腳踝、小腿、膝蓋，不能撐腳底，不算底層。', '保護人員（保護員）'],
-	['前保', '站在上層前方的保護。', '前方保護人員'],
-	['後保', '站在上層背後的人，技巧和籃型拋投都是。', '輔助人員（籃型拋投）；金字塔轉接寫「後保」'],
-	['接者', '接住落下或被拋的上層的人。', '接者'],
-	['支撐', '金字塔裡穩住別的上層的人。', '支撐者'],
-	['騰翻', '做騰翻的人。', '騰翻人員']
-].map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false }));
+	[
+		['底層', '在下面撐住別人的人。不想分主底、側底、肩底時用。', '底層人員'],
+		['主底', '主要撐住上層腳的底層。單底層技巧的那位底層。', '底層人員（台灣規則沒有「主底」）'],
+		['側底', '多底層技巧裡，在主底旁邊一起撐的底層。', '底層人員（台灣規則沒有「側底」）'],
+		['肩底', '金字塔裡站在地上、讓中層站在自己肩上的底層。只有金字塔有。', '底層人員（規則沒有「肩底」）']
+	],
+	[
+		['上層', '被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。', '上層人員'],
+		['中層', '金字塔裡站在底層身上、又撐住三層的人。', '中層人員'],
+		['三層', '金字塔裡站在中層身上、最上面的人。只有金字塔有。', '3 層人員、3 層隊員'],
+		['支撐', '金字塔裡自己也被撐著、伸手穩住別的上層的人。', '支撐者']
+	],
+	[
+		['保護', '站在旁邊保護上層，可扶腳踝、小腿、膝蓋，不能撐腳底，不算底層。', '保護人員（保護員）'],
+		['前保', '站在上層前方的保護。', '前方保護人員'],
+		['後保', '站在上層背後的人，技巧和籃型拋投都是。', '輔助人員（籃型拋投）；金字塔轉接寫「後保」'],
+		['接者', '接住落下或被拋的上層的人。', '接者']
+	],
+	[['騰翻', '做騰翻的人。', '騰翻人員']]
+].flatMap((rows, group) => rows.map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false, group })));
+
+/** 自訂任務角色的群：接在固定的後面。 */
+const CUSTOM_GROUP = 4;
+
+/** 任務角色的快捷鍵，照名詞對照表的順序；超過的角色沒有快捷鍵。 */
+const ROLE_KEYS = '1234567890qwertyuiop';
 
 /** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複、不能跟隊員同名。 */
 export function addCustomRole(flow: Flow, input: { name: string; meaning: string }): CommandResult {
@@ -61,7 +85,7 @@ export function updateCustomRole(flow: Flow, id: string, input: { name: string; 
 	if (!old) return blocked('找不到這個任務角色');
 	const name = input.name.trim();
 	if (!name) return blocked('請填任務角色名稱');
-	const tooLongName = name !== old.name ? tooLong('roleName', name) : null;
+	const tooLongName = tooLong('roleName', name, old.name);
 	if (tooLongName) return blocked(tooLongName);
 	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
 		return blocked(`已經有「${name}」這個任務角色了`);
@@ -108,12 +132,26 @@ function memberNameTaken(name: string): string {
 	return `已經有叫「${name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人`;
 }
 
-/** 名詞對照表：固定的 11 個在前，這支流程的自訂角色接在後面。 */
+/** 名詞對照表：固定的 13 個在前，這支流程的自訂角色接在後面。 */
 export function roleGlossary(flow: Flow): RoleEntry[] {
 	return [
 		...FIXED_ROLES,
-		...flow.customRoles.map((r) => ({ name: r.name, meaning: r.meaning, ruleName: '', custom: true }))
+		...flow.customRoles.map((r) => ({ name: r.name, meaning: r.meaning, ruleName: '', custom: true, group: CUSTOM_GROUP }))
 	];
+}
+
+/** 只有金字塔有的任務角色。 */
+const PYRAMID_ONLY = new Set(['三層', '肩底']);
+
+/**
+ * 任務角色選單裡的角色：名詞對照表，三層、肩底只有金字塔有。
+ * used（這個人現在的任務角色）是三層、肩底時照列：換了大類，他自己的選單看得到、選得回來。
+ * 快捷鍵照名詞對照表的位置給，不照選單：每個大類同一個鍵都是同一個角色。
+ */
+export function pickableRoles(flow: Flow, category: ActionCategory, used: (string | null)[]): PickableRole[] {
+	return roleGlossary(flow)
+		.map((r, i) => ({ ...r, key: ROLE_KEYS[i] ?? '' }))
+		.filter((r) => r.custom || !PYRAMID_ONLY.has(r.name) || category === 'pyramid' || used.includes(r.name));
 }
 
 /** 這個大類裡，全局角色是 globalRole 的人先填哪個任務角色；null 是不填。 */

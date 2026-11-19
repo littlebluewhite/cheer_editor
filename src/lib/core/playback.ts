@@ -1,10 +1,19 @@
 // 播放計畫：從流程的某一刻開始，哪些音樂檔在什麼時候從哪裡播、節拍器在哪些時間響。
 // 時間都是流程秒數；音訊薄層照這份計畫排進 Web Audio，自己不算拍子。
 
-import { actionSeconds, type Action } from './action-types';
+import type { Action } from './action-types';
 import type { Flow } from './flow';
 import type { MusicSegment } from './segment';
-import { EPS, HALF_BEATS_PER_EIGHT, segmentSpans, toPosition, toSeconds, totalSeconds, units } from './time';
+import {
+	EPS,
+	segmentSpans,
+	snapToBeat,
+	toSeconds,
+	totalSeconds,
+	units,
+	unitSec,
+	type TimePosition
+} from './time';
 
 /** 一段要播的音樂：流程第 sec 秒開始，從音樂檔第 fileSec 秒播 durationSec 秒。 */
 export interface PlaybackClip {
@@ -73,25 +82,47 @@ export function playbackPlan(flow: Flow, fromSec: number, untilSec = Infinity): 
 }
 
 /**
- * 「重複」播哪一段（全域秒數）：選了動作就是那個動作；沒選就是 sec 所在的八拍
- * （口號段沒有八拍，是 sec 所在的 5 秒，跟 Shift＋方向鍵一次跳的一樣）。沒有段時是 null。
+ * 重複範圍：A 到 B，記成哪一段的第幾格（不是秒數），改 BPM、插入八拍時才跟著音樂走。
+ * 只放了 A 時 b 是 null。
  */
-export function repeatSpan(flow: Flow, sec: number, action: Action | null): { startSec: number; endSec: number } | null {
-	if (action) return actionSeconds(flow, action);
-	const p = toPosition(flow, sec);
-	const segment = p && flow.segments.find((s) => s.id === p.segmentId);
-	if (!p || !segment) return null;
-	const size = segment.kind === 'music' ? HALF_BEATS_PER_EIGHT : CHANT_BLOCK;
-	const start = Math.floor(p.at / size) * size;
-	const end = Math.min(start + size, units(segment));
-	return {
-		startSec: toSeconds(flow, { segmentId: segment.id, at: start }),
-		endSec: toSeconds(flow, { segmentId: segment.id, at: end })
-	};
+export interface RepeatRange {
+	a: TimePosition;
+	b: TimePosition | null;
 }
 
-/** 口號段重複播一次幾格（0.1 秒）。 */
-const CHANT_BLOCK = 50;
+/**
+ * 重複範圍的一頭：sec 最近的整拍（口號段 0.1 秒）在哪一段的第幾格。要先有段。
+ * 段的交界算後面那一段；流程結尾算最後一段的最後一格後面。格數四捨五入，浮點誤差不會掉到前一格。
+ */
+export function rangeEnd(flow: Flow, sec: number): TimePosition {
+	const snapped = snapToBeat(flow, sec);
+	const spans = segmentSpans(flow);
+	const span = spans.find((s) => snapped < s.startSec + s.durationSec - EPS) ?? spans.at(-1)!;
+	const at = Math.round((snapped - span.startSec) / unitSec(span.segment));
+	return { segmentId: span.segment.id, at: Math.min(Math.max(at, 0), units(span.segment)) };
+}
+
+/** 動作拉成的重複範圍：兩頭都在動作自己那一段（B 是動作的結尾，不是下一段的開頭）。 */
+export function actionRange(action: Action): RepeatRange {
+	const { segmentId, start, length } = action;
+	return { a: { segmentId, at: start }, b: { segmentId, at: start + length } };
+}
+
+/**
+ * 重複範圍現在在哪（全域秒數）。A、B 所在的段不見了、段縮短到 A 或 B 後面，或段換了順序、B 跑到 A 前面，就不能用了：null。
+ */
+export function rangeSeconds(flow: Flow, range: RepeatRange): { a: number; b: number | null } | null {
+	// 段縮短、格子落到段尾後面也不能用
+	const sec = (p: TimePosition) => {
+		const segment = flow.segments.find((s) => s.id === p.segmentId);
+		return segment && p.at <= units(segment) ? toSeconds(flow, p) : null;
+	};
+	const a = sec(range.a);
+	if (a === null) return null;
+	if (!range.b) return { a, b: null };
+	const b = sec(range.b);
+	return b === null || b <= a + EPS ? null : { a, b };
+}
 
 /** 段設定的「▶ 從第一拍聽 2 個八拍」：從第一拍播 16 拍的音樂加節拍器，時間從 0 算。 */
 export function firstBeatPreview(flow: Flow, segmentId: string): PlaybackPlan {

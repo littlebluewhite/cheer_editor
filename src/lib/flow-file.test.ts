@@ -166,12 +166,12 @@ describe('流程檔：存檔', () => {
 		expect(session.unsaved).toBe(false);
 	});
 
-	it('在存檔對話框按取消：還是沒存，不寫提示', async () => {
+	it('在存檔對話框按取消：還是沒存，不寫存檔的提示', async () => {
 		const { editor, session } = testEditor(audioFlow(), { createSaver: savers('cancelled').create });
 		session.change(flowOf(renameFlow(session.flow!, '全國賽')));
 		await editor.file.save();
 		expect(session.unsaved).toBe(true);
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已改流程名字');
 	});
 
 	it('存回檔案（Chrome、Edge）：提示寫存到的那個檔（教練在存檔對話框改過名字的話是改過的）', async () => {
@@ -352,16 +352,16 @@ describe('流程檔：沒存先問', () => {
 describe('流程檔：缺音樂、壞音樂', () => {
 	const mp3 = () => new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 
-	it('開檔時有段找不到音樂：照開，提示寫出少了哪個檔；那段補好音樂，提示自己收掉', async () => {
+	it('開檔時有段找不到音樂：照開，提示寫出少了哪個檔；那段補好音樂，提示換成補好的這一步', async () => {
 		const { editor, session } = testEditor();
 		await editor.file.open(zip(audioFlow()));
 		expect(session.flow!.name).toBe('練習用');
 		expect(session.notice).toBe('「練習用.zip」裡少了音樂檔「主歌.mp3」：點紅色的段重新選檔');
 		await editor.music.pick('s1', mp3(), session.changeAsk());
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已換第 1 段的音樂');
 	});
 
-	it('存檔時有段找不到音樂：照樣存，提示存出來的檔裡沒有那些音樂（接在存好的提示後面）；那段補好音樂，提示自己收掉', async () => {
+	it('存檔時有段找不到音樂：照樣存，提示存出來的檔裡沒有那些音樂（接在存好的提示後面）；那段補好音樂，提示換成補好的這一步', async () => {
 		const made = savers('downloaded');
 		const { editor, session } = testEditor(audioFlow(), { createSaver: made.create });
 		await editor.file.save();
@@ -371,22 +371,14 @@ describe('流程檔：缺音樂、壞音樂', () => {
 				'有 1 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次'
 		);
 		await editor.music.pick('s1', mp3(), session.changeAsk());
-		expect(session.notice).toBe('');
+		expect(session.notice).toBe('已換第 1 段的音樂');
 	});
 
-	it('缺音樂的段刪掉了（缺的都沒了）：提示也自己收掉', async () => {
+	it('缺音樂的段刪掉了（缺的都沒了）：缺音樂的提示換成刪段的這一步', async () => {
 		const { editor, session } = testEditor();
 		await editor.file.open(zip(audioFlow()));
 		session.change(flowOf(deleteSegment(session.flow!, 's1', { confirmed: true })));
-		expect(session.notice).toBe('');
-	});
-
-	it('提示已經換成別的了：補好音樂也不動它', async () => {
-		const { editor, session } = testEditor();
-		await editor.file.open(zip(audioFlow()));
-		session.notice = '已刪掉站位 2';
-		await editor.music.pick('s1', mp3(), session.changeAsk());
-		expect(session.notice).toBe('已刪掉站位 2');
+		expect(session.notice).toBe('已刪第 1 段');
 	});
 
 	it('音樂都在：開好、存好的提示只寫檔名，音樂照樣存進去', async () => {
@@ -464,6 +456,18 @@ describe('流程檔：自動存草稿', () => {
 		editor.file.startNew();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(editor.file.recent).toMatchObject([{ name: '練習用', unsaved: false, busy: false }]);
+	});
+
+	it('改完不到 1 秒就重新整理、關分頁（頁面隱藏）：當下就開始寫最新的流程，不等任何非同步步驟（卸載前來不及）', async () => {
+		const { editor, session, drafts } = await connected();
+		editor.file.create(newFlow('全國賽'));
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(1000);
+		session.change(addChant(session.flow!));
+		await vi.advanceTimersByTimeAsync(300);
+		editor.file.pageHidden();
+		// 不 await：頁面卸載後不會再跑任何東西
+		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
 	});
 
 	it('記成功率（不算復原的一步）也存草稿', async () => {
@@ -641,6 +645,15 @@ describe('流程檔：打開時讀草稿', () => {
 		expect(editor.file.recent).toEqual([]);
 		expect(drafts.latest()).toBeNull();
 	});
+
+	it('丟掉時瀏覽器刪不掉草稿：回報沒丟掉（failed），草稿還在', async () => {
+		const { editor, drafts } = await connected(writeFlowFile(audioFlow(), {}));
+		drafts.store.clear = () => Promise.reject(new Error('IndexedDB 壞了'));
+		const outcome = editor.file.discardRecent('current');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await outcome).toBe('failed');
+		expect(drafts.latest()).not.toBeNull();
+	});
 });
 
 describe('流程檔：兩個分頁（每支流程一份草稿）', () => {
@@ -724,30 +737,31 @@ describe('流程檔：兩個分頁（每支流程一份草稿）', () => {
 		expect(b.editor.file.openError).toBe('打不開「全國賽.zip」：另一個分頁正在編這支流程');
 	});
 
-	it('編第 6 支流程：最舊的那份草稿刪掉，只留最近編過的 5 支', async () => {
+	it('6 支都改過沒存：一支都不刪', async () => {
 		const drafts = fakeDraftStore();
-		const ages = [3, 5, 1, 4, 2];
-		for (const day of ages) {
+		for (const day of [3, 5, 1, 4, 2]) {
 			drafts.all.set(`d${day}`, { bytes: writeFlowFile(newFlow(`第 ${day} 支`), {}), savedAt: new Date(2026, 10, day) });
 		}
 		const tab = await openTab(drafts, fakeTabs());
 		tab.editor.file.create(newFlow('全國賽'));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftNames(drafts)).toEqual(['全國賽', '第 2 支', '第 3 支', '第 4 支', '第 5 支']);
+		expect(draftNames(drafts)).toEqual(['全國賽', '第 1 支', '第 2 支', '第 3 支', '第 4 支', '第 5 支']);
 	});
 
-	it('超過 5 支：先丟跟檔案一樣（沒改過）的草稿，就算它比較新；改過沒存的留著', async () => {
+	it('超過 5 支、有沒改過也有改過沒存的：只刪沒改過的，先刪最舊的；改過沒存的就算比較舊也留著', async () => {
 		const drafts = fakeDraftStore();
-		for (const day of [1, 2, 3, 4]) {
+		for (const day of [1, 2, 3]) {
 			drafts.all.set(`d${day}`, { bytes: writeFlowFile(newFlow(`第 ${day} 支`), {}), savedAt: new Date(2026, 9, day) });
 		}
 		const tab = await openTab(drafts, fakeTabs());
-		const opening = tab.editor.file.open(zip(audioFlow()));
-		await vi.advanceTimersByTimeAsync(300);
-		await opening;
+		for (const f of [zip(newFlow('區賽'), {}, '區賽.zip'), zip(audioFlow())]) {
+			const opening = tab.editor.file.open(f);
+			await vi.advanceTimersByTimeAsync(300);
+			await opening;
+		}
 		tab.editor.file.create(newFlow('全國賽'));
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(draftNames(drafts)).toEqual(['全國賽', '第 1 支', '第 2 支', '第 3 支', '第 4 支']);
+		expect(draftNames(drafts)).toEqual(['全國賽', '第 1 支', '第 2 支', '第 3 支', '練習用']);
 	});
 
 	it('另一個分頁正在編這份草稿：「丟掉」不刪，提示說它正在被編', async () => {

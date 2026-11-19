@@ -10,16 +10,20 @@ import {
 	setMarkers,
 	setPositions,
 	setWalks,
+	updateAction,
 	type Clash,
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import Lanes from './Lanes.svelte';
+
+// jsdom 沒有 scrollIntoView（選到一個人時名單捲到他那一行）。
+Element.prototype.scrollIntoView = () => {};
 
 /** 音樂 1（150 BPM，一個半拍 0.2 秒）：Lib（小A 上層、小B 沒任務）0–3.2 秒，小C 騰翻 1.6–2.4 秒、跳躍 3.2–4.0 秒。 */
 function sample(): Flow {
@@ -320,6 +324,11 @@ describe('走位條', () => {
 		expect(session.canUndo).toBe(true);
 	});
 
+	it('走位條按鈕有名字：誰走到哪一張、幾拍出發、幾拍到達（只用鍵盤、螢幕報讀器也知道是什麼，T21）', () => {
+		setupWalks();
+		expect(walkBar(0).getAttribute('aria-label')).toBe('小A 走到站位 2：音樂 1 1-5 出發、音樂 1 2-5 到達');
+	});
+
 	it('走位條能點的範圍至少 12 px 高，看到的還是細條', () => {
 		setupWalks();
 		expect(parseFloat(walkBar(0).style.height)).toBeGreaterThanOrEqual(12);
@@ -399,6 +408,19 @@ describe('走位條', () => {
 			expect(parseFloat(marks[0].style.width)).toBeCloseTo(12, 6);
 		}
 		expect(lanes()[2].querySelector('[data-walk-clash]')).toBeNull();
+	});
+
+	it('只撞一下（撞到的第一個和最後一個取樣點同一刻）：紫色段至少 10 px 寬，以那一刻為中心', () => {
+		let flow = walking();
+		const f2 = flow.formations[1].id;
+		flow = flowOf(setPositions(flow, 'f1', { m1: [0, 0], m2: [2, 0] }));
+		flow = flowOf(setPositions(flow, f2, { m1: [2, 0], m2: [0, 0] }));
+		const clash: Clash = { memberIds: ['m1', 'm2'], sec: 3.2, pos: [1, 0], startSec: 3.2, endSec: 3.2, formationId: f2 };
+		renderLanes(flow, { clashes: [clash] });
+		const mark = walkBar(0).querySelector<HTMLElement>('[data-walk-clash]')!;
+		// 走位條從 1.6 秒開始，3.2 秒在走位條裡 16 px 的地方（每秒 10 px）：紫段 11–21 px。
+		expect(parseFloat(mark.style.width)).toBeCloseTo(10, 6);
+		expect(parseFloat(mark.style.left)).toBeCloseTo(11, 6);
 	});
 
 	it('走太快的走位條標紅', () => {
@@ -482,7 +504,7 @@ describe('走位條', () => {
 		await dragBy(end(1, 'arrive'), -4);
 		await dragBy(end(1, 'arrive'), 40);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(8), arrive: at(24) }, m2: { depart: at(8), arrive: at(24) } });
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 2；已靠到邊界');
 		expect(parseFloat(walkBar(1).style.width)).toBeCloseTo(32, 6);
 		session.notice = '';
 		session.undo();
@@ -498,7 +520,7 @@ describe('走位條', () => {
 		// 往左 20 px = 2 秒：出發 -0.4 秒，在流程開頭之前
 		await dragBy(end(0, 'depart'), -20);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(0), arrive: at(24) } });
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 2；已靠到邊界');
 		session.undo();
 		await dragBy(walkBar(0), -20);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(0), arrive: at(16) } });
@@ -520,7 +542,7 @@ describe('走位條', () => {
 		const { session } = setupWalks();
 		await dragBy(end(0, 'depart'), 40);
 		expect(walksOf(session)).toEqual({ m1: { depart: at(23), arrive: at(24) } });
-		expect(session.notice).toBe('已靠到邊界');
+		expect(session.notice).toBe('已改站位 2；已靠到邊界');
 	});
 
 	it('只是點一下，不改流程', async () => {
@@ -737,6 +759,67 @@ describe('色條上的環節', () => {
 			parseFloat(lane.style.height) - 5
 		);
 		expect(bar.classList.contains('has-phases')).toBe(true);
+	});
+
+	/** 換成金字塔，再加上法「第二個」1-4 到 1-5，疊在中段（1-4 到 1-6）上。 */
+	const stacked = (withCues = false) =>
+		flowOf(
+			addPhase(flowOf(updateAction(phased(withCues), 'x1', { category: 'pyramid' })), 'x1', {
+				kind: 'load',
+				name: '第二個',
+				beats: { at: 6, len: 4 }
+			})
+		);
+	const tops = (bar: HTMLElement) =>
+		[...bar.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => [p.dataset.phase, p.style.top]);
+
+	it('金字塔疊著的環節細條往下多一排；名稱往下讓開兩排細條', () => {
+		setupPhases(stacked());
+		const bar = bars(lanes()[0])[0];
+		expect(tops(bar)).toEqual([
+			['上法 延伸', '0px'],
+			['中段', '0px'],
+			['上法 第二個', '3px']
+		]);
+		expect(bar.style.paddingTop).toBe('6px');
+	});
+
+	it('金字塔疊著的環節、有拍點：名稱和拍點都往下讓開兩排細條，泳道跟著變高', () => {
+		setupPhases(phased(true));
+		const oneRow = parseFloat(lanes()[0].style.height);
+		const oneCue = parseFloat(bars(lanes()[0])[0].querySelector<HTMLElement>('[data-cue]')!.style.top);
+		cleanup();
+		setupPhases(stacked(true));
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		expect(bar.style.paddingTop).toBe('7px');
+		const cue = bar.querySelector<HTMLElement>('[data-cue]')!;
+		expect(parseFloat(cue.style.top)).toBe(oneCue + 3);
+		expect(parseFloat(cue.style.top)).toBeGreaterThanOrEqual(6 + 12);
+		expect(parseFloat(lane.style.height)).toBe(oneRow + 3);
+	});
+
+	it('金字塔疊四層、沒拍點：名稱讓開四排細條，泳道變高放得下名稱', () => {
+		let flow = stacked();
+		for (const name of ['第三個', '第四個']) {
+			flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name, beats: { at: 6, len: 4 } }));
+		}
+		setupPhases(flow);
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		expect(tops(bar).map(([, top]) => top)).toEqual(['0px', '0px', '3px', '6px', '9px']);
+		expect(bar.style.paddingTop).toBe('12px');
+		// 色條上下各留 3 px：細條 12 px ＋ 名稱那一行 12 px
+		expect(lane.style.height).toBe('30px');
+		// 沒疊那麼多的人（小C 不在這個動作裡）泳道照舊
+		expect(lanes()[2].style.height).toBe('');
+	});
+
+	it('沒疊的環節細條都在最上面一排，名稱的位置照舊', () => {
+		setupPhases(phased());
+		const bar = bars(lanes()[0])[0];
+		expect(tops(bar).map(([, top]) => top)).toEqual(['0px', '0px']);
+		expect(bar.style.paddingTop).toBe('');
 	});
 
 	it('按在環節上照樣能拖色條、拉長度、點色條', async () => {

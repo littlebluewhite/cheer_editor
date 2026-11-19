@@ -3,7 +3,7 @@
 // 最後一段超過段尾寫最多幾拍、從任務角色選單新增的自訂角色套給那個人、把選的人一次加進動作。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { actionSeconds, addMembers } from '#lib/core';
 import { editorPage, teamFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
@@ -66,6 +66,7 @@ describe('撞到別的動作的人', () => {
 
 	it('「＋加人…」的選項標出同一時間在別的動作裡的人', async () => {
 		render(Page, editorPage(biggerTeam()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
 		const options = within(screen.getByLabelText('加人')).getAllByRole('option').map((o) => o.textContent);
 		expect(options).toContain('小美（在「技巧·Lib」裡）');
 		expect(options).toContain('小C');
@@ -107,5 +108,125 @@ describe('把選的人加進動作', () => {
 		const x1 = page.session.flow!.actions[0];
 		expect(x1.members.map((m) => m.memberId)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7']);
 		expect(screen.queryByRole('button', { name: /把選的/ })).toBeNull();
+	});
+});
+
+describe('一次設好幾個人的任務角色（#229）', () => {
+	const form = () => document.querySelector<HTMLElement>('.action-form')!;
+	const row = (name: string) => within(form()).getByRole('button', { name });
+	const rolesOf = (page: ReturnType<typeof editorPage>) => page.session.flow!.actions[0].members.map((m) => m.role);
+
+	it('Shift 點選 3 人、選「側底」→ 3 人都是側底；⌘Z 一步回去', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		await fireEvent.click(row('小B'), { shiftKey: true });
+		expect(within(form()).getByRole('note', { name: '一起設任務角色' }).textContent).toContain('選了 3 人');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小A 的任務角色' }));
+		await fireEvent.click(screen.getByRole('option', { name: /^側底/ }));
+		expect(rolesOf(page)).toEqual(['側底', '側底', '上層', '側底']);
+		// 焦點還在剛選的任務角色選單上
+		await fireEvent.keyDown(screen.getByRole('combobox', { name: '小A 的任務角色' }), { key: 'z', metaKey: true });
+		expect(rolesOf(page)).toEqual(['上層', '主底', '上層', '主底']);
+	});
+
+	it('沒按 Shift 點名字只選那一個；選到以外的人改角色只改他自己', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		await fireEvent.click(row('小B'));
+		expect(row('小B').getAttribute('aria-pressed')).toBe('true');
+		expect(row('小美').getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(screen.getByRole('combobox', { name: '小芳 的任務角色' }));
+		await fireEvent.click(screen.getByRole('option', { name: /^側底/ }));
+		expect(rolesOf(page)).toEqual(['上層', '主底', '側底', '主底']);
+	});
+
+	it('Shift 再點一次選到的人：從選取拿掉', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		await fireEvent.click(row('小A'), { shiftKey: true });
+		expect(row('小A').getAttribute('aria-pressed')).toBe('false');
+		expect(within(form()).queryByRole('note', { name: '一起設任務角色' })).toBeNull();
+	});
+
+	it('iPad 沒有 Shift：開著「多選」點名字也是加選、拿掉（N49）', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		page.session.multiSelect = true;
+		await fireEvent.click(row('小美'));
+		await fireEvent.click(row('小A'));
+		await fireEvent.click(row('小B'));
+		expect(within(form()).getByRole('note', { name: '一起設任務角色' }).textContent).toContain('選了 3 人');
+		await fireEvent.click(row('小A'));
+		expect(row('小A').getAttribute('aria-pressed')).toBe('false');
+		expect(row('小美').getAttribute('aria-pressed')).toBe('true');
+	});
+});
+
+describe('動作表單裡選的人也在場上亮（N49）', () => {
+	const form = () => document.querySelector<HTMLElement>('.action-form')!;
+	const row = (name: string) => within(form()).getByRole('button', { name });
+
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('表單裡點名字、Shift 加選：場上那幾個人也選到；場上 Shift 點別人，表單的名字跟著框起來', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		await fireEvent.click(row('小A'));
+		await fireEvent.click(row('小B'), { shiftKey: true });
+		expect(page.session.selectedMemberIds).toEqual(['m2', 'm4']);
+		expect(dot('m2').getAttribute('aria-pressed')).toBe('true');
+		expect(dot('m4').getAttribute('aria-pressed')).toBe('true');
+		expect(dot('m1').getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.keyDown(dot('m1'), { key: 'Enter', shiftKey: true });
+		expect(row('小美').getAttribute('aria-pressed')).toBe('true');
+		expect(within(form()).getByRole('note', { name: '一起設任務角色' }).textContent).toContain('選了 3 人');
+		// 還在改同一個動作，表單沒換
+		expect(page.session.selectedActionId).toBe('x1');
+	});
+
+	it('新動作表單：點名字選一個人，表單裡的人不會變少（人就是場上選的人，不能跟著點名字縮）', async () => {
+		const page = editorPage(teamFlow());
+		page.session.selectMembers(['m1', 'm2', 'm3']);
+		render(Page, page.props);
+		await tick();
+		await fireEvent.click(row('小A'));
+		expect(page.session.selectedMemberIds).toEqual(['m1', 'm2', 'm3']);
+		expect(within(form()).getAllByRole('combobox', { name: /的任務角色$/ })).toHaveLength(3);
+		expect(row('小A').getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('多選的說明常駐一行：滑鼠寫「Shift 點」', async () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: fine)' }));
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		expect(within(form()).getByText(/Shift 點名字選好幾個人/)).toBeTruthy();
+	});
+
+	it('多選的說明常駐一行：觸控寫「打開場地左邊的「多選」再點」，不提 Shift', async () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(document.querySelector('[data-action-id="x1"]')!);
+		const hint = within(form()).getByText(/打開場地左邊的「多選」再點名字/);
+		expect(hint.textContent).not.toContain('Shift');
+	});
+});
+
+describe('從別的動作複製人', () => {
+	it('旁邊寫清楚會連組一起帶過來', async () => {
+		render(Page, editorPage(teamFlow()).props);
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+		const copy = screen.getByRole('combobox', { name: '從別的動作複製人' });
+		const desc = document.getElementById(copy.getAttribute('aria-describedby') ?? '');
+		expect(desc?.textContent).toContain('會連組一起帶過來');
 	});
 });

@@ -53,6 +53,14 @@ describe('拍點小窗放哪裡', () => {
 		expect(q.top).toBe(218);
 	});
 
+	it('按小窗裡的按鈕跑出錯誤訊息、小窗變高，原地會超出畫面下面：搬到放得下的地方，不超出畫面', () => {
+		const cur = { top: 108, left: 0, arrow: 150, above: false };
+		// 選第三排（220–320）時小窗開在下面 328–448；出錯變高到 300，原地 328–628 超出畫面（600），上面 220-8-300=-88 也放不下
+		const p = placeCuePop(input({ cur: { ...cur, top: 328 }, sel: { top: 220, bottom: 320, left: 100, right: 200 }, pop: { w: 300, h: 300 } }));
+		expect(p.top).toBeGreaterThanOrEqual(0);
+		expect(p.top + 300).toBeLessThanOrEqual(600);
+	});
+
 	it('＋ 跨到下一個八拍、小窗搬到下一排下面後，再按 － 回到上一排：小窗不搬回去', () => {
 		// 小窗在第二排下面（218），選取回到第一排（0–100）：中間隔一排加空隙，還算近。
 		const cur = { top: 218, left: 0, arrow: 150, above: false };

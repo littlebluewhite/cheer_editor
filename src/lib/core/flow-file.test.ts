@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	inStep,
 	addAction,
+	attemptText,
 	addCustomRole,
 	addMembers,
 	addPhase,
@@ -21,6 +22,7 @@ import {
 	setMarkers,
 	setPositions,
 	setSquad,
+	updateAction,
 	updatePhase,
 	updateSegment,
 	updateTimeRules,
@@ -177,13 +179,22 @@ describe('流程檔：存了再開', () => {
 		]);
 	});
 
+	it('整個做、中途 ✗ 的一次，✗ 後面空著的環節存了再開也一樣', () => {
+		const flow = flowOf(
+			recordAttempt(withSuccessRate(), 'x1', { date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✗' } })
+		);
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		expect(r.kind === 'ok' && r.flow.actions[0].successRate?.records[0].blanks).toEqual(['p3']);
+	});
+
 	it('標記用開頭字，存了再開也一樣', () => {
 		const flow = flowOf(setMarkers(sample(), 'initial'));
 		const r = readFlowFile(writeFlowFile(flow, {}));
 		expect(r.kind === 'ok' && r.flow.markers).toBe('initial');
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 10 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('zip 裡是一份 flow.json（formatVersion 15 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -191,7 +202,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(10);
+		expect(json.formatVersion).toBe(15);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -214,23 +225,30 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 	return zipSync({ 'flow.json': strToU8(JSON.stringify(doc)), ...extra });
 }
 
+// 給教練看的原因不提 flow.json（T12）。
+const NO_FLOW = 'zip 裡沒有流程，不是這個編輯器存的流程檔';
+const BROKEN = '流程檔裡的資料壞掉了';
+
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 11, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 16, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
 	it.each([
 		['不是 zip', bytes(1, 2, 3), '檔案壞掉了，或不是這個編輯器存的流程檔'],
-		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') }), 'zip 裡沒有 flow.json'],
-		['flow.json 在兩層資料夾裡', zipSync({ 'a/b/flow.json': strToU8('{}') }), 'zip 裡沒有 flow.json'],
-		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') }), 'flow.json 壞掉了'],
-		['沒有 formatVersion', zipOf({ flow: sample() }), 'flow.json 壞掉了'],
-		['沒有 flow', zipOf({ formatVersion: 1 }), 'flow.json 壞掉了'],
-		['flow 只有名字', zipOf({ formatVersion: 1, flow: { name: '壞掉的' } }), 'flow.json 壞掉了'],
-		['flow 的清單不是陣列', zipOf({ formatVersion: 1, flow: { ...sample(), audio: {} } }), 'flow.json 壞掉了'],
-		['清單裡有不是物件的東西', zipOf({ formatVersion: 1, flow: { ...sample(), segments: [null] } }), 'flow.json 壞掉了'],
-		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } }), 'flow.json 壞掉了']
+		['PNG 圖片', bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0), '這是圖片，不是流程檔'],
+		['JPEG 圖片', bytes(0xff, 0xd8, 0xff, 0xe0, 0), '這是圖片，不是流程檔'],
+		['iPhone 的 HEIC 圖片', new Uint8Array([0, 0, 0, 24, ...strToU8('ftypheic'), 0]), '這是圖片，不是流程檔'],
+		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') }), NO_FLOW],
+		['flow.json 在兩層資料夾裡', zipSync({ 'a/b/flow.json': strToU8('{}') }), NO_FLOW],
+		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') }), BROKEN],
+		['沒有 formatVersion', zipOf({ flow: sample() }), BROKEN],
+		['沒有 flow', zipOf({ formatVersion: 1 }), BROKEN],
+		['flow 只有名字', zipOf({ formatVersion: 1, flow: { name: '壞掉的' } }), BROKEN],
+		['flow 的清單不是陣列', zipOf({ formatVersion: 1, flow: { ...sample(), audio: {} } }), BROKEN],
+		['清單裡有不是物件的東西', zipOf({ formatVersion: 1, flow: { ...sample(), segments: [null] } }), BROKEN],
+		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } }), BROKEN]
 	])('%s：打不開，寫出原因', (_, file, message) => {
 		expect(readFlowFile(file)).toEqual({ kind: 'error', message });
 	});
@@ -371,6 +389,12 @@ describe('流程檔：版本', () => {
 		['記號指到不在的環節', brokenRecord((r) => (r.marks.p9 = '✓'))],
 		['記號不是 ✓ △ ✗', brokenRecord((r) => (r.marks.p1 = 'O'))],
 		['一個記號都沒有', brokenRecord((r) => (r.marks = {}))],
+		['空著的環節不是陣列', brokenRecord((r) => (r.blanks = 'p3'))],
+		['空著的環節是空陣列', brokenRecord((r) => (r.blanks = []))],
+		['空著的環節指到不在的環節', brokenRecord((r) => ((r.marks = { p1: '✗' }), (r.blanks = ['p9'])))],
+		['空著的環節有記號', brokenRecord((r) => (r.blanks = ['p3']))],
+		['空著的環節重複', brokenRecord((r) => ((r.marks = { p1: '✗' }), (r.blanks = ['p2', 'p2'])))],
+		['只練幾個環節卻有空著的環節', brokenRecord((_, records) => (records[1].blanks = ['p2']))],
 		['環節種類不在五種裡', brokenRate((_, sr) => (sr.phases[1].kind = 'other'))],
 		['環節沒有 id', brokenRate((_, sr) => delete sr.phases[1].id)],
 		['環節的 id 重複', brokenRate((_, sr) => (sr.phases[1].id = sr.phases[0].id))],
@@ -396,7 +420,7 @@ describe('流程檔：版本', () => {
 		['全上開的時間不是整數', brokenRecord((_, records) => (records[2].runThroughStartedAt = 1.5))],
 		['分段練有全上開的時間', brokenRecord((r) => (r.runThroughStartedAt = 1794036000000))]
 	])('欄位壞掉（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
 	});
 
 	it('第 1 版的檔：資料不用動，每張站位的位置都一樣', () => {
@@ -499,7 +523,7 @@ describe('流程檔：版本', () => {
 			f.actions[0].members[0].squad = 0;
 			for (const r of sr.records) if (r.who === 1) r.who = 0;
 		});
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
 	});
 
 	/** 第 7 版的檔（組是第幾組，見 numbered）改壞一個地方；sr 是 Lib 的成功率設定。 */
@@ -523,7 +547,7 @@ describe('流程檔：版本', () => {
 			for (const r of sr.records) r.who += 1;
 		})]
 	])('第 7 版的檔不守規則（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
 	});
 
 	it('第 7 版的檔：口號段的環節沒標拍，打得開', () => {
@@ -551,10 +575,10 @@ describe('流程檔：版本', () => {
 	it('第 7 版的檔：組照號碼順序發組 id，好幾個動作照動作的順序往下發；騰翻的「誰」不動', () => {
 		let flow = withRecords();
 		flow = flowOf(addAction(flow, { segmentId: 's3', category: 'tumbling', name: '', start: 0, length: 8, note: '', members: [{ memberId: 'm1', role: null }] }));
-		flow = flowOf(addPhase(flow, 'x2', { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: 'tumble', name: '', beats: { at: 0, len: 8 } }));
 		flow = flowOf(recordAttempt(flow, 'x2', { date: '2026-11-04', who: 'm1', practice: 'drill', whole: true, marks: { p4: '✓' } }));
 		flow = flowOf(addAction(flow, { segmentId: 's3', category: 'stunt', name: '', start: 8, length: 8, note: '', members: [{ memberId: 'm1', role: null }, { memberId: 'm2', role: null }] }));
-		flow = flowOf(addPhase(flow, 'x3', { kind: 'whole', name: '', beats: { at: 0, len: 8 } }));
+		flow = flowOf(addPhase(flow, 'x3', { kind: 'hold', name: '', beats: { at: 0, len: 8 } }));
 		flow = flowOf(setSquad(flow, 'x3', ['m1'], 2));
 		const old = numbered(flow);
 		// 第 2 組的人排在前面：發號照號碼，不照人的順序。
@@ -577,7 +601,164 @@ describe('流程檔：版本', () => {
 		flow.actions[0].members[0].squad = 'g1';
 		const r = readFlowFile(zipOf({ formatVersion: 9, flow }));
 		expect(r.kind === 'ok' && r.flow.actions[0].members[0].squad).toBe('g1');
-		expect(readFlowFile(zipOf({ formatVersion: 8, flow }))).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+		expect(readFlowFile(zipOf({ formatVersion: 8, flow }))).toEqual({ kind: 'error', message: BROKEN });
+	});
+
+	/** 第 10 版的檔：flow 存成 JSON 的樣子，再照第 10 版還允許的樣子改（有整體、哪個大類都能用哪種環節）。 */
+	function v10(flow: Flow, edit: (flow: any) => void): Uint8Array {
+		const old = JSON.parse(JSON.stringify(flow));
+		edit(old);
+		return zipOf({ formatVersion: 10, flow: old });
+	}
+	const opened = (file: Uint8Array) => {
+		const r = readFlowFile(file);
+		if (r.kind !== 'ok') throw new Error(JSON.stringify(r));
+		return r.flow;
+	};
+	/** sample 再加 x2：s3 裡的騰翻或跳躍，小美，一個環節、記了一次。 */
+	function perPersonRated(category: 'tumbling' | 'jump'): Flow {
+		let flow = flowOf(addAction(sample(), { segmentId: 's3', category, name: '', start: 0, length: 8, note: '', members: [{ memberId: 'm1', role: null }] }));
+		flow = flowOf(addPhase(flow, 'x2', { kind: category === 'jump' ? 'jump' : 'tumble', name: '空翻', beats: { at: 0, len: 8 } }));
+		return flowOf(recordAttempt(flow, 'x2', { date: '2026-11-04', who: 'm1', practice: 'drill', whole: true, marks: { p1: '✓' } }));
+	}
+
+	it('第 10 版的檔：拋投的環節都換成拋法；id、名字、顏色、標的拍、紀錄、組照留', () => {
+		const flow = withRecords();
+		const file = v10(flow, (f) => {
+			f.actions[0].category = 'toss';
+			f.actions[0].successRate.phases[1].kind = 'whole';
+		});
+		const after = opened(file).actions[0];
+		const before = flow.actions[0];
+		expect(after.successRate!.phases).toEqual(before.successRate!.phases.map((p) => ({ ...p, kind: 'toss' })));
+		expect(after.successRate!.records).toEqual(before.successRate!.records);
+		expect(after.members).toEqual(before.members);
+	});
+
+	it.each([
+		['tumbling', 'tumble'],
+		['jump', 'jump']
+	] as const)('第 10 版的檔：%s 的整體換成自己的種類，紀錄照留', (category, kind) => {
+		const flow = perPersonRated(category);
+		const after = opened(v10(flow, (f) => (f.actions[1].successRate.phases[0].kind = 'whole'))).actions[1];
+		expect(after.successRate!.phases.map((p) => [p.kind, p.name])).toEqual([[kind, '空翻']]);
+		expect(after.successRate!.records).toEqual(flow.actions[1].successRate!.records);
+		expect(after.members.some((m) => 'squad' in m)).toBe(false);
+	});
+
+	it('第 10 版的檔：技巧、金字塔的整體換成中段，其他種類不動', () => {
+		const flow = withRecords();
+		const file = v10(flow, (f) => (f.actions[0].successRate.phases[2].kind = 'whole'));
+		expect(opened(file).actions[0].successRate!.phases.map((p) => p.kind)).toEqual(['load', 'hold', 'hold']);
+		const pyramid = v10(flow, (f) => {
+			f.actions[0].category = 'pyramid';
+			f.actions[0].successRate.phases[0].kind = 'whole';
+		});
+		expect(opened(pyramid).actions[0].successRate!.phases.map((p) => p.kind)).toEqual(['hold', 'hold', 'dismount']);
+		expect(opened(pyramid).actions[0].successRate!.records).toEqual(flow.actions[0].successRate!.records);
+	});
+
+	it.each(['dance', 'other'])('第 10 版的檔：%s 的環節和紀錄拿掉，不記成功率，組也拿掉', (category) => {
+		const file = v10(withRecords(), (f) => (f.actions[0].category = category));
+		const after = opened(file).actions[0];
+		expect(after.successRate).toBeUndefined();
+		expect(after.members.some((m) => 'squad' in m)).toBe(false);
+	});
+
+	it.each([
+		['標的拍在動作外面', (sr: any) => (sr.phases[0].beats = { at: -2, len: 4 })],
+		['紀錄指到沒有的環節', (sr: any) => (sr.records[0].marks = { p9: '✓' })],
+		['組 id 不是 g 加編號', (_: any, a: any) => (a.members[0].squad = 'squad1')],
+		['記成功率卻沒有環節', (sr: any) => ((sr.phases = []), (sr.records = []))]
+	])('第 10 版的檔：舞蹈本來就壞掉（%s），升級不會把壞的地方拿掉，照樣不是流程檔', (_, edit) => {
+		const file = v10(withRecords(), (f) => {
+			f.actions[0].category = 'dance';
+			edit(f.actions[0].successRate, f.actions[0]);
+		});
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+	});
+
+	it('第 6 版的檔有整體、又要整理：照樣打得開，整體換成中段', () => {
+		const file = v6((_, sr) => {
+			sr.phases[1].kind = 'whole';
+			delete sr.phases[0].beats;
+		});
+		const sr = opened(file).actions[0].successRate;
+		expect(sr?.phases.map((p) => [p.id, p.kind])).toEqual([
+			['p2', 'hold'],
+			['p3', 'dismount']
+		]);
+	});
+
+	it('第 11 版的檔還有整體，或大類用了別的種類：不是流程檔', () => {
+		const whole = JSON.parse(JSON.stringify(withRecords()));
+		whole.actions[0].successRate.phases[0].kind = 'whole';
+		expect(readFlowFile(zipOf({ formatVersion: 11, flow: whole }))).toEqual({ kind: 'error', message: BROKEN });
+		const toss = JSON.parse(JSON.stringify(withRecords()));
+		toss.actions[0].category = 'toss';
+		expect(readFlowFile(zipOf({ formatVersion: 11, flow: toss }))).toEqual({ kind: 'error', message: BROKEN });
+	});
+
+	it('第 11 版的檔自己加過「三層」這個自訂任務角色：換成固定的三層，用到的人照留', () => {
+		const old = JSON.parse(JSON.stringify(sample()));
+		old.customRoles = [
+			{ id: 'r1', name: '三層', meaning: '最上面的' },
+			{ id: 'r2', name: '旗手', meaning: '拿隊旗' }
+		];
+		old.actions[0].category = 'pyramid';
+		old.actions[0].members[0].role = '三層';
+		const flow = opened(zipOf({ formatVersion: 11, flow: old }));
+		expect(flow.customRoles).toEqual([{ id: 'r2', name: '旗手', meaning: '拿隊旗' }]);
+		expect(flow.actions[0].members[0].role).toBe('三層');
+	});
+
+	it('第 12 版的檔自己加過「肩底」這個自訂任務角色：換成固定的肩底，用到的人照留', () => {
+		const old = JSON.parse(JSON.stringify(sample()));
+		old.customRoles = [
+			{ id: 'r1', name: '肩底', meaning: '中層站在肩上' },
+			{ id: 'r2', name: '旗手', meaning: '拿隊旗' }
+		];
+		old.actions[0].category = 'pyramid';
+		old.actions[0].members[0].role = '肩底';
+		const flow = opened(zipOf({ formatVersion: 12, flow: old }));
+		expect(flow.customRoles).toEqual([{ id: 'r2', name: '旗手', meaning: '拿隊旗' }]);
+		expect(flow.actions[0].members[0].role).toBe('肩底');
+	});
+
+	it('第 13 版的檔：資料不用動，存了再開一樣', () => {
+		const flow = withRecords();
+		expect(opened(zipOf({ formatVersion: 13, flow: JSON.parse(JSON.stringify(flow)) }))).toEqual(flow);
+	});
+
+	/** withSuccessRate 換成金字塔，再加 p4 上法「第二個」佔中段 p2 同樣的拍。 */
+	function pyramidOverlap(): Flow {
+		const flow = flowOf(updateAction(withSuccessRate(), 'x1', { category: 'pyramid' }));
+		return flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 5, len: 4 } }));
+	}
+
+	it('金字塔的環節佔同樣的拍：存了再開一樣', () => {
+		const flow = pyramidOverlap();
+		expect(flow.actions[0].successRate!.phases.map((p) => p.id)).toEqual(['p1', 'p2', 'p4', 'p3']);
+		expect(opened(writeFlowFile(flow, {}))).toEqual(flow);
+	});
+
+	it('別的大類的環節佔同樣的拍：照舊是資料壞掉', () => {
+		const stunt = JSON.parse(JSON.stringify(pyramidOverlap()));
+		stunt.actions[0].category = 'stunt';
+		expect(readFlowFile(zipOf({ formatVersion: 14, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 13, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
+	});
+
+	it('第 13 版和更舊的檔裡金字塔的環節佔同樣的拍：那時還不行，是資料壞掉（第 14 版起才可以）', () => {
+		const old = JSON.parse(JSON.stringify(pyramidOverlap()));
+		for (const formatVersion of [13, 12, 11]) {
+			expect(readFlowFile(zipOf({ formatVersion, flow: old }))).toEqual({ kind: 'error', message: BROKEN });
+		}
+	});
+
+	it('第 10 版的檔裡金字塔的環節佔同樣的拍、有整體：不換成中段，是資料壞掉', () => {
+		const file = v10(pyramidOverlap(), (f) => (f.actions[0].successRate.phases[1].kind = 'whole'));
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
 	});
 
 	/** 第 8 版的檔改壞一個地方；sr 是 Lib 的成功率設定。 */
@@ -594,11 +775,11 @@ describe('流程檔：版本', () => {
 		['紀錄的誰是數字', v8((_, sr) => (sr.records[0].who = 1))],
 		['紀錄的誰指到沒有人的組 id', v8((_, sr) => (sr.records[0].who = 'g9'))]
 	])('第 8 版的檔組 id 壞掉（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: 'flow.json 壞掉了' });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 10 版資料不用動。
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 15 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
@@ -611,7 +792,12 @@ describe('流程檔：版本', () => {
 		6: (doc: FlowDocument) => ({ formatVersion: 7, flow: doc.flow }),
 		7: (doc: FlowDocument) => ({ formatVersion: 8, flow: doc.flow }),
 		8: (doc: FlowDocument) => ({ formatVersion: 9, flow: doc.flow }),
-		9: (doc: FlowDocument) => ({ formatVersion: 10, flow: doc.flow })
+		9: (doc: FlowDocument) => ({ formatVersion: 10, flow: doc.flow }),
+		10: (doc: FlowDocument) => ({ formatVersion: 11, flow: doc.flow }),
+		11: (doc: FlowDocument) => ({ formatVersion: 12, flow: doc.flow }),
+		12: (doc: FlowDocument) => ({ formatVersion: 13, flow: doc.flow }),
+		13: (doc: FlowDocument) => ({ formatVersion: 14, flow: doc.flow }),
+		14: (doc: FlowDocument) => ({ formatVersion: 15, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {
@@ -633,12 +819,12 @@ describe('流程檔：版本', () => {
 	it('沒有升級步驟的舊版號：不是流程檔', () => {
 		expect(readFlowFile(zipOf({ formatVersion: 0, flow: v0Flow }))).toEqual({
 			kind: 'error',
-			message: 'flow.json 壞掉了'
+			message: BROKEN
 		});
 	});
 });
 
-describe('流程檔：第 10 版（新的 id、全上開的時間）', () => {
+describe('流程檔：第 15 版（新的 id、全上開的時間）', () => {
 	const date = '2026-11-04';
 	/** 每一步用不同的步驟 id：新東西的 id 都是亂數。 */
 	let steps = 0;
@@ -659,15 +845,48 @@ describe('流程檔：第 10 版（新的 id、全上開的時間）', () => {
 		expect(r.kind === 'ok' && squadNumbers(r.flow.actions.at(-1)!)).toEqual([2, 1]);
 	});
 
-	it('第 9 版的檔：id 不變，拿掉發到第幾號（lastIds）', () => {
+	it('第 14 版的檔：id 不變，拿掉發到第幾號（lastIds）', () => {
 		const flow = withRecords();
-		const r = readFlowFile(zipOf({ formatVersion: 9, flow: { ...flow, lastIds: { p: 3, t: 3, g: 2 } } }));
+		const r = readFlowFile(zipOf({ formatVersion: 14, flow: { ...flow, lastIds: { p: 3, t: 3, g: 2 } } }));
 		expect(r).toMatchObject({ kind: 'ok', flow });
 		expect(r.kind === 'ok' && 'lastIds' in r.flow).toBe(false);
 	});
 
-	it('第 9 版的檔升上來之後加的東西：不會撞到舊的 id', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 9, flow: { ...withRecords(), lastIds: { p: 3, t: 3, g: 2 } } }));
+	it('第 14 版的檔（編號的 id、lastIds、整個做的 ✗ 記著空著的環節）：升到第 15 版只拿掉 lastIds，空著的環節照留', () => {
+		const flow = withRecords();
+		const rate = flow.actions[0].successRate!;
+		const failed = { id: 't4', date: '2026-11-04', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✗' as const }, blanks: ['p2', 'p3'] };
+		const v14 = { ...flow, actions: [{ ...flow.actions[0], successRate: { ...rate, records: [...rate.records, failed] } }, ...flow.actions.slice(1)] };
+		const r = readFlowFile(zipOf({ formatVersion: 14, flow: { ...v14, lastIds: { p: 3, t: 4, g: 2 } } }));
+		if (r.kind !== 'ok') throw new Error(JSON.stringify(r));
+		expect(r.flow).toEqual(v14);
+		expect(r.flow.actions[0].successRate!.records.at(-1)).toEqual(failed);
+		expect(attemptText(r.flow.actions[0], failed)).toBe('✗··');
+		// 存回去是第 15 版，再開一樣。
+		expect(readFlowFile(writeFlowFile(r.flow, {}))).toMatchObject({ kind: 'ok', flow: r.flow });
+	});
+
+	it('第 9 版的檔（有整體、有 lastIds）：一路升到第 15 版，整體換成中段，拿掉 lastIds，id、紀錄照留', () => {
+		const flow = withRecords();
+		const old = JSON.parse(JSON.stringify(flow));
+		old.actions[0].successRate.phases[2].kind = 'whole';
+		old.lastIds = { p: 3, t: 3, g: 2 };
+		const r = readFlowFile(zipOf({ formatVersion: 9, flow: old }));
+		if (r.kind !== 'ok') throw new Error(JSON.stringify(r));
+		expect('lastIds' in r.flow).toBe(false);
+		expect(r.flow.actions[0].successRate!.phases.map((p) => [p.id, p.kind])).toEqual([
+			['p1', 'load'],
+			['p2', 'hold'],
+			['p3', 'hold']
+		]);
+		expect(r.flow.actions[0].successRate!.records).toEqual(flow.actions[0].successRate!.records);
+		expect(r.flow.members).toEqual(flow.members);
+		// 存回去是第 15 版，再開一樣。
+		expect(readFlowFile(writeFlowFile(r.flow, {}))).toMatchObject({ kind: 'ok', flow: r.flow });
+	});
+
+	it('第 14 版的檔升上來之後加的東西：不會撞到舊的 id', () => {
+		const r = readFlowFile(zipOf({ formatVersion: 14, flow: { ...withRecords(), lastIds: { p: 3, t: 3, g: 2 } } }));
 		if (r.kind !== 'ok') throw new Error(r.kind);
 		const old = JSON.stringify(r.flow);
 		const flow = withNewIdsOn(r.flow);
@@ -691,7 +910,7 @@ describe('流程檔：第 10 版（新的 id、全上開的時間）', () => {
 			addAction(flow, { segmentId: 's3', category: 'stunt', name: '', start: 0, length: 8, note: '', members: [{ memberId: 'm1', role: null }, { memberId: flow.members[2].id, role: null }] })
 		);
 		if (r.kind !== 'ok') throw new Error(r.kind);
-		const phased = step(() => flowOf(addPhase(r.flow, r.id, { kind: 'whole', name: '', beats: { at: 0, len: 8 } })));
+		const phased = step(() => flowOf(addPhase(r.flow, r.id, { kind: 'hold', name: '', beats: { at: 0, len: 8 } })));
 		const grouped = step(() => flowOf(setSquad(phased, r.id, ['m1'], 2)));
 		const action = grouped.actions.find((a) => a.id === r.id)!;
 		const marks = { [action.successRate!.phases[0].id]: '✓' as const };

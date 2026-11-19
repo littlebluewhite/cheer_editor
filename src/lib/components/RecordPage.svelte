@@ -19,10 +19,8 @@
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
-	import { Flash } from '#lib/flash.svelte.js';
 	import RunThroughBar from './RunThroughBar.svelte';
 	import type { RunView } from '#lib/server-api.js';
-	import type { Notice } from './RecordNotice.svelte';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -38,26 +36,23 @@
 	const flow = $derived(session.flow!);
 
 	const actions = $derived(recordableActions(flow));
-	/** 選到的動作；沒選過、或它不在清單上了（復原掉了）就是第一個。 */
-	let chosenId = $state<string | null>(null);
-	const action = $derived(actions.find((a) => a.id === chosenId) ?? actions[0]);
+	/** 選到的動作；沒選過、或它不在清單上了（復原掉了）就是第一個。放在 session：切到總表、編排再回來還是它（N07）。 */
+	const action = $derived(actions.find((a) => a.id === session.view.recordActionId) ?? actions[0]);
 	/** 記全上的表打開著。 */
 	let recording = $state(false);
 	/** 加入別人在記的那次全上（雲端流程，#262）；開新的是 null。 */
 	let join = $state<RunView | null>(null);
-	/** 存好、刪掉全上之後的提示，幾秒後收掉；刪掉的帶著「救回」。 */
-	const saved = new Flash<Notice>();
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) saved.show({ text: '已存這次全上' });
+		if (done) session.notice = '已記下這次全上';
 	}
 
 	/** 卡片那一塊：手機從下拉選好動作就捲過去。 */
 	let cards = $state<HTMLElement>();
 
 	function choose(id: string) {
-		chosenId = id;
+		session.view.recordActionId = id;
 		cards?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
 
@@ -79,18 +74,22 @@
 		const weakest = weakestPhase(a, date);
 		return weakest ? `最弱：${phaseLabel(weakest.phase)} ${successPercent(weakest.tally)}%` : '';
 	}
+	/** 這天有哪張卡點了記號還沒存：清單上標「還沒存」，換到別的動作也看得出來。 */
+	function unsaved(a: Action): boolean {
+		return attemptWhos(flow, a).some(({ who }) => Object.keys(session.unsavedMarks(a, who, date)).length > 0);
+	}
 </script>
 
 {#if recording}
 	<RunThroughSheet {date} {join} onclose={closeSheet} />
 {:else if action}
-	<RunThroughBar {date} notice={saved} onrecord={(run) => ((join = run ?? null), (recording = true))} />
+	<RunThroughBar {date} onrecord={(run) => ((join = run ?? null), (recording = true))} />
 	<div class="record" class:narrow>
 		{#if narrow}
 			<label class="pick"
 				>記哪個動作<select value={action.id} onchange={(e) => choose(e.currentTarget.value)}>
 					{#each actions as a (a.id)}
-						<option value={a.id}>{actionLabel(a)}</option>
+						<option value={a.id}>{actionLabel(a)}{unsaved(a) ? '（還沒存）' : ''}</option>
 					{/each}
 				</select></label
 			>
@@ -99,9 +98,10 @@
 				{#each actions as a (a.id)}
 					{@const weakest = weakestText(a)}
 					<li>
-						<button type="button" aria-pressed={a === action} onclick={() => (chosenId = a.id)}>
+						<button type="button" aria-pressed={a === action} onclick={() => (session.view.recordActionId = a.id)}>
 							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
-							<small>{countText(a)}</small>
+							<!-- 標在次數同一行：標上、拿掉都不會讓下面的動作上下移 -->
+							<small>{countText(a)}{#if unsaved(a)}<span class="unsaved">還沒存</span>{/if}</small>
 							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
 							<small class="weakest">{weakest}</small>
 						</button>
@@ -168,6 +168,16 @@
 		height: 10px;
 		border-radius: 3px;
 		background: var(--c);
+	}
+	/* 跟卡上的「還沒存」同一個樣子 */
+	.list .unsaved {
+		margin-left: 6px;
+		padding: 0 5px;
+		border-radius: 4px;
+		background: var(--surface-2);
+		color: var(--minor);
+		font-size: 12px;
+		font-weight: 400;
 	}
 	.list small {
 		color: var(--muted);

@@ -16,6 +16,7 @@
 		type Me,
 		type ServerAdapter
 	} from '#lib/server-api.js';
+	import { revealAlert } from '#lib/components/reveal.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -124,7 +125,7 @@
 					</label>
 					<p class="hint">別人在分享名單、成功率紀錄上看到的名字</p>
 					{#if nameResult === 'ok'}<p class="ok" role="status">名字改好了。</p>{/if}
-					{#if nameResult === 'unreachable'}<p class="error" role="alert">連不上伺服器，請稍後再試。</p>{/if}
+					{#if nameResult === 'unreachable'}<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>{/if}
 					<button type="submit" class="btn" disabled={busy || !name.trim()}>改名字</button>
 				</form>
 			</section>
@@ -153,7 +154,7 @@
 					{#if passwordResult === 'ok'}
 						<p class="ok" role="status">密碼改好了。</p>
 					{:else if passwordResult}
-						<p class="error" role="alert">{problemText(passwordResult)}</p>
+						<p class="error" {@attach revealAlert()}>{problemText(passwordResult)}</p>
 					{/if}
 					<button type="submit" class="btn" disabled={busy}>改密碼</button>
 				</form>

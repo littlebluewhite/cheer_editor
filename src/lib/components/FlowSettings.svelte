@@ -1,6 +1,9 @@
 <script lang="ts">
 	// 流程設定：流程名字、調整場地（改條數或鋪向）、規則警告的開關和三個數字（可以恢復預設）、
 	// 標記用號碼還是開頭字、自訂任務角色（新增、改名、刪除）。被擋就顯示流程核心給的原因。
+	// 欄位按 Enter 就套用；改了場地沒按「調整場地」就關，照樣調整（關掉就套用）。
+	import { getEditor } from '#lib/editor.svelte.js';
+	import { composing } from '#lib/ime.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		DEFAULT_TIME_RULES,
@@ -8,21 +11,24 @@
 		MAX_STRIPS,
 		MIN_STRIPS,
 		type FieldLayout,
-		type CustomRole,
 		type MarkerStyle,
 		type TimeRules
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
 	import ConfirmList from './ConfirmList.svelte';
+	import { commitField, customRoleNameField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { isLongMarker } from './marker';
+	import { isLongMarker } from '#lib/marker.js';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		onclose: () => void;
+		/** 打開時焦點放在哪一格：規則警告的開關，或某一個秒數（點規則警告時帶到那一格）。 */
+		focus?: 'on' | (typeof fields)[number][0];
 	}
 
-	let { onclose }: Props = $props();
+	let { onclose, focus }: Props = $props();
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
@@ -38,13 +44,6 @@
 		(Object.keys(DEFAULT_TIME_RULES) as (keyof TimeRules)[]).every((k) => flow.timeRules[k] === DEFAULT_TIME_RULES[k])
 	);
 
-	/** 改自訂任務角色的名稱；被擋就把輸入框還原。 */
-	function renameRole(role: CustomRole, input: HTMLInputElement) {
-		ask.send({ name: 'updateCustomRole', args: [role.id, { name: input.value, meaning: role.meaning }] }, {
-			revert: () => (input.value = role.name)
-		});
-	}
-
 	function addRole(e: SubmitEvent) {
 		e.preventDefault();
 		ask.send({ name: 'addCustomRole', args: [{ name: roleName, meaning: '' }] }, { done: () => (roleName = '') });
@@ -54,23 +53,61 @@
 	let strips = $derived(flow.field.strips);
 	let layout = $derived<FieldLayout>(flow.field.layout);
 	const fieldSame = $derived(strips === flow.field.strips && layout === flow.field.layout);
+	/** 調整場地自己的問題：會有人疊在一起時問「照樣調整」，被擋的原因寫在場地旁邊。 */
+	const fieldAsk = session.changeAsk({ confirmLabel: '照樣調整' });
+
+	/** 調整好了的提醒：吸附會丟掉原本的位置，再調回原本的場地也回不去（N31）。對話框裡寫一次，也接在「已調整場地」的提示後面（旁邊有復原）。 */
+	const SNAPPED_NOTE = '大家吸附到新格子，改回原本的場地也不會回原位';
+	const SNAPPED = `已調整場地：${SNAPPED_NOTE}；要回原狀請按復原`;
+	let fieldNote = $state('');
+
+	/** 調整場地；被擋或取消就把兩個欄位退回現在的場地。 */
+	function applyField() {
+		fieldNote = '';
+		return fieldAsk.send({ name: 'adjustField', args: [{ strips, layout }] }, {
+			done: () => {
+				if (!flow.members.length) return;
+				fieldNote = SNAPPED;
+				session.noteChange(SNAPPED_NOTE);
+			},
+			revert: () => {
+				strips = flow.field.strips;
+				layout = flow.field.layout;
+			}
+		});
+	}
+
+	/** 關之前：場地改了沒按「調整場地」就照樣調整；被擋、要問就先不關。
+	 *  正在問時按 ×＝取消（退回）並關掉：Modal 先把 fieldAsk 的確認框取消，這裡就跟沒改一樣（N39）。 */
+	function beforeclose(): boolean {
+		return fieldSame || applyField().kind === 'ok';
+	}
+
+	const { pendingInput } = getEditor().adapters;
+
+	/** 欄位按 Enter：跟離開欄位一樣送出（條數欄是調整場地）。 */
+	function onenter(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
+		if (e.key !== 'Enter' || composing(e)) return;
+		e.preventDefault();
+		if (e.currentTarget.dataset.strips !== undefined) {
+			if (!fieldSame) applyField();
+		} else pendingInput.flush();
+	}
 
 	function update(patch: Partial<TimeRules>) {
 		ask.send({ name: 'updateTimeRules', args: [patch] });
 	}
 
-	/** 改一個秒數；被擋就把那一格還原成實際的值，原因記在那一格。 */
-	function setSeconds(key: (typeof fields)[number][0], label: string, input: HTMLInputElement) {
-		ask.send({ name: 'updateTimeRules', args: [{ [key]: input.valueAsNumber }] }, {
-			field: label,
-			revert: () => (input.value = String(flow.timeRules[key]))
+	/** 一個秒數；被擋就把那一格還原成實際的值，原因記在那一格（空白、看不懂是 NaN，交給流程核心擋）。 */
+	function secondsField(key: (typeof fields)[number][0], label: string) {
+		return commitField(ask, label, {
+			send: (text) => ({ name: 'updateTimeRules', args: [{ [key]: parseFloat(text) }] }),
+			actual: () => String(flow.timeRules[key])
 		});
 	}
 
-	function rename(input: HTMLInputElement) {
-		// 被擋下時把輸入框還原成原本的名字。
-		ask.send({ name: 'renameFlow', args: [input.value] }, { field: '流程名字', revert: () => (input.value = flow.name) });
-	}
+	/** 流程名字；被擋下時把輸入框還原成原本的名字。 */
+	const nameField = commitField(ask, '流程名字', { send: (text) => ({ name: 'renameFlow', args: [text] }), actual: () => flow.name });
 
 	const markers = $derived(memberMarkers(flow));
 	const MARKER_STYLES: { key: MarkerStyle; label: string }[] = [
@@ -85,7 +122,7 @@
 	] as const;
 </script>
 
-<Modal label="流程設定" class="dialog flow-dialog" {ask} {onclose}>
+<Modal label="流程設定" class="dialog flow-dialog" {ask} confirms={[fieldAsk]} {onclose} {beforeclose}>
 	{#snippet children(close)}
 		<header class="dialog-head">
 			<h2>流程設定</h2>
@@ -93,14 +130,28 @@
 		</header>
 		<label class="stack">
 			<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
-			<input aria-label="流程名字" value={flow.name} bind:this={nameInput} onchange={(e) => rename(e.currentTarget)} />
+			<input
+				aria-label="流程名字"
+				value={flow.name}
+				bind:this={nameInput}
+				{@attach nameField}
+				onkeydown={onenter}
+			/>
 		</label>
 		<section class="rules field">
 			<b>場地<span class="now">現在 {flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span></b>
 			<div class="field-row">
 				<label>
 					條數
-					<input type="number" min={MIN_STRIPS} max={MAX_STRIPS} step="1" bind:value={strips} />
+					<input
+						type="number"
+						min={MIN_STRIPS}
+						max={MAX_STRIPS}
+						step="1"
+						data-strips
+						bind:value={strips}
+						onkeydown={onenter}
+					/>
 				</label>
 				<label class="radio"><input type="radio" name="layout" value="vertical" bind:group={layout} />直放</label>
 				<label class="radio"><input type="radio" name="layout" value="horizontal" bind:group={layout} />橫放</label>
@@ -108,16 +159,20 @@
 					type="button"
 					class="adjust"
 					disabled={fieldSame}
-					onclick={() => ask.send({ name: 'adjustField', args: [{ strips, layout }] })}>調整場地</button
+					onclick={applyField}>調整場地</button
 				>
 			</div>
-			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。</span>
+			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。沒按就關掉，也會照樣調整。</span>
+			{#if fieldAsk.question}<ConfirmList ask={fieldAsk} />{/if}
+			{#if fieldAsk.error}<p class="error" {@attach revealAlert(fieldAsk.failures)}>{fieldAsk.error}</p>{/if}
+			{#if fieldNote}<p class="note" role="status">{fieldNote}</p>{/if}
 		</section>
 		<section class="rules" class:off={!flow.timeRules.on}>
 			<div class="switch">
 				<label>
 					<input
 						type="checkbox"
+						data-autofocus={focus === 'on' || undefined}
 						checked={flow.timeRules.on}
 						onchange={(e) => update({ on: e.currentTarget.checked })}
 					/>
@@ -127,14 +182,19 @@
 					>恢復預設</button
 				>
 			</div>
+			{#if !flow.timeRules.on}
+				<span class="note">關著：左邊欄不會提醒。打勾就再打開。</span>
+			{/if}
 			{#each fields as [key, label] (key)}
 				<label class="num">
 					{label}
 					<input
 						type="number"
 						min="1"
+						data-autofocus={focus === key || undefined}
 						value={flow.timeRules[key]}
-						onchange={(e) => setSeconds(key, label, e.currentTarget)}
+						{@attach secondsField(key, label)}
+						onkeydown={onenter}
 					/>
 				</label>
 			{/each}
@@ -177,7 +237,8 @@
 								aria-label="「{role.name}」的名稱"
 								value={role.name}
 								bind:this={roleInputs[role.id]}
-								onchange={(e) => renameRole(role, e.currentTarget)}
+								{@attach customRoleNameField(ask, role)}
+								onkeydown={onenter}
 							/><CharCount field="roleName" input={roleInputs[role.id]} value={role.name} quiet />
 							<button
 								type="button"
@@ -205,8 +266,8 @@
 			</form>
 			<span class="note">改名時，動作裡的人、給這個角色的拍點一起改；意思在名詞對照表填。</span>
 		</section>
-		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" {@attach revealAlert(ask.failures)}>{error}</p>{/each}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}
 </Modal>
 

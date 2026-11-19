@@ -3,7 +3,7 @@
 // 伺服器換成測試共用的假伺服器（fakeServer）：別人用 joinAs 在別的地方打開、送步。
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import { editorPage, fakeServer, flush } from '#lib/test-fakes.js';
+import { editorPage, fromMenu, fakeServer, flush } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -38,7 +38,7 @@ async function bothOpen() {
 
 /** 流程設定改流程名字。 */
 async function rename(name: string) {
-	await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+	await fromMenu('流程設定');
 	await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: name } });
 	await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 }

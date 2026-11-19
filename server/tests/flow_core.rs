@@ -75,9 +75,9 @@ async fn sample_flow_steps_match_node_byte_for_byte() {
     let quickjs = run_steps(&core, SAMPLE_STEPS).await;
 
     assert_eq!(quickjs, node_run_steps(SAMPLE_STEPS));
-    // 真的有跑出東西：最後改好名字、刪人那步要確認。
+    // 真的有跑出東西：最後改好名字、刪人那步要問（保留還是清掉紀錄）。
     assert!(quickjs.contains(r#""name":"決賽 2026""#));
-    assert!(quickjs.contains(r#""kind":"confirm""#));
+    assert!(quickjs.contains(r#""kind":"choose""#));
 }
 
 /// 名字長度照看得到的字算：流程名字最多 40 個字、隊員名字最多 20 個字。

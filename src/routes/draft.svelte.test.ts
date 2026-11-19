@@ -102,6 +102,21 @@ describe('首頁：最近的流程', () => {
 		expect(drafts.latest()).toBeNull();
 	});
 
+	it('改過沒存的草稿超過 5 支：首頁提醒有幾支還沒存；教練丟掉一支，剩 5 支就不提醒', async () => {
+		const drafts = fakeDraftStore();
+		for (const day of [1, 2, 3, 4, 5, 6]) {
+			drafts.all.set(`n${day}`, { bytes: writeFlowFile(newFlowOf(`第 ${day} 支`), {}), savedAt: new Date(2026, 10, day) });
+		}
+		setup(drafts.store);
+		await flush();
+		expect(screen.getByText(/有 6 支還沒存/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '丟掉「第 3 支」' }));
+		await fireEvent.click(screen.getByRole('button', { name: '丟掉' }));
+		await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^第 3 支/ })).toBeNull());
+		expect(drafts.all.has('n3')).toBe(false);
+		expect(screen.queryByText(/支還沒存/)).toBeNull();
+	});
+
 	it('「丟掉」的確認是對話框：焦點先在「取消」，Escape 等於取消，焦點回到「丟掉」', async () => {
 		const drafts = fakeDraftStore(writeFlowFile(audioFlow(), {}));
 		setup(drafts.store);
@@ -205,16 +220,22 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 		expect(screen.getByText('未存')).toBeTruthy();
 	});
 
-	it('停手 1 秒存草稿時還在打字：先送出，草稿裡有打的字；焦點還在欄位裡', async () => {
-		const { drafts } = await opened();
+	it('停手 1 秒存草稿時還在打字（N01）：不送出，流程、復原、草稿都沒有打到一半的字；焦點和字還在欄位裡', async () => {
+		const { drafts, session } = await opened();
 		vi.useFakeTimers();
 		try {
 			// 先改了別的（備註），停手 1 秒就要存草稿；這 1 秒裡去打名稱
-			await fireEvent.change(screen.getByLabelText('備註'), { target: { value: '慢慢來' } });
+			const note = screen.getByLabelText('備註');
+			await fireEvent.input(note, { target: { value: '慢慢來' } });
+			await fireEvent.change(note);
+			const before = session.flow;
 			const name = await typeName('高 Lib');
-			await vi.advanceTimersByTimeAsync(1000);
-			expect(draftName(drafts.latest())).toBe('高 Lib');
+			await vi.advanceTimersByTimeAsync(1100);
+			expect(session.flow).toBe(before);
+			expect(draftName(drafts.latest())).toBe('Lib');
 			expect(document.activeElement).toBe(name);
+			expect((name as HTMLInputElement).value).toBe('高 Lib');
+			expect(screen.getByText('未存')).toBeTruthy();
 		} finally {
 			vi.useRealTimers();
 		}
@@ -229,8 +250,11 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 				document.dispatchEvent(new Event('visibilitychange'));
 			}
 		]
-	])('%s：送出打到一半的字，馬上存草稿（不等 1 秒）', async (_, hide) => {
+	])('%s（N01）：不送出打到一半的字（跟停手 1 秒一樣），已經送出的改動照樣馬上存草稿', async (_, hide) => {
 		const { drafts, session } = await opened();
+		const note = screen.getByLabelText('備註');
+		await fireEvent.input(note, { target: { value: '慢慢來' } });
+		await fireEvent.change(note);
 		await typeName('高 Lib');
 		try {
 			hide();
@@ -238,8 +262,18 @@ describe('欄位裡打到一半的字（還沒離開欄位）', () => {
 		} finally {
 			Reflect.deleteProperty(document, 'visibilityState');
 		}
+		expect(session.flow!.actions[0].name).toBe('Lib');
+		expect(draftName(drafts.latest())).toBe('Lib');
+		const r = readFlowFile(drafts.latest()!);
+		expect(r.kind === 'ok' && r.flow.actions[0].note).toBe('慢慢來');
+	});
+
+	it('按存檔（⌘S）：打到一半的字先送出，存的檔有它', async () => {
+		const { session } = await opened();
+		await typeName('高 Lib');
+		await fireEvent.keyDown(window, { key: 's', metaKey: true });
+		await flush();
 		expect(session.flow!.actions[0].name).toBe('高 Lib');
-		expect(draftName(drafts.latest())).toBe('高 Lib');
 	});
 
 	it('切回這個分頁（visibilitychange 變 visible）：不送出', async () => {

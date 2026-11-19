@@ -116,10 +116,17 @@ describe('改音樂段', () => {
 		expect(musicLength(flow.segments[0] as MusicSegment)).toEqual({ eights: 4, lastBeats: 8 });
 	});
 
-	it.each([0, -1, 9, 2.5, Number.NaN])('最後一個八拍 %s 拍不合理就擋下，訊息只講這一格', (lastBeats) => {
+	it.each([0, -1, 9, Number.NaN])('最後一個八拍 %s 拍不合理就擋下，訊息只講這一格', (lastBeats) => {
 		expect(updateSegment(withMusic(), 's1', { lastBeats })).toEqual({
 			kind: 'blocked',
 			message: '最後一個八拍的拍數要在 1 到 8 之間'
+		});
+	});
+
+	it('最後一個八拍打 4.5：說要整數，不說要在 1 到 8 之間（T10）', () => {
+		expect(updateSegment(withMusic(), 's1', { lastBeats: 4.5 })).toEqual({
+			kind: 'blocked',
+			message: '最後一個八拍的拍數要是整數'
 		});
 	});
 });
@@ -169,6 +176,15 @@ describe('照音樂長度算（音樂多長由音樂檔庫給）', () => {
 			kind: 'blocked',
 			message: '第一拍之後剩下不到一拍'
 		});
+	});
+
+	it('改 BPM 不改八拍數；之後照音樂長度重算，用新的 BPM 算（#230）', () => {
+		// 150 BPM 載入 30 秒的歌：10 個八拍、最後 3 拍
+		const fitted = flowOf(fitSegmentToAudio(withMusic(0, 150), 's1', { a1: 30 }));
+		const slower = flowOf(updateSegment(fitted, 's1', { bpm: 120 }));
+		expect(lengthOf(slower)).toEqual({ eights: 10, lastBeats: 3 });
+		// 30 秒 × 120 ÷ 60 = 60 拍 = 7 個滿的八拍 + 4 拍
+		expect(lengthOf(flowOf(fitSegmentToAudio(slower, 's1', { a1: 30 })))).toEqual({ eights: 8, lastBeats: 4 });
 	});
 
 	it('音樂比 200 個八拍長：擋下，訊息寫範圍', () => {

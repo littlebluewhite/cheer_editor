@@ -10,6 +10,7 @@ import {
 	insertFormation,
 	moveSegment,
 	positionText,
+	updateAction,
 	updateSegment,
 	type Flow
 } from '#lib/core';
@@ -120,7 +121,7 @@ describe('播放：播放中改了流程', () => {
 });
 
 describe('播放：播放、暫停、從哪裡播', () => {
-	it('按播放，播放頭跟著喇叭的時間走，口號段時間照走；再按一次暫停，聲音停掉、播放頭不動', () => {
+	it('按播放，播放頭跟著喇叭的時間走，口號段時間照走；再按一次停下，聲音停掉、播放頭回到起播點', () => {
 		const { playback, engine, frames, position } = setup();
 		playback.toggle();
 		expect(engine.resumed).toBe(true);
@@ -138,9 +139,74 @@ describe('播放：播放、暫停、從哪裡播', () => {
 		playback.toggle();
 		expect(playback.playing).toBe(false);
 		expect(engine.clicks).toEqual([]);
+		expect(position()).toBe('音樂 1 1-1');
 		engine.audible = t0 + 50;
 		frames.step();
-		expect(position()).toBe('音樂 2 1-2');
+		expect(position()).toBe('音樂 1 1-1');
+	});
+
+	it('起播點：停下來回到開始播的地方；播放中改節拍器、速度不算重新開始播', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.seek(3.2); // 2-1
+		playback.play();
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+		const t0 = engine.clicks[0].when;
+		engine.audible = t0 + 2;
+		frames.step();
+		expect(position()).toBe('音樂 1 2-6');
+		playback.setMetronome(false);
+		playback.setRate(0.75);
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+		playback.toggle();
+		expect(position()).toBe('音樂 1 2-1');
+		expect(playback.startSec).toBeNull();
+	});
+
+	it('起播點：播放中點八拍尺跳過去，起播點跟著過去（停下來回到點的地方）', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.play();
+		playback.seek(12.8); // 5-1
+		engine.audible = engine.clicks[0].when + 1;
+		frames.step();
+		playback.toggle();
+		expect(position()).toBe('音樂 1 5-1');
+	});
+
+	it('Shift＋空白鍵：停在原地；開關關掉時反過來，Shift＋空白鍵才回去', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.play();
+		engine.audible = engine.clicks[0].when + 8.2;
+		frames.step();
+		expect(playback.space(false, true)).toBe(true);
+		expect(playback.playing).toBe(false);
+		expect(position()).toBe('音樂 1 3-5&');
+
+		playback.setReturnOnStop(false);
+		expect(playback.returnOnStop).toBe(false);
+		playback.space(false);
+		engine.audible = engine.clicks[0].when + 1.2; // 3-6 再 3 拍
+		frames.step();
+		playback.space(false);
+		expect(position()).toBe('音樂 1 4-1');
+		playback.space(false);
+		engine.audible = engine.clicks[0].when + 1;
+		frames.step();
+		playback.space(false, true);
+		expect(position()).toBe('音樂 1 4-1');
+	});
+
+	it('播放中拖人（停到整拍）、試聽、切到練習：停在原地，不回起播點', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.play();
+		engine.audible = engine.clicks[0].when + 8.3;
+		frames.step();
+		playback.pauseOnBeat();
+		expect(position()).toBe('音樂 1 3-6');
+		playback.play();
+		engine.audible = engine.clicks[0].when + 0.4;
+		frames.step();
+		playback.pause();
+		expect(position()).toBe('音樂 1 3-7');
 	});
 
 	it('從播放頭開始播：口號段沒有節拍器，第一聲是下一個音樂段的第一拍', () => {
@@ -230,8 +296,16 @@ describe('播放：播放、暫停、從哪裡播', () => {
 		expect(engine.resumed).toBe(false);
 	});
 
-	it('播到結尾自己停，播放頭停在結尾', () => {
+	it('播到結尾自己停，播放頭回到起播點；開關關掉就停在結尾', () => {
 		const { playback, engine, frames } = setup();
+		playback.seek(3.2);
+		playback.play();
+		engine.audible = engine.clicks[0].when + 70;
+		frames.step();
+		expect(playback.playing).toBe(false);
+		expect(playback.sec).toBeCloseTo(3.2, 6);
+
+		playback.setReturnOnStop(false);
 		playback.play();
 		engine.audible = engine.clicks[0].when + 70;
 		frames.step();
@@ -372,54 +446,381 @@ describe('播放：慢速、重複', () => {
 		expect(position()).toBe('音樂 1 2-1');
 	});
 
-	it('重複、選了動作：從動作開始播，播到動作結束跳回動作開始，一直播', () => {
+	it('重複、選了動作：按重複就把重複範圍拉成那個動作；從動作開始播，播到動作結束跳回動作開始，一直播', () => {
 		const members = [{ memberId: 'm1', role: '主底' }];
 		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
 		// 第 2 個八拍（3.2 到 6.4 秒）
 		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 16, length: 16, note: '', members }));
 		const { session, playback, engine, frames, position } = setup(flow);
 		session.selectAction('x1');
+		expect(playback.canRepeat).toBe(true);
 		playback.setRepeat(true);
+		expect(playback.range).toEqual({ a: 3.2, b: expect.closeTo(6.4, 6) });
 		playback.play();
 		expect(position()).toBe('音樂 1 2-1');
 		let t0 = engine.clicks[0].when;
-		// 只排到動作結束：8 拍
+		// 這一圈排到動作結束：8 拍
 		expect(engine.clicks).toHaveLength(8);
 		engine.audible = t0 + 2;
 		frames.step();
 		expect(position()).toBe('音樂 1 2-6');
 		engine.audible = t0 + 3.3;
 		frames.step();
+		// 快播完時下一圈（再 8 拍）緊接著排上
+		expect(engine.clicks).toHaveLength(16);
+		expect(engine.clicks[8].when - t0).toBeCloseTo(3.2, 6);
 		expect(playback.playing).toBe(true);
 		expect(position()).toBe('音樂 1 2-1');
-		t0 = engine.clicks[0].when;
+		t0 = engine.clicks[8].when;
 		engine.audible = t0 + 0.5;
 		frames.step();
 		expect(position()).toBe('音樂 1 2-2');
 	});
 
-	it('重複、沒選動作：在播放頭所在的八拍裡重複', () => {
-		const { playback, engine, frames, position } = setup();
+	it('沒有重複範圍、沒選動作：重複按不下去', () => {
+		const { playback } = setup();
+		expect(playback.canRepeat).toBe(false);
 		playback.setRepeat(true);
+		expect(playback.repeat).toBe(false);
+		expect(playback.range).toBeNull();
+	});
+
+	it('A、B：放在播放頭最近的整拍；放好 B 重複自己打開，播放頭在範圍裡就從那裡播，播到 B 跳回 A', () => {
+		const { playback, engine, frames, position } = setup();
+		playback.seek(6.5); // 3-1 再過一點
+		playback.setA();
+		expect(playback.range).toEqual({ a: 6.4, b: null });
+		expect(playback.repeat).toBe(false);
+		// B 要在 A 後面：放不下去
+		playback.seek(6.3);
+		playback.setB();
+		expect(playback.range).toEqual({ a: 6.4, b: null });
+		playback.seek(9.7); // 4-1 再過一點
+		playback.setB();
+		expect(playback.range).toEqual({ a: 6.4, b: expect.closeTo(9.6, 6) });
+		expect(playback.repeat).toBe(true);
 		playback.seek(8.2); // 3-5&
 		playback.play();
 		const t0 = engine.clicks[0].when;
-		// 3-6 到 3-8 三聲，第 4 個八拍不排
+		// 3-6 到 3-8 三聲；第 4 個八拍不排
 		expect(engine.clicks).toHaveLength(3);
-		engine.audible = t0 + 1.5;
+		engine.audible = t0 + 1.3;
 		frames.step();
 		expect(playback.playing).toBe(true);
 		expect(position()).toBe('音樂 1 3-1');
 	});
 
-	it('重複開著也照樣能跳：播放頭跳到別的八拍，就重複那一個', () => {
+	it('播放中按 B：馬上跳回 A 開始重複（B 吸到後面那一拍也一樣）', () => {
+		const { playback, position } = setup();
+		playback.seek(3.3); // 2-1 再過一點
+		playback.setA();
+		playback.play();
+		playback.seek(6.3); // 2-8&，B 吸到 3-1，在播放頭後面
+		playback.setB();
+		expect(playback.range).toEqual({ a: 3.2, b: expect.closeTo(6.4, 6) });
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-1');
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+	});
+
+	it('播放中拖範圍：吸到的整拍沒變就不重排聲音（拖的時候不會一直斷）', () => {
+		const { playback, engine } = setup();
+		playback.setRange(3.2, 6.4);
+		playback.play();
+		const scheduled = engine.clicks;
+		playback.setRange(3.25, 6.45);
+		expect(engine.clicks).toBe(scheduled);
+	});
+
+	it('段縮短，重複範圍落到段尾後面：範圍拿掉、重複關掉（不然按播放馬上停）', () => {
+		const { session, playback } = setup();
+		playback.setRange(33.6, 34.6); // 口號 1 的 8 到 9 秒
+		session.change(flowOf(updateSegment(session.flow!, 's2', { seconds: 5 })));
+		expect(playback.range).toBeNull();
+		expect(playback.repeat).toBe(false);
+	});
+
+	it('B 放在流程結尾：整拍不會被浮點誤差算成前一個半拍；口號段結尾的 0.1 秒也一樣', () => {
+		const short = flowOf(updateSegment(flowOf(addSegment(flowOf(createFlow({ name: '短', field: { strips: 9, layout: 'vertical' } })), 'music')), 's1', { eights: 3 }));
+		const { playback } = setup(short); // 24 拍 = 9.6 秒
+		playback.setRange(8, 9.6);
+		expect(playback.range).toEqual({ a: 8, b: expect.closeTo(9.6, 6) });
+		const chant = flowOf(addSegment(flowOf(createFlow({ name: '口號', field: { strips: 9, layout: 'vertical' } })), 'chant', undefined, 3));
+		const c = setup(chant).playback; // 0.3 秒
+		c.seek(0.2);
+		c.setA();
+		c.seek(0.3);
+		expect(c.canSetB).toBe(true);
+	});
+
+	it('動作拉成的範圍：B 是動作自己那一段的結尾，後面插一段也不會跑到下一段去', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 96, length: 32, note: '', members }));
+		const { session, playback } = setup(flow);
+		session.selectAction('x1');
+		playback.setRepeat(true);
+		expect(playback.range).toEqual({ a: expect.closeTo(19.2, 6), b: expect.closeTo(25.6, 6) });
+		session.change(flowOf(addSegment(session.flow!, 'chant', 's1')));
+		expect(playback.range).toEqual({ a: expect.closeTo(19.2, 6), b: expect.closeTo(25.6, 6) });
+	});
+
+	it('拖範圍的一頭：另一頭照原本的位置不動，不會被重新吸到整拍；拖過另一頭就對調', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 1, length: 20, note: '', members }));
+		const { session, playback } = setup(flow);
+		session.selectAction('x1');
+		playback.setRepeat(true);
+		expect(playback.range).toEqual({ a: expect.closeTo(0.2, 6), b: expect.closeTo(4.2, 6) });
+		const drag = playback.dragRangeEnd('b');
+		drag(6.3);
+		expect(playback.range).toEqual({ a: expect.closeTo(0.2, 6), b: expect.closeTo(6.4, 6) });
+		drag(0);
+		expect(playback.range).toEqual({ a: 0, b: expect.closeTo(0.2, 6) });
+	});
+
+	it('A 不能放在流程結尾', () => {
+		const { playback } = setup();
+		expect(playback.canSetA).toBe(true);
+		playback.toEnd();
+		expect(playback.canSetA).toBe(false);
+		playback.setA();
+		expect(playback.range).toBeNull();
+	});
+
+	it('A 放到 B 後面：B 拿掉、重複關掉，再放一次 B', () => {
+		const { playback } = setup();
+		playback.setRange(3.2, 6.4);
+		playback.seek(8);
+		playback.setA();
+		expect(playback.range).toEqual({ a: 8, b: null });
+		expect(playback.repeat).toBe(false);
+		expect(playback.canRepeat).toBe(false);
+	});
+
+	it('在尺上拉出重複範圍：兩頭吸到整拍、可以倒著拉，重複自己打開；不到一拍不算', () => {
+		const { playback } = setup();
+		playback.setRange(3.25, 3.3);
+		expect(playback.range).toBeNull();
+		playback.setRange(6.5, 3.1);
+		expect(playback.range).toEqual({ a: 3.2, b: expect.closeTo(6.4, 6) });
+		expect(playback.repeat).toBe(true);
+	});
+
+	it('重複關掉，範圍留著；再打開還是那一段。✕ 拿掉範圍，重複也關掉', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 48, length: 16, note: '', members }));
+		const { session, playback } = setup(flow);
+		playback.setRange(3.2, 6.4);
+		playback.setRepeat(false);
+		expect(playback.range).toEqual({ a: 3.2, b: expect.closeTo(6.4, 6) });
+		// 已經有範圍：選著動作按重複也不換掉範圍
+		session.selectAction('x1');
+		playback.setRepeat(true);
+		expect(playback.range).toEqual({ a: 3.2, b: expect.closeTo(6.4, 6) });
+		playback.clearRange();
+		expect(playback.range).toBeNull();
+		expect(playback.repeat).toBe(false);
+	});
+
+	it('重複開著只在範圍裡播：播放中點到外面跳回 A；停著點外面可以看那一拍，按播放還是從 A 播，起播點是 A', () => {
 		const { playback, engine, frames, position } = setup();
+		playback.setRange(3.2, 6.4);
+		playback.play();
+		expect(position()).toBe('音樂 1 2-1');
+		playback.seek(13); // 5-1，在範圍外面
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-1');
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+		// 跳到結尾也一樣：跳回 A，不停
+		playback.toEnd();
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-1');
+		engine.audible = engine.clicks[0].when + 1;
+		frames.step();
+		playback.toggle();
+		expect(position()).toBe('音樂 1 2-1');
+
+		playback.seek(12.8);
+		expect(position()).toBe('音樂 1 5-1');
+		playback.play();
+		expect(position()).toBe('音樂 1 2-1');
+		expect(playback.startSec).toBeCloseTo(3.2, 6);
+	});
+
+	it('重複範圍跟著音樂：改 BPM 還在同一拍；刪掉範圍所在的段就拿掉；開別的流程也拿掉', () => {
+		const { session, playback } = setup();
+		playback.setRange(26.6, 27.6); // 口號 1 的 1.0 到 2.0 秒
+		session.change(flowOf(updateSegment(session.flow!, 's1', { bpm: 120 })));
+		// 音樂 1 變成 32 秒：口號 1 從 32 秒開始
+		expect(playback.range).toEqual({ a: expect.closeTo(33, 6), b: expect.closeTo(34, 6) });
+		expect(playback.repeat).toBe(true);
+		session.change(flowOf(deleteSegment(session.flow!, 's2')));
+		expect(playback.range).toBeNull();
+		expect(playback.repeat).toBe(false);
+
+		playback.setRange(3.2, 6.4);
+		session.open(sample());
+		expect(playback.range).toBeNull();
+		expect(playback.repeat).toBe(false);
+	});
+
+	it('最短的重複範圍（170 BPM 的一拍，0.35 秒）、畫面卡到一秒只有 2.5 格：一拍一聲，圈和圈之間不斷', () => {
+		const flow = flowOf(updateSegment(sample(), 's1', { bpm: 170 }));
+		const { playback, engine, frames } = setup(flow);
+		const heard: number[] = [];
+		const click = engine.click;
+		engine.click = (when, accent) => {
+			heard.push(when);
+			click(when, accent);
+		};
+		playback.setRange(0, 0.3);
+		expect(playback.range).toEqual({ a: 0, b: expect.closeTo(60 / 170, 6) });
+		playback.play();
+		const t0 = heard[0];
+		for (let t = 0; t < 4; t += 0.4) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+		}
+		expect(playback.playing).toBe(true);
+		const times = heard.filter((w) => w < t0 + 4).sort((a, b) => a - b);
+		expect(times.length).toBeGreaterThanOrEqual(11);
+		for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeCloseTo(60 / 170, 6);
+	});
+
+	for (const latency of [0, 500]) {
+		it(`重複：每一圈接得很緊，圈和圈之間沒有多停一下（延遲校正 ${latency} 毫秒）（#205）`, () => {
+			const { playback, engine, frames, position } = setup();
+			// 排過的每一聲節拍器都記下來（引擎停掉時會清掉排著的，這裡不清）
+			const heard: number[] = [];
+			const click = engine.click;
+			engine.click = (when, accent) => {
+				heard.push(when);
+				click(when, accent);
+			};
+			playback.setLatency(latency);
+			playback.setRange(3.2, 6.4); // 重複第 2 個八拍
+			playback.play();
+			const t0 = heard[0];
+			const positions = new Set<string>();
+			// 畫面一秒 60 格，跑三圈多；喇叭的時間和排程的時鐘一起走
+			for (let t = 0; t < 3 * 3.2 + 1; t += 1 / 60) {
+				engine.time = engine.audible = t0 + t;
+				frames.step();
+				positions.add(position());
+			}
+			expect(playback.playing).toBe(true);
+			const times = heard.filter((w) => w < t0 + 3 * 3.2 + 0.2).sort((a, b) => a - b);
+			// 150 BPM：三圈 24 拍，每一拍都隔 0.4 秒，連圈和圈的接縫也是
+			expect(times.length).toBeGreaterThanOrEqual(24);
+			for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeCloseTo(0.4, 6);
+			// 播放頭一直在第 2 個八拍裡
+			expect([...positions].filter((p) => !p.startsWith('音樂 1 2-'))).toEqual([]);
+		});
+	}
+
+	/** 播放頭停在第 2 個八拍、選了兩個動作（x1 在第 2 個八拍、x2 在第 4 個八拍），開著重複播 x1。 */
+	function repeatingAction() {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 16, length: 16, note: '', members }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Cradle', start: 48, length: 16, note: '', members }));
+		const ctx = setup(flow);
+		// 排過的每一聲節拍器都記下來（引擎停掉時會清掉排著的，這裡不清）
+		const heard: number[] = [];
+		const click = ctx.engine.click;
+		ctx.engine.click = (when, accent) => {
+			heard.push(when);
+			click(when, accent);
+		};
+		ctx.session.selectAction('x1');
+		ctx.playback.setRepeat(true);
+		ctx.playback.play();
+		const t0 = heard[0];
+		/** 喇叭和排程時鐘一起走到 t0 + t 秒，一秒 60 格。 */
+		let now = 0;
+		const runTo = (t: number) => {
+			for (; now < t; now += 1 / 60) {
+				ctx.engine.time = ctx.engine.audible = t0 + now;
+				ctx.frames.step();
+			}
+		};
+		return { ...ctx, heard, t0, runTo };
+	}
+
+	it('重複中改了動作長度：重複範圍拉好了就不跟著動作變，照樣播整個第 2 個八拍', () => {
+		const { session, playback, position, runTo } = repeatingAction();
+		runTo(1);
+		// 第一圈播到一半，x1 改成 2 拍（0.8 秒）
+		session.change(flowOf(updateAction(session.flow!, 'x1', { length: 4 })));
+		runTo(3.2 + 0.8 + 0.1);
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-3');
+	});
+
+	it('重複中選了另一個動作：重複範圍不跟著換', () => {
+		const { session, playback, position, runTo } = repeatingAction();
+		runTo(1);
+		session.selectAction('x2');
+		runTo(3.2 + 0.5);
+		expect(playback.playing).toBe(true);
+		expect(position()).toBe('音樂 1 2-2');
+	});
+
+	it('重複半拍的動作、延遲校正 +1000 毫秒：播放頭照樣跟著每一圈走，不卡在動作開頭（#205）', () => {
+		const members = [{ memberId: 'm1', role: '主底' }];
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'M', globalRole: 'base' }]));
+		// 2-1 那半拍（3.2 到 3.4 秒）
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', start: 16, length: 1, note: '', members }));
+		const { session, playback, engine, frames } = setup(flow);
+		session.selectAction('x1');
+		playback.setLatency(1000);
 		playback.setRepeat(true);
 		playback.play();
-		playback.seek(13); // 5-1
 		const t0 = engine.clicks[0].when;
-		engine.audible = t0 + 3.3;
-		frames.step();
-		expect(position()).toBe('音樂 1 5-1');
+		// 畫面一秒 60 格跑 3 秒；畫面晚 1 秒，播放頭是 1 秒前喇叭播的那一圈裡的位置
+		const shown: number[] = [];
+		for (let t = 0; t < 3; t += 1 / 60) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+			if (t > 1.5) shown.push(playback.sec);
+		}
+		expect(playback.playing).toBe(true);
+		expect(Math.max(...shown) - Math.min(...shown)).toBeGreaterThan(0.1);
+		for (const sec of shown) {
+			expect(sec).toBeGreaterThanOrEqual(3.2 - 1e-6);
+			expect(sec).toBeLessThanOrEqual(3.4 + 1e-6);
+		}
+	});
+
+	it('重複中切到別的分頁 30 秒再回來：錯過的圈不補播，從現在接著播，聲音不疊在一起（#205）', () => {
+		const { playback, engine, frames } = setup();
+		// 排過的每一聲節拍器，連同排的那一刻的時鐘都記下來
+		const heard: { when: number; at: number }[] = [];
+		const click = engine.click;
+		engine.click = (when, accent) => {
+			heard.push({ when, at: engine.time });
+			click(when, accent);
+		};
+		playback.setRange(3.2, 6.4); // 重複第 2 個八拍（3.2 秒）
+		playback.play();
+		const t0 = heard[0].when;
+		// 分頁在背景：30 秒沒有畫面，時鐘照走；回來後一秒 60 格跑 4 秒
+		for (let t = 30; t < 34; t += 1 / 60) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+		}
+		expect(playback.playing).toBe(true);
+		// 沒有排在已經過去的時間（排了就馬上一起響）
+		expect(heard.filter((c) => c.when < c.at)).toEqual([]);
+		// 回來後一拍一聲，隔 0.4 秒，沒有疊在一起
+		const times = heard
+			.filter((c) => c.when > t0 + 30)
+			.map((c) => c.when)
+			.sort((a, b) => a - b);
+		expect(times.length).toBeGreaterThanOrEqual(8);
+		for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeCloseTo(0.4, 6);
 	});
 });

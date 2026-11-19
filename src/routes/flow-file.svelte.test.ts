@@ -7,7 +7,7 @@ import { createFlow, insertFormation, readFlowFile, writeFlowFile } from '#lib/c
 import { flowOf } from '#lib/test-flows.js';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
-import { audioFlow, editorPage, fakeSaver, openFile, flush } from '#lib/test-fakes.js';
+import { audioFlow, editorPage, fakeSaver, openFile, flush, fromMenu } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
 import Page from './+page.svelte';
 
@@ -56,7 +56,7 @@ describe('存檔', () => {
 		const { saver, saves } = fakeSaver();
 		setup(saver);
 		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 		name.focus();
 		await fireEvent.input(name, { target: { value: '縣賽' } });
@@ -139,7 +139,7 @@ describe('開檔', () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
 		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
-		await openFile(writeFlowFile(other, {}), '開啟');
+		await openFile(writeFlowFile(other, {}));
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByText('另一支')).toBeTruthy();
 	});
@@ -151,9 +151,28 @@ describe('開檔', () => {
 		// jsdom 不會捲：換成記得住的數字，看開檔後有沒有歸零
 		for (const p of panels) Object.defineProperty(p, 'scrollTop', { value: 300, writable: true });
 		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
-		await openFile(writeFlowFile(other, {}), '開啟');
+		await openFile(writeFlowFile(other, {}));
 		expect(screen.getByText('另一支')).toBeTruthy();
-		expect(panels.map((p) => p.scrollTop)).toEqual([0, 0]);
+		// 編排區整個重開（#233 E 群）：右邊欄是新的，從最上面開始
+		const after = [...document.querySelectorAll('.panel')];
+		expect(after.map((p) => p.scrollTop)).toEqual([0, 0]);
+	});
+
+	it('開另一個流程檔：上一支沒送出的新動作名稱、加隊員名單不帶過去', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+		await fireEvent.input(screen.getByLabelText('名稱'), { target: { value: '小翻' } });
+		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
+		await fireEvent.input(screen.getByLabelText(/^名字/), { target: { value: '阿強\n阿美' } });
+		const other = flowOf(createFlow({ name: '另一支', field: { strips: 9, layout: 'vertical' } }));
+		await openFile(writeFlowFile(other, {}));
+		expect(screen.getByText('另一支')).toBeTruthy();
+		expect((screen.getByLabelText(/^名字/) as HTMLInputElement).value).toBe('');
+		await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
+		// 編排區整個重開：新動作表單收起來，打開也是空的
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
+		expect((screen.getByLabelText('名稱') as HTMLInputElement).value).toBe('');
 	});
 
 	it('有未存的修改時開別的檔先問；取消就留在原本的流程，確定才打開', async () => {
@@ -161,13 +180,13 @@ describe('開檔', () => {
 		await newFlow();
 		await addChant();
 		const file = writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) });
-		await openFile(file, '開啟');
+		await openFile(file);
 		expect(screen.getByRole('alertdialog').textContent).toContain('「全國賽」還沒存');
 		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByText('全國賽')).toBeTruthy();
 
-		await openFile(file, '開啟');
+		await openFile(file);
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
 		expect(screen.getByText('練習用')).toBeTruthy();
@@ -178,7 +197,7 @@ describe('新建', () => {
 	it('上方列「新建」：沒有未存的修改就直接回到新建流程', async () => {
 		setup();
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 		await newFlow();
 		expect(screen.getByText('全國賽')).toBeTruthy();
@@ -190,7 +209,7 @@ describe('新建', () => {
 		setup(saver);
 		await newFlow();
 		await addChant();
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		await fireEvent.click(screen.getByRole('button', { name: '先存檔' }));
 		await flush();
 		expect(fileNames).toEqual(['全國賽.zip']);
@@ -211,6 +230,20 @@ describe('新建', () => {
 		expect(screen.getByRole('alert').textContent).toBe('打不開「broken.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 	});
 
+	it('選到照片：直說這是圖片，不提 flow.json（T12）', async () => {
+		setup();
+		await openFile(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]), '開啟流程檔', 'IMG_0001.jpg');
+		expect(screen.getByRole('alert').textContent).toBe('打不開「IMG_0001.jpg」：這是圖片，不是流程檔');
+	});
+
+	it('zip 裡不是流程：原因用教練懂的話，不出現 flow.json（T12）', async () => {
+		setup();
+		await openFile(zipSync({ 'a.txt': strToU8('hi') }), '開啟流程檔', '照片.zip');
+		const text = screen.getByRole('alert').textContent!;
+		expect(text).toBe('打不開「照片.zip」：zip 裡沒有流程，不是這個編輯器存的流程檔');
+		expect(text).not.toContain('flow.json');
+	});
+
 	it('開到音樂檔：提示音樂要在段設定裡載入', async () => {
 		setup();
 		await openFile(new TextEncoder().encode('RIFF....WAVE'), '開啟流程檔', '主歌.wav');
@@ -222,7 +255,7 @@ describe('新建', () => {
 	it('編輯中從上方列開到音樂檔：提示點段列上的段去載入', async () => {
 		setup();
 		await newFlow();
-		await openFile(new TextEncoder().encode('ID3'), '開啟', '主歌.MP3');
+		await openFile(new TextEncoder().encode('ID3'), '開啟流程檔', '主歌.MP3');
 		expect(screen.getByRole('status').textContent).toBe(
 			'打不開「主歌.MP3」：這是音樂檔，不是流程檔。音樂要點段列上的段，在段設定按「載入音樂檔」'
 		);
@@ -250,16 +283,14 @@ describe('新建', () => {
 });
 
 describe('「還沒存」確認框是對話框', () => {
-	/** 新建、改一下（加一段口號），焦點放在「新建」再按它：跳出「還沒存」。 */
+	/** 新建、改一下（加一段口號），從選單按「新建」：跳出「還沒存」。button 是「選單」（關掉後焦點回到這裡）。 */
 	async function asking() {
 		const page = editorPage(null, { createSaver: () => fakeSaver().saver });
 		render(Page, page.props);
 		await newFlow();
 		await addChant();
-		const button = screen.getByRole('button', { name: '新建' });
-		button.focus();
-		await fireEvent.click(button);
-		return { session: page.session, button };
+		await fromMenu('新建');
+		return { session: page.session, button: screen.getByRole('button', { name: '選單' }) };
 	}
 
 	it('開著時按 ⌘Z、⌘⇧Z：底下的流程不動，還是「未存」', async () => {
@@ -284,7 +315,7 @@ describe('「還沒存」確認框是對話框', () => {
 		expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '取消' }));
 	});
 
-	it('按 Escape 等於取消：關掉，流程還在；焦點回到「新建」', async () => {
+	it('按 Escape 等於取消：關掉，流程還在；焦點回到「選單」', async () => {
 		const { session, button } = await asking();
 		const before = session.flow;
 		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
@@ -300,8 +331,11 @@ describe('有未存的修改時按「開啟」：先問再選檔', () => {
 		setup();
 		await newFlow();
 		await addChant();
-		const notPrevented = await fireEvent.click(screen.getByLabelText('開啟'));
-		expect(notPrevented).toBe(false);
+		// 點選單的「開啟流程檔」等於點選檔欄位：被擋下就不跳選檔
+		let pick: Event | undefined;
+		screen.getByLabelText('開啟流程檔').addEventListener('click', (e) => (pick = e));
+		await fromMenu('開啟流程檔');
+		expect(pick?.defaultPrevented).toBe(true);
 		const dialog = screen.getByRole('dialog', { name: /還沒存/ });
 		expect(dialog.textContent).toContain('要開別的流程檔');
 		await fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
@@ -317,11 +351,11 @@ describe('有未存的修改時按「開啟」：先問再選檔', () => {
 		render(Page, editorPage(null, { pickFlowFile }).props);
 		await newFlow();
 		await addChant();
-		await fireEvent.click(screen.getByLabelText('開啟'));
+		await fromMenu('開啟流程檔');
 		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
 		expect(picks).toBe(0);
 
-		await fireEvent.click(screen.getByLabelText('開啟'));
+		await fromMenu('開啟流程檔');
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
 		expect(picks).toBe(1);

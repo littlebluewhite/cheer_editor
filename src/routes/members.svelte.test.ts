@@ -59,7 +59,7 @@ describe('改名字被擋下', () => {
 		await fireEvent.change(input, { target: { value: '  ' } });
 		const alert = screen.getByRole('alert');
 		expect(alert.closest('li')).toBe(document.querySelectorAll('.members li')[1]);
-		expect(alert.textContent).toBe('請填隊員名字');
+		expect(alert.textContent).toBe('請填隊員名字，已還原');
 		expect(input.value).toBe('小A');
 		await frame();
 		expect(scrolled.every((el) => el.closest('li'))).toBe(true);
@@ -110,5 +110,42 @@ describe('打號碼排順序', () => {
 		await fireEvent.keyDown(screen.getByLabelText('第 1 位隊員的號碼'), { key: 'Escape' });
 		expect(screen.queryByLabelText('第 1 位隊員的號碼')).toBeNull();
 		expect(session.flow!.members.map((m) => m.name)).toEqual(['小A', '小B', '小芳', '阿強', '小美']);
+	});
+
+	it('改號碼時按 Esc：焦點回到那一列的圓圈，不掉到整個頁面（#205）', async () => {
+		await setup(five());
+		const circle = () => screen.getByRole('button', { name: '改第 3 位隊員的號碼' });
+		circle().focus();
+		await fireEvent.click(circle());
+		const no = screen.getByLabelText('第 3 位隊員的號碼');
+		expect(document.activeElement).toBe(no);
+		await fireEvent.keyDown(no, { key: 'Escape' });
+		await frame();
+		expect(screen.queryByLabelText('第 3 位隊員的號碼')).toBeNull();
+		expect(document.activeElement).toBe(circle());
+	});
+
+	it('在圓圈上按空白鍵：打開號碼欄，不播放', async () => {
+		await setup(five());
+		const circle = screen.getByRole('button', { name: '改第 2 位隊員的號碼' });
+		circle.focus();
+		await fireEvent.keyDown(circle, { key: ' ' });
+		expect(document.activeElement).toBe(screen.getByLabelText('第 2 位隊員的號碼'));
+		expect(screen.queryByRole('button', { name: '暫停' })).toBeNull();
+	});
+});
+
+describe('加隊員表單', () => {
+	it('滿 40 人：名字、性別、全局角色、加隊員鈕都停用，寫為什麼；刪掉一個人就能再加', async () => {
+		const people = Array.from({ length: 36 }, (_, i) => ({ name: `隊員${i + 1}`, gender: 'F' as const, globalRole: 'top' as const }));
+		await setup(flowOf(addMembers(libSample(), people)));
+		const form = screen.getByRole('button', { name: '加隊員' }).closest('form')!;
+		const fields = () => [...form.querySelectorAll('textarea, select, button')];
+		expect(fields().every((el) => el.matches(':disabled'))).toBe(true);
+		expect(form.textContent).toContain('已經 40 人了（一支流程最多 40 人），刪掉隊員才能再加');
+		await fireEvent.click(screen.getByRole('button', { name: '刪除第 40 位隊員' }));
+		await fireEvent.click(screen.getByRole('button', { name: '確定刪除' }));
+		expect(fields().some((el) => el.matches(':disabled'))).toBe(false);
+		expect(form.textContent).not.toContain('刪掉隊員才能再加');
 	});
 });

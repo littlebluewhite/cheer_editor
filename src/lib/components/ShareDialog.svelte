@@ -12,6 +12,7 @@
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		flowId: string;
@@ -194,7 +195,7 @@
 				<button type="submit" class="primary">加入</button>
 			</form>
 		{/if}
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+		{#if error}<p class="error" {@attach revealAlert()}>{error}</p>{/if}
 		{#if done}<p class="done" role="status">{done}</p>{/if}
 		<h3 id="share-people">有權限的人</h3>
 		<ul class="people" aria-labelledby="share-people">

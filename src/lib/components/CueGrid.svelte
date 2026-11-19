@@ -16,18 +16,22 @@
 	// 小窗也有一列「環節」：現有環節的按鈕（把選的拍標給它）、種類、名字、加入（名字欄按 Enter 也行）、清掉。
 	// 種類預設接在上一個環節後面（上法 → 中段 → 轉接 → 下法）。
 	// 還沒記成功率的動作加第一個環節，就開始記成功率；拍清光的環節自動刪掉，有記號時小窗裡先問（規則在流程核心）。
-	// 選的拍剛好是一個環節的拍（例：點環節的色條）時，環節列多出改它名字、種類、顏色的地方。
+	// 點環節的色條：選到它的拍，記住點的是這一條，環節列多出改它名字、種類、顏色的地方，「清掉」只清（刪掉）這一條；
+	// 選的拍變了就不記了。自己選的拍剛好是環節的拍時改它，有兩個以上（金字塔佔同樣的拍）改排前面的那個。
 	// 口號段不數拍、沒有格子：直接一列「環節」，環節按鈕照加的先後排、種類、名字、加入；
 	// 點一個環節選它，可以改名字、種類、顏色，或按清掉刪掉它（有記號先問）。
 	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { both, KEYS } from '#lib/shortcuts.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { cellIn, firstCell, fits } from '#lib/beat-selection.svelte.js';
 	import { popover } from '#lib/popover.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { touchOnUnpicked } from './pointer';
+	import { ownsKey } from '#lib/key-owner.js';
+	import { revealAlert } from './reveal';
 	import {
 		COUNT_WORDS,
 		CUE_KIND_LABELS,
@@ -36,6 +40,7 @@
 		MOTION_WORDS,
 		PHASE_COLORS,
 		PHASE_KINDS,
+		phaseKindsFor,
 		phaseLabel,
 		STEP_WORDS,
 		actionEights,
@@ -105,6 +110,9 @@
 		].filter((g) => g.options.length);
 	});
 	const phases = $derived(action.successRate?.phases ?? []);
+	/** 這個動作的大類能用的環節種類；只有一種就不給選，沒有（舞蹈、其他）就不能加環節。 */
+	const kinds = $derived(phaseKindsFor(action.category));
+	const kindLabel = (k: PhaseKind) => PHASE_KINDS.find((x) => x.key === k)?.label ?? '';
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
 	let phaseName = $state('');
@@ -132,6 +140,8 @@
 	let pop = $state(false);
 	let dragging = $state(false);
 	let wrapEl = $state<HTMLElement>();
+	/** 數字格那一塊：在這裡按下由 dragStart 決定選拍還是收小窗；下面留給小窗的空白不算。 */
+	let sheetEl = $state<HTMLElement>();
 	let popEl = $state<HTMLElement>();
 	/** 小窗在格子框裡的位置（小窗開在最上層，放的時候再加上格子框在畫面上的左上角）。 */
 	let popPos = $state({ top: 0, left: 0, arrow: 0, above: false });
@@ -160,10 +170,24 @@
 		return pos?.segmentId === segment.id ? cellIn(action, pos.at - action.start) : null;
 	});
 	const selLen = $derived(beats.len);
-	/** 可以改的環節：音樂段是選的拍剛好是它的拍的那個，口號段是點選的那個；沒有就 null。 */
+	/** 音樂段點色條選到的環節 id，和點的時候選到的拍；選的拍變了、自己點格子選拍就不記了（見下面的 $effect、dragStart）。 */
+	let picked = $state<{ id: string; at: number; len: number } | null>(null);
+	$effect(() => {
+		const { from } = sel;
+		const len = selLen;
+		untrack(() => {
+			if (picked && (picked.at !== from || picked.len !== len)) picked = null;
+		});
+	});
+	/** 點色條選到、還在的那條環節。 */
+	const pickedPhase = $derived(phases.find((p) => p.id === picked?.id));
+	/**
+	 * 可以改的環節：音樂段是點色條選到的那條，不然是選的拍剛好是它的拍的那個（有兩個以上改排前面的）；
+	 * 口號段是點選的那個；沒有就 null。
+	 */
 	const editing = $derived(
 		(segment?.kind === 'music'
-			? phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen)
+			? (pickedPhase ?? phases.find((p) => p.beats?.at === sel.from && p.beats.len === selLen))
 			: phases.find((p) => p.id === chosen)) ?? null
 	);
 
@@ -177,7 +201,16 @@
 			ask.clear();
 			pop = false;
 			chosen = null;
-			phaseKind = nextPhaseKind(phases.at(-1)?.kind);
+			phaseKind = nextPhaseKind(action.category, phases.at(-1)?.kind) ?? 'load';
+		});
+	});
+
+	// 換了大類，選的種類不能用了就換成新大類預設的。
+	const category = $derived(action.category);
+	$effect(() => {
+		void category;
+		untrack(() => {
+			if (!kinds.includes(phaseKind)) phaseKind = nextPhaseKind(category, phases.at(-1)?.kind) ?? 'load';
 		});
 	});
 
@@ -212,13 +245,19 @@
 		if (e.button !== 0) return;
 		const el = (e.target as Element).closest<HTMLElement>('[data-at]');
 		const at = Number(el?.dataset.at);
-		if (!el || !fits(action, at)) return;
+		// 點到格子的空白、標籤，或不是這個動作的拍：收掉小窗。
+		if (!el || !fits(action, at)) {
+			pop = false;
+			return;
+		}
 		pointerSel = true;
 		// 手指：選到的格子上才拖得動（拖過幾拍）；沒選到的一滑是捲動（docs/adr/0005-ipad-touch.md）。
 		if (touchOnUnpicked(e, isSel(at))) {
 			tapAt = at;
 			return;
 		}
+		// 自己選拍（不是點色條）：不記剛才點的那條，剛好是兩個環節的拍時改排前面的。
+		picked = null;
 		beats.click(at, e.shiftKey);
 		dragging = true;
 		// 抓住指標：拖過變淡（disabled）的格子、拖出格子外都收得到。
@@ -232,7 +271,10 @@
 	}
 
 	function dragEnd() {
-		if (tapAt !== null) beats.click(tapAt);
+		if (tapAt !== null) {
+			picked = null;
+			beats.click(tapAt);
+		}
 		if (dragging || tapAt !== null) openPop();
 		dragCancel();
 	}
@@ -273,21 +315,23 @@
 		send({ name: 'markPhaseBeats', args: [action.id, phaseId, from, len] });
 	}
 
-	/** 清掉選的拍裡環節標的拍；拍清光的環節刪掉。 */
+	/** 清掉環節：點了色條就只清那一條（拍整個清光，刪掉）；不然清掉選的拍裡環節標的拍，拍清光的環節刪掉。有記號先問。 */
 	function clearPhases() {
+		const id = pickedPhase?.id;
 		const { from, to } = sel;
-		send({ name: 'clearPhaseBeats', args: [action.id, from, to + BEAT] });
+		if (id) send({ name: 'deletePhase', args: [action.id, id] });
+		else send({ name: 'clearPhaseBeats', args: [action.id, from, to + BEAT] });
 	}
 
 	/** 加環節（種類、名字）：音樂段標上選的拍，口號段加在最後。下一個環節的種類預設接在它後面。 */
 	function addNewPhase() {
 		const beats = segment?.kind === 'music' ? { at: sel.from, len: selLen } : undefined;
-		const kind = phaseKind;
+		const kind = kinds.length > 1 ? phaseKind : kinds[0];
 		send(
 			{ name: 'addPhase', args: [action.id, { kind, name: phaseName, beats }] },
 			() => {
 				phaseName = '';
-				phaseKind = nextPhaseKind(kind);
+				phaseKind = nextPhaseKind(action.category, kind) ?? kind;
 			}
 		);
 	}
@@ -319,7 +363,7 @@
 		hold = pop;
 		const cues = copyCues(action, sel.from, sel.to + BEAT);
 		if (cues.length) beats.copied = cues;
-		copyNote = cues.length ? `複製了 ${cues.length} 個拍點，選一拍按「貼上」或 ⌘V` : '選的拍裡沒有拍點';
+		copyNote = cues.length ? `複製了 ${cues.length} 個拍點，選一拍按「貼上」或 ${KEYS.paste.mac}` : '選的拍裡沒有拍點';
 	}
 
 	/** 把複製的拍點從選的第一拍開始貼上。 */
@@ -333,7 +377,7 @@
 	 * ⌘C／Ctrl+C 複製、⌘V／Ctrl+V 貼上。
 	 */
 	function sheetKey(e: KeyboardEvent) {
-		if ((e.target as Element).closest('input, textarea, select')) return;
+		if (ownsKey(e.target, e.key)) return;
 		const key = e.key.toLowerCase();
 		const mod = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
 		if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -352,11 +396,21 @@
 	function shiftKey(e: KeyboardEvent) {
 		if (e.key === 'Shift') through = e.type === 'keydown';
 	}
+	/** 滑鼠一動就照實對一次 Shift：放開沒收到（Cmd+Shift 截圖會吃掉 keyup）也不會一直半透明。 */
+	function shiftSync(e: PointerEvent) {
+		through = e.shiftKey;
+	}
 
 	/** 點一個拍點或環節：選回它原本的範圍（從 & 開始的也照實）；拍點的「給誰」也換成它的。 */
 	function pick(range: { at: number; len: number }, cueWho?: Who) {
 		beats.pick(range, cueWho);
 		openPop();
+	}
+
+	/** 點環節的色條：選到它的拍，記住點的是這一條。 */
+	function pickPhase(id: string, range: { at: number; len: number }) {
+		pick(range);
+		picked = { id, at: sel.from, len: selLen };
 	}
 
 	/** 方向鍵：左右移選取；加 Shift 延長或縮短（規則在 session）。焦點跟著動的那一端。 */
@@ -466,9 +520,13 @@
 	/** 「1-1 到 1-3」：spanText 去掉後面的拍數。 */
 	const rangeOf = (at: number, len: number) => spanText(at, len).replace(/・.*$/, '');
 
-	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，第 2 列是環節。 */
+	/** 一個八拍裡環節有幾排：排到第幾排（流程核心算的，金字塔佔同樣拍的往下多一排），至少一排。 */
+	const phaseTracks = (e: number) => Math.max(1, ...inEight(e).phases.map((p) => p.row + 1));
+
+	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，第 2 列起是環節。 */
 	function layout(e: number) {
-		let row = 3;
+		// 第 2 行起是環節列；舞蹈、其他沒有環節，拍子列往上補。
+		let row = kinds.length ? 2 + phaseTracks(e) : 2;
 		return LANES.map((lane) => {
 			const ps = inEight(e).cues.filter((p) => p.cue.kind === lane.kind);
 			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
@@ -483,7 +541,7 @@
 	<span class="cap">拍點</span>
 	{#if segment?.kind !== 'music'}
 		<p class="muted">口號段不數拍，不能放拍點</p>
-		<div class="pop-row phase" role="group" aria-label="環節">
+		{#if kinds.length}<div class="pop-row phase" role="group" aria-label="環節">
 			<span class="lbl">環節</span>
 			<div class="words">
 				{#each phases as p (p.id)}
@@ -500,7 +558,7 @@
 			</div>
 			<button type="button" class="clear" aria-label="清掉環節" disabled={!editing} onclick={deleteChosen}>清掉</button>
 			{#if editing}{@render edit(editing)}{/if}
-		</div>
+		</div>{/if}
 		{@render asks()}
 	{:else if !hasCells}
 		<p class="muted">動作不到一拍，不能放拍點</p>
@@ -515,6 +573,7 @@
 		>
 			<div
 				class="sheet"
+				bind:this={sheetEl}
 				role="presentation"
 				onpointerdown={dragStart}
 				onpointermove={dragMove}
@@ -532,7 +591,7 @@
 					{@const bottom = lanes[lanes.length - 1].row + lanes[lanes.length - 1].tracks}
 					<div class="row">
 						<span class="eight" aria-hidden="true">{e + 1}</span>
-						<span class="lane-lbl phase" style:grid-row="2">環節</span>
+						{#if kinds.length}<span class="lane-lbl phase" style:grid-row="2 / span {phaseTracks(e)}">環節</span>{/if}
 						{#each lanes as lane (lane.kind)}
 							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
@@ -553,20 +612,23 @@
 								disabled={!fits(action, at)}
 								onclick={(ev) => {
 								if (pointerSel) return;
+								picked = null;
 								beats.click(at, ev.shiftKey);
 								openPop();
 							}}>{c + 1}</button
 							>
-							<span
-								class="slot phase"
-								data-at={at}
-								class:out={!fits(action, at)}
-								class:sel={isSel(at)}
-								class:left={isSel(at) && !covered(at + 1)}
-								class:right={isSel(at) && !covered(at)}
-								style:grid-column="{c * 2 + 2} / span 2"
-								style:grid-row="2"
-							></span>
+							{#if kinds.length}
+								<span
+									class="slot phase"
+									data-at={at}
+									class:out={!fits(action, at)}
+									class:sel={isSel(at)}
+									class:left={isSel(at) && !covered(at + 1)}
+									class:right={isSel(at) && !covered(at)}
+									style:grid-column="{c * 2 + 2} / span 2"
+									style:grid-row="2 / span {phaseTracks(e)}"
+								></span>
+							{/if}
 							{#each lanes as lane (lane.kind)}
 								<span
 									class="slot {lane.kind}"
@@ -599,11 +661,11 @@
 								class:more={!p.last}
 								style:--c={phaseColor(p.phase)}
 								style:grid-column="{p.start + 2} / {p.end + 2}"
-								style:grid-row="2"
+								style:grid-row={2 + p.row}
 								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}
-								onclick={() => pick(p.beats)}
+								onclick={() => pickPhase(p.phase.id, p.beats)}
 								>{p.first ? label : `…${label}`}</button
 							>
 						{/each}
@@ -642,7 +704,7 @@
 					style:--arrow="{popPos.arrow}px"
 					role="dialog"
 					aria-label="拍點小窗"
-					{@attach popover({ place: placePop, close: () => (pop = false), inside: [wrapEl] })}
+					{@attach popover({ place: placePop, close: () => (pop = false), inside: [sheetEl] })}
 				>
 					<div class="pop-head">
 						<!-- －／＋ 放在字前面：字會變長，放後面按鈕就會被擠走 -->
@@ -653,12 +715,12 @@
 							>＋</button
 						>
 						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
-						<button type="button" class="tool" aria-label="複製選的拍點" title="複製（⌘C／Ctrl+C）" onclick={copy}>複製</button>
+						<button type="button" class="tool" aria-label="複製選的拍點" title={`複製（${both(KEYS.copy)}）`} onclick={copy}>複製</button>
 						<button
 							type="button"
 							class="tool"
 							aria-label="貼上拍點"
-							title="貼上（⌘V／Ctrl+V）"
+							title={`貼上（${both(KEYS.paste)}）`}
 							disabled={!beats.copied.length}
 							onclick={paste}>貼上</button
 						>
@@ -713,7 +775,7 @@
 							<button type="button" class="clear" aria-label="清掉{row.label}" onclick={() => clear(row.kind)}>清掉</button>
 						</div>
 					{/each}
-					<div class="pop-row phase" role="group" aria-label="環節">
+					{#if kinds.length}<div class="pop-row phase" role="group" aria-label="環節">
 						<span class="lbl">環節</span>
 						<div class="words">
 							{#each phases as p (p.id)}
@@ -734,7 +796,7 @@
 							onclick={clearPhases}>清掉</button
 						>
 						{#if editing}{@render edit(editing)}{/if}
-					</div>
+					</div>{/if}
 					{#if copyNote}<p class="hint" role="status">{copyNote}</p>{/if}
 					{@render asks()}
 				</div>
@@ -746,9 +808,13 @@
 <!-- 加新環節：種類、名字、加入。 -->
 {#snippet adder(add: () => void)}
 	<span class="own">
-		<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
-			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-		</select>
+		{#if kinds.length > 1}
+			<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
+				{#each kinds as k (k)}<option value={k}>{kindLabel(k)}</option>{/each}
+			</select>
+		{:else}
+			<span class="kind fixed" aria-label="環節的種類">{kindLabel(kinds[0])}</span>
+		{/if}
 		<input
 			class="custom"
 			aria-label="環節的名字"
@@ -775,14 +841,16 @@
 				{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
 			</select>
 		</span>
-		<select
-			class="kind"
-			aria-label="這個環節的種類"
-			value={p.kind}
-			onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
-		>
-			{#each PHASE_KINDS as k (k.key)}<option value={k.key}>{k.label}</option>{/each}
-		</select>
+		{#if kinds.length > 1}
+			<select
+				class="kind"
+				aria-label="這個環節的種類"
+				value={p.kind}
+				onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
+			>
+				{#each kinds as k (k)}<option value={k}>{kindLabel(k)}</option>{/each}
+			</select>
+		{/if}
 		<input
 			class="custom"
 			aria-label="這個環節的名字"
@@ -796,10 +864,10 @@
 <!-- 等確認的環節改動、被擋的原因。 -->
 {#snippet asks()}
 	{#if ask.question}<ConfirmList {ask} />{/if}
-	{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 {/snippet}
 
-<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onkeydown={shiftKey} onkeyup={shiftKey} onblur={() => (through = false)} />
+<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onkeydown={shiftKey} onkeyup={shiftKey} onpointermove={shiftSync} onpointerdown={shiftSync} onblur={() => (through = false)} />
 
 <style>
 	.cues {
@@ -880,6 +948,8 @@
 	.cell:disabled {
 		opacity: 0.3;
 		border-style: dashed;
+		/* 有些瀏覽器不把變淡的按鈕的按下送出來：讓它落到格子上，才收得掉小窗。 */
+		pointer-events: none;
 	}
 	.cell.sel {
 		outline: 2px solid var(--sel, #19b4d8);
@@ -1087,6 +1157,12 @@
 	.kind {
 		min-height: 26px;
 		font-size: 12px;
+	}
+	/* 只能用一種環節的大類（拋投、騰翻、跳躍）：種類直接寫好，不能選。 */
+	.kind.fixed {
+		display: inline-flex;
+		align-items: center;
+		padding: 0 4px;
 	}
 	/* 改環節：在環節列下面另起一行，跟按鈕那一欄對齊。 */
 	.edit {

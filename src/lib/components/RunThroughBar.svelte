@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」和提示。
+	// 記錄頁和總表最上面那一排：「＋ 記一次全上」、「刪掉上一次全上」。提示走編輯器唯一的提示（session.notice）。
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上（不拆開），提示寫出刪了這天第幾次全上，幾秒內可以救回。
 	// 雲端流程的記錄者（#258）換成「刪掉我上一次全上記的」：只刪自己在這天最後記過的那次全上記的組（別人記的不刪）。
 	// 一起記全上（#262）：有人在記（自己不在表裡）時上面一條藍的「● 王教練在記今天第 3 次全上（1:43 開的）」＋「加入，記別的組」
@@ -7,23 +7,21 @@
 	import { lastRunThrough, runThroughsOn } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import type { Flash } from '#lib/flash.svelte.js';
 	import { localDate } from '#lib/local-date.js';
 	import { runNumber, startClock } from '#lib/run-keys.js';
 	import type { RunView } from '#lib/server-api.js';
 	import Modal from './Modal.svelte';
-	import RecordNotice, { removeWithRestore, type Notice } from './RecordNotice.svelte';
+	import { removeWithRestore } from './record-notice';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 選的日期（YYYY-MM-DD）。 */
 		date: string;
-		/** 這一排的提示（存好全上的「已存這次全上」也放這裡）。 */
-		notice: Flash<Notice>;
 		/** 按「＋ 記一次全上」：join 是要加入的那次（雲端流程，#262），沒給是開新的。 */
 		onrecord: (join?: RunView) => void;
 	}
 
-	let { date, notice, onrecord }: Props = $props();
+	let { date, onrecord }: Props = $props();
 
 	const session = getEditorSession();
 	/** 開著的雲端流程（本機流程是 null）。 */
@@ -64,7 +62,7 @@
 	function removeRun() {
 		removeWithRestore(
 			ask,
-			notice,
+			session,
 			`已刪掉第 ${runsOn()} 次全上`,
 			{ name: 'deleteLastRunThrough', args: [date] },
 			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
@@ -89,7 +87,7 @@
 		const { n, ids } = myLastRun!;
 		removeWithRestore(
 			ask,
-			notice,
+			session,
 			`已刪掉你在第 ${n} 次全上記的 ${ids.length} 欄`,
 			{ name: 'deleteAttempts', args: [ids] },
 			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
@@ -131,8 +129,7 @@
 	{:else}
 		<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
 	{/if}
-	<RecordNotice {notice} />
-	{#if ask.error}<span class="error" role="alert">{ask.error}</span>{/if}
+	{#if ask.error}<span class="error" {@attach revealAlert(ask.failures)}>{ask.error}</span>{/if}
 </div>
 
 <style>

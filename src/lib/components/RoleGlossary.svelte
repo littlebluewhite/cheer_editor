@@ -4,9 +4,11 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { roleGlossary, type CustomRole } from '#lib/core';
 	import CharCount from './CharCount.svelte';
+	import { commitField, customRoleNameField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		onclose: () => void;
@@ -27,10 +29,12 @@
 	/** 被擋的原因，和刪有人用的角色時等教練確認的清單。 */
 	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
 
-	/** 改自訂角色的名稱或意思；被擋就把輸入框還原。 */
-	function edit(role: CustomRole, patch: Partial<Pick<CustomRole, 'name' | 'meaning'>>, input: HTMLInputElement) {
-		const r = ask.send({ name: 'updateCustomRole', args: [role.id, { name: role.name, meaning: role.meaning, ...patch }] });
-		if (r.kind !== 'ok') input.value = patch.name !== undefined ? role.name : role.meaning;
+	/** 改自訂角色的意思；被擋就把輸入框還原，原因寫在表下面。 */
+	function meaningField(role: CustomRole) {
+		return commitField(ask, null, {
+			send: (text) => ({ name: 'updateCustomRole', args: [role.id, { name: role.name, meaning: text }] }),
+			actual: () => role.meaning
+		});
 	}
 
 	function remove(role: CustomRole) {
@@ -71,7 +75,7 @@
 									aria-label="「{custom.name}」的名稱"
 									value={custom.name}
 									bind:this={roleInputs[custom.id]}
-									onchange={(e) => edit(custom, { name: e.currentTarget.value }, e.currentTarget)}
+									{@attach customRoleNameField(ask, custom)}
 								/><CharCount field="roleName" input={roleInputs[custom.id]} value={custom.name} quiet /><small
 									class="tag">自訂</small
 								>
@@ -80,7 +84,7 @@
 								<input
 									aria-label="「{custom.name}」的意思"
 									value={custom.meaning}
-									onchange={(e) => edit(custom, { meaning: e.currentTarget.value }, e.currentTarget)}
+									{@attach meaningField(custom)}
 								/>
 							</td>
 							<td>
@@ -117,7 +121,7 @@
 			</div>
 			<p class="muted">自訂任務角色只存在這一支流程裡。在上面的表裡可以直接改名稱、意思，或按垃圾桶刪掉。</p>
 		</form>
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}
 </Modal>
 

@@ -10,6 +10,7 @@ import {
 	placeCue,
 	setMarkers,
 	setPositions,
+	updateAction,
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
@@ -221,11 +222,22 @@ describe('八拍表列印', () => {
 		expect(screen.getByRole('heading').textContent).toContain('小B');
 	});
 
-	it('選一個隊員時，他出發的那一列在動作下面多寫一行走位；全隊不寫', async () => {
+	it('什麼都沒有的八拍不是一條空白：寫「這幾拍沒有動作」，個人表寫他的名字（N59）', async () => {
+		render(PrintSheet, { flow: sample(), onclose: vi.fn(), print: vi.fn() });
+		expect(actionsCell(bodyRows()[2]).trim()).toBe('這幾拍沒有動作，也不用走位');
+		expect(actionsCell(bodyRows()[0])).not.toContain('沒有動作');
+		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm2' } });
+		const rows = bodyRows();
+		expect(actionsCell(rows.at(-1)!).trim()).toBe('這幾拍小B沒有動作，也不用走位');
+		// 有站位圖的那一列不是空白，不寫
+		expect(actionsCell(rows[1]).trim()).toBe('');
+	});
+
+	it('選一個隊員時，他出發的那一列在動作下面多寫一行走位；全隊不寫（出發只寫在站位圖的說明，#217）', async () => {
 		let flow = sample();
 		flow = flowOf(setPositions(flow, flow.formations[1].id, { m1: [1, 2] }));
 		render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
-		expect(screen.queryByText(/出發/)).toBeNull();
+		expect(actionsCell(bodyRows()[0])).not.toContain('出發');
 		await fireEvent.change(screen.getByLabelText('印誰'), { target: { value: 'm1' } });
 		const first = actionsCell(bodyRows()[0]);
 		expect(first).toContain('Lib');
@@ -244,7 +256,7 @@ describe('八拍表列印', () => {
 		const first = actionsCell(bodyRows()[0]);
 		expect(first).toContain('1-1& 到 1-8&・8 拍');
 		expect(first).toContain('1-1 出發 → 站位 2（2-1 到達）');
-		expect([...document.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['站位 1・1-1', '站位 2・2-1']);
+		expect([...document.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['站位 1・1-1', '站位 2・2-1（1-1 出發）']);
 		const down = within(screen.getByRole('group', { name: '技巧·Lib 的拍點' })).getByLabelText('拍子 down 1-1&・1 拍');
 		expect(down.textContent).toContain('1-1&');
 		// 別的寫法都沒有：「3 的 &」「第 5 拍」「1& 到 2」
@@ -441,6 +453,30 @@ describe('八拍表列印', () => {
 		it('跨到下一列的環節兩列各畫自己那一段，名字兩列都寫', () => {
 			render(PrintSheet, { flow: phased(), onclose: vi.fn(), print: vi.fn() });
 			expect(lines().map(phasesIn)[1]).toEqual([['環節 中段 2-1 到 2-2', '中段', '1 / 3']]);
+		});
+
+		it('金字塔疊著的環節往下多一排，跨列的在下一列也是同一排；沒疊的只有一排', () => {
+			// 中段「第一個」1-4 到 2-2，上法「第二個」1-7 到 2-1 疊在上面
+			let flow = flowOf(updateAction(phased(), 'x1', { category: 'pyramid' }));
+			flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 12, len: 6 } }));
+			render(PrintSheet, { flow, onclose: vi.fn(), print: vi.fn() });
+			const rows = (line: HTMLElement) =>
+				[...line.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => [p.textContent?.trim(), p.style.gridColumn, p.style.gridRow]);
+			const [first, second] = screen.getAllByRole('group', { name: '金字塔·Lib 的拍點' });
+			expect(rows(first)).toEqual([
+				['上法 延伸', '1 / 4', '1'],
+				['中段', '4 / 9', '1'],
+				['上法 第二個', '7 / 9', '2']
+			]);
+			expect(rows(second)).toEqual([
+				['中段', '1 / 3', '1'],
+				['上法 第二個', '1 / 2', '2']
+			]);
+		});
+
+		it('沒疊的環節都在第一排', () => {
+			render(PrintSheet, { flow: phased(), onclose: vi.fn(), print: vi.fn() });
+			expect(lines().flatMap((l) => [...l.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => p.style.gridRow))).toEqual(['1', '1', '1']);
 		});
 
 		it('個人表也印環節', async () => {

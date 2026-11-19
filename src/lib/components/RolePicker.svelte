@@ -1,7 +1,4 @@
 <script lang="ts" module>
-	/** 任務角色的快捷鍵，照名詞對照表的順序；超過的角色沒有快捷鍵。 */
-	const ROLE_KEYS = '1234567890qwertyuiop';
-	export const roleKey = (i: number) => ROLE_KEYS[i] ?? '';
 	/** 選單裡「＋自訂任務角色…」那一項。 */
 	const NEW: unique symbol = Symbol('new');
 </script>
@@ -17,8 +14,8 @@
 	interface Props {
 		label: string;
 		value: string | null;
-		/** 角色名稱和一句說明，照名詞對照表的順序。 */
-		roles: { name: string; meaning: string }[];
+		/** 角色名稱、一句說明、快捷鍵（跟著角色固定，沒有是空字串）、第幾群，照名詞對照表的順序。 */
+		roles: { name: string; meaning: string; key: string; group: number }[];
 		/** byKey：是按快捷鍵選的（外面可以跳到下一個人）。 */
 		onpick: (role: string | null, byKey: boolean) => void;
 		/** 選了「＋自訂任務角色…」。 */
@@ -26,6 +23,8 @@
 	}
 
 	let { label, value, roles, onpick, onnew }: Props = $props();
+	/** 最常見的角色字淡一點，特別的角色（主底、肩底、中層、三層…）一眼看得到。 */
+	const PLAIN = new Set(['底層', '上層']);
 	const names = $derived(roles.map((r) => r.name));
 
 	const uid = $props.id();
@@ -65,9 +64,13 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		if (e.ctrlKey || e.metaKey || e.altKey || composing(e)) return;
-		const at = ROLE_KEYS.indexOf(e.key.toLowerCase());
-		if (at >= 0 && at < names.length) choose(names[at], true);
-		else if (e.key === 'Backspace' || e.key === 'Delete') choose(null, true);
+		const key = e.key.toLowerCase();
+		const role = roles.find((r) => r.key && r.key === key);
+		if (role) choose(role.name, true);
+		// 數字鍵都是固定角色的：這個大類沒有那個角色（例如技巧的 4 肩底）就沒反應，也不交給頁面
+		else if (/^[0-9]$/.test(key)) {
+			/* 不做事 */
+		} else if (e.key === 'Backspace' || e.key === 'Delete') choose(null, true);
 		else if (e.key === 'Escape' && open) open = false;
 		else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
 			if (!open) toggle();
@@ -93,7 +96,7 @@
 		onclick={toggle}
 		{onkeydown}
 	>
-		<span class:none={!value}>{value ?? '（沒有任務）'}</span>
+		<span class:none={!value} class:plain={value !== null && PLAIN.has(value)} title={value ?? undefined}>{value ?? '（沒有任務）'}</span>
 	</button>
 	{#if open}
 		<!-- 按下去不要搶走按鈕的焦點，不然 focusout 先把選單關掉。 -->
@@ -112,10 +115,11 @@
 					role="option"
 					aria-selected={item === value}
 					class:active={k === active}
+					class:group-start={k > 1 && item !== NEW && roles[k - 1].group !== roles[k - 2].group}
 					onclick={() => choose(item)}
 					onmouseenter={() => (active = k)}
 				>
-					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roleKey(k - 1)}<kbd>{roleKey(k - 1)}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{roles[k - 1].meaning}</span>{/if}{/if}
+					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{roles[k - 1].meaning}</span>{/if}{/if}
 				</li>
 			{/each}
 		</ul>
@@ -158,6 +162,13 @@
 	.none {
 		color: var(--muted, #66718a);
 	}
+	button > span:not(.none) {
+		font-weight: 600;
+	}
+	button > span.plain {
+		font-weight: 400;
+		color: var(--ink-3, #3a4766);
+	}
 	ul {
 		/* 開在最上層（popover）：蓋掉瀏覽器給 popover 的置中、框線、顏色；寬度和位置由 place 給 */
 		position: fixed;
@@ -183,6 +194,19 @@
 		border-radius: 6px;
 		font-size: 13px;
 		cursor: pointer;
+	}
+	/* 群和群中間一條細線：撐人的、被撐的、保護的、其他、自訂 */
+	li.group-start {
+		margin-top: 9px;
+		position: relative;
+	}
+	li.group-start::before {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: 8px;
+		right: 8px;
+		border-top: 1px solid var(--line-soft, #e8ecf3);
 	}
 	li.active {
 		background: var(--sel-soft, #dcf4fa);

@@ -5,9 +5,11 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
+	import { commitField } from './commit-field';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
-	import { tick } from 'svelte';
+	import { revealAlert } from './reveal';
+	import { tick, untrack } from 'svelte';
 	import {
 		AUDIO_EXTENSIONS,
 		BROKEN_AUDIO,
@@ -18,11 +20,13 @@
 		MIN_TAPS,
 		audioOverlaps,
 		beatLines,
+		fitSegmentToAudio,
 		musicLength,
 		musicOverrunSec,
 		readSegmentNumber,
 		segmentSpans,
 		tapBpm,
+		type Flow,
 		type SegmentNumberField,
 		type SegmentPatch
 	} from '#lib/core';
@@ -39,6 +43,8 @@
 
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
+	/** 檢視模式：只能看設定、試聽，欄位和按鈕整塊停用。 */
+	const readonly = $derived(!session.editable);
 	/** 音樂檔（解碼好的、壞的、多長）從編輯器 module 的音樂檔庫拿：換流程會換一個，所以每次用都從 editor.music 拿。 */
 	const editor = getEditor();
 	/**
@@ -66,6 +72,12 @@
 	const length = $derived(music && musicLength(music));
 	/** 段比音樂檔長幾秒（從第一拍算）；還沒載入音樂是 0。 */
 	const overrun = $derived(music && audio ? musicOverrunSec(music, audio.durationSec) : 0);
+	/** 「照音樂長度算」按了也會被擋的原因（例如第一拍在音樂結束之後）：提醒就不叫人去按。 */
+	const fitBlocked = $derived.by(() => {
+		if (!overrun) return null;
+		const r = fitSegmentToAudio(flow, segmentId, editor.music.lengths);
+		return r.kind === 'blocked' ? r.message : null;
+	});
 	/** 這一段用到的那一截：音樂檔裡從第一拍到段尾（波形上標亮）。 */
 	const used = $derived({ startSec: music?.firstBeatSec ?? 0, endSec: (music?.firstBeatSec ?? 0) + (span?.durationSec ?? 0) });
 	/** 波形畫整個音樂檔（段比音樂長就畫到段尾），第一拍前面也點得到。 */
@@ -81,6 +93,14 @@
 	/** 跟這一段用同一個音樂檔、時間重疊的段：那一截會播兩次。 */
 	const overlaps = $derived(music ? audioOverlaps(flow, segmentId) : []);
 
+	/** 切好的那份流程：還是它（沒復原、沒再改）就在切段鈕下面寫切好了。提示泡泡被對話框蓋住，所以寫在這裡（N21）。 */
+	let splitFlow = $state.raw<Flow | null>(null);
+	const splitNote = $derived(splitFlow && session.flow === splitFlow ? `已${session.undoLabel}；要回原狀請按復原` : '');
+
+	function split() {
+		ask.send({ name: 'splitSegment', args: [segmentId, playback.sec] }, { done: () => (splitFlow = session.flow) });
+	}
+
 	/** 取消時換一個值，讓欄位照流程重畫，回到原本的值。 */
 	let fieldsKey = $state(0);
 
@@ -92,18 +112,20 @@
 	}
 
 	/**
-	 * 一格數字欄位送出（key 是改段的哪個欄位）：打的字先由核心讀，讀得懂才改段。
-	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格。
+	 * 一格數字欄位（key 是改段的哪個欄位）：送出時打的字先由核心讀，讀得懂才改段。
+	 * 看不懂或被擋就把那一格還原成實際的值（actual 照那時候的流程算），原因記在那一格；再打字就收掉。
 	 */
-	function updateField(input: HTMLInputElement, field: string, key: SegmentNumberField, actual: () => number | undefined) {
-		const value = readSegmentNumber(key, input.value);
-		const handlers = {
-			field,
-			revert: () => (input.value = String(actual() ?? '')),
+	function numberField(field: string, key: SegmentNumberField, actual: () => number | undefined) {
+		return commitField(ask, field, {
+			send: (text) => {
+				const value = readSegmentNumber(key, text);
+				return value.kind === 'blocked'
+					? { blocked: value.message }
+					: { name: 'updateSegment', args: [segmentId, { [key]: value.value }, editor.music.lengths] };
+			},
+			actual: () => String(actual() ?? ''),
 			cancel: () => (fieldsKey += 1)
-		};
-		if (value.kind === 'blocked') return void ask.block(value.message, handlers);
-		ask.send({ name: 'updateSegment', args: [segmentId, { [key]: value.value }, editor.music.lengths] }, handlers);
+		});
 	}
 
 	/** 這一段排第幾（0 起）。 */
@@ -144,6 +166,8 @@
 	const TAP_RESET_SEC = 2;
 	let taps = $state<number[]>([]);
 	const tapped = $derived(tapBpm(taps));
+	/** 算出來的 BPM 超出範圍：不給套用，旁邊說為什麼。 */
+	const tapOutOfRange = $derived(tapped !== null && (tapped < MIN_BPM || tapped > MAX_BPM));
 
 	function tap() {
 		const now = Date.now() / 1000;
@@ -153,10 +177,16 @@
 
 	function applyTap() {
 		const bpm = tapped;
-		if (bpm === null) return;
+		if (bpm === null || tapOutOfRange) return;
 		taps = [];
 		update({ bpm });
 	}
+
+	/** 打開段設定時的 BPM：改了以後（而且有音樂檔）BPM 旁邊才出現「照音樂長度重算八拍數」（改 BPM 不自動改八拍數）。 */
+	const openedBpm = untrack(() => music?.bpm);
+	/** 打開時還沒有音樂、這次才第一次載入：八拍數是照那時的 BPM 自動算的，提醒先設好 BPM 再重算（不偵測 BPM）。 */
+	const openedAudioId = untrack(() => music?.audioId);
+	const firstLoaded = $derived(openedAudioId === null && !!music?.audioId && !!audio);
 
 	function fitToAudio() {
 		const lengths = editor.music.lengths;
@@ -166,16 +196,27 @@
 	}
 </script>
 
-<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose}>
-	{#snippet children(close)}
+<!-- 試聽不改流程：檢視模式（readonly，欄位整塊停用）時放到標題列，照樣能聽 -->
+{#snippet listen()}
+	<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
+	<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
+		>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
+	>
+{/snippet}
+
+<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose} {readonly}>
+	{#snippet head(close)}
 		<header class="dialog-head">
 			<h2>{span?.label} 設定</h2>
-			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒</span>{/if}
+			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒{readonly ? '・檢視模式只能看' : ''}</span>{/if}
+			{#if readonly && music}{@render listen()}{/if}
 			{#if playback.playing}
 				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={() => playback.pause()}><Icon name="pause" size={14} />暫停</button>
 			{/if}
 			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
 		</header>
+	{/snippet}
+	{#snippet children()}
 
 		{#key fieldsKey}
 		{#if music && length}
@@ -191,6 +232,10 @@
 							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${BROKEN_AUDIO}）` : '（找不到音樂，請重新選檔）'}`
 							: '還沒載入'}
 					</span>
+					<!-- 段留著、變成沒有音樂檔的音樂段，播放只剩節拍器；算一步，可以復原。 -->
+					{#if music.audioId !== null}
+						<button type="button" onclick={() => update({ audioId: null })}>拿掉音樂</button>
+					{/if}
 				</div>
 				{#if otherAudio.length}
 					<div class="row">
@@ -213,7 +258,7 @@
 				<div class="row">
 					<label class="inline">
 						BPM
-						<input type="text" inputmode="decimal" value={music.bpm} onchange={(e) => updateField(e.currentTarget, 'BPM', 'bpm', () => music?.bpm)} />
+						<input type="text" inputmode="decimal" value={music.bpm} {@attach numberField('BPM', 'bpm', () => music?.bpm)} />
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
@@ -222,24 +267,29 @@
 							type="text"
 							inputmode="decimal"
 							value={music.firstBeatSec}
-							onchange={(e) => updateField(e.currentTarget, '第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
+							{@attach numberField('第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>
-					<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
-					<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
-						>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
-					>
+					{#if !readonly}{@render listen()}{/if}
+					{#if audio}
+						<!-- 改了 BPM（或剛載入音樂）才看得到；沒出現時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
+						{@const hide = music.bpm === openedBpm && !firstLoaded}
+						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} onclick={fitToAudio}>照音樂長度重算八拍數</button>
+					{/if}
 				</div>
+				{#if firstLoaded}
+					<p class="hint">八拍數照 {music.bpm} BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」</p>
+				{/if}
 				<div class="row">
 					<button type="button" onclick={tap}>敲擊測速</button>
 					<span class="hint" aria-live="polite">
 						{tapped !== null
-							? `點了 ${taps.length} 下，約 ${tapped} BPM`
+							? `點了 ${taps.length} 下，約 ${tapped} BPM${tapOutOfRange ? `：超出 ${MIN_BPM}–${MAX_BPM}，不能套用` : ''}`
 							: taps.length
 								? `再點 ${MIN_TAPS - taps.length} 下`
 								: `跟著音樂的拍子連點 ${MIN_TAPS} 下以上；停 ${TAP_RESET_SEC} 秒再點就重新算`}
 					</span>
-					<button type="button" disabled={tapped === null} onclick={applyTap}>套用{tapped !== null ? ` ${tapped} BPM` : ''}</button>
+					<button type="button" disabled={tapped === null || tapOutOfRange} onclick={applyTap}>套用{tapped !== null ? ` ${tapped} BPM` : ''}</button>
 				</div>
 				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
@@ -249,7 +299,7 @@
 					aria-label="波形"
 					viewBox={`${wave.startSec} 0 ${wave.lengthSec} 2`}
 					preserveAspectRatio="none"
-					onclick={clickWave}
+					onclick={readonly ? undefined : clickWave}
 				>
 					<rect class="used" x={used.startSec} width={used.endSec - used.startSec} y="0" height="2" />
 					<line class="mid" x1={wave.startSec} x2={wave.startSec + wave.lengthSec} y1="1" y2="1" />
@@ -269,7 +319,7 @@
 				<div class="row">
 					<label class="inline">
 						八拍數
-						<input type="text" inputmode="numeric" value={length.eights} onchange={(e) => updateField(e.currentTarget, '八拍數', 'eights', () => length?.eights)} />
+						<input type="text" inputmode="numeric" value={length.eights} {@attach numberField('八拍數', 'eights', () => length?.eights)} />
 					</label>
 					<label class="inline">
 						最後一個八拍有幾拍
@@ -277,7 +327,7 @@
 							type="text"
 							inputmode="numeric"
 							value={length.lastBeats}
-							onchange={(e) => updateField(e.currentTarget, '最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
+							{@attach numberField('最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
 						/>
 					</label>
 					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
@@ -285,13 +335,16 @@
 				</div>
 				{#if overrun > 0}
 					<p class="hint-warn" role="note">
-						這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。要剛好就按「照音樂長度算」。
+						{#if overrun >= (span?.durationSec ?? 0) - 0.05}這一段整段都在音樂檔結尾之後：播放時沒有聲音。{:else}這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。{/if}{fitBlocked
+							? `${fitBlocked}。`
+							: '要剛好就按「照音樂長度算」。'}
 					</p>
 				{/if}
 				<div class="row">
-					<button type="button" onclick={() => ask.send({ name: 'splitSegment', args: [segmentId, playback.sec] })}>從播放頭這個八拍切成兩段</button>
+					<button type="button" onclick={split}>從播放頭這個八拍切成兩段</button>
 					<span class="hint">切點在播放頭那個八拍的第 1 拍；後面的動作和站位搬到新的一段，BPM、第一拍接著算</span>
 				</div>
+				{#if splitNote}<p class="hint" role="status">{splitNote}</p>{/if}
 				{#each overlaps as o (o.label)}
 					<p class="hint-warn" role="note">
 						跟{o.label} 用同一個音樂檔，有 {o.sec.toFixed(1)} 秒重疊：那一截音樂會播兩次。
@@ -307,7 +360,7 @@
 							type="text"
 							inputmode="decimal"
 							value={span?.durationSec}
-							onchange={(e) => updateField(e.currentTarget, '長度（秒）', 'seconds', () => span?.durationSec)}
+							{@attach numberField('長度（秒）', 'seconds', () => span?.durationSec)}
 						/>
 					</label>
 					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>
@@ -324,8 +377,8 @@
 
 		{#if ask.question}<ConfirmList {ask} />{/if}
 
-		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" role="alert">{error}</p>{/each}
-		{#if ask.error}<p class="error" role="alert">{ask.error}</p>{/if}
+		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" {@attach revealAlert(ask.failures)}>{error}</p>{/each}
+		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}
 </Modal>
 
@@ -400,6 +453,10 @@
 	}
 	.listen {
 		margin-left: auto;
+	}
+	/* 「照音樂長度重算八拍數」沒改 BPM 時藏起來，但還佔著位置 */
+	.unchanged {
+		visibility: hidden;
 	}
 	.hint {
 		margin: 0;

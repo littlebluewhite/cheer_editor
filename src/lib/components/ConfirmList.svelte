@@ -2,6 +2,10 @@
 	// 問教練 module 的畫法：給 ask（一個問題實例）就畫它的問題。要確認是「確定／取消」，
 	// 要選是「保留舊紀錄／清掉重算／取消」；按了交給 ask 帶著回答再送一次。
 	// 「還沒存，要丟掉嗎」不是流程核心的問題：直接給 message、items、確定鈕的字、onconfirm、oncancel。
+	// 問題出現時焦點進來，放在取消（最不會出事的那顆，APG 的 alertdialog）；Enter 不會刪掉東西，Esc 就是取消。
+	// 答完問題收起來時焦點還在框裡，就還給問之前有焦點的地方。對話框裡的（focusCancel）由對話框放焦點。
+	import { untrack } from 'svelte';
+	import { composing } from '#lib/ime.js';
 	import type { Ask } from '#lib/ask.svelte.js';
 
 	type Props =
@@ -33,7 +37,7 @@
 		return {
 			message: q?.message ?? '',
 			items: q?.items ?? [],
-			confirmLabel: q?.choose ? '清掉重算' : ask.confirmLabel,
+			confirmLabel: q?.choose ? '清掉重算' : (q?.confirmLabel ?? ask.confirmLabel),
 			onconfirm: () => ask.answer(q?.choose ? 'clear' : 'confirm'),
 			onkeep: q?.choose ? () => ask.answer('keep') : undefined,
 			oncancel: () => ask.answer('cancel'),
@@ -43,9 +47,35 @@
 			cancelFirst: false
 		};
 	});
+
+	/** 問題出現：焦點放到取消（最後一顆鈕）；收起來時焦點還給原本的地方。 */
+	function takeFocus(box: HTMLElement) {
+		if (untrack(() => view.focusCancel)) return;
+		const before = document.activeElement as HTMLElement | null;
+		box.querySelector<HTMLButtonElement>('.buttons button:last-child')?.focus();
+		return () => {
+			const had = box.contains(document.activeElement);
+			queueMicrotask(() => {
+				const lost = had || document.activeElement === document.body || !document.activeElement;
+				if (lost && before?.isConnected && before !== document.body) before.focus();
+			});
+		};
+	}
 </script>
 
-<div class="confirm" role="alertdialog" aria-labelledby="{id}-q">
+<!-- 焦點在問句裡按 Esc＝取消（跟對話框一樣） -->
+<div
+	class="confirm"
+	role="alertdialog"
+	aria-labelledby="{id}-q"
+	tabindex="-1"
+	{@attach takeFocus}
+	onkeydown={(e) => {
+		if (e.key !== 'Escape' || composing(e)) return;
+		e.stopPropagation();
+		view.oncancel();
+	}}
+>
 	<p id="{id}-q">{view.message}</p>
 	{#if view.items.length}
 		<ul>

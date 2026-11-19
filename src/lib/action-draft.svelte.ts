@@ -4,6 +4,7 @@
 // 送出時開始、長度由核心讀（readStart、readLength），看不懂就是被擋，原因跟指令被擋一樣交給 ask。
 
 import {
+	actionLabel,
 	actionSeconds,
 	actionSlotAt,
 	atText,
@@ -21,7 +22,7 @@ import {
 	type Segment
 } from '#lib/core';
 import type { Ask } from '#lib/ask.svelte.js';
-import type { EditorSession } from '#lib/editor-session.svelte.js';
+import type { EditorSession, UpdateReason } from '#lib/editor-session.svelte.js';
 
 /** 播放頭（全域秒數）。 */
 interface Playhead {
@@ -49,11 +50,12 @@ interface Kept {
 	typed: Set<SlotField>;
 }
 
-/** 上次跟上的：選到的動作（同一個 id 改過也是新的）、選人（session 每次選都換一個新的陣列）、播放頭那一格、自訂任務角色。 */
+/** 上次跟上的：選到的動作（同一個 id 改過也是新的）、選人（session 每次選都換一個新的陣列）、播放頭那一格和它那段的種類、自訂任務角色。 */
 interface Seen {
 	action: Action | null;
 	selection: string[];
 	slot: string;
+	kind: Segment['kind'] | undefined;
 	roles: Flow['customRoles'];
 }
 
@@ -234,12 +236,24 @@ export class ActionDraft {
 		this.#setMembers(this.#draft.members.filter((_, j) => j !== i));
 	}
 
-	/** 「從別的動作複製人」：連任務角色和組一起換進來。 */
+	/**
+	 * 「從別的動作複製人」：連任務角色和組一起換進來。改動作時馬上送出（整批取代不問，會動到紀錄才問），
+	 * 換成功就提示「已取代…」，旁邊有「復原」。新增時只換草稿的人。
+	 */
 	copyMembers(source: Action) {
 		this.#setMembers(source.members.map((m) => ({ ...m })));
+		const before = this.#session.flow;
+		this.update(() => {
+			if (this.#session.flow === before) return;
+			const text = `已取代：人換成「${actionLabel(source)}」的 ${source.members.length} 人`;
+			this.#session.toast(text, { label: '復原', name: '復原取代的人' });
+		});
 	}
 
-	/** 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。 */
+	/**
+	 * 新增動作（「新增動作」鈕、在名稱、開始、長度欄按 Enter）：成功就選到新的動作，播放頭跳到它的結束（下一個動作從這裡接）。
+	 * 選到的人清掉：下一次拖人不會整隊一起走。
+	 */
 	add() {
 		const segment = this.#segment;
 		if (this.#action || !segment) return;
@@ -249,6 +263,7 @@ export class ActionDraft {
 		this.ask.send({ name: 'addAction', args: [input.value] }, {
 			done: (r) => {
 				this.#session.selectAction(r.id);
+				this.#session.selectMembers([]);
 				const flow = this.#session.flow!;
 				this.#playhead.seek(actionSeconds(flow, flow.actions.find((a) => a.id === r.id)!).endSec);
 				this.#kept = null;
@@ -272,8 +287,8 @@ export class ActionDraft {
 		this.#session.selectAction(null);
 	}
 
-	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原。新增時什麼都不做（等按「新增動作」）。 */
-	update() {
+	/** 改選到的動作：馬上送給流程核心；被擋（或問了按取消）就還原，成功就叫 done。新增時什麼都不做（等按「新增動作」）。 */
+	update(done?: () => void) {
 		const action = this.#action;
 		const segment = this.#segment;
 		if (!action || !segment) return;
@@ -281,18 +296,27 @@ export class ActionDraft {
 		const input = this.#read(segment);
 		const revert = () => this.#reset();
 		if (input.kind === 'blocked') return void this.ask.block(input.message, { revert });
-		this.ask.send({ name: 'updateAction', args: [id, input.value] }, { revert });
+		this.ask.send({ name: 'updateAction', args: [id, input.value] }, { revert, done });
+	}
+
+	/** 換成另一支流程（開檔、救回草稿）：上一支沒送出的草稿、收起來的草稿都不要了，從空白的重來。 */
+	restart() {
+		this.#seen = null;
+		this.#kept = this.#added = null;
+		this.follow();
 	}
 
 	/**
 	 * session 換了流程或選取、播放頭動了：草稿跟上。
 	 * 換了選到的動作（或回到新增）：草稿照動作重設；紅字和問題收掉。
 	 * 回到新增時拿回去選別的動作前收起來的草稿（復原掉剛新增的動作時，拿回送出的草稿），沒有就是空白的。
+	 * reason：session 為什麼叫（播放頭動了是沒給）。只有復原（undo）才算「復原掉剛新增的動作」；
+	 * 按刪除、段縮短刪掉它不算，表單不帶它的字（N20）。
 	 * 新增時：自訂任務角色改名、刪掉，草稿裡的人跟著換名字、變成沒有任務；人跟著選的人；
-	 * 開始和長度跟著播放頭那一格（打過字、正有焦點的欄位不跟）。
+	 * 開始和長度跟著播放頭那一格（打過字、正有焦點的欄位不跟；換到另一種段時打過字的也跟）。
 	 * （改動作時草稿照動作重設：動作裡的人核心已經改好了。）
 	 */
-	follow() {
+	follow(reason?: UpdateReason) {
 		const flow = this.#session.flow;
 		if (!flow) {
 			this.#seen = null;
@@ -304,11 +328,14 @@ export class ActionDraft {
 		const slot = this.#slot;
 		const slotKey = slot ? `${slot.segmentId}:${slot.start}:${slot.length}` : '';
 		const seen = this.#seen;
-		this.#seen = { action, selection, slot: slotKey, roles: flow.customRoles };
+		const kind = this.#segment?.kind;
+		this.#seen = { action, selection, slot: slotKey, kind, roles: flow.customRoles };
 		if (!seen || action !== seen.action) {
 			if (seen && !seen.action) this.#kept = this.#keep();
 			if (action?.id !== seen?.action?.id) this.#categoryChanged = null;
-			const undone = seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
+			const undone = reason === 'undo' && seen?.action && this.#added?.id === seen.action.id && !flow.actions.some((a) => a.id === seen.action!.id);
+			// 復原掉剛新增的動作：新增時清掉的人也選回來（草稿的人跟著選取）
+			if (undone) this.#session.selectMembers(this.#added!.kept.draft.members.map((m) => m.memberId));
 			this.#reset(undone ? this.#added!.kept : this.#kept);
 			this.ask.clear();
 			return;
@@ -318,6 +345,8 @@ export class ActionDraft {
 		if (selection !== seen.selection) {
 			this.#set('members', this.#fromSelection(this.#draft.members, this.#draft.category));
 		}
+		// 播放頭換到另一種段（音樂段八拍、口號段秒）：打過的開始、長度是舊段的寫法，看不懂，改回跟著播放頭。
+		if (kind !== seen.kind) this.#typed.clear();
 		if (slotKey !== seen.slot) this.#toSlot();
 	}
 

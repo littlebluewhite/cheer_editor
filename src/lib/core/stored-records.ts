@@ -55,9 +55,14 @@ export function checkRecord(flow: Flow, record: StoredAttempt): CheckedAttempt {
 	const fits = whoProblem(action, attempt.who);
 	if (fits) return dropped(fits);
 	const phaseIds = new Set(action.successRate.phases.map((p) => p.id));
+	// 空著的環節（blanks）跟記號一樣：指到不在的環節的拿掉；記號和空著的都丟光了，整筆不存。
 	const marks = Object.entries(attempt.marks ?? {}).filter(([id]) => phaseIds.has(id));
-	if (marks.length === 0 && Object.keys(attempt.marks ?? {}).length > 0) return dropped('記號打的環節都被刪掉了');
-	const kept = marks.length === Object.keys(attempt.marks).length ? attempt : { ...attempt, marks: Object.fromEntries(marks) };
+	const blanks = (attempt.blanks ?? []).filter((id) => phaseIds.has(id));
+	const had = Object.keys(attempt.marks ?? {}).length + (attempt.blanks?.length ?? 0);
+	if (marks.length === 0 && blanks.length === 0 && had > 0) return dropped('記號打的環節都被刪掉了');
+	const { blanks: _, ...rest } = attempt;
+	const kept =
+		marks.length + blanks.length === had ? attempt : { ...rest, marks: Object.fromEntries(marks), ...(blanks.length && { blanks }) };
 	const problem = attemptProblem(action, kept);
 	if (problem) return dropped(problem);
 	return { kind: 'ok', record: kept === attempt ? record : { actionId, attempt: kept } };

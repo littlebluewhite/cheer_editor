@@ -3,21 +3,31 @@
 // 畫面時鐘（nextFrame）是 adapter：瀏覽器用 requestAnimationFrame，測試手動撥一格。
 
 import {
+	actionRange,
 	firstBeatPreview,
 	playbackPlan,
 	playStartSec,
-	repeatSpan,
+	rangeEnd,
+	rangeSeconds,
 	resumeSec,
 	snapToBeat,
 	stepPlayhead,
 	totalSeconds,
 	type Action,
-	type Flow
+	type Flow,
+	type RepeatRange,
+	type TimePosition
 } from '#lib/core';
 import type { AudioEngine } from '#lib/audio/engine.js';
-import { createPlayer, type Player } from '#lib/audio/player.js';
+import { createPlayer, type Lap, type Player } from '#lib/audio/player.js';
 import type { SessionPlayback } from '#lib/editor-session.svelte.js';
-import { loadLatencyMs, MAX_LATENCY_MS, saveLatencyMs } from '#lib/local-settings.js';
+import {
+	loadLatencyMs,
+	loadReturnOnStop,
+	MAX_LATENCY_MS,
+	saveLatencyMs,
+	saveReturnOnStop
+} from '#lib/local-settings.js';
 
 /** 播放速度可以選的：正常、0.75x、0.5x（慢速時音高不變）。 */
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -41,19 +51,23 @@ export class Playback implements SessionPlayback {
 	#metronome = $state(true);
 	/** 播放速度：1、0.75、0.5（音高不變）。不進流程檔。 */
 	#rate = $state(1);
-	/** 重複：選了動作就重複那個動作，沒選就重複播放頭所在的八拍。不進流程檔。 */
+	/** 重複：開著就一直播重複範圍。要有完整的重複範圍才開得了。不進流程檔。 */
 	#repeat = $state(false);
-	/** 重複播的那段從哪一秒開始（播到結尾跳回這裡）。 */
-	#loopStart = 0;
+	/** 重複範圍（A 到 B）；只放了 A 時 b 是 null。不進流程檔，換流程就拿掉。 */
+	#range = $state<RepeatRange | null>(null);
 	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
 	#previewing = $state(false);
 	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
 	#latencyMs = $state(loadLatencyMs());
+	/** 起播點：這次從哪一秒開始播（播放中點八拍尺跳過去也算）。停下來回到這裡。 */
+	#startSec = $state(0);
+	/** 停下來回到起播點：存在這台電腦，預設開著。 */
+	#returnOnStop = $state(loadReturnOnStop());
 
 	/**
 	 * flow：現在的流程；createEngine：建音訊引擎（第一次播放時才建）。
 	 * moved：播放頭動了要叫的（編輯器 module 接上：動作表單的草稿跟著播放頭）。
-	 * selectedAction：選著的動作（「重複」播它）。
+	 * selectedAction：選著的動作（沒有重複範圍時按「重複」，範圍拉成它）。
 	 */
 	constructor(
 		flow: () => Flow | null,
@@ -108,6 +122,26 @@ export class Playback implements SessionPlayback {
 		return this.#latencyMs;
 	}
 
+	/** 重複範圍現在在哪（全域秒數）；只放了 A 時 b 是 null。 */
+	get range(): { a: number; b: number | null } | null {
+		const f = this.#flow();
+		return f && this.#range && rangeSeconds(f, this.#range);
+	}
+
+	/** 「重複」按得下去：有完整的重複範圍，或選著動作（範圍拉成它）。 */
+	get canRepeat(): boolean {
+		return this.range?.b != null || this.#selectedAction() !== null;
+	}
+
+	/** 起播點（全域秒數）；沒在播是 null。 */
+	get startSec(): number | null {
+		return this.#playing ? this.#startSec : null;
+	}
+
+	get returnOnStop(): boolean {
+		return this.#returnOnStop;
+	}
+
 	#getPlayer(): Player {
 		this.#player ??= createPlayer(this.#createEngine());
 		return this.#player;
@@ -115,23 +149,27 @@ export class Playback implements SessionPlayback {
 
 	/**
 	 * 從播放頭開始播；已經播完就從頭。沒有段時沒東西可以播。一定由按鈕或空白鍵觸發。
-	 * 重複開著：只播到那段的結尾（#frame 再跳回開頭）；播放頭不在那段裡就從那段開始。
+	 * 重複開著：只播到 B，接著從 A 一直重複（下一圈先排好，圈和圈之間不停）；播放頭不在範圍裡就從 A 開始。
 	 */
 	play() {
+		this.#run();
+		this.#startSec = this.#at;
+	}
+
+	/** 照現在的設定從播放頭排聲音（開始播，或播放中改了節拍器、速度、流程時重排）；起播點不動。 */
+	#run() {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
 		this.#sec = playStartSec(f, this.#sec);
-		let until = Infinity;
-		const span = this.#repeat ? repeatSpan(f, this.#sec, this.#selectedAction()) : null;
-		if (span) {
-			if (this.#sec < span.startSec || this.#sec >= span.endSec - 0.01) this.#sec = span.startSec;
-			this.#loopStart = span.startSec;
-			until = span.endSec;
-		}
-		this.#getPlayer().start(playbackPlan(f, this.#sec, until), {
+		const span = this.#activeRange();
+		// 重複開著只在範圍裡播：播放頭、起播點在外面就是 A
+		if (span && outside(span, this.#sec)) this.#sec = span.a;
+		if (span && outside(span, this.#startSec)) this.#startSec = span.a;
+		this.#getPlayer().start(playbackPlan(f, this.#sec, span?.b), {
 			fromSec: this.#sec,
 			metronome: this.#metronome,
-			rate: this.#rate
+			rate: this.#rate,
+			loop: span ? this.#nextLap : undefined
 		});
 		if (!this.#playing) {
 			this.#playing = true;
@@ -153,30 +191,50 @@ export class Playback implements SessionPlayback {
 		this.#sec = snapToBeat(f, this.#sec);
 	}
 
-	/** 播放鍵：播放中就暫停，不然播放。 */
-	toggle() {
-		if (this.#playing) this.pause();
-		else this.play();
+	/**
+	 * 播放鍵：播放中就停下，不然播放。停下時照「停下來回到起播點」的開關回去或留在原地；
+	 * flip（Shift＋空白鍵）：做跟開關相反的事。
+	 */
+	toggle(flip = false) {
+		if (!this.#playing) return this.play();
+		this.pause();
+		if (this.#returnOnStop !== flip) this.#backToStart();
 	}
 
 	/**
-	 * 空白鍵：跟播放鍵一樣。dialogOpen：對話框開著時只能暫停（不在對話框後面開始播）。
+	 * 空白鍵：跟播放鍵一樣（flip：按著 Shift）。dialogOpen：對話框開著時只能停（不在對話框後面開始播）。
 	 * 回傳有沒有用到這個鍵（沒用到就照瀏覽器原本的）。
 	 */
-	space(dialogOpen: boolean): boolean {
+	space(dialogOpen: boolean, flip = false): boolean {
 		if (dialogOpen && !this.#playing) return false;
-		this.toggle();
+		this.toggle(flip);
 		return true;
 	}
 
-	/** 跳到某一秒（夾在 0 到流程結尾之間）；播放中就從那裡重新排聲音，跳到結尾就是播完了，停下（不從頭重播）。 */
+	/** 開關「停下來回到起播點」；存在這台電腦。 */
+	setReturnOnStop(on: boolean) {
+		this.#returnOnStop = on;
+		saveReturnOnStop(on);
+	}
+
+	/** 播放頭回到起播點（段變短了就夾回流程裡）。 */
+	#backToStart() {
+		const f = this.#flow();
+		if (f) this.#sec = resumeSec(f, this.#startSec).sec;
+	}
+
+	/**
+	 * 跳到某一秒（夾在 0 到流程結尾之間）；播放中就從那裡重新排聲音（起播點跟著過去），
+	 * 跳到結尾就是播完了，停下（不從頭重播，也不回起播點）。
+	 * 重複開著時只在範圍裡播：播放中跳到範圍外面（包括結尾）就跳回 A；停著時可以跳出去看，按播放還是從 A 播。
+	 */
 	seek(sec: number) {
 		const f = this.#flow();
 		if (!f) return;
 		const { sec: at, ended } = resumeSec(f, sec);
 		this.#sec = at;
 		if (!this.#playing) return;
-		if (ended) this.pause();
+		if (ended && !this.#activeRange()) this.pause();
 		else this.play();
 	}
 
@@ -216,19 +274,108 @@ export class Playback implements SessionPlayback {
 	/** 開關節拍器；播放中就照新的設定重排。 */
 	setMetronome(on: boolean) {
 		this.#metronome = on;
-		if (this.#playing) this.play();
+		if (this.#playing) this.#run();
 	}
 
-	/** 開關重複；播放中就照新的設定重排。 */
+	/**
+	 * 開關重複；播放中就照新的設定重排。沒有重複範圍時：選著動作就把範圍拉成那個動作，沒選就開不了。
+	 * 已經有範圍就只是開關，不換掉範圍。
+	 */
 	setRepeat(on: boolean) {
+		const f = this.#flow();
+		const action = this.#selectedAction();
+		if (on && this.range?.b == null) {
+			if (!f || !action) return;
+			this.#range = actionRange(action);
+		}
+		this.#setRepeatOn(on);
+	}
+
+	/** A：重複範圍從播放頭最近的整拍開始（流程結尾不行，後面放不了 B）。原本的 B 不在它後面就拿掉（重複也關掉），再放一次 B。 */
+	setA() {
+		const f = this.#flow();
+		if (!f || !this.canSetA) return;
+		const a = rangeEnd(f, this.#sec);
+		const range = this.#range && rangeSeconds(f, { a, b: this.#range.b });
+		this.#range = { a, b: range ? this.#range!.b : null };
+		// 範圍變了才重排（重複關著時聲音不受影響，不用重排）
+		if (!range) {
+			if (this.#repeat) this.#setRepeatOn(false);
+		} else if (this.#repeat && this.#playing) this.#run();
+	}
+
+	/** B：重複範圍到播放頭最近的整拍為止，重複自己打開；播放中就馬上跳回 A 開始重複。要先有 A，B 要在 A 後面；不然不動。 */
+	setB() {
+		const f = this.#flow();
+		if (!f || !this.#range) return;
+		if (!this.#setRange(f, { a: this.#range.a, b: rangeEnd(f, this.#sec) })) return;
+		if (this.#playing) this.seek(this.range!.a);
+	}
+
+	/** A 按得下去：有段，播放頭最近的整拍不是流程結尾。 */
+	get canSetA(): boolean {
+		const f = this.#flow();
+		return !!f?.segments.length && snapToBeat(f, this.#sec) < totalSeconds(f) - 1e-6;
+	}
+
+	/** B 按得下去：有 A，播放頭最近的整拍在 A 後面。 */
+	get canSetB(): boolean {
+		const f = this.#flow();
+		return !!f && !!this.#range && !!rangeSeconds(f, { a: this.#range.a, b: rangeEnd(f, this.#sec) });
+	}
+
+	/** 在八拍尺上拉出重複範圍（兩頭吸到整拍，可以倒著拉），重複自己打開。不到一格（一拍、口號段 0.1 秒）就不動。 */
+	setRange(fromSec: number, toSec: number) {
+		const f = this.#flow();
+		if (!f?.segments.length) return;
+		this.#setRange(f, { a: rangeEnd(f, Math.min(fromSec, toSec)), b: rangeEnd(f, Math.max(fromSec, toSec)) });
+	}
+
+	/**
+	 * 開始拖重複範圍的一頭（end）：回傳拖的時候每動一下叫的函式。另一頭照按下去時存的位置不動（不重新吸整拍），
+	 * 拖過另一頭就對調。還沒有完整的範圍時不動。
+	 */
+	dragRangeEnd(end: 'a' | 'b'): (sec: number) => void {
+		const fixed = end === 'a' ? this.#range?.b : this.#range?.a;
+		return (sec) => {
+			const f = this.#flow();
+			if (!f?.segments.length || !fixed) return;
+			const moved = rangeEnd(f, sec);
+			if (!this.#setRange(f, { a: fixed, b: moved })) this.#setRange(f, { a: moved, b: fixed });
+		};
+	}
+
+	/** 換成這個範圍、打開重複；不到一格就不動，回傳 false。 */
+	#setRange(f: Flow, range: RepeatRange): boolean {
+		if (!rangeSeconds(f, range)?.b) return false;
+		// 拖的時候每動一下都會叫；吸到的整拍沒變就不重排聲音
+		if (this.#repeat && samePosition(this.#range?.a, range.a) && samePosition(this.#range?.b, range.b)) return true;
+		this.#range = range;
+		this.#setRepeatOn(true);
+		return true;
+	}
+
+	/** ✕：拿掉重複範圍，重複也關掉（播放中就接著往下播）。 */
+	clearRange() {
+		this.#range = null;
+		this.#setRepeatOn(false);
+	}
+
+	#setRepeatOn(on: boolean) {
 		this.#repeat = on;
-		if (this.#playing) this.play();
+		if (this.#playing) this.#run();
+	}
+
+	/** 正在重複的範圍（全域秒數）；重複關著、範圍不完整是 null。 */
+	#activeRange(): { a: number; b: number } | null {
+		const range = this.#repeat ? this.range : null;
+		return range?.b == null ? null : { a: range.a, b: range.b };
 	}
 
 	/** 換播放速度；播放中就照新的速度重排。 */
 	setRate(rate: number) {
 		this.#rate = rate;
-		if (this.#playing) this.play();
+		if (this.#playing) this.#run();
 	}
 
 	/**
@@ -244,10 +391,12 @@ export class Playback implements SessionPlayback {
 
 	// ---------- session 叫的 ----------
 
-	/** 換一支流程（開檔、新建、救回草稿、回首頁）：播放、試聽停下，播放頭回到開頭。 */
+	/** 換一支流程（開檔、新建、救回草稿、回首頁）：播放、試聽停下，播放頭回到開頭，重複範圍拿掉（段的 id 會跟上一支重複）。 */
 	opened() {
 		this.pause();
 		this.#sec = 0;
+		this.#range = null;
+		this.#repeat = false;
 	}
 
 	/**
@@ -262,28 +411,41 @@ export class Playback implements SessionPlayback {
 	/**
 	 * 換上改過、復原、重做的流程：段換了（換順序、刪段、改 BPM、長度）就把播放頭夾回流程裡（不回到 0），
 	 * 播放中就從夾住的地方照現在的段重排；夾到結尾就是播完了，停下。
+	 * 重複範圍跟著音樂走；它所在的段不見了（或換了順序、B 跑到 A 前面）就拿掉，重複也關掉。
 	 * 只看 segments 這個陣列換了沒：改人、改動作不重排（不能看整個流程換了沒，62f3f55）。
 	 */
 	changed(before: Flow) {
 		const f = this.#flow();
 		if (!f || f.segments === before.segments) return;
+		if (this.#range && !rangeSeconds(f, this.#range)) {
+			this.#range = null;
+			this.#repeat = false;
+		}
 		const { sec, ended } = resumeSec(f, this.#sec);
 		this.#sec = sec;
 		if (!this.#playing) return;
 		if (ended) this.pause();
-		else this.play();
+		else this.#run();
 	}
 
-	/** 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停（重複開著就跳回那段開頭接著播）。 */
+	/** 重複的下一圈：照現在的流程和重複範圍。重複關掉了、範圍不能用了就不再重複。 */
+	#nextLap = (): Lap | null => {
+		const f = this.#flow();
+		const span = this.#activeRange();
+		if (!f || !span) return null;
+		return { plan: playbackPlan(f, span.a, span.b), fromSec: span.a };
+	};
+
+	/**
+	 * 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停，開著「停下來回到起播點」就回去
+	 * （重複開著時播放器自己一圈接一圈播，不會停）。
+	 */
 	#frame = () => {
 		if (!this.#playing || !this.#player) return;
 		this.#sec = this.#player.tick(this.#latencyMs);
-		if (!this.#player.playing && this.#repeat) {
-			this.#sec = this.#loopStart;
-			this.play();
-		}
-		if (!this.#player.playing) this.#playing = false;
-		else this.#nextFrame(this.#frame);
+		if (this.#player.playing) return this.#nextFrame(this.#frame);
+		this.#playing = false;
+		if (this.#returnOnStop) this.#backToStart();
 	};
 
 	/** 試聽播完了沒（播放頭不動，只看播完）。 */
@@ -293,4 +455,13 @@ export class Playback implements SessionPlayback {
 		if (!this.#player.playing) this.#previewing = false;
 		else this.#nextFrame(this.#previewFrame);
 	};
+}
+
+/** sec 在不在重複範圍外面（剛好在 B 也算外面：從 B 播沒東西可以播）。 */
+function samePosition(p: TimePosition | null | undefined, q: TimePosition | null | undefined): boolean {
+	return !!p && !!q && p.segmentId === q.segmentId && Math.abs(p.at - q.at) < 1e-6;
+}
+
+function outside(span: { a: number; b: number }, sec: number): boolean {
+	return sec < span.a - 1e-6 || sec >= span.b - 0.01;
 }

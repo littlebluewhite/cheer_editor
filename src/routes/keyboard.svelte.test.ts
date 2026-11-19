@@ -1,7 +1,8 @@
 // 編輯畫面的鍵盤（#95）：空白鍵照一般網頁、輸入框裡的 ⌘Z 退回流程、方向鍵移人合成一步、Home／End、分頁。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, menuItem } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -29,7 +30,7 @@ async function space(el: Element | Window) {
 }
 
 describe('空白鍵', () => {
-	it('焦點在按鈕、連結、分頁、勾選框、選單、任務角色選單、輸入框、可編輯區上：照瀏覽器原本的行為，不播放', async () => {
+	it('焦點在打字的地方（輸入框、選單、任務角色選單、可編輯區）：照瀏覽器原本的行為，不播放', async () => {
 		setup();
 		// 點色條選動作，任務角色選單才出來
 		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
@@ -37,13 +38,11 @@ describe('空白鍵', () => {
 		editable.setAttribute('contenteditable', 'true');
 		editable.tabIndex = 0;
 		document.querySelector('.inspector')!.append(editable);
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		const targets = [
-			screen.getByRole('button', { name: '流程設定' }),
-			screen.getByRole('link', { name: /使用說明/ }),
-			tab('隊員'),
-			screen.getByLabelText('節拍器'),
 			screen.getByRole('combobox', { name: '小美 的任務角色' }),
 			screen.getByLabelText('延遲校正（毫秒）'),
+			screen.getByLabelText('播放速度'),
 			editable
 		];
 		for (const el of targets) {
@@ -56,6 +55,69 @@ describe('空白鍵', () => {
 			expect(await space(el)).toBe(true);
 			expect(playing()).toBe(false);
 		}
+	});
+
+	it('剛點過節拍器、重複、檢視、段按鈕：空白鍵是播放／暫停，那個按鈕沒被再按一次（#205）', async () => {
+		const session = setup();
+		const metronome = screen.getByLabelText('節拍器') as HTMLInputElement;
+		const repeat = screen.getByLabelText('重複') as HTMLInputElement;
+		const viewButton = screen.getByRole('button', { name: '檢視' });
+		const editButton = screen.getByRole('button', { name: '編輯' });
+		// 點過一次（狀態換了），焦點留在上面
+		for (const el of [metronome, repeat, viewButton, editButton]) {
+			await fireEvent.click(el);
+			el.focus();
+			const was = playing();
+			const states = [metronome.checked, repeat.checked, session.viewing];
+			expect(await fireEvent.keyDown(el, { key: ' ' }), el.outerHTML.slice(0, 60)).toBe(false);
+			// 瀏覽器是放開空白鍵才按下按鈕、切換勾選框：放開也攔下來
+			expect(await fireEvent.keyUp(el, { key: ' ' }), el.outerHTML.slice(0, 60)).toBe(false);
+			expect(playing()).toBe(!was);
+			expect([metronome.checked, repeat.checked, session.viewing]).toEqual(states);
+		}
+		if (playing()) await space(window);
+		// 段按鈕：點開段設定、關掉（焦點回到段按鈕），空白鍵播放，不重開段設定
+		const segment = screen.getByRole('button', { name: /^音樂 1/ });
+		segment.focus();
+		await fireEvent.click(segment);
+		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '關閉' }));
+		expect(document.activeElement).toBe(segment);
+		expect(await fireEvent.keyDown(segment, { key: ' ' })).toBe(false);
+		expect(await fireEvent.keyUp(segment, { key: ' ' })).toBe(false);
+		expect(playing()).toBe(true);
+		expect(screen.queryByRole('dialog')).toBeNull();
+	});
+
+	it('其他按鈕、連結、分頁上也一樣：空白鍵播放／暫停', async () => {
+		setup();
+		const targets = [screen.getByRole('button', { name: '八拍表' }), tab('隊員')];
+		for (const el of targets) {
+			const was = playing();
+			expect(await space(el), el.outerHTML.slice(0, 60)).toBe(false);
+			expect(playing()).toBe(!was);
+		}
+	});
+
+	// jsdom 不會照按鍵按下按鈕、打開連結：這裡只驗頁面沒攔下來（沒 preventDefault），交給瀏覽器
+	it('「選單」小窗裡 Tab 到的項目：空白鍵不拿去播放（按鈕照瀏覽器按下；使用說明是連結，空白鍵不打開它），Enter 交給瀏覽器（按下按鈕、打開連結）', async () => {
+		setup();
+		for (const name of ['流程設定', '使用說明']) {
+			const item = (await menuItem(name))!;
+			expect(await space(item), name).toBe(true);
+			expect(await fireEvent.keyUp(item, { key: ' ' }), name).toBe(true);
+			expect(playing()).toBe(false);
+			expect(await fireEvent.keyDown(item, { key: 'Enter' }), name).toBe(true);
+			expect(playing()).toBe(false);
+		}
+	});
+
+	it('對話框裡的按鈕：空白鍵照樣按下它（對話框開著時不播放）', async () => {
+		setup();
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+		const close = within(screen.getByRole('dialog')).getByRole('button', { name: '關閉' });
+		expect(await space(close)).toBe(true);
+		expect(await fireEvent.keyUp(close, { key: ' ' })).toBe(true);
+		expect(playing()).toBe(false);
 	});
 
 	it('焦點不在那些東西上（頁面本身、場上的人）：空白鍵播放／暫停', async () => {
@@ -91,8 +153,6 @@ describe('空白鍵', () => {
 		}
 		// Enter 照樣按下（瀏覽器自己按，不攔）
 		expect(await fireEvent.keyDown(bar, { key: 'Enter' })).toBe(true);
-		// 一般的按鈕（流程設定）放開空白鍵照樣按下
-		expect(await fireEvent.keyUp(screen.getByRole('button', { name: '流程設定' }), { key: ' ' })).toBe(true);
 	});
 
 	it('段設定開著時，空白鍵和段設定裡的暫停鈕都能暫停', async () => {
@@ -202,6 +262,23 @@ describe('方向鍵移人', () => {
 		// 第一批（合成一步）、m2、m1、改名、m1
 		expect(steps).toHaveLength(5);
 	});
+
+	it('檢視模式：點過人以後方向鍵照樣移播放頭，不說「檢視模式」', async () => {
+		const session = setup();
+		await fireEvent.click(screen.getByRole('button', { name: '檢視' }));
+		await fireEvent.pointerDown(dot('m1'), { clientX: 0, clientY: 0, button: 0 });
+		await fireEvent.pointerUp(dot('m1'), { clientX: 0, clientY: 0 });
+		dot('m1').focus();
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		const before = session.flow;
+		expect(position()).toBe('音樂 1 1-1');
+		expect(await fireEvent.keyDown(dot('m1'), { key: 'ArrowRight' })).toBe(false);
+		expect(position()).toBe('音樂 1 1-2');
+		await fireEvent.keyDown(dot('m1'), { key: 'ArrowLeft', shiftKey: true });
+		expect(position()).toBe('音樂 1 1-1');
+		expect(session.flow).toBe(before);
+		expect(screen.queryByRole('status')?.textContent ?? '').not.toContain('檢視模式');
+	});
 });
 
 describe('Home／End、分頁', () => {
@@ -215,6 +292,7 @@ describe('Home／End、分頁', () => {
 		await fireEvent.keyDown(window, { key: 'Home' });
 		expect(position()).toBe('音樂 1 1-1');
 		// 輸入框裡的 Home／End 是移游標
+		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		await fireEvent.keyDown(screen.getByLabelText('延遲校正（毫秒）'), { key: 'End' });
 		expect(position()).toBe('音樂 1 1-1');
 	});
@@ -239,6 +317,75 @@ describe('Home／End、分頁', () => {
 		expect(tab('隊員').getAttribute('aria-selected')).toBe('true');
 		expect(document.activeElement).toBe(tab('隊員'));
 		expect(position()).toBe('音樂 1 1-1');
+	});
+});
+
+describe('焦點在哪、按哪個鍵：誰用這個鍵只有一份規則（G 群）', () => {
+	type Effect = '移播放頭' | '播放' | '清選取' | '不動';
+	const targets: Record<string, () => Promise<HTMLElement>> = {
+		// 剛點過的勾選框（N22）：它只用空白鍵，但編輯頁的空白鍵是播放（#205）
+		勾選框: async () => screen.getByLabelText('節拍器'),
+		下拉選單: async () => (await fireEvent.click(tab('隊員')), screen.getByLabelText('第 1 位隊員的性別')),
+		按鈕: async () => screen.getByRole('button', { name: '八拍表' }),
+		文字欄: async () => (await fireEvent.click(tab('隊員')), screen.getByLabelText('第 1 位隊員的名字'))
+	};
+	const table: [string, string, Effect][] = [
+		['勾選框', 'Home', '移播放頭'],
+		['勾選框', 'ArrowLeft', '移播放頭'],
+		['勾選框', ' ', '播放'],
+		['勾選框', 'Escape', '清選取'],
+		['下拉選單', 'Home', '不動'],
+		['下拉選單', 'ArrowLeft', '不動'],
+		['下拉選單', ' ', '不動'],
+		['下拉選單', 'Escape', '清選取'],
+		['按鈕', 'Home', '移播放頭'],
+		['按鈕', 'ArrowLeft', '移播放頭'],
+		['按鈕', ' ', '播放'],
+		['按鈕', 'Escape', '清選取'],
+		['文字欄', 'Home', '不動'],
+		['文字欄', 'ArrowLeft', '不動'],
+		['文字欄', ' ', '不動'],
+		['文字欄', 'Escape', '不動']
+	];
+
+	it.each(table)('%s 按 %j：%s', async (target, key, effect) => {
+		const session = setup();
+		const el = await targets[target]();
+		await fireEvent.keyDown(window, { key: 'End' });
+		session.selectMembers(['m1']);
+		el.focus();
+		await fireEvent.keyDown(el, { key });
+		const now: Effect =
+			playing() ? '播放' : position() !== '結尾' ? '移播放頭' : !session.selectedMemberIds.length ? '清選取' : '不動';
+		expect(now).toBe(effect);
+	});
+
+	it('有問題（確認框）開著、焦點不在框裡時按 Esc：先收掉問題，選取還在（N18）', async () => {
+		const session = setup();
+		session.selectMembers(['m1']);
+		session.ask.send({ name: 'updateSegment', args: ['s1', { eights: 1, lastBeats: 6 }] });
+		await tick();
+		expect(screen.getByRole('alertdialog')).toBeTruthy();
+		(document.activeElement as HTMLElement | null)?.blur();
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(session.selectedMemberIds).toEqual(['m1']);
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(session.selectedMemberIds).toEqual([]);
+	});
+
+	it('問題出現時焦點進到確認框，放在「取消」（最不會出事的那顆）；按 Esc 取消，焦點回到原本的地方', async () => {
+		const session = setup();
+		const opener = screen.getByRole('button', { name: '八拍表' });
+		opener.focus();
+		session.ask.send({ name: 'updateSegment', args: ['s1', { eights: 1, lastBeats: 6 }] });
+		await tick();
+		const box = screen.getByRole('alertdialog');
+		expect(document.activeElement).toBe(within(box).getByRole('button', { name: '取消' }));
+		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+		await tick();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(document.activeElement).toBe(opener);
 	});
 });
 

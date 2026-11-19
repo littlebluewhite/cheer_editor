@@ -4,6 +4,9 @@ import type { UnsentRecords } from '#lib/offline-store.js';
 import { fakeOfflineStore, fakeServer, flush } from '#lib/test-fakes.js';
 import Account from './+page.svelte';
 
+// jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
+Element.prototype.scrollIntoView = () => {};
+
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: '我們這一隊今年一定會贏 go go' };
 const NEWER = '換一句新的話當密碼也很好記得住吧';
 const LEAKED = 'correct horse battery staple';

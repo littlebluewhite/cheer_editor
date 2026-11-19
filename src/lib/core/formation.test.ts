@@ -13,10 +13,11 @@ import {
 	formationTimes,
 	formationWalks,
 	insertFormation,
-	matchPrevious,
 	memberWalk,
 	moveFormation,
 	moveFormationHint,
+	groupPositions,
+	moveGroup,
 	moveMembers,
 	moveTargetText,
 	positionsAt,
@@ -375,6 +376,18 @@ describe('走位的時間', () => {
 	it('後一張在口號段：整段走', () => {
 		// 20 秒 → 30 秒（口號 1），整段 10 秒走 5 m
 		expectAt(walking(), 21, A, [4, 0.5]);
+	});
+
+	it('後一張在口號段開頭、前一段是音樂段：用前一段的 BPM 往前 8 拍出發，不從前一張整段走（#221）', () => {
+		// 開頭 → 25.6 秒（口號 1 的 0 秒）：前一段音樂 1 是 150 BPM，往前 8 拍是 22.4 秒
+		let flow = withSegments();
+		flow = okFlow(setPositions(flow, 'f1', { [A]: [0, 0] }));
+		flow = okFlow(insertFormation(flow, 25.6));
+		flow = okFlow(setPositions(flow, 'f2', { [A]: [4, 0] }));
+		expect(flow.formations[1]).toMatchObject({ segmentId: 's2', at: 0 });
+		expectAt(flow, 22.4, A, [0, 0]);
+		expectAt(flow, 24, A, [2, 0]);
+		expect(memberWalk(flow, 'f2', A)).toEqual({ depart: at('s1', 112), arrive: at('s2', 0) });
 	});
 
 	it('出發落進前一段：用後一張那段的 BPM 往前 8 拍', () => {
@@ -785,59 +798,38 @@ describe('設出發和到達', () => {
 	});
 });
 
-describe('跟上一張一樣', () => {
-	it('播放頭在站位上：選到的人改成上一張的位置，沒選到的人不動', () => {
-		const flow = okFlow(setPositions(walking(), 'f2', { [B]: [1, 1] }));
-		const r = matchPrevious(flow, 20.1, [A]);
+describe('一組人移到新位置（鏡像、對齊…共用）', () => {
+	/** 把每個人往右挪 1 m。 */
+	const right1 = (pos: Record<string, [number, number]>) =>
+		Object.fromEntries(Object.entries(pos).map(([id, [x, y]]) => [id, [x + 1, y] as [number, number]]));
+
+	it('播放頭在站位上：拿選到的人在那張的位置算新位置，改那張', () => {
+		const r = moveGroup(walking(), 20.1, right1(groupPositions(walking(), 20.1, [A, B])));
 		if (r.kind !== 'ok') throw new Error(r.message);
-		expect(r.flow.formations[1].pos).toEqual({ [A]: [0, 0], [B]: [1, 1] });
+		expect(r.flow.formations[1].pos).toEqual({ [A]: [5, 0], [B]: [-1, 0] });
 		expect(r.inserted).toBe(false);
 		expect(r.sec).toBe(20);
-		expect(r.carried).toBe(0);
 	});
 
-	it('播放頭不在站位上：先插一張（大家帶入走到的地方），選到的人改成上一張的位置', () => {
-		// 小A 16.8 秒（最後一個八拍）才出發，18 秒正走到一半。
-		const r = matchPrevious(walking(), 18.05, [A]);
+	it('播放頭不在站位上：先插一張（大家帶入走到的地方），拿那一刻的位置算；改完往後帶', () => {
+		// 18 秒小A 正走到一半（[1.5, 0] 附近），小B 站在 [-2, 0]。
+		const r = moveGroup(walking(), 18.05, right1(groupPositions(walking(), 18.05, [B])));
 		if (r.kind !== 'ok') throw new Error(r.message);
 		expect(r.inserted).toBe(true);
-		expect(r.flow.formations.map((f) => f.pos[A])).toEqual([
-			[0, 0],
-			[0, 0],
-			[4, 0],
-			[4, 5]
+		expect(r.flow.formations.map((f) => f.pos[B])).toEqual([
+			[-2, 0],
+			[-1, 0],
+			[-1, 0],
+			[-1, 0]
 		]);
-		// 小A 到這一拍都還站著，之後才走到原本的下一張。
-		expect(r.sec).toBe(18);
-		expectAt(r.flow, 17.6, A, [0, 0]);
-		expectAt(r.flow, 18, A, [0, 0]);
-		expectAt(r.flow, 20, A, [4, 0]);
+		expect(r.carried).toBe(2);
 	});
 
-	it('改完往後帶，回傳往後帶到幾張', () => {
-		const flow = okFlow(setPositions(walking(), 'f3', { [A]: [4, 0] }));
-		const r = matchPrevious(flow, 20, [A]);
-		if (r.kind !== 'ok') throw new Error(r.message);
-		expect(r.flow.formations.map((f) => f.pos[A])).toEqual([
-			[0, 0],
-			[0, 0],
-			[0, 0]
-		]);
-		expect(r.carried).toBe(1);
-	});
-
-	it('沒選人就擋下：先選人', () => {
-		expect(matchPrevious(walking(), 20, [])).toEqual({ kind: 'blocked', message: '先選人' });
-	});
-
-	it('播放頭在開頭那張就擋下：開頭那張前面沒有站位', () => {
-		const blocked = { kind: 'blocked', message: '開頭那張前面沒有站位' };
-		expect(matchPrevious(walking(), 0.1, [A])).toEqual(blocked);
-		expect(matchPrevious(twoMembers(), 0, [twoMembers().members[0].id])).toEqual(blocked);
-	});
-
-	it('找不到隊員就擋下', () => {
-		expect(matchPrevious(walking(), 20, ['nobody']).kind).toBe('blocked');
+	it('沒選人、找不到隊員就擋下；位置都沒變（也不用插站位）就擋下，不記一步', () => {
+		expect(moveGroup(walking(), 20, right1(groupPositions(walking(), 20, [])))).toEqual({ kind: 'blocked', message: '先選人' });
+		expect(moveGroup(walking(), 20, { nobody: [0, 0] }).kind).toBe('blocked');
+		expect(moveGroup(walking(), 20, groupPositions(walking(), 20, [A]))).toEqual({ kind: 'blocked', message: '位置都沒變' });
+		expect(moveGroup(walking(), 18.05, groupPositions(walking(), 18.05, [A])).kind).toBe('ok');
 	});
 });
 
@@ -986,7 +978,7 @@ describe('挪站位', () => {
 
 	it('要在前一張之後、後一張之前；開頭那張不能挪', () => {
 		const flow = walking();
-		const between = '站位 2 要挪到站位 1（1-1）之後、站位 3（口號 1 4.4 秒）之前';
+		const between = '站位 2 要挪到站位 1（音樂 1 1-1）之後、站位 3（口號 1 4.4 秒）之前';
 		const blocked = (message: string) => ({ kind: 'blocked', message });
 		expect(moveFormation(flow, 'f2', at('s1', 0))).toEqual(blocked(between));
 		expect(moveFormation(flow, 'f2', at('s2', 44))).toEqual(blocked(between));
@@ -1083,9 +1075,9 @@ describe('挪站位', () => {
 		}
 	});
 
-	it('能挪的範圍：前一張和後一張的站位時間，在別段就加段名', () => {
+	it('能挪的範圍：前一張和後一張的站位時間，一律寫是哪一段（T11）', () => {
 		const flow = walking();
-		expect(moveFormationHint(flow, 'f2')).toBe('可以挪到 1-1 之後、口號 1 4.4 秒 之前');
+		expect(moveFormationHint(flow, 'f2')).toBe('可以挪到 音樂 1 1-1 之後、口號 1 4.4 秒 之前');
 		expect(moveFormationHint(flow, 'f3')).toBe('可以挪到 音樂 1 7-3 之後');
 		expect(moveFormationHint(flow, 'f1')).toBe('開頭那張不能挪');
 	});

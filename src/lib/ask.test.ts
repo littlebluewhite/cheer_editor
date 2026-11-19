@@ -11,7 +11,7 @@ import {
 	type Flow
 } from '#lib/core';
 import { Ask, type SentStep } from './ask.svelte';
-import { flowOf, ratedSample } from './test-flows';
+import { flowOf, libSample, ratedSample } from './test-flows';
 
 // 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0011）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
 // 所以不算步驟 id：新東西照舊發下一個編號。亂數的 id 在核心測試（commands、flow-file）和 ask-ids.test.ts 測。
@@ -78,14 +78,25 @@ describe('送指令', () => {
 	it('要確認：留下問題（訊息、清單、不用選）', () => {
 		const { ask } = asker();
 		ask.send(removeX1);
-		expect(ask.question).toEqual({ message: '刪掉動作「技巧·Lib」會清掉 1 次紀錄', items: [], choose: false });
+		expect(ask.question).toEqual({ message: '刪掉動作「技巧·Lib」會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）', items: [], choose: false, confirmLabel: '確定' });
 		expect(ask.error).toBe('');
+	});
+
+	it('要確認的結果自己帶了確定鈕的字：照它的，不照問的地方給的（N19）', () => {
+		// libSample：Lib 1-1 到 1-8；音樂 1 只剩 6 拍只會裁短 Lib。
+		const state = { flow: libSample() };
+		const ask = new Ask((f) => (state.flow = f), { confirmLabel: '確定刪除', flow: () => state.flow });
+		ask.send({ name: 'updateSegment', args: ['s1', { eights: 1, lastBeats: 6 }] });
+		expect(ask.question?.confirmLabel).toBe('確定裁短');
+		ask.send({ name: 'deleteSegment', args: ['s1'] });
+		expect(ask.question?.confirmLabel).toBe('確定刪除');
 	});
 
 	it('要選：留下問題（要選）', () => {
 		const { ask } = asker();
 		ask.send(renameM1);
 		expect(ask.question?.choose).toBe(true);
+		expect(ask.question?.confirmLabel).toBe('確定');
 	});
 
 	it('再送一個指令：上一個的原因和問題收掉', () => {
@@ -220,9 +231,10 @@ describe('用名字送指令', () => {
 		const { ask, onchange } = asker(flow);
 		ask.send({ name: 'deleteAction', args: ['x1'] });
 		expect(ask.question).toEqual({
-			message: '刪掉動作「技巧·Lib」會清掉 1 次紀錄',
+			message: '刪掉動作「技巧·Lib」會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
 			items: [],
-			choose: false
+			choose: false,
+			confirmLabel: '確定'
 		});
 		ask.answer('confirm');
 		expect(onchange).toHaveBeenCalledWith(flowOf(deleteAction(flow, 'x1', { confirmed: true })));

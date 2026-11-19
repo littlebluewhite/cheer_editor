@@ -1,5 +1,6 @@
 <script lang="ts">
 	// 時間軸：段列（點段打開段設定；左邊「＋」在最後加一段，段旁的「＋」加在這段後面）、
+	// 重複範圍那一條（拖出 A 到 B，拖 A、B 的把手改；吸到整拍）、
 	// 八拍尺（點或拖＝移動播放頭，先停站位再停整拍；點八拍數字停在那個八拍的 1；播放頭的線也能拖）、
 	// 站位縮圖列、一人一條的泳道（Lanes）。段列和八拍尺捲動時固定在上面；可以放大縮小
 	// （「−」「＋」以播放頭為準，Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合以滑鼠、兩指中間為準），
@@ -15,6 +16,7 @@
 		atTextWithUnit,
 		formationTimes,
 		lengthTextWithUnit,
+		newChantTenths,
 		readLength,
 		rulerMarks,
 		segmentSpans,
@@ -27,11 +29,13 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { below, popover } from '#lib/popover.svelte.js';
+	import { KEYS, others } from '#lib/shortcuts.js';
+	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
 	import FormationRow, { THUMB_W } from './FormationRow.svelte';
 	import Icon from './Icon.svelte';
 	import Lanes from './Lanes.svelte';
 	import { followPointer } from './pointer';
+	import { revealAlert } from './reveal';
 
 	interface Props {
 		/** 放大 ×1 時，時間軸 1 秒幾 px。 */
@@ -62,6 +66,8 @@
 
 	/** 尺上點到站位這麼近（px）就停到站位。 */
 	const NEAR_FORMATION_PX = 8;
+	/** 重複範圍比這窄，A、B 把手擺到帶子外面（兩個把手各十幾 px，放裡面會疊在一起）。 */
+	const NARROW_RANGE_PX = 32;
 	/** 時間軸最後面多留的空白（px）；「符合寬度」時只留一點點，不出現橫向捲軸。 */
 	const TAIL_PX = 200;
 	const FIT_TAIL_PX = 16;
@@ -205,28 +211,13 @@
 		if (by === 'escape') anchor?.focus();
 	}
 
-	/** 加段選單打開時焦點進第一項；上下鍵在幾項之間輪流換。 */
-	function menuKeys(el: HTMLElement) {
-		const items = () => [...el.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-		items()[0]?.focus();
-		const keys = (e: KeyboardEvent) => {
-			if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-			e.preventDefault();
-			const all = items();
-			const i = all.indexOf(document.activeElement as HTMLElement);
-			all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus();
-		};
-		el.addEventListener('keydown', keys);
-		return () => el.removeEventListener('keydown', keys);
-	}
-
 	/** 加一段（加在選單的那一段後面，或加在最後），加好就打開它的段設定。 */
 	function add(kind: SegmentKind) {
 		const after = menu?.after ?? undefined;
 		// 選單項目要不見了：焦點先回「＋」，段設定關掉時焦點才回得來（不掉回頁面最上面）。
 		menu?.anchor.focus();
 		menu = null;
-		session.ask.send({ name: 'addSegment', args: [kind, after] }, {
+		session.ask.send({ name: 'addSegment', args: [kind, after, newChantTenths(flow)] }, {
 			done: (r) => {
 				if (fill !== 'fit') fill = 'auto';
 				onopensegment(r.id);
@@ -239,7 +230,7 @@
 	let insertCount = $state('1');
 	let insertUnit = $state<'eight' | 'beat'>('eight');
 	/** 插入八拍被擋的原因畫在小窗裡。 */
-	const insertAsk = session.changeAsk();
+	const insertAsk = session.changeAsk({ label: '插入八拍' });
 	/** 播放頭在哪一段的哪一格（插在這裡）。 */
 	const insertAt = $derived(toPosition(flow, playback.sec));
 	const insertSpan = $derived(spans.find((s) => s.segment.id === insertAt?.segmentId));
@@ -247,6 +238,9 @@
 	function toggleInsert(e: MouseEvent) {
 		const anchor = e.currentTarget as HTMLElement;
 		insertAsk.clear();
+		// 打開時從預設開始：上次在口號段打的秒數，換到音樂段不會變成八拍數（N30）
+		insertCount = '1';
+		insertUnit = 'eight';
 		inserting = inserting ? null : { anchor };
 	}
 
@@ -262,10 +256,16 @@
 		const length = read.kind === 'ok' ? read.value * scale : 0;
 		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
 		if (read.kind === 'blocked') return void insertAsk.block(read.message);
-		insertAsk.send({ name: 'insertBeats', args: [at, length] }, {
+		const before = session.flow;
+		insertAsk.send({ name: 'insertBeats', args: [at, length, music ? insertUnit : 'beat'] }, {
 			done: () => {
 				inserting = null;
-				session.notice = `在${span.label} ${atTextWithUnit(span.segment, at.at)} 插入了 ${amount}，後面的站位和動作往後延`;
+				const where = `${span.label} ${atTextWithUnit(span.segment, at.at)}`;
+				// 後面沒有東西要往後延：流程沒變（不算一步），不說插入了
+				session.notice =
+					session.flow === before
+						? `${where} 後面沒有站位或動作，沒有東西要往後延`
+						: `在${where} 插入了 ${amount}，後面的站位和動作往後延`;
 			}
 		});
 	}
@@ -294,6 +294,25 @@
 		);
 	}
 
+	/** 在重複範圍那一條上按下去：拖出一段新的重複範圍；按在 A、B 的把手上就只拖那一頭（另一頭不動）。 */
+	function startRange(e: PointerEvent) {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		const toSec = (ev: PointerEvent) => (ev.clientX - ruler.getBoundingClientRect().left) / px;
+		const end = (e.target as HTMLElement).closest<HTMLElement>('[data-repeat-end]')?.dataset.repeatEnd;
+		// 拖把手：不動的是另一頭（照原本的位置）；拖新的一段：不動的是按下去的地方
+		const range = playback.range;
+		if (range?.b != null && (end === 'a' || end === 'b')) {
+			const drag = playback.dragRangeEnd(end);
+			// 照手指移了多少算：按在把手中間（離 A、B 有一點距離），只上下移也不會跳一拍
+			const grab = (end === 'a' ? range.a : range.b) - toSec(e);
+			followPointer(e, (ev) => drag(toSec(ev) + grab));
+			return;
+		}
+		const fixed = toSec(e);
+		followPointer(e, (ev) => playback.setRange(fixed, toSec(ev)));
+	}
+
 	// 播放頭跑出畫面（播放中、或從別的地方跳過去）就捲過去，放在看得到的範圍的左邊四分之一。
 	// 只跟著播放頭；放大縮小自己管捲動，不然用滾輪放大時會被拉回播放頭。
 	$effect(() => {
@@ -316,6 +335,7 @@
 				<button
 					type="button"
 					class="insert"
+					data-edit
 					aria-expanded={!!inserting}
 					disabled={spans.length === 0}
 					title="在播放頭空出時間，這段後面的站位、動作一起往後延"
@@ -324,6 +344,7 @@
 				<button
 					type="button"
 					class="add"
+					data-edit
 					aria-label="在最後加一段"
 					aria-haspopup="menu"
 					aria-expanded={!!menu && menu.after === null}
@@ -354,6 +375,7 @@
 					<button
 						type="button"
 						class="add-after"
+						data-edit
 						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
 						aria-label="在這段後面加一段"
 						title={`加在${span.label} 後面`}
@@ -367,14 +389,39 @@
 				{/if}
 			</div>
 		</div>
+		<div class="row range-row">
+			<div class="lab"><span>重複</span></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="trk range-strip"
+				data-repeat-strip
+				style:width={`${width}px`}
+				title="拖出一段重複範圍（吸到整拍），重複自己打開；拖 A、B 改兩頭"
+				onpointerdown={startRange}
+			>
+				{#if playback.range}
+					{@const { a, b } = playback.range}
+					{#if b !== null}
+						<div class="range" class:off={!playback.repeat} class:narrow={(b - a) * px < NARROW_RANGE_PX} class:at-start={a * px < NARROW_RANGE_PX / 2} data-repeat-range style:left={`${a * px}px`} style:width={`${(b - a) * px}px`}>
+							<span class="grip a" data-repeat-end="a">A</span>
+							<span class="grip b" data-repeat-end="b">B</span>
+						</div>
+					{:else}
+						<div class="range only-a" style:left={`${a * px}px`}><span class="grip a">A</span></div>
+					{/if}
+				{/if}
+				{#if playback.startSec !== null && playback.returnOnStop}
+					<div class="start-mark" style:left={`${playback.startSec * px}px`} title="起播點：停下來回到這裡"></div>
+				{/if}
+			</div>
+		</div>
 		<div class="row ruler-row">
 			<div class="lab zoom">
 				<span>八拍</span>
-				<span class="zoom-btns" title="Ctrl／⌘＋滾輪、觸控板或 iPad 兩指捏合，也可以放大縮小">
+				<span class="zoom-btns" title={`${others(KEYS.zoom)}／${KEYS.zoom.mac}＋滾輪、觸控板或 iPad 兩指捏合，也可以放大縮小`}>
 					<button
 						type="button"
 						class="ghost"
-						data-space-plays
 						aria-label="時間軸縮小"
 						disabled={zoom <= ZOOMS[0] + 1e-9}
 						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
@@ -383,7 +430,6 @@
 					<button
 						type="button"
 						class="ghost"
-						data-space-plays
 						aria-label="時間軸放大"
 						disabled={zoom >= ZOOMS.at(-1)! - 1e-9}
 						onclick={() => zoomButton(1)}><Icon name="plus" size={13} /></button
@@ -391,7 +437,6 @@
 					<button
 						type="button"
 						class="ghost fit"
-						data-space-plays
 						aria-label="符合寬度"
 						title="整支流程剛好放滿現在的寬度"
 						disabled={spans.length === 0}
@@ -410,7 +455,11 @@
 				<div class="ph-head" style:left={`${playback.sec * px}px`}></div>
 			</div>
 		</div>
-		<FormationRow pxPerSec={px} />
+		<!-- 站位列跟段列、八拍尺一起固定在上面（40 人時往下捲泳道，站位列不跟著捲走）；它蓋住播放頭的線，自己畫一段 -->
+		<div class="film-pin">
+			<FormationRow pxPerSec={px} />
+			<div class="ph-film" style:left={`${LABEL_W + playback.sec * px}px`}></div>
+		</div>
 		<Lanes pxPerSec={px} {clashes} />
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
@@ -472,13 +521,15 @@
 			{/if}
 			<button type="submit" class="primary">插入</button>
 		</div>
-		{#if insertAsk.error}<p class="error" role="alert">{insertAsk.error}</p>{/if}
+		{#if insertAsk.error}<p class="error" {@attach revealAlert(insertAsk.failures)}>{insertAsk.error}</p>{/if}
 	</form>
 {/if}
 
 <style>
 	.timeline {
 		overflow: auto;
+		/* 捲到某一條泳道（scrollIntoView、Tab 到）時，扣掉固定在上面的段列、重複範圍那一條、八拍尺、站位列（32 + 22 + 26 + 76），不停在它們底下 */
+		scroll-padding-top: 156px;
 		background: var(--surface, #fff);
 		border-top: 1px solid var(--line, #d8dee9);
 		box-shadow: 0 -1px 0 rgba(22, 33, 58, 0.03);
@@ -493,8 +544,9 @@
 		display: flex;
 		border-bottom: 1px solid var(--line-soft, #e8ecf3);
 	}
-	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 5）上面。 */
+	/* 段列和八拍尺捲動時固定在上面；疊在泳道的名字欄（z 6）和播放頭（z 4）上面。 */
 	.segs,
+	.range-row,
 	.ruler-row {
 		position: sticky;
 		z-index: 7;
@@ -505,9 +557,30 @@
 		height: 32px;
 		z-index: 8;
 	}
-	.ruler-row {
+	.range-row {
 		top: 32px;
+		height: 22px;
+	}
+	.ruler-row {
+		top: 54px;
 		height: 26px;
+	}
+	/* 站位列在八拍尺下面；疊在泳道的名字欄（z 6）和走位條上面，在段列、八拍尺底下。 */
+	.film-pin {
+		position: sticky;
+		top: 80px;
+		z-index: 7;
+		background: var(--surface, #fff);
+	}
+	/* 站位列裡的播放頭線：在名字欄底下，點不到（不擋點縮圖） */
+	.ph-film {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		margin-left: -1px;
+		background: var(--now, #f2542d);
+		pointer-events: none;
 	}
 	.lab {
 		position: sticky;
@@ -619,12 +692,23 @@
 	}
 	/* 手指：段列和八拍尺高一點，「＋」和放大縮小點得到的範圍（32px）放得進去，看起來不變。 */
 	@media (pointer: coarse) {
+		/* 捲到某一條泳道時扣掉的也跟著變高（44 + 28 + 34 + 76） */
+		.timeline {
+			scroll-padding-top: 182px;
+		}
 		.segs {
 			height: 44px;
 		}
-		.ruler-row {
+		.range-row {
 			top: 44px;
+			height: 28px;
+		}
+		.ruler-row {
+			top: 72px;
 			height: 34px;
+		}
+		.film-pin {
+			top: 106px;
 		}
 		.add,
 		.insert,
@@ -707,7 +791,6 @@
 	}
 	.seg .meta {
 		flex: 0 100 auto;
-		opacity: 0.8;
 		font-variant-numeric: tabular-nums;
 	}
 	.seg.music {
@@ -716,11 +799,12 @@
 	.seg.music:hover {
 		background: var(--mat-deep, #1d4489);
 	}
+	/* 夠深：白字（段名、秒數）看得清楚 */
 	.seg.chant {
-		background: #a26a22;
+		background: #8e5a1a;
 	}
 	.seg.chant:hover {
-		background: #87581a;
+		background: #774b15;
 	}
 	.seg.missing,
 	.seg.missing:hover {
@@ -751,6 +835,86 @@
 	.lanes-empty span {
 		left: calc(var(--lab-w) + 12px);
 	}
+	/* 重複範圍那一條：拖出 A 到 B。範圍是藍色的帶子，重複關著時變淡；A、B 是兩頭的把手。 */
+	.range-row .lab {
+		font-size: 11px;
+	}
+	.range-strip {
+		cursor: crosshair;
+		touch-action: none;
+		user-select: none;
+		background: var(--surface-2, #f6f8fb);
+	}
+	.range {
+		position: absolute;
+		top: 2px;
+		bottom: 2px;
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--mat, #2f66b8) 30%, transparent);
+		border: 1px solid var(--mat, #2f66b8);
+	}
+	.range.off {
+		background: color-mix(in srgb, var(--mat, #2f66b8) 10%, transparent);
+		border-style: dashed;
+	}
+	.range.only-a {
+		width: 0;
+		border-width: 0 0 0 2px;
+		border-radius: 0;
+		background: none;
+	}
+	.grip {
+		position: absolute;
+		top: -1px;
+		bottom: -1px;
+		display: flex;
+		align-items: center;
+		padding: 0 3px;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1;
+		color: #fff;
+		background: var(--mat, #2f66b8);
+		cursor: ew-resize;
+	}
+	.grip.a {
+		left: -1px;
+		border-radius: 4px 0 0 4px;
+	}
+	.grip.b {
+		right: -1px;
+		border-radius: 0 4px 4px 0;
+	}
+	/* 範圍很窄（例：一拍）時，兩個把手擺到帶子外面，才不會疊在一起、按不到 A */
+	.range.narrow .grip.a {
+		left: auto;
+		right: 100%;
+	}
+	.range.narrow .grip.b {
+		right: auto;
+		left: 100%;
+	}
+	/* 窄範圍貼著流程開頭：A 外面沒地方（會躲到左邊名字欄底下），A 留在裡面，B 往右讓開 */
+	.range.narrow.at-start .grip.a {
+		left: -1px;
+		right: auto;
+	}
+	.range.narrow.at-start .grip.b {
+		left: max(100%, 16px);
+	}
+	.only-a .grip.a {
+		left: -2px;
+	}
+	/* 起播點：播放中在那一條上畫一個小三角，停下來播放頭回到這裡 */
+	.start-mark {
+		position: absolute;
+		bottom: 0;
+		margin-left: -5px;
+		border: 5px solid transparent;
+		border-bottom: 7px solid var(--now, #f2542d);
+		border-top: none;
+		pointer-events: none;
+	}
 	.ruler {
 		cursor: ew-resize;
 		touch-action: none;
@@ -775,6 +939,8 @@
 		font-weight: 700;
 		color: var(--text, #1a2238);
 		font-variant-numeric: tabular-nums;
+		/* 刻度只有 1px 寬：不擋的話「0 秒」會在空白處斷成兩行 */
+		white-space: nowrap;
 	}
 	/* 播放頭：八拍尺上的三角形，和往下貫穿整個時間軸的線。 */
 	.ph-head {
@@ -802,7 +968,8 @@
 		width: 2px;
 		margin-left: -1px;
 		background: var(--now, #f2542d);
-		z-index: 5;
+		/* 在走位條（z 5）底下：播放頭停在走位條端點上時，按到的是端點 */
+		z-index: 4;
 		cursor: ew-resize;
 	}
 	/* 拖得到的範圍比線寬一點 */
