@@ -143,6 +143,25 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.flow.formations.map((f) => f.id)).toEqual(start.formations.map((f) => f.id));
 	});
 
+	it('匯入的舊檔（0、8、16、32、24 拍）：刪 16、別人把 8 挪到 20，復原把 16 放在 20 前面，不被擋', () => {
+		const sample = ratedSample();
+		const pos = sample.formations[0].pos;
+		const start: Flow = {
+			...sample,
+			formations: [
+				sample.formations[0],
+				...[8, 16, 32, 24].map((at, i) => ({ id: `old${i + 1}`, segmentId: 's1', at, pos }))
+			]
+		};
+		const gone = flowOf(deleteFormation(start, 'old2'));
+		const now: Flow = { ...gone, formations: gone.formations.map((f) => (f.id === 'old1' ? { ...f, at: 20 } : f)) };
+		const server = takeRecords(now);
+		const r = runUndo(server.flow, server.records, undoChanges(start, gone).undo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old2', 'old1', 'old3', 'old4']);
+	});
+
 	it('重做刪環節：復原時加回來的記號再清一次，只剩那個環節的記號的那一次整筆清掉（ADR 0007）', () => {
 		const before = libSample();
 		const who = before.actions[0].members[0].squad!;

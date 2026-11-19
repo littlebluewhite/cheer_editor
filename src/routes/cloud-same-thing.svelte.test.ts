@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { editorPage, fromMenu, fakeServer, flush } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import type { NewMemberInput } from '#lib/core';
+import { undoChanges } from '#lib/core/cloud-undo.js';
 import Page from './+page.svelte';
 
 const pw = '我們這一隊今年一定會贏 go go';
@@ -339,6 +340,35 @@ describe('改到同一個東西', () => {
 		await flush();
 
 		expect(s.state.flows[0].flow.segments.map((x) => x.id)).toEqual(order);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
+	it('redo moves the member I moved：王教練刪了第二個，我把第一個調到最後、復原，王教練復原他刪的、刪到剩三個，我重做，調的還是第一個', async () => {
+		const s = await bothOpen();
+		const [a, x, b] = s.page.session.flow!.members.map((m) => m.id);
+		const withX = structuredClone(s.state.flows[0].flow);
+		s.w.step({ name: 'deleteMember', args: [x, { confirmed: true }] });
+		await flush();
+		const withoutX = structuredClone(s.state.flows[0].flow);
+		const ids = withoutX.members.map((m) => m.id);
+		s.page.session.ask.send({ name: 'moveMember', args: [a, ids.length - 1] });
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		const seen = () => s.state.flows[0].step ?? 0;
+		const change = undoChanges(withX, withoutX).undo;
+		s.w.room.send({ kind: 'undo', stepId: 'wang-undo', seen: seen(), of: 'step-wang@example.com-1', redo: false, change });
+		await flush();
+		for (const id of ids.slice(2)) {
+			s.w.step({ name: 'deleteMember', args: [id, { confirmed: true }] });
+			await flush();
+		}
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual([a, x, b]);
+
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.members.map((m) => m.id)).toEqual([x, b, a]);
 		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 

@@ -934,14 +934,17 @@ function travelled(flow: Flow, changes: UndoChanges, redo: boolean, anchor: Remo
 	const orders = Object.entries(to.orders).map(([list, wanted]) => {
 		const was = from.orders[list as keyof RemoteChange['orders']] ?? [];
 		const gone = new Set(was.filter((id) => !wanted.includes(id)));
-		// 調了位置的兩個方向算同一組（復原、重做都比「改之前 → 改之後」），重做才放得回復原拿走的那幾個；
-		// 只比現在還在的（調走的那個後來被刪了，剩下的就沒調過）
+		// 調了位置的兩個方向算同一組（復原、重做都比「改之前 → 改之後」），重做才放得回復原拿走的那幾個。
+		// 整份比認得出是誰被調（A B C → B C A 是 A），只比現在還在的才知道調走的那個後來被刪了、剩下的就沒調過：
+		// 兩種算法拿現在還在的、少的那個，一樣多用整份比的
 		const now = idsOf(flow, list);
 		const here = new Set(now);
-		const still = (ids: string[] | undefined) => (ids ?? []).filter((id) => here.has(id));
-		const before = still(changes.undo.orders[list as keyof RemoteChange['orders']]);
-		const after = still(changes.redo.orders[list as keyof RemoteChange['orders']]);
-		const moving = new Set([...wanted.filter((id) => !was.includes(id)), ...moved(before, after)]);
+		const before = changes.undo.orders[list as keyof RemoteChange['orders']] ?? [];
+		const after = changes.redo.orders[list as keyof RemoteChange['orders']] ?? [];
+		const still = (ids: string[]) => ids.filter((id) => here.has(id));
+		const whole = still(moved(before, after));
+		const part = moved(still(before), still(after));
+		const moving = new Set([...wanted.filter((id) => !was.includes(id)), ...(part.length < whole.length ? part : whole)]);
 		const ids = now.filter((id) => !gone.has(id) && !moving.has(id));
 		const order = anchor[list as keyof RemoteChange['orders']] ?? wanted;
 		for (const id of order) {

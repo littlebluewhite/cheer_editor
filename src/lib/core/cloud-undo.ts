@@ -45,7 +45,7 @@ export function undone(flow: Flow, change: RemoteChange): Flow {
 	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : unsorted(after, flow), flow));
 }
 
-/** 沒照時間排的流程：放在原來的位置沒冒出新的毛病就放那裡，不然把放回去的站位往後挪過時間早的。 */
+/** 沒照時間排的流程：放在原來的位置沒冒出新的毛病就放那裡，不然把放回去的站位挪過擋住它的。 */
 const unsorted = (after: Flow, flow: Flow) => (flowProblem(after, flow) ? pastEarlier(after, flow) : after);
 
 const inTimeOrder = (flow: Flow) =>
@@ -62,15 +62,18 @@ function byTime(flow: Flow): Flow {
 
 /**
  * 放回去的站位往後挪過後面時間比它早的（例：0、16、8 加回 32，別人後來加了 24，32 放 24 後面），
- * 不然放回去的那張和後面那張多一個新的毛病、整步被擋；其他站位照現在的順序不動。
+ * 往前挪過前面時間比它晚的（例：0、8、32、24 加回 16，別人把 8 挪到 20，16 放 20 前面），
+ * 不然放回去的那張和旁邊那張多一個新的毛病、整步被擋；其他站位照現在的順序不動。
  */
 function pastEarlier(after: Flow, flow: Flow): Flow {
 	const had = new Set(flow.formations.map((f) => f.id));
 	const list = [...after.formations];
-	for (let i = list.length - 1; i >= 0; i--) {
-		if (had.has(list[i].id)) continue;
-		for (let j = i; j + 1 < list.length && formationSec(after, list[j + 1]) < formationSec(after, list[j]); j++)
-			[list[j], list[j + 1]] = [list[j + 1], list[j]];
+	const sec = (k: number) => formationSec(after, list[k]);
+	const swap = (k: number) => ([list[k], list[k + 1]] = [list[k + 1], list[k]]);
+	for (const back of after.formations.filter((f) => !had.has(f.id)).reverse()) {
+		let j = list.indexOf(back);
+		while (j + 1 < list.length && sec(j + 1) < sec(j)) swap(j++);
+		while (j > 0 && sec(j - 1) > sec(j)) swap(--j);
 	}
 	return list.every((f, i) => f === after.formations[i]) ? after : { ...after, formations: list };
 }
