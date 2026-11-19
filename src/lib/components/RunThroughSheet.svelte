@@ -1,11 +1,12 @@
 <script lang="ts">
 	// 記錄頁、總表的「＋ 記一次全上」打開的表（照台灣教練的全上表）：每個要記的動作一塊，照流程順序；一列一個環節，一欄一組。
-	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組後面的環節變空的；改回來，後面回到 ✓。
+	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組空著的環節（問核心 blankPhases）變空的；改回來，回到 ✓。
 	// 有個動作沒做，在它那裡按「這個沒做」：整個動作變空的，不存；中途停了，在第一個沒做的動作按「後面都沒做」，它和後面的一次變空的。
 	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問，切頁也一樣）。
 	import {
 		actionLabel,
 		attemptWhos,
+		blankPhases,
 		keptAttempt,
 		MARKS,
 		phaseLabel,
@@ -62,11 +63,12 @@
 		return phaseIds.map((id) => kept[id] ?? null);
 	}
 
-	/** 點一格換下一個記號；變 ✗ 就把同一組後面點過的清掉（改回來時後面是 ✓）。 */
-	function tap(actionId: string, phaseIds: string[], who: string, index: number, mark: Mark) {
+	/** 點一格換下一個記號；變 ✗ 就把同一組空著的環節點過的清掉（核心 blankPhases 說哪些；改回來時是 ✓）。 */
+	function tap(action: Action, who: string, phaseId: string, mark: Mark) {
 		const next = NEXT[mark];
-		picked[key(actionId, who, phaseIds[index])] = next;
-		if (next === '✗') for (const id of phaseIds.slice(index + 1)) delete picked[key(actionId, who, id)];
+		picked[key(action.id, who, phaseId)] = next;
+		if (next !== '✗') return;
+		for (const id of blankPhases(action, true, tapped(action, who)).shut) delete picked[key(action.id, who, id)];
 	}
 
 	function toggleSkip(actionId: string) {
@@ -131,7 +133,6 @@
 
 	{#each blocks as { action, whos }, index (action.id)}
 		{@const phases = action.successRate?.phases ?? []}
-		{@const phaseIds = phases.map((p) => p.id)}
 		{@const off = skipped.includes(action.id)}
 		{@const columns = whos.map((w) => ({ ...w, marks: column(action, w.who) }))}
 		<section class="block" class:off aria-label={actionLabel(action)}>
@@ -166,7 +167,7 @@
 											class="slot {m === '✓' ? 'ok' : m === '△' ? 'minor' : m === '✗' ? 'fail' : ''}"
 											aria-label="{col.name} {phaseLabel(p)} {markLabel(m)}"
 											disabled={m === null}
-											onclick={() => m && tap(action.id, phaseIds, col.who, i, m)}>{m ?? ''}</button
+											onclick={() => m && tap(action, col.who, p.id, m)}>{m ?? ''}</button
 										>
 									</td>
 								{/each}

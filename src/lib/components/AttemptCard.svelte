@@ -1,8 +1,8 @@
 <script lang="ts">
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
 	// 每個環節三顆大按鈕 ✓ △ ✗；再按一次點著的那顆就取消。
-	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子：✗ 後面空著，✗ 後面的按鈕停用）；
-	// 「全部 ✓ 存」已點的照點的存，空著的補 ✓。前面空著、後面有記號（跳過了前面的環節），存之前就提醒。
+	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子；哪些環節空著、按鈕停用，問核心 blankPhases）；
+	// 「全部 ✓ 存」已點的照點的存，空著的補 ✓。跳過了前面的環節（也問 blankPhases），存之前就提醒。
 	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
 	// 點到一半的記號還沒進流程，跟「這次練」的選擇一樣留在 session：換動作、換頁再回來還在，卡上標「還沒存」。
@@ -13,6 +13,7 @@
 		NOT_YET_MARK,
 		NOT_YET_TITLE,
 		attemptText,
+		blankPhases,
 		changeAttempt,
 		deleteAttempt,
 		deleteLastAttempt,
@@ -67,20 +68,14 @@
 	function setMarks(next: Record<string, Mark>) {
 		session.drillMarks[marksKey] = next;
 	}
-	/** 會存下來的樣子（核心決定留哪些記號、算不算整個做）。 */
-	const kept = $derived(keptAttempt(action, whole, marks));
+	/** 會存下來的樣子（核心決定留哪些記號、哪些環節空著、跳過了哪些）。 */
+	const kept = $derived(blankPhases(action, whole, marks));
 	/** 卡上亮的記號。 */
 	const shown = $derived(kept.marks);
-	/** 「整個」第一個 ✗ 在第幾個環節（後面的停用）；沒有 ✗ 是 phases.length。 */
-	const failAt = $derived.by(() => {
-		const i = phases.findIndex((p) => shown[p.id] === '✗');
-		return whole && i >= 0 ? i : phases.length;
-	});
-	/** 選「整個」卻跳過前面的環節（最後一個點了的前面還有空著的）：存之前就說。 */
-	const skipping = $derived.by(() => {
-		const last = phases.findLastIndex((p) => shown[p.id]);
-		return whole && last > 0 && phases.slice(0, last).some((p) => !shown[p.id]);
-	});
+	/** 「整個」空著的環節（按鈕停用）。 */
+	const shut = $derived(whole ? kept.shut : []);
+	/** 選「整個」卻跳過前面的環節：存之前就說。 */
+	const skipping = $derived(kept.skipped.length > 0);
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
@@ -197,8 +192,8 @@
 	{#if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
 
 	<div class="phases">
-		{#each phases as p, i (p.id)}
-			{@const on = planned.includes(p) && i <= failAt}
+		{#each phases as p (p.id)}
+			{@const on = planned.includes(p) && !shut.includes(p.id)}
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (鍵盤用勾選框) -->
 			<div class="phase" class:off={!on} class:pickable={!whole} onclick={(e) => pickRow(e, p.id)}>
 				{#if whole}
