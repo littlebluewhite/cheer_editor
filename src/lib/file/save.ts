@@ -17,6 +17,8 @@ export interface FileSaver {
 	chooseFile?(fileName: string): Promise<boolean>;
 	/** 存回的那個檔叫什麼（Chrome、Edge：開檔拿到的、存檔對話框選的，教練可能改過名字）；沒有就是存檔時給的檔名。 */
 	readonly fileName?: string;
+	/** 跟另一個存到同一個檔（Chrome、Edge：同一個資料夾的同一個檔）；沒有是分不出來。 */
+	sameFile?(other: FileSaver): Promise<boolean>;
 	/** 觸控螢幕（手機、平板）：下載新檔時不叫教練改用 Chrome、Edge（那上面也不能存回原檔）。 */
 	readonly touch?: boolean;
 }
@@ -74,6 +76,9 @@ export function browserFilePicker(): (() => Promise<PickedFile | null>) | null {
 	};
 }
 
+/** 瀏覽器存檔的現在存回哪個檔（sameFile 比兩個存檔的）。 */
+const handles = new WeakMap<FileSaver, () => FileSystemFileHandle | null>();
+
 /** handle：開檔時拿到的檔（存回它）；沒有就第一次存檔時問存到哪。 */
 export function createBrowserSaver(opened: FileSystemFileHandle | null = null): FileSaver {
 	let handle = opened;
@@ -89,9 +94,13 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 			throw e;
 		}
 	}
-	return {
+	const saver: FileSaver = {
 		get fileName() {
 			return handle?.name;
+		},
+		async sameFile(other) {
+			const theirs = handles.get(other)?.();
+			return !!handle && !!theirs && handle.isSameEntry(theirs);
 		},
 		touch: matchMedia('(pointer: coarse)').matches,
 		async chooseFile(fileName) {
@@ -125,6 +134,8 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 			return 'saved';
 		}
 	};
+	handles.set(saver, () => handle);
+	return saver;
 }
 
 const MP4_TYPES = [{ description: '流程影片', accept: { 'video/mp4': ['.mp4'] } }];
