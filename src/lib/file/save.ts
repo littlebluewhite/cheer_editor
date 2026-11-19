@@ -10,6 +10,11 @@ export type SaveOutcome = 'saved' | 'shared' | 'downloaded' | 'cancelled';
 /** 一支流程一個：記得上次存到哪個檔，下次存回同一個。開別的流程時換一個新的。 */
 export interface FileSaver {
 	save(bytes: Uint8Array, fileName: string): Promise<SaveOutcome>;
+	/**
+	 * 還沒有要存回的檔就先問存到哪（Chrome、Edge 的存檔對話框），之後 save 存到那裡；回傳 false 是按了取消。
+	 * 存檔前還要等伺服器的（下載雲端流程）先問：等太久按下去的那一下就過期了，Chrome 不讓跳存檔對話框。沒有是不用先問。
+	 */
+	chooseFile?(fileName: string): Promise<boolean>;
 	/** 存回的那個檔叫什麼（Chrome、Edge：開檔拿到的、存檔對話框選的，教練可能改過名字）；沒有就是存檔時給的檔名。 */
 	readonly fileName?: string;
 	/** 觸控螢幕（手機、平板）：下載新檔時不叫教練改用 Chrome、Edge（那上面也不能存回原檔）。 */
@@ -74,11 +79,24 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 	let handle = opened;
 	/** 開檔拿到的 handle 只能讀：第一次存之前要寫入的權限。 */
 	let askWrite = opened !== null;
+	/** 問存到哪；按了取消回 false。 */
+	async function pick(fileName: string): Promise<boolean> {
+		try {
+			handle = await (window as unknown as PickerWindow).showSaveFilePicker({ suggestedName: fileName, types: ZIP_TYPES });
+			return true;
+		} catch (e) {
+			if (e instanceof DOMException && e.name === 'AbortError') return false;
+			throw e;
+		}
+	}
 	return {
 		get fileName() {
 			return handle?.name;
 		},
 		touch: matchMedia('(pointer: coarse)').matches,
+		async chooseFile(fileName) {
+			return handle || !('showSaveFilePicker' in window) ? true : pick(fileName);
+		},
 		async save(bytes, fileName) {
 			if (!('showSaveFilePicker' in window)) {
 				const file = new File([bytes as Uint8Array<ArrayBuffer>], fileName, { type: 'application/zip' });
@@ -100,18 +118,8 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 				// 不給寫：改問存到哪
 				if (granted !== 'granted') handle = null;
 			}
-			if (!handle) {
-				try {
-					handle = await (window as unknown as PickerWindow).showSaveFilePicker({
-						suggestedName: fileName,
-						types: ZIP_TYPES
-					});
-				} catch (e) {
-					if (e instanceof DOMException && e.name === 'AbortError') return 'cancelled';
-					throw e;
-				}
-			}
-			const writable = await handle.createWritable();
+			if (!handle && !(await pick(fileName))) return 'cancelled';
+			const writable = await handle!.createWritable();
 			await writable.write(bytes as Uint8Array<ArrayBuffer>);
 			await writable.close();
 			return 'saved';
