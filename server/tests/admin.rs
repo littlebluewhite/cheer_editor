@@ -747,3 +747,151 @@ async fn email_change_revokes_password_links(db: sqlx::PgPool) {
     let fresh = s.link_token_to("mei2@example.com");
     assert_eq!(s.set_password(&fresh, GOOD).await, StatusCode::NO_CONTENT);
 }
+
+/// 等到有 n 個連線在等鎖（最多 60 秒）。
+async fn lock_waiters(watcher: &mut sqlx::PgConnection, n: i64) {
+    let wait = async {
+        loop {
+            let (waiting,): (i64,) = sqlx::query_as(
+                "SELECT count(*) FROM pg_stat_activity
+                 WHERE datname = current_database() AND wait_event_type = 'Lock'",
+            )
+            .fetch_one(&mut *watcher)
+            .await
+            .unwrap();
+            if waiting >= n {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(60), wait)
+        .await
+        .expect("一直沒等到在等鎖的連線");
+}
+
+#[sqlx::test]
+async fn a_reset_mailed_while_the_email_changes_does_not_work_from_the_old_mailbox(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db);
+    let admin = s.admin().await;
+    let (wang, _) = s
+        .add_with_password(&admin, "wang@example.com", "王教練")
+        .await;
+    s.post(
+        &format!("/api/admin/users/{wang}/send-reset"),
+        json!({}),
+        &admin,
+    )
+    .await;
+
+    // 重寄重設密碼信先開始，卡在換掉舊連結（另一條連線拿著那一列的鎖）；這時管理員改 email。
+    // 放開之後誰先誰後都一樣：寄到舊信箱的連結，改完 email 都不能用。
+    use sqlx::{Connection, PgConnection};
+    let options = s.state.db.connect_options();
+    let mut watcher = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker_conn = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker = blocker_conn.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM password_links WHERE user_id = $1 FOR UPDATE")
+        .bind(wang)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let (reset_path, email_path) = (
+        format!("/api/admin/users/{wang}/send-reset"),
+        format!("/api/admin/users/{wang}/email"),
+    );
+    let reset = s.post(&reset_path, json!({}), &admin);
+    let change_then_release = async {
+        lock_waiters(&mut watcher, 1).await;
+        let change = s.post(&email_path, json!({ "email": "wang2@example.com" }), &admin);
+        let release = async {
+            lock_waiters(&mut watcher, 2).await;
+            blocker.commit().await.unwrap();
+        };
+        tokio::join!(change, release).0
+    };
+    let ((reset, _), (change, _)) = tokio::join!(reset, change_then_release);
+    assert_eq!(reset, StatusCode::NO_CONTENT);
+    assert_eq!(change, StatusCode::NO_CONTENT);
+
+    let link = format!("{SITE}/set-password#");
+    for mail in s.mails().iter().filter(|m| m.to == "wang@example.com") {
+        if let Some(at) = mail.text.find(&link) {
+            let token = mail.text[at + link.len()..]
+                .split_whitespace()
+                .next()
+                .unwrap();
+            assert!(!s.link_works(token).await, "舊信箱收到的連結還能用");
+        }
+    }
+}
+
+#[sqlx::test]
+async fn a_forgot_password_mail_sent_while_the_email_changes_does_not_work_from_the_old_mailbox(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db);
+    let admin = s.admin().await;
+    let (wang, _) = s
+        .add_with_password(&admin, "wang@example.com", "王教練")
+        .await;
+    s.post(
+        &format!("/api/admin/users/{wang}/send-reset"),
+        json!({}),
+        &admin,
+    )
+    .await;
+
+    // 同上，只是這次是他自己按「忘記密碼」（在背景查人、寄信）。
+    use sqlx::{Connection, PgConnection};
+    let options = s.state.db.connect_options();
+    let mut watcher = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker_conn = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker = blocker_conn.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM password_links WHERE user_id = $1 FOR UPDATE")
+        .bind(wang)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let before = s.mails().len();
+    let (status, _, _) = s
+        .send(
+            "POST",
+            "/api/forgot-password",
+            Some(json!({ "email": "wang@example.com" })),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    lock_waiters(&mut watcher, 1).await;
+    let email_path = format!("/api/admin/users/{wang}/email");
+    let change = s.post(&email_path, json!({ "email": "wang2@example.com" }), &admin);
+    let release = async {
+        lock_waiters(&mut watcher, 2).await;
+        blocker.commit().await.unwrap();
+    };
+    let ((change, _), ()) = tokio::join!(change, release);
+    assert_eq!(change, StatusCode::NO_CONTENT);
+    // 改 email 寄兩封通知，忘記密碼寄一封
+    let mailed = async {
+        while s.mails().len() < before + 3 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), mailed)
+        .await
+        .expect("忘記密碼的信一直沒寄");
+
+    let link = format!("{SITE}/set-password#");
+    for mail in s.mails().iter().filter(|m| m.to == "wang@example.com") {
+        if let Some(at) = mail.text.find(&link) {
+            let token = mail.text[at + link.len()..]
+                .split_whitespace()
+                .next()
+                .unwrap();
+            assert!(!s.link_works(token).await, "舊信箱收到的連結還能用");
+        }
+    }
+}

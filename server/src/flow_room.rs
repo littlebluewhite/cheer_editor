@@ -545,6 +545,10 @@ async fn serve(
             None => return Ok(()),
         }
     };
+    // 連上到打招呼之間登入狀態可能已經不算了（到期、登出）：什麼都還沒送，先重查。
+    if !still_signed_in().await? {
+        return Ok(());
+    }
     let Some(mut role) = role_of(&state.db, flow_id, user_id).await? else {
         return tell(&mut socket, &RoomMessage::Revoked).await;
     };
@@ -733,7 +737,11 @@ async fn serve(
                 },
                 Ok(_) => continue,
                 // 漏聽了幾件：照資料庫補上漏掉的別人的步，重新看一次自己的權限，再說一次在場名單。
+                // 漏掉的可能是登出、停用：先重查登入狀態。
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    if !still_signed_in().await? {
+                        return Ok(());
+                    }
                     let changed = role_of(&state.db, flow_id, user_id).await?;
                     let told = told_role(&state, flow_id, changed).await?;
                     if !matches!(told, RoomMessage::Revoked) {

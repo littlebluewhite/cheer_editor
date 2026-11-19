@@ -385,13 +385,14 @@ pub async fn hand_over(
 
 // ---------- 小工具 ----------
 
-/// email、名字、設過密碼沒、停用了沒。
+/// email、名字、設過密碼沒、停用了沒。鎖住這一列到 commit：寄設密碼信和改 email 一次一個，
+/// 不會照改之前的 email 寄出改之後才建的連結。
 async fn user(
     tx: &mut sqlx::PgConnection,
     id: i64,
 ) -> sqlx::Result<Option<(String, String, bool, bool)>> {
     sqlx::query_as(
-        "SELECT email, name, password_hash IS NOT NULL, disabled_at IS NOT NULL FROM users WHERE id = $1",
+        "SELECT email, name, password_hash IS NOT NULL, disabled_at IS NOT NULL FROM users WHERE id = $1 FOR NO KEY UPDATE",
     )
     .bind(id)
     .fetch_optional(&mut *tx)

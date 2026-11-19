@@ -603,3 +603,94 @@ async fn an_open_room_closes_when_the_session_runs_out_without_sending_anything(
     let heard = reply(&mut b).await;
     assert!(heard.is_null(), "到期了還收到：{heard}");
 }
+
+#[sqlx::test]
+async fn a_session_that_runs_out_before_hello_gets_nothing(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "viewer").await;
+    let (mut a, _) = join_as(&s, &wang, &id, "tab-a", true).await;
+    rename_from(&s, &mut a, &id, "到期前改的").await;
+    let now = *s.now.lock().unwrap();
+    sqlx::query("UPDATE sessions SET expires_at = $1 WHERE user_id = $2")
+        .bind(now + chrono::Duration::minutes(1))
+        .bind(s.user_id(lin.email).await)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+
+    // 連上時還沒到期；打招呼之前到期了：補上的改動、紀錄、ready 都不送，房間關掉
+    let mut b = s.connect(&lin, &id).await.unwrap();
+    *s.now.lock().unwrap() += chrono::Duration::minutes(2);
+    let hello = json!({ "kind": "hello", "fingerprint": FINGERPRINT, "tabId": "tab-b", "seen": 0, "editing": false, "records": true });
+    say(&mut b, hello).await;
+    let heard = reply(&mut b).await;
+    assert!(heard.is_null(), "到期了還收到：{heard}");
+}
+
+#[sqlx::test]
+async fn a_slow_viewer_that_misses_the_logout_is_still_closed(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "viewer").await;
+    let (mut a, _) = join_as(&s, &wang, &id, "tab-a", true).await;
+    let (mut b, _) = join_as(&s, &lin, &id, "tab-b", false).await;
+
+    // 林教練的連線卡住（記一次，等這支流程那一列的鎖）
+    use sqlx::{Connection, PgConnection};
+    let options = s.state.db.connect_options();
+    let mut watcher = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker_conn = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker = blocker_conn.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM flows WHERE id = $1 FOR UPDATE")
+        .bind(&id)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    say(&mut b, json!({ "kind": "record", "attempts": [] })).await;
+    let waiting = async {
+        loop {
+            let (n,): (i64,) = sqlx::query_as(
+                "SELECT count(*) FROM pg_stat_activity
+                 WHERE datname = current_database() AND wait_event_type = 'Lock'",
+            )
+            .fetch_one(&mut watcher)
+            .await
+            .unwrap();
+            if n > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(60), waiting)
+        .await
+        .expect("記一次一直沒在等鎖");
+
+    // 這時他登出了，房間裡又一下子發生很多事：他漏聽了登出
+    let (status, _) = s.send("POST", "/api/logout", None, &lin.cookie).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    for _ in 0..300 {
+        s.state
+            .rooms
+            .tell(&id, cheer_server::flow_room::RoomEvent::Runs);
+    }
+    blocker.rollback().await.unwrap();
+
+    // 補上漏聽的時候也重查登入狀態：登出之後的改動不會送過去
+    rename_from(&s, &mut a, &id, "登出後改的").await;
+    loop {
+        let heard = hear(&mut b).await;
+        if heard.is_null() {
+            break;
+        }
+        assert!(
+            !heard.to_string().contains("登出後改的"),
+            "登出了還收到：{heard}"
+        );
+    }
+}
