@@ -55,7 +55,7 @@
 		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, picked[key(action.id, who, p.id)] ?? '✓']));
 	}
 
-	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（核心 keptAttempt）：✗ 做完之後才開始的、沒做的動作是空的（null）。 */
+	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（問核心 keptAttempt，存的時候也照它）：按不了的環節（blankPhases 的 shut）、沒做的動作是空的（null），跟 ✗ 佔同樣拍的照點的留著。 */
 	function column(action: Action, who: string): (Mark | null)[] {
 		const phaseIds = action.successRate!.phases.map((p) => p.id);
 		if (skipped.includes(action.id)) return phaseIds.map(() => null);

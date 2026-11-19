@@ -17,7 +17,6 @@
 	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
 	// 金字塔疊著的環節：細條往下多一排（第幾排流程核心算好，跟拍點格子同一排），名稱和拍點再往下讓。
 	import {
-		actionEights,
 		actionLabel,
 		actionSeconds,
 		atTextWithUnit,
@@ -33,6 +32,7 @@
 		nearestPosition,
 		phaseColor,
 		phaseLabel,
+		phaseRows,
 		positionText,
 		resizeAction,
 		setWalks,
@@ -132,7 +132,7 @@
 	const phaseBars = $derived(
 		Object.fromEntries(
 			flow.actions.map((a) => {
-				const rows = new Map(actionEights(a).flatMap((e) => e.phases.map((p) => [p.phase.id, p.row] as const)));
+				const rows = phaseRows(a.successRate?.phases ?? []);
 				return [
 					a.id,
 					(a.successRate?.phases ?? []).flatMap((p) =>
@@ -143,7 +143,7 @@
 		)
 	);
 	/** 每個動作的環節細條有幾排（沒有環節是 0）。 */
-	const phaseRows = $derived(
+	const phaseRowCount = $derived(
 		Object.fromEntries(flow.actions.map((a) => [a.id, Math.max(0, ...phaseBars[a.id].map((p) => p.row + 1))]))
 	);
 
@@ -152,7 +152,7 @@
 		Object.fromEntries(
 			flow.members.map((m) => [
 				m.id,
-				Math.max(0, ...flow.actions.filter((a) => a.members.some((x) => x.memberId === m.id)).map((a) => phaseRows[a.id]))
+				Math.max(0, ...flow.actions.filter((a) => a.members.some((x) => x.memberId === m.id)).map((a) => phaseRowCount[a.id]))
 			])
 		)
 	);
@@ -168,7 +168,7 @@
 	}
 	/** 色條名稱那一行往下讓開細條：有拍點時名稱靠上、讓開全部的排；沒拍點時名稱置中，一排讓得開，疊了才往下讓。 */
 	const namePad = (actionId: string, hasCues: boolean) => {
-		const rows = phaseRows[actionId];
+		const rows = phaseRowCount[actionId];
 		if (!rows) return undefined;
 		if (hasCues) return `${1 + rows * PHASE_H}px`;
 		return rows > 1 ? `${rows * PHASE_H}px` : undefined;

@@ -4,14 +4,17 @@ import {
 	addCustomRole,
 	addMembers,
 	addSegment,
+	clearPhaseBeats,
 	createFlow,
 	fieldGeometry,
 	fullView,
+	markPhaseBeats,
 	placeCue,
 	readFlowFile,
 	setMarkers,
 	setPositions,
 	updateSegment,
+	VIDEO_INTRO_SEC,
 	videoFrame,
 	writeFlowFile,
 	type EightCountCueLine,
@@ -21,7 +24,7 @@ import {
 	type VideoRow
 } from '#lib/core';
 import { fakeMeasure as measure } from '../test-fakes';
-import { flowOf } from '../test-flows';
+import { flowOf, pyramidSample } from '../test-flows';
 import { MIN_TEXT_PX, VIDEO_H, VIDEO_W, layoutFrame, markerOverflowMembers, overflowEights, type FrameLayout } from './layout';
 
 const FIELD: FieldConfig = { strips: 9, layout: 'vertical' };
@@ -597,23 +600,26 @@ describe('下面那一列：拍點格子', () => {
 		expect(l.overflow).toBe(false);
 	});
 
-	it('金字塔疊著的環節分兩排畫，兩個都在拍點上面、框不疊在一起', () => {
-		const line: EightCountCueLine = {
-			...cueLine('Lib', 'down', 7, 8),
-			phases: [
-				{ label: '中段', from: 3, to: 8, color: '#475569', row: 0 },
-				{ label: '上法', from: 5, to: 8, color: '#c62828', row: 1 }
-			]
+	it('金字塔疊著的環節：整個動作算一次排，只剩第二排環節的八拍也畫在第二排', () => {
+		// pyramidSample 的 x2 拿掉後半的環節，上法「第二個」拉長到 2-8：
+		// 第 3 個八拍 上法「第一個」、中段「第一個」第一排，上法「第二個」第二排；第 4 個八拍只有上法「第二個」
+		let flow = flowOf(clearPhaseBeats(pyramidSample(), 'x2', 16, 32));
+		flow = flowOf(markPhaseBeats(flow, 'x2', 'p6', 8, 16));
+		const bpm = flow.segments[0].kind === 'music' ? flow.segments[0].bpm : 0;
+		const inEight = (e: number) => layoutFrame(FIELD, videoFrame(flow, VIDEO_INTRO_SEC + ((e * 16 + 1) * 30) / bpm), measure);
+		/** 上法「第二個」的字離 8 欄格線上緣多遠。 */
+		const offset = (l: FrameLayout) => {
+			const top = Math.min(...gridBoxes(l).filter((b) => b.stroke === 'gridLine').map((b) => b.y));
+			return bottom(l).find((t) => t.text === '上法 第二個')!.y - top;
 		};
-		const l = layout(row({ cues: [line] }));
-		const hold = bottom(l).find((t) => t.text === '中段')!;
-		const load = bottom(l).find((t) => t.text === '上法')!;
-		const down = bottom(l).find((t) => t.text === 'down')!;
-		expect(hold.y + hold.px).toBeLessThanOrEqual(load.y);
-		expect(load.y + load.px).toBeLessThanOrEqual(down.y);
-		const [a, b] = gridBoxes(l).filter((x) => x.stroke === 'phaseLine');
-		expect(a.y + a.h).toBeLessThanOrEqual(b.y);
-		expect(l.overflow).toBe(false);
+		const both = inEight(2);
+		const alone = inEight(3);
+		expect(rowPx(alone)).toBe(rowPx(both));
+		const first = bottom(both).find((t) => t.text === '上法 第一個')!;
+		const second = bottom(both).find((t) => t.text === '上法 第二個')!;
+		expect(second.y).toBeGreaterThan(first.y);
+		expect(offset(alone)).toBe(offset(both));
+		expect(gridBoxes(alone).filter((b) => b.stroke === 'phaseLine')).toHaveLength(1);
 	});
 });
 

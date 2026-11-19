@@ -448,7 +448,10 @@ function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { text
 	let split = false;
 	const name = wrap(actionLabel(line), px, 700, NAME_W, measure);
 	name.forEach((text, i) => texts.push({ text, x: LEFT, y: i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
-	const phases = line.phases.map((p) => ({ from: p.from, to: p.to, text: p.label, who: '', style: PHASE_STYLE }));
+	// 環節照流程核心排好的排（整個動作算一次，跟八拍表一樣），這個八拍空著的排照樣留一行
+	const phases = Array.from({ length: Math.max(0, ...line.phases.map((p) => p.row + 1)) }, (_, row) =>
+		line.phases.filter((p) => p.row === row).map((p) => ({ from: p.from, to: p.to, text: p.label, who: '', style: PHASE_STYLE }))
+	);
 	// 從上一列接過來的不再寫字和給誰
 	const cues = line.cues.map((c) => ({
 		from: c.from,
@@ -458,8 +461,8 @@ function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { text
 		style: CUE_STYLES[c.kind](c.word)
 	}));
 	let sub = 0;
-	// 環節和拍點各自分排，環節在上
-	for (const r of [...pack(phases), ...pack(cues)]) {
+	// 環節在上，拍點在下自己分排
+	for (const r of [...phases, ...pack(cues)]) {
 		let rowH = lh;
 		for (const p of r) {
 			const x = cellX(p.from) + CUE_INSET;

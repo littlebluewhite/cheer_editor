@@ -731,6 +731,7 @@
 						type="button"
 						class="menu"
 						title="選單"
+						aria-haspopup="dialog"
 						aria-expanded={menuOpen}
 						bind:this={menuBtn}
 						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class="tight-hide">選單</span></button
@@ -2305,7 +2306,7 @@
 
 	/* ---------- 上方列永遠一行（#280）：電腦、橫拿的 iPad ----------
 	   視窗窄的時候不換行，字照這個順序收成圖示（只看寬度，不看高矮）：
-	   1600px 以下節拍器、重複；1300px 以下選單、編輯、檢視；1100px 以下八拍表（觸控的 1180px 以下就收：A、B、✕ 要 32px）。
+	   1600px 以下節拍器、重複；1300px 以下選單、編輯、檢視；1100px 以下八拍表（觸控也一樣：橫拿的 iPad 1180 寬放得下）。
 	   一直有字的：編排｜練習、存檔、流程名字。收掉字的按鈕都有 title，報讀軟體照樣讀得到字。
 	   窄螢幕（手機檢視畫面）不走這裡，照下面「窄螢幕」那幾段。 */
 
@@ -2338,7 +2339,7 @@
 			white-space: nowrap;
 		}
 	}
-	@media (max-width: 1100px), (max-width: 1180px) and (pointer: coarse) {
+	@media (max-width: 1100px) {
 		:where(.editor:not(.narrow)) .tightest-hide {
 			position: absolute;
 			width: 1px;

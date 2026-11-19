@@ -9,7 +9,7 @@ import { replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { freshIds } from './ids';
 import { cut, ordered } from './phase-beats';
-import { phaseLabel, type Phase, type PhaseKind } from './phase-types';
+import { phaseLabel, phasesMayShareBeats, type Phase, type PhaseKind } from './phase-types';
 import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { recordsLoss, recordsLossText } from './records';
@@ -123,7 +123,7 @@ export function deletePhase(flow: Flow, actionId: string, phaseId: string, optio
 
 /** 標拍時從別的環節切掉 [from, to)：金字塔的環節可以佔同樣的拍，不切；其他大類照 cut 切。 */
 function cutFor(action: Action, phases: Phase[], from: number, to: number): Phase[] {
-	return action.category === 'pyramid' ? phases : cut(phases, from, to);
+	return phasesMayShareBeats(action.category) ? phases : cut(phases, from, to);
 }
 
 /** 找動作和它在的段；找不到回給教練看的原因。 */

@@ -31,6 +31,11 @@ const KINDS_BY_CATEGORY: Record<ActionCategory, PhaseKind[]> = {
 	other: []
 };
 
+/** 這個大類的環節能不能佔同樣的拍：只有金字塔（第一個三層停在中段時，第二個三層還在上法；docs/adr/0009）。 */
+export function phasesMayShareBeats(category: ActionCategory): boolean {
+	return category === 'pyramid';
+}
+
 /** 這個大類的動作能用的環節種類，照選單的順序；沒有（舞蹈、其他）就是不記成功率。 */
 export function phaseKindsFor(category: ActionCategory): PhaseKind[] {
 	return KINDS_BY_CATEGORY[category];

@@ -402,15 +402,18 @@ const topbarWords = () =>
 		}
 		return out;`);
 // 字收成圖示的順序（#280）：寬的時候每個字都在；先收節拍器、重複，再收選單、編輯、檢視，最後才收八拍表；存檔一直有字。
-for (const [w, h, shown, hidden] of [
+// 觸控跟滑鼠一樣 1100 寬以下才收八拍表（橫拿的 iPad 1180 寬放得下，A、B、✕ 還是 32px 以上）。
+for (const [w, h, shown, hidden, touch] of [
 	[1728, 1000, ['選單', '節拍器', '重複', '編輯', '檢視', '八拍表', '存檔'], []],
 	[1440, 900, ['選單', '編輯', '檢視', '八拍表', '存檔'], ['節拍器', '重複']],
-	[1024, 768, ['存檔'], ['節拍器', '重複', '選單', '編輯', '檢視', '八拍表']]
+	[1024, 768, ['存檔'], ['節拍器', '重複', '選單', '編輯', '檢視', '八拍表']],
+	[1180, 820, ['八拍表', '存檔'], ['節拍器', '重複', '選單', '編輯', '檢視'], true]
 ]) {
-	await check(`${w}×${h} 上方列的字：${shown.join('、')}有字${hidden.length ? `；${hidden.join('、')}只剩圖示` : ''}（#280）`, async () => {
-		await setViewport(w, h);
+	await check(`${w}×${h}${touch ? '（觸控）' : ''} 上方列的字：${shown.join('、')}有字${hidden.length ? `；${hidden.join('、')}只剩圖示` : ''}（#280）`, async () => {
+		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
 		await openSample();
 		const r = await topbarWords();
+		if (touch) await clearTouch();
 		return { ok: shown.every((x) => r[x]) && hidden.every((x) => !r[x]), value: r };
 	});
 }
