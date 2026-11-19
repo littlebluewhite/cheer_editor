@@ -5,6 +5,7 @@
 	// 「全部 ✓ 存」已點的照點的存，還能打、沒打的補 ✓。跳過了前面的環節（也問 blankPhases），存之前就提醒。
 	// 只有一個環節：點了記號就存。
 	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
+	// 還有勾了、沒打、跟它佔同樣拍的環節就先不存（問核心 pickedAutoSave）：卡上多一顆「存這一次」、提示寫為什麼在等，打完自動存。
 	// 點到一半的記號還沒進流程，跟「這次練」的選擇一樣留在 session：換動作、換頁再回來還在，卡上標「還沒存」。
 	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次；提示走編輯器唯一的提示，不在卡上）。
 	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
@@ -21,6 +22,7 @@
 		keptAttempt,
 		phaseColor,
 		phaseLabel,
+		pickedAutoSave,
 		recordAttempt,
 		restoreAttempt,
 		type Action,
@@ -76,6 +78,8 @@
 	const shut = $derived(kept.shut);
 	/** 選「整個」卻跳過前面的環節：存之前就說。 */
 	const skipping = $derived(kept.skipped.length > 0);
+	/** 只練幾個環節、到了存的時機，還有同時在做的環節沒打：先不存，等它們打完（點到一半的記號留在 session，換頁回來還在等）。 */
+	const waiting = $derived(!whole && pickedAutoSave(action, picked, shown).waiting.length > 0);
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
@@ -96,7 +100,8 @@
 	}
 
 	/**
-	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存。
+	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存
+	 * （只練幾個環節還有同時在做的沒打就先等）。
 	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
 	 */
 	function tap(phaseId: string, mark: Mark) {
@@ -107,7 +112,10 @@
 			return;
 		}
 		setMarks(keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks);
-		if (phases.length === 1 || (!whole && (mark === '✗' || phaseId === planned.at(-1)?.id))) save();
+		if (phases.length === 1) return save();
+		if (whole) return;
+		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark });
+		if (next.due && !next.waiting.length) save();
 	}
 
 	/** 存這一次（留哪些記號、算不算整個做由核心決定）；給了 next 就存它，不看點了的。 */
@@ -189,7 +197,8 @@
 			</div>
 		{/if}
 	</header>
-	{#if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
+	{#if waiting}<p class="hint">還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」</p>
+	{:else if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
 
 	<div class="phases">
 		{#each phases as p (p.id)}
@@ -225,6 +234,10 @@
 		<div class="save-row">
 			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>存這一次</button>
 			<button type="button" class="primary all-ok" onclick={() => save(fillOk(action, shown))}>全部 ✓ 存</button>
+		</div>
+	{:else if waiting}
+		<div class="save-row">
+			<button type="button" class="save" onclick={() => save()}>存這一次</button>
 		</div>
 	{/if}
 	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}

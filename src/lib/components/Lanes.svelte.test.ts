@@ -10,11 +10,12 @@ import {
 	setMarkers,
 	setPositions,
 	setWalks,
+	updateAction,
 	type Clash,
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import { testEditor } from '#lib/test-fakes.js';
@@ -758,6 +759,67 @@ describe('色條上的環節', () => {
 			parseFloat(lane.style.height) - 5
 		);
 		expect(bar.classList.contains('has-phases')).toBe(true);
+	});
+
+	/** 換成金字塔，再加上法「第二個」1-4 到 1-5，疊在中段（1-4 到 1-6）上。 */
+	const stacked = (withCues = false) =>
+		flowOf(
+			addPhase(flowOf(updateAction(phased(withCues), 'x1', { category: 'pyramid' })), 'x1', {
+				kind: 'load',
+				name: '第二個',
+				beats: { at: 6, len: 4 }
+			})
+		);
+	const tops = (bar: HTMLElement) =>
+		[...bar.querySelectorAll<HTMLElement>('[data-phase]')].map((p) => [p.dataset.phase, p.style.top]);
+
+	it('金字塔疊著的環節細條往下多一排；名稱往下讓開兩排細條', () => {
+		setupPhases(stacked());
+		const bar = bars(lanes()[0])[0];
+		expect(tops(bar)).toEqual([
+			['上法 延伸', '0px'],
+			['中段', '0px'],
+			['上法 第二個', '3px']
+		]);
+		expect(bar.style.paddingTop).toBe('6px');
+	});
+
+	it('金字塔疊著的環節、有拍點：名稱和拍點都往下讓開兩排細條，泳道跟著變高', () => {
+		setupPhases(phased(true));
+		const oneRow = parseFloat(lanes()[0].style.height);
+		const oneCue = parseFloat(bars(lanes()[0])[0].querySelector<HTMLElement>('[data-cue]')!.style.top);
+		cleanup();
+		setupPhases(stacked(true));
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		expect(bar.style.paddingTop).toBe('7px');
+		const cue = bar.querySelector<HTMLElement>('[data-cue]')!;
+		expect(parseFloat(cue.style.top)).toBe(oneCue + 3);
+		expect(parseFloat(cue.style.top)).toBeGreaterThanOrEqual(6 + 12);
+		expect(parseFloat(lane.style.height)).toBe(oneRow + 3);
+	});
+
+	it('金字塔疊四層、沒拍點：名稱讓開四排細條，泳道變高放得下名稱', () => {
+		let flow = stacked();
+		for (const name of ['第三個', '第四個']) {
+			flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name, beats: { at: 6, len: 4 } }));
+		}
+		setupPhases(flow);
+		const lane = lanes()[0];
+		const bar = bars(lane)[0];
+		expect(tops(bar).map(([, top]) => top)).toEqual(['0px', '0px', '3px', '6px', '9px']);
+		expect(bar.style.paddingTop).toBe('12px');
+		// 色條上下各留 3 px：細條 12 px ＋ 名稱那一行 12 px
+		expect(lane.style.height).toBe('30px');
+		// 沒疊那麼多的人（小C 不在這個動作裡）泳道照舊
+		expect(lanes()[2].style.height).toBe('');
+	});
+
+	it('沒疊的環節細條都在最上面一排，名稱的位置照舊', () => {
+		setupPhases(phased());
+		const bar = bars(lanes()[0])[0];
+		expect(tops(bar).map(([, top]) => top)).toEqual(['0px', '0px']);
+		expect(bar.style.paddingTop).toBe('');
 	});
 
 	it('按在環節上照樣能拖色條、拉長度、點色條', async () => {

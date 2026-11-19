@@ -12,7 +12,7 @@ import {
 	type Mark,
 	type NewAttempt
 } from '#lib/core';
-import { flowOf } from '#lib/test-flows.js';
+import { flowOf, pyramidSample } from '#lib/test-flows.js';
 import { editorPage, openFile, practiceFlow, flush } from '#lib/test-fakes.js';
 import { localDate } from '#lib/local-date.js';
 import Page from './+page.svelte';
@@ -616,5 +616,63 @@ describe('練習：日期', () => {
 		expect(date().value).toBe(localDate());
 		await fireEvent.change(date(), { target: { value: '2026-11-01' } });
 		expect(date().value).toBe('2026-11-01');
+	});
+});
+
+describe('練習：金字塔的環節佔同樣的拍', () => {
+	/** 開編輯頁、放 pyramidSample()、切到練習、點金字塔。 */
+	async function pyramid() {
+		const page = editorPage(pyramidSample());
+		render(Page, page.props);
+		await toPractice();
+		await pickAction('金字塔');
+		return page;
+	}
+
+	const who = '第 1 組 小美';
+	const WAIT = '還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」';
+	const enabled = (phase: string) => !disabled(screen.getByRole('button', { name: `${who} ${phase} 成功` }));
+	const phases = ['上法 第一個', '中段 第一個', '上法 第二個', '中段 第二個', '下法'];
+
+	/** 選「只練幾個環節」、勾這幾個環節。 */
+	async function pickSome(...names: string[]) {
+		await fireEvent.click(card(who).getByRole('radio', { name: '只練幾個環節' }));
+		for (const n of names) await fireEvent.click(card(who).getByRole('checkbox', { name: n }));
+	}
+
+	it('整個做，上法「第二個」✗：之後才開始的按不了，佔同樣拍的還可以按；存下來沒打的空著，還是整個做', async () => {
+		await pyramid();
+		await tap(who, '上法 第一個', '成功');
+		await tap(who, '上法 第二個', '失敗');
+		expect(phases.map(enabled)).toEqual([true, true, true, false, false]);
+		await save(who);
+		expect(dayRow(who)).toEqual(['✓·✗··']);
+		expect(card(who).getByRole('listitem').classList.contains('partial')).toBe(false);
+	});
+
+	it('只練幾個環節，打了 ✗ 還有佔同樣拍的沒打：之後才開始的按不了，先不自動存、出現「存這一次」；打完自動存', async () => {
+		await pyramid();
+		await pickSome('中段 第一個', '上法 第二個', '中段 第二個');
+		await tap(who, '上法 第二個', '失敗');
+		expect(dayRow(who)).toEqual([]);
+		expect(enabled('中段 第一個')).toBe(true);
+		expect(enabled('中段 第二個')).toBe(false);
+		expect(card(who).getByText(WAIT)).toBeTruthy();
+		expect(card(who).getByRole('button', { name: '存這一次' })).toBeTruthy();
+		// 換到編排再回來：點到一半的記號還在，還在等
+		await toArrange();
+		await toPractice();
+		expect(card(who).getByText(WAIT)).toBeTruthy();
+		await tap(who, '中段 第一個', '成功');
+		expect(dayRow(who)).toEqual(['·✓✗··']);
+		expect(card(who).queryByRole('button', { name: '存這一次' })).toBeNull();
+	});
+
+	it('只練幾個環節在等的時候按「存這一次」：照現在點的存，沒打的不記', async () => {
+		await pyramid();
+		await pickSome('中段 第一個', '上法 第二個');
+		await tap(who, '上法 第二個', '失敗');
+		await save(who);
+		expect(dayRow(who)).toEqual(['··✗··']);
 	});
 });

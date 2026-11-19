@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addAction, addPhase, addSegment, blankPhases, type Action, type Flow } from './index';
+import { addAction, addPhase, addSegment, blankPhases, pickedAutoSave, type Action, type Flow } from './index';
 import { flowOf, libSample, pyramidSample } from '../test-flows';
 
 /** Lib（技巧）：p1 上法 1-1 到 1-2、p2 中段 1-3 到 1-6、p3 下法 1-7 到 1-8。 */
@@ -168,6 +168,41 @@ describe('打 ✗ 之後照拍算哪些環節空著（金字塔的環節佔同�
 			shut: [中二, 下],
 			blanks: [中一, 中二, 下],
 			skipped: []
+		});
+	});
+});
+
+describe('只練幾個環節什麼時候自動存：還有同時在做的環節沒打就先不存', () => {
+	it('環節沒有疊：點了 ✗、或點到最後一個勾的環節就存（跟以前一樣）；其他時候不存', () => {
+		expect(pickedAutoSave(lib(), ['p1', 'p3'], { p1: '✓' })).toEqual({ due: false, waiting: [] });
+		expect(pickedAutoSave(lib(), ['p1', 'p3'], { p1: '✗' })).toEqual({ due: true, waiting: [] });
+		expect(pickedAutoSave(lib(), ['p1', 'p3'], { p3: '△' })).toEqual({ due: true, waiting: [] });
+		expect(pickedAutoSave(lib(), ['p1', 'p3'], { p1: '✓', p3: '△' })).toEqual({ due: true, waiting: [] });
+	});
+
+	it('勾了兩個佔同樣拍的環節，打其中一個 ✗：先不存，等另一個', () => {
+		expect(pickedAutoSave(pyramid(), [中一, 上二], { [上二]: '✗' })).toEqual({ due: true, waiting: [中一] });
+		expect(pickedAutoSave(pyramid(), [中一, 上二], { [中一]: '✗' })).toEqual({ due: true, waiting: [上二] });
+	});
+
+	it('點到最後一個勾的環節，另一個勾了、佔同樣拍的還沒打：也先不存；先點前面那個不到存的時機', () => {
+		expect(pickedAutoSave(pyramid(), [中一, 上二], { [上二]: '✓' })).toEqual({ due: true, waiting: [中一] });
+		expect(pickedAutoSave(pyramid(), [中一, 上二], { [中一]: '✓' })).toEqual({ due: false, waiting: [] });
+	});
+
+	it('把等著的環節打完：存', () => {
+		expect(pickedAutoSave(pyramid(), [中一, 上二], { [上二]: '✗', [中一]: '✓' })).toEqual({ due: true, waiting: [] });
+	});
+
+	it('按不了的、沒勾的、跟 ✗ 沒佔同樣拍的不等', () => {
+		// 上法「第二個」✗：中段「第二個」之後才開始（按不了），上法「第一個」在它之前，中段「第一個」沒勾
+		expect(pickedAutoSave(pyramid(), [上一, 上二, 中二], { [上二]: '✗' })).toEqual({ due: true, waiting: [] });
+	});
+
+	it('等的時候點了別的、等著的還沒打：還在等', () => {
+		expect(pickedAutoSave(pyramid(), [上一, 中一, 上二], { [上二]: '✗', [上一]: '✓' })).toEqual({
+			due: true,
+			waiting: [中一]
 		});
 	});
 });
