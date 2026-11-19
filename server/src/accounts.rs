@@ -256,6 +256,11 @@ pub async fn set_password(
     }
     let hash = hash_password(req.password).await?;
     let mut tx = state.db.begin().await?;
+    // 先鎖這個人那一列再動連結：寄設密碼信、改 email 都是這個順序，反過來會互等（deadlock）。
+    sqlx::query("SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(link.user_id)
+        .execute(&mut *tx)
+        .await?;
     // 同時送兩次：只有刪到連結的那一次算數。
     let used = sqlx::query("DELETE FROM password_links WHERE token_hash = $1")
         .bind(sha256(&req.token))

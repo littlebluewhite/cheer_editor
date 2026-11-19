@@ -895,3 +895,49 @@ async fn a_forgot_password_mail_sent_while_the_email_changes_does_not_work_from_
         }
     }
 }
+
+#[sqlx::test]
+async fn setting_a_password_while_a_new_reset_link_is_mailed_does_not_deadlock(db: sqlx::PgPool) {
+    let s = Server::new(db);
+    let admin = s.admin().await;
+    let (wang, _) = s
+        .add_with_password(&admin, "wang@example.com", "王教練")
+        .await;
+    let reset_path = format!("/api/admin/users/{wang}/send-reset");
+    s.post(&reset_path, json!({}), &admin).await;
+    let token = s.link_token_to("wang@example.com");
+
+    // 排出先後：他用連結設密碼，先用掉手上的連結，再卡在作廢他其他連結（另一條連線拿著一條
+    // 多塞的連結的鎖）；這時管理員重寄重設密碼信，鎖住他那一列後卡在換掉舊連結。放開之後
+    // 設密碼要改他那一列：兩邊鎖的先後要一樣，不然互等，資料庫砍掉一邊（40P01）回 500。
+    use sqlx::{Connection, PgConnection};
+    let options = s.state.db.connect_options();
+    let mut watcher = PgConnection::connect_with(&options).await.unwrap();
+    sqlx::query(
+        "INSERT INTO password_links (token_hash, user_id, purpose, expires_at)
+         VALUES ('\\x00', $1, 'reset', now() + interval '1 hour')",
+    )
+    .bind(wang)
+    .execute(&mut watcher)
+    .await
+    .unwrap();
+    let mut blocker_conn = PgConnection::connect_with(&options).await.unwrap();
+    let mut blocker = blocker_conn.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM password_links WHERE token_hash = '\\x00' FOR UPDATE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let set = s.set_password(&token, OTHER);
+    let reset_then_release = async {
+        lock_waiters(&mut watcher, 1).await;
+        let reset = s.post(&reset_path, json!({}), &admin);
+        let release = async {
+            lock_waiters(&mut watcher, 2).await;
+            blocker.commit().await.unwrap();
+        };
+        tokio::join!(reset, release).0
+    };
+    let (set, (reset, _)) = tokio::join!(set, reset_then_release);
+    assert_eq!(set, StatusCode::NO_CONTENT);
+    assert_eq!(reset, StatusCode::NO_CONTENT);
+}
