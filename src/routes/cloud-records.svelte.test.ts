@@ -113,6 +113,33 @@ describe('雲端流程記一次', () => {
 	});
 });
 
+describe('打開時別人記的（拿流程之後、進房間之前）', () => {
+	it('first hello asks for records：拿到流程之後別人記的、刪的，進房間就換上', async () => {
+		const fake = fakeServer({
+			users: [lin, wang],
+			signedIn: lin.email,
+			flows: [wangsFlow('recorder', [wangs('tgone00000001', 'g2', { p1: '✗' })])]
+		});
+		// 拿到流程之後（下載音樂、進房間之前）：王教練記了一次、刪了一次
+		const cloudFlow = fake.server.cloudFlow;
+		fake.server.cloudFlow = async (id) => {
+			const found = await cloudFlow(id);
+			fake.recordAs('c1', wang.email, [wangs('tnew000000001', 'g1', { p1: '✓', p2: '✓', p3: '✓' })]);
+			fake.state.flows[0].records = fake.state.flows[0].records!.map((r) => (r.attempt.id === 'tgone00000001' ? { ...r, gone: true } : r));
+			return found;
+		};
+		const page = editorPage(null, { server: fake.server });
+		render(Page, page.props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: /^測試/ }));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+
+		expect(dayRow('第 1 組 小美')).toEqual(['✓✓✓王教練']);
+		expect(dayRow('第 2 組 小芳')).toEqual([]);
+	});
+});
+
 describe('雲端流程斷線時別人記的（#255）', () => {
 	it('連回來時換成伺服器現在的紀錄：斷線時別人記的放進來、刪的拿掉，自己沒傳的留著', async () => {
 		const s = await open(wangsFlow('recorder', [wangs('tgone00000001', 'g2', { p1: '✗' })]));

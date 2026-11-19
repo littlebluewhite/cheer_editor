@@ -17,8 +17,8 @@
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。
 // 改、刪、救回（#258）也從這裡送；伺服器回那幾次現在的樣子（記錄者動別人的不算，換回來）。別人改的、刪的，
-// 別人的一步跟著改、清掉的紀錄，馬上換掉。記錄者只能改、刪自己記的（session.ownRecordsOnly）。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄。
-// 連回來時（#255）伺服器也給現在的紀錄：斷線時別人記的、改的、刪的換上，自己還沒傳到的照這邊的。
+// 別人的一步跟著改、清掉的紀錄，馬上換掉。記錄者只能改、刪自己記的（session.ownRecordsOnly）。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄，沒算的步清掉的帶回來。
+// 連上、連回來時（#255）伺服器也給現在的紀錄：拿流程之後、斷線時別人記的、改的、刪的換上，自己還沒傳到的照這邊的。
 // 斷網時記的（#260）：房間斷了照記，還沒傳的（記了的、改了刪了的）存在這台（離線存放，撐得過重新整理），連上了打招呼、自動傳。
 // 還沒送到伺服器的那一次直接改、刪（不用送）；送過的連上再送。斷著時說為什麼（link：斷網、伺服器沒回應、登入過期），
 // 連上後傳的時候「傳中…（N 筆）」，傳完一下子「都傳上去了。」。被收回時還有沒傳的：unsentRows 列出來（擋住的框），forget 丟掉。
@@ -35,8 +35,10 @@ import {
 	memberName,
 	perPerson,
 	putRecords,
+	recordsPatch,
 	squadName,
 	takeRecords,
+	undoRecords,
 	type Flow,
 	type RemoteChange,
 	type StoredAttempt
@@ -48,6 +50,9 @@ import { Flash } from '#lib/flash.svelte.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView } from '#lib/server-api.js';
 import { runKey, runKeyLabel } from '#lib/run-keys.js';
+
+/** 還沒被伺服器收的一步：送的、這一步改了什麼（提示用）、做的時候看到第幾步、改之前、改之後的流程。 */
+type Queued = CloudStep & { label: string; seen: number; before: Flow; after: Flow };
 
 /** 有新版時不能改的原因。 */
 export const NEW_VERSION = '有新版，請重新整理';
@@ -87,8 +92,8 @@ const TAB_ID = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b 
 export class CloudSteps {
 	readonly #room: FlowRoom;
 	readonly #session: EditorSession;
-	/** 還沒被伺服器收的步和它改了什麼（第一個送出去了，等它回答）。 */
-	#queue = $state.raw<(CloudStep & { label: string; seen: number })[]>([]);
+	/** 還沒被伺服器收的步和它改了什麼、改之前、改之後（第一個送出去了，等它回答）。 */
+	#queue = $state.raw<Queued[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
 	#ready = false;
 	/** 上次看到第幾步。 */
@@ -165,7 +170,7 @@ export class CloudSteps {
 		room.onconnection = (connected, why) => (connected ? this.#hello() : this.#lost(why ?? 'offline'));
 		this.#editing = !session.viewing && canEdit(role);
 		this.#hello();
-		session.onstep = (s, label) => this.#push({ ...s, label, seen: this.#seen });
+		session.onstep = (s, label, before, after) => this.#push({ ...s, label, seen: this.#seen, before, after });
 		session.onrecord = (before, after) => this.#recorded(before, after);
 	}
 
@@ -372,11 +377,12 @@ export class CloudSteps {
 		this.#session.ownRecordsOnly = this.role === 'recorder';
 	}
 
-	/** 打招呼（連上、連回來）：上次看到第幾步，伺服器先補上之後別人的改動。 */
+	/**
+	 * 打招呼（連上、連回來）：上次看到第幾步，伺服器先補上之後別人的改動。
+	 * 都要現在的紀錄：第一次是拿流程之後、進房間之前別人記的、改的、刪的；連回來是斷線時的。
+	 */
 	#hello() {
-		// 連回來的：也要現在的紀錄（斷線時別人記的、改的、刪的）
-		const records = this.offline;
-		this.#room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: this.#seen, editing: this.#editing, records });
+		this.#room.send({ kind: 'hello', fingerprint: CORE_FINGERPRINT, tabId: TAB_ID, seen: this.#seen, editing: this.#editing, records: true });
 	}
 
 	/**
@@ -396,7 +402,7 @@ export class CloudSteps {
 		this.#touch();
 	}
 
-	#push(step: CloudStep & { label: string; seen: number }) {
+	#push(step: Queued) {
 		this.#queue = [...this.#queue, step];
 		if (this.#queue.length === 1) this.#sendHead();
 	}
@@ -434,12 +440,11 @@ export class CloudSteps {
 			this.#room.close();
 		} else if (m.kind === 'current') {
 			// 補不上（斷線太久）：換成伺服器的樣子，還沒送到的步不算；連回來時跟「連上了。」一起說
-			const unsent = this.#queue.length;
-			this.#dropQueue();
+			const dropped = this.#dropQueue();
 			this.#seen = m.step;
-			const lost = unsent ? `換成伺服器現在的樣子，還沒送到的 ${unsent} 步沒存進去。` : '';
+			const lost = dropped.length ? `換成伺服器現在的樣子，還沒送到的 ${dropped.length} 步沒存進去。` : '';
 			if (this.offline) this.#lostOnReconnect = lost;
-			this.#reset(m.flow as Flow, this.offline || !lost ? this.#session.notice : lost);
+			this.#reset(m.flow as Flow, this.offline || !lost ? this.#session.notice : lost, dropped);
 		} else if (m.kind === 'revoked') {
 			this.#queue = [];
 			this.onrevoked();
@@ -478,21 +483,35 @@ export class CloudSteps {
 			// 退回：這一步和後面還沒送的一起不要，換成伺服器的樣子
 			const label = this.#queue[0].label;
 			this.#seen = m.step;
-			this.#dropQueue();
-			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message));
+			const dropped = this.#dropQueue();
+			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message), dropped);
 		}
 	}
 
-	/** 還沒被伺服器收的步都不算：清掉，也從復原、重做紀錄拿掉。 */
-	#dropQueue() {
-		this.#session.dropSteps(this.#queue.map((s) => s.id));
+	/** 還沒被伺服器收的步都不算：清掉，也從復原、重做紀錄拿掉。回傳清掉的步。 */
+	#dropQueue(): Queued[] {
+		const dropped = this.#queue;
+		this.#session.dropSteps(dropped.map((s) => s.id));
 		this.#queue = [];
+		return dropped;
 	}
 
-	/** 換成伺服器的樣子（不帶紀錄）：帶著現在的紀錄（對不上的丟掉，跟復原一樣）。 */
-	#reset(flow: Flow, message: string) {
+	/**
+	 * 換成伺服器的樣子（不帶紀錄）：帶著現在的紀錄（對不上的丟掉，跟復原一樣）。
+	 * 沒算的步（dropped）清掉的紀錄伺服器還留著：那幾個動作從最後一步往前，像復原一樣帶回來（例：刪動作被退回，它的紀錄也回來）；
+	 * 其他動作照現在的（之後才有的動作、組、環節的紀錄不丟）。
+	 */
+	#reset(flow: Flow, message: string, dropped: Queued[]) {
 		const now = this.#session.flow;
-		this.#session.reset(now ? carryRecords(flow, now) : flow, message);
+		if (!now) return this.#session.reset(flow, message);
+		const patched = new Set(dropped.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));
+		let back = now;
+		for (const step of [...dropped].reverse()) back = undoRecords(step.before, step.after, back);
+		const records = [
+			...takeRecords(now).records.filter((r) => !patched.has(r.actionId)),
+			...takeRecords(back).records.filter((r) => patched.has(r.actionId))
+		];
+		this.#session.reset(carryRecords(flow, putRecords(flow, records)), message);
 	}
 
 	/**
@@ -592,7 +611,7 @@ export class CloudSteps {
 	}
 
 	/**
-	 * 伺服器現在的紀錄（連回來時，#255）：換成這一份（斷線時別人記的放進來、刪的拿掉）；
+	 * 伺服器現在的紀錄（連上、連回來時，#255）：換成這一份（拿流程之後、斷線時別人記的放進來、刪的拿掉）；
 	 * 我還沒傳到的（記了的、改了刪了救回的）照我這邊的，連上後再送。
 	 */
 	#caughtUp(server: CloudRecord[]) {
@@ -623,11 +642,10 @@ export class CloudSteps {
 			this.#session.notice = could ? `你現在是${ROLE_NAMES[role]}。` : `你現在是${ROLE_NAMES[role]}，可以改了。`;
 			return;
 		}
-		const unsent = this.#queue.length;
-		this.#dropQueue();
+		const dropped = this.#dropQueue();
 		this.#seen = step;
-		const lost = unsent ? `還沒送到的 ${unsent} 步沒存進去。` : '';
-		this.#reset(flow, `你現在是${ROLE_NAMES[role]}，只能看。${lost}`);
+		const lost = dropped.length ? `還沒送到的 ${dropped.length} 步沒存進去。` : '';
+		this.#reset(flow, `你現在是${ROLE_NAMES[role]}，只能看。${lost}`, dropped);
 	}
 }
 
