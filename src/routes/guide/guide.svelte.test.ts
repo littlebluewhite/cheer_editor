@@ -19,7 +19,7 @@ describe('使用說明', () => {
 	it('每張圖都有替代文字', () => {
 		render(Guide);
 		const images = document.querySelectorAll('img');
-		expect(images.length).toBe(21);
+		expect(images.length).toBe(22);
 		for (const img of images) expect(img.alt.length).toBeGreaterThan(10);
 	});
 
@@ -363,5 +363,64 @@ describe('上方列：永遠一行，不常按的五樣在「選單」裡（#281
 		const text = document.querySelector('main')!.textContent!;
 		expect(text).not.toContain('第二行');
 		expect(text).toContain('上方列永遠一行');
+	});
+});
+
+describe('環節：金字塔的環節可以佔同樣的拍', () => {
+	const words = () => {
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
+		return { phase: row('環節'), attempt: row('一次') };
+	};
+	/** 從小標題到下一個小標題之間的字。 */
+	const part = (id: string) => {
+		let text = '';
+		for (let el = document.getElementById(id)!.nextElementSibling; el && el.tagName !== 'H4'; el = el.nextElementSibling) text += el.textContent;
+		return text;
+	};
+
+	it('名詞對照表的「環節」「一次」跟詞彙表一樣', () => {
+		render(Guide);
+		const { phase, attempt } = words();
+		expect(phase).toContain('金字塔的環節可以佔同樣的拍，例如第一個三層停在中段時，第二個三層還在上法，其他大類的環節不佔同樣的拍');
+		expect(phase).toContain('金字塔有環節佔同樣的拍時，要先分開才能換到技巧、拋投、騰翻、跳躍');
+		expect(phase).toContain('同一個動作裡，每一組記的環節都一樣');
+		expect(attempt).toContain('中途失敗，失敗的環節做完之後才開始的環節空著；金字塔裡跟失敗的環節佔同樣拍的環節是同時在做的，還可以打記號，沒打就空著');
+		expect(attempt).toContain('口號段不數拍，失敗的環節後面的都空著');
+		expect(attempt).not.toContain('中途失敗，後面的環節空著');
+	});
+
+	it('環節那一段：可以佔同樣的拍、怎麼標、疊著的往下多一排、點哪條改哪條清哪條、別的大類不行、換大類要先分開', () => {
+		render(Guide);
+		const text = part('環節');
+		for (const words of [
+			'金字塔的環節可以佔同樣的拍', '第一個三層停在中段', '第二個三層還在上法', '不會切到別的環節',
+			'往下多一排', '點哪一條就改哪一條', '只清那一條', '排前面的那個',
+			'技巧、拋投、騰翻、跳躍的環節不能佔同樣的拍', '有環節佔同樣的拍，先分開才能換成技巧'
+		]) {
+			expect(text, words).toContain(words);
+		}
+		// 環節佔的是「拍」，不叫拍點
+		expect(text).not.toMatch(/環節(佔|標|的)的?拍點/);
+		const shot = [...document.querySelectorAll<HTMLImageElement>('#practice img')].find((img) => img.alt.includes('佔同樣的拍'));
+		expect(shot?.alt).toContain('兩排');
+		// 圖跟截圖一樣：點的是中段 第二個那一條（跟中段 第一個都佔 7-1 到 7-4）
+		expect(shot?.alt).toContain('點了中段 第二個');
+		expect(shot?.closest('figure')?.textContent).toContain('點了中段「第二個」那一條');
+	});
+
+	it('練習那一段：打 ✗ 之後哪些空著、什麼時候先不自動存、「存這一次」在哪', () => {
+		render(Guide);
+		const text = document.getElementById('practice')!.textContent!;
+		for (const words of [
+			'做完之後才開始的環節', '同時在做', '沒按就空著',
+			'還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」',
+			'全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）'
+		]) {
+			expect(text, words).toContain(words);
+		}
+		for (const old of ['後面環節的按鈕變灰', '它後面的環節就空著', '（✗ 後面的不用）', '中途失敗之後的', '按到 ✗ 也馬上存，後面的環節空著']) {
+			expect(text, old).not.toContain(old);
+		}
 	});
 });

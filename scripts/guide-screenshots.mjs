@@ -98,7 +98,8 @@ const helpers = `
 
 /**
  * 畫紅框加號碼，拍照，再拿掉。
- * marks：[號碼, 元素的 JS 運算式（可以是陣列，框住全部）, 號碼放哪（框的比例，預設右上角 {x:1,y:0}）]。
+ * marks：[號碼, 元素的 JS 運算式（可以是陣列，框住全部）, 號碼放哪（框的比例，預設右上角 {x:1,y:0}；dx、dy 再挪幾 px；
+ * fixed: true 就放在那裡，不自己換地方）]。
  * clip：只拍這一塊（JS 運算式，可以是陣列，取全部的外框），不給就拍整個畫面。
  */
 async function shot(name, marks, clip) {
@@ -165,8 +166,8 @@ async function shot(name, marks, clip) {
 			};
 			const around = [[1, 0], [1, 0.5], [1, 1], [0.5, 1], [0, 1], [0, 0.5], [0, 0], [0.5, 0]];
 			const tries = [at, ...around.map(([x, y]) => ({ x, y })), ...around.map(([x, y]) => ({ x, y, dx: (x - 0.5) * 32, dy: (y - 0.5) * 32 }))].map(spot);
-			const best = tries.reduce((a, c) => (c.cost < a.cost ? c : a));
-			if (best.cost > 0) stuck.push(n);
+			const best = at.fixed ? tries[0] : tries.reduce((a, c) => (c.cost < a.cost ? c : a));
+			if (best.cost > 0 && !at.fixed) stuck.push(n);
 			Object.assign(badge.style, { left: best.cx - 13 + 'px', top: best.cy - 13 + 'px' });
 			obstacles.push({ el: badge, rect: best.box });
 			layer.append(frame, badge);
@@ -400,7 +401,8 @@ await shot(
 		[2, `q('.row.ruler-row')`, { x: 0.8, y: 1 }],
 		[3, `q('.row.film')`, { x: 0.9, y: 0.5 }],
 		[4, `[...document.querySelectorAll('[data-lane]')]`, { x: 0.9, y: 0.5 }],
-		[5, `q('.timeline-host .ph')`, { x: 1, y: 0.4 }],
+		// 號碼放播放頭右邊一點的空白，不壓在播放頭那條線上
+		[5, `q('.timeline-host .ph')`, { x: 1, y: 0.4, dx: 18 }],
 		[6, `q('.walk[data-walk]')`, { x: 1, y: 0.5 }],
 		[7, `q('[data-repeat-range]')`, { x: 1, y: 0.5 }]
 	],
@@ -455,7 +457,8 @@ await shot(
 		[1, `[...document.querySelectorAll('.cues .cell')]`, { x: 0.55, y: 1 }],
 		[2, `[...document.querySelectorAll('.cues .lane-lbl, .cues .slot')]`, { x: 1, y: 0.6 }],
 		[3, `q('.cues .pop')`, { x: 0, y: 0.55 }],
-		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 1, y: 0 }],
+		// 號碼固定放框上緣中間：讓它自己找，會被擠到 5 的框旁邊，兩個號碼黏在一起、看起來像在框「給誰」
+		[4, `[q('.cues .sel-text'), ...document.querySelectorAll('.cues .pm')]`, { x: 0.5, y: 0, dy: -4, fixed: true }],
 		[5, `q('.cues .who-sel')`, { x: 1, y: 0.5 }],
 		[6, `[...document.querySelectorAll('.cues .pop-row .words')]`, { x: 0.75, y: 0 }],
 		[7, `[...document.querySelectorAll('.cues .pop-row .clear')]`, { x: 1, y: 1 }]
@@ -544,7 +547,8 @@ await shot(
 		// 號碼放在工具列上面，不蓋到按鈕的字
 		[1, `$btn('鏡像', q('.tools-bar'))`, { x: 0.5, y: -0.9 }],
 		[2, `q('.tools-bar .nth')`, { x: 0.5, y: -0.9 }],
-		[3, `[$btn('對齊 ▾', q('.tools-bar')), q('.menu[aria-label="對齊"]')]`, { x: 0, y: 0.6 }],
+		// 號碼固定放框左邊：讓它自己找，會跑到「平均分開」的框上面，看起來像在框 4
+		[3, `[$btn('對齊 ▾', q('.tools-bar')), q('.menu[aria-label="對齊"]')]`, { x: 0, y: 0.6, fixed: true }],
 		[4, `$btn('平均分開', q('.tools-bar'))`, { x: 0.5, y: -0.9 }]
 	],
 	`(() => {
@@ -564,7 +568,8 @@ await shot(
 	'rate',
 	[
 		[1, `[q('.cues .lane-lbl.phase'), ...document.querySelectorAll('.cues .item.phase')]`, { x: 0.62, y: 1 }],
-		[2, `[...document.querySelectorAll('.cues .pop [aria-label^="把這幾拍標給"]')]`, { x: 0, y: 0 }],
+		// 號碼固定放右邊中間外面一點的空白：放角上會壓在 3 的框上
+		[2, `[...document.querySelectorAll('.cues .pop [aria-label^="把這幾拍標給"]')]`, { x: 1, y: 0.5, dx: 16, fixed: true }],
 		[3, `[...document.querySelectorAll('.cues .pop [aria-label="環節的種類"], .cues .pop [aria-label="環節的名字"], .cues .pop [aria-label="加入環節"]')]`, { x: 0, y: 0.5 }],
 		[4, `q('.cues .pop [aria-label="清掉環節"]')`, { x: 1, y: 0 }],
 		[5, `q('.cues .pop .edit')`, { x: 1, y: 1 }]
@@ -633,9 +638,68 @@ await shot('summary', [
 	[1, `[...document.querySelectorAll('.summary .filters .seg')]`],
 	[2, `q('.summary .run button.primary')`],
 	[3, `[...document.querySelectorAll('.summary .cell')].find((b) => b.getAttribute('aria-label').startsWith('第 2 組 小芳 下法')).closest('td')`],
-	[4, `[...document.querySelectorAll('.summary td.total')]`, { x: 1, y: 1 }],
-	[5, `q('.summary tr.whole')`, { x: 0, y: 1 }],
+	// 4 號放合計那一欄右邊的空白、5 號放整次那一列下面：放角上會跟 3、4、5 的框角擠在一起
+	[4, `[...document.querySelectorAll('.summary td.total')]`, { x: 1, y: 0.5, dx: 16 }],
+	[5, `q('.summary tr.whole')`, { x: 0.3, y: 1, dy: 12 }],
 	[6, `q('aside.detail')`, { x: 0, y: 0 }]
 ]);
+
+// 13 金字塔的環節佔同樣的拍（不在第 5 章的試跑裡，試跑只有技巧）：回編排，在 6-1 加一個 16 拍的金字塔，
+// 五個環節照規格的例子：上法「第一個」6-1 到 6-4、中段「第一個」6-5 到 7-4、上法「第二個」6-5 到 6-8、
+// 中段「第二個」7-1 到 7-4、下法 7-5 到 7-8。拍疊著的往下多一排；點中段「第二個」那一條，改環節改的是它。
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: 1400, deviceScaleFactor: 2, mobile: false });
+await js(`$btn('編排').click();`);
+await waitFor(() => js(`return !!q('[data-ruler]')`));
+await sleep(300);
+await js(esc);
+{
+	const r = await js(`return $rect(q('[data-ruler]'))`);
+	const t = await js(`return $tick('6')`);
+	await click(t.l + 2, r.y);
+}
+await js(`q('#tab-action').click();`);
+// 沒選動作時先選人（全隊），動作表單才出來
+await js(`$btn('全隊').click();`);
+await waitFor(() => js(`return !!q('.action-form button.add')`));
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	const form = q('.action-form');
+	$set(form.querySelector('header .title'), '金字塔');
+	$set($label('大類').querySelector('select'), 'pyramid', 'change'); await wait();
+	$set(form.querySelector('input[aria-label="長度"]'), '16'); await wait();
+	form.querySelector('button.add').click(); await wait();
+`);
+await sleep(300);
+await js(`q('button[aria-label="收起提示"]')?.click();`);
+await js(`
+	const wait = () => new Promise((x) => setTimeout(x, 80));
+	const g = q('.cues');
+	for (const [from, more, kind, name] of [
+		['6-1', 3, '上法', '第一個'], ['6-5', 7, '中段', '第一個'], ['6-5', 3, '上法', '第二個'], ['7-1', 3, '中段', '第二個'], ['7-5', 3, '下法', '']
+	]) {
+		g.querySelector('.cell[aria-label="' + from + '"]').click(); await wait();
+		for (let i = 0; i < more; i++) { g.querySelector('[aria-label="多選一拍"]').click(); await wait(); }
+		const k = g.querySelector('select[aria-label="環節的種類"]');
+		$set(k, [...k.options].find((o) => o.textContent === kind).value, 'change');
+		$set(g.querySelector('input[aria-label="環節的名字"]'), name);
+		g.querySelector('[aria-label="加入環節"]').click(); await wait();
+	}
+`);
+await js(esc);
+// 格子捲到右邊欄最上面，再點 7 那一排的中段「第二個」（跟中段「第一個」佔一模一樣的拍）：拍點小窗開在格子下面
+await js(`q('.cues .sheet').scrollIntoView({ block: 'start' }); await new Promise((x) => setTimeout(x, 100));
+	q('.cues .item.phase[aria-label^="環節 中段 第二個"]').click(); await new Promise((x) => setTimeout(x, 100));`);
+await sleep(200);
+const phaseItem = (name, eight) =>
+	`[...document.querySelectorAll('.cues .item.phase')].filter((e) => e.getAttribute('aria-label').startsWith('環節 ${name}') && e.closest('.row').querySelector('.cell').getAttribute('aria-label').startsWith('${eight}-'))`;
+await shot(
+	'overlap',
+	[
+		[1, phaseItem('上法 第二個', 6), { x: 1, y: 0.5 }],
+		[2, `[...${phaseItem('中段 第一個', 7)}, ...${phaseItem('中段 第二個', 7)}]`, { x: 1, y: 0.5 }],
+		[3, `q('.cues .pop .edit')`, { x: 1, y: 1 }]
+	],
+	`[q('.cues .pop'), q('.cues .sheet')]`
+);
 
 stop(0);
