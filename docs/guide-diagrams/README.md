@@ -22,7 +22,7 @@ python3 "$F" check src/lib/guide/time.svg
 
 ## 畫面截圖
 
-說明裡另外有 15 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
+說明裡另外有 16 張真的畫面截圖（`src/lib/guide/shots/*.webp`，紅框和號碼是拍的時候畫上去的）。
 改了編輯器的畫面之後，重拍一次：
 
 ```sh
@@ -30,4 +30,6 @@ npm run guide:shots
 ```
 
 腳本是 `scripts/guide-screenshots.mjs`：自己開 `vite dev` 和 headless Chrome，照第 5 章「新手試跑」點一次，邊做邊拍。
+最後一張 `overlap.webp`（金字塔的環節佔同樣的拍）不在試跑裡：試跑只有技巧，拍完總表再回編排加一個金字塔來拍。
 Chrome 不在 macOS 預設位置時，加 `CHROME=/path/to/chrome`。重拍後看一下圖，紅框有沒有框對地方。
+號碼自己找地方放，放的地方不對時，在腳本那一格給位置（`{ x, y, dx, dy }`），還是被挪走就加 `fixed: true`。
