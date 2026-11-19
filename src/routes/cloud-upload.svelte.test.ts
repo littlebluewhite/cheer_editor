@@ -6,6 +6,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadSegmentAudio, putRecords, readFlowFile, renameFlow, writeFlowFile, type Flow } from '#lib/core';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
+import { createBrowserSaver } from '#lib/file/save.js';
 import { ServerUnreachable } from '#lib/server-api.js';
 import { editorPage, fakeDraftStore, fakeServer, flush, fromMenu, menuItem, openFile, recordedFlow, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
@@ -187,6 +188,32 @@ describe('傳上雲端', () => {
 		expect(screen.getByRole('status').textContent).toBe(CHANGED);
 	});
 
+	it('upload keeps text typed while opening the cloud copy：傳好、打開雲端那支的時候在欄位裡打字還沒送出，還是本機流程、打的字進流程、草稿沒丟', async () => {
+		const s = await openLocal(new Uint8Array([7, 2, 3]));
+		await fireEvent.click(document.querySelector('[data-lane="m1"] [data-action-id="x1"]')!);
+		let go = () => {};
+		const gate = new Promise<void>((r) => (go = r));
+		const cloudFlow = s.server.cloudFlow;
+		s.server.cloudFlow = async (id) => {
+			await gate;
+			return cloudFlow(id);
+		};
+		await fireEvent.click(screen.getByRole('button', { name: /傳上雲端/ }));
+		await flush();
+		expect(s.state.flows).toHaveLength(1);
+		const name = screen.getByLabelText('名稱') as HTMLInputElement;
+		name.focus();
+		await fireEvent.input(name, { target: { value: '大托舉' } });
+		go();
+		await flush();
+		await flush();
+
+		expect(s.page.editor.file.cloudId).toBeNull();
+		expect(s.page.session.flow!.actions[0].name).toBe('大托舉');
+		expect(s.drafts.all.size).toBe(1);
+		expect(screen.getByRole('status').textContent).toBe(CHANGED);
+	});
+
 	it('upload keeps a draft opened during upload：傳音樂的時候開了別的檔，開著的不換掉、它的草稿不清', async () => {
 		const s = await openLocal(new Uint8Array([7, 2, 3]));
 		const done = await uploadHeld(s);
@@ -291,6 +318,43 @@ describe('下載成流程檔', () => {
 		expect(read.kind).toBe('ok');
 		if (read.kind !== 'ok') return;
 		expect(read.audio[id]).toEqual(new Uint8Array([9, 9, 9]));
+	});
+
+	it('export asks where to save before fetching：Chrome 按下去之後跟伺服器拿東西太久，存檔對話框就不能跳；先問存到哪再拿，照樣存下來', async () => {
+		vi.stubGlobal('matchMedia', () => ({ matches: false }));
+		// 按「下載」算使用者的動作；等過伺服器（慢的音樂檔）就過期了，那之後 showSaveFilePicker 被擋（Chrome 丟 SecurityError）
+		let active = false;
+		const written: Uint8Array[] = [];
+		vi.stubGlobal('showSaveFilePicker', async ({ suggestedName }: { suggestedName: string }) => {
+			if (!active) throw new DOMException('Must be handling a user gesture to show a file picker.', 'SecurityError');
+			return {
+				name: suggestedName,
+				createWritable: async () => ({ write: async (b: Uint8Array) => void written.push(b), close: async () => {} })
+			};
+		});
+		const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows: [wangsFlow('owner')] });
+		const page = editorPage(null, { server: fake.server, createSaver: () => createBrowserSaver() });
+		render(Page, page.props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: /^練習用/ }));
+		await flush();
+		const id = replaceTrack({ ...fake, page }, new Uint8Array([9, 9, 9]));
+		const audioBytes = fake.server.audioBytes;
+		fake.server.audioBytes = async (...args) => {
+			const bytes = await audioBytes(...args);
+			active = false;
+			return bytes;
+		};
+		active = true;
+		await fromMenu('下載成流程檔');
+		await flush();
+
+		expect(written).toHaveLength(1);
+		const read = readFlowFile(written[0]);
+		expect(read.kind).toBe('ok');
+		if (read.kind !== 'ok') return;
+		expect(read.audio[id]).toEqual(new Uint8Array([9, 9, 9]));
+		expect(screen.getByRole('status').textContent).toContain('練習用.zip');
 	});
 
 	it('export fails when a track not cached here is unreachable：拿不到別人換的音樂，不存、說原因', async () => {

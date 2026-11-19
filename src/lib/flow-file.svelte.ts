@@ -633,8 +633,11 @@ export class FlowFile {
 		} finally {
 			this.#uploading = false;
 		}
-		adapters.pendingInput.flush();
-		const unchanged = () => this.#editor.session.flow === flow && this.#draftId === draftId;
+		// 打開雲端那支要等：那時候在欄位裡打的字也算改了（先送出；輸入法還在選字送不出去，也算改了）
+		const unchanged = () => {
+			adapters.pendingInput.flush();
+			return !adapters.pendingInput.pending && this.#editor.session.flow === flow && this.#draftId === draftId;
+		};
 		if (!unchanged()) return void (session.notice = UPLOAD_CHANGED);
 		await this.openCloud(id, false, unchanged);
 		if (this.#cloudId !== id) {
@@ -662,7 +665,15 @@ export class FlowFile {
 	async download() {
 		const { session, adapters, music } = this.#editor;
 		const id = this.#cloudId;
-		if (!id || !this.#cloud || !canEdit(this.#cloud.role)) return;
+		if (!id || !this.#cloud || !canEdit(this.#cloud.role) || !session.flow) return;
+		// 先問存到哪再跟伺服器拿：拿太久按下去的那一下就過期了，Chrome 不讓跳存檔對話框
+		const fileName = flowFileName(session.flow.name);
+		const saver = adapters.createSaver();
+		try {
+			if (saver.chooseFile && !(await saver.chooseFile(fileName))) return;
+		} catch {
+			return void (session.notice = '下載失敗，請再試一次');
+		}
 		let found;
 		try {
 			found = await adapters.server.cloudFlow(id);
@@ -682,8 +693,6 @@ export class FlowFile {
 		} catch {
 			return void (session.notice = '連不上伺服器，沒下載');
 		}
-		const fileName = flowFileName(flow.name);
-		const saver = adapters.createSaver();
 		try {
 			const outcome = await saver.save(writeFlowFile(flow, audio), fileName);
 			if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
