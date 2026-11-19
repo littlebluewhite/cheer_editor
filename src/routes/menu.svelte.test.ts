@@ -41,8 +41,9 @@ describe('上方列的「選單」', () => {
 		expect(bar.queryByRole('link', { name: /使用說明/ })).toBeNull();
 	});
 
-	it('點「選單」出現五樣、分三組；報讀軟體讀得出開著還是關著', async () => {
+	it('點「選單」出現五樣、分三組；報讀軟體讀得出會打開小窗、開著還是關著', async () => {
 		await withSample();
+		expect(menuButton().getAttribute('aria-haspopup')).toBe('dialog');
 		expect(menuButton().getAttribute('aria-expanded')).toBe('false');
 		expect(menuPop()).toBeNull();
 		await fireEvent.click(menuButton());

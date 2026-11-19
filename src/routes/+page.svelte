@@ -731,6 +731,7 @@
 						type="button"
 						class="menu"
 						title="選單"
+						aria-haspopup="dialog"
 						aria-expanded={menuOpen}
 						bind:this={menuBtn}
 						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class="tight-hide">選單</span></button
