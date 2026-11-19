@@ -67,11 +67,12 @@ pub async fn start_upload(
     // 還沒傳完的可以重來（例：上次傳到一半斷線）；傳好的不能換。
     // 鎖住這一列到刪完上次的：同時有人說上次的傳完，等這裡做完才做（見 finish_upload）。
     let mut tx = state.db.begin().await?;
-    let added: Option<(i32,)> = sqlx::query_as(
+    // 新加的這一列 xmax 是 0；改到上次沒收的那列不是。
+    let added: Option<(bool,)> = sqlx::query_as(
         "INSERT INTO flow_audio (flow_id, audio_id, object_key, created_at) VALUES ($1, $2, $3, $4)
          ON CONFLICT (flow_id, audio_id) DO UPDATE SET object_key = EXCLUDED.object_key
          WHERE flow_audio.size IS NULL
-         RETURNING 1",
+         RETURNING xmax = 0",
     )
     .bind(&flow_id)
     .bind(&input.audio_id)
@@ -79,11 +80,14 @@ pub async fn start_upload(
     .bind(state.clock.now())
     .fetch_optional(&mut *tx)
     .await?;
-    if added.is_none() {
+    let Some((first,)) = added else {
         return Ok(StatusCode::CONFLICT.into_response());
-    }
+    };
     // 上次沒收的可能已經複製到正式的名字：刪掉，這次的暫放的不見了時才不會收成上次的（codex review）。
-    store.delete(&key).await?;
+    // 第一次傳沒有上次的，不刪：R2 刪檔一時出錯不會害第一次傳也 500。
+    if !first {
+        store.delete(&key).await?;
+    }
     tx.commit().await?;
     let url = store.upload_url(&uploading(&key));
     Ok(Json(Presigned { url }).into_response())

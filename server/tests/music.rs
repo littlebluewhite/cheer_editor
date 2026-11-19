@@ -799,3 +799,16 @@ async fn staging_left_behind_after_finishing_still_reports_success(db: sqlx::PgP
         .await;
     assert_eq!(status, StatusCode::OK);
 }
+
+#[sqlx::test]
+async fn a_first_upload_does_not_need_a_delete_to_succeed(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+
+    // 第一次傳這個音樂檔，沒有上次的要刪：R2 刪檔出錯也照樣拿到上傳網址。
+    s.fail_next(Fault::Delete);
+    let (status, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(got["url"].is_string());
+}
