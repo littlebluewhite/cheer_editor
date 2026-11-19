@@ -1178,6 +1178,7 @@ async fn redo_clears_again_a_record_whose_mark_change_was_resent_unchanged(db: s
         step(&mut coach, "steprename01", 6, rename).await["kind"],
         "accepted"
     );
+    hear(&mut coach).await;
     let flow_after = s.flow(&wang, &id).await;
     let change_back = s.back_to(&flow_after, &flow_before).await;
     let reply = undo(
