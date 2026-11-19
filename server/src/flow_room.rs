@@ -409,7 +409,7 @@ pub enum RoomMessage {
     },
     /// 別人（或我在別的分頁）記的。
     NewRecords { records: Vec<CloudRecord> },
-    /// 別人改、刪、救回的紀錄，或別人的一步跟著改、清掉的紀錄（#258）：改好的那幾次（不在畫面上的加進來）、刪掉的 id。
+    /// 別人改、刪、救回的紀錄，或一步跟著改、清掉的紀錄（#258，自己的步也送）：改好的那幾次（不在畫面上的加進來）、刪掉的 id。
     RecordsChanged {
         changed: Vec<CloudRecord>,
         deleted: Vec<String>,
@@ -605,7 +605,6 @@ async fn serve(
                     // 存好、告訴別人都在鎖裡：別人收到的改動照第幾步的順序。
                     let steps = state.rooms.steps(flow_id);
                     let _one_at_a_time = steps.lock().await;
-                    let undoing = matches!(request, RoomRequest::Undo { .. });
                     let (step_id, seen, work) = match request {
                         RoomRequest::Undo { step_id, seen, of, redo, change } => {
                             (step_id, seen, Work::Undo { of, redo, change })
@@ -628,13 +627,11 @@ async fn serve(
                         state.rooms.tell(flow_id, event);
                         // 紀錄跟著改的接在編排的改動後面（別人先套編排，再換紀錄）。
                         if !kept.is_empty() {
-                            // 復原、重做：送的人那邊只帶現在的紀錄，加回來的也告訴他（ADR 0007）。
-                            if undoing {
-                                also = Some(RoomMessage::RecordsChanged {
-                                    changed: kept.changed.iter().map(|r| r.seen_by(user_id)).collect(),
-                                    deleted: kept.deleted.clone(),
-                                });
-                            }
+                            // 送的人也收到（ADR 0007）：復原、重做加回來的；一般的步，進房間拿到的紀錄可能還沒算到這一步。
+                            also = Some(RoomMessage::RecordsChanged {
+                                changed: kept.changed.iter().map(|r| r.seen_by(user_id)).collect(),
+                                deleted: kept.deleted.clone(),
+                            });
                             state.rooms.tell(flow_id, RoomEvent::RecordsChanged { from: conn, change: kept.into() });
                         }
                     }

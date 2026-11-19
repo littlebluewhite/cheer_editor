@@ -556,11 +556,13 @@ export class EditorSession {
 	/**
 	 * 雲端流程自己的一步收了：復原紀錄裡那一步的重做換成伺服器做出來的改動（change），不是這邊畫面上的
 	 * （例：兩個人同時加隊員，後到的被放在別的位置；照畫面上的重做會跟別人加的人疊在一起）。合成一步的，最後一步收了才換。
+	 * 順序照畫面上的：伺服器的順序裡有別人加的，照它重做會把別人後來調的順序調回去。
 	 */
 	acceptedAs(stepId: string, change: RemoteChange) {
+		const redo = { things: change.things, orders: {} };
 		const fix = (s: Step): Step =>
 			'ids' in s && s.ids.at(-1) === stepId
-				? { ...s, changes: joinUndo(s.changes, { undo: { things: [], orders: {} }, redo: change }) }
+				? { ...s, changes: joinUndo(s.changes, { undo: { things: [], orders: {} }, redo }) }
 				: s;
 		this.#undo = this.#undo.map(fix);
 	}

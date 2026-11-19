@@ -154,6 +154,29 @@ describe('改到同一個東西', () => {
 		expect(s.page.session.flow).toEqual(server);
 	});
 
+	it('redo after undo keeps a roster move made meanwhile：同時加隊員，王教練把他的人調到最前面，我復原再重做不會把他的人搬回去', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		s.w.step(add('小新'));
+		s.page.session.ask.send(add('小華'));
+		s.releaseRoom();
+		await flush();
+		const xin = s.state.flows[0].flow.members.find((m) => m.name === '小新')!.id;
+		s.w.step({ name: 'moveMember', args: [xin, 0] });
+		await flush();
+		expect(s.state.flows[0].flow.members[0].name).toBe('小新');
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		const server = s.state.flows[0].flow;
+		expect(server.members.map((m) => m.name)).toContain('小華');
+		expect(server.members[0].name).toBe('小新');
+		expect(s.page.session.flow).toEqual(server);
+	});
+
 	it('收了的時候後面還有沒送到的步：換成伺服器的樣子，再跑一次後面的步；全部收了跟伺服器一樣', async () => {
 		const s = await bothOpen();
 		const settled = vi.spyOn(s.page.session, 'settle');
