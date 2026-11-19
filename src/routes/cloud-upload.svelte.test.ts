@@ -163,6 +163,30 @@ describe('傳上雲端', () => {
 		expect(screen.getByRole('status').textContent).toBe(CHANGED);
 	});
 
+	it('upload keeps edits made while opening the cloud copy：傳好、打開雲端那支的時候改了，還是本機流程、改的留著', async () => {
+		const s = await openLocal(new Uint8Array([7, 2, 3]));
+		let go = () => {};
+		const gate = new Promise<void>((r) => (go = r));
+		const cloudFlow = s.server.cloudFlow;
+		s.server.cloudFlow = async (id) => {
+			await gate;
+			return cloudFlow(id);
+		};
+		await fireEvent.click(screen.getByRole('button', { name: /傳上雲端/ }));
+		await flush();
+		expect(s.state.flows).toHaveLength(1);
+		s.page.session.ask.send({ name: 'renameFlow', args: ['全國賽'] });
+		await flush();
+		go();
+		await flush();
+		await flush();
+
+		expect(s.page.editor.file.cloudId).toBeNull();
+		expect(s.page.session.flow!.name).toBe('全國賽');
+		expect(s.drafts.all.size).toBe(1);
+		expect(screen.getByRole('status').textContent).toBe(CHANGED);
+	});
+
 	it('upload keeps a draft opened during upload：傳音樂的時候開了別的檔，開著的不換掉、它的草稿不清', async () => {
 		const s = await openLocal(new Uint8Array([7, 2, 3]));
 		const done = await uploadHeld(s);

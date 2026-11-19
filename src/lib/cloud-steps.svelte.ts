@@ -35,6 +35,7 @@ import {
 	memberName,
 	perPerson,
 	putRecords,
+	recordsPatch,
 	squadName,
 	takeRecords,
 	undoRecords,
@@ -497,12 +498,20 @@ export class CloudSteps {
 
 	/**
 	 * 換成伺服器的樣子（不帶紀錄）：帶著現在的紀錄（對不上的丟掉，跟復原一樣）。
-	 * 沒算的步（dropped）清掉的紀錄伺服器還留著：從最後一步往前，像復原一樣帶回來（例：刪動作被退回，它的紀錄也回來）。
+	 * 沒算的步（dropped）清掉的紀錄伺服器還留著：那幾個動作從最後一步往前，像復原一樣帶回來（例：刪動作被退回，它的紀錄也回來）；
+	 * 其他動作照現在的（之後才有的動作、組、環節的紀錄不丟）。
 	 */
 	#reset(flow: Flow, message: string, dropped: Queued[]) {
-		let now = this.#session.flow;
-		for (const step of [...dropped].reverse()) if (now) now = undoRecords(step.before, step.after, now);
-		this.#session.reset(now ? carryRecords(flow, now) : flow, message);
+		const now = this.#session.flow;
+		if (!now) return this.#session.reset(flow, message);
+		const patched = new Set(dropped.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));
+		let back = now;
+		for (const step of [...dropped].reverse()) back = undoRecords(step.before, step.after, back);
+		const records = [
+			...takeRecords(now).records.filter((r) => !patched.has(r.actionId)),
+			...takeRecords(back).records.filter((r) => patched.has(r.actionId))
+		];
+		this.#session.reset(carryRecords(flow, putRecords(flow, records)), message);
 	}
 
 	/**

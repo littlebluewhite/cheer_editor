@@ -203,6 +203,36 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(s.page.session.flow!.actions[0].note).toBe('注意手');
 		expect(takeRecords(s.page.session.flow!).records).toEqual(kept);
 	});
+
+	it('被退回時別人新加的動作的紀錄留著（退回的那一步之後才聽到的動作）', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		// 王教練加了一個動作、記了一次、改了 x1，林教練都還沒聽到
+		const members = ['m1', 'm2', 'm3', 'm4'].map((memberId, i) => ({ memberId, role: i % 3 ? '主底' : '上層' }));
+		s.w.step({ name: 'addAction', args: [{ segmentId: 's1', category: 'stunt', name: 'Ext', start: 16, length: 8, note: '', members }] });
+		s.releaseRoom(true);
+		const x2 = s.state.flows[0].flow.actions[1].id;
+		s.w.step(
+			{ name: 'addPhase', args: [x2, { kind: 'load', name: '', beats: { at: 0, len: 8 } }] },
+			{ name: 'setSquad', args: [x2, ['m1', 'm2', 'm3', 'm4'], 1] }
+		);
+		s.releaseRoom(true);
+		const ext = s.state.flows[0].flow.actions[1];
+		const t3 = wangs('text000000003', { [ext.successRate!.phases[0].id]: '✓' });
+		s.recordAs('c1', wang.email, [{ ...t3, actionId: x2, attempt: { ...t3.attempt, who: ext.squadOrder![0] } }]);
+		s.w.step({ name: 'updateAction', args: ['x1', { note: '注意手' }] });
+		// 林教練刪 x1（做的時候還沒有那個動作）
+		s.page.session.ask.send({ name: 'deleteAction', args: ['x1'], options: { confirmed: true } });
+		await flush();
+
+		s.releaseRoom();
+		await flush();
+		await flush();
+		expect(status()).toBe('王教練剛改了同一個地方，你的「刪動作 技巧·Lib」沒改成');
+		const server = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map(({ actionId, attempt }) => ({ actionId, attempt }));
+		expect(server.map((r) => r.attempt.id)).toEqual(['text000000003']);
+		expect(takeRecords(s.page.session.flow!).records).toEqual(server);
+	});
 });
 
 describe('方向鍵連按', () => {
