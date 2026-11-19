@@ -71,12 +71,14 @@ pub async fn forgot_password(
 }
 
 async fn mail_password_link(state: &AppState, email: &str) -> anyhow::Result<()> {
+    let mut tx = state.db.begin().await?;
+    // 鎖住這一列到 commit：管理員同時改 email，連結不會照舊 email 寄出又留下來（admin.rs 的 user 也鎖）。
     let user: Option<(i64, String, String, bool)> = sqlx::query_as(
         "SELECT id, email, name, password_hash IS NOT NULL FROM users
-         WHERE lower(email) = lower($1) AND disabled_at IS NULL",
+         WHERE lower(email) = lower($1) AND disabled_at IS NULL FOR NO KEY UPDATE",
     )
     .bind(email)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((user_id, to, name, has_password)) = user else {
         return Ok(());
@@ -86,7 +88,6 @@ async fn mail_password_link(state: &AppState, email: &str) -> anyhow::Result<()>
     } else {
         LinkPurpose::Invite
     };
-    let mut tx = state.db.begin().await?;
     let token = new_link(&mut tx, user_id, purpose, state.clock.now()).await?;
     tx.commit().await?;
     state
