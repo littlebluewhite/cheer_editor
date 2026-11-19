@@ -1,0 +1,15 @@
+# 不放進映像檔的建置內容（Dockerfile）。.env 有金鑰，一定不能進去。
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+.claude
+node_modules
+build
+.svelte-kit
+server/target
+prototypes
+docs

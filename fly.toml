@@ -1,0 +1,44 @@
+# Fly.io 的設定（#188、#194、docs/deploy.md）。.github/workflows/fly-deploy.yml 推 main 時用它部署。
+# 金鑰（資料庫連線、R2、Resend…）不放這裡：放 Fly secrets，見 docs/deploy.md「金鑰」。
+
+app = "littlebluewhite"
+primary_region = "sin"
+# 伺服器收到 SIGINT 才會好好關（server/src/main.rs）。
+kill_signal = "SIGINT"
+kill_timeout = "10s"
+
+[build]
+dockerfile = "Dockerfile"
+
+[deploy]
+# 部署前在一台臨時機器上跑資料表遷移；回非 0 就不部署，舊版照常接流量。
+# 它跑的時候舊版還在用資料庫，所以一次部署只加不刪（docs/deploy.md）。
+release_command = "/app/cheer-server migrate"
+# 先開一台新的，健康檢查過了才切過去，不停機（切的時候 WebSocket 會斷，前端自己重連）。
+strategy = "bluegreen"
+
+[env]
+LISTEN_ADDR = "0.0.0.0:8080"
+SITE_DIR = "/app/build"
+RUST_LOG = "info"
+
+[http_service]
+internal_port = 8080
+force_https = true
+# 一直開著（WebSocket，ADR 0007）：不自動停機。
+auto_stop_machines = "off"
+auto_start_machines = true
+min_machines_running = 1
+
+# /health 不碰資料庫：Neon 免費版沒人用時才睡得著。
+[[http_service.checks]]
+method = "GET"
+path = "/health"
+interval = "15s"
+timeout = "5s"
+grace_period = "10s"
+
+[[vm]]
+cpu_kind = "shared"
+cpus = 1
+memory = "512mb"

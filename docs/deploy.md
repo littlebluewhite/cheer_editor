@@ -1,33 +1,159 @@
 # 部署與離線
 
-## 部署
+## 部署（Fly.io）
 
-推上 `main` 後，`.github/workflows/deploy.yml` 會跑 Rust 伺服器的測試、前端測試、型別檢查、建置，任何一個沒過就停，全過才部署到 GitHub Pages：
-`https://littlebluewhite.github.io/cheer_editor/`。
+網站在 `https://littlebluewhite.com`：一台 Rust 伺服器同時送前端和 API，同一個網址（ADR 0009）。
+Fly app `littlebluewhite`，新加坡 `sin`，一台 shared-cpu-1x 512 MB，一直開著（#188、#194）。
 
-第一次要在 GitHub 上設定一次：Settings → Pages → Build and deployment → Source 選 **GitHub Actions**。
-之後每次推 `main` 都會自動部署；也可以在 Actions 頁手動按 Run workflow。
+推上 `main` 後，`.github/workflows/fly-deploy.yml` 會：
+
+1. 跑前端測試和型別檢查（`npm test`、`npm run check`），和 Rust 伺服器的測試（`cargo test`）。任何一個沒過就停，不部署。
+2. 全過才 `flyctl deploy`：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
+3. `fly.toml` 的 `release_command` 在一台臨時機器上跑 `/app/cheer-server migrate`（資料表遷移）。**沒跑成就不部署**，舊版照常接流量。
+4. `bluegreen`：在旁邊開一台新的，`/health` 過了才切過去，不停機。切的時候 WebSocket 會斷，前端自己重連。
+
+Actions 頁也能手動按 Run workflow（只部署 `main`）。沒有測試站，本機試過就上。
+部署只在推 `main` 和手動按時跑；workflow 沒有 PR 的觸發，fork 來的 PR 拿不到 secrets。
+
+- 設定在 `fly.toml`。不是金鑰的設定（`LISTEN_ADDR=0.0.0.0:8080`、`SITE_DIR=/app/build`、`RUST_LOG`）寫在它的 `[env]`；金鑰放 Fly secrets（下面「金鑰」）。
+- `/health` 不碰資料庫：Neon 免費版 5 分鐘沒查詢才睡，一直查會把每月 100 CU 小時用完。
+- log 只用 Fly 自己的（`fly logs`），留約 7 天。
+
+### 第一次部署（網站主人）
+
+Fly secrets、GitHub 的 `FLY_API_TOKEN` 已經設好（#263）。
+
+1. 推 `main`（或 Actions 頁按 Run workflow），等 `Deploy to Fly` 跑完。
+2. 看一次：打開 `https://littlebluewhite.fly.dev/`（網域接好後 `https://littlebluewhite.com/`）是編輯器；`/health` 回 `ok`；`fly status` 有一台機器、健康檢查過。
+3. 建第一個管理員（見「本機跑伺服器」的 `create-admin`）：
+
+```sh
+fly ssh console -C "/app/cheer-server create-admin --email 你的@email --name 你的名字"
+```
+
+網域接到 Fly（`fly certs`、Cloudflare DNS）、Better Stack 的監控在上線那天做（#269）。
+
+### 資料表遷移：一次部署只加不刪
+
+遷移是 `server/migrations/` 的 `.sql` 檔，編進伺服器裡。部署前 `release_command` 先跑；它跑的時候**舊版還在接流量、還在用資料庫**，所以：
+
+- 一次部署只加：加表、加欄位（要有預設值或可以是空的）、加索引。舊版看不到新的欄位也照常跑。
+- 要刪表、刪欄位、改名：分兩次部署。第一次讓程式不再用它；下一次才刪。
+- 已經上線的遷移檔不要改（sqlx 會比對內容，改了就跑不起來）。新的加新檔，號碼接下去。
+- 伺服器看到資料庫裡有它不認得、比較新的遷移（新版部署過，又倒回舊版的程式）照常啟動。只加不刪，舊版用多出來的表、欄位也沒事。
+
+### 試一次：遷移失敗時不部署（網站主人）
+
+推一個壞的遷移試不了：`cargo test` 會先失敗，根本不會部署。所以第一次部署成功後，從自己電腦部署一次：
+
+1. 在 repo 裡加一個一定會失敗的遷移，**不要 commit**：
+
+```sh
+echo 'SELECT 1/0;' > server/migrations/99990000_deploy_fail_trial.sql
+fly deploy --remote-only
+```
+
+2. 應該看到 release command 失敗、部署停下來；`fly releases` 最新那次是失敗的。
+3. 網站照常打得開，`/health` 回 `ok`，還是原本那版。
+4. 刪掉那個檔：`rm server/migrations/99990000_deploy_fail_trial.sql`。遷移在交易裡跑，失敗的不會留在資料庫裡。
+
+### 舊網址（GitHub Pages）
+
+舊網址 `https://littlebluewhite.github.io/cheer_editor/` 照舊用 `.github/workflows/deploy.yml` 部署（測試全過才部署到 GitHub Pages）。
+上線那天建一份舊網址版（不能登入、首頁黃色搬家條）就凍住，那個 workflow 拿掉（#267、#269）。
+
+那個 workflow 第一次用要在 GitHub 上設定一次：Settings → Pages → Build and deployment → Source 選 **GitHub Actions**。
+
+## 金鑰
+
+repo 是公開的：金鑰、密碼、連線字串都不放進 repo、issue、commit、log。
+
+- 伺服器要用的金鑰都放 **Fly secrets**（只有這個 app 讀得到）：
+
+| 名字 | 是什麼 |
+|---|---|
+| `DATABASE_URL` | Neon 正式資料庫的連線字串（不經過 pooler） |
+| `R2_ENDPOINT`、`R2_BUCKET`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY` | 放音樂檔的 R2 bucket 和只管它的 token |
+| `BACKUP_R2_BUCKET`、`BACKUP_R2_ACCESS_KEY_ID`、`BACKUP_R2_SECRET_ACCESS_KEY` | 放備份的 R2 bucket 和只管它的 token（每天的備份用，#265） |
+| `RESEND_API_KEY`、`MAIL_FROM` | Resend 的金鑰和寄件人 |
+| `SITE_URL` | 網站的網址（信裡的連結用） |
+
+- **GitHub** 只放一把：Actions secret `FLY_API_TOKEN`，只能部署這個 app 的 Fly token。
+- 只有網站主人有 Fly、Cloudflare、Neon、Resend、GitHub 的帳號和金鑰，第一版不給第二個人。
+- 伺服器之後要讀新的金鑰時，網站主人先用 `fly secrets set` 加好，再部署。
+- 不定期換。**外洩、或有人離開**才換。
+
+### 怎麼換
+
+每一把都是：先在那一家開一把新的 → 放進 Fly secrets → 確定網站正常 → 再把舊的作廢。
+
+`fly secrets set`／`fly secrets import` 會重開機器（新的機器過了健康檢查才換過去）。值從標準輸入給，不要打在指令上（會留在 shell 的歷史紀錄）：
+
+```sh
+fly secrets import   # 貼上 名字=值，一行一個，按 Ctrl+D
+```
+
+- `DATABASE_URL`：Neon Console → 專案 → Roles → 那個角色 Reset password，拿新的連線字串（不經過 pooler 的那條）。換好之前舊的就不能用了，網站會停一下。
+- R2（音樂、備份各一把）：Cloudflare → R2 → Manage API tokens 開一把新的（Object Read & Write，只管那一個 bucket），換 `R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`（備份是 `BACKUP_` 開頭那兩個），網站正常後刪掉舊的 token。
+- `RESEND_API_KEY`：Resend → API Keys 開一把新的（只能寄信），換好後刪舊的。
+- `FLY_API_TOKEN`（GitHub）：`fly tokens create deploy -a littlebluewhite` 開一把新的，貼到 GitHub → Settings → Secrets and variables → Actions → `FLY_API_TOKEN`；手動跑一次 workflow 確定能部署，再用 `fly tokens list`、`fly tokens revoke` 作廢舊的。
+- 有人離開：上面的都換，帳號的密碼、兩步驟驗證也換。
+
+## 倒回
+
+只有網站主人做。倒回時間之後改的、記的都沒了，第一版不補回。手機上還沒傳的紀錄照樣傳上來（id 由手機發、不會撞，ADR 0008）。
+開著的頁面要重新整理。伺服器的指紋還沒加「倒回第幾次」（#194 寫的「有新版，請重新整理」提示），所以倒回資料庫後，請大家自己重新整理。
+
+### 程式
+
+新版有問題、資料沒壞：`git revert` 那個 commit 推上 `main`，照常部署。舊版的程式碰到比較新的資料表也能跑（上面「只加不刪」）。
+
+### 資料庫：6 小時內
+
+Neon 免費版留 6 小時內的紀錄，可以倒回到這段時間的任何一刻：
+
+1. Neon Console → 專案 → Branches → 正式的 branch → Restore，選要倒回的時間。
+2. 整個 branch 被蓋掉；Neon 自己多留一份倒回前的 branch，要找東西去那份找。
+3. 連線字串不變，不用改 Fly secrets。
+
+### 資料庫：更早的
+
+用每天凌晨 4 點（台灣時間）的備份（`pg_dump`，放 R2 的備份 bucket，留 30 天；伺服器怎麼做、檔案長什麼樣見 #265）：
+
+1. Cloudflare → R2 → 備份的 bucket，下載要的那一天。
+2. Neon Console 開一個新的 branch（空的，不要從正式的複製），拿它的連線字串（不經過 pooler）。
+3. 用 PostgreSQL 18 的工具還原到這個新的 branch（跟資料庫同一版）。
+4. 檢查：連上新的 branch 看使用者、流程、紀錄對不對。
+5. 對了才換過去：`fly secrets import` 把 `DATABASE_URL` 換成新 branch 的連線字串（會重開機器）。舊的 branch 先留著，確定沒事再刪。
+
+音樂檔：換掉、刪掉的音樂 30 天後才真的從 R2 刪，倒回 30 天內任何一份備份音樂都還在。
 
 ## 網址底下的路徑（base path）
 
-網站放在 `/cheer_editor/` 底下，由建置時的環境變數 `BASE_PATH` 決定（workflow 會帶 `/cheer_editor`）。
+新網址（Fly）放在網址根目錄 `/`，建置時不設 `BASE_PATH`（`Dockerfile` 也不設）。
+舊網址（GitHub Pages）放在 `/cheer_editor/` 底下，由建置時的環境變數 `BASE_PATH` 決定（`deploy.yml` 會帶 `/cheer_editor`）。
 本機 `npm run dev`、`npm run build` 不設，就是 `/`。
 
-要在本機看部署後的樣子：
+要在本機看舊網址部署後的樣子：
 
 ```sh
 BASE_PATH=/cheer_editor npm run build
 BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_editor/
 ```
 
-程式裡的連結和檔案路徑用 `$app/paths` 的 `resolve()`／`asset()`，或用相對路徑，部署到 `/cheer_editor/` 底下才找得到。
+程式裡的連結和檔案路徑用 `$app/paths` 的 `resolve()`／`asset()`，或用相對路徑，兩種網址都找得到。
 
 ## 本機跑伺服器
 
 `server/` 是 Rust 伺服器（axum）。前端建好的檔案和 API 由它在同一個網址送出（ADR 0009）。
 新網址底下沒有子路徑，所以建前端時**不要**設 `BASE_PATH`。
 
-要先裝 Rust（`rustup`）、Node（在專案根目錄 `npm ci`）和一個 PostgreSQL。本機開發用 Neon 另開的 branch，連線字串寫進 `server/.env`：
+要先裝 Rust（`rustup`）、Node（在專案根目錄 `npm ci`）和一個 PostgreSQL。本機開發**不碰正式的資料**：
+
+- 資料庫用 Neon 另開的 `dev` branch（或自己電腦的 PostgreSQL），連線字串寫進 `server/.env`。
+- 音樂用另一個 R2 bucket（下面「雲端流程的音樂檔」）。
+- 信不寄：不設 `RESEND_API_KEY`，信印在終端機。
+- `server/.env` 有金鑰，不進 git（`.gitignore` 擋著；範本是 `server/.env.example`）。
 
 ```sh
 npm run build                       # 建前端到 build/（不設 BASE_PATH）
@@ -35,7 +161,8 @@ cp server/.env.example server/.env  # 填 DATABASE_URL；.env 不進 git
 cd server && cargo run              # 開 http://127.0.0.1:8080
 ```
 
-- 啟動時會先跑 `server/migrations/` 的資料庫遷移。新的遷移加新檔（`0002_*.sql`…），已經上線的不要改。
+- 啟動時會先跑 `server/migrations/` 的資料庫遷移（正式機在部署前就跑過了，啟動時沒事做）。只跑遷移就結束：`cargo run -- migrate`。新的遷移加新檔，已經上線的不要改（上面「一次部署只加不刪」）。
+- 要在本機試正式機的映像檔（不會部署）：`docker build -t cheer-server .`，再 `docker run --rm -p 8080:8080 -e DATABASE_URL=… cheer-server`。
 - 伺服器用 QuickJS 跑流程核心（ADR 0010）：`cargo build` 時 `server/build.rs` 叫 `node scripts/core-bundle.mjs` 把 `src/lib/core/` 打包成一個 JS 檔、算指紋，編進程式。前端建置用同一支算指紋，兩邊一樣。所以 `cargo` 之前要先 `npm ci`；`cargo test` 也會叫 `node` 比對 QuickJS 和 Node 跑出來的結果。
 - `/health` 是健康檢查，不碰資料庫（Neon 免費版沒人用時才睡得著）。
 - 前端每頁建成 `<名字>.html`，所以 `/guide` 重新整理也打得開。其他找不到的路徑回 `200.html`（adapter 的 `fallback`），讓前端自己處理路由。
@@ -77,7 +204,7 @@ cd server && cargo run -- create-admin --email 你的@email --name 你的名字
 ```
 
 這個人變成管理員（原本的管理員不再是），收到一封設密碼信：還沒設過密碼是邀請（24 小時），設過是設新密碼（1 小時）。他之前沒用的連結作廢。
-正式機用 `fly ssh console` 在機器上跑同一個指令。
+正式機用 `fly ssh console -C "/app/cheer-server create-admin --email … --name …"` 在機器上跑同一個指令。
 
 前後端共用的訊息型別寫在 Rust（`#[derive(TS)]`），`cargo test` 時 ts-rs 把它們寫成 `src/lib/api-types/*.ts`（路徑設在 `server/.cargo/config.toml`）。
 改了型別要跑一次 `cargo test`，產生的 .ts 一起 commit。
