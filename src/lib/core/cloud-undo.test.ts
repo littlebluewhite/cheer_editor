@@ -83,6 +83,25 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.keys).toEqual(['name']);
 	});
 
+	it('匯入的舊檔站位沒照時間排（0、16、8、16 拍）：復原改名照樣放得回去，不重排站位', () => {
+		const sample = ratedSample();
+		const pos = sample.formations[0].pos;
+		const start: Flow = {
+			...sample,
+			formations: [
+				sample.formations[0],
+				...[16, 8, 16].map((at, i) => ({ id: `old${i + 1}`, segmentId: 's1', at, pos }))
+			]
+		};
+		const after = flowOf(renameFlow(start, '決賽'));
+		const server = takeRecords(after);
+		const r = runUndo(server.flow, server.records, undoChanges(start, after).undo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.name).toBe(start.name);
+		expect(r.flow.formations.map((f) => f.id)).toEqual(start.formations.map((f) => f.id));
+	});
+
 	it('重做刪環節：復原時加回來的記號再清一次，只剩那個環節的記號的那一次整筆清掉（ADR 0007）', () => {
 		const before = libSample();
 		const who = before.actions[0].members[0].squad!;

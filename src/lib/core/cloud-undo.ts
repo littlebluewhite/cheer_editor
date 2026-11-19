@@ -41,10 +41,17 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  * 記號打在不在的環節上的拿掉、拿光了整筆拿掉（例：重做刪環節，復原時加回來的記號再清一次，ADR 0007）。
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	return fitted(carryRecords(byTime(applyRemoteChange(flow, change)), flow));
+	const after = applyRemoteChange(flow, change);
+	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : after, flow));
 }
 
-/** 站位照時間排：放回去的站位接在它前一個的後面，別人後來在中間加了站位就排錯了。 */
+const inTimeOrder = (flow: Flow) =>
+	flow.formations.every((f, i) => i === 0 || formationSec(flow, f) >= formationSec(flow, flow.formations[i - 1]));
+
+/**
+ * 站位照時間排：放回去的站位接在它前一個的後面，別人後來在中間加了站位就排錯了。
+ * 本來就沒照時間排的（匯入的舊檔）不排，排了會冒出新的毛病、整步被擋。
+ */
 function byTime(flow: Flow): Flow {
 	const sorted = [...flow.formations].sort((a, b) => formationSec(flow, a) - formationSec(flow, b));
 	return sorted.every((f, i) => f === flow.formations[i]) ? flow : { ...flow, formations: sorted };

@@ -293,6 +293,30 @@ describe('改到同一個東西', () => {
 		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 
+	it('undo then redo of a move puts it back after a teammate insert：我把第三段調到第二，王教練在它後面插一段，我復原再重做，回到復原前的順序', async () => {
+		const s = await bothOpen();
+		s.page.session.ask.send({ name: 'addSegment', args: ['chant'] });
+		await flush();
+		s.page.session.ask.send({ name: 'addSegment', args: ['chant'] });
+		await flush();
+		const third = s.page.session.flow!.segments[2].id;
+		s.page.session.ask.send({ name: 'moveSegment', args: [third, -1] });
+		await flush();
+		s.w.step({ name: 'addSegment', args: ['chant', third] });
+		await flush();
+		const order = s.state.flows[0].flow.segments.map((x) => x.id);
+		expect(order.indexOf(third)).toBe(1);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		expect(s.page.session.notice).toMatch(/^已復原/);
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		expect(s.state.flows[0].flow.segments.map((x) => x.id)).toEqual(order);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
 	it('undo of an add leaves a roster move alone：我加隊員，王教練把第二個調到最前面，我復原只拿掉我加的', async () => {
 		const s = await bothOpen();
 		s.page.session.ask.send(add('小華'));

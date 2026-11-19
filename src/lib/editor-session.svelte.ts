@@ -609,7 +609,7 @@ export class EditorSession {
 		} else {
 			const id = newStepId();
 			const { undo, redo: again } = step.changes;
-			const change = redo ? travelled(before, undo, again, step.shown ?? again.orders) : travelled(before, again, undo, undo.orders);
+			const change = travelled(before, step.changes, redo, redo ? (step.shown ?? again.orders) : undo.orders);
 			back = { label: step.label, ids: [id], changes: step.changes };
 			// 復原：記下復原前畫面上的順序（重做時加回來的照這裡的位置放）
 			if (!redo) back.shown = Object.fromEntries(Object.keys(again.orders).map((list) => [list, idsOf(before, list)]));
@@ -926,14 +926,18 @@ export class EditorSession {
 const idsOf = (flow: Flow, list: string) => (flow[list as keyof RemoteChange['orders']] as { id: string }[]).map((x) => x.id);
 
 /**
- * 雲端流程復原、重做要送的改動（from 是另一個方向的，to 是這個方向的）：清單順序只動這一步加的、刪的、
- * 調了位置的（比 from、to 的順序），其他照現在畫面上的（別人後來加的、調的不動）；動到的放在 anchor 裡它前一個的後面。
+ * 雲端流程復原、重做要送的改動：清單順序只動這一步加的、刪的、調了位置的（比復原、重做兩邊的順序），
+ * 其他照現在畫面上的（別人後來加的、調的不動）；動到的放在 anchor 裡它前一個的後面。
  */
-function travelled(flow: Flow, from: RemoteChange, to: RemoteChange, anchor: RemoteChange['orders']): RemoteChange {
+function travelled(flow: Flow, changes: UndoChanges, redo: boolean, anchor: RemoteChange['orders']): RemoteChange {
+	const [from, to] = redo ? [changes.undo, changes.redo] : [changes.redo, changes.undo];
 	const orders = Object.entries(to.orders).map(([list, wanted]) => {
 		const was = from.orders[list as keyof RemoteChange['orders']] ?? [];
 		const gone = new Set(was.filter((id) => !wanted.includes(id)));
-		const moving = new Set([...wanted.filter((id) => !was.includes(id)), ...moved(was, wanted)]);
+		// 調了位置的兩個方向算同一組（復原、重做都比「改之前 → 改之後」），重做才放得回復原拿走的那幾個
+		const before = changes.undo.orders[list as keyof RemoteChange['orders']] ?? [];
+		const after = changes.redo.orders[list as keyof RemoteChange['orders']] ?? [];
+		const moving = new Set([...wanted.filter((id) => !was.includes(id)), ...moved(before, after)]);
 		const ids = idsOf(flow, list).filter((id) => !gone.has(id) && !moving.has(id));
 		const order = anchor[list as keyof RemoteChange['orders']] ?? wanted;
 		for (const id of order) {
@@ -946,24 +950,29 @@ function travelled(flow: Flow, from: RemoteChange, to: RemoteChange, anchor: Rem
 	return { ...to, orders: Object.fromEntries(orders) };
 }
 
-/** b 比 a 調了位置的：兩邊都有的裡面，最長的一串同順序以外的。 */
+/**
+ * b 比 a 調了位置的：兩邊都有的裡面，最長的一串同順序以外的。
+ * 兩邊都有的 id 各只一次，最長的同順序就是 b 在 a 裡的位置最長的遞增串（n log n、記憶體 n，幾千張站位也撐得住）。
+ */
 function moved(a: string[], b: string[]): string[] {
-	const x = a.filter((id) => b.includes(id));
-	const y = b.filter((id) => a.includes(id));
-	// longest[i][j]：x 從 i、y 從 j 起最長的同順序有幾個
-	const longest = Array.from({ length: x.length + 1 }, () => new Array<number>(y.length + 1).fill(0));
-	for (let i = x.length - 1; i >= 0; i--)
-		for (let j = y.length - 1; j >= 0; j--)
-			longest[i][j] = x[i] === y[j] ? longest[i + 1][j + 1] + 1 : Math.max(longest[i + 1][j], longest[i][j + 1]);
+	const at = new Map(a.map((id, i) => [id, i]));
+	const y = b.filter((id) => at.has(id));
+	const tails: number[] = []; // tails[k]：長 k+1 的遞增串，結尾最小的那個在 y 的位置
+	const prev = new Array<number>(y.length).fill(-1);
+	y.forEach((id, j) => {
+		const v = at.get(id)!;
+		let lo = 0;
+		let hi = tails.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (at.get(y[tails[mid]])! < v) lo = mid + 1;
+			else hi = mid;
+		}
+		if (lo > 0) prev[j] = tails[lo - 1];
+		tails[lo] = j;
+	});
 	const kept = new Set<string>();
-	for (let i = 0, j = 0; i < x.length && j < y.length; ) {
-		if (x[i] === y[j]) {
-			kept.add(x[i]);
-			i++;
-			j++;
-		} else if (longest[i + 1][j] >= longest[i][j + 1]) i++;
-		else j++;
-	}
+	for (let j = tails.at(-1) ?? -1; j >= 0; j = prev[j]) kept.add(y[j]);
 	return y.filter((id) => !kept.has(id));
 }
 
