@@ -31,6 +31,7 @@
 	import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
+	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
@@ -1218,10 +1219,19 @@
 			<section class="start">{@render startForm()}</section>
 		</div>
 	{:else}
+		{#if OLD_SITE}
+			<!-- 舊網址版（#267）：最上面一整條黃的，右邊「到新網址」。不能登入，所以只會在沒登入的首頁 -->
+			<p class="moved" role="note">
+				<span
+					>搬家了：新網址是 littlebluewhite.com。這裡還能用，但不能登入。瀏覽器裡的草稿帶不過去：先打開草稿、存成流程檔，再到新網址打開。</span
+				>
+				<a class="btn" href={NEW_SITE_URL}>到新網址</a>
+			</p>
+		{/if}
 		<div class="home">
 			<div class="home-top">
 				<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
-				{#if account === null}
+				{#if account === null && !OLD_SITE}
 					<a class="btn" href={resolve('/login')}>登入</a>
 				{/if}
 			</div>
@@ -2624,6 +2634,23 @@
 	}
 	.revoked span {
 		flex: 1;
+	}
+	.moved {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 16px;
+		margin: 0;
+		padding: 10px 16px;
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: 14px;
+	}
+	.moved span {
+		flex: 1 1 280px;
+	}
+	.moved .btn {
+		text-decoration: none;
 	}
 	.home-lists {
 		display: grid;

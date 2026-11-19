@@ -1,12 +1,18 @@
 # 推上 main 就跑前端和 Rust 伺服器的測試，再建置並部署到 GitHub Pages（https://<owner>.github.io/<repo>/）。
 # 伺服器部署到 Fly 是另一個 workflow（fly-deploy.yml）；這個只給舊網址，上線那天拿掉（#269）。
 # 第一次使用前要到 GitHub 設定，見 docs/deploy.md。
+# 推上 main 建的是一般版（跟新網址一樣）；上線那天手動按 Run workflow、勾「舊網址版」建一份凍住（#267，docs/deploy.md「上線那天」）。
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      old_site:
+        description: 舊網址版（不能登入、首頁黃色搬家條）
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,6 +73,8 @@ jobs:
         env:
           # 網站放在 /<repo>/ 底下。
           BASE_PATH: /${{ github.event.repository.name }}
+          # 舊網址版：OLD_SITE=1（src/lib/old-site.ts）。推 main 時沒有 inputs，是一般版。
+          OLD_SITE: ${{ inputs.old_site && '1' || '' }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: build
