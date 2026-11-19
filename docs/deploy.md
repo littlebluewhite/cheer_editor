@@ -243,7 +243,7 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 ```
 
   開發用的 bucket 把 `AllowedOrigins` 換成 `["http://127.0.0.1:8080", "http://localhost:8080"]`。
-- **擁有者要做（還沒做）：** 傳了沒說傳完、傳完後又 PUT 的會留在 `uploading/`，伺服器不刪。
+- **擁有者要做（還沒做）：** 傳了沒說傳完、傳完後又 PUT 的、收了但刪不掉的會留在 `uploading/`，伺服器不刪。
   R2 → 音樂的 bucket → Settings → Object Lifecycle Rules → Add rule：prefix 填 `uploading/`，物件 1 天後刪，Save changes。
   正式、開發的 bucket 都加。（Cloudflare 文件：https://developers.cloudflare.com/r2/buckets/object-lifecycles/ ，可以只管某個 prefix。）
 - 伺服器測試不連 R2：`server/tests/music.rs` 開一台假的 R2（本機 HTTP，照 S3 的路徑收 PUT、HEAD、GET、DELETE 和複製（PUT 加 `x-amz-copy-source`），不驗簽名）。

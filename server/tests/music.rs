@@ -43,6 +43,8 @@ enum Fault {
     Size,
     /// 複製回 200，但內容是錯誤（S3 的 CopyObject 複製到一半出錯會這樣回），沒複製。
     CopyErrorIn200,
+    /// 刪檔回 500。
+    Delete,
 }
 
 type Faults = Arc<Mutex<Vec<Fault>>>;
@@ -88,6 +90,9 @@ async fn fake_r2() -> (reqwest::Url, Objects, Faults) {
             Method::PUT => {
                 all.insert(key, body.to_vec());
                 StatusCode::OK.into_response()
+            }
+            Method::DELETE if fail(Fault::Delete) => {
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
             Method::DELETE => {
                 all.remove(&key);
@@ -722,4 +727,75 @@ async fn a_copy_that_fails_inside_a_200_is_not_taken_as_done(db: sqlx::PgPool) {
         .await
         .unwrap();
     assert_eq!(bytes.as_ref(), [4, 5, 6]);
+}
+
+#[sqlx::test]
+async fn a_restarted_upload_whose_staging_expired_does_not_take_the_earlier_copy(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    let put = |url: String, bytes: Vec<u8>| reqwest::Client::new().put(url).body(bytes).send();
+
+    // 第一次（A）：複製好了，查大小出錯，沒收。
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    put(got["url"].as_str().unwrap().into(), vec![1, 2, 3])
+        .await
+        .unwrap();
+    s.fail_next(Fault::Size);
+    s.finish_upload(&lin, &id, "a1").await;
+
+    // 重新開始傳別的（B），暫放的被 R2 的生命週期規則刪掉了才說傳完：不能收成 A。
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    put(got["url"].as_str().unwrap().into(), vec![4, 5, 6])
+        .await
+        .unwrap();
+    s.r2.lock()
+        .unwrap()
+        .remove(&format!("uploading/flows/{id}/a1.mp3"));
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::CONFLICT
+    );
+    let (status, _) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&lin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn staging_left_behind_after_finishing_still_reports_success(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    let put = reqwest::Client::new().put(got["url"].as_str().unwrap());
+    assert!(
+        put.body(vec![1, 2, 3])
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
+
+    // 收了才刪暫放的，刪不掉：還是收了（暫放的留給 R2 的生命週期規則），瀏覽器不會以為沒傳成。
+    s.fail_next(Fault::Delete);
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (status, _) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&lin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
 }
