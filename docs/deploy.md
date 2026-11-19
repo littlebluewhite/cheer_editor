@@ -60,7 +60,7 @@ fly deploy --remote-only --ha=false
 ### 舊網址（GitHub Pages）
 
 舊網址 `https://littlebluewhite.github.io/cheer_editor/` 凍在上線那天（2026-11-20，#269）建的舊網址版（`99fa1f7`）。
-部署它的 `.github/workflows/deploy.yml` 已經拿掉，推 `main` 不會再動到舊網址（#267、#269）。要再建一次，從 git 紀錄把那個檔拿回來。
+部署它的 `.github/workflows/deploy.yml` 已經拿掉，推 `main` 不會再動到舊網址（#267、#269）。要再建一次，從 git 紀錄把那個檔拿回來，Actions 頁手動按 Run workflow、勾 **舊網址版**；建完馬上再拿掉（它推 `main` 就跑，會建一般版蓋掉舊網址版）。
 
 **舊網址版**（`src/lib/old-site.ts`）：建置時設 `OLD_SITE=1`。沒有「登入」，也不碰伺服器（不 fetch、不開 WebSocket，當作沒登入）；
 首頁最上面一條黃的搬家提示，右邊「到新網址」（`https://littlebluewhite.com/`）。登入才用得到的頁（登入、帳號、管理使用者、忘記密碼、設密碼，`src/lib/login-only.ts`）打開直接回首頁；使用說明不變。在本機建、看：
@@ -72,17 +72,7 @@ BASE_PATH=/cheer_editor npm run preview   # 開 http://localhost:4173/cheer_edit
 
 建出來的連結、檔案路徑都在 `/cheer_editor/` 底下。不設 `OLD_SITE`（或設成 `1` 以外）就是一般版。
 
-#### 上線那天（網站主人，#269）
-
-新網址 `https://littlebluewhite.com/` 打得開、能登入之後才做（黃條叫大家去那裡）：
-
-1. 確定 `main` 最新的 commit 已經由 `Deploy to Fly` 部署好（新網址跑的就是它）。
-2. GitHub → Actions → **Deploy to GitHub Pages** → Run workflow，分支選 `main`，勾 **舊網址版**，按 Run。用的是同一個 commit。
-3. 跑完打開 `https://littlebluewhite.github.io/cheer_editor/`：最上面有黃條、「到新網址」打得開新網址，右上角沒有「登入」。
-   service worker 換版要重新整理一兩次。
-4. 馬上（推別的上 `main` 之前）拿掉 `.github/workflows/deploy.yml`，commit 推上 `main`。不拿掉的話，下一次推 `main` 又會建一般版蓋掉舊網址版。
-   拿掉那個 workflow 的那次推上去，它不會再跑；舊網址就凍在步驟 2 那份。
-5. 大家搬好後，網站主人再關舊網址：Settings → Pages 停掉（ADR 0012）。
+大家搬好後，網站主人再關舊網址：Settings → Pages 停掉（ADR 0012）。
 
 ## 金鑰
 
@@ -209,12 +199,32 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 - 啟動時會先跑 `server/migrations/` 的資料庫遷移（正式機在部署前就跑過了，啟動時沒事做）。只跑遷移就結束：`cargo run -- migrate`。新的遷移加新檔，已經上線的不要改（上面「一次部署只加不刪」）。
 - 要在本機試正式機的映像檔（不會部署）：`docker build -t cheer-server .`，再 `docker run --rm -p 8080:8080 -e DATABASE_URL=… cheer-server`。
 - 伺服器用 QuickJS 跑流程核心（ADR 0013）：`cargo build` 時 `server/build.rs` 叫 `node scripts/core-bundle.mjs` 把 `src/lib/core/` 打包成一個 JS 檔、算指紋，編進程式。前端建置用同一支算指紋，兩邊一樣。所以 `cargo` 之前要先 `npm ci`；`cargo test` 也會叫 `node` 比對 QuickJS 和 Node 跑出來的結果。
-- `/health` 是健康檢查，不碰資料庫（Neon 免費版沒人用時才睡得著）。
 - 前端每頁建成 `<名字>.html`，所以 `/guide` 重新整理也打得開。其他找不到的路徑回 `200.html`（adapter 的 `fallback`），讓前端自己處理路由。
 - log 只記請求的方法和路徑（路由的樣子，例 `/api/links/{token}`，不記 token 本身），不記查詢字串、標頭、內容。之後寫 log 也一樣：不記密碼、token、cookie、信的內容、流程內容；人用使用者 id，不寫 email。
 - 寄信：`server/.env` 沒設 `RESEND_API_KEY` 時，信（含設密碼連結）印在終端機。信裡連結的網址是 `SITE_URL`（預設 `http://` 加 `LISTEN_ADDR`）。
 - 登入的 cookie 是 `__Host-` 開頭、`Secure`：本機用 `http://127.0.0.1` 或 `http://localhost` 開，Chrome 照樣收；Safari 要 https。
 - 改資料的 API 會看 `Sec-Fetch-Site`（沒有就看 `Origin`）擋別的網站送來的請求；用 curl 試要自己帶 `-H 'Sec-Fetch-Site: same-origin'`。
+
+第一個管理員（也用來救進不去的管理員、換人當管理員）。沒有預設帳號、預設密碼：
+
+```sh
+cd server && cargo run -- create-admin --email 你的@email --name 你的名字
+```
+
+這個人變成管理員（原本的管理員不再是），收到一封設密碼信：還沒設過密碼是邀請（24 小時），設過是設新密碼（1 小時）。他之前沒用的連結作廢。
+正式機用 `fly ssh console -C "/app/cheer-server create-admin --email … --name …"` 在機器上跑同一個指令。
+
+前後端共用的訊息型別寫在 Rust（`#[derive(TS)]`），`cargo test` 時 ts-rs 把它們寫成 `src/lib/api-types/*.ts`（路徑設在 `server/.cargo/config.toml`）。
+改了型別要跑一次 `cargo test`，產生的 .ts 一起 commit。
+
+測試：
+
+```sh
+cd server && cargo test
+```
+
+`#[sqlx::test]` 的測試每個自己開一個乾淨的資料庫，要有 `DATABASE_URL` 指到一個能建資料庫的 PostgreSQL 帳號
+（本機的 PostgreSQL 就好，不要用 Neon）。CI 用 GitHub Actions 的 `postgres:18` 服務。
 
 ### 雲端流程的音樂檔（Cloudflare R2）
 
@@ -246,27 +256,6 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
   正式、開發的 bucket 都加。（Cloudflare 文件：https://developers.cloudflare.com/r2/buckets/object-lifecycles/ ，可以只管某個 prefix。）
 - 伺服器測試不連 R2：`server/tests/music.rs` 開一台假的 R2（本機 HTTP，照 S3 的路徑收 PUT、HEAD、GET、DELETE 和複製（PUT 加 `x-amz-copy-source`），不驗簽名）。
   真的 R2 還沒接上實測過（#263）；`rusty-s3` 接不起來時換 `aws-sdk-s3`。
-
-第一個管理員（也用來救進不去的管理員、換人當管理員）。沒有預設帳號、預設密碼：
-
-```sh
-cd server && cargo run -- create-admin --email 你的@email --name 你的名字
-```
-
-這個人變成管理員（原本的管理員不再是），收到一封設密碼信：還沒設過密碼是邀請（24 小時），設過是設新密碼（1 小時）。他之前沒用的連結作廢。
-正式機用 `fly ssh console -C "/app/cheer-server create-admin --email … --name …"` 在機器上跑同一個指令。
-
-前後端共用的訊息型別寫在 Rust（`#[derive(TS)]`），`cargo test` 時 ts-rs 把它們寫成 `src/lib/api-types/*.ts`（路徑設在 `server/.cargo/config.toml`）。
-改了型別要跑一次 `cargo test`，產生的 .ts 一起 commit。
-
-測試：
-
-```sh
-cd server && cargo test
-```
-
-`#[sqlx::test]` 的測試每個自己開一個乾淨的資料庫，要有 `DATABASE_URL` 指到一個能建資料庫的 PostgreSQL 帳號
-（本機的 PostgreSQL 就好，不要用 Neon）。CI 用 GitHub Actions 的 `postgres:18` 服務。
 
 ## 離線
 
