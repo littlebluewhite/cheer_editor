@@ -18,6 +18,7 @@ import {
 	setMarkers,
 	setPositions,
 	setSquad,
+	updateAction,
 	updatePhase,
 	updateSegment,
 	updateTimeRules,
@@ -190,7 +191,7 @@ describe('流程檔：存了再開', () => {
 		expect(r.kind === 'ok' && r.flow.markers).toBe('initial');
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 13 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('zip 裡是一份 flow.json（formatVersion 14 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -198,7 +199,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(13);
+		expect(json.formatVersion).toBe(14);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -227,7 +228,7 @@ const BROKEN = '流程檔裡的資料壞掉了';
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 14, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: 15, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -722,6 +723,30 @@ describe('流程檔：版本', () => {
 		expect(flow.actions[0].members[0].role).toBe('肩底');
 	});
 
+	it('第 13 版的檔：資料不用動，存了再開一樣', () => {
+		const flow = withRecords();
+		expect(opened(zipOf({ formatVersion: 13, flow: JSON.parse(JSON.stringify(flow)) }))).toEqual(flow);
+	});
+
+	/** withSuccessRate 換成金字塔，再加 p4 上法「第二個」佔中段 p2 同樣的拍。 */
+	function pyramidOverlap(): Flow {
+		const flow = flowOf(updateAction(withSuccessRate(), 'x1', { category: 'pyramid' }));
+		return flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 5, len: 4 } }));
+	}
+
+	it('金字塔的環節佔同樣的拍：存了再開一樣', () => {
+		const flow = pyramidOverlap();
+		expect(flow.actions[0].successRate!.phases.map((p) => p.id)).toEqual(['p1', 'p2', 'p4', 'p3']);
+		expect(opened(writeFlowFile(flow, {}))).toEqual(flow);
+	});
+
+	it('別的大類的環節佔同樣的拍：照舊是資料壞掉', () => {
+		const stunt = JSON.parse(JSON.stringify(pyramidOverlap()));
+		stunt.actions[0].category = 'stunt';
+		expect(readFlowFile(zipOf({ formatVersion: 14, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 13, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
+	});
+
 	/** 第 8 版的檔改壞一個地方；sr 是 Lib 的成功率設定。 */
 	function v8(edit: (flow: any, sr: any) => void): Uint8Array {
 		const flow = JSON.parse(JSON.stringify(withRecords()));
@@ -740,7 +765,7 @@ describe('流程檔：版本', () => {
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
-	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 13 版資料不用動。
+	// 第 0 版補了 customRoles，第 1 版補了 actions，第 2 到 14 版資料不用動。
 	const { customRoles: _r, actions: _a, ...v0Flow } = sample();
 	const upgrades = {
 		[-1]: (doc: FlowDocument) => ({ formatVersion: 0, flow: { ...(doc.flow as object), customRoles: [] } }),
@@ -756,7 +781,8 @@ describe('流程檔：版本', () => {
 		9: (doc: FlowDocument) => ({ formatVersion: 10, flow: doc.flow }),
 		10: (doc: FlowDocument) => ({ formatVersion: 11, flow: doc.flow }),
 		11: (doc: FlowDocument) => ({ formatVersion: 12, flow: doc.flow }),
-		12: (doc: FlowDocument) => ({ formatVersion: 13, flow: doc.flow })
+		12: (doc: FlowDocument) => ({ formatVersion: 13, flow: doc.flow }),
+		13: (doc: FlowDocument) => ({ formatVersion: 14, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {

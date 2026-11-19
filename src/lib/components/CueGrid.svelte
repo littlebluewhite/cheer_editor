@@ -501,10 +501,13 @@
 	/** 「1-1 到 1-3」：spanText 去掉後面的拍數。 */
 	const rangeOf = (at: number, len: number) => spanText(at, len).replace(/・.*$/, '');
 
-	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，第 2 列是環節。 */
+	/** 一個八拍裡環節有幾排：排到第幾排（流程核心算的，金字塔佔同樣拍的往下多一排），至少一排。 */
+	const phaseTracks = (e: number) => Math.max(1, ...inEight(e).phases.map((p) => p.row + 1));
+
+	/** 一個八拍裡三條的排法：每條從第幾列開始、有幾軌（至少一軌）；第 1 列是數字格，第 2 列起是環節。 */
 	function layout(e: number) {
-		// 第 2 行是環節列；舞蹈、其他沒有環節，拍子列往上補。
-		let row = kinds.length ? 3 : 2;
+		// 第 2 行起是環節列；舞蹈、其他沒有環節，拍子列往上補。
+		let row = kinds.length ? 2 + phaseTracks(e) : 2;
 		return LANES.map((lane) => {
 			const ps = inEight(e).cues.filter((p) => p.cue.kind === lane.kind);
 			const tracks = Math.max(1, ...ps.map((p) => p.track + 1));
@@ -569,7 +572,7 @@
 					{@const bottom = lanes[lanes.length - 1].row + lanes[lanes.length - 1].tracks}
 					<div class="row">
 						<span class="eight" aria-hidden="true">{e + 1}</span>
-						{#if kinds.length}<span class="lane-lbl phase" style:grid-row="2">環節</span>{/if}
+						{#if kinds.length}<span class="lane-lbl phase" style:grid-row="2 / span {phaseTracks(e)}">環節</span>{/if}
 						{#each lanes as lane (lane.kind)}
 							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
@@ -603,7 +606,7 @@
 									class:left={isSel(at) && !covered(at + 1)}
 									class:right={isSel(at) && !covered(at)}
 									style:grid-column="{c * 2 + 2} / span 2"
-									style:grid-row="2"
+									style:grid-row="2 / span {phaseTracks(e)}"
 								></span>
 							{/if}
 							{#each lanes as lane (lane.kind)}
@@ -638,7 +641,7 @@
 								class:more={!p.last}
 								style:--c={phaseColor(p.phase)}
 								style:grid-column="{p.start + 2} / {p.end + 2}"
-								style:grid-row="2"
+								style:grid-row={2 + p.row}
 								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}

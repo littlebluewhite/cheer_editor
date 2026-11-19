@@ -483,6 +483,24 @@ await check('拍點格子在畫面中間時，點一拍再 Shift 點下一拍，
 	return { ok: aboveCount > 0 && bad.length === 0, value: { 選: `${first} 到 ${next}`, 開在上面幾次: aboveCount, 沒過: bad } };
 });
 
+await check('1440×900 拍點格子：金字塔兩條佔同樣拍的環節不互相蓋住，各自點得到（中心點到的是它自己）', async () => {
+	await setViewport(1440, 900);
+	// libSample 的 Lib 換成金字塔，再加上法「第二個」佔中段（1-3 到 1-6）同樣的拍
+	await openPracticeFlow(`const ok = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+		flow = ok(core.updateAction(flow, 'x1', { category: 'pyramid' }));
+		flow = ok(core.addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 4, len: 8 } }));`);
+	await js(`document.querySelector('[data-action-id="x1"]').click()`);
+	await waitFor(() => js(`return document.querySelectorAll('.cues .item.phase').length === 4`));
+	await scrollPanelTo('.cues .row', 0.3);
+	const bars = await js(`return [...document.querySelectorAll('.cues .item.phase')].map((b) => {
+		const r = b.getBoundingClientRect();
+		const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		return [b.getAttribute('aria-label'), Math.round(r.top), !!t && b.contains(t)];
+	});`);
+	const tops = new Set(bars.map(([, top]) => top));
+	return { ok: bars.length === 4 && tops.size === 2 && bars.every(([, , self]) => self), value: bars };
+});
+
 await check('總表點一格：右邊的明細不蓋住上方列，存檔點得到', async () => {
 	await setViewport(1440, 900);
 	await openPracticeFlow();

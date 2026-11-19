@@ -95,19 +95,21 @@ export interface ActionEight {
 	eight: number;
 	/** 照拍點的先後；track 是第幾軌（從 0 起）。 */
 	cues: (EightPiece & { cue: Cue; track: number })[];
-	/** 標了拍的環節，照環節的先後；沒標拍的不切。 */
-	phases: (EightPiece & { phase: Phase; beats: BeatRange })[];
+	/** 標了拍的環節，照環節的先後；沒標拍的不切。row 是第幾排（從 0 起，整個動作算一次，見 phaseRows）。 */
+	phases: (EightPiece & { phase: Phase; beats: BeatRange; row: number })[];
 }
 
 /**
  * 把動作的拍點和環節標的拍切進動作碰到的每個八拍（八拍表、拍點格子都用這一份）。
  * 碰到的八拍每個都有一個，沒有拍的也有；跨八拍的拍兩個八拍各拿自己那一段，從「&」開始的從那個半拍算。
  * 疊放：同一種拍點在同一個八拍裡跟前面的疊在一起，就照先後放進第一個空出來的軌（別種不算疊）。
+ * 環節（金字塔可以佔同樣的拍）也是放進最上面空著的那一排，但整個動作算一次，同一個環節在每個八拍都在同一排。
  * 給了 cues 就只切那些（例：個人表只切給他的）；沒給是動作全部的拍點。只算音樂段的動作。
  */
 export function actionEights(action: Action, cues: readonly Cue[] = action.cues ?? []): ActionEight[] {
 	const first = Math.floor(action.start / EIGHT);
 	const last = Math.floor((action.start + action.length - 1) / EIGHT);
+	const rows = phaseRows(action.successRate?.phases ?? []);
 	return Array.from({ length: last - first + 1 }, (_, i) => {
 		const eight = first + i;
 		const lo = eight * EIGHT;
@@ -128,10 +130,33 @@ export function actionEights(action: Action, cues: readonly Cue[] = action.cues 
 				const { beats } = phase;
 				if (!beats) return [];
 				const piece = pieceIn(lo, action.start + beats.at, beats.len);
-				return piece ? [{ ...piece, phase, beats }] : [];
+				return piece ? [{ ...piece, phase, beats, row: rows.get(phase.id)! }] : [];
 			})
 		};
 	});
+}
+
+/** 有沒有兩個環節佔同樣的拍（標的拍有重疊的部分；一個做完、下一個才開始不算）。沒標拍的不算。 */
+export function phasesOverlap(phases: readonly Phase[]): boolean {
+	const marked = phases.flatMap((p) => (p.beats ? [p.beats] : [])).sort((a, b) => a.at - b.at);
+	return marked.some((b, i) => i > 0 && b.at < marked[i - 1].at + marked[i - 1].len);
+}
+
+/**
+ * 環節第幾排（從 0 起）：照環節的順序一個一個放，放進最上面還空著的那一排（剛好接著的不算疊）。
+ * 整個動作算一次，不照八拍重排。沒疊就都是第 0 排。沒標拍的不放。
+ */
+function phaseRows(phases: readonly Phase[]): Map<string, number> {
+	const ends: number[] = [];
+	const rows = new Map<string, number>();
+	for (const { id, beats } of phases) {
+		if (!beats) continue;
+		let row = ends.findIndex((end) => end <= beats.at);
+		if (row < 0) row = ends.length;
+		ends[row] = beats.at + beats.len;
+		rows.set(id, row);
+	}
+	return rows;
 }
 
 /** 從段內第 from 個半拍起、len 個半拍長的一段，落在從 lo 開始的那個八拍裡的那一段；沒落在裡面是 null。 */

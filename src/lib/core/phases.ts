@@ -1,6 +1,7 @@
 // 環節的指令：加環節、把拍標給現有的環節、清標的拍、改環節、刪環節。環節 id 只在這裡發。
 // 環節存在動作的成功率設定裡（Action.successRate.phases），有順序：音樂段的環節一定有標的拍、照拍的先後排；
-// 口號段不標拍、照加的先後排。標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走；環節之間不能重疊。
+// 口號段不標拍、照加的先後排。標的拍跟拍點一樣從動作開始算半拍，所以拖動作、改 BPM 時跟著走；
+// 金字塔的環節可以佔同樣的拍，其他大類的環節不能重疊（docs/adr/0009）。
 // 指令都走收尾（settle）：加第一個環節時開始分組、拿掉對不上的記號、一個環節都不剩就不記成功率。
 // 會刪到環節（刪環節、清標的拍、標拍蓋掉別的環節）時只有一條確認路（見 withPhases）。
 
@@ -31,8 +32,8 @@ export interface PhaseChange {
 
 /**
  * 加環節：給種類和名字（名字去掉頭尾空白，可以空），發新的 id，回傳新環節的 id。
- * 音樂段要給標的拍：蓋到別的環節的部分從那個環節拿掉（剩兩段留前面那段），拍清光的環節刪掉（有記號先問）。
- * 口號段不標拍，加在最後。動作還沒記成功率時，這就是第一個環節：動作開始記成功率（分組交給收尾）。
+ * 音樂段要給標的拍：蓋到別的環節的部分從那個環節拿掉（剩兩段留前面那段），拍清光的環節刪掉（有記號先問）；
+ * 金字塔不切，別的環節不動（見 cutFor）。口號段不標拍，加在最後。動作還沒記成功率時，這就是第一個環節：動作開始記成功率（分組交給收尾）。
  * 種類要是動作的大類能用的（見 phaseKindsFor），舞蹈、其他不能加。
  */
 export function addPhase(
@@ -53,14 +54,14 @@ export function addPhase(
 	const issued = freshIds('p', 1, flow.lastIds, allPhaseIds(flow));
 	const phase: Phase = { id: issued.ids[0], kind: input.kind, name: input.name.trim(), ...(beats && { beats: { ...beats } }) };
 	const old = action.successRate?.phases ?? [];
-	const phases = beats ? [...cut(old, beats.at, beats.at + beats.len), phase] : [...old, phase];
+	const phases = beats ? [...cutFor(action, old, beats.at, beats.at + beats.len), phase] : [...old, phase];
 	const r = withPhases({ ...flow, lastIds: issued.lastIds }, segment, action, phases, options);
 	return r.kind === 'ok' ? { ...r, id: phase.id } : r;
 }
 
 /**
  * 把拍標給現有的環節：從 at 起 len 個半拍，換掉它原來的拍。
- * 蓋到別的環節的部分從那個環節拿掉（剩兩段留前面那段），拍清光的環節刪掉（有記號先問）。
+ * 蓋到別的環節的部分從那個環節拿掉（剩兩段留前面那段），拍清光的環節刪掉（有記號先問）；金字塔不切（見 cutFor）。
  */
 export function markPhaseBeats(
 	flow: Flow,
@@ -75,7 +76,7 @@ export function markPhaseBeats(
 	const { action, segment } = found;
 	const problem = beatsProblem(segment, action, { at, len });
 	if (problem) return blocked(problem);
-	const phases = cut(action.successRate!.phases, at, at + len).map((p) => (p.id === phaseId ? { ...p, beats: { at, len } } : p));
+	const phases = cutFor(action, action.successRate!.phases, at, at + len).map((p) => (p.id === phaseId ? { ...p, beats: { at, len } } : p));
 	return withPhases(flow, segment, action, phases, options);
 }
 
@@ -118,6 +119,11 @@ export function deletePhase(flow: Flow, actionId: string, phaseId: string, optio
 	if (typeof found === 'string') return blocked(found);
 	const { action, segment } = found;
 	return withPhases(flow, segment, action, action.successRate!.phases.filter((p) => p.id !== phaseId), options);
+}
+
+/** 標拍時從別的環節切掉 [from, to)：金字塔的環節可以佔同樣的拍，不切；其他大類照 cut 切。 */
+function cutFor(action: Action, phases: Phase[], from: number, to: number): Phase[] {
+	return action.category === 'pyramid' ? phases : cut(phases, from, to);
 }
 
 /** 找動作和它在的段；找不到回給教練看的原因。 */

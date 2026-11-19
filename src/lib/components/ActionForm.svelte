@@ -325,9 +325,11 @@
 		draft.copyMembers(source);
 	}
 
-	function setCategory(category: ActionCategory) {
-		draft.setCategory(category);
+	function setCategory(select: HTMLSelectElement) {
+		draft.setCategory(select.value as ActionCategory);
 		changed('category');
+		// 被擋下來時草稿退回原本的大類，值沒變畫面不會重畫：選單自己對回去
+		select.value = draft.category;
 	}
 
 	function useDefaultRoles() {
@@ -397,7 +399,7 @@
 				<span class="cap">大類</span>
 				<select
 					value={draft.category}
-					onchange={(e) => setCategory(e.currentTarget.value as ActionCategory)}
+					onchange={(e) => setCategory(e.currentTarget)}
 				>
 					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 				</select>
