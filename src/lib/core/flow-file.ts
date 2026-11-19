@@ -9,6 +9,7 @@ import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
+import { phasesOverlap } from './beat-range';
 import { freshIds } from './ids';
 import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v10RateProblem, v6RateProblem } from './success-rate';
 
@@ -49,7 +50,8 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  *   動作裡的人、拍點存的是名稱，照留，變成固定的三層。
  * 第 13 版：多了固定的任務角色「肩底」（舊版編輯器不認得）。升級時拿掉叫「肩底」的自訂任務角色（見 fixedShoulderBase）；
  *   動作裡的人、拍點存的是名稱，照留，變成固定的肩底。
- * 第 14 版：金字塔的環節可以佔同樣的拍（舊版編輯器會說成資料壞掉）。舊檔沒有佔同樣拍的環節，所以資料不用動。
+ * 第 14 版：金字塔的環節可以佔同樣的拍（舊版編輯器會說成資料壞掉）。舊檔沒有佔同樣拍的環節，所以資料不用動；
+ *   有就是壞掉的檔，升級時交給 isFlow 擋下來（見 phasesShareBeatsBefore14）。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -64,8 +66,13 @@ const UPGRADES: Record<number, Upgrade> = {
 	10: (doc) => ({ formatVersion: 11, flow: fitKinds(doc.flow) }),
 	11: (doc) => ({ formatVersion: 12, flow: fixedThird(doc.flow) }),
 	12: (doc) => ({ formatVersion: 13, flow: fixedShoulderBase(doc.flow) }),
-	13: (doc) => ({ formatVersion: 14, flow: doc.flow })
+	13: (doc) => ({ formatVersion: 14, flow: phasesShareBeatsBefore14(doc.flow) ? null : doc.flow })
 };
+
+/** 有沒有動作的環節佔同樣的拍（第 13 版以前哪個大類都不行，第 14 版起金字塔才可以）。 */
+function phasesShareBeatsBefore14(v: unknown): boolean {
+	return flowShape(v) && (v as Flow).actions.some((a) => a.successRate && phasesOverlap(a.successRate.phases));
+}
 
 /** 第 12 → 13 版：拿掉叫「肩底」的自訂任務角色，換成固定的肩底。 */
 function fixedShoulderBase(v: unknown): unknown {

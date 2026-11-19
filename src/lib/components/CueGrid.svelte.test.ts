@@ -421,6 +421,22 @@ describe('改環節', () => {
 		expect(sent()[0]).toEqual({ id: 'p1', kind: 'load', name: '延伸', beats: { at: 0, len: 4 } });
 	});
 
+	it('點了下面那條環節、關掉小窗，再點那一拍的數字：改的是排前面的那條，不是剛才點的那條', async () => {
+		let flow = flowOf(updateAction(sample(), 'x1', { category: 'pyramid' }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第一個', beats: { at: 0, len: 2 } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: '第二個', beats: { at: 0, len: 2 } }));
+		renderGrid(flow);
+		const grid = within(screen.getByRole('group', { name: '拍點' }));
+		const name = () =>
+			(within(grid.getByRole('group', { name: '改環節' })).getByRole('textbox', { name: '這個環節的名字' }) as HTMLInputElement)
+				.value;
+		await fireEvent.click(grid.getByRole('button', { name: /^環節 上法 第二個/ }));
+		expect(name()).toBe('第二個');
+		await fireEvent.click(grid.getByRole('button', { name: '關閉' }));
+		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
+		expect(name()).toBe('第一個');
+	});
+
 	it('選的拍不是剛好一個環節時，不出現改的地方', async () => {
 		const { grid, edit } = phased();
 		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));

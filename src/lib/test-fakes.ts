@@ -170,7 +170,7 @@ export async function openFile(bytes: Uint8Array, label = '開啟流程檔', nam
 }
 
 /** 上方列「選單」的小窗（開著才有）。 */
-export const menuPop = () => screen.queryByRole('group', { name: '選單' });
+export const menuPop = () => screen.queryByRole('dialog', { name: '選單' });
 
 /** 打開上方列的「選單」（開著就不再按），回傳裡面的那一項（使用說明是連結，其他是按鈕）；沒有這一項回 null。 */
 export async function menuItem(name: string): Promise<HTMLElement | null> {

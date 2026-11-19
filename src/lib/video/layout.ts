@@ -286,7 +286,7 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 		if (!grid.overflow && !grid.split && lines.length * px * LINE + gridSpace(grid) <= room) return placeRow(lines, grid, px, false);
 	}
 	const px = MIN_TEXT_PX;
-	const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure);
+	const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure, true);
 	// 格子最多佔到只剩一行字（gridRoom），這裡至少是 1
 	const maxLines = Math.floor((room - gridSpace(grid)) / (px * LINE) + 1e-9);
 	let lines: Para[] = [];
@@ -398,8 +398,16 @@ interface Grid {
  * 環節在上、拍點在下，同一格疊到的往下另起一排。拍點的字寫在上面、給誰寫在下面一行；
  * 比格子寬就在格子裡換行，那一格長高，不截。
  * 比 maxH 高時，超出的那幾段不畫，最後一行寫「⋯還有 N 行拍點」。
+ * squeeze（字已經縮到最小）：比 maxH 高時，先把每段這個八拍空著的環節排擠掉（順序不變）再算。
  */
-function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: number, maxH: number, measure: Measure): Grid {
+function layoutGrid(
+	cueLines: EightCountCueLine[],
+	lit: number | null,
+	px: number,
+	maxH: number,
+	measure: Measure,
+	squeeze = false
+): Grid {
 	if (!cueLines.length) return { texts: [], boxes: [], h: 0, overflow: false, split: false };
 	const lh = px * LINE;
 	const cellX = (n: number) => CELLS_X + (n - 1) * CELL_W;
@@ -407,8 +415,10 @@ function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: numbe
 	for (let n = 1; n <= 8; n++) {
 		texts.push({ text: String(n), x: cellX(n) + CELL_W / 2, y: (lh - px) / 2, px, weight: 600, color: 'muted', align: 'center' });
 	}
-	const blocks = cueLines.map((line) => cueBlock(line, px, measure));
-	const total = lh + blocks.reduce((h, b) => h + b.h, 0);
+	const height = (bs: { h: number }[]) => lh + bs.reduce((h, b) => h + b.h, 0);
+	let blocks = cueLines.map((line) => cueBlock(line, px, measure));
+	if (squeeze && height(blocks) > maxH) blocks = cueLines.map((line) => cueBlock(line, px, measure, true));
+	const total = height(blocks);
 	const items: Box[] = [];
 	let overflow = false;
 	let y = lh;
@@ -439,8 +449,16 @@ function layoutGrid(cueLines: EightCountCueLine[], lit: number | null, px: numbe
 /** 給誰那一行的字重：比拍點的字細，看得出哪一行是哪個。 */
 const WHO_WEIGHT = 400;
 
-/** 一個動作的那一段（從 y = 0 算起）：左邊名字，右邊環節和拍點。split：格子裡有字從中間斷開。 */
-function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { texts: TextItem[]; boxes: Box[]; h: number; split: boolean } {
+/**
+ * 一個動作的那一段（從 y = 0 算起）：左邊名字，右邊環節和拍點。split：格子裡有字從中間斷開。
+ * squeeze：這個八拍空著的環節排不留（放不下時才擠）。
+ */
+function cueBlock(
+	line: EightCountCueLine,
+	px: number,
+	measure: Measure,
+	squeeze = false
+): { texts: TextItem[]; boxes: Box[]; h: number; split: boolean } {
 	const lh = px * LINE;
 	const cellX = (n: number) => CELLS_X + (n - 1) * CELL_W;
 	const texts: TextItem[] = [];
@@ -448,10 +466,10 @@ function cueBlock(line: EightCountCueLine, px: number, measure: Measure): { text
 	let split = false;
 	const name = wrap(actionLabel(line), px, 700, NAME_W, measure);
 	name.forEach((text, i) => texts.push({ text, x: LEFT, y: i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
-	// 環節照流程核心排好的排（整個動作算一次，跟八拍表一樣），這個八拍空著的排照樣留一行
+	// 環節照流程核心排好的排（整個動作算一次，跟八拍表一樣），這個八拍空著的排照樣留一行（擠的時候不留）
 	const phases = Array.from({ length: Math.max(0, ...line.phases.map((p) => p.row + 1)) }, (_, row) =>
 		line.phases.filter((p) => p.row === row).map((p) => ({ from: p.from, to: p.to, text: p.label, who: '', style: PHASE_STYLE }))
-	);
+	).filter((r) => !squeeze || r.length);
 	// 從上一列接過來的不再寫字和給誰
 	const cues = line.cues.map((c) => ({
 		from: c.from,

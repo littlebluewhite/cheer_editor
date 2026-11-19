@@ -38,7 +38,7 @@ import {
 	type NewAttempt,
 	type RunThroughMarks
 } from './index';
-import { flowOf, pyramidSample, ratedSample } from '../test-flows';
+import { flowOf, libSample, pyramidSample, ratedSample } from '../test-flows';
 
 const sample = ratedSample;
 
@@ -217,6 +217,36 @@ describe('金字塔的環節佔同樣的拍：記一次、全上、改一次都�
 			kind: 'blocked',
 			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）'
 		});
+	});
+
+	it('改一次把 ✗ 換到下法：原本跟 ✗ 佔同樣拍空著的中段整個在新的 ✗ 之前、沒打，算只練幾個環節', () => {
+		let flow = pyramidSample();
+		flow = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, { [上一]: '✓', [上二]: '✗' })));
+		const changed = flowOf(changeAttempt(flow, 'x2', 't1', { [上一]: '✓', [上二]: '✓', [下]: '✗' }));
+		expect(recordsOf(changed, 'x2')[0]).toMatchObject({ whole: false, marks: { [上一]: '✓', [上二]: '✓', [下]: '✗' } });
+		expect(recordsOf(changed, 'x2')[0].blanks).toBeUndefined();
+	});
+
+	it('改一次原樣存回去不改整個做：A 空著、B ✗、C ✗，刪掉 B 之後 A 跟 C 不佔同樣的拍，A 還是空著、還是整個做', () => {
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		let flow = flowOf(
+			addAction(libSample(), { segmentId: 's1', category: 'pyramid', name: '金字塔', start: 32, length: 32, note: '', members })
+		);
+		// A 第 1–2 拍、B 第 2–4 拍、C 第 4–5 拍
+		for (const [kind, at, len] of [['load', 0, 4], ['hold', 2, 6], ['dismount', 6, 4]] as const) {
+			flow = flowOf(addPhase(flow, 'x2', { kind, name: '', beats: { at, len } }));
+		}
+		const [a, b, c] = flow.actions.find((x) => x.id === 'x2')!.successRate!.phases.map((p) => p.id);
+		flow = flowOf(recordAttempt(flow, 'x2', pyramidDrill(flow, { [b]: '✗', [c]: '✗' })));
+		expect(recordsOf(flow, 'x2')[0]).toMatchObject({ whole: true, marks: { [b]: '✗', [c]: '✗' }, blanks: [a] });
+		flow = flowOf(deletePhase(flow, 'x2', b, { confirmed: true }));
+		const before = recordsOf(flow, 'x2')[0];
+		expect(before).toMatchObject({ whole: true, marks: { [c]: '✗' }, blanks: [a] });
+		const changed = recordsOf(flowOf(changeAttempt(flow, 'x2', before.id, before.marks)), 'x2')[0];
+		expect(changed).toEqual(before);
 	});
 
 	it.each([

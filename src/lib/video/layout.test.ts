@@ -600,6 +600,21 @@ describe('下面那一列：拍點格子', () => {
 		expect(l.overflow).toBe(false);
 	});
 
+	it('18 個環節疊著、只有最後一個接到這個八拍：空著的排擠掉，畫出那個環節，不寫「⋯還有 1 行拍點」；放得下時照舊留空排', () => {
+		const alone = (row: number): EightCountCueLine => ({
+			...cueLine('金字塔'),
+			cues: [],
+			phases: [{ label: '最後一個', from: 1, to: 2, color: '#c62828', row }]
+		});
+		const crowded = layout(row({ cues: [alone(17)] }));
+		expect(strings(crowded)).toContain('最後一個');
+		expect(strings(crowded)).not.toContain('⋯還有 1 行拍點');
+		expectAboveBottom(crowded);
+		// 放得下（第三排）：照流程核心的排，上面兩排空著
+		const y = (l: FrameLayout) => bottom(l).find((t) => t.text === '最後一個')!.y;
+		expect(y(layout(row({ cues: [alone(2)] })))).toBeGreaterThan(y(layout(row({ cues: [alone(0)] }))));
+	});
+
 	it('金字塔疊著的環節：整個動作算一次排，只剩第二排環節的八拍也畫在第二排', () => {
 		// pyramidSample 的 x2 拿掉後半的環節，上法「第二個」拉長到 2-8：
 		// 第 3 個八拍 上法「第一個」、中段「第一個」第一排，上法「第二個」第二排；第 4 個八拍只有上法「第二個」

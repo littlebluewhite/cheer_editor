@@ -335,18 +335,21 @@ function shutAfterFail(phases: readonly Phase[], marks: Record<string, Mark>): s
  * 只練幾個環節時什麼時候自動存：給動作、勾的環節、點了的記號，回到了沒（due）、還在等哪些環節（waiting）。
  * 到了：勾的環節點了 ✗，或最後一個勾的環節有記號（勾的環節裡還能打的都打了，一定是這兩個之一）。
  * 等：勾了、還沒打、還能打、跟 ✗ 或最後一個勾的環節佔同樣的拍的。到了、沒有在等的才存；環節沒有疊就不會等。
+ * 給了剛點的環節（tapped），它又是 ✗ 或最後一個勾的環節：只等跟它佔同樣拍的；點的是別的環節，照樣等前面的 ✗ 的。
  */
 export function pickedAutoSave(
 	action: Action,
 	picked: readonly string[],
-	marks: Record<string, Mark>
+	marks: Record<string, Mark>,
+	tapped?: string
 ): { due: boolean; waiting: string[] } {
 	const planned = (action.successRate?.phases ?? []).filter((p) => picked.includes(p.id));
 	const { marks: kept, shut } = blankPhases(action, false, marks);
 	const last = planned.at(-1);
 	const anchors = planned.filter((p) => kept[p.id] === '✗' || (p === last && kept[p.id]));
+	const just = anchors.find((p) => p.id === tapped);
 	const waiting = planned.filter(
-		(p) => !shut.includes(p.id) && !kept[p.id] && anchors.some((a) => phasesShareBeats(p, a))
+		(p) => !shut.includes(p.id) && !kept[p.id] && (just ? [just] : anchors).some((a) => phasesShareBeats(p, a))
 	);
 	return { due: anchors.length > 0, waiting: waiting.map((p) => p.id) };
 }
@@ -376,6 +379,7 @@ export function fillOk(action: Action, marks: Record<string, Mark>): Record<stri
  * 改一次會存下來的樣子：給動作、原本的那一次、改好的記號。只練幾個環節的照記一次的規則留（keptAttempt）。
  * 整個做的只看那一次當時就有、現在還在的環節（打了記號的加上空著的）：之後才加的環節不變成空著的，打了記號也不存。
  * ✗ 的環節已經刪掉了，原本空著的照樣空著（打了記號也不存），前面的都有記號就還是整個做。
+ * 刪掉別的環節後，原本空著的不再跟 ✗ 佔同樣的拍：這次也沒打就照樣空著，不害這一次變成只練幾個環節。
  */
 export function changedAttempt(
 	action: Action,
@@ -387,15 +391,19 @@ export function changedAttempt(
 	const blanks = attempt.blanks ?? [];
 	const phasesThen = rate.phases.filter((p) => attempt.marks[p.id] || blanks.includes(p.id));
 	const failGone = blanks.length > 0 && !phasesThen.some((p) => attempt.marks[p.id] === '✗');
-	const open = failGone ? phasesThen.filter((p) => !blanks.includes(p.id)) : phasesThen;
+	const explained = blankPhases({ ...action, successRate: { ...rate, phases: phasesThen } }, true, attempt.marks).blanks;
+	/** 現在的環節照原本的記號算已經不空著的（刪掉別的環節後拍不再疊）：原本空著、這次也沒打的照樣空著。 */
+	const orphans = blanks.filter((id) => !explained.includes(id) && !marks[id]);
+	const stillBlank = failGone ? blanks : orphans;
+	const open = phasesThen.filter((p) => !stillBlank.includes(p.id));
 	const shut = new Set(rate.phases.filter((p) => !open.includes(p)).map((p) => p.id));
 	const kept = keptAttempt(
 		{ ...action, successRate: { ...rate, phases: open } },
 		true,
 		Object.fromEntries(Object.entries(marks).filter(([id]) => !shut.has(id)))
 	);
-	if (!failGone || !kept.whole) return kept;
-	const empty = phasesThen.filter((p) => blanks.includes(p.id) || kept.blanks?.includes(p.id)).map((p) => p.id);
+	if (!stillBlank.length || !kept.whole) return kept;
+	const empty = phasesThen.filter((p) => stillBlank.includes(p.id) || kept.blanks?.includes(p.id)).map((p) => p.id);
 	return { ...kept, blanks: empty };
 }
 

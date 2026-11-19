@@ -91,11 +91,22 @@ describe('空白鍵', () => {
 
 	it('其他按鈕、連結、分頁上也一樣：空白鍵播放／暫停', async () => {
 		setup();
-		const targets = [screen.getByRole('button', { name: '八拍表' }), (await menuItem('使用說明'))!, tab('隊員')];
+		const targets = [screen.getByRole('button', { name: '八拍表' }), tab('隊員')];
 		for (const el of targets) {
 			const was = playing();
 			expect(await space(el), el.outerHTML.slice(0, 60)).toBe(false);
 			expect(playing()).toBe(!was);
+		}
+	});
+
+	it('「選單」小窗裡 Tab 到的項目：空白鍵、Enter 照樣按下它，不拿去播放', async () => {
+		setup();
+		for (const name of ['流程設定', '使用說明']) {
+			const item = (await menuItem(name))!;
+			expect(await space(item), name).toBe(true);
+			expect(await fireEvent.keyUp(item, { key: ' ' }), name).toBe(true);
+			expect(await fireEvent.keyDown(item, { key: 'Enter' }), name).toBe(true);
+			expect(playing()).toBe(false);
 		}
 	});
 

@@ -736,11 +736,12 @@
 						bind:this={menuBtn}
 						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class="tight-hide">選單</span></button
 					>
-					<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
+					<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts）。
+					     是 dialog（跟 aria-haspopup 一樣）：Tab 到裡面的項目按空白鍵是按下它，不拿去播放（key-owner.ts） -->
 					{#if menuOpen}
 						<div
 							class="menu-pop"
-							role="group"
+							role="dialog"
 							aria-label="選單"
 							{@attach popover({ place: below(menuBtn!, { gap: 6, align: 'left', flip: true }), close: closeMenu, inside: [menuBtn] })}
 						>

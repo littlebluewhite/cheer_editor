@@ -114,7 +114,7 @@
 		setMarks(keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks);
 		if (phases.length === 1) return save();
 		if (whole) return;
-		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark });
+		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark }, phaseId);
 		if (next.due && !next.waiting.length) save();
 	}
 
@@ -138,12 +138,15 @@
 		draft = { ...attempt.marks };
 	}
 
-	/** 改的時候點記號：再點一次點著的那顆就變空的。 */
+	/** 改的時候按不了的環節：跟記一次一樣，✗ 做完之後才開始的（問核心 blankPhases）。 */
+	const editShut = $derived(blankPhases(action, false, draft).shut);
+
+	/** 改的時候點記號：再點一次點著的那顆就變空的。點了 ✗，按不了的環節點過的記號不留（跟記一次一樣）。 */
 	function retap(phaseId: string, mark: Mark) {
 		if (draft[phaseId] === mark) {
 			const { [phaseId]: _, ...rest } = draft;
 			draft = rest;
-		} else draft = { ...draft, [phaseId]: mark };
+		} else draft = blankPhases(action, false, { ...draft, [phaseId]: mark }).marks;
 	}
 
 	function saveEdit(attempt: Attempt) {
@@ -285,6 +288,7 @@
 								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
 								aria-label="第 {n} 次 {phaseLabel(p)} {m.label}"
 								aria-pressed={draft[p.id] === m.key}
+								disabled={editShut.includes(p.id)}
 								onclick={() => retap(p.id, m.key)}>{m.key}</button
 							>
 						{/each}

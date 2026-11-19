@@ -366,6 +366,19 @@ describe('記錄頁的卡：金字塔的環節佔同樣的拍（打 ✗ 之後�
 		]);
 	});
 
+	it('改第 n 次也照拍算：✗ 做完之後才開始的按不了，不讓教練打了 ✓ 存了卻空著；改成 ✓ 又可以按', async () => {
+		const flow = pyramidSample();
+		const who = attemptWhos(flow, flow.actions[1])[0].who;
+		const marks = { p4: '✓', p6: '✗' } as const;
+		setup(flowOf(recordAttempt(flow, 'x2', { date: DATE, who, practice: 'drill', whole: true, marks })), 1);
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 1 次/ }));
+		const edit = within(screen.getByRole('group', { name: '改第 1 次' }));
+		const editable = (phase: string) => !(edit.getByRole('button', { name: `第 1 次 ${phase} 成功` }) as HTMLButtonElement).disabled;
+		expect(phases.map(editable)).toEqual([true, true, true, false, false]);
+		await fireEvent.click(edit.getByRole('button', { name: '第 1 次 上法 第二個 成功' }));
+		expect(phases.map(editable)).toEqual([true, true, true, true, true]);
+	});
+
 	it('「全部 ✓ 存」：還能打、沒打的補 ✓（佔同樣拍的也補），按不了的空著', async () => {
 		const { session, name } = setup(pyramidSample(), 1);
 		await tap(name, '上法 第二個', '失敗');

@@ -179,7 +179,7 @@
 		return pos?.segmentId === segment.id ? cellIn(action, pos.at - action.start) : null;
 	});
 	const selLen = $derived(beats.len);
-	/** 音樂段點色條選到的環節 id，和點的時候選到的拍；選的拍變了就不記了（見下面的 $effect）。 */
+	/** 音樂段點色條選到的環節 id，和點的時候選到的拍；選的拍變了、自己點格子選拍就不記了（見下面的 $effect、dragStart）。 */
 	let picked = $state<{ id: string; at: number; len: number } | null>(null);
 	$effect(() => {
 		const { from } = sel;
@@ -265,6 +265,8 @@
 			tapAt = at;
 			return;
 		}
+		// 自己選拍（不是點色條）：不記剛才點的那條，剛好是兩個環節的拍時改排前面的。
+		picked = null;
 		beats.click(at, e.shiftKey);
 		dragging = true;
 		// 抓住指標：拖過變淡（disabled）的格子、拖出格子外都收得到。
@@ -278,7 +280,10 @@
 	}
 
 	function dragEnd() {
-		if (tapAt !== null) beats.click(tapAt);
+		if (tapAt !== null) {
+			picked = null;
+			beats.click(tapAt);
+		}
 		if (dragging || tapAt !== null) openPop();
 		dragCancel();
 	}
@@ -616,6 +621,7 @@
 								disabled={!fits(action, at)}
 								onclick={(ev) => {
 								if (pointerSel) return;
+								picked = null;
 								beats.click(at, ev.shiftKey);
 								openPop();
 							}}>{c + 1}</button

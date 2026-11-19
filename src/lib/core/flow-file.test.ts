@@ -747,6 +747,18 @@ describe('流程檔：版本', () => {
 		expect(readFlowFile(zipOf({ formatVersion: 13, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
 	});
 
+	it('第 13 版和更舊的檔裡金字塔的環節佔同樣的拍：那時還不行，是資料壞掉（第 14 版起才可以）', () => {
+		const old = JSON.parse(JSON.stringify(pyramidOverlap()));
+		for (const formatVersion of [13, 12, 11]) {
+			expect(readFlowFile(zipOf({ formatVersion, flow: old }))).toEqual({ kind: 'error', message: BROKEN });
+		}
+	});
+
+	it('第 10 版的檔裡金字塔的環節佔同樣的拍、有整體：不換成中段，是資料壞掉', () => {
+		const file = v10(pyramidOverlap(), (f) => (f.actions[0].successRate.phases[1].kind = 'whole'));
+		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+	});
+
 	/** 第 8 版的檔改壞一個地方；sr 是 Lib 的成功率設定。 */
 	function v8(edit: (flow: any, sr: any) => void): Uint8Array {
 		const flow = JSON.parse(JSON.stringify(withRecords()));

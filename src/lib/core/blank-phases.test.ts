@@ -199,6 +199,24 @@ describe('只練幾個環節什麼時候自動存：還有同時在做的環節�
 		expect(pickedAutoSave(pyramid(), [上一, 上二, 中二], { [上二]: '✗' })).toEqual({ due: true, waiting: [] });
 	});
 
+	it('B ✗ 之後再打 C ✗：只看跟剛點的 C 佔同樣拍的，A 只跟 B 佔同樣的拍，不再等 A', () => {
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		let flow = flowOf(
+			addAction(libSample(), { segmentId: 's1', category: 'pyramid', name: '金字塔', start: 32, length: 32, note: '', members })
+		);
+		// A 第 1–2 拍、B 第 1–4 拍、C 第 3–5 拍
+		for (const [kind, at, len] of [['load', 0, 4], ['hold', 0, 8], ['dismount', 4, 6]] as const) {
+			flow = flowOf(addPhase(flow, 'x2', { kind, name: '', beats: { at, len } }));
+		}
+		const action = flow.actions.find((a) => a.id === 'x2')!;
+		const [a, b, c] = action.successRate!.phases.map((p) => p.id);
+		expect(pickedAutoSave(action, [a, b, c], { [b]: '✗' }, b)).toEqual({ due: true, waiting: [a, c] });
+		expect(pickedAutoSave(action, [a, b, c], { [b]: '✗', [c]: '✗' }, c)).toEqual({ due: true, waiting: [] });
+	});
+
 	it('等的時候點了別的、等著的還沒打：還在等', () => {
 		expect(pickedAutoSave(pyramid(), [上一, 中一, 上二], { [上二]: '✗', [上一]: '✓' })).toEqual({
 			due: true,
