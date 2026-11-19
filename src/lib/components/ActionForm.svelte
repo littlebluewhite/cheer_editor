@@ -245,15 +245,16 @@
 		const all = together.length > 1 && together.includes(draft.members[i].memberId);
 		// 改了角色那一列會換位置：下一個人照改之前的順序找
 		const next = order[order.indexOf(i) + 1];
+		// 一起選到的別人：只換成他自己選單裡有的（不是金字塔時，肩底、三層只留給本來就是的人）
+		const allowed = (m: (typeof draft.members)[number]) => role === null || rolesFor(m.role).some((r) => r.name === role);
 		draft.members.forEach((m, k) => {
-			if (k === i || (all && together.includes(m.memberId))) draft.setRole(k, role);
+			if (k === i || (all && together.includes(m.memberId) && allowed(m))) draft.setRole(k, role);
 		});
 		changed('people');
-		if (byKey && !all && next !== undefined) {
-			// 先把列換好位置再給焦點：換位置時被搬動的列會掉焦點
-			flushSync();
-			rolePickers[next]?.focus();
-		}
+		// 先把列換好位置再給焦點：換位置時被搬動的列會掉焦點，接著按 Backspace 會刪掉整個動作
+		flushSync();
+		if (byKey && !all && next !== undefined) rolePickers[next]?.focus();
+		else if (document.activeElement === document.body) rolePickers[i]?.focus();
 	}
 
 	/** 名詞對照表新增了自訂任務角色：是從任務角色選單打開的，就套給那個人。 */
@@ -287,13 +288,15 @@
 
 	/** 移出一個人。焦點留在表單裡（下一個人的 ×，沒人了就「加人」），不掉到頁面上：不然接著按 Backspace 會刪掉整個動作。 */
 	function removeMember(i: number) {
+		// 畫面上排第幾（清單照任務角色排，不是 draft.members 的順序）
+		const at = order.indexOf(i);
 		draft.removeMember(i);
 		changed('people');
 		flushSync();
 		// 新動作移出最後一個人，表單收起來了：給「＋ 新動作」
 		if (!formEl) return expandEl?.focus();
 		const xs = formEl.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
-		(xs[i] ?? xs[i - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
+		(xs[at] ?? xs[at - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
 	}
 
 	/**

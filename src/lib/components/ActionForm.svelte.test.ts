@@ -336,6 +336,42 @@ describe('動作表單：改選到的動作', () => {
 		expect(document.activeElement).toBe(pick('小C'));
 	});
 
+	it('最後一個人按快捷鍵、那一列移到上面：焦點留在他自己的選單，接著按 Backspace 不會刪掉整個動作', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'top' }]));
+		const members = ['m1', 'm2', 'm3'].map((memberId) => ({ memberId, role: null }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members }));
+		setup(flow, 'x1');
+		const rows = () => [...document.querySelectorAll('.people li .name')].map((n) => n.textContent);
+		const pick = (who: string) => screen.getByRole('combobox', { name: `${who} 的任務角色` });
+		pick('小C').focus();
+		await fireEvent.keyDown(pick('小C'), { key: '1' });
+		expect(rows()).toEqual(['小C', '小A', '小B']);
+		expect(document.activeElement).toBe(pick('小C'));
+	});
+
+	it('移出一個人：焦點給畫面上排在他下面那個人的 ✕（清單照任務角色排，不是加進來的順序）', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小C', gender: 'F', globalRole: 'top' }]));
+		const members = [{ memberId: 'm1', role: '保護' }, { memberId: 'm2', role: '上層' }, { memberId: 'm3', role: '底層' }];
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members }));
+		setup(flow, 'x1');
+		const rows = () => [...document.querySelectorAll('.people li .name')].map((n) => n.textContent);
+		expect(rows()).toEqual(['小C', '小B', '小A']);
+		await fireEvent.click(screen.getByRole('button', { name: '把 小C 移出這個動作' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '把 小B 移出這個動作' }));
+	});
+
+	it('不是金字塔時，肩底的人和別人一起選、按 4：只有他自己是肩底，別人不會變成肩底', async () => {
+		const flow = flowOf(addAction(sample(), { segmentId: 's1', category: 'stunt', name: 'A', note: '', start: 0, length: 4, members: [{ memberId: 'm1', role: '肩底' }, { memberId: 'm2', role: null }] }));
+		const session = setup(flow, 'x1');
+		await fireEvent.click(screen.getByRole('button', { name: '小A' }), { shiftKey: true });
+		await fireEvent.click(screen.getByRole('button', { name: '小B' }), { shiftKey: true });
+		expect(screen.getByRole('button', { name: '小B' }).getAttribute('aria-pressed')).toBe('true');
+		const pickA = screen.getByRole('combobox', { name: '小A 的任務角色' });
+		pickA.focus();
+		await fireEvent.keyDown(pickA, { key: '4' });
+		expect(session.flow!.actions[0].members.map((m) => m.role)).toEqual(['肩底', null]);
+	});
+
 	it('任務角色選單每一項有一句說明，取自名詞對照表（自訂角色用教練寫的意思）', async () => {
 		const flow = flowOf(addCustomRole(withTwo(), { name: '丟人的', meaning: '把上層丟出去的人' }));
 		setup(flow, 'x1');
