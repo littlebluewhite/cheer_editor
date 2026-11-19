@@ -112,7 +112,7 @@ export interface ServerAdapter {
 	loginExpired(): Promise<boolean>;
 	/** 登入：'wrong' 是 email 或密碼不對（沒這個人、被停用也一樣）；猜錯太多次是要等幾秒。 */
 	login(email: string, password: string): Promise<'ok' | 'wrong' | TooManyTries>;
-	/** 登出這台裝置。 */
+	/** 登出這台裝置。沒登出成（伺服器出錯、連不上）丟 ServerUnreachable。 */
 	logout(): Promise<void>;
 	/** 打開設密碼連結：是誰的、哪一種；不能用了是 null。不會用掉連結。 */
 	passwordLink(token: string): Promise<LinkInfo | null>;
@@ -290,7 +290,9 @@ export function httpServer(base = ''): ServerAdapter {
 			throw new ServerUnreachable();
 		},
 		async logout() {
-			await post('logout', {});
+			// 沒登入也回 204；不是 2xx（例：擋 CSRF 的 403）就是沒登出，伺服器上還登入著。
+			const res = await post('logout', {});
+			if (!res.ok) throw new ServerUnreachable();
 		},
 		async passwordLink(token) {
 			const res = await post('password-link', { token });
