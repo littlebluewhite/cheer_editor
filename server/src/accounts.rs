@@ -395,11 +395,12 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> anyhow::Resu
     Ok(signed_in(state, headers).await?.map(|s| s.me))
 }
 
-/// 登入著的人：使用者 id、Me、這個登入狀態的號碼雜湊（改密碼留這台、房間重查用）。
+/// 登入著的人：使用者 id、Me、這個登入狀態的號碼雜湊（改密碼留這台、房間重查用）、什麼時候到期（房間到時重查）。
 pub struct SignedIn {
     pub user_id: i64,
     pub me: Me,
     pub token_hash: Vec<u8>,
+    pub expires_at: DateTime<Utc>,
 }
 
 /// 帶著的 cookie 是誰（還沒到期、沒被停用）；沒登入是 None。
@@ -412,23 +413,26 @@ pub async fn signed_in(state: &AppState, headers: &HeaderMap) -> anyhow::Result<
 
 /// 這個登入狀態（號碼雜湊）現在還算登入著嗎：還在（沒登出、沒因為改密碼或停用被刪）、沒到期、人沒被停用。
 pub async fn session(state: &AppState, token_hash: Vec<u8>) -> anyhow::Result<Option<SignedIn>> {
-    let found: Option<(i64, String, String, bool)> = sqlx::query_as(
-        "SELECT u.id, u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+    let found: Option<(i64, String, String, bool, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT u.id, u.email, u.name, u.is_admin, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.expires_at > $2 AND u.disabled_at IS NULL",
     )
     .bind(&token_hash)
     .bind(state.clock.now())
     .fetch_optional(&state.db)
     .await?;
-    Ok(found.map(|(user_id, email, name, is_admin)| SignedIn {
-        user_id,
-        me: Me {
-            email,
-            name,
-            is_admin,
-        },
-        token_hash,
-    }))
+    Ok(
+        found.map(|(user_id, email, name, is_admin, expires_at)| SignedIn {
+            user_id,
+            me: Me {
+                email,
+                name,
+                is_admin,
+            },
+            token_hash,
+            expires_at,
+        }),
+    )
 }
 
 /// 這個人有登入狀態被刪了（被停用、改密碼、重設密碼）：他開著的房間重查，不算登入了就關掉。

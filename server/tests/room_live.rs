@@ -569,3 +569,37 @@ async fn after_30_days_an_open_room_cannot_save(db: sqlx::PgPool) {
     assert_eq!(rename_from(&s, &mut a, &id, "過期了還改").await, "全國賽");
     closed(&mut a).await;
 }
+
+#[sqlx::test]
+async fn an_open_room_closes_when_the_session_runs_out_without_sending_anything(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.create(&wang, "全國賽").await;
+    s.share(&wang, &id, lin.email, "viewer").await;
+    // 林教練的登入狀態再 0.3 秒到期（不用真的等 30 天）
+    let now = *s.now.lock().unwrap();
+    sqlx::query("UPDATE sessions SET expires_at = $1 WHERE user_id = $2")
+        .bind(now + chrono::Duration::milliseconds(300))
+        .bind(s.user_id(lin.email).await)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    let (mut a, _) = join_as(&s, &wang, &id, "tab-a", true).await;
+    let (mut b, first) = join_as(&s, &lin, &id, "tab-b", false).await;
+    assert_eq!(first["kind"], "ready");
+
+    // 到期了；林教練只開著看、什麼都沒送
+    *s.now.lock().unwrap() += chrono::Duration::seconds(1);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    say(
+        &mut a,
+        json!({ "kind": "step", "stepId": "after", "seen": 0, "commands": [{ "name": "renameFlow", "args": ["到期後改的"] }] }),
+    )
+    .await;
+    assert_eq!(reply(&mut a).await["kind"], "accepted");
+
+    // 房間已經關了，到期後的改動不會送過去
+    let heard = reply(&mut b).await;
+    assert!(heard.is_null(), "到期了還收到：{heard}");
+}
