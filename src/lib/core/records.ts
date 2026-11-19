@@ -109,7 +109,7 @@ export function changeAttempt(
 	if (!action || index < 0) return blocked('找不到這一次');
 	const attempt = { ...withoutBlanks(records[index]), ...changedAttempt(action, records[index], marks) };
 	if (attempt.practice === 'runThrough' && !attempt.whole && Object.keys(attempt.marks).length)
-		return blocked('全上的一次每個環節都要有記號（✗ 後面的不用）');
+		return blocked('全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）');
 	const problem = attemptProblem(action, attempt);
 	if (problem) return blocked(problem);
 	return ok(withRecords(flow, action, records.toSpliced(index, 1, attempt)));
