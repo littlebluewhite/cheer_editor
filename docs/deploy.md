@@ -220,9 +220,11 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 
 ### 雲端流程的音樂檔（Cloudflare R2）
 
-雲端流程的音樂檔放 R2，不經過伺服器（#249）：伺服器查權限、發 10 分鐘內有效的預簽網址，瀏覽器直接 PUT 上去；
-傳完伺服器在 R2 查一次大小，超過 60 MB 就刪掉、退回。播放時瀏覽器拿下載的預簽網址，用 `fetch` 從 R2 拿下來解碼。
-在 R2 的名字是 `flows/<流程 id>/<音樂檔 id>.<副檔名>`；換掉、刪掉的音樂在資料表 `flow_audio` 記下哪天不用了。
+雲端流程的音樂檔放 R2，不經過伺服器（#249）：伺服器查權限、發 10 分鐘內有效的預簽網址，瀏覽器直接 PUT 到暫放的名字；
+傳完伺服器在 R2 複製到正式的名字、刪掉暫放的，再查正式的那份多大，超過 60 MB 就刪掉、退回。
+預簽網址收了之後還有效，但只寫得到暫放的，收好的音樂不會被換掉。播放時瀏覽器拿下載的預簽網址，用 `fetch` 從 R2 拿下來解碼。
+在 R2 的正式名字是 `flows/<流程 id>/<音樂檔 id>.<副檔名>`，暫放的是前面加 `uploading/`；
+換掉、刪掉的音樂在資料表 `flow_audio` 記下哪天不用了。
 
 - 設定：`R2_ENDPOINT`（`https://<帳號 id>.r2.cloudflarestorage.com`）、`R2_BUCKET`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`。
   token 用「Object Read & Write」，只管這一個 bucket。沒設 `R2_ENDPOINT` 時放音樂、拿音樂的 API 回 503（其他照常）。
@@ -241,7 +243,10 @@ cd server && cargo run              # 開 http://127.0.0.1:8080
 ```
 
   開發用的 bucket 把 `AllowedOrigins` 換成 `["http://127.0.0.1:8080", "http://localhost:8080"]`。
-- 伺服器測試不連 R2：`server/tests/music.rs` 開一台假的 R2（本機 HTTP，照 S3 的路徑收 PUT、HEAD、GET、DELETE，不驗簽名）。
+- **擁有者要做（還沒做）：** 傳了沒說傳完、傳完後又 PUT 的會留在 `uploading/`，伺服器不刪。
+  R2 → 音樂的 bucket → Settings → Object Lifecycle Rules → Add rule：prefix 填 `uploading/`，物件 1 天後刪，Save changes。
+  正式、開發的 bucket 都加。（Cloudflare 文件：https://developers.cloudflare.com/r2/buckets/object-lifecycles/ ，可以只管某個 prefix。）
+- 伺服器測試不連 R2：`server/tests/music.rs` 開一台假的 R2（本機 HTTP，照 S3 的路徑收 PUT、HEAD、GET、DELETE 和複製（PUT 加 `x-amz-copy-source`），不驗簽名）。
   真的 R2 還沒接上實測過（#263）；`rusty-s3` 接不起來時換 `aws-sdk-s3`。
 
 第一個管理員（也用來救進不去的管理員、換人當管理員）。沒有預設帳號、預設密碼：

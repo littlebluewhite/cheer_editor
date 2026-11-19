@@ -1,5 +1,6 @@
 // 雲端流程的音樂檔放 R2（#249）：伺服器查權限、發預簽網址，瀏覽器直接傳；傳完伺服器查大小；換掉的記下哪天不用了。
-// R2 換成假的：開一台本機的 HTTP 伺服器，照 S3 的路徑（/bucket/key）收 PUT、HEAD、GET、DELETE，不驗簽名。
+// R2 換成假的：開一台本機的 HTTP 伺服器，照 S3 的路徑（/bucket/key）收 PUT、HEAD、GET、DELETE，
+// 和複製（PUT 加 x-amz-copy-source），不驗簽名。
 // 開一台真的伺服器（網路埠），步用 WebSocket 送。要有 PostgreSQL：見 tests/db.rs 開頭。
 
 use std::collections::HashMap;
@@ -42,11 +43,23 @@ async fn fake_r2() -> (reqwest::Url, Objects) {
         State(objects): State<Objects>,
         Path((bucket, key)): Path<(String, String)>,
         method: Method,
+        headers: axum::http::HeaderMap,
         body: Bytes,
     ) -> Response {
         assert_eq!(bucket, BUCKET);
         let mut all = objects.lock().unwrap();
         match method {
+            Method::PUT if headers.contains_key("x-amz-copy-source") => {
+                let source = headers["x-amz-copy-source"].to_str().unwrap();
+                let from = source.strip_prefix(&format!("{BUCKET}/")).unwrap();
+                match all.get(from).cloned() {
+                    Some(bytes) => {
+                        all.insert(key, bytes);
+                        StatusCode::OK.into_response()
+                    }
+                    None => StatusCode::NOT_FOUND.into_response(),
+                }
+            }
             Method::PUT => {
                 all.insert(key, body.to_vec());
                 StatusCode::OK.into_response()
@@ -541,4 +554,44 @@ async fn the_share_link_plays_music_without_signing_in(db: sqlx::PgPool) {
         .send("GET", &format!("/api/links/{token}/audio/a1"), None, None)
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn a_late_put_cannot_replace_finished_music(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let id = s.create(&lin, "全國賽").await;
+    let (_, got) = s.start_upload(Some(&lin), &id, "a1", 3).await;
+    let url = got["url"].as_str().unwrap().to_owned();
+    let put = |bytes: Vec<u8>| reqwest::Client::new().put(&url).body(bytes).send();
+    assert!(put(vec![1, 2, 3]).await.unwrap().status().is_success());
+    assert_eq!(
+        s.finish_upload(&lin, &id, "a1").await.0,
+        StatusCode::NO_CONTENT
+    );
+
+    // 收了之後，同一個預簽網址還沒過期（例：瀏覽器重試）又 PUT 一次別的內容：收好的不變。
+    put(vec![9; 4]).await.unwrap();
+    let (status, got) = s
+        .send(
+            "GET",
+            &format!("/api/flows/{id}/audio/a1"),
+            None,
+            Some(&lin),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let bytes = reqwest::get(got["url"].as_str().unwrap())
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), [1, 2, 3]);
+    let (size,): (i64,) = sqlx::query_as("SELECT size FROM flow_audio WHERE flow_id = $1")
+        .bind(&id)
+        .fetch_one(&s.state.db)
+        .await
+        .unwrap();
+    assert_eq!(size, 3);
 }

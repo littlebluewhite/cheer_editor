@@ -79,6 +79,27 @@ impl R2Bucket {
         Ok(())
     }
 
+    /// 在 R2 裡把 `from` 複製到 `to`（S3 的 CopyObject：PUT 加 `x-amz-copy-source`）。沒有 `from` 是 false。
+    pub(crate) async fn copy(&self, from: &str, to: &str) -> anyhow::Result<bool> {
+        let source = format!("{}/{from}", self.bucket.name());
+        let mut action = self.bucket.put_object(Some(&self.credentials), to);
+        action
+            .headers_mut()
+            .insert("x-amz-copy-source", source.clone());
+        let res = self
+            .http
+            .put(action.sign(PRESIGN_FOR))
+            .header("x-amz-copy-source", source)
+            .header(reqwest::header::CONTENT_LENGTH, 0)
+            .send()
+            .await?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        res.error_for_status()?;
+        Ok(true)
+    }
+
     pub(crate) async fn delete(&self, key: &str) -> anyhow::Result<()> {
         let url = self
             .bucket
