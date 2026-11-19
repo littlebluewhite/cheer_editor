@@ -111,6 +111,49 @@ describe('改到同一個東西', () => {
 		expect(title()).toContain('✓ 已存');
 	});
 
+	it('action edit queued behind a step still gets sent：前一步還沒收時用動作表單改動作，前一步收了照樣送出去', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		await rename('全國賽');
+		// 動作表單的人是畫面上的狀態（$state），跟著這一步排在後面
+		s.page.session.selectAction('x1');
+		await flush();
+		const draft = s.page.editor.actionDraft;
+		draft.note = '注意手';
+		draft.update();
+		expect(s.page.session.flow!.actions[0].note).toBe('注意手');
+
+		s.releaseRoom();
+		await flush();
+		await flush();
+
+		expect(s.state.flows[0].flow.name).toBe('全國賽');
+		expect(s.state.flows[0].flow.actions[0].note).toBe('注意手');
+		expect(title()).toContain('✓ 已存');
+	});
+
+	it('redo after undo keeps the spot the server gave：同時加隊員、我的人被放到別的位置，復原再重做不會跟王教練加的人疊在一起', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		s.w.step(add('小新'));
+		s.page.session.ask.send(add('小華'));
+		s.releaseRoom();
+		await flush();
+		const placed = structuredClone(s.state.flows[0].flow);
+
+		await fireEvent.click(screen.getByRole('button', { name: '復原' }));
+		await flush();
+		expect(s.state.flows[0].flow.members.map((m) => m.name)).not.toContain('小華');
+		await fireEvent.click(screen.getByRole('button', { name: '重做' }));
+		await flush();
+
+		const server = s.state.flows[0].flow;
+		const spots = Object.values(server.formations[0].pos).map((p) => p.join());
+		expect(new Set(spots).size).toBe(server.members.length);
+		expect(server.formations).toEqual(placed.formations);
+		expect(s.page.session.flow).toEqual(server);
+	});
+
 	it('收了的時候後面還有沒送到的步：換成伺服器的樣子，再跑一次後面的步；全部收了跟伺服器一樣', async () => {
 		const s = await bothOpen();
 		const settled = vi.spyOn(s.page.session, 'settle');
@@ -131,6 +174,25 @@ describe('改到同一個東西', () => {
 		const spots = Object.values(first.formations[0].pos).map((p) => p.join());
 		expect(new Set(spots).size).toBe(first.members.length);
 		expect(s.state.flows[0].step).toBe(3);
+		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
+	});
+
+	it('reconnect after an ack that jumped ahead still catches up：先聽到自己第 2 步收了、王教練的第 1 步還沒到就斷線，連回來補上第 1 步', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		s.w.step(add('小新'));
+		s.page.session.ask.send(add('小華'));
+		// 伺服器收了王教練的（第 1 步，要告訴林教練的還在路上）和林教練的（第 2 步，「收了」先到）
+		s.releaseRoom(true);
+		expect(s.state.flows[0].step).toBe(2);
+		s.disconnect(lin.email);
+		await flush();
+		s.releaseRoom();
+
+		s.reconnect(lin.email);
+		await flush();
+		await flush();
+		expect(s.page.session.flow!.members.map((m) => m.name)).toContain('小新');
 		expect(s.page.session.flow).toEqual(s.state.flows[0].flow);
 	});
 

@@ -1005,7 +1005,9 @@ export function fakeServer(
 					if (state.link === 'online') bringBack(open);
 					else room.onconnection(false, state.link);
 				},
-				send(request) {
+				send(sent) {
+					// 跟真的一樣走 JSON（畫面上的 $state 也送得出去）
+					const request = JSON.parse(JSON.stringify(sent)) as RoomRequest;
 					const f = state.flows.find((g) => g.id === flowId);
 					const role = f && roleOf(f, email);
 					if (down.has(room)) return;

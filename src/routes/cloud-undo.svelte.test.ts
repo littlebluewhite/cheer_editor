@@ -192,6 +192,38 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(takeRecords(s.page.session.flow!).records).toEqual([]);
 	});
 
+	it('records snapshot keeps attempts a queued step cleared：還沒連上就改名清掉重算，進房間拿到的紀錄不會把清掉的放回來', async () => {
+		const fake = fakeServer({
+			users: [lin, wang],
+			signedIn: lin.email,
+			flows: [
+				{
+					id: 'c1',
+					owner: lin.email,
+					flow: libSample(),
+					updatedAt: new Date(2026, 10, 7).toISOString(),
+					records: [wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]
+				}
+			]
+		});
+		const page = editorPage(null, { server: fake.server });
+		render(Page, page.props);
+		await flush();
+		// 打招呼還在路上（伺服器還沒給紀錄、還沒說可以送步）
+		fake.state.holdRoom = true;
+		await fireEvent.click(screen.getByRole('button', { name: /^測試/ }));
+		await flush();
+		expect(takeRecords(page.session.flow!).records).toHaveLength(1);
+		page.session.ask.send({ name: 'updateMember', args: ['m1', { name: '小琪' }], options: { records: 'clear' } });
+		expect(takeRecords(page.session.flow!).records).toEqual([]);
+
+		fake.releaseRoom();
+		await flush();
+		await flush();
+		expect((fake.state.flows[0].records ?? []).filter((r) => !r.gone)).toEqual([]);
+		expect(takeRecords(page.session.flow!).records).toEqual([]);
+	});
+
 	it('復原刪動作：動作和它的紀錄都回來', async () => {
 		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' })]);
 		const kept = takeRecords(s.page.session.flow!).records;
@@ -218,6 +250,46 @@ describe('復原帶回這一步清掉的紀錄（ADR 0007）', () => {
 		expect(status()).toBe('王教練剛改了同一個地方，你的「刪動作 技巧·Lib」沒改成');
 		expect(s.page.session.flow!.actions[0].note).toBe('注意手');
 		expect(takeRecords(s.page.session.flow!).records).toEqual(kept);
+	});
+
+	it('rejected delete leaves out attempts deleted meanwhile：刪動作被退回，等的時候王教練刪掉的那一次不會跟著回來', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' }), wangs('t2', { p1: '✓' })]);
+		s.state.holdRoom = true;
+		// 王教練刪掉 t2（告訴林教練的還在路上）
+		s.w.room.send({ kind: 'deleteRecords', ids: ['t2'] });
+		s.releaseRoom(true);
+		// 王教練改了 x1；林教練還沒聽到，刪了動作 x1（畫面上連紀錄一起不見）
+		s.w.step({ name: 'updateAction', args: ['x1', { note: '注意手' }] });
+		s.page.session.ask.send({ name: 'deleteAction', args: ['x1'], options: { confirmed: true } });
+		expect(takeRecords(s.page.session.flow!).records).toEqual([]);
+		// 林教練先聽到 t2 刪了（動作不在畫面上），伺服器才收王教練的、退回林教練的
+		s.releaseRoom();
+		await flush();
+		await flush();
+
+		expect(status()).toBe('王教練剛改了同一個地方，你的「刪動作 技巧·Lib」沒改成');
+		const server = (s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.id);
+		expect(server).toEqual(['t1']);
+		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.id)).toEqual(['t1']);
+	});
+
+	it('rejected delete after reconnect leaves out attempts deleted meanwhile：刪動作沒送到就斷線，王教練刪了一次、改了動作，連回來被退回，那一次不會回來', async () => {
+		const s = await bothOpen([wangs('t1', { p1: '✓', p2: '✓', p3: '✗' }), wangs('t2', { p1: '✓' })]);
+		s.state.holdRoom = true;
+		s.page.session.ask.send({ name: 'deleteAction', args: ['x1'], options: { confirmed: true } });
+		s.disconnect(lin.email);
+		await flush();
+		s.w.room.send({ kind: 'deleteRecords', ids: ['t2'] });
+		s.w.step({ name: 'updateAction', args: ['x1', { note: '注意手' }] });
+		s.releaseRoom();
+		await flush();
+
+		s.reconnect(lin.email);
+		await flush();
+		await flush();
+		expect(status()).toContain('沒改成');
+		expect((s.state.flows[0].records ?? []).filter((r) => !r.gone).map((r) => r.attempt.id)).toEqual(['t1']);
+		expect(takeRecords(s.page.session.flow!).records.map((r) => r.attempt.id)).toEqual(['t1']);
 	});
 
 	it('被退回時別人新加的動作的紀錄留著（退回的那一步之後才聽到的動作）', async () => {

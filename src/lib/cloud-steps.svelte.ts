@@ -29,7 +29,7 @@
 // 同一次全上的同一組別人先存了：沒存進去的那一列寫「王教練已經記了這次全上的第 2 組」。
 // 自己的一步收了：伺服器也給它做出來的改動（跟送給別人的一樣）。伺服器跑出來的可能跟這邊畫面上的不一樣
 // （例：兩個人同時加隊員，後到的被放在別的位置、排在後面），所以這裡記著伺服器的樣子（收了的、別人的改動照第幾步接上），
-// 收了之後畫面換成伺服器的樣子再跑一次還沒收的步。房間不一定照第幾步的順序說（別人的步可能在我的「收了」之後才到），
+// 收了之後畫面換成伺服器的樣子再跑一次還沒收的步，復原紀錄裡那一步的重做也換成伺服器做出來的。房間不一定照第幾步的順序說（別人的步可能在我的「收了」之後才到），
 // 接不上的先留著，接上了再換。
 
 import {
@@ -41,6 +41,7 @@ import {
 	perPerson,
 	putRecords,
 	recordsPatch,
+	redoRecords,
 	runCommands,
 	squadName,
 	takeRecords,
@@ -109,6 +110,11 @@ export class CloudSteps {
 	#server: { flow: Flow; step: number } | null;
 	/** 比伺服器的樣子新、還接不上的改動：第幾步 → 改動。 */
 	#later = new Map<number, RemoteChange>();
+	/**
+	 * 有還沒收的步時，別人改了、刪了，卻不在畫面上的那幾次（例：我刪了動作還沒收，別人刪了它的一次）：
+	 * id → 伺服器現在的樣子（刪了是 null）。那一步被退回、紀錄帶回來時照這個；步都收了就清掉。
+	 */
+	#hidden = new Map<string, StoredAttempt | null>();
 	/** 我的步收了，畫面還沒換成伺服器做出來的樣子（等接上）。 */
 	#settle = false;
 	/** 記了、伺服器還沒回答的那幾次：id → 送的那一次和沒存進去時表上那一列（記的當下的動作、組的名字）。 */
@@ -184,7 +190,9 @@ export class CloudSteps {
 		room.onconnection = (connected, why) => (connected ? this.#hello() : this.#lost(why ?? 'offline'));
 		this.#editing = !session.viewing && canEdit(role);
 		this.#hello();
-		session.onstep = (s, label, before, after) => this.#push({ ...s, label, seen: this.#seen, before, after });
+		// 指令裡可能有畫面上的狀態（例：動作表單的人）：排進去時拿掉 $state，收了前一步重跑時 structuredClone 才不會出錯
+		session.onstep = (s, label, before, after) =>
+			this.#push({ ...($state.snapshot(s) as CloudStep), label, seen: this.#seen, before, after });
 		session.onrecord = (before, after) => this.#recorded(before, after);
 	}
 
@@ -470,9 +478,9 @@ export class CloudSteps {
 		} else if (m.kind === 'present') {
 			this.present = m.people;
 		} else if (m.kind === 'changed') {
-			this.#seen = Math.max(this.#seen, m.step);
 			this.#session.applyRemote(m.change as RemoteChange, m.by);
 			this.#heardChange(m.step, m.change as RemoteChange);
+			this.#saw(m.step);
 			this.#settleScreen();
 		} else if (m.kind === 'recordsSaved') {
 			this.#saved(m.saved, m.dropped);
@@ -491,14 +499,15 @@ export class CloudSteps {
 		} else if (m.stepId !== this.#queue[0]?.id) {
 			return;
 		} else if (m.kind === 'accepted') {
-			// 連回來時補上的別人的步可能比我這一步新
-			this.#seen = Math.max(this.#seen, m.step);
 			if (m.change === undefined) this.#server = null;
 			else {
 				this.#heardChange(m.step, m.change as RemoteChange);
+				this.#session.acceptedAs(m.stepId, m.change as RemoteChange);
 				this.#settle = true;
 			}
+			this.#saw(m.step);
 			this.#queue = this.#queue.slice(1);
+			if (!this.#queue.length) this.#hidden.clear();
 			this.#settleScreen();
 			this.#sendHead();
 		} else {
@@ -508,6 +517,15 @@ export class CloudSteps {
 			const dropped = this.#dropQueue();
 			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message), dropped);
 		}
+	}
+
+	/**
+	 * 聽到第 step 步（別人的、我的收了）之後，上次看到第幾步：照順序接上的那一步。前面的步還沒到（例：我的第 2 步收了，
+	 * 別人的第 1 步還在路上）不算看過，斷線重連才會從那裡補。不知道伺服器的樣子時照聽到最新的
+	 * （連回來時補上的別人的步可能比我這一步新）。
+	 */
+	#saw(step: number) {
+		this.#seen = this.#server ? this.#server.step : Math.max(this.#seen, step);
 	}
 
 	/** 伺服器收了第 step 步、做出來的改動：接得上就接到伺服器的樣子上（接上之後留著的也接），接不上先留著。 */
@@ -557,7 +575,7 @@ export class CloudSteps {
 	/**
 	 * 換成伺服器的樣子（不帶紀錄）：帶著現在的紀錄（對不上的丟掉，跟復原一樣）。
 	 * 沒算的步（dropped）清掉的紀錄伺服器還留著：那幾個動作從最後一步往前，像復原一樣帶回來（例：刪動作被退回，它的紀錄也回來）；
-	 * 其他動作照現在的（之後才有的動作、組、環節的紀錄不丟）。
+	 * 其他動作照現在的（之後才有的動作、組、環節的紀錄不丟）。帶回來的那幾次在等的時候別人改了、刪了，照伺服器現在的樣子。
 	 */
 	#reset(flow: Flow, message: string, dropped: Queued[]) {
 		this.#server = { flow, step: this.#seen };
@@ -568,10 +586,18 @@ export class CloudSteps {
 		const patched = new Set(dropped.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));
 		let back = now;
 		for (const step of [...dropped].reverse()) back = undoRecords(step.before, step.after, back);
+		const shown = new Set(takeRecords(now).records.map((r) => r.attempt.id));
 		const records = [
 			...takeRecords(now).records.filter((r) => !patched.has(r.actionId)),
-			...takeRecords(back).records.filter((r) => patched.has(r.actionId))
+			...takeRecords(back)
+				.records.filter((r) => patched.has(r.actionId))
+				.flatMap((r) => {
+					// 帶回來的（不在畫面上的）別人後來改了、刪了：照伺服器現在的樣子
+					const hidden = shown.has(r.attempt.id) ? undefined : this.#hidden.get(r.attempt.id);
+					return hidden === undefined ? [r] : hidden ? [hidden] : [];
+				})
 		];
+		this.#hidden.clear();
 		this.#session.reset(carryRecords(flow, putRecords(flow, records)), message);
 	}
 
@@ -660,6 +686,11 @@ export class CloudSteps {
 		if (!flow) return;
 		const gone = new Set(deleted);
 		const fresh = new Map(incoming.map((r) => [attemptOf(r).id, r]));
+		if (this.#queue.length) {
+			const shown = new Set(takeRecords(flow).records.map((r) => r.attempt.id));
+			for (const id of deleted) if (!shown.has(id)) this.#hidden.set(id, null);
+			for (const [id, r] of fresh) if (!shown.has(id)) this.#hidden.set(id, stored(r));
+		}
 		const records = takeRecords(flow).records.flatMap((r) => {
 			if (gone.has(r.attempt.id)) return [];
 			const server = fresh.get(r.attempt.id);
@@ -688,9 +719,29 @@ export class CloudSteps {
 		});
 		const listed = new Set(records.map((r) => r.attempt.id));
 		for (const [id, r] of local) if (pending.has(id) && !listed.has(id)) records.push(r);
+		// 還沒收的步清掉的（不在畫面上）：退回時照伺服器現在的帶回來，不在了（別人刪了）就不帶
+		const now = new Map(server.map((r) => [attemptOf(r).id, stored(r)]));
+		for (const lost of this.#queue.flatMap((s) => recordsPatch(s.before, s.after))) {
+			for (const { id } of lost.before) if (!local.has(id)) this.#hidden.set(id, now.get(id) ?? null);
+		}
 		const names = Object.fromEntries(server.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
 		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
-		this.#session.serverRecords(putRecords(flow, records));
+		this.#session.serverRecords(putRecords(flow, this.#clearedAgain(flow, records)));
+	}
+
+	/**
+	 * 伺服器的紀錄還沒算到還沒收的步：那幾步清掉的（例：改名選清掉重算）照順序像重做一樣再清一次，
+	 * 只動那幾步清過紀錄的動作，其他動作照 records。
+	 */
+	#clearedAgain(flow: Flow, records: StoredAttempt[]): StoredAttempt[] {
+		const patched = new Set(this.#queue.flatMap((s) => recordsPatch(s.before, s.after).map((p) => p.actionId)));
+		if (!patched.size) return records;
+		let again = putRecords(flow, records);
+		for (const step of this.#queue) again = redoRecords(step.before, step.after, again);
+		return [
+			...records.filter((r) => !patched.has(r.actionId)),
+			...takeRecords(again).records.filter((r) => patched.has(r.actionId))
+		];
 	}
 
 	/** 擁有者改了我的權限。降成記錄者、檢視者：還沒送到的步不算，換成伺服器的樣子並提示。 */
