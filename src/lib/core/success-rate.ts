@@ -332,6 +332,26 @@ function shutAfterFail(phases: readonly Phase[], marks: Record<string, Mark>): s
 }
 
 /**
+ * 只練幾個環節時什麼時候自動存：給動作、勾的環節、點了的記號，回到了沒（due）、還在等哪些環節（waiting）。
+ * 到了：勾的環節點了 ✗，或最後一個勾的環節有記號（勾的環節裡還能打的都打了，一定是這兩個之一）。
+ * 等：勾了、還沒打、還能打、跟 ✗ 或最後一個勾的環節佔同樣的拍的。到了、沒有在等的才存；環節沒有疊就不會等。
+ */
+export function pickedAutoSave(
+	action: Action,
+	picked: readonly string[],
+	marks: Record<string, Mark>
+): { due: boolean; waiting: string[] } {
+	const planned = (action.successRate?.phases ?? []).filter((p) => picked.includes(p.id));
+	const { marks: kept, shut } = blankPhases(action, false, marks);
+	const last = planned.at(-1);
+	const anchors = planned.filter((p) => kept[p.id] === '✗' || (p === last && kept[p.id]));
+	const waiting = planned.filter(
+		(p) => !shut.includes(p.id) && !kept[p.id] && anchors.some((a) => phasesOverlap([p, a]))
+	);
+	return { due: anchors.length > 0, waiting: waiting.map((p) => p.id) };
+}
+
+/**
  * 記一次會存下來的樣子：給動作、整個做（要練全部環節）或只練幾個環節、點了的記號，回會存的記號和算不算整個做（照 blankPhases）。
  * 整個做、有空著的環節（✗ 做完之後才開始的、跟 ✗ 佔同樣的拍沒打的）時，那些環節記成空著的（blanks）。
  * 只在記的時候套，讀流程檔不檢查：之後才加的環節、標拍換了順序，會讓舊的一次看起來不合。不是環節的記號原樣留著，交給 attemptProblem 擋。
