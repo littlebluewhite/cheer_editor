@@ -3,7 +3,13 @@
 
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
+
+/// 台灣時間（UTC+8，沒有夏令時間）：每天的工作、備份照它排，備份檔名也用它。
+pub const TAIWAN: FixedOffset = match FixedOffset::east_opt(8 * 3600) {
+    Some(offset) => offset,
+    None => panic!("台灣時間的時差不對"),
+};
 
 #[derive(Clone)]
 pub struct Clock(Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>);

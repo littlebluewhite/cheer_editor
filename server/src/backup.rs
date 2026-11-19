@@ -5,9 +5,10 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Utc};
 
 use crate::AppState;
+use crate::clock::TAIWAN;
 use crate::music::MusicStore;
 
 /// 下一次備份的時間：`now` 之後第一個台灣時間凌晨 4 點。
@@ -47,10 +48,9 @@ impl Backup {
     /// 備份一次：`pg_dump` → 放上 R2 → 記一列 `backups`（算 R2 用量，#266）→ 報到。
     /// 哪一步失敗就停，不報到。
     pub async fn run(&self, db: &sqlx::PgPool, now: DateTime<Utc>) -> anyhow::Result<()> {
-        let taiwan = FixedOffset::east_opt(8 * 3600).unwrap();
         let key = format!(
             "cheer-{}.dump",
-            now.with_timezone(&taiwan).format("%Y-%m-%d-%H%M")
+            now.with_timezone(&TAIWAN).format("%Y-%m-%d-%H%M")
         );
         let file = std::env::temp_dir().join(&key);
         let result = self.dump_and_upload(&file, &key).await;

@@ -5,9 +5,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 
 use crate::AppState;
+use crate::clock::TAIWAN;
 use crate::mail::Mail;
 
 /// 音樂、步驟紀錄留多久。
@@ -43,13 +44,12 @@ pub fn next_run(now: DateTime<Utc>) -> DateTime<Utc> {
 
 /// `now` 之後第一個台灣時間 `hour` 點整（每天的備份也用）。
 pub(crate) fn next_taiwan_hour(now: DateTime<Utc>, hour: u32) -> DateTime<Utc> {
-    let taiwan = FixedOffset::east_opt(8 * 3600).unwrap();
     let today = now
-        .with_timezone(&taiwan)
+        .with_timezone(&TAIWAN)
         .date_naive()
         .and_hms_opt(hour, 0, 0)
         .unwrap()
-        .and_local_timezone(taiwan)
+        .and_local_timezone(TAIWAN)
         .unwrap()
         .to_utc();
     if today > now {
