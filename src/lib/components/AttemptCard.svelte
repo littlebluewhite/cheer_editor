@@ -69,7 +69,10 @@
 	const marks = $derived(session.unsavedMarks(action, who, date));
 	function setMarks(next: Record<string, Mark>) {
 		session.drillMarks[marksKey] = next;
+		if (!Object.keys(next).length) trigger = undefined;
 	}
+	/** 只練幾個環節時最近一次到存的時機點的環節（✗ 或最後一個勾的）：等的是跟它佔同樣拍的（問核心 pickedAutoSave）。 */
+	let trigger = $state<string | undefined>();
 	/** 會存下來的樣子（核心決定留哪些記號、哪些環節空著、跳過了哪些）。 */
 	const kept = $derived(blankPhases(action, whole, marks));
 	/** 卡上亮的記號。 */
@@ -79,7 +82,7 @@
 	/** 選「整個」卻跳過前面的環節：存之前就說。 */
 	const skipping = $derived(kept.skipped.length > 0);
 	/** 只練幾個環節、到了存的時機，還有同時在做的環節沒打：先不存，等它們打完（點到一半的記號留在 session，換頁回來還在等）。 */
-	const waiting = $derived(!whole && pickedAutoSave(action, picked, shown).waiting.length > 0);
+	const waiting = $derived(!whole && pickedAutoSave(action, picked, shown, trigger).waiting.length > 0);
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
 
@@ -114,7 +117,8 @@
 		setMarks(keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks);
 		if (phases.length === 1) return save();
 		if (whole) return;
-		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark }, phaseId);
+		if (mark === '✗' || phaseId === planned.at(-1)?.id) trigger = phaseId;
+		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark }, trigger);
 		if (next.due && !next.waiting.length) save();
 	}
 
@@ -138,15 +142,28 @@
 		draft = { ...attempt.marks };
 	}
 
-	/** 改的時候按不了的環節：跟記一次一樣，✗ 做完之後才開始的（問核心 blankPhases）。 */
-	const editShut = $derived(blankPhases(action, false, draft).shut);
+	/**
+	 * 改的時候算 ✗ 的規則用的動作：整個做的一次只有那時就有的環節（打了記號的加上空著的，跟核心 changedAttempt 一樣），
+	 * 之後才加的不算進去，免得它的 ✗ 清掉存著的記號。
+	 */
+	const editAction = $derived.by(() => {
+		const rate = action.successRate;
+		if (!edited?.whole || !rate) return action;
+		const then = rate.phases.filter((p) => edited.marks[p.id] || edited.blanks?.includes(p.id));
+		return { ...action, successRate: { ...rate, phases: then } };
+	});
+	/** 改的時候按不了的環節：之後才加的，和跟記一次一樣 ✗ 做完之後才開始的（問核心 blankPhases）。 */
+	const editShut = $derived([
+		...phases.filter((p) => !editAction.successRate?.phases.includes(p)).map((p) => p.id),
+		...blankPhases(editAction, false, draft).shut
+	]);
 
 	/** 改的時候點記號：再點一次點著的那顆就變空的。點了 ✗，按不了的環節點過的記號不留（跟記一次一樣）。 */
 	function retap(phaseId: string, mark: Mark) {
 		if (draft[phaseId] === mark) {
 			const { [phaseId]: _, ...rest } = draft;
 			draft = rest;
-		} else draft = blankPhases(action, false, { ...draft, [phaseId]: mark }).marks;
+		} else draft = blankPhases(editAction, false, { ...draft, [phaseId]: mark }).marks;
 	}
 
 	function saveEdit(attempt: Attempt) {

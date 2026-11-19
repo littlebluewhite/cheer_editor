@@ -615,6 +615,19 @@ describe('下面那一列：拍點格子', () => {
 		expect(y(layout(row({ cues: [alone(2)] })))).toBeGreaterThan(y(layout(row({ cues: [alone(0)] }))));
 	});
 
+	it('第 16 排的環節接到這個八拍、格子自己放得下但加上動作的字放不下：先擠掉空著的排，不拿掉備註', () => {
+		const line: EightCountCueLine = {
+			...cueLine('金字塔'),
+			cues: [],
+			phases: [{ label: '最後一個', from: 1, to: 2, color: '#c62828', row: 15 }]
+		};
+		const l = layout(row({ actions: [act('1-1　金字塔·金字塔', '小A（上層）', '手要直')], cues: [line] }));
+		expect(strings(l)).toContain('最後一個');
+		expect(strings(l)).toContain('備註：手要直');
+		expect(l.overflow).toBe(false);
+		expectAboveBottom(l);
+	});
+
 	it('金字塔疊著的環節：整個動作算一次排，只剩第二排環節的八拍也畫在第二排', () => {
 		// pyramidSample 的 x2 拿掉後半的環節，上法「第二個」拉長到 2-8：
 		// 第 3 個八拍 上法「第一個」、中段「第一個」第一排，上法「第二個」第二排；第 4 個八拍只有上法「第二個」

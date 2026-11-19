@@ -1,7 +1,7 @@
 // 記錄頁的一張卡：放一個真的 session 進去，點記號，讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { attemptWhos, recordAttempt, recordRunThrough } from '#lib/core';
+import { addAction, addPhase, attemptWhos, deletePhase, recordAttempt, recordRunThrough } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { libSample, pyramidSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
@@ -311,6 +311,22 @@ describe('記錄頁的卡', () => {
 		expect(records(session)).toEqual(before);
 	});
 
+	it('改第 n 次：記的時候還沒有的環節按不了，打 ✗ 也不會清掉之後的記號、不害它變成只練幾個環節', async () => {
+		// 上法 ✓、下法 ✓ 記好，才在中間加中段
+		let flow = flowOf(deletePhase(libSample(), 'x1', 'p2', { confirmed: true }));
+		flow = flowOf(recordAttempt(flow, 'x1', { date: DATE, who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p3: '✓' } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'hold', name: '', beats: { at: 4, len: 8 } }));
+		const { session } = setup(flow);
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 1 次/ }));
+		const edit = within(screen.getByRole('group', { name: '改第 1 次' }));
+		const fail = edit.getByRole('button', { name: '第 1 次 中段 失敗' }) as HTMLButtonElement;
+		expect(fail.disabled).toBe(true);
+		await fireEvent.click(fail);
+		expect(edit.getByRole('button', { name: '第 1 次 下法 成功' }).getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(edit.getByRole('button', { name: '存修改' }));
+		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✓', p3: '✓' }]]);
+	});
+
 	it('全上的那一次改到空了一格：擋下來說原因，紀錄不變', async () => {
 		const { session } = setup(mixed());
 		const before = records(session);
@@ -456,6 +472,28 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		expect(screen.getByText(WAIT)).toBeTruthy();
 		await tap(name, '中段 第一個', '成功');
 		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✓', p6: '✗' }]);
+	});
+
+	it('B ✗ 再 C ✗ 之後只等跟 C 佔同樣拍的 D；打完 D 就存，不回頭再等只跟 B 佔同樣拍的 A', async () => {
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		let flow = flowOf(
+			addAction(libSample(), { segmentId: 's1', category: 'pyramid', name: '金字塔', start: 32, length: 32, note: '', members })
+		);
+		// A 第 1–2 拍、B 第 2–6 拍、D 第 3–4 拍、C 第 4–7 拍
+		for (const [name, at, len] of [['A', 0, 4], ['B', 2, 10], ['D', 4, 4], ['C', 6, 8]] as const) {
+			flow = flowOf(addPhase(flow, 'x2', { kind: 'hold', name, beats: { at, len } }));
+		}
+		const { session, name } = setup(flow, 1);
+		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
+		for (const n of ['A', 'B', 'D', 'C']) await fireEvent.click(screen.getByRole('checkbox', { name: `中段 ${n}` }));
+		await tap(name, '中段 B', '失敗');
+		await tap(name, '中段 C', '失敗');
+		expect(records(session, 1)).toEqual([]);
+		await tap(name, '中段 D', '成功');
+		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✗', p6: '✓', p7: '✗' }]);
 	});
 
 	it('環節沒有疊：點了 ✗ 照舊馬上存，不出現「存這一次」', async () => {

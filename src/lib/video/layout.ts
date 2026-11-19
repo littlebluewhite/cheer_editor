@@ -286,7 +286,11 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 		if (!grid.overflow && !grid.split && lines.length * px * LINE + gridSpace(grid) <= room) return placeRow(lines, grid, px, false);
 	}
 	const px = MIN_TEXT_PX;
-	const grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure, true);
+	// 最小的字還放不下（格子沒畫完，或加上上面的字太高）：先擠掉格子裡這個八拍空著的環節排，再拿字
+	let grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure);
+	if (grid.overflow || textLines(row, full, px, measure).length * px * LINE + gridSpace(grid) > room) {
+		grid = layoutGrid(row.cues, lit, px, gridRoom(px), measure, true);
+	}
 	// 格子最多佔到只剩一行字（gridRoom），這裡至少是 1
 	const maxLines = Math.floor((room - gridSpace(grid)) / (px * LINE) + 1e-9);
 	let lines: Para[] = [];
@@ -398,7 +402,7 @@ interface Grid {
  * 環節在上、拍點在下，同一格疊到的往下另起一排。拍點的字寫在上面、給誰寫在下面一行；
  * 比格子寬就在格子裡換行，那一格長高，不截。
  * 比 maxH 高時，超出的那幾段不畫，最後一行寫「⋯還有 N 行拍點」。
- * squeeze（字已經縮到最小）：比 maxH 高時，先把每段這個八拍空著的環節排擠掉（順序不變）再算。
+ * squeeze（字縮到最小還放不下時）：每段這個八拍空著的環節排擠掉（順序不變）。
  */
 function layoutGrid(
 	cueLines: EightCountCueLine[],
@@ -415,10 +419,8 @@ function layoutGrid(
 	for (let n = 1; n <= 8; n++) {
 		texts.push({ text: String(n), x: cellX(n) + CELL_W / 2, y: (lh - px) / 2, px, weight: 600, color: 'muted', align: 'center' });
 	}
-	const height = (bs: { h: number }[]) => lh + bs.reduce((h, b) => h + b.h, 0);
-	let blocks = cueLines.map((line) => cueBlock(line, px, measure));
-	if (squeeze && height(blocks) > maxH) blocks = cueLines.map((line) => cueBlock(line, px, measure, true));
-	const total = height(blocks);
+	const blocks = cueLines.map((line) => cueBlock(line, px, measure, squeeze));
+	const total = lh + blocks.reduce((h, b) => h + b.h, 0);
 	const items: Box[] = [];
 	let overflow = false;
 	let y = lh;

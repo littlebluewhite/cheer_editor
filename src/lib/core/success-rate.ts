@@ -335,19 +335,19 @@ function shutAfterFail(phases: readonly Phase[], marks: Record<string, Mark>): s
  * 只練幾個環節時什麼時候自動存：給動作、勾的環節、點了的記號，回到了沒（due）、還在等哪些環節（waiting）。
  * 到了：勾的環節點了 ✗，或最後一個勾的環節有記號（勾的環節裡還能打的都打了，一定是這兩個之一）。
  * 等：勾了、還沒打、還能打、跟 ✗ 或最後一個勾的環節佔同樣的拍的。到了、沒有在等的才存；環節沒有疊就不會等。
- * 給了剛點的環節（tapped），它又是 ✗ 或最後一個勾的環節：只等跟它佔同樣拍的；點的是別的環節，照樣等前面的 ✗ 的。
+ * 給了最近一次到存的時機時點的環節（trigger，✗ 或最後一個勾的環節），它還是：只等跟它佔同樣拍的；之後點了別的環節也不變。
  */
 export function pickedAutoSave(
 	action: Action,
 	picked: readonly string[],
 	marks: Record<string, Mark>,
-	tapped?: string
+	trigger?: string
 ): { due: boolean; waiting: string[] } {
 	const planned = (action.successRate?.phases ?? []).filter((p) => picked.includes(p.id));
 	const { marks: kept, shut } = blankPhases(action, false, marks);
 	const last = planned.at(-1);
 	const anchors = planned.filter((p) => kept[p.id] === '✗' || (p === last && kept[p.id]));
-	const just = anchors.find((p) => p.id === tapped);
+	const just = anchors.find((p) => p.id === trigger);
 	const waiting = planned.filter(
 		(p) => !shut.includes(p.id) && !kept[p.id] && (just ? [just] : anchors).some((a) => phasesShareBeats(p, a))
 	);

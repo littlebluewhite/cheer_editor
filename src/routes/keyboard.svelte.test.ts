@@ -99,12 +99,14 @@ describe('空白鍵', () => {
 		}
 	});
 
-	it('「選單」小窗裡 Tab 到的項目：空白鍵、Enter 照樣按下它，不拿去播放', async () => {
+	// jsdom 不會照按鍵按下按鈕、打開連結：這裡只驗頁面沒攔下來（沒 preventDefault），交給瀏覽器
+	it('「選單」小窗裡 Tab 到的項目：空白鍵不拿去播放（按鈕照瀏覽器按下；使用說明是連結，空白鍵不打開它），Enter 交給瀏覽器（按下按鈕、打開連結）', async () => {
 		setup();
 		for (const name of ['流程設定', '使用說明']) {
 			const item = (await menuItem(name))!;
 			expect(await space(item), name).toBe(true);
 			expect(await fireEvent.keyUp(item, { key: ' ' }), name).toBe(true);
+			expect(playing()).toBe(false);
 			expect(await fireEvent.keyDown(item, { key: 'Enter' }), name).toBe(true);
 			expect(playing()).toBe(false);
 		}
