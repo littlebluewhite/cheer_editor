@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use crate::AppState;
 use crate::clock::TAIWAN;
-use crate::music::MusicStore;
+use crate::r2::R2Bucket;
 
 /// 下一次備份的時間：`now` 之後第一個台灣時間凌晨 4 點。
 pub fn next_run(now: DateTime<Utc>) -> DateTime<Utc> {
@@ -19,7 +19,7 @@ pub fn next_run(now: DateTime<Utc>) -> DateTime<Utc> {
 /// 備份要用的：放備份的 R2 bucket、資料庫（不經過 pooler 的連線字串）、Better Stack 的報到網址。
 /// 不 derive Debug：連線字串有密碼，報到網址本身就是 token。
 pub struct Backup {
-    store: MusicStore,
+    store: R2Bucket,
     database_url: String,
     heartbeat: Option<reqwest::Url>,
     pg_dump: PathBuf,
@@ -28,7 +28,7 @@ pub struct Backup {
 
 impl Backup {
     /// 沒有報到網址時照樣備份，只是不報到（log 會寫）。
-    pub fn new(store: MusicStore, database_url: String, heartbeat: Option<reqwest::Url>) -> Self {
+    pub fn new(store: R2Bucket, database_url: String, heartbeat: Option<reqwest::Url>) -> Self {
         Self {
             store,
             database_url,

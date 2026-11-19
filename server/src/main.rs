@@ -7,7 +7,7 @@ use cheer_server::config::Config;
 use cheer_server::daily::{self, AwakeMeter};
 use cheer_server::flow_core::FlowCore;
 use cheer_server::mail::Mailer;
-use cheer_server::music::MusicStore;
+use cheer_server::r2::R2Bucket;
 use tracing_subscriber::EnvFilter;
 
 const USAGE: &str = "用法：
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         rooms: Default::default(),
         music: match config.r2 {
             Some(r2) => Some(
-                MusicStore::new(r2.endpoint, &r2.bucket, &r2.access_key, &r2.secret)
+                R2Bucket::new(r2.endpoint, &r2.bucket, &r2.access_key, &r2.secret)
                     .context("R2 的設定不對")?,
             ),
             None => None,
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
     // 每天的備份（#265）：沒設 BACKUP_R2_BUCKET（本機開發）就不備份。
     let backup = match config.backup {
         Some(b) => Some(Backup::new(
-            MusicStore::new(b.r2.endpoint, &b.r2.bucket, &b.r2.access_key, &b.r2.secret)
+            R2Bucket::new(b.r2.endpoint, &b.r2.bucket, &b.r2.access_key, &b.r2.secret)
                 .context("備份的 R2 設定不對")?,
             config.database_url.clone(),
             b.heartbeat,

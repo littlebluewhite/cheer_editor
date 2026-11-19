@@ -3,14 +3,11 @@
 //! 伺服器在 R2 查一次大小，超過 60 MB 就刪掉、退回。播放：能打開流程的人拿下載的預簽網址。
 //! 換掉、刪掉的音樂（流程裡不再有）記下哪天不用了（收一步時，見 flow_room）；30 天後真的刪在 #266。
 
-use std::time::Duration;
-
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use rusty_s3::{Bucket, Credentials, S3Action, UrlStyle};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -20,93 +17,8 @@ use crate::accounts::{AppError, SignedIn, signed_in};
 /// 一個音樂檔最大幾個位元組（60 MB）。前端 `src/lib/music-library.svelte.ts` 的 MAX_CLOUD_AUDIO_BYTES 跟它一樣。
 pub const MAX_AUDIO_BYTES: i64 = 60 * 1024 * 1024;
 
-/// 預簽網址多久內有效。
-const PRESIGN_FOR: Duration = Duration::from_secs(10 * 60);
-
 /// 放得下的音樂檔副檔名（跟流程核心的 AUDIO_EXTENSIONS 一樣）。
 const EXTENSIONS: [&str; 3] = ["mp3", "m4a", "wav"];
-
-/// R2（S3 相容）的一個 bucket：發預簽網址、查大小、刪檔。
-#[derive(Clone)]
-pub struct MusicStore {
-    bucket: Bucket,
-    credentials: Credentials,
-    http: reqwest::Client,
-}
-
-impl MusicStore {
-    /// endpoint 例：`https://<帳號 id>.r2.cloudflarestorage.com`；測試指到假的 R2。
-    pub fn new(
-        endpoint: reqwest::Url,
-        bucket: &str,
-        access_key: &str,
-        secret: &str,
-    ) -> anyhow::Result<Self> {
-        // R2 的 region 一律寫 auto。
-        let bucket = Bucket::new(endpoint, UrlStyle::Path, bucket.to_owned(), "auto")?;
-        Ok(Self {
-            bucket,
-            credentials: Credentials::new(access_key, secret),
-            http: reqwest::Client::new(),
-        })
-    }
-
-    fn upload_url(&self, key: &str) -> String {
-        let action = self.bucket.put_object(Some(&self.credentials), key);
-        action.sign(PRESIGN_FOR).to_string()
-    }
-
-    pub(crate) fn download_url(&self, key: &str) -> String {
-        let action = self.bucket.get_object(Some(&self.credentials), key);
-        action.sign(PRESIGN_FOR).to_string()
-    }
-
-    /// R2 上這個檔幾個位元組；沒有這個檔是 None。
-    async fn size(&self, key: &str) -> anyhow::Result<Option<i64>> {
-        let url = self
-            .bucket
-            .head_object(Some(&self.credentials), key)
-            .sign(PRESIGN_FOR);
-        let res = self.http.head(url).send().await?;
-        if res.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-        let res = res.error_for_status()?;
-        let length = res
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)
-            .and_then(|v| v.to_str().ok()?.parse().ok())
-            .ok_or_else(|| anyhow::anyhow!("R2 沒說檔多大"))?;
-        Ok(Some(length))
-    }
-
-    /// 把本機的一個檔放上去（每天的備份用，#265）。邊讀邊傳，不整個放進記憶體；R2 要先說多大。
-    pub(crate) async fn put_file(&self, key: &str, path: &std::path::Path) -> anyhow::Result<()> {
-        let file = tokio::fs::File::open(path).await?;
-        let size = file.metadata().await?.len();
-        let url = self
-            .bucket
-            .put_object(Some(&self.credentials), key)
-            .sign(PRESIGN_FOR);
-        self.http
-            .put(url)
-            .header(reqwest::header::CONTENT_LENGTH, size)
-            .body(file)
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }
-
-    pub(crate) async fn delete(&self, key: &str) -> anyhow::Result<()> {
-        let url = self
-            .bucket
-            .delete_object(Some(&self.credentials), key)
-            .sign(PRESIGN_FOR);
-        self.http.delete(url).send().await?.error_for_status()?;
-        Ok(())
-    }
-}
 
 /// 要傳一個音樂檔：流程裡音樂檔的 id、原始檔名（看副檔名）、說好的大小。
 #[derive(Deserialize, TS)]

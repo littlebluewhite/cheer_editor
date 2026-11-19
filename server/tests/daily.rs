@@ -17,7 +17,7 @@ use cheer_server::clock::Clock;
 use cheer_server::daily::{self, AwakeMeter};
 use cheer_server::flow_core::FlowCore;
 use cheer_server::mail::Mailer;
-use cheer_server::music::MusicStore;
+use cheer_server::r2::R2Bucket;
 
 const BUCKET: &str = "cheer-music-test";
 const ADMIN: &str = "owner@example.com";
@@ -78,7 +78,7 @@ impl Site {
             core: FlowCore::start().unwrap(),
             mail_limit: Default::default(),
             rooms: Default::default(),
-            music: Some(MusicStore::new(endpoint, BUCKET, "test-key", "test-secret").unwrap()),
+            music: Some(R2Bucket::new(endpoint, BUCKET, "test-key", "test-secret").unwrap()),
         };
         create_admin(&state, ADMIN, Some("網站主人")).await.unwrap();
         if let Mailer::Memory(sent) = &state.mailer {

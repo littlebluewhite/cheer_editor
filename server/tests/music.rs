@@ -21,7 +21,8 @@ use cheer_server::breach::BreachCheck;
 use cheer_server::clock::Clock;
 use cheer_server::flow_core::{FINGERPRINT, FlowCore};
 use cheer_server::mail::Mailer;
-use cheer_server::music::{MAX_AUDIO_BYTES, MusicStore};
+use cheer_server::music::MAX_AUDIO_BYTES;
+use cheer_server::r2::R2Bucket;
 use cheer_server::{AppState, app};
 
 const SITE: &str = "https://cheer.example";
@@ -34,7 +35,7 @@ type Socket =
 /// 假的 R2 裡的檔：key → 內容。
 type Objects = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
-/// 開一台假的 R2，回它的網址（給 MusicStore 當 endpoint）和裡面的檔。
+/// 開一台假的 R2，回它的網址（給 R2Bucket 當 endpoint）和裡面的檔。
 async fn fake_r2() -> (reqwest::Url, Objects) {
     let objects = Objects::default();
     async fn object(
@@ -96,7 +97,7 @@ impl Server {
             core: FlowCore::start().unwrap(),
             mail_limit: Default::default(),
             rooms: Default::default(),
-            music: Some(MusicStore::new(endpoint, BUCKET, "test-key", "test-secret").unwrap()),
+            music: Some(R2Bucket::new(endpoint, BUCKET, "test-key", "test-secret").unwrap()),
         };
         let site = tempfile::tempdir().unwrap();
         std::fs::write(site.path().join("200.html"), "spa entry").unwrap();

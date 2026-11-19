@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, TimeZone, Utc};
 
 use cheer_server::backup::{self, Backup};
-use cheer_server::music::MusicStore;
+use cheer_server::r2::R2Bucket;
 
 const BUCKET: &str = "cheer-backup-test";
 const DATABASE_URL: &str = "postgres://backup-test@db.example/cheer";
@@ -115,7 +115,7 @@ async fn back_up(db: &sqlx::PgPool, script: &str, r2_broken: bool, heartbeat: bo
     let (endpoint, r2) = fake_r2(r2_broken).await;
     let (url, hits) = fake_heartbeat().await;
     let (pg_dump, _dir) = fake_pg_dump(script);
-    let store = MusicStore::new(endpoint, BUCKET, "test-key", "test-secret").unwrap();
+    let store = R2Bucket::new(endpoint, BUCKET, "test-key", "test-secret").unwrap();
     let backup = Backup::new(store, DATABASE_URL.into(), heartbeat.then_some(url)).pg_dump(pg_dump);
     let result = backup.run(db, nov(19, 20, 0)).await;
     Trial { r2, hits, result }

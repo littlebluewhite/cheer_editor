@@ -13,6 +13,7 @@ pub mod lockout;
 pub mod mail;
 pub mod music;
 pub mod my_account;
+pub mod r2;
 pub mod records;
 pub mod run_together;
 pub mod share_link;
@@ -31,8 +32,8 @@ use crate::breach::BreachCheck;
 use crate::clock::Clock;
 use crate::flow_core::FlowCore;
 use crate::mail::Mailer;
-use crate::music::MusicStore;
 use crate::my_account::MailLimit;
+use crate::r2::R2Bucket;
 
 /// 前端建置時另外產生的入口頁（`vite.config.ts` 裡 adapter 的 `fallback`）。
 const SPA_ENTRY: &str = "200.html";
@@ -69,7 +70,7 @@ pub struct AppState {
     /// 開著的雲端流程房間：權限改了告訴他們（#250）。
     pub rooms: flow_room::Rooms,
     /// 放雲端流程音樂檔的 R2；沒設定時（本機開發沒填）放音樂的 API 回 503。
-    pub music: Option<MusicStore>,
+    pub music: Option<R2Bucket>,
 }
 
 /// 整個網站：API 和前端建好的檔案（`site`）在同一個網址（ADR 0009）。
