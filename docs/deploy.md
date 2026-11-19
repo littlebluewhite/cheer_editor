@@ -65,7 +65,7 @@ fly deploy --remote-only --ha=false
 那個 workflow 第一次用要在 GitHub 上設定一次：Settings → Pages → Build and deployment → Source 選 **GitHub Actions**。
 
 **舊網址版**（`src/lib/old-site.ts`）：建置時設 `OLD_SITE=1`。沒有「登入」，也不碰伺服器（不 fetch、不開 WebSocket，當作沒登入）；
-首頁最上面一條黃的搬家提示，右邊「到新網址」（`https://littlebluewhite.com/`）。其他頁面不變。在本機建、看：
+首頁最上面一條黃的搬家提示，右邊「到新網址」（`https://littlebluewhite.com/`）。登入才用得到的頁（登入、帳號、管理使用者、忘記密碼、設密碼，`src/lib/login-only.ts`）打開直接回首頁；使用說明不變。在本機建、看：
 
 ```sh
 OLD_SITE=1 BASE_PATH=/cheer_editor npm run build
