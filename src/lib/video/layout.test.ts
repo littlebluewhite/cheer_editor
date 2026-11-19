@@ -587,13 +587,32 @@ describe('下面那一列：拍點格子', () => {
 	});
 
 	it('環節寫在拍點上面一行，佔它的格子', () => {
-		const line: EightCountCueLine = { ...cueLine('Lib'), phases: [{ label: '上法', from: 1, to: 3, color: '#c62828' }] };
+		const line: EightCountCueLine = { ...cueLine('Lib'), phases: [{ label: '上法', from: 1, to: 3, color: '#c62828', row: 0 }] };
 		const l = layout(row({ cues: [line] }));
 		const phase = bottom(l).find((t) => t.text === '上法')!;
 		const down = bottom(l).find((t) => t.text === 'down')!;
 		expect(phase.y + phase.px).toBeLessThanOrEqual(down.y);
 		const box = gridBoxes(l).find((b) => b.stroke === 'phaseLine')!;
 		expect(phase.x).toBeGreaterThanOrEqual(box.x);
+		expect(l.overflow).toBe(false);
+	});
+
+	it('金字塔疊著的環節分兩排畫，兩個都在拍點上面、框不疊在一起', () => {
+		const line: EightCountCueLine = {
+			...cueLine('Lib', 'down', 7, 8),
+			phases: [
+				{ label: '中段', from: 3, to: 8, color: '#475569', row: 0 },
+				{ label: '上法', from: 5, to: 8, color: '#c62828', row: 1 }
+			]
+		};
+		const l = layout(row({ cues: [line] }));
+		const hold = bottom(l).find((t) => t.text === '中段')!;
+		const load = bottom(l).find((t) => t.text === '上法')!;
+		const down = bottom(l).find((t) => t.text === 'down')!;
+		expect(hold.y + hold.px).toBeLessThanOrEqual(load.y);
+		expect(load.y + load.px).toBeLessThanOrEqual(down.y);
+		const [a, b] = gridBoxes(l).filter((x) => x.stroke === 'phaseLine');
+		expect(a.y + a.h).toBeLessThanOrEqual(b.y);
 		expect(l.overflow).toBe(false);
 	});
 });
