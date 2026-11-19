@@ -13,7 +13,7 @@ import {
 	setPositions
 } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, fromMenu, menuItem } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
 
 /** 放進 session 的流程：「全國賽」，什麼都還沒有。 */
@@ -168,24 +168,23 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.click(screen.getByRole('menuitem', { name: '＋音樂段' }));
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(screen.getByText('口號段加起來最少要 0:30.0')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		await fireEvent.change(screen.getByLabelText('口號段加起來最少（秒）'), { target: { value: '20' } });
 		expect(screen.getByText('口號段加起來最少要 0:20.0')).toBeTruthy();
 		await fireEvent.click(screen.getByLabelText('規則警告（只提醒，不擋）'));
 		expect(screen.queryByText('還沒有口號段')).toBeNull();
 	});
 
-	it('首頁和上方列都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
+	it('首頁和上方列的選單裡都有「使用說明」，開在新分頁（編輯畫面留著，還沒存的修改不會不見）', async () => {
 		render(Page, editorPage().props);
-		const check = () => {
-			const link = screen.getByRole('link', { name: '使用說明' }) as HTMLAnchorElement;
+		const check = (link: HTMLElement) => {
 			expect(link.getAttribute('href')).toMatch(/\/guide\?from=editor$/);
-			expect(link.target).toBe('_blank');
+			expect((link as HTMLAnchorElement).target).toBe('_blank');
 		};
-		check();
+		check(screen.getByRole('link', { name: '使用說明' }));
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '全國賽' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		check();
+		check((await menuItem('使用說明'))!);
 	});
 
 	it('流程名字最多 40 個字：新建時打不下第 41 個字（前 40 個留著）；流程設定送進太長的名字切到前 40 個字存進去，不整段退回', async () => {
@@ -193,7 +192,7 @@ describe('段、八拍尺、上方列', () => {
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '字'.repeat(41) } });
 		expect((screen.getByLabelText('流程名字') as HTMLInputElement).value).toBe('字'.repeat(40));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 		await fireEvent.change(name, { target: { value: '名'.repeat(41) } });
 		expect(screen.queryByRole('alert')).toBeNull();
@@ -241,7 +240,7 @@ describe('段、八拍尺、上方列', () => {
 
 	it('流程設定可以改流程名字；空白會被擋，欄位還原', async () => {
 		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 		await fireEvent.change(name, { target: { value: ' 臺灣盃 ' } });
 		expect(document.querySelector('.topbar b')?.textContent).toBe('臺灣盃');
@@ -261,7 +260,7 @@ describe('段、八拍尺、上方列', () => {
 		const lanes = () => [...document.querySelectorAll('[data-lane] .no')].map((el) => el.textContent);
 		expect(dots()).toEqual(['1', '2', '3']);
 
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const dialog = screen.getByRole('dialog', { name: '流程設定' });
 		await fireEvent.click(within(dialog).getByLabelText('開頭字（名字的第一個字）'));
 		// 預覽：每個人的標記和名字
@@ -1091,7 +1090,7 @@ describe('站位與走位', () => {
 		expect(screen.queryByRole('dialog')).toBeNull();
 		expect(editor.inert).toBe(false);
 
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		expect(editor.inert).toBe(true);
 		await fireEvent.keyDown(window, { key: ' ' });
 		expect(thumbs()).toHaveLength(2);
@@ -1977,7 +1976,7 @@ describe('復原和重做', () => {
 	it('新建別的流程時清空復原紀錄', async () => {
 		await setup();
 		expect(undoButton().disabled).toBe(false);
-		await fireEvent.click(screen.getByRole('button', { name: '新建' }));
+		await fromMenu('新建');
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '第二支' } });
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
@@ -1991,7 +1990,7 @@ describe('放一個帶好流程的 session 進頁面', () => {
 		const { session, props } = editorPage(sessionFlow());
 		render(Page, props);
 		expect(document.querySelector('.topbar b')?.textContent).toBe('全國賽');
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		expect(session.flow!.name).toBe('臺灣盃');
 		expect(session.unsaved).toBe(true);

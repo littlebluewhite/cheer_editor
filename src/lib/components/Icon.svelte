@@ -7,6 +7,7 @@
 		open: 'M3 7V5h6l2 2h10v12H3zM3 9h18',
 		new: 'M6 3h8l4 4v14H6zM14 3v4h4M12 11v6M9 14h6',
 		home: 'M3 11l9-8 9 8M5 9.5V21h5v-6h4v6h5V9.5',
+		menu: 'M4 6h16M4 12h16M4 18h16',
 		print: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
 		video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
 		settings:

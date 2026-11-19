@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import { addAction, addSegment as addSegmentTo } from '#lib/core';
-import { editorPage } from '#lib/test-fakes.js';
+import { editorPage, fromMenu } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -87,13 +87,13 @@ describe('三種關法結果一樣', () => {
 
 		it(`流程設定：打了合法的名字按${how}會留下；空白名字先不關、退回、說哪一格`, async () => {
 			await newFlow();
-			await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+			await fromMenu('流程設定');
 			await type(screen.getByLabelText('流程名字'), '臺灣盃');
 			await close();
 			expect(screen.queryByRole('dialog')).toBeNull();
 			expect(document.querySelector('.topbar b')?.textContent).toBe('臺灣盃');
 
-			await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+			await fromMenu('流程設定');
 			const name = screen.getByLabelText('流程名字') as HTMLInputElement;
 			await type(name, ' ');
 			await close();
@@ -117,7 +117,7 @@ describe('三種關法結果一樣', () => {
 
 	it('在對話框裡按下滑鼠、拖到背景才放開，不算點背景', async () => {
 		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const box = dialog('流程設定');
 		await fireEvent.pointerDown(screen.getByLabelText('流程名字'));
 		await fireEvent.click(box.parentElement!);
@@ -126,22 +126,22 @@ describe('三種關法結果一樣', () => {
 });
 
 describe('焦點', () => {
-	const openers: [string, () => HTMLElement, string | RegExp][] = [
-		['流程設定', () => screen.getByRole('button', { name: '流程設定' }), '流程設定'],
+	// 流程設定從「選單」打開：那一項點了就不見，焦點回到「選單」
+	const openers: [string, () => HTMLElement, string | RegExp, (() => Promise<void>)?][] = [
+		['流程設定', () => screen.getByRole('button', { name: '選單' }), '流程設定', () => fromMenu('流程設定')],
 		['八拍表', () => screen.getByRole('button', { name: '八拍表' }), '八拍表'],
 		['段設定', () => screen.getByRole('button', { name: /^音樂 1/ }), '音樂 1 設定'],
 		['名詞對照表', () => screen.getByRole('button', { name: '名詞對照表' }), '名詞對照表']
 	];
 
-	for (const [label, opener, name] of openers) {
+	for (const [label, opener, name, open] of openers) {
 		it(`${label}：打開時焦點進去、有 aria-modal；Tab、Shift+Tab 只在裡面轉；Esc 關掉後焦點回到打開它的按鈕`, async () => {
 			await newFlow();
 			await addSegment('＋音樂段');
 			await fireEvent.click(screen.getByRole('tab', { name: /^動作/ }));
 			// 名詞對照表在新動作表單裡：沒選人時表單收起來，先打開
 			await fireEvent.click(screen.getByRole('button', { name: '＋ 新動作' }));
-			const button = opener();
-			await press(button);
+			await (open ? open() : press(opener()));
 			const box = dialog(name);
 			expect(box.getAttribute('aria-modal')).toBe('true');
 			expect(box.contains(document.activeElement)).toBe(true);
@@ -222,7 +222,7 @@ describe('被擋下的欄位', () => {
 
 	it('流程設定：擋下的數字欄位馬上回到實際值；改好別格，紅字也收掉（#163）', async () => {
 		await newFlow();
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const min = screen.getByLabelText('口號段加起來最少（秒）') as HTMLInputElement;
 		const before = min.value;
 		await fireEvent.change(min, { target: { value: '-5' } });
@@ -253,7 +253,7 @@ describe('流程設定看得到場地', () => {
 		await fireEvent.input(screen.getByLabelText('流程名字'), { target: { value: '臺灣盃' } });
 		await fireEvent.click(screen.getByRole('radio', { name: /5 條橫放/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '建立' }));
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const settings = within(dialog('流程設定'));
 		expect(settings.getByText(/現在 5 條橫放/)).toBeTruthy();
 		expect((settings.getByLabelText('條數') as HTMLInputElement).value).toBe('5');

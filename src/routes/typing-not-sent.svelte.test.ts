@@ -5,7 +5,7 @@ import '#lib/test-chrome-removal.js';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { moveMembers, renameFlow } from '#lib/core';
-import { editorPage, fakeDraftStore, flush } from '#lib/test-fakes.js';
+import { editorPage, fakeDraftStore, flush, fromMenu } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -60,7 +60,7 @@ const FIELDS: FlowField[] = [
 		typed: '臺灣盃',
 		inDialog: true,
 		open: async () => {
-			await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+			await fromMenu('流程設定');
 			return within(screen.getByRole('dialog', { name: '流程設定' })).getByLabelText('流程名字');
 		}
 	},

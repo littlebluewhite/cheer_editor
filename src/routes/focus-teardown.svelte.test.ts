@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { domPendingInput } from '#lib/pending-input.js';
-import { editorPage, openFile, practiceFlow } from '#lib/test-fakes.js';
+import { editorPage, openFile, practiceFlow, fromMenu } from '#lib/test-fakes.js';
 import { addAction, moveMembers, writeFlowFile } from '#lib/core';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -41,7 +41,7 @@ describe('欄位有焦點時畫面把它換掉', () => {
 	it('流程設定的名字欄打了字按 Esc 關掉：沒有例外；打的字照常送出、「未存」不卡住；⌘Z 退回原本的名字', async () => {
 		const session = setup();
 		const before = session.flow!.name;
-		await fireEvent.click(screen.getByRole('button', { name: '流程設定' }));
+		await fromMenu('流程設定');
 		const dialog = screen.getByRole('dialog', { name: '流程設定' });
 		const name = within(dialog).getByLabelText('流程名字') as HTMLInputElement;
 		name.focus();
@@ -190,7 +190,7 @@ describe('欄位有焦點時畫面把它換掉', () => {
 		name.focus();
 		await fireEvent.input(name, { target: { value: '開場' } });
 		const other = flowOf(moveMembers(libSample(), 8, { m1: [4, 4] }));
-		await openFile(writeFlowFile(other, {}), '開啟');
+		await openFile(writeFlowFile(other, {}));
 
 		expect(errors).toEqual([]);
 		expect(name.isConnected).toBe(false);

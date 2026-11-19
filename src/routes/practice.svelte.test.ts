@@ -52,7 +52,7 @@ describe('練習：記錄頁記分段練', () => {
 		await tap('第 1 組 小美', '上法', '成功');
 		const pressed = () => screen.getByRole('button', { name: '第 1 組 小美 上法 成功' }).getAttribute('aria-pressed');
 		expect(pressed()).toBe('true');
-		await openFile(writeFlowFile(practiceFlow(), {}), '開啟');
+		await openFile(writeFlowFile(practiceFlow(), {}));
 		// 開檔回到編排（#218），再切回練習看
 		await toPractice();
 		expect(pressed()).toBe('false');
@@ -176,14 +176,14 @@ describe('練習：記錄頁記分段練', () => {
 			{ id: 't1', date: localDate(), who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓', p2: '✓', p3: '△' } }
 		]);
 
-		await openFile(saves[0], '開啟');
+		await openFile(saves[0]);
 		await toPractice();
 		expect(dayRow('第 1 組 小美')).toEqual(['✓✓△']);
 	});
 
 	it('練習時開檔、存檔照舊，提示也看得到', async () => {
 		await practice();
-		await openFile(new TextEncoder().encode('不是 zip'), '開啟');
+		await openFile(new TextEncoder().encode('不是 zip'));
 		expect(screen.getByRole('status').textContent).toBe('打不開「練習用.zip」：檔案壞掉了，或不是這個編輯器存的流程檔');
 	});
 

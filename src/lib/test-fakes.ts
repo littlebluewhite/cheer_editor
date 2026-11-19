@@ -1,7 +1,7 @@
 // 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標），
 // 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
 // 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
-import { fireEvent, screen } from '@testing-library/svelte';
+import { fireEvent, screen, within } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
@@ -162,11 +162,27 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 /** 等 async 的存檔、開檔跑完。 */
 export const flush = () => new Promise((r) => setTimeout(r, 0));
 
-/** 從「開啟流程檔」（首頁）或「開啟」（上方列）開一個檔：只有測檔案本身才用，其他測試用 editorPage 放流程。 */
+/** 從「開啟流程檔」（首頁、上方列選單點的選檔欄位）或「開啟」（窄螢幕的上方列）開一個檔：只有測檔案本身才用，其他測試用 editorPage 放流程。 */
 export async function openFile(bytes: Uint8Array, label = '開啟流程檔', name = '練習用.zip') {
 	const file = new File([bytes as Uint8Array<ArrayBuffer>], name);
 	await fireEvent.change(screen.getByLabelText(label), { target: { files: [file] } });
 	await flush();
+}
+
+/** 上方列「選單」的小窗（開著才有）。 */
+export const menuPop = () => screen.queryByRole('group', { name: '選單' });
+
+/** 打開上方列的「選單」（開著就不再按），回傳裡面的那一項（使用說明是連結，其他是按鈕）；沒有這一項回 null。 */
+export async function menuItem(name: string): Promise<HTMLElement | null> {
+	if (!menuPop()) await fireEvent.click(screen.getByRole('button', { name: '選單' }));
+	return within(menuPop()!).queryByRole(name === '使用說明' ? 'link' : 'button', { name });
+}
+
+/** 打開上方列的「選單」，點那一項（開啟流程檔、新建、輸出影片、流程設定）。 */
+export async function fromMenu(name: string) {
+	const item = await menuItem(name);
+	if (!item) throw new Error(`選單裡沒有「${name}」`);
+	await fireEvent.click(item);
 }
 
 /**

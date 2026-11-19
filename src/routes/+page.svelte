@@ -231,6 +231,25 @@
 		if (by === 'escape') moreBtn?.focus();
 	}
 
+	/** 上方列最左邊的「選單」：不常按的五樣（開啟流程檔、新建、輸出影片、流程設定、使用說明）收在這個小窗裡。 */
+	let menuOpen = $state(false);
+	let menuBtn = $state<HTMLButtonElement>();
+	/** 選單的「開啟流程檔」點的選檔欄位：放在小窗外面，小窗關了它還在，選好的檔才收得到。 */
+	let menuFileInput = $state<HTMLInputElement>();
+
+	/** 點外面、按 Esc 就關；按 Esc 的話焦點回到「選單」。 */
+	function closeMenu(by: 'outside' | 'escape') {
+		menuOpen = false;
+		if (by === 'escape') menuBtn?.focus();
+	}
+
+	/** 點選單裡的一項：先關小窗、焦點放回「選單」（那一項馬上不見，對話框關掉後焦點回到這裡），再做那件事。 */
+	function fromMenu(run: () => void) {
+		menuOpen = false;
+		menuBtn?.focus();
+		run();
+	}
+
 	/** 手機點時間打「3-1」跳過去：jumpText 是 null 時收著；jumpError 是看不懂的原因（#228）。 */
 	let jumpText = $state<string | null>(null);
 	let jumpError = $state('');
@@ -713,6 +732,61 @@
 		<!-- 檢視模式時上方列換成紫色：整個畫面一看就知道現在只能看 -->
 		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow} bind:this={topbar}>
 			<div class="title">
+				{#if !narrow}
+					<button
+						type="button"
+						class="menu"
+						title="選單"
+						aria-expanded={menuOpen}
+						bind:this={menuBtn}
+						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span>選單</span></button
+					>
+					<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts） -->
+					{#if menuOpen}
+						<div
+							class="menu-pop"
+							role="group"
+							aria-label="選單"
+							{@attach popover({ place: below(menuBtn!, { gap: 6, align: 'left', flip: true }), close: closeMenu, inside: [menuBtn] })}
+						>
+							<!-- 同一下點擊裡點選檔欄位：瀏覽器要使用者剛點過才肯跳選檔 -->
+							<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />開啟流程檔</button>
+							<button type="button" onclick={() => fromMenu(() => editor.file.startNew())}><Icon name="new" />新建</button>
+							{#if view === 'edit'}
+								<hr />
+								<!-- 輸出影片只在電腦：觸控螢幕（iPad）不出現。檢視模式也能輸出（不改流程） -->
+								{#if !touchScreen}
+									<button
+										type="button"
+										title={flow.segments.length ? '輸出影片' : '先加一段'}
+										disabled={!flow.segments.length}
+										onclick={() =>
+											fromMenu(() => {
+												// 輸出時不能播放：在播的先停
+												playback.pause();
+												videoOpen = true;
+											})}><Icon name="video" />輸出影片</button
+									>
+								{/if}
+								<button type="button" disabled={!session.editable} onclick={() => fromMenu(() => (settingsOpen = true))}
+									><Icon name="settings" />流程設定</button
+								>
+							{/if}
+							<hr />
+							<a href={guideHref} target="_blank" rel="noopener" onclick={() => fromMenu(() => {})}><Icon name="help" />使用說明</a>
+						</div>
+					{/if}
+					<input
+						bind:this={menuFileInput}
+						class="menu-file"
+						type="file"
+						accept=".zip"
+						aria-label="開啟流程檔"
+						tabindex="-1"
+						onclick={pickOpen}
+						onchange={open}
+					/>
+				{/if}
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
@@ -722,10 +796,12 @@
 					<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
 					<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
 				</div>
-				<!-- 放在名字這一欄：右邊的按鈕已經滿了，再加會壓到中間的播放區 -->
-				<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
-					><Icon name="help" /><span class="guide-text">使用說明</span></a
-				>
+				<!-- 窄螢幕沒有選單：使用說明放在名字這一欄 -->
+				{#if narrow}
+					<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
+						><Icon name="help" /><span class="guide-text">使用說明</span></a
+					>
+				{/if}
 			</div>
 
 			<!-- 播放區：寬的時候在上方列中間；窄螢幕放在手機檢視畫面的場地下面 -->
@@ -770,33 +846,12 @@
 				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
 					><Icon name="print" /><span class="tightest-hide">八拍表</span></button
 				>
-				<!-- 輸出影片只在電腦：窄螢幕、觸控螢幕（手機、iPad）不出現。檢視模式也能輸出（不改流程） -->
-				{#if view === 'edit' && !narrow && !touchScreen}
-					<button
-						type="button"
-						class="ghost"
-						title={flow.segments.length ? '輸出影片' : '先加一段'}
-						aria-label="輸出影片"
-						disabled={!flow.segments.length}
-						onclick={() => {
-							// 輸出時不能播放：在播的先停
-							playback.pause();
-							videoOpen = true;
-						}}><Icon name="video" /><span class="short-hide one-row-hide">輸出影片</span></button
-					>
-				{/if}
-				{#if view === 'edit' && !narrow}
-					<button type="button" class="ghost" title="流程設定" disabled={!session.editable} onclick={() => (settingsOpen = true)}
-						><Icon name="settings" /><span class="short-hide"><span class="narrow-hide">流程</span>設定</span></button
-					>
-				{/if}
-				<span class="sep" aria-hidden="true"></span>
-				<label class="open btn ghost" title="開啟"><Icon name="open" /><span class="short-hide">開啟</span><input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+				<!-- 窄螢幕沒有選單：開啟、回首頁放在外面 -->
 				{#if narrow}
+					<span class="sep" aria-hidden="true"></span>
+					<label class="open btn ghost" title="開啟"><Icon name="open" /><span class="short-hide">開啟</span><input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 					<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
 					<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
-				{:else}
-					<button type="button" class="ghost" title="新建" onclick={() => editor.file.startNew()}><Icon name="new" /><span class="short-hide">新建</span></button>
 				{/if}
 				<!-- 窄螢幕不能編，存檔不用搶眼的藍色（練習的紀錄照樣要存） -->
 				<button type="button" class={['save', narrow ? 'ghost' : 'primary']} title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
@@ -1721,6 +1776,84 @@
 		color: #c9d2e6;
 		box-shadow: var(--shadow-pop);
 	}
+	/* 上方列最左邊的「選單」：跟旁邊的按鈕一樣透明底，開著時看得出是按下的 */
+	.menu {
+		flex: none;
+		align-self: center;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 0;
+		background: none;
+		color: #d6ddec;
+	}
+	.menu:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
+	}
+	.menu[aria-expanded='true'] {
+		background: #24304c;
+		color: #fff;
+	}
+	/* 選單的小窗：跟「⋯」小窗一樣的深底；一項一行（圖示＋字），組和組中間一條線 */
+	.menu-pop {
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		display: grid;
+		gap: 2px;
+		width: max-content;
+		min-width: 168px;
+		padding: 6px;
+		border: 1px solid #36425f;
+		border-radius: 8px;
+		background: var(--ink);
+		color: #d6ddec;
+		box-shadow: var(--shadow-pop);
+	}
+	.menu-pop button,
+	.menu-pop a {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 10px;
+		border: 0;
+		border-radius: 6px;
+		background: none;
+		color: inherit;
+		font: inherit;
+		font-size: 14px;
+		text-align: left;
+		text-decoration: none;
+	}
+	.menu-pop button:hover:not(:disabled),
+	.menu-pop a:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
+	}
+	.menu-pop button:disabled {
+		color: #8b99b8;
+	}
+	.menu-pop hr {
+		width: 100%;
+		margin: 4px 0;
+		border: 0;
+		border-top: 1px solid #36425f;
+	}
+	/* 手指：選單裡的連結也跟按鈕一樣至少 40px 高（app.css 只管按鈕） */
+	@media (pointer: coarse) {
+		.menu-pop a {
+			min-height: 40px;
+		}
+	}
+	/* 選單「開啟流程檔」點的選檔欄位：看不到、Tab 不到，由那一項去點它 */
+	.menu-file {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+		pointer-events: none;
+	}
 	.more-hint {
 		margin: 0;
 		font-size: 11px;
@@ -2186,20 +2319,8 @@
 	/* 窄一點的視窗：上方列多了「編排｜練習」、播放區多了「重複」和速度，右邊的「編輯｜檢視」兩格比一個開關寬，
 	   重複旁邊還有 A、B、✕，所以從 1890px 就開始收（再寬一點才收，流程名字會被擠到剩兩三個字）。 */
 	@media (max-width: 1890px) {
-		/* 復原、重做只留圖示，流程設定只留「設定」，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
+		/* 復原、重做只留圖示，右邊的按鈕才擠得下；讀屏照樣讀得到名字 */
 		.narrow-hide {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-	}
-
-	/* 1761～1890px 播放區還在第一行：「輸出影片」只留圖示，長的流程名字才露得出 8 個字；再窄播放區換行，字又放得下 */
-	@media (min-width: 1761px) and (max-width: 1890px) {
-		.one-row-hide {
 			position: absolute;
 			width: 1px;
 			height: 1px;
@@ -2223,7 +2344,7 @@
 		}
 	}
 	/* 螢幕矮（高 860px 以下，SHORT_SCREEN_MAX_H）：不換行，播放區併進上方列那一行，省下約 50px 給場地（N55）。
-	   擠得下才行：節拍器、重複、開啟、新建、流程設定只留圖示（滑鼠移上去有名字，讀屏照樣讀得到），間距收小。 */
+	   擠得下才行：節拍器、重複（窄螢幕的開啟）只留圖示（滑鼠移上去有名字，讀屏照樣讀得到），間距收小。 */
 	@media (max-width: 1760px) and (max-height: 860px) {
 		.topbar {
 			gap: 10px;
@@ -2291,7 +2412,7 @@
 		.title {
 			gap: 6px;
 		}
-		/* 多了「輸出影片」的圖示：間距再收 2px，流程名字才露得出 3 個字 */
+		/* 間距再收 2px，流程名字才露得出 3 個字 */
 		.topbar {
 			gap: 8px;
 		}
