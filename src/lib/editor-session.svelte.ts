@@ -538,6 +538,21 @@ export class EditorSession {
 		this.onremote(flow, by);
 	}
 
+	/**
+	 * 換上伺服器做出來的樣子（雲端流程自己的一步收了，伺服器跑出來的跟這邊不一樣，例：兩個人同時加隊員，
+	 * 後到的被放在別的位置）：跟 applyRemote 一樣不算一步，開著的表單、問題都不收。一樣的不換。
+	 */
+	settle(flow: Flow) {
+		const before = this.#flow;
+		if (!before || sameFlow(flow, before)) return;
+		this.#flow = flow;
+		this.#saved = flow;
+		this.#trim(flow);
+		this.#playback.changed(before);
+		this.onflow();
+		this.#updated('change');
+	}
+
 	/** 套上別人的改動之後叫（頁面接上：開著的段設定指到被刪掉的段就關掉並說原因）。 */
 	onremote: (flow: Flow, by: string) => void = () => {};
 

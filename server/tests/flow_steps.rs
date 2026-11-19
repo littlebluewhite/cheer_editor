@@ -195,7 +195,12 @@ async fn a_step_changes_the_flow_and_counts_one_more(db: sqlx::PgPool) {
     let reply = step(&mut room, "step0000001", 0, json!([rename("全國賽決賽")])).await;
     assert_eq!(
         reply,
-        json!({ "kind": "accepted", "stepId": "step0000001", "step": 1 })
+        json!({
+            "kind": "accepted",
+            "stepId": "step0000001",
+            "step": 1,
+            "change": { "things": [{ "key": "name", "after": "全國賽決賽" }], "orders": {} }
+        })
     );
     let got = s.get(&lin, &id).await;
     assert_eq!(got["flow"]["name"], "全國賽決賽");
