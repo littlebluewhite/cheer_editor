@@ -110,8 +110,33 @@ struct Trial {
     result: anyhow::Result<()>,
 }
 
+/// 這次備份的情況。預設：pg_dump 成功、R2 收得下、有報到網址。
+struct Setup {
+    /// 假 pg_dump 的腳本（`DUMP_OK`、`DUMP_FAILS`）。
+    pg_dump: &'static str,
+    /// R2 每個 PUT 都回 500。
+    r2_broken: bool,
+    /// 設了 BACKUP_HEARTBEAT_URL。
+    heartbeat: bool,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            pg_dump: DUMP_OK,
+            r2_broken: false,
+            heartbeat: true,
+        }
+    }
+}
+
 /// 台灣時間 11 月 20 日凌晨 4 點跑一次備份。
-async fn back_up(db: &sqlx::PgPool, script: &str, r2_broken: bool, heartbeat: bool) -> Trial {
+async fn back_up(db: &sqlx::PgPool, setup: Setup) -> Trial {
+    let Setup {
+        pg_dump: script,
+        r2_broken,
+        heartbeat,
+    } = setup;
     let (endpoint, r2) = fake_r2(r2_broken).await;
     let (url, hits) = fake_heartbeat().await;
     let (pg_dump, _dir) = fake_pg_dump(script);
@@ -130,7 +155,7 @@ async fn backups(db: &sqlx::PgPool) -> Vec<(DateTime<Utc>, i64)> {
 
 #[sqlx::test]
 async fn a_backup_is_uploaded_then_checks_in(db: sqlx::PgPool) {
-    let trial = back_up(&db, DUMP_OK, false, true).await;
+    let trial = back_up(&db, Setup::default()).await;
 
     trial.result.unwrap();
     let objects = trial.r2.lock().unwrap().clone();
@@ -146,7 +171,14 @@ async fn a_backup_is_uploaded_then_checks_in(db: sqlx::PgPool) {
 
 #[sqlx::test]
 async fn pg_dump_fails_so_nothing_is_uploaded_and_it_does_not_check_in(db: sqlx::PgPool) {
-    let trial = back_up(&db, DUMP_FAILS, false, true).await;
+    let trial = back_up(
+        &db,
+        Setup {
+            pg_dump: DUMP_FAILS,
+            ..Setup::default()
+        },
+    )
+    .await;
 
     let err = trial.result.unwrap_err().to_string();
     assert!(err.contains("connection failed"), "{err}");
@@ -157,7 +189,14 @@ async fn pg_dump_fails_so_nothing_is_uploaded_and_it_does_not_check_in(db: sqlx:
 
 #[sqlx::test]
 async fn r2_refuses_the_upload_so_it_does_not_check_in(db: sqlx::PgPool) {
-    let trial = back_up(&db, DUMP_OK, true, true).await;
+    let trial = back_up(
+        &db,
+        Setup {
+            r2_broken: true,
+            ..Setup::default()
+        },
+    )
+    .await;
 
     assert!(trial.result.is_err());
     assert_eq!(trial.hits.load(Ordering::SeqCst), 0);
@@ -166,7 +205,14 @@ async fn r2_refuses_the_upload_so_it_does_not_check_in(db: sqlx::PgPool) {
 
 #[sqlx::test]
 async fn without_a_heartbeat_url_it_still_backs_up(db: sqlx::PgPool) {
-    let trial = back_up(&db, DUMP_OK, false, false).await;
+    let trial = back_up(
+        &db,
+        Setup {
+            heartbeat: false,
+            ..Setup::default()
+        },
+    )
+    .await;
 
     trial.result.unwrap();
     assert_eq!(trial.r2.lock().unwrap().len(), 1);
