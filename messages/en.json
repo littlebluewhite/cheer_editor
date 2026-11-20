@@ -626,7 +626,7 @@
 	"summary_close": "Close",
 	"summary_no_reps": "No reps yet",
 	"run_through_record": "Record a full out",
-	"run_through_record_button": "＋ Record a full out",
+	"run_through_record_button": "+ Record a full out",
 	"run_through_recording_today": "{name} is recording today's full out {n}",
 	"run_through_recording_on": "{name} is recording full out {n} on {date}",
 	"run_through_deleted": "Deleted full out {n}",
@@ -642,7 +642,6 @@
 	"run_through_remove_mine": "Delete my last full-out marks",
 	"run_through_remove_title": "Deletes the whole full out saved last this day",
 	"run_through_remove": "Delete last full out",
-	"run_through_someone_else": "Someone else",
 	"run_through_done_by": "{name} recorded it",
 	"run_through_away": "{name} is offline",
 	"run_through_touched": "{name} is recording",
@@ -668,5 +667,6 @@
 	"run_through_keep_recording": "Keep recording",
 	"run_through_save_mine_one": "Save full out ({n} column is yours)",
 	"run_through_save_mine": "Save full out ({n} columns are yours)",
-	"run_through_save": "Save full out"
+	"run_through_save": "Save full out",
+	"run_through_done_by_someone": "Someone else recorded it"
 }

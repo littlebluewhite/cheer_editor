@@ -642,7 +642,6 @@
 	"run_through_remove_mine": "自分の直前の全通しの記録を削除",
 	"run_through_remove_title": "この日最後に保存した全通しを丸ごと削除",
 	"run_through_remove": "直前の全通しを削除",
-	"run_through_someone_else": "他の人",
 	"run_through_done_by": "{name} さんが記録済み",
 	"run_through_away": "{name} さんがオフライン",
 	"run_through_touched": "{name} さんが記録中",
@@ -668,5 +667,6 @@
 	"run_through_keep_recording": "記録を続ける",
 	"run_through_save_mine_one": "この全通しを保存（あなたの {n} 列）",
 	"run_through_save_mine": "この全通しを保存（あなたの {n} 列）",
-	"run_through_save": "この全通しを保存"
+	"run_through_save": "この全通しを保存",
+	"run_through_done_by_someone": "他の人が記録済み"
 }

@@ -136,7 +136,7 @@ describe('總表：英文', () => {
 		expect(within(screen.getByRole('complementary', { name: 'Details' })).getAllByText('Full out')).toHaveLength(2);
 		expect(document.body.innerHTML).not.toMatch(han);
 
-		await fireEvent.click(screen.getByRole('button', { name: '＋ Record a full out' }));
+		await fireEvent.click(screen.getByRole('button', { name: '+ Record a full out' }));
 		expect(document.body.innerHTML).not.toMatch(han);
 		await fireEvent.click(screen.getByRole('button', { name: 'Save full out' }));
 		expect(session.notice).toBe('Full out saved');

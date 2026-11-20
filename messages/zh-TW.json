@@ -642,7 +642,6 @@
 	"run_through_remove_mine": "刪掉我上一次全上記的",
 	"run_through_remove_title": "整次刪掉這天最後存的那次全上",
 	"run_through_remove": "刪掉上一次全上",
-	"run_through_someone_else": "別人",
 	"run_through_done_by": "{name}已經記了",
 	"run_through_away": "{name}斷線了",
 	"run_through_touched": "{name}在記",
@@ -668,5 +667,6 @@
 	"run_through_keep_recording": "繼續記",
 	"run_through_save_mine_one": "存這次全上（你記的 {n} 欄）",
 	"run_through_save_mine": "存這次全上（你記的 {n} 欄）",
-	"run_through_save": "存這次全上"
+	"run_through_save": "存這次全上",
+	"run_through_done_by_someone": "別人已經記了"
 }

@@ -81,11 +81,11 @@
 	}
 	$effect(() => () => together?.leaveRun());
 
-	/** 同一次全上這一欄別人已經存了：記的人的名字。 */
+	/** 同一次全上這一欄別人已經存了：記的人的名字（不知道是誰是空字串）。 */
 	function recordedBy(action: Action, who: string): string | null {
 		if (!together) return null;
 		const r = action.successRate!.records.find((r) => r.runThroughId === run.id && r.who === who && r.id in session.recordedBy);
-		return r ? session.recordedBy[r.id] || t.run_through_someone_else() : null;
+		return r ? session.recordedBy[r.id] : null;
 	}
 	/** 這一欄是我記的（本機流程每一欄都是）。 */
 	const isMine = (action: Action, who: string) =>
@@ -93,7 +93,7 @@
 	/** 別人記的欄，欄名下面的字。 */
 	function otherText(action: Action, who: string): string {
 		const done = recordedBy(action, who);
-		if (done !== null) return t.run_through_done_by({ name: done });
+		if (done !== null) return done ? t.run_through_done_by({ name: done }) : t.run_through_done_by_someone();
 		const h = holder(runKey(action, who));
 		if (!h) return '';
 		const name = h.name;
