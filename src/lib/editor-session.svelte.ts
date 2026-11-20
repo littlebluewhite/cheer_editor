@@ -14,7 +14,7 @@ import {
 	redoRecords,
 	sameFlow,
 	squadsOf,
-	timeTextWithUnit,
+	timeWhy,
 	undoChanges,
 	undone,
 	undoRecords,
@@ -33,6 +33,7 @@ import {
 } from '#lib/core';
 import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
+import { whyText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
@@ -744,7 +745,7 @@ export class EditorSession {
 		const f = flow.formations[index];
 		const names = r.squeezed.map((id) => flow.members.find((m) => m.id === id)?.name);
 		const said = [
-			`改到 ${timeTextWithUnit(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })}`,
+			`改到 ${whyText(timeWhy(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at }))}`,
 			names.length && `走位被壓短：${names.join('、')}`,
 			atEdge && AT_EDGE
 		];

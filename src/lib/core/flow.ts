@@ -13,7 +13,7 @@ import type { AudioRef, Segment } from './segment';
 import { snapPosition } from './snap';
 import { tooLong } from './text-length';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
-import type { Why } from './why';
+import { joined, type Why } from './why';
 
 export interface Flow {
 	name: string;
@@ -122,10 +122,12 @@ export function adjustField(flow: Flow, field: FieldConfig, o: ConfirmOption = {
 		const items = formations.flatMap((f, i) => {
 			const before = stackedMembers(flow.members, flow.formations[i].pos);
 			const wasStacked = (g: Member[]) => before.some((b) => g.every((m) => b.includes(m)));
-			const name = f.name ? `「${f.name}」` : '';
 			return stackedMembers(flow.members, f.pos)
 				.filter((g) => !wasStacked(g))
-				.map((g) => `站位 ${i + 1}${name}：${g.map((m) => m.name).join('、')}`);
+				.map((g): Why => {
+					const names = joined('members_list', g.map((m) => m.name));
+					return f.name ? { code: 'flow_stacked_named', n: i + 1, name: f.name, names } : { code: 'flow_stacked_item', n: i + 1, names };
+				});
 		});
 		if (items.length) return needsConfirm({ code: 'flow_stacked' }, items);
 	}

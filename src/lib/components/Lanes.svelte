@@ -19,23 +19,23 @@
 	import {
 		actionLabel,
 		actionSeconds,
-		atTextWithUnit,
+		atWhy,
 		CUE_KINDS,
 		cueForMember,
 		farthestLegal,
 		formationWalks,
 		idleAt,
-		lengthTextWithUnit,
+		lengthWhy,
 		memberMarkers,
 		memberWalk,
 		nearestPosition,
 		phaseColor,
 		phaseLabel,
 		phaseRows,
-		positionText,
+		positionWhy,
 		resizeAction,
 		setWalks,
-		timeText,
+		timeInputWhy,
 		toSeconds,
 		totalSeconds,
 		units,
@@ -51,6 +51,7 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import { AT_EDGE, getEditorSession, VIEW_ONLY } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { isLongMarker } from '#lib/marker.js';
 	import { followPointer, touchOnUnpicked } from './pointer';
@@ -250,7 +251,7 @@
 				const { memberId, departSec, arriveSec, tooFast, tiring } = w;
 				const speed = walkSpeedText(flow, w);
 				const name = flow.members.find((m) => m.id === memberId)?.name ?? '';
-				const label = `${name} 走到站位 ${i + 1}：${positionText(flow, departSec)} 出發、${positionText(flow, arriveSec)} 到達`;
+				const label = `${name} 走到站位 ${i + 1}：${whyText(positionWhy(flow, departSec))} 出發、${whyText(positionWhy(flow, arriveSec))} 到達`;
 				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, label, clashes: [] });
 			}
 		}
@@ -299,9 +300,9 @@
 		if (!p || !segment) return null;
 		// 拉過段尾停在段尾（裁短）。
 		const length = Math.min(p.action.length + Math.round(d.dx / p.halfPx), units(segment) - p.action.start);
-		const end = atTextWithUnit(segment, p.action.start + length);
+		const end = whyText(atWhy(segment, p.action.start + length));
 		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
-		return { text: `${lengthTextWithUnit(segment, length)}・在 ${end} 結束`, out };
+		return { text: `${whyText(lengthWhy(segment, length))}・在 ${end} 結束`, out };
 	});
 
 	/** 上一次按下走位條後真的拖了：放開後瀏覽器接著送的 click 不算點一下。 */
@@ -392,7 +393,7 @@
 		const { walks: next, clamped, shiftSec } = draggedWalks(d);
 		const own = next[d.memberId];
 		const home = flow.formations.find((f) => f.id === d.formationId)!.segmentId!;
-		const t = (p: Walk['depart']) => timeText(flow, home, p);
+		const t = (p: Walk['depart']) => whyText(timeInputWhy(flow, home, p));
 		const text =
 			d.mode === 'depart'
 				? `出發 ${t(own.depart)}`

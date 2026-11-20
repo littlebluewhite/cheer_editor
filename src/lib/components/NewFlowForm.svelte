@@ -13,7 +13,7 @@
 		type Flow
 	} from '#lib/core';
 	import { Ask } from '#lib/ask.svelte.js';
-	import { reasonText } from '#lib/reason-text.js';
+	import { reasonText, whyText } from '#lib/reason-text.js';
 	import CharCount from './CharCount.svelte';
 	import type { Snippet } from 'svelte';
 	import { revealAlert } from './reveal';
@@ -97,14 +97,14 @@
 	<fieldset>
 		<legend>場地</legend>
 		<div class="options">
-			{#each FIELD_TEMPLATES as t, i (t.label)}
+			{#each FIELD_TEMPLATES as t, i (i)}
 				<label class="option">
 					<input type="radio" name="field" value={i} bind:group={choice} />
 					<svg viewBox="-1 -1 38 30" aria-hidden="true">
 						{#each strips(t.field) as s, j (j)}<rect x={s.x} y={s.y} width={s.w} height={s.h} />{/each}
 					</svg>
-					<span class="label">{t.label}</span>
-					<small>{t.hint}</small>
+					<span class="label">{whyText(t.label)}</span>
+					<small>{whyText(t.hint)}</small>
 				</label>
 			{/each}
 			<label class="option">

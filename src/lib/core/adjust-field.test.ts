@@ -93,7 +93,8 @@ describe('調整場地', () => {
 			kind: 'confirm',
 			message: '這樣調整，這些人會疊在同一點（之後可以再拖開）：',
 			why: { code: 'flow_stacked' },
-			items: ['站位 1：A、B']
+			items: ['站位 1：A、B'],
+			whyItems: [{ code: 'flow_stacked_item', n: 1, names: { code: 'members_list', first: 'A', rest: 'B' } }]
 		});
 		expect(flowOf(adjustField(flow, ONE_V, { confirmed: true })).field).toEqual(ONE_V);
 	});

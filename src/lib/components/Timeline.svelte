@@ -13,9 +13,10 @@
 	import {
 		HALF_BEATS_PER_BEAT,
 		HALF_BEATS_PER_EIGHT,
-		atTextWithUnit,
+		atWhy,
 		formationTimes,
-		lengthTextWithUnit,
+		labelWhy,
+		lengthWhy,
 		newChantTenths,
 		readLength,
 		rulerMarks,
@@ -28,6 +29,7 @@
 		type SegmentKind
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { KEYS, others } from '#lib/shortcuts.js';
 	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
@@ -254,13 +256,13 @@
 		const read = readLength(span.segment, insertCount);
 		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
 		const length = read.kind === 'ok' ? read.value * scale : 0;
-		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
+		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : whyText(lengthWhy(span.segment, length));
 		if (read.kind === 'blocked') return void insertAsk.block(read);
 		const before = session.flow;
 		insertAsk.send({ name: 'insertBeats', args: [at, length, music ? insertUnit : 'beat'] }, {
 			done: () => {
 				inserting = null;
-				const where = `${span.label} ${atTextWithUnit(span.segment, at.at)}`;
+				const where = `${whyText(labelWhy(span))} ${whyText(atWhy(span.segment, at.at))}`;
 				// 後面沒有東西要往後延：流程沒變（不算一步），不說插入了
 				session.notice =
 					session.flow === before
@@ -365,10 +367,10 @@
 						style:left={`${span.startSec * px}px`}
 						style:width={`${segW}px`}
 						style:padding-left={`${8 + nameShift(span.startSec * px, segW)}px`}
-						title="{span.label}　{meta}{missing ? '　找不到音樂' : ''}：點一下設定"
+						title="{whyText(labelWhy(span))}　{meta}{missing ? '　找不到音樂' : ''}：點一下設定"
 						onclick={() => onopensegment(span.segment.id)}
 					>
-						<b>{span.label}</b>
+						<b>{whyText(labelWhy(span))}</b>
 						{#if missing}<span class="flag">找不到音樂</span>{/if}
 						<span class="meta">{meta}</span>
 					</button>
@@ -378,7 +380,7 @@
 						data-edit
 						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
 						aria-label="在這段後面加一段"
-						title={`加在${span.label} 後面`}
+						title={`加在${whyText(labelWhy(span))} 後面`}
 						aria-haspopup="menu"
 						aria-expanded={menu?.after === span.segment.id}
 						onclick={(e) => toggleMenu(e, span.segment.id)}><Icon name="plus" size={12} /></button
@@ -449,7 +451,7 @@
 			<div class="trk ruler" data-ruler bind:this={ruler} style:width={`${width}px`} onpointerdown={startSeek}>
 				{#each marks as mark (mark.sec)}
 					<div class="tk" class:big={mark.major} style:left={`${mark.sec * px}px`}>
-						{#if mark.label}<span data-mark-sec={mark.sec}>{mark.label}</span>{/if}
+						{#if mark.label}<span data-mark-sec={mark.sec}>{whyText(mark.label)}</span>{/if}
 					</div>
 				{/each}
 				<div class="ph-head" style:left={`${playback.sec * px}px`}></div>
@@ -487,7 +489,7 @@
 		})}
 		{@attach menuKeys}
 	>
-		<span class="menu-title" id="add-menu-title">{after ? `加在${after.label} 後面` : '加在最後'}</span>
+		<span class="menu-title" id="add-menu-title">{after ? `加在${whyText(labelWhy(after))} 後面` : '加在最後'}</span>
 		<button type="button" role="menuitem" onclick={() => add('music')}>＋音樂段</button>
 		<button type="button" role="menuitem" onclick={() => add('chant')}>＋口號段</button>
 	</div>
@@ -508,7 +510,7 @@
 			insert();
 		}}
 	>
-		<span class="menu-title">在{insertSpan.label} {atTextWithUnit(insertSpan.segment, insertAt.at)} 插入</span>
+		<span class="menu-title">在{whyText(labelWhy(insertSpan))} {whyText(atWhy(insertSpan.segment, insertAt.at))} 插入</span>
 		<div class="insert-row">
 			<input aria-label="插入幾個" inputmode="decimal" bind:value={insertCount} />
 			{#if music}

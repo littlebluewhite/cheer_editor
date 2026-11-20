@@ -22,7 +22,7 @@
 		CELL_M,
 		fieldGeometry,
 		fieldNumbers,
-		fieldPositionText,
+		fieldPositionWhy,
 		frontLabelAt,
 		fullView,
 		markCovered,
@@ -42,6 +42,7 @@
 		type Rect
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen, SHORT_SCREEN_MAX_H } from '#lib/editor-layout.js';
 	import { ownsKey } from '#lib/key-owner.js';
@@ -364,10 +365,10 @@
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
 		const name = members.find((m) => m.id === drag!.id)?.name ?? '';
-		return `${name}　${fieldPositionText(field, drag.cur)}`;
+		return `${name}　${whyText(fieldPositionWhy(field, drag.cur))}`;
 	});
 	/** 名字和在哪（滑鼠停在圓點上、選到一個人時寫在場地下面）。 */
-	const whereText = (m: Member, p: Position) => `${m.name}　${fieldPositionText(field, p)}`;
+	const whereText = (m: Member, p: Position) => `${m.name}　${whyText(fieldPositionWhy(field, p))}`;
 	/** 編輯頁選到一個人（不在拖）：場地下面寫他的名字和位置。 */
 	const picked = $derived.by(() => {
 		if (!session || drag?.cur || selected.length !== 1) return '';

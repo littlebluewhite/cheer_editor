@@ -168,7 +168,8 @@ export function stepPlayhead(flow: Flow, sec: number, dir: 1 | -1, big: boolean)
 export interface RulerMark {
 	sec: number;
 	major: boolean;
-	label?: string;
+	/** 音樂段是第幾個八拍（數字），口號段是「n 秒」。 */
+	label?: string | Why;
 	start?: true;
 }
 
@@ -186,7 +187,7 @@ export function rulerMarks(flow: Flow): RulerMark[] {
 		} else {
 			for (let k = 0; k < durationSec - EPS; k++) {
 				const sec = startSec + k;
-				const label = `${k} 秒`;
+				const label = secondsWhy(String(k));
 				marks.push(k % 5 !== 0 ? { sec, major: false } : k === 0 ? { sec, major: true, label, start: true } : { sec, major: true, label });
 			}
 		}
@@ -194,9 +195,10 @@ export function rulerMarks(flow: Flow): RulerMark[] {
 	return marks;
 }
 
-/** 刻度字大約多寬（px，11px 粗體）：數字 7、空白 3、中文 11，加上離刻度線 4、跟下一個字留 4。 */
-function labelWidth(label: string): number {
-	return 8 + [...label].reduce((w, c) => w + (/\d/.test(c) ? 7 : c === ' ' ? 3 : 11), 0);
+/** 刻度字大約多寬（px，11px 粗體）：數字 7、空白 3、中文 11，加上離刻度線 4、跟下一個字留 4。照中文量（比英文寬）。 */
+function labelWidth(label: string | Why): number {
+	const text = typeof label === 'string' ? label : zh(label);
+	return 8 + [...text].reduce((w, c) => w + (/\d/.test(c) ? 7 : c === ' ' ? 3 : 11), 0);
 }
 
 /**
@@ -219,12 +221,12 @@ export function spacedLabels(marks: RulerMark[], pxPerSec: number): RulerMark[] 
 }
 
 /** 上方列的目前位置，例：「音樂 1 3-5&」、「口號 1 12.3 秒」；在流程結尾（播完、按 End）是「結尾」。沒有段時是空字串。 */
-export function positionText(flow: Flow, sec: number): string {
+export function positionWhy(flow: Flow, sec: number): string | Why {
 	const found = spanAt(flow, sec);
 	if (!found) return '';
-	if (sec >= totalSeconds(flow) - EPS) return '結尾';
+	if (sec >= totalSeconds(flow) - EPS) return { code: 'time_end' };
 	const { span, at } = found;
-	return `${span.label} ${atTextWithUnit(span.segment, at)}`;
+	return inSegmentWhy(span, atWhy(span.segment, at));
 }
 
 /** 段內時間點給教練看的樣子：音樂段「3-5&」（第幾個八拍-第幾拍，半拍加 &），口號段秒數「12.3」。 */
@@ -288,10 +290,8 @@ function parseAt(segment: Segment, text: string): number | null {
  * 在別的段前面加段名，跟上方列一樣（「口號 1 12.3」）。
  */
 export function timeText(flow: Flow, homeSegmentId: string, p: TimePosition): string {
-	const span = segmentSpans(flow).find((s) => s.segment.id === p.segmentId);
-	if (!span) return '';
-	const at = atText(span.segment, p.at);
-	return p.segmentId === homeSegmentId ? at : `${span.label} ${at}`;
+	const why = timeInputWhy(flow, homeSegmentId, p);
+	return typeof why === 'string' ? why : zh(why);
 }
 
 /** timeText，口號段後面再加「 秒」（例：「2-5」、「12.3 秒」、「口號 1 12.3 秒」）。 */
@@ -308,6 +308,14 @@ export function timeWhy(flow: Flow, homeSegmentId: string, p: TimePosition): str
 	return p.segmentId === homeSegmentId ? at : { code: 'time_in_segment', segment: labelWhy(span), at };
 }
 
+/** timeText 給畫面照語言寫（填進打時間的格子，readTime 讀得回來）：「2-5」、「12.3」、「口號 1 12.3」。沒有這一段是 ''。 */
+export function timeInputWhy(flow: Flow, homeSegmentId: string, p: TimePosition): string | Why {
+	const span = segmentSpans(flow).find((s) => s.segment.id === p.segmentId);
+	if (!span) return '';
+	const at = atText(span.segment, p.at);
+	return p.segmentId === homeSegmentId ? at : inSegmentWhy(span, at);
+}
+
 /** 用 timeText 寫法打時間的欄位：走位的出發、到達，站位小編輯的站位時間。 */
 export type TimeField = '出發' | '到達' | '站位時間' | '時間';
 
@@ -317,7 +325,6 @@ export type TimeField = '出發' | '到達' | '站位時間' | '時間';
  * 不檢查有沒有超出段（指令會擋）。
  */
 export function readTime(flow: Flow, homeSegmentId: string, text: string, field: TimeField): ReadResult<TimePosition> {
-	// 例子是教練照打得進去的寫法：段名照中文（parseTime 只認中文段名），不包成段名的代號
 	const { here: example, other } = timeExamples(flow, homeSegmentId);
 	const why: Why = other
 		? { code: 'time_unreadable_other', field: { code: FIELD_CODE[field] }, example, other }
@@ -337,14 +344,17 @@ const FIELD_CODE: Record<TimeField, WhyCode> = {
  * 打時間的例子，照這支流程真的有的段：here 是 homeSegmentId 那一段的段內時間，other 是別的段加段名
  * （先找另一種段，沒有就找同種的別段；只有一段時是 ''）。例子都落在那一段裡面。
  */
-export function timeExamples(flow: Flow, homeSegmentId: string): { here: string; other: string } {
+export function timeExamples(flow: Flow, homeSegmentId: string): { here: string; other: string | Why } {
 	const spans = segmentSpans(flow);
 	const home = spans.find((s) => s.segment.id === homeSegmentId);
 	if (!home) return { here: '', other: '' };
 	const rest = spans.filter((s) => s !== home);
 	const span = rest.find((s) => s.segment.kind !== home.segment.kind) ?? rest[0];
-	return { here: exampleAt(home.segment), other: span ? `${span.label} ${exampleAt(span.segment)}` : '' };
+	return { here: exampleAt(home.segment), other: span ? inSegmentWhy(span, exampleAt(span.segment)) : '' };
 }
+
+/** 段名加段內時間：「口號 1 12.3」（打時間的例子）、「口號 1 12.3 秒」（上方列）。段名照畫面的語言，parseTime 每種語言的段名都認得。 */
+const inSegmentWhy = (span: SegmentSpan, at: string | Why): Why => ({ code: 'time_in_segment', segment: labelWhy(span), at });
 
 /** 一段裡的例子：音樂段「2-5」、口號段「12.3」，段太短就取一半的地方。 */
 function exampleAt(segment: Segment): string {
@@ -365,10 +375,11 @@ export function readJump(flow: Flow, sec: number, text: string): ReadResult<numb
 	const musics = spans.filter((s) => s.segment.kind === 'music');
 	const homeSpan = spans.find((s) => s.segment.id === here.segmentId)!;
 	if (read.kind !== 'ok' && homeSpan.segment.kind === 'chant' && musics.length && EIGHT_TEXT.test(halfWidth(text).trim())) {
-		const named = `${musics[0].label} ${halfWidth(text).trim()}`;
-		// 例子是教練照打得進去的寫法：段名照中文（parseTime 只認中文段名）
-		if (musics.length > 1) return { kind: 'blocked', ...said({ code: 'time_jump_chant', segment: labelWhy(homeSpan), example: named }) };
-		read = readTime(flow, here.segmentId, named, '時間');
+		const at = halfWidth(text).trim();
+		if (musics.length > 1) {
+			return { kind: 'blocked', ...said({ code: 'time_jump_chant', segment: labelWhy(homeSpan), example: inSegmentWhy(musics[0], at) }) };
+		}
+		read = readTime(flow, here.segmentId, `${musics[0].label} ${at}`, '時間');
 	}
 	if (read.kind !== 'ok') return read;
 	const span = segmentSpans(flow).find((s) => s.segment.id === read.value.segmentId)!;
@@ -397,13 +408,29 @@ export function eightsWhy(n: number): Why {
 	return { code: n === 1 ? 'time_eights_one' : 'time_eights', n };
 }
 
+/**
+ * 段名（time_segment_music、time_segment_chant 每種語言的寫法，大小寫都可以）→ 哪種段。
+ * 教練照畫面上的例子打，畫面是哪種語言就打哪種段名。
+ */
+const SEGMENT_NAMES: Record<string, Segment['kind']> = {
+	音樂: 'music',
+	music: 'music',
+	音楽: 'music',
+	口號: 'chant',
+	cheer: 'chant',
+	チア: 'chant'
+};
+
+/** 「段名 號碼 段內時間」，段名可以不寫；後面可以帶單位（「秒」或「s」）。 */
+const TIME_TEXT = new RegExp(`^(?:(${Object.keys(SEGMENT_NAMES).join('|')})\\s*(\\d+)\\s+)?(.+?)\\s*(?:秒|s)?$`, 'i');
+
 /** readTime 讀的那一步：看不懂或沒有這一段是 null。 */
 function parseTime(flow: Flow, homeSegmentId: string, text: string): TimePosition | null {
-	const m = /^(?:(音樂|口號)\s*(\d+)\s+)?(.+?)\s*秒?$/.exec(halfWidth(text).trim());
+	const m = TIME_TEXT.exec(halfWidth(text).trim());
 	if (!m) return null;
 	const spans = segmentSpans(flow);
 	const span = m[1]
-		? spans.find((s) => s.label === `${m[1]} ${Number(m[2])}`)
+		? spans.find((s) => s.segment.kind === SEGMENT_NAMES[m[1].toLowerCase()] && s.n === Number(m[2]))
 		: spans.find((s) => s.segment.id === homeSegmentId);
 	if (!span) return null;
 	const at = parseAt(span.segment, m[3]);

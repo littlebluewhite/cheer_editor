@@ -5,6 +5,7 @@
 	import { composing } from '#lib/ime.js';
 	import { untrack } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { revealAlert } from './reveal';
 	import {
@@ -12,7 +13,7 @@
 		memberWalk,
 		readTime,
 		timeExamples,
-		timeText,
+		timeInputWhy,
 		walkSpanAt,
 		walkSpeedText,
 		type Walk
@@ -57,7 +58,7 @@
 		const home = formation.segmentId!;
 		const texts = memberIds.map((id) => {
 			const w = memberWalk(flow, formation.id, id)!;
-			return { depart: timeText(flow, home, w.depart), arrive: timeText(flow, home, w.arrive) };
+			return { depart: whyText(timeInputWhy(flow, home, w.depart)), arrive: whyText(timeInputWhy(flow, home, w.arrive)) };
 		});
 		const same = (k: 'depart' | 'arrive') => (texts.every((t) => t[k] === texts[0][k]) ? texts[0][k] : '');
 		return { depart: texts.length ? same('depart') : '', arrive: texts.length ? same('arrive') : '' };
@@ -69,7 +70,7 @@
 		const home = formation.segmentId!;
 		const { here, other } = timeExamples(flow, home);
 		const unit = flow.segments.find((s) => s.id === home)?.kind === 'chant' ? '秒數' : '八拍-拍';
-		return `這一段打${unit}，例：${here}${other ? `；別的段前面加段名，例：${other}` : ''}`;
+		return `這一段打${unit}，例：${here}${other ? `；別的段前面加段名，例：${whyText(other)}` : ''}`;
 	});
 
 	let departText = $state('');

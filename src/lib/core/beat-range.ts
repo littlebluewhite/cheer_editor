@@ -6,7 +6,7 @@ import type { Action } from './action-types';
 import type { Cue, CueKind } from './cues';
 import type { Phase } from './phase-types';
 import type { Segment } from './segment';
-import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT, lengthText } from './time';
+import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT } from './time';
 import { zh, type Why } from './why';
 
 /** 從動作開始算第幾個半拍起（0 = 動作開始那一刻）、幾個半拍長。 */
@@ -80,9 +80,16 @@ export function rangeWhy(segment: Segment, action: Action, at: number, len: numb
  * at 是段內時間；結束拍寫最後一拍開始的那個半拍（從 & 開始的就落在 & 上：「2-4& 到 2-7&・4 拍」）。
  */
 export function beatSpanText(segment: Segment, at: number, len: number): string {
+	return zh(beatSpanWhy(segment, at, len));
+}
+
+/** beatSpanText 給畫面照語言寫：「3-5 到 3-6・2 拍」，只有一拍是「3-5・1 拍」。 */
+export function beatSpanWhy(segment: Segment, at: number, len: number): Why {
 	const last = at + len - BEAT;
-	const range = last > at ? `${atText(segment, at)} 到 ${atText(segment, last)}` : atText(segment, at);
-	return `${range}・${lengthText(segment, len)} 拍`;
+	const first = atText(segment, at);
+	const range = last > at ? { code: 'beat_range_range', first, last: atText(segment, last) } satisfies Why : first;
+	const beats = len / BEAT;
+	return { code: 'beat_range_span', range, length: { code: beats === 1 ? 'time_length_beat_one' : 'time_length_beats', n: beats } };
 }
 
 /** 一段拍落在一個八拍裡的那一段：從這個八拍開頭算第 start 個半拍到第 end 個半拍（不含 end，0–16）。 */

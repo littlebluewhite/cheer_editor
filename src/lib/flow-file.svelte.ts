@@ -12,6 +12,7 @@
 import {
 	audioExtension,
 	FORMAT_VERSION,
+	labelWhy,
 	missingAudioNames,
 	putRecords,
 	readFlowFile,
@@ -22,7 +23,7 @@ import {
 	type AudioBytes,
 	type Flow
 } from '#lib/core';
-import { reasonText } from '#lib/reason-text.js';
+import { reasonText, whyText } from '#lib/reason-text.js';
 import { CloudSteps, ONLY_VIEW, withUnsent } from '#lib/cloud-steps.svelte.js';
 import type { DroppedRecord } from '#lib/editor-session.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
@@ -1109,7 +1110,7 @@ export interface AudioTooBig {
 
 function tooBig(flow: Flow, audioId: string, bytes: number): AudioTooBig {
 	const span = segmentSpans(flow).find(({ segment: s }) => s.kind === 'music' && s.audioId === audioId);
-	const name = span?.label ?? flow.audio.find((a) => a.id === audioId)?.name ?? '';
+	const name = (span && whyText(labelWhy(span))) ?? flow.audio.find((a) => a.id === audioId)?.name ?? '';
 	return { segment: name, mb: Math.ceil(bytes / 1024 / 1024) };
 }
 

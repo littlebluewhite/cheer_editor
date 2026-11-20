@@ -4,6 +4,7 @@ import type { Action } from './action-types';
 import type { Position } from './formation';
 import type { Member } from './members';
 import type { Segment } from './segment';
+import type { Why } from './why';
 
 /** 兩個人的位置差不到這麼多公尺，就當成疊在同一點（吸附最細是 1/8 格，約 0.23 公尺）。 */
 const STACK_M = 0.05;
@@ -42,11 +43,11 @@ export function stackedMembers(members: Member[], positions: Record<string, Posi
 	return groups.filter((g) => g.length > 1);
 }
 
-/** 動作的人和任務角色看起來不對的地方：技巧、金字塔、拋投有上層卻沒有底層。 */
-export function actionHints(action: Pick<Action, 'category' | 'members'>): string[] {
+/** 動作的人和任務角色看起來不對的地方（畫面照語言寫）：技巧、金字塔、拋投有上層卻沒有底層。 */
+export function actionHints(action: Pick<Action, 'category' | 'members'>): Why[] {
 	const roles = action.members.map((m) => m.role);
 	if (LIFTING.has(action.category) && roles.includes('上層') && !roles.some((r) => r && BASE_ROLES.has(r))) {
-		return ['有上層，但沒有底層（底層、主底、側底、肩底）'];
+		return [{ code: 'hints_top_no_base' }];
 	}
 	return [];
 }

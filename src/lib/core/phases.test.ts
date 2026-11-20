@@ -20,6 +20,7 @@ import {
 	type NewAttempt
 } from './index';
 import { flowOf, libSample, squadNumbers } from '../test-flows';
+import { zh } from './why';
 
 const sample = libSample;
 
@@ -223,7 +224,7 @@ describe('改環節', () => {
 	});
 
 	it('辨識色 9 色加石板灰是環節可以挑的顏色', () => {
-		expect(PHASE_COLORS.map((c) => c.label)).toEqual(['紅', '橘', '金', '綠', '青', '藍', '靛', '紫', '粉', '石板灰']);
+		expect(PHASE_COLORS.map((c) => zh(c.label))).toEqual(['紅', '橘', '金', '綠', '青', '藍', '靛', '紫', '粉', '石板灰']);
 		expect(ACTION_COLORS).toHaveLength(9);
 	});
 });

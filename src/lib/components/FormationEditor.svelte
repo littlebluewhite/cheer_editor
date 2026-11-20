@@ -4,6 +4,7 @@
 	// 規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		currentFormation,
@@ -11,7 +12,7 @@
 		moveFormationHint,
 		moveTargetText,
 		readTime,
-		timeText,
+		timeInputWhy,
 		type TimePosition
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
@@ -28,7 +29,7 @@
 	const here = $derived(flow.members.length ? formationAt(flow, playback.sec) : undefined);
 	let nameInput = $state<HTMLInputElement>();
 	// 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。
-	const hereTime = $derived(here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : '');
+	const hereTime = $derived(here?.segmentId ? whyText(timeInputWhy(flow, here.segmentId, here as TimePosition)) : '');
 
 	/**
 	 * 幫播放頭所在的站位取名；名字沒變就不記一步復原。站位已經刪掉了（名稱框跟著被拿掉時才送出）、框上沒有站位 id 就不改。

@@ -2,10 +2,11 @@
 	// 檢視模式右邊欄：點到的動作的詳細內容（人、任務角色、拍點、備註），只能看。字都問流程核心。
 	import {
 		actionLabel,
-		atTextWithUnit,
-		beatSpanText,
+		atWhy,
+		beatSpanWhy,
 		cueText,
-		lengthTextWithUnit,
+		labelWhy,
+		lengthWhy,
 		memberName,
 		segmentSpans,
 		whoName,
@@ -13,6 +14,7 @@
 		type Flow
 	} from '#lib/core';
 	import { actionColor } from './category-colors';
+	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
 		flow: Flow;
@@ -25,17 +27,17 @@
 	/** 「第 1 段 1-1 到 2-8・16 拍」；口號段「口號 1 3.0 秒・2.0 秒」。 */
 	const when = $derived.by(() => {
 		if (!span) return '';
-		const { segment, label } = span;
+		const { segment } = span;
 		const time =
 			segment.kind === 'music'
-				? beatSpanText(segment, action.start, action.length)
-				: `${atTextWithUnit(segment, action.start)}・${lengthTextWithUnit(segment, action.length)}`;
-		return `${label} ${time}`;
+				? whyText(beatSpanWhy(segment, action.start, action.length))
+				: `${whyText(atWhy(segment, action.start))}・${whyText(lengthWhy(segment, action.length))}`;
+		return `${whyText(labelWhy(span))} ${time}`;
 	});
 	const cues = $derived(
 		span
 			? (action.cues ?? []).map((c) =>
-					cueText(c.kind, c.word, beatSpanText(span.segment, action.start + c.at, c.len), whoName(flow, c.who))
+					cueText(c.kind, c.word, whyText(beatSpanWhy(span.segment, action.start + c.at, c.len)), whoName(flow, c.who))
 				)
 			: []
 	);

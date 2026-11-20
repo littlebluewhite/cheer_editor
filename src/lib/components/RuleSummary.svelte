@@ -2,7 +2,8 @@
 	// 左邊欄規則警告的撞位、走太快、很喘總表：寫各幾個，點開是清單，每行寫哪一拍、誰和誰；
 	// 點一行播放頭跳到那一拍（撞位是兩人最近那一刻，走位是到達），選好那幾個人。
 	// 撞位用頁面算好的那一份，走太快、很喘用 formationWalks，不另外算。都沒有就不出現。
-	import { formationWalks, memberName, positionText, type Clash, type Flow } from '#lib/core';
+	import { formationWalks, memberName, positionWhy, type Clash, type Flow } from '#lib/core';
+	import { whyText } from '#lib/reason-text.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import Icon from './Icon.svelte';
 
@@ -49,7 +50,7 @@
 				{#each rows as r, i (i)}
 					<li>
 						<button type="button" onclick={() => go(r)}
-							><span class="at">{positionText(flow, r.sec)}</span>{' '}<b class:clash={r.kind === '撞位'}>{r.kind}</b>{' '}<span
+							><span class="at">{whyText(positionWhy(flow, r.sec))}</span>{' '}<b class:clash={r.kind === '撞位'}>{r.kind}</b>{' '}<span
 								>{r.memberIds.map((id) => memberName(flow, id)).join('、')}</span
 							></button
 						>

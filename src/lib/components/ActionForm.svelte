@@ -18,6 +18,7 @@
 	import { flushSync, tick, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { composing } from '#lib/ime.js';
@@ -29,7 +30,7 @@
 		actionSeconds,
 		groupsPeople,
 		memberName,
-		positionText,
+		positionWhy,
 		pickableRoles,
 		roleGlossary,
 		segmentSpans,
@@ -84,7 +85,7 @@
 			.sort((x, y) => x.sec - y.sec)
 			.map(({ a, sec }) => ({
 				id: a.id,
-				label: `${positionText(flow, sec)}　${actionLabel(a)}（${a.members.length} 人）`
+				label: `${whyText(positionWhy(flow, sec))}　${actionLabel(a)}（${a.members.length} 人）`
 			}))
 	);
 
@@ -423,11 +424,11 @@
 					/>照大類
 				</label>
 				{#each ACTION_COLORS as c (c.value)}
-					<label class="swatch" title={c.label} style:--c={c.value}>
+					<label class="swatch" title={whyText(c.label)} style:--c={c.value}>
 						<input
 							type="radio"
 							name="action-color"
-							aria-label={c.label}
+							aria-label={whyText(c.label)}
 							checked={draft.color === c.value}
 							onchange={() => setColor(c.value)}
 						/>
@@ -571,7 +572,7 @@
 					<button type="button" class="link" onclick={dropBusy}>拿掉這幾個人</button>
 				</p>
 			{/if}
-			{#each actionHints(draft) as hint (hint)}<p class="hint-warn" role="note">{hint}</p>{/each}
+			{#each actionHints(draft) as hint (hint.code)}<p class="hint-warn" role="note">{whyText(hint)}</p>{/each}
 			{#if pickedOutside.length}
 				<button type="button" class="add-picked" onclick={addSelected}
 					><Icon name="plus" size={14} />把選的 {pickedOutside.length} 人加進來</button

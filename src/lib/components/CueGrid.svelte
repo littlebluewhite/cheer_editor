@@ -24,6 +24,7 @@
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { cellIn, firstCell, fits } from '#lib/beat-selection.svelte.js';
@@ -44,7 +45,7 @@
 		phaseLabel,
 		STEP_WORDS,
 		actionEights,
-		beatSpanText,
+		beatSpanWhy,
 		toPosition,
 		copyCues,
 		cueText,
@@ -215,7 +216,7 @@
 	});
 
 	/** 「3-5 到 3-6・2 拍」；只有一拍是「3-5・1 拍」。from 從動作開始算。 */
-	const spanText = (from: number, len: number) => (segment ? beatSpanText(segment, action.start + from, len) : '');
+	const spanText = (from: number, len: number) => (segment ? whyText(beatSpanWhy(segment, action.start + from, len)) : '');
 
 	/** 送指令給問教練；成功（問了答好也算）才跑 after。回有沒有馬上成功。 */
 	function send(cmd: Command, after?: () => void): boolean {
@@ -838,7 +839,7 @@
 				onchange={(e) => editPhase(p.id, { color: e.currentTarget.value || null })}
 			>
 				<option value="">照種類</option>
-				{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
+				{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{whyText(c.label)}</option>{/each}
 			</select>
 		</span>
 		{#if kinds.length > 1}

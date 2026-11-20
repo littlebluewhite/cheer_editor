@@ -132,7 +132,7 @@ export {
 } from './rates';
 export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
 
-export { actionEights, beatSpanText, phaseRows } from './beat-range';
+export { actionEights, beatSpanText, beatSpanWhy, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
 export { eightCountRows, eightCountView, formationNowText, memberNowText, nearbyEights, teamWho } from './eight-count';
@@ -179,7 +179,7 @@ export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } f
 
 export { alignColumn, alignRow, mirrorPositions, spreadEvenly } from './group-moves';
 
-export { FINE_ZOOM, fieldPositionText, snapGroup, snapPointsNear, snapPosition } from './snap';
+export { FINE_ZOOM, fieldPositionWhy, snapGroup, snapPointsNear, snapPosition } from './snap';
 export type { SnapPoint } from './snap';
 
 export {
@@ -221,12 +221,16 @@ export {
 	HALF_BEATS_PER_EIGHT,
 	atText,
 	atTextWithUnit,
+	atWhy,
 	clockText,
 	farthestLegal,
+	fromWhy,
+	labelWhy,
 	lengthText,
 	lengthTextWithUnit,
+	lengthWhy,
 	nearestPosition,
-	positionText,
+	positionWhy,
 	readJump,
 	readLength,
 	readStart,
@@ -237,8 +241,10 @@ export {
 	snapToBeat,
 	stepPlayhead,
 	timeExamples,
+	timeInputWhy,
 	timeText,
 	timeTextWithUnit,
+	timeWhy,
 	toPosition,
 	toSeconds,
 	totalSeconds,

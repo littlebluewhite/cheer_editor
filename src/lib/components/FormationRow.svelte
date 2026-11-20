@@ -19,12 +19,13 @@
 		formationTimes,
 		moveFormation,
 		nearestPosition,
-		timeTextWithUnit,
+		timeWhy,
 		toSeconds,
 		totalSeconds,
 		type TimePosition
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { followPointer, touchOnUnpicked } from './pointer';
@@ -216,7 +217,7 @@
 					<span>{i + 1}</span>
 					{#if to}
 						<!-- 拖的時候寫新的站位時間；home 是這張原本的段（拖得動的不是開頭那張，一定有段） -->
-						<em class="name when" aria-hidden="true">{timeTextWithUnit(flow, formation.segmentId!, to)}</em>
+						<em class="name when" aria-hidden="true">{whyText(timeWhy(flow, formation.segmentId!, to))}</em>
 					{:else if formation.name && !tag}<em class="name" aria-hidden="true">{formation.name}</em>{/if}
 				</button>
 				{#if deletable && !tag}

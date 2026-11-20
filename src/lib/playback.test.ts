@@ -9,11 +9,12 @@ import {
 	deleteSegment,
 	insertFormation,
 	moveSegment,
-	positionText,
+	positionWhy,
 	updateAction,
 	updateSegment,
 	type Flow
 } from '#lib/core';
+import { whyText } from '#lib/reason-text.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { manualFrames, testEditor } from '#lib/test-fakes.js';
 
@@ -31,7 +32,7 @@ function setup(flow: Flow = sample()) {
 	const { editor, session } = testEditor(flow, { createEngine: () => engine, nextFrame: frames.nextFrame });
 	const { playback } = editor;
 	/** 上方列寫的播放頭位置（例：音樂 1 3-5&）。 */
-	const position = () => positionText(session.flow!, playback.sec);
+	const position = () => whyText(positionWhy(session.flow!, playback.sec));
 	return { session, playback, engine, frames, position };
 }
 

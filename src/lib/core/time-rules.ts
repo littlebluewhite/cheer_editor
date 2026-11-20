@@ -45,10 +45,10 @@ export function updateTimeRules(flow: Flow, patch: Partial<TimeRules>): CommandR
 	return ok({ ...flow, timeRules });
 }
 
-/** 一條規則警告：小標題、內容、是哪一個數字的規則（點警告時帶到那一格）。 */
+/** 一條規則警告：小標題、內容（畫面照語言寫）、是哪一個數字的規則（點警告時帶到那一格）。 */
 export interface TimeRuleWarning {
-	title: string;
-	text: string;
+	title: Why;
+	text: Why;
 	rule: 'minChantSec' | 'maxMusicSec' | 'maxTotalSec';
 }
 
@@ -65,15 +65,31 @@ export function timeRuleWarnings(flow: Flow): TimeRuleWarning[] {
 	const total = chant + music;
 	const warnings: TimeRuleWarning[] = [];
 	if (!flow.segments.some((s) => s.kind === 'chant')) {
-		warnings.push({ title: '還沒有口號段', text: `口號段加起來最少要 ${clockText(rules.minChantSec)}`, rule: 'minChantSec' });
+		warnings.push({
+			title: { code: 'time_rules_no_chant' },
+			text: { code: 'time_rules_no_chant_text', min: clockText(rules.minChantSec) },
+			rule: 'minChantSec'
+		});
 	} else if (chant < rules.minChantSec - EPS) {
-		warnings.push({ title: '口號段太短', text: `口號段共 ${clockText(chant)}，少於 ${clockText(rules.minChantSec)}`, rule: 'minChantSec' });
+		warnings.push({
+			title: { code: 'time_rules_chant_short' },
+			text: { code: 'time_rules_chant_short_text', total: clockText(chant), min: clockText(rules.minChantSec) },
+			rule: 'minChantSec'
+		});
 	}
 	if (music > rules.maxMusicSec + EPS) {
-		warnings.push({ title: '音樂段太長', text: `音樂段共 ${clockText(music)}，超過 ${clockText(rules.maxMusicSec)}`, rule: 'maxMusicSec' });
+		warnings.push({
+			title: { code: 'time_rules_music_long' },
+			text: { code: 'time_rules_music_long_text', total: clockText(music), max: clockText(rules.maxMusicSec) },
+			rule: 'maxMusicSec'
+		});
 	}
 	if (total > rules.maxTotalSec + EPS) {
-		warnings.push({ title: '整支流程太長', text: `整支流程共 ${clockText(total)}，超過 ${clockText(rules.maxTotalSec)}`, rule: 'maxTotalSec' });
+		warnings.push({
+			title: { code: 'time_rules_total_long' },
+			text: { code: 'time_rules_total_long_text', total: clockText(total), max: clockText(rules.maxTotalSec) },
+			rule: 'maxTotalSec'
+		});
 	}
 	return warnings;
 }

@@ -5,7 +5,7 @@
 		formationWalks,
 		memberMarkers,
 		memberNowText,
-		positionText,
+		positionWhy,
 		positionsAt,
 		formationNowText,
 		readJump,
@@ -48,7 +48,7 @@
 	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import { composing } from '#lib/ime.js';
-	import { reasonText } from '#lib/reason-text.js';
+	import { reasonText, whyText } from '#lib/reason-text.js';
 	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -379,10 +379,11 @@
 
 	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字；在結尾只有「結尾」（at 是空的）。 */
 	const position = $derived.by(() => {
-		const text = flow ? positionText(flow, playback.sec) : '';
-		if (!text) return null;
-		const cut = text.indexOf(' ', text.indexOf(' ') + 1);
-		return cut === -1 ? { segment: text, at: '' } : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
+		const why = flow ? positionWhy(flow, playback.sec) : '';
+		if (!why) return null;
+		return typeof why === 'object' && why.code === 'time_in_segment'
+			? { segment: whyText(why.segment), at: whyText(why.at) }
+			: { segment: whyText(why), at: '' };
 	});
 
 	/**
@@ -1242,7 +1243,7 @@
 						{#if warnings.length}
 							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定，焦點在那條規則的數字 -->
 							<ul class="warn" aria-label="規則警告">
-								{#each warnings as w (w.title)}
+								{#each warnings as w (w.rule)}
 									<li>
 										{#if view === 'edit' && session.editable}
 											<button
@@ -1252,10 +1253,10 @@
 													settingsFocus = w.rule;
 													settingsOpen = true;
 												}}
-												><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></button
+												><Icon name="warn" /><span><b>{whyText(w.title)}</b>{whyText(w.text)}</span></button
 											>
 										{:else}
-											<span class="row"><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></span>
+											<span class="row"><Icon name="warn" /><span><b>{whyText(w.title)}</b>{whyText(w.text)}</span></span>
 										{/if}
 									</li>
 								{/each}
