@@ -2,6 +2,7 @@
 // 伺服器不看裡面，只拿來比誰拿著哪一組：組號是「n:2」，騰翻、跳躍的人是「m:隊員 id」。
 
 import { memberName, perPerson, squadNumber, type Action, type Flow } from '#lib/core';
+import { m } from '#lib/paraglide/messages.js';
 
 /** 一個動作的一欄（who 是組 id，騰翻、跳躍是隊員 id）是哪一組。 */
 export function runKey(action: Action, who: string): string {
@@ -10,7 +11,7 @@ export function runKey(action: Action, who: string): string {
 
 /** 組的名字：「第 2 組」，騰翻、跳躍是那個人的名字。 */
 export function runKeyLabel(flow: Flow, key: string): string {
-	return key.startsWith('n:') ? `第 ${key.slice(2)} 組` : memberName(flow, key.slice(2));
+	return key.startsWith('n:') ? m.success_rate_squad({ n: key.slice(2) }) : memberName(flow, key.slice(2));
 }
 
 /** 要記的動作裡的每一組：組號由小到大，再來騰翻、跳躍的人（照名單順序）。 */

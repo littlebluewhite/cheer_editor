@@ -24,8 +24,8 @@ import {
 	type Flow
 } from '#lib/core';
 import { reasonText, whyText } from '#lib/reason-text.js';
-import { CloudSteps, ONLY_VIEW, withUnsent } from '#lib/cloud-steps.svelte.js';
-import type { DroppedRecord } from '#lib/editor-session.svelte.js';
+import { CloudSteps, withUnsent } from '#lib/cloud-steps.svelte.js';
+import { joinNotes, joinSentences, type DroppedRecord } from '#lib/editor-session.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
@@ -34,18 +34,12 @@ import { copiesToDrop, unsentCount, type OfflineCopy } from '#lib/offline-store.
 import { canEdit } from '#lib/role-names.js';
 import type { CloudFlow } from '#lib/server-api.js';
 import type { TabChannel } from '#lib/tab-channel.js';
+import { m } from '#lib/paraglide/messages.js';
 
-/** 傳上雲端傳好的提示。 */
-export const UPLOADED = '傳上雲端了：現在開的是雲端那支，可以分享了。這台的草稿丟掉了，資料夾裡的流程檔沒動。';
-const UPLOAD_UNREACHABLE = '連不上伺服器，沒傳上雲端';
-/** 傳上雲端的時候這個分頁又改了流程（或換了流程）：雲端那支是按下去時的樣子，不換掉開著的、不丟草稿。 */
-const UPLOAD_CHANGED = '傳上雲端了，但傳的時候流程又改了：這台的草稿留著，雲端那支沒有剛剛的修改（回首頁從「我的流程」打開）';
 /** 被收回回首頁時，黃條說的。 */
-const revokedText = (name: string) => `你已經不能打開「${name}」。`;
+const revokedText = (name: string) => m.file_revoked({ name });
 /** 流程被擁有者刪了回首頁時，黃條說的（#252）。 */
-const deletedText = (name: string) => `「${name}」被擁有者刪掉了。`;
-/** 被收回、被刪掉回首頁時，黃條後面加的（離線副本一起刪了，#261）。 */
-const COPY_DROPPED = '這台留著的那份也刪掉了。';
+const deletedText = (name: string) => m.file_deleted({ name });
 
 /** 伺服器拿到的雲端流程存成離線副本的樣子（時間之後填）。 */
 function copyOf(found: CloudFlow, name: string): Omit<OfflineCopy, 'savedAt' | 'openedAt'> {
@@ -202,15 +196,13 @@ export class FlowFile {
 			if (oldId !== this.#draftId) void this.#dropDraft(oldId);
 			this.#announce();
 			this.#saveDraftLater();
-			session.notice = [
-				savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch),
-				missing ? `有 ${missing} 段找不到音樂，存出來的檔裡沒有這些音樂：點紅色的段重新選檔，再存一次` : ''
-			]
-				.filter(Boolean)
-				.join('；');
+			const saved = savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch);
+			session.notice = missing
+				? joinNotes([saved, (missing === 1 ? m.file_saved_missing_audio_one : m.file_saved_missing_audio)({ count: missing })])
+				: saved;
 			if (missing) this.#noteMissing();
 		} catch {
-			session.notice = '存檔失敗，請再試一次';
+			session.notice = m.file_save_failed();
 		} finally {
 			this.#saving = false;
 		}
@@ -248,17 +240,16 @@ export class FlowFile {
 		const session = this.#editor.session;
 		const r = readFlowFile(bytes);
 		const cannotOpen = (reason: string) => {
-			const message = `打不開「${fileName ?? (r.kind === 'ok' ? r.flow.name : '草稿')}」：${reason}`;
+			const message = m.file_cannot_open({ name: fileName ?? (r.kind === 'ok' ? r.flow.name : m.file_draft()), reason });
 			if (session.flow) session.notice = message;
 			else this.#openError = message;
 		};
 		if (r.kind === 'error') {
 			if (!fileName || !audioExtension(fileName)) return cannotOpen(reasonText(r));
 			// 拿音樂檔來開：說音樂要去段設定載入（首頁還沒有段，先建流程）
-			const where = session.flow ? '音樂要點段列上的段' : '先建好流程，再點段列上的段';
-			return cannotOpen(`這是音樂檔，不是流程檔。${where}，在段設定按「載入音樂檔」`);
+			return cannotOpen(session.flow ? m.file_is_audio_editing() : m.file_is_audio_home());
 		}
-		if (await this.#otherTabEditing(draftId)) return cannotOpen('另一個分頁正在編這支流程');
+		if (await this.#otherTabEditing(draftId)) return cannotOpen(m.file_other_tab());
 		// 從檔案開的、這台電腦上有這個檔改過沒存的草稿（不是這個分頁正開著的）：先問，不蓋掉修改
 		if (fileName !== null && !(session.flow && draftId === this.#draftId)) {
 			const changed = await this.#changedDraft(draftId);
@@ -283,11 +274,13 @@ export class FlowFile {
 				if (this.#draftChecked) void this.#saveDraft(bytes);
 			}
 			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名
+			const parts: (string | false)[] = [fileName !== null && m.file_opened({ name: fileName }), music.hasBroken && m.file_broken_audio()];
+			const said = parts.filter((x): x is string => !!x);
 			session.notice = r.missingSegmentIds.length
-				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
-				: [fileName !== null ? `已開啟「${fileName}」` : '', music.hasBroken ? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音' : '']
-						.filter(Boolean)
-						.join('；');
+				? missingAudioText(fileName ?? m.file_draft(), missingAudioNames(r.flow, r.missingSegmentIds))
+				: said.length
+					? joinNotes(said)
+					: '';
 			if (r.missingSegmentIds.length) this.#noteMissing();
 		});
 	}
@@ -329,7 +322,7 @@ export class FlowFile {
 		try {
 			made = await this.#editor.adapters.server.createFlow({ name: flow.name, field: flow.field });
 		} catch {
-			this.#openError = '連不上伺服器，沒存到雲端：再試一次，或選存在這台';
+			this.#openError = m.file_cloud_create_unreachable();
 			return;
 		}
 		await this.openCloud(made.id);
@@ -350,13 +343,13 @@ export class FlowFile {
 		} catch {
 			copy = (await store.copies()).find((c) => c.flowId === id) ?? null;
 			if (!copy) {
-				if (!refresh) this.#openError = '連不上伺服器，打不開雲端的流程';
+				if (!refresh) this.#openError = m.file_cloud_open_unreachable();
 				return;
 			}
 			found = { id, flow: copy.flow, step: copy.step, updatedAt: '', role: copy.role, records: copy.records };
 		}
 		if (!found) {
-			this.#openError = '這支流程打不開了';
+			this.#openError = m.file_cloud_gone();
 			return;
 		}
 		// 紀錄跟編排分開存（ADR 0011）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
@@ -382,7 +375,7 @@ export class FlowFile {
 			cloud.forget();
 			void store.dropCopy(id);
 			this.#editor.session.open(null);
-			this.#revoked = `${why(name)}${COPY_DROPPED}`;
+			this.#revoked = joinSentences([why(name), m.file_copy_dropped()]);
 		};
 		const revoked = goneHome(revokedText);
 		// 被收回時還有沒傳的：先擋住列出來，按「知道了」才丟掉、回首頁
@@ -478,11 +471,11 @@ export class FlowFile {
 		try {
 			found = await server.linkedFlow(token);
 		} catch {
-			this.#openError = '連不上伺服器，打不開分享連結';
+			this.#openError = m.file_link_unreachable();
 			return;
 		}
 		if (!found) {
-			this.#openError = '這個分享連結不能用了：可能已經關掉，或換了一條新的。';
+			this.#openError = m.file_link_dead();
 			return;
 		}
 		if (found.role) return this.openCloud(found.id);
@@ -491,7 +484,7 @@ export class FlowFile {
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#cloudId = found.id;
 		this.#linkOnly = true;
-		this.#editor.session.readOnly = ONLY_VIEW;
+		this.#editor.session.readOnly = m.cloud_only_view();
 	}
 
 	/**
@@ -530,7 +523,7 @@ export class FlowFile {
 		const deleted = new Set(deletedIds);
 		const tell = (name: string, flowId: string) => {
 			names.push(deleted.has(flowId) ? deletedText(name) : revokedText(name));
-			this.#revoked = `${names.join('')}${COPY_DROPPED}`;
+			this.#revoked = joinSentences([...names, m.file_copy_dropped()]);
 		};
 		for (const c of gone) {
 			const u = unsent.find((x) => x.flowId === c.flowId);
@@ -618,11 +611,11 @@ export class FlowFile {
 		if (big) return void (this.#tooBig = tooBig(flow, big.id, audio[big.id].length));
 		const server = adapters.server;
 		this.#uploading = true;
-		session.notice = '傳上雲端中…';
+		session.notice = m.file_uploading();
 		let id: string | null = null;
 		try {
 			const made = await server.uploadFlow({ formatVersion: FORMAT_VERSION, flow });
-			if ('message' in made) return void (session.notice = `傳不上去：${reasonText(made)}`);
+			if ('message' in made) return void (session.notice = m.file_upload_refused({ reason: reasonText(made) }));
 			id = made.id;
 			for (const ref of flow.audio) {
 				if (!audio[ref.id]) continue;
@@ -634,7 +627,7 @@ export class FlowFile {
 				}
 			}
 		} catch {
-			session.notice = UPLOAD_UNREACHABLE;
+			session.notice = m.file_upload_unreachable();
 			if (id) void server.deleteFlow(id).catch(() => {});
 			return;
 		} finally {
@@ -645,14 +638,14 @@ export class FlowFile {
 			adapters.pendingInput.flush();
 			return !adapters.pendingInput.pending && this.#editor.session.flow === flow && this.#draftId === draftId;
 		};
-		if (!unchanged()) return void (session.notice = UPLOAD_CHANGED);
+		if (!unchanged()) return void (session.notice = m.file_upload_changed());
 		await this.openCloud(id, false, unchanged);
 		if (this.#cloudId !== id) {
-			session.notice = unchanged() ? '傳上雲端了，但打不開雲端那支：回首頁從「我的流程」打開' : UPLOAD_CHANGED;
+			session.notice = unchanged() ? m.file_uploaded_not_opened() : m.file_upload_changed();
 			return;
 		}
 		this.#clearDraft(draftId);
-		session.notice = UPLOADED;
+		session.notice = m.file_uploaded();
 	}
 
 	/** 傳上雲端時太大的音樂檔（跳框）；沒有是 null。 */
@@ -679,7 +672,7 @@ export class FlowFile {
 		try {
 			if (saver.chooseFile && !(await saver.chooseFile(fileName))) return;
 		} catch {
-			return void (session.notice = '下載失敗，請再試一次');
+			return void (session.notice = m.file_download_failed());
 		}
 		// 存檔對話框選了舊檔，瀏覽器當下就清空它（File System Access 規格）：沒存成、那個檔最後一次又是被清空的，要說它變空的
 		const mine = ++this.#downloads;
@@ -690,7 +683,7 @@ export class FlowFile {
 			let last = { n: mine, saved: false };
 			for (const e of this.#fileEvents)
 				if (e.n > last.n && e.saver !== saver && (await saver.sameFile?.(e.saver))) last = e;
-			session.notice = chosen && !last.saved ? `${text}；選的「${chosen}」已經變成空的檔案，請再下載一次` : text;
+			session.notice = chosen && !last.saved ? m.file_download_emptied({ text, name: chosen }) : text;
 		};
 		try {
 			let found;
@@ -699,7 +692,7 @@ export class FlowFile {
 			} catch {
 				found = null;
 			}
-			if (!found) return await failed('連不上伺服器，沒下載');
+			if (!found) return await failed(m.file_download_unreachable());
 			const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
 			const flow = putRecords(found.flow as Flow, records);
 			const audio = { ...music.bytes(flow) };
@@ -710,14 +703,14 @@ export class FlowFile {
 					if (bytes) audio[a.id] = bytes;
 				}
 			} catch {
-				return await failed('連不上伺服器，沒下載');
+				return await failed(m.file_download_unreachable());
 			}
 			try {
 				const outcome = await saver.save(writeFlowFile(flow, audio), fileName);
 				if (outcome !== 'cancelled') session.notice = savedText(outcome, saver.fileName ?? fileName, false, false, !!saver.touch);
 				if (outcome === 'saved') this.#fileEvents.push({ n: ++this.#downloads, saver, saved: true });
 			} catch {
-				await failed('下載失敗，請再試一次');
+				await failed(m.file_download_failed());
 			}
 		} finally {
 			if (--this.#pending === 0) this.#fileEvents = [];
@@ -845,7 +838,7 @@ export class FlowFile {
 		if (choice === 'save') {
 			if (this.#editor.session.questionOpen) {
 				this.#asking = null;
-				this.#editor.session.notice = '還有問題沒回答：先回答了再存檔';
+				this.#editor.session.notice = m.file_unanswered();
 				return;
 			}
 			await this.save();
@@ -904,7 +897,7 @@ export class FlowFile {
 		}
 		const r = draft && readFlowFile(draft.bytes);
 		if (!draft || !r || r.kind !== 'ok') {
-			this.#openError = '這份草稿讀不出來';
+			this.#openError = m.file_draft_unreadable();
 			return;
 		}
 		const unchanged = fileDraftId(draft.bytes) === id;
@@ -1134,14 +1127,18 @@ export interface RecentFlow {
  * 存好了的提示，寫出檔名。下載新檔（Safari、Firefox）第一次存時多說一句：從檔案開的，說原本的檔沒改，
  * 在電腦上叫教練改用 Chrome、Edge 才能存回原檔；新的流程本來就沒有原檔，只說每次存都下載一個新檔。
  */
-function savedText(outcome: SaveOutcome, fileName: string, first: boolean, hadFile: boolean, touch: boolean): string {
-	if (outcome === 'saved') return `已存到「${fileName}」`;
-	if (outcome === 'shared') return `已分享「${fileName}」`;
-	if (!first) return `已下載${hadFile ? '新的' : ''}「${fileName}」`;
-	if (!hadFile) return `已下載「${fileName}」；這個瀏覽器每次存檔都下載一個新檔`;
-	return touch
-		? `已下載新的「${fileName}」；原本開的檔沒有改`
-		: `已下載新的「${fileName}」；這個瀏覽器不能改原本開的檔，用電腦上的 Chrome 或 Edge 開檔，存檔才會存回原檔`;
+function savedText(outcome: SaveOutcome, name: string, first: boolean, hadFile: boolean, touch: boolean): string {
+	if (outcome === 'saved') return m.file_saved_to({ name });
+	if (outcome === 'shared') return m.file_shared({ name });
+	if (!first) return (hadFile ? m.file_downloaded_new : m.file_downloaded)({ name });
+	if (!hadFile) return m.file_downloaded_first({ name });
+	return touch ? m.file_downloaded_touch({ name }) : m.file_downloaded_desktop({ name });
+}
+
+/** 開檔時缺音樂檔的提示：寫出流程檔（或草稿）的名字和缺的音樂檔。 */
+function missingAudioText(name: string, files: string[]): string {
+	const quoted = files.map((f) => m.file_quoted({ name: f })).reduceRight((rest, first) => m.file_quoted_list({ first, rest }));
+	return (files.length === 1 ? m.file_opened_missing_audio_one : m.file_opened_missing_audio)({ name, files: quoted });
 }
 
 /** 剛建好的流程的草稿 id：每次都不一樣。 */

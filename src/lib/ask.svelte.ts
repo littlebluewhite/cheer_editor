@@ -21,6 +21,7 @@ import {
 	type Flow
 } from '#lib/core';
 import type { Said } from '#lib/core';
+import { m } from '#lib/paraglide/messages.js';
 import { reasonText, whyText } from '#lib/reason-text.js';
 
 /** 教練的回答。 */
@@ -87,7 +88,7 @@ export class Ask {
 	constructor(
 		onchange: (flow: Flow, step?: SentStep) => void,
 		{
-			confirmLabel = '確定',
+			confirmLabel = m.session_confirm(),
 			onfail,
 			locked,
 			flow = () => null
@@ -184,8 +185,8 @@ export class Ask {
 			handlers.done?.(r);
 		} else if (r.kind === 'blocked') {
 			const reason = reasonText(r);
-			if (field !== undefined) this.fieldErrors[field] = `「${field}」退回原本的值：${reason}`;
-			else this.error = handlers.revert ? `${reason}，已還原` : reason;
+			if (field !== undefined) this.fieldErrors[field] = m.session_field_reverted({ field, reason });
+			else this.error = handlers.revert ? m.session_reverted({ reason }) : reason;
 			handlers.revert?.();
 		} else {
 			// 要問了：舊的紅字收掉，確認框旁邊不留跟這次無關的原因。

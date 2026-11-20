@@ -17,11 +17,10 @@ import {
 import type { DecodedAudio, LoadedAudio } from '#lib/audio/decode.js';
 import { newStepId, type Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
 
 /** 雲端流程一個音樂檔最大幾個位元組（60 MB）。伺服器 server/src/music.rs 的 MAX_AUDIO_BYTES 跟它一樣。 */
 export const MAX_CLOUD_AUDIO_BYTES = 60 * 1024 * 1024;
-export const AUDIO_TOO_BIG = '音樂檔太大，請轉成 mp3';
-export const UPLOAD_FAILED = '連不上伺服器，音樂檔沒傳上去';
 
 /** 把音樂檔傳上雲端（audioId：流程裡這個音樂檔的 id）。伺服器查到太大是 'tooBig'；連不上丟錯。 */
 export type UploadAudio = (audioId: string, file: File) => Promise<'ok' | 'tooBig'>;
@@ -97,7 +96,7 @@ export class MusicLibrary {
 		const check = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
 		if (check.kind === 'blocked') return void ask.block(check);
 		const upload = this.upload;
-		if (upload && file.size > MAX_CLOUD_AUDIO_BYTES) return void ask.block(AUDIO_TOO_BIG);
+		if (upload && file.size > MAX_CLOUD_AUDIO_BYTES) return void ask.block(m.file_audio_too_big());
 		const pick = {};
 		this.#picks.add(pick);
 		const bytes = await file.arrayBuffer();
@@ -105,7 +104,7 @@ export class MusicLibrary {
 		try {
 			decoded = await this.#decode(bytes);
 		} catch {
-			if (this.#picks.delete(pick)) ask.block('這個音樂檔讀不出來');
+			if (this.#picks.delete(pick)) ask.block(m.file_audio_unreadable());
 			return;
 		}
 		// 解碼時段設定已經關掉（可能換開了別段、別的流程）：這個檔不要了。
@@ -127,7 +126,7 @@ export class MusicLibrary {
 				if (!this.#picks.has(pick)) return;
 				if (sent !== 'ok') {
 					this.#picks.delete(pick);
-					return void ask.block(sent === 'tooBig' ? AUDIO_TOO_BIG : UPLOAD_FAILED);
+					return void ask.block(sent === 'tooBig' ? m.file_audio_too_big() : m.file_audio_upload_failed());
 				}
 			}
 		}

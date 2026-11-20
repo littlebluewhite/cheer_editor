@@ -2,6 +2,7 @@
 // 每一項只給「選到的人的新位置怎麼算」；插站位、往後帶、一步復原都走 moveGroup（跟拖人同一條路，見 SelectionTools）。
 
 import { alignColumn, alignRow, mirrorPositions, spreadEvenly, type Flow, type Position } from '#lib/core';
+import { m } from '#lib/paraglide/messages.js';
 
 export interface SelectionAction {
 	/** 按鈕和選單上的字。 */
@@ -21,38 +22,39 @@ export interface SelectionAction {
 	nth?: true;
 }
 
-const ACTIONS: SelectionAction[] = [
+/** 全部的項目：字照畫面的語言（每次叫的時候寫）。 */
+const actions = (): SelectionAction[] => [
 	{
-		label: '鏡像',
-		title: '以場地左右中線為軸，左右對調（照正面看的方向），前後不變；站在中線上的人不動',
+		label: m.session_mirror(),
+		title: m.session_mirror_title(),
 		min: 1,
 		place: (flow, pos, zoom) => mirrorPositions(flow.field, pos, zoom)
 	},
 	{
-		label: '跟第 [_] 張一樣',
-		title: '選到的人改到那一張站位裡的位置；沒選人就是全隊',
+		label: m.session_same_as(),
+		title: m.session_same_as_title(),
 		min: 0,
 		nth: true,
 		place: (flow, pos, _zoom, n) =>
 			Object.fromEntries(Object.keys(pos).map((id) => [id, flow.formations[n - 1].pos[id]]))
 	},
 	{
-		label: '排成一橫排',
-		title: '前後位置一樣：取大家前後位置的平均，再吸附；左右不變',
+		label: m.session_row(),
+		title: m.session_row_title(),
 		min: 2,
-		group: '對齊',
+		group: m.session_align(),
 		place: (flow, pos, zoom) => alignRow(flow.field, pos, zoom)
 	},
 	{
-		label: '排成一直排',
-		title: '左右位置一樣：取大家左右位置的平均，再吸附；前後不變',
+		label: m.session_column(),
+		title: m.session_column_title(),
 		min: 2,
-		group: '對齊',
+		group: m.session_align(),
 		place: (flow, pos, zoom) => alignColumn(flow.field, pos, zoom)
 	},
 	{
-		label: '平均分開',
-		title: '兩端的人不動，中間的人照順序排在兩端之間，間隔一樣，再吸附',
+		label: m.session_spread(),
+		title: m.session_spread_title(),
 		min: 3,
 		place: (flow, pos, zoom) => spreadEvenly(flow.field, pos, zoom)
 	}
@@ -60,5 +62,5 @@ const ACTIONS: SelectionAction[] = [
 
 /** 選了 count 個人時，工具列和右鍵選單上有的項目（照順序）。沒選人（0）時是套用全隊的項目。 */
 export function selectionActions(count: number): SelectionAction[] {
-	return ACTIONS.filter((a) => count >= a.min);
+	return actions().filter((a) => count >= a.min);
 }

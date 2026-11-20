@@ -33,7 +33,7 @@
 // 接不上的先留著，接上了再換。
 
 import {
-	actionLabel,
+	actionWhy,
 	applyRemoteChange,
 	attemptText,
 	carryRecords,
@@ -51,7 +51,7 @@ import {
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
+import { joinSentences, type CloudStep, type DroppedRecord, type EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
 import { reasonText, whyText } from '#lib/reason-text.js';
@@ -63,11 +63,9 @@ import { runKey, runKeyLabel } from '#lib/run-keys.js';
 /** 還沒被伺服器收的一步：送的、這一步改了什麼（提示用）、做的時候看到第幾步、改之前、改之後的流程。 */
 type Queued = CloudStep & { label: string; seen: number; before: Flow; after: Flow };
 
-/** 有新版時不能改的原因。 */
+/** 有新版時不能改的原因。舊的中文常數，留給還沒改的地方用（t.cloud_new_version() 是照畫面語言的同一句，同 VIEW_ONLY）。 */
 export const NEW_VERSION = '有新版，請重新整理';
-/** 記錄者、檢視者不能改的原因。 */
-export const ONLY_VIEW = '你只能看這支流程';
-/** 斷線時不能改的原因。 */
+/** 斷線時不能改的原因。舊的中文常數，同 NEW_VERSION（t.cloud_offline()）。 */
 export const OFFLINE = '斷線了，連上才能改';
 
 /** 「都傳上去了。」留幾毫秒。 */
@@ -395,8 +393,9 @@ export class CloudSteps {
 
 	/** 不能改的原因放進 session：有新版優先，再來是斷線。記錄者只能改、刪自己記的。 */
 	#lock() {
-		this.#session.readOnly = this.newVersion ? NEW_VERSION : this.offline ? OFFLINE : canEdit(this.role) ? '' : ONLY_VIEW;
-		this.#session.cannotRecord = this.newVersion ? NEW_VERSION : this.role === 'viewer' ? ONLY_VIEW : '';
+		const newVersion = t.cloud_new_version();
+		this.#session.readOnly = this.newVersion ? newVersion : this.offline ? t.cloud_offline() : canEdit(this.role) ? '' : t.cloud_only_view();
+		this.#session.cannotRecord = this.newVersion ? newVersion : this.role === 'viewer' ? t.cloud_only_view() : '';
 		this.#session.ownRecordsOnly = this.role === 'recorder';
 	}
 
@@ -421,7 +420,7 @@ export class CloudSteps {
 		this.#batches = [];
 		this.offline = true;
 		this.#lock();
-		this.#session.notice = `${OFFLINE}。還沒送出的步，連上後會再送。`;
+		this.#session.notice = t.cloud_offline_notice();
 		this.#touch();
 	}
 
@@ -445,7 +444,7 @@ export class CloudSteps {
 			if (this.offline) {
 				this.offline = false;
 				this.#lock();
-				this.#session.notice = `連上了。${this.#lostOnReconnect}`;
+				this.#session.notice = this.#lostOnReconnect ? joinSentences([t.cloud_back(), this.#lostOnReconnect]) : t.cloud_back();
 				this.#lostOnReconnect = '';
 			}
 			this.#sendHead();
@@ -465,7 +464,7 @@ export class CloudSteps {
 			// 補不上（斷線太久）：換成伺服器的樣子，還沒送到的步不算；連回來時跟「連上了。」一起說
 			const dropped = this.#dropQueue();
 			this.#seen = m.step;
-			const lost = dropped.length ? `換成伺服器現在的樣子，還沒送到的 ${dropped.length} 步沒存進去。` : '';
+			const lost = dropped.length ? (dropped.length === 1 ? t.cloud_replaced_lost_one : t.cloud_replaced_lost)({ count: dropped.length }) : '';
 			if (this.offline) this.#lostOnReconnect = lost;
 			this.#reset(m.flow as Flow, this.offline || !lost ? this.#session.notice : lost, dropped);
 		} else if (m.kind === 'revoked') {
@@ -748,13 +747,14 @@ export class CloudSteps {
 		this.#lock();
 		if (canEdit(role)) {
 			// 移交（#252）：擁有者、編輯者之間換，本來就能改
-			this.#session.notice = could ? `你現在是${ROLE_NAMES[role]}。` : `你現在是${ROLE_NAMES[role]}，可以改了。`;
+			this.#session.notice = (could ? t.cloud_role_now : t.cloud_role_now_edit)({ role: ROLE_NAMES[role] });
 			return;
 		}
 		const dropped = this.#dropQueue();
 		this.#seen = step;
-		const lost = dropped.length ? `還沒送到的 ${dropped.length} 步沒存進去。` : '';
-		this.#reset(flow, `你現在是${ROLE_NAMES[role]}，只能看。${lost}`, dropped);
+		const now = t.cloud_role_now_view({ role: ROLE_NAMES[role] });
+		const lost = dropped.length ? (dropped.length === 1 ? t.cloud_lost_one : t.cloud_lost)({ count: dropped.length }) : '';
+		this.#reset(flow, lost ? joinSentences([now, lost]) : now, dropped);
 	}
 }
 
@@ -797,8 +797,8 @@ export function sentBack({ why, by, message }: Rejected, label: string): string 
 /** 同一次全上的同一組別人先存了（#262）：「王教練已經記了這次全上的第 2 組」。 */
 function alreadyRecorded(flow: Flow | null, { actionId, attempt }: StoredAttempt, by: string): string {
 	const action = flow?.actions.find((a) => a.id === actionId);
-	const which = flow && action ? runKeyLabel(flow, runKey(action, attempt.who)) : '這一組';
-	return `${by}已經記了這次全上的${which}`;
+	const which = flow && action ? runKeyLabel(flow, runKey(action, attempt.who)) : t.cloud_this_squad();
+	return t.cloud_already_recorded({ by, which });
 }
 
 /** 伺服器送來的一次（流程核心的 Attempt）。 */
@@ -813,7 +813,7 @@ function droppedRow(flow: Flow, { actionId, attempt }: StoredAttempt): DroppedRe
 	return {
 		id: attempt.id,
 		date: attempt.date,
-		action: actionLabel(action),
+		action: whyText(actionWhy(action)),
 		who,
 		marks: attemptText(action, attempt),
 		runThrough: attempt.practice === 'runThrough'
