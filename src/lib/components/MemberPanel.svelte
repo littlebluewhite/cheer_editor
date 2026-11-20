@@ -13,7 +13,7 @@
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from '#lib/marker.js';
 	import { reveal, revealAlert } from './reveal';
-	import { reasonText } from '#lib/reason-text.js';
+	import { reasonText, whyText } from '#lib/reason-text.js';
 	import {
 		GENDERS,
 		GLOBAL_ROLES,
@@ -210,14 +210,14 @@
 						value={m.gender}
 						onchange={(e) => edit(m.id, { gender: e.currentTarget.value as Gender })}
 					>
-						{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
+						{#each GENDERS as g (g.key)}<option value={g.key}>{whyText(g.label)}</option>{/each}
 					</select>
 					<select
 						aria-label="第 {i + 1} 位隊員的全局角色"
 						value={m.globalRole}
 						onchange={(e) => edit(m.id, { globalRole: e.currentTarget.value as GlobalRole })}
 					>
-						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
+						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{whyText(r.label)}</option>{/each}
 					</select>
 					<button
 						type="button"
@@ -268,14 +268,14 @@
 				性別
 				<select bind:value={gender} disabled={full}>
 					<option value="">請選</option>
-					{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
+					{#each GENDERS as g (g.key)}<option value={g.key}>{whyText(g.label)}</option>{/each}
 				</select>
 			</label>
 			<label>
 				全局角色
 				<select bind:value={globalRole} disabled={full}>
 					<option value="">請選</option>
-					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
+					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{whyText(r.label)}</option>{/each}
 				</select>
 			</label>
 		</div>

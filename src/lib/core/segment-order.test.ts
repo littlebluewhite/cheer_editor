@@ -53,7 +53,15 @@ describe('刪段', () => {
 			message: '刪掉口號 1，下面這些也會一起刪掉',
 			why: { code: 'segment_order_delete', segment: { code: 'time_segment_chant', n: 1 } },
 			// 口號段的時間寫「秒」（T11）
-			items: ['動作「舞蹈·喊」（0.0 秒起）', '站位 3（2.0 秒）']
+			items: ['動作「舞蹈·喊」（0.0 秒起）', '站位 3（2.0 秒）'],
+			whyItems: [
+				{
+					code: 'segment_order_item_action',
+					action: { code: 'action_label', category: { code: 'category_dance' }, name: '喊' },
+					from: { code: 'time_from_seconds', n: '0.0' }
+				},
+				{ code: 'segment_order_item_formation', n: 3, at: { code: 'time_seconds', n: '2.0' } }
+			]
 		});
 	});
 
@@ -103,7 +111,15 @@ describe('刪段', () => {
 			kind: 'confirm',
 			message: '刪掉音樂 1，下面這些也會一起刪掉',
 			why: { code: 'segment_order_delete', segment: { code: 'time_segment_music', n: 1 } },
-			items: ['動作「技巧·Lib」（1-1 起）', '站位 2（2-1）']
+			items: ['動作「技巧·Lib」（1-1 起）', '站位 2（2-1）'],
+			whyItems: [
+				{
+					code: 'segment_order_item_action',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					from: { code: 'time_from', at: '1-1' }
+				},
+				{ code: 'segment_order_item_formation', n: 2, at: '2-1' }
+			]
 		});
 		const flow = flowOf(deleteSegment(sample(), 's1', { confirmed: true }));
 		expect(flow.segments.map((s) => s.id)).toEqual(['s2']);

@@ -33,6 +33,7 @@ import {
 } from '#lib/core';
 import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
+import { whyText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
@@ -407,7 +408,7 @@ export class EditorSession {
 		let undoStep: Step | null = null;
 		if (this.onstep) {
 			// 雲端流程：送伺服器（存好了由它說）；復原紀錄存改到的東西（#256），合成一步的照第一步之前到現在
-			const said = label ?? changeLabel(before, flow);
+			const said = label ?? whyText(changeLabel(before, flow));
 			if (step) this.onstep(step, said, before, flow);
 			this.#saved = flow;
 			const changes = undoChanges(before, flow);
@@ -416,7 +417,7 @@ export class EditorSession {
 		} else {
 			// 合成一步的：說的是從合之前到現在改了什麼
 			const from = last && 'flow' in last ? last.flow : before;
-			undoStep = { flow: from, after: flow, label: label ?? changeLabel(from, flow) };
+			undoStep = { flow: from, after: flow, label: label ?? whyText(changeLabel(from, flow)) };
 		}
 		if (undoStep) {
 			this.#undo = (last ? [...this.#undo.slice(0, -1), undoStep] : [...this.#undo, undoStep]).slice(-UNDO_LIMIT);
@@ -426,7 +427,7 @@ export class EditorSession {
 		this.#flow = flow;
 		this.ask.clear();
 		this.#trim(flow);
-		const shown = undoStep?.label ?? label ?? changeLabel(before, flow);
+		const shown = undoStep?.label ?? label ?? whyText(changeLabel(before, flow));
 		this.#said = { flow, before, label: shown, extra: [], button: { label: '復原', name: `復原：${shown}` } };
 		this.#showSaid();
 		this.#playback.changed(before);

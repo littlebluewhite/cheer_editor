@@ -3,6 +3,7 @@
 	// 刪有人用的自訂角色時，核心回「要確認」：列出動作，按確定才刪。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { roleGlossary, type CustomRole } from '#lib/core';
+	import { whyText } from '#lib/reason-text.js';
 	import CharCount from './CharCount.svelte';
 	import { commitField, customRoleNameField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
@@ -97,8 +98,8 @@
 							</td>
 						{:else}
 							<td><b>{r.name}</b>{#if r.custom}<small class="tag">自訂</small>{/if}</td>
-							<td>{r.meaning}</td>
-							<td>{r.ruleName || '—'}</td>
+							<td>{whyText(r.meaning)}</td>
+							<td>{whyText(r.ruleName) || '—'}</td>
 						{/if}
 					</tr>
 				{/each}

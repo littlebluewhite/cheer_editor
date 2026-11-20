@@ -19,9 +19,10 @@ export interface CustomRole {
 /** 名詞對照表的一列。 */
 export interface RoleEntry {
 	name: string;
-	meaning: string;
-	/** 規則上的叫法；自訂角色是空字串。 */
-	ruleName: string;
+	/** 固定角色是代號（畫面照語言寫），自訂角色是教練寫的字。 */
+	meaning: WhyParam;
+	/** 規則上的叫法（固定角色是代號）；自訂角色是空字串。 */
+	ruleName: WhyParam;
 	custom: boolean;
 	/** 第幾群（選單裡群和群中間畫線）：0 撐人的、1 被撐的、2 保護的、3 其他，自訂角色是 4。 */
 	group: number;
@@ -32,31 +33,57 @@ export interface PickableRole extends RoleEntry {
 	key: string;
 }
 
+/** 固定任務角色在代號裡的名字：role_、roles_meaning_、roles_rule_ 後面接這個。 */
+type RoleSlug =
+	| 'base'
+	| 'main_base'
+	| 'side_base'
+	| 'shoulder_base'
+	| 'top'
+	| 'middle'
+	| 'third'
+	| 'bracer'
+	| 'spotter'
+	| 'front_spot'
+	| 'back_spot'
+	| 'catcher'
+	| 'tumbler';
+
 /**
  * 13 個固定任務角色，照規格（#15）的「任務角色名詞對照表」，分四群：撐人的、被撐的、保護的、其他。
  * 快捷鍵照這個順序，跟著角色固定（docs/superpowers/specs/2026-11-19-shoulder-base-people-list-design.md）。
  */
-export const FIXED_ROLES: readonly RoleEntry[] = [
+export const FIXED_ROLES: readonly RoleEntry[] = (
 	[
-		['底層', '在下面撐住別人的人。不想分主底、側底、肩底時用。', '底層人員'],
-		['主底', '主要撐住上層腳的底層。單底層技巧的那位底層。', '底層人員（台灣規則沒有「主底」）'],
-		['側底', '多底層技巧裡，在主底旁邊一起撐的底層。', '底層人員（台灣規則沒有「側底」）'],
-		['肩底', '金字塔裡站在地上、讓中層站在自己肩上的底層。只有金字塔有。', '底層人員（規則沒有「肩底」）']
-	],
-	[
-		['上層', '被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。', '上層人員'],
-		['中層', '金字塔裡站在底層身上、又撐住三層的人。', '中層人員'],
-		['三層', '金字塔裡站在中層身上、最上面的人。只有金字塔有。', '3 層人員、3 層隊員'],
-		['支撐', '金字塔裡自己也被撐著、伸手穩住別的上層的人。', '支撐者']
-	],
-	[
-		['保護', '站在旁邊保護上層，可扶腳踝、小腿、膝蓋，不能撐腳底，不算底層。', '保護人員（保護員）'],
-		['前保', '站在上層前方的保護。', '前方保護人員'],
-		['後保', '站在上層背後的人，技巧和籃型拋投都是。', '輔助人員（籃型拋投）；金字塔轉接寫「後保」'],
-		['接者', '接住落下或被拋的上層的人。', '接者']
-	],
-	[['騰翻', '做騰翻的人。', '騰翻人員']]
-].flatMap((rows, group) => rows.map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false, group })));
+		[
+			['底層', 'base'],
+			['主底', 'main_base'],
+			['側底', 'side_base'],
+			['肩底', 'shoulder_base']
+		],
+		[
+			['上層', 'top'],
+			['中層', 'middle'],
+			['三層', 'third'],
+			['支撐', 'bracer']
+		],
+		[
+			['保護', 'spotter'],
+			['前保', 'front_spot'],
+			['後保', 'back_spot'],
+			['接者', 'catcher']
+		],
+		[['騰翻', 'tumbler']]
+	] as [string, RoleSlug][][]
+).flatMap((rows, group) =>
+	rows.map(([name, slug]): RoleEntry => ({
+		name,
+		meaning: { code: `roles_meaning_${slug}` },
+		ruleName: { code: `roles_rule_${slug}` },
+		custom: false,
+		group
+	}))
+);
 
 /** 固定任務角色的代號（流程檔存中文名，畫面照語言寫，見 why.ts）。 */
 const FIXED_ROLE_CODES = new Map<string, WhyCode>([

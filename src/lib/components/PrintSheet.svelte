@@ -13,6 +13,7 @@
 		type EightCountRow,
 		type Flow
 	} from '#lib/core';
+	import { whyText } from '#lib/reason-text.js';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
 	import { untrack } from 'svelte';
@@ -36,7 +37,7 @@
 	const roleChoices = $derived(
 		GLOBAL_ROLES.filter((r) => flow.members.some((m) => m.globalRole === r.key)).map((r) => ({
 			value: `role:${r.key}`,
-			label: `全部${r.label}`
+			label: `全部${whyText(r.label)}`
 		}))
 	);
 	const valid = (c: string) =>

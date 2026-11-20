@@ -9,7 +9,7 @@ import { replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { newId } from './ids';
 import { cut, ordered } from './phase-beats';
-import { phaseLabel, phasesMayShareBeats, type Phase, type PhaseKind } from './phase-types';
+import { phaseWhy, phasesMayShareBeats, type Phase, type PhaseKind } from './phase-types';
 import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { recordsLoss, recordsLossText } from './records';
@@ -159,7 +159,7 @@ function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[
 		const one = gone.length === 1;
 		const code = kept.length ? (one ? 'phases_delete_one' : 'phases_delete') : one ? 'phases_delete_none_left_one' : 'phases_delete_none_left';
 		const lost = recordsLossText(removed.length, stripped.length)!;
-		return needsConfirm({ code, count: gone.length, lost }, gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`));
+		return needsConfirm({ code, count: gone.length, lost }, gone.map((p): Why => ({ code: 'phases_delete_item', phase: phaseWhy(p) })));
 	}
 	return ok(replaceAction(flow, settled.action));
 }

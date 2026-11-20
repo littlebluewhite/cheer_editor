@@ -246,7 +246,8 @@ describe('刪環節', () => {
 				count: 1,
 				lost: { code: 'records_loss_marks', marks: { code: 'records_marks', n: 2 } }
 			},
-			items: ['刪掉：環節 中段']
+			items: ['刪掉：環節 中段'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }]
 		});
 	});
 
@@ -262,7 +263,8 @@ describe('刪環節', () => {
 				count: 1,
 				lost: { code: 'records_loss_both', reps: { code: 'records_reps_one', n: 1 }, marks: { code: 'records_marks_one', n: 1 } }
 			},
-			items: ['刪掉：環節 上法 延伸']
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }]
 		});
 		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
 		expect(phasesOf(flow).map((p) => p.id)).toEqual(['p2', 'p3']);
@@ -285,7 +287,8 @@ describe('刪環節', () => {
 				count: 1,
 				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 3 } }
 			},
-			items: ['刪掉：環節 下法']
+			items: ['刪掉：環節 下法'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_kind_dismount' } }]
 		});
 	});
 
@@ -343,7 +346,8 @@ describe('口號段刪環節', () => {
 				count: 1,
 				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
 			},
-			items: ['刪掉：環節 中段']
+			items: ['刪掉：環節 中段'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }]
 		});
 		flow = flowOf(deletePhase(flow, 'x2', 'p4', { confirmed: true }));
 		expect(toss(flow).successRate).toBeUndefined();
