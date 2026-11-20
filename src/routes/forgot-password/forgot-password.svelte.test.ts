@@ -65,6 +65,9 @@ describe('忘記密碼頁（英文）', () => {
 		forgotPage();
 		expect(document.title).toBe('Forgot password — Routine Editor');
 		expect(screen.getByRole('heading', { name: 'Forgot password' })).toBeTruthy();
+		// 上面那條（AccountCard）也是英文
+		expect(screen.getByRole('link', { name: 'Cheer Routine Editor' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: 'Home' })).toBeTruthy();
 		await fireEvent.input(screen.getByLabelText('Email'), { target: { value: 'lin@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Send email' }));
 		await flush();

@@ -8,5 +8,7 @@
 	"server_unreachable": "Can't reach the server. Please try again later.",
 	"page_title": "{page} — Routine Editor",
 	"language": "Language",
-	"language_save_first": "You have unsaved changes. Save them before switching language."
+	"language_save_first": "You have unsaved changes. Save them before switching language.",
+	"app_name": "Cheer Routine Editor",
+	"back_home": "Home"
 }

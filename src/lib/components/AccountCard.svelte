@@ -6,6 +6,7 @@
 	import { resolve } from '$app/paths';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import { m } from '#lib/paraglide/messages.js';
 	import type { Me } from '#lib/server-api.js';
 
 	interface Props {
@@ -21,11 +22,11 @@
 
 <div class="page">
 	<header class="top">
-		<a class="brand" href={resolve('/')}>競技啦啦隊流程編輯器</a>
+		<a class="brand" href={resolve('/')}>{m.app_name()}</a>
 		{#if me}
 			<AccountMenu {me} {onlogout} />
 		{:else}
-			<a class="btn ghost" href={resolve('/')}><Icon name="home" />回首頁</a>
+			<a class="btn ghost" href={resolve('/')}><Icon name="home" />{m.back_home()}</a>
 		{/if}
 	</header>
 	<main class="card" class:wide>
