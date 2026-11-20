@@ -10,14 +10,16 @@ import {
 	loadSegmentAudio,
 	moveSegment,
 	readFlowFile,
+	recordAttempt,
 	splitSegment,
 	toSeconds,
 	updateSegment,
 	writeFlowFile,
 	type Flow,
-	type Formation
+	type Formation,
+	type NewAttempt
 } from './index';
-import { flowOf } from '../test-flows';
+import { flowOf, ratedSample } from '../test-flows';
 
 /**
  * 音樂 1（s1，150 BPM、2 個八拍 = 6.4 秒）→ 口號 1（s2，5 秒）。小A（m1）。
@@ -49,8 +51,35 @@ describe('刪段', () => {
 		expect(deleteSegment(sample(), 's2')).toEqual({
 			kind: 'confirm',
 			message: '刪掉口號 1，下面這些也會一起刪掉',
+			why: { code: 'segment_order_delete', segment: { code: 'time_segment_chant', n: 1 } },
 			// 口號段的時間寫「秒」（T11）
 			items: ['動作「舞蹈·喊」（0.0 秒起）', '站位 3（2.0 秒）']
+		});
+	});
+
+	it('段裡的動作有紀錄：問的時候說會清掉幾次紀錄，按「復原」會回來', () => {
+		const rep: NewAttempt = { date: '2026-11-04', who: 'm1', practice: 'drill', whole: true, marks: { p4: '✓' } };
+		const once = flowOf(recordAttempt(ratedSample(), 'x2', rep));
+		expect(deleteSegment(once, 's1')).toMatchObject({
+			kind: 'confirm',
+			message: '刪掉音樂 1，下面這些也會一起刪掉，會一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'segment_order_delete_records_one',
+				segment: { code: 'time_segment_music', n: 1 },
+				count: 1,
+				undoable: '（清掉的紀錄按「復原」會回來）'
+			}
+		});
+		const twice = flowOf(recordAttempt(once, 'x2', { ...rep, who: 'm2' }));
+		expect(deleteSegment(twice, 's1')).toMatchObject({
+			kind: 'confirm',
+			message: '刪掉音樂 1，下面這些也會一起刪掉，會一起清掉 2 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'segment_order_delete_records',
+				segment: { code: 'time_segment_music', n: 1 },
+				count: 2,
+				undoable: '（清掉的紀錄按「復原」會回來）'
+			}
 		});
 	});
 
@@ -73,6 +102,7 @@ describe('刪段', () => {
 		expect(r).toEqual({
 			kind: 'confirm',
 			message: '刪掉音樂 1，下面這些也會一起刪掉',
+			why: { code: 'segment_order_delete', segment: { code: 'time_segment_music', n: 1 } },
 			items: ['動作「技巧·Lib」（1-1 起）', '站位 2（2-1）']
 		});
 		const flow = flowOf(deleteSegment(sample(), 's1', { confirmed: true }));
@@ -107,7 +137,10 @@ describe('刪段', () => {
 	});
 
 	it('找不到段就擋下', () => {
-		expect(deleteSegment(sample(), 's9').kind).toBe('blocked');
+		const missing = { kind: 'blocked', message: '找不到這一段', why: { code: 'segment_order_no_segment' } };
+		expect(deleteSegment(sample(), 's9')).toEqual(missing);
+		expect(moveSegment(sample(), 's9', 1)).toEqual(missing);
+		expect(splitSegment(sample(), 's9', 1)).toEqual(missing);
 	});
 });
 
@@ -137,8 +170,16 @@ describe('調段順序', () => {
 	});
 
 	it('第一段不能再往前、最後一段不能再往後', () => {
-		expect(moveSegment(sample(), 's1', -1)).toEqual({ kind: 'blocked', message: '已經是第一段了' });
-		expect(moveSegment(sample(), 's2', 1)).toEqual({ kind: 'blocked', message: '已經是最後一段了' });
+		expect(moveSegment(sample(), 's1', -1)).toEqual({
+			kind: 'blocked',
+			message: '已經是第一段了',
+			why: { code: 'segment_order_first' }
+		});
+		expect(moveSegment(sample(), 's2', 1)).toEqual({
+			kind: 'blocked',
+			message: '已經是最後一段了',
+			why: { code: 'segment_order_last' }
+		});
 	});
 
 	it('換過順序、刪過段的流程存成流程檔再打開，內容一樣', () => {
@@ -217,15 +258,28 @@ describe('從播放頭切段（#167）', () => {
 		let flow = long();
 		const base = { note: '', members: [{ memberId: 'm1', role: null }] };
 		flow = flowOf(addAction(flow, { ...base, segmentId: 's1', start: 56, length: 16, category: 'stunt', name: '拋接' }));
-		expect(splitSegment(flow, 's1', 17)).toEqual({ kind: 'blocked', message: '動作「技巧·拋接」（4-5 起）跨過 5-1，切不開' });
+		expect(splitSegment(flow, 's1', 17)).toEqual({
+			kind: 'blocked',
+			message: '動作「技巧·拋接」（4-5 起）跨過 5-1，切不開',
+			why: { code: 'segment_order_across', action: '技巧·拋接', start: '4-5', cut: '5-1' }
+		});
 	});
 
 	it('播放頭在第一個八拍、在別段、口號段：擋下', () => {
 		expect(splitSegment(long(), 's1', 3)).toEqual({
 			kind: 'blocked',
-			message: '播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍'
+			message: '播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍',
+			why: { code: 'segment_order_first_eight' }
 		});
-		expect(splitSegment(long(), 's1', 40)).toEqual({ kind: 'blocked', message: '播放頭不在這一段' });
-		expect(splitSegment(long(), 's2', 34)).toEqual({ kind: 'blocked', message: '口號段不能切' });
+		expect(splitSegment(long(), 's1', 40)).toEqual({
+			kind: 'blocked',
+			message: '播放頭不在這一段',
+			why: { code: 'segment_order_playhead_outside' }
+		});
+		expect(splitSegment(long(), 's2', 34)).toEqual({
+			kind: 'blocked',
+			message: '口號段不能切',
+			why: { code: 'segment_order_chant' }
+		});
 	});
 });

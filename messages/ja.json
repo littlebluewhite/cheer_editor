@@ -96,5 +96,15 @@
 	"insert_beats_room": "挿入できるのは最大 {length} です",
 	"insert_beats_room_eights_rest": "挿入できるのは最大 {eights}と {rest} です",
 	"insert_beats_room_under_eight": "挿入できるのは最大 {length} です（1 エイトカウントに満たないため、単位を拍に変えてください）",
-	"insert_beats_room_none": "このパートの後ろにはもう空きがありません"
+	"insert_beats_room_none": "このパートの後ろにはもう空きがありません",
+	"segment_order_no_segment": "このパートが見つかりません",
+	"segment_order_first": "すでに最初のパートです",
+	"segment_order_last": "すでに最後のパートです",
+	"segment_order_chant": "チアクライテリアは分割できません",
+	"segment_order_playhead_outside": "再生ヘッドがこのパートにありません",
+	"segment_order_first_eight": "再生ヘッドが最初のエイトカウントにあるため分割できません：分割したいエイトカウントに再生ヘッドを移動してください",
+	"segment_order_across": "技「{action}」（{start} から）が {cut} をまたいでいるため分割できません",
+	"segment_order_delete": "{segment}を削除すると、以下も一緒に削除されます",
+	"segment_order_delete_records_one": "{segment}を削除すると、以下も一緒に削除され、{count} 本の記録も消えます{undoable}",
+	"segment_order_delete_records": "{segment}を削除すると、以下も一緒に削除され、{count} 本の記録も消えます{undoable}"
 }
