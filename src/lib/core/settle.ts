@@ -10,7 +10,7 @@ import { newId } from './ids';
 import { phaseFallout, phaseFalloutWhy, type PhaseFallout } from './phase-beats';
 import { RECORDS_UNDOABLE_WHY, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
-import { said, zh, type Said, type Why } from './why';
+import { said, type Said, type Why } from './why';
 import {
 	allSquadIds,
 	fitPhaseKinds,
@@ -226,7 +226,7 @@ function falloutMessage(
 			to.kind !== 'music' ? [toChant] : from.kind !== 'music' ? [{ code: 'settle_why_to_music' } as Why] : [shorter, offBeat];
 		return falloutWhy(action, why, phaseFalloutWhy(phases!));
 	}
-	const will: Why = phases ? { code: 'settle_will_and', a: cuesWhy(cues), b: phaseFalloutWhy(phases) } : cuesWhy(cues);
+	const will: Why = phases ? { code: 'settle_will_and', a: cueFalloutWhy(cues), b: phaseFalloutWhy(phases) } : cueFalloutWhy(cues);
 	if (to.kind !== 'music') return falloutWhy(action, [toChant], will);
 	return falloutWhy(action, [shorter, cues.orphaned ? { code: 'settle_why_people' } : null, offBeat], will);
 }
@@ -238,12 +238,9 @@ function falloutWhy(action: Action, causes: (Why | null)[], will: Why): Why {
 	return why ? { code: 'settle_fallout', action: label, why, will } : { code: 'settle_fallout_no_cause', action: label, will };
 }
 
-/** 「拿掉 1 個、切短 1 個拍點」（確認訊息裡拍點那一段）。 */
-function cuesWhy({ removed, cut }: CueFallout): Why {
+/** 「拿掉 1 個、切短 1 個拍點」（確認訊息裡拍點那一段；裁短動作的確認清單也用）。 */
+export function cueFalloutWhy({ removed, cut }: CueFallout): Why {
 	if (removed && cut) return { code: 'settle_cues_removed_cut', removed, cut };
 	if (removed) return { code: removed === 1 ? 'settle_cues_removed_one' : 'settle_cues_removed', n: removed };
 	return { code: cut === 1 ? 'settle_cues_cut_one' : 'settle_cues_cut', n: cut };
 }
-
-/** 「拿掉 1 個、切短 1 個拍點」的中文（裁短動作的確認清單用）。 */
-export const cueFalloutText = (cues: CueFallout): string => zh(cuesWhy(cues));

@@ -112,7 +112,20 @@ describe('段縮短', () => {
 				'刪掉：站位 2（2-1）',
 				'刪掉：站位 3（4-1）'
 			],
-			confirmLabel: '確定刪除'
+			whyItems: [
+				{
+					code: 'segment_trim_item',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					from: { code: 'time_from', at: '1-1' },
+					before: { code: 'time_length_beats', n: 8 },
+					after: { code: 'time_length_beats', n: 6 }
+				},
+				{ code: 'segment_drop_action', action: { code: 'action_label', category: { code: 'category_jump' }, name: 'T' }, from: { code: 'time_from', at: '3-1' } },
+				{ code: 'segment_drop_formation', n: 2, at: '2-1' },
+				{ code: 'segment_drop_formation', n: 3, at: '4-1' }
+			],
+			confirmLabel: '確定刪除',
+			confirmWhy: { code: 'segment_confirm_delete' }
 		});
 		expect(flow).toEqual(before);
 	});
@@ -234,7 +247,22 @@ describe('刪隊員', () => {
 					more: { code: 'members_delete_renumber', count: 2, more: '' }
 				}
 			},
-			items: ['動作「技巧·Lib」（音樂 1 1-1 起）：他是上層', '動作「跳躍·T」（音樂 1 3-1 起）：只有他，會整個刪掉']
+			items: ['動作「技巧·Lib」（音樂 1 1-1 起）：他是上層', '動作「跳躍·T」（音樂 1 3-1 起）：只有他，會整個刪掉'],
+			whyItems: [
+				{
+					code: 'members_delete_item_role',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					segment: { code: 'time_segment_music', n: 1 },
+					from: { code: 'time_from', at: '1-1' },
+					role: { code: 'role_top' }
+				},
+				{
+					code: 'members_delete_item_emptied',
+					action: { code: 'action_label', category: { code: 'category_jump' }, name: 'T' },
+					segment: { code: 'time_segment_music', n: 1 },
+					from: { code: 'time_from', at: '3-1' }
+				}
+			]
 		});
 		expect(flow).toEqual(before);
 	});

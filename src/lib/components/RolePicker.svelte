@@ -10,12 +10,14 @@
 	// 選單開在最上層（popover.svelte.ts）：右邊欄裁不到它，下面放不下就往上開。
 	import { composing } from '#lib/ime.js';
 	import { below, popover } from '#lib/popover.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
+	import type { WhyParam } from '#lib/core';
 
 	interface Props {
 		label: string;
 		value: string | null;
 		/** 角色名稱、一句說明、快捷鍵（跟著角色固定，沒有是空字串）、第幾群，照名詞對照表的順序。 */
-		roles: { name: string; meaning: string; key: string; group: number }[];
+		roles: { name: string; meaning: WhyParam; key: string; group: number }[];
 		/** byKey：是按快捷鍵選的（外面可以跳到下一個人）。 */
 		onpick: (role: string | null, byKey: boolean) => void;
 		/** 選了「＋自訂任務角色…」。 */
@@ -119,7 +121,7 @@
 					onclick={() => choose(item)}
 					onmouseenter={() => (active = k)}
 				>
-					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{roles[k - 1].meaning}</span>{/if}{/if}
+					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{whyText(roles[k - 1].meaning)}</span>{/if}{/if}
 				</li>
 			{/each}
 		</ul>

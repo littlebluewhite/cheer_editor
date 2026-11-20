@@ -2,16 +2,16 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
-import { actionLabel, actionWhy, replaceAction, type Action } from './action-types';
+import { actionWhy, replaceAction, type Action } from './action-types';
 import { changeAction } from './actions';
 import type { Flow } from './flow';
 import { newId } from './ids';
-import { phaseFalloutText } from './phase-beats';
+import { phaseFalloutWhy } from './phase-beats';
 import { recordsLoss, recordsLossText } from './records';
-import { cueFalloutText } from './settle';
+import { cueFalloutWhy } from './settle';
 import { recordCount } from './success-rate';
 import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atTextWithUnit, fromText, labelWhy, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
+import { atWhy, fromWhy, labelWhy, lengthWhy, parseNumber, segmentSpans, totalSeconds, units } from './time';
 import type { Said, Why } from './why';
 
 export interface MusicSegment {
@@ -260,7 +260,7 @@ export function updateSegment(
 		actions: flow.actions.filter((a) => !droppedActions.includes(a)),
 		formations
 	};
-	const trimItems: string[] = [];
+	const trimItems: Why[] = [];
 	let records = recordCount(droppedActions);
 	let marks = 0;
 	for (const a of trimmed) {
@@ -283,10 +283,10 @@ export function updateSegment(
 				: { code: 'segment_shrink', segment, what },
 			[
 				...trimItems,
-				...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
-				...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(old, f.at)}）`)
+				...droppedActions.map((a): Why => ({ code: 'segment_drop_action', action: actionWhy(a), from: fromWhy(old, a.start) })),
+				...droppedFormations.map((f): Why => ({ code: 'segment_drop_formation', n: flow.formations.indexOf(f) + 1, at: atWhy(old, f.at) }))
 			],
-			drops ? '確定刪除' : '確定裁短'
+			{ code: drops ? 'segment_confirm_delete' : 'segment_confirm_trim' }
 		);
 	}
 	return ok(withoutUnusedAudio(result));
@@ -300,21 +300,21 @@ function trimAction(
 	flow: Flow,
 	before: Action,
 	length: number
-): { kind: 'ok'; flow: Flow; item: string; records: number; marks: number } | ({ kind: 'blocked' } & Said) {
+): { kind: 'ok'; flow: Flow; item: Why; records: number; marks: number } | ({ kind: 'blocked' } & Said) {
 	const segment = flow.segments.find((s) => s.id === before.segmentId)!;
 	const r = changeAction(flow, before.id, { length }, { confirmed: true });
 	if (r.kind !== 'ok') return r;
 	const { cues } = r;
 	const { phases } = r.fallout;
-	const fallout = [cues && cueFalloutText(cues), phases && phaseFalloutText(phases)].filter(Boolean);
+	// 標的拍只挪了半拍、沒切到的不寫（見 phaseFalloutWhy）
+	const fallout = [cues && cueFalloutWhy(cues), phases && (phases.cut || phases.dropped) ? phaseFalloutWhy(phases) : null].filter((w) => w !== null);
+	const will = fallout.reduceRight<Why | null>((b, a) => (b ? { code: 'settle_will_and', a, b } : a), null);
 	const { removed, stripped } = recordsLoss(before.successRate?.records ?? [], r.action.successRate?.records ?? []);
+	const trim = { action: actionWhy(before), from: fromWhy(segment, before.start), before: lengthWhy(segment, before.length), after: lengthWhy(segment, length) };
 	return {
 		kind: 'ok',
 		flow: replaceAction(flow, r.action),
-		item:
-			`裁短：動作「${actionLabel(before)}」（${fromText(segment, before.start)}）` +
-			`${lengthTextWithUnit(segment, before.length)} → ${lengthTextWithUnit(segment, length)}` +
-			(fallout.length ? `，會${fallout.join('，')}` : ''),
+		item: will ? { code: 'segment_trim_item_fallout', ...trim, will } : { code: 'segment_trim_item', ...trim },
 		records: removed.length,
 		marks: stripped.length
 	};

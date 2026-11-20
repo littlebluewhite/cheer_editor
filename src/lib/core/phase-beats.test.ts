@@ -127,7 +127,8 @@ describe('蓋到別的環節', () => {
 				count: 1,
 				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
 			},
-			items: ['刪掉：環節 下法 搖籃']
+			items: ['刪掉：環節 下法 搖籃'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_dismount' }, name: '搖籃' } }]
 		});
 		expect(brief(flowOf(add({ confirmed: true })))).toEqual(['p1 0+6', 'p2 6+14', 'p4 24+8']);
 	});
@@ -147,7 +148,8 @@ describe('蓋到別的環節', () => {
 				count: 1,
 				lost: { code: 'records_loss_marks', marks: { code: 'records_marks_one', n: 1 } }
 			},
-			items: ['刪掉：環節 上法 延伸']
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }]
 		});
 		const flow = flowOf(markPhaseBeats(recorded, 'x1', 'p2', 0, 20, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p2 0+20', 'p3 24+8']);
@@ -256,7 +258,8 @@ describe('清標的拍', () => {
 				count: 1,
 				lost: { code: 'records_loss_marks', marks: { code: 'records_marks_one', n: 1 } }
 			},
-			items: ['刪掉：環節 上法 延伸']
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }]
 		});
 		const flow = flowOf(clearPhaseBeats(recorded, 'x1', 0, 6, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p2 6+14', 'p3 24+8']);
@@ -277,7 +280,8 @@ describe('清標的拍', () => {
 				count: 2,
 				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
 			},
-			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段']
+			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }, { code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }]
 		});
 	});
 
@@ -291,7 +295,8 @@ describe('清標的拍', () => {
 				count: 3,
 				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 2 } }
 			},
-			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段', '刪掉：環節 下法 搖籃']
+			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段', '刪掉：環節 下法 搖籃'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }, { code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }, { code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_dismount' }, name: '搖籃' } }]
 		});
 		expectUnrated(flowOf(clearPhaseBeats(recorded, 'x1', 0, 32, { confirmed: true })));
 	});

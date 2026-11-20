@@ -12,6 +12,7 @@ import {
 	roleGlossary,
 	updateCustomRole
 } from './index';
+import { zh, type Why } from './why';
 import { flowOf } from '../test-flows';
 
 const empty = () => flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -25,18 +26,22 @@ describe('任務角色', () => {
 		expect(rows.map((r) => r.group)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]);
 		expect(rows[3]).toEqual({
 			name: '肩底',
-			meaning: '金字塔裡站在地上、讓中層站在自己肩上的底層。只有金字塔有。',
-			ruleName: '底層人員（規則沒有「肩底」）',
+			meaning: { code: 'roles_meaning_shoulder_base' },
+			ruleName: { code: 'roles_rule_shoulder_base' },
 			custom: false,
 			group: 0
 		});
+		expect(zh(rows[3].meaning as Why)).toBe('金字塔裡站在地上、讓中層站在自己肩上的底層。只有金字塔有。');
+		expect(zh(rows[3].ruleName as Why)).toBe('底層人員（規則沒有「肩底」）');
 		expect(rows[1]).toEqual({
 			name: '主底',
-			meaning: '主要撐住上層腳的底層。單底層技巧的那位底層。',
-			ruleName: '底層人員（台灣規則沒有「主底」）',
+			meaning: { code: 'roles_meaning_main_base' },
+			ruleName: { code: 'roles_rule_main_base' },
 			custom: false,
 			group: 0
 		});
+		expect(zh(rows[1].meaning as Why)).toBe('主要撐住上層腳的底層。單底層技巧的那位底層。');
+		expect(zh(rows[1].ruleName as Why)).toBe('底層人員（台灣規則沒有「主底」）');
 	});
 
 	it('任務角色選單：三層、肩底只有金字塔有；已經是的人換了大類也看得到這一項', () => {

@@ -1,6 +1,6 @@
 // 隊員名單：加隊員、改隊員、排順序、刪隊員。
 
-import { actionLabel, actionWhy, type Action } from './action-types';
+import { actionWhy, type Action } from './action-types';
 import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
@@ -12,7 +12,7 @@ import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
 import { joined, zh, type Why, type WhyParam } from './why';
-import { fromText, segmentSpans } from './time';
+import { fromWhy, labelWhy, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
 export const MAX_MEMBERS = 40;
@@ -21,16 +21,16 @@ export type Gender = 'F' | 'M';
 /** 全局角色：底層或上層，教練自己選，不依性別帶入。 */
 export type GlobalRole = 'base' | 'top';
 
-/** 性別，流程檔存英文代號。 */
-export const GENDERS: { key: Gender; label: string }[] = [
-	{ key: 'F', label: '女' },
-	{ key: 'M', label: '男' }
+/** 性別，流程檔存英文代號；label 是代號（畫面照語言寫）。 */
+export const GENDERS: { key: Gender; label: Why }[] = [
+	{ key: 'F', label: { code: 'members_gender_f' } },
+	{ key: 'M', label: { code: 'members_gender_m' } }
 ];
 
-/** 全局角色，流程檔存英文代號。 */
-export const GLOBAL_ROLES: { key: GlobalRole; label: string }[] = [
-	{ key: 'base', label: '底層' },
-	{ key: 'top', label: '上層' }
+/** 全局角色，流程檔存英文代號；label 跟任務角色底層、上層同一個代號（畫面照語言寫）。 */
+export const GLOBAL_ROLES: { key: GlobalRole; label: Why }[] = [
+	{ key: 'base', label: { code: 'role_base' } },
+	{ key: 'top', label: { code: 'role_top' } }
 ];
 
 export interface Member {
@@ -75,8 +75,9 @@ export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<
 /**
  * 貼上的名單加隊員：每一行是「名字」（用表單選的性別、全局角色）或「名字、性別、全局角色」三欄。
  * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白）。
- * 性別認男、女、男生、女生、M、F；全局角色認底層、上層、base、top、飛人（英文不分大小寫）。
- * 全局角色寫成主底、後保這類任務角色：擋下並說明。三欄的行不用表單選的。空行、標題列（第一欄是「名字」「姓名」「name」）跳過。
+ * 性別認男、女、男生、女生、M、F，和選單上寫的 female、male、女性、男性；全局角色認底層、上層、base、top、飛人，
+ * 和選單上寫的 top person、ベース、トップパーソン（英文不分大小寫）。
+ * 全局角色寫成主底、後保這類任務角色：擋下並說明。三欄的行不用表單選的。空行、標題列（第一欄是「名字」「姓名」「name」「名前」）跳過。
  * 見 addEntries。
  */
 export function addMemberLines(
@@ -107,11 +108,31 @@ export function addMemberLines(
 }
 
 /** 貼上名單認得的性別寫法（英文比小寫）。 */
-const GENDER_WORDS: Record<string, Gender> = { 女: 'F', 女生: 'F', f: 'F', 男: 'M', 男生: 'M', m: 'M' };
+const GENDER_WORDS: Record<string, Gender> = {
+	女: 'F',
+	女生: 'F',
+	f: 'F',
+	female: 'F',
+	女性: 'F',
+	男: 'M',
+	男生: 'M',
+	m: 'M',
+	male: 'M',
+	男性: 'M'
+};
 /** 貼上名單認得的全局角色寫法（英文比小寫）。 */
-const GLOBAL_ROLE_WORDS: Record<string, GlobalRole> = { 底層: 'base', base: 'base', 上層: 'top', top: 'top', 飛人: 'top' };
+const GLOBAL_ROLE_WORDS: Record<string, GlobalRole> = {
+	底層: 'base',
+	base: 'base',
+	ベース: 'base',
+	上層: 'top',
+	top: 'top',
+	飛人: 'top',
+	'top person': 'top',
+	トップパーソン: 'top'
+};
 /** 標題列的第一欄。 */
-const NAME_HEADERS = new Set(['名字', '姓名', 'name']);
+const NAME_HEADERS = new Set(['名字', '姓名', 'name', '名前']);
 
 function genderOf(word: string): Gender | null {
 	return Object.hasOwn(GENDER_WORDS, word.toLowerCase()) ? GENDER_WORDS[word.toLowerCase()] : null;
@@ -246,7 +267,9 @@ export function updateMember(
 				count,
 				undoable: RECORDS_UNDOABLE_WHY
 			},
-			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
+			mine.flatMap((s) =>
+				recordItems(flow, s.before, s.records).map((item): Why => ({ code: 'members_record_item', action: actionWhy(s.before), item }))
+			)
 		);
 	}
 	const actions = options.records === 'clear' && mine.length ? swapped.map((s) => s.action) : flow.actions;
@@ -348,19 +371,19 @@ export function deleteMember(
 				code: 'members_delete',
 				name: member.name,
 				marker: memberMarkers(flow)[id],
-				role: roleWhy(role!),
+				role: role!,
 				where,
 				more: more.reduceRight<WhyParam>((rest, why) => ({ ...why, more: rest }), '')
 			},
-			inActions.map((a) => {
+			inActions.map((a): Why => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				const mine = a.members.find((m) => m.memberId === id)!;
-				const what = emptied.includes(a)
-					? '：只有他，會整個刪掉'
-					: mine.role
-						? `：他是${mine.squad === undefined ? '' : `第 ${squadNumber(a, mine.squad)} 組的`}${mine.role}`
-						: '';
-				return `動作「${actionLabel(a)}」（${span.label} ${fromText(span.segment, a.start)}）${what}`;
+				const at = { action: actionWhy(a), segment: labelWhy(span), from: fromWhy(span.segment, a.start) };
+				if (emptied.includes(a)) return { code: 'members_delete_item_emptied', ...at };
+				if (!mine.role) return { code: 'members_delete_item', ...at };
+				const task = roleWhy(mine.role);
+				if (mine.squad === undefined) return { code: 'members_delete_item_role', ...at, role: task };
+				return { code: 'members_delete_item_squad_role', ...at, squad: squadNumber(a, mine.squad), role: task };
 			})
 		);
 	}

@@ -226,20 +226,22 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 }
 
 // 給教練看的原因不提 flow.json（T12）。
-const NO_FLOW = 'zip 裡沒有流程，不是這個編輯器存的流程檔';
-const BROKEN = '流程檔裡的資料壞掉了';
+const NO_FLOW = { message: 'zip 裡沒有流程，不是這個編輯器存的流程檔', why: { code: 'flow_file_no_json' } };
+const BROKEN = { message: '流程檔裡的資料壞掉了', why: { code: 'flow_file_broken' } };
+const NOT_A_ZIP = { message: '檔案壞掉了，或不是這個編輯器存的流程檔', why: { code: 'flow_file_not_a_zip' } };
+const IMAGE = { message: '這是圖片，不是流程檔', why: { code: 'flow_file_image' } };
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
 		const r = readFlowFile(zipOf({ formatVersion: 16, flow: sample() }));
-		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
+		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器', why: { code: 'flow_file_newer' } });
 	});
 
 	it.each([
-		['不是 zip', bytes(1, 2, 3), '檔案壞掉了，或不是這個編輯器存的流程檔'],
-		['PNG 圖片', bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0), '這是圖片，不是流程檔'],
-		['JPEG 圖片', bytes(0xff, 0xd8, 0xff, 0xe0, 0), '這是圖片，不是流程檔'],
-		['iPhone 的 HEIC 圖片', new Uint8Array([0, 0, 0, 24, ...strToU8('ftypheic'), 0]), '這是圖片，不是流程檔'],
+		['不是 zip', bytes(1, 2, 3), NOT_A_ZIP],
+		['PNG 圖片', bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0), IMAGE],
+		['JPEG 圖片', bytes(0xff, 0xd8, 0xff, 0xe0, 0), IMAGE],
+		['iPhone 的 HEIC 圖片', new Uint8Array([0, 0, 0, 24, ...strToU8('ftypheic'), 0]), IMAGE],
 		['zip 裡沒有 flow.json', zipSync({ 'a.txt': strToU8('hi') }), NO_FLOW],
 		['flow.json 在兩層資料夾裡', zipSync({ 'a/b/flow.json': strToU8('{}') }), NO_FLOW],
 		['flow.json 不是 JSON', zipSync({ 'flow.json': strToU8('{') }), BROKEN],
@@ -249,8 +251,8 @@ describe('流程檔：版本', () => {
 		['flow 的清單不是陣列', zipOf({ formatVersion: 1, flow: { ...sample(), audio: {} } }), BROKEN],
 		['清單裡有不是物件的東西', zipOf({ formatVersion: 1, flow: { ...sample(), segments: [null] } }), BROKEN],
 		['沒有開頭站位', zipOf({ formatVersion: 1, flow: { ...sample(), formations: [] } }), BROKEN]
-	])('%s：打不開，寫出原因', (_, file, message) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message });
+	])('%s：打不開，寫出原因', (_, file, reason) => {
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...reason });
 	});
 
 	it('zip 裡多包一層資料夾（電腦重新壓縮過）：照樣打開，音樂也讀到', () => {
@@ -430,7 +432,7 @@ describe('流程檔：版本', () => {
 		['全上開的時間不是整數', brokenRecord((_, records) => (records[2].runThroughStartedAt = 1.5))],
 		['分段練有全上開的時間', brokenRecord((r) => (r.runThroughStartedAt = 1794036000000))]
 	])('欄位壞掉（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	it('第 1 版的檔：資料不用動，每張站位的位置都一樣', () => {
@@ -533,7 +535,7 @@ describe('流程檔：版本', () => {
 			f.actions[0].members[0].squad = 0;
 			for (const r of sr.records) if (r.who === 1) r.who = 0;
 		});
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	/** 第 7 版的檔（組是第幾組，見 numbered）改壞一個地方；sr 是 Lib 的成功率設定。 */
@@ -557,7 +559,7 @@ describe('流程檔：版本', () => {
 			for (const r of sr.records) r.who += 1;
 		})]
 	])('第 7 版的檔不守規則（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	it('第 7 版的檔：口號段的環節沒標拍，打得開', () => {
@@ -611,7 +613,7 @@ describe('流程檔：版本', () => {
 		flow.actions[0].members[0].squad = 'g1';
 		const r = readFlowFile(zipOf({ formatVersion: 9, flow }));
 		expect(r.kind === 'ok' && r.flow.actions[0].members[0].squad).toBe('g1');
-		expect(readFlowFile(zipOf({ formatVersion: 8, flow }))).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 8, flow }))).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	/** 第 10 版的檔：flow 存成 JSON 的樣子，再照第 10 版還允許的樣子改（有整體、哪個大類都能用哪種環節）。 */
@@ -685,7 +687,7 @@ describe('流程檔：版本', () => {
 			f.actions[0].category = 'dance';
 			edit(f.actions[0].successRate, f.actions[0]);
 		});
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	it('第 6 版的檔有整體、又要整理：照樣打得開，整體換成中段', () => {
@@ -703,10 +705,10 @@ describe('流程檔：版本', () => {
 	it('第 11 版的檔還有整體，或大類用了別的種類：不是流程檔', () => {
 		const whole = JSON.parse(JSON.stringify(withRecords()));
 		whole.actions[0].successRate.phases[0].kind = 'whole';
-		expect(readFlowFile(zipOf({ formatVersion: 11, flow: whole }))).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 11, flow: whole }))).toEqual({ kind: 'error', ...BROKEN });
 		const toss = JSON.parse(JSON.stringify(withRecords()));
 		toss.actions[0].category = 'toss';
-		expect(readFlowFile(zipOf({ formatVersion: 11, flow: toss }))).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 11, flow: toss }))).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	it('第 11 版的檔自己加過「三層」這個自訂任務角色：換成固定的三層，用到的人照留', () => {
@@ -755,20 +757,20 @@ describe('流程檔：版本', () => {
 	it('別的大類的環節佔同樣的拍：照舊是資料壞掉', () => {
 		const stunt = JSON.parse(JSON.stringify(pyramidOverlap()));
 		stunt.actions[0].category = 'stunt';
-		expect(readFlowFile(zipOf({ formatVersion: 14, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
-		expect(readFlowFile(zipOf({ formatVersion: 13, flow: stunt }))).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 14, flow: stunt }))).toEqual({ kind: 'error', ...BROKEN });
+		expect(readFlowFile(zipOf({ formatVersion: 13, flow: stunt }))).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	it('第 13 版和更舊的檔裡金字塔的環節佔同樣的拍：那時還不行，是資料壞掉（第 14 版起才可以）', () => {
 		const old = JSON.parse(JSON.stringify(pyramidOverlap()));
 		for (const formatVersion of [13, 12, 11]) {
-			expect(readFlowFile(zipOf({ formatVersion, flow: old }))).toEqual({ kind: 'error', message: BROKEN });
+			expect(readFlowFile(zipOf({ formatVersion, flow: old }))).toEqual({ kind: 'error', ...BROKEN });
 		}
 	});
 
 	it('第 10 版的檔裡金字塔的環節佔同樣的拍、有整體：不換成中段，是資料壞掉', () => {
 		const file = v10(pyramidOverlap(), (f) => (f.actions[0].successRate.phases[1].kind = 'whole'));
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	/** 第 8 版的檔改壞一個地方；sr 是 Lib 的成功率設定。 */
@@ -785,7 +787,7 @@ describe('流程檔：版本', () => {
 		['紀錄的誰是數字', v8((_, sr) => (sr.records[0].who = 1))],
 		['紀錄的誰指到沒有人的組 id', v8((_, sr) => (sr.records[0].who = 'g9'))]
 	])('第 8 版的檔組 id 壞掉（%s）：不是流程檔', (_, file) => {
-		expect(readFlowFile(file)).toEqual({ kind: 'error', message: BROKEN });
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...BROKEN });
 	});
 
 	// 用假想的更舊版證明升級鏈：第 -1 版沒有 customRoles 和 actions，
@@ -829,7 +831,7 @@ describe('流程檔：版本', () => {
 	it('沒有升級步驟的舊版號：不是流程檔', () => {
 		expect(readFlowFile(zipOf({ formatVersion: 0, flow: v0Flow }))).toEqual({
 			kind: 'error',
-			message: BROKEN
+			...BROKEN
 		});
 	});
 });

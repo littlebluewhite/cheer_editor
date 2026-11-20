@@ -65,7 +65,8 @@ describe('檢查一整支流程（checkFlowDocument）：讀流程檔和傳上�
 	it('新版編輯器存的不收', () => {
 		expect(checkFlowDocument({ formatVersion: FORMAT_VERSION + 1, flow: ratedSample() })).toEqual({
 			kind: 'error',
-			message: '是新版編輯器存的，請重新整理，更新編輯器'
+			message: '是新版編輯器存的，請重新整理，更新編輯器',
+			why: { code: 'flow_file_newer' }
 		});
 	});
 
@@ -75,7 +76,7 @@ describe('檢查一整支流程（checkFlowDocument）：讀流程檔和傳上�
 		['型別不對', { formatVersion: FORMAT_VERSION, flow: { ...ratedSample(), members: {} } }],
 		['指到不存在的段', { formatVersion: FORMAT_VERSION, flow: { ...ratedSample(), segments: [] } }]
 	])('%s：壞掉了', (_, doc) => {
-		expect(checkFlowDocument(doc)).toEqual({ kind: 'error', message: '流程檔裡的資料壞掉了' });
+		expect(checkFlowDocument(doc)).toEqual({ kind: 'error', message: '流程檔裡的資料壞掉了', why: { code: 'flow_file_broken' } });
 	});
 
 	it('段太長：寫出上限', () => {
@@ -93,19 +94,19 @@ describe('整份流程檢查：開檔就擋的規則（跟讀流程檔一樣，�
 	const flow = ratedSample();
 	const x1 = flow.actions[0];
 	const broken: [string, Flow, string | Why][] = [
-		['型別不對', { ...flow, name: 3 as unknown as string }, '流程的資料格式不對'],
-		['沒有開頭站位', { ...flow, formations: [] }, '流程開頭一定有一張站位'],
+		['型別不對', { ...flow, name: 3 as unknown as string }, { code: 'flow_file_shape' }],
+		['沒有開頭站位', { ...flow, formations: [] }, { code: 'flow_file_no_first_formation' }],
 		[
 			'開頭那張有走位',
 			{ ...flow, formations: [{ ...flow.formations[0], walks: {} }] },
-			'開頭那張站位不能有走位'
+			{ code: 'flow_file_first_walks' }
 		],
-		['段指到不存在的音樂檔', { ...flow, audio: [], segments: flow.segments.map((s) => ({ ...s, audioId: 'a9' })) }, '有段指到不存在的音樂檔'],
-		['動作指到不存在的段', { ...flow, actions: [{ ...x1, segmentId: 's9' }] }, '有動作指到不存在的段'],
+		['段指到不存在的音樂檔', { ...flow, audio: [], segments: flow.segments.map((s) => ({ ...s, audioId: 'a9' })) }, { code: 'flow_file_segment_audio' }],
+		['動作指到不存在的段', { ...flow, actions: [{ ...x1, segmentId: 's9' }] }, { code: 'flow_file_action_segment' }],
 		[
 			'動作指到不存在的隊員',
 			{ ...flow, actions: [{ ...x1, members: [{ memberId: 'm9', role: null }] }] },
-			'有動作指到不存在的隊員'
+			{ code: 'flow_file_action_member' }
 		],
 		[
 			'拍點不守規則',

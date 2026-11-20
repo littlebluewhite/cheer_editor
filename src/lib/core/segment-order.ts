@@ -3,14 +3,14 @@
 // 第一段換了，新的第一段開頭本來就有站位就用那張（原本的開頭那張：段還在就變成一般站位，段刪掉了就跟著刪）；
 // 沒有的話開頭那張自己搬過去：換順序時整張搬，刪段時位置換成那一刻大家所在的地方。站位不會變多。
 
-import { actionLabel, actionWhy } from './action-types';
+import { actionWhy } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
 import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { recordCount } from './success-rate';
-import { EPS, HALF_BEATS_PER_EIGHT, atTextWithUnit, atWhy, fromText, labelWhy, segmentSpans, toPosition, totalSeconds } from './time';
+import { EPS, HALF_BEATS_PER_EIGHT, atWhy, fromWhy, labelWhy, segmentSpans, toPosition, totalSeconds } from './time';
 import type { Why } from './why';
 
 /** 刪段：段裡的動作、站位一起刪。會刪到東西時先問（列出清單）；空的段直接刪。 */
@@ -34,8 +34,8 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 			? { code, segment: label, count: records, undoable: RECORDS_UNDOABLE_WHY }
 			: { code: 'segment_order_delete', segment: label };
 		return needsConfirm(why, [
-			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${fromText(segment, a.start)}）`),
-			...droppedFormations.map((f) => `站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(segment, f.at)}）`)
+			...droppedActions.map((a): Why => ({ code: 'segment_order_item_action', action: actionWhy(a), from: fromWhy(segment, a.start) })),
+			...droppedFormations.map((f): Why => ({ code: 'segment_order_item_formation', n: flow.formations.indexOf(f) + 1, at: atWhy(segment, f.at) }))
 		]);
 	}
 	const segments = flow.segments.toSpliced(index, 1);

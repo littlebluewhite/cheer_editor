@@ -110,7 +110,23 @@ describe('刪動作', () => {
 				undoable: { code: 'records_undoable' }
 			},
 			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）'],
-			confirmLabel: '確定刪除'
+			whyItems: [
+				{
+					code: 'segment_trim_item_fallout',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					from: { code: 'time_from', at: '1-1' },
+					before: { code: 'time_length_beats', n: 8 },
+					after: { code: 'time_length_beat_one', n: 1 },
+					will: {
+						code: 'phase_beats_dropped_marks',
+						dropped: { code: 'phase_beats_dropped', n: 2 },
+						marks: { code: 'records_marks_one', n: 1 }
+					}
+				},
+				{ code: 'segment_drop_action', action: { code: 'category_tumbling' }, from: { code: 'time_from', at: '3-1' } }
+			],
+			confirmLabel: '確定刪除',
+			confirmWhy: { code: 'segment_confirm_delete' }
 		});
 		const flow = flowOf(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 }, { confirmed: true }));
 		expect(action(flow, 'x1').successRate!.phases.map((p) => [p.id, p.beats])).toEqual([['p1', { at: 0, len: 2 }]]);
@@ -355,7 +371,11 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 			kind: 'choose',
 			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（清掉的紀錄按「復原」會回來）',
 			why: { code: 'members_rename_records', name: '小美', newName: '小芳芳', count: 3, undoable: { code: 'records_undoable' } },
-			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
+			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次'],
+			whyItems: [
+				{ code: 'members_record_item', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, item: '第 1 組 小美：2 次' },
+				{ code: 'members_record_item', action: { code: 'category_tumbling' }, item: '小美：1 次' }
+			]
 		});
 	});
 
