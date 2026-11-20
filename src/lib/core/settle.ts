@@ -10,7 +10,7 @@ import { newId } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { RECORDS_UNDOABLE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
-import type { Said } from './why';
+import { said, type Said } from './why';
 import {
 	allSquadIds,
 	fitPhaseKinds,
@@ -77,7 +77,7 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 		return { kind: 'blocked', message: `有環節佔同樣的拍，先分開才能換成${label}` };
 	}
 	const problem = successRateProblem(to, action);
-	if (problem) return { kind: 'blocked', message: problem };
+	if (problem) return { kind: 'blocked', ...said(problem) };
 	return { kind: 'ok', action, fallout: { phases, lost, changed } };
 }
 

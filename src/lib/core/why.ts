@@ -88,6 +88,15 @@ const ZH = {
 	cues_no_action: '找不到這個動作',
 	cues_nothing_copied: '沒有複製的拍點',
 	cues_paste_blocked: '貼不下：{reason}',
+	cues_paste_over_end: '拍點會超出動作的結尾 {length}',
+	// beat-range.ts
+	beat_range_cue_half_beat: '拍點要落在半拍上',
+	beat_range_cue_whole_beats: '拍點要佔整數拍，至少 1 拍',
+	beat_range_cue_inside: '拍點要在動作裡面',
+	beat_range_phase_half_beat: '環節要落在半拍上',
+	beat_range_phase_on_beat: '環節要標在整拍上',
+	beat_range_phase_whole_beats: '環節要佔整數拍，至少 1 拍',
+	beat_range_phase_inside: '環節要在動作裡面',
 	// text-length.ts（field 是下面的欄位名）
 	text_length_too_long: '{field}最多 {max} 個字',
 	text_length_too_long_kept: '{field}最多 {max} 個字（原本就有 {count} 個字，不能再變長）',
@@ -160,7 +169,19 @@ const ZH = {
 	members_lost_role_squad: '「{action}」第 {squad} 組會沒有{role}',
 	members_delete_renumber_one: '；後面 {count} 個人的號碼會往前遞補{more}',
 	members_delete_renumber: '；後面 {count} 個人的號碼會往前遞補{more}',
-	members_delete_changed: '；{question}{undoable}{more}'
+	members_delete_changed: '；{question}{undoable}{more}',
+
+	// segment-order.ts
+	segment_order_no_segment: '找不到這一段',
+	segment_order_first: '已經是第一段了',
+	segment_order_last: '已經是最後一段了',
+	segment_order_chant: '口號段不能切',
+	segment_order_playhead_outside: '播放頭不在這一段',
+	segment_order_first_eight: '播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍',
+	segment_order_across: '動作「{action}」（{start} 起）跨過 {cut}，切不開',
+	segment_order_delete: '刪掉{segment}，下面這些也會一起刪掉',
+	segment_order_delete_records_one: '刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}',
+	segment_order_delete_records: '刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;

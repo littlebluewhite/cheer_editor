@@ -12,7 +12,7 @@ import {
 	EPS,
 	HALF_BEATS_PER_BEAT as BEAT,
 	HALF_BEATS_PER_EIGHT,
-	lengthTextWithUnit,
+	lengthWhy,
 	toSeconds,
 	unitSec
 } from './time';
@@ -118,7 +118,7 @@ export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 }
 
 /** 拍點哪裡不守規則（給教練看的原因）；沒問題是 null。不要求在整拍上（拍的範圍的規則在 beat-range）。 */
-export function cueProblem(segment: Segment, action: Action, cue: Cue): string | Why | null {
+export function cueProblem(segment: Segment, action: Action, cue: Cue): Why | null {
 	if (segment.kind !== 'music') return { code: 'cues_chant' };
 	if (!CUE_KINDS.includes(cue.kind)) return { code: 'cues_no_kind' };
 	const problem = rangeProblem('cue', action, cue);
@@ -180,7 +180,7 @@ export function pasteCues(flow: Flow, actionId: string, at: number, copied: Cue[
 	if (!copied.length) return blocked({ code: 'cues_nothing_copied' });
 	const { action, segment } = found;
 	const over = at + Math.max(...copied.map((c) => c.at + c.len)) - action.length;
-	if (segment.kind === 'music' && over > 0) return blocked(`貼不下：拍點會超出動作的結尾 ${lengthTextWithUnit(segment, over)}`);
+	if (segment.kind === 'music' && over > 0) return blocked({ code: 'cues_paste_blocked', reason: { code: 'cues_paste_over_end', length: lengthWhy(segment, over) } });
 	let cues = action.cues ?? [];
 	for (const c of copied) {
 		const cue: Cue = { ...c, at: at + c.at, who: givenToSomeone(c, action) ? c.who : null };
