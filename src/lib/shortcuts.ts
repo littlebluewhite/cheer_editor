@@ -16,6 +16,8 @@ export const KEYS = {
 	copy: { mac: '⌘C', other: ['Ctrl+C'] },
 	paste: { mac: '⌘V', other: ['Ctrl+V'] },
 	print: { mac: '⌘P', other: ['Ctrl+P'] },
+	/** 找書籤（只在電腦上，播放列的書籤旁邊）。 */
+	bookmarkSearch: { mac: '/', other: ['/'] },
 	/** 按住它滾滾輪：放大縮小。 */
 	zoom: { mac: '⌘', other: ['Ctrl'] }
 } as const satisfies Record<string, Shortcut>;

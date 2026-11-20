@@ -1,0 +1,448 @@
+<!--
+	書籤（GLOSSARY「書籤」）：一排小鈕，點了只有 A 的跳到 A，有 B 的把重複範圍換成 A 到 B、打開重複、跳到 A；
+	正在重複的那個亮著，再點一下就關掉重複（手機的「重複」收在「⋯」裡，這樣才關得掉）。照 A 的時間排。
+	place="bar"：電腦、橫拿的 iPad，放在播放列上 A、B 旁邊；書籤圖示存現在的 A、B，「管理」才出現改名、刪除。
+	  檢視模式這兩顆只變灰、不拿掉（跟復原、重做一樣），切模式時上方列才不跑。
+	  按 / 跳出找書籤的框（頁面的快捷鍵叫 openSearch）。
+	place="phone"：手機、直拿的 iPad（檢視模式），播放列下面一排，手指左右滑；沒有書籤就不出現。
+-->
+<script lang="ts">
+	import { MAX_CHARS, actionLabel, firstChars, bookmarkSeconds, endAt, positionText, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
+	import { getEditor } from '#lib/editor.svelte.js';
+	import { composing } from '#lib/ime.js';
+	import { KEYS } from '#lib/shortcuts.js';
+	import { isTouchScreen } from '#lib/editor-layout.js';
+	import Icon from './Icon.svelte';
+
+	let { place }: { place: 'bar' | 'phone' } = $props();
+
+	const { session, playback } = getEditor();
+	const flow = $derived(session.flow!);
+	const editable = $derived(place === 'bar' && session.editable);
+
+	type Spot = { a: number; b: number | null };
+	/** 放得下的書籤，照 A 的時間排（一樣的話先存的先）。 */
+	const rows = $derived(
+		(flow.bookmarks ?? [])
+			.map((bm) => ({ bm, s: bookmarkSeconds(flow, bm) }))
+			.filter((r): r is { bm: Bookmark; s: Spot } => r.s !== null)
+			.sort((x, y) => x.s.a - y.s.a)
+	);
+
+	const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
+	function where(s: Spot): string {
+		const a = positionText(flow, s.a);
+		return s.b === null ? a : `${a} 到 ${positionText(flow, s.b)}`;
+	}
+	/** 正在重複的就是這個書籤。 */
+	function active(s: Spot): boolean {
+		const r = playback.range;
+		return s.b !== null && playback.repeat && r?.b != null && near(r.a, s.a) && near(r.b, s.b);
+	}
+
+	function go({ s }: { s: Spot }) {
+		if (active(s)) return playback.setRepeat(false);
+		if (s.b !== null) playback.setRange(s.a, s.b);
+		playback.seek(s.a);
+	}
+
+	// ---------- 存、改名、刪（只有 bar、能改時） ----------
+	/** 正在打名字的：新的（帶著要存的 A、B）或改名的那個。 */
+	let naming = $state<{ kind: 'add'; a: TimePosition; b: TimePosition | null } | { kind: 'rename'; id: string } | null>(null);
+	let text = $state('');
+	let managing = $state(false);
+	/** 閃一下的書籤（要存的地方已經有書籤了）。 */
+	let flashId = $state<string | null>(null);
+	// 切到檢視模式：打到一半的名字、管理收起來
+	$effect(() => {
+		if (!editable) {
+			naming = null;
+			managing = false;
+		}
+	});
+
+	function startAdd() {
+		const r = playback.range;
+		const a = startAt(flow, r ? r.a : playback.sec);
+		const b = r?.b != null ? endAt(flow, r.b) : null;
+		// A 剛好在一個動作開始的地方：名字先填那個動作的名字
+		const aSec = toSeconds(flow, a);
+		const act = flow.actions.find((x) => near(toSeconds(flow, { segmentId: x.segmentId, at: x.start }), aSec));
+		naming = { kind: 'add', a, b };
+		text = act ? firstChars(act.name.trim() || actionLabel(act), MAX_CHARS.bookmarkName) : '';
+	}
+
+	function commit() {
+		const n = naming;
+		if (!n) return;
+		if (n.kind === 'add') {
+			const r = session.ask.send({ name: 'addBookmark', args: [text, n.a, n.b] });
+			if (r.kind === 'ok') naming = null;
+			else flashSame(n.a, n.b);
+		} else {
+			const r = session.ask.send({ name: 'renameBookmark', args: [n.id, text] });
+			if (r.kind === 'ok') naming = null;
+		}
+	}
+
+	function flashSame(a: TimePosition, b: TimePosition | null) {
+		const s = bookmarkSeconds(flow, { a, b });
+		const same = s && rows.find((r) => near(r.s.a, s.a) && (r.s.b === null ? s.b === null : s.b !== null && near(r.s.b, s.b)));
+		if (!same) return;
+		flashId = null;
+		requestAnimationFrame(() => (flashId = same.bm.id));
+		document.getElementById(chipId(same.bm.id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+	}
+
+	function nameKeys(e: KeyboardEvent) {
+		// 打字的鍵不給頁面（空白鍵不播放、方向鍵不移播放頭）
+		e.stopPropagation();
+		if (composing(e)) return;
+		if (e.key === 'Enter') commit();
+		else if (e.key === 'Escape') naming = null;
+	}
+
+	const chipId = (id: string) => `bookmark-${place}-${id}`;
+	const selectAll = (el: HTMLInputElement) => el.select();
+
+	// ---------- 找書籤（按 /） ----------
+	let searching = $state(false);
+	let query = $state('');
+	let pick = $state(0);
+	const found = $derived(rows.filter((r) => r.bm.name.toLowerCase().includes(query.trim().toLowerCase())));
+
+	/** 頁面按 / 時叫：打開找書籤的框。回傳有沒有打開（手機那排沒有）。 */
+	export function openSearch(): boolean {
+		if (place !== 'bar') return false;
+		searching = true;
+		query = '';
+		pick = 0;
+		return true;
+	}
+
+	function searchKeys(e: KeyboardEvent) {
+		e.stopPropagation();
+		if (composing(e)) return;
+		if (e.key === 'Escape') searching = false;
+		else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+			e.preventDefault();
+			pick = Math.max(0, Math.min(found.length - 1, pick + (e.key === 'ArrowDown' ? 1 : -1)));
+		} else if (e.key === 'Enter' && found[pick]) {
+			go(found[pick]);
+			searching = false;
+		}
+	}
+
+	const hint = $derived(place === 'bar' && !isTouchScreen() ? `按 ${KEYS.bookmarkSearch.mac} 找書籤` : undefined);
+</script>
+
+{#if place === 'bar' || rows.length}
+	<div class="bookmarks {place}" role="group" aria-label="書籤" title={hint}>
+		{#each rows as row (row.bm.id)}
+			{@const { bm, s } = row}
+			{#if naming?.kind === 'rename' && naming.id === bm.id}
+				<span class="chip naming">
+					<input type="text" aria-label="書籤名字" maxlength={MAX_CHARS.bookmarkName} data-scratch bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
+					<button type="button" class="mini" onclick={commit}>存</button>
+				</span>
+			{:else}
+				<span class="chip" class:on={active(s)} class:flash={flashId === bm.id} id={chipId(bm.id)} onanimationend={() => (flashId = null)}>
+					<button
+						type="button"
+						class="go"
+						aria-pressed={s.b === null ? undefined : active(s)}
+						title={`${where(s)}${active(s) ? '（再點一下關掉重複）' : ''}`}
+						onclick={() => go(row)}
+						><span class="kind" aria-hidden="true">{s.b === null ? '↦' : '⟳'}</span><span class="nm">{bm.name}</span></button
+					>
+					{#if editable && managing}
+						<button type="button" class="mini" aria-label={`改書籤「${bm.name}」的名字`} onclick={() => ((naming = { kind: 'rename', id: bm.id }), (text = bm.name))}>✎</button>
+						<button
+							type="button"
+							class="mini"
+							aria-label={`刪書籤「${bm.name}」`}
+							onclick={() => session.ask.send({ name: 'deleteBookmark', args: [bm.id] })}>✕</button
+						>
+					{/if}
+				</span>
+			{/if}
+		{/each}
+		{#if place === 'bar'}
+			{#if naming?.kind === 'add'}
+				<span class="chip naming">
+					<input
+						type="text"
+						aria-label="書籤名字"
+						placeholder="名字，例：翻騰"
+						maxlength={MAX_CHARS.bookmarkName}
+						data-scratch
+						bind:value={text}
+						onkeydown={nameKeys}
+						{@attach selectAll}
+					/>
+					<button type="button" class="mini" onclick={commit}>存</button>
+					<button type="button" class="mini" aria-label="不存" onclick={() => (naming = null)}>✕</button>
+				</span>
+			{:else}
+				<button
+					type="button"
+					class="chip add"
+					aria-label="存成書籤"
+					title={editable ? '把現在的 A、B 存成書籤（沒放 A 就存播放頭）' : '檢視模式不能存書籤'}
+					disabled={!editable || !flow.segments.length}
+					onclick={startAdd}><Icon name="bookmark" /><span class="add-text" class:alone={!rows.length}>書籤</span></button
+				>
+			{/if}
+			{#if rows.length}
+				<button type="button" class="chip manage" aria-pressed={managing} disabled={!editable} onclick={() => (managing = !managing)}
+					>{managing ? '好了' : '管理'}</button
+				>
+			{/if}
+		{/if}
+	</div>
+{/if}
+
+{#if searching}
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+	<div class="veil" onpointerdown={(e) => e.target === e.currentTarget && (searching = false)}>
+		<div class="search" role="dialog" aria-label="找書籤">
+			<input
+				type="text"
+				aria-label="找書籤"
+				placeholder="打名字找書籤，Enter 跳過去"
+				data-scratch
+				bind:value={query}
+				oninput={() => (pick = 0)}
+				onkeydown={searchKeys}
+				{@attach (el) => el.focus()}
+			/>
+			<ul>
+				{#each found as row, i (row.bm.id)}
+					<li>
+						<button
+							type="button"
+							class:pick={i === pick}
+							class:on={active(row.s)}
+							onpointerenter={() => (pick = i)}
+							onclick={() => {
+								go(row);
+								searching = false;
+							}}
+							><span class="kind" aria-hidden="true">{row.s.b === null ? '↦' : '⟳'}</span><span class="nm">{row.bm.name}</span><span class="at"
+								>{where(row.s)}</span
+							></button
+						>
+					</li>
+				{:else}
+					<li class="empty">{rows.length ? '找不到這個名字' : '還沒有書籤：按播放列上 A、B 右邊的書籤圖示存一個'}</li>
+				{/each}
+			</ul>
+			<p class="hint">↑↓ 選、Enter 跳過去、Esc 關掉</p>
+		</div>
+	</div>
+{/if}
+
+<style>
+	.bookmarks {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.bookmarks::-webkit-scrollbar {
+		display: none;
+	}
+	.bar {
+		flex: 0 1 auto;
+		max-width: min(32vw, 420px);
+	}
+	.phone {
+		padding: 0 8px 6px;
+		background: var(--ink);
+		-webkit-overflow-scrolling: touch;
+	}
+	.chip {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		min-height: 26px;
+		padding: 0;
+		border: 1px solid #36425f;
+		border-radius: 999px;
+		background: transparent;
+		color: #c9d2e6;
+		font-size: 13px;
+		white-space: nowrap;
+	}
+	.chip.on {
+		background: var(--sel);
+		border-color: var(--sel);
+		color: var(--ink);
+	}
+	.chip.on .kind {
+		color: inherit;
+	}
+	.chip.flash {
+		animation: flash 0.4s 3;
+	}
+	@keyframes flash {
+		50% {
+			background: var(--warn-bg);
+			color: var(--ink);
+		}
+	}
+	.go {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 11em;
+		padding: 3px 10px;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+	}
+	.nm {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.kind {
+		color: #8fb3ff;
+	}
+	.add,
+	.manage {
+		padding: 3px 10px;
+		cursor: pointer;
+	}
+	.add {
+		gap: 4px;
+		padding-inline: 7px;
+	}
+	.add:disabled,
+	.manage:disabled {
+		color: #5d6985;
+		border-color: #2c3651;
+		cursor: not-allowed;
+	}
+	/* 上方列擠：有書籤了、或 1600 寬以下，只留圖示；寬、又還沒有書籤時，圖示旁邊寫「書籤」 */
+	.add-text:not(.alone) {
+		display: none;
+	}
+	@media (max-width: 1600px) {
+		.add-text {
+			display: none;
+		}
+	}
+	.manage[aria-pressed='true'] {
+		background: #26314d;
+	}
+	.mini {
+		min-width: 24px;
+		height: 24px;
+		padding: 0 5px;
+		border: 0;
+		border-radius: 999px;
+		background: transparent;
+		color: inherit;
+		font-size: 12px;
+	}
+	.naming {
+		gap: 2px;
+		padding: 1px 2px 1px 6px;
+		border-color: var(--sel);
+	}
+	.naming input {
+		width: 9em;
+		padding: 2px 4px;
+		border: 0;
+		background: transparent;
+		color: #fff;
+		font: inherit;
+	}
+	.naming input:focus {
+		outline: none;
+	}
+	/* 手指：至少 32px */
+	@media (pointer: coarse) {
+		.chip,
+		.go {
+			min-height: 32px;
+		}
+		.mini {
+			min-width: 32px;
+			height: 32px;
+		}
+	}
+	.veil {
+		position: fixed;
+		inset: 0;
+		z-index: 150;
+		background: rgb(10 15 30 / 0.4);
+	}
+	.search {
+		position: fixed;
+		top: 14vh;
+		left: 50%;
+		translate: -50% 0;
+		width: min(480px, calc(100vw - 32px));
+		padding: 10px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--surface);
+		color: var(--text);
+		box-shadow: 0 12px 32px rgb(10 15 30 / 0.3);
+	}
+	.search input {
+		box-sizing: border-box;
+		width: 100%;
+		margin-bottom: 6px;
+	}
+	.search ul {
+		max-height: 50vh;
+		margin: 0;
+		padding: 0;
+		overflow-y: auto;
+		list-style: none;
+	}
+	.search li button {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		width: 100%;
+		padding: 8px 10px;
+		border: 0;
+		border-radius: 8px;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+	}
+	.search li button.pick {
+		background: var(--sel-soft);
+	}
+	.search li button.on .nm::after {
+		content: '（重複中）';
+		font-weight: 400;
+		color: var(--muted);
+	}
+	.search .kind {
+		color: var(--mat);
+	}
+	.search .nm {
+		font-weight: 700;
+	}
+	.search .at {
+		margin-left: auto;
+		font-size: 12px;
+		color: var(--muted);
+		white-space: nowrap;
+	}
+	.empty,
+	.hint {
+		margin: 6px 10px;
+		font-size: 13px;
+		color: var(--muted);
+	}
+</style>

@@ -50,6 +50,7 @@
 	import { composing } from '#lib/ime.js';
 	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
+	import Bookmarks from '#lib/components/Bookmarks.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
 	import ConfirmList from '#lib/components/ConfirmList.svelte';
 	import type CueGrid from '#lib/components/CueGrid.svelte';
@@ -404,6 +405,8 @@
 	/** 播放列的「⋯」小窗（延遲校正；手機還有回開頭、節拍器、重複）：平常收著，不佔播放列的位置。 */
 	let moreOpen = $state(false);
 	let moreBtn = $state<HTMLButtonElement>();
+	/** 播放列上的書籤（電腦）：按 / 打開找書籤。 */
+	let bookmarkBar = $state<ReturnType<typeof Bookmarks>>();
 
 	/** 點外面、按 Esc 就關；按 Esc 的話焦點回到「⋯」。 */
 	function closeMore(by: 'outside' | 'escape') {
@@ -693,6 +696,9 @@
 		} else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
 			// 分組：選好人按 1–9 放進那組、0 移出組。任務角色選單也用數字鍵（ownsKey 已經讓給它）。
 			if (session.squadKey(Number(e.key))) e.preventDefault();
+		} else if (e.key === KEYS.bookmarkSearch.mac && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			// 找書籤：只有電腦的播放列上有（手機沒有鍵盤）
+			if (bookmarkBar?.openSearch()) e.preventDefault();
 		}
 	}
 
@@ -853,6 +859,7 @@
 				{:else}
 					<div class="board">{@render board()}</div>
 					{@render toggles()}
+					<Bookmarks place="bar" bind:this={bookmarkBar} />
 				{/if}
 				<select
 					class="speed"
@@ -1160,6 +1167,7 @@
 						/>
 					</div>
 					{@render transport()}
+					<Bookmarks place="phone" />
 					<div class="phone-me">
 						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
