@@ -189,18 +189,23 @@
 - **怎麼跑（已確認）：** README：「It features ahead-of-time static optimization and compact bytecode.」React Native 文件：release 建置時「This will compile JavaScript to Hermes Bytecode during build time which will improve your app's startup speed on device.」
 - **JIT（已確認＋推論）：** `CMakeLists.txt` 有 `set(HERMESVM_ALLOW_JIT 0 CACHE STRING "JIT mode: 0 (off), 1 (auto) or 2 (force on)")`，預設關。React Native 0.88.1 建 Apple framework 的腳本裡沒有設這個選項。推論：React Native 的 iOS 版沒開 JIT。
 - **`Intl`（已確認）：**
-  - Hermes 的功能文件（`static_h` 分支）：「**`Intl` API:** Not supported. A partial implementation exists for Android, which calls into Java platform APIs, and for Apple platforms, which use Foundation. It is not built by default (`HERMES_ENABLE_INTL` is `OFF`), so in a default build `Intl` is `undefined`.」又寫「**Use a polyfill such as FormatJS instead**, accepting its start-up cost.」
+  - Hermes 的功能文件（預設分支 `static_h` 今天的版本，不是 0.88.1 帶的那一版）：「**`Intl` API:** Not supported. A partial implementation exists for Android, which calls into Java platform APIs, and for Apple platforms, which use Foundation. It is not built by default (`HERMES_ENABLE_INTL` is `OFF`), so in a default build `Intl` is `undefined`.」又寫「**Use a polyfill such as FormatJS instead**, accepting its start-up cost.」
   - React Native 0.88.1 和 Hermes 自己建 Apple framework 的腳本都有 `-DHERMES_ENABLE_INTL:BOOLEAN=true`，所以 iOS 上那個「部分實作」是開的。
   - `lib/VM/JSLib/Intl.cpp`（`static_h` 和 0.88.1 用的 tag）裡找不到「Segmenter」這個字（0 處）。
   - 推論：流程核心一載入就會在 `new Intl.Segmenter(...)` 那一行失敗，跟 QuickJS 一樣要補。沒測。
 - **ES2023 的陣列方法（已確認）：**
-  - 功能文件（`static_h`）列了「`Array.prototype.toSorted` / `toReversed` / `with` / `toSpliced` (ES2023)」。
+  - 功能文件（`static_h` 今天的版本）列了「`Array.prototype.toSorted` / `toReversed` / `with` / `toSpliced` (ES2023)」。
   - 但 0.88.1 用的 tag 裡，`include/hermes/VM/PredefinedStrings.def` 有 `toReversed`、`toSpliced`、`findLast`、`findLastIndex`、`hasOwn`，**沒有 `toSorted`**；`static_h` 最新的才有。
   - 推論：在 React Native 0.88.1 上，流程核心 5 處 `toSorted` 要補。沒測。
-- **跟規格不一樣的地方（已確認，功能文件）：**
+- **注意：功能文件有兩個版本，寫的不一樣。** 上面「`Intl` API: Not supported」那段，和下面區塊變數、TDZ 兩句，都出自**預設分支 `static_h` 今天的** `doc/Features.md`。React Native 0.88.1 用的 tag（`hermes-v260318099.0.5`）裡的 `doc/Features.md` 是另一份比較短的（82 行）：
+  - 它寫「`let` and `const` declarations (including Temporal Dead Zone behavior)」。
+  - 它把 `Intl` 列在支援的項目：「`Intl` API (Basic `DateTimeFormat`, `NumberFormat` support; see "Planned Features")」。
+  - 它沒有提區塊變數的差別，也沒有列 `toSorted`、`toSpliced`、`findLast`、`Object.hasOwn`。
+  - 查不到：0.88.1 帶的那一版，區塊變數和 TDZ 實際上是哪一種行為。沒測。
+- **跟規格不一樣的地方（已確認，`static_h` 今天的功能文件）：**
   - 區塊變數：「By default Hermes creates it once per function call instead.」例子是迴圈裡的 closure 預設得到 `[3, 3, 3]`，加 `-Xes6-block-scoping` 才是 `[0, 1, 2]`。
   - 「Temporal Dead Zone (TDZ) Checks」預設關。
-  - 「Hermes **does not** currently provide a runtime ES module loader.」推論：IIFE 的打包檔不受影響。
+  - 「Hermes **does not** currently provide a runtime ES module loader.」tag 那份寫的是「Hermes **does not** currently provide a runtime module loader.」推論：IIFE 的打包檔不受影響。
   - React Native 0.88.1 的 Babel preset 預設會加 `@babel/plugin-transform-block-scoping`（除非開 `unstable_preserveBlockScoping`）。推論：走 React Native 自己的打包流程時，區塊變數由 Babel 先轉掉；直接把 `flow-core.js` 丟給 Hermes 則不會經過這一步。
   - 這些差別會不會讓流程核心算出不同結果，沒測。
 - **大小：** 查不到官方的「app 多幾 MB」。已確認：Maven Central 上 `hermes-ios-260318099.0.5-hermes-ios-release.tar.gz` 是 25,383,472 位元組，裡面是好幾個 Apple 平台的 framework 壓在一起，不等於 app 增加的大小。
@@ -256,8 +261,11 @@
 
 **從數字看得到的：**
 
-- 整份進出的時間幾乎都是 JSON 進出，關不關 JIT 差不多（JSON 是引擎內建的原生程式）。
-- 「留在引擎裡」在有 JIT 時快 3–6 倍；關 JIT 時反而慢一點，因為比對整份流程是 JS 在跑。
+- 整份進出：`rename`、`drag` 的時間幾乎都是 JSON 進出，`jsc` 關不關 JIT 差不多（大的流程 4.14 → 4.57、3.86 → 4.47 毫秒）。`record`、`insert` 關 JIT 就慢了（4.87 → 7.71、4.58 → 11.7 毫秒），多出來的是指令自己在跑。
+- 「留在引擎裡」跟「整份進出」比：
+  - Node：大的流程快 4.0–6.5 倍，小的快 3.1–4.8 倍。
+  - `jsc`（JIT 開）：大的快 2.5–3.8 倍，小的快 1.7–1.9 倍。
+  - `jsc` 關 JIT：反而慢一點（大的流程每一步多約 1 毫秒，小的多約 0.2 毫秒），因為比對整份流程是 JS 在跑。
 - 「只跑指令」最快，大部分不到 1 毫秒；關 JIT 時 `insert` 7 毫秒、`record` 3 毫秒。
 - 拿回來的資料量差很多：改動是 48–63,937 字，整份是 150 萬字。
 
@@ -371,7 +379,7 @@ ADR 0013 比過這幾條，原文：
 
 - **實機的速度。** 沒有任何 iPhone、iPad 上的數字。這台 Mac 沒有 Xcode。
 - **app 裡的 `JSContext` 沒有 JIT。** 是從 WebKit 原始碼和 entitlement 文件推的，Apple 文件沒有直接寫。
-- **Hermes 全部沒實測。** 「沒有 `Intl.Segmenter`」「0.88.1 那版沒有 `toSorted`」是讀原始碼得來的；區塊變數的差別會不會影響結果沒驗證。
+- **Hermes 全部沒實測。** 「沒有 `Intl.Segmenter`」「0.88.1 那版沒有 `toSorted`」是讀原始碼得來的。區塊變數、TDZ 的差別只寫在預設分支今天的文件裡，0.88.1 帶的那一版是不是這樣、會不會影響結果，都沒驗證。
 - **QuickJS 在 iOS 上。** 只有 QuickJS-NG 文件的「Limited testing」。沒有官方速度數字，沒找到除錯器文件。
 - **Hermes 讓 app 多幾 MB。** 沒有官方數字。
 - **`toSorted`、`toSpliced`、`with` 在哪一版 iOS 開始有。** Apple 的版本說明沒列；Safari 16 是 MDN 資料的說法。
@@ -445,7 +453,7 @@ ADR 0013 比過這幾條，原文：
 - https://github.com/facebook/hermes/blob/static_h/CMakeLists.txt
 - https://github.com/facebook/hermes/blob/static_h/utils/build-apple-framework.sh
 - https://github.com/facebook/hermes/blob/static_h/API/hermes/hermes.h
-- tag `hermes-v260318099.0.5` 的 `lib/VM/JSLib/Intl.cpp`、`lib/VM/JSLib/Array.cpp`、`include/hermes/VM/PredefinedStrings.def`、`CMakeLists.txt`：https://github.com/facebook/hermes/tree/hermes-v260318099.0.5
+- tag `hermes-v260318099.0.5` 的 `doc/Features.md`、`lib/VM/JSLib/Intl.cpp`、`lib/VM/JSLib/Array.cpp`、`include/hermes/VM/PredefinedStrings.def`、`CMakeLists.txt`：https://github.com/facebook/hermes/tree/hermes-v260318099.0.5
 - https://registry.npmjs.org/react-native/latest
 - https://api.github.com/repos/facebook/react-native/releases
 - React Native 0.88.1 的 `packages/react-native/package.json`、`sdks/.hermesv1version`、`sdks/hermes-engine/utils/build-apple-framework.sh`、`packages/react-native-babel-preset/src/configs/main.js`：https://github.com/facebook/react-native/tree/v0.88.1
