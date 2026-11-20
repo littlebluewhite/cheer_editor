@@ -502,14 +502,9 @@ export function squadPeople(flow: Flow, action: Action, squad: string): Member[]
 }
 
 /**
- * 組的名字：「第 1 組 小美」，後面是組裡任務角色是上層的人；沒有上層用主底，也沒有主底就用組裡第一個人
- * （好幾個都照名單順序用第一個）。組裡沒有人就只叫「第 1 組」。
+ * 組的名字（畫面照語言寫）：「第 1 組 小美」，後面是組裡任務角色是上層的人；沒有上層用主底，也沒有主底就用組裡第一個人
+ * （好幾個都照名單順序用第一個）。組裡沒有人就只叫「第 1 組」。名字照教練取的。
  */
-export function squadName(flow: Flow, action: Action, squad: string): string {
-	return zh(squadWhy(flow, action, squad));
-}
-
-/** squadName 的代號（畫面照語言寫）：組號和組裡那個人的名字（名字照教練取的）。 */
 export function squadWhy(flow: Flow, action: Action, squad: string): Why {
 	const people = squadPeople(flow, action, squad);
 	const withRole = (role: string) =>

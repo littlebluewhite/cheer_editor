@@ -83,7 +83,7 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadName, squadNumber, squadsOf, squadWhy } from './success-rate';
+export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadNumber, squadsOf, squadWhy } from './success-rate';
 export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
@@ -133,7 +133,7 @@ export {
 } from './rates';
 export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, Tally, WholeTally } from './rates';
 
-export { actionEights, beatSpanText, beatSpanWhy, phaseRows } from './beat-range';
+export { actionEights, beatSpanWhy, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
 export { eightCountRows, eightCountView, formationNowWhy, memberNowWhy, nearbyEights, teamWho } from './eight-count';
@@ -221,14 +221,12 @@ export {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
-	atTextWithUnit,
 	atWhy,
 	clockText,
 	farthestLegal,
 	fromWhy,
 	labelWhy,
 	lengthText,
-	lengthTextWithUnit,
 	lengthWhy,
 	nearestPosition,
 	positionWhy,
@@ -244,7 +242,6 @@ export {
 	timeExamples,
 	timeInputWhy,
 	timeText,
-	timeTextWithUnit,
 	timeWhy,
 	toPosition,
 	toSeconds,

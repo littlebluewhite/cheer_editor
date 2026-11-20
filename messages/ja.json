@@ -1537,5 +1537,6 @@
 	"cloud_role_now_edit": "あなたの権限は{role}になり、変更できるようになりました。",
 	"cloud_role_now_view": "あなたの権限は{role}になり、閲覧のみになりました。",
 	"cloud_already_recorded": "{by} がこの全通しの{which}をもう記録しました",
-	"cloud_this_squad": "このスタンツグループ"
+	"cloud_this_squad": "このスタンツグループ",
+	"shortcut_both": "{mac}／{other}"
 }

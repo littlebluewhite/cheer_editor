@@ -36,11 +36,15 @@ import {
 	attemptWhos,
 	perPerson,
 	rateTable,
-	squadName,
+	squadWhy,
 	squadNumber,
 	squadsOf,
 	type Action
 } from './index';
+import { zh } from './why';
+
+/** 組的名字的中文（squadWhy 寫成中文）。 */
+const squadName = (...args: Parameters<typeof squadWhy>) => zh(squadWhy(...args));
 
 /** 音樂 1（a1.mp3）→ 口號 1 → 音樂 2（a2.m4a）；兩個隊員、一個自訂角色、一個動作、兩張站位。 */
 function sample(): Flow {

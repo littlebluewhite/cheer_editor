@@ -63,27 +63,16 @@ export function fitRange(of: RangeOf, action: Action, range: BeatRange, by: 1 | 
 	return len >= BEAT ? { at, len } : undefined;
 }
 
-/** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
-export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
-	const why = rangeWhy(segment, action, at, len);
-	return typeof why === 'string' ? why : zh(why);
-}
-
-/** rangeText 給別的原因包進去：「3-5 到 3-6」，只有一拍是「3-5」。 */
+/** 從第一拍到最後一拍（都是段內時間），給別的原因包進去：「3-5 到 3-6」，只有一拍是「3-5」。 */
 export function rangeWhy(segment: Segment, action: Action, at: number, len: number): string | Why {
 	const first = atText(segment, action.start + at);
 	return len > BEAT ? { code: 'beat_range_range', first, last: atText(segment, action.start + at + len - BEAT) } : first;
 }
 
 /**
- * 拍點小窗和八拍表的拍：「3-5 到 3-6・2 拍」，只有一拍（或不到一拍）是「3-5・1 拍」。
+ * 拍點小窗和八拍表的拍（畫面照語言寫）：「3-5 到 3-6・2 拍」，只有一拍（或不到一拍）是「3-5・1 拍」。
  * at 是段內時間；結束拍寫最後一拍開始的那個半拍（從 & 開始的就落在 & 上：「2-4& 到 2-7&・4 拍」）。
  */
-export function beatSpanText(segment: Segment, at: number, len: number): string {
-	return zh(beatSpanWhy(segment, at, len));
-}
-
-/** beatSpanText 給畫面照語言寫：「3-5 到 3-6・2 拍」，只有一拍是「3-5・1 拍」。 */
 export function beatSpanWhy(segment: Segment, at: number, len: number): Why {
 	const last = at + len - BEAT;
 	const first = atText(segment, at);

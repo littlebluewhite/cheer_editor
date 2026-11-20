@@ -3,12 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	addSegment,
 	atText,
-	atTextWithUnit,
 	clockText,
 	createFlow,
 	farthestLegal,
 	lengthText,
-	lengthTextWithUnit,
 	positionWhy,
 	readLength,
 	readStart,
@@ -227,10 +225,10 @@ describe('段內時間的文字（動作表單）', () => {
 	});
 
 	it('帶單位：長度「4.5 拍」「3.0 秒」；時間點音樂段不加（「3-5&」），口號段加「 秒」', () => {
-		expect(lengthTextWithUnit(music(), 9)).toBe('4.5 拍');
-		expect(lengthTextWithUnit(chant(), 30)).toBe('3.0 秒');
-		expect(atTextWithUnit(music(), 41)).toBe('3-5&');
-		expect(atTextWithUnit(chant(), 123)).toBe('12.3 秒');
+		expect(zh(lengthWhy(music(), 9))).toBe('4.5 拍');
+		expect(zh(lengthWhy(chant(), 30))).toBe('3.0 秒');
+		expect(atWhy(music(), 41)).toBe('3-5&');
+		expect(zh(atWhy(chant(), 123) as Why)).toBe('12.3 秒');
 	});
 
 	it('長度看不懂：擋下來說看不懂', () => {

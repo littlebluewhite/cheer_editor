@@ -87,14 +87,6 @@ export type CloudStep = SentStep | { id: string; undo: { of: string; redo: boole
 /** 選得到的三種東西：站位、動作、人。 */
 type PickKind = 'formation' | 'action' | 'member';
 
-/**
- * 檢視模式下改流程被擋的原因。舊的中文常數，留給還沒改的地方用（m.session_view_only() 是照畫面語言的同一句）；
- * 不在載入時叫 m：那時候還不知道語言（測試先載入、才設語言）。
- */
-export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上方列的「編輯」';
-
-/** 拖過頭（走位條、縮圖、場上的人）停在最遠的合法位置時的提示。舊的中文常數，同 VIEW_ONLY（m.session_at_edge()）。 */
-export const AT_EDGE = '已靠到邊界';
 
 /** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
 export interface SessionPlayback {
@@ -169,7 +161,7 @@ export class EditorSession {
 	/** ⌘C 複製的站位（那時候大家的位置）；⌘V 貼到播放頭。不存進流程檔。 */
 	#copied: Record<string, Position> | null = null;
 	/**
-	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 VIEW_ONLY；
+	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 session_view_only；
 	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
 	 */
 	viewing = $state(false);
@@ -324,7 +316,7 @@ export class EditorSession {
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
 	readonly squadAsk = new Ask((f, step) => this.change(f, undefined, undefined, step), { locked: () => this.#locked(), flow: () => this.#flow });
 
-	/** 改流程鎖著的原因：不能改的原因（readOnly）、檢視模式是 VIEW_ONLY，編輯是空字串。 */
+	/** 改流程鎖著的原因：不能改的原因（readOnly）、檢視模式是 session_view_only，編輯是空字串。 */
 	#locked(): string {
 		return this.readOnly || (this.viewing ? m.session_view_only() : '');
 	}

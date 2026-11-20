@@ -13,7 +13,7 @@ import {
 	phaseColor,
 	setSquad,
 	squadBadge,
-	squadName,
+	squadWhy,
 	squadsOf,
 	updateAction,
 	updateSegment,
@@ -26,6 +26,9 @@ import type { Phase } from './phase-types';
 import type { Segment } from './segment';
 import { attemptProblem, successRateProblem, type Attempt } from './success-rate';
 import { said, zh, type WhyParam } from './why';
+
+/** 組的名字的中文（squadWhy 寫成中文）。 */
+const squadName = (...args: Parameters<typeof squadWhy>) => zh(squadWhy(...args));
 
 /** 組的名字（代號）寫成中文，比對照舊用中文。 */
 const zhName = <T extends { name: WhyParam }>(ws: T[]) => ws.map((w) => ({ ...w, name: typeof w.name === 'object' ? zh(w.name) : w.name }));

@@ -237,12 +237,7 @@ export function atText(segment: Segment, at: number): string {
 	return `${Math.floor(beat / 8) + 1}-${(beat % 8) + 1}${and}`;
 }
 
-/** atText，口號段後面再加「 秒」：音樂段「3-5&」，口號段「12.3 秒」。後面接字時中間空一格（「3-5& 結束」「12.3 秒 結束」）。 */
-export function atTextWithUnit(segment: Segment, at: number): string {
-	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
-}
-
-/** atTextWithUnit 給別的原因包進去：音樂段照教練打的寫法「3-5&」（不用代號），口號段「12.3 秒」。 */
+/** 段內的時間點，給別的原因包進去：音樂段照教練打的寫法「3-5&」（不用代號），口號段「12.3 秒」。 */
 export function atWhy(segment: Segment, at: number): string | Why {
 	return segment.kind === 'chant' ? secondsWhy(atText(segment, at)) : atText(segment, at);
 }
@@ -259,12 +254,7 @@ export function clockText(sec: number): string {
 	return `${m}:${s}`;
 }
 
-/** 清單上動作從哪裡開始：「3-1 起」，口號段「3.0 秒起」。 */
-export function fromText(segment: Segment, at: number): string {
-	return zh(fromWhy(segment, at));
-}
-
-/** fromText 給別的原因包進去：「3-1 起」，口號段「3.0 秒起」。 */
+/** 清單上動作從哪裡開始，給別的原因包進去：「3-1 起」，口號段「3.0 秒起」。 */
 export function fromWhy(segment: Segment, at: number): Why {
 	return segment.kind === 'chant' ? { code: 'time_from_seconds', n: atText(segment, at) } : { code: 'time_from', at: atText(segment, at) };
 }
@@ -294,13 +284,7 @@ export function timeText(flow: Flow, homeSegmentId: string, p: TimePosition): st
 	return typeof why === 'string' ? why : zh(why);
 }
 
-/** timeText，口號段後面再加「 秒」（例：「2-5」、「12.3 秒」、「口號 1 12.3 秒」）。 */
-export function timeTextWithUnit(flow: Flow, homeSegmentId: string, p: TimePosition): string {
-	const kind = flow.segments.find((s) => s.id === p.segmentId)?.kind;
-	return timeText(flow, homeSegmentId, p) + (kind === 'chant' ? ' 秒' : '');
-}
-
-/** timeTextWithUnit 給別的原因包進去：「2-5」、「12.3 秒」、「口號 1 12.3 秒」。沒有這一段是 ''。 */
+/** 時間點帶單位，給別的原因包進去：「2-5」、「12.3 秒」、「口號 1 12.3 秒」。沒有這一段是 ''。 */
 export function timeWhy(flow: Flow, homeSegmentId: string, p: TimePosition): string | Why {
 	const span = segmentSpans(flow).find((s) => s.segment.id === p.segmentId);
 	if (!span) return '';
@@ -389,14 +373,7 @@ export function readJump(flow: Flow, sec: number, text: string): ReadResult<numb
 	return { kind: 'blocked', ...said({ code: 'time_segment_only', segment: labelWhy(span), size: sizeWhy(segment) }) };
 }
 
-/** 一段有多長，給人看：音樂段「4 個八拍」（最後一個不滿也算一個），口號段「10.0 秒」。 */
-export function sizeText(segment: Segment): string {
-	return segment.kind === 'music'
-		? `${Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT)} 個八拍`
-		: `${lengthText(segment, segment.tenths)} 秒`;
-}
-
-/** sizeText 給別的原因包進去：音樂段「4 個八拍」，口號段「10.0 秒」。 */
+/** 一段有多長，給別的原因包進去：音樂段「4 個八拍」（最後一個不滿也算一個），口號段「10.0 秒」。 */
 export function sizeWhy(segment: Segment): Why {
 	return segment.kind === 'music'
 		? eightsWhy(Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT))
@@ -442,12 +419,7 @@ export function lengthText(segment: Segment, length: number): string {
 	return segment.kind === 'music' ? String(length / 2) : (length / 10).toFixed(1);
 }
 
-/** lengthText 帶單位：音樂段「4.5 拍」，口號段「3.0 秒」。 */
-export function lengthTextWithUnit(segment: Segment, length: number): string {
-	return `${lengthText(segment, length)} ${segment.kind === 'music' ? '拍' : '秒'}`;
-}
-
-/** lengthTextWithUnit 給別的原因包進去：音樂段「4.5 拍」（英文 1 拍和好幾拍分開寫），口號段「3.0 秒」。 */
+/** 長度帶單位，給別的原因包進去：音樂段「4.5 拍」（英文 1 拍和好幾拍分開寫），口號段「3.0 秒」。 */
 export function lengthWhy(segment: Segment, length: number): Why {
 	if (segment.kind === 'chant') return secondsWhy(lengthText(segment, length));
 	const n = length / HALF_BEATS_PER_BEAT;

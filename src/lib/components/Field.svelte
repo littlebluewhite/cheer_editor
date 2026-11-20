@@ -44,7 +44,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { m as t } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
-	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
+	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen, SHORT_SCREEN_MAX_H } from '#lib/editor-layout.js';
 	import { ownsKey } from '#lib/key-owner.js';
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
@@ -710,7 +710,7 @@
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
 			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge, e.altKey);
-			else if (drag.atEdge) session!.notice = session!.editable ? AT_EDGE : VIEW_ONLY;
+			else if (drag.atEdge) session!.notice = session!.editable ? t.session_at_edge() : t.session_view_only();
 		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;

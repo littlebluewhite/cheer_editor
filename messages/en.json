@@ -1537,5 +1537,6 @@
 	"cloud_role_now_edit": "Your role is now {role}, so you can make changes.",
 	"cloud_role_now_view": "Your role is now {role}, so you can only view.",
 	"cloud_already_recorded": "{by} already recorded {which} in this full out",
-	"cloud_this_squad": "this stunt group"
+	"cloud_this_squad": "this stunt group",
+	"shortcut_both": "{mac} / {other}"
 }

@@ -80,9 +80,6 @@ export interface FlowRoom {
 /** 傳上雲端的流程（flow.json 的內容，不含音樂）最多幾個 byte：跟伺服器的 UPLOAD_LIMIT（server/src/lib.rs）一樣。 */
 export const MAX_CLOUD_FLOW_BYTES = 16 * 1024 * 1024;
 
-/** 流程超過 MAX_CLOUD_FLOW_BYTES，傳不上去的原因（前面接「傳不上去：」），照分頁打開時的語言（一個分頁一種語言，ADR 0017）。 */
-export const FLOW_TOO_BIG = m.share_flow_too_big();
-
 /** 斷線後隔多久重連（伺服器沒回應時也是多久自動再試一次，#260）：1、2、4、8 秒，之後每 10 秒。 */
 const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
 
@@ -147,7 +144,7 @@ export interface ServerAdapter {
 	createFlow(input: NewFlowInput): Promise<CloudFlowSummary>;
 	/**
 	 * 傳上雲端（#259）：送流程檔的 flow.json 內容（帶成功率紀錄），伺服器檢查整支流程，過了建一支新的雲端流程（我是擁有者）。
-	 * 不收回原因（超過 16 MB 也是，FLOW_TOO_BIG）。音樂檔另外用 uploadAudio 傳。
+	 * 不收回原因（超過 16 MB 也是，share_flow_too_big）。音樂檔另外用 uploadAudio 傳。
 	 */
 	uploadFlow(doc: FlowDocument): Promise<CloudFlowSummary | FlowBlocked>;
 	/** 拿一支雲端流程（帶我的權限）；沒有這支、沒有權限、被刪了是 null。 */

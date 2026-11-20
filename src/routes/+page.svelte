@@ -40,7 +40,6 @@
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
-	import { NEW_VERSION, OFFLINE } from '#lib/cloud-steps.svelte.js';
 	import type { Me, MyFlows } from '#lib/server-api.js';
 	import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
@@ -1206,7 +1205,7 @@
 					</div>
 					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編（雲端流程有新版、斷線時寫那個） -->
 					<p class="phone-why">
-						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? OFFLINE : whyViewOnly ? m.editor_view_only_why({ why: whyViewOnly }) : m.editor_view_only()}
+						<Icon name="eye" />{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.cloud_offline() : whyViewOnly ? m.editor_view_only_why({ why: whyViewOnly }) : m.editor_view_only()}
 					</p>
 					<!-- 提示浮在畫面最下面，不疊在場地上：手機的場地沒有空的地方，放哪都會蓋到條號或「正面／裁判」（N52） -->
 					<div class="phone-toasts">{@render noticeToast()}</div>
@@ -1219,7 +1218,7 @@
 					<div class="formation-now">{whyText(formationNowWhy(flow, playback.sec))}</div>
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
 					<div class="view-badge">
-						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? m.editor_disconnected_view() : m.editor_view_only()}
+						<Icon name="eye" />{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.editor_disconnected_view() : m.editor_view_only()}
 					</div>
 				{/if}
 				<Field

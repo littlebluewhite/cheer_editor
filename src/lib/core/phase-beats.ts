@@ -88,10 +88,6 @@ export function phaseFalloutWhy({ cut, dropped, marked, empty }: PhaseFallout): 
 	return empty ? { code: 'phase_beats_no_rate', phases } : phases;
 }
 
-/** 同一段的中文（裁短動作的確認清單用）；只挪了半拍、沒切到是空的。 */
-export const phaseFalloutText = (fallout: PhaseFallout): string =>
-	fallout.cut || fallout.dropped ? zh(phaseFalloutWhy(fallout)) : '';
-
 /**
  * 把 [from, to) 半拍從每個環節標的拍裡拿掉：露在外面的留著，兩邊都露出來時留前面那段。
  * 露出來的長度取到整拍（動作被拖半拍後可能差半拍），不到一拍就變沒標拍（之後由環節的指令刪掉）。

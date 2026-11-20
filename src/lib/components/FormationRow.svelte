@@ -27,7 +27,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
 	import { m } from '#lib/paraglide/messages.js';
-	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { followPointer, touchOnUnpicked } from './pointer';
 
@@ -133,7 +133,7 @@
 				dragged = true;
 				setTimeout(() => (dragged = false));
 				if (Math.abs(toSeconds(flow, to) - sec) < 1e-9) {
-					if (clamped) session.notice = AT_EDGE;
+					if (clamped) session.notice = m.session_at_edge();
 					return;
 				}
 				// 被擋時縮圖已經彈回原位，還原不用再做什麼。

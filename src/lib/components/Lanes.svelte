@@ -51,7 +51,7 @@
 		type Walk
 	} from '#lib/core';
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
-	import { AT_EDGE, getEditorSession, VIEW_ONLY } from '#lib/editor-session.svelte.js';
+	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
 	// 泳道一人一條（{#each flow.members as m}），m 是隊員：畫面的句子叫 msg
@@ -384,13 +384,13 @@
 		const { walks: next, clamped, shiftSec } = draggedWalks(d);
 		if (Math.abs(shiftSec) < 1e-9) {
 			// 檢視模式：說不能改，不說已靠到邊界
-			if (clamped) session.notice = session.editable ? AT_EDGE : VIEW_ONLY;
+			if (clamped) session.notice = session.editable ? msg.session_at_edge() : msg.session_view_only();
 			return;
 		}
 		session.ask.send({ name: 'setWalks', args: [d.formationId, next] }, {
 			revert: () => {},
 			done: () => {
-				if (clamped) session.noteChange(AT_EDGE);
+				if (clamped) session.noteChange(msg.session_at_edge());
 			}
 		});
 	}

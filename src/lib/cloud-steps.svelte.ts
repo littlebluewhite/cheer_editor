@@ -63,11 +63,6 @@ import { runKey, runKeyLabel } from '#lib/run-keys.js';
 /** 還沒被伺服器收的一步：送的、這一步改了什麼（提示用）、做的時候看到第幾步、改之前、改之後的流程。 */
 type Queued = CloudStep & { label: string; seen: number; before: Flow; after: Flow };
 
-/** 有新版時不能改的原因。舊的中文常數，留給還沒改的地方用（t.cloud_new_version() 是照畫面語言的同一句，同 VIEW_ONLY）。 */
-export const NEW_VERSION = '有新版，請重新整理';
-/** 斷線時不能改的原因。舊的中文常數，同 NEW_VERSION（t.cloud_offline()）。 */
-export const OFFLINE = '斷線了，連上才能改';
-
 /** 「都傳上去了。」留幾毫秒。 */
 const SYNCED_MS = 3000;
 

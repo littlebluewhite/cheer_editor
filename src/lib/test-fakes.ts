@@ -33,6 +33,7 @@ import {
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { flowOf } from '#lib/test-flows.js';
+import { m } from '#lib/paraglide/messages.js';
 import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES } from '#lib/music-library.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
@@ -53,7 +54,6 @@ import {
 	type UnsentRecords
 } from '#lib/offline-store.js';
 import {
-	FLOW_TOO_BIG,
 	MAX_CLOUD_FLOW_BYTES,
 	ServerUnreachable,
 	type AdminResult,
@@ -919,7 +919,7 @@ export function fakeServer(
 		},
 		async uploadFlow(doc) {
 			mine();
-			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: m.share_flow_too_big() };
 			const checked = checkFlowDocument(structuredClone(doc));
 			if (checked.kind === 'error') return { message: checked.message, ...(checked.why && { why: checked.why }) };
 			const problem = flowProblem(checked.flow);
