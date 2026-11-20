@@ -231,7 +231,7 @@ describe('新建', () => {
 		const flow = audioFlow();
 		const segments = flow.segments.map((s) => (s.kind === 'music' ? { ...s, halfBeats: 201 * 16 } : s));
 		await openFile(writeFlowFile({ ...flow, segments }, {}));
-		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：A music segment must be 1 to 200 8-counts long');
+		expect(screen.getByRole('alert').textContent).toBe("Can't open “練習用.zip”: A music segment must be 1 to 200 8-counts long");
 	});
 
 	it('開到壞掉的 zip：寫「檔案壞掉了，或不是這個編輯器存的流程檔」', async () => {
