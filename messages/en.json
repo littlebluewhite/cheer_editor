@@ -64,5 +64,14 @@
 	"roles_member_name_taken": "There's already an athlete called “{name}”. Give the position another name so a cue's “for” can tell a position from an athlete",
 	"roles_not_found": "Can't find this position",
 	"roles_delete_used_one": "“{name}” is used in {count} skill: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too",
-	"roles_delete_used": "“{name}” is used in {count} skills: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too"
+	"roles_delete_used": "“{name}” is used in {count} skills: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too",
+	"insert_beats_no_segment": "Can't find this segment",
+	"insert_beats_length": "The length to insert must be more than 0",
+	"insert_beats_outside": "The insert point isn't in this segment",
+	"insert_beats_overflow_formation": "Formation {n} would run past the end of this segment; {room}",
+	"insert_beats_overflow_action": "“{action}” would run past the end of this segment; {room}",
+	"insert_beats_room": "you can insert at most {length}",
+	"insert_beats_room_eights_rest": "you can insert at most {eights} and {rest}",
+	"insert_beats_room_under_eight": "you can insert at most {length} (less than one 8-count, so the unit is beats)",
+	"insert_beats_room_none": "there is no room left at the end of this segment"
 }

@@ -64,5 +64,14 @@
 	"roles_member_name_taken": "「{name}」という選手がすでにいます。キューの対象でポジションか選手か区別できるよう、ポジションには別の名前を付けてください",
 	"roles_not_found": "このポジションが見つかりません",
 	"roles_delete_used_one": "「{name}」は {count} 個の技で使われています：削除するとその人たちはポジションなしになり、「{name}」へのキューも削除されます",
-	"roles_delete_used": "「{name}」は {count} 個の技で使われています：削除するとその人たちはポジションなしになり、「{name}」へのキューも削除されます"
+	"roles_delete_used": "「{name}」は {count} 個の技で使われています：削除するとその人たちはポジションなしになり、「{name}」へのキューも削除されます",
+	"insert_beats_no_segment": "このパートが見つかりません",
+	"insert_beats_length": "挿入する長さは 0 より大きくしてください",
+	"insert_beats_outside": "挿入する位置がこのパートの中にありません",
+	"insert_beats_overflow_formation": "フォーメーション {n} がこのパートの終わりを超えます。{room}",
+	"insert_beats_overflow_action": "「{action}」がこのパートの終わりを超えます。{room}",
+	"insert_beats_room": "挿入できるのは最大 {length} です",
+	"insert_beats_room_eights_rest": "挿入できるのは最大 {eights}と {rest} です",
+	"insert_beats_room_under_eight": "挿入できるのは最大 {length} です（1 エイトカウントに満たないため、単位を拍にしました）",
+	"insert_beats_room_none": "このパートの後ろにはもう空きがありません"
 }
