@@ -56,7 +56,7 @@ import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
 import { Flash } from '#lib/flash.svelte.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
-import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView } from '#lib/server-api.js';
+import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView, SentBack } from '#lib/server-api.js';
 import { runKey, runKeyLabel } from '#lib/run-keys.js';
 
 /** 還沒被伺服器收的一步：送的、這一步改了什麼（提示用）、做的時候看到第幾步、改之前、改之後的流程。 */
@@ -757,12 +757,15 @@ export class CloudSteps {
 	}
 }
 
+/** 一步退回。why 可能沒有：還沒更新的伺服器（部署、退版時）不送。 */
+export type Rejected = Omit<Extract<RoomMessage, { kind: 'rejected' }>, 'why'> & { why?: SentBack };
+
 /**
  * 我的一步被退回的提示：伺服器送原因的代號（why），這裡照使用者的語言寫成句子（ADR 0017）。label 是那一步的名字；
  * by 是在我上次看到之後最後改的人（別人改了同一個地方、或改了流程之後被規則擋下）。
  */
-function sentBack({ why, by, message }: Extract<RoomMessage, { kind: 'rejected' }>, label: string): string {
-	switch (why.code) {
+export function sentBack({ why, by, message }: Rejected, label: string): string {
+	switch (why?.code) {
 		case 'viewOnly':
 			return t.rejected_view_only();
 		case 'afterSentBack':
@@ -783,8 +786,10 @@ function sentBack({ why, by, message }: Extract<RoomMessage, { kind: 'rejected' 
 		case 'undoBlocked':
 			return (why.redo ? t.redo_blocked : t.undo_blocked)({ reason: why.reason });
 		default:
-			// 伺服器比這個分頁新、送了還不認得的代號：照它寫的中文
-			return message;
+			// 沒有代號（還沒更新的伺服器）、還不認得的代號（伺服器比這個分頁新）：照它寫的中文。有 by 時 message 是被規則擋下的原因，
+			// 改到同一個東西是空的
+			if (by === undefined) return message;
+			return message ? t.rejected_blocked_by({ by, label, reason: message }) : t.rejected_same_thing({ by, label });
 	}
 }
 
