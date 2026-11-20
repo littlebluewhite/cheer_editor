@@ -95,11 +95,11 @@ describe('輸出影片', () => {
 		expect(((await menuItem('輸出影片')) as HTMLButtonElement).disabled).toBe(true);
 	});
 
-	it('窄螢幕沒有這個按鈕', () => {
+	it('窄螢幕沒有這個按鈕（選單裡也沒有）', async () => {
 		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
 		render(Page, editorPage(shortFlow()).props);
-		expect(screen.queryByRole('button', { name: '選單' })).toBeNull();
-		expect(screen.queryByRole('button', { name: '輸出影片' })).toBeNull();
+		expect(await menuItem('八拍表')).toBeTruthy();
+		expect(await menuItem('輸出影片')).toBeNull();
 	});
 
 	it('觸控螢幕（iPad 橫拿，不窄）沒有這個按鈕', async () => {

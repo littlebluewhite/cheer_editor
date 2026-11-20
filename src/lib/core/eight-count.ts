@@ -2,7 +2,7 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { categoryLabel, type Action, type ActionCategory } from './action-types';
+import { actionLabel, categoryLabel, type Action, type ActionCategory } from './action-types';
 import { actionEights, beatSpanText } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
 import type { Rect } from './field';
@@ -308,6 +308,25 @@ export function formationNowText(flow: Flow, sec: number): string {
 	const text = (n: number, f: { name?: string }) => `站位 ${n}${f.name ? ` ${f.name}` : ''}`;
 	if (next && formationWalks(flow, next.id).some((w) => w.departSec <= sec + EPS)) return `→ ${text(number + 1, next)}`;
 	return text(number, formation);
+}
+
+/**
+ * 手機的檢視畫面點了圓點，場地角落寫的那個人：名字，和播放頭這個八拍他做的動作、任務角色「小A　技巧·Lib 主底」；
+ * 這個八拍他沒事只寫名字。任務角色跟動作同名（騰翻的「騰翻」）不重複寫。
+ * rows 是 eightCountRows(flow, memberId, false)，跟著流程和點到的人先算好傳進來（播放時每一格畫面都問）。
+ */
+export function memberNowText(
+	flow: Flow,
+	memberId: string,
+	sec: number,
+	rows: EightCountRow[] = eightCountRows(flow, memberId, false)
+): string {
+	const row = nearbyEights(flow, memberId, sec, 0, 0, rows).rows[0];
+	const doing = (row?.lanes ?? []).map((l) => {
+		const label = actionLabel(l);
+		return l.role && l.role !== label ? `${label} ${l.role}` : label;
+	});
+	return [memberName(flow, memberId), ...doing].join('　');
 }
 
 const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);

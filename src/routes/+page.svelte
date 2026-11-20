@@ -1,8 +1,10 @@
 <script lang="ts">
 	import {
 		clashes,
+		eightCountRows,
 		formationWalks,
 		memberMarkers,
+		memberNowText,
 		positionText,
 		positionsAt,
 		formationNowText,
@@ -277,10 +279,18 @@
 	}
 	/** 這次是從分享連結（網址 #share=…）打開的：回首頁時把網址上的連結拿掉，重新整理才不會又打開。 */
 	let fromLink = $state(false);
+	/** 分享連結的流程還在跟伺服器拿（流程、音樂）：先顯示「正在打開」，不先跳首頁。 */
+	let openingLink = $state(false);
 	onMount(() => {
+		// app.html 在程式跑起來之前先把畫面藏起來（免得閃一下首頁），這裡接手
+		delete document.documentElement.dataset.openingLink;
 		const token = shareTokenIn(location.hash);
 		if (!token) return;
-		void editor.file.openLink(token).then(() => (fromLink = true));
+		openingLink = true;
+		void editor.file
+			.openLink(token)
+			.then(() => (fromLink = true))
+			.finally(() => (openingLink = false));
 	});
 	$effect(() => {
 		if (!fromLink || flow) return;
@@ -301,6 +311,15 @@
 	function pickMe(id: string) {
 		me = id;
 		if (flow) saveFlowSetting('me', flow.name, id);	}
+	/** 手機的檢視畫面場地外圍框外的號碼條留多寬（公尺）：比電腦的窄，場地畫得比較大；站在外圍邊上的人會蓋到條號、格號。 */
+	const PHONE_NUMBER_BAND = 0.7;
+	/** 手機的檢視畫面點到的人：場地左下角寫他的名字和這個八拍做什麼。點空白處、切到練習、換流程就收掉。 */
+	let tappedId = $state<string | null>(null);
+	/** 點到的人的八拍表：只跟著流程和點到誰重算，播放頭動不用重算。 */
+	const tappedRows = $derived(flow && tappedId ? eightCountRows(flow, tappedId, false) : []);
+	const tappedWho = $derived(
+		flow && tappedId && flow.members.some((m) => m.id === tappedId) ? memberNowText(flow, tappedId, playback.sec, tappedRows) : ''
+	);
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived(session.groupingAction);
 	/** 組號小圓：動作的人寫組號、塗組色；沒分組是灰色「?」。 */
@@ -331,6 +350,7 @@
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
 	function setView(next: 'edit' | 'practice') {
 		if (next === 'practice') playback.pause();
+		tappedId = null;
 		// 全上表改過格子：先問（session.practiceLeave），丟掉才切
 		if (next === 'edit' && view === 'practice') session.leavePracticePage(() => (view = next));
 		else view = next;
@@ -381,7 +401,7 @@
 		return '重複：先在八拍尺上面那一條拖出重複範圍（或按 A、B），或選一個動作';
 	}
 
-	/** 播放列的「⋯」小窗（延遲校正）：平常收著，不佔播放列的位置。 */
+	/** 播放列的「⋯」小窗（延遲校正；手機還有回開頭、節拍器、重複）：平常收著，不佔播放列的位置。 */
 	let moreOpen = $state(false);
 	let moreBtn = $state<HTMLButtonElement>();
 
@@ -391,7 +411,10 @@
 		if (by === 'escape') moreBtn?.focus();
 	}
 
-	/** 上方列最左邊的「選單」：不常按的五樣（開啟流程檔、新建、輸出影片、流程設定、使用說明）收在這個小窗裡。 */
+	/**
+	 * 上方列最左邊的「選單」：不常按的五樣（開啟流程檔、新建、輸出影片、流程設定、使用說明）收在這個小窗裡。
+	 * 窄螢幕（手機）的上方列只有一排：開啟流程檔、回首頁、存檔、分享、誰開著、八拍表、使用說明都收在這裡。
+	 */
 	let menuOpen = $state(false);
 	let menuBtn = $state<HTMLButtonElement>();
 	/** 選單的「開啟流程檔」點的選檔欄位：放在小窗外面，小窗關了它還在，選好的檔才收得到。 */
@@ -499,6 +522,7 @@
 	editor.file.onswitch = () => {
 		opened++;
 		me = session.flow ? loadFlowSetting('me', session.flow.name) : '';
+		tappedId = null;
 		openSegmentId = null;
 		settingsOpen = false;
 		printOpen = false;
@@ -755,13 +779,49 @@
 					>
 					<span class="clock">{clockText(playback.sec)} <i>/ {clockText(totalSeconds(flow))}</i></span>
 				{/snippet}
+				<!-- 節拍器、重複：電腦放在播放列上；手機的播放列只有一排，收在「⋯」裡 -->
+				{#snippet toggles()}
+					<label class="toggle metronome" title="節拍器：播放時每拍響一聲">
+						<input
+							type="checkbox"
+							checked={playback.metronome}
+							onchange={(e) => playback.setMetronome(e.currentTarget.checked)}
+						/>
+						<Icon name="metronome" /><span class="short-hide">節拍器</span>
+					</label>
+					<span class="repeat-group">
+						<label class="toggle repeat" title={repeatTitle()}>
+							<input
+								type="checkbox"
+								checked={playback.repeat}
+								disabled={!playback.canRepeat}
+								onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
+							/>
+							<Icon name="repeat" /><span class="short-hide">重複</span>
+						</label>
+						<!-- 重複範圍：A、B 放在播放頭（播放中也能按），✕ 拿掉 -->
+						<button
+							type="button"
+							class="ab set-end"
+							aria-label="A：重複從播放頭開始"
+							title={!flow.segments.length || playback.canSetA ? 'A：重複從播放頭開始' : 'A 不能放在結尾'}
+							disabled={!playback.canSetA}
+							onclick={() => playback.setA()}>A</button
+						>
+						<button
+							type="button"
+							class="ab set-end"
+							aria-label="B：重複到播放頭"
+							title={playback.range ? (playback.canSetB ? 'B：重複到播放頭' : 'B 要在 A 後面') : '先放 A'}
+							disabled={!playback.canSetB}
+							onclick={() => playback.setB()}>B</button
+						>
+						<button type="button" class="ab" aria-label="拿掉重複範圍" title="拿掉重複範圍" disabled={!playback.range} onclick={() => playback.clearRange()}>✕</button>
+					</span>
+				{/snippet}
 				{#if narrow}
-					<!-- 手機跳時間（#228）：回開頭、上一個／下一個八拍；點時間打「3-1」跳過去。只是看，不改流程 -->
-					<div class="jump" role="group" aria-label="跳時間">
-						<button type="button" aria-label="回開頭" onclick={() => playback.toStart()}>⏮</button>
-						<button type="button" aria-label="上一個八拍" onclick={() => playback.step(-1, true)}>‹ 八拍</button>
-						<button type="button" aria-label="下一個八拍" onclick={() => playback.step(1, true)}>八拍 ›</button>
-					</div>
+					<!-- 手機跳時間（#228）：上一個／下一個八拍夾著時間；點時間打「3-1」跳過去。只是看，不改流程。「回開頭」在「⋯」裡 -->
+					<button type="button" class="step" aria-label="上一個八拍" onclick={() => playback.step(-1, true)}>‹</button>
 					{#if jumpText === null}
 						<button
 							type="button"
@@ -789,46 +849,11 @@
 							{#if jumpError}<p class="jump-error" {@attach revealAlert(jumpError)}>{jumpError}</p>{/if}
 						</div>
 					{/if}
+					<button type="button" class="step" aria-label="下一個八拍" onclick={() => playback.step(1, true)}>›</button>
 				{:else}
 					<div class="board">{@render board()}</div>
+					{@render toggles()}
 				{/if}
-				<label class="toggle metronome" title="節拍器：播放時每拍響一聲">
-					<input
-						type="checkbox"
-						checked={playback.metronome}
-						onchange={(e) => playback.setMetronome(e.currentTarget.checked)}
-					/>
-					<Icon name="metronome" /><span class="short-hide">節拍器</span>
-				</label>
-				<span class="repeat-group">
-					<label class="toggle repeat" title={repeatTitle()}>
-						<input
-							type="checkbox"
-							checked={playback.repeat}
-							disabled={!playback.canRepeat}
-							onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
-						/>
-						<Icon name="repeat" /><span class="short-hide">重複</span>
-					</label>
-					<!-- 重複範圍：A、B 放在播放頭（播放中也能按），✕ 拿掉 -->
-					<button
-						type="button"
-						class="ab set-end"
-						aria-label="A：重複從播放頭開始"
-						title={!flow.segments.length || playback.canSetA ? 'A：重複從播放頭開始' : 'A 不能放在結尾'}
-						disabled={!playback.canSetA}
-						onclick={() => playback.setA()}>A</button
-					>
-					<button
-						type="button"
-						class="ab set-end"
-						aria-label="B：重複到播放頭"
-						title={playback.range ? (playback.canSetB ? 'B：重複到播放頭' : 'B 要在 A 後面') : '先放 A'}
-						disabled={!playback.canSetB}
-						onclick={() => playback.setB()}>B</button
-					>
-					<button type="button" class="ab" aria-label="拿掉重複範圍" title="拿掉重複範圍" disabled={!playback.range} onclick={() => playback.clearRange()}>✕</button>
-				</span>
 				<select
 					class="speed"
 					aria-label="播放速度"
@@ -855,6 +880,20 @@
 						aria-label="更多播放選項"
 						{@attach popover({ place: below(moreBtn!, { gap: 6, align: 'right', flip: true }), close: closeMore, inside: [moreBtn] })}
 					>
+						{#if narrow}
+							<div class="more-play">
+								<button
+									type="button"
+									aria-label="回開頭"
+									onclick={() => {
+										moreOpen = false;
+										playback.toStart();
+									}}>⏮ 回開頭</button
+								>
+								{@render toggles()}
+							</div>
+							<hr />
+						{/if}
 						<label class="latency">
 							<span class="latency-text">延遲校正</span>
 							<input
@@ -896,25 +935,55 @@
 		<!-- 檢視模式時上方列換成紫色：整個畫面一看就知道現在只能看 -->
 		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow} bind:this={topbar}>
 			<div class="title">
-				{#if !narrow}
-					<button
-						type="button"
-						class="menu"
-						title="選單"
-						aria-haspopup="dialog"
-						aria-expanded={menuOpen}
-						bind:this={menuBtn}
-						onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class="tight-hide">選單</span></button
+				<!-- 窄螢幕的「選單」只畫圖示：上方列只有一排，字留給流程名字 -->
+				<button
+					type="button"
+					class="menu"
+					title="選單"
+					aria-haspopup="dialog"
+					aria-expanded={menuOpen}
+					bind:this={menuBtn}
+					onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class={narrow ? 'sr-only' : 'tight-hide'}>選單</span></button
+				>
+				<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts）。
+				     是 dialog（跟 aria-haspopup 一樣）：Tab 到裡面的項目按空白鍵是按下它，不拿去播放（key-owner.ts） -->
+				{#if menuOpen}
+					<div
+						class="menu-pop"
+						role="dialog"
+						aria-label="選單"
+						{@attach popover({ place: below(menuBtn!, { gap: 6, align: 'left', flip: true }), close: closeMenu, inside: [menuBtn] })}
 					>
-					<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts）。
-					     是 dialog（跟 aria-haspopup 一樣）：Tab 到裡面的項目按空白鍵是按下它，不拿去播放（key-owner.ts） -->
-					{#if menuOpen}
-						<div
-							class="menu-pop"
-							role="dialog"
-							aria-label="選單"
-							{@attach popover({ place: below(menuBtn!, { gap: 6, align: 'left', flip: true }), close: closeMenu, inside: [menuBtn] })}
-						>
+						{#if narrow}
+							<!-- 窄螢幕（手機的檢視畫面、練習）上方列只有一排：開啟、回首頁、存檔、分享、八拍表都收在這裡。不能編，沒有新建、流程設定 -->
+							{#if cloud || linkOnly}
+								<!-- 雲端流程每一步都存了：沒有開啟、存檔 -->
+								<button type="button" onclick={() => fromMenu(goHome)}><Icon name="home" />回首頁</button>
+								{#if cloud}
+									<button type="button" onclick={() => fromMenu(() => (shareOpen = true))}><Icon name="people" />分享</button>
+								{/if}
+								<!-- 誰開著（#253）：上方列放不下頭像，一人一行寫名字和在編輯還是檢視；自己不列 -->
+								{#if cloud?.present.length}
+									<ul class="present-rows" aria-label="誰開著">
+										{#each cloud.present as p (p.userId)}
+											<li>
+												<span class="present-face" style:--face={faceColor(p.userId)} aria-hidden="true">{p.name.slice(0, 1)}</span>
+												{p.name}・{p.editing ? '編輯中' : '檢視中'}
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							{:else}
+								<!-- 同一下點擊裡點選檔欄位：瀏覽器要使用者剛點過才肯跳選檔 -->
+								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />開啟流程檔</button>
+								<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
+								<button type="button" onclick={() => fromMenu(() => editor.file.leaveToHome())}><Icon name="home" />回首頁</button>
+								<!-- 練習的紀錄照樣要存 -->
+								<button type="button" onclick={() => fromMenu(() => editor.file.save())}><Icon name="save" />存檔</button>
+							{/if}
+							<hr />
+							<button type="button" onclick={() => fromMenu(() => (printOpen = true))}><Icon name="print" />八拍表</button>
+						{:else}
 							{#if cloud || linkOnly}
 								<!-- 雲端流程每一步都存了：沒有開啟、新建，換成下載（擁有者、編輯者） -->
 								{#if cloud && canEdit(cloud.role)}
@@ -945,23 +1014,23 @@
 									><Icon name="settings" />流程設定</button
 								>
 							{/if}
-							<hr />
-							<a href={guideHref} target="_blank" rel="noopener" onclick={() => fromMenu(() => {})}><Icon name="help" />使用說明</a>
-						</div>
-					{/if}
-					{#if !cloud && !linkOnly}
-						<input
-							bind:this={menuFileInput}
-							class="menu-file"
-							type="file"
-							accept=".zip"
-							aria-label="開啟流程檔"
-							aria-hidden="true"
-							tabindex="-1"
-							onclick={pickOpen}
-							onchange={open}
-						/>
-					{/if}
+						{/if}
+						<hr />
+						<a href={guideHref} target="_blank" rel="noopener" onclick={() => fromMenu(() => {})}><Icon name="help" />使用說明</a>
+					</div>
+				{/if}
+				{#if !cloud && !linkOnly}
+					<input
+						bind:this={menuFileInput}
+						class="menu-file"
+						type="file"
+						accept=".zip"
+						aria-label="開啟流程檔"
+						aria-hidden="true"
+						tabindex="-1"
+						onclick={pickOpen}
+						onchange={open}
+					/>
 				{/if}
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 登入時本機流程寫「這台」：分得出這支只在這台電腦、還沒傳上雲端 -->
@@ -979,21 +1048,16 @@
 						<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
 					</div>
 				{/if}
-				<!-- 窄螢幕沒有選單：使用說明放在名字這一欄 -->
-				{#if narrow}
-					<a class="btn ghost guide-link" href={guideHref} target="_blank" rel="noopener" title="使用說明"
-						><Icon name="help" /><span class="guide-text">使用說明</span></a
-					>
-				{/if}
 			</div>
 
-			<!-- 播放區：寬的時候在上方列中間；窄螢幕放在手機檢視畫面的場地下面 -->
-			{#if !narrow}{@render transport()}{/if}
+			<!-- 窄螢幕的上方列只有一排：播放區放在手機檢視畫面的場地下面，右邊的按鈕都收在選單裡 -->
+			{#if !narrow}
+			<!-- 播放區：在上方列中間 -->
+			{@render transport()}
 
 			<div class="actions">
 				<!-- 練習時沒有復原、重做：復原只退編排的修改，在練習畫面看不到退了什麼，還可能弄掉紀錄 -->
-				<!-- 窄螢幕一律是檢視模式，沒有「編輯｜檢視」切換 -->
-				{#if view === 'edit' && !narrow}
+				{#if view === 'edit'}
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
 					<div class="mode" role="group" aria-label="編輯｜檢視">
@@ -1031,8 +1095,8 @@
 				>
 				{#if cloud || linkOnly}
 					<span class="sep" aria-hidden="true"></span>
-					<!-- 雲端流程每一步都存了：沒有存檔，換成回首頁（下載在選單裡）；手機也是 -->
-					<button type="button" class="ghost" onclick={goHome}><Icon name="home" />{narrow ? '回首頁' : '首頁'}</button>
+					<!-- 雲端流程每一步都存了：沒有存檔，換成回首頁（下載在選單裡） -->
+					<button type="button" class="ghost" onclick={goHome}><Icon name="home" />首頁</button>
 					<!-- 誰開著（#253）：別人的頭像放在「分享」左邊，一人一個顏色，右下小圖示是在編輯（筆）還是檢視（眼睛）；自己不列 -->
 					{#if cloud?.present.length}
 						<ul class="present" aria-label="誰開著">
@@ -1050,23 +1114,16 @@
 						<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />分享</button>
 					{/if}
 				{:else}
-					<!-- 窄螢幕沒有選單：開啟、回首頁放在外面 -->
-					{#if narrow}
-						<span class="sep" aria-hidden="true"></span>
-						<label class="open btn ghost" title="開啟"><Icon name="open" /><span class="short-hide">開啟</span><input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
-						<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
-						<button type="button" class="ghost" onclick={() => editor.file.leaveToHome()}><Icon name="home" />回首頁</button>
-					{/if}
 					<!-- 登入時存檔左邊：按了直接傳，不先問（傳上去不會弄丟東西） -->
-					{#if account && !narrow}
+					{#if account}
 						<button type="button" class="ghost" title="傳上雲端" onclick={() => editor.file.upload()}
 							><Icon name="cloud" /><span class="upload-text">傳上雲端</span></button
 						>
 					{/if}
-					<!-- 窄螢幕不能編，存檔不用搶眼的藍色（練習的紀錄照樣要存） -->
-					<button type="button" class={['save', narrow ? 'ghost' : 'primary']} title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
+					<button type="button" class="save primary" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
 				{/if}
 			</div>
+			{/if}
 			<!-- 斷網打開的離線副本（#261）：上方列下面一整條灰的，編排、練習、手機都看得到 -->
 			{#if editor.file.offlineAt !== null}
 				<p class="copy-bar" role="status" aria-label="沒有網路">
@@ -1083,7 +1140,8 @@
 				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面前後八拍（這個和下一個）。只能看、只能播放；場上的人拖不動 -->
 				<main class="phone-view">
 					<div class="phone-field">
-						<div class="formation-now">{formationNowText(flow, playback.sec)}</div>
+						<!-- 點了場上的人：這裡換成寫他的名字和這個八拍做什麼；點空白的地方換回站位名稱 -->
+						<div class="formation-now">{tappedWho || formationNowText(flow, playback.sec)}</div>
 						<Field
 							field={flow.field}
 							members={flow.members}
@@ -1091,7 +1149,11 @@
 							positions={positionsAt(flow, playback.sec)}
 							levels={layersAt(flow, playback.sec)}
 							controls={false}
+							numberBand={PHONE_NUMBER_BAND}
+							{toMeters}
 							marked={myId ? [myId] : []}
+							tapped={tappedWho ? tappedId : null}
+							ontap={(id) => (tappedId = id)}
 							ghosts={trail.ghosts}
 							walks={trail.walks}
 							clashes={trail.clashes}
@@ -1471,7 +1533,9 @@
 		{/if}
 		<p class="recent-note">草稿只存在這個瀏覽器裡。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 	{/snippet}
-	{#if account}
+	{#if openingLink}
+		<p class="opening-link" role="status">正在打開分享的流程…</p>
+	{:else if account}
 		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->
 		<div class="home signed-in">
 			{#if editor.file.revoked}
@@ -1796,35 +1860,78 @@
 		max-width: 100%;
 		animation-name: drop-in;
 	}
+	/* 手機的播放列：一排（播放、‹、時間、›、速度、⋯），場地才有地方畫大；時間那一格吃剩下的寬。
+	   比 350px 還窄的手機放不下一排，才換行 */
 	.phone-view .transport {
 		flex-wrap: wrap;
 		justify-content: center;
-		gap: 8px 10px;
-		padding: 8px 12px;
+		gap: 6px;
+		padding: 6px 8px;
 		background: var(--ink);
 	}
-	/* 手機跳時間：回開頭、上一個／下一個八拍（手指至少 40px 高）；時間本身是按鈕，點了換成打字的欄位 */
-	.jump {
-		display: flex;
-		gap: 6px;
-	}
-	.jump button {
-		min-height: 40px;
-		padding: 0 12px;
+	/* 手機跳時間：上一個／下一個八拍（手指 40px）；時間本身是按鈕，點了換成打字的欄位 */
+	.step {
+		flex: none;
+		width: 40px;
+		height: 40px;
+		padding: 0;
 		background: transparent;
 		border-color: #36425f;
 		color: #c9d2e6;
-		white-space: nowrap;
+		font-size: 20px;
 	}
 	button.board {
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
 	}
+	.phone-view .board,
+	.jump-to {
+		flex: 1 1 96px;
+		min-width: 0;
+	}
+	.phone-view .board {
+		padding-inline: 8px;
+		overflow: hidden;
+	}
+	.phone-view .speed {
+		flex: none;
+		padding-inline: 3px;
+	}
+	.phone-view .more {
+		flex: none;
+		min-width: 40px;
+		min-height: 40px;
+	}
 	.jump-to {
 		display: grid;
 		gap: 4px;
-		min-width: 168px;
+	}
+	/* 手機「⋯」裡的回開頭、節拍器、重複：手指 40px 高，放不下就換行 */
+	.more-play {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.more-play > button {
+		min-height: 40px;
+		background: transparent;
+		border-color: #36425f;
+		color: #c9d2e6;
+		white-space: nowrap;
+	}
+	.more-play :is(.toggle, .ab) {
+		min-height: 40px;
+	}
+	.more-play .ab {
+		min-width: 40px;
+	}
+	.more-pop hr {
+		width: 100%;
+		margin: 2px 0;
+		border: 0;
+		border-top: 1px solid #36425f;
 	}
 	.jump-to input {
 		min-height: 40px;
@@ -1857,6 +1964,10 @@
 	}
 	.phone-eights :global(.now-eight) {
 		overflow: visible;
+	}
+	/* 手機上的小字至少 13px（T19）：這一列的站位、走位小標 */
+	.phone-eights :global(.now-eight .tag) {
+		font-size: 13px;
 	}
 	.phone-eights :global(.action-detail) {
 		padding: 8px 12px 12px;
@@ -2325,6 +2436,9 @@
 	.menu-pop {
 		gap: 2px;
 		min-width: 168px;
+		/* 橫拿的手機很矮，誰開著的人一多會超出畫面：捲得到下面的項目 */
+		max-height: calc(100dvh - 64px);
+		overflow-y: auto;
 		padding: 6px;
 		color: #d6ddec;
 	}
@@ -2332,6 +2446,7 @@
 	.menu-pop a {
 		display: flex;
 		align-items: center;
+		justify-content: flex-start;
 		gap: 8px;
 		padding: 6px 10px;
 		border: 0;
@@ -2400,26 +2515,15 @@
 		gap: 4px;
 		min-width: 0;
 	}
-	.actions :global(button.ghost),
-	.actions .btn.ghost {
+	.actions :global(button.ghost) {
 		color: #d6ddec;
 	}
-	.actions :global(button.ghost:hover),
-	.actions .btn.ghost:hover {
+	.actions :global(button.ghost:hover) {
 		background: rgba(255, 255, 255, 0.08);
 		color: #fff;
 	}
 	.actions .save {
 		margin-left: 4px;
-	}
-	.guide-link {
-		flex: none;
-		color: #d6ddec;
-		text-decoration: none;
-	}
-	.guide-link:hover {
-		background: rgba(255, 255, 255, 0.08);
-		color: #fff;
 	}
 	.sep {
 		width: 1px;
@@ -2564,6 +2668,14 @@
 		max-width: calc(100% - 24px);
 		padding: 4px 10px;
 		font-size: 13px;
+		/* 名字很長、手機很窄：換行，動作和角色才不會被「…」藏起來 */
+		white-space: normal;
+		overflow-wrap: anywhere;
+		border-radius: 12px;
+	}
+	/* 放大了，右下角有「整個場地」：字只寫到它左邊 */
+	.phone-field:has(:global(.fit)) .formation-now {
+		max-width: calc(100% - 140px);
 	}
 	.view-badge {
 		position: absolute;
@@ -2955,15 +3067,13 @@
 		:where(.editor:not(.narrow)) .sep {
 			margin: 0;
 		}
-		:where(.editor:not(.narrow)) .actions :global(button.ghost),
-		:where(.editor:not(.narrow)) .actions .btn.ghost {
+		:where(.editor:not(.narrow)) .actions :global(button.ghost) {
 			padding-inline: 7px;
 		}
 	}
 	/* 1280 寬以下（滑鼠）：只有圖示的按鈕左右再收小 */
 	@media (max-width: 1280px) and (pointer: fine) {
-		:where(.editor:not(.narrow)) .actions :global(button.ghost),
-		:where(.editor:not(.narrow)) .actions .btn.ghost {
+		:where(.editor:not(.narrow)) .actions :global(button.ghost) {
 			padding-inline: 5px;
 		}
 	}
@@ -3009,7 +3119,6 @@
 			gap: 4px;
 		}
 		:where(.editor:not(.narrow)) .topbar .actions :global(button.ghost),
-		:where(.editor:not(.narrow)) .topbar .actions .btn.ghost,
 		:where(.editor:not(.narrow)) .topbar .more,
 		:where(.editor:not(.narrow)) .topbar .ab {
 			min-width: 34px;
@@ -3017,125 +3126,53 @@
 		}
 	}
 
-	/* ---------- 窄螢幕（手機檢視畫面）：上方列和播放區照舊（#280 不動） ----------
-	   播放區不在上方列裡（在場地下面），上方列只有名字和按鈕兩欄。
-	   螢幕矮（高 860px 以下）時：開啟、節拍器、重複只留圖示，間距收小。 */
-	@media (max-width: 1760px) and (min-height: 861px) {
-		:where(.narrow) .topbar {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
+	/* ---------- 窄螢幕（手機檢視畫面、練習）：上方列只有一排 ----------
+	   選單（只畫圖示）、流程名字、「編排｜練習」；其他按鈕都收在選單裡，場地才有地方畫大。
+	   播放區不在上方列裡（在場地下面）。 */
+	.editor.narrow .topbar {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 8px;
+		padding: 6px 12px;
 	}
-	@media (max-width: 1760px) and (max-height: 860px) {
-		:where(.narrow) .topbar {
-			gap: 8px;
-			padding-block: 6px;
-		}
-		:where(.narrow) .short-hide {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-		:where(.narrow) .transport {
-			gap: 4px;
-		}
-		:where(.narrow) .toggle {
-			padding-inline: 8px;
-		}
-		:where(.narrow) .repeat-group {
-			gap: 2px;
-		}
-		:where(.narrow) .board {
-			min-width: 132px;
-			padding-inline: 8px;
-		}
-		.copy-bar {
-			grid-row: 3;
-		}
+	.editor.narrow .title {
+		align-items: center;
+		gap: 8px;
 	}
-	@media (max-width: 1760px) and (max-height: 860px) and (pointer: fine) {
-		:where(.narrow) .ab {
-			min-width: 22px;
-			padding-inline: 4px;
-		}
+	/* 名字吃剩下的寬，放不下用「…」；「編排｜練習」不被擠掉 */
+	.editor.narrow .title b {
+		flex: 1 1 0;
+		min-width: 2em;
 	}
-	@media (max-width: 1180px) and (max-height: 860px) {
-		:where(.narrow) .sep {
-			margin: 0;
-		}
-		:where(.narrow) .actions :global(button.ghost),
-		:where(.narrow) .actions .btn.ghost,
-		:where(.narrow) .guide-link {
-			padding-inline: 7px;
-		}
+	.editor.narrow .menu {
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		padding: 0;
 	}
-	@media (max-width: 1100px) and (max-height: 860px), (max-width: 1180px) and (max-height: 860px) and (pointer: coarse) {
-		:where(.narrow) .tightest-hide {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset(50%);
-			white-space: nowrap;
-		}
-		:where(.narrow) .view button {
-			padding-inline: 8px;
-		}
-		:where(.narrow) .speed {
-			padding-inline: 3px;
-		}
-		:where(.narrow) .more {
-			padding-inline: 7px;
-		}
-		:where(.narrow) .title {
-			gap: 6px;
-		}
+	.editor.narrow .view button {
+		padding-inline: 8px;
 	}
-	@media (max-width: 1280px) and (max-height: 860px) and (pointer: fine) {
-		:where(.narrow) .actions :global(button.ghost),
-		:where(.narrow) .actions .btn.ghost,
-		:where(.narrow) .guide-link {
-			padding-inline: 5px;
-		}
+	.editor.narrow .copy-bar {
+		margin: 0 -12px -6px;
+		padding: 4px 12px;
 	}
-	@media (max-width: 1100px) and (max-height: 860px) and (pointer: fine) {
-		:where(.narrow) .actions {
-			gap: 2px;
-		}
-		:where(.narrow) .title {
-			gap: 4px;
-		}
-		:where(.narrow) .ab {
-			min-width: 20px;
-			padding-inline: 3px;
-		}
+	/* 選單裡的「誰開著」：一人一行，頭像旁邊寫名字和在編輯還是檢視 */
+	.present-rows {
+		display: grid;
+		gap: 4px;
+		margin: 0;
+		padding: 6px 10px;
+		list-style: none;
+		font-size: 14px;
 	}
-	@media (max-width: 1100px) and (max-height: 860px) and (pointer: coarse) {
-		:where(.narrow) .set-end {
-			display: none;
-		}
-		:where(.narrow) .actions {
-			gap: 2px;
-		}
-		:where(.narrow) .title {
-			gap: 4px;
-		}
-		:where(.narrow) .topbar .actions :global(button.ghost),
-		:where(.narrow) .topbar .actions .btn.ghost,
-		:where(.narrow) .topbar .guide-link,
-		:where(.narrow) .topbar .more,
-		:where(.narrow) .topbar .ab {
-			min-width: 34px;
-			padding-inline: 5px;
-		}
+	.present-rows li {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	@media (max-width: 1280px) {
-		/* 使用說明最後才縮成圖示（新手照說明找「使用說明」這幾個字）；讀屏照樣讀得到名字。
-		   登入時本機流程多的「傳上雲端」也只留圖示（滑過去看得到字），流程名字才不會被擠掉 */
-		.guide-text,
+		/* 登入時本機流程多的「傳上雲端」只留圖示（滑過去看得到字），流程名字才不會被擠掉 */
 		.upload-text {
 			position: absolute;
 			width: 1px;
@@ -3146,28 +3183,14 @@
 		}
 	}
 
-	/* 手機：名字一行、按鈕一行（不收進選單）。一行硬塞的話名字被擠到 0，名字這一欄的按鈕還會畫到右邊按鈕上，點錯。 */
-	@media (max-width: 760px) {
-		.topbar {
-			grid-template-columns: minmax(0, 1fr);
-			row-gap: 6px;
-			padding: 6px 12px;
-		}
-		.title b {
-			flex: 1 1 0;
-			min-width: 2em;
-		}
-		.actions {
-			grid-row: 2;
-			flex-wrap: wrap;
-		}
-		.copy-bar {
-			margin: 0 -12px -6px;
-			padding: 4px 12px;
-		}
-	}
-
 	/* ---------- 首頁 ---------- */
+	.opening-link {
+		min-height: 100dvh;
+		display: grid;
+		place-items: center;
+		margin: 0;
+		color: var(--muted);
+	}
 	.home {
 		position: relative;
 		min-height: 100dvh;

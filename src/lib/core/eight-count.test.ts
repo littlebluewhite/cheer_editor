@@ -8,6 +8,7 @@ import {
 	eightCountView,
 	nearbyEights,
 	formationNowText,
+	memberNowText,
 	clearPhaseBeats,
 	addPhase,
 	insertFormation,
@@ -20,7 +21,7 @@ import {
 	type Flow,
 	type NewActionInput
 } from './index';
-import { flowOf } from '../test-flows';
+import { flowOf, ratedSample } from '../test-flows';
 
 /** 音樂 1（150 BPM，一個八拍 3.2 秒；2 個整八拍 ＋ 4 拍）→ 口號 1（10 秒）；隊員 小A、小B、小C。 */
 function sample(): Flow {
@@ -577,5 +578,22 @@ describe('檢視模式場地角落的站位名稱', () => {
 	it('下一張沒有人要走：照舊寫現在這張', () => {
 		const flow = flowOf(insertFormation(sample(), 6.4));
 		expect(formationNowText(flow, 4)).toBe('站位 1');
+	});
+});
+
+describe('手機的檢視畫面點了圓點，場地角落寫的那個人', () => {
+	// 範例流程：150 BPM，一個八拍 3.2 秒。技巧 Lib 在第 1 個八拍（小A 主底、小B 主底）；騰翻在第 3 個八拍（小美、小A，任務角色也叫騰翻）
+	it('名字，和播放頭這個八拍他做的動作、任務角色', () => {
+		expect(memberNowText(ratedSample(), 'm2', 0)).toBe('小A　技巧·Lib 主底');
+		expect(memberNowText(ratedSample(), 'm2', 3.1)).toBe('小A　技巧·Lib 主底');
+	});
+
+	it('這個八拍他沒事：只寫名字', () => {
+		expect(memberNowText(ratedSample(), 'm2', 3.2)).toBe('小A');
+		expect(memberNowText(ratedSample(), 'm3', 7)).toBe('小B');
+	});
+
+	it('任務角色跟動作同名：不重複寫', () => {
+		expect(memberNowText(ratedSample(), 'm2', 7)).toBe('小A　騰翻');
 	});
 });

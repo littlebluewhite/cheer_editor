@@ -8,6 +8,15 @@
 		<link rel="icon" href="%sveltekit.assets%/favicon.ico" sizes="48x48" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+		<!-- 分享連結（#share=…）：程式跑起來之前先藏起畫面，不先閃一下首頁（+page.svelte 接手） -->
+		<script>
+			if (location.hash.startsWith('#share=')) document.documentElement.dataset.openingLink = '';
+		</script>
+		<style>
+			html[data-opening-link] body {
+				visibility: hidden;
+			}
+		</style>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

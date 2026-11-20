@@ -14,7 +14,7 @@ import {
 	type Flow
 } from '#lib/core';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
-import { editorPage, flush, openFile } from '#lib/test-fakes.js';
+import { editorPage, flush, fromMenu, openFile } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -81,7 +81,7 @@ describe('「印誰」照「我」', () => {
 		await flush();
 		await openFile(writeFlowFile(libSample(), {}));
 		await fireEvent.change(screen.getByLabelText('我'), { target: { value: 'm2' } });
-		await fireEvent.click(screen.getByRole('button', { name: '八拍表' }));
+		await fromMenu('八拍表');
 		expect(chosen()).toBe('小A');
 	});
 });

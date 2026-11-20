@@ -205,14 +205,48 @@ describe('選單裡每一項照原本的規則', () => {
 	});
 });
 
-describe('窄螢幕（手機檢視畫面）的上方列不動', () => {
-	it('沒有「選單」；開啟、回首頁、存檔、八拍表、使用說明在外面', async () => {
-		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
+describe('窄螢幕（手機檢視畫面）的上方列：一排，按鈕都收在選單裡', () => {
+	beforeEach(() => vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN })));
+	/** 上方列上看得到的按鈕、連結（選單關著）。 */
+	const onBar = () => [...topbar().querySelectorAll('button, a')].map((el) => el.textContent!.trim());
+
+	it('上方列只有「選單」和「編排｜練習」；開啟、回首頁、存檔、八拍表、使用說明不在外面', () => {
 		render(Page, editorPage(libSample()).props);
-		const bar = within(topbar());
-		expect(bar.queryByRole('button', { name: '選單' })).toBeNull();
-		expect(bar.getByLabelText('開啟')).toBeTruthy();
-		for (const name of ['回首頁', '存檔', '八拍表']) expect(bar.getByRole('button', { name: new RegExp(name) })).toBeTruthy();
-		expect(bar.getByRole('link', { name: /使用說明/ })).toBeTruthy();
+		expect(onBar()).toEqual(['選單', '編排', '練習']);
+		expect(topbar().querySelector('button, a, input, select')).toBe(menuButton());
+	});
+
+	it('點「選單」：開啟流程檔、回首頁、存檔｜八拍表｜使用說明；練習時也一樣（練習記的紀錄要存）', async () => {
+		render(Page, editorPage(practiceFlow()).props);
+		await fireEvent.click(menuButton());
+		expect(menuItems()).toEqual(['開啟流程檔', '回首頁', '存檔', '｜', '八拍表', '｜', '使用說明']);
+		await fireEvent.click(menuButton());
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		await fireEvent.click(menuButton());
+		expect(menuItems()).toEqual(['開啟流程檔', '回首頁', '存檔', '｜', '八拍表', '｜', '使用說明']);
+	});
+
+	it('選單的「存檔」存一個檔，「八拍表」打開八拍表；點了小窗關掉', async () => {
+		const page = editorPage(libSample());
+		render(Page, page.props);
+		await fromMenu('存檔');
+		await flush();
+		expect(page.saves).toHaveLength(1);
+		expect(menuPop()).toBeNull();
+		await fromMenu('八拍表');
+		expect(screen.getByRole('dialog', { name: '八拍表' })).toBeTruthy();
+		expect(menuPop()).toBeNull();
+	});
+
+	it('選單的「開啟流程檔」：點了在同一下叫出選檔欄位，選好的檔開起來', async () => {
+		render(Page, editorPage(libSample()).props);
+		const input = screen.getByLabelText('開啟流程檔') as HTMLInputElement;
+		let clicked = 0;
+		input.addEventListener('click', () => clicked++);
+		await fromMenu('開啟流程檔');
+		expect(clicked).toBe(1);
+		expect(menuPop()).toBeNull();
+		await openFile(writeFlowFile(flowOf(renameFlow(libSample(), '縣賽')), {}), '開啟流程檔', '縣賽.zip');
+		expect(document.querySelector('.topbar b')?.textContent).toBe('縣賽');
 	});
 });

@@ -2,8 +2,9 @@
 // 選著的被刪了不再選著。「分享」左邊是別人的頭像（自己不列）。同一個人開第二個分頁也打得開。
 // 伺服器換成測試共用的假伺服器（fakeServer）：別人用 joinAs 在別的地方打開、送步。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
-import { editorPage, fromMenu, fakeServer, fakeTabs, flush, testEditor } from '#lib/test-fakes.js';
+import { describe, expect, it, vi } from 'vitest';
+import { NARROW_SCREEN } from '#lib/editor-layout.js';
+import { editorPage, fromMenu, fakeServer, fakeTabs, flush, menuItem, testEditor } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -169,6 +170,20 @@ describe('誰開著', () => {
 		w.room.close();
 		await flush();
 		expect(screen.queryByRole('list', { name: '誰開著' })).toBeNull();
+	});
+
+	it('手機：上方列放不下頭像，誰開著列在選單裡，一人一行寫名字和在編輯還是檢視', async () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
+		try {
+			const s = await linOpens();
+			s.joinAs('c1', wang.email, true);
+			await flush();
+			expect(screen.queryByRole('list', { name: '誰開著' })).toBeNull();
+			await menuItem('回首頁');
+			expect(faces().map((f) => f.textContent!.replace(/\s+/g, ' ').trim())).toEqual(['王 王教練・編輯中']);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it('我換成檢視模式：告訴伺服器，別人看到我「檢視中」', async () => {

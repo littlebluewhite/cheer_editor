@@ -32,7 +32,7 @@ const click = (name: string) =>
   fireEvent.click(screen.getByRole("button", { name }));
 
 describe("手機跳時間", () => {
-  it("「下一個八拍」「上一個八拍」一次移一個八拍，「回開頭」回到 1-1", async () => {
+  it("「下一個八拍」「上一個八拍」一次移一個八拍；「⋯」裡的「回開頭」回到 1-1，小窗收起來", async () => {
     await openOnPhone();
     expect(where()).toBe("音樂 1 1-1");
     await click("下一個八拍");
@@ -42,8 +42,10 @@ describe("手機跳時間", () => {
     await click("上一個八拍");
     expect(where()).toBe("音樂 1 2-1");
     await click("下一個八拍");
+    await click("更多播放選項");
     await click("回開頭");
     expect(where()).toBe("音樂 1 1-1");
+    expect(screen.queryByRole("group", { name: "更多播放選項" })).toBeNull();
   });
 
   it("點時間打「3-1」按 Enter：跳到第 3 個八拍，不算改流程", async () => {

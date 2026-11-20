@@ -108,6 +108,18 @@ describe('場地上的號碼位置', () => {
 		}
 	});
 
+	it('號碼條給窄一點的（手機的檢視畫面 0.7 m）：整個場地的範圍跟著縮，號碼貼著窄的那一條靠外的邊', () => {
+		// 9 條直放：墊子寬 16.4592、深 12.8016，外圍各多 1 m
+		const view = fullView(vertical, 0.7);
+		expect(view.x).toBeCloseTo(-9.9296);
+		expect(view.y).toBeCloseTo(-8.1008);
+		expect(view.width).toBeCloseTo(19.8592);
+		expect(view.height).toBeCloseTo(16.5016);
+		const { strips, cells } = fieldNumbers(vertical, view, 0.3, 0.26, 0.7);
+		expect(strips[0].at[1]).toBeCloseTo(-8.1008 + 1.1 * 0.3);
+		expect(cells[0].at[0]).toBeCloseTo(-9.9296 + 0.65 * 0.26);
+	});
+
 	it('9 條直放：條號在後面（上）、格號在左邊', () => {
 		const { mat, outer } = fieldGeometry(vertical);
 		const { strips, cells } = fieldNumbers(vertical, fullView(vertical), 0.3, 0.26);

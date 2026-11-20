@@ -3,6 +3,7 @@
 // 跟重拍使用說明截圖（scripts/guide-screenshots.mjs）一樣：自己開 vite dev 和 headless Chrome，用 CDP 操作。
 // 全部通過時 0 結束；有一條失敗就印出檢查名稱和量到的值，1 結束。
 // Chrome 不在 macOS 預設位置時，用 CHROME=/path/to/chrome 指定。
+// 只跑幾條：LAYOUT_ONLY='T19|前後八拍'（名稱裡有其中一段的才跑；|隔開）。
 // vite 和 Chrome 的埠每次自己找空的，好幾個一起跑也不會撞；要固定的話用 LAYOUT_PORT=（vite）、LAYOUT_CDP=（Chrome）。
 //
 // 怎麼加一條新檢查：
@@ -199,6 +200,7 @@ const rectOf = (selector) =>
 
 const failed = [];
 async function check(name, fn) {
+	if (process.env.LAYOUT_ONLY && !process.env.LAYOUT_ONLY.split('|').some((k) => name.includes(k))) return;
 	current = name;
 	let res;
 	try { res = await fn(); } catch (e) { res = { ok: false, value: String(e.message ?? e) }; }
@@ -1282,6 +1284,43 @@ const tap = async (x, y) => {
 	await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 	await sleep(300);
 };
+/** 手指很快點兩下（兩下中間不到 300 毫秒）。 */
+const doubleTap = async (x, y) => {
+	for (let i = 0; i < 2; i++) {
+		await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+		await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+		await sleep(60);
+	}
+	await sleep(300);
+};
+/** 一根手指從 a 拖到 b。 */
+const swipe = async (a, b) => {
+	await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: a.x, y: a.y }] });
+	for (let i = 1; i <= 5; i++)
+		await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: a.x + ((b.x - a.x) * i) / 5, y: a.y + ((b.y - a.y) * i) / 5 }] });
+	await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+	await sleep(300);
+};
+/** 兩根手指以 c 為中心，從相距 from px 張開（或捏合）到 to px。 */
+const pinch = async (c, from, to) => {
+	const points = (d) => [{ x: c.x - d / 2, y: c.y, id: 0 }, { x: c.x + d / 2, y: c.y, id: 1 }];
+	await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(from) });
+	for (let i = 1; i <= 5; i++) await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(from + ((to - from) * i) / 5) });
+	await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+	await sleep(300);
+};
+/** 手機：手指點上方列的「選單」，再點裡面寫著 text 的那一項。那一項沒有、被蓋住、在畫面外就不點，回 false。 */
+async function tapFromMenu(text) {
+	const menu = await rectOf('.topbar .menu');
+	await tap(menu.x, menu.y);
+	const item = await js(`const b = ${menuItem(text)};
+		if (!b) return null;
+		const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2, self: !!t && b.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
+	if (!item?.self) return false;
+	await tap(item.x, item.y);
+	return true;
+}
 /** 頁面有沒有橫向捲軸、有沒有東西跑出畫面右邊（看得到的元素）。 */
 const overflow = () =>
 	js(`const out = [...document.querySelectorAll('body *')].filter((el) => {
@@ -1413,7 +1452,7 @@ await check('390×844（觸控）練習記錄頁有 12 個動作：選動作是�
 	const inView = (y) => y !== null && y >= 0 && y < 844 - 100;
 	return { ok: inView(first) && inView(last) && name === '小美', value: { 第一張卡的上緣: first, 選了跳11後: last, 卡: name } };
 });
-await check('390×844（觸控）：有未存的修改（練習記了一次）按上方列的「回首頁」，「還沒存」對話框按鈕點得到', async () => {
+await check('390×844（觸控）：有未存的修改（練習記了一次）按選單裡的「回首頁」，「還沒存」對話框按鈕點得到', async () => {
 	await setTouchViewport(390, 844);
 	await openPracticeFlow();
 	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '練習').click()`);
@@ -1421,9 +1460,7 @@ await check('390×844（觸控）：有未存的修改（練習記了一次）�
 	const recorded = await recordOnce();
 	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '編排').click()`);
 	await sleep(300);
-	const go = await js(`const b = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '回首頁');
-		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-	await tap(go.x, go.y);
+	if (!(await tapFromMenu('回首頁'))) return { ok: false, value: '選單裡的「回首頁」點不到' };
 	const res = await js(`const box = document.querySelector('.discard-box');
 		if (!box) return { 打開了: false };
 		const buttons = [...box.querySelectorAll('button')].map((b) => {
@@ -1469,7 +1506,7 @@ await check('390×844（觸控）檢視畫面：播放前後播放鈕位置不�
 });
 
 for (const [w, h] of [[320, 640], [390, 844], [844, 390]]) {
-	await check(`${w}×${h}（觸控）手機跳時間：回開頭、上一個／下一個八拍點得到、點了會跳；點時間打字的欄位在畫面裡、不溢出（#228）`, async () => {
+	await check(`${w}×${h}（觸控）手機跳時間：上一個／下一個八拍、「⋯」裡的回開頭點得到、點了會跳；點時間打字的欄位在畫面裡、不溢出（#228）`, async () => {
 		await setTouchViewport(w, h);
 		await openSample();
 		const spot = (sel) => js(`const el = document.querySelector('${sel}');
@@ -1478,15 +1515,20 @@ for (const [w, h] of [[320, 640], [390, 844], [844, 390]]) {
 			return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: Math.round(r.height),
 				self: !!t && el.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
 		const at = () => js(`return document.querySelector('.phone-view .pos')?.textContent ?? null`);
-		const names = ['回開頭', '上一個八拍', '下一個八拍'];
+		const names = ['上一個八拍', '下一個八拍', '更多播放選項'];
 		const buttons = {};
-		for (const n of names) buttons[n] = await spot(`.phone-view .jump button[aria-label="${n}"]`);
+		for (const n of names) buttons[n] = await spot(`.phone-view .transport > button[aria-label="${n}"]`);
 		if (!names.every((n) => buttons[n]?.self && buttons[n].h >= 40)) return { ok: false, value: { 按鈕: buttons } };
 		const start = await at();
 		await tap(buttons['下一個八拍'].x, buttons['下一個八拍'].y);
 		const next = await at();
+		// 「回開頭」收在「⋯」裡：點開、點它，小窗收起來
+		await tap(buttons['更多播放選項'].x, buttons['更多播放選項'].y);
+		buttons['回開頭'] = await spot('.more-pop button[aria-label="回開頭"]');
+		if (!buttons['回開頭']?.self || buttons['回開頭'].h < 40) return { ok: false, value: { 按鈕: buttons } };
 		await tap(buttons['回開頭'].x, buttons['回開頭'].y);
 		const back = await at();
+		if (await js(`return !!document.querySelector('.more-pop')`)) return { ok: false, value: '點了「回開頭」，「⋯」小窗沒收起來' };
 		const board = await spot('.phone-view button.board');
 		if (!board?.self) return { ok: false, value: { 時間點不到: board } };
 		await tap(board.x, board.y);
@@ -1509,14 +1551,188 @@ await check('844×390（手機橫拿）：檢視畫面和練習畫面都不溢�
 	const practice = await overflow();
 	return { ok: phone.ok && noOverflow(edit) && noOverflow(practice), value: { 檢視畫面: phone.value, 編排: edit, 練習: practice } };
 });
-await check('390×844（觸控）：隊員開了流程檔，按上方列的「八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
+
+// ---------- 手機的檢視畫面：上方列、播放列各一排，場地畫大；放大場地；點場上的人看是誰；選了「我」別人畫淡 ----------
+
+/** host 裡的場地：一公尺畫成幾 px、畫的範圍（公尺：左、上、寬、高）、圓點直徑（px）。 */
+const fieldNow = (host) =>
+	js(`const svg = document.querySelector('${host} svg.field');
+		const vb = svg.viewBox.baseVal, r = svg.getBoundingClientRect();
+		const dot = svg.querySelector('g.dot :is(circle, rect):is(.base, .top)');
+		return { 一公尺幾px: Math.round(Math.min(r.width / vb.width, r.height / vb.height) * 100) / 100,
+			範圍: [vb.x, vb.y, vb.width, vb.height].map((n) => Math.round(n * 100) / 100),
+			圓點直徑: dot ? Math.round(dot.getBoundingClientRect().height * 10) / 10 : null };`);
+/** host 裡的場地上，公尺座標 (x, y) 在畫面上的哪一點。 */
+const fieldPoint = (host, x, y) => js(`const m = document.querySelector('${host} svg.field').getScreenCTM(); return { x: m.e + ${x} * m.a, y: m.f + ${y} * m.d };`);
+/** host 裡的場地上兩個人的圓心在畫面上隔幾 px。 */
+const dotsApart = (host, a, b) =>
+	js(`const c = (id) => { const r = document.querySelector('${host} [data-member-id="' + id + '"] :is(circle, rect):is(.base, .top)').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+		const [p, q] = [c('${a}'), c('${b}')];
+		return Math.round(Math.hypot(p[0] - q[0], p[1] - q[1]) * 10) / 10;`);
+/** 「整個場地」鈕（放大了才有）：中心點、點不點得到；沒有是 null。 */
+const fitSpot = (host) =>
+	js(`const b = document.querySelector('${host} button.fit');
+		if (!b) return null;
+		const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: Math.round(r.height), left: r.left,
+			self: !!t && b.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
+/** 四個人的位置：小A、小B 左右隔 0.9 公尺（技巧的兩個底層大概這麼近），場地正中心沒有人。 */
+const NEAR_BASES = `flow = core.setPositions(flow, flow.formations[0].id, { m1: [-4, -3], m2: [-0.45, 2], m3: [0.45, 2], m4: [4, -3] }).flow;`;
+
+// 390×664 是 iPhone 用 Safari 開（網址列佔掉一塊），390×844 是加到主畫面全螢幕開
+for (const [w, h, least] of [[360, 640, null], [375, 667, null], [390, 664, 13], [390, 844, 18.5]]) {
+	await check(`${w}×${h}（觸控）手機的檢視畫面：上方列一排（只有選單、名字、「編排｜練習」）、播放列一排，每顆點得到${least ? `；場地一公尺至少畫 ${least} px` : ''}`, async () => {
+		await setTouchViewport(w, h);
+		await openSample();
+		const phone = await phoneView();
+		if (!phone.ok) return phone;
+		const rows = await js(`const seen = (sel) => [...document.querySelectorAll(sel)].filter((el) => el.checkVisibility());
+			const mids = (sel) => seen(sel).map((el) => { const r = el.getBoundingClientRect(); return Math.round(r.top + r.height / 2); });
+			const hit = (el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return !!t && el.contains(t) && r.left >= 0 && r.right <= innerWidth; };
+			return { 上方列每個的中線: mids('.topbar .menu, .topbar .title b, .topbar .view'), 上方列有: seen('.topbar :is(button, a)').map((el) => el.textContent.trim()),
+				播放列每個的中線: mids('.phone-view .transport > *'),
+				播放列點不到的: seen('.phone-view .transport > :is(button, select)').filter((el) => !hit(el)).map((el) => el.getAttribute('aria-label')),
+				名字寬: Math.round(document.querySelector('.topbar .title b').getBoundingClientRect().width) };`);
+		const oneRow = (ys) => ys.length > 0 && Math.max(...ys) - Math.min(...ys) <= 2;
+		const hits = await topbarHits();
+		const field = await fieldNow('.phone-field');
+		const o = await overflow();
+		const ok = oneRow(rows.上方列每個的中線) && rows.上方列有.join() === '選單,編排,練習' && rows.名字寬 > 0 && hits.length === 0
+			&& oneRow(rows.播放列每個的中線) && rows.播放列每個的中線.length === 6 && rows.播放列點不到的.length === 0
+			&& noOverflow(o) && (!least || field.一公尺幾px >= least);
+		return { ok, value: { ...rows, 上方列點錯的: hits, ...field, ...o } };
+	});
+}
+
+for (const [w, h] of [[390, 664], [320, 640], [844, 390]]) {
+	await check(`${w}×${h}（觸控）手機的「選單」和播放列「⋯」的小窗：整個在畫面裡，裡面每一項點得到；選單的每一項、回開頭、節拍器、重複至少 40 px 高`, async () => {
+		await setTouchViewport(w, h);
+		await openSample();
+		/** 小窗 sel 裡的 items：不在畫面裡、中心點不是它自己、big 的那幾種不到 40 px 高的列出來。 */
+		const pop = (sel, items, big) =>
+			js(`const pop = document.querySelector('${sel}');
+				if (!pop) return null;
+				const p = pop.getBoundingClientRect();
+				const all = [...pop.querySelectorAll('${items}')];
+				const bad = all.flatMap((el) => {
+					const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+					const hit = !!t && el.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;
+					return hit && (!el.matches('${big}') || r.height >= 40) ? [] : [{ 哪個: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 10), 點得到: hit, 高: Math.round(r.height) }];
+				});
+				return { 幾項: all.length, 在畫面裡: p.top >= 0 && p.bottom <= innerHeight && p.left >= 0 && p.right <= innerWidth, 不合格: bad };`);
+		const menu = await rectOf('.topbar .menu');
+		await tap(menu.x, menu.y);
+		const menuPop = await pop('.menu-pop', 'button, a', 'button, a');
+		// 再點一下「選單」收起來
+		await tap(menu.x, menu.y);
+		const closed = await js(`return !document.querySelector('.menu-pop')`);
+		const more = await rectOf('.phone-view .transport .more');
+		await tap(more.x, more.y);
+		const morePop = await pop('.more-pop', '.more-play > button, label.toggle, button.ab, .latency input, label.return-on-stop', '.more-play > button, label.toggle, button.ab');
+		const fine = (p, n) => !!p && p.幾項 === n && p.在畫面裡 && p.不合格.length === 0;
+		// 選單：開啟流程檔、回首頁、存檔、八拍表、使用說明；⋯：回開頭、節拍器、重複、A、B、✕、延遲校正、停下來回到起播點
+		return { ok: fine(menuPop, 5) && closed && fine(morePop, 8), value: { 選單: menuPop, 再點一下選單收起來: closed, '⋯': morePop } };
+	});
+}
+
+await check('390×664（觸控）手機的檢視畫面放大場地：點兩下空白處放大兩倍，圓點還是 22 px，隔 0.9 公尺的兩個人不再疊在一起；放大後一根手指拖是移動畫面、兩根手指張開再放大，頁面不跟著動；右下角「整個場地」點得到、不蓋到左下角的字，點了回到整個場地', async () => {
+	await setTouchViewport(390, 664);
+	await openPracticeFlow(NEAR_BASES);
+	const host = '.phone-field';
+	const before = { ...(await fieldNow(host)), 兩人隔: await dotsApart(host, 'm2', 'm3'), 整個場地鈕: await fitSpot(host) };
+	const blank = await fieldPoint(host, 0, 0);
+	await doubleTap(blank.x, blank.y);
+	const zoomed = { ...(await fieldNow(host)), 兩人隔: await dotsApart(host, 'm2', 'm3'), 整個場地鈕: await fitSpot(host) };
+	const cornerRight = await js(`return document.querySelector('.phone-field .formation-now').getBoundingClientRect().right`);
+	const mid = await rectOf('.phone-field svg.field');
+	await swipe({ x: mid.x, y: mid.y }, { x: mid.x + 60, y: mid.y });
+	const panned = await fieldNow(host);
+	await pinch({ x: mid.x, y: mid.y }, 60, 150);
+	const pinched = await fieldNow(host);
+	const page = await js(`return { 捲動: [scrollX, scrollY], 頁面縮放: visualViewport.scale }`);
+	const fit = await fitSpot(host);
+	if (fit?.self) await tap(fit.x, fit.y);
+	const after = { ...(await fieldNow(host)), 整個場地鈕: await fitSpot(host) };
+	const near = (a, b, by = 0.05) => Math.abs(a - b) <= by;
+	const ok = before.整個場地鈕 === null && before.兩人隔 < before.圓點直徑
+		&& near(zoomed.範圍[2], before.範圍[2] / 2) && near(zoomed.圓點直徑, 22, 1) && zoomed.兩人隔 >= zoomed.圓點直徑
+		&& !!zoomed.整個場地鈕?.self && zoomed.整個場地鈕.h >= 40 && cornerRight <= zoomed.整個場地鈕.left
+		// 手指往右拖 60 px：畫面跟著手指走，看到的範圍往左移
+		&& near(panned.範圍[2], zoomed.範圍[2]) && panned.範圍[0] < zoomed.範圍[0] - 1
+		&& pinched.範圍[2] < panned.範圍[2] - 1 && near(pinched.圓點直徑, 22, 1)
+		&& page.捲動.join() === '0,0' && page.頁面縮放 === 1
+		&& !!fit?.self && after.整個場地鈕 === null && String(after.範圍) === String(before.範圍);
+	return { ok, value: { 放大前: before, 點兩下後: zoomed, 左下角的字右緣: Math.round(cornerRight), 拖了之後: panned, 張開之後: pinched, 頁面: page, 按整個場地後: after } };
+});
+
+await check('390×664（觸控）手機的檢視畫面：點場上的人，左下角寫他的名字和這個八拍做什麼，整塊在場地那一格裡；點空白處換回站位名稱；「我」選了人，別人畫淡、我不淡', async () => {
+	await setTouchViewport(390, 664);
+	await openPracticeFlow(NEAR_BASES);
+	const corner = () =>
+		js(`const p = document.querySelector('.phone-field .formation-now'), r = p.getBoundingClientRect(), f = document.querySelector('.phone-field').getBoundingClientRect();
+			return { 字: p.textContent.trim(), 在場地那一格裡: r.left >= f.left && r.right <= f.right && r.top >= f.top && r.bottom <= f.bottom };`);
+	const start = await corner();
+	const dot = await rectOf('.phone-field [data-member-id="m4"] :is(circle, rect):is(.base, .top)');
+	await tap(dot.x, dot.y);
+	const who = await corner();
+	const blank = await fieldPoint('.phone-field', 0, 0);
+	await tap(blank.x, blank.y);
+	const back = await corner();
+	/** 每個人圓點底色多不透明，照 m1 到 m4 的順序。 */
+	const solid = () =>
+		js(`return ['m1', 'm2', 'm3', 'm4'].map((id) => Number(getComputedStyle(document.querySelector('.phone-field [data-member-id="' + id + '"] :is(circle, rect):is(.base, .top)')).fillOpacity));`);
+	const pickMe = async (id) => {
+		await js(`const s = document.querySelector('#me-pick'); s.value = '${id}'; s.dispatchEvent(new Event('change', { bubbles: true }));`);
+		await sleep(300);
+	};
+	const plain = await solid();
+	await pickMe('m1');
+	const faded = await solid();
+	// 「我」照流程名字記在這台：收掉，後面的檢查才不會一打開就標著小美
+	await pickMe('');
+	// 小芳（m4）在範例流程第 1 個八拍做技巧·Lib 的上層。小美（m1）、小芳在空中，底色本來就是 0.6；畫淡的是 0.4
+	const ok = start.字 === '站位 1' && who.字 === '小芳　技巧·Lib 上層' && who.在場地那一格裡 && back.字 === '站位 1'
+		&& String(plain) === '0.6,1,1,0.6' && String(faded) === '0.6,0.4,0.4,0.4';
+	return { ok, value: { 一開始: start, 點了小芳: who, 點空白處: back, 還沒選我時每個人多不透明: plain, 選了我是小美之後: faded } };
+});
+
+await check('1180×820（觸控，橫拿的 iPad）檢視模式：圓點是 22 px（編輯時 32 px）；沒放大時一根手指拖空白處是框選；點兩下空白處放大兩倍、圓點不跟著變大，放大後一根手指拖是移動畫面；右下角「整個場地」點了回到整個場地', async () => {
+	await setTouchViewport(1180, 820);
+	await openPracticeFlow(NEAR_BASES);
+	const host = '.field-host';
+	const editing = await fieldNow(host);
+	await js(`document.querySelector('[aria-label="編輯｜檢視"] button[title^="檢視模式"]').click()`);
+	await sleep(400);
+	const before = { ...(await fieldNow(host)), 整個場地鈕: await fitSpot(host) };
+	const picked = () => js(`return [...document.querySelectorAll('.field-host g.dot.selected')].map((g) => g.getAttribute('data-member-id')).sort()`);
+	// 從小A、小B 的左上拖到右下：框到這兩個人，畫面不動
+	const [from, to] = [await fieldPoint(host, -2, 1), await fieldPoint(host, 2, 3)];
+	await swipe(from, to);
+	const boxed = { 選到: await picked(), ...(await fieldNow(host)) };
+	const blank = await fieldPoint(host, 0, 0);
+	await tap(blank.x, blank.y);
+	await sleep(400);
+	await doubleTap(blank.x, blank.y);
+	const zoomed = { ...(await fieldNow(host)), 整個場地鈕: await fitSpot(host) };
+	await swipe(blank, { x: blank.x + 120, y: blank.y });
+	const panned = { 選到: await picked(), ...(await fieldNow(host)) };
+	const fit = await fitSpot(host);
+	if (fit?.self) await tap(fit.x, fit.y);
+	const after = { ...(await fieldNow(host)), 整個場地鈕: await fitSpot(host) };
+	await clearTouch();
+	const near = (a, b, by = 0.05) => Math.abs(a - b) <= by;
+	const ok = near(editing.圓點直徑, 32, 1) && near(before.圓點直徑, 22, 1) && before.整個場地鈕 === null
+		&& boxed.選到.join() === 'm2,m3' && String(boxed.範圍) === String(before.範圍)
+		&& near(zoomed.範圍[2], before.範圍[2] / 2) && near(zoomed.圓點直徑, 22, 1) && !!zoomed.整個場地鈕?.self
+		&& near(panned.範圍[2], zoomed.範圍[2]) && panned.範圍[0] < zoomed.範圍[0] - 1 && panned.選到.length === 0
+		&& !!fit?.self && after.整個場地鈕 === null && String(after.範圍) === String(before.範圍);
+	return { ok, value: { 編輯時: editing, 檢視模式: before, 框選後: boxed, 點兩下後: zoomed, 拖了之後: panned, 按整個場地後: after } };
+});
+await check('390×844（觸控）：隊員開了流程檔，按選單裡的「八拍表」看得到八拍表，選得了印誰、關得掉', async () => {
 	await setTouchViewport(390, 844);
 	await openPracticeFlow();
-	const go = await js(`const b = document.querySelector('.topbar button[title="八拍表"]');
-		if (!b) return null;
-		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-	if (!go) return { ok: false, value: '上方列沒有「八拍表」' };
-	await tap(go.x, go.y);
+	if (!(await tapFromMenu('八拍表'))) return { ok: false, value: '選單裡的「八拍表」點不到' };
 	const res = await js(`const sheet = document.querySelector('.print-sheet');
 		if (!sheet) return { 打開了: false };
 		const hit = (el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -1614,7 +1830,7 @@ await clearTouch();
 await check('768×1024 八拍表的標題列：「八拍表」「印誰」各自一行，不擠成直排', async () => {
 	await setViewport(768, 1024);
 	await openSample();
-	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await fromMenu('八拍表');
 	await sleep(300);
 	// 數字自己那一段字排成幾行（每個字一行就是直排）
 	return js(`const one = (sel) => { const el = document.querySelector(sel);
@@ -1700,7 +1916,7 @@ await check('1440×900 總表 40 人：往右捲時「環節」那一欄留在�
 await check('列印：八拍表的拍點、環節換行不截斷，背景是白的', async () => {
 	await js(`[...document.querySelectorAll('.topbar .view button')].find((b) => b.textContent.trim() === '編排').click()`);
 	await sleep(200);
-	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	await fromMenu('八拍表');
 	await sleep(300);
 	return asPrinted(() =>
 		js(`const cut = [...document.querySelectorAll('.print-sheet .cue, .print-sheet .phase')]
@@ -1726,8 +1942,10 @@ const fullSheetFlow = () =>
 		flow = core.updateMember(flow, 'm1', { name: '名字有二十個字的隊員一二三四五六七八九十' }).flow;
 		flow = core.updateAction(flow, 'x1', { note: '下來的時候小心，上層要看前面' }).flow;
 		flow = core.addSegment(flow, 'chant').flow;`);
+/** 打開八拍表：電腦在上方列；窄螢幕（手機的檢視畫面）收在選單裡。 */
 const openEightCount = async () => {
-	await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	if (await js(`return !!document.querySelector('.topbar button[title="八拍表"]')`)) await js(`document.querySelector('.topbar button[title="八拍表"]').click()`);
+	else await fromMenu('八拍表');
 	await sleep(400);
 };
 /** 八拍表動作欄：每段字每一行（最後一行以外）有幾個字，取最少的；一字一行就是 1。 */
@@ -2744,7 +2962,10 @@ await check('分享對話框在手機、iPad（擁有者、編輯者）：不溢
 				let done = null;
 				try {
 					done = await openCloudFlow(role);
-					await waitFor(() => js(`const b = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '分享'); b?.click(); return !!b;`), 30);
+					// 手機、直拿的 iPad 的「分享」收在選單裡（選單的小窗也在上方列裡面）；橫拿的 iPad 在上方列上
+					await waitFor(() => js(`const find = () => [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === '分享');
+						if (!find() && !document.querySelector('.menu-pop')) { document.querySelector('.topbar .menu').click(); await new Promise((r) => setTimeout(r, 100)); }
+						const b = find(); b?.click(); return !!b;`), 30);
 					await waitFor(() => js(`return document.querySelectorAll('.share-dialog .people li').length === 3 && !!document.querySelector('.share-dialog .link-part')`), 30);
 					await sleep(300);
 					const r = await allReachable('.share-dialog button, .share-dialog input, .share-dialog select');
@@ -3314,7 +3535,7 @@ await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正�
 
 // ---------- 第 5 批的文字（#231） ----------
 
-await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭至少 15 px、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
+await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭至少 15 px（站位、走位的小標至少 13 px）、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
 	await setTouchViewport(390, 844);
 	await openSample();
 	// 一個八拍一個八拍往後跳，跳到口號段那一列
@@ -3325,17 +3546,15 @@ await check('390×844（觸控）手機上的小字看得清楚（T19）：口�
 			await new Promise((r) => setTimeout(r, 50));
 		}
 		return false;`);
-	const measure = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((el) => ({ 字: contrast(el), 大小: parseFloat(getComputedStyle(el).fontSize), 字是: el.textContent.trim().slice(0, 12) }))`;
+	const measure = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((el) => ({ 字: contrast(el), 大小: parseFloat(getComputedStyle(el).fontSize), 字是: el.textContent.trim().slice(0, 12), 小標: el.classList.contains('tag') }))`;
 	const phone = await js(`${CONTRAST_JS} return { 口號標頭: ${measure('.phone-view .now-eight header > *')}, 為什麼不能編: ${measure('.phone-view .phone-why')} };`);
-	const go = await js(`const b = document.querySelector('.topbar button[title="八拍表"]');
-		const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`);
-	await tap(go.x, go.y);
+	await tapFromMenu('八拍表');
 	const sheet = await js(`${CONTRAST_JS} return ${measure('.print-sheet .toolbar .muted')};`);
 	await js(`[...document.querySelectorAll('.print-sheet button')].find((b) => b.textContent.trim() === '關閉')?.click()`);
 	await clearTouch();
 	const all = [...phone.口號標頭, ...phone.為什麼不能編, ...sheet];
 	return {
-		ok: chant && phone.口號標頭.length >= 2 && phone.為什麼不能編.length === 1 && sheet.length === 1 && all.every((m) => m.字 >= 4.5 && m.大小 >= 13) && phone.口號標頭.every((m) => m.大小 >= 15),
+		ok: chant && phone.口號標頭.length >= 2 && phone.為什麼不能編.length === 1 && sheet.length === 1 && all.every((m) => m.字 >= 4.5 && m.大小 >= 13) && phone.口號標頭.filter((m) => !m.小標).every((m) => m.大小 >= 15),
 		value: { 跳到口號段: chant, ...phone, 列印說明: sheet }
 	};
 });
@@ -3581,15 +3800,17 @@ await check('1440×900 檢視模式右邊欄，40 人的動作、播放頭在動
 });
 
 for (const [w, h] of [[1440, 900], [1180, 820]]) {
-	await check(`${w}×${h} 檢視模式的前後八拍：七格都在右邊欄裡看得到、前後的八拍靠左；點後面的八拍跳過去，這個八拍的框不移位`, async () => {
+	await check(`${w}×${h} 檢視模式的前後八拍：五格（前一個、這個、後三個）都在右邊欄裡看得到、前後的八拍靠左；點後面的八拍跳過去，這個八拍的框不移位`, async () => {
 		await setViewport(w, h);
 		await openBigFlow(`flow = of(c.updateSegment(flow, 's1', { eights: 12, lastBeats: 8 }));`);
 		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
 		await sleep(400);
 		const measure = () => js(`const box = document.querySelector('.inspector').getBoundingClientRect();
 			const now = document.querySelector('.view-panel .slot.now').getBoundingClientRect();
-			const slots = [...document.querySelectorAll('.view-panel [data-slot]')].map((s) => s.getBoundingClientRect());
-			return { 這個八拍: [Math.round(now.top), Math.round(now.bottom)], 格數: slots.length,
+			const all = [...document.querySelectorAll('.view-panel [data-slot]')];
+			// 前後不夠的空格藏起來（沒有框），不量它在哪
+			const slots = all.filter((s) => !s.classList.contains('blank')).map((s) => s.getBoundingClientRect());
+			return { 這個八拍: [Math.round(now.top), Math.round(now.bottom)], 格數: all.length,
 				靠左: [...document.querySelectorAll('.view-panel .slot.near')].every((s) => s.firstElementChild.getBoundingClientRect().left - s.getBoundingClientRect().left < 12),
 				都看得到: slots.every((s) => s.top >= box.top && s.bottom <= box.bottom), 第幾個: document.querySelector('.view-panel .slot.now').dataset.slot };`);
 		// 點最後一格跳兩次（前面三格都有東西了），再點一次量前後
@@ -3608,14 +3829,14 @@ for (const [w, h] of [[1440, 900], [1180, 820]]) {
 		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
 		await sleep(200);
 		return {
-			ok: a.格數 === 7 && a.靠左 && a.都看得到 && b.都看得到 && a.第幾個 !== b.第幾個 && Math.abs(a.這個八拍[0] - b.這個八拍[0]) <= 1,
+			ok: a.格數 === 5 && a.靠左 && a.都看得到 && b.都看得到 && a.第幾個 !== b.第幾個 && Math.abs(a.這個八拍[0] - b.這個八拍[0]) <= 1,
 			value: { 點之前: a, 點之後: b }
 		};
 	});
 }
 
-await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍：從第 1 個八拍（上面三個空格）跳到第 4 個，這個八拍的框不往下掉', async () => {
-	// 觸控時前後的八拍是至少 40px 的按鈕（app.css），空格要跟著一樣高
+await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍：從第 7 個八拍跳到第 10 個，這個八拍的框不移位', async () => {
+	// 觸控時前後的八拍列頭是至少 40px 的按鈕（app.css）：前一個八拍一樣高，這個八拍就在同一個位置
 	await setTouchViewport(1180, 820);
 	let a, b;
 	try {
@@ -3625,6 +3846,11 @@ await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍�
 		const top = () => js(`if (!matchMedia('(pointer: coarse)').matches) return '不是觸控';
 			const now = document.querySelector('.view-panel .slot.now');
 			return { 第幾個: now.dataset.slot, 上緣: Math.round(now.getBoundingClientRect().top) };`);
+		// 先跳兩次到第 7 個（第 1 個八拍有 40 人的動作，那一列很高；前一個八拍要是空的才比得了）
+		for (let i = 0; i < 2; i++) {
+			await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
+			await sleep(300);
+		}
 		a = await top();
 		await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
 		await sleep(300);
@@ -3636,7 +3862,7 @@ await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍�
 		await setViewport(1440, 900);
 	}
 	if (typeof a === 'string') return { ok: false, value: a };
-	return { ok: a.第幾個 === '1' && b.第幾個 === '4' && Math.abs(a.上緣 - b.上緣) <= 1, value: { 跳之前: a, 跳之後: b } };
+	return { ok: a.第幾個 === '7' && b.第幾個 === '10' && Math.abs(a.上緣 - b.上緣) <= 1, value: { 跳之前: a, 跳之後: b } };
 });
 
 for (const [w, h] of [[1440, 900], [1024, 768]]) {
@@ -3714,7 +3940,7 @@ const badFieldTexts = ({ texts }) => {
 	return { 量了幾個: texts.length, 不合格: [...new Set(bad)].slice(0, 8), 最小: Math.min(...texts.map((t) => t.px)) };
 };
 
-for (const [w, h, touch] of [[390, 844, true], [1024, 768, false], [1440, 900, false]]) {
+for (const [w, h, touch] of [[390, 664, true], [390, 844, true], [1024, 768, false], [1440, 900, false]]) {
 	await check(`${w}×${h}${touch ? '（觸控）' : ''}：場地上每個字（隊員號碼、條號、格號、「正面／裁判」）至少 ${MIN_FIELD_TEXT_PX} px、都在場地裡${touch ? '；手機的圓點是 22 px，不是觸控的 32 px' : ''}（N15、N50）`, async () => {
 		const host = touch ? '.phone-field' : '.field-host';
 		const value = {};
