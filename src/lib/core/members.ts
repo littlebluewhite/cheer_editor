@@ -150,6 +150,8 @@ function columns(line: string): string[] {
 	if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
 	if (/[,，]/.test(line)) return line.split(/[,，]/).map((c) => c.trim());
 	const words = line.trim().split(/\s+/);
+	// 全局角色寫成兩個字的（top person）先併成一欄
+	if (words.length >= 4 && globalRoleOf(words.slice(-2).join(' ')) && !globalRoleOf(words.at(-1)!)) words.splice(-2, 2, words.slice(-2).join(' '));
 	if (words.length < 3) return [line.trim()];
 	const [gender, role] = words.slice(-2);
 	const looksLike =

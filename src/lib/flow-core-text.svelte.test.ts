@@ -111,4 +111,13 @@ describe('流程核心給畫面的字（英文）', () => {
 			['Dan', 'M', 'base']
 		]);
 	});
+
+	it('貼上名單用空白分欄、全局角色寫選單上的「Top person」：不會整行變成名字', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const r = addMemberLines(empty, 'Eve Female Top person\nFay Lee F top person', { gender: 'M', globalRole: 'base' });
+		expect(flowOf(r).members.map((m) => [m.name, m.gender, m.globalRole])).toEqual([
+			['Eve', 'F', 'top'],
+			['Fay Lee', 'F', 'top']
+		]);
+	});
 });
