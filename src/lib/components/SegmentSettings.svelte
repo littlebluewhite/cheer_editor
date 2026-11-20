@@ -25,6 +25,7 @@
 		musicLength,
 		musicOverrunSec,
 		readSegmentNumber,
+		said,
 		segmentSpans,
 		tapBpm,
 		type Flow,
@@ -230,7 +231,7 @@
 					</label>
 					<span class="audio" class:missing={audioName && !audio}>
 						{audioName
-							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${BROKEN_AUDIO}）` : '（找不到音樂，請重新選檔）'}`
+							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${reasonText(said(BROKEN_AUDIO))}）` : '（找不到音樂，請重新選檔）'}`
 							: '還沒載入'}
 					</span>
 					<!-- 段留著、變成沒有音樂檔的音樂段，播放只剩節拍器；算一步，可以復原。 -->

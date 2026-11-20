@@ -7,7 +7,7 @@ import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
-import { said } from './why';
+import { said, zh, type Why } from './why';
 import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
 import { phasesOverlap } from './beat-range';
@@ -268,7 +268,7 @@ export function checkFlowDocument(
 	}
 	if (!isFlow(current.flow)) return { kind: 'error', message: BROKEN };
 	const tooLong = segmentLengthProblem(current.flow);
-	if (tooLong) return { kind: 'error', message: tooLong };
+	if (tooLong) return { kind: 'error', message: zh(tooLong) };
 	return { kind: 'ok', flow: current.flow };
 }
 
@@ -276,7 +276,7 @@ export function checkFlowDocument(
  * 段的長度超出編輯器能設的範圍（跟改段一樣的上限，不是正的也算）：
  * 照樣打開會把分頁卡住，所以擋下來，寫出上限。沒問題是 null。
  */
-export function segmentLengthProblem(flow: Flow): string | null {
+export function segmentLengthProblem(flow: Flow): Why | null {
 	for (const s of flow.segments) {
 		const problem = fileLengthProblem(s);
 		if (problem) return problem;

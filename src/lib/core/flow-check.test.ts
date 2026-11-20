@@ -11,6 +11,7 @@ import {
 	said,
 	writeFlowFile,
 	type Flow,
+	type Why,
 	type WhyCode
 } from './index';
 import { uploadFlowJson } from './bundle-entry';
@@ -90,7 +91,7 @@ describe('檢查一整支流程（checkFlowDocument）：讀流程檔和傳上�
 describe('整份流程檢查：開檔就擋的規則（跟讀流程檔一樣，之前就有也擋）', () => {
 	const flow = ratedSample();
 	const x1 = flow.actions[0];
-	const broken: [string, Flow, string][] = [
+	const broken: [string, Flow, string | Why][] = [
 		['型別不對', { ...flow, name: 3 as unknown as string }, '流程的資料格式不對'],
 		['沒有開頭站位', { ...flow, formations: [] }, '流程開頭一定有一張站位'],
 		[
@@ -118,12 +119,12 @@ describe('整份流程檢查：開檔就擋的規則（跟讀流程檔一樣，�
 		[
 			'段太長',
 			{ ...flow, segments: flow.segments.map((s) => ({ ...s, halfBeats: (MAX_EIGHTS + 1) * 16 })) },
-			`音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`
+			{ code: 'segment_file_music_range', max: MAX_EIGHTS }
 		]
 	];
 	it.each(broken)('%s', (_, bad, message) => {
-		expect(flowProblem(bad)).toBe(message);
-		expect(flowProblem(bad, bad)).toBe(message);
+		expect(flowProblem(bad)).toEqual(message);
+		expect(flowProblem(bad, bad)).toEqual(message);
 	});
 });
 

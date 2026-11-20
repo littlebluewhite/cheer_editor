@@ -87,7 +87,7 @@ function violations(flow: Flow): Violation[] {
 	segmentSpans(flow).forEach((span) => {
 		const s = span.segment;
 		if (s.kind !== 'music') return;
-		const inSegment = (reason: string): Why => ({ code: 'flow_check_in_segment', segment: labelWhy(span), reason });
+		const inSegment = (reason: Why): Why => ({ code: 'flow_check_in_segment', segment: labelWhy(span), reason });
 		add(`bpm:${s.id}`, s.bpm >= MIN_BPM && s.bpm <= MAX_BPM ? null : inSegment(OUT_OF_RANGE.bpm));
 		add(`firstBeat:${s.id}`, s.firstBeatSec >= 0 ? null : inSegment(OUT_OF_RANGE.firstBeatSec));
 	});
