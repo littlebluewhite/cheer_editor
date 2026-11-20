@@ -37,7 +37,11 @@ async fn applied(db: &sqlx::PgPool) -> Vec<i64> {
 async fn migrate_applies_every_migration_and_exits(db: sqlx::PgPool) {
     let out = migrate(&url_of(&db).await);
 
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let expected: Vec<i64> = cheer_server::MIGRATOR.iter().map(|m| m.version).collect();
     assert_eq!(applied(&db).await, expected);
 }
@@ -67,5 +71,9 @@ async fn migrate_accepts_a_newer_migration_already_applied(db: sqlx::PgPool) {
 
     let out = migrate(&url);
 
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }

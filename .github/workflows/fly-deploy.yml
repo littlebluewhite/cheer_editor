@@ -59,7 +59,8 @@ jobs:
           cache: npm
       - run: npm ci
         working-directory: .
-      - run: rustup toolchain install stable --profile minimal
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - run: cargo fmt --check
       - run: cargo test --locked
 
   # 在 Fly 的 builder 上建映像檔（前端建好放進伺服器的映像檔），部署前 release_command 跑資料表遷移，
@@ -75,3 +76,17 @@ jobs:
       - run: flyctl deploy --remote-only --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # 部署完看正式站那條路：/health，和音樂的 R2 bucket 准網站 PUT、GET（CORS）。伺服器的測試用假的 R2，看不到這個。
+  # 沒過不會倒回，只會在 Actions 頁變紅。R2_MUSIC_BUCKET_URL 是 repo 的 variable（不是金鑰）。
+  check-live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: node scripts/check-live.mjs
+        env:
+          R2_MUSIC_BUCKET_URL: ${{ vars.R2_MUSIC_BUCKET_URL }}

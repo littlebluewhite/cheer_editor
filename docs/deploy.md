@@ -11,6 +11,9 @@ Fly app `littlebluewhite`，新加坡 `sin`，一台 shared-cpu-1x 512 MB，一�
 2. 全過才 `flyctl deploy --ha=false`（只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0015）：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
 3. `fly.toml` 的 `release_command` 在一台臨時機器上跑 `/app/cheer-server migrate`（資料表遷移）。**沒跑成就不部署**，舊版照常接流量。
 4. `bluegreen`：在旁邊開一台新的，`/health` 過了才切過去，不停機。切的時候 WebSocket 會斷，前端自己重連。
+5. 部署完跑 `npm run check:live`（`scripts/check-live.mjs`）：`/health` 回 `ok`，音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。
+   伺服器的測試用假的 R2，看不到 CORS。沒過不會倒回，只會變紅。bucket 的網址放 repo 的 variable `R2_MUSIC_BUCKET_URL`
+   （`https://<帳號 id>.r2.cloudflarestorage.com/<bucket>`，不是金鑰）。本機也能跑：`R2_MUSIC_BUCKET_URL=… npm run check:live`。
 
 Actions 頁也能手動按 Run workflow（只部署 `main`）。沒有測試站，本機試過就上。
 部署只在推 `main` 和手動按時跑；workflow 沒有 PR 的觸發，fork 來的 PR 拿不到 secrets。
@@ -220,11 +223,18 @@ cd server && cargo run -- create-admin --email 你的@email --name 你的名字
 測試：
 
 ```sh
-cd server && cargo test
+npm run test:server                  # 全部
+npm run test:server -- --test music  # 後面的參數給 cargo test
 ```
 
-`#[sqlx::test]` 的測試每個自己開一個乾淨的資料庫，要有 `DATABASE_URL` 指到一個能建資料庫的 PostgreSQL 帳號
-（本機的 PostgreSQL 就好，不要用 Neon）。CI 用 GitHub Actions 的 `postgres:18` 服務。
+`scripts/test-server.sh` 用 docker 開一台用完就丟的 `postgres:18`（跟 CI、正式機同版），自己找空的埠，
+設好 `DATABASE_URL` 跑 `cargo test --locked`，跑完收掉；沒有 `node_modules` 會先 `npm ci`。幾個 worktree 同時跑也不會撞。
+全部跑完約 2 分鐘。
+
+`#[sqlx::test]` 的測試每個自己開一個乾淨的資料庫，所以 `DATABASE_URL` 要指到一個能建資料庫的 PostgreSQL 帳號
+（不要用 Neon）。自己給的話：`cd server && DATABASE_URL=… cargo test`。CI 用 GitHub Actions 的 `postgres:18` 服務。
+
+排版：`cd server && cargo fmt`（CI 跑 `cargo fmt --check`）。前端沒有 Prettier 設定，不要跑 `prettier --write`，會把整個檔重排。
 
 ### 雲端流程的音樂檔（Cloudflare R2）
 

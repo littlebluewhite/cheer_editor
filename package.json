@@ -14,7 +14,9 @@
 		"test:watch": "vitest",
 		"guide:shots": "node scripts/guide-screenshots.mjs",
 		"check:layout": "node scripts/check-layout.mjs",
-		"check:sw": "node scripts/check-sw.mjs"
+		"check:sw": "node scripts/check-sw.mjs",
+		"check:live": "node scripts/check-live.mjs",
+		"test:server": "bash scripts/test-server.sh"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.1",
