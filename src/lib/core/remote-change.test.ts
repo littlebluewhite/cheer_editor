@@ -2,6 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	addAction,
+	addBookmark,
+	deleteBookmark,
+	renameBookmark,
 	addCustomRole,
 	addMembers,
 	addSegment,
@@ -108,5 +111,28 @@ describe('別人的改動套上去跟伺服器一樣', () => {
 	it('刪掉的東西送鍵、樣子是 null', () => {
 		const after = flowOf(deleteAction(sample(), 'x2', { confirmed: true }));
 		expect(remoteChange(sample(), after).things).toEqual([{ key: 'action:x2', after: null }]);
+	});
+});
+
+describe('書籤：別人的改動套上去跟伺服器一樣', () => {
+	/** sample 加一個只有 A 的書籤 k1（在 segmentId 的開頭）。 */
+	const withBookmark = (segmentId = 's1') => flowOf(addBookmark(sample(), '翻騰', { segmentId, at: 0 }, null));
+
+	it.each<[string, () => Flow, (f: Flow) => CommandResult]>([
+		['存第一個書籤', sample, (f) => addBookmark(f, '翻騰', { segmentId: 's1', at: 8 }, null)],
+		['再存一個書籤', withBookmark, (f) => addBookmark(f, '前半', { segmentId: 's1', at: 0 }, { segmentId: 's1', at: 16 })],
+		['改書籤名字', withBookmark, (f) => renameBookmark(f, 'k1', '開場')],
+		['刪書籤', withBookmark, (f) => deleteBookmark(f, 'k1')],
+		['刪段連帶刪書籤', () => withBookmark('s2'), (f) => deleteSegment(f, 's2', { confirmed: true })]
+	])('%s', (_, before, command) => {
+		const after = flowOf(command(before()));
+		const change = overTheWire(remoteChange(before(), after));
+		expect(applyRemoteChange(before(), change)).toEqual(after);
+	});
+
+	it('沒有書籤的流程，別人改了別的：不多出書籤欄位', () => {
+		const before = sample();
+		const after = flowOf(renameFlow(before, '決賽'));
+		expect('bookmarks' in applyRemoteChange(before, remoteChange(before, after))).toBe(false);
 	});
 });

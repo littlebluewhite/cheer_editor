@@ -1,8 +1,10 @@
 // 別人的改動（#253，ADR 0010、0014）：伺服器收了一步，用「比對前後」（diff.ts）找出改到的東西，
 // 把改好之後的那些東西（新的樣子；刪掉的是 null）送給房間裡的其他人，不轉送指令。他們用 applyRemoteChange 套在自己的畫面上。
 // 段、隊員、站位這些清單加了、刪了、調了順序時，另外帶伺服器上那份清單的 id 順序（比對前後只說「調了順序」，加在哪裡看不出來）。
+// 書籤不帶順序：畫面照 A 的時間排，存的先後沒有意思；新的放在最後。
 
 import type { Action } from './action-types';
+import type { Bookmark } from './bookmarks';
 import { diffFlows } from './diff';
 import type { Flow } from './flow';
 import type { Formation, Position, Walk } from './formation';
@@ -54,6 +56,7 @@ export function applyRemoteChange(flow: Flow, change: RemoteChange): Flow {
 	const maps = Object.fromEntries(LISTS.map((list) => [list, new Map(flow[list].map((x) => [x.id, x]))])) as {
 		[L in ListName]: Map<string, Flow[L][number]>;
 	};
+	const bookmarks = new Map((flow.bookmarks ?? []).map((b) => [b.id, b]));
 	const deleted = new Set<string>();
 	const positions: { formationId: string; memberId: string; after: { pos?: Position; walk?: Walk } | null }[] = [];
 
@@ -68,6 +71,11 @@ export function applyRemoteChange(flow: Flow, change: RemoteChange): Flow {
 			continue;
 		}
 		const [kind, id, memberId] = key.split(':');
+		if (kind === 'bookmark') {
+			if (after === null) bookmarks.delete(id);
+			else bookmarks.set(id, after as Bookmark);
+			continue;
+		}
 		if (kind === 'pos') {
 			positions.push({ formationId: id, memberId, after: after as { pos?: Position; walk?: Walk } | null });
 			continue;
@@ -111,6 +119,8 @@ export function applyRemoteChange(flow: Flow, change: RemoteChange): Flow {
 		const ids = order ? merged(order, flow[list].map((x) => x.id), map, deleted) : [...map.keys()];
 		(next as unknown as Record<string, unknown>)[list] = ids.map((id) => map.get(id));
 	}
+	// 本來沒有書籤欄位、也沒有加書籤：不多出欄位
+	if (flow.bookmarks || bookmarks.size) next.bookmarks = [...bookmarks.values()];
 	return next;
 }
 

@@ -7,7 +7,7 @@ import type { Flow } from './flow';
 /**
  * 改到的一個東西。key 是固定的鍵：
  * `name`、`field`、`timeRules`、`markers`、`segmentOrder`、`memberOrder`，
- * 或 `action:<id>`、`segment:<id>`、`member:<id>`、`role:<id>`、`audio:<id>`、
+ * 或 `action:<id>`、`segment:<id>`、`member:<id>`、`role:<id>`、`audio:<id>`、`bookmark:<id>`、
  * `formation:<站位 id>`（時間和名稱）、`pos:<站位 id>:<隊員 id>`（位置＋走法）。
  * before／after 是那個東西改之前／之後的樣子（可以直接 JSON 送）；新增的 before 是 null，刪掉的 after 是 null。
  * 動作的樣子不含紀錄（紀錄不算東西）；段、名單的順序是 id 的清單。
@@ -55,6 +55,7 @@ function things(flow: Flow): Map<string, unknown> {
 	for (const r of flow.customRoles) map.set(`role:${r.id}`, r);
 	for (const a of flow.audio) map.set(`audio:${a.id}`, a);
 	for (const a of flow.actions) map.set(`action:${a.id}`, withoutRecords(a));
+	for (const b of flow.bookmarks ?? []) map.set(`bookmark:${b.id}`, b);
 	for (const f of flow.formations) {
 		map.set(`formation:${f.id}`, {
 			segmentId: f.segmentId,
