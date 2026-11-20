@@ -23,6 +23,14 @@ function home(draftStore: DraftStore, openTabChannel: OpenTabChannel | null = nu
 /** 首頁「最近的流程」裡那支流程的按鈕（點了打開它）。 */
 const recent = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
 
+describe('換語言', () => {
+	it('首頁（沒登入）右上角可以換語言', async () => {
+		home(fakeDraftStore().store);
+		await flush();
+		expect(screen.getByRole('combobox', { name: '語言' })).toBeTruthy();
+	});
+});
+
 describe('手機首頁', () => {
 	it('窄螢幕首頁沒有新建：只有「開啟流程檔」，寫著手機只能看', async () => {
 		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));

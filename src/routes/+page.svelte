@@ -59,6 +59,7 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import LanguagePicker from '#lib/components/LanguagePicker.svelte';
 	import Modal, { modalOpen } from '#lib/components/Modal.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
@@ -1547,6 +1548,7 @@
 			{/if}
 			<header class="home-bar">
 				<span class="brand">競技啦啦隊流程編輯器</span>
+				<LanguagePicker />
 				<a class="btn ghost" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
 				<AccountMenu me={account} onlogout={logout} />
 			</header>
@@ -1646,6 +1648,7 @@
 		{/if}
 		<div class="home">
 			<div class="home-top">
+				<LanguagePicker />
 				<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
 				{#if account === null && !OLD_SITE}
 					<a class="btn" href={resolve('/login')}>登入</a>
@@ -3541,7 +3544,8 @@
 		.home {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 28px;
-			padding: 32px 16px;
+			/* 上面留給右上角那排（語言、使用說明、登入），不蓋到圖 */
+			padding: 72px 16px 32px;
 		}
 		/* 手機：一欄，清單在上、新建在下 */
 		.home.signed-in {

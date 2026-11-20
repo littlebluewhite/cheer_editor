@@ -40,6 +40,12 @@ afterEach(() => {
 });
 
 describe('登入後的首頁', () => {
+	it('上方列可以換語言', async () => {
+		signedIn();
+		await flush();
+		expect(screen.getByRole('banner').querySelector('select[aria-label="語言"]')).toBeTruthy();
+	});
+
 	it('兩欄：左邊雲端「我的流程」（每列名字、最後改的時間，最近改的在上）和這台電腦「最近的流程」；右邊新建、開啟流程檔', async () => {
 		const drafts = fakeDraftStore();
 		drafts.all.set('n1', { bytes: writeFlowFile(newFlowOf('隊內練習'), {}), savedAt: new Date(2026, 10, 4, 9, 0) });

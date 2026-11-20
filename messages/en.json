@@ -6,5 +6,7 @@
 	"forgot_password_spam_hint": "Didn't get it? Check your spam folder, or ask an admin to send it.",
 	"forgot_password_send": "Send email",
 	"server_unreachable": "Can't reach the server. Please try again later.",
-	"page_title": "{page} — Routine Editor"
+	"page_title": "{page} — Routine Editor",
+	"language": "Language",
+	"language_save_first": "You have unsaved changes. Save them before switching language."
 }

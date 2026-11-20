@@ -6,5 +6,7 @@
 	"forgot_password_spam_hint": "沒收到？看看垃圾信，或請管理員幫你寄。",
 	"forgot_password_send": "寄信",
 	"server_unreachable": "連不上伺服器，請稍後再試。",
-	"page_title": "{page} — 流程編輯器"
+	"page_title": "{page} — 流程編輯器",
+	"language": "語言",
+	"language_save_first": "有還沒存的修改，先存檔再換語言。"
 }

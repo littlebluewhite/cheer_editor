@@ -12,7 +12,28 @@
 		<script>
 			if (location.hash.startsWith('#share=')) document.documentElement.dataset.openingLink = '';
 		</script>
+		<!-- 語言（ADR 0017）：照 Paraglide 的順序挑（存的 → 瀏覽器語言 → 中文），先改 lang；
+		     不是中文就先藏起畫面，不先閃一下中文（+layout.svelte 接手）。locales 要跟 project.inlang 一樣（有測試） -->
+		<script>
+			(function () {
+				var locales = ['zh-TW', 'en'];
+				var pick = function (tag) {
+					for (var i = 0; tag && i < locales.length; i++) if (locales[i].toLowerCase() === tag.toLowerCase()) return locales[i];
+				};
+				var locale;
+				try {
+					locale = pick(localStorage.getItem('PARAGLIDE_LOCALE'));
+				} catch (e) {}
+				var langs = navigator.languages || [];
+				for (var i = 0; !locale && i < langs.length; i++) locale = pick(langs[i]) || pick(langs[i].split('-')[0]);
+				if (locale && locale !== 'zh-TW') {
+					document.documentElement.lang = locale;
+					document.documentElement.dataset.localePending = '';
+				}
+			})();
+		</script>
 		<style>
+			html[data-locale-pending] body,
 			html[data-opening-link] body {
 				visibility: hidden;
 			}

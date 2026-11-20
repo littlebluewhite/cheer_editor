@@ -6,5 +6,7 @@
 	"forgot_password_spam_hint": "届かない場合は迷惑メールフォルダを確認するか、管理者に送信を依頼してください。",
 	"forgot_password_send": "メールを送信",
 	"server_unreachable": "サーバーに接続できません。しばらくしてからもう一度お試しください。",
-	"page_title": "{page} — ルーティーンエディター"
+	"page_title": "{page} — ルーティーンエディター",
+	"language": "言語",
+	"language_save_first": "保存していない変更があります。保存してから言語を切り替えてください。"
 }
