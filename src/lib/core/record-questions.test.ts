@@ -145,6 +145,15 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		expect(updateAction(flow, 'x1', { category: 'tumbling' })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'settle_action_records',
+				action: '技巧·Lib',
+				records: {
+					code: 'settle_records',
+					records: { code: 'settle_records_lost', why: { code: 'settle_records_why_per_person', category: '騰翻' }, count: 3 },
+					undoable: { code: 'records_undoable' }
+				}
+			},
 			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次']
 		});
 		const changed = action(flowOf(updateAction(flow, 'x1', { category: 'tumbling' }, { confirmed: true })), 'x1');
@@ -156,6 +165,15 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		const flow = recorded();
 		const r = updateAction(flow, 'x2', { category: 'stunt' });
 		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
+		expect(r.kind === 'confirm' && r.why).toEqual({
+			code: 'settle_action_records',
+			action: '騰翻',
+			records: {
+				code: 'settle_records',
+				records: { code: 'settle_records_lost', why: { code: 'settle_records_why_together', category: '技巧' }, count: 2 },
+				undoable: { code: 'records_undoable' }
+			}
+		});
 		const changed = flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true }));
 		expect(ids(changed, 'x2')).toEqual([]);
 		expect(squadNumbers(action(changed, 'x2'))).toEqual([1, 1]);
@@ -171,6 +189,11 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(setSquad(recorded(), 'x1', ['m1'], 3)).toEqual({
 			kind: 'choose',
 			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'settle_action_records',
+				action: '技巧·Lib',
+				records: { code: 'settle_records', records: { code: 'settle_changed_squads' }, undoable: { code: 'records_undoable' } }
+			},
 			items: ['第 1 組 小美：2 次']
 		});
 	});
@@ -215,6 +238,15 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(updateAction(flow, 'x1', { members })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'settle_action_records',
+				action: '技巧·Lib',
+				records: {
+					code: 'settle_records',
+					records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
+					undoable: { code: 'records_undoable' }
+				}
+			},
 			items: ['第 2 組 小芳：1 次']
 		});
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })), 'x1')).toEqual(['t1', 't3']);
@@ -229,6 +261,16 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(r.kind === 'choose' && r.message).toBe(
 			'動作「技巧·Lib」變短，會拿掉 1 個拍點；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）'
 		);
+		expect(r.kind === 'choose' && r.why).toEqual({
+			code: 'settle_then',
+			a: {
+				code: 'settle_fallout',
+				action: '技巧·Lib',
+				why: { code: 'settle_why_shorter' },
+				will: { code: 'settle_cues_removed_one', n: 1 }
+			},
+			b: { code: 'settle_records', records: { code: 'settle_changed_squads' }, undoable: { code: 'records_undoable' } }
+		});
 		const kept = action(flowOf(updateAction(flow, 'x1', { members, length: 8 }, { records: 'keep' })), 'x1');
 		expect(kept.cues).toEqual([]);
 		expect(kept.successRate!.records.length).toBe(3);
@@ -242,6 +284,15 @@ describe('騰翻、跳躍的動作拿掉有紀錄的人', () => {
 		expect(updateAction(flow, 'x2', { members })).toEqual({
 			kind: 'confirm',
 			message: '動作「騰翻」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'settle_action_records',
+				action: '騰翻',
+				records: {
+					code: 'settle_records',
+					records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
+					undoable: { code: 'records_undoable' }
+				}
+			},
 			items: ['小A：1 次']
 		});
 		expect(ids(flowOf(updateAction(flow, 'x2', { members }, { confirmed: true })), 'x2')).toEqual(['t4']);
@@ -309,7 +360,7 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 					more: {
 						code: 'members_delete_renumber',
 						count: 2,
-						more: { code: 'members_delete_changed', question: '有紀錄的組換了人：保留舊紀錄，還是清掉重算？', undoable: '', more: '' }
+						more: { code: 'members_delete_changed', question: { code: 'settle_changed_squads' }, undoable: '', more: '' }
 					}
 				}
 			}
