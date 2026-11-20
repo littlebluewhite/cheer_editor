@@ -320,8 +320,8 @@ async fn adding_a_member_or_a_formation_at_the_same_beat_sends_the_later_back(db
     let reply = step(&mut b, "insert-3", 7, insert).await;
     assert_rejected(&reply, json!("王教練"));
     assert_eq!(reply["message"], "這一拍已經有站位", "{reply}");
-    let why =
-        json!({ "code": "blocked", "reason": { "message": "這一拍已經有站位" }, "ask": false });
+    let reason = json!({ "message": "這一拍已經有站位", "why": { "code": "formation_taken" } });
+    let why = json!({ "code": "blocked", "reason": reason, "ask": false });
     assert_eq!(reply["why"], why, "{reply}");
     assert_eq!(formations(&s.flow(&wang, &id).await), 2);
 }

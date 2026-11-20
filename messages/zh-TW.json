@@ -229,5 +229,19 @@
 	"settle_records_lost": "{why}，會清掉 {count} 次紀錄",
 	"settle_then": "{a}；{b}",
 	"settle_records": "{records}{undoable}",
-	"settle_action_records": "動作「{action}」{records}"
+	"settle_action_records": "動作「{action}」{records}",
+	"formation_not_found": "找不到這張站位",
+	"formation_no_member": "找不到這個隊員",
+	"formation_off_field": "只能站到場地外 1 公尺以內",
+	"formation_no_selection": "先選人",
+	"formation_unchanged": "位置都沒變",
+	"formation_first_undeletable": "流程開頭一定有一張站位，不能刪",
+	"formation_walk_outside": "出發和到達要在前一張和這一張站位之間",
+	"formation_depart_after_arrive": "出發要早於到達",
+	"formation_first_no_walk": "開頭那張前面沒有站位，不能設出發和到達",
+	"formation_no_segments": "請先加一段",
+	"formation_taken": "這一拍已經有站位",
+	"formation_first_fixed": "開頭那張不能挪",
+	"formation_move_between": "站位 {n} 要挪到站位 {prev}（{before}）之後、站位 {next}（{after}）之前",
+	"formation_move_last": "站位 {n} 要挪到站位 {prev}（{before}）之後、流程結尾之前"
 }

@@ -229,5 +229,19 @@
 	"settle_records_lost": "{why}、{count} 本の記録が消えます",
 	"settle_then": "{a}。{b}",
 	"settle_records": "{records}{undoable}",
-	"settle_action_records": "技「{action}」：{records}"
+	"settle_action_records": "技「{action}」：{records}",
+	"formation_not_found": "このフォーメーションが見つかりません",
+	"formation_no_member": "この選手が見つかりません",
+	"formation_off_field": "演技フロアの外 1 m 以内にしか立てません",
+	"formation_no_selection": "先に選手を選んでください",
+	"formation_unchanged": "位置が変わっていません",
+	"formation_first_undeletable": "ルーティーンの最初には必ずフォーメーションがあるので、削除できません",
+	"formation_walk_outside": "出発と到着は前のフォーメーションとこのフォーメーションの間にしてください",
+	"formation_depart_after_arrive": "出発は到着より前にしてください",
+	"formation_first_no_walk": "最初のフォーメーションの前にはフォーメーションがないので、出発と到着は設定できません",
+	"formation_no_segments": "先にパートを追加してください",
+	"formation_taken": "この拍にはすでにフォーメーションがあります",
+	"formation_first_fixed": "最初のフォーメーションは動かせません",
+	"formation_move_between": "フォーメーション {n} はフォーメーション {prev}（{before}）より後、フォーメーション {next}（{after}）より前に動かしてください",
+	"formation_move_last": "フォーメーション {n} はフォーメーション {prev}（{before}）より後、ルーティーンの終わりより前に動かしてください"
 }

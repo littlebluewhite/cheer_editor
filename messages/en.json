@@ -229,5 +229,19 @@
 	"settle_records_lost": "{why} will clear {count} reps",
 	"settle_then": "{a}; {b}",
 	"settle_records": "{records}{undoable}",
-	"settle_action_records": "Skill “{action}”: {records}"
+	"settle_action_records": "Skill “{action}”: {records}",
+	"formation_not_found": "Can't find this formation",
+	"formation_no_member": "Can't find this athlete",
+	"formation_off_field": "can only stand up to 1 m outside the performance surface",
+	"formation_no_selection": "Select athletes first",
+	"formation_unchanged": "No positions changed",
+	"formation_first_undeletable": "The routine always starts with a formation; it can't be deleted",
+	"formation_walk_outside": "Depart and arrive must be between the previous formation and this one",
+	"formation_depart_after_arrive": "Depart must be before arrive",
+	"formation_first_no_walk": "There is no formation before the first one, so it has no depart or arrive",
+	"formation_no_segments": "Add a segment first",
+	"formation_taken": "There is already a formation on this beat",
+	"formation_first_fixed": "The first formation can't be moved",
+	"formation_move_between": "Formation {n} must move after formation {prev} ({before}) and before formation {next} ({after})",
+	"formation_move_last": "Formation {n} must move after formation {prev} ({before}) and before the end of the routine"
 }

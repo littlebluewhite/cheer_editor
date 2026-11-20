@@ -69,15 +69,16 @@ describe('改位置', () => {
 		expect(setPositions(flow, 'f1', { [a.id]: [-9.2, 7.39] }).kind).toBe('ok');
 		expect(setPositions(flow, 'f1', { [a.id]: [-9.3, 0] })).toEqual({
 			kind: 'blocked',
-			message: '只能站到場地外 1 公尺以內'
+			message: '只能站到場地外 1 公尺以內',
+			why: { code: 'formation_off_field' }
 		});
 		expect(setPositions(flow, 'f1', { [a.id]: [0, 7.5] }).kind).toBe('blocked');
 	});
 
 	it('找不到站位或隊員就擋下', () => {
 		const flow = twoMembers();
-		expect(setPositions(flow, 'nope', { [flow.members[0].id]: [0, 0] }).kind).toBe('blocked');
-		expect(setPositions(flow, 'f1', { nobody: [0, 0] }).kind).toBe('blocked');
+		expect(setPositions(flow, 'nope', { [flow.members[0].id]: [0, 0] })).toEqual({ kind: 'blocked', message: '找不到這張站位', why: { code: 'formation_not_found' } });
+		expect(setPositions(flow, 'f1', { nobody: [0, 0] })).toEqual({ kind: 'blocked', message: '找不到這個隊員', why: { code: 'formation_no_member' } });
 	});
 
 	it('新人被拖走後，原本等待的位置空出來給下一個新人', () => {
@@ -101,7 +102,7 @@ describe('開頭站位', () => {
 	});
 
 	it('沒有段時不能插站位', () => {
-		expect(insertFormation(twoMembers(), 0)).toEqual({ kind: 'blocked', message: '請先加一段' });
+		expect(insertFormation(twoMembers(), 0)).toEqual({ kind: 'blocked', message: '請先加一段', why: { code: 'formation_no_segments' } });
 	});
 
 	it('沒有段時，場上每一刻都是開頭站位的位置', () => {
@@ -198,7 +199,7 @@ describe('站位名稱', () => {
 	});
 
 	it('找不到站位：擋下', () => {
-		expect(renameFormation(walking(), 'nope', 'x').kind).toBe('blocked');
+		expect(renameFormation(walking(), 'nope', 'x')).toEqual({ kind: 'blocked', message: '找不到這張站位', why: { code: 'formation_not_found' } });
 	});
 });
 
@@ -212,12 +213,13 @@ describe('刪站位', () => {
 	it('開頭那張刪不掉', () => {
 		expect(deleteFormation(walking(), 'f1')).toEqual({
 			kind: 'blocked',
-			message: '流程開頭一定有一張站位，不能刪'
+			message: '流程開頭一定有一張站位，不能刪',
+			why: { code: 'formation_first_undeletable' }
 		});
 	});
 
 	it('找不到站位就擋下', () => {
-		expect(deleteFormation(walking(), 'nope').kind).toBe('blocked');
+		expect(deleteFormation(walking(), 'nope')).toEqual({ kind: 'blocked', message: '找不到這張站位', why: { code: 'formation_not_found' } });
 	});
 });
 
@@ -282,7 +284,7 @@ describe('插站位', () => {
 
 	it('那一拍已經有站位就擋下', () => {
 		const flow = okFlow(insertFormation(withSegments(), 8.2));
-		expect(insertFormation(flow, 8.3)).toEqual({ kind: 'blocked', message: '這一拍已經有站位' });
+		expect(insertFormation(flow, 8.3)).toEqual({ kind: 'blocked', message: '這一拍已經有站位', why: { code: 'formation_taken' } });
 		expect(insertFormation(flow, 0.1).kind).toBe('blocked');
 	});
 });
@@ -311,7 +313,8 @@ describe('在播放頭拖人', () => {
 	it('位置被擋就什麼都不改（也不插站位）', () => {
 		expect(moveMembers(walking(), 5, { [B]: [0, 99] })).toEqual({
 			kind: 'blocked',
-			message: '只能站到場地外 1 公尺以內'
+			message: '只能站到場地外 1 公尺以內',
+			why: { code: 'formation_off_field' }
 		});
 	});
 });
@@ -708,7 +711,8 @@ describe('設出發和到達', () => {
 		// 擋下來的規則跟 setWalks 一樣
 		expect(setTeamWalks(walking(), 'f2', { depart: at('s1', 50), arrive: at('s1', 50) })).toEqual({
 			kind: 'blocked',
-			message: '出發要早於到達'
+			message: '出發要早於到達',
+			why: { code: 'formation_depart_after_arrive' }
 		});
 		expect(setTeamWalks(walking(), 'f1', w).kind).toBe('blocked');
 	});
@@ -730,7 +734,7 @@ describe('設出發和到達', () => {
 	it('擋下來，流程不改：出發不早於到達', () => {
 		const flow = walking();
 		const r = setWalks(flow, 'f2', { [A]: { depart: at('s1', 50), arrive: at('s1', 50) } });
-		expect(r).toEqual({ kind: 'blocked', message: '出發要早於到達' });
+		expect(r).toEqual({ kind: 'blocked', message: '出發要早於到達', why: { code: 'formation_depart_after_arrive' } });
 		expect(setWalks(flow, 'f2', { [A]: { depart: at('s1', 60), arrive: at('s1', 50) } }).kind).toBe(
 			'blocked'
 		);
@@ -739,19 +743,23 @@ describe('設出發和到達', () => {
 	it('擋下來：時間不在前一張和這一張之間', () => {
 		const flow = walking();
 		const message = '出發和到達要在前一張和這一張站位之間';
+		const why = { code: 'formation_walk_outside' };
 		// f3 前一張是 20 秒，19.8 秒太早
 		expect(setWalks(flow, 'f3', { [A]: { depart: at('s1', 99), arrive: at('s2', 10) } })).toEqual({
 			kind: 'blocked',
-			message
+			message,
+			why
 		});
 		expect(setWalks(flow, 'f2', { [A]: { depart: at('s1', 20), arrive: at('s1', 101) } })).toEqual({
 			kind: 'blocked',
-			message
+			message,
+			why
 		});
 		// 超出那一段的格子（音樂 1 只有 128 個半拍）
 		expect(setWalks(flow, 'f3', { [A]: { depart: at('s1', 100), arrive: at('s1', 130) } })).toEqual({
 			kind: 'blocked',
-			message
+			message,
+			why
 		});
 	});
 
@@ -760,11 +768,13 @@ describe('設出發和到達', () => {
 		const w = { depart: at('s1', 0), arrive: at('s1', 10) };
 		expect(setWalks(flow, 'f1', { [A]: w })).toEqual({
 			kind: 'blocked',
-			message: '開頭那張前面沒有站位，不能設出發和到達'
+			message: '開頭那張前面沒有站位，不能設出發和到達',
+			why: { code: 'formation_first_no_walk' }
 		});
-		expect(setWalks(flow, 'nope', { [A]: w }).kind).toBe('blocked');
-		expect(setWalks(flow, 'f2', { nobody: w }).kind).toBe('blocked');
+		expect(setWalks(flow, 'nope', { [A]: w })).toEqual({ kind: 'blocked', message: '找不到這張站位', why: { code: 'formation_not_found' } });
+		expect(setWalks(flow, 'f2', { nobody: w })).toEqual({ kind: 'blocked', message: '找不到這個隊員', why: { code: 'formation_no_member' } });
 		expect(clearWalks(flow, 'f1', [A]).kind).toBe('blocked');
+		expect(clearWalks(flow, 'nope', [A])).toEqual({ kind: 'blocked', message: '找不到這張站位', why: { code: 'formation_not_found' } });
 	});
 
 	it('例子：1–5 號照預設，6–10 號 2-1 出發 3-1 到，跑翻 10、9、8 號一個接一個', () => {
@@ -830,9 +840,9 @@ describe('一組人移到新位置（鏡像、對齊…共用）', () => {
 	});
 
 	it('沒選人、找不到隊員就擋下；位置都沒變（也不用插站位）就擋下，不記一步', () => {
-		expect(moveGroup(walking(), 20, right1(groupPositions(walking(), 20, [])))).toEqual({ kind: 'blocked', message: '先選人' });
-		expect(moveGroup(walking(), 20, { nobody: [0, 0] }).kind).toBe('blocked');
-		expect(moveGroup(walking(), 20, groupPositions(walking(), 20, [A]))).toEqual({ kind: 'blocked', message: '位置都沒變' });
+		expect(moveGroup(walking(), 20, right1(groupPositions(walking(), 20, [])))).toEqual({ kind: 'blocked', message: '先選人', why: { code: 'formation_no_selection' } });
+		expect(moveGroup(walking(), 20, { nobody: [0, 0] })).toEqual({ kind: 'blocked', message: '找不到這個隊員', why: { code: 'formation_no_member' } });
+		expect(moveGroup(walking(), 20, groupPositions(walking(), 20, [A]))).toEqual({ kind: 'blocked', message: '位置都沒變', why: { code: 'formation_unchanged' } });
 		expect(moveGroup(walking(), 18.05, groupPositions(walking(), 18.05, [A])).kind).toBe('ok');
 	});
 });
@@ -983,18 +993,22 @@ describe('挪站位', () => {
 	it('要在前一張之後、後一張之前；開頭那張不能挪', () => {
 		const flow = walking();
 		const between = '站位 2 要挪到站位 1（音樂 1 1-1）之後、站位 3（口號 1 4.4 秒）之前';
-		const blocked = (message: string) => ({ kind: 'blocked', message });
-		expect(moveFormation(flow, 'f2', at('s1', 0))).toEqual(blocked(between));
-		expect(moveFormation(flow, 'f2', at('s2', 44))).toEqual(blocked(between));
-		expect(moveFormation(flow, 'f2', at('s2', 50))).toEqual(blocked(between));
+		const music = (at: string) => ({ code: 'time_in_segment', segment: { code: 'time_segment_music', n: 1 }, at });
+		const chant = (n: string) => ({ code: 'time_in_segment', segment: { code: 'time_segment_chant', n: 1 }, at: { code: 'time_seconds', n } });
+		const betweenWhy = { code: 'formation_move_between', n: 2, prev: 1, before: music('1-1'), next: 3, after: chant('4.4') };
+		const blocked = (message: string, why: object) => ({ kind: 'blocked', message, why });
+		expect(moveFormation(flow, 'f2', at('s1', 0))).toEqual(blocked(between, betweenWhy));
+		expect(moveFormation(flow, 'f2', at('s2', 44))).toEqual(blocked(between, betweenWhy));
+		expect(moveFormation(flow, 'f2', at('s2', 50))).toEqual(blocked(between, betweenWhy));
 		// 段外面的格子（音樂 1 只有 128 個半拍）
-		expect(moveFormation(flow, 'f2', at('s1', 200))).toEqual(blocked(between));
+		expect(moveFormation(flow, 'f2', at('s1', 200))).toEqual(blocked(between, betweenWhy));
 		// 最後一張：後面是流程結尾（口號 1 只有 100 個 0.1 秒）
 		const last = '站位 3 要挪到站位 2（音樂 1 7-3）之後、流程結尾之前';
-		expect(moveFormation(flow, 'f3', at('s1', 100))).toEqual(blocked(last));
-		expect(moveFormation(flow, 'f3', at('s2', 100))).toEqual(blocked(last));
-		expect(moveFormation(flow, 'f1', at('s1', 4))).toEqual(blocked('開頭那張不能挪'));
-		expect(moveFormation(flow, 'nope', at('s1', 4))).toEqual(blocked('找不到這張站位'));
+		const lastWhy = { code: 'formation_move_last', n: 3, prev: 2, before: music('7-3') };
+		expect(moveFormation(flow, 'f3', at('s1', 100))).toEqual(blocked(last, lastWhy));
+		expect(moveFormation(flow, 'f3', at('s2', 100))).toEqual(blocked(last, lastWhy));
+		expect(moveFormation(flow, 'f1', at('s1', 4))).toEqual(blocked('開頭那張不能挪', { code: 'formation_first_fixed' }));
+		expect(moveFormation(flow, 'nope', at('s1', 4))).toEqual(blocked('找不到這張站位', { code: 'formation_not_found' }));
 	});
 
 	it('挪到原本那一拍：流程不變（不算一步復原）', () => {
