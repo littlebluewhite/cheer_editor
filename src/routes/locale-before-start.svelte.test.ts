@@ -1,14 +1,14 @@
 // app.html 最前面的小程式：程式跑起來之前先挑好語言（改 <html lang>，不是中文就先藏起畫面，不先閃中文）。
 // 它挑的語言要跟 Paraglide 的 getLocale() 一模一樣，不然會藏錯、lang 寫錯。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getLocale, locales } from '#lib/paraglide/runtime.js';
+import { getLocale, localStorageKey, locales } from '#lib/paraglide/runtime.js';
 import html from '../app.html?raw';
 
-const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((s) => s[1]).find((s) => s.includes('PARAGLIDE_LOCALE'));
+const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((s) => s[1]).find((s) => s.includes(`'${localStorageKey}'`));
 
 function run(saved: string | null, languages: string[]) {
-	if (saved === null) localStorage.removeItem('PARAGLIDE_LOCALE');
-	else localStorage.setItem('PARAGLIDE_LOCALE', saved);
+	if (saved === null) localStorage.removeItem(localStorageKey);
+	else localStorage.setItem(localStorageKey, saved);
 	vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages);
 	const root = document.documentElement;
 	root.lang = 'zh-Hant-TW'; // app.html 本來寫的
