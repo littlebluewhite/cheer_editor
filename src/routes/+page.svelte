@@ -2422,6 +2422,9 @@
 	.menu-pop {
 		gap: 2px;
 		min-width: 168px;
+		/* 橫拿的手機很矮，誰開著的人一多會超出畫面：捲得到下面的項目 */
+		max-height: calc(100dvh - 64px);
+		overflow-y: auto;
 		padding: 6px;
 		color: #d6ddec;
 	}
@@ -2651,6 +2654,9 @@
 		max-width: calc(100% - 24px);
 		padding: 4px 10px;
 		font-size: 13px;
+		/* 名字很長、手機很窄：換行，動作和角色才不會被「…」藏起來 */
+		white-space: normal;
+		border-radius: 12px;
 	}
 	/* 放大了，右下角有「整個場地」：字只寫到它左邊 */
 	.phone-field:has(:global(.fit)) .formation-now {

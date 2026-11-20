@@ -651,7 +651,8 @@ describe('放大場地來看（手機的檢視畫面：沒有按鈕、不裁）'
 	const toMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
 
 	function setup(props: Record<string, unknown> = {}) {
-		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0], m2: [3, 0] }, controls: false, toMeters, ...props });
+		// 手機的檢視畫面一定給 ontap（點到誰）
+		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0], m2: [3, 0] }, controls: false, toMeters, ontap: () => {}, ...props });
 		const svg = screen.getByRole('img', { name: '場地' }) as unknown as SVGSVGElement;
 		const viewBox = () => svg.getAttribute('viewBox')!.split(' ').map(Number);
 		return { svg, viewBox };
@@ -745,6 +746,23 @@ describe('放大場地來看（手機的檢視畫面：沒有按鈕、不裁）'
 		await tap(svg, 600, 400);
 		expect(viewBox()[2]).toBeCloseTo(10.5296, 4);
 		expect(ontap).toHaveBeenCalledTimes(3);
+	});
+
+	it('點了小A 馬上點旁邊的小B：是點小B，不放大', async () => {
+		const ontap = vi.fn();
+		const { viewBox } = setup({ ontap, positions: { m1: [0, 0], m2: [0.25, 0] } });
+		await tap(dot('m1'), 0, 0);
+		await tap(dot('m2'), 25, 0);
+		expect(ontap.mock.calls).toEqual([['m1'], ['m2']]);
+		close(viewBox(), FULL);
+	});
+
+	it('八拍表的小站位圖（沒給 ontap；沒人排上場時不裁）：點兩下不放大', async () => {
+		const { svg, viewBox } = setup({ ontap: undefined });
+		await tap(svg, 100, 50);
+		await tap(svg, 100, 50);
+		close(viewBox(), FULL);
+		expect(fit()).toBeNull();
 	});
 
 	it('放大場地時圓點在螢幕上一樣大：×2 時圓點在場地單位裡縮成一半', async () => {

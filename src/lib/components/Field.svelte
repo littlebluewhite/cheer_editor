@@ -150,8 +150,9 @@
 	/**
 	 * 只能看的場地（手機的檢視畫面、檢視模式；八拍表的小站位圖不算）：放大場地是為了把站得近的人分開，
 	 * 所以圓點、號碼在螢幕上不跟著變大；手指點兩下放大、放大後一根手指拖是移動畫面。
+	 * 沒有編輯器時看有沒有給 ontap：八拍表的小站位圖沒給（沒人排上場時也不裁）。
 	 */
-	const viewOnly = $derived(!crop && !session?.editable);
+	const viewOnly = $derived(!crop && (session ? !session.editable : !!ontap));
 	/** 標了「我」：別人畫淡一點（「我」和圈起來的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
 	const dim = (id: string) => !crop && marked.length > 0 && !marked.includes(id) && !lit.includes(id);
 
@@ -548,8 +549,8 @@
 	const looking = (e: PointerEvent) => viewOnly && (!session || e.pointerType === 'touch');
 	/** 「看」的手勢按下去了：放開時沒移動就是點一下。id 是按到的人。 */
 	let press: { client: [number, number]; id: string | null } | null = null;
-	/** 上一次點一下：下一下夠快、夠近就是點兩下。 */
-	let lastTap: { time: number; client: [number, number] } | null = null;
+	/** 上一次點一下：下一下夠快、夠近、點到同一個人（或都是空白處）就是點兩下。 */
+	let lastTap: { time: number; client: [number, number]; id: string | null } | null = null;
 
 	/**
 	 * 「看」的手勢放開：沒移動是點一下。回傳 true 是點兩下（放大或回整個場地），這一下不再當點一下。
@@ -561,6 +562,7 @@
 		if (!pressed || !still(e, pressed.client)) return false;
 		const again =
 			lastTap &&
+			lastTap.id === pressed.id &&
 			e.timeStamp - lastTap.time < DOUBLE_TAP_MS &&
 			Math.hypot(e.clientX - lastTap.client[0], e.clientY - lastTap.client[1]) < DOUBLE_TAP_PX;
 		if (again) {
@@ -569,7 +571,7 @@
 			else setZoom(DOUBLE_TAP_ZOOM, toMeters(e, svg));
 			return true;
 		}
-		lastTap = { time: e.timeStamp, client: pressed.client };
+		lastTap = { time: e.timeStamp, client: pressed.client, id: pressed.id };
 		if (!session) ontap?.(pressed.id);
 		else if (pan) {
 			if (pressed.id) session.pickMember(pressed.id, e.shiftKey);
