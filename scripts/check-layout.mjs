@@ -3,6 +3,7 @@
 // 跟重拍使用說明截圖（scripts/guide-screenshots.mjs）一樣：自己開 vite dev 和 headless Chrome，用 CDP 操作。
 // 全部通過時 0 結束；有一條失敗就印出檢查名稱和量到的值，1 結束。
 // Chrome 不在 macOS 預設位置時，用 CHROME=/path/to/chrome 指定。
+// 只跑幾條：LAYOUT_ONLY='T19|前後八拍'（名稱裡有其中一段的才跑；|隔開）。
 // vite 和 Chrome 的埠每次自己找空的，好幾個一起跑也不會撞；要固定的話用 LAYOUT_PORT=（vite）、LAYOUT_CDP=（Chrome）。
 //
 // 怎麼加一條新檢查：
@@ -199,6 +200,7 @@ const rectOf = (selector) =>
 
 const failed = [];
 async function check(name, fn) {
+	if (process.env.LAYOUT_ONLY && !process.env.LAYOUT_ONLY.split('|').some((k) => name.includes(k))) return;
 	current = name;
 	let res;
 	try { res = await fn(); } catch (e) { res = { ok: false, value: String(e.message ?? e) }; }
@@ -3533,7 +3535,7 @@ await check('1440×900 選 2 人按「對齊 ▾」：小選單開在鈕的正�
 
 // ---------- 第 5 批的文字（#231） ----------
 
-await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭至少 15 px、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
+await check('390×844（觸控）手機上的小字看得清楚（T19）：口號段那一列的標頭至少 15 px（站位、走位的小標至少 13 px）、八拍表的「⌘P／Ctrl+P」說明和最下面「為什麼不能編」至少 13 px，對比都至少 4.5:1', async () => {
 	await setTouchViewport(390, 844);
 	await openSample();
 	// 一個八拍一個八拍往後跳，跳到口號段那一列
@@ -3544,7 +3546,7 @@ await check('390×844（觸控）手機上的小字看得清楚（T19）：口�
 			await new Promise((r) => setTimeout(r, 50));
 		}
 		return false;`);
-	const measure = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((el) => ({ 字: contrast(el), 大小: parseFloat(getComputedStyle(el).fontSize), 字是: el.textContent.trim().slice(0, 12) }))`;
+	const measure = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((el) => ({ 字: contrast(el), 大小: parseFloat(getComputedStyle(el).fontSize), 字是: el.textContent.trim().slice(0, 12), 小標: el.classList.contains('tag') }))`;
 	const phone = await js(`${CONTRAST_JS} return { 口號標頭: ${measure('.phone-view .now-eight header > *')}, 為什麼不能編: ${measure('.phone-view .phone-why')} };`);
 	await tapFromMenu('八拍表');
 	const sheet = await js(`${CONTRAST_JS} return ${measure('.print-sheet .toolbar .muted')};`);
@@ -3552,7 +3554,7 @@ await check('390×844（觸控）手機上的小字看得清楚（T19）：口�
 	await clearTouch();
 	const all = [...phone.口號標頭, ...phone.為什麼不能編, ...sheet];
 	return {
-		ok: chant && phone.口號標頭.length >= 2 && phone.為什麼不能編.length === 1 && sheet.length === 1 && all.every((m) => m.字 >= 4.5 && m.大小 >= 13) && phone.口號標頭.every((m) => m.大小 >= 15),
+		ok: chant && phone.口號標頭.length >= 2 && phone.為什麼不能編.length === 1 && sheet.length === 1 && all.every((m) => m.字 >= 4.5 && m.大小 >= 13) && phone.口號標頭.filter((m) => !m.小標).every((m) => m.大小 >= 15),
 		value: { 跳到口號段: chant, ...phone, 列印說明: sheet }
 	};
 });
@@ -3798,15 +3800,17 @@ await check('1440×900 檢視模式右邊欄，40 人的動作、播放頭在動
 });
 
 for (const [w, h] of [[1440, 900], [1180, 820]]) {
-	await check(`${w}×${h} 檢視模式的前後八拍：七格都在右邊欄裡看得到、前後的八拍靠左；點後面的八拍跳過去，這個八拍的框不移位`, async () => {
+	await check(`${w}×${h} 檢視模式的前後八拍：五格（前一個、這個、後三個）都在右邊欄裡看得到、前後的八拍靠左；點後面的八拍跳過去，這個八拍的框不移位`, async () => {
 		await setViewport(w, h);
 		await openBigFlow(`flow = of(c.updateSegment(flow, 's1', { eights: 12, lastBeats: 8 }));`);
 		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '檢視').click()`);
 		await sleep(400);
 		const measure = () => js(`const box = document.querySelector('.inspector').getBoundingClientRect();
 			const now = document.querySelector('.view-panel .slot.now').getBoundingClientRect();
-			const slots = [...document.querySelectorAll('.view-panel [data-slot]')].map((s) => s.getBoundingClientRect());
-			return { 這個八拍: [Math.round(now.top), Math.round(now.bottom)], 格數: slots.length,
+			const all = [...document.querySelectorAll('.view-panel [data-slot]')];
+			// 前後不夠的空格藏起來（沒有框），不量它在哪
+			const slots = all.filter((s) => !s.classList.contains('blank')).map((s) => s.getBoundingClientRect());
+			return { 這個八拍: [Math.round(now.top), Math.round(now.bottom)], 格數: all.length,
 				靠左: [...document.querySelectorAll('.view-panel .slot.near')].every((s) => s.firstElementChild.getBoundingClientRect().left - s.getBoundingClientRect().left < 12),
 				都看得到: slots.every((s) => s.top >= box.top && s.bottom <= box.bottom), 第幾個: document.querySelector('.view-panel .slot.now').dataset.slot };`);
 		// 點最後一格跳兩次（前面三格都有東西了），再點一次量前後
@@ -3825,14 +3829,14 @@ for (const [w, h] of [[1440, 900], [1180, 820]]) {
 		await js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '編輯').click()`);
 		await sleep(200);
 		return {
-			ok: a.格數 === 7 && a.靠左 && a.都看得到 && b.都看得到 && a.第幾個 !== b.第幾個 && Math.abs(a.這個八拍[0] - b.這個八拍[0]) <= 1,
+			ok: a.格數 === 5 && a.靠左 && a.都看得到 && b.都看得到 && a.第幾個 !== b.第幾個 && Math.abs(a.這個八拍[0] - b.這個八拍[0]) <= 1,
 			value: { 點之前: a, 點之後: b }
 		};
 	});
 }
 
-await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍：從第 1 個八拍（上面三個空格）跳到第 4 個，這個八拍的框不往下掉', async () => {
-	// 觸控時前後的八拍是至少 40px 的按鈕（app.css），空格要跟著一樣高
+await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍：從第 7 個八拍跳到第 10 個，這個八拍的框不移位', async () => {
+	// 觸控時前後的八拍列頭是至少 40px 的按鈕（app.css）：前一個八拍一樣高，這個八拍就在同一個位置
 	await setTouchViewport(1180, 820);
 	let a, b;
 	try {
@@ -3842,6 +3846,11 @@ await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍�
 		const top = () => js(`if (!matchMedia('(pointer: coarse)').matches) return '不是觸控';
 			const now = document.querySelector('.view-panel .slot.now');
 			return { 第幾個: now.dataset.slot, 上緣: Math.round(now.getBoundingClientRect().top) };`);
+		// 先跳兩次到第 7 個（第 1 個八拍有 40 人的動作，那一列很高；前一個八拍要是空的才比得了）
+		for (let i = 0; i < 2; i++) {
+			await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
+			await sleep(300);
+		}
 		a = await top();
 		await js(`const n = document.querySelectorAll('.view-panel .slot.near'); n[n.length - 1].click()`);
 		await sleep(300);
@@ -3853,7 +3862,7 @@ await check('1180×820（觸控，橫拿的 iPad）檢視模式的前後八拍�
 		await setViewport(1440, 900);
 	}
 	if (typeof a === 'string') return { ok: false, value: a };
-	return { ok: a.第幾個 === '1' && b.第幾個 === '4' && Math.abs(a.上緣 - b.上緣) <= 1, value: { 跳之前: a, 跳之後: b } };
+	return { ok: a.第幾個 === '7' && b.第幾個 === '10' && Math.abs(a.上緣 - b.上緣) <= 1, value: { 跳之前: a, 跳之後: b } };
 });
 
 for (const [w, h] of [[1440, 900], [1024, 768]]) {

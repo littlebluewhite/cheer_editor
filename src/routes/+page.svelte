@@ -1955,6 +1955,10 @@
 	.phone-eights :global(.now-eight) {
 		overflow: visible;
 	}
+	/* 手機上的小字至少 13px（T19）：這一列的站位、走位小標 */
+	.phone-eights :global(.now-eight .tag) {
+		font-size: 13px;
+	}
 	.phone-eights :global(.action-detail) {
 		padding: 8px 12px 12px;
 		border-top: 1px solid var(--line);
