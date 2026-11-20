@@ -12,6 +12,14 @@ describe('翻譯檔', () => {
 		expect(keys('ja')).toEqual(keys('zh-TW'));
 	});
 
+	it('英文、日文句子裡要放的東西（{名字}）跟中文一樣', () => {
+		const names = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+		const zh = load('zh-TW');
+		for (const locale of ['en', 'ja']) {
+			for (const [key, text] of Object.entries(load(locale))) expect(names(text), `${locale} ${key}`).toEqual(names(zh[key]));
+		}
+	});
+
 	it('英文、日文裡沒有中文字（漢字只檢查英文）', () => {
 		for (const [key, text] of Object.entries(load('en'))) expect(text, key).not.toMatch(/\p{Script=Han}/u);
 	});

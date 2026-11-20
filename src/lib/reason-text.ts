@@ -7,12 +7,16 @@ type Sentence = (inputs: Record<string, string | number>) => string;
 /** 每個代號都要有同名的句子（少了型別檢查會抓到）。 */
 const SENTENCES: Record<WhyCode, unknown> = m;
 
+/** 這個分頁認得的代號（包著的原因也是）：伺服器比分頁新時可能有還不認得的。 */
+const known = (why: Why): boolean =>
+	why.code in SENTENCES && Object.values(why).every((v) => typeof v !== 'object' || known(v));
+
 /** 原因寫成畫面的語言：包著的原因也是。 */
-export function whyText(why: Why): string {
+function whyText(why: Why): string {
 	const inputs: Record<string, string | number> = {};
 	for (const [name, v] of Object.entries(why)) inputs[name] = typeof v === 'object' ? whyText(v) : v;
 	return (SENTENCES[why.code] as Sentence)(inputs);
 }
 
-/** 給教練看的原因：有代號寫成畫面的語言，沒有照中文。 */
-export const reasonText = ({ message, why }: Said): string => (why ? whyText(why) : message);
+/** 給教練看的原因：有代號寫成畫面的語言；沒有代號、或有還不認得的代號（伺服器比這個分頁新），照中文。 */
+export const reasonText = ({ message, why }: Said): string => (why && known(why) ? whyText(why) : message);

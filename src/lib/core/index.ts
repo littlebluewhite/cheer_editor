@@ -2,6 +2,7 @@
 // 這一層是純 TypeScript：不碰 DOM、Svelte、Web Audio、檔案對話框。
 
 export type { CommandResult, ConfirmOption, ReadResult, RecordsChoice } from './result';
+export { said } from './why';
 export type { Said, Why, WhyCode, WhyParam } from './why';
 
 export { COMMAND_NAMES, runCommand, runCommands } from './commands';
