@@ -22,6 +22,7 @@ import {
 	type AudioBytes,
 	type Flow
 } from '#lib/core';
+import { reasonText } from '#lib/reason-text.js';
 import { CloudSteps, ONLY_VIEW, withUnsent } from '#lib/cloud-steps.svelte.js';
 import type { DroppedRecord } from '#lib/editor-session.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
@@ -620,7 +621,7 @@ export class FlowFile {
 		let id: string | null = null;
 		try {
 			const made = await server.uploadFlow({ formatVersion: FORMAT_VERSION, flow });
-			if ('message' in made) return void (session.notice = `傳不上去：${made.message}`);
+			if ('message' in made) return void (session.notice = `傳不上去：${reasonText(made)}`);
 			id = made.id;
 			for (const ref of flow.audio) {
 				if (!audio[ref.id]) continue;

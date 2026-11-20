@@ -92,8 +92,8 @@
 		const home = formation.segmentId!;
 		const depart = readTime(flow, home, departText, '出發');
 		const arrive = readTime(flow, home, arriveText, '到達');
-		if (depart.kind === 'blocked') return void ask.block(depart.message);
-		if (arrive.kind === 'blocked') return void ask.block(arrive.message);
+		if (depart.kind === 'blocked') return void ask.block(depart);
+		if (arrive.kind === 'blocked') return void ask.block(arrive);
 		const walk: Walk = { depart: depart.value, arrive: arrive.value };
 		const id = formation.id;
 		const ids = selectedMemberIds;

@@ -247,10 +247,17 @@ async fn blocked_or_unasked_commands_are_sent_back_with_the_reason(db: sqlx::PgP
     assert_eq!(reply["kind"], "rejected");
     assert_eq!(reply["stepId"], "stepblock001");
     assert_eq!(reply["message"], "沒存進去：請幫流程取名字");
-    let why = json!({ "code": "blocked", "reason": "請幫流程取名字", "ask": false });
+    let why = json!({ "code": "blocked", "reason": { "message": "請幫流程取名字" }, "ask": false });
     assert_eq!(reply["why"], why);
     assert_eq!(reply["step"], 0);
     assert_eq!(reply["flow"]["name"], "全國賽");
+
+    // 流程核心的原因改成代號的（ADR 0017）：中文和代號一起帶回來，畫面照語言寫。
+    let reply = step(&mut room, "stepblock003", 0, json!([])).await;
+    assert_eq!(reply["kind"], "rejected");
+    assert_eq!(reply["message"], "沒存進去：沒有指令");
+    let reason = json!({ "message": "沒有指令", "why": { "code": "commands_none" } });
+    assert_eq!(reply["why"]["reason"], reason, "{reply}");
 
     // 好幾個指令，中間一個被擋：全不算。
     let reply = step(

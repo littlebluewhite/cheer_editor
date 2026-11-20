@@ -25,5 +25,7 @@
 	"undo_changed_later": "{by}後來改過，這步不能復原",
 	"redo_changed_later": "{by}後來改過，這步不能重做",
 	"undo_blocked": "這步不能復原：{reason}",
-	"redo_blocked": "這步不能重做：{reason}"
+	"redo_blocked": "這步不能重做：{reason}",
+	"commands_no_flow": "沒有開著的流程",
+	"commands_none": "沒有指令"
 }

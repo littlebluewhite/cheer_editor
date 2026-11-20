@@ -255,7 +255,7 @@
 		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
 		const length = read.kind === 'ok' ? read.value * scale : 0;
 		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : lengthTextWithUnit(span.segment, length);
-		if (read.kind === 'blocked') return void insertAsk.block(read.message);
+		if (read.kind === 'blocked') return void insertAsk.block(read);
 		const before = session.flow;
 		insertAsk.send({ name: 'insertBeats', args: [at, length, music ? insertUnit : 'beat'] }, {
 			done: () => {

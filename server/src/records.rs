@@ -235,6 +235,7 @@ pub struct StepOutcome<'a> {
     #[serde(borrow)]
     pub flow: Option<&'a RawValue>,
     pub message: Option<String>,
+    pub why: Option<Value>,
     pub records: Option<Vec<Stored>>,
     /// 成功時：這一步記下的鍵、要查別的分頁改過沒有的鍵（流程核心的 stepKeys，#254）。
     #[serde(default)]

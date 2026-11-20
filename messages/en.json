@@ -25,5 +25,7 @@
 	"undo_changed_later": "{by} changed this afterwards, so it can't be undone.",
 	"redo_changed_later": "{by} changed this afterwards, so it can't be redone.",
 	"undo_blocked": "Can't undo this: {reason}",
-	"redo_blocked": "Can't redo this: {reason}"
+	"redo_blocked": "Can't redo this: {reason}",
+	"commands_no_flow": "No routine is open",
+	"commands_none": "No commands"
 }

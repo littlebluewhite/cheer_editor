@@ -259,7 +259,7 @@ export class ActionDraft {
 		if (this.#action || !segment) return;
 		const input = this.#read(segment);
 		const sent = this.#keep();
-		if (input.kind === 'blocked') return void this.ask.block(input.message);
+		if (input.kind === 'blocked') return void this.ask.block(input);
 		this.ask.send({ name: 'addAction', args: [input.value] }, {
 			done: (r) => {
 				this.#session.selectAction(r.id);
@@ -295,7 +295,7 @@ export class ActionDraft {
 		const id = action.id;
 		const input = this.#read(segment);
 		const revert = () => this.#reset();
-		if (input.kind === 'blocked') return void this.ask.block(input.message, { revert });
+		if (input.kind === 'blocked') return void this.ask.block(input, { revert });
 		this.ask.send({ name: 'updateAction', args: [id, input.value] }, { revert, done });
 	}
 

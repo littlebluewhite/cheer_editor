@@ -48,6 +48,7 @@
 	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import { composing } from '#lib/ime.js';
+	import { reasonText } from '#lib/reason-text.js';
 	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import ActionForm from '#lib/components/ActionForm.svelte';
@@ -451,7 +452,7 @@
 		e.preventDefault();
 		const read = readJump(flow, playback.sec, jumpText ?? '');
 		if (read.kind !== 'ok') {
-			jumpError = read.message;
+			jumpError = reasonText(read);
 			return;
 		}
 		playback.seek(read.value);

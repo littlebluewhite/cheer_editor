@@ -6,6 +6,7 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { commitField } from './commit-field';
+	import { reasonText } from '#lib/reason-text.js';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { revealAlert } from './reveal';
@@ -76,7 +77,7 @@
 	const fitBlocked = $derived.by(() => {
 		if (!overrun) return null;
 		const r = fitSegmentToAudio(flow, segmentId, editor.music.lengths);
-		return r.kind === 'blocked' ? r.message : null;
+		return r.kind === 'blocked' ? reasonText(r) : null;
 	});
 	/** 這一段用到的那一截：音樂檔裡從第一拍到段尾（波形上標亮）。 */
 	const used = $derived({ startSec: music?.firstBeatSec ?? 0, endSec: (music?.firstBeatSec ?? 0) + (span?.durationSec ?? 0) });
@@ -120,7 +121,7 @@
 			send: (text) => {
 				const value = readSegmentNumber(key, text);
 				return value.kind === 'blocked'
-					? { blocked: value.message }
+					? { blocked: value }
 					: { name: 'updateSegment', args: [segmentId, { [key]: value.value }, editor.music.lengths] };
 			},
 			actual: () => String(actual() ?? ''),

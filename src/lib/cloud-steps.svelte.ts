@@ -54,6 +54,7 @@ import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
+import { reasonText } from '#lib/reason-text.js';
 import { Flash } from '#lib/flash.svelte.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView, SentBack } from '#lib/server-api.js';
@@ -775,8 +776,8 @@ export function sentBack({ why, by, message }: Rejected, label: string): string 
 		case 'notUnderstood':
 			return t.rejected_not_understood();
 		case 'blocked':
-			if (by === undefined) return (why.ask ? t.rejected_asked : t.rejected_blocked)({ reason: why.reason });
-			return (why.ask ? t.rejected_asked_by : t.rejected_blocked_by)({ by, label, reason: why.reason });
+			if (by === undefined) return (why.ask ? t.rejected_asked : t.rejected_blocked)({ reason: reasonText(why.reason) });
+			return (why.ask ? t.rejected_asked_by : t.rejected_blocked_by)({ by, label, reason: reasonText(why.reason) });
 		case 'sameThing':
 			return t.rejected_same_thing({ by: by!, label });
 		case 'undoTooOld':
@@ -784,7 +785,7 @@ export function sentBack({ why, by, message }: Rejected, label: string): string 
 		case 'undoChangedLater':
 			return (why.redo ? t.redo_changed_later : t.undo_changed_later)({ by: why.by });
 		case 'undoBlocked':
-			return (why.redo ? t.redo_blocked : t.undo_blocked)({ reason: why.reason });
+			return (why.redo ? t.redo_blocked : t.undo_blocked)({ reason: reasonText(why.reason) });
 		default:
 			// 沒有代號（還沒更新的伺服器）、還不認得的代號（伺服器比這個分頁新）：照它寫的中文。有 by 時 message 是被規則擋下的原因，
 			// 改到同一個東西是空的

@@ -37,6 +37,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, SignedIn, session, signed_in};
+use crate::cloud_flows::FlowBlocked;
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
@@ -431,7 +432,7 @@ pub enum RoomMessage {
 }
 
 /// 一步退回的原因（ADR 0017）：伺服器送代號和要放進句子的東西，畫面照使用者的語言寫成句子。
-/// reason 是流程核心擋下的原因（現在還是中文，之後流程核心也改送代號）。redo：是重做（不是復原）。
+/// reason 是流程核心擋下的原因：中文，改成代號的多帶 why（一個檔一個檔改）。redo：是重做（不是復原）。
 #[derive(Serialize, TS, Debug)]
 #[serde(tag = "code", rename_all = "camelCase")]
 #[ts(export)]
@@ -449,9 +450,9 @@ pub enum SentBack {
     /// 那一步之後 by 改過同樣的東西。
     UndoChangedLater { by: String, redo: bool },
     /// 放回去不合規則。
-    UndoBlocked { redo: bool, reason: String },
+    UndoBlocked { redo: bool, reason: FlowBlocked },
     /// 被規則擋下；ask：要問（確認、選）而教練那邊沒問，請再看一次。
-    Blocked { reason: String, ask: bool },
+    Blocked { reason: FlowBlocked, ask: bool },
     /// 改到同一個東西（Rejected 的 by 是最後改到的人）。
     SameThing,
 }
@@ -466,12 +467,14 @@ impl SentBack {
             Self::UndoTooOld { redo } => format!("太久以前的，{}", cannot(*redo)),
             Self::NotUnderstood => "沒存進去：伺服器看不懂這一步".into(),
             Self::UndoChangedLater { by, redo } => format!("{by}後來改過，這步{}", cannot(*redo)),
-            Self::UndoBlocked { redo, reason } => format!("這步{}：{reason}", cannot(*redo)),
+            Self::UndoBlocked { redo, reason } => {
+                format!("這步{}：{}", cannot(*redo), reason.message)
+            }
             Self::Blocked { reason, ask } => {
                 let reason = if *ask {
-                    format!("{reason}，請再看一次")
+                    format!("{}，請再看一次", reason.message)
                 } else {
-                    reason.clone()
+                    reason.message.clone()
                 };
                 if by {
                     reason
@@ -1071,7 +1074,7 @@ async fn take_step(
         }
         // 放回去不合規則（整份流程檢查）。
         if outcome.kind != "ok" {
-            let reason = outcome.message.unwrap_or_default();
+            let reason = FlowBlocked::from(outcome.message, outcome.why);
             return rejected(SentBack::UndoBlocked { redo, reason }, None, content);
         }
     }
@@ -1079,7 +1082,7 @@ async fn take_step(
         ("ok", Some(flow)) => flow,
         // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。上次看到之後別人改過，寫最後改的人。
         (kind, _) => {
-            let reason = outcome.message.unwrap_or_default();
+            let reason = FlowBlocked::from(outcome.message, outcome.why);
             let why = SentBack::Blocked {
                 reason,
                 ask: kind != "blocked",

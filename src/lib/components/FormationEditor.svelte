@@ -51,7 +51,7 @@
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
 		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
-		if (to.kind === 'blocked') return void ask.block(to.message);
+		if (to.kind === 'blocked') return void ask.block(to);
 		session.ask.send({ name: 'moveFormation', args: [formation.id, to.value] }, {
 			revert: () => {},
 			done: (r) => session.formationMoved(formation.id, r)

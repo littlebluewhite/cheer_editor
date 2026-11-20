@@ -95,7 +95,7 @@ export class MusicLibrary {
 	 */
 	async pick(segmentId: string, file: File, ask: Ask): Promise<void> {
 		const check = loadSegmentAudio(this.#flow, segmentId, file.name, this.#heldIds);
-		if (check.kind === 'blocked') return void ask.block(check.message);
+		if (check.kind === 'blocked') return void ask.block(check);
 		const upload = this.upload;
 		if (upload && file.size > MAX_CLOUD_AUDIO_BYTES) return void ask.block(AUDIO_TOO_BIG);
 		const pick = {};

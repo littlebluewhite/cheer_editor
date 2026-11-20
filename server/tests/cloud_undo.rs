@@ -365,7 +365,7 @@ async fn an_undo_that_breaks_the_rules_is_sent_back(db: sqlx::PgPool) {
     assert_sent_back(
         &reply,
         "這步不能復原：一支流程最多 40 人",
-        json!({ "code": "undoBlocked", "redo": false, "reason": "一支流程最多 40 人" }),
+        json!({ "code": "undoBlocked", "redo": false, "reason": { "message": "一支流程最多 40 人" } }),
     );
     assert_eq!(members(&s.flow(&wang, &id).await).len(), 40);
 }

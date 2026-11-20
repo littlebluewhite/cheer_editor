@@ -10,6 +10,7 @@ import { applyRemoteChange, remoteChange, type RemoteChange } from './remote-cha
 import { stepKeys } from './step-keys';
 import { putRecords, takeRecords, type StoredAttempt } from './stored-records';
 import { fitRecords } from './success-rate';
+import { said, type Said } from './why';
 
 /** 復原堆疊的一步：undo 放回改之前的樣子，redo 放回改之後的樣子（都只有改到的東西）。 */
 export interface UndoChanges {
@@ -87,7 +88,7 @@ function fitted(flow: Flow): Flow {
 /** 伺服器跑復原、重做的結果：跟一般的一步一樣（runStepJson），不合規則是 blocked。 */
 export type UndoOutcome =
 	| { kind: 'ok'; flow: Flow; records: StoredAttempt[]; keys: string[]; watch: string[] }
-	| { kind: 'blocked'; message: string };
+	| ({ kind: 'blocked' } & Said);
 
 /**
  * 伺服器跑復原、重做：flow 是現在的樣子（不帶紀錄）、records 是分開存的紀錄（ADR 0011）。
@@ -101,7 +102,7 @@ export function runUndo(flow: Flow, records: StoredAttempt[], change: RemoteChan
 	const back = undone(now, change);
 	const after = waiting.length ? fitted(putRecords(back, [...takeRecords(back).records, ...waiting])) : back;
 	const problem = flowProblem(after, now);
-	if (problem) return { kind: 'blocked', message: problem };
+	if (problem) return { kind: 'blocked', ...said(problem) };
 	const taken = takeRecords(after);
 	return { kind: 'ok', flow: taken.flow, records: taken.records, ...stepKeys(flow, taken.flow) };
 }

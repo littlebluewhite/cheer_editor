@@ -27,6 +27,7 @@ import {
 	type Flow,
 	type Position,
 	type RemoteChange,
+	type Said,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -374,6 +375,7 @@ export function fakeServer(
 		}
 		const step = f.step ?? 0;
 		// 跟真的伺服器一樣送代號（why）；message 是給部署前開著的舊分頁看的中文，畫面不讀，這裡不寫
+		const reasonOf = ({ message, why }: Said) => (why ? { message, why } : { message });
 		const rejected = (why: SentBack, by?: string): RoomMessage => {
 			from.sentBack = step;
 			return { kind: 'rejected', stepId, why, message: '', ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
@@ -397,12 +399,12 @@ export function fakeServer(
 			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
 			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
 			if (by !== undefined) return rejected({ code: 'undoChangedLater', by, redo });
-			if (u.kind !== 'ok') return rejected({ code: 'undoBlocked', redo, reason: u.message });
+			if (u.kind !== 'ok') return rejected({ code: 'undoBlocked', redo, reason: reasonOf(u) });
 			after = u;
 		} else {
 			const full = putRecords(structuredClone(f.flow), structuredClone(live));
 			const r = runCommands(full, structuredClone(commands ?? []), stepId);
-			if (r.kind !== 'ok') return rejected({ code: 'blocked', reason: r.message, ask: r.kind !== 'blocked' }, lastOther());
+			if (r.kind !== 'ok') return rejected({ code: 'blocked', reason: reasonOf(r), ask: r.kind !== 'blocked' }, lastOther());
 			after = takeRecords(r.flow);
 		}
 		const { keys, watch } = stepKeys(f.flow, after.flow);

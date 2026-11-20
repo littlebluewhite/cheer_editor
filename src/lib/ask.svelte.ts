@@ -20,6 +20,8 @@ import {
 	type ConfirmOption,
 	type Flow
 } from '#lib/core';
+import type { Said } from '#lib/core';
+import { reasonText } from '#lib/reason-text.js';
 
 /** 教練的回答。 */
 export type Answer = 'confirm' | 'keep' | 'clear' | 'cancel';
@@ -113,9 +115,10 @@ export class Ask {
 		return r;
 	}
 
-	/** 送之前就看得出不行（例：表單的字讀不懂）：不送指令，當被擋，原因是 message（鎖著時是鎖給的那句）。 */
-	block(message: string, handlers: Handlers<CommandResult> = {}): CommandResult {
-		const send = (): CommandResult => ({ kind: 'blocked', message });
+	/** 送之前就看得出不行（例：表單的字讀不懂）：不送指令，當被擋，原因是 reason（鎖著時是鎖給的那句）。 */
+	block(reason: string | Said, handlers: Handlers<CommandResult> = {}): CommandResult {
+		const { message, why } = typeof reason === 'string' ? { message: reason } : reason;
+		const send = (): CommandResult => ({ kind: 'blocked', message, ...(why && { why }) });
 		const r = this.#run(send, {});
 		this.#settle(r, send, handlers);
 		return r;
@@ -180,14 +183,15 @@ export class Ask {
 			this.#onchange(r.flow, send.step?.());
 			handlers.done?.(r);
 		} else if (r.kind === 'blocked') {
-			if (field !== undefined) this.fieldErrors[field] = `「${field}」退回原本的值：${r.message}`;
-			else this.error = handlers.revert ? `${r.message}，已還原` : r.message;
+			const reason = reasonText(r);
+			if (field !== undefined) this.fieldErrors[field] = `「${field}」退回原本的值：${reason}`;
+			else this.error = handlers.revert ? `${reason}，已還原` : reason;
 			handlers.revert?.();
 		} else {
 			// 要問了：舊的紅字收掉，確認框旁邊不留跟這次無關的原因。
 			this.fieldErrors = {};
 			const confirmLabel = (r.kind === 'confirm' && r.confirmLabel) || this.confirmLabel;
-			this.question = { message: r.message, items: r.items, choose: r.kind === 'choose', confirmLabel };
+			this.question = { message: reasonText(r), items: r.items, choose: r.kind === 'choose', confirmLabel };
 			this.#pending = { send, handlers };
 		}
 		if (r.kind !== 'ok') {

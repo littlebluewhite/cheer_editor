@@ -25,5 +25,7 @@
 	"undo_changed_later": "その後{by}が変更したため、元に戻せません",
 	"redo_changed_later": "その後{by}が変更したため、やり直せません",
 	"undo_blocked": "元に戻せません：{reason}",
-	"redo_blocked": "やり直せません：{reason}"
+	"redo_blocked": "やり直せません：{reason}",
+	"commands_no_flow": "開いているルーティーンがありません",
+	"commands_none": "コマンドがありません"
 }
