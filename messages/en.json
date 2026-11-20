@@ -95,6 +95,6 @@
 	"insert_beats_overflow_action": "“{action}” would run past the end of this segment; {room}",
 	"insert_beats_room": "you can insert at most {length}",
 	"insert_beats_room_eights_rest": "you can insert at most {eights} and {rest}",
-	"insert_beats_room_under_eight": "you can insert at most {length} (less than one 8-count, so the unit is beats)",
+	"insert_beats_room_under_eight": "you can insert at most {length} (less than one 8-count; switch the unit to beats)",
 	"insert_beats_room_none": "there is no room left at the end of this segment"
 }

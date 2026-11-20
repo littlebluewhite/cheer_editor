@@ -95,6 +95,6 @@
 	"insert_beats_overflow_action": "「{action}」がこのパートの終わりを超えます。{room}",
 	"insert_beats_room": "挿入できるのは最大 {length} です",
 	"insert_beats_room_eights_rest": "挿入できるのは最大 {eights}と {rest} です",
-	"insert_beats_room_under_eight": "挿入できるのは最大 {length} です（1 エイトカウントに満たないため、単位を拍にしました）",
+	"insert_beats_room_under_eight": "挿入できるのは最大 {length} です（1 エイトカウントに満たないため、単位を拍に変えてください）",
 	"insert_beats_room_none": "このパートの後ろにはもう空きがありません"
 }
