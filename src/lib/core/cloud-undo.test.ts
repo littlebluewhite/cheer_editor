@@ -2,7 +2,9 @@
 // 放回去之後整份檢查，不合規則就擋下。
 import { describe, expect, it } from 'vitest';
 import {
+	addBookmark,
 	addMembers,
+	deleteBookmark,
 	deleteAction,
 	deleteFormation,
 	deleteMember,
@@ -185,6 +187,17 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
 		expect(r.records).toEqual([once]);
+	});
+
+	it('你刪了書籤，別人在同一個地方存了另一個書籤，你復原：擋下（同一個地方只有一個書籤）', () => {
+		const sample = libSample();
+		const seg = sample.segments[0].id;
+		const flow = flowOf(addBookmark(sample, '翻騰', { segmentId: seg, at: 8 }, { segmentId: seg, at: 16 }));
+		const mine = flowOf(deleteBookmark(flow, flow.bookmarks![0].id));
+		const { undo } = undoChanges(flow, mine);
+		const others = takeRecords(flowOf(inStep('step-other', () => addBookmark(mine, '又一個', { segmentId: seg, at: 8 }, { segmentId: seg, at: 16 }))));
+		const r = runUndo(others.flow, others.records, undo);
+		expect(r).toEqual({ kind: 'blocked', message: '書籤「又一個」和「翻騰」在同一個地方' });
 	});
 
 	it('你刪了 5 個人（35），別人加了 5 個（40），你復原變 45 人：擋下', () => {

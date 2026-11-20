@@ -196,6 +196,16 @@ describe('書籤', () => {
 		}
 	});
 
+	it('名字照看得到的字算上限：20 個 emoji 打得進去，第 21 個切掉', async () => {
+		setup(sample());
+		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
+		const input = screen.getByRole('textbox', { name: '書籤名字' }) as HTMLInputElement;
+		input.focus();
+		await fireEvent.input(input, { target: { value: '🎀'.repeat(21) } });
+		expect(input.value).toBe('🎀'.repeat(20));
+		expect(input.maxLength).toBe(-1);
+	});
+
 	it('管理：改名、刪', async () => {
 		const { session } = setup(sample());
 		await fireEvent.click(screen.getByRole('button', { name: '管理' }));

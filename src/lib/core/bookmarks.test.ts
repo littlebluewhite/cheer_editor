@@ -3,6 +3,7 @@ import {
 	addBookmark,
 	addSegment,
 	bookmarkSeconds,
+	checkFlowDocument,
 	createFlow,
 	deleteBookmark,
 	flowProblem,
@@ -158,6 +159,14 @@ describe('改段時書籤跟著動', () => {
 		expect(insertBeats(flow, at('s1', 0), 4).kind).toBe('ok');
 	});
 
+	it('插入八拍：會讓兩個書籤變成同一個地方就擋下，說是哪兩個', () => {
+		let flow = flowOf(addBookmark(sample(), '前半', at('s1', 0), at('s1', 16)));
+		flow = flowOf(addBookmark(flow, '整段', at('s1', 0), at('s1', 32)));
+		const r = insertBeats(flow, at('s1', 8), 16);
+		expect(r).toMatchObject({ kind: 'blocked', message: expect.stringMatching(/「前半」.*「整段」/) });
+		expect(insertBeats(flow, at('s1', 8), 8).kind).toBe('ok');
+	});
+
 	it('段縮短：放不進段裡的書籤列在確認清單上，確定後拿掉', () => {
 		const flow = withBookmarks();
 		const asked = run(flow, { name: 'updateSegment', args: ['s2', { eights: 1, lastBeats: 3 }] });
@@ -186,8 +195,6 @@ describe('流程檔（第 16 版）', () => {
 	});
 
 	it.each([
-		['書籤指到不存在的段', (f: Flow) => (f.bookmarks![0].a = at('s9', 0))],
-		['書籤的 B 指到不存在的段', (f: Flow) => (f.bookmarks![0].b = at('s9', 0))],
 		['書籤的名字不是字', (f: Flow) => ((f.bookmarks![0] as { name: unknown }).name = 3)],
 		['書籤的格子不是整數', (f: Flow) => (f.bookmarks![0].a.at = 1.5)],
 		['書籤不是清單', (f: Flow) => ((f as { bookmarks: unknown }).bookmarks = {})]
@@ -197,12 +204,51 @@ describe('流程檔（第 16 版）', () => {
 		expect(readFlowFile(zipOf({ formatVersion: 16, flow }))).toEqual({ kind: 'error', message: '流程檔裡的資料壞掉了' });
 	});
 
-	it('整份流程檢查：這一步讓書籤跑到段外、名字太長才擋（舊檔本來就這樣的留著）', () => {
+	// 手改過的檔才會這樣（改段的指令跑完都會拿掉放不下的書籤）：只丟那一個、說出來，流程照開
+	const LOST: [string, (f: Flow) => void][] = [
+		['指到不存在的段', (f) => (f.bookmarks![0].a = at('s9', 0))],
+		['B 指到不存在的段', (f) => (f.bookmarks![0].b = at('s9', 0))],
+		['B 在段外', (f) => (f.bookmarks![0].b = at('s2', 40))],
+		['B 在 A 前面', (f) => (f.bookmarks![0].b = at('s1', 4))]
+	];
+	const withTwo = () => structuredClone(flowOf(addBookmark(withBookmark(), '開場', at('s1', 0), null)));
+
+	it.each(LOST)('開檔：書籤%s：拿掉那一個、說名字，其他照開', (_, breakIt) => {
+		const flow = withTwo();
+		breakIt(flow);
+		const r = readFlowFile(zipOf({ formatVersion: 16, flow }));
+		expect(r.kind === 'ok' && r.droppedBookmarks).toEqual(['翻騰']);
+		expect(r.kind === 'ok' && r.flow.bookmarks!.map((b) => b.name)).toEqual(['開場']);
+	});
+
+	it('開檔：兩個書籤同一個 id：後面那個換一個新的 id，兩個都留著', () => {
+		const flow = withTwo();
+		flow.bookmarks![1].id = flow.bookmarks![0].id;
+		const r = readFlowFile(zipOf({ formatVersion: 16, flow }));
+		expect(r.kind === 'ok' && r.droppedBookmarks).toEqual([]);
+		const ids = r.kind === 'ok' ? r.flow.bookmarks!.map((b) => b.id) : [];
+		expect(ids[0]).toBe(flow.bookmarks![0].id);
+		expect(new Set(ids).size).toBe(2);
+	});
+
+	it.each([
+		...LOST,
+		['兩個書籤同一個 id', (f: Flow) => (f.bookmarks![1].id = f.bookmarks![0].id)] as [string, (f: Flow) => void]
+	])('傳上雲端（伺服器的檢查）：書籤%s照樣擋', (_, breakIt) => {
+		const flow = withTwo();
+		breakIt(flow);
+		expect(checkFlowDocument({ formatVersion: 16, flow }).kind).toBe('error');
+	});
+
+	it('整份流程檢查：書籤跑到段外一律擋（開檔也擋）；名字太長、兩個書籤同一個地方只擋這一步新出現的', () => {
 		const flow = withBookmark();
 		const outside = { ...flow, bookmarks: [{ ...flow.bookmarks![0], b: at('s2', 40) }] };
 		expect(flowProblem(outside, flow)).toBe('書籤「翻騰」的位置不在流程裡');
-		expect(flowProblem(outside, outside)).toBeNull();
+		expect(flowProblem(outside, outside)).toBe('書籤「翻騰」的位置不在流程裡');
 		const long = { ...flow, bookmarks: [{ ...flow.bookmarks![0], name: '一'.repeat(21) }] };
 		expect(flowProblem(long, flow)).toMatch(/書籤名字/);
+		const twice = { ...flow, bookmarks: [...flow.bookmarks!, { ...flow.bookmarks![0], id: 'k9', name: '又一個' }] };
+		expect(flowProblem(twice, flow)).toBe('書籤「翻騰」和「又一個」在同一個地方');
+		expect(flowProblem(twice, twice)).toBeNull();
 	});
 });

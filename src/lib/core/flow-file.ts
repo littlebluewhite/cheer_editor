@@ -3,7 +3,9 @@
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
+import { bookmarkSeconds } from './bookmarks';
 import { CUE_KINDS, cueProblem } from './cues';
+import { newId } from './ids';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
@@ -180,8 +182,11 @@ function renameSquads(action: Action, rename: (squad: string | number) => string
 export type AudioBytes = Record<string, Uint8Array>;
 
 export type ReadFlowFileResult =
-	/** missingSegmentIds：音樂檔不在 zip 裡的音樂段（照開，畫面標紅）。 */
-	| { kind: 'ok'; flow: Flow; audio: AudioBytes; missingSegmentIds: string[] }
+	/**
+	 * missingSegmentIds：音樂檔不在 zip 裡的音樂段（照開，畫面標紅）。
+	 * droppedBookmarks：放不下、開檔時拿掉的書籤名字（手改過的檔才會有，畫面說出來）。
+	 */
+	| { kind: 'ok'; flow: Flow; audio: AudioBytes; missingSegmentIds: string[]; droppedBookmarks: string[] }
 	/** 打不開：message 是給教練看的原因。 */
 	| { kind: 'error'; message: string };
 
@@ -238,12 +243,12 @@ export function readFlowFile(
 	} catch {
 		return { kind: 'error', message: BROKEN };
 	}
-	const checked = checkFlowDocument(doc, upgrades);
+	const checked = checkDocument(doc, upgrades, true);
 	if (checked.kind === 'error') return checked;
-	const flow = checked.flow;
+	const { flow, dropped } = checked;
 	const audio: AudioBytes = {};
 	for (const ref of flow.audio) if (files[folder + ref.file]) audio[ref.id] = files[folder + ref.file];
-	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
+	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)), droppedBookmarks: dropped };
 }
 
 export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | { kind: 'error'; message: string };
@@ -257,6 +262,19 @@ export function checkFlowDocument(
 	doc: unknown,
 	upgrades: Record<number, Upgrade> = UPGRADES
 ): CheckFlowDocumentResult {
+	const checked = checkDocument(doc, upgrades, false);
+	return checked.kind === 'ok' ? { kind: 'ok', flow: checked.flow } : checked;
+}
+
+/**
+ * checkFlowDocument；fix：開檔（readFlowFile）時先修手改過的書籤（見 fixBookmarks），dropped 是拿掉的書籤名字。
+ * 傳上雲端不修，照樣擋：雲端的流程都是編輯器開過、改過的，不會有這種書籤。
+ */
+function checkDocument(
+	doc: unknown,
+	upgrades: Record<number, Upgrade>,
+	fix: boolean
+): { kind: 'ok'; flow: Flow; dropped: string[] } | { kind: 'error'; message: string } {
 	if (!isDocument(doc)) return { kind: 'error', message: BROKEN };
 	if (doc.formatVersion > FORMAT_VERSION) {
 		return { kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' };
@@ -267,10 +285,29 @@ export function checkFlowDocument(
 		if (!upgrade) return { kind: 'error', message: BROKEN };
 		current = upgrade(current);
 	}
-	if (!isFlow(current.flow)) return { kind: 'error', message: BROKEN };
-	const tooLong = segmentLengthProblem(current.flow);
+	const { flow, dropped } = fix && flowShape(current.flow) ? fixBookmarks(current.flow as Flow) : { flow: current.flow, dropped: [] };
+	if (!isFlow(flow)) return { kind: 'error', message: BROKEN };
+	const tooLong = segmentLengthProblem(flow);
 	if (tooLong) return { kind: 'error', message: tooLong };
-	return { kind: 'ok', flow: current.flow };
+	return { kind: 'ok', flow, dropped };
+}
+
+/**
+ * 手改過的檔才會有的書籤（改段的指令跑完都會拿掉放不下的書籤，正常存不出來）：
+ * 放不下的（段不在、在段外、B 不在 A 後面）拿掉，回它們的名字；id 重複的，後面那個換一個新的。
+ * 不修的話整支流程打不開，或書籤看不到、下一個指令就被悄悄拿掉。
+ */
+function fixBookmarks(flow: Flow): { flow: Flow; dropped: string[] } {
+	if (!flow.bookmarks) return { flow, dropped: [] };
+	const fits = flow.bookmarks.filter((b) => bookmarkSeconds(flow, b));
+	const used = new Set<string>();
+	const bookmarks = fits.map((b) => {
+		const id = used.has(b.id) ? newId('k', [...fits.map((x) => x.id), ...used]) : b.id;
+		used.add(id);
+		return id === b.id ? b : { ...b, id };
+	});
+	const dropped = flow.bookmarks.filter((b) => !fits.includes(b)).map((b) => b.name);
+	return { flow: { ...flow, bookmarks }, dropped };
 }
 
 /**
@@ -429,6 +466,10 @@ export function structureProblem(v: unknown): string | null {
 	if (flow.bookmarks?.some((b) => !segmentIds.has(b.a.segmentId) || (b.b && !segmentIds.has(b.b.segmentId)))) {
 		return '有書籤指到不存在的段';
 	}
+	const bookmarkIds = (flow.bookmarks ?? []).map((b) => b.id);
+	if (new Set(bookmarkIds).size !== bookmarkIds.length) return '有兩個書籤的 id 一樣';
+	const lost = flow.bookmarks?.find((b) => !bookmarkSeconds(flow, b));
+	if (lost) return `書籤「${lost.name}」的位置不在流程裡`;
 	if (flow.actions.some((a) => a.members.some((m) => !memberIds.has(m.memberId)))) return '有動作指到不存在的隊員';
 	for (const a of flow.actions) {
 		const segment = flow.segments.find((s) => s.id === a.segmentId)!;

@@ -41,6 +41,14 @@ export function bookmarkSeconds(flow: Flow, bm: Pick<Bookmark, 'a' | 'b'>): { a:
 	return b === null || b <= a + EPS ? null : { a, b };
 }
 
+/** 在同一個地方（A、B 照秒數比）的書籤，一對一對，照清單的先後。 */
+export function sameBookmarks(flow: Flow): [Bookmark, Bookmark][] {
+	const list = bookmarksOf(flow).map((bm) => ({ bm, s: bookmarkSeconds(flow, bm) }));
+	return list.flatMap(({ bm, s }, i) =>
+		s ? list.slice(i + 1).flatMap((y): [Bookmark, Bookmark][] => (sameSeconds(y.s, s) ? [[bm, y.bm]] : [])) : []
+	);
+}
+
 /** A 或 B 在這一段的書籤。 */
 export function bookmarksIn(flow: Flow, segmentId: string): Bookmark[] {
 	return bookmarksOf(flow).filter((bm) => bm.a.segmentId === segmentId || bm.b?.segmentId === segmentId);

@@ -13,6 +13,7 @@
 	import { KEYS } from '#lib/shortcuts.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { below, popover } from '#lib/popover.svelte.js';
+	import CharCount from './CharCount.svelte';
 	import Icon from './Icon.svelte';
 
 	let { place }: { place: 'bar' | 'phone' } = $props();
@@ -78,6 +79,7 @@
 	/** 正在打名字的：新的（帶著要存的 A、B）或改名的那個。 */
 	let naming = $state<{ kind: 'add'; a: TimePosition; b: TimePosition | null } | { kind: 'rename'; id: string } | null>(null);
 	let text = $state('');
+	let nameInput = $state<HTMLInputElement>();
 	let managing = $state(false);
 	/** 閃一下的書籤（要存的地方已經有書籤了）。 */
 	let flashId = $state<string | null>(null);
@@ -136,7 +138,11 @@
 	/** ⌘S／Ctrl+S：存檔，打字時也要給頁面。 */
 	const saveKey = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's';
 	const chipId = (id: string) => `bookmark-${place}-${id}`;
-	const selectAll = (el: HTMLInputElement) => el.select();
+	// 改名的欄位在左右滑的那排裡：捲到看得到
+	const selectAll = (el: HTMLInputElement) => {
+		el.select();
+		el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+	};
 
 	// ---------- 找書籤（按 /） ----------
 	let searching = $state(false);
@@ -197,21 +203,29 @@
 	{#if open}
 		<div class="bookmarks pop" role="group" aria-label="書籤" {@attach popover({ place: below(openBtn!, { gap: 6, align: 'left', flip: true }), close: closeFold, inside: [openBtn] })}>
 			{#if !rows.length}<p class="none">還沒有書籤</p>{/if}
-			{@render items()}
+			{@render chips()}
+			{@render tools()}
 		</div>
 	{/if}
-{:else if place === 'bar' || rows.length}
+{:else if place === 'bar'}
+	<!-- 書籤多的時候左右滑的只有書籤那幾顆；存、管理、打名字的欄位一直露在外面 -->
+	<div class="bookmarks bar" role="group" aria-label="書籤" title={hint}>
+		<div class="list">{@render chips()}</div>
+		{@render tools()}
+	</div>
+{:else if rows.length}
 	<div class="bookmarks {place}" role="group" aria-label="書籤" title={hint}>
-		{@render items()}
+		{@render chips()}
 	</div>
 {/if}
 
-{#snippet items()}
+{#snippet chips()}
 	{#each rows as row (row.bm.id)}
 		{@const { bm, s } = row}
 		{#if naming?.kind === 'rename' && naming.id === bm.id}
 			<span class="chip naming">
-				<input type="text" aria-label="書籤名字" maxlength={MAX_CHARS.bookmarkName} data-scratch bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
+				<input type="text" aria-label="書籤名字" data-scratch bind:this={nameInput} bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
+				<CharCount field="bookmarkName" input={nameInput} value={text} />
 				<button type="button" class="mini" onclick={commit}>存</button>
 			</span>
 		{:else}
@@ -236,6 +250,9 @@
 			</span>
 		{/if}
 	{/each}
+{/snippet}
+
+{#snippet tools()}
 	{#if place === 'bar'}
 		{#if naming?.kind === 'add'}
 			<span class="chip naming">
@@ -243,12 +260,13 @@
 					type="text"
 					aria-label="書籤名字"
 					placeholder="名字，例：翻騰"
-					maxlength={MAX_CHARS.bookmarkName}
 					data-scratch
+					bind:this={nameInput}
 					bind:value={text}
 					onkeydown={nameKeys}
 					{@attach selectAll}
 				/>
+				<CharCount field="bookmarkName" input={nameInput} value={text} />
 				<button type="button" class="mini" onclick={commit}>存</button>
 				<button type="button" class="mini" aria-label="不存" onclick={() => (naming = null)}>✕</button>
 			</span>
@@ -322,10 +340,31 @@
 	.bookmarks::-webkit-scrollbar {
 		display: none;
 	}
-	/* 一排書籤最多多寬：再寬流程名字就露不出 8 個字（check:layout 量的）；放不下的左右滑 */
+	/* 一排書籤最多多寬：再寬流程名字就露不出 8 個字（check:layout 量的）；放不下的書籤左右滑，存、管理不滑 */
 	.bar {
 		flex: 0 1 auto;
 		max-width: 190px;
+		overflow: visible;
+	}
+	/* 擠的時候先縮書籤那排（縮到沒有也行），再縮打名字的欄位 */
+	.bar .list {
+		display: flex;
+		flex: 0 999 auto;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.bar .list::-webkit-scrollbar {
+		display: none;
+	}
+	.bar .naming {
+		flex: 0 1 auto;
+		min-width: 0;
+	}
+	.bar .naming input {
+		min-width: 3em;
 	}
 	@media (min-width: 1601px) {
 		.bar {

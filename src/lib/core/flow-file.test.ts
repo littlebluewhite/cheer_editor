@@ -127,7 +127,7 @@ describe('流程檔：存了再開', () => {
 		const flow = sample();
 		const audio = { a1: bytes(1, 2, 3), a2: bytes(9, 8, 7, 6) };
 		const r = readFlowFile(writeFlowFile(flow, audio));
-		expect(r).toEqual({ kind: 'ok', flow, audio, missingSegmentIds: [] });
+		expect(r).toEqual({ kind: 'ok', flow, audio, missingSegmentIds: [], droppedBookmarks: [] });
 	});
 
 	it('出發和到達設定存了再開也一樣', () => {
@@ -809,7 +809,8 @@ describe('流程檔：版本', () => {
 			kind: 'ok',
 			flow: { ...v0Flow, customRoles: [], actions: [] },
 			audio: { a1: bytes(5) },
-			missingSegmentIds: ['s3']
+			missingSegmentIds: ['s3'],
+			droppedBookmarks: []
 		});
 	});
 
@@ -945,7 +946,7 @@ describe('流程檔：缺音樂檔', () => {
 	it('照開，標出缺音樂的段；動作和站位都還在', () => {
 		const flow = sample();
 		const r = readFlowFile(writeFlowFile(flow, { a2: bytes(4) }));
-		expect(r).toEqual({ kind: 'ok', flow, audio: { a2: bytes(4) }, missingSegmentIds: ['s1'] });
+		expect(r).toEqual({ kind: 'ok', flow, audio: { a2: bytes(4) }, missingSegmentIds: ['s1'], droppedBookmarks: [] });
 	});
 
 	it('兩個音樂段用同一個缺的檔，兩段都標出來', () => {

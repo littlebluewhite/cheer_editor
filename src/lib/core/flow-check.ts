@@ -2,7 +2,7 @@
 // 一般的一步不跑：指令自己檢查過，這裡寫得比指令嚴，一般的步會莫名被退回。
 
 import { actionLabel, type Action } from './action-types';
-import { bookmarkSeconds, bookmarksOf, nameProblem } from './bookmarks';
+import { bookmarksOf, nameProblem, sameBookmarks } from './bookmarks';
 import { overlaps, shapeProblem } from './actions';
 import { flowNameProblem, memberName, stripsProblem, type Flow } from './flow';
 import { segmentLengthProblem, structureProblem } from './flow-file';
@@ -110,10 +110,11 @@ function violations(flow: Flow): Violation[] {
 		}
 	});
 
-	// 書籤：位置在流程裡、B 在 A 後面（每個改段的指令跑完都掃掉放不下的）；名字（addBookmark、renameBookmark）。
+	// 書籤：名字（addBookmark、renameBookmark）；同一個地方只有一個書籤（addBookmark、insertBeats）。
+	// 位置在流程裡、B 在 A 後面、id 不重複一律擋（structureProblem；開檔時先拿掉放不下的、說出來，readFlowFile）。
 	for (const b of bookmarksOf(flow)) {
-		add(`bookmarkAt:${b.id}`, bookmarkSeconds(flow, b) ? null : `書籤「${b.name}」的位置不在流程裡`);
 		add(`bookmarkName:${b.id}`, nameProblem(b.name.trim()) && `書籤「${b.name}」：${nameProblem(b.name.trim())}`);
 	}
+	for (const [x, y] of sameBookmarks(flow)) add(`bookmarkSame:${x.id}:${y.id}`, `書籤「${x.name}」和「${y.name}」在同一個地方`);
 	return out;
 }

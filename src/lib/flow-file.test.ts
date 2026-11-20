@@ -349,6 +349,19 @@ describe('流程檔：沒存先問', () => {
 	});
 });
 
+describe('流程檔：放不下的書籤', () => {
+	it('開檔時有書籤在段外（手改過的檔）：照開，只拿掉那一個，提示寫出拿掉了哪個', async () => {
+		const flow = flowOf(addSegment(newFlow('練習用'), 'chant'));
+		const seg = flow.segments[0].id;
+		const kept = { id: 'k1', name: '開場', a: { segmentId: seg, at: 0 }, b: null };
+		const lost = { id: 'k2', name: '翻騰', a: { segmentId: seg, at: 0 }, b: { segmentId: seg, at: 99999 } };
+		const { editor, session } = testEditor();
+		await editor.file.open(zip({ ...flow, bookmarks: [kept, lost] }));
+		expect(session.flow!.bookmarks).toEqual([kept]);
+		expect(session.notice).toBe('已開啟「練習用.zip」；書籤「翻騰」的位置不在流程裡，拿掉了');
+	});
+});
+
 describe('流程檔：缺音樂、壞音樂', () => {
 	const mp3 = () => new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 

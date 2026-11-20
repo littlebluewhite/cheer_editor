@@ -319,8 +319,8 @@ await check('時間軸拖到最大時，場地左欄最下面的工具捲得到�
 const topbarLayout = () =>
 	js(`const bar = document.querySelector('.topbar');
 		const b = bar.getBoundingClientRect();
-		// 書籤那排左右滑：滑到外面的書籤不算（滑過去就點得到），露出來的照樣要點得到
-		const scrolledAway = (el) => { const s = el.closest('.bookmarks'); if (!s) return false; const o = s.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.left < o.left - 1 || r.right > o.right + 1; };
+		// 書籤那排左右滑：滑到外面的書籤不算（滑過去就點得到），露出來的照樣要點得到。存、管理不在滑的那排裡，一定要點得到
+		const scrolledAway = (el) => { const s = el.closest('.bookmarks .list'); if (!s) return false; const o = s.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.left < o.left - 1 || r.right > o.right + 1; };
 		const els = [...bar.querySelectorAll('button, label, select, a')].filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 2 && !scrolledAway(el));
 		const rects = els.map((el) => [el, el.getBoundingClientRect()]);
 		const name = (el) => (el.getAttribute('aria-label') || el.title || el.textContent).trim().slice(0, 12);
@@ -1021,6 +1021,34 @@ for (const [w, h, touch] of [[1024, 768], [1024, 768, true], [1101, 768], [1180,
 	});
 }
 
+// 存書籤：書籤多、那排要左右滑時，存成書籤的鈕照樣露在外面；打名字時欄位和字數（n/20，跟其他名字欄位一樣照看得到的字算）
+// 整個在畫面裡、看得到，上方列照樣一行。
+for (const [w, h] of [[1024, 768], [1441, 900], [1920, 1080]]) {
+	await check(`${w}×${h} 存書籤：存成書籤的鈕點得到；打名字時欄位和字數都在畫面裡、看得到，上方列照樣一行、按鈕不疊`, async () => {
+		await setViewport(w, h);
+		await openPracticeFlow(withBookmarks);
+		const folded = await js(`return !!document.querySelector('.topbar .fold')`);
+		if (folded) {
+			await js(`document.querySelector('.topbar .fold').click()`);
+			await sleep(200);
+		}
+		// 書籤多、那排要左右滑時，存成書籤的鈕照樣露在外面點得到
+		const addSeen = await js(`const el = document.querySelector('button[aria-label="存成書籤"]'); const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!t && el.contains(t);`);
+		await js(`document.querySelector('button[aria-label="存成書籤"]').click()`);
+		await sleep(200);
+		const r = await js(`const seen = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && !!t && (t === el || el.contains(t)); };
+			const chip = document.querySelector('.chip.naming');
+			const input = chip?.querySelector('input'); const count = chip?.querySelector('.char-count');
+			const inChip = (el) => { const a = el.getBoundingClientRect(), c = chip.getBoundingClientRect(); return a.left >= c.left - 1 && a.right <= c.right + 1; };
+			return { 欄位: seen(input), 字數: seen(count) && !!count && inChip(count), 字: count?.textContent };`);
+		const bar = folded ? null : await topbarLayout();
+		await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		const barOk = !bar || (bar.上方列高 <= 64 && bar.播放鈕和存檔同一行 && bar.點不到或出畫面.length === 0 && bar.疊在一起.length === 0);
+		return { ok: addSeen && r.欄位 && r.字數 && barOk, value: { 收成一顆鈕: folded, 存成書籤點得到: addSeen, ...r, 上方列: bar } };
+	});
+}
+
 // 手機的檢視畫面多了一排書籤：「我」的選單照樣只有一行高，前後八拍照樣拿到它的那一格（直拿 34dvh、橫拿剩下的高度），不被書籤那排擠到別格
 for (const [w, h] of [[390, 844], [844, 390]]) {
 	await check(`${w}×${h}（觸控）手機的檢視畫面有書籤：書籤那排、「我」、前後八拍各在自己那一格，「我」不被撐高`, async () => {
@@ -1393,7 +1421,7 @@ const noOverflow = (o) => o.頁寬 <= o.畫面寬 && o.跑出去的.length === 0
 const phoneView = () =>
 	js(`const view = document.querySelector('.phone-view');
 		if (!view || !view.checkVisibility()) return { ok: false, value: '沒有手機的檢視畫面' };
-		const box = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }; };
+		const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }; };
 		const hit = (el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
 			return !!t && el.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; };
 		const field = box(view.querySelector('.phone-field svg.field'));

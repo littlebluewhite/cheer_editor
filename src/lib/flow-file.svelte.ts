@@ -280,12 +280,16 @@ export class FlowFile {
 				this.#fileBytes = bytes;
 				if (this.#draftChecked) void this.#saveDraft(bytes);
 			}
-			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名
-			session.notice = r.missingSegmentIds.length
+			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名。開檔時拿掉的書籤（手改過的檔）接在後面說
+			const opened = r.missingSegmentIds.length
 				? `「${fileName ?? '草稿'}」裡少了音樂檔${missingAudioNames(r.flow, r.missingSegmentIds).map((n) => `「${n}」`).join('')}：點紅色的段重新選檔`
 				: [fileName !== null ? `已開啟「${fileName}」` : '', music.hasBroken ? '有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音' : '']
 						.filter(Boolean)
 						.join('；');
+			const dropped = r.droppedBookmarks.length
+				? `書籤${r.droppedBookmarks.map((n) => `「${n}」`).join('')}的位置不在流程裡，拿掉了`
+				: '';
+			session.notice = [opened, dropped].filter(Boolean).join('；');
 			if (r.missingSegmentIds.length) this.#noteMissing();
 		});
 	}

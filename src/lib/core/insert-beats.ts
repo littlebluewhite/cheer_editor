@@ -1,10 +1,10 @@
 // 插入八拍：在一個段的某一拍空出幾拍（音樂段幾個半拍、口號段幾個 0.1 秒），
 // 這個段裡在那之後的站位、動作（拍點記在動作裡，跟著走）、走位的出發和到達、書籤一起往後延；在那之前的不變
 // （照預設走、在那之前就出發的人，把出發記成自己設的）。
-// 段不變長：後面的東西超過段尾就擋下。
+// 段不變長：後面的東西超過段尾就擋下。兩個書籤被擠成同一個地方也擋下（同一個地方只有一個書籤）。
 
 import { actionLabel } from './action-types';
-import { bookmarksOf } from './bookmarks';
+import { bookmarksOf, sameBookmarks } from './bookmarks';
 import type { Flow } from './flow';
 import { formationWalks, memberWalk, type Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
@@ -14,7 +14,7 @@ import { HALF_BEATS_PER_EIGHT, lengthTextWithUnit, units, type TimePosition } fr
 /**
  * 在 at 插入 length 格：這一段裡從 at 起（含 at）開始的站位、動作、出發、到達都晚 length 格。
  * 在 at 以前開始、跨過 at 的動作不動；開頭那張站位不動。
- * 擋下：length 不是正整數、at 不在段的格子上、有東西會超過段尾（說卡最緊的那個和最多插多少）。
+ * 擋下：length 不是正整數、at 不在段的格子上、有東西會超過段尾（說卡最緊的那個和最多插多少）、兩個書籤會變成同一個地方。
  * unit 是教練選的單位，只用來寫「最多插多少」。
  */
 export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 'eight' | 'beat' = 'beat'): CommandResult {
@@ -70,7 +70,11 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 
 	if (limit && limit.room < length) {
 		return blocked(`${limit.name}會超過這段的結尾，${roomText(segment, limit.room, unit)}`);
 	}
-	return ok({ ...flow, formations, actions, ...(flow.bookmarks && { bookmarks }) });
+	const done = { ...flow, formations, actions, ...(flow.bookmarks && { bookmarks }) };
+	const had = new Set(sameBookmarks(flow).map(([x, y]) => `${x.id}:${y.id}`));
+	const same = sameBookmarks(done).find(([x, y]) => !had.has(`${x.id}:${y.id}`));
+	if (same) return blocked(`書籤「${same[0].name}」和「${same[1].name}」會變成同一個地方`);
+	return ok(done);
 }
 
 /** 被擋時說還能插多少：教練選八拍（音樂段）就照八拍講，不到 1 個八拍才說幾拍。 */
