@@ -230,7 +230,7 @@ describe('新建', () => {
 		setup();
 		const flow = audioFlow();
 		const segments = flow.segments.map((s) => (s.kind === 'music' ? { ...s, halfBeats: 201 * 16 } : s));
-		await openFile(writeFlowFile({ ...flow, segments }, {}));
+		await openFile(writeFlowFile({ ...flow, segments }, {}), 'Open routine file');
 		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：A music segment must be 1 to 200 8-counts long');
 	});
 
