@@ -131,10 +131,11 @@ export const NUMBER_BAND = 1.3;
 /**
  * 整個場地的畫面範圍（公尺）：外圍以外再留給條編號、格號（NUMBER_BAND，左右都留，場地才置中）和「正面／裁判」字樣的空間。
  * 編輯頁拿它的長寬比分配右邊欄的寬度；流程影片的場地也用它。
+ * band：號碼條留多寬。手機的檢視畫面給窄一點的，場地畫得比較大（站在外圍邊上的人會蓋到號碼）。
  */
-export function fullView(field: FieldConfig): Rect {
+export function fullView(field: FieldConfig, band = NUMBER_BAND): Rect {
 	const { outer } = fieldGeometry(field);
-	const b = NUMBER_BAND;
+	const b = band;
 	return { x: outer.x - b, y: outer.y - b, width: outer.width + 2 * b, height: outer.height + b + 1 };
 }
 
@@ -145,19 +146,21 @@ type Point = [number, number];
  * 條號、格號寫在哪（公尺，字的基線起點）：貼著號碼條靠外的邊（離伸出外圍框的圓點最遠），
  * 放大後號碼條捲出 view 了就貼著畫面邊上。stripFont、cellFont 是字高（公尺）。
  * 直放：條號在後面、格號在左邊（正面起算）；橫放：條號在左邊、格號在後面（左起算）。
+ * band 跟 fullView 給的一樣。
  */
 export function fieldNumbers(
 	field: FieldConfig,
 	view: Rect,
 	stripFont: number,
-	cellFont: number
+	cellFont: number,
+	band = NUMBER_BAND
 ): { strips: { n: number; at: Point }[]; cells: { n: number; at: Point }[] } {
 	const g = fieldGeometry(field);
 	const vertical = field.layout === 'vertical';
 	// 後面那一排：cx 是那一條或那一格左右的中間
-	const topAt = (cx: number, f: number): Point => [cx, Math.max(g.outer.y - NUMBER_BAND, view.y) + 1.1 * f];
+	const topAt = (cx: number, f: number): Point => [cx, Math.max(g.outer.y - band, view.y) + 1.1 * f];
 	// 左邊那一排：cy 是那一條或那一格前後的中間，兩位數也放得下
-	const sideAt = (cy: number, f: number): Point => [Math.max(g.outer.x - NUMBER_BAND, view.x) + 0.65 * f, cy + 0.3 * f];
+	const sideAt = (cy: number, f: number): Point => [Math.max(g.outer.x - band, view.x) + 0.65 * f, cy + 0.3 * f];
 	return {
 		strips: g.strips.map((s) => ({
 			n: s.number,

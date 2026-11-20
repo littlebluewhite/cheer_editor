@@ -26,6 +26,7 @@
 		frontLabelAt,
 		fullView,
 		markCovered,
+		NUMBER_BAND,
 		positionsAt,
 		snapGroup,
 		snapPointsNear,
@@ -79,7 +80,10 @@
 		below,
 		badges = {},
 		marked = [],
-		crop = null
+		crop = null,
+		numberBand = NUMBER_BAND,
+		tapped = null,
+		ontap
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -114,6 +118,12 @@
 		marked?: string[];
 		/** 只畫這一塊（八拍表的小站位圖，見 eightCountView），標的人塗滿；null 畫整個場地。 */
 		crop?: Rect | null;
+		/** 外圍框外的號碼條留多寬（公尺）。手機的檢視畫面給窄一點的，場地畫得比較大。 */
+		numberBand?: number;
+		/** 沒有編輯器時（手機的檢視畫面）點到的人：畫得跟選到一樣。 */
+		tapped?: string | null;
+		/** 沒有編輯器時（手機的檢視畫面）點一下：點到誰（點空白處是 null）。點兩下的第二下是放大，不叫。 */
+		ontap?: (memberId: string | null) => void;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -131,9 +141,20 @@
 	});
 	/**
 	 * 畫成選到的人：「我」和場上點的人，後選的算（選「我」不清掉選取，動作表單的參加的人跟著選取）；
-	 * 都沒有就是沒標。點、拖照樣只看 selected。
+	 * 都沒有就是沒標。點、拖照樣只看 selected。手機的檢視畫面點到的人（tapped）也算。
 	 */
-	const lit = $derived(marked.length && (!selected.length || selected === selectedWhenMarked) ? marked : selected);
+	const lit = $derived.by(() => {
+		const ids = marked.length && (!selected.length || selected === selectedWhenMarked) ? marked : selected;
+		return tapped && !ids.includes(tapped) ? [...ids, tapped] : ids;
+	});
+	/**
+	 * 只能看的場地（手機的檢視畫面、檢視模式；八拍表的小站位圖不算）：放大場地是為了把站得近的人分開，
+	 * 所以圓點、號碼在螢幕上不跟著變大；手指點兩下放大、放大後一根手指拖是移動畫面。
+	 */
+	const viewOnly = $derived(!crop && !session?.editable);
+	/** 標了「我」：別人畫淡一點（點到、選到的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
+	const dim = (id: string) =>
+		!crop && marked.length > 0 && !marked.includes(id) && !selected.includes(id) && id !== tapped;
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
 	const touchScreen = isTouchScreen();
@@ -159,7 +180,7 @@
 
 	const g = $derived(fieldGeometry(field));
 	const vertical = $derived(field.layout === 'vertical');
-	const full = $derived(fullView(field));
+	const full = $derived(fullView(field, numberBand));
 
 	let svg: SVGSVGElement;
 	/** 場地那一塊的寬和高（px）；jsdom 量不到，是 0。 */
@@ -186,18 +207,18 @@
 
 	/**
 	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
-	 * 放大場地時圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。
-	 * 手機的檢視畫面也照編輯頁放大到有最小尺寸（VIEW_MIN_DOT_PX），號碼才看得清楚。
+	 * 編輯時放大場地，圓點在螢幕上只照倍數開根號變大（×4 大 2 倍），不會一個人佔滿畫面。
+	 * 只能看時（手機的檢視畫面、檢視模式）最小尺寸是 VIEW_MIN_DOT_PX，放大場地圓點在螢幕上一樣大：站得近的人才分得開。
 	 * 八拍表的小站位圖：範圍大時放大到圓點直徑是長邊的 1/MINI_DOTS_ACROSS，號碼才看得清楚。
 	 */
 	const dotScale = $derived.by(() => {
 		if (crop) return Math.max(1, Math.max(view.width, view.height) / MINI_DOTS_ACROSS / (2 * DOT_R));
 		const [w, h] = stageSize;
-		const shrink = 1 / Math.sqrt(zoom);
+		const shrink = viewOnly ? 1 / zoom : 1 / Math.sqrt(zoom);
 		if (!w || !h) return shrink;
 		// preserveAspectRatio meet：看整個場地時 1 公尺幾 px 看比較緊的那一邊
 		const pxPerM = Math.min(w / full.width, h / full.height);
-		return Math.max(1, (controls ? MIN_DOT_PX : VIEW_MIN_DOT_PX) / (2 * DOT_R * pxPerM)) * shrink;
+		return Math.max(1, (viewOnly ? VIEW_MIN_DOT_PX : MIN_DOT_PX) / (2 * DOT_R * pxPerM)) * shrink;
 	});
 
 	/** 現在螢幕上 1 公尺幾 px（preserveAspectRatio meet 看比較緊的那一邊）；jsdom 量不到是 0。 */
@@ -208,8 +229,8 @@
 	 */
 	const fontM = (m: number, minPx: number) => (crop || !pxPerMeter ? m : Math.max(m, minPx / pxPerMeter));
 
-	/** 條編號、格號：字跟圓點一樣照倍數開根號放大；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
-	const numScale = $derived(controls ? 1 / Math.sqrt(zoom) : 1);
+	/** 條編號、格號：字跟圓點一樣（編輯時照倍數開根號放大，只能看時不變大）；放大後捲到看不到外圍框外那一條時，固定在畫面邊上。 */
+	const numScale = $derived(crop ? 1 : viewOnly ? 1 / zoom : 1 / Math.sqrt(zoom));
 	/**
 	 * 條編號、格號的字高（公尺）：至少 MIN_TEXT_PX。
 	 * 小站位圖跟圓點上的號碼一樣大（0.4 乘圓點放大的倍數，見 .field.mini 的號碼）：圓點的號碼印出來看得清楚，條號也是（N38）。
@@ -226,7 +247,7 @@
 	const pillWidth = (mark: string) =>
 		isLongMarker(mark) ? Math.max(DOT_R * 2, (markerWidth(mark) / 2) * longFont + 0.14) : 0;
 	/** 條號、格號寫在哪：公式在流程核心（流程影片也用）。八拍表的小站位圖（crop）不寫格號：擠在裁切的邊上會跟條號疊在一起。 */
-	const numbers = $derived(fieldNumbers(field, view, stripFont, cellFont));
+	const numbers = $derived(fieldNumbers(field, view, stripFont, cellFont, numberBand));
 	const cellNumbers = $derived(crop ? [] : numbers.cells);
 	const frontLabel = $derived(frontLabelAt(field));
 
@@ -518,10 +539,51 @@
 		menu = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.right, y: r.bottom };
 	}
 
+	// ---------- 只能看的場地：點兩下放大到 ×2、再點兩下回整個場地；放大後一根手指拖是移動畫面（不拖人、不框選） ----------
+	/** 點兩下放大到幾倍。 */
+	const DOUBLE_TAP_ZOOM = 2;
+	/** 兩下隔不到這麼久（毫秒）、離不到這麼遠（px）才算點兩下。 */
+	const DOUBLE_TAP_MS = 300;
+	const DOUBLE_TAP_PX = 30;
+	/** 這根指標用「看」的手勢嗎：手機的檢視畫面（沒有 session）滑鼠、手指都是；檢視模式只有手指（滑鼠照舊框選、Ctrl／⌘＋滾輪）。 */
+	const looking = (e: PointerEvent) => viewOnly && (!session || e.pointerType === 'touch');
+	/** 「看」的手勢按下去了：放開時沒移動就是點一下。id 是按到的人。 */
+	let press: { client: [number, number]; id: string | null } | null = null;
+	/** 上一次點一下：下一下夠快、夠近就是點兩下。 */
+	let lastTap: { time: number; client: [number, number] } | null = null;
+
+	/**
+	 * 「看」的手勢放開：沒移動是點一下。回傳 true 是點兩下（放大或回整個場地），這一下不再當點一下。
+	 * 點一下：手機的檢視畫面告訴外面點到誰；檢視模式放大時沒有拖人、框選接手，這裡選人、清選取。
+	 */
+	function lookRelease(e: PointerEvent): boolean {
+		const pressed = press;
+		press = null;
+		if (!pressed || !still(e, pressed.client)) return false;
+		const again =
+			lastTap &&
+			e.timeStamp - lastTap.time < DOUBLE_TAP_MS &&
+			Math.hypot(e.clientX - lastTap.client[0], e.clientY - lastTap.client[1]) < DOUBLE_TAP_PX;
+		if (again) {
+			lastTap = null;
+			if (zoom > 1) setZoom(1);
+			else setZoom(DOUBLE_TAP_ZOOM, toMeters(e, svg));
+			return true;
+		}
+		lastTap = { time: e.timeStamp, client: pressed.client };
+		if (!session) ontap?.(pressed.id);
+		else if (pan) {
+			if (pressed.id) session.pickMember(pressed.id, e.shiftKey);
+			else session.selectMembers([]);
+		}
+		return false;
+	}
+
 	function down(e: PointerEvent) {
 		// Mac 的 Control＋點是右鍵：不選人、不拖（交給 contextMenu）
 		if (e.button !== 0 || (e.ctrlKey && e.pointerType === 'mouse')) return;
-		if (e.pointerType === 'touch' && controls) {
+		const look = looking(e);
+		if (e.pointerType === 'touch' && (controls || look)) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
 				// 第二根手指：不拖人、不框選，改成捏合。
@@ -529,6 +591,7 @@
 				drag = null;
 				box = null;
 				pan = null;
+				press = null;
 				svg.setPointerCapture?.(e.pointerId);
 				return;
 			}
@@ -538,6 +601,14 @@
 			target.closest?.('[data-member-id]')?.getAttribute('data-member-id') ??
 			(e.pointerType === 'touch' || target.closest?.('[data-clash]') ? nearestDot(e) : null);
 		const client: [number, number] = [e.clientX, e.clientY];
+		if (look) {
+			press = { client, id };
+			if (zoom > 1) {
+				pan = client;
+				svg.setPointerCapture?.(e.pointerId);
+				return;
+			}
+		}
 		if (!session) return;
 		if (!id && panMode) {
 			pan = client;
@@ -563,6 +634,7 @@
 		drag = null;
 		box = null;
 		pan = null;
+		press = null;
 	}
 
 	/** 手指沒剛好按在點上時，離手指這麼多 px 以內最近的人也算按到（點看起來不變）。 */
@@ -623,6 +695,12 @@
 		liftFinger(e);
 		stopEdgeScroll();
 		offEscape();
+		if (lookRelease(e)) {
+			drag = null;
+			box = null;
+			pan = null;
+			return;
+		}
 		if (drag?.cur) {
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
@@ -840,6 +918,7 @@
 				class:lv3={level >= 3}
 				class:outlined={!crop}
 				class:selected={sel}
+				class:dim={dim(m.id)}
 				class:filled={!!crop && sel}
 				class:dragging={drag?.cur && drag.ids.includes(m.id)}
 				data-member-id={m.id}
@@ -898,6 +977,10 @@
 	</svg>
 	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
 	{#if picked}<div class="picked" data-keep-visible role="note" aria-label="選到的人在哪">{picked}</div>{/if}
+	<!-- 只能看、沒有左欄的放大縮小（手機的檢視畫面、檢視模式）：放大了，右下角一顆回整個場地 -->
+	{#if viewOnly && zoom > 1 && !(controls && rail)}
+		<button type="button" class="fit" onclick={() => setZoom(1)}><Icon name="fit" />整個場地</button>
+	{/if}
 	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
 	{/if}
@@ -1161,6 +1244,11 @@
 		stroke: #16213a;
 		stroke-width: 0.035;
 	}
+	/* 標了「我」時的別人：底色變淡，框和號碼照舊（號碼還看得清楚）。放在各種底色、框的規則後面，蓋得過在空中的人的半透明 */
+	.dot.dim > g > :is(circle, rect):not(.ring):not(.focus-ring) {
+		fill-opacity: 0.4;
+		stroke-opacity: 0.5;
+	}
 	.covered {
 		fill: none;
 		stroke: #16213a;
@@ -1349,6 +1437,21 @@
 		line-height: 1.35;
 		font-variant-numeric: tabular-nums;
 		pointer-events: none;
+	}
+	/* 只能看時放大了：右下角的「整個場地」（左下角是站位名稱、選到的人，中間是「正面／裁判」）。白底的膠囊，手指至少 40px 高 */
+	.fit {
+		position: absolute;
+		right: 4px;
+		bottom: 4px;
+		z-index: 6;
+		border-radius: 999px;
+		font-weight: 600;
+		box-shadow: 0 2px 8px rgba(22, 33, 58, 0.15);
+	}
+	@media (pointer: coarse) {
+		.fit {
+			min-height: 40px;
+		}
 	}
 	/* 拖人時寫在場地上面那一條（拖人時工具列收起來，讓給它）：不蓋住條號和場上的人。只寫一行，太長的尾巴變「…」 */
 	.readout {

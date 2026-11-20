@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { createEvent, fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { addMembers, createFlow, setPositions, type Clash, type Flow, type Member, type Position } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
@@ -642,5 +642,249 @@ describe('撞位', () => {
 	it('沒給撞位就不畫', () => {
 		renderEditing(members, { m1: [0, 0], m2: [2, 0] });
 		expect(document.querySelector('[data-clash]')).toBeNull();
+	});
+});
+
+describe('放大場地來看（手機的檢視畫面：沒有按鈕、不裁）', () => {
+	const members: Member[] = ['小A', '小B'].map((name, i) => ({ id: `m${i + 1}`, name, gender: 'F', globalRole: 'base' }));
+	/** 假的螢幕座標換算：1 px = 1 cm，原點對齊中心 X。 */
+	const toMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
+
+	function setup(props: Record<string, unknown> = {}) {
+		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0], m2: [3, 0] }, controls: false, toMeters, ...props });
+		const svg = screen.getByRole('img', { name: '場地' }) as unknown as SVGSVGElement;
+		const viewBox = () => svg.getAttribute('viewBox')!.split(' ').map(Number);
+		return { svg, viewBox };
+	}
+	const finger = (id: number, x: number, y: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: y });
+	async function tap(el: Element, x: number, y: number, id = 1) {
+		await fireEvent.pointerDown(el, finger(id, x, y));
+		await fireEvent.pointerUp(el, finger(id, x, y));
+	}
+	/** 9 條直放整個場地的範圍（公尺）：外圍框外左右上各 1.3、下面 1。 */
+	const FULL = [-10.5296, -8.7008, 21.0592, 17.1016];
+	const close = (got: number[], want: number[]) => got.forEach((v, i) => expect(v).toBeCloseTo(want[i], 4));
+	const fit = () => screen.queryByRole('button', { name: '整個場地' });
+
+	it('點兩下放大到 ×2（點的那一點留在手指下面），再點兩下回整個場地', async () => {
+		const { svg, viewBox } = setup();
+		close(viewBox(), FULL);
+		await tap(svg, 100, 50);
+		await tap(svg, 100, 50);
+		// 看到的範圍剩一半寬、一半高；點的 (1, 0.5) 公尺還在原本那個比例的位置
+		close(viewBox(), [-4.7648, -4.1004, 10.5296, 8.5508]);
+		await tap(svg, 300, 200);
+		await tap(svg, 300, 200);
+		close(viewBox(), FULL);
+	});
+
+	it('隔很久才點第二下、或點在別的地方：不算點兩下，不放大', async () => {
+		const { svg, viewBox } = setup();
+		const slow = async (type: 'pointerDown' | 'pointerUp', at: number) => {
+			const e = createEvent[type](svg, finger(1, 100, 50));
+			Object.defineProperty(e, 'timeStamp', { value: at });
+			await fireEvent(svg, e);
+		};
+		await slow('pointerDown', 1000);
+		await slow('pointerUp', 1010);
+		await slow('pointerDown', 2000);
+		await slow('pointerUp', 2010);
+		close(viewBox(), FULL);
+		await tap(svg, 400, 50);
+		await tap(svg, 100, 50);
+		close(viewBox(), FULL);
+	});
+
+	it('放大時角落有「整個場地」，按了回整個場地；沒放大時沒有', async () => {
+		const { svg, viewBox } = setup();
+		expect(fit()).toBeNull();
+		await tap(svg, 0, 0);
+		await tap(svg, 0, 0);
+		await fireEvent.click(fit()!);
+		close(viewBox(), FULL);
+		expect(fit()).toBeNull();
+	});
+
+	it('放大後一根手指拖是移動畫面（指到的那一點跟著手指）；沒放大時拖不動', async () => {
+		const { svg, viewBox } = setup();
+		const drag = async () => {
+			await fireEvent.pointerDown(svg, finger(1, 0, 0));
+			await fireEvent.pointerMove(svg, finger(1, -100, -50));
+			await fireEvent.pointerUp(svg, finger(1, -100, -50));
+		};
+		await drag();
+		close(viewBox(), FULL);
+		await tap(svg, 0, 0);
+		await tap(svg, 0, 0);
+		const [x, y] = viewBox();
+		await drag();
+		// 往左上拖 100、50 px（1 px = 1 cm）：看到的範圍往右下移 1、0.5 公尺
+		close(viewBox(), [x + 1, y + 0.5, 10.5296, 8.5508]);
+	});
+
+	it('兩根手指捏開：放大', async () => {
+		const { svg, viewBox } = setup();
+		await fireEvent.pointerDown(svg, finger(1, 0, 0));
+		await fireEvent.pointerDown(svg, finger(2, 100, 0));
+		await fireEvent.pointerMove(svg, finger(2, 200, 0));
+		expect(viewBox()[2]).toBeCloseTo(10.5296, 4);
+		await fireEvent.pointerUp(svg, finger(2, 200, 0));
+		await fireEvent.pointerUp(svg, finger(1, 0, 0));
+		expect(fit()).not.toBeNull();
+	});
+
+	const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
+
+	it('點一下圓點：告訴外面點到誰（手指差一點也算）；點空白處是 null；點兩下的第二下是放大，不再說一次', async () => {
+		const ontap = vi.fn();
+		const { svg, viewBox } = setup({ ontap });
+		await tap(dot('m2'), 300, 0);
+		await tap(svg, 10, 15);
+		await tap(svg, 600, 400);
+		expect(ontap.mock.calls).toEqual([['m2'], ['m1'], [null]]);
+		await tap(svg, 600, 400);
+		expect(viewBox()[2]).toBeCloseTo(10.5296, 4);
+		expect(ontap).toHaveBeenCalledTimes(3);
+	});
+
+	it('放大場地時圓點在螢幕上一樣大：×2 時圓點在場地單位裡縮成一半', async () => {
+		const { svg } = setup();
+		const scale = () => Number(/scale\((.+)\)/.exec(dot('m1').querySelector('g')!.getAttribute('transform')!)![1]);
+		expect(scale()).toBe(1);
+		await tap(svg, 0, 300);
+		await tap(svg, 0, 300);
+		expect(scale()).toBe(0.5);
+	});
+
+	it('號碼條給 0.7 公尺：整個場地的範圍照窄的號碼條', () => {
+		const { viewBox } = setup({ numberBand: 0.7 });
+		close(viewBox(), [-9.9296, -8.1008, 19.8592, 16.5016]);
+	});
+
+	describe('標了「我」，別人畫淡', () => {
+		const three: Member[] = [...members, { id: 'm3', name: '小C', gender: 'F', globalRole: 'top' }];
+		const positions = { m1: [0, 0], m2: [3, 0], m3: [-3, 3] };
+		const dimmed = () => three.filter((m) => dot(m.id).classList.contains('dim')).map((m) => m.id);
+		const ringed = () => three.filter((m) => dot(m.id).classList.contains('selected')).map((m) => m.id);
+
+		it('「我」是小A：小B、小C 淡，小A 圈起來', () => {
+			setup({ members: three, positions, marked: ['m1'] });
+			expect(dimmed()).toEqual(['m2', 'm3']);
+			expect(ringed()).toEqual(['m1']);
+		});
+
+		it('點到小B：他不淡，跟「我」一樣圈起來；小C 還是淡的', () => {
+			setup({ members: three, positions, marked: ['m1'], tapped: 'm2' });
+			expect(dimmed()).toEqual(['m3']);
+			expect(ringed()).toEqual(['m1', 'm2']);
+		});
+
+		it('沒標「我」：點到小B 只圈他，沒有人淡', () => {
+			setup({ members: three, positions, tapped: 'm2' });
+			expect(dimmed()).toEqual([]);
+			expect(ringed()).toEqual(['m2']);
+		});
+
+		it('八拍表的小站位圖（只畫一塊）：標的人塗滿，別人不淡', () => {
+			setup({ members: three, positions, marked: ['m1'], crop: { x: -4, y: -1, width: 8, height: 5 } });
+			expect(dimmed()).toEqual([]);
+		});
+	});
+});
+
+describe('檢視模式（有編輯器、不能改）的場地：手指跟手機的檢視畫面一樣放大來看', () => {
+	const members: Member[] = ['小A', '小B', '小C'].map((name, i) => ({ id: `m${i + 1}`, name, gender: 'F', globalRole: 'base' }));
+	const positions: Record<string, Position> = { m1: [0, 0], m2: [3, 0], m3: [-3, 3] };
+	const toMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
+
+	/** 檢視模式：左欄藏起來（頁面給 rail={false}）。 */
+	function setup(props: Record<string, unknown> = {}) {
+		const { editor, session } = testEditor(flowWith(members, positions));
+		session.viewing = true;
+		render(TestSession, {
+			props: { editor, component: Field, props: { field: { strips: 9, layout: 'vertical' }, members, positions, toMeters, rail: false, ...props } }
+		});
+		const svg = screen.getByRole('group', { name: '場地' }) as unknown as SVGSVGElement;
+		const width = () => Number(svg.getAttribute('viewBox')!.split(' ')[2]);
+		const x = () => Number(svg.getAttribute('viewBox')!.split(' ')[0]);
+		return { session, svg, width, x };
+	}
+	const dot = (id: string) => document.querySelector(`[data-member-id="${id}"]`)!;
+	const point = (pointerType: string, x: number, y: number) => ({ pointerType, pointerId: 1, button: 0, clientX: x, clientY: y });
+	async function tap(el: Element, x: number, y: number, pointerType = 'touch') {
+		await fireEvent.pointerDown(el, point(pointerType, x, y));
+		await fireEvent.pointerUp(el, point(pointerType, x, y));
+	}
+	async function dragBlank(svg: Element) {
+		await fireEvent.pointerDown(svg, point('touch', 600, 400));
+		await fireEvent.pointerMove(svg, point('touch', 500, 400));
+		const lasso = !!document.querySelector('[data-lasso]');
+		await fireEvent.pointerUp(svg, point('touch', 500, 400));
+		return lasso;
+	}
+
+	it('手指點兩下放大到 ×2，右下角有「整個場地」；滑鼠點兩下不放大', async () => {
+		const { svg, width } = setup();
+		await tap(svg, 600, 400, 'mouse');
+		await tap(svg, 600, 400, 'mouse');
+		expect(width()).toBeCloseTo(21.0592, 4);
+		expect(screen.queryAllByRole('button', { name: '整個場地' })).toHaveLength(0);
+		await tap(svg, 600, 400);
+		await tap(svg, 600, 400);
+		expect(width()).toBeCloseTo(10.5296, 4);
+		await fireEvent.click(screen.getByRole('button', { name: '整個場地' }));
+		expect(width()).toBeCloseTo(21.0592, 4);
+	});
+
+	it('沒放大時手指拖空白處照舊是框選；放大後是移動畫面，不框選', async () => {
+		const { svg, x } = setup();
+		expect(await dragBlank(svg)).toBe(true);
+		await tap(svg, 600, 400);
+		await tap(svg, 600, 400);
+		const before = x();
+		expect(await dragBlank(svg)).toBe(false);
+		// 往左拖 100 px（1 px = 1 cm）：看到的範圍往右移 1 公尺
+		expect(x()).toBeCloseTo(before + 1, 4);
+	});
+
+	it('放大後點一下人照樣選到他，點空白處清掉；按在人身上拖也是移動畫面，不會跳「檢視模式只能看」', async () => {
+		const { session, svg, x } = setup();
+		await tap(svg, 600, 400);
+		await tap(svg, 600, 400);
+		await tap(dot('m2'), 300, 0);
+		expect(session.selectedMemberIds).toEqual(['m2']);
+		const before = x();
+		await fireEvent.pointerDown(dot('m2'), point('touch', 300, 0));
+		await fireEvent.pointerMove(svg, point('touch', 200, 0));
+		await fireEvent.pointerUp(svg, point('touch', 200, 0));
+		expect(x()).toBeCloseTo(before + 1, 4);
+		expect(session.notice).toBe('');
+		await tap(svg, 600, 100);
+		expect(session.selectedMemberIds).toEqual([]);
+	});
+
+	it('點兩下人：第一下選到他，第二下只放大（選取不變）', async () => {
+		const { session, width } = setup();
+		await tap(dot('m2'), 300, 0);
+		await tap(dot('m2'), 300, 0);
+		expect(session.selectedMemberIds).toEqual(['m2']);
+		expect(width()).toBeCloseTo(10.5296, 4);
+	});
+
+	it('圓點在螢幕上不跟著變大：×2 時在場地單位裡縮成一半', async () => {
+		const { svg } = setup();
+		await tap(svg, 600, 400);
+		await tap(svg, 600, 400);
+		expect(dot('m1').querySelector('g')!.getAttribute('transform')).toBe('scale(0.5)');
+	});
+
+	it('標了「我」：別人畫淡；點到小B，他不淡（「我」也不淡）', async () => {
+		const { svg } = setup({ marked: ['m1'] });
+		const dimmed = () => members.filter((m) => dot(m.id).classList.contains('dim')).map((m) => m.id);
+		expect(dimmed()).toEqual(['m2', 'm3']);
+		await tap(dot('m2'), 300, 0);
+		expect(dimmed()).toEqual(['m3']);
+		await tap(svg, 600, 400);
+		expect(dimmed()).toEqual(['m2', 'm3']);
 	});
 });
