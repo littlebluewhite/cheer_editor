@@ -28,7 +28,7 @@
 		type Phase
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	import { m as t } from '#lib/paraglide/messages.js';
 	import { removeWithRestore } from './record-notice';
 	import { revealAlert } from './reveal';
@@ -215,7 +215,7 @@
 	<header>
 		<div class="who">
 			<b>{name}{#if Object.keys(marks).length}<span class="unsaved">{t.practice_unsaved()}</span>{/if}</b>
-			{#if people}<small>{people.reduceRight((rest, first) => t.practice_people({ first, rest }))}</small>{/if}
+			{#if people}<small>{joinText(people, t.practice_people)}</small>{/if}
 		</div>
 		<!-- 只有一個環節就沒得選，一定是整個做 -->
 		{#if phases.length > 1}

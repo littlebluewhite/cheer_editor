@@ -4,7 +4,7 @@
 	import { actionWhy, cueWordWhy, cuesAt, whoWhy, type Cue, type Flow } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { m } from '#lib/paraglide/messages.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 
 	interface Props {
 		flow: Flow;
@@ -18,7 +18,6 @@
 	const word = (c: Cue) => whyText(cueWordWhy(c.kind, c.word));
 	const nextText = (c: Cue) => (c.who ? m.eight_count_with_role({ name: word(c), role: whyText(whoWhy(flow, c.who)) }) : word(c));
 	/** 「down、high V（上層）」。 */
-	const list = (xs: string[]) => xs.reduceRight((rest, first) => m.members_list({ first, rest }));
 </script>
 
 {#if live.length}
@@ -39,7 +38,7 @@
 					</span>
 				{/if}
 				{#if l.next}
-					<span class="next">{m.cue_grid_next({ at: l.next.at, cues: list(l.next.cues.map(nextText)) })}</span>
+					<span class="next">{m.cue_grid_next({ at: l.next.at, cues: joinText(l.next.cues.map(nextText)) })}</span>
 				{/if}
 			</div>
 		{/each}

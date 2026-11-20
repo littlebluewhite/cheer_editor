@@ -43,7 +43,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { m as t } from '#lib/paraglide/messages.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen, SHORT_SCREEN_MAX_H } from '#lib/editor-layout.js';
 	import { ownsKey } from '#lib/key-owner.js';
@@ -371,7 +371,6 @@
 	/** 名字和在哪（滑鼠停在圓點上、選到一個人時寫在場地下面）。 */
 	const whereText = (m: Member, p: Position) => t.field_view_where({ name: m.name, where: whyText(fieldPositionWhy(field, p)) });
 	/** 一串名字接成一句（中文用「、」）。 */
-	const list = (parts: string[]) => parts.reduceRight((rest, first) => t.members_list({ first, rest }));
 	/** 編輯頁選到一個人（不在拖）：場地下面寫他的名字和位置。 */
 	const picked = $derived.by(() => {
 		if (!session || drag?.cur || selected.length !== 1) return '';
@@ -973,7 +972,7 @@
 				class="clash"
 				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
 				transform="translate({c.pos[0]},{c.pos[1]})"
-				><title>{t.field_view_clash({ names: list(c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '')) })}</title></path
+				><title>{t.field_view_clash({ names: joinText(c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '')) })}</title></path
 			>
 		{/each}
 		{#if lasso}

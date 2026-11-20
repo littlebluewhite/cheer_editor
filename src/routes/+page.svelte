@@ -47,7 +47,7 @@
 	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import { composing } from '#lib/ime.js';
-	import { reasonText, whyText } from '#lib/reason-text.js';
+	import { joinText, reasonText, whyText } from '#lib/reason-text.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
@@ -559,10 +559,8 @@
 
 	/** 疊在同一點的人：一組裡的名字、組和組之間照畫面的語言接起來（中文是「、」「；」）。 */
 	function stackedNames(groups: { name: string }[][]): string {
-		const join = (parts: string[], sentence: (inputs: { first: string; rest: string }) => string) =>
-			parts.reduceRight((rest, first) => sentence({ first, rest }));
-		return join(
-			groups.map((g) => join(g.map((p) => p.name), m.members_list)),
+		return joinText(
+			groups.map((g) => joinText(g.map((p) => p.name))),
 			m.members_problems
 		);
 	}
@@ -570,7 +568,7 @@
 	/** 最近的流程那一列的小字（最後改的時間、另一個分頁正在編／還沒存）：照畫面的語言接起來（中文是「・」）。 */
 	function recentMeta(parts: string[]): string {
 		const shown = parts.filter(Boolean);
-		return shown.length ? shown.reduceRight((rest, first) => m.home_meta({ first, rest })) : '';
+		return shown.length ? joinText(shown, m.home_meta) : '';
 	}
 
 	/** 首頁雲端流程列的「N 筆沒傳」。 */

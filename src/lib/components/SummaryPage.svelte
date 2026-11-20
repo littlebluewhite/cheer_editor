@@ -25,7 +25,7 @@
 		type Tally
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	import { m as t } from '#lib/paraglide/messages.js';
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
@@ -97,7 +97,7 @@
 	/** 一組的名字和環節：「第 1 組 上法」。 */
 	const whoPhase = (who: string, phase: string) => t.summary_who_phase({ who, phase });
 	/** 全組的名字：「小美・小A」。 */
-	const people = (names: string[]) => names.reduceRight((rest, first) => t.practice_people({ first, rest }));
+	const people = (names: string[]) => joinText(names, t.practice_people);
 
 	/** 打開的明細：哪個動作、誰、哪個環節（null 是整次）。 */
 	let open = $state<{ actionId: string; who: string; phaseId: string | null } | null>(null);

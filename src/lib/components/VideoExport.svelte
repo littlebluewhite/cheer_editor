@@ -13,7 +13,7 @@
 	import { layoutFrame, markerOverflowMembers, overflowEights, type Measure } from '#lib/video/layout.js';
 	import { failureReason } from '#lib/video/encoder.js';
 	import { m as t } from '#lib/paraglide/messages.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	import { mixClips, renderSoundtrack } from '#lib/video/soundtrack.js';
 	import Modal from './Modal.svelte';
 
@@ -83,7 +83,6 @@
 			});
 	});
 	/** 一串名字接成一句（中文用「、」）。 */
-	const list = (parts: string[]) => parts.reduceRight((rest, first) => t.members_list({ first, rest }));
 
 	async function start() {
 		const snapshot = flow;
@@ -166,9 +165,9 @@
 			</div>
 		{:else if step.kind === 'ready'}
 			<p>{t.video_length({ duration })}</p>
-			{#if overflow.length}<p class="warn">{t.video_overflow({ eights: list(overflow) })}</p>{/if}
-			{#if cropped.length}<p class="warn">{t.video_cropped({ names: list(cropped) })}</p>{/if}
-			{#if silent.length}<p class="warn">{t.video_silent({ segments: list(silent) })}</p>{/if}
+			{#if overflow.length}<p class="warn">{t.video_overflow({ eights: joinText(overflow) })}</p>{/if}
+			{#if cropped.length}<p class="warn">{t.video_cropped({ names: joinText(cropped) })}</p>{/if}
+			{#if silent.length}<p class="warn">{t.video_silent({ segments: joinText(silent) })}</p>{/if}
 			<div class="buttons">
 				<button type="button" onclick={closeModal}>{t.video_cancel()}</button>
 				<button type="button" class="primary" onclick={start}>{t.video_start()}</button>

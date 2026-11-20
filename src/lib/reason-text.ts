@@ -23,3 +23,7 @@ export const reasonText = ({ message, why }: Said): string => (why && known(why)
 
 /** 流程核心給的字（代號，或還沒改的中文；例：大類、任務角色的名字）寫成畫面的語言。 */
 export const whyText = (text: WhyParam): string => (typeof text === 'object' ? reasonText(said(text)) : String(text));
+
+/** 一串字接成一句：兩個兩個用 sentence 接（預設是名單的「、」，英文「, 」）。parts 不能是空的。 */
+export const joinText = (parts: string[], sentence: (inputs: { first: string; rest: string }) => string = m.members_list): string =>
+	parts.reduceRight((rest, first) => sentence({ first, rest }));

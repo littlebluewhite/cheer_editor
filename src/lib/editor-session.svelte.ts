@@ -34,7 +34,7 @@ import {
 import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { m } from '#lib/paraglide/messages.js';
-import { whyText } from '#lib/reason-text.js';
+import { whyText, joinText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
@@ -746,7 +746,7 @@ export class EditorSession {
 		const names = r.squeezed.map((id) => flow.members.find((m) => m.id === id)?.name);
 		const parts: (string | false | 0)[] = [
 			m.session_moved_to({ at: whyText(timeWhy(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })) }),
-			names.length && m.session_squeezed({ names: names.map((n) => n ?? '').reduceRight((rest, first) => m.members_list({ first, rest })) }),
+			names.length && m.session_squeezed({ names: joinText(names.map((n) => n ?? '')) }),
 			atEdge && m.session_at_edge()
 		];
 		const said = parts.filter((x): x is string => !!x);

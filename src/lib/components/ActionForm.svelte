@@ -18,7 +18,7 @@
 	import { flushSync, tick, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	// 改名 msg：這個檔的 m 是一個人（draft.members 的一個）
 	import { m as msg } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -82,7 +82,6 @@
 	const actionText = (a: Parameters<typeof actionWhy>[0]) => whyText(actionWhy(a));
 	const roleText = (role: string) => whyText(roleWhy(role));
 	/** 一串名字：「小A、小B」。 */
-	const list = (xs: string[]) => xs.reduceRight((rest, first) => msg.members_list({ first, rest }));
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
 	const others = $derived(
@@ -542,7 +541,7 @@
 			{#if together.length > 1}
 				<p class="together" role="note" aria-label={msg.action_form_together_label()}>
 					{msg.action_form_together({ n: together.length })}{#if keptOnly.length}{msg.action_form_together_kept({
-							roles: list(keptOnly.map(roleText))
+							roles: joinText(keptOnly.map(roleText))
 						})}{/if}
 				</p>
 			{:else if draft.members.length > 1}
@@ -600,7 +599,7 @@
 			{/if}
 			{#if busyHere.length}
 				<p class="hint-warn" role="note">
-					{msg.action_form_busy_here({ names: list(busyHere.map((m) => nameOf(m.memberId))) })}
+					{msg.action_form_busy_here({ names: joinText(busyHere.map((m) => nameOf(m.memberId))) })}
 					<button type="button" class="link" onclick={dropBusy}>{msg.action_form_drop_busy()}</button>
 				</p>
 			{/if}

@@ -2,8 +2,8 @@
 	// 左邊欄規則警告的撞位、走太快、很喘總表：寫各幾個，點開是清單，每行寫哪一拍、誰和誰；
 	// 點一行播放頭跳到那一拍（撞位是兩人最近那一刻，走位是到達），選好那幾個人。
 	// 撞位用頁面算好的那一份，走太快、很喘用 formationWalks，不另外算。都沒有就不出現。
-	import { formationWalks, memberName, positionWhy, type Clash, type Flow, type WhyParam } from '#lib/core';
-	import { whyText } from '#lib/reason-text.js';
+	import { formationWalks, memberName, positionWhy, type Clash, type Flow } from '#lib/core';
+	import { joinText, whyText } from '#lib/reason-text.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import Icon from './Icon.svelte';
@@ -42,8 +42,7 @@
 	const count = (kind: Row['kind']) => rows.filter((r) => r.kind === kind).length;
 
 	/** 誰和誰：「小A、小B」（英文用逗號）。 */
-	const names = (ids: string[]) =>
-		whyText(ids.slice(0, -1).reduceRight<WhyParam>((rest, id) => ({ code: 'members_list', first: memberName(flow, id), rest }), memberName(flow, ids.at(-1)!)));
+	const names = (ids: string[]) => joinText(ids.map((id) => memberName(flow, id)));
 
 	function go(r: Row) {
 		playback.seek(r.sec);

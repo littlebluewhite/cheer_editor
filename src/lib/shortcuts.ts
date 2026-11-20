@@ -2,6 +2,7 @@
 // （src/lib/shortcuts.test.ts 會擋）。
 // Mac 的修飾鍵照 Apple HIG 的順序：Control、Option、Shift、Command，所以重做是 ⇧⌘Z。
 import { m } from '#lib/paraglide/messages.js';
+import { joinText } from '#lib/reason-text.js';
 
 export interface Shortcut {
 	/** Mac 的寫法。 */
@@ -23,7 +24,7 @@ export const KEYS = {
 
 /** Windows 的寫法，好幾個照畫面的語言連起來（例：Ctrl+Shift+Z、Ctrl+Y）。 */
 export function others(s: Shortcut): string {
-	return s.other.slice(0, -1).reduceRight((rest, first) => m.members_list({ first, rest }), s.other.at(-1)!);
+	return joinText([...s.other]);
 }
 
 /** Mac 和 Windows 一起寫（例：⌘Z／Ctrl+Z）。 */

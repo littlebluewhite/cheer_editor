@@ -13,7 +13,7 @@
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from '#lib/marker.js';
 	import { reveal, revealAlert } from './reveal';
-	import { reasonText, whyText } from '#lib/reason-text.js';
+	import { reasonText, whyText, joinText } from '#lib/reason-text.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
 		GENDERS,
@@ -49,7 +49,6 @@
 	const markers = $derived(memberMarkers(flow));
 	const dupes = $derived(duplicateNames(flow.members));
 	/** 一串名字接成一句（「、」或「, 」照語言）。 */
-	const listOf = (parts: string[]) => parts.reduceRight((rest, first) => m.members_list({ first, rest }));
 	/** 滿了：加隊員表單停用，寫為什麼（開檔進來超過的也算滿）。 */
 	const full = $derived(flow.members.length >= MAX_MEMBERS);
 	/** 名單每一列的性別、全局角色選單很窄：英文用短的字（F、M、Top、Base），中文照舊。 */
@@ -154,7 +153,7 @@
 
 	{#if dupes.length}
 		<p class="hint-warn" role="note">
-			{m.members_panel_duplicates({ names: listOf(dupes.map((name) => m.members_quoted({ name }))) })}
+			{m.members_panel_duplicates({ names: joinText(dupes.map((name) => m.members_quoted({ name }))) })}
 		</p>
 	{/if}
 

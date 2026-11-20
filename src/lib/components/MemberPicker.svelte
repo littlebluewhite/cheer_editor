@@ -6,7 +6,7 @@
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { m } from '#lib/paraglide/messages.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		actionWhy,
@@ -50,7 +50,7 @@
 
 	const names = $derived(selected.map((id) => memberName(flow, id)).filter(Boolean));
 	/** 選到的人的名字接成一串（「、」或「, 」照語言）。 */
-	const nameList = $derived(names.length ? names.reduceRight((rest, first) => m.members_list({ first, rest })) : '');
+	const nameList = $derived(names.length ? joinText(names) : '');
 
 	function previous() {
 		const candidates = previousActions(flow, playback.sec);
