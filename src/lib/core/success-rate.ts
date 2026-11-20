@@ -10,6 +10,7 @@ import { phasesOverlap, phasesShareBeats, rangeProblem, type BeatRange } from '.
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
 import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
+import type { Why } from './why';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
@@ -194,17 +195,17 @@ function perPersonProblem(action: Action): string | null {
  * 有成功率設定就至少一個環節；環節的種類是動作的大類能用的（第 11 版起，見 phaseKindsFor）；音樂段的環節一定有標的拍、照拍的先後排；組 id 是 g 加編號。
  * 只有組放寬（第 9 版起）：還沒有環節的動作也可以有組（從別的動作複製人帶來的，加第一個環節時照用），騰翻、跳躍還是不分組。
  */
-export function successRateProblem(segment: Segment, action: Action): string | null {
+export function successRateProblem(segment: Segment, action: Action): string | Why | null {
 	const keys = PHASE_KINDS.map((k) => k.key as string);
 	return rateProblem(segment, action, keys) || kindsProblem(action) || laterRateProblem(segment, action);
 }
 
 /** 第 10 版流程檔的成功率規則：跟現在一樣，只是種類是第 10 版那五種、哪個大類都能用。第 10 → 11 版換種類前先看它：本來就不守的檔不換。 */
-export function v10RateProblem(segment: Segment, action: Action): string | null {
+export function v10RateProblem(segment: Segment, action: Action): string | Why | null {
 	return rateProblem(segment, action, V10_PHASE_KINDS) || laterRateProblem(segment, action);
 }
 
-function rateProblem(segment: Segment, action: Action, kinds: string[]): string | null {
+function rateProblem(segment: Segment, action: Action, kinds: string[]): string | Why | null {
 	const grouped = action.members.some((m) => m.squad !== undefined);
 	return (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action, kinds);
 }
@@ -225,7 +226,7 @@ function laterRateProblem(segment: Segment, action: Action): string | null {
  * 第 6 版流程檔就有的成功率規則（成功率規則的一部分）。第 6 → 7 版整理舊檔前先看它：本來就不守的檔不整理。
  * 組只在分組的動作裡；環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。
  */
-export function v6RateProblem(segment: Segment, action: Action): string | null {
+export function v6RateProblem(segment: Segment, action: Action): string | Why | null {
 	if (action.members.some((m) => m.squad !== undefined)) {
 		const problem = groupingProblem(action);
 		if (problem) return problem;
@@ -265,7 +266,7 @@ export function fitPhaseKinds(action: Action): Action {
 }
 
 /** 第 6 版就有的規則裡組以外的：環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊（金字塔除外）；紀錄的環節、誰都對得上。 */
-function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string[]): string | null {
+function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string[]): string | Why | null {
 	const phases = action.successRate?.phases ?? [];
 	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
 	for (const p of phases) {
@@ -489,7 +490,7 @@ function isDate(text: string): boolean {
 }
 
 /** 環節標的拍的規則：只有音樂段能標；其他（整拍、整數拍、在動作裡面）在 beat-range。 */
-export function beatsProblem(segment: Segment, action: Action, beats: BeatRange): string | null {
+export function beatsProblem(segment: Segment, action: Action, beats: BeatRange): string | Why | null {
 	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
 	return rangeProblem('phase', action, beats);
 }
