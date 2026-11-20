@@ -277,7 +277,8 @@ describe('拍點跟著動作', () => {
 	it('變短又被別的規則擋：照樣擋，不先問', () => {
 		expect(updateAction(withDownUp(), 'x1', { length: 2, members: [] })).toEqual({
 			kind: 'blocked',
-			message: '一個動作至少要有 1 個人'
+			message: '一個動作至少要有 1 個人',
+			why: { code: 'actions_no_members' }
 		});
 	});
 

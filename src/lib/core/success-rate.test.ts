@@ -128,7 +128,11 @@ describe('設組', () => {
 	});
 
 	it('一次給好幾個人：有一個不在動作裡就整個擋下來', () => {
-		expect(setSquad(on(), 'x1', ['m2', 'm9'], 2)).toEqual({ kind: 'blocked', message: '這個隊員不在動作裡' });
+		expect(setSquad(on(), 'x1', ['m2', 'm9'], 2)).toEqual({
+			kind: 'blocked',
+			message: '這個隊員不在動作裡',
+			why: { code: 'actions_member_not_in_action' }
+		});
 	});
 
 	it('組空掉了，後面的組往前補號', () => {
@@ -148,7 +152,11 @@ describe('設組', () => {
 		const flow = flowOf(
 			addMembers(on(), [{ name: '小D', gender: 'F', globalRole: 'top' }])
 		);
-		expect(setSquad(flow, 'x1', ['m5'], 1)).toEqual({ kind: 'blocked', message: '這個隊員不在動作裡' });
+		expect(setSquad(flow, 'x1', ['m5'], 1)).toEqual({
+			kind: 'blocked',
+			message: '這個隊員不在動作裡',
+			why: { code: 'actions_member_not_in_action' }
+		});
 	});
 });
 
