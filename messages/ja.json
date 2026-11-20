@@ -27,5 +27,15 @@
 	"undo_blocked": "元に戻せません：{reason}",
 	"redo_blocked": "やり直せません：{reason}",
 	"commands_no_flow": "開いているルーティーンがありません",
-	"commands_none": "コマンドがありません"
+	"commands_none": "コマンドがありません",
+	"cues_chant": "チアクライテリアはカウントしないため、キューを置けません",
+	"cues_no_kind": "この種類のキューはありません",
+	"cues_motion_one_beat": "モーションは1拍だけです",
+	"cues_count_word": "ダウン・アップは down か up だけです",
+	"cues_no_word": "キューの文字を入力してください",
+	"cues_no_role": "技の中に「{role}」のポジションの人がいません",
+	"cues_member_not_in_action": "この選手は技に入っていません",
+	"cues_no_action": "この技が見つかりません",
+	"cues_nothing_copied": "コピーしたキューがありません",
+	"cues_paste_blocked": "貼り付けられません：{reason}"
 }

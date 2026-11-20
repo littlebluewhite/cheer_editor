@@ -27,5 +27,15 @@
 	"undo_blocked": "Can't undo this: {reason}",
 	"redo_blocked": "Can't redo this: {reason}",
 	"commands_no_flow": "No routine is open",
-	"commands_none": "No commands"
+	"commands_none": "No commands",
+	"cues_chant": "Cheer segments have no beats, so cues can't be placed",
+	"cues_no_kind": "No such kind of cue",
+	"cues_motion_one_beat": "A motion takes exactly one beat",
+	"cues_count_word": "A down/up call can only be down or up",
+	"cues_no_word": "Enter the cue's text",
+	"cues_no_role": "No one in the skill is in the “{role}” position",
+	"cues_member_not_in_action": "This athlete isn't in the skill",
+	"cues_no_action": "Can't find this skill",
+	"cues_nothing_copied": "No cues copied",
+	"cues_paste_blocked": "Can't paste: {reason}"
 }
