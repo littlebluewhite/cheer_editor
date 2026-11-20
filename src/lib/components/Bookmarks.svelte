@@ -12,6 +12,7 @@
 	import { composing } from '#lib/ime.js';
 	import { KEYS } from '#lib/shortcuts.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { below, popover } from '#lib/popover.svelte.js';
 	import Icon from './Icon.svelte';
 
 	let { place }: { place: 'bar' | 'phone' } = $props();
@@ -19,6 +20,24 @@
 	const { session, playback } = getEditor();
 	const flow = $derived(session.flow!);
 	const editable = $derived(place === 'bar' && session.editable);
+
+	// 上方列 1441 寬以上才放得下一排書籤；窄一點收成一顆鈕，點了在下面開小窗（流程名字才露得出來，check:layout 量）
+	const WIDE = '(min-width: 1441px)';
+	let wide = $state(typeof matchMedia !== 'function' || matchMedia(WIDE).matches);
+	$effect(() => {
+		if (typeof matchMedia !== 'function') return;
+		const m = matchMedia(WIDE);
+		m.onchange = () => (wide = m.matches);
+		wide = m.matches;
+		return () => (m.onchange = null);
+	});
+	const folded = $derived(place === 'bar' && !wide);
+	let open = $state(false);
+	let openBtn = $state<HTMLButtonElement>();
+	function closeFold(by: 'outside' | 'escape') {
+		open = false;
+		if (by === 'escape') openBtn?.focus();
+	}
 
 	type Spot = { a: number; b: number | null };
 	/** 放得下的書籤，照 A 的時間排（一樣的話先存的先）。 */
@@ -41,6 +60,7 @@
 	}
 
 	function go({ s }: { s: Spot }) {
+		open = false;
 		if (active(s)) return playback.setRepeat(false);
 		if (s.b !== null) playback.setRange(s.a, s.b);
 		playback.seek(s.a);
@@ -136,71 +156,92 @@
 	const hint = $derived(place === 'bar' && !isTouchScreen() ? `按 ${KEYS.bookmarkSearch.mac} 找書籤` : undefined);
 </script>
 
-{#if place === 'bar' || rows.length}
+{#if folded}
+	<button
+		type="button"
+		class="chip fold"
+		aria-label="書籤"
+		aria-expanded={open}
+		title={hint ?? '書籤'}
+		bind:this={openBtn}
+		onclick={() => (open = !open)}><Icon name="bookmarks" size={14} /></button
+	>
+	<!-- 小窗放在書籤鈕下面、左邊對齊；點外面、按 Esc 就收（popover.svelte.ts） -->
+	{#if open}
+		<div class="bookmarks pop" role="group" aria-label="書籤" {@attach popover({ place: below(openBtn!, { gap: 6, align: 'left', flip: true }), close: closeFold, inside: [openBtn] })}>
+			{#if !rows.length}<p class="none">還沒有書籤</p>{/if}
+			{@render items()}
+		</div>
+	{/if}
+{:else if place === 'bar' || rows.length}
 	<div class="bookmarks {place}" role="group" aria-label="書籤" title={hint}>
-		{#each rows as row (row.bm.id)}
-			{@const { bm, s } = row}
-			{#if naming?.kind === 'rename' && naming.id === bm.id}
-				<span class="chip naming">
-					<input type="text" aria-label="書籤名字" maxlength={MAX_CHARS.bookmarkName} data-scratch bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
-					<button type="button" class="mini" onclick={commit}>存</button>
-				</span>
-			{:else}
-				<span class="chip" class:on={active(s)} class:flash={flashId === bm.id} id={chipId(bm.id)} onanimationend={() => (flashId = null)}>
-					<button
-						type="button"
-						class="go"
-						aria-pressed={s.b === null ? undefined : active(s)}
-						title={`${where(s)}${active(s) ? '（再點一下關掉重複）' : ''}`}
-						onclick={() => go(row)}
-						><span class="kind" aria-hidden="true">{s.b === null ? '↦' : '⟳'}</span><span class="nm">{bm.name}</span></button
-					>
-					{#if editable && managing}
-						<button type="button" class="mini" aria-label={`改書籤「${bm.name}」的名字`} onclick={() => ((naming = { kind: 'rename', id: bm.id }), (text = bm.name))}>✎</button>
-						<button
-							type="button"
-							class="mini"
-							aria-label={`刪書籤「${bm.name}」`}
-							onclick={() => session.ask.send({ name: 'deleteBookmark', args: [bm.id] })}>✕</button
-						>
-					{/if}
-				</span>
-			{/if}
-		{/each}
-		{#if place === 'bar'}
-			{#if naming?.kind === 'add'}
-				<span class="chip naming">
-					<input
-						type="text"
-						aria-label="書籤名字"
-						placeholder="名字，例：翻騰"
-						maxlength={MAX_CHARS.bookmarkName}
-						data-scratch
-						bind:value={text}
-						onkeydown={nameKeys}
-						{@attach selectAll}
-					/>
-					<button type="button" class="mini" onclick={commit}>存</button>
-					<button type="button" class="mini" aria-label="不存" onclick={() => (naming = null)}>✕</button>
-				</span>
-			{:else}
-				<button
-					type="button"
-					class="chip add"
-					aria-label="存成書籤"
-					title={editable ? '把現在的 A、B 存成書籤（沒放 A 就存播放頭）' : '檢視模式不能存書籤'}
-					disabled={!editable || !flow.segments.length}
-					onclick={startAdd}><Icon name="bookmark" /><span class="add-text" class:alone={!rows.length}>書籤</span></button
-				>
-			{/if}
-			{#if rows.length}
-				<button type="button" class="chip manage" aria-pressed={managing} disabled={!editable} onclick={() => (managing = !managing)}
-					>{managing ? '好了' : '管理'}</button
-				>
-			{/if}
-		{/if}
+		{@render items()}
 	</div>
 {/if}
+
+{#snippet items()}
+	{#each rows as row (row.bm.id)}
+		{@const { bm, s } = row}
+		{#if naming?.kind === 'rename' && naming.id === bm.id}
+			<span class="chip naming">
+				<input type="text" aria-label="書籤名字" maxlength={MAX_CHARS.bookmarkName} data-scratch bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
+				<button type="button" class="mini" onclick={commit}>存</button>
+			</span>
+		{:else}
+			<span class="chip" class:on={active(s)} class:flash={flashId === bm.id} id={chipId(bm.id)} onanimationend={() => (flashId = null)}>
+				<button
+					type="button"
+					class="go"
+					aria-pressed={s.b === null ? undefined : active(s)}
+					title={`${where(s)}${active(s) ? '（再點一下關掉重複）' : ''}`}
+					onclick={() => go(row)}
+					><span class="kind" aria-hidden="true">{s.b === null ? '↦' : '⟳'}</span><span class="nm">{bm.name}</span></button
+				>
+				{#if editable && managing}
+					<button type="button" class="mini" aria-label={`改書籤「${bm.name}」的名字`} onclick={() => ((naming = { kind: 'rename', id: bm.id }), (text = bm.name))}>✎</button>
+					<button
+						type="button"
+						class="mini"
+						aria-label={`刪書籤「${bm.name}」`}
+						onclick={() => session.ask.send({ name: 'deleteBookmark', args: [bm.id] })}>✕</button
+					>
+				{/if}
+			</span>
+		{/if}
+	{/each}
+	{#if place === 'bar'}
+		{#if naming?.kind === 'add'}
+			<span class="chip naming">
+				<input
+					type="text"
+					aria-label="書籤名字"
+					placeholder="名字，例：翻騰"
+					maxlength={MAX_CHARS.bookmarkName}
+					data-scratch
+					bind:value={text}
+					onkeydown={nameKeys}
+					{@attach selectAll}
+				/>
+				<button type="button" class="mini" onclick={commit}>存</button>
+				<button type="button" class="mini" aria-label="不存" onclick={() => (naming = null)}>✕</button>
+			</span>
+		{:else}
+			<button
+				type="button"
+				class="chip add"
+				aria-label="存成書籤"
+				title={editable ? '把現在的 A、B 存成書籤（沒放 A 就存播放頭）' : '檢視模式不能存書籤'}
+				disabled={!editable || !flow.segments.length}
+				onclick={startAdd}><Icon name="bookmark" /><span class="add-text" class:alone={!rows.length}>書籤</span></button
+			>
+		{/if}
+		{#if rows.length}
+			<button type="button" class="chip manage" aria-pressed={managing} disabled={!editable} onclick={() => (managing = !managing)}
+				>{managing ? '好了' : '管理'}</button
+			>
+		{/if}
+	{/if}
+{/snippet}
 
 {#if searching}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -254,9 +295,62 @@
 	.bookmarks::-webkit-scrollbar {
 		display: none;
 	}
+	/* 一排書籤最多多寬：再寬流程名字就露不出 8 個字（check:layout 量的）；放不下的左右滑 */
 	.bar {
 		flex: 0 1 auto;
-		max-width: min(32vw, 420px);
+		max-width: 190px;
+	}
+	@media (min-width: 1601px) {
+		.bar {
+			max-width: 270px;
+		}
+	}
+	@media (min-width: 1761px) {
+		.bar {
+			max-width: 310px;
+		}
+	}
+	@media (min-width: 1921px) {
+		.bar {
+			max-width: 400px;
+		}
+	}
+	/* 窄一點的上方列：一顆鈕，跟 A、B 一樣小 */
+	.fold {
+		justify-content: center;
+		min-width: 24px;
+		padding: 0 4px;
+		cursor: pointer;
+	}
+	.fold[aria-expanded='true'] {
+		background: #26314d;
+	}
+	/* 小窗：開在最上層（popover），蓋掉瀏覽器給 popover 的置中、框線、顏色；跟上方列一樣深底 */
+	.pop {
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+		width: max-content;
+		max-width: min(320px, 90vw);
+		max-height: 60vh;
+		padding: 10px;
+		overflow: hidden auto;
+		border: 1px solid #36425f;
+		border-radius: 8px;
+		background: var(--ink);
+		color: #c9d2e6;
+		box-shadow: var(--shadow-pop);
+	}
+	.pop .go {
+		max-width: 16em;
+	}
+	.none {
+		margin: 0 4px;
+		font-size: 13px;
+		color: #8b96b0;
 	}
 	.phone {
 		padding: 0 8px 6px;
@@ -370,8 +464,11 @@
 		.go {
 			min-height: 32px;
 		}
-		.mini {
+		.mini,
+		.fold {
 			min-width: 32px;
+		}
+		.mini {
 			height: 32px;
 		}
 	}

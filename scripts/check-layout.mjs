@@ -319,7 +319,9 @@ await check('時間軸拖到最大時，場地左欄最下面的工具捲得到�
 const topbarLayout = () =>
 	js(`const bar = document.querySelector('.topbar');
 		const b = bar.getBoundingClientRect();
-		const els = [...bar.querySelectorAll('button, label, select, a')].filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 2);
+		// 書籤那排左右滑：滑到外面的書籤不算（滑過去就點得到），露出來的照樣要點得到
+		const scrolledAway = (el) => { const s = el.closest('.bookmarks'); if (!s) return false; const o = s.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.left < o.left - 1 || r.right > o.right + 1; };
+		const els = [...bar.querySelectorAll('button, label, select, a')].filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 2 && !scrolledAway(el));
 		const rects = els.map((el) => [el, el.getBoundingClientRect()]);
 		const name = (el) => (el.getAttribute('aria-label') || el.title || el.textContent).trim().slice(0, 12);
 		const bad = rects.filter(([el, r]) => {
@@ -974,6 +976,48 @@ for (const w of [1920, 1400]) {
 		const view = await js(where);
 		await js(press('編輯'));
 		return { ok: edit === view, value: { 編輯: edit, 檢視: view } };
+	});
+}
+
+// 播放列上的書籤（GLOSSARY「書籤」）：書籤多、名字長時，讓位的是書籤那排（左右滑），不是流程名字；1440 寬以下收成一顆鈕，
+// 點了開小窗，每個書籤都在畫面裡、點得到。切檢視、編輯時上方列不跑（書籤圖示、「管理」只變灰）。
+// 上面那幾條開的範例流程沒有書籤，這裡另外量。
+const withBookmarks = `const ok = (r) => { if (r.kind !== 'ok') throw new Error(JSON.stringify(r)); return r.flow; };
+	for (const [name, a, b] of [['開場', 0, 8], ['翻騰', 8, 16], ['金字塔下來接第二段的抱腿轉身', 16, 32], ['結尾', 48, null]])
+		flow = ok(core.addBookmark(flow, name, { segmentId: 's1', at: a }, b === null ? null : { segmentId: 's1', at: b }));`;
+for (const [w, h, touch] of [[1024, 768], [1024, 768, true], [1101, 768], [1180, 820, true], [1181, 800], [1194, 834, true], [1281, 800], [1301, 800], [1366, 768], [1366, 1024, true], [1440, 900], [1441, 900], [1601, 900], [1761, 900], [1920, 1080]]) {
+	await check(`${w}×${h}${touch ? '（觸控）' : ''} 有 4 個書籤（一個名字很長）、長流程名字、編輯和檢視模式：上方列一行，按鈕點得到、不疊、不出畫面，名字至少露出 3 個字（1181 寬以上 8 個字），切模式上方列不跑`, async () => {
+		if (touch) await setTouchViewport(w, h); else await setViewport(w, h);
+		await openPracticeFlow(withBookmarks);
+		await renameFlowTo('二〇二七全國賽決賽版本第三版');
+		const where = `return [...document.querySelectorAll('.topbar button, .topbar .btn')].map((b) => Math.round(b.getBoundingClientRect().left)).join(',');`;
+		const press = (name) => js(`[...document.querySelectorAll('.topbar .mode button')].find((b) => b.textContent.trim() === '${name}').click()`);
+		const chips = await js(`return document.querySelectorAll('.topbar .bookmarks .chip').length`);
+		const folded = await js(`return !!document.querySelector('.topbar .fold')`);
+		const edit = await topbarLayout();
+		const editAt = await js(where);
+		await press('檢視');
+		await sleep(100);
+		const view = await topbarLayout();
+		const viewAt = await js(where);
+		await press('編輯');
+		await sleep(100);
+		// 收成一顆鈕的：點開小窗，4 個書籤和存、管理都整個在畫面裡、點得到
+		let pop = null;
+		if (folded) {
+			await js(`document.querySelector('.topbar .fold').click()`);
+			await sleep(200);
+			pop = await js(`const els = [...document.querySelectorAll('.bookmarks.pop .chip')];
+				const bad = els.filter((el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+					return r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight || !t || !el.contains(t); }).map((el) => el.textContent.trim());
+				return { 鈕: els.length, 點不到或出畫面: bad };`);
+			await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		}
+		if (touch) await clearTouch();
+		const least = !touch && w >= 1181 ? 8 * 16 : 45;
+		const fine = (r) => r.上方列高 <= 64 && r.播放鈕和存檔同一行 && r.名字寬 >= least && r.點不到或出畫面.length === 0 && r.疊在一起.length === 0;
+		const shown = w > 1440 ? !folded && chips >= 6 : folded && pop.鈕 === 6 && pop.點不到或出畫面.length === 0;
+		return { ok: shown && fine(edit) && fine(view) && editAt === viewAt, value: { 收成一顆鈕: folded, 書籤列的鈕: chips, 小窗: pop, 編輯: edit, 檢視: view, 切模式跑了: editAt !== viewAt } };
 	});
 }
 
