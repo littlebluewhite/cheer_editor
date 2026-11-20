@@ -78,21 +78,43 @@ describe('口號段加環節（不標拍）', () => {
 	it('種類要是大類能用的：技巧用上法到下法，拋投只用拋法，騰翻只用翻法，跳躍只用跳法，舞蹈、其他不能加', () => {
 		expect(addPhase(chant(), 'x2', { kind: 'stand' as never, name: '' })).toEqual({
 			kind: 'blocked',
-			message: '技巧的環節只能用上法、中段、轉接、下法'
+			message: '技巧的環節只能用上法、中段、轉接、下法',
+			why: { code: 'success_rate_kinds_only', category: '技巧', kinds: '上法、中段、轉接、下法' }
 		});
 		expect(addPhase(chant(), 'x2', { kind: 'toss', name: '' })).toEqual({
 			kind: 'blocked',
-			message: '技巧的環節只能用上法、中段、轉接、下法'
+			message: '技巧的環節只能用上法、中段、轉接、下法',
+			why: { code: 'success_rate_kinds_only', category: '技巧', kinds: '上法、中段、轉接、下法' }
 		});
 		const as = (category: ActionCategory) => {
 			const flow = flowOf(addSegment(sample(), 'chant'));
 			return flowOf(addAction(flow, { segmentId: 's2', category, name: '', start: 0, length: 30, note: '', members: [{ memberId: 'm2', role: null }] }));
 		};
-		expect(addPhase(as('toss'), 'x2', { kind: 'load', name: '' })).toEqual({ kind: 'blocked', message: '拋投的環節只能用拋法' });
-		expect(addPhase(as('tumbling'), 'x2', { kind: 'toss', name: '' })).toEqual({ kind: 'blocked', message: '騰翻的環節只能用翻法' });
-		expect(addPhase(as('jump'), 'x2', { kind: 'tumble', name: '' })).toEqual({ kind: 'blocked', message: '跳躍的環節只能用跳法' });
-		expect(addPhase(as('dance'), 'x2', { kind: 'load', name: '' })).toEqual({ kind: 'blocked', message: '舞蹈的動作不記成功率' });
-		expect(addPhase(as('other'), 'x2', { kind: 'load', name: '' })).toEqual({ kind: 'blocked', message: '其他的動作不記成功率' });
+		expect(addPhase(as('toss'), 'x2', { kind: 'load', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '拋投的環節只能用拋法',
+			why: { code: 'success_rate_kinds_only', category: '拋投', kinds: '拋法' }
+		});
+		expect(addPhase(as('tumbling'), 'x2', { kind: 'toss', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '騰翻的環節只能用翻法',
+			why: { code: 'success_rate_kinds_only', category: '騰翻', kinds: '翻法' }
+		});
+		expect(addPhase(as('jump'), 'x2', { kind: 'tumble', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '跳躍的環節只能用跳法',
+			why: { code: 'success_rate_kinds_only', category: '跳躍', kinds: '跳法' }
+		});
+		expect(addPhase(as('dance'), 'x2', { kind: 'load', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '舞蹈的動作不記成功率',
+			why: { code: 'success_rate_no_rate', category: '舞蹈' }
+		});
+		expect(addPhase(as('other'), 'x2', { kind: 'load', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '其他的動作不記成功率',
+			why: { code: 'success_rate_no_rate', category: '其他' }
+		});
 		expect(addPhase(as('toss'), 'x2', { kind: 'toss', name: '' }).kind).toBe('ok');
 	});
 
@@ -164,14 +186,16 @@ describe('改環節', () => {
 	it('顏色不在辨識色 9 色和石板灰裡：擋下來', () => {
 		expect(updatePhase(sample(), 'x1', 'p1', { color: '#123456' })).toEqual({
 			kind: 'blocked',
-			message: '環節的顏色只能挑辨識色或石板灰'
+			message: '環節的顏色只能挑辨識色或石板灰',
+			why: { code: 'success_rate_phase_color' }
 		});
 	});
 
 	it('種類不是大類能用的：擋下來', () => {
 		expect(updatePhase(sample(), 'x1', 'p1', { kind: 'toss' })).toEqual({
 			kind: 'blocked',
-			message: '技巧的環節只能用上法、中段、轉接、下法'
+			message: '技巧的環節只能用上法、中段、轉接、下法',
+			why: { code: 'success_rate_kinds_only', category: '技巧', kinds: '上法、中段、轉接、下法' }
 		});
 	});
 
@@ -367,6 +391,15 @@ describe('換大類：環節的種類跟著換', () => {
 		const r = updateAction(before, 'x1', { category: 'dance' });
 		expect(r.kind).toBe('confirm');
 		expect(r.kind === 'confirm' && r.message).toBe('動作「技巧·Lib」換成舞蹈，不記成功率，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）');
+		expect(r.kind === 'confirm' && r.why).toEqual({
+			code: 'settle_action_records',
+			action: '技巧·Lib',
+			records: {
+				code: 'settle_records',
+				records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_no_rate', category: '舞蹈' }, count: 1 },
+				undoable: { code: 'records_undoable' }
+			}
+		});
 		const after = flowOf(updateAction(before, 'x1', { category: 'dance' }, { confirmed: true }));
 		expect(lib(after).successRate).toBeUndefined();
 		expect(lib(after).members.some((m) => 'squad' in m)).toBe(false);
@@ -389,7 +422,8 @@ describe('換大類：金字塔有環節佔同樣的拍', () => {
 	] as const)('換成%s：擋下來，說先分開；流程不變', (label, category) => {
 		expect(updateAction(overlapped(), 'x1', { category })).toEqual({
 			kind: 'blocked',
-			message: `有環節佔同樣的拍，先分開才能換成${label}`
+			message: `有環節佔同樣的拍，先分開才能換成${label}`,
+			why: { code: 'settle_phases_overlap', category: label }
 		});
 		expect(updateAction(overlapped(), 'x1', { category }, { confirmed: true }).kind).toBe('blocked');
 	});

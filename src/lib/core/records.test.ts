@@ -387,7 +387,11 @@ describe('改某一次、刪掉某一次', () => {
 	});
 
 	it('一個記號都沒有、找不到那一次就擋下來', () => {
-		expect(changeAttempt(recorded(), 'x1', 't1', {})).toEqual({ kind: 'blocked', message: '一次至少要有一個記號' });
+		expect(changeAttempt(recorded(), 'x1', 't1', {})).toEqual({
+			kind: 'blocked',
+			message: '一次至少要有一個記號',
+			why: { code: 'success_rate_no_marks' }
+		});
 		expect(changeAttempt(recorded(), 'x1', 't9', { p1: '✓' })).toEqual({
 			kind: 'blocked',
 			message: '找不到這一次',
@@ -762,19 +766,19 @@ describe('記錄頁要的清單', () => {
 
 describe('記一次：擋下來的情況', () => {
 	it.each([
-		['記號指到不在的環節', 'x1', drill({ p1: '✓', p9: '✓' }), '記號要打在這個動作的環節上'],
-		['記號指到別的動作的環節', 'x1', drill({ p4: '✓' }), '記號要打在這個動作的環節上'],
-		['記號不是 ✓ △ ✗', 'x1', drill({ p1: 'O' as never }), '記號只能是 ✓、△、✗'],
-		['一個記號都沒有', 'x1', drill({}), '一次至少要有一個記號'],
-		['沒有人的組', 'x1', drill({ p1: '✓' }, { who: 'g3' }), '這一組沒有人'],
-		['分組的動作給了隊員', 'x1', drill({ p1: '✓' }, { who: 'm1' }), '這一組沒有人'],
-		['騰翻的動作給了不在動作裡的隊員', 'x2', drill({ p4: '✓' }, { who: 'm3' }), '這個隊員不在動作裡'],
-		['騰翻的動作給了組', 'x2', drill({ p4: '✓' }, { who: 'g1' }), '這個隊員不在動作裡'],
-		['日期寫錯', 'x1', drill({ p1: '✓' }, { date: '2026/11/4' }), '日期要寫成 2026-11-04 這樣'],
-		['全上沒帶全上的 id', 'x1', drill({ p1: '✓' }, { practice: 'runThrough' }), '全上要帶同一次全上的 id'],
-		['分段練帶了全上的 id', 'x1', drill({ p1: '✓' }, { runThroughId: 'u1' }), '全上要帶同一次全上的 id']
-	] as const)('%s', (_, actionId, input, message) => {
-		expect(recordAttempt(sample(), actionId, input)).toEqual({ kind: 'blocked', message });
+		['記號指到不在的環節', 'x1', drill({ p1: '✓', p9: '✓' }), '記號要打在這個動作的環節上', 'success_rate_mark_phase'],
+		['記號指到別的動作的環節', 'x1', drill({ p4: '✓' }), '記號要打在這個動作的環節上', 'success_rate_mark_phase'],
+		['記號不是 ✓ △ ✗', 'x1', drill({ p1: 'O' as never }), '記號只能是 ✓、△、✗', 'success_rate_mark_kind'],
+		['一個記號都沒有', 'x1', drill({}), '一次至少要有一個記號', 'success_rate_no_marks'],
+		['沒有人的組', 'x1', drill({ p1: '✓' }, { who: 'g3' }), '這一組沒有人', 'success_rate_empty_squad'],
+		['分組的動作給了隊員', 'x1', drill({ p1: '✓' }, { who: 'm1' }), '這一組沒有人', 'success_rate_empty_squad'],
+		['騰翻的動作給了不在動作裡的隊員', 'x2', drill({ p4: '✓' }, { who: 'm3' }), '這個隊員不在動作裡', 'success_rate_member_not_in_action'],
+		['騰翻的動作給了組', 'x2', drill({ p4: '✓' }, { who: 'g1' }), '這個隊員不在動作裡', 'success_rate_member_not_in_action'],
+		['日期寫錯', 'x1', drill({ p1: '✓' }, { date: '2026/11/4' }), '日期要寫成 2026-11-04 這樣', 'success_rate_date'],
+		['全上沒帶全上的 id', 'x1', drill({ p1: '✓' }, { practice: 'runThrough' }), '全上要帶同一次全上的 id', 'success_rate_run_through_id'],
+		['分段練帶了全上的 id', 'x1', drill({ p1: '✓' }, { runThroughId: 'u1' }), '全上要帶同一次全上的 id', 'success_rate_run_through_id']
+	] as const)('%s', (_, actionId, input, message, code) => {
+		expect(recordAttempt(sample(), actionId, input)).toEqual({ kind: 'blocked', message, why: { code } });
 	});
 
 	it('沒打開記成功率的動作', () => {
@@ -846,7 +850,7 @@ describe('記一次全上', () => {
 		expect(recordRunThrough(sample(), date, 1794036000000, bad)).toEqual({
 			kind: 'blocked',
 			message: '騰翻：這個隊員不在動作裡',
-			why: { code: 'records_in_action', action: '騰翻', reason: '這個隊員不在動作裡' }
+			why: { code: 'records_in_action', action: '騰翻', reason: { code: 'success_rate_member_not_in_action' } }
 		});
 		expect(recordRunThrough(sample(), '11/4', 1794036000000, sheet())).toMatchObject({ kind: 'blocked' });
 		expect(recordRunThrough(sample(), date, 1794036000000, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toEqual({

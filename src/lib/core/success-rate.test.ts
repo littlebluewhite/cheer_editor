@@ -21,6 +21,11 @@ import {
 	type Flow
 } from './index';
 import { flowOf, squadNumbers } from '../test-flows';
+import type { Action } from './action-types';
+import type { Phase } from './phase-types';
+import type { Segment } from './segment';
+import { attemptProblem, successRateProblem, type Attempt } from './success-rate';
+import { said } from './why';
 
 /** 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。x1：Lib（技巧），四個人都在裡面。 */
 function sample(category: ActionCategory = 'stunt'): Flow {
@@ -95,16 +100,25 @@ describe('設組', () => {
 	] as const)('%s 的動作不分組，擋下來並說原因', (category, label) => {
 		expect(setSquad(on(category), 'x1', ['m1'], 1)).toEqual({
 			kind: 'blocked',
-			message: `${label}的動作不分組，每個人自己算`
+			message: `${label}的動作不分組，每個人自己算`,
+			why: { code: 'success_rate_per_person', category: label }
 		});
 	});
 
 	it('沒有環節不能分組', () => {
-		expect(setSquad(sample(), 'x1', ['m1'], 1)).toEqual({ kind: 'blocked', message: '動作有環節才能分組' });
+		expect(setSquad(sample(), 'x1', ['m1'], 1)).toEqual({
+			kind: 'blocked',
+			message: '動作有環節才能分組',
+			why: { code: 'success_rate_needs_phases_to_group' }
+		});
 	});
 
 	it.each([0, -1, 1.5])('組要是正整數（%s 被擋）', (squad) => {
-		expect(setSquad(on(), 'x1', ['m1'], squad)).toEqual({ kind: 'blocked', message: '組要是正整數' });
+		expect(setSquad(on(), 'x1', ['m1'], squad)).toEqual({
+			kind: 'blocked',
+			message: '組要是正整數',
+			why: { code: 'success_rate_squad_number' }
+		});
 	});
 
 	it('一次給好幾個人同一組（一個指令，復原一步）', () => {
@@ -341,7 +355,11 @@ describe('組跟著改動作', () => {
 	it('組 id 不對被擋', () => {
 		const flow = twoActions('stunt', true);
 		const members = [{ memberId: 'm1', role: null, squad: '1' }];
-		expect(updateAction(flow, 'x2', { members })).toEqual({ kind: 'blocked', message: '組的 id 不對' });
+		expect(updateAction(flow, 'x2', { members })).toEqual({
+			kind: 'blocked',
+			message: '組的 id 不對',
+			why: { code: 'success_rate_squad_id' }
+		});
 	});
 });
 
@@ -368,5 +386,51 @@ describe('環節的顏色', () => {
 
 	it('挑了顏色就用挑的', () => {
 		expect(phaseColor({ id: 'p1', kind: 'load', name: '', color: '#c62828' })).toBe('#c62828');
+	});
+});
+
+describe('成功率規則的原因：帶代號，中文照舊', () => {
+	const action = () => actionOf(rated(sample()));
+	const segment = () => sample().segments[0];
+	const withPhases = (phases: Phase[], records: Attempt[] = []): Action => ({ ...action(), successRate: { phases, records } });
+	const load = (id: string, at: number, len: number): Phase => ({ id, kind: 'load', name: '', beats: { at, len } });
+	const attempt = (change: Partial<Attempt> = {}): Attempt => ({
+		id: 't1',
+		date: '2026-11-04',
+		who: squadsOf(action())[0],
+		practice: 'drill',
+		whole: true,
+		marks: { p1: '✓' },
+		...change
+	});
+
+	it.each([
+		['沒有環節', withPhases([]), '記成功率的動作至少要有一個環節', 'success_rate_no_phases'],
+		['音樂段的環節沒標拍', withPhases([{ id: 'p1', kind: 'load', name: '' }]), '音樂段的環節要選拍標', 'success_rate_music_needs_beats'],
+		['沒照拍排', withPhases([load('p1', 8, 4), load('p2', 0, 4)]), '環節要照標的拍的先後排', 'success_rate_phase_order'],
+		['環節的 id 重複', withPhases([load('p1', 0, 4), load('p1', 8, 4)]), '環節的 id 重複了', 'success_rate_phase_id_taken'],
+		['沒有這種環節', withPhases([{ ...load('p1', 0, 4), kind: 'stand' as never }]), '沒有這種環節', 'success_rate_no_such_kind'],
+		['名字頭尾有空白', withPhases([{ ...load('p1', 0, 4), name: ' 上 ' }]), '環節的名字頭尾不能有空白', 'success_rate_phase_name_spaces'],
+		['標的拍重疊', withPhases([load('p1', 0, 8), load('p2', 4, 8)]), '環節標的拍不能重疊', 'success_rate_phases_overlap'],
+		['一次的 id 重複', withPhases([load('p1', 0, 4)], [attempt(), attempt()]), '一次的 id 重複了', 'success_rate_attempt_id_taken']
+	] as const)('%s', (_, a, message, code) => {
+		expect(said(successRateProblem(segment(), a)!)).toEqual({ message, why: { code } });
+	});
+
+	it('口號段的環節標了拍', () => {
+		const chant = { ...segment(), kind: 'chant' } as Segment;
+		expect(said(successRateProblem(chant, action())!)).toEqual({
+			message: '口號段不數拍，不能標環節的拍',
+			why: { code: 'success_rate_chant_beats' }
+		});
+	});
+
+	it.each([
+		['空著的環節不是整個做', attempt({ whole: false, marks: {}, blanks: ['p1'] }), '空著的環節要是這個動作的環節、沒有記號，而且那一次是整個做', 'success_rate_blanks'],
+		['沒有這種練法', attempt({ practice: 'warmup' as never }), '沒有這種練法', 'success_rate_no_such_practice'],
+		['分段練帶了全上開的時間', attempt({ runThroughStartedAt: 5 }), '全上開的時間不對', 'success_rate_run_through_started'],
+		['全上只練幾個環節', attempt({ practice: 'runThrough', runThroughId: 'u1', whole: false }), '全上記的每一次都算整個做', 'success_rate_run_through_whole']
+	] as const)('一次：%s', (_, a, message, code) => {
+		expect(said(attemptProblem(action(), a)!)).toEqual({ message, why: { code } });
 	});
 });
