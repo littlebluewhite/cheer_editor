@@ -7,8 +7,9 @@
 	place="phone"：手機、直拿的 iPad（檢視模式），播放列下面一排，手指左右滑；沒有書籤就不出現。
 -->
 <script lang="ts">
-	import { MAX_CHARS, actionLabel, firstChars, bookmarkSeconds, positionWhy, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
+	import { MAX_CHARS, actionWhy, firstChars, bookmarkSeconds, positionWhy, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
 	import { composing } from '#lib/ime.js';
 	import { KEYS } from '#lib/shortcuts.js';
@@ -53,7 +54,7 @@
 	const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
 	function where(s: Spot): string {
 		const a = whyText(positionWhy(flow, s.a));
-		return s.b === null ? a : `${a} 到 ${whyText(positionWhy(flow, s.b))}`;
+		return s.b === null ? a : m.bookmark_bar_range({ a, b: whyText(positionWhy(flow, s.b)) });
 	}
 	/** 正在重複的就是這個書籤。 */
 	function active(s: Spot): boolean {
@@ -101,7 +102,7 @@
 		const aSec = toSeconds(flow, a);
 		const act = flow.actions.find((x) => near(toSeconds(flow, { segmentId: x.segmentId, at: x.start }), aSec));
 		naming = { kind: 'add', a, b };
-		text = act ? firstChars(act.name.trim() || actionLabel(act), MAX_CHARS.bookmarkName) : '';
+		text = act ? firstChars(act.name.trim() || whyText(actionWhy(act)), MAX_CHARS.bookmarkName) : '';
 	}
 
 	function commit() {
@@ -187,35 +188,35 @@
 		}
 	}
 
-	const hint = $derived(place === 'bar' && !isTouchScreen() ? `按 ${KEYS.bookmarkSearch.mac} 找書籤` : undefined);
+	const hint = $derived(place === 'bar' && !isTouchScreen() ? m.bookmark_bar_search_hint({ key: KEYS.bookmarkSearch.mac }) : undefined);
 </script>
 
 {#if folded}
 	<button
 		type="button"
 		class="chip fold"
-		aria-label="書籤"
+		aria-label={m.bookmark_bar_label()}
 		aria-expanded={open}
-		title={hint ?? '書籤'}
+		title={hint ?? m.bookmark_bar_label()}
 		bind:this={openBtn}
 		onclick={() => (open = !open)}><Icon name="bookmarks" size={14} /></button
 	>
 	<!-- 小窗放在書籤鈕下面、左邊對齊；點外面、按 Esc 就收（popover.svelte.ts） -->
 	{#if open}
-		<div class="bookmarks pop" role="group" aria-label="書籤" {@attach popover({ place: below(openBtn!, { gap: 6, align: 'left', flip: true }), close: closeFold, inside: [openBtn] })}>
-			{#if !rows.length}<p class="none">還沒有書籤</p>{/if}
+		<div class="bookmarks pop" role="group" aria-label={m.bookmark_bar_label()} {@attach popover({ place: below(openBtn!, { gap: 6, align: 'left', flip: true }), close: closeFold, inside: [openBtn] })}>
+			{#if !rows.length}<p class="none">{m.bookmark_bar_none()}</p>{/if}
 			{@render chips()}
 			{@render tools()}
 		</div>
 	{/if}
 {:else if place === 'bar'}
 	<!-- 書籤多的時候左右滑的只有書籤那幾顆；存、管理、打名字的欄位一直露在外面 -->
-	<div class="bookmarks bar" role="group" aria-label="書籤" title={hint}>
+	<div class="bookmarks bar" role="group" aria-label={m.bookmark_bar_label()} title={hint}>
 		<div class="list">{@render chips()}</div>
 		{@render tools()}
 	</div>
 {:else if rows.length}
-	<div class="bookmarks {place}" role="group" aria-label="書籤" title={hint}>
+	<div class="bookmarks {place}" role="group" aria-label={m.bookmark_bar_label()} title={hint}>
 		{@render chips()}
 	</div>
 {/if}
@@ -225,9 +226,9 @@
 		{@const { bm, s } = row}
 		{#if naming?.kind === 'rename' && naming.id === bm.id}
 			<span class="chip naming">
-				<input type="text" aria-label="書籤名字" data-scratch bind:this={nameInput} bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
+				<input type="text" aria-label={m.bookmark_bar_name()} data-scratch bind:this={nameInput} bind:value={text} onkeydown={nameKeys} {@attach selectAll} />
 				<CharCount field="bookmarkName" input={nameInput} value={text} />
-				<button type="button" class="mini" onclick={commit}>存</button>
+				<button type="button" class="mini" onclick={commit}>{m.bookmark_bar_save()}</button>
 			</span>
 		{:else}
 			<span class="chip" class:on={active(s)} class:flash={flashId === bm.id} id={chipId(bm.id)} onanimationend={() => (flashId = null)}>
@@ -235,16 +236,16 @@
 					type="button"
 					class="go"
 					aria-pressed={s.b === null ? undefined : active(s)}
-					title={`${where(s)}${active(s) ? '（再點一下關掉重複）' : ''}`}
+					title={active(s) ? m.bookmark_bar_click_again({ where: where(s) }) : where(s)}
 					onclick={() => go(row)}
 					><span class="kind" aria-hidden="true">{s.b === null ? '↦' : '⟳'}</span><span class="nm">{bm.name}</span></button
 				>
 				{#if editable && managing}
-					<button type="button" class="mini" aria-label={`改書籤「${bm.name}」的名字`} onclick={() => ((naming = { kind: 'rename', id: bm.id }), (text = bm.name))}>✎</button>
+					<button type="button" class="mini" aria-label={m.bookmark_bar_rename({ name: bm.name })} onclick={() => ((naming = { kind: 'rename', id: bm.id }), (text = bm.name))}>✎</button>
 					<button
 						type="button"
 						class="mini"
-						aria-label={`刪書籤「${bm.name}」`}
+						aria-label={m.bookmark_bar_delete({ name: bm.name })}
 						onclick={() => session.ask.send({ name: 'deleteBookmark', args: [bm.id] })}>✕</button
 					>
 				{/if}
@@ -259,8 +260,8 @@
 			<span class="chip naming">
 				<input
 					type="text"
-					aria-label="書籤名字"
-					placeholder="名字，例：翻騰"
+					aria-label={m.bookmark_bar_name()}
+					placeholder={m.bookmark_bar_placeholder()}
 					data-scratch
 					bind:this={nameInput}
 					bind:value={text}
@@ -268,22 +269,22 @@
 					{@attach selectAll}
 				/>
 				<CharCount field="bookmarkName" input={nameInput} value={text} />
-				<button type="button" class="mini" onclick={commit}>存</button>
-				<button type="button" class="mini" aria-label="不存" onclick={() => (naming = null)}>✕</button>
+				<button type="button" class="mini" onclick={commit}>{m.bookmark_bar_save()}</button>
+				<button type="button" class="mini" aria-label={m.bookmark_bar_cancel()} onclick={() => (naming = null)}>✕</button>
 			</span>
 		{:else}
 			<button
 				type="button"
 				class="chip add"
-				aria-label="存成書籤"
-				title={editable ? '把現在的 A、B 存成書籤（沒放 A 就存播放頭）' : '檢視模式不能存書籤'}
+				aria-label={m.bookmark_bar_add()}
+				title={editable ? m.bookmark_bar_add_title() : m.bookmark_bar_add_view_only()}
 				disabled={!editable || !flow.segments.length}
-				onclick={startAdd}><Icon name="bookmark" /><span class="add-text" class:alone={!rows.length}>書籤</span></button
+				onclick={startAdd}><Icon name="bookmark" /><span class="add-text" class:alone={!rows.length}>{m.bookmark_bar_label()}</span></button
 			>
 		{/if}
 		{#if rows.length}
 			<button type="button" class="chip manage" aria-pressed={managing} disabled={!editable} onclick={() => (managing = !managing)}
-				>{managing ? '好了' : '管理'}</button
+				>{managing ? m.bookmark_bar_done() : m.bookmark_bar_manage()}</button
 			>
 		{/if}
 	{/if}
@@ -292,11 +293,11 @@
 {#if searching}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="veil" onpointerdown={(e) => e.target === e.currentTarget && (searching = false)}>
-		<div class="search" role="dialog" aria-label="找書籤" tabindex="-1" onkeydown={boxKeys} onfocusout={boxLeave}>
+		<div class="search" role="dialog" aria-label={m.bookmark_bar_search()} tabindex="-1" onkeydown={boxKeys} onfocusout={boxLeave}>
 			<input
 				type="text"
-				aria-label="找書籤"
-				placeholder="打名字找書籤，Enter 跳過去"
+				aria-label={m.bookmark_bar_search()}
+				placeholder={m.bookmark_bar_search_placeholder()}
 				data-scratch
 				bind:value={query}
 				oninput={() => (pick = 0)}
@@ -315,16 +316,16 @@
 								go(row);
 								searching = false;
 							}}
-							><span class="kind" aria-hidden="true">{row.s.b === null ? '↦' : '⟳'}</span><span class="nm">{row.bm.name}</span><span class="at"
+							><span class="kind" aria-hidden="true">{row.s.b === null ? '↦' : '⟳'}</span><span class="nm">{row.bm.name}{#if active(row.s)}<span class="looping">{m.bookmark_bar_looping()}</span>{/if}</span><span class="at"
 								>{where(row.s)}</span
 							></button
 						>
 					</li>
 				{:else}
-					<li class="empty">{rows.length ? '找不到這個名字' : '還沒有書籤：按播放列上 A、B 右邊的書籤圖示存一個'}</li>
+					<li class="empty">{rows.length ? m.bookmark_bar_not_found() : m.bookmark_bar_none_hint()}</li>
 				{/each}
 			</ul>
-			<p class="hint">↑↓ 選、Enter 跳過去、Esc 關掉</p>
+			<p class="hint">{m.bookmark_bar_search_keys()}</p>
 		</div>
 	</div>
 {/if}
@@ -586,8 +587,7 @@
 	.search li button.pick {
 		background: var(--sel-soft);
 	}
-	.search li button.on .nm::after {
-		content: '（重複中）';
+	.search .looping {
 		font-weight: 400;
 		color: var(--muted);
 	}

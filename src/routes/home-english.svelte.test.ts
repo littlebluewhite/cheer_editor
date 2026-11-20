@@ -3,7 +3,7 @@
 // 名字都用英數字，教練自己取的名字不算。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addMembers, addSegment, createFlow, writeFlowFile } from '#lib/core';
+import { addBookmark, addMembers, addSegment, createFlow, writeFlowFile } from '#lib/core';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { editorPage, fakeDraftStore, fakeServer, flush } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
@@ -109,6 +109,20 @@ describe('編輯畫面的外框（英文）', () => {
 		).toEqual([]);
 		// 時間軸裡面是時間軸元件自己的字，這裡只看外框的名字
 		expect(one('.timeline-host').getAttribute('aria-label')).toBe('Timeline');
+	});
+
+	it('書籤：書籤列、管理、存成書籤打名字、找書籤的框都是英文', async () => {
+		let flow = flowOf(addSegment(newFlowOf('Nationals'), 'music'));
+		flow = flowOf(addBookmark(flow, 'Lib', { segmentId: flow.segments[0].id, at: 0 }, null));
+		render(Page, editorPage(flow).props);
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save as bookmark' }));
+		expect(screen.getByRole('textbox', { name: 'Bookmark name' })).toBeTruthy();
+		expect(hanIn(one('header.topbar .bookmarks'))).toEqual([]);
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		await fireEvent.keyDown(window, { key: '/' });
+		expect(hanIn(screen.getByRole('dialog', { name: 'Find bookmark' }))).toEqual([]);
 	});
 
 	it('檢視模式：右上角、「我」選單、右邊欄的說明都是英文', async () => {
