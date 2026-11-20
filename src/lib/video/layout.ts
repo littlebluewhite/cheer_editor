@@ -3,7 +3,7 @@
 
 import {
 	VIDEO_FPS,
-	actionLabel,
+	actionWhy,
 	cueWordWhy,
 	fullView,
 	markCovered,
@@ -19,6 +19,7 @@ import {
 	type VideoRow
 } from '#lib/core';
 import { isLongMarker, markerWidth } from '#lib/marker.js';
+import { m } from '#lib/paraglide/messages.js';
 import { whyText } from '#lib/reason-text.js';
 import type { ColorKey } from './colors';
 
@@ -134,8 +135,6 @@ const SUB_GAP = 4;
 /** 步驟左邊那條粗線多寬；字再往右讓開一點。 */
 const STEP_BAR = 4;
 const STEP_BAR_GAP = 2;
-
-const EMPTY_TEXT = '這一列沒有新的動作、站位';
 
 export function layoutFrame(field: FieldConfig, frame: VideoFrameData, measure: Measure): FrameLayout {
 	const top = layoutTop(frame, measure);
@@ -307,7 +306,7 @@ function layoutRow(row: VideoRow, lit: number | null, measure: Measure): Part {
 	const firstTitle = textLines({ ...row, actions: [], continuing: [] }, { collapsed: 0, notesDropped: 0, kept: 0 }, px, measure).length;
 	const noneShown = row.actions.length > 0 && maxLines - (dropped ? 1 : 0) <= firstTitle;
 	const more: Para[] = noneShown
-		? [{ text: `⋯還有 ${row.actions.length} 個動作`, weight: 700, color: 'muted' }]
+		? [{ text: moreSkills(row.actions.length), weight: 700, color: 'muted' }]
 		: dropped
 			? lines.slice(-1)
 			: [];
@@ -324,6 +323,9 @@ const gridRoom = (px: number) => ROW_BOTTOM - ROW_TOP - GRID_GAP - px * LINE;
 
 /** 拍點格子佔多高（連上面的空隙）；沒有拍點是 0。 */
 const gridSpace = (grid: Grid) => (grid.h ? GRID_GAP + grid.h : 0);
+
+/** 拿掉了幾個動作的那一行。 */
+const moreSkills = (n: number) => (n === 1 ? m.video_more_skills_one({ n }) : m.video_more_skills({ n }));
 
 /** 照順序一步一步多拿一點：第一個是什麼都不拿。 */
 function* squeezes(row: VideoRow): Generator<Squeeze> {
@@ -348,7 +350,7 @@ function* squeezes(row: VideoRow): Generator<Squeeze> {
 /** 下面那一列的字，換好行：站位、動作（標題、誰、備註）、還在做的動作、拿掉幾個動作。 */
 function textLines(row: VideoRow, s: Squeeze, px: number, measure: Measure): Para[] {
 	const paras: Para[] = [];
-	if (row.empty) paras.push({ text: EMPTY_TEXT, weight: 400, color: 'muted' });
+	if (row.empty) paras.push({ text: m.video_row_empty(), weight: 400, color: 'muted' });
 	for (const f of row.formations) paras.push({ text: whyText(f), weight: 600, color: 'muted' });
 	// 備註從最下面那個拿起
 	const noted = row.actions.flatMap((a, i) => (a.note ? [i] : []));
@@ -356,16 +358,17 @@ function textLines(row: VideoRow, s: Squeeze, px: number, measure: Measure): Par
 	row.actions.slice(0, s.kept).forEach((a, i) => {
 		paras.push({ text: whyText(a.title), weight: 700, color: 'ink' });
 		if (a.who) paras.push({ text: whyText(a.who), weight: 400, color: 'ink' });
-		if (a.note && !droppedNotes.has(i)) paras.push({ text: `備註：${a.note}`, weight: 400, color: 'muted' });
+		if (a.note && !droppedNotes.has(i)) paras.push({ text: m.video_note({ note: a.note }), weight: 400, color: 'muted' });
 	});
 	// 還在做的動作從最下面那個縮起
 	const fullUntil = row.continuing.length - s.collapsed;
 	row.continuing.forEach((c, i) => {
-		const text = i < fullUntil && c.who ? `↳ ${whyText(c.name)} 繼續：${whyText(c.who)}` : `↳ ${whyText(c.name)} 繼續`;
+		const name = whyText(c.name);
+		const text = i < fullUntil && c.who ? m.video_continuing_who({ name, who: whyText(c.who) }) : m.video_continuing({ name });
 		paras.push({ text, weight: 400, color: 'ink' });
 	});
 	const dropped = row.actions.length - s.kept;
-	if (dropped) paras.push({ text: `⋯還有 ${dropped} 個動作`, weight: 700, color: 'muted' });
+	if (dropped) paras.push({ text: moreSkills(dropped), weight: 700, color: 'muted' });
 	return paras.flatMap((p) => wrap(p.text, px, p.weight, WIDTH, measure).map((text) => ({ ...p, text })));
 }
 
@@ -436,7 +439,8 @@ function layoutGrid(
 	const columnsH = y;
 	if (shown < blocks.length) {
 		overflow = true;
-		texts.push({ text: `⋯還有 ${blocks.length - shown} 行拍點`, x: LEFT, y: y + (lh - px) / 2, px, weight: 700, color: 'muted' });
+		const n = blocks.length - shown;
+		texts.push({ text: n === 1 ? m.video_more_cue_lines_one({ n }) : m.video_more_cue_lines({ n }), x: LEFT, y: y + (lh - px) / 2, px, weight: 700, color: 'muted' });
 		y += lh;
 	}
 	// 8 欄的格線先畫，現在這拍那一欄最後畫（框才不被旁邊蓋住），拍點畫在格線上面
@@ -466,7 +470,7 @@ function cueBlock(
 	const texts: TextItem[] = [];
 	const boxes: Box[] = [];
 	let split = false;
-	const name = wrap(actionLabel(line), px, 700, NAME_W, measure);
+	const name = wrap(whyText(actionWhy(line)), px, 700, NAME_W, measure);
 	name.forEach((text, i) => texts.push({ text, x: LEFT, y: i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
 	// 環節照流程核心排好的排（整個動作算一次，跟八拍表一樣），這個八拍空著的排照樣留一行（擠的時候不留）
 	const phases = Array.from({ length: Math.max(0, ...line.phases.map((p) => p.row + 1)) }, (_, row) =>

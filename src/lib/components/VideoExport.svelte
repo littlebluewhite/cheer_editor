@@ -5,13 +5,15 @@
 	// 取消、Esc、點背景都走 Modal 的關閉：中止編碼、丟掉做到一半的。
 	// 做好了以後 Esc、點背景不關：做了半天的影片不能一下就丟掉，只有「存檔」「關閉」關。
 	import { onDestroy } from 'svelte';
-	import { VIDEO_FPS, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
+	import { VIDEO_FPS, labelWhy, segmentSpans, videoDurationSec, videoFrames, type Flow, type GlobalRole } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { failureDetail } from '#lib/error-detail.js';
 	import { saveFailureReason, videoFileName } from '#lib/file/save.js';
 	import { canvasMeasure, drawFrame } from '#lib/video/draw.js';
 	import { layoutFrame, markerOverflowMembers, overflowEights, type Measure } from '#lib/video/layout.js';
 	import { failureReason } from '#lib/video/encoder.js';
+	import { m as t } from '#lib/paraglide/messages.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { mixClips, renderSoundtrack } from '#lib/video/soundtrack.js';
 	import Modal from './Modal.svelte';
 
@@ -73,11 +75,15 @@
 		const ids = mixClips(flow, (id) => editor.music.buffer(id) !== undefined).silentSegments;
 		return segmentSpans(flow)
 			.filter(({ segment }) => ids.includes(segment.id) && segment.kind === 'music')
-			.map(({ segment, label }) => {
+			.map((span) => {
+				const { segment } = span;
 				const name = segment.kind === 'music' && flow.audio.find((a) => a.id === segment.audioId)?.name;
-				return name ? `${label}「${name}」` : `${label}（還沒選音樂）`;
+				const label = whyText(labelWhy(span));
+				return name ? t.video_silent_named({ segment: label, name }) : t.video_silent_unpicked({ segment: label });
 			});
 	});
+	/** 一串名字接成一句（中文用「、」）。 */
+	const list = (parts: string[]) => parts.reduceRight((rest, first) => t.members_list({ first, rest }));
 
 	async function start() {
 		const snapshot = flow;
@@ -143,52 +149,52 @@
 	});
 </script>
 
-<Modal label="輸出影片" class="dialog video-dialog" onclose={close} beforeclose={() => step.kind !== 'done'}>
+<Modal label={t.video_title()} class="dialog video-dialog" onclose={close} beforeclose={() => step.kind !== 'done'}>
 	{#snippet children(closeModal)}
-		<header class="dialog-head"><h2>輸出影片</h2></header>
+		<header class="dialog-head"><h2>{t.video_title()}</h2></header>
 		{#if step.kind === 'checking'}
-			<p class="hint">看看這個瀏覽器能不能輸出影片⋯</p>
-			<div class="buttons"><button type="button" onclick={closeModal}>取消</button></div>
+			<p class="hint">{t.video_checking()}</p>
+			<div class="buttons"><button type="button" onclick={closeModal}>{t.video_cancel()}</button></div>
 		{:else if step.kind === 'unsupported'}
-			<p>這個瀏覽器不能輸出影片，請用電腦的 Chrome 或 Edge</p>
-			<div class="buttons"><button type="button" onclick={closeModal}>關閉</button></div>
+			<p>{t.video_unsupported()}</p>
+			<div class="buttons"><button type="button" onclick={closeModal}>{t.video_close()}</button></div>
 		{:else if step.kind === 'unloaded'}
-			<p>影片工具載不下來，請連上網路再試一次；還是不行，請重新整理頁面</p>
+			<p>{t.video_unloaded()}</p>
 			<div class="buttons">
-				<button type="button" onclick={closeModal}>關閉</button>
-				<button type="button" class="primary" onclick={check}>再試一次</button>
+				<button type="button" onclick={closeModal}>{t.video_close()}</button>
+				<button type="button" class="primary" onclick={check}>{t.video_retry()}</button>
 			</div>
 		{:else if step.kind === 'ready'}
-			<p>影片長 {duration}</p>
-			{#if overflow.length}<p class="warn">這幾個八拍有東西放不下，會縮成一行或拿掉：{overflow.join('、')}</p>{/if}
-			{#if cropped.length}<p class="warn">這幾個隊員的標記太長，影片裡會被切到：{cropped.join('、')}</p>{/if}
-			{#if silent.length}<p class="warn">這幾段找不到音樂，影片裡沒有聲音：{silent.join('、')}</p>{/if}
+			<p>{t.video_length({ duration })}</p>
+			{#if overflow.length}<p class="warn">{t.video_overflow({ eights: list(overflow) })}</p>{/if}
+			{#if cropped.length}<p class="warn">{t.video_cropped({ names: list(cropped) })}</p>{/if}
+			{#if silent.length}<p class="warn">{t.video_silent({ segments: list(silent) })}</p>{/if}
 			<div class="buttons">
-				<button type="button" onclick={closeModal}>取消</button>
-				<button type="button" class="primary" onclick={start}>開始</button>
+				<button type="button" onclick={closeModal}>{t.video_cancel()}</button>
+				<button type="button" class="primary" onclick={start}>{t.video_start()}</button>
 			</div>
 		{:else if step.kind === 'encoding'}
 			<progress max={step.frames} value={done}></progress>
-			<p>做到第 {done} 格／一共 {step.frames} 格</p>
-			<div class="buttons"><button type="button" onclick={closeModal}>取消</button></div>
+			<p>{t.video_progress({ done, total: step.frames })}</p>
+			<div class="buttons"><button type="button" onclick={closeModal}>{t.video_cancel()}</button></div>
 		{:else if step.kind === 'done'}
 			{@const { bytes, fileName } = step}
-			<p>做好了，{(bytes.length / 1024 / 1024).toFixed(1)} MB</p>
+			<p>{t.video_done({ size: (bytes.length / 1024 / 1024).toFixed(1) })}</p>
 			{#if saveError}
-				<p class="error">沒存成：{saveError.reason}</p>
+				<p class="error">{t.video_save_failed({ reason: saveError.reason })}</p>
 				{#if saveError.detail}<p class="detail">{saveError.detail}</p>{/if}
 			{/if}
 			<div class="buttons">
 				<!-- Modal 的關閉在做好了時被擋（Esc、點背景不關），這顆直接關 -->
-				<button type="button" onclick={close}>關閉</button>
-				<button type="button" class="primary" onclick={() => saveFile(bytes, fileName)}>存檔</button>
+				<button type="button" onclick={close}>{t.video_close()}</button>
+				<button type="button" class="primary" onclick={() => saveFile(bytes, fileName)}>{t.video_save()}</button>
 			</div>
 		{:else}
-			<p class="error">沒做成：{step.reason}</p>
+			<p class="error">{t.video_failed({ reason: step.reason })}</p>
 			{#if step.detail}<p class="detail">{step.detail}</p>{/if}
 			<div class="buttons">
-				<button type="button" onclick={closeModal}>關閉</button>
-				<button type="button" class="primary" onclick={start}>再試一次</button>
+				<button type="button" onclick={closeModal}>{t.video_close()}</button>
+				<button type="button" class="primary" onclick={start}>{t.video_retry()}</button>
 			</div>
 		{/if}
 	{/snippet}

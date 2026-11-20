@@ -4,7 +4,7 @@
 	// 印的時候只印這張表（見 +page.svelte 的 @media print）。列的內容都問流程核心。
 	import {
 		GLOBAL_ROLES,
-		actionLabel,
+		actionWhy,
 		charCount,
 		eightCountRows,
 		eightCountView,
@@ -13,6 +13,7 @@
 		type EightCountRow,
 		type Flow
 	} from '#lib/core';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
@@ -37,7 +38,7 @@
 	const roleChoices = $derived(
 		GLOBAL_ROLES.filter((r) => flow.members.some((m) => m.globalRole === r.key)).map((r) => ({
 			value: `role:${r.key}`,
-			label: `全部${whyText(r.label)}`
+			label: t.print_role_all({ role: whyText(r.label) })
 		}))
 	);
 	const valid = (c: string) =>
@@ -71,7 +72,7 @@
 		const lines = (text: string) => Math.ceil(charCount(text) / 18);
 		const text =
 			row.actions.reduce(
-				(h, a) => h + 20 * lines(`${whyText(a.at)}${actionLabel(a)}${whyText(a.who)}`) + 18 * lines(a.note),
+				(h, a) => h + 20 * lines(`${whyText(a.at)}${whyText(actionWhy(a))}${whyText(a.who)}`) + 18 * lines(a.note),
 				0
 			) +
 			20 * (row.continuing.length + row.walks.length);
@@ -79,19 +80,19 @@
 	}
 	function whoText(id: string): string {
 		const m = flow.members.find((m) => m.id === id);
-		if (!m) return '全隊';
+		if (!m) return t.eight_count_whole_team();
 		return flow.markers === 'initial'
-			? `${m.name}（場上寫「${markers[m.id]}」）`
-			: `${m.name}（場上 ${markers[m.id]} 號）`;
+			? t.print_who_initial({ name: m.name, marker: markers[m.id] })
+			: t.print_who_number({ name: m.name, marker: markers[m.id] });
 	}
 </script>
 
-<Modal label="八拍表" class="print-sheet" backdrop={false} {onclose}>
+<Modal label={t.print_title()} class="print-sheet" backdrop={false} {onclose}>
 	{#snippet children(close)}
 		<div class="toolbar">
-			<b class="tool-title">八拍表</b>
+			<b class="tool-title">{t.print_title()}</b>
 			<label>
-				印誰
+				{t.print_who()}
 				<select
 					value={validChoice}
 					onchange={(e) => {
@@ -99,7 +100,7 @@
 						saveFlowSetting('print', flow.name, choice);
 					}}
 				>
-					<option value="">全隊</option>
+					<option value="">{t.eight_count_whole_team()}</option>
 					{#each roleChoices as r (r.value)}
 						<option value={r.value}>{r.label}</option>
 					{/each}
@@ -108,53 +109,53 @@
 					{/each}
 				</select>
 			</label>
-			<span class="muted">用瀏覽器列印（{both(KEYS.print)}），也可以存成 PDF。</span>
+			<span class="muted">{t.print_hint({ keys: both(KEYS.print) })}</span>
 			<span class="grow"></span>
-			<button type="button" class="primary" onclick={print}><Icon name="print" />列印</button>
-			<button type="button" onclick={close}>關閉</button>
+			<button type="button" class="primary" onclick={print}><Icon name="print" />{t.print_print()}</button>
+			<button type="button" onclick={close}>{t.print_close()}</button>
 		</div>
 
 		{#each sheets as memberId (memberId)}
 			{@const rows = eightCountRows(flow, memberId || null)}
 			<div class="page">
-				<h1>{flow.name}　八拍表　{whoText(memberId)}</h1>
+				<h1>{t.print_heading({ routine: flow.name, who: whoText(memberId) })}</h1>
 				{#if !memberId}
-					<ul class="legend" aria-label="號碼和名字">
+					<ul class="legend" aria-label={t.print_legend()}>
 						{#each flow.members as m (m.id)}
 							<li><b>{markers[m.id]}</b> {m.name}</li>
 						{/each}
 					</ul>
 				{/if}
 				{#if !flow.actions.length}
-					<p class="empty" role="note">還沒有動作。到「編排」加了動作，這裡會一個八拍一列寫出誰在做什麼。</p>
+					<p class="empty" role="note">{t.print_empty()}</p>
 				{/if}
 				<table>
 					<thead>
-						<tr><th>段</th><th>八拍</th><th>開始（秒）</th><th>拍／動作</th><th>站位</th></tr>
+						<tr><th>{t.print_col_segment()}</th><th>{t.print_col_eight()}</th><th>{t.print_col_start()}</th><th>{t.print_col_actions()}</th><th>{t.print_col_formations()}</th></tr>
 					</thead>
 					{#each rows as row, i (i)}
 						<tbody class:keep={fitsPage(row)}>
 							<tr>
 								<td class="seg">{whyText(row.segmentWhy)}</td>
-								<td class="seg" class:eight={row.eight !== null}>{whyText(row.eightText)}</td>
-								<td class="num">{row.startSec.toFixed(1)}</td>
+								<td class="seg" class:eight={row.eight !== null} data-before={t.print_col_eight()}>{whyText(row.eightText)}</td>
+								<td class="num" data-before={t.print_card_start()} data-after={t.print_card_seconds()}>{row.startSec.toFixed(1)}</td>
 								<td class="actions">
 									{#each row.actions as a, j (j)}
 										<div class="action">
 											<b class="at">{whyText(a.at)}</b>
-											{actionLabel(a)}{#if a.who}：{whyText(a.who)}{/if}
+											{#if a.who}{t.print_action_who({ action: whyText(actionWhy(a)), who: whyText(a.who) })}{:else}{whyText(actionWhy(a))}{/if}
 											{#if a.note}<div class="note">{a.note}</div>{/if}
 										</div>
 									{/each}
 									{#each row.continuing as name, j (j)}
-										<div class="muted">↳ {whyText(name)} 繼續</div>
+										<div class="muted">{t.video_continuing({ name: whyText(name) })}</div>
 									{/each}
 									{#each row.walks as w, j (j)}
 										<div>{whyText(w)}</div>
 									{/each}
 									<!-- 什麼都沒有的八拍（手機上是一張卡）不留一條空白，像沒載入 -->
 									{#if !row.actions.length && !row.continuing.length && !row.walks.length && !row.formations.length && !row.cues.length}
-										<div class="muted">這幾拍{memberId ? memberName(flow, memberId) : ''}沒有動作，也不用走位</div>
+										<div class="muted">{memberId ? t.print_nothing_member({ name: memberName(flow, memberId) }) : t.print_nothing()}</div>
 									{/if}
 								</td>
 								<td class="formations">
@@ -361,14 +362,14 @@
 			padding-right: 10px;
 		}
 		.eight::before {
-			content: '八拍 ';
+			content: attr(data-before) ' ';
 		}
 		/* 口號段寫「整段 5.0 秒」：開始的秒數寫明是開始，兩個秒數才分得出來（N38） */
 		.num::before {
-			content: '開始 ';
+			content: attr(data-before) ' ';
 		}
 		.num::after {
-			content: ' 秒';
+			content: ' ' attr(data-after);
 		}
 		.actions,
 		.formations {
