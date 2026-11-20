@@ -6,6 +6,7 @@ import type { Action } from './action-types';
 import type { Flow } from './flow';
 import { isRandomId } from './ids';
 import { attemptProblem, perPerson, type Attempt } from './success-rate';
+import { said } from './why';
 
 /** 分開存的一次：記在哪個動作、那一次。 */
 export interface StoredAttempt {
@@ -64,7 +65,7 @@ export function checkRecord(flow: Flow, record: StoredAttempt): CheckedAttempt {
 	const kept =
 		marks.length + blanks.length === had ? attempt : { ...rest, marks: Object.fromEntries(marks), ...(blanks.length && { blanks }) };
 	const problem = attemptProblem(action, kept);
-	if (problem) return dropped(problem);
+	if (problem) return dropped(said(problem).message);
 	return { kind: 'ok', record: kept === attempt ? record : { actionId, attempt: kept } };
 }
 
