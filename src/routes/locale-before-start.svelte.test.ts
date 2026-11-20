@@ -46,6 +46,21 @@ describe('app.html 先挑語言', () => {
 		expect(r.hidden).toBe(r.locale !== 'zh-TW');
 	});
 
+	// 只有一種中文（台灣繁體）：瀏覽器是哪一種中文都用它，不要因為對不上 zh-TW 就變英文
+	it.each([
+		['沒存、瀏覽器寫 zh-Hant-TW', null, ['zh-Hant-TW', 'en-US'], 'zh-TW'],
+		['沒存、瀏覽器香港中文', null, ['zh-HK', 'en'], 'zh-TW'],
+		['沒存、瀏覽器簡體中文', null, ['zh-CN'], 'zh-TW'],
+		['沒存、瀏覽器只寫 zh', null, ['zh', 'en'], 'zh-TW'],
+		['存了還沒開放的日文、瀏覽器繁體中文', 'ja', ['zh-Hant-TW'], 'zh-TW'],
+		['英文排在中文前面：英文', null, ['en-US', 'zh-CN'], 'en']
+	])('%s：跟 Paraglide 一樣',(_name, saved, languages, expected) => {
+		const r = run(saved, languages);
+		expect(r.locale).toBe(expected);
+		expect(r.lang).toBe(LANG[expected]);
+		expect(r.hidden).toBe(expected !== 'zh-TW');
+	});
+
 	it('讀不到 localStorage 也不會壞', () => {
 		vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
 			throw new Error('denied');

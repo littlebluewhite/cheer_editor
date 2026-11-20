@@ -25,7 +25,16 @@
 					locale = pick(localStorage.getItem('PARAGLIDE_LOCALE'));
 				} catch (e) {}
 				var langs = navigator.languages || [];
-				for (var i = 0; !locale && i < langs.length; i++) locale = pick(langs[i]) || pick(langs[i].split('-')[0]);
+				for (var i = 0; !locale && i < langs.length; i++) {
+					locale = pick(langs[i]) || pick(langs[i].split('-')[0]);
+					// 哪一種中文（zh-Hant-TW、zh-HK、zh-CN…）都用台灣中文：存起來，Paraglide 先讀存的，兩邊才一樣
+					if (!locale && langs[i].split('-')[0].toLowerCase() === 'zh') {
+						locale = 'zh-TW';
+						try {
+							localStorage.setItem('PARAGLIDE_LOCALE', locale);
+						} catch (e) {}
+					}
+				}
 				if (locale && locale !== 'zh-TW') {
 					document.documentElement.lang = locale;
 					document.documentElement.dataset.localePending = '';

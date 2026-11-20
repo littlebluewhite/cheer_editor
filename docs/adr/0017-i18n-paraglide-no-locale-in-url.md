@@ -17,6 +17,7 @@
 - **流程檔不改。** 任務角色照樣存中文名（例：`"上層"`），只在畫面上換成對應語言；使用者自己取的名字照原樣顯示。
 - **日文先不開放。** `project.inlang/settings.json` 的 `locales` 先只有中文、英文；`ja.json` 跟著寫、測試會檢查句子一樣多。會日文的人看過之後才把 `ja` 加進去。
 - **不先閃中文。** 預先產生的頁面是中文，所以 `src/app.html` 最前面有一小段程式照 Paraglide 的順序先挑語言：改 `<html lang>`，不是中文就先藏起畫面，`+layout.svelte` 跑起來再顯示。它認得的語言要跟 `project.inlang` 一樣（有測試）。
+- **中文只有一種。** 瀏覽器是哪一種中文（`zh-Hant-TW`、`zh-HK`、`zh-CN`、`zh`）都用台灣中文，不會因為對不上 `zh-TW` 就變英文。這條規則寫在 `app.html` 那段小程式裡：它把 `zh-TW` 存起來，Paraglide 先讀存的，兩邊就一樣。
 - 第一次打開時，Paraglide 會把它挑到的語言存進這台瀏覽器；之後改瀏覽器語言不會跟著變，要用首頁右上角換。
 - 外掛從 `node_modules` 載入，不從 CDN 抓（Paraglide 預設的設定會在建置時去 jsdelivr 下載外掛）。
 - 測試的瀏覽器語言是英文，所以測試開始前固定設成中文（`src/svelte-warnings.setup.ts`）；要測英文的測試自己改。
