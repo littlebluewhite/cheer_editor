@@ -143,6 +143,24 @@ describe('用分享連結打開', () => {
 		expect(screen.getByRole('button', { name: '分享' })).toBeTruthy();
 	});
 
+	it('伺服器還沒回：顯示正在打開，不先跳首頁；拿到了直接是流程', async () => {
+		history.replaceState(null, '', '/#share=abc');
+		const fake = fakeServer({ users: [lin, wang], signedIn: null, flows: [wangsFlow({ link: 'abc' })] });
+		const real = fake.server.linkedFlow.bind(fake.server);
+		let answer!: () => void;
+		fake.server.linkedFlow = (token) => new Promise((done) => (answer = () => done(real(token))));
+		const page = editorPage(null, { server: fake.server });
+		render(Page, page.props);
+		await flush();
+		expect(screen.getByRole('status').textContent).toBe('正在打開分享的流程…');
+		expect(screen.queryByRole('heading', { name: /流程編輯器/ })).toBeNull();
+		answer();
+		await flush();
+		await flush();
+		expect(page.session.flow?.name).toBe('測試');
+		expect(screen.queryByText('正在打開分享的流程…')).toBeNull();
+	});
+
 	it('連結關掉、換掉了：首頁說打不開', async () => {
 		await visit('/#share=old', null, [wangsFlow({ link: 'abc' })]);
 		expect(screen.getByRole('alert').textContent).toBe('這個分享連結不能用了：可能已經關掉，或換了一條新的。');

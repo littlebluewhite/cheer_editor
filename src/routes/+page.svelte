@@ -279,10 +279,18 @@
 	}
 	/** 這次是從分享連結（網址 #share=…）打開的：回首頁時把網址上的連結拿掉，重新整理才不會又打開。 */
 	let fromLink = $state(false);
+	/** 分享連結的流程還在跟伺服器拿（流程、音樂）：先顯示「正在打開」，不先跳首頁。 */
+	let openingLink = $state(false);
 	onMount(() => {
+		// app.html 在程式跑起來之前先把畫面藏起來（免得閃一下首頁），這裡接手
+		delete document.documentElement.dataset.openingLink;
 		const token = shareTokenIn(location.hash);
 		if (!token) return;
-		void editor.file.openLink(token).then(() => (fromLink = true));
+		openingLink = true;
+		void editor.file
+			.openLink(token)
+			.then(() => (fromLink = true))
+			.finally(() => (openingLink = false));
 	});
 	$effect(() => {
 		if (!fromLink || flow) return;
@@ -1525,7 +1533,9 @@
 		{/if}
 		<p class="recent-note">草稿只存在這個瀏覽器裡。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
 	{/snippet}
-	{#if account}
+	{#if openingLink}
+		<p class="opening-link" role="status">正在打開分享的流程…</p>
+	{:else if account}
 		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->
 		<div class="home signed-in">
 			{#if editor.file.revoked}
@@ -3174,6 +3184,13 @@
 	}
 
 	/* ---------- 首頁 ---------- */
+	.opening-link {
+		min-height: 100dvh;
+		display: grid;
+		place-items: center;
+		margin: 0;
+		color: var(--muted);
+	}
 	.home {
 		position: relative;
 		min-height: 100dvh;
