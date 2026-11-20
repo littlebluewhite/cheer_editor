@@ -74,21 +74,28 @@ describe('任務角色', () => {
 		const flow = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
 		expect(addCustomRole(flow, { name: ' ', meaning: '' })).toEqual({
 			kind: 'blocked',
-			message: '請填任務角色名稱'
+			message: '請填任務角色名稱',
+			why: { code: 'roles_no_name' }
 		});
 		expect(addCustomRole(flow, { name: '丟人的', meaning: '' })).toEqual({
 			kind: 'blocked',
-			message: '已經有「丟人的」這個任務角色了'
+			message: '已經有「丟人的」這個任務角色了',
+			why: { code: 'roles_name_taken', name: '丟人的' }
 		});
-		expect(addCustomRole(flow, { name: '後保', meaning: '' }).kind).toBe('blocked');
+		expect(addCustomRole(flow, { name: '後保', meaning: '' })).toEqual({
+			kind: 'blocked',
+			message: '已經有「後保」這個任務角色了',
+			why: { code: 'roles_name_taken', name: '後保' }
+		});
 	});
 
 	it('名稱不能跟隊員同名（拍點的「給誰」才分得出是角色還是人）：加的時候和改名的時候都擋', () => {
 		let flow = flowOf(addMembers(empty(), [{ name: '小華', gender: 'F', globalRole: 'top' }]));
 		const message = '已經有叫「小華」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人';
-		expect(addCustomRole(flow, { name: ' 小華 ', meaning: '' })).toEqual({ kind: 'blocked', message });
+		const why = { code: 'roles_member_name_taken', name: '小華' };
+		expect(addCustomRole(flow, { name: ' 小華 ', meaning: '' })).toEqual({ kind: 'blocked', message, why });
 		flow = flowOf(addCustomRole(flow, { name: '丟人的', meaning: '' }));
-		expect(updateCustomRole(flow, 'r1', { name: '小華', meaning: '' })).toEqual({ kind: 'blocked', message });
+		expect(updateCustomRole(flow, 'r1', { name: '小華', meaning: '' })).toEqual({ kind: 'blocked', message, why });
 	});
 
 	it('名稱最多 8 個字：加的時候和改名的時候都擋；開檔進來就超過的，沒改名可以改意思', () => {
@@ -151,8 +158,16 @@ describe('改、刪自訂任務角色', () => {
 
 	it('改名不能空、不能跟別的角色重複；跟自己原本的名字一樣可以（只改意思）', () => {
 		let flow = flowOf(addCustomRole(used(), { name: '抬腳的', meaning: '' }));
-		expect(updateCustomRole(flow, 'r1', { name: ' ', meaning: '' })).toEqual({ kind: 'blocked', message: '請填任務角色名稱' });
-		expect(updateCustomRole(flow, 'r1', { name: '抬腳的', meaning: '' }).kind).toBe('blocked');
+		expect(updateCustomRole(flow, 'r1', { name: ' ', meaning: '' })).toEqual({
+			kind: 'blocked',
+			message: '請填任務角色名稱',
+			why: { code: 'roles_no_name' }
+		});
+		expect(updateCustomRole(flow, 'r1', { name: '抬腳的', meaning: '' })).toEqual({
+			kind: 'blocked',
+			message: '已經有「抬腳的」這個任務角色了',
+			why: { code: 'roles_name_taken', name: '抬腳的' }
+		});
 		expect(updateCustomRole(flow, 'r1', { name: '主底', meaning: '' }).kind).toBe('blocked');
 		flow = flowOf(updateCustomRole(flow, 'r1', { name: '丟人的', meaning: '新的意思' }));
 		expect(flow.customRoles[0].meaning).toBe('新的意思');
@@ -168,6 +183,7 @@ describe('改、刪自訂任務角色', () => {
 		expect(r).toEqual({
 			kind: 'confirm',
 			message: '「丟人的」用在 1 個動作裡：刪掉後那些人變成沒有任務，給「丟人的」的拍點也會刪掉',
+			why: { code: 'roles_delete_used_one', name: '丟人的', count: 1 },
 			items: ['金字塔·收尾']
 		});
 		const flow = flowOf(deleteCustomRole(used(), 'r1', { confirmed: true }));
@@ -176,9 +192,29 @@ describe('改、刪自訂任務角色', () => {
 		expect(flow.actions[0].cues!.map((c) => c.word)).toEqual(['上']);
 	});
 
+	it('用在好幾個動作裡：一樣先問，寫幾個動作', () => {
+		const flow = flowOf(
+			addAction(used(), {
+				segmentId: 's1',
+				category: 'stunt',
+				name: '托',
+				start: 8,
+				length: 8,
+				note: '',
+				members: [{ memberId: 'm1', role: '丟人的' }]
+			})
+		);
+		expect(deleteCustomRole(flow, 'r1')).toMatchObject({
+			kind: 'confirm',
+			message: '「丟人的」用在 2 個動作裡：刪掉後那些人變成沒有任務，給「丟人的」的拍點也會刪掉',
+			why: { code: 'roles_delete_used', name: '丟人的', count: 2 }
+		});
+	});
+
 	it('找不到角色就擋下', () => {
-		expect(deleteCustomRole(empty(), 'r9').kind).toBe('blocked');
-		expect(updateCustomRole(empty(), 'r9', { name: '甲', meaning: '' }).kind).toBe('blocked');
+		const notFound = { kind: 'blocked', message: '找不到這個任務角色', why: { code: 'roles_not_found' } };
+		expect(deleteCustomRole(empty(), 'r9')).toEqual(notFound);
+		expect(updateCustomRole(empty(), 'r9', { name: '甲', meaning: '' })).toEqual(notFound);
 	});
 });
 

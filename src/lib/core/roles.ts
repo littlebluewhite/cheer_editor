@@ -7,6 +7,7 @@ import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } fro
 import { newId } from './ids';
 import type { GlobalRole } from './members';
 import { tooLong } from './text-length';
+import type { Why } from './why';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
 export interface CustomRole {
@@ -66,10 +67,10 @@ const ROLE_KEYS = '1234567890qwertyuiop';
 /** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複、不能跟隊員同名。 */
 export function addCustomRole(flow: Flow, input: { name: string; meaning: string }): CommandResult {
 	const name = input.name.trim();
-	if (!name) return blocked('請填任務角色名稱');
+	if (!name) return blocked({ code: 'roles_no_name' });
 	const tooLongName = tooLong('roleName', name);
 	if (tooLongName) return blocked(tooLongName);
-	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個任務角色了`);
+	if (roleGlossary(flow).some((r) => r.name === name)) return blocked({ code: 'roles_name_taken', name });
 	if (isMemberName(flow, name)) return blocked(memberNameTaken(name));
 	const id = newId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
@@ -82,13 +83,13 @@ export function addCustomRole(flow: Flow, input: { name: string; meaning: string
  */
 export function updateCustomRole(flow: Flow, id: string, input: { name: string; meaning: string }): CommandResult {
 	const old = flow.customRoles.find((r) => r.id === id);
-	if (!old) return blocked('找不到這個任務角色');
+	if (!old) return blocked({ code: 'roles_not_found' });
 	const name = input.name.trim();
-	if (!name) return blocked('請填任務角色名稱');
+	if (!name) return blocked({ code: 'roles_no_name' });
 	const tooLongName = tooLong('roleName', name, old.name);
 	if (tooLongName) return blocked(tooLongName);
 	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
-		return blocked(`已經有「${name}」這個任務角色了`);
+		return blocked({ code: 'roles_name_taken', name });
 	}
 	if (name !== old.name && isMemberName(flow, name)) return blocked(memberNameTaken(name));
 	const role = { id, name, meaning: input.meaning.trim() };
@@ -107,13 +108,11 @@ export function updateCustomRole(flow: Flow, id: string, input: { name: string; 
  */
 export function deleteCustomRole(flow: Flow, id: string, option: ConfirmOption = {}): CommandResult {
 	const role = flow.customRoles.find((r) => r.id === id);
-	if (!role) return blocked('找不到這個任務角色');
+	if (!role) return blocked({ code: 'roles_not_found' });
 	const using = flow.actions.filter((a) => a.members.some((m) => m.role === role.name));
 	if (using.length && !option.confirmed) {
-		return needsConfirm(
-			`「${role.name}」用在 ${using.length} 個動作裡：刪掉後那些人變成沒有任務，給「${role.name}」的拍點也會刪掉`,
-			using.map(actionLabel)
-		);
+		const code = using.length === 1 ? 'roles_delete_used_one' : 'roles_delete_used';
+		return needsConfirm({ code, name: role.name, count: using.length }, using.map(actionLabel));
 	}
 	const actions = flow.actions.map((a) => ({
 		...a,
@@ -128,8 +127,8 @@ function isMemberName(flow: Flow, name: string): boolean {
 	return flow.members.some((m) => m.name === name);
 }
 
-function memberNameTaken(name: string): string {
-	return `已經有叫「${name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人`;
+function memberNameTaken(name: string): Why {
+	return { code: 'roles_member_name_taken', name };
 }
 
 /** 名詞對照表：固定的 13 個在前，這支流程的自訂角色接在後面。 */

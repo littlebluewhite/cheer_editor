@@ -54,5 +54,11 @@
 	"cues_member_not_in_action": "This athlete isn't in the skill",
 	"cues_no_action": "Can't find this skill",
 	"cues_nothing_copied": "No cues copied",
-	"cues_paste_blocked": "Can't paste: {reason}"
+	"cues_paste_blocked": "Can't paste: {reason}",
+	"roles_no_name": "Enter a position name",
+	"roles_name_taken": "There's already a position called “{name}”",
+	"roles_member_name_taken": "There's already an athlete called “{name}”. Give the position another name so a cue's “for” can tell a position from an athlete",
+	"roles_not_found": "Can't find this position",
+	"roles_delete_used_one": "“{name}” is used in {count} skill: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too",
+	"roles_delete_used": "“{name}” is used in {count} skills: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too"
 }

@@ -64,7 +64,14 @@ const ZH = {
 	cues_member_not_in_action: '這個隊員不在動作裡',
 	cues_no_action: '找不到這個動作',
 	cues_nothing_copied: '沒有複製的拍點',
-	cues_paste_blocked: '貼不下：{reason}'
+	cues_paste_blocked: '貼不下：{reason}',
+	// roles.ts
+	roles_no_name: '請填任務角色名稱',
+	roles_name_taken: '已經有「{name}」這個任務角色了',
+	roles_member_name_taken: '已經有叫「{name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人',
+	roles_not_found: '找不到這個任務角色',
+	roles_delete_used_one: '「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉',
+	roles_delete_used: '「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;
