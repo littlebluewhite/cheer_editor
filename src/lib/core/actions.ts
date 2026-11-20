@@ -17,7 +17,7 @@ import type { Member } from './members';
 import { memberName, type Flow } from './flow';
 import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
-import { said } from './why';
+import { said, type Why } from './why';
 import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf, withSquadOrder } from './success-rate';
 import { newId } from './ids';
@@ -180,7 +180,7 @@ export function setSquad(
 /** 檢查動作、收尾：大類、段、時間、拍點先檢查，再收尾（成功率規則在裡面），最後檢查人。 */
 function checked(flow: Flow, before: Action | undefined, action: Action, options: ConfirmOption): Settled {
 	const shape = textProblem(before, action) ?? shapeProblem(flow, action);
-	if (shape) return { kind: 'blocked', message: shape };
+	if (shape) return { kind: 'blocked', ...said(shape) };
 	const settled = settle(flow, before, action, options);
 	if (settled.kind === 'blocked') return settled;
 	const people = peopleProblem(flow, settled.action);
@@ -188,7 +188,7 @@ function checked(flow: Flow, before: Action | undefined, action: Action, options
 }
 
 /** 名稱、備註太長；開檔進來就超過上限的照收，改了不能更長（N08）。 */
-function textProblem(before: Action | undefined, action: Action): string | null {
+function textProblem(before: Action | undefined, action: Action): string | Why | null {
 	return tooLong('actionName', action.name, before?.name) ?? tooLong('note', action.note, before?.note);
 }
 

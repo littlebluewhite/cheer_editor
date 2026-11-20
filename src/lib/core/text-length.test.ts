@@ -5,7 +5,8 @@ import { renameFlow } from './flow';
 import { moveMembers, renameFormation } from './formation';
 import { updateMember } from './members';
 import { updateCustomRole } from './roles';
-import { tooLong } from './text-length';
+import { tooLong, type LimitedText } from './text-length';
+import { zh } from './why';
 import { flowOf, libSample } from '#lib/test-flows.js';
 
 const chars = (n: number) => '字'.repeat(n);
@@ -28,11 +29,29 @@ describe('tooLong：舊的字可以超過，改了不能更長', () => {
 
 	it('沒給原本的字（新加的）：照上限', () => {
 		expect(tooLong('memberName', chars(20))).toBeNull();
-		expect(tooLong('memberName', chars(21))).toBe('隊員名字最多 20 個字');
+		expect(tooLong('memberName', chars(21))).toEqual({
+			code: 'text_length_too_long',
+			field: { code: 'text_length_member_name' },
+			max: 20
+		});
 	});
 
 	it('舊檔超過、再變長：訊息說原本就超過、不能再長', () => {
-		expect(tooLong('memberName', chars(26), chars(25))).toBe('隊員名字最多 20 個字（原本就有 25 個字，不能再變長）');
+		const why = tooLong('memberName', chars(26), chars(25));
+		expect(why).toEqual({ code: 'text_length_too_long_kept', field: { code: 'text_length_member_name' }, max: 20, count: 25 });
+		expect(why && zh(why)).toBe('隊員名字最多 20 個字（原本就有 25 個字，不能再變長）');
+	});
+
+	it.each<[LimitedText, number, string]>([
+		['flowName', 40, '流程名字最多 40 個字'],
+		['memberName', 20, '隊員名字最多 20 個字'],
+		['actionName', 20, '動作名稱最多 20 個字'],
+		['formationName', 20, '站位名稱最多 20 個字'],
+		['roleName', 8, '任務角色名稱最多 8 個字'],
+		['note', 200, '備註最多 200 個字']
+	])('%s 太長：中文照舊', (field, max, text) => {
+		const why = tooLong(field, chars(max + 1));
+		expect(why && zh(why)).toBe(text);
 	});
 });
 

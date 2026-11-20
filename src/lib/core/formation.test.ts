@@ -190,7 +190,11 @@ describe('站位名稱', () => {
 
 	it('名稱最多 20 個字，超過就擋下', () => {
 		expect(okFlow(renameFormation(walking(), 'f2', '字'.repeat(20))).formations[1].name).toBe('字'.repeat(20));
-		expect(renameFormation(walking(), 'f2', '字'.repeat(21))).toEqual({ kind: 'blocked', message: '站位名稱最多 20 個字' });
+		expect(renameFormation(walking(), 'f2', '字'.repeat(21))).toEqual({
+			kind: 'blocked',
+			message: '站位名稱最多 20 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_formation_name' }, max: 20 }
+		});
 	});
 
 	it('找不到站位：擋下', () => {
