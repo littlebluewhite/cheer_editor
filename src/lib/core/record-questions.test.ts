@@ -102,6 +102,13 @@ describe('刪動作', () => {
 		expect(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 })).toEqual({
 			kind: 'confirm',
 			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'segment_shrink_records',
+				segment: { code: 'time_segment_music', n: 1 },
+				what: { code: 'segment_shrink_both' },
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 3 } },
+				undoable: { code: 'records_undoable' }
+			},
 			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）'],
 			confirmLabel: '確定刪除'
 		});
@@ -126,6 +133,11 @@ describe('刪動作', () => {
 		expect(r.kind === 'confirm' && r.message).toBe(
 			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來）'
 		);
+		expect(r.kind === 'confirm' && r.why).toMatchObject({
+			code: 'segment_shrink_records',
+			lost: { code: 'records_loss_both', reps: { code: 'records_reps', n: 2 }, marks: { code: 'records_marks_one', n: 1 } },
+			undoable: { code: 'records_undoable' }
+		});
 	});
 
 	it('段縮短：只剩空著的環節的那一次整筆不見，另一次少了記號，兩個次數都照真的算（N26）', () => {

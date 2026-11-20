@@ -105,6 +105,7 @@ describe('段縮短', () => {
 		expect(updateSegment(flow, 's1', { eights: 1, lastBeats: 6 })).toEqual({
 			kind: 'confirm',
 			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_music', n: 1 }, what: { code: 'segment_shrink_both' } },
 			items: [
 				'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍',
 				'刪掉：動作「跳躍·T」（3-1 起）',
@@ -119,15 +120,32 @@ describe('段縮短', () => {
 	it('只會裁短、沒有要刪的：訊息不寫「刪掉」，確定鈕寫「確定裁短」（N19）', () => {
 		// libSample：Lib 1-1 到 1-8；只剩 6 拍就裁短 Lib，沒有東西在段外
 		const r = updateSegment(libSample(), 's1', { eights: 1, lastBeats: 6 });
-		expect(r).toMatchObject({ kind: 'confirm', message: '音樂 1 縮短後，超出段尾的動作裁短到段尾', confirmLabel: '確定裁短' });
+		expect(r).toMatchObject({
+			kind: 'confirm',
+			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_music', n: 1 }, what: { code: 'segment_shrink_trim' } },
+			confirmLabel: '確定裁短'
+		});
 	});
 
 	it('只會刪掉：訊息只寫刪掉；裁短又刪掉：兩樣都寫；確定鈕都寫「確定刪除」（N19）', () => {
 		expect(updateSegment(sample(), 's1', { eights: 3, lastBeats: 8 })).toMatchObject({
 			message: '音樂 1 縮短後，放不進段裡的刪掉',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_music', n: 1 }, what: { code: 'segment_shrink_drop' } },
 			confirmLabel: '確定刪除'
 		});
 		expect(updateSegment(sample(), 's1', { eights: 1, lastBeats: 6 })).toMatchObject({ confirmLabel: '確定刪除' });
+	});
+
+	it('裁短的動作改不了（例：存著不認得的大類）：擋下，說是哪個動作、為什麼', () => {
+		const flow = sample();
+		const bad = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, category: 'bogus' } : a)) } as Flow;
+		const r = updateSegment(bad, 's1', { eights: 1, lastBeats: 6 });
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: '動作「·Lib」裁短後：請選大類',
+			why: { code: 'segment_trim_blocked', action: '·Lib', reason: { code: 'actions_pick_category' } }
+		});
 	});
 
 	it('帶「已確認」再送一次：跨出段尾的動作只留到段尾，在段外的動作和站位刪掉，其他不動', () => {
@@ -185,6 +203,7 @@ describe('段縮短', () => {
 		expect(updateSegment(flow, 's2', { seconds: 5 })).toMatchObject({
 			kind: 'confirm',
 			message: '口號 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_chant', n: 1 }, what: { code: 'segment_shrink_both' } },
 			// 口號段的時間寫「秒」（T11）
 			items: ['裁短：動作「舞蹈」（3.0 秒起）5.0 秒 → 2.0 秒', '刪掉：站位 4（7.0 秒）']
 		});

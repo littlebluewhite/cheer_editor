@@ -10,9 +10,9 @@ import { phaseFalloutText } from './phase-beats';
 import { recordsLoss, recordsLossText } from './records';
 import { cueFalloutText } from './settle';
 import { recordCount } from './success-rate';
-import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atTextWithUnit, fromText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
-import { zh } from './why';
+import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
+import { atTextWithUnit, fromText, labelWhy, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
+import type { Said, Why } from './why';
 
 export interface MusicSegment {
 	id: string;
@@ -73,7 +73,7 @@ export function musicLength(segment: MusicSegment): MusicLength {
  * 段的長度合不合上限：音樂段 1 到 MAX_EIGHTS 個八拍（最後一個八拍 1 到 8 拍），口號段 0.1 到 MAX_CHANT_SEC 秒。
  * 改段的指令和讀流程檔都照這一份擋（音樂段給 musicLength）。回第一個不合的原因，合就是 null。
  */
-export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>): string | null {
+export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>): Why | null {
 	if ('tenths' in length) {
 		const { tenths } = length;
 		return tenths >= 1 && tenths <= MAX_CHANT_SEC * 10 ? null : OUT_OF_RANGE.seconds;
@@ -81,9 +81,9 @@ export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>
 	const { eights, lastBeats } = length;
 	// 兩格各說各的：教練才知道是哪一格錯。
 	if (!(eights >= 1 && eights <= MAX_EIGHTS)) return OUT_OF_RANGE.eights;
-	if (!Number.isInteger(eights)) return '八拍數要是整數';
+	if (!Number.isInteger(eights)) return { code: 'segment_eights_integer' };
 	if (!(lastBeats >= 1 && lastBeats <= 8)) return OUT_OF_RANGE.lastBeats;
-	if (!Number.isInteger(lastBeats)) return '最後一個八拍的拍數要是整數';
+	if (!Number.isInteger(lastBeats)) return { code: 'segment_last_beats_integer' };
 	return null;
 }
 
@@ -91,9 +91,9 @@ export function lengthProblem(length: MusicLength | Pick<ChantSegment, 'tenths'>
  * 流程檔裡一段的長度合不合上限（開檔時擋）：照 lengthProblem，但音樂段說整段的範圍
  * （改段時八拍數、最後一個八拍分兩格說；檔案裡只有一個長度）。合就是 null。
  */
-export function fileLengthProblem(segment: Segment): string | null {
+export function fileLengthProblem(segment: Segment): Why | null {
 	if (segment.kind === 'chant') return lengthProblem(segment);
-	return lengthProblem(musicLength(segment)) ? `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間` : null;
+	return lengthProblem(musicLength(segment)) ? { code: 'segment_file_music_range', max: MAX_EIGHTS } : null;
 }
 
 export interface BeatTiming {
@@ -117,12 +117,12 @@ function musicLengthFromAudio(input: BeatTiming & { durationSec: number }): Musi
 export type AudioLengths = Readonly<Record<string, number | null>>;
 
 /** 音樂檔壞了（解不開）：段設定的音樂檔那一行也寫這一句。 */
-export const BROKEN_AUDIO = '音樂檔壞了，請重新選檔';
+export const BROKEN_AUDIO: Why = { code: 'segment_audio_broken' };
 
 /** 第一拍要在音樂結束之前：知道音樂多長才擋（壞了、手上沒有就不擋）。 */
-function pastEnd(firstBeatSec: number, durationSec: number | null | undefined): string | null {
+function pastEnd(firstBeatSec: number, durationSec: number | null | undefined): Why | null {
 	return durationSec != null && firstBeatSec >= durationSec
-		? `第一拍要在音樂結束（${durationSec.toFixed(1)} 秒）之前`
+		? { code: 'segment_first_beat_past_end', end: { code: 'time_seconds', n: durationSec.toFixed(1) } }
 		: null;
 }
 
@@ -134,15 +134,15 @@ export function fitSegmentToAudio(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const segment = flow.segments.find((s) => s.id === segmentId);
-	if (!segment) return blocked('找不到這一段');
-	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
+	if (!segment) return blocked({ code: 'segment_no_segment' });
+	if (segment.kind !== 'music') return blocked({ code: 'segment_chant_no_audio' });
 	const durationSec = segment.audioId === null ? undefined : lengths[segment.audioId];
 	if (durationSec === null) return blocked(BROKEN_AUDIO);
-	if (durationSec === undefined) return blocked('先載入音樂檔');
+	if (durationSec === undefined) return blocked({ code: 'segment_load_audio_first' });
 	const late = pastEnd(segment.firstBeatSec, durationSec);
 	if (late) return blocked(late);
 	const length = musicLengthFromAudio({ ...segment, durationSec });
-	if (!length) return blocked('第一拍之後剩下不到一拍');
+	if (!length) return blocked({ code: 'segment_under_one_beat' });
 	return updateSegment(flow, segmentId, length, options);
 }
 
@@ -182,12 +182,12 @@ export interface SegmentPatch {
 export type SegmentNumberField = 'bpm' | 'firstBeatSec' | 'eights' | 'lastBeats' | 'seconds';
 
 /** 每個數字欄位超出範圍時說的話（說能填的範圍）；看不懂也說這一句。 */
-export const OUT_OF_RANGE: Record<SegmentNumberField, string> = {
-	bpm: `BPM 要在 ${MIN_BPM} 到 ${MAX_BPM} 之間`,
-	firstBeatSec: '第一拍要是 0 秒以上',
-	eights: `八拍數要在 1 到 ${MAX_EIGHTS} 之間`,
-	lastBeats: '最後一個八拍的拍數要在 1 到 8 之間',
-	seconds: `口號段長度要在 0.1 到 ${MAX_CHANT_SEC} 秒之間`
+export const OUT_OF_RANGE: Record<SegmentNumberField, Why> = {
+	bpm: { code: 'segment_bpm_range', min: MIN_BPM, max: MAX_BPM },
+	firstBeatSec: { code: 'segment_first_beat_range' },
+	eights: { code: 'segment_eights_range', max: MAX_EIGHTS },
+	lastBeats: { code: 'segment_last_beats_range' },
+	seconds: { code: 'segment_seconds_range', max: MAX_CHANT_SEC }
 };
 
 /**
@@ -214,7 +214,7 @@ export function updateSegment(
 	lengths: AudioLengths = {}
 ): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
-	if (index === -1) return blocked('找不到這一段');
+	if (index === -1) return blocked({ code: 'segment_no_segment' });
 	const old = flow.segments[index];
 	let next: Segment;
 	if (old.kind === 'music') {
@@ -238,7 +238,7 @@ export function updateSegment(
 		const { eights, lastBeats } = length;
 		const halfBeats = ((eights - 1) * 8 + lastBeats) * 2;
 		if (audioId !== null && !flow.audio.some((a) => a.id === audioId)) {
-			return blocked('找不到這個音樂檔');
+			return blocked({ code: 'segment_no_audio' });
 		}
 		next = { ...old, audioId, bpm, firstBeatSec, halfBeats };
 	} else {
@@ -265,21 +265,22 @@ export function updateSegment(
 	let marks = 0;
 	for (const a of trimmed) {
 		const cut = trimAction(result, a, end - a.start);
-		if (cut.kind === 'blocked') return blocked(`動作「${actionLabel(a)}」裁短後：${cut.message}`);
+		if (cut.kind === 'blocked') return blocked({ code: 'segment_trim_blocked', action: actionLabel(a), reason: cut.why ?? cut.message });
 		result = cut.flow;
 		records += cut.records;
 		marks += cut.marks;
 		trimItems.push(cut.item);
 	}
 	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
-		const label = segmentSpans(flow)[index].label;
+		const segment = labelWhy(segmentSpans(flow)[index]);
 		const lost = recordsLossText(records, marks);
-		const cleared = lost ? `，會${zh(lost)}${RECORDS_UNDOABLE}` : '';
 		// 只裁短、沒有要刪的：不寫刪掉，確定鈕寫「確定裁短」（N19）
 		const drops = droppedActions.length + droppedFormations.length > 0;
-		const what = [trimmed.length && '超出段尾的動作裁短到段尾', drops && '放不進段裡的刪掉'].filter(Boolean).join('，');
+		const what: Why = { code: !drops ? 'segment_shrink_trim' : trimmed.length ? 'segment_shrink_both' : 'segment_shrink_drop' };
 		return needsConfirm(
-			`${label} 縮短後，${what}${cleared}`,
+			lost
+				? { code: 'segment_shrink_records', segment, what, lost, undoable: RECORDS_UNDOABLE_WHY }
+				: { code: 'segment_shrink', segment, what },
 			[
 				...trimItems,
 				...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
@@ -299,7 +300,7 @@ function trimAction(
 	flow: Flow,
 	before: Action,
 	length: number
-): { kind: 'ok'; flow: Flow; item: string; records: number; marks: number } | { kind: 'blocked'; message: string } {
+): { kind: 'ok'; flow: Flow; item: string; records: number; marks: number } | ({ kind: 'blocked' } & Said) {
 	const segment = flow.segments.find((s) => s.id === before.segmentId)!;
 	const r = changeAction(flow, before.id, { length }, { confirmed: true });
 	if (r.kind !== 'ok') return r;
@@ -331,10 +332,11 @@ export function loadSegmentAudio(
 	heldIds: readonly string[] = []
 ): CommandResult<{ audioId: string }> {
 	const segment = flow.segments.find((s) => s.id === segmentId);
-	if (!segment) return blocked('找不到這一段');
-	if (segment.kind !== 'music') return blocked('口號段沒有音樂');
+	if (!segment) return blocked({ code: 'segment_no_segment' });
+	if (segment.kind !== 'music') return blocked({ code: 'segment_chant_no_audio' });
 	const ext = audioExtension(fileName);
-	if (!ext) return blocked(`只能載入 ${AUDIO_EXTENSIONS.join('、')}`);
+	// 句子裡直接寫 mp3、m4a、wav（各語言的標點不同），跟 AUDIO_EXTENSIONS 一樣（有測試）。
+	if (!ext) return blocked({ code: 'segment_audio_types' });
 	const id = newId('a', [...flow.audio.map((a) => a.id), ...heldIds]);
 	const audio = [...flow.audio, { id, file: `audio/${id}.${ext}`, name: fileName }];
 	const r = updateSegment({ ...flow, audio }, segmentId, { audioId: id });
@@ -419,7 +421,7 @@ export function addSegment(
 	tenths = DEFAULT_CHANT_TENTHS
 ): CommandResult<{ id: string }> {
 	const after = afterId === undefined ? flow.segments.length - 1 : flow.segments.findIndex((s) => s.id === afterId);
-	if (afterId !== undefined && after === -1) return blocked('找不到這一段');
+	if (afterId !== undefined && after === -1) return blocked({ code: 'segment_no_segment' });
 	const index = after + 1;
 	const id = newId('s', flow.segments.map((s) => s.id));
 	const segment: Segment =

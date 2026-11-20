@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	AUDIO_EXTENSIONS,
 	addSegment,
 	audioOverlaps,
 	beatLines,
@@ -13,6 +14,9 @@ import {
 	type MusicSegment
 } from './index';
 import { flowOf } from '../test-flows';
+
+/** 找不到段：加段、改段、照音樂長度算、載入音樂檔都說這一句。 */
+const missing = { kind: 'blocked', message: '找不到這一段', why: { code: 'segment_no_segment' } };
 
 const newFlow = () =>
 	flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
@@ -48,7 +52,7 @@ describe('加段', () => {
 	});
 
 	it('指定的段找不到就擋下', () => {
-		expect(addSegment(flowOf(addSegment(newFlow(), 'music')), 'chant', 's9').kind).toBe('blocked');
+		expect(addSegment(flowOf(addSegment(newFlow(), 'music')), 'chant', 's9')).toEqual(missing);
 	});
 });
 
@@ -63,7 +67,8 @@ describe('改音樂段', () => {
 	it.each([59, 171, -5, Number.NaN])('BPM %s 不在 60 到 170 就擋下，訊息寫範圍', (bpm) => {
 		expect(updateSegment(withMusic(), 's1', { bpm })).toEqual({
 			kind: 'blocked',
-			message: 'BPM 要在 60 到 170 之間'
+			message: 'BPM 要在 60 到 170 之間',
+			why: { code: 'segment_bpm_range', min: 60, max: 170 }
 		});
 	});
 
@@ -80,7 +85,8 @@ describe('改音樂段', () => {
 	it('第一拍不能是負的', () => {
 		expect(updateSegment(withMusic(), 's1', { firstBeatSec: -0.1 })).toEqual({
 			kind: 'blocked',
-			message: '第一拍要是 0 秒以上'
+			message: '第一拍要是 0 秒以上',
+			why: { code: 'segment_first_beat_range' }
 		});
 	});
 
@@ -94,7 +100,8 @@ describe('改音樂段', () => {
 	it.each([0, -3, 201, 50000, Number.NaN])('八拍數 %s 不在 1 到 200 就擋下，訊息寫範圍', (eights) => {
 		expect(updateSegment(withMusic(), 's1', { eights })).toEqual({
 			kind: 'blocked',
-			message: '八拍數要在 1 到 200 之間'
+			message: '八拍數要在 1 到 200 之間',
+			why: { code: 'segment_eights_range', max: 200 }
 		});
 	});
 
@@ -106,7 +113,8 @@ describe('改音樂段', () => {
 	it('八拍數要是整數', () => {
 		expect(updateSegment(withMusic(), 's1', { eights: 1.5 })).toEqual({
 			kind: 'blocked',
-			message: '八拍數要是整數'
+			message: '八拍數要是整數',
+			why: { code: 'segment_eights_integer' }
 		});
 	});
 
@@ -119,14 +127,16 @@ describe('改音樂段', () => {
 	it.each([0, -1, 9, Number.NaN])('最後一個八拍 %s 拍不合理就擋下，訊息只講這一格', (lastBeats) => {
 		expect(updateSegment(withMusic(), 's1', { lastBeats })).toEqual({
 			kind: 'blocked',
-			message: '最後一個八拍的拍數要在 1 到 8 之間'
+			message: '最後一個八拍的拍數要在 1 到 8 之間',
+			why: { code: 'segment_last_beats_range' }
 		});
 	});
 
 	it('最後一個八拍打 4.5：說要整數，不說要在 1 到 8 之間（T10）', () => {
 		expect(updateSegment(withMusic(), 's1', { lastBeats: 4.5 })).toEqual({
 			kind: 'blocked',
-			message: '最後一個八拍的拍數要是整數'
+			message: '最後一個八拍的拍數要是整數',
+			why: { code: 'segment_last_beats_integer' }
 		});
 	});
 });
@@ -140,14 +150,14 @@ describe('段設定欄位裡打的數字', () => {
 	});
 
 	it.each([
-		['bpm', 'BPM 要在 60 到 170 之間'],
-		['firstBeatSec', '第一拍要是 0 秒以上'],
-		['eights', '八拍數要在 1 到 200 之間'],
-		['lastBeats', '最後一個八拍的拍數要在 1 到 8 之間'],
-		['seconds', '口號段長度要在 0.1 到 300 秒之間']
-	] as const)('%s 空白、看不懂就擋下，訊息跟超出範圍一樣寫能填的範圍', (field, message) => {
-		expect(readSegmentNumber(field, '')).toEqual({ kind: 'blocked', message });
-		expect(readSegmentNumber(field, 'abc')).toEqual({ kind: 'blocked', message });
+		['bpm', 'BPM 要在 60 到 170 之間', { code: 'segment_bpm_range', min: 60, max: 170 }],
+		['firstBeatSec', '第一拍要是 0 秒以上', { code: 'segment_first_beat_range' }],
+		['eights', '八拍數要在 1 到 200 之間', { code: 'segment_eights_range', max: 200 }],
+		['lastBeats', '最後一個八拍的拍數要在 1 到 8 之間', { code: 'segment_last_beats_range' }],
+		['seconds', '口號段長度要在 0.1 到 300 秒之間', { code: 'segment_seconds_range', max: 300 }]
+	] as const)('%s 空白、看不懂就擋下，訊息跟超出範圍一樣寫能填的範圍', (field, message, why) => {
+		expect(readSegmentNumber(field, '')).toEqual({ kind: 'blocked', message, why });
+		expect(readSegmentNumber(field, 'abc')).toEqual({ kind: 'blocked', message, why });
 	});
 });
 
@@ -174,7 +184,8 @@ describe('照音樂長度算（音樂多長由音樂檔庫給）', () => {
 		// 30 秒的檔、第一拍 29.9：150 BPM 一拍 0.4 秒
 		expect(fitSegmentToAudio(withMusic(29.9), 's1', { a1: 30 })).toEqual({
 			kind: 'blocked',
-			message: '第一拍之後剩下不到一拍'
+			message: '第一拍之後剩下不到一拍',
+			why: { code: 'segment_under_one_beat' }
 		});
 	});
 
@@ -191,25 +202,29 @@ describe('照音樂長度算（音樂多長由音樂檔庫給）', () => {
 		// 30 分鐘 × 170 BPM = 5100 拍
 		expect(fitSegmentToAudio(withMusic(0, 170), 's1', { a1: 1800 })).toEqual({
 			kind: 'blocked',
-			message: '八拍數要在 1 到 200 之間'
+			message: '八拍數要在 1 到 200 之間',
+			why: { code: 'segment_eights_range', max: 200 }
 		});
 	});
 
 	it('音樂檔壞了（不知道多長）、還沒載入音樂：擋下，說原因', () => {
+		const loadFirst = { kind: 'blocked', message: '先載入音樂檔', why: { code: 'segment_load_audio_first' } };
 		expect(fitSegmentToAudio(withMusic(), 's1', { a1: null })).toEqual({
 			kind: 'blocked',
-			message: '音樂檔壞了，請重新選檔'
+			message: '音樂檔壞了，請重新選檔',
+			why: { code: 'segment_audio_broken' }
 		});
-		expect(fitSegmentToAudio(withMusic(), 's1', {})).toEqual({ kind: 'blocked', message: '先載入音樂檔' });
-		expect(fitSegmentToAudio(flowOf(addSegment(newFlow(), 'music')), 's1', { a1: 30 })).toEqual({
-			kind: 'blocked',
-			message: '先載入音樂檔'
-		});
+		expect(fitSegmentToAudio(withMusic(), 's1', {})).toEqual(loadFirst);
+		expect(fitSegmentToAudio(flowOf(addSegment(newFlow(), 'music')), 's1', { a1: 30 })).toEqual(loadFirst);
 	});
 });
 
 describe('第一拍要在音樂結束之前（音樂多長由音樂檔庫給）', () => {
-	const pastEnd = (sec: string) => ({ kind: 'blocked', message: `第一拍要在音樂結束（${sec} 秒）之前` });
+	const pastEnd = (sec: string) => ({
+		kind: 'blocked',
+		message: `第一拍要在音樂結束（${sec} 秒）之前`,
+		why: { code: 'segment_first_beat_past_end', end: { code: 'time_seconds', n: sec } }
+	});
 
 	it('改第一拍：在音樂結束那一刻或之後就擋下，說音樂只有幾秒', () => {
 		expect(updateSegment(withMusic(), 's1', { firstBeatSec: 100 }, {}, { a1: 90 })).toEqual(pastEnd('90.0'));
@@ -270,7 +285,8 @@ describe('改口號段', () => {
 	it.each([0.04, -3, 300.1, 99999999, Number.NaN])('%s 秒不在 0.1 到 300 秒就擋下，訊息寫範圍', (seconds) => {
 		expect(updateSegment(withChant(), 's1', { seconds })).toEqual({
 			kind: 'blocked',
-			message: '口號段長度要在 0.1 到 300 秒之間'
+			message: '口號段長度要在 0.1 到 300 秒之間',
+			why: { code: 'segment_seconds_range', max: 300 }
 		});
 	});
 
@@ -300,16 +316,26 @@ describe('音樂檔', () => {
 	it('其他格式擋下', () => {
 		expect(loadSegmentAudio(twoMusic(), 's1', '歌.ogg')).toEqual({
 			kind: 'blocked',
-			message: '只能載入 mp3、m4a、wav'
+			message: '只能載入 mp3、m4a、wav',
+			why: { code: 'segment_audio_types' }
 		});
 	});
 
-	it('口號段不能載入音樂', () => {
+	it('找不到段就擋下', () => {
+		expect(loadSegmentAudio(twoMusic(), 's9', '歌.mp3')).toEqual(missing);
+		expect(updateSegment(twoMusic(), 's9', { bpm: 120 })).toEqual(missing);
+		expect(fitSegmentToAudio(twoMusic(), 's9', {})).toEqual(missing);
+	});
+
+	it('「只能載入」那句寫的格式跟載入得了的一樣', () => {
+		expect(AUDIO_EXTENSIONS.join('、')).toBe('mp3、m4a、wav');
+	});
+
+	it('口號段不能載入音樂，也不能照音樂長度算', () => {
 		const flow = flowOf(addSegment(newFlow(), 'chant'));
-		expect(loadSegmentAudio(flow, 's1', '歌.mp3')).toEqual({
-			kind: 'blocked',
-			message: '口號段沒有音樂'
-		});
+		const noAudio = { kind: 'blocked', message: '口號段沒有音樂', why: { code: 'segment_chant_no_audio' } };
+		expect(loadSegmentAudio(flow, 's1', '歌.mp3')).toEqual(noAudio);
+		expect(fitSegmentToAudio(flow, 's1', {})).toEqual(noAudio);
 	});
 
 	it('變速切段：第二個音樂段用同一個音樂檔，清單裡還是只有一筆', () => {
@@ -376,7 +402,8 @@ describe('音樂檔', () => {
 	it('指到不存在的音樂檔就擋下', () => {
 		expect(updateSegment(twoMusic(), 's1', { audioId: 'a9' })).toEqual({
 			kind: 'blocked',
-			message: '找不到這個音樂檔'
+			message: '找不到這個音樂檔',
+			why: { code: 'segment_no_audio' }
 		});
 	});
 
