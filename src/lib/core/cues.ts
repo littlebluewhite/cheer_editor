@@ -6,6 +6,7 @@ import { cutOut, fitRange, rangeProblem, rangeText } from './beat-range';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
+import type { Why } from './why';
 import {
 	atText,
 	EPS,
@@ -117,20 +118,20 @@ export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 }
 
 /** 拍點哪裡不守規則（給教練看的原因）；沒問題是 null。不要求在整拍上（拍的範圍的規則在 beat-range）。 */
-export function cueProblem(segment: Segment, action: Action, cue: Cue): string | null {
-	if (segment.kind !== 'music') return '口號段不數拍，不能放拍點';
-	if (!CUE_KINDS.includes(cue.kind)) return '沒有這種拍點';
+export function cueProblem(segment: Segment, action: Action, cue: Cue): string | Why | null {
+	if (segment.kind !== 'music') return { code: 'cues_chant' };
+	if (!CUE_KINDS.includes(cue.kind)) return { code: 'cues_no_kind' };
 	const problem = rangeProblem('cue', action, cue);
 	if (problem) return problem;
-	if (cue.kind === 'motion' && cue.len !== BEAT) return '手位只佔一拍';
-	if (cue.kind === 'count' && !COUNT_WORDS.includes(cue.word)) return '拍子只能是 down 或 up';
-	if (!cue.word.trim()) return '請寫拍點的字';
+	if (cue.kind === 'motion' && cue.len !== BEAT) return { code: 'cues_motion_one_beat' };
+	if (cue.kind === 'count' && !COUNT_WORDS.includes(cue.word)) return { code: 'cues_count_word' };
+	if (!cue.word.trim()) return { code: 'cues_no_word' };
 	const who = cue.who;
 	if (who !== null && 'role' in who && !action.members.some((m) => m.role === who.role)) {
-		return `動作裡沒有人是「${who.role}」`;
+		return { code: 'cues_no_role', role: who.role };
 	}
 	if (who !== null && 'member' in who && !action.members.some((m) => m.memberId === who.member)) {
-		return '這個隊員不在動作裡';
+		return { code: 'cues_member_not_in_action' };
 	}
 	return null;
 }
@@ -147,7 +148,7 @@ export interface NewCueInput {
 /** 放拍點：同一個動作、同一種、同一個「給誰」裡被蓋到的拍點切短或拿掉。可以落在 &（例：在動作被拖半拍後的拍點上換字）。 */
 export function placeCue(flow: Flow, actionId: string, input: NewCueInput): CommandResult {
 	const found = find(flow, actionId);
-	if (!found) return blocked('找不到這個動作');
+	if (!found) return blocked({ code: 'cues_no_action' });
 	const { action, segment } = found;
 	const cue: Cue = { ...input, word: input.word.trim(), who: input.who ?? null };
 	const problem = cueProblem(segment, action, cue);
@@ -175,8 +176,8 @@ export function copyCues(action: Action, from: number, to: number): Cue[] {
  */
 export function pasteCues(flow: Flow, actionId: string, at: number, copied: Cue[]): CommandResult {
 	const found = find(flow, actionId);
-	if (!found) return blocked('找不到這個動作');
-	if (!copied.length) return blocked('沒有複製的拍點');
+	if (!found) return blocked({ code: 'cues_no_action' });
+	if (!copied.length) return blocked({ code: 'cues_nothing_copied' });
 	const { action, segment } = found;
 	const over = at + Math.max(...copied.map((c) => c.at + c.len)) - action.length;
 	if (segment.kind === 'music' && over > 0) return blocked(`貼不下：拍點會超出動作的結尾 ${lengthTextWithUnit(segment, over)}`);
@@ -184,7 +185,7 @@ export function pasteCues(flow: Flow, actionId: string, at: number, copied: Cue[
 	for (const c of copied) {
 		const cue: Cue = { ...c, at: at + c.at, who: givenToSomeone(c, action) ? c.who : null };
 		const problem = cueProblem(segment, action, cue);
-		if (problem) return blocked(`貼不下：${problem}`);
+		if (problem) return blocked({ code: 'cues_paste_blocked', reason: problem });
 		cues = [...cut(cues, cue.kind, cue.at, cue.at + cue.len, (k) => sameWho(k.who, cue.who)), cue];
 	}
 	return withCues(flow, action, cues);
@@ -199,7 +200,7 @@ export function clearCues(
 	to: number
 ): CommandResult {
 	const found = find(flow, actionId);
-	if (!found) return blocked('找不到這個動作');
+	if (!found) return blocked({ code: 'cues_no_action' });
 	const cues = (kind ? [kind] : CUE_KINDS).reduce((cs, k) => cut(cs, k, from, to, () => true), found.action.cues ?? []);
 	return withCues(flow, found.action, cues);
 }
