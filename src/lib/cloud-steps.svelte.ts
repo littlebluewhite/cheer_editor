@@ -51,7 +51,7 @@ import {
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import { joinSentences, type CloudStep, type DroppedRecord, type EditorSession } from '#lib/editor-session.svelte.js';
+import { joinSentences, type AlreadyRecorded, type CloudStep, type DroppedRecord, type EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
 import { reasonText, whyText } from '#lib/reason-text.js';
@@ -649,13 +649,14 @@ export class CloudSteps {
 	 * 伺服器回我送的那一批：收了的換成伺服器存的樣子，沒存進去的拿掉、列進紅條；收過又被清掉的也拿掉。
 	 * 改、刪、救回：伺服器上還在的換成它的樣子（刪不掉的放回來），不在的拿掉。後面還有一批在等的那幾次先不動（等那一批的回答）。
 	 */
-	#saved(saved: CloudRecord[], dropped: { id: string; by?: string }[]) {
+	#saved(saved: CloudRecord[], dropped: { id: string; by?: string; someone?: boolean }[]) {
 		const batch = new Set(this.#batches.shift()?.ids ?? []);
 		const later = new Set(this.#batches.flatMap((b) => b.ids));
 		const kept = new Map(saved.map((r) => [attemptOf(r).id, r]));
 		const rows = dropped.flatMap((d) => {
 			const u = this.#unsent.get(d.id);
-			return u ? [d.by === undefined ? u.row : { ...u.row, note: alreadyRecorded(this.#session.flow, u.record, d.by) }] : [];
+			const by = d.someone ? null : (d.by ?? null);
+			return u ? [d.by === undefined ? u.row : { ...u.row, note: alreadyRecorded(this.#session.flow, u.record, by) }] : [];
 		});
 		for (const id of batch) this.#unsent.delete(id);
 		const flow = this.#session.flow;
@@ -789,11 +790,17 @@ export function sentBack({ why, by, message }: Rejected, label: string): string 
 	}
 }
 
-/** 同一次全上的同一組別人先存了（#262）：「王教練已經記了這次全上的第 2 組」。 */
-function alreadyRecorded(flow: Flow | null, { actionId, attempt }: StoredAttempt, by: string): string {
+/** 同一次全上的同一組別人先存了（#262）：誰、哪一組（畫面用 droppedNote 寫成「王教練已經記了這次全上的第 2 組」）。 */
+function alreadyRecorded(flow: Flow | null, { actionId, attempt }: StoredAttempt, by: string | null): AlreadyRecorded {
 	const action = flow?.actions.find((a) => a.id === actionId);
-	const which = flow && action ? runKeyLabel(flow, runKey(action, attempt.who)) : t.cloud_this_squad();
-	return t.cloud_already_recorded({ by, which });
+	return { by, which: flow && action ? runKeyLabel(flow, runKey(action, attempt.who)) : null };
+}
+
+/** 沒存進去那一列的原因照現在的語言寫：「王教練已經記了這次全上的第 2 組」；先記的人沒有名字寫「別人」。舊版存的是寫好的字。 */
+export function droppedNote(note: DroppedRecord['note']): string {
+	if (note === undefined || typeof note === 'string') return note ?? '';
+	const which = note.which === null ? t.cloud_this_squad() : whyText(note.which);
+	return t.cloud_already_recorded({ by: note.by ?? t.cloud_someone_else(), which });
 }
 
 /** 伺服器送來的一次（流程核心的 Attempt）。 */
@@ -804,11 +811,11 @@ const stored = (r: CloudRecord): StoredAttempt => ({ actionId: r.actionId, attem
 /** 沒存進去時表上那一列：記的當下的日期、動作、組（或隊員）、記號（之後動作、組可能被刪掉，名字先記下來）。 */
 function droppedRow(flow: Flow, { actionId, attempt }: StoredAttempt): DroppedRecord {
 	const action = flow.actions.find((a) => a.id === actionId)!;
-	const who = perPerson(action.category) ? memberName(flow, attempt.who) : whyText(squadWhy(flow, action, attempt.who));
+	const who = perPerson(action.category) ? memberName(flow, attempt.who) : squadWhy(flow, action, attempt.who);
 	return {
 		id: attempt.id,
 		date: attempt.date,
-		action: whyText(actionWhy(action)),
+		action: actionWhy(action),
 		who,
 		marks: attemptText(action, attempt),
 		runThrough: attempt.practice === 'runThrough'

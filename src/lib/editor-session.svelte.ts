@@ -29,7 +29,8 @@ import {
 	type Position,
 	type PracticeKind,
 	type RemoteChange,
-	type UndoChanges
+	type UndoChanges,
+	type WhyParam
 } from '#lib/core';
 import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
@@ -50,12 +51,19 @@ export const joinSentences = (parts: string[]): string => parts.reduceRight((res
 export interface DroppedRecord {
 	id: string;
 	date: string;
-	action: string;
-	who: string;
+	/** 動作、組（或隊員）：代號，畫面照現在的語言寫（whyText）；舊版存的是寫好的字。 */
+	action: WhyParam;
+	who: WhyParam;
 	marks: string;
 	runThrough: boolean;
-	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」）；沒寫是教練改了流程。 */
-	note?: string;
+	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」，畫面用 droppedNote 寫）；沒寫是教練改了流程。舊版存的是寫好的字。 */
+	note?: string | AlreadyRecorded;
+}
+
+/** 同一次全上的同一組別人先存了：先記的人（null 是沒有名字的，寫「別人」）、哪一組（null 是「這一組」）。 */
+export interface AlreadyRecorded {
+	by: string | null;
+	which: WhyParam | null;
 }
 
 /** 「只改這張」跟往後帶的那一步合成一步復原用的 key。 */

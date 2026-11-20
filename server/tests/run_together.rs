@@ -427,6 +427,40 @@ async fn the_same_squad_in_the_same_run_through_keeps_only_the_first_saved(db: s
 }
 
 #[sqlx::test]
+async fn a_squad_first_recorded_by_nobody_says_someone_so_the_screen_can_write_it_in_its_language(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut coach = s.join(&wang, &id).await;
+    let mut phone = s.join(&lin, &id).await;
+
+    say(
+        &mut coach,
+        json!({ "kind": "record", "attempts": [entry("twang11111110", SQUAD_2)] }),
+    )
+    .await;
+    until(&mut coach, "recordsSaved").await;
+    // 從流程檔傳上來的紀錄沒有記的人
+    sqlx::query("UPDATE flow_records SET recorded_by = NULL WHERE id = 'twang11111110'")
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+
+    say(
+        &mut phone,
+        json!({ "kind": "record", "attempts": [entry("tlin222222220", SQUAD_2)] }),
+    )
+    .await;
+    assert_eq!(
+        until(&mut phone, "recordsSaved").await["dropped"],
+        json!([{ "id": "tlin222222220", "message": "別人已經記了這次全上的這一組", "by": "別人", "someone": true }])
+    );
+}
+
+#[sqlx::test]
 async fn the_database_also_refuses_a_second_live_record_of_the_same_squad_in_a_run_through(
     db: sqlx::PgPool,
 ) {

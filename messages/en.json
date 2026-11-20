@@ -1538,6 +1538,7 @@
 	"cloud_role_now_view": "Your role is now {role}, so you can only view.",
 	"cloud_already_recorded": "{by} already recorded {which} in this full out",
 	"cloud_this_squad": "this stunt group",
+	"cloud_someone_else": "Someone else",
 	"shortcut_both": "{mac} / {other}",
 	"timeline_insert_short": "Insert",
 	"members_panel_gender_short_f": "F",

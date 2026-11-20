@@ -694,14 +694,14 @@ export function fakeServer(
 			return { kind: 'recordsSaved', saved: [], dropped: incoming.map((r) => ({ id: r.attempt.id, message: '你只能看這支流程' })) };
 		}
 		const saved: ReturnType<typeof cloudRecord>[] = [];
-		const dropped: { id: string; message: string; by?: string }[] = [];
+		const dropped: { id: string; message: string; by?: string; someone?: boolean }[] = [];
 		const added: StoredAttempt[] = [];
 		for (const r of structuredClone(incoming)) {
 			// 同一次全上的同一組只收先存的（#262）
 			const first = firstInRun(f, r);
 			if (first) {
 				const by = first.by ? nameOf(first.by) : '別人';
-				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by });
+				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by, ...(first.by ? {} : { someone: true }) });
 				continue;
 			}
 			const had = (f.records ?? []).find((o) => o.attempt.id === r.attempt.id);

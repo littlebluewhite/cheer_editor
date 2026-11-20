@@ -1,6 +1,6 @@
 // 一步被退回的提示。伺服器送原因的代號（why，ADR 0017）；還沒更新的伺服器（部署、退版時）不送，照它寫的中文。
 import { describe, expect, it } from 'vitest';
-import { sentBack, type Rejected } from '#lib/cloud-steps.svelte.js';
+import { droppedNote, sentBack, type Rejected } from '#lib/cloud-steps.svelte.js';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
 
 const rejected = (message: string, by?: string): Rejected => ({
@@ -40,5 +40,21 @@ describe('流程核心的原因有代號（ADR 0017）', () => {
 		localStorage.setItem(localStorageKey, 'en');
 		const blocked: Rejected = { ...rejected('沒存進去：找不到這個隊員'), why: { code: 'blocked', reason: { message: '找不到這個隊員' }, ask: false } };
 		expect(sentBack(blocked, '改名')).toBe('Not saved: 找不到這個隊員');
+	});
+});
+
+describe('沒存進去那一列的原因（存起來的是誰、哪一組，畫面照現在的語言寫）', () => {
+	it('英文：先記的人、組照語言寫；沒有名字寫 Someone else；舊版存的寫好的字照原樣', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		expect(droppedNote({ by: '王教練', which: { code: 'success_rate_squad', n: '2' } })).toBe('王教練 already recorded Stunt group 2 in this full out');
+		expect(droppedNote({ by: null, which: null })).toBe('Someone else already recorded this stunt group in this full out');
+		expect(droppedNote('王教練已經記了這次全上的第 2 組')).toBe('王教練已經記了這次全上的第 2 組');
+		expect(droppedNote(undefined)).toBe('');
+	});
+
+	it('中文跟以前一字不差', () => {
+		localStorage.setItem(localStorageKey, 'zh-TW');
+		expect(droppedNote({ by: '王教練', which: { code: 'success_rate_squad', n: '2' } })).toBe('王教練已經記了這次全上的第 2 組');
+		expect(droppedNote({ by: null, which: null })).toBe('別人已經記了這次全上的這一組');
 	});
 });

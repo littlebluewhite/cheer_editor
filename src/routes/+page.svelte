@@ -1754,8 +1754,8 @@
 						{#each rows as d (d.id)}
 							<tr>
 								<td>{d.date}</td>
-								<td>{d.action}</td>
-								<td>{d.who}</td>
+								<td>{whyText(d.action)}</td>
+								<td>{whyText(d.who)}</td>
 								<td>{d.marks}{#if d.runThrough}<small class="run">{m.editor_full_out()}</small>{/if}</td>
 							</tr>
 						{/each}
