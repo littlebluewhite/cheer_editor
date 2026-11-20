@@ -18,7 +18,7 @@
 	import { flushSync, tick, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { whyText, joinText } from '#lib/reason-text.js';
+	import { roleText, whyText, joinText } from '#lib/reason-text.js';
 	// 改名 msg：這個檔的 m 是一個人（draft.members 的一個）
 	import { m as msg } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
@@ -37,7 +37,6 @@
 		positionWhy,
 		pickableRoles,
 		roleGlossary,
-		roleWhy,
 		segmentSpans,
 		squadBadge,
 		timeExamples,
@@ -80,7 +79,6 @@
 	const categoryLabel = $derived(whyText(categoryWhy(draft.category)));
 	/** 動作、任務角色的名字照畫面的語言寫：內建的（大類、固定任務角色）翻，教練取的照原樣。 */
 	const actionText = (a: Parameters<typeof actionWhy>[0]) => whyText(actionWhy(a));
-	const roleText = (role: string) => whyText(roleWhy(role));
 	/** 一串名字：「小A、小B」。 */
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);

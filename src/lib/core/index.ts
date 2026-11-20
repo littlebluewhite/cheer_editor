@@ -147,7 +147,7 @@ export type {
 	NearbyEights
 } from './eight-count';
 
-export { addCustomRole, defaultRoles, deleteCustomRole, pickableRoles, roleGlossary, roleWhy, updateCustomRole } from './roles';
+export { addCustomRole, defaultRoles, deleteCustomRole, FIXED_ROLES, pickableRoles, roleGlossary, roleWhy, updateCustomRole } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {

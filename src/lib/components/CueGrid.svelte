@@ -24,7 +24,7 @@
 	import { untrack } from 'svelte';
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { roleText, whyText } from '#lib/reason-text.js';
 	// 改名 msg：這個檔的 m 是動作裡的一個人
 	import { m as msg } from '#lib/paraglide/messages.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
@@ -45,7 +45,6 @@
 		phaseKindsFor,
 		phaseKindWhy,
 		phaseWhy,
-		roleWhy,
 		STEP_WORDS,
 		actionEights,
 		beatSpanWhy,
@@ -118,7 +117,7 @@
 		const roles = [...new Set(action.members.flatMap((m) => (m.role === null ? [] : [m.role])))];
 		return [
 			{ label: msg.cue_grid_everyone(), who: null as Who },
-			...roles.map((role) => ({ label: whyText(roleWhy(role)), who: { role } as Who })),
+			...roles.map((role) => ({ label: roleText(role), who: { role } as Who })),
 			...action.members.map((m) => ({ label: memberName(flow, m.memberId), who: { member: m.memberId } as Who }))
 		];
 	});

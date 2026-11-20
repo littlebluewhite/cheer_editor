@@ -771,6 +771,7 @@
 	"roles_view_meaning_of": "「{name}」的意思",
 	"roles_view_delete": "刪除任務角色「{name}」",
 	"roles_view_custom": "自訂",
+	"roles_custom_name": "{name}（自訂）",
 	"roles_view_add_title": "新增自訂任務角色",
 	"roles_view_role_name": "任務角色名稱",
 	"roles_view_add": "新增任務角色",

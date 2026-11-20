@@ -1,5 +1,6 @@
 import {
 	addAction,
+	addCustomRole,
 	addMembers,
 	addSegment,
 	createFlow,
@@ -16,7 +17,7 @@ import { flowOf } from '#lib/test-flows.js';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fakeCellAt, testEditor } from '#lib/test-fakes.js';
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import CueGrid from './CueGrid.svelte';
 
@@ -494,5 +495,27 @@ describe('英文畫面', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Phase Load' }));
 		expect(screen.getByRole('group', { name: 'Edit phase' })).toBeTruthy();
 		expect(document.body.innerHTML).not.toMatch(HAN);
+	});
+
+	it('自訂任務角色叫 Base（英文的底層也寫 Base）：「給誰」選單上自訂的那個後面標 (custom)，分得出來；中文畫面不標', async () => {
+		let flow = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addMembers(flow, [{ name: 'Amy', gender: 'F', globalRole: 'base' }, { name: 'Bob', gender: 'M', globalRole: 'base' }]));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
+		flow = flowOf(addCustomRole(flow, { name: 'Base', meaning: '' }));
+		const members = [{ memberId: 'm1', role: '底層' }, { memberId: 'm2', role: 'Base' }];
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'stunt', name: 'Lib', note: '', members, start: 36, length: 16 }));
+		const roleOptions = async (group: string, popup: string) => {
+			renderGrid(flow);
+			const grid = within(screen.getByRole('group', { name: group }));
+			await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
+			const pop = within(grid.getByRole('dialog', { name: popup }));
+			return within(pop.getAllByRole('combobox')[0]).getAllByRole('option').map((o) => o.textContent).slice(1, 3);
+		};
+		localStorage.setItem(localStorageKey, 'en');
+		expect(await roleOptions('Cues', 'Cue pop-up')).toEqual(['Base', 'Base (custom)']);
+		cleanup();
+		localStorage.setItem(localStorageKey, 'zh-TW');
+		expect(await roleOptions('拍點', '拍點小窗')).toEqual(['底層', 'Base']);
 	});
 });

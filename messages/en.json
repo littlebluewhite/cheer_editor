@@ -771,6 +771,7 @@
 	"roles_view_meaning_of": "Meaning of “{name}”",
 	"roles_view_delete": "Delete position “{name}”",
 	"roles_view_custom": "Custom",
+	"roles_custom_name": "{name} (custom)",
 	"roles_view_add_title": "Add a custom position",
 	"roles_view_role_name": "Position name",
 	"roles_view_add": "Add position",

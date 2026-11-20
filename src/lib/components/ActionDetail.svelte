@@ -8,13 +8,12 @@
 		labelWhy,
 		lengthWhy,
 		memberName,
-		roleWhy,
 		segmentSpans,
 		whoWhy,
 		type Action,
 		type Flow
 	} from '#lib/core';
-	import { whyText } from '#lib/reason-text.js';
+	import { roleText, whyText } from '#lib/reason-text.js';
 	// 改名 msg：這個檔的 m 是動作裡的一個人
 	import { m as msg } from '#lib/paraglide/messages.js';
 	import { actionColor } from './category-colors';
@@ -52,7 +51,7 @@
 	<h3>{msg.action_form_detail_people()}</h3>
 	<ul>
 		{#each action.members as m (m.memberId)}
-			<li>{memberName(flow, m.memberId)}{#if m.role}<span class="role">{whyText(roleWhy(m.role))}</span>{/if}</li>
+			<li>{memberName(flow, m.memberId)}{#if m.role}<span class="role">{roleText(m.role)}</span>{/if}</li>
 		{/each}
 	</ul>
 	{#if cues.length}

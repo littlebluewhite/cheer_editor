@@ -10,8 +10,8 @@
 	// 選單開在最上層（popover.svelte.ts）：右邊欄裁不到它，下面放不下就往上開。
 	import { composing } from '#lib/ime.js';
 	import { below, popover } from '#lib/popover.svelte.js';
-	import { whyText } from '#lib/reason-text.js';
-	import { roleWhy, type WhyParam } from '#lib/core';
+	import { roleText, whyText } from '#lib/reason-text.js';
+	import type { WhyParam } from '#lib/core';
 	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
@@ -99,8 +99,8 @@
 		onclick={toggle}
 		{onkeydown}
 	>
-		<span class:none={!value} class:plain={value !== null && PLAIN.has(value)} title={value === null ? undefined : whyText(roleWhy(value))}
-			>{value === null ? m.roles_view_none() : whyText(roleWhy(value))}</span
+		<span class:none={!value} class:plain={value !== null && PLAIN.has(value)} title={value === null ? undefined : roleText(value)}
+			>{value === null ? m.roles_view_none() : roleText(value)}</span
 		>
 	</button>
 	{#if open}
@@ -124,7 +124,7 @@
 					onclick={() => choose(item)}
 					onmouseenter={() => (active = k)}
 				>
-					{#if item === NEW}{m.roles_view_new()}{:else if item === null}{m.roles_view_none()}<kbd>⌫</kbd>{:else}{whyText(roleWhy(item))}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{whyText(roles[k - 1].meaning)}</span>{/if}{/if}
+					{#if item === NEW}{m.roles_view_new()}{:else if item === null}{m.roles_view_none()}<kbd>⌫</kbd>{:else}{roleText(item)}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{whyText(roles[k - 1].meaning)}</span>{/if}{/if}
 				</li>
 			{/each}
 		</ul>

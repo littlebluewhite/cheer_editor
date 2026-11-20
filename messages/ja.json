@@ -771,6 +771,7 @@
 	"roles_view_meaning_of": "「{name}」の意味",
 	"roles_view_delete": "ポジション「{name}」を削除",
 	"roles_view_custom": "カスタム",
+	"roles_custom_name": "{name}（カスタム）",
 	"roles_view_add_title": "カスタムポジションを追加",
 	"roles_view_role_name": "ポジション名",
 	"roles_view_add": "ポジションを追加",

@@ -36,7 +36,6 @@
 		phaseRows,
 		positionWhy,
 		resizeAction,
-		roleWhy,
 		setWalks,
 		timeInputWhy,
 		toSeconds,
@@ -54,7 +53,7 @@
 	import { actionColor, CATEGORY_COLORS } from './category-colors';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { whyText } from '#lib/reason-text.js';
+	import { roleText, whyText } from '#lib/reason-text.js';
 	// 泳道一人一條（{#each flow.members as m}），m 是隊員：畫面的句子叫 msg
 	import { m as msg } from '#lib/paraglide/messages.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
@@ -459,7 +458,7 @@
 						style:background={actionColor(p.action)}
 						style:padding-top={namePad(p.action.id, mine.length > 0)}
 						style:--tint={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
-						title={member.role ? msg.timeline_bar_title_role({ action: p.label, role: whyText(roleWhy(member.role)) }) : p.label}
+						title={member.role ? msg.timeline_bar_title_role({ action: p.label, role: roleText(member.role) }) : p.label}
 						onclick={() => editor.pickAction(p.action.id)}
 						ondblclick={() => editor.seekToAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id, m.id)}
@@ -485,7 +484,7 @@
 							></span>
 						{/each}
 						<b>{p.name}</b>
-						{#if member.role}<span class="role">{whyText(roleWhy(member.role))}</span>{/if}
+						{#if member.role}<span class="role">{roleText(member.role)}</span>{/if}
 						{#each mine as c, j (j)}
 							<!-- 最後一拍的手位右邊對齊那一拍的結尾、往左撐開，字才不會被色條右邊切掉；跟色條多寬無關，拉右邊時也不會跑 -->
 							{@const atEnd = c.kind === 'motion' && c.at + c.len >= p.action.length}
