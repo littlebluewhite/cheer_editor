@@ -1,9 +1,9 @@
 // 原因寫成畫面的語言（ADR 0017）：有代號照語言寫，沒代號照中文。
 import { describe, expect, it } from 'vitest';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
-import { addMemberLines, createFlow, deleteMember, type CommandResult, type Flow, type Why, type WhyCode } from '#lib/core';
+import { actionWhy, addMemberLines, createFlow, deleteMember, roleWhy, type CommandResult, type Flow, type Why, type WhyCode } from '#lib/core';
 import { libSample } from './test-flows';
-import { reasonText } from './reason-text';
+import { reasonText, whyText } from './reason-text';
 
 const noFlow = { message: '沒有開著的流程', why: { code: 'commands_no_flow' } } as const;
 
@@ -51,32 +51,40 @@ describe('原因寫成畫面的語言', () => {
 			first: {
 				code: 'actions_clash',
 				names: { code: 'members_list', first: '小A', rest: '小B' },
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				where: { code: 'actions_previous_ends', at: '1-5' }
 			},
-			rest: { code: 'actions_clash', names: '小C', action: '跳躍·跳', where: { code: 'actions_next_starts', at: { code: 'time_seconds', n: '1.0' } } }
+			rest: { code: 'actions_clash', names: '小C', action: { code: 'action_label', category: { code: 'category_jump' }, name: '跳' }, where: { code: 'actions_next_starts', at: { code: 'time_seconds', n: '1.0' } } }
 		} as const;
 		expect(reasonText({ message: '', why: clashes })).toBe(
-			'小A, 小B: already in “技巧·Lib” at that time (the previous skill doesn\'t end until 1-5); 小C: already in “跳躍·跳” at that time (the next skill already starts at 1.0 s)'
+			'小A, 小B: already in “Stunt·Lib” at that time (the previous skill doesn\'t end until 1-5); 小C: already in “Jump·跳” at that time (the next skill already starts at 1.0 s)'
 		);
 	});
 
 	it('改動作動到標的拍：切短、刪掉（清掉幾次的記號）、不再記成功率', () => {
 		localStorage.setItem(localStorageKey, 'en');
 		const one = (code: WhyCode): Why => ({ code, n: 1 });
-		const fallout = (will: Why) => ({ code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will }) as const;
+		const fallout = (will: Why) => ({ code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_shorter' }, will }) as const;
 		const marks = { code: 'phase_beats_dropped_marks', dropped: one('phase_beats_dropped_one'), marks: { code: 'records_marks', n: 2 } } as const;
 		expect(reasonText({ message: '', why: fallout({ code: 'phase_beats_and', a: one('phase_beats_cut_one'), b: marks }) })).toBe(
-			'Skill “技巧·Lib” gets shorter, which will cut short the marked beats of 1 phase and delete 1 phase (clearing the marks on 2 reps)'
+			'Skill “Stunt·Lib” gets shorter, which will cut short the marked beats of 1 phase and delete 1 phase (clearing the marks on 2 reps)'
 		);
 		expect(reasonText({ message: '', why: fallout({ code: 'phase_beats_no_rate', phases: one('phase_beats_dropped_one') }) })).toBe(
-			'Skill “技巧·Lib” gets shorter, which will delete 1 phase, so the skill stops recording hit rates'
+			'Skill “Stunt·Lib” gets shorter, which will delete 1 phase, so the skill stops recording hit rates'
 		);
 	});
 
 	it('沒代號（還沒改的）：照中文', () => {
 		localStorage.setItem(localStorageKey, 'en');
 		expect(reasonText({ message: '找不到這一段' })).toBe('找不到這一段');
+	});
+
+	it('內建的名字照語言寫，教練取的名字照原樣', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		expect(whyText(actionWhy({ category: 'stunt', name: 'Lib' }))).toBe('Stunt·Lib');
+		expect(whyText(actionWhy({ category: 'dance', name: '舞蹈' }))).toBe('Dance');
+		expect(whyText(roleWhy('後保'))).toBe('Back spot');
+		expect(whyText(roleWhy('飛人'))).toBe('飛人');
 	});
 });
 
@@ -94,7 +102,7 @@ describe('隊員的原因（英文）：一句接一句、一行接一行的也�
 	it('刪隊員：在幾個動作裡、會沒有誰、號碼遞補', () => {
 		localStorage.setItem(localStorageKey, 'en');
 		expect(reasonText(said(deleteMember(libSample(), 'm1')))).toBe(
-			'Delete athlete “小美” (label 1, 上層): in 1 skill; “技巧·Lib” stunt group 1 will have no 上層; the 3 athletes after them will move up one number'
+			'Delete athlete “小美” (label 1, Top person): in 1 skill; “Stunt·Lib” stunt group 1 will have no Top person; the 3 athletes after them will move up one number'
 		);
 	});
 

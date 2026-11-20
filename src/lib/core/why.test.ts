@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { runCommands } from './commands';
-import { blocked } from './result';
+import { blocked, needsConfirm } from './result';
 import { ZH_TEXT, zh, type Why } from './why';
 
 const zhJson = JSON.parse(readFileSync(new URL('../../../messages/zh-TW.json', import.meta.url), 'utf8')) as Record<string, string>;
@@ -28,6 +28,20 @@ describe('原因的代號', () => {
 			reason: { code: 'flow_check_off_field', member: '小美', reason: { code: 'formation_off_field' } }
 		};
 		expect(zh(why)).toBe('站位 3：小美 只能站到場地外 1 公尺以內');
+	});
+
+	it('確認框的清單、確定鈕的字也能帶代號：中文照樣寫一份，沒代號的照中文放', () => {
+		const item: Why = { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' };
+		expect(needsConfirm({ code: 'commands_none' }, [item, '刪掉：站位 2'], { code: 'category_dance' })).toEqual({
+			kind: 'confirm',
+			message: '沒有指令',
+			why: { code: 'commands_none' },
+			items: ['技巧·Lib', '刪掉：站位 2'],
+			whyItems: [item, '刪掉：站位 2'],
+			confirmLabel: '舞蹈',
+			confirmWhy: { code: 'category_dance' }
+		});
+		expect(needsConfirm('要刪嗎', ['刪掉：站位 2'], '確定刪除')).toEqual({ kind: 'confirm', message: '要刪嗎', items: ['刪掉：站位 2'], confirmLabel: '確定刪除' });
 	});
 
 	it('沒有開著的流程、沒有指令：被擋並帶代號', () => {

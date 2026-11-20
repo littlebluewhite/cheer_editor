@@ -1,13 +1,13 @@
 // 整份流程檢查（ADR 0014）：復原、重做、傳上雲端時，檢查整支流程合不合規則。
 // 一般的一步不跑：指令自己檢查過，這裡寫得比指令嚴，一般的步會莫名被退回。
 
-import { actionLabel, type Action } from './action-types';
+import { actionWhy, type Action } from './action-types';
 import { overlaps, shapeProblem } from './actions';
 import { flowNameProblem, memberName, stripsProblem, type Flow } from './flow';
 import { segmentLengthProblem, structureProblem } from './flow-file';
 import { formationSec, inGrid, OFF_FIELD, onField } from './formation';
 import { MAX_MEMBERS, memberNameProblem } from './members';
-import { roleGlossary } from './roles';
+import { roleGlossary, roleWhy } from './roles';
 import { MAX_BPM, MIN_BPM, OUT_OF_RANGE } from './segment';
 import { tooLong } from './text-length';
 import { EPS, labelWhy, segmentSpans, type TimePosition } from './time';
@@ -46,9 +46,8 @@ function violations(flow: Flow): Violation[] {
 	const add = (key: string, message: string | Why | null) => {
 		if (message) out.push({ key, message });
 	};
-	// 動作名稱照 actionLabel（大類是中文，之後整個畫面翻譯時再改）
 	const inAction = (a: Action, problem: string | Why | null): Why | null =>
-		problem ? { code: 'flow_check_in_action', action: actionLabel(a), reason: problem } : null;
+		problem ? { code: 'flow_check_in_action', action: actionWhy(a), reason: problem } : null;
 	const inFormation = (i: number, problem: string | Why | null): Why | null =>
 		problem ? { code: 'flow_check_in_formation', n: i + 1, reason: problem } : null;
 
@@ -111,13 +110,13 @@ function violations(flow: Flow): Violation[] {
 		const ids = a.members.map((m) => m.memberId);
 		add(`twice:${a.id}`, new Set(ids).size === ids.length ? null : inAction(a, { code: 'flow_check_twice' }));
 		for (const { memberId, role } of a.members) {
-			const unknown: Why | null = role === null || roles.includes(role) ? null : { code: 'flow_check_no_role', role };
+			const unknown: Why | null = role === null || roles.includes(role) ? null : { code: 'flow_check_no_role', role: roleWhy(role) };
 			add(`role:${a.id}:${memberId}`, inAction(a, unknown));
 		}
 		for (const b of flow.actions.slice(i + 1)) {
 			if (!overlaps(a, b)) continue;
 			for (const id of ids.filter((id) => b.members.some((m) => m.memberId === id))) {
-				const clash: Why = { code: 'flow_check_clash', member: memberName(flow, id), first: actionLabel(a), second: actionLabel(b) };
+				const clash: Why = { code: 'flow_check_clash', member: memberName(flow, id), first: actionWhy(a), second: actionWhy(b) };
 				add(`clash:${a.id}:${b.id}:${id}`, clash);
 			}
 		}

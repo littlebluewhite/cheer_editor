@@ -109,7 +109,7 @@ describe('插入八拍', () => {
 		expect(insertBeats(flow, at('s1', 64), 32)).toEqual({
 			kind: 'blocked',
 			message: '「技巧·x96」會超過這段的結尾，最多插 8 拍',
-			why: { code: 'insert_beats_overflow_action', action: '技巧·x96', room: { code: 'insert_beats_room', length: { code: 'time_length_beats', n: 8 } } }
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room', length: { code: 'time_length_beats', n: 8 } } }
 		});
 		// 站位 3、4 都放不下，說卡最緊的那張
 		const noActions = { ...flow, actions: flow.actions.slice(0, 1) };
@@ -131,14 +131,14 @@ describe('插入八拍', () => {
 		expect(insertBeats(flow, at('s1', 64), 32, 'eight')).toEqual({
 			kind: 'blocked',
 			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍',
-			why: { code: 'insert_beats_overflow_action', action: '技巧·x96', room: { code: 'insert_beats_room', length: { code: 'time_eights_one', n: 1 } } }
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room', length: { code: 'time_eights_one', n: 1 } } }
 		});
 		// x96 拉長到 1 個半八拍：段尾後面只剩 4 拍
 		const longer = { ...flow, actions: flow.actions.map((a) => (a.start === 96 ? { ...a, length: 24 } : a)) };
 		expect(insertBeats(longer, at('s1', 64), 16, 'eight')).toEqual({
 			kind: 'blocked',
 			message: '「技巧·x96」會超過這段的結尾，最多插 4 拍（不到 1 個八拍，單位改成拍）',
-			why: { code: 'insert_beats_overflow_action', action: '技巧·x96', room: { code: 'insert_beats_room_under_eight', length: { code: 'time_length_beats', n: 4 } } }
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room_under_eight', length: { code: 'time_length_beats', n: 4 } } }
 		});
 	});
 
@@ -149,7 +149,7 @@ describe('插入八拍', () => {
 		expect(insertBeats(shorter, at('s1', 64), 32, 'eight')).toEqual({
 			kind: 'blocked',
 			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍又 4 拍',
-			why: { code: 'insert_beats_overflow_action', action: '技巧·x96', room: { code: 'insert_beats_room_eights_rest', eights: { code: 'time_eights_one', n: 1 }, rest: { code: 'time_length_beats', n: 4 } } }
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room_eights_rest', eights: { code: 'time_eights_one', n: 1 }, rest: { code: 'time_length_beats', n: 4 } } }
 		});
 	});
 
@@ -170,7 +170,7 @@ describe('插入八拍', () => {
 		expect(insertBeats(full, at('s1', 64), 2)).toEqual({
 			kind: 'blocked',
 			message: '「技巧·x96」會超過這段的結尾，這段後面已經沒有空了',
-			why: { code: 'insert_beats_overflow_action', action: '技巧·x96', room: { code: 'insert_beats_room_none' } }
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room_none' } }
 		});
 	});
 

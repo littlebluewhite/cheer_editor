@@ -2,7 +2,7 @@
 // zip 裡是 flow.json（{ formatVersion, flow }）和 flow.audio 列出的音樂檔（audio/a1.mp3 …）。
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
-import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
+import { ACTION_CATEGORIES, actionWhy, type Action } from './action-types';
 import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
@@ -430,7 +430,7 @@ export function structureProblem(v: unknown): string | Why | null {
 		const segment = flow.segments.find((s) => s.id === a.segmentId)!;
 		const problem =
 			(a.cues ?? []).map((c) => cueProblem(segment, a, c)).find((p) => p !== null) ?? successRateProblem(segment, a);
-		if (problem) return { code: 'flow_check_in_action', action: actionLabel(a), reason: problem };
+		if (problem) return { code: 'flow_check_in_action', action: actionWhy(a), reason: problem };
 	}
 	return null;
 }

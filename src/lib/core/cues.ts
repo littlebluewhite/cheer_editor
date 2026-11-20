@@ -2,6 +2,7 @@
 // 存在動作裡、從動作開始算半拍，所以拖動作、改 BPM 時跟著走；刪動作時一起刪。
 
 import { replaceAction, type Action } from './action-types';
+import { roleWhy } from './roles';
 import { cutOut, fitRange, rangeProblem, rangeText } from './beat-range';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
@@ -128,7 +129,7 @@ export function cueProblem(segment: Segment, action: Action, cue: Cue): Why | nu
 	if (!cue.word.trim()) return { code: 'cues_no_word' };
 	const who = cue.who;
 	if (who !== null && 'role' in who && !action.members.some((m) => m.role === who.role)) {
-		return { code: 'cues_no_role', role: who.role };
+		return { code: 'cues_no_role', role: roleWhy(who.role) };
 	}
 	if (who !== null && 'member' in who && !action.members.some((m) => m.memberId === who.member)) {
 		return { code: 'cues_member_not_in_action' };

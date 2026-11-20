@@ -43,7 +43,7 @@ export {
 } from './members';
 export type { AddMembersResult, Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
 
-export { ACTION_CATEGORIES, actionLabel, actionSeconds } from './action-types';
+export { ACTION_CATEGORIES, actionLabel, actionSeconds, actionWhy, categoryWhy } from './action-types';
 export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
 export {
 	actionSlotAt,
@@ -112,7 +112,7 @@ export type { RecordsPatch, RemovedRunThrough, RunThroughMarks } from './records
 export { checkRecord, putRecords, takeRecords } from './stored-records';
 export type { CheckedAttempt, StoredAttempt } from './stored-records';
 
-export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseKindsFor, phaseLabel } from './phase-types';
+export { nextPhaseKind, PHASE_KIND_COLORS, PHASE_KINDS, phaseColor, phaseKindsFor, phaseKindWhy, phaseLabel, phaseWhy } from './phase-types';
 export type { Phase, PhaseKind } from './phase-types';
 export { addPhase, clearPhaseBeats, deletePhase, markPhaseBeats, updatePhase } from './phases';
 export type { NewPhaseInput, PhaseChange } from './phases';
@@ -146,7 +146,7 @@ export type {
 	NearbyEights
 } from './eight-count';
 
-export { addCustomRole, defaultRoles, deleteCustomRole, pickableRoles, roleGlossary, updateCustomRole } from './roles';
+export { addCustomRole, defaultRoles, deleteCustomRole, pickableRoles, roleGlossary, roleWhy, updateCustomRole } from './roles';
 export type { CustomRole, RoleEntry } from './roles';
 
 export {

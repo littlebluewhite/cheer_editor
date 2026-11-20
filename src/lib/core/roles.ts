@@ -7,7 +7,7 @@ import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } fro
 import { newId } from './ids';
 import type { GlobalRole } from './members';
 import { tooLong } from './text-length';
-import type { Why } from './why';
+import type { Why, WhyCode, WhyParam } from './why';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
 export interface CustomRole {
@@ -57,6 +57,29 @@ export const FIXED_ROLES: readonly RoleEntry[] = [
 	],
 	[['騰翻', '做騰翻的人。', '騰翻人員']]
 ].flatMap((rows, group) => rows.map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false, group })));
+
+/** 固定任務角色的代號（流程檔存中文名，畫面照語言寫，見 why.ts）。 */
+const FIXED_ROLE_CODES = new Map<string, WhyCode>([
+	['底層', 'role_base'],
+	['主底', 'role_main_base'],
+	['側底', 'role_side_base'],
+	['肩底', 'role_shoulder_base'],
+	['上層', 'role_top'],
+	['中層', 'role_middle'],
+	['三層', 'role_third'],
+	['支撐', 'role_bracer'],
+	['保護', 'role_spotter'],
+	['前保', 'role_front_spot'],
+	['後保', 'role_back_spot'],
+	['接者', 'role_catcher'],
+	['騰翻', 'role_tumbler']
+]);
+
+/** 任務角色的名字放進原因：固定的送代號（畫面照語言寫），自訂的照教練取的名字。 */
+export function roleWhy(name: string): WhyParam {
+	const code = FIXED_ROLE_CODES.get(name);
+	return code ? { code } : name;
+}
 
 /** 自訂任務角色的群：接在固定的後面。 */
 const CUSTOM_GROUP = 4;

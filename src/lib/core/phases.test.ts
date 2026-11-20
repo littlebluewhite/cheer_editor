@@ -79,12 +79,12 @@ describe('口號段加環節（不標拍）', () => {
 		expect(addPhase(chant(), 'x2', { kind: 'stand' as never, name: '' })).toEqual({
 			kind: 'blocked',
 			message: '技巧的環節只能用上法、中段、轉接、下法',
-			why: { code: 'success_rate_kinds_only', category: '技巧', kinds: '上法、中段、轉接、下法' }
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_stunt' }, kinds: { code: 'members_list', first: { code: 'phase_kind_load' }, rest: { code: 'members_list', first: { code: 'phase_kind_hold' }, rest: { code: 'members_list', first: { code: 'phase_kind_transition' }, rest: { code: 'phase_kind_dismount' } } } } }
 		});
 		expect(addPhase(chant(), 'x2', { kind: 'toss', name: '' })).toEqual({
 			kind: 'blocked',
 			message: '技巧的環節只能用上法、中段、轉接、下法',
-			why: { code: 'success_rate_kinds_only', category: '技巧', kinds: '上法、中段、轉接、下法' }
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_stunt' }, kinds: { code: 'members_list', first: { code: 'phase_kind_load' }, rest: { code: 'members_list', first: { code: 'phase_kind_hold' }, rest: { code: 'members_list', first: { code: 'phase_kind_transition' }, rest: { code: 'phase_kind_dismount' } } } } }
 		});
 		const as = (category: ActionCategory) => {
 			const flow = flowOf(addSegment(sample(), 'chant'));
@@ -93,27 +93,27 @@ describe('口號段加環節（不標拍）', () => {
 		expect(addPhase(as('toss'), 'x2', { kind: 'load', name: '' })).toEqual({
 			kind: 'blocked',
 			message: '拋投的環節只能用拋法',
-			why: { code: 'success_rate_kinds_only', category: '拋投', kinds: '拋法' }
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_toss' }, kinds: { code: 'phase_kind_toss' } }
 		});
 		expect(addPhase(as('tumbling'), 'x2', { kind: 'toss', name: '' })).toEqual({
 			kind: 'blocked',
 			message: '騰翻的環節只能用翻法',
-			why: { code: 'success_rate_kinds_only', category: '騰翻', kinds: '翻法' }
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_tumbling' }, kinds: { code: 'phase_kind_tumble' } }
 		});
 		expect(addPhase(as('jump'), 'x2', { kind: 'tumble', name: '' })).toEqual({
 			kind: 'blocked',
 			message: '跳躍的環節只能用跳法',
-			why: { code: 'success_rate_kinds_only', category: '跳躍', kinds: '跳法' }
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_jump' }, kinds: { code: 'phase_kind_jump' } }
 		});
 		expect(addPhase(as('dance'), 'x2', { kind: 'load', name: '' })).toEqual({
 			kind: 'blocked',
 			message: '舞蹈的動作不記成功率',
-			why: { code: 'success_rate_no_rate', category: '舞蹈' }
+			why: { code: 'success_rate_no_rate', category: { code: 'category_dance' } }
 		});
 		expect(addPhase(as('other'), 'x2', { kind: 'load', name: '' })).toEqual({
 			kind: 'blocked',
 			message: '其他的動作不記成功率',
-			why: { code: 'success_rate_no_rate', category: '其他' }
+			why: { code: 'success_rate_no_rate', category: { code: 'category_other' } }
 		});
 		expect(addPhase(as('toss'), 'x2', { kind: 'toss', name: '' }).kind).toBe('ok');
 	});
@@ -195,7 +195,7 @@ describe('改環節', () => {
 		expect(updatePhase(sample(), 'x1', 'p1', { kind: 'toss' })).toEqual({
 			kind: 'blocked',
 			message: '技巧的環節只能用上法、中段、轉接、下法',
-			why: { code: 'success_rate_kinds_only', category: '技巧', kinds: '上法、中段、轉接、下法' }
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_stunt' }, kinds: { code: 'members_list', first: { code: 'phase_kind_load' }, rest: { code: 'members_list', first: { code: 'phase_kind_hold' }, rest: { code: 'members_list', first: { code: 'phase_kind_transition' }, rest: { code: 'phase_kind_dismount' } } } } }
 		});
 	});
 
@@ -393,10 +393,10 @@ describe('換大類：環節的種類跟著換', () => {
 		expect(r.kind === 'confirm' && r.message).toBe('動作「技巧·Lib」換成舞蹈，不記成功率，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）');
 		expect(r.kind === 'confirm' && r.why).toEqual({
 			code: 'settle_action_records',
-			action: '技巧·Lib',
+			action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 			records: {
 				code: 'settle_records',
-				records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_no_rate', category: '舞蹈' }, count: 1 },
+				records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_no_rate', category: { code: 'category_dance' } }, count: 1 },
 				undoable: { code: 'records_undoable' }
 			}
 		});
@@ -423,7 +423,7 @@ describe('換大類：金字塔有環節佔同樣的拍', () => {
 		expect(updateAction(overlapped(), 'x1', { category })).toEqual({
 			kind: 'blocked',
 			message: `有環節佔同樣的拍，先分開才能換成${label}`,
-			why: { code: 'settle_phases_overlap', category: label }
+			why: { code: 'settle_phases_overlap', category: { code: `category_${category}` } }
 		});
 		expect(updateAction(overlapped(), 'x1', { category }, { confirmed: true }).kind).toBe('blocked');
 	});

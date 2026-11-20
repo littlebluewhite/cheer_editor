@@ -2,15 +2,15 @@
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad，組 id）。
 // 組號（第 n 組）不存：動作裡現在有人的組照 id 發出的先後排，第一個是第 1 組（見 squadsOf）。
 
-import { categoryLabel, type Action, type ActionCategory, type ActionMember } from './action-types';
+import { categoryWhy, type Action, type ActionCategory, type ActionMember } from './action-types';
 import { memberName, type Flow } from './flow';
 import { isRandomId } from './ids';
 import type { Segment } from './segment';
 import { phasesOverlap, phasesShareBeats, rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
-import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
+import { fitPhaseKind, phaseKindsFor, phaseKindWhy, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
-import type { Why } from './why';
+import { joined, type Why } from './why';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
@@ -185,7 +185,7 @@ function groupingProblem(action: Action): Why | null {
 /** 騰翻、跳躍的動作不分組（給教練看的原因）；其他大類是 null。 */
 function perPersonProblem(action: Action): Why | null {
 	if (!perPerson(action.category)) return null;
-	return { code: 'success_rate_per_person', category: categoryLabel(action.category) };
+	return { code: 'success_rate_per_person', category: categoryWhy(action.category) };
 }
 
 /**
@@ -246,10 +246,8 @@ function kindsProblem(action: Action): Why | null {
 export function phaseKindProblem(category: ActionCategory, kind: string): Why | null {
 	const kinds = phaseKindsFor(category);
 	if ((kinds as string[]).includes(kind)) return null;
-	if (!kinds.length) return { code: 'success_rate_no_rate', category: categoryLabel(category) };
-	// 種類的名字（上法、中段…）照樣當名字送，跟大類的名字一樣之後才翻。
-	const names = kinds.map((k) => PHASE_KINDS.find((x) => x.key === k)!.label).join('、');
-	return { code: 'success_rate_kinds_only', category: categoryLabel(category), kinds: names };
+	if (!kinds.length) return { code: 'success_rate_no_rate', category: categoryWhy(category) };
+	return { code: 'success_rate_kinds_only', category: categoryWhy(category), kinds: joined('members_list', kinds.map(phaseKindWhy)) };
 }
 
 /**

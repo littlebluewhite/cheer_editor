@@ -144,7 +144,7 @@ describe('段縮短', () => {
 		expect(r).toEqual({
 			kind: 'blocked',
 			message: '動作「·Lib」裁短後：請選大類',
-			why: { code: 'segment_trim_blocked', action: '·Lib', reason: { code: 'actions_pick_category' } }
+			why: { code: 'segment_trim_blocked', action: { code: 'action_label', category: '', name: 'Lib' }, reason: { code: 'actions_pick_category' } }
 		});
 	});
 
@@ -226,11 +226,11 @@ describe('刪隊員', () => {
 				code: 'members_delete',
 				name: '小A',
 				marker: '1',
-				role: '上層',
+				role: { code: 'role_top' },
 				where: { code: 'members_delete_in_emptied', count: 2, emptied: 1 },
 				more: {
 					code: 'members_delete_lost',
-					list: { code: 'members_lost_role', action: '技巧·Lib', role: '上層' },
+					list: { code: 'members_lost_role', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, role: { code: 'role_top' } },
 					more: { code: 'members_delete_renumber', count: 2, more: '' }
 				}
 			},
@@ -243,7 +243,7 @@ describe('刪隊員', () => {
 		expect(deleteMember(sample(), 'm3')).toEqual({
 			kind: 'confirm',
 			message: '刪掉隊員「小C」（標記 3、底層）：他不在任何動作裡',
-			why: { code: 'members_delete', name: '小C', marker: '3', role: '底層', where: { code: 'members_delete_in_none' }, more: '' },
+			why: { code: 'members_delete', name: '小C', marker: '3', role: { code: 'role_base' }, where: { code: 'members_delete_in_none' }, more: '' },
 			items: []
 		});
 	});

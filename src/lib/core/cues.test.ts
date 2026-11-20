@@ -218,7 +218,7 @@ describe('拍點跟著動作', () => {
 		expect(updateAction(withThree(), 'x1', { length: 2 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會拿掉 2 個、切短 1 個拍點',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: { code: 'settle_cues_removed_cut', removed: 2, cut: 1 } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_shorter' }, will: { code: 'settle_cues_removed_cut', removed: 2, cut: 1 } },
 			items: ['切短：拍子 down 1-3 到 1-4 → 1-3', '拿掉：拍子 up 1-5', '拿掉：拍子 down 1-6']
 		});
 	});
@@ -247,7 +247,7 @@ describe('拍點跟著動作', () => {
 			message: '動作「技巧·Lib」變短，會切短 1 個拍點',
 			why: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: { code: 'settle_why_shorter' },
 				will: { code: 'settle_cues_cut_one', n: 1 }
 			},
@@ -286,7 +286,7 @@ describe('拍點跟著動作', () => {
 		expect(updateAction(withDownUp(), 'x1', { segmentId: 's2', start: 40 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換到口號段，會拿掉 2 個拍點',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_to_chant' }, will: { code: 'settle_cues_removed', n: 2 } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_to_chant' }, will: { code: 'settle_cues_removed', n: 2 } },
 			items: ['拿掉：拍子 down 1-3 到 1-4', '拿掉：拍子 up 1-5']
 		});
 		const flow = flowOf(
@@ -369,7 +369,7 @@ describe('給誰', () => {
 	});
 
 	it.each([
-		['動作裡沒人是這個角色', { role: '保護' }, '動作裡沒有人是「保護」', { code: 'cues_no_role', role: '保護' }],
+		['動作裡沒人是這個角色', { role: '保護' }, '動作裡沒有人是「保護」', { code: 'cues_no_role', role: { code: 'role_spotter' } }],
 		['隊員不在動作裡', { member: 'm9' }, '這個隊員不在動作裡', { code: 'cues_member_not_in_action' }]
 	])('給不對的人被擋（%s）', (_, w, message, why) => {
 		expect(placeCue(sample(), 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: w })).toEqual({
@@ -396,7 +396,7 @@ describe('給誰', () => {
 		expect(updateAction(flow, 'x1', { members: m2Only })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換了人或任務角色，會拿掉 1 個拍點',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_people' }, will: { code: 'settle_cues_removed_one', n: 1 } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_people' }, will: { code: 'settle_cues_removed_one', n: 1 } },
 			items: ['拿掉：手位 K 1-3・給小A']
 		});
 		const after = flowOf(updateAction(flow, 'x1', { members: m2Only }, { confirmed: true }));
@@ -413,7 +413,7 @@ describe('給誰', () => {
 		expect(updateAction(flow, 'x1', { members })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換了人或任務角色，會拿掉 1 個拍點',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_people' }, will: { code: 'settle_cues_removed_one', n: 1 } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_people' }, will: { code: 'settle_cues_removed_one', n: 1 } },
 			items: ['拿掉：手位 high V 1-6・給上層']
 		});
 		expect(cuesOf(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })))).toEqual([]);
@@ -427,7 +427,7 @@ describe('給誰', () => {
 			message: '動作「技巧·Lib」變短、換了人或任務角色，會拿掉 1 個、切短 1 個拍點',
 			why: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: { code: 'settle_why_and', a: { code: 'settle_why_shorter' }, b: { code: 'settle_why_people' } },
 				will: { code: 'settle_cues_removed_cut', removed: 1, cut: 1 }
 			},

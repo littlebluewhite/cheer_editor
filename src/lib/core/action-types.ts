@@ -7,6 +7,7 @@ import type { Cue } from './cues';
 import type { Flow } from './flow';
 import type { SuccessRate } from './success-rate';
 import { toSeconds } from './time';
+import { zh, type WhyParam } from './why';
 
 /** 大類，固定 7 個，不能自訂。流程檔存英文代號。 */
 export type ActionCategory = 'stunt' | 'pyramid' | 'toss' | 'tumbling' | 'jump' | 'dance' | 'other';
@@ -71,8 +72,18 @@ export function categoryLabel(category: ActionCategory): string {
 
 /** 給教練看的動作名字：「技巧·Lib」；沒取名、名稱跟大類一樣（「舞蹈」）就只寫大類。 */
 export function actionLabel(action: Pick<Action, 'category' | 'name'>): string {
-	const category = categoryLabel(action.category);
-	return action.name && action.name !== category ? `${category}·${action.name}` : category;
+	const why = actionWhy(action);
+	return typeof why === 'object' ? zh(why) : String(why);
+}
+
+/** 大類的名字的代號（畫面照語言寫，見 why.ts）；不認得的大類（例：新版存的）是空的。 */
+export const categoryWhy = (category: ActionCategory): WhyParam =>
+	ACTION_CATEGORIES.some((c) => c.key === category) ? { code: `category_${category}` } : '';
+
+/** 動作名字的代號（同 actionLabel）：教練取的名字照原樣，大類照語言寫。 */
+export function actionWhy(action: Pick<Action, 'category' | 'name'>): WhyParam {
+	const category = categoryWhy(action.category);
+	return action.name && action.name !== categoryLabel(action.category) ? { code: 'action_label', category, name: action.name } : category;
 }
 
 /** 動作在全域秒數上的開始和結束（結束那一刻不算在動作裡）。 */

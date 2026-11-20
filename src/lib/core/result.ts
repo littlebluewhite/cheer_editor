@@ -1,7 +1,7 @@
 // 編輯指令的結果。每個指令都回傳其中一種，不丟例外、不改傳進來的流程。
 
 import type { Flow } from './flow';
-import { said, type Said, type Why } from './why';
+import { said, zh, type Said, type Why, type WhyParam } from './why';
 
 export type CommandResult<Extra extends object = object> =
 	/** 成功：新的流程。有些指令多帶一點結果（例：新加的那一筆的 id），寫在 Extra。 */
@@ -12,14 +12,15 @@ export type CommandResult<Extra extends object = object> =
 	 * 要確認：這樣改會連帶刪掉別的東西（段縮短、刪人）。流程沒變；
 	 * 給教練看 message 和 items（會被刪掉的清單），按確定就帶 { confirmed: true } 再送一次同一個指令。
 	 * confirmLabel：確定鈕的字跟著這個問題（例：只裁短是「確定裁短」）；沒給就照問的地方的（N19）。
+	 * items、confirmLabel 是中文；改成代號的多帶 whyItems（跟 items 一一對應，沒代號的照中文）、confirmWhy（見 why.ts）。
 	 */
-	| ({ kind: 'confirm'; items: string[]; confirmLabel?: string } & Said)
+	| ({ kind: 'confirm'; items: string[]; whyItems?: WhyParam[]; confirmLabel?: string; confirmWhy?: Why } & Said)
 	/**
 	 * 要選保留還是清掉：有紀錄的組換了人、有紀錄的隊員改名。流程沒變；
 	 * 給教練看 message 和 items（會被動到的紀錄），兩個選擇是「保留舊紀錄」「清掉重算」，
 	 * 選好就帶 { records: 'keep' | 'clear' } 再送一次同一個指令。
 	 */
-	| ({ kind: 'choose'; items: string[] } & Said);
+	| ({ kind: 'choose'; items: string[]; whyItems?: WhyParam[] } & Said);
 
 /**
  * 讀教練打的字（時間、長度、數字）：看得懂是 ok 帶 value；看不懂是被擋，message 是給教練看的原因。
@@ -49,16 +50,22 @@ export const ok = <Extra extends object = object>(
 ): CommandResult<Extra> => ({ kind: 'ok', flow, ...(extra as Extra) });
 /** 被擋：原因是中文，或代號（見 why.ts；中文照樣寫一份）。 */
 export const blocked = (reason: string | Why): CommandResult<never> => ({ kind: 'blocked', ...said(reason) });
-export const needsConfirm = (reason: string | Why, items: string[], confirmLabel?: string): CommandResult => ({
+/** 清單：中文一份；有代號的多帶 whyItems（沒代號的照中文放）。 */
+const listed = (items: (string | Why)[]): { items: string[]; whyItems?: WhyParam[] } => ({
+	items: items.map((i) => (typeof i === 'string' ? i : zh(i))),
+	...(items.some((i) => typeof i !== 'string') && { whyItems: items })
+});
+
+export const needsConfirm = (reason: string | Why, items: (string | Why)[], confirmLabel?: string | Why): CommandResult => ({
 	kind: 'confirm',
 	...said(reason),
-	items,
-	...(confirmLabel && { confirmLabel })
+	...listed(items),
+	...(confirmLabel && (typeof confirmLabel === 'string' ? { confirmLabel } : { confirmLabel: zh(confirmLabel), confirmWhy: confirmLabel }))
 });
-export const needsChoice = (reason: string | Why, items: string[]): CommandResult => ({
+export const needsChoice = (reason: string | Why, items: (string | Why)[]): CommandResult => ({
 	kind: 'choose',
 	...said(reason),
-	items
+	...listed(items)
 });
 
 /**

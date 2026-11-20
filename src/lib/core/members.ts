@@ -1,17 +1,17 @@
 // 隊員名單：加隊員、改隊員、排順序、刪隊員。
 
-import { actionLabel, type Action } from './action-types';
+import { actionLabel, actionWhy, type Action } from './action-types';
 import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
 import { RECORDS_UNDOABLE_WHY, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { newIds } from './ids';
-import { FIXED_ROLES } from './roles';
+import { FIXED_ROLES, roleWhy } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
-import { zh, type Why, type WhyCode, type WhyParam } from './why';
+import { joined, zh, type Why, type WhyParam } from './why';
 import { fromText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -202,11 +202,6 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 	return ok({ ...flow, members: [...flow.members, ...added], formations }, { errors, rejected: bad.map((e) => e.text) });
 }
 
-/** 一串原因接成一句（code 的句子是「{first}、{rest}」這種）；只有一個就是它。parts 不能是空的。 */
-function joined(code: WhyCode, parts: Why[]): Why {
-	return parts.reduceRight((rest, first) => ({ code, first, rest }));
-}
-
 /** 錯誤裡的名字最多寫幾個字。 */
 const ERROR_NAME_CHARS = 10;
 
@@ -353,7 +348,7 @@ export function deleteMember(
 				code: 'members_delete',
 				name: member.name,
 				marker: memberMarkers(flow)[id],
-				role: role!,
+				role: roleWhy(role!),
 				where,
 				more: more.reduceRight<WhyParam>((rest, why) => ({ ...why, more: rest }), '')
 			},
@@ -391,8 +386,7 @@ function lostRole(action: Action, id: string): Why[] {
 	if (!mine.role) return [];
 	const mates = action.members.filter((m) => m.memberId !== id && m.squad === mine.squad);
 	if (!mates.length || mates.some((m) => m.role === mine.role)) return [];
-	// 動作名稱（含大類的中文）、任務角色的名稱照樣當名字送。
-	const lost = { action: actionLabel(action), role: mine.role };
+	const lost = { action: actionWhy(action), role: roleWhy(mine.role) };
 	return [
 		mine.squad === undefined
 			? { code: 'members_lost_role', ...lost }

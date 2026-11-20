@@ -101,7 +101,7 @@ describe('設組', () => {
 		expect(setSquad(on(category), 'x1', ['m1'], 1)).toEqual({
 			kind: 'blocked',
 			message: `${label}的動作不分組，每個人自己算`,
-			why: { code: 'success_rate_per_person', category: label }
+			why: { code: 'success_rate_per_person', category: { code: `category_${category}` } }
 		});
 	});
 

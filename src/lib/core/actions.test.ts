@@ -134,7 +134,7 @@ describe('新增動作', () => {
 		expect(addAction(flow, jump(14, 'm2'))).toEqual({
 			kind: 'blocked',
 			message: '小B 同一時間已經在「技巧·Lib」裡：上一個動作在 2-1& 才結束',
-			why: { code: 'actions_clash', names: '小B', action: '技巧·Lib', where: { code: 'actions_previous_ends', at: '2-1&' } }
+			why: { code: 'actions_clash', names: '小B', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, where: { code: 'actions_previous_ends', at: '2-1&' } }
 		});
 		expect(addAction(flow, jump(18, 'm2')).kind).toBe('ok');
 		const chant = flowOf(addAction(sample(), lib({ segmentId: 's2', start: 10, length: 25 })));
@@ -144,7 +144,7 @@ describe('新增動作', () => {
 			why: {
 				code: 'actions_clash',
 				names: '小A',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				where: { code: 'actions_next_starts', at: { code: 'time_seconds', n: '1.0' } }
 			}
 		});
@@ -154,7 +154,7 @@ describe('新增動作', () => {
 			why: {
 				code: 'actions_clash',
 				names: '小A',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				where: { code: 'actions_previous_ends', at: { code: 'time_seconds', n: '3.5' } }
 			}
 		});
@@ -189,10 +189,10 @@ describe('新增動作', () => {
 				first: {
 					code: 'actions_clash',
 					names: { code: 'members_list', first: '小A', rest: '小B' },
-					action: '技巧·Lib',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 					where: { code: 'actions_previous_ends', at: '1-5' }
 				},
-				rest: { code: 'actions_clash', names: '小C', action: '跳躍·跳', where: { code: 'actions_next_starts', at: '1-5' } }
+				rest: { code: 'actions_clash', names: '小C', action: { code: 'action_label', category: { code: 'category_jump' }, name: '跳' }, where: { code: 'actions_next_starts', at: '1-5' } }
 			}
 		});
 	});
@@ -449,7 +449,7 @@ describe('改動作、刪動作', () => {
 			why: {
 				code: 'actions_clash',
 				names: { code: 'members_list', first: '小A', rest: '小B' },
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				where: { code: 'actions_previous_ends', at: '1-5' }
 			}
 		});
@@ -530,7 +530,7 @@ describe('拖色條：移動、改長度', () => {
 			why: {
 				code: 'actions_clash',
 				names: { code: 'members_list', first: '小A', rest: '小B' },
-				action: '技巧·Ext',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Ext' },
 				where: { code: 'actions_next_starts', at: '2-1' }
 			}
 		});

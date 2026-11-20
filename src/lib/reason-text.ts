@@ -1,6 +1,6 @@
 // 給教練看的原因寫成畫面的語言（ADR 0017）：有代號照 messages/*.json 的句子寫，沒代號（還沒改的）照中文。
 import { m } from '#lib/paraglide/messages.js';
-import type { Said, Why, WhyCode } from '#lib/core';
+import { said, type Said, type Why, type WhyCode, type WhyParam } from '#lib/core';
 
 type Sentence = (inputs: Record<string, string | number>) => string;
 
@@ -12,11 +12,14 @@ const known = (why: Why): boolean =>
 	why.code in SENTENCES && Object.values(why).every((v) => typeof v !== 'object' || known(v));
 
 /** 原因寫成畫面的語言：包著的原因也是。 */
-function whyText(why: Why): string {
+function write(why: Why): string {
 	const inputs: Record<string, string | number> = {};
-	for (const [name, v] of Object.entries(why)) inputs[name] = typeof v === 'object' ? whyText(v) : v;
+	for (const [name, v] of Object.entries(why)) inputs[name] = typeof v === 'object' ? write(v) : v;
 	return (SENTENCES[why.code] as Sentence)(inputs);
 }
 
 /** 給教練看的原因：有代號寫成畫面的語言；沒有代號、或有還不認得的代號（伺服器比這個分頁新），照中文。 */
-export const reasonText = ({ message, why }: Said): string => (why && known(why) ? whyText(why) : message);
+export const reasonText = ({ message, why }: Said): string => (why && known(why) ? write(why) : message);
+
+/** 流程核心給的字（代號，或還沒改的中文；例：大類、任務角色的名字）寫成畫面的語言。 */
+export const whyText = (text: WhyParam): string => (typeof text === 'object' ? reasonText(said(text)) : String(text));

@@ -1,7 +1,7 @@
 // 成功率的紀錄：記一次、刪掉上一次，和復原、重做時把現在的紀錄帶過去、這一步清掉的紀錄加回來或再清一次。
 // 紀錄存在動作的成功率設定裡（Action.successRate.records），一次一筆，照記的先後排。
 
-import { actionLabel, actionSeconds, replaceAction, type Action } from './action-types';
+import { actionWhy, actionSeconds, replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { isRandomId, newId } from './ids';
 import { blocked, ok, type CommandResult } from './result';
@@ -67,7 +67,7 @@ export function recordRunThrough(
 		if (!action) return blocked({ code: 'records_no_action' });
 		const run = { practice: 'runThrough', runThroughId, runThroughStartedAt: startedAt } as const;
 		const r = recordAttempt(next, actionId, { date, who, ...run, whole: true, marks });
-		if (r.kind !== 'ok') return blocked({ code: 'records_in_action', action: actionLabel(action), reason: r.why ?? r.message });
+		if (r.kind !== 'ok') return blocked({ code: 'records_in_action', action: actionWhy(action), reason: r.why ?? r.message });
 		next = r.flow;
 	}
 	return { kind: 'ok', flow: next, runThroughId };

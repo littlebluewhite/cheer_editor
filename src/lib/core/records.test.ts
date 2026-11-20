@@ -850,7 +850,7 @@ describe('記一次全上', () => {
 		expect(recordRunThrough(sample(), date, 1794036000000, bad)).toEqual({
 			kind: 'blocked',
 			message: '騰翻：這個隊員不在動作裡',
-			why: { code: 'records_in_action', action: '騰翻', reason: { code: 'success_rate_member_not_in_action' } }
+			why: { code: 'records_in_action', action: { code: 'category_tumbling' }, reason: { code: 'success_rate_member_not_in_action' } }
 		});
 		expect(recordRunThrough(sample(), '11/4', 1794036000000, sheet())).toMatchObject({ kind: 'blocked' });
 		expect(recordRunThrough(sample(), date, 1794036000000, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toEqual({
@@ -875,7 +875,7 @@ describe('記一次全上', () => {
 		expect(recordRunThrough(flow, date, 1794036000000, [{ actionId: 'x3', who: 'm3', marks: { p1: '✓' } }])).toEqual({
 			kind: 'blocked',
 			message: '跳躍：這個動作沒有記成功率',
-			why: { code: 'records_in_action', action: '跳躍', reason: { code: 'records_not_recorded' } }
+			why: { code: 'records_in_action', action: { code: 'category_jump' }, reason: { code: 'records_not_recorded' } }
 		});
 	});
 

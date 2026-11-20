@@ -2,7 +2,7 @@
 // 順序固定在這裡：環節種類換成大類能用的 → 拿掉對不上的紀錄 → 算要問什麼 → 照回答清掉 → 換上新的環節 → 組的規則 → 成功率規則檢查。
 // 指令只給改之前、改好的動作和教練的回答，拿回收好的動作和有結構的後果；要問的話由 falloutQuestion 組字。
 
-import { actionLabel, categoryLabel, type Action } from './action-types';
+import { actionWhy, categoryWhy, type Action } from './action-types';
 import type { Flow } from './flow';
 import { phasesOverlap } from './beat-range';
 import { phasesMayShareBeats } from './phase-types';
@@ -73,7 +73,7 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const action = withSquadOrder(ungroup(phased));
 	// 金字塔有環節佔同樣的拍，換到還留著環節、不能疊的大類：擋下來，不偷偷切掉（docs/adr/0009）。
 	if (!phasesMayShareBeats(action.category) && phasesOverlap(action.successRate?.phases ?? [])) {
-		return { kind: 'blocked', ...said({ code: 'settle_phases_overlap', category: categoryLabel(action.category) }) };
+		return { kind: 'blocked', ...said({ code: 'settle_phases_overlap', category: categoryWhy(action.category) }) };
 	}
 	const problem = successRateProblem(to, action);
 	if (problem) return { kind: 'blocked', ...said(problem) };
@@ -176,7 +176,7 @@ export function falloutQuestion(
 		const message = recordsMessage(before, after, lost, changed);
 		const question: Why = asked
 			? { code: 'settle_then', a: asked, b: message }
-			: { code: 'settle_action_records', action: actionLabel(before), records: message };
+			: { code: 'settle_action_records', action: actionWhy(before), records: message };
 		const records = [...recordItems(flow, before, lost), ...recordItems(flow, before, changed)];
 		return (changed.length ? needsChoice : needsConfirm)(question, [...items, ...records]);
 	}
@@ -191,7 +191,7 @@ export const CHANGED_SQUADS_QUESTION: Why = { code: 'settle_changed_squads' };
  * 換成舞蹈、其他是「換成舞蹈，不記成功率，會清掉…」。
  */
 function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Attempt[]): Why {
-	const category = categoryLabel(next.category);
+	const category = categoryWhy(next.category);
 	const why: Why =
 		old.successRate && !next.successRate && old.category !== next.category
 			? { code: 'settle_records_why_no_rate', category }
@@ -234,7 +234,7 @@ function falloutMessage(
 /** 「動作「技巧·Lib」變短、換了人或任務角色，會…」：原因用「、」接起來，沒有原因就只寫動作。 */
 function falloutWhy(action: Action, causes: (Why | null)[], will: Why): Why {
 	const why = causes.filter((c) => c !== null).reduceRight<Why | null>((b, a) => (b ? { code: 'settle_why_and', a, b } : a), null);
-	const label = actionLabel(action);
+	const label = actionWhy(action);
 	return why ? { code: 'settle_fallout', action: label, why, will } : { code: 'settle_fallout_no_cause', action: label, will };
 }
 

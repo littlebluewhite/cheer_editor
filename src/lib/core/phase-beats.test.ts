@@ -321,7 +321,7 @@ describe('標的拍跟著動作', () => {
 		expect(moveAction(sample(), 'x1', 0.2)).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」拖到半拍上，會切短 1 個環節標的拍',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_cut_one', n: 1 } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_cut_one', n: 1 } },
 			items: ['切短：環節 下法 搖籃 2-5 到 2-8 → 2-6 到 2-8']
 		});
 		const flow = flowOf(moveAction(sample(), 'x1', 0.2, { confirmed: true }));
@@ -334,7 +334,7 @@ describe('標的拍跟著動作', () => {
 		expect(moveAction(short, 'x1', 0.2)).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」拖到半拍上，會刪掉 1 個環節，動作不再記成功率',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
 			items: ['刪掉：環節 上法 延伸 1-1']
 		});
 		expectUnrated(flowOf(moveAction(short, 'x1', 0.2, { confirmed: true })));
@@ -349,7 +349,7 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(sample(), 'x1', { length: 18 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_and', a: { code: 'phase_beats_cut_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_and', a: { code: 'phase_beats_cut_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } } },
 			items: ['切短：環節 中段 1-4 到 2-2 → 1-4 到 2-1', '刪掉：環節 下法 搖籃 2-5 到 2-8']
 		});
 	});
@@ -361,7 +361,7 @@ describe('標的拍跟著動作', () => {
 			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號）',
 			why: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: { code: 'settle_why_shorter' },
 				will: {
 					code: 'phase_beats_and',
@@ -380,7 +380,7 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(onlyP1(), 'x1', { length: 1 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會刪掉 1 個環節，動作不再記成功率',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
 			items: ['刪掉：環節 上法 延伸 1-1 到 1-3']
 		});
 		expectUnrated(flowOf(updateAction(onlyP1(), 'x1', { length: 1 }, { confirmed: true })));
@@ -393,7 +393,7 @@ describe('標的拍跟著動作', () => {
 			message: '動作「技巧·Lib」變短，會拿掉 1 個拍點，刪掉 1 個環節',
 			why: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: { code: 'settle_why_shorter' },
 				will: { code: 'settle_will_and', a: { code: 'settle_cues_removed_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } }
 			},
@@ -410,7 +410,7 @@ describe('標的拍跟著動作', () => {
 			message: '動作「技巧·Lib」變短、換了人或任務角色、拖到半拍上，會拿掉 1 個拍點，切短 1 個環節標的拍',
 			why: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: {
 					code: 'settle_why_and',
 					a: { code: 'settle_why_shorter' },
@@ -458,7 +458,7 @@ describe('標的拍跟著動作', () => {
 			message: '動作「技巧·Lib」換到音樂段，會刪掉 1 個環節，動作不再記成功率',
 			why: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: { code: 'settle_why_to_music' },
 				will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } }
 			},

@@ -10,14 +10,15 @@ import {
 	type ActionChanges,
 	type NewActionInput
 } from './action-types';
+import { actionWhy } from './action-types';
 import { cueFallout, cueProblem } from './cues';
 import { positionsAt } from './formation';
 import { stackedMembers } from './hints';
 import type { Member } from './members';
 import { memberName, type Flow } from './flow';
 import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { roleGlossary } from './roles';
-import { said, type Why, type WhyCode, type WhyParam } from './why';
+import { roleGlossary, roleWhy } from './roles';
+import { joined, said, type Why } from './why';
 import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf, withSquadOrder } from './success-rate';
 import { newId } from './ids';
@@ -144,7 +145,7 @@ export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}
 	const count = action.successRate?.records.length ?? 0;
 	if (count && !answered(options)) {
 		const code = count === 1 ? 'actions_delete_records_one' : 'actions_delete_records';
-		return needsConfirm({ code, action: actionLabel(action), count, undoable: RECORDS_UNDOABLE_WHY }, []);
+		return needsConfirm({ code, action: actionWhy(action), count, undoable: RECORDS_UNDOABLE_WHY }, []);
 	}
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
@@ -238,25 +239,19 @@ function peopleProblem(flow: Flow, action: Action): Why | null {
 		// 跟流程檢查（flow-check.ts）一字不差，同一個代號
 		if (seen.has(memberId)) return { code: 'flow_check_twice' };
 		seen.add(memberId);
-		if (role !== null && !roles.includes(role)) return { code: 'flow_check_no_role', role };
+		if (role !== null && !roles.includes(role)) return { code: 'flow_check_no_role', role: roleWhy(role) };
 	}
 	// 列出所有重疊的人（照撞到的動作分開寫），教練一次改完。
-	// 動作名稱照 actionLabel（大類是中文，之後整個畫面翻譯時再改）
 	const clashes: Why[] = [];
 	for (const other of flow.actions) {
 		if (other.id === action.id || !overlaps(other, action)) continue;
 		const shared = action.members.filter((m) => other.members.some((o) => o.memberId === m.memberId));
 		if (shared.length) {
 			const names = joined('members_list', shared.map((m) => memberName(flow, m.memberId)));
-			clashes.push({ code: 'actions_clash', names, action: actionLabel(other), where: whereOther(flow, other, action) });
+			clashes.push({ code: 'actions_clash', names, action: actionWhy(other), where: whereOther(flow, other, action) });
 		}
 	}
 	return clashes.length ? joined('members_problems', clashes) : null;
-}
-
-/** 一串接成一句（code 的句子是「{first}、{rest}」這種）；只有一個就是它。parts 不能是空的。 */
-function joined<T extends WhyParam>(code: WhyCode, parts: T[]): T | Why {
-	return parts.slice(0, -1).reduceRight<T | Why>((rest, first) => ({ code, first, rest }), parts.at(-1)!);
 }
 
 /** 撞到的動作 other 在 action 前面：「上一個動作在 3-1& 才結束」；在後面：「下一個動作從 4-1 就開始」。 */

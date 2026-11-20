@@ -22,6 +22,11 @@ export function zh(why: Why): string {
 	});
 }
 
+/** 一串接成一句（code 的句子是「{first}、{rest}」這種）；只有一個就是它。parts 不能是空的。 */
+export function joined<T extends WhyParam>(code: WhyCode, parts: T[]): T | Why {
+	return parts.slice(0, -1).reduceRight<T | Why>((rest, first) => ({ code, first, rest }), parts.at(-1)!);
+}
+
 /** 原因：沒代號（還沒改的）只有中文，有代號就多帶 why。 */
 export const said = (reason: string | Why): Said =>
 	typeof reason === 'string' ? { message: reason } : { message: zh(reason), why: reason };
@@ -31,6 +36,36 @@ export const said = (reason: string | Why): Said =>
  * 照流程核心的檔分段，名字用檔名開頭（例：commands_）。
  */
 const ZH = {
+	// 內建的名字（大類、環節種類、固定任務角色）：流程檔存代號或中文，畫面照語言寫（action-types.ts、phase-types.ts、roles.ts）
+	category_stunt: '技巧',
+	category_pyramid: '金字塔',
+	category_toss: '拋投',
+	category_tumbling: '騰翻',
+	category_jump: '跳躍',
+	category_dance: '舞蹈',
+	category_other: '其他',
+	action_label: '{category}·{name}',
+	phase_kind_load: '上法',
+	phase_kind_hold: '中段',
+	phase_kind_transition: '轉接',
+	phase_kind_dismount: '下法',
+	phase_kind_toss: '拋法',
+	phase_kind_tumble: '翻法',
+	phase_kind_jump: '跳法',
+	phase_label: '{kind} {name}',
+	role_base: '底層',
+	role_main_base: '主底',
+	role_side_base: '側底',
+	role_shoulder_base: '肩底',
+	role_top: '上層',
+	role_middle: '中層',
+	role_third: '三層',
+	role_bracer: '支撐',
+	role_spotter: '保護',
+	role_front_spot: '前保',
+	role_back_spot: '後保',
+	role_catcher: '接者',
+	role_tumbler: '騰翻',
 	// commands.ts
 	commands_no_flow: '沒有開著的流程',
 	commands_none: '沒有指令',

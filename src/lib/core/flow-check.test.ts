@@ -110,12 +110,12 @@ describe('整份流程檢查：開檔就擋的規則（跟讀流程檔一樣，�
 		[
 			'拍點不守規則',
 			{ ...flow, actions: [{ ...x1, cues: [{ kind: 'count', at: 99, len: 2, word: 'down', who: null }] }] },
-			{ code: 'flow_check_in_action', action: '技巧·Lib', reason: { code: 'beat_range_cue_inside' } }
+			{ code: 'flow_check_in_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, reason: { code: 'beat_range_cue_inside' } }
 		],
 		[
 			'成功率設定不守規則',
 			{ ...flow, actions: [{ ...x1, successRate: { phases: [], records: [] } }] },
-			{ code: 'flow_check_in_action', action: '技巧·Lib', reason: { code: 'success_rate_no_phases' } }
+			{ code: 'flow_check_in_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, reason: { code: 'success_rate_no_phases' } }
 		],
 		[
 			'段太長',
@@ -263,7 +263,7 @@ describe('整份流程檢查的原因帶代號（ADR 0017）', () => {
 	it('撞在一起：誰、兩個動作的名字', () => {
 		const good = ratedSample();
 		const bad = { ...good, actions: good.actions.map((a) => (a.id === 'x2' ? { ...a, start: 0 } : a)) };
-		expect(flowProblem(bad, good)).toEqual({ code: 'flow_check_clash', member: '小美', first: '技巧·Lib', second: '騰翻' });
+		expect(flowProblem(bad, good)).toEqual({ code: 'flow_check_clash', member: '小美', first: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, second: { code: 'category_tumbling' } });
 	});
 
 	it('傳上雲端不收：伺服器拿到中文和代號', () => {

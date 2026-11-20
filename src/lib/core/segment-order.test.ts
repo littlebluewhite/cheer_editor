@@ -261,7 +261,7 @@ describe('從播放頭切段（#167）', () => {
 		expect(splitSegment(flow, 's1', 17)).toEqual({
 			kind: 'blocked',
 			message: '動作「技巧·拋接」（4-5 起）跨過 5-1，切不開',
-			why: { code: 'segment_order_across', action: '技巧·拋接', start: '4-5', cut: '5-1' }
+			why: { code: 'segment_order_across', action: { code: 'action_label', category: { code: 'category_stunt' }, name: '拋接' }, start: '4-5', cut: '5-1' }
 		});
 	});
 

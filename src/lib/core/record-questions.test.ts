@@ -75,7 +75,7 @@ describe('刪動作', () => {
 		expect(deleteAction(flow, 'x2')).toEqual({
 			kind: 'confirm',
 			message: '刪掉動作「騰翻」會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）',
-			why: { code: 'actions_delete_records', action: '騰翻', count: 2, undoable: { code: 'records_undoable' } },
+			why: { code: 'actions_delete_records', action: { code: 'category_tumbling' }, count: 2, undoable: { code: 'records_undoable' } },
 			items: []
 		});
 		expect(flowOf(deleteAction(flow, 'x2', { confirmed: true })).actions.map((a) => a.id)).toEqual(['x1']);
@@ -86,7 +86,7 @@ describe('刪動作', () => {
 		expect(deleteAction(flow, 'x2')).toEqual({
 			kind: 'confirm',
 			message: '刪掉動作「騰翻」會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
-			why: { code: 'actions_delete_records_one', action: '騰翻', count: 1, undoable: { code: 'records_undoable' } },
+			why: { code: 'actions_delete_records_one', action: { code: 'category_tumbling' }, count: 1, undoable: { code: 'records_undoable' } },
 			items: []
 		});
 	});
@@ -170,10 +170,10 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
 			why: {
 				code: 'settle_action_records',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				records: {
 					code: 'settle_records',
-					records: { code: 'settle_records_lost', why: { code: 'settle_records_why_per_person', category: '騰翻' }, count: 3 },
+					records: { code: 'settle_records_lost', why: { code: 'settle_records_why_per_person', category: { code: 'category_tumbling' } }, count: 3 },
 					undoable: { code: 'records_undoable' }
 				}
 			},
@@ -190,10 +190,10 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
 		expect(r.kind === 'confirm' && r.why).toEqual({
 			code: 'settle_action_records',
-			action: '騰翻',
+			action: { code: 'category_tumbling' },
 			records: {
 				code: 'settle_records',
-				records: { code: 'settle_records_lost', why: { code: 'settle_records_why_together', category: '技巧' }, count: 2 },
+				records: { code: 'settle_records_lost', why: { code: 'settle_records_why_together', category: { code: 'category_stunt' } }, count: 2 },
 				undoable: { code: 'records_undoable' }
 			}
 		});
@@ -214,7 +214,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
 			why: {
 				code: 'settle_action_records',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				records: { code: 'settle_records', records: { code: 'settle_changed_squads' }, undoable: { code: 'records_undoable' } }
 			},
 			items: ['第 1 組 小美：2 次']
@@ -263,7 +263,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
 			why: {
 				code: 'settle_action_records',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				records: {
 					code: 'settle_records',
 					records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
@@ -285,7 +285,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 				'動作「技巧·Lib」換了人，會清掉 1 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
 			why: {
 				code: 'settle_action_records',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				records: {
 					code: 'settle_records',
 					records: {
@@ -315,7 +315,7 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 			code: 'settle_then',
 			a: {
 				code: 'settle_fallout',
-				action: '技巧·Lib',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				why: { code: 'settle_why_shorter' },
 				will: { code: 'settle_cues_removed_one', n: 1 }
 			},
@@ -336,7 +336,7 @@ describe('騰翻、跳躍的動作拿掉有紀錄的人', () => {
 			message: '動作「騰翻」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
 			why: {
 				code: 'settle_action_records',
-				action: '騰翻',
+				action: { code: 'category_tumbling' },
 				records: {
 					code: 'settle_records',
 					records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
@@ -398,7 +398,7 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 			code: 'members_delete',
 			name: '小A',
 			marker: '2',
-			role: '底層',
+			role: { code: 'role_base' },
 			where: { code: 'members_delete_in', count: 2 },
 			more: {
 				code: 'members_delete_records_one',
@@ -406,7 +406,7 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 				undoable: { code: 'records_undoable' },
 				more: {
 					code: 'members_delete_lost',
-					list: { code: 'members_lost_role_squad', action: '技巧·Lib', squad: 1, role: '主底' },
+					list: { code: 'members_lost_role_squad', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, squad: 1, role: { code: 'role_main_base' } },
 					more: {
 						code: 'members_delete_renumber',
 						count: 2,

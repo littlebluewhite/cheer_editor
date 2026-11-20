@@ -1,6 +1,7 @@
 // 環節的資料型別和小工具：型別、種類清單、顏色、名字。環節的指令在 phases.ts。
 
 import type { ActionCategory } from './action-types';
+import { zh, type WhyParam } from './why';
 
 /** 環節的種類：上法、中段、轉接、下法、拋法、翻法、跳法。流程檔存英文代號。 */
 export type PhaseKind = 'load' | 'hold' | 'transition' | 'dismount' | 'toss' | 'tumble' | 'jump';
@@ -99,6 +100,15 @@ export function phaseColor(phase: Phase): string {
 
 /** 環節的名字：種類加名字，例：上法 延伸；沒名字就是種類。 */
 export function phaseLabel(phase: Phase): string {
-	const kind = PHASE_KINDS.find((k) => k.key === phase.kind)?.label ?? '';
-	return phase.name ? `${kind} ${phase.name}` : kind;
+	const why = phaseWhy(phase);
+	return typeof why === 'object' ? zh(why) : String(why);
+}
+
+/** 環節種類的名字的代號（畫面照語言寫，見 why.ts）；不認得的種類是空的。 */
+export const phaseKindWhy = (kind: PhaseKind): WhyParam => (PHASE_KINDS.some((k) => k.key === kind) ? { code: `phase_kind_${kind}` } : '');
+
+/** 環節名字的代號（同 phaseLabel）：教練取的名字照原樣，種類照語言寫。 */
+export function phaseWhy(phase: Phase): WhyParam {
+	const kind = phaseKindWhy(phase.kind);
+	return phase.name ? { code: 'phase_label', kind, name: phase.name } : kind;
 }

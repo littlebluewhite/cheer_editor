@@ -3,7 +3,7 @@
 // （照預設走、在那之前就出發的人，把出發記成自己設的）。
 // 段不變長：後面的東西超過段尾就擋下。
 
-import { actionLabel } from './action-types';
+import { actionWhy } from './action-types';
 import type { Flow } from './flow';
 import { formationWalks, memberWalk, type Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
@@ -53,7 +53,7 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 
 	});
 	const actions = flow.actions.map((a) => {
 		if (a.segmentId !== at.segmentId || a.start < at.at) return a;
-		fits({ code: 'insert_beats_overflow_action', action: actionLabel(a) }, end - a.start - a.length);
+		fits({ code: 'insert_beats_overflow_action', action: actionWhy(a) }, end - a.start - a.length);
 		return { ...a, start: a.start + length };
 	});
 

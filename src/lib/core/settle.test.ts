@@ -11,7 +11,7 @@ describe('改動作的後果怎麼問', () => {
 		expect(falloutQuestion(flow, x1, x1, cues, { phases: null, lost: [], changed: [] }, {})).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」，會拿掉 1 個拍點',
-			why: { code: 'settle_fallout_no_cause', action: '技巧·Lib', will: { code: 'settle_cues_removed_one', n: 1 } },
+			why: { code: 'settle_fallout_no_cause', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, will: { code: 'settle_cues_removed_one', n: 1 } },
 			items: ['拿掉：拍子 down 1-1']
 		});
 	});

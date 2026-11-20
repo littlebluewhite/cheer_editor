@@ -21,7 +21,7 @@ import {
 	type Flow
 } from '#lib/core';
 import type { Said } from '#lib/core';
-import { reasonText } from '#lib/reason-text.js';
+import { reasonText, whyText } from '#lib/reason-text.js';
 
 /** 教練的回答。 */
 export type Answer = 'confirm' | 'keep' | 'clear' | 'cancel';
@@ -190,8 +190,10 @@ export class Ask {
 		} else {
 			// 要問了：舊的紅字收掉，確認框旁邊不留跟這次無關的原因。
 			this.fieldErrors = {};
-			const confirmLabel = (r.kind === 'confirm' && r.confirmLabel) || this.confirmLabel;
-			this.question = { message: reasonText(r), items: r.items, choose: r.kind === 'choose', confirmLabel };
+			const label = r.kind === 'confirm' && (r.confirmWhy ?? r.confirmLabel);
+			const confirmLabel = label ? whyText(label) : this.confirmLabel;
+			const items = r.whyItems?.map(whyText) ?? r.items;
+			this.question = { message: reasonText(r), items, choose: r.kind === 'choose', confirmLabel };
 			this.#pending = { send, handlers };
 		}
 		if (r.kind !== 'ok') {

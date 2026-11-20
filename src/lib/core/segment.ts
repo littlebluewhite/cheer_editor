@@ -2,7 +2,7 @@
 // 音樂段長度存半拍數（halfBeats），口號段長度存 0.1 秒數（tenths）。
 // 音樂檔本身（位元組）不在流程裡；流程只有 `audio` 清單，段用 audioId 指過去。
 
-import { actionLabel, replaceAction, type Action } from './action-types';
+import { actionLabel, actionWhy, replaceAction, type Action } from './action-types';
 import { changeAction } from './actions';
 import type { Flow } from './flow';
 import { newId } from './ids';
@@ -265,7 +265,7 @@ export function updateSegment(
 	let marks = 0;
 	for (const a of trimmed) {
 		const cut = trimAction(result, a, end - a.start);
-		if (cut.kind === 'blocked') return blocked({ code: 'segment_trim_blocked', action: actionLabel(a), reason: cut.why ?? cut.message });
+		if (cut.kind === 'blocked') return blocked({ code: 'segment_trim_blocked', action: actionWhy(a), reason: cut.why ?? cut.message });
 		result = cut.flow;
 		records += cut.records;
 		marks += cut.marks;

@@ -3,7 +3,7 @@
 // 第一段換了，新的第一段開頭本來就有站位就用那張（原本的開頭那張：段還在就變成一般站位，段刪掉了就跟著刪）；
 // 沒有的話開頭那張自己搬過去：換順序時整張搬，刪段時位置換成那一刻大家所在的地方。站位不會變多。
 
-import { actionLabel } from './action-types';
+import { actionLabel, actionWhy } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
@@ -72,7 +72,7 @@ export function splitSegment(flow: Flow, segmentId: string, sec: number): Comman
 	if (cut === 0) return blocked({ code: 'segment_order_first_eight' });
 	const across = flow.actions.find((a) => a.segmentId === segmentId && a.start < cut && a.start + a.length > cut);
 	if (across) {
-		return blocked({ code: 'segment_order_across', action: actionLabel(across), start: atWhy(old, across.start), cut: atWhy(old, cut) });
+		return blocked({ code: 'segment_order_across', action: actionWhy(across), start: atWhy(old, across.start), cut: atWhy(old, cut) });
 	}
 	const id = newId('s', flow.segments.map((s) => s.id));
 	const firstBeatSec = old.firstBeatSec + (cut * 30) / old.bpm;
