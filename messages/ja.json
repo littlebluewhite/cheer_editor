@@ -37,5 +37,11 @@
 	"cues_member_not_in_action": "この選手は技に入っていません",
 	"cues_no_action": "この技が見つかりません",
 	"cues_nothing_copied": "コピーしたキューがありません",
-	"cues_paste_blocked": "貼り付けられません：{reason}"
+	"cues_paste_blocked": "貼り付けられません：{reason}",
+	"roles_no_name": "ポジション名を入力してください",
+	"roles_name_taken": "「{name}」というポジションはすでにあります",
+	"roles_member_name_taken": "「{name}」という選手がすでにいます。キューの対象でポジションか選手か区別できるよう、ポジションには別の名前を付けてください",
+	"roles_not_found": "このポジションが見つかりません",
+	"roles_delete_used_one": "「{name}」は {count} 個の技で使われています：削除するとその人たちはポジションなしになり、「{name}」へのキューも削除されます",
+	"roles_delete_used": "「{name}」は {count} 個の技で使われています：削除するとその人たちはポジションなしになり、「{name}」へのキューも削除されます"
 }
