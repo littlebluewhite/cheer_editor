@@ -253,6 +253,7 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 		expect(updateMember(recorded(), 'm1', { name: '小芳芳' })).toEqual({
 			kind: 'choose',
 			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（清掉的紀錄按「復原」會回來）',
+			why: { code: 'members_rename_records', name: '小美', newName: '小芳芳', count: 3, undoable: '（清掉的紀錄按「復原」會回來）' },
 			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
 		});
 	});
@@ -292,6 +293,27 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 		expect(r.kind === 'choose' && r.message).toBe(
 			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來），「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
 		);
+		expect(r.kind === 'choose' && r.why).toEqual({
+			code: 'members_delete',
+			name: '小A',
+			marker: '2',
+			role: '底層',
+			where: { code: 'members_delete_in', count: 2 },
+			more: {
+				code: 'members_delete_records_one',
+				count: 1,
+				undoable: '（清掉的紀錄按「復原」會回來）',
+				more: {
+					code: 'members_delete_lost',
+					list: { code: 'members_lost_role_squad', action: '技巧·Lib', squad: 1, role: '主底' },
+					more: {
+						code: 'members_delete_renumber',
+						count: 2,
+						more: { code: 'members_delete_changed', question: '有紀錄的組換了人：保留舊紀錄，還是清掉重算？', undoable: '', more: '' }
+					}
+				}
+			}
+		});
 		const kept = flowOf(deleteMember(flow, 'm2', { records: 'keep' }));
 		expect([ids(kept, 'x1'), ids(kept, 'x2')]).toEqual([['t1', 't2', 't3'], ['t4']]);
 		const cleared = flowOf(deleteMember(flow, 'm2', { records: 'clear' }));

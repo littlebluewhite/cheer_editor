@@ -13,6 +13,7 @@
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from '#lib/marker.js';
 	import { reveal, revealAlert } from './reveal';
+	import { reasonText } from '#lib/reason-text.js';
 	import {
 		GENDERS,
 		GLOBAL_ROLES,
@@ -20,6 +21,7 @@
 		duplicateNames,
 		memberMarkers,
 		memberName,
+		said,
 		type Gender,
 		type GlobalRole,
 		type MemberChanges
@@ -55,7 +57,7 @@
 		ask.send({ name: 'addMemberLines', args: [names, { gender: gender || null, globalRole: globalRole || null }] }, {
 			done: (r) => {
 				names = r.rejected.join('\n');
-				ask.error = r.errors.join('\n');
+				ask.error = r.errors.map((e) => reasonText(said(e))).join('\n');
 			}
 		});
 	}
