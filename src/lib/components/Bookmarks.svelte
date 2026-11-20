@@ -146,6 +146,8 @@
 	/** 頁面按 / 時叫：打開找書籤的框。回傳有沒有打開（手機那排沒有）。 */
 	export function openSearch(): boolean {
 		if (place !== 'bar') return false;
+		// 收成一顆鈕的小窗先收：它的 Esc 會先搶走，框還開著焦點卻跑到框後面
+		open = false;
 		searching = true;
 		query = '';
 		pick = 0;
@@ -157,6 +159,12 @@
 		if (saveKey(e)) return;
 		e.stopPropagation();
 		if (e.key === 'Escape' && !composing(e)) searching = false;
+	}
+
+	/** 焦點（Tab、Shift+Tab）跑到框外：框關掉，不會框還開著、鍵卻給了編輯頁。點東西時焦點沒去哪（relatedTarget 空的）不算。 */
+	function boxLeave(e: FocusEvent) {
+		const to = e.relatedTarget as Node | null;
+		if (to && !(e.currentTarget as HTMLElement).contains(to)) searching = false;
 	}
 
 	/** 找書籤的輸入框：↑↓ 選、Enter 跳過去。 */
@@ -264,7 +272,7 @@
 {#if searching}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="veil" onpointerdown={(e) => e.target === e.currentTarget && (searching = false)}>
-		<div class="search" role="dialog" aria-label="找書籤" tabindex="-1" onkeydown={boxKeys}>
+		<div class="search" role="dialog" aria-label="找書籤" tabindex="-1" onkeydown={boxKeys} onfocusout={boxLeave}>
 			<input
 				type="text"
 				aria-label="找書籤"

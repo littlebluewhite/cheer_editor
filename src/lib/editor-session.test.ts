@@ -818,6 +818,16 @@ describe('編輯 session：書籤', () => {
 		expect(s.notice).toBe('王教練改了段：書籤「跨段」也拿掉了');
 	});
 
+	it('別人只刪了一個書籤（段沒動）：不說成「改了段」', () => {
+		const before = twoSegments();
+		const s = new EditorSession(before);
+		const other = new EditorSession(before);
+		other.ask.send({ name: 'deleteBookmark', args: [before.bookmarks![0].id] });
+		s.applyRemote(remoteChange(before, other.flow!), '王教練');
+		expect(s.flow!.bookmarks).toEqual([]);
+		expect(s.notice ?? '').not.toMatch(/改了段/);
+	});
+
 	it('刪書籤本身不多說', () => {
 		const s = new EditorSession(twoSegments());
 		s.ask.send({ name: 'deleteBookmark', args: ['k1'] });

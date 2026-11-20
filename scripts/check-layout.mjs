@@ -1029,6 +1029,7 @@ for (const [w, h] of [[390, 844], [844, 390]]) {
 		const r = await js(`const box = (sel) => { const el = document.querySelector(sel); return el ? Math.round(el.getBoundingClientRect().height) : null; };
 			return { 書籤: box('.phone-view .bookmarks'), 我: box('.phone-view .phone-me'), 前後八拍: box('.phone-view .phone-eights'), 畫面高: innerHeight };`);
 		const eights = w < h ? Math.abs(r.前後八拍 - Math.round(0.34 * h)) <= 2 : r.前後八拍 > r.我 * 2;
+		await clearTouch();
 		return { ok: r.書籤 > 0 && r.我 > 0 && r.我 <= 60 && eights, value: r };
 	});
 }

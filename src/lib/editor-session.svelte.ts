@@ -933,7 +933,8 @@ export class EditorSession {
  * 段沒換就是空的（刪書籤本身的提示已經寫了是哪個）。
  */
 function lostBookmarks(before: Flow, after: Flow): string[] {
-	if (before.segments === after.segments) return [];
+	// 別人的改動每次都換一份段清單：看內容一不一樣（只刪書籤不算改段）
+	if (before.segments === after.segments || JSON.stringify(before.segments) === JSON.stringify(after.segments)) return [];
 	const kept = new Set(bookmarksOf(after).map((b) => b.id));
 	const lost = bookmarksOf(before).filter((b) => !kept.has(b.id));
 	return lost.length ? [`書籤${lost.map((b) => `「${b.name}」`).join('')}也拿掉了`] : [];

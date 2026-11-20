@@ -1,6 +1,6 @@
 // 編輯頁上的書籤（GLOSSARY「書籤」）：書籤自己的鍵不漏到編輯頁的快捷鍵，存檔的鍵照樣能用；換一支流程時打到一半的名字不帶過去。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addBookmark, writeFlowFile } from '#lib/core';
 import { editorPage, flush, openFile } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
@@ -45,6 +45,28 @@ describe('編輯頁上的書籤', () => {
 		await fireEvent.keyDown(result, { key: 'Escape' });
 		expect(screen.queryByRole('dialog', { name: '找書籤' })).toBeNull();
 		expect(session.selectedActionId).toBe('x1');
+	});
+
+	it('找書籤的框裡按 Shift+Tab 跳到框外：框關掉（不會框還開著、鍵卻給了編輯頁）', async () => {
+		setup();
+		await fireEvent.keyDown(window, { key: '/' });
+		const outside = screen.getByRole('button', { name: /存成書籤/ });
+		await fireEvent.focusOut(screen.getByRole('textbox', { name: '找書籤' }), { relatedTarget: outside });
+		expect(screen.queryByRole('dialog', { name: '找書籤' })).toBeNull();
+	});
+
+	it('上方列收成一顆鈕、小窗開著時按 /：小窗收起來，Esc 關的是找書籤的框', async () => {
+		vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
+		try {
+			setup();
+			await fireEvent.click(screen.getByRole('button', { name: '書籤' }));
+			await fireEvent.keyDown(window, { key: '/' });
+			expect(screen.queryByRole('group', { name: '書籤' })).toBeNull();
+			await fireEvent.keyDown(screen.getByRole('textbox', { name: '找書籤' }), { key: 'Escape' });
+			expect(screen.queryByRole('dialog', { name: '找書籤' })).toBeNull();
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it('打書籤名字、找書籤時按 ⌘S：照樣存檔', async () => {
