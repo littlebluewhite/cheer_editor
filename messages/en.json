@@ -991,8 +991,8 @@
 	"editor_redo_step": "Redo: {what} ({keys})\nRepeated arrow-key moves count as one step; one redo redoes them all",
 	"editor_redo_step_bare": "Redo ({keys})\nRepeated arrow-key moves count as one step; one redo redoes them all",
 	"editor_me": "Me",
-	"editor_me_hint_sheet": "(Pick yourself: highlights you on the surface; the 8-count sheet shows only yours)",
-	"editor_me_hint_nearby": "(Pick yourself: highlights you on the surface; nearby 8-counts show only yours)",
+	"editor_me_hint_sheet": "(Pick yourself: highlights you, sheet shows only yours)",
+	"editor_me_hint_nearby": "(Pick yourself: highlights you, counts show only yours)",
 	"editor_pause": "Pause",
 	"editor_play": "Play",
 	"editor_play_title": "Space also plays/pauses",
@@ -1365,7 +1365,7 @@
 	"action_form_next": "Add next skill",
 	"action_form_add": "Add skill",
 	"action_form_add_why": "No athletes yet: select athletes first",
-	"action_form_remove": "Delete skill",
+	"action_form_remove": "Delete",
 	"action_form_replaced_one": "Replaced with the {n} athlete from “{action}”",
 	"action_form_replaced": "Replaced with the {n} athletes from “{action}”",
 	"action_form_undo": "Undo",
@@ -1538,5 +1538,10 @@
 	"cloud_role_now_view": "Your role is now {role}, so you can only view.",
 	"cloud_already_recorded": "{by} already recorded {which} in this full out",
 	"cloud_this_squad": "this stunt group",
-	"shortcut_both": "{mac} / {other}"
+	"shortcut_both": "{mac} / {other}",
+	"timeline_insert_short": "Insert",
+	"members_panel_gender_short_f": "F",
+	"members_panel_gender_short_m": "M",
+	"members_panel_role_short_base": "Base",
+	"members_panel_role_short_top": "Top"
 }

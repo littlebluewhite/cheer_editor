@@ -1538,5 +1538,10 @@
 	"cloud_role_now_view": "你現在是{role}，只能看。",
 	"cloud_already_recorded": "{by}已經記了這次全上的{which}",
 	"cloud_this_squad": "這一組",
-	"shortcut_both": "{mac}／{other}"
+	"shortcut_both": "{mac}／{other}",
+	"timeline_insert_short": "插入八拍",
+	"members_panel_gender_short_f": "女",
+	"members_panel_gender_short_m": "男",
+	"members_panel_role_short_base": "底層",
+	"members_panel_role_short_top": "上層"
 }

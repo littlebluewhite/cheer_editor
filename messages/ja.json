@@ -1365,7 +1365,7 @@
 	"action_form_next": "次の技を追加",
 	"action_form_add": "技を追加",
 	"action_form_add_why": "まだ選手がいません：先に選手を選んでください",
-	"action_form_remove": "技を削除",
+	"action_form_remove": "削除",
 	"action_form_replaced_one": "置き換えました：「{action}」の{n}人にしました",
 	"action_form_replaced": "置き換えました：「{action}」の{n}人にしました",
 	"action_form_undo": "元に戻す",
@@ -1538,5 +1538,10 @@
 	"cloud_role_now_view": "あなたの権限は{role}になり、閲覧のみになりました。",
 	"cloud_already_recorded": "{by} がこの全通しの{which}をもう記録しました",
 	"cloud_this_squad": "このスタンツグループ",
-	"shortcut_both": "{mac}／{other}"
+	"shortcut_both": "{mac}／{other}",
+	"timeline_insert_short": "挿入",
+	"members_panel_gender_short_f": "女",
+	"members_panel_gender_short_m": "男",
+	"members_panel_role_short_base": "ベース",
+	"members_panel_role_short_top": "トップ"
 }

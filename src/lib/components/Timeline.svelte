@@ -342,9 +342,10 @@
 					class="insert"
 					data-edit
 					aria-expanded={!!inserting}
+					aria-label={m.timeline_insert()}
 					disabled={spans.length === 0}
 					title={m.timeline_insert_hint()}
-					onclick={toggleInsert}>{m.timeline_insert()}</button
+					onclick={toggleInsert}>{m.timeline_insert_short()}</button
 				>
 				<button
 					type="button"

@@ -2622,6 +2622,8 @@
 		color: inherit;
 		font: inherit;
 		text-align: left;
+		/* 英文比較長，放不下就換行（按鈕預設不換行） */
+		white-space: normal;
 	}
 	.warn button {
 		cursor: pointer;

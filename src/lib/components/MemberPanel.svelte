@@ -52,6 +52,13 @@
 	const listOf = (parts: string[]) => parts.reduceRight((rest, first) => m.members_list({ first, rest }));
 	/** 滿了：加隊員表單停用，寫為什麼（開檔進來超過的也算滿）。 */
 	const full = $derived(flow.members.length >= MAX_MEMBERS);
+	/** 名單每一列的性別、全局角色選單很窄：英文用短的字（F、M、Top、Base），中文照舊。 */
+	const SHORT: Record<string, () => string> = {
+		F: m.members_panel_gender_short_f,
+		M: m.members_panel_gender_short_m,
+		base: m.members_panel_role_short_base,
+		top: m.members_panel_role_short_top
+	};
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -213,14 +220,14 @@
 						value={member.gender}
 						onchange={(e) => edit(member.id, { gender: e.currentTarget.value as Gender })}
 					>
-						{#each GENDERS as g (g.key)}<option value={g.key}>{whyText(g.label)}</option>{/each}
+						{#each GENDERS as g (g.key)}<option value={g.key}>{SHORT[g.key]()}</option>{/each}
 					</select>
 					<select
 						aria-label={m.members_panel_role_of({ n: i + 1 })}
 						value={member.globalRole}
 						onchange={(e) => edit(member.id, { globalRole: e.currentTarget.value as GlobalRole })}
 					>
-						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{whyText(r.label)}</option>{/each}
+						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{SHORT[r.key]()}</option>{/each}
 					</select>
 					<button
 						type="button"
