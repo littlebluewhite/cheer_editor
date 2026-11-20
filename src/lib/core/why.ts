@@ -203,7 +203,29 @@ const ZH = {
 	records_reps: '{n} 次紀錄',
 	records_marks_one: '{n} 次的記號',
 	records_marks: '{n} 次的記號',
-	records_undoable: '（清掉的紀錄按「復原」會回來）'
+	records_undoable: '（清掉的紀錄按「復原」會回來）',
+
+	// actions.ts（同一個人只能放一次、沒有這個任務角色：用 flow-check.ts 的代號；first、rest：一串一個接一個）
+	actions_not_found: '找不到這個動作',
+	actions_delete_records_one: '刪掉動作「{action}」會清掉 {count} 次紀錄{undoable}',
+	actions_delete_records: '刪掉動作「{action}」會清掉 {count} 次紀錄{undoable}',
+	actions_member_not_in_action: '這個隊員不在動作裡',
+	actions_pick_category: '請選大類',
+	actions_no_segment: '找不到這一段',
+	actions_music_half_beat: '音樂段的時間要落在半拍上',
+	actions_chant_tenths: '口號段的時間最細 0.1 秒',
+	actions_start_before: '動作的開始不能在段之前',
+	actions_length_range: '動作長度要在 {min} 到 {max}之間',
+	actions_start_outside: '動作的開始在段外：這段只有 {size}',
+	actions_across: '動作不能跨段，要跨就拆成兩個',
+	actions_over_end: '超過這段的結尾，最多 {length}',
+	actions_no_members: '一個動作至少要有 1 個人',
+	actions_member_not_found: '找不到這個隊員',
+	actions_names: '{first}、{rest}',
+	actions_clash: '{names} 同一時間已經在「{action}」裡：{where}',
+	actions_clashes: '{first}；{rest}',
+	actions_previous_ends: '上一個動作在 {at} 才結束',
+	actions_next_starts: '下一個動作從 {at} 就開始'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;

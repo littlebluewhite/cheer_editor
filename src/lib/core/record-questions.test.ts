@@ -75,9 +75,20 @@ describe('刪動作', () => {
 		expect(deleteAction(flow, 'x2')).toEqual({
 			kind: 'confirm',
 			message: '刪掉動作「騰翻」會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: { code: 'actions_delete_records', action: '騰翻', count: 2, undoable: { code: 'records_undoable' } },
 			items: []
 		});
 		expect(flowOf(deleteAction(flow, 'x2', { confirmed: true })).actions.map((a) => a.id)).toEqual(['x1']);
+	});
+
+	it('只有 1 次紀錄：英文寫單數，另一個代號', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x2', drill('m1', { p4: '✓' })));
+		expect(deleteAction(flow, 'x2')).toEqual({
+			kind: 'confirm',
+			message: '刪掉動作「騰翻」會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: { code: 'actions_delete_records_one', action: '騰翻', count: 1, undoable: { code: 'records_undoable' } },
+			items: []
+		});
 	});
 
 	it('段縮短連帶刪動作：確認訊息加上會清掉幾次', () => {
