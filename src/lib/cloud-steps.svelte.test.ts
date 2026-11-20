@@ -1,6 +1,6 @@
 // 一步被退回的提示。伺服器送原因的代號（why，ADR 0017）；還沒更新的伺服器（部署、退版時）不送，照它寫的中文。
 import { describe, expect, it } from 'vitest';
-import { droppedNote, sentBack, type Rejected } from '#lib/cloud-steps.svelte.js';
+import { droppedTexts, sentBack, type Rejected } from '#lib/cloud-steps.svelte.js';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
 
 const rejected = (message: string, by?: string): Rejected => ({
@@ -43,18 +43,21 @@ describe('流程核心的原因有代號（ADR 0017）', () => {
 	});
 });
 
-describe('沒存進去那一列的原因（存起來的是誰、哪一組，畫面照現在的語言寫）', () => {
-	it('英文：先記的人、組照語言寫；沒有名字寫 Someone else；舊版存的寫好的字照原樣', () => {
+describe('沒存進去那一列（存起來的是代號，畫面照現在的語言寫）', () => {
+	const row = { id: 't1', date: '2026-11-21', action: '技巧·Lib', who: '第 2 組', marks: '✓', runThrough: true, note: '王教練已經記了這次全上的第 2 組' };
+	const why = { action: { code: 'success_rate_squad', n: '1' }, who: { code: 'success_rate_squad', n: '2' } } as const;
+
+	it('英文：先記的人、組照語言寫；沒有名字寫 Someone else；舊版存的（沒有代號）照寫好的字', () => {
 		localStorage.setItem(localStorageKey, 'en');
-		expect(droppedNote({ by: '王教練', which: { code: 'success_rate_squad', n: '2' } })).toBe('王教練 already recorded Stunt group 2 in this full out');
-		expect(droppedNote({ by: null, which: null })).toBe('Someone else already recorded this stunt group in this full out');
-		expect(droppedNote('王教練已經記了這次全上的第 2 組')).toBe('王教練已經記了這次全上的第 2 組');
-		expect(droppedNote(undefined)).toBe('');
+		const named = droppedTexts({ ...row, why: { ...why, note: { by: '王教練', which: why.who } } });
+		expect(named).toEqual({ action: 'Stunt group 1', who: 'Stunt group 2', note: '王教練 already recorded Stunt group 2 in this full out' });
+		expect(droppedTexts({ ...row, why: { ...why, note: { by: null, which: null } } }).note).toBe('Someone else already recorded this stunt group in this full out');
+		expect(droppedTexts(row)).toEqual({ action: '技巧·Lib', who: '第 2 組', note: '王教練已經記了這次全上的第 2 組' });
 	});
 
 	it('中文跟以前一字不差', () => {
 		localStorage.setItem(localStorageKey, 'zh-TW');
-		expect(droppedNote({ by: '王教練', which: { code: 'success_rate_squad', n: '2' } })).toBe('王教練已經記了這次全上的第 2 組');
-		expect(droppedNote({ by: null, which: null })).toBe('別人已經記了這次全上的這一組');
+		expect(droppedTexts({ ...row, why: { ...why, note: { by: '王教練', which: why.who } } }).note).toBe('王教練已經記了這次全上的第 2 組');
+		expect(droppedTexts({ ...row, why: { ...why, note: { by: null, which: null } } }).note).toBe('別人已經記了這次全上的這一組');
 	});
 });

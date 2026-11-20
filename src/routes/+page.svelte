@@ -48,6 +48,7 @@
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import { composing } from '#lib/ime.js';
 	import { joinText, reasonText, whyText } from '#lib/reason-text.js';
+	import { droppedTexts } from '#lib/cloud-steps.svelte.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
@@ -1752,10 +1753,11 @@
 					<thead><tr><th>{m.editor_date()}</th><th>{m.editor_skill()}</th><th>{m.editor_stunt_group()}</th><th>{m.editor_marks()}</th></tr></thead>
 					<tbody>
 						{#each rows as d (d.id)}
+							{@const text = droppedTexts(d)}
 							<tr>
 								<td>{d.date}</td>
-								<td>{whyText(d.action)}</td>
-								<td>{whyText(d.who)}</td>
+								<td>{text.action}</td>
+								<td>{text.who}</td>
 								<td>{d.marks}{#if d.runThrough}<small class="run">{m.editor_full_out()}</small>{/if}</td>
 							</tr>
 						{/each}

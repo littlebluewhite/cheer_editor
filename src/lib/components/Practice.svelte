@@ -8,11 +8,10 @@
 	import { resolve } from '$app/paths';
 	import { recordableActions } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { droppedNote } from '#lib/cloud-steps.svelte.js';
+	import { droppedTexts } from '#lib/cloud-steps.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { localDate } from '#lib/local-date.js';
 	import { m as t } from '#lib/paraglide/messages.js';
-	import { whyText } from '#lib/reason-text.js';
 	import HomeScreenHint from './HomeScreenHint.svelte';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
@@ -121,12 +120,13 @@
 				>
 				<tbody>
 					{#each dropped as d (d.id)}
+						{@const text = droppedTexts(d)}
 						<tr>
 							<td>{d.date}</td>
-							<td>{whyText(d.action)}</td>
-							<td>{whyText(d.who)}</td>
+							<td>{text.action}</td>
+							<td>{text.who}</td>
 							<td
-								>{d.marks}{#if d.runThrough}<small class="run">{t.practice_full_out()}</small>{/if}{#if d.note}<small class="note">{droppedNote(d.note)}</small
+								>{d.marks}{#if d.runThrough}<small class="run">{t.practice_full_out()}</small>{/if}{#if d.note}<small class="note">{text.note}</small
 									>{/if}</td
 							>
 						</tr>

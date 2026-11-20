@@ -160,6 +160,21 @@ describe('流程核心給畫面的字（英文）', () => {
 		}
 	});
 
+	it('貼上名單：姓是英文任務角色的字（Mary Ann Catcher）、沒有性別：照舊整行是名字', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const r = addMemberLines(empty, 'Mary Ann Catcher', { gender: 'F', globalRole: 'top' });
+		expect(flowOf(r).members.map((m) => [m.name, m.gender, m.globalRole])).toEqual([['Mary Ann Catcher', 'F', 'top']]);
+	});
+
+	it('貼上名單：叫 Name 的人後面有性別（Name F Back spot、Name, F, top）：不當標題列丟掉', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const r = addMemberLines(empty, 'Name F Back spot\nAmy F top', { gender: null, globalRole: null });
+		expect(r).toMatchObject({ kind: 'ok', rejected: ['Name F Back spot'] });
+		expect(r.kind === 'ok' && JSON.stringify(r.errors)).toContain('members_line_task_role');
+		const named = addMemberLines(empty, 'Name, F, top', { gender: null, globalRole: null });
+		expect(flowOf(named).members.map((m) => [m.name, m.gender, m.globalRole])).toEqual([['Name', 'F', 'top']]);
+	});
+
 	it('貼上名單：日文名單上寫的短的「トップ」也看得懂', () => {
 		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
 		const r = addMemberLines(empty, '葵,女,トップ', { gender: null, globalRole: null });

@@ -51,13 +51,17 @@ export const joinSentences = (parts: string[]): string => parts.reduceRight((res
 export interface DroppedRecord {
 	id: string;
 	date: string;
-	/** 動作、組（或隊員）：代號，畫面照現在的語言寫（whyText）；舊版存的是寫好的字。 */
-	action: WhyParam;
-	who: WhyParam;
+	action: string;
+	who: string;
 	marks: string;
 	runThrough: boolean;
-	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」，畫面用 droppedNote 寫）；沒寫是教練改了流程。舊版存的是寫好的字。 */
-	note?: string | AlreadyRecorded;
+	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」）；沒寫是教練改了流程。 */
+	note?: string;
+	/**
+	 * 動作、組（或隊員）、原因的代號：畫面照現在的語言寫（droppedTexts，ADR 0017）。上面寫好的字（當時的語言）照樣存，
+	 * 給還沒更新的分頁看；舊版存的沒有這一欄，照寫好的字。
+	 */
+	why?: { action: WhyParam; who: WhyParam; note?: AlreadyRecorded };
 }
 
 /** 同一次全上的同一組別人先存了：先記的人（null 是沒有名字的，寫「別人」）、哪一組（null 是「這一組」）。 */

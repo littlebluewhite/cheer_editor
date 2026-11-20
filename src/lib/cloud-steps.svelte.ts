@@ -655,8 +655,10 @@ export class CloudSteps {
 		const kept = new Map(saved.map((r) => [attemptOf(r).id, r]));
 		const rows = dropped.flatMap((d) => {
 			const u = this.#unsent.get(d.id);
-			const by = d.someone ? null : (d.by ?? null);
-			return u ? [d.by === undefined ? u.row : { ...u.row, note: alreadyRecorded(this.#session.flow, u.record, by) }] : [];
+			if (!u) return [];
+			if (d.by === undefined) return [u.row];
+			const note = alreadyRecorded(this.#session.flow, u.record, d.someone ? null : d.by);
+			return [{ ...u.row, note: droppedNote(note), why: u.row.why && { ...u.row.why, note } }];
 		});
 		for (const id of batch) this.#unsent.delete(id);
 		const flow = this.#session.flow;
@@ -796,11 +798,16 @@ function alreadyRecorded(flow: Flow | null, { actionId, attempt }: StoredAttempt
 	return { by, which: flow && action ? runKeyLabel(flow, runKey(action, attempt.who)) : null };
 }
 
-/** 沒存進去那一列的原因照現在的語言寫：「王教練已經記了這次全上的第 2 組」；先記的人沒有名字寫「別人」。舊版存的是寫好的字。 */
-export function droppedNote(note: DroppedRecord['note']): string {
-	if (note === undefined || typeof note === 'string') return note ?? '';
+/** 「王教練已經記了這次全上的第 2 組」照現在的語言寫；先記的人沒有名字寫「別人」。 */
+function droppedNote(note: AlreadyRecorded): string {
 	const which = note.which === null ? t.cloud_this_squad() : whyText(note.which);
 	return t.cloud_already_recorded({ by: note.by ?? t.cloud_someone_else(), which });
+}
+
+/** 沒存進去那一列的動作、組、原因照現在的語言寫；舊版存的（沒有代號）照當時寫好的字。 */
+export function droppedTexts({ action, who, note, why }: DroppedRecord): { action: string; who: string; note: string } {
+	if (!why) return { action, who, note: note ?? '' };
+	return { action: whyText(why.action), who: whyText(why.who), note: why.note ? droppedNote(why.note) : (note ?? '') };
 }
 
 /** 伺服器送來的一次（流程核心的 Attempt）。 */
@@ -811,14 +818,15 @@ const stored = (r: CloudRecord): StoredAttempt => ({ actionId: r.actionId, attem
 /** 沒存進去時表上那一列：記的當下的日期、動作、組（或隊員）、記號（之後動作、組可能被刪掉，名字先記下來）。 */
 function droppedRow(flow: Flow, { actionId, attempt }: StoredAttempt): DroppedRecord {
 	const action = flow.actions.find((a) => a.id === actionId)!;
-	const who = perPerson(action.category) ? memberName(flow, attempt.who) : squadWhy(flow, action, attempt.who);
+	const why = { action: actionWhy(action), who: perPerson(action.category) ? memberName(flow, attempt.who) : squadWhy(flow, action, attempt.who) };
 	return {
 		id: attempt.id,
 		date: attempt.date,
-		action: actionWhy(action),
-		who,
+		action: whyText(why.action),
+		who: whyText(why.who),
 		marks: attemptText(action, attempt),
-		runThrough: attempt.practice === 'runThrough'
+		runThrough: attempt.practice === 'runThrough',
+		why
 	};
 }
 

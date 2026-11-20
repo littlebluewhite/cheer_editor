@@ -229,6 +229,16 @@ describe('沒存進去的那一列照現在的語言寫（ADR 0017）', () => {
 		expect(bar).not.toContain('技巧');
 	});
 
+	it('存起來的那一列照樣有寫好的字（還沒更新的分頁讀得懂），代號另外放', async () => {
+		const page = { session: null as unknown as { droppedRecords: { action: unknown; who: unknown; note?: unknown }[] } };
+		await savedAfter((s) => {
+			page.session = s.page.session as never;
+			s.recordAs('c1', wang.email, [squad2('twang0000002x')]);
+		});
+		const [row] = page.session.droppedRecords;
+		expect([row.action, row.who, row.note]).toEqual(['技巧·Lib', '第 2 組 小芳', expect.any(String)]);
+	});
+
 	it('先記的人沒有名字（從流程檔傳上來的）：英文寫 Someone else，不寫「別人」', async () => {
 		const bar = await savedAfter((s) => (s.state.flows[0].records ??= []).push(squad2('tfile0000002x')));
 		expect(bar).toContain('Someone else already recorded Stunt group 2 in this full out');

@@ -77,7 +77,8 @@ export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<
  * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白），全局角色寫 top person 也算。
  * 性別認男、女、男生、女生、M、F，和選單上寫的 female、male、女性、男性；全局角色認底層、上層、base、top、飛人，
  * 和選單上寫的 top person、ベース、トップパーソン、トップ（英文不分大小寫）。
- * 全局角色寫成主底、後保這類任務角色：擋下並說明。三欄的行不用表單選的。空行、標題列（第一欄是「名字」「姓名」「name」「名前」）跳過。
+ * 全局角色寫成主底、後保這類任務角色（英文、日文的 Back spot、バックスポット 也算）：擋下並說明。三欄的行不用表單選的。
+ * 空行、標題列（第一欄是「名字」「姓名」「name」「名前」、第二欄不是性別）跳過。
  * 見 addEntries。
  */
 export function addMemberLines(
@@ -88,7 +89,7 @@ export function addMemberLines(
 	const entries = text.split('\n').flatMap((line): Entry[] => {
 		if (!line.trim()) return [];
 		const cols = columns(line);
-		if (cols.length > 1 && NAME_HEADERS.has(cols[0].toLowerCase())) return [];
+		if (cols.length > 1 && NAME_HEADERS.has(cols[0].toLowerCase()) && !genderOf(cols[1])) return [];
 		const entry: Entry = { text: line, name: cols[0], input: null, problems: [] };
 		if (cols.length === 1) entry.input = { name: cols[0], ...defaults };
 		else if (cols.length !== 3) entry.problems.push({ code: 'members_line_columns' });
@@ -184,7 +185,8 @@ function columns(line: string): string[] {
 	if (words.length < 3) return [line.trim()];
 	// 標題列（Name Gender Main role）：第一個字是標題、後面沒有性別的字
 	if (NAME_HEADERS.has(words[0].toLowerCase()) && !words.slice(1).some(genderOf)) return words;
-	// 性別後面是兩個字以上的全局角色或任務角色（top person、Back spot）才併成一欄；認不得的照舊（名字裡可以有 M、F 這種縮寫）
+	// 性別後面是兩個字以上的全局角色或任務角色（top person、Back spot）才併成一欄；認不得的照舊（名字裡可以有 M、F 這種縮寫）。
+	// 英文、日文的任務角色只在性別後面才算（姓可以是 Catcher 這種字）
 	const g = words.findLastIndex((w, i) => i > 0 && genderOf(w));
 	const tail = words.slice(g + 1).join(' ');
 	if (g > 0 && g < words.length - 2 && (globalRoleOf(tail) || isTaskRole(tail)))
@@ -193,7 +195,7 @@ function columns(line: string): string[] {
 	const looksLike =
 		genderOf(gender) ||
 		globalRoleOf(role) ||
-		isTaskRole(role) ||
+		FIXED_ROLES.some((r) => r.name === role) ||
 		NAME_HEADERS.has(words[0].toLowerCase());
 	return looksLike ? [words.slice(0, -2).join(' '), gender, role] : [line.trim()];
 }
