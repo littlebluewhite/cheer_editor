@@ -88,7 +88,7 @@ describe('雲端流程一步一步存', () => {
 		const s = await openCloud();
 		s.state.flows[0].flow = flowOf(deleteMember(s.state.flows[0].flow, 'm4', { confirmed: true }));
 		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
-		await fireEvent.change(screen.getByLabelText('第 4 位隊員的名字'), { target: { value: '芳芳' } });
+		await fireEvent.change(screen.getByLabelText("Athlete 4's name"), { target: { value: '芳芳' } });
 		await flush();
 
 		expect(s.page.session.notice).toBe("Not saved: Can't find this athlete");

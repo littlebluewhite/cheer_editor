@@ -4,7 +4,9 @@ import { fakePendingInput, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import RoleGlossary from './RoleGlossary.svelte';
+import RolePicker from './RolePicker.svelte';
 
 /** 放一個帶著 flow 的 session 進 context，畫名詞對照表；回傳 session。 */
 function setup(flow: Flow) {
@@ -88,5 +90,38 @@ describe('名詞對照表', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(pendingInput.onflush).toHaveBeenCalledOnce();
 		expect(onclose).toHaveBeenCalledOnce();
+	});
+});
+
+describe('英文畫面', () => {
+	it('名詞對照表：固定角色照語言寫，自訂角色照教練取的名字，看不到中文', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const test = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		setup(flowOf(addCustomRole(test, { name: 'Thrower', meaning: 'Throws the top person' })));
+		const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+		expect(rows[4].querySelector('b')!.textContent).toBe('Top person');
+		expect(screen.getByLabelText('Name of “Thrower”')).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Add position' })).toBeTruthy();
+		expect(document.body.innerHTML).not.toMatch(/\p{Script=Han}/u);
+	});
+
+	it('任務角色選單：固定角色照語言寫、沒有任務、自訂一項都看不到中文', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		// jsdom 沒有 scrollIntoView（選單打開時捲到選到的那一項）
+		Element.prototype.scrollIntoView = () => {};
+		const roles = [
+			{ name: '上層', meaning: { code: 'roles_meaning_top' } as const, key: '5', group: 1 },
+			{ name: 'Thrower', meaning: 'Throws', key: '', group: 4 }
+		];
+		render(RolePicker, { props: { label: 'Amy', value: '上層', roles, onpick: vi.fn(), onnew: vi.fn() } });
+		const button = screen.getByRole('combobox', { name: 'Amy' });
+		expect(button.textContent!.trim()).toBe('Top person');
+		await fireEvent.click(button);
+		const options = screen.getAllByRole('option').map((o) => o.textContent);
+		expect(options[0]).toContain('(No position)');
+		expect(options[1]).toContain('Top person');
+		expect(options[2]).toContain('Thrower');
+		expect(options[3]).toBe('+ Custom position…');
+		expect(document.body.innerHTML).not.toMatch(/\p{Script=Han}/u);
 	});
 });

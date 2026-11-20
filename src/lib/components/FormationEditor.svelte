@@ -5,6 +5,7 @@
 	import { composing } from '#lib/ime.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		currentFormation,
@@ -73,16 +74,16 @@
 	}
 </script>
 
-<div class="now-formation" aria-label="現在的站位">
-	<span class="now-label">現在站位</span>
+<div class="now-formation" aria-label={m.formation_editor_now_aria()}>
+	<span class="now-label">{m.formation_editor_now()}</span>
 	{#if here}
 		{#key here.id}
 			<div class="now-row">
 				<span class="now-no">{now.number}</span>
 				<input
 					class="formation-name"
-					aria-label="站位名稱"
-					placeholder="取名（可不填）"
+					aria-label={m.text_length_formation_name()}
+					placeholder={m.formation_editor_name_placeholder()}
 					value={here.name ?? ''}
 					bind:this={nameInput}
 					data-id={here.id}
@@ -92,7 +93,7 @@
 				<CharCount field="formationName" input={nameInput} value={here.name ?? ''} />
 			</div>
 			<label class="formation-time">
-				<span>站位時間</span>
+				<span>{m.formation_editor_time()}</span>
 				<input
 					value={hereTime}
 					disabled={here === flow.formations[0]}
@@ -109,7 +110,7 @@
 			{#if now.formation.name}
 				<strong class="now-name" title={now.formation.name}>{now.formation.name}</strong>
 			{:else}
-				<span class="now-name unnamed">站位 {now.number}</span>
+				<span class="now-name unnamed">{m.eight_count_formation_now({ n: now.number })}</span>
 			{/if}
 		</div>
 	{/if}
