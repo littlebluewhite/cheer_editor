@@ -34,6 +34,24 @@ const ZH = {
 	// commands.ts
 	commands_no_flow: '沒有開著的流程',
 	commands_none: '沒有指令',
+	// flow.ts
+	flow_no_name: '請幫流程取名字',
+	flow_strips: '條數要是 {min}–{max} 的整數',
+	flow_stacked: '這樣調整，這些人會疊在同一點（之後可以再拖開）：',
+	// time-rules.ts
+	time_rules_positive: '秒數要大於 0',
+	time_rules_chant: '「口號段加起來最少」要比「整支流程最多」少',
+	time_rules_music: '「音樂段加起來最多」不能超過「整支流程最多」',
+	// flow-check.ts
+	flow_check_max_members: '一支流程最多 {max} 人',
+	flow_check_in_action: '動作「{action}」：{reason}',
+	flow_check_in_formation: '站位 {n}：{reason}',
+	flow_check_in_segment: '{segment}：{reason}',
+	flow_check_off_field: '{member} {reason}',
+	flow_check_formation_order: '站位 {n} 要在站位 {before} 之後、段的時間裡',
+	flow_check_twice: '同一個人只能放一次',
+	flow_check_no_role: '沒有「{role}」這個任務角色',
+	flow_check_clash: '{member} 同一時間在「{first}」和「{second}」裡',
 
 	// time.ts
 	time_start_unreadable_music: '開始看不懂，例：3-5&',

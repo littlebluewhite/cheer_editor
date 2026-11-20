@@ -3,6 +3,7 @@
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import { clockText, EPS, segmentSpans } from './time';
+import type { Why } from './why';
 
 export interface TimeRules {
 	on: boolean;
@@ -20,10 +21,10 @@ export const DEFAULT_TIME_RULES: TimeRules = {
 
 /** 時間規則的數字不合時說的話。 */
 export const TIME_RULE_PROBLEMS = {
-	positive: '秒數要大於 0',
-	chant: '「口號段加起來最少」要比「整支流程最多」少',
-	music: '「音樂段加起來最多」不能超過「整支流程最多」'
-};
+	positive: { code: 'time_rules_positive' },
+	chant: { code: 'time_rules_chant' },
+	music: { code: 'time_rules_music' }
+} satisfies Record<string, Why>;
 
 /**
  * 流程設定：改規則警告的開關和三個數字。秒數要大於 0；口號段最少要比整支最多少；音樂段最多不能超過整支最多。
