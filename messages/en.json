@@ -38,8 +38,6 @@
 	"flow_check_in_action": "Skill \"{action}\": {reason}",
 	"flow_check_in_formation": "Formation {n}: {reason}",
 	"flow_check_in_segment": "{segment}: {reason}",
-	"flow_check_no_role_name": "Please enter a position name",
-	"flow_check_role_taken": "There's already a position called \"{role}\"",
 	"flow_check_off_field": "{member} {reason}",
 	"flow_check_formation_order": "Formation {n} must come after formation {before} and within a segment's time",
 	"flow_check_twice": "Each athlete can only be added once",

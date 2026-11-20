@@ -38,8 +38,6 @@
 	"flow_check_in_action": "技「{action}」：{reason}",
 	"flow_check_in_formation": "フォーメーション {n}：{reason}",
 	"flow_check_in_segment": "{segment}：{reason}",
-	"flow_check_no_role_name": "ポジション名を入力してください",
-	"flow_check_role_taken": "「{role}」というポジションはすでにあります",
 	"flow_check_off_field": "{member} {reason}",
 	"flow_check_formation_order": "フォーメーション {n} はフォーメーション {before} より後で、パートの時間内にしてください",
 	"flow_check_twice": "同じ選手は 1 回しか入れられません",

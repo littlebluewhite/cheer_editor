@@ -69,8 +69,8 @@ function violations(flow: Flow): Violation[] {
 		add(
 			`roleName:${r.id}`,
 			!name
-				? { code: 'flow_check_no_role_name' }
-				: (tooLong('roleName', name) ?? (taken ? { code: 'flow_check_role_taken', role: name } : null))
+				? { code: 'roles_no_name' }
+				: (tooLong('roleName', name) ?? (taken ? { code: 'roles_name_taken', name } : null))
 		);
 	}
 

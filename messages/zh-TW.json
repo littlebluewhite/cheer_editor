@@ -38,8 +38,6 @@
 	"flow_check_in_action": "動作「{action}」：{reason}",
 	"flow_check_in_formation": "站位 {n}：{reason}",
 	"flow_check_in_segment": "{segment}：{reason}",
-	"flow_check_no_role_name": "請填任務角色名稱",
-	"flow_check_role_taken": "已經有「{role}」這個任務角色了",
 	"flow_check_off_field": "{member} {reason}",
 	"flow_check_formation_order": "站位 {n} 要在站位 {before} 之後、段的時間裡",
 	"flow_check_twice": "同一個人只能放一次",

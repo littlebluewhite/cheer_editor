@@ -154,8 +154,8 @@ const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
 		'flow_check_in_formation'
 	],
 	['任務角色名稱太長', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '飛'.repeat(9), meaning: '' }] }), '任務角色名稱最多 8 個字'],
-	['任務角色沒有名稱', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '', meaning: '' }] }), '請填任務角色名稱', 'flow_check_no_role_name'],
-	['任務角色重複', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '上層', meaning: '' }] }), '已經有「上層」這個任務角色了', 'flow_check_role_taken'],
+	['任務角色沒有名稱', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '', meaning: '' }] }), '請填任務角色名稱', 'roles_no_name'],
+	['任務角色重複', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '上層', meaning: '' }] }), '已經有「上層」這個任務角色了', 'roles_name_taken'],
 	['場地條數', (f) => ({ ...f, field: { ...f.field, strips: 13 } }), '條數要是 1–12 的整數', 'flow_strips'],
 	['時間規則的秒數', (f) => ({ ...f, timeRules: { ...f.timeRules, minChantSec: 0 } }), '秒數要大於 0', 'time_rules_positive'],
 	[
