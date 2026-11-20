@@ -41,6 +41,10 @@ import {
 	type RunThroughMarks
 } from './index';
 import { flowOf, libSample, pyramidSample, ratedSample } from '../test-flows';
+import { zh, type WhyParam } from './why';
+
+/** 組的名字（代號）寫成中文，比對照舊用中文。 */
+const zhName = <T extends { name: WhyParam }>(ws: T[]) => ws.map((w) => ({ ...w, name: typeof w.name === 'object' ? zh(w.name) : w.name }));
 
 const sample = ratedSample;
 
@@ -733,7 +737,7 @@ describe('記錄頁要的清單', () => {
 		let flow = flowOf(setSquad(sample(), 'x1', ['m1'], 3));
 		flow = flowOf(setSquad(flow, 'x1', ['m2'], null));
 		const x1 = flow.actions.find((a) => a.id === 'x1')!;
-		expect(attemptWhos(flow, x1)).toEqual([
+		expect(zhName(attemptWhos(flow, x1))).toEqual([
 			{ who: 'g2', name: '第 1 組 小芳', people: ['小B', '小芳'] },
 			{ who: 'g3', name: '第 2 組 小美', people: ['小美'] }
 		]);

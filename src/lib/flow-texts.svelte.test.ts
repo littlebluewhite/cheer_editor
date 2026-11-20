@@ -10,6 +10,7 @@ import {
 	addMembers,
 	addPhase,
 	addSegment,
+	attemptWhos,
 	createFlow,
 	cueWhy,
 	cueWordWhy,
@@ -142,6 +143,7 @@ describe('流程核心給畫面的字：英文', () => {
 			memberNowWhy(flow, 'm2', 1),
 			memberNowWhy(flow, 'm1', 7),
 			squadWhy(flow, flow.actions[0], flow.actions[0].members[0].squad!),
+			...attemptWhos(flow, flow.actions[0]).map((w) => w.name),
 			NOT_YET_TITLE,
 			...MARKS.map((m) => m.label),
 			...Object.values(CUE_KIND_LABELS)

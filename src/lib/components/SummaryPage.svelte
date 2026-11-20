@@ -103,7 +103,7 @@
 		const column = block?.table.columns.find((c) => c.who === who);
 		if (!block || !phase || !column) return null;
 		const name = typeof phase === 'string' ? phase : phaseLabel(phase);
-		return { title: `${column.name} ${name}`, days: cellDetail(block.action, who, phaseId, filter) };
+		return { title: `${whyText(column.name)} ${name}`, days: cellDetail(block.action, who, phaseId, filter) };
 	});
 	const isOpen = (actionId: string, who: string, phaseId: string | null) =>
 		open?.actionId === actionId && open.who === who && open.phaseId === phaseId;
@@ -169,7 +169,7 @@
 							<tr>
 								<th scope="col">環節</th>
 								{#each table.columns as col (col.who)}
-									<th scope="col">{col.name}{#if col.people}{' '}<small class="people">{col.people.join('・')}</small>{/if}</th>
+									<th scope="col">{whyText(col.name)}{#if col.people}{' '}<small class="people">{col.people.join('・')}</small>{/if}</th>
 								{/each}
 								<th scope="col">合計</th>
 							</tr>
@@ -180,7 +180,7 @@
 								<tr>
 									<th scope="row">{phaseLabel(p)}</th>
 									{#each table.columns as col (col.who)}
-										{@render cellButton(action.id, col.who, p.id, `${col.name} ${phaseLabel(p)}`, phaseCell(col.phases[p.id]))}
+										{@render cellButton(action.id, col.who, p.id, `${whyText(col.name)} ${phaseLabel(p)}`, phaseCell(col.phases[p.id]))}
 									{/each}
 									<td class="total {rateBand(total.pct) ?? ''}">{@render number(total)}</td>
 								</tr>
@@ -191,7 +191,7 @@
 									<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
 									<th scope="row">{picks.rate === 'completion' ? '整次成功率' : '整次'}</th>
 									{#each table.columns as col (col.who)}
-										{@render cellButton(action.id, col.who, null, `${col.name} 整次`, wholeCell(col))}
+										{@render cellButton(action.id, col.who, null, `${whyText(col.name)} 整次`, wholeCell(col))}
 									{/each}
 									<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
 								</tr>

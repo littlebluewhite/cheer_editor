@@ -25,7 +25,10 @@ import type { Action } from './action-types';
 import type { Phase } from './phase-types';
 import type { Segment } from './segment';
 import { attemptProblem, successRateProblem, type Attempt } from './success-rate';
-import { said } from './why';
+import { said, zh, type WhyParam } from './why';
+
+/** 組的名字（代號）寫成中文，比對照舊用中文。 */
+const zhName = <T extends { name: WhyParam }>(ws: T[]) => ws.map((w) => ({ ...w, name: typeof w.name === 'object' ? zh(w.name) : w.name }));
 
 /** 音樂 1（4 個八拍）；隊員小美（上層）、小A、小B、小芳（上層）。x1：Lib（技巧），四個人都在裡面。 */
 function sample(category: ActionCategory = 'stunt'): Flow {
@@ -196,7 +199,7 @@ describe('組的名字', () => {
 
 	it('練習畫面的「誰」帶著全組的名字，照名單順序', () => {
 		const flow = grouped([['m3', 2], ['m2', 2]]);
-		expect(attemptWhos(flow, actionOf(flow))).toEqual([
+		expect(zhName(attemptWhos(flow, actionOf(flow)))).toEqual([
 			{ who: nth(flow, 1), name: '第 1 組 小美', people: ['小美', '小芳'] },
 			{ who: nth(flow, 2), name: '第 2 組 小A', people: ['小A', '小B'] }
 		]);
@@ -235,7 +238,7 @@ describe('開始分組：動作裡的人全部進第 1 組', () => {
 	it('有一個環節的騰翻（四個人）換成技巧並帶「確定」：每個人在第 1 組，記錄頁的「誰」是一組', () => {
 		const flow = flowOf(updateAction(rated(sample('tumbling')), 'x1', { category: 'stunt' }, { confirmed: true }));
 		expect(squadNumbers(actionOf(flow))).toEqual([1, 1, 1, 1]);
-		expect(attemptWhos(flow, actionOf(flow))).toEqual([{ who: 'g1', name: '第 1 組 小美', people: ['小美', '小A', '小B', '小芳'] }]);
+		expect(zhName(attemptWhos(flow, actionOf(flow)))).toEqual([{ who: 'g1', name: '第 1 組 小美', people: ['小美', '小A', '小B', '小芳'] }]);
 	});
 });
 

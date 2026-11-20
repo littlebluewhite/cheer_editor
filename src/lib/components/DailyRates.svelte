@@ -13,6 +13,7 @@
 		type Action
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
 		action: Action;
@@ -42,7 +43,7 @@
 			<select value={picked} onchange={(e) => (session.view.dailyWho[action.id] = e.currentTarget.value)}>
 				<option value="">全部</option>
 				{#each whos as w (w.who)}
-					<option value={w.who}>{w.name}</option>
+					<option value={w.who}>{whyText(w.name)}</option>
 				{/each}
 			</select>
 		</label>

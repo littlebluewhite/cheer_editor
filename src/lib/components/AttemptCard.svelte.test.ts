@@ -5,6 +5,7 @@ import { addAction, addPhase, attemptWhos, deletePhase, recordAttempt, recordRun
 import { flowOf } from '#lib/test-flows.js';
 import { libSample, pyramidSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { whyText } from '#lib/reason-text.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import AttemptCard from './AttemptCard.svelte';
@@ -15,7 +16,8 @@ const DATE = '2026-11-01';
 function setup(flow = libSample(), index = 0) {
 	const { editor, session } = testEditor(flow);
 	const action = flow.actions[index];
-	const { who, name, people } = attemptWhos(flow, action)[0];
+	const { who, name: label, people } = attemptWhos(flow, action)[0];
+	const name = whyText(label);
 	render(TestSession, { props: { editor, component: AttemptCard, props: { action, who, name, people, date: DATE } } });
 	return { session, name };
 }
@@ -459,8 +461,9 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		const flow = pyramidSample();
 		const { editor, session } = testEditor(flow);
 		const action = flow.actions[1];
-		const { who, name, people } = attemptWhos(flow, action)[0];
-		const props = { editor, component: AttemptCard, props: { action, who, name, people, date: DATE } };
+		const { who, name: label, people } = attemptWhos(flow, action)[0];
+		const name = whyText(label);
+		const props ={ editor, component: AttemptCard, props: { action, who, name, people, date: DATE } };
 		const first = render(TestSession, { props });
 		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
 		await fireEvent.click(screen.getByRole('checkbox', { name: '中段 第一個' }));

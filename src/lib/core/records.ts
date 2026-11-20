@@ -11,8 +11,8 @@ import {
 	changedAttempt,
 	keptAttempt,
 	perPerson,
-	squadName,
 	squadPeople,
+	squadWhy,
 	squadsOf,
 	withoutBlanks,
 	type Attempt,
@@ -20,7 +20,7 @@ import {
 	type NewAttempt,
 	type PracticeKind
 } from './success-rate';
-import type { Why } from './why';
+import type { Why, WhyParam } from './why';
 
 /** 記一次：給動作、誰、日期、練法、整個做或只練幾個環節、記號（存成 keptAttempt 給的樣子）。回傳新的一次的 id。 */
 export function recordAttempt(
@@ -385,10 +385,10 @@ export function recordableActions(flow: Flow): Action[] {
 }
 
 /**
- * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組（who 是組 id），照組號排，名字是「第 1 組 小美」；
+ * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組（who 是組 id），照組號排，名字是「第 1 組 小美」（代號，見 squadWhy）；
  * people 是全組的名字（照名單順序）；騰翻、跳躍是動作裡的每個人，照名單順序，沒有 people。沒分到組的人不算。
  */
-export function attemptWhos(flow: Flow, action: Action): { who: string; name: string; people?: string[] }[] {
+export function attemptWhos(flow: Flow, action: Action): { who: string; name: WhyParam; people?: string[] }[] {
 	if (perPerson(action.category)) {
 		return flow.members
 			.filter((m) => action.members.some((am) => am.memberId === m.id))
@@ -396,7 +396,7 @@ export function attemptWhos(flow: Flow, action: Action): { who: string; name: st
 	}
 	return squadsOf(action).map((squad) => ({
 		who: squad,
-		name: squadName(flow, action, squad),
+		name: squadWhy(flow, action, squad),
 		people: squadPeople(flow, action, squad).map((m) => m.name)
 	}));
 }

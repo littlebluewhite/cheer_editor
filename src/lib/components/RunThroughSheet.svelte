@@ -268,7 +268,7 @@
 							<th scope="col">環節</th>
 							{#each columns as col (col.who)}
 								<th scope="col" class:other={!col.mine}
-									>{col.name}{#if !col.mine && otherText(action, col.who)}{' '}<small>{otherText(action, col.who)}</small
+									>{whyText(col.name)}{#if !col.mine && otherText(action, col.who)}{' '}<small>{otherText(action, col.who)}</small
 										>{/if}</th
 								>
 							{/each}
@@ -285,12 +285,12 @@
 											<button
 												type="button"
 												class="slot {m === '✓' ? 'ok' : m === '△' ? 'minor' : m === '✗' ? 'fail' : ''}"
-												aria-label="{col.name} {phaseLabel(p)} {markLabel(m)}"
+												aria-label="{whyText(col.name)} {phaseLabel(p)} {markLabel(m)}"
 												disabled={m === null}
 												onclick={() => m && tap(action, col.who, p.id, m)}>{m ?? ''}</button
 											>
 										{:else}
-											<button type="button" class="slot" aria-label="{col.name} {phaseLabel(p)} 別人記的" disabled>—</button>
+											<button type="button" class="slot" aria-label="{whyText(col.name)} {phaseLabel(p)} 別人記的" disabled>—</button>
 										{/if}
 									</td>
 								{/each}
