@@ -20,14 +20,16 @@
 		fillOk,
 		keptAttempt,
 		phaseColor,
-		phaseLabel,
+		phaseWhy,
 		pickedAutoSave,
 		type Action,
 		type Attempt,
-		type Mark
+		type Mark,
+		type Phase
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import { removeWithRestore } from './record-notice';
 	import { revealAlert } from './reveal';
 
@@ -124,7 +126,7 @@
 	function save(next = marks) {
 		setMarks({});
 		ask.send({ name: 'recordAttempt', args: [action.id, { date, who, practice: 'drill', whole, marks: next }] }, {
-			done: () => (session.notice = '已記下')
+			done: () => (session.notice = t.practice_saved())
 		});
 	}
 
@@ -168,13 +170,16 @@
 		ask.send({ name: 'changeAttempt', args: [action.id, attempt.id, draft] }, {
 			done: () => {
 				editing = null;
-				session.notice = '已改';
+				session.notice = t.practice_changed();
 			}
 		});
 	}
 
 	/** 刪掉這天的某一次的提示，例：已刪掉 ·✓（第 4 次）。 */
-	const removedText = (attempt: Attempt) => `已刪掉 ${attemptText(action, attempt)}（第 ${today.indexOf(attempt) + 1} 次）`;
+	const removedText = (attempt: Attempt) =>
+		t.practice_removed_rep({ marks: attemptText(action, attempt), n: today.indexOf(attempt) + 1 });
+	/** 環節的名字，照畫面的語言（教練取的名字照原樣）。 */
+	const phaseText = (p: Phase) => whyText(phaseWhy(p));
 
 	function removeEdited(attempt: Attempt) {
 		editing = null;
@@ -209,22 +214,24 @@
 <section class="card" aria-label={name}>
 	<header>
 		<div class="who">
-			<b>{name}{#if Object.keys(marks).length}<span class="unsaved">還沒存</span>{/if}</b>
-			{#if people}<small>{people.join('・')}</small>{/if}
+			<b>{name}{#if Object.keys(marks).length}<span class="unsaved">{t.practice_unsaved()}</span>{/if}</b>
+			{#if people}<small>{people.reduceRight((rest, first) => t.practice_people({ first, rest }))}</small>{/if}
 		</div>
 		<!-- 只有一個環節就沒得選，一定是整個做 -->
 		{#if phases.length > 1}
-			<div class="scope" role="radiogroup" aria-label="{name} 這次練">
-				<span>這次練</span>
-				<label><input type="radio" name="scope-{action.id}-{who}" checked={whole} onchange={() => setWhole(true)} />整個</label>
+			<div class="scope" role="radiogroup" aria-label={t.practice_scope_label({ name })}>
+				<span>{t.practice_scope()}</span>
 				<label
-					><input type="radio" name="scope-{action.id}-{who}" checked={!whole} onchange={() => setWhole(false)} />只練幾個環節</label
+					><input type="radio" name="scope-{action.id}-{who}" checked={whole} onchange={() => setWhole(true)} />{t.practice_scope_whole()}</label
+				>
+				<label
+					><input type="radio" name="scope-{action.id}-{who}" checked={!whole} onchange={() => setWhole(false)} />{t.practice_some_phases()}</label
 				>
 			</div>
 		{/if}
 	</header>
-	{#if waiting}<p class="hint">還有同時在做的環節沒打。打完會自動存，也可以按「存這一次」</p>
-	{:else if !whole}<p class="hint">勾要練的環節，按完最後一個勾的環節（或按到 ✗）就自動存</p>{/if}
+	{#if waiting}<p class="hint">{t.practice_hint_waiting()}</p>
+	{:else if !whole}<p class="hint">{t.practice_hint_picked()}</p>{/if}
 
 	<div class="phases">
 		{#each phases as p (p.id)}
@@ -232,11 +239,11 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (鍵盤用勾選框) -->
 			<div class="phase" class:off={!on} class:pickable={!whole} onclick={(e) => pickRow(e, p.id)}>
 				{#if whole}
-					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
+					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseText(p)}</span>
 				{:else}
 					<label class="phase-name">
 						<input type="checkbox" checked={picked.includes(p.id)} onchange={(e) => pick(p.id, e.currentTarget.checked)} />
-						<span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}
+						<span class="chip" style:--c={phaseColor(p)}></span>{phaseText(p)}
 					</label>
 				{/if}
 				<div class="marks">
@@ -244,7 +251,7 @@
 						<button
 							type="button"
 							class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
-							aria-label="{name} {phaseLabel(p)} {whyText(m.label)}"
+							aria-label="{name} {phaseText(p)} {whyText(m.label)}"
 							aria-pressed={shown[p.id] === m.key}
 							disabled={!on}
 							onclick={() => tap(p.id, m.key)}>{m.key}</button
@@ -258,62 +265,60 @@
 	<!-- 存檔鈕在右（靠近 ✓）。提示（已記下、已刪掉…救回）浮在練習畫面下方，不在卡上推動版面 -->
 	{#if whole && phases.length > 1}
 		<div class="save-row">
-			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>存這一次</button>
-			<button type="button" class="primary all-ok" onclick={() => save(fillOk(action, shown))}>全部 ✓ 存</button>
+			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>{t.practice_save_rep()}</button>
+			<button type="button" class="primary all-ok" onclick={() => save(fillOk(action, shown))}>{t.practice_save_all_ok()}</button>
 		</div>
 	{:else if waiting}
 		<div class="save-row">
-			<button type="button" class="save" onclick={() => save()}>存這一次</button>
+			<button type="button" class="save" onclick={() => save()}>{t.practice_save_rep()}</button>
 		</div>
 	{/if}
-	{#if skipping}<p class="hint-warn">跳過了前面的環節，存了會記成「只練幾個環節」，不算進整次成功率</p>{/if}
+	{#if skipping}<p class="hint-warn">{t.practice_skipping()}</p>{/if}
 	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	<footer>
 		{#if today.length}
-			<ol class="day" aria-label="這天的每一次">
+			<ol class="day" aria-label={t.practice_day_reps()}>
 				{#each today as r, i (r.id)}
 					{@const run = r.practice === 'runThrough'}
-					{@const kind = run ? '全上' : r.whole ? '分段練' : '只練幾個環節'}
+					{@const kind = run ? t.practice_full_out() : r.whole ? t.practice_drill() : t.practice_some_phases()}
 					{@const text = attemptText(action, r)}
-					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? `${kind}；${whyText(NOT_YET_TITLE)}` : kind}>
+					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? t.practice_kind_note({ kind, note: whyText(NOT_YET_TITLE) }) : kind}>
 						<button
 							type="button"
 							aria-expanded={editing === r.id}
-							aria-label="改第 {i + 1} 次（{kind} {text}）"
+							aria-label={t.practice_edit_rep_kind({ n: i + 1, kind, marks: text })}
 							onclick={() => openEdit(r)}>{text}</button
 						>{#if session.recordedBy[r.id]}<small class="by">{session.recordedBy[r.id]}</small>{/if}{#if session.unsentRecords.has(r.id)}<small
-								class="unsent">沒傳</small
+								class="unsent">{t.practice_unsent()}</small
 							>{/if}
 					</li>
 				{/each}
 			</ol>
 		{:else}
-			<p class="none">這天還沒記</p>
+			<p class="none">{t.practice_none_that_day()}</p>
 		{/if}
 		<button
 			type="button"
 			class="undo-last"
 			disabled={!lastMine}
-			title={session.sharedRecords
-				? '刪掉你在這張卡這天最後記的一次分段練（別人記的、全上的不刪）'
-				: '刪掉這張卡這天最後記的一次分段練（全上的不刪）'}
-			onclick={removeLast}>{session.sharedRecords ? '刪掉我的上一次' : '刪掉上一次'}</button
+			title={session.sharedRecords ? t.practice_remove_mine_title() : t.practice_remove_last_title()}
+			onclick={removeLast}>{session.sharedRecords ? t.practice_remove_mine() : t.practice_remove_last()}</button
 		>
 	</footer>
 	{#if edited}
 		{@const n = today.indexOf(edited) + 1}
-		<div class="edit" role="group" aria-label="改第 {n} 次">
-			<b>改第 {n} 次{edited.practice === 'runThrough' ? '（全上）' : ''}</b>
+		<div class="edit" role="group" aria-label={t.practice_edit_rep({ n })}>
+			<b>{edited.practice === 'runThrough' ? t.practice_edit_rep_full_out({ n }) : t.practice_edit_rep({ n })}</b>
 			{#each phases as p (p.id)}
 				<div class="phase">
-					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseLabel(p)}</span>
+					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseText(p)}</span>
 					<div class="marks">
 						{#each MARKS as m (m.key)}
 							<button
 								type="button"
 								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
-								aria-label="第 {n} 次 {phaseLabel(p)} {whyText(m.label)}"
+								aria-label={t.practice_rep_phase_mark({ n, phase: phaseText(p), mark: whyText(m.label) })}
 								aria-pressed={draft[p.id] === m.key}
 								disabled={editShut.includes(p.id)}
 								onclick={() => retap(p.id, m.key)}>{m.key}</button
@@ -324,12 +329,12 @@
 			{/each}
 			{#if othersOnly}
 				{@const by = session.recordedBy[othersOnly.id]}
-				<p class="hint">{by ? `這一次是${by}記的` : '這一次是從流程檔來的'}：你只能改、刪自己記的。</p>
+				<p class="hint">{by ? t.practice_recorded_by({ name: by }) : t.practice_recorded_from_file()}</p>
 			{/if}
 			<div class="edit-row">
-				{#if !othersOnly}<button type="button" class="danger" onclick={() => removeEdited(edited)}>刪掉這一次</button>{/if}
-				<button type="button" onclick={() => (editing = null)}>{othersOnly ? '收起來' : '不改了'}</button>
-				{#if !othersOnly}<button type="button" class="primary" onclick={() => saveEdit(edited)}>存修改</button>{/if}
+				{#if !othersOnly}<button type="button" class="danger" onclick={() => removeEdited(edited)}>{t.practice_delete_rep()}</button>{/if}
+				<button type="button" onclick={() => (editing = null)}>{othersOnly ? t.practice_close_edit() : t.practice_cancel_edit()}</button>
+				{#if !othersOnly}<button type="button" class="primary" onclick={() => saveEdit(edited)}>{t.practice_save_edit()}</button>{/if}
 			</div>
 		</div>
 	{/if}

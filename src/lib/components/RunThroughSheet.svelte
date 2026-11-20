@@ -8,21 +8,23 @@
 	// 點一下拿來（別人還沒點過的能接手）或放掉；別人記的欄變灰、格子「—」，欄名下面寫誰在記；同一次全上別人先存了的欄也變灰。
 	// 一欄第一次點記號時告訴伺服器；只存自己記的欄；存好、取消就離開表。
 	import {
-		actionLabel,
+		actionWhy,
 		attemptWhos,
 		blankPhases,
 		keptAttempt,
 		MARKS,
-		phaseLabel,
+		phaseWhy,
 		recordableActions,
 		type Action,
 		type Mark,
+		type Phase,
 		type RunThroughMarks
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
 	import { runKey, runKeyLabel, runKeys, runNumber } from '#lib/run-keys.js';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import type { RunView } from '#lib/server-api.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { actionColor } from './category-colors';
@@ -79,11 +81,11 @@
 	}
 	$effect(() => () => together?.leaveRun());
 
-	/** 同一次全上這一欄別人已經存了：記的人的名字。 */
+	/** 同一次全上這一欄別人已經存了：記的人的名字（不知道是誰是空字串）。 */
 	function recordedBy(action: Action, who: string): string | null {
 		if (!together) return null;
 		const r = action.successRate!.records.find((r) => r.runThroughId === run.id && r.who === who && r.id in session.recordedBy);
-		return r ? session.recordedBy[r.id] || '別人' : null;
+		return r ? session.recordedBy[r.id] : null;
 	}
 	/** 這一欄是我記的（本機流程每一欄都是）。 */
 	const isMine = (action: Action, who: string) =>
@@ -91,10 +93,11 @@
 	/** 別人記的欄，欄名下面的字。 */
 	function otherText(action: Action, who: string): string {
 		const done = recordedBy(action, who);
-		if (done !== null) return `${done}已經記了`;
+		if (done !== null) return done ? t.run_through_done_by({ name: done }) : t.run_through_done_by_someone();
 		const h = holder(runKey(action, who));
 		if (!h) return '';
-		return h.away ? `${h.name}斷線了` : h.touched ? `${h.name}在記` : `${h.name}拿著・還沒點`;
+		const name = h.name;
+		return h.away ? t.run_through_away({ name }) : h.touched ? t.run_through_touched({ name }) : t.run_through_holding_untouched({ name });
 	}
 	/** 「我記哪幾組」每顆下面的字：你記（有幾欄別人先存了寫「你記 2／3」）、沒人記、王教練拿著、王教練在記。 */
 	function pickText(key: string): string {
@@ -103,10 +106,10 @@
 				whos.filter((w) => runKey(action, w.who) === key).map((w) => recordedBy(action, w.who) === null)
 			);
 			const free = cols.filter(Boolean).length;
-			return free === cols.length ? '你記' : `你記 ${free}／${cols.length}`;
+			return free === cols.length ? t.run_through_you() : t.run_through_you_some({ free, total: cols.length });
 		}
 		const h = holder(key);
-		return !h ? '沒人記' : h.touched ? `${h.name}在記` : `${h.name}拿著`;
+		return !h ? t.run_through_no_one() : h.touched ? t.run_through_touched({ name: h.name }) : t.run_through_holding({ name: h.name });
 	}
 	function pick(key: string) {
 		if (myKeys.includes(key)) together?.release(key);
@@ -116,9 +119,9 @@
 	const refused = $derived.by(() => {
 		const r = together?.runRefused;
 		if (!r) return '';
-		if (r === 'closed') return '這次全上的人都離開了，不能加入';
-		const label = runKeyLabel(flow, r.key);
-		return r.touched ? `${r.by}已經點了${label}，拿不走` : `${r.by}先拿了${label}`;
+		if (r === 'closed') return t.run_through_closed();
+		const group = whyText(runKeyLabel(flow, r.key));
+		return r.touched ? t.run_through_refused_touched({ name: r.by, group }) : t.run_through_refused({ name: r.by, group });
 	});
 	/** 每一組都有別人拿著、我一組都沒有。 */
 	const allTaken = $derived(!!together && !myKeys.length && keys.every((k) => holder(k)));
@@ -216,8 +219,10 @@
 
 	const markLabel = (m: Mark | null) => {
 		const label = MARKS.find((x) => x.key === m)?.label;
-		return label ? whyText(label) : '空的';
+		return label ? whyText(label) : t.run_through_empty_mark();
 	};
+	/** 環節的名字，照畫面的語言（教練取的名字照原樣）。 */
+	const phaseText = (p: Phase) => whyText(phaseWhy(p));
 
 	/** 新的全上 id：r 加 12 個字的亂數（ADR 0014）。 */
 	function newRunId(): string {
@@ -225,25 +230,25 @@
 	}
 </script>
 
-<section class="sheet" aria-label="記一次全上">
+<section class="sheet" aria-label={t.run_through_record()}>
 	<header>
-		<h3>{joined ? `加入${joined.people[0]?.name ?? ''}的第 ${number} 次全上` : '記一次全上'}</h3>
+		<h3>{joined ? t.run_through_join_title({ name: joined.people[0]?.name ?? '', n: number }) : t.run_through_record()}</h3>
 		{#if together}
-			<p>一組只能一個人記：上面選你記哪幾組，別人記的欄變灰。你按『存這次全上』只存你記的欄。</p>
+			<p>{t.run_through_together_hint()}</p>
 		{/if}
-		<p>每格先是 ✓，點出錯的地方：✓ → △ → ✗。有個動作沒做，按它的「這個沒做」；中途停了，在第一個沒做的動作按「後面都沒做」。</p>
+		<p>{t.run_through_how()}</p>
 	</header>
 
 	{#if together}
-		<div class="picks" role="group" aria-label="我記哪幾組">
-			<span class="picks-label">我記哪幾組</span>
+		<div class="picks" role="group" aria-label={t.run_through_my_groups()}>
+			<span class="picks-label">{t.run_through_my_groups()}</span>
 			{#each keys as key (key)}
 				<button type="button" aria-pressed={myKeys.includes(key)} onclick={() => pick(key)}
-					>{runKeyLabel(flow, key)}{' '}<small>{pickText(key)}</small></button
+					>{whyText(runKeyLabel(flow, key))}{' '}<small>{pickText(key)}</small></button
 				>
 			{/each}
 		</div>
-		{#if allTaken}<p class="hint">都有人記了：點『拿著』的組，就換你記（他還沒點過記號的才換得走）。</p>{/if}
+		{#if allTaken}<p class="hint">{t.run_through_all_taken()}</p>{/if}
 		{#if refused}<p class="error" {@attach revealAlert()}>{refused}</p>{/if}
 	{/if}
 
@@ -251,13 +256,13 @@
 		{@const phases = action.successRate?.phases ?? []}
 		{@const off = skipped.includes(action.id)}
 		{@const columns = whos.map((w) => ({ ...w, marks: column(action, w.who), mine: isMine(action, w.who) }))}
-		<section class="block" class:off aria-label={actionLabel(action)}>
+		<section class="block" class:off aria-label={whyText(actionWhy(action))}>
 			<div class="head">
-				<h4><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h4>
-				<button type="button" class="stop" aria-pressed={off} onclick={() => toggleSkip(action.id)}>這個沒做</button>
+				<h4><span class="swatch" style:--c={actionColor(action)}></span>{whyText(actionWhy(action))}</h4>
+				<button type="button" class="stop" aria-pressed={off} onclick={() => toggleSkip(action.id)}>{t.run_through_not_done()}</button>
 				{#if index < blocks.length - 1}
 					<button type="button" class="stop" aria-pressed={restSkipped(index)} onclick={() => toggleRest(index)}
-						>後面都沒做</button
+						>{t.run_through_rest_not_done()}</button
 					>
 				{/if}
 			</div>
@@ -265,7 +270,7 @@
 				<table>
 					<thead>
 						<tr>
-							<th scope="col">環節</th>
+							<th scope="col">{t.practice_phase()}</th>
 							{#each columns as col (col.who)}
 								<th scope="col" class:other={!col.mine}
 									>{whyText(col.name)}{#if !col.mine && otherText(action, col.who)}{' '}<small>{otherText(action, col.who)}</small
@@ -277,7 +282,7 @@
 					<tbody>
 						{#each phases as p, i (p.id)}
 							<tr>
-								<th scope="row">{phaseLabel(p)}</th>
+								<th scope="row">{phaseText(p)}</th>
 								{#each columns as col (col.who)}
 									{@const m = col.marks[i]}
 									<td class:other={!col.mine}>
@@ -285,12 +290,17 @@
 											<button
 												type="button"
 												class="slot {m === '✓' ? 'ok' : m === '△' ? 'minor' : m === '✗' ? 'fail' : ''}"
-												aria-label="{whyText(col.name)} {phaseLabel(p)} {markLabel(m)}"
+												aria-label="{whyText(col.name)} {phaseText(p)} {markLabel(m)}"
 												disabled={m === null}
 												onclick={() => m && tap(action, col.who, p.id, m)}>{m ?? ''}</button
 											>
 										{:else}
-											<button type="button" class="slot" aria-label="{whyText(col.name)} {phaseLabel(p)} 別人記的" disabled>—</button>
+											<button
+											type="button"
+											class="slot"
+											aria-label={t.run_through_others_cell({ who: whyText(col.name), phase: phaseText(p) })}
+											disabled>—</button
+										>
 										{/if}
 									</td>
 								{/each}
@@ -306,10 +316,10 @@
 
 	{#if confirming}
 		<ConfirmList
-			message="改過的格子還沒存，要丟掉嗎？"
+			message={t.run_through_discard_question()}
 			items={[]}
-			confirmLabel="丟掉"
-			cancelLabel="繼續記"
+			confirmLabel={t.run_through_discard()}
+			cancelLabel={t.run_through_keep_recording()}
 			onconfirm={discard}
 			oncancel={() => {
 				confirming = false;
@@ -319,9 +329,11 @@
 	{:else}
 		<footer>
 			<button type="button" class="primary" disabled={!!together && !entries.length} onclick={save}
-				>{together ? `存這次全上（你記的 ${entries.length} 欄）` : '存這次全上'}</button
+				>{together
+					? (entries.length === 1 ? t.run_through_save_mine_one : t.run_through_save_mine)({ n: entries.length })
+					: t.run_through_save()}</button
 			>
-			<button type="button" onclick={cancel}>取消</button>
+			<button type="button" onclick={cancel}>{t.practice_cancel()}</button>
 		</footer>
 	{/if}
 </section>

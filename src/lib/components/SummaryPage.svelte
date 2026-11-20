@@ -9,12 +9,12 @@
 	import {
 		NOT_YET_MARK,
 		NOT_YET_TITLE,
-		actionLabel,
+		actionWhy,
 		cellDetail,
 		completionPercent,
 		percent,
 		periodRange,
-		phaseLabel,
+		phaseWhy,
 		rateBand,
 		rateTable,
 		recordableActions,
@@ -26,6 +26,7 @@
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
@@ -49,7 +50,7 @@
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) session.notice = '已記下這次全上';
+		if (done) session.notice = t.practice_run_through_saved();
 	}
 
 	/** YYYY-MM-DD 寫成「11/4」。 */
@@ -58,26 +59,26 @@
 		return `${m}/${d}`;
 	}
 	/** 選的那天寫成「11/4」；是今天才加「今天」（日期是右上角選的，不一定是今天）。 */
-	const dayLabel = $derived(date === localDate() ? `今天 ${monthDay(date)}` : monthDay(date));
+	const dayLabel = $derived(date === localDate() ? t.summary_today({ day: monthDay(date) }) : monthDay(date));
 	/** 最近 7 天寫出是哪幾天，例：最近 7 天（10/29–11/4）。 */
 	const weekLabel = $derived.by(() => {
 		const { from, to } = periodRange(date, 'week');
-		return `最近 7 天（${monthDay(from!)}–${monthDay(to!)}）`;
+		return t.summary_week({ from: monthDay(from!), to: monthDay(to!) });
 	});
 	const PERIODS = $derived<{ key: Period; label: string }[]>([
 		{ key: 'today', label: dayLabel },
 		{ key: 'week', label: weekLabel },
-		{ key: 'all', label: '全部' }
+		{ key: 'all', label: t.practice_all() }
 	]);
-	const PRACTICES: { key: PracticeKind | 'all'; label: string }[] = [
-		{ key: 'all', label: '全部' },
-		{ key: 'runThrough', label: '只看全上' },
-		{ key: 'drill', label: '只看分段練' }
-	];
-	const RATES = [
-		{ key: 'success', label: '成功率' },
-		{ key: 'completion', label: '完成率' }
-	] as const;
+	const PRACTICES = $derived<{ key: PracticeKind | 'all'; label: string }[]>([
+		{ key: 'all', label: t.practice_all() },
+		{ key: 'runThrough', label: t.summary_full_outs_only() },
+		{ key: 'drill', label: t.summary_drills_only() }
+	]);
+	const RATES = $derived([
+		{ key: 'success', label: t.summary_hit_rate() },
+		{ key: 'completion', label: t.summary_completion_rate() }
+	] as const);
 
 	/** 篩選放在 session：切到記錄、編排再回來還是它。 */
 	const picks = $derived(session.view.summary);
@@ -89,7 +90,14 @@
 		return { pct: picks.rate === 'success' ? successPercent(t) : completionPercent(t), count: t.marked };
 	}
 	const wholeCell = (c: RateCounts) => ({ pct: percent(c.whole.clean, c.whole.whole), count: c.whole.whole });
-	const cellText = (c: { pct: number | null; count: number }) => (c.pct === null ? '—' : `${c.pct}% ${c.count} 次`);
+	const cellText = (c: { pct: number | null; count: number }) =>
+		c.pct === null ? '—' : (c.count === 1 ? t.summary_cell_one : t.summary_cell)({ pct: c.pct, n: c.count });
+	/** 次數：「3 次」（英文分單複數）。 */
+	const reps = (n: number) => (n === 1 ? t.practice_reps_one : t.practice_reps)({ n });
+	/** 一組的名字和環節：「第 1 組 上法」。 */
+	const whoPhase = (who: string, phase: string) => t.summary_who_phase({ who, phase });
+	/** 全組的名字：「小美・小A」。 */
+	const people = (names: string[]) => names.reduceRight((rest, first) => t.practice_people({ first, rest }));
 
 	/** 打開的明細：哪個動作、誰、哪個環節（null 是整次）。 */
 	let open = $state<{ actionId: string; who: string; phaseId: string | null } | null>(null);
@@ -99,18 +107,18 @@
 		const { actionId, who, phaseId } = open;
 		const block = blocks.find((b) => b.action.id === actionId);
 		const phases = block?.action.successRate?.phases ?? [];
-		const phase = phaseId === null ? (phases.length > 1 ? '整次' : null) : phases.find((p) => p.id === phaseId);
+		const phase = phaseId === null ? (phases.length > 1 ? t.practice_all_phases() : null) : phases.find((p) => p.id === phaseId);
 		const column = block?.table.columns.find((c) => c.who === who);
 		if (!block || !phase || !column) return null;
-		const name = typeof phase === 'string' ? phase : phaseLabel(phase);
-		return { title: `${whyText(column.name)} ${name}`, days: cellDetail(block.action, who, phaseId, filter) };
+		const name = typeof phase === 'string' ? phase : whyText(phaseWhy(phase));
+		return { title: whoPhase(whyText(column.name), name), days: cellDetail(block.action, who, phaseId, filter) };
 	});
 	const isOpen = (actionId: string, who: string, phaseId: string | null) =>
 		open?.actionId === actionId && open.who === who && open.phaseId === phaseId;
 </script>
 
 {#snippet number(c: { pct: number | null; count: number })}
-	{#if c.pct === null}—{:else}<strong>{c.pct}%</strong> <small>{c.count} 次</small>{/if}
+	{#if c.pct === null}—{:else}<strong>{c.pct}%</strong> <small>{reps(c.count)}</small>{/if}
 {/snippet}
 
 <!-- 一組的一格：點了打開明細（phaseId 是 null 是整次）。 -->
@@ -132,55 +140,55 @@
 	{:else}
 		<RunThroughBar {date} onrecord={(run) => ((join = run ?? null), (recording = true), (open = null))} />
 		<div class="filters">
-			<div class="seg" role="group" aria-label="期間">
-				<span>期間</span>
+			<div class="seg" role="group" aria-label={t.summary_period()}>
+				<span>{t.summary_period()}</span>
 				{#each PERIODS as p (p.key)}
 					<button type="button" aria-pressed={picks.period === p.key} onclick={() => (picks.period = p.key)}>{p.label}</button>
 				{/each}
 			</div>
-			<div class="seg" role="group" aria-label="練法">
-				<span>練法</span>
+			<div class="seg" role="group" aria-label={t.summary_practice()}>
+				<span>{t.summary_practice()}</span>
 				{#each PRACTICES as p (p.key)}
 					<button type="button" aria-pressed={picks.practice === p.key} onclick={() => (picks.practice = p.key)}>{p.label}</button>
 				{/each}
 			</div>
-			<div class="seg" role="group" aria-label="大字看">
-				<span>大字看</span>
+			<div class="seg" role="group" aria-label={t.summary_big_number()}>
+				<span>{t.summary_big_number()}</span>
 				{#each RATES as r (r.key)}
 					<button type="button" aria-pressed={picks.rate === r.key} onclick={() => (picks.rate = r.key)}>{r.label}</button>
 				{/each}
 			</div>
 		</div>
-		<ul class="legend" aria-label="顏色">
-			<li><span class="good"></span>90% 以上</li>
+		<ul class="legend" aria-label={t.summary_legend()}>
+			<li><span class="good"></span>{t.summary_legend_good()}</li>
 			<li><span class="fair"></span>75–89%</li>
-			<li><span class="poor"></span>75% 以下</li>
-			<li>— 沒有紀錄</li>
+			<li><span class="poor"></span>{t.summary_legend_poor()}</li>
+			<li>{t.summary_legend_none()}</li>
 		</ul>
 
 		{#each blocks as { action, table } (action.id)}
 			{@const phases = action.successRate?.phases ?? []}
 			{@const wholeTotal = wholeCell(table.total)}
-			<section class="block" aria-label={actionLabel(action)}>
-				<h3><span class="swatch" style:--c={actionColor(action)}></span>{actionLabel(action)}</h3>
+			<section class="block" aria-label={whyText(actionWhy(action))}>
+				<h3><span class="swatch" style:--c={actionColor(action)}></span>{whyText(actionWhy(action))}</h3>
 				<div class="scroll">
 					<table>
 						<thead>
 							<tr>
-								<th scope="col">環節</th>
+								<th scope="col">{t.practice_phase()}</th>
 								{#each table.columns as col (col.who)}
-									<th scope="col">{whyText(col.name)}{#if col.people}{' '}<small class="people">{col.people.join('・')}</small>{/if}</th>
+									<th scope="col">{whyText(col.name)}{#if col.people}{' '}<small class="people">{people(col.people)}</small>{/if}</th>
 								{/each}
-								<th scope="col">合計</th>
+								<th scope="col">{t.practice_total()}</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each phases as p (p.id)}
 								{@const total = phaseCell(table.total.phases[p.id])}
 								<tr>
-									<th scope="row">{phaseLabel(p)}</th>
+									<th scope="row">{whyText(phaseWhy(p))}</th>
 									{#each table.columns as col (col.who)}
-										{@render cellButton(action.id, col.who, p.id, `${whyText(col.name)} ${phaseLabel(p)}`, phaseCell(col.phases[p.id]))}
+										{@render cellButton(action.id, col.who, p.id, whoPhase(whyText(col.name), whyText(phaseWhy(p))), phaseCell(col.phases[p.id]))}
 									{/each}
 									<td class="total {rateBand(total.pct) ?? ''}">{@render number(total)}</td>
 								</tr>
@@ -189,9 +197,9 @@
 							{#if phases.length > 1}
 								<tr class="whole">
 									<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
-									<th scope="row">{picks.rate === 'completion' ? '整次成功率' : '整次'}</th>
+									<th scope="row">{picks.rate === 'completion' ? t.summary_all_phase_hit_rate() : t.practice_all_phases()}</th>
 									{#each table.columns as col (col.who)}
-										{@render cellButton(action.id, col.who, null, `${whyText(col.name)} 整次`, wholeCell(col))}
+										{@render cellButton(action.id, col.who, null, whoPhase(whyText(col.name), t.practice_all_phases()), wholeCell(col))}
 									{/each}
 									<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
 								</tr>
@@ -201,16 +209,16 @@
 				</div>
 			</section>
 		{:else}
-			<p class="empty">還沒有要記的動作：到編排的拍點格子，幫動作加環節。</p>
+			<p class="empty">{t.summary_empty()}</p>
 		{/each}
 	{/if}
 </div>
 
 {#if detail}
-	<aside class="detail" aria-label="明細">
+	<aside class="detail" aria-label={t.summary_detail()}>
 		<header>
 			<h3>{detail.title}</h3>
-			<button type="button" onclick={() => (open = null)}>關閉</button>
+			<button type="button" onclick={() => (open = null)}>{t.summary_close()}</button>
 		</header>
 		<ol class="days">
 			{#each detail.days as day (day.date)}
@@ -219,7 +227,7 @@
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
 							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? whyText(NOT_YET_TITLE) : undefined}>
-								{m.mark}{#if m.runThrough}<small>全上</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
+								{m.mark}{#if m.runThrough}<small>{t.practice_full_out()}</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
 										>{session.recordedBy[m.id]}</small
 									>{/if}
 							</li>
@@ -227,7 +235,7 @@
 					</ol>
 				</li>
 			{:else}
-				<li class="empty">還沒有紀錄</li>
+				<li class="empty">{t.summary_no_reps()}</li>
 			{/each}
 		</ol>
 	</aside>
