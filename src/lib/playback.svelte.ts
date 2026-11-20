@@ -128,6 +128,11 @@ export class Playback implements SessionPlayback {
 		return f && this.#range && rangeSeconds(f, this.#range);
 	}
 
+	/** 重複範圍兩頭在哪（哪一段的第幾格），照原樣、不吸整拍；書籤存的就是這個。沒有範圍是 null。 */
+	get rangeAt(): RepeatRange | null {
+		return this.#range;
+	}
+
 	/** 「重複」按得下去：有完整的重複範圍，或選著動作（範圍拉成它）。 */
 	get canRepeat(): boolean {
 		return this.range?.b != null || this.#selectedAction() !== null;
@@ -329,6 +334,12 @@ export class Playback implements SessionPlayback {
 		const f = this.#flow();
 		if (!f?.segments.length) return;
 		this.#setRange(f, { a: rangeEnd(f, Math.min(fromSec, toSec)), b: rangeEnd(f, Math.max(fromSec, toSec)) });
+	}
+
+	/** 重複範圍換成這兩頭（照原樣，不吸整拍；書籤用），重複打開。放不下（B 不在 A 後面）就不動。 */
+	useRange(range: RepeatRange) {
+		const f = this.#flow();
+		if (f) this.#setRange(f, range);
 	}
 
 	/**

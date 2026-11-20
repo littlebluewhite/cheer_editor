@@ -5,7 +5,6 @@ import {
 	bookmarkSeconds,
 	createFlow,
 	deleteBookmark,
-	endAt,
 	flowProblem,
 	insertBeats,
 	readFlowFile,
@@ -98,14 +97,11 @@ describe('renameBookmark、deleteBookmark', () => {
 	});
 });
 
-describe('startAt、endAt', () => {
-	it('吸到最近的整拍；段的交界：開始算後一段、結尾算前一段', () => {
+describe('startAt', () => {
+	it('吸到最近的整拍；段的交界算後一段', () => {
 		const flow = sample();
 		expect(startAt(flow, 2.1)).toEqual(at('s1', 8));
 		expect(startAt(flow, 8)).toEqual(at('s2', 0));
-		expect(endAt(flow, 8)).toEqual(at('s1', 32));
-		expect(endAt(flow, 16)).toEqual(at('s2', 32));
-		expect(endAt(flow, 0.1)).toEqual(at('s1', 0));
 	});
 });
 

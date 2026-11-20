@@ -17,6 +17,7 @@ import {
 	moveMembers,
 	rateCounts,
 	recordAttempt,
+	remoteChange,
 	renameFlow,
 	toSeconds,
 	updateMember,
@@ -796,6 +797,25 @@ describe('編輯 session：書籤', () => {
 		expect(s.notice).toBe('已排段的順序；書籤「跨段」也拿掉了');
 		s.undo();
 		expect(s.flow!.bookmarks!.map((b) => b.name)).toEqual(['跨段']);
+	});
+
+	it('復原再重做：重做的提示也說拿掉了哪個書籤', () => {
+		const s = new EditorSession(twoSegments());
+		s.ask.send({ name: 'moveSegment', args: ['s2', -1] });
+		s.undo();
+		s.redo();
+		expect(s.flow!.bookmarks).toEqual([]);
+		expect(s.notice).toBe('已重做：排段的順序；書籤「跨段」也拿掉了');
+	});
+
+	it('別人調了段的順序、書籤跟著拿掉：提示說是誰、拿掉了哪個', () => {
+		const before = twoSegments();
+		const s = new EditorSession(before);
+		const other = new EditorSession(before);
+		other.ask.send({ name: 'moveSegment', args: ['s2', -1] });
+		s.applyRemote(remoteChange(before, other.flow!), '王教練');
+		expect(s.flow!.bookmarks).toEqual([]);
+		expect(s.notice).toBe('王教練改了段：書籤「跨段」也拿掉了');
 	});
 
 	it('刪書籤本身不多說', () => {

@@ -32,11 +32,6 @@ export function startAt(flow: Flow, sec: number): TimePosition {
 	return asStart(flow, rangeEnd(flow, sec));
 }
 
-/** sec 最近的整拍當結尾：段的交界算前一段的結尾。要先有段。 */
-export function endAt(flow: Flow, sec: number): TimePosition {
-	return asEnd(flow, rangeEnd(flow, sec));
-}
-
 /** 書籤現在在哪（全域秒數）；放不下（段不見了、格子在段外、B 不在 A 後面）是 null。 */
 export function bookmarkSeconds(flow: Flow, bm: Pick<Bookmark, 'a' | 'b'>): { a: number; b: number | null } | null {
 	const a = sec(flow, bm.a, 'start');

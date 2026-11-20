@@ -102,6 +102,25 @@ describe('書籤', () => {
 		});
 	});
 
+	it('存：重複範圍是半拍開始的動作，存的 A、B 照原樣，不吸到整拍', async () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+		const members = [{ memberId: 'm1', role: '騰翻' }];
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '半拍翻', start: 41, length: 3, note: '', members }));
+		const { session, playback } = setup(flow);
+		session.selectAction(session.flow!.actions[0].id);
+		playback.setRepeat(true);
+		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
+		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
+		expect(session.flow!.bookmarks!.at(-1)).toMatchObject({ a: { segmentId: 's1', at: 41 }, b: { segmentId: 's1', at: 44 } });
+	});
+
+	it('點半拍開始的書籤：重複範圍照書籤原樣，不吸到整拍', async () => {
+		const { playback } = setup(flowOf(addBookmark(sample(), '半拍', { segmentId: 's1', at: 41 }, { segmentId: 's1', at: 44 })));
+		await fireEvent.click(chip('半拍'));
+		expect(playback.range).toEqual({ a: 10.25, b: 11 });
+		expect(playback.sec).toBe(10.25);
+	});
+
 	it('存一樣的 A、B：擋下，提示說已經有哪個', async () => {
 		const { session, playback } = setup(sample());
 		playback.setRange(2, 4);

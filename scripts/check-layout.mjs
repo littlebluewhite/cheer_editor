@@ -1021,6 +1021,18 @@ for (const [w, h, touch] of [[1024, 768], [1024, 768, true], [1101, 768], [1180,
 	});
 }
 
+// 手機的檢視畫面多了一排書籤：「我」的選單照樣只有一行高，前後八拍照樣拿到它的那一格（直拿 34dvh、橫拿剩下的高度），不被書籤那排擠到別格
+for (const [w, h] of [[390, 844], [844, 390]]) {
+	await check(`${w}×${h}（觸控）手機的檢視畫面有書籤：書籤那排、「我」、前後八拍各在自己那一格，「我」不被撐高`, async () => {
+		await setTouchViewport(w, h);
+		await openPracticeFlow(withBookmarks);
+		const r = await js(`const box = (sel) => { const el = document.querySelector(sel); return el ? Math.round(el.getBoundingClientRect().height) : null; };
+			return { 書籤: box('.phone-view .bookmarks'), 我: box('.phone-view .phone-me'), 前後八拍: box('.phone-view .phone-eights'), 畫面高: innerHeight };`);
+		const eights = w < h ? Math.abs(r.前後八拍 - Math.round(0.34 * h)) <= 2 : r.前後八拍 > r.我 * 2;
+		return { ok: r.書籤 > 0 && r.我 > 0 && r.我 <= 60 && eights, value: r };
+	});
+}
+
 for (const [w, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
 	await check(`${w}×${h} 按「檢視」：左邊的站位編輯欄藏起來，場地比編輯模式大；按回「編輯」場地回原來大小（#213）`, async () => {
 		await setViewport(w, h);

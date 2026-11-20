@@ -859,7 +859,8 @@
 				{:else}
 					<div class="board">{@render board()}</div>
 					{@render toggles()}
-					<Bookmarks place="bar" bind:this={bookmarkBar} />
+					<!-- 換一支流程就重開：打到一半的書籤名字不帶過去 -->
+					{#key opened}<Bookmarks place="bar" bind:this={bookmarkBar} />{/key}
 				{/if}
 				<select
 					class="speed"
@@ -1167,7 +1168,8 @@
 						/>
 					</div>
 					{@render transport()}
-					<Bookmarks place="phone" />
+					<!-- 書籤那排一定佔一格（沒有書籤就是 0 高），「我」、前後八拍才不會被擠到別格 -->
+					<div class="phone-marks"><Bookmarks place="phone" /></div>
 					<div class="phone-me">
 						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
@@ -1822,7 +1824,7 @@
 		grid-template-rows: auto minmax(0, 1fr);
 		grid-template-columns: minmax(0, 1fr);
 	}
-	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面前後八拍（太長自己捲）。
+	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、書籤（沒有就 0 高）、「我」、下面前後八拍（太長自己捲）。
 	   前後八拍固定高（畫面夠高時 34dvh，夠放這個和下一個八拍的格子，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
 	.phone-view {
 		position: relative;
@@ -1830,7 +1832,7 @@
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, 34dvh) auto;
+		grid-template-rows: minmax(160px, 1fr) auto auto auto minmax(0, 34dvh) auto;
 	}
 	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行字放最下面，不跟場地搶位置；黃底深字，看得出是提醒 */
 	.phone-why {
@@ -1950,6 +1952,9 @@
 		font-size: 12px;
 		color: #ffb4a3;
 	}
+	.phone-marks {
+		min-width: 0;
+	}
 	.phone-me {
 		display: flex;
 		align-items: center;
@@ -1985,7 +1990,7 @@
 	@media (orientation: landscape) {
 		.phone-view {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-			grid-template-rows: auto auto minmax(0, 1fr) auto;
+			grid-template-rows: auto auto auto minmax(0, 1fr) auto;
 		}
 		.phone-view > :global(*) {
 			grid-column: 2;

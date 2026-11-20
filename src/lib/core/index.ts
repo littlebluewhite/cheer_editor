@@ -270,7 +270,6 @@ export {
 	bookmarksIn,
 	bookmarksOf,
 	deleteBookmark,
-	endAt,
 	renameBookmark,
 	startAt,
 	sweepBookmarks,

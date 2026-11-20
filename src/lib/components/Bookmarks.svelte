@@ -7,7 +7,7 @@
 	place="phone"：手機、直拿的 iPad（檢視模式），播放列下面一排，手指左右滑；沒有書籤就不出現。
 -->
 <script lang="ts">
-	import { MAX_CHARS, actionLabel, firstChars, bookmarkSeconds, endAt, positionText, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
+	import { MAX_CHARS, actionLabel, firstChars, bookmarkSeconds, positionText, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { composing } from '#lib/ime.js';
 	import { KEYS } from '#lib/shortcuts.js';
@@ -59,10 +59,11 @@
 		return s.b !== null && playback.repeat && r?.b != null && near(r.a, s.a) && near(r.b, s.b);
 	}
 
-	function go({ s }: { s: Spot }) {
+	function go({ bm, s }: { bm: Bookmark; s: Spot }) {
 		open = false;
 		if (active(s)) return playback.setRepeat(false);
-		if (s.b !== null) playback.setRange(s.a, s.b);
+		// 兩頭照書籤原樣（半拍開始的不吸到整拍）
+		if (bm.b) playback.useRange({ a: bm.a, b: bm.b });
 		// 只有 A、A 在重複範圍外面：重複開著會被拉回範圍的 A，所以關掉重複（範圍留著）
 		else if (playback.repeat && !inRepeat(s.a)) playback.setRepeat(false);
 		playback.seek(s.a);
@@ -89,9 +90,10 @@
 	});
 
 	function startAdd() {
-		const r = playback.range;
-		const a = startAt(flow, r ? r.a : playback.sec);
-		const b = r?.b != null ? endAt(flow, r.b) : null;
+		// 有重複範圍就照它原樣存（半拍開始的動作拉成的範圍不吸到整拍）；沒有就存播放頭最近的整拍
+		const r = playback.rangeAt;
+		const a = r ? r.a : startAt(flow, playback.sec);
+		const b = r?.b ?? null;
 		// A 剛好在一個動作開始的地方：名字先填那個動作的名字
 		const aSec = toSeconds(flow, a);
 		const act = flow.actions.find((x) => near(toSeconds(flow, { segmentId: x.segmentId, at: x.start }), aSec));
@@ -122,13 +124,16 @@
 	}
 
 	function nameKeys(e: KeyboardEvent) {
-		// 打字的鍵不給頁面（空白鍵不播放、方向鍵不移播放頭）
+		// 打字的鍵不給頁面（空白鍵不播放、方向鍵不移播放頭）；存檔的鍵照樣給頁面
+		if (saveKey(e)) return;
 		e.stopPropagation();
 		if (composing(e)) return;
 		if (e.key === 'Enter') commit();
 		else if (e.key === 'Escape') naming = null;
 	}
 
+	/** ⌘S／Ctrl+S：存檔，打字時也要給頁面。 */
+	const saveKey = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's';
 	const chipId = (id: string) => `bookmark-${place}-${id}`;
 	const selectAll = (el: HTMLInputElement) => el.select();
 
@@ -147,11 +152,17 @@
 		return true;
 	}
 
-	function searchKeys(e: KeyboardEvent) {
+	/** 找書籤的框整個（輸入框和每一列）：鍵不給底下的編輯頁（Delete 不刪選著的動作），存檔的鍵照樣給；Esc 關掉。 */
+	function boxKeys(e: KeyboardEvent) {
+		if (saveKey(e)) return;
 		e.stopPropagation();
+		if (e.key === 'Escape' && !composing(e)) searching = false;
+	}
+
+	/** 找書籤的輸入框：↑↓ 選、Enter 跳過去。 */
+	function searchKeys(e: KeyboardEvent) {
 		if (composing(e)) return;
-		if (e.key === 'Escape') searching = false;
-		else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
 			e.preventDefault();
 			pick = Math.max(0, Math.min(found.length - 1, pick + (e.key === 'ArrowDown' ? 1 : -1)));
 		} else if (e.key === 'Enter' && found[pick]) {
@@ -253,7 +264,7 @@
 {#if searching}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="veil" onpointerdown={(e) => e.target === e.currentTarget && (searching = false)}>
-		<div class="search" role="dialog" aria-label="找書籤">
+		<div class="search" role="dialog" aria-label="找書籤" tabindex="-1" onkeydown={boxKeys}>
 			<input
 				type="text"
 				aria-label="找書籤"

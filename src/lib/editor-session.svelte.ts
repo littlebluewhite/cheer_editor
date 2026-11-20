@@ -536,7 +536,12 @@ export class EditorSession {
 		this.#flow = flow;
 		this.#saved = flow;
 		this.#trim(flow);
-		if (editing && !this.#actionId) this.notice = `${by}刪掉了你在改的動作「${actionLabel(editing)}」`;
+		// 在改的動作被刪了、改段連帶拿掉了書籤：都要說（不會悄悄不見）
+		const said = [
+			editing && !this.#actionId ? `${by}刪掉了你在改的動作「${actionLabel(editing)}」` : null,
+			...lostBookmarks(before, flow).map((t) => `${by}改了段：${t}`)
+		].filter((t) => t !== null);
+		if (said.length) this.notice = said.join('；');
 		this.#playback.changed(before);
 		this.onflow();
 		this.#updated('change');
@@ -622,7 +627,7 @@ export class EditorSession {
 		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];
 		else [this.#undo, this.#redo] = [from.slice(0, -1), to];
 		this.#restored(this.#flow, before, redo ? 'redo' : 'undo');
-		this.notice = `${redo ? '已重做' : '已復原'}：${step.label}`;
+		this.notice = [`${redo ? '已重做' : '已復原'}：${step.label}`, ...lostBookmarks(before, this.#flow)].join('；');
 		return true;
 	}
 
