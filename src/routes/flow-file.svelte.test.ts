@@ -9,6 +9,7 @@ import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import type { FileSaver } from '#lib/file/save.js';
 import { audioFlow, editorPage, fakeSaver, openFile, flush, fromMenu } from '#lib/test-fakes.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import Page from './+page.svelte';
 
 function setup(saver: FileSaver = fakeSaver().saver) {
@@ -222,6 +223,15 @@ describe('新建', () => {
 		await openFile(zipSync({ 'flow.json': strToU8(JSON.stringify({ formatVersion: 99, flow: {} })) }));
 		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：是新版編輯器存的，請重新整理，更新編輯器');
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
+	});
+
+	it('段太長打不開：流程核心的原因照畫面的語言寫（英文）', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		setup();
+		const flow = audioFlow();
+		const segments = flow.segments.map((s) => (s.kind === 'music' ? { ...s, halfBeats: 201 * 16 } : s));
+		await openFile(writeFlowFile({ ...flow, segments }, {}));
+		expect(screen.getByRole('alert').textContent).toBe('打不開「練習用.zip」：A music segment must be 1 to 200 8-counts long');
 	});
 
 	it('開到壞掉的 zip：寫「檔案壞掉了，或不是這個編輯器存的流程檔」', async () => {

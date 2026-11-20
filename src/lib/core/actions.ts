@@ -194,7 +194,7 @@ function checked(flow: Flow, before: Action | undefined, action: Action, options
 }
 
 /** 名稱、備註太長；開檔進來就超過上限的照收，改了不能更長（N08）。 */
-function textProblem(before: Action | undefined, action: Action): string | Why | null {
+function textProblem(before: Action | undefined, action: Action): Why | null {
 	return tooLong('actionName', action.name, before?.name) ?? tooLong('note', action.note, before?.note);
 }
 
@@ -247,11 +247,11 @@ function peopleProblem(flow: Flow, action: Action): Why | null {
 		if (other.id === action.id || !overlaps(other, action)) continue;
 		const shared = action.members.filter((m) => other.members.some((o) => o.memberId === m.memberId));
 		if (shared.length) {
-			const names = joined('actions_names', shared.map((m) => memberName(flow, m.memberId)));
+			const names = joined('members_list', shared.map((m) => memberName(flow, m.memberId)));
 			clashes.push({ code: 'actions_clash', names, action: actionLabel(other), where: whereOther(flow, other, action) });
 		}
 	}
-	return clashes.length ? joined('actions_clashes', clashes) : null;
+	return clashes.length ? joined('members_problems', clashes) : null;
 }
 
 /** 一串接成一句（code 的句子是「{first}、{rest}」這種）；只有一個就是它。parts 不能是空的。 */

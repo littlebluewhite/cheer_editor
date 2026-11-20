@@ -286,6 +286,16 @@ describe('流程檔：版本', () => {
 		expect(file.kind === 'error' ? file.message : null).toBe(opened);
 	});
 
+	it('段太長打不開：原因也帶代號（畫面照使用者的語言寫）', () => {
+		const flow = sample();
+		const segments = flow.segments.map((s) => (s.id === 's1' ? { ...s, halfBeats: 200 * 16 + 2 } : s));
+		expect(readFlowFile(writeFlowFile({ ...flow, segments }, {}))).toEqual({
+			kind: 'error',
+			message: MUSIC_RANGE,
+			why: { code: 'segment_file_music_range', max: 200 }
+		});
+	});
+
 	it('字數開檔時不管：流程名、隊員名、動作名稱、備註、站位名稱、自訂角色再長都打得開', () => {
 		const flow = JSON.parse(JSON.stringify(sample()));
 		flow.name = '名'.repeat(100);

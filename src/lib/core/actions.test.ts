@@ -185,10 +185,10 @@ describe('新增動作', () => {
 			kind: 'blocked',
 			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束；小C 同一時間已經在「跳躍·跳」裡：下一個動作從 1-5 就開始',
 			why: {
-				code: 'actions_clashes',
+				code: 'members_problems',
 				first: {
 					code: 'actions_clash',
-					names: { code: 'actions_names', first: '小A', rest: '小B' },
+					names: { code: 'members_list', first: '小A', rest: '小B' },
 					action: '技巧·Lib',
 					where: { code: 'actions_previous_ends', at: '1-5' }
 				},
@@ -448,7 +448,7 @@ describe('改動作、刪動作', () => {
 			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束',
 			why: {
 				code: 'actions_clash',
-				names: { code: 'actions_names', first: '小A', rest: '小B' },
+				names: { code: 'members_list', first: '小A', rest: '小B' },
 				action: '技巧·Lib',
 				where: { code: 'actions_previous_ends', at: '1-5' }
 			}
@@ -529,7 +529,7 @@ describe('拖色條：移動、改長度', () => {
 			message: '小A、小B 同一時間已經在「技巧·Ext」裡：下一個動作從 2-1 就開始',
 			why: {
 				code: 'actions_clash',
-				names: { code: 'actions_names', first: '小A', rest: '小B' },
+				names: { code: 'members_list', first: '小A', rest: '小B' },
 				action: '技巧·Ext',
 				where: { code: 'actions_next_starts', at: '2-1' }
 			}

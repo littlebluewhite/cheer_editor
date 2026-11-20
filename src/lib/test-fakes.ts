@@ -921,7 +921,7 @@ export function fakeServer(
 			mine();
 			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
 			const checked = checkFlowDocument(structuredClone(doc));
-			if (checked.kind === 'error') return { message: checked.message };
+			if (checked.kind === 'error') return { message: checked.message, ...(checked.why && { why: checked.why }) };
 			const problem = flowProblem(checked.flow);
 			if (problem) return said(problem);
 			const { flow, records } = takeRecords(checked.flow);

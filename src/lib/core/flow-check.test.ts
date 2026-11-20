@@ -83,7 +83,8 @@ describe('檢查一整支流程（checkFlowDocument）：讀流程檔和傳上�
 		const segments = flow.segments.map((s) => ({ ...s, halfBeats: (MAX_EIGHTS + 1) * 16 }));
 		expect(checkFlowDocument({ formatVersion: FORMAT_VERSION, flow: { ...flow, segments } })).toEqual({
 			kind: 'error',
-			message: `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`
+			message: `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`,
+			why: { code: 'segment_file_music_range', max: MAX_EIGHTS }
 		});
 	});
 });
@@ -109,12 +110,12 @@ describe('整份流程檢查：開檔就擋的規則（跟讀流程檔一樣，�
 		[
 			'拍點不守規則',
 			{ ...flow, actions: [{ ...x1, cues: [{ kind: 'count', at: 99, len: 2, word: 'down', who: null }] }] },
-			'動作「技巧·Lib」：拍點要在動作裡面'
+			{ code: 'flow_check_in_action', action: '技巧·Lib', reason: { code: 'beat_range_cue_inside' } }
 		],
 		[
 			'成功率設定不守規則',
 			{ ...flow, actions: [{ ...x1, successRate: { phases: [], records: [] } }] },
-			'動作「技巧·Lib」：記成功率的動作至少要有一個環節'
+			{ code: 'flow_check_in_action', action: '技巧·Lib', reason: { code: 'success_rate_no_phases' } }
 		],
 		[
 			'段太長',
@@ -265,12 +266,13 @@ describe('整份流程檢查的原因帶代號（ADR 0017）', () => {
 		expect(flowProblem(bad, good)).toEqual({ code: 'flow_check_clash', member: '小美', first: '技巧·Lib', second: '騰翻' });
 	});
 
-	it('傳上雲端不收：伺服器拿到的中文是字串（還沒改成代號的開檔就擋規則，沒有 why）', () => {
+	it('傳上雲端不收：伺服器拿到中文和代號', () => {
 		const good = ratedSample();
 		const flow = { ...good, segments: good.segments.map((s) => ({ ...s, halfBeats: (MAX_EIGHTS + 1) * 16 })) };
 		expect(JSON.parse(uploadFlowJson(JSON.stringify({ formatVersion: FORMAT_VERSION, flow })))).toEqual({
 			kind: 'error',
-			message: `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`
+			message: `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`,
+			why: { code: 'segment_file_music_range', max: MAX_EIGHTS }
 		});
 	});
 });

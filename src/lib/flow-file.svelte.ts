@@ -252,7 +252,7 @@ export class FlowFile {
 			else this.#openError = message;
 		};
 		if (r.kind === 'error') {
-			if (!fileName || !audioExtension(fileName)) return cannotOpen(r.message);
+			if (!fileName || !audioExtension(fileName)) return cannotOpen(reasonText(r));
 			// 拿音樂檔來開：說音樂要去段設定載入（首頁還沒有段，先建流程）
 			const where = session.flow ? '音樂要點段列上的段' : '先建好流程，再點段列上的段';
 			return cannotOpen(`這是音樂檔，不是流程檔。${where}，在段設定按「載入音樂檔」`);

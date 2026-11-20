@@ -7,7 +7,7 @@ import type { Flow } from './flow';
 import { phasesOverlap } from './beat-range';
 import { phasesMayShareBeats } from './phase-types';
 import { newId } from './ids';
-import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
+import { phaseFallout, phaseFalloutWhy, type PhaseFallout } from './phase-beats';
 import { RECORDS_UNDOABLE_WHY, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { said, zh, type Said, type Why } from './why';
@@ -221,19 +221,18 @@ function falloutMessage(
 	const shorter: Why | null = action.length < old.length ? { code: 'settle_why_shorter' } : null;
 	const offBeat: Why | null = phases?.shifted ? { code: 'settle_why_off_beat' } : null;
 	const toChant: Why = { code: 'settle_why_to_chant' };
-	// 標的拍那一段（phaseFalloutText）是 phase-beats.ts 的字，還沒有代號，照樣送中文。
 	if (!cues) {
 		const why =
 			to.kind !== 'music' ? [toChant] : from.kind !== 'music' ? [{ code: 'settle_why_to_music' } as Why] : [shorter, offBeat];
-		return falloutWhy(action, why, phaseFalloutText(phases!));
+		return falloutWhy(action, why, phaseFalloutWhy(phases!));
 	}
-	const will: Why = phases ? { code: 'settle_will_and', a: cuesWhy(cues), b: phaseFalloutText(phases) } : cuesWhy(cues);
+	const will: Why = phases ? { code: 'settle_will_and', a: cuesWhy(cues), b: phaseFalloutWhy(phases) } : cuesWhy(cues);
 	if (to.kind !== 'music') return falloutWhy(action, [toChant], will);
 	return falloutWhy(action, [shorter, cues.orphaned ? { code: 'settle_why_people' } : null, offBeat], will);
 }
 
 /** 「動作「技巧·Lib」變短、換了人或任務角色，會…」：原因用「、」接起來，沒有原因就只寫動作。 */
-function falloutWhy(action: Action, causes: (Why | null)[], will: string | Why): Why {
+function falloutWhy(action: Action, causes: (Why | null)[], will: Why): Why {
 	const why = causes.filter((c) => c !== null).reduceRight<Why | null>((b, a) => (b ? { code: 'settle_why_and', a, b } : a), null);
 	const label = actionLabel(action);
 	return why ? { code: 'settle_fallout', action: label, why, will } : { code: 'settle_fallout_no_cause', action: label, will };

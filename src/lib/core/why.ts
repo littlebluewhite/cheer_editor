@@ -123,6 +123,15 @@ const ZH = {
 	phases_delete_none_left_one: '會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
 	phases_delete_none_left: '會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
 
+	// phase-beats.ts（改動作會動到的標的拍，一段包一段；marks 是 records.ts 的「幾次的記號」）
+	phase_beats_cut_one: '切短 {n} 個環節標的拍',
+	phase_beats_cut: '切短 {n} 個環節標的拍',
+	phase_beats_dropped_one: '刪掉 {n} 個環節',
+	phase_beats_dropped: '刪掉 {n} 個環節',
+	phase_beats_dropped_marks: '{dropped}（清掉 {marks}）',
+	phase_beats_and: '{a}、{b}',
+	phase_beats_no_rate: '{phases}，動作不再記成功率',
+
 	// insert-beats.ts
 	insert_beats_no_segment: '找不到這一段',
 	insert_beats_length: '插入的長度要大於 0',
@@ -229,7 +238,7 @@ const ZH = {
 	segment_shrink_drop: '放不進段裡的刪掉',
 	segment_shrink_both: '超出段尾的動作裁短到段尾，放不進段裡的刪掉',
 
-	// actions.ts（同一個人只能放一次、沒有這個任務角色：用 flow-check.ts 的代號；first、rest：一串一個接一個）
+	// actions.ts（同一個人只能放一次、沒有這個任務角色：用 flow-check.ts 的代號；撞到的人一串、撞到的動作一個接一個：用 members.ts 的 members_list、members_problems）
 	actions_not_found: '找不到這個動作',
 	actions_delete_records_one: '刪掉動作「{action}」會清掉 {count} 次紀錄{undoable}',
 	actions_delete_records: '刪掉動作「{action}」會清掉 {count} 次紀錄{undoable}',
@@ -245,9 +254,7 @@ const ZH = {
 	actions_over_end: '超過這段的結尾，最多 {length}',
 	actions_no_members: '一個動作至少要有 1 個人',
 	actions_member_not_found: '找不到這個隊員',
-	actions_names: '{first}、{rest}',
 	actions_clash: '{names} 同一時間已經在「{action}」裡：{where}',
-	actions_clashes: '{first}；{rest}',
 	actions_previous_ends: '上一個動作在 {at} 才結束',
 	actions_next_starts: '下一個動作從 {at} 就開始',
 

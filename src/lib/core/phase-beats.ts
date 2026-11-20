@@ -6,6 +6,7 @@ import { cutOut, fitRange, onBeat, rangeText, type BeatRange } from './beat-rang
 import { phaseLabel, type Phase } from './phase-types';
 import type { Segment } from './segment';
 import { markedCount } from './success-rate';
+import { zh, type Why } from './why';
 
 /** 改動作動到的標的拍：見 phaseFallout。 */
 export interface PhaseFallout {
@@ -77,13 +78,18 @@ export function phaseFallout(
 }
 
 /** 「切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號），動作不再記成功率」（確認訊息裡標的拍那一段）。 */
-export function phaseFalloutText({ cut, dropped, marked, empty }: PhaseFallout): string {
-	const parts = [
-		cut ? `切短 ${cut} 個環節標的拍` : '',
-		dropped ? `刪掉 ${dropped} 個環節${marked ? `（清掉 ${marked} 次的記號）` : ''}` : ''
-	];
-	return parts.filter(Boolean).join('、') + (empty ? '，動作不再記成功率' : '');
+export function phaseFalloutWhy({ cut, dropped, marked, empty }: PhaseFallout): Why {
+	const cutWhy: Why | null = cut ? { code: cut === 1 ? 'phase_beats_cut_one' : 'phase_beats_cut', n: cut } : null;
+	const droppedWhy: Why = { code: dropped === 1 ? 'phase_beats_dropped_one' : 'phase_beats_dropped', n: dropped };
+	const marks: Why = { code: marked === 1 ? 'records_marks_one' : 'records_marks', n: marked };
+	const dropWhy: Why | null = !dropped ? null : marked ? { code: 'phase_beats_dropped_marks', dropped: droppedWhy, marks } : droppedWhy;
+	// 有標的拍要問時至少切短或刪掉一個（見 phaseFallout）。
+	const phases: Why = cutWhy && dropWhy ? { code: 'phase_beats_and', a: cutWhy, b: dropWhy } : (cutWhy ?? dropWhy)!;
+	return empty ? { code: 'phase_beats_no_rate', phases } : phases;
 }
+
+/** 同一段的中文（裁短動作的確認清單用）。 */
+export const phaseFalloutText = (fallout: PhaseFallout): string => zh(phaseFalloutWhy(fallout));
 
 /**
  * 把 [from, to) 半拍從每個環節標的拍裡拿掉：露在外面的留著，兩邊都露出來時留前面那段。

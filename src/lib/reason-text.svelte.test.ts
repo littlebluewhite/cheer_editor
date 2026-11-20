@@ -1,7 +1,7 @@
 // 原因寫成畫面的語言（ADR 0017）：有代號照語言寫，沒代號照中文。
 import { describe, expect, it } from 'vitest';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
-import { addMemberLines, createFlow, deleteMember, type CommandResult, type Flow, type Why } from '#lib/core';
+import { addMemberLines, createFlow, deleteMember, type CommandResult, type Flow, type Why, type WhyCode } from '#lib/core';
 import { libSample } from './test-flows';
 import { reasonText } from './reason-text';
 
@@ -47,10 +47,10 @@ describe('原因寫成畫面的語言', () => {
 		const range = { code: 'actions_length_range', min: '0.5', max: { code: 'time_length_beat_one', n: 1 } } as const;
 		expect(reasonText({ message: '', why: range })).toBe('A skill must be between 0.5 and 1 beat long');
 		const clashes = {
-			code: 'actions_clashes',
+			code: 'members_problems',
 			first: {
 				code: 'actions_clash',
-				names: { code: 'actions_names', first: '小A', rest: '小B' },
+				names: { code: 'members_list', first: '小A', rest: '小B' },
 				action: '技巧·Lib',
 				where: { code: 'actions_previous_ends', at: '1-5' }
 			},
@@ -58,6 +58,19 @@ describe('原因寫成畫面的語言', () => {
 		} as const;
 		expect(reasonText({ message: '', why: clashes })).toBe(
 			'小A, 小B: already in “技巧·Lib” at that time (the previous skill doesn\'t end until 1-5); 小C: already in “跳躍·跳” at that time (the next skill already starts at 1.0 s)'
+		);
+	});
+
+	it('改動作動到標的拍：切短、刪掉（清掉幾次的記號）、不再記成功率', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const one = (code: WhyCode): Why => ({ code, n: 1 });
+		const fallout = (will: Why) => ({ code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will }) as const;
+		const marks = { code: 'phase_beats_dropped_marks', dropped: one('phase_beats_dropped_one'), marks: { code: 'records_marks', n: 2 } } as const;
+		expect(reasonText({ message: '', why: fallout({ code: 'phase_beats_and', a: one('phase_beats_cut_one'), b: marks }) })).toBe(
+			'Skill “技巧·Lib” gets shorter, which will trim the marked beats of 1 phase and delete 1 phase (clearing the marks on 2 reps)'
+		);
+		expect(reasonText({ message: '', why: fallout({ code: 'phase_beats_no_rate', phases: one('phase_beats_dropped_one') }) })).toBe(
+			'Skill “技巧·Lib” gets shorter, which will delete 1 phase, so the skill stops recording hit rates'
 		);
 	});
 

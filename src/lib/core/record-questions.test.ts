@@ -275,6 +275,33 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })), 'x1')).toEqual(['t1', 't3']);
 	});
 
+	it('一組沒人了、另一組換了人：會清掉的和要選的一起問，選保留只留換了人的那組', () => {
+		// 第 2 組（小芳、小B）整組拿掉：t2 一定清掉；第 1 組拿掉小A：t1、t3 要選。
+		const members = x1Members().filter((m) => m.memberId === 'm1');
+		const flow = recorded();
+		expect(updateAction(flow, 'x1', { members })).toEqual({
+			kind: 'choose',
+			message:
+				'動作「技巧·Lib」換了人，會清掉 1 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'settle_action_records',
+				action: '技巧·Lib',
+				records: {
+					code: 'settle_records',
+					records: {
+						code: 'settle_then',
+						a: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
+						b: { code: 'settle_changed_squads' }
+					},
+					undoable: { code: 'records_undoable' }
+				}
+			},
+			items: ['第 2 組 小芳：1 次', '第 1 組 小美：2 次']
+		});
+		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'keep' })), 'x1')).toEqual(['t1', 't3']);
+		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'clear' })), 'x1')).toEqual([]);
+	});
+
 	it('變短又換了人：拍點和紀錄一起問', () => {
 		const members = x1Members().filter((m) => m.memberId !== 'm2');
 		const cues = [{ kind: 'count' as const, at: 14, len: 2, word: 'down', who: null }];

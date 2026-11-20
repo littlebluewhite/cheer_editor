@@ -7,7 +7,7 @@ import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
-import { said, zh, type Why } from './why';
+import { said, type Said, type Why } from './why';
 import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
 import { phasesOverlap } from './beat-range';
@@ -181,8 +181,8 @@ export type AudioBytes = Record<string, Uint8Array>;
 export type ReadFlowFileResult =
 	/** missingSegmentIds：音樂檔不在 zip 裡的音樂段（照開，畫面標紅）。 */
 	| { kind: 'ok'; flow: Flow; audio: AudioBytes; missingSegmentIds: string[] }
-	/** 打不開：message 是給教練看的原因。 */
-	| { kind: 'error'; message: string };
+	/** 打不開：message 是給教練看的原因（流程核心的規則擋的多帶 why，見 why.ts；檔案本身壞掉的只有中文）。 */
+	| ({ kind: 'error' } & Said);
 
 // 打不開的原因（頁面前面加上檔名）。
 const NOT_A_ZIP = '檔案壞掉了，或不是這個編輯器存的流程檔';
@@ -245,7 +245,7 @@ export function readFlowFile(
 	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)) };
 }
 
-export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | { kind: 'error'; message: string };
+export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | ({ kind: 'error' } & Said);
 
 /**
  * 檢查一整支流程：flow.json 的內容（JSON.parse 過的）→ 現在這一版的流程。讀流程檔和傳上雲端（伺服器）共用。
@@ -268,7 +268,7 @@ export function checkFlowDocument(
 	}
 	if (!isFlow(current.flow)) return { kind: 'error', message: BROKEN };
 	const tooLong = segmentLengthProblem(current.flow);
-	if (tooLong) return { kind: 'error', message: zh(tooLong) };
+	if (tooLong) return { kind: 'error', ...said(tooLong) };
 	return { kind: 'ok', flow: current.flow };
 }
 
@@ -404,8 +404,9 @@ function isFlow(v: unknown): v is Flow {
 
 /**
  * isFlow 哪裡不對（給教練看的原因）；沒問題是 null。讀流程檔一律說壞掉了，整份流程檢查（flow-check）用這裡的原因。
+ * 資料本身壞掉（格式、指到不存在的東西）只有中文；拍點、成功率規則擋的包成代號（動作「X」：原因）。
  */
-export function structureProblem(v: unknown): string | null {
+export function structureProblem(v: unknown): string | Why | null {
 	if (!flowShape(v)) return '流程的資料格式不對';
 	const flow = v as Flow;
 	const segmentIds = new Set(flow.segments.map((s) => s.id));
@@ -429,7 +430,7 @@ export function structureProblem(v: unknown): string | null {
 		const segment = flow.segments.find((s) => s.id === a.segmentId)!;
 		const problem =
 			(a.cues ?? []).map((c) => cueProblem(segment, a, c)).find((p) => p !== null) ?? successRateProblem(segment, a);
-		if (problem) return `動作「${actionLabel(a)}」：${said(problem).message}`;
+		if (problem) return { code: 'flow_check_in_action', action: actionLabel(a), reason: problem };
 	}
 	return null;
 }

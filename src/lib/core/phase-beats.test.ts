@@ -321,7 +321,7 @@ describe('標的拍跟著動作', () => {
 		expect(moveAction(sample(), 'x1', 0.2)).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」拖到半拍上，會切短 1 個環節標的拍',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_off_beat' }, will: '切短 1 個環節標的拍' },
+			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_cut_one', n: 1 } },
 			items: ['切短：環節 下法 搖籃 2-5 到 2-8 → 2-6 到 2-8']
 		});
 		const flow = flowOf(moveAction(sample(), 'x1', 0.2, { confirmed: true }));
@@ -334,7 +334,7 @@ describe('標的拍跟著動作', () => {
 		expect(moveAction(short, 'x1', 0.2)).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」拖到半拍上，會刪掉 1 個環節，動作不再記成功率',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_off_beat' }, will: '刪掉 1 個環節，動作不再記成功率' },
+			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
 			items: ['刪掉：環節 上法 延伸 1-1']
 		});
 		expectUnrated(flowOf(moveAction(short, 'x1', 0.2, { confirmed: true })));
@@ -349,7 +349,7 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(sample(), 'x1', { length: 18 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: '切短 1 個環節標的拍、刪掉 1 個環節' },
+			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_and', a: { code: 'phase_beats_cut_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } } },
 			items: ['切短：環節 中段 1-4 到 2-2 → 1-4 到 2-1', '刪掉：環節 下法 搖籃 2-5 到 2-8']
 		});
 	});
@@ -358,7 +358,17 @@ describe('標的拍跟著動作', () => {
 		const recorded = record(record(sample(), { p3: '✓' }), { p1: '✓', p3: '✗' });
 		expect(updateAction(recorded, 'x1', { length: 19 })).toMatchObject({
 			kind: 'confirm',
-			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號）'
+			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號）',
+			why: {
+				code: 'settle_fallout',
+				action: '技巧·Lib',
+				why: { code: 'settle_why_shorter' },
+				will: {
+					code: 'phase_beats_and',
+					a: { code: 'phase_beats_cut_one', n: 1 },
+					b: { code: 'phase_beats_dropped_marks', dropped: { code: 'phase_beats_dropped_one', n: 1 }, marks: { code: 'records_marks', n: 2 } }
+				}
+			}
 		});
 		const flow = flowOf(updateAction(recorded, 'x1', { length: 19 }, { confirmed: true }));
 		expect(lib(flow).length).toBe(19);
@@ -370,7 +380,7 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(onlyP1(), 'x1', { length: 1 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會刪掉 1 個環節，動作不再記成功率',
-			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: '刪掉 1 個環節，動作不再記成功率' },
+			why: { code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
 			items: ['刪掉：環節 上法 延伸 1-1 到 1-3']
 		});
 		expectUnrated(flowOf(updateAction(onlyP1(), 'x1', { length: 1 }, { confirmed: true })));
@@ -385,9 +395,29 @@ describe('標的拍跟著動作', () => {
 				code: 'settle_fallout',
 				action: '技巧·Lib',
 				why: { code: 'settle_why_shorter' },
-				will: { code: 'settle_will_and', a: { code: 'settle_cues_removed_one', n: 1 }, b: '刪掉 1 個環節' }
+				will: { code: 'settle_will_and', a: { code: 'settle_cues_removed_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } }
 			},
 			items: ['拿掉：拍子 down 2-7 到 2-8', '刪掉：環節 下法 搖籃 2-5 到 2-8']
+		});
+	});
+
+	it('三個原因一起（變短、換了人、拖到半拍上）：原因用「、」接起來，拍點和標的拍一起問', () => {
+		// 小A 的拍點在 1-1；動作拖到半拍（1-1& 起）、變短到 30 個半拍、拿掉小A：拍點拿掉，下法（2-5 起）往後對齊後切短。
+		const cued = flowOf(placeCue(sample(), 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm2' } }));
+		const change = { start: 1, length: 30, members: [{ memberId: 'm1', role: '上層' }] };
+		expect(updateAction(cued, 'x1', change)).toMatchObject({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短、換了人或任務角色、拖到半拍上，會拿掉 1 個拍點，切短 1 個環節標的拍',
+			why: {
+				code: 'settle_fallout',
+				action: '技巧·Lib',
+				why: {
+					code: 'settle_why_and',
+					a: { code: 'settle_why_shorter' },
+					b: { code: 'settle_why_and', a: { code: 'settle_why_people' }, b: { code: 'settle_why_off_beat' } }
+				},
+				will: { code: 'settle_will_and', a: { code: 'settle_cues_removed_one', n: 1 }, b: { code: 'phase_beats_cut_one', n: 1 } }
+			}
 		});
 	});
 
@@ -430,7 +460,7 @@ describe('標的拍跟著動作', () => {
 				code: 'settle_fallout',
 				action: '技巧·Lib',
 				why: { code: 'settle_why_to_music' },
-				will: '刪掉 1 個環節，動作不再記成功率'
+				will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } }
 			},
 			items: ['刪掉：環節 上法 延伸']
 		});
