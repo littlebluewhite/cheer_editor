@@ -6,12 +6,14 @@
 		MIN_STRIPS,
 		fieldGeometry,
 		flowNameProblem,
+		said,
 		stripsProblem,
 		type FieldConfig,
 		type FieldLayout,
 		type Flow
 	} from '#lib/core';
 	import { Ask } from '#lib/ask.svelte.js';
+	import { reasonText } from '#lib/reason-text.js';
 	import CharCount from './CharCount.svelte';
 	import type { Snippet } from 'svelte';
 	import { revealAlert } from './reveal';
@@ -28,7 +30,10 @@
 	/** 建立被擋下的原因（兩格都先查過，這裡是流程核心另外擋的）。 */
 	const ask = new Ask((flow) => oncreate(flow));
 	/** 自訂條數不對（超出範圍、不是整數）：不畫預覽，馬上說原因，不用等按建立。 */
-	const customError = $derived(choice === 'custom' ? stripsProblem(customStrips ?? Number.NaN) : null);
+	const customError = $derived.by(() => {
+		const problem = choice === 'custom' ? stripsProblem(customStrips ?? Number.NaN) : null;
+		return problem && reasonText(said(problem));
+	});
 	/** 按建立時名字不行的原因：寫在名字下面，改了名字就收掉。 */
 	let nameError = $state('');
 	const uid = $props.id();
@@ -40,7 +45,8 @@
 				? { strips: customStrips ?? Number.NaN, layout: customLayout }
 				: FIELD_TEMPLATES[choice].field;
 		// 兩格各自查：都錯時兩個錯一起出現，不用按兩次才知道
-		nameError = flowNameProblem(name) ?? '';
+		const problem = flowNameProblem(name);
+		nameError = problem ? reasonText(said(problem)) : '';
 		if (nameError || customError) return;
 		ask.send({ name: 'createFlow', args: [{ name, field }] });
 	}

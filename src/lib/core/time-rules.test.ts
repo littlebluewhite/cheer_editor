@@ -81,7 +81,7 @@ describe('時間規則警告', () => {
 		const flow = routine(240, 30);
 		for (const key of ['minChantSec', 'maxMusicSec', 'maxTotalSec'] as const) {
 			for (const bad of [0, -1, Number.NaN]) {
-				expect(updateTimeRules(flow, { [key]: bad })).toEqual({ kind: 'blocked', message: '秒數要大於 0' });
+				expect(updateTimeRules(flow, { [key]: bad })).toEqual({ kind: 'blocked', message: '秒數要大於 0', why: { code: 'time_rules_positive' } });
 			}
 		}
 	});
@@ -89,16 +89,18 @@ describe('時間規則警告', () => {
 	it('口號段加起來最少要比整支流程最多少（不然一定有警告）', () => {
 		const flow = routine(240, 30);
 		const message = '「口號段加起來最少」要比「整支流程最多」少';
-		expect(updateTimeRules(flow, { minChantSec: 180 })).toEqual({ kind: 'blocked', message });
-		expect(updateTimeRules(flow, { minChantSec: 200 })).toEqual({ kind: 'blocked', message });
-		expect(updateTimeRules(flow, { maxMusicSec: 20, maxTotalSec: 30 })).toEqual({ kind: 'blocked', message });
+		const why = { code: 'time_rules_chant' };
+		expect(updateTimeRules(flow, { minChantSec: 180 })).toEqual({ kind: 'blocked', message, why });
+		expect(updateTimeRules(flow, { minChantSec: 200 })).toEqual({ kind: 'blocked', message, why });
+		expect(updateTimeRules(flow, { maxMusicSec: 20, maxTotalSec: 30 })).toEqual({ kind: 'blocked', message, why });
 	});
 
 	it('音樂段加起來最多不能超過整支流程最多', () => {
 		const flow = routine(240, 30);
 		const message = '「音樂段加起來最多」不能超過「整支流程最多」';
-		expect(updateTimeRules(flow, { maxMusicSec: 181 })).toEqual({ kind: 'blocked', message });
-		expect(updateTimeRules(flow, { maxTotalSec: 119 })).toEqual({ kind: 'blocked', message });
+		const why = { code: 'time_rules_music' };
+		expect(updateTimeRules(flow, { maxMusicSec: 181 })).toEqual({ kind: 'blocked', message, why });
+		expect(updateTimeRules(flow, { maxTotalSec: 119 })).toEqual({ kind: 'blocked', message, why });
 		expect(updateTimeRules(flow, { maxMusicSec: 180 }).kind).toBe('ok');
 	});
 
