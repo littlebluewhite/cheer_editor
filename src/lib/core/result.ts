@@ -1,7 +1,7 @@
 // 編輯指令的結果。每個指令都回傳其中一種，不丟例外、不改傳進來的流程。
 
 import type { Flow } from './flow';
-import { said, zh, type Said, type Why } from './why';
+import { said, type Said, type Why } from './why';
 
 export type CommandResult<Extra extends object = object> =
 	/** 成功：新的流程。有些指令多帶一點結果（例：新加的那一筆的 id），寫在 Extra。 */
@@ -66,8 +66,6 @@ export const needsChoice = (reason: string | Why, items: string[]): CommandResul
  * 包在別的原因裡，緊接在前一個字後面（英文自己帶開頭的空格）。
  */
 export const RECORDS_UNDOABLE_WHY: Why = { code: 'records_undoable' };
-/** 同一句的中文，給還在拼中文句子的地方用（那些句子改成代號時改包 RECORDS_UNDOABLE_WHY）。 */
-export const RECORDS_UNDOABLE = zh(RECORDS_UNDOABLE_WHY);
 
 /** 教練回答過了：按了確定、或選了保留／清掉。 */
 export const answered = ({ confirmed, records }: ConfirmOption): boolean => !!confirmed || records !== undefined;
