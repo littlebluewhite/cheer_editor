@@ -367,7 +367,83 @@ const ZH = {
 	formation_taken: '這一拍已經有站位',
 	formation_first_fixed: '開頭那張不能挪',
 	formation_move_between: '站位 {n} 要挪到站位 {prev}（{before}）之後、站位 {next}（{after}）之前',
-	formation_move_last: '站位 {n} 要挪到站位 {prev}（{before}）之後、流程結尾之前'
+	formation_move_last: '站位 {n} 要挪到站位 {prev}（{before}）之後、流程結尾之前',
+
+	// records.ts（畫面上的字）
+	records_not_yet: '— 是這次還沒有這個環節',
+
+	// phase-beats.ts（畫面上的字）
+	phase_beats_item_dropped: '刪掉：環節 {phase}',
+	phase_beats_item_dropped_at: '刪掉：環節 {phase} {range}',
+	phase_beats_item_cut: '切短：環節 {phase} {range} → {to}',
+
+	// cues.ts（畫面上的字）
+	cues_kind_count: '拍子',
+	cues_kind_step: '步驟',
+	cues_kind_motion: '手位',
+	cues_word_dip: '下手',
+	cues_word_land: '落地',
+	cues_word_release: '放',
+	cues_word_up: '上',
+	cues_word_pop_down: '直下',
+	cues_word_jump: '跳',
+	cues_word_toss: '拋',
+	cues_word_clasp: '雙手並攏',
+	cues_span: '{range}・{length}',
+	cues_text: '{kind} {word} {span}',
+	cues_text_who: '{kind} {word} {span}・給{who}',
+	cues_item_removed: '拿掉：{cue}',
+	cues_item_cut: '切短：{cue} → {range}',
+
+	// success-rate.ts（畫面上的字）
+	success_rate_hit: '成功',
+	success_rate_bobble: '小失誤',
+	success_rate_fall: '失敗',
+	success_rate_records_one: '{name}：{n} 次',
+	success_rate_records: '{name}：{n} 次',
+	success_rate_records_in_one: '{head}{name}：{n} 次',
+	success_rate_records_in: '{head}{name}：{n} 次',
+	success_rate_squad: '第 {n} 組',
+	success_rate_squad_named: '第 {n} 組 {name}',
+
+	// formation.ts（畫面上的字）
+	formation_move_target: '拖人會改：站位 {n}（{at}）',
+	formation_move_target_first: '拖人會改：站位 {n}（開頭）',
+	formation_move_insert: '拖人會在 {at} 插一張新站位',
+	formation_speed: '每秒 {n} 公尺',
+	formation_too_fast: '走太快：{speed}，至少要 {need}',
+	formation_tiring: '很喘：{speed}，不喘要 {need}',
+	formation_can_move_between: '可以挪到 {before} 之後、{after} 之前',
+	formation_can_move_after: '可以挪到 {before} 之後',
+
+	// eight-count.ts（畫面上的字）
+	eight_count_chant_span: '{at} 到 {end}・{length}',
+	eight_count_whole_segment: '整段 {n} 秒',
+	eight_count_caption: '站位 {n}・{at}',
+	eight_count_caption_named: '站位 {n} {name}・{at}',
+	eight_count_caption_depart: '站位 {n}・{at}（{depart}）',
+	eight_count_caption_named_depart: '站位 {n} {name}・{at}（{depart}）',
+	eight_count_depart: '{at} 出發',
+	eight_count_depart_earliest: '最早 {at} 出發',
+	eight_count_walk: '{depart} 出發 → 站位 {n}（{arrive} 到達）',
+	eight_count_whole_team: '全隊',
+	eight_count_whole_team_roles: '全隊：{members}',
+	eight_count_with_role: '{name}（{role}）',
+	eight_count_mates: '同組：{mates}',
+	eight_count_parts: '{first}・{rest}',
+	eight_count_formation_now: '站位 {n}',
+	eight_count_formation_now_named: '站位 {n} {name}',
+	eight_count_formation_next: '→ {formation}',
+	eight_count_now_parts: '{first}　{rest}',
+	eight_count_doing_role: '{action} {role}',
+
+	// video-frame.ts（畫面上的字）
+	video_frame_intro: '開場站位',
+	video_frame_eight: '{segment}・第 {n} 個八拍',
+	video_frame_chant: '{segment}・{sec} 秒',
+	video_frame_row: '{segment} 第 {n} 個八拍',
+	video_frame_row_range: '{segment} 第 {first}–{last} 個八拍',
+	video_frame_action: '{at}　{action}'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;

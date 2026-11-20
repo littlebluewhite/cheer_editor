@@ -25,6 +25,7 @@
 		type Tally
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
@@ -217,7 +218,7 @@
 					<time datetime={day.date}>{day.date}</time>
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
-							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? NOT_YET_TITLE : undefined}>
+							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? whyText(NOT_YET_TITLE) : undefined}>
 								{m.mark}{#if m.runThrough}<small>全上</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
 										>{session.recordedBy[m.id]}</small
 									>{/if}

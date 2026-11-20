@@ -73,16 +73,18 @@ export {
 	copyCues,
 	cueForMember,
 	cuesAt,
-	cueText,
+	cueWhy,
+	cueWordWhy,
 	pasteCues,
 	placeCue,
 	sameWho,
+	spanWhy,
 	usedWords,
-	whoName
+	whoWhy
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadName, squadNumber, squadsOf } from './success-rate';
+export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadName, squadNumber, squadsOf, squadWhy } from './success-rate';
 export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
@@ -135,7 +137,7 @@ export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, 
 export { actionEights, beatSpanText, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows, eightCountView, formationNowText, memberNowText, nearbyEights, teamWho } from './eight-count';
+export { eightCountRows, eightCountView, formationNowWhy, memberNowWhy, nearbyEights, teamWho } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,
@@ -166,14 +168,14 @@ export {
 	groupPositions,
 	moveGroup,
 	moveMembers,
-	moveTargetText,
+	moveTargetWhy,
 	positionsAt,
 	renameFormation,
 	setPositions,
 	setTeamWalks,
 	setWalks,
 	walkSpanAt,
-	walkSpeedText
+	walkSpeedWhy
 } from './formation';
 export type { Formation, FormationWalk, MoveResult, Position, Walk, WalkSpan } from './formation';
 

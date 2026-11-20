@@ -8,6 +8,7 @@
 	import { actionLabel, eightCountRows, nearbyEights, type EightCountRow, type Flow } from '#lib/core';
 	import { actionColor } from './category-colors';
 	import EightCountCueLine from './EightCountCueLine.svelte';
+	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
 		flow: Flow;
@@ -32,10 +33,10 @@
 	const rows = $derived(eightCountRows(flow, memberId || null, false));
 	const near = $derived(nearbyEights(flow, memberId || null, sec, before, after, rows));
 
-	const where = (r: EightCountRow) => (r.eight === null ? r.segmentLabel : `${r.segmentLabel} 第 ${r.eight} 個八拍`);
+	const where = (r: EightCountRow) => (r.eight === null ? whyText(r.segmentWhy) : `${whyText(r.segmentWhy)} 第 ${r.eight} 個八拍`);
 	/** 前後八拍的讀屏說明：動作、站位、我的走位。 */
 	const summary = (r: EightCountRow) =>
-		[...r.lanes.map((l) => `${l.continued ? '↳ ' : ''}${actionLabel(l)}`), ...r.formations.map((f) => f.caption), ...r.walks].join('　');
+		[...r.lanes.map((l) => `${l.continued ? '↳ ' : ''}${actionLabel(l)}`), ...r.formations.map((f) => whyText(f.caption)), ...r.walks.map(whyText)].join('　');
 	/** 換段的那一列（段的第一個八拍、口號段）前面寫段名；這個八拍一律寫。 */
 	const newSegment = (r: EightCountRow) => r.eight === null || r.eight === 1;
 	const colorOf = (id: string) => {
@@ -67,10 +68,10 @@
 					onclick={now ? undefined : (e) => rowClick(e, row)}
 				>
 					{#snippet head()}
-						{#if now || newSegment(row)}<b class="seg">{row.segmentLabel}</b>{/if}
-						<span class="num">{row.eight === null ? row.eightText : `第 ${row.eightText} 個八拍`}</span>
-						{#each row.formations as f (f.number)}<span class="tag">{f.caption}</span>{/each}
-						{#each row.walks as w, j (j)}<span class="tag">{w}</span>{/each}
+						{#if now || newSegment(row)}<b class="seg">{whyText(row.segmentWhy)}</b>{/if}
+						<span class="num">{row.eight === null ? whyText(row.eightText) : `第 ${whyText(row.eightText)} 個八拍`}</span>
+						{#each row.formations as f (f.number)}<span class="tag">{whyText(f.caption)}</span>{/each}
+						{#each row.walks as w, j (j)}<span class="tag">{whyText(w)}</span>{/each}
 					{/snippet}
 					{#if now}
 						<header class="head">{@render head()}</header>
@@ -90,7 +91,7 @@
 								aria-pressed={picked === lane.actionId}
 								title="看誰做這個動作"
 								onclick={() => onpick(picked === lane.actionId ? null : lane.actionId)}
-								>{lane.continued ? '↳ ' : ''}{actionLabel(lane)}{#if lane.role}<span class="role">{lane.role}</span>{/if}</button
+								>{lane.continued ? '↳ ' : ''}{actionLabel(lane)}{#if lane.role}<span class="role">{whyText(lane.role)}</span>{/if}</button
 							>
 							{#if row.eight !== null}
 								<EightCountCueLine

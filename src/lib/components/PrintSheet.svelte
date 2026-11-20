@@ -14,6 +14,7 @@
 		type Flow
 	} from '#lib/core';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine from './EightCountCueLine.svelte';
@@ -70,7 +71,7 @@
 		const lines = (text: string) => Math.ceil(charCount(text) / 18);
 		const text =
 			row.actions.reduce(
-				(h, a) => h + 20 * lines(`${a.at}${actionLabel(a)}${a.who}`) + 18 * lines(a.note),
+				(h, a) => h + 20 * lines(`${whyText(a.at)}${actionLabel(a)}${whyText(a.who)}`) + 18 * lines(a.note),
 				0
 			) +
 			20 * (row.continuing.length + row.walks.length);
@@ -134,22 +135,22 @@
 					{#each rows as row, i (i)}
 						<tbody class:keep={fitsPage(row)}>
 							<tr>
-								<td class="seg">{row.segmentLabel}</td>
-								<td class="seg" class:eight={row.eight !== null}>{row.eightText}</td>
+								<td class="seg">{whyText(row.segmentWhy)}</td>
+								<td class="seg" class:eight={row.eight !== null}>{whyText(row.eightText)}</td>
 								<td class="num">{row.startSec.toFixed(1)}</td>
 								<td class="actions">
 									{#each row.actions as a, j (j)}
 										<div class="action">
-											<b class="at">{a.at}</b>
-											{actionLabel(a)}{#if a.who}：{a.who}{/if}
+											<b class="at">{whyText(a.at)}</b>
+											{actionLabel(a)}{#if a.who}：{whyText(a.who)}{/if}
 											{#if a.note}<div class="note">{a.note}</div>{/if}
 										</div>
 									{/each}
 									{#each row.continuing as name, j (j)}
-										<div class="muted">↳ {name} 繼續</div>
+										<div class="muted">↳ {whyText(name)} 繼續</div>
 									{/each}
 									{#each row.walks as w, j (j)}
-										<div>{w}</div>
+										<div>{whyText(w)}</div>
 									{/each}
 									<!-- 什麼都沒有的八拍（手機上是一張卡）不留一條空白，像沒載入 -->
 									{#if !row.actions.length && !row.continuing.length && !row.walks.length && !row.formations.length && !row.cues.length}
@@ -170,7 +171,7 @@
 													crop={miniView}
 												/>
 											</div>
-											<figcaption>{f.caption}</figcaption>
+											<figcaption>{whyText(f.caption)}</figcaption>
 										</figure>
 									{/each}
 								</td>

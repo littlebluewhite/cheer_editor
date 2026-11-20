@@ -4,14 +4,16 @@
 		actionLabel,
 		atTextWithUnit,
 		beatSpanText,
-		cueText,
+		cueWhy,
 		lengthTextWithUnit,
 		memberName,
 		segmentSpans,
-		whoName,
+		spanWhy,
+		whoWhy,
 		type Action,
 		type Flow
 	} from '#lib/core';
+	import { whyText } from '#lib/reason-text.js';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -35,7 +37,7 @@
 	const cues = $derived(
 		span
 			? (action.cues ?? []).map((c) =>
-					cueText(c.kind, c.word, beatSpanText(span.segment, action.start + c.at, c.len), whoName(flow, c.who))
+					whyText(cueWhy(c.kind, c.word, spanWhy(span.segment, action.start + c.at, c.len), whoWhy(flow, c.who)))
 				)
 			: []
 	);

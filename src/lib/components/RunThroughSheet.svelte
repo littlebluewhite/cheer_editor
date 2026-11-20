@@ -21,6 +21,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { runKey, runKeyLabel, runKeys, runNumber } from '#lib/run-keys.js';
 	import type { RunView } from '#lib/server-api.js';
 	import ConfirmList from './ConfirmList.svelte';
@@ -213,7 +214,10 @@
 		ask.send({ name: 'recordRunThrough', args: [run.date, run.startedAt, entries, id] }, { done: () => onclose(true) });
 	}
 
-	const markLabel = (m: Mark | null) => MARKS.find((x) => x.key === m)?.label ?? '空的';
+	const markLabel = (m: Mark | null) => {
+		const label = MARKS.find((x) => x.key === m)?.label;
+		return label ? whyText(label) : '空的';
+	};
 
 	/** 新的全上 id：r 加 12 個字的亂數（ADR 0014）。 */
 	function newRunId(): string {

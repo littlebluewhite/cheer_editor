@@ -3,11 +3,11 @@
 
 import { replaceAction, type Action } from './action-types';
 import { roleWhy } from './roles';
-import { cutOut, fitRange, rangeProblem, rangeText } from './beat-range';
+import { cutOut, fitRange, rangeProblem, rangeWhy } from './beat-range';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
-import type { Why } from './why';
+import type { Why, WhyCode, WhyParam } from './why';
 import {
 	atText,
 	EPS,
@@ -22,8 +22,12 @@ import {
 export type CueKind = 'count' | 'step' | 'motion';
 export const CUE_KINDS: CueKind[] = ['count', 'step', 'motion'];
 
-/** 給教練看的種類名稱。 */
-export const CUE_KIND_LABELS: Record<CueKind, string> = { count: '拍子', step: '步驟', motion: '手位' };
+/** 給教練看的種類名稱（代號，畫面照語言寫）。 */
+export const CUE_KIND_LABELS: Record<CueKind, Why> = {
+	count: { code: 'cues_kind_count' },
+	step: { code: 'cues_kind_step' },
+	motion: { code: 'cues_kind_motion' }
+};
 
 /** 給誰：null = 動作裡全部的人；role = 某個任務角色的人；member = 某一個隊員。 */
 export type Who = null | { role: string } | { member: string };
@@ -44,6 +48,26 @@ export const COUNT_WORDS = ['down', 'up'];
 export const STEP_WORDS = ['下手', '落地', '放', '上', '直下', '跳', '拋'];
 /** 內建的手位；也可以自己打字。 */
 export const MOTION_WORDS = ['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏'];
+
+/** 內建的中文步驟、手位的代號：流程檔照樣存中文，畫面照語言寫。 */
+const WORD_CODES: Record<'step' | 'motion', Record<string, WhyCode>> = {
+	step: {
+		下手: 'cues_word_dip',
+		落地: 'cues_word_land',
+		放: 'cues_word_release',
+		上: 'cues_word_up',
+		直下: 'cues_word_pop_down',
+		跳: 'cues_word_jump',
+		拋: 'cues_word_toss'
+	},
+	motion: { 雙手並攏: 'cues_word_clasp' }
+};
+
+/** 拍點的字給人看：內建的中文步驟、手位送代號（畫面照語言寫），其他（down、high V、教練自己打的）照原樣。 */
+export function cueWordWhy(kind: CueKind, word: string): WhyParam {
+	const codes = kind === 'count' ? undefined : WORD_CODES[kind];
+	return codes && Object.hasOwn(codes, word) ? { code: codes[word] } : word;
+}
 
 /** 這支流程用過、不是內建的步驟和手位（照第一次出現的順序），表單把它們變成按鈕。 */
 export function usedWords(flow: Flow): { step: string[]; motion: string[] } {
@@ -217,17 +241,17 @@ export function cueFallout(
 	before: Action,
 	after: Action,
 	flow: Flow
-): { cues: Cue[]; removed: number; cut: number; orphaned: number; items: string[] } | null {
+): { cues: Cue[]; removed: number; cut: number; orphaned: number; items: Why[] } | null {
 	const kept: Cue[] = [];
-	const items: string[] = [];
+	const items: Why[] = [];
 	let removed = 0;
 	let orphaned = 0;
 	for (const c of before.cues ?? []) {
-		const text = cueText(c.kind, c.word, rangeText(from, before, c.at, c.len), whoName(flow, c.who));
+		const cue = cueWhy(c.kind, c.word, rangeWhy(from, before, c.at, c.len), whoWhy(flow, c.who));
 		if (to.kind === 'music' && !givenToSomeone(c, after)) {
 			removed++;
 			orphaned++;
-			items.push(`拿掉：${text}`);
+			items.push({ code: 'cues_item_removed', cue });
 			continue;
 		}
 		const fitted = to.kind === 'music' ? fitRange('cue', after, c)?.len : undefined;
@@ -235,23 +259,34 @@ export function cueFallout(
 			kept.push(c);
 		} else if (fitted) {
 			kept.push({ ...c, len: fitted });
-			items.push(`切短：${text} → ${rangeText(from, before, c.at, fitted)}`);
+			items.push({ code: 'cues_item_cut', cue, range: rangeWhy(from, before, c.at, fitted) });
 		} else {
 			removed++;
-			items.push(`拿掉：${text}`);
+			items.push({ code: 'cues_item_removed', cue });
 		}
 	}
 	return items.length ? { cues: kept, removed, cut: items.length - removed, orphaned, items } : null;
 }
 
-/** 給誰的名字：角色名或隊員名；給全部的是空字串。 */
-export function whoName(flow: Flow, who: Who): string {
-	return who === null ? '' : 'role' in who ? who.role : memberName(flow, who.member);
+/** 給誰的名字：任務角色（固定的送代號，畫面照語言寫）或隊員名；給全部的是空字串。 */
+export function whoWhy(flow: Flow, who: Who): WhyParam {
+	return who === null ? '' : 'role' in who ? roleWhy(who.role) : memberName(flow, who.member);
 }
 
-/** 「拍子 down 1-3 到 1-4」；span 是時間那段的字，who 是給誰的名字（空的不寫），有就接「・給上層」。 */
-export function cueText(kind: CueKind, word: string, span: string, who: string): string {
-	return `${CUE_KIND_LABELS[kind]} ${word} ${span}${who ? `・給${who}` : ''}`;
+/** 「拍子 down 1-3 到 1-4」；span 是時間那段（spanWhy、rangeWhy），who 是給誰（whoWhy，空的不寫），有就接「・給上層」。 */
+export function cueWhy(kind: CueKind, word: string, span: WhyParam, who: WhyParam): Why {
+	const text = { kind: CUE_KIND_LABELS[kind], word: cueWordWhy(kind, word), span };
+	return who === '' ? { code: 'cues_text', ...text } : { code: 'cues_text_who', ...text, who };
+}
+
+/**
+ * 拍點小窗和八拍表的拍（同 beat-range 的 beatSpanText）：「3-5 到 3-6・2 拍」，只有一拍（或不到一拍）是「3-5・1 拍」。
+ * at 是段內時間；結束拍寫最後一拍開始的那個半拍。
+ */
+export function spanWhy(segment: Segment, at: number, len: number): Why {
+	const last = at + len - BEAT;
+	const range: WhyParam = last > at ? { code: 'beat_range_range', first: atText(segment, at), last: atText(segment, last) } : atText(segment, at);
+	return { code: 'cues_span', range, length: lengthWhy(segment, len) };
 }
 
 function find(flow: Flow, actionId: string): { action: Action; segment: Segment } | null {

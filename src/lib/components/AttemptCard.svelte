@@ -27,6 +27,7 @@
 		type Mark
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { removeWithRestore } from './record-notice';
 	import { revealAlert } from './reveal';
 
@@ -243,7 +244,7 @@
 						<button
 							type="button"
 							class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
-							aria-label="{name} {phaseLabel(p)} {m.label}"
+							aria-label="{name} {phaseLabel(p)} {whyText(m.label)}"
 							aria-pressed={shown[p.id] === m.key}
 							disabled={!on}
 							onclick={() => tap(p.id, m.key)}>{m.key}</button
@@ -275,7 +276,7 @@
 					{@const run = r.practice === 'runThrough'}
 					{@const kind = run ? '全上' : r.whole ? '分段練' : '只練幾個環節'}
 					{@const text = attemptText(action, r)}
-					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? `${kind}；${NOT_YET_TITLE}` : kind}>
+					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? `${kind}；${whyText(NOT_YET_TITLE)}` : kind}>
 						<button
 							type="button"
 							aria-expanded={editing === r.id}
@@ -312,7 +313,7 @@
 							<button
 								type="button"
 								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
-								aria-label="第 {n} 次 {phaseLabel(p)} {m.label}"
+								aria-label="第 {n} 次 {phaseLabel(p)} {whyText(m.label)}"
 								aria-pressed={draft[p.id] === m.key}
 								disabled={editShut.includes(p.id)}
 								onclick={() => retap(p.id, m.key)}>{m.key}</button

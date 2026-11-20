@@ -6,6 +6,7 @@
 	import { untrack } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { revealAlert } from './reveal';
 	import {
 		formationWalks,
@@ -14,7 +15,7 @@
 		timeExamples,
 		timeText,
 		walkSpanAt,
-		walkSpeedText,
+		walkSpeedWhy,
 		type Walk
 	} from '#lib/core';
 
@@ -46,10 +47,10 @@
 	/** 速度：只有一個人走位時寫他的速度；好幾個人時只寫太快和很喘的人（前面加名字）。 */
 	const speedLines = $derived(
 		moving.length === 1
-			? [walkSpeedText(flow, moving[0])]
+			? [whyText(walkSpeedWhy(flow, moving[0]))]
 			: moving
 					.filter((w) => w.tooFast || w.tiring)
-					.map((w) => `${flow.members.find((m) => m.id === w.memberId)?.name ?? ''}　${walkSpeedText(flow, w)}`)
+					.map((w) => `${flow.members.find((m) => m.id === w.memberId)?.name ?? ''}　${whyText(walkSpeedWhy(flow, w))}`)
 	);
 	/** 現在的走法給教練看的樣子；選到的人不一樣時是空字串。 */
 	const current = $derived.by(() => {

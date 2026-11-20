@@ -404,7 +404,7 @@ export function attemptWhos(flow: Flow, action: Action): { who: string; name: st
 /** 整個做的一次，碰到那一次之後才加的環節寫這個（跟成功率表沒紀錄的「—」一樣），不寫像空著、像沒成功的「·」。 */
 export const NOT_YET_MARK = '—';
 /** 一次的記號裡有 NOT_YET_MARK 時，滑鼠移上去看到的說明。 */
-export const NOT_YET_TITLE = '— 是這次還沒有這個環節';
+export const NOT_YET_TITLE: Why = { code: 'records_not_yet' };
 
 /**
  * 一次寫成一排記號，照環節順序，空的寫「·」，例：✓✓△、✗··。

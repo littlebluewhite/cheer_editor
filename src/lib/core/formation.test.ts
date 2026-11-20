@@ -15,11 +15,11 @@ import {
 	insertFormation,
 	memberWalk,
 	moveFormation,
-	moveFormationHint,
+	moveFormationHint as moveFormationHintWhy,
 	groupPositions,
 	moveGroup,
 	moveMembers,
-	moveTargetText,
+	moveTargetWhy,
 	positionsAt,
 	renameFormation,
 	setPositions,
@@ -27,11 +27,20 @@ import {
 	setWalks,
 	updateSegment,
 	walkSpanAt,
-	walkSpeedText,
+	walkSpeedWhy,
 	type CommandResult,
 	type Flow,
-	type Walk
+	type FormationWalk,
+	type Walk,
+	type WhyParam
 } from './index';
+import { zh } from './why';
+
+/** 給人看的字（代號）寫成中文。 */
+const zhText = (text: WhyParam) => (typeof text === 'object' ? zh(text) : String(text));
+const moveTargetText = (flow: Flow, sec: number) => zh(moveTargetWhy(flow, sec));
+const walkSpeedText = (flow: Flow, walk: FormationWalk) => zh(walkSpeedWhy(flow, walk));
+const moveFormationHint = (flow: Flow, formationId: string) => zhText(moveFormationHintWhy(flow, formationId));
 
 function okFlow(r: CommandResult): Flow {
 	if (r.kind !== 'ok') throw new Error(r.message);

@@ -177,7 +177,8 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 					undoable: { code: 'records_undoable' }
 				}
 			},
-			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次']
+			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次'],
+			whyItems: expect.any(Array)
 		});
 		const changed = action(flowOf(updateAction(flow, 'x1', { category: 'tumbling' }, { confirmed: true })), 'x1');
 		expect(changed.successRate!.records).toEqual([]);
@@ -217,7 +218,8 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
 				records: { code: 'settle_records', records: { code: 'settle_changed_squads' }, undoable: { code: 'records_undoable' } }
 			},
-			items: ['第 1 組 小美：2 次']
+			items: ['第 1 組 小美：2 次'],
+			whyItems: expect.any(Array)
 		});
 	});
 
@@ -270,7 +272,8 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 					undoable: { code: 'records_undoable' }
 				}
 			},
-			items: ['第 2 組 小芳：1 次']
+			items: ['第 2 組 小芳：1 次'],
+			whyItems: expect.any(Array)
 		});
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })), 'x1')).toEqual(['t1', 't3']);
 	});
@@ -296,7 +299,8 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 					undoable: { code: 'records_undoable' }
 				}
 			},
-			items: ['第 2 組 小芳：1 次', '第 1 組 小美：2 次']
+			items: ['第 2 組 小芳：1 次', '第 1 組 小美：2 次'],
+			whyItems: expect.any(Array)
 		});
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'keep' })), 'x1')).toEqual(['t1', 't3']);
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'clear' })), 'x1')).toEqual([]);
@@ -343,7 +347,8 @@ describe('騰翻、跳躍的動作拿掉有紀錄的人', () => {
 					undoable: { code: 'records_undoable' }
 				}
 			},
-			items: ['小A：1 次']
+			items: ['小A：1 次'],
+			whyItems: expect.any(Array)
 		});
 		expect(ids(flowOf(updateAction(flow, 'x2', { members }, { confirmed: true })), 'x2')).toEqual(['t4']);
 	});
@@ -355,7 +360,8 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 			kind: 'choose',
 			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（清掉的紀錄按「復原」會回來）',
 			why: { code: 'members_rename_records', name: '小美', newName: '小芳芳', count: 3, undoable: { code: 'records_undoable' } },
-			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
+			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次'],
+			whyItems: expect.any(Array)
 		});
 	});
 

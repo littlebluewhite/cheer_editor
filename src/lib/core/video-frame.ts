@@ -1,7 +1,7 @@
 // 流程影片的一格：影片第幾秒要寫什麼。只算內容，不畫圖；畫面和聲音另外做。
 // 站位、拍、八拍表的字都用編輯器播放用的同一批核心函式，影片才不會跟編輯器不一樣。
 
-import { actionLabel, categoryLabel } from './action-types';
+import { actionWhy, categoryWhy } from './action-types';
 import { layersAt } from './actions';
 import { eightCountRows, teamWho, type EightCountCueLine, type EightCountRow } from './eight-count';
 import type { Flow } from './flow';
@@ -13,6 +13,7 @@ import {
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	clockText,
+	labelWhy,
 	segmentSpans,
 	type SegmentSpan,
 	toPosition,
@@ -20,6 +21,7 @@ import {
 	totalSeconds,
 	units
 } from './time';
+import type { Why, WhyParam } from './why';
 
 /** 開頭停幾秒（沒聲音）、結尾停幾秒、每秒幾格。 */
 export const VIDEO_INTRO_SEC = 2;
@@ -34,11 +36,11 @@ export function videoDurationSec(flow: Flow): number {
 /** 影片下面那一列八拍表要寫的字。 */
 export interface VideoRow {
 	/** 站位的說明：「站位 2 金字塔・2-5」。 */
-	formations: string[];
+	formations: WhyParam[];
 	/** title 是「1-1　技巧·Lib」。 */
-	actions: { title: string; who: string; note: string }[];
+	actions: { title: WhyParam; who: WhyParam; note: string }[];
 	/** 前面開始、還在做的動作。 */
-	continuing: { name: string; who: string }[];
+	continuing: { name: WhyParam; who: WhyParam }[];
 	/** 拍點和環節。 */
 	cues: EightCountCueLine[];
 	/** 四樣都沒有：畫「這一列沒有新的動作、站位」。 */
@@ -52,8 +54,8 @@ export interface VideoFrameData {
 	flowSec: number;
 	/** 流程名。 */
 	title: string;
-	/** 開頭「開場站位」；音樂段「音樂 1・第 6 個八拍」；口號段「口號 1・12.3 秒」。 */
-	where: string;
+	/** 開頭「開場站位」；音樂段「音樂 1・第 6 個八拍」；口號段「口號 1・12.3 秒」；找不到段是空的。 */
+	where: WhyParam;
 	clock: string;
 	/** 音樂段才有。count 是這個八拍有幾拍（最後不滿的比 8 少），lit 是現在第幾拍（開頭是 null）。 */
 	beats: { count: number; lit: number | null } | null;
@@ -78,8 +80,8 @@ function videoRow(flow: Flow, spans: SegmentSpan[], row: EightCountRow): VideoRo
 	const continuing = flow.actions
 		.filter((a) => a.segmentId === span.segment.id && a.start < from && a.start + a.length > from)
 		.toSorted((a, b) => a.start - b.start)
-		.map((a) => ({ name: a.name || categoryLabel(a.category), who: teamWho(flow, a) }));
-	const actions = row.actions.map((a) => ({ title: `${a.at}　${actionLabel(a)}`, who: a.who, note: a.note }));
+		.map((a) => ({ name: a.name || categoryWhy(a.category), who: teamWho(flow, a) }));
+	const actions = row.actions.map((a) => ({ title: { code: 'video_frame_action', at: a.at, action: actionWhy(a) } satisfies Why, who: a.who, note: a.note }));
 	const formations = row.formations.map((f) => f.caption);
 	return {
 		formations,
@@ -91,14 +93,16 @@ function videoRow(flow: Flow, spans: SegmentSpan[], row: EightCountRow): VideoRo
 }
 
 /** 列的名字：「音樂 1 第 6 個八拍」，合起來的列「音樂 1 第 6–8 個八拍」，口號段只有段名。 */
-function rowLabel(row: EightCountRow): string {
-	if (row.eight === null) return row.segmentLabel;
-	const eights = row.lastEight !== null && row.lastEight !== row.eight ? `${row.eight}–${row.lastEight}` : `${row.eight}`;
-	return `${row.segmentLabel} 第 ${eights} 個八拍`;
+function rowLabel(row: EightCountRow): Why {
+	if (row.eight === null) return row.segmentWhy;
+	if (row.lastEight !== null && row.lastEight !== row.eight) {
+		return { code: 'video_frame_row_range', segment: row.segmentWhy, first: row.eight, last: row.lastEight };
+	}
+	return { code: 'video_frame_row', segment: row.segmentWhy, n: row.eight };
 }
 
 /** 每個不同的列一份（合起來的八拍一份）。 */
-export function videoRows(flow: Flow): { label: string; row: VideoRow }[] {
+export function videoRows(flow: Flow): { label: Why; row: VideoRow }[] {
 	const spans = segmentSpans(flow);
 	return eightCountRows(flow, null).map((row) => ({ label: rowLabel(row), row: videoRow(flow, spans, row) }));
 }
@@ -113,7 +117,7 @@ export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 	const spans = segmentSpans(flow);
 	const rows = eightCountRows(flow, null).map((r) => ({ startSec: r.startSec, row: videoRow(flow, spans, r) }));
 	const markers = memberMarkers(flow);
-	return (videoSec) => {
+	return (videoSec): VideoFrameData => {
 		const raw = videoSec - VIDEO_INTRO_SEC;
 		const part: VideoFrameData['part'] = raw < 0 ? 'intro' : raw >= total - EPS ? 'outro' : 'play';
 		const flowSec = Math.min(Math.max(raw, 0), total);
@@ -134,16 +138,16 @@ export function videoFrames(flow: Flow): (videoSec: number) => VideoFrameData {
 			markers,
 			row: rowNow ? rowNow.row : EMPTY_ROW
 		};
-		if (part === 'intro') return { ...base, where: '開場站位', beats: null };
+		if (part === 'intro') return { ...base, where: { code: 'video_frame_intro' }, beats: null };
 		if (!pos || !span) return { ...base, where: '', beats: null };
 		if (span.segment.kind === 'chant') {
-			return { ...base, where: `${span.label}・${(flowSec - span.startSec).toFixed(1)} 秒`, beats: null };
+			return { ...base, where: { code: 'video_frame_chant', segment: labelWhy(span), sec: (flowSec - span.startSec).toFixed(1) }, beats: null };
 		}
 		const eightIndex = Math.floor(pos.at / HALF_BEATS_PER_EIGHT);
 		const halfBeatsInEight = Math.min(HALF_BEATS_PER_EIGHT, units(span.segment) - eightIndex * HALF_BEATS_PER_EIGHT);
 		return {
 			...base,
-			where: `${span.label}・第 ${eightIndex + 1} 個八拍`,
+			where: { code: 'video_frame_eight', segment: labelWhy(span), n: eightIndex + 1 },
 			beats: {
 				count: Math.ceil(halfBeatsInEight / HALF_BEATS_PER_BEAT),
 				lit: Math.floor((pos.at % HALF_BEATS_PER_EIGHT) / HALF_BEATS_PER_BEAT) + 1
