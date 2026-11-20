@@ -17,11 +17,12 @@
 	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
 	// 金字塔疊著的環節：細條往下多一排（第幾排流程核心算好，跟拍點格子同一排），名稱和拍點再往下讓。
 	import {
-		actionLabel,
 		actionSeconds,
+		actionWhy,
 		atWhy,
 		CUE_KINDS,
 		cueForMember,
+		cueWordWhy,
 		farthestLegal,
 		formationWalks,
 		idleAt,
@@ -34,6 +35,7 @@
 		phaseRows,
 		positionWhy,
 		resizeAction,
+		roleWhy,
 		setWalks,
 		timeInputWhy,
 		toSeconds,
@@ -52,6 +54,8 @@
 	import { AT_EDGE, getEditorSession, VIEW_ONLY } from '#lib/editor-session.svelte.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	// 泳道一人一條（{#each flow.members as m}），m 是隊員：畫面的句子叫 msg
+	import { m as msg } from '#lib/paraglide/messages.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { isLongMarker } from '#lib/marker.js';
 	import { followPointer, touchOnUnpicked } from './pointer';
@@ -89,9 +93,9 @@
 			const { startSec, endSec } = actionSeconds(flow, action);
 			return {
 				action,
-				label: actionLabel(action),
+				label: whyText(actionWhy(action)),
 				/** 色條上的字：顏色已經是大類，只寫名稱；沒取名才寫大類。 */
-				name: action.name || actionLabel(action),
+				name: action.name || whyText(actionWhy(action)),
 				left: startSec * pxPerSec,
 				width: (endSec - startSec) * pxPerSec,
 				/** 一個半拍幾 px（拍點用；只有音樂段有拍點）。 */
@@ -251,7 +255,12 @@
 				const { memberId, departSec, arriveSec, tooFast, tiring } = w;
 				const speed = whyText(walkSpeedWhy(flow, w));
 				const name = flow.members.find((m) => m.id === memberId)?.name ?? '';
-				const label = `${name} 走到站位 ${i + 1}：${whyText(positionWhy(flow, departSec))} 出發、${whyText(positionWhy(flow, arriveSec))} 到達`;
+				const label = msg.timeline_walk_label({
+					name,
+					n: i + 1,
+					depart: whyText(positionWhy(flow, departSec)),
+					arrive: whyText(positionWhy(flow, arriveSec))
+				});
 				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, label, clashes: [] });
 			}
 		}
@@ -302,7 +311,7 @@
 		const length = Math.min(p.action.length + Math.round(d.dx / p.halfPx), units(segment) - p.action.start);
 		const end = whyText(atWhy(segment, p.action.start + length));
 		const out = resizeAction(flow, d.id, actionSeconds(flow, p.action).endSec + d.dx / pxPerSec).kind === 'blocked';
-		return { text: `${whyText(lengthWhy(segment, length))}・在 ${end} 結束`, out };
+		return { text: msg.timeline_resize_readout({ length: whyText(lengthWhy(segment, length)), end }), out };
 	});
 
 	/** 上一次按下走位條後真的拖了：放開後瀏覽器接著送的 click 不算點一下。 */
@@ -396,10 +405,10 @@
 		const t = (p: Walk['depart']) => whyText(timeInputWhy(flow, home, p));
 		const text =
 			d.mode === 'depart'
-				? `出發 ${t(own.depart)}`
+				? msg.timeline_depart_at({ at: t(own.depart) })
 				: d.mode === 'arrive'
-					? `到達 ${t(own.arrive)}`
-					: `${t(own.depart)} 到 ${t(own.arrive)}`;
+					? msg.timeline_arrive_at({ at: t(own.arrive) })
+					: msg.beat_range_range({ first: t(own.depart), last: t(own.arrive) });
 		return { text, out: clamped, dx: clamped ? shiftSec * pxPerSec : d.dx };
 	});
 </script>
@@ -418,16 +427,16 @@
 			class:idle={idle.has(m.id)}
 			class:selected={selected.has(m.id)}
 			aria-pressed={selected.has(m.id)}
-			title={touchScreen ? '點一下選這個人；打開「多選」再點，可以選好幾個' : '點一下選這個人；Shift＋點可以選好幾個'}
+			title={touchScreen ? msg.timeline_pick_hint_touch() : msg.timeline_pick_hint()}
 			onclick={(e) => session.pickMember(m.id, e.shiftKey)}
 		>
 			<b
 				class="no gr {m.globalRole}"
 				class:long={isLongMarker(markers[m.id])}
-				title={m.globalRole === 'top' ? '上層' : '底層'}>{markers[m.id]}</b
+				title={m.globalRole === 'top' ? msg.role_top() : msg.role_base()}>{markers[m.id]}</b
 			>
 			<span class="name" title={m.name}>{m.name}</span>
-			{#if idle.has(m.id)}<span class="idle-tag" title="播放頭這一拍沒在動作裡">閒</span>{/if}
+			{#if idle.has(m.id)}<span class="idle-tag" title={msg.timeline_idle_hint()}>{msg.timeline_idle()}</span>{/if}
 		</button>
 		<div class="trk" style:width={`${width}px`}>
 			{#each placed as p (p.action.id)}
@@ -449,7 +458,7 @@
 						style:background={actionColor(p.action)}
 						style:padding-top={namePad(p.action.id, mine.length > 0)}
 						style:--tint={p.action.color ? `inset 6px 0 0 ${CATEGORY_COLORS[p.action.category]}` : undefined}
-						title="{p.label}{member.role ? `（${member.role}）` : ''}"
+						title={member.role ? msg.timeline_bar_title_role({ action: p.label, role: whyText(roleWhy(member.role)) }) : p.label}
 						onclick={() => editor.pickAction(p.action.id)}
 						ondblclick={() => editor.seekToAction(p.action.id)}
 						onpointerdown={(e) => startDrag(e, p.action.id, m.id)}
@@ -475,7 +484,7 @@
 							></span>
 						{/each}
 						<b>{p.name}</b>
-						{#if member.role}<span class="role">{member.role}</span>{/if}
+						{#if member.role}<span class="role">{whyText(roleWhy(member.role))}</span>{/if}
 						{#each mine as c, j (j)}
 							<!-- 最後一拍的手位右邊對齊那一拍的結尾、往左撐開，字才不會被色條右邊切掉；跟色條多寬無關，拉右邊時也不會跑 -->
 							{@const atEnd = c.kind === 'motion' && c.at + c.len >= p.action.length}
@@ -489,10 +498,10 @@
 								style:min-width={c.kind === 'motion' ? `${c.len * p.halfPx}px` : undefined}
 								style:max-width={c.kind === 'motion' ? `${motionRoom(mine, cues[m.id].track, c, p.action.length, atEnd) * p.halfPx}px` : undefined}
 								style:top={`${lift[m.id] + NAME_H + (cues[m.id].track.get(c) ?? 0) * TRACK_H}px`}
-								style:height={`${TRACK_H - 1}px`}>{c.word}</span
+								style:height={`${TRACK_H - 1}px`}>{whyText(cueWordWhy(c.kind, c.word))}</span
 							>
 						{/each}
-						<span class="rz" data-resize data-edit title="拉這裡改長度"></span>
+						<span class="rz" data-resize data-edit title={msg.timeline_resize_hint()}></span>
 					</button>
 					{#if d?.mode === 'resize' && d.memberId === m.id && resizeReadout}
 						<span
@@ -524,7 +533,7 @@
 					style:width={`${Math.max((w.arriveSec - w.departSec) * pxPerSec + dr - dl, 2)}px`}
 					style:height={`${WALK_HIT_H}px`}
 					style:bottom={`${-WALK_HIT_DROP}px`}
-					title="{w.speed}。點一下選這個人；拖左端改出發、拖右端改到達、拖中間一起挪"
+					title={msg.timeline_walk_title({ speed: w.speed })}
 					onpointerdown={(e) => startWalkDrag(e, w.formationId, m.id)}
 					onclick={(e) => tapWalk(e, m.id)}
 				>
@@ -540,7 +549,7 @@
 							<span
 								class="clash"
 								data-walk-clash
-								title="撞位"
+								title={msg.timeline_clash()}
 								style:left={`${((c.startSec + c.endSec) / 2 - w.departSec) * pxPerSec - cw / 2}px`}
 								style:width={`${cw}px`}
 								style:height={`${WALK_H}px`}

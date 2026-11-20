@@ -356,8 +356,8 @@ function continuedFrom(flow: Flow, index: number, patch: SegmentPatch): MusicSeg
 
 /** 這一段跟另一段用同一個音樂檔、用到的時間重疊：那一截播放時會聽兩次。 */
 export interface AudioOverlap {
-	/** 另一段的名字，例：音樂 2 */
-	label: string;
+	/** 另一段的名字（labelWhy），例：音樂 2 */
+	label: Why;
 	/** 重疊幾秒 */
 	sec: number;
 }
@@ -376,7 +376,7 @@ export function audioOverlaps(flow: Flow, segmentId: string): AudioOverlap[] {
 		const other = span === self ? null : used(span);
 		if (!other || other.audioId !== mine.audioId) return [];
 		const sec = Math.min(mine.to, other.to) - Math.max(mine.from, other.from);
-		return sec > 1e-9 ? [{ label: span.label, sec }] : [];
+		return sec > 1e-9 ? [{ label: labelWhy(span), sec }] : [];
 	});
 }
 

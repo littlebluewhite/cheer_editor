@@ -26,6 +26,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { AT_EDGE, getEditorSession } from '#lib/editor-session.svelte.js';
 	import Icon from './Icon.svelte';
 	import { followPointer, touchOnUnpicked } from './pointer';
@@ -166,7 +167,7 @@
 <!-- 雙擊插站位是滑鼠捷徑；鍵盤照樣是播放頭移過去再拖人（方向鍵）插站位。 -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="row film" ondblclick={insertAt}>
-	<div class="lab">站位</div>
+	<div class="lab">{m.timeline_formations()}</div>
 	<div class="trk" bind:this={trk} style:width={`${width}px`}>
 		{#each items as { formation, sec, deletable }, i (formation.id)}
 			{@const to = drag?.id === formation.id ? drag.to : null}
@@ -186,11 +187,17 @@
 				<button
 					type="button"
 					class="pick"
-					aria-label={formation.name ? `站位 ${i + 1} ${formation.name}` : `站位 ${i + 1}`}
+					aria-label={formation.name
+						? m.timeline_formation_named({ n: i + 1, name: formation.name })
+						: m.eight_count_formation_now({ n: i + 1 })}
 					title={tag
-						? `站位 ${i + 1}${formation.name ? ` ${formation.name}` : ''}${deletable ? '：選到後按 Delete 刪掉' : ''}`
+						? formation.name
+							? (deletable ? m.timeline_formation_named_delete_hint : m.timeline_formation_named)({ n: i + 1, name: formation.name })
+							: deletable
+								? m.timeline_formation_delete_hint({ n: i + 1 })
+								: m.eight_count_formation_now({ n: i + 1 })
 						: formation.name
-							? `站位 ${i + 1} ${formation.name}`
+							? m.timeline_formation_named({ n: i + 1, name: formation.name })
 							: undefined}
 					aria-pressed={selectedId === formation.id}
 					onclick={() => {
@@ -225,7 +232,7 @@
 						type="button"
 						class="del"
 						data-edit
-						aria-label={`刪除站位 ${i + 1}`}
+						aria-label={m.timeline_delete_formation({ n: i + 1 })}
 						onclick={() => session.removeFormation(formation.id)}><Icon name="close" size={11} /></button
 					>
 				{/if}

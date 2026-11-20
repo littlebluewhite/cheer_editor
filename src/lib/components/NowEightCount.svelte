@@ -5,10 +5,11 @@
 	// 播放頭那個八拍框起來、這一拍那格亮；點前後的八拍跳過去。
 	// 電腦前一個、這個、後三個；手機放不下，只放這個和下一個（docs/adr/0005-ipad-touch.md）。
 	// 選了「我」就只寫我的動作、拍點和任務角色，沒選是全隊。列的內容都問流程核心。
-	import { actionLabel, eightCountRows, nearbyEights, type EightCountRow, type Flow } from '#lib/core';
+	import { actionWhy, eightCountRows, nearbyEights, type EightCountRow, type Flow } from '#lib/core';
 	import { actionColor } from './category-colors';
 	import EightCountCueLine from './EightCountCueLine.svelte';
 	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		flow: Flow;
@@ -33,10 +34,13 @@
 	const rows = $derived(eightCountRows(flow, memberId || null, false));
 	const near = $derived(nearbyEights(flow, memberId || null, sec, before, after, rows));
 
-	const where = (r: EightCountRow) => (r.eight === null ? whyText(r.segmentWhy) : `${whyText(r.segmentWhy)} 第 ${r.eight} 個八拍`);
+	const where = (r: EightCountRow) =>
+		whyText(r.eight === null ? r.segmentWhy : { code: 'video_frame_row', segment: r.segmentWhy, n: r.eight });
 	/** 前後八拍的讀屏說明：動作、站位、我的走位。 */
 	const summary = (r: EightCountRow) =>
-		[...r.lanes.map((l) => `${l.continued ? '↳ ' : ''}${actionLabel(l)}`), ...r.formations.map((f) => whyText(f.caption)), ...r.walks.map(whyText)].join('　');
+		[...r.lanes.map((l) => `${l.continued ? '↳ ' : ''}${whyText(actionWhy(l))}`), ...r.formations.map((f) => whyText(f.caption)), ...r.walks.map(whyText)].join(
+			m.timeline_summary_separator()
+		);
 	/** 換段的那一列（段的第一個八拍、口號段）前面寫段名；這個八拍一律寫。 */
 	const newSegment = (r: EightCountRow) => r.eight === null || r.eight === 1;
 	const colorOf = (id: string) => {
@@ -50,7 +54,7 @@
 	}
 </script>
 
-<section class="now-eight" aria-label="前後八拍">
+<section class="now-eight" aria-label={m.timeline_nearby()}>
 	{#if near.rows[before]}
 		{#each near.rows as row, i (i)}
 			{#if !row}
@@ -69,14 +73,14 @@
 				>
 					{#snippet head()}
 						{#if now || newSegment(row)}<b class="seg">{whyText(row.segmentWhy)}</b>{/if}
-						<span class="num">{row.eight === null ? whyText(row.eightText) : `第 ${whyText(row.eightText)} 個八拍`}</span>
+						<span class="num">{row.eight === null ? whyText(row.eightText) : m.timeline_eight({ n: whyText(row.eightText) })}</span>
 						{#each row.formations as f (f.number)}<span class="tag">{whyText(f.caption)}</span>{/each}
 						{#each row.walks as w, j (j)}<span class="tag">{whyText(w)}</span>{/each}
 					{/snippet}
 					{#if now}
 						<header class="head">{@render head()}</header>
 					{:else}
-						<button type="button" class="head" aria-label="跳到{where(row)}：{summary(row)}" onclick={() => onjump(row.startSec)}>{@render head()}</button>
+						<button type="button" class="head" aria-label={m.timeline_jump_to({ where: where(row), summary: summary(row) })} onclick={() => onjump(row.startSec)}>{@render head()}</button>
 					{/if}
 					{#if row.eight !== null}
 						<!-- 沒有拍點也畫 1–8，這一拍那格照樣亮 -->
@@ -89,9 +93,9 @@
 								class="name"
 								class:picked={picked === lane.actionId}
 								aria-pressed={picked === lane.actionId}
-								title="看誰做這個動作"
+								title={m.timeline_who_does()}
 								onclick={() => onpick(picked === lane.actionId ? null : lane.actionId)}
-								>{lane.continued ? '↳ ' : ''}{actionLabel(lane)}{#if lane.role}<span class="role">{whyText(lane.role)}</span>{/if}</button
+								>{lane.continued ? '↳ ' : ''}{whyText(actionWhy(lane))}{#if lane.role}<span class="role">{whyText(lane.role)}</span>{/if}</button
 							>
 							{#if row.eight !== null}
 								<EightCountCueLine
@@ -106,13 +110,13 @@
 						</div>
 					{/each}
 					{#if now && !row.lanes.length && !row.formations.length && !row.walks.length}
-						<div class="muted">這個八拍沒有動作、站位</div>
+						<div class="muted">{m.timeline_eight_empty()}</div>
 					{/if}
 				</div>
 			{/if}
 		{/each}
 	{:else}
-		<div class="muted">還沒有段</div>
+		<div class="muted">{m.time_no_segments()}</div>
 	{/if}
 </section>
 
