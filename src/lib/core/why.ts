@@ -103,7 +103,27 @@ const ZH = {
 	roles_member_name_taken: '已經有叫「{name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人',
 	roles_not_found: '找不到這個任務角色',
 	roles_delete_used_one: '「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉',
-	roles_delete_used: '「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉'
+	roles_delete_used: '「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉',
+	// phases.ts
+	phases_no_action: '找不到這個動作',
+	phases_no_segment: '找不到這一段',
+	phases_not_found: '找不到這個環節',
+	phases_music_needs_beats: '音樂段的環節要選拍標',
+	phases_delete_one: '會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來），確定就刪掉',
+	phases_delete: '會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來），確定就刪掉',
+	phases_delete_none_left_one: '會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
+	phases_delete_none_left: '會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
+
+	// insert-beats.ts
+	insert_beats_no_segment: '找不到這一段',
+	insert_beats_length: '插入的長度要大於 0',
+	insert_beats_outside: '插入的地方不在這一段裡',
+	insert_beats_overflow_formation: '站位 {n} 會超過這段的結尾，{room}',
+	insert_beats_overflow_action: '「{action}」會超過這段的結尾，{room}',
+	insert_beats_room: '最多插 {length}',
+	insert_beats_room_eights_rest: '最多插 {eights}又 {rest}',
+	insert_beats_room_under_eight: '最多插 {length}（不到 1 個八拍，單位改成拍）',
+	insert_beats_room_none: '這段後面已經沒有空了'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;
