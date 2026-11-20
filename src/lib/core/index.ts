@@ -43,7 +43,7 @@ export {
 } from './members';
 export type { AddMembersResult, Gender, GlobalRole, MarkerStyle, Member, MemberChanges, NewMemberInput } from './members';
 
-export { ACTION_CATEGORIES, actionLabel, actionSeconds, actionWhy, categoryWhy } from './action-types';
+export { ACTION_CATEGORIES, actionLabel, actionNameWhy, actionSeconds, actionWhy, categoryWhy } from './action-types';
 export type { Action, ActionCategory, ActionChanges, ActionMember, NewActionInput } from './action-types';
 export {
 	actionSlotAt,

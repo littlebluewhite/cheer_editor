@@ -1,7 +1,7 @@
 // 任務角色：隊員在某個動作裡要做的事。13 個固定的 ＋ 這支流程自己加的。
 // 跟全局角色互不影響；只有加人進動作時的預設值（defaultRoles）照全局角色先填。
 
-import { actionLabel, type ActionCategory, type ActionMember } from './action-types';
+import { actionWhy, type ActionCategory, type ActionMember } from './action-types';
 import type { Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { newId } from './ids';
@@ -162,7 +162,7 @@ export function deleteCustomRole(flow: Flow, id: string, option: ConfirmOption =
 	const using = flow.actions.filter((a) => a.members.some((m) => m.role === role.name));
 	if (using.length && !option.confirmed) {
 		const code = using.length === 1 ? 'roles_delete_used_one' : 'roles_delete_used';
-		return needsConfirm({ code, name: role.name, count: using.length }, using.map(actionLabel));
+		return needsConfirm({ code, name: role.name, count: using.length }, using.map(actionWhy));
 	}
 	const actions = flow.actions.map((a) => ({
 		...a,

@@ -109,6 +109,13 @@ describe('八拍表的列：全隊', () => {
 		]);
 	});
 
+	it('名字存成大類名稱（舞蹈叫「舞蹈」）的動作：延續的列送大類的代號，英文畫面才不會留中文', () => {
+		let flow = flowOf(updateSegment(sample(), 's1', { eights: 8, lastBeats: 8 }));
+		flow = flowOf(addAction(flow, action({ category: 'dance', name: '舞蹈', start: 0, length: 32 })));
+		const rows = rowsOf(flow, null, false).filter((r) => r.eight === 2);
+		expect(rows.map((r) => r.continuing)).toEqual([[{ code: 'category_dance' }]]);
+	});
+
 	it('有拍點、環節延續過來的八拍不算空的', () => {
 		let flow = flowOf(addAction(sample(), action({ start: 0, length: 32 })));
 		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 14, len: 4, word: 'down' }));

@@ -2,7 +2,7 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { actionLabel, actionWhy, categoryWhy, type Action, type ActionCategory } from './action-types';
+import { actionLabel, actionNameWhy, actionWhy, type Action, type ActionCategory } from './action-types';
 import { actionEights, beatSpanWhy } from './beat-range';
 import { cueForMember, whoWhy, type CueKind } from './cues';
 import type { Rect } from './field';
@@ -228,7 +228,7 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 				startSec: sec,
 				durationSec,
 				actions: inSegment.filter((a) => a.start >= from && a.start < to).map(describe),
-				continuing: carried.map((a) => a.name || categoryWhy(a.category)),
+				continuing: carried.map(actionNameWhy),
 				formations: flow.formations.flatMap((f, i) => {
 					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
 					return [{ number: i + 1, name: f.name, at: at(f.at), caption: caption(flow, i, at(f.at), memberId), pos: f.pos }];

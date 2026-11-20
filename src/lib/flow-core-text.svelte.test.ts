@@ -120,4 +120,16 @@ describe('流程核心給畫面的字（英文）', () => {
 			['Fay Lee', 'F', 'top']
 		]);
 	});
+
+	it('貼上名單用空白分欄、全局角色寫成兩個字的任務角色（Back spot）：擋下那一行，不會整行變成名字；英文標題列跳過', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const r = addMemberLines(empty, 'Name Gender Main role\nAmy F Back spot', { gender: 'M', globalRole: 'base' });
+		expect(r).toMatchObject({ kind: 'blocked', why: { code: 'members_line_global_role' } });
+	});
+
+	it('貼上名單：日文名單上寫的短的「トップ」也看得懂', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const r = addMemberLines(empty, '葵,女,トップ', { gender: null, globalRole: null });
+		expect(flowOf(r).members.map((m) => [m.name, m.gender, m.globalRole])).toEqual([['葵', 'F', 'top']]);
+	});
 });

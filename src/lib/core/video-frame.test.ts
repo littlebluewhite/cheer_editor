@@ -243,6 +243,13 @@ describe('row', () => {
 		expect(f.row.empty).toBe(false);
 	});
 
+	it('名字存成大類名稱（舞蹈叫「舞蹈」）的動作：延續的列送大類的代號，英文影片才不會留中文', () => {
+		const flow = flowOf(
+			addAction(sample(), { segmentId: 's1', category: 'dance', name: '舞蹈', start: 0, length: 40, note: '', members: [{ memberId: 'm1', role: null }] })
+		);
+		expect(frameOf(flow, VIDEO_INTRO_SEC + 3.2 + 0.1).row.continuing.map((c) => c.name)).toEqual([{ code: 'category_dance' }]);
+	});
+
 	it('什麼都沒有的列 empty', () => {
 		const f = videoFrame(sample(), VIDEO_INTRO_SEC + 3.3);
 		expect(f.row).toEqual({ formations: [], actions: [], continuing: [], cues: [], empty: true });

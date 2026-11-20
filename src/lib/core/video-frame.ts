@@ -1,7 +1,7 @@
 // 流程影片的一格：影片第幾秒要寫什麼。只算內容，不畫圖；畫面和聲音另外做。
 // 站位、拍、八拍表的字都用編輯器播放用的同一批核心函式，影片才不會跟編輯器不一樣。
 
-import { actionWhy, categoryWhy } from './action-types';
+import { actionNameWhy, actionWhy } from './action-types';
 import { layersAt } from './actions';
 import { eightCountRows, teamWho, type EightCountCueLine, type EightCountRow } from './eight-count';
 import type { Flow } from './flow';
@@ -80,7 +80,7 @@ function videoRow(flow: Flow, spans: SegmentSpan[], row: EightCountRow): VideoRo
 	const continuing = flow.actions
 		.filter((a) => a.segmentId === span.segment.id && a.start < from && a.start + a.length > from)
 		.toSorted((a, b) => a.start - b.start)
-		.map((a) => ({ name: a.name || categoryWhy(a.category), who: teamWho(flow, a) }));
+		.map((a) => ({ name: actionNameWhy(a), who: teamWho(flow, a) }));
 	const actions = row.actions.map((a) => ({ title: { code: 'video_frame_action', at: a.at, action: actionWhy(a) } satisfies Why, who: a.who, note: a.note }));
 	const formations = row.formations.map((f) => f.caption);
 	return {

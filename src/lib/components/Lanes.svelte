@@ -17,6 +17,7 @@
 	// 有拍點又有環節的人，名稱和拍點往下讓開細條，泳道多高那麼一點。
 	// 金字塔疊著的環節：細條往下多一排（第幾排流程核心算好，跟拍點格子同一排），名稱和拍點再往下讓。
 	import {
+		actionNameWhy,
 		actionSeconds,
 		actionWhy,
 		atWhy,
@@ -95,7 +96,7 @@
 				action,
 				label: whyText(actionWhy(action)),
 				/** 色條上的字：顏色已經是大類，只寫名稱；沒取名才寫大類。 */
-				name: action.name || whyText(actionWhy(action)),
+				name: whyText(actionNameWhy(action)),
 				left: startSec * pxPerSec,
 				width: (endSec - startSec) * pxPerSec,
 				/** 一個半拍幾 px（拍點用；只有音樂段有拍點）。 */

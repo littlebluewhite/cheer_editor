@@ -190,7 +190,9 @@ describe('改、刪自訂任務角色', () => {
 			kind: 'confirm',
 			message: '「丟人的」用在 1 個動作裡：刪掉後那些人變成沒有任務，給「丟人的」的拍點也會刪掉',
 			why: { code: 'roles_delete_used_one', name: '丟人的', count: 1 },
-			items: ['金字塔·收尾']
+			items: ['金字塔·收尾'],
+			// 清單也送代號，英文畫面寫 Pyramid·收尾
+			whyItems: [{ code: 'action_label', category: { code: 'category_pyramid' }, name: '收尾' }]
 		});
 		const flow = flowOf(deleteCustomRole(used(), 'r1', { confirmed: true }));
 		expect(flow.customRoles).toEqual([]);
