@@ -139,6 +139,21 @@ describe('使用說明', () => {
 		for (const words of ['開啟流程檔', '檢視模式', '前後八拍', '我', '播放', '印誰', '「編輯」', '只能看、只能播放', '最近的流程', '丟掉']) {
 			expect(text, words).toContain(words);
 		}
+		// 手機的檢視畫面：放大場地、點場上的人看是誰、「我」以外的人畫淡；按鈕收在「選單」和「⋯」裡
+		for (const words of ['很快點兩下', '放大場地', '「整個場地」', '圓點不跟著變大', '點他一下', '別人畫淡', '「選單」的「回首頁」', '「選單」（左上角三條線）的「八拍表」']) {
+			expect(text, words).toContain(words);
+		}
+	});
+
+	it('手機的上方列、選單、播放區寫的是一排的樣子：按鈕收在「選單」和「⋯」裡', () => {
+		render(Guide);
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
+		expect(row('上方列')).toContain('上方列只有「選單」（只畫三條線）、流程名字、「編排」「練習」');
+		expect(row('上方列')).toContain('「回開頭」、節拍器、重複和「A」「B」「✕」收在「⋯」裡');
+		expect(row('選單')).toContain('「開啟流程檔」「回首頁」「存檔」、「八拍表」、「使用說明」');
+		expect(document.body.textContent).not.toContain('手機上沒有選單');
+		expect(document.body.textContent).not.toContain('「‹ 八拍」');
 	});
 
 	it('有一節講雲端：登入、雲端流程和本機流程、傳上雲端、下載、分享和權限、分享連結、移交、一起改、一起記成功率、離線副本', () => {
@@ -314,7 +329,7 @@ describe('第 5 批：說明跟現在的畫面一樣（#232）', () => {
 		const text = document.body.textContent!;
 		for (const words of [
 			'看的版面', '裁短', '「復原」', '選人工具列', '鏡像', '排成一橫排', '排成一直排', '平均分開', '跟第 [_] 張一樣',
-			'⌘C', '⌘V', '只改這張', '撞位 N・走太快 N・很喘 N', '格的號碼', '✋', '⏮', '「‹ 八拍」', '拿掉音樂', '右鍵'
+			'⌘C', '⌘V', '只改這張', '撞位 N・走太快 N・很喘 N', '格的號碼', '✋', '「⋯」裡的「回開頭」', '「‹」「›」', '拿掉音樂', '右鍵'
 		]) {
 			expect(text, words).toContain(words);
 		}
