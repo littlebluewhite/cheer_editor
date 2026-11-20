@@ -12,6 +12,7 @@ import { cueFalloutText } from './settle';
 import { recordCount } from './success-rate';
 import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
 import { atTextWithUnit, fromText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
+import { zh } from './why';
 
 export interface MusicSegment {
 	id: string;
@@ -273,7 +274,7 @@ export function updateSegment(
 	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
 		const label = segmentSpans(flow)[index].label;
 		const lost = recordsLossText(records, marks);
-		const cleared = lost && `，會${lost}${RECORDS_UNDOABLE}`;
+		const cleared = lost ? `，會${zh(lost)}${RECORDS_UNDOABLE}` : '';
 		// 只裁短、沒有要刪的：不寫刪掉，確定鈕寫「確定裁短」（N19）
 		const drops = droppedActions.length + droppedFormations.length > 0;
 		const what = [trimmed.length && '超出段尾的動作裁短到段尾', drops && '放不進段裡的刪掉'].filter(Boolean).join('，');

@@ -7,7 +7,7 @@ import { actionLabel } from './action-types';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
-import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { recordCount } from './success-rate';
 import { EPS, HALF_BEATS_PER_EIGHT, atTextWithUnit, atWhy, fromText, labelWhy, segmentSpans, toPosition, totalSeconds } from './time';
@@ -29,10 +29,9 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 	if (!answered(option) && (droppedActions.length || droppedFormations.length)) {
 		const records = recordCount(droppedActions);
 		const label = labelWhy(segmentSpans(flow)[index]);
-		// 「按復原會回來」還是中文（records.ts 的單子改）
 		const code = records === 1 ? 'segment_order_delete_records_one' : 'segment_order_delete_records';
 		const why: Why = records
-			? { code, segment: label, count: records, undoable: RECORDS_UNDOABLE }
+			? { code, segment: label, count: records, undoable: RECORDS_UNDOABLE_WHY }
 			: { code: 'segment_order_delete', segment: label };
 		return needsConfirm(why, [
 			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${fromText(segment, a.start)}）`),
