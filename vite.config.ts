@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { withPwa } from '@vite-pwa/sveltekit';
 import { svelteTesting } from '@testing-library/svelte/vite';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { bundleCore } from './scripts/core-bundle.mjs';
 import { thirdPartyLicenses } from './scripts/third-party-licenses.ts';
 
@@ -16,6 +17,14 @@ export default defineConfig({
 				define: { __CORE_FINGERPRINT__: JSON.stringify((await bundleCore()).fingerprint) }
 			})
 		},
+		// 翻譯（ADR 0017）：messages/*.json 編成 src/lib/paraglide/ 的函式，m.xxx() 用。
+		// 語言先看這台瀏覽器存的選擇，沒有就跟著瀏覽器語言，再沒有就是中文。網址不帶語言。
+		paraglideVitePlugin({
+			project: './project.inlang',
+			outdir: './src/lib/paraglide',
+			emitTsDeclarations: true,
+			strategy: ['localStorage', 'preferredLanguage', 'baseLocale']
+		}),
 		// 建置時產生 third-party-licenses.txt（第三方套件的授權），見檔案開頭。
 		thirdPartyLicenses(),
 		// withPwa 包住 sveltekit()：產生 service worker（可離線）和 manifest。

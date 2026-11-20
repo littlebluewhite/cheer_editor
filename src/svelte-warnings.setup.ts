@@ -2,7 +2,10 @@
 // 算測試失敗。Vitest 的 onConsoleLog 只能把輸出藏起來，不能讓測試失敗，所以自己包住 console.warn。
 // 不在 console.warn 裡直接 throw：警告常在 effect 裡發，throw 會被 Svelte 吃掉或弄亂畫面；
 // 改成記下來，每個測試結束時再算失敗。
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+
+// 測試一律用中文畫面（jsdom 的瀏覽器語言是英文）。要測英文的測試自己改 localStorage。
+beforeEach(() => localStorage.setItem('PARAGLIDE_LOCALE', 'zh-TW'));
 
 const warnings: string[] = [];
 const original = console.warn.bind(console);

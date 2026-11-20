@@ -1,0 +1,10 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"forgot_password_title": "パスワードを忘れた場合",
+	"forgot_password_lead": "ログインに使うメールアドレスを入力してください。新しいパスワードを設定するリンクをお送りします。",
+	"forgot_password_sent": "{email} のアカウントがあれば、メールを送信しました。",
+	"forgot_password_spam_hint": "届かない場合は迷惑メールフォルダを確認するか、管理者に送信を依頼してください。",
+	"forgot_password_send": "メールを送信",
+	"server_unreachable": "サーバーに接続できません。しばらくしてからもう一度お試しください。",
+	"page_title": "{page} — ルーティーンエディター"
+}

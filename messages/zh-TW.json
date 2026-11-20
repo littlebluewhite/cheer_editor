@@ -1,0 +1,10 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"forgot_password_title": "忘記密碼",
+	"forgot_password_lead": "填你登入用的 email，我們寄一封信，點信裡的連結設新密碼。",
+	"forgot_password_sent": "如果 {email} 有帳號，我們已經寄出一封信。",
+	"forgot_password_spam_hint": "沒收到？看看垃圾信，或請管理員幫你寄。",
+	"forgot_password_send": "寄信",
+	"server_unreachable": "連不上伺服器，請稍後再試。",
+	"page_title": "{page} — 流程編輯器"
+}

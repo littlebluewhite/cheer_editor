@@ -1,0 +1,10 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"forgot_password_title": "Forgot password",
+	"forgot_password_lead": "Enter the email you sign in with. We'll send you a link to set a new password.",
+	"forgot_password_sent": "If {email} has an account, we've sent it an email.",
+	"forgot_password_spam_hint": "Didn't get it? Check your spam folder, or ask an admin to send it.",
+	"forgot_password_send": "Send email",
+	"server_unreachable": "Can't reach the server. Please try again later.",
+	"page_title": "{page} — Routine Editor"
+}
