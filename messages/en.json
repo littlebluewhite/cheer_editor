@@ -43,5 +43,13 @@
 	"roles_member_name_taken": "There's already an athlete called “{name}”. Give the position another name so a cue's “for” can tell a position from an athlete",
 	"roles_not_found": "Can't find this position",
 	"roles_delete_used_one": "“{name}” is used in {count} skill: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too",
-	"roles_delete_used": "“{name}” is used in {count} skills: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too"
+	"roles_delete_used": "“{name}” is used in {count} skills: deleting it leaves those athletes with no position, and cues for “{name}” will be deleted too",
+	"phases_no_action": "Can't find this skill",
+	"phases_no_segment": "Can't find this segment",
+	"phases_not_found": "Can't find this phase",
+	"phases_music_needs_beats": "A phase in a music segment needs beats marked",
+	"phases_delete_one": "Deleting {count} phase: {lost} (Undo brings cleared reps back). Confirm to delete",
+	"phases_delete": "Deleting {count} phases: {lost} (Undo brings cleared reps back). Confirm to delete",
+	"phases_delete_none_left_one": "Deleting {count} phase: {lost} (Undo brings cleared reps back). The skill will have no phases left and stop recording hit rates. Confirm to delete",
+	"phases_delete_none_left": "Deleting {count} phases: {lost} (Undo brings cleared reps back). The skill will have no phases left and stop recording hit rates. Confirm to delete"
 }

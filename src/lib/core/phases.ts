@@ -10,11 +10,12 @@ import type { Flow } from './flow';
 import { newId } from './ids';
 import { cut, ordered } from './phase-beats';
 import { phaseLabel, phasesMayShareBeats, type Phase, type PhaseKind } from './phase-types';
-import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { recordsLoss, recordsLossText } from './records';
 import { settle } from './settle';
 import { allPhaseIds, beatsProblem, phaseKindProblem } from './success-rate';
+import type { Why } from './why';
 
 /** 加環節要給的東西：種類、名字；音樂段要給標的拍（從動作開始算第幾個半拍、幾個半拍長），口號段不能給。 */
 export interface NewPhaseInput {
@@ -43,12 +44,12 @@ export function addPhase(
 	options: ConfirmOption = {}
 ): CommandResult<{ id: string }> {
 	const found = findAction(flow, actionId);
-	if (typeof found === 'string') return blocked(found);
+	if ('code' in found) return blocked(found);
 	const { action, segment } = found;
 	const { beats } = input;
 	const kindProblem = phaseKindProblem(action.category, input.kind);
 	if (kindProblem) return blocked(kindProblem);
-	if (segment.kind === 'music' && !beats) return blocked('音樂段的環節要選拍標');
+	if (segment.kind === 'music' && !beats) return blocked({ code: 'phases_music_needs_beats' });
 	const problem = beats && beatsProblem(segment, action, beats);
 	if (problem) return blocked(problem);
 	const phase: Phase = { id: newId('p', allPhaseIds(flow)), kind: input.kind, name: input.name.trim(), ...(beats && { beats: { ...beats } }) };
@@ -71,7 +72,7 @@ export function markPhaseBeats(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const found = findPhase(flow, actionId, phaseId);
-	if (typeof found === 'string') return blocked(found);
+	if ('code' in found) return blocked(found);
 	const { action, segment } = found;
 	const problem = beatsProblem(segment, action, { at, len });
 	if (problem) return blocked(problem);
@@ -88,7 +89,7 @@ export function clearPhaseBeats(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const found = findAction(flow, actionId);
-	if (typeof found === 'string') return blocked(found);
+	if ('code' in found) return blocked(found);
 	const { action, segment } = found;
 	if (!action.successRate) return ok(flow);
 	return withPhases(flow, segment, action, cut(action.successRate.phases, from, to), options);
@@ -97,7 +98,7 @@ export function clearPhaseBeats(
 /** 改環節：種類（動作的大類能用的）、名字（去掉頭尾空白）、顏色（PHASE_COLORS 裡的，或 null 回到種類的顏色）。 */
 export function updatePhase(flow: Flow, actionId: string, phaseId: string, change: PhaseChange): CommandResult {
 	const found = findPhase(flow, actionId, phaseId);
-	if (typeof found === 'string') return blocked(found);
+	if ('code' in found) return blocked(found);
 	const { action, segment, phase } = found;
 	const kindProblem = change.kind === undefined ? null : phaseKindProblem(action.category, change.kind);
 	if (kindProblem) return blocked(kindProblem);
@@ -115,7 +116,7 @@ export function updatePhase(flow: Flow, actionId: string, phaseId: string, chang
 /** 刪環節：有記號先問（見 withPhases）；拿掉後一個記號都沒有的那一次整筆拿掉。沒記號就直接刪。 */
 export function deletePhase(flow: Flow, actionId: string, phaseId: string, options: ConfirmOption = {}): CommandResult {
 	const found = findPhase(flow, actionId, phaseId);
-	if (typeof found === 'string') return blocked(found);
+	if ('code' in found) return blocked(found);
 	const { action, segment } = found;
 	return withPhases(flow, segment, action, action.successRate!.phases.filter((p) => p.id !== phaseId), options);
 }
@@ -126,19 +127,19 @@ function cutFor(action: Action, phases: Phase[], from: number, to: number): Phas
 }
 
 /** 找動作和它在的段；找不到回給教練看的原因。 */
-function findAction(flow: Flow, actionId: string): { action: Action; segment: Segment } | string {
+function findAction(flow: Flow, actionId: string): { action: Action; segment: Segment } | Why {
 	const action = flow.actions.find((a) => a.id === actionId);
-	if (!action) return '找不到這個動作';
+	if (!action) return { code: 'phases_no_action' };
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
-	return segment ? { action, segment } : '找不到這一段';
+	return segment ? { action, segment } : { code: 'phases_no_segment' };
 }
 
 /** 找動作、它在的段和它的環節；找不到回給教練看的原因。 */
-function findPhase(flow: Flow, actionId: string, phaseId: string): { action: Action; segment: Segment; phase: Phase } | string {
+function findPhase(flow: Flow, actionId: string, phaseId: string): { action: Action; segment: Segment; phase: Phase } | Why {
 	const found = findAction(flow, actionId);
-	if (typeof found === 'string') return found;
+	if ('code' in found) return found;
 	const phase = found.action.successRate?.phases.find((p) => p.id === phaseId);
-	return phase ? { ...found, phase } : '找不到這個環節';
+	return phase ? { ...found, phase } : { code: 'phases_not_found' };
 }
 
 /**
@@ -155,11 +156,10 @@ function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[
 	if (settled.kind === 'blocked') return settled;
 	const { removed, stripped } = recordsLoss(action.successRate?.records ?? [], settled.action.successRate?.records ?? []);
 	if ((removed.length || stripped.length) && !answered(options)) {
-		const empty = kept.length ? '' : '；動作沒有環節了，不再記成功率';
-		return needsConfirm(
-			`會刪掉 ${gone.length} 個環節，${recordsLossText(removed.length, stripped.length)}${RECORDS_UNDOABLE}${empty}，確定就刪掉`,
-			gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`)
-		);
+		const one = gone.length === 1;
+		const code = kept.length ? (one ? 'phases_delete_one' : 'phases_delete') : one ? 'phases_delete_none_left_one' : 'phases_delete_none_left';
+		const lost = recordsLossText(removed.length, stripped.length);
+		return needsConfirm({ code, count: gone.length, lost }, gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`));
 	}
 	return ok(replaceAction(flow, settled.action));
 }

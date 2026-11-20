@@ -43,5 +43,13 @@
 	"roles_member_name_taken": "已經有叫「{name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人",
 	"roles_not_found": "找不到這個任務角色",
 	"roles_delete_used_one": "「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉",
-	"roles_delete_used": "「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉"
+	"roles_delete_used": "「{name}」用在 {count} 個動作裡：刪掉後那些人變成沒有任務，給「{name}」的拍點也會刪掉",
+	"phases_no_action": "找不到這個動作",
+	"phases_no_segment": "找不到這一段",
+	"phases_not_found": "找不到這個環節",
+	"phases_music_needs_beats": "音樂段的環節要選拍標",
+	"phases_delete_one": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來），確定就刪掉",
+	"phases_delete": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來），確定就刪掉",
+	"phases_delete_none_left_one": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉",
+	"phases_delete_none_left": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉"
 }
