@@ -53,7 +53,18 @@ const ZH = {
 	flow_check_formation_order: '站位 {n} 要在站位 {before} 之後、段的時間裡',
 	flow_check_twice: '同一個人只能放一次',
 	flow_check_no_role: '沒有「{role}」這個任務角色',
-	flow_check_clash: '{member} 同一時間在「{first}」和「{second}」裡'
+	flow_check_clash: '{member} 同一時間在「{first}」和「{second}」裡',
+	// cues.ts
+	cues_chant: '口號段不數拍，不能放拍點',
+	cues_no_kind: '沒有這種拍點',
+	cues_motion_one_beat: '手位只佔一拍',
+	cues_count_word: '拍子只能是 down 或 up',
+	cues_no_word: '請寫拍點的字',
+	cues_no_role: '動作裡沒有人是「{role}」',
+	cues_member_not_in_action: '這個隊員不在動作裡',
+	cues_no_action: '找不到這個動作',
+	cues_nothing_copied: '沒有複製的拍點',
+	cues_paste_blocked: '貼不下：{reason}'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;

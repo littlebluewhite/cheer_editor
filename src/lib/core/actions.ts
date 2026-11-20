@@ -17,6 +17,7 @@ import type { Member } from './members';
 import { memberName, type Flow } from './flow';
 import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { roleGlossary } from './roles';
+import { said } from './why';
 import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf, withSquadOrder } from './success-rate';
 import { newId } from './ids';
@@ -215,7 +216,7 @@ export function shapeProblem(flow: Flow, action: Action): string | null {
 	if (action.members.length === 0) return '一個動作至少要有 1 個人';
 	for (const cue of action.cues ?? []) {
 		const problem = cueProblem(segment, action, cue);
-		if (problem) return problem;
+		if (problem) return said(problem).message;
 	}
 	return null;
 }

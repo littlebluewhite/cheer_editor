@@ -7,6 +7,7 @@ import { CUE_KINDS, cueProblem } from './cues';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
+import { said } from './why';
 import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
 import { phasesOverlap } from './beat-range';
@@ -428,7 +429,7 @@ export function structureProblem(v: unknown): string | null {
 		const segment = flow.segments.find((s) => s.id === a.segmentId)!;
 		const problem =
 			(a.cues ?? []).map((c) => cueProblem(segment, a, c)).find((p) => p !== null) ?? successRateProblem(segment, a);
-		if (problem) return `動作「${actionLabel(a)}」：${problem}`;
+		if (problem) return `動作「${actionLabel(a)}」：${said(problem).message}`;
 	}
 	return null;
 }

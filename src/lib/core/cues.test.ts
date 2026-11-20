@@ -85,16 +85,37 @@ describe('放拍點', () => {
 		['超出動作', { at: 6, len: 4, word: 'down' }, '拍點要在動作裡面'],
 		['在動作之前', { at: -2, len: 2, word: 'down' }, '拍點要在動作裡面'],
 		['不到一拍', { at: 0, len: 1, word: 'down' }, '拍點要佔整數拍，至少 1 拍'],
-		['不是整數拍', { at: 0, len: 3, word: 'down' }, '拍點要佔整數拍，至少 1 拍'],
-		['拍子用別的字', { at: 0, len: 2, word: 'ready' }, '拍子只能是 down 或 up']
+		['不是整數拍', { at: 0, len: 3, word: 'down' }, '拍點要佔整數拍，至少 1 拍']
 	])('不合規則被擋（%s）', (_, input, message) => {
 		expect(placeCue(sample(), 'x1', { kind: 'count', ...input })).toEqual({ kind: 'blocked', message });
+	});
+
+	it('拍子用別的字被擋', () => {
+		expect(placeCue(sample(), 'x1', { kind: 'count', at: 0, len: 2, word: 'ready' })).toEqual({
+			kind: 'blocked',
+			message: '拍子只能是 down 或 up',
+			why: { code: 'cues_count_word' }
+		});
+	});
+
+	it('沒有這種拍點、找不到動作被擋', () => {
+		const kind = 'clap' as Cue['kind'];
+		expect(placeCue(sample(), 'x1', { kind, at: 0, len: 2, word: 'x' })).toEqual({
+			kind: 'blocked',
+			message: '沒有這種拍點',
+			why: { code: 'cues_no_kind' }
+		});
+		const noAction = { kind: 'blocked', message: '找不到這個動作', why: { code: 'cues_no_action' } };
+		expect(placeCue(sample(), 'x9', { kind: 'count', at: 0, len: 2, word: 'down' })).toEqual(noAction);
+		expect(pasteCues(sample(), 'x9', 0, [count(0, 2, 'down')])).toEqual(noAction);
+		expect(clearCues(sample(), 'x9', null, 0, 2)).toEqual(noAction);
 	});
 
 	it('口號段的動作不能放', () => {
 		expect(placeCue(sample(), 'x2', { kind: 'count', at: 0, len: 2, word: 'down' })).toEqual({
 			kind: 'blocked',
-			message: '口號段不數拍，不能放拍點'
+			message: '口號段不數拍，不能放拍點',
+			why: { code: 'cues_chant' }
 		});
 	});
 });
@@ -111,11 +132,11 @@ describe('步驟和手位', () => {
 	});
 
 	it.each([
-		['步驟是空白', { kind: 'step' as const, at: 0, len: 2, word: '  ' }, '請寫拍點的字'],
-		['手位是空的', { kind: 'motion' as const, at: 0, len: 2, word: '' }, '請寫拍點的字'],
-		['手位佔兩拍', { kind: 'motion' as const, at: 0, len: 4, word: 'T' }, '手位只佔一拍']
-	])('不合規則被擋（%s）', (_, input, message) => {
-		expect(placeCue(sample(), 'x1', input)).toEqual({ kind: 'blocked', message });
+		['步驟是空白', { kind: 'step' as const, at: 0, len: 2, word: '  ' }, '請寫拍點的字', 'cues_no_word'],
+		['手位是空的', { kind: 'motion' as const, at: 0, len: 2, word: '' }, '請寫拍點的字', 'cues_no_word'],
+		['手位佔兩拍', { kind: 'motion' as const, at: 0, len: 4, word: 'T' }, '手位只佔一拍', 'cues_motion_one_beat']
+	])('不合規則被擋（%s）', (_, input, message, code) => {
+		expect(placeCue(sample(), 'x1', input)).toEqual({ kind: 'blocked', message, why: { code } });
 	});
 
 	it('清掉步驟不動拍子和手位', () => {
@@ -338,12 +359,13 @@ describe('給誰', () => {
 	});
 
 	it.each([
-		['動作裡沒人是這個角色', { role: '保護' }, '動作裡沒有人是「保護」'],
-		['隊員不在動作裡', { member: 'm9' }, '這個隊員不在動作裡']
-	])('給不對的人被擋（%s）', (_, w, message) => {
+		['動作裡沒人是這個角色', { role: '保護' }, '動作裡沒有人是「保護」', { code: 'cues_no_role', role: '保護' }],
+		['隊員不在動作裡', { member: 'm9' }, '這個隊員不在動作裡', { code: 'cues_member_not_in_action' }]
+	])('給不對的人被擋（%s）', (_, w, message, why) => {
 		expect(placeCue(sample(), 'x1', { kind: 'motion', at: 0, len: 2, word: 'T', who: w })).toEqual({
 			kind: 'blocked',
-			message
+			message,
+			why
 		});
 	});
 
@@ -557,6 +579,24 @@ describe('複製、貼上拍點', () => {
 	});
 
 	it('沒有拍點可以貼就擋下', () => {
-		expect(pasteCues(sample(), 'x1', 0, [])).toEqual({ kind: 'blocked', message: '沒有複製的拍點' });
+		expect(pasteCues(sample(), 'x1', 0, [])).toEqual({
+			kind: 'blocked',
+			message: '沒有複製的拍點',
+			why: { code: 'cues_nothing_copied' }
+		});
+	});
+
+	it('有一個不守規則就整個擋下，說哪裡不行', () => {
+		expect(pasteCues(sample(), 'x1', 0, [{ ...count(0, 2, 'down'), kind: 'motion', len: 4 }])).toEqual({
+			kind: 'blocked',
+			message: '貼不下：手位只佔一拍',
+			why: { code: 'cues_paste_blocked', reason: { code: 'cues_motion_one_beat' } }
+		});
+		// 拍的範圍的規則（beat-range）還沒改代號：包著中文
+		expect(pasteCues(sample(), 'x1', 0.5, [count(0, 2, 'down')])).toEqual({
+			kind: 'blocked',
+			message: '貼不下：拍點要落在半拍上',
+			why: { code: 'cues_paste_blocked', reason: '拍點要落在半拍上' }
+		});
 	});
 });
