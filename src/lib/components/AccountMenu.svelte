@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import type { Me } from '#lib/server-api.js';
 	import { below, popover } from '#lib/popover.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		me: Me;
@@ -39,15 +40,15 @@
 			{@attach popover({ place: below(button!, { gap: 4, align: 'right', flip: false }), close, inside: [button] })}
 		>
 			<div class="who">{me.email}</div>
-			<a role="menuitem" href={resolve('/account')}>我的帳號</a>
-			{#if me.isAdmin}<a role="menuitem" href={resolve('/users')}>管理使用者</a>{/if}
+			<a role="menuitem" href={resolve('/account')}>{m.account_title()}</a>
+			{#if me.isAdmin}<a role="menuitem" href={resolve('/users')}>{m.users_title()}</a>{/if}
 			<button
 				type="button"
 				role="menuitem"
 				onclick={() => {
 					open = false;
 					onlogout();
-				}}>登出</button
+				}}>{m.account_log_out()}</button
 			>
 		</div>
 	{/if}

@@ -13,6 +13,7 @@
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { revealAlert } from './reveal';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		flowId: string;
@@ -23,7 +24,7 @@
 	let { flowId, flowName, onclose }: Props = $props();
 	const editor = getEditor();
 	const server = editor.adapters.server;
-	const UNREACHABLE = '連不上伺服器，再試一次。';
+	const UNREACHABLE = m.share_unreachable();
 	/** 能分享出去的權限（擁有者不在這裡選：選單另外有「設為擁有者（移交）」）。 */
 	const GRANTS = ['editor', 'recorder', 'viewer'] as const;
 
@@ -69,22 +70,22 @@
 		done = '';
 		try {
 			await navigator.clipboard.writeText(url);
-			done = '複製了分享連結。';
+			done = m.share_copied();
 		} catch {
-			error = '複製不了，請自己選取連結複製。';
+			error = m.share_copy_failed();
 		}
 	}
 
 	function problemText(p: ShareProblem): string {
 		switch (p.kind) {
 			case 'noAccount':
-				return '這個 email 還沒有帳號，請管理員先加。';
+				return m.share_no_account();
 			case 'yourself':
-				return '這是你自己。';
+				return m.share_yourself();
 			case 'already':
-				return `${p.name}已經是${ROLE_NAMES[p.role]}了，要改在下面改。`;
+				return m.share_already({ name: p.name, role: ROLE_NAMES[p.role] });
 			case 'disabled':
-				return `${p.name}的帳號被停用了，不能分享給他。`;
+				return m.share_disabled({ name: p.name });
 		}
 	}
 
@@ -117,7 +118,7 @@
 		try {
 			if (value === 'revoke') {
 				people = await server.revoke(flowId, p.userId);
-				done = `收回了${p.name}的權限。`;
+				done = m.share_revoked({ name: p.name });
 			} else {
 				people = await server.setRole(flowId, p.userId, value as Role);
 			}
@@ -151,7 +152,7 @@
 			const r = await server.handOver(flowId, to.userId);
 			if (Array.isArray(r)) {
 				people = r;
-				done = `移交了：${to.name}現在是擁有者，你是編輯者。`;
+				done = m.share_handed_over({ name: to.name });
 			} else error = problemText(r);
 		} catch {
 			error = UNREACHABLE;
@@ -163,59 +164,59 @@
 		if (!asking) return null;
 		if (asking.kind === 'leave') {
 			return {
-				message: `離開「${flowName}」？它不會再出現在「分享給我的」，要擁有者再分享給你才能打開。`,
-				label: '離開',
+				message: m.share_leave_confirm({ flow: flowName }),
+				label: m.share_leave(),
 				run: leave
 			};
 		}
 		if (asking.kind === 'delete') {
-			return { message: `刪掉「${flowName}」？所有人都打不開，成功率紀錄一起刪，不能復原。`, label: '刪掉', run: deleteFlow };
+			return { message: m.share_delete_confirm({ flow: flowName }), label: m.share_delete(), run: deleteFlow };
 		}
 		const { to } = asking;
 		return {
-			message: `把「${flowName}」移交給${to.name}？交出去後${to.name}是擁有者，你變成編輯者，不能再分享、改別人的權限、刪這支流程。${to.name}不用接受，馬上生效。`,
-			label: '移交',
+			message: m.share_hand_over_confirm({ flow: flowName, name: to.name }),
+			label: m.share_hand_over(),
 			run: () => handOver(to)
 		};
 	});
 </script>
 
-<Modal label={`分享「${flowName}」`} class="dialog share-dialog" {onclose}>
+<Modal label={m.share_title({ flow: flowName })} class="dialog share-dialog" {onclose}>
 	{#snippet children(close)}
 		<header class="dialog-head">
-			<h2>分享「{flowName}」</h2>
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
+			<h2>{m.share_title({ flow: flowName })}</h2>
+			<button type="button" class="ghost icon close" aria-label={m.account_close()} onclick={close}><Icon name="close" /></button>
 		</header>
 		{#if amOwner}
 			<form class="add" onsubmit={add}>
-				<input type="email" aria-label="Email" placeholder="對方登入用的 email" bind:value={email} />
-				<select aria-label="權限" bind:value={role}>
+				<input type="email" aria-label="Email" placeholder={m.share_email_placeholder()} bind:value={email} />
+				<select aria-label={m.share_permission()} bind:value={role}>
 					{#each GRANTS as r (r)}<option value={r}>{ROLE_NAMES[r]}</option>{/each}
 				</select>
-				<button type="submit" class="primary">加入</button>
+				<button type="submit" class="primary">{m.share_add()}</button>
 			</form>
 		{/if}
 		{#if error}<p class="error" {@attach revealAlert()}>{error}</p>{/if}
 		{#if done}<p class="done" role="status">{done}</p>{/if}
-		<h3 id="share-people">有權限的人</h3>
+		<h3 id="share-people">{m.share_people()}</h3>
 		<ul class="people" aria-labelledby="share-people">
 			{#each people ?? [] as p (p.userId)}
 				<li>
 					<span class="avatar" aria-hidden="true">{p.name.slice(0, 1)}</span>
 					<span class="who">
 						<span class="name"
-							>{p.name}{p.me ? '（你）' : ''}{#if p.disabled}<span class="off">已停用</span>{/if}</span
+							>{p.me ? m.share_name_you({ name: p.name }) : p.name}{#if p.disabled}<span class="off">{m.users_status_disabled()}</span>{/if}</span
 						>
 						{#if p.email}<small>{p.email}</small>{/if}
 					</span>
 					{#if p.role === 'owner' || !amOwner}
 						<span class="role">{ROLE_NAMES[p.role]}</span>
 					{:else}
-						<select aria-label={`${p.name}的權限`} value={p.role} onchange={(e) => pick(p, e.currentTarget)}>
+						<select aria-label={m.share_person_permission({ name: p.name })} value={p.role} onchange={(e) => pick(p, e.currentTarget)}>
 							{#each GRANTS as r (r)}<option value={r}>{ROLE_NAMES[r]}</option>{/each}
 							<hr />
-							<option value="owner" disabled={p.disabled}>設為擁有者（移交）</option>
-							<option value="revoke">收回</option>
+							<option value="owner" disabled={p.disabled}>{m.share_make_owner()}</option>
+							<option value="revoke">{m.share_revoke()}</option>
 						</select>
 					{/if}
 				</li>
@@ -223,25 +224,25 @@
 		</ul>
 		{#if link !== undefined}
 			<section class="link-part" role="group" aria-labelledby="share-link">
-				<h3 id="share-link">分享連結</h3>
+				<h3 id="share-link">{m.share_link()}</h3>
 				{#if amOwner}
 					<label class="switch"
 						><input type="checkbox" role="switch" checked={link !== null} onchange={(e) => switchLink(e.currentTarget.checked)} />{link
-							? '開著：拿到連結的人都能看'
-							: '關著'}</label
+							? m.share_link_on_owner()
+							: m.share_link_off()}</label
 					>
 				{:else}
-					<p>{link ? '開著' : '關著'}（只有擁有者能開、關）</p>
+					<p>{link ? m.share_link_on_others() : m.share_link_off_others()}</p>
 				{/if}
 				{#if link}
 					{@const url = shareUrl(link)}
 					<div class="copy">
-						<input aria-label="連結" readonly value={url} onfocus={(e) => e.currentTarget.select()} />
-						<button type="button" onclick={() => copy(url)}>複製</button>
+						<input aria-label={m.share_link_label()} readonly value={url} onfocus={(e) => e.currentTarget.select()} />
+						<button type="button" onclick={() => copy(url)}>{m.share_copy()}</button>
 					</div>
 				{/if}
 				{#if amOwner}
-					<small>不用登入就能看編排（場地、八拍表、播放），看不到練習頁和成功率。關掉再打開會換一條新的，舊的就不能用。</small>
+					<small>{m.share_link_hint()}</small>
 				{/if}
 			</section>
 		{/if}
@@ -250,11 +251,11 @@
 		{:else}
 			<footer>
 				{#if amOwner}
-					<button type="button" class="ghost danger" onclick={() => (asking = { kind: 'delete' })}>刪掉這支流程</button>
+					<button type="button" class="ghost danger" onclick={() => (asking = { kind: 'delete' })}>{m.share_delete_flow()}</button>
 				{:else if people}
-					<button type="button" class="ghost" onclick={() => (asking = { kind: 'leave' })}>離開這支流程</button>
+					<button type="button" class="ghost" onclick={() => (asking = { kind: 'leave' })}>{m.share_leave_flow()}</button>
 				{/if}
-				<button type="button" class="primary done-btn" onclick={close}>完成</button>
+				<button type="button" class="primary done-btn" onclick={close}>{m.share_done()}</button>
 			</footer>
 		{/if}
 	{/snippet}

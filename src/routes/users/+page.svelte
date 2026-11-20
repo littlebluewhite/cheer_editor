@@ -16,6 +16,7 @@
 		type UserStatus
 	} from '#lib/server-api.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -23,8 +24,6 @@
 	}
 	let { server = httpServer() }: Props = $props();
 
-	const QUOTA = '今天寄不出去，明天再試。';
-	const UNREACHABLE = '連不上伺服器，請稍後再試。';
 
 	/** 名單：還在問是 undefined，不是管理員是 null。 */
 	let users = $state.raw<UserRow[] | null | undefined>(undefined);
@@ -49,20 +48,21 @@
 		try {
 			users = await server.listUsers();
 		} catch {
-			failed = UNREACHABLE;
+			failed = m.server_unreachable();
 		}
 	}
 
 	function statusText(s: UserStatus): string {
 		switch (s.kind) {
 			case 'active':
-				return '可以登入';
+				return m.users_status_active();
 			case 'invited':
-				return `等他設密碼（邀請信 ${s.hoursLeft} 小時後過期）`;
+				return (s.hoursLeft === 1 ? m.users_status_invited_one : m.users_status_invited)({ hours: s.hoursLeft });
 			case 'inviteExpired':
-				return '邀請過期，他還沒設密碼';
+				return m.users_status_invite_expired();
 			case 'disabled':
-				return s.flows ? `已停用・他有 ${s.flows} 支流程` : '已停用';
+				if (!s.flows) return m.users_status_disabled();
+				return (s.flows === 1 ? m.users_status_disabled_flows_one : m.users_status_disabled_flows)({ n: s.flows });
 		}
 	}
 
@@ -77,7 +77,7 @@
 			}
 			return problemText(result, problems);
 		} catch {
-			return UNREACHABLE;
+			return m.server_unreachable();
 		} finally {
 			busy = false;
 		}
@@ -86,17 +86,17 @@
 	function problemText(p: AdminProblem, problems: { emailTaken?: string } = {}): string {
 		switch (p.kind) {
 			case 'mailQuota':
-				return QUOTA;
+				return m.users_mail_quota();
 			case 'emailTaken':
-				return problems.emailTaken ?? '這個 email 已經有帳號了。';
+				return problems.emailTaken ?? m.users_email_has_account();
 			case 'noAccount':
-				return '這個 email 沒有帳號。';
+				return m.users_email_no_account();
 			case 'sameUser':
-				return '不能交給他自己。';
+				return m.users_same_user();
 			case 'disabled':
-				return `${p.name}被停用了，不能移交給他。`;
+				return m.users_hand_over_disabled({ name: p.name });
 			case 'notAllowed':
-				return '這個人現在不能這樣做，請重新整理再看看。';
+				return m.users_not_allowed();
 		}
 	}
 
@@ -124,21 +124,21 @@
 		if (d.kind === 'add') {
 			const [to, who] = [email.trim(), name.trim()];
 			problem = await run(() => server.addUser(to, who));
-			message = `寄了邀請給 ${to}。`;
+			message = m.users_invite_sent({ email: to });
 		} else if (d.kind === 'email') {
 			const to = email.trim();
-			problem = await run(() => server.changeEmail(d.user.id, to), { emailTaken: '這個 email 已經是別人的了。' });
-			message = `改好了：${d.user.name}的 email 是 ${to}，新舊兩個信箱都寄了通知。`;
+			problem = await run(() => server.changeEmail(d.user.id, to), { emailTaken: m.users_email_taken() });
+			message = m.users_email_changed({ name: d.user.name, email: to });
 		} else if (d.kind === 'handOver') {
 			const to = email.trim();
 			problem = await run(async () => {
 				const r = await server.adminHandOver(d.user.id, to);
 				return 'flows' in r ? 'ok' : r;
 			});
-			message = `移交了${d.user.name}的 ${d.flows} 支流程給 ${to}。`;
+			message = (d.flows === 1 ? m.users_handed_over_one : m.users_handed_over)({ name: d.user.name, n: d.flows, email: to });
 		} else {
 			problem = await run(() => server.disableUser(d.user.id));
-			message = `停用了${d.user.name}。`;
+			message = m.users_disabled_done({ name: d.user.name });
 		}
 		if (problem) {
 			dialogError = problem;
@@ -150,16 +150,16 @@
 	}
 </script>
 
-<svelte:head><title>管理使用者 — 流程編輯器</title></svelte:head>
+<svelte:head><title>{m.page_title({ page: m.users_title() })}</title></svelte:head>
 
 <AccountCard wide>
 	{#if users === null}
-		<h1>管理使用者</h1>
-		<p class="lead">只有管理員能看這一頁。</p>
+		<h1>{m.users_title()}</h1>
+		<p class="lead">{m.users_admin_only()}</p>
 	{:else}
 		<header class="head">
-			<h1>管理使用者</h1>
-			{#if users}<button type="button" class="btn primary" onclick={() => open({ kind: 'add' })}>＋ 加使用者</button>{/if}
+			<h1>{m.users_title()}</h1>
+			{#if users}<button type="button" class="btn primary" onclick={() => open({ kind: 'add' })}>{m.users_add_button()}</button>{/if}
 		</header>
 		{#if done}<p class="ok" role="status">{done}</p>{/if}
 		{#if failed}<p class="error" {@attach revealAlert()}>{failed}</p>{/if}
@@ -167,7 +167,7 @@
 			<div class="scroll">
 				<table>
 					<thead>
-						<tr><th>名字</th><th>Email</th><th>狀態</th><th><span class="sr-only">按鈕</span></th></tr>
+						<tr><th>{m.account_name()}</th><th>Email</th><th>{m.users_status()}</th><th><span class="sr-only">{m.users_buttons()}</span></th></tr>
 					</thead>
 					<tbody>
 						{#each users as u (u.id)}
@@ -177,27 +177,27 @@
 								<td class:off={u.status.kind !== 'active'}>{statusText(u.status)}</td>
 								<td class="actions">
 									{#if u.status.kind === 'active'}
-										<button type="button" disabled={busy} onclick={() => now(() => server.sendReset(u.id), `寄了重設密碼信給 ${u.email}。`)}
-											>寄重設密碼信</button
+										<button type="button" disabled={busy} onclick={() => now(() => server.sendReset(u.id), m.users_reset_sent({ email: u.email }))}
+											>{m.users_send_reset()}</button
 										>
 									{:else if u.status.kind === 'disabled'}
 										{@const flows = u.status.flows}
-										<button type="button" disabled={busy} onclick={() => now(() => server.enableUser(u.id), `恢復了${u.name}，他用原本的密碼就能登入。`)}
-											>恢復</button
+										<button type="button" disabled={busy} onclick={() => now(() => server.enableUser(u.id), m.users_enabled({ name: u.name }))}
+											>{m.users_enable()}</button
 										>
 										{#if flows}
-											<button type="button" onclick={() => open({ kind: 'handOver', user: u, flows })}>移交 {flows} 支流程</button>
+											<button type="button" onclick={() => open({ kind: 'handOver', user: u, flows })}>{(flows === 1 ? m.users_hand_over_button_one : m.users_hand_over_button)({ n: flows })}</button>
 										{/if}
 									{:else}
 										<button
 											type="button"
 											disabled={busy}
-											onclick={() => now(() => server.resendInvite(u.id), `重寄了邀請給 ${u.email}，舊的連結不能用了。`)}>重寄邀請</button
+											onclick={() => now(() => server.resendInvite(u.id), m.users_invite_resent({ email: u.email }))}>{m.users_resend_invite()}</button
 										>
 									{/if}
-									<button type="button" onclick={() => open({ kind: 'email', user: u })}>改 email</button>
+									<button type="button" onclick={() => open({ kind: 'email', user: u })}>{m.users_change_email()}</button>
 									{#if u.status.kind !== 'disabled' && !u.me}
-										<button type="button" class="danger" onclick={() => open({ kind: 'disable', user: u })}>停用</button>
+										<button type="button" class="danger" onclick={() => open({ kind: 'disable', user: u })}>{m.users_disable()}</button>
 									{/if}
 								</td>
 							</tr>
@@ -213,50 +213,56 @@
 	{@const d = dialog}
 	{@const title =
 		d.kind === 'add'
-			? '加使用者'
+			? m.users_add()
 			: d.kind === 'email'
-				? `改 email：${d.user.name}`
+				? m.users_change_email_title({ name: d.user.name })
 				: d.kind === 'handOver'
-					? `移交${d.user.name}的流程`
-					: `停用${d.user.name}？`}
+					? m.users_hand_over_title({ name: d.user.name })
+					: m.users_disable_title({ name: d.user.name })}
 	<Modal label={title} class="dialog admin-dialog" onclose={() => (dialog = null)}>
 		{#snippet children(close)}
 			<header class="dialog-head">
 				<h2>{title}</h2>
-				<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
+				<button type="button" class="ghost icon close" aria-label={m.account_close()} onclick={close}><Icon name="close" /></button>
 			</header>
 			<form onsubmit={submit}>
 				{#if d.kind === 'add'}
 					<label class="field"><span>Email</span><input type="email" required data-autofocus bind:value={email} /></label>
-					<label class="field"><span>名字</span><input required bind:value={name} /></label>
-					<p class="hint">會寄一封邀請信給他，24 小時內設好密碼就能登入。名字他之後可以自己改。</p>
+					<label class="field"><span>{m.account_name()}</span><input required bind:value={name} /></label>
+					<p class="hint">{m.users_add_hint()}</p>
 				{:else if d.kind === 'email'}
-					<p>現在：{d.user.email}</p>
-					<label class="field"><span>新的 email</span><input type="email" required data-autofocus bind:value={email} /></label>
-					<p class="hint">改好後新舊兩個信箱都會收到通知，他下次用新的 email 登入。不能跟別人重複。</p>
+					<p>{m.users_current_email({ email: d.user.email })}</p>
+					<label class="field"><span>{m.users_new_email()}</span><input type="email" required data-autofocus bind:value={email} /></label>
+					<p class="hint">{m.users_change_email_hint()}</p>
 				{:else if d.kind === 'handOver'}
 					<label class="field"
-						><span>{d.user.name}有 {d.flows} 支流程。全部交給：</span><input
+						><span>{(d.flows === 1 ? m.users_hand_over_to_one : m.users_hand_over_to)({ name: d.user.name, n: d.flows })}</span><input
 							type="email"
 							required
-							placeholder="接手的人的 email"
+							placeholder={m.users_hand_over_placeholder()}
 							data-autofocus
 							bind:value={email}
 						/></label
 					>
-					<p class="hint">接手的人變成擁有者，{d.user.name}變成這些流程的編輯者。你看不到是哪幾支流程。</p>
+					<p class="hint">{m.users_hand_over_hint({ name: d.user.name })}</p>
 				{:else}
 					<ul>
-						<li>他每台裝置馬上登出，還沒用的連結都不能用。</li>
-						<li>他的流程、權限、記的紀錄都留著，別人照常能用。</li>
-						<li>之後可以恢復，他用原本的密碼登入。</li>
+						<li>{m.users_disable_signs_out()}</li>
+						<li>{m.users_disable_keeps()}</li>
+						<li>{m.users_disable_undo()}</li>
 					</ul>
 				{/if}
 				{#if dialogError}<p class="error" {@attach revealAlert()}>{dialogError}</p>{/if}
 				<div class="buttons">
-					<button type="button" data-autofocus={d.kind === 'disable' || undefined} onclick={close}>取消</button>
+					<button type="button" data-autofocus={d.kind === 'disable' || undefined} onclick={close}>{m.account_cancel()}</button>
 					<button type="submit" class={d.kind === 'disable' ? 'danger' : 'primary'} disabled={busy}>
-						{d.kind === 'add' ? '寄邀請' : d.kind === 'email' ? '改 email' : d.kind === 'handOver' ? `移交 ${d.flows} 支流程` : '停用'}
+						{d.kind === 'add'
+							? m.users_send_invite()
+							: d.kind === 'email'
+								? m.users_change_email()
+								: d.kind === 'handOver'
+									? (d.flows === 1 ? m.users_hand_over_button_one : m.users_hand_over_button)({ n: d.flows })
+									: m.users_disable()}
 					</button>
 				</div>
 			</form>

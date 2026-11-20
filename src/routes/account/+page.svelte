@@ -17,6 +17,7 @@
 		type ServerAdapter
 	} from '#lib/server-api.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -44,10 +45,10 @@
 	const count = $derived(charCount(password));
 
 	onMount(() => {
-		server.me().then((m) => {
-			if (!m) return go(resolve('/login'));
-			me = m;
-			name = m.name;
+		server.me().then((who) => {
+			if (!who) return go(resolve('/login'));
+			me = who;
+			name = who.name;
 		});
 	});
 
@@ -82,10 +83,11 @@
 
 	/** 改密碼沒改成的原因。 */
 	function problemText(r: Exclude<ChangePasswordResult, 'ok'> | 'unreachable'): string {
-		if (r === 'unreachable') return '連不上伺服器，請稍後再試。';
-		if (r === 'wrong') return '現在的密碼不對。';
+		if (r === 'unreachable') return m.server_unreachable();
+		if (r === 'wrong') return m.account_wrong_password();
 		if ('retryAfter' in r) return tooManyTriesText(r);
-		return r.kind === 'tooShort' ? `還差 ${r.missing} 個字。` : '這個密碼太常見，或在別的網站外洩過。換一個。';
+		if (r.kind === 'breached') return m.account_password_breached();
+		return (r.missing === 1 ? m.account_password_short_one : m.account_password_short)({ n: r.missing });
 	}
 
 	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
@@ -111,22 +113,22 @@
 	}
 </script>
 
-<svelte:head><title>我的帳號 — 流程編輯器</title></svelte:head>
+<svelte:head><title>{m.page_title({ page: m.account_title() })}</title></svelte:head>
 
 <AccountCard {me} onlogout={logout}>
 	{#if me}
 		<div class="account">
-			<h1>我的帳號</h1>
-			<section aria-label="名字">
+			<h1>{m.account_title()}</h1>
+			<section aria-label={m.account_name()}>
 				<form onsubmit={changeName}>
 					<label class="field">
-						<span>名字</span>
+						<span>{m.account_name()}</span>
 						<input required bind:value={name} oninput={() => (nameResult = null)} />
 					</label>
-					<p class="hint">別人在分享名單、成功率紀錄上看到的名字</p>
-					{#if nameResult === 'ok'}<p class="ok" role="status">名字改好了。</p>{/if}
-					{#if nameResult === 'unreachable'}<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>{/if}
-					<button type="submit" class="btn" disabled={busy || !name.trim()}>改名字</button>
+					<p class="hint">{m.account_name_hint()}</p>
+					{#if nameResult === 'ok'}<p class="ok" role="status">{m.account_name_saved()}</p>{/if}
+					{#if nameResult === 'unreachable'}<p class="error" {@attach revealAlert()}>{m.server_unreachable()}</p>{/if}
+					<button type="submit" class="btn" disabled={busy || !name.trim()}>{m.account_change_name()}</button>
 				</form>
 			</section>
 
@@ -134,33 +136,33 @@
 				<span>Email</span>
 				<input type="email" autocomplete="username" readonly value={me.email} />
 			</label>
-			<p class="hint">要改 email 請找管理員</p>
+			<p class="hint">{m.account_email_hint()}</p>
 
 			<section aria-labelledby="change-password">
 				<form onsubmit={changePassword}>
-					<h2 id="change-password">改密碼</h2>
-					<label class="field" for="current-password">現在的密碼</label>
+					<h2 id="change-password">{m.account_change_password()}</h2>
+					<label class="field" for="current-password">{m.account_current_password()}</label>
 					<span class="with-show">
 						<input id="current-password" type={showCurrent ? 'text' : 'password'} autocomplete="current-password" required bind:value={current} />
-						<button type="button" class="btn ghost" aria-pressed={showCurrent} onclick={() => (showCurrent = !showCurrent)}><Icon name="eye" size={14} />顯示</button>
+						<button type="button" class="btn ghost" aria-pressed={showCurrent} onclick={() => (showCurrent = !showCurrent)}><Icon name="eye" size={14} />{m.account_show()}</button>
 					</span>
-					<label class="field" for="new-password">新密碼</label>
+					<label class="field" for="new-password">{m.account_new_password()}</label>
 					<span class="with-show">
 						<input id="new-password" type={showNew ? 'text' : 'password'} autocomplete="new-password" required bind:value={password} />
-						<button type="button" class="btn ghost" aria-pressed={showNew} onclick={() => (showNew = !showNew)}><Icon name="eye" size={14} />顯示</button>
+						<button type="button" class="btn ghost" aria-pressed={showNew} onclick={() => (showNew = !showNew)}><Icon name="eye" size={14} />{m.account_show()}</button>
 					</span>
-					<p class="count" class:enough={count >= MIN}>{count}／至少 {MIN} 個字</p>
-					<p class="hint">改好後，你在其他裝置都會登出</p>
+					<p class="count" class:enough={count >= MIN}>{m.account_password_count({ count, min: MIN })}</p>
+					<p class="hint">{m.account_password_signs_out()}</p>
 					{#if passwordResult === 'ok'}
-						<p class="ok" role="status">密碼改好了。</p>
+						<p class="ok" role="status">{m.account_password_saved()}</p>
 					{:else if passwordResult}
 						<p class="error" {@attach revealAlert()}>{problemText(passwordResult)}</p>
 					{/if}
-					<button type="submit" class="btn" disabled={busy}>改密碼</button>
+					<button type="submit" class="btn" disabled={busy}>{m.account_change_password()}</button>
 				</form>
 			</section>
 
-			<button type="button" class="btn wide" onclick={logout}>登出這台裝置</button>
+			<button type="button" class="btn wide" onclick={logout}>{m.account_log_out_device()}</button>
 		</div>
 	{/if}
 </AccountCard>
