@@ -114,7 +114,8 @@ describe('口號段加環節（不標拍）', () => {
 	it('音樂段的環節要在拍點格子選拍標，不能這樣加', () => {
 		expect(addPhase(sample(), 'x1', { kind: 'load', name: '' })).toEqual({
 			kind: 'blocked',
-			message: '音樂段的環節要選拍標'
+			message: '音樂段的環節要選拍標',
+			why: { code: 'phases_music_needs_beats' }
 		});
 	});
 
@@ -175,7 +176,26 @@ describe('改環節', () => {
 	});
 
 	it('找不到環節：擋下來', () => {
-		expect(updatePhase(sample(), 'x1', 'p9', { name: 'x' })).toEqual({ kind: 'blocked', message: '找不到這個環節' });
+		expect(updatePhase(sample(), 'x1', 'p9', { name: 'x' })).toEqual({
+			kind: 'blocked',
+			message: '找不到這個環節',
+			why: { code: 'phases_not_found' }
+		});
+	});
+
+	it('找不到動作、動作的段：擋下來', () => {
+		expect(updatePhase(sample(), 'x9', 'p1', { name: 'x' })).toEqual({
+			kind: 'blocked',
+			message: '找不到這個動作',
+			why: { code: 'phases_no_action' }
+		});
+		const flow = sample();
+		const lost = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, segmentId: 's9' } : a)) };
+		expect(deletePhase(lost, 'x1', 'p1')).toEqual({
+			kind: 'blocked',
+			message: '找不到這一段',
+			why: { code: 'phases_no_segment' }
+		});
 	});
 
 	it('辨識色 9 色加石板灰是環節可以挑的顏色', () => {
@@ -197,6 +217,7 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p2')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，清掉 2 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
+			why: { code: 'phases_delete_one', count: 1, lost: '清掉 2 次的記號' },
 			items: ['刪掉：環節 中段']
 		});
 	});
@@ -208,6 +229,7 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p1')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
+			why: { code: 'phases_delete_one', count: 1, lost: '一起清掉 1 次紀錄和 1 次的記號' },
 			items: ['刪掉：環節 上法 延伸']
 		});
 		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
@@ -226,6 +248,7 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p3')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
+			why: { code: 'phases_delete_none_left_one', count: 1, lost: '一起清掉 3 次紀錄' },
 			items: ['刪掉：環節 下法']
 		});
 	});
@@ -246,7 +269,11 @@ describe('刪環節', () => {
 	});
 
 	it('找不到環節：擋下來', () => {
-		expect(deletePhase(sample(), 'x1', 'p9')).toEqual({ kind: 'blocked', message: '找不到這個環節' });
+		expect(deletePhase(sample(), 'x1', 'p9')).toEqual({
+			kind: 'blocked',
+			message: '找不到這個環節',
+			why: { code: 'phases_not_found' }
+		});
 	});
 
 	it('刪掉最後一個環節：動作不記成功率了，組一起拿掉', () => {
@@ -275,6 +302,7 @@ describe('口號段刪環節', () => {
 		expect(deletePhase(flow, 'x2', 'p4')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
+			why: { code: 'phases_delete_none_left_one', count: 1, lost: '一起清掉 1 次紀錄' },
 			items: ['刪掉：環節 中段']
 		});
 		flow = flowOf(deletePhase(flow, 'x2', 'p4', { confirmed: true }));

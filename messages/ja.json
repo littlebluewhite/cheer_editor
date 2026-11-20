@@ -79,5 +79,13 @@
 	"time_length_beat_one": "{n} 拍",
 	"time_length_beats": "{n} 拍",
 	"time_eights_one": "{n} エイトカウント",
-	"time_eights": "{n} エイトカウント"
+	"time_eights": "{n} エイトカウント",
+	"phases_no_action": "この技が見つかりません",
+	"phases_no_segment": "このパートが見つかりません",
+	"phases_not_found": "このフェーズが見つかりません",
+	"phases_music_needs_beats": "音楽パートのフェーズは拍を選んでください",
+	"phases_delete_one": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。よければ削除してください",
+	"phases_delete": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。よければ削除してください",
+	"phases_delete_none_left_one": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。技にフェーズがなくなり、成功率を記録しなくなります。よければ削除してください",
+	"phases_delete_none_left": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。技にフェーズがなくなり、成功率を記録しなくなります。よければ削除してください"
 }

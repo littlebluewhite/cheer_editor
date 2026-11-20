@@ -79,5 +79,13 @@
 	"time_length_beat_one": "{n} beat",
 	"time_length_beats": "{n} beats",
 	"time_eights_one": "{n} 8-count",
-	"time_eights": "{n} 8-counts"
+	"time_eights": "{n} 8-counts",
+	"phases_no_action": "Can't find this skill",
+	"phases_no_segment": "Can't find this segment",
+	"phases_not_found": "Can't find this phase",
+	"phases_music_needs_beats": "A phase in a music segment needs beats marked",
+	"phases_delete_one": "Deleting {count} phase: {lost} (Undo brings cleared reps back). Confirm to delete",
+	"phases_delete": "Deleting {count} phases: {lost} (Undo brings cleared reps back). Confirm to delete",
+	"phases_delete_none_left_one": "Deleting {count} phase: {lost} (Undo brings cleared reps back). The skill will have no phases left and stop recording hit rates. Confirm to delete",
+	"phases_delete_none_left": "Deleting {count} phases: {lost} (Undo brings cleared reps back). The skill will have no phases left and stop recording hit rates. Confirm to delete"
 }

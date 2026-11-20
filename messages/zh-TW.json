@@ -79,5 +79,13 @@
 	"time_length_beat_one": "{n} 拍",
 	"time_length_beats": "{n} 拍",
 	"time_eights_one": "{n} 個八拍",
-	"time_eights": "{n} 個八拍"
+	"time_eights": "{n} 個八拍",
+	"phases_no_action": "找不到這個動作",
+	"phases_no_segment": "找不到這一段",
+	"phases_not_found": "找不到這個環節",
+	"phases_music_needs_beats": "音樂段的環節要選拍標",
+	"phases_delete_one": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來），確定就刪掉",
+	"phases_delete": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來），確定就刪掉",
+	"phases_delete_none_left_one": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉",
+	"phases_delete_none_left": "會刪掉 {count} 個環節，{lost}（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉"
 }
