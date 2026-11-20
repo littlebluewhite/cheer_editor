@@ -112,5 +112,15 @@
 	"insert_beats_room": "最多插 {length}",
 	"insert_beats_room_eights_rest": "最多插 {eights}又 {rest}",
 	"insert_beats_room_under_eight": "最多插 {length}（不到 1 個八拍，單位改成拍）",
-	"insert_beats_room_none": "這段後面已經沒有空了"
+	"insert_beats_room_none": "這段後面已經沒有空了",
+	"segment_order_no_segment": "找不到這一段",
+	"segment_order_first": "已經是第一段了",
+	"segment_order_last": "已經是最後一段了",
+	"segment_order_chant": "口號段不能切",
+	"segment_order_playhead_outside": "播放頭不在這一段",
+	"segment_order_first_eight": "播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍",
+	"segment_order_across": "動作「{action}」（{start} 起）跨過 {cut}，切不開",
+	"segment_order_delete": "刪掉{segment}，下面這些也會一起刪掉",
+	"segment_order_delete_records_one": "刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}",
+	"segment_order_delete_records": "刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}"
 }

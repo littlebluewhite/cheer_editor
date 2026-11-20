@@ -112,5 +112,15 @@
 	"insert_beats_room": "you can insert at most {length}",
 	"insert_beats_room_eights_rest": "you can insert at most {eights} and {rest}",
 	"insert_beats_room_under_eight": "you can insert at most {length} (less than one 8-count; switch the unit to beats)",
-	"insert_beats_room_none": "there is no room left at the end of this segment"
+	"insert_beats_room_none": "there is no room left at the end of this segment",
+	"segment_order_no_segment": "Can't find this segment",
+	"segment_order_first": "This is already the first segment",
+	"segment_order_last": "This is already the last segment",
+	"segment_order_chant": "A cheer segment can't be split",
+	"segment_order_playhead_outside": "The playhead isn't in this segment",
+	"segment_order_first_eight": "Can't split: the playhead is in the first 8-count. Move the playhead to the 8-count where you want to split",
+	"segment_order_across": "Can't split: skill “{action}” (from {start}) runs across {cut}",
+	"segment_order_delete": "Deleting {segment} also deletes these",
+	"segment_order_delete_records_one": "Deleting {segment} also deletes these and clears {count} rep{undoable}",
+	"segment_order_delete_records": "Deleting {segment} also deletes these and clears {count} reps{undoable}"
 }
