@@ -97,8 +97,7 @@ export function addMemberLines(
 			const globalRole = globalRoleOf(cols[2]);
 			if (!gender) entry.problems.push({ code: 'members_line_gender' });
 			if (!globalRole) {
-				const task = FIXED_ROLES.some((r) => r.name === cols[2]);
-				entry.problems.push(task ? { code: 'members_line_task_role', role: cols[2] } : { code: 'members_line_global_role' });
+				entry.problems.push(isTaskRole(cols[2]) ? { code: 'members_line_task_role', role: cols[2] } : { code: 'members_line_global_role' });
 			}
 			if (gender && globalRole) entry.input = { name: cols[0], gender, globalRole };
 		}
@@ -132,6 +131,31 @@ const GLOBAL_ROLE_WORDS: Record<string, GlobalRole> = {
 	トップパーソン: 'top',
 	トップ: 'top'
 };
+/** 貼上名單認得的固定任務角色的英文、日文寫法（英文比小寫；要跟 messages/en.json、ja.json 的 role_* 一樣，有測試）：寫在全局角色那一欄要擋下說明。 */
+const TASK_ROLE_WORDS = new Set([
+	'primary base',
+	'side base',
+	'shoulder stand base',
+	'middle layer',
+	'third layer',
+	'bracer',
+	'spotter',
+	'front spot',
+	'back spot',
+	'catcher',
+	'tumbler',
+	'メインベース',
+	'サイドベース',
+	'グランドベース',
+	'ミドル層',
+	'ハイトップ',
+	'ブレイサー',
+	'スポッター',
+	'フロントスポット',
+	'バックスポット',
+	'キャッチャー',
+	'タンブラー'
+]);
 /** 標題列的第一欄。 */
 const NAME_HEADERS = new Set(['名字', '姓名', 'name', '名前']);
 
@@ -143,10 +167,15 @@ function globalRoleOf(word: string): GlobalRole | null {
 	return Object.hasOwn(GLOBAL_ROLE_WORDS, word.toLowerCase()) ? GLOBAL_ROLE_WORDS[word.toLowerCase()] : null;
 }
 
+/** 固定的任務角色（中文名，或英文、日文的寫法）。 */
+function isTaskRole(word: string): boolean {
+	return FIXED_ROLES.some((r) => r.name === word) || TASK_ROLE_WORDS.has(word.toLowerCase());
+}
+
 /**
  * 一行切成幾欄：有 Tab 用 Tab 切，有逗號用逗號切；只有空白時，至少三段、而且最後兩段像性別或全局角色
  * （或任務角色、標題列）才切成「名字、性別、全局角色」，不然整行是名字。標題列（後面沒有性別的字）每個字一欄（跳過用）；
- * 性別後面是兩個字的全局角色（top person）就併成一欄。
+ * 性別後面是兩個字以上的全局角色或任務角色（top person、Back spot）就併成一欄。
  */
 function columns(line: string): string[] {
 	if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
@@ -155,15 +184,16 @@ function columns(line: string): string[] {
 	if (words.length < 3) return [line.trim()];
 	// 標題列（Name Gender Main role）：第一個字是標題、後面沒有性別的字
 	if (NAME_HEADERS.has(words[0].toLowerCase()) && !words.slice(1).some(genderOf)) return words;
-	// 性別後面是兩個字的全局角色（top person）才併成一欄；認不得的照舊（名字裡可以有 M、F 這種縮寫）
+	// 性別後面是兩個字以上的全局角色或任務角色（top person、Back spot）才併成一欄；認不得的照舊（名字裡可以有 M、F 這種縮寫）
 	const g = words.findLastIndex((w, i) => i > 0 && genderOf(w));
-	if (g > 0 && g < words.length - 2 && globalRoleOf(words.slice(g + 1).join(' ')))
+	const tail = words.slice(g + 1).join(' ');
+	if (g > 0 && g < words.length - 2 && (globalRoleOf(tail) || isTaskRole(tail)))
 		return [words.slice(0, g).join(' '), words[g], words.slice(g + 1).join(' ')];
 	const [gender, role] = words.slice(-2);
 	const looksLike =
 		genderOf(gender) ||
 		globalRoleOf(role) ||
-		FIXED_ROLES.some((r) => r.name === role) ||
+		isTaskRole(role) ||
 		NAME_HEADERS.has(words[0].toLowerCase());
 	return looksLike ? [words.slice(0, -2).join(' '), gender, role] : [line.trim()];
 }

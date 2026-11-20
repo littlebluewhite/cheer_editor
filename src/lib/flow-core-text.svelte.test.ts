@@ -1,4 +1,5 @@
 // 流程核心給畫面的字（確認框的清單、確定鈕、復原的提示、打不開流程檔的原因、名詞對照表、性別和全局角色）照語言寫（ADR 0017）。
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
 import {
@@ -129,6 +130,34 @@ describe('流程核心給畫面的字（英文）', () => {
 			['Name Lee', 'F', 'top'],
 			['Amy', 'F', 'top']
 		]);
+	});
+
+	it('貼上名單：名字裡有中間名縮寫 F、後面不是全局角色（Mary F Kennedy Smith）：整行是名字，不擋下', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const r = addMemberLines(empty, 'Mary F Kennedy Smith', { gender: 'F', globalRole: 'top' });
+		expect(flowOf(r).members.map((m) => [m.name, m.gender, m.globalRole])).toEqual([['Mary F Kennedy Smith', 'F', 'top']]);
+	});
+
+	it('貼上名單：全局角色寫成英文、日文的任務角色（Back spot、バックスポット）：擋下並說明，不會整行變成名字', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		const picked = { gender: 'M' as const, globalRole: 'base' as const };
+		for (const line of ['Amy F Back spot', 'Amy F Shoulder stand base', 'Amy, F, Side base', '葵 女 バックスポット']) {
+			const r = addMemberLines(empty, line, picked);
+			expect(r.kind === 'blocked' && r.why?.code, line).toBe('members_line_task_role');
+		}
+	});
+
+	it('貼上名單：英文、日文畫面上每個固定的任務角色（除了底層、上層）都認得是任務角色', () => {
+		const empty = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		for (const lang of ['en', 'ja']) {
+			const json = JSON.parse(readFileSync(`messages/${lang}.json`, 'utf8')) as Record<string, string>;
+			const roles = Object.keys(json).filter((k) => k.startsWith('role_') && k !== 'role_base' && k !== 'role_top');
+			expect(roles).toHaveLength(11);
+			for (const key of roles) {
+				const r = addMemberLines(empty, `Amy, F, ${json[key]}`, { gender: null, globalRole: null });
+				expect(r.kind === 'blocked' && r.why?.code, `${lang} ${key}`).toBe('members_line_task_role');
+			}
+		}
 	});
 
 	it('貼上名單：日文名單上寫的短的「トップ」也看得懂', () => {
