@@ -14,6 +14,7 @@
 	} from '#lib/core';
 	import { Ask } from '#lib/ask.svelte.js';
 	import { reasonText, whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import CharCount from './CharCount.svelte';
 	import type { Snippet } from 'svelte';
 	import { revealAlert } from './reveal';
@@ -77,25 +78,25 @@
 <!-- novalidate：條數對不對由流程核心判斷，不用瀏覽器內建的檢查 -->
 <!-- 改了任一欄位就告訴 Ask，收掉上次被擋的原因 -->
 <form class="new-flow" novalidate onsubmit={submit} oninput={() => ask.edited()} onchange={() => ask.edited()}>
-	<h2>新建流程</h2>
+	<h2>{m.new_flow_title()}</h2>
 
 	<div class="name">
-		<label class="head" for="{uid}-name">流程名字<CharCount field="flowName" input={nameInput} value={name} /></label>
+		<label class="head" for="{uid}-name">{m.text_length_flow_name()}<CharCount field="flowName" input={nameInput} value={name} /></label>
 		<input
 			id="{uid}-name"
-			aria-label="流程名字"
+			aria-label={m.text_length_flow_name()}
 			aria-invalid={nameError ? 'true' : undefined}
 			aria-errormessage={nameError ? `${uid}-name-error` : undefined}
 			bind:value={name}
 			bind:this={nameInput}
 			oninput={() => (nameError = '')}
-			placeholder="例：2027 全國賽"
+			placeholder={m.new_flow_name_example()}
 		/>
 		{#if nameError}<p class="error" id="{uid}-name-error" {@attach revealAlert(nameError)}>{nameError}</p>{/if}
 	</div>
 
 	<fieldset>
-		<legend>場地</legend>
+		<legend>{m.new_flow_field()}</legend>
 		<div class="options">
 			{#each FIELD_TEMPLATES as t, i (i)}
 				<label class="option">
@@ -114,14 +115,14 @@
 						<rect class:faint={choice !== 'custom'} x={s.x} y={s.y} width={s.w} height={s.h} />
 					{/each}
 				</svg>
-				<span class="label">自訂</span>
-				<small>條數 {MIN_STRIPS}–{MAX_STRIPS}，鋪向直放或橫放</small>
+				<span class="label">{m.new_flow_custom()}</span>
+				<small>{m.new_flow_custom_hint({ min: MIN_STRIPS, max: MAX_STRIPS })}</small>
 			</label>
 		</div>
 		{#if choice === 'custom'}
 			<div class="custom">
 				<label>
-					條數
+					{m.flow_settings_strips()}
 					<input
 						type="number"
 						min={MIN_STRIPS}
@@ -133,9 +134,9 @@
 					/>
 				</label>
 				<span class="layout">
-					鋪向
-					<label><input type="radio" name="layout" value="vertical" bind:group={customLayout} />直放</label>
-					<label><input type="radio" name="layout" value="horizontal" bind:group={customLayout} />橫放</label>
+					{m.new_flow_direction()}
+					<label><input type="radio" name="layout" value="vertical" bind:group={customLayout} />{m.flow_settings_vertical()}</label>
+					<label><input type="radio" name="layout" value="horizontal" bind:group={customLayout} />{m.flow_settings_horizontal()}</label>
 				</span>
 				{#if customError}<p class="error" id="{uid}-strips-error" {@attach revealAlert()}>{customError}</p>{/if}
 			</div>
@@ -146,7 +147,7 @@
 
 	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
-	<button type="submit" class="primary">建立</button>
+	<button type="submit" class="primary">{m.new_flow_create()}</button>
 </form>
 
 <style>

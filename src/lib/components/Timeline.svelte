@@ -30,6 +30,7 @@
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { KEYS, others } from '#lib/shortcuts.js';
 	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
@@ -232,7 +233,7 @@
 	let insertCount = $state('1');
 	let insertUnit = $state<'eight' | 'beat'>('eight');
 	/** 插入八拍被擋的原因畫在小窗裡。 */
-	const insertAsk = session.changeAsk({ label: '插入八拍' });
+	const insertAsk = session.changeAsk({ label: m.timeline_insert() });
 	/** 播放頭在哪一段的哪一格（插在這裡）。 */
 	const insertAt = $derived(toPosition(flow, playback.sec));
 	const insertSpan = $derived(spans.find((s) => s.segment.id === insertAt?.segmentId));
@@ -256,18 +257,20 @@
 		const read = readLength(span.segment, insertCount);
 		const scale = music && insertUnit === 'eight' ? HALF_BEATS_PER_EIGHT / HALF_BEATS_PER_BEAT : 1;
 		const length = read.kind === 'ok' ? read.value * scale : 0;
-		const amount = music && insertUnit === 'eight' ? `${length / HALF_BEATS_PER_EIGHT} 個八拍` : whyText(lengthWhy(span.segment, length));
+		const eights = length / HALF_BEATS_PER_EIGHT;
+		const amount =
+			music && insertUnit === 'eight'
+				? (eights === 1 ? m.time_eights_one : m.time_eights)({ n: eights })
+				: whyText(lengthWhy(span.segment, length));
 		if (read.kind === 'blocked') return void insertAsk.block(read);
 		const before = session.flow;
 		insertAsk.send({ name: 'insertBeats', args: [at, length, music ? insertUnit : 'beat'] }, {
 			done: () => {
 				inserting = null;
-				const where = `${whyText(labelWhy(span))} ${whyText(atWhy(span.segment, at.at))}`;
+				const where = whyText({ code: 'time_in_segment', segment: labelWhy(span), at: atWhy(span.segment, at.at) });
 				// 後面沒有東西要往後延：流程沒變（不算一步），不說插入了
 				session.notice =
-					session.flow === before
-						? `${where} 後面沒有站位或動作，沒有東西要往後延`
-						: `在${where} 插入了 ${amount}，後面的站位和動作往後延`;
+					session.flow === before ? m.timeline_insert_nothing({ where }) : m.timeline_inserted({ where, amount });
 			}
 		});
 	}
@@ -333,21 +336,21 @@
 	>
 		<div class="row segs">
 			<div class="lab">
-				<span>段</span>
+				<span>{m.timeline_segments()}</span>
 				<button
 					type="button"
 					class="insert"
 					data-edit
 					aria-expanded={!!inserting}
 					disabled={spans.length === 0}
-					title="在播放頭空出時間，這段後面的站位、動作一起往後延"
-					onclick={toggleInsert}>插入八拍</button
+					title={m.timeline_insert_hint()}
+					onclick={toggleInsert}>{m.timeline_insert()}</button
 				>
 				<button
 					type="button"
 					class="add"
 					data-edit
-					aria-label="在最後加一段"
+					aria-label={m.timeline_add_last()}
 					aria-haspopup="menu"
 					aria-expanded={!!menu && menu.after === null}
 					onclick={(e) => toggleMenu(e, null)}><Icon name="plus" size={14} /></button
@@ -358,7 +361,7 @@
 					{@const missing = editor.music.missingSegmentIds.includes(span.segment.id)}
 					{@const segW = Math.max(span.durationSec * px - 2, SEG_MIN_W)}
 					{@const meta =
-						span.segment.kind === 'music' ? `${span.segment.bpm} BPM` : `${span.durationSec.toFixed(1)} 秒`}
+						span.segment.kind === 'music' ? `${span.segment.bpm} BPM` : m.time_seconds({ n: span.durationSec.toFixed(1) })}
 					<button
 						type="button"
 						class="seg {span.segment.kind}"
@@ -367,11 +370,11 @@
 						style:left={`${span.startSec * px}px`}
 						style:width={`${segW}px`}
 						style:padding-left={`${8 + nameShift(span.startSec * px, segW)}px`}
-						title="{whyText(labelWhy(span))}　{meta}{missing ? '　找不到音樂' : ''}：點一下設定"
+						title={(missing ? m.timeline_segment_title_missing : m.timeline_segment_title)({ segment: whyText(labelWhy(span)), meta })}
 						onclick={() => onopensegment(span.segment.id)}
 					>
 						<b>{whyText(labelWhy(span))}</b>
-						{#if missing}<span class="flag">找不到音樂</span>{/if}
+						{#if missing}<span class="flag">{m.timeline_missing()}</span>{/if}
 						<span class="meta">{meta}</span>
 					</button>
 					<button
@@ -379,26 +382,26 @@
 						class="add-after"
 						data-edit
 						style:left={`${(span.startSec + span.durationSec) * px - 13}px`}
-						aria-label="在這段後面加一段"
-						title={`加在${whyText(labelWhy(span))} 後面`}
+						aria-label={m.timeline_add_after_this()}
+						title={m.timeline_add_after({ segment: whyText(labelWhy(span)) })}
 						aria-haspopup="menu"
 						aria-expanded={menu?.after === span.segment.id}
 						onclick={(e) => toggleMenu(e, span.segment.id)}><Icon name="plus" size={12} /></button
 					>
 				{/each}
 				{#if spans.length === 0}
-					<span class="empty">按左邊的 ＋ 加第一段：跟著音樂的「音樂段」，或喊口號的「口號段」。</span>
+					<span class="empty">{m.timeline_empty()}</span>
 				{/if}
 			</div>
 		</div>
 		<div class="row range-row">
-			<div class="lab"><span>重複</span></div>
+			<div class="lab"><span>{m.timeline_loop()}</span></div>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="trk range-strip"
 				data-repeat-strip
 				style:width={`${width}px`}
-				title="拖出一段重複範圍（吸到整拍），重複自己打開；拖 A、B 改兩頭"
+				title={m.timeline_loop_hint()}
 				onpointerdown={startRange}
 			>
 				{#if playback.range}
@@ -413,18 +416,18 @@
 					{/if}
 				{/if}
 				{#if playback.startSec !== null && playback.returnOnStop}
-					<div class="start-mark" style:left={`${playback.startSec * px}px`} title="起播點：停下來回到這裡"></div>
+					<div class="start-mark" style:left={`${playback.startSec * px}px`} title={m.timeline_play_start()}></div>
 				{/if}
 			</div>
 		</div>
 		<div class="row ruler-row">
 			<div class="lab zoom">
-				<span>八拍</span>
-				<span class="zoom-btns" title={`${others(KEYS.zoom)}／${KEYS.zoom.mac}＋滾輪、觸控板或 iPad 兩指捏合，也可以放大縮小`}>
+				<span>{m.timeline_eights()}</span>
+				<span class="zoom-btns" title={m.timeline_zoom_hint({ others: others(KEYS.zoom), mac: KEYS.zoom.mac })}>
 					<button
 						type="button"
 						class="ghost"
-						aria-label="時間軸縮小"
+						aria-label={m.timeline_zoom_out()}
 						disabled={zoom <= ZOOMS[0] + 1e-9}
 						onclick={() => zoomButton(-1)}><Icon name="minus" size={13} /></button
 					>
@@ -432,15 +435,15 @@
 					<button
 						type="button"
 						class="ghost"
-						aria-label="時間軸放大"
+						aria-label={m.timeline_zoom_in()}
 						disabled={zoom >= ZOOMS.at(-1)! - 1e-9}
 						onclick={() => zoomButton(1)}><Icon name="plus" size={13} /></button
 					>
 					<button
 						type="button"
 						class="ghost fit"
-						aria-label="符合寬度"
-						title="整支流程剛好放滿現在的寬度"
+						aria-label={m.timeline_fit()}
+						title={m.timeline_fit_hint()}
 						disabled={spans.length === 0}
 						onclick={fitWidth}><Icon name="fitWidth" size={13} /></button
 					>
@@ -466,7 +469,7 @@
 		{#if flow.members.length === 0}
 			<div class="row lanes-empty">
 				<div class="lab"></div>
-				<span>還沒有隊員。到右邊的「隊員」加人，每個人會有一條自己的泳道。</span>
+				<span>{m.timeline_no_members()}</span>
 			</div>
 		{/if}
 		<!-- 播放頭的線本身也能拖（跟在八拍尺上拖一樣） -->
@@ -489,9 +492,9 @@
 		})}
 		{@attach menuKeys}
 	>
-		<span class="menu-title" id="add-menu-title">{after ? `加在${whyText(labelWhy(after))} 後面` : '加在最後'}</span>
-		<button type="button" role="menuitem" onclick={() => add('music')}>＋音樂段</button>
-		<button type="button" role="menuitem" onclick={() => add('chant')}>＋口號段</button>
+		<span class="menu-title" id="add-menu-title">{after ? m.timeline_add_after({ segment: whyText(labelWhy(after)) }) : m.timeline_add_end()}</span>
+		<button type="button" role="menuitem" onclick={() => add('music')}>{m.timeline_add_music()}</button>
+		<button type="button" role="menuitem" onclick={() => add('chant')}>{m.timeline_add_chant()}</button>
 	</div>
 {/if}
 
@@ -510,18 +513,22 @@
 			insert();
 		}}
 	>
-		<span class="menu-title">在{whyText(labelWhy(insertSpan))} {whyText(atWhy(insertSpan.segment, insertAt.at))} 插入</span>
+		<span class="menu-title"
+			>{m.timeline_insert_at({
+				where: whyText({ code: 'time_in_segment', segment: labelWhy(insertSpan), at: atWhy(insertSpan.segment, insertAt.at) })
+			})}</span
+		>
 		<div class="insert-row">
-			<input aria-label="插入幾個" inputmode="decimal" bind:value={insertCount} />
+			<input aria-label={m.timeline_insert_count()} inputmode="decimal" bind:value={insertCount} />
 			{#if music}
-				<select aria-label="單位" bind:value={insertUnit}>
-					<option value="eight">個八拍</option>
-					<option value="beat">拍</option>
+				<select aria-label={m.timeline_unit()} bind:value={insertUnit}>
+					<option value="eight">{m.timeline_unit_eights()}</option>
+					<option value="beat">{m.timeline_unit_beats()}</option>
 				</select>
 			{:else}
-				<span>秒</span>
+				<span>{m.timeline_unit_seconds()}</span>
 			{/if}
-			<button type="submit" class="primary">插入</button>
+			<button type="submit" class="primary">{m.timeline_insert_button()}</button>
 		</div>
 		{#if insertAsk.error}<p class="error" {@attach revealAlert(insertAsk.failures)}>{insertAsk.error}</p>{/if}
 	</form>

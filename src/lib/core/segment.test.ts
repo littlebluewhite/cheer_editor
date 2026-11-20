@@ -388,8 +388,8 @@ describe('音樂檔', () => {
 		expect(audioOverlaps(flow, 's1')).toEqual([]);
 		// 音樂 1 拉長到 10 個八拍 = 32 秒：音樂 2 的 25.6 到 32 秒播兩次
 		flow = flowOf(updateSegment(flow, 's1', { eights: 10 }));
-		expect(audioOverlaps(flow, 's1')).toEqual([{ label: '音樂 2', sec: expect.closeTo(6.4, 9) }]);
-		expect(audioOverlaps(flow, 's2')).toEqual([{ label: '音樂 1', sec: expect.closeTo(6.4, 9) }]);
+		expect(audioOverlaps(flow, 's1')).toEqual([{ label: { code: 'time_segment_music', n: 2 }, sec: expect.closeTo(6.4, 9) }]);
+		expect(audioOverlaps(flow, 's2')).toEqual([{ label: { code: 'time_segment_music', n: 1 }, sec: expect.closeTo(6.4, 9) }]);
 	});
 
 	it('用不同的檔、沒有音樂：不算重疊', () => {

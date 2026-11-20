@@ -20,6 +20,7 @@
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { isLongMarker } from '#lib/marker.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { revealAlert } from './reveal';
 
 	interface Props {
@@ -33,7 +34,7 @@
 	const session = getEditorSession();
 	const flow = $derived(session.flow!);
 	/** 被擋的原因，和刪有人用的自訂任務角色時等教練確認的清單。 */
-	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: m.segment_confirm_delete() });
 	let nameInput = $state<HTMLInputElement>();
 	/** 新的自訂任務角色名稱。 */
 	let roleName = $state('');
@@ -54,11 +55,11 @@
 	let layout = $derived<FieldLayout>(flow.field.layout);
 	const fieldSame = $derived(strips === flow.field.strips && layout === flow.field.layout);
 	/** 調整場地自己的問題：會有人疊在一起時問「照樣調整」，被擋的原因寫在場地旁邊。 */
-	const fieldAsk = session.changeAsk({ confirmLabel: '照樣調整' });
+	const fieldAsk = session.changeAsk({ confirmLabel: m.flow_settings_adjust_anyway() });
 
 	/** 調整好了的提醒：吸附會丟掉原本的位置，再調回原本的場地也回不去（N31）。對話框裡寫一次，也接在「已調整場地」的提示後面（旁邊有復原）。 */
-	const SNAPPED_NOTE = '大家吸附到新格子，改回原本的場地也不會回原位';
-	const SNAPPED = `已調整場地：${SNAPPED_NOTE}；要回原狀請按復原`;
+	const SNAPPED_NOTE = m.flow_settings_snapped_note();
+	const SNAPPED = m.flow_settings_snapped();
 	let fieldNote = $state('');
 
 	/** 調整場地；被擋或取消就把兩個欄位退回現在的場地。 */
@@ -107,31 +108,31 @@
 	}
 
 	/** 流程名字；被擋下時把輸入框還原成原本的名字。 */
-	const nameField = commitField(ask, '流程名字', { send: (text) => ({ name: 'renameFlow', args: [text] }), actual: () => flow.name });
+	const nameField = commitField(ask, m.text_length_flow_name(), { send: (text) => ({ name: 'renameFlow', args: [text] }), actual: () => flow.name });
 
 	const markers = $derived(memberMarkers(flow));
 	const MARKER_STYLES: { key: MarkerStyle; label: string }[] = [
-		{ key: 'number', label: '號碼（名單第幾個）' },
-		{ key: 'initial', label: '開頭字（名字的第一個字）' }
+		{ key: 'number', label: m.flow_settings_marker_number() },
+		{ key: 'initial', label: m.flow_settings_marker_initial() }
 	];
 
 	const fields = [
-		['minChantSec', '口號段加起來最少（秒）'],
-		['maxMusicSec', '音樂段加起來最多（秒）'],
-		['maxTotalSec', '整支流程最多（秒）']
+		['minChantSec', m.flow_settings_min_chant()],
+		['maxMusicSec', m.flow_settings_max_music()],
+		['maxTotalSec', m.flow_settings_max_total()]
 	] as const;
 </script>
 
-<Modal label="流程設定" class="dialog flow-dialog" {ask} confirms={[fieldAsk]} {onclose} {beforeclose}>
+<Modal label={m.flow_settings_title()} class="dialog flow-dialog" {ask} confirms={[fieldAsk]} {onclose} {beforeclose}>
 	{#snippet children(close)}
 		<header class="dialog-head">
-			<h2>流程設定</h2>
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
+			<h2>{m.flow_settings_title()}</h2>
+			<button type="button" class="ghost icon close" aria-label={m.flow_settings_close()} onclick={close}><Icon name="close" /></button>
 		</header>
 		<label class="stack">
-			<span class="head">流程名字<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
+			<span class="head">{m.text_length_flow_name()}<CharCount field="flowName" input={nameInput} value={flow.name} /></span>
 			<input
-				aria-label="流程名字"
+				aria-label={m.text_length_flow_name()}
 				value={flow.name}
 				bind:this={nameInput}
 				{@attach nameField}
@@ -139,10 +140,20 @@
 			/>
 		</label>
 		<section class="rules field">
-			<b>場地<span class="now">現在 {flow.field.strips} 條{flow.field.layout === 'vertical' ? '直放' : '橫放'}</span></b>
+			<b
+				>{m.flow_settings_field()}<span class="now"
+					>{(flow.field.layout === 'vertical'
+						? flow.field.strips === 1
+							? m.flow_settings_now_vertical_one
+							: m.flow_settings_now_vertical
+						: flow.field.strips === 1
+							? m.flow_settings_now_horizontal_one
+							: m.flow_settings_now_horizontal)({ n: flow.field.strips })}</span
+				></b
+			>
 			<div class="field-row">
 				<label>
-					條數
+					{m.flow_settings_strips()}
 					<input
 						type="number"
 						min={MIN_STRIPS}
@@ -153,16 +164,16 @@
 						onkeydown={onenter}
 					/>
 				</label>
-				<label class="radio"><input type="radio" name="layout" value="vertical" bind:group={layout} />直放</label>
-				<label class="radio"><input type="radio" name="layout" value="horizontal" bind:group={layout} />橫放</label>
+				<label class="radio"><input type="radio" name="layout" value="vertical" bind:group={layout} />{m.flow_settings_vertical()}</label>
+				<label class="radio"><input type="radio" name="layout" value="horizontal" bind:group={layout} />{m.flow_settings_horizontal()}</label>
 				<button
 					type="button"
 					class="adjust"
 					disabled={fieldSame}
-					onclick={applyField}>調整場地</button
+					onclick={applyField}>{m.change_label_field()}</button
 				>
 			</div>
-			<span class="note">每張站位照比例放大縮小，再吸到格子上；不滿意可以復原。沒按就關掉，也會照樣調整。</span>
+			<span class="note">{m.flow_settings_field_note()}</span>
 			{#if fieldAsk.question}<ConfirmList ask={fieldAsk} />{/if}
 			{#if fieldAsk.error}<p class="error" {@attach revealAlert(fieldAsk.failures)}>{fieldAsk.error}</p>{/if}
 			{#if fieldNote}<p class="note" role="status">{fieldNote}</p>{/if}
@@ -176,14 +187,14 @@
 						checked={flow.timeRules.on}
 						onchange={(e) => update({ on: e.currentTarget.checked })}
 					/>
-					規則警告（只提醒，不擋）
+					{m.flow_settings_rules()}
 				</label>
 				<button type="button" class="ghost reset" disabled={isDefault} onclick={() => update(DEFAULT_TIME_RULES)}
-					>恢復預設</button
+					>{m.flow_settings_reset()}</button
 				>
 			</div>
 			{#if !flow.timeRules.on}
-				<span class="note">關著：左邊欄不會提醒。打勾就再打開。</span>
+				<span class="note">{m.flow_settings_rules_off()}</span>
 			{/if}
 			{#each fields as [key, label] (key)}
 				<label class="num">
@@ -200,7 +211,7 @@
 			{/each}
 		</section>
 		<section class="rules markers">
-			<b>標記（場上、泳道、名單上寫的字）</b>
+			<b>{m.flow_settings_markers()}</b>
 			{#each MARKER_STYLES as s (s.key)}
 				<label class="radio">
 					<input
@@ -213,10 +224,10 @@
 				</label>
 			{/each}
 			{#if flow.markers === 'initial'}
-				<span class="note">開頭字一樣的人，會再多帶一個字分開。不喜歡就到「隊員」改名字。</span>
+				<span class="note">{m.flow_settings_initial_note()}</span>
 			{/if}
 			{#if flow.members.length}
-				<ul class="preview" aria-label="每個人的標記">
+				<ul class="preview" aria-label={m.flow_settings_marker_preview()}>
 					{#each flow.members as m (m.id)}
 						<li>
 							<i class="no {m.globalRole}" class:long={isLongMarker(markers[m.id])}>{markers[m.id]}</i><span
@@ -228,13 +239,13 @@
 			{/if}
 		</section>
 		<section class="rules roles">
-			<b>自訂任務角色</b>
+			<b>{m.flow_settings_custom_roles()}</b>
 			{#if flow.customRoles.length}
-				<ul class="role-list" aria-label="自訂任務角色">
+				<ul class="role-list" aria-label={m.flow_settings_custom_roles()}>
 					{#each flow.customRoles as role (role.id)}
 						<li>
 							<input
-								aria-label="「{role.name}」的名稱"
+								aria-label={m.flow_settings_role_name({ name: role.name })}
 								value={role.name}
 								bind:this={roleInputs[role.id]}
 								{@attach customRoleNameField(ask, role)}
@@ -243,7 +254,7 @@
 							<button
 								type="button"
 								class="ghost icon"
-								aria-label="刪除任務角色「{role.name}」"
+								aria-label={m.flow_settings_delete_role({ name: role.name })}
 								onclick={() => ask.send({ name: 'deleteCustomRole', args: [role.id] })}
 								><Icon name="trash" size={14} /></button
 							>
@@ -251,20 +262,20 @@
 					{/each}
 				</ul>
 			{:else}
-				<span class="note">還沒有。動作裡每個人的任務角色不夠用時，在這裡加。</span>
+				<span class="note">{m.flow_settings_no_roles()}</span>
 			{/if}
 			{#if ask.question}<ConfirmList {ask} />{/if}
 			<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
 			<form class="add-role" data-native-undo novalidate onsubmit={addRole}>
 				<input
-					aria-label="新的自訂任務角色"
-					placeholder="任務角色名稱"
+					aria-label={m.flow_settings_new_role()}
+					placeholder={m.text_length_role_name()}
 					bind:value={roleName}
 					bind:this={roleNameInput}
 				/><CharCount field="roleName" input={roleNameInput} value={roleName} />
-				<button type="submit">新增任務角色</button>
+				<button type="submit">{m.flow_settings_add_role()}</button>
 			</form>
-			<span class="note">改名時，動作裡的人、給這個角色的拍點一起改；意思在名詞對照表填。</span>
+			<span class="note">{m.flow_settings_roles_note()}</span>
 		</section>
 		{#each Object.values(ask.fieldErrors) as error (error)}<p class="error" {@attach revealAlert(ask.failures)}>{error}</p>{/each}
 		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
