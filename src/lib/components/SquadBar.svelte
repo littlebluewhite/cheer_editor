@@ -6,6 +6,7 @@
 	// 電腦上選好人按數字鍵 1–9、0 也一樣：都叫 session 的 squadKey（頁面收鍵盤）。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { squadBadge, squadsOf, type Action } from '#lib/core';
+	import { m } from '#lib/paraglide/messages.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { revealAlert } from './reveal';
 
@@ -33,7 +34,7 @@
 		const of = new Set(picked.map((id) => action.members.find((m) => m.memberId === id)?.squad));
 		return of.size === 1 ? [...of][0] : undefined;
 	});
-	const outsideText = $derived(outside ? `另外 ${outside} 人不在這個動作，不算` : '');
+	const outsideText = $derived(outside ? m.selection_outside({ n: outside }) : '');
 
 	// 換動作時（和剛出現時），沒回答的問題和原因收掉。
 	$effect(() => {
@@ -48,16 +49,18 @@
 	}
 </script>
 
-<div class="squad-bar" role="group" aria-label="分組" data-edit>
+<div class="squad-bar" role="group" aria-label={m.selection_squads()} data-edit>
 	{#if ask.question}
 		<div class="ask">
 			<ConfirmList {ask} />
 		</div>
 	{/if}
 	<span class="who">
-		{#if picked.length}選了 {picked.length} 人{#if outside}（{outsideText}）{/if}
-		{:else if outside}{outsideText}；按號碼選起那一組
-		{:else}在場上選人；按號碼選起那一組{/if}
+		{#if picked.length}{outside
+				? m.selection_squad_picked_outside({ n: picked.length, outside: outsideText })
+				: m.selection_count({ n: picked.length })}
+		{:else if outside}{m.selection_squad_outside_hint({ outside: outsideText })}
+		{:else}{m.selection_squad_hint()}{/if}
 	</span>
 	{#each badges as b, i (b.number)}
 		<button
@@ -65,16 +68,16 @@
 			class="num"
 			style:--c={b.color}
 			aria-pressed={current !== undefined && squads[i] === current}
-			aria-label={picked.length ? `放進第 ${b.number} 組` : `選起第 ${b.number} 組`}
+			aria-label={picked.length ? m.selection_squad_put({ n: b.number }) : m.selection_squad_select({ n: b.number })}
 			onclick={() => number(b.number)}>{b.text}</button
 		>
 	{/each}
-	<button type="button" class="num new" aria-label="放進新的一組" disabled={!picked.length} onclick={() => session.squadKey(next)}
+	<button type="button" class="num new" aria-label={m.selection_squad_new()} disabled={!picked.length} onclick={() => session.squadKey(next)}
 		>＋</button
 	>
-	<button type="button" class="num out" aria-label="移出組" disabled={!picked.length} onclick={() => session.squadKey(0)}>✕</button>
+	<button type="button" class="num out" aria-label={m.selection_squad_out()} disabled={!picked.length} onclick={() => session.squadKey(0)}>✕</button>
 	{#if loose.length}
-		<button type="button" class="link" onclick={() => session.selectMembers(loose)}>{loose.length} 人沒分組</button>
+		<button type="button" class="link" onclick={() => session.selectMembers(loose)}>{m.selection_loose({ n: loose.length })}</button>
 	{/if}
 	{#if ask.error}<span class="error" {@attach revealAlert(ask.failures)}>{ask.error}</span>{/if}
 </div>

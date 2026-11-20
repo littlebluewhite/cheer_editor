@@ -5,6 +5,7 @@
 	// 沒選人時工具列只剩套用全隊的項目（全隊跟第 [_] 張一樣）；在場上空白處按右鍵，選單上也是它。
 	import { currentFormation, formationAt, groupPositions } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { below, menuKeys, popover } from '#lib/popover.svelte.js';
 	import { selectionActions, type SelectionAction } from '#lib/selection-actions.js';
@@ -39,9 +40,11 @@
 	let typed = $state<{ n: number; key: string } | null>(null);
 	const nth = $derived(typed?.key === where.key ? typed.n : Math.max(1, where.on ? where.number - 1 : where.number));
 	/** 沒選人時名字前面加「全隊」。 */
-	const team = $derived(count ? '' : '全隊');
+	const team = (label: string) => (count ? label : m.selection_team({ label }));
 	/** 按鈕的名字：[_] 換成框裡的數字。 */
-	const nameOf = (a: SelectionAction) => team + a.label.replace('[_]', String(nth));
+	const nameOf = (a: SelectionAction) => team(a.label.replace('[_]', String(nth)));
+	/** 一組裡的幾項接成「甲或乙或丙」。 */
+	const either = (labels: string[]) => labels.reduceRight((rest, first) => m.selection_or({ first, rest }));
 
 	/** 畫出來的一項：一個動作自己一顆鈕；同一組（group）的收成一顆「組名 ▾」，點了才看到裡面幾項。 */
 	interface Item {
@@ -57,7 +60,7 @@
 			const at = list.find((i) => i.group === a.group);
 			if (at) {
 				at.actions.push(a);
-				at.title = at.actions.map((x) => x.label).join('或');
+				at.title = either(at.actions.map((x) => x.label));
 				return list;
 			}
 			return [...list, { label: `${a.group} ▾`, title: a.label, group: a.group, actions: [a] }];
@@ -79,7 +82,7 @@
 		const ids = count ? session.selectedMemberIds : flow.members.map((m) => m.id);
 		const n = nth;
 		const total = flow.formations.length;
-		if (a.nth && !flow.formations[n - 1]) return void (session.notice = `只有 ${total} 張站位，打 1–${total}`);
+		if (a.nth && !flow.formations[n - 1]) return void (session.notice = (total === 1 ? m.selection_only_formations_one : m.selection_only_formations)({ total }));
 		session.ask.send({ name: 'moveGroup', args: [sec, a.place(flow, groupPositions(flow, sec, ids), zoom, n)] }, {
 			done: (r) => session.moved(r)
 		});
@@ -98,12 +101,12 @@
 		{@const [before, after] = a.label.split('[_]')}
 		<!-- 說明掛在整組上：滑鼠停在字、數字框、按鈕上都看得到 -->
 		<span class="nth" title={a.title}>
-			{team}{before.trim()}
+			{team(before.trim())}
 			<input
 				type="number"
 				min="1"
 				max={session.flow!.formations.length}
-				aria-label="跟第幾張站位一樣"
+				aria-label={m.selection_nth()}
 				value={nth}
 				oninput={(e) => {
 					const n = e.currentTarget.valueAsNumber;
@@ -119,7 +122,7 @@
 {/snippet}
 
 {#if actions.length && !dragging}
-	<div class="tools-bar" role="toolbar" aria-label="選人工具列" data-keep-visible>
+	<div class="tools-bar" role="toolbar" aria-label={m.selection_toolbar()} data-keep-visible>
 		{#each items as i (i.label)}
 			{#if i.group}
 				<button
@@ -166,7 +169,7 @@
 	<div
 		class="menu"
 		role="menu"
-		aria-label="選人選單"
+		aria-label={m.selection_menu()}
 		{@attach popover({ place: at(menu), close: onclosemenu })}
 		{@attach menuKeys}
 	>

@@ -11,7 +11,8 @@
 	import { composing } from '#lib/ime.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
-	import type { WhyParam } from '#lib/core';
+	import { roleWhy, type WhyParam } from '#lib/core';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		label: string;
@@ -98,7 +99,9 @@
 		onclick={toggle}
 		{onkeydown}
 	>
-		<span class:none={!value} class:plain={value !== null && PLAIN.has(value)} title={value ?? undefined}>{value ?? '（沒有任務）'}</span>
+		<span class:none={!value} class:plain={value !== null && PLAIN.has(value)} title={value === null ? undefined : whyText(roleWhy(value))}
+			>{value === null ? m.roles_view_none() : whyText(roleWhy(value))}</span
+		>
 	</button>
 	{#if open}
 		<!-- 按下去不要搶走按鈕的焦點，不然 focusout 先把選單關掉。 -->
@@ -121,7 +124,7 @@
 					onclick={() => choose(item)}
 					onmouseenter={() => (active = k)}
 				>
-					{#if item === NEW}＋自訂任務角色…{:else if item === null}（沒有任務）<kbd>⌫</kbd>{:else}{item}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{whyText(roles[k - 1].meaning)}</span>{/if}{/if}
+					{#if item === NEW}{m.roles_view_new()}{:else if item === null}{m.roles_view_none()}<kbd>⌫</kbd>{:else}{whyText(roleWhy(item))}{#if roles[k - 1].key}<kbd>{roles[k - 1].key}</kbd>{/if}{#if roles[k - 1].meaning}<span class="meaning">{whyText(roles[k - 1].meaning)}</span>{/if}{/if}
 				</li>
 			{/each}
 		</ul>

@@ -6,6 +6,7 @@
 	import { untrack } from 'svelte';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { revealAlert } from './reveal';
 	import {
@@ -42,6 +43,12 @@
 	const moving = $derived(
 		formation ? formationWalks(flow, formation.id).filter((w) => memberIds.includes(w.memberId)) : []
 	);
+	/** 標題後面的「（選到的 n 人）」或「（全隊有走位的 n 人）」。 */
+	const who = $derived(
+		selectedMemberIds.length
+			? m.formation_editor_walk_selected({ n: memberIds.length })
+			: m.formation_editor_walk_team({ n: memberIds.length })
+	);
 	/** 選到的人這段都站著不動：沒有走位可以設。 */
 	const noWalk = $derived(memberIds.length > 0 && moving.length === 0);
 	/** 速度：只有一個人走位時寫他的速度；好幾個人時只寫太快和很喘的人（前面加名字）。 */
@@ -50,7 +57,12 @@
 			? [whyText(walkSpeedWhy(flow, moving[0]))]
 			: moving
 					.filter((w) => w.tooFast || w.tiring)
-					.map((w) => `${flow.members.find((m) => m.id === w.memberId)?.name ?? ''}　${whyText(walkSpeedWhy(flow, w))}`)
+					.map((w) =>
+						m.formation_editor_speed_line({
+							name: flow.members.find((member) => member.id === w.memberId)?.name ?? '',
+							speed: whyText(walkSpeedWhy(flow, w))
+						})
+					)
 	);
 	/** 現在的走法給教練看的樣子；選到的人不一樣時是空字串。 */
 	const current = $derived.by(() => {
@@ -69,8 +81,10 @@
 		if (!formation) return '';
 		const home = formation.segmentId!;
 		const { here, other } = timeExamples(flow, home);
-		const unit = flow.segments.find((s) => s.id === home)?.kind === 'chant' ? '秒數' : '八拍-拍';
-		return `這一段打${unit}，例：${here}${other ? `；別的段前面加段名，例：${whyText(other)}` : ''}`;
+		const chant = flow.segments.find((s) => s.id === home)?.kind === 'chant';
+		if (!other) return chant ? m.formation_editor_how_seconds({ here }) : m.formation_editor_how_count({ here });
+		const both = { here, other: whyText(other) };
+		return chant ? m.formation_editor_how_seconds_other(both) : m.formation_editor_how_count_other(both);
 	});
 
 	let departText = $state('');
@@ -121,30 +135,42 @@
 
 {#if formation && current}
 	<section class="walk-form">
-		<h3>出發和到達<span class="muted">（{selectedMemberIds.length ? '選到的' : '全隊有走位的'} {memberIds.length} 人）</span></h3>
+		<h3>{m.formation_editor_walk_title()}<span class="muted">{who}</span></h3>
 		{#if noWalk}
-			<p class="no-walk">這段沒有走位</p>
+			<p class="no-walk">{m.formation_editor_no_walk()}</p>
 		{:else}
 			<div class="grid">
 				<div class="field">
-					<span class="cap" aria-hidden="true">出發</span>
-					<input aria-label="出發" bind:value={departText} {onkeydown} placeholder={current.depart ? '' : '每人不一樣'} />
+					<span class="cap" aria-hidden="true">{m.formation_editor_depart()}</span>
+					<input
+						aria-label={m.formation_editor_depart()}
+						bind:value={departText}
+						{onkeydown}
+						placeholder={current.depart ? '' : m.formation_editor_varies()}
+					/>
 				</div>
 				<div class="field">
-					<span class="cap" aria-hidden="true">到達</span>
-					<input aria-label="到達" bind:value={arriveText} {onkeydown} placeholder={current.arrive ? '' : '每人不一樣'} />
+					<span class="cap" aria-hidden="true">{m.formation_editor_arrive()}</span>
+					<input
+						aria-label={m.formation_editor_arrive()}
+						bind:value={arriveText}
+						{onkeydown}
+						placeholder={current.arrive ? '' : m.formation_editor_varies()}
+					/>
 				</div>
 			</div>
 			{#if speedLines.length}
-				<p class="speed" aria-label="走位速度">
+				<p class="speed" aria-label={m.formation_editor_speed()}>
 					{#each speedLines as line, i (i)}<span>{line}</span>{/each}
 				</p>
 			{/if}
 			<small class="muted">{howTo}</small>
 		{/if}
 		<div class="buttons">
-			<button type="button" class="primary" disabled={noWalk} onclick={apply}>套用</button>
-			<button type="button" disabled={noWalk} onclick={useDefault} title="清掉設定：最後一個八拍才出發">用預設</button>
+			<button type="button" class="primary" disabled={noWalk} onclick={apply}>{m.formation_editor_apply()}</button>
+			<button type="button" disabled={noWalk} onclick={useDefault} title={m.formation_editor_default_title()}
+				>{m.formation_editor_default()}</button
+			>
 		</div>
 		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	</section>
