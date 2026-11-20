@@ -53,6 +53,7 @@ import {
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
+import { m as t } from '#lib/paraglide/messages.js';
 import { Flash } from '#lib/flash.svelte.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView } from '#lib/server-api.js';
@@ -514,7 +515,7 @@ export class CloudSteps {
 			const label = this.#queue[0].label;
 			this.#seen = m.step;
 			const dropped = this.#dropQueue();
-			this.#reset(m.flow as Flow, m.by === undefined ? m.message : sentBack(m.by, label, m.message), dropped);
+			this.#reset(m.flow as Flow, sentBack(m, label), dropped);
 		}
 	}
 
@@ -756,9 +757,35 @@ export class CloudSteps {
 	}
 }
 
-/** 別人在我上次看到之後改過，我的一步被退回的提示：by 是最後改的人，reason 是被規則擋下的原因（改到同一個東西是空的）。 */
-function sentBack(by: string, label: string, reason: string): string {
-	return reason ? `${by}剛改了流程，你的「${label}」沒改成：${reason}` : `${by}剛改了同一個地方，你的「${label}」沒改成`;
+/**
+ * 我的一步被退回的提示：伺服器送原因的代號（why），這裡照使用者的語言寫成句子（ADR 0017）。label 是那一步的名字；
+ * by 是在我上次看到之後最後改的人（別人改了同一個地方、或改了流程之後被規則擋下）。
+ */
+function sentBack({ why, by, message }: Extract<RoomMessage, { kind: 'rejected' }>, label: string): string {
+	switch (why.code) {
+		case 'viewOnly':
+			return t.rejected_view_only();
+		case 'afterSentBack':
+			return t.rejected_after_sent_back();
+		case 'tooOld':
+			return t.rejected_too_old();
+		case 'notUnderstood':
+			return t.rejected_not_understood();
+		case 'blocked':
+			if (by === undefined) return (why.ask ? t.rejected_asked : t.rejected_blocked)({ reason: why.reason });
+			return (why.ask ? t.rejected_asked_by : t.rejected_blocked_by)({ by, label, reason: why.reason });
+		case 'sameThing':
+			return t.rejected_same_thing({ by: by!, label });
+		case 'undoTooOld':
+			return why.redo ? t.redo_too_old() : t.undo_too_old();
+		case 'undoChangedLater':
+			return (why.redo ? t.redo_changed_later : t.undo_changed_later)({ by: why.by });
+		case 'undoBlocked':
+			return (why.redo ? t.redo_blocked : t.undo_blocked)({ reason: why.reason });
+		default:
+			// 伺服器比這個分頁新、送了還不認得的代號：照它寫的中文
+			return message;
+	}
 }
 
 /** 同一次全上的同一組別人先存了（#262）：「王教練已經記了這次全上的第 2 組」。 */

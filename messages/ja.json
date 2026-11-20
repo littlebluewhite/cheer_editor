@@ -10,5 +10,20 @@
 	"language": "言語",
 	"language_save_first": "保存していない変更があります。保存してから言語を切り替えてください。",
 	"app_name": "チアリーディング ルーティーンエディター",
-	"back_home": "ホーム"
+	"back_home": "ホーム",
+	"rejected_view_only": "保存されませんでした：このルーティーンは閲覧のみです",
+	"rejected_after_sent_back": "保存されませんでした：前の変更が保存されなかったため、この変更も無効です",
+	"rejected_too_old": "保存されませんでした：前回見てから時間が経ちすぎたため、今の内容に切り替えました",
+	"rejected_not_understood": "保存されませんでした：サーバーがこの変更を読み取れませんでした",
+	"rejected_blocked": "保存されませんでした：{reason}",
+	"rejected_asked": "保存されませんでした：{reason}。もう一度確認してください",
+	"rejected_blocked_by": "{by}がルーティーンを変更したため、「{label}」は反映されませんでした：{reason}",
+	"rejected_asked_by": "{by}がルーティーンを変更したため、「{label}」は反映されませんでした：{reason}。もう一度確認してください",
+	"rejected_same_thing": "{by}が同じ箇所を変更したため、「{label}」は反映されませんでした",
+	"undo_too_old": "時間が経ちすぎているため、元に戻せません",
+	"redo_too_old": "時間が経ちすぎているため、やり直せません",
+	"undo_changed_later": "その後{by}が変更したため、元に戻せません",
+	"redo_changed_later": "その後{by}が変更したため、やり直せません",
+	"undo_blocked": "元に戻せません：{reason}",
+	"redo_blocked": "やり直せません：{reason}"
 }

@@ -65,6 +65,7 @@ import {
 	type RoomMessage,
 	type RoomRequest,
 	type RunView,
+	type SentBack,
 	type ServerAdapter,
 	type UserStatus
 } from '#lib/server-api.js';
@@ -372,11 +373,12 @@ export function fakeServer(
 			return { kind: 'accepted', stepId, step: taken, ...(was ? { change: structuredClone(was) } : {}) };
 		}
 		const step = f.step ?? 0;
-		const rejected = (message: string, by?: string): RoomMessage => {
+		// 跟真的伺服器一樣送代號（why）；message 是給部署前開著的舊分頁看的中文，畫面不讀，這裡不寫
+		const rejected = (why: SentBack, by?: string): RoomMessage => {
 			from.sentBack = step;
-			return { kind: 'rejected', stepId, message, ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
+			return { kind: 'rejected', stepId, why, message: '', ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
 		};
-		if (from.sentBack !== undefined && seen < from.sentBack) return rejected('沒存進去：前一步沒存進去，這一步也不算');
+		if (from.sentBack !== undefined && seen < from.sentBack) return rejected({ code: 'afterSentBack' });
 		const log = stepLog.get(f.id) ?? [];
 		/** 上次看到之後別的分頁送的最後一步是誰送的；給了 watch 只看改到其中一個的。 */
 		const lastOther = (watch?: string[]) =>
@@ -385,31 +387,27 @@ export function fakeServer(
 		let after: { flow: Flow; records: StoredAttempt[] };
 		let revived: string[] = [];
 		if (undo) {
-			const cannot = undo.redo ? '不能重做' : '不能復原';
+			const { redo } = undo;
 			const of = log.find((l) => l.id === undo.of);
-			if (!of) return rejected(`太久以前的，${cannot}`);
+			if (!of) return rejected({ code: 'undoTooOld', redo });
 			// 復原：那一步清掉的紀錄一起放回去；重做（復原那一步）：那時加回來的再清掉（ADR 0007）
 			const back = broughtBack(f, of.step, of.cleared, live);
 			revived = back.revived;
 			const u = runUndo(structuredClone(f.flow), structuredClone(back.records), structuredClone(undo.change));
 			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
 			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
-			if (by !== undefined) return rejected(`${by}後來改過，這步${cannot}`);
-			if (u.kind !== 'ok') return rejected(`這步${cannot}：${u.message}`);
+			if (by !== undefined) return rejected({ code: 'undoChangedLater', by, redo });
+			if (u.kind !== 'ok') return rejected({ code: 'undoBlocked', redo, reason: u.message });
 			after = u;
 		} else {
 			const full = putRecords(structuredClone(f.flow), structuredClone(live));
 			const r = runCommands(full, structuredClone(commands ?? []), stepId);
-			if (r.kind !== 'ok') {
-				const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
-				const by = lastOther();
-				return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
-			}
+			if (r.kind !== 'ok') return rejected({ code: 'blocked', reason: r.message, ask: r.kind !== 'blocked' }, lastOther());
 			after = takeRecords(r.flow);
 		}
 		const { keys, watch } = stepKeys(f.flow, after.flow);
 		const changedBy = lastOther(watch);
-		if (changedBy !== undefined) return rejected('', changedBy);
+		if (changedBy !== undefined) return rejected({ code: 'sameThing' }, changedBy);
 		const kept = new Map(after.records.map((a) => [a.attempt.id, a]));
 		const changed: string[] = [];
 		const deleted: string[] = [];
@@ -1067,8 +1065,8 @@ export function fakeServer(
 						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
 					} else {
 						const { stepId } = request;
-						const message = '沒存進去：你只能看這支流程';
-						deliver(room, () => ({ kind: 'rejected', stepId, message, flow: structuredClone(f.flow), step: f.step ?? 0 }));
+						const why = { code: 'viewOnly' } as const;
+						deliver(room, () => ({ kind: 'rejected', stepId, why, message: '', flow: structuredClone(f.flow), step: f.step ?? 0 }));
 					}
 				},
 				close() {

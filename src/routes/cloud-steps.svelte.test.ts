@@ -83,6 +83,18 @@ describe('雲端流程一步一步存', () => {
 		expect(title()).toContain('✓ 已存');
 	});
 
+	it('被退回（英文）：原因照使用者的語言寫（ADR 0017：伺服器送代號）', async () => {
+		localStorage.setItem('PARAGLIDE_LOCALE', 'en');
+		const s = await openCloud();
+		s.state.flows[0].flow = flowOf(deleteMember(s.state.flows[0].flow, 'm4', { confirmed: true }));
+		await fireEvent.click(screen.getByRole('tab', { name: /^隊員/ }));
+		await fireEvent.change(screen.getByLabelText('第 4 位隊員的名字'), { target: { value: '芳芳' } });
+		await flush();
+
+		// 流程核心的原因還是中文（之後也改送代號）
+		expect(s.page.session.notice).toBe('Not saved: 找不到這個隊員');
+	});
+
 	it('有新版：提示「有新版，請重新整理」，不能改', async () => {
 		const s = await openCloud('newer-core');
 		expect(s.page.session.viewing).toBe(true);

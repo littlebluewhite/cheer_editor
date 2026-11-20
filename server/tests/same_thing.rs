@@ -284,6 +284,7 @@ async fn the_same_thing_changed_by_two_tabs_sends_the_later_back_naming_who(db: 
 
     assert_rejected(&reply, json!("王教練"));
     assert_eq!(reply["message"], "");
+    assert_eq!(reply["why"], json!({ "code": "sameThing" }));
     assert_eq!(reply["step"], 7);
     assert_eq!(reply["flow"]["name"], "全國賽決賽");
     assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "全國賽決賽");
@@ -319,6 +320,8 @@ async fn adding_a_member_or_a_formation_at_the_same_beat_sends_the_later_back(db
     let reply = step(&mut b, "insert-3", 7, insert).await;
     assert_rejected(&reply, json!("王教練"));
     assert_eq!(reply["message"], "這一拍已經有站位", "{reply}");
+    let why = json!({ "code": "blocked", "reason": "這一拍已經有站位", "ask": false });
+    assert_eq!(reply["why"], why, "{reply}");
     assert_eq!(formations(&s.flow(&wang, &id).await), 2);
 }
 
@@ -372,6 +375,8 @@ async fn after_a_step_is_sent_back_the_tab_is_sent_back_until_it_takes_the_serve
     let segment = json!([{ "name": "addSegment", "args": ["chant"] }]);
     let reply = step(&mut b, "segment-1", 6, segment.clone()).await;
     assert_eq!(reply["kind"], "rejected", "{reply}");
+    assert_eq!(reply["message"], "沒存進去：前一步沒存進去，這一步也不算");
+    assert_eq!(reply["why"], json!({ "code": "afterSentBack" }));
     assert_eq!(s.flow(&wang, &id).await["step"], server_step);
 
     // 換成伺服器的樣子（上次看到的是退回時說的那一步）之後：收
@@ -415,6 +420,11 @@ async fn when_the_last_seen_step_is_no_longer_kept_the_tab_takes_the_server_flow
     let reply = step(&mut b, "rename-1", 2, rename("區賽")).await;
 
     assert_rejected(&reply, Value::Null);
+    assert_eq!(
+        reply["message"],
+        "沒存進去：離你上次看到太久了，換成現在的樣子"
+    );
+    assert_eq!(reply["why"], json!({ "code": "tooOld" }));
     assert_eq!(reply["step"], 6);
     assert_eq!(reply["flow"]["members"][0]["id"], MEI);
     assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "全國賽");
