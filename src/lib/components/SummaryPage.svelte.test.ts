@@ -2,6 +2,7 @@
 // 篩選、顏色、明細的基本行為在整頁測試（routes/practice.svelte.test.ts 的「練習：總表」）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { recordAttempt, recordRunThrough, type Flow } from '#lib/core';
 import { flowOf, ratedSample } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
@@ -104,5 +105,40 @@ describe('總表', () => {
 		const old = marks.find((li) => li.textContent === '✓✓—')!;
 		expect(old.title).toContain('這次還沒有這個環節');
 		expect(marks.find((li) => li.textContent === '✓✓△')!.title).toBe('');
+	});
+});
+
+/** sampleFlow() 換成英文名字（教練取的名字不算進「畫面上沒有中文」）。 */
+function asciiFlow(): Flow {
+	const flow = sampleFlow();
+	const names: Record<string, string> = { m1: 'Amy', m2: 'Ben', m3: 'Cal', m4: 'Dee' };
+	return {
+		...flow,
+		name: 'Test',
+		members: flow.members.map((m) => ({ ...m, name: names[m.id] })),
+		actions: flow.actions.map((a) => ({
+			...a,
+			successRate: a.successRate && { ...a.successRate, phases: a.successRate.phases.map((p) => ({ ...p, name: p.name && 'Pass' })) }
+		}))
+	};
+}
+
+describe('總表：英文', () => {
+	it('篩選、圖例、表、明細、記全上的表都照英文寫，沒有中文字', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const session = setup(asciiFlow());
+		const han = /\p{Script=Han}/u;
+		await fireEvent.click(screen.getByRole('button', { name: 'Completion rate' }));
+		const lib = screen.getAllByRole('region')[0].getAttribute('aria-label')!;
+		expect(blockRows(lib).at(-1)?.[0]).toBe('All-phase hit rate');
+		expect(blockRows(lib)[1]).toEqual(['Load', '100% 3 reps', '—', '100% 3 reps']);
+		await fireEvent.click(screen.getAllByRole('button', { name: / All phases / })[0]);
+		expect(within(screen.getByRole('complementary', { name: 'Details' })).getAllByText('Full out')).toHaveLength(2);
+		expect(document.body.innerHTML).not.toMatch(han);
+
+		await fireEvent.click(screen.getByRole('button', { name: '＋ Record a full out' }));
+		expect(document.body.innerHTML).not.toMatch(han);
+		await fireEvent.click(screen.getByRole('button', { name: 'Save full out' }));
+		expect(session.notice).toBe('Full out saved');
 	});
 });

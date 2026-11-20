@@ -6,10 +6,10 @@
 	// 最上面一排（RunThroughBar，跟總表一樣）：「＋ 記一次全上」打開全上表（RunThroughSheet），存好或取消再回到記錄頁；
 	// 「刪掉上一次全上」整次拿掉這天最後存的全上。
 	import {
-		actionLabel,
+		actionWhy,
 		attemptWhos,
 		perPerson,
-		phaseLabel,
+		phaseWhy,
 		recordableActions,
 		successPercent,
 		weakestPhase,
@@ -17,6 +17,7 @@
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
@@ -46,7 +47,7 @@
 
 	function closeSheet(done: boolean) {
 		recording = false;
-		if (done) session.notice = '已記下這次全上';
+		if (done) session.notice = t.practice_run_through_saved();
 	}
 
 	/** 卡片那一塊：手機從下拉選好動作就捲過去。 */
@@ -63,17 +64,18 @@
 	 */
 	function countText(a: Action): string {
 		const records = (a.successRate?.records ?? []).filter((r) => r.date === date);
-		if (!perPerson(a.category)) return `這天 ${records.length} 次`;
+		if (!perPerson(a.category)) return (records.length === 1 ? t.practice_count_day_one : t.practice_count_day)({ n: records.length });
 		// 動作裡沒人時當成 0 次
 		const counts = attemptWhos(flow, a).map(({ who }) => records.filter((r) => r.who === who).length);
 		if (!counts.length) counts.push(0);
 		const [min, max] = [Math.min(...counts), Math.max(...counts)];
-		return `這天每人 ${min === max ? min : `${min}–${max}`} 次`;
+		if (min !== max) return t.practice_count_each_range({ min, max });
+		return (min === 1 ? t.practice_count_each_one : t.practice_count_each)({ n: min });
 	}
 	/** 這天最弱的環節，例：最弱：下法 50%；這天沒紀錄、或全部成功就是空的。 */
 	function weakestText(a: Action): string {
 		const weakest = weakestPhase(a, date);
-		return weakest ? `最弱：${phaseLabel(weakest.phase)} ${successPercent(weakest.tally)}%` : '';
+		return weakest ? t.practice_weakest({ phase: whyText(phaseWhy(weakest.phase)), pct: successPercent(weakest.tally)! }) : '';
 	}
 	/** 這天有哪張卡點了記號還沒存：清單上標「還沒存」，換到別的動作也看得出來。 */
 	function unsaved(a: Action): boolean {
@@ -88,21 +90,21 @@
 	<div class="record" class:narrow>
 		{#if narrow}
 			<label class="pick"
-				>記哪個動作<select value={action.id} onchange={(e) => choose(e.currentTarget.value)}>
+				>{t.practice_pick_action()}<select value={action.id} onchange={(e) => choose(e.currentTarget.value)}>
 					{#each actions as a (a.id)}
-						<option value={a.id}>{actionLabel(a)}{unsaved(a) ? '（還沒存）' : ''}</option>
+						<option value={a.id}>{unsaved(a) ? t.practice_action_unsaved({ action: whyText(actionWhy(a)) }) : whyText(actionWhy(a))}</option>
 					{/each}
 				</select></label
 			>
 		{:else}
-			<ul class="list" aria-label="記成功率的動作">
+			<ul class="list" aria-label={t.practice_rated_actions()}>
 				{#each actions as a (a.id)}
 					{@const weakest = weakestText(a)}
 					<li>
 						<button type="button" aria-pressed={a === action} onclick={() => (session.view.recordActionId = a.id)}>
-							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{actionLabel(a)}</span>
+							<span class="name"><span class="swatch" style:--c={actionColor(a)}></span>{whyText(actionWhy(a))}</span>
 							<!-- 標在次數同一行：標上、拿掉都不會讓下面的動作上下移 -->
-							<small>{countText(a)}{#if unsaved(a)}<span class="unsaved">還沒存</span>{/if}</small>
+							<small>{countText(a)}{#if unsaved(a)}<span class="unsaved">{t.practice_unsaved()}</span>{/if}</small>
 							<!-- 還沒記也留著這一行的高度：存了第一次，下面的動作不往下移 -->
 							<small class="weakest">{weakest}</small>
 						</button>
@@ -116,7 +118,7 @@
 				{#each attemptWhos(flow, action) as w (w.who)}
 					<AttemptCard {action} who={w.who} name={whyText(w.name)} people={w.people} {date} />
 				{:else}
-					<p class="empty">這個動作還沒有分組：到編排選這個動作，在場上選人，用場地下面的分組浮動列分組。</p>
+					<p class="empty">{t.practice_no_squads()}</p>
 				{/each}
 			{/key}
 		</div>
