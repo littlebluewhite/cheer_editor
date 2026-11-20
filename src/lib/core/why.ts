@@ -33,7 +33,31 @@ export const said = (reason: string | Why): Said =>
 const ZH = {
 	// commands.ts
 	commands_no_flow: '沒有開著的流程',
-	commands_none: '沒有指令'
+	commands_none: '沒有指令',
+
+	// time.ts
+	time_start_unreadable_music: '開始看不懂，例：3-5&',
+	time_start_unreadable_chant: '開始看不懂，請打秒數',
+	time_length_unreadable: '長度看不懂',
+	time_unreadable: '{field}看不懂，例：{example}',
+	time_unreadable_other: '{field}看不懂，例：{example}（別的段前面加段名，例：{other}）',
+	time_field_depart: '出發',
+	time_field_arrive: '到達',
+	time_field_formation: '站位時間',
+	time_field_time: '時間',
+	time_no_segments: '還沒有段',
+	time_jump_chant: '{segment} 是口號段，要打秒數；八拍寫法前面加段名，例：{example}',
+	time_negative: '時間不能是負的',
+	time_segment_only: '{segment} 只有 {size}',
+	// 別的原因包進去的時間字
+	time_segment_music: '音樂 {n}',
+	time_segment_chant: '口號 {n}',
+	time_in_segment: '{segment} {at}',
+	time_seconds: '{n} 秒',
+	time_length_beat_one: '{n} 拍',
+	time_length_beats: '{n} 拍',
+	time_eights_one: '{n} 個八拍',
+	time_eights: '{n} 個八拍'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;
