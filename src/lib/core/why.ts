@@ -585,7 +585,7 @@ const ZH = {
 	video_frame_row: '{segment} 第 {n} 個八拍',
 	video_frame_row_range: '{segment} 第 {first}–{last} 個八拍',
 	video_frame_action: '{at}　{action}',
-	// bookmarks.ts
+	// 書籤（bookmarks.ts，和 insert-beats、flow-check、flow-file、segment、segment-order、change-label、text-length 裡跟書籤有關的）
 	bookmarks_no_name: '請幫書籤取名字',
 	bookmarks_not_found: '找不到這個書籤',
 	bookmarks_start_outside: '書籤的開始不在流程裡',
