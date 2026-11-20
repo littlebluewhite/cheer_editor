@@ -30,6 +30,7 @@ import type { HandedOver } from '#lib/api-types/HandedOver.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
 import { OLD_SITE } from '#lib/old-site.js';
+import { m } from '#lib/paraglide/messages.js';
 
 export type {
 	AdminProblem,
@@ -79,8 +80,8 @@ export interface FlowRoom {
 /** 傳上雲端的流程（flow.json 的內容，不含音樂）最多幾個 byte：跟伺服器的 UPLOAD_LIMIT（server/src/lib.rs）一樣。 */
 export const MAX_CLOUD_FLOW_BYTES = 16 * 1024 * 1024;
 
-/** 流程超過 MAX_CLOUD_FLOW_BYTES，傳不上去的原因（前面接「傳不上去：」）。 */
-export const FLOW_TOO_BIG = '這支流程太大了（音樂檔以外超過 16 MB）';
+/** 流程超過 MAX_CLOUD_FLOW_BYTES，傳不上去的原因（前面接「傳不上去：」），照分頁打開時的語言（一個分頁一種語言，ADR 0017）。 */
+export const FLOW_TOO_BIG = m.share_flow_too_big();
 
 /** 斷線後隔多久重連（伺服器沒回應時也是多久自動再試一次，#260）：1、2、4、8 秒，之後每 10 秒。 */
 const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
@@ -96,8 +97,9 @@ export type ChangePasswordResult = 'ok' | 'wrong' | TooManyTries | PasswordProbl
 
 /** 「試太多次了，請 N 秒後再試」：一分鐘以上寫幾分鐘（不滿一分鐘算一分鐘）。 */
 export function tooManyTriesText({ retryAfter }: TooManyTries): string {
-	const wait = retryAfter < 60 ? `${retryAfter} 秒` : `${Math.ceil(retryAfter / 60)} 分鐘`;
-	return `試太多次了，請 ${wait}後再試`;
+	if (retryAfter < 60) return retryAfter === 1 ? m.login_too_many_seconds_one({ n: 1 }) : m.login_too_many_seconds({ n: retryAfter });
+	const n = Math.ceil(retryAfter / 60);
+	return n === 1 ? m.login_too_many_minutes_one({ n }) : m.login_too_many_minutes({ n });
 }
 
 /** 伺服器出錯、連不上（斷網、伺服器沒回應）。 */
@@ -343,9 +345,9 @@ export function httpServer(base = ''): ServerAdapter {
 		},
 		async uploadFlow(doc) {
 			// 伺服器只收 16 MB 以下：先擋，不然它回 413 會被當成連不上
-			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: m.share_flow_too_big() };
 			const res = await post('flows/upload', doc);
-			if (res.status === 413) return { message: FLOW_TOO_BIG };
+			if (res.status === 413) return { message: m.share_flow_too_big() };
 			if (res.ok || res.status === 422) return (await res.json()) as CloudFlowSummary | FlowBlocked;
 			throw new ServerUnreachable();
 		},

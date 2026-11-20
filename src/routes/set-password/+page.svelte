@@ -9,6 +9,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import { httpServer, type LinkInfo, type PasswordProblem, type ServerAdapter } from '#lib/server-api.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -57,39 +58,41 @@
 	}
 </script>
 
-<svelte:head><title>設密碼 — 流程編輯器</title></svelte:head>
+<svelte:head><title>{m.page_title({ page: m.account_set_password() })}</title></svelte:head>
 
 <AccountCard>
 	{#if link === null}
-		<h1>這個連結不能用了</h1>
-		<p class="lead">可能超過時間（邀請 24 小時、重設密碼 1 小時），或已經用過了。</p>
-		<a class="btn primary wide" href={resolve('/forgot-password')}>重寄一封信</a>
+		<h1>{m.account_link_gone_title()}</h1>
+		<p class="lead">{m.account_link_gone_lead()}</p>
+		<a class="btn primary wide" href={resolve('/forgot-password')}>{m.account_resend_email()}</a>
 	{:else if link}
 		<form onsubmit={submit}>
-			<h1>{link.purpose === 'reset' ? '設新密碼' : '設密碼'}</h1>
-			<p class="lead">{link.purpose === 'reset' ? '設好後，你在其他裝置都會登出。' : `${link.name}，歡迎！設好密碼就能登入。`}</p>
+			<h1>{link.purpose === 'reset' ? m.account_set_new_password() : m.account_set_password()}</h1>
+			<p class="lead">{link.purpose === 'reset' ? m.account_reset_lead() : m.account_welcome({ name: link.name })}</p>
 			<!-- email 顯示但不能改：讓密碼管理器知道是哪個帳號 -->
 			<label class="field">
 				<span>Email</span>
 				<input type="email" autocomplete="username" readonly value={link.email} />
 			</label>
-			<label class="field" for="new-password">密碼</label>
+			<label class="field" for="new-password">{m.account_password()}</label>
 			<span class="with-show">
 				<input id="new-password" type={show ? 'text' : 'password'} autocomplete="new-password" required bind:value={password} />
-				<button type="button" class="btn ghost" aria-pressed={show} onclick={() => (show = !show)}><Icon name="eye" size={14} />顯示</button>
+				<button type="button" class="btn ghost" aria-pressed={show} onclick={() => (show = !show)}><Icon name="eye" size={14} />{m.account_show()}</button>
 			</span>
-			<p class="count" class:enough={count >= MIN}>{count}／至少 {MIN} 個字</p>
+			<p class="count" class:enough={count >= MIN}>{m.account_password_count({ count, min: MIN })}</p>
 			{#if problem && problem !== 'unreachable'}
 				<p class="error" {@attach revealAlert()}>
-					{problem.kind === 'tooShort' ? `還差 ${problem.missing} 個字。` : '這個密碼太常見，或在別的網站外洩過。換一個。'}
+					{problem.kind === 'breached'
+						? m.account_password_breached()
+						: (problem.missing === 1 ? m.account_password_short_one : m.account_password_short)({ n: problem.missing })}
 				</p>
 			{/if}
-			{#if problem === 'unreachable'}<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>{/if}
-			<p class="hint">可以是一句話，空白、中文都算字。可以用密碼管理器。</p>
-			<button type="submit" class="btn primary wide" disabled={busy}>設好密碼</button>
+			{#if problem === 'unreachable'}<p class="error" {@attach revealAlert()}>{m.server_unreachable()}</p>{/if}
+			<p class="hint">{m.account_password_any()}</p>
+			<button type="submit" class="btn primary wide" disabled={busy}>{m.account_save_password()}</button>
 		</form>
 	{:else if problem === 'unreachable'}
-		<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>
+		<p class="error" {@attach revealAlert()}>{m.server_unreachable()}</p>
 	{/if}
 </AccountCard>
 
