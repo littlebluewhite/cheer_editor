@@ -10,6 +10,7 @@ import { newId } from './ids';
 import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
 import { RECORDS_UNDOABLE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
+import { said, type Said } from './why';
 import {
 	allSquadIds,
 	fitPhaseKinds,
@@ -47,7 +48,7 @@ export interface CueFallout {
 /** 收好了：action 是收好的動作（還沒換進流程）。 */
 export type Settled =
 	| { kind: 'ok'; action: Action; fallout: Fallout }
-	| { kind: 'blocked'; message: string };
+	| ({ kind: 'blocked' } & Said);
 
 /**
  * 收尾：before 是改之前的動作（加動作時沒有），after 是指令改好的動作（人、大類、段、拍點都改好了）。
@@ -76,7 +77,7 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 		return { kind: 'blocked', message: `有環節佔同樣的拍，先分開才能換成${label}` };
 	}
 	const problem = successRateProblem(to, action);
-	if (problem) return { kind: 'blocked', message: problem };
+	if (problem) return { kind: 'blocked', ...said(problem) };
 	return { kind: 'ok', action, fallout: { phases, lost, changed } };
 }
 

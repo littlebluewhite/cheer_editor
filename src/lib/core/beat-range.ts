@@ -7,6 +7,7 @@ import type { Cue, CueKind } from './cues';
 import type { Phase } from './phase-types';
 import type { Segment } from './segment';
 import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT, lengthText } from './time';
+import type { Why } from './why';
 
 /** 從動作開始算第幾個半拍起（0 = 動作開始那一刻）、幾個半拍長。 */
 export interface BeatRange {
@@ -17,9 +18,9 @@ export interface BeatRange {
 /** 拍點、環節標的拍。 */
 export type RangeOf = 'cue' | 'phase';
 
-const RULES: Record<RangeOf, { noun: string; wholeBeat: boolean }> = {
-	cue: { noun: '拍點', wholeBeat: false },
-	phase: { noun: '環節', wholeBeat: true }
+const RULES: Record<RangeOf, { wholeBeat: boolean }> = {
+	cue: { wholeBeat: false },
+	phase: { wholeBeat: true }
 };
 
 /** 從動作開始算第 at 個半拍，在不在音樂的整拍上。 */
@@ -28,12 +29,11 @@ export function onBeat(action: Action, at: number): boolean {
 }
 
 /** 這段拍哪裡不守規則（給教練看的原因）：落在半拍上、（標的拍）在整拍上、佔整數拍至少 1 拍、在動作裡面。沒問題是 null。 */
-export function rangeProblem(of: RangeOf, action: Action, { at, len }: BeatRange): string | null {
-	const { noun, wholeBeat } = RULES[of];
-	if (!Number.isInteger(at) || !Number.isInteger(len)) return `${noun}要落在半拍上`;
-	if (wholeBeat && !onBeat(action, at)) return `${noun}要標在整拍上`;
-	if (len < BEAT || len % BEAT !== 0) return `${noun}要佔整數拍，至少 1 拍`;
-	if (at < 0 || at + len > action.length) return `${noun}要在動作裡面`;
+export function rangeProblem(of: RangeOf, action: Action, { at, len }: BeatRange): Why | null {
+	if (!Number.isInteger(at) || !Number.isInteger(len)) return { code: `beat_range_${of}_half_beat` };
+	if (RULES[of].wholeBeat && !onBeat(action, at)) return { code: 'beat_range_phase_on_beat' };
+	if (len < BEAT || len % BEAT !== 0) return { code: `beat_range_${of}_whole_beats` };
+	if (at < 0 || at + len > action.length) return { code: `beat_range_${of}_inside` };
 	return null;
 }
 

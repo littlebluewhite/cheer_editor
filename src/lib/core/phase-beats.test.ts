@@ -153,20 +153,29 @@ describe('標拍擋下來的情況', () => {
 	};
 
 	it.each([
-		['口號段', chant, 'x2', 0, 2, '口號段不數拍，不能標環節的拍'],
-		['不是整拍（半拍長）', sample, 'x1', 0, 3, '環節要佔整數拍，至少 1 拍'],
-		['不到一拍', sample, 'x1', 0, 0, '環節要佔整數拍，至少 1 拍'],
-		['不在整拍上開始', sample, 'x1', 1, 2, '環節要標在整拍上'],
-		['超出動作', sample, 'x1', 30, 4, '環節要在動作裡面'],
-		['在動作之前', sample, 'x1', -2, 4, '環節要在動作裡面']
-	])('%s', (_, make, id, at, len, message) => {
+		['口號段', chant, 'x2', 0, 2, '口號段不數拍，不能標環節的拍', undefined],
+		['不是整拍（半拍長）', sample, 'x1', 0, 3, '環節要佔整數拍，至少 1 拍', 'beat_range_phase_whole_beats'],
+		['不到一拍', sample, 'x1', 0, 0, '環節要佔整數拍，至少 1 拍', 'beat_range_phase_whole_beats'],
+		['不在整拍上開始', sample, 'x1', 1, 2, '環節要標在整拍上', 'beat_range_phase_on_beat'],
+		['不在半拍上', sample, 'x1', 0.5, 2, '環節要落在半拍上', 'beat_range_phase_half_beat'],
+		['超出動作', sample, 'x1', 30, 4, '環節要在動作裡面', 'beat_range_phase_inside'],
+		['在動作之前', sample, 'x1', -2, 4, '環節要在動作裡面', 'beat_range_phase_inside']
+	])('%s', (_, make, id, at, len, message, code) => {
 		const kind = make === chant ? 'toss' : 'hold';
-		expect(addPhase(make(), id, { kind, name: '', beats: { at, len } })).toEqual({ kind: 'blocked', message });
+		expect(addPhase(make(), id, { kind, name: '', beats: { at, len } })).toEqual({
+			kind: 'blocked',
+			message,
+			...(code && { why: { code } })
+		});
 	});
 
 	it('動作被拖半拍後：要對齊音樂的整拍', () => {
 		const flow = flowOf(updateAction(onlyP1(), 'x1', { start: 1, length: 30 }));
-		expect(markPhaseBeats(flow, 'x1', 'p1', 0, 2)).toEqual({ kind: 'blocked', message: '環節要標在整拍上' });
+		expect(markPhaseBeats(flow, 'x1', 'p1', 0, 2)).toEqual({
+			kind: 'blocked',
+			message: '環節要標在整拍上',
+			why: { code: 'beat_range_phase_on_beat' }
+		});
 		expect(brief(flowOf(markPhaseBeats(flow, 'x1', 'p1', 1, 2)))).toEqual(['p1 1+2']);
 	});
 });
