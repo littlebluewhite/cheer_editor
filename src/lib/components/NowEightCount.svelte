@@ -156,6 +156,8 @@
 		flex-wrap: wrap;
 		gap: 4px 8px;
 		align-items: baseline;
+		justify-content: flex-start;
+		width: 100%;
 		padding: 0;
 		border: none;
 		background: none;

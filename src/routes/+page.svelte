@@ -22,7 +22,7 @@
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
-	import { flushSync, onMount, untrack, type ComponentProps } from 'svelte';
+	import { flushSync, onMount, tick, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
@@ -251,6 +251,13 @@
 	const viewOnly = $derived(!!cloud?.viewOnly || linkOnly);
 	/** 被鎖成檢視模式之前在檢視模式嗎：解開（變寬、連回來）時回到原本的模式。 */
 	let viewingBeforeLock = false;
+	/** 手機上點了動作名字，捲到下面誰做這個動作（只在點的時候捲，切到手機畫面時不捲走前後八拍）。 */
+	let phoneDetail = $state<HTMLElement>();
+	async function pickOnPhone(id: string | null) {
+		session.selectAction(id);
+		await tick();
+		if (id) phoneDetail?.scrollIntoView?.({ block: 'nearest' });
+	}
 	let locked = false;
 	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到原本的模式。只能看的時候不能改
 	$effect(() => {
@@ -1104,14 +1111,12 @@
 							after={1}
 							onjump={(s) => playback.seek(s)}
 							picked={session.selectedActionId}
-							onpick={(id) => session.selectAction(id)}
+							onpick={pickOnPhone}
 						/>
 						{#if session.selectedAction}
-							{#key session.selectedActionId}
-								<div {@attach (el) => el.scrollIntoView?.({ block: 'nearest' })}>
-									<ActionDetail {flow} action={session.selectedAction} />
-								</div>
-							{/key}
+							<div bind:this={phoneDetail}>
+								<ActionDetail {flow} action={session.selectedAction} />
+							</div>
 						{/if}
 					</div>
 					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編（雲端流程有新版、斷線時寫那個） -->
@@ -2551,9 +2556,11 @@
 		text-overflow: ellipsis;
 		pointer-events: none;
 	}
+	/* 手機：上面是條號，放左下角（「正面／裁判」在中間） */
 	.phone-field .formation-now {
-		top: 12px;
-		left: 12px;
+		top: auto;
+		bottom: 8px;
+		left: 8px;
 		max-width: calc(100% - 24px);
 		padding: 4px 10px;
 		font-size: 13px;
