@@ -2656,6 +2656,7 @@
 		font-size: 13px;
 		/* 名字很長、手機很窄：換行，動作和角色才不會被「…」藏起來 */
 		white-space: normal;
+		overflow-wrap: anywhere;
 		border-radius: 12px;
 	}
 	/* 放大了，右下角有「整個場地」：字只寫到它左邊 */
