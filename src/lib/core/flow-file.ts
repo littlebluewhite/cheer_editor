@@ -13,7 +13,7 @@ import { phasesOverlap } from './beat-range';
 import { fitPhaseKinds, perPerson, PRACTICE_KINDS, squadsOf, successRateProblem, v10RateProblem, v6RateProblem } from './success-rate';
 
 /** 這個編輯器寫出的流程檔版本。改了流程檔格式就加 1，並在 UPGRADES 補一步。 */
-export const FORMAT_VERSION = 15;
+export const FORMAT_VERSION = 16;
 
 /** 流程檔裡那份 JSON 的檔名。 */
 const JSON_FILE = 'flow.json';
@@ -53,6 +53,7 @@ export type Upgrade = (doc: FlowDocument) => FlowDocument;
  *   有就是壞掉的檔，升級時交給 isFlow 擋下來（見 phasesShareBeatsBefore14）。
  * 第 15 版：新的 id 是種類字母加 12 個字的亂數（ADR 0014），不再記 lastIds（升級時拿掉）；舊的 id 不用改。
  *   全上的一次多了可有可無的 runThroughStartedAt（開的時間），動作多了可有可無的 squadOrder（新寫法的組 id 發出的先後）。
+ * 第 16 版：流程多了可有可無的 bookmarks（書籤），沒有就是沒有書籤，所以資料不用動。
  */
 const UPGRADES: Record<number, Upgrade> = {
 	1: (doc) => ({ formatVersion: 2, flow: doc.flow }),
@@ -68,7 +69,8 @@ const UPGRADES: Record<number, Upgrade> = {
 	11: (doc) => ({ formatVersion: 12, flow: fixedThird(doc.flow) }),
 	12: (doc) => ({ formatVersion: 13, flow: fixedShoulderBase(doc.flow) }),
 	13: (doc) => ({ formatVersion: 14, flow: phasesShareBeatsBefore14(doc.flow) ? null : doc.flow }),
-	14: (doc) => ({ formatVersion: 15, flow: withoutLastIds(doc.flow) })
+	14: (doc) => ({ formatVersion: 15, flow: withoutLastIds(doc.flow) }),
+	15: (doc) => ({ formatVersion: 16, flow: doc.flow })
 };
 
 /** 第 14 → 15 版：拿掉「已經發到第幾號」（lastIds）。新的 id 是亂數，不會撞到舊的 x1 這種 id。 */
@@ -377,6 +379,7 @@ const flowShape = shape({
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
 	markers: (v) => v === undefined || oneOf(['number', 'initial'])(v),
+	bookmarks: (v) => v === undefined || listOf(shape({ id: str, name: str, a: timePosition, b: nullOr(timePosition) }))(v),
 	actions: listOf(
 		shape({
 			id: str,
@@ -423,6 +426,9 @@ export function structureProblem(v: unknown): string | null {
 	);
 	if (badWalk) return '有走位指到不存在的隊員或段';
 	if (flow.actions.some((a) => !segmentIds.has(a.segmentId))) return '有動作指到不存在的段';
+	if (flow.bookmarks?.some((b) => !segmentIds.has(b.a.segmentId) || (b.b && !segmentIds.has(b.b.segmentId)))) {
+		return '有書籤指到不存在的段';
+	}
 	if (flow.actions.some((a) => a.members.some((m) => !memberIds.has(m.memberId)))) return '有動作指到不存在的隊員';
 	for (const a of flow.actions) {
 		const segment = flow.segments.find((s) => s.id === a.segmentId)!;

@@ -6,7 +6,10 @@ import {
 	createFlow,
 	deleteBookmark,
 	endAt,
+	flowProblem,
 	insertBeats,
+	readFlowFile,
+	writeFlowFile,
 	renameBookmark,
 	runCommand,
 	startAt,
@@ -15,6 +18,7 @@ import {
 	type Flow,
 	type TimePosition
 } from './index';
+import { zipSync, strToU8 } from 'fflate';
 import { flowOf } from '../test-flows';
 
 /** 120 BPM：一拍 0.5 秒、一個半拍 0.25 秒、一個八拍 4 秒。音樂 1（s1）、音樂 2（s2）各 2 個八拍（32 個半拍、8 秒）。 */
@@ -161,5 +165,43 @@ describe('改段時書籤跟著動', () => {
 			run(flow, { name: 'updateSegment', args: ['s2', { eights: 1, lastBeats: 3 }], options: { confirmed: true } })
 		);
 		expect(names(done)).toEqual(['音樂 1', '音樂 2']);
+	});
+});
+
+describe('流程檔（第 16 版）', () => {
+	const zipOf = (doc: unknown) => zipSync({ 'flow.json': strToU8(JSON.stringify(doc)) });
+	const withBookmark = () => flowOf(addBookmark(sample(), '翻騰', at('s1', 8), at('s2', 4)));
+
+	it('書籤存進檔，讀得回來', () => {
+		const flow = withBookmark();
+		const r = readFlowFile(writeFlowFile(flow, {}));
+		expect(r.kind === 'ok' && r.flow.bookmarks).toEqual(flow.bookmarks);
+	});
+
+	it('第 15 版的檔沒有書籤：資料不用動', () => {
+		const flow = sample();
+		const r = readFlowFile(zipOf({ formatVersion: 15, flow }));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+	});
+
+	it.each([
+		['書籤指到不存在的段', (f: Flow) => (f.bookmarks![0].a = at('s9', 0))],
+		['書籤的 B 指到不存在的段', (f: Flow) => (f.bookmarks![0].b = at('s9', 0))],
+		['書籤的名字不是字', (f: Flow) => ((f.bookmarks![0] as { name: unknown }).name = 3)],
+		['書籤的格子不是整數', (f: Flow) => (f.bookmarks![0].a.at = 1.5)],
+		['書籤不是清單', (f: Flow) => ((f as { bookmarks: unknown }).bookmarks = {})]
+	])('%s：資料壞掉', (_, breakIt) => {
+		const flow = structuredClone(withBookmark());
+		breakIt(flow);
+		expect(readFlowFile(zipOf({ formatVersion: 16, flow }))).toEqual({ kind: 'error', message: '流程檔裡的資料壞掉了' });
+	});
+
+	it('整份流程檢查：這一步讓書籤跑到段外、名字太長才擋（舊檔本來就這樣的留著）', () => {
+		const flow = withBookmark();
+		const outside = { ...flow, bookmarks: [{ ...flow.bookmarks![0], b: at('s2', 40) }] };
+		expect(flowProblem(outside, flow)).toBe('書籤「翻騰」的位置不在流程裡');
+		expect(flowProblem(outside, outside)).toBeNull();
+		const long = { ...flow, bookmarks: [{ ...flow.bookmarks![0], name: '一'.repeat(21) }] };
+		expect(flowProblem(long, flow)).toMatch(/書籤名字/);
 	});
 });

@@ -16,6 +16,7 @@ import {
 	missingAudioNames,
 	placeCue,
 	readFlowFile,
+	FORMAT_VERSION,
 	recordAttempt,
 	recordRunThrough,
 	runThroughsOn,
@@ -194,7 +195,7 @@ describe('流程檔：存了再開', () => {
 		expect(r.kind === 'ok' && r.flow.markers).toBe('initial');
 	});
 
-	it('zip 裡是一份 flow.json（formatVersion 15 ＋ flow）和 audio/ 下用到的音樂檔', () => {
+	it('zip 裡是一份 flow.json（formatVersion 16 ＋ flow）和 audio/ 下用到的音樂檔', () => {
 		const flow = sample();
 		const files = unzipSync(writeFlowFile(flow, { a1: bytes(1, 2, 3), a2: bytes(4) }));
 		expect(Object.keys(files).sort()).toEqual(['audio/a1.mp3', 'audio/a2.m4a', 'flow.json']);
@@ -202,7 +203,7 @@ describe('流程檔：存了再開', () => {
 		const json = JSON.parse(new TextDecoder().decode(files['flow.json']));
 		// 只有這兩層：延遲校正之類的本機設定不進檔。
 		expect(Object.keys(json)).toEqual(['formatVersion', 'flow']);
-		expect(json.formatVersion).toBe(15);
+		expect(json.formatVersion).toBe(16);
 		expect(json.flow).toEqual(flow);
 	});
 });
@@ -231,7 +232,7 @@ const BROKEN = '流程檔裡的資料壞掉了';
 
 describe('流程檔：版本', () => {
 	it('比編輯器新的檔不打開，提示重新整理', () => {
-		const r = readFlowFile(zipOf({ formatVersion: 16, flow: sample() }));
+		const r = readFlowFile(zipOf({ formatVersion: FORMAT_VERSION + 1, flow: sample() }));
 		expect(r).toEqual({ kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' });
 	});
 
@@ -797,7 +798,8 @@ describe('流程檔：版本', () => {
 		11: (doc: FlowDocument) => ({ formatVersion: 12, flow: doc.flow }),
 		12: (doc: FlowDocument) => ({ formatVersion: 13, flow: doc.flow }),
 		13: (doc: FlowDocument) => ({ formatVersion: 14, flow: doc.flow }),
-		14: (doc: FlowDocument) => ({ formatVersion: 15, flow: doc.flow })
+		14: (doc: FlowDocument) => ({ formatVersion: 15, flow: doc.flow }),
+		15: (doc: FlowDocument) => ({ formatVersion: 16, flow: doc.flow })
 	};
 
 	it('舊版自動一步一步升到現在的版本，音樂照樣讀到', () => {
