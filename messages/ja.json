@@ -87,5 +87,14 @@
 	"phases_delete_one": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。よければ削除してください",
 	"phases_delete": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。よければ削除してください",
 	"phases_delete_none_left_one": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。技にフェーズがなくなり、成功率を記録しなくなります。よければ削除してください",
-	"phases_delete_none_left": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。技にフェーズがなくなり、成功率を記録しなくなります。よければ削除してください"
+	"phases_delete_none_left": "{count} 個のフェーズを削除します：{lost}（消した記録は「元に戻す」で戻ります）。技にフェーズがなくなり、成功率を記録しなくなります。よければ削除してください",
+	"insert_beats_no_segment": "このパートが見つかりません",
+	"insert_beats_length": "挿入する長さは 0 より大きくしてください",
+	"insert_beats_outside": "挿入する位置がこのパートの中にありません",
+	"insert_beats_overflow_formation": "フォーメーション {n} がこのパートの終わりを超えます。{room}",
+	"insert_beats_overflow_action": "「{action}」がこのパートの終わりを超えます。{room}",
+	"insert_beats_room": "挿入できるのは最大 {length} です",
+	"insert_beats_room_eights_rest": "挿入できるのは最大 {eights}と {rest} です",
+	"insert_beats_room_under_eight": "挿入できるのは最大 {length} です（1 エイトカウントに満たないため、単位を拍に変えてください）",
+	"insert_beats_room_none": "このパートの後ろにはもう空きがありません"
 }
