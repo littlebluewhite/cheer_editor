@@ -319,5 +319,8 @@
 	"role_front_spot": "Front spot",
 	"role_back_spot": "Back spot",
 	"role_catcher": "Catcher",
-	"role_tumbler": "Tumbler"
+	"role_tumbler": "Tumbler",
+	"time_from": "from {at}",
+	"time_from_seconds": "from {n} s",
+	"beat_range_range": "{first} to {last}"
 }

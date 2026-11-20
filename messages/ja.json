@@ -319,5 +319,8 @@
 	"role_front_spot": "フロントスポット",
 	"role_back_spot": "バックスポット",
 	"role_catcher": "キャッチャー",
-	"role_tumbler": "タンブラー"
+	"role_tumbler": "タンブラー",
+	"time_from": "{at} から",
+	"time_from_seconds": "{n} 秒から",
+	"beat_range_range": "{first}～{last}"
 }

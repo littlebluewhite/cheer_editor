@@ -319,5 +319,8 @@
 	"role_front_spot": "前保",
 	"role_back_spot": "後保",
 	"role_catcher": "接者",
-	"role_tumbler": "騰翻"
+	"role_tumbler": "騰翻",
+	"time_from": "{at} 起",
+	"time_from_seconds": "{n} 秒起",
+	"beat_range_range": "{first} 到 {last}"
 }

@@ -7,7 +7,7 @@ import type { Cue, CueKind } from './cues';
 import type { Phase } from './phase-types';
 import type { Segment } from './segment';
 import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT, lengthText } from './time';
-import type { Why } from './why';
+import { zh, type Why } from './why';
 
 /** 從動作開始算第幾個半拍起（0 = 動作開始那一刻）、幾個半拍長。 */
 export interface BeatRange {
@@ -65,8 +65,14 @@ export function fitRange(of: RangeOf, action: Action, range: BeatRange, by: 1 | 
 
 /** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
 export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
+	const why = rangeWhy(segment, action, at, len);
+	return typeof why === 'string' ? why : zh(why);
+}
+
+/** rangeText 給別的原因包進去：「3-5 到 3-6」，只有一拍是「3-5」。 */
+export function rangeWhy(segment: Segment, action: Action, at: number, len: number): string | Why {
 	const first = atText(segment, action.start + at);
-	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
+	return len > BEAT ? { code: 'beat_range_range', first, last: atText(segment, action.start + at + len - BEAT) } : first;
 }
 
 /**

@@ -111,6 +111,8 @@ const ZH = {
 	time_length_beats: '{n} 拍',
 	time_eights_one: '{n} 個八拍',
 	time_eights: '{n} 個八拍',
+	time_from: '{at} 起',
+	time_from_seconds: '{n} 秒起',
 
 	// cues.ts
 	cues_chant: '口號段不數拍，不能放拍點',
@@ -132,6 +134,7 @@ const ZH = {
 	beat_range_phase_on_beat: '環節要標在整拍上',
 	beat_range_phase_whole_beats: '環節要佔整數拍，至少 1 拍',
 	beat_range_phase_inside: '環節要在動作裡面',
+	beat_range_range: '{first} 到 {last}',
 	// text-length.ts（field 是下面的欄位名）
 	text_length_too_long: '{field}最多 {max} 個字',
 	text_length_too_long_kept: '{field}最多 {max} 個字（原本就有 {count} 個字，不能再變長）',

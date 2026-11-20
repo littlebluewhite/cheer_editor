@@ -5,7 +5,7 @@
 import type { Flow } from './flow';
 import { readOr, type ReadResult } from './result';
 import type { Segment } from './segment';
-import { said, type Why, type WhyCode } from './why';
+import { said, zh, type Why, type WhyCode } from './why';
 
 /** 流程裡的一個時間點：哪一段 ＋ 段內第幾個半拍（音樂段）或第幾個 0.1 秒（口號段）。 */
 export interface TimePosition {
@@ -259,7 +259,12 @@ export function clockText(sec: number): string {
 
 /** 清單上動作從哪裡開始：「3-1 起」，口號段「3.0 秒起」。 */
 export function fromText(segment: Segment, at: number): string {
-	return segment.kind === 'chant' ? `${atText(segment, at)} 秒起` : `${atText(segment, at)} 起`;
+	return zh(fromWhy(segment, at));
+}
+
+/** fromText 給別的原因包進去：「3-1 起」，口號段「3.0 秒起」。 */
+export function fromWhy(segment: Segment, at: number): Why {
+	return segment.kind === 'chant' ? { code: 'time_from_seconds', n: atText(segment, at) } : { code: 'time_from', at: atText(segment, at) };
 }
 
 /** 動作的開始：atText 的反向，教練打的時間點 → 段內整數時間。不檢查有沒有超出段（指令會擋）。 */
