@@ -112,6 +112,25 @@ describe('書籤', () => {
 		expect(session.notice).toBe('這裡已經有書籤「翻騰」了');
 	});
 
+	it('名字空的、又存在已經有書籤的地方：提示講位置重複，那顆書籤閃一下', async () => {
+		const { session, playback } = setup(sample());
+		playback.setRange(2, 4);
+		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
+		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
+		expect(session.notice).toBe('這裡已經有書籤「翻騰」了');
+		await vi.waitFor(() => expect(chip('翻騰').parentElement!.classList.contains('flash')).toBe(true));
+	});
+
+	it('名字空的、地方是新的：提示請取名字，沒有書籤閃', async () => {
+		const { session, playback } = setup(sample());
+		playback.setRange(5, 6);
+		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
+		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
+		expect(session.notice).toBe('請幫書籤取名字');
+		await new Promise((r) => requestAnimationFrame(r));
+		expect(document.querySelector('.flash')).toBeNull();
+	});
+
 	it('手機：只有書籤，沒有存、管理；沒有書籤就不出現', () => {
 		setup(sample(), 'phone');
 		expect(screen.queryByRole('button', { name: /存成書籤/ })).toBeNull();

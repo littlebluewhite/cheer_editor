@@ -58,16 +58,17 @@ export function addBookmark(
 	a: TimePosition,
 	b: TimePosition | null
 ): CommandResult<{ bookmarkId: string }> {
-	const trimmed = name.trim();
-	const problem = nameProblem(trimmed);
-	if (problem) return blocked(problem);
 	if (!inSegment(flow, a)) return blocked('書籤的開始不在流程裡');
 	if (b && !inSegment(flow, b)) return blocked('書籤的結尾不在流程裡');
 	const bm = { a: asStart(flow, a), b: b && asEnd(flow, b) };
 	const s = bookmarkSeconds(flow, bm);
 	if (!s) return blocked(b ? 'B 要在 A 後面' : '書籤的開始不能在流程結尾');
 	const same = bookmarksOf(flow).find((x) => sameSeconds(bookmarkSeconds(flow, x), s));
+	// 位置重複先講：換名字也存不了（畫面上那顆書籤會閃）
 	if (same) return blocked(`這裡已經有書籤「${same.name}」了`);
+	const trimmed = name.trim();
+	const problem = nameProblem(trimmed);
+	if (problem) return blocked(problem);
 	const id = newId('k', bookmarksOf(flow).map((x) => x.id));
 	return ok({ ...flow, bookmarks: [...bookmarksOf(flow), { id, name: trimmed, ...bm }] }, { bookmarkId: id });
 }

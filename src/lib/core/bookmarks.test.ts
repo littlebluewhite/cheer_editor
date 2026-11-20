@@ -74,6 +74,11 @@ describe('addBookmark', () => {
 			kind: 'blocked',
 			message: '這裡已經有書籤「音樂 1」了'
 		});
+		// 名字空的也先講位置重複（換名字也存不了）
+		expect(addBookmark(flow, '  ', at('s1', 0), at('s1', 32))).toEqual({
+			kind: 'blocked',
+			message: '這裡已經有書籤「音樂 1」了'
+		});
 		flow = flowOf(addBookmark(flow, '開場', at('s1', 0), null));
 		expect(addBookmark(flow, '開場 2', at('s1', 0), null)).toMatchObject({ kind: 'blocked' });
 		// A 一樣、B 不一樣：可以
