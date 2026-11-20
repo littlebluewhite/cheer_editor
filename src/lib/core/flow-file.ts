@@ -2,13 +2,14 @@
 // zip 裡是 flow.json（{ formatVersion, flow }）和 flow.audio 列出的音樂檔（audio/a1.mp3 …）。
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
-import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
+import { ACTION_CATEGORIES, actionWhy, type Action } from './action-types';
 import { bookmarkSeconds } from './bookmarks';
 import { CUE_KINDS, cueProblem } from './cues';
 import { newId } from './ids';
 import type { Flow } from './flow';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
+import { said, type Said, type Why } from './why';
 import { PHASE_KINDS, V10_PHASE_KINDS } from './phase-types';
 import { fileLengthProblem } from './segment';
 import { phasesOverlap } from './beat-range';
@@ -187,15 +188,15 @@ export type ReadFlowFileResult =
 	 * droppedBookmarks：放不下、開檔時拿掉的書籤名字（手改過的檔才會有，畫面說出來）。
 	 */
 	| { kind: 'ok'; flow: Flow; audio: AudioBytes; missingSegmentIds: string[]; droppedBookmarks: string[] }
-	/** 打不開：message 是給教練看的原因。 */
-	| { kind: 'error'; message: string };
+	/** 打不開：message 是給教練看的原因，多帶 why（見 why.ts）。 */
+	| ({ kind: 'error' } & Said);
 
 // 打不開的原因（頁面前面加上檔名）。
-const NOT_A_ZIP = '檔案壞掉了，或不是這個編輯器存的流程檔';
+const NOT_A_ZIP = said({ code: 'flow_file_not_a_zip' });
 // 不提 flow.json：教練不知道那是什麼。
-const NO_JSON = 'zip 裡沒有流程，不是這個編輯器存的流程檔';
-const BROKEN = '流程檔裡的資料壞掉了';
-const IMAGE = '這是圖片，不是流程檔';
+const NO_JSON = said({ code: 'flow_file_no_json' });
+const BROKEN = said({ code: 'flow_file_broken' });
+const IMAGE = said({ code: 'flow_file_image' });
 
 /** 檔頭是常見的圖片（PNG、JPEG、GIF、WebP、iPhone 的 HEIC）：選錯成照片時直說。 */
 function isImage(bytes: Uint8Array): boolean {
@@ -233,15 +234,15 @@ export function readFlowFile(
 	try {
 		files = unzipSync(bytes);
 	} catch {
-		return { kind: 'error', message: isImage(bytes) ? IMAGE : NOT_A_ZIP };
+		return { kind: 'error', ...(isImage(bytes) ? IMAGE : NOT_A_ZIP) };
 	}
 	const folder = folderOf(files);
-	if (folder === null) return { kind: 'error', message: NO_JSON };
+	if (folder === null) return { kind: 'error', ...NO_JSON };
 	let doc: unknown;
 	try {
 		doc = JSON.parse(strFromU8(files[folder + JSON_FILE]));
 	} catch {
-		return { kind: 'error', message: BROKEN };
+		return { kind: 'error', ...BROKEN };
 	}
 	const checked = checkDocument(doc, upgrades, true);
 	if (checked.kind === 'error') return checked;
@@ -251,7 +252,7 @@ export function readFlowFile(
 	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)), droppedBookmarks: dropped };
 }
 
-export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | { kind: 'error'; message: string };
+export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | ({ kind: 'error' } & Said);
 
 /**
  * 檢查一整支流程：flow.json 的內容（JSON.parse 過的）→ 現在這一版的流程。讀流程檔和傳上雲端（伺服器）共用。
@@ -274,21 +275,21 @@ function checkDocument(
 	doc: unknown,
 	upgrades: Record<number, Upgrade>,
 	fix: boolean
-): { kind: 'ok'; flow: Flow; dropped: string[] } | { kind: 'error'; message: string } {
-	if (!isDocument(doc)) return { kind: 'error', message: BROKEN };
+): { kind: 'ok'; flow: Flow; dropped: string[] } | ({ kind: 'error' } & Said) {
+	if (!isDocument(doc)) return { kind: 'error', ...BROKEN };
 	if (doc.formatVersion > FORMAT_VERSION) {
-		return { kind: 'error', message: '是新版編輯器存的，請重新整理，更新編輯器' };
+		return { kind: 'error', ...said({ code: 'flow_file_newer' }) };
 	}
 	let current = doc;
 	while (current.formatVersion < FORMAT_VERSION) {
 		const upgrade = upgrades[current.formatVersion];
-		if (!upgrade) return { kind: 'error', message: BROKEN };
+		if (!upgrade) return { kind: 'error', ...BROKEN };
 		current = upgrade(current);
 	}
 	const { flow, dropped } = fix && flowShape(current.flow) ? fixBookmarks(current.flow as Flow) : { flow: current.flow, dropped: [] };
-	if (!isFlow(flow)) return { kind: 'error', message: BROKEN };
+	if (!isFlow(flow)) return { kind: 'error', ...BROKEN };
 	const tooLong = segmentLengthProblem(flow);
-	if (tooLong) return { kind: 'error', message: tooLong };
+	if (tooLong) return { kind: 'error', ...said(tooLong) };
 	return { kind: 'ok', flow, dropped };
 }
 
@@ -314,7 +315,7 @@ function fixBookmarks(flow: Flow): { flow: Flow; dropped: string[] } {
  * 段的長度超出編輯器能設的範圍（跟改段一樣的上限，不是正的也算）：
  * 照樣打開會把分頁卡住，所以擋下來，寫出上限。沒問題是 null。
  */
-export function segmentLengthProblem(flow: Flow): string | null {
+export function segmentLengthProblem(flow: Flow): Why | null {
 	for (const s of flow.segments) {
 		const problem = fileLengthProblem(s);
 		if (problem) return problem;
@@ -443,39 +444,40 @@ function isFlow(v: unknown): v is Flow {
 
 /**
  * isFlow 哪裡不對（給教練看的原因）；沒問題是 null。讀流程檔一律說壞掉了，整份流程檢查（flow-check）用這裡的原因。
+ * 資料本身壞掉（格式、指到不存在的東西）是 flow_file_ 的代號；拍點、成功率規則擋的包成代號（動作「X」：原因）。
  */
-export function structureProblem(v: unknown): string | null {
-	if (!flowShape(v)) return '流程的資料格式不對';
+export function structureProblem(v: unknown): Why | null {
+	if (!flowShape(v)) return { code: 'flow_file_shape' };
 	const flow = v as Flow;
 	const segmentIds = new Set(flow.segments.map((s) => s.id));
 	const audioIds = new Set(flow.audio.map((a) => a.id));
 	const memberIds = new Set(flow.members.map((m) => m.id));
-	if (flow.formations.length === 0) return '流程開頭一定有一張站位';
+	if (flow.formations.length === 0) return { code: 'flow_file_no_first_formation' };
 	if (flow.segments.some((s) => s.kind === 'music' && s.audioId !== null && !audioIds.has(s.audioId))) {
-		return '有段指到不存在的音樂檔';
+		return { code: 'flow_file_segment_audio' };
 	}
-	if (flow.formations.some((f) => f.segmentId !== null && !segmentIds.has(f.segmentId))) return '有站位指到不存在的段';
-	if (flow.formations[0].walks !== undefined) return '開頭那張站位不能有走位';
+	if (flow.formations.some((f) => f.segmentId !== null && !segmentIds.has(f.segmentId))) return { code: 'flow_file_formation_segment' };
+	if (flow.formations[0].walks !== undefined) return { code: 'flow_file_first_walks' };
 	const badWalk = flow.formations.some((f) =>
 		Object.entries(f.walks ?? {}).some(
 			([id, w]) => !memberIds.has(id) || !segmentIds.has(w.depart.segmentId) || !segmentIds.has(w.arrive.segmentId)
 		)
 	);
-	if (badWalk) return '有走位指到不存在的隊員或段';
-	if (flow.actions.some((a) => !segmentIds.has(a.segmentId))) return '有動作指到不存在的段';
+	if (badWalk) return { code: 'flow_file_walk_refs' };
+	if (flow.actions.some((a) => !segmentIds.has(a.segmentId))) return { code: 'flow_file_action_segment' };
 	if (flow.bookmarks?.some((b) => !segmentIds.has(b.a.segmentId) || (b.b && !segmentIds.has(b.b.segmentId)))) {
-		return '有書籤指到不存在的段';
+		return { code: 'flow_file_bookmark_segment' };
 	}
 	const bookmarkIds = (flow.bookmarks ?? []).map((b) => b.id);
-	if (new Set(bookmarkIds).size !== bookmarkIds.length) return '有兩個書籤的 id 一樣';
+	if (new Set(bookmarkIds).size !== bookmarkIds.length) return { code: 'flow_file_bookmark_ids' };
 	const lost = flow.bookmarks?.find((b) => !bookmarkSeconds(flow, b));
-	if (lost) return `書籤「${lost.name}」的位置不在流程裡`;
-	if (flow.actions.some((a) => a.members.some((m) => !memberIds.has(m.memberId)))) return '有動作指到不存在的隊員';
+	if (lost) return { code: 'flow_file_bookmark_lost', name: lost.name };
+	if (flow.actions.some((a) => a.members.some((m) => !memberIds.has(m.memberId)))) return { code: 'flow_file_action_member' };
 	for (const a of flow.actions) {
 		const segment = flow.segments.find((s) => s.id === a.segmentId)!;
 		const problem =
 			(a.cues ?? []).map((c) => cueProblem(segment, a, c)).find((p) => p !== null) ?? successRateProblem(segment, a);
-		if (problem) return `動作「${actionLabel(a)}」：${problem}`;
+		if (problem) return { code: 'flow_check_in_action', action: actionWhy(a), reason: problem };
 	}
 	return null;
 }

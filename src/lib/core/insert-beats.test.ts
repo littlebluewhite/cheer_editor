@@ -108,13 +108,15 @@ describe('插入八拍', () => {
 		// 7-1 起的動作到 8-8& 結束，段尾後面只剩 1 個八拍
 		expect(insertBeats(flow, at('s1', 64), 32)).toEqual({
 			kind: 'blocked',
-			message: '「技巧·x96」會超過這段的結尾，最多插 8 拍'
+			message: '「技巧·x96」會超過這段的結尾，最多插 8 拍',
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room', length: { code: 'time_length_beats', n: 8 } } }
 		});
 		// 站位 3、4 都放不下，說卡最緊的那張
 		const noActions = { ...flow, actions: flow.actions.slice(0, 1) };
 		expect(insertBeats(noActions, at('s1', 64), 64)).toEqual({
 			kind: 'blocked',
-			message: '站位 4 會超過這段的結尾，最多插 23.5 拍'
+			message: '站位 4 會超過這段的結尾，最多插 23.5 拍',
+			why: { code: 'insert_beats_overflow_formation', n: 4, room: { code: 'insert_beats_room', length: { code: 'time_length_beats', n: 23.5 } } }
 		});
 	});
 
@@ -123,17 +125,20 @@ describe('插入八拍', () => {
 		const noActions = { ...flow, actions: flow.actions.slice(0, 1) };
 		expect(insertBeats(noActions, at('s1', 64), 64, 'eight')).toEqual({
 			kind: 'blocked',
-			message: '站位 4 會超過這段的結尾，最多插 2 個八拍又 7.5 拍'
+			message: '站位 4 會超過這段的結尾，最多插 2 個八拍又 7.5 拍',
+			why: { code: 'insert_beats_overflow_formation', n: 4, room: { code: 'insert_beats_room_eights_rest', eights: { code: 'time_eights', n: 2 }, rest: { code: 'time_length_beats', n: 7.5 } } }
 		});
 		expect(insertBeats(flow, at('s1', 64), 32, 'eight')).toEqual({
 			kind: 'blocked',
-			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍'
+			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍',
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room', length: { code: 'time_eights_one', n: 1 } } }
 		});
 		// x96 拉長到 1 個半八拍：段尾後面只剩 4 拍
 		const longer = { ...flow, actions: flow.actions.map((a) => (a.start === 96 ? { ...a, length: 24 } : a)) };
 		expect(insertBeats(longer, at('s1', 64), 16, 'eight')).toEqual({
 			kind: 'blocked',
-			message: '「技巧·x96」會超過這段的結尾，最多插 4 拍（不到 1 個八拍，單位改成拍）'
+			message: '「技巧·x96」會超過這段的結尾，最多插 4 拍（不到 1 個八拍，單位改成拍）',
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room_under_eight', length: { code: 'time_length_beats', n: 4 } } }
 		});
 	});
 
@@ -143,7 +148,8 @@ describe('插入八拍', () => {
 		const shorter = { ...flow, actions: flow.actions.map((a) => (a.start === 96 ? { ...a, length: 8 } : a)) };
 		expect(insertBeats(shorter, at('s1', 64), 32, 'eight')).toEqual({
 			kind: 'blocked',
-			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍又 4 拍'
+			message: '「技巧·x96」會超過這段的結尾，最多插 1 個八拍又 4 拍',
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room_eights_rest', eights: { code: 'time_eights_one', n: 1 }, rest: { code: 'time_length_beats', n: 4 } } }
 		});
 	});
 
@@ -151,15 +157,39 @@ describe('插入八拍', () => {
 		const flow = sample();
 		expect(insertBeats(flow, at('s2', 0), 80)).toEqual({
 			kind: 'blocked',
-			message: '站位 5 會超過這段的結尾，最多插 7.9 秒'
+			message: '站位 5 會超過這段的結尾，最多插 7.9 秒',
+			why: { code: 'insert_beats_overflow_formation', n: 5, room: { code: 'insert_beats_room', length: { code: 'time_seconds', n: '7.9' } } }
 		});
 		expect(flowOf(insertBeats(flow, at('s2', 0), 79)).formations[4].at).toBe(99);
 	});
 
+	it('卡最緊的那個已經到段尾：說這段後面已經沒有空了', () => {
+		const flow = sample();
+		// x96 拉長到 2 個八拍：剛好到段尾
+		const full = { ...flow, actions: flow.actions.map((a) => (a.start === 96 ? { ...a, length: 32 } : a)) };
+		expect(insertBeats(full, at('s1', 64), 2)).toEqual({
+			kind: 'blocked',
+			message: '「技巧·x96」會超過這段的結尾，這段後面已經沒有空了',
+			why: { code: 'insert_beats_overflow_action', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'x96' }, room: { code: 'insert_beats_room_none' } }
+		});
+	});
+
 	it('插 0 拍、不在段的格子上、找不到段：擋下', () => {
 		const flow = sample();
-		expect(insertBeats(flow, at('s1', 64), 0).kind).toBe('blocked');
-		expect(insertBeats(flow, at('s1', 128), 16).kind).toBe('blocked');
-		expect(insertBeats(flow, at('nope', 0), 16).kind).toBe('blocked');
+		expect(insertBeats(flow, at('s1', 64), 0)).toEqual({
+			kind: 'blocked',
+			message: '插入的長度要大於 0',
+			why: { code: 'insert_beats_length' }
+		});
+		expect(insertBeats(flow, at('s1', 128), 16)).toEqual({
+			kind: 'blocked',
+			message: '插入的地方不在這一段裡',
+			why: { code: 'insert_beats_outside' }
+		});
+		expect(insertBeats(flow, at('nope', 0), 16)).toEqual({
+			kind: 'blocked',
+			message: '找不到這一段',
+			why: { code: 'insert_beats_no_segment' }
+		});
 	});
 });

@@ -10,6 +10,10 @@ import {
 	type Flow
 } from './index';
 import { flowOf } from '../test-flows';
+import { zh } from './why';
+
+/** 規則警告的小標題、內容寫成中文（畫面照語言寫，中文跟以前一字不差）。 */
+const warnings = (flow: Flow) => timeRuleWarnings(flow).map((w) => ({ ...w, title: zh(w.title), text: zh(w.text) }));
 
 /** 一個 120 BPM 的音樂段（beats 拍）加一個口號段（chantSec 秒）。 */
 function routine(beats: number, chantSec: number): Flow {
@@ -23,33 +27,33 @@ function routine(beats: number, chantSec: number): Flow {
 
 describe('時間規則警告', () => {
 	it('時間跟播放器一樣寫成「分:秒」（T16）', () => {
-		expect(timeRuleWarnings(routine(260, 32.4))[0].text).toBe('音樂段共 2:10.0，超過 2:00.0');
+		expect(warnings(routine(260, 32.4))[0].text).toBe('音樂段共 2:10.0，超過 2:00.0');
 	});
 
 	it('都在規則內就沒有警告（剛好 120 秒、30 秒不算超過）', () => {
 		// 240 拍 ÷ 2 拍/秒 = 120 秒
-		expect(timeRuleWarnings(routine(240, 30))).toEqual([]);
+		expect(warnings(routine(240, 30))).toEqual([]);
 	});
 
 	it('口號段加起來少於 30 秒', () => {
-		expect(timeRuleWarnings(routine(200, 20))).toEqual([{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' }]);
+		expect(warnings(routine(200, 20))).toEqual([{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' }]);
 	});
 
 	it('音樂段加起來超過 120 秒', () => {
-		expect(timeRuleWarnings(routine(260, 32.4))).toEqual([
+		expect(warnings(routine(260, 32.4))).toEqual([
 			{ title: '音樂段太長', text: '音樂段共 2:10.0，超過 2:00.0', rule: 'maxMusicSec' }
 		]);
 	});
 
 	it('整支流程超過 180 秒', () => {
-		expect(timeRuleWarnings(routine(240, 70))).toEqual([
+		expect(warnings(routine(240, 70))).toEqual([
 			{ title: '整支流程太長', text: '整支流程共 3:10.0，超過 3:00.0', rule: 'maxTotalSec' }
 		]);
 	});
 
 	it('三條可以同時出現，每條有自己的標題', () => {
 		const flow = flowOf(updateTimeRules(routine(260, 20), { maxMusicSec: 100, maxTotalSec: 100 }));
-		expect(timeRuleWarnings(flow)).toEqual([
+		expect(warnings(flow)).toEqual([
 			{ title: '口號段太短', text: '口號段共 0:20.0，少於 0:30.0', rule: 'minChantSec' },
 			{ title: '音樂段太長', text: '音樂段共 2:10.0，超過 1:40.0', rule: 'maxMusicSec' },
 			{ title: '整支流程太長', text: '整支流程共 2:30.0，超過 1:40.0', rule: 'maxTotalSec' }
@@ -58,22 +62,22 @@ describe('時間規則警告', () => {
 
 	it('還沒有任何段時不警告（剛建好的流程不要一打開就黃字）', () => {
 		const flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
-		expect(timeRuleWarnings(flow)).toEqual([]);
+		expect(warnings(flow)).toEqual([]);
 	});
 
 	it('只有音樂段、沒有口號段：照樣提醒，但寫法中性（不說「少於」）', () => {
 		const flow = flowOf(addSegment(flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } })), 'music'));
-		expect(timeRuleWarnings(flow)).toEqual([{ title: '還沒有口號段', text: '口號段加起來最少要 0:30.0', rule: 'minChantSec' }]);
+		expect(warnings(flow)).toEqual([{ title: '還沒有口號段', text: '口號段加起來最少要 0:30.0', rule: 'minChantSec' }]);
 	});
 
 	it('關掉就沒有警告', () => {
 		const flow = flowOf(updateTimeRules(routine(260, 20), { on: false }));
-		expect(timeRuleWarnings(flow)).toEqual([]);
+		expect(warnings(flow)).toEqual([]);
 	});
 
 	it('改數字後照新的數字算', () => {
 		const flow = flowOf(updateTimeRules(routine(260, 20), { minChantSec: 15, maxMusicSec: 150 }));
-		expect(timeRuleWarnings(flow)).toEqual([]);
+		expect(warnings(flow)).toEqual([]);
 		expect(flow.timeRules).toEqual({ on: true, minChantSec: 15, maxMusicSec: 150, maxTotalSec: 180 });
 	});
 
@@ -81,7 +85,7 @@ describe('時間規則警告', () => {
 		const flow = routine(240, 30);
 		for (const key of ['minChantSec', 'maxMusicSec', 'maxTotalSec'] as const) {
 			for (const bad of [0, -1, Number.NaN]) {
-				expect(updateTimeRules(flow, { [key]: bad })).toEqual({ kind: 'blocked', message: '秒數要大於 0' });
+				expect(updateTimeRules(flow, { [key]: bad })).toEqual({ kind: 'blocked', message: '秒數要大於 0', why: { code: 'time_rules_positive' } });
 			}
 		}
 	});
@@ -89,16 +93,18 @@ describe('時間規則警告', () => {
 	it('口號段加起來最少要比整支流程最多少（不然一定有警告）', () => {
 		const flow = routine(240, 30);
 		const message = '「口號段加起來最少」要比「整支流程最多」少';
-		expect(updateTimeRules(flow, { minChantSec: 180 })).toEqual({ kind: 'blocked', message });
-		expect(updateTimeRules(flow, { minChantSec: 200 })).toEqual({ kind: 'blocked', message });
-		expect(updateTimeRules(flow, { maxMusicSec: 20, maxTotalSec: 30 })).toEqual({ kind: 'blocked', message });
+		const why = { code: 'time_rules_chant' };
+		expect(updateTimeRules(flow, { minChantSec: 180 })).toEqual({ kind: 'blocked', message, why });
+		expect(updateTimeRules(flow, { minChantSec: 200 })).toEqual({ kind: 'blocked', message, why });
+		expect(updateTimeRules(flow, { maxMusicSec: 20, maxTotalSec: 30 })).toEqual({ kind: 'blocked', message, why });
 	});
 
 	it('音樂段加起來最多不能超過整支流程最多', () => {
 		const flow = routine(240, 30);
 		const message = '「音樂段加起來最多」不能超過「整支流程最多」';
-		expect(updateTimeRules(flow, { maxMusicSec: 181 })).toEqual({ kind: 'blocked', message });
-		expect(updateTimeRules(flow, { maxTotalSec: 119 })).toEqual({ kind: 'blocked', message });
+		const why = { code: 'time_rules_music' };
+		expect(updateTimeRules(flow, { maxMusicSec: 181 })).toEqual({ kind: 'blocked', message, why });
+		expect(updateTimeRules(flow, { maxTotalSec: 119 })).toEqual({ kind: 'blocked', message, why });
 		expect(updateTimeRules(flow, { maxMusicSec: 180 }).kind).toBe('ok');
 	});
 
@@ -119,7 +125,7 @@ describe('新口號段的預設長度不一加就跳警告（#196 故事 105）'
 		// 120 秒音樂 + 55 秒口號 = 175 秒；再加 10 秒會超過 180 秒
 		const flow = routine(240, 55);
 		expect(newChantTenths(flow)).toBe(50);
-		expect(timeRuleWarnings(flowOf(addSegment(flow, 'chant', undefined, newChantTenths(flow))))).toEqual([]);
+		expect(warnings(flowOf(addSegment(flow, 'chant', undefined, newChantTenths(flow))))).toEqual([]);
 	});
 
 	it('口號段要補的比整支流程剩下的多（怎樣都會有警告）：照舊補到口號段夠長', () => {

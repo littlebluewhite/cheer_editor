@@ -10,6 +10,7 @@ import {
 	type CommandResult,
 	type Flow
 } from '#lib/core';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { recordedFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import MemberPanel from './MemberPanel.svelte';
@@ -320,5 +321,22 @@ describe('刪隊員', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
 		expect(session.canUndo).toBe(false);
 		expect(screen.queryByRole('alertdialog')).toBeNull();
+	});
+});
+
+describe('英文畫面', () => {
+	it('名單、同名提示、加隊員表單、滿了的原因都看不到中文（名字用英文）', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const names = ['Amy', 'Amy', ...Array.from({ length: 38 }, (_, i) => `Kid${i + 1}`)];
+		const members = names.map((name) => ({ name, gender: 'F' as const, globalRole: 'top' as const }));
+		setup(okFlow(addMembers(okFlow(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } })), members)));
+		expect(screen.getByText('Athletes (40 / 40)')).toBeTruthy();
+		expect(screen.getByRole('note').textContent!.trim()).toBe(
+			"Some athletes share a name: “Amy”. The lanes and skill form can't tell them apart; add a letter to one of them."
+		);
+		expect(screen.getByLabelText("Athlete 2's name")).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Add athletes' }).matches(':disabled')).toBe(true);
+		expect(screen.getByText('Already 40 athletes (a routine holds at most 40); delete an athlete to add more')).toBeTruthy();
+		expect(document.body.innerHTML).not.toMatch(/\p{Script=Han}/u);
 	});
 });

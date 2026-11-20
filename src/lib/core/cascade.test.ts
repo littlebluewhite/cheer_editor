@@ -105,13 +105,27 @@ describe('段縮短', () => {
 		expect(updateSegment(flow, 's1', { eights: 1, lastBeats: 6 })).toEqual({
 			kind: 'confirm',
 			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_music', n: 1 }, what: { code: 'segment_shrink_both' } },
 			items: [
 				'裁短：動作「技巧·Lib」（1-1 起）8 拍 → 6 拍',
 				'刪掉：動作「跳躍·T」（3-1 起）',
 				'刪掉：站位 2（2-1）',
 				'刪掉：站位 3（4-1）'
 			],
-			confirmLabel: '確定刪除'
+			whyItems: [
+				{
+					code: 'segment_trim_item',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					from: { code: 'time_from', at: '1-1' },
+					before: { code: 'time_length_beats', n: 8 },
+					after: { code: 'time_length_beats', n: 6 }
+				},
+				{ code: 'segment_drop_action', action: { code: 'action_label', category: { code: 'category_jump' }, name: 'T' }, from: { code: 'time_from', at: '3-1' } },
+				{ code: 'segment_drop_formation', n: 2, at: '2-1' },
+				{ code: 'segment_drop_formation', n: 3, at: '4-1' }
+			],
+			confirmLabel: '確定刪除',
+			confirmWhy: { code: 'segment_confirm_delete' }
 		});
 		expect(flow).toEqual(before);
 	});
@@ -119,15 +133,32 @@ describe('段縮短', () => {
 	it('只會裁短、沒有要刪的：訊息不寫「刪掉」，確定鈕寫「確定裁短」（N19）', () => {
 		// libSample：Lib 1-1 到 1-8；只剩 6 拍就裁短 Lib，沒有東西在段外
 		const r = updateSegment(libSample(), 's1', { eights: 1, lastBeats: 6 });
-		expect(r).toMatchObject({ kind: 'confirm', message: '音樂 1 縮短後，超出段尾的動作裁短到段尾', confirmLabel: '確定裁短' });
+		expect(r).toMatchObject({
+			kind: 'confirm',
+			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_music', n: 1 }, what: { code: 'segment_shrink_trim' } },
+			confirmLabel: '確定裁短'
+		});
 	});
 
 	it('只會刪掉：訊息只寫刪掉；裁短又刪掉：兩樣都寫；確定鈕都寫「確定刪除」（N19）', () => {
 		expect(updateSegment(sample(), 's1', { eights: 3, lastBeats: 8 })).toMatchObject({
 			message: '音樂 1 縮短後，放不進段裡的刪掉',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_music', n: 1 }, what: { code: 'segment_shrink_drop' } },
 			confirmLabel: '確定刪除'
 		});
 		expect(updateSegment(sample(), 's1', { eights: 1, lastBeats: 6 })).toMatchObject({ confirmLabel: '確定刪除' });
+	});
+
+	it('裁短的動作改不了（例：存著不認得的大類）：擋下，說是哪個動作、為什麼', () => {
+		const flow = sample();
+		const bad = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, category: 'bogus' } : a)) } as Flow;
+		const r = updateSegment(bad, 's1', { eights: 1, lastBeats: 6 });
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: '動作「·Lib」裁短後：請選大類',
+			why: { code: 'segment_trim_blocked', action: { code: 'action_label', category: '', name: 'Lib' }, reason: { code: 'actions_pick_category' } }
+		});
 	});
 
 	it('帶「已確認」再送一次：跨出段尾的動作只留到段尾，在段外的動作和站位刪掉，其他不動', () => {
@@ -185,6 +216,7 @@ describe('段縮短', () => {
 		expect(updateSegment(flow, 's2', { seconds: 5 })).toMatchObject({
 			kind: 'confirm',
 			message: '口號 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉',
+			why: { code: 'segment_shrink', segment: { code: 'time_segment_chant', n: 1 }, what: { code: 'segment_shrink_both' } },
 			// 口號段的時間寫「秒」（T11）
 			items: ['裁短：動作「舞蹈」（3.0 秒起）5.0 秒 → 2.0 秒', '刪掉：站位 4（7.0 秒）']
 		});
@@ -203,7 +235,34 @@ describe('刪隊員', () => {
 			kind: 'confirm',
 			message:
 				'刪掉隊員「小A」（標記 1、上層）：他在 2 個動作裡，其中 1 個會被整個刪掉，「技巧·Lib」會沒有上層；後面 2 個人的號碼會往前遞補',
-			items: ['動作「技巧·Lib」（音樂 1 1-1 起）：他是上層', '動作「跳躍·T」（音樂 1 3-1 起）：只有他，會整個刪掉']
+			why: {
+				code: 'members_delete',
+				name: '小A',
+				marker: '1',
+				role: { code: 'role_top' },
+				where: { code: 'members_delete_in_emptied', count: 2, emptied: 1 },
+				more: {
+					code: 'members_delete_lost',
+					list: { code: 'members_lost_role', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, role: { code: 'role_top' } },
+					more: { code: 'members_delete_renumber', count: 2, more: '' }
+				}
+			},
+			items: ['動作「技巧·Lib」（音樂 1 1-1 起）：他是上層', '動作「跳躍·T」（音樂 1 3-1 起）：只有他，會整個刪掉'],
+			whyItems: [
+				{
+					code: 'members_delete_item_role',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					segment: { code: 'time_segment_music', n: 1 },
+					from: { code: 'time_from', at: '1-1' },
+					role: { code: 'role_top' }
+				},
+				{
+					code: 'members_delete_item_emptied',
+					action: { code: 'action_label', category: { code: 'category_jump' }, name: 'T' },
+					segment: { code: 'time_segment_music', n: 1 },
+					from: { code: 'time_from', at: '3-1' }
+				}
+			]
 		});
 		expect(flow).toEqual(before);
 	});
@@ -212,6 +271,7 @@ describe('刪隊員', () => {
 		expect(deleteMember(sample(), 'm3')).toEqual({
 			kind: 'confirm',
 			message: '刪掉隊員「小C」（標記 3、底層）：他不在任何動作裡',
+			why: { code: 'members_delete', name: '小C', marker: '3', role: { code: 'role_base' }, where: { code: 'members_delete_in_none' }, more: '' },
 			items: []
 		});
 	});
@@ -275,7 +335,11 @@ describe('刪隊員', () => {
 	});
 
 	it('找不到這個隊員就擋下', () => {
-		expect(deleteMember(sample(), 'm9')).toEqual({ kind: 'blocked', message: '找不到這個隊員' });
+		expect(deleteMember(sample(), 'm9')).toEqual({
+			kind: 'blocked',
+			message: '找不到這個隊員',
+			why: { code: 'members_not_found' }
+		});
 	});
 });
 

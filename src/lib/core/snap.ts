@@ -3,6 +3,7 @@
 
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Position } from './formation';
+import type { Why, WhyCode } from './why';
 
 /** 放大到這個倍率以上，才多八等分的吸附點。 */
 export const FINE_ZOOM = 2;
@@ -58,33 +59,16 @@ export function snapPointsNear(field: FieldConfig, [x, y]: Position, zoom: numbe
 }
 
 /**
- * 「第 3 條 左起 1/4｜正面起第 2 格 1/2」這種位置文字。
+ * 「第 3 條 左起 1/4｜正面起第 2 格 1/2」這種位置文字（畫面照語言寫）。
  * 直放：條是左右數、格是從正面往後數；橫放：條是從正面往後數（第 1 條最靠近裁判）、格是左右數。
  */
-export function fieldPositionText(field: FieldConfig, [x, y]: Position): string {
+export function fieldPositionWhy(field: FieldConfig, [x, y]: Position): Why {
 	const { mat, cols, rows } = fieldGeometry(field);
-	const vertical = field.layout === 'vertical';
-	const across = {
-		u: (x - mat.x) / CELL_M,
-		n: cols,
-		start: '左起',
-		startLine: '場地左緣',
-		endLine: '場地右緣',
-		near: '左邊',
-		far: '右邊'
-	};
-	const fromFront = {
-		u: (mat.y + mat.height - y) / CELL_M,
-		n: rows,
-		start: '正面起',
-		startLine: '場地正面緣',
-		endLine: '場地後緣',
-		near: '正面那邊',
-		far: '後面'
-	};
-	return vertical
-		? `${axisText(across, 'strip')}｜${axisText(fromFront, 'cell')}`
-		: `${axisText(fromFront, 'strip')}｜${axisText(across, 'cell')}`;
+	const across: TextAxis = { u: (x - mat.x) / CELL_M, n: cols, codes: AXIS_CODES.across };
+	const fromFront: TextAxis = { u: (mat.y + mat.height - y) / CELL_M, n: rows, codes: AXIS_CODES.fromFront };
+	return field.layout === 'vertical'
+		? { code: 'snap_position', strip: axisWhy(across, 'strip'), cell: axisWhy(fromFront, 'cell') }
+		: { code: 'snap_position', strip: axisWhy(fromFront, 'strip'), cell: axisWhy(across, 'cell') };
 }
 
 interface Axis {
@@ -132,38 +116,73 @@ interface TextAxis {
 	u: number;
 	/** 墊子在這個方向有幾條或幾格。 */
 	n: number;
-	start: string;
-	startLine: string;
-	endLine: string;
-	near: string;
-	far: string;
+	codes: AxisCodes;
 }
+
+/** 一個方向的位置的句子：墊子外（起點那邊、另一邊）；條的起點緣、終點緣、條裡幾分之幾；格的起點緣、終點緣、兩格之間、格裡幾分之幾。 */
+interface AxisCodes {
+	outsideNear: WhyCode;
+	outsideFar: WhyCode;
+	stripStart: WhyCode;
+	stripEnd: WhyCode;
+	strip: WhyCode;
+	cellStart: WhyCode;
+	cellEnd: WhyCode;
+	between: WhyCode;
+	cell: WhyCode;
+}
+
+/** 左右（左起）和前後（正面起）兩個方向的句子。 */
+const AXIS_CODES: Record<'across' | 'fromFront', AxisCodes> = {
+	across: {
+		outsideNear: 'snap_outside_left',
+		outsideFar: 'snap_outside_right',
+		stripStart: 'snap_strip_left_edge',
+		stripEnd: 'snap_strip_right_edge',
+		strip: 'snap_strip_from_left',
+		cellStart: 'snap_cell_left_edge',
+		cellEnd: 'snap_cell_right_edge',
+		between: 'snap_cells_from_left',
+		cell: 'snap_cell_from_left'
+	},
+	fromFront: {
+		outsideNear: 'snap_outside_front',
+		outsideFar: 'snap_outside_back',
+		stripStart: 'snap_strip_front_edge',
+		stripEnd: 'snap_strip_back_edge',
+		strip: 'snap_strip_from_front',
+		cellStart: 'snap_cell_front_edge',
+		cellEnd: 'snap_cell_back_edge',
+		between: 'snap_cells_from_front',
+		cell: 'snap_cell_from_front'
+	}
+};
 
 /**
  * 一個方向的位置，都用「第幾條、第幾格」講：格裡寫幾分之幾；在格線上寫在哪兩條（格）之間，
  * 條和條之間就是接縫；不在八等分點上（例如舊檔）寫最近的那一點，前面加「約」。
  */
-function axisText(a: TextAxis, kind: 'strip' | 'cell'): string {
-	if (a.u < -EPS) return `場地外${a.near} ${outside(-a.u)} 格`;
-	if (a.u > a.n + EPS) return `場地外${a.far} ${outside(a.u - a.n)} 格`;
-	const k = Math.round(a.u * 8);
-	const about = Math.abs(a.u - k / 8) < EPS ? '' : '約 ';
+function axisWhy({ u, n, codes }: TextAxis, kind: 'strip' | 'cell'): Why {
+	if (u < -EPS) return { code: codes.outsideNear, n: outside(-u) };
+	if (u > n + EPS) return { code: codes.outsideFar, n: outside(u - n) };
+	const k = Math.round(u * 8);
+	const exact = Math.abs(u - k / 8) < EPS;
+	const about = <T extends Why | string>(what: T): T | Why => (exact ? what : { code: 'snap_about', what });
 	const i = Math.floor(k / 8);
-	const name = (j: number) => (kind === 'strip' ? `第 ${j} 條` : `${a.start}第 ${j} 格`);
-	if (i >= a.n) return `${about}${name(a.n)} ${a.endLine}`;
+	const strip = kind === 'strip';
+	if (i >= n) return about({ code: strip ? codes.stripEnd : codes.cellEnd, n });
 	if (k % 8 === 0) {
-		if (i === 0) return `${about}${name(1)} ${a.startLine}`;
-		return about + (kind === 'strip' ? `第 ${i}、${i + 1} 條的接縫` : `${a.start}第 ${i}、${i + 1} 格之間`);
+		if (i === 0) return about({ code: strip ? codes.stripStart : codes.cellStart, n: 1 });
+		return about({ code: strip ? 'snap_seam' : codes.between, a: i, b: i + 1 });
 	}
-	const f = `${about}${FRACTION_NAMES[k % 8]}`;
-	return kind === 'strip' ? `${name(i + 1)} ${a.start} ${f}` : `${name(i + 1)} ${f}`;
+	return { code: strip ? codes.strip : codes.cell, n: i + 1, f: about(FRACTION_NAMES[k % 8]) };
 }
 
 const FRACTION_NAMES = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
 
 /** 場地外幾格（最多出界 1 m，不到一格）：照八等分寫，不在點上加「約」，太近也算 1/8。 */
-function outside(d: number): string {
+function outside(d: number): string | Why {
 	const k = Math.round(d * 8);
-	const about = Math.abs(d - k / 8) < EPS ? '' : '約 ';
-	return k >= 8 ? `${about}${k / 8}` : `${about}${FRACTION_NAMES[Math.max(k, 1)]}`;
+	const n = k >= 8 ? `${k / 8}` : FRACTION_NAMES[Math.max(k, 1)];
+	return Math.abs(d - k / 8) < EPS ? n : { code: 'snap_about', what: n };
 }

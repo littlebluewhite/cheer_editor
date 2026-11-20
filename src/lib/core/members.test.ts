@@ -44,15 +44,18 @@ describe('加隊員', () => {
 		const flow = newFlow();
 		expect(addMembers(flow, [{ ...xiaoA, name: ' ' }])).toEqual({
 			kind: 'blocked',
-			message: '請填隊員名字'
+			message: '請填隊員名字',
+			why: { code: 'members_no_name' }
 		});
 		expect(addMembers(flow, [{ ...xiaoA, gender: null }])).toEqual({
 			kind: 'blocked',
-			message: '請選性別'
+			message: '請選性別',
+			why: { code: 'members_pick_gender' }
 		});
 		expect(addMembers(flow, [{ ...xiaoA, globalRole: null }])).toEqual({
 			kind: 'blocked',
-			message: '請選全局角色'
+			message: '請選全局角色',
+			why: { code: 'members_pick_global_role' }
 		});
 	});
 
@@ -222,7 +225,8 @@ describe('加隊員', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
 		expect(updateMember(flow, flow.members[0].id, { name: '  ' })).toEqual({
 			kind: 'blocked',
-			message: '請填隊員名字'
+			message: '請填隊員名字',
+			why: { code: 'members_no_name' }
 		});
 	});
 
@@ -230,12 +234,17 @@ describe('加隊員', () => {
 		const forty = Array.from({ length: 40 }, (_, i) => ({ ...xiaoA, name: `隊員${i + 1}` }));
 		const full = okFlow(addMembers(newFlow(), forty));
 		expect(full.members).toHaveLength(40);
-		expect(addMembers(full, [xiaoA])).toEqual({ kind: 'blocked', message: '一支流程最多 40 人，已經滿了' });
+		expect(addMembers(full, [xiaoA])).toEqual({
+			kind: 'blocked',
+			message: '一支流程最多 40 人，已經滿了',
+			why: { code: 'members_full', max: 40 }
+		});
 
 		const thirtyEight = okFlow(addMembers(newFlow(), forty.slice(2)));
 		expect(addMembers(thirtyEight, [xiaoA, xiaoA, xiaoA])).toEqual({
 			kind: 'blocked',
-			message: '一支流程最多 40 人，這次加 3 人，只能再加 2 人'
+			message: '一支流程最多 40 人，這次加 3 人，只能再加 2 人',
+			why: { code: 'members_too_many', max: 40, count: 3, left: 2 }
 		});
 	});
 
@@ -244,12 +253,14 @@ describe('加隊員', () => {
 		expect(addMembers(newFlow(), [{ ...xiaoA, name: twenty }]).kind).toBe('ok');
 		expect(addMembers(newFlow(), [{ ...xiaoA, name: twenty + '一' }])).toEqual({
 			kind: 'blocked',
-			message: '隊員名字最多 20 個字'
+			message: '隊員名字最多 20 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_member_name' }, max: 20 }
 		});
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
 		expect(updateMember(flow, flow.members[0].id, { name: twenty + '一' })).toEqual({
 			kind: 'blocked',
-			message: '隊員名字最多 20 個字'
+			message: '隊員名字最多 20 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_member_name' }, max: 20 }
 		});
 	});
 	it('開檔進來名字超過 20 個字的人：名字沒改，還是可以改性別和全局角色', () => {
@@ -292,9 +303,9 @@ describe('貼上名單加隊員', () => {
 		expect(r).toMatchObject({
 			kind: 'ok',
 			errors: [
-				'「小B」：性別要寫「男」或「女」',
-				'「小C」：全局角色要寫「底層」或「上層」',
-				'「小D」：一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）'
+				{ code: 'members_named', names: { code: 'members_quoted', name: '小B' }, problem: { code: 'members_line_gender' } },
+				{ code: 'members_named', names: { code: 'members_quoted', name: '小C' }, problem: { code: 'members_line_global_role' } },
+				{ code: 'members_named', names: { code: 'members_quoted', name: '小D' }, problem: { code: 'members_line_columns' } }
 			],
 			rejected: ['小B\t男孩\t底層', '小C\t女\t大力士', '小D\t女']
 		});
@@ -334,7 +345,8 @@ describe('貼上名單加隊員', () => {
 	it('全局角色寫成主底、後保這類任務角色：擋下並說明', () => {
 		expect(addMemberLines(newFlow(), '小A 女 主底', picked)).toEqual({
 			kind: 'blocked',
-			message: '「主底」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」'
+			message: '「主底」是任務角色（每個動作各自設），全局角色要寫「底層」或「上層」',
+			why: { code: 'members_line_task_role', role: '主底' }
 		});
 		expect(addMemberLines(newFlow(), '小A\t男\t後保', picked)).toMatchObject({ kind: 'blocked' });
 	});
@@ -346,10 +358,20 @@ describe('貼上名單加隊員', () => {
 
 	it('同一個錯不每人重複：每個人都一樣就只寫一次，不寫名字；只有幾個人一樣就把名字列在一起', () => {
 		const none = { gender: null, globalRole: null };
-		expect(addMemberLines(newFlow(), '小A\n小B\n小C', none)).toEqual({ kind: 'blocked', message: '請選性別；請選全局角色' });
+		const pick = { code: 'members_problems', first: { code: 'members_pick_gender' }, rest: { code: 'members_pick_global_role' } };
+		expect(addMemberLines(newFlow(), '小A\n小B\n小C', none)).toEqual({ kind: 'blocked', message: '請選性別；請選全局角色', why: pick });
 		expect(addMemberLines(newFlow(), '小A\n小B\n小C\t男孩\t底層', none)).toEqual({
 			kind: 'blocked',
-			message: '「小A」、「小B」：請選性別；請選全局角色\n「小C」：性別要寫「男」或「女」'
+			message: '「小A」、「小B」：請選性別；請選全局角色\n「小C」：性別要寫「男」或「女」',
+			why: {
+				code: 'members_lines',
+				first: {
+					code: 'members_named',
+					names: { code: 'members_list', first: { code: 'members_quoted', name: '小A' }, rest: { code: 'members_quoted', name: '小B' } },
+					problem: pick
+				},
+				rest: { code: 'members_named', names: { code: 'members_quoted', name: '小C' }, problem: { code: 'members_line_gender' } }
+			}
 		});
 	});
 
@@ -357,32 +379,44 @@ describe('貼上名單加隊員', () => {
 		const long = '一二三四五六七八九十'.repeat(50);
 		const r = addMemberLines(newFlow(), `小A\n${long}\t男\t底層`, { gender: null, globalRole: null });
 		// 長名字只寫前 10 個字
-		expect(r).toEqual({
+		expect(r).toMatchObject({
 			kind: 'blocked',
-			message: '「小A」：請選性別；請選全局角色\n「一二三四五六七八九十…」：隊員名字最多 20 個字'
+			message: '「小A」：請選性別；請選全局角色\n「一二三四五六七八九十…」：隊員名字最多 20 個字',
+			why: { rest: { names: { name: '一二三四五六七八九十…' }, problem: { code: 'text_length_too_long' } } }
 		});
 	});
 
 	it('試算表三欄有空格：不偷用表單選的，列出要寫什麼', () => {
 		expect(addMemberLines(newFlow(), '小A\t\t', picked)).toEqual({
 			kind: 'blocked',
-			message: '性別要寫「男」或「女」；全局角色要寫「底層」或「上層」'
+			message: '性別要寫「男」或「女」；全局角色要寫「底層」或「上層」',
+			why: { code: 'members_problems', first: { code: 'members_line_gender' }, rest: { code: 'members_line_global_role' } }
 		});
 	});
 
 	it('只有一行：錯誤不寫第幾行', () => {
 		expect(addMemberLines(newFlow(), '小A', { gender: 'F', globalRole: null })).toEqual({
 			kind: 'blocked',
-			message: '請選全局角色'
+			message: '請選全局角色',
+			why: { code: 'members_pick_global_role' }
 		});
-		expect(addMemberLines(newFlow(), '  \n', picked)).toEqual({ kind: 'blocked', message: '請填隊員名字' });
+		expect(addMemberLines(newFlow(), '  \n', picked)).toEqual({
+			kind: 'blocked',
+			message: '請填隊員名字',
+			why: { code: 'members_no_name' }
+		});
 	});
 
 	it('超過 40 人：一個都不加，寫還能加幾人，其他錯誤也一起列出', () => {
 		const full = okFlow(addMemberLines(newFlow(), Array.from({ length: 39 }, (_, i) => `隊員${i + 1}`).join('\n'), picked));
 		expect(addMemberLines(full, '小A\n小B\t男孩\t底層', picked)).toEqual({
 			kind: 'blocked',
-			message: '「小B」：性別要寫「男」或「女」\n一支流程最多 40 人，這次加 2 人，只能再加 1 人'
+			message: '「小B」：性別要寫「男」或「女」\n一支流程最多 40 人，這次加 2 人，只能再加 1 人',
+			why: {
+				code: 'members_lines',
+				first: { code: 'members_named', names: { code: 'members_quoted', name: '小B' }, problem: { code: 'members_line_gender' } },
+				rest: { code: 'members_too_many', max: 40, count: 2, left: 1 }
+			}
 		});
 	});
 });
@@ -487,9 +521,9 @@ describe('隊員排順序', () => {
 
 	it('已經在第一個、最後一個就擋下；找不到人也擋下', () => {
 		const flow = people('小A', '小B');
-		expect(moveMember(flow, 'm1', -1)).toEqual({ kind: 'blocked', message: '已經是第一個了' });
-		expect(moveMember(flow, 'm2', 2)).toEqual({ kind: 'blocked', message: '已經是最後一個了' });
-		expect(moveMember(flow, 'm9', 0)).toEqual({ kind: 'blocked', message: '找不到這個隊員' });
+		expect(moveMember(flow, 'm1', -1)).toEqual({ kind: 'blocked', message: '已經是第一個了', why: { code: 'members_first' } });
+		expect(moveMember(flow, 'm2', 2)).toEqual({ kind: 'blocked', message: '已經是最後一個了', why: { code: 'members_last' } });
+		expect(moveMember(flow, 'm9', 0)).toEqual({ kind: 'blocked', message: '找不到這個隊員', why: { code: 'members_not_found' } });
 	});
 
 	it('移到原本的位置：流程不變（不算一步）', () => {

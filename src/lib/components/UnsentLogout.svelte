@@ -11,6 +11,7 @@
 	// 登出時這台還有沒傳的成功率紀錄（#260、#191 的 A）：小框列每支流程幾筆，「先不要登出」（預設）、「丟掉，登出」。
 	// 首頁的帳號選單、我的帳號頁按登出時跳。
 	import Modal from './Modal.svelte';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		flows: UnsentRecords[];
@@ -20,22 +21,22 @@
 	}
 	let { flows, onstay, ondiscard }: Props = $props();
 	const total = $derived(flows.reduce((n, u) => n + unsentCount(u), 0));
-	const title = $derived(`還有 ${total} 筆成功率紀錄沒傳`);
+	const title = $derived((total === 1 ? m.account_unsent_title_one : m.account_unsent_title)({ n: total }));
 </script>
 
 <Modal label={title} class="dialog unsent-logout" onclose={onstay}>
 	{#snippet children()}
 		<div class="box">
 			<h2>{title}</h2>
-			<p>登出就丟掉，別人看不到。先連上網路，等它傳完再登出。</p>
+			<p>{m.account_unsent_lead()}</p>
 			<ul>
 				{#each flows as u (u.flowId)}
-					<li><span>{u.flowName}</span><b>{unsentCount(u)} 筆</b></li>
+					<li><span>{u.flowName}</span><b>{(unsentCount(u) === 1 ? m.account_unsent_count_one : m.account_unsent_count)({ n: unsentCount(u) })}</b></li>
 				{/each}
 			</ul>
 			<div class="buttons">
-				<button type="button" class="danger" onclick={ondiscard}>丟掉，登出</button>
-				<button type="button" class="primary" data-autofocus onclick={onstay}>先不要登出</button>
+				<button type="button" class="danger" onclick={ondiscard}>{m.account_unsent_discard()}</button>
+				<button type="button" class="primary" data-autofocus onclick={onstay}>{m.account_unsent_stay()}</button>
 			</div>
 		</div>
 	{/snippet}

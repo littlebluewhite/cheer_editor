@@ -2,22 +2,23 @@
 // 設定存在動作裡（Action.successRate），組存在動作裡的人身上（ActionMember.squad，組 id）。
 // 組號（第 n 組）不存：動作裡現在有人的組照 id 發出的先後排，第一個是第 1 組（見 squadsOf）。
 
-import { ACTION_CATEGORIES, type Action, type ActionCategory, type ActionMember } from './action-types';
+import { categoryWhy, type Action, type ActionCategory, type ActionMember } from './action-types';
 import { memberName, type Flow } from './flow';
 import { isRandomId } from './ids';
 import type { Segment } from './segment';
 import { phasesOverlap, phasesShareBeats, rangeProblem, type BeatRange } from './beat-range';
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
-import { fitPhaseKind, phaseKindsFor, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
+import { fitPhaseKind, phaseKindsFor, phaseKindWhy, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
+import { joined, zh, type Why, type WhyParam } from './why';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
 
-export const MARKS: { key: Mark; label: string }[] = [
-	{ key: '✓', label: '成功' },
-	{ key: '△', label: '小失誤' },
-	{ key: '✗', label: '失敗' }
+export const MARKS: { key: Mark; label: Why }[] = [
+	{ key: '✓', label: { code: 'success_rate_hit' } },
+	{ key: '△', label: { code: 'success_rate_bobble' } },
+	{ key: '✗', label: { code: 'success_rate_fall' } }
 ];
 
 /** 練法：分段練（drill）或全上（runThrough）。 */
@@ -159,33 +160,33 @@ export function withoutRecords(action: Action, drop: Attempt[]): Action {
 	return { ...action, successRate: { ...action.successRate, records } };
 }
 
-/** 紀錄照誰數幾次，給教練看：「第 1 組 小美：2 次」，騰翻、跳躍是「小美：1 次」；照第一次記的先後排，前面接 head。 */
-export function recordItems(flow: Flow, action: Action, records: Attempt[], head = ''): string[] {
+/** 紀錄照誰數幾次，給教練看：「第 1 組 小美：2 次」，騰翻、跳躍是「小美：1 次」；照第一次記的先後排，前面接 head（沒有是空的）。 */
+export function recordItems(flow: Flow, action: Action, records: Attempt[], head: WhyParam = ''): Why[] {
 	const counts = new Map<string, number>();
 	for (const r of records) counts.set(r.who, (counts.get(r.who) ?? 0) + 1);
-	return [...counts].map(([who, n]) => {
-		const name = perPerson(action.category) ? memberName(flow, who) : squadName(flow, action, who);
-		return `${head}${name}：${n} 次`;
+	return [...counts].map(([who, n]): Why => {
+		const name = perPerson(action.category) ? memberName(flow, who) : squadWhy(flow, action, who);
+		if (head === '') return { code: n === 1 ? 'success_rate_records_one' : 'success_rate_records', name, n };
+		return { code: n === 1 ? 'success_rate_records_in_one' : 'success_rate_records_in', head, name, n };
 	});
 }
 
 const isSquad = (n: number) => Number.isInteger(n) && n >= 1;
 
 /** 動作裡的人能不能放進第 squad 組（給教練看的原因）；可以是 null。 */
-export function squadProblem(action: Action, squad: number): string | null {
-	return isSquad(squad) ? groupingProblem(action) : '組要是正整數';
+export function squadProblem(action: Action, squad: number): Why | null {
+	return isSquad(squad) ? groupingProblem(action) : { code: 'success_rate_squad_number' };
 }
 
 /** 動作能不能分組（給教練看的原因）；可以是 null。 */
-function groupingProblem(action: Action): string | null {
-	return action.successRate ? perPersonProblem(action) : '動作有環節才能分組';
+function groupingProblem(action: Action): Why | null {
+	return action.successRate ? perPersonProblem(action) : { code: 'success_rate_needs_phases_to_group' };
 }
 
 /** 騰翻、跳躍的動作不分組（給教練看的原因）；其他大類是 null。 */
-function perPersonProblem(action: Action): string | null {
+function perPersonProblem(action: Action): Why | null {
 	if (!perPerson(action.category)) return null;
-	const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
-	return `${label}的動作不分組，每個人自己算`;
+	return { code: 'success_rate_per_person', category: categoryWhy(action.category) };
 }
 
 /**
@@ -194,30 +195,30 @@ function perPersonProblem(action: Action): string | null {
  * 有成功率設定就至少一個環節；環節的種類是動作的大類能用的（第 11 版起，見 phaseKindsFor）；音樂段的環節一定有標的拍、照拍的先後排；組 id 是 g 加編號。
  * 只有組放寬（第 9 版起）：還沒有環節的動作也可以有組（從別的動作複製人帶來的，加第一個環節時照用），騰翻、跳躍還是不分組。
  */
-export function successRateProblem(segment: Segment, action: Action): string | null {
+export function successRateProblem(segment: Segment, action: Action): Why | null {
 	const keys = PHASE_KINDS.map((k) => k.key as string);
 	return rateProblem(segment, action, keys) || kindsProblem(action) || laterRateProblem(segment, action);
 }
 
 /** 第 10 版流程檔的成功率規則：跟現在一樣，只是種類是第 10 版那五種、哪個大類都能用。第 10 → 11 版換種類前先看它：本來就不守的檔不換。 */
-export function v10RateProblem(segment: Segment, action: Action): string | null {
+export function v10RateProblem(segment: Segment, action: Action): Why | null {
 	return rateProblem(segment, action, V10_PHASE_KINDS) || laterRateProblem(segment, action);
 }
 
-function rateProblem(segment: Segment, action: Action, kinds: string[]): string | null {
+function rateProblem(segment: Segment, action: Action, kinds: string[]): Why | null {
 	const grouped = action.members.some((m) => m.squad !== undefined);
 	return (grouped && perPersonProblem(action)) || phasesAndRecordsProblem(segment, action, kinds);
 }
 
 /** 第 7 版起加的規則。 */
-function laterRateProblem(segment: Segment, action: Action): string | null {
+function laterRateProblem(segment: Segment, action: Action): Why | null {
 	const phases = action.successRate?.phases;
-	if (phases && !phases.length) return '記成功率的動作至少要有一個環節';
+	if (phases && !phases.length) return { code: 'success_rate_no_phases' };
 	if (segment.kind === 'music' && phases) {
-		if (phases.some((p) => !p.beats)) return '音樂段的環節要選拍標';
-		if (phases.some((p, i) => i > 0 && p.beats!.at < phases[i - 1].beats!.at)) return '環節要照標的拍的先後排';
+		if (phases.some((p) => !p.beats)) return { code: 'success_rate_music_needs_beats' };
+		if (phases.some((p, i) => i > 0 && p.beats!.at < phases[i - 1].beats!.at)) return { code: 'success_rate_phase_order' };
 	}
-	if (action.members.some((m) => m.squad !== undefined && !isSquadId(m.squad))) return '組的 id 不對';
+	if (action.members.some((m) => m.squad !== undefined && !isSquadId(m.squad))) return { code: 'success_rate_squad_id' };
 	return null;
 }
 
@@ -225,7 +226,7 @@ function laterRateProblem(segment: Segment, action: Action): string | null {
  * 第 6 版流程檔就有的成功率規則（成功率規則的一部分）。第 6 → 7 版整理舊檔前先看它：本來就不守的檔不整理。
  * 組只在分組的動作裡；環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊；紀錄的環節、誰都對得上。
  */
-export function v6RateProblem(segment: Segment, action: Action): string | null {
+export function v6RateProblem(segment: Segment, action: Action): Why | null {
 	if (action.members.some((m) => m.squad !== undefined)) {
 		const problem = groupingProblem(action);
 		if (problem) return problem;
@@ -234,7 +235,7 @@ export function v6RateProblem(segment: Segment, action: Action): string | null {
 }
 
 /** 環節的種類要是這個大類能用的（見 phaseKindsFor）：舞蹈、其他不記成功率，拋投只用拋法…（給教練看的原因）。 */
-function kindsProblem(action: Action): string | null {
+function kindsProblem(action: Action): Why | null {
 	for (const p of action.successRate?.phases ?? []) {
 		const problem = phaseKindProblem(action.category, p.kind);
 		if (problem) return problem;
@@ -243,12 +244,11 @@ function kindsProblem(action: Action): string | null {
 }
 
 /** 這個大類的動作能不能用這種環節：「舞蹈的動作不記成功率」「拋投的環節只能用拋法」；能用是 null。加環節、改環節也照這個擋。 */
-export function phaseKindProblem(category: ActionCategory, kind: string): string | null {
+export function phaseKindProblem(category: ActionCategory, kind: string): Why | null {
 	const kinds = phaseKindsFor(category);
 	if ((kinds as string[]).includes(kind)) return null;
-	const label = ACTION_CATEGORIES.find((c) => c.key === category)?.label;
-	if (!kinds.length) return `${label}的動作不記成功率`;
-	return `${label}的環節只能用${kinds.map((k) => PHASE_KINDS.find((x) => x.key === k)!.label).join('、')}`;
+	if (!kinds.length) return { code: 'success_rate_no_rate', category: categoryWhy(category) };
+	return { code: 'success_rate_kinds_only', category: categoryWhy(category), kinds: joined('members_list', kinds.map(phaseKindWhy)) };
 }
 
 /**
@@ -265,22 +265,22 @@ export function fitPhaseKinds(action: Action): Action {
 }
 
 /** 第 6 版就有的規則裡組以外的：環節的 id、種類、名字、顏色；標的拍是整拍、在動作裡、不重疊（金字塔除外）；紀錄的環節、誰都對得上。 */
-function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string[]): string | null {
+function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string[]): Why | null {
 	const phases = action.successRate?.phases ?? [];
-	if (new Set(phases.map((p) => p.id)).size !== phases.length) return '環節的 id 重複了';
+	if (new Set(phases.map((p) => p.id)).size !== phases.length) return { code: 'success_rate_phase_id_taken' };
 	for (const p of phases) {
-		if (!kinds.includes(p.kind)) return '沒有這種環節';
-		if (p.name !== p.name.trim()) return '環節的名字頭尾不能有空白';
+		if (!kinds.includes(p.kind)) return { code: 'success_rate_no_such_kind' };
+		if (p.name !== p.name.trim()) return { code: 'success_rate_phase_name_spaces' };
 		if (p.color !== undefined && !PHASE_COLORS.some((c) => c.value === p.color)) {
-			return '環節的顏色只能挑辨識色或石板灰';
+			return { code: 'success_rate_phase_color' };
 		}
 		const problem = p.beats ? beatsProblem(segment, action, p.beats) : null;
 		if (problem) return problem;
 	}
 	// 金字塔的環節可以佔同樣的拍（docs/adr/0009）。
-	if (!phasesMayShareBeats(action.category) && phasesOverlap(phases)) return '環節標的拍不能重疊';
+	if (!phasesMayShareBeats(action.category) && phasesOverlap(phases)) return { code: 'success_rate_phases_overlap' };
 	const records = action.successRate?.records ?? [];
-	if (new Set(records.map((r) => r.id)).size !== records.length) return '一次的 id 重複了';
+	if (new Set(records.map((r) => r.id)).size !== records.length) return { code: 'success_rate_attempt_id_taken' };
 	for (const r of records) {
 		const problem = attemptProblem(action, r);
 		if (problem) return problem;
@@ -292,21 +292,23 @@ function phasesAndRecordsProblem(segment: Segment, action: Action, kinds: string
  * 一次哪裡不守規則（給教練看的原因）；沒問題是 null。記一次和讀流程檔都照這個檢查。
  * 記號只能打在動作現在的環節上、只能是 ✓ △ ✗、至少一個（✗ 的環節刪掉後只剩空著的環節也可以）；誰要對得上：分組的動作是現在有人的組，騰翻、跳躍是動作裡的隊員。
  */
-export function attemptProblem(action: Action, attempt: NewAttempt): string | null {
+export function attemptProblem(action: Action, attempt: NewAttempt): Why | null {
 	const phaseIds = new Set(action.successRate?.phases.map((p) => p.id));
 	const marks = Object.entries(attempt.marks);
-	if (marks.some(([id]) => !phaseIds.has(id))) return '記號要打在這個動作的環節上';
-	if (marks.some(([, mark]) => !MARKS.some((m) => m.key === mark))) return '記號只能是 ✓、△、✗';
-	if (marks.length === 0 && !attempt.blanks?.length) return '一次至少要有一個記號';
-	if (attempt.blanks && !blanksFit(attempt, phaseIds)) return '空著的環節要是這個動作的環節、沒有記號，而且那一次是整個做';
-	if (!whoFits(action, attempt.who)) return perPerson(action.category) ? '這個隊員不在動作裡' : '這一組沒有人';
-	if (!isDate(attempt.date)) return '日期要寫成 2026-11-04 這樣';
-	if (!PRACTICE_KINDS.includes(attempt.practice)) return '沒有這種練法';
-	if ((attempt.practice === 'runThrough') !== (attempt.runThroughId !== undefined)) return '全上要帶同一次全上的 id';
+	if (marks.some(([id]) => !phaseIds.has(id))) return { code: 'success_rate_mark_phase' };
+	if (marks.some(([, mark]) => !MARKS.some((m) => m.key === mark))) return { code: 'success_rate_mark_kind' };
+	if (marks.length === 0 && !attempt.blanks?.length) return { code: 'success_rate_no_marks' };
+	if (attempt.blanks && !blanksFit(attempt, phaseIds)) return { code: 'success_rate_blanks' };
+	if (!whoFits(action, attempt.who)) {
+		return { code: perPerson(action.category) ? 'success_rate_member_not_in_action' : 'success_rate_empty_squad' };
+	}
+	if (!isDate(attempt.date)) return { code: 'success_rate_date' };
+	if (!PRACTICE_KINDS.includes(attempt.practice)) return { code: 'success_rate_no_such_practice' };
+	if ((attempt.practice === 'runThrough') !== (attempt.runThroughId !== undefined)) return { code: 'success_rate_run_through_id' };
 	const at = attempt.runThroughStartedAt;
 	if (at !== undefined && (attempt.practice !== 'runThrough' || !Number.isSafeInteger(at) || at < 0))
-		return '全上開的時間不對';
-	if (attempt.practice === 'runThrough' && !attempt.whole) return '全上記的每一次都算整個做';
+		return { code: 'success_rate_run_through_started' };
+	if (attempt.practice === 'runThrough' && !attempt.whole) return { code: 'success_rate_run_through_whole' };
 	return null;
 }
 
@@ -489,8 +491,8 @@ function isDate(text: string): boolean {
 }
 
 /** 環節標的拍的規則：只有音樂段能標；其他（整拍、整數拍、在動作裡面）在 beat-range。 */
-export function beatsProblem(segment: Segment, action: Action, beats: BeatRange): string | null {
-	if (segment.kind !== 'music') return '口號段不數拍，不能標環節的拍';
+export function beatsProblem(segment: Segment, action: Action, beats: BeatRange): Why | null {
+	if (segment.kind !== 'music') return { code: 'success_rate_chant_beats' };
 	return rangeProblem('phase', action, beats);
 }
 
@@ -500,16 +502,16 @@ export function squadPeople(flow: Flow, action: Action, squad: string): Member[]
 }
 
 /**
- * 組的名字：「第 1 組 小美」，後面是組裡任務角色是上層的人；沒有上層用主底，也沒有主底就用組裡第一個人
- * （好幾個都照名單順序用第一個）。組裡沒有人就只叫「第 1 組」。
+ * 組的名字（畫面照語言寫）：「第 1 組 小美」，後面是組裡任務角色是上層的人；沒有上層用主底，也沒有主底就用組裡第一個人
+ * （好幾個都照名單順序用第一個）。組裡沒有人就只叫「第 1 組」。名字照教練取的。
  */
-export function squadName(flow: Flow, action: Action, squad: string): string {
+export function squadWhy(flow: Flow, action: Action, squad: string): Why {
 	const people = squadPeople(flow, action, squad);
 	const withRole = (role: string) =>
 		people.find((member) => action.members.some((m) => m.memberId === member.id && m.squad === squad && m.role === role));
 	const who = withRole('上層') ?? withRole('主底') ?? people[0];
 	const n = squadNumber(action, squad);
-	return who ? `第 ${n} 組 ${who.name}` : `第 ${n} 組`;
+	return who ? { code: 'success_rate_squad_named', n, name: who.name } : { code: 'success_rate_squad', n };
 }
 
 /** 流程裡全部環節的 id（發新 id 時用）。 */

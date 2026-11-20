@@ -10,18 +10,23 @@ import {
 	type ActionChanges,
 	type NewActionInput
 } from './action-types';
+import { actionWhy } from './action-types';
 import { cueFallout, cueProblem } from './cues';
 import { positionsAt } from './formation';
 import { stackedMembers } from './hints';
 import type { Member } from './members';
 import { memberName, type Flow } from './flow';
-import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
-import { roleGlossary } from './roles';
+import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { roleGlossary, roleWhy } from './roles';
+import { joined, said, type Why } from './why';
 import { falloutQuestion, settle, type CueFallout, type Settled } from './settle';
 import { allSquadIds, squadProblem, squadsOf, withSquadOrder } from './success-rate';
 import { newId } from './ids';
 import { tooLong } from './text-length';
-import { atTextWithUnit, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthTextWithUnit, sizeText, toPosition, toSeconds, unitSec, units } from './time';
+import { atWhy, EPS, HALF_BEATS_PER_EIGHT, lengthText, lengthWhy, sizeWhy, toPosition, toSeconds, unitSec, units } from './time';
+
+/** 找不到動作（id 不在流程裡、或它的段不見了）。 */
+const NOT_FOUND: Why = { code: 'actions_not_found' };
 
 /** 新增動作，回傳新動作的 id。人可以帶著別的動作的組（從別的動作複製人）：照號碼對，發新的組 id（見 settle）。 */
 export function addAction(flow: Flow, input: NewActionInput): CommandResult<{ id: string }> {
@@ -77,7 +82,7 @@ export function changeAction(
 	options: ConfirmOption = {}
 ): (Settled & { kind: 'ok'; old: Action; cues: CueFallout | null }) | (Settled & { kind: 'blocked' }) {
 	const old = flow.actions.find((a) => a.id === id);
-	if (!old) return { kind: 'blocked', message: '找不到這個動作' };
+	if (!old) return { kind: 'blocked', ...said(NOT_FOUND) };
 	let action = normalize({ ...old, ...changes, id });
 	const from = flow.segments.find((s) => s.id === old.segmentId);
 	const to = flow.segments.find((s) => s.id === action.segmentId);
@@ -99,7 +104,7 @@ export function moveAction(
 ): CommandResult {
 	const at = unitAt(flow, id, startSec);
 	const action = flow.actions.find((a) => a.id === id);
-	if (at === null || !action) return blocked('找不到這個動作');
+	if (at === null || !action) return blocked(NOT_FOUND);
 	const end = segmentEnd(flow, action);
 	const length = at < end ? Math.min(action.length, end - at) : action.length;
 	return updateAction(flow, id, { start: at, length }, options);
@@ -115,7 +120,7 @@ export function resizeAction(
 	const at = unitAt(flow, id, endSec);
 	const action = flow.actions.find((a) => a.id === id);
 	return at === null || !action
-		? blocked('找不到這個動作')
+		? blocked(NOT_FOUND)
 		: updateAction(flow, id, { length: Math.min(at, segmentEnd(flow, action)) - action.start }, options);
 }
 
@@ -136,9 +141,12 @@ function unitAt(flow: Flow, id: string, sec: number): number | null {
 /** 刪動作。有紀錄先回「要確認」，寫會清掉幾次；帶 { confirmed: true } 再送一次才刪。 */
 export function deleteAction(flow: Flow, id: string, options: ConfirmOption = {}): CommandResult {
 	const action = flow.actions.find((a) => a.id === id);
-	if (!action) return blocked('找不到這個動作');
+	if (!action) return blocked(NOT_FOUND);
 	const count = action.successRate?.records.length ?? 0;
-	if (count && !answered(options)) return needsConfirm(`刪掉動作「${actionLabel(action)}」會清掉 ${count} 次紀錄${RECORDS_UNDOABLE}`, []);
+	if (count && !answered(options)) {
+		const code = count === 1 ? 'actions_delete_records_one' : 'actions_delete_records';
+		return needsConfirm({ code, action: actionWhy(action), count, undoable: RECORDS_UNDOABLE_WHY }, []);
+	}
 	return ok({ ...flow, actions: flow.actions.filter((a) => a.id !== id) });
 }
 
@@ -155,8 +163,8 @@ export function setSquad(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
-	if (!action || !flow.segments.some((s) => s.id === action.segmentId)) return blocked('找不到這個動作');
-	if (memberIds.some((id) => !action.members.some((m) => m.memberId === id))) return blocked('這個隊員不在動作裡');
+	if (!action || !flow.segments.some((s) => s.id === action.segmentId)) return blocked(NOT_FOUND);
+	if (memberIds.some((id) => !action.members.some((m) => m.memberId === id))) return blocked({ code: 'actions_member_not_in_action' });
 	const problem = squad === null ? null : squadProblem(action, squad);
 	if (problem) return blocked(problem);
 	const own = squadsOf(action);
@@ -179,40 +187,39 @@ export function setSquad(
 /** 檢查動作、收尾：大類、段、時間、拍點先檢查，再收尾（成功率規則在裡面），最後檢查人。 */
 function checked(flow: Flow, before: Action | undefined, action: Action, options: ConfirmOption): Settled {
 	const shape = textProblem(before, action) ?? shapeProblem(flow, action);
-	if (shape) return { kind: 'blocked', message: shape };
+	if (shape) return { kind: 'blocked', ...said(shape) };
 	const settled = settle(flow, before, action, options);
 	if (settled.kind === 'blocked') return settled;
 	const people = peopleProblem(flow, settled.action);
-	return people ? { kind: 'blocked', message: people } : settled;
+	return people ? { kind: 'blocked', ...said(people) } : settled;
 }
 
 /** 名稱、備註太長；開檔進來就超過上限的照收，改了不能更長（N08）。 */
-function textProblem(before: Action | undefined, action: Action): string | null {
+function textProblem(before: Action | undefined, action: Action): Why | null {
 	return tooLong('actionName', action.name, before?.name) ?? tooLong('note', action.note, before?.note);
 }
 
 /** 動作的大類、段、時間、拍點哪裡不行（給教練看的原因）；沒問題是 null。 */
-export function shapeProblem(flow: Flow, action: Action): string | null {
-	if (!ACTION_CATEGORIES.some((c) => c.key === action.category)) return '請選大類';
+export function shapeProblem(flow: Flow, action: Action): Why | null {
+	if (!ACTION_CATEGORIES.some((c) => c.key === action.category)) return { code: 'actions_pick_category' };
 	const segment = flow.segments.find((s) => s.id === action.segmentId);
-	if (!segment) return '找不到這一段';
-	const music = segment.kind === 'music';
+	if (!segment) return { code: 'actions_no_segment' };
 	if (!Number.isInteger(action.start) || !Number.isInteger(action.length)) {
-		return music ? '音樂段的時間要落在半拍上' : '口號段的時間最細 0.1 秒';
+		return { code: segment.kind === 'music' ? 'actions_music_half_beat' : 'actions_chant_tenths' };
 	}
-	if (action.start < 0) return '動作的開始不能在段之前';
+	if (action.start < 0) return { code: 'actions_start_before' };
 	if (action.length < 1) {
-		const max = lengthText(segment, Math.max(1, units(segment) - action.start));
-		return `動作長度要在 ${lengthText(segment, 1)} 到 ${max} ${music ? '拍' : '秒'}之間`;
+		const max = lengthWhy(segment, Math.max(1, units(segment) - action.start));
+		return { code: 'actions_length_range', min: lengthText(segment, 1), max };
 	}
-	if (action.start >= units(segment)) return `動作的開始在段外：這段只有 ${sizeText(segment)}`;
+	if (action.start >= units(segment)) return { code: 'actions_start_outside', size: sizeWhy(segment) };
 	if (action.start + action.length > units(segment)) {
 		// 最後一段後面沒有段可以拆：寫還剩多長。
 		const room = units(segment) - action.start;
-		if (flow.segments.at(-1) !== segment || room < 1) return '動作不能跨段，要跨就拆成兩個';
-		return `超過這段的結尾，最多 ${lengthTextWithUnit(segment, room)}`;
+		if (flow.segments.at(-1) !== segment || room < 1) return { code: 'actions_across' };
+		return { code: 'actions_over_end', length: lengthWhy(segment, room) };
 	}
-	if (action.members.length === 0) return '一個動作至少要有 1 個人';
+	if (action.members.length === 0) return { code: 'actions_no_members' };
 	for (const cue of action.cues ?? []) {
 		const problem = cueProblem(segment, action, cue);
 		if (problem) return problem;
@@ -224,35 +231,36 @@ export function shapeProblem(flow: Flow, action: Action): string | null {
  * 動作裡的人哪裡不行（找不到、重複、沒有這個任務角色、同一時間在別的動作裡）；沒問題是 null。
  * 重疊時寫撞到的動作在哪裡結束（在前面的）或從哪裡開始（在後面的），教練知道要挪到哪裡。
  */
-function peopleProblem(flow: Flow, action: Action): string | null {
+function peopleProblem(flow: Flow, action: Action): Why | null {
 	const roles = roleGlossary(flow).map((r) => r.name);
 	const seen = new Set<string>();
 	for (const { memberId, role } of action.members) {
-		if (!flow.members.some((m) => m.id === memberId)) return '找不到這個隊員';
-		if (seen.has(memberId)) return '同一個人只能放一次';
+		if (!flow.members.some((m) => m.id === memberId)) return { code: 'actions_member_not_found' };
+		// 跟流程檢查（flow-check.ts）一字不差，同一個代號
+		if (seen.has(memberId)) return { code: 'flow_check_twice' };
 		seen.add(memberId);
-		if (role !== null && !roles.includes(role)) return `沒有「${role}」這個任務角色`;
+		if (role !== null && !roles.includes(role)) return { code: 'flow_check_no_role', role: roleWhy(role) };
 	}
 	// 列出所有重疊的人（照撞到的動作分開寫），教練一次改完。
-	const clashes: string[] = [];
+	const clashes: Why[] = [];
 	for (const other of flow.actions) {
 		if (other.id === action.id || !overlaps(other, action)) continue;
 		const shared = action.members.filter((m) => other.members.some((o) => o.memberId === m.memberId));
 		if (shared.length) {
-			const names = shared.map((m) => memberName(flow, m.memberId)).join('、');
-			clashes.push(`${names} 同一時間已經在「${actionLabel(other)}」裡：${whereOther(flow, other, action)}`);
+			const names = joined('members_list', shared.map((m) => memberName(flow, m.memberId)));
+			clashes.push({ code: 'actions_clash', names, action: actionWhy(other), where: whereOther(flow, other, action) });
 		}
 	}
-	return clashes.length ? clashes.join('；') : null;
+	return clashes.length ? joined('members_problems', clashes) : null;
 }
 
 /** 撞到的動作 other 在 action 前面：「上一個動作在 3-1& 才結束」；在後面：「下一個動作從 4-1 就開始」。 */
-function whereOther(flow: Flow, other: Action, action: Action): string {
+function whereOther(flow: Flow, other: Action, action: Action): Why {
 	const segment = flow.segments.find((s) => s.id === other.segmentId)!;
 	// 音樂段「2-1& 才結束」，口號段「3.5 秒 才結束」
 	return other.start <= action.start
-		? `上一個動作在 ${atTextWithUnit(segment, other.start + other.length)} 才結束`
-		: `下一個動作從 ${atTextWithUnit(segment, other.start)} 就開始`;
+		? { code: 'actions_previous_ends', at: atWhy(segment, other.start + other.length) }
+		: { code: 'actions_next_starts', at: atWhy(segment, other.start) };
 }
 
 /** 動作不能跨段，所以只有同一段、段內時間有交集才會重疊。 */

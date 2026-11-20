@@ -1,5 +1,7 @@
 // 字數上限：所有打字的欄位共用一個算法，照看得到的字算（一個中文字、一個家庭 emoji 都算一個）。
 
+import type { Why, WhyCode } from './why';
+
 /** 每種欄位最多幾個字。 */
 export const MAX_CHARS = {
 	flowName: 40,
@@ -13,14 +15,15 @@ export const MAX_CHARS = {
 
 export type LimitedText = keyof typeof MAX_CHARS;
 
-const LABELS: Record<LimitedText, string> = {
-	flowName: '流程名字',
-	memberName: '隊員名字',
-	actionName: '動作名稱',
-	formationName: '站位名稱',
-	roleName: '任務角色名稱',
-	bookmarkName: '書籤名字',
-	note: '備註'
+/** 原因裡的欄位名（代號，見 why.ts）。 */
+const LABELS: Record<LimitedText, WhyCode> = {
+	flowName: 'text_length_flow_name',
+	memberName: 'text_length_member_name',
+	actionName: 'text_length_action_name',
+	formationName: 'text_length_formation_name',
+	roleName: 'text_length_role_name',
+	bookmarkName: 'text_length_bookmark_name',
+	note: 'text_length_note'
 };
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -62,11 +65,12 @@ export function charLimit(field: LimitedText, before = ''): number {
  * 太長時的原因（「動作名稱最多 20 個字」）；沒超過是 null。頭尾空白不算。
  * before：改之前的字。照 HTML 的 tooLong：舊的字超過上限照收，但這次的改動不能讓它更長（N08）。
  */
-export function tooLong(field: LimitedText, text: string, before = ''): string | null {
+export function tooLong(field: LimitedText, text: string, before = ''): Why | null {
 	const max = MAX_CHARS[field];
 	const limit = charLimit(field, before);
 	if (charCount(text.trim()) <= limit) return null;
+	const label: Why = { code: LABELS[field] };
 	return limit > max
-		? `${LABELS[field]}最多 ${max} 個字（原本就有 ${limit} 個字，不能再變長）`
-		: `${LABELS[field]}最多 ${max} 個字`;
+		? { code: 'text_length_too_long_kept', field: label, max, count: limit }
+		: { code: 'text_length_too_long', field: label, max };
 }

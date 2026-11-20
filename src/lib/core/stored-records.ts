@@ -6,6 +6,7 @@ import type { Action } from './action-types';
 import type { Flow } from './flow';
 import { isRandomId } from './ids';
 import { attemptProblem, perPerson, type Attempt } from './success-rate';
+import { said, type Said, type Why } from './why';
 
 /** 分開存的一次：記在哪個動作、那一次。 */
 export interface StoredAttempt {
@@ -13,8 +14,8 @@ export interface StoredAttempt {
 	attempt: Attempt;
 }
 
-/** 檢查的結果：照收（記號可能丟掉幾個），或整筆不存和原因。 */
-export type CheckedAttempt = { kind: 'ok'; record: StoredAttempt } | { kind: 'dropped'; message: string };
+/** 檢查的結果：照收（記號可能丟掉幾個），或整筆不存和原因（記一次的規則擋的多帶 why，見 why.ts）。 */
+export type CheckedAttempt = { kind: 'ok'; record: StoredAttempt } | ({ kind: 'dropped' } & Said);
 
 /**
  * 把分開存的紀錄放回流程：每個記成功率的動作的紀錄換成給的那些（照給的順序）。
@@ -45,7 +46,7 @@ export function takeRecords(flow: Flow): { flow: Flow; records: StoredAttempt[] 
  * 一次的 id、全上 id 是手機發的亂數（ADR 0011、0014）。
  */
 export function checkRecord(flow: Flow, record: StoredAttempt): CheckedAttempt {
-	const dropped = (message: string): CheckedAttempt => ({ kind: 'dropped', message });
+	const dropped = (reason: string | Why): CheckedAttempt => ({ kind: 'dropped', ...said(reason) });
 	const { actionId, attempt } = record;
 	if (!isRandomId(attempt.id) || (attempt.runThroughId !== undefined && !isRandomId(attempt.runThroughId)))
 		return dropped('一次的 id 不對');

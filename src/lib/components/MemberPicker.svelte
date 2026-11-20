@@ -5,9 +5,11 @@
 	// 選到的人是在播放頭新增動作的人，也是場上整組拖的那一組。
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
+	import { m } from '#lib/paraglide/messages.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
-		actionLabel,
+		actionWhy,
 		memberGroup,
 		memberName,
 		previousActions,
@@ -24,10 +26,10 @@
 
 	/** empty：選不到人時寫的原因。 */
 	const GROUPS: { group: MemberGroup; label: string; empty: string }[] = [
-		{ group: 'all', label: '全隊', empty: '還沒有隊員' },
-		{ group: 'base', label: '全部底層', empty: '沒有全局角色是底層的隊員' },
-		{ group: 'top', label: '全部上層', empty: '沒有全局角色是上層的隊員' },
-		{ group: 'idle', label: '這一拍沒在動作裡的人', empty: '這一拍每個人都在動作裡' }
+		{ group: 'all', label: m.eight_count_whole_team(), empty: m.selection_no_members() },
+		{ group: 'base', label: m.selection_all_bases(), empty: m.selection_no_bases() },
+		{ group: 'top', label: m.selection_all_tops(), empty: m.selection_no_tops() },
+		{ group: 'idle', label: m.selection_idle(), empty: m.selection_no_idle() }
 	];
 
 	/** 「沿用上一個動作的人」這次要拿第幾個候選；播放頭一動就從最晚結束的重來。 */
@@ -47,22 +49,25 @@
 	}
 
 	const names = $derived(selected.map((id) => memberName(flow, id)).filter(Boolean));
+	/** 選到的人的名字接成一串（「、」或「, 」照語言）。 */
+	const nameList = $derived(names.length ? joinText(names) : '');
 
 	function previous() {
 		const candidates = previousActions(flow, playback.sec);
-		if (candidates.length === 0) return say('播放頭前面還沒有動作');
+		if (candidates.length === 0) return say(m.selection_no_previous());
 		if (cycle.sec !== playback.sec) cycle = { sec: playback.sec, index: 0 };
 		const action = candidates[cycle.index % candidates.length];
 		cycle.index += 1;
-		const more = candidates.length > 1 ? '（再按一次換更早的動作）' : '';
-		pick(action.members.map((m) => m.memberId), `選了「${actionLabel(action)}」的 ${action.members.length} 人${more}`, '');
+		const picked = { action: whyText(actionWhy(action)), n: action.members.length };
+		const text = candidates.length > 1 ? m.selection_previous_more(picked) : m.selection_previous(picked);
+		pick(action.members.map((member) => member.memberId), text, '');
 	}
 </script>
 
 <section class="picker">
 	<header>
-		<h3>選人</h3>
-		{#if names.length}<button type="button" class="link" onclick={() => select([])}>不選人</button>{/if}
+		<h3>{m.selection_title()}</h3>
+		{#if names.length}<button type="button" class="link" onclick={() => select([])}>{m.selection_clear()}</button>{/if}
 	</header>
 	<div class="chips">
 		{#each GROUPS as g (g.group)}
@@ -70,15 +75,15 @@
 				>{g.label}</button
 			>
 		{/each}
-		<button type="button" onclick={previous}>沿用上一個動作的人</button>
+		<button type="button" onclick={previous}>{m.selection_same_as_previous()}</button>
 	</div>
 	<!-- 說明和選人摘要各固定一行（太長用…，滑鼠移上去看全部）：按了鈕不會把下面的表單往下推 -->
 	<div class="said">{#if message}<p class="muted" role="status" title={message}>{message}</p>{/if}</div>
-	<p class="picked" class:none={!names.length} title={names.join('、')}>
-		選了 {names.length} 人{names.length ? `：${names.join('、')}` : ''}
+	<p class="picked" class:none={!names.length} title={nameList}>
+		{names.length ? m.selection_count_names({ n: names.length, names: nameList }) : m.selection_count({ n: 0 })}
 	</p>
 	<p class="muted">
-		場上點人、拖空白處框選，或點泳道上的名字。要選好幾個人：{touchScreen ? '打開場地左邊的「多選」再點' : '按住 Shift 點'}。
+		{touchScreen ? m.selection_hint_touch() : m.selection_hint_mouse()}
 	</p>
 </section>
 

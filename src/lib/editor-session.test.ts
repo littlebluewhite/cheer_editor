@@ -28,7 +28,8 @@ import {
 	type Mark
 } from '#lib/core';
 import { flowOf, libSample, ratedSample, squadNumbers } from '#lib/test-flows.js';
-import { EditorSession, VIEW_ONLY } from './editor-session.svelte.js';
+import { EditorSession } from './editor-session.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
 function sampleFlow(): Flow {
@@ -530,12 +531,12 @@ describe('編輯 session：檢視模式', () => {
 		const before = s.flow;
 		const asked = s.changeAsk();
 		asked.send({ name: 'renameFlow', args: ['區賽'] });
-		expect(asked.error).toBe(VIEW_ONLY);
+		expect(asked.error).toBe(m.session_view_only());
 		s.ask.send({ name: 'renameFlow', args: ['區賽'] });
-		expect(s.notice).toBe(VIEW_ONLY);
+		expect(s.notice).toBe(m.session_view_only());
 		s.notice = '';
 		expect(s.undo()).toBe(false);
-		expect(s.notice).toBe(VIEW_ONLY);
+		expect(s.notice).toBe(m.session_view_only());
 		expect(s.flow).toBe(before);
 		recordOnce(s);
 		expect(records(s)).toBe(1);

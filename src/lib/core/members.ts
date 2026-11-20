@@ -1,17 +1,18 @@
 // 隊員名單：加隊員、改隊員、排順序、刪隊員。
 
-import { actionLabel, type Action } from './action-types';
+import { actionWhy, type Action } from './action-types';
 import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
-import { RECORDS_UNDOABLE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE_WHY, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { newIds } from './ids';
-import { FIXED_ROLES } from './roles';
+import { FIXED_ROLES, roleWhy } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
-import { fromText, segmentSpans } from './time';
+import { joined, zh, type Why, type WhyParam } from './why';
+import { fromWhy, labelWhy, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
 export const MAX_MEMBERS = 40;
@@ -20,16 +21,16 @@ export type Gender = 'F' | 'M';
 /** 全局角色：底層或上層，教練自己選，不依性別帶入。 */
 export type GlobalRole = 'base' | 'top';
 
-/** 性別，流程檔存英文代號。 */
-export const GENDERS: { key: Gender; label: string }[] = [
-	{ key: 'F', label: '女' },
-	{ key: 'M', label: '男' }
+/** 性別，流程檔存英文代號；label 是代號（畫面照語言寫）。 */
+export const GENDERS: { key: Gender; label: Why }[] = [
+	{ key: 'F', label: { code: 'members_gender_f' } },
+	{ key: 'M', label: { code: 'members_gender_m' } }
 ];
 
-/** 全局角色，流程檔存英文代號。 */
-export const GLOBAL_ROLES: { key: GlobalRole; label: string }[] = [
-	{ key: 'base', label: '底層' },
-	{ key: 'top', label: '上層' }
+/** 全局角色，流程檔存英文代號；label 跟任務角色底層、上層同一個代號（畫面照語言寫）。 */
+export const GLOBAL_ROLES: { key: GlobalRole; label: Why }[] = [
+	{ key: 'base', label: { code: 'role_base' } },
+	{ key: 'top', label: { code: 'role_top' } }
 ];
 
 export interface Member {
@@ -49,7 +50,7 @@ export interface NewMemberInput {
 
 /** 加隊員多帶的結果：沒加進去的那幾行的原因，和那幾行原本的字（畫面留在輸入框給教練改）。 */
 export interface AddMembersResult {
-	errors: string[];
+	errors: Why[];
 	rejected: string[];
 }
 
@@ -58,7 +59,7 @@ interface Entry {
 	text: string;
 	name: string;
 	input: NewMemberInput | null;
-	problems: string[];
+	problems: Why[];
 }
 
 /**
@@ -73,9 +74,11 @@ export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<
 
 /**
  * 貼上的名單加隊員：每一行是「名字」（用表單選的性別、全局角色）或「名字、性別、全局角色」三欄。
- * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白）。
- * 性別認男、女、男生、女生、M、F；全局角色認底層、上層、base、top、飛人（英文不分大小寫）。
- * 全局角色寫成主底、後保這類任務角色：擋下並說明。三欄的行不用表單選的。空行、標題列（第一欄是「名字」「姓名」「name」）跳過。
+ * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白），全局角色寫 top person 也算。
+ * 性別認男、女、男生、女生、M、F，和選單上寫的 female、male、女性、男性；全局角色認底層、上層、base、top、飛人，
+ * 和選單上寫的 top person、ベース、トップパーソン、トップ（英文不分大小寫）。
+ * 全局角色寫成主底、後保這類任務角色（英文、日文的 Back spot、バックスポット 也算）：擋下並說明。三欄的行不用表單選的。
+ * 空行、標題列（第一欄是「名字」「姓名」「name」「名前」、第二欄不是性別）跳過。
  * 見 addEntries。
  */
 export function addMemberLines(
@@ -86,17 +89,16 @@ export function addMemberLines(
 	const entries = text.split('\n').flatMap((line): Entry[] => {
 		if (!line.trim()) return [];
 		const cols = columns(line);
-		if (cols.length > 1 && NAME_HEADERS.has(cols[0].toLowerCase())) return [];
+		if (cols.length > 1 && NAME_HEADERS.has(cols[0].toLowerCase()) && !genderOf(cols[1])) return [];
 		const entry: Entry = { text: line, name: cols[0], input: null, problems: [] };
 		if (cols.length === 1) entry.input = { name: cols[0], ...defaults };
-		else if (cols.length !== 3) entry.problems.push('一行寫一個名字，或「名字、性別、全局角色」三欄（用 Tab、空白或逗號隔開）');
+		else if (cols.length !== 3) entry.problems.push({ code: 'members_line_columns' });
 		else {
 			const gender = genderOf(cols[1]);
 			const globalRole = globalRoleOf(cols[2]);
-			if (!gender) entry.problems.push('性別要寫「男」或「女」');
+			if (!gender) entry.problems.push({ code: 'members_line_gender' });
 			if (!globalRole) {
-				const task = FIXED_ROLES.some((r) => r.name === cols[2]) ? `「${cols[2]}」是任務角色（每個動作各自設），` : '';
-				entry.problems.push(`${task}全局角色要寫「底層」或「上層」`);
+				entry.problems.push(isTaskRole(cols[2]) ? { code: 'members_line_task_role', role: cols[2] } : { code: 'members_line_global_role' });
 			}
 			if (gender && globalRole) entry.input = { name: cols[0], gender, globalRole };
 		}
@@ -106,11 +108,57 @@ export function addMemberLines(
 }
 
 /** 貼上名單認得的性別寫法（英文比小寫）。 */
-const GENDER_WORDS: Record<string, Gender> = { 女: 'F', 女生: 'F', f: 'F', 男: 'M', 男生: 'M', m: 'M' };
+const GENDER_WORDS: Record<string, Gender> = {
+	女: 'F',
+	女生: 'F',
+	f: 'F',
+	female: 'F',
+	女性: 'F',
+	男: 'M',
+	男生: 'M',
+	m: 'M',
+	male: 'M',
+	男性: 'M'
+};
 /** 貼上名單認得的全局角色寫法（英文比小寫）。 */
-const GLOBAL_ROLE_WORDS: Record<string, GlobalRole> = { 底層: 'base', base: 'base', 上層: 'top', top: 'top', 飛人: 'top' };
+const GLOBAL_ROLE_WORDS: Record<string, GlobalRole> = {
+	底層: 'base',
+	base: 'base',
+	ベース: 'base',
+	上層: 'top',
+	top: 'top',
+	飛人: 'top',
+	'top person': 'top',
+	トップパーソン: 'top',
+	トップ: 'top'
+};
+/** 貼上名單認得的固定任務角色的英文、日文寫法（英文比小寫；要跟 messages/en.json、ja.json 的 role_* 一樣，有測試）：寫在全局角色那一欄要擋下說明。 */
+const TASK_ROLE_WORDS = new Set([
+	'primary base',
+	'side base',
+	'shoulder stand base',
+	'middle layer',
+	'third layer',
+	'bracer',
+	'spotter',
+	'front spot',
+	'back spot',
+	'catcher',
+	'tumbler',
+	'メインベース',
+	'サイドベース',
+	'グランドベース',
+	'ミドル層',
+	'ハイトップ',
+	'ブレイサー',
+	'スポッター',
+	'フロントスポット',
+	'バックスポット',
+	'キャッチャー',
+	'タンブラー'
+]);
 /** 標題列的第一欄。 */
-const NAME_HEADERS = new Set(['名字', '姓名', 'name']);
+const NAME_HEADERS = new Set(['名字', '姓名', 'name', '名前']);
 
 function genderOf(word: string): Gender | null {
 	return Object.hasOwn(GENDER_WORDS, word.toLowerCase()) ? GENDER_WORDS[word.toLowerCase()] : null;
@@ -120,15 +168,29 @@ function globalRoleOf(word: string): GlobalRole | null {
 	return Object.hasOwn(GLOBAL_ROLE_WORDS, word.toLowerCase()) ? GLOBAL_ROLE_WORDS[word.toLowerCase()] : null;
 }
 
+/** 固定的任務角色（中文名，或英文、日文的寫法）。 */
+function isTaskRole(word: string): boolean {
+	return FIXED_ROLES.some((r) => r.name === word) || TASK_ROLE_WORDS.has(word.toLowerCase());
+}
+
 /**
  * 一行切成幾欄：有 Tab 用 Tab 切，有逗號用逗號切；只有空白時，至少三段、而且最後兩段像性別或全局角色
- * （或任務角色、標題列）才切成「名字、性別、全局角色」，不然整行是名字。
+ * （或任務角色、標題列）才切成「名字、性別、全局角色」，不然整行是名字。標題列（後面沒有性別的字）每個字一欄（跳過用）；
+ * 性別後面是兩個字以上的全局角色或任務角色（top person、Back spot）就併成一欄。
  */
 function columns(line: string): string[] {
 	if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
 	if (/[,，]/.test(line)) return line.split(/[,，]/).map((c) => c.trim());
 	const words = line.trim().split(/\s+/);
 	if (words.length < 3) return [line.trim()];
+	// 標題列（Name Gender Main role）：第一個字是標題、後面沒有性別的字
+	if (NAME_HEADERS.has(words[0].toLowerCase()) && !words.slice(1).some(genderOf)) return words;
+	// 性別後面是兩個字以上的全局角色或任務角色（top person、Back spot）才併成一欄；認不得的照舊（名字裡可以有 M、F 這種縮寫）。
+	// 英文、日文的任務角色只在性別後面才算（姓可以是 Catcher 這種字）
+	const g = words.findLastIndex((w, i) => i > 0 && genderOf(w));
+	const tail = words.slice(g + 1).join(' ');
+	if (g > 0 && g < words.length - 2 && (globalRoleOf(tail) || isTaskRole(tail)))
+		return [words.slice(0, g).join(' '), words[g], words.slice(g + 1).join(' ')];
 	const [gender, role] = words.slice(-2);
 	const looksLike =
 		genderOf(gender) ||
@@ -146,36 +208,39 @@ function columns(line: string): string[] {
  * 新人在每一張站位各自排進那一張最靠近場地中間的空格點（不跟那一張現有的人疊到）；格點都有人了才排場外。
  */
 function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResult> {
-	if (!entries.length) return blocked('請填隊員名字');
+	if (!entries.length) return blocked({ code: 'members_no_name' });
 	for (const e of entries) {
 		if (!e.input) continue;
 		const { name, gender, globalRole } = e.input;
 		const problem = memberNameProblem(name.trim());
 		if (problem) e.problems.push(problem);
-		if (!gender) e.problems.push('請選性別');
-		if (!globalRole) e.problems.push('請選全局角色');
+		if (!gender) e.problems.push({ code: 'members_pick_gender' });
+		if (!globalRole) e.problems.push({ code: 'members_pick_global_role' });
 	}
 	const bad = entries.filter((e) => e.problems.length);
 	// 一樣的錯寫一次：名字列在一起；每個人都一樣（或沒名字）就不寫名字。
 	// 不用 Map.groupBy：舊一點的 iPad Safari 沒有。
-	const same = new Map<string, Entry[]>();
+	const same = new Map<string, { problem: Why; group: Entry[] }>();
 	for (const e of bad) {
-		const problem = e.problems.join('；');
-		same.set(problem, [...(same.get(problem) ?? []), e]);
+		const problem = joined('members_problems', e.problems);
+		const key = zh(problem);
+		same.set(key, { problem, group: [...(same.get(key)?.group ?? []), e] });
 	}
-	const errors = [...same].map(([problem, group]) => {
+	const errors = [...same.values()].map(({ problem, group }): Why => {
 		const named = group.filter((e) => e.name);
-		return group.length === entries.length || named.length < group.length
-			? problem
-			: `${named.map((e) => `「${shortName(e.name)}」`).join('、')}：${problem}`;
+		if (group.length === entries.length || named.length < group.length) return problem;
+		const names = named.map((e): Why => ({ code: 'members_quoted', name: shortName(e.name) }));
+		return { code: 'members_named', names: joined('members_list', names), problem };
 	});
 	const left = MAX_MEMBERS - flow.members.length;
 	if (entries.length > left) {
 		errors.push(
-			left ? `一支流程最多 ${MAX_MEMBERS} 人，這次加 ${entries.length} 人，只能再加 ${left} 人` : `一支流程最多 ${MAX_MEMBERS} 人，已經滿了`
+			left
+				? { code: 'members_too_many', max: MAX_MEMBERS, count: entries.length, left }
+				: { code: 'members_full', max: MAX_MEMBERS }
 		);
 	}
-	if (bad.length === entries.length || entries.length > left) return blocked(errors.join('\n'));
+	if (bad.length === entries.length || entries.length > left) return blocked(joined('members_lines', errors));
 
 	const good = entries.filter((e) => !e.problems.length);
 	const ids = newIds('m', good.length, flow.members.map((m) => m.id));
@@ -224,7 +289,7 @@ export function updateMember(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const member = flow.members.find((m) => m.id === id);
-	if (!member) return blocked('找不到這個隊員');
+	if (!member) return blocked({ code: 'members_not_found' });
 	const updated = { ...member, ...changes, name: (changes.name ?? member.name).trim() };
 	// 名字有改才檢查：開檔進來名字太長的人還是可以改性別和全局角色。
 	const problem = updated.name === member.name ? null : memberNameProblem(updated.name, member.name);
@@ -235,8 +300,16 @@ export function updateMember(
 	if (mine.length && !answered(options)) {
 		const count = mine.reduce((n, s) => n + s.records.length, 0);
 		return needsChoice(
-			`${member.name} 改名成「${updated.name}」，他在的組和他自己有 ${count} 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算${RECORDS_UNDOABLE}`,
-			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
+			{
+				code: count === 1 ? 'members_rename_records_one' : 'members_rename_records',
+				name: member.name,
+				newName: updated.name,
+				count,
+				undoable: RECORDS_UNDOABLE_WHY
+			},
+			mine.flatMap((s) =>
+				recordItems(flow, s.before, s.records).map((item): Why => ({ code: 'members_record_item', action: actionWhy(s.before), item }))
+			)
 		);
 	}
 	const actions = options.records === 'clear' && mine.length ? swapped.map((s) => s.action) : flow.actions;
@@ -268,9 +341,9 @@ function replaced(flow: Flow, before: Action, id: string): { before: Action; act
  */
 export function moveMember(flow: Flow, id: string, to: number): CommandResult {
 	const from = flow.members.findIndex((m) => m.id === id);
-	if (from === -1) return blocked('找不到這個隊員');
-	if (to < 0) return blocked('已經是第一個了');
-	if (to >= flow.members.length) return blocked('已經是最後一個了');
+	if (from === -1) return blocked({ code: 'members_not_found' });
+	if (to < 0) return blocked({ code: 'members_first' });
+	if (to >= flow.members.length) return blocked({ code: 'members_last' });
 	if (to === from) return ok(flow);
 	return ok({ ...flow, members: flow.members.toSpliced(from, 1).toSpliced(to, 0, flow.members[from]) });
 }
@@ -291,7 +364,7 @@ export function deleteMember(
 	options: ConfirmOption = {}
 ): CommandResult {
 	const member = flow.members.find((m) => m.id === id);
-	if (!member) return blocked('找不到這個隊員');
+	if (!member) return blocked({ code: 'members_not_found' });
 	const inActions = flow.actions.filter((a) => a.members.some((m) => m.memberId === id));
 	const emptied = inActions.filter((a) => a.members.length === 1);
 	// 刪隊員跟在動作裡移人一樣：每個留下來的動作走收尾；他在的組還有人，那一組的紀錄照回答保留或清掉（只按確定是清掉）。
@@ -312,28 +385,45 @@ export function deleteMember(
 		// 一定清掉的（他自己的、整個刪掉的動作的）；換了人的組要問，不算在這裡。
 		const cleared = recordCount(flow.actions) - recordCount(actions) - changed;
 		const role = GLOBAL_ROLES.find((r) => r.key === member.globalRole)?.label;
-		const where = !inActions.length
-			? '他不在任何動作裡'
-			: `他在 ${inActions.length} 個動作裡` + (emptied.length ? `，其中 ${emptied.length} 個會被整個刪掉` : '');
+		const count = inActions.length;
+		const where: Why = !count
+			? { code: 'members_delete_in_none' }
+			: emptied.length
+				? { code: count === 1 ? 'members_delete_in_one_emptied' : 'members_delete_in_emptied', count, emptied: emptied.length }
+				: { code: count === 1 ? 'members_delete_in_one' : 'members_delete_in', count };
 		const lost = inActions.flatMap((a) => (emptied.includes(a) ? [] : lostRole(a, id)));
 		const after = flow.members.length - 1 - flow.members.indexOf(member);
+		// 後面接著的句子（各自帶開頭的標點），一句包下一句（more）。
+		const more: Why[] = [];
+		if (dropped) more.push({ code: dropped === 1 ? 'members_delete_cues_one' : 'members_delete_cues', count: dropped });
+		if (cleared) {
+			const code = cleared === 1 ? 'members_delete_records_one' : 'members_delete_records';
+			more.push({ code, count: cleared, undoable: RECORDS_UNDOABLE_WHY });
+		}
+		if (lost.length) more.push({ code: 'members_delete_lost', list: joined('members_list', lost) });
+		if (after && flow.markers !== 'initial') {
+			more.push({ code: after === 1 ? 'members_delete_renumber_one' : 'members_delete_renumber', count: after });
+		}
+		// 清掉重算的也是按復原會回來：前面寫過了就不重複
+		if (changed) more.push({ code: 'members_delete_changed', question: CHANGED_SQUADS_QUESTION, undoable: cleared ? '' : RECORDS_UNDOABLE_WHY });
 		return (changed ? needsChoice : needsConfirm)(
-			`刪掉隊員「${member.name}」（標記 ${memberMarkers(flow)[id]}、${role}）：${where}` +
-				(dropped ? `，會一起拿掉 ${dropped} 個拍點` : '') +
-				(cleared ? `，會清掉 ${cleared} 次紀錄${RECORDS_UNDOABLE}` : '') +
-				(lost.length ? `，${lost.join('、')}` : '') +
-				(after && flow.markers !== 'initial' ? `；後面 ${after} 個人的號碼會往前遞補` : '') +
-				// 清掉重算的也是按復原會回來：前面寫過了就不重複
-				(changed ? `；${CHANGED_SQUADS_QUESTION}${cleared ? '' : RECORDS_UNDOABLE}` : ''),
-			inActions.map((a) => {
+			{
+				code: 'members_delete',
+				name: member.name,
+				marker: memberMarkers(flow)[id],
+				role: role!,
+				where,
+				more: more.reduceRight<WhyParam>((rest, why) => ({ ...why, more: rest }), '')
+			},
+			inActions.map((a): Why => {
 				const span = spans.find((s) => s.segment.id === a.segmentId)!;
 				const mine = a.members.find((m) => m.memberId === id)!;
-				const what = emptied.includes(a)
-					? '：只有他，會整個刪掉'
-					: mine.role
-						? `：他是${mine.squad === undefined ? '' : `第 ${squadNumber(a, mine.squad)} 組的`}${mine.role}`
-						: '';
-				return `動作「${actionLabel(a)}」（${span.label} ${fromText(span.segment, a.start)}）${what}`;
+				const at = { action: actionWhy(a), segment: labelWhy(span), from: fromWhy(span.segment, a.start) };
+				if (emptied.includes(a)) return { code: 'members_delete_item_emptied', ...at };
+				if (!mine.role) return { code: 'members_delete_item', ...at };
+				const task = roleWhy(mine.role);
+				if (mine.squad === undefined) return { code: 'members_delete_item_role', ...at, role: task };
+				return { code: 'members_delete_item_squad_role', ...at, squad: squadNumber(a, mine.squad), role: task };
 			})
 		);
 	}
@@ -354,13 +444,17 @@ export function deleteMember(
  * 他走了，動作（分組的看他那一組）裡沒有別人是他的任務角色：「「技巧·Lib」第 1 組會沒有上層」；
  * 沒有任務、還有別人是那個角色、那一組只剩他（組會整個拿掉）：沒有。
  */
-function lostRole(action: Action, id: string): string[] {
+function lostRole(action: Action, id: string): Why[] {
 	const mine = action.members.find((m) => m.memberId === id)!;
 	if (!mine.role) return [];
 	const mates = action.members.filter((m) => m.memberId !== id && m.squad === mine.squad);
 	if (!mates.length || mates.some((m) => m.role === mine.role)) return [];
-	const squad = mine.squad === undefined ? '' : `第 ${squadNumber(action, mine.squad)} 組`;
-	return [`「${actionLabel(action)}」${squad}會沒有${mine.role}`];
+	const lost = { action: actionWhy(action), role: roleWhy(mine.role) };
+	return [
+		mine.squad === undefined
+			? { code: 'members_lost_role', ...lost }
+			: { code: 'members_lost_role_squad', ...lost, squad: squadNumber(action, mine.squad) }
+	];
 }
 
 /** 標記用什麼：號碼（名單第幾個）或開頭字（名字的第一個字）。 */
@@ -463,7 +557,7 @@ function samePlace(a: Position, b: Position): boolean {
 }
 
 /** 名字的毛病：空的、太長（before：改之前的名字，開檔進來就超過的可以留著，不能更長）；沒問題是 null。名字先去掉前後空白再傳進來。 */
-export function memberNameProblem(name: string, before?: string): string | null {
-	if (!name) return '請填隊員名字';
+export function memberNameProblem(name: string, before?: string): Why | null {
+	if (!name) return { code: 'members_no_name' };
 	return tooLong('memberName', name, before);
 }

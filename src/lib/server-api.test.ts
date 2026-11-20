@@ -2,7 +2,8 @@
 // 房間連不上時分得出被收回、被刪掉（不一直重連）。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FORMAT_VERSION, type Flow } from '#lib/core';
-import { FLOW_TOO_BIG, ServerUnreachable, httpServer } from '#lib/server-api.js';
+import { ServerUnreachable, httpServer } from '#lib/server-api.js';
+import { m } from '#lib/paraglide/messages.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -16,14 +17,14 @@ describe('傳上雲端：流程太大', () => {
 		const fetch = vi.fn();
 		vi.stubGlobal('fetch', fetch);
 		const made = await httpServer().uploadFlow(flowOfSize(16 * 1024 * 1024));
-		expect(made).toEqual({ message: FLOW_TOO_BIG });
+		expect(made).toEqual({ message: m.share_flow_too_big() });
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
 	it('伺服器回 413（例：算法不一樣）：也說太大，不說連不上', async () => {
 		vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 413 })));
 		const made = await httpServer().uploadFlow(flowOfSize(10));
-		expect(made).toEqual({ message: FLOW_TOO_BIG });
+		expect(made).toEqual({ message: m.share_flow_too_big() });
 	});
 });
 

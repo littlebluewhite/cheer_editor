@@ -9,6 +9,7 @@ import { rangeEnd } from './playback';
 import { blocked, ok, type CommandResult } from './result';
 import { tooLong } from './text-length';
 import { EPS, toSeconds, units, type TimePosition } from './time';
+import type { Why } from './why';
 
 export interface Bookmark {
 	id: string;
@@ -19,8 +20,8 @@ export interface Bookmark {
 	b: TimePosition | null;
 }
 
-const NO_NAME = '請幫書籤取名字';
-const NOT_FOUND = '找不到這個書籤';
+const NO_NAME: Why = { code: 'bookmarks_no_name' };
+const NOT_FOUND: Why = { code: 'bookmarks_not_found' };
 
 /** 流程的書籤（舊流程沒有這個欄位）。 */
 export function bookmarksOf(flow: Flow): Bookmark[] {
@@ -61,14 +62,14 @@ export function addBookmark(
 	a: TimePosition,
 	b: TimePosition | null
 ): CommandResult<{ bookmarkId: string }> {
-	if (!inSegment(flow, a)) return blocked('書籤的開始不在流程裡');
-	if (b && !inSegment(flow, b)) return blocked('書籤的結尾不在流程裡');
+	if (!inSegment(flow, a)) return blocked({ code: 'bookmarks_start_outside' });
+	if (b && !inSegment(flow, b)) return blocked({ code: 'bookmarks_end_outside' });
 	const bm = { a: asStart(flow, a), b: b && asEnd(flow, b) };
 	const s = bookmarkSeconds(flow, bm);
-	if (!s) return blocked(b ? 'B 要在 A 後面' : '書籤的開始不能在流程結尾');
+	if (!s) return blocked({ code: b ? 'bookmarks_b_before_a' : 'bookmarks_start_at_end' });
 	const same = bookmarksOf(flow).find((x) => sameSeconds(bookmarkSeconds(flow, x), s));
 	// 位置重複先講：換名字也存不了（畫面上那顆書籤會閃）
-	if (same) return blocked(`這裡已經有書籤「${same.name}」了`);
+	if (same) return blocked({ code: 'bookmarks_same_place', name: same.name });
 	const trimmed = name.trim();
 	const problem = nameProblem(trimmed);
 	if (problem) return blocked(problem);
@@ -102,7 +103,7 @@ export function sweepBookmarks(flow: Flow): Flow {
 }
 
 /** 書籤名字哪裡不行（已經去掉頭尾空白）；before：改之前的名字（開檔進來就超過上限的可以留著，不能更長）。 */
-export function nameProblem(name: string, before?: string): string | null {
+export function nameProblem(name: string, before?: string): Why | null {
 	return name ? tooLong('bookmarkName', name, before) : NO_NAME;
 }
 

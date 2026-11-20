@@ -2,16 +2,18 @@
 // 存在動作裡、從動作開始算半拍，所以拖動作、改 BPM 時跟著走；刪動作時一起刪。
 
 import { replaceAction, type Action } from './action-types';
-import { cutOut, fitRange, rangeProblem, rangeText } from './beat-range';
+import { roleWhy } from './roles';
+import { cutOut, fitRange, rangeProblem, rangeWhy } from './beat-range';
 import { memberName, type Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
+import type { Why, WhyCode, WhyParam } from './why';
 import {
 	atText,
 	EPS,
 	HALF_BEATS_PER_BEAT as BEAT,
 	HALF_BEATS_PER_EIGHT,
-	lengthTextWithUnit,
+	lengthWhy,
 	toSeconds,
 	unitSec
 } from './time';
@@ -20,8 +22,12 @@ import {
 export type CueKind = 'count' | 'step' | 'motion';
 export const CUE_KINDS: CueKind[] = ['count', 'step', 'motion'];
 
-/** 給教練看的種類名稱。 */
-export const CUE_KIND_LABELS: Record<CueKind, string> = { count: '拍子', step: '步驟', motion: '手位' };
+/** 給教練看的種類名稱（代號，畫面照語言寫）。 */
+export const CUE_KIND_LABELS: Record<CueKind, Why> = {
+	count: { code: 'cues_kind_count' },
+	step: { code: 'cues_kind_step' },
+	motion: { code: 'cues_kind_motion' }
+};
 
 /** 給誰：null = 動作裡全部的人；role = 某個任務角色的人；member = 某一個隊員。 */
 export type Who = null | { role: string } | { member: string };
@@ -42,6 +48,26 @@ export const COUNT_WORDS = ['down', 'up'];
 export const STEP_WORDS = ['下手', '落地', '放', '上', '直下', '跳', '拋'];
 /** 內建的手位；也可以自己打字。 */
 export const MOTION_WORDS = ['high V', 'low V', 'T', 'touchdown', 'K', 'L', 'diagonal', '雙手並攏'];
+
+/** 內建的中文步驟、手位的代號：流程檔照樣存中文，畫面照語言寫。 */
+const WORD_CODES: Record<'step' | 'motion', Record<string, WhyCode>> = {
+	step: {
+		下手: 'cues_word_dip',
+		落地: 'cues_word_land',
+		放: 'cues_word_release',
+		上: 'cues_word_up',
+		直下: 'cues_word_pop_down',
+		跳: 'cues_word_jump',
+		拋: 'cues_word_toss'
+	},
+	motion: { 雙手並攏: 'cues_word_clasp' }
+};
+
+/** 拍點的字給人看：內建的中文步驟、手位送代號（畫面照語言寫），其他（down、high V、教練自己打的）照原樣。 */
+export function cueWordWhy(kind: CueKind, word: string): WhyParam {
+	const codes = kind === 'count' ? undefined : WORD_CODES[kind];
+	return codes && Object.hasOwn(codes, word) ? { code: codes[word] } : word;
+}
 
 /** 這支流程用過、不是內建的步驟和手位（照第一次出現的順序），表單把它們變成按鈕。 */
 export function usedWords(flow: Flow): { step: string[]; motion: string[] } {
@@ -117,20 +143,20 @@ export function cuesAt(flow: Flow, sec: number): LiveCues[] {
 }
 
 /** 拍點哪裡不守規則（給教練看的原因）；沒問題是 null。不要求在整拍上（拍的範圍的規則在 beat-range）。 */
-export function cueProblem(segment: Segment, action: Action, cue: Cue): string | null {
-	if (segment.kind !== 'music') return '口號段不數拍，不能放拍點';
-	if (!CUE_KINDS.includes(cue.kind)) return '沒有這種拍點';
+export function cueProblem(segment: Segment, action: Action, cue: Cue): Why | null {
+	if (segment.kind !== 'music') return { code: 'cues_chant' };
+	if (!CUE_KINDS.includes(cue.kind)) return { code: 'cues_no_kind' };
 	const problem = rangeProblem('cue', action, cue);
 	if (problem) return problem;
-	if (cue.kind === 'motion' && cue.len !== BEAT) return '手位只佔一拍';
-	if (cue.kind === 'count' && !COUNT_WORDS.includes(cue.word)) return '拍子只能是 down 或 up';
-	if (!cue.word.trim()) return '請寫拍點的字';
+	if (cue.kind === 'motion' && cue.len !== BEAT) return { code: 'cues_motion_one_beat' };
+	if (cue.kind === 'count' && !COUNT_WORDS.includes(cue.word)) return { code: 'cues_count_word' };
+	if (!cue.word.trim()) return { code: 'cues_no_word' };
 	const who = cue.who;
 	if (who !== null && 'role' in who && !action.members.some((m) => m.role === who.role)) {
-		return `動作裡沒有人是「${who.role}」`;
+		return { code: 'cues_no_role', role: roleWhy(who.role) };
 	}
 	if (who !== null && 'member' in who && !action.members.some((m) => m.memberId === who.member)) {
-		return '這個隊員不在動作裡';
+		return { code: 'cues_member_not_in_action' };
 	}
 	return null;
 }
@@ -147,7 +173,7 @@ export interface NewCueInput {
 /** 放拍點：同一個動作、同一種、同一個「給誰」裡被蓋到的拍點切短或拿掉。可以落在 &（例：在動作被拖半拍後的拍點上換字）。 */
 export function placeCue(flow: Flow, actionId: string, input: NewCueInput): CommandResult {
 	const found = find(flow, actionId);
-	if (!found) return blocked('找不到這個動作');
+	if (!found) return blocked({ code: 'cues_no_action' });
 	const { action, segment } = found;
 	const cue: Cue = { ...input, word: input.word.trim(), who: input.who ?? null };
 	const problem = cueProblem(segment, action, cue);
@@ -175,16 +201,16 @@ export function copyCues(action: Action, from: number, to: number): Cue[] {
  */
 export function pasteCues(flow: Flow, actionId: string, at: number, copied: Cue[]): CommandResult {
 	const found = find(flow, actionId);
-	if (!found) return blocked('找不到這個動作');
-	if (!copied.length) return blocked('沒有複製的拍點');
+	if (!found) return blocked({ code: 'cues_no_action' });
+	if (!copied.length) return blocked({ code: 'cues_nothing_copied' });
 	const { action, segment } = found;
 	const over = at + Math.max(...copied.map((c) => c.at + c.len)) - action.length;
-	if (segment.kind === 'music' && over > 0) return blocked(`貼不下：拍點會超出動作的結尾 ${lengthTextWithUnit(segment, over)}`);
+	if (segment.kind === 'music' && over > 0) return blocked({ code: 'cues_paste_blocked', reason: { code: 'cues_paste_over_end', length: lengthWhy(segment, over) } });
 	let cues = action.cues ?? [];
 	for (const c of copied) {
 		const cue: Cue = { ...c, at: at + c.at, who: givenToSomeone(c, action) ? c.who : null };
 		const problem = cueProblem(segment, action, cue);
-		if (problem) return blocked(`貼不下：${problem}`);
+		if (problem) return blocked({ code: 'cues_paste_blocked', reason: problem });
 		cues = [...cut(cues, cue.kind, cue.at, cue.at + cue.len, (k) => sameWho(k.who, cue.who)), cue];
 	}
 	return withCues(flow, action, cues);
@@ -199,7 +225,7 @@ export function clearCues(
 	to: number
 ): CommandResult {
 	const found = find(flow, actionId);
-	if (!found) return blocked('找不到這個動作');
+	if (!found) return blocked({ code: 'cues_no_action' });
 	const cues = (kind ? [kind] : CUE_KINDS).reduce((cs, k) => cut(cs, k, from, to, () => true), found.action.cues ?? []);
 	return withCues(flow, found.action, cues);
 }
@@ -215,17 +241,17 @@ export function cueFallout(
 	before: Action,
 	after: Action,
 	flow: Flow
-): { cues: Cue[]; removed: number; cut: number; orphaned: number; items: string[] } | null {
+): { cues: Cue[]; removed: number; cut: number; orphaned: number; items: Why[] } | null {
 	const kept: Cue[] = [];
-	const items: string[] = [];
+	const items: Why[] = [];
 	let removed = 0;
 	let orphaned = 0;
 	for (const c of before.cues ?? []) {
-		const text = cueText(c.kind, c.word, rangeText(from, before, c.at, c.len), whoName(flow, c.who));
+		const cue = cueWhy(c.kind, c.word, rangeWhy(from, before, c.at, c.len), whoWhy(flow, c.who));
 		if (to.kind === 'music' && !givenToSomeone(c, after)) {
 			removed++;
 			orphaned++;
-			items.push(`拿掉：${text}`);
+			items.push({ code: 'cues_item_removed', cue });
 			continue;
 		}
 		const fitted = to.kind === 'music' ? fitRange('cue', after, c)?.len : undefined;
@@ -233,24 +259,26 @@ export function cueFallout(
 			kept.push(c);
 		} else if (fitted) {
 			kept.push({ ...c, len: fitted });
-			items.push(`切短：${text} → ${rangeText(from, before, c.at, fitted)}`);
+			items.push({ code: 'cues_item_cut', cue, range: rangeWhy(from, before, c.at, fitted) });
 		} else {
 			removed++;
-			items.push(`拿掉：${text}`);
+			items.push({ code: 'cues_item_removed', cue });
 		}
 	}
 	return items.length ? { cues: kept, removed, cut: items.length - removed, orphaned, items } : null;
 }
 
-/** 給誰的名字：角色名或隊員名；給全部的是空字串。 */
-export function whoName(flow: Flow, who: Who): string {
-	return who === null ? '' : 'role' in who ? who.role : memberName(flow, who.member);
+/** 給誰的名字：任務角色（固定的送代號，畫面照語言寫）或隊員名；給全部的是空字串。 */
+export function whoWhy(flow: Flow, who: Who): WhyParam {
+	return who === null ? '' : 'role' in who ? roleWhy(who.role) : memberName(flow, who.member);
 }
 
-/** 「拍子 down 1-3 到 1-4」；span 是時間那段的字，who 是給誰的名字（空的不寫），有就接「・給上層」。 */
-export function cueText(kind: CueKind, word: string, span: string, who: string): string {
-	return `${CUE_KIND_LABELS[kind]} ${word} ${span}${who ? `・給${who}` : ''}`;
+/** 「拍子 down 1-3 到 1-4」；span 是時間那段（beatSpanWhy、rangeWhy），who 是給誰（whoWhy，空的不寫），有就接「・給上層」。 */
+export function cueWhy(kind: CueKind, word: string, span: WhyParam, who: WhyParam): Why {
+	const text = { kind: CUE_KIND_LABELS[kind], word: cueWordWhy(kind, word), span };
+	return who === '' ? { code: 'cues_text', ...text } : { code: 'cues_text_who', ...text, who };
 }
+
 
 function find(flow: Flow, actionId: string): { action: Action; segment: Segment } | null {
 	const action = flow.actions.find((a) => a.id === actionId);

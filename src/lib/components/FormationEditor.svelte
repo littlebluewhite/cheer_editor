@@ -4,14 +4,16 @@
 	// 規則都交給流程核心判斷；被擋就說原因。
 	import { composing } from '#lib/ime.js';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import {
 		currentFormation,
 		formationAt,
 		moveFormationHint,
-		moveTargetText,
+		moveTargetWhy,
 		readTime,
-		timeText,
+		timeInputWhy,
 		type TimePosition
 	} from '#lib/core';
 	import CharCount from './CharCount.svelte';
@@ -28,7 +30,7 @@
 	const here = $derived(flow.members.length ? formationAt(flow, playback.sec) : undefined);
 	let nameInput = $state<HTMLInputElement>();
 	// 開頭那張還沒有段時 segmentId 是 null，框裡就空著（反正不能挪）。
-	const hereTime = $derived(here?.segmentId ? timeText(flow, here.segmentId, here as TimePosition) : '');
+	const hereTime = $derived(here?.segmentId ? whyText(timeInputWhy(flow, here.segmentId, here as TimePosition)) : '');
 
 	/**
 	 * 幫播放頭所在的站位取名；名字沒變就不記一步復原。站位已經刪掉了（名稱框跟著被拿掉時才送出）、框上沒有站位 id 就不改。
@@ -51,7 +53,7 @@
 		// 播放頭停在這張上、框能打字，表示不是開頭那張，一定有段。
 		const to = readTime(flow, formation.segmentId!, box.value, '站位時間');
 		box.value = text;
-		if (to.kind === 'blocked') return void ask.block(to.message);
+		if (to.kind === 'blocked') return void ask.block(to);
 		session.ask.send({ name: 'moveFormation', args: [formation.id, to.value] }, {
 			revert: () => {},
 			done: (r) => session.formationMoved(formation.id, r)
@@ -72,16 +74,16 @@
 	}
 </script>
 
-<div class="now-formation" aria-label="現在的站位">
-	<span class="now-label">現在站位</span>
+<div class="now-formation" aria-label={m.formation_editor_now_aria()}>
+	<span class="now-label">{m.formation_editor_now()}</span>
 	{#if here}
 		{#key here.id}
 			<div class="now-row">
 				<span class="now-no">{now.number}</span>
 				<input
 					class="formation-name"
-					aria-label="站位名稱"
-					placeholder="取名（可不填）"
+					aria-label={m.text_length_formation_name()}
+					placeholder={m.formation_editor_name_placeholder()}
 					value={here.name ?? ''}
 					bind:this={nameInput}
 					data-id={here.id}
@@ -91,7 +93,7 @@
 				<CharCount field="formationName" input={nameInput} value={here.name ?? ''} />
 			</div>
 			<label class="formation-time">
-				<span>站位時間</span>
+				<span>{m.formation_editor_time()}</span>
 				<input
 					value={hereTime}
 					disabled={here === flow.formations[0]}
@@ -100,7 +102,7 @@
 					onchange={(e) => retimeHere(e.currentTarget, e.currentTarget.dataset.id, hereTime)}
 				/>
 			</label>
-			<p class="time-hint">{moveFormationHint(flow, here.id)}</p>
+			<p class="time-hint">{whyText(moveFormationHint(flow, here.id))}</p>
 		{/key}
 	{:else}
 		<div class="now-row">
@@ -108,12 +110,12 @@
 			{#if now.formation.name}
 				<strong class="now-name" title={now.formation.name}>{now.formation.name}</strong>
 			{:else}
-				<span class="now-name unnamed">站位 {now.number}</span>
+				<span class="now-name unnamed">{m.eight_count_formation_now({ n: now.number })}</span>
 			{/if}
 		</div>
 	{/if}
 	{#if flow.members.length}
-		<p class="move-target">{moveTargetText(flow, playback.sec)}</p>
+		<p class="move-target">{whyText(moveTargetWhy(flow, playback.sec))}</p>
 	{/if}
 </div>
 

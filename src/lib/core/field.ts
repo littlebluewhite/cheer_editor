@@ -1,6 +1,8 @@
 // 場地幾何。座標方向見 docs/flow-file-format.md 的「位置座標」：
 // 公尺，原點是中心 X，x 往畫面右邊，y 往正面（畫面下面）。
 
+import type { Why } from './why';
+
 /** 一格的邊長 = 一條的寬 = 6 呎。 */
 export const CELL_M = 6 * 0.3048;
 /** 位置（公尺）的浮點數誤差容許值：差這麼一點點當成一樣遠、一樣前後（跟 time.ts 的 EPS 同一種做法）。 */
@@ -20,21 +22,21 @@ export interface FieldConfig {
 	layout: FieldLayout;
 }
 
-/** 新建流程時可選的場地範本；另外還有「自訂」。 */
+/** 新建流程時可選的場地範本；另外還有「自訂」。名字和小字畫面照語言寫。 */
 export interface FieldTemplate {
-	label: string;
+	label: Why;
 	/** 範本旁的小字：哪些比賽用這種場地。 */
-	hint: string;
+	hint: Why;
 	field: FieldConfig;
 }
 
 export const FIELD_TEMPLATES: readonly FieldTemplate[] = [
 	{
-		label: '9 條直放（預設）',
-		hint: '全國賽、中等學校、大專',
+		label: { code: 'field_nine_vertical' },
+		hint: { code: 'field_nine_vertical_hint' },
 		field: { strips: 9, layout: 'vertical' }
 	},
-	{ label: '5 條橫放', hint: '臺灣盃', field: { strips: 5, layout: 'horizontal' } }
+	{ label: { code: 'field_five_horizontal' }, hint: { code: 'field_five_horizontal_hint' }, field: { strips: 5, layout: 'horizontal' } }
 ];
 
 export interface FieldGeometry {

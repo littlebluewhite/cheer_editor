@@ -2,14 +2,15 @@
 // 順序固定在這裡：環節種類換成大類能用的 → 拿掉對不上的紀錄 → 算要問什麼 → 照回答清掉 → 換上新的環節 → 組的規則 → 成功率規則檢查。
 // 指令只給改之前、改好的動作和教練的回答，拿回收好的動作和有結構的後果；要問的話由 falloutQuestion 組字。
 
-import { ACTION_CATEGORIES, actionLabel, type Action } from './action-types';
+import { actionWhy, categoryWhy, type Action } from './action-types';
 import type { Flow } from './flow';
 import { phasesOverlap } from './beat-range';
 import { phasesMayShareBeats } from './phase-types';
 import { newId } from './ids';
-import { phaseFallout, phaseFalloutText, type PhaseFallout } from './phase-beats';
-import { RECORDS_UNDOABLE, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
+import { phaseFallout, phaseFalloutWhy, type PhaseFallout } from './phase-beats';
+import { RECORDS_UNDOABLE_WHY, answered, needsChoice, needsConfirm, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
+import { said, type Said, type Why } from './why';
 import {
 	allSquadIds,
 	fitPhaseKinds,
@@ -41,13 +42,13 @@ export interface CueFallout {
 	removed: number;
 	cut: number;
 	orphaned: number;
-	items: string[];
+	items: Why[];
 }
 
 /** 收好了：action 是收好的動作（還沒換進流程）。 */
 export type Settled =
 	| { kind: 'ok'; action: Action; fallout: Fallout }
-	| { kind: 'blocked'; message: string };
+	| ({ kind: 'blocked' } & Said);
 
 /**
  * 收尾：before 是改之前的動作（加動作時沒有），after 是指令改好的動作（人、大類、段、拍點都改好了）。
@@ -58,7 +59,7 @@ export type Settled =
  */
 export function settle(flow: Flow, before: Action | undefined, after: Action, answer: ConfirmOption = {}): Settled {
 	const to = flow.segments.find((s) => s.id === after.segmentId);
-	if (!to) return { kind: 'blocked', message: '找不到這一段' };
+	if (!to) return { kind: 'blocked', ...said({ code: 'settle_no_segment' }) };
 	const from = before && flow.segments.find((s) => s.id === before.segmentId);
 	// 先把環節的種類換成大類能用的（換大類時）；換到舞蹈、其他就沒有環節，紀錄算在一定清掉的裡面。
 	const grouped = squadRules(flow, before, fitPhaseKinds(after));
@@ -72,11 +73,10 @@ export function settle(flow: Flow, before: Action | undefined, after: Action, an
 	const action = withSquadOrder(ungroup(phased));
 	// 金字塔有環節佔同樣的拍，換到還留著環節、不能疊的大類：擋下來，不偷偷切掉（docs/adr/0009）。
 	if (!phasesMayShareBeats(action.category) && phasesOverlap(action.successRate?.phases ?? [])) {
-		const label = ACTION_CATEGORIES.find((c) => c.key === action.category)?.label;
-		return { kind: 'blocked', message: `有環節佔同樣的拍，先分開才能換成${label}` };
+		return { kind: 'blocked', ...said({ code: 'settle_phases_overlap', category: categoryWhy(action.category) }) };
 	}
 	const problem = successRateProblem(to, action);
-	if (problem) return { kind: 'blocked', message: problem };
+	if (problem) return { kind: 'blocked', ...said(problem) };
 	return { kind: 'ok', action, fallout: { phases, lost, changed } };
 }
 
@@ -173,36 +173,35 @@ export function falloutQuestion(
 	const asked = (cues || marked) && from && to ? falloutMessage(before, after, from, to, cues, marked) : null;
 	const items = [...(cues?.items ?? []), ...(marked?.items ?? [])];
 	if (lost.length || changed.length) {
-		const head = asked ? `${asked}；` : `動作「${actionLabel(before)}」`;
-		const message = head + recordsMessage(before, after, lost, changed);
+		const message = recordsMessage(before, after, lost, changed);
+		const question: Why = asked
+			? { code: 'settle_then', a: asked, b: message }
+			: { code: 'settle_action_records', action: actionWhy(before), records: message };
 		const records = [...recordItems(flow, before, lost), ...recordItems(flow, before, changed)];
-		return (changed.length ? needsChoice : needsConfirm)(message, [...items, ...records]);
+		return (changed.length ? needsChoice : needsConfirm)(question, [...items, ...records]);
 	}
 	return asked ? needsConfirm(asked, items) : null;
 }
 
 /** 有紀錄的組換了人時的問法（在動作裡移人、刪隊員共用）。 */
-export const CHANGED_SQUADS_QUESTION = '有紀錄的組換了人：保留舊紀錄，還是清掉重算？';
+export const CHANGED_SQUADS_QUESTION: Why = { code: 'settle_changed_squads' };
 
 /**
  * 「換了人，會清掉 2 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？」；換了算法是「換成騰翻，變成每個人自己算，會清掉…」；
  * 換成舞蹈、其他是「換成舞蹈，不記成功率，會清掉…」。
  */
-function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Attempt[]): string {
-	const category = ACTION_CATEGORIES.find((c) => c.key === next.category)?.label ?? '';
-	const why =
+function recordsMessage(old: Action, next: Action, lost: Attempt[], changed: Attempt[]): Why {
+	const category = categoryWhy(next.category);
+	const why: Why =
 		old.successRate && !next.successRate && old.category !== next.category
-			? `換成${category}，不記成功率`
+			? { code: 'settle_records_why_no_rate', category }
 			: perPerson(old.category) === perPerson(next.category)
-				? '換了人'
-				: `換成${category}，變成${perPerson(next.category) ? '每個人自己算' : '一組一起算'}`;
-	const asked = [
-		lost.length ? `${why}，會清掉 ${lost.length} 次紀錄` : '',
-		changed.length ? CHANGED_SQUADS_QUESTION : ''
-	]
-		.filter(Boolean)
-		.join('；');
-	return asked && asked + RECORDS_UNDOABLE;
+				? { code: 'settle_records_why_people' }
+				: { code: perPerson(next.category) ? 'settle_records_why_per_person' : 'settle_records_why_together', category };
+	const cleared: Why = { code: lost.length === 1 ? 'settle_records_lost_one' : 'settle_records_lost', why, count: lost.length };
+	const squads = CHANGED_SQUADS_QUESTION;
+	const records: Why = !changed.length ? cleared : !lost.length ? squads : { code: 'settle_then', a: cleared, b: squads };
+	return { code: 'settle_records', records, undoable: RECORDS_UNDOABLE_WHY };
 }
 
 /**
@@ -218,26 +217,30 @@ function falloutMessage(
 	to: Segment,
 	cues: CueFallout | null,
 	phases: PhaseFallout | null
-): string {
-	const label = `動作「${actionLabel(action)}」`;
-	const shorter = action.length < old.length ? '變短' : '';
-	const offBeat = phases?.shifted ? '拖到半拍上' : '';
+): Why {
+	const shorter: Why | null = action.length < old.length ? { code: 'settle_why_shorter' } : null;
+	const offBeat: Why | null = phases?.shifted ? { code: 'settle_why_off_beat' } : null;
+	const toChant: Why = { code: 'settle_why_to_chant' };
 	if (!cues) {
 		const why =
-			to.kind !== 'music'
-				? '換到口號段'
-				: from.kind !== 'music'
-					? '換到音樂段'
-					: [shorter, offBeat].filter(Boolean).join('、');
-		return `${label}${why}，會${phaseFalloutText(phases!)}`;
+			to.kind !== 'music' ? [toChant] : from.kind !== 'music' ? [{ code: 'settle_why_to_music' } as Why] : [shorter, offBeat];
+		return falloutWhy(action, why, phaseFalloutWhy(phases!));
 	}
-	const more = phases ? `，${phaseFalloutText(phases)}` : '';
-	if (to.kind !== 'music') return `${label}換到口號段，會拿掉 ${cues.removed} 個拍點${more}`;
-	const why = [shorter, cues.orphaned ? '換了人或任務角色' : '', offBeat].filter(Boolean);
-	return `${label}${why.join('、')}，會${cueFalloutText(cues)}${more}`;
+	const will: Why = phases ? { code: 'settle_will_and', a: cueFalloutWhy(cues), b: phaseFalloutWhy(phases) } : cueFalloutWhy(cues);
+	if (to.kind !== 'music') return falloutWhy(action, [toChant], will);
+	return falloutWhy(action, [shorter, cues.orphaned ? { code: 'settle_why_people' } : null, offBeat], will);
 }
 
-/** 「拿掉 1 個、切短 1 個拍點」（確認訊息裡拍點那一段）。 */
-export function cueFalloutText({ removed, cut }: CueFallout): string {
-	return [removed ? `拿掉 ${removed} 個` : '', cut ? `切短 ${cut} 個` : ''].filter(Boolean).join('、') + '拍點';
+/** 「動作「技巧·Lib」變短、換了人或任務角色，會…」：原因用「、」接起來，沒有原因就只寫動作。 */
+function falloutWhy(action: Action, causes: (Why | null)[], will: Why): Why {
+	const why = causes.filter((c) => c !== null).reduceRight<Why | null>((b, a) => (b ? { code: 'settle_why_and', a, b } : a), null);
+	const label = actionWhy(action);
+	return why ? { code: 'settle_fallout', action: label, why, will } : { code: 'settle_fallout_no_cause', action: label, will };
+}
+
+/** 「拿掉 1 個、切短 1 個拍點」（確認訊息裡拍點那一段；裁短動作的確認清單也用）。 */
+export function cueFalloutWhy({ removed, cut }: CueFallout): Why {
+	if (removed && cut) return { code: 'settle_cues_removed_cut', removed, cut };
+	if (removed) return { code: removed === 1 ? 'settle_cues_removed_one' : 'settle_cues_removed', n: removed };
+	return { code: cut === 1 ? 'settle_cues_cut_one' : 'settle_cues_cut', n: cut };
 }

@@ -18,6 +18,9 @@
 	import { flushSync, tick, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { roleText, whyText, joinText } from '#lib/reason-text.js';
+	// 改名 msg：這個檔的 m 是一個人（draft.members 的一個）
+	import { m as msg } from '#lib/paraglide/messages.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { composing } from '#lib/ime.js';
@@ -25,11 +28,13 @@
 	import {
 		ACTION_CATEGORIES,
 		actionHints,
-		actionLabel,
 		actionSeconds,
+		actionWhy,
+		categoryWhy,
 		groupsPeople,
+		labelWhy,
 		memberName,
-		positionText,
+		positionWhy,
 		pickableRoles,
 		roleGlossary,
 		segmentSpans,
@@ -63,14 +68,18 @@
 	/** 選到的動作；null = 新增。 */
 	const action = $derived(draft.action);
 	const segment = $derived(draft.segment);
-	const segmentLabel = $derived(
-		segmentSpans(flow).find((s) => s.segment.id === segment?.id)?.label ?? ''
-	);
+	const segmentSpan = $derived(segmentSpans(flow).find((s) => s.segment.id === segment?.id));
+	const segmentLabel = $derived(segmentSpan ? whyText(labelWhy(segmentSpan)) : '');
+	/** 「在 音樂 1 裡」切成段名前、段名後：段名粗體，句子照語言寫。 */
+	const inSegment = msg.action_form_in_segment({ segment: '\0' }).split('\0');
 	/** 選單的任務角色：三層、肩底只有金字塔有。快捷鍵的說明照這個列。 */
 	const roles = $derived(pickableRoles(flow, draft.category, []));
 	/** 這個人的選單：已經是三層（肩底）的人換了大類，他自己的選單照列，別人的沒有。 */
 	const rolesFor = (role: string | null) => pickableRoles(flow, draft.category, [role]);
-	const categoryLabel = $derived(ACTION_CATEGORIES.find((c) => c.key === draft.category)?.label ?? '');
+	const categoryLabel = $derived(whyText(categoryWhy(draft.category)));
+	/** 動作、任務角色的名字照畫面的語言寫：內建的（大類、固定任務角色）翻，教練取的照原樣。 */
+	const actionText = (a: Parameters<typeof actionWhy>[0]) => whyText(actionWhy(a));
+	/** 一串名字：「小A、小B」。 */
 	/** 每個人的任務角色選單，按快捷鍵後跳到下一個。 */
 	const rolePickers: RolePicker[] = $state([]);
 	const others = $derived(
@@ -84,7 +93,11 @@
 			.sort((x, y) => x.sec - y.sec)
 			.map(({ a, sec }) => ({
 				id: a.id,
-				label: `${positionText(flow, sec)}　${actionLabel(a)}（${a.members.length} 人）`
+				label: (a.members.length === 1 ? msg.action_form_copy_source_one : msg.action_form_copy_source)({
+					at: whyText(positionWhy(flow, sec)),
+					action: actionText(a),
+					n: a.members.length
+				})
 			}))
 	);
 
@@ -115,7 +128,11 @@
 		const byNumber = new Map<number, { head: string; color: string; rows: number[] }>();
 		for (const i of rows) {
 			const b = squadBadge(action, draft.members[i]);
-			const card = byNumber.get(b.number) ?? { head: b.number ? `第 ${b.number} 組` : '沒分組', color: b.number ? b.color : '', rows: [] };
+			const card = byNumber.get(b.number) ?? {
+				head: b.number ? msg.success_rate_squad({ n: b.number }) : msg.action_form_no_squad(),
+				color: b.number ? b.color : '',
+				rows: []
+			};
 			card.rows.push(i);
 			byNumber.set(b.number, card);
 		}
@@ -303,8 +320,8 @@
 		flushSync();
 		// 新動作移出最後一個人，表單收起來了：給「＋ 新動作」
 		if (!formEl) return expandEl?.focus();
-		const xs = formEl.querySelectorAll<HTMLElement>('button[aria-label$="移出這個動作"]');
-		(xs[at] ?? xs[at - 1] ?? formEl.querySelector<HTMLElement>('select[aria-label="加人"]'))?.focus();
+		const xs = formEl.querySelectorAll<HTMLElement>('button[data-remove-member]');
+		(xs[at] ?? xs[at - 1] ?? formEl.querySelector<HTMLElement>('select[data-add-member]'))?.focus();
 	}
 
 	/**
@@ -348,13 +365,13 @@
 
 <!-- 放在卡片外面：放裡面會看成是對這個動作做事 -->
 {#if action}
-	<button type="button" class="new" onclick={openNew}><Icon name="plus" size={14} />開新的動作表單</button>
+	<button type="button" class="new" onclick={openNew}><Icon name="plus" size={14} />{msg.action_form_open_new()}</button>
 {/if}
 
 {#if !open}
 	<!-- 還沒選人：新動作表單收成一個鈕，不佔右邊欄 -->
-	<button type="button" class="new collapsed" bind:this={expandEl} onclick={expand}>＋ 新動作</button>
-	<p class="muted collapsed-hint">在場上點人或用上面的「選人」，表單就會打開。</p>
+	<button type="button" class="new collapsed" bind:this={expandEl} onclick={expand}>{msg.action_form_expand()}</button>
+	<p class="muted collapsed-hint">{msg.action_form_collapsed_hint()}</p>
 {:else}
 
 <!-- 被擋的原因寫在教練剛改的那一格（或按的鈕）旁邊：不用捲去找。在看得到的範圍外、或在黏底的「新增動作」後面，就捲出來（N03）。 -->
@@ -378,56 +395,56 @@
 		<span class="dot"></span>
 		<input
 			class="title"
-			aria-label="名稱"
+			aria-label={msg.action_form_name()}
 			bind:value={draft.name}
 			bind:this={nameInput}
 			onchange={() => changed('name')}
 			onkeydown={(e) => addOnEnter(e, 'name')}
-			placeholder={action ? '幫這個動作取名字' : '新動作的名稱，例如：Lib、籃拋'}
+			placeholder={action ? msg.action_form_name_placeholder() : msg.action_form_new_name_placeholder()}
 		/>
 		<CharCount field="actionName" input={nameInput} value={draft.name} />
-		{#if !action}<span class="badge">新動作</span>{/if}
+		{#if !action}<span class="badge">{msg.action_form_new_badge()}</span>{/if}
 	</header>
 	{@render errorAtSpot('name')}
 
 	{#if !segment}
-		<p class="empty">先加一段才能加動作：在下面的時間軸按「＋」。</p>
+		<p class="empty">{msg.action_form_no_segment()}</p>
 	{:else}
-		<p class="seg">在 <b>{segmentLabel}</b> 裡<span class="muted">（動作不能跨段）</span></p>
+		<p class="seg">{inSegment[0]}<b>{segmentLabel}</b>{inSegment[1]}<span class="muted">{msg.action_form_no_cross()}</span></p>
 		<div class="grid">
 			<label class="wide">
-				<span class="cap">大類</span>
+				<span class="cap">{msg.action_form_category()}</span>
 				<select
 					value={draft.category}
 					onchange={(e) => setCategory(e.currentTarget)}
 				>
-					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
+					{#each ACTION_CATEGORIES as c (c.key)}<option value={c.key}>{whyText(categoryWhy(c.key))}</option>{/each}
 				</select>
 				{@render errorAtSpot('category')}
 			</label>
 			{#if draft.offerDefaultRoles}
 				<p class="wide roles-offer" role="note">
-					有人的任務角色不是{categoryLabel}的預設值
-					<button type="button" class="link" onclick={useDefaultRoles}>換成{categoryLabel}的預設任務角色</button>
+					{msg.action_form_roles_not_default({ category: categoryLabel })}
+					<button type="button" class="link" onclick={useDefaultRoles}>{msg.action_form_use_default_roles({ category: categoryLabel })}</button>
 				</p>
 			{/if}
 			<fieldset class="wide colors">
-				<legend class="cap">辨識色</legend>
-				<label class="swatch auto" title="大類的顏色" style:--c={CATEGORY_COLORS[draft.category]}>
+				<legend class="cap">{msg.action_form_color()}</legend>
+				<label class="swatch auto" title={msg.action_form_category_color()} style:--c={CATEGORY_COLORS[draft.category]}>
 					<input
 						type="radio"
 						name="action-color"
-						aria-label="大類的顏色"
+						aria-label={msg.action_form_category_color()}
 						checked={!draft.color}
 						onchange={() => setColor(undefined)}
-					/>照大類
+					/>{msg.action_form_by_category()}
 				</label>
 				{#each ACTION_COLORS as c (c.value)}
-					<label class="swatch" title={c.label} style:--c={c.value}>
+					<label class="swatch" title={whyText(c.label)} style:--c={c.value}>
 						<input
 							type="radio"
 							name="action-color"
-							aria-label={c.label}
+							aria-label={whyText(c.label)}
 							checked={draft.color === c.value}
 							onchange={() => setColor(c.value)}
 						/>
@@ -437,34 +454,38 @@
 			{@render errorAtSpot('color', true)}
 			<div class="field">
 				<span class="start-cap">
-					<span class="cap" aria-hidden="true">開始</span>
+					<span class="cap" aria-hidden="true">{msg.action_form_start()}</span>
 					{#if action}
-						<button type="button" class="link" onclick={() => editor.seekToAction(action.id)}>跳到開始</button>
+						<button type="button" class="link" onclick={() => editor.seekToAction(action.id)}>{msg.action_form_go_to_start()}</button>
 					{/if}
 				</span>
 				<input
-						aria-label="開始"
+						aria-label={msg.action_form_start()}
 						bind:value={draft.startText}
 						onchange={() => changed('start')}
 						onkeydown={(e) => addOnEnter(e, 'start')}
 						onfocus={() => draft.focusSlotField('startText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
-				<small>{segment.kind === 'music' ? '八拍-拍，例：3-5&' : `從這一段開頭算的秒數，例：${timeExamples(flow, segment.id).here}`}</small>
+				<small
+					>{segment.kind === 'music'
+						? msg.action_form_start_hint_music()
+						: msg.action_form_start_hint_chant({ example: timeExamples(flow, segment.id).here })}</small
+				>
 				{@render errorAtSpot('start')}
 			</div>
 			<!-- 新動作表單一打開，就把開始、長度捲出來，不停在黏底的「新增動作」後面（N03，故事 67） -->
 			<div class="field" {@attach !action && reveal()}>
-				<span class="cap" aria-hidden="true">長度</span>
+				<span class="cap" aria-hidden="true">{msg.action_form_length()}</span>
 				<input
-						aria-label="長度"
+						aria-label={msg.action_form_length()}
 						bind:value={draft.lengthText}
 						onchange={lengthChanged}
 						onkeydown={(e) => addOnEnter(e, 'length')}
 						onfocus={() => draft.focusSlotField('lengthText')}
 						onblur={() => draft.focusSlotField(null)}
 					/>
-				<small>{segment.kind === 'music' ? '拍（8 拍＝1 個八拍）' : '秒'}</small>
+				<small>{segment.kind === 'music' ? msg.action_form_length_hint_music() : msg.action_form_length_hint_chant()}</small>
 				{@render errorAtSpot('length')}
 			</div>
 			<!-- 改長度要確認（會切到拍點）：問句就在長度下面，不用捲到表單最底下找。 -->
@@ -477,12 +498,12 @@
 
 		<div class="people">
 			<div class="people-head">
-				<span class="cap">人（{draft.members.length}）・任務角色</span>
+				<span class="cap">{msg.action_form_people_head({ n: draft.members.length })}</span>
 				<span class="legend">
 					<button
 						type="button"
 						class="ghost bang"
-						aria-label="顏色和快捷鍵說明"
+						aria-label={msg.action_form_legend_button()}
 						aria-describedby="people-legend"
 						aria-expanded={legendOpen}
 						bind:this={bangEl}
@@ -497,27 +518,33 @@
 						{@attach legendOpen &&
 							popover({ place: below(bangEl!, { gap: 6, align: 'right', flip: true }), close: closeLegend, inside: [bangEl] })}
 					>
-						<span><b class="name F">名字</b>女　<b class="name M">名字</b>男</span>
-						<span>Shift＋點名字選好幾個人，再選其中一人的任務角色，就一起設好</span>
-						<span>點任務角色選單後按鍵就選好，跳到下一個人：</span>
+						<span
+							><b class="name F">{msg.action_form_legend_name()}</b>{msg.members_gender_f()}　<b class="name M"
+								>{msg.action_form_legend_name()}</b
+							>{msg.members_gender_m()}</span
+						>
+						<span>{msg.action_form_legend_together()}</span>
+						<span>{msg.action_form_legend_keys()}</span>
 						<span class="keys">
-							{#each roles as r (r.name)}{#if r.key}<kbd>{r.key} {r.name}</kbd>{/if}{/each}
-							<kbd>Backspace 沒有任務</kbd>
+							{#each roles as r (r.name)}{#if r.key}<kbd>{r.key} {roleText(r.name)}</kbd>{/if}{/each}
+							<kbd>{msg.action_form_key_no_role()}</kbd>
 						</span>
 						<!-- 其他快捷鍵（⌘C／⌘V、按住 H、Alt＋拖…）不在這裡列，連到使用說明的快捷鍵表 -->
-						<a href={`${resolve('/guide')}?from=editor#keys`} target="_blank" rel="noopener">全部的快捷鍵：看使用說明</a>
+						<a href={`${resolve('/guide')}?from=editor#keys`} target="_blank" rel="noopener">{msg.action_form_all_shortcuts()}</a>
 					</span>
 				</span>
-				<button type="button" class="link" onclick={() => openGlossary(null)}>名詞對照表</button>
+				<button type="button" class="link" onclick={() => openGlossary(null)}>{msg.action_form_glossary()}</button>
 			</div>
 			<!-- 常駐一行（觸控的人看不到 title）；選了 2 人以上換成選了幾人，這一行不跳 -->
 			{#if together.length > 1}
-				<p class="together" role="note" aria-label="一起設任務角色">
-					選了 {together.length} 人：在其中一人選任務角色，{together.length} 人一起設{#if keptOnly.length}（{keptOnly.join('、')}只有金字塔有，只留給本來就是的人）{/if}
+				<p class="together" role="note" aria-label={msg.action_form_together_label()}>
+					{msg.action_form_together({ n: together.length })}{#if keptOnly.length}{msg.action_form_together_kept({
+							roles: joinText(keptOnly.map(roleText))
+						})}{/if}
 				</p>
 			{:else if draft.members.length > 1}
 				<p class="together">
-					{touchScreen ? '打開場地左邊的「多選」再點名字' : 'Shift 點名字'}選好幾個人，在其中一人選任務角色，就一起設好
+					{touchScreen ? msg.action_form_multi_touch() : msg.action_form_multi_shift()}
 				</p>
 			{/if}
 			{#if draft.members.length}
@@ -535,16 +562,18 @@
 												class="pick"
 												aria-label={nameOf(m.memberId)}
 												aria-pressed={together.includes(m.memberId)}
-												title="{nameOf(m.memberId)}（Shift＋點：選好幾個人，一起設任務角色）"
+												title={msg.action_form_pick_title({ name: nameOf(m.memberId) })}
 												onclick={(e) => pickRow(m.memberId, e.shiftKey || session.multiSelect)}
 											>
 												<span class="name {who?.gender ?? ''}">{nameOf(m.memberId)}</span>
 											</button>
-											{#if busy.get(m.memberId)}<span class="busy-tag">在「{actionLabel(busy.get(m.memberId)!)}」裡</span>{/if}
+											{#if busy.get(m.memberId)}<span class="busy-tag"
+													>{msg.action_form_busy_tag({ action: actionText(busy.get(m.memberId)!) })}</span
+												>{/if}
 										</span>
 										<RolePicker
 											bind:this={rolePickers[i]}
-											label="{nameOf(m.memberId)} 的任務角色"
+											label={msg.action_form_role_of({ name: nameOf(m.memberId) })}
 											value={m.role}
 											roles={rolesFor(m.role)}
 											onpick={(role, byKey) => setRole(i, role, byKey)}
@@ -553,7 +582,8 @@
 										<button
 											type="button"
 											class="ghost icon"
-											aria-label="把 {nameOf(m.memberId)} 移出這個動作"
+											data-remove-member
+											aria-label={msg.action_form_remove_member({ name: nameOf(m.memberId) })}
 											onclick={() => removeMember(i)}><Icon name="close" size={14} /></button
 										>
 									</li>
@@ -563,35 +593,37 @@
 					{/each}
 				</div>
 			{:else}
-				<p class="muted none">還沒有人：用上面的「選人」，或在場上點人。</p>
+				<p class="muted none">{msg.action_form_no_members()}</p>
 			{/if}
 			{#if busyHere.length}
 				<p class="hint-warn" role="note">
-					{busyHere.map((m) => nameOf(m.memberId)).join('、')} 同一時間在別的動作裡
-					<button type="button" class="link" onclick={dropBusy}>拿掉這幾個人</button>
+					{msg.action_form_busy_here({ names: joinText(busyHere.map((m) => nameOf(m.memberId))) })}
+					<button type="button" class="link" onclick={dropBusy}>{msg.action_form_drop_busy()}</button>
 				</p>
 			{/if}
-			{#each actionHints(draft) as hint (hint)}<p class="hint-warn" role="note">{hint}</p>{/each}
+			{#each actionHints(draft) as hint (hint.code)}<p class="hint-warn" role="note">{whyText(hint)}</p>{/each}
 			{#if pickedOutside.length}
 				<button type="button" class="add-picked" onclick={addSelected}
-					><Icon name="plus" size={14} />把選的 {pickedOutside.length} 人加進來</button
+					><Icon name="plus" size={14} />{(pickedOutside.length === 1 ? msg.action_form_add_picked_one : msg.action_form_add_picked)({
+						n: pickedOutside.length
+					})}</button
 				>
 			{/if}
 			<div class="adders">
-				<select aria-label="加人" onchange={(e) => addMember(e.currentTarget)}>
-					<option value="">＋加人…</option>
+				<select aria-label={msg.action_form_add_member()} data-add-member onchange={(e) => addMember(e.currentTarget)}>
+					<option value="">{msg.action_form_add_member_option()}</option>
 					{#each others as m (m.id)}
 						{@const a = busy.get(m.id)}
-						<option value={m.id}>{m.name}{a ? `（在「${actionLabel(a)}」裡）` : ''}</option>
+						<option value={m.id}>{a ? msg.action_form_member_busy({ name: m.name, action: actionText(a) }) : m.name}</option>
 					{/each}
 				</select>
 				{#if copySources.length}
 					<div class="copy">
-						<select aria-label="從別的動作複製人" aria-describedby="copy-why" onchange={(e) => copyFrom(e.currentTarget)}>
-							<option value="">從別的動作複製人（連任務角色和組）…</option>
+						<select aria-label={msg.action_form_copy_from()} aria-describedby="copy-why" onchange={(e) => copyFrom(e.currentTarget)}>
+							<option value="">{msg.action_form_copy_from_option()}</option>
 							{#each copySources as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
 						</select>
-						<small class="muted" id="copy-why">任務角色會帶過來，也會連組一起帶過來：分組不用每個動作重做</small>
+						<small class="muted" id="copy-why">{msg.action_form_copy_why()}</small>
 					</div>
 				{/if}
 			</div>
@@ -599,14 +631,14 @@
 		</div>
 
 		<label class="note">
-			<span class="cap note-cap">備註<CharCount field="note" input={noteInput} value={draft.note} /></span>
-			<textarea aria-label="備註" rows="2" bind:value={draft.note} bind:this={noteInput} onchange={() => changed('note')}></textarea>
+			<span class="cap note-cap">{msg.text_length_note()}<CharCount field="note" input={noteInput} value={draft.note} /></span>
+			<textarea aria-label={msg.text_length_note()} rows="2" bind:value={draft.note} bind:this={noteInput} onchange={() => changed('note')}></textarea>
 			{@render errorAtSpot('note')}
 		</label>
 
 		{#if action}
 			<!-- 轉接（例如 Lib 轉金字塔）：開新表單接在結束拍後面，人、任務角色、組帶過去 -->
-			<button type="button" class="next" onclick={() => (draft.next(), keepFocus())}><Icon name="plus" size={14} />接下一個動作</button>
+			<button type="button" class="next" onclick={() => (draft.next(), keepFocus())}><Icon name="plus" size={14} />{msg.action_form_next()}</button>
 			<CueGrid {action} {cellAt} />
 		{:else}
 			<!-- 黏在右邊欄底部：表單很長時不用捲到最下面才按得到 -->
@@ -617,16 +649,16 @@
 					class="primary add"
 					disabled={!draft.members.length}
 					aria-describedby={draft.members.length ? undefined : 'add-why'}
-					onclick={() => ((errorAt = 'add'), draft.add(), keepFocus())}>新增動作</button
+					onclick={() => ((errorAt = 'add'), draft.add(), keepFocus())}>{msg.action_form_add()}</button
 				>
-				{#if !draft.members.length}<p class="muted why" id="add-why">還沒有人：先選人才能新增</p>{/if}
+				{#if !draft.members.length}<p class="muted why" id="add-why">{msg.action_form_add_why()}</p>{/if}
 			</div>
 		{/if}
 	{/if}
 
 	<!-- 「刪除動作」畫在標題右邊，但在 Tab 順序的最後：在名稱按 Tab 不會先跳到它。 -->
 	{#if action}
-		<button type="button" class="danger remove" onclick={remove}><Icon name="trash" size={14} />刪除動作</button>
+		<button type="button" class="danger remove" onclick={remove}><Icon name="trash" size={14} />{msg.action_form_remove()}</button>
 	{/if}
 
 	<!-- 問句在拍點格子下面，常在看得到的範圍外：出現時捲過去。 -->

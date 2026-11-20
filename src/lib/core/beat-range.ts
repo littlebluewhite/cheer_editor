@@ -6,7 +6,8 @@ import type { Action } from './action-types';
 import type { Cue, CueKind } from './cues';
 import type { Phase } from './phase-types';
 import type { Segment } from './segment';
-import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT, lengthText } from './time';
+import { atText, HALF_BEATS_PER_BEAT as BEAT, HALF_BEATS_PER_EIGHT as EIGHT } from './time';
+import { zh, type Why } from './why';
 
 /** 從動作開始算第幾個半拍起（0 = 動作開始那一刻）、幾個半拍長。 */
 export interface BeatRange {
@@ -17,9 +18,9 @@ export interface BeatRange {
 /** 拍點、環節標的拍。 */
 export type RangeOf = 'cue' | 'phase';
 
-const RULES: Record<RangeOf, { noun: string; wholeBeat: boolean }> = {
-	cue: { noun: '拍點', wholeBeat: false },
-	phase: { noun: '環節', wholeBeat: true }
+const RULES: Record<RangeOf, { wholeBeat: boolean }> = {
+	cue: { wholeBeat: false },
+	phase: { wholeBeat: true }
 };
 
 /** 從動作開始算第 at 個半拍，在不在音樂的整拍上。 */
@@ -28,12 +29,11 @@ export function onBeat(action: Action, at: number): boolean {
 }
 
 /** 這段拍哪裡不守規則（給教練看的原因）：落在半拍上、（標的拍）在整拍上、佔整數拍至少 1 拍、在動作裡面。沒問題是 null。 */
-export function rangeProblem(of: RangeOf, action: Action, { at, len }: BeatRange): string | null {
-	const { noun, wholeBeat } = RULES[of];
-	if (!Number.isInteger(at) || !Number.isInteger(len)) return `${noun}要落在半拍上`;
-	if (wholeBeat && !onBeat(action, at)) return `${noun}要標在整拍上`;
-	if (len < BEAT || len % BEAT !== 0) return `${noun}要佔整數拍，至少 1 拍`;
-	if (at < 0 || at + len > action.length) return `${noun}要在動作裡面`;
+export function rangeProblem(of: RangeOf, action: Action, { at, len }: BeatRange): Why | null {
+	if (!Number.isInteger(at) || !Number.isInteger(len)) return { code: `beat_range_${of}_half_beat` };
+	if (RULES[of].wholeBeat && !onBeat(action, at)) return { code: 'beat_range_phase_on_beat' };
+	if (len < BEAT || len % BEAT !== 0) return { code: `beat_range_${of}_whole_beats` };
+	if (at < 0 || at + len > action.length) return { code: `beat_range_${of}_inside` };
 	return null;
 }
 
@@ -63,20 +63,22 @@ export function fitRange(of: RangeOf, action: Action, range: BeatRange, by: 1 | 
 	return len >= BEAT ? { at, len } : undefined;
 }
 
-/** 從第一拍到最後一拍（都是段內時間）；只有一拍就只寫那一拍。 */
-export function rangeText(segment: Segment, action: Action, at: number, len: number): string {
+/** 從第一拍到最後一拍（都是段內時間），給別的原因包進去：「3-5 到 3-6」，只有一拍是「3-5」。 */
+export function rangeWhy(segment: Segment, action: Action, at: number, len: number): string | Why {
 	const first = atText(segment, action.start + at);
-	return len > BEAT ? `${first} 到 ${atText(segment, action.start + at + len - BEAT)}` : first;
+	return len > BEAT ? { code: 'beat_range_range', first, last: atText(segment, action.start + at + len - BEAT) } : first;
 }
 
 /**
- * 拍點小窗和八拍表的拍：「3-5 到 3-6・2 拍」，只有一拍（或不到一拍）是「3-5・1 拍」。
+ * 拍點小窗和八拍表的拍（畫面照語言寫）：「3-5 到 3-6・2 拍」，只有一拍（或不到一拍）是「3-5・1 拍」。
  * at 是段內時間；結束拍寫最後一拍開始的那個半拍（從 & 開始的就落在 & 上：「2-4& 到 2-7&・4 拍」）。
  */
-export function beatSpanText(segment: Segment, at: number, len: number): string {
+export function beatSpanWhy(segment: Segment, at: number, len: number): Why {
 	const last = at + len - BEAT;
-	const range = last > at ? `${atText(segment, at)} 到 ${atText(segment, last)}` : atText(segment, at);
-	return `${range}・${lengthText(segment, len)} 拍`;
+	const first = atText(segment, at);
+	const range = last > at ? { code: 'beat_range_range', first, last: atText(segment, last) } satisfies Why : first;
+	const beats = len / BEAT;
+	return { code: 'beat_range_span', range, length: { code: beats === 1 ? 'time_length_beat_one' : 'time_length_beats', n: beats } };
 }
 
 /** 一段拍落在一個八拍裡的那一段：從這個八拍開頭算第 start 個半拍到第 end 個半拍（不含 end，0–16）。 */

@@ -313,4 +313,4 @@ sh scripts/app-icons.sh
 `npm run build` 會產生 `third-party-licenses.txt`（放在網站根目錄），列出打包進網站的別人的套件：名字、版本、授權、原始碼網址、授權全文。
 例：輸出影片用的 `mediabunny` 是 MPL-2.0，要讓使用者知道原始碼在哪裡拿得到。使用說明最下面有連結。
 產生的程式在 `scripts/third-party-licenses.ts`（`vite.config.ts` 掛上去）：看瀏覽器拿到的檔用了哪些 `node_modules` 裡的套件，
-再加上 service worker 用的 `@vite-pwa/workbox-swkit` 和它依賴的套件。某個套件找不到授權全文時建置會失敗。`npm run dev` 底下沒有這個檔。
+再加上 service worker 用的 `@vite-pwa/workbox-swkit` 和它依賴的套件，以及產生到 `src/lib/paraglide/` 的 `@inlang/paraglide-js`。某個套件找不到授權全文時建置會失敗。`npm run dev` 底下沒有這個檔。

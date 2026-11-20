@@ -1,7 +1,7 @@
 // 成功率的紀錄：記一次、刪掉上一次，和復原、重做時把現在的紀錄帶過去、這一步清掉的紀錄加回來或再清一次。
 // 紀錄存在動作的成功率設定裡（Action.successRate.records），一次一筆，照記的先後排。
 
-import { actionLabel, actionSeconds, replaceAction, type Action } from './action-types';
+import { actionWhy, actionSeconds, replaceAction, type Action } from './action-types';
 import type { Flow } from './flow';
 import { isRandomId, newId } from './ids';
 import { blocked, ok, type CommandResult } from './result';
@@ -11,8 +11,8 @@ import {
 	changedAttempt,
 	keptAttempt,
 	perPerson,
-	squadName,
 	squadPeople,
+	squadWhy,
 	squadsOf,
 	withoutBlanks,
 	type Attempt,
@@ -20,6 +20,7 @@ import {
 	type NewAttempt,
 	type PracticeKind
 } from './success-rate';
+import type { Why, WhyParam } from './why';
 
 /** 記一次：給動作、誰、日期、練法、整個做或只練幾個環節、記號（存成 keptAttempt 給的樣子）。回傳新的一次的 id。 */
 export function recordAttempt(
@@ -28,8 +29,8 @@ export function recordAttempt(
 	input: NewAttempt
 ): CommandResult<{ id: string }> {
 	const action = flow.actions.find((a) => a.id === actionId);
-	if (!action) return blocked('找不到這個動作');
-	if (!action.successRate) return blocked('這個動作沒有記成功率');
+	if (!action) return blocked({ code: 'records_no_action' });
+	if (!action.successRate) return blocked({ code: 'records_not_recorded' });
 	const kept = { ...withoutBlanks(input), ...keptAttempt(action, input.whole, input.marks) };
 	const problem = attemptProblem(action, kept);
 	if (problem) return blocked(problem);
@@ -57,16 +58,16 @@ export function recordRunThrough(
 	entries: RunThroughMarks[],
 	id?: string
 ): CommandResult<{ runThroughId: string }> {
-	if (entries.length === 0) return blocked('每個動作都沒做，沒有要存的');
+	if (entries.length === 0) return blocked({ code: 'records_run_through_empty' });
 	const runIds = flow.actions.flatMap((a) => a.successRate?.records.flatMap((r) => r.runThroughId ?? []) ?? []);
 	const runThroughId = id ?? newId('r', runIds);
 	let next = flow;
 	for (const { actionId, who, marks } of entries) {
 		const action = next.actions.find((a) => a.id === actionId);
-		if (!action) return blocked('找不到這個動作');
+		if (!action) return blocked({ code: 'records_no_action' });
 		const run = { practice: 'runThrough', runThroughId, runThroughStartedAt: startedAt } as const;
 		const r = recordAttempt(next, actionId, { date, who, ...run, whole: true, marks });
-		if (r.kind !== 'ok') return blocked(`${actionLabel(action)}：${r.message}`);
+		if (r.kind !== 'ok') return blocked({ code: 'records_in_action', action: actionWhy(action), reason: r.why ?? r.message });
 		next = r.flow;
 	}
 	return { kind: 'ok', flow: next, runThroughId };
@@ -86,7 +87,7 @@ export function deleteLastAttempt(
 	const action = flow.actions.find((a) => a.id === actionId);
 	const records = action?.successRate?.records ?? [];
 	const index = records.findLastIndex((r) => r.who === who && r.date === date && r.practice === practice);
-	if (!action || index < 0) return blocked('這一天還沒有紀錄');
+	if (!action || index < 0) return blocked({ code: 'records_none_that_day' });
 	return {
 		kind: 'ok',
 		flow: withRecords(flow, action, records.toSpliced(index, 1)),
@@ -108,10 +109,10 @@ export function changeAttempt(
 	const action = flow.actions.find((a) => a.id === actionId);
 	const records = action?.successRate?.records ?? [];
 	const index = records.findIndex((r) => r.id === attemptId);
-	if (!action || index < 0) return blocked('找不到這一次');
+	if (!action || index < 0) return blocked({ code: 'records_attempt_not_found' });
 	const attempt = { ...withoutBlanks(records[index]), ...changedAttempt(action, records[index], marks) };
 	if (attempt.practice === 'runThrough' && !attempt.whole && Object.keys(attempt.marks).length)
-		return blocked('全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）');
+		return blocked({ code: 'records_run_through_marks' });
 	const problem = attemptProblem(action, attempt);
 	if (problem) return blocked(problem);
 	return ok(withRecords(flow, action, records.toSpliced(index, 1, attempt)));
@@ -126,15 +127,15 @@ export function deleteAttempt(
 	const action = flow.actions.find((a) => a.id === actionId);
 	const records = action?.successRate?.records ?? [];
 	const index = records.findIndex((r) => r.id === attemptId);
-	if (!action || index < 0) return blocked('找不到這一次');
+	if (!action || index < 0) return blocked({ code: 'records_attempt_not_found' });
 	return { kind: 'ok', flow: withRecords(flow, action, records.toSpliced(index, 1)), attempt: records[index], index };
 }
 
 /** 救回剛刪掉的那一次：放回原本排第幾（之後又記的排在它後面），照記一次的規則檢查；已經在了就擋下來。 */
 export function restoreAttempt(flow: Flow, actionId: string, attempt: Attempt, index: number): CommandResult {
 	const action = flow.actions.find((a) => a.id === actionId);
-	if (!action?.successRate) return blocked('找不到這個動作');
-	if (attemptIds(flow).includes(attempt.id)) return blocked('這一次已經在了');
+	if (!action?.successRate) return blocked({ code: 'records_no_action' });
+	if (attemptIds(flow).includes(attempt.id)) return blocked({ code: 'records_attempt_exists' });
 	const problem = attemptProblem(action, attempt);
 	if (problem) return blocked(problem);
 	return ok(withRecords(flow, action, action.successRate.records.toSpliced(index, 0, attempt)));
@@ -174,7 +175,7 @@ export function lastRunThrough(flow: Flow, date: string): string | undefined {
 /** 刪掉上一次全上：拿掉這一天最後存的那次全上（lastRunThrough），整次一起拿（每個動作、每組的都拿掉，不拆開）。 */
 export function deleteLastRunThrough(flow: Flow, date: string): CommandResult<{ removed: RemovedRunThrough }> {
 	const last = lastRunThrough(flow, date);
-	if (last === undefined) return blocked('這一天還沒有全上');
+	if (last === undefined) return blocked({ code: 'records_no_run_through_that_day' });
 	const removed: RemovedRunThrough = [];
 	let next = flow;
 	for (const action of flow.actions) {
@@ -203,14 +204,14 @@ export function deleteAttempts(flow: Flow, ids: string[]): CommandResult<{ remov
 		});
 		next = withRecords(next, action, records.filter((r) => !ids.includes(r.id)));
 	}
-	if (removed.length === 0) return blocked('找不到這幾次');
+	if (removed.length === 0) return blocked({ code: 'records_attempts_not_found' });
 	return { kind: 'ok', flow: next, removed };
 }
 
 /** 救回剛刪掉的那次全上：整次放回原本排第幾，每一次照記一次的規則檢查；有一次放不回去就一次都不放。 */
 export function restoreRunThrough(flow: Flow, removed: RemovedRunThrough): CommandResult {
 	const ids = attemptIds(flow);
-	if (removed.some((r) => ids.includes(r.attempt.id))) return blocked('這次全上已經在了');
+	if (removed.some((r) => ids.includes(r.attempt.id))) return blocked({ code: 'records_run_through_exists' });
 	let next = flow;
 	for (const { actionId, attempt, index } of removed) {
 		const r = restoreAttempt(next, actionId, attempt, index);
@@ -276,10 +277,15 @@ export function recordsLoss(was: Attempt[], now: Attempt[]): { removed: Attempt[
 	return { removed, stripped };
 }
 
-/** 確認框裡清掉多少紀錄：「一起清掉 2 次紀錄和 1 次的記號」「清掉 1 次的記號」；沒有清掉是空字串。 */
-export function recordsLossText(records: number, marks: number): string {
-	if (records) return `一起清掉 ${records} 次紀錄${marks ? `和 ${marks} 次的記號` : ''}`;
-	return marks ? `清掉 ${marks} 次的記號` : '';
+/**
+ * 確認框裡清掉多少紀錄：「一起清掉 2 次紀錄和 1 次的記號」「清掉 1 次的記號」；沒有清掉是 null。
+ * 包在別的原因裡（英文是小寫開頭的一句「clears 2 reps…」），次數英文分一次、好幾次。
+ */
+export function recordsLossText(records: number, marks: number): Why | null {
+	const reps: Why = { code: records === 1 ? 'records_reps_one' : 'records_reps', n: records };
+	const marked: Why = { code: marks === 1 ? 'records_marks_one' : 'records_marks', n: marks };
+	if (records) return marks ? { code: 'records_loss_both', reps, marks: marked } : { code: 'records_loss_reps', reps };
+	return marks ? { code: 'records_loss_marks', marks: marked } : null;
 }
 
 /**
@@ -379,10 +385,10 @@ export function recordableActions(flow: Flow): Action[] {
 }
 
 /**
- * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組（who 是組 id），照組號排，名字是「第 1 組 小美」；
+ * 動作裡記一次的「誰」，一個一張卡：分組的動作是現在有人的組（who 是組 id），照組號排，名字是「第 1 組 小美」（代號，見 squadWhy）；
  * people 是全組的名字（照名單順序）；騰翻、跳躍是動作裡的每個人，照名單順序，沒有 people。沒分到組的人不算。
  */
-export function attemptWhos(flow: Flow, action: Action): { who: string; name: string; people?: string[] }[] {
+export function attemptWhos(flow: Flow, action: Action): { who: string; name: WhyParam; people?: string[] }[] {
 	if (perPerson(action.category)) {
 		return flow.members
 			.filter((m) => action.members.some((am) => am.memberId === m.id))
@@ -390,7 +396,7 @@ export function attemptWhos(flow: Flow, action: Action): { who: string; name: st
 	}
 	return squadsOf(action).map((squad) => ({
 		who: squad,
-		name: squadName(flow, action, squad),
+		name: squadWhy(flow, action, squad),
 		people: squadPeople(flow, action, squad).map((m) => m.name)
 	}));
 }
@@ -398,7 +404,7 @@ export function attemptWhos(flow: Flow, action: Action): { who: string; name: st
 /** 整個做的一次，碰到那一次之後才加的環節寫這個（跟成功率表沒紀錄的「—」一樣），不寫像空著、像沒成功的「·」。 */
 export const NOT_YET_MARK = '—';
 /** 一次的記號裡有 NOT_YET_MARK 時，滑鼠移上去看到的說明。 */
-export const NOT_YET_TITLE = '— 是這次還沒有這個環節';
+export const NOT_YET_TITLE: Why = { code: 'records_not_yet' };
 
 /**
  * 一次寫成一排記號，照環節順序，空的寫「·」，例：✓✓△、✗··。

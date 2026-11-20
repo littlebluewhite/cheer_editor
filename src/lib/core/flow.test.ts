@@ -18,7 +18,7 @@ describe('建立流程', () => {
 
 	it.each([0, 13, 2.5, Number.NaN])('條數 %s 不在 1–12 之間就擋下', (strips) => {
 		const r = createFlow({ name: '測試', field: { strips, layout: 'vertical' } });
-		expect(r).toEqual({ kind: 'blocked', message: '條數要是 1–12 的整數' });
+		expect(r).toEqual({ kind: 'blocked', message: '條數要是 1–12 的整數', why: { code: 'flow_strips', min: 1, max: 12 } });
 	});
 
 	it('自訂 1 條和 12 條都可以', () => {
@@ -32,7 +32,8 @@ describe('建立流程', () => {
 		const field = { strips: 9, layout: 'vertical' } as const;
 		expect(createFlow({ name: '  ', field })).toEqual({
 			kind: 'blocked',
-			message: '請幫流程取名字'
+			message: '請幫流程取名字',
+			why: { code: 'flow_no_name' }
 		});
 		const r = createFlow({ name: ' 臺灣盃 ', field });
 		expect(r.kind === 'ok' && r.flow.name).toBe('臺灣盃');
@@ -43,7 +44,8 @@ describe('建立流程', () => {
 		expect(createFlow({ name: ` ${'字'.repeat(40)} `, field }).kind).toBe('ok');
 		expect(createFlow({ name: '字'.repeat(41), field })).toEqual({
 			kind: 'blocked',
-			message: '流程名字最多 40 個字'
+			message: '流程名字最多 40 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_flow_name' }, max: 40 }
 		});
 	});
 
@@ -71,11 +73,12 @@ describe('改流程名字', () => {
 		expect(renameFlow(flow(), '字'.repeat(40)).kind).toBe('ok');
 		expect(renameFlow(flow(), '字'.repeat(41))).toEqual({
 			kind: 'blocked',
-			message: '流程名字最多 40 個字'
+			message: '流程名字最多 40 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_flow_name' }, max: 40 }
 		});
 	});
 
 	it('空白名字擋下', () => {
-		expect(renameFlow(flow(), '  ')).toEqual({ kind: 'blocked', message: '請幫流程取名字' });
+		expect(renameFlow(flow(), '  ')).toEqual({ kind: 'blocked', message: '請幫流程取名字', why: { code: 'flow_no_name' } });
 	});
 });

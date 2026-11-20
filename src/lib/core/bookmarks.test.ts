@@ -72,12 +72,14 @@ describe('addBookmark', () => {
 		let flow = flowOf(addBookmark(sample(), '音樂 1', at('s1', 0), at('s1', 32)));
 		expect(addBookmark(flow, '又一個', at('s1', 0), at('s2', 0))).toEqual({
 			kind: 'blocked',
-			message: '這裡已經有書籤「音樂 1」了'
+			message: '這裡已經有書籤「音樂 1」了',
+			why: { code: 'bookmarks_same_place', name: '音樂 1' }
 		});
 		// 名字空的也先講位置重複（換名字也存不了）
 		expect(addBookmark(flow, '  ', at('s1', 0), at('s1', 32))).toEqual({
 			kind: 'blocked',
-			message: '這裡已經有書籤「音樂 1」了'
+			message: '這裡已經有書籤「音樂 1」了',
+			why: { code: 'bookmarks_same_place', name: '音樂 1' }
 		});
 		flow = flowOf(addBookmark(flow, '開場', at('s1', 0), null));
 		expect(addBookmark(flow, '開場 2', at('s1', 0), null)).toMatchObject({ kind: 'blocked' });
@@ -201,7 +203,7 @@ describe('流程檔（第 16 版）', () => {
 	])('%s：資料壞掉', (_, breakIt) => {
 		const flow = structuredClone(withBookmark());
 		breakIt(flow);
-		expect(readFlowFile(zipOf({ formatVersion: 16, flow }))).toEqual({ kind: 'error', message: '流程檔裡的資料壞掉了' });
+		expect(readFlowFile(zipOf({ formatVersion: 16, flow }))).toMatchObject({ kind: 'error', message: '流程檔裡的資料壞掉了' });
 	});
 
 	// 手改過的檔才會這樣（改段的指令跑完都會拿掉放不下的書籤）：只丟那一個、說出來，流程照開
@@ -243,12 +245,13 @@ describe('流程檔（第 16 版）', () => {
 	it('整份流程檢查：書籤跑到段外一律擋（開檔也擋）；名字太長、兩個書籤同一個地方只擋這一步新出現的', () => {
 		const flow = withBookmark();
 		const outside = { ...flow, bookmarks: [{ ...flow.bookmarks![0], b: at('s2', 40) }] };
-		expect(flowProblem(outside, flow)).toBe('書籤「翻騰」的位置不在流程裡');
-		expect(flowProblem(outside, outside)).toBe('書籤「翻騰」的位置不在流程裡');
+		const lost = { code: 'flow_file_bookmark_lost', name: '翻騰' };
+		expect(flowProblem(outside, flow)).toEqual(lost);
+		expect(flowProblem(outside, outside)).toEqual(lost);
 		const long = { ...flow, bookmarks: [{ ...flow.bookmarks![0], name: '一'.repeat(21) }] };
-		expect(flowProblem(long, flow)).toMatch(/書籤名字/);
+		expect(flowProblem(long, flow)).toMatchObject({ code: 'flow_check_bookmark_name', name: '一'.repeat(21) });
 		const twice = { ...flow, bookmarks: [...flow.bookmarks!, { ...flow.bookmarks![0], id: 'k9', name: '又一個' }] };
-		expect(flowProblem(twice, flow)).toBe('書籤「翻騰」和「又一個」在同一個地方');
+		expect(flowProblem(twice, flow)).toEqual({ code: 'flow_check_same_bookmark', first: '翻騰', second: '又一個' });
 		expect(flowProblem(twice, twice)).toBeNull();
 	});
 });

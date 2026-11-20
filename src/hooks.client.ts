@@ -1,6 +1,10 @@
 /// <reference types="@unplugin-pwa/core/vanillajs" />
 import { registerSW } from 'virtual:pwa-register';
+import { holdTabLocale } from '#lib/shown-locale.js';
 import { hasUnsavedChanges } from '#lib/unsaved.js';
+
+// 語言：這個分頁一直用打開時的語言，別的分頁換語言不會讓這頁變一半（ADR 0017）。
+holdTabLocale();
 
 // 可離線：註冊 service worker。部署新版後，使用者重新整理時新的 service worker 會裝好並接手，
 // 接手後頁面自動再載入一次，就是新版（vite.config.ts 的 registerType: 'autoUpdate'）。

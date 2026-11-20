@@ -4,7 +4,7 @@ import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { placeCue, updateAction } from '#lib/core';
 import { Ask } from '#lib/ask.svelte.js';
-import { VIEW_ONLY } from '#lib/editor-session.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
 import { editorPage, menuItem } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -309,7 +309,7 @@ describe('檢視模式：看得到的都按一遍，不會按了才說「檢視�
 		const send = Ask.prototype.send;
 		vi.spyOn(Ask.prototype, 'send').mockImplementation(function (this: Ask, ...args) {
 			const r = send.apply(this, args);
-			if (r.kind === 'blocked' && r.message === VIEW_ONLY) locked++;
+			if (r.kind === 'blocked' && r.message === m.session_view_only()) locked++;
 			return r;
 		});
 
@@ -327,7 +327,7 @@ describe('檢視模式：看得到的都按一遍，不會按了才說「檢視�
 			names.push(nameOf(el));
 			const already = locked;
 			await use(el);
-			if (session.notice.includes(VIEW_ONLY) || locked > already) blocked.push(nameOf(el));
+			if (session.notice.includes(m.session_view_only()) || locked > already) blocked.push(nameOf(el));
 			session.notice = '';
 		}
 		expect(blocked).toEqual([]);

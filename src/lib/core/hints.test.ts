@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionHints, duplicateNames, musicOverrunSec, stackedMembers, type Member, type Segment } from './index';
+import { zh } from './why';
 
 const member = (id: string, name: string): Member => ({ id, name, gender: 'F', globalRole: 'base' });
 
@@ -31,7 +32,7 @@ describe('動作的提醒', () => {
 	const roles = (...r: (string | null)[]) => r.map((role, i) => ({ memberId: `m${i + 1}`, role }));
 
 	it('技巧有上層卻沒有底層', () => {
-		expect(actionHints({ category: 'stunt', members: roles('上層', '上層', '保護') })).toEqual([
+		expect(actionHints({ category: 'stunt', members: roles('上層', '上層', '保護') }).map(zh)).toEqual([
 			'有上層，但沒有底層（底層、主底、側底、肩底）'
 		]);
 	});

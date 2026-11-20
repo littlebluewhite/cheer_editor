@@ -1,6 +1,8 @@
 // 編輯頁左右怎麼分：場地照長寬比，吃得到多寬就給多寬，剩下的寬度給右邊欄。
 // 場地多高是固定的（視窗高減掉上方列和時間軸），所以先算場地要多寬，右邊欄拿剩下的。
 
+import { m } from '#lib/paraglide/messages.js';
+
 /** 右邊欄最窄。 */
 export const INSPECTOR_MIN_PX = 360;
 /** 自動分的時候右邊欄最寬：再寬表單會太散，多的空白留給場地那邊。 */
@@ -58,8 +60,8 @@ export function viewOnlyReason(w: number, h: number, touch: boolean): string {
 	const narrow = w < EDIT_MIN_W_PX;
 	const short = h < EDIT_MIN_H_PX;
 	if (!narrow && !short) return '';
-	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return '請轉成橫的才能編輯';
-	return `畫面太${narrow && short ? '小' : narrow ? '窄' : '矮'}`;
+	if (touch && h > w && h >= EDIT_MIN_W_PX && w >= EDIT_MIN_H_PX) return m.session_rotate();
+	return narrow && short ? m.session_screen_small() : narrow ? m.session_screen_narrow() : m.session_screen_short();
 }
 
 /** 自己拖的寬度夾在 INSPECTOR_MIN_PX 和「場地那一欄留 FIELD_KEEP_W_PX」之間。 */

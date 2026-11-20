@@ -6,6 +6,7 @@
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import { httpServer, type ServerAdapter } from '#lib/server-api.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -38,21 +39,21 @@
 	}
 </script>
 
-<svelte:head><title>忘記密碼 — 流程編輯器</title></svelte:head>
+<svelte:head><title>{m.page_title({ page: m.forgot_password_title() })}</title></svelte:head>
 
 <AccountCard>
 	<form onsubmit={submit}>
-		<h1>忘記密碼</h1>
-		<p class="lead">填你登入用的 email，我們寄一封信，點信裡的連結設新密碼。</p>
+		<h1>{m.forgot_password_title()}</h1>
+		<p class="lead">{m.forgot_password_lead()}</p>
 		<label class="field">
 			<span>Email</span>
 			<input type="email" autocomplete="username" required bind:value={email} />
 		</label>
 		{#if sentTo !== null}
-			<p class="ok" role="status">如果 {sentTo} 有帳號，我們已經寄出一封信。</p>
-			<p class="hint">沒收到？看看垃圾信，或請管理員幫你寄。</p>
+			<p class="ok" role="status">{m.forgot_password_sent({ email: sentTo })}</p>
+			<p class="hint">{m.forgot_password_spam_hint()}</p>
 		{/if}
-		{#if unreachable}<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>{/if}
-		<button type="submit" class="btn primary wide" disabled={busy}>寄信</button>
+		{#if unreachable}<p class="error" {@attach revealAlert()}>{m.server_unreachable()}</p>{/if}
+		<button type="submit" class="btn primary wide" disabled={busy}>{m.forgot_password_send()}</button>
 	</form>
 </AccountCard>

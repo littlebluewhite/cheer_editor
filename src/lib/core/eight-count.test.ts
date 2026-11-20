@@ -4,11 +4,11 @@ import {
 	addMembers,
 	addSegment,
 	createFlow,
-	eightCountRows,
+	eightCountRows as rowsOf,
 	eightCountView,
-	nearbyEights,
-	formationNowText,
-	memberNowText,
+	nearbyEights as nearbyOf,
+	formationNowWhy,
+	memberNowWhy,
 	clearPhaseBeats,
 	addPhase,
 	insertFormation,
@@ -18,10 +18,26 @@ import {
 	setWalks,
 	updateAction,
 	updateSegment,
+	type EightCountRow,
 	type Flow,
 	type NewActionInput
 } from './index';
 import { flowOf, ratedSample } from '../test-flows';
+import { ZH_TEXT, zh, type Why } from './why';
+
+/** 給人看的字（代號）一層一層都寫成中文，比對照舊用中文。 */
+function zhDeep<T>(value: T): T {
+	if (Array.isArray(value)) return value.map(zhDeep) as T;
+	if (value === null || typeof value !== 'object') return value;
+	const code = (value as { code?: unknown }).code;
+	if (typeof code === 'string' && code in ZH_TEXT) return zh(value as unknown as Why) as T;
+	return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, zhDeep(v)])) as T;
+}
+const eightCountRows = (...args: Parameters<typeof rowsOf>) => zhDeep(rowsOf(...args));
+const nearbyEights = (flow: Flow, memberId: string | null, sec: number, before: number, after: number, rows?: EightCountRow[]) =>
+	zhDeep(nearbyOf(flow, memberId, sec, before, after, rows ?? rowsOf(flow, memberId, false)));
+const formationNowText = (flow: Flow, sec: number) => zh(formationNowWhy(flow, sec));
+const memberNowText = (...args: Parameters<typeof memberNowWhy>) => zhDeep(memberNowWhy(...args));
 
 /** 音樂 1（150 BPM，一個八拍 3.2 秒；2 個整八拍 ＋ 4 拍）→ 口號 1（10 秒）；隊員 小A、小B、小C。 */
 function sample(): Flow {
@@ -91,6 +107,13 @@ describe('八拍表的列：全隊', () => {
 			['5', []],
 			['6–8', []]
 		]);
+	});
+
+	it('名字存成大類名稱（舞蹈叫「舞蹈」）的動作：延續的列送大類的代號，英文畫面才不會留中文', () => {
+		let flow = flowOf(updateSegment(sample(), 's1', { eights: 8, lastBeats: 8 }));
+		flow = flowOf(addAction(flow, action({ category: 'dance', name: '舞蹈', start: 0, length: 32 })));
+		const rows = rowsOf(flow, null, false).filter((r) => r.eight === 2);
+		expect(rows.map((r) => r.continuing)).toEqual([[{ code: 'category_dance' }]]);
 	});
 
 	it('有拍點、環節延續過來的八拍不算空的', () => {

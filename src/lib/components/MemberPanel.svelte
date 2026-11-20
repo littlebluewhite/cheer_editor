@@ -13,6 +13,8 @@
 	import Icon from './Icon.svelte';
 	import { isLongMarker } from '#lib/marker.js';
 	import { reveal, revealAlert } from './reveal';
+	import { reasonText, whyText, joinText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import {
 		GENDERS,
 		GLOBAL_ROLES,
@@ -20,6 +22,7 @@
 		duplicateNames,
 		memberMarkers,
 		memberName,
+		said,
 		type Gender,
 		type GlobalRole,
 		type MemberChanges
@@ -36,7 +39,7 @@
 	/**
 	 * 等教練回答的事和流程核心給的說明：刪隊員（確定刪除），或改了有紀錄的人的名字（保留舊紀錄／清掉重算）。
 	 */
-	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: m.segment_confirm_delete() });
 	/** 問題是哪一列送的（刪隊員、改名字、排順序）：問題和被擋的原因畫在那一列下面；null 是加隊員表單送的。 */
 	let askingId = $state<string | null>(null);
 	/** 正在打號碼的那個人（圓圈換成輸入框）。 */
@@ -45,8 +48,16 @@
 	let dragging = $state<string | null>(null);
 	const markers = $derived(memberMarkers(flow));
 	const dupes = $derived(duplicateNames(flow.members));
+	/** 一串名字接成一句（「、」或「, 」照語言）。 */
 	/** 滿了：加隊員表單停用，寫為什麼（開檔進來超過的也算滿）。 */
 	const full = $derived(flow.members.length >= MAX_MEMBERS);
+	/** 名單每一列的性別、全局角色選單很窄：英文用短的字（F、M、Top、Base），中文照舊。 */
+	const SHORT: Record<string, () => string> = {
+		F: m.members_panel_gender_short_f,
+		M: m.members_panel_gender_short_m,
+		base: m.members_panel_role_short_base,
+		top: m.members_panel_role_short_top
+	};
 
 	function add(e: SubmitEvent) {
 		e.preventDefault();
@@ -55,7 +66,7 @@
 		ask.send({ name: 'addMemberLines', args: [names, { gender: gender || null, globalRole: globalRole || null }] }, {
 			done: (r) => {
 				names = r.rejected.join('\n');
-				ask.error = r.errors.join('\n');
+				ask.error = r.errors.map((e) => reasonText(said(e))).join('\n');
 			}
 		});
 	}
@@ -136,115 +147,115 @@
 
 <section class="members">
 	<header>
-		<h3>隊員（{flow.members.length} / {MAX_MEMBERS}）</h3>
-		<span class="hint">名單順序就是泳道順序和場上的號碼，按 ↑ ↓、拖圓圈，或點圓圈打號碼排順序；在「流程設定」可以把號碼換成開頭字（名字的第一個字）</span>
+		<h3>{m.members_panel_title({ n: flow.members.length, max: MAX_MEMBERS })}</h3>
+		<span class="hint">{m.members_panel_hint()}</span>
 	</header>
 
 	{#if dupes.length}
 		<p class="hint-warn" role="note">
-			有同名的隊員：{dupes.map((n) => `「${n}」`).join('、')}。泳道、動作表單上分不出誰是誰，可以加個字分開。
+			{m.members_panel_duplicates({ names: joinText(dupes.map((name) => m.members_quoted({ name }))) })}
 		</p>
 	{/if}
 
 	{#if flow.members.length}
 		<ol>
-			{#each flow.members as m, i (m.id)}
+			{#each flow.members as member, i (member.id)}
 				<li
-					class:dragging={dragging === m.id}
+					class:dragging={dragging === member.id}
 					ondragover={(e) => dragging && e.preventDefault()}
 					ondrop={(e) => drop(e, i)}
 				>
 					<!-- 拖曳是滑鼠、手指的捷徑；鍵盤用「往上」「往下」，或按圓圈打號碼。 -->
-					{#if numbering === m.id}
+					{#if numbering === member.id}
 						<input
 							class="no-input"
-							aria-label="第 {i + 1} 位隊員的號碼"
+							aria-label={m.members_panel_number({ n: i + 1 })}
 							inputmode="numeric"
 							value={i + 1}
 							{@attach focusSelect}
-							onchange={(e) => renumber(m.id, e.currentTarget.value)}
+							onchange={(e) => renumber(member.id, e.currentTarget.value)}
 							onblur={() => (numbering = null)}
 							onkeydown={(e) => {
 								if (e.key !== 'Escape') return;
 								numbering = null;
-								void focusCircle(m.id);
+								void focusCircle(member.id);
 							}}
 						/>
 					{:else}
 						<span
-							class="no {m.globalRole}"
-							class:long={isLongMarker(markers[m.id])}
+							class="no {member.globalRole}"
+							class:long={isLongMarker(markers[member.id])}
 							role="button"
 							tabindex="0"
-							aria-label="改第 {i + 1} 位隊員的號碼"
-							data-id={m.id}
+							aria-label={m.members_panel_renumber({ n: i + 1 })}
+							data-id={member.id}
 							draggable="true"
-							title="拖曳排順序；按一下打號碼"
-							onclick={() => (numbering = m.id)}
+							title={m.members_panel_drag()}
+							onclick={() => (numbering = member.id)}
 							onkeydown={(e) => {
 								if (e.key !== 'Enter' && e.key !== ' ') return;
 								e.preventDefault();
-								numbering = m.id;
+								numbering = member.id;
 							}}
 							ondragstart={(e) => {
-								dragging = m.id;
-								e.dataTransfer?.setData('text/plain', m.name);
+								dragging = member.id;
+								e.dataTransfer?.setData('text/plain', member.name);
 							}}
-							ondragend={() => (dragging = null)}>{markers[m.id]}</span
+							ondragend={() => (dragging = null)}>{markers[member.id]}</span
 						>
 					{/if}
 					<span class="name-cell">
 						<input
-							aria-label="第 {i + 1} 位隊員的名字"
-							value={m.name}
+							aria-label={m.members_panel_name({ n: i + 1 })}
+							value={member.name}
 							bind:this={nameInputs[i]}
-							{@attach nameField(m.id)}
+							{@attach nameField(member.id)}
 							{@attach truncate}
 						/>
-						<CharCount field="memberName" input={nameInputs[i]} value={m.name} quiet />
+						<CharCount field="memberName" input={nameInputs[i]} value={member.name} quiet />
 					</span>
 					<select
-						aria-label="第 {i + 1} 位隊員的性別"
-						value={m.gender}
-						onchange={(e) => edit(m.id, { gender: e.currentTarget.value as Gender })}
+						aria-label={m.members_panel_gender_of({ n: i + 1 })}
+						value={member.gender}
+						onchange={(e) => edit(member.id, { gender: e.currentTarget.value as Gender })}
 					>
-						{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
+						{#each GENDERS as g (g.key)}<option value={g.key}>{SHORT[g.key]()}</option>{/each}
 					</select>
 					<select
-						aria-label="第 {i + 1} 位隊員的全局角色"
-						value={m.globalRole}
-						onchange={(e) => edit(m.id, { globalRole: e.currentTarget.value as GlobalRole })}
+						aria-label={m.members_panel_role_of({ n: i + 1 })}
+						value={member.globalRole}
+						onchange={(e) => edit(member.id, { globalRole: e.currentTarget.value as GlobalRole })}
 					>
-						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
+						{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{SHORT[r.key]()}</option>{/each}
 					</select>
 					<button
 						type="button"
 						class="ghost icon move"
-						aria-label="第 {i + 1} 位隊員往上"
+						aria-label={m.members_panel_up({ n: i + 1 })}
 						disabled={i === 0}
-						onclick={(e) => move(m.id, i - 1, e.currentTarget)}>↑</button
+						onclick={(e) => move(member.id, i - 1, e.currentTarget)}>↑</button
 					>
 					<button
 						type="button"
 						class="ghost icon move"
-						aria-label="第 {i + 1} 位隊員往下"
+						aria-label={m.members_panel_down({ n: i + 1 })}
 						disabled={i === flow.members.length - 1}
-						onclick={(e) => move(m.id, i + 1, e.currentTarget)}>↓</button
+						onclick={(e) => move(member.id, i + 1, e.currentTarget)}>↓</button
 					>
 					<button
 						type="button"
 						class="ghost icon remove"
-						aria-label="刪除第 {i + 1} 位隊員"
-						onclick={() => remove(m.id)}
+						aria-label={m.members_panel_delete({ n: i + 1 })}
+						onclick={() => remove(member.id)}
 						onkeydown={(e) => {
 							// 問句開著、焦點還在刪除鈕上：Esc 也是取消
-							if (e.key === 'Escape' && ask.question && askingId === m.id) ask.answer('cancel');
+							if (e.key === 'Escape' && ask.question && askingId === member.id) ask.answer('cancel');
 						}}><Icon name="trash" size={14} /></button
 					>
 					<!-- 名單很長時問句可能在看得到的範圍外，按了像沒反應：出現時捲過去。 -->
-					{#if ask.question && askingId === m.id}
+					{#if ask.question && askingId === member.id}
 						<div class="asking" {@attach reveal(ask.failures)}><ConfirmList {ask} /></div>
-					{:else if ask.error && askingId === m.id}
+					{:else if ask.error && askingId === member.id}
 						<p class="error asking" {@attach revealAlert(ask.failures)}>{ask.error}</p>
 					{/if}
 				</li>
@@ -255,29 +266,29 @@
 	<!-- novalidate：必填和人數上限由流程核心判斷 -->
 	<!-- 改了加隊員的欄位就告訴 Ask，收掉上次被擋的原因；字還沒送出，⌘Z 交給瀏覽器（data-native-undo） -->
 	<form class="add" data-native-undo novalidate onsubmit={add} oninput={() => ask.edited()} onchange={() => ask.edited()}>
-		<b class="add-title">加隊員</b>
-		{#if full}<p class="full">已經 {flow.members.length} 人了（一支流程最多 {MAX_MEMBERS} 人），刪掉隊員才能再加</p>{/if}
+		<b class="add-title">{m.members_panel_add()}</b>
+		{#if full}<p class="full">{m.members_panel_full({ n: flow.members.length, max: MAX_MEMBERS })}</p>{/if}
 		<label class="names">
-			名字（一次加多人：一行一個；從試算表貼「名字、性別、全局角色」三欄也可以）
-			<textarea rows="3" bind:value={names} placeholder="名字或暱稱" disabled={full}></textarea>
+			{m.members_panel_names()}
+			<textarea rows="3" bind:value={names} placeholder={m.members_panel_names_placeholder()} disabled={full}></textarea>
 		</label>
 		<div class="pair">
 			<label>
-				性別
+				{m.members_panel_gender()}
 				<select bind:value={gender} disabled={full}>
-					<option value="">請選</option>
-					{#each GENDERS as g (g.key)}<option value={g.key}>{g.label}</option>{/each}
+					<option value="">{m.members_panel_choose()}</option>
+					{#each GENDERS as g (g.key)}<option value={g.key}>{whyText(g.label)}</option>{/each}
 				</select>
 			</label>
 			<label>
-				全局角色
+				{m.members_panel_role()}
 				<select bind:value={globalRole} disabled={full}>
-					<option value="">請選</option>
-					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
+					<option value="">{m.members_panel_choose()}</option>
+					{#each GLOBAL_ROLES as r (r.key)}<option value={r.key}>{whyText(r.label)}</option>{/each}
 				</select>
 			</label>
 		</div>
-		<button type="submit" class="primary" disabled={full}>加隊員</button>
+		<button type="submit" class="primary" disabled={full}>{m.members_panel_add()}</button>
 	</form>
 
 	<!-- 那一列送的被擋下：原因畫在那一列下面（上面），這裡不畫。 -->

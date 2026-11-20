@@ -4,7 +4,7 @@
 
 import { createContext } from 'svelte';
 import {
-	actionLabel,
+	actionWhy,
 	applyRemoteChange,
 	bookmarksOf,
 	changeLabel,
@@ -15,7 +15,7 @@ import {
 	redoRecords,
 	sameFlow,
 	squadsOf,
-	timeTextWithUnit,
+	timeWhy,
 	undoChanges,
 	undone,
 	undoRecords,
@@ -30,14 +30,23 @@ import {
 	type Position,
 	type PracticeKind,
 	type RemoteChange,
-	type UndoChanges
+	type UndoChanges,
+	type WhyParam
 } from '#lib/core';
 import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
+import { whyText, joinText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
 
 const UNDO_LIMIT = 100;
+
+/** 幾句提示接成一則（中文用「；」）。parts 不能是空的。 */
+export const joinNotes = (parts: string[]): string => parts.reduceRight((rest, first) => m.session_notes({ first, rest }));
+
+/** 幾個完整的句子接成一段（中文直接接，英文中間空一格）。parts 不能是空的。 */
+export const joinSentences = (parts: string[]): string => parts.reduceRight((rest, first) => m.session_sentences({ first, rest }));
 
 /** 沒存進去的一次（練習畫面紅條下面的表一列）：日期、動作、組（或隊員）、記號，全上記的標出來。 */
 export interface DroppedRecord {
@@ -49,6 +58,17 @@ export interface DroppedRecord {
 	runThrough: boolean;
 	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」）；沒寫是教練改了流程。 */
 	note?: string;
+	/**
+	 * 動作、組（或隊員）、原因的代號：畫面照現在的語言寫（droppedTexts，ADR 0017）。上面寫好的字（當時的語言）照樣存，
+	 * 給還沒更新的分頁看；舊版存的沒有這一欄，照寫好的字。
+	 */
+	why?: { action: WhyParam; who: WhyParam; note?: AlreadyRecorded };
+}
+
+/** 同一次全上的同一組別人先存了：先記的人（null 是沒有名字的，寫「別人」）、哪一組（null 是「這一組」）。 */
+export interface AlreadyRecorded {
+	by: string | null;
+	which: WhyParam | null;
 }
 
 /** 「只改這張」跟往後帶的那一步合成一步復原用的 key。 */
@@ -80,14 +100,6 @@ export type CloudStep = SentStep | { id: string; undo: { of: string; redo: boole
 /** 選得到的三種東西：站位、動作、人。 */
 type PickKind = 'formation' | 'action' | 'member';
 
-/** 檢視模式下改流程被擋的原因。 */
-export const VIEW_ONLY = '檢視模式只能看、只能播放；要改先按上方列的「編輯」';
-
-/** 拖過頭（走位條、縮圖、場上的人）停在最遠的合法位置時的提示。 */
-export const AT_EDGE = '已靠到邊界';
-
-/** 最後點的是人時按 Delete 的提示：不刪任何東西。 */
-export const PICK_TO_DELETE = 'Delete 不刪人；要刪站位或動作，先點那張站位或那個動作';
 
 /** session 叫的播放（編輯器 module 建 session 時接上；session 單獨測的時候可以不接）。 */
 export interface SessionPlayback {
@@ -162,7 +174,7 @@ export class EditorSession {
 	/** ⌘C 複製的站位（那時候大家的位置）；⌘V 貼到播放頭。不存進流程檔。 */
 	#copied: Record<string, Position> | null = null;
 	/**
-	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 VIEW_ONLY；
+	 * 檢視模式：只能看、只能播放。改流程的指令（場上、表單、Delete、復原、重做…）都擋下，說 session_view_only；
 	 * 選取、播放照常。練習的紀錄（「記」）不算改編排，照記。
 	 */
 	viewing = $state(false);
@@ -275,7 +287,7 @@ export class EditorSession {
 	/** 剛改的那一步的提示：「已＋label」加上補的話，旁邊是它的按鈕（預設「復原」）。 */
 	#showSaid() {
 		const { label, extra, button } = this.#said!;
-		this.toast([`已${label}`, ...extra].join('；'), button);
+		this.toast(joinNotes([m.session_done({ step: label }), ...extra]), button);
 	}
 
 	/**
@@ -307,7 +319,7 @@ export class EditorSession {
 			if (!this.change(f, this.#joining ?? undefined, undefined, step)) this.notice = '';
 		},
 		{
-			confirmLabel: '確定',
+			confirmLabel: m.session_confirm(),
 			onfail: (error) => (this.notice = error),
 			locked: () => this.#locked(),
 			flow: () => this.#flow
@@ -317,9 +329,9 @@ export class EditorSession {
 	/** 分組浮動列的問題（換組會動到紀錄時）：畫在浮動列上。數字鍵也送到這裡。 */
 	readonly squadAsk = new Ask((f, step) => this.change(f, undefined, undefined, step), { locked: () => this.#locked(), flow: () => this.#flow });
 
-	/** 改流程鎖著的原因：不能改的原因（readOnly）、檢視模式是 VIEW_ONLY，編輯是空字串。 */
+	/** 改流程鎖著的原因：不能改的原因（readOnly）、檢視模式是 session_view_only，編輯是空字串。 */
 	#locked(): string {
-		return this.readOnly || (this.viewing ? VIEW_ONLY : '');
+		return this.readOnly || (this.viewing ? m.session_view_only() : '');
 	}
 
 	/**
@@ -408,7 +420,7 @@ export class EditorSession {
 		let undoStep: Step | null = null;
 		if (this.onstep) {
 			// 雲端流程：送伺服器（存好了由它說）；復原紀錄存改到的東西（#256），合成一步的照第一步之前到現在
-			const said = label ?? changeLabel(before, flow);
+			const said = label ?? whyText(changeLabel(before, flow));
 			if (step) this.onstep(step, said, before, flow);
 			this.#saved = flow;
 			const changes = undoChanges(before, flow);
@@ -417,7 +429,7 @@ export class EditorSession {
 		} else {
 			// 合成一步的：說的是從合之前到現在改了什麼
 			const from = last && 'flow' in last ? last.flow : before;
-			undoStep = { flow: from, after: flow, label: label ?? changeLabel(from, flow) };
+			undoStep = { flow: from, after: flow, label: label ?? whyText(changeLabel(from, flow)) };
 		}
 		if (undoStep) {
 			this.#undo = (last ? [...this.#undo.slice(0, -1), undoStep] : [...this.#undo, undoStep]).slice(-UNDO_LIMIT);
@@ -427,8 +439,14 @@ export class EditorSession {
 		this.#flow = flow;
 		this.ask.clear();
 		this.#trim(flow);
-		const shown = undoStep?.label ?? label ?? changeLabel(before, flow);
-		this.#said = { flow, before, label: shown, extra: lostBookmarks(before, flow), button: { label: '復原', name: `復原：${shown}` } };
+		const shown = undoStep?.label ?? label ?? whyText(changeLabel(before, flow));
+		this.#said = {
+			flow,
+			before,
+			label: shown,
+			extra: lostBookmarks(before, flow),
+			button: { label: m.session_undo(), name: m.session_undo_step({ step: shown }) }
+		};
 		this.#showSaid();
 		this.#playback.changed(before);
 		this.onflow();
@@ -543,10 +561,10 @@ export class EditorSession {
 		// 頁面關掉的東西、在改的動作被刪了、改段連帶拿掉了書籤：都要說（不會悄悄不見）
 		const said = [
 			closed || null,
-			editing && !this.#actionId ? `${by}刪掉了你在改的動作「${actionLabel(editing)}」` : null,
-			...lostBookmarks(before, flow).map((t) => `${by}改了段：${t}`)
+			editing && !this.#actionId ? m.session_remote_deleted_action({ by, action: whyText(actionWhy(editing)) }) : null,
+			...lostBookmarks(before, flow).map((what) => m.session_remote_changed_segments({ by, what }))
 		].filter((t) => t !== null);
-		if (said.length) this.notice = said.join('；');
+		if (said.length) this.notice = joinNotes(said);
 	}
 
 	/**
@@ -628,7 +646,7 @@ export class EditorSession {
 		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];
 		else [this.#undo, this.#redo] = [from.slice(0, -1), to];
 		this.#restored(this.#flow, before, redo ? 'redo' : 'undo');
-		this.notice = [`${redo ? '已重做' : '已復原'}：${step.label}`, ...lostBookmarks(before, this.#flow)].join('；');
+		this.notice = joinNotes([(redo ? m.session_redid : m.session_undid)({ step: step.label }), ...lostBookmarks(before, this.#flow)]);
 		return true;
 	}
 
@@ -694,16 +712,17 @@ export class EditorSession {
 	 * 選項 atEdge：拖過頭停在邊界，多一句「已靠到邊界」。pasted：⌘V 貼上的（插的站位是貼上的位置，不是自動帶入，N46）。
 	 */
 	moved(r: MoveResult, { atEdge = false, pasted = false }: { atEdge?: boolean; pasted?: boolean } = {}) {
-		const said = [
-			pasted ? '貼上複製的站位' : r.inserted && '大家的位置自動帶入',
-			r.carried > 0 && `往後帶了 ${r.carried} 張`,
-			atEdge && AT_EDGE
+		const parts: (string | false | 0)[] = [
+			pasted ? m.session_pasted() : r.inserted && m.session_auto_inserted(),
+			r.carried > 0 && (r.carried === 1 ? m.session_carried_one : m.session_carried)({ count: r.carried }),
+			atEdge && m.session_at_edge()
 		];
-		const text = said.filter(Boolean).join('；');
+		const said = parts.filter((x): x is string => !!x);
+		const text = said.length ? joinNotes(said) : '';
 		const after = this.#flow;
 		const before = this.#said?.flow === after ? this.#said.before : null;
 		const onlyThis =
-			r.carried > 0 && after && before ? { label: '只改這張', run: () => this.#onlyThis(after, before, r.sec) } : undefined;
+			r.carried > 0 && after && before ? { label: m.session_only_this(), run: () => this.#onlyThis(after, before, r.sec) } : undefined;
 		this.noteChange(text, onlyThis);
 		this.#carriedInsertId =
 			r.inserted && r.carried > 0 && this.#flow ? currentFormation(this.#flow, r.sec).formation.id : null;
@@ -732,7 +751,7 @@ export class EditorSession {
 			this.ask.send(commands, {
 				done: () => {
 					this.#carriedInsertId = null;
-					this.noteChange('只改了這張，後面的站位改回去了');
+					this.noteChange(m.session_only_this_done());
 				}
 			});
 		} finally {
@@ -750,12 +769,13 @@ export class EditorSession {
 		if (!flow || index < 1) return;
 		const f = flow.formations[index];
 		const names = r.squeezed.map((id) => flow.members.find((m) => m.id === id)?.name);
-		const said = [
-			`改到 ${timeTextWithUnit(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })}`,
-			names.length && `走位被壓短：${names.join('、')}`,
-			atEdge && AT_EDGE
+		const parts: (string | false | 0)[] = [
+			m.session_moved_to({ at: whyText(timeWhy(flow, f.segmentId!, { segmentId: f.segmentId!, at: f.at })) }),
+			names.length && m.session_squeezed({ names: joinText(names.map((n) => n ?? '')) }),
+			atEdge && m.session_at_edge()
 		];
-		this.noteChange(said.filter(Boolean).join('；'));
+		const said = parts.filter((x): x is string => !!x);
+		this.noteChange(joinNotes(said));
 		this.selectFormation(formationId);
 		this.#playback.jump(r.sec, true);
 	}
@@ -766,7 +786,7 @@ export class EditorSession {
 		if (!flow) return;
 		this.ask.send({ name: 'deleteFormation', args: [formationId] }, {
 			done: () => {
-				if (formationId === this.#carriedInsertId) this.noteChange('後面站位的改動還在，要整個還原按復原');
+				if (formationId === this.#carriedInsertId) this.noteChange(m.session_carried_kept());
 			}
 		});
 	}
@@ -786,7 +806,7 @@ export class EditorSession {
 				const was = this.#said?.before.actions.find((a) => a.id === actionId);
 				const records = was?.successRate?.records.length ?? 0;
 				this.selectAction(null);
-				if (records) this.noteChange(`${records} 次紀錄一起清掉，按復原會回來`);
+				if (records) this.noteChange((records === 1 ? m.session_records_cleared_one : m.session_records_cleared)({ count: records }));
 			}
 		});
 	}
@@ -799,7 +819,7 @@ export class EditorSession {
 	deleteKey(): boolean {
 		if (this.#picked === 'formation' && this.#formationId) this.removeFormation(this.#formationId);
 		else if (this.#picked === 'action' && this.#actionId) this.removeAction(this.#actionId);
-		else if (this.#memberIds.length || this.#actionId || this.#formationId) this.notice = PICK_TO_DELETE;
+		else if (this.#memberIds.length || this.#actionId || this.#formationId) this.notice = m.session_pick_to_delete();
 		else return false;
 		return true;
 	}
@@ -809,7 +829,7 @@ export class EditorSession {
 		const index = this.#flow?.formations.findIndex((f) => f.id === this.#formationId) ?? -1;
 		if (this.#picked !== 'formation' || index < 0) return false;
 		this.#copied = this.#flow!.formations[index].pos;
-		this.notice = `記下站位 ${index + 1} 的位置；移到別的地方按 ${both(KEYS.paste)} 貼上`;
+		this.notice = m.session_copied({ n: index + 1, keys: both(KEYS.paste) });
 		return true;
 	}
 
@@ -823,7 +843,7 @@ export class EditorSession {
 		if (!copied || !flow) return false;
 		const ids = flow.members.map((m) => m.id).filter((id) => copied[id]);
 		if (!ids.length) {
-			this.notice = '複製的人都不在隊上了，沒有貼上';
+			this.notice = m.session_paste_gone();
 			return true;
 		}
 		this.ask.send({ name: 'moveGroup', args: [sec, Object.fromEntries(ids.map((id) => [id, copied[id]]))] }, {
@@ -938,7 +958,9 @@ function lostBookmarks(before: Flow, after: Flow): string[] {
 	if (before.segments === after.segments || JSON.stringify(before.segments) === JSON.stringify(after.segments)) return [];
 	const kept = new Set(bookmarksOf(after).map((b) => b.id));
 	const lost = bookmarksOf(before).filter((b) => !kept.has(b.id));
-	return lost.length ? [`書籤${lost.map((b) => `「${b.name}」`).join('')}也拿掉了`] : [];
+	if (!lost.length) return [];
+	const names = lost.map((b) => m.session_quoted({ name: b.name })).reduceRight((rest, first) => m.session_quoted_list({ first, rest }));
+	return [(lost.length === 1 ? m.session_lost_bookmarks_one : m.session_lost_bookmarks)({ names })];
 }
 
 /** 清單的 id 順序。 */

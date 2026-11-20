@@ -8,11 +8,13 @@
 		dailyTable,
 		percent,
 		perPerson,
-		phaseLabel,
+		phaseWhy,
 		successPercent,
 		type Action
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		action: Action;
@@ -30,44 +32,47 @@
 	const who = $derived(whos.find((w) => w.who === picked)?.who);
 	const phases = $derived(action.successRate?.phases ?? []);
 	const table = $derived(dailyTable(action, who));
-	const rows = $derived([...table.days.map((d) => ({ label: d.date, ...d })), { label: '合計', ...table.total }]);
-	const pickLabel = $derived(perPerson(action.category) ? '看哪一個人' : '看哪一組');
+	const rows = $derived([
+		...table.days.map((d) => ({ label: d.date, total: false, ...d })),
+		{ label: m.practice_total(), total: true, ...table.total }
+	]);
+	const pickLabel = $derived(perPerson(action.category) ? m.practice_pick_person() : m.practice_pick_squad());
 </script>
 
 <div class="daily">
 	<div class="head">
-		<h3>每天的成功率</h3>
+		<h3>{m.practice_daily_title()}</h3>
 		<label
 			>{pickLabel}
 			<select value={picked} onchange={(e) => (session.view.dailyWho[action.id] = e.currentTarget.value)}>
-				<option value="">全部</option>
+				<option value="">{m.practice_all()}</option>
 				{#each whos as w (w.who)}
-					<option value={w.who}>{w.name}</option>
+					<option value={w.who}>{whyText(w.name)}</option>
 				{/each}
 			</select>
 		</label>
 	</div>
 	<div class="scroll">
-		<table aria-label="每天的成功率">
+		<table aria-label={m.practice_daily_title()}>
 			<thead>
 				<tr>
-					<th scope="col">日期</th>
+					<th scope="col">{m.practice_date()}</th>
 					{#each phases as p (p.id)}
-						<th scope="col">{phaseLabel(p)}</th>
+						<th scope="col">{whyText(phaseWhy(p))}</th>
 					{/each}
-					{#if phases.length > 1}<th scope="col">整次</th>{/if}
+					{#if phases.length > 1}<th scope="col">{m.practice_all_phases()}</th>{/if}
 				</tr>
 			</thead>
 			<tbody>
 				{#each rows as row (row.label)}
-					<tr class:total={row.label === '合計'}>
+					<tr class:total={row.total}>
 						<th scope="row">{row.label}</th>
 						{#each phases as p (p.id)}
 							{@const t = row.phases[p.id]}
 							<td>
 								{#if t.marked}
 									<strong>{successPercent(t)}%</strong>
-									<small>完成率 {completionPercent(t)}%・{t.marked} 次</small>
+									<small>{(t.marked === 1 ? m.practice_daily_completion_one : m.practice_daily_completion)({ pct: completionPercent(t)!, n: t.marked })}</small>
 								{:else}—{/if}
 							</td>
 						{/each}
@@ -75,7 +80,7 @@
 							<td>
 								{#if row.whole.whole}
 									<strong>{percent(row.whole.clean, row.whole.whole)}%</strong>
-									<small>{row.whole.whole} 次</small>
+									<small>{(row.whole.whole === 1 ? m.practice_reps_one : m.practice_reps)({ n: row.whole.whole })}</small>
 								{:else}—{/if}
 							</td>
 						{/if}

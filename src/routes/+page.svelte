@@ -4,10 +4,10 @@
 		eightCountRows,
 		formationWalks,
 		memberMarkers,
-		memberNowText,
-		positionText,
+		memberNowWhy,
+		positionWhy,
 		positionsAt,
-		formationNowText,
+		formationNowWhy,
 		readJump,
 		layersAt,
 		squadBadge,
@@ -40,7 +40,6 @@
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
-	import { NEW_VERSION, OFFLINE } from '#lib/cloud-steps.svelte.js';
 	import type { Me, MyFlows } from '#lib/server-api.js';
 	import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
@@ -48,6 +47,9 @@
 	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
 	import { composing } from '#lib/ime.js';
+	import { joinText, reasonText, whyText } from '#lib/reason-text.js';
+	import { droppedTexts } from '#lib/cloud-steps.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { isTextEntry, ownsKey } from '#lib/key-owner.js';
 	import ActionDetail from '#lib/components/ActionDetail.svelte';
 	import Bookmarks from '#lib/components/Bookmarks.svelte';
@@ -60,6 +62,7 @@
 	import FlowSettings from '#lib/components/FlowSettings.svelte';
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import LanguagePicker from '#lib/components/LanguagePicker.svelte';
 	import Modal, { modalOpen } from '#lib/components/Modal.svelte';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
@@ -319,7 +322,7 @@
 	/** 點到的人的八拍表：只跟著流程和點到誰重算，播放頭動不用重算。 */
 	const tappedRows = $derived(flow && tappedId ? eightCountRows(flow, tappedId, false) : []);
 	const tappedWho = $derived(
-		flow && tappedId && flow.members.some((m) => m.id === tappedId) ? memberNowText(flow, tappedId, playback.sec, tappedRows) : ''
+		flow && tappedId && flow.members.some((m) => m.id === tappedId) ? whyText(memberNowWhy(flow, tappedId, playback.sec, tappedRows)) : ''
 	);
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived(session.groupingAction);
@@ -345,7 +348,7 @@
 		if (!f.savedAt) return { text: '', twin: false };
 		const twins = editor.file.recent.filter((g) => g !== f && g.name === f.name);
 		const sameMinute = twins.some((g) => g.savedAt && draftTime(g.savedAt) === draftTime(f.savedAt!));
-		return { text: `最後改 ${draftTime(f.savedAt, sameMinute)}`, twin: twins.length > 0 };
+		return { text: m.home_last_edited({ time: draftTime(f.savedAt, sameMinute) }), twin: twins.length > 0 };
 	}
 
 	/** 切到編排或練習。練習時不放音樂，先停下來。 */
@@ -378,10 +381,11 @@
 
 	/** 播放頭的位置拆成段名和段內位置，上方列分開排大小字；在結尾只有「結尾」（at 是空的）。 */
 	const position = $derived.by(() => {
-		const text = flow ? positionText(flow, playback.sec) : '';
-		if (!text) return null;
-		const cut = text.indexOf(' ', text.indexOf(' ') + 1);
-		return cut === -1 ? { segment: text, at: '' } : { segment: text.slice(0, cut), at: text.slice(cut + 1) };
+		const why = flow ? positionWhy(flow, playback.sec) : '';
+		if (!why) return null;
+		return typeof why === 'object' && why.code === 'time_in_segment'
+			? { segment: whyText(why.segment), at: whyText(why.at) }
+			: { segment: whyText(why), at: '' };
 	});
 
 	/**
@@ -392,14 +396,14 @@
 		const used = Number.isNaN(ms) ? playback.latencyMs : Math.min(Math.max(ms, -MAX_LATENCY_MS), MAX_LATENCY_MS);
 		playback.setLatency(used);
 		input.value = String(used);
-		if (!Number.isNaN(ms) && used !== ms) session.notice = `延遲校正要在 -${MAX_LATENCY_MS} 到 ${MAX_LATENCY_MS} 毫秒之間，改成 ${used}`;
+		if (!Number.isNaN(ms) && used !== ms) session.notice = m.editor_latency_clamped({ max: MAX_LATENCY_MS, used });
 	}
 
 	/** 「重複」滑鼠移上去的說明：照現在按下去會怎樣寫。 */
 	function repeatTitle(): string {
-		if (playback.range?.b != null) return '重複：一直播重複範圍（A 到 B）';
-		if (playback.canRepeat) return '重複：把重複範圍拉成選的動作，一直播';
-		return '重複：先在八拍尺上面那一條拖出重複範圍（或按 A、B），或選一個動作';
+		if (playback.range?.b != null) return m.editor_repeat_range();
+		if (playback.canRepeat) return m.editor_repeat_action();
+		return m.editor_repeat_hint();
 	}
 
 	/** 播放列的「⋯」小窗（延遲校正；手機還有回開頭、節拍器、重複）：平常收著，不佔播放列的位置。 */
@@ -453,7 +457,7 @@
 		e.preventDefault();
 		const read = readJump(flow, playback.sec, jumpText ?? '');
 		if (read.kind !== 'ok') {
-			jumpError = read.message;
+			jumpError = reasonText(read);
 			return;
 		}
 		playback.seek(read.value);
@@ -548,14 +552,31 @@
 	session.onremote = (f, by) => {
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
 			restore(f);
-			return `${by}刪掉了你在改的段`;
+			return m.editor_remote_deleted_segment({ by });
 		}
 	};
 	/** 復原、重做按鈕的提示：下一步會退（做回）什麼、快捷鍵，和方向鍵連按移人只算一步。 */
-	function stepTitle(verb: '復原' | '重做', label: string, keys: string) {
-		const what = label ? `${verb}：${label}` : verb;
-		return `${what}（${keys}）\n方向鍵連按移人合成一步，${verb}一次就整段${verb === '復原' ? '退回' : '做回'}`;
+	function stepTitle(which: 'undo' | 'redo', label: string, keys: string) {
+		if (which === 'undo') return label ? m.editor_undo_step({ what: label, keys }) : m.editor_undo_step_bare({ keys });
+		return label ? m.editor_redo_step({ what: label, keys }) : m.editor_redo_step_bare({ keys });
 	}
+
+	/** 疊在同一點的人：一組裡的名字、組和組之間照畫面的語言接起來（中文是「、」「；」）。 */
+	function stackedNames(groups: { name: string }[][]): string {
+		return joinText(
+			groups.map((g) => joinText(g.map((p) => p.name))),
+			m.members_problems
+		);
+	}
+
+	/** 最近的流程那一列的小字（最後改的時間、另一個分頁正在編／還沒存）：照畫面的語言接起來（中文是「・」）。 */
+	function recentMeta(parts: string[]): string {
+		const shown = parts.filter(Boolean);
+		return shown.length ? joinText(shown, m.home_meta) : '';
+	}
+
+	/** 首頁雲端流程列的「N 筆沒傳」。 */
+	const unsentText = (n: number) => (n === 1 ? m.home_unsent_one : m.home_unsent)({ n });
 
 	/** 復原、重做換上的流程：開著的段設定可能指到已經不在的段（選取、提示、播放頭由 session、播放處理）。 */
 	function restore(f: Flow) {
@@ -719,7 +740,7 @@
 </script>
 
 <svelte:head>
-	<title>{flow ? `${flow.name} — 流程編輯器` : '流程編輯器'}</title>
+	<title>{flow ? m.page_title({ page: flow.name }) : m.editor_title()}</title>
 </svelte:head>
 <svelte:window
 	{onkeydown}
@@ -759,7 +780,7 @@
 		{/snippet}
 		<!-- 「我」選單：手機的檢視畫面和電腦的檢視模式右邊欄共用（一次只出現一個） -->
 		{#snippet mePicker(hint: string)}
-			<label for="me-pick">我</label>
+			<label for="me-pick">{m.editor_me()}</label>
 			<select id="me-pick" value={myId} onchange={(e) => pickMe(e.currentTarget.value)}>
 				<option value="">{hint}</option>
 				{#each flow?.members ?? [] as m (m.id)}
@@ -773,27 +794,27 @@
 					type="button"
 					class="play"
 					class:on={playback.playing}
-					aria-label={playback.playing ? '暫停' : '播放'}
-					title={flow.segments.length ? '空白鍵也可以播放／暫停' : '先加一段'}
+					aria-label={playback.playing ? m.editor_pause() : m.editor_play()}
+					title={flow.segments.length ? m.editor_play_title() : m.editor_add_segment_first()}
 					disabled={!flow.segments.length && !playback.playing}
 					onclick={() => playback.toggle()}><Icon name={playback.playing ? 'pause' : 'play'} size={18} /></button
 				>
 				{#snippet board()}
-					<span class="pos" aria-label="目前位置"
+					<span class="pos" aria-label={m.editor_position()}
 						>{#if position}<span class="pos-seg">{position.segment}</span
-							>{#if position.at}{' '}<span class="pos-at">{position.at}</span>{/if}{:else}<span class="pos-seg">還沒有段</span>{/if}</span
+							>{#if position.at}{' '}<span class="pos-at">{position.at}</span>{/if}{:else}<span class="pos-seg">{m.editor_no_segments()}</span>{/if}</span
 					>
 					<span class="clock">{clockText(playback.sec)} <i>/ {clockText(totalSeconds(flow))}</i></span>
 				{/snippet}
 				<!-- 節拍器、重複：電腦放在播放列上；手機的播放列只有一排，收在「⋯」裡 -->
 				{#snippet toggles()}
-					<label class="toggle metronome" title="節拍器：播放時每拍響一聲">
+					<label class="toggle metronome" title={m.editor_metronome_title()}>
 						<input
 							type="checkbox"
 							checked={playback.metronome}
 							onchange={(e) => playback.setMetronome(e.currentTarget.checked)}
 						/>
-						<Icon name="metronome" /><span class="short-hide">節拍器</span>
+						<Icon name="metronome" /><span class="short-hide">{m.editor_metronome()}</span>
 					</label>
 					<span class="repeat-group">
 						<label class="toggle repeat" title={repeatTitle()}>
@@ -803,37 +824,37 @@
 								disabled={!playback.canRepeat}
 								onchange={(e) => playback.setRepeat(e.currentTarget.checked)}
 							/>
-							<Icon name="repeat" /><span class="short-hide">重複</span>
+							<Icon name="repeat" /><span class="short-hide">{m.editor_repeat()}</span>
 						</label>
 						<!-- 重複範圍：A、B 放在播放頭（播放中也能按），✕ 拿掉 -->
 						<button
 							type="button"
 							class="ab set-end"
-							aria-label="A：重複從播放頭開始"
-							title={!flow.segments.length || playback.canSetA ? 'A：重複從播放頭開始' : 'A 不能放在結尾'}
+							aria-label={m.editor_set_a()}
+							title={!flow.segments.length || playback.canSetA ? m.editor_set_a() : m.editor_set_a_at_end()}
 							disabled={!playback.canSetA}
 							onclick={() => playback.setA()}>A</button
 						>
 						<button
 							type="button"
 							class="ab set-end"
-							aria-label="B：重複到播放頭"
-							title={playback.range ? (playback.canSetB ? 'B：重複到播放頭' : 'B 要在 A 後面') : '先放 A'}
+							aria-label={m.editor_set_b()}
+							title={playback.range ? (playback.canSetB ? m.editor_set_b() : m.editor_set_b_before_a()) : m.editor_set_a_first()}
 							disabled={!playback.canSetB}
 							onclick={() => playback.setB()}>B</button
 						>
-						<button type="button" class="ab" aria-label="拿掉重複範圍" title="拿掉重複範圍" disabled={!playback.range} onclick={() => playback.clearRange()}>✕</button>
+						<button type="button" class="ab" aria-label={m.editor_clear_range()} title={m.editor_clear_range()} disabled={!playback.range} onclick={() => playback.clearRange()}>✕</button>
 					</span>
 				{/snippet}
 				{#if narrow}
 					<!-- 手機跳時間（#228）：上一個／下一個八拍夾著時間；點時間打「3-1」跳過去。只是看，不改流程。「回開頭」在「⋯」裡 -->
-					<button type="button" class="step" aria-label="上一個八拍" onclick={() => playback.step(-1, true)}>‹</button>
+					<button type="button" class="step" aria-label={m.editor_prev_eight()} onclick={() => playback.step(-1, true)}>‹</button>
 					{#if jumpText === null}
 						<button
 							type="button"
 							class="board"
-							aria-label="跳到哪裡"
-							title="點一下，打 3-1 跳到第 3 個八拍"
+							aria-label={m.editor_jump()}
+							title={m.editor_jump_title()}
 							disabled={!flow.segments.length}
 							onclick={() => (jumpText = '')}>{@render board()}</button
 						>
@@ -841,9 +862,9 @@
 						<div class="jump-to">
 							<input
 								type="text"
-								aria-label="跳到哪裡"
+								aria-label={m.editor_jump()}
 								data-scratch
-								placeholder="例：3-1"
+								placeholder={m.editor_jump_placeholder()}
 								enterkeyhint="go"
 								autocomplete="off"
 								bind:value={jumpText}
@@ -855,7 +876,7 @@
 							{#if jumpError}<p class="jump-error" {@attach revealAlert(jumpError)}>{jumpError}</p>{/if}
 						</div>
 					{/if}
-					<button type="button" class="step" aria-label="下一個八拍" onclick={() => playback.step(1, true)}>›</button>
+					<button type="button" class="step" aria-label={m.editor_next_eight()} onclick={() => playback.step(1, true)}>›</button>
 				{:else}
 					<div class="board">{@render board()}</div>
 					{@render toggles()}
@@ -864,8 +885,8 @@
 				{/if}
 				<select
 					class="speed"
-					aria-label="播放速度"
-					title="慢速播放，音高不變"
+					aria-label={m.editor_speed()}
+					title={m.editor_speed_title()}
 					value={String(playback.rate)}
 					onchange={(e) => playback.setRate(Number(e.currentTarget.value))}
 				>
@@ -874,8 +895,8 @@
 				<button
 					type="button"
 					class="more"
-					aria-label="更多播放選項"
-					title="延遲校正"
+					aria-label={m.editor_more_playback()}
+					title={m.editor_latency()}
 					aria-expanded={moreOpen}
 					bind:this={moreBtn}
 					onclick={() => (moreOpen = !moreOpen)}>⋯</button
@@ -885,28 +906,28 @@
 					<div
 						class="more-pop"
 						role="group"
-						aria-label="更多播放選項"
+						aria-label={m.editor_more_playback()}
 						{@attach popover({ place: below(moreBtn!, { gap: 6, align: 'right', flip: true }), close: closeMore, inside: [moreBtn] })}
 					>
 						{#if narrow}
 							<div class="more-play">
 								<button
 									type="button"
-									aria-label="回開頭"
+									aria-label={m.editor_to_start()}
 									onclick={() => {
 										moreOpen = false;
 										playback.toStart();
-									}}>⏮ 回開頭</button
+									}}>⏮ {m.editor_to_start()}</button
 								>
 								{@render toggles()}
 							</div>
 							<hr />
 						{/if}
 						<label class="latency">
-							<span class="latency-text">延遲校正</span>
+							<span class="latency-text">{m.editor_latency()}</span>
 							<input
 								type="number"
-								aria-label="延遲校正（毫秒）"
+								aria-label={m.editor_latency_ms()}
 								step="10"
 								min={-MAX_LATENCY_MS}
 								max={MAX_LATENCY_MS}
@@ -916,9 +937,9 @@
 									if (e.key === 'Enter') applyLatency(e.currentTarget);
 								}}
 							/>
-							<span class="unit" aria-hidden="true">毫秒</span>
+							<span class="unit" aria-hidden="true">{m.editor_ms()}</span>
 						</label>
-						<p class="more-hint">用藍牙耳機時，畫面比聲音快就調大。存在這台電腦，不進流程檔。</p>
+						<p class="more-hint">{m.editor_latency_hint()}</p>
 						<label class="return-on-stop">
 							<input
 								type="checkbox"
@@ -929,16 +950,16 @@
 									if (e.key === ' ') e.stopPropagation();
 								}}
 							/>
-							<span>停下來回到起播點</span>
+							<span>{m.editor_return_on_stop()}</span>
 						</label>
-						<p class="more-hint">起播點是這次開始播的地方。Shift＋空白鍵做相反的事。存在這台電腦。</p>
+						<p class="more-hint">{m.editor_return_on_stop_hint()}</p>
 					</div>
 				{/if}
 			</div>
 		{/snippet}
 		<!-- 鍵盤用的捷徑：上方列、場地、右邊欄要按很多下 Tab 才到時間軸。平常藏著，Tab 到它才出現。 -->
 		{#if view === 'edit' && !narrow}
-			<button type="button" class="skip" onclick={() => timelineHost?.focus()}>跳到時間軸</button>
+			<button type="button" class="skip" onclick={() => timelineHost?.focus()}>{m.editor_skip_timeline()}</button>
 		{/if}
 		<!-- 檢視模式時上方列換成紫色：整個畫面一看就知道現在只能看 -->
 		<header class="topbar" class:viewing={session.viewing && view === 'edit' && !narrow} bind:this={topbar}>
@@ -947,11 +968,11 @@
 				<button
 					type="button"
 					class="menu"
-					title="選單"
+					title={m.editor_menu()}
 					aria-haspopup="dialog"
 					aria-expanded={menuOpen}
 					bind:this={menuBtn}
-					onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class={narrow ? 'sr-only' : 'tight-hide'}>選單</span></button
+					onclick={() => (menuOpen = !menuOpen)}><Icon name="menu" /><span class={narrow ? 'sr-only' : 'tight-hide'}>{m.editor_menu()}</span></button
 				>
 				<!-- 小窗放在「選單」下面、左邊對齊；跟「⋯」小窗一樣：點外面（點「選單」自己是開關）、按 Esc 就收（popover.svelte.ts）。
 				     是 dialog（跟 aria-haspopup 一樣）：Tab 到裡面的項目按空白鍵是按下它，不拿去播放（key-owner.ts） -->
@@ -959,48 +980,48 @@
 					<div
 						class="menu-pop"
 						role="dialog"
-						aria-label="選單"
+						aria-label={m.editor_menu()}
 						{@attach popover({ place: below(menuBtn!, { gap: 6, align: 'left', flip: true }), close: closeMenu, inside: [menuBtn] })}
 					>
 						{#if narrow}
 							<!-- 窄螢幕（手機的檢視畫面、練習）上方列只有一排：開啟、回首頁、存檔、分享、八拍表都收在這裡。不能編，沒有新建、流程設定 -->
 							{#if cloud || linkOnly}
 								<!-- 雲端流程每一步都存了：沒有開啟、存檔 -->
-								<button type="button" onclick={() => fromMenu(goHome)}><Icon name="home" />回首頁</button>
+								<button type="button" onclick={() => fromMenu(goHome)}><Icon name="home" />{m.back_home()}</button>
 								{#if cloud}
-									<button type="button" onclick={() => fromMenu(() => (shareOpen = true))}><Icon name="people" />分享</button>
+									<button type="button" onclick={() => fromMenu(() => (shareOpen = true))}><Icon name="people" />{m.editor_share()}</button>
 								{/if}
 								<!-- 誰開著（#253）：上方列放不下頭像，一人一行寫名字和在編輯還是檢視；自己不列 -->
 								{#if cloud?.present.length}
-									<ul class="present-rows" aria-label="誰開著">
+									<ul class="present-rows" aria-label={m.editor_present()}>
 										{#each cloud.present as p (p.userId)}
 											<li>
 												<span class="present-face" style:--face={faceColor(p.userId)} aria-hidden="true">{p.name.slice(0, 1)}</span>
-												{p.name}・{p.editing ? '編輯中' : '檢視中'}
+												{p.editing ? m.editor_present_editing({ name: p.name }) : m.editor_present_viewing({ name: p.name })}
 											</li>
 										{/each}
 									</ul>
 								{/if}
 							{:else}
 								<!-- 同一下點擊裡點選檔欄位：瀏覽器要使用者剛點過才肯跳選檔 -->
-								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />開啟流程檔</button>
+								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />{m.editor_open_file()}</button>
 								<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
-								<button type="button" onclick={() => fromMenu(() => editor.file.leaveToHome())}><Icon name="home" />回首頁</button>
+								<button type="button" onclick={() => fromMenu(() => editor.file.leaveToHome())}><Icon name="home" />{m.back_home()}</button>
 								<!-- 練習的紀錄照樣要存 -->
-								<button type="button" onclick={() => fromMenu(() => editor.file.save())}><Icon name="save" />存檔</button>
+								<button type="button" onclick={() => fromMenu(() => editor.file.save())}><Icon name="save" />{m.editor_save()}</button>
 							{/if}
 							<hr />
-							<button type="button" onclick={() => fromMenu(() => (printOpen = true))}><Icon name="print" />八拍表</button>
+							<button type="button" onclick={() => fromMenu(() => (printOpen = true))}><Icon name="print" />{m.editor_eight_sheet()}</button>
 						{:else}
 							{#if cloud || linkOnly}
 								<!-- 雲端流程每一步都存了：沒有開啟、新建，換成下載（擁有者、編輯者） -->
 								{#if cloud && canEdit(cloud.role)}
-									<button type="button" onclick={() => fromMenu(() => editor.file.download())}><Icon name="download" />下載成流程檔</button>
+									<button type="button" onclick={() => fromMenu(() => editor.file.download())}><Icon name="download" />{m.editor_download()}</button>
 								{/if}
 							{:else}
 								<!-- 同一下點擊裡點選檔欄位：瀏覽器要使用者剛點過才肯跳選檔 -->
-								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />開啟流程檔</button>
-								<button type="button" onclick={() => fromMenu(() => editor.file.startNew())}><Icon name="new" />新建</button>
+								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />{m.editor_open_file()}</button>
+								<button type="button" onclick={() => fromMenu(() => editor.file.startNew())}><Icon name="new" />{m.editor_new()}</button>
 							{/if}
 							{#if view === 'edit'}
 								<hr />
@@ -1008,23 +1029,23 @@
 								{#if !touchScreen}
 									<button
 										type="button"
-										title={flow.segments.length ? '輸出影片' : '先加一段'}
+										title={flow.segments.length ? m.editor_export_video() : m.editor_add_segment_first()}
 										disabled={!flow.segments.length}
 										onclick={() =>
 											fromMenu(() => {
 												// 輸出時不能播放：在播的先停
 												playback.pause();
 												videoOpen = true;
-											})}><Icon name="video" />輸出影片</button
+											})}><Icon name="video" />{m.editor_export_video()}</button
 									>
 								{/if}
 								<button type="button" disabled={!session.editable} onclick={() => fromMenu(() => (settingsOpen = true))}
-									><Icon name="settings" />流程設定</button
+									><Icon name="settings" />{m.editor_flow_settings()}</button
 								>
 							{/if}
 						{/if}
 						<hr />
-						<a href={guideHref} target="_blank" rel="noopener" onclick={() => fromMenu(() => {})}><Icon name="help" />使用說明</a>
+						<a href={guideHref} target="_blank" rel="noopener" onclick={() => fromMenu(() => {})}><Icon name="help" />{m.editor_guide()}</a>
 					</div>
 				{/if}
 				{#if !cloud && !linkOnly}
@@ -1033,7 +1054,7 @@
 						class="menu-file"
 						type="file"
 						accept=".zip"
-						aria-label="開啟流程檔"
+						aria-label={m.editor_open_file()}
 						aria-hidden="true"
 						tabindex="-1"
 						onclick={pickOpen}
@@ -1042,18 +1063,18 @@
 				{/if}
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 登入時本機流程寫「這台」：分得出這支只在這台電腦、還沒傳上雲端 -->
-				{#if account && !cloud && !linkOnly}<span class="here-tag" title="只在這台電腦，靠草稿和流程檔留著">這台</span>{/if}
+				{#if account && !cloud && !linkOnly}<span class="here-tag" title={m.home_here_hint()}>{m.home_here()}</span>{/if}
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">{editor.file.offlineAt !== null ? '⚠ 沒有網路' : '⚠ 斷線'}</span>{:else if !cloud.newVersion}<span class="cloud-saved"
-								>{cloud.saving ? '存中…' : '✓ 已存'}</span
-							>{/if}{:else if unsaved}<span class="unsaved" title={`有還沒存的修改（${both(KEYS.save)} 存檔）`}>未存</span>{/if}</span
+					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">{editor.file.offlineAt !== null ? `⚠ ${m.editor_offline()}` : `⚠ ${m.editor_disconnected()}`}</span>{:else if !cloud.newVersion}<span class="cloud-saved"
+								>{cloud.saving ? m.editor_saving() : `✓ ${m.editor_saved()}`}</span
+							>{/if}{:else if unsaved}<span class="unsaved" title={m.editor_unsaved_title({ keys: both(KEYS.save) })}>{m.editor_unsaved()}</span>{/if}</span
 				>
 				<!-- 用分享連結看的沒有練習頁（看不到成功率） -->
 				{#if !linkOnly}
-					<div class="view" role="group" aria-label="編排｜練習">
-						<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>編排</button>
-						<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>練習</button>
+					<div class="view" role="group" aria-label={m.editor_view_group()}>
+						<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>{m.editor_arrange()}</button>
+						<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>{m.editor_practice()}</button>
 					</div>
 				{/if}
 			</div>
@@ -1068,48 +1089,48 @@
 				{#if view === 'edit'}
 					<!-- 檢視模式：只能看、只能播放。改流程的指令由 session 擋下，不只是藏按鈕 -->
 					<!-- 兩格都看得到，現在的那格是白的：一眼看得出現在是哪個模式、按哪裡換 -->
-					<div class="mode" role="group" aria-label="編輯｜檢視">
-						<button type="button" aria-pressed={!session.viewing} title="編輯" disabled={viewOnly} onclick={() => (session.viewing = false)}
-							><Icon name="pencil" /><span class="tight-hide">編輯</span></button
+					<div class="mode" role="group" aria-label={m.editor_mode_group()}>
+						<button type="button" aria-pressed={!session.viewing} title={m.editor_edit()} disabled={viewOnly} onclick={() => (session.viewing = false)}
+							><Icon name="pencil" /><span class="tight-hide">{m.editor_edit()}</span></button
 						>
 						<button
 							type="button"
 							aria-pressed={session.viewing}
-							title="檢視模式：只能看、只能播放，不會不小心改到"
-							onclick={() => (session.viewing = true)}><Icon name="eye" /><span class="tight-hide">檢視</span></button
+							title={m.editor_view_mode_title()}
+							onclick={() => (session.viewing = true)}><Icon name="eye" /><span class="tight-hide">{m.editor_view()}</span></button
 						>
 					</div>
 					<!-- 檢視時復原、重做不拿掉，只變灰：換模式時旁邊的按鈕不會跑 -->
 					<button
 						type="button"
 						class="ghost"
-						title={stepTitle('復原', session.undoLabel, both(KEYS.undo))}
+						title={stepTitle('undo', session.undoLabel, both(KEYS.undo))}
 						disabled={!session.editable || !session.canUndo}
 						onclick={undo}
-						><Icon name="undo" /><span class="sr-only">復原</span></button
+						><Icon name="undo" /><span class="sr-only">{m.editor_undo()}</span></button
 					>
 					<button
 						type="button"
 						class="ghost"
-						title={stepTitle('重做', session.redoLabel, both(KEYS.redo))}
+						title={stepTitle('redo', session.redoLabel, both(KEYS.redo))}
 						disabled={!session.editable || !session.canRedo}
-						onclick={redo}><Icon name="redo" /><span class="sr-only">重做</span></button
+						onclick={redo}><Icon name="redo" /><span class="sr-only">{m.editor_redo()}</span></button
 					>
 					<span class="sep" aria-hidden="true"></span>
 				{/if}
 				<!-- 八拍表的字一直留著：使用說明都叫它「八拍表」，只有印表機圖示認不出來 -->
-				<button type="button" class="ghost" title="八拍表" onclick={() => (printOpen = true)}
-					><Icon name="print" /><span class="tightest-hide">八拍表</span></button
+				<button type="button" class="ghost" title={m.editor_eight_sheet()} onclick={() => (printOpen = true)}
+					><Icon name="print" /><span class="tightest-hide">{m.editor_eight_sheet()}</span></button
 				>
 				{#if cloud || linkOnly}
 					<span class="sep" aria-hidden="true"></span>
 					<!-- 雲端流程每一步都存了：沒有存檔，換成回首頁（下載在選單裡） -->
-					<button type="button" class="ghost" onclick={goHome}><Icon name="home" />首頁</button>
+					<button type="button" class="ghost" onclick={goHome}><Icon name="home" />{m.editor_home()}</button>
 					<!-- 誰開著（#253）：別人的頭像放在「分享」左邊，一人一個顏色，右下小圖示是在編輯（筆）還是檢視（眼睛）；自己不列 -->
 					{#if cloud?.present.length}
-						<ul class="present" aria-label="誰開著">
+						<ul class="present" aria-label={m.editor_present()}>
 							{#each cloud.present as p (p.userId)}
-								{@const doing = `${p.name}・${p.editing ? '編輯中' : '檢視中'}`}
+								{@const doing = p.editing ? m.editor_present_editing({ name: p.name }) : m.editor_present_viewing({ name: p.name })}
 								<li class="present-face" style:--face={faceColor(p.userId)} title={doing} aria-label={doing}>
 									<span aria-hidden="true">{p.name.slice(0, 1)}</span>
 									<span class="present-mode" aria-hidden="true"><Icon name={p.editing ? 'pencil' : 'eye'} size={10} /></span>
@@ -1119,23 +1140,23 @@
 					{/if}
 					<!-- 放在原本存檔的地方；每個人都叫「分享」，不是擁有者打開是只能看的名單。用分享連結看的沒有 -->
 					{#if cloud}
-						<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />分享</button>
+						<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />{m.editor_share()}</button>
 					{/if}
 				{:else}
 					<!-- 登入時存檔左邊：按了直接傳，不先問（傳上去不會弄丟東西） -->
 					{#if account}
-						<button type="button" class="ghost" title="傳上雲端" onclick={() => editor.file.upload()}
-							><Icon name="cloud" /><span class="upload-text">傳上雲端</span></button
+						<button type="button" class="ghost" title={m.editor_upload()} onclick={() => editor.file.upload()}
+							><Icon name="cloud" /><span class="upload-text">{m.editor_upload()}</span></button
 						>
 					{/if}
-					<button type="button" class="save primary" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />存檔</button>
+					<button type="button" class="save primary" title={both(KEYS.save)} onclick={() => editor.file.save()}><Icon name="save" />{m.editor_save()}</button>
 				{/if}
 			</div>
 			{/if}
 			<!-- 斷網打開的離線副本（#261）：上方列下面一整條灰的，編排、練習、手機都看得到 -->
 			{#if editor.file.offlineAt !== null}
-				<p class="copy-bar" role="status" aria-label="沒有網路">
-					沒有網路，這是 {draftTime(new Date(editor.file.offlineAt))} 的樣子。只能看、記成功率；連上網路就換成最新的。
+				<p class="copy-bar" role="status" aria-label={m.editor_offline()}>
+					{m.editor_offline_copy({ time: draftTime(new Date(editor.file.offlineAt)) })}
 				</p>
 			{/if}
 		</header>
@@ -1149,7 +1170,7 @@
 				<main class="phone-view">
 					<div class="phone-field">
 						<!-- 點了場上的人：這裡換成寫他的名字和這個八拍做什麼；點空白的地方換回站位名稱 -->
-						<div class="formation-now">{tappedWho || formationNowText(flow, playback.sec)}</div>
+						<div class="formation-now">{tappedWho || whyText(formationNowWhy(flow, playback.sec))}</div>
 						<Field
 							field={flow.field}
 							members={flow.members}
@@ -1171,7 +1192,7 @@
 					<!-- 書籤那排一定佔一格（沒有書籤就是 0 高），「我」、前後八拍才不會被擠到別格 -->
 					<div class="phone-marks"><Bookmarks place="phone" /></div>
 					<div class="phone-me">
-						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
+						{@render mePicker(m.editor_me_hint_sheet())}
 					</div>
 					<!-- 手機放不下五列：只放這個八拍和下一個；點動作名字，誰做這個動作接在下面 -->
 					<div class="phone-eights">
@@ -1193,7 +1214,7 @@
 					</div>
 					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編（雲端流程有新版、斷線時寫那個） -->
 					<p class="phone-why">
-						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? OFFLINE : `檢視模式・只能看${whyViewOnly ? `（${whyViewOnly}）` : ''}`}
+						<Icon name="eye" />{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.cloud_offline() : whyViewOnly ? m.editor_view_only_why({ why: whyViewOnly }) : m.editor_view_only()}
 					</p>
 					<!-- 提示浮在畫面最下面，不疊在場地上：手機的場地沒有空的地方，放哪都會蓋到條號或「正面／裁判」（N52） -->
 					<div class="phone-toasts">{@render noticeToast()}</div>
@@ -1203,10 +1224,10 @@
 			<main class="field-host" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>
 				{#if session.viewing}
 					<!-- 左上角一直寫播放頭這一刻的站位（有人往下一張走了寫要去的那張） -->
-					<div class="formation-now">{formationNowText(flow, playback.sec)}</div>
+					<div class="formation-now">{whyText(formationNowWhy(flow, playback.sec))}</div>
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
 					<div class="view-badge">
-						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? '斷線了・連上才能改' : '檢視模式・只能看'}
+						<Icon name="eye" />{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.editor_disconnected_view() : m.editor_view_only()}
 					</div>
 				{/if}
 				<Field
@@ -1232,13 +1253,13 @@
 						{#if touchScreen || timelineDivider.px !== null || inspectorDivider.px !== null}
 							<div class="select-tools">
 								{#if touchScreen}
-									<label class="toggle-btn" title="打開後，場上點人、框選、點泳道名字、點動作表單裡的名字都是加選或拿掉（跟按著 Shift 一樣）">
-										<input type="checkbox" bind:checked={session.multiSelect} />多選
+									<label class="toggle-btn" title={m.editor_multi_select_title()}>
+										<input type="checkbox" bind:checked={session.multiSelect} />{m.editor_multi_select()}
 									</label>
-									<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>取消選取</button>
+									<button type="button" disabled={!session.anySelected} onclick={() => session.clearSelection()}>{m.editor_clear_selection()}</button>
 								{/if}
 								{#if timelineDivider.px !== null || inspectorDivider.px !== null}
-									<button type="button" class="ghost" onclick={resetLayout}>版面回原狀</button>
+									<button type="button" class="ghost" onclick={resetLayout}>{m.editor_reset_layout()}</button>
 								{/if}
 							</div>
 						{/if}
@@ -1249,21 +1270,21 @@
 						{/if}
 						{#if warnings.length}
 							<!-- 一條一行、有小標題；能改設定時點一條就打開流程設定，焦點在那條規則的數字 -->
-							<ul class="warn" aria-label="規則警告">
-								{#each warnings as w (w.title)}
+							<ul class="warn" aria-label={m.editor_rule_warnings()}>
+								{#each warnings as w (w.rule)}
 									<li>
 										{#if view === 'edit' && session.editable}
 											<button
 												type="button"
-												title="規則警告（只提醒，不擋）：按一下到流程設定改這個數字"
+												title={m.editor_rule_warning_title()}
 												onclick={() => {
 													settingsFocus = w.rule;
 													settingsOpen = true;
 												}}
-												><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></button
+												><Icon name="warn" /><span><b>{whyText(w.title)}</b>{whyText(w.text)}</span></button
 											>
 										{:else}
-											<span class="row"><Icon name="warn" /><span><b>{w.title}</b>{w.text}</span></span>
+											<span class="row"><Icon name="warn" /><span><b>{whyText(w.title)}</b>{whyText(w.text)}</span></span>
 										{/if}
 									</li>
 								{/each}
@@ -1277,10 +1298,10 @@
 										onclick={() => {
 											settingsFocus = 'on';
 											settingsOpen = true;
-										}}><Icon name="warn" /><span><b>規則警告關著</b>按一下到流程設定打開</span></button
+										}}><Icon name="warn" /><span><b>{m.editor_rules_off()}</b>{m.editor_rules_off_click()}</span></button
 									>
 								{:else}
-									<span class="row"><Icon name="warn" /><span><b>規則警告關著</b>到流程設定打開</span></span>
+									<span class="row"><Icon name="warn" /><span><b>{m.editor_rules_off()}</b>{m.editor_rules_off_hint()}</span></span>
 								{/if}
 							</div>
 						{/if}
@@ -1291,7 +1312,7 @@
 							{@const stacked = stackedAt(flow, playback.sec)}
 							{#if stacked.length}
 								<p class="hint-warn" role="note">
-									{stacked.map((g) => g.map((m) => m.name).join('、')).join('；')} 疊在同一點：被蓋住的人看不到也點不到，拖開一點比較好
+									{m.editor_stacked({ names: stackedNames(stacked) })}
 								</p>
 							{/if}
 							<CueOverlay {flow} />
@@ -1299,8 +1320,8 @@
 					{/snippet}
 				{#if flow.members.length === 0}
 					<div class="field-empty">
-						<b>場上還沒有人</b>
-						<span>到右邊的「隊員」加人，他們會排進場地中間的空格點（場地站滿了才排到場外），可以直接拖。</span>
+						<b>{m.editor_field_empty()}</b>
+						<span>{m.editor_field_empty_hint()}</span>
 					</div>
 				{/if}
 				<!-- 場上的確認框和提示：找一個不蓋住場上的人、條號、「正面／裁判」、選人工具列的地方
@@ -1319,28 +1340,28 @@
 				</Field>
 			</main>
 
-			<aside class="inspector" class:viewing={!session.editable} aria-label="右邊欄" hidden={view === 'practice'}>
+			<aside class="inspector" class:viewing={!session.editable} aria-label={m.editor_sidebar()} hidden={view === 'practice'}>
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex (可以聚焦、用 ←→ 調的分界，WAI-ARIA 的 separator 就是這樣用) -->
 				<div
 					class="col-split"
 					role="separator"
 					aria-orientation="vertical"
-					aria-label="場地和右邊欄的分界"
+					aria-label={m.editor_sidebar_divider()}
 					aria-valuenow={inspectorPx}
 					aria-valuemin={INSPECTOR_MIN_PX}
 					tabindex="0"
-					title="拖這裡調整右邊欄的寬度（雙擊或按場地左邊的「版面回原狀」回到自動）"
+					title={m.editor_sidebar_divider_title()}
 					{@attach inspectorDivider.attach}
 				></div>
 				<!-- svelte-ignore a11y_interactive_supports_focus (焦點在裡面的分頁上，←→ 從分頁冒上來；分頁列本身不用停) -->
-				<div class="tabs" role="tablist" aria-label="右邊欄" hidden={!session.editable} onkeydown={tabKey}>
+				<div class="tabs" role="tablist" aria-label={m.editor_sidebar()} hidden={!session.editable} onkeydown={tabKey}>
 					<button
 						type="button"
 						role="tab"
 						id="tab-action"
 						aria-selected={editor.inspectorTab === 'action'}
 						aria-controls="panel-action"
-						onclick={() => (editor.inspectorTab = 'action')}><Icon name="bolt" />動作</button
+						onclick={() => (editor.inspectorTab = 'action')}><Icon name="bolt" />{m.editor_skill()}</button
 					>
 					<button
 						type="button"
@@ -1349,7 +1370,7 @@
 						aria-selected={editor.inspectorTab === 'members'}
 						aria-controls="panel-members"
 						onclick={() => (editor.inspectorTab = 'members')}
-						><Icon name="people" />隊員<span class="count">{flow.members.length}</span></button
+						><Icon name="people" />{m.editor_athletes()}<span class="count">{flow.members.length}</span></button
 					>
 				</div>
 				<div class="panel" id="panel-action" role="tabpanel" aria-labelledby="tab-action" hidden={!session.editable || editor.inspectorTab !== 'action'}>
@@ -1363,7 +1384,7 @@
 				<!-- 檢視模式：右邊欄只放看的東西。編輯的分頁、表單藏起來不拆掉，切回編輯時原樣回來 -->
 				{#if !session.editable}
 					<div class="panel view-panel">
-						<div class="view-me">{@render mePicker('（選自己：場上標亮我、前後八拍只看我的）')}</div>
+						<div class="view-me">{@render mePicker(m.editor_me_hint_nearby())}</div>
 						<NowEightCount
 							{flow}
 							memberId={myId}
@@ -1377,7 +1398,7 @@
 						{#if session.selectedAction}
 							<div bind:this={pickedDetail}><ActionDetail {flow} action={session.selectedAction} /></div>
 						{:else}
-							<p class="view-hint">點上面的動作名字或時間軸上的動作，這裡看得到人、任務角色、拍點、備註。</p>
+							<p class="view-hint">{m.editor_view_hint()}</p>
 						{/if}
 					</div>
 				{/if}
@@ -1389,15 +1410,15 @@
 				hidden={view === 'practice'}
 				role="separator"
 				aria-orientation="horizontal"
-				aria-label="場地和時間軸的分界"
+				aria-label={m.editor_timeline_divider()}
 				aria-valuenow={timelineDivider.px ?? currentTimelineH()}
 				aria-valuemin={TIMELINE_MIN_PX}
 				tabindex="0"
-				title="拖這裡改時間軸的高度，場地跟著變（雙擊或按場地左邊的「版面回原狀」回到預設）"
+				title={m.editor_timeline_divider_title()}
 				{@attach timelineDivider.attach}
 			></div>
 
-			<section class="timeline-host" aria-label="時間軸" tabindex="-1" hidden={view === 'practice'} bind:this={timelineHost}>
+			<section class="timeline-host" aria-label={m.editor_timeline()} tabindex="-1" hidden={view === 'practice'} bind:this={timelineHost}>
 				<Timeline onopensegment={(id) => (openSegmentId = id)} clashes={allClashes} />
 			</section>
 		{/if}
@@ -1412,9 +1433,9 @@
 	<!-- 大的 iPad 拿直的（不算窄）：編輯畫面擋住，但留「回首頁」「看八拍表」「去練習」，不會被困住（docs/adr/0005-ipad-touch.md） -->
 	{#snippet coverWays()}
 		<div class="cover-ways">
-			<button type="button" onclick={goHome}>回首頁</button>
-			<button type="button" onclick={() => (printOpen = true)}>看八拍表</button>
-			{#if !linkOnly}<button type="button" class="primary" onclick={() => setView('practice')}>去練習</button>{/if}
+			<button type="button" onclick={goHome}>{m.back_home()}</button>
+			<button type="button" onclick={() => (printOpen = true)}>{m.editor_see_eight_sheet()}</button>
+			{#if !linkOnly}<button type="button" class="primary" onclick={() => setView('practice')}>{m.editor_go_practice()}</button>{/if}
 		</div>
 	{/snippet}
 	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來。窄螢幕是手機的檢視畫面，不擋 -->
@@ -1422,8 +1443,8 @@
 		<!-- iPad 拿直的：場地會被擠到看不見，請教練轉成橫的（只在觸控螢幕顯示） -->
 		<section class="cover-hint rotate-hint" aria-labelledby="rotate-hint-title">
 			<Icon name="fit" size={28} />
-			<b id="rotate-hint-title">請把 iPad 轉成橫的</b>
-			<span>編輯畫面要橫著放，場地和時間軸才放得下。練習、記錄、看八拍表直著也可以。</span>
+			<b id="rotate-hint-title">{m.editor_rotate_title()}</b>
+			<span>{m.editor_rotate_hint()}</span>
 			{@render coverWays()}
 		</section>
 	{/if}
@@ -1463,16 +1484,16 @@
 		/>
 	{/if}
 	{#if editor.file.asking}
-		{@const message = `「${flow.name}」還沒存，${editor.file.askingToOpen ? '要開別的流程檔，' : ''}改的東西會不見。`}
+		{@const message = editor.file.askingToOpen ? m.editor_unsaved_open({ name: flow.name }) : m.editor_unsaved_leave({ name: flow.name })}
 		<!-- 真的對話框：Escape、點背景＝取消，焦點先放在「取消」，關掉後回到按的按鈕 -->
 		<Modal label={message} class="discard-box" onclose={() => editor.file.answer('cancel')}>
 			{#snippet children()}
 				<ConfirmList
 					{message}
 					items={[]}
-					confirmLabel="不存了，繼續"
+					confirmLabel={m.editor_discard_continue()}
 					onconfirm={() => editor.file.answer('discard')}
-					extra={{ label: '先存檔', onclick: () => editor.file.answer('save') }}
+					extra={{ label: m.editor_save_first(), onclick: () => editor.file.answer('save') }}
 					oncancel={() => editor.file.answer('cancel')}
 					focusCancel
 				/>
@@ -1481,12 +1502,12 @@
 	{/if}
 	{#if editor.file.tooBig}
 		{@const big = editor.file.tooBig}
-		<Modal label="傳不上去：音樂檔太大" class="discard-box too-big" onclose={() => editor.file.dismissTooBig()}>
+		<Modal label={m.editor_too_big_title()} class="discard-box too-big" onclose={() => editor.file.dismissTooBig()}>
 			{#snippet children()}
-				<h2>傳不上去：音樂檔太大</h2>
-				<p>「{big.segment}」的音樂檔 {big.mb} MB，一個音樂檔最多 60 MB。請轉成 mp3（3 分鐘約 3–7 MB），在流程設定換掉再傳。</p>
+				<h2>{m.editor_too_big_title()}</h2>
+				<p>{m.editor_too_big({ segment: big.segment, mb: big.mb })}</p>
 				<div class="too-big-actions">
-					<button type="button" class="primary" data-autofocus onclick={() => editor.file.dismissTooBig()}>知道了</button>
+					<button type="button" class="primary" data-autofocus onclick={() => editor.file.dismissTooBig()}>{m.editor_got_it()}</button>
 				</div>
 			{/snippet}
 		</Modal>
@@ -1495,26 +1516,26 @@
 	{#snippet startForm()}
 		{#if narrow}
 			<!-- 窄螢幕不能編：不放新建，最大的是「開啟流程檔」（docs/adr/0005-ipad-touch.md） -->
-			<p class="home-view-only"><Icon name="eye" />檢視模式・只能看：這個畫面太小，不能新建、編輯。請用電腦，或把 iPad 轉成橫的。</p>
+			<p class="home-view-only"><Icon name="eye" />{m.home_view_only()}</p>
 		{:else}
 			<NewFlowForm oncreate={created} extra={account ? whereField : undefined} />
 		{/if}
 		<div class="home-open">
-			{#if !narrow}<span>已經有流程檔？</span>{/if}
-			<label class="open btn" class:primary={narrow}><Icon name="open" />開啟流程檔<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+			{#if !narrow}<span>{m.home_have_file()}</span>{/if}
+			<label class="open btn" class:primary={narrow}><Icon name="open" />{m.editor_open_file()}<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
 		</div>
 		{#if editor.file.openError}<p class="error" {@attach revealAlert(editor.file.openError)}>{editor.file.openError}</p>{/if}
 	{/snippet}
 	{#snippet whereField()}
 		<fieldset class="where">
-			<legend>存在</legend>
+			<legend>{m.home_save_to()}</legend>
 			<label
-				><input type="radio" name="save-to" value="cloud" bind:group={saveTo} disabled={!online} /><b>雲端</b>
-				<small>{online ? '換台電腦也打得開，可以分享' : '沒有網路，現在不能存在雲端'}</small></label
+				><input type="radio" name="save-to" value="cloud" bind:group={saveTo} disabled={!online} /><b>{m.home_cloud()}</b>
+				<small>{online ? m.home_cloud_hint() : m.home_cloud_offline()}</small></label
 			>
 			<label
-				><input type="radio" name="save-to" value="here" bind:group={saveTo} /><b>這台</b>
-				<small>只在這台電腦，靠草稿和流程檔留著</small></label
+				><input type="radio" name="save-to" value="here" bind:group={saveTo} /><b>{m.home_here()}</b>
+				<small>{m.home_here_hint()}</small></label
 			>
 		</fieldset>
 	{/snippet}
@@ -1527,24 +1548,26 @@
 					<button type="button" class="recent-open" onclick={() => editor.file.openRecent(f.id)}>
 						<span class="recent-name" title={f.name}>{f.name}</span>
 						<span class="recent-meta"
-							>{[edited, f.busy ? '另一個分頁正在編' : f.unsaved ? '還沒存' : '']
-								.filter(Boolean)
-								.join('・')}</span
+							>{recentMeta([edited, f.busy ? m.home_busy() : f.unsaved ? m.home_unsaved() : ''])}</span
 						>
 					</button>
-					<button type="button" class="link recent-drop" aria-label={`丟掉「${f.name}」${twin ? `（${edited}）` : ''}`} onclick={() => (discarding = f)}>丟掉</button>
+					<button type="button" class="link recent-drop" aria-label={m.home_discard_named({ which: twin ? m.home_quoted_when({ name: f.name, when: edited }) : m.home_quoted({ name: f.name }) })}
+						onclick={() => (discarding = f)}>{m.home_discard()}</button
+					>
 				</li>
 			{:else}
-				<li class="empty">還沒有。</li>
+				<li class="empty">{m.home_none_yet()}</li>
 			{/each}
 		</ul>
 		{#if editor.file.unsavedOverLimit}
-			<p class="recent-note" role="status">有 {editor.file.unsavedOverLimit} 支還沒存。編輯器不會自動丟掉還沒存的，用不到的按「丟掉」。</p>
+			<p class="recent-note" role="status">
+				{(editor.file.unsavedOverLimit === 1 ? m.home_unsaved_over_limit_one : m.home_unsaved_over_limit)({ n: editor.file.unsavedOverLimit })}
+			</p>
 		{/if}
-		<p class="recent-note">草稿只存在這個瀏覽器裡。只是打開看、不小心改到的，按「丟掉」再開原檔。</p>
+		<p class="recent-note">{m.home_draft_note()}</p>
 	{/snippet}
 	{#if openingLink}
-		<p class="opening-link" role="status">正在打開分享的流程…</p>
+		<p class="opening-link" role="status">{m.home_opening_link()}</p>
 	{:else if account}
 		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->
 		<div class="home signed-in">
@@ -1552,92 +1575,93 @@
 				<!-- 被收回回首頁：最上面一條黃的，右邊 × -->
 				<p class="revoked" {@attach revealAlert()}>
 					<span>{editor.file.revoked}</span>
-					<button type="button" class="ghost icon" aria-label="關掉這條" onclick={() => editor.file.dismissRevoked()}><Icon name="close" /></button>
+					<button type="button" class="ghost icon" aria-label={m.home_dismiss()} onclick={() => editor.file.dismissRevoked()}><Icon name="close" /></button>
 				</p>
 			{/if}
 			<header class="home-bar">
-				<span class="brand">競技啦啦隊流程編輯器</span>
-				<a class="btn ghost" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
+				<span class="brand">{m.app_name()}</span>
+				<LanguagePicker />
+				<a class="btn ghost" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />{m.editor_guide()}</a>
 				<AccountMenu me={account} onlogout={logout} />
 			</header>
 			<div class="home-lists">
 				<section class="area" aria-labelledby="cloud-title">
-					<h2 id="cloud-title">雲端</h2>
+					<h2 id="cloud-title">{m.home_cloud()}</h2>
 					{#if !online}
 						<!-- 斷網（#261）：只列這台留著的離線副本，時間換成這台的是什麼時候的樣子 -->
 						{@const mineCopies = copies.filter((c) => c.role === 'owner')}
 						{@const sharedCopies = copies.filter((c) => c.role !== 'owner')}
 						{@const hidden = knownCloudIds.filter((id) => !copyIds.has(id)).length}
-						<p class="offline-bar">沒有網路：只列這台留著的（離線副本），能看、記成功率，不能改。</p>
+						<p class="offline-bar">{m.home_offline_bar()}</p>
 						{#snippet copyRow(c: OfflineCopy)}
 							<li>
 								<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.flowId)}>
 									<span class="recent-name">{c.name}</span>
-									<span class="recent-meta">這台的是 {draftTime(new Date(c.savedAt))} 的樣子</span>
-									{#if unsentByFlow[c.flowId]}<span class="unsent-count">{unsentByFlow[c.flowId]} 筆沒傳</span>{/if}
-									<span class="copy-tag">離線可開</span>
+									<span class="recent-meta">{m.home_copy_time({ time: draftTime(new Date(c.savedAt)) })}</span>
+									{#if unsentByFlow[c.flowId]}<span class="unsent-count">{unsentText(unsentByFlow[c.flowId])}</span>{/if}
+									<span class="copy-tag">{m.home_offline_ok()}</span>
 								</button>
 							</li>
 						{/snippet}
 						{#if mineCopies.length}
-							<h3 id="mine-title">我的流程</h3>
+							<h3 id="mine-title">{m.home_mine()}</h3>
 							<ul class="cloud-list" aria-labelledby="mine-title">
 								{#each mineCopies as c (c.flowId)}{@render copyRow(c)}{/each}
 							</ul>
 						{/if}
 						{#if sharedCopies.length}
-							<h3 id="shared-title">分享給我的</h3>
+							<h3 id="shared-title">{m.home_shared()}</h3>
 							<ul class="cloud-list" aria-labelledby="shared-title">
 								{#each sharedCopies as c (c.flowId)}{@render copyRow(c)}{/each}
 							</ul>
 						{/if}
-						{#if hidden}<p class="offline-more">還有 {hidden} 支雲端流程，連上網路才看得到。</p>{/if}
+						{#if hidden}<p class="offline-more">{(hidden === 1 ? m.home_offline_more_one : m.home_offline_more)({ n: hidden })}</p>{/if}
 					{:else}
-						<h3 id="mine-title">我的流程</h3>
+						<h3 id="mine-title">{m.home_mine()}</h3>
 						<ul class="cloud-list" aria-labelledby="mine-title">
 							{#if cloudError}
-								<li class="empty">連不上伺服器，現在看不到雲端的流程。</li>
+								<li class="empty">{m.home_cloud_error()}</li>
 							{:else if myFlows}
 								{#each myFlows.mine as c (c.id)}
 									<li>
 										<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
 											<span class="recent-name">{c.name}</span>
-											<span class="recent-meta">{draftTime(new Date(c.updatedAt))} 改過</span>
-											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
-											{#if copyIds.has(c.id)}<span class="copy-tag">離線可開</span>{/if}
+											<span class="recent-meta">{m.home_edited_at({ time: draftTime(new Date(c.updatedAt)) })}</span>
+											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentText(unsentByFlow[c.id])}</span>{/if}
+											{#if copyIds.has(c.id)}<span class="copy-tag">{m.home_offline_ok()}</span>{/if}
 										</button>
 									</li>
 								{:else}
-									<li class="empty">還沒有。新建時選「存在：雲端」，或打開一支本機流程按「傳上雲端」。</li>
+									<li class="empty">{m.home_mine_empty()}</li>
 								{/each}
 							{/if}
 						</ul>
 						{#if myFlows}
-							<h3 id="shared-title">分享給我的</h3>
+							<h3 id="shared-title">{m.home_shared()}</h3>
 							<ul class="cloud-list" aria-labelledby="shared-title">
 								{#each myFlows.shared as c (c.id)}
 									<li>
 										<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
 											<span class="recent-name">{c.name}</span>
 											<span class="recent-meta"
-												>{c.ownerDisabled ? `${c.ownerName}的（已停用）` : `${c.ownerName}的・${ROLE_NAMES[c.role]}`}・{draftTime(
-													new Date(c.updatedAt)
-												)} 改過</span
+												>{c.ownerDisabled
+													? m.home_shared_meta_disabled({ owner: c.ownerName, time: draftTime(new Date(c.updatedAt)) })
+													: m.home_shared_meta({ owner: c.ownerName, role: ROLE_NAMES[c.role], time: draftTime(new Date(c.updatedAt)) })}</span
 											>
-											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentByFlow[c.id]} 筆沒傳</span>{/if}
-											{#if copyIds.has(c.id)}<span class="copy-tag">離線可開</span>{/if}
+											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentText(unsentByFlow[c.id])}</span>{/if}
+											{#if copyIds.has(c.id)}<span class="copy-tag">{m.home_offline_ok()}</span>{/if}
 										</button>
 									</li>
 								{:else}
-									<li class="empty">還沒有人分享給你。</li>
+									<li class="empty">{m.home_shared_empty()}</li>
 								{/each}
 							</ul>
 						{/if}
 					{/if}
 				</section>
 				<section class="area recent" aria-labelledby="here-title">
-					<h2 id="here-title">這台電腦</h2>
-					<h3 id="recent-title">最近的流程</h3>
+					<h2 id="here-title">{m.home_this_computer()}</h2>
+					<h3 id="recent-title">{m.home_recent()}</h3>
 					{@render recentList()}
 					<p class="recent-note" role="status">{discardNote}</p>
 				</section>
@@ -1649,16 +1673,17 @@
 			<!-- 舊網址版（#267）：最上面一整條黃的，右邊「到新網址」。不能登入，所以只會在沒登入的首頁 -->
 			<p class="moved" role="note">
 				<span
-					>搬家了：新網址是 {new URL(NEW_SITE_URL).host}。這裡還能用，但不能登入。瀏覽器裡的草稿帶不過去：先打開草稿、存成流程檔，再到新網址打開。</span
+					>{m.home_moved({ host: new URL(NEW_SITE_URL).host })}</span
 				>
-				<a class="btn" href={NEW_SITE_URL}>到新網址</a>
+				<a class="btn" href={NEW_SITE_URL}>{m.home_to_new_site()}</a>
 			</p>
 		{/if}
 		<div class="home">
 			<div class="home-top">
-				<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />使用說明</a>
+				<LanguagePicker />
+				<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />{m.editor_guide()}</a>
 				{#if account === null && !OLD_SITE}
-					<a class="btn" href={resolve('/login')}>登入</a>
+					<a class="btn" href={resolve('/login')}>{m.home_login()}</a>
 				{/if}
 			</div>
 			<section class="intro">
@@ -1672,9 +1697,9 @@
 					<circle class="t" cx="55" cy="30" r="3.2" />
 					<circle class="b" cx="65" cy="44" r="3.2" />
 				</svg>
-				<h1>競技啦啦隊<br />流程編輯器</h1>
+				<h1>{m.home_heading_top()}<br />{m.editor_title()}</h1>
 				<p>
-					音樂、八拍、站位和每個人的角色，排在同一條時間軸上。存成一個流程檔，傳給隊員用同一個編輯器打開。
+					{m.home_intro()}
 				</p>
 			</section>
 
@@ -1682,7 +1707,7 @@
 				{@render startForm()}
 				{#if editor.file.recent.length}
 					<div class="recent">
-						<h2 id="recent-title">最近的流程</h2>
+						<h2 id="recent-title">{m.home_recent()}</h2>
 						{@render recentList()}
 					</div>
 				{/if}
@@ -1693,25 +1718,23 @@
 	{#if discarding}
 		{@const f = discarding}
 		{@const { text: edited, twin } = recentEdited(f)}
-		{@const which = `「${f.name}」${twin ? `（${edited}）` : ''}`}
-		{@const message = f.unsaved
-			? `丟掉${which}的草稿？還沒存的修改會不見，不能復原。`
-			: `丟掉${which}的草稿？流程檔不會動，只是不列在最近的流程。`}
+		{@const which = twin ? m.home_quoted_when({ name: f.name, when: edited }) : m.home_quoted({ name: f.name })}
+		{@const message = f.unsaved ? m.home_discard_unsaved({ which }) : m.home_discard_saved({ which })}
 		<Modal label={message} class="discard-box" onclose={() => (discarding = null)}>
 			{#snippet children()}
 				<ConfirmList
 					{message}
 					items={[]}
-					confirmLabel="丟掉"
+					confirmLabel={m.home_discard()}
 					onconfirm={() => {
 						const { id, name } = f; // 關掉對話框後 f 不能再讀（Svelte derived_inert）
 						discarding = null;
 						discardNote = '';
 						void editor.file.discardRecent(id).then((outcome) => {
 							discardNote = {
-								dropped: `已丟掉「${name}」的草稿`,
-								busy: `另一個分頁正在編「${name}」，沒有丟掉`,
-								failed: `「${name}」的草稿刪不掉，沒有丟掉`
+								dropped: m.home_dropped({ name }),
+								busy: m.home_drop_busy({ name }),
+								failed: m.home_drop_failed({ name })
 							}[outcome];
 						});
 					}}
@@ -1725,29 +1748,32 @@
 {#if editor.file.lost}
 	{@const { rows, deleted } = editor.file.lost}
 	{@const message =
-		deleted === undefined ? `擁有者收回了你的權限，這 ${rows.length} 筆沒存進去` : `「${deleted}」被擁有者刪掉了，這 ${rows.length} 筆沒存進去`}
+		deleted === undefined
+			? (rows.length === 1 ? m.editor_lost_revoked_one : m.editor_lost_revoked)({ n: rows.length })
+			: (rows.length === 1 ? m.editor_lost_deleted_one : m.editor_lost_deleted)({ name: deleted, n: rows.length })}
 	<!-- 被收回時還有沒傳的（#260）：擋住畫面，按「知道了」才丟掉、回首頁。首頁連上網路才發現被收回的（#261）也是這個框 -->
 	<Modal label={message} class="dialog lost-box" onclose={() => {}}>
 		{#snippet children()}
 			<div class="lost">
 				<h2>{message}</h2>
 				<p>
-					你斷線時記的，傳上去時{deleted === undefined ? '已經沒有權限了' : '這支流程已經刪掉了'}。這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。
+					{deleted === undefined ? m.editor_lost_revoked_hint() : m.editor_lost_deleted_hint()}
 				</p>
 				<table>
-					<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
+					<thead><tr><th>{m.editor_date()}</th><th>{m.editor_skill()}</th><th>{m.editor_stunt_group()}</th><th>{m.editor_marks()}</th></tr></thead>
 					<tbody>
 						{#each rows as d (d.id)}
+							{@const text = droppedTexts(d)}
 							<tr>
 								<td>{d.date}</td>
-								<td>{d.action}</td>
-								<td>{d.who}</td>
-								<td>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}</td>
+								<td>{text.action}</td>
+								<td>{text.who}</td>
+								<td>{d.marks}{#if d.runThrough}<small class="run">{m.editor_full_out()}</small>{/if}</td>
 							</tr>
 						{/each}
 					</tbody>
 				</table>
-				<div class="buttons"><button type="button" class="primary" data-autofocus onclick={() => editor.file.lostKnown()}>知道了</button></div>
+				<div class="buttons"><button type="button" class="primary" data-autofocus onclick={() => editor.file.lostKnown()}>{m.editor_got_it()}</button></div>
 			</div>
 		{/snippet}
 	</Modal>
@@ -1757,14 +1783,14 @@
 {/if}
 {#if leavingUnsent}
 	{@const n = leavingUnsent}
-	{@const message = `還有 ${n} 步沒送到，離開就不見了`}
+	{@const message = (n === 1 ? m.editor_leave_unsent_one : m.editor_leave_unsent)({ n })}
 	<Modal label={message} class="discard-box" onclose={() => (leavingUnsent = 0)}>
 		{#snippet children()}
 			<ConfirmList
 				{message}
 				items={[]}
-				confirmLabel={`離開（丟掉 ${n} 步）`}
-				cancelLabel="留下來"
+				confirmLabel={(n === 1 ? m.editor_leave_discard_one : m.editor_leave_discard)({ n })}
+				cancelLabel={m.editor_stay()}
 				cancelFirst
 				onconfirm={() => {
 					leavingUnsent = 0;
@@ -1778,15 +1804,17 @@
 {/if}
 {#if editor.file.draftAsk}
 	{@const ask = editor.file.draftAsk}
-	{@const message = `「${ask.name}」有還沒存的修改（草稿${ask.savedAt ? ` ${draftTime(ask.savedAt)}` : ''}）。要救回修改，還是用檔案？用檔案會丟掉這些修改。`}
+	{@const message = ask.savedAt
+		? m.editor_draft_ask({ name: ask.name, time: draftTime(ask.savedAt) })
+		: m.editor_draft_ask_no_time({ name: ask.name })}
 	<Modal label={message} class="discard-box" onclose={() => editor.file.answerDraft('cancel')}>
 		{#snippet children()}
 			<ConfirmList
 				{message}
 				items={[]}
-				confirmLabel="用檔案（丟掉修改）"
+				confirmLabel={m.editor_use_file()}
 				onconfirm={() => editor.file.answerDraft('file')}
-				extra={{ label: '救回修改', onclick: () => editor.file.answerDraft('draft') }}
+				extra={{ label: m.editor_recover(), onclick: () => editor.file.answerDraft('draft') }}
 				oncancel={() => editor.file.answerDraft('cancel')}
 				focusCancel
 			/>
@@ -2607,6 +2635,8 @@
 		color: inherit;
 		font: inherit;
 		text-align: left;
+		/* 英文比較長，放不下就換行（按鈕預設不換行） */
+		white-space: normal;
 	}
 	.warn button {
 		cursor: pointer;
@@ -3554,7 +3584,8 @@
 		.home {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 28px;
-			padding: 32px 16px;
+			/* 上面留給右上角那排（語言、使用說明、登入），不蓋到圖 */
+			padding: 72px 16px 32px;
 		}
 		/* 手機：一欄，清單在上、新建在下 */
 		.home.signed-in {

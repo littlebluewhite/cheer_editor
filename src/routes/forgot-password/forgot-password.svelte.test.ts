@@ -57,3 +57,20 @@ describe('忘記密碼頁', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 	});
 });
+
+describe('忘記密碼頁（英文）', () => {
+	beforeEach(() => localStorage.setItem('PARAGLIDE_LOCALE', 'en'));
+
+	it('瀏覽器存的語言是英文：整頁是英文', async () => {
+		forgotPage();
+		expect(document.title).toBe('Forgot password — Routine Editor');
+		expect(screen.getByRole('heading', { name: 'Forgot password' })).toBeTruthy();
+		// 上面那條（AccountCard）也是英文
+		expect(screen.getByRole('link', { name: 'Cheer Routine Editor' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: 'Home' })).toBeTruthy();
+		await fireEvent.input(screen.getByLabelText('Email'), { target: { value: 'lin@example.com' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Send email' }));
+		await flush();
+		expect(screen.getByRole('status').textContent).toBe("If lin@example.com has an account, we've sent it an email.");
+	});
+});

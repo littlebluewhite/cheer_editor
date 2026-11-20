@@ -3,13 +3,14 @@
 // （照預設走、在那之前就出發的人，把出發記成自己設的）。
 // 段不變長：後面的東西超過段尾就擋下。兩個書籤被擠成同一個地方也擋下（同一個地方只有一個書籤）。
 
-import { actionLabel } from './action-types';
+import { actionWhy } from './action-types';
 import { bookmarksOf, sameBookmarks } from './bookmarks';
 import type { Flow } from './flow';
 import { formationWalks, memberWalk, type Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
 import type { Segment } from './segment';
-import { HALF_BEATS_PER_EIGHT, lengthTextWithUnit, units, type TimePosition } from './time';
+import { eightsWhy, HALF_BEATS_PER_EIGHT, lengthWhy, units, type TimePosition } from './time';
+import type { Why } from './why';
 
 /**
  * 在 at 插入 length 格：這一段裡從 at 起（含 at）開始的站位、動作、出發、到達都晚 length 格。
@@ -19,19 +20,20 @@ import { HALF_BEATS_PER_EIGHT, lengthTextWithUnit, units, type TimePosition } fr
  */
 export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 'eight' | 'beat' = 'beat'): CommandResult {
 	const segment = flow.segments.find((s) => s.id === at.segmentId);
-	if (!segment) return blocked('找不到這一段');
-	if (!Number.isInteger(length) || length < 1) return blocked('插入的長度要大於 0');
+	if (!segment) return blocked({ code: 'insert_beats_no_segment' });
+	if (!Number.isInteger(length) || length < 1) return blocked({ code: 'insert_beats_length' });
 	const end = units(segment);
-	if (!Number.isInteger(at.at) || at.at < 0 || at.at >= end) return blocked('插入的地方不在這一段裡');
+	if (!Number.isInteger(at.at) || at.at < 0 || at.at >= end) return blocked({ code: 'insert_beats_outside' });
 
 	const moves = (p: TimePosition) => p.segmentId === at.segmentId && p.at >= at.at;
 	const later = (p: TimePosition): TimePosition => (moves(p) ? { ...p, at: p.at + length } : p);
-	// 卡最緊的那個：往後延之後還能再晚幾格（站位、出發和到達要在段裡，動作的結尾可以剛好是段尾）
-	const rooms: { name: string; room: number }[] = [];
-	const fits = (name: string, room: number) => rooms.push({ name, room });
+	// 卡最緊的那個：往後延之後還能再晚幾格（站位、出發和到達要在段裡，動作的結尾可以剛好是段尾）。
+	// who：放不下時的原因，還沒填最多插多少（room）
+	const rooms: { who: Why; room: number }[] = [];
+	const fits = (who: Why, room: number) => rooms.push({ who, room });
 
 	const formations = flow.formations.map((f, i) => {
-		const name = `站位 ${i + 1} `;
+		const who: Why = { code: 'insert_beats_overflow_formation', n: i + 1 };
 		const moved = i > 0 && f.segmentId === at.segmentId && f.at >= at.at;
 		// 沒自己設的人照預設走：這張往後延、出發卻在插入點以前，就把原本的出發記下來，插入點以前站的地方才不會變
 		const kept = moved
@@ -43,16 +45,16 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 
 		const stored = kept.length ? { ...Object.fromEntries(kept), ...f.walks } : f.walks;
 		const walks = stored && Object.fromEntries(
 			Object.entries(stored).map(([id, w]): [string, Walk] => {
-				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(name, end - 1 - p.at);
+				for (const p of [w.depart, w.arrive]) if (moves(p)) fits(who, end - 1 - p.at);
 				return [id, { depart: later(w.depart), arrive: later(w.arrive) }];
 			})
 		);
-		if (moved) fits(name, end - 1 - f.at);
+		if (moved) fits(who, end - 1 - f.at);
 		return { ...f, ...(moved && { at: f.at + length }), ...(walks && { walks }) };
 	});
 	const actions = flow.actions.map((a) => {
 		if (a.segmentId !== at.segmentId || a.start < at.at) return a;
-		fits(`「${actionLabel(a)}」`, end - a.start - a.length);
+		fits({ code: 'insert_beats_overflow_action', action: actionWhy(a) }, end - a.start - a.length);
 		return { ...a, start: a.start + length };
 	});
 
@@ -60,31 +62,33 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 
 	const bookmarks = bookmarksOf(flow).map((bm) => {
 		const a = moves(bm.a);
 		const b = !!bm.b && bm.b.segmentId === at.segmentId && bm.b.at > at.at && bm.b.at < end;
-		if (a) fits(`書籤「${bm.name}」`, end - 1 - bm.a.at);
-		if (b) fits(`書籤「${bm.name}」`, end - bm.b!.at);
+		const who: Why = { code: 'insert_beats_overflow_bookmark', name: bm.name };
+		if (a) fits(who, end - 1 - bm.a.at);
+		if (b) fits(who, end - bm.b!.at);
 		if (!a && !b) return bm;
 		return { ...bm, a: later(bm.a), b: b ? { ...bm.b!, at: bm.b!.at + length } : bm.b };
 	});
 
 	const limit = rooms.reduce<(typeof rooms)[number] | null>((t, r) => (!t || r.room < t.room ? r : t), null);
 	if (limit && limit.room < length) {
-		return blocked(`${limit.name}會超過這段的結尾，${roomText(segment, limit.room, unit)}`);
+		return blocked({ ...limit.who, room: roomWhy(segment, limit.room, unit) });
 	}
 	const done = { ...flow, formations, actions, ...(flow.bookmarks && { bookmarks }) };
 	const had = new Set(sameBookmarks(flow).map(([x, y]) => `${x.id}:${y.id}`));
 	const same = sameBookmarks(done).find(([x, y]) => !had.has(`${x.id}:${y.id}`));
-	if (same) return blocked(`書籤「${same[0].name}」和「${same[1].name}」會變成同一個地方`);
+	if (same) return blocked({ code: 'insert_beats_same_bookmark', first: same[0].name, second: same[1].name });
 	return ok(done);
 }
 
 /** 被擋時說還能插多少：教練選八拍（音樂段）就照八拍講，不到 1 個八拍才說幾拍。 */
-function roomText(segment: Segment, room: number, unit: 'eight' | 'beat'): string {
-	if (room <= 0) return '這段後面已經沒有空了';
-	const beats = `最多插 ${lengthTextWithUnit(segment, room)}`;
-	if (segment.kind !== 'music' || unit !== 'eight') return beats;
+function roomWhy(segment: Segment, room: number, unit: 'eight' | 'beat'): Why {
+	if (room <= 0) return { code: 'insert_beats_room_none' };
+	if (segment.kind !== 'music' || unit !== 'eight') return { code: 'insert_beats_room', length: lengthWhy(segment, room) };
 	const eights = Math.floor(room / HALF_BEATS_PER_EIGHT);
-	if (eights === 0) return `${beats}（不到 1 個八拍，單位改成拍）`;
+	if (eights === 0) return { code: 'insert_beats_room_under_eight', length: lengthWhy(segment, room) };
 	const rest = room - eights * HALF_BEATS_PER_EIGHT;
-	return `最多插 ${eights} 個八拍${rest ? `又 ${lengthTextWithUnit(segment, rest)}` : ''}`;
+	return rest
+		? { code: 'insert_beats_room_eights_rest', eights: eightsWhy(eights), rest: lengthWhy(segment, rest) }
+		: { code: 'insert_beats_room', length: eightsWhy(eights) };
 }
 

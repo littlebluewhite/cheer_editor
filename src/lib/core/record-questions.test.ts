@@ -75,9 +75,20 @@ describe('刪動作', () => {
 		expect(deleteAction(flow, 'x2')).toEqual({
 			kind: 'confirm',
 			message: '刪掉動作「騰翻」會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: { code: 'actions_delete_records', action: { code: 'category_tumbling' }, count: 2, undoable: { code: 'records_undoable' } },
 			items: []
 		});
 		expect(flowOf(deleteAction(flow, 'x2', { confirmed: true })).actions.map((a) => a.id)).toEqual(['x1']);
+	});
+
+	it('只有 1 次紀錄：英文寫單數，另一個代號', () => {
+		const flow = flowOf(recordAttempt(sample(), 'x2', drill('m1', { p4: '✓' })));
+		expect(deleteAction(flow, 'x2')).toEqual({
+			kind: 'confirm',
+			message: '刪掉動作「騰翻」會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: { code: 'actions_delete_records_one', action: { code: 'category_tumbling' }, count: 1, undoable: { code: 'records_undoable' } },
+			items: []
+		});
 	});
 
 	it('段縮短連帶刪動作：確認訊息加上會清掉幾次', () => {
@@ -91,8 +102,31 @@ describe('刪動作', () => {
 		expect(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 })).toEqual({
 			kind: 'confirm',
 			message: '音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'segment_shrink_records',
+				segment: { code: 'time_segment_music', n: 1 },
+				what: { code: 'segment_shrink_both' },
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 3 } },
+				undoable: { code: 'records_undoable' }
+			},
 			items: ['裁短：動作「技巧·Lib」（1-1 起）8 拍 → 1 拍，會刪掉 2 個環節（清掉 1 次的記號）', '刪掉：動作「騰翻」（3-1 起）'],
-			confirmLabel: '確定刪除'
+			whyItems: [
+				{
+					code: 'segment_trim_item_fallout',
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					from: { code: 'time_from', at: '1-1' },
+					before: { code: 'time_length_beats', n: 8 },
+					after: { code: 'time_length_beat_one', n: 1 },
+					will: {
+						code: 'phase_beats_dropped_marks',
+						dropped: { code: 'phase_beats_dropped', n: 2 },
+						marks: { code: 'records_marks_one', n: 1 }
+					}
+				},
+				{ code: 'segment_drop_action', action: { code: 'category_tumbling' }, from: { code: 'time_from', at: '3-1' } }
+			],
+			confirmLabel: '確定刪除',
+			confirmWhy: { code: 'segment_confirm_delete' }
 		});
 		const flow = flowOf(updateSegment(recorded(), 's1', { eights: 1, lastBeats: 1 }, { confirmed: true }));
 		expect(action(flow, 'x1').successRate!.phases.map((p) => [p.id, p.beats])).toEqual([['p1', { at: 0, len: 2 }]]);
@@ -115,6 +149,11 @@ describe('刪動作', () => {
 		expect(r.kind === 'confirm' && r.message).toBe(
 			'音樂 1 縮短後，超出段尾的動作裁短到段尾，放不進段裡的刪掉，會一起清掉 2 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來）'
 		);
+		expect(r.kind === 'confirm' && r.why).toMatchObject({
+			code: 'segment_shrink_records',
+			lost: { code: 'records_loss_both', reps: { code: 'records_reps', n: 2 }, marks: { code: 'records_marks_one', n: 1 } },
+			undoable: { code: 'records_undoable' }
+		});
 	});
 
 	it('段縮短：只剩空著的環節的那一次整筆不見，另一次少了記號，兩個次數都照真的算（N26）', () => {
@@ -145,7 +184,17 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		expect(updateAction(flow, 'x1', { category: 'tumbling' })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換成騰翻，變成每個人自己算，會清掉 3 次紀錄（清掉的紀錄按「復原」會回來）',
-			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次']
+			why: {
+				code: 'settle_action_records',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				records: {
+					code: 'settle_records',
+					records: { code: 'settle_records_lost', why: { code: 'settle_records_why_per_person', category: { code: 'category_tumbling' } }, count: 3 },
+					undoable: { code: 'records_undoable' }
+				}
+			},
+			items: ['第 1 組 小美：2 次', '第 2 組 小芳：1 次'],
+			whyItems: expect.any(Array)
 		});
 		const changed = action(flowOf(updateAction(flow, 'x1', { category: 'tumbling' }, { confirmed: true })), 'x1');
 		expect(changed.successRate!.records).toEqual([]);
@@ -156,6 +205,15 @@ describe('換大類，算法從一組一起變成每個人自己算（或反過�
 		const flow = recorded();
 		const r = updateAction(flow, 'x2', { category: 'stunt' });
 		expect(r.kind === 'confirm' && r.message).toBe('動作「騰翻」換成技巧，變成一組一起算，會清掉 2 次紀錄（清掉的紀錄按「復原」會回來）');
+		expect(r.kind === 'confirm' && r.why).toEqual({
+			code: 'settle_action_records',
+			action: { code: 'category_tumbling' },
+			records: {
+				code: 'settle_records',
+				records: { code: 'settle_records_lost', why: { code: 'settle_records_why_together', category: { code: 'category_stunt' } }, count: 2 },
+				undoable: { code: 'records_undoable' }
+			}
+		});
 		const changed = flowOf(updateAction(flow, 'x2', { category: 'stunt' }, { confirmed: true }));
 		expect(ids(changed, 'x2')).toEqual([]);
 		expect(squadNumbers(action(changed, 'x2'))).toEqual([1, 1]);
@@ -171,7 +229,13 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(setSquad(recorded(), 'x1', ['m1'], 3)).toEqual({
 			kind: 'choose',
 			message: '動作「技巧·Lib」有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
-			items: ['第 1 組 小美：2 次']
+			why: {
+				code: 'settle_action_records',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				records: { code: 'settle_records', records: { code: 'settle_changed_squads' }, undoable: { code: 'records_undoable' } }
+			},
+			items: ['第 1 組 小美：2 次'],
+			whyItems: expect.any(Array)
 		});
 	});
 
@@ -215,9 +279,47 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(updateAction(flow, 'x1', { members })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
-			items: ['第 2 組 小芳：1 次']
+			why: {
+				code: 'settle_action_records',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				records: {
+					code: 'settle_records',
+					records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
+					undoable: { code: 'records_undoable' }
+				}
+			},
+			items: ['第 2 組 小芳：1 次'],
+			whyItems: expect.any(Array)
 		});
 		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { confirmed: true })), 'x1')).toEqual(['t1', 't3']);
+	});
+
+	it('一組沒人了、另一組換了人：會清掉的和要選的一起問，選保留只留換了人的那組', () => {
+		// 第 2 組（小芳、小B）整組拿掉：t2 一定清掉；第 1 組拿掉小A：t1、t3 要選。
+		const members = x1Members().filter((m) => m.memberId === 'm1');
+		const flow = recorded();
+		expect(updateAction(flow, 'x1', { members })).toEqual({
+			kind: 'choose',
+			message:
+				'動作「技巧·Lib」換了人，會清掉 1 次紀錄；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）',
+			why: {
+				code: 'settle_action_records',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				records: {
+					code: 'settle_records',
+					records: {
+						code: 'settle_then',
+						a: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
+						b: { code: 'settle_changed_squads' }
+					},
+					undoable: { code: 'records_undoable' }
+				}
+			},
+			items: ['第 2 組 小芳：1 次', '第 1 組 小美：2 次'],
+			whyItems: expect.any(Array)
+		});
+		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'keep' })), 'x1')).toEqual(['t1', 't3']);
+		expect(ids(flowOf(updateAction(flow, 'x1', { members }, { records: 'clear' })), 'x1')).toEqual([]);
 	});
 
 	it('變短又換了人：拍點和紀錄一起問', () => {
@@ -229,6 +331,16 @@ describe('一組的人變了，而那組有紀錄：保留舊紀錄或清掉重�
 		expect(r.kind === 'choose' && r.message).toBe(
 			'動作「技巧·Lib」變短，會拿掉 1 個拍點；有紀錄的組換了人：保留舊紀錄，還是清掉重算？（清掉的紀錄按「復原」會回來）'
 		);
+		expect(r.kind === 'choose' && r.why).toEqual({
+			code: 'settle_then',
+			a: {
+				code: 'settle_fallout',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				why: { code: 'settle_why_shorter' },
+				will: { code: 'settle_cues_removed_one', n: 1 }
+			},
+			b: { code: 'settle_records', records: { code: 'settle_changed_squads' }, undoable: { code: 'records_undoable' } }
+		});
 		const kept = action(flowOf(updateAction(flow, 'x1', { members, length: 8 }, { records: 'keep' })), 'x1');
 		expect(kept.cues).toEqual([]);
 		expect(kept.successRate!.records.length).toBe(3);
@@ -242,7 +354,17 @@ describe('騰翻、跳躍的動作拿掉有紀錄的人', () => {
 		expect(updateAction(flow, 'x2', { members })).toEqual({
 			kind: 'confirm',
 			message: '動作「騰翻」換了人，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）',
-			items: ['小A：1 次']
+			why: {
+				code: 'settle_action_records',
+				action: { code: 'category_tumbling' },
+				records: {
+					code: 'settle_records',
+					records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_people' }, count: 1 },
+					undoable: { code: 'records_undoable' }
+				}
+			},
+			items: ['小A：1 次'],
+			whyItems: expect.any(Array)
 		});
 		expect(ids(flowOf(updateAction(flow, 'x2', { members }, { confirmed: true })), 'x2')).toEqual(['t4']);
 	});
@@ -253,7 +375,12 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 		expect(updateMember(recorded(), 'm1', { name: '小芳芳' })).toEqual({
 			kind: 'choose',
 			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（清掉的紀錄按「復原」會回來）',
-			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
+			why: { code: 'members_rename_records', name: '小美', newName: '小芳芳', count: 3, undoable: { code: 'records_undoable' } },
+			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次'],
+			whyItems: [
+				{ code: 'members_record_item', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, item: { code: 'success_rate_records', name: { code: 'success_rate_squad_named', n: 1, name: '小美' }, n: 2 } },
+				{ code: 'members_record_item', action: { code: 'category_tumbling' }, item: { code: 'success_rate_records_one', name: '小美', n: 1 } }
+			]
 		});
 	});
 
@@ -292,6 +419,27 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 		expect(r.kind === 'choose' && r.message).toBe(
 			'刪掉隊員「小A」（標記 2、底層）：他在 2 個動作裡，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來），「技巧·Lib」第 1 組會沒有主底；後面 2 個人的號碼會往前遞補；有紀錄的組換了人：保留舊紀錄，還是清掉重算？'
 		);
+		expect(r.kind === 'choose' && r.why).toEqual({
+			code: 'members_delete',
+			name: '小A',
+			marker: '2',
+			role: { code: 'role_base' },
+			where: { code: 'members_delete_in', count: 2 },
+			more: {
+				code: 'members_delete_records_one',
+				count: 1,
+				undoable: { code: 'records_undoable' },
+				more: {
+					code: 'members_delete_lost',
+					list: { code: 'members_lost_role_squad', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, squad: 1, role: { code: 'role_main_base' } },
+					more: {
+						code: 'members_delete_renumber',
+						count: 2,
+						more: { code: 'members_delete_changed', question: { code: 'settle_changed_squads' }, undoable: '', more: '' }
+					}
+				}
+			}
+		});
 		const kept = flowOf(deleteMember(flow, 'm2', { records: 'keep' }));
 		expect([ids(kept, 'x1'), ids(kept, 'x2')]).toEqual([['t1', 't2', 't3'], ['t4']]);
 		const cleared = flowOf(deleteMember(flow, 'm2', { records: 'clear' }));

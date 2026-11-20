@@ -2,6 +2,8 @@
 	// 加到主畫面的提醒（#260、#191 借 B）：iPhone、iPad 的 Safari（不是從主畫面打開的）記成功率之後，從下面滑上來。
 	// Safari 7 天沒打開這個網站就清掉網站存的資料（還沒傳的紀錄也在裡面），加到主畫面的不會。
 	// 「知道了」以後不再跳；「下次再說」下次打開這支流程、記第一次再跳。不擋住畫面：記錄的按鈕照樣按得到（練習畫面下面留了它的高度）。
+	import { m } from '#lib/paraglide/messages.js';
+
 	interface Props {
 		onknown: () => void;
 		onlater: () => void;
@@ -13,24 +15,24 @@
 
 	/** 量它多高（字換行跟著畫面寬，轉向、改大小時再量）。 */
 	function measure(el: HTMLElement) {
-		const m = () => (height = el.offsetHeight);
-		m();
-		window.addEventListener('resize', m);
-		return () => window.removeEventListener('resize', m);
+		const update = () => (height = el.offsetHeight);
+		update();
+		window.addEventListener('resize', update);
+		return () => window.removeEventListener('resize', update);
 	}
 </script>
 
 <aside class="sheet" aria-labelledby="{id}-title" {@attach measure}>
-	<h2 id="{id}-title">加到主畫面，沒傳的紀錄才不會被清掉</h2>
-	<p>在 Safari 記的，7 天沒打開這個網站就會被清掉；加到主畫面的不會。</p>
+	<h2 id="{id}-title">{m.account_home_screen_title()}</h2>
+	<p>{m.account_home_screen_lead()}</p>
 	<ol>
-		<li>按 Safari 下面的「分享」</li>
-		<li>往下滑，按「加入主畫面」</li>
-		<li>以後從主畫面的圖示打開</li>
+		<li>{m.account_home_screen_step_share()}</li>
+		<li>{m.account_home_screen_step_add()}</li>
+		<li>{m.account_home_screen_step_open()}</li>
 	</ol>
 	<div class="buttons">
-		<button type="button" onclick={onlater}>下次再說</button>
-		<button type="button" class="primary" onclick={onknown}>知道了</button>
+		<button type="button" onclick={onlater}>{m.account_home_screen_later()}</button>
+		<button type="button" class="primary" onclick={onknown}>{m.account_home_screen_got_it()}</button>
 	</div>
 </aside>
 

@@ -2,7 +2,9 @@
 	// 名詞對照表：固定和自訂任務角色的名稱、意思、規則上的叫法；也在這裡加、改、刪自訂角色。
 	// 刪有人用的自訂角色時，核心回「要確認」：列出動作，按確定才刪。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
-	import { roleGlossary, type CustomRole } from '#lib/core';
+	import { roleGlossary, roleWhy, type CustomRole } from '#lib/core';
+	import { m } from '#lib/paraglide/messages.js';
+	import { whyText } from '#lib/reason-text.js';
 	import CharCount from './CharCount.svelte';
 	import { commitField, customRoleNameField } from './commit-field';
 	import ConfirmList from './ConfirmList.svelte';
@@ -27,7 +29,7 @@
 	const roleInputs = $state<Record<string, HTMLInputElement>>({});
 	let meaning = $state('');
 	/** 被擋的原因，和刪有人用的角色時等教練確認的清單。 */
-	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: m.segment_confirm_delete() });
 
 	/** 改自訂角色的意思；被擋就把輸入框還原，原因寫在表下面。 */
 	function meaningField(role: CustomRole) {
@@ -53,15 +55,15 @@
 	}
 </script>
 
-<Modal label="名詞對照表" class="dialog glossary" {ask} {onclose}>
+<Modal label={m.roles_view_glossary()} class="dialog glossary" {ask} {onclose}>
 	{#snippet children(close)}
 		<header class="dialog-head">
-			<h2>名詞對照表：任務角色</h2>
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
+			<h2>{m.roles_view_title()}</h2>
+			<button type="button" class="ghost icon close" aria-label={m.roles_view_close()} onclick={close}><Icon name="close" /></button>
 		</header>
 		<table>
 			<thead>
-				<tr><th>名稱</th><th>意思</th><th>規則上的叫法</th></tr>
+				<tr><th>{m.roles_view_name()}</th><th>{m.roles_view_meaning()}</th><th>{m.roles_view_rule_name()}</th></tr>
 			</thead>
 			<tbody>
 				<!-- 自訂角色用 id 當 key：改名時同一列不重畫，游標留在原地 -->
@@ -72,17 +74,17 @@
 							<td>
 								<input
 									class="role-name"
-									aria-label="「{custom.name}」的名稱"
+									aria-label={m.roles_view_name_of({ name: custom.name })}
 									value={custom.name}
 									bind:this={roleInputs[custom.id]}
 									{@attach customRoleNameField(ask, custom)}
 								/><CharCount field="roleName" input={roleInputs[custom.id]} value={custom.name} quiet /><small
-									class="tag">自訂</small
+									class="tag">{m.roles_view_custom()}</small
 								>
 							</td>
 							<td>
 								<input
-									aria-label="「{custom.name}」的意思"
+									aria-label={m.roles_view_meaning_of({ name: custom.name })}
 									value={custom.meaning}
 									{@attach meaningField(custom)}
 								/>
@@ -91,14 +93,14 @@
 								<button
 									type="button"
 									class="ghost icon"
-									aria-label="刪除任務角色「{custom.name}」"
+									aria-label={m.roles_view_delete({ name: custom.name })}
 									onclick={() => remove(custom)}><Icon name="trash" size={14} /></button
 								>
 							</td>
 						{:else}
-							<td><b>{r.name}</b>{#if r.custom}<small class="tag">自訂</small>{/if}</td>
-							<td>{r.meaning}</td>
-							<td>{r.ruleName || '—'}</td>
+							<td><b>{whyText(roleWhy(r.name))}</b>{#if r.custom}<small class="tag">{m.roles_view_custom()}</small>{/if}</td>
+							<td>{whyText(r.meaning)}</td>
+							<td>{whyText(r.ruleName) || '—'}</td>
 						{/if}
 					</tr>
 				{/each}
@@ -107,19 +109,19 @@
 		{#if ask.question}<ConfirmList {ask} />{/if}
 		<!-- novalidate：名稱必填、不能重複由流程核心判斷 -->
 		<form data-native-undo novalidate onsubmit={add}>
-			<b>新增自訂任務角色</b>
+			<b>{m.roles_view_add_title()}</b>
 			<div class="fields">
 				<label
-					>任務角色名稱 <input aria-label="任務角色名稱" bind:value={name} bind:this={nameInput} /><CharCount
+					>{m.roles_view_role_name()} <input aria-label={m.roles_view_role_name()} bind:value={name} bind:this={nameInput} /><CharCount
 						field="roleName"
 						input={nameInput}
 						value={name}
 					/></label
 				>
-				<label>意思 <input bind:value={meaning} /></label>
-				<button type="submit" class="primary">新增任務角色</button>
+				<label>{m.roles_view_meaning()} <input bind:value={meaning} /></label>
+				<button type="submit" class="primary">{m.roles_view_add()}</button>
 			</div>
-			<p class="muted">自訂任務角色只存在這一支流程裡。在上面的表裡可以直接改名稱、意思，或按垃圾桶刪掉。</p>
+			<p class="muted">{m.roles_view_custom_hint()}</p>
 		</form>
 		{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 	{/snippet}

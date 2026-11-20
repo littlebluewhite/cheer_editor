@@ -9,6 +9,7 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { localDate } from '#lib/local-date.js';
 	import { runNumber, startClock } from '#lib/run-keys.js';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import type { RunView } from '#lib/server-api.js';
 	import Modal from './Modal.svelte';
 	import { removeWithRestore } from './record-notice';
@@ -37,8 +38,8 @@
 
 	/** 「王教練在記今天第 3 次全上」。 */
 	function recording(run: RunView): string {
-		const day = run.date === localDate() ? '今天' : run.date;
-		return `${run.people[0].name}在記${day}第 ${runNumber(flow, cloud?.runs ?? [], run.date, run)} 次全上`;
+		const [name, n] = [run.people[0].name, runNumber(flow, cloud?.runs ?? [], run.date, run)];
+		return run.date === localDate() ? t.run_through_recording_today({ name, n }) : t.run_through_recording_on({ name, date: run.date, n });
 	}
 
 	function record() {
@@ -63,7 +64,7 @@
 		removeWithRestore(
 			ask,
 			session,
-			`已刪掉第 ${runsOn()} 次全上`,
+			t.run_through_deleted({ n: runsOn() }),
 			{ name: 'deleteLastRunThrough', args: [date] },
 			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
 		);
@@ -88,7 +89,7 @@
 		removeWithRestore(
 			ask,
 			session,
-			`已刪掉你在第 ${n} 次全上記的 ${ids.length} 欄`,
+			(ids.length === 1 ? t.run_through_deleted_mine_one : t.run_through_deleted_mine)({ n, count: ids.length }),
 			{ name: 'deleteAttempts', args: [ids] },
 			({ removed }) => ({ name: 'restoreRunThrough', args: [removed] })
 		);
@@ -96,9 +97,9 @@
 </script>
 
 {#each others as run (run.id)}
-	<p class="live" role="status" aria-label="有人在記全上">
-		<span>● {recording(run)}（{startClock(run.startedAt)} 開的）</span>
-		<button type="button" disabled={!online} onclick={() => onrecord(run)}>加入，記別的組</button>
+	<p class="live" role="status" aria-label={t.run_through_someone_recording()}>
+		<span>{t.run_through_live({ text: recording(run), time: startClock(run.startedAt) })}</span>
+		<button type="button" disabled={!online} onclick={() => onrecord(run)}>{t.run_through_join_other()}</button>
 	</p>
 {/each}
 {#if asking}
@@ -106,28 +107,28 @@
 	<Modal label={recording(run)} class="dialog join" onclose={() => (asking = null)}>
 		{#snippet children(close)}
 			<h3>{recording(run)}</h3>
-			<p class="hint">{startClock(run.startedAt)} 開的。一組在一次全上只能一個人記。</p>
+			<p class="hint">{t.run_through_join_hint({ time: startClock(run.startedAt) })}</p>
 			<div class="choices">
 				<!-- 先交出 run 再清 asking：run 是跟著 asking 的 @const，清掉後再讀就是 null（變成開新的） -->
 				<button type="button" class="primary" data-autofocus onclick={() => (onrecord(run), (asking = null))}
-					>加入這一次：跟{run.people[0].name}一起記，你記別的組</button
+					>{t.run_through_join_this({ name: run.people[0].name })}</button
 				>
 				<button type="button" onclick={() => ((asking = null), onrecord())}
-					>開新的一次：只有你記，算第 {runNumber(flow, cloud?.runs ?? [], date)} 次</button
+					>{t.run_through_start_new({ n: runNumber(flow, cloud?.runs ?? [], date) })}</button
 				>
-				<button type="button" onclick={close}>取消</button>
+				<button type="button" onclick={close}>{t.practice_cancel()}</button>
 			</div>
 		{/snippet}
 	</Modal>
 {/if}
 <div class="run">
-	<button type="button" class="primary" onclick={record}>＋ 記一次全上</button>
+	<button type="button" class="primary" onclick={record}>{t.run_through_record_button()}</button>
 	{#if session.ownRecordsOnly}
-		<button type="button" disabled={!myLastRun} title="只刪你在這天最後一次全上記的那幾組（別人記的不刪）" onclick={removeMyRun}
-			>刪掉我上一次全上記的</button
+		<button type="button" disabled={!myLastRun} title={t.run_through_remove_mine_title()} onclick={removeMyRun}
+			>{t.run_through_remove_mine()}</button
 		>
 	{:else}
-		<button type="button" disabled={!hasRun} title="整次刪掉這天最後存的那次全上" onclick={removeRun}>刪掉上一次全上</button>
+		<button type="button" disabled={!hasRun} title={t.run_through_remove_title()} onclick={removeRun}>{t.run_through_remove()}</button>
 	{/if}
 	{#if ask.error}<span class="error" {@attach revealAlert(ask.failures)}>{ask.error}</span>{/if}
 </div>

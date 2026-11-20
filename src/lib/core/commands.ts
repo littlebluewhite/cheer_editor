@@ -165,9 +165,6 @@ export type StepResult = CommandResult | (Exclude<CommandResult, { kind: 'ok' }>
 /** 登記的指令名字。 */
 export const COMMAND_NAMES = Object.keys(COMMANDS) as CommandName[];
 
-/** 沒有開著的流程（只有新建流程叫得動）時被擋的原因。 */
-const NO_FLOW = '沒有開著的流程';
-
 /**
  * 用名字＋參數叫一個指令，跟在這一步裡（inStep）直接叫一樣。flow 是 null（沒有開著的流程）時只有新建流程叫得動。
  * stepId 是這一步的步驟 id（見 runCommands）。
@@ -182,7 +179,7 @@ export function runCommand<N extends CommandName>(
 
 function run(flow: Flow | null, command: Command): CommandResult {
 	const { name, args, options = {} } = command;
-	if (flow === null && name !== 'createFlow') return blocked(NO_FLOW);
+	if (flow === null && name !== 'createFlow') return blocked({ code: 'commands_no_flow' });
 	const entry = COMMANDS[name] as Entry<unknown[], CommandResult>;
 	const r = entry(flow as Flow, args, options);
 	if (r.kind !== 'ok') return r;
@@ -198,7 +195,7 @@ function run(flow: Flow | null, command: Command): CommandResult {
  */
 export function runCommands(flow: Flow | null, commands: Command[], stepId: string): StepResult {
 	return inStep(stepId, () => {
-		let done = blocked('沒有指令') as CommandResult;
+		let done = blocked({ code: 'commands_none' }) as CommandResult;
 		for (const [at, command] of commands.entries()) {
 			const r = run(done.kind === 'ok' ? done.flow : flow, command);
 			if (r.kind !== 'ok') return { ...r, at };

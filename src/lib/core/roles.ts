@@ -1,12 +1,13 @@
 // 任務角色：隊員在某個動作裡要做的事。13 個固定的 ＋ 這支流程自己加的。
 // 跟全局角色互不影響；只有加人進動作時的預設值（defaultRoles）照全局角色先填。
 
-import { actionLabel, type ActionCategory, type ActionMember } from './action-types';
+import { actionWhy, type ActionCategory, type ActionMember } from './action-types';
 import type { Flow } from './flow';
 import { blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { newId } from './ids';
 import type { GlobalRole } from './members';
 import { tooLong } from './text-length';
+import type { Why, WhyCode, WhyParam } from './why';
 
 /** 教練自己加的任務角色，只存在這支流程裡。 */
 export interface CustomRole {
@@ -18,9 +19,10 @@ export interface CustomRole {
 /** 名詞對照表的一列。 */
 export interface RoleEntry {
 	name: string;
-	meaning: string;
-	/** 規則上的叫法；自訂角色是空字串。 */
-	ruleName: string;
+	/** 固定角色是代號（畫面照語言寫），自訂角色是教練寫的字。 */
+	meaning: WhyParam;
+	/** 規則上的叫法（固定角色是代號）；自訂角色是空字串。 */
+	ruleName: WhyParam;
 	custom: boolean;
 	/** 第幾群（選單裡群和群中間畫線）：0 撐人的、1 被撐的、2 保護的、3 其他，自訂角色是 4。 */
 	group: number;
@@ -31,31 +33,80 @@ export interface PickableRole extends RoleEntry {
 	key: string;
 }
 
+/** 固定任務角色在代號裡的名字：role_、roles_meaning_、roles_rule_ 後面接這個。 */
+type RoleSlug =
+	| 'base'
+	| 'main_base'
+	| 'side_base'
+	| 'shoulder_base'
+	| 'top'
+	| 'middle'
+	| 'third'
+	| 'bracer'
+	| 'spotter'
+	| 'front_spot'
+	| 'back_spot'
+	| 'catcher'
+	| 'tumbler';
+
 /**
  * 13 個固定任務角色，照規格（#15）的「任務角色名詞對照表」，分四群：撐人的、被撐的、保護的、其他。
  * 快捷鍵照這個順序，跟著角色固定（docs/superpowers/specs/2026-11-19-shoulder-base-people-list-design.md）。
  */
-export const FIXED_ROLES: readonly RoleEntry[] = [
+export const FIXED_ROLES: readonly RoleEntry[] = (
 	[
-		['底層', '在下面撐住別人的人。不想分主底、側底、肩底時用。', '底層人員'],
-		['主底', '主要撐住上層腳的底層。單底層技巧的那位底層。', '底層人員（台灣規則沒有「主底」）'],
-		['側底', '多底層技巧裡，在主底旁邊一起撐的底層。', '底層人員（台灣規則沒有「側底」）'],
-		['肩底', '金字塔裡站在地上、讓中層站在自己肩上的底層。只有金字塔有。', '底層人員（規則沒有「肩底」）']
-	],
-	[
-		['上層', '被底層撐起來、離開地面的人。只講「上層」時，指撐在底層上、沒有再撐別人的人。', '上層人員'],
-		['中層', '金字塔裡站在底層身上、又撐住三層的人。', '中層人員'],
-		['三層', '金字塔裡站在中層身上、最上面的人。只有金字塔有。', '3 層人員、3 層隊員'],
-		['支撐', '金字塔裡自己也被撐著、伸手穩住別的上層的人。', '支撐者']
-	],
-	[
-		['保護', '站在旁邊保護上層，可扶腳踝、小腿、膝蓋，不能撐腳底，不算底層。', '保護人員（保護員）'],
-		['前保', '站在上層前方的保護。', '前方保護人員'],
-		['後保', '站在上層背後的人，技巧和籃型拋投都是。', '輔助人員（籃型拋投）；金字塔轉接寫「後保」'],
-		['接者', '接住落下或被拋的上層的人。', '接者']
-	],
-	[['騰翻', '做騰翻的人。', '騰翻人員']]
-].flatMap((rows, group) => rows.map(([name, meaning, ruleName]) => ({ name, meaning, ruleName, custom: false, group })));
+		[
+			['底層', 'base'],
+			['主底', 'main_base'],
+			['側底', 'side_base'],
+			['肩底', 'shoulder_base']
+		],
+		[
+			['上層', 'top'],
+			['中層', 'middle'],
+			['三層', 'third'],
+			['支撐', 'bracer']
+		],
+		[
+			['保護', 'spotter'],
+			['前保', 'front_spot'],
+			['後保', 'back_spot'],
+			['接者', 'catcher']
+		],
+		[['騰翻', 'tumbler']]
+	] as [string, RoleSlug][][]
+).flatMap((rows, group) =>
+	rows.map(([name, slug]): RoleEntry => ({
+		name,
+		meaning: { code: `roles_meaning_${slug}` },
+		ruleName: { code: `roles_rule_${slug}` },
+		custom: false,
+		group
+	}))
+);
+
+/** 固定任務角色的代號（流程檔存中文名，畫面照語言寫，見 why.ts）。 */
+const FIXED_ROLE_CODES = new Map<string, WhyCode>([
+	['底層', 'role_base'],
+	['主底', 'role_main_base'],
+	['側底', 'role_side_base'],
+	['肩底', 'role_shoulder_base'],
+	['上層', 'role_top'],
+	['中層', 'role_middle'],
+	['三層', 'role_third'],
+	['支撐', 'role_bracer'],
+	['保護', 'role_spotter'],
+	['前保', 'role_front_spot'],
+	['後保', 'role_back_spot'],
+	['接者', 'role_catcher'],
+	['騰翻', 'role_tumbler']
+]);
+
+/** 任務角色的名字放進原因：固定的送代號（畫面照語言寫），自訂的照教練取的名字。 */
+export function roleWhy(name: string): WhyParam {
+	const code = FIXED_ROLE_CODES.get(name);
+	return code ? { code } : name;
+}
 
 /** 自訂任務角色的群：接在固定的後面。 */
 const CUSTOM_GROUP = 4;
@@ -66,10 +117,10 @@ const ROLE_KEYS = '1234567890qwertyuiop';
 /** 加一個自訂任務角色。名稱不能空、不能跟固定或自訂角色重複、不能跟隊員同名。 */
 export function addCustomRole(flow: Flow, input: { name: string; meaning: string }): CommandResult {
 	const name = input.name.trim();
-	if (!name) return blocked('請填任務角色名稱');
+	if (!name) return blocked({ code: 'roles_no_name' });
 	const tooLongName = tooLong('roleName', name);
 	if (tooLongName) return blocked(tooLongName);
-	if (roleGlossary(flow).some((r) => r.name === name)) return blocked(`已經有「${name}」這個任務角色了`);
+	if (roleGlossary(flow).some((r) => r.name === name)) return blocked({ code: 'roles_name_taken', name });
 	if (isMemberName(flow, name)) return blocked(memberNameTaken(name));
 	const id = newId('r', flow.customRoles.map((r) => r.id));
 	const role = { id, name, meaning: input.meaning.trim() };
@@ -82,13 +133,13 @@ export function addCustomRole(flow: Flow, input: { name: string; meaning: string
  */
 export function updateCustomRole(flow: Flow, id: string, input: { name: string; meaning: string }): CommandResult {
 	const old = flow.customRoles.find((r) => r.id === id);
-	if (!old) return blocked('找不到這個任務角色');
+	if (!old) return blocked({ code: 'roles_not_found' });
 	const name = input.name.trim();
-	if (!name) return blocked('請填任務角色名稱');
+	if (!name) return blocked({ code: 'roles_no_name' });
 	const tooLongName = tooLong('roleName', name, old.name);
 	if (tooLongName) return blocked(tooLongName);
 	if (name !== old.name && roleGlossary(flow).some((r) => r.name === name)) {
-		return blocked(`已經有「${name}」這個任務角色了`);
+		return blocked({ code: 'roles_name_taken', name });
 	}
 	if (name !== old.name && isMemberName(flow, name)) return blocked(memberNameTaken(name));
 	const role = { id, name, meaning: input.meaning.trim() };
@@ -107,13 +158,11 @@ export function updateCustomRole(flow: Flow, id: string, input: { name: string; 
  */
 export function deleteCustomRole(flow: Flow, id: string, option: ConfirmOption = {}): CommandResult {
 	const role = flow.customRoles.find((r) => r.id === id);
-	if (!role) return blocked('找不到這個任務角色');
+	if (!role) return blocked({ code: 'roles_not_found' });
 	const using = flow.actions.filter((a) => a.members.some((m) => m.role === role.name));
 	if (using.length && !option.confirmed) {
-		return needsConfirm(
-			`「${role.name}」用在 ${using.length} 個動作裡：刪掉後那些人變成沒有任務，給「${role.name}」的拍點也會刪掉`,
-			using.map(actionLabel)
-		);
+		const code = using.length === 1 ? 'roles_delete_used_one' : 'roles_delete_used';
+		return needsConfirm({ code, name: role.name, count: using.length }, using.map(actionWhy));
 	}
 	const actions = flow.actions.map((a) => ({
 		...a,
@@ -128,8 +177,8 @@ function isMemberName(flow: Flow, name: string): boolean {
 	return flow.members.some((m) => m.name === name);
 }
 
-function memberNameTaken(name: string): string {
-	return `已經有叫「${name}」的隊員了，任務角色取別的名稱，拍點的「給誰」才分得出是角色還是人`;
+function memberNameTaken(name: string): Why {
+	return { code: 'roles_member_name_taken', name };
 }
 
 /** 名詞對照表：固定的 13 個在前，這支流程的自訂角色接在後面。 */

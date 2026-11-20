@@ -37,6 +37,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, SignedIn, session, signed_in};
+use crate::cloud_flows::FlowBlocked;
 use crate::csrf::from_this_site;
 use crate::flow_core::FINGERPRINT;
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
@@ -357,9 +358,12 @@ pub enum RoomMessage {
     },
     /// 這一步退回：原因、伺服器現在的樣子（換上它）、現在第幾步。
     /// 有 by（#254）：別人在我上次看到之後改過——by 是最後改到同一個東西的人（被規則擋下時是最後改過流程的人），
-    /// message 是規則擋下的原因（改到同一個東西是空的），畫面寫成「王教練剛改了同一個地方，你的「…」沒改成」。
+    /// 畫面寫成「王教練剛改了同一個地方，你的「…」沒改成」。
+    /// why 是原因的代號，畫面照使用者的語言寫成句子（ADR 0017）；message 是同一個原因的中文，給部署前開著、不認得 why 的分頁看
+    /// （有 by 時是規則擋下的原因，改到同一個東西是空的）。
     Rejected {
         step_id: String,
+        why: SentBack,
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
@@ -425,6 +429,62 @@ pub enum RoomMessage {
     },
     /// 這次全上表裡的人都離開了，不能加入（#262）。
     RunClosed { run: String },
+}
+
+/// 一步退回的原因（ADR 0017）：伺服器送代號和要放進句子的東西，畫面照使用者的語言寫成句子。
+/// reason 是流程核心擋下的原因：中文，改成代號的多帶 why（一個檔一個檔改）。redo：是重做（不是復原）。
+#[derive(Serialize, TS, Debug)]
+#[serde(tag = "code", rename_all = "camelCase")]
+#[ts(export)]
+pub enum SentBack {
+    /// 只能看這支流程。
+    ViewOnly,
+    /// 前一步沒存進去，這一步也不算。
+    AfterSentBack,
+    /// 離上次看到太久了，換成現在的樣子。
+    TooOld,
+    /// 要復原的那一步太久以前了。
+    UndoTooOld { redo: bool },
+    /// 伺服器看不懂這一步。
+    NotUnderstood,
+    /// 那一步之後 by 改過同樣的東西。
+    UndoChangedLater { by: String, redo: bool },
+    /// 放回去不合規則。
+    UndoBlocked { redo: bool, reason: FlowBlocked },
+    /// 被規則擋下；ask：要問（確認、選）而教練那邊沒問，請再看一次。
+    Blocked { reason: FlowBlocked, ask: bool },
+    /// 改到同一個東西（Rejected 的 by 是最後改到的人）。
+    SameThing,
+}
+
+impl SentBack {
+    /// 同一個原因的中文（Rejected 的 message）。by：有沒有寫最後改的人（有的話畫面自己加前面那半句）。
+    fn message(&self, by: bool) -> String {
+        match self {
+            Self::ViewOnly => format!("沒存進去：{VIEW_ONLY}"),
+            Self::AfterSentBack => AFTER_SENT_BACK.into(),
+            Self::TooOld => TOO_OLD.into(),
+            Self::UndoTooOld { redo } => format!("太久以前的，{}", cannot(*redo)),
+            Self::NotUnderstood => "沒存進去：伺服器看不懂這一步".into(),
+            Self::UndoChangedLater { by, redo } => format!("{by}後來改過，這步{}", cannot(*redo)),
+            Self::UndoBlocked { redo, reason } => {
+                format!("這步{}：{}", cannot(*redo), reason.message)
+            }
+            Self::Blocked { reason, ask } => {
+                let reason = if *ask {
+                    format!("{}，請再看一次", reason.message)
+                } else {
+                    reason.message.clone()
+                };
+                if by {
+                    reason
+                } else {
+                    format!("沒存進去：{reason}")
+                }
+            }
+            Self::SameThing => String::new(),
+        }
+    }
 }
 
 /// 在場名單的一個人：在編輯還是檢視（他有一個分頁在編輯就算在編輯）。
@@ -940,31 +1000,31 @@ async fn take_step(
         ));
     }
 
-    let rejected =
-        |message: String, by: Option<String>, content: String| -> anyhow::Result<Taken> {
-            let flow = RawValue::from_string(content)?;
-            let step_id = step_id.clone();
-            Ok((
-                RoomMessage::Rejected {
-                    step_id,
-                    message,
-                    by,
-                    flow,
-                    step,
-                },
-                None,
-            ))
-        };
+    let rejected = |why: SentBack, by: Option<String>, content: String| -> anyhow::Result<Taken> {
+        let flow = RawValue::from_string(content)?;
+        let step_id = step_id.clone();
+        Ok((
+            RoomMessage::Rejected {
+                step_id,
+                message: why.message(by.is_some()),
+                why,
+                by,
+                flow,
+                step,
+            },
+            None,
+        ))
+    };
     if !role.can_edit() {
-        return rejected(format!("沒存進去：{VIEW_ONLY}"), None, content);
+        return rejected(SentBack::ViewOnly, None, content);
     }
     // 前一步被退回、還沒換成伺服器的樣子就送的：一起退回。
     if sent_back.is_some_and(|n| seen < n) {
-        return rejected(AFTER_SENT_BACK.into(), None, content);
+        return rejected(SentBack::AfterSentBack, None, content);
     }
     // 上次看到之後的步已經沒留（超過 30 天）：比不了，換成伺服器的樣子。
     if seen < step && !kept(&mut tx, flow_id, seen + 1).await? {
-        return rejected(TOO_OLD.into(), None, content);
+        return rejected(SentBack::TooOld, None, content);
     }
     // 紀錄放回流程再跑（ADR 0011）：跑完照結果清掉、改掉該改的紀錄。
     let before = records::before_step(&mut tx, flow_id).await?;
@@ -985,7 +1045,7 @@ async fn take_step(
         Work::Undo { of, redo, change } => {
             // 要復原的那一步：超過 30 天或已經沒留，不能復原。
             let Some((n, keys)) = undoable(&mut tx, flow_id, &of, state.clock.now()).await? else {
-                return rejected(format!("太久以前的，{}", cannot(redo)), None, content);
+                return rejected(SentBack::UndoTooOld { redo }, None, content);
             };
             // 那一步清掉的紀錄一起放回去、加回來的再清掉（ADR 0007）：重做是復原那一步復原的。
             let (records, back) = records::brought_back(&mut tx, flow_id, &of, &before).await?;
@@ -1003,38 +1063,37 @@ async fn take_step(
     };
     let Ok(result) = ran else {
         // 流程核心看不懂（例：沒有這個指令、參數不對）。
-        return rejected("沒存進去：伺服器看不懂這一步".into(), None, content);
+        return rejected(SentBack::NotUnderstood, None, content);
     };
     let outcome: records::StepOutcome = serde_json::from_str(&result)?;
     if let Some((n, mut keys, redo)) = undoing {
         // 那一步之後別的分頁改過那些東西（那一步改到的、這次放回去會改到的）：退回，寫最後改到的人。
         keys.extend(outcome.watch.iter().cloned());
         if let Some(by) = last_other(&mut tx, flow_id, n, tab_id, Some(&keys)).await? {
-            return rejected(format!("{by}後來改過，這步{}", cannot(redo)), None, content);
+            return rejected(SentBack::UndoChangedLater { by, redo }, None, content);
         }
         // 放回去不合規則（整份流程檢查）。
         if outcome.kind != "ok" {
-            let reason = outcome.message.unwrap_or_default();
-            return rejected(format!("這步{}：{reason}", cannot(redo)), None, content);
+            let reason = FlowBlocked::new(outcome.message, outcome.why);
+            return rejected(SentBack::UndoBlocked { redo, reason }, None, content);
         }
     }
     let flow = match (outcome.kind.as_str(), outcome.flow) {
         ("ok", Some(flow)) => flow,
         // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。上次看到之後別人改過，寫最後改的人。
         (kind, _) => {
-            let mut reason = outcome.message.unwrap_or_default();
-            if kind != "blocked" {
-                reason.push_str("，請再看一次");
-            }
-            return match last_other(&mut tx, flow_id, seen, tab_id, None).await? {
-                Some(by) => rejected(reason, Some(by), content),
-                None => rejected(format!("沒存進去：{reason}"), None, content),
+            let reason = FlowBlocked::new(outcome.message, outcome.why);
+            let why = SentBack::Blocked {
+                reason,
+                ask: kind != "blocked",
             };
+            let by = last_other(&mut tx, flow_id, seen, tab_id, None).await?;
+            return rejected(why, by, content);
         }
     };
     // 這一步改到的東西，上次看到之後被別的分頁改過：退回，寫最後改到的人。
     if let Some(by) = last_other(&mut tx, flow_id, seen, tab_id, Some(&outcome.watch)).await? {
-        return rejected(String::new(), Some(by), content);
+        return rejected(SentBack::SameThing, Some(by), content);
     }
 
     // 要送給別人的：改好之後的那些東西（比對前後，不轉送指令）。

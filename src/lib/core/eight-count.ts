@@ -2,33 +2,36 @@
 // 音樂段一個八拍一列（最後不滿一個八拍也算一列），連著好幾個沒有新東西的八拍合成一列；
 // 口號段一整段一列，時間寫秒數。
 
-import { actionLabel, categoryLabel, type Action, type ActionCategory } from './action-types';
-import { actionEights, beatSpanText } from './beat-range';
-import { cueForMember, whoName, type CueKind } from './cues';
+import { actionLabel, actionNameWhy, actionWhy, type Action, type ActionCategory } from './action-types';
+import { actionEights, beatSpanWhy } from './beat-range';
+import { cueForMember, whoWhy, type CueKind } from './cues';
 import type { Rect } from './field';
 import { memberName, type Flow } from './flow';
 import { currentFormation, formationWalks, memberWalk, type Position, type Walk } from './formation';
-import { phaseColor, phaseLabel } from './phase-types';
+import { phaseColor, phaseWhy } from './phase-types';
+import { roleWhy } from './roles';
 import { squadNumber } from './success-rate';
 import {
 	EPS,
 	HALF_BEATS_PER_BEAT,
 	HALF_BEATS_PER_EIGHT,
 	atText,
-	atTextWithUnit,
-	lengthTextWithUnit,
+	atWhy,
+	labelWhy,
+	lengthWhy,
 	segmentSpans,
-	timeTextWithUnit,
+	timeWhy,
 	toPosition,
 	toSeconds,
 	units,
 	type TimePosition
 } from './time';
+import { joined, zh, type Why, type WhyParam } from './why';
 
 /** 八拍表一列裡的一個動作（這一列開始的）。 */
 export interface EightCountAction {
 	/** 什麼時候：音樂段跟拍點小窗一樣寫「1-3& 到 2-2&・8 拍」；口號段段內秒數和長度「12.3 到 14.3 秒・2.0 秒」。 */
-	at: string;
+	at: WhyParam;
 	category: ActionCategory;
 	name: string;
 	/** 選一個人時只有他自己。 */
@@ -37,7 +40,7 @@ export interface EightCountAction {
 	 * 給人看的。全隊的表：「小A（上層）、小B（主底）」，全隊都在寫「全隊」（有任務角色就接著列「全隊：小A（上層）…」）。
 	 * 個人表不寫名字：「主底・第 2 組・同組：小A（上層）」，沒角色也沒分組是空的。
 	 */
-	who: string;
+	who: WhyParam;
 	/** 動作的備註，沒寫是空的。 */
 	note: string;
 }
@@ -48,12 +51,12 @@ export interface EightCountFormation {
 	number: number;
 	/** 站位名稱，沒取就沒有。 */
 	name?: string;
-	at: string;
+	at: WhyParam;
 	/**
 	 * 給人看的：「站位 2 金字塔・2-5」，口號段「站位 3・2.5 秒」。有人走過來時後面寫出發：「站位 2・3-1（2-1 出發）」，
 	 * 大家出發不一樣寫最早的「（最早 2-1 出發）」；個人表只看他自己的走位。
 	 */
-	caption: string;
+	caption: Why;
 	pos: Record<string, Position>;
 }
 
@@ -67,20 +70,21 @@ export interface EightCountCue {
 	start: number;
 	end: number;
 	/** 整個拍點，跟拍點小窗一樣：「1-6 到 1-7・2 拍」「2-1&・1 拍」（跨列的兩列都寫整個）。 */
-	span: string;
+	span: WhyParam;
 	/** 從 & 開始的拍點在開始那一列寫在字前面的拍：「1-1&」（格子只能整格）；其他是空的。 */
 	lead: string;
 	/** 從上一列接過來的那一段：不再寫字和給誰。 */
 	continued: boolean;
+	/** 拍點的字（流程檔存的；給人看用 cueWordWhy）。 */
 	word: string;
 	/** 給誰：任務角色或隊員名字；給全部的和個人表是 null。 */
-	who: string | null;
+	who: WhyParam | null;
 }
 
 /** 八拍表一列裡的一個環節（只算落在這一列的那一段；跨列的兩列都寫名字）。 */
 export interface EightCountPhase {
 	/** 種類和名字：「上法 延伸」，沒取名字就只有種類。 */
-	label: string;
+	label: WhyParam;
 	/** 這一列的第幾格到第幾格（1–8）。 */
 	from: number;
 	to: number;
@@ -108,28 +112,30 @@ export interface EightCountLane extends EightCountCueLine {
 	/** 前面的列開始、做到這一列的。 */
 	continued: boolean;
 	/** 個人表寫他的任務角色；全隊和沒角色是空的。 */
-	role: string;
+	role: WhyParam;
 }
 
 export interface EightCountRow {
-	/** 段名：音樂 1、口號 1… */
+	/** 段名：音樂 1、口號 1…（認段用；給人看用 segmentWhy） */
 	segmentLabel: string;
+	/** 段名給人看（畫面照語言寫）。 */
+	segmentWhy: Why;
 	/** 第幾個八拍（從 1 起）；口號段整段一列是 null。合起來的列是第一個。 */
 	eight: number | null;
 	/** 合起來的列的最後一個八拍；沒合起來就跟 eight 一樣。 */
 	lastEight: number | null;
 	/** 八拍欄：「3」、合起來的「5–8」、口號段「整段 10.0 秒」。 */
-	eightText: string;
+	eightText: WhyParam;
 	/** 這一列開始的全域秒數。 */
 	startSec: number;
 	/** 這一列多長（秒）；口號段就是整段的秒數。 */
 	durationSec: number;
 	actions: EightCountAction[];
 	/** 前面的列開始、延續到這一列的動作名字（沒取名字寫大類），印成「↳ Lib 繼續」。 */
-	continuing: string[];
+	continuing: WhyParam[];
 	formations: EightCountFormation[];
 	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到達）」。全隊是空的。 */
-	walks: string[];
+	walks: Why[];
 	/** 這一列的拍點：每個在這一列有拍點的動作一排；跨列的拍點兩列各寫自己那一段。 */
 	cues: EightCountCueLine[];
 	/** 檢視模式的前後八拍：這一列碰到的每個動作一排（沒拍點的也有）。 */
@@ -144,7 +150,8 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 	const rows: EightCountRow[] = [];
 	const walks = memberId === null ? [] : memberWalks(flow, memberId);
 	const original = (id: string) => flow.actions.find((a) => a.id === id)!;
-	for (const { segment, label } of segmentSpans(flow)) {
+	for (const span of segmentSpans(flow)) {
+		const { segment, label } = span;
 		const inSegment = flow.actions
 			.filter((a) => a.segmentId === segment.id)
 			.map((a) => ({
@@ -153,12 +160,12 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 			}))
 			.filter((a) => a.members.length > 0)
 			.toSorted((a, b) => a.start - b.start);
-		const at = (u: number) => atTextWithUnit(segment, u);
+		const at = (u: number) => atWhy(segment, u);
 		const describe = (a: (typeof inSegment)[number]): EightCountAction => ({
 			at:
 				segment.kind === 'music'
-					? beatSpanText(segment, a.start, a.length)
-					: `${atText(segment, a.start)} 到 ${at(a.start + a.length)}・${lengthTextWithUnit(segment, a.length)}`,
+					? beatSpanWhy(segment, a.start, a.length)
+					: { code: 'eight_count_chant_span', at: atText(segment, a.start), end: at(a.start + a.length), length: lengthWhy(segment, a.length) },
 			category: a.category,
 			name: a.name,
 			members: a.members.map((m) => ({
@@ -186,14 +193,14 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
 						start,
 						end,
-						span: beatSpanText(segment, a.start + cue.at, cue.len),
+						span: beatSpanWhy(segment, a.start + cue.at, cue.len),
 						lead: first && (a.start + cue.at) % HALF_BEATS_PER_BEAT === 1 ? atText(segment, a.start + cue.at) : '',
 						continued: !first,
 						word: cue.word,
-						who: memberId === null ? whoName(flow, cue.who) || null : null
+						who: memberId === null ? whoWhy(flow, cue.who) || null : null
 					}));
 					const phases = (slice?.phases ?? []).map(({ phase, start, end, row }) => ({
-						label: phaseLabel(phase),
+						label: phaseWhy(phase),
 						from: Math.floor(start / HALF_BEATS_PER_BEAT) + 1,
 						to: Math.ceil(end / HALF_BEATS_PER_BEAT),
 						color: phaseColor(phase),
@@ -207,33 +214,33 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 						from: music ? Math.floor((Math.max(a.start, from) - from) / HALF_BEATS_PER_BEAT) + 1 : 1,
 						to: music ? Math.ceil((Math.min(a.start + a.length, to) - from) / HALF_BEATS_PER_BEAT) : 8,
 						continued: a.start < from,
-						role: (memberId !== null && a.members[0]?.role) || '',
+						role: memberId !== null && a.members[0]?.role ? roleWhy(a.members[0].role) : '',
 						cues,
 						phases
 					};
 				});
 			return {
 				segmentLabel: label,
+				segmentWhy: labelWhy(span),
 				eight,
 				lastEight: eight,
-				eightText: eight === null ? `整段 ${durationSec.toFixed(1)} 秒` : `${eight}`,
+				eightText: eight === null ? { code: 'eight_count_whole_segment', n: durationSec.toFixed(1) } : `${eight}`,
 				startSec: sec,
 				durationSec,
 				actions: inSegment.filter((a) => a.start >= from && a.start < to).map(describe),
-				continuing: carried.map((a) => a.name || categoryLabel(a.category)),
+				continuing: carried.map(actionNameWhy),
 				formations: flow.formations.flatMap((f, i) => {
 					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
-					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}${departText(flow, f.id, memberId)}`;
-					return [{ number: i + 1, name: f.name, at: at(f.at), caption, pos: f.pos }];
+					return [{ number: i + 1, name: f.name, at: at(f.at), caption: caption(flow, i, at(f.at), memberId), pos: f.pos }];
 				}),
 				walks: walks
 					.filter(
 						({ walk: { depart } }) =>
 							depart.segmentId === segment.id && depart.at >= from && depart.at < to
 					)
-					.map(({ number, walk }) => {
-						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
-						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到達）`;
+					.map(({ number, walk }): Why => {
+						const time = (p: TimePosition) => timeWhy(flow, segment.id, p);
+						return { code: 'eight_count_walk', depart: time(walk.depart), n: number, arrive: time(walk.arrive) };
 					}),
 				cues: lanes.filter((l) => l.cues.length || l.phases.length).map(({ category, name, cues, phases }) => ({ category, name, cues, phases })),
 				lanes
@@ -251,7 +258,7 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 					prev.eight !== null &&
 					isEmpty(prev) &&
 					isEmpty(row) &&
-					prev.continuing.join('\n') === row.continuing.join('\n')
+					JSON.stringify(prev.continuing) === JSON.stringify(row.continuing)
 				) {
 					prev.lastEight = row.eight;
 					prev.eightText = `${prev.eight}–${row.eight}`;
@@ -302,11 +309,14 @@ export function nearbyEights(
  * 檢視模式場地角落寫的站位：播放頭這一刻的「站位 13 三層直下」。
  * 已經有人出發往下一張走了，就寫要去的那張，前面加箭頭「→ 站位 14 …」；到了就拿掉箭頭。
  */
-export function formationNowText(flow: Flow, sec: number): string {
+export function formationNowWhy(flow: Flow, sec: number): Why {
 	const { formation, number } = currentFormation(flow, sec);
 	const next = flow.formations[number];
-	const text = (n: number, f: { name?: string }) => `站位 ${n}${f.name ? ` ${f.name}` : ''}`;
-	if (next && formationWalks(flow, next.id).some((w) => w.departSec <= sec + EPS)) return `→ ${text(number + 1, next)}`;
+	const text = (n: number, f: { name?: string }): Why =>
+		f.name ? { code: 'eight_count_formation_now_named', n, name: f.name } : { code: 'eight_count_formation_now', n };
+	if (next && formationWalks(flow, next.id).some((w) => w.departSec <= sec + EPS)) {
+		return { code: 'eight_count_formation_next', formation: text(number + 1, next) };
+	}
 	return text(number, formation);
 }
 
@@ -315,44 +325,51 @@ export function formationNowText(flow: Flow, sec: number): string {
  * 這個八拍他沒事只寫名字。任務角色跟動作同名（騰翻的「騰翻」）不重複寫。
  * rows 是 eightCountRows(flow, memberId, false)，跟著流程和點到的人先算好傳進來（播放時每一格畫面都問）。
  */
-export function memberNowText(
+export function memberNowWhy(
 	flow: Flow,
 	memberId: string,
 	sec: number,
 	rows: EightCountRow[] = eightCountRows(flow, memberId, false)
-): string {
+): WhyParam {
 	const row = nearbyEights(flow, memberId, sec, 0, 0, rows).rows[0];
-	const doing = (row?.lanes ?? []).map((l) => {
-		const label = actionLabel(l);
-		return l.role && l.role !== label ? `${label} ${l.role}` : label;
+	const doing = (row?.lanes ?? []).map((l): WhyParam => {
+		const action = actionWhy(l);
+		// 比的是存的中文（任務角色「騰翻」和大類「騰翻」同名）
+		return l.role && zhOf(l.role) !== actionLabel(l) ? { code: 'eight_count_doing_role', action, role: l.role } : action;
 	});
-	return [memberName(flow, memberId), ...doing].join('　');
+	return joined('eight_count_now_parts', [memberName(flow, memberId), ...doing]);
 }
 
-const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);
+const zhOf = (text: WhyParam) => (typeof text === 'object' ? zh(text) : String(text));
+
+/** 一串接成「小A、小B」（parts 不能是空的）。 */
+const listed = (parts: WhyParam[]) => joined('members_list', parts);
+
+const withRole = (m: { name: string; role: string | null }): WhyParam =>
+	m.role ? { code: 'eight_count_with_role', name: m.name, role: roleWhy(m.role) } : m.name;
 
 /** 全隊的表：「小A（上層）、小C」；全隊都在寫「全隊」，有任務角色再列出來「全隊：小A（上層）、小B（主底）」。 */
-export function teamWho(flow: Flow, action: Action): string {
+export function teamWho(flow: Flow, action: Action): WhyParam {
 	const members = action.members.map((m) => ({ name: memberName(flow, m.memberId), role: m.role }));
 	const wholeTeam = flow.members.every((m) => action.members.some((x) => x.memberId === m.id));
-	if (!wholeTeam) return members.map(withRole).join('、');
+	if (!wholeTeam) return members.length ? listed(members.map(withRole)) : '';
 	const roles = members.filter((m) => m.role);
-	return roles.length ? `全隊：${roles.map(withRole).join('、')}` : '全隊';
+	return roles.length ? { code: 'eight_count_whole_team_roles', members: listed(roles.map(withRole)) } : { code: 'eight_count_whole_team' };
 }
 
 /** 個人表：不寫他的名字，寫他的任務角色、第幾組和同組的人：「主底・第 2 組・同組：小A（上層）」；都沒有是空的。 */
-function memberWho(flow: Flow, action: Action, memberId: string): string {
+function memberWho(flow: Flow, action: Action, memberId: string): WhyParam {
 	const me = action.members.find((m) => m.memberId === memberId)!;
-	const parts = me.role ? [me.role] : [];
+	const parts: WhyParam[] = me.role ? [roleWhy(me.role)] : [];
 	if (me.squad) {
 		const n = squadNumber(action, me.squad);
-		if (n) parts.push(`第 ${n} 組`);
+		if (n) parts.push({ code: 'success_rate_squad', n });
 		const mates = action.members
 			.filter((m) => m.squad === me.squad && m.memberId !== memberId)
 			.map((m) => withRole({ name: memberName(flow, m.memberId), role: m.role }));
-		if (mates.length) parts.push(`同組：${mates.join('、')}`);
+		if (mates.length) parts.push({ code: 'eight_count_mates', mates: listed(mates) });
 	}
-	return parts.join('・');
+	return parts.length ? joined('eight_count_parts', parts) : '';
 }
 
 /**
@@ -369,15 +386,26 @@ export function eightCountView(flow: Flow): Rect | null {
 	return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
-/** 走到這張站位的出發（見 EightCountFormation.caption）：「（2-1 出發）」「（最早 2-1 出發）」；沒人走是空的。 */
-function departText(flow: Flow, formationId: string, memberId: string | null): string {
+/** 八拍表的站位說明（見 EightCountFormation.caption）：「站位 2 金字塔・2-5（2-1 出發）」。 */
+function caption(flow: Flow, index: number, at: WhyParam, memberId: string | null): Why {
+	const f = flow.formations[index];
+	const depart = departWhy(flow, f.id, memberId);
+	const n = index + 1;
+	if (depart) {
+		return f.name ? { code: 'eight_count_caption_named_depart', n, name: f.name, at, depart } : { code: 'eight_count_caption_depart', n, at, depart };
+	}
+	return f.name ? { code: 'eight_count_caption_named', n, name: f.name, at } : { code: 'eight_count_caption', n, at };
+}
+
+/** 走到這張站位的出發：「2-1 出發」「最早 2-1 出發」；沒人走是 null。 */
+function departWhy(flow: Flow, formationId: string, memberId: string | null): Why | null {
 	const walks = formationWalks(flow, formationId).filter((w) => memberId === null || w.memberId === memberId);
-	if (!walks.length) return '';
+	if (!walks.length) return null;
 	const first = walks.reduce((a, b) => (b.departSec < a.departSec ? b : a));
 	const late = walks.some((w) => w.departSec > first.departSec + EPS);
 	const home = flow.formations.find((f) => f.id === formationId)!.segmentId!;
-	const depart = memberWalk(flow, formationId, first.memberId)!.depart;
-	return `（${late ? '最早 ' : ''}${timeTextWithUnit(flow, home, depart)} 出發）`;
+	const at = timeWhy(flow, home, memberWalk(flow, formationId, first.memberId)!.depart);
+	return { code: late ? 'eight_count_depart_earliest' : 'eight_count_depart', at };
 }
 
 /** 這一列沒有新東西：沒有動作開始、沒有站位、沒有走位、沒有拍點或環節（只有延續的動作也算）。 */

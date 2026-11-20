@@ -6,6 +6,8 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import ConfirmList from './ConfirmList.svelte';
 	import { commitField } from './commit-field';
+	import { reasonText, whyText } from '#lib/reason-text.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import { revealAlert } from './reveal';
@@ -21,9 +23,11 @@
 		audioOverlaps,
 		beatLines,
 		fitSegmentToAudio,
+		labelWhy,
 		musicLength,
 		musicOverrunSec,
 		readSegmentNumber,
+		said,
 		segmentSpans,
 		tapBpm,
 		type Flow,
@@ -59,8 +63,10 @@
 	}
 
 	/** 被擋的原因，和段縮短會刪掉東西時等教練確認的清單（流程核心給的）。 */
-	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: m.segment_confirm_delete() });
 	const span = $derived(segmentSpans(flow).find((s) => s.segment.id === segmentId));
+	/** 段名：音樂 1、口號 1（照語言寫）。 */
+	const spanName = $derived(span ? whyText(labelWhy(span)) : '');
 	const segment = $derived(span?.segment);
 	const music = $derived(segment?.kind === 'music' ? segment : null);
 	const loadedAudio = $derived(editor.music.get(music?.audioId));
@@ -76,7 +82,7 @@
 	const fitBlocked = $derived.by(() => {
 		if (!overrun) return null;
 		const r = fitSegmentToAudio(flow, segmentId, editor.music.lengths);
-		return r.kind === 'blocked' ? r.message : null;
+		return r.kind === 'blocked' ? reasonText(r) : null;
 	});
 	/** 這一段用到的那一截：音樂檔裡從第一拍到段尾（波形上標亮）。 */
 	const used = $derived({ startSec: music?.firstBeatSec ?? 0, endSec: (music?.firstBeatSec ?? 0) + (span?.durationSec ?? 0) });
@@ -95,7 +101,7 @@
 
 	/** 切好的那份流程：還是它（沒復原、沒再改）就在切段鈕下面寫切好了。提示泡泡被對話框蓋住，所以寫在這裡（N21）。 */
 	let splitFlow = $state.raw<Flow | null>(null);
-	const splitNote = $derived(splitFlow && session.flow === splitFlow ? `已${session.undoLabel}；要回原狀請按復原` : '');
+	const splitNote = $derived(splitFlow && session.flow === splitFlow ? m.segment_settings_split_note({ label: session.undoLabel }) : '');
 
 	function split() {
 		ask.send({ name: 'splitSegment', args: [segmentId, playback.sec] }, { done: () => (splitFlow = session.flow) });
@@ -120,7 +126,7 @@
 			send: (text) => {
 				const value = readSegmentNumber(key, text);
 				return value.kind === 'blocked'
-					? { blocked: value.message }
+					? { blocked: value }
 					: { name: 'updateSegment', args: [segmentId, { [key]: value.value }, editor.music.lengths] };
 			},
 			actual: () => String(actual() ?? ''),
@@ -200,20 +206,20 @@
 {#snippet listen()}
 	<!-- 同一顆按鈕換字：按了以後焦點留在上面，再按一次就停。 -->
 	<button type="button" class="listen" onclick={() => (playback.previewing ? playback.stopPreview() : playback.preview(segmentId))}
-		>{playback.previewing ? '■ 停止試聽' : '▶ 從第一拍聽 2 個八拍'}</button
+		>{playback.previewing ? m.segment_settings_stop_preview() : m.segment_settings_preview()}</button
 	>
 {/snippet}
 
-<Modal label={`${span?.label ?? ''} 設定`} class="dialog seg-dialog" {ask} {onclose} {readonly}>
+<Modal label={m.segment_settings_title({ segment: spanName })} class="dialog seg-dialog" {ask} {onclose} {readonly}>
 	{#snippet head(close)}
 		<header class="dialog-head">
-			<h2>{span?.label} 設定</h2>
-			{#if span}<span class="hint">共 {span.durationSec.toFixed(1)} 秒{readonly ? '・檢視模式只能看' : ''}</span>{/if}
+			<h2>{m.segment_settings_title({ segment: spanName })}</h2>
+			{#if span}<span class="hint">{(readonly ? m.segment_settings_total_view_only : m.segment_settings_total)({ sec: span.durationSec.toFixed(1) })}</span>{/if}
 			{#if readonly && music}{@render listen()}{/if}
 			{#if playback.playing}
-				<button type="button" class="pause" title="空白鍵也可以暫停" onclick={() => playback.pause()}><Icon name="pause" size={14} />暫停</button>
+				<button type="button" class="pause" title={m.segment_settings_pause_hint()} onclick={() => playback.pause()}><Icon name="pause" size={14} />{m.segment_settings_pause()}</button>
 			{/if}
-			<button type="button" class="ghost icon close" aria-label="關閉" onclick={close}><Icon name="close" /></button>
+			<button type="button" class="ghost icon close" aria-label={m.segment_settings_close()} onclick={close}><Icon name="close" /></button>
 		</header>
 	{/snippet}
 	{#snippet children()}
@@ -221,40 +227,44 @@
 		{#key fieldsKey}
 		{#if music && length}
 			<section>
-				<h3>音樂檔</h3>
+				<h3>{m.segment_settings_music_file()}</h3>
 				<div class="row">
 					<label class="file btn">
-						載入音樂檔
+						{m.segment_settings_load_audio()}
 						<input type="file" accept={AUDIO_EXTENSIONS.map((x) => `.${x}`).join(',')} onchange={load} />
 					</label>
 					<span class="audio" class:missing={audioName && !audio}>
 						{audioName
-							? `${audioName}${audio ? `（${audio.durationSec.toFixed(1)} 秒）` : broken ? `（${BROKEN_AUDIO}）` : '（找不到音樂，請重新選檔）'}`
-							: '還沒載入'}
+							? audio
+								? m.segment_settings_audio_length({ name: audioName, sec: audio.durationSec.toFixed(1) })
+								: broken
+									? m.segment_settings_audio_broken({ name: audioName, reason: reasonText(said(BROKEN_AUDIO)) })
+									: m.segment_settings_audio_missing({ name: audioName })
+							: m.segment_settings_no_audio()}
 					</span>
 					<!-- 段留著、變成沒有音樂檔的音樂段，播放只剩節拍器；算一步，可以復原。 -->
 					{#if music.audioId !== null}
-						<button type="button" onclick={() => update({ audioId: null })}>拿掉音樂</button>
+						<button type="button" onclick={() => update({ audioId: null })}>{m.segment_settings_remove_audio()}</button>
 					{/if}
 				</div>
 				{#if otherAudio.length}
 					<div class="row">
 						<label class="inline">
-							用已載入的音樂
+							{m.segment_settings_use_loaded()}
 							<select onchange={(e) => update({ audioId: e.currentTarget.value })}>
-								<option value="" selected>選一個…</option>
+								<option value="" selected>{m.segment_settings_pick_one()}</option>
 								{#each otherAudio as a (a.id)}
 									<option value={a.id}>{a.name}</option>
 								{/each}
 							</select>
 						</label>
-						<span class="hint">音樂中途變速時，兩個音樂段用同一個檔</span>
+						<span class="hint">{m.segment_settings_same_file_hint()}</span>
 					</div>
 				{/if}
 			</section>
 
 			<section>
-				<h3>速度和第一拍</h3>
+				<h3>{m.segment_settings_tempo()}</h3>
 				<div class="row">
 					<label class="inline">
 						BPM
@@ -262,41 +272,43 @@
 					</label>
 					<span class="hint">{MIN_BPM}–{MAX_BPM}</span>
 					<label class="inline">
-						第一拍（秒）
+						{m.segment_settings_first_beat()}
 						<input
 							type="text"
 							inputmode="decimal"
 							value={music.firstBeatSec}
-							{@attach numberField('第一拍（秒）', 'firstBeatSec', () => music?.firstBeatSec)}
+							{@attach numberField(m.segment_settings_first_beat(), 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>
 					{#if !readonly}{@render listen()}{/if}
 					{#if audio}
 						<!-- 改了 BPM（或剛載入音樂）才看得到；沒出現時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
 						{@const hide = music.bpm === openedBpm && !firstLoaded}
-						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} onclick={fitToAudio}>照音樂長度重算八拍數</button>
+						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} onclick={fitToAudio}>{m.segment_settings_refit()}</button>
 					{/if}
 				</div>
 				{#if firstLoaded}
-					<p class="hint">八拍數照 {music.bpm} BPM 算的：先設好 BPM，再按「照音樂長度重算八拍數」</p>
+					<p class="hint">{m.segment_settings_refit_hint({ bpm: music.bpm })}</p>
 				{/if}
 				<div class="row">
-					<button type="button" onclick={tap}>敲擊測速</button>
+					<button type="button" onclick={tap}>{m.segment_settings_tap()}</button>
 					<span class="hint" aria-live="polite">
 						{tapped !== null
-							? `點了 ${taps.length} 下，約 ${tapped} BPM${tapOutOfRange ? `：超出 ${MIN_BPM}–${MAX_BPM}，不能套用` : ''}`
+							? (tapOutOfRange ? m.segment_settings_tapped_out : m.segment_settings_tapped)({ n: taps.length, bpm: tapped, min: MIN_BPM, max: MAX_BPM })
 							: taps.length
-								? `再點 ${MIN_TAPS - taps.length} 下`
-								: `跟著音樂的拍子連點 ${MIN_TAPS} 下以上；停 ${TAP_RESET_SEC} 秒再點就重新算`}
+								? (MIN_TAPS - taps.length === 1 ? m.segment_settings_tap_more_one : m.segment_settings_tap_more)({ n: MIN_TAPS - taps.length })
+								: m.segment_settings_tap_hint({ n: MIN_TAPS, sec: TAP_RESET_SEC })}
 					</span>
-					<button type="button" disabled={tapped === null || tapOutOfRange} onclick={applyTap}>套用{tapped !== null ? ` ${tapped} BPM` : ''}</button>
+					<button type="button" disabled={tapped === null || tapOutOfRange} onclick={applyTap}
+						>{tapped !== null ? m.segment_settings_apply_bpm({ bpm: tapped }) : m.segment_settings_apply()}</button
+					>
 				</div>
 				<!-- 波形用滑鼠點；鍵盤用上面的「第一拍（秒）」欄位，所以不另外接鍵盤事件。 -->
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 				<svg
 					class="wave"
 					role="img"
-					aria-label="波形"
+					aria-label={m.segment_settings_wave()}
 					viewBox={`${wave.startSec} 0 ${wave.lengthSec} 2`}
 					preserveAspectRatio="none"
 					onclick={readonly ? undefined : clickWave}
@@ -309,45 +321,45 @@
 					{/each}
 				</svg>
 				<p class="hint">
-					{audio ? '' : '沒有音樂檔：載入後會畫出波形。'}在波形上點一下＝把第一拍放在那裡，第一拍前面也點得到。細線是照 BPM
-					算出的每一拍，對準鼓點就對了。波形畫整個音樂檔，亮的那一截是這一段用到的：從第一拍到段尾。
+					{audio ? m.segment_settings_wave_hint() : m.segment_settings_wave_hint_no_audio()}
 				</p>
 			</section>
 
 			<section>
-				<h3>長度</h3>
+				<h3>{m.segment_settings_length()}</h3>
 				<div class="row">
 					<label class="inline">
-						八拍數
-						<input type="text" inputmode="numeric" value={length.eights} {@attach numberField('八拍數', 'eights', () => length?.eights)} />
+						{m.segment_settings_eights()}
+						<input type="text" inputmode="numeric" value={length.eights} {@attach numberField(m.segment_settings_eights(), 'eights', () => length?.eights)} />
 					</label>
 					<label class="inline">
-						最後一個八拍有幾拍
+						{m.segment_settings_last_beats()}
 						<input
 							type="text"
 							inputmode="numeric"
 							value={length.lastBeats}
-							{@attach numberField('最後一個八拍有幾拍', 'lastBeats', () => length?.lastBeats)}
+							{@attach numberField(m.segment_settings_last_beats(), 'lastBeats', () => length?.lastBeats)}
 						/>
 					</label>
-					<span class="hint">最多 {MAX_EIGHTS} 個八拍</span>
-					<button type="button" onclick={fitToAudio}>照音樂長度算</button>
+					<span class="hint">{m.segment_settings_max_eights({ max: MAX_EIGHTS })}</span>
+					<button type="button" onclick={fitToAudio}>{m.segment_settings_fit()}</button>
 				</div>
 				{#if overrun > 0}
+					{@const then = fitBlocked ? m.segment_settings_fit_blocked({ reason: fitBlocked }) : m.segment_settings_fit_hint()}
 					<p class="hint-warn" role="note">
-						{#if overrun >= (span?.durationSec ?? 0) - 0.05}這一段整段都在音樂檔結尾之後：播放時沒有聲音。{:else}這一段比音樂檔長 {overrun.toFixed(1)} 秒：最後那一段播放時沒有聲音。{/if}{fitBlocked
-							? `${fitBlocked}。`
-							: '要剛好就按「照音樂長度算」。'}
+						{overrun >= (span?.durationSec ?? 0) - 0.05
+							? m.segment_settings_after_end({ then })
+							: m.segment_settings_overrun({ sec: overrun.toFixed(1), then })}
 					</p>
 				{/if}
 				<div class="row">
-					<button type="button" onclick={split}>從播放頭這個八拍切成兩段</button>
-					<span class="hint">切點在播放頭那個八拍的第 1 拍；後面的動作和站位搬到新的一段，BPM、第一拍接著算</span>
+					<button type="button" onclick={split}>{m.segment_settings_split()}</button>
+					<span class="hint">{m.segment_settings_split_hint()}</span>
 				</div>
 				{#if splitNote}<p class="hint" role="status">{splitNote}</p>{/if}
-				{#each overlaps as o (o.label)}
+				{#each overlaps as o, i (i)}
 					<p class="hint-warn" role="note">
-						跟{o.label} 用同一個音樂檔，有 {o.sec.toFixed(1)} 秒重疊：那一截音樂會播兩次。
+						{m.segment_settings_overlap({ segment: whyText(o.label), sec: o.sec.toFixed(1) })}
 					</p>
 				{/each}
 			</section>
@@ -355,24 +367,24 @@
 			<section>
 				<div class="row">
 					<label class="inline">
-						長度（秒）
+						{m.segment_settings_seconds()}
 						<input
 							type="text"
 							inputmode="decimal"
 							value={span?.durationSec}
-							{@attach numberField('長度（秒）', 'seconds', () => span?.durationSec)}
+							{@attach numberField(m.segment_settings_seconds(), 'seconds', () => span?.durationSec)}
 						/>
 					</label>
-					<span class="hint">口號段只計秒數，最細 0.1 秒，最長 {MAX_CHANT_SEC} 秒</span>
+					<span class="hint">{m.segment_settings_chant_hint({ max: MAX_CHANT_SEC })}</span>
 				</div>
 			</section>
 		{/if}
 		{/key}
 
 		<section class="order">
-			<button type="button" disabled={index <= 0} onclick={(e) => move(-1, e.currentTarget)}>往前移</button>
-			<button type="button" disabled={index >= flow.segments.length - 1} onclick={(e) => move(1, e.currentTarget)}>往後移</button>
-			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />刪除這一段</button>
+			<button type="button" disabled={index <= 0} onclick={(e) => move(-1, e.currentTarget)}>{m.segment_settings_move_earlier()}</button>
+			<button type="button" disabled={index >= flow.segments.length - 1} onclick={(e) => move(1, e.currentTarget)}>{m.segment_settings_move_later()}</button>
+			<button type="button" class="danger" onclick={remove}><Icon name="trash" size={14} />{m.segment_settings_delete()}</button>
 		</section>
 
 		{#if ask.question}<ConfirmList {ask} />{/if}

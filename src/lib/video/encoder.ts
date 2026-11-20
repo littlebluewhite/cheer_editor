@@ -2,6 +2,7 @@
 // mediabunny 只在要輸出時才動態載入，編輯器打開時不載。
 
 import { VIDEO_FPS } from '#lib/core';
+import { m } from '#lib/paraglide/messages.js';
 import { VIDEO_H, VIDEO_W } from './layout';
 import { VIDEO_SAMPLE_RATE } from './soundtrack';
 
@@ -40,9 +41,9 @@ function abortError(): DOMException {
 export function failureReason(e: unknown): string {
 	const name = typeof e === 'object' && e !== null && 'name' in e ? String(e.name) : '';
 	const message = e instanceof Error ? e.message : String(e);
-	if (name === 'QuotaExceededError' || name === 'RangeError' || /out.of.memory/i.test(message)) return '記憶體不夠，關掉其他分頁再試一次';
-	if (name === 'EncodingError' || name === 'NotSupportedError') return '這台電腦的編碼器做不出這支影片';
-	return '做影片時出了問題';
+	if (name === 'QuotaExceededError' || name === 'RangeError' || /out.of.memory/i.test(message)) return m.video_out_of_memory();
+	if (name === 'EncodingError' || name === 'NotSupportedError') return m.video_encoder_cannot();
+	return m.video_failed_unknown();
 }
 
 export function browserVideoEncoder(): VideoEncoderAdapter {

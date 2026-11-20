@@ -4,9 +4,9 @@
 // 送出時開始、長度由核心讀（readStart、readLength），看不懂就是被擋，原因跟指令被擋一樣交給 ask。
 
 import {
-	actionLabel,
 	actionSeconds,
 	actionSlotAt,
+	actionWhy,
 	atText,
 	busyMembers,
 	defaultRoles,
@@ -21,6 +21,8 @@ import {
 	type ReadResult,
 	type Segment
 } from '#lib/core';
+import { m } from '#lib/paraglide/messages.js';
+import { whyText } from '#lib/reason-text.js';
 import type { Ask } from '#lib/ask.svelte.js';
 import type { EditorSession, UpdateReason } from '#lib/editor-session.svelte.js';
 
@@ -245,8 +247,9 @@ export class ActionDraft {
 		const before = this.#session.flow;
 		this.update(() => {
 			if (this.#session.flow === before) return;
-			const text = `已取代：人換成「${actionLabel(source)}」的 ${source.members.length} 人`;
-			this.#session.toast(text, { label: '復原', name: '復原取代的人' });
+			const n = source.members.length;
+			const text = (n === 1 ? m.action_form_replaced_one : m.action_form_replaced)({ action: whyText(actionWhy(source)), n });
+			this.#session.toast(text, { label: m.action_form_undo(), name: m.action_form_undo_replace() });
 		});
 	}
 
@@ -259,7 +262,7 @@ export class ActionDraft {
 		if (this.#action || !segment) return;
 		const input = this.#read(segment);
 		const sent = this.#keep();
-		if (input.kind === 'blocked') return void this.ask.block(input.message);
+		if (input.kind === 'blocked') return void this.ask.block(input);
 		this.ask.send({ name: 'addAction', args: [input.value] }, {
 			done: (r) => {
 				this.#session.selectAction(r.id);
@@ -295,7 +298,7 @@ export class ActionDraft {
 		const id = action.id;
 		const input = this.#read(segment);
 		const revert = () => this.#reset();
-		if (input.kind === 'blocked') return void this.ask.block(input.message, { revert });
+		if (input.kind === 'blocked') return void this.ask.block(input, { revert });
 		this.ask.send({ name: 'updateAction', args: [id, input.value] }, { revert, done });
 	}
 

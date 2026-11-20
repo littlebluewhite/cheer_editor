@@ -4,6 +4,8 @@
 // iPad（觸控螢幕、能分享檔案）改開分享選單：存到「檔案」App，或直接用 LINE 傳給隊員（docs/adr/0005-ipad-touch.md）。
 // 這一層不寫自動測試，改用手動檢查（規格的 Testing Decisions）；頁面測試換成假的 FileSaver。
 
+import { m } from '#lib/paraglide/messages.js';
+
 /** saved = 寫進檔案了；shared = 交給分享選單了；downloaded = 下載了一個新檔；cancelled = 教練在存檔對話框或分享選單按了取消。 */
 export type SaveOutcome = 'saved' | 'shared' | 'downloaded' | 'cancelled';
 
@@ -28,7 +30,7 @@ export interface FileSaver {
  * 頭尾的空白和句點拿掉，提示的檔名才跟實際存下來的一樣。
  */
 export function flowFileName(flowName: string): string {
-	return `${safeFileBase(flowName, '流程')}.zip`;
+	return `${safeFileBase(flowName, m.file_default_name())}.zip`;
 }
 
 /** 流程名 → 檔名不含副檔名的那段：不能用的字換成「_」，頭尾空白和句點拿掉，空的用 fallback。 */
@@ -39,15 +41,16 @@ export function safeFileBase(name: string, fallback: string): string {
 
 /** 流程影片的檔名「流程名.mp4」。 */
 export function videoFileName(flowName: string): string {
-	return `${safeFileBase(flowName, '流程')}.mp4`;
+	return `${safeFileBase(flowName, m.file_default_name())}.mp4`;
 }
 
-const ZIP_TYPES = [{ description: '流程檔', accept: { 'application/zip': ['.zip'] } }];
+/** 存檔、開檔對話框的檔案類型（說明照畫面的語言，每次叫的時候寫）。 */
+const zipTypes = () => [{ description: m.file_zip_type(), accept: { 'application/zip': ['.zip'] } }];
 
 /** File System Access 裡用到的那一點（TypeScript 的 lib.dom 沒有 showSaveFilePicker、showOpenFilePicker、requestPermission）。 */
 interface PickerWindow {
-	showSaveFilePicker(options: { suggestedName: string; types: typeof ZIP_TYPES }): Promise<FileSystemFileHandle>;
-	showOpenFilePicker(options: { types: typeof ZIP_TYPES }): Promise<FileSystemFileHandle[]>;
+	showSaveFilePicker(options: { suggestedName: string; types: ReturnType<typeof zipTypes> }): Promise<FileSystemFileHandle>;
+	showOpenFilePicker(options: { types: ReturnType<typeof zipTypes> }): Promise<FileSystemFileHandle[]>;
 }
 interface PermissionHandle {
 	requestPermission?(options: { mode: 'readwrite' }): Promise<PermissionState>;
@@ -67,7 +70,7 @@ export function browserFilePicker(): (() => Promise<PickedFile | null>) | null {
 	if (typeof window === 'undefined' || !('showOpenFilePicker' in window)) return null;
 	return async () => {
 		try {
-			const [handle] = await (window as unknown as PickerWindow).showOpenFilePicker({ types: ZIP_TYPES });
+			const [handle] = await (window as unknown as PickerWindow).showOpenFilePicker({ types: zipTypes() });
 			return { file: await handle.getFile(), saver: createBrowserSaver(handle) };
 		} catch (e) {
 			if (e instanceof DOMException && e.name === 'AbortError') return null;
@@ -87,7 +90,7 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 	/** 問存到哪；按了取消回 false。 */
 	async function pick(fileName: string): Promise<boolean> {
 		try {
-			handle = await (window as unknown as PickerWindow).showSaveFilePicker({ suggestedName: fileName, types: ZIP_TYPES });
+			handle = await (window as unknown as PickerWindow).showSaveFilePicker({ suggestedName: fileName, types: zipTypes() });
 			return true;
 		} catch (e) {
 			if (e instanceof DOMException && e.name === 'AbortError') return false;
@@ -138,7 +141,8 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 	return saver;
 }
 
-const MP4_TYPES = [{ description: '流程影片', accept: { 'video/mp4': ['.mp4'] } }];
+/** 存影片對話框的檔案類型（同 zipTypes）。 */
+const mp4Types = () => [{ description: m.file_video_type(), accept: { 'video/mp4': ['.mp4'] } }];
 
 /**
  * 存流程影片：跟流程檔的存檔是兩套，不記 handle、不碰流程檔記著的那個檔，每次都問存到哪。
@@ -151,8 +155,8 @@ export async function saveVideo(bytes: Uint8Array, fileName: string): Promise<Sa
 	}
 	try {
 		const handle = await (
-			window as unknown as { showSaveFilePicker(o: { suggestedName: string; types: typeof MP4_TYPES }): Promise<FileSystemFileHandle> }
-		).showSaveFilePicker({ suggestedName: fileName, types: MP4_TYPES });
+			window as unknown as { showSaveFilePicker(o: { suggestedName: string; types: ReturnType<typeof mp4Types> }): Promise<FileSystemFileHandle> }
+		).showSaveFilePicker({ suggestedName: fileName, types: mp4Types() });
 		const writable = await handle.createWritable();
 		await writable.write(bytes as Uint8Array<ArrayBuffer>);
 		await writable.close();
@@ -166,10 +170,10 @@ export async function saveVideo(bytes: Uint8Array, fileName: string): Promise<Sa
 /** 影片沒存成的原因：瀏覽器的訊息是英文，換成白話（原文對話框另外用小字寫）。 */
 export function saveFailureReason(e: unknown): string {
 	const name = typeof e === 'object' && e !== null && 'name' in e ? String(e.name) : '';
-	if (name === 'NotAllowedError' || name === 'SecurityError') return '瀏覽器不讓存，再按一次「存檔」';
-	if (name === 'QuotaExceededError') return '電腦的空間不夠，清出空間再存一次';
-	if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') return '檔案被別的程式打開了，關掉它或換個檔名再存一次';
-	return '存檔時出了問題，再按一次「存檔」';
+	if (name === 'NotAllowedError' || name === 'SecurityError') return m.file_save_not_allowed();
+	if (name === 'QuotaExceededError') return m.file_save_no_space();
+	if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') return m.file_save_in_use();
+	return m.file_save_went_wrong();
 }
 
 function download(bytes: Uint8Array, fileName: string, type = 'application/zip') {

@@ -2,6 +2,7 @@
 // 瀏覽器才有 Canvas 2D，jsdom 沒有，所以沒有自動測試；輸出影片時用真的瀏覽器看（見實作計畫 Task 8）。
 
 import { RAISED_FILL_OPACITY, fieldGeometry, fieldNumbers, frontLabelAt, fullView, type FieldConfig, type GlobalRole, type VideoFrameData } from '#lib/core';
+import { m } from '#lib/paraglide/messages.js';
 import { VIDEO_COLORS, type ColorKey } from './colors';
 import { VIDEO_H, VIDEO_W, type Box, type FrameLayout, type Measure, type TextItem } from './layout';
 
@@ -145,7 +146,7 @@ function drawField(
 	ctx.font = `700 ${numberPx}px ${FONT}`;
 	ctx.letterSpacing = `${0.19 * numberPx}px`;
 	ctx.fillStyle = color('front');
-	ctx.fillText('▼ 正面／裁判 ▼', px(fx), py(fy));
+	ctx.fillText(m.field_view_front(), px(fx), py(fy));
 	ctx.letterSpacing = '0px';
 
 	// 圓點照層畫（layout 排好順序，都在真的位置）：中層、上層、支撐黃框，三層橘框，在空中的都加陰影、底色半透明（跟場上一樣）

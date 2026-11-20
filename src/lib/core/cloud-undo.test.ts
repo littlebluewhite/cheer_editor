@@ -197,7 +197,11 @@ describe('runUndo（伺服器跑復原）', () => {
 		const { undo } = undoChanges(flow, mine);
 		const others = takeRecords(flowOf(inStep('step-other', () => addBookmark(mine, '又一個', { segmentId: seg, at: 8 }, { segmentId: seg, at: 16 }))));
 		const r = runUndo(others.flow, others.records, undo);
-		expect(r).toEqual({ kind: 'blocked', message: '書籤「又一個」和「翻騰」在同一個地方' });
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: '書籤「又一個」和「翻騰」在同一個地方',
+			why: { code: 'flow_check_same_bookmark', first: '又一個', second: '翻騰' }
+		});
 	});
 
 	it('你刪了 5 個人（35），別人加了 5 個（40），你復原變 45 人：擋下', () => {
@@ -209,6 +213,6 @@ describe('runUndo（伺服器跑復原）', () => {
 		// 雲端的新 id 是亂數（不會跟刪掉的撞）
 		const others = takeRecords(flowOf(inStep('step-other', () => addMembers(mine, five))));
 		const r = runUndo(others.flow, others.records, undo);
-		expect(r).toEqual({ kind: 'blocked', message: '一支流程最多 40 人' });
+		expect(r).toEqual({ kind: 'blocked', message: '一支流程最多 40 人', why: { code: 'flow_check_max_members', max: 40 } });
 	});
 });

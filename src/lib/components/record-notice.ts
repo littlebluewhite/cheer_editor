@@ -2,6 +2,7 @@
 import type { Command, CommandName, CommandOutcome } from '#lib/core';
 import type { Ask } from '#lib/ask.svelte.js';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
 
 /**
  * 經過 ask 送刪掉的指令（名字＋參數），成功就提示 text（寫出刪了哪一次，例「已刪掉 ·✓（第 4 次）」），旁邊有「救回」（留久一點）；
@@ -17,8 +18,8 @@ export function removeWithRestore<N extends CommandName>(
 	ask.send(remove, {
 		done: (removed) =>
 			session.toast(text, {
-				label: '救回',
-				run: () => ask.send(restore(removed), { done: () => (session.notice = '已救回') })
+				label: m.session_restore(),
+				run: () => ask.send(restore(removed), { done: () => (session.notice = m.session_restored()) })
 			})
 	});
 }

@@ -480,7 +480,7 @@ describe('一步帶好幾個指令', () => {
 			],
 			STEP
 		);
-		expect(r).toEqual({ kind: 'blocked', message: '找不到這個動作', at: 1 });
+		expect(r).toEqual({ kind: 'blocked', message: '找不到這個動作', why: { code: 'actions_not_found' }, at: 1 });
 	});
 
 	it('中間一個要問：整串都不算，回那一個的問題和它是第幾個', () => {

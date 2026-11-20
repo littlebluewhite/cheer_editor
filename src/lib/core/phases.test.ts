@@ -20,6 +20,7 @@ import {
 	type NewAttempt
 } from './index';
 import { flowOf, libSample, squadNumbers } from '../test-flows';
+import { zh } from './why';
 
 const sample = libSample;
 
@@ -78,21 +79,43 @@ describe('口號段加環節（不標拍）', () => {
 	it('種類要是大類能用的：技巧用上法到下法，拋投只用拋法，騰翻只用翻法，跳躍只用跳法，舞蹈、其他不能加', () => {
 		expect(addPhase(chant(), 'x2', { kind: 'stand' as never, name: '' })).toEqual({
 			kind: 'blocked',
-			message: '技巧的環節只能用上法、中段、轉接、下法'
+			message: '技巧的環節只能用上法、中段、轉接、下法',
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_stunt' }, kinds: { code: 'members_list', first: { code: 'phase_kind_load' }, rest: { code: 'members_list', first: { code: 'phase_kind_hold' }, rest: { code: 'members_list', first: { code: 'phase_kind_transition' }, rest: { code: 'phase_kind_dismount' } } } } }
 		});
 		expect(addPhase(chant(), 'x2', { kind: 'toss', name: '' })).toEqual({
 			kind: 'blocked',
-			message: '技巧的環節只能用上法、中段、轉接、下法'
+			message: '技巧的環節只能用上法、中段、轉接、下法',
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_stunt' }, kinds: { code: 'members_list', first: { code: 'phase_kind_load' }, rest: { code: 'members_list', first: { code: 'phase_kind_hold' }, rest: { code: 'members_list', first: { code: 'phase_kind_transition' }, rest: { code: 'phase_kind_dismount' } } } } }
 		});
 		const as = (category: ActionCategory) => {
 			const flow = flowOf(addSegment(sample(), 'chant'));
 			return flowOf(addAction(flow, { segmentId: 's2', category, name: '', start: 0, length: 30, note: '', members: [{ memberId: 'm2', role: null }] }));
 		};
-		expect(addPhase(as('toss'), 'x2', { kind: 'load', name: '' })).toEqual({ kind: 'blocked', message: '拋投的環節只能用拋法' });
-		expect(addPhase(as('tumbling'), 'x2', { kind: 'toss', name: '' })).toEqual({ kind: 'blocked', message: '騰翻的環節只能用翻法' });
-		expect(addPhase(as('jump'), 'x2', { kind: 'tumble', name: '' })).toEqual({ kind: 'blocked', message: '跳躍的環節只能用跳法' });
-		expect(addPhase(as('dance'), 'x2', { kind: 'load', name: '' })).toEqual({ kind: 'blocked', message: '舞蹈的動作不記成功率' });
-		expect(addPhase(as('other'), 'x2', { kind: 'load', name: '' })).toEqual({ kind: 'blocked', message: '其他的動作不記成功率' });
+		expect(addPhase(as('toss'), 'x2', { kind: 'load', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '拋投的環節只能用拋法',
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_toss' }, kinds: { code: 'phase_kind_toss' } }
+		});
+		expect(addPhase(as('tumbling'), 'x2', { kind: 'toss', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '騰翻的環節只能用翻法',
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_tumbling' }, kinds: { code: 'phase_kind_tumble' } }
+		});
+		expect(addPhase(as('jump'), 'x2', { kind: 'tumble', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '跳躍的環節只能用跳法',
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_jump' }, kinds: { code: 'phase_kind_jump' } }
+		});
+		expect(addPhase(as('dance'), 'x2', { kind: 'load', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '舞蹈的動作不記成功率',
+			why: { code: 'success_rate_no_rate', category: { code: 'category_dance' } }
+		});
+		expect(addPhase(as('other'), 'x2', { kind: 'load', name: '' })).toEqual({
+			kind: 'blocked',
+			message: '其他的動作不記成功率',
+			why: { code: 'success_rate_no_rate', category: { code: 'category_other' } }
+		});
 		expect(addPhase(as('toss'), 'x2', { kind: 'toss', name: '' }).kind).toBe('ok');
 	});
 
@@ -114,7 +137,8 @@ describe('口號段加環節（不標拍）', () => {
 	it('音樂段的環節要在拍點格子選拍標，不能這樣加', () => {
 		expect(addPhase(sample(), 'x1', { kind: 'load', name: '' })).toEqual({
 			kind: 'blocked',
-			message: '音樂段的環節要選拍標'
+			message: '音樂段的環節要選拍標',
+			why: { code: 'phases_music_needs_beats' }
 		});
 	});
 
@@ -163,23 +187,44 @@ describe('改環節', () => {
 	it('顏色不在辨識色 9 色和石板灰裡：擋下來', () => {
 		expect(updatePhase(sample(), 'x1', 'p1', { color: '#123456' })).toEqual({
 			kind: 'blocked',
-			message: '環節的顏色只能挑辨識色或石板灰'
+			message: '環節的顏色只能挑辨識色或石板灰',
+			why: { code: 'success_rate_phase_color' }
 		});
 	});
 
 	it('種類不是大類能用的：擋下來', () => {
 		expect(updatePhase(sample(), 'x1', 'p1', { kind: 'toss' })).toEqual({
 			kind: 'blocked',
-			message: '技巧的環節只能用上法、中段、轉接、下法'
+			message: '技巧的環節只能用上法、中段、轉接、下法',
+			why: { code: 'success_rate_kinds_only', category: { code: 'category_stunt' }, kinds: { code: 'members_list', first: { code: 'phase_kind_load' }, rest: { code: 'members_list', first: { code: 'phase_kind_hold' }, rest: { code: 'members_list', first: { code: 'phase_kind_transition' }, rest: { code: 'phase_kind_dismount' } } } } }
 		});
 	});
 
 	it('找不到環節：擋下來', () => {
-		expect(updatePhase(sample(), 'x1', 'p9', { name: 'x' })).toEqual({ kind: 'blocked', message: '找不到這個環節' });
+		expect(updatePhase(sample(), 'x1', 'p9', { name: 'x' })).toEqual({
+			kind: 'blocked',
+			message: '找不到這個環節',
+			why: { code: 'phases_not_found' }
+		});
+	});
+
+	it('找不到動作、動作的段：擋下來', () => {
+		expect(updatePhase(sample(), 'x9', 'p1', { name: 'x' })).toEqual({
+			kind: 'blocked',
+			message: '找不到這個動作',
+			why: { code: 'phases_no_action' }
+		});
+		const flow = sample();
+		const lost = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, segmentId: 's9' } : a)) };
+		expect(deletePhase(lost, 'x1', 'p1')).toEqual({
+			kind: 'blocked',
+			message: '找不到這一段',
+			why: { code: 'phases_no_segment' }
+		});
 	});
 
 	it('辨識色 9 色加石板灰是環節可以挑的顏色', () => {
-		expect(PHASE_COLORS.map((c) => c.label)).toEqual(['紅', '橘', '金', '綠', '青', '藍', '靛', '紫', '粉', '石板灰']);
+		expect(PHASE_COLORS.map((c) => zh(c.label))).toEqual(['紅', '橘', '金', '綠', '青', '藍', '靛', '紫', '粉', '石板灰']);
 		expect(ACTION_COLORS).toHaveLength(9);
 	});
 });
@@ -197,7 +242,13 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p2')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，清掉 2 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
-			items: ['刪掉：環節 中段']
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_marks', marks: { code: 'records_marks', n: 2 } }
+			},
+			items: ['刪掉：環節 中段'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }]
 		});
 	});
 
@@ -208,7 +259,13 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p1')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
-			items: ['刪掉：環節 上法 延伸']
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_both', reps: { code: 'records_reps_one', n: 1 }, marks: { code: 'records_marks_one', n: 1 } }
+			},
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }]
 		});
 		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
 		expect(phasesOf(flow).map((p) => p.id)).toEqual(['p2', 'p3']);
@@ -226,7 +283,13 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p3')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
-			items: ['刪掉：環節 下法']
+			why: {
+				code: 'phases_delete_none_left_one',
+				count: 1,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 3 } }
+			},
+			items: ['刪掉：環節 下法'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_kind_dismount' } }]
 		});
 	});
 
@@ -246,7 +309,11 @@ describe('刪環節', () => {
 	});
 
 	it('找不到環節：擋下來', () => {
-		expect(deletePhase(sample(), 'x1', 'p9')).toEqual({ kind: 'blocked', message: '找不到這個環節' });
+		expect(deletePhase(sample(), 'x1', 'p9')).toEqual({
+			kind: 'blocked',
+			message: '找不到這個環節',
+			why: { code: 'phases_not_found' }
+		});
 	});
 
 	it('刪掉最後一個環節：動作不記成功率了，組一起拿掉', () => {
@@ -275,7 +342,13 @@ describe('口號段刪環節', () => {
 		expect(deletePhase(flow, 'x2', 'p4')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
-			items: ['刪掉：環節 中段']
+			why: {
+				code: 'phases_delete_none_left_one',
+				count: 1,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
+			},
+			items: ['刪掉：環節 中段'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }]
 		});
 		flow = flowOf(deletePhase(flow, 'x2', 'p4', { confirmed: true }));
 		expect(toss(flow).successRate).toBeUndefined();
@@ -323,6 +396,15 @@ describe('換大類：環節的種類跟著換', () => {
 		const r = updateAction(before, 'x1', { category: 'dance' });
 		expect(r.kind).toBe('confirm');
 		expect(r.kind === 'confirm' && r.message).toBe('動作「技巧·Lib」換成舞蹈，不記成功率，會清掉 1 次紀錄（清掉的紀錄按「復原」會回來）');
+		expect(r.kind === 'confirm' && r.why).toEqual({
+			code: 'settle_action_records',
+			action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+			records: {
+				code: 'settle_records',
+				records: { code: 'settle_records_lost_one', why: { code: 'settle_records_why_no_rate', category: { code: 'category_dance' } }, count: 1 },
+				undoable: { code: 'records_undoable' }
+			}
+		});
 		const after = flowOf(updateAction(before, 'x1', { category: 'dance' }, { confirmed: true }));
 		expect(lib(after).successRate).toBeUndefined();
 		expect(lib(after).members.some((m) => 'squad' in m)).toBe(false);
@@ -345,7 +427,8 @@ describe('換大類：金字塔有環節佔同樣的拍', () => {
 	] as const)('換成%s：擋下來，說先分開；流程不變', (label, category) => {
 		expect(updateAction(overlapped(), 'x1', { category })).toEqual({
 			kind: 'blocked',
-			message: `有環節佔同樣的拍，先分開才能換成${label}`
+			message: `有環節佔同樣的拍，先分開才能換成${label}`,
+			why: { code: 'settle_phases_overlap', category: { code: `category_${category}` } }
 		});
 		expect(updateAction(overlapped(), 'x1', { category }, { confirmed: true }).kind).toBe('blocked');
 	});

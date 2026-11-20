@@ -74,11 +74,25 @@ pub struct CloudFlow {
     pub records: Vec<CloudRecord>,
 }
 
-/// 流程核心不收時（422）的原因。
-#[derive(Serialize, TS)]
+/// 流程核心不收時（422）的原因：中文，和代號（流程核心的 Why，ADR 0017；還沒改成代號的原因沒有）。
+/// 一步被退回（flow_room 的 SentBack）也用它帶流程核心的原因。
+#[derive(Serialize, TS, Debug)]
 #[ts(export)]
 pub struct FlowBlocked {
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "import('../core/why').Why")]
+    pub why: Option<serde_json::Value>,
+}
+
+impl FlowBlocked {
+    /// 流程核心結果裡的原因（沒寫是空的）。
+    pub(crate) fn new(message: Option<String>, why: Option<serde_json::Value>) -> Self {
+        Self {
+            message: message.unwrap_or_default(),
+            why,
+        }
+    }
 }
 
 /// 新建：收新建流程表單的 `{ name, field }`（流程核心的 NewFlowInput），用流程核心的 createFlow 建，
@@ -103,15 +117,11 @@ pub async fn create(
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
     let outcome: Outcome = serde_json::from_str(&result)?;
-    let flow = match (outcome.kind.as_str(), outcome.flow, outcome.message) {
-        ("ok", Some(flow), _) => flow,
-        (_, _, message) => {
-            let message = message.unwrap_or_default();
-            return Ok((
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(FlowBlocked { message }),
-            )
-                .into_response());
+    let flow = match (outcome.kind.as_str(), outcome.flow) {
+        ("ok", Some(flow)) => flow,
+        _ => {
+            let reason = FlowBlocked::new(outcome.message, outcome.why);
+            return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(reason)).into_response());
         }
     };
 
@@ -152,12 +162,8 @@ pub async fn upload(
     let (flow, records) = match (uploaded.kind.as_str(), uploaded.flow, uploaded.records) {
         ("ok", Some(flow), Some(records)) => (flow, records),
         _ => {
-            let message = uploaded.message.unwrap_or_default();
-            return Ok((
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(FlowBlocked { message }),
-            )
-                .into_response());
+            let reason = FlowBlocked::new(uploaded.message, uploaded.why);
+            return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(reason)).into_response());
         }
     };
 
@@ -192,6 +198,7 @@ struct Uploaded<'a> {
     flow: Option<&'a RawValue>,
     records: Option<Vec<Stored>>,
     message: Option<String>,
+    why: Option<serde_json::Value>,
 }
 
 /// 我的流程（我擁有的）、分享給我的，最近改的在前。
@@ -286,6 +293,7 @@ pub(crate) struct Outcome<'a> {
     #[serde(borrow)]
     pub flow: Option<&'a RawValue>,
     pub message: Option<String>,
+    pub why: Option<serde_json::Value>,
 }
 
 /// 時間寫成跟 JS `toISOString` 一樣：`2026-11-07T09:00:00.000Z`。

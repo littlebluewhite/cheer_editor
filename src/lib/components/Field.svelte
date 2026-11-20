@@ -22,7 +22,7 @@
 		CELL_M,
 		fieldGeometry,
 		fieldNumbers,
-		fieldPositionText,
+		fieldPositionWhy,
 		frontLabelAt,
 		fullView,
 		markCovered,
@@ -42,7 +42,9 @@
 		type Rect
 	} from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
-	import { AT_EDGE, VIEW_ONLY, getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
+	import { m as t } from '#lib/paraglide/messages.js';
+	import { whyText, joinText } from '#lib/reason-text.js';
+	import { getEditorSession, hasEditorSession } from '#lib/editor-session.svelte.js';
 	import { isTouchScreen, SHORT_SCREEN_MAX_H } from '#lib/editor-layout.js';
 	import { ownsKey } from '#lib/key-owner.js';
 	import { loadLegendOpen, saveLegendOpen } from '#lib/local-settings.js';
@@ -364,10 +366,11 @@
 	const readout = $derived.by(() => {
 		if (!drag?.cur) return '';
 		const name = members.find((m) => m.id === drag!.id)?.name ?? '';
-		return `${name}　${fieldPositionText(field, drag.cur)}`;
+		return t.field_view_where({ name, where: whyText(fieldPositionWhy(field, drag.cur)) });
 	});
 	/** 名字和在哪（滑鼠停在圓點上、選到一個人時寫在場地下面）。 */
-	const whereText = (m: Member, p: Position) => `${m.name}　${fieldPositionText(field, p)}`;
+	const whereText = (m: Member, p: Position) => t.field_view_where({ name: m.name, where: whyText(fieldPositionWhy(field, p)) });
+	/** 一串名字接成一句（中文用「、」）。 */
 	/** 編輯頁選到一個人（不在拖）：場地下面寫他的名字和位置。 */
 	const picked = $derived.by(() => {
 		if (!session || drag?.cur || selected.length !== 1) return '';
@@ -706,7 +709,7 @@
 			// 拖完吸附回原本的位置：不算修改；是往外拖、停在邊界，照樣提示（檢視模式說不能改）
 			const [x, y] = drag.orig[drag.id];
 			if (drag.cur[0] !== x || drag.cur[1] !== y) drop(dragged, drag.atEdge, e.altKey);
-			else if (drag.atEdge) session!.notice = session!.editable ? AT_EDGE : VIEW_ONLY;
+			else if (drag.atEdge) session!.notice = session!.editable ? t.session_at_edge() : t.session_view_only();
 		} else if (drag) session?.pickMember(drag.id, drag.shift);
 		else if (box) session?.selectMembers(box.b ? inBox(box.a, box.b, box.shift) : []);
 		drag = null;
@@ -788,7 +791,7 @@
 					<button
 						type="button"
 						class="ghost icon"
-						aria-label="縮小"
+						aria-label={t.field_view_zoom_out()}
 						disabled={zoom <= 1}
 						onclick={() => setZoom(zoom / ZOOM_STEP)}><Icon name="minus" /></button
 					>
@@ -796,20 +799,20 @@
 					<button
 						type="button"
 						class="ghost icon"
-						aria-label="放大"
+						aria-label={t.field_view_zoom_in()}
 						disabled={zoom >= MAX_ZOOM}
 						onclick={() => setZoom(zoom * ZOOM_STEP)}><Icon name="plus" /></button
 					>
 					<button type="button" class="ghost" disabled={zoom === 1} onclick={() => setZoom(1)}
-						><Icon name="fit" />整個場地</button
+						><Icon name="fit" />{t.field_view_fit()}</button
 					>
 					{#if zoom > 1}
 						<button
 							type="button"
 							class="ghost icon"
-							aria-label="平移"
+							aria-label={t.field_view_pan()}
 							aria-pressed={handTool || holdingH}
-							title="按下去以後拖空白處是移動畫面，再按一次變回框選（按住 H 拖也可以）"
+							title={t.field_view_pan_hint()}
 							onclick={() => (handTool = !handTool)}>✋</button
 						>
 					{/if}
@@ -822,18 +825,18 @@
 			<div class="legend-box" id={legendId} hidden={!legendOpen}>
 				<div class="walk-tools" aria-hidden="true">
 					<!-- 門檻寫短（m/s），時間軸拉高時左欄還捲得到；滑鼠移上去寫完整的。 -->
-					<span title="走位每秒超過 {TIRING_MPS} 公尺、沒到 {TOO_FAST_MPS} 公尺：跑得到但很喘"
-						><i class="tiring"></i>很喘 &gt;{TIRING_MPS} m/s</span
+					<span title={t.field_view_tiring_hint({ tiring: TIRING_MPS, fast: TOO_FAST_MPS })}
+						><i class="tiring"></i>{t.field_view_tiring({ n: TIRING_MPS })}</span
 					>
-					<span title="走位每秒超過 {TOO_FAST_MPS} 公尺：跑不到"><i class="fast"></i>走太快 &gt;{TOO_FAST_MPS} m/s</span>
-					<span title="至少一人正在騰翻中走位，跟別人靠得不到半格；一般走位靠很近不算"><b class="clash-mark">✕</b>撞位（只看騰翻）</span>
+					<span title={t.field_view_too_fast_hint({ n: TOO_FAST_MPS })}><i class="fast"></i>{t.field_view_too_fast({ n: TOO_FAST_MPS })}</span>
+					<span title={t.field_view_clash_hint()}><b class="clash-mark">✕</b>{t.field_view_clash_legend()}</span>
 				</div>
 				<div class="legend" aria-hidden="true">
-					<span><i class="base"></i>底層</span>
-					<span><i class="top"></i>上層</span>
-					<span><i class="up"></i>正在上面</span>
-					<span><i class="up lv3"></i>三層</span>
-					<span><i class="under"></i>被蓋到</span>
+					<span><i class="base"></i>{t.role_base()}</span>
+					<span><i class="top"></i>{t.role_top()}</span>
+					<span><i class="up"></i>{t.field_view_up()}</span>
+					<span><i class="up lv3"></i>{t.role_third()}</span>
+					<span><i class="under"></i>{t.field_view_covered()}</span>
 				</div>
 			</div>
 			<div class="walk-tools">
@@ -843,8 +846,8 @@
 					class="ghost legend-toggle"
 					aria-expanded={legendOpen}
 					aria-controls={legendId}
-					title={legendOpen ? '收起圖例' : '打開圖例'}
-					onclick={toggleLegend}>圖例<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▴'}</span></button
+					title={legendOpen ? t.field_view_legend_hide() : t.field_view_legend_show()}
+					onclick={toggleLegend}>{t.field_view_legend()}<span class="caret" aria-hidden="true">{legendOpen ? '▾' : '▴'}</span></button
 				>
 			</div>
 		</div>
@@ -862,7 +865,7 @@
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
 		role={session ? 'group' : 'img'}
-		aria-label="場地"
+		aria-label={t.field_view_surface()}
 		{onwheel}
 		onpointerdown={down}
 		onpointermove={move}
@@ -882,7 +885,7 @@
 			<line class="seam" x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
 		{/each}
 		<!-- 中心記號的兩臂比圓點短：站在正中心的人身上不露出十字，看起來不會像特別標了他（N56） -->
-		<path class="center" d="M{-centerArm},0L{centerArm},0M0,{-centerArm}L0,{centerArm}"><title>場地正中心</title></path>
+		<path class="center" d="M{-centerArm},0L{centerArm},0M0,{-centerArm}L0,{centerArm}"><title>{t.field_view_center()}</title></path>
 		<!-- 條編號寫在外圍框外面那一條（NUMBER_BAND，直放在後面、橫放在左邊）靠外的地方、每條的中間：
 		     墊子上和場外等著的人（觸控螢幕上放大了也一樣）都不會蓋到 -->
 		{#each numbers.strips as { n, at } (n)}
@@ -892,7 +895,7 @@
 		{#each cellNumbers as { n, at } (n)}
 			<text class="num cell-num" data-cell-number x={at[0]} y={at[1]} style:font-size="{cellFont}px">{n}</text>
 		{/each}
-		<text class="front" data-keep-visible x={frontLabel[0]} y={frontLabel[1]} style:font-size="{frontFont}px">▼ 正面／裁判 ▼</text>
+		<text class="front" data-keep-visible x={frontLabel[0]} y={frontLabel[1]} style:font-size="{frontFont}px">{t.field_view_front()}</text>
 		{#each ghostDots as { id, p } (id)}
 			<circle data-ghost={id} class="ghost-dot" cx={p[0]} cy={p[1]} r={DOT_R * dotScale} />
 		{/each}
@@ -969,7 +972,7 @@
 				class="clash"
 				d="M-.3,-.3L.3,.3M-.3,.3L.3,-.3"
 				transform="translate({c.pos[0]},{c.pos[1]})"
-				><title>撞位：{c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '').join('、')}</title></path
+				><title>{t.field_view_clash({ names: joinText(c.memberIds.map((id) => members.find((m) => m.id === id)?.name ?? '')) })}</title></path
 			>
 		{/each}
 		{#if lasso}
@@ -977,10 +980,10 @@
 		{/if}
 	</svg>
 	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
-	{#if picked}<div class="picked" data-keep-visible role="note" aria-label="選到的人在哪">{picked}</div>{/if}
+	{#if picked}<div class="picked" data-keep-visible role="note" aria-label={t.field_view_picked()}>{picked}</div>{/if}
 	<!-- 只能看、沒有左欄的放大縮小（手機的檢視畫面、檢視模式）：放大了，右下角一顆回整個場地 -->
 	{#if viewOnly && zoom > 1 && !(controls && rail)}
-		<button type="button" class="fit" onclick={() => setZoom(1)}><Icon name="fit" />整個場地</button>
+		<button type="button" class="fit" onclick={() => setZoom(1)}><Icon name="fit" />{t.field_view_fit()}</button>
 	{/if}
 	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />

@@ -39,10 +39,15 @@ pub struct CloudRecord {
 pub struct DroppedRecord {
     pub id: String,
     pub message: String,
-    /// 同一次全上的同一組別人先存了（#262，ADR 0015）：先記的人的名字。
+    /// 同一次全上的同一組別人先存了（#262，ADR 0015）：先記的人的名字（沒有記的人寫「別人」）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub by: Option<String>,
+    /// 先記的那一筆沒有記的人（從流程檔傳上來的）：畫面照使用者的語言寫「別人」（ADR 0017）；
+    /// by 照樣是中文的「別人」，給還不認得這一欄的分頁看。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub someone: Option<bool>,
 }
 
 /// 流程核心的 StoredAttempt：記在哪個動作、那一次。
@@ -235,6 +240,7 @@ pub struct StepOutcome<'a> {
     #[serde(borrow)]
     pub flow: Option<&'a RawValue>,
     pub message: Option<String>,
+    pub why: Option<Value>,
     pub records: Option<Vec<Stored>>,
     /// 成功時：這一步記下的鍵、要查別的分頁改過沒有的鍵（流程核心的 stepKeys，#254）。
     #[serde(default)]
@@ -552,6 +558,7 @@ pub async fn record(
                 id,
                 message: VIEW_ONLY.into(),
                 by: None,
+                someone: None,
             })
             .collect();
         return Ok(RoomMessage::RecordsSaved { saved, dropped });
@@ -581,15 +588,19 @@ pub async fn record(
                     id,
                     message,
                     by: None,
+                    someone: None,
                 }),
                 Checked::Ok { record } => {
                     // 同一次全上的同一個動作、同一組只收先存的（ADR 0015）。
-                    if let Some(by) = recorded_in_run(&mut tx, flow_id, &record, &id).await? {
+                    if let Some(name) = recorded_in_run(&mut tx, flow_id, &record, &id).await? {
+                        let someone = name.is_none().then_some(true);
+                        let by = name.unwrap_or_else(|| "別人".into());
                         let message = format!("{by}已經記了這次全上的這一組");
                         dropped.push(DroppedRecord {
                             id,
                             message,
                             by: Some(by),
+                            someone,
                         });
                         continue;
                     }
@@ -626,13 +637,13 @@ pub async fn record(
 }
 
 /// 這一次是全上的：同一次全上的同一個動作、同一組（騰翻、跳躍是同一個人）已經存了別的一筆（沒清掉的，id 不是 own），
-/// 回先記的人的名字（沒有記的人的寫「別人」）。資料庫也擋（遷移 0014）：存、救回、改之前先查，不會撞到。
+/// 回先記的人的名字（沒有記的人的是 None）。資料庫也擋（遷移 0014）：存、救回、改之前先查，不會撞到。
 async fn recorded_in_run(
     tx: &mut sqlx::PgConnection,
     flow_id: &str,
     record: &Stored,
     own: &str,
-) -> anyhow::Result<Option<String>> {
+) -> anyhow::Result<Option<Option<String>>> {
     let Some(run) = record.attempt.get("runThroughId").and_then(Value::as_str) else {
         return Ok(None);
     };
@@ -649,7 +660,7 @@ async fn recorded_in_run(
     .bind(own)
     .fetch_optional(&mut *tx)
     .await?;
-    Ok(found.map(|(name,)| name.unwrap_or_else(|| "別人".into())))
+    Ok(found.map(|(name,)| name))
 }
 
 /// 改、刪、救回幾次（#258）。改只拿記號（照流程核心的「改某一次的記號」規則留）；救回照「救回」的規則檢查。

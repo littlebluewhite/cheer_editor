@@ -3,9 +3,10 @@
 // 存檔鈕寫「存這次全上（你記的 N 欄）」；拿不到的提示；同一次同一組別人先存了，進「沒存進去」寫「王教練已經記了…」。
 // 伺服器換成測試共用的假伺服器（fakeServer）：誰在表裡、誰拿著哪幾組照真的規則。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { StoredAttempt } from '#lib/core';
 import { localDate } from '#lib/local-date.js';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { editorPage, fakeServer, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { ratedSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
@@ -183,5 +184,64 @@ describe('同一次全上同一組只收先存的', () => {
 		expect(bar.textContent).toContain('這 1 筆沒存進去');
 		expect(bar.textContent).toContain('王教練已經記了這次全上的第 2 組');
 		expect((s.state.flows[0].records ?? []).map((r) => r.by)).toEqual([wang.email]);
+	});
+});
+
+describe('沒存進去的那一列照現在的語言寫（ADR 0017）', () => {
+	afterEach(() => localStorage.setItem(localStorageKey, 'zh-TW'));
+
+	/** 王教練的第 2 組（這次全上）。 */
+	const squad2 = (id: string): StoredAttempt => ({
+		actionId: 'x1',
+		attempt: {
+			id,
+			date: localDate(),
+			who: 'g2',
+			practice: 'runThrough',
+			runThroughId: RUN,
+			runThroughStartedAt: STARTED,
+			whole: true,
+			marks: { p1: '✓', p2: '✓', p3: '✓' }
+		}
+	});
+
+	/** 我（中文畫面）存了這次全上的第 2 組；伺服器回答前，first 先把第 2 組存了，然後畫面換成英文。回「沒存進去」那一條的字。 */
+	async function savedAfter(first: (s: Awaited<ReturnType<typeof open>>) => void) {
+		const s = await open();
+		wangOpens(s, ['n:1', 'm:m1', 'm:m2']);
+		await settle();
+		await fireEvent.click(screen.getByRole('button', { name: '加入，記別的組' }));
+		await settle();
+		s.state.holdRoom = true;
+		await fireEvent.click(saveButton());
+		first(s);
+		localStorage.setItem(localStorageKey, 'en');
+		s.releaseRoom();
+		await settle();
+		return screen.getByRole('alert').textContent!;
+	}
+
+	it('中文畫面記的、換成英文才被退回：動作、組寫英文', async () => {
+		const bar = await savedAfter((s) => s.recordAs('c1', wang.email, [squad2('twang0000002x')]));
+		expect(bar).toContain('Stunt·Lib');
+		expect(bar).toContain('Stunt group 2');
+		expect(bar).not.toContain('第 2 組');
+		expect(bar).not.toContain('技巧');
+	});
+
+	it('存起來的那一列照樣有寫好的字（還沒更新的分頁讀得懂），代號另外放', async () => {
+		const page = { session: null as unknown as { droppedRecords: { action: unknown; who: unknown; note?: unknown }[] } };
+		await savedAfter((s) => {
+			page.session = s.page.session as never;
+			s.recordAs('c1', wang.email, [squad2('twang0000002x')]);
+		});
+		const [row] = page.session.droppedRecords;
+		expect([row.action, row.who, row.note]).toEqual(['技巧·Lib', '第 2 組 小芳', expect.any(String)]);
+	});
+
+	it('先記的人沒有名字（從流程檔傳上來的）：英文寫 Someone else，不寫「別人」', async () => {
+		const bar = await savedAfter((s) => (s.state.flows[0].records ??= []).push(squad2('tfile0000002x')));
+		expect(bar).toContain('Someone else already recorded Stunt group 2 in this full out');
+		expect(bar).not.toContain('別人');
 	});
 });

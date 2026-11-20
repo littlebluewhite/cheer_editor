@@ -484,6 +484,7 @@ async fn every_role_joins_the_room_but_only_editors_change_the_flow(db: sqlx::Pg
         } else {
             assert_eq!(reply["kind"], "rejected", "{}", who.email);
             assert_eq!(reply["message"], "沒存進去：你只能看這支流程");
+            assert_eq!(reply["why"], json!({ "code": "viewOnly" }));
         }
     }
     let (_, got) = s

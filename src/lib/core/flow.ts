@@ -14,6 +14,7 @@ import type { AudioRef, Segment } from './segment';
 import { snapPosition } from './snap';
 import { tooLong } from './text-length';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
+import { joined, type Why } from './why';
 
 export interface Flow {
 	name: string;
@@ -42,18 +43,18 @@ export interface NewFlowInput {
 	field: FieldConfig;
 }
 
-const NO_NAME = '請幫流程取名字';
-
-/** 流程名字哪裡不行（頭尾空白先去掉；before：改之前的名字，開檔進來就超過上限的可以留著，不能更長）；沒問題是 null。 */
-export function flowNameProblem(name: string, before?: string): string | null {
+/**
+ * 流程名字哪裡不行（頭尾空白先去掉；before：改之前的名字，開檔進來就超過上限的可以留著，不能更長）；沒問題是 null。
+ */
+export function flowNameProblem(name: string, before?: string): Why | null {
 	const trimmed = name.trim();
-	return trimmed ? tooLong('flowName', trimmed, before) : NO_NAME;
+	return trimmed ? tooLong('flowName', trimmed, before) : { code: 'flow_no_name' };
 }
 
 /** 條數的毛病：不是 1–12 的整數；沒問題是 null。 */
-export function stripsProblem(strips: number): string | null {
+export function stripsProblem(strips: number): Why | null {
 	if (!Number.isInteger(strips) || strips < MIN_STRIPS || strips > MAX_STRIPS) {
-		return `條數要是 ${MIN_STRIPS}–${MAX_STRIPS} 的整數`;
+		return { code: 'flow_strips', min: MIN_STRIPS, max: MAX_STRIPS };
 	}
 	return null;
 }
@@ -124,12 +125,14 @@ export function adjustField(flow: Flow, field: FieldConfig, o: ConfirmOption = {
 		const items = formations.flatMap((f, i) => {
 			const before = stackedMembers(flow.members, flow.formations[i].pos);
 			const wasStacked = (g: Member[]) => before.some((b) => g.every((m) => b.includes(m)));
-			const name = f.name ? `「${f.name}」` : '';
 			return stackedMembers(flow.members, f.pos)
 				.filter((g) => !wasStacked(g))
-				.map((g) => `站位 ${i + 1}${name}：${g.map((m) => m.name).join('、')}`);
+				.map((g): Why => {
+					const names = joined('members_list', g.map((m) => m.name));
+					return f.name ? { code: 'flow_stacked_named', n: i + 1, name: f.name, names } : { code: 'flow_stacked_item', n: i + 1, names };
+				});
 		});
-		if (items.length) return needsConfirm('這樣調整，這些人會疊在同一點（之後可以再拖開）：', items);
+		if (items.length) return needsConfirm({ code: 'flow_stacked' }, items);
 	}
 	return ok({ ...flow, field: { ...field }, formations });
 }

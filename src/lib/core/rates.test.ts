@@ -20,6 +20,10 @@ import {
 	type RateFilter
 } from './index';
 import { flowOf, libSample } from '../test-flows';
+import { zh, type WhyParam } from './why';
+
+/** 組的名字（代號）寫成中文，比對照舊用中文。 */
+const zhName = <T extends { name: WhyParam }>(ws: T[]) => ws.map((w) => ({ ...w, name: typeof w.name === 'object' ? zh(w.name) : w.name }));
 
 const sample = libSample;
 
@@ -234,7 +238,7 @@ describe('成功率表', () => {
 	it('一欄一組（寫組的名字），每格是這組這個環節的次數；合計把每組的次數加起來', () => {
 		const flow = recorded(attempt('✓✓△'), attempt('✓✗·'), attempt('✗··', { who: 'g2' }), attempt('✓✓✓', { who: 'g2' }));
 		const table = rateTable(flow, x1(flow));
-		expect(table.columns.map((c) => [c.who, c.name])).toEqual([
+		expect(zhName(table.columns).map((c) => [c.who, c.name])).toEqual([
 			['g1', '第 1 組 小美'],
 			['g2', '第 2 組 小芳']
 		]);
@@ -284,7 +288,7 @@ describe('成功率表', () => {
 		const mark = (who: string, m: Mark): NewAttempt => ({ date: '2026-11-04', who, practice: 'drill', whole: true, marks: { [phase]: m } });
 		for (const a of [mark('m1', '✓'), mark('m3', '✗'), mark('m3', '✓')]) flow = flowOf(recordAttempt(flow, 'x2', a));
 		const table = rateTable(flow, tumbling());
-		expect(table.columns.map((c) => [c.who, c.name])).toEqual([
+		expect(zhName(table.columns).map((c) => [c.who, c.name])).toEqual([
 			['m1', '小美'],
 			['m3', '小B']
 		]);

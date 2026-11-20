@@ -257,9 +257,11 @@ fn assert_accepted(reply: &Value) {
     assert_eq!(reply["kind"], "accepted", "{reply}");
 }
 
-fn assert_sent_back(reply: &Value, message: &str) {
+/// 退回了：給部署前開著的分頁看的中文（message）、畫面翻譯用的代號（why，ADR 0017）。
+fn assert_sent_back(reply: &Value, message: &str, why: Value) {
     assert_eq!(reply["kind"], "rejected", "{reply}");
     assert_eq!(reply["message"], message, "{reply}");
+    assert_eq!(reply["why"], why, "{reply}");
     assert!(reply.get("by").is_none(), "{reply}");
 }
 
@@ -300,7 +302,11 @@ async fn someone_later_changing_the_same_thing_sends_the_undo_back(db: sqlx::PgP
     assert_accepted(&step(&mut b, "rename-2", 7, rename("區賽")).await);
 
     let reply = undo(&mut a, "undo-1", 8, "rename-1", false, name_back("全國賽")).await;
-    assert_sent_back(&reply, "林教練後來改過，這步不能復原");
+    assert_sent_back(
+        &reply,
+        "林教練後來改過，這步不能復原",
+        json!({ "code": "undoChangedLater", "by": "林教練", "redo": false }),
+    );
     assert_eq!(reply["flow"]["name"], "區賽");
     assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "區賽");
 
@@ -309,7 +315,11 @@ async fn someone_later_changing_the_same_thing_sends_the_undo_back(db: sqlx::PgP
     assert_accepted(&undo(&mut a, "undo-2", 9, "rename-3", false, name_back("區賽")).await);
     assert_accepted(&step(&mut b, "rename-4", 10, rename("初賽")).await);
     let reply = undo(&mut a, "redo-2", 11, "undo-2", true, name_back("複賽")).await;
-    assert_sent_back(&reply, "林教練後來改過，這步不能重做");
+    assert_sent_back(
+        &reply,
+        "林教練後來改過，這步不能重做",
+        json!({ "code": "undoChangedLater", "by": "林教練", "redo": true }),
+    );
     assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "初賽");
 }
 
@@ -352,7 +362,13 @@ async fn an_undo_that_breaks_the_rules_is_sent_back(db: sqlx::PgPool) {
         .unwrap();
     let change: Value = serde_json::from_str(&change).unwrap();
     let reply = undo(&mut a, "undo-1", 9, "delete-1", false, change).await;
-    assert_sent_back(&reply, "這步不能復原：一支流程最多 40 人");
+    let why = json!({ "code": "flow_check_max_members", "max": 40 });
+    let reason = json!({ "message": "一支流程最多 40 人", "why": why });
+    assert_sent_back(
+        &reply,
+        "這步不能復原：一支流程最多 40 人",
+        json!({ "code": "undoBlocked", "redo": false, "reason": reason }),
+    );
     assert_eq!(members(&s.flow(&wang, &id).await).len(), 40);
 }
 
@@ -373,7 +389,11 @@ async fn a_step_older_than_30_days_cannot_be_undone(db: sqlx::PgPool) {
         .unwrap();
 
     let reply = undo(&mut a, "undo-1", 8, "rename-1", false, name_back("全國賽")).await;
-    assert_sent_back(&reply, "太久以前的，不能復原");
+    assert_sent_back(
+        &reply,
+        "太久以前的，不能復原",
+        json!({ "code": "undoTooOld", "redo": false }),
+    );
     // 已經清掉的步（清掉在 #266）也一樣
     sqlx::query("DELETE FROM flow_steps WHERE flow_id = $1 AND step_id = 'rename-2'")
         .bind(&id)
@@ -389,6 +409,10 @@ async fn a_step_older_than_30_days_cannot_be_undone(db: sqlx::PgPool) {
         name_back("全國賽決賽"),
     )
     .await;
-    assert_sent_back(&reply, "太久以前的，不能復原");
+    assert_sent_back(
+        &reply,
+        "太久以前的，不能復原",
+        json!({ "code": "undoTooOld", "redo": false }),
+    );
     assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "區賽");
 }

@@ -83,6 +83,17 @@ describe('雲端流程一步一步存', () => {
 		expect(title()).toContain('✓ 已存');
 	});
 
+	it('被退回（英文）：原因照使用者的語言寫（ADR 0017：伺服器送代號）', async () => {
+		localStorage.setItem('PARAGLIDE_LOCALE', 'en');
+		const s = await openCloud();
+		s.state.flows[0].flow = flowOf(deleteMember(s.state.flows[0].flow, 'm4', { confirmed: true }));
+		await fireEvent.click(screen.getByRole('tab', { name: /^Athletes/ }));
+		await fireEvent.change(screen.getByLabelText("Athlete 4's name"), { target: { value: '芳芳' } });
+		await flush();
+
+		expect(s.page.session.notice).toBe("Not saved: Can't find this athlete");
+	});
+
 	it('有新版：提示「有新版，請重新整理」，不能改', async () => {
 		const s = await openCloud('newer-core');
 		expect(s.page.session.viewing).toBe(true);

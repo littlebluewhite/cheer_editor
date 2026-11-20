@@ -8,6 +8,9 @@ import type { Plugin } from 'vite';
 
 const FILE_NAME = 'third-party-licenses.txt';
 const SERVICE_WORKER_ROOTS = ['@vite-pwa/workbox-swkit'];
+// 程式產生到 src/ 裡的套件（不在 node_modules 底下，打包內容認不出來）：Paraglide 的 runtime 在 src/lib/paraglide/。
+// 只加它自己，它依賴的是建置工具，沒有打包進去。
+const GENERATED_INTO_SRC = ['@inlang/paraglide-js'];
 
 export function thirdPartyLicenses(): Plugin {
 	return {
@@ -24,6 +27,7 @@ export function thirdPartyLicenses(): Plugin {
 				}
 			}
 			for (const name of SERVICE_WORKER_ROOTS) addWithDependencies(name, process.cwd(), dirs);
+			for (const name of GENERATED_INTO_SRC) dirs.add(findPackageDir(name, process.cwd()));
 			this.emitFile({ type: 'asset', fileName: FILE_NAME, source: render([...dirs]) });
 		}
 	};

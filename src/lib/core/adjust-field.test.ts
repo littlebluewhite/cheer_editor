@@ -92,7 +92,9 @@ describe('調整場地', () => {
 		expect(adjustField(flow, ONE_V)).toEqual({
 			kind: 'confirm',
 			message: '這樣調整，這些人會疊在同一點（之後可以再拖開）：',
-			items: ['站位 1：A、B']
+			why: { code: 'flow_stacked' },
+			items: ['站位 1：A、B'],
+			whyItems: [{ code: 'flow_stacked_item', n: 1, names: { code: 'members_list', first: 'A', rest: 'B' } }]
 		});
 		expect(flowOf(adjustField(flow, ONE_V, { confirmed: true })).field).toEqual(ONE_V);
 	});
@@ -100,7 +102,8 @@ describe('調整場地', () => {
 	it('條數不對就擋下', () => {
 		expect(adjustField(before, { strips: 0, layout: 'vertical' })).toEqual({
 			kind: 'blocked',
-			message: '條數要是 1–12 的整數'
+			message: '條數要是 1–12 的整數',
+			why: { code: 'flow_strips', min: 1, max: 12 }
 		});
 	});
 });

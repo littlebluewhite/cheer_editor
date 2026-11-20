@@ -10,17 +10,34 @@ import {
 	moveMember,
 	positionsAt,
 	layersAt,
-	teamWho,
+	teamWho as teamWhy,
 	totalSeconds,
 	updateSegment,
 	videoAudioClips,
 	videoDurationSec,
-	videoFrame,
-	videoFrames,
-	videoRows,
+	videoFrame as frameOf,
+	videoFrames as framesOf,
+	videoRows as rowsOf,
 	type Flow
 } from './index';
 import { flowOf } from '../test-flows';
+import { ZH_TEXT, zh, type Why } from './why';
+
+/** 給人看的字（代號）一層一層都寫成中文，比對照舊用中文。 */
+function zhDeep<T>(value: T): T {
+	if (Array.isArray(value)) return value.map(zhDeep) as T;
+	if (value === null || typeof value !== 'object') return value;
+	const code = (value as { code?: unknown }).code;
+	if (typeof code === 'string' && code in ZH_TEXT) return zh(value as unknown as Why) as T;
+	return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, zhDeep(v)])) as T;
+}
+const videoFrame = (flow: Flow, sec: number) => zhDeep(frameOf(flow, sec));
+const videoFrames = (flow: Flow) => {
+	const at = framesOf(flow);
+	return (sec: number) => zhDeep(at(sec));
+};
+const videoRows = (flow: Flow) => zhDeep(rowsOf(flow));
+const teamWho = (...args: Parameters<typeof teamWhy>) => zhDeep(teamWhy(...args));
 
 /**
  * 音樂 1（a1，150 BPM、一個半拍 0.2 秒、一個八拍 3.2 秒；2 個整八拍 ＋ 最後 4 拍 = 8 秒）→ 口號 1（20 秒）
@@ -224,6 +241,13 @@ describe('row', () => {
 		expect(f.row.actions).toEqual([]);
 		expect(f.row.continuing).toEqual([{ name: 'Lib', who: teamWho(flow, flow.actions[0]) }]);
 		expect(f.row.empty).toBe(false);
+	});
+
+	it('名字存成大類名稱（舞蹈叫「舞蹈」）的動作：延續的列送大類的代號，英文影片才不會留中文', () => {
+		const flow = flowOf(
+			addAction(sample(), { segmentId: 's1', category: 'dance', name: '舞蹈', start: 0, length: 40, note: '', members: [{ memberId: 'm1', role: null }] })
+		);
+		expect(frameOf(flow, VIDEO_INTRO_SEC + 3.2 + 0.1).row.continuing.map((c) => c.name)).toEqual([{ code: 'category_dance' }]);
 	});
 
 	it('什麼都沒有的列 empty', () => {

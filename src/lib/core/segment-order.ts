@@ -3,20 +3,21 @@
 // 第一段換了，新的第一段開頭本來就有站位就用那張（原本的開頭那張：段還在就變成一般站位，段刪掉了就跟著刪）；
 // 沒有的話開頭那張自己搬過去：換順序時整張搬，刪段時位置換成那一刻大家所在的地方。站位不會變多。
 
-import { actionLabel } from './action-types';
+import { actionWhy } from './action-types';
 import { bookmarksIn, bookmarksOf } from './bookmarks';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
-import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import type { Segment } from './segment';
 import { recordCount } from './success-rate';
-import { EPS, HALF_BEATS_PER_EIGHT, atText, atTextWithUnit, fromText, segmentSpans, toPosition, totalSeconds } from './time';
+import { EPS, HALF_BEATS_PER_EIGHT, atWhy, fromWhy, labelWhy, segmentSpans, toPosition, totalSeconds } from './time';
+import type { Why } from './why';
 
 /** 刪段：段裡的動作、站位，A 或 B 在這段的書籤一起刪。會刪到東西時先問（列出清單）；空的段直接刪。 */
 export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOption = {}): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
-	if (index === -1) return blocked('找不到這一段');
+	if (index === -1) return blocked({ code: 'segment_order_no_segment' });
 	const segment = flow.segments[index];
 	const droppedActions = flow.actions.filter((a) => a.segmentId === segmentId);
 	// 開頭那張跟著新的第一段（刪掉唯一的段時回到沒有段），不算刪掉；
@@ -29,11 +30,15 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 	const droppedBookmarks = bookmarksIn(flow, segmentId);
 	if (!answered(option) && (droppedActions.length || droppedFormations.length || droppedBookmarks.length)) {
 		const records = recordCount(droppedActions);
-		const cleared = records ? `，會一起清掉 ${records} 次紀錄${RECORDS_UNDOABLE}` : '';
-		return needsConfirm(`刪掉${segmentSpans(flow)[index].label}，下面這些也會一起刪掉${cleared}`, [
-			...droppedActions.map((a) => `動作「${actionLabel(a)}」（${fromText(segment, a.start)}）`),
-			...droppedFormations.map((f) => `站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(segment, f.at)}）`),
-			...droppedBookmarks.map((b) => `書籤「${b.name}」`)
+		const label = labelWhy(segmentSpans(flow)[index]);
+		const code = records === 1 ? 'segment_order_delete_records_one' : 'segment_order_delete_records';
+		const why: Why = records
+			? { code, segment: label, count: records, undoable: RECORDS_UNDOABLE_WHY }
+			: { code: 'segment_order_delete', segment: label };
+		return needsConfirm(why, [
+			...droppedActions.map((a): Why => ({ code: 'segment_order_item_action', action: actionWhy(a), from: fromWhy(segment, a.start) })),
+			...droppedFormations.map((f): Why => ({ code: 'segment_order_item_formation', n: flow.formations.indexOf(f) + 1, at: atWhy(segment, f.at) })),
+			...droppedBookmarks.map((b): Why => ({ code: 'segment_order_item_bookmark', name: b.name }))
 		]);
 	}
 	const segments = flow.segments.toSpliced(index, 1);
@@ -47,10 +52,10 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 /** 調段順序：往前（-1）或往後（1）跟旁邊那段換位置。 */
 export function moveSegment(flow: Flow, segmentId: string, dir: -1 | 1): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
-	if (index === -1) return blocked('找不到這一段');
+	if (index === -1) return blocked({ code: 'segment_order_no_segment' });
 	const to = index + dir;
-	if (to < 0) return blocked('已經是第一段了');
-	if (to >= flow.segments.length) return blocked('已經是最後一段了');
+	if (to < 0) return blocked({ code: 'segment_order_first' });
+	if (to >= flow.segments.length) return blocked({ code: 'segment_order_last' });
 	const segments = flow.segments.with(index, flow.segments[to]).with(to, flow.segments[index]);
 	return ok({ ...flow, segments, formations: reorder(flow, segments) });
 }
@@ -62,16 +67,16 @@ export function moveSegment(flow: Flow, segmentId: string, dir: -1 | 1): Command
  */
 export function splitSegment(flow: Flow, segmentId: string, sec: number): CommandResult {
 	const index = flow.segments.findIndex((s) => s.id === segmentId);
-	if (index === -1) return blocked('找不到這一段');
+	if (index === -1) return blocked({ code: 'segment_order_no_segment' });
 	const old = flow.segments[index];
-	if (old.kind !== 'music') return blocked('口號段不能切');
+	if (old.kind !== 'music') return blocked({ code: 'segment_order_chant' });
 	const pos = toPosition(flow, sec);
-	if (pos?.segmentId !== segmentId || sec >= totalSeconds(flow) - EPS) return blocked('播放頭不在這一段');
+	if (pos?.segmentId !== segmentId || sec >= totalSeconds(flow) - EPS) return blocked({ code: 'segment_order_playhead_outside' });
 	const cut = Math.floor(pos.at / HALF_BEATS_PER_EIGHT) * HALF_BEATS_PER_EIGHT;
-	if (cut === 0) return blocked('播放頭在第一個八拍，切不開：先把播放頭移到要切開的那個八拍');
+	if (cut === 0) return blocked({ code: 'segment_order_first_eight' });
 	const across = flow.actions.find((a) => a.segmentId === segmentId && a.start < cut && a.start + a.length > cut);
 	if (across) {
-		return blocked(`動作「${actionLabel(across)}」（${atText(old, across.start)} 起）跨過 ${atText(old, cut)}，切不開`);
+		return blocked({ code: 'segment_order_across', action: actionWhy(across), start: atWhy(old, across.start), cut: atWhy(old, cut) });
 	}
 	const id = newId('s', flow.segments.map((s) => s.id));
 	const firstBeatSec = old.firstBeatSec + (cut * 30) / old.bpm;

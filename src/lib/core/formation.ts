@@ -6,15 +6,16 @@ import { actionSeconds } from './action-types';
 import { fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
+import type { Why, WhyParam } from './why';
 import { newId } from './ids';
 import { tooLong } from './text-length';
 import type { Segment } from './segment';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
-	lengthTextWithUnit,
+	lengthWhy,
 	snapToBeat,
-	timeTextWithUnit,
+	timeWhy,
 	toPosition,
 	toSeconds,
 	unitSec,
@@ -52,7 +53,7 @@ export interface MoveResult {
 	carried: number;
 }
 
-export const OFF_FIELD = '只能站到場地外 1 公尺以內';
+export const OFF_FIELD: Why = { code: 'formation_off_field' };
 
 /** 位置在場地外 1 m 以內（含邊上）。 */
 export function onField(field: FieldConfig, [x, y]: Position): boolean {
@@ -68,9 +69,9 @@ export function setPositions(
 	moves: Record<string, Position>
 ): CommandResult {
 	const formation = flow.formations.find((f) => f.id === formationId);
-	if (!formation) return blocked('找不到這張站位');
+	if (!formation) return blocked({ code: 'formation_not_found' });
 	for (const [id, p] of Object.entries(moves)) {
-		if (!flow.members.some((m) => m.id === id)) return blocked('找不到這個隊員');
+		if (!flow.members.some((m) => m.id === id)) return blocked({ code: 'formation_no_member' });
 		if (!onField(flow.field, p)) return blocked(OFF_FIELD);
 	}
 	const updated = { ...formation, pos: { ...formation.pos, ...moves } };
@@ -99,10 +100,10 @@ export function moveMembers(
  */
 export function moveGroup(flow: Flow, sec: number, moves: Record<string, Position>): CommandResult<MoveResult> {
 	const memberIds = Object.keys(moves);
-	if (memberIds.length === 0) return blocked('先選人');
-	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked('找不到這個隊員');
+	if (memberIds.length === 0) return blocked({ code: 'formation_no_selection' });
+	if (memberIds.some((id) => !flow.members.some((m) => m.id === id))) return blocked({ code: 'formation_no_member' });
 	const here = formationAt(flow, sec);
-	if (here && Object.entries(moves).every(([id, p]) => samePos(here.pos[id], p))) return blocked('位置都沒變');
+	if (here && Object.entries(moves).every(([id, p]) => samePos(here.pos[id], p))) return blocked({ code: 'formation_unchanged' });
 	return moveAt(flow, sec, () => moves);
 }
 
@@ -176,24 +177,24 @@ function carryForward(
  * 場地旁邊那一行字，告訴教練在播放頭拖人會改哪一張站位，還是會插一張新的。
  * 站位編號照時間排，跟站位縮圖列一樣；拍子音樂段寫「3-5&」，口號段寫「12.3 秒」。
  */
-export function moveTargetText(flow: Flow, sec: number): string {
+export function moveTargetWhy(flow: Flow, sec: number): Why {
 	const target = formationAt(flow, sec);
 	if (target) {
 		const index = flow.formations.indexOf(target);
 		// 只有開頭那張的 segmentId 可能是 null。
 		const t = target as TimePosition;
-		const when = index === 0 ? '開頭' : timeTextWithUnit(flow, t.segmentId, t);
-		return `拖人會改：站位 ${index + 1}（${when}）`;
+		if (index === 0) return { code: 'formation_move_target_first', n: index + 1 };
+		return { code: 'formation_move_target', n: index + 1, at: timeWhy(flow, t.segmentId, t) };
 	}
 	// 不在站位上表示已經有段，toPosition 一定有值。
 	const p = toPosition(flow, sec)!;
-	return `拖人會在 ${timeTextWithUnit(flow, p.segmentId, p)} 插一張新站位`;
+	return { code: 'formation_move_insert', at: timeWhy(flow, p.segmentId, p) };
 }
 
 /** 幫一張站位取名。清成空白就拿掉名字，只顯示號碼。 */
 export function renameFormation(flow: Flow, formationId: string, name: string): CommandResult {
 	const formation = flow.formations.find((f) => f.id === formationId);
-	if (!formation) return blocked('找不到這張站位');
+	if (!formation) return blocked({ code: 'formation_not_found' });
 	const { name: _, ...rest } = formation;
 	const trimmed = name.trim();
 	const problem = tooLong('formationName', trimmed, formation.name);
@@ -208,8 +209,8 @@ const deletable = (index: number) => index > 0;
 /** 刪一張站位。開頭那張不能刪。 */
 export function deleteFormation(flow: Flow, formationId: string): CommandResult {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
-	if (index === -1) return blocked('找不到這張站位');
-	if (!deletable(index)) return blocked('流程開頭一定有一張站位，不能刪');
+	if (index === -1) return blocked({ code: 'formation_not_found' });
+	if (!deletable(index)) return blocked({ code: 'formation_first_undeletable' });
 	return ok({ ...flow, formations: flow.formations.toSpliced(index, 1) });
 }
 
@@ -273,17 +274,17 @@ export function walkPoint(from: Position, to: Position, departSec: number, arriv
  */
 export function setWalks(flow: Flow, formationId: string, walks: Record<string, Walk>): CommandResult {
 	const index = walkFormationIndex(flow, formationId);
-	if (typeof index === 'string') return blocked(index);
+	if (typeof index !== 'number') return blocked(index);
 	const aSec = formationSec(flow, flow.formations[index - 1]);
 	const bSec = formationSec(flow, flow.formations[index]);
 	for (const [id, { depart, arrive }] of Object.entries(walks)) {
-		if (!flow.members.some((m) => m.id === id)) return blocked('找不到這個隊員');
+		if (!flow.members.some((m) => m.id === id)) return blocked({ code: 'formation_no_member' });
 		const d = toSeconds(flow, depart);
 		const a = toSeconds(flow, arrive);
 		if (!inGrid(flow, depart) || !inGrid(flow, arrive) || d < aSec - EPS || a > bSec + EPS) {
-			return blocked('出發和到達要在前一張和這一張站位之間');
+			return blocked({ code: 'formation_walk_outside' });
 		}
-		if (d >= a - EPS) return blocked('出發要早於到達');
+		if (d >= a - EPS) return blocked({ code: 'formation_depart_after_arrive' });
 	}
 	const b = flow.formations[index];
 	const updated = withWalks(b, { ...b.walks, ...walks });
@@ -302,7 +303,7 @@ export function setTeamWalks(flow: Flow, formationId: string, walk: Walk): Comma
 /** 清掉 formationId（B）上這些人的出發和到達設定，回到預設。 */
 export function clearWalks(flow: Flow, formationId: string, memberIds: string[]): CommandResult {
 	const index = walkFormationIndex(flow, formationId);
-	if (typeof index === 'string') return blocked(index);
+	if (typeof index !== 'number') return blocked(index);
 	const b = flow.formations[index];
 	const walks = { ...b.walks };
 	for (const id of memberIds) delete walks[id];
@@ -315,7 +316,7 @@ export function clearWalks(flow: Flow, formationId: string, memberIds: string[])
  */
 export function memberWalk(flow: Flow, formationId: string, memberId: string): Walk | null {
 	const index = walkFormationIndex(flow, formationId);
-	if (typeof index === 'string') return null;
+	if (typeof index !== 'number') return null;
 	const { depart, arrive } = walkTimes(flow, index, memberId);
 	// A、B 和設定都在格子上，所以換回段內時間不會偏；剛好在交界時算後面那一段，秒數一樣。
 	return { depart: toPosition(flow, depart)!, arrive: toPosition(flow, arrive)! };
@@ -348,7 +349,7 @@ export interface FormationWalk {
  */
 export function formationWalks(flow: Flow, formationId: string): FormationWalk[] {
 	const index = walkFormationIndex(flow, formationId);
-	if (typeof index === 'string') return [];
+	if (typeof index !== 'number') return [];
 	const a = flow.formations[index - 1];
 	const b = flow.formations[index];
 	const tumbling = flow.actions
@@ -383,24 +384,26 @@ export function formationWalks(flow: Flow, formationId: string): FormationWalk[]
  * 走位速度給教練看的說明：「每秒 1.3 公尺」；太快的加「至少要 N 拍」（照每秒 TOO_FAST_MPS 公尺算），
  * 很喘的加「不喘要 N 拍」（照每秒 TIRING_MPS 公尺算）。拍數照走位中間那一刻所在的段，進位到半拍；口號段寫秒數，進位到 0.1 秒。
  */
-export function walkSpeedText(flow: Flow, walk: FormationWalk): string {
-	const speed = `每秒 ${walk.speed.toFixed(1)} 公尺`;
+export function walkSpeedWhy(flow: Flow, walk: FormationWalk): Why {
+	const speed: Why = { code: 'formation_speed', n: walk.speed.toFixed(1) };
 	if (!walk.tooFast && !walk.tiring) return speed;
 	const segment = flow.segments.find((s) => s.id === toPosition(flow, (walk.departSec + walk.arriveSec) / 2)?.segmentId);
 	if (!segment) return speed;
 	const distance = Math.hypot(walk.to[0] - walk.from[0], walk.to[1] - walk.from[1]);
 	const need = (mps: number) => {
 		const n = Math.ceil(distance / mps / unitSec(segment) - EPS);
-		return lengthTextWithUnit(segment, n);
+		return lengthWhy(segment, n);
 	};
-	return walk.tooFast ? `走太快：${speed}，至少要 ${need(TOO_FAST_MPS)}` : `很喘：${speed}，不喘要 ${need(TIRING_MPS)}`;
+	return walk.tooFast
+		? { code: 'formation_too_fast', speed, need: need(TOO_FAST_MPS) }
+		: { code: 'formation_tiring', speed, need: need(TIRING_MPS) };
 }
 
 /** 能設出發和到達的站位在 formations 裡的位置；不能設時回原因。 */
-function walkFormationIndex(flow: Flow, formationId: string): number | string {
+function walkFormationIndex(flow: Flow, formationId: string): number | Why {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
-	if (index === -1) return '找不到這張站位';
-	if (index === 0) return '開頭那張前面沒有站位，不能設出發和到達';
+	if (index === -1) return { code: 'formation_not_found' };
+	if (index === 0) return { code: 'formation_first_no_walk' };
 	return index;
 }
 
@@ -496,8 +499,8 @@ export function walkSpanAt(flow: Flow, sec: number): WalkSpan | null {
  */
 export function insertFormation(flow: Flow, sec: number): CommandResult {
 	const p = toPosition(flow, sec);
-	if (!p) return blocked('請先加一段');
-	if (formationAt(flow, sec)) return blocked('這一拍已經有站位');
+	if (!p) return blocked({ code: 'formation_no_segments' });
+	if (formationAt(flow, sec)) return blocked({ code: 'formation_taken' });
 	const t = toSeconds(flow, p);
 	const formation: Formation = {
 		id: newId('f', flow.formations.map((f) => f.id)),
@@ -551,17 +554,22 @@ export function moveFormation(
 	to: TimePosition
 ): CommandResult<{ sec: number; squeezed: string[] }> {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
-	if (index === -1) return blocked('找不到這張站位');
-	if (index === 0) return blocked('開頭那張不能挪');
+	if (index === -1) return blocked({ code: 'formation_not_found' });
+	if (index === 0) return blocked({ code: 'formation_first_fixed' });
 	const sec = toSeconds(flow, to);
 	const [a, b, c] = [-1, 0, 1].map((i) => flow.formations[index + i]);
 	const aSec = formationSec(flow, a);
 	const inside =
 		inGrid(flow, to) && sec > aSec + EPS && (!c || sec < formationSec(flow, c) - EPS);
 	if (!inside) {
-		const { before, after } = neighbourTimes(flow, index);
-		const end = after ? `站位 ${index + 2}（${after}）` : '流程結尾';
-		return blocked(`站位 ${index + 1} 要挪到站位 ${index}（${before}）之後、${end}之前`);
+		// 一律帶段名（見 neighbourTimes）：home 給空字串
+		const time = (f: Formation) => timeWhy(flow, '', f as TimePosition);
+		const range = { n: index + 1, prev: index, before: time(a) };
+		return blocked(
+			c
+				? { code: 'formation_move_between', ...range, next: index + 2, after: time(c) }
+				: { code: 'formation_move_last', ...range }
+		);
 	}
 	const shift = sec - formationSec(flow, b);
 	if (Math.abs(shift) < EPS) return ok(flow, { sec, squeezed: [] });
@@ -584,21 +592,21 @@ export function moveFormation(
 }
 
 /** 左邊欄「站位時間」框下面那一行：能挪到哪。開頭那張不能挪；找不到站位是空字串。 */
-export function moveFormationHint(flow: Flow, formationId: string): string {
+export function moveFormationHint(flow: Flow, formationId: string): WhyParam {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
 	if (index === -1) return '';
-	if (index === 0) return '開頭那張不能挪';
+	if (index === 0) return { code: 'formation_first_fixed' };
 	const { before, after } = neighbourTimes(flow, index);
-	return after ? `可以挪到 ${before} 之後、${after} 之前` : `可以挪到 ${before} 之後`;
+	return after ? { code: 'formation_can_move_between', before, after } : { code: 'formation_can_move_after', before };
 }
 
 /**
  * 挪 formations[index]（不是開頭那張）時，前一張和後一張的站位時間給教練看：
  * 一律前面加段名（同一段也加），教練才知道是哪一段的時間。沒有後一張是 null。
  */
-function neighbourTimes(flow: Flow, index: number): { before: string; after: string | null } {
+function neighbourTimes(flow: Flow, index: number): { before: WhyParam; after: WhyParam | null } {
 	// home 給空字串：沒有一段的 id 是空的，所以每個時間都帶段名。
-	const text = (f: Formation) => timeTextWithUnit(flow, '', f as TimePosition);
+	const text = (f: Formation) => timeWhy(flow, '', f as TimePosition);
 	const c = flow.formations[index + 1];
 	return { before: text(flow.formations[index - 1]), after: c ? text(c) : null };
 }

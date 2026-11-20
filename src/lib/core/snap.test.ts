@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-	fieldPositionText,
+	fieldPositionWhy,
 	snapGroup,
 	snapPointsNear,
 	snapPosition,
 	type FieldConfig,
 	type Position
 } from './index';
+import { zh } from './why';
+
+/** 位置文字寫成中文（畫面照語言寫，中文跟以前一字不差）。 */
+const fieldPositionText = (field: FieldConfig, p: Position) => zh(fieldPositionWhy(field, p));
 
 const nine: FieldConfig = { strips: 9, layout: 'vertical' };
 const five: FieldConfig = { strips: 5, layout: 'horizontal' };

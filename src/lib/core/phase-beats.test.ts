@@ -122,7 +122,13 @@ describe('蓋到別的環節', () => {
 		expect(add()).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來），確定就刪掉',
-			items: ['刪掉：環節 下法 搖籃']
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
+			},
+			items: ['刪掉：環節 下法 搖籃'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_dismount' }, name: '搖籃' } }]
 		});
 		expect(brief(flowOf(add({ confirmed: true })))).toEqual(['p1 0+6', 'p2 6+14', 'p4 24+8']);
 	});
@@ -137,7 +143,13 @@ describe('蓋到別的環節', () => {
 		expect(markPhaseBeats(recorded, 'x1', 'p2', 0, 20)).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，清掉 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
-			items: ['刪掉：環節 上法 延伸']
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_marks', marks: { code: 'records_marks_one', n: 1 } }
+			},
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }]
 		});
 		const flow = flowOf(markPhaseBeats(recorded, 'x1', 'p2', 0, 20, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p2 0+20', 'p3 24+8']);
@@ -151,20 +163,29 @@ describe('標拍擋下來的情況', () => {
 	};
 
 	it.each([
-		['口號段', chant, 'x2', 0, 2, '口號段不數拍，不能標環節的拍'],
-		['不是整拍（半拍長）', sample, 'x1', 0, 3, '環節要佔整數拍，至少 1 拍'],
-		['不到一拍', sample, 'x1', 0, 0, '環節要佔整數拍，至少 1 拍'],
-		['不在整拍上開始', sample, 'x1', 1, 2, '環節要標在整拍上'],
-		['超出動作', sample, 'x1', 30, 4, '環節要在動作裡面'],
-		['在動作之前', sample, 'x1', -2, 4, '環節要在動作裡面']
-	])('%s', (_, make, id, at, len, message) => {
+		['口號段', chant, 'x2', 0, 2, '口號段不數拍，不能標環節的拍', 'success_rate_chant_beats'],
+		['不是整拍（半拍長）', sample, 'x1', 0, 3, '環節要佔整數拍，至少 1 拍', 'beat_range_phase_whole_beats'],
+		['不到一拍', sample, 'x1', 0, 0, '環節要佔整數拍，至少 1 拍', 'beat_range_phase_whole_beats'],
+		['不在整拍上開始', sample, 'x1', 1, 2, '環節要標在整拍上', 'beat_range_phase_on_beat'],
+		['不在半拍上', sample, 'x1', 0.5, 2, '環節要落在半拍上', 'beat_range_phase_half_beat'],
+		['超出動作', sample, 'x1', 30, 4, '環節要在動作裡面', 'beat_range_phase_inside'],
+		['在動作之前', sample, 'x1', -2, 4, '環節要在動作裡面', 'beat_range_phase_inside']
+	])('%s', (_, make, id, at, len, message, code) => {
 		const kind = make === chant ? 'toss' : 'hold';
-		expect(addPhase(make(), id, { kind, name: '', beats: { at, len } })).toEqual({ kind: 'blocked', message });
+		expect(addPhase(make(), id, { kind, name: '', beats: { at, len } })).toEqual({
+			kind: 'blocked',
+			message,
+			...(code && { why: { code } })
+		});
 	});
 
 	it('動作被拖半拍後：要對齊音樂的整拍', () => {
 		const flow = flowOf(updateAction(onlyP1(), 'x1', { start: 1, length: 30 }));
-		expect(markPhaseBeats(flow, 'x1', 'p1', 0, 2)).toEqual({ kind: 'blocked', message: '環節要標在整拍上' });
+		expect(markPhaseBeats(flow, 'x1', 'p1', 0, 2)).toEqual({
+			kind: 'blocked',
+			message: '環節要標在整拍上',
+			why: { code: 'beat_range_phase_on_beat' }
+		});
 		expect(brief(flowOf(markPhaseBeats(flow, 'x1', 'p1', 1, 2)))).toEqual(['p1 1+2']);
 	});
 });
@@ -206,7 +227,11 @@ describe('沒記成功率的動作標拍加環節', () => {
 	});
 
 	it('還沒有環節，不能標給現有的環節', () => {
-		expect(markPhaseBeats(unrated('stunt'), 'x2', 'p1', 0, 4)).toEqual({ kind: 'blocked', message: '找不到這個環節' });
+		expect(markPhaseBeats(unrated('stunt'), 'x2', 'p1', 0, 4)).toEqual({
+			kind: 'blocked',
+			message: '找不到這個環節',
+			why: { code: 'phases_not_found' }
+		});
 	});
 });
 
@@ -228,7 +253,13 @@ describe('清標的拍', () => {
 		expect(clearPhaseBeats(recorded, 'x1', 0, 6)).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，清掉 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
-			items: ['刪掉：環節 上法 延伸']
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_marks', marks: { code: 'records_marks_one', n: 1 } }
+			},
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }]
 		});
 		const flow = flowOf(clearPhaseBeats(recorded, 'x1', 0, 6, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p2 6+14', 'p3 24+8']);
@@ -239,12 +270,33 @@ describe('清標的拍', () => {
 		expectUnrated(flowOf(clearPhaseBeats(sample(), 'x1', 0, 32)));
 	});
 
+	it('一次刪掉好幾個環節、還剩環節：先問，寫刪掉幾個環節', () => {
+		const recorded = record(sample(), { p1: '✓', p2: '△' });
+		expect(clearPhaseBeats(recorded, 'x1', 0, 20)).toEqual({
+			kind: 'confirm',
+			message: '會刪掉 2 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來），確定就刪掉',
+			why: {
+				code: 'phases_delete',
+				count: 2,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
+			},
+			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }, { code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }]
+		});
+	});
+
 	it('刪掉最後一個環節、有紀錄：先問；確定後組和紀錄一起拿掉', () => {
 		const recorded = record(record(sample(), { p1: '✓' }), { p3: '✗' });
 		expect(clearPhaseBeats(recorded, 'x1', 0, 32)).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 3 個環節，一起清掉 2 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
-			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段', '刪掉：環節 下法 搖籃']
+			why: {
+				code: 'phases_delete_none_left',
+				count: 3,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 2 } }
+			},
+			items: ['刪掉：環節 上法 延伸', '刪掉：環節 中段', '刪掉：環節 下法 搖籃'],
+			whyItems: [{ code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_load' }, name: '延伸' } }, { code: 'phases_delete_item', phase: { code: 'phase_kind_hold' } }, { code: 'phases_delete_item', phase: { code: 'phase_label', kind: { code: 'phase_kind_dismount' }, name: '搖籃' } }]
 		});
 		expectUnrated(flowOf(clearPhaseBeats(recorded, 'x1', 0, 32, { confirmed: true })));
 	});
@@ -274,7 +326,9 @@ describe('標的拍跟著動作', () => {
 		expect(moveAction(sample(), 'x1', 0.2)).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」拖到半拍上，會切短 1 個環節標的拍',
-			items: ['切短：環節 下法 搖籃 2-5 到 2-8 → 2-6 到 2-8']
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_cut_one', n: 1 } },
+			items: ['切短：環節 下法 搖籃 2-5 到 2-8 → 2-6 到 2-8'],
+			whyItems: expect.any(Array)
 		});
 		const flow = flowOf(moveAction(sample(), 'x1', 0.2, { confirmed: true }));
 		expect(brief(flow)).toEqual(['p1 1+6', 'p2 7+14', 'p3 25+6']);
@@ -286,7 +340,9 @@ describe('標的拍跟著動作', () => {
 		expect(moveAction(short, 'x1', 0.2)).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」拖到半拍上，會刪掉 1 個環節，動作不再記成功率',
-			items: ['刪掉：環節 上法 延伸 1-1']
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_off_beat' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
+			items: ['刪掉：環節 上法 延伸 1-1'],
+			whyItems: expect.any(Array)
 		});
 		expectUnrated(flowOf(moveAction(short, 'x1', 0.2, { confirmed: true })));
 	});
@@ -300,7 +356,9 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(sample(), 'x1', { length: 18 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節',
-			items: ['切短：環節 中段 1-4 到 2-2 → 1-4 到 2-1', '刪掉：環節 下法 搖籃 2-5 到 2-8']
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_and', a: { code: 'phase_beats_cut_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } } },
+			items: ['切短：環節 中段 1-4 到 2-2 → 1-4 到 2-1', '刪掉：環節 下法 搖籃 2-5 到 2-8'],
+			whyItems: expect.any(Array)
 		});
 	});
 
@@ -308,7 +366,17 @@ describe('標的拍跟著動作', () => {
 		const recorded = record(record(sample(), { p3: '✓' }), { p1: '✓', p3: '✗' });
 		expect(updateAction(recorded, 'x1', { length: 19 })).toMatchObject({
 			kind: 'confirm',
-			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號）'
+			message: '動作「技巧·Lib」變短，會切短 1 個環節標的拍、刪掉 1 個環節（清掉 2 次的記號）',
+			why: {
+				code: 'settle_fallout',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				why: { code: 'settle_why_shorter' },
+				will: {
+					code: 'phase_beats_and',
+					a: { code: 'phase_beats_cut_one', n: 1 },
+					b: { code: 'phase_beats_dropped_marks', dropped: { code: 'phase_beats_dropped_one', n: 1 }, marks: { code: 'records_marks', n: 2 } }
+				}
+			}
 		});
 		const flow = flowOf(updateAction(recorded, 'x1', { length: 19 }, { confirmed: true }));
 		expect(lib(flow).length).toBe(19);
@@ -320,7 +388,9 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(onlyP1(), 'x1', { length: 1 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會刪掉 1 個環節，動作不再記成功率',
-			items: ['刪掉：環節 上法 延伸 1-1 到 1-3']
+			why: { code: 'settle_fallout', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, why: { code: 'settle_why_shorter' }, will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } } },
+			items: ['刪掉：環節 上法 延伸 1-1 到 1-3'],
+			whyItems: expect.any(Array)
 		});
 		expectUnrated(flowOf(updateAction(onlyP1(), 'x1', { length: 1 }, { confirmed: true })));
 	});
@@ -330,7 +400,34 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(cued, 'x1', { length: 24 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」變短，會拿掉 1 個拍點，刪掉 1 個環節',
-			items: ['拿掉：拍子 down 2-7 到 2-8', '刪掉：環節 下法 搖籃 2-5 到 2-8']
+			why: {
+				code: 'settle_fallout',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				why: { code: 'settle_why_shorter' },
+				will: { code: 'settle_will_and', a: { code: 'settle_cues_removed_one', n: 1 }, b: { code: 'phase_beats_dropped_one', n: 1 } }
+			},
+			items: ['拿掉：拍子 down 2-7 到 2-8', '刪掉：環節 下法 搖籃 2-5 到 2-8'],
+			whyItems: expect.any(Array)
+		});
+	});
+
+	it('三個原因一起（變短、換了人、拖到半拍上）：原因用「、」接起來，拍點和標的拍一起問', () => {
+		// 小A 的拍點在 1-1；動作拖到半拍（1-1& 起）、變短到 30 個半拍、拿掉小A：拍點拿掉，下法（2-5 起）往後對齊後切短。
+		const cued = flowOf(placeCue(sample(), 'x1', { kind: 'motion', at: 0, len: 2, word: 'K', who: { member: 'm2' } }));
+		const change = { start: 1, length: 30, members: [{ memberId: 'm1', role: '上層' }] };
+		expect(updateAction(cued, 'x1', change)).toMatchObject({
+			kind: 'confirm',
+			message: '動作「技巧·Lib」變短、換了人或任務角色、拖到半拍上，會拿掉 1 個拍點，切短 1 個環節標的拍',
+			why: {
+				code: 'settle_fallout',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				why: {
+					code: 'settle_why_and',
+					a: { code: 'settle_why_shorter' },
+					b: { code: 'settle_why_and', a: { code: 'settle_why_people' }, b: { code: 'settle_why_off_beat' } }
+				},
+				will: { code: 'settle_will_and', a: { code: 'settle_cues_removed_one', n: 1 }, b: { code: 'phase_beats_cut_one', n: 1 } }
+			}
 		});
 	});
 
@@ -369,7 +466,14 @@ describe('標的拍跟著動作', () => {
 		expect(updateAction(chant, 'x1', { segmentId: 's1', start: 0, length: 32 })).toEqual({
 			kind: 'confirm',
 			message: '動作「技巧·Lib」換到音樂段，會刪掉 1 個環節，動作不再記成功率',
-			items: ['刪掉：環節 上法 延伸']
+			why: {
+				code: 'settle_fallout',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				why: { code: 'settle_why_to_music' },
+				will: { code: 'phase_beats_no_rate', phases: { code: 'phase_beats_dropped_one', n: 1 } }
+			},
+			items: ['刪掉：環節 上法 延伸'],
+			whyItems: expect.any(Array)
 		});
 		expectUnrated(flowOf(updateAction(chant, 'x1', { segmentId: 's1', start: 0, length: 32 }, { confirmed: true })));
 	});

@@ -10,11 +10,12 @@
 
 import type { Attachment } from 'svelte/attachments';
 import type { Command, CustomRole } from '#lib/core';
+import type { Said } from '#lib/core';
 import type { Ask } from '#lib/ask.svelte.js';
 
 export interface FieldCommit {
 	/** 打的字（送出那一刻的字）換成要送的指令；看不懂就回 { blocked: 原因 }，不送指令。要確認時 ask 帶著回答再送同一個指令。 */
-	send: (text: string) => Command | { blocked: string };
+	send: (text: string) => Command | { blocked: string | Said };
 	/** 流程裡現在的值：被擋時欄位退回它。 */
 	actual: () => string;
 	/** 要確認時按了取消。 */

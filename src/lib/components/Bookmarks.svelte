@@ -7,8 +7,9 @@
 	place="phone"：手機、直拿的 iPad（檢視模式），播放列下面一排，手指左右滑；沒有書籤就不出現。
 -->
 <script lang="ts">
-	import { MAX_CHARS, actionLabel, firstChars, bookmarkSeconds, positionText, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
+	import { MAX_CHARS, actionLabel, firstChars, bookmarkSeconds, positionWhy, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { composing } from '#lib/ime.js';
 	import { KEYS } from '#lib/shortcuts.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
@@ -51,8 +52,8 @@
 
 	const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
 	function where(s: Spot): string {
-		const a = positionText(flow, s.a);
-		return s.b === null ? a : `${a} 到 ${positionText(flow, s.b)}`;
+		const a = whyText(positionWhy(flow, s.a));
+		return s.b === null ? a : `${a} 到 ${whyText(positionWhy(flow, s.b))}`;
 	}
 	/** 正在重複的就是這個書籤。 */
 	function active(s: Spot): boolean {

@@ -3,6 +3,7 @@
 	// 可以帶一個按鈕（「復原」「救回」）。浮在畫面上（position: absolute），出現、收掉都不推動版面。
 	// 練習畫面、手機的檢視畫面放在下方；編輯畫面場地上的由頁面放在上方（見頁面的 .field-toasts）。
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
 
 	/** onundo：提示的按鈕沒給 run 時按了做什麼（頁面的復原）；沒給就是 session 的復原。 */
@@ -28,7 +29,7 @@
 				onclick={button.run ?? onundo ?? (() => session.undo())}>{button.label}</button
 			>
 		{/if}
-		<button type="button" class="ghost icon" aria-label="收起提示" onclick={() => (session.notice = '')}
+		<button type="button" class="ghost icon" aria-label={m.session_close_notice()} onclick={() => (session.notice = '')}
 			><Icon name="close" size={14} /></button
 		>
 	</div>

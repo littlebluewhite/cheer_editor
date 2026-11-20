@@ -92,7 +92,8 @@ describe('新增動作', () => {
 		const flow = sample();
 		expect(addAction(flow, lib({ start: 20, length: 13 }))).toEqual({
 			kind: 'blocked',
-			message: '動作不能跨段，要跨就拆成兩個'
+			message: '動作不能跨段，要跨就拆成兩個',
+			why: { code: 'actions_across' }
 		});
 		expect(addAction(flow, lib({ start: 20, length: 12 })).kind).toBe('ok');
 		expect(addAction(flow, lib({ segmentId: 's2', start: 95, length: 6 })).kind).toBe('blocked');
@@ -102,23 +103,27 @@ describe('新增動作', () => {
 	it('開始已經在段外：說在段外、這段有多長，不說不能跨段（T05）', () => {
 		expect(addAction(sample(), lib({ start: 32, length: 4 }))).toEqual({
 			kind: 'blocked',
-			message: '動作的開始在段外：這段只有 2 個八拍'
+			message: '動作的開始在段外：這段只有 2 個八拍',
+			why: { code: 'actions_start_outside', size: { code: 'time_eights', n: 2 } }
 		});
 		expect(addAction(sample(), lib({ segmentId: 's2', start: 100, length: 5 }))).toEqual({
 			kind: 'blocked',
-			message: '動作的開始在段外：這段只有 10.0 秒'
+			message: '動作的開始在段外：這段只有 10.0 秒',
+			why: { code: 'actions_start_outside', size: { code: 'time_seconds', n: '10.0' } }
 		});
 	});
 
 	it('最後一段超出段尾：後面沒有段可以拆，寫最多還剩多長', () => {
 		expect(addAction(sample(), lib({ segmentId: 's2', start: 70, length: 40 }))).toEqual({
 			kind: 'blocked',
-			message: '超過這段的結尾，最多 3.0 秒'
+			message: '超過這段的結尾，最多 3.0 秒',
+			why: { code: 'actions_over_end', length: { code: 'time_seconds', n: '3.0' } }
 		});
 		const last = flowOf(moveSegment(sample(), 's1', 1));
 		expect(addAction(last, lib({ start: 24, length: 16 }))).toEqual({
 			kind: 'blocked',
-			message: '超過這段的結尾，最多 4 拍'
+			message: '超過這段的結尾，最多 4 拍',
+			why: { code: 'actions_over_end', length: { code: 'time_length_beats', n: 4 } }
 		});
 	});
 
@@ -128,17 +133,30 @@ describe('新增動作', () => {
 			lib({ category: 'jump', name: '跳', start, length: 4, members: [{ memberId, role: null }] });
 		expect(addAction(flow, jump(14, 'm2'))).toEqual({
 			kind: 'blocked',
-			message: '小B 同一時間已經在「技巧·Lib」裡：上一個動作在 2-1& 才結束'
+			message: '小B 同一時間已經在「技巧·Lib」裡：上一個動作在 2-1& 才結束',
+			why: { code: 'actions_clash', names: '小B', action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' }, where: { code: 'actions_previous_ends', at: '2-1&' } }
 		});
 		expect(addAction(flow, jump(18, 'm2')).kind).toBe('ok');
 		const chant = flowOf(addAction(sample(), lib({ segmentId: 's2', start: 10, length: 25 })));
 		expect(addAction(chant, lib({ segmentId: 's2', start: 0, length: 12, members: [{ memberId: 'm1', role: null }] }))).toEqual({
 			kind: 'blocked',
-			message: '小A 同一時間已經在「技巧·Lib」裡：下一個動作從 1.0 秒 就開始'
+			message: '小A 同一時間已經在「技巧·Lib」裡：下一個動作從 1.0 秒 就開始',
+			why: {
+				code: 'actions_clash',
+				names: '小A',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				where: { code: 'actions_next_starts', at: { code: 'time_seconds', n: '1.0' } }
+			}
 		});
 		expect(addAction(chant, lib({ segmentId: 's2', start: 30, length: 10, members: [{ memberId: 'm1', role: null }] }))).toEqual({
 			kind: 'blocked',
-			message: '小A 同一時間已經在「技巧·Lib」裡：上一個動作在 3.5 秒 才結束'
+			message: '小A 同一時間已經在「技巧·Lib」裡：上一個動作在 3.5 秒 才結束',
+			why: {
+				code: 'actions_clash',
+				names: '小A',
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				where: { code: 'actions_previous_ends', at: { code: 'time_seconds', n: '3.5' } }
+			}
 		});
 	});
 
@@ -165,29 +183,74 @@ describe('新增動作', () => {
 		});
 		expect(addAction(flow, everyone)).toEqual({
 			kind: 'blocked',
-			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束；小C 同一時間已經在「跳躍·跳」裡：下一個動作從 1-5 就開始'
+			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束；小C 同一時間已經在「跳躍·跳」裡：下一個動作從 1-5 就開始',
+			why: {
+				code: 'members_problems',
+				first: {
+					code: 'actions_clash',
+					names: { code: 'members_list', first: '小A', rest: '小B' },
+					action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+					where: { code: 'actions_previous_ends', at: '1-5' }
+				},
+				rest: { code: 'actions_clash', names: '小C', action: { code: 'action_label', category: { code: 'category_jump' }, name: '跳' }, where: { code: 'actions_next_starts', at: '1-5' } }
+			}
 		});
 	});
 
 	it.each([
-		['沒有人', lib({ members: [] }), '一個動作至少要有 1 個人'],
-		['同一個人放兩次', lib({ members: [{ memberId: 'm1', role: null }, { memberId: 'm1', role: '上層' }] }), '同一個人只能放一次'],
-		['不在名單上的人', lib({ members: [{ memberId: 'm9', role: null }] }), '找不到這個隊員'],
-		['不存在的任務角色', lib({ members: [{ memberId: 'm1', role: '飛人' }] }), '沒有「飛人」這個任務角色'],
-		['不存在的段', lib({ segmentId: 's9' }), '找不到這一段'],
-		['長度 0', lib({ length: 0 }), '動作長度要在 0.5 到 16 拍之間'],
-		['長度是負的', lib({ start: 4, length: -2 }), '動作長度要在 0.5 到 14 拍之間'],
-		['開始在段之前', lib({ start: -1 }), '動作的開始不能在段之前'],
-		['不在半拍上的時間', lib({ start: 1.5 }), '音樂段的時間要落在半拍上'],
-		['大類不在 7 個裡面', lib({ category: 'chant' as never }), '請選大類']
-	])('%s就擋下', (_, input, message) => {
-		expect(addAction(sample(), input)).toEqual({ kind: 'blocked', message });
+		['沒有人', lib({ members: [] }), '一個動作至少要有 1 個人', { code: 'actions_no_members' }],
+		[
+			'同一個人放兩次',
+			lib({ members: [{ memberId: 'm1', role: null }, { memberId: 'm1', role: '上層' }] }),
+			'同一個人只能放一次',
+			// 跟流程檢查同一句，同一個代號
+			{ code: 'flow_check_twice' }
+		],
+		['不在名單上的人', lib({ members: [{ memberId: 'm9', role: null }] }), '找不到這個隊員', { code: 'actions_member_not_found' }],
+		[
+			'不存在的任務角色',
+			lib({ members: [{ memberId: 'm1', role: '飛人' }] }),
+			'沒有「飛人」這個任務角色',
+			{ code: 'flow_check_no_role', role: '飛人' }
+		],
+		['不存在的段', lib({ segmentId: 's9' }), '找不到這一段', { code: 'actions_no_segment' }],
+		['長度 0', lib({ length: 0 }), '動作長度要在 0.5 到 16 拍之間', { code: 'actions_length_range', min: '0.5', max: { code: 'time_length_beats', n: 16 } }],
+		[
+			'長度是負的',
+			lib({ start: 4, length: -2 }),
+			'動作長度要在 0.5 到 14 拍之間',
+			{ code: 'actions_length_range', min: '0.5', max: { code: 'time_length_beats', n: 14 } }
+		],
+		['只剩 1 拍', lib({ start: 30, length: 0 }), '動作長度要在 0.5 到 1 拍之間', { code: 'actions_length_range', min: '0.5', max: { code: 'time_length_beat_one', n: 1 } }],
+		['開始在段之前', lib({ start: -1 }), '動作的開始不能在段之前', { code: 'actions_start_before' }],
+		['不在半拍上的時間', lib({ start: 1.5 }), '音樂段的時間要落在半拍上', { code: 'actions_music_half_beat' }],
+		['大類不在 7 個裡面', lib({ category: 'chant' as never }), '請選大類', { code: 'actions_pick_category' }]
+	])('%s就擋下', (_, input, message, why) => {
+		expect(addAction(sample(), input)).toEqual({ kind: 'blocked', message, why });
+	});
+
+	it('拍點不行：照拍點的原因擋下，帶著拍點的代號', () => {
+		const cue = { kind: 'count' as const, at: 0, len: 2, word: 'sideways', who: null };
+		expect(addAction(sample(), lib({ cues: [cue] }))).toEqual({
+			kind: 'blocked',
+			message: '拍子只能是 down 或 up',
+			why: { code: 'cues_count_word' }
+		});
+	});
+
+	it('口號段的時間不是 0.1 秒的整數倍就擋下', () => {
+		expect(addAction(sample(), lib({ segmentId: 's2', start: 0.5 }))).toEqual({
+			kind: 'blocked',
+			message: '口號段的時間最細 0.1 秒',
+			why: { code: 'actions_chant_tenths' }
+		});
 	});
 
 	it('口號段的長度單位是 0.1 秒，太短的提示寫 0.1 秒', () => {
 		expect(addAction(sample(), lib({ segmentId: 's2', length: 0 }))).toEqual({
 			kind: 'blocked',
-			message: '動作長度要在 0.1 到 10.0 秒之間'
+			message: '動作長度要在 0.1 到 10.0 秒之間',
+			why: { code: 'actions_length_range', min: '0.1', max: { code: 'time_seconds', n: '10.0' } }
 		});
 	});
 
@@ -211,12 +274,14 @@ describe('動作名稱和備註的字數', () => {
 		expect(addAction(sample(), lib({ name: '字'.repeat(20), note: '字'.repeat(200) })).kind).toBe('ok');
 		expect(addAction(sample(), lib({ name: '字'.repeat(21) }))).toEqual({
 			kind: 'blocked',
-			message: '動作名稱最多 20 個字'
+			message: '動作名稱最多 20 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_action_name' }, max: 20 }
 		});
 		const flow = flowOf(addAction(sample(), lib()));
 		expect(updateAction(flow, 'x1', { note: '字'.repeat(201) })).toEqual({
 			kind: 'blocked',
-			message: '備註最多 200 個字'
+			message: '備註最多 200 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_note' }, max: 200 }
 		});
 	});
 
@@ -380,7 +445,13 @@ describe('改動作、刪動作', () => {
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 8, length: 8 })));
 		expect(updateAction(flow, 'x2', { start: 6 })).toEqual({
 			kind: 'blocked',
-			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束'
+			message: '小A、小B 同一時間已經在「技巧·Lib」裡：上一個動作在 1-5 才結束',
+			why: {
+				code: 'actions_clash',
+				names: { code: 'members_list', first: '小A', rest: '小B' },
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Lib' },
+				where: { code: 'actions_previous_ends', at: '1-5' }
+			}
 		});
 		const moved = flowOf(updateAction(flow, 'x2', { start: 10, note: '慢一點' }));
 		expect(moved.actions[1]).toMatchObject({ id: 'x2', start: 10, length: 8, note: '慢一點' });
@@ -394,7 +465,8 @@ describe('改動作、刪動作', () => {
 		expect(r.actions[0].members).toEqual([{ memberId: 'm3', role: '騰翻' }]);
 		expect(updateAction(flow, 'x1', { members: [] })).toEqual({
 			kind: 'blocked',
-			message: '一個動作至少要有 1 個人'
+			message: '一個動作至少要有 1 個人',
+			why: { code: 'actions_no_members' }
 		});
 	});
 
@@ -410,7 +482,12 @@ describe('改動作、刪動作', () => {
 	it('刪掉動作', () => {
 		const flow = flowOf(addAction(sample(), lib()));
 		expect(flowOf(deleteAction(flow, 'x1')).actions).toEqual([]);
-		expect(deleteAction(flow, 'x9')).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+		expect(deleteAction(flow, 'x9')).toEqual({ kind: 'blocked', message: '找不到這個動作', why: { code: 'actions_not_found' } });
+		expect(updateAction(flow, 'x9', { note: '慢一點' })).toEqual({
+			kind: 'blocked',
+			message: '找不到這個動作',
+			why: { code: 'actions_not_found' }
+		});
 	});
 });
 
@@ -439,15 +516,23 @@ describe('拖色條：移動、改長度', () => {
 		flow = flowOf(addAction(flow, lib({ name: 'Ext', start: 16, length: 8 })));
 		expect(moveAction(flow, 'x1', 6.4)).toEqual({
 			kind: 'blocked',
-			message: '動作的開始在段外：這段只有 2 個八拍'
+			message: '動作的開始在段外：這段只有 2 個八拍',
+			why: { code: 'actions_start_outside', size: { code: 'time_eights', n: 2 } }
 		});
 		expect(moveAction(flow, 'x1', -0.4)).toEqual({
 			kind: 'blocked',
-			message: '動作的開始不能在段之前'
+			message: '動作的開始不能在段之前',
+			why: { code: 'actions_start_before' }
 		});
 		expect(moveAction(flow, 'x1', 2.2)).toEqual({
 			kind: 'blocked',
-			message: '小A、小B 同一時間已經在「技巧·Ext」裡：下一個動作從 2-1 就開始'
+			message: '小A、小B 同一時間已經在「技巧·Ext」裡：下一個動作從 2-1 就開始',
+			why: {
+				code: 'actions_clash',
+				names: { code: 'members_list', first: '小A', rest: '小B' },
+				action: { code: 'action_label', category: { code: 'category_stunt' }, name: 'Ext' },
+				where: { code: 'actions_next_starts', at: '2-1' }
+			}
 		});
 	});
 
@@ -457,14 +542,15 @@ describe('拖色條：移動、改長度', () => {
 		expect(flowOf(resizeAction(flow, 'x1', 3.25)).actions[0]).toMatchObject({ start: 4, length: 12 });
 		expect(resizeAction(flow, 'x1', 0.81)).toEqual({
 			kind: 'blocked',
-			message: '動作長度要在 0.5 到 14 拍之間'
+			message: '動作長度要在 0.5 到 14 拍之間',
+			why: { code: 'actions_length_range', min: '0.5', max: { code: 'time_length_beats', n: 14 } }
 		});
 		expect(flowOf(resizeAction(flow, 'x1', 7)).actions[0]).toMatchObject({ start: 4, length: 28 });
 	});
 
 	it('找不到動作就擋下', () => {
-		expect(moveAction(sample(), 'x9', 0)).toEqual({ kind: 'blocked', message: '找不到這個動作' });
-		expect(resizeAction(sample(), 'x9', 0)).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+		expect(moveAction(sample(), 'x9', 0)).toEqual({ kind: 'blocked', message: '找不到這個動作', why: { code: 'actions_not_found' } });
+		expect(resizeAction(sample(), 'x9', 0)).toEqual({ kind: 'blocked', message: '找不到這個動作', why: { code: 'actions_not_found' } });
 	});
 });
 

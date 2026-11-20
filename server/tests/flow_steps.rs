@@ -247,8 +247,18 @@ async fn blocked_or_unasked_commands_are_sent_back_with_the_reason(db: sqlx::PgP
     assert_eq!(reply["kind"], "rejected");
     assert_eq!(reply["stepId"], "stepblock001");
     assert_eq!(reply["message"], "沒存進去：請幫流程取名字");
+    let reason = json!({ "message": "請幫流程取名字", "why": { "code": "flow_no_name" } });
+    let why = json!({ "code": "blocked", "reason": reason, "ask": false });
+    assert_eq!(reply["why"], why);
     assert_eq!(reply["step"], 0);
     assert_eq!(reply["flow"]["name"], "全國賽");
+
+    // 流程核心的原因改成代號的（ADR 0017）：中文和代號一起帶回來，畫面照語言寫。
+    let reply = step(&mut room, "stepblock003", 0, json!([])).await;
+    assert_eq!(reply["kind"], "rejected");
+    assert_eq!(reply["message"], "沒存進去：沒有指令");
+    let reason = json!({ "message": "沒有指令", "why": { "code": "commands_none" } });
+    assert_eq!(reply["why"]["reason"], reason, "{reply}");
 
     // 好幾個指令，中間一個被擋：全不算。
     let reply = step(
@@ -277,6 +287,8 @@ async fn blocked_or_unasked_commands_are_sent_back_with_the_reason(db: sqlx::PgP
             .starts_with("沒存進去：刪掉隊員「小A」"),
         "{reply}"
     );
+    assert_eq!(reply["why"]["code"], "blocked", "{reply}");
+    assert_eq!(reply["why"]["ask"], true, "{reply}");
     assert_eq!(s.get(&lin, &id).await["step"], 1);
 
     // 帶了回答就收。
@@ -295,6 +307,8 @@ async fn blocked_or_unasked_commands_are_sent_back_with_the_reason(db: sqlx::PgP
     )
     .await;
     assert_eq!(reply["kind"], "rejected");
+    assert_eq!(reply["message"], "沒存進去：伺服器看不懂這一步");
+    assert_eq!(reply["why"], json!({ "code": "notUnderstood" }));
     assert_eq!(s.get(&lin, &id).await["step"], 2);
 }
 

@@ -104,6 +104,14 @@ describe('記一次的檢查（伺服器收一次時）', () => {
 		expect(bad(attempt('tabc123def456', { p1: '✓' }, { practice: 'runThrough', runThroughId: 'r1' }))).toBe('dropped');
 	});
 
+	it('不守記一次的規則：原因帶代號（跟記一次被擋一樣）', () => {
+		expect(checkRecord(ratedSample(), stored('x1', attempt('tabc123def456', { p1: '?' as never })))).toEqual({
+			kind: 'dropped',
+			message: '記號只能是 ✓、△、✗',
+			why: { code: 'success_rate_mark_kind' }
+		});
+	});
+
 	it('一個人記的全上：帶全上 id 和開的時間，照收', () => {
 		const a = attempt('tabc123def456', { p1: '✓', p2: '✓', p3: '✓' }, {
 			practice: 'runThrough',

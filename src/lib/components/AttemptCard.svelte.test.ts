@@ -1,10 +1,13 @@
 // 記錄頁的一張卡：放一個真的 session 進去，點記號，讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { addAction, addPhase, attemptWhos, deletePhase, recordAttempt, recordRunThrough } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
 import { libSample, pyramidSample, ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
+import { whyText } from '#lib/reason-text.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import AttemptCard from './AttemptCard.svelte';
@@ -15,7 +18,8 @@ const DATE = '2026-11-01';
 function setup(flow = libSample(), index = 0) {
 	const { editor, session } = testEditor(flow);
 	const action = flow.actions[index];
-	const { who, name, people } = attemptWhos(flow, action)[0];
+	const { who, name: label, people } = attemptWhos(flow, action)[0];
+	const name = whyText(label);
 	render(TestSession, { props: { editor, component: AttemptCard, props: { action, who, name, people, date: DATE } } });
 	return { session, name };
 }
@@ -459,8 +463,9 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		const flow = pyramidSample();
 		const { editor, session } = testEditor(flow);
 		const action = flow.actions[1];
-		const { who, name, people } = attemptWhos(flow, action)[0];
-		const props = { editor, component: AttemptCard, props: { action, who, name, people, date: DATE } };
+		const { who, name: label, people } = attemptWhos(flow, action)[0];
+		const name = whyText(label);
+		const props ={ editor, component: AttemptCard, props: { action, who, name, people, date: DATE } };
 		const first = render(TestSession, { props });
 		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
 		await fireEvent.click(screen.getByRole('checkbox', { name: '中段 第一個' }));
@@ -504,5 +509,26 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		await tap(name, '中段', '失敗');
 		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[false, { p2: '✗' }]]);
 		expect(screen.queryByRole('button', { name: '存這一次' })).toBeNull();
+	});
+});
+
+describe('記錄頁的卡：英文', () => {
+	it('記一次、這天的每一次（有全上）、只練幾個環節的提示、改一次的框都照英文寫，沒有中文字', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const rated = flowOf(recordRunThrough(libSample(), DATE, 1794036000000, [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✗' } }]));
+		const names: Record<string, string> = { m1: 'Amy', m2: 'Ben', m3: 'Cal', m4: 'Dee' };
+		const { session, name } = setup({ ...rated, name: 'Test', members: rated.members.map((m) => ({ ...m, name: names[m.id] })) });
+		const han = /\p{Script=Han}/u;
+
+		await fireEvent.click(screen.getByRole('button', { name: `${name} Load Hit` }));
+		expect(screen.getByText('Unsaved')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save rep' }));
+		expect(session.notice).toBe('Saved');
+		session.notice = '';
+		await fireEvent.click(screen.getByRole('radio', { name: 'Some phases only' }));
+		await fireEvent.click(screen.getByRole('button', { name: /^Edit rep 1 \(Full out / }));
+		expect(screen.getByText('Edit rep 1 (full out)')).toBeTruthy();
+		await tick();
+		expect(document.body.innerHTML).not.toMatch(han);
 	});
 });

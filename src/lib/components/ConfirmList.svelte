@@ -7,6 +7,7 @@
 	import { untrack } from 'svelte';
 	import { composing } from '#lib/ime.js';
 	import type { Ask } from '#lib/ask.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	type Props =
 		| { ask: Ask }
@@ -31,17 +32,17 @@
 	const id = $props.id();
 
 	const view = $derived.by(() => {
-		if (!props.ask) return { cancelLabel: '取消', focusCancel: false, cancelFirst: false, ...props, onkeep: undefined };
+		if (!props.ask) return { cancelLabel: m.session_cancel(), focusCancel: false, cancelFirst: false, ...props, onkeep: undefined };
 		const ask = props.ask;
 		const q = ask.question;
 		return {
 			message: q?.message ?? '',
 			items: q?.items ?? [],
-			confirmLabel: q?.choose ? '清掉重算' : (q?.confirmLabel ?? ask.confirmLabel),
+			confirmLabel: q?.choose ? m.session_clear_records() : (q?.confirmLabel ?? ask.confirmLabel),
 			onconfirm: () => ask.answer(q?.choose ? 'clear' : 'confirm'),
 			onkeep: q?.choose ? () => ask.answer('keep') : undefined,
 			oncancel: () => ask.answer('cancel'),
-			cancelLabel: '取消',
+			cancelLabel: m.session_cancel(),
 			extra: undefined,
 			focusCancel: false,
 			cancelFirst: false
@@ -83,7 +84,7 @@
 		</ul>
 	{/if}
 	<div class="buttons">
-		{#if view.onkeep}<button type="button" onclick={view.onkeep}>保留舊紀錄</button>{/if}
+		{#if view.onkeep}<button type="button" onclick={view.onkeep}>{m.session_keep_records()}</button>{/if}
 		{#if view.extra}<button type="button" class="primary" onclick={view.extra.onclick}>{view.extra.label}</button>{/if}
 		{#snippet cancel()}
 			<button type="button" onclick={view.oncancel} data-autofocus={view.focusCancel || undefined}>{view.cancelLabel}</button>

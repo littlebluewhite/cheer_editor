@@ -19,6 +19,7 @@ import {
 	remoteChange,
 	runCommands,
 	runUndo,
+	said,
 	stepKeys,
 	takeRecords,
 	setSquad,
@@ -27,10 +28,12 @@ import {
 	type Flow,
 	type Position,
 	type RemoteChange,
+	type Said,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { flowOf } from '#lib/test-flows.js';
+import { m } from '#lib/paraglide/messages.js';
 import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES } from '#lib/music-library.svelte.js';
 import type { DraftStore } from '#lib/file/draft.js';
@@ -51,7 +54,6 @@ import {
 	type UnsentRecords
 } from '#lib/offline-store.js';
 import {
-	FLOW_TOO_BIG,
 	MAX_CLOUD_FLOW_BYTES,
 	ServerUnreachable,
 	type AdminResult,
@@ -65,6 +67,7 @@ import {
 	type RoomMessage,
 	type RoomRequest,
 	type RunView,
+	type SentBack,
 	type ServerAdapter,
 	type UserStatus
 } from '#lib/server-api.js';
@@ -372,11 +375,13 @@ export function fakeServer(
 			return { kind: 'accepted', stepId, step: taken, ...(was ? { change: structuredClone(was) } : {}) };
 		}
 		const step = f.step ?? 0;
-		const rejected = (message: string, by?: string): RoomMessage => {
+		// 跟真的伺服器一樣送代號（why）；message 是給部署前開著的舊分頁看的中文，畫面不讀，這裡不寫
+		const reasonOf = ({ message, why }: Said) => (why ? { message, why } : { message });
+		const rejected = (why: SentBack, by?: string): RoomMessage => {
 			from.sentBack = step;
-			return { kind: 'rejected', stepId, message, ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
+			return { kind: 'rejected', stepId, why, message: '', ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
 		};
-		if (from.sentBack !== undefined && seen < from.sentBack) return rejected('沒存進去：前一步沒存進去，這一步也不算');
+		if (from.sentBack !== undefined && seen < from.sentBack) return rejected({ code: 'afterSentBack' });
 		const log = stepLog.get(f.id) ?? [];
 		/** 上次看到之後別的分頁送的最後一步是誰送的；給了 watch 只看改到其中一個的。 */
 		const lastOther = (watch?: string[]) =>
@@ -385,31 +390,27 @@ export function fakeServer(
 		let after: { flow: Flow; records: StoredAttempt[] };
 		let revived: string[] = [];
 		if (undo) {
-			const cannot = undo.redo ? '不能重做' : '不能復原';
+			const { redo } = undo;
 			const of = log.find((l) => l.id === undo.of);
-			if (!of) return rejected(`太久以前的，${cannot}`);
+			if (!of) return rejected({ code: 'undoTooOld', redo });
 			// 復原：那一步清掉的紀錄一起放回去；重做（復原那一步）：那時加回來的再清掉（ADR 0007）
 			const back = broughtBack(f, of.step, of.cleared, live);
 			revived = back.revived;
 			const u = runUndo(structuredClone(f.flow), structuredClone(back.records), structuredClone(undo.change));
 			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
 			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
-			if (by !== undefined) return rejected(`${by}後來改過，這步${cannot}`);
-			if (u.kind !== 'ok') return rejected(`這步${cannot}：${u.message}`);
+			if (by !== undefined) return rejected({ code: 'undoChangedLater', by, redo });
+			if (u.kind !== 'ok') return rejected({ code: 'undoBlocked', redo, reason: reasonOf(u) });
 			after = u;
 		} else {
 			const full = putRecords(structuredClone(f.flow), structuredClone(live));
 			const r = runCommands(full, structuredClone(commands ?? []), stepId);
-			if (r.kind !== 'ok') {
-				const reason = r.kind === 'blocked' ? r.message : `${r.message}，請再看一次`;
-				const by = lastOther();
-				return by === undefined ? rejected(`沒存進去：${reason}`) : rejected(reason, by);
-			}
+			if (r.kind !== 'ok') return rejected({ code: 'blocked', reason: reasonOf(r), ask: r.kind !== 'blocked' }, lastOther());
 			after = takeRecords(r.flow);
 		}
 		const { keys, watch } = stepKeys(f.flow, after.flow);
 		const changedBy = lastOther(watch);
-		if (changedBy !== undefined) return rejected('', changedBy);
+		if (changedBy !== undefined) return rejected({ code: 'sameThing' }, changedBy);
 		const kept = new Map(after.records.map((a) => [a.attempt.id, a]));
 		const changed: string[] = [];
 		const deleted: string[] = [];
@@ -693,14 +694,14 @@ export function fakeServer(
 			return { kind: 'recordsSaved', saved: [], dropped: incoming.map((r) => ({ id: r.attempt.id, message: '你只能看這支流程' })) };
 		}
 		const saved: ReturnType<typeof cloudRecord>[] = [];
-		const dropped: { id: string; message: string; by?: string }[] = [];
+		const dropped: { id: string; message: string; by?: string; someone?: boolean }[] = [];
 		const added: StoredAttempt[] = [];
 		for (const r of structuredClone(incoming)) {
 			// 同一次全上的同一組只收先存的（#262）
 			const first = firstInRun(f, r);
 			if (first) {
 				const by = first.by ? nameOf(first.by) : '別人';
-				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by });
+				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by, ...(first.by ? {} : { someone: true }) });
 				continue;
 			}
 			const had = (f.records ?? []).find((o) => o.attempt.id === r.attempt.id);
@@ -918,11 +919,11 @@ export function fakeServer(
 		},
 		async uploadFlow(doc) {
 			mine();
-			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: FLOW_TOO_BIG };
+			if (new Blob([JSON.stringify(doc)]).size > MAX_CLOUD_FLOW_BYTES) return { message: m.share_flow_too_big() };
 			const checked = checkFlowDocument(structuredClone(doc));
-			if (checked.kind === 'error') return { message: checked.message };
+			if (checked.kind === 'error') return { message: checked.message, ...(checked.why && { why: checked.why }) };
 			const problem = flowProblem(checked.flow);
-			if (problem) return { message: problem };
+			if (problem) return said(problem);
 			const { flow, records } = takeRecords(checked.flow);
 			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow, updatedAt: new Date().toISOString(), records };
 			state.flows.push(made);
@@ -1067,8 +1068,8 @@ export function fakeServer(
 						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
 					} else {
 						const { stepId } = request;
-						const message = '沒存進去：你只能看這支流程';
-						deliver(room, () => ({ kind: 'rejected', stepId, message, flow: structuredClone(f.flow), step: f.step ?? 0 }));
+						const why = { code: 'viewOnly' } as const;
+						deliver(room, () => ({ kind: 'rejected', stepId, why, message: '', flow: structuredClone(f.flow), step: f.step ?? 0 }));
 					}
 				},
 				close() {

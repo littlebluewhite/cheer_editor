@@ -9,6 +9,7 @@
 	import { httpServer, tooManyTriesText, type ServerAdapter, type TooManyTries } from '#lib/server-api.js';
 	import { createIndexedDbOfflineStore, unsentCount, type OfflineStore } from '#lib/offline-store.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
 		/** 連伺服器；測試放假的（#lib/test-fakes.js 的 fakeServer）。 */
@@ -30,6 +31,8 @@
 	let error = $state.raw<'wrong' | 'unreachable' | TooManyTries | null>(null);
 	let busy = $state(false);
 	/** 忘記密碼頁，帶著打好的 email。 */
+	/** 「不登入也能用」那一句：[ ] 裡的字是回首頁的連結。 */
+	const [beforeHome, homeLink, afterHome] = m.login_without_account().split(/[[\]]/);
 	const forgotHref = $derived(resolve('/forgot-password') + (email.trim() ? `?${new URLSearchParams({ email: email.trim() })}` : ''));
 
 	onMount(() => {
@@ -55,35 +58,35 @@
 	}
 </script>
 
-<svelte:head><title>登入 — 流程編輯器</title></svelte:head>
+<svelte:head><title>{m.page_title({ page: m.login_title() })}</title></svelte:head>
 
 <AccountCard>
 	<form onsubmit={submit}>
-		<h1>登入</h1>
-		{#if passwordSet}<p class="ok" role="status">密碼設好了，請用新密碼登入。</p>
+		<h1>{m.login_title()}</h1>
+		{#if passwordSet}<p class="ok" role="status">{m.login_password_set()}</p>
 		{:else if expired}<p class="warn" role="status">
-				登入超過 30 天了，請再登入一次。{#if unsent}這台還有 {unsent} 筆成功率紀錄沒傳，登入後會自動傳。{/if}</p
+				{unsent ? (unsent === 1 ? m.login_expired_unsent_one : m.login_expired_unsent)({ n: unsent }) : m.login_expired()}</p
 			>{/if}
 		<label class="field">
 			<span>Email</span>
 			<input type="email" autocomplete="username" required bind:value={email} />
 		</label>
-		<label class="field" for="login-password">密碼</label>
+		<label class="field" for="login-password">{m.account_password()}</label>
 		<span class="with-show">
 			<input id="login-password" type={show ? 'text' : 'password'} autocomplete="current-password" required bind:value={password} />
-			<button type="button" class="btn ghost" aria-pressed={show} onclick={() => (show = !show)}><Icon name="eye" size={14} />顯示</button>
+			<button type="button" class="btn ghost" aria-pressed={show} onclick={() => (show = !show)}><Icon name="eye" size={14} />{m.account_show()}</button>
 		</span>
 		{#if error === 'wrong'}
-			<p class="error" {@attach revealAlert()}><b>email 或密碼不對</b><small>一直進不去？請找管理員。</small></p>
+			<p class="error" {@attach revealAlert()}><b>{m.login_wrong()}</b><small>{m.login_wrong_hint()}</small></p>
 		{:else if error === 'unreachable'}
-			<p class="error" {@attach revealAlert()}>連不上伺服器，請稍後再試。</p>
+			<p class="error" {@attach revealAlert()}>{m.server_unreachable()}</p>
 		{:else if error}
-			<p class="error" {@attach revealAlert()}><b>{tooManyTriesText(error)}</b><small>忘記密碼的話，按『忘記密碼』重設。</small></p>
+			<p class="error" {@attach revealAlert()}><b>{tooManyTriesText(error)}</b><small>{m.login_locked_hint()}</small></p>
 		{/if}
-		<button type="submit" class="btn primary wide" disabled={busy}>登入</button>
-		<a class="forgot" href={forgotHref}>忘記密碼？</a>
-		<p class="hint">沒有帳號？請管理員加你。</p>
-		<p class="hint">不登入也能用：<a href={resolve('/')}>回首頁</a>，流程只存在這台電腦。</p>
+		<button type="submit" class="btn primary wide" disabled={busy}>{m.login_title()}</button>
+		<a class="forgot" href={forgotHref}>{m.login_forgot()}</a>
+		<p class="hint">{m.login_no_account()}</p>
+		<p class="hint">{beforeHome}<a href={resolve('/')}>{homeLink}</a>{afterHome}</p>
 	</form>
 </AccountCard>
 

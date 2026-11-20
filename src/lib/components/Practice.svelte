@@ -8,8 +8,10 @@
 	import { resolve } from '$app/paths';
 	import { recordableActions } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { droppedTexts } from '#lib/cloud-steps.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { localDate } from '#lib/local-date.js';
+	import { m as t } from '#lib/paraglide/messages.js';
 	import HomeScreenHint from './HomeScreenHint.svelte';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
@@ -35,10 +37,10 @@
 	/** 有沒有要記的動作（有記成功率、有環節）；沒有就兩頁都只寫怎麼加環節，不給記一次全上。 */
 	const empty = $derived(recordableActions(session.flow!).length === 0);
 
-	const ALL_PAGES = [
-		{ key: 'record', label: '記錄' },
-		{ key: 'summary', label: '總表' }
-	] as const;
+	const ALL_PAGES = $derived([
+		{ key: 'record', label: t.practice_page_record() },
+		{ key: 'summary', label: t.practice_page_summary() }
+	] as const);
 	/** 不能記（雲端流程的檢視者）只有總表。 */
 	const PAGES = $derived(session.cannotRecord ? ALL_PAGES.filter((p) => p.key === 'summary') : ALL_PAGES);
 	/** 在哪一頁：放在 session，切到編排再回來還是這一頁（不能記的只有總表）。 */
@@ -56,9 +58,9 @@
 	}
 </script>
 
-<section class="practice" aria-label="練習" style:padding-bottom={cloud?.homeHint ? `${hintHeight + 24}px` : undefined}>
+<section class="practice" aria-label={t.practice_label()} style:padding-bottom={cloud?.homeHint ? `${hintHeight + 24}px` : undefined}>
 	<header>
-		<div class="pages" role="group" aria-label="練習的頁">
+		<div class="pages" role="group" aria-label={t.practice_pages()}>
 			{#each PAGES as p (p.key)}
 				<button
 					type="button"
@@ -67,57 +69,64 @@
 				>
 			{/each}
 		</div>
-		<label class="date">日期<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
+		<label class="date">{t.practice_date()}<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
 	{#if cloud && (!session.cannotRecord || unsent)}
 		{#if cloud.link === 'offline'}
 			<p class="bar warn" role="status">
-				{unsent ? `斷線了：還有 ${unsent} 筆沒傳，連上網路會自動傳。` : '斷線了：記的會先存在這台，連上網路自動傳。'}
+				{unsent ? (unsent === 1 ? t.practice_offline_unsent_one : t.practice_offline_unsent)({ n: unsent }) : t.practice_offline()}
 			</p>
 		{:else if cloud.link === 'unreachable'}
 			<p class="bar bad" role="status">
 				<span
 					>{unsent
-						? `傳不上去（伺服器沒回應）：還有 ${unsent} 筆沒傳，等一下會自動再試。`
-						: '傳不上去（伺服器沒回應）：記的會先存在這台，等一下會自動再試。'}</span
+						? (unsent === 1 ? t.practice_unreachable_unsent_one : t.practice_unreachable_unsent)({ n: unsent })
+						: t.practice_unreachable()}</span
 				>
-				<button type="button" onclick={() => cloud.retry()}>現在再試</button>
+				<button type="button" onclick={() => cloud.retry()}>{t.practice_retry()}</button>
 			</p>
 		{:else if cloud.link === 'expired'}
 			<p class="bar bad" role="status">
 				<span
-					>{unsent
-						? `登入超過 30 天了：還有 ${unsent} 筆沒傳，再登入一次就會傳。`
-						: '登入超過 30 天了：記的會先存在這台，再登入一次就會傳。'}</span
+					>{unsent ? (unsent === 1 ? t.practice_expired_unsent_one : t.practice_expired_unsent)({ n: unsent }) : t.practice_expired()}</span
 				>
-				<a class="btn" href={resolve('/login')}>再登入</a>
+				<a class="btn" href={resolve('/login')}>{t.practice_sign_in_again()}</a>
 			</p>
 		{:else if cloud.syncing}
-			<p class="bar" role="status">傳中…（{unsent} 筆）</p>
+			<p class="bar" role="status">{t.practice_syncing({ n: unsent })}</p>
 		{:else if cloud.synced.value}
-			<p class="bar ok" role="status">都傳上去了。</p>
+			<p class="bar ok" role="status">{t.practice_synced()}</p>
 		{/if}
 	{/if}
 	{#if dropped.length}
 		<div class="dropped" {@attach revealAlert()}>
 			<div class="dropped-head">
 				{#if dropped.every((d) => d.note)}
-					<p><b>這 {dropped.length} 筆沒存進去</b></p>
+					<p><b>{(dropped.length === 1 ? t.practice_dropped_one : t.practice_dropped)({ n: dropped.length })}</b></p>
 				{:else}
-					<p><b>教練改了流程，這 {dropped.length} 筆沒存進去</b><small>你記的時候，教練刪掉了這些環節或組。</small></p>
+					<p>
+						<b>{(dropped.length === 1 ? t.practice_dropped_changed_one : t.practice_dropped_changed)({ n: dropped.length })}</b><small
+							>{t.practice_dropped_why()}</small
+						>
+					</p>
 				{/if}
-				<button type="button" onclick={() => (cloud ? cloud.dismissDropped() : (session.droppedRecords = []))}>知道了</button>
+				<button type="button" onclick={() => (cloud ? cloud.dismissDropped() : (session.droppedRecords = []))}>{t.practice_got_it()}</button>
 			</div>
 			<table>
-				<thead><tr><th>日期</th><th>動作</th><th>組</th><th>記號</th></tr></thead>
+				<thead
+					><tr
+						><th>{t.practice_date()}</th><th>{t.practice_skill()}</th><th>{t.practice_squad()}</th><th>{t.practice_marks()}</th></tr
+					></thead
+				>
 				<tbody>
 					{#each dropped as d (d.id)}
+						{@const text = droppedTexts(d)}
 						<tr>
 							<td>{d.date}</td>
-							<td>{d.action}</td>
-							<td>{d.who}</td>
+							<td>{text.action}</td>
+							<td>{text.who}</td>
 							<td
-								>{d.marks}{#if d.runThrough}<small class="run">全上</small>{/if}{#if d.note}<small class="note">{d.note}</small
+								>{d.marks}{#if d.runThrough}<small class="run">{t.practice_full_out()}</small>{/if}{#if d.note}<small class="note">{text.note}</small
 									>{/if}</td
 							>
 						</tr>
@@ -128,7 +137,7 @@
 	{/if}
 	{#if empty}
 		<!-- 手機不能編排（docs/adr/0005-ipad-touch.md），所以寫清楚要換電腦或橫放的 iPad。 -->
-		<p class="empty">還沒有要記的動作：要先幫動作加環節。用電腦或橫放的 iPad 打開這支流程，到「編排」的拍點格子加環節。</p>
+		<p class="empty">{t.practice_empty()}</p>
 	{:else if page === 'record'}
 		<RecordPage {date} {narrow} />
 	{:else}
