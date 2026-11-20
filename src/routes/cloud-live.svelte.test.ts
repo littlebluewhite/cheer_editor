@@ -5,7 +5,8 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { editorPage, fromMenu, fakeServer, fakeTabs, flush, menuItem, testEditor } from '#lib/test-fakes.js';
-import { libSample } from '#lib/test-flows.js';
+import { addBookmark } from '#lib/core';
+import { flowOf, libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
@@ -17,7 +18,7 @@ const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, pas
 const chen = { email: 'chen@example.com', name: '陳教練', isAdmin: false, password: pw };
 
 /** 林教練登入，打開他的「測試」（libSample）；王教練是編輯者、陳教練是檢視者。 */
-async function linOpens() {
+async function linOpens(flow = libSample()) {
 	const fake = fakeServer({
 		users: [lin, wang, chen],
 		signedIn: lin.email,
@@ -25,7 +26,7 @@ async function linOpens() {
 			{
 				id: 'c1',
 				owner: lin.email,
-				flow: libSample(),
+				flow,
 				updatedAt: new Date(2026, 10, 7).toISOString(),
 				people: { [wang.email]: 'editor', [chen.email]: 'viewer' }
 			}
@@ -95,6 +96,17 @@ describe('別人的改動', () => {
 
 		expect(screen.queryByRole('dialog', { name: '音樂 1 設定' })).toBeNull();
 		expect(screen.getByRole('status').textContent).toBe('王教練刪掉了你在改的段');
+	});
+
+	it('開著的段設定那一段被別人刪了、連帶拿掉書籤：兩件事都說', async () => {
+		const s = await linOpens(flowOf(addBookmark(libSample(), '翻騰', { segmentId: 's1', at: 0 }, null)));
+		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
+		const w = s.joinAs('c1', wang.email);
+		await flush();
+		w.step({ name: 'deleteSegment', args: ['s1', { confirmed: true }] });
+		await flush();
+
+		expect(screen.getByRole('status').textContent).toBe('王教練刪掉了你在改的段；王教練改了段：書籤「翻騰」也拿掉了');
 	});
 
 	it('選著的人被別人刪了：不再選著，不說什麼', async () => {

@@ -536,16 +536,17 @@ export class EditorSession {
 		this.#flow = flow;
 		this.#saved = flow;
 		this.#trim(flow);
-		// 在改的動作被刪了、改段連帶拿掉了書籤：都要說（不會悄悄不見）
+		this.#playback.changed(before);
+		this.onflow();
+		this.#updated('change');
+		const closed = this.onremote(flow, by);
+		// 頁面關掉的東西、在改的動作被刪了、改段連帶拿掉了書籤：都要說（不會悄悄不見）
 		const said = [
+			closed || null,
 			editing && !this.#actionId ? `${by}刪掉了你在改的動作「${actionLabel(editing)}」` : null,
 			...lostBookmarks(before, flow).map((t) => `${by}改了段：${t}`)
 		].filter((t) => t !== null);
 		if (said.length) this.notice = said.join('；');
-		this.#playback.changed(before);
-		this.onflow();
-		this.#updated('change');
-		this.onremote(flow, by);
 	}
 
 	/**
@@ -577,8 +578,8 @@ export class EditorSession {
 		this.#undo = this.#undo.map(fix);
 	}
 
-	/** 套上別人的改動之後叫（頁面接上：開著的段設定指到被刪掉的段就關掉並說原因）。 */
-	onremote: (flow: Flow, by: string) => void = () => {};
+	/** 套上別人的改動之後叫（頁面接上：開著的段設定指到被刪掉的段就關掉）。回傳要說的原因，跟書籤的提示併在一起。 */
+	onremote: (flow: Flow, by: string) => string | void = () => {};
 
 	/**
 	 * 復原：換上前一份編排，帶著現在的紀錄，這一步清掉的紀錄加回來（本機流程，ADR 0007），提示「已復原：…」。

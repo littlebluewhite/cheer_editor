@@ -548,7 +548,7 @@
 	session.onremote = (f, by) => {
 		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
 			restore(f);
-			session.notice = `${by}刪掉了你在改的段`;
+			return `${by}刪掉了你在改的段`;
 		}
 	};
 	/** 復原、重做按鈕的提示：下一步會退（做回）什麼、快捷鍵，和方向鍵連按移人只算一步。 */

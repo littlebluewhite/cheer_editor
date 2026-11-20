@@ -115,8 +115,9 @@
 	}
 
 	function flashSame(a: TimePosition, b: TimePosition | null) {
-		const s = bookmarkSeconds(flow, { a, b });
-		const same = s && rows.find((r) => near(r.s.a, s.a) && (r.s.b === null ? s.b === null : s.b !== null && near(r.s.b, s.b)));
+		// 直接換秒數：B 剛好在段的交界時，存的時候會換成前一段的結尾，秒數一樣
+		const s = { a: toSeconds(flow, a), b: b && toSeconds(flow, b) };
+		const same = rows.find((r) => near(r.s.a, s.a) && (r.s.b === null ? s.b === null : s.b !== null && near(r.s.b, s.b)));
 		if (!same) return;
 		flashId = null;
 		requestAnimationFrame(() => (flashId = same.bm.id));

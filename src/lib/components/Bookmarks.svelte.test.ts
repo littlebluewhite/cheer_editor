@@ -140,6 +140,19 @@ describe('書籤', () => {
 		await vi.waitFor(() => expect(chip('翻騰').parentElement!.classList.contains('flash')).toBe(true));
 	});
 
+	it('存一樣的 A、B，B 剛好在段的交界：那顆書籤照樣閃一下', async () => {
+		let flow = flowOf(addSegment(sample(), 'music'));
+		flow = flowOf(updateSegment(flow, 's2', { bpm: 120, eights: 4, lastBeats: 8 }));
+		flow = flowOf(addBookmark(flow, '音樂 1', { segmentId: 's1', at: 0 }, { segmentId: 's1', at: 64 }));
+		const { session, playback } = setup(flow);
+		playback.setRange(0, 16);
+		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
+		await fireEvent.input(screen.getByRole('textbox', { name: '書籤名字' }), { target: { value: '又一個' } });
+		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
+		expect(session.notice).toBe('這裡已經有書籤「音樂 1」了');
+		await vi.waitFor(() => expect(chip('音樂 1').parentElement!.classList.contains('flash')).toBe(true));
+	});
+
 	it('名字空的、地方是新的：提示請取名字，沒有書籤閃', async () => {
 		const { session, playback } = setup(sample());
 		playback.setRange(5, 6);
