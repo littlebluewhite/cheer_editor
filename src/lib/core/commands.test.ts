@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	COMMAND_NAMES,
 	addAction,
+	addBookmark,
+	deleteBookmark,
+	renameBookmark,
 	addCustomRole,
 	addMemberLines,
 	addMembers,
@@ -89,6 +92,11 @@ const run = [{ actionId: 'x1', who: 'g1', marks: { p1: '✓', p2: '✓', p3: '�
  * ratedSample（音樂 1 是 150 BPM）再加：x1 第 1 組記一次（t1）、x1 的拍點 down、任務角色 r1「飛人」；
  * 口號段 s2（10 秒）和裡面的 x3：Toss（小B、小芳）；音樂 1 載入 a1；站位 f2 在 2 秒。
  */
+/** base 加一個只有 A 的書籤 k1。 */
+function withBookmark(): Flow {
+	return flowOf(addBookmark(base(), '翻騰', { segmentId: 's1', at: 0 }, null));
+}
+
 function base(): Flow {
 	let flow = flowOf(recordAttempt(ratedSample(), 'x1', drill));
 	flow = flowOf(placeCue(flow, 'x1', down));
@@ -403,7 +411,12 @@ const cases: Case[] = [
 	),
 	at('updateTimeRules', base, { name: 'updateTimeRules', args: [{ on: false, maxTotalSec: 150 }] }, (f) =>
 		updateTimeRules(f, { on: false, maxTotalSec: 150 })
-	)
+	),
+	at('addBookmark', base, { name: 'addBookmark', args: ['翻騰', { segmentId: 's1', at: 8 }, { segmentId: 's1', at: 24 }] }, (f) =>
+		addBookmark(f, '翻騰', { segmentId: 's1', at: 8 }, { segmentId: 's1', at: 24 })
+	),
+	at('renameBookmark', withBookmark, { name: 'renameBookmark', args: ['k1', '開場'] }, (f) => renameBookmark(f, 'k1', '開場')),
+	at('deleteBookmark', withBookmark, { name: 'deleteBookmark', args: ['k1'] }, (f) => deleteBookmark(f, 'k1'))
 ];
 
 describe('用名字＋參數叫指令', () => {
@@ -418,8 +431,8 @@ describe('用名字＋參數叫指令', () => {
 		expect(runCommand(flow, sent, STEP)).toEqual(inStep(STEP, () => c.direct(flow)));
 	});
 
-	it('54 個指令都登記，每個都有情境', () => {
-		expect(COMMAND_NAMES).toHaveLength(54);
+	it('57 個指令都登記，每個都有情境', () => {
+		expect(COMMAND_NAMES).toHaveLength(57);
 		expect(new Set(cases.map((c) => c.command.name))).toEqual(new Set(COMMAND_NAMES));
 	});
 

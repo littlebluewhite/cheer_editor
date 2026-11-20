@@ -78,6 +78,12 @@ export function changeLabel(before: Flow, after: Flow): string {
 		if (d.removed.length) return `刪動作 ${actionLabel(d.removed[0])}`;
 		if (d.changed) return `改動作 ${actionLabel(d.changed)}`;
 	}
+	if (before.bookmarks !== after.bookmarks) {
+		const d = diff(before.bookmarks ?? [], after.bookmarks ?? []);
+		if (d.added.length) return `存書籤「${d.added[0].name}」`;
+		if (d.removed.length) return `刪書籤「${d.removed[0].name}」`;
+		if (d.changed) return `改書籤「${d.changed.name}」`;
+	}
 	if (before.name !== after.name) return '改流程名字';
 	if (before.timeRules !== after.timeRules) return '改時間規則';
 	if (before.markers !== after.markers) return '改標記方式';

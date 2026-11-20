@@ -7,6 +7,7 @@ export const MAX_CHARS = {
 	actionName: 20,
 	formationName: 20,
 	roleName: 8,
+	bookmarkName: 20,
 	note: 200
 } as const;
 
@@ -18,6 +19,7 @@ const LABELS: Record<LimitedText, string> = {
 	actionName: '動作名稱',
 	formationName: '站位名稱',
 	roleName: '任務角色名稱',
+	bookmarkName: '書籤名字',
 	note: '備註'
 };
 

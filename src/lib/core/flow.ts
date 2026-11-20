@@ -2,6 +2,7 @@
 // 欄位照規格的流程檔格式 `flow` 那一層；之後的票再加段、動作等。
 
 import type { Action } from './action-types';
+import type { Bookmark } from './bookmarks';
 import { newId } from './ids';
 import { fieldGeometry, MAX_STRIPS, MIN_STRIPS, type FieldConfig } from './field';
 import type { Formation, Position } from './formation';
@@ -32,6 +33,8 @@ export interface Flow {
 	actions: Action[];
 	/** 隊員的標記用號碼還是開頭字；沒有就是號碼。 */
 	markers?: MarkerStyle;
+	/** 書籤，照存的先後（畫面照 A 的時間排）；沒有就是沒有書籤（舊流程檔沒有這個欄位）。 */
+	bookmarks?: Bookmark[];
 }
 
 export interface NewFlowInput {

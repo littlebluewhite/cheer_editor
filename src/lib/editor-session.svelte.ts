@@ -6,6 +6,7 @@ import { createContext } from 'svelte';
 import {
 	actionLabel,
 	applyRemoteChange,
+	bookmarksOf,
 	changeLabel,
 	currentFormation,
 	formationTimes,
@@ -427,7 +428,7 @@ export class EditorSession {
 		this.ask.clear();
 		this.#trim(flow);
 		const shown = undoStep?.label ?? label ?? changeLabel(before, flow);
-		this.#said = { flow, before, label: shown, extra: [], button: { label: '復原', name: `復原：${shown}` } };
+		this.#said = { flow, before, label: shown, extra: lostBookmarks(before, flow), button: { label: '復原', name: `復原：${shown}` } };
 		this.#showSaid();
 		this.#playback.changed(before);
 		this.onflow();
@@ -920,6 +921,17 @@ export class EditorSession {
 		this.squadAsk.send({ name: 'setSquad', args: [action.id, ids, n === 0 ? null : n] });
 		return true;
 	}
+}
+
+/**
+ * 改段（刪段、換順序、縮短…）連帶拿掉的書籤，提示要說是哪幾個（GLOSSARY「書籤」：不會悄悄不見）。
+ * 段沒換就是空的（刪書籤本身的提示已經寫了是哪個）。
+ */
+function lostBookmarks(before: Flow, after: Flow): string[] {
+	if (before.segments === after.segments) return [];
+	const kept = new Set(bookmarksOf(after).map((b) => b.id));
+	const lost = bookmarksOf(before).filter((b) => !kept.has(b.id));
+	return lost.length ? [`書籤${lost.map((b) => `「${b.name}」`).join('')}也拿掉了`] : [];
 }
 
 /** 清單的 id 順序。 */

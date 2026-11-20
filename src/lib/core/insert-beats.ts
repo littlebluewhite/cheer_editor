@@ -1,9 +1,10 @@
 // 插入八拍：在一個段的某一拍空出幾拍（音樂段幾個半拍、口號段幾個 0.1 秒），
-// 這個段裡在那之後的站位、動作（拍點記在動作裡，跟著走）、走位的出發和到達一起往後延；在那之前的不變
+// 這個段裡在那之後的站位、動作（拍點記在動作裡，跟著走）、走位的出發和到達、書籤一起往後延；在那之前的不變
 // （照預設走、在那之前就出發的人，把出發記成自己設的）。
 // 段不變長：後面的東西超過段尾就擋下。
 
 import { actionLabel } from './action-types';
+import { bookmarksOf } from './bookmarks';
 import type { Flow } from './flow';
 import { formationWalks, memberWalk, type Walk } from './formation';
 import { blocked, ok, type CommandResult } from './result';
@@ -55,11 +56,21 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 
 		return { ...a, start: a.start + length };
 	});
 
+	// 書籤：開始在插入點以後的往後延；結尾要在插入點後面才延（剛好在插入點就是在那之前結束），在段尾的留在段尾
+	const bookmarks = bookmarksOf(flow).map((bm) => {
+		const a = moves(bm.a);
+		const b = !!bm.b && bm.b.segmentId === at.segmentId && bm.b.at > at.at && bm.b.at < end;
+		if (a) fits(`書籤「${bm.name}」`, end - 1 - bm.a.at);
+		if (b) fits(`書籤「${bm.name}」`, end - bm.b!.at);
+		if (!a && !b) return bm;
+		return { ...bm, a: later(bm.a), b: b ? { ...bm.b!, at: bm.b!.at + length } : bm.b };
+	});
+
 	const limit = rooms.reduce<(typeof rooms)[number] | null>((t, r) => (!t || r.room < t.room ? r : t), null);
 	if (limit && limit.room < length) {
 		return blocked(`${limit.name}會超過這段的結尾，${roomText(segment, limit.room, unit)}`);
 	}
-	return ok({ ...flow, formations, actions });
+	return ok({ ...flow, formations, actions, ...(flow.bookmarks && { bookmarks }) });
 }
 
 /** 被擋時說還能插多少：教練選八拍（音樂段）就照八拍講，不到 1 個八拍才說幾拍。 */

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	addAction,
+	addBookmark,
 	addMembers,
 	addSegment,
 	changeAttempt,
@@ -776,5 +777,30 @@ describe('編輯 session：能復原的事做完都有提示（F 群）', () => 
 		const s = new EditorSession(libSample());
 		s.ask.send({ name: 'renameFlow', args: [s.flow!.name] });
 		expect(s.notice).toBe('');
+	});
+});
+
+describe('編輯 session：書籤', () => {
+	/** 音樂 1、音樂 2，一個從音樂 1 跨到音樂 2 的書籤。 */
+	function twoSegments(): Flow {
+		let flow = flowOf(createFlow({ name: '書籤', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(addSegment(flow, 'music'));
+		return flowOf(addBookmark(flow, '跨段', { segmentId: 's1', at: 8 }, { segmentId: 's2', at: 8 }));
+	}
+
+	it('段換了順序、B 跑到 A 前面：書籤拿掉，提示說拿掉了哪個（不會悄悄不見）', () => {
+		const s = new EditorSession(twoSegments());
+		s.ask.send({ name: 'moveSegment', args: ['s2', -1] });
+		expect(s.flow!.bookmarks).toEqual([]);
+		expect(s.notice).toBe('已排段的順序；書籤「跨段」也拿掉了');
+		s.undo();
+		expect(s.flow!.bookmarks!.map((b) => b.name)).toEqual(['跨段']);
+	});
+
+	it('刪書籤本身不多說', () => {
+		const s = new EditorSession(twoSegments());
+		s.ask.send({ name: 'deleteBookmark', args: ['k1'] });
+		expect(s.notice).toBe('已刪書籤「跨段」');
 	});
 });

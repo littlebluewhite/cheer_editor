@@ -5,6 +5,7 @@
 // 一步帶一個步驟 id（亂數，由外面發）：一步裡新東西的 id 由它算出來，同一個步驟 id 跑同一步算出一樣的 id（ADR 0014）。
 
 import { inStep } from './ids';
+import { addBookmark, deleteBookmark, renameBookmark, sweepBookmarks } from './bookmarks';
 import { addAction, deleteAction, moveAction, resizeAction, setSquad, updateAction } from './actions';
 import { clearCues, pasteCues, placeCue } from './cues';
 import { adjustField, createFlow, renameFlow, type Flow } from './flow';
@@ -136,7 +137,11 @@ const COMMANDS = {
 	moveSegment: plain(moveSegment),
 	splitSegment: plain(splitSegment),
 	insertBeats: plain(insertBeats),
-	updateTimeRules: plain(updateTimeRules)
+	updateTimeRules: plain(updateTimeRules),
+
+	addBookmark: plain(addBookmark),
+	renameBookmark: plain(renameBookmark),
+	deleteBookmark: plain(deleteBookmark)
 };
 
 type Commands = typeof COMMANDS;
@@ -179,7 +184,11 @@ function run(flow: Flow | null, command: Command): CommandResult {
 	const { name, args, options = {} } = command;
 	if (flow === null && name !== 'createFlow') return blocked(NO_FLOW);
 	const entry = COMMANDS[name] as Entry<unknown[], CommandResult>;
-	return entry(flow as Flow, args, options);
+	const r = entry(flow as Flow, args, options);
+	if (r.kind !== 'ok') return r;
+	// 改段之後放不下的書籤拿掉（刪段、段縮短先問過；換順序、B 跑到 A 前面就直接拿掉，畫面另外說）
+	const swept = sweepBookmarks(r.flow);
+	return swept === r.flow ? r : { ...r, flow: swept };
 }
 
 /**

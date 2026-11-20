@@ -4,6 +4,7 @@
 
 import { actionLabel, replaceAction, type Action } from './action-types';
 import { changeAction } from './actions';
+import { bookmarksOf } from './bookmarks';
 import type { Flow } from './flow';
 import { newId } from './ids';
 import { phaseFalloutText } from './phase-beats';
@@ -11,7 +12,7 @@ import { recordsLoss, recordsLossText } from './records';
 import { cueFalloutText } from './settle';
 import { recordCount } from './success-rate';
 import { RECORDS_UNDOABLE, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atTextWithUnit, fromText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units } from './time';
+import { atTextWithUnit, fromText, lengthTextWithUnit, parseNumber, segmentSpans, totalSeconds, units, type TimePosition } from './time';
 
 export interface MusicSegment {
 	id: string;
@@ -253,11 +254,15 @@ export function updateSegment(
 	const trimmed = flow.actions.filter((a) => mine(a) && a.start < end && a.start + a.length > end);
 	const formations = flow.formations.filter((f) => f.segmentId !== segmentId || f.at < end);
 	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
+	// 書籤：開始在段尾或之後、結尾在段尾之後的放不下，刪掉
+	const past = (p: TimePosition | null, last: number) => p?.segmentId === segmentId && p.at > last;
+	const droppedBookmarks = bookmarksOf(flow).filter((b) => past(b.a, end - 1) || past(b.b, end));
 	let result: Flow = {
 		...flow,
 		segments: flow.segments.with(index, next),
 		actions: flow.actions.filter((a) => !droppedActions.includes(a)),
-		formations
+		formations,
+		...(flow.bookmarks && { bookmarks: flow.bookmarks.filter((b) => !droppedBookmarks.includes(b)) })
 	};
 	const trimItems: string[] = [];
 	let records = recordCount(droppedActions);
@@ -270,19 +275,20 @@ export function updateSegment(
 		marks += cut.marks;
 		trimItems.push(cut.item);
 	}
-	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length)) {
+	if (!answered(options) && (trimmed.length || droppedActions.length || droppedFormations.length || droppedBookmarks.length)) {
 		const label = segmentSpans(flow)[index].label;
 		const lost = recordsLossText(records, marks);
 		const cleared = lost && `，會${lost}${RECORDS_UNDOABLE}`;
 		// 只裁短、沒有要刪的：不寫刪掉，確定鈕寫「確定裁短」（N19）
-		const drops = droppedActions.length + droppedFormations.length > 0;
+		const drops = droppedActions.length + droppedFormations.length + droppedBookmarks.length > 0;
 		const what = [trimmed.length && '超出段尾的動作裁短到段尾', drops && '放不進段裡的刪掉'].filter(Boolean).join('，');
 		return needsConfirm(
 			`${label} 縮短後，${what}${cleared}`,
 			[
 				...trimItems,
 				...droppedActions.map((a) => `刪掉：動作「${actionLabel(a)}」（${fromText(old, a.start)}）`),
-				...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(old, f.at)}）`)
+				...droppedFormations.map((f) => `刪掉：站位 ${flow.formations.indexOf(f) + 1}（${atTextWithUnit(old, f.at)}）`),
+				...droppedBookmarks.map((b) => `刪掉：書籤「${b.name}」`)
 			],
 			drops ? '確定刪除' : '確定裁短'
 		);

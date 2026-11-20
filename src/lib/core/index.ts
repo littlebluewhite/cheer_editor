@@ -264,6 +264,18 @@ export { actionHints, duplicateNames, musicOverrunSec, samePoint, stackedMembers
 export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
 export { insertBeats } from './insert-beats';
+export {
+	addBookmark,
+	bookmarkSeconds,
+	bookmarksIn,
+	bookmarksOf,
+	deleteBookmark,
+	endAt,
+	renameBookmark,
+	startAt,
+	sweepBookmarks,
+	type Bookmark
+} from './bookmarks';
 
 export { DEFAULT_TIME_RULES, timeRuleWarnings, updateTimeRules } from './time-rules';
 export type { TimeRules, TimeRuleWarning } from './time-rules';
