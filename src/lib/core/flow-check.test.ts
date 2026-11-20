@@ -255,7 +255,7 @@ describe('整份流程檢查的原因帶代號（ADR 0017）', () => {
 		expect(flowProblem(bad, good)).toEqual({
 			code: 'flow_check_in_formation',
 			n: 1,
-			reason: { code: 'flow_check_off_field', member: '小美', reason: '只能站到場地外 1 公尺以內' }
+			reason: { code: 'flow_check_off_field', member: '小美', reason: { code: 'formation_off_field' } }
 		});
 	});
 
