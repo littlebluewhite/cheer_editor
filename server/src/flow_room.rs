@@ -1074,7 +1074,7 @@ async fn take_step(
         }
         // 放回去不合規則（整份流程檢查）。
         if outcome.kind != "ok" {
-            let reason = FlowBlocked::from(outcome.message, outcome.why);
+            let reason = FlowBlocked::new(outcome.message, outcome.why);
             return rejected(SentBack::UndoBlocked { redo, reason }, None, content);
         }
     }
@@ -1082,7 +1082,7 @@ async fn take_step(
         ("ok", Some(flow)) => flow,
         // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。上次看到之後別人改過，寫最後改的人。
         (kind, _) => {
-            let reason = FlowBlocked::from(outcome.message, outcome.why);
+            let reason = FlowBlocked::new(outcome.message, outcome.why);
             let why = SentBack::Blocked {
                 reason,
                 ask: kind != "blocked",

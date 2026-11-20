@@ -14,11 +14,11 @@ export interface Said {
 	why?: Why;
 }
 
-/** 原因寫成中文：ZH 的句子把 {名字} 換成 why 裡的東西，包著的原因也寫成中文。text：句子（測試換一份看換字的規則）。 */
-export function zh(why: Why, text: Readonly<Record<string, string>> = ZH): string {
-	return text[why.code].replace(/\{(\w+)\}/g, (_, name: string) => {
+/** 原因寫成中文：ZH 的句子把 {名字} 換成 why 裡的東西，包著的原因也寫成中文。 */
+export function zh(why: Why): string {
+	return ZH[why.code].replace(/\{(\w+)\}/g, (_, name: string) => {
 		const v = why[name];
-		return typeof v === 'object' ? zh(v, text) : String(v);
+		return typeof v === 'object' ? zh(v) : String(v);
 	});
 }
 

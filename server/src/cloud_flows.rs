@@ -87,7 +87,7 @@ pub struct FlowBlocked {
 
 impl FlowBlocked {
     /// 流程核心結果裡的原因（沒寫是空的）。
-    pub(crate) fn from(message: Option<String>, why: Option<serde_json::Value>) -> Self {
+    pub(crate) fn new(message: Option<String>, why: Option<serde_json::Value>) -> Self {
         Self {
             message: message.unwrap_or_default(),
             why,
@@ -120,7 +120,7 @@ pub async fn create(
     let flow = match (outcome.kind.as_str(), outcome.flow) {
         ("ok", Some(flow)) => flow,
         _ => {
-            let reason = FlowBlocked::from(outcome.message, outcome.why);
+            let reason = FlowBlocked::new(outcome.message, outcome.why);
             return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(reason)).into_response());
         }
     };
@@ -162,7 +162,7 @@ pub async fn upload(
     let (flow, records) = match (uploaded.kind.as_str(), uploaded.flow, uploaded.records) {
         ("ok", Some(flow), Some(records)) => (flow, records),
         _ => {
-            let reason = FlowBlocked::from(uploaded.message, uploaded.why);
+            let reason = FlowBlocked::new(uploaded.message, uploaded.why);
             return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(reason)).into_response());
         }
     };

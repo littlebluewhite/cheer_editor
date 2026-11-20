@@ -249,7 +249,6 @@ export function updateMember(
 				name: member.name,
 				newName: updated.name,
 				count,
-				// 還是中文（records.ts 的句子，等它改送代號）
 				undoable: RECORDS_UNDOABLE_WHY
 			},
 			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
@@ -337,7 +336,6 @@ export function deleteMember(
 		const lost = inActions.flatMap((a) => (emptied.includes(a) ? [] : lostRole(a, id)));
 		const after = flow.members.length - 1 - flow.members.indexOf(member);
 		// 後面接著的句子（各自帶開頭的標點），一句包下一句（more）。
-		// 紀錄按復原會回來、組換了人要問：還是中文（records.ts、settle.ts 的句子，等它們改送代號）。
 		const more: Why[] = [];
 		if (dropped) more.push({ code: dropped === 1 ? 'members_delete_cues_one' : 'members_delete_cues', count: dropped });
 		if (cleared) {

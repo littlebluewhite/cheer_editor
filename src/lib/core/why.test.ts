@@ -22,11 +22,12 @@ describe('原因的代號', () => {
 	});
 
 	it('句子裡的東西照放，包著的原因也寫成中文', () => {
-		// 用測試才有的假句子：只看換字的規則
-		const text = { ...ZH_TEXT } as Record<string, string>;
-		text.commands_none = '「{label}」{n} 次：{reason}';
-		const why = { code: 'commands_none', label: '托', n: 3, reason: { code: 'commands_no_flow' } } as Why;
-		expect(zh(why, text)).toBe('「托」3 次：沒有開著的流程');
+		const why: Why = {
+			code: 'flow_check_in_formation',
+			n: 3,
+			reason: { code: 'flow_check_off_field', member: '小美', reason: { code: 'formation_off_field' } }
+		};
+		expect(zh(why)).toBe('站位 3：小美 只能站到場地外 1 公尺以內');
 	});
 
 	it('沒有開著的流程、沒有指令：被擋並帶代號', () => {

@@ -3,15 +3,11 @@ import {
 	addSegment,
 	atText,
 	atTextWithUnit,
-	atWhy,
 	clockText,
 	createFlow,
-	eightsWhy,
 	farthestLegal,
-	labelWhy,
 	lengthText,
 	lengthTextWithUnit,
-	lengthWhy,
 	positionText,
 	readLength,
 	readStart,
@@ -19,19 +15,18 @@ import {
 	readTime,
 	rulerMarks,
 	segmentSpans,
-	sizeWhy,
 	spacedLabels,
 	snapPlayhead,
 	snapToBeat,
 	stepPlayhead,
 	timeText,
-	timeWhy,
 	toPosition,
 	toSeconds,
 	totalSeconds,
 	updateSegment,
 	type Flow
 } from './index';
+import { atWhy, eightsWhy, labelWhy, lengthWhy, sizeWhy, timeWhy } from './time';
 import { zh, type Why } from './why';
 import { flowOf } from '../test-flows';
 

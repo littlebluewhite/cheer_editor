@@ -67,7 +67,7 @@ describe('原因寫成畫面的語言', () => {
 		const fallout = (will: Why) => ({ code: 'settle_fallout', action: '技巧·Lib', why: { code: 'settle_why_shorter' }, will }) as const;
 		const marks = { code: 'phase_beats_dropped_marks', dropped: one('phase_beats_dropped_one'), marks: { code: 'records_marks', n: 2 } } as const;
 		expect(reasonText({ message: '', why: fallout({ code: 'phase_beats_and', a: one('phase_beats_cut_one'), b: marks }) })).toBe(
-			'Skill “技巧·Lib” gets shorter, which will trim the marked beats of 1 phase and delete 1 phase (clearing the marks on 2 reps)'
+			'Skill “技巧·Lib” gets shorter, which will cut short the marked beats of 1 phase and delete 1 phase (clearing the marks on 2 reps)'
 		);
 		expect(reasonText({ message: '', why: fallout({ code: 'phase_beats_no_rate', phases: one('phase_beats_dropped_one') }) })).toBe(
 			'Skill “技巧·Lib” gets shorter, which will delete 1 phase, so the skill stops recording hit rates'
