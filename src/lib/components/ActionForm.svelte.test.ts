@@ -13,12 +13,14 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { recordedFlow, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
+import ActionDetail from './ActionDetail.svelte';
 import ActionForm from './ActionForm.svelte';
 
 // 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0014）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
@@ -720,5 +722,77 @@ describe('新動作表單：移出最後一個人', () => {
 		setup(sample(), null, 0, ['m1']);
 		await fireEvent.click(screen.getByRole('button', { name: '把 小A 移出這個動作' }));
 		expect(document.activeElement).toBe(screen.getByRole('button', { name: '＋ 新動作' }));
+	});
+});
+
+describe('英文畫面', () => {
+	/**
+	 * 名字都是英文（教練取的名字照原樣，不算）；流程檔存的內建中文（上層、主底、落地、雙手並攏）要照語言寫。
+	 * Lib：Amy 上層、Ben 主底，有環節（Ben 沒分組）、給上層的落地、給全部的 down；x2 只有 Amy、沒取名。
+	 */
+	function english(): Flow {
+		let flow = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(
+			addMembers(flow, [
+				{ name: 'Amy', gender: 'F', globalRole: 'top' },
+				{ name: 'Ben', gender: 'M', globalRole: 'base' },
+				{ name: 'Cat', gender: 'F', globalRole: 'base' }
+			])
+		);
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 2, lastBeats: 8 }));
+		const base = { segmentId: 's1', category: 'stunt', note: 'Watch the dip', length: 8 } as const;
+		const top = { memberId: 'm1', role: '上層' };
+		flow = flowOf(addAction(flow, { ...base, name: 'Lib', start: 0, members: [top, { memberId: 'm2', role: '主底' }] }));
+		flow = flowOf(addAction(flow, { ...base, name: '', start: 16, members: [top] }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '落地', who: { role: '上層' } }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'motion', at: 2, len: 2, word: '雙手並攏' }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'count', at: 4, len: 4, word: 'down' }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: 'Ext', beats: { at: 0, len: 8 } }));
+		return flowOf(setSquad(flow, 'x1', ['m2'], null));
+	}
+
+	/** 畫面上看得到、聽得到的（字、aria-label、title、placeholder）：任務角色選單是別的 ticket 的，先拿掉。 */
+	function shown(): string {
+		const copy = document.body.cloneNode(true) as HTMLElement;
+		copy.querySelectorAll('.picker').forEach((p) => p.remove());
+		return copy.innerHTML;
+	}
+	const HAN = /\p{Script=Han}/u;
+
+	it('改動作：表單、組卡片、拍點格子和小窗、改環節都沒有中文；固定任務角色、內建拍點照語言寫', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		setup(english(), 'x1', 0, ['m1', 'm2']);
+		// 點環節的色條：小窗打開，環節列多出改它的地方
+		await fireEvent.click(document.querySelector<HTMLElement>('button.item.phase')!);
+		const pop = within(screen.getByRole('dialog', { name: 'Cue pop-up' }));
+		expect(pop.getByRole('group', { name: 'Edit phase' })).toBeTruthy();
+		expect([...document.querySelectorAll('.squad-head')].map((h) => h.textContent)).toEqual(['Stunt group 1', 'No stunt group']);
+		expect(pop.getByRole('option', { name: 'Top person' })).toBeTruthy();
+		expect(pop.getByRole('button', { name: 'land' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Phase Load Ext 1-1 to 1-4' })).toBeTruthy();
+		expect(shown()).not.toMatch(HAN);
+	});
+
+	it('新動作：同一時間在別的動作裡的人、加人選單、複製人都沒有中文；移出一個人，焦點給下一個人的 ✕', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		setup(english(), null, 0, ['m1', 'm2', 'm3']);
+		expect(screen.getByRole('button', { name: 'Add skill' })).toBeTruthy();
+		expect(document.querySelector('.busy-tag')!.textContent).toBe('In “Stunt·Lib”');
+		expect(shown()).not.toMatch(HAN);
+
+		const removes = () => [...document.querySelectorAll<HTMLElement>('button[data-remove-member]')];
+		const second = removes()[1];
+		await fireEvent.click(removes()[0]);
+		expect(document.activeElement).toBe(second);
+		expect(second.getAttribute('aria-label')).toMatch(/^Remove \w+ from this skill$/);
+	});
+
+	it('檢視模式的動作詳細：任務角色、拍點照語言寫', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const flow = english();
+		render(ActionDetail, { props: { flow, action: flow.actions[0] } });
+		expect(screen.getByRole('region', { name: 'Skill details' }).textContent).toContain('Top person');
+		expect(shown()).not.toMatch(HAN);
 	});
 });

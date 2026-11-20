@@ -1,19 +1,22 @@
 <script lang="ts">
 	// 檢視模式右邊欄：點到的動作的詳細內容（人、任務角色、拍點、備註），只能看。字都問流程核心。
 	import {
-		actionLabel,
+		actionWhy,
 		atWhy,
 		beatSpanWhy,
 		cueWhy,
 		labelWhy,
 		lengthWhy,
 		memberName,
+		roleWhy,
 		segmentSpans,
 		whoWhy,
 		type Action,
 		type Flow
 	} from '#lib/core';
 	import { whyText } from '#lib/reason-text.js';
+	// 改名 msg：這個檔的 m 是動作裡的一個人
+	import { m as msg } from '#lib/paraglide/messages.js';
 	import { actionColor } from './category-colors';
 
 	interface Props {
@@ -31,8 +34,8 @@
 		const time =
 			segment.kind === 'music'
 				? whyText(beatSpanWhy(segment, action.start, action.length))
-				: `${whyText(atWhy(segment, action.start))}・${whyText(lengthWhy(segment, action.length))}`;
-		return `${whyText(labelWhy(span))} ${time}`;
+				: msg.beat_range_span({ range: whyText(atWhy(segment, action.start)), length: whyText(lengthWhy(segment, action.length)) });
+		return msg.time_in_segment({ segment: whyText(labelWhy(span)), at: time });
 	});
 	const cues = $derived(
 		span
@@ -43,17 +46,17 @@
 	);
 </script>
 
-<section class="action-detail" aria-label="動作詳細" style:--cat={actionColor(action)}>
-	<header><span class="dot"></span><b>{actionLabel(action)}</b></header>
+<section class="action-detail" aria-label={msg.action_form_detail()} style:--cat={actionColor(action)}>
+	<header><span class="dot"></span><b>{whyText(actionWhy(action))}</b></header>
 	<p class="when">{when}</p>
-	<h3>人</h3>
+	<h3>{msg.action_form_detail_people()}</h3>
 	<ul>
 		{#each action.members as m (m.memberId)}
-			<li>{memberName(flow, m.memberId)}{#if m.role}<span class="role">{m.role}</span>{/if}</li>
+			<li>{memberName(flow, m.memberId)}{#if m.role}<span class="role">{whyText(roleWhy(m.role))}</span>{/if}</li>
 		{/each}
 	</ul>
 	{#if cues.length}
-		<h3>拍點</h3>
+		<h3>{msg.cue_grid_cues()}</h3>
 		<ul>
 			{#each cues as c, i (i)}
 				<li>{c}</li>
@@ -61,7 +64,7 @@
 		</ul>
 	{/if}
 	{#if action.note}
-		<h3>備註</h3>
+		<h3>{msg.text_length_note()}</h3>
 		<p class="note">{action.note}</p>
 	{/if}
 </section>

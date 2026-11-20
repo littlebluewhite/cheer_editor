@@ -5,6 +5,7 @@ import {
 	createFlow,
 	addPhase,
 	PHASE_COLORS,
+	placeCue,
 	toSeconds,
 	updateAction,
 	updatePhase,
@@ -12,6 +13,7 @@ import {
 	type Flow
 } from '#lib/core';
 import { flowOf } from '#lib/test-flows.js';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import TestSession from '#lib/TestSession.svelte';
 import { fakeCellAt, testEditor } from '#lib/test-fakes.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
@@ -448,5 +450,49 @@ describe('改環節', () => {
 		await fireEvent.click(grid.getByRole('button', { name: '3-5' }));
 		await fireEvent.click(grid.getByRole('button', { name: '3-6' }), { shiftKey: true });
 		expect(edit()).not.toBeNull();
+	});
+});
+
+describe('英文畫面', () => {
+	/** 名字都是英文；Amy（上層）的動作從 3-3 開始，3-3 有給上層的落地，3-3 到 3-4 是上法「Ext」。口號 1 的動作有一個沒標拍的環節。 */
+	function english(): Flow {
+		let flow = flowOf(createFlow({ name: 'Test', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addMembers(flow, [{ name: 'Amy', gender: 'F', globalRole: 'top' }]));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(updateSegment(flow, 's1', { eights: 4, lastBeats: 8 }));
+		flow = flowOf(addSegment(flow, 'chant'));
+		const members = [{ memberId: 'm1', role: '上層' }];
+		const base = { category: 'stunt', name: 'Lib', note: '', members } as const;
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's1', start: 36, length: 16 }));
+		flow = flowOf(addAction(flow, { ...base, segmentId: 's2', start: 0, length: 30 }));
+		flow = flowOf(placeCue(flow, 'x1', { kind: 'step', at: 0, len: 2, word: '落地', who: { role: '上層' } }));
+		flow = flowOf(addPhase(flow, 'x1', { kind: 'load', name: 'Ext', beats: { at: 0, len: 4 } }));
+		return flowOf(addPhase(flow, 'x2', { kind: 'load', name: '' }));
+	}
+	const HAN = /\p{Script=Han}/u;
+
+	it('音樂段：格子、小窗、複製的提示都照語言寫，沒有中文', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		renderGrid(english());
+		const grid = within(screen.getByRole('group', { name: 'Cues' }));
+		expect(grid.getByRole('button', { name: 'Phase Load Ext 3-3 to 3-4' })).toBeTruthy();
+		await fireEvent.click(grid.getByRole('button', { name: '3-3' }));
+		const pop = within(grid.getByRole('dialog', { name: 'Cue pop-up' }));
+		expect(pop.getByText(/^Selected/).textContent).toBe('Selected 3-3 · 1 beat');
+		await fireEvent.click(pop.getByRole('button', { name: 'Copy selected cues' }));
+		expect(pop.getByRole('status').textContent).toBe('Copied 1 cue. Pick a beat and press “Paste” or ⌘V');
+		expect(document.body.innerHTML).not.toMatch(HAN);
+	});
+
+	it('口號段：環節那一列和改環節照語言寫，沒有中文', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const flow = english();
+		const { editor, session } = testEditor(flow);
+		session.selectAction('x2');
+		render(TestSession, { props: { editor, component: CueGrid, props: { action: flow.actions[1], cellAt: fakeCellAt } } });
+		expect(screen.getByText('Cheer segments have no counts, so no cues')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Phase Load' }));
+		expect(screen.getByRole('group', { name: 'Edit phase' })).toBeTruthy();
+		expect(document.body.innerHTML).not.toMatch(HAN);
 	});
 });
