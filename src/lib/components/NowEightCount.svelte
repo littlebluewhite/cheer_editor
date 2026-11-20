@@ -214,6 +214,12 @@
 		text-overflow: ellipsis;
 		cursor: pointer;
 	}
+	/* 觸控螢幕：右邊欄的按鈕一律 40px（app.css），動作名字縮回 28px，不然每排撐太高 */
+	@media (pointer: coarse) {
+		.slot .lane .name {
+			min-height: 28px;
+		}
+	}
 	.name:hover {
 		text-decoration: underline;
 	}

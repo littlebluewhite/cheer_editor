@@ -251,12 +251,12 @@
 	const viewOnly = $derived(!!cloud?.viewOnly || linkOnly);
 	/** 被鎖成檢視模式之前在檢視模式嗎：解開（變寬、連回來）時回到原本的模式。 */
 	let viewingBeforeLock = false;
-	/** 手機上點了動作名字，捲到下面誰做這個動作（只在點的時候捲，切到手機畫面時不捲走前後八拍）。 */
-	let phoneDetail = $state<HTMLElement>();
-	async function pickOnPhone(id: string | null) {
+	/** 前後八拍裡點了動作名字，捲到下面誰做這個動作（只在點的時候捲，換畫面時不捲走前後八拍）。手機、電腦同時只有一個在畫面上。 */
+	let pickedDetail = $state<HTMLElement>();
+	async function pickAction(id: string | null) {
 		session.selectAction(id);
 		await tick();
-		if (id) phoneDetail?.scrollIntoView?.({ block: 'nearest' });
+		if (id) pickedDetail?.scrollIntoView?.({ block: 'nearest' });
 	}
 	let locked = false;
 	// 變窄就是檢視模式；變寬（iPad 轉成橫的）回到原本的模式。只能看的時候不能改
@@ -1111,10 +1111,10 @@
 							after={1}
 							onjump={(s) => playback.seek(s)}
 							picked={session.selectedActionId}
-							onpick={pickOnPhone}
+							onpick={pickAction}
 						/>
 						{#if session.selectedAction}
-							<div bind:this={phoneDetail}>
+							<div bind:this={pickedDetail}>
 								<ActionDetail {flow} action={session.selectedAction} />
 							</div>
 						{/if}
@@ -1300,12 +1300,12 @@
 							after={3}
 							onjump={(s) => playback.seek(s)}
 							picked={session.selectedActionId}
-							onpick={(id) => session.selectAction(id)}
+							onpick={pickAction}
 						/>
 						{#if session.selectedAction}
-							<ActionDetail {flow} action={session.selectedAction} />
+							<div bind:this={pickedDetail}><ActionDetail {flow} action={session.selectedAction} /></div>
 						{:else}
-							<p class="view-hint">點時間軸上的動作，這裡看得到人、任務角色、拍點、備註。</p>
+							<p class="view-hint">點上面的動作名字或時間軸上的動作，這裡看得到人、任務角色、拍點、備註。</p>
 						{/if}
 					</div>
 				{/if}
@@ -1751,14 +1751,14 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 	/* 手機的檢視畫面：上面場地（吃剩下的高度）、中間播放區、「我」、下面前後八拍（太長自己捲）。
-	   前後八拍固定高（畫面夠高時 25dvh，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
+	   前後八拍固定高（畫面夠高時 34dvh，夠放這個和下一個八拍的格子，放不下自己捲）：播放時換列、內容變長變短，場地和播放鈕不上下跳（#210） */
 	.phone-view {
 		position: relative;
 		grid-column: 1 / -1;
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, 25dvh) auto;
+		grid-template-rows: minmax(160px, 1fr) auto auto minmax(0, 34dvh) auto;
 	}
 	/* 為什麼不能編（請轉成橫的、太窄、太矮）：一行字放最下面，不跟場地搶位置；黃底深字，看得出是提醒 */
 	.phone-why {

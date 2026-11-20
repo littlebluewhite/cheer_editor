@@ -138,7 +138,7 @@ describe('檢視模式', () => {
 		const now = screen.getByRole('region', { name: '前後八拍' });
 		expect(now.textContent).toContain('Lib');
 		const panel = screen.getByRole('complementary', { name: '右邊欄' });
-		expect(panel.textContent).toContain('點時間軸上的動作');
+		expect(panel.textContent).toContain('點上面的動作名字或時間軸上的動作');
 
 		// 選「我」：這一列只看我的
 		await fireEvent.change(me, { target: { value: 'm2' } });
