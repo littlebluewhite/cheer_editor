@@ -211,12 +211,14 @@ describe('動作名稱和備註的字數', () => {
 		expect(addAction(sample(), lib({ name: '字'.repeat(20), note: '字'.repeat(200) })).kind).toBe('ok');
 		expect(addAction(sample(), lib({ name: '字'.repeat(21) }))).toEqual({
 			kind: 'blocked',
-			message: '動作名稱最多 20 個字'
+			message: '動作名稱最多 20 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_action_name' }, max: 20 }
 		});
 		const flow = flowOf(addAction(sample(), lib()));
 		expect(updateAction(flow, 'x1', { note: '字'.repeat(201) })).toEqual({
 			kind: 'blocked',
-			message: '備註最多 200 個字'
+			message: '備註最多 200 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_note' }, max: 200 }
 		});
 	});
 

@@ -82,12 +82,13 @@ describe('放拍點', () => {
 	});
 
 	it.each([
-		['超出動作', { at: 6, len: 4, word: 'down' }, '拍點要在動作裡面'],
-		['在動作之前', { at: -2, len: 2, word: 'down' }, '拍點要在動作裡面'],
-		['不到一拍', { at: 0, len: 1, word: 'down' }, '拍點要佔整數拍，至少 1 拍'],
-		['不是整數拍', { at: 0, len: 3, word: 'down' }, '拍點要佔整數拍，至少 1 拍']
-	])('不合規則被擋（%s）', (_, input, message) => {
-		expect(placeCue(sample(), 'x1', { kind: 'count', ...input })).toEqual({ kind: 'blocked', message });
+		['超出動作', { at: 6, len: 4, word: 'down' }, '拍點要在動作裡面', 'beat_range_cue_inside'],
+		['在動作之前', { at: -2, len: 2, word: 'down' }, '拍點要在動作裡面', 'beat_range_cue_inside'],
+		['不到一拍', { at: 0, len: 1, word: 'down' }, '拍點要佔整數拍，至少 1 拍', 'beat_range_cue_whole_beats'],
+		['不是整數拍', { at: 0, len: 3, word: 'down' }, '拍點要佔整數拍，至少 1 拍', 'beat_range_cue_whole_beats'],
+		['不在半拍上', { at: 0.5, len: 2, word: 'down' }, '拍點要落在半拍上', 'beat_range_cue_half_beat']
+	])('不合規則被擋（%s）', (_, input, message, code) => {
+		expect(placeCue(sample(), 'x1', { kind: 'count', ...input })).toEqual({ kind: 'blocked', message, why: { code } });
 	});
 
 	it('拍子用別的字被擋', () => {
@@ -575,7 +576,14 @@ describe('複製、貼上拍點', () => {
 		const flow = withCues();
 		// 動作 4 拍，從第 4 拍貼 2 拍長的 down：多出 1 拍
 		const r = pasteCues(flow, 'x1', 6, copyCues(action(flow), 0, 4));
-		expect(r).toEqual({ kind: 'blocked', message: '貼不下：拍點會超出動作的結尾 1 拍' });
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: '貼不下：拍點會超出動作的結尾 1 拍',
+			why: {
+				code: 'cues_paste_blocked',
+				reason: { code: 'cues_paste_over_end', length: { code: 'time_length_beat_one', n: 1 } }
+			}
+		});
 	});
 
 	it('沒有拍點可以貼就擋下', () => {
@@ -592,11 +600,10 @@ describe('複製、貼上拍點', () => {
 			message: '貼不下：手位只佔一拍',
 			why: { code: 'cues_paste_blocked', reason: { code: 'cues_motion_one_beat' } }
 		});
-		// 拍的範圍的規則（beat-range）還沒改代號：包著中文
 		expect(pasteCues(sample(), 'x1', 0.5, [count(0, 2, 'down')])).toEqual({
 			kind: 'blocked',
 			message: '貼不下：拍點要落在半拍上',
-			why: { code: 'cues_paste_blocked', reason: '拍點要落在半拍上' }
+			why: { code: 'cues_paste_blocked', reason: { code: 'beat_range_cue_half_beat' } }
 		});
 	});
 });

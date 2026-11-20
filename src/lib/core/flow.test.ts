@@ -44,7 +44,8 @@ describe('建立流程', () => {
 		expect(createFlow({ name: ` ${'字'.repeat(40)} `, field }).kind).toBe('ok');
 		expect(createFlow({ name: '字'.repeat(41), field })).toEqual({
 			kind: 'blocked',
-			message: '流程名字最多 40 個字'
+			message: '流程名字最多 40 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_flow_name' }, max: 40 }
 		});
 	});
 
@@ -72,7 +73,8 @@ describe('改流程名字', () => {
 		expect(renameFlow(flow(), '字'.repeat(40)).kind).toBe('ok');
 		expect(renameFlow(flow(), '字'.repeat(41))).toEqual({
 			kind: 'blocked',
-			message: '流程名字最多 40 個字'
+			message: '流程名字最多 40 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_flow_name' }, max: 40 }
 		});
 	});
 

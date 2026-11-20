@@ -42,9 +42,8 @@ export interface NewFlowInput {
 
 /**
  * 流程名字哪裡不行（頭尾空白先去掉；before：改之前的名字，開檔進來就超過上限的可以留著，不能更長）；沒問題是 null。
- * 太長還是中文（tooLong 跟隊員、動作、站位、任務角色共用，還沒改成代號）。
  */
-export function flowNameProblem(name: string, before?: string): string | Why | null {
+export function flowNameProblem(name: string, before?: string): Why | null {
 	const trimmed = name.trim();
 	return trimmed ? tooLong('flowName', trimmed, before) : { code: 'flow_no_name' };
 }
