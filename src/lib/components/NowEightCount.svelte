@@ -1,8 +1,12 @@
 <script lang="ts">
-	// 檢視模式的前後八拍：播放頭那個八拍寫完整、這一拍那格亮，前後的八拍各一行（點了跳過去）。
-	// 電腦的右邊欄前三個、這個、後三個；手機放不下，只放這個和下一個（docs/adr/0005-ipad-touch.md）。
-	// 選了「我」就是我的個人表（我的動作、任務角色、走位），沒選是全隊。列的內容都問流程核心。
+	// 檢視模式的前後八拍：一個八拍一列，每列都畫成八格（像編輯模式的拍點格子），前後的八拍也看得清楚在做什麼。
+	// 每列上面一行寫第幾個八拍、這一列開始的站位（和「我」的走位），下面 1–8 的數字格，再下面這一列碰到的每個動作一排：
+	// 動作名字（點了在下面看人和任務角色）、拍點和環節；沒拍點的畫一條色條標佔的格子。列裡不寫一長串人。
+	// 播放頭那個八拍框起來、這一拍那格亮；點前後的八拍跳過去。
+	// 電腦前一個、這個、後三個；手機放不下，只放這個和下一個（docs/adr/0005-ipad-touch.md）。
+	// 選了「我」就只寫我的動作、拍點和任務角色，沒選是全隊。列的內容都問流程核心。
 	import { actionLabel, eightCountRows, nearbyEights, type EightCountRow, type Flow } from '#lib/core';
+	import { actionColor } from './category-colors';
 	import EightCountCueLine from './EightCountCueLine.svelte';
 
 	interface Props {
@@ -16,25 +20,33 @@
 		after: number;
 		/** 點前後的八拍：播放頭跳到那個八拍的第 1 拍（全域秒數）。 */
 		onjump: (sec: number) => void;
+		/** 點到的動作（名字標起來）；沒點是 null。 */
+		picked: string | null;
+		/** 點動作名字：選它（再點一次取消）。 */
+		onpick: (actionId: string | null) => void;
 	}
 
-	let { flow, memberId, sec, before, after, onjump }: Props = $props();
+	let { flow, memberId, sec, before, after, onjump, picked, onpick }: Props = $props();
 
 	// 列只跟著流程和「我」重算；播放頭動只換位置和亮的那格。
 	const rows = $derived(eightCountRows(flow, memberId || null, false));
 	const near = $derived(nearbyEights(flow, memberId || null, sec, before, after, rows));
 
 	const where = (r: EightCountRow) => (r.eight === null ? r.segmentLabel : `${r.segmentLabel} 第 ${r.eight} 個八拍`);
-	/** 前後的八拍只寫一行：開始的動作（和誰）、繼續的動作、我的走位、站位。 */
+	/** 前後八拍的讀屏說明：動作、站位、我的走位。 */
 	const summary = (r: EightCountRow) =>
-		[
-			...r.actions.map((a) => `${actionLabel(a)}${a.who ? `：${a.who}` : ''}`),
-			...r.continuing.map((name) => `↳ ${name}`),
-			...r.walks,
-			...r.formations.map((f) => f.caption)
-		].join('　');
-	/** 換段的那一列（段的第一個八拍、口號段）前面寫段名（這個八拍的標題本來就寫）。 */
+		[...r.lanes.map((l) => `${l.continued ? '↳ ' : ''}${actionLabel(l)}`), ...r.formations.map((f) => f.caption), ...r.walks].join('　');
+	/** 換段的那一列（段的第一個八拍、口號段）前面寫段名；這個八拍一律寫。 */
 	const newSegment = (r: EightCountRow) => r.eight === null || r.eight === 1;
+	const colorOf = (id: string) => {
+		const a = flow.actions.find((x) => x.id === id);
+		return a ? actionColor(a) : 'var(--muted)';
+	};
+	/** 點列的空白處也跳過去（鍵盤用列頭的按鈕）；點動作名字不跳。 */
+	function rowClick(e: MouseEvent, row: EightCountRow) {
+		if ((e.target as HTMLElement).closest('button')) return;
+		onjump(row.startSec);
+	}
 </script>
 
 <section class="now-eight" aria-label="前後八拍">
@@ -42,40 +54,60 @@
 		{#each near.rows as row, i (i)}
 			{#if !row}
 				<div class="slot blank" data-slot="" aria-hidden="true"></div>
-			{:else if i === before}
-				<div class="slot now" class:whole={near.beat === null} data-slot={row.eight ?? '整段'} aria-current="step">
-					<header>
-						<b>{row.segmentLabel}</b>
-						<span>{row.eight === null ? row.eightText : `第 ${row.eightText} 個八拍`}</span>
-					</header>
-					{#each row.actions as a, j (j)}
-						<div class="action"><b class="at">{a.at}</b> {actionLabel(a)}{#if a.who}：{a.who}{/if}</div>
-					{/each}
-					{#each row.ongoing as a, j (j)}
-						<div class="muted">↳ {actionLabel(a)} 繼續・{a.at}{#if a.who}：{a.who}{/if}</div>
-					{/each}
-					{#each row.walks as w, j (j)}
-						<div>{w}</div>
-					{/each}
-					{#each row.formations as f (f.number)}
-						<div class="muted">{f.caption}</div>
-					{/each}
-					{#if !row.actions.length && !row.ongoing.length && !row.walks.length && !row.formations.length}
-						<div class="muted">這個八拍沒有新的動作、站位</div>
-					{/if}
-					{#each row.cues as line, j (j)}
-						<EightCountCueLine {line} eight={row.eight} now={near.half} />
-					{:else}
-						<!-- 沒有拍點也畫 1–8，這一拍那格照樣亮 -->
-						{#if row.eight !== null}<EightCountCueLine line={null} eight={row.eight} now={near.half} />{/if}
-					{/each}
-				</div>
 			{:else}
-				<button type="button" class="slot near" data-slot={row.eight ?? '整段'} aria-label="跳到{where(row)}：{summary(row)}" onclick={() => onjump(row.startSec)}>
-					{#if newSegment(row)}<span class="seg">{row.segmentLabel}</span>{/if}
-					<span class="num">{row.eight ?? '整段'}</span>
-					<span class="sum">{summary(row)}</span>
-				</button>
+				{@const now = i === before}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (鍵盤用列頭的「跳到…」按鈕) -->
+				<div
+					class="slot"
+					class:now
+					class:near={!now}
+					class:whole={now && near.beat === null}
+					data-slot={row.eight ?? '整段'}
+					aria-current={now ? 'step' : undefined}
+					onclick={now ? undefined : (e) => rowClick(e, row)}
+				>
+					{#snippet head()}
+						{#if now || newSegment(row)}<b class="seg">{row.segmentLabel}</b>{/if}
+						<span class="num">{row.eight === null ? row.eightText : `第 ${row.eightText} 個八拍`}</span>
+						{#each row.formations as f (f.number)}<span class="tag">{f.caption}</span>{/each}
+						{#each row.walks as w, j (j)}<span class="tag">{w}</span>{/each}
+					{/snippet}
+					{#if now}
+						<header class="head">{@render head()}</header>
+					{:else}
+						<button type="button" class="head" aria-label="跳到{where(row)}：{summary(row)}" onclick={() => onjump(row.startSec)}>{@render head()}</button>
+					{/if}
+					{#if row.eight !== null}
+						<!-- 沒有拍點也畫 1–8，這一拍那格照樣亮 -->
+						<EightCountCueLine line={null} eight={row.eight} now={now ? near.half : null} />
+					{/if}
+					{#each row.lanes as lane (lane.actionId)}
+						<div class="lane">
+							<button
+								type="button"
+								class="name"
+								class:picked={picked === lane.actionId}
+								aria-pressed={picked === lane.actionId}
+								title="看誰做這個動作"
+								onclick={() => onpick(picked === lane.actionId ? null : lane.actionId)}
+								>{lane.continued ? '↳ ' : ''}{actionLabel(lane)}{#if lane.role}<span class="role">{lane.role}</span>{/if}</button
+							>
+							{#if row.eight !== null}
+								<EightCountCueLine
+									line={lane}
+									eight={row.eight}
+									now={now ? near.half : null}
+									named={false}
+									numbers={false}
+									bar={{ from: lane.from, to: lane.to, color: colorOf(lane.actionId) }}
+								/>
+							{/if}
+						</div>
+					{/each}
+					{#if now && !row.lanes.length && !row.formations.length && !row.walks.length}
+						<div class="muted">這個八拍沒有動作、站位</div>
+					{/if}
+				</div>
 			{/if}
 		{/each}
 	{:else}
@@ -87,7 +119,7 @@
 	.now-eight {
 		display: grid;
 		align-content: start;
-		gap: 2px;
+		gap: 6px;
 		min-height: 0;
 		overflow-y: auto;
 		padding: 8px;
@@ -95,87 +127,107 @@
 		background: var(--surface);
 		font-size: 13px;
 	}
-	/* 前後的八拍和空格一樣高：這個八拍一直在同一個位置 */
-	.slot.near,
 	.slot.blank {
-		height: 26px;
+		display: none;
 	}
-	/* 觸控螢幕的按鈕至少 40px（app.css）：空格跟著一樣高，不然開頭幾個八拍這個八拍會往下掉 */
-	@media (pointer: coarse) {
-		.slot.near,
-		.slot.blank {
-			height: 40px;
-		}
+	.slot {
+		display: grid;
+		gap: 2px;
+		padding: 6px 8px;
+		border: 2px solid transparent;
+		border-radius: var(--radius);
 	}
 	.slot.near {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-		justify-content: flex-start;
-		width: 100%;
-		min-width: 0;
-		padding: 0 6px;
-		border: none;
-		border-radius: var(--radius-sm);
-		background: none;
-		color: var(--muted);
-		font: inherit;
-		text-align: left;
 		cursor: pointer;
 	}
 	.slot.near:hover {
 		background: var(--paper);
-		color: var(--text);
 	}
-	.seg {
-		flex-shrink: 0;
-		font-weight: 600;
-		color: var(--text);
-	}
-	.num {
-		flex: 0 0 2.5em;
-		font-variant-numeric: tabular-nums;
-		font-weight: 600;
-	}
-	.sum {
-		min-width: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-	/* 這個八拍：框起來，寫完整 */
+	/* 這個八拍：框起來 */
 	.slot.now {
-		display: grid;
-		gap: 4px;
-		margin: 2px 0;
-		padding: 8px 10px;
-		border: 2px solid var(--now);
-		border-radius: var(--radius);
+		border-color: var(--now);
 	}
 	/* 口號段不數拍：整列亮 */
 	.slot.now.whole {
 		background: color-mix(in srgb, var(--now) 12%, transparent);
 	}
-	/* 這一列在哪：比內容大一號，手機上一眼看得到 */
-	header {
+	.head {
 		display: flex;
-		gap: 8px;
+		flex-wrap: wrap;
+		gap: 4px 8px;
 		align-items: baseline;
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--text);
+		font: inherit;
+		text-align: left;
+		cursor: inherit;
+	}
+	.slot.near .head {
+		min-height: 0;
+	}
+	/* 這一列在哪：這個八拍比內容大一號，手機上一眼看得到 */
+	.slot.now .head {
 		font-size: 15px;
+	}
+	.seg {
 		font-weight: 600;
 	}
-	.at {
+	.num {
+		font-weight: 600;
 		font-variant-numeric: tabular-nums;
+	}
+	.slot.near .num {
+		color: var(--muted);
+	}
+	/* 這一列開始的站位、我的走位：小標 */
+	.tag {
+		padding: 0 6px;
+		border-radius: 999px;
+		background: var(--paper);
+		border: 1px solid var(--line);
+		font-size: 12px;
+		font-weight: 400;
+	}
+	.lane {
+		display: grid;
+		gap: 1px;
+	}
+	.name {
+		justify-self: start;
+		max-width: 100%;
+		min-height: 0;
+		padding: 0 4px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: none;
+		color: var(--text);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		text-align: left;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+	.name:hover {
+		text-decoration: underline;
+	}
+	.name.picked {
+		background: color-mix(in srgb, var(--now) 15%, transparent);
+	}
+	.role {
+		margin-left: 6px;
+		font-weight: 400;
+		color: var(--muted);
 	}
 	.muted {
 		color: var(--muted);
 	}
-	/* 拍點那一排的動作名字放上面一行，8 格拿整個寬度 */
 	.now-eight :global(.cue-line) {
-		flex-wrap: wrap;
-	}
-	.now-eight :global(.cue-name) {
-		flex-basis: 100%;
+		margin: 0;
 	}
 	/* 1–8 的數字在畫面上要看得清楚（列印的淡灰對比不到 4.5:1） */
 	.now-eight :global(.n:not(.lit)) {

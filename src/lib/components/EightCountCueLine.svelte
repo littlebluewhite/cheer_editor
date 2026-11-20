@@ -9,9 +9,15 @@
 		eight: number | null;
 		/** 播放頭在第幾個半拍（0–15）：那一拍的數字格和正在響的拍點亮。八拍表（列印）不給。 */
 		now?: number | null;
+		/** 寫動作名字（前後八拍自己寫成按鈕，這裡就不寫）。 */
+		named?: boolean;
+		/** 畫 1–8 的數字格（前後八拍一列只在最上面畫一次）。 */
+		numbers?: boolean;
+		/** 沒拍點時畫一條色條，標動作佔第幾格到第幾格（前後八拍用）。 */
+		bar?: { from: number; to: number; color: string } | null;
 	}
 
-	let { line, eight, now = null }: Props = $props();
+	let { line, eight, now = null, named = true, numbers = true, bar = null }: Props = $props();
 
 	const beat = $derived(now === null ? null : Math.floor(now / 2) + 1);
 
@@ -30,7 +36,7 @@
 </script>
 
 <div class="cue-line" role="group" aria-label={line ? `${name} 的拍點` : '這個八拍的拍'}>
-	{#if line}<span class="cue-name" title={name}>{name}</span>{/if}
+	{#if line && named}<span class="cue-name" title={name}>{name}</span>{/if}
 	<div class="beats">
 		{#if phases.length}
 			<div class="phases">
@@ -47,9 +53,14 @@
 			</div>
 		{/if}
 		<div class="cells">
-			{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
-				<span class="n" class:lit={n === beat} data-now={n === beat ? '' : undefined} style:grid-column={n}>{n}</span>
-			{/each}
+			{#if numbers}
+				{#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}
+					<span class="n" class:lit={n === beat} data-now={n === beat ? '' : undefined} style:grid-column={n}>{n}</span>
+				{/each}
+			{/if}
+			{#if bar && !cues.length}
+				<span class="bar" style:grid-column="{bar.from} / {bar.to + 1}" style:background={bar.color}></span>
+			{/if}
 			{#each cues as c, k (k)}
 				<span
 					class="cue {c.kind} {c.kind === 'count' ? c.word : ''}"
@@ -131,6 +142,12 @@
 	}
 	.cue.lit {
 		box-shadow: 0 0 0 2px var(--now);
+	}
+	/* 沒拍點的動作：佔的格子一條細色條 */
+	.bar {
+		height: 6px;
+		margin: 3px 2px 1px;
+		border-radius: 3px;
 	}
 	.cue {
 		margin: 0 2px;

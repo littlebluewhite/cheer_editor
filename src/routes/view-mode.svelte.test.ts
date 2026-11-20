@@ -157,7 +157,7 @@ describe('檢視模式', () => {
 		expect(detail.querySelectorAll('input, select, textarea, button')).toHaveLength(0);
 	});
 
-	it('前後八拍：前三個、這個、後三個八拍，這個在中間；這一拍那格亮；點別的八拍跳過去', async () => {
+	it('前後八拍：前一個、這個、後三個八拍；這一拍那格亮；點別的八拍跳過去', async () => {
 		// 範例流程：音樂 1 有 4 個八拍（150 BPM，一個八拍 3.2 秒、一拍 0.4 秒），Lib 在第 1 個八拍
 		const { editor, props } = editorPage(libSample());
 		render(Page, props);
@@ -166,9 +166,9 @@ describe('檢視模式', () => {
 		await tick();
 		const near = screen.getByRole('region', { name: '前後八拍' });
 		const slots = near.querySelectorAll('[data-slot]');
-		expect(slots).toHaveLength(7);
-		// 開頭前面不夠兩格：空的
-		expect([...slots].map((s) => s.getAttribute('data-slot'))).toEqual(['', '', '1', '2', '3', '4', '']);
+		expect(slots).toHaveLength(5);
+		// 後面不夠三格：空的
+		expect([...slots].map((s) => s.getAttribute('data-slot'))).toEqual(['1', '2', '3', '4', '']);
 		const now = near.querySelector('[aria-current="step"]')!;
 		expect(now.getAttribute('data-slot')).toBe('2');
 		// 這一拍：第 3 格亮
@@ -178,6 +178,28 @@ describe('檢視模式', () => {
 		await fireEvent.click(within(near).getByRole('button', { name: /第 4 個八拍/ }));
 		expect(screen.getByLabelText('目前位置').textContent).toContain('4-1');
 		expect(near.querySelector('[aria-current="step"]')!.getAttribute('data-slot')).toBe('4');
+	});
+
+	it('前後八拍每個八拍都畫八格，列裡不寫一長串人；點動作名字，誰做這個動作出現在下面', async () => {
+		const { editor, props } = editorPage(libSample());
+		render(Page, props);
+		await fireEvent.click(viewBtn());
+		editor.playback.seek(3.2 + 0.1); // 2-1：前一個八拍（第 1 個）有 Lib
+		await tick();
+		const near = screen.getByRole('region', { name: '前後八拍' });
+		const before = near.querySelector('[data-slot="1"]')!;
+		expect(before.querySelectorAll('.n')).toHaveLength(8);
+		expect(before.textContent).not.toContain('小美');
+		await fireEvent.click(within(before as HTMLElement).getByRole('button', { name: /^技巧·Lib/ }));
+		expect(screen.getByRole('region', { name: '動作詳細' }).textContent).toContain('小美');
+		// 點名字只是看人，播放頭不動
+		expect(screen.getByLabelText('目前位置').textContent).toContain('2-1');
+	});
+
+	it('場地左上角一直寫播放頭這一刻的站位', async () => {
+		setup();
+		await fireEvent.click(viewBtn());
+		expect(document.querySelector('.formation-now')!.textContent).toBe('站位 1');
 	});
 
 	it('電腦的檢視模式選「我」：場上也標亮我', async () => {

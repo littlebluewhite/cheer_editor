@@ -5,6 +5,7 @@
 		memberMarkers,
 		positionText,
 		positionsAt,
+		formationNowText,
 		readJump,
 		layersAt,
 		squadBadge,
@@ -1075,6 +1076,7 @@
 				<!-- 手機的檢視畫面：上面場地、中間播放鈕、下面前後八拍（這個和下一個）。只能看、只能播放；場上的人拖不動 -->
 				<main class="phone-view">
 					<div class="phone-field">
+						<div class="formation-now">{formationNowText(flow, playback.sec)}</div>
 						<Field
 							field={flow.field}
 							members={flow.members}
@@ -1092,8 +1094,26 @@
 					<div class="phone-me">
 						{@render mePicker('（選自己：場上標亮我、八拍表只看我的）')}
 					</div>
-					<!-- 手機放不下七列：只放這個八拍和下一個 -->
-					<NowEightCount {flow} memberId={myId} sec={playback.sec} before={0} after={1} onjump={(s) => playback.seek(s)} />
+					<!-- 手機放不下五列：只放這個八拍和下一個；點動作名字，誰做這個動作接在下面 -->
+					<div class="phone-eights">
+						<NowEightCount
+							{flow}
+							memberId={myId}
+							sec={playback.sec}
+							before={0}
+							after={1}
+							onjump={(s) => playback.seek(s)}
+							picked={session.selectedActionId}
+							onpick={(id) => session.selectAction(id)}
+						/>
+						{#if session.selectedAction}
+							{#key session.selectedActionId}
+								<div {@attach (el) => el.scrollIntoView?.({ block: 'nearest' })}>
+									<ActionDetail {flow} action={session.selectedAction} />
+								</div>
+							{/key}
+						{/if}
+					</div>
 					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編（雲端流程有新版、斷線時寫那個） -->
 					<p class="phone-why">
 						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? OFFLINE : `檢視模式・只能看${whyViewOnly ? `（${whyViewOnly}）` : ''}`}
@@ -1105,6 +1125,8 @@
 		{:else}
 			<main class="field-host" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>
 				{#if session.viewing}
+					<!-- 左上角一直寫播放頭這一刻的站位（有人往下一張走了寫要去的那張） -->
+					<div class="formation-now">{formationNowText(flow, playback.sec)}</div>
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
 					<div class="view-badge">
 						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? '斷線了・連上才能改' : '檢視模式・只能看'}
@@ -1265,7 +1287,16 @@
 				{#if !session.editable}
 					<div class="panel view-panel">
 						<div class="view-me">{@render mePicker('（選自己：場上標亮我、前後八拍只看我的）')}</div>
-						<NowEightCount {flow} memberId={myId} sec={playback.sec} before={3} after={3} onjump={(s) => playback.seek(s)} />
+						<NowEightCount
+							{flow}
+							memberId={myId}
+							sec={playback.sec}
+							before={1}
+							after={3}
+							onjump={(s) => playback.seek(s)}
+							picked={session.selectedActionId}
+							onpick={(id) => session.selectAction(id)}
+						/>
 						{#if session.selectedAction}
 							<ActionDetail {flow} action={session.selectedAction} />
 						{:else}
@@ -1812,8 +1843,19 @@
 		flex: 1;
 		min-width: 0;
 	}
-	.phone-view :global(.now-eight) {
+	/* 前後八拍和點到的動作一起捲 */
+	.phone-eights {
+		min-height: 0;
 		max-height: 38dvh;
+		overflow-y: auto;
+		background: var(--surface);
+	}
+	.phone-eights :global(.now-eight) {
+		overflow: visible;
+	}
+	.phone-eights :global(.action-detail) {
+		padding: 8px 12px 12px;
+		border-top: 1px solid var(--line);
 	}
 	/* 手機橫拿：場地在左、播放區和八拍表在右，場地才不會被擠扁 */
 	@media (orientation: landscape) {
@@ -1828,7 +1870,7 @@
 			grid-column: 1;
 			grid-row: 1 / -1;
 		}
-		.phone-view :global(.now-eight) {
+		.phone-eights {
 			max-height: none;
 		}
 	}
@@ -2489,6 +2531,32 @@
 	}
 	.field-host.viewing {
 		box-shadow: inset 0 0 0 4px #ffc53d;
+	}
+	/* 檢視模式的站位名稱：場地左上角，白底深字 */
+	.formation-now {
+		position: absolute;
+		top: 18px;
+		left: 22px;
+		z-index: 5;
+		max-width: calc(100% - 44px);
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: var(--surface);
+		color: var(--text);
+		font-weight: 700;
+		font-size: 14px;
+		box-shadow: 0 2px 8px rgba(22, 33, 58, 0.15);
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		pointer-events: none;
+	}
+	.phone-field .formation-now {
+		top: 12px;
+		left: 12px;
+		max-width: calc(100% - 24px);
+		padding: 4px 10px;
+		font-size: 13px;
 	}
 	.view-badge {
 		position: absolute;

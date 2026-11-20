@@ -7,7 +7,7 @@ import { actionEights, beatSpanText } from './beat-range';
 import { cueForMember, whoName, type CueKind } from './cues';
 import type { Rect } from './field';
 import { memberName, type Flow } from './flow';
-import { formationWalks, memberWalk, type Position, type Walk } from './formation';
+import { currentFormation, formationWalks, memberWalk, type Position, type Walk } from './formation';
 import { phaseColor, phaseLabel } from './phase-types';
 import { squadNumber } from './success-rate';
 import {
@@ -99,6 +99,18 @@ export interface EightCountCueLine {
 	phases: EightCountPhase[];
 }
 
+/** 前後八拍一列裡的一個動作那一排（這一列開始的和做到一半的都有）：佔第幾格到第幾格，加上拍點和環節。 */
+export interface EightCountLane extends EightCountCueLine {
+	actionId: string;
+	/** 這一列的第幾格到第幾格（1–8）；口號段不數拍是 1 到 8。 */
+	from: number;
+	to: number;
+	/** 前面的列開始、做到這一列的。 */
+	continued: boolean;
+	/** 個人表寫他的任務角色；全隊和沒角色是空的。 */
+	role: string;
+}
+
 export interface EightCountRow {
 	/** 段名：音樂 1、口號 1… */
 	segmentLabel: string;
@@ -115,13 +127,13 @@ export interface EightCountRow {
 	actions: EightCountAction[];
 	/** 前面的列開始、延續到這一列的動作名字（沒取名字寫大類），印成「↳ Lib 繼續」。 */
 	continuing: string[];
-	/** 同 continuing 那幾個動作，寫完整（什麼時候、人、任務角色）：檢視模式的前後八拍用，動作開始那一列可能不在畫面上。 */
-	ongoing: EightCountAction[];
 	formations: EightCountFormation[];
 	/** 只印一個隊員時，他在這一列出發的走位：「2-5 出發 → 站位 3（3-1 到達）」。全隊是空的。 */
 	walks: string[];
 	/** 這一列的拍點：每個在這一列有拍點的動作一排；跨列的拍點兩列各寫自己那一段。 */
 	cues: EightCountCueLine[];
+	/** 檢視模式的前後八拍：這一列碰到的每個動作一排（沒拍點的也有）。 */
+	lanes: EightCountLane[];
 }
 
 /**
@@ -162,31 +174,9 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 			const end = Math.min(to, units(segment));
 			const durationSec = toSeconds(flow, { segmentId: segment.id, at: end }) - sec;
 			const carried = inSegment.filter((a) => a.start < from && a.start + a.length > from);
-			return {
-				segmentLabel: label,
-				eight,
-				lastEight: eight,
-				eightText: eight === null ? `整段 ${durationSec.toFixed(1)} 秒` : `${eight}`,
-				startSec: sec,
-				durationSec,
-				actions: inSegment.filter((a) => a.start >= from && a.start < to).map(describe),
-				continuing: carried.map((a) => a.name || categoryLabel(a.category)),
-				ongoing: carried.map(describe),
-				formations: flow.formations.flatMap((f, i) => {
-					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
-					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}${departText(flow, f.id, memberId)}`;
-					return [{ number: i + 1, name: f.name, at: at(f.at), caption, pos: f.pos }];
-				}),
-				walks: walks
-					.filter(
-						({ walk: { depart } }) =>
-							depart.segmentId === segment.id && depart.at >= from && depart.at < to
-					)
-					.map(({ number, walk }) => {
-						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
-						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到達）`;
-					}),
-				cues: inSegment.flatMap((a) => {
+			const lanes = inSegment
+				.filter((a) => a.start < to && a.start + a.length > from)
+				.map((a): EightCountLane => {
 					// 個人表只切給他的拍點；口號段整段一列，沒有拍點、標的拍
 					const mine = (a.cues ?? []).filter((c) => memberId === null || cueForMember(c, a, memberId));
 					const slice = actionEights(a, mine).find((e) => e.eight + 1 === eight);
@@ -209,10 +199,44 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 						color: phaseColor(phase),
 						row
 					}));
-					return cues.length || phases.length
-						? [{ category: a.category, name: a.name, cues, phases }]
-						: [];
-				})
+					const music = eight !== null;
+					return {
+						actionId: a.id,
+						category: a.category,
+						name: a.name,
+						from: music ? Math.floor((Math.max(a.start, from) - from) / HALF_BEATS_PER_BEAT) + 1 : 1,
+						to: music ? Math.ceil((Math.min(a.start + a.length, to) - from) / HALF_BEATS_PER_BEAT) : 8,
+						continued: a.start < from,
+						role: (memberId !== null && a.members[0]?.role) || '',
+						cues,
+						phases
+					};
+				});
+			return {
+				segmentLabel: label,
+				eight,
+				lastEight: eight,
+				eightText: eight === null ? `整段 ${durationSec.toFixed(1)} 秒` : `${eight}`,
+				startSec: sec,
+				durationSec,
+				actions: inSegment.filter((a) => a.start >= from && a.start < to).map(describe),
+				continuing: carried.map((a) => a.name || categoryLabel(a.category)),
+				formations: flow.formations.flatMap((f, i) => {
+					if (f.segmentId !== segment.id || f.at < from || f.at >= to) return [];
+					const caption = `站位 ${i + 1}${f.name ? ` ${f.name}` : ''}・${at(f.at)}${departText(flow, f.id, memberId)}`;
+					return [{ number: i + 1, name: f.name, at: at(f.at), caption, pos: f.pos }];
+				}),
+				walks: walks
+					.filter(
+						({ walk: { depart } }) =>
+							depart.segmentId === segment.id && depart.at >= from && depart.at < to
+					)
+					.map(({ number, walk }) => {
+						const time = (p: TimePosition) => timeTextWithUnit(flow, segment.id, p);
+						return `${time(walk.depart)} 出發 → 站位 ${number}（${time(walk.arrive)} 到達）`;
+					}),
+				cues: lanes.filter((l) => l.cues.length || l.phases.length).map(({ category, name, cues, phases }) => ({ category, name, cues, phases })),
+				lanes
 			};
 		};
 		if (segment.kind === 'music') {
@@ -272,6 +296,18 @@ export function nearbyEights(
 	const half = segment?.kind === 'music' ? Math.floor(pos!.at % HALF_BEATS_PER_EIGHT) : null;
 	const beat = half === null ? null : Math.floor(half / HALF_BEATS_PER_BEAT) + 1;
 	return { rows: slots, beat, half };
+}
+
+/**
+ * 檢視模式場地角落寫的站位：播放頭這一刻的「站位 13 三層直下」。
+ * 已經有人出發往下一張走了，就寫要去的那張，前面加箭頭「→ 站位 14 …」；到了就拿掉箭頭。
+ */
+export function formationNowText(flow: Flow, sec: number): string {
+	const { formation, number } = currentFormation(flow, sec);
+	const next = flow.formations[number];
+	const text = (n: number, f: { name?: string }) => `站位 ${n}${f.name ? ` ${f.name}` : ''}`;
+	if (next && formationWalks(flow, next.id).some((w) => w.departSec <= sec + EPS)) return `→ ${text(number + 1, next)}`;
+	return text(number, formation);
 }
 
 const withRole = (m: { name: string; role: string | null }) => (m.role ? `${m.name}（${m.role}）` : m.name);

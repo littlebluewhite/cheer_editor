@@ -67,7 +67,11 @@ describe('手機的檢視模式', () => {
 		await fireEvent.change(me(), { target: { value: 'm2' } });
 		expect(dot('m2').classList.contains('selected')).toBe(true);
 		expect(dot('m1').classList.contains('selected')).toBe(false);
-		expect(row().textContent).toContain('主底・第 1 組・同組：小美（上層）');
+		// 列裡只寫我的任務角色；點動作名字，同組的人寫在下面
+		expect(row().textContent).toContain('主底');
+		expect(row().textContent).not.toContain('小美');
+		await fireEvent.click(within(row()).getByRole('button', { name: /^技巧·Lib/ }));
+		expect(screen.getByRole('region', { name: '動作詳細' }).textContent).toContain('小美');
 		expect(session.unsaved).toBe(false);
 	});
 
