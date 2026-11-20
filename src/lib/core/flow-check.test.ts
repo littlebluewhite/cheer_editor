@@ -145,7 +145,7 @@ const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
 		'隊員名字最多 20 個字',
 		'text_length_too_long'
 	],
-	['隊員沒有名字', (f) => ({ ...f, members: f.members.map((m) => (m.id === 'm1' ? { ...m, name: '' } : m)) }), '請填隊員名字'],
+	['隊員沒有名字', (f) => ({ ...f, members: f.members.map((m) => (m.id === 'm1' ? { ...m, name: '' } : m)) }), '請填隊員名字', 'members_no_name'],
 	['動作名稱太長', (f) => withX1(f, { name: 'L'.repeat(21) }), `動作「技巧·${'L'.repeat(21)}」：動作名稱最多 20 個字`, 'flow_check_in_action'],
 	['備註太長', (f) => withX1(f, { note: '慢'.repeat(201) }), '動作「技巧·Lib」：備註最多 200 個字', 'flow_check_in_action'],
 	[

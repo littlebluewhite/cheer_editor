@@ -91,8 +91,7 @@ describe('雲端流程一步一步存', () => {
 		await fireEvent.change(screen.getByLabelText('第 4 位隊員的名字'), { target: { value: '芳芳' } });
 		await flush();
 
-		// 流程核心的原因還是中文（之後也改送代號）
-		expect(s.page.session.notice).toBe('Not saved: 找不到這個隊員');
+		expect(s.page.session.notice).toBe("Not saved: Can't find this athlete");
 	});
 
 	it('有新版：提示「有新版，請重新整理」，不能改', async () => {
