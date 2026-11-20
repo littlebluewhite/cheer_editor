@@ -74,7 +74,7 @@ export function addMembers(flow: Flow, inputs: NewMemberInput[]): CommandResult<
 
 /**
  * 貼上的名單加隊員：每一行是「名字」（用表單選的性別、全局角色）或「名字、性別、全局角色」三欄。
- * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白），性別後面不只一個字就全部當全局角色（top person）。
+ * 三欄用 Tab 或逗號隔開；用空白隔開時，最後兩段像性別或全局角色才當三欄（名字裡可以有空白），全局角色寫 top person 也算。
  * 性別認男、女、男生、女生、M、F，和選單上寫的 female、male、女性、男性；全局角色認底層、上層、base、top、飛人，
  * 和選單上寫的 top person、ベース、トップパーソン、トップ（英文不分大小寫）。
  * 全局角色寫成主底、後保這類任務角色：擋下並說明。三欄的行不用表單選的。空行、標題列（第一欄是「名字」「姓名」「name」「名前」）跳過。
@@ -145,18 +145,20 @@ function globalRoleOf(word: string): GlobalRole | null {
 
 /**
  * 一行切成幾欄：有 Tab 用 Tab 切，有逗號用逗號切；只有空白時，至少三段、而且最後兩段像性別或全局角色
- * （或任務角色、標題列）才切成「名字、性別、全局角色」，不然整行是名字。標題列每個字一欄（跳過用）；
- * 性別後面還有兩個字以上（top person、Back spot）就全部當全局角色那一欄，認不得會擋下，不會整行變成名字。
+ * （或任務角色、標題列）才切成「名字、性別、全局角色」，不然整行是名字。標題列（後面沒有性別的字）每個字一欄（跳過用）；
+ * 性別後面是兩個字的全局角色（top person）就併成一欄。
  */
 function columns(line: string): string[] {
 	if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
 	if (/[,，]/.test(line)) return line.split(/[,，]/).map((c) => c.trim());
 	const words = line.trim().split(/\s+/);
 	if (words.length < 3) return [line.trim()];
-	if (NAME_HEADERS.has(words[0].toLowerCase())) return words;
-	// 性別後面不只一個字：後面全部是全局角色那一欄（英文 top person、Back spot 這類兩個字的）
+	// 標題列（Name Gender Main role）：第一個字是標題、後面沒有性別的字
+	if (NAME_HEADERS.has(words[0].toLowerCase()) && !words.slice(1).some(genderOf)) return words;
+	// 性別後面是兩個字的全局角色（top person）才併成一欄；認不得的照舊（名字裡可以有 M、F 這種縮寫）
 	const g = words.findLastIndex((w, i) => i > 0 && genderOf(w));
-	if (g > 0 && g < words.length - 2) return [words.slice(0, g).join(' '), words[g], words.slice(g + 1).join(' ')];
+	if (g > 0 && g < words.length - 2 && globalRoleOf(words.slice(g + 1).join(' ')))
+		return [words.slice(0, g).join(' '), words[g], words.slice(g + 1).join(' ')];
 	const [gender, role] = words.slice(-2);
 	const looksLike =
 		genderOf(gender) ||
