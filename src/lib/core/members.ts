@@ -11,6 +11,7 @@ import { FIXED_ROLES } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
 import { perPerson, recordCount, recordItems, squadNumber, type Attempt } from './success-rate';
 import { charCount, firstChars, tooLong } from './text-length';
+import { said, type Why } from './why';
 import { fromText, segmentSpans } from './time';
 
 /** 一支流程最多幾個隊員。 */
@@ -151,7 +152,7 @@ function addEntries(flow: Flow, entries: Entry[]): CommandResult<AddMembersResul
 		if (!e.input) continue;
 		const { name, gender, globalRole } = e.input;
 		const problem = memberNameProblem(name.trim());
-		if (problem) e.problems.push(problem);
+		if (problem) e.problems.push(said(problem).message);
 		if (!gender) e.problems.push('請選性別');
 		if (!globalRole) e.problems.push('請選全局角色');
 	}
@@ -463,7 +464,7 @@ function samePlace(a: Position, b: Position): boolean {
 }
 
 /** 名字的毛病：空的、太長（before：改之前的名字，開檔進來就超過的可以留著，不能更長）；沒問題是 null。名字先去掉前後空白再傳進來。 */
-export function memberNameProblem(name: string, before?: string): string | null {
+export function memberNameProblem(name: string, before?: string): string | Why | null {
 	if (!name) return '請填隊員名字';
 	return tooLong('memberName', name, before);
 }
