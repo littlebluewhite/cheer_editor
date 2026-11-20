@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和檢視模式的「前後八拍」共用。
-	import { actionLabel, cueWhy, cueWordWhy, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
+	import { actionWhy, cueWhy, cueWordWhy, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
+	import { m } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
@@ -22,7 +23,7 @@
 
 	const beat = $derived(now === null ? null : Math.floor(now / 2) + 1);
 
-	const name = $derived(line ? actionLabel(line) : '');
+	const name = $derived(line ? whyText(actionWhy(line)) : '');
 	const cues = $derived(line?.cues ?? []);
 	const phases = $derived(line?.phases ?? []);
 
@@ -32,12 +33,12 @@
 
 	/** 「環節 上法 延伸 1-1 到 1-3」。 */
 	function phaseAria(p: EightCountPhase): string {
-		const span = p.to > p.from ? `${eight}-${p.from} 到 ${eight}-${p.to}` : `${eight}-${p.from}`;
-		return `環節 ${whyText(p.label)} ${span}`;
+		const range = p.to > p.from ? m.beat_range_range({ first: `${eight}-${p.from}`, last: `${eight}-${p.to}` }) : `${eight}-${p.from}`;
+		return m.cue_grid_phase_at({ phase: whyText(p.label), range });
 	}
 </script>
 
-<div class="cue-line" role="group" aria-label={line ? `${name} 的拍點` : '這個八拍的拍'}>
+<div class="cue-line" role="group" aria-label={line ? m.cue_grid_cues_of({ action: name }) : m.cue_grid_eight_beats()}>
 	{#if line && named}<span class="cue-name" title={name}>{name}</span>{/if}
 	<div class="beats">
 		{#if phases.length}
@@ -69,7 +70,7 @@
 					class:lit={now !== null && c.start <= now && now < c.end}
 					style:grid-column="{c.from} / {c.to + 1}"
 					aria-label={cueLabel(c)}
-					title={c.who ? `${word(c)}（${whyText(c.who)}）` : word(c)}
+					title={c.who ? m.eight_count_with_role({ name: word(c), role: whyText(c.who) }) : word(c)}
 					>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{word(c)}{#if c.who}<small>{whyText(c.who)}</small>{/if}{/if}</span
 				>
 			{/each}

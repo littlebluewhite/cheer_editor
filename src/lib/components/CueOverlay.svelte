@@ -1,8 +1,9 @@
 <script lang="ts">
 	// 場地左邊那一欄的大字：播放頭在有拍點的動作裡（或開始前一個八拍）時，每個動作一張卡，
 	// 寫現在這拍的步驟、拍子、手位（有長度的寫走到第幾拍），下面預告下一個。不吃滑鼠。
-	import { actionLabel, cueWordWhy, cuesAt, whoWhy, type Cue, type Flow } from '#lib/core';
+	import { actionWhy, cueWordWhy, cuesAt, whoWhy, type Cue, type Flow } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
@@ -15,14 +16,16 @@
 	const live = $derived(cuesAt(flow, playback.sec));
 	/** 「high V（上層）」；給全部的只寫字。 */
 	const word = (c: Cue) => whyText(cueWordWhy(c.kind, c.word));
-	const nextText = (c: Cue) => (c.who ? `${word(c)}（${whyText(whoWhy(flow, c.who))}）` : word(c));
+	const nextText = (c: Cue) => (c.who ? m.eight_count_with_role({ name: word(c), role: whyText(whoWhy(flow, c.who)) }) : word(c));
+	/** 「down、high V（上層）」。 */
+	const list = (xs: string[]) => xs.reduceRight((rest, first) => m.members_list({ first, rest }));
 </script>
 
 {#if live.length}
-	<section class="cues-now" aria-label="這一拍" aria-live="polite">
+	<section class="cues-now" aria-label={m.cue_grid_this_beat()} aria-live="polite">
 		{#each live as l (l.action.id)}
 			<div class="card">
-				<span class="act">{actionLabel(l.action)}</span>
+				<span class="act">{whyText(actionWhy(l.action))}</span>
 				{#if l.now.length}
 					<span class="now">
 						{#each l.now as n, i (i)}
@@ -36,7 +39,7 @@
 					</span>
 				{/if}
 				{#if l.next}
-					<span class="next">下一個 {l.next.at}：{l.next.cues.map(nextText).join('、')}</span>
+					<span class="next">{m.cue_grid_next({ at: l.next.at, cues: list(l.next.cues.map(nextText)) })}</span>
 				{/if}
 			</div>
 		{/each}

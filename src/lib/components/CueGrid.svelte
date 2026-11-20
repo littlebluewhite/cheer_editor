@@ -25,6 +25,8 @@
 	import { GAP, placeCuePop } from '#lib/cue-pop.js';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
+	// 改名 msg：這個檔的 m 是動作裡的一個人
+	import { m as msg } from '#lib/paraglide/messages.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { cellIn, firstCell, fits } from '#lib/beat-selection.svelte.js';
@@ -40,9 +42,10 @@
 		HALF_BEATS_PER_BEAT as BEAT,
 		MOTION_WORDS,
 		PHASE_COLORS,
-		PHASE_KINDS,
 		phaseKindsFor,
-		phaseLabel,
+		phaseKindWhy,
+		phaseWhy,
+		roleWhy,
 		STEP_WORDS,
 		actionEights,
 		beatSpanWhy,
@@ -90,16 +93,32 @@
 	const wordRows = $derived.by(() => {
 		const used = usedWords(flow);
 		return [
-			{ kind: 'step' as const, label: whyText(CUE_KIND_LABELS.step), words: [...STEP_WORDS, ...used.step], tip: '自己打，例：抬腳' },
-			{ kind: 'motion' as const, label: whyText(CUE_KIND_LABELS.motion), words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
+			{
+				kind: 'step' as const,
+				label: whyText(CUE_KIND_LABELS.step),
+				words: [...STEP_WORDS, ...used.step],
+				tip: msg.cue_grid_step_tip(),
+				typeLabel: msg.cue_grid_type_step(),
+				addLabel: msg.cue_grid_add_step(),
+				clearLabel: msg.cue_grid_clear_step()
+			},
+			{
+				kind: 'motion' as const,
+				label: whyText(CUE_KIND_LABELS.motion),
+				words: [...MOTION_WORDS, ...used.motion],
+				tip: msg.cue_grid_motion_tip(),
+				typeLabel: msg.cue_grid_type_motion(),
+				addLabel: msg.cue_grid_add_motion(),
+				clearLabel: msg.cue_grid_clear_motion()
+			}
 		];
 	});
 	/** 「給誰」的選項：全部、動作裡出現的任務角色、動作裡的隊員（照這個順序編號，選單的 value 是編號）。 */
 	const whoOptions = $derived.by(() => {
 		const roles = [...new Set(action.members.flatMap((m) => (m.role === null ? [] : [m.role])))];
 		return [
-			{ label: '全部', who: null as Who },
-			...roles.map((role) => ({ label: role, who: { role } as Who })),
+			{ label: msg.cue_grid_everyone(), who: null as Who },
+			...roles.map((role) => ({ label: whyText(roleWhy(role)), who: { role } as Who })),
 			...action.members.map((m) => ({ label: memberName(flow, m.memberId), who: { member: m.memberId } as Who }))
 		];
 	});
@@ -107,14 +126,16 @@
 	const whoGroups = $derived.by(() => {
 		const opts = whoOptions.map((o, i) => ({ ...o, i }));
 		return [
-			{ label: '任務角色', options: opts.filter((o) => o.who !== null && 'role' in o.who) },
-			{ label: '隊員', options: opts.filter((o) => o.who !== null && 'member' in o.who) }
+			{ label: msg.cue_grid_positions(), options: opts.filter((o) => o.who !== null && 'role' in o.who) },
+			{ label: msg.cue_grid_athletes(), options: opts.filter((o) => o.who !== null && 'member' in o.who) }
 		].filter((g) => g.options.length);
 	});
 	const phases = $derived(action.successRate?.phases ?? []);
 	/** 這個動作的大類能用的環節種類；只有一種就不給選，沒有（舞蹈、其他）就不能加環節。 */
 	const kinds = $derived(phaseKindsFor(action.category));
-	const kindLabel = (k: PhaseKind) => PHASE_KINDS.find((x) => x.key === k)?.label ?? '';
+	const kindLabel = (k: PhaseKind) => whyText(phaseKindWhy(k));
+	/** 環節的名字照畫面的語言寫：種類翻，教練取的名字照原樣。 */
+	const phaseLabel = (p: Phase) => whyText(phaseWhy(p));
 	/** 小窗裡加新環節的種類和名字。 */
 	let phaseKind = $state<PhaseKind>('load');
 	let phaseName = $state('');
@@ -136,7 +157,7 @@
 	const beats = session.beats;
 	const sel = $derived({ from: beats.from, to: beats.to });
 	/** 被擋的原因，和等教練回答的環節改動（會刪掉有記號的環節）。 */
-	const ask = session.changeAsk({ confirmLabel: '確定刪除' });
+	const ask = session.changeAsk({ confirmLabel: msg.segment_confirm_delete() });
 
 	/** 拍點小窗開著沒；拖的時候先收起來，放開才跳出來。 */
 	let pop = $state(false);
@@ -365,7 +386,8 @@
 		hold = pop;
 		const cues = copyCues(action, sel.from, sel.to + BEAT);
 		if (cues.length) beats.copied = cues;
-		copyNote = cues.length ? `複製了 ${cues.length} 個拍點，選一拍按「貼上」或 ${KEYS.paste.mac}` : '選的拍裡沒有拍點';
+		const copied = cues.length === 1 ? msg.cue_grid_copied_one : msg.cue_grid_copied;
+		copyNote = cues.length ? copied({ n: cues.length, key: KEYS.paste.mac }) : msg.cue_grid_nothing_copied();
 	}
 
 	/** 把複製的拍點從選的第一拍開始貼上。 */
@@ -519,8 +541,8 @@
 	/** 某一個八拍裡的拍點、環節：每個從這個八拍的第 start 個半格到第 end 個半格（不含 end）；疊在一起的拍點在下一軌。 */
 	const inEight = (e: number) => slices.find((s) => s.eight === e)!;
 
-	/** 「1-1 到 1-3」：spanText 去掉後面的拍數。 */
-	const rangeOf = (at: number, len: number) => spanText(at, len).replace(/・.*$/, '');
+	/** 「1-1 到 1-3」：spanText 的範圍，不帶拍數。 */
+	const rangeOf = (at: number, len: number) => (segment ? whyText(beatSpanWhy(segment, action.start + at, len).range) : '');
 
 	/** 一個八拍裡環節有幾排：排到第幾排（流程核心算的，金字塔佔同樣拍的往下多一排），至少一排。 */
 	const phaseTracks = (e: number) => Math.max(1, ...inEight(e).phases.map((p) => p.row + 1));
@@ -539,33 +561,35 @@
 	}
 </script>
 
-<div class="cues" role="group" aria-label="拍點">
-	<span class="cap">拍點</span>
+<div class="cues" role="group" aria-label={msg.cue_grid_cues()}>
+	<span class="cap">{msg.cue_grid_cues()}</span>
 	{#if segment?.kind !== 'music'}
-		<p class="muted">口號段不數拍，不能放拍點</p>
-		{#if kinds.length}<div class="pop-row phase" role="group" aria-label="環節">
-			<span class="lbl">環節</span>
+		<p class="muted">{msg.cue_grid_chant_no_cues()}</p>
+		{#if kinds.length}<div class="pop-row phase" role="group" aria-label={msg.cue_grid_phase()}>
+			<span class="lbl">{msg.cue_grid_phase()}</span>
 			<div class="words">
 				{#each phases as p (p.id)}
 					<button
 						type="button"
 						class="word phase"
 						style:--c={phaseColor(p)}
-						aria-label="環節 {phaseLabel(p)}"
+						aria-label={msg.cue_grid_phase_named({ phase: phaseLabel(p) })}
 						aria-pressed={p.id === chosen}
 						onclick={() => (chosen = chosen === p.id ? null : p.id)}>{phaseLabel(p)}</button
 					>
 				{/each}
 				{@render adder(addNewPhase)}
 			</div>
-			<button type="button" class="clear" aria-label="清掉環節" disabled={!editing} onclick={deleteChosen}>清掉</button>
+			<button type="button" class="clear" aria-label={msg.cue_grid_clear_phases()} disabled={!editing} onclick={deleteChosen}
+				>{msg.cue_grid_clear()}</button
+			>
 			{#if editing}{@render edit(editing)}{/if}
 		</div>{/if}
 		{@render asks()}
 	{:else if !hasCells}
-		<p class="muted">動作不到一拍，不能放拍點</p>
+		<p class="muted">{msg.cue_grid_too_short()}</p>
 	{:else}
-		<p class="hint">在數字格上點或拖，選好拍就會跳出拍點小窗。點一拍，再按住 Shift 點另一拍，也能選連續好幾拍。</p>
+		<p class="hint">{msg.cue_grid_hint()}</p>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="sheet-wrap"
@@ -593,7 +617,7 @@
 					{@const bottom = lanes[lanes.length - 1].row + lanes[lanes.length - 1].tracks}
 					<div class="row">
 						<span class="eight" aria-hidden="true">{e + 1}</span>
-						{#if kinds.length}<span class="lane-lbl phase" style:grid-row="2 / span {phaseTracks(e)}">環節</span>{/if}
+						{#if kinds.length}<span class="lane-lbl phase" style:grid-row="2 / span {phaseTracks(e)}">{msg.cue_grid_phase()}</span>{/if}
 						{#each lanes as lane (lane.kind)}
 							<span class="lane-lbl {lane.kind}" style:grid-row="{lane.row} / span {lane.tracks}">{lane.label}</span>
 						{/each}
@@ -664,7 +688,7 @@
 								style:--c={phaseColor(p.phase)}
 								style:grid-column="{p.start + 2} / {p.end + 2}"
 								style:grid-row={2 + p.row}
-								aria-label="環節 {label} {rangeOf(p.beats.at, p.beats.len)}"
+								aria-label={msg.cue_grid_phase_at({ phase: label, range: rangeOf(p.beats.at, p.beats.len) })}
 								aria-hidden={!p.first || undefined}
 								tabindex={p.first ? undefined : -1}
 								onclick={() => pickPhase(p.phase.id, p.beats)}
@@ -685,7 +709,7 @@
 									aria-label={whyText(cueWhy(lane.kind, p.cue.word, segment ? beatSpanWhy(segment, action.start + p.cue.at, p.cue.len) : '', whoWhy(flow, p.cue.who)))}
 									aria-hidden={!p.first || undefined}
 									tabindex={p.first ? undefined : -1}
-									title={to ? `${word}（${to}）` : word}
+									title={to ? msg.eight_count_with_role({ name: word, role: to }) : word}
 									onclick={() => pick(p.cue, p.cue.who)}
 									><span class="w">{p.first ? word : `…${word}`}</span>{#if to}<small class="who"
 											>{to}</small
@@ -706,29 +730,35 @@
 					bind:this={popEl}
 					style:--arrow="{popPos.arrow}px"
 					role="dialog"
-					aria-label="拍點小窗"
+					aria-label={msg.cue_grid_pop()}
 					{@attach popover({ place: placePop, close: () => (pop = false), inside: [sheetEl] })}
 				>
 					<div class="pop-head">
 						<!-- －／＋ 放在字前面：字會變長，放後面按鈕就會被擠走 -->
-						<button type="button" class="pm" aria-label="少選一拍" disabled={!beats.canGrow(-1)} onclick={() => grow(-1)}
+						<button type="button" class="pm" aria-label={msg.cue_grid_fewer()} disabled={!beats.canGrow(-1)} onclick={() => grow(-1)}
 							>－</button
 						>
-						<button type="button" class="pm" aria-label="多選一拍" disabled={!beats.canGrow(1)} onclick={() => grow(1)}
+						<button type="button" class="pm" aria-label={msg.cue_grid_more()} disabled={!beats.canGrow(1)} onclick={() => grow(1)}
 							>＋</button
 						>
-						<span class="sel-text">選了 {spanText(sel.from, selLen)}</span>
-						<button type="button" class="tool" aria-label="複製選的拍點" title={`複製（${both(KEYS.copy)}）`} onclick={copy}>複製</button>
+						<span class="sel-text">{msg.cue_grid_selected({ span: spanText(sel.from, selLen) })}</span>
 						<button
 							type="button"
 							class="tool"
-							aria-label="貼上拍點"
-							title={`貼上（${both(KEYS.paste)}）`}
+							aria-label={msg.cue_grid_copy_label()}
+							title={msg.cue_grid_copy_title({ keys: both(KEYS.copy) })}
+							onclick={copy}>{msg.cue_grid_copy()}</button
+						>
+						<button
+							type="button"
+							class="tool"
+							aria-label={msg.cue_grid_paste_label()}
+							title={msg.cue_grid_paste_title({ keys: both(KEYS.paste) })}
 							disabled={!beats.copied.length}
-							onclick={paste}>貼上</button
+							onclick={paste}>{msg.cue_grid_paste()}</button
 						>
 						<label class="who-sel">
-							<span>給誰</span>
+							<span>{msg.cue_grid_who()}</span>
 							<select value={whoIndex} onchange={(e) => (beats.who = whoOptions[Number(e.currentTarget.value)].who)}>
 								<option value={0}>{whoOptions[0].label}</option>
 								{#each whoGroups as g (g.label)}
@@ -738,16 +768,18 @@
 								{/each}
 							</select>
 						</label>
-						<button type="button" class="x" aria-label="關閉" onclick={() => (pop = false)}>✕</button>
+						<button type="button" class="x" aria-label={msg.cue_grid_close()} onclick={() => (pop = false)}>✕</button>
 					</div>
-					<div class="pop-row count" role="group" aria-label="拍子">
-						<span class="lbl">拍子</span>
+					<div class="pop-row count" role="group" aria-label={whyText(CUE_KIND_LABELS.count)}>
+						<span class="lbl">{whyText(CUE_KIND_LABELS.count)}</span>
 						<div class="words">
 							{#each COUNT_WORDS as w (w)}
 								<button type="button" class="word {w}" onclick={() => place('count', w)}>{w}</button>
 							{/each}
 						</div>
-						<button type="button" class="clear" aria-label="清掉拍子" onclick={() => clear('count')}>清掉</button>
+						<button type="button" class="clear" aria-label={msg.cue_grid_clear_count()} onclick={() => clear('count')}
+							>{msg.cue_grid_clear()}</button
+						>
 					</div>
 					{#each wordRows as row (row.kind)}
 						<div class="pop-row {row.kind}" role="group" aria-label={row.label}>
@@ -762,7 +794,7 @@
 								<span class="own">
 									<input
 										class="custom"
-										aria-label="自己打{row.label}"
+										aria-label={row.typeLabel}
 										placeholder={row.tip}
 										bind:value={custom[row.kind]}
 										onkeydown={(e) => onCustomKey(e, row.kind)}
@@ -770,24 +802,26 @@
 									<button
 										type="button"
 										class="word"
-										aria-label="加入{row.label}"
+										aria-label={row.addLabel}
 										disabled={!custom[row.kind].trim()}
-										onclick={() => addCustom(row.kind)}>加入</button
+										onclick={() => addCustom(row.kind)}>{msg.cue_grid_add()}</button
 									>
 								</span>
 							</div>
-							<button type="button" class="clear" aria-label="清掉{row.label}" onclick={() => clear(row.kind)}>清掉</button>
+							<button type="button" class="clear" aria-label={row.clearLabel} onclick={() => clear(row.kind)}
+								>{msg.cue_grid_clear()}</button
+							>
 						</div>
 					{/each}
-					{#if kinds.length}<div class="pop-row phase" role="group" aria-label="環節">
-						<span class="lbl">環節</span>
+					{#if kinds.length}<div class="pop-row phase" role="group" aria-label={msg.cue_grid_phase()}>
+						<span class="lbl">{msg.cue_grid_phase()}</span>
 						<div class="words">
 							{#each phases as p (p.id)}
 								<button
 									type="button"
 									class="word phase"
 									style:--c={phaseColor(p)}
-									aria-label="把這幾拍標給 {phaseLabel(p)}"
+									aria-label={msg.cue_grid_mark_phase({ phase: phaseLabel(p) })}
 									onclick={() => markPhase(p.id)}>{phaseLabel(p)}</button
 								>
 							{/each}
@@ -796,8 +830,8 @@
 						<button
 							type="button"
 							class="clear"
-							aria-label="清掉環節"
-							onclick={clearPhases}>清掉</button
+							aria-label={msg.cue_grid_clear_phases()}
+							onclick={clearPhases}>{msg.cue_grid_clear()}</button
 						>
 						{#if editing}{@render edit(editing)}{/if}
 					</div>{/if}
@@ -813,42 +847,42 @@
 {#snippet adder(add: () => void)}
 	<span class="own">
 		{#if kinds.length > 1}
-			<select class="kind" aria-label="環節的種類" bind:value={phaseKind}>
+			<select class="kind" aria-label={msg.cue_grid_phase_kind()} bind:value={phaseKind}>
 				{#each kinds as k (k)}<option value={k}>{kindLabel(k)}</option>{/each}
 			</select>
 		{:else}
-			<span class="kind fixed" aria-label="環節的種類">{kindLabel(kinds[0])}</span>
+			<span class="kind fixed" aria-label={msg.cue_grid_phase_kind()}>{kindLabel(kinds[0])}</span>
 		{/if}
 		<input
 			class="custom"
-			aria-label="環節的名字"
-			placeholder="名字，例：延伸"
+			aria-label={msg.cue_grid_phase_name()}
+			placeholder={msg.cue_grid_phase_name_placeholder()}
 			bind:value={phaseName}
 			onkeydown={(e) => onPhaseKey(e, add)}
 		/>
-		<button type="button" class="word" aria-label="加入環節" onclick={add}>加入</button>
+		<button type="button" class="word" aria-label={msg.cue_grid_add_phase()} onclick={add}>{msg.cue_grid_add()}</button>
 	</span>
 {/snippet}
 
 <!-- 改環節：名字、種類、顏色。 -->
 {#snippet edit(p: Phase)}
-	<div class="edit" role="group" aria-label="改環節">
-		<span class="hint">改 {phaseLabel(p)}</span>
+	<div class="edit" role="group" aria-label={msg.cue_grid_edit_phase()}>
+		<span class="hint">{msg.cue_grid_edit_named({ phase: phaseLabel(p) })}</span>
 		<!-- 色塊就是換色的選單：選單疊在色塊上、看不見，點色塊就跳出顏色 -->
-		<span class="chip" style:--c={phaseColor(p)} title="換顏色">
+		<span class="chip" style:--c={phaseColor(p)} title={msg.cue_grid_change_color()}>
 			<select
-				aria-label="這個環節的顏色"
+				aria-label={msg.cue_grid_this_color()}
 				value={p.color ?? ''}
 				onchange={(e) => editPhase(p.id, { color: e.currentTarget.value || null })}
 			>
-				<option value="">照種類</option>
+				<option value="">{msg.cue_grid_by_kind()}</option>
 				{#each PHASE_COLORS as c (c.value)}<option value={c.value}>{whyText(c.label)}</option>{/each}
 			</select>
 		</span>
 		{#if kinds.length > 1}
 			<select
 				class="kind"
-				aria-label="這個環節的種類"
+				aria-label={msg.cue_grid_this_kind()}
 				value={p.kind}
 				onchange={(e) => editPhase(p.id, { kind: e.currentTarget.value as PhaseKind })}
 			>
@@ -857,8 +891,8 @@
 		{/if}
 		<input
 			class="custom"
-			aria-label="這個環節的名字"
-			placeholder="名字（可不填）"
+			aria-label={msg.cue_grid_this_name()}
+			placeholder={msg.cue_grid_name_optional()}
 			value={p.name}
 			onchange={(e) => editPhase(p.id, { name: e.currentTarget.value })}
 		/>
