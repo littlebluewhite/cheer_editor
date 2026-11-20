@@ -103,7 +103,7 @@
 - Dismount：「The ending movement from a stunt or pyramid that is released to a cradle or released to the performing surface.」
 - Load-In：「A stunting position in which the top person has at least one foot in the base(s) hands. The base(s) hands are at waist level.」這是一個位置，不是「把上層撐上去的那一段」。
 - Transitional Stunt：「Top person or top persons moving from one stunt position to another thereby changing the configuration of the beginning stunt.」
-- 英文規則裡沒有對應「上法」（整段撐上去）的名詞。已確認查無。
+- 英文規則裡沒有**定義**「上法」（整段撐上去）的名詞，但 ICU 2026 規則條文有用字：load、mount（例：Premier Stunts A.2「When the load/transition involves」）。2026-11-20 更正，原本寫查無，見 `english-terms.md`。
 
 ### 下法出錯算在同一個技巧裡
 
