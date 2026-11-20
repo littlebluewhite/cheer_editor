@@ -152,9 +152,8 @@
 	 * 所以圓點、號碼在螢幕上不跟著變大；手指點兩下放大、放大後一根手指拖是移動畫面。
 	 */
 	const viewOnly = $derived(!crop && !session?.editable);
-	/** 標了「我」：別人畫淡一點（點到、選到的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
-	const dim = (id: string) =>
-		!crop && marked.length > 0 && !marked.includes(id) && !selected.includes(id) && id !== tapped;
+	/** 標了「我」：別人畫淡一點（「我」和圈起來的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
+	const dim = (id: string) => !crop && marked.length > 0 && !marked.includes(id) && !lit.includes(id);
 
 	/** 觸控螢幕（iPad）：圓點最小尺寸比較大，手指才點得到。 */
 	const touchScreen = isTouchScreen();
@@ -167,8 +166,8 @@
 	/** 編輯頁的圓點在螢幕上最少這麼大（直徑 px）；場地畫得很小時（窄視窗、iPad）放大圓點，標記跟著放大。 */
 	const MIN_DOT_PX = touchScreen ? 32 : 22;
 	/**
-	 * 手機的檢視畫面（沒有按鈕、不裁）圓點最少這麼大：號碼跟著到 11px。
-	 * 觸控也是 22，不用 MIN_DOT_PX 的 32：只能看、不用點，32 的話擠的地方疊得更多。
+	 * 只能看的場地（手機的檢視畫面、檢視模式）圓點最少這麼大：號碼跟著到 11px。
+	 * 觸控也是 22，不用 MIN_DOT_PX 的 32：不用拖，手指點是找最近的人，32 的話擠的地方疊得更多。
 	 */
 	const VIEW_MIN_DOT_PX = 22;
 	/** 場地上的字（條號、格號、「正面／裁判」、多字標記）在螢幕上最少幾 px（Apple HIG 的最小字級 11 pt）。 */

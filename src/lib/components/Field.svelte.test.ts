@@ -798,8 +798,9 @@ describe('檢視模式（有編輯器、不能改）的場地：手指跟手機�
 	const toMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];
 
 	/** 檢視模式：左欄藏起來（頁面給 rail={false}）。 */
-	function setup(props: Record<string, unknown> = {}) {
+	function setup(props: Record<string, unknown> = {}, selected: string[] = []) {
 		const { editor, session } = testEditor(flowWith(members, positions));
+		session.selectMembers(selected);
 		session.viewing = true;
 		render(TestSession, {
 			props: { editor, component: Field, props: { field: { strips: 9, layout: 'vertical' }, members, positions, toMeters, rail: false, ...props } }
@@ -886,5 +887,12 @@ describe('檢視模式（有編輯器、不能改）的場地：手指跟手機�
 		expect(dimmed()).toEqual(['m3']);
 		await tap(svg, 600, 400);
 		expect(dimmed()).toEqual(['m2', 'm3']);
+	});
+
+	it('標「我」之前就選著小B：圈的是「我」，小B 沒圈起來，跟別人一樣淡', () => {
+		setup({ marked: ['m1'] }, ['m2']);
+		const has = (cls: string) => members.filter((m) => dot(m.id).classList.contains(cls)).map((m) => m.id);
+		expect(has('selected')).toEqual(['m1']);
+		expect(has('dim')).toEqual(['m2', 'm3']);
 	});
 });

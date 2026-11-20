@@ -135,8 +135,7 @@ export const NUMBER_BAND = 1.3;
  */
 export function fullView(field: FieldConfig, band = NUMBER_BAND): Rect {
 	const { outer } = fieldGeometry(field);
-	const b = band;
-	return { x: outer.x - b, y: outer.y - b, width: outer.width + 2 * b, height: outer.height + b + 1 };
+	return { x: outer.x - band, y: outer.y - band, width: outer.width + 2 * band, height: outer.height + band + 1 };
 }
 
 /** 場地上一個點（公尺）；跟 formation.ts 的 Position 一樣，那邊 import 這個檔，這裡不能反過來 import。 */
