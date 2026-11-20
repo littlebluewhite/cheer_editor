@@ -63,7 +63,14 @@
 		open = false;
 		if (active(s)) return playback.setRepeat(false);
 		if (s.b !== null) playback.setRange(s.a, s.b);
+		// 只有 A、A 在重複範圍外面：重複開著會被拉回範圍的 A，所以關掉重複（範圍留著）
+		else if (playback.repeat && !inRepeat(s.a)) playback.setRepeat(false);
 		playback.seek(s.a);
+	}
+	/** 這一秒在重複範圍裡（和播放一樣：到 B 前一點點就算出去了）。 */
+	function inRepeat(sec: number): boolean {
+		const r = playback.range;
+		return r?.b != null && sec >= r.a - 1e-6 && sec < r.b - 0.01;
 	}
 
 	// ---------- 存、改名、刪（只有 bar、能改時） ----------

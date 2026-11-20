@@ -56,6 +56,35 @@ describe('書籤', () => {
 		expect(playback.range).toEqual({ a: 2, b: 4 });
 	});
 
+	it('重複開著、停著點只有 A 的：按播放從書籤的 A 播，不是重複範圍的 A', async () => {
+		const { playback } = setup(sample());
+		await fireEvent.click(chip('翻騰'));
+		await fireEvent.click(chip('後面'));
+		expect(playback.repeat).toBe(false);
+		expect(playback.range).toEqual({ a: 2, b: 4 });
+		playback.play();
+		expect(playback.sec).toBe(8);
+		playback.pause();
+	});
+
+	it('重複開著、只有 A 的在範圍裡面：重複照開，播放頭跳到 A', async () => {
+		const { playback } = setup(flowOf(addBookmark(sample(), '中間', { segmentId: 's1', at: 12 }, null)));
+		await fireEvent.click(chip('翻騰'));
+		await fireEvent.click(chip('中間'));
+		expect(playback.repeat).toBe(true);
+		expect(playback.sec).toBe(3);
+	});
+
+	it('重複開著、播放中點只有 A 的：從書籤的 A 接著播', async () => {
+		const { playback } = setup(sample());
+		await fireEvent.click(chip('翻騰'));
+		playback.play();
+		await fireEvent.click(chip('後面'));
+		expect(playback.playing).toBe(true);
+		expect(playback.sec).toBe(8);
+		playback.pause();
+	});
+
 	it('存：現在的 A、B；A 剛好是動作的開頭就先填動作名字', async () => {
 		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'F', globalRole: 'top' }]));
 		const members = [{ memberId: 'm1', role: '騰翻' }];
