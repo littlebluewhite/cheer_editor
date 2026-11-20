@@ -5,6 +5,7 @@
 import type { Flow } from './flow';
 import { readOr, type ReadResult } from './result';
 import type { Segment } from './segment';
+import { said, type Why, type WhyCode } from './why';
 
 /** 流程裡的一個時間點：哪一段 ＋ 段內第幾個半拍（音樂段）或第幾個 0.1 秒（口號段）。 */
 export interface TimePosition {
@@ -16,6 +17,8 @@ export interface SegmentSpan {
 	segment: Segment;
 	/** 給教練看的段名：音樂 1、音樂 2、口號 1…（各自照順序編號） */
 	label: string;
+	/** 段名的號碼：這是第幾個音樂段／口號段。 */
+	n: number;
 	startSec: number;
 	durationSec: number;
 }
@@ -47,10 +50,16 @@ export function segmentSpans(flow: Flow): SegmentSpan[] {
 		const name = segment.kind === 'music' ? '音樂' : '口號';
 		const durationSec =
 			segment.kind === 'music' ? (segment.halfBeats * 30) / segment.bpm : segment.tenths / 10;
-		const span = { segment, label: `${name} ${count[segment.kind]}`, startSec, durationSec };
+		const n = count[segment.kind];
+		const span = { segment, label: `${name} ${n}`, n, startSec, durationSec };
 		startSec += durationSec;
 		return span;
 	});
+}
+
+/** 段名（span.label）給別的原因包進去：「音樂 1」「口號 1」。 */
+export function labelWhy(span: SegmentSpan): Why {
+	return { code: span.segment.kind === 'music' ? 'time_segment_music' : 'time_segment_chant', n: span.n };
 }
 
 export function totalSeconds(flow: Flow): number {
@@ -231,6 +240,14 @@ export function atTextWithUnit(segment: Segment, at: number): string {
 	return segment.kind === 'chant' ? `${atText(segment, at)} 秒` : atText(segment, at);
 }
 
+/** atTextWithUnit 給別的原因包進去：音樂段照教練打的寫法「3-5&」（不用代號），口號段「12.3 秒」。 */
+export function atWhy(segment: Segment, at: number): string | Why {
+	return segment.kind === 'chant' ? secondsWhy(atText(segment, at)) : atText(segment, at);
+}
+
+/** 「n 秒」，n 是寫好的秒數（例：'12.3'，保留小數點後那一位）。 */
+const secondsWhy = (n: string): Why => ({ code: 'time_seconds', n });
+
 /** 播放器的時間寫法：秒數寫成「1:05.3」。規則警告也用這個，教練對得起來。 */
 export function clockText(sec: number): string {
 	// 先取到 0.1 秒再分分秒：59.95 秒是 1:00.0，不是 0:60.0
@@ -247,8 +264,7 @@ export function fromText(segment: Segment, at: number): string {
 
 /** 動作的開始：atText 的反向，教練打的時間點 → 段內整數時間。不檢查有沒有超出段（指令會擋）。 */
 export function readStart(segment: Segment, text: string): ReadResult<number> {
-	const hint = segment.kind === 'music' ? '例：3-5&' : '請打秒數';
-	return readOr(parseAt(segment, text), `開始看不懂，${hint}`);
+	return readOr(parseAt(segment, text), { code: segment.kind === 'music' ? 'time_start_unreadable_music' : 'time_start_unreadable_chant' });
 }
 
 /** 八拍寫法「3-5&」：第幾個八拍、第幾拍、有沒有半拍。 */
@@ -279,6 +295,14 @@ export function timeTextWithUnit(flow: Flow, homeSegmentId: string, p: TimePosit
 	return timeText(flow, homeSegmentId, p) + (kind === 'chant' ? ' 秒' : '');
 }
 
+/** timeTextWithUnit 給別的原因包進去：「2-5」、「12.3 秒」、「口號 1 12.3 秒」。沒有這一段是 ''。 */
+export function timeWhy(flow: Flow, homeSegmentId: string, p: TimePosition): string | Why {
+	const span = segmentSpans(flow).find((s) => s.segment.id === p.segmentId);
+	if (!span) return '';
+	const at = atWhy(span.segment, p.at);
+	return p.segmentId === homeSegmentId ? at : { code: 'time_in_segment', segment: labelWhy(span), at };
+}
+
 /** 用 timeText 寫法打時間的欄位：走位的出發、到達，站位小編輯的站位時間。 */
 export type TimeField = '出發' | '到達' | '站位時間' | '時間';
 
@@ -288,10 +312,21 @@ export type TimeField = '出發' | '到達' | '站位時間' | '時間';
  * 不檢查有沒有超出段（指令會擋）。
  */
 export function readTime(flow: Flow, homeSegmentId: string, text: string, field: TimeField): ReadResult<TimePosition> {
-	const { here, other } = timeExamples(flow, homeSegmentId);
-	const hint = other ? `${here}（別的段前面加段名，例：${other}）` : here;
-	return readOr(parseTime(flow, homeSegmentId, text), `${field}看不懂，例：${hint}`);
+	// 例子是教練照打得進去的寫法：段名照中文（parseTime 只認中文段名），不包成段名的代號
+	const { here: example, other } = timeExamples(flow, homeSegmentId);
+	const why: Why = other
+		? { code: 'time_unreadable_other', field: { code: FIELD_CODE[field] }, example, other }
+		: { code: 'time_unreadable', field: { code: FIELD_CODE[field] }, example };
+	return readOr(parseTime(flow, homeSegmentId, text), why);
 }
+
+/** 打時間的欄位的名字（原因裡說是哪一格）。 */
+const FIELD_CODE: Record<TimeField, WhyCode> = {
+	出發: 'time_field_depart',
+	到達: 'time_field_arrive',
+	站位時間: 'time_field_formation',
+	時間: 'time_field_time'
+};
 
 /**
  * 打時間的例子，照這支流程真的有的段：here 是 homeSegmentId 那一段的段內時間，other 是別的段加段名
@@ -318,7 +353,7 @@ function exampleAt(segment: Segment): string {
  */
 export function readJump(flow: Flow, sec: number, text: string): ReadResult<number> {
 	const here = toPosition(flow, sec);
-	if (!here) return { kind: 'blocked', message: '還沒有段' };
+	if (!here) return { kind: 'blocked', ...said({ code: 'time_no_segments' }) };
 	let read = readTime(flow, here.segmentId, text, '時間');
 	// 在口號段打了八拍寫法（沒加段名）：只有一個音樂段就是那一段；好幾個就說要加段名。
 	const spans = segmentSpans(flow);
@@ -326,15 +361,16 @@ export function readJump(flow: Flow, sec: number, text: string): ReadResult<numb
 	const homeSpan = spans.find((s) => s.segment.id === here.segmentId)!;
 	if (read.kind !== 'ok' && homeSpan.segment.kind === 'chant' && musics.length && EIGHT_TEXT.test(halfWidth(text).trim())) {
 		const named = `${musics[0].label} ${halfWidth(text).trim()}`;
-		if (musics.length > 1) return { kind: 'blocked', message: `${homeSpan.label} 是口號段，要打秒數；八拍寫法前面加段名，例：${named}` };
+		// 例子是教練照打得進去的寫法：段名照中文（parseTime 只認中文段名）
+		if (musics.length > 1) return { kind: 'blocked', ...said({ code: 'time_jump_chant', segment: labelWhy(homeSpan), example: named }) };
 		read = readTime(flow, here.segmentId, named, '時間');
 	}
 	if (read.kind !== 'ok') return read;
 	const span = segmentSpans(flow).find((s) => s.segment.id === read.value.segmentId)!;
 	const { segment } = span;
-	if (read.value.at < 0) return { kind: 'blocked', message: '時間不能是負的' };
+	if (read.value.at < 0) return { kind: 'blocked', ...said({ code: 'time_negative' }) };
 	if (read.value.at < units(segment)) return { kind: 'ok', value: toSeconds(flow, read.value) };
-	return { kind: 'blocked', message: `${span.label} 只有 ${sizeText(segment)}` };
+	return { kind: 'blocked', ...said({ code: 'time_segment_only', segment: labelWhy(span), size: sizeWhy(segment) }) };
 }
 
 /** 一段有多長，給人看：音樂段「4 個八拍」（最後一個不滿也算一個），口號段「10.0 秒」。 */
@@ -342,6 +378,18 @@ export function sizeText(segment: Segment): string {
 	return segment.kind === 'music'
 		? `${Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT)} 個八拍`
 		: `${lengthText(segment, segment.tenths)} 秒`;
+}
+
+/** sizeText 給別的原因包進去：音樂段「4 個八拍」，口號段「10.0 秒」。 */
+export function sizeWhy(segment: Segment): Why {
+	return segment.kind === 'music'
+		? eightsWhy(Math.ceil(segment.halfBeats / HALF_BEATS_PER_EIGHT))
+		: secondsWhy(lengthText(segment, segment.tenths));
+}
+
+/** 「n 個八拍」給別的原因包進去（英文 1 個和好幾個分開寫）。 */
+export function eightsWhy(n: number): Why {
+	return { code: n === 1 ? 'time_eights_one' : 'time_eights', n };
 }
 
 /** readTime 讀的那一步：看不懂或沒有這一段是 null。 */
@@ -367,9 +415,16 @@ export function lengthTextWithUnit(segment: Segment, length: number): string {
 	return `${lengthText(segment, length)} ${segment.kind === 'music' ? '拍' : '秒'}`;
 }
 
+/** lengthTextWithUnit 給別的原因包進去：音樂段「4.5 拍」（英文 1 拍和好幾拍分開寫），口號段「3.0 秒」。 */
+export function lengthWhy(segment: Segment, length: number): Why {
+	if (segment.kind === 'chant') return secondsWhy(lengthText(segment, length));
+	const n = length / HALF_BEATS_PER_BEAT;
+	return { code: n === 1 ? 'time_length_beat_one' : 'time_length_beats', n };
+}
+
 /** 動作的長度：lengthText 的反向，拍數或秒數 → 半拍數或 0.1 秒數（取最近的）。負的照讀，交給指令擋下、說範圍。 */
 export function readLength(segment: Segment, text: string): ReadResult<number> {
-	return readOr(parseScaled(text, segment.kind === 'music' ? 2 : 10), '長度看不懂');
+	return readOr(parseScaled(text, segment.kind === 'music' ? 2 : 10), { code: 'time_length_unreadable' });
 }
 
 /** 數字乘上 scale 取最近的整數；空白、看不懂是 null。負的照算，交給指令擋下、說範圍。 */

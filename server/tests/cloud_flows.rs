@@ -180,7 +180,8 @@ async fn flow_core_blocks_a_bad_new_flow(db: sqlx::PgPool) {
 
     let (status, body) = s.create(&lin, "   ").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(body, json!({ "message": "請幫流程取名字" }));
+    let why = json!({ "code": "flow_no_name" });
+    assert_eq!(body, json!({ "message": "請幫流程取名字", "why": why }));
     let (_, list, _) = s.send("GET", "/api/flows", None, Some(&lin)).await;
     assert_eq!(list, json!({ "mine": [], "shared": [], "deleted": [] }));
 }

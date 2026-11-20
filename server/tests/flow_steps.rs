@@ -247,7 +247,8 @@ async fn blocked_or_unasked_commands_are_sent_back_with_the_reason(db: sqlx::PgP
     assert_eq!(reply["kind"], "rejected");
     assert_eq!(reply["stepId"], "stepblock001");
     assert_eq!(reply["message"], "沒存進去：請幫流程取名字");
-    let why = json!({ "code": "blocked", "reason": { "message": "請幫流程取名字" }, "ask": false });
+    let reason = json!({ "message": "請幫流程取名字", "why": { "code": "flow_no_name" } });
+    let why = json!({ "code": "blocked", "reason": reason, "ask": false });
     assert_eq!(reply["why"], why);
     assert_eq!(reply["step"], 0);
     assert_eq!(reply["flow"]["name"], "全國賽");

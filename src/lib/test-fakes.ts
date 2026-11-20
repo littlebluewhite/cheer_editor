@@ -19,6 +19,7 @@ import {
 	remoteChange,
 	runCommands,
 	runUndo,
+	said,
 	stepKeys,
 	takeRecords,
 	setSquad,
@@ -922,7 +923,7 @@ export function fakeServer(
 			const checked = checkFlowDocument(structuredClone(doc));
 			if (checked.kind === 'error') return { message: checked.message };
 			const problem = flowProblem(checked.flow);
-			if (problem) return { message: problem };
+			if (problem) return said(problem);
 			const { flow, records } = takeRecords(checked.flow);
 			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow, updatedAt: new Date().toISOString(), records };
 			state.flows.push(made);

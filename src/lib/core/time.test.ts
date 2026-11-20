@@ -3,11 +3,15 @@ import {
 	addSegment,
 	atText,
 	atTextWithUnit,
+	atWhy,
 	clockText,
 	createFlow,
+	eightsWhy,
 	farthestLegal,
+	labelWhy,
 	lengthText,
 	lengthTextWithUnit,
+	lengthWhy,
 	positionText,
 	readLength,
 	readStart,
@@ -15,17 +19,20 @@ import {
 	readTime,
 	rulerMarks,
 	segmentSpans,
+	sizeWhy,
 	spacedLabels,
 	snapPlayhead,
 	snapToBeat,
 	stepPlayhead,
 	timeText,
+	timeWhy,
 	toPosition,
 	toSeconds,
 	totalSeconds,
 	updateSegment,
 	type Flow
 } from './index';
+import { zh, type Why } from './why';
 import { flowOf } from '../test-flows';
 
 /** 音樂 1（150 BPM、8 個八拍）→ 口號 32.4 秒 → 音樂 2（120 BPM、1 個八拍）。 */
@@ -191,13 +198,14 @@ describe('段內時間的文字（動作表單）', () => {
 	});
 
 	it('開始看不懂：擋下來，音樂段給例子，口號段說打秒數', () => {
-		const unreadable = { kind: 'blocked', message: '開始看不懂，例：3-5&' };
+		const unreadable = { kind: 'blocked', message: '開始看不懂，例：3-5&', why: { code: 'time_start_unreadable_music' } };
 		expect(readStart(music(), '1-9')).toEqual(unreadable);
 		expect(readStart(music(), 'abc')).toEqual(unreadable);
 		expect(readStart(music(), '')).toEqual(unreadable);
 		expect(readStart(music(), '0-1')).toEqual(unreadable);
-		expect(readStart(chant(), 'abc')).toEqual({ kind: 'blocked', message: '開始看不懂，請打秒數' });
-		expect(readStart(chant(), '')).toEqual({ kind: 'blocked', message: '開始看不懂，請打秒數' });
+		const chantUnreadable = { kind: 'blocked', message: '開始看不懂，請打秒數', why: { code: 'time_start_unreadable_chant' } };
+		expect(readStart(chant(), 'abc')).toEqual(chantUnreadable);
+		expect(readStart(chant(), '')).toEqual(chantUnreadable);
 	});
 
 	it('全形數字、全形符號當成半形', () => {
@@ -224,7 +232,7 @@ describe('段內時間的文字（動作表單）', () => {
 	});
 
 	it('長度看不懂：擋下來說看不懂', () => {
-		const unreadable = { kind: 'blocked', message: '長度看不懂' };
+		const unreadable = { kind: 'blocked', message: '長度看不懂', why: { code: 'time_length_unreadable' } };
 		expect(readLength(chant(), '')).toEqual(unreadable);
 		expect(readLength(music(), 'abc')).toEqual(unreadable);
 		expect(readLength(music(), '3-5')).toEqual(unreadable);
@@ -261,7 +269,12 @@ describe('出發和到達的時間文字', () => {
 
 	it('看不懂：寫法不對、沒有這一段都擋下來，說是哪一格、給例子', () => {
 		const flow = sample();
-		const departHint = { kind: 'blocked', message: '出發看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）' };
+		// 別的段的例子是教練照打得進去的寫法（段名照中文），不包成段名的代號
+		const departHint = {
+			kind: 'blocked',
+			message: '出發看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）',
+			why: { code: 'time_unreadable_other', field: { code: 'time_field_depart' }, example: '2-5', other: '口號 1 12.3' }
+		};
 		expect(readTime(flow, 's1', '', '出發')).toEqual(departHint);
 		expect(readTime(flow, 's1', '12.3', '出發')).toEqual(departHint);
 		expect(readTime(flow, 's1', '口號 1 2-5', '出發')).toEqual(departHint);
@@ -272,7 +285,8 @@ describe('出發和到達的時間文字', () => {
 	it('這一段是口號段：例子用秒，別的段的例子換成音樂段（T04）', () => {
 		expect(readTime(sample(), 's2', 'abc', '站位時間')).toEqual({
 			kind: 'blocked',
-			message: '站位時間看不懂，例：12.3（別的段前面加段名，例：音樂 1 2-5）'
+			message: '站位時間看不懂，例：12.3（別的段前面加段名，例：音樂 1 2-5）',
+			why: { code: 'time_unreadable_other', field: { code: 'time_field_formation' }, example: '12.3', other: '音樂 1 2-5' }
 		});
 	});
 
@@ -280,11 +294,13 @@ describe('出發和到達的時間文字', () => {
 		const flow = sample();
 		expect(readTime(flow, 's1', 'abc', '到達')).toEqual({
 			kind: 'blocked',
-			message: '到達看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
+			message: '到達看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）',
+			why: { code: 'time_unreadable_other', field: { code: 'time_field_arrive' }, example: '2-5', other: '口號 1 12.3' }
 		});
 		expect(readTime(flow, 's1', 'abc', '站位時間')).toEqual({
 			kind: 'blocked',
-			message: '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）'
+			message: '站位時間看不懂，例：2-5（別的段前面加段名，例：口號 1 12.3）',
+			why: { code: 'time_unreadable_other', field: { code: 'time_field_formation' }, example: '2-5', other: '口號 1 12.3' }
 		});
 	});
 });
@@ -367,9 +383,67 @@ describe('clockText', () => {
 	});
 });
 
+describe('別的原因包進去的時間字（代號）', () => {
+	// sample()：s1 = 音樂 1（8 個八拍），s2 = 口號 1（32.4 秒），s3 = 音樂 2（1 個八拍）
+	const text = (v: string | Why) => (typeof v === 'string' ? v : zh(v));
+
+	it('段名：音樂 n、口號 n 帶號碼', () => {
+		const spans = segmentSpans(sample());
+		expect(labelWhy(spans[0])).toEqual({ code: 'time_segment_music', n: 1 });
+		expect(zh(labelWhy(spans[1]))).toBe('口號 1');
+		expect(zh(labelWhy(spans[2]))).toBe('音樂 2');
+	});
+
+	it('長度帶單位：1 拍和好幾拍分開（英文單複數），口號段秒數到 0.1', () => {
+		const [music, chant] = sample().segments;
+		expect(lengthWhy(music, 9)).toEqual({ code: 'time_length_beats', n: 4.5 });
+		expect(zh(lengthWhy(music, 9))).toBe('4.5 拍');
+		expect(lengthWhy(music, 2)).toEqual({ code: 'time_length_beat_one', n: 1 });
+		expect(zh(lengthWhy(music, 2))).toBe('1 拍');
+		expect(zh(lengthWhy(chant, 30))).toBe('3.0 秒');
+	});
+
+	it('時間點帶單位：音樂段照打的寫法（不用代號），口號段「12.3 秒」', () => {
+		const [music, chant] = sample().segments;
+		expect(atWhy(music, 41)).toBe('3-5&');
+		expect(atWhy(chant, 123)).toEqual({ code: 'time_seconds', n: '12.3' });
+		expect(zh(atWhy(chant, 123) as Why)).toBe('12.3 秒');
+	});
+
+	it('流程裡的時間點：在這一段只寫段內時間，在別的段前面加段名', () => {
+		const flow = sample();
+		expect(timeWhy(flow, 's1', { segmentId: 's1', at: 41 })).toBe('3-5&');
+		expect(text(timeWhy(flow, 's2', { segmentId: 's2', at: 123 }))).toBe('12.3 秒');
+		expect(text(timeWhy(flow, 's3', { segmentId: 's2', at: 123 }))).toBe('口號 1 12.3 秒');
+		expect(text(timeWhy(flow, '', { segmentId: 's1', at: 41 }))).toBe('音樂 1 3-5&');
+	});
+
+	it('一段有多長：音樂段幾個八拍（1 個分開），口號段秒數', () => {
+		const [music, chant, short] = sample().segments;
+		expect(sizeWhy(music)).toEqual({ code: 'time_eights', n: 8 });
+		expect(zh(sizeWhy(music))).toBe('8 個八拍');
+		expect(sizeWhy(short)).toEqual({ code: 'time_eights_one', n: 1 });
+		expect(zh(sizeWhy(chant))).toBe('32.4 秒');
+		expect(zh(eightsWhy(3))).toBe('3 個八拍');
+	});
+});
+
 describe('readJump', () => {
 	it('口號段打負的秒數：擋下來，不會跳回前一段', () => {
-		expect(readJump(sample(), 30, '-1')).toEqual({ kind: 'blocked', message: '時間不能是負的' });
+		expect(readJump(sample(), 30, '-1')).toEqual({ kind: 'blocked', message: '時間不能是負的', why: { code: 'time_negative' } });
+	});
+
+	it('還沒有段：擋下來', () => {
+		expect(readJump(empty(), 0, '1-1')).toEqual({ kind: 'blocked', message: '還沒有段', why: { code: 'time_no_segments' } });
+	});
+
+	it('超出那一段：說那一段有多長', () => {
+		expect(readJump(sample(), 0, '9-1')).toEqual({
+			kind: 'blocked',
+			message: '音樂 1 只有 8 個八拍',
+			why: { code: 'time_segment_only', segment: { code: 'time_segment_music', n: 1 }, size: { code: 'time_eights', n: 8 } }
+		});
+		expect(readJump(sample(), 30, '40')).toMatchObject({ message: '口號 1 只有 32.4 秒' });
 	});
 
 	it('播放頭在口號段、只有一個音樂段：打八拍寫法「1-3」就跳到那個音樂段，不說看不懂（N13）', () => {
@@ -383,19 +457,26 @@ describe('readJump', () => {
 	it('播放頭在口號段、有好幾個音樂段：打八拍寫法說要加段名，例子用真的段名（N13）', () => {
 		expect(readJump(sample(), 30, '1-3')).toEqual({
 			kind: 'blocked',
-			message: '口號 1 是口號段，要打秒數；八拍寫法前面加段名，例：音樂 1 1-3'
+			message: '口號 1 是口號段，要打秒數；八拍寫法前面加段名，例：音樂 1 1-3',
+			// 例子是教練照打得進去的寫法，段名照中文
+			why: { code: 'time_jump_chant', segment: { code: 'time_segment_chant', n: 1 }, example: '音樂 1 1-3' }
 		});
 	});
 
 	it('看不懂時的例子照這支流程的段：只有一段就不提別的段，口號段的例子不比那一段長（N36）', () => {
 		const one = flowOf(addSegment(flowOf(createFlow({ name: '一段', field: { strips: 9, layout: 'vertical' } })), 'music'));
-		expect(readJump(one, 0, 'abc')).toEqual({ kind: 'blocked', message: '時間看不懂，例：2-5' });
+		expect(readJump(one, 0, 'abc')).toEqual({
+			kind: 'blocked',
+			message: '時間看不懂，例：2-5',
+			why: { code: 'time_unreadable', field: { code: 'time_field_time' }, example: '2-5' }
+		});
 
 		let flow = flowOf(addSegment(one, 'chant'));
 		flow = flowOf(updateSegment(flow, 's2', { seconds: 5 }));
-		expect(readTime(flow, 's1', 'abc', '出發')).toEqual({
+		expect(readTime(flow, 's1', 'abc', '出發')).toMatchObject({
 			kind: 'blocked',
-			message: '出發看不懂，例：2-5（別的段前面加段名，例：口號 1 2.5）'
+			message: '出發看不懂，例：2-5（別的段前面加段名，例：口號 1 2.5）',
+			why: { other: '口號 1 2.5' }
 		});
 	});
 });

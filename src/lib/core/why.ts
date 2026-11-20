@@ -34,6 +34,49 @@ const ZH = {
 	// commands.ts
 	commands_no_flow: '沒有開著的流程',
 	commands_none: '沒有指令',
+	// flow.ts
+	flow_no_name: '請幫流程取名字',
+	flow_strips: '條數要是 {min}–{max} 的整數',
+	flow_stacked: '這樣調整，這些人會疊在同一點（之後可以再拖開）：',
+	// time-rules.ts
+	time_rules_positive: '秒數要大於 0',
+	time_rules_chant: '「口號段加起來最少」要比「整支流程最多」少',
+	time_rules_music: '「音樂段加起來最多」不能超過「整支流程最多」',
+	// flow-check.ts
+	flow_check_max_members: '一支流程最多 {max} 人',
+	flow_check_in_action: '動作「{action}」：{reason}',
+	flow_check_in_formation: '站位 {n}：{reason}',
+	flow_check_in_segment: '{segment}：{reason}',
+	flow_check_off_field: '{member} {reason}',
+	flow_check_formation_order: '站位 {n} 要在站位 {before} 之後、段的時間裡',
+	flow_check_twice: '同一個人只能放一次',
+	flow_check_no_role: '沒有「{role}」這個任務角色',
+	flow_check_clash: '{member} 同一時間在「{first}」和「{second}」裡',
+
+	// time.ts
+	time_start_unreadable_music: '開始看不懂，例：3-5&',
+	time_start_unreadable_chant: '開始看不懂，請打秒數',
+	time_length_unreadable: '長度看不懂',
+	time_unreadable: '{field}看不懂，例：{example}',
+	time_unreadable_other: '{field}看不懂，例：{example}（別的段前面加段名，例：{other}）',
+	time_field_depart: '出發',
+	time_field_arrive: '到達',
+	time_field_formation: '站位時間',
+	time_field_time: '時間',
+	time_no_segments: '還沒有段',
+	time_jump_chant: '{segment} 是口號段，要打秒數；八拍寫法前面加段名，例：{example}',
+	time_negative: '時間不能是負的',
+	time_segment_only: '{segment} 只有 {size}',
+	// 別的原因包進去的時間字
+	time_segment_music: '音樂 {n}',
+	time_segment_chant: '口號 {n}',
+	time_in_segment: '{segment} {at}',
+	time_seconds: '{n} 秒',
+	time_length_beat_one: '{n} 拍',
+	time_length_beats: '{n} 拍',
+	time_eights_one: '{n} 個八拍',
+	time_eights: '{n} 個八拍',
+
 	// cues.ts
 	cues_chant: '口號段不數拍，不能放拍點',
 	cues_no_kind: '沒有這種拍點',
