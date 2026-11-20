@@ -141,8 +141,11 @@ describe('段縮短', () => {
 		const flow = sample();
 		const bad = { ...flow, actions: flow.actions.map((a) => (a.id === 'x1' ? { ...a, category: 'bogus' } : a)) } as Flow;
 		const r = updateSegment(bad, 's1', { eights: 1, lastBeats: 6 });
-		expect(r).toMatchObject({ kind: 'blocked', message: '動作「·Lib」裁短後：請選大類' });
-		expect(r.kind === 'blocked' && r.why).toMatchObject({ code: 'segment_trim_blocked', action: '·Lib' });
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: '動作「·Lib」裁短後：請選大類',
+			why: { code: 'segment_trim_blocked', action: '·Lib', reason: { code: 'actions_pick_category' } }
+		});
 	});
 
 	it('帶「已確認」再送一次：跨出段尾的動作只留到段尾，在段外的動作和站位刪掉，其他不動', () => {
