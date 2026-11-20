@@ -10,7 +10,7 @@ import { MAX_MEMBERS, memberNameProblem } from './members';
 import { roleGlossary } from './roles';
 import { MAX_BPM, MIN_BPM, OUT_OF_RANGE } from './segment';
 import { tooLong } from './text-length';
-import { EPS, segmentSpans, type TimePosition } from './time';
+import { EPS, labelWhy, segmentSpans, type TimePosition } from './time';
 import { TIME_RULE_PROBLEMS } from './time-rules';
 import type { Why } from './why';
 
@@ -84,10 +84,10 @@ function violations(flow: Flow): Violation[] {
 	add('timeRules:music', maxMusicSec > maxTotalSec + EPS ? TIME_RULE_PROBLEMS.music : null);
 
 	// 段的 BPM、第一拍（updateSegment）。長度是開檔就擋。
-	// 段的名字（「音樂 1」）照 segmentSpans 給的中文，等 time.ts 有代號再換
-	segmentSpans(flow).forEach(({ segment: s, label }) => {
+	segmentSpans(flow).forEach((span) => {
+		const s = span.segment;
 		if (s.kind !== 'music') return;
-		const inSegment = (reason: string): Why => ({ code: 'flow_check_in_segment', segment: label, reason });
+		const inSegment = (reason: string): Why => ({ code: 'flow_check_in_segment', segment: labelWhy(span), reason });
 		add(`bpm:${s.id}`, s.bpm >= MIN_BPM && s.bpm <= MAX_BPM ? null : inSegment(OUT_OF_RANGE.bpm));
 		add(`firstBeat:${s.id}`, s.firstBeatSec >= 0 ? null : inSegment(OUT_OF_RANGE.firstBeatSec));
 	});
