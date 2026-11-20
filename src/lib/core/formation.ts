@@ -6,16 +6,15 @@ import { actionSeconds } from './action-types';
 import { fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { blocked, ok, type CommandResult } from './result';
-import type { Why } from './why';
+import type { Why, WhyParam } from './why';
 import { newId } from './ids';
 import { tooLong } from './text-length';
 import type { Segment } from './segment';
 import {
 	EPS,
 	HALF_BEATS_PER_EIGHT,
-	lengthTextWithUnit,
+	lengthWhy,
 	snapToBeat,
-	timeTextWithUnit,
 	timeWhy,
 	toPosition,
 	toSeconds,
@@ -178,18 +177,18 @@ function carryForward(
  * 場地旁邊那一行字，告訴教練在播放頭拖人會改哪一張站位，還是會插一張新的。
  * 站位編號照時間排，跟站位縮圖列一樣；拍子音樂段寫「3-5&」，口號段寫「12.3 秒」。
  */
-export function moveTargetText(flow: Flow, sec: number): string {
+export function moveTargetWhy(flow: Flow, sec: number): Why {
 	const target = formationAt(flow, sec);
 	if (target) {
 		const index = flow.formations.indexOf(target);
 		// 只有開頭那張的 segmentId 可能是 null。
 		const t = target as TimePosition;
-		const when = index === 0 ? '開頭' : timeTextWithUnit(flow, t.segmentId, t);
-		return `拖人會改：站位 ${index + 1}（${when}）`;
+		if (index === 0) return { code: 'formation_move_target_first', n: index + 1 };
+		return { code: 'formation_move_target', n: index + 1, at: timeWhy(flow, t.segmentId, t) };
 	}
 	// 不在站位上表示已經有段，toPosition 一定有值。
 	const p = toPosition(flow, sec)!;
-	return `拖人會在 ${timeTextWithUnit(flow, p.segmentId, p)} 插一張新站位`;
+	return { code: 'formation_move_insert', at: timeWhy(flow, p.segmentId, p) };
 }
 
 /** 幫一張站位取名。清成空白就拿掉名字，只顯示號碼。 */
@@ -385,17 +384,19 @@ export function formationWalks(flow: Flow, formationId: string): FormationWalk[]
  * 走位速度給教練看的說明：「每秒 1.3 公尺」；太快的加「至少要 N 拍」（照每秒 TOO_FAST_MPS 公尺算），
  * 很喘的加「不喘要 N 拍」（照每秒 TIRING_MPS 公尺算）。拍數照走位中間那一刻所在的段，進位到半拍；口號段寫秒數，進位到 0.1 秒。
  */
-export function walkSpeedText(flow: Flow, walk: FormationWalk): string {
-	const speed = `每秒 ${walk.speed.toFixed(1)} 公尺`;
+export function walkSpeedWhy(flow: Flow, walk: FormationWalk): Why {
+	const speed: Why = { code: 'formation_speed', n: walk.speed.toFixed(1) };
 	if (!walk.tooFast && !walk.tiring) return speed;
 	const segment = flow.segments.find((s) => s.id === toPosition(flow, (walk.departSec + walk.arriveSec) / 2)?.segmentId);
 	if (!segment) return speed;
 	const distance = Math.hypot(walk.to[0] - walk.from[0], walk.to[1] - walk.from[1]);
 	const need = (mps: number) => {
 		const n = Math.ceil(distance / mps / unitSec(segment) - EPS);
-		return lengthTextWithUnit(segment, n);
+		return lengthWhy(segment, n);
 	};
-	return walk.tooFast ? `走太快：${speed}，至少要 ${need(TOO_FAST_MPS)}` : `很喘：${speed}，不喘要 ${need(TIRING_MPS)}`;
+	return walk.tooFast
+		? { code: 'formation_too_fast', speed, need: need(TOO_FAST_MPS) }
+		: { code: 'formation_tiring', speed, need: need(TIRING_MPS) };
 }
 
 /** 能設出發和到達的站位在 formations 裡的位置；不能設時回原因。 */
@@ -591,21 +592,21 @@ export function moveFormation(
 }
 
 /** 左邊欄「站位時間」框下面那一行：能挪到哪。開頭那張不能挪；找不到站位是空字串。 */
-export function moveFormationHint(flow: Flow, formationId: string): string {
+export function moveFormationHint(flow: Flow, formationId: string): WhyParam {
 	const index = flow.formations.findIndex((f) => f.id === formationId);
 	if (index === -1) return '';
-	if (index === 0) return '開頭那張不能挪';
+	if (index === 0) return { code: 'formation_first_fixed' };
 	const { before, after } = neighbourTimes(flow, index);
-	return after ? `可以挪到 ${before} 之後、${after} 之前` : `可以挪到 ${before} 之後`;
+	return after ? { code: 'formation_can_move_between', before, after } : { code: 'formation_can_move_after', before };
 }
 
 /**
  * 挪 formations[index]（不是開頭那張）時，前一張和後一張的站位時間給教練看：
  * 一律前面加段名（同一段也加），教練才知道是哪一段的時間。沒有後一張是 null。
  */
-function neighbourTimes(flow: Flow, index: number): { before: string; after: string | null } {
+function neighbourTimes(flow: Flow, index: number): { before: WhyParam; after: WhyParam | null } {
 	// home 給空字串：沒有一段的 id 是空的，所以每個時間都帶段名。
-	const text = (f: Formation) => timeTextWithUnit(flow, '', f as TimePosition);
+	const text = (f: Formation) => timeWhy(flow, '', f as TimePosition);
 	const c = flow.formations[index + 1];
 	return { before: text(flow.formations[index - 1]), after: c ? text(c) : null };
 }

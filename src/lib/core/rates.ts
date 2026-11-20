@@ -10,6 +10,7 @@ import type { Flow } from './flow';
 import { attemptText, attemptWhos } from './records';
 import type { Phase } from './phase-types';
 import type { Attempt, PracticeKind } from './success-rate';
+import type { WhyParam } from './why';
 
 /** 一個環節的次數：✓、△、✗ 各幾次，和有打記號的次數（空的不算）。 */
 export interface Tally {
@@ -128,7 +129,7 @@ function passes(r: Attempt, filter: RateFilter): boolean {
 
 /** 成功率表：一欄一組（騰翻、跳躍一欄一個人），每欄是每個環節和整次的次數；加上合計。 */
 export interface RateTable {
-	columns: ({ who: string; name: string; people?: string[] } & RateCounts)[];
+	columns: ({ who: string; name: WhyParam; people?: string[] } & RateCounts)[];
 	total: RateCounts;
 }
 

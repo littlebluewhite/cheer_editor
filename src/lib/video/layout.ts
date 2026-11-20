@@ -4,6 +4,7 @@
 import {
 	VIDEO_FPS,
 	actionLabel,
+	cueWordWhy,
 	fullView,
 	markCovered,
 	videoDurationSec,
@@ -18,6 +19,7 @@ import {
 	type VideoRow
 } from '#lib/core';
 import { isLongMarker, markerWidth } from '#lib/marker.js';
+import { whyText } from '#lib/reason-text.js';
 import type { ColorKey } from './colors';
 
 export const VIDEO_W = 1080;
@@ -150,7 +152,7 @@ export function layoutFrame(field: FieldConfig, frame: VideoFrameData, measure: 
 export function overflowEights(flow: Flow, measure: Measure): string[] {
 	return videoRows(flow)
 		.filter(({ row }) => layoutRow(row, null, measure).overflow)
-		.map(({ label }) => label);
+		.map(({ label }) => whyText(label));
 }
 
 /**
@@ -190,7 +192,7 @@ function layoutTop(frame: VideoFrameData, measure: Measure): Part {
 	const title = layoutTitle(frame.title, measure);
 	texts.push(...title.texts);
 	texts.push(
-		{ text: frame.where, x: LEFT, y: WHERE_Y, px: WHERE_PX, weight: 600, color: 'muted' },
+		{ text: whyText(frame.where), x: LEFT, y: WHERE_Y, px: WHERE_PX, weight: 600, color: 'muted' },
 		{ text: frame.clock, x: LEFT + WIDTH, y: WHERE_Y, px: WHERE_PX, weight: 600, color: 'muted', align: 'right' }
 	);
 	// 口號段和開頭沒有 1–8；最後一個八拍不滿時多的格子灰掉
@@ -347,19 +349,19 @@ function* squeezes(row: VideoRow): Generator<Squeeze> {
 function textLines(row: VideoRow, s: Squeeze, px: number, measure: Measure): Para[] {
 	const paras: Para[] = [];
 	if (row.empty) paras.push({ text: EMPTY_TEXT, weight: 400, color: 'muted' });
-	for (const f of row.formations) paras.push({ text: f, weight: 600, color: 'muted' });
+	for (const f of row.formations) paras.push({ text: whyText(f), weight: 600, color: 'muted' });
 	// 備註從最下面那個拿起
 	const noted = row.actions.flatMap((a, i) => (a.note ? [i] : []));
 	const droppedNotes = new Set(noted.slice(noted.length - s.notesDropped));
 	row.actions.slice(0, s.kept).forEach((a, i) => {
-		paras.push({ text: a.title, weight: 700, color: 'ink' });
-		if (a.who) paras.push({ text: a.who, weight: 400, color: 'ink' });
+		paras.push({ text: whyText(a.title), weight: 700, color: 'ink' });
+		if (a.who) paras.push({ text: whyText(a.who), weight: 400, color: 'ink' });
 		if (a.note && !droppedNotes.has(i)) paras.push({ text: `備註：${a.note}`, weight: 400, color: 'muted' });
 	});
 	// 還在做的動作從最下面那個縮起
 	const fullUntil = row.continuing.length - s.collapsed;
 	row.continuing.forEach((c, i) => {
-		const text = i < fullUntil && c.who ? `↳ ${c.name} 繼續：${c.who}` : `↳ ${c.name} 繼續`;
+		const text = i < fullUntil && c.who ? `↳ ${whyText(c.name)} 繼續：${whyText(c.who)}` : `↳ ${whyText(c.name)} 繼續`;
 		paras.push({ text, weight: 400, color: 'ink' });
 	});
 	const dropped = row.actions.length - s.kept;
@@ -468,14 +470,14 @@ function cueBlock(
 	name.forEach((text, i) => texts.push({ text, x: LEFT, y: i * lh + (lh - px) / 2, px, weight: 700, color: 'ink' }));
 	// 環節照流程核心排好的排（整個動作算一次，跟八拍表一樣），這個八拍空著的排照樣留一行（擠的時候不留）
 	const phases = Array.from({ length: Math.max(0, ...line.phases.map((p) => p.row + 1)) }, (_, row) =>
-		line.phases.filter((p) => p.row === row).map((p) => ({ from: p.from, to: p.to, text: p.label, who: '', style: PHASE_STYLE }))
+		line.phases.filter((p) => p.row === row).map((p) => ({ from: p.from, to: p.to, text: whyText(p.label), who: '', style: PHASE_STYLE }))
 	).filter((r) => !squeeze || r.length);
 	// 從上一列接過來的不再寫字和給誰
 	const cues = line.cues.map((c) => ({
 		from: c.from,
 		to: c.to,
-		text: [c.lead, c.continued ? '' : c.word].filter(Boolean).join(' '),
-		who: c.continued ? '' : (c.who ?? ''),
+		text: [c.lead, c.continued ? '' : whyText(cueWordWhy(c.kind, c.word))].filter(Boolean).join(' '),
+		who: c.continued ? '' : whyText(c.who ?? ''),
 		style: CUE_STYLES[c.kind](c.word)
 	}));
 	let sub = 0;

@@ -16,6 +16,7 @@
 		type Action
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import AttemptCard from './AttemptCard.svelte';
 	import DailyRates from './DailyRates.svelte';
 	import RunThroughSheet from './RunThroughSheet.svelte';
@@ -113,7 +114,7 @@
 		<div class="cards" bind:this={cards}>
 			{#key action.id}
 				{#each attemptWhos(flow, action) as w (w.who)}
-					<AttemptCard {action} who={w.who} name={w.name} people={w.people} {date} />
+					<AttemptCard {action} who={w.who} name={whyText(w.name)} people={w.people} {date} />
 				{:else}
 					<p class="empty">這個動作還沒有分組：到編排選這個動作，在場上選人，用場地下面的分組浮動列分組。</p>
 				{/each}

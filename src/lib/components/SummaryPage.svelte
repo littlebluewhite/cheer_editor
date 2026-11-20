@@ -25,6 +25,7 @@
 		type Tally
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 	import { localDate } from '#lib/local-date.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
@@ -102,7 +103,7 @@
 		const column = block?.table.columns.find((c) => c.who === who);
 		if (!block || !phase || !column) return null;
 		const name = typeof phase === 'string' ? phase : phaseLabel(phase);
-		return { title: `${column.name} ${name}`, days: cellDetail(block.action, who, phaseId, filter) };
+		return { title: `${whyText(column.name)} ${name}`, days: cellDetail(block.action, who, phaseId, filter) };
 	});
 	const isOpen = (actionId: string, who: string, phaseId: string | null) =>
 		open?.actionId === actionId && open.who === who && open.phaseId === phaseId;
@@ -168,7 +169,7 @@
 							<tr>
 								<th scope="col">環節</th>
 								{#each table.columns as col (col.who)}
-									<th scope="col">{col.name}{#if col.people}{' '}<small class="people">{col.people.join('・')}</small>{/if}</th>
+									<th scope="col">{whyText(col.name)}{#if col.people}{' '}<small class="people">{col.people.join('・')}</small>{/if}</th>
 								{/each}
 								<th scope="col">合計</th>
 							</tr>
@@ -179,7 +180,7 @@
 								<tr>
 									<th scope="row">{phaseLabel(p)}</th>
 									{#each table.columns as col (col.who)}
-										{@render cellButton(action.id, col.who, p.id, `${col.name} ${phaseLabel(p)}`, phaseCell(col.phases[p.id]))}
+										{@render cellButton(action.id, col.who, p.id, `${whyText(col.name)} ${phaseLabel(p)}`, phaseCell(col.phases[p.id]))}
 									{/each}
 									<td class="total {rateBand(total.pct) ?? ''}">{@render number(total)}</td>
 								</tr>
@@ -190,7 +191,7 @@
 									<!-- 整次一律是整次成功率：大字看完成率時寫清楚 -->
 									<th scope="row">{picks.rate === 'completion' ? '整次成功率' : '整次'}</th>
 									{#each table.columns as col (col.who)}
-										{@render cellButton(action.id, col.who, null, `${col.name} 整次`, wholeCell(col))}
+										{@render cellButton(action.id, col.who, null, `${whyText(col.name)} 整次`, wholeCell(col))}
 									{/each}
 									<td class="total {rateBand(wholeTotal.pct) ?? ''}">{@render number(wholeTotal)}</td>
 								</tr>
@@ -217,7 +218,7 @@
 					<time datetime={day.date}>{day.date}</time>
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
-							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? NOT_YET_TITLE : undefined}>
+							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? whyText(NOT_YET_TITLE) : undefined}>
 								{m.mark}{#if m.runThrough}<small>全上</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
 										>{session.recordedBy[m.id]}</small
 									>{/if}

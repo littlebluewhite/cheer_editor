@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 八拍表一列裡、一個動作的拍點那一排：上面一行環節，下面 8 格拍點。八拍表（列印）和檢視模式的「前後八拍」共用。
-	import { actionLabel, cueText, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
+	import { actionLabel, cueWhy, cueWordWhy, type EightCountCue, type EightCountCueLine, type EightCountPhase } from '#lib/core';
+	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
 		/** null：沒有動作，只畫 1–8 的空格（前後八拍裡這一拍照樣有格子亮）。 */
@@ -26,12 +27,13 @@
 	const phases = $derived(line?.phases ?? []);
 
 	/** 「拍子 down 1-6 到 1-7・2 拍」「手位 high V 1-8・1 拍・給上層」。 */
-	const cueLabel = (c: EightCountCue) => cueText(c.kind, c.word, c.span, c.who ?? '');
+	const cueLabel = (c: EightCountCue) => whyText(cueWhy(c.kind, c.word, c.span, c.who ?? ''));
+	const word = (c: EightCountCue) => whyText(cueWordWhy(c.kind, c.word));
 
 	/** 「環節 上法 延伸 1-1 到 1-3」。 */
 	function phaseAria(p: EightCountPhase): string {
 		const span = p.to > p.from ? `${eight}-${p.from} 到 ${eight}-${p.to}` : `${eight}-${p.from}`;
-		return `環節 ${p.label} ${span}`;
+		return `環節 ${whyText(p.label)} ${span}`;
 	}
 </script>
 
@@ -47,7 +49,7 @@
 						style:grid-column="{p.from} / {p.to + 1}"
 						style:grid-row={p.row + 1}
 						style:border-top-color={p.color}
-						aria-label={phaseAria(p)}>{p.label}</span
+						aria-label={phaseAria(p)}>{whyText(p.label)}</span
 					>
 				{/each}
 			</div>
@@ -67,8 +69,8 @@
 					class:lit={now !== null && c.start <= now && now < c.end}
 					style:grid-column="{c.from} / {c.to + 1}"
 					aria-label={cueLabel(c)}
-					title={c.who ? `${c.word}（${c.who}）` : c.word}
-					>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{c.word}{#if c.who}<small>{c.who}</small>{/if}{/if}</span
+					title={c.who ? `${word(c)}（${whyText(c.who)}）` : word(c)}
+					>{#if c.lead}<span class="span">{c.lead}</span>{/if}{#if !c.continued}{word(c)}{#if c.who}<small>{whyText(c.who)}</small>{/if}{/if}</span
 				>
 			{/each}
 		</div>

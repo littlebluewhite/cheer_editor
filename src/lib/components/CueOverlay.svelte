@@ -1,8 +1,9 @@
 <script lang="ts">
 	// 場地左邊那一欄的大字：播放頭在有拍點的動作裡（或開始前一個八拍）時，每個動作一張卡，
 	// 寫現在這拍的步驟、拍子、手位（有長度的寫走到第幾拍），下面預告下一個。不吃滑鼠。
-	import { actionLabel, cuesAt, whoName, type Cue, type Flow } from '#lib/core';
+	import { actionLabel, cueWordWhy, cuesAt, whoWhy, type Cue, type Flow } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
+	import { whyText } from '#lib/reason-text.js';
 
 	interface Props {
 		flow: Flow;
@@ -13,7 +14,8 @@
 	const { playback } = getEditor();
 	const live = $derived(cuesAt(flow, playback.sec));
 	/** 「high V（上層）」；給全部的只寫字。 */
-	const nextText = (c: Cue) => (c.who ? `${c.word}（${whoName(flow, c.who)}）` : c.word);
+	const word = (c: Cue) => whyText(cueWordWhy(c.kind, c.word));
+	const nextText = (c: Cue) => (c.who ? `${word(c)}（${whyText(whoWhy(flow, c.who))}）` : word(c));
 </script>
 
 {#if live.length}
@@ -24,9 +26,9 @@
 				{#if l.now.length}
 					<span class="now">
 						{#each l.now as n, i (i)}
-							{@const to = whoName(flow, n.cue.who)}
+							{@const to = whyText(whoWhy(flow, n.cue.who))}
 							<b class="{n.cue.kind} {n.cue.kind === 'count' ? n.cue.word : ''}"
-								>{#if to}<i>{to}</i>{' '}{/if}{n.cue.word}{#if n.beats > 1}{' '}<small
+								>{#if to}<i>{to}</i>{' '}{/if}{word(n.cue)}{#if n.beats > 1}{' '}<small
 										>{n.beat}/{n.beats}</small
 									>{/if}</b
 							>{' '}

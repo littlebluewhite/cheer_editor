@@ -39,7 +39,7 @@
 		toSeconds,
 		totalSeconds,
 		units,
-		walkSpeedText,
+		walkSpeedWhy,
 		type Clash,
 		type Cue,
 		type CueKind,
@@ -249,7 +249,7 @@
 		for (const [i, b] of flow.formations.entries()) {
 			for (const w of formationWalks(flow, b.id)) {
 				const { memberId, departSec, arriveSec, tooFast, tiring } = w;
-				const speed = walkSpeedText(flow, w);
+				const speed = whyText(walkSpeedWhy(flow, w));
 				const name = flow.members.find((m) => m.id === memberId)?.name ?? '';
 				const label = `${name} 走到站位 ${i + 1}：${whyText(positionWhy(flow, departSec))} 出發、${whyText(positionWhy(flow, arriveSec))} 到達`;
 				(byMember[memberId] ??= []).push({ formationId: b.id, departSec, arriveSec, tooFast, tiring, speed, label, clashes: [] });

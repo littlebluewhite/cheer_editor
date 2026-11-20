@@ -48,13 +48,14 @@
 		beatSpanWhy,
 		toPosition,
 		copyCues,
-		cueText,
+		cueWhy,
+		cueWordWhy,
 		memberName,
 		nextPhaseKind,
 		phaseColor,
 		sameWho,
 		usedWords,
-		whoName,
+		whoWhy,
 		type Action,
 		type Command,
 		type Cue,
@@ -82,15 +83,15 @@
 
 	const cols = Array.from({ length: 8 }, (_, c) => c);
 	/** 三條由上往下，排在每個八拍的數字格下面。 */
-	const LANES = CUE_KINDS.map((kind) => ({ kind, label: CUE_KIND_LABELS[kind] }));
+	const LANES = CUE_KINDS.map((kind) => ({ kind, label: whyText(CUE_KIND_LABELS[kind]) }));
 
 	const segment = $derived(flow.segments.find((s) => s.id === action.segmentId) ?? null);
 	/** 步驟、手位的按鈕：內建的字，加上這支流程用過的字（打開別人的流程檔也看得到）。 */
 	const wordRows = $derived.by(() => {
 		const used = usedWords(flow);
 		return [
-			{ kind: 'step' as const, label: CUE_KIND_LABELS.step, words: [...STEP_WORDS, ...used.step], tip: '自己打，例：抬腳' },
-			{ kind: 'motion' as const, label: CUE_KIND_LABELS.motion, words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
+			{ kind: 'step' as const, label: whyText(CUE_KIND_LABELS.step), words: [...STEP_WORDS, ...used.step], tip: '自己打，例：抬腳' },
+			{ kind: 'motion' as const, label: whyText(CUE_KIND_LABELS.motion), words: [...MOTION_WORDS, ...used.motion], tip: '自己打，例：拳頭' }
 		];
 	});
 	/** 「給誰」的選項：全部、動作裡出現的任務角色、動作裡的隊員（照這個順序編號，選單的 value 是編號）。 */
@@ -672,7 +673,8 @@
 						{/each}
 						{#each lanes as lane (lane.kind)}
 							{#each lane.pieces as p}
-								{@const to = whoName(flow, p.cue.who)}
+								{@const to = whyText(whoWhy(flow, p.cue.who))}
+								{@const word = whyText(cueWordWhy(lane.kind, p.cue.word))}
 								<button
 									type="button"
 									class="item {lane.kind} {lane.kind === 'count' ? p.cue.word : ''}"
@@ -680,12 +682,12 @@
 									class:more={!p.last}
 									style:grid-column="{p.start + 2} / {p.end + 2}"
 									style:grid-row={lane.row + p.track}
-									aria-label={cueText(lane.kind, p.cue.word, spanText(p.cue.at, p.cue.len), to)}
+									aria-label={whyText(cueWhy(lane.kind, p.cue.word, segment ? beatSpanWhy(segment, action.start + p.cue.at, p.cue.len) : '', whoWhy(flow, p.cue.who)))}
 									aria-hidden={!p.first || undefined}
 									tabindex={p.first ? undefined : -1}
-									title={to ? `${p.cue.word}（${to}）` : p.cue.word}
+									title={to ? `${word}（${to}）` : word}
 									onclick={() => pick(p.cue, p.cue.who)}
-									><span class="w">{p.first ? p.cue.word : `…${p.cue.word}`}</span>{#if to}<small class="who"
+									><span class="w">{p.first ? word : `…${word}`}</span>{#if to}<small class="who"
 											>{to}</small
 										>{/if}</button
 								>
@@ -752,8 +754,9 @@
 							<span class="lbl">{row.label}</span>
 							<div class="words">
 								{#each row.words as w (w)}
-									<button type="button" class="word" title={w} onclick={() => place(row.kind, w)}
-										><span class="w">{w}</span></button
+									{@const shown = whyText(cueWordWhy(row.kind, w))}
+									<button type="button" class="word" title={shown} onclick={() => place(row.kind, w)}
+										><span class="w">{shown}</span></button
 									>
 								{/each}
 								<span class="own">

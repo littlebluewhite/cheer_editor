@@ -42,7 +42,7 @@ export interface CueFallout {
 	removed: number;
 	cut: number;
 	orphaned: number;
-	items: string[];
+	items: Why[];
 }
 
 /** 收好了：action 是收好的動作（還沒換進流程）。 */

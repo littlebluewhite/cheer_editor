@@ -4,10 +4,10 @@
 		eightCountRows,
 		formationWalks,
 		memberMarkers,
-		memberNowText,
+		memberNowWhy,
 		positionWhy,
 		positionsAt,
-		formationNowText,
+		formationNowWhy,
 		readJump,
 		layersAt,
 		squadBadge,
@@ -320,7 +320,7 @@
 	/** 點到的人的八拍表：只跟著流程和點到誰重算，播放頭動不用重算。 */
 	const tappedRows = $derived(flow && tappedId ? eightCountRows(flow, tappedId, false) : []);
 	const tappedWho = $derived(
-		flow && tappedId && flow.members.some((m) => m.id === tappedId) ? memberNowText(flow, tappedId, playback.sec, tappedRows) : ''
+		flow && tappedId && flow.members.some((m) => m.id === tappedId) ? whyText(memberNowWhy(flow, tappedId, playback.sec, tappedRows)) : ''
 	);
 	/** 選到的動作有環節、要分組（騰翻、跳躍以外）：場上出現組號小圓和分組浮動列。 */
 	const groupingAction = $derived(session.groupingAction);
@@ -1144,7 +1144,7 @@
 				<main class="phone-view">
 					<div class="phone-field">
 						<!-- 點了場上的人：這裡換成寫他的名字和這個八拍做什麼；點空白的地方換回站位名稱 -->
-						<div class="formation-now">{tappedWho || formationNowText(flow, playback.sec)}</div>
+						<div class="formation-now">{tappedWho || whyText(formationNowWhy(flow, playback.sec))}</div>
 						<Field
 							field={flow.field}
 							members={flow.members}
@@ -1196,7 +1196,7 @@
 			<main class="field-host" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>
 				{#if session.viewing}
 					<!-- 左上角一直寫播放頭這一刻的站位（有人往下一張走了寫要去的那張） -->
-					<div class="formation-now">{formationNowText(flow, playback.sec)}</div>
+					<div class="formation-now">{whyText(formationNowWhy(flow, playback.sec))}</div>
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
 					<div class="view-badge">
 						<Icon name="eye" />{cloud?.newVersion ? NEW_VERSION : cloud?.offline ? '斷線了・連上才能改' : '檢視模式・只能看'}

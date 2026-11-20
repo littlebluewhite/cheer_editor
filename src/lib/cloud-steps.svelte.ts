@@ -42,7 +42,7 @@ import {
 	putRecords,
 	recordsPatch,
 	runCommands,
-	squadName,
+	squadWhy,
 	takeRecords,
 	undone,
 	undoRecords,
@@ -54,7 +54,7 @@ import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import type { CloudStep, DroppedRecord, EditorSession } from '#lib/editor-session.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
-import { reasonText } from '#lib/reason-text.js';
+import { reasonText, whyText } from '#lib/reason-text.js';
 import { Flash } from '#lib/flash.svelte.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView, SentBack } from '#lib/server-api.js';
@@ -809,7 +809,7 @@ const stored = (r: CloudRecord): StoredAttempt => ({ actionId: r.actionId, attem
 /** 沒存進去時表上那一列：記的當下的日期、動作、組（或隊員）、記號（之後動作、組可能被刪掉，名字先記下來）。 */
 function droppedRow(flow: Flow, { actionId, attempt }: StoredAttempt): DroppedRecord {
 	const action = flow.actions.find((a) => a.id === actionId)!;
-	const who = perPerson(action.category) ? memberName(flow, attempt.who) : squadName(flow, action, attempt.who);
+	const who = perPerson(action.category) ? memberName(flow, attempt.who) : whyText(squadWhy(flow, action, attempt.who));
 	return {
 		id: attempt.id,
 		date: attempt.date,

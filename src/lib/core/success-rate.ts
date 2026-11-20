@@ -10,15 +10,15 @@ import { phasesOverlap, phasesShareBeats, rangeProblem, type BeatRange } from '.
 import { NO_SQUAD_COLOR, PHASE_COLORS, squadColor } from './colors';
 import { fitPhaseKind, phaseKindsFor, phaseKindWhy, PHASE_KINDS, phasesMayShareBeats, V10_PHASE_KINDS, type Phase } from './phase-types';
 import type { Member } from './members';
-import { joined, type Why } from './why';
+import { joined, zh, type Why, type WhyParam } from './why';
 
 /** 記號：成功 ✓、小失誤 △、失敗 ✗。流程檔就存這三個字。 */
 export type Mark = '✓' | '△' | '✗';
 
-export const MARKS: { key: Mark; label: string }[] = [
-	{ key: '✓', label: '成功' },
-	{ key: '△', label: '小失誤' },
-	{ key: '✗', label: '失敗' }
+export const MARKS: { key: Mark; label: Why }[] = [
+	{ key: '✓', label: { code: 'success_rate_hit' } },
+	{ key: '△', label: { code: 'success_rate_bobble' } },
+	{ key: '✗', label: { code: 'success_rate_fall' } }
 ];
 
 /** 練法：分段練（drill）或全上（runThrough）。 */
@@ -160,13 +160,14 @@ export function withoutRecords(action: Action, drop: Attempt[]): Action {
 	return { ...action, successRate: { ...action.successRate, records } };
 }
 
-/** 紀錄照誰數幾次，給教練看：「第 1 組 小美：2 次」，騰翻、跳躍是「小美：1 次」；照第一次記的先後排，前面接 head。 */
-export function recordItems(flow: Flow, action: Action, records: Attempt[], head = ''): string[] {
+/** 紀錄照誰數幾次，給教練看：「第 1 組 小美：2 次」，騰翻、跳躍是「小美：1 次」；照第一次記的先後排，前面接 head（沒有是空的）。 */
+export function recordItems(flow: Flow, action: Action, records: Attempt[], head: WhyParam = ''): Why[] {
 	const counts = new Map<string, number>();
 	for (const r of records) counts.set(r.who, (counts.get(r.who) ?? 0) + 1);
-	return [...counts].map(([who, n]) => {
-		const name = perPerson(action.category) ? memberName(flow, who) : squadName(flow, action, who);
-		return `${head}${name}：${n} 次`;
+	return [...counts].map(([who, n]): Why => {
+		const name = perPerson(action.category) ? memberName(flow, who) : squadWhy(flow, action, who);
+		if (head === '') return { code: n === 1 ? 'success_rate_records_one' : 'success_rate_records', name, n };
+		return { code: n === 1 ? 'success_rate_records_in_one' : 'success_rate_records_in', head, name, n };
 	});
 }
 
@@ -505,12 +506,17 @@ export function squadPeople(flow: Flow, action: Action, squad: string): Member[]
  * （好幾個都照名單順序用第一個）。組裡沒有人就只叫「第 1 組」。
  */
 export function squadName(flow: Flow, action: Action, squad: string): string {
+	return zh(squadWhy(flow, action, squad));
+}
+
+/** squadName 的代號（畫面照語言寫）：組號和組裡那個人的名字（名字照教練取的）。 */
+export function squadWhy(flow: Flow, action: Action, squad: string): Why {
 	const people = squadPeople(flow, action, squad);
 	const withRole = (role: string) =>
 		people.find((member) => action.members.some((m) => m.memberId === member.id && m.squad === squad && m.role === role));
 	const who = withRole('上層') ?? withRole('主底') ?? people[0];
 	const n = squadNumber(action, squad);
-	return who ? `第 ${n} 組 ${who.name}` : `第 ${n} 組`;
+	return who ? { code: 'success_rate_squad_named', n, name: who.name } : { code: 'success_rate_squad', n };
 }
 
 /** 流程裡全部環節的 id（發新 id 時用）。 */

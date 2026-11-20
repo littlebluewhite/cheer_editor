@@ -10,7 +10,7 @@
 		currentFormation,
 		formationAt,
 		moveFormationHint,
-		moveTargetText,
+		moveTargetWhy,
 		readTime,
 		timeInputWhy,
 		type TimePosition
@@ -101,7 +101,7 @@
 					onchange={(e) => retimeHere(e.currentTarget, e.currentTarget.dataset.id, hereTime)}
 				/>
 			</label>
-			<p class="time-hint">{moveFormationHint(flow, here.id)}</p>
+			<p class="time-hint">{whyText(moveFormationHint(flow, here.id))}</p>
 		{/key}
 	{:else}
 		<div class="now-row">
@@ -114,7 +114,7 @@
 		</div>
 	{/if}
 	{#if flow.members.length}
-		<p class="move-target">{moveTargetText(flow, playback.sec)}</p>
+		<p class="move-target">{whyText(moveTargetWhy(flow, playback.sec))}</p>
 	{/if}
 </div>
 
