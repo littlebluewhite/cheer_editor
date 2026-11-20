@@ -102,7 +102,8 @@ describe('任務角色', () => {
 		expect(addCustomRole(empty(), { name: '一二三四五六七八', meaning: '' }).kind).toBe('ok');
 		expect(addCustomRole(empty(), { name: '一二三四五六七八九', meaning: '' })).toEqual({
 			kind: 'blocked',
-			message: '任務角色名稱最多 8 個字'
+			message: '任務角色名稱最多 8 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_role_name' }, max: 8 }
 		});
 		const added = flowOf(addCustomRole(empty(), { name: '丟人的', meaning: '' }));
 		expect(updateCustomRole(added, 'r1', { name: '一二三四五六七八九', meaning: '' }).kind).toBe('blocked');

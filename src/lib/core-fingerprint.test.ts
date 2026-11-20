@@ -14,7 +14,7 @@ describe('流程核心的指紋', () => {
 		const before = await bundleCore();
 		const after = await bundleCore({
 			edit: (path, code) =>
-				path.endsWith('src/lib/core/text-length.ts') ? code.replace("flowName: '流程名字'", "flowName: '流程的名字'") : code
+				path.endsWith('src/lib/core/text-length.ts') ? code.replace('flowName: 40', 'flowName: 41') : code
 		});
 		expect(after.code).not.toBe(before.code);
 		expect(after.fingerprint).not.toBe(before.fingerprint);

@@ -88,6 +88,15 @@ const ZH = {
 	cues_no_action: '找不到這個動作',
 	cues_nothing_copied: '沒有複製的拍點',
 	cues_paste_blocked: '貼不下：{reason}',
+	// text-length.ts（field 是下面的欄位名）
+	text_length_too_long: '{field}最多 {max} 個字',
+	text_length_too_long_kept: '{field}最多 {max} 個字（原本就有 {count} 個字，不能再變長）',
+	text_length_flow_name: '流程名字',
+	text_length_member_name: '隊員名字',
+	text_length_action_name: '動作名稱',
+	text_length_formation_name: '站位名稱',
+	text_length_role_name: '任務角色名稱',
+	text_length_note: '備註',
 	// roles.ts
 	roles_no_name: '請填任務角色名稱',
 	roles_name_taken: '已經有「{name}」這個任務角色了',

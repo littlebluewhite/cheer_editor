@@ -137,12 +137,13 @@ function withX1(flow: Flow, change: Partial<Flow['actions'][number]>): Flow {
  * 每一條都看三件事：這一步新出現就擋、寫對原因；傳上雲端（沒有之前）不擋；之前就有的（舊檔）不擋。
  */
 const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
-	['流程名字太長', (f) => ({ ...f, name: '流'.repeat(41) }), '流程名字最多 40 個字'],
+	['流程名字太長', (f) => ({ ...f, name: '流'.repeat(41) }), '流程名字最多 40 個字', 'text_length_too_long'],
 	['流程沒有名字', (f) => ({ ...f, name: ' ' }), '請幫流程取名字', 'flow_no_name'],
 	[
 		'隊員名字太長',
 		(f) => ({ ...f, members: f.members.map((m) => (m.id === 'm1' ? { ...m, name: '美'.repeat(21) } : m)) }),
-		'隊員名字最多 20 個字'
+		'隊員名字最多 20 個字',
+		'text_length_too_long'
 	],
 	['隊員沒有名字', (f) => ({ ...f, members: f.members.map((m) => (m.id === 'm1' ? { ...m, name: '' } : m)) }), '請填隊員名字'],
 	['動作名稱太長', (f) => withX1(f, { name: 'L'.repeat(21) }), `動作「技巧·${'L'.repeat(21)}」：動作名稱最多 20 個字`, 'flow_check_in_action'],
@@ -153,7 +154,7 @@ const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
 		'站位 1：站位名稱最多 20 個字',
 		'flow_check_in_formation'
 	],
-	['任務角色名稱太長', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '飛'.repeat(9), meaning: '' }] }), '任務角色名稱最多 8 個字'],
+	['任務角色名稱太長', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '飛'.repeat(9), meaning: '' }] }), '任務角色名稱最多 8 個字', 'text_length_too_long'],
 	['任務角色沒有名稱', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '', meaning: '' }] }), '請填任務角色名稱', 'roles_no_name'],
 	['任務角色重複', (f) => ({ ...f, customRoles: [{ id: 'r1', name: '上層', meaning: '' }] }), '已經有「上層」這個任務角色了', 'roles_name_taken'],
 	['場地條數', (f) => ({ ...f, field: { ...f.field, strips: 13 } }), '條數要是 1–12 的整數', 'flow_strips'],

@@ -249,7 +249,8 @@ describe('加隊員', () => {
 		const flow = okFlow(addMembers(newFlow(), [xiaoA]));
 		expect(updateMember(flow, flow.members[0].id, { name: twenty + '一' })).toEqual({
 			kind: 'blocked',
-			message: '隊員名字最多 20 個字'
+			message: '隊員名字最多 20 個字',
+			why: { code: 'text_length_too_long', field: { code: 'text_length_member_name' }, max: 20 }
 		});
 	});
 	it('開檔進來名字超過 20 個字的人：名字沒改，還是可以改性別和全局角色', () => {
