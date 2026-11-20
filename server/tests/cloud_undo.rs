@@ -362,10 +362,12 @@ async fn an_undo_that_breaks_the_rules_is_sent_back(db: sqlx::PgPool) {
         .unwrap();
     let change: Value = serde_json::from_str(&change).unwrap();
     let reply = undo(&mut a, "undo-1", 9, "delete-1", false, change).await;
+    let why = json!({ "code": "flow_check_max_members", "max": 40 });
+    let reason = json!({ "message": "一支流程最多 40 人", "why": why });
     assert_sent_back(
         &reply,
         "這步不能復原：一支流程最多 40 人",
-        json!({ "code": "undoBlocked", "redo": false, "reason": { "message": "一支流程最多 40 人" } }),
+        json!({ "code": "undoBlocked", "redo": false, "reason": reason }),
     );
     assert_eq!(members(&s.flow(&wang, &id).await).len(), 40);
 }

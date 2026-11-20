@@ -13,6 +13,7 @@ import type { AudioRef, Segment } from './segment';
 import { snapPosition } from './snap';
 import { tooLong } from './text-length';
 import { DEFAULT_TIME_RULES, type TimeRules } from './time-rules';
+import type { Why } from './why';
 
 export interface Flow {
 	name: string;
@@ -39,18 +40,19 @@ export interface NewFlowInput {
 	field: FieldConfig;
 }
 
-const NO_NAME = '請幫流程取名字';
-
-/** 流程名字哪裡不行（頭尾空白先去掉；before：改之前的名字，開檔進來就超過上限的可以留著，不能更長）；沒問題是 null。 */
-export function flowNameProblem(name: string, before?: string): string | null {
+/**
+ * 流程名字哪裡不行（頭尾空白先去掉；before：改之前的名字，開檔進來就超過上限的可以留著，不能更長）；沒問題是 null。
+ * 太長還是中文（tooLong 跟隊員、動作、站位、任務角色共用，還沒改成代號）。
+ */
+export function flowNameProblem(name: string, before?: string): string | Why | null {
 	const trimmed = name.trim();
-	return trimmed ? tooLong('flowName', trimmed, before) : NO_NAME;
+	return trimmed ? tooLong('flowName', trimmed, before) : { code: 'flow_no_name' };
 }
 
 /** 條數的毛病：不是 1–12 的整數；沒問題是 null。 */
-export function stripsProblem(strips: number): string | null {
+export function stripsProblem(strips: number): Why | null {
 	if (!Number.isInteger(strips) || strips < MIN_STRIPS || strips > MAX_STRIPS) {
-		return `條數要是 ${MIN_STRIPS}–${MAX_STRIPS} 的整數`;
+		return { code: 'flow_strips', min: MIN_STRIPS, max: MAX_STRIPS };
 	}
 	return null;
 }
@@ -126,7 +128,7 @@ export function adjustField(flow: Flow, field: FieldConfig, o: ConfirmOption = {
 				.filter((g) => !wasStacked(g))
 				.map((g) => `站位 ${i + 1}${name}：${g.map((m) => m.name).join('、')}`);
 		});
-		if (items.length) return needsConfirm('這樣調整，這些人會疊在同一點（之後可以再拖開）：', items);
+		if (items.length) return needsConfirm({ code: 'flow_stacked' }, items);
 	}
 	return ok({ ...flow, field: { ...field }, formations });
 }

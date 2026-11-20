@@ -10,6 +10,7 @@ import {
 	remoteChange,
 	runCommands,
 	runUndo,
+	said,
 	stepKeys,
 	takeRecords,
 	type Command,
@@ -67,7 +68,7 @@ export function uploadFlowJson(doc: string): string {
 	const checked = checkFlowDocument(JSON.parse(doc));
 	if (checked.kind === 'error') return JSON.stringify(checked);
 	const problem = flowProblem(checked.flow);
-	if (problem) return JSON.stringify({ kind: 'error', message: problem });
+	if (problem) return JSON.stringify({ kind: 'error', ...said(problem) });
 	return JSON.stringify({ kind: 'ok', ...takeRecords(checked.flow) });
 }
 

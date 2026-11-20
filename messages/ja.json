@@ -27,5 +27,22 @@
 	"undo_blocked": "元に戻せません：{reason}",
 	"redo_blocked": "やり直せません：{reason}",
 	"commands_no_flow": "開いているルーティーンがありません",
-	"commands_none": "コマンドがありません"
+	"commands_none": "コマンドがありません",
+	"flow_no_name": "ルーティーンに名前を付けてください",
+	"flow_strips": "マット数は {min}～{max} の整数にしてください",
+	"flow_stacked": "この調整で、次の選手が同じ位置に重なります（あとでドラッグして離せます）：",
+	"time_rules_positive": "秒数は 0 より大きくしてください",
+	"time_rules_chant": "「チアクライテリアの合計の最小」は「ルーティーン全体の最大」より短くしてください",
+	"time_rules_music": "「音楽パートの合計の最大」は「ルーティーン全体の最大」を超えられません",
+	"flow_check_max_members": "1 つのルーティーンは最大 {max} 人です",
+	"flow_check_in_action": "技「{action}」：{reason}",
+	"flow_check_in_formation": "フォーメーション {n}：{reason}",
+	"flow_check_in_segment": "{segment}：{reason}",
+	"flow_check_no_role_name": "ポジション名を入力してください",
+	"flow_check_role_taken": "「{role}」というポジションはすでにあります",
+	"flow_check_off_field": "{member} {reason}",
+	"flow_check_formation_order": "フォーメーション {n} はフォーメーション {before} より後で、パートの時間内にしてください",
+	"flow_check_twice": "同じ選手は 1 回しか入れられません",
+	"flow_check_no_role": "「{role}」というポジションはありません",
+	"flow_check_clash": "{member} が同じ時間に「{first}」と「{second}」の両方に入っています"
 }

@@ -27,5 +27,22 @@
 	"undo_blocked": "Can't undo this: {reason}",
 	"redo_blocked": "Can't redo this: {reason}",
 	"commands_no_flow": "No routine is open",
-	"commands_none": "No commands"
+	"commands_none": "No commands",
+	"flow_no_name": "Please give the routine a name",
+	"flow_strips": "Panels must be a whole number from {min} to {max}",
+	"flow_stacked": "After this change, these athletes will be on the same spot (you can drag them apart later):",
+	"time_rules_positive": "Seconds must be more than 0",
+	"time_rules_chant": "\"Cheer segments total at least\" must be less than \"Whole routine at most\"",
+	"time_rules_music": "\"Music segments total at most\" can't be more than \"Whole routine at most\"",
+	"flow_check_max_members": "A routine can have at most {max} athletes",
+	"flow_check_in_action": "Skill \"{action}\": {reason}",
+	"flow_check_in_formation": "Formation {n}: {reason}",
+	"flow_check_in_segment": "{segment}: {reason}",
+	"flow_check_no_role_name": "Please enter a position name",
+	"flow_check_role_taken": "There's already a position called \"{role}\"",
+	"flow_check_off_field": "{member} {reason}",
+	"flow_check_formation_order": "Formation {n} must come after formation {before} and within a segment's time",
+	"flow_check_twice": "Each athlete can only be added once",
+	"flow_check_no_role": "There's no position called \"{role}\"",
+	"flow_check_clash": "{member} is in both \"{first}\" and \"{second}\" at the same time"
 }
