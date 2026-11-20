@@ -253,7 +253,7 @@ describe('改隊員名字（候補上場），而他有紀錄', () => {
 		expect(updateMember(recorded(), 'm1', { name: '小芳芳' })).toEqual({
 			kind: 'choose',
 			message: '小美 改名成「小芳芳」，他在的組和他自己有 3 次紀錄：只是改錯字就保留舊紀錄，換了人就清掉重算（清掉的紀錄按「復原」會回來）',
-			why: { code: 'members_rename_records', name: '小美', newName: '小芳芳', count: 3, undoable: '（清掉的紀錄按「復原」會回來）' },
+			why: { code: 'members_rename_records', name: '小美', newName: '小芳芳', count: 3, undoable: { code: 'records_undoable' } },
 			items: ['動作「技巧·Lib」第 1 組 小美：2 次', '動作「騰翻」小美：1 次']
 		});
 	});
@@ -302,7 +302,7 @@ describe('刪隊員：跟在動作裡移人一樣問', () => {
 			more: {
 				code: 'members_delete_records_one',
 				count: 1,
-				undoable: '（清掉的紀錄按「復原」會回來）',
+				undoable: { code: 'records_undoable' },
 				more: {
 					code: 'members_delete_lost',
 					list: { code: 'members_lost_role_squad', action: '技巧·Lib', squad: 1, role: '主底' },

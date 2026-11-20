@@ -217,7 +217,8 @@ describe('金字塔的環節佔同樣的拍：記一次、全上、改一次都�
 		});
 		expect(changeAttempt(flow, 'x2', 't1', { [中一]: '✓', [上二]: '✗' })).toEqual({
 			kind: 'blocked',
-			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）'
+			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）',
+			why: { code: 'records_run_through_marks' }
 		});
 	});
 
@@ -300,11 +301,13 @@ describe('刪掉上一次', () => {
 	it('那天這組這種練法沒有紀錄就擋下來', () => {
 		expect(deleteLastAttempt(recorded(), 'x1', 'g2', '2026-11-05', 'drill')).toEqual({
 			kind: 'blocked',
-			message: '這一天還沒有紀錄'
+			message: '這一天還沒有紀錄',
+			why: { code: 'records_none_that_day' }
 		});
 		expect(deleteLastAttempt(recorded(), 'x1', 'g2', '2026-11-04', 'runThrough')).toEqual({
 			kind: 'blocked',
-			message: '這一天還沒有紀錄'
+			message: '這一天還沒有紀錄',
+			why: { code: 'records_none_that_day' }
 		});
 	});
 
@@ -353,7 +356,8 @@ describe('改某一次、刪掉某一次', () => {
 		expect(recordsOf(flow)[3]).toMatchObject({ practice: 'runThrough', runThroughId: 'r1', marks: { p2: '△' } });
 		expect(changeAttempt(flow, 'x1', 't4', { p1: '✓', p3: '✓' })).toEqual({
 			kind: 'blocked',
-			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）'
+			message: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）',
+			why: { code: 'records_run_through_marks' }
 		});
 	});
 
@@ -384,7 +388,11 @@ describe('改某一次、刪掉某一次', () => {
 
 	it('一個記號都沒有、找不到那一次就擋下來', () => {
 		expect(changeAttempt(recorded(), 'x1', 't1', {})).toEqual({ kind: 'blocked', message: '一次至少要有一個記號' });
-		expect(changeAttempt(recorded(), 'x1', 't9', { p1: '✓' })).toEqual({ kind: 'blocked', message: '找不到這一次' });
+		expect(changeAttempt(recorded(), 'x1', 't9', { p1: '✓' })).toEqual({
+			kind: 'blocked',
+			message: '找不到這一次',
+			why: { code: 'records_attempt_not_found' }
+		});
 	});
 
 	it('刪掉某一次：只拿掉它，回傳它和原本排第幾，救回放回原位；全上的也一樣', () => {
@@ -402,7 +410,11 @@ describe('改某一次、刪掉某一次', () => {
 			't4'
 		]);
 		expect(recordsOf(flowOf(deleteAttempt(recorded(), 'x1', 't4'))).map((a) => a.id)).toEqual(['t1', 't2', 't3']);
-		expect(deleteAttempt(recorded(), 'x1', 't9')).toEqual({ kind: 'blocked', message: '找不到這一次' });
+		expect(deleteAttempt(recorded(), 'x1', 't9')).toEqual({
+			kind: 'blocked',
+			message: '找不到這一次',
+			why: { code: 'records_attempt_not_found' }
+		});
 	});
 });
 
@@ -434,13 +446,21 @@ describe('救回刪掉的那一次', () => {
 	it('已經在了（救回過）就擋下來', () => {
 		const { flow, attempt, index } = deleted();
 		const back = flowOf(restoreAttempt(flow, 'x1', attempt, index));
-		expect(restoreAttempt(back, 'x1', attempt, index).kind).toBe('blocked');
+		expect(restoreAttempt(back, 'x1', attempt, index)).toEqual({
+			kind: 'blocked',
+			message: '這一次已經在了',
+			why: { code: 'records_attempt_exists' }
+		});
 	});
 
 	it('動作不在了就擋下來', () => {
 		const { flow, attempt, index } = deleted();
 		const gone = flowOf(deleteAction(flow, 'x1', { confirmed: true }));
-		expect(restoreAttempt(gone, 'x1', attempt, index)).toEqual({ kind: 'blocked', message: '找不到這個動作' });
+		expect(restoreAttempt(gone, 'x1', attempt, index)).toEqual({
+			kind: 'blocked',
+			message: '找不到這個動作',
+			why: { code: 'records_no_action' }
+		});
 	});
 });
 
@@ -771,7 +791,8 @@ describe('記一次：擋下來的情況', () => {
 		);
 		expect(recordAttempt(flow, 'x3', drill({ p1: '✓' }, { who: 'm3' }))).toEqual({
 			kind: 'blocked',
-			message: '這個動作沒有記成功率'
+			message: '這個動作沒有記成功率',
+			why: { code: 'records_not_recorded' }
 		});
 	});
 });
@@ -813,15 +834,44 @@ describe('記一次全上', () => {
 	});
 
 	it('每個動作都沒做：擋下來，什麼都不存', () => {
-		expect(recordRunThrough(sample(), date, 1794036000000, [])).toMatchObject({ kind: 'blocked' });
+		expect(recordRunThrough(sample(), date, 1794036000000, [])).toEqual({
+			kind: 'blocked',
+			message: '每個動作都沒做，沒有要存的',
+			why: { code: 'records_run_through_empty' }
+		});
 	});
 
 	it('有一次不守記一次的規則：擋下來寫出是哪個動作，一次都不存', () => {
 		const bad = [...sheet().slice(0, 1), { actionId: 'x2', who: 'm3', marks: { p4: '✓' } } as const];
-		expect(recordRunThrough(sample(), date, 1794036000000, bad)).toEqual({ kind: 'blocked', message: '騰翻：這個隊員不在動作裡' });
+		expect(recordRunThrough(sample(), date, 1794036000000, bad)).toEqual({
+			kind: 'blocked',
+			message: '騰翻：這個隊員不在動作裡',
+			why: { code: 'records_in_action', action: '騰翻', reason: '這個隊員不在動作裡' }
+		});
 		expect(recordRunThrough(sample(), '11/4', 1794036000000, sheet())).toMatchObject({ kind: 'blocked' });
-		expect(recordRunThrough(sample(), date, 1794036000000, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toMatchObject({
-			kind: 'blocked'
+		expect(recordRunThrough(sample(), date, 1794036000000, [{ actionId: 'x9', who: 'g1', marks: { p1: '✓' } }])).toEqual({
+			kind: 'blocked',
+			message: '找不到這個動作',
+			why: { code: 'records_no_action' }
+		});
+	});
+
+	it('沒記成功率的動作：擋下來寫出是哪個動作，原因是代號', () => {
+		const flow = flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'jump',
+				name: '',
+				start: 48,
+				length: 8,
+				note: '',
+				members: [{ memberId: 'm3', role: null }]
+			})
+		);
+		expect(recordRunThrough(flow, date, 1794036000000, [{ actionId: 'x3', who: 'm3', marks: { p1: '✓' } }])).toEqual({
+			kind: 'blocked',
+			message: '跳躍：這個動作沒有記成功率',
+			why: { code: 'records_in_action', action: '跳躍', reason: { code: 'records_not_recorded' } }
 		});
 	});
 
@@ -873,7 +923,11 @@ describe('刪掉上一次全上', () => {
 
 	it('這天沒有全上：擋下來', () => {
 		const flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓' })));
-		expect(deleteLastRunThrough(flow, date)).toEqual({ kind: 'blocked', message: '這一天還沒有全上' });
+		expect(deleteLastRunThrough(flow, date)).toEqual({
+			kind: 'blocked',
+			message: '這一天還沒有全上',
+			why: { code: 'records_no_run_through_that_day' }
+		});
 	});
 
 	it('這天有沒有全上：有就是這天最後存的那次的全上 id；只有分段練、只有別天的全上就沒有', () => {
@@ -896,7 +950,11 @@ describe('刪掉上一次全上', () => {
 		if (r.kind !== 'ok') throw new Error(r.kind);
 		const back = flowOf(restoreRunThrough(r.flow, r.removed));
 		expect(back.actions).toEqual(before.actions);
-		expect(restoreRunThrough(back, r.removed)).toEqual({ kind: 'blocked', message: '這次全上已經在了' });
+		expect(restoreRunThrough(back, r.removed)).toEqual({
+			kind: 'blocked',
+			message: '這次全上已經在了',
+			why: { code: 'records_run_through_exists' }
+		});
 	});
 
 	it('救回之前又記了一次：放回原本排第幾，又記的排在後面', () => {
@@ -914,6 +972,10 @@ describe('刪掉上一次全上', () => {
 		if (r.kind !== 'ok') throw new Error(r.kind);
 		expect(runIds(r.flow)).toEqual(['-', 'r1', '-', 'r2', 'r1']);
 		expect(restoreRunThrough(r.flow, r.removed)).toEqual({ kind: 'ok', flow: before });
-		expect(deleteAttempts(before, ['tnothere0001'])).toEqual({ kind: 'blocked', message: '找不到這幾次' });
+		expect(deleteAttempts(before, ['tnothere0001'])).toEqual({
+			kind: 'blocked',
+			message: '找不到這幾次',
+			why: { code: 'records_attempts_not_found' }
+		});
 	});
 });

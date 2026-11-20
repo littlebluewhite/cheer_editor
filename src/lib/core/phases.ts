@@ -158,7 +158,7 @@ function withPhases(flow: Flow, segment: Segment, action: Action, phases: Phase[
 	if ((removed.length || stripped.length) && !answered(options)) {
 		const one = gone.length === 1;
 		const code = kept.length ? (one ? 'phases_delete_one' : 'phases_delete') : one ? 'phases_delete_none_left_one' : 'phases_delete_none_left';
-		const lost = recordsLossText(removed.length, stripped.length);
+		const lost = recordsLossText(removed.length, stripped.length)!;
 		return needsConfirm({ code, count: gone.length, lost }, gone.map((p) => `刪掉：環節 ${phaseLabel(p)}`));
 	}
 	return ok(replaceAction(flow, settled.action));

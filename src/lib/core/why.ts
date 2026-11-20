@@ -181,7 +181,29 @@ const ZH = {
 	segment_order_across: '動作「{action}」（{start} 起）跨過 {cut}，切不開',
 	segment_order_delete: '刪掉{segment}，下面這些也會一起刪掉',
 	segment_order_delete_records_one: '刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}',
-	segment_order_delete_records: '刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}'
+	segment_order_delete_records: '刪掉{segment}，下面這些也會一起刪掉，會一起清掉 {count} 次紀錄{undoable}',
+
+	// records.ts
+	records_no_action: '找不到這個動作',
+	records_not_recorded: '這個動作沒有記成功率',
+	records_run_through_empty: '每個動作都沒做，沒有要存的',
+	records_in_action: '{action}：{reason}',
+	records_none_that_day: '這一天還沒有紀錄',
+	records_attempt_not_found: '找不到這一次',
+	records_run_through_marks: '全上的一次每個環節都要有記號（✗ 做完之後才開始的、跟 ✗ 佔同樣拍的不用）',
+	records_attempt_exists: '這一次已經在了',
+	records_no_run_through_that_day: '這一天還沒有全上',
+	records_attempts_not_found: '找不到這幾次',
+	records_run_through_exists: '這次全上已經在了',
+	// 別的原因包進去的：會清掉的紀錄（確認框）、按復原會回來
+	records_loss_both: '一起清掉 {reps}和 {marks}',
+	records_loss_reps: '一起清掉 {reps}',
+	records_loss_marks: '清掉 {marks}',
+	records_reps_one: '{n} 次紀錄',
+	records_reps: '{n} 次紀錄',
+	records_marks_one: '{n} 次的記號',
+	records_marks: '{n} 次的記號',
+	records_undoable: '（清掉的紀錄按「復原」會回來）'
 } satisfies Record<string, string>;
 
 export type WhyCode = keyof typeof ZH;

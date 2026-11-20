@@ -217,7 +217,11 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p2')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，清掉 2 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
-			why: { code: 'phases_delete_one', count: 1, lost: '清掉 2 次的記號' },
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_marks', marks: { code: 'records_marks', n: 2 } }
+			},
 			items: ['刪掉：環節 中段']
 		});
 	});
@@ -229,7 +233,11 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p1')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄和 1 次的記號（清掉的紀錄按「復原」會回來），確定就刪掉',
-			why: { code: 'phases_delete_one', count: 1, lost: '一起清掉 1 次紀錄和 1 次的記號' },
+			why: {
+				code: 'phases_delete_one',
+				count: 1,
+				lost: { code: 'records_loss_both', reps: { code: 'records_reps_one', n: 1 }, marks: { code: 'records_marks_one', n: 1 } }
+			},
 			items: ['刪掉：環節 上法 延伸']
 		});
 		flow = flowOf(deletePhase(flow, 'x1', 'p1', { confirmed: true }));
@@ -248,7 +256,11 @@ describe('刪環節', () => {
 		expect(deletePhase(flow, 'x1', 'p3')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 3 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
-			why: { code: 'phases_delete_none_left_one', count: 1, lost: '一起清掉 3 次紀錄' },
+			why: {
+				code: 'phases_delete_none_left_one',
+				count: 1,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps', n: 3 } }
+			},
 			items: ['刪掉：環節 下法']
 		});
 	});
@@ -302,7 +314,11 @@ describe('口號段刪環節', () => {
 		expect(deletePhase(flow, 'x2', 'p4')).toEqual({
 			kind: 'confirm',
 			message: '會刪掉 1 個環節，一起清掉 1 次紀錄（清掉的紀錄按「復原」會回來）；動作沒有環節了，不再記成功率，確定就刪掉',
-			why: { code: 'phases_delete_none_left_one', count: 1, lost: '一起清掉 1 次紀錄' },
+			why: {
+				code: 'phases_delete_none_left_one',
+				count: 1,
+				lost: { code: 'records_loss_reps', reps: { code: 'records_reps_one', n: 1 } }
+			},
 			items: ['刪掉：環節 中段']
 		});
 		flow = flowOf(deletePhase(flow, 'x2', 'p4', { confirmed: true }));

@@ -5,7 +5,7 @@ import { dropOrphanCues } from './cues';
 import { CELL_M, fieldGeometry, type FieldConfig } from './field';
 import type { Flow } from './flow';
 import { withWalks, type Position } from './formation';
-import { RECORDS_UNDOABLE, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
+import { RECORDS_UNDOABLE_WHY, answered, blocked, needsChoice, needsConfirm, ok, type CommandResult, type ConfirmOption } from './result';
 import { newIds } from './ids';
 import { FIXED_ROLES } from './roles';
 import { CHANGED_SQUADS_QUESTION, settle } from './settle';
@@ -250,7 +250,7 @@ export function updateMember(
 				newName: updated.name,
 				count,
 				// 還是中文（records.ts 的句子，等它改送代號）
-				undoable: RECORDS_UNDOABLE
+				undoable: RECORDS_UNDOABLE_WHY
 			},
 			mine.flatMap((s) => recordItems(flow, s.before, s.records, `動作「${actionLabel(s.before)}」`))
 		);
@@ -342,14 +342,14 @@ export function deleteMember(
 		if (dropped) more.push({ code: dropped === 1 ? 'members_delete_cues_one' : 'members_delete_cues', count: dropped });
 		if (cleared) {
 			const code = cleared === 1 ? 'members_delete_records_one' : 'members_delete_records';
-			more.push({ code, count: cleared, undoable: RECORDS_UNDOABLE });
+			more.push({ code, count: cleared, undoable: RECORDS_UNDOABLE_WHY });
 		}
 		if (lost.length) more.push({ code: 'members_delete_lost', list: joined('members_list', lost) });
 		if (after && flow.markers !== 'initial') {
 			more.push({ code: after === 1 ? 'members_delete_renumber_one' : 'members_delete_renumber', count: after });
 		}
 		// 清掉重算的也是按復原會回來：前面寫過了就不重複
-		if (changed) more.push({ code: 'members_delete_changed', question: CHANGED_SQUADS_QUESTION, undoable: cleared ? '' : RECORDS_UNDOABLE });
+		if (changed) more.push({ code: 'members_delete_changed', question: CHANGED_SQUADS_QUESTION, undoable: cleared ? '' : RECORDS_UNDOABLE_WHY });
 		return (changed ? needsChoice : needsConfirm)(
 			{
 				code: 'members_delete',

@@ -67,7 +67,7 @@ describe('刪段', () => {
 				code: 'segment_order_delete_records_one',
 				segment: { code: 'time_segment_music', n: 1 },
 				count: 1,
-				undoable: '（清掉的紀錄按「復原」會回來）'
+				undoable: { code: 'records_undoable' }
 			}
 		});
 		const twice = flowOf(recordAttempt(once, 'x2', { ...rep, who: 'm2' }));
@@ -78,7 +78,7 @@ describe('刪段', () => {
 				code: 'segment_order_delete_records',
 				segment: { code: 'time_segment_music', n: 1 },
 				count: 2,
-				undoable: '（清掉的紀錄按「復原」會回來）'
+				undoable: { code: 'records_undoable' }
 			}
 		});
 	});
