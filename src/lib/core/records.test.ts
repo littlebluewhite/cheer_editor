@@ -856,6 +856,25 @@ describe('記一次全上', () => {
 		});
 	});
 
+	it('沒記成功率的動作：擋下來寫出是哪個動作，原因是代號', () => {
+		const flow = flowOf(
+			addAction(sample(), {
+				segmentId: 's1',
+				category: 'jump',
+				name: '',
+				start: 48,
+				length: 8,
+				note: '',
+				members: [{ memberId: 'm3', role: null }]
+			})
+		);
+		expect(recordRunThrough(flow, date, 1794036000000, [{ actionId: 'x3', who: 'm3', marks: { p1: '✓' } }])).toEqual({
+			kind: 'blocked',
+			message: '跳躍：這個動作沒有記成功率',
+			why: { code: 'records_in_action', action: '跳躍', reason: { code: 'records_not_recorded' } }
+		});
+	});
+
 	it('算進整次成功率；練法篩選分得開全上和分段練', () => {
 		let flow = flowOf(recordAttempt(sample(), 'x1', drill({ p1: '✓', p2: '✓', p3: '✓' }, { who: 'g2' })));
 		flow = flowOf(recordRunThrough(flow, date, 1794036000000, sheet()));
