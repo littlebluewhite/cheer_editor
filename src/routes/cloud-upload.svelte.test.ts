@@ -290,11 +290,14 @@ describe('下載成流程檔', () => {
 		expect(await menuItem('下載成流程檔')).toBeNull();
 	});
 
-	it('手機：沒有「下載」，只有回首頁', async () => {
+	it('手機：選單裡是回首頁、分享｜八拍表｜使用說明，沒有「下載」「開啟流程檔」「存檔」', async () => {
 		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
 		await openCloud(wangsFlow('owner'));
-		expect(screen.getByRole('button', { name: /回首頁/ })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: /下載/ })).toBeNull();
+		await menuItem('回首頁');
+		const items = [...screen.getByRole('dialog', { name: '選單' }).querySelectorAll('button, a, hr')].map((el) => (el.tagName === 'HR' ? '｜' : el.textContent!.trim()));
+		expect(items).toEqual(['回首頁', '分享', '｜', '八拍表', '｜', '使用說明']);
+		await fromMenu('分享');
+		expect(screen.getByRole('dialog', { name: /分享/ })).toBeTruthy();
 	});
 
 	/** 王教練（在別的地方）把音樂 1 換成新的音樂檔：伺服器上的流程和音樂檔都換了，這個分頁沒拿過。 */

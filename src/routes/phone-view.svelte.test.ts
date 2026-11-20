@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFlowFile, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
-import { editorPage, flush, manualFrames, openFile } from '#lib/test-fakes.js';
+import { editorPage, flush, fromMenu, manualFrames, openFile } from '#lib/test-fakes.js';
 import { libSample, ratedSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -83,7 +83,7 @@ describe('手機的檢視模式', () => {
 		const { saves } = await openOnPhone();
 		expect(me().value).toBe('m2');
 		expect(dot('m2').classList.contains('selected')).toBe(true);
-		await fireEvent.click(screen.getByRole('button', { name: '存檔' }));
+		await fromMenu('存檔');
 		await flush();
 		const saved = readFlowFile(saves.at(-1)!);
 		expect(saved.kind === 'ok' && saved.flow).toEqual(libSample());
@@ -108,9 +108,9 @@ describe('手機的檢視模式', () => {
 		expect(row()).toBeTruthy();
 	});
 
-	it('上方列的「回首頁」：回到首頁，列在最近的流程', async () => {
+	it('選單的「回首頁」：回到首頁，列在最近的流程', async () => {
 		await openOnPhone();
-		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
+		await fromMenu('回首頁');
 		await flush();
 		await vi.waitFor(() => expect(screen.getByRole('list', { name: '最近的流程' }).textContent).toContain('測試'));
 	});
@@ -123,15 +123,97 @@ describe('手機的檢視模式', () => {
 		}
 		await fireEvent.click(within(screen.getByRole('region', { name: '第 1 組 小美' })).getByRole('button', { name: '存這一次' }));
 		await fireEvent.click(screen.getByRole('button', { name: '編排' }));
-		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
+		await fromMenu('回首頁');
 		const dialog = within(screen.getByRole('dialog', { name: '「測試」還沒存，改的東西會不見。' }));
 		await fireEvent.click(dialog.getByRole('button', { name: '取消' }));
 		expect(row()).toBeTruthy();
 
-		await fireEvent.click(screen.getByRole('button', { name: '回首頁' }));
+		await fromMenu('回首頁');
 		await fireEvent.click(screen.getByRole('button', { name: '不存了，繼續' }));
 		await flush();
-		expect(screen.getByLabelText('開啟流程檔')).toBeTruthy();
+		// 回到首頁了（編輯畫面的選單裡也有「開啟流程檔」，所以看首頁那一塊）
+		expect(document.querySelector('.home-open')).toBeTruthy();
+	});
+});
+
+describe('手機的檢視畫面：點場上的圓點看是誰', () => {
+	/** 場地左下角那一塊：平常寫現在的站位，點了圓點寫那個人。 */
+	const corner = () => document.querySelector('.phone-field .formation-now')!.textContent;
+	const tap = async (el: Element, x = 0, y = 0) => {
+		await fireEvent.pointerDown(el, { button: 0, clientX: x, clientY: y });
+		await fireEvent.pointerUp(el, { button: 0, clientX: x, clientY: y });
+	};
+	const field = () => screen.getByRole('img', { name: '場地' });
+
+	it('點小A：左下角寫他的名字和這個八拍做什麼，他圈起來；點空白處變回現在的站位', async () => {
+		const { session } = await openOnPhone();
+		expect(corner()).toBe('站位 1');
+		await tap(dot('m2'), 100, 100);
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+		expect(dot('m2').classList.contains('selected')).toBe(true);
+		await tap(field(), 400, 300);
+		expect(corner()).toBe('站位 1');
+		expect(dot('m2').classList.contains('selected')).toBe(false);
+		expect(session.unsaved).toBe(false);
+	});
+
+	it('播放頭走到下一個八拍：左下角跟著換成他那個八拍做的事', async () => {
+		await openOnPhone();
+		await tap(dot('m2'), 100, 100);
+		await fireEvent.click(screen.getByRole('button', { name: '下一個八拍' }));
+		expect(corner()).toBe('小A');
+	});
+
+	it('選了「我」是小A：別人畫淡；點到小美，小美不淡', async () => {
+		await openOnPhone();
+		const dimmed = () => ['m1', 'm2', 'm3', 'm4'].filter((id) => dot(id).classList.contains('dim'));
+		expect(dimmed()).toEqual([]);
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		expect(dimmed()).toEqual(['m1', 'm3', 'm4']);
+		await tap(dot('m1'), 100, 100);
+		expect(dimmed()).toEqual(['m3', 'm4']);
+	});
+
+	it('切到「練習」再回來、開別支流程：不再寫剛剛點的人', async () => {
+		await openOnPhone();
+		await tap(dot('m2'), 100, 100);
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		await fireEvent.click(screen.getByRole('button', { name: '編排' }));
+		expect(corner()).toBe('站位 1');
+		await tap(dot('m2'), 100, 100);
+		await fromMenu('回首頁');
+		await flush();
+		await openFile(writeFlowFile({ ...libSample(), name: '別支' }, {}));
+		expect(corner()).toBe('站位 1');
+	});
+});
+
+describe('手機的播放列：一排', () => {
+	const inBar = (name: string) => within(document.querySelector<HTMLElement>('.transport')!).queryByRole('button', { name });
+
+	it('播放、上一個八拍、時間、下一個八拍、速度、「⋯」；回開頭、節拍器、重複收在「⋯」裡', async () => {
+		await openOnPhone();
+		for (const name of ['播放', '上一個八拍', '跳到哪裡', '下一個八拍', '更多播放選項']) expect(inBar(name)).toBeTruthy();
+		expect(screen.getByRole('combobox', { name: '播放速度' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '回開頭' })).toBeNull();
+		expect(screen.queryByRole('checkbox', { name: /節拍器/ })).toBeNull();
+		expect(screen.queryByRole('checkbox', { name: /重複/ })).toBeNull();
+
+		await fireEvent.click(inBar('更多播放選項')!);
+		const more = within(screen.getByRole('group', { name: '更多播放選項' }));
+		expect(more.getByRole('button', { name: '回開頭' })).toBeTruthy();
+		expect(more.getByRole('checkbox', { name: /節拍器/ })).toBeTruthy();
+		expect(more.getByRole('checkbox', { name: /重複/ })).toBeTruthy();
+		expect(more.getByRole('spinbutton', { name: '延遲校正（毫秒）' })).toBeTruthy();
+	});
+
+	it('「⋯」裡關節拍器（本來開著）：小窗留著，節拍器關了', async () => {
+		const { editor } = await openOnPhone();
+		expect(editor.playback.metronome).toBe(true);
+		await fireEvent.click(inBar('更多播放選項')!);
+		await fireEvent.click(screen.getByRole('checkbox', { name: /節拍器/ }));
+		expect(editor.playback.metronome).toBe(false);
+		expect(screen.getByRole('group', { name: '更多播放選項' })).toBeTruthy();
 	});
 });
 
