@@ -8,6 +8,7 @@ import {
 	anchoredSeconds,
 	bookmarkSeconds,
 	createFlow,
+	deleteSegment,
 	flowProblem,
 	insertBeats,
 	rangeSeconds,
@@ -158,6 +159,57 @@ describe('改段時錨在段上的範圍', () => {
 		expect(asked.kind === 'confirm' && asked.items).toEqual(['書籤「在中間」', '書籤「到中間」']);
 		const done = flowOf(run(flow, { name: 'deleteSegment', args: ['s2'], options: { confirmed: true } }));
 		expect(done.bookmarks!.map((b) => b.name)).toEqual(['跨過']);
+	});
+});
+
+describe('改段拿掉書籤：邊上的情況（跟 #312 之前一樣）', () => {
+	/** 直接放進去的書籤（不經過 addBookmark，可以是放不下的）。 */
+	const withBookmarks = (flow: Flow, ...list: { name: string; a: TimePosition; b: TimePosition | null }[]): Flow => ({
+		...flow,
+		bookmarks: list.map((x, i) => ({ id: `k${i + 1}`, ...x }))
+	});
+	const names = (r: ReturnType<typeof deleteSegment>) => (r.kind === 'ok' ? r.flow.bookmarks!.map((b) => b.name) : r.kind);
+	const shrink = { eights: 1, lastBeats: 8 }; // s1 從 32 格縮成 16 格
+
+	it('刪段：本來就放不下、不在那段的書籤不列、不拿掉', () => {
+		const flow = withBookmarks(sample(), { name: '壞的', a: at('s1', 8), b: at('s1', 4) });
+		expect(names(deleteSegment(flow, 's2'))).toEqual(['壞的']);
+	});
+
+	it('刪段：本來就放不下、在那段的書籤照樣拿掉', () => {
+		const flow = withBookmarks(sample(), { name: '壞的', a: at('s2', 8), b: at('s2', 4) });
+		const asked = deleteSegment(flow, 's2');
+		expect(asked.kind === 'confirm' && asked.items).toEqual(['書籤「壞的」']);
+		expect(names(deleteSegment(flow, 's2', { confirmed: true }))).toEqual([]);
+	});
+
+	it('刪段：B 剛好在交界（前一段的段尾）只跟前一段走；A 在後一段的開頭只跟後一段走', () => {
+		const flow = withBookmarks(sample(), { name: '到交界', a: at('s1', 0), b: at('s1', 32) }, { name: '從交界', a: at('s2', 0), b: null });
+		expect(names(deleteSegment(flow, 's2', { confirmed: true }))).toEqual(['到交界']);
+		expect(names(deleteSegment(flow, 's1', { confirmed: true }))).toEqual(['從交界']);
+	});
+
+	it('段縮短：本來就放不下、沒跨出新段尾的書籤不列、不拿掉', () => {
+		const flow = withBookmarks(sample(), { name: '壞的', a: at('s1', 8), b: at('s1', 4) }, { name: '別段壞的', a: at('s2', 8), b: at('s2', 4) });
+		expect(names(updateSegment(flow, 's1', shrink))).toEqual(['壞的', '別段壞的']);
+	});
+
+	it('段縮短：B 剛好在新的段尾留著、多一格拿掉；A 在新段尾前一格留著、在新段尾拿掉', () => {
+		const flow = withBookmarks(
+			sample(),
+			{ name: 'B 在段尾', a: at('s1', 0), b: at('s1', 16) },
+			{ name: 'B 多一格', a: at('s1', 0), b: at('s1', 17) },
+			{ name: 'A 前一格', a: at('s1', 15), b: null },
+			{ name: 'A 在段尾', a: at('s1', 16), b: null }
+		);
+		const asked = updateSegment(flow, 's1', shrink);
+		expect(asked.kind === 'confirm' && asked.items).toEqual(['刪掉：書籤「B 多一格」', '刪掉：書籤「A 在段尾」']);
+		expect(names(updateSegment(flow, 's1', shrink, { confirmed: true }))).toEqual(['B 在段尾', 'A 前一格']);
+	});
+
+	it('段變長：本來就放不下的書籤不列、不拿掉', () => {
+		const flow = withBookmarks(sample(), { name: '壞的', a: at('s1', 8), b: at('s1', 4) });
+		expect(names(updateSegment(flow, 's1', { eights: 3, lastBeats: 8 }))).toEqual(['壞的']);
 	});
 });
 

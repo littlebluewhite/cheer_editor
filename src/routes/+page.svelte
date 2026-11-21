@@ -63,7 +63,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import LanguagePicker from '#lib/components/LanguagePicker.svelte';
 	import Modal from '#lib/components/Modal.svelte';
-	import { covered, covers } from '#lib/overlay.svelte.js';
+	import { covered, covers, saveKey } from '#lib/overlay.svelte.js';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
@@ -566,7 +566,7 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		// Ctrl+S（Mac ⌘S）在輸入框裡也要能存，所以放在最前面；也擋掉瀏覽器的「另存網頁」。
-		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+		if (saveKey(e)) {
 			e.preventDefault();
 			void editor.file.save();
 			return;

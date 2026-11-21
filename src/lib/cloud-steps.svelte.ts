@@ -54,13 +54,13 @@ import {
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { CloudUndo, type CloudStep } from '#lib/cloud-undo-log.svelte.js';
-import { joinSentences, type AlreadyRecorded, type DroppedRecord, type EditorSession } from '#lib/editor-session.svelte.js';
+import { joinSentences, type EditorSession } from '#lib/editor-session.svelte.js';
 import { LocalUndo } from '#lib/undo-log.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
 import { reasonText, whyText } from '#lib/reason-text.js';
 import { Flash } from '#lib/flash.svelte.js';
-import { ALL_ALLOWED, type PracticeRights } from '#lib/practice-rights.js';
+import { ALL_ALLOWED, type AlreadyRecorded, type DroppedRecord, type PracticeRights } from '#lib/practice-rights.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView, SentBack } from '#lib/server-api.js';
 import { runKey, runKeyLabel } from '#lib/run-keys.js';

@@ -121,7 +121,7 @@ describe('能做什麼：每種來源 × 每種權限', () => {
 		expect(s.session.practice.cannotRecord === '').toBe(expected.record.ok);
 	});
 
-	it('分享連結（沒有權限）：只能看，什麼都沒有；存檔狀態照本機的（沒改過沒有字）', async () => {
+	it('分享連結（沒有權限）：檢視模式，什麼都沒有；存檔狀態照本機的（沒改過沒有字）', async () => {
 		const t = await linkOnly();
 		const all = no('link_only');
 		expect(can(t.editor, false)).toEqual({

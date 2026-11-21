@@ -1,9 +1,32 @@
 // 練習的權限（#318）：能不能記、誰記的、共用紀錄、只看自己的、沒存進去的、還沒傳的，收成一個東西。
 // 編輯 session 帶著一個（session.practice），練習畫面、卡片、全上都從它拿。
-// 管：這六個值長什麼樣子，和本機流程（還有用分享連結看的）那一個「都可以」的。
+// 管：這六個值長什麼樣子（含沒存進去的一列 DroppedRecord），和本機流程（還有用分享連結看的）那一個「都可以」的。
 // 不管：雲端流程的值怎麼算、什麼時候變（CloudSteps 擁有、跟著權限和房間改），也不管改編排的鎖（session.readOnly）。
 
-import type { DroppedRecord } from '#lib/editor-session.svelte.js';
+import type { WhyParam } from '#lib/core';
+
+/** 沒存進去的一次（練習畫面紅條下面的表一列）：日期、動作、組（或隊員）、記號，全上記的標出來。 */
+export interface DroppedRecord {
+	id: string;
+	date: string;
+	action: string;
+	who: string;
+	marks: string;
+	runThrough: boolean;
+	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」）；沒寫是教練改了流程。 */
+	note?: string;
+	/**
+	 * 動作、組（或隊員）、原因的代號：畫面照現在的語言寫（droppedTexts，ADR 0017）。上面寫好的字（當時的語言）照樣存，
+	 * 給還沒更新的分頁看；舊版存的沒有這一欄，照寫好的字。
+	 */
+	why?: { action: WhyParam; who: WhyParam; note?: AlreadyRecorded };
+}
+
+/** 同一次全上的同一組別人先存了：先記的人（null 是沒有名字的，寫「別人」）、哪一組（null 是「這一組」）。 */
+export interface AlreadyRecorded {
+	by: string | null;
+	which: WhyParam | null;
+}
 
 export interface PracticeRights {
 	/** 不能記的原因（雲端流程的檢視者：你只能看這支流程）：有的話「記」都擋下說這句。空字串是能記。 */
@@ -23,6 +46,19 @@ export interface PracticeRights {
 	readonly unsentRecords: ReadonlySet<string>;
 }
 
+/** 空的、改不動的「還沒傳的」：本機流程那一個是大家共用的，Object.freeze 擋不住 Set 的 add，所以加、刪都丟錯。 */
+class NoneUnsent extends Set<string> {
+	override add(): never {
+		throw new TypeError('ALL_ALLOWED.unsentRecords 是共用的，不能改');
+	}
+	override delete(): never {
+		throw new TypeError('ALL_ALLOWED.unsentRecords 是共用的，不能改');
+	}
+	override clear(): never {
+		throw new TypeError('ALL_ALLOWED.unsentRecords 是共用的，不能改');
+	}
+}
+
 /** 本機流程：都可以（能記、全是自己記的、沒有沒存進去的、沒有還沒傳的）。 */
 export const ALL_ALLOWED: PracticeRights = Object.freeze({
 	cannotRecord: '',
@@ -30,5 +66,5 @@ export const ALL_ALLOWED: PracticeRights = Object.freeze({
 	sharedRecords: false,
 	ownRecordsOnly: false,
 	droppedRecords: Object.freeze([]),
-	unsentRecords: new Set<string>()
+	unsentRecords: Object.freeze(new NoneUnsent())
 });

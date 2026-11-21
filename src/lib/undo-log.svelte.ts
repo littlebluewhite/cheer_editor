@@ -1,7 +1,7 @@
 // 復原紀錄（#308 階段 2）：編輯 session 跟復原、重做說話只用這幾件事：記一步、復原、重做、按鈕上的字、清掉。
 // 後面有兩個 adapter，兩種做法不合併：本機流程的在這裡（LocalUndo，ADR 0007：整份流程的前後，復原帶回這一步清掉的紀錄）；
 // 雲端流程的歸 CloudSteps（CloudUndo，ADR 0014：改動＋步驟 id，復原、重做送成一步）。
-// 管：一步記什麼、復原重做換上哪一份流程、合成一步、最多幾步。
+// 管：一步記什麼、復原重做換上哪一份流程、合成一步、最多幾步（兩疊的進出兩個 adapter 共用 UndoStacks）。
 // 不管：什麼時候算合成一步（session 看 join 決定，傳 joined）、換上流程之後的事（選取、提示、播放都在 session 的 #swap）、
 // 鎖著不能改（session 先擋）。
 
@@ -46,41 +46,31 @@ export interface UndoLog {
 	clear(): void;
 }
 
-/** 本機流程的一步：改之前（flow）、改之後（after）的整份流程（復原時才算得出這一步清掉了哪些紀錄、加回去，ADR 0007）。 */
-type LocalStep = { label: string; flow: Flow; after: Flow };
-
-/** 本機流程（ADR 0007）：復原換上改之前的整份編排，帶著現在的紀錄，這一步清掉的紀錄加回來；重做再清一次。 */
-export class LocalUndo implements UndoLog {
-	readonly stored = false;
-	/** 最舊的在前。指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。 */
-	#undo = $state.raw<LocalStep[]>([]);
+/**
+ * 復原、重做兩疊（兩個 adapter 共用的進出）：按鈕能不能按、按鈕上的字、清掉、記一步（合成一步、最多 UNDO_LIMIT 步、清掉重做）、
+ * 復原重做時拿走一邊最後一步放進另一邊。一步存什麼、換上哪一份流程歸各個 adapter（move）。
+ */
+export abstract class UndoStacks<S extends { label: string }> {
+	abstract readonly stored: boolean;
+	/** 最舊的在前。不存進草稿或檔案。 */
+	protected undoSteps = $state.raw<S[]>([]);
 	/** 復原掉的那幾步（最近復原的在後）。 */
-	#redo = $state.raw<LocalStep[]>([]);
+	protected redoSteps = $state.raw<S[]>([]);
 
 	get canUndo(): boolean {
-		return this.#undo.length > 0;
+		return this.undoSteps.length > 0;
 	}
 
 	get canRedo(): boolean {
-		return this.#redo.length > 0;
+		return this.redoSteps.length > 0;
 	}
 
 	get undoLabel(): string {
-		return this.#undo.at(-1)?.label ?? '';
+		return this.undoSteps.at(-1)?.label ?? '';
 	}
 
 	get redoLabel(): string {
-		return this.#redo.at(-1)?.label ?? '';
-	}
-
-	record({ before, after, label, joined }: NewStep): string {
-		const last = joined ? this.#undo.at(-1) : undefined;
-		// 合成一步的：說的是從合之前到現在改了什麼
-		const from = last ? last.flow : before;
-		const step = { flow: from, after, label: label ?? whyText(changeLabel(from, after)) };
-		this.#undo = (last ? [...this.#undo.slice(0, -1), step] : [...this.#undo, step]).slice(-UNDO_LIMIT);
-		this.#redo = [];
-		return step.label;
+		return this.redoSteps.at(-1)?.label ?? '';
 	}
 
 	undo(flow: Flow): Travel | null {
@@ -92,23 +82,59 @@ export class LocalUndo implements UndoLog {
 	}
 
 	clear() {
-		this.#undo = [];
-		this.#redo = [];
+		this.undoSteps = [];
+		this.redoSteps = [];
+	}
+
+	/** 要合成的那一步（joined 時是最後一步）；沒有是 undefined。 */
+	protected joinable(joined: boolean): S | undefined {
+		return joined ? this.undoSteps.at(-1) : undefined;
+	}
+
+	/** 記一步：replace 時換掉最後一步（合成一步），最多留 UNDO_LIMIT 步，清掉重做。 */
+	protected push(step: S, replace: boolean) {
+		this.undoSteps = (replace ? [...this.undoSteps.slice(0, -1), step] : [...this.undoSteps, step]).slice(-UNDO_LIMIT);
+		this.redoSteps = [];
+	}
+
+	/** 復原（重做）這一步：now 是現在的流程；回傳換上的流程和放進另一邊的那一步。 */
+	protected abstract move(now: Flow, step: S, redo: boolean): { flow: Flow; back: S };
+
+	/** 拿走這一邊最後一步，move 完放進另一邊。 */
+	#travel(now: Flow, redo: boolean): Travel | null {
+		const from = redo ? this.redoSteps : this.undoSteps;
+		const step = from.at(-1);
+		if (!step) return null;
+		const { flow, back } = this.move(now, step, redo);
+		const to = [...(redo ? this.undoSteps : this.redoSteps), back];
+		if (redo) [this.undoSteps, this.redoSteps] = [to, from.slice(0, -1)];
+		else [this.undoSteps, this.redoSteps] = [from.slice(0, -1), to];
+		return { flow, label: step.label };
+	}
+}
+
+/** 本機流程的一步：改之前（flow）、改之後（after）的整份流程（復原時才算得出這一步清掉了哪些紀錄、加回去，ADR 0007）。 */
+type LocalStep = { label: string; flow: Flow; after: Flow };
+
+/** 本機流程（ADR 0007）：復原換上改之前的整份編排，帶著現在的紀錄，這一步清掉的紀錄加回來；重做再清一次。 */
+export class LocalUndo extends UndoStacks<LocalStep> implements UndoLog {
+	readonly stored = false;
+
+	record({ before, after, label, joined }: NewStep): string {
+		const last = this.joinable(joined);
+		// 合成一步的：說的是從合之前到現在改了什麼。指令都回傳新的流程，所以存參照就好
+		const from = last ? last.flow : before;
+		const step = { flow: from, after, label: label ?? whyText(changeLabel(from, after)) };
+		this.push(step, !!last);
+		return step.label;
 	}
 
 	/**
-	 * 拿走這一邊最後一步、放進另一邊。放進去的改之前、改之後換成剛剛真的換上的兩份：中間用「記」刪掉、改過的紀錄，
+	 * 放進另一邊的改之前、改之後換成剛剛真的換上的兩份：中間用「記」刪掉、改過的紀錄，
 	 * 下次重做、復原照這兩份算，不會拿最早存的紀錄蓋回去。
 	 */
-	#travel(now: Flow, redo: boolean): Travel | null {
-		const from = redo ? this.#redo : this.#undo;
-		const step = from.at(-1);
-		if (!step) return null;
+	protected move(now: Flow, step: LocalStep, redo: boolean) {
 		const flow = redo ? redoRecords(step.flow, step.after, now) : undoRecords(step.flow, step.after, now);
-		const back = redo ? { ...step, flow: now, after: flow } : { ...step, flow, after: now };
-		const to = [...(redo ? this.#undo : this.#redo), back];
-		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];
-		else [this.#undo, this.#redo] = [from.slice(0, -1), to];
-		return { flow, label: step.label };
+		return { flow, back: redo ? { ...step, flow: now, after: flow } : { ...step, flow, after: now } };
 	}
 }

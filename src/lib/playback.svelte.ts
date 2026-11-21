@@ -18,10 +18,9 @@ import {
 	stepPlayhead,
 	totalSeconds,
 	type Action,
-	type Bookmark,
+	type AnchoredRange,
 	type Flow,
-	type RepeatRange,
-	type TimePosition
+	type RepeatRange
 } from '#lib/core';
 import type { AudioEngine } from '#lib/audio/engine.js';
 import { createPlayer, type Lap, type Player } from '#lib/audio/player.js';
@@ -354,7 +353,7 @@ export class Playback implements SessionPlayback {
 	 * 只有 A 的、A 在重複範圍外：關掉重複（範圍留著），不然重複開著會被拉回範圍的 A。最後播放頭跳到 A。
 	 * 書籤放不下（段不見了）就不動。
 	 */
-	useBookmark(bm: Pick<Bookmark, 'a' | 'b'>) {
+	useBookmark(bm: AnchoredRange) {
 		const f = this.#flow();
 		const s = f && bookmarkSeconds(f, bm);
 		if (!s) return;
@@ -377,7 +376,7 @@ export class Playback implements SessionPlayback {
 	 * 存成書籤時要存的 A、B：有重複範圍（不管重複開不開、有沒有 B）就照它原樣（半拍開始的動作拉成的範圍不吸到整拍）；
 	 * 沒有就是播放頭最近的整拍、只有 A。沒有段是 null。
 	 */
-	get bookmarkSpot(): { a: TimePosition; b: TimePosition | null } | null {
+	get bookmarkSpot(): AnchoredRange | null {
 		const f = this.#flow();
 		if (!f?.segments.length) return null;
 		if (this.#range) return { a: this.#range.a, b: this.#range.b };

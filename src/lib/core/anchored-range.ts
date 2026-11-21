@@ -1,6 +1,7 @@
 // 錨在段上的範圍：A（和可有可無的 B）記成「哪一段的第幾格」，跟著自己的段走。書籤和重複範圍都是。
 // 這裡管：秒數換成格子、格子換成秒數、放不放得下（段在、格子在段裡、B 在 A 後面）、是不是同一個地方、
-// 段的交界的寫法、插入八拍和切段時怎麼搬。段縮短、刪段、段換順序時拿不拿掉，就是換好段之後放不放得下。
+// 段的交界的寫法、插入八拍和切段時怎麼搬、段縮短和刪段時拿不拿掉（只看那一段：本來就放不下的別的不管）。
+// 段換順序時拿不拿掉，就是換好段之後放不放得下。
 // 書籤和重複範圍邊界規則的差別寫在 AnchorEdges（BOOKMARK_EDGES、REPEAT_EDGES），不是兩份程式。
 // 不管：書籤的名字、id、要問的話和原因的代號（bookmarks.ts、各個改段的指令）；重複範圍開不開、播到哪（播放 module）；
 // 「哪些書籤因為段改了而不見」。
@@ -146,6 +147,20 @@ export function afterSplit<T extends AnchoredRange>(range: T, segmentId: string,
 	const a = range.a.segmentId === segmentId && range.a.at >= cut ? moved(range.a) : range.a;
 	const b = range.b && range.b.segmentId === segmentId && range.b.at > cut ? moved(range.b) : range.b;
 	return { ...range, a, b };
+}
+
+/** 刪段：A 或 B 在那段（段不見了就放不下）。 */
+export function touches(range: AnchoredRange, segmentId: string): boolean {
+	return range.a.segmentId === segmentId || range.b?.segmentId === segmentId;
+}
+
+/**
+ * 段縮短成 end 格：A 落在新的段尾或之後（edges.aAtSegmentEnd 時是段尾之後）、B 落在段尾之後。
+ * 只看那一段的那一頭；本來就放不下（B 在 A 前面、格子不是整數）但沒跨出段尾的不算。
+ */
+export function pastEnd(range: AnchoredRange, segmentId: string, end: number, edges: AnchorEdges): boolean {
+	const past = (p: TimePosition | null, last: number) => p?.segmentId === segmentId && p.at > last;
+	return past(range.a, edges.aAtSegmentEnd ? end : end - 1) || past(range.b, end);
 }
 
 /** 一頭的秒數：段要在、格子在段裡；A 在段尾、B 在段頭能不能寫照 edges。 */
