@@ -142,7 +142,8 @@ export function sameFlow(a: Flow, b: Flow): boolean {
 	return same(a, b);
 }
 
-function same(a: unknown, b: unknown): boolean {
+/** 兩個值內容一不一樣（sameFlow 的比法）。 */
+export function same(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
 	if (Array.isArray(a) || Array.isArray(b)) {
