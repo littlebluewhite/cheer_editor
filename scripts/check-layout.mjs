@@ -1049,6 +1049,28 @@ for (const [w, h] of [[1024, 768], [1441, 900], [1920, 1080]]) {
 	});
 }
 
+// 改書籤名字：書籤那排擠的時候，改名的那顆不被壓扁，欄位和「儲存」不跑到別的書籤底下（滑過去點得到）
+for (const [w, h] of [[1441, 900], [1920, 1080]]) {
+	await check(`${w}×${h} 改書籤名字：書籤那排擠的時候，改名的欄位和儲存在自己那顆裡、滑過去點得到`, async () => {
+		await setViewport(w, h);
+		await openPracticeFlow(withBookmarks);
+		await js(`document.querySelector('.topbar .chip.manage').click()`);
+		await sleep(100);
+		await js(`[...document.querySelectorAll('.topbar .bookmarks .mini')].find((b) => b.getAttribute('aria-label')?.includes('開場')).click()`);
+		await sleep(200);
+		const r = await js(`const chip = document.querySelector('.topbar .chip.naming');
+			const input = chip.querySelector('input'); const save = [...chip.querySelectorAll('button')].at(-1);
+			const inChip = (el) => { const a = el.getBoundingClientRect(), c = chip.getBoundingClientRect(); return a.left >= c.left - 1 && a.right <= c.right + 1; };
+			const reach = (el) => { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return r.width > 0 && !!t && (t === el || el.contains(t)); };
+			return { 那顆寬: Math.round(chip.getBoundingClientRect().width), 欄位在那顆裡: inChip(input), 儲存在那顆裡: inChip(save), 欄位點得到: reach(input), 儲存點得到: reach(save) };`);
+		const bar = await topbarLayout();
+		await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		const barOk = bar.上方列高 <= 64 && bar.播放鈕和存檔同一行;
+		return { ok: r.欄位在那顆裡 && r.儲存在那顆裡 && r.欄位點得到 && r.儲存點得到 && barOk, value: { ...r, 上方列: bar } };
+	});
+}
+
 // 手機的檢視畫面多了一排書籤：「我」的選單照樣只有一行高，前後八拍照樣拿到它的那一格（直拿 34dvh、橫拿剩下的高度），不被書籤那排擠到別格
 for (const [w, h] of [[390, 844], [844, 390]]) {
 	await check(`${w}×${h}（觸控）手機的檢視畫面有書籤：書籤那排、「我」、前後八拍各在自己那一格，「我」不被撐高`, async () => {

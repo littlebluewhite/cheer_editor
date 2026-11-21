@@ -211,6 +211,8 @@ describe('流程檔（第 16 版）', () => {
 		['指到不存在的段', (f) => (f.bookmarks![0].a = at('s9', 0))],
 		['B 指到不存在的段', (f) => (f.bookmarks![0].b = at('s9', 0))],
 		['B 在段外', (f) => (f.bookmarks![0].b = at('s2', 40))],
+		['A 的格子是負的', (f) => (f.bookmarks![0].a = at('s1', -1))],
+		['B 的格子是負的', (f) => (f.bookmarks![0].b = at('s2', -1))],
 		['B 在 A 前面', (f) => (f.bookmarks![0].b = at('s1', 4))]
 	];
 	const withTwo = () => structuredClone(flowOf(addBookmark(withBookmark(), '開場', at('s1', 0), null)));
@@ -232,6 +234,20 @@ describe('流程檔（第 16 版）', () => {
 		expect(ids[0]).toBe(flow.bookmarks![0].id);
 		expect(new Set(ids).size).toBe(2);
 	});
+
+	it.each(['k100000000000000000000', 'k9007199254740992', `k${'9'.repeat(1000)}`])(
+		'開檔：兩個書籤同一個很大編號的 id（%s）：換新 id 不卡住，新的不跟著變長',
+		(id) => {
+			const flow = withTwo();
+			flow.bookmarks![0].id = id;
+			flow.bookmarks![1].id = id;
+			const r = readFlowFile(zipOf({ formatVersion: 16, flow }));
+			const ids = r.kind === 'ok' ? r.flow.bookmarks!.map((b) => b.id) : [];
+			expect(ids[0]).toBe(id);
+			expect(new Set(ids).size).toBe(2);
+			expect(ids[1].length).toBeLessThanOrEqual(17);
+		}
+	);
 
 	it.each([
 		...LOST,

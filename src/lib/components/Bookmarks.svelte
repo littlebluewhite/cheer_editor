@@ -361,11 +361,12 @@
 	.bar .list::-webkit-scrollbar {
 		display: none;
 	}
-	.bar .naming {
+	/* 只縮存成書籤的欄位；改名的那顆在書籤那排裡，照原本的寬，放不下就左右滑 */
+	.bar > .naming {
 		flex: 0 1 auto;
 		min-width: 0;
 	}
-	.bar .naming input {
+	.bar > .naming input {
 		min-width: 3em;
 	}
 	@media (min-width: 1601px) {

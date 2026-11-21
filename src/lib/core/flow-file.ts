@@ -354,6 +354,8 @@ const shape = (fields: Record<string, Check>): Check => (v) =>
 	isObject(v) && Object.entries(fields).every(([k, c]) => c(v[k]));
 const position: Check = (v) => Array.isArray(v) && v.length === 2 && v.every(num);
 const timePosition = shape({ segmentId: str, at: (v) => int(v) && (v as number) >= 0 });
+// 書籤的格子在段外（負的也算）不算資料壞掉：開檔時拿掉那一個（fixBookmarks），傳上雲端照樣擋（structureProblem）
+const bookmarkPosition = shape({ segmentId: str, at: int });
 const walks: Check = (v) =>
 	v === undefined ||
 	(isObject(v) && Object.values(v).every(shape({ depart: timePosition, arrive: timePosition })));
@@ -417,7 +419,7 @@ const flowShape = shape({
 	),
 	customRoles: listOf(shape({ id: str, name: str, meaning: str })),
 	markers: (v) => v === undefined || oneOf(['number', 'initial'])(v),
-	bookmarks: (v) => v === undefined || listOf(shape({ id: str, name: str, a: timePosition, b: nullOr(timePosition) }))(v),
+	bookmarks: (v) => v === undefined || listOf(shape({ id: str, name: str, a: bookmarkPosition, b: nullOr(bookmarkPosition) }))(v),
 	actions: listOf(
 		shape({
 			id: str,

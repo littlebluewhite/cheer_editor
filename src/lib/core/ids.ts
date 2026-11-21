@@ -73,12 +73,16 @@ function hash53(s: string, salt: number): number {
 	return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-/** taken 裡這個字母開頭的最大編號（舊的寫法）；沒有是 0。 */
+/**
+ * taken 裡這個字母開頭的最大編號（舊的寫法）；沒有是 0。
+ * 超過 15 位數的不算：手改過的檔可能有很大的編號，數字大到失準時加一不會變，發 id 會一直撞、卡住分頁；
+ * 照它往上加，新 id 也會跟著變很長。15 位數以內加一一定準。
+ */
 function maxNumber(prefix: string, ids: string[]): number {
 	let n = 0;
 	for (const id of ids) {
-		const m = id.startsWith(prefix) && !isRandomId(id) ? Number(id.slice(prefix.length)) : Number.NaN;
-		if (Number.isInteger(m) && m > n) n = m;
+		const digits = id.startsWith(prefix) && !isRandomId(id) ? id.slice(prefix.length) : '';
+		if (/^\d{1,15}$/.test(digits) && Number(digits) > n) n = Number(digits);
 	}
 	return n;
 }
