@@ -4,7 +4,7 @@
 
 import { actionWhy, replaceAction, type Action } from './action-types';
 import { changeAction } from './actions';
-import { bookmarksOf } from './bookmarks';
+import { bookmarkSeconds, bookmarksOf } from './bookmarks';
 import type { Flow } from './flow';
 import { newId } from './ids';
 import { phaseFalloutWhy } from './phase-beats';
@@ -12,7 +12,7 @@ import { recordsLoss, recordsLossText } from './records';
 import { cueFalloutWhy } from './settle';
 import { recordCount } from './success-rate';
 import { RECORDS_UNDOABLE_WHY, answered, blocked, needsConfirm, ok, readOr, type CommandResult, type ConfirmOption, type ReadResult } from './result';
-import { atWhy, fromWhy, labelWhy, lengthWhy, parseNumber, segmentSpans, totalSeconds, units, type TimePosition } from './time';
+import { atWhy, fromWhy, labelWhy, lengthWhy, parseNumber, segmentSpans, totalSeconds, units } from './time';
 import type { Said, Why } from './why';
 
 export interface MusicSegment {
@@ -255,12 +255,12 @@ export function updateSegment(
 	const trimmed = flow.actions.filter((a) => mine(a) && a.start < end && a.start + a.length > end);
 	const formations = flow.formations.filter((f) => f.segmentId !== segmentId || f.at < end);
 	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
-	// 書籤：開始在段尾或之後、結尾在段尾之後的放不下，刪掉
-	const past = (p: TimePosition | null, last: number) => p?.segmentId === segmentId && p.at > last;
-	const droppedBookmarks = bookmarksOf(flow).filter((b) => past(b.a, end - 1) || past(b.b, end));
+	// 書籤：段縮短之後放不下的（開始在段尾或之後、結尾在段尾之後），刪掉
+	const segments = flow.segments.with(index, next);
+	const droppedBookmarks = bookmarksOf(flow).filter((b) => !bookmarkSeconds({ ...flow, segments }, b));
 	let result: Flow = {
 		...flow,
-		segments: flow.segments.with(index, next),
+		segments,
 		actions: flow.actions.filter((a) => !droppedActions.includes(a)),
 		formations,
 		...(flow.bookmarks && { bookmarks: flow.bookmarks.filter((b) => !droppedBookmarks.includes(b)) })
