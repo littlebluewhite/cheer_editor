@@ -286,6 +286,7 @@ export {
 	bookmarkSeconds,
 	bookmarksOf,
 	deleteBookmark,
+	lostBookmarks,
 	renameBookmark,
 	startAt,
 	sweepBookmarks,
@@ -331,4 +332,6 @@ export { applyRemoteChange, remoteChange } from './remote-change';
 export type { RemoteChange } from './remote-change';
 export { joinUndo, runUndo, undoChanges, undone } from './cloud-undo';
 export type { UndoChanges, UndoOutcome } from './cloud-undo';
+export { KEPT_DAYS, takeStep } from './room-step';
+export type { ClearedRecord, LoggedStep, RoomRecord, SentStep, StepAsk, StepRefusal, StepVerdict } from './room-step';
 export { travelChange, travelOrder } from './undo-order';

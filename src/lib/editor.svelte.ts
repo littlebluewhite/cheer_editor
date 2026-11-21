@@ -15,6 +15,7 @@ import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { browserFilePicker, createBrowserSaver, saveVideo, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import { EditorSession, setEditorSession, type UpdateReason } from '#lib/editor-session.svelte.js';
 import { FlowFile } from '#lib/flow-file.svelte.js';
+import { Home } from '#lib/home.svelte.js';
 import { browserVideoEncoder, type VideoEncoderAdapter } from '#lib/video/encoder.js';
 import { MusicLibrary } from '#lib/music-library.svelte.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
@@ -79,6 +80,8 @@ export class Editor {
 	inspectorTab = $state<'action' | 'members'>('action');
 	/** 流程檔：開檔、存檔、新建、回首頁、草稿、「沒存先問」。 */
 	readonly file: FlowFile;
+	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出。 */
+	readonly home: Home;
 	#music: MusicLibrary;
 
 	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
@@ -96,6 +99,7 @@ export class Editor {
 		this.session = new EditorSession(flow, this.playback, follow);
 		this.#music = $state.raw(this.#newMusic());
 		this.file = new FlowFile(this);
+		this.home = new Home(this);
 		this.actionDraft = new ActionDraft(this.session, this.playback);
 	}
 

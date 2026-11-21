@@ -11,6 +11,7 @@ import {
 	deleteBookmark,
 	flowProblem,
 	insertBeats,
+	lostBookmarks,
 	readFlowFile,
 	writeFlowFile,
 	renameBookmark,
@@ -294,5 +295,33 @@ describe('流程檔（第 16 版）', () => {
 		const twice = { ...flow, bookmarks: [...flow.bookmarks!, { ...flow.bookmarks![0], id: 'k9', name: '又一個' }] };
 		expect(flowProblem(twice, flow)).toEqual({ code: 'flow_check_same_bookmark', first: '翻騰', second: '又一個' });
 		expect(flowProblem(twice, twice)).toBeNull();
+	});
+});
+
+describe('lostBookmarks：改段連帶拿掉的書籤', () => {
+	/** 兩個書籤：音樂 1 開頭、音樂 2 開頭。 */
+	const two = () => flowOf(addBookmark(flowOf(addBookmark(sample(), '開場', at('s1', 0), null)), '音樂 2', at('s2', 0), null));
+
+	it('只刪書籤（段沒動）不算', () => {
+		const before = two();
+		expect(lostBookmarks(before, flowOf(deleteBookmark(before, 'k1')))).toEqual([]);
+	});
+
+	it('段換了一份、內容一樣，書籤也不見了：不算（別人的改動每次都換一份段清單）', () => {
+		const before = two();
+		const after = { ...before, segments: structuredClone(before.segments), bookmarks: [] };
+		expect(lostBookmarks(before, after)).toEqual([]);
+	});
+
+	it('刪了段：A 在那段的書籤算拿掉，照原本的先後', () => {
+		const before = two();
+		const after = flowOf(run(before, { name: 'deleteSegment', args: ['s2'], options: { confirmed: true } }));
+		expect(lostBookmarks(before, after).map((b) => b.name)).toEqual(['音樂 2']);
+	});
+
+	it('段改了、書籤都還在：沒有', () => {
+		const before = two();
+		const after = flowOf(run(before, { name: 'updateSegment', args: ['s2', { bpm: 100 }] }));
+		expect(lostBookmarks(before, after)).toEqual([]);
 	});
 });
