@@ -649,7 +649,9 @@ export class FlowFile {
 	async download() {
 		const { session, adapters, music } = this.#editor;
 		const id = this.cloudId;
-		if (!id || !this.can(true).download.ok || !session.flow) return;
+		// 下載只有雲端流程有，權限決定，跟登入沒關係（signedIn 只影響本機流程的傳上雲端、「這台」）
+		const signedIn = true;
+		if (!id || !this.can(signedIn).download.ok || !session.flow) return;
 		// 先問存到哪再跟伺服器拿：拿太久按下去的那一下就過期了，Chrome 不讓跳存檔對話框
 		const fileName = flowFileName(session.flow.name);
 		const saver = adapters.createSaver();

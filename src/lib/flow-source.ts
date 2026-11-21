@@ -1,5 +1,7 @@
 // 流程來源（#322）：開著的這支流程從哪來，和從它算出的「能做什麼」（每一項附原因）。
-// 流程檔 module 握著一個來源值（editor.file.source）；窄、寬兩個選單、上方列都照 whatCanDo 的答案畫，不自己拼旗標。
+// 流程檔 module 握著一個來源值（editor.file.source）；窄、寬兩個選單、上方列的按鈕都照 whatCanDo 的答案畫，不自己拼旗標。
+// 練習畫面、全上能不能記直接讀練習的權限（session.practice.cannotRecord：「記」被擋時要說的那句也在那）；
+// 離線副本那一條灰的直接讀來源（要 savedAt；存檔狀態的 offline_copy 還要看斷線了沒，不一樣）。
 // 管：四種來源長什麼樣子（本機流程、雲端流程、分享連結、離線副本），和每種來源 × 權限 × 連線狀態 → 能做什麼、原因。
 // 不管：來源什麼時候換（流程檔 module 開檔、打開雲端流程、回首頁時換）、權限和連線怎麼變（CloudSteps）、
 // 能不能記（練習的權限，practice-rights.ts；這裡只照它的 cannotRecord 回答）、畫面上寫什麼字（頁面照原因、狀態挑 m.xxx()），
@@ -17,7 +19,7 @@ export type FlowSource =
 	| { readonly kind: 'cloud'; readonly id: string; readonly steps: CloudSteps }
 	/** 斷網時從這台的離線副本打開的雲端流程（#261）：savedAt 是那份是什麼時候的樣子（毫秒）；連上了就換成雲端流程。 */
 	| { readonly kind: 'offline'; readonly id: string; readonly steps: CloudSteps; readonly savedAt: number }
-	/** 用分享連結看的（沒有權限，#251）：只拿到編排，只能看，不連房間。 */
+	/** 用分享連結看的（沒有權限，#251）：只拿到編排，檢視模式，不連房間。 */
 	| { readonly kind: 'link'; readonly id: string };
 
 /** 本機流程（也是在首頁時）的來源。 */
@@ -65,7 +67,7 @@ export interface Abilities {
 	readonly upload: Can;
 	/** ⤓ 下載成流程檔（#259）。 */
 	readonly download: Can;
-	/** 分享（每個人都有；不是擁有者打開是只能看的名單）。 */
+	/** 分享（每個人都有；不是擁有者打開的名單改不了）。 */
 	readonly share: Can;
 	/** 有練習頁（編排｜練習）。 */
 	readonly practice: Can;
