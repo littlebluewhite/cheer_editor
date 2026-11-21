@@ -123,6 +123,7 @@ impl FlowCore {
     }
 
     /// 比對改之前、改之後的流程（`remoteChangeJson`）：回要送給房間裡其他人的改動的 JSON（#253）。
+    /// 伺服器現在由 takeStep 一起算好要送的改動；這個只在測試用。
     pub fn remote_change(
         &self,
         before: String,
@@ -388,7 +389,7 @@ mod tests {
                         (&flow, call(&ctx, "runStepJson", args).unwrap())
                     };
                     assert!(out.starts_with(r#"{"kind":"ok""#), "{}", &out[..200.min(out.len())]);
-                    // 伺服器拿結果裡的 flow 跟 records.rs 的 StepOutcome 一樣（借用、不複製）。
+                    // 拿結果裡的 flow 比對改動（借用、不複製）；只是量時間用，伺服器現在由 takeStep 一起算好要送的改動。
                     #[derive(serde::Deserialize)]
                     struct Outcome<'a> {
                         #[serde(borrow)]

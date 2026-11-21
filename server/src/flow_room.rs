@@ -1106,8 +1106,12 @@ async fn take_step(
         ))
     };
     // 流程核心自己出錯（不是 takeStep 退回的）：當看不懂這一步。
-    let Ok(result) = result else {
-        return rejected(SentBack::NotUnderstood, None);
+    let result = match result {
+        Ok(result) => result,
+        Err(err) => {
+            tracing::warn!(error = %err, "流程核心跑 takeStep 出錯，當看不懂這一步退回");
+            return rejected(SentBack::NotUnderstood, None);
+        }
     };
     let Verdict {
         kind,

@@ -1,5 +1,5 @@
 // 「這一步收不收」（#315，ADR 0010、0014、0007、0018）：假伺服器和 Rust 伺服器都叫它，規則只有這一份。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
 	addBookmark,
 	deleteBookmark,
@@ -11,10 +11,12 @@ import {
 	type Flow,
 	type LoggedStep,
 	type StepAsk,
+	type StepRefusal,
 	type StoredAttempt
 } from './index';
 import { inStep } from './ids';
 import { flowOf, libSample, ratedSample } from '../test-flows';
+import type { SentBack } from '../api-types/SentBack';
 
 const NOW = Date.UTC(2026, 10, 21, 12);
 const DAY = 24 * 60 * 60 * 1000;
@@ -43,6 +45,9 @@ function ask(over: Partial<StepAsk> = {}): StepAsk {
 		...over
 	};
 }
+
+// 退回的原因跟伺服器的 SentBack（src/lib/api-types/）各寫一次：兩邊不一樣時 npm run check 會錯（只查型別，Vitest 不算）。
+expectTypeOf<StepRefusal>().toEqualTypeOf<SentBack>();
 
 describe('takeStep：收了', () => {
 	it('跑指令：回改好的編排、要送給別人的改動、要記的步驟紀錄', () => {
