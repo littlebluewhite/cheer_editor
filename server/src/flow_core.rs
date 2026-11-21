@@ -413,6 +413,13 @@ mod tests {
                         continue;
                     }
                     let ask: String = ctx.eval(format!("ask({n}, '{kind}')")).unwrap();
+                    if kind == "restore" {
+                        // 量之前先確認真的全部加回來：只加回一部分也會 accepted，時間看起來還更快
+                        let out = call(&ctx, "takeStepJson", (ask.clone(),)).unwrap();
+                        let out: serde_json::Value = serde_json::from_str(&out).unwrap();
+                        let all: usize = ctx.eval("JSON.parse(RECORDS).length").unwrap();
+                        assert_eq!(out["changed"].as_array().map(Vec::len), Some(all), "restore 沒有全部加回來");
+                    }
                     let (min, median, max) = timed(|| {
                         let out = call(&ctx, "takeStepJson", (ask.clone(),)).unwrap();
                         assert!(out.starts_with(r#"{"kind":"accepted""#), "{}", &out[..300.min(out.len())]);

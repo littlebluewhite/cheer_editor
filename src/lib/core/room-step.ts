@@ -229,18 +229,18 @@ function recordsAfter(all: RoomRecord[], before: StoredAttempt[], after: StoredA
 	// 現在的樣子（一筆一筆改）：查撞在一起用
 	const now = new Map<string, StoredAttempt & { gone: boolean }>();
 	for (const r of all) if (!now.has(r.attempt.id)) now.set(r.attempt.id, { ...stored(r), gone: !!r.gone });
-	// 同一次全上、同一個動作、同一組的還在的 id（查撞在一起用，跟著 now 改）
+	// 同一次全上、同一個動作、同一組的還在的 id（查撞在一起用，跟著 now 改）。
+	// 第一次要查時才從 now 建：沒改到全上紀錄的步驟（例：改流程名字）不用建
 	const group = (r: StoredAttempt) => JSON.stringify([r.attempt.runThroughId, r.actionId, r.attempt.who]);
-	const groups = new Map<string, Set<string>>();
+	let groups: Map<string, Set<string>> | undefined;
 	const join = (r: StoredAttempt & { gone: boolean }, on: boolean) => {
-		if (r.gone || r.attempt.runThroughId === undefined) return;
+		if (!groups || r.gone || r.attempt.runThroughId === undefined) return;
 		const k = group(r);
 		const ids = groups.get(k) ?? new Set<string>();
 		if (on) ids.add(r.attempt.id);
 		else ids.delete(r.attempt.id);
 		groups.set(k, ids);
 	};
-	for (const r of now.values()) join(r, true);
 	const set = (id: string, to: StoredAttempt | null) => {
 		const old = now.get(id);
 		if (!old) return;
@@ -251,6 +251,10 @@ function recordsAfter(all: RoomRecord[], before: StoredAttempt[], after: StoredA
 	};
 	const collides = (r: StoredAttempt) => {
 		if (r.attempt.runThroughId === undefined) return false;
+		if (!groups) {
+			groups = new Map();
+			for (const x of now.values()) join(x, true);
+		}
 		const ids = groups.get(group(r));
 		return !!ids && ids.size > (ids.has(r.attempt.id) ? 1 : 0);
 	};
