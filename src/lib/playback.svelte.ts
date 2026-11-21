@@ -4,16 +4,21 @@
 
 import {
 	actionRange,
+	bookmarkOfRange,
+	bookmarkSeconds,
 	firstBeatPreview,
 	playbackPlan,
 	playStartSec,
 	rangeEnd,
 	rangeSeconds,
 	resumeSec,
+	samePosition,
 	snapToBeat,
+	startAt,
 	stepPlayhead,
 	totalSeconds,
 	type Action,
+	type Bookmark,
 	type Flow,
 	type RepeatRange,
 	type TimePosition
@@ -342,6 +347,43 @@ export class Playback implements SessionPlayback {
 		if (f) this.#setRange(f, range);
 	}
 
+	// ---------- 書籤叫的 ----------
+
+	/**
+	 * 用這個書籤：有 B 的把重複範圍換成 A 到 B（照書籤原樣，不吸整拍）、打開重複；
+	 * 只有 A 的、A 在重複範圍外：關掉重複（範圍留著），不然重複開著會被拉回範圍的 A。最後播放頭跳到 A。
+	 * 書籤放不下（段不見了）就不動。
+	 */
+	useBookmark(bm: Pick<Bookmark, 'a' | 'b'>) {
+		const f = this.#flow();
+		const s = f && bookmarkSeconds(f, bm);
+		if (!s) return;
+		if (bm.b) this.useRange({ a: bm.a, b: bm.b });
+		else if (this.#repeat) {
+			const span = this.#activeRange();
+			if (!span || outside(span, s.a)) this.#setRepeatOn(false);
+		}
+		this.seek(s.a);
+	}
+
+	/** 正在播的書籤（重複開著，範圍跟它在同一個地方）的 id；沒有是 null。只有 A 的書籤不算。 */
+	get playingBookmark(): string | null {
+		const f = this.#flow();
+		if (!f || !this.#repeat || !this.#range) return null;
+		return bookmarkOfRange(f, this.#range)?.id ?? null;
+	}
+
+	/**
+	 * 存成書籤時要存的 A、B：有重複範圍（不管重複開不開、有沒有 B）就照它原樣（半拍開始的動作拉成的範圍不吸到整拍）；
+	 * 沒有就是播放頭最近的整拍、只有 A。沒有段是 null。
+	 */
+	get bookmarkSpot(): { a: TimePosition; b: TimePosition | null } | null {
+		const f = this.#flow();
+		if (!f?.segments.length) return null;
+		if (this.#range) return { a: this.#range.a, b: this.#range.b };
+		return { a: startAt(f, this.#sec), b: null };
+	}
+
 	/**
 	 * 開始拖重複範圍的一頭（end）：回傳拖的時候每動一下叫的函式。另一頭照按下去時存的位置不動（不重新吸整拍），
 	 * 拖過另一頭就對調。還沒有完整的範圍時不動。
@@ -469,10 +511,6 @@ export class Playback implements SessionPlayback {
 }
 
 /** sec 在不在重複範圍外面（剛好在 B 也算外面：從 B 播沒東西可以播）。 */
-function samePosition(p: TimePosition | null | undefined, q: TimePosition | null | undefined): boolean {
-	return !!p && !!q && p.segmentId === q.segmentId && Math.abs(p.at - q.at) < 1e-6;
-}
-
 function outside(span: { a: number; b: number }, sec: number): boolean {
 	return sec < span.a - 1e-6 || sec >= span.b - 0.01;
 }
