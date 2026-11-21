@@ -905,4 +905,21 @@ describe('編輯 session：換上流程的每條路，提示和選取修剪（#3
 		expect(s.selectedMemberIds).toEqual(['m1']);
 		expect(s.notice).toBe('已重做：刪東西');
 	});
+
+	it('再復原一次、說的一樣：提示重新算 5 秒', () => {
+		vi.useFakeTimers();
+		try {
+			const s = new EditorSession(libSample());
+			rename(s, 'A');
+			s.change(flowOf(renameFlow(s.flow!, 'B')), undefined, '改流程名字');
+			s.change(flowOf(renameFlow(s.flow!, 'C')), undefined, '改流程名字');
+			s.undo();
+			vi.advanceTimersByTime(4000);
+			s.undo();
+			vi.advanceTimersByTime(4000);
+			expect(s.notice).toBe('已復原：改流程名字');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

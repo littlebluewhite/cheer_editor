@@ -683,7 +683,11 @@ export class EditorSession {
 		this.#trim(flow);
 		// 問題：改只收場上那一個；被退回、復原、重做全收（問的是換掉之前的流程）；別人改的、伺服器的樣子不收
 		if (why === 'change') this.ask.clear();
-		else if (restored) this.#clearAsks();
+		else if (restored) {
+			this.#clearAsks();
+			// 先收掉：下面說的跟現在的一樣也重新算時間
+			this.notice = '';
+		}
 		this.#playback.changed(before);
 		if (restored) {
 			// 選到的站位還在、站位時間換了（復原、重做挪站位）：播放頭跟到它的時間，接著拖人才不會多插一張
