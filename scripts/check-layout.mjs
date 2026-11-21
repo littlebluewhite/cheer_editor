@@ -2132,7 +2132,8 @@ await check('列印八拍表：沒有焦點外框；放得下一頁的列不切�
 await check('390×844（手機）使用說明：名詞表上下排，不用左右滑；看得到短提示、點得到「回目錄」', async () => {
 	await setTouchViewport(390, 844);
 	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/guide?from=editor` });
-	await waitFor(() => js(`return !!document.querySelector('#words table')`));
+	// 伺服器先畫好的頁面就有名詞表；大標題要等頁面接手（onMount 讀網址）才變成按鈕，小節目錄也是那時才出現
+	await waitFor(() => js(`return !!document.querySelector('#words table') && !!document.querySelector('.mini-toc')`));
 	await sleep(300);
 	const r = await js(`const wraps = [...document.querySelectorAll('.table-wrap')].map((w) => ({
 			表: w.querySelector('th')?.textContent, 內容寬: w.scrollWidth, 框寬: w.clientWidth }));

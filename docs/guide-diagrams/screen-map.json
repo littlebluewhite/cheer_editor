@@ -15,7 +15,7 @@
   ],
   "nodes": [
     { "id": "t-name", "parent": "c-top", "kind": "rect", "x": 50, "y": 128, "width": 260, "height": 56, "label": "選單、流程名字", "sublabel": "編排｜練習；有「未存」就是還沒存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
-    { "id": "t-play", "parent": "c-top", "kind": "rect", "x": 330, "y": 128, "width": 240, "height": 56, "label": "播放區", "sublabel": "播放鍵、目前位置、節拍器、重複", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "t-play", "parent": "c-top", "kind": "rect", "x": 330, "y": 128, "width": 240, "height": 56, "label": "播放區", "sublabel": "播放鍵、目前位置、節拍器、重複、書籤", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
     { "id": "t-btns", "parent": "c-top", "kind": "rect", "x": 590, "y": 128, "width": 320, "height": 56, "label": "按鈕", "sublabel": "編輯｜檢視、復原、重做、八拍表、存檔", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
 
     { "id": "f-members", "parent": "c-field", "kind": "rect", "x": 50, "y": 254, "width": 260, "height": 64, "label": "隊員圓點", "sublabel": "拖人＝改站位；點、框選＝選人", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
