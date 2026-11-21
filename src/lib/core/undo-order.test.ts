@@ -1,5 +1,5 @@
 // 雲端流程復原、重做時清單怎麼排（#311）：只動那一步加的、刪的、調了位置的，其他照現在畫面上的。
-// 每一列是 Codex 第 5 到 8 輪修過的情況（整頁的版本在 cloud-same-thing.svelte.test.ts）。
+// 每一列是 Codex 第 5 到 8 輪修過的情況（編輯器 module 配假伺服器的版本在 src/lib/cloud-same-thing.test.ts）。
 import { describe, expect, it } from 'vitest';
 import { travelChange, travelOrder, type Flow } from './index';
 import { undoChanges } from './cloud-undo';
