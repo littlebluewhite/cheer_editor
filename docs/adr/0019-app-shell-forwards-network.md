@@ -21,6 +21,6 @@ app 裡的網頁是包在 app 裡的，用自訂網址（ADR 0018）。伺服器
 - app 和 Safari 各登各的，各自 30 天。邀請信、忘記密碼的連結在 Safari 開，設好密碼回 app 登入；第一版不做 Universal Links。
 - 網頁要把「怎麼連雲端流程」分出來：Safari 用 `WebSocket`，app 用殼給的同樣介面。現在 `src/lib/server-api.ts` 照 `location.href` 改成 `ws:`，在 app 裡會變成 `ws://local/…`。
 - 分享連結在 app 裡要用網站的網址做。現在 `src/lib/share-link.ts` 照 `location.href`，在 app 裡會做出 `app://` 開頭、別人打不開的連結。
-- 切到背景、鎖螢幕就關掉雲端流程的連線，回來自己連上、補齊；網頁一起改（iPhone 的 Safari 有一樣的問題）。電腦上切分頁、縮小視窗要不要也斷，還沒定。這樣不用管 iOS 在背景怎麼處理連線（查不到）。一起記全上的 60 秒規則照舊。
+- app 切到背景、鎖螢幕就關掉雲端流程的連線，回來自己連上、補齊。只有 app 這樣；Safari（手機、電腦）照現在，不改。iPhone 的 Safari 本來就有「分頁被凍住、伺服器以為人還在」的問題，不在這次處理。這樣 app 不用管 iOS 在背景怎麼處理連線（查不到）。一起記全上的 60 秒規則照舊。
 - 還沒驗：`WKURLSchemeHandler` 收不收得到 POST 和上傳的內容。收不到就改走 `messageHandlers`，還是殼送；上傳音樂改由殼自己讀檔。
 - 自動填密碼用 Associated Domains，伺服器要送出 `apple-app-site-association` 這個檔（伺服器唯一要加的東西）。檔裡有 Apple 開發者團隊編號，所以部署時才做出來，編號放在 Fly 的秘密設定，不進 repo。包在 app 裡會不會出現自動填，還沒驗；驗不過就拿掉。
