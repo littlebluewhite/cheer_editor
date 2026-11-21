@@ -62,7 +62,8 @@
 	import FormationEditor from '#lib/components/FormationEditor.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import LanguagePicker from '#lib/components/LanguagePicker.svelte';
-	import Modal, { modalOpen } from '#lib/components/Modal.svelte';
+	import Modal from '#lib/components/Modal.svelte';
+	import { covered, covers } from '#lib/overlay.svelte.js';
 	import MemberPanel from '#lib/components/MemberPanel.svelte';
 	import MemberPicker from '#lib/components/MemberPicker.svelte';
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
@@ -550,12 +551,8 @@
 		}
 	}
 
-	/** 段設定、流程設定、八拍表、輸出影片、「還沒存」的問題蓋在上面：底下的編輯畫面點不到、Tab 不到，快捷鍵也不動它。 */
-	const overlayOpen = $derived(
-		!!openSegmentId || settingsOpen || printOpen || videoOpen || editor.file.asking || !!editor.file.draftAsk
-	);
-	/** 有東西蓋在上面（上面那些，或表單裡打開的名詞對照表這種對話框）：快捷鍵不動底下的編輯畫面。 */
-	const covered = () => overlayOpen || modalOpen();
+	/** 編輯畫面：它外面的對話框（段設定、流程設定、八拍表、輸出影片、「還沒存」的問題…）蓋在上面時點不到、Tab 不到（#lib/overlay.svelte.ts 判斷）。 */
+	let editorEl = $state<HTMLElement>();
 
 	/** 下一個操作（按下滑鼠、手指、鍵盤）就收掉提示泡泡；按在泡泡上（「復原」、✕）不算。先收，操作自己的提示才放得上去。 */
 	function dismissNotice(e: Event) {
@@ -611,7 +608,7 @@
 			if (spaceUsed) e.preventDefault();
 			return;
 		}
-		// 對話框、八拍表蓋在上面時，其他快捷鍵不動到底下的編輯畫面
+		// 對話框、八拍表、找書籤的框蓋在上面時，其他快捷鍵不動到底下的編輯畫面（有沒有蓋著只問 #lib/overlay.svelte.ts）
 		if (covered()) return;
 		// Esc 先收掉開著的問題（確認框），沒有問題才清選取（N18）；焦點在打字的地方也一樣
 		if (e.key === 'Escape' && !composing(e) && session.cancelQuestion()) {
@@ -709,7 +706,8 @@
 	{@const warnings = timeRuleWarnings(flow)}
 	<div
 		class="editor"
-		inert={overlayOpen}
+		bind:this={editorEl}
+		inert={!!editorEl && covers(editorEl)}
 		class:practicing={view === 'practice'}
 		class:viewing={!session.editable && !narrow}
 		class:narrow
