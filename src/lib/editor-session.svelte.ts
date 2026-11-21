@@ -24,8 +24,7 @@ import {
 	type Period,
 	type Position,
 	type PracticeKind,
-	type RemoteChange,
-	type WhyParam
+	type RemoteChange
 } from '#lib/core';
 import { Ask, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
@@ -41,29 +40,6 @@ export const joinNotes = (parts: string[]): string => parts.reduceRight((rest, f
 
 /** 幾個完整的句子接成一段（中文直接接，英文中間空一格）。parts 不能是空的。 */
 export const joinSentences = (parts: string[]): string => parts.reduceRight((rest, first) => m.session_sentences({ first, rest }));
-
-/** 沒存進去的一次（練習畫面紅條下面的表一列）：日期、動作、組（或隊員）、記號，全上記的標出來。 */
-export interface DroppedRecord {
-	id: string;
-	date: string;
-	action: string;
-	who: string;
-	marks: string;
-	runThrough: boolean;
-	/** 為什麼沒存進去（#262：「王教練已經記了這次全上的第 2 組」）；沒寫是教練改了流程。 */
-	note?: string;
-	/**
-	 * 動作、組（或隊員）、原因的代號：畫面照現在的語言寫（droppedTexts，ADR 0017）。上面寫好的字（當時的語言）照樣存，
-	 * 給還沒更新的分頁看；舊版存的沒有這一欄，照寫好的字。
-	 */
-	why?: { action: WhyParam; who: WhyParam; note?: AlreadyRecorded };
-}
-
-/** 同一次全上的同一組別人先存了：先記的人（null 是沒有名字的，寫「別人」）、哪一組（null 是「這一組」）。 */
-export interface AlreadyRecorded {
-	by: string | null;
-	which: WhyParam | null;
-}
 
 /** 「只改這張」跟往後帶的那一步合成一步復原用的 key。 */
 const ONLY_THIS = 'only-this';

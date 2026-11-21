@@ -26,7 +26,7 @@ import {
 } from '#lib/core';
 import { reasonText, whyText } from '#lib/reason-text.js';
 import { CloudSteps, withUnsent } from '#lib/cloud-steps.svelte.js';
-import { joinNotes, joinSentences, type DroppedRecord } from '#lib/editor-session.svelte.js';
+import { joinNotes, joinSentences } from '#lib/editor-session.svelte.js';
 import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
@@ -34,6 +34,7 @@ import { MAX_CLOUD_AUDIO_BYTES, type MusicLibrary } from '#lib/music-library.sve
 import { copiesToDrop, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
 import type { CloudFlow } from '#lib/server-api.js';
 import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-source.js';
+import type { DroppedRecord } from '#lib/practice-rights.js';
 import type { TabChannel } from '#lib/tab-channel.js';
 import { m } from '#lib/paraglide/messages.js';
 

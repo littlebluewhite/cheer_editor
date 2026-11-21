@@ -8,7 +8,7 @@
 // 還有這台登入的是誰、上次看到幾支雲端流程（斷網時 me() 問不到，首頁照這個畫雲端那塊）。登出就清掉（clearCopies）。
 
 import type { AudioBytes, StoredAttempt } from '#lib/core';
-import type { DroppedRecord } from '#lib/editor-session.svelte.js';
+import type { DroppedRecord } from '#lib/practice-rights.js';
 import type { CloudRecord, Me, Role, RoomRequest } from '#lib/server-api.js';
 
 /** 改、刪、救回紀錄的那一種送進房間的（#258）。 */

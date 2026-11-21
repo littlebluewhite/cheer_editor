@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { StoredAttempt } from '#lib/core';
 import type { EditorSession } from '#lib/editor-session.svelte.js';
 import { localDate } from '#lib/local-date.js';
+import { ALL_ALLOWED as SHARED } from '#lib/practice-rights.js';
 import type { UnsentRecords } from '#lib/offline-store.js';
 import { cloudEditor, fakeOfflineStore, fakeServer, flush, testEditor } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
@@ -45,6 +46,12 @@ async function record(session: EditorSession): Promise<string> {
 }
 
 describe('練習的權限', () => {
+	it('本機流程共用的那一個改不動（每個 session 都拿同一個；還沒傳的也是）', () => {
+		expect(Object.isFrozen(SHARED)).toBe(true);
+		expect(() => (SHARED.unsentRecords as Set<string>).add('t1')).toThrow();
+		expect(SHARED.unsentRecords.size).toBe(0);
+	});
+
 	it('本機流程：都可以', async () => {
 		const t = testEditor(libSample());
 		expect(rights(t.session)).toEqual(ALL_ALLOWED);
