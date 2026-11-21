@@ -37,6 +37,7 @@ import {
 import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { m } from '#lib/paraglide/messages.js';
+import { ALL_ALLOWED, type PracticeRights } from '#lib/practice-rights.js';
 import { whyText, joinText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
 import { BeatSelection } from './beat-selection.svelte.js';
@@ -236,21 +237,8 @@ export class EditorSession {
 	 * 雲端流程：紀錄改了（記一次）交給它送伺服器（#257），給記之前、記之後的流程。本機流程是 null。
 	 */
 	onrecord: ((before: Flow, after: Flow) => void) | null = null;
-	/** 不能記的原因（雲端流程的檢視者：你只能看這支流程）：有的話「記」都擋下說這句。空字串是能記。 */
-	cannotRecord = $state('');
-	/**
-	 * 雲端流程不是自己記的那幾次：一次的 id → 記的人的名字（卡片、總表明細的記號後面寫）；沒有記的人（從流程檔來的）是 ''。
-	 * 自己記的不在裡面（本機流程是空的：全是自己的）。
-	 */
-	recordedBy = $state.raw<Record<string, string>>({});
-	/** 雲端流程（#258）：紀錄有好幾個人記，卡片的「刪掉上一次」寫成「刪掉我的上一次」（本來就只刪自己記的）。 */
-	sharedRecords = $state(false);
-	/** 雲端流程的記錄者（#258）：只能改、刪自己記的；「刪掉我上一次全上記的」只刪自己在那次記的組。 */
-	ownRecordsOnly = $state(false);
-	/** 雲端流程沒存進去的紀錄（教練改了流程）：練習畫面上紅色一條，按「知道了」才清掉。 */
-	droppedRecords = $state.raw<DroppedRecord[]>([]);
-	/** 雲端流程還沒傳上去的那幾次的 id（#260）：卡片「這天的每一次」那一次後面黃色「沒傳」。 */
-	unsentRecords = $state.raw<ReadonlySet<string>>(new Set());
+	/** 練習的權限（能不能記、誰記的…）：本機流程都可以；雲端流程由 CloudSteps 給，換流程時換回都可以。 */
+	practice = $state.raw<PracticeRights>(ALL_ALLOWED);
 	/** 換上別的流程之後（開、改、記、復原、重做）叫：流程檔停手 1 秒存草稿。流程檔建好時接上。 */
 	onflow: () => void = () => {};
 	/** 拍點格子選的拍（選到的動作的）。 */
@@ -385,9 +373,7 @@ export class EditorSession {
 		this.#undo = [];
 		this.#redo = [];
 		this.#joinable = null;
-		this.recordedBy = {};
-		this.droppedRecords = [];
-		this.unsentRecords = new Set();
+		this.practice = ALL_ALLOWED;
 		this.#copied = null;
 		this.clearSelection();
 		this.drillMarks = {};
@@ -471,7 +457,7 @@ export class EditorSession {
 		if (!this.#flow) return;
 		this.#flow = flow;
 		// 雲端流程的紀錄存在伺服器（沒送到的另外算）：不算還沒存
-		if (this.sharedRecords) this.#saved = flow;
+		if (this.practice.sharedRecords) this.#saved = flow;
 		this.onflow();
 		this.#updated('record');
 	}
@@ -528,7 +514,7 @@ export class EditorSession {
 
 	/** 給元件一個「記」的問題：成功就交給 record（不算一步、不清重做）。 */
 	recordAsk(): Ask {
-		return new Ask((f) => this.record(f), { locked: () => this.cannotRecord, flow: () => this.#flow });
+		return new Ask((f) => this.record(f), { locked: () => this.practice.cannotRecord, flow: () => this.#flow });
 	}
 
 	/**

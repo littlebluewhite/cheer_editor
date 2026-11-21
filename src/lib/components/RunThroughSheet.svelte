@@ -43,7 +43,7 @@
 
 	const session = getEditorSession();
 	/** 一起記全上（雲端流程能記的人）；本機流程是 null。 */
-	const together = session.cannotRecord ? null : getEditor().file.cloud;
+	const together = session.practice.cannotRecord ? null : getEditor().file.cloud;
 	/**
 	 * 這次全上：id、日期、開的時間（手機的時間，一天裡的全上照它排第幾次）。加入的用開的人的；
 	 * 雲端流程開新的先發 id（報給伺服器，別人加入用同一個）。
@@ -84,8 +84,8 @@
 	/** 同一次全上這一欄別人已經存了：記的人的名字（不知道是誰是空字串）。 */
 	function recordedBy(action: Action, who: string): string | null {
 		if (!together) return null;
-		const r = action.successRate!.records.find((r) => r.runThroughId === run.id && r.who === who && r.id in session.recordedBy);
-		return r ? session.recordedBy[r.id] : null;
+		const r = action.successRate!.records.find((r) => r.runThroughId === run.id && r.who === who && r.id in session.practice.recordedBy);
+		return r ? session.practice.recordedBy[r.id] : null;
 	}
 	/** 這一欄是我記的（本機流程每一欄都是）。 */
 	const isMine = (action: Action, who: string) =>
