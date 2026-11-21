@@ -16,19 +16,17 @@ import {
 	flowProblem,
 	putRecords,
 	recordAttempt,
-	remoteChange,
 	runCommands,
-	runUndo,
 	said,
-	stepKeys,
 	takeRecords,
+	takeStep,
 	setSquad,
 	updateSegment,
 	type Command,
 	type Flow,
+	type LoggedStep,
 	type Position,
 	type RemoteChange,
-	type Said,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -266,10 +264,8 @@ export interface FakeCloudFlow {
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
  * 網路（#260）：network() 讓開著的房間斷網、伺服器沒回應、登入過期（斷線帶原因），或又連上（重新打招呼）。
- * 改到同一個東西（#254）照真的規則：上次看到之後別的分頁改過同一個東西退回、寫最後改的人；被規則擋下也寫那個人和原因；
- * 一步被退回後，同一個房間上次看到的還在那之前的步也退回（步驟紀錄沒有 30 天的限制）。
- * 復原、重做（#256）照真的規則：要復原的那一步之後別的分頁改過那些東西退回「王教練後來改過，這步不能復原」；
- * 放回去整份檢查不合退回「這步不能復原：…」；沒有那一步退回「太久以前的，不能復原」。
+ * 一步收不收（改到同一個東西 #254、復原重做 #256、權限、步驟 id 收過、30 天）交給流程核心的 takeStep，跟真的伺服器同一套規則；
+ * 步驟紀錄的時間用 Date.now()（測試可以用假時鐘撥）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
@@ -327,116 +323,58 @@ export function fakeServer(
 		if (state.holdRoom) held.push({ room, send });
 		else queueMicrotask(send);
 	};
-	/** 一步清掉、改掉的一次（ADR 0007）：改之前的樣子（復原加回來的是 null）、這一步之後的樣子（整筆清掉是 null）。 */
-	type Cleared = { was: StoredAttempt | null; now: StoredAttempt | null };
-	/** 收過的步（每支流程）：第幾步、步驟 id、哪個分頁、改到的東西（stepKeys）、送的人的名字、改好之後的東西、清掉改掉的紀錄。 */
-	const stepLog = new Map<
-		string,
-		{ step: number; id: string; tab: string; keys: string[]; by: string; change: RemoteChange; cleared: Cleared[] }[]
-	>();
+	/** 收過的步（每支流程）：步驟紀錄（流程核心的 LoggedStep），加上那一步改好之後的東西（重送、補步用）。 */
+	const stepLog = new Map<string, (LoggedStep & { change: RemoteChange })[]>();
 	const sameRecord = (a: StoredAttempt, b: StoredAttempt) =>
 		JSON.stringify({ actionId: a.actionId, attempt: a.attempt }) === JSON.stringify({ actionId: b.actionId, attempt: b.attempt });
 	/**
-	 * 復原時給流程核心的紀錄（跟真的伺服器一樣，ADR 0007）：現在的紀錄，加上那一步清掉、到現在還清掉著的，
-	 * 那一步改掉、到現在沒再動過的換回改之前的樣子，那一步加回來（復原）、到現在沒再動過的再清掉（重做）。
-	 * 第 step 步之後用手改、刪、救回過的照現在的（內容一樣也算，例：刪掉再救回）。
-	 * 回紀錄和加回來的（現在清掉著的）id。
+	 * 房間收到一步：「這一步收不收」交給流程核心（takeStep，跟真的伺服器同一套規則）。canEdit 照送來那時的權限
+	 * （先留著不處理時，之後才改的權限不算到這一步上）。這裡只管存、送：
+	 * 收了就存好編排、紀錄、步驟紀錄，把改好的東西送給同一支流程其他開著的房間。有 undo 是復原、重做（#256）。
 	 */
-	const broughtBack = (f: FakeCloudFlow, step: number, cleared: Cleared[], live: StoredAttempt[]) => {
-		let records = [...live];
-		const revived: string[] = [];
-		for (const { was, now } of cleared) {
-			const id = (was ?? now)?.attempt.id;
-			const current = (f.records ?? []).find((r) => r.attempt.id === id);
-			if (!current || (current.amendedStep ?? -1) >= step) continue;
-			if (was && !now && current.gone) {
-				revived.push(current.attempt.id);
-				records.push(was);
-			} else if (now && !current.gone && sameRecord(current, now)) {
-				records = was ? records.map((r) => (r.attempt.id === id ? was : r)) : records.filter((r) => r.attempt.id !== id);
-			}
-		}
-		return { records, revived };
-	};
-	/**
-	 * 房間收到一步：照真的伺服器的規則（紀錄放回流程再跑，跑完照結果清掉、改掉；改到同一個東西退回）。
-	 * 有 undo 是復原、重做（#256）。收了就把改好的東西送給同一支流程其他開著的房間。
-	 */
-	const takeStep = (
+	const serveStep = (
 		f: FakeCloudFlow,
 		sent: { stepId: string; seen: number; commands?: Command[]; undo?: { of: string; redo: boolean; change: RemoteChange } },
-		from: OpenRoom
+		from: OpenRoom,
+		canEdit: boolean
 	): RoomMessage | RoomMessage[] => {
 		const { stepId, seen, commands, undo } = sent;
-		const taken = f.stepIds?.[stepId];
-		if (taken !== undefined) {
-			// 斷線重送：回原本的結果，帶那一步的改動（跟真的伺服器一樣）
-			const was = stepLog.get(f.id)?.find((l) => l.id === stepId)?.change;
-			return { kind: 'accepted', stepId, step: taken, ...(was ? { change: structuredClone(was) } : {}) };
-		}
 		const step = f.step ?? 0;
-		// 跟真的伺服器一樣送代號（why）；message 是給部署前開著的舊分頁看的中文，畫面不讀，這裡不寫
-		const reasonOf = ({ message, why }: Said) => (why ? { message, why } : { message });
-		const rejected = (why: SentBack, by?: string): RoomMessage => {
-			from.sentBack = step;
-			return { kind: 'rejected', stepId, why, message: '', ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
-		};
-		if (from.sentBack !== undefined && seen < from.sentBack) return rejected({ code: 'afterSentBack' });
 		const log = stepLog.get(f.id) ?? [];
-		/** 上次看到之後別的分頁送的最後一步是誰送的；給了 watch 只看改到其中一個的。 */
-		const lastOther = (watch?: string[]) =>
-			log.findLast((l) => l.step > seen && l.tab !== from.tab && (!watch || l.keys.some((k) => watch.includes(k))))?.by;
-		const live = (f.records ?? []).filter((r) => !r.gone);
-		let after: { flow: Flow; records: StoredAttempt[] };
-		let revived: string[] = [];
-		if (undo) {
-			const { redo } = undo;
-			const of = log.find((l) => l.id === undo.of);
-			if (!of) return rejected({ code: 'undoTooOld', redo });
-			// 復原：那一步清掉的紀錄一起放回去；重做（復原那一步）：那時加回來的再清掉（ADR 0007）
-			const back = broughtBack(f, of.step, of.cleared, live);
-			revived = back.revived;
-			const u = runUndo(structuredClone(f.flow), structuredClone(back.records), structuredClone(undo.change));
-			const touched = [...of.keys, ...(u.kind === 'ok' ? u.watch : [])];
-			const by = log.findLast((l) => l.step > of.step && l.tab !== from.tab && l.keys.some((k) => touched.includes(k)))?.by;
-			if (by !== undefined) return rejected({ code: 'undoChangedLater', by, redo });
-			if (u.kind !== 'ok') return rejected({ code: 'undoBlocked', redo, reason: reasonOf(u) });
-			after = u;
-		} else {
-			const full = putRecords(structuredClone(f.flow), structuredClone(live));
-			const r = runCommands(full, structuredClone(commands ?? []), stepId);
-			if (r.kind !== 'ok') return rejected({ code: 'blocked', reason: reasonOf(r), ask: r.kind !== 'blocked' }, lastOther());
-			after = takeRecords(r.flow);
-		}
-		const { keys, watch } = stepKeys(f.flow, after.flow);
-		const changedBy = lastOther(watch);
-		if (changedBy !== undefined) return rejected({ code: 'sameThing' }, changedBy);
-		const kept = new Map(after.records.map((a) => [a.attempt.id, a]));
-		const changed: string[] = [];
-		const deleted: string[] = [];
-		const cleared: Cleared[] = [];
-		f.records = (f.records ?? []).map((old) => {
-			const now = kept.get(old.attempt.id);
-			const was = { actionId: old.actionId, attempt: old.attempt };
-			if (old.gone) {
-				// 復原加回來的：還在就拿回來（同一次全上的這一組別人記了就不算）
-				if (!now || !revived.includes(old.attempt.id) || firstInRun(f, now)) return old;
-				changed.push(old.attempt.id);
-				// 記下加回來的：重做（復原這一步）時再清掉
-				cleared.push({ was: null, now: { actionId: now.actionId, attempt: now.attempt } });
-				return { ...old, ...now, gone: false };
-			}
-			if (!now) {
-				deleted.push(old.attempt.id);
-				cleared.push({ was, now: null });
-			} else if (!sameRecord(now, was)) {
-				changed.push(old.attempt.id);
-				cleared.push({ was, now });
-			}
-			return now ? { ...old, ...now } : { ...old, gone: true };
+		const takenAt = f.stepIds?.[stepId];
+		const verdict = takeStep({
+			flow: structuredClone(f.flow),
+			step,
+			records: structuredClone(f.records ?? []).map(({ actionId, attempt, gone, amendedStep }) => ({ actionId, attempt, gone, amendedStep })),
+			log: log.map(({ change: _, ...l }) => structuredClone(l)),
+			now: Date.now(),
+			canEdit,
+			tab: from.tab,
+			by: find(from.email)?.name ?? '',
+			sentBack: from.sentBack,
+			taken: takenAt === undefined ? undefined : { step: takenAt, change: structuredClone(log.find((l) => l.id === stepId)?.change ?? null) },
+			sent: undo ? { stepId, seen, undo: structuredClone(undo) } : { stepId, seen, commands: structuredClone(commands ?? []) }
 		});
-		const change = remoteChange(f.flow, after.flow);
-		const by = find(from.email)?.name ?? '';
+		if (verdict.kind === 'again') {
+			// 斷線重送：回原本的結果，帶那一步的改動（跟真的伺服器一樣）
+			return { kind: 'accepted', stepId, step: verdict.step, ...(verdict.change ? { change: verdict.change } : {}) };
+		}
+		if (verdict.kind === 'rejected') {
+			from.sentBack = step;
+			// 跟真的伺服器一樣送代號（why）；message 是給部署前開著的舊分頁看的中文，畫面不讀，這裡不寫
+			const { why, by } = verdict;
+			const sentBack: SentBack = why;
+			return { kind: 'rejected', stepId, why: sentBack, message: '', ...(by === undefined ? {} : { by }), flow: structuredClone(f.flow), step };
+		}
+		const { flow, change, changed: kept, deleted, logged } = verdict;
+		const changedTo = new Map(kept.map((r) => [r.attempt.id, r]));
+		f.records = (f.records ?? []).map((old) => {
+			const now = changedTo.get(old.attempt.id);
+			if (now) return { ...old, ...now, gone: false };
+			return deleted.includes(old.attempt.id) ? { ...old, gone: true } : old;
+		});
+		const changed = [...changedTo.keys()];
+		const by = logged.by;
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.here && o !== from)) {
 			deliver(other.room, () => ({ kind: 'changed', step: step + 1, by, change: structuredClone(change) }));
 		}
@@ -444,9 +382,9 @@ export function fakeServer(
 		// 送的人的那一則跟真的伺服器一樣緊跟在「收了」後面，處理下一個送來的之前。
 		tellRecords(f, changed, deleted, from.room);
 		const own = changed.length || deleted.length ? [recordsChanged(f, changed, deleted, from.email)] : [];
-		stepLog.set(f.id, [...log, { step: step + 1, id: stepId, tab: from.tab, keys, by, change, cleared }]);
-		f.flow = after.flow;
-		f.step = step + 1;
+		stepLog.set(f.id, [...log, { ...logged, change }]);
+		f.flow = flow;
+		f.step = logged.step;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
 		f.updatedAt = new Date().toISOString();
 		// 送的人也拿到伺服器做出來的改動：可能跟他自己畫面上的不一樣（例：同時加的隊員放的位置）
@@ -1059,17 +997,13 @@ export function fakeServer(
 						request.kind === 'leaveRun'
 					) {
 						if (role !== 'viewer') deliver(room, () => (ready ? runAsk(f, email, request) : null));
-					} else if (editor && request.kind === 'undo') {
+					} else if (request.kind === 'undo') {
 						const { stepId, seen, of, redo, change } = request;
 						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange } };
-						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
-					} else if (editor && request.kind === 'step') {
-						const sent = { ...request, commands: request.commands as Command[] };
-						deliver(room, () => (ready ? takeStep(f, sent, open) : null));
+						deliver(room, () => (ready ? serveStep(f, sent, open, editor) : null));
 					} else {
-						const { stepId } = request;
-						const why = { code: 'viewOnly' } as const;
-						deliver(room, () => ({ kind: 'rejected', stepId, why, message: '', flow: structuredClone(f.flow), step: f.step ?? 0 }));
+						const sent = { ...request, commands: request.commands as Command[] };
+						deliver(room, () => (ready ? serveStep(f, sent, open, editor) : null));
 					}
 				},
 				close() {

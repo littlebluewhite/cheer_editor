@@ -283,6 +283,125 @@ mod tests {
         }
     }
 
+    /// 量「這一步收不收」（takeStepJson，#315）在 QuickJS 一步要多久，跟現在伺服器做的（runStepJson + remoteChangeJson）比。
+    /// 約 1 MB 的流程（tests/fixtures/big-flow.js），步驟紀錄 0、100、1,000、5,000 筆。只印數字、不比時間（機器不同），
+    /// 所以平常不跑：`cargo test --release --lib -- --ignored --nocapture room_step_timing`。結果寫在 ADR 0018。
+    #[test]
+    #[ignore = "量時間用，手動跑"]
+    fn room_step_timing() {
+        let context = load().unwrap();
+        context.with(|ctx| {
+            ctx.eval::<(), _>(include_str!("../tests/fixtures/big-flow.js")).unwrap();
+            // 伺服器存的樣子（JSON 字串），和三種步：改名字、插入一個八拍（後面的動作、站位全部往後挪）、復原改名字。
+            ctx.eval::<(), _>(
+                r#"
+                const big = bigFlow();
+                const C = flowCore;
+                globalThis.FLOW = JSON.stringify(big.flow);
+                globalThis.RECORDS = JSON.stringify(big.records);
+                globalThis.WHOLE = JSON.stringify(C.putRecords(big.flow, big.records)).length;
+                const seg = big.flow.segments[0].id;
+                globalThis.COMMANDS = {
+                    rename: [{ name: 'renameFlow', args: ['決賽'] }],
+                    insertBeats: [{ name: 'insertBeats', args: [{ segmentId: seg, at: 0 }, 1, 'eight'] }],
+                };
+                const renamed = C.runCommands(big.flow, COMMANDS.rename, 'renamed');
+                globalThis.RENAMED = JSON.stringify(renamed.flow);
+                globalThis.UNDO = C.undoChanges(big.flow, renamed.flow).undo;
+                // 步驟紀錄 n 筆：第 1 到 n 步，別的分頁、改到別的東西（隊員），復原時第 1 步是要復原的那一步（我改名字）。
+                globalThis.ask = (n, kind) => {
+                    const step = n;
+                    const log = [];
+                    for (let i = 1; i <= n; i++) {
+                        const m = big.flow.members[i % 36].id;
+                        log.push({ step: i, id: 's' + i, tab: 'other', by: '王教練', at: Date.UTC(2026, 10, 20), keys: ['member:' + m], cleared: [] });
+                    }
+                    const undo = kind === 'undo';
+                    if (undo) log[0] = { ...log[0], id: 'renamed', tab: 'mine', keys: ['name'] };
+                    const sent = undo
+                        ? { stepId: 'new', seen: step, undo: { of: 'renamed', redo: false, change: UNDO } }
+                        : { stepId: 'new', seen: n > 0 ? 1 : 0, commands: COMMANDS[kind] };
+                    return JSON.stringify({
+                        flow: undo ? JSON.parse(RENAMED) : big.flow, step, records: big.records, log, now: Date.UTC(2026, 10, 21),
+                        canEdit: true, tab: 'mine', by: '李教練', sent,
+                    });
+                };
+                "#,
+            )
+            .unwrap();
+            let flow: String = ctx.globals().get("FLOW").unwrap();
+            let records: String = ctx.globals().get("RECORDS").unwrap();
+            let whole: usize = ctx.globals().get("WHOLE").unwrap();
+            println!(
+                "流程（不帶紀錄）{} bytes、紀錄 {} bytes（5,500 次）、整支含紀錄 {} bytes",
+                flow.len(),
+                records.len(),
+                whole
+            );
+
+            /// 跑 3 次暖身、再跑 15 次：中位數、最慢（毫秒）。
+            fn timed(mut once: impl FnMut()) -> (f64, f64) {
+                for _ in 0..3 {
+                    once();
+                }
+                let mut ms: Vec<f64> = (0..15)
+                    .map(|_| {
+                        let start = Instant::now();
+                        once();
+                        start.elapsed().as_secs_f64() * 1000.0
+                    })
+                    .collect();
+                ms.sort_by(f64::total_cmp);
+                (ms[ms.len() / 2], ms[ms.len() - 1])
+            }
+
+            // 現在伺服器做的：runStepJson（復原是 runUndoJson），再 remoteChangeJson（兩次進出 QuickJS）。
+            let renamed: String = ctx.globals().get("RENAMED").unwrap();
+            let undo: String = ctx.eval("JSON.stringify(UNDO)").unwrap();
+            for kind in ["rename", "insertBeats", "undo"] {
+                let commands: String = ctx
+                    .eval(format!("JSON.stringify(COMMANDS.{kind} ?? null)"))
+                    .unwrap();
+                let (median, max) = timed(|| {
+                    let (before, out) = if kind == "undo" {
+                        let out = call(&ctx, "runUndoJson", (renamed.clone(), records.clone(), undo.clone()));
+                        (&renamed, out.unwrap())
+                    } else {
+                        let args = (flow.clone(), records.clone(), commands.clone(), "new".to_owned());
+                        (&flow, call(&ctx, "runStepJson", args).unwrap())
+                    };
+                    assert!(out.starts_with(r#"{"kind":"ok""#), "{}", &out[..200.min(out.len())]);
+                    // 伺服器拿結果裡的 flow 跟 records.rs 的 StepOutcome 一樣（借用、不複製）。
+                    #[derive(serde::Deserialize)]
+                    struct Outcome<'a> {
+                        #[serde(borrow)]
+                        flow: &'a serde_json::value::RawValue,
+                    }
+                    let after: Outcome = serde_json::from_str(&out).unwrap();
+                    call(&ctx, "remoteChangeJson", (before.clone(), after.flow.get().to_owned())).unwrap();
+                });
+                println!("現在 runStep+remoteChange {kind}: 中位數 {median:.1} ms，最慢 {max:.1} ms");
+            }
+
+            for n in [0, 100, 1_000, 5_000] {
+                for kind in ["rename", "insertBeats", "undo"] {
+                    if kind == "undo" && n == 0 {
+                        continue;
+                    }
+                    let ask: String = ctx.eval(format!("ask({n}, '{kind}')")).unwrap();
+                    let (median, max) = timed(|| {
+                        let out = call(&ctx, "takeStepJson", (ask.clone(),)).unwrap();
+                        assert!(out.starts_with(r#"{"kind":"accepted""#), "{}", &out[..300.min(out.len())]);
+                    });
+                    println!(
+                        "takeStep 步驟紀錄 {n} 筆（{} bytes）{kind}: 中位數 {median:.1} ms，最慢 {max:.1} ms",
+                        ask.len()
+                    );
+                }
+            }
+        });
+    }
+
     #[test]
     fn grapheme_starts_are_utf16_positions() {
         // 「中」1 個、家庭 emoji 11 個、a 1 個 UTF-16 code unit。
