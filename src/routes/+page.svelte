@@ -40,7 +40,6 @@
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
-	import type { Me, MyFlows } from '#lib/server-api.js';
 	import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
@@ -71,8 +70,8 @@
 	import NoticeToast from '#lib/components/NoticeToast.svelte';
 	import NowEightCount from '#lib/components/NowEightCount.svelte';
 	import Practice from '#lib/components/Practice.svelte';
-	import UnsentLogout, { unsentFlows } from '#lib/components/UnsentLogout.svelte';
-	import { unsentCount, type OfflineCopy, type UnsentRecords } from '#lib/offline-store.js';
+	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
+	import type { OfflineCopy } from '#lib/offline-store.js';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
@@ -126,62 +125,28 @@
 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
 	onMount(() => editor.file.connect());
 
-	/**
-	 * 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。
-	 * 斷網時伺服器問不到：用這台記著的（離線副本那邊，#261），首頁照樣列離線副本。
-	 */
-	let account = $state.raw<Me | null | undefined>(undefined);
-	onMount(() => {
-		editor.adapters.server.me().then(async (m) => {
-			account = m ?? (isOnline() ? null : ((await editor.adapters.offline.signedInHere())?.me ?? null));
-		});
-	});
-	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：在首頁時（打開、回到首頁）跟伺服器拿。還沒拿到是 null；連不上伺服器 cloudError。 */
-	let myFlows = $state.raw<MyFlows | null>(null);
-	let cloudError = $state(false);
-	/** 這台還沒傳的成功率紀錄（#260）：雲端流程 id → 幾筆（列的右邊「N 筆沒傳」）。 */
-	let unsentByFlow = $state.raw<Record<string, number>>({});
-	/** 這台的離線副本（#261）：有網路時列的右邊「離線可開」，斷網時只列這些。 */
-	let copies = $state.raw<OfflineCopy[]>([]);
-	/** 斷網時：上次看到的雲端流程有幾支（「還有 N 支雲端流程，連上網路才看得到。」）。 */
-	let knownCloudIds = $state.raw<string[]>([]);
+	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
+	const home = editor.home;
+	onMount(() => void home.load(isOnline()));
+	/** 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。 */
+	const account = $derived(home.account);
+	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：還沒拿到是 null；連不上伺服器 cloudError。 */
+	const myFlows = $derived(home.myFlows);
+	const cloudError = $derived(home.cloudError);
+	/** 這台還沒傳的成功率紀錄（#260）、離線副本（#261）、斷網時上次看到的雲端流程。 */
+	const unsentByFlow = $derived(home.unsentByFlow);
+	const copies = $derived(home.copies);
+	const copyIds = $derived(home.copyIds);
+	const knownCloudIds = $derived(home.knownCloudIds);
+	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
+	const unsentAtLogout = $derived(home.unsentAtLogout);
+	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
+	const logout = () => home.logout();
+	// 在首頁時（打開、回到首頁、網路換了）拿首頁要列的；離開首頁之後才回來的不算。
 	$effect(() => {
 		if (!account || flow) return;
-		const me = account;
-		const { offline, server } = editor.adapters;
-		let stale = false;
-		const readLocal = async () => {
-			const [list, kept] = await Promise.all([offline.unsent(), offline.copies()]);
-			if (stale) return;
-			unsentByFlow = Object.fromEntries(list.map((u) => [u.flowId, unsentCount(u)]));
-			copies = kept;
-		};
-		void readLocal();
-		if (!online) {
-			offline.signedInHere().then((here) => {
-				if (!stale) knownCloudIds = here?.cloudIds ?? [];
-			});
-			return () => (stale = true);
-		}
-		server.myFlows().then(
-			async (list) => {
-				if (stale) return;
-				myFlows = list;
-				cloudError = false;
-				const ids = [...list.mine, ...list.shared].map((c) => c.id);
-				void offline.saveSignedInHere({ me, cloudIds: ids });
-				// 被收回、被刪掉的：這台的離線副本刪掉（還沒傳的先擋住列出來，#260）
-				await editor.file.dropGoneCopies(ids, list.deleted);
-				await readLocal();
-			},
-			() => {
-				if (!stale) cloudError = true;
-			}
-		);
-		return () => (stale = true);
+		return home.refresh(online);
 	});
-	/** 有離線副本的雲端流程（「離線可開」）。 */
-	const copyIds = $derived(new Set(copies.map((c) => c.flowId)));
 
 	/** 有沒有網路（瀏覽器說的）：沒網路時新建不能存在雲端。 */
 	const isOnline = () => typeof navigator === 'undefined' || navigator.onLine;
@@ -204,28 +169,6 @@
 	function created(f: Flow) {
 		if (account && online && saveTo === 'cloud') void editor.file.createCloud(f);
 		else editor.file.create(f);
-	}
-
-	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
-	let unsentAtLogout = $state.raw<UnsentRecords[] | null>(null);
-	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
-	async function logout() {
-		const left = await unsentFlows(editor.adapters.offline);
-		if (left.length) unsentAtLogout = left;
-		else await signOut();
-	}
-	/** 登出這台裝置（discard：先丟掉這台沒傳的紀錄）。連不上伺服器時還是登入著（選單留著，可以再按一次）。 */
-	async function signOut(discard = false) {
-		unsentAtLogout = null;
-		try {
-			await editor.adapters.server.logout();
-			if (discard) await editor.adapters.offline.clearUnsent();
-			// 離線副本跟著帳號：登出就清掉（#261）；草稿不屬於哪個帳號，留著
-			await editor.adapters.offline.clearCopies();
-			account = null;
-		} catch {
-			// 沒登出成功：什麼都不變
-		}
 	}
 
 	let openSegmentId = $state<string | null>(null);
@@ -1777,7 +1720,7 @@
 	</Modal>
 {/if}
 {#if unsentAtLogout}
-	<UnsentLogout flows={unsentAtLogout} onstay={() => (unsentAtLogout = null)} ondiscard={() => signOut(true)} />
+	<UnsentLogout flows={unsentAtLogout} onstay={() => home.stay()} ondiscard={() => home.signOut(true)} />
 {/if}
 {#if leavingUnsent}
 	{@const n = leavingUnsent}
