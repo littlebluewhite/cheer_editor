@@ -13,9 +13,11 @@ import {
 	said,
 	stepKeys,
 	takeRecords,
+	takeStep,
 	type Command,
 	type Flow,
 	type RemoteChange,
+	type StepAsk,
 	type StoredAttempt
 } from './index';
 
@@ -80,4 +82,12 @@ export function runUndoJson(flow: string, records: string, change: string): stri
 	return JSON.stringify(
 		runUndo(JSON.parse(flow) as Flow, JSON.parse(records) as StoredAttempt[], JSON.parse(change) as RemoteChange)
 	);
+}
+
+/**
+ * 這一步收不收（#315）：ask 是 StepAsk 的 JSON（現在的編排、第幾步、紀錄、步驟紀錄、現在、送的人、送來的步），
+ * 回 takeStep 的結果（StepVerdict）的 JSON。
+ */
+export function takeStepJson(ask: string): string {
+	return JSON.stringify(takeStep(JSON.parse(ask) as StepAsk));
 }
