@@ -1,16 +1,8 @@
-<script module lang="ts">
-	import { unsentCount, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
-
-	/** 這台還有沒傳的紀錄的那幾支流程（登出前看；讀不到當作沒有）。 */
-	export async function unsentFlows(store: OfflineStore): Promise<UnsentRecords[]> {
-		return (await store.unsent().catch(() => [])).filter((u) => unsentCount(u) > 0);
-	}
-</script>
-
 <script lang="ts">
 	// 登出時這台還有沒傳的成功率紀錄（#260、#191 的 A）：小框列每支流程幾筆，「先不要登出」（預設）、「丟掉，登出」。
 	// 首頁的帳號選單、我的帳號頁按登出時跳。
 	import Modal from './Modal.svelte';
+	import { unsentCount, type UnsentRecords } from '#lib/offline-store.js';
 	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {

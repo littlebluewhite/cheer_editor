@@ -122,6 +122,11 @@ export function unsentCount(u: UnsentRecords): number {
 	return new Set([...u.records.map((r) => r.record.attempt.id), ...u.amends.flatMap((a) => a.ids)]).size;
 }
 
+/** 這台還有沒傳的紀錄的那幾支流程（登出前看；讀不到當作沒有）。 */
+export async function unsentFlows(store: OfflineStore): Promise<UnsentRecords[]> {
+	return (await store.unsent().catch(() => [])).filter((u) => unsentCount(u) > 0);
+}
+
 /** 什麼都沒有了（那一份可以刪掉）。 */
 export function isEmptyUnsent(u: UnsentRecords): boolean {
 	return !u.records.length && !u.amends.length && !u.dropped.length;

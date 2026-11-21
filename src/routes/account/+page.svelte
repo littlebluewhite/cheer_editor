@@ -7,8 +7,8 @@
 	import { charCount } from '#lib/core';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
-	import UnsentLogout, { unsentFlows } from '#lib/components/UnsentLogout.svelte';
-	import { createIndexedDbOfflineStore, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
+	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
+	import { createIndexedDbOfflineStore, unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
 	import {
 		httpServer,
 		tooManyTriesText,

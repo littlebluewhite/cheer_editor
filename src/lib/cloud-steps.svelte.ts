@@ -334,9 +334,9 @@ export class CloudSteps {
 		this.#touch();
 	}
 
-	/** 只能看（有新版、斷線了，或我是記錄者、檢視者）：一律檢視模式，「編輯」按不了。 */
-	get viewOnly(): boolean {
-		return this.newVersion || this.offline || !canEdit(this.role);
+	/** 不能改的原因：有新版優先，再來是斷線，再來是我是記錄者、檢視者；能改是 null。「編輯」按鈕和改流程的鎖都照這個。 */
+	get editBlock(): 'new_version' | 'disconnected' | 'recorder_or_viewer' | null {
+		return this.newVersion ? 'new_version' : this.offline ? 'disconnected' : canEdit(this.role) ? null : 'recorder_or_viewer';
 	}
 
 	/** 還沒送到伺服器的步有幾步（送出去還沒收到回答的也算）：離開時問、關分頁時讓瀏覽器問。 */
@@ -408,7 +408,8 @@ export class CloudSteps {
 	/** 不能改的原因放進 session、不能記的原因放進練習的權限：有新版優先，再來是斷線。記錄者只能改、刪自己記的。 */
 	#lock() {
 		const newVersion = t.cloud_new_version();
-		this.#session.readOnly = this.newVersion ? newVersion : this.offline ? t.cloud_offline() : canEdit(this.role) ? '' : t.cloud_only_view();
+		const block = this.editBlock;
+		this.#session.readOnly = block === 'new_version' ? newVersion : block === 'disconnected' ? t.cloud_offline() : block ? t.cloud_only_view() : '';
 		this.practice.cannotRecord = this.newVersion ? newVersion : this.role === 'viewer' ? t.cloud_only_view() : '';
 		this.practice.ownRecordsOnly = this.role === 'recorder';
 	}

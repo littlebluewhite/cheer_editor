@@ -137,7 +137,7 @@ export function whatCanDo(source: FlowSource, signedIn: boolean, unsaved: boolea
 		practice: yes(kind),
 		record: record(kind),
 		here: not,
-		edit: steps.newVersion ? no('new_version') : steps.offline ? no('disconnected') : role,
+		edit: steps.editBlock ? no(steps.editBlock) : role,
 		status: steps.offline ? (kind === 'offline_copy' ? 'offline_copy' : 'disconnected') : steps.newVersion ? null : steps.saving ? 'saving' : 'saved'
 	};
 }

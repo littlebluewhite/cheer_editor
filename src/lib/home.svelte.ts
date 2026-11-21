@@ -6,7 +6,7 @@
 // 我的帳號頁（它自己連伺服器）。
 
 import type { Editor } from '#lib/editor.svelte.js';
-import { unsentCount, type OfflineCopy, type UnsentRecords } from '#lib/offline-store.js';
+import { unsentCount, unsentFlows, type OfflineCopy, type UnsentRecords } from '#lib/offline-store.js';
 import type { Me, MyFlows } from '#lib/server-api.js';
 
 export class Home {
@@ -108,7 +108,7 @@ export class Home {
 
 	/** 按登出：這台還有沒傳的紀錄就先問（unsentAtLogout），沒有就登出。 */
 	async logout() {
-		const left = (await this.#editor.adapters.offline.unsent().catch(() => [])).filter((u) => unsentCount(u) > 0);
+		const left = await unsentFlows(this.#editor.adapters.offline);
 		if (left.length) this.#unsentAtLogout = left;
 		else await this.signOut();
 	}
