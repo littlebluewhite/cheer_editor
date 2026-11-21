@@ -10,9 +10,11 @@ import {
 	BOOKMARK_EDGES,
 	canonical,
 	onGrid,
+	pastEnd,
 	REPEAT_EDGES,
 	samePairs,
 	samePlace,
+	touches,
 	type AnchoredRange,
 	type RangeSeconds
 } from './anchored-range';
@@ -49,6 +51,16 @@ export function startAt(flow: Flow, sec: number): TimePosition {
 /** 書籤現在在哪（全域秒數）；放不下（段不見了、格子在段外、B 不在 A 後面）是 null。 */
 export function bookmarkSeconds(flow: Flow, bm: Pick<Bookmark, 'a' | 'b'>): RangeSeconds | null {
 	return anchoredSeconds(flow, bm, BOOKMARK_EDGES);
+}
+
+/** 刪段時拿掉的書籤：A 或 B 在那段的。 */
+export function bookmarksIn(flow: Flow, segmentId: string): Bookmark[] {
+	return bookmarksOf(flow).filter((bm) => touches(bm, segmentId));
+}
+
+/** 段縮短成 end 格時拿掉的書籤：開始在新的段尾或之後、結尾在段尾之後的。 */
+export function bookmarksPastEnd(flow: Flow, segmentId: string, end: number): Bookmark[] {
+	return bookmarksOf(flow).filter((bm) => pastEnd(bm, segmentId, end, BOOKMARK_EDGES));
 }
 
 /** 在同一個地方（A、B 照秒數比）的書籤，一對一對，照清單的先後。 */

@@ -5,7 +5,7 @@
 
 import { actionWhy } from './action-types';
 import { afterSplit } from './anchored-range';
-import { bookmarkSeconds, bookmarksOf } from './bookmarks';
+import { bookmarksIn, bookmarksOf } from './bookmarks';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
@@ -28,9 +28,9 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 	const droppedFormations = flow.formations.filter(
 		(f, i) => f.segmentId === segmentId && !(i === 0 && !takenOver)
 	);
-	// 書籤：段拿掉之後放不下的（A 或 B 在這段）
+	// 書籤：A 或 B 在這段的（段拿掉就放不下）
 	const segments = flow.segments.toSpliced(index, 1);
-	const droppedBookmarks = bookmarksOf(flow).filter((b) => !bookmarkSeconds({ ...flow, segments }, b));
+	const droppedBookmarks = bookmarksIn(flow, segmentId);
 	if (!answered(option) && (droppedActions.length || droppedFormations.length || droppedBookmarks.length)) {
 		const records = recordCount(droppedActions);
 		const label = labelWhy(segmentSpans(flow)[index]);

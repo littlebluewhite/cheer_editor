@@ -4,7 +4,7 @@
 
 import { actionWhy, replaceAction, type Action } from './action-types';
 import { changeAction } from './actions';
-import { bookmarkSeconds, bookmarksOf } from './bookmarks';
+import { bookmarksPastEnd } from './bookmarks';
 import type { Flow } from './flow';
 import { newId } from './ids';
 import { phaseFalloutWhy } from './phase-beats';
@@ -257,7 +257,7 @@ export function updateSegment(
 	const droppedFormations = flow.formations.filter((f) => !formations.includes(f));
 	// 書籤：段縮短之後放不下的（開始在段尾或之後、結尾在段尾之後），刪掉
 	const segments = flow.segments.with(index, next);
-	const droppedBookmarks = bookmarksOf(flow).filter((b) => !bookmarkSeconds({ ...flow, segments }, b));
+	const droppedBookmarks = bookmarksPastEnd(flow, segmentId, end);
 	let result: Flow = {
 		...flow,
 		segments,
