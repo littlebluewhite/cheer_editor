@@ -31,8 +31,8 @@ import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from 
 import type { Editor } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES, type MusicLibrary } from '#lib/music-library.svelte.js';
 import { copiesToDrop, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
-import { canEdit } from '#lib/role-names.js';
 import type { CloudFlow } from '#lib/server-api.js';
+import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-source.js';
 import type { TabChannel } from '#lib/tab-channel.js';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -89,12 +89,8 @@ export class FlowFile {
 	#draftTimer: ReturnType<typeof setTimeout> | undefined;
 	/** 分頁頻道：頁面打開時開。沒有（瀏覽器沒有 BroadcastChannel、頁面還沒打開）就當作沒有別的分頁。 */
 	#channel: TabChannel | null = null;
-	/** 開著的是雲端流程：它在伺服器上的 id；本機流程、在首頁是 null。 */
-	#cloudId = $state<string | null>(null);
-	/** 開著的雲端流程一步一步送伺服器存；本機流程、在首頁是 null。 */
-	#cloud = $state.raw<CloudSteps | null>(null);
-	/** 開著的雲端流程是用分享連結看的（沒有權限）：只能看，重新整理才看到新的。 */
-	#linkOnly = $state(false);
+	/** 開著的流程從哪來（本機流程、雲端流程、分享連結、離線副本）；在首頁是本機。 */
+	#source = $state.raw<FlowSource>(LOCAL);
 	/** 正在傳上雲端：傳好之前再按不算。 */
 	#uploading = false;
 	/** 雲端流程下載過幾次；存好的是第幾次、存到哪（同一個檔後來又存好了，前一次失敗不說它變空的）。 */
@@ -171,7 +167,7 @@ export class FlowFile {
 	async save() {
 		const { session, adapters, music } = this.#editor;
 		// 雲端流程每一步都存了，沒有存檔（要流程檔用 download）
-		if (!session.flow || this.#saving || this.#cloudId) return;
+		if (!session.flow || this.#saving || this.#source.kind !== 'local') return;
 		// 名字、備註這類欄位在失去焦點時才送進流程；先送出，存的才有剛打的字（iPad 點按鈕不一定會讓輸入框失去焦點）。
 		adapters.pendingInput.flush();
 		const f = session.flow;
@@ -290,29 +286,31 @@ export class FlowFile {
 		if (this.#draftChecked) this.#saveDraft(writeFlowFile(flow, {}));
 	}
 
-	/** 開著的雲端流程在伺服器上的 id；開著本機流程、在首頁是 null。 */
+	/** 開著的流程從哪來（本機流程、雲端流程、分享連結、離線副本）；在首頁是本機。 */
+	get source(): FlowSource {
+		return this.#source;
+	}
+
+	/** 這支流程能做什麼（每一項附原因）：選單、上方列照這個畫。signedIn：登入了沒。 */
+	can(signedIn: boolean): Abilities {
+		return whatCanDo(this.#source, signedIn, this.#editor.hasUnsavedWork, this.#editor.session.practice);
+	}
+
+	/** 開著的雲端流程（含分享連結、離線副本）在伺服器上的 id；開著本機流程、在首頁是 null。 */
 	get cloudId(): string | null {
-		return this.#cloudId;
+		return this.#source.kind === 'local' ? null : this.#source.id;
 	}
 
-	/** 開著的雲端流程的一步一步存（名字旁「存中…」「✓ 已存」、有新版）；本機流程、在首頁是 null。 */
+	/** 開著的雲端流程（含離線副本）的一步一步存（名字旁「存中…」「✓ 已存」、有新版）；本機流程、分享連結、在首頁是 null。 */
 	get cloud(): CloudSteps | null {
-		return this.#cloud;
-	}
-
-	/** 開著的雲端流程是用分享連結看的（沒有權限）：只能看、沒有練習頁、分享。 */
-	get linkOnly(): boolean {
-		return this.#linkOnly;
+		return 'steps' in this.#source ? this.#source.steps : null;
 	}
 
 	#closeCloud() {
-		this.#cloud?.close();
-		this.#cloud = null;
-		this.#cloudId = null;
-		this.#offlineAt = null;
+		this.cloud?.close();
 		clearTimeout(this.#copyTimer);
-		if (this.#linkOnly) this.#editor.session.readOnly = '';
-		this.#linkOnly = false;
+		if (this.#source.kind === 'link') this.#editor.session.readOnly = '';
+		this.#source = LOCAL;
 	}
 
 	/** 新建表單選了存在雲端：伺服器照表單的名字、場地建一支，再打開它（沒有草稿）。 */
@@ -361,10 +359,9 @@ export class FlowFile {
 		if (!still()) return;
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music, null, !refresh);
-		this.#cloudId = id;
-		this.#offlineAt = copy?.savedAt ?? null;
 		const room = server.openRoom(id);
 		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved });
+		this.#source = copy ? { kind: 'offline', id, steps: cloud, savedAt: copy.savedAt } : { kind: 'cloud', id, steps: cloud };
 		cloud.practice.recordedBy = Object.fromEntries(
 			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
 		);
@@ -392,16 +389,9 @@ export class FlowFile {
 		};
 		// 從離線副本打開的：連上了就換成最新的
 		cloud.onback = () => {
-			if (this.#offlineAt !== null && this.#cloud === cloud) void this.openCloud(id, true);
+			if (this.#source.kind === 'offline' && this.cloud === cloud) void this.openCloud(id, true);
 		};
-		this.#cloud = cloud;
 		await this.#keepCopy(copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 }, copy ? undefined : audio);
-	}
-
-	/** 開著的是從離線副本打開的（斷網）：那份是什麼時候的樣子（毫秒）；不是是 null。 */
-	#offlineAt = $state<number | null>(null);
-	get offlineAt(): number | null {
-		return this.#offlineAt;
 	}
 
 	/** 離線副本存進這台（打開時、開著時換成最新的）時，存的那幾個音樂檔：換了才再存音樂。 */
@@ -423,7 +413,7 @@ export class FlowFile {
 	/** 開著的雲端流程改了（自己、別人的改動、紀錄）：停手 1 秒後把離線副本換成現在的樣子。 */
 	#saveCopyLater() {
 		clearTimeout(this.#copyTimer);
-		if (!this.#cloud) return;
+		if (!this.cloud) return;
 		this.#copyTimer = setTimeout(() => void this.#saveCopyNow(), DRAFT_DELAY_MS);
 	}
 
@@ -433,11 +423,11 @@ export class FlowFile {
 	 */
 	async #saveCopyNow() {
 		const { session, adapters, music } = this.#editor;
-		const cloud = this.#cloud;
-		const id = this.#cloudId;
-		if (!cloud || !id || !session.flow || cloud.offline || cloud.unsent || this.#offlineAt !== null) return;
+		const source = this.#source;
+		if (source.kind !== 'cloud' || !session.flow || source.steps.offline || source.steps.unsent) return;
+		const { id, steps: cloud } = source;
 		const old = (await adapters.offline.copies()).find((c) => c.flowId === id);
-		if (!old || this.#cloud !== cloud) return;
+		if (!old || this.cloud !== cloud) return;
 		const { flow, records } = takeRecords(session.flow);
 		const unsent = new Set(cloud.unsentIds);
 		const by = cloud.practice.recordedBy;
@@ -481,8 +471,7 @@ export class FlowFile {
 		const flow = found.flow as Flow;
 		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.linkAudioBytes(token, audioId)));
 		this.#start(flow, 'cloud', newDraftId(), music);
-		this.#cloudId = found.id;
-		this.#linkOnly = true;
+		this.#source = { kind: 'link', id: found.id };
 		this.#editor.session.readOnly = m.cloud_only_view();
 	}
 
@@ -557,8 +546,8 @@ export class FlowFile {
 
 	/** 分享對話框的「離開這支流程」（確認過了）：伺服器拿掉我的權限，回首頁。連不上伺服器丟錯。 */
 	async leaveCloud() {
-		const id = this.#cloudId;
-		const cloud = this.#cloud;
+		const id = this.cloudId;
+		const cloud = this.cloud;
 		if (!id || !cloud) return;
 		// 自己離開的：房間說「被收回」時直接回首頁，不寫「你已經不能打開」
 		const revoked = cloud.onrevoked;
@@ -571,13 +560,13 @@ export class FlowFile {
 			cloud.onrevoked = revoked;
 			throw e;
 		}
-		if (this.#cloudId === id) this.#editor.session.open(null);
+		if (this.cloudId === id) this.#editor.session.open(null);
 	}
 
 	/** 分享對話框的「刪掉這支流程」（擁有者，確認過了，#252）：伺服器刪掉，回首頁。連不上伺服器丟錯。 */
 	async deleteCloud() {
-		const id = this.#cloudId;
-		const cloud = this.#cloud;
+		const id = this.cloudId;
+		const cloud = this.cloud;
 		if (!id || !cloud) return;
 		// 自己刪的：房間說「被刪掉了」時直接回首頁，不寫黃條
 		const deleted = cloud.ondeleted;
@@ -590,7 +579,7 @@ export class FlowFile {
 			cloud.ondeleted = deleted;
 			throw e;
 		}
-		if (this.#cloudId === id) this.#editor.session.open(null);
+		if (this.cloudId === id) this.#editor.session.open(null);
 	}
 
 	/**
@@ -601,7 +590,7 @@ export class FlowFile {
 	 */
 	async upload() {
 		const { session, adapters, music } = this.#editor;
-		if (!session.flow || this.#cloudId || this.#uploading) return;
+		if (!session.flow || this.#source.kind !== 'local' || this.#uploading) return;
 		adapters.pendingInput.flush();
 		const flow = session.flow;
 		const draftId = this.#draftId;
@@ -639,7 +628,7 @@ export class FlowFile {
 		};
 		if (!unchanged()) return void (session.notice = m.file_upload_changed());
 		await this.openCloud(id, false, unchanged);
-		if (this.#cloudId !== id) {
+		if (this.cloudId !== id) {
 			session.notice = unchanged() ? m.file_uploaded_not_opened() : m.file_upload_changed();
 			return;
 		}
@@ -663,8 +652,8 @@ export class FlowFile {
 	 */
 	async download() {
 		const { session, adapters, music } = this.#editor;
-		const id = this.#cloudId;
-		if (!id || !this.#cloud || !canEdit(this.#cloud.role) || !session.flow) return;
+		const id = this.cloudId;
+		if (!id || !this.can(true).download.ok || !session.flow) return;
 		// 先問存到哪再跟伺服器拿：拿太久按下去的那一下就過期了，Chrome 不讓跳存檔對話框
 		const fileName = flowFileName(session.flow.name);
 		const saver = adapters.createSaver();
@@ -993,7 +982,7 @@ export class FlowFile {
 		clearTimeout(this.#draftTimer);
 		this.#draftTimer = undefined;
 		const f = session.flow;
-		if (!f || this.#cloudId) return;
+		if (!f || this.#source.kind !== 'local') return;
 		if (this.ownsDraft) void this.#saveDraft(writeFlowFile(f, music.bytes(f)));
 		else if (this.#fileBytes) void this.#saveDraft(this.#fileBytes);
 	}
@@ -1083,7 +1072,7 @@ export class FlowFile {
 	/** 這個分頁的流程要不要放在草稿裡：開著本機流程，有未存的修改或不在檔案裡。雲端流程沒有草稿。 */
 	get ownsDraft(): boolean {
 		const { session } = this.#editor;
-		return !!session.flow && !this.#cloudId && (session.unsaved || !this.#onDisk);
+		return !!session.flow && this.#source.kind === 'local' && (session.unsaved || !this.#onDisk);
 	}
 }
 
