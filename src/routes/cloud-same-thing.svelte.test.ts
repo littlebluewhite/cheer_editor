@@ -79,6 +79,25 @@ describe('改到同一個東西', () => {
 		expect(s.state.flows[0].flow.name).toBe('全國賽');
 	});
 
+	it('被退回、開著的段設定那一段不見了：段設定關掉，提示只有退回原因', async () => {
+		const s = await bothOpen();
+		s.state.holdRoom = true;
+		// 王教練先改名字；林教練沒看到，也改名字，接著加一段、打開它的段設定（都還沒送到）
+		s.w.step({ name: 'renameFlow', args: ['區賽'] });
+		await rename('全國賽');
+		s.page.session.ask.send({ name: 'addSegment', args: ['chant'] });
+		await flush();
+		await fireEvent.click(screen.getByRole('button', { name: /^口號 1/ }));
+		expect(screen.getByRole('dialog', { name: '口號 1 設定' })).toBeTruthy();
+
+		s.releaseRoom();
+		await flush();
+
+		expect(screen.getByRole('status').textContent).toBe('王教練剛改了同一個地方，你的「改流程名字」沒改成');
+		expect(s.page.session.flow!.segments).toHaveLength(1);
+		expect(screen.queryByRole('dialog', { name: '口號 1 設定' })).toBeNull();
+	});
+
 	it('合起來被規則擋下：再加上原因', async () => {
 		const s = await bothOpen();
 		s.state.holdRoom = true;

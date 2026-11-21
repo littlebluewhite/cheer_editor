@@ -10,6 +10,7 @@ import {
 	deleteAttempt,
 	deleteMember,
 	deletePhase,
+	deleteSegment,
 	addPhase,
 	inStep,
 	insertFormation,
@@ -28,7 +29,7 @@ import {
 	type Mark
 } from '#lib/core';
 import { flowOf, libSample, ratedSample, squadNumbers } from '#lib/test-flows.js';
-import { EditorSession } from './editor-session.svelte.js';
+import { EditorSession, type Swapped } from './editor-session.svelte.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 小美一個人、一個技巧 x1（環節上法 1-1 到 1-4），可以記一次。 */
@@ -921,5 +922,79 @@ describe('編輯 session：換上流程的每條路，提示和選取修剪（#3
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe('編輯 session：換上流程只給頁面一個通知（#317）', () => {
+	/** 音樂 1、音樂 2，書籤「二」在音樂 2 上。 */
+	function twoSegments(): Flow {
+		let flow = flowOf(createFlow({ name: '兩段', field: { strips: 9, layout: 'vertical' } }));
+		flow = flowOf(addSegment(flow, 'music'));
+		flow = flowOf(addSegment(flow, 'music'));
+		return flowOf(addBookmark(flow, '二', { segmentId: 's2', at: 0 }, null));
+	}
+	const noS2 = (flow: Flow) => flowOf(deleteSegment(flow, 's2', { confirmed: true }));
+	/** 接上通知，記下每一次收到的。 */
+	function heard(s: EditorSession): Swapped[] {
+		const got: Swapped[] = [];
+		s.onswap = (x) => got.push(x);
+		return got;
+	}
+
+	it('每一條路換上流程都通知一次，帶著不見的段', () => {
+		const s = new EditorSession(twoSegments());
+		const got = heard(s);
+		s.change(noS2(s.flow!), undefined, '刪段');
+		s.undo();
+		s.redo();
+		s.reset(twoSegments(), '沒改成');
+		s.settle(noS2(s.flow!));
+		s.applyRemote(remoteChange(s.flow!, twoSegments()), '王教練');
+		s.applyRemote(remoteChange(s.flow!, noS2(s.flow!)), '王教練');
+		s.record({ ...s.flow! });
+		expect(got.map((x) => x.lostSegments)).toEqual([['s2'], [], ['s2'], [], ['s2'], [], ['s2'], []]);
+		expect(got.every((x) => !x.switched)).toBe(true);
+	});
+
+	it('打開：換了一支流程才算換（同一支換成最新的、回到首頁不算）', () => {
+		const s = new EditorSession(twoSegments());
+		const got = heard(s);
+		s.open(libSample(), true);
+		s.open(libSample(), true, false);
+		s.open(null);
+		expect(got.map((x) => x.switched)).toEqual([true, false, false]);
+	});
+
+	it('被退回、換成伺服器的樣子，開著的段設定那一段不見了：不另外說（頁面自己關掉）', () => {
+		const s = new EditorSession(twoSegments());
+		s.segmentOpen = () => 's2';
+		s.reset(noS2(s.flow!), '沒改成');
+		expect(s.notice).toBe('沒改成；書籤「二」也拿掉了');
+		const t = new EditorSession(twoSegments());
+		t.segmentOpen = () => 's2';
+		t.notice = '舊的提示';
+		t.settle(noS2(t.flow!));
+		expect(t.notice).toBe('書籤「二」也拿掉了');
+	});
+
+	it('別人刪了開著的段設定那一段、連帶拿掉書籤：兩件事都說，段在前', () => {
+		const s = new EditorSession(twoSegments());
+		s.segmentOpen = () => 's2';
+		s.applyRemote(remoteChange(s.flow!, noS2(s.flow!)), '王教練');
+		expect(s.notice).toBe('王教練刪掉了你在改的段；王教練改了段：書籤「二」也拿掉了');
+	});
+
+	it('別人刪了開著的段設定那一段（沒有書籤）：說是誰刪掉了你在改的段', () => {
+		const s = new EditorSession(twoSegments());
+		s.segmentOpen = () => 's1';
+		s.applyRemote(remoteChange(s.flow!, flowOf(deleteSegment(s.flow!, 's1', { confirmed: true }))), '王教練');
+		expect(s.notice).toBe('王教練刪掉了你在改的段');
+	});
+
+	it('別人刪的不是開著的那一段：不說刪掉了你在改的段', () => {
+		const s = new EditorSession(twoSegments());
+		s.segmentOpen = () => 's1';
+		s.applyRemote(remoteChange(s.flow!, noS2(s.flow!)), '王教練');
+		expect(s.notice).toBe('王教練改了段：書籤「二」也拿掉了');
 	});
 });

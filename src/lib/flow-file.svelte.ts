@@ -107,12 +107,6 @@ export class FlowFile {
 	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
 	#announced: string | null = null;
 
-	/**
-	 * 換成另一支流程（新建、開檔、救回草稿）時頁面要做的事：練習畫面重開、對話框都關掉。頁面建好時接上。
-	 * 播放停下、回到開頭由播放做（session.open 叫它）。
-	 */
-	onswitch: () => void = () => {};
-
 	/** 給編輯器的流程算從檔案開的。 */
 	constructor(editor: Editor) {
 		this.#editor = editor;
@@ -778,14 +772,14 @@ export class FlowFile {
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		// 草稿 id 先換：session 換流程時就跟別的分頁說正在編的是這支
 		this.#draftId = draftId;
-		editor.session.open(flow, from !== 'draft');
+		// 先收掉上一支的雲端：session 換上、通知頁面（onswap）時，頁面看到的不是上一支的雲端
 		this.#closeCloud();
+		// 從離線副本換成最新的（同一支流程，switching = false）：頁面不重開練習畫面、對話框
+		editor.session.open(flow, from !== 'draft', switching);
 		editor.actionDraft.restart();
 		this.#onDisk = from === 'file';
 		this.#fileBytes = null;
 		editor.adapters.pendingInput.settle();
-		// 從離線副本換成最新的（同一支流程）：練習畫面、對話框不關
-		if (switching) this.onswitch();
 		this.#saver = saver;
 		editor.switchMusic(music);
 		this.#openError = '';
