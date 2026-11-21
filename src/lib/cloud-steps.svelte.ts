@@ -16,8 +16,9 @@
 // 成功率紀錄（#257，ADR 0011）：記一次（session 的「記」交給 onrecord）把新的那幾次送進同一個房間，不算一步。
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。
+// 練習的權限（#318，practice）是這裡的：能不能記、誰記的、只看自己的、沒存進去的、還沒傳的都在這裡改，打開時交給 session，關掉時換回都可以。
 // 改、刪、救回（#258）也從這裡送；伺服器回那幾次現在的樣子（記錄者動別人的不算，換回來）。別人改的、刪的，
-// 別人的一步跟著改、清掉的紀錄，馬上換掉。記錄者只能改、刪自己記的（session.ownRecordsOnly）。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄，沒算的步清掉的帶回來。
+// 別人的一步跟著改、清掉的紀錄，馬上換掉。記錄者只能改、刪自己記的（練習的權限 ownRecordsOnly）。伺服器的樣子（退回、權限改了）不帶紀錄，換上時帶著現在的紀錄，沒算的步清掉的帶回來。
 // 連上、連回來時（#255）伺服器也給現在的紀錄：拿流程之後、斷線時別人記的、改的、刪的換上，自己還沒傳到的照這邊的。
 // 斷網時記的（#260）：房間斷了照記，還沒傳的（記了的、改了刪了的）存在這台（離線存放，撐得過重新整理），連上了打招呼、自動傳。
 // 還沒送到伺服器的那一次直接改、刪（不用送）；送過的連上再送。斷著時說為什麼（link：斷網、伺服器沒回應、登入過期），
@@ -56,6 +57,7 @@ import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
 import { reasonText, whyText } from '#lib/reason-text.js';
 import { Flash } from '#lib/flash.svelte.js';
+import { ALL_ALLOWED, type PracticeRights } from '#lib/practice-rights.js';
 import type { AmendRequest, OfflineStore, UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, Present, Role, RoomDown, RoomMessage, RoomRequest, RunView, SentBack } from '#lib/server-api.js';
 import { runKey, runKeyLabel } from '#lib/run-keys.js';
@@ -65,6 +67,16 @@ type Queued = CloudStep & { label: string; seen: number; before: Flow; after: Fl
 
 /** 「都傳上去了。」留幾毫秒。 */
 const SYNCED_MS = 3000;
+
+/** 雲端流程的練習的權限（#318）：CloudSteps 跟著權限、房間改，畫面從 session.practice 讀。打開時是能記、共用紀錄。 */
+class CloudPractice implements PracticeRights {
+	cannotRecord = $state('');
+	recordedBy = $state.raw<Record<string, string>>({});
+	readonly sharedRecords = true;
+	ownRecordsOnly = $state(false);
+	droppedRecords = $state.raw<DroppedRecord[]>([]);
+	unsentRecords = $state.raw<ReadonlySet<string>>(new Set());
+}
 
 /** 房間連得上嗎（#260）：連著、斷網、伺服器沒回應、登入超過 30 天。 */
 export type RoomLink = 'online' | RoomDown;
@@ -94,6 +106,8 @@ const TAB_ID = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b 
 export class CloudSteps {
 	readonly #room: FlowRoom;
 	readonly #session: EditorSession;
+	/** 這支流程的練習的權限（打開時交給 session）。 */
+	readonly practice = new CloudPractice();
 	/** 還沒被伺服器收的步和它改了什麼、改之前、改之後（第一個送出去了，等它回答）。 */
 	#queue = $state.raw<Queued[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
@@ -171,13 +185,13 @@ export class CloudSteps {
 		this.#server = session.flow ? { flow: session.flow, step } : null;
 		this.role = role;
 		this.#keep = keep;
-		session.sharedRecords = true;
+		session.practice = this.practice;
 		this.#lock();
 		if (keep?.saved) {
 			for (const u of keep.saved.records) this.#unsent.set(u.record.attempt.id, u);
 			this.#amends = [...keep.saved.amends];
 			for (const a of this.#amends) if (a.request.kind === 'deleteRecords') for (const id of a.ids) this.#deleted.add(id);
-			session.droppedRecords = [...keep.saved.dropped];
+			this.practice.droppedRecords = [...keep.saved.dropped];
 			this.#touch(false);
 		}
 		room.onmessage = (m) => this.#heard(m);
@@ -207,7 +221,7 @@ export class CloudSteps {
 
 	/** 沒存進去的紅條按「知道了」：清掉（這台存的也清）。 */
 	dismissDropped() {
-		this.#session.droppedRecords = [];
+		this.practice.droppedRecords = [];
 		this.#touch();
 	}
 
@@ -308,7 +322,7 @@ export class CloudSteps {
 		this.#unsent.clear();
 		this.#amends = [];
 		this.#batches = [];
-		this.#session.droppedRecords = [];
+		this.practice.droppedRecords = [];
 		this.#touch();
 	}
 
@@ -344,10 +358,7 @@ export class CloudSteps {
 		this.#session.onstep = null;
 		this.#session.onrecord = null;
 		this.#session.readOnly = '';
-		this.#session.cannotRecord = '';
-		this.#session.sharedRecords = false;
-		this.#session.ownRecordsOnly = false;
-		this.#session.unsentRecords = new Set();
+		if (this.#session.practice === this.practice) this.#session.practice = ALL_ALLOWED;
 		this.synced.clear();
 	}
 
@@ -370,7 +381,7 @@ export class CloudSteps {
 		const amends = this.#pendingAmends();
 		const ids = [...new Set([...this.#unsent.keys(), ...amends.flatMap((a) => a.ids)])];
 		this.unsentIds = ids;
-		this.#session.unsentRecords = new Set(ids.filter((id) => !this.#inFlight(id)));
+		this.practice.unsentRecords = new Set(ids.filter((id) => !this.#inFlight(id)));
 		if (this.syncing && !ids.length) {
 			this.syncing = false;
 			this.synced.show(true, SYNCED_MS);
@@ -382,16 +393,16 @@ export class CloudSteps {
 			flowName: this.#session.flow?.name ?? keep.saved?.flowName ?? '',
 			records: [...this.#unsent.values()],
 			amends,
-			dropped: this.#session.droppedRecords
+			dropped: this.practice.droppedRecords
 		});
 	}
 
-	/** 不能改的原因放進 session：有新版優先，再來是斷線。記錄者只能改、刪自己記的。 */
+	/** 不能改的原因放進 session、不能記的原因放進練習的權限：有新版優先，再來是斷線。記錄者只能改、刪自己記的。 */
 	#lock() {
 		const newVersion = t.cloud_new_version();
 		this.#session.readOnly = this.newVersion ? newVersion : this.offline ? t.cloud_offline() : canEdit(this.role) ? '' : t.cloud_only_view();
-		this.#session.cannotRecord = this.newVersion ? newVersion : this.role === 'viewer' ? t.cloud_only_view() : '';
-		this.#session.ownRecordsOnly = this.role === 'recorder';
+		this.practice.cannotRecord = this.newVersion ? newVersion : this.role === 'viewer' ? t.cloud_only_view() : '';
+		this.practice.ownRecordsOnly = this.role === 'recorder';
 	}
 
 	/**
@@ -680,7 +691,7 @@ export class CloudSteps {
 		const have = new Set(records.map((r) => r.attempt.id));
 		const back = saved.filter((r) => !have.has(attemptOf(r).id) && !later.has(attemptOf(r).id));
 		this.#session.serverRecords(putRecords(flow, [...records, ...back.map(stored)]));
-		if (rows.length) this.#session.droppedRecords = [...this.#session.droppedRecords, ...rows];
+		if (rows.length) this.practice.droppedRecords = [...this.practice.droppedRecords, ...rows];
 		this.#touch();
 	}
 
@@ -707,7 +718,7 @@ export class CloudSteps {
 			return [server ? stored(server) : r];
 		});
 		const names = Object.fromEntries(incoming.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
-		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
+		this.practice.recordedBy = { ...this.practice.recordedBy, ...names };
 		this.#session.serverRecords(putRecords(flow, [...records, ...[...fresh.values()].map(stored)]));
 	}
 
@@ -734,7 +745,7 @@ export class CloudSteps {
 			for (const { id } of lost.before) if (!local.has(id)) this.#hidden.set(id, now.get(id) ?? null);
 		}
 		const names = Object.fromEntries(server.flatMap((r) => (r.mine ? [] : [[attemptOf(r).id, r.by ?? '']])));
-		this.#session.recordedBy = { ...this.#session.recordedBy, ...names };
+		this.practice.recordedBy = { ...this.practice.recordedBy, ...names };
 		this.#session.serverRecords(putRecords(flow, records));
 	}
 
