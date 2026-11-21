@@ -69,10 +69,10 @@
 			`<span data-n></span><b data-fix style="color:#ff7"></b><b data-mode style="color:#7cf">${S.mode}</b>`;
 		box.querySelector('[data-fix]').onclick = () => {
 			window.__latencyFix = !window.__latencyFix;
-			webkit.messageHandlers.shell.postMessage({ latencyFix: window.__latencyFix });
+			window.webkit?.messageHandlers?.shell?.postMessage({ latencyFix: window.__latencyFix });
 			draw();
 		};
-		box.querySelector('[data-mode]').onclick = () => webkit.messageHandlers.shell.postMessage({ toggleMode: true });
+		box.querySelector('[data-mode]').onclick = () => window.webkit?.messageHandlers?.shell?.postMessage({ toggleMode: true });
 		document.documentElement.appendChild(box);
 		draw();
 	}
