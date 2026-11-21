@@ -17,7 +17,7 @@ app 裡的網頁是包在 app 裡的，用自訂網址（ADR 0018）。伺服器
 
 ## Consequences
 
-- 殼要守的規矩：網頁畫面只開 app 裡那包網頁，外面的連結一律交給 Safari 開；殼只轉這包網頁送的請求。
+- 殼要守的規矩：網頁畫面只開 app 裡那包網頁，或殼從自己網站抓來的新版（ADR 0021），外面的連結一律交給 Safari 開；殼只轉這包網頁送的請求。
 - app 和 Safari 各登各的，各自 30 天。邀請信、忘記密碼的連結在 Safari 開，設好密碼回 app 登入；第一版不做 Universal Links。
 - 網頁要把「怎麼連雲端流程」分出來：Safari 用 `WebSocket`，app 用殼給的同樣介面。現在 `src/lib/server-api.ts` 照 `location.href` 改成 `ws:`，在 app 裡會變成 `ws://local/…`。
 - 分享連結在 app 裡要用網站的網址做。現在 `src/lib/share-link.ts` 照 `location.href`，在 app 裡會做出 `app://` 開頭、別人打不開的連結。
