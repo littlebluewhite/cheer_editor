@@ -230,12 +230,12 @@ describe('沒存進去的那一列照現在的語言寫（ADR 0017）', () => {
 	});
 
 	it('存起來的那一列照樣有寫好的字（還沒更新的分頁讀得懂），代號另外放', async () => {
-		const page = { session: null as unknown as { droppedRecords: { action: unknown; who: unknown; note?: unknown }[] } };
+		const page = { session: null as unknown as { practice: { droppedRecords: { action: unknown; who: unknown; note?: unknown }[] } } };
 		await savedAfter((s) => {
 			page.session = s.page.session as never;
 			s.recordAs('c1', wang.email, [squad2('twang0000002x')]);
 		});
-		const [row] = page.session.droppedRecords;
+		const [row] = page.session.practice.droppedRecords;
 		expect([row.action, row.who, row.note]).toEqual(['技巧·Lib', '第 2 組 小芳', expect.any(String)]);
 	});
 

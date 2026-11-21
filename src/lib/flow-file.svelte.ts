@@ -363,11 +363,11 @@ export class FlowFile {
 		this.#start(flow, 'cloud', newDraftId(), music, null, !refresh);
 		this.#cloudId = id;
 		this.#offlineAt = copy?.savedAt ?? null;
-		this.#editor.session.recordedBy = Object.fromEntries(
-			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
-		);
 		const room = server.openRoom(id);
 		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved });
+		cloud.practice.recordedBy = Object.fromEntries(
+			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
+		);
 		// 傳不上去了：這台存著的（沒傳的、離線副本）丟掉，回首頁說原因
 		const goneHome = (why: (name: string) => string) => () => {
 			const name = this.#editor.session.flow?.name ?? '';
@@ -440,7 +440,7 @@ export class FlowFile {
 		if (!old || this.#cloud !== cloud) return;
 		const { flow, records } = takeRecords(session.flow);
 		const unsent = new Set(cloud.unsentIds);
-		const by = session.recordedBy;
+		const by = cloud.practice.recordedBy;
 		const audioIds = flow.audio.map((a) => a.id).sort().join();
 		const audio = audioIds !== this.#copyAudioIds ? music.bytes(flow) : undefined;
 		await adapters.offline.saveCopy(
