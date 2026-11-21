@@ -73,13 +73,15 @@ describe('addBookmark', () => {
 		expect(addBookmark(flow, '又一個', at('s1', 0), at('s2', 0))).toEqual({
 			kind: 'blocked',
 			message: '這裡已經有書籤「音樂 1」了',
-			why: { code: 'bookmarks_same_place', name: '音樂 1' }
+			why: { code: 'bookmarks_same_place', name: '音樂 1' },
+			bookmarkId: 'k1'
 		});
 		// 名字空的也先講位置重複（換名字也存不了）
 		expect(addBookmark(flow, '  ', at('s1', 0), at('s1', 32))).toEqual({
 			kind: 'blocked',
 			message: '這裡已經有書籤「音樂 1」了',
-			why: { code: 'bookmarks_same_place', name: '音樂 1' }
+			why: { code: 'bookmarks_same_place', name: '音樂 1' },
+			bookmarkId: 'k1'
 		});
 		flow = flowOf(addBookmark(flow, '開場', at('s1', 0), null));
 		expect(addBookmark(flow, '開場 2', at('s1', 0), null)).toMatchObject({ kind: 'blocked' });
