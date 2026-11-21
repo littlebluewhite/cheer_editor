@@ -76,6 +76,26 @@ type Swap =
 	| { why: 'undo' | 'redo'; label: string };
 
 /**
+ * 每條路之間真的不一樣的地方（#308 階段 1），#swap 照這張表做，不是每條路自己挑（打開另外算：整份重設）。
+ * stored：換上的算不算存過（records 看練習的權限有沒有共用紀錄、undo 看復原紀錄存在哪、always 雲端流程的都存了）；
+ * asks：問題收哪些（field 只收場上那一個、all 全收：問的是換掉之前的流程、none 不收）；
+ * restores：回到以前的樣子（合不了一步、插的站位不帶、選到的站位時間換了播放頭跟過去，提示先收掉）；
+ * updated：跟頁面說是哪種更新；onlyRecords：只換紀錄，選取、問題、播放、提示都不動。
+ */
+const SWAP_RULES = {
+	change: { stored: 'undo', asks: 'field', restores: false, updated: 'change', onlyRecords: false },
+	record: { stored: 'records', asks: 'none', restores: false, updated: 'record', onlyRecords: true },
+	rejected: { stored: 'always', asks: 'all', restores: true, updated: 'change', onlyRecords: false },
+	remote: { stored: 'always', asks: 'none', restores: false, updated: 'change', onlyRecords: false },
+	settle: { stored: 'always', asks: 'none', restores: false, updated: 'change', onlyRecords: false },
+	undo: { stored: 'undo', asks: 'all', restores: true, updated: 'undo', onlyRecords: false },
+	redo: { stored: 'undo', asks: 'all', restores: true, updated: 'redo', onlyRecords: false }
+} as const satisfies Record<
+	Exclude<Swap['why'], 'open'>,
+	{ stored: 'records' | 'undo' | 'always'; asks: 'field' | 'all' | 'none'; restores: boolean; updated: UpdateReason; onlyRecords: boolean }
+>;
+
+/**
  * 跟著這支流程的畫面狀態：元件拆掉（切練習的頁、切編排和練習）再回來還在；換流程（open）整份重設。不存進流程檔。
  * 換流程就該重設的（時間軸、泳道的捲動、場地的放大）跟著編排區的 {#key} 重開；重開小窗就重設的由小窗打開時初始化。
  */
@@ -538,40 +558,34 @@ export class EditorSession {
 			return;
 		}
 		if (!before || !flow) return;
-		// 雲端流程換上的都存在伺服器（記的紀錄看練習的權限，改、復原重做看復原紀錄）：不算還沒存
-		const stored =
-			why === 'record' ? this.practice.sharedRecords : why === 'change' || why === 'undo' || why === 'redo' ? this.undoLog.stored : true;
+		const rule = SWAP_RULES[why];
+		const stored = rule.stored === 'records' ? this.practice.sharedRecords : rule.stored === 'undo' ? this.undoLog.stored : true;
 		if (stored) this.#saved = flow;
-		if (why === 'record') {
-			// 記：只換紀錄，選取、問題、播放、提示都不動
+		if (rule.onlyRecords) {
 			this.onflow();
-			this.#updated('record');
+			this.#updated(rule.updated);
 			this.onswap({ switched: false, lostSegments });
 			return;
 		}
 
-		const restored = why === 'rejected' || why === 'undo' || why === 'redo';
-		if (restored) {
+		if (rule.restores) {
 			this.#joinable = null;
 			this.#carriedInsertId = null;
 		}
 		this.#trim(flow);
-		// 問題：改只收場上那一個；被退回、復原、重做全收（問的是換掉之前的流程）；別人改的、伺服器的樣子不收
-		if (why === 'change') this.ask.clear();
-		else if (restored) {
-			this.#clearAsks();
-			// 先收掉：下面說的跟現在的一樣也重新算時間
-			this.notice = '';
-		}
+		if (rule.asks === 'field') this.ask.clear();
+		else if (rule.asks === 'all') this.#clearAsks();
+		// 先收掉：下面說的跟現在的一樣也重新算時間
+		if (rule.restores) this.notice = '';
 		this.#playback.changed(before);
-		if (restored) {
+		if (rule.restores) {
 			// 選到的站位還在、站位時間換了（復原、重做挪站位）：播放頭跟到它的時間，接著拖人才不會多插一張
 			const sec = (f: Flow) => formationTimes(f).find((t) => t.formation.id === this.#formationId)?.sec;
 			const now = sec(flow);
 			if (now !== undefined && now !== sec(before)) this.#playback.jump(now, false);
 		}
 		this.onflow();
-		this.#updated(why === 'undo' || why === 'redo' ? why : 'change');
+		this.#updated(rule.updated);
 		this.onswap({ switched: false, lostSegments });
 
 		// 提示：改段連帶拿掉的書籤每條路都說（不會悄悄不見）
