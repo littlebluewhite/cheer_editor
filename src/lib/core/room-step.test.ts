@@ -112,6 +112,11 @@ describe('takeStep：表格', () => {
 			expected: { kind: 'again', step: 2, change: null }
 		},
 		{
+			name: '同一個步驟 id 重送：不用紀錄、步驟紀錄就回（伺服器收過的不讀它們，給空的）',
+			ask: { step: 9, records: [], log: [], sent: { ...rename, seen: 1 }, taken: { step: 2, change: null } },
+			expected: { kind: 'again', step: 2, change: null }
+		},
+		{
 			name: '伺服器看不懂（沒有這個指令）：退回',
 			ask: { sent: { stepId: 'new', seen: 3, commands: [{ name: 'nope', args: [] } as never] } },
 			expected: { kind: 'rejected', why: { code: 'notUnderstood' } }

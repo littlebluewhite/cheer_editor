@@ -189,20 +189,34 @@ const same = (a: StoredAttempt, b: StoredAttempt) => a.actionId === b.actionId &
  * 那一步之後才用手改、刪、救回過的照現在的（內容一樣也算，例：刪掉再救回）。回紀錄和加回來的（現在清掉著的）id。
  */
 function broughtBack(all: RoomRecord[], of: LoggedStep, live: StoredAttempt[]) {
-	let records = [...live];
+	const byId = firstById(all);
+	/** 還在的要換成（改之前的樣子）或拿掉（null）的。 */
+	const swap = new Map<string, StoredAttempt | null>();
+	const added: StoredAttempt[] = [];
 	const revived: string[] = [];
 	for (const { was, now } of of.cleared) {
 		const id = (was ?? now)?.attempt.id;
-		const current = all.find((r) => r.attempt.id === id);
+		const current = id === undefined ? undefined : byId.get(id);
 		if (!current || (current.amendedStep !== undefined && current.amendedStep >= of.step)) continue;
 		if (was && !now && current.gone) {
 			revived.push(current.attempt.id);
-			records.push(was);
+			added.push(was);
 		} else if (now && !current.gone && same(current, now)) {
-			records = was ? records.map((r) => (r.attempt.id === id ? was : r)) : records.filter((r) => r.attempt.id !== id);
+			swap.set(current.attempt.id, was);
 		}
 	}
-	return { records, revived };
+	const records = live.flatMap((r) => {
+		const to = swap.get(r.attempt.id);
+		return to === undefined ? [r] : to ? [to] : [];
+	});
+	return { records: [...records, ...added], revived };
+}
+
+/** 照 id 找第一筆（跟 find 一樣：同一個 id 有兩筆時拿前面的）。 */
+function firstById<T extends StoredAttempt>(list: T[]): Map<string, T> {
+	const byId = new Map<string, T>();
+	for (const r of list) if (!byId.has(r.attempt.id)) byId.set(r.attempt.id, r);
+	return byId;
 }
 
 /**
@@ -213,21 +227,33 @@ function broughtBack(all: RoomRecord[], of: LoggedStep, live: StoredAttempt[]) {
 function recordsAfter(all: RoomRecord[], before: StoredAttempt[], after: StoredAttempt[], revived: string[]) {
 	const next = new Map(after.map((r) => [r.attempt.id, r]));
 	// 現在的樣子（一筆一筆改）：查撞在一起用
-	const now = all.map((r) => ({ ...stored(r), gone: !!r.gone }));
-	const set = (id: string, to: StoredAttempt | null) => {
-		const i = now.findIndex((r) => r.attempt.id === id);
-		if (i >= 0) now[i] = to ? { ...to, gone: false } : { ...now[i], gone: true };
+	const now = new Map<string, StoredAttempt & { gone: boolean }>();
+	for (const r of all) if (!now.has(r.attempt.id)) now.set(r.attempt.id, { ...stored(r), gone: !!r.gone });
+	// 同一次全上、同一個動作、同一組的還在的 id（查撞在一起用，跟著 now 改）
+	const group = (r: StoredAttempt) => JSON.stringify([r.attempt.runThroughId, r.actionId, r.attempt.who]);
+	const groups = new Map<string, Set<string>>();
+	const join = (r: StoredAttempt & { gone: boolean }, on: boolean) => {
+		if (r.gone || r.attempt.runThroughId === undefined) return;
+		const k = group(r);
+		const ids = groups.get(k) ?? new Set<string>();
+		if (on) ids.add(r.attempt.id);
+		else ids.delete(r.attempt.id);
+		groups.set(k, ids);
 	};
-	const collides = (r: StoredAttempt) =>
-		r.attempt.runThroughId !== undefined &&
-		now.some(
-			(o) =>
-				!o.gone &&
-				o.attempt.id !== r.attempt.id &&
-				o.attempt.runThroughId === r.attempt.runThroughId &&
-				o.actionId === r.actionId &&
-				o.attempt.who === r.attempt.who
-		);
+	for (const r of now.values()) join(r, true);
+	const set = (id: string, to: StoredAttempt | null) => {
+		const old = now.get(id);
+		if (!old) return;
+		const r = to ? { ...to, gone: false } : { ...old, gone: true };
+		join(old, false);
+		join(r, true);
+		now.set(id, r);
+	};
+	const collides = (r: StoredAttempt) => {
+		if (r.attempt.runThroughId === undefined) return false;
+		const ids = groups.get(group(r));
+		return !!ids && ids.size > (ids.has(r.attempt.id) ? 1 : 0);
+	};
 	const deleted: string[] = [];
 	const changedIds = new Set<string>();
 	const was = new Map<string, StoredAttempt>();

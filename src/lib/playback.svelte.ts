@@ -367,10 +367,14 @@ export class Playback implements SessionPlayback {
 
 	/** 正在播的書籤（重複開著，範圍跟它在同一個地方）的 id；沒有是 null。只有 A 的書籤不算。 */
 	get playingBookmark(): string | null {
+		return this.#playingBookmark;
+	}
+	// 算一次記著：書籤列每個書籤都來問（不然每問一次就把書籤全部比一次）
+	#playingBookmark = $derived.by(() => {
 		const f = this.#flow();
 		if (!f || !this.#repeat || !this.#range) return null;
 		return bookmarkOfRange(f, this.#range)?.id ?? null;
-	}
+	});
 
 	/**
 	 * 存成書籤時要存的 A、B：有重複範圍（不管重複開不開、有沒有 B）就照它原樣（半拍開始的動作拉成的範圍不吸到整拍）；
