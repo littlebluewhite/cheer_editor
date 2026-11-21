@@ -7,7 +7,7 @@
 	place="phone"：手機、直拿的 iPad（檢視模式），播放列下面一排，手指左右滑；沒有書籤就不出現。
 -->
 <script lang="ts">
-	import { MAX_CHARS, actionWhy, firstChars, bookmarkSeconds, positionWhy, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
+	import { MAX_CHARS, actionNameWhy, firstChars, bookmarkSeconds, positionWhy, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
@@ -102,7 +102,7 @@
 		const aSec = toSeconds(flow, a);
 		const act = flow.actions.find((x) => near(toSeconds(flow, { segmentId: x.segmentId, at: x.start }), aSec));
 		naming = { kind: 'add', a, b };
-		text = act ? firstChars(act.name.trim() || whyText(actionWhy(act)), MAX_CHARS.bookmarkName) : '';
+		text = act ? firstChars(whyText(actionNameWhy({ ...act, name: act.name.trim() })), MAX_CHARS.bookmarkName) : '';
 	}
 
 	function commit() {
@@ -111,7 +111,8 @@
 		if (n.kind === 'add') {
 			const r = session.ask.send({ name: 'addBookmark', args: [text, n.a, n.b] });
 			if (r.kind === 'ok') naming = null;
-			else flashSame(n.a, n.b);
+			// 只有位置重複才閃：別的原因（例：段被刪了，秒數算成 0）會閃到不相干的書籤
+			else if (r.kind === 'blocked' && r.why?.code === 'bookmarks_same_place') flashSame(n.a, n.b);
 		} else {
 			const r = session.ask.send({ name: 'renameBookmark', args: [n.id, text] });
 			if (r.kind === 'ok') naming = null;

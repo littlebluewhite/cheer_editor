@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { addAction, addBookmark, addMembers, addSegment, createFlow, updateSegment, type Flow } from '#lib/core';
+import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { flowOf } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
@@ -151,6 +152,37 @@ describe('書籤', () => {
 		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
 		expect(session.notice).toBe('這裡已經有書籤「音樂 1」了');
 		await vi.waitFor(() => expect(chip('音樂 1').parentElement!.classList.contains('flash')).toBe(true));
+	});
+
+	it('打名字時要存的那段被刪了：存不了，不會閃到別的書籤（段不見時秒數算成 0）', async () => {
+		let flow = flowOf(addBookmark(sample(), '開頭', { segmentId: 's1', at: 0 }, null));
+		flow = flowOf(addSegment(flow, 'music'));
+		const { session, playback } = setup(flow);
+		playback.seek(20);
+		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
+		await fireEvent.input(screen.getByRole('textbox', { name: '書籤名字' }), { target: { value: '第二段' } });
+		session.ask.send({ name: 'deleteSegment', args: ['s2'] });
+		session.ask.answer('confirm');
+		expect(session.flow!.segments).toHaveLength(1);
+		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
+		expect(session.flow!.bookmarks).toHaveLength(3);
+		await new Promise((r) => requestAnimationFrame(r));
+		expect(document.querySelector('.flash')).toBeNull();
+	});
+
+	it('英文畫面：A 是名字跟大類一樣（「舞蹈」）的動作，名字先填英文的大類', async () => {
+		localStorage.setItem(localStorageKey, 'en');
+		try {
+			let flow = flowOf(addMembers(sample(), [{ name: 'Ann', gender: 'F', globalRole: 'top' }]));
+			const members = [{ memberId: 'm1', role: '上層' }];
+			flow = flowOf(addAction(flow, { segmentId: 's1', category: 'dance', name: '舞蹈', start: 48, length: 8, note: '', members }));
+			const { playback } = setup(flow);
+			playback.setRange(12, 14);
+			await fireEvent.click(screen.getByRole('button', { name: /Save as bookmark/i }));
+			expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Dance');
+		} finally {
+			localStorage.removeItem(localStorageKey);
+		}
 	});
 
 	it('名字空的、地方是新的：提示請取名字，沒有書籤閃', async () => {
