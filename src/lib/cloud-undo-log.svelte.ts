@@ -8,7 +8,7 @@
 import { changeLabel, joinUndo, travelChange, undoChanges, undone, type Flow, type RemoteChange, type UndoChanges } from '#lib/core';
 import { newStepId, type SentStep } from '#lib/ask.svelte.js';
 import { whyText } from '#lib/reason-text.js';
-import { UNDO_LIMIT, type NewStep, type Travel, type UndoLog } from '#lib/undo-log.svelte.js';
+import { UndoStacks, type NewStep, type UndoLog } from '#lib/undo-log.svelte.js';
 
 /**
  * 雲端流程送伺服器的一步：一串指令，或復原、重做（#256）：
@@ -25,31 +25,14 @@ type CloudUndoStep = { label: string; ids: string[]; changes: UndoChanges; shown
 /** 清單的 id 順序。 */
 const idsOf = (flow: Flow, list: string) => (flow[list as keyof RemoteChange['orders']] as { id: string }[]).map((x) => x.id);
 
-export class CloudUndo implements UndoLog {
+export class CloudUndo extends UndoStacks<CloudUndoStep> implements UndoLog {
 	readonly stored = true;
 	readonly #send: (step: CloudStep, label: string, before: Flow, after: Flow) => void;
-	#undo = $state.raw<CloudUndoStep[]>([]);
-	#redo = $state.raw<CloudUndoStep[]>([]);
 
 	/** send：一步（改的、復原、重做）交給它送伺服器，帶這一步改了什麼（被退回時的提示用）和改之前、改之後的流程。 */
 	constructor(send: (step: CloudStep, label: string, before: Flow, after: Flow) => void) {
+		super();
 		this.#send = send;
-	}
-
-	get canUndo(): boolean {
-		return this.#undo.length > 0;
-	}
-
-	get canRedo(): boolean {
-		return this.#redo.length > 0;
-	}
-
-	get undoLabel(): string {
-		return this.#undo.at(-1)?.label ?? '';
-	}
-
-	get redoLabel(): string {
-		return this.#redo.at(-1)?.label ?? '';
 	}
 
 	/** 送伺服器（存好了由 CloudSteps 說）；沒送的不記。合成一步的改動照第一步之前到現在。 */
@@ -58,36 +41,19 @@ export class CloudUndo implements UndoLog {
 		const said = label ?? whyText(changeLabel(before, after));
 		this.#send(sent, said, before, after);
 		const changes = undoChanges(before, after);
-		const last = joined ? this.#undo.at(-1) : undefined;
+		const last = this.joinable(joined);
 		const step = last
 			? { label: said, ids: [...last.ids, sent.id], changes: joinUndo(last.changes, changes) }
 			: { label: said, ids: [sent.id], changes };
-		this.#undo = (last ? [...this.#undo.slice(0, -1), step] : [...this.#undo, step]).slice(-UNDO_LIMIT);
-		this.#redo = [];
+		this.push(step, !!last);
 		return said;
-	}
-
-	undo(flow: Flow): Travel | null {
-		return this.#travel(flow, false);
-	}
-
-	redo(flow: Flow): Travel | null {
-		return this.#travel(flow, true);
-	}
-
-	clear() {
-		this.#undo = [];
-		this.#redo = [];
 	}
 
 	/**
 	 * 把那一步改到的東西放回改之前（重做是改之後）的樣子，畫面先改，再當成新的一步送伺服器
 	 * （of 是那一步的步驟 id，方向鍵合成的是第一個）；另一邊記下這次送的步驟 id。
 	 */
-	#travel(before: Flow, redo: boolean): Travel | null {
-		const from = redo ? this.#redo : this.#undo;
-		const step = from.at(-1);
-		if (!step) return null;
+	protected move(before: Flow, step: CloudUndoStep, redo: boolean) {
 		const id = newStepId();
 		const { undo, redo: again } = step.changes;
 		const change = travelChange(before, step.changes, redo, redo ? (step.shown ?? again.orders) : undo.orders);
@@ -96,10 +62,7 @@ export class CloudUndo implements UndoLog {
 		if (!redo) back.shown = Object.fromEntries(Object.keys(again.orders).map((list) => [list, idsOf(before, list)]));
 		const flow = undone(before, change);
 		this.#send({ id, undo: { of: step.ids[0], redo, change } }, step.label, before, flow);
-		const to = [...(redo ? this.#undo : this.#redo), back];
-		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];
-		else [this.#undo, this.#redo] = [from.slice(0, -1), to];
-		return { flow, label: step.label };
+		return { flow, back };
 	}
 
 	/**
@@ -109,7 +72,7 @@ export class CloudUndo implements UndoLog {
 	 */
 	acceptedAs(stepId: string, change: RemoteChange) {
 		const redo = { things: change.things, orders: {} };
-		this.#undo = this.#undo.map((s) =>
+		this.undoSteps = this.undoSteps.map((s) =>
 			s.ids.at(-1) === stepId ? { ...s, changes: joinUndo(s.changes, { undo: { things: [], orders: {} }, redo }) } : s
 		);
 	}
@@ -117,7 +80,7 @@ export class CloudUndo implements UndoLog {
 	/** 被退回、沒送到的步（步驟 id）不算：從復原、重做拿掉。 */
 	drop(ids: string[]) {
 		const dropped = (s: CloudUndoStep) => s.ids.some((id) => ids.includes(id));
-		this.#undo = this.#undo.filter((s) => !dropped(s));
-		this.#redo = this.#redo.filter((s) => !dropped(s));
+		this.undoSteps = this.undoSteps.filter((s) => !dropped(s));
+		this.redoSteps = this.redoSteps.filter((s) => !dropped(s));
 	}
 }
