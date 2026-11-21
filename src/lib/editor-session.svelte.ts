@@ -16,6 +16,7 @@ import {
 	sameFlow,
 	squadsOf,
 	timeWhy,
+	travelChange,
 	undoChanges,
 	undone,
 	undoRecords,
@@ -634,7 +635,7 @@ export class EditorSession {
 		} else {
 			const id = newStepId();
 			const { undo, redo: again } = step.changes;
-			const change = travelled(before, step.changes, redo, redo ? (step.shown ?? again.orders) : undo.orders);
+			const change = travelChange(before, step.changes, redo, redo ? (step.shown ?? again.orders) : undo.orders);
 			back = { label: step.label, ids: [id], changes: step.changes };
 			// 復原：記下復原前畫面上的順序（重做時加回來的照這裡的位置放）
 			if (!redo) back.shown = Object.fromEntries(Object.keys(again.orders).map((list) => [list, idsOf(before, list)]));
@@ -965,61 +966,6 @@ function lostBookmarks(before: Flow, after: Flow): string[] {
 
 /** 清單的 id 順序。 */
 const idsOf = (flow: Flow, list: string) => (flow[list as keyof RemoteChange['orders']] as { id: string }[]).map((x) => x.id);
-
-/**
- * 雲端流程復原、重做要送的改動：清單順序只動這一步加的、刪的、調了位置的（比復原、重做兩邊的順序），
- * 其他照現在畫面上的（別人後來加的、調的不動）；動到的放在 anchor 裡它前一個的後面。
- */
-function travelled(flow: Flow, changes: UndoChanges, redo: boolean, anchor: RemoteChange['orders']): RemoteChange {
-	const [from, to] = redo ? [changes.undo, changes.redo] : [changes.redo, changes.undo];
-	const orders = Object.entries(to.orders).map(([list, wanted]) => {
-		const was = from.orders[list as keyof RemoteChange['orders']] ?? [];
-		const gone = new Set(was.filter((id) => !wanted.includes(id)));
-		// 調了位置的兩個方向算同一組（復原、重做都比「改之前 → 改之後」），重做才放得回復原拿走的那幾個。
-		// 整份比才認得出是誰被調（A B C → B C A 是 A）；一樣長的同順序，挑現在還在的多的（調走的那個後來被刪了，
-		// 就算它被調），再拿掉現在不在的
-		const now = idsOf(flow, list);
-		const here = new Set(now);
-		const before = changes.undo.orders[list as keyof RemoteChange['orders']] ?? [];
-		const after = changes.redo.orders[list as keyof RemoteChange['orders']] ?? [];
-		const shifted = moved(before, after, here).filter((id) => here.has(id));
-		const moving = new Set([...wanted.filter((id) => !was.includes(id)), ...shifted]);
-		const ids = now.filter((id) => !gone.has(id) && !moving.has(id));
-		const order = anchor[list as keyof RemoteChange['orders']] ?? wanted;
-		for (const id of order) {
-			if (!moving.has(id)) continue;
-			const prev = order.slice(0, order.indexOf(id)).findLast((p) => ids.includes(p));
-			ids.splice(prev === undefined ? 0 : ids.indexOf(prev) + 1, 0, id);
-		}
-		return [list, ids];
-	});
-	return { ...to, orders: Object.fromEntries(orders) };
-}
-
-/**
- * b 比 a 調了位置的：兩邊都有的裡面，最長的一串同順序以外的；一樣長的挑 here 裡的多的。
- * 兩邊都有的 id 各只一次，最長的同順序就是 b 在 a 裡的位置最長的遞增串；每個 id 算 n + 1 分、在 here 裡多 1 分，
- * 挑分數最多的遞增串（樹狀陣列查前面最多的，n log n、記憶體 n，幾千張站位也撐得住）。
- */
-function moved(a: string[], b: string[], here: Set<string>): string[] {
-	const at = new Map(a.map((id, i) => [id, i]));
-	const y = b.filter((id) => at.has(id));
-	const best: { score: number; j: number }[] = Array.from({ length: a.length + 1 }, () => ({ score: 0, j: -1 }));
-	const prev = new Array<number>(y.length).fill(-1);
-	let top = { score: 0, j: -1 };
-	y.forEach((id, j) => {
-		const v = at.get(id)! + 1;
-		let before = { score: 0, j: -1 };
-		for (let k = v - 1; k > 0; k -= k & -k) if (best[k].score > before.score) before = best[k];
-		prev[j] = before.j;
-		const mine = { score: before.score + y.length + 1 + (here.has(id) ? 1 : 0), j };
-		for (let k = v; k < best.length; k += k & -k) if (mine.score > best[k].score) best[k] = mine;
-		if (mine.score > top.score) top = mine;
-	});
-	const kept = new Set<string>();
-	for (let j = top.j; j >= 0; j = prev[j]) kept.add(y[j]);
-	return y.filter((id) => !kept.has(id));
-}
 
 /** 頁面放進 context、元件拿出來用的 session。has：有沒有放（場地在八拍表上只畫、不編）。 */
 export const [getEditorSession, setEditorSession, hasEditorSession] = createContext<EditorSession>();

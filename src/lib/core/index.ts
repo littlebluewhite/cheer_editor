@@ -271,9 +271,16 @@ export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
 export { insertBeats } from './insert-beats';
 export {
+	anchoredSeconds,
+	BOOKMARK_EDGES,
+	REPEAT_EDGES,
+	type AnchoredRange,
+	type AnchorEdges,
+	type RangeSeconds
+} from './anchored-range';
+export {
 	addBookmark,
 	bookmarkSeconds,
-	bookmarksIn,
 	bookmarksOf,
 	deleteBookmark,
 	renameBookmark,
@@ -321,3 +328,4 @@ export { applyRemoteChange, remoteChange } from './remote-change';
 export type { RemoteChange } from './remote-change';
 export { joinUndo, runUndo, undoChanges, undone } from './cloud-undo';
 export type { UndoChanges, UndoOutcome } from './cloud-undo';
+export { travelChange, travelOrder } from './undo-order';
