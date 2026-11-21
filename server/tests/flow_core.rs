@@ -182,3 +182,33 @@ fn server_fingerprint_matches_what_the_frontend_computes() {
     );
     assert_eq!(flow_core::FINGERPRINT.len(), 64);
 }
+
+/// 這一步收不收（`takeStepJson`，ADR 0018）：伺服器傳 StepAsk 的 JSON、拿 StepVerdict 的 JSON 回來。
+#[tokio::test]
+async fn take_step_runs_the_core_room_rules() {
+    let core = FlowCore::start().unwrap();
+    let created = core
+        .run_commands("null".into(), SAMPLE_STEPS_FIRST.into(), "step1".into())
+        .await
+        .unwrap();
+    let flow = serde_json::from_str::<serde_json::Value>(&created).unwrap()["flow"].clone();
+    let ask = |can_edit: bool| {
+        serde_json::json!({
+            "flow": flow, "step": 0, "records": [], "log": [], "now": 0, "canEdit": can_edit,
+            "tab": "t", "by": "王教練",
+            "sent": { "stepId": "s1", "seen": 0, "commands": [{ "name": "renameFlow", "args": ["決賽"] }] }
+        })
+        .to_string()
+    };
+
+    let accepted: serde_json::Value =
+        serde_json::from_str(&core.take_step(ask(true)).await.unwrap()).unwrap();
+    let viewer: serde_json::Value =
+        serde_json::from_str(&core.take_step(ask(false)).await.unwrap()).unwrap();
+
+    assert_eq!(accepted["kind"], "accepted");
+    assert_eq!(accepted["flow"]["name"], "決賽");
+    assert_eq!(accepted["logged"]["step"], 1);
+    assert_eq!(viewer["kind"], "rejected");
+    assert_eq!(viewer["why"]["code"], "viewOnly");
+}

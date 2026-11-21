@@ -4,6 +4,8 @@
 //! 之後每一步：步驟 id、上次看到第幾步、一串指令（名字＋參數）。伺服器在現在的樣子上用流程核心照順序跑，
 //! 被擋、要問（教練那邊沒問）就退回並帶原因和伺服器現在的樣子；收了就存起來、第幾步加 1（ADR 0010、0014）。
 //! 步驟 id 收過：回原本的結果，不套兩次。
+//! 一步收不收（下面這些規則）由流程核心的 takeStep 決定（ADR 0018）：伺服器用 SQL 挑出它要的傳進去，
+//! 存、鎖、流程被刪了、權限被收回、退回的中文句子、音樂哪天不用了留在這裡。
 //! 收了的步（#253）：用流程核心比對前後，把改好之後的那些東西送給房間裡的其他連線（不轉送指令）；
 //! 存好、送出去照第幾步的順序（同一支流程的步在這台伺服器上一個一個來）。
 //! 誰開著（#253）：每個連線是誰、在編輯還是檢視；有人進來、離開、換模式就告訴每個連線（自己不列，同一個人只列一次）。
@@ -48,8 +50,6 @@ use crate::sharing::{Role, VIEW_ONLY, no_access, role_of};
 const AFTER_SENT_BACK: &str = "沒存進去：前一步沒存進去，這一步也不算";
 /// 上次看到的那一步已經沒留（超過 30 天）：退回的原因。
 const TOO_OLD: &str = "沒存進去：離你上次看到太久了，換成現在的樣子";
-/// 步驟紀錄留幾天；比這久的步不能復原、重做。
-const KEPT_DAYS: i64 = 30;
 
 /// 房間裡的事（同一台伺服器上，一支流程開著的連線都收得到）。
 #[derive(Clone, Debug)]
@@ -433,7 +433,7 @@ pub enum RoomMessage {
 
 /// 一步退回的原因（ADR 0017）：伺服器送代號和要放進句子的東西，畫面照使用者的語言寫成句子。
 /// reason 是流程核心擋下的原因：中文，改成代號的多帶 why（一個檔一個檔改）。redo：是重做（不是復原）。
-#[derive(Serialize, TS, Debug)]
+#[derive(Serialize, Deserialize, TS, Debug)]
 #[serde(tag = "code", rename_all = "camelCase")]
 #[ts(export)]
 pub enum SentBack {
@@ -672,7 +672,7 @@ async fn serve(
                         RoomRequest::Step { step_id, seen, commands } => (step_id, seen, Work::Commands(commands)),
                         _ => unreachable!(),
                     };
-                    let sent = Sent { step_id, seen, work, tab_id: &tab_id, sent_back };
+                    let sent = Sent { step_id, seen, work, tab_id: &tab_id, by: &name, sent_back };
                     let (reply, change) = take_step(&state, flow_id, user_id, sent).await?;
                     if let RoomMessage::Rejected { step, .. } = &reply {
                         sent_back = Some(*step);
@@ -933,12 +933,13 @@ async fn tell(socket: &mut WebSocket, message: &RoomMessage) -> anyhow::Result<(
 /// 收一步的結果：回送的人的話；收了的帶要送給別人的改動（RemoteChange 的 JSON）和跟著改的紀錄。
 type Taken = (RoomMessage, Option<(String, RecordsChange)>);
 
-/// 送來的一步：步驟 id、上次看到第幾步、要做的；哪個分頁送的、這個連線上次被退回時伺服器在第幾步。
+/// 送來的一步：步驟 id、上次看到第幾步、要做的；哪個分頁送的、送的人的名字、這個連線上次被退回時伺服器在第幾步。
 struct Sent<'a> {
     step_id: String,
     seen: i64,
     work: Work,
     tab_id: &'a str,
+    by: &'a str,
     sent_back: Option<i64>,
 }
 
@@ -952,8 +953,75 @@ enum Work {
     },
 }
 
-/// 收一步。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted；先查權限：被收回回 Revoked，
-/// 不能改的（記錄者、檢視者）退回。再看改到同一個東西（#254）。收了的連同要送給別人的改動、跟著改的紀錄一起回。
+/// 給流程核心 takeStep 的（StepAsk，`src/lib/core/room-step.ts`）。flow 是存著的 JSON 原樣（不重新解析 1 MB 的流程）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StepAsk<'a> {
+    flow: &'a RawValue,
+    step: i64,
+    records: Vec<records::RoomRecord>,
+    log: Vec<LoggedStep>,
+    now: i64,
+    can_edit: bool,
+    tab: &'a str,
+    by: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sent_back: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    taken: Option<TakenBefore>,
+    sent: serde_json::Value,
+}
+
+/// 這個步驟 id 收過了：那時第幾步、那一步的改動（舊的步沒記是 null）。
+#[derive(Serialize)]
+struct TakenBefore {
+    step: i64,
+    change: Option<Box<RawValue>>,
+}
+
+/// 步驟紀錄的一筆（流程核心的 LoggedStep）：第幾步、步驟 id、分頁、送的人的名字、什麼時候收的（毫秒）、
+/// 改到的東西、清掉改掉的紀錄（flow_steps.cleared 原樣，沒有是 []）。
+#[derive(Serialize)]
+struct LoggedStep {
+    step: i64,
+    id: String,
+    tab: String,
+    by: String,
+    at: i64,
+    keys: Vec<String>,
+    cleared: Box<RawValue>,
+}
+
+/// takeStep 的結果（StepVerdict）。kind 是 again、rejected、accepted；其他欄位照 kind 有沒有。
+#[derive(Deserialize)]
+struct Verdict<'a> {
+    kind: String,
+    /// again：那時第幾步。
+    step: Option<i64>,
+    /// again、accepted：要送給別人的改動（RemoteChange）；收過的舊步沒記是 null。
+    #[serde(borrow)]
+    change: Option<&'a RawValue>,
+    /// rejected：原因、最後改到的人。
+    why: Option<SentBack>,
+    by: Option<String>,
+    /// accepted：改好的編排（不帶紀錄）、要清掉的紀錄 id、要記的步驟紀錄。
+    #[serde(borrow)]
+    flow: Option<&'a RawValue>,
+    #[serde(default)]
+    deleted: Vec<String>,
+    logged: Option<Logged>,
+}
+
+/// 收了的這一步要記的：改到的東西、清掉改掉的紀錄（照流程核心做的先後）。
+#[derive(Deserialize)]
+struct Logged {
+    keys: Vec<String>,
+    cleared: Vec<records::Cleared>,
+}
+
+/// 收一步（ADR 0018）。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted、被收回回 Revoked；
+/// 收不收由流程核心的 takeStep 決定：這裡用 SQL 挑出它要的（現在的樣子、紀錄、步驟紀錄、收過的步驟 id）傳進去，
+/// 退回的照原因寫成句子，收了的存起來、紀錄照它清掉改掉，連同要送給別人的改動、跟著改的紀錄一起回。
 async fn take_step(
     state: &AppState,
     flow_id: &str,
@@ -965,6 +1033,7 @@ async fn take_step(
         seen,
         work,
         tab_id,
+        by,
         sent_back,
     } = sent;
     let mut tx = state.db.begin().await?;
@@ -980,7 +1049,6 @@ async fn take_step(
         return Ok((RoomMessage::Revoked, None));
     };
 
-    // 收過的步驟 id（斷線重送）：回原本的結果。
     let taken: Option<(i64, Option<String>)> = sqlx::query_as(
         "SELECT step, change::text FROM flow_steps WHERE flow_id = $1 AND step_id = $2",
     )
@@ -988,8 +1056,74 @@ async fn take_step(
     .bind(&step_id)
     .fetch_optional(&mut *tx)
     .await?;
-    if let Some((step, change)) = taken {
-        let change = change.map(RawValue::from_string).transpose()?;
+    let taken = taken
+        .map(|(step, change)| -> anyhow::Result<_> {
+            let change = change.map(RawValue::from_string).transpose()?;
+            Ok(TakenBefore { step, change })
+        })
+        .transpose()?;
+    let (of, sent_step) = match work {
+        Work::Commands(commands) => (
+            None,
+            serde_json::json!({ "stepId": step_id, "seen": seen, "commands": commands }),
+        ),
+        Work::Undo { of, redo, change } => {
+            let undo = serde_json::json!({ "of": of, "redo": redo, "change": change });
+            (
+                Some(of),
+                serde_json::json!({ "stepId": step_id, "seen": seen, "undo": undo }),
+            )
+        }
+    };
+    let now = state.clock.now();
+    let current = RawValue::from_string(content.clone())?;
+    let ask = StepAsk {
+        flow: &current,
+        step,
+        records: records::for_room(&mut tx, flow_id).await?,
+        log: logged_steps(&mut tx, flow_id, seen, of.as_deref()).await?,
+        now: now.timestamp_millis(),
+        can_edit: role.can_edit(),
+        tab: tab_id,
+        by,
+        sent_back,
+        taken,
+        sent: sent_step,
+    };
+    let result = state.core.take_step(serde_json::to_string(&ask)?).await;
+
+    let rejected = |why: SentBack, by: Option<String>| -> anyhow::Result<Taken> {
+        Ok((
+            RoomMessage::Rejected {
+                step_id: step_id.clone(),
+                message: why.message(by.is_some()),
+                why,
+                by,
+                flow: RawValue::from_string(content.clone())?,
+                step,
+            },
+            None,
+        ))
+    };
+    // 流程核心自己出錯（不是 takeStep 退回的）：當看不懂這一步。
+    let Ok(result) = result else {
+        return rejected(SentBack::NotUnderstood, None);
+    };
+    let Verdict {
+        kind,
+        step: taken_step,
+        change,
+        why,
+        by: last,
+        flow,
+        deleted,
+        logged,
+    } = serde_json::from_str(&result)?;
+    // 收過的步驟 id（斷線重送）：回原本的結果。
+    if let (Some(step), "again") = (taken_step, kind.as_str()) {
+        let change = change
+            .map(|c| RawValue::from_string(c.get().to_owned()))
+            .transpose()?;
         return Ok((
             RoomMessage::Accepted {
                 step_id,
@@ -999,109 +1133,14 @@ async fn take_step(
             None,
         ));
     }
+    if let Some(why) = why {
+        return rejected(why, last);
+    }
+    let (Some(flow), Some(change), Some(logged)) = (flow, change, logged) else {
+        anyhow::bail!("流程核心回了看不懂的結果：{kind}");
+    };
+    let change = change.get().to_owned();
 
-    let rejected = |why: SentBack, by: Option<String>, content: String| -> anyhow::Result<Taken> {
-        let flow = RawValue::from_string(content)?;
-        let step_id = step_id.clone();
-        Ok((
-            RoomMessage::Rejected {
-                step_id,
-                message: why.message(by.is_some()),
-                why,
-                by,
-                flow,
-                step,
-            },
-            None,
-        ))
-    };
-    if !role.can_edit() {
-        return rejected(SentBack::ViewOnly, None, content);
-    }
-    // 前一步被退回、還沒換成伺服器的樣子就送的：一起退回。
-    if sent_back.is_some_and(|n| seen < n) {
-        return rejected(SentBack::AfterSentBack, None, content);
-    }
-    // 上次看到之後的步已經沒留（超過 30 天）：比不了，換成伺服器的樣子。
-    if seen < step && !kept(&mut tx, flow_id, seen + 1).await? {
-        return rejected(SentBack::TooOld, None, content);
-    }
-    // 紀錄放回流程再跑（ADR 0011）：跑完照結果清掉、改掉該改的紀錄。
-    let before = records::before_step(&mut tx, flow_id).await?;
-    let mut revived = vec![];
-    let (ran, undoing) = match work {
-        Work::Commands(commands) => {
-            let ran = state
-                .core
-                .run_step(
-                    content.clone(),
-                    serde_json::to_string(&before)?,
-                    commands.to_string(),
-                    step_id.clone(),
-                )
-                .await;
-            (ran, None)
-        }
-        Work::Undo { of, redo, change } => {
-            // 要復原的那一步：超過 30 天或已經沒留，不能復原。
-            let Some((n, keys)) = undoable(&mut tx, flow_id, &of, state.clock.now()).await? else {
-                return rejected(SentBack::UndoTooOld { redo }, None, content);
-            };
-            // 那一步清掉的紀錄一起放回去、加回來的再清掉（ADR 0007）：重做是復原那一步復原的。
-            let (records, back) = records::brought_back(&mut tx, flow_id, &of, &before).await?;
-            revived = back;
-            let ran = state
-                .core
-                .run_undo(
-                    content.clone(),
-                    serde_json::to_string(&records)?,
-                    change.to_string(),
-                )
-                .await;
-            (ran, Some((n, keys, redo)))
-        }
-    };
-    let Ok(result) = ran else {
-        // 流程核心看不懂（例：沒有這個指令、參數不對）。
-        return rejected(SentBack::NotUnderstood, None, content);
-    };
-    let outcome: records::StepOutcome = serde_json::from_str(&result)?;
-    if let Some((n, mut keys, redo)) = undoing {
-        // 那一步之後別的分頁改過那些東西（那一步改到的、這次放回去會改到的）：退回，寫最後改到的人。
-        keys.extend(outcome.watch.iter().cloned());
-        if let Some(by) = last_other(&mut tx, flow_id, n, tab_id, Some(&keys)).await? {
-            return rejected(SentBack::UndoChangedLater { by, redo }, None, content);
-        }
-        // 放回去不合規則（整份流程檢查）。
-        if outcome.kind != "ok" {
-            let reason = FlowBlocked::new(outcome.message, outcome.why);
-            return rejected(SentBack::UndoBlocked { redo, reason }, None, content);
-        }
-    }
-    let flow = match (outcome.kind.as_str(), outcome.flow) {
-        ("ok", Some(flow)) => flow,
-        // 被擋，或要問（確認、選）而教練那邊沒問：退回並帶原因。上次看到之後別人改過，寫最後改的人。
-        (kind, _) => {
-            let reason = FlowBlocked::new(outcome.message, outcome.why);
-            let why = SentBack::Blocked {
-                reason,
-                ask: kind != "blocked",
-            };
-            let by = last_other(&mut tx, flow_id, seen, tab_id, None).await?;
-            return rejected(why, by, content);
-        }
-    };
-    // 這一步改到的東西，上次看到之後被別的分頁改過：退回，寫最後改到的人。
-    if let Some(by) = last_other(&mut tx, flow_id, seen, tab_id, Some(&outcome.watch)).await? {
-        return rejected(SentBack::SameThing, Some(by), content);
-    }
-
-    // 要送給別人的：改好之後的那些東西（比對前後，不轉送指令）。
-    let change = state
-        .core
-        .remote_change(content, flow.get().to_owned())
-        .await?;
-    let now = state.clock.now();
     let step = step + 1;
     sqlx::query("UPDATE flows SET content = $2::json, step = $3, updated_at = $4 WHERE id = $1")
         .bind(flow_id)
@@ -1110,9 +1149,13 @@ async fn take_step(
         .bind(now)
         .execute(&mut *tx)
         .await?;
+    // 清掉改掉的紀錄記在這一步（復原時加回來，ADR 0007）；沒有是 NULL。
+    let cleared = (!logged.cleared.is_empty())
+        .then(|| serde_json::to_string(&logged.cleared))
+        .transpose()?;
     sqlx::query(
-        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json)",
+        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change, cleared)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json, $9::json)",
     )
     .bind(flow_id)
     .bind(step)
@@ -1120,20 +1163,13 @@ async fn take_step(
     .bind(tab_id)
     .bind(user_id)
     .bind(now)
-    .bind(&outcome.keys)
+    .bind(&logged.keys)
     .bind(&change)
+    .bind(cleared)
     .execute(&mut *tx)
     .await?;
-    let records_change = records::after_step(
-        &mut tx,
-        flow_id,
-        step,
-        &before,
-        outcome.records.unwrap_or_default(),
-        &revived,
-        now,
-    )
-    .await?;
+    let records_change =
+        records::store_step(&mut tx, flow_id, &logged.cleared, deleted, now).await?;
     // 換掉、刪掉的音樂記下哪天不用了（#249）。
     crate::music::note_unused(&mut tx, flow_id, flow.get(), now).await?;
     tx.commit().await?;
@@ -1147,59 +1183,52 @@ async fn take_step(
     ))
 }
 
-/// 「不能復原」或「不能重做」。
-fn cannot(redo: bool) -> &'static str {
-    if redo { "不能重做" } else { "不能復原" }
-}
-
-/// 要復原的那一步（步驟 id）：第幾步、改到的東西。沒留或超過 30 天是 None。
-async fn undoable(
-    tx: &mut sqlx::PgConnection,
-    flow_id: &str,
-    step_id: &str,
-    now: chrono::DateTime<chrono::Utc>,
-) -> anyhow::Result<Option<(i64, Vec<String>)>> {
-    Ok(sqlx::query_as(
-        "SELECT step, keys FROM flow_steps WHERE flow_id = $1 AND step_id = $2 AND created_at > $3",
-    )
-    .bind(flow_id)
-    .bind(step_id)
-    .bind(now - chrono::Duration::days(KEPT_DAYS))
-    .fetch_optional(tx)
-    .await?)
-}
-
-/// 第 n 步還留著（步驟紀錄留 30 天）。
-async fn kept(tx: &mut sqlx::PgConnection, flow_id: &str, n: i64) -> anyhow::Result<bool> {
-    let (kept,): (bool,) =
-        sqlx::query_as("SELECT EXISTS (SELECT 1 FROM flow_steps WHERE flow_id = $1 AND step = $2)")
-            .bind(flow_id)
-            .bind(n)
-            .fetch_one(tx)
-            .await?;
-    Ok(kept)
-}
-
-/// 上次看到（seen）之後，別的分頁送的步裡最後一步是誰送的（名字）。
-/// 給了 watch：只看改到其中一個鍵的步（最後改到同一個東西的人）。
-async fn last_other(
+/// takeStep 要的步驟紀錄：上次看到（seen）之後的每一步；復原、重做時再加上 of 那一步（步驟 id）和它之後的每一步
+/// （不管多久以前：30 天的規則在流程核心）。照第幾步的順序。
+async fn logged_steps(
     tx: &mut sqlx::PgConnection,
     flow_id: &str,
     seen: i64,
-    tab_id: &str,
-    watch: Option<&[String]>,
-) -> anyhow::Result<Option<String>> {
-    let name: Option<(String,)> = sqlx::query_as(
-        "SELECT u.name FROM flow_steps s JOIN users u ON u.id = s.user_id
-         WHERE s.flow_id = $1 AND s.step > $2 AND s.tab_id <> $3
-           AND ($4::text[] IS NULL OR s.keys && $4)
-         ORDER BY s.step DESC LIMIT 1",
+    of: Option<&str>,
+) -> anyhow::Result<Vec<LoggedStep>> {
+    #[allow(clippy::type_complexity)]
+    let found: Vec<(
+        i64,
+        String,
+        String,
+        String,
+        chrono::DateTime<chrono::Utc>,
+        Vec<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT s.step, s.step_id, s.tab_id, u.name, s.created_at, s.keys, s.cleared::text
+         FROM flow_steps s JOIN users u ON u.id = s.user_id
+         WHERE s.flow_id = $1
+           AND (s.step > $2 OR s.step >= (SELECT step FROM flow_steps WHERE flow_id = $1 AND step_id = $3))
+         ORDER BY s.step",
     )
     .bind(flow_id)
     .bind(seen)
-    .bind(tab_id)
-    .bind(watch)
-    .fetch_optional(tx)
+    .bind(of)
+    .fetch_all(tx)
     .await?;
-    Ok(name.map(|(name,)| name))
+    found
+        .into_iter()
+        .map(|(step, id, tab, by, at, keys, cleared)| {
+            Ok(LoggedStep {
+                step,
+                id,
+                tab,
+                by,
+                at: at.timestamp_millis(),
+                keys,
+                cleared: RawValue::from_string(cleared.unwrap_or_else(|| "[]".into()))?,
+            })
+        })
+        .collect()
+}
+
+/// 「不能復原」或「不能重做」。
+fn cannot(redo: bool) -> &'static str {
+    if redo { "不能重做" } else { "不能復原" }
 }
