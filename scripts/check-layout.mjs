@@ -1049,6 +1049,29 @@ for (const [w, h] of [[1024, 768], [1441, 900], [1920, 1080]]) {
 	});
 }
 
+// 存在已經有書籤的地方：按 Enter 後那顆書籤閃的時候看得到（在畫面裡、沒被蓋住、不是窄到看不見）；1600 寬以下欄位開著時那排會被擠到 0 寬
+for (const [w, h] of [[1441, 900], [1520, 900], [1600, 900], [1601, 900], [1920, 1080]]) {
+	await check(`${w}×${h} 存重複的書籤：按 Enter 後閃的那顆書籤看得到`, async () => {
+		await setViewport(w, h);
+		await openPracticeFlow(withBookmarks);
+		const chipOf = `[...document.querySelectorAll('.topbar .bookmarks .chip')].find((c) => c.textContent.includes('翻騰'))`;
+		// 點「翻騰」：重複範圍就是它的 A、B
+		await js(`${chipOf}.querySelector('button').click()`);
+		await sleep(100);
+		await js(`document.querySelector('button[aria-label="存成書籤"]').click()`);
+		await sleep(200);
+		await js(`document.querySelector('.topbar .chip.naming input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+		await sleep(150);
+		const r = await js(`const chip = ${chipOf}; const btn = chip.querySelector('button'); const r = chip.getBoundingClientRect();
+			const list = chip.closest('.list')?.getBoundingClientRect();
+			const shown = list ? Math.max(0, Math.min(r.right, list.right) - Math.max(r.left, list.left)) : r.width;
+			const t = document.elementFromPoint(Math.max(r.left, list?.left ?? r.left) + Math.min(shown, r.width) / 2, r.top + r.height / 2);
+			return { 在閃: chip.classList.contains('flash'), 那顆寬: Math.round(r.width), 露出來的寬: Math.round(shown), 那排寬: list && Math.round(list.width), 點得到: !!t && chip.contains(t) };`);
+		await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+		return { ok: r.在閃 && r.露出來的寬 >= 24 && r.點得到, value: r };
+	});
+}
+
 // 改書籤名字：書籤那排擠的時候，改名的那顆不被壓扁，欄位和「儲存」不跑到別的書籤底下（滑過去點得到）
 for (const [w, h] of [[1441, 900], [1920, 1080]]) {
 	await check(`${w}×${h} 改書籤名字：書籤那排擠的時候，改名的欄位和儲存在自己那顆裡、滑過去點得到`, async () => {

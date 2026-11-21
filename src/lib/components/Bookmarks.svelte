@@ -111,8 +111,12 @@
 		if (n.kind === 'add') {
 			const r = session.ask.send({ name: 'addBookmark', args: [text, n.a, n.b] });
 			if (r.kind === 'ok') naming = null;
-			// 只有位置重複才閃：別的原因（例：段被刪了，秒數算成 0）會閃到不相干的書籤
-			else if (r.kind === 'blocked' && r.why?.code === 'bookmarks_same_place') flashSame(n.a, n.b);
+			// 只有位置重複才閃：別的原因（例：段被刪了，秒數算成 0）會閃到不相干的書籤。
+			// 欄位收起來：這個位置換什麼名字都存不了；開著時上方列 1600 寬以下書籤那排會被擠到 0 寬，閃了也看不到（check:layout 量）
+			else if (r.kind === 'blocked' && r.why?.code === 'bookmarks_same_place') {
+				naming = null;
+				flashSame(n.a, n.b);
+			}
 		} else {
 			const r = session.ask.send({ name: 'renameBookmark', args: [n.id, text] });
 			if (r.kind === 'ok') naming = null;
@@ -125,8 +129,11 @@
 		const same = rows.find((r) => near(r.s.a, s.a) && (r.s.b === null ? s.b === null : s.b !== null && near(r.s.b, s.b)));
 		if (!same) return;
 		flashId = null;
-		requestAnimationFrame(() => (flashId = same.bm.id));
-		document.getElementById(chipId(same.bm.id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+		// 等欄位收起來、那排拉開了再捲過去
+		requestAnimationFrame(() => {
+			flashId = same.bm.id;
+			document.getElementById(chipId(same.bm.id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+		});
 	}
 
 	function nameKeys(e: KeyboardEvent) {
