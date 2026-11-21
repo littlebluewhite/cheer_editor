@@ -123,6 +123,23 @@
 	}
 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
 	onMount(() => editor.file.connect());
+	// 小樣（#300，比完就丟，不進 main）：給 app 殼用。殼收到流程檔時叫 __appOpenFlow；在殼裡打開時直接開最近的流程。
+	onMount(() => {
+		const w = window as unknown as { __appOpenFlow?: (name: string, url: string) => void; __appShell?: boolean };
+		w.__appOpenFlow = async (name, url) => {
+			const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+			await editor.file.open(new File([bytes], name));
+		};
+		if (!w.__appShell) return;
+		const t0 = performance.now();
+		const tryResume = () => {
+			if (session.flow) return;
+			const first = editor.file.recent[0];
+			if (first) return void editor.file.openRecent(first.id);
+			if (performance.now() - t0 < 3000) setTimeout(tryResume, 30);
+		};
+		tryResume();
+	});
 
 	/**
 	 * 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。
