@@ -1,0 +1,25 @@
+# iPhone、iPad app：網頁不自己上網，由殼帶自己的 cookie 轉送
+
+app 裡的網頁是包在 app 裡的，用自訂網址（ADR 0018）。伺服器只認自己網址發的登入 cookie（ADR 0012），也會擋不是從自己網址來的改資料請求和雲端流程的連線（`server/src/csrf.rs`）。所以 app 裡的網頁不自己上網：打 API、雲端流程的連線、上傳和下載音樂，全部交給殼。殼用原生的網路函式庫送，cookie 存在殼自己那裡，網頁讀不到。送的時候標上網站自己的網址（`Origin`），伺服器不用改。
+
+為什麼：帳號和登入的規則照後端第一版（#177），不重談。這樣伺服器一行都不用改，登入 cookie 照舊是 `HttpOnly`，網頁裡的程式拿不到。殼本來就要做（ADR 0018），多轉送網路不算多。伺服器那個檢查是防別的網站叫瀏覽器帶著 cookie 送請求。app 的 cookie 只在殼裡，殼也只轉自己那包網頁的請求，所以標上網站的網址不會變得比較不安全。
+
+## Considered Options
+
+- **殼轉送，標上網站的網址（選這個）**：見上面。
+- **伺服器多一種給 app 用的登入（token），網頁自己連**：伺服器要加 token、CORS，還要放行 `app://` 網址。token 要放在網頁讀得到的地方，後端研究當初說不要這樣（`docs/research/auth-safety.md`：不用 `localStorage`，不用 JWT）。
+- **cookie 加 `Partitioned`**：要 Safari 26.2，app 最低是 iOS 18.4（#301）。
+- **網頁直接連，靠 App-Bound Domains 放行第三方 cookie**：看原始碼，放行的模式藏在一個寫死的開關後面，會不會通沒驗（本機分支 `research/app-webview-shell`）。而且伺服器照樣擋 `app://` 來的請求。
+- **殼轉送，改伺服器多認一種「app 來的」請求**：要多寫伺服器的程式，沒有比較安全。
+- **音樂：R2 也放行 `app://` 網址**：R2 收不收這種網址，查不到。全部經過殼，規則只有一條。
+
+決定的細節在 #304；伺服器現在怎麼認人、擋什麼（附程式行號）也在 #304 的留言。
+
+## Consequences
+
+- app 和 Safari 各登各的，各自 30 天。邀請信、忘記密碼的連結在 Safari 開，設好密碼回 app 登入；第一版不做 Universal Links。
+- 網頁要把「怎麼連雲端流程」分出來：Safari 用 `WebSocket`，app 用殼給的同樣介面。現在 `src/lib/server-api.ts` 照 `location.href` 改成 `ws:`，在 app 裡會變成 `ws://local/…`。
+- 分享連結在 app 裡要用網站的網址做。現在 `src/lib/share-link.ts` 照 `location.href`，在 app 裡會做出 `app://` 開頭、別人打不開的連結。
+- 切到背景、鎖螢幕就關掉雲端流程的連線，回來自己連上、補齊；網頁一起改。這樣不用管 iOS 在背景怎麼處理連線（查不到）。一起記全上的 60 秒規則照舊。
+- 還沒驗：`WKURLSchemeHandler` 收不收得到 POST 和上傳的內容。收不到就改走 `messageHandlers`，還是殼送；上傳音樂改由殼自己讀檔。
+- 自動填密碼用 Associated Domains，網站要放 `apple-app-site-association` 這個檔。檔裡有 Apple 開發者團隊編號，所以部署時才做出來，編號放在 Fly 的秘密設定，不進 repo。包在 app 裡會不會出現自動填，還沒驗；驗不過就拿掉。
