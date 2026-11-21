@@ -284,8 +284,9 @@ describe('下載成流程檔', () => {
 		expect(s.page.editor.file.cloudId).toBe('c1');
 	});
 
-	it.each(['recorder', 'viewer'] as const)('%s：沒有「下載」', async (role) => {
-		await openCloud(wangsFlow(role));
+	// 每種權限有沒有下載、分享在 Node 的能做什麼表測（src/lib/flow-source.test.ts）；這裡留一個看選單照答案畫
+	it('記錄者：沒有「下載」', async () => {
+		await openCloud(wangsFlow('recorder'));
 		expect(screen.getByRole('button', { name: '分享' })).toBeTruthy();
 		expect(await menuItem('下載成流程檔')).toBeNull();
 	});

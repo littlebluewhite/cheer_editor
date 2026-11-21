@@ -121,7 +121,7 @@ describe('練習的權限', () => {
 		const t = testEditor(null, { server: fake.server });
 		await t.editor.file.openLink('share-1');
 		await flush();
-		expect(t.editor.file.linkOnly).toBe(true);
+		expect(t.editor.file.source.kind).toBe('link');
 		expect(rights(t.session)).toEqual(ALL_ALLOWED);
 	});
 
@@ -136,7 +136,7 @@ describe('練習的權限', () => {
 		s.network('offline');
 		await s.editor.file.openCloud('c1');
 		await flush();
-		expect(s.editor.file.offlineAt).not.toBeNull();
+		expect(s.editor.file.source.kind).toBe('offline');
 		expect(rights(s.session)).toEqual({
 			...ALL_ALLOWED,
 			sharedRecords: true,

@@ -40,7 +40,7 @@
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
-	import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
+	import { ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
 	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
@@ -111,8 +111,6 @@
 	const guideHref = `${resolve('/guide')}?from=editor`;
 
 	const flow = $derived(session.flow);
-	/** 上方列的「未存」：有沒存的改動，或欄位裡打了字還沒送出（打字時就出現）。 */
-	const unsaved = $derived(editor.hasUnsavedWork);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
 	setUnsavedCheck(() => editor.hasUnsavedWork);
 	/**
@@ -195,10 +193,10 @@
 	});
 	/** 開著的雲端流程：每一步送伺服器存（名字旁「存中…」「✓ 已存」）；本機流程是 null。 */
 	const cloud = $derived(editor.file.cloud);
-	/** 用分享連結看的（沒有權限，#251）：只能看、沒有練習頁、分享。 */
-	const linkOnly = $derived(editor.file.linkOnly);
-	/** 只能看：雲端流程有新版、斷線了、我是記錄者或檢視者、用分享連結看的。 */
-	const viewOnly = $derived(!!cloud?.viewOnly || linkOnly);
+	/** 這支流程能做什麼（流程來源算的，每一項附原因）：窄、寬兩個選單、上方列都照這個畫。 */
+	const can = $derived(editor.file.can(!!account));
+	/** 只能看：雲端流程有新版、斷線了、我是記錄者或檢視者、用分享連結看的。只在變了的時候算（存中、未存換了不重鎖）。 */
+	const viewOnly = $derived(!can.edit.ok);
 	/** 被鎖成檢視模式之前在檢視模式嗎：解開（變寬、連回來）時回到原本的模式。 */
 	let viewingBeforeLock = false;
 	/** 前後八拍裡點了動作名字，捲到下面誰做這個動作（只在點的時候捲，換畫面時不捲走前後八拍）。手機、電腦同時只有一個在畫面上。 */
@@ -918,42 +916,43 @@
 					>
 						{#if narrow}
 							<!-- 窄螢幕（手機的檢視畫面、練習）上方列只有一排：開啟、回首頁、存檔、分享、八拍表都收在這裡。不能編，沒有新建、流程設定 -->
-							{#if cloud || linkOnly}
-								<!-- 雲端流程每一步都存了：沒有開啟、存檔 -->
-								<button type="button" onclick={() => fromMenu(goHome)}><Icon name="home" />{m.back_home()}</button>
-								{#if cloud}
-									<button type="button" onclick={() => fromMenu(() => (shareOpen = true))}><Icon name="people" />{m.editor_share()}</button>
-								{/if}
-								<!-- 誰開著（#253）：上方列放不下頭像，一人一行寫名字和在編輯還是檢視；自己不列 -->
-								{#if cloud?.present.length}
-									<ul class="present-rows" aria-label={m.editor_present()}>
-										{#each cloud.present as p (p.userId)}
-											<li>
-												<span class="present-face" style:--face={faceColor(p.userId)} aria-hidden="true">{p.name.slice(0, 1)}</span>
-												{p.editing ? m.editor_present_editing({ name: p.name }) : m.editor_present_viewing({ name: p.name })}
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							{:else}
+							<!-- 雲端流程每一步都存了：沒有開啟、存檔（流程來源說的） -->
+							{#if can.openFile.ok}
 								<!-- 同一下點擊裡點選檔欄位：瀏覽器要使用者剛點過才肯跳選檔 -->
 								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />{m.editor_open_file()}</button>
-								<!-- 窄螢幕不能編，「新建」換成「回首頁」：這支留在草稿，列在最近的流程 -->
-								<button type="button" onclick={() => fromMenu(() => editor.file.leaveToHome())}><Icon name="home" />{m.back_home()}</button>
+							{/if}
+							<!-- 窄螢幕不能編，「新建」換成「回首頁」：本機流程留在草稿，列在最近的流程；雲端流程還有沒送到的步先問 -->
+							<button type="button" onclick={() => fromMenu(goHome)}><Icon name="home" />{m.back_home()}</button>
+							{#if can.save.ok}
 								<!-- 練習的紀錄照樣要存 -->
 								<button type="button" onclick={() => fromMenu(() => editor.file.save())}><Icon name="save" />{m.editor_save()}</button>
+							{/if}
+							{#if can.share.ok}
+								<button type="button" onclick={() => fromMenu(() => (shareOpen = true))}><Icon name="people" />{m.editor_share()}</button>
+							{/if}
+							<!-- 誰開著（#253）：上方列放不下頭像，一人一行寫名字和在編輯還是檢視；自己不列 -->
+							{#if cloud?.present.length}
+								<ul class="present-rows" aria-label={m.editor_present()}>
+									{#each cloud.present as p (p.userId)}
+										<li>
+											<span class="present-face" style:--face={faceColor(p.userId)} aria-hidden="true">{p.name.slice(0, 1)}</span>
+											{p.editing ? m.editor_present_editing({ name: p.name }) : m.editor_present_viewing({ name: p.name })}
+										</li>
+									{/each}
+								</ul>
 							{/if}
 							<hr />
 							<button type="button" onclick={() => fromMenu(() => (printOpen = true))}><Icon name="print" />{m.editor_eight_sheet()}</button>
 						{:else}
-							{#if cloud || linkOnly}
-								<!-- 雲端流程每一步都存了：沒有開啟、新建，換成下載（擁有者、編輯者） -->
-								{#if cloud && canEdit(cloud.role)}
-									<button type="button" onclick={() => fromMenu(() => editor.file.download())}><Icon name="download" />{m.editor_download()}</button>
-								{/if}
-							{:else}
+							<!-- 雲端流程每一步都存了：沒有開啟、新建，換成下載（擁有者、編輯者）（流程來源說的） -->
+							{#if can.download.ok}
+								<button type="button" onclick={() => fromMenu(() => editor.file.download())}><Icon name="download" />{m.editor_download()}</button>
+							{/if}
+							{#if can.openFile.ok}
 								<!-- 同一下點擊裡點選檔欄位：瀏覽器要使用者剛點過才肯跳選檔 -->
 								<button type="button" onclick={() => fromMenu(() => menuFileInput?.click())}><Icon name="open" />{m.editor_open_file()}</button>
+							{/if}
+							{#if can.newFlow.ok}
 								<button type="button" onclick={() => fromMenu(() => editor.file.startNew())}><Icon name="new" />{m.editor_new()}</button>
 							{/if}
 							{#if view === 'edit'}
@@ -981,7 +980,7 @@
 						<a href={guideHref} target="_blank" rel="noopener" onclick={() => fromMenu(() => {})}><Icon name="help" />{m.editor_guide()}</a>
 					</div>
 				{/if}
-				{#if !cloud && !linkOnly}
+				{#if can.openFile.ok}
 					<input
 						bind:this={menuFileInput}
 						class="menu-file"
@@ -996,15 +995,18 @@
 				{/if}
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 登入時本機流程寫「這台」：分得出這支只在這台電腦、還沒傳上雲端 -->
-				{#if account && !cloud && !linkOnly}<span class="here-tag" title={m.home_here_hint()}>{m.home_here()}</span>{/if}
+				{#if can.here.ok}<span class="here-tag" title={m.home_here_hint()}>{m.home_here()}</span>{/if}
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
-					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">{editor.file.offlineAt !== null ? `⚠ ${m.editor_offline()}` : `⚠ ${m.editor_disconnected()}`}</span>{:else if !cloud.newVersion}<span class="cloud-saved"
-								>{cloud.saving ? m.editor_saving() : `✓ ${m.editor_saved()}`}</span
-							>{/if}{:else if unsaved}<span class="unsaved" title={m.editor_unsaved_title({ keys: both(KEYS.save) })}>{m.editor_unsaved()}</span>{/if}</span
+					>{#if can.status === 'offline_copy' || can.status === 'disconnected'}<span class="cloud-offline"
+							>{can.status === 'offline_copy' ? `⚠ ${m.editor_offline()}` : `⚠ ${m.editor_disconnected()}`}</span
+						>{:else if can.status === 'saving' || can.status === 'saved'}<span class="cloud-saved"
+							>{can.status === 'saving' ? m.editor_saving() : `✓ ${m.editor_saved()}`}</span
+						>{:else if can.status === 'unsaved'}<span class="unsaved" title={m.editor_unsaved_title({ keys: both(KEYS.save) })}>{m.editor_unsaved()}</span
+						>{/if}</span
 				>
 				<!-- 用分享連結看的沒有練習頁（看不到成功率） -->
-				{#if !linkOnly}
+				{#if can.practice.ok}
 					<div class="view" role="group" aria-label={m.editor_view_group()}>
 						<button type="button" aria-pressed={view === 'edit'} onclick={() => setView('edit')}>{m.editor_arrange()}</button>
 						<button type="button" aria-pressed={view === 'practice'} onclick={() => setView('practice')}>{m.editor_practice()}</button>
@@ -1055,7 +1057,7 @@
 				<button type="button" class="ghost" title={m.editor_eight_sheet()} onclick={() => (printOpen = true)}
 					><Icon name="print" /><span class="tightest-hide">{m.editor_eight_sheet()}</span></button
 				>
-				{#if cloud || linkOnly}
+				{#if !can.save.ok}
 					<span class="sep" aria-hidden="true"></span>
 					<!-- 雲端流程每一步都存了：沒有存檔，換成回首頁（下載在選單裡） -->
 					<button type="button" class="ghost" onclick={goHome}><Icon name="home" />{m.editor_home()}</button>
@@ -1072,12 +1074,12 @@
 						</ul>
 					{/if}
 					<!-- 放在原本存檔的地方；每個人都叫「分享」，不是擁有者打開是只能看的名單。用分享連結看的沒有 -->
-					{#if cloud}
+					{#if can.share.ok}
 						<button type="button" class="primary" onclick={() => (shareOpen = true)}><Icon name="people" />{m.editor_share()}</button>
 					{/if}
 				{:else}
 					<!-- 登入時存檔左邊：按了直接傳，不先問（傳上去不會弄丟東西） -->
-					{#if account}
+					{#if can.upload.ok}
 						<button type="button" class="ghost" title={m.editor_upload()} onclick={() => editor.file.upload()}
 							><Icon name="cloud" /><span class="upload-text">{m.editor_upload()}</span></button
 						>
@@ -1087,9 +1089,9 @@
 			</div>
 			{/if}
 			<!-- 斷網打開的離線副本（#261）：上方列下面一整條灰的，編排、練習、手機都看得到 -->
-			{#if editor.file.offlineAt !== null}
+			{#if editor.file.source.kind === 'offline'}
 				<p class="copy-bar" role="status" aria-label={m.editor_offline()}>
-					{m.editor_offline_copy({ time: draftTime(new Date(editor.file.offlineAt)) })}
+					{m.editor_offline_copy({ time: draftTime(new Date(editor.file.source.savedAt)) })}
 				</p>
 			{/if}
 		</header>
@@ -1368,7 +1370,7 @@
 		<div class="cover-ways">
 			<button type="button" onclick={goHome}>{m.back_home()}</button>
 			<button type="button" onclick={() => (printOpen = true)}>{m.editor_see_eight_sheet()}</button>
-			{#if !linkOnly}<button type="button" class="primary" onclick={() => setView('practice')}>{m.editor_go_practice()}</button>{/if}
+			{#if can.practice.ok}<button type="button" class="primary" onclick={() => setView('practice')}>{m.editor_go_practice()}</button>{/if}
 		</div>
 	{/snippet}
 	<!-- 八拍表開著時收起來：從提示上的「看八拍表」打開的，關掉再回來。窄螢幕是手機的檢視畫面，不擋 -->
