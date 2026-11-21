@@ -10,6 +10,7 @@
 // 對話框關之前送出欄位、確認框先取消（Modal 給的 close 自己決定關不關）；小窗放哪裡、點外面就關（popover.svelte.ts）。
 import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
+import { on } from 'svelte/events';
 import { composing } from '#lib/ime.js';
 
 /**
@@ -76,14 +77,11 @@ function open(o: LayerOptions, el: HTMLElement): () => void {
 		const to = e.relatedTarget as Node | null;
 		if (to && !el.contains(to)) o.close('outside');
 	};
-	if (o.kind === 'box') {
-		el.addEventListener('keydown', keys);
-		el.addEventListener('focusout', leave);
-	}
+	// 用 svelte/events 的 on：排在 Svelte 委派的事件後面，框裡欄位自己的 onkeydown（找書籤的 ↑↓、Enter）照樣收得到
+	const off = o.kind === 'box' ? [on(el, 'keydown', keys), on(el, 'focusout', leave)] : [];
 	return () => {
 		layers = layers.filter((l) => l !== me);
 		if (!layers.length) removeEventListener('keydown', escape, true);
-		el.removeEventListener('keydown', keys);
-		el.removeEventListener('focusout', leave);
+		for (const f of off) f();
 	};
 }

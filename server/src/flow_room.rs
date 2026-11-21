@@ -1077,11 +1077,20 @@ async fn take_step(
     };
     let now = state.clock.now();
     let current = RawValue::from_string(content.clone())?;
+    // 收過的步驟 id（斷線重送）：takeStep 先看 taken 就回，用不到紀錄和步驟紀錄，不讀（給空的）。
+    let (records, log) = if taken.is_some() {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            records::for_room(&mut tx, flow_id).await?,
+            logged_steps(&mut tx, flow_id, seen, of.as_deref()).await?,
+        )
+    };
     let ask = StepAsk {
         flow: &current,
         step,
-        records: records::for_room(&mut tx, flow_id).await?,
-        log: logged_steps(&mut tx, flow_id, seen, of.as_deref()).await?,
+        records,
+        log,
         now: now.timestamp_millis(),
         can_edit: role.can_edit(),
         tab: tab_id,

@@ -54,7 +54,7 @@ describe('首頁和帳號（Node）', () => {
 		const s = home(lin.email, [unsentOf('c1', '測試', 2)]);
 		await s.offline.store.saveCopy(copyOf('c1', '測試'));
 
-		await s.home.load(true);
+		await s.home.load(() => true);
 		expect(s.home.account?.name).toBe('林教練');
 
 		s.home.refresh(true);
@@ -69,7 +69,7 @@ describe('首頁和帳號（Node）', () => {
 
 	it('沒登入：account 是 null，不跟伺服器拿我的流程', async () => {
 		const s = home(null);
-		await s.home.load(true);
+		await s.home.load(() => true);
 		expect(s.home.account).toBeNull();
 
 		s.home.refresh(true);
@@ -81,7 +81,7 @@ describe('首頁和帳號（Node）', () => {
 	it('連不上伺服器（有網路）：我的流程拿不到是 cloudError，這台沒傳的、離線副本照樣列', async () => {
 		const s = home(lin.email, [unsentOf('c1', '測試', 1)]);
 		await s.offline.store.saveCopy(copyOf('c1', '測試'));
-		await s.home.load(true);
+		await s.home.load(() => true);
 
 		s.state.unreachable = true;
 		s.home.refresh(true);
@@ -94,14 +94,14 @@ describe('首頁和帳號（Node）', () => {
 
 	it('斷網：用這台記著的登入的人，列離線副本和上次看到的雲端流程', async () => {
 		const s = home();
-		await s.home.load(true);
+		await s.home.load(() => true);
 		s.home.refresh(true);
 		await flush();
 		await s.offline.store.saveCopy(copyOf('c2', '春季盃'));
 
 		const t = testEditor(null, { server: s.server, offline: s.offline.store });
 		s.state.unreachable = true;
-		await t.editor.home.load(false);
+		await t.editor.home.load(() => false);
 		expect(t.editor.home.account?.name).toBe('林教練');
 		t.editor.home.refresh(false);
 		await flush();
@@ -111,9 +111,24 @@ describe('首頁和帳號（Node）', () => {
 		expect(t.editor.home.cloudError).toBe(false);
 	});
 
+	it('問伺服器時還連著、回來前斷網：照樣用這台記著的登入的人', async () => {
+		const s = home();
+		await s.home.load(() => true);
+		s.home.refresh(true);
+		await flush();
+
+		const t = testEditor(null, { server: s.server, offline: s.offline.store });
+		s.state.unreachable = true;
+		let online = true;
+		const asked = t.editor.home.load(() => online);
+		online = false;
+		await asked;
+		expect(t.editor.home.account?.name).toBe('林教練');
+	});
+
 	it('離開首頁之後才回來的我的流程不算', async () => {
 		const s = home();
-		await s.home.load(true);
+		await s.home.load(() => true);
 		const leave = s.home.refresh(true);
 		leave();
 		await flush();
@@ -123,7 +138,7 @@ describe('首頁和帳號（Node）', () => {
 	it('登出：這台沒有沒傳的紀錄就直接登出，離線副本清掉', async () => {
 		const s = home();
 		await s.offline.store.saveCopy(copyOf('c1', '測試'));
-		await s.home.load(true);
+		await s.home.load(() => true);
 
 		await s.home.logout();
 		expect(s.home.unsentAtLogout).toBeNull();
@@ -136,7 +151,7 @@ describe('首頁和帳號（Node）', () => {
 	it('登出時這台還有沒傳的：先問（每支流程幾筆），「先不要登出」什麼都不變', async () => {
 		const s = home(lin.email, [unsentOf('c1', '測試', 2)]);
 		await s.offline.store.saveCopy(copyOf('c1', '測試'));
-		await s.home.load(true);
+		await s.home.load(() => true);
 
 		await s.home.logout();
 		expect(s.home.unsentAtLogout?.map((u) => u.flowName)).toEqual(['測試']);
@@ -152,7 +167,7 @@ describe('首頁和帳號（Node）', () => {
 	it('「丟掉，登出」：還沒傳的紀錄和離線副本都清掉', async () => {
 		const s = home(lin.email, [unsentOf('c1', '測試', 2)]);
 		await s.offline.store.saveCopy(copyOf('c1', '測試'));
-		await s.home.load(true);
+		await s.home.load(() => true);
 		await s.home.logout();
 
 		await s.home.signOut(true);
@@ -166,7 +181,7 @@ describe('首頁和帳號（Node）', () => {
 	it('登出時連不上伺服器：還是登入著，離線副本留著', async () => {
 		const s = home();
 		await s.offline.store.saveCopy(copyOf('c1', '測試'));
-		await s.home.load(true);
+		await s.home.load(() => true);
 
 		s.state.unreachable = true;
 		await s.home.logout();

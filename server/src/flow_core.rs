@@ -283,7 +283,7 @@ mod tests {
     }
 
     /// 量「這一步收不收」（takeStepJson，#315）在 QuickJS 一步要多久，跟 #323 以前伺服器做的（runStepJson + remoteChangeJson）比。
-    /// 約 1 MB 的流程（tests/fixtures/big-flow.js），步驟紀錄 0、100、1,000、5,000 筆。只印數字、不比時間（機器不同），
+    /// 約 1 MB 的流程（tests/fixtures/big-flow.js），步驟紀錄 0、100、1,000、5,000 筆；restore 是復原一次加回 5,500 次。只印數字、不比時間（機器不同），
     /// 所以平常不跑：`cargo test --release --lib -- --ignored --nocapture room_step_timing`。結果寫在 ADR 0018。
     #[test]
     #[ignore = "量時間用，手動跑"]
@@ -315,13 +315,17 @@ mod tests {
                         const m = big.flow.members[i % 36].id;
                         log.push({ step: i, id: 's' + i, tab: 'other', by: '王教練', at: Date.UTC(2026, 10, 20), keys: ['member:' + m], cleared: [] });
                     }
-                    const undo = kind === 'undo';
-                    if (undo) log[0] = { ...log[0], id: 'renamed', tab: 'mine', keys: ['name'] };
+                    const undo = kind === 'undo' || kind === 'restore';
+                    // restore：復原的那一步（改名字）同時清掉了全部 5,500 次，現在都清掉著：一次全部加回來
+                    const restore = kind === 'restore';
+                    const cleared = restore ? big.records.map((r) => ({ was: r, now: null })) : [];
+                    if (undo) log[0] = { ...log[0], id: 'renamed', tab: 'mine', keys: ['name'], cleared };
                     const sent = undo
                         ? { stepId: 'new', seen: step, undo: { of: 'renamed', redo: false, change: UNDO } }
                         : { stepId: 'new', seen: n > 0 ? 1 : 0, commands: COMMANDS[kind] };
                     return JSON.stringify({
-                        flow: undo ? JSON.parse(RENAMED) : big.flow, step, records: big.records, log, now: Date.UTC(2026, 10, 21),
+                        flow: undo ? JSON.parse(RENAMED) : big.flow, step, log, now: Date.UTC(2026, 10, 21),
+                        records: restore ? big.records.map((r) => ({ ...r, gone: true })) : big.records,
                         canEdit: true, tab: 'mine', by: '李教練', sent,
                     });
                 };
@@ -404,8 +408,8 @@ mod tests {
             }
 
             for n in [0, 100, 1_000, 5_000] {
-                for kind in ["rename", "insertBeats", "undo"] {
-                    if kind == "undo" && n == 0 {
+                for kind in ["rename", "insertBeats", "undo", "restore"] {
+                    if (kind == "undo" || kind == "restore") && n == 0 {
                         continue;
                     }
                     let ask: String = ctx.eval(format!("ask({n}, '{kind}')")).unwrap();

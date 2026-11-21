@@ -125,7 +125,7 @@
 
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
-	onMount(() => void home.load(isOnline()));
+	onMount(() => void home.load(isOnline));
 	/** 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。 */
 	const account = $derived(home.account);
 	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：還沒拿到是 null；連不上伺服器 cloudError。 */

@@ -70,6 +70,21 @@ describe('蓋著時編輯頁的快捷鍵不動', () => {
 	});
 });
 
+describe('框裡的欄位照樣收自己的鍵', () => {
+	it('找書籤的輸入框按 ↓ 選第二個、Enter 跳過去：框關掉，播放頭到那個書籤', async () => {
+		const page = editorPage(
+			flowOf(addBookmark(flowOf(addBookmark(libSample(), '翻騰', { segmentId: 's1', at: 0 }, { segmentId: 's1', at: 16 })), '後面', { segmentId: 's1', at: 24 }, null))
+		);
+		render(Page, page.props);
+		await fireEvent.keyDown(window, { key: '/' });
+		await fireEvent.keyDown(searchInput(), { key: 'ArrowDown' });
+		await fireEvent.keyDown(searchInput(), { key: 'Enter' });
+		expect(box()).toBeNull();
+		expect(page.editor.playback.repeat).toBe(false);
+		expect(page.editor.playback.sec).toBeGreaterThan(0);
+	});
+});
+
 describe('⌘S／Ctrl+S 一定存檔', () => {
 	it('找書籤的輸入框裡按 Ctrl+S、流程設定開著時按 ⌘S：都存檔', async () => {
 		const { saves } = setup();
