@@ -14,7 +14,7 @@ import {
 	samePlace,
 	type RangeSeconds
 } from './anchored-range';
-import type { Flow } from './flow';
+import { same as sameContent, type Flow } from './flow';
 import { newId } from './ids';
 import { blocked, ok, type CommandResult } from './result';
 import { tooLong } from './text-length';
@@ -100,6 +100,16 @@ export function sweepBookmarks(flow: Flow): Flow {
 	const list = bookmarksOf(flow);
 	const kept = list.filter((bm) => bookmarkSeconds(flow, bm) !== null);
 	return kept.length === list.length ? flow : { ...flow, bookmarks: kept };
+}
+
+/**
+ * 換上流程時，改段連帶拿掉的書籤（GLOSSARY「書籤」：一定告訴教練拿掉了哪個），照 before 的先後。
+ * 段的內容沒變就是空的：只刪書籤不算（刪書籤本身的提示已經寫了是哪個），段換了一份但內容一樣也不算。
+ */
+export function lostBookmarks(before: Flow, after: Flow): Bookmark[] {
+	if (sameContent(before.segments, after.segments)) return [];
+	const kept = new Set(bookmarksOf(after).map((b) => b.id));
+	return bookmarksOf(before).filter((b) => !kept.has(b.id));
 }
 
 /** 書籤名字哪裡不行（已經去掉頭尾空白）；before：改之前的名字（開檔進來就超過上限的可以留著，不能更長）。 */

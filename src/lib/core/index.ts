@@ -283,6 +283,7 @@ export {
 	bookmarkSeconds,
 	bookmarksOf,
 	deleteBookmark,
+	lostBookmarks,
 	renameBookmark,
 	startAt,
 	sweepBookmarks,
