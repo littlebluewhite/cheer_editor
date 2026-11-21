@@ -835,3 +835,91 @@ describe('編輯 session：書籤', () => {
 		expect(s.notice).toBe('已刪書籤「跨段」');
 	});
 });
+
+describe('編輯 session：換上流程的每條路，提示和選取修剪（#316）', () => {
+	/** 選著動作 x1、小美（m1）、小A（m2）；提示是「舊的提示」。 */
+	function picked(): EditorSession {
+		const s = new EditorSession(libSample());
+		s.selectAction('x1');
+		s.selectMembers(['m1', 'm2']);
+		s.notice = '舊的提示';
+		return s;
+	}
+	/** 刪掉動作 x1 和小A 的流程。 */
+	const without = (flow: Flow) => flowOf(deleteMember(flowOf(deleteAction(flow, 'x1', { confirmed: true })), 'm2', { confirmed: true }));
+
+	it('記：選取、提示都不動', () => {
+		const s = picked();
+		s.record(flowOf(recordAttempt(s.flow!, 'x1', { date: '2026-11-05', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } })));
+		expect(s.selectedActionId).toBe('x1');
+		expect(s.selectedMemberIds).toEqual(['m1', 'm2']);
+		expect(s.notice).toBe('舊的提示');
+	});
+
+	it('被退回：刪掉的從選取拿掉，提示換成退回原因', () => {
+		const s = picked();
+		s.reset(without(s.flow!), '沒改成');
+		expect(s.selectedActionId).toBeNull();
+		expect(s.selectedMemberIds).toEqual(['m1']);
+		expect(s.notice).toBe('沒改成');
+	});
+
+	it('別人改的：刪掉的從選取拿掉，在改的動作被刪了說是誰', () => {
+		const s = picked();
+		const before = s.flow!;
+		s.applyRemote(remoteChange(before, without(before)), '王教練');
+		expect(s.selectedActionId).toBeNull();
+		expect(s.selectedMemberIds).toEqual(['m1']);
+		expect(s.notice).toBe('王教練刪掉了你在改的動作「技巧·Lib」');
+	});
+
+	it('換成伺服器做出來的樣子：刪掉的從選取拿掉，提示不動；一樣的不換', () => {
+		const s = picked();
+		const same = structuredClone(s.flow!);
+		s.settle(same);
+		expect(s.flow).not.toBe(same);
+		s.settle(without(s.flow!));
+		expect(s.selectedActionId).toBeNull();
+		expect(s.selectedMemberIds).toEqual(['m1']);
+		expect(s.notice).toBe('舊的提示');
+	});
+
+	it('改：刪掉的從選取拿掉，提示說做了什麼', () => {
+		const s = picked();
+		s.change(without(s.flow!), undefined, '刪東西');
+		expect(s.selectedActionId).toBeNull();
+		expect(s.selectedMemberIds).toEqual(['m1']);
+		expect(s.notice).toBe('已刪東西');
+	});
+
+	it('復原、重做：回來的不會自己選上，刪掉的從選取拿掉', () => {
+		const s = picked();
+		s.change(without(s.flow!), undefined, '刪東西');
+		s.undo();
+		expect(s.selectedActionId).toBeNull();
+		expect(s.notice).toBe('已復原：刪東西');
+		s.selectAction('x1');
+		s.selectMembers(['m1', 'm2']);
+		s.redo();
+		expect(s.selectedActionId).toBeNull();
+		expect(s.selectedMemberIds).toEqual(['m1']);
+		expect(s.notice).toBe('已重做：刪東西');
+	});
+
+	it('再復原一次、說的一樣：提示重新算 5 秒', () => {
+		vi.useFakeTimers();
+		try {
+			const s = new EditorSession(libSample());
+			rename(s, 'A');
+			s.change(flowOf(renameFlow(s.flow!, 'B')), undefined, '改流程名字');
+			s.change(flowOf(renameFlow(s.flow!, 'C')), undefined, '改流程名字');
+			s.undo();
+			vi.advanceTimersByTime(4000);
+			s.undo();
+			vi.advanceTimersByTime(4000);
+			expect(s.notice).toBe('已復原：改流程名字');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
