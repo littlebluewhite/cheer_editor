@@ -4,16 +4,8 @@
 import type { Action } from './action-types';
 import type { Flow } from './flow';
 import type { MusicSegment } from './segment';
-import {
-	EPS,
-	segmentSpans,
-	snapToBeat,
-	toSeconds,
-	totalSeconds,
-	units,
-	unitSec,
-	type TimePosition
-} from './time';
+import { anchorAt, anchoredSeconds, REPEAT_EDGES, type AnchoredRange, type RangeSeconds } from './anchored-range';
+import { EPS, segmentSpans, totalSeconds, type TimePosition } from './time';
 
 /** 一段要播的音樂：流程第 sec 秒開始，從音樂檔第 fileSec 秒播 durationSec 秒。 */
 export interface PlaybackClip {
@@ -83,23 +75,16 @@ export function playbackPlan(flow: Flow, fromSec: number, untilSec = Infinity): 
 
 /**
  * 重複範圍：A 到 B，記成哪一段的第幾格（不是秒數），改 BPM、插入八拍時才跟著音樂走。
- * 只放了 A 時 b 是 null。
+ * 只放了 A 時 b 是 null。錨在段上的規則在 anchored-range.ts（REPEAT_EDGES）。
  */
-export interface RepeatRange {
-	a: TimePosition;
-	b: TimePosition | null;
-}
+export type RepeatRange = AnchoredRange;
 
 /**
  * 重複範圍的一頭：sec 最近的整拍（口號段 0.1 秒）在哪一段的第幾格。要先有段。
- * 段的交界算後面那一段；流程結尾算最後一段的最後一格後面。格數四捨五入，浮點誤差不會掉到前一格。
+ * 段的交界算後面那一段；流程結尾算最後一段的最後一格後面。
  */
 export function rangeEnd(flow: Flow, sec: number): TimePosition {
-	const snapped = snapToBeat(flow, sec);
-	const spans = segmentSpans(flow);
-	const span = spans.find((s) => snapped < s.startSec + s.durationSec - EPS) ?? spans.at(-1)!;
-	const at = Math.round((snapped - span.startSec) / unitSec(span.segment));
-	return { segmentId: span.segment.id, at: Math.min(Math.max(at, 0), units(span.segment)) };
+	return anchorAt(flow, sec);
 }
 
 /** 動作拉成的重複範圍：兩頭都在動作自己那一段（B 是動作的結尾，不是下一段的開頭）。 */
@@ -111,17 +96,8 @@ export function actionRange(action: Action): RepeatRange {
 /**
  * 重複範圍現在在哪（全域秒數）。A、B 所在的段不見了、段縮短到 A 或 B 後面，或段換了順序、B 跑到 A 前面，就不能用了：null。
  */
-export function rangeSeconds(flow: Flow, range: RepeatRange): { a: number; b: number | null } | null {
-	// 段縮短、格子落到段尾後面也不能用
-	const sec = (p: TimePosition) => {
-		const segment = flow.segments.find((s) => s.id === p.segmentId);
-		return segment && p.at <= units(segment) ? toSeconds(flow, p) : null;
-	};
-	const a = sec(range.a);
-	if (a === null) return null;
-	if (!range.b) return { a, b: null };
-	const b = sec(range.b);
-	return b === null || b <= a + EPS ? null : { a, b };
+export function rangeSeconds(flow: Flow, range: RepeatRange): RangeSeconds | null {
+	return anchoredSeconds(flow, range, REPEAT_EDGES);
 }
 
 /** 段設定的「▶ 從第一拍聽 2 個八拍」：從第一拍播 16 拍的音樂加節拍器，時間從 0 算。 */

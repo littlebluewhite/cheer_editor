@@ -4,6 +4,7 @@
 // 段不變長：後面的東西超過段尾就擋下。兩個書籤被擠成同一個地方也擋下（同一個地方只有一個書籤）。
 
 import { actionWhy } from './action-types';
+import { afterInsert } from './anchored-range';
 import { bookmarksOf, sameBookmarks } from './bookmarks';
 import type { Flow } from './flow';
 import { formationWalks, memberWalk, type Walk } from './formation';
@@ -60,13 +61,9 @@ export function insertBeats(flow: Flow, at: TimePosition, length: number, unit: 
 
 	// 書籤：開始在插入點以後的往後延；結尾要在插入點後面才延（剛好在插入點就是在那之前結束），在段尾的留在段尾
 	const bookmarks = bookmarksOf(flow).map((bm) => {
-		const a = moves(bm.a);
-		const b = !!bm.b && bm.b.segmentId === at.segmentId && bm.b.at > at.at && bm.b.at < end;
-		const who: Why = { code: 'insert_beats_overflow_bookmark', name: bm.name };
-		if (a) fits(who, end - 1 - bm.a.at);
-		if (b) fits(who, end - bm.b!.at);
-		if (!a && !b) return bm;
-		return { ...bm, a: later(bm.a), b: b ? { ...bm.b!, at: bm.b!.at + length } : bm.b };
+		const { range, room } = afterInsert(bm, at, length, end);
+		if (room !== null) fits({ code: 'insert_beats_overflow_bookmark', name: bm.name }, room);
+		return range;
 	});
 
 	const limit = rooms.reduce<(typeof rooms)[number] | null>((t, r) => (!t || r.room < t.room ? r : t), null);
