@@ -10,16 +10,10 @@ import {
 	currentFormation,
 	formationTimes,
 	groupsPeople,
-	joinUndo,
 	lostBookmarks,
-	redoRecords,
 	sameFlow,
 	squadsOf,
 	timeWhy,
-	travelChange,
-	undoChanges,
-	undone,
-	undoRecords,
 	type Action,
 	type Command,
 	type CommandName,
@@ -31,18 +25,16 @@ import {
 	type Position,
 	type PracticeKind,
 	type RemoteChange,
-	type UndoChanges,
 	type WhyParam
 } from '#lib/core';
-import { Ask, newStepId, type Handlers, type SentStep } from '#lib/ask.svelte.js';
+import { Ask, type Handlers, type SentStep } from '#lib/ask.svelte.js';
 import { Flash, UNDO_FLASH_MS } from '#lib/flash.svelte.js';
 import { m } from '#lib/paraglide/messages.js';
 import { ALL_ALLOWED, type PracticeRights } from '#lib/practice-rights.js';
 import { whyText, joinText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
+import { LocalUndo, type UndoLog } from '#lib/undo-log.svelte.js';
 import { BeatSelection } from './beat-selection.svelte.js';
-
-const UNDO_LIMIT = 100;
 
 /** 幾句提示接成一則（中文用「；」）。parts 不能是空的。 */
 export const joinNotes = (parts: string[]): string => parts.reduceRight((rest, first) => m.session_notes({ first, rest }));
@@ -76,29 +68,6 @@ export interface AlreadyRecorded {
 /** 「只改這張」跟往後帶的那一步合成一步復原用的 key。 */
 const ONLY_THIS = 'only-this';
 
-/**
- * 復原、重做紀錄的一步：那一步改了什麼（例：「插入站位 3」）。
- * 本機流程存改之前的流程（flow）和改之後的流程（after）：復原時才算得出這一步清掉了哪些紀錄、加回去（ADR 0007）。
- * 雲端流程（#256）不存整份，存那一步改到的東西改之前、改之後的樣子（changes），和送出去的步驟 id（ids，方向鍵合成的有好幾個）；
- * 復原過的還存復原前畫面上的清單順序（shown，重做時加回來的照這裡的位置放）。
- */
-type Step = { label: string } & (
-	| { flow: Flow; after: Flow }
-	| { ids: string[]; changes: UndoChanges; shown?: RemoteChange['orders'] }
-);
-
-/**
- * 本機流程復原、重做過的一步，改之前、改之後換成剛剛真的換上的兩份：中間用「記」刪掉、改過的紀錄，
- * 下次重做、復原照這兩份算，不會拿最早存的紀錄蓋回去（ADR 0007）。
- */
-const replayed = (step: Step & { flow: Flow }, flow: Flow, after: Flow): Step => ({ ...step, flow, after });
-
-/**
- * 雲端流程送伺服器的一步（交給 onstep）：一串指令，或復原、重做（#256）：
- * of 是要復原的那一步的步驟 id（重做是復原那一步的），change 是要放回去的樣子。
- */
-export type CloudStep = SentStep | { id: string; undo: { of: string; redo: boolean; change: RemoteChange } };
-
 /** 選得到的三種東西：站位、動作、人。 */
 type PickKind = 'formation' | 'action' | 'member';
 
@@ -128,7 +97,7 @@ type Swap =
 	| { why: 'rejected'; message: string }
 	| { why: 'remote'; by: string }
 	| { why: 'settle' }
-	| { why: 'undo' | 'redo'; label: string; cloud: boolean };
+	| { why: 'undo' | 'redo'; label: string };
 
 /**
  * 跟著這支流程的畫面狀態：元件拆掉（切練習的頁、切編排和練習）再回來還在；換流程（open）整份重設。不存進流程檔。
@@ -164,12 +133,10 @@ export class EditorSession {
 	/** 上次存檔或開檔時的流程。指令都回傳新的流程，所以 flow 不是它就是有還沒存的修改。 */
 	#saved = $state.raw<Flow | null>(null);
 	/**
-	 * 復原紀錄：每一步改之前、改之後的流程（最舊的在前）和那一步改了什麼（復原、重做的提示用）。
-	 * 指令都回傳新的流程，所以存參照就好。不存進草稿或檔案。
+	 * 復原紀錄（#308 階段 2）：本機流程是 LocalUndo（ADR 0007）；雲端流程由 CloudSteps 給它的（ADR 0014），換流程時換回本機的。
+	 * session 只跟它記一步、復原、重做、讀按鈕上的字、清掉。不存進草稿或檔案。
 	 */
-	#undo = $state.raw<Step[]>([]);
-	/** 重做紀錄：復原掉的那幾步（最近復原的在後）。做了新的一步就清掉。 */
-	#redo = $state.raw<Step[]>([]);
+	undoLog = $state.raw<UndoLog>(new LocalUndo());
 
 	/** 上一步可以接著合的：哪一種（key）、合完的流程。流程換了（中間有別的改動）就接不上。 */
 	#joinable: { key: string; flow: Flow } | null = null;
@@ -238,12 +205,6 @@ export class EditorSession {
 	view = $state(freshView());
 	/** 多選開著：場上點人、框選、點泳道名字、點動作表單裡的名字都是加進來或拿掉，跟按著 Shift 一樣（iPad 沒有 Shift）。 */
 	multiSelect = $state(false);
-	/**
-	 * 雲端流程：改好的一步交給它送伺服器（#248），帶這一步改了什麼（changeLabel，被退回時的提示用，#254）
-	 * 和改之前、改之後的流程（被退回時把這一步清掉的紀錄帶回來）。
-	 * 復原、重做也交給它（#256）。接著它時不算未存，復原紀錄存改到的東西。本機流程是 null。
-	 */
-	onstep: ((step: CloudStep, label: string, before: Flow, after: Flow) => void) | null = null;
 	/** 不能改的原因（例：有新版，請重新整理）：有的話改流程的指令都擋下說這句，比檢視模式優先。空字串是沒有。 */
 	readOnly = $state('');
 	/**
@@ -359,21 +320,21 @@ export class EditorSession {
 	}
 
 	get canUndo(): boolean {
-		return this.#undo.length > 0;
+		return this.undoLog.canUndo;
 	}
 
 	get canRedo(): boolean {
-		return this.#redo.length > 0;
+		return this.undoLog.canRedo;
 	}
 
 	/** 按復原會退的那一步改了什麼（例：「插入站位 2」）；沒有可以復原的是空字串。 */
 	get undoLabel(): string {
-		return this.#undo.at(-1)?.label ?? '';
+		return this.undoLog.undoLabel;
 	}
 
 	/** 按重做會做回的那一步改了什麼；沒有可以重做的是空字串。 */
 	get redoLabel(): string {
-		return this.#redo.at(-1)?.label ?? '';
+		return this.undoLog.redoLabel;
 	}
 
 	/**
@@ -395,38 +356,21 @@ export class EditorSession {
 	 * 給了 join：上一步也是同一個 join、中間沒有別的改動，就跟上一步合成一步。
 	 * label：復原、重做提示寫的（例：「插入八拍」）；沒給就比對改了什麼（changeLabel）。
 	 * 換上了就提示「已＋label」，旁邊有「復原」：能復原的都有提示，各處只用 noteChange 補話（F 群）。
-	 * 回傳有沒有換上新的流程。step：這一步送了什麼（雲端流程交給 onstep 送伺服器）。
+	 * 回傳有沒有換上新的流程。step：這一步送了什麼（雲端流程的復原紀錄送伺服器）。
 	 */
 	change(flow: Flow, join?: string, label?: string, step?: SentStep): boolean {
 		if (!this.#flow || sameFlow(flow, this.#flow)) return false;
 		const before = this.#flow;
 		const joined = join !== undefined && this.#joinable?.key === join && this.#joinable.flow === this.#flow;
-		const last = joined ? this.#undo.at(-1) : undefined;
-		let undoStep: Step | null = null;
-		if (this.onstep) {
-			// 雲端流程：送伺服器（存好了由它說）；復原紀錄存改到的東西（#256），合成一步的照第一步之前到現在
-			const said = label ?? whyText(changeLabel(before, flow));
-			if (step) this.onstep(step, said, before, flow);
-			const changes = undoChanges(before, flow);
-			if (step && last && 'ids' in last) undoStep = { label: said, ids: [...last.ids, step.id], changes: joinUndo(last.changes, changes) };
-			else if (step) undoStep = { label: said, ids: [step.id], changes };
-		} else {
-			// 合成一步的：說的是從合之前到現在改了什麼
-			const from = last && 'flow' in last ? last.flow : before;
-			undoStep = { flow: from, after: flow, label: label ?? whyText(changeLabel(from, flow)) };
-		}
-		if (undoStep) {
-			this.#undo = (last ? [...this.#undo.slice(0, -1), undoStep] : [...this.#undo, undoStep]).slice(-UNDO_LIMIT);
-			this.#joinable = join !== undefined ? { key: join, flow } : null;
-			this.#redo = [];
-		}
-		this.#swap(flow, { why: 'change', label: undoStep?.label ?? label ?? whyText(changeLabel(before, flow)) });
+		const said = this.undoLog.record({ before, after: flow, label, sent: step, joined });
+		if (said !== null) this.#joinable = join !== undefined ? { key: join, flow } : null;
+		this.#swap(flow, { why: 'change', label: said ?? label ?? whyText(changeLabel(before, flow)) });
 		return true;
 	}
 
 	/**
 	 * 「記」：紀錄改了（記一次、刪掉上一次、記一次全上）。不算復原的一步，不清重做。
-	 * 復原、重做換上的流程都帶著現在的紀錄（本機流程：undoRecords、redoRecords）。雲端流程交給 onrecord 送伺服器。
+	 * 復原、重做換上的流程都帶著現在的紀錄（本機流程見 LocalUndo）。雲端流程交給 onrecord 送伺服器。
 	 */
 	record(flow: Flow) {
 		const before = this.#flow;
@@ -524,20 +468,6 @@ export class EditorSession {
 		this.#swap(flow, { why: 'settle' });
 	}
 
-	/**
-	 * 雲端流程自己的一步收了：復原紀錄裡那一步的重做換成伺服器做出來的改動（change），不是這邊畫面上的
-	 * （例：兩個人同時加隊員，後到的被放在別的位置；照畫面上的重做會跟別人加的人疊在一起）。合成一步的，最後一步收了才換。
-	 * 順序照畫面上的：伺服器的順序裡有別人加的，照它重做會把別人後來調的順序調回去。
-	 */
-	acceptedAs(stepId: string, change: RemoteChange) {
-		const redo = { things: change.things, orders: {} };
-		const fix = (s: Step): Step =>
-			'ids' in s && s.ids.at(-1) === stepId
-				? { ...s, changes: joinUndo(s.changes, { undo: { things: [], orders: {} }, redo }) }
-				: s;
-		this.#undo = this.#undo.map(fix);
-	}
-
 	/** 套上別人的改動之後叫（頁面接上：開著的段設定指到被刪掉的段就關掉）。回傳要說的原因，跟書籤的提示併在一起。 */
 	onremote: (flow: Flow, by: string) => string | void = () => {};
 
@@ -557,46 +487,14 @@ export class EditorSession {
 		return this.#travel(true);
 	}
 
-	/**
-	 * 復原（redo 是重做）：拿走這一邊最後一步、放進另一邊。本機流程換上存著的流程。
-	 * 雲端流程（#256）把那一步改到的東西放回改之前（重做是改之後）的樣子，畫面先改，再當成新的一步送伺服器
-	 * （of 是那一步的步驟 id，方向鍵合成的是第一個）；另一邊記下這次送的步驟 id。
-	 */
+	/** 復原（redo 是重做）：鎖著就擋下；復原紀錄給要換上的流程（雲端的同時送伺服器），換上。 */
 	#travel(redo: boolean): boolean {
 		if (this.#blocked()) return false;
-		const from = redo ? this.#redo : this.#undo;
-		const step = from.at(-1);
-		if (!this.#flow || !step) return false;
-		const before = this.#flow;
-		let back: Step;
-		let flow: Flow;
-		if ('flow' in step) {
-			// 本機流程：換上改之前（重做是改之後）的編排，帶著現在的紀錄；這一步清掉的紀錄加回來，重做再清一次（ADR 0007）
-			flow = redo ? redoRecords(step.flow, step.after, before) : undoRecords(step.flow, step.after, before);
-			back = redo ? replayed(step, before, flow) : replayed(step, flow, before);
-		} else {
-			const id = newStepId();
-			const { undo, redo: again } = step.changes;
-			const change = travelChange(before, step.changes, redo, redo ? (step.shown ?? again.orders) : undo.orders);
-			back = { label: step.label, ids: [id], changes: step.changes };
-			// 復原：記下復原前畫面上的順序（重做時加回來的照這裡的位置放）
-			if (!redo) back.shown = Object.fromEntries(Object.keys(again.orders).map((list) => [list, idsOf(before, list)]));
-			flow = undone(before, change);
-			this.onstep?.({ id, undo: { of: step.ids[0], redo, change } }, step.label, before, flow);
-		}
-		const to = [...(redo ? this.#undo : this.#redo), back];
-		if (redo) [this.#undo, this.#redo] = [to, from.slice(0, -1)];
-		else [this.#undo, this.#redo] = [from.slice(0, -1), to];
-		this.#swap(flow, { why: redo ? 'redo' : 'undo', label: step.label, cloud: !('flow' in step) });
+		if (!this.#flow) return false;
+		const travel = redo ? this.undoLog.redo(this.#flow) : this.undoLog.undo(this.#flow);
+		if (!travel) return false;
+		this.#swap(travel.flow, { why: redo ? 'redo' : 'undo', label: travel.label });
 		return true;
-	}
-
-	/** 雲端流程的步被退回（#256）：那幾步（步驟 id）不算，從復原、重做紀錄拿掉。 */
-	dropSteps(ids: string[]) {
-		const dropped = (s: Step) => 'ids' in s && s.ids.some((id) => ids.includes(id));
-		this.#undo = this.#undo.filter((s) => !dropped(s));
-		this.#redo = this.#redo.filter((s) => !dropped(s));
-		this.#joinable = null;
 	}
 
 	/** 鎖著（檢視模式）：原因放進提示，回傳 true。 */
@@ -633,8 +531,7 @@ export class EditorSession {
 		if (why === 'open') {
 			// 換一支流程：跟上一支有關的全部清掉（id 會跟上一支重複）；從檔案開的算存過
 			this.#saved = swap.saved ? flow : null;
-			this.#undo = [];
-			this.#redo = [];
+			this.undoLog = new LocalUndo();
 			this.#joinable = null;
 			this.practice = ALL_ALLOWED;
 			this.#copied = null;
@@ -650,9 +547,9 @@ export class EditorSession {
 			return;
 		}
 		if (!before || !flow) return;
-		// 雲端流程換上的都存在伺服器（記的紀錄、改、復原重做看是不是雲端的）：不算還沒存
+		// 雲端流程換上的都存在伺服器（記的紀錄看練習的權限，改、復原重做看復原紀錄）：不算還沒存
 		const stored =
-			why === 'record' ? this.practice.sharedRecords : why === 'change' ? !!this.onstep : why === 'undo' || why === 'redo' ? swap.cloud : true;
+			why === 'record' ? this.practice.sharedRecords : why === 'change' || why === 'undo' || why === 'redo' ? this.undoLog.stored : true;
 		if (stored) this.#saved = flow;
 		if (why === 'record') {
 			// 記：只換紀錄，選取、問題、播放、提示都不動
@@ -979,9 +876,6 @@ function lostText(before: Flow, after: Flow): string | null {
 	const names = lost.map((b) => m.session_quoted({ name: b.name })).reduceRight((rest, first) => m.session_quoted_list({ first, rest }));
 	return (lost.length === 1 ? m.session_lost_bookmarks_one : m.session_lost_bookmarks)({ names });
 }
-
-/** 清單的 id 順序。 */
-const idsOf = (flow: Flow, list: string) => (flow[list as keyof RemoteChange['orders']] as { id: string }[]).map((x) => x.id);
 
 /** 頁面放進 context、元件拿出來用的 session。has：有沒有放（場地在八拍表上只畫、不編）。 */
 export const [getEditorSession, setEditorSession, hasEditorSession] = createContext<EditorSession>();

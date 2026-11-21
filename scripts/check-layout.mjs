@@ -3188,10 +3188,13 @@ await check('欄位有焦點時畫面把它換掉（首頁名字欄按 Enter 建
 	await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 	await waitFor(() => js(`return !!window.__svelte && !!document.querySelector('.new-flow input[aria-label="流程名字"]')`));
 	await sleep(300);
-	await js(`document.querySelector('.new-flow input[aria-label="流程名字"]').focus()`);
-	await send('Input.insertText', { text: '例外測試' });
-	await press('Enter');
-	const created = await waitFor(() => js(`return !!document.querySelector('.rail')`), 25).catch(() => false);
+	// 頁面還沒接上（hydrate）時按 Enter 會變成一般的表單送出（網址多了 ?field=）：沒進編輯畫面就再打一次、再按一次
+	const created = await waitFor(async () => {
+		await js(`document.querySelector('.new-flow input[aria-label="流程名字"]')?.focus()`);
+		await send('Input.insertText', { text: '例外測試' });
+		await press('Enter');
+		return waitFor(() => js(`return !!document.querySelector('.rail')`), 25).catch(() => false);
+	}, 3).catch(() => false);
 	await fromMenu('流程設定');
 	await sleep(300);
 	await js(`document.querySelector('.flow-dialog input[aria-label="流程名字"], .flow-dialog input').focus()`);

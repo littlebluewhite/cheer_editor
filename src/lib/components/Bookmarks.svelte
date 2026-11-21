@@ -15,6 +15,7 @@
 	import { KEYS } from '#lib/shortcuts.js';
 	import { isTouchScreen } from '#lib/editor-layout.js';
 	import { below, popover } from '#lib/popover.svelte.js';
+	import { layer, saveKey } from '#lib/overlay.svelte.js';
 	import CharCount from './CharCount.svelte';
 	import Icon from './Icon.svelte';
 
@@ -145,8 +146,6 @@
 		else if (e.key === 'Escape') naming = null;
 	}
 
-	/** ⌘S／Ctrl+S：存檔，打字時也要給頁面。 */
-	const saveKey = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's';
 	const chipId = (id: string) => `bookmark-${place}-${id}`;
 	// 改名的欄位在左右滑的那排裡：捲到看得到
 	const selectAll = (el: HTMLInputElement) => {
@@ -163,25 +162,10 @@
 	/** 頁面按 / 時叫：打開找書籤的框。回傳有沒有打開（手機那排沒有）。 */
 	export function openSearch(): boolean {
 		if (place !== 'bar') return false;
-		// 收成一顆鈕的小窗先收：它的 Esc 會先搶走，框還開著焦點卻跑到框後面
-		open = false;
 		searching = true;
 		query = '';
 		pick = 0;
 		return true;
-	}
-
-	/** 找書籤的框整個（輸入框和每一列）：鍵不給底下的編輯頁（Delete 不刪選著的動作），存檔的鍵照樣給；Esc 關掉。 */
-	function boxKeys(e: KeyboardEvent) {
-		if (saveKey(e)) return;
-		e.stopPropagation();
-		if (e.key === 'Escape' && !composing(e)) searching = false;
-	}
-
-	/** 焦點（Tab、Shift+Tab）跑到框外：框關掉，不會框還開著、鍵卻給了編輯頁。點東西時焦點沒去哪（relatedTarget 空的）不算。 */
-	function boxLeave(e: FocusEvent) {
-		const to = e.relatedTarget as Node | null;
-		if (to && !(e.currentTarget as HTMLElement).contains(to)) searching = false;
 	}
 
 	/** 找書籤的輸入框：↑↓ 選、Enter 跳過去。 */
@@ -301,7 +285,8 @@
 {#if searching}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="veil" onpointerdown={(e) => e.target === e.currentTarget && (searching = false)}>
-		<div class="search" role="dialog" aria-label={m.bookmark_bar_search()} tabindex="-1" onkeydown={boxKeys} onfocusout={boxLeave}>
+		<!-- 登記成不擋畫面的框（overlay.svelte.ts）：鍵不給底下的編輯頁（⌘S 照給）、Esc 和焦點跑出去就關、收起來的小窗先收 -->
+		<div class="search" role="dialog" aria-label={m.bookmark_bar_search()} tabindex="-1" {@attach layer({ kind: 'box', close: () => (searching = false) })}>
 			<input
 				type="text"
 				aria-label={m.bookmark_bar_search()}
