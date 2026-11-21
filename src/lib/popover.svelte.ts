@@ -1,8 +1,9 @@
 // 小窗（「?」說明、拍點小窗、加段選單）共用的部分：每個小窗只給內容和放哪裡。
 // 放到最上層（popover）：右邊欄、時間軸的捲動容器裁不到它；跟著錨點捲動、縮放；點外面、按 Esc 就關。
+// 開著時登記成蓋住編輯畫面的一層（overlay.svelte.ts 的 pop：不擋快捷鍵，Esc 在最上面時才歸它）。
 // 算位置是純函式（placeBelow；拍點小窗用 cue-pop），量畫面的事在 attachment 裡（jsdom 量不到版面，ADR 0002）。
 import type { Attachment } from 'svelte/attachments';
-import { composing } from '#lib/ime.js';
+import { layer } from '#lib/overlay.svelte.js';
 
 export interface PopoverOptions {
 	/** 小窗放哪裡（畫面座標）。打開、捲動、視窗變大變小、裡面讀的狀態變了，都再放一次。 */
@@ -15,7 +16,7 @@ export interface PopoverOptions {
 
 /**
  * attachment：小窗開著時掛在小窗上（小窗只在開著時才畫，或 `{@attach open && popover(...)}`）。
- * Esc 只關小窗、不往外傳（不讓編輯頁把選取也清掉）；中文輸入法選字時的 Esc 不算。
+ * Esc 只關小窗、不往外傳（不讓編輯頁把選取也清掉）；中文輸入法選字時的 Esc 不算（overlay.svelte.ts 管）。
  */
 export function popover(o: PopoverOptions): Attachment<HTMLElement> {
 	return (el) => {
@@ -34,20 +35,15 @@ export function popover(o: PopoverOptions): Attachment<HTMLElement> {
 			const t = e.target as Node;
 			if (![el, ...(o.inside ?? [])].some((x) => x?.contains(t))) o.close('outside');
 		};
-		const keys = (e: KeyboardEvent) => {
-			if (e.key !== 'Escape' || composing(e)) return;
-			e.stopPropagation();
-			o.close('escape');
-		};
+		const unlayer = layer({ kind: 'pop', close: o.close })(el);
 		addEventListener('scroll', place, true);
 		addEventListener('resize', place);
 		addEventListener('pointerdown', outside);
-		addEventListener('keydown', keys, true);
 		return () => {
+			unlayer?.();
 			removeEventListener('scroll', place, true);
 			removeEventListener('resize', place);
 			removeEventListener('pointerdown', outside);
-			removeEventListener('keydown', keys, true);
 			if (el.popover) el.hidePopover();
 		};
 	};

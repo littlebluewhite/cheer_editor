@@ -1,6 +1,6 @@
 // 編輯頁上的書籤（GLOSSARY「書籤」）：書籤自己的鍵不漏到編輯頁的快捷鍵，存檔的鍵照樣能用；換一支流程時打到一半的名字不帶過去。
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { afterEach, describe, expect, it } from 'vitest';
 import { addBookmark, writeFlowFile } from '#lib/core';
 import { editorPage, flush, openFile } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
@@ -22,64 +22,25 @@ function setup() {
 	return page;
 }
 
-/** 找書籤框裡的那一列。 */
-const searchResult = (name: string) => within(screen.getByRole('dialog', { name: '找書籤' })).getByRole('button', { name: new RegExp(name) });
-
 describe('編輯頁上的書籤', () => {
-	it('找書籤的框裡按 Delete：不刪到選著的動作', async () => {
+	it('找書籤的框登記成蓋住編輯畫面的一層（按鍵規則在 overlay.svelte.test.ts）：開著時 Delete 不刪選著的動作，Esc 關框', async () => {
 		const { session } = setup();
 		session.selectAction('x1');
 		await fireEvent.keyDown(window, { key: '/' });
-		const result = searchResult('翻騰');
-		result.focus();
-		await fireEvent.keyDown(result, { key: 'Delete' });
+		(document.activeElement as HTMLElement).blur();
+		await fireEvent.keyDown(document.body, { key: 'Delete' });
 		expect(session.flow!.actions).toHaveLength(1);
-	});
-
-	it('找書籤的框裡、焦點在書籤上按 Esc：框關掉，選著的動作還選著', async () => {
-		const { session } = setup();
-		session.selectAction('x1');
-		await fireEvent.keyDown(window, { key: '/' });
-		const result = searchResult('翻騰');
-		result.focus();
-		await fireEvent.keyDown(result, { key: 'Escape' });
+		await fireEvent.keyDown(document.body, { key: 'Escape' });
 		expect(screen.queryByRole('dialog', { name: '找書籤' })).toBeNull();
 		expect(session.selectedActionId).toBe('x1');
 	});
 
-	it('找書籤的框裡按 Shift+Tab 跳到框外：框關掉（不會框還開著、鍵卻給了編輯頁）', async () => {
-		setup();
-		await fireEvent.keyDown(window, { key: '/' });
-		const outside = screen.getByRole('button', { name: /存成書籤/ });
-		await fireEvent.focusOut(screen.getByRole('textbox', { name: '找書籤' }), { relatedTarget: outside });
-		expect(screen.queryByRole('dialog', { name: '找書籤' })).toBeNull();
-	});
-
-	it('上方列收成一顆鈕、小窗開著時按 /：小窗收起來，Esc 關的是找書籤的框', async () => {
-		vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
-		try {
-			setup();
-			await fireEvent.click(screen.getByRole('button', { name: '書籤' }));
-			await fireEvent.keyDown(window, { key: '/' });
-			expect(screen.queryByRole('group', { name: '書籤' })).toBeNull();
-			await fireEvent.keyDown(screen.getByRole('textbox', { name: '找書籤' }), { key: 'Escape' });
-			expect(screen.queryByRole('dialog', { name: '找書籤' })).toBeNull();
-		} finally {
-			vi.unstubAllGlobals();
-		}
-	});
-
-	it('打書籤名字、找書籤時按 ⌘S：照樣存檔', async () => {
+	it('打書籤名字時按 ⌘S：照樣存檔（打字欄位吃自己的鍵，存檔的鍵除外）', async () => {
 		const { saves } = setup();
 		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
 		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 's', metaKey: true });
 		await flush();
 		expect(saves).toHaveLength(1);
-		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Escape' });
-		await fireEvent.keyDown(window, { key: '/' });
-		await fireEvent.keyDown(screen.getByRole('textbox', { name: '找書籤' }), { key: 's', ctrlKey: true });
-		await flush();
-		expect(saves).toHaveLength(2);
 	});
 
 	it('書籤名字打到一半開另一支流程：打的名字不帶到新的流程', async () => {
