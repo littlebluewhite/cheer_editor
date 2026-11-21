@@ -12,7 +12,17 @@
 | `make-flow.mjs` | 假流程 | 20 人（測01–測20）、3 分鐘、120 BPM 滴答聲、23 張站位 |
 | `build.sh` | 建、裝、打開 | `./build.sh native\|web [iphone\|ipad\|both\|sim]` |
 
-簽章、bundle id、裝置寫在 `.local.env`（不進 git）。免費帳號：**裝到 2026-11-28 下午 2 點多（台灣時間）就打不開**，要再跑一次 `build.sh`。
+免費帳號：**裝到 2026-11-28 下午 2 點多（台灣時間）就打不開**，要重建重裝：
+
+```sh
+cd .claude/worktrees/app-feel   # 這個分支的 worktree
+npm ci && npm run i18n          # 第一次才要
+cd prototypes/app-feel && ./build.sh native both && ./build.sh web both
+```
+
+`.local.env`（不進 git）要有 `LOCAL_TEAM_ID`、`LOCAL_BUNDLE_PREFIX`、`IPHONE_UDID`、`IPAD_UDID`。
+
+B 沒放 `WKAppBoundDomains`：模擬器上試過，放了以後 `limitsNavigationsToAppBoundDomains` 開著，`app://` 整頁空白；關著，殼塞的 script 不跑。所以「連到網站」那一種沒有 service worker（小框寫 `SW無`）。
 
 ## 量測小框
 
@@ -22,9 +32,11 @@
 
 ## 怎麼測（網站主人）
 
-先把 `out/to-device/` 的三個檔用 AirDrop 傳到 iPhone、iPad（存到「檔案」），再用 LINE 傳給自己一次。
+先把 Mac 桌面 `app-feel-test` 資料夾的三個檔（`out/to-device/` 的副本）用 AirDrop 傳到 iPhone、iPad（存到「檔案」），再用 LINE 傳給自己一次。
 
-每一項先正常做一次，再開「低耗電模式」做一次。
+0. **先試兩分鐘**：兩台都在 A、B 打開流程檔、按播放，有聲音、人會走就好。有問題先回報，不用往下做。
+
+每一項先正常做一次，再開「低耗電模式」做一次。錄影時，每段開頭在鏡頭前拍一下手（扣掉錄影那台自己的聲音、畫面差）。
 
 1. **iPhone 檢視模式，播一整首**：Safari（`https://littlebluewhite.com` 開 zip）、A、B 各一次。內建喇叭一次、藍牙喇叭一次。
    - 看：會不會頓（第 4 條，眼睛說了算）。

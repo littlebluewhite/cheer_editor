@@ -45,7 +45,7 @@ final class Shell: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         c.setURLSchemeHandler(SiteHandler(), forURLScheme: "app")
         c.allowsInlineMediaPlayback = true
         c.mediaTypesRequiringUserActionForPlayback = []
-        c.limitsNavigationsToAppBoundDomains = remote
+        c.limitsNavigationsToAppBoundDomains = false // 試過：Info.plist 有 WKAppBoundDomains 時，這裡 true 的話 app:// 整頁空白，false 的話殼塞的 script 不跑；所以兩個都不放
         let ucc = WKUserContentController()
         ucc.add(self, name: "shell")
         let hud = (try? String(contentsOf: Bundle.main.url(forResource: "hud", withExtension: "js")!, encoding: .utf8)) ?? ""
