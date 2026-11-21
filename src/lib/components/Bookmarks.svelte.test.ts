@@ -49,43 +49,6 @@ describe('書籤', () => {
 		expect(playback.range).toEqual({ a: 2, b: 4 });
 	});
 
-	it('點只有 A 的：播放頭跳到 A，重複範圍不動', async () => {
-		const { playback } = setup(sample());
-		await fireEvent.click(chip('翻騰'));
-		await fireEvent.click(chip('後面'));
-		expect(playback.sec).toBe(8);
-		expect(playback.range).toEqual({ a: 2, b: 4 });
-	});
-
-	it('重複開著、停著點只有 A 的：按播放從書籤的 A 播，不是重複範圍的 A', async () => {
-		const { playback } = setup(sample());
-		await fireEvent.click(chip('翻騰'));
-		await fireEvent.click(chip('後面'));
-		expect(playback.repeat).toBe(false);
-		expect(playback.range).toEqual({ a: 2, b: 4 });
-		playback.play();
-		expect(playback.sec).toBe(8);
-		playback.pause();
-	});
-
-	it('重複開著、只有 A 的在範圍裡面：重複照開，播放頭跳到 A', async () => {
-		const { playback } = setup(flowOf(addBookmark(sample(), '中間', { segmentId: 's1', at: 12 }, null)));
-		await fireEvent.click(chip('翻騰'));
-		await fireEvent.click(chip('中間'));
-		expect(playback.repeat).toBe(true);
-		expect(playback.sec).toBe(3);
-	});
-
-	it('重複開著、播放中點只有 A 的：從書籤的 A 接著播', async () => {
-		const { playback } = setup(sample());
-		await fireEvent.click(chip('翻騰'));
-		playback.play();
-		await fireEvent.click(chip('後面'));
-		expect(playback.playing).toBe(true);
-		expect(playback.sec).toBe(8);
-		playback.pause();
-	});
-
 	it('存：現在的 A、B；A 剛好是動作的開頭就先填動作名字', async () => {
 		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'F', globalRole: 'top' }]));
 		const members = [{ memberId: 'm1', role: '騰翻' }];
@@ -103,35 +66,6 @@ describe('書籤', () => {
 		});
 	});
 
-	it('存：重複範圍是半拍開始的動作，存的 A、B 照原樣，不吸到整拍', async () => {
-		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'F', globalRole: 'top' }]));
-		const members = [{ memberId: 'm1', role: '騰翻' }];
-		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'tumbling', name: '半拍翻', start: 41, length: 3, note: '', members }));
-		const { session, playback } = setup(flow);
-		session.selectAction(session.flow!.actions[0].id);
-		playback.setRepeat(true);
-		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
-		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
-		expect(session.flow!.bookmarks!.at(-1)).toMatchObject({ a: { segmentId: 's1', at: 41 }, b: { segmentId: 's1', at: 44 } });
-	});
-
-	it('點半拍開始的書籤：重複範圍照書籤原樣，不吸到整拍', async () => {
-		const { playback } = setup(flowOf(addBookmark(sample(), '半拍', { segmentId: 's1', at: 41 }, { segmentId: 's1', at: 44 })));
-		await fireEvent.click(chip('半拍'));
-		expect(playback.range).toEqual({ a: 10.25, b: 11 });
-		expect(playback.sec).toBe(10.25);
-	});
-
-	it('存一樣的 A、B：擋下，提示說已經有哪個', async () => {
-		const { session, playback } = setup(sample());
-		playback.setRange(2, 4);
-		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
-		await fireEvent.input(screen.getByRole('textbox', { name: '書籤名字' }), { target: { value: '又一個' } });
-		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
-		expect(session.flow!.bookmarks).toHaveLength(2);
-		expect(session.notice).toBe('這裡已經有書籤「翻騰」了');
-	});
-
 	it('名字空的、又存在已經有書籤的地方：提示講位置重複，欄位收起來，那顆書籤閃一下', async () => {
 		const { session, playback } = setup(sample());
 		playback.setRange(2, 4);
@@ -140,35 +74,6 @@ describe('書籤', () => {
 		expect(session.notice).toBe('這裡已經有書籤「翻騰」了');
 		expect(screen.queryByRole('textbox', { name: '書籤名字' })).toBeNull();
 		await vi.waitFor(() => expect(chip('翻騰').parentElement!.classList.contains('flash')).toBe(true));
-	});
-
-	it('存一樣的 A、B，B 剛好在段的交界：那顆書籤照樣閃一下', async () => {
-		let flow = flowOf(addSegment(sample(), 'music'));
-		flow = flowOf(updateSegment(flow, 's2', { bpm: 120, eights: 4, lastBeats: 8 }));
-		flow = flowOf(addBookmark(flow, '音樂 1', { segmentId: 's1', at: 0 }, { segmentId: 's1', at: 64 }));
-		const { session, playback } = setup(flow);
-		playback.setRange(0, 16);
-		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
-		await fireEvent.input(screen.getByRole('textbox', { name: '書籤名字' }), { target: { value: '又一個' } });
-		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
-		expect(session.notice).toBe('這裡已經有書籤「音樂 1」了');
-		await vi.waitFor(() => expect(chip('音樂 1').parentElement!.classList.contains('flash')).toBe(true));
-	});
-
-	it('打名字時要存的那段被刪了：存不了，不會閃到別的書籤（段不見時秒數算成 0）', async () => {
-		let flow = flowOf(addBookmark(sample(), '開頭', { segmentId: 's1', at: 0 }, null));
-		flow = flowOf(addSegment(flow, 'music'));
-		const { session, playback } = setup(flow);
-		playback.seek(20);
-		await fireEvent.click(screen.getByRole('button', { name: /存成書籤/ }));
-		await fireEvent.input(screen.getByRole('textbox', { name: '書籤名字' }), { target: { value: '第二段' } });
-		session.ask.send({ name: 'deleteSegment', args: ['s2'] });
-		session.ask.answer('confirm');
-		expect(session.flow!.segments).toHaveLength(1);
-		await fireEvent.keyDown(screen.getByRole('textbox', { name: '書籤名字' }), { key: 'Enter' });
-		expect(session.flow!.bookmarks).toHaveLength(3);
-		await new Promise((r) => requestAnimationFrame(r));
-		expect(document.querySelector('.flash')).toBeNull();
 	});
 
 	it('英文畫面：A 是名字跟大類一樣（「舞蹈」）的動作，名字先填英文的大類', async () => {

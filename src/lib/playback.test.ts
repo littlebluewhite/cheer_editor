@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
+	addBookmark,
 	addMembers,
 	addSegment,
 	createFlow,
@@ -823,5 +824,119 @@ describe('播放：慢速、重複', () => {
 			.sort((a, b) => a - b);
 		expect(times.length).toBeGreaterThanOrEqual(8);
 		for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeCloseTo(0.4, 6);
+	});
+});
+
+describe('播放：書籤', () => {
+	/** 120 BPM 兩段、各 4 個八拍（一個半拍 0.25 秒、一段 16 秒）；書籤「後面」只有 A（音樂 1 3-1，8 秒），「翻騰」1-5 到 2-1（2 到 4 秒）。 */
+	function withBookmarks(): Flow {
+		let flow = flowOf(createFlow({ name: '測試', field: { strips: 9, layout: 'vertical' } }));
+		for (const id of ['s1', 's2']) {
+			flow = flowOf(addSegment(flow, 'music'));
+			flow = flowOf(updateSegment(flow, id, { bpm: 120, eights: 4, lastBeats: 8 }));
+		}
+		flow = flowOf(addBookmark(flow, '後面', { segmentId: 's1', at: 32 }, null));
+		return flowOf(addBookmark(flow, '翻騰', { segmentId: 's1', at: 8 }, { segmentId: 's1', at: 16 }));
+	}
+	const bookmark = (flow: Flow, name: string) => flow.bookmarks!.find((b) => b.name === name)!;
+
+	it('用有 B 的：重複範圍換成 A 到 B、重複打開、播放頭跳到 A；它就是正在播的書籤，重複關掉就不是', () => {
+		const { session, playback } = setup(withBookmarks());
+		expect(playback.playingBookmark).toBeNull();
+		playback.useBookmark(bookmark(session.flow!, '翻騰'));
+		expect(playback.range).toEqual({ a: 2, b: 4 });
+		expect(playback.repeat).toBe(true);
+		expect(playback.sec).toBe(2);
+		expect(playback.playingBookmark).toBe(bookmark(session.flow!, '翻騰').id);
+		playback.setRepeat(false);
+		expect(playback.range).toEqual({ a: 2, b: 4 });
+		expect(playback.playingBookmark).toBeNull();
+	});
+
+	it('用只有 A 的、重複關著：播放頭跳到 A，重複範圍不動；只有 A 的書籤不算正在播', () => {
+		const { session, playback } = setup(withBookmarks());
+		playback.setRange(20, 24);
+		playback.setRepeat(false);
+		playback.useBookmark(bookmark(session.flow!, '後面'));
+		expect(playback.sec).toBe(8);
+		expect(playback.range).toEqual({ a: 20, b: 24 });
+		expect(playback.repeat).toBe(false);
+		expect(playback.playingBookmark).toBeNull();
+	});
+
+	it('重複開著、A 在重複範圍外：重複關掉（範圍留著），停著按播放從書籤的 A 播', () => {
+		const { session, playback } = setup(withBookmarks());
+		playback.useBookmark(bookmark(session.flow!, '翻騰'));
+		playback.useBookmark(bookmark(session.flow!, '後面'));
+		expect(playback.repeat).toBe(false);
+		expect(playback.range).toEqual({ a: 2, b: 4 });
+		playback.play();
+		expect(playback.sec).toBe(8);
+	});
+
+	it('重複開著、播放中用 A 在範圍外的：從書籤的 A 接著播', () => {
+		const { session, playback } = setup(withBookmarks());
+		playback.useBookmark(bookmark(session.flow!, '翻騰'));
+		playback.play();
+		playback.useBookmark(bookmark(session.flow!, '後面'));
+		expect(playback.playing).toBe(true);
+		expect(playback.repeat).toBe(false);
+		expect(playback.sec).toBe(8);
+	});
+
+	it('重複開著、A 在重複範圍裡：重複照開，播放頭跳到 A；A 剛好在 B 算外面', () => {
+		let flow = flowOf(addBookmark(withBookmarks(), '中間', { segmentId: 's1', at: 12 }, null));
+		flow = flowOf(addBookmark(flow, '剛好 B', { segmentId: 's1', at: 16 }, null));
+		const { session, playback } = setup(flow);
+		playback.useBookmark(bookmark(session.flow!, '翻騰'));
+		playback.useBookmark(bookmark(session.flow!, '中間'));
+		expect(playback.repeat).toBe(true);
+		expect(playback.sec).toBe(3);
+		playback.useBookmark(bookmark(session.flow!, '剛好 B'));
+		expect(playback.repeat).toBe(false);
+		expect(playback.sec).toBe(4);
+	});
+
+	it('用半拍開始的書籤：重複範圍照書籤原樣，不吸到整拍', () => {
+		const flow = flowOf(addBookmark(withBookmarks(), '半拍', { segmentId: 's1', at: 41 }, { segmentId: 's1', at: 44 }));
+		const { session, playback } = setup(flow);
+		playback.useBookmark(bookmark(session.flow!, '半拍'));
+		expect(playback.range).toEqual({ a: 10.25, b: 11 });
+		expect(playback.sec).toBe(10.25);
+		expect(playback.playingBookmark).toBe(bookmark(session.flow!, '半拍').id);
+	});
+
+	it('正在播的書籤：尺上拉的範圍 B 是下一段的開頭，跟 B 記成前一段結尾的書籤算同一個', () => {
+		const flow = flowOf(addBookmark(withBookmarks(), '音樂 1', { segmentId: 's1', at: 0 }, { segmentId: 's1', at: 64 }));
+		const { session, playback } = setup(flow);
+		playback.setRange(0, 16);
+		expect(playback.rangeAt!.b).toEqual({ segmentId: 's2', at: 0 });
+		expect(playback.playingBookmark).toBe(bookmark(session.flow!, '音樂 1').id);
+	});
+
+	it('現在要抓的 A、B：沒有範圍是播放頭最近的整拍（段的交界算後一段）；有範圍照原樣（只有 A、重複關著、半拍的動作都一樣）', () => {
+		const { session, playback } = setup(withBookmarks());
+		playback.seek(16.1);
+		expect(playback.bookmarkSpot).toEqual({ a: { segmentId: 's2', at: 0 }, b: null });
+		playback.seek(5.1);
+		playback.setA();
+		expect(playback.bookmarkSpot).toEqual({ a: { segmentId: 's1', at: 20 }, b: null });
+		playback.setRange(20, 24);
+		playback.setRepeat(false);
+		expect(playback.bookmarkSpot).toEqual({ a: { segmentId: 's2', at: 16 }, b: { segmentId: 's2', at: 32 } });
+		session.change(flowOf(addMembers(session.flow!, [{ name: '小A', gender: 'F', globalRole: 'top' }])));
+		const members = [{ memberId: 'm1', role: '騰翻' }];
+		session.change(
+			flowOf(addAction(session.flow!, { segmentId: 's1', category: 'tumbling', name: '半拍翻', start: 41, length: 3, note: '', members }))
+		);
+		playback.clearRange();
+		session.selectAction(session.flow!.actions[0].id);
+		playback.setRepeat(true);
+		expect(playback.bookmarkSpot).toEqual({ a: { segmentId: 's1', at: 41 }, b: { segmentId: 's1', at: 44 } });
+	});
+
+	it('現在要抓的 A、B：沒有段就沒有', () => {
+		const { playback } = setup(flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } })));
+		expect(playback.bookmarkSpot).toBeNull();
 	});
 });

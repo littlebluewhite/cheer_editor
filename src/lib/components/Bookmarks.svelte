@@ -5,9 +5,10 @@
 	  檢視模式這兩顆只變灰、不拿掉（跟復原、重做一樣），切模式時上方列才不跑。
 	  按 / 跳出找書籤的框（頁面的快捷鍵叫 openSearch）。
 	place="phone"：手機、直拿的 iPad（檢視模式），播放列下面一排，手指左右滑；沒有書籤就不出現。
+	這裡只管版面和按鍵：怎麼用書籤、哪個正在播、要存的 A、B 問播放 module；同一個地方要閃哪個照流程核心回的 id。
 -->
 <script lang="ts">
-	import { MAX_CHARS, actionNameWhy, firstChars, bookmarkSeconds, positionWhy, startAt, toSeconds, type Bookmark, type TimePosition } from '#lib/core';
+	import { MAX_CHARS, actionNameWhy, bookmarkAction, firstChars, bookmarkSeconds, positionWhy, type Bookmark, type TimePosition } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import { whyText } from '#lib/reason-text.js';
@@ -42,39 +43,30 @@
 		if (by === 'escape') openBtn?.focus();
 	}
 
-	type Spot = { a: number; b: number | null };
+	/** 書籤現在在哪（全域秒數），帶著它的 id。 */
+	type Spot = { id: string; a: number; b: number | null };
 	/** 放得下的書籤，照 A 的時間排（一樣的話先存的先）。 */
 	const rows = $derived(
 		(flow.bookmarks ?? [])
-			.map((bm) => ({ bm, s: bookmarkSeconds(flow, bm) }))
-			.filter((r): r is { bm: Bookmark; s: Spot } => r.s !== null)
+			.flatMap((bm) => {
+				const s = bookmarkSeconds(flow, bm);
+				return s ? [{ bm, s: { id: bm.id, ...s } as Spot }] : [];
+			})
 			.sort((x, y) => x.s.a - y.s.a)
 	);
 
-	const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
 	function where(s: Spot): string {
 		const a = whyText(positionWhy(flow, s.a));
 		return s.b === null ? a : m.bookmark_bar_range({ a, b: whyText(positionWhy(flow, s.b)) });
 	}
-	/** 正在重複的就是這個書籤。 */
-	function active(s: Spot): boolean {
-		const r = playback.range;
-		return s.b !== null && playback.repeat && r?.b != null && near(r.a, s.a) && near(r.b, s.b);
-	}
+	/** 正在重複的就是這個書籤（播放 module 回答）。 */
+	const active = (s: Spot) => playback.playingBookmark === s.id;
 
+	/** 點書籤：正在重複的再點一下關掉重複；不然用它（播放 module 管怎麼用）。 */
 	function go({ bm, s }: { bm: Bookmark; s: Spot }) {
 		open = false;
-		if (active(s)) return playback.setRepeat(false);
-		// 兩頭照書籤原樣（半拍開始的不吸到整拍）
-		if (bm.b) playback.useRange({ a: bm.a, b: bm.b });
-		// 只有 A、A 在重複範圍外面：重複開著會被拉回範圍的 A，所以關掉重複（範圍留著）
-		else if (playback.repeat && !inRepeat(s.a)) playback.setRepeat(false);
-		playback.seek(s.a);
-	}
-	/** 這一秒在重複範圍裡（和播放一樣：到 B 前一點點就算出去了）。 */
-	function inRepeat(sec: number): boolean {
-		const r = playback.range;
-		return r?.b != null && sec >= r.a - 1e-6 && sec < r.b - 0.01;
+		if (active(s)) playback.setRepeat(false);
+		else playback.useBookmark(bm);
 	}
 
 	// ---------- 存、改名、刪（只有 bar、能改時） ----------
@@ -94,13 +86,12 @@
 	});
 
 	function startAdd() {
-		// 有重複範圍就照它原樣存（半拍開始的動作拉成的範圍不吸到整拍）；沒有就存播放頭最近的整拍
-		const r = playback.rangeAt;
-		const a = r ? r.a : startAt(flow, playback.sec);
-		const b = r?.b ?? null;
+		// 要存的 A、B 問播放 module（有重複範圍照它原樣，沒有是播放頭最近的整拍）
+		const spot = playback.bookmarkSpot;
+		if (!spot) return;
+		const { a, b } = spot;
 		// A 剛好在一個動作開始的地方：名字先填那個動作的名字
-		const aSec = toSeconds(flow, a);
-		const act = flow.actions.find((x) => near(toSeconds(flow, { segmentId: x.segmentId, at: x.start }), aSec));
+		const act = bookmarkAction(flow, a);
 		naming = { kind: 'add', a, b };
 		text = act ? firstChars(whyText(actionNameWhy({ ...act, name: act.name.trim() })), MAX_CHARS.bookmarkName) : '';
 	}
@@ -113,9 +104,9 @@
 			if (r.kind === 'ok') naming = null;
 			// 只有位置重複才閃：別的原因（例：段被刪了，秒數算成 0）會閃到不相干的書籤。
 			// 欄位收起來：這個位置換什麼名字都存不了；開著時上方列 1600 寬以下書籤那排會被擠到 0 寬，閃了也看不到（check:layout 量）
-			else if (r.kind === 'blocked' && r.why?.code === 'bookmarks_same_place') {
+			else if (r.kind === 'blocked' && r.bookmarkId) {
 				naming = null;
-				flashSame(n.a, n.b);
+				flash(r.bookmarkId);
 			}
 		} else {
 			const r = session.ask.send({ name: 'renameBookmark', args: [n.id, text] });
@@ -123,16 +114,13 @@
 		}
 	}
 
-	function flashSame(a: TimePosition, b: TimePosition | null) {
-		// 直接換秒數：B 剛好在段的交界時，存的時候會換成前一段的結尾，秒數一樣
-		const s = { a: toSeconds(flow, a), b: b && toSeconds(flow, b) };
-		const same = rows.find((r) => near(r.s.a, s.a) && (r.s.b === null ? s.b === null : s.b !== null && near(r.s.b, s.b)));
-		if (!same) return;
+	/** 閃那個書籤（流程核心說撞到的那個）。 */
+	function flash(id: string) {
 		flashId = null;
 		// 等欄位收起來、那排拉開了再捲過去
 		requestAnimationFrame(() => {
-			flashId = same.bm.id;
-			document.getElementById(chipId(same.bm.id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+			flashId = id;
+			document.getElementById(chipId(id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 		});
 	}
 
