@@ -141,6 +141,21 @@ describe('首頁和帳號（Node）', () => {
 		expect(t.editor.home.account?.name).toBe('林教練');
 	});
 
+	it('問伺服器時斷著、回來前連上了，伺服器說沒登入（過期、被登出）：就是沒登入，不用這台記著的', async () => {
+		const s = home();
+		await s.home.load(() => true);
+		s.home.refresh(true);
+		await flush();
+
+		const t = testEditor(null, { server: s.server, offline: s.offline.store });
+		s.state.signedIn = null;
+		let online = false;
+		const asked = t.editor.home.load(() => online);
+		online = true;
+		await asked;
+		expect(t.editor.home.account).toBeNull();
+	});
+
 	it('離開首頁之後才回來的我的流程不算', async () => {
 		const s = home();
 		await s.home.load(() => true);

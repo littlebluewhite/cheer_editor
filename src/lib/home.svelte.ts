@@ -58,12 +58,16 @@ export class Home {
 		return this.#unsentAtLogout;
 	}
 
-	/** 問伺服器登入的是誰。問的時候或問完時斷網（online() 是 false）伺服器問不到：用這台記著的，首頁照樣列離線副本。 */
+	/**
+	 * 問伺服器登入的是誰。伺服器說沒登入就是沒登入；問不到、問的時候或問完時斷網（online() 是 false）：
+	 * 用這台記著的，首頁照樣列離線副本。
+	 */
 	async load(online: () => boolean) {
 		const { server, offline } = this.#editor.adapters;
 		const askedOnline = online();
 		const me = await server.me();
-		this.#account = me ?? (askedOnline && online() ? null : ((await offline.signedInHere())?.me ?? null));
+		const unreachable = me === undefined && !(askedOnline && online());
+		this.#account = me ?? (unreachable ? ((await offline.signedInHere())?.me ?? null) : null);
 	}
 
 	/**

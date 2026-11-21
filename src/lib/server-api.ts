@@ -107,8 +107,8 @@ export class ServerUnreachable extends Error {
 }
 
 export interface ServerAdapter {
-	/** 我是誰；沒登入（或登入超過 30 天、連不上伺服器）是 null。 */
-	me(): Promise<Me | null>;
+	/** 我是誰；伺服器說沒登入（或登入超過 30 天）是 null，連不上伺服器是 undefined。 */
+	me(): Promise<Me | null | undefined>;
 	/** 沒登入是因為登入超過 30 天了（不是沒登入過、不是登出了）。 */
 	loginExpired(): Promise<boolean>;
 	/** 登入：'wrong' 是 email 或密碼不對（沒這個人、被停用也一樣）；猜錯太多次是要等幾秒。 */
@@ -272,7 +272,7 @@ export function httpServer(base = ''): ServerAdapter {
 				const res = await fetch(`${base}/api/me`);
 				return res.ok ? ((await res.json()) as Me) : null;
 			} catch {
-				return null;
+				return undefined;
 			}
 		},
 		async loginExpired() {

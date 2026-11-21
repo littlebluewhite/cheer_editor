@@ -740,6 +740,7 @@ export function fakeServer(
 	};
 	const server: ServerAdapter = {
 		async me() {
+			if (state.unreachable) return undefined;
 			const u = signedInUser();
 			return u && !u.disabled ? { email: u.email, name: u.name, isAdmin: u.isAdmin } : null;
 		},
