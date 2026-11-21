@@ -85,8 +85,9 @@ describe('別人的改動', () => {
 		expect(screen.getByRole('status').textContent).toBe('王教練刪掉了你在改的動作「技巧·Lib」');
 	});
 
-	it('開著的段設定那一段被別人刪了：段設定關掉，說原因', async () => {
-		const s = await linOpens();
+	// 頁面的接線（段設定關掉、session 說是誰刪的）；只刪段、刪的不是開著的那一段在 editor-session.test.ts
+	it('開著的段設定那一段被別人刪了、連帶拿掉書籤：段設定關掉，兩件事都說', async () => {
+		const s = await linOpens(flowOf(addBookmark(libSample(), '翻騰', { segmentId: 's1', at: 0 }, null)));
 		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
 		expect(screen.getByRole('dialog', { name: '音樂 1 設定' })).toBeTruthy();
 		const w = s.joinAs('c1', wang.email);
@@ -95,17 +96,6 @@ describe('別人的改動', () => {
 		await flush();
 
 		expect(screen.queryByRole('dialog', { name: '音樂 1 設定' })).toBeNull();
-		expect(screen.getByRole('status').textContent).toBe('王教練刪掉了你在改的段');
-	});
-
-	it('開著的段設定那一段被別人刪了、連帶拿掉書籤：兩件事都說', async () => {
-		const s = await linOpens(flowOf(addBookmark(libSample(), '翻騰', { segmentId: 's1', at: 0 }, null)));
-		await fireEvent.click(screen.getByRole('button', { name: /^音樂 1/ }));
-		const w = s.joinAs('c1', wang.email);
-		await flush();
-		w.step({ name: 'deleteSegment', args: ['s1', { confirmed: true }] });
-		await flush();
-
 		expect(screen.getByRole('status').textContent).toBe('王教練刪掉了你在改的段；王教練改了段：書籤「翻騰」也拿掉了');
 	});
 

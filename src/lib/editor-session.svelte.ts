@@ -91,7 +91,7 @@ export type UpdateReason = 'open' | 'change' | 'record' | 'undo' | 'redo' | 'sel
  * 換成伺服器做出來的樣子（settle）、復原（undo）、重做（redo）。帶著只有那條路知道的（提示的字、是不是雲端的一步）。
  */
 type Swap =
-	| { why: 'open'; saved: boolean }
+	| { why: 'open'; saved: boolean; switched: boolean }
 	| { why: 'change'; label: string }
 	| { why: 'record' }
 	| { why: 'rejected'; message: string }
@@ -114,6 +114,14 @@ function freshView() {
 		/** 記錄頁「每天的成功率」看哪一組（或人），key 是動作 id；沒有、空字串是全部。 */
 		dailyWho: {} as Record<string, string>
 	};
+}
+
+/** 換上流程之後頁面收的通知（onswap）：後果在 session 算完，頁面拿它關掉指到不見的東西。 */
+export interface Swapped {
+	/** 換成另一支流程（開檔、新建、救回草稿、打開雲端流程）：頁面重開、對話框都關掉。同一支換成最新的、回到首頁不算。 */
+	switched: boolean;
+	/** 換上之前有、換上之後不見的段（id）。 */
+	lostSegments: string[];
 }
 
 const NO_PLAYBACK: SessionPlayback = { opened() {}, changed() {}, jump() {} };
@@ -340,9 +348,10 @@ export class EditorSession {
 	/**
 	 * 換一支流程（開檔、新建、救回草稿；null 是回到首頁）：清掉復原和重做、選取、提示、問題。
 	 * id 會跟上一支重複，所以選取和複製的站位全部清掉。saved = 從檔案開的，算存過。
+	 * switched = 換成另一支（頁面重開）；同一支換成最新的（離線副本換成伺服器上的）是 false。回到首頁不算換。
 	 */
-	open(flow: Flow | null, saved = false) {
-		this.#swap(flow, { why: 'open', saved });
+	open(flow: Flow | null, saved = false, switched = true) {
+		this.#swap(flow, { why: 'open', saved, switched: switched && !!flow });
 	}
 
 	/** 存好了：存的是 flow 這一份。 */
@@ -468,8 +477,11 @@ export class EditorSession {
 		this.#swap(flow, { why: 'settle' });
 	}
 
-	/** 套上別人的改動之後叫（頁面接上：開著的段設定指到被刪掉的段就關掉）。回傳要說的原因，跟書籤的提示併在一起。 */
-	onremote: (flow: Flow, by: string) => string | void = () => {};
+	/** 換上流程之後叫（每條路都叫，見 Swapped）：頁面接上，換了一支就重開、開著的段設定指到不見的段就關掉。 */
+	onswap: (swapped: Swapped) => void = () => {};
+
+	/** 頁面開著段設定的那一段（沒開是 null），頁面接上：別人刪了它，提示說「…刪掉了你在改的段」。 */
+	segmentOpen: () => string | null = () => null;
 
 	/**
 	 * 復原：換上前一份編排，帶著現在的紀錄，這一步清掉的紀錄加回來（本機流程，ADR 0007），提示「已復原：…」。
@@ -520,14 +532,16 @@ export class EditorSession {
 	/**
 	 * 換上流程只有這一個出口（#308 階段 1）。七條路（打開、改、記、被退回、別人改的、換成伺服器的樣子、復原／重做）
 	 * 做完自己那條的事（復原紀錄、送伺服器）就交給它換上；後果在這裡一次算完：算不算存過、選取修剪、問題收不收、
-	 * 播放要不要重排、在改的動作被刪了沒、哪些書籤因為段改了而不見，提示在這裡組一次。
+	 * 播放要不要重排、在改的動作被刪了沒、哪些書籤因為段改了而不見，提示在這裡組一次；頁面只收一個通知（onswap）。
 	 * 不管：復原紀錄怎麼記、送不送伺服器（各條路叫它之前自己做完）。
 	 */
 	#swap(flow: Flow | null, swap: Swap) {
 		const before = this.#flow;
 		const editing = this.selectedAction;
+		const segment = this.segmentOpen();
 		const { why } = swap;
 		this.#flow = flow;
+		const lostSegments = (before?.segments ?? []).filter((x) => !flow?.segments.some((y) => y.id === x.id)).map((x) => x.id);
 		if (why === 'open') {
 			// 換一支流程：跟上一支有關的全部清掉（id 會跟上一支重複）；從檔案開的算存過
 			this.#saved = swap.saved ? flow : null;
@@ -544,6 +558,7 @@ export class EditorSession {
 			this.#playback.opened();
 			this.onflow();
 			this.#updated('open');
+			this.onswap({ switched: swap.switched, lostSegments });
 			return;
 		}
 		if (!before || !flow) return;
@@ -555,6 +570,7 @@ export class EditorSession {
 			// 記：只換紀錄，選取、問題、播放、提示都不動
 			this.onflow();
 			this.#updated('record');
+			this.onswap({ switched: false, lostSegments });
 			return;
 		}
 
@@ -580,6 +596,7 @@ export class EditorSession {
 		}
 		this.onflow();
 		this.#updated(why === 'undo' || why === 'redo' ? why : 'change');
+		this.onswap({ switched: false, lostSegments });
 
 		// 提示：改段連帶拿掉的書籤每條路都說（不會悄悄不見）
 		const lost = lostText(before, flow);
@@ -600,10 +617,9 @@ export class EditorSession {
 			this.notice = said.length ? joinNotes(said) : '';
 		} else if (why === 'remote') {
 			const { by } = swap;
-			const closed = this.onremote(flow, by);
-			// 頁面關掉的東西、在改的動作被刪了、改段連帶拿掉了書籤：都要說
+			// 開著的段設定那一段被刪了（頁面收到通知關掉了）、在改的動作被刪了、改段連帶拿掉了書籤：都要說
 			const said = [
-				closed || null,
+				segment !== null && lostSegments.includes(segment) ? m.editor_remote_deleted_segment({ by }) : null,
 				editing && !this.#actionId ? m.session_remote_deleted_action({ by, action: whyText(actionWhy(editing)) }) : null,
 				lost ? m.session_remote_changed_segments({ by, what: lost }) : null
 			].filter((t) => t !== null);

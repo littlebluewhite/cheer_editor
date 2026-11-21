@@ -468,9 +468,16 @@
 	}
 
 
-	// 換成另一支流程（新建、開檔、救回草稿）：編排區和練習畫面重開（opened 的 {#key}）、對話框都關掉。
+	// 換上流程（每條路都通知一次）：開著的段設定指到不見的段就關掉（別人刪的由 session 說是誰）。
+	// 換成另一支流程（新建、開檔、救回草稿）：編排區和練習畫面重開（opened 的 {#key}，打到一半的書籤名字不帶過去）、對話框都關掉。
 	// 換上流程由編輯器 module 的流程檔做；選取、提示、session.view 由 session 清掉，播放停下、回到開頭由播放做（session.open 叫它）。
-	editor.file.onswitch = () => {
+	session.segmentOpen = () => openSegmentId;
+	session.onswap = ({ switched, lostSegments }) => {
+		if (openSegmentId && lostSegments.includes(openSegmentId)) {
+			playback.stopPreview();
+			openSegmentId = null;
+		}
+		if (!switched) return;
 		opened++;
 		me = session.flow ? loadFlowSetting('me', session.flow.name) : '';
 		tappedId = null;
@@ -485,20 +492,13 @@
 	};
 
 	function undo() {
-		if (session.undo()) restore(session.flow!);
+		session.undo();
 	}
 
 	function redo() {
-		if (session.redo()) restore(session.flow!);
+		session.redo();
 	}
 
-	// 別人的改動（雲端流程，#253）：開著的表單不關；開著的段設定指到被刪掉的段才關掉並說原因
-	session.onremote = (f, by) => {
-		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
-			restore(f);
-			return m.editor_remote_deleted_segment({ by });
-		}
-	};
 	/** 復原、重做按鈕的提示：下一步會退（做回）什麼、快捷鍵，和方向鍵連按移人只算一步。 */
 	function stepTitle(which: 'undo' | 'redo', label: string, keys: string) {
 		if (which === 'undo') return label ? m.editor_undo_step({ what: label, keys }) : m.editor_undo_step_bare({ keys });
@@ -521,14 +521,6 @@
 
 	/** 首頁雲端流程列的「N 筆沒傳」。 */
 	const unsentText = (n: number) => (n === 1 ? m.home_unsent_one : m.home_unsent)({ n });
-
-	/** 復原、重做換上的流程：開著的段設定可能指到已經不在的段（選取、提示、播放頭由 session、播放處理）。 */
-	function restore(f: Flow) {
-		if (openSegmentId && !f.segments.some((s) => s.id === openSegmentId)) {
-			playback.stopPreview();
-			openSegmentId = null;
-		}
-	}
 
 	/** 開檔：選檔欄位（Safari、iPad、Firefox）。 */
 	function open(e: Event) {
