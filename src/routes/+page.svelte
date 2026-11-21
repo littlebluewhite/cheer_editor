@@ -127,9 +127,23 @@
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
 	onMount(() => void home.load(isOnline()));
+	/** 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。 */
+	const account = $derived(home.account);
+	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：還沒拿到是 null；連不上伺服器 cloudError。 */
+	const myFlows = $derived(home.myFlows);
+	const cloudError = $derived(home.cloudError);
+	/** 這台還沒傳的成功率紀錄（#260）、離線副本（#261）、斷網時上次看到的雲端流程。 */
+	const unsentByFlow = $derived(home.unsentByFlow);
+	const copies = $derived(home.copies);
+	const copyIds = $derived(home.copyIds);
+	const knownCloudIds = $derived(home.knownCloudIds);
+	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
+	const unsentAtLogout = $derived(home.unsentAtLogout);
+	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
+	const logout = () => home.logout();
 	// 在首頁時（打開、回到首頁、網路換了）拿首頁要列的；離開首頁之後才回來的不算。
 	$effect(() => {
-		if (!home.account || flow) return;
+		if (!account || flow) return;
 		return home.refresh(online);
 	});
 
@@ -152,7 +166,7 @@
 	});
 	/** 新建表單建好了：登入、選存在雲端就請伺服器建一支打開它，不然跟以前一樣是本機流程。 */
 	function created(f: Flow) {
-		if (home.account && online && saveTo === 'cloud') void editor.file.createCloud(f);
+		if (account && online && saveTo === 'cloud') void editor.file.createCloud(f);
 		else editor.file.create(f);
 	}
 
@@ -992,7 +1006,7 @@
 				{/if}
 				<b title={flow.name}>{flow.name}</b>
 				<!-- 登入時本機流程寫「這台」：分得出這支只在這台電腦、還沒傳上雲端 -->
-				{#if home.account && !cloud && !linkOnly}<span class="here-tag" title={m.home_here_hint()}>{m.home_here()}</span>{/if}
+				{#if account && !cloud && !linkOnly}<span class="here-tag" title={m.home_here_hint()}>{m.home_here()}</span>{/if}
 				<!-- 「未存」的位置一直留著：出現時不把「編排｜練習」推走 -->
 				<span class="unsaved-slot"
 					>{#if cloud}{#if cloud.offline}<span class="cloud-offline">{editor.file.offlineAt !== null ? `⚠ ${m.editor_offline()}` : `⚠ ${m.editor_disconnected()}`}</span>{:else if !cloud.newVersion}<span class="cloud-saved"
@@ -1073,7 +1087,7 @@
 					{/if}
 				{:else}
 					<!-- 登入時存檔左邊：按了直接傳，不先問（傳上去不會弄丟東西） -->
-					{#if home.account}
+					{#if account}
 						<button type="button" class="ghost" title={m.editor_upload()} onclick={() => editor.file.upload()}
 							><Icon name="cloud" /><span class="upload-text">{m.editor_upload()}</span></button
 						>
@@ -1447,7 +1461,7 @@
 			<!-- 窄螢幕不能編：不放新建，最大的是「開啟流程檔」（docs/adr/0005-ipad-touch.md） -->
 			<p class="home-view-only"><Icon name="eye" />{m.home_view_only()}</p>
 		{:else}
-			<NewFlowForm oncreate={created} extra={home.account ? whereField : undefined} />
+			<NewFlowForm oncreate={created} extra={account ? whereField : undefined} />
 		{/if}
 		<div class="home-open">
 			{#if !narrow}<span>{m.home_have_file()}</span>{/if}
@@ -1497,7 +1511,7 @@
 	{/snippet}
 	{#if openingLink}
 		<p class="opening-link" role="status">{m.home_opening_link()}</p>
-	{:else if home.account}
+	{:else if account}
 		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->
 		<div class="home signed-in">
 			{#if editor.file.revoked}
@@ -1511,23 +1525,23 @@
 				<span class="brand">{m.app_name()}</span>
 				<LanguagePicker />
 				<a class="btn ghost" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />{m.editor_guide()}</a>
-				<AccountMenu me={home.account} onlogout={() => home.logout()} />
+				<AccountMenu me={account} onlogout={logout} />
 			</header>
 			<div class="home-lists">
 				<section class="area" aria-labelledby="cloud-title">
 					<h2 id="cloud-title">{m.home_cloud()}</h2>
 					{#if !online}
 						<!-- 斷網（#261）：只列這台留著的離線副本，時間換成這台的是什麼時候的樣子 -->
-						{@const mineCopies = home.copies.filter((c) => c.role === 'owner')}
-						{@const sharedCopies = home.copies.filter((c) => c.role !== 'owner')}
-						{@const hidden = home.knownCloudIds.filter((id) => !home.copyIds.has(id)).length}
+						{@const mineCopies = copies.filter((c) => c.role === 'owner')}
+						{@const sharedCopies = copies.filter((c) => c.role !== 'owner')}
+						{@const hidden = knownCloudIds.filter((id) => !copyIds.has(id)).length}
 						<p class="offline-bar">{m.home_offline_bar()}</p>
 						{#snippet copyRow(c: OfflineCopy)}
 							<li>
 								<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.flowId)}>
 									<span class="recent-name">{c.name}</span>
 									<span class="recent-meta">{m.home_copy_time({ time: draftTime(new Date(c.savedAt)) })}</span>
-									{#if home.unsentByFlow[c.flowId]}<span class="unsent-count">{unsentText(home.unsentByFlow[c.flowId])}</span>{/if}
+									{#if unsentByFlow[c.flowId]}<span class="unsent-count">{unsentText(unsentByFlow[c.flowId])}</span>{/if}
 									<span class="copy-tag">{m.home_offline_ok()}</span>
 								</button>
 							</li>
@@ -1548,16 +1562,16 @@
 					{:else}
 						<h3 id="mine-title">{m.home_mine()}</h3>
 						<ul class="cloud-list" aria-labelledby="mine-title">
-							{#if home.cloudError}
+							{#if cloudError}
 								<li class="empty">{m.home_cloud_error()}</li>
-							{:else if home.myFlows}
-								{#each home.myFlows.mine as c (c.id)}
+							{:else if myFlows}
+								{#each myFlows.mine as c (c.id)}
 									<li>
 										<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
 											<span class="recent-name">{c.name}</span>
 											<span class="recent-meta">{m.home_edited_at({ time: draftTime(new Date(c.updatedAt)) })}</span>
-											{#if home.unsentByFlow[c.id]}<span class="unsent-count">{unsentText(home.unsentByFlow[c.id])}</span>{/if}
-											{#if home.copyIds.has(c.id)}<span class="copy-tag">{m.home_offline_ok()}</span>{/if}
+											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentText(unsentByFlow[c.id])}</span>{/if}
+											{#if copyIds.has(c.id)}<span class="copy-tag">{m.home_offline_ok()}</span>{/if}
 										</button>
 									</li>
 								{:else}
@@ -1565,10 +1579,10 @@
 								{/each}
 							{/if}
 						</ul>
-						{#if home.myFlows}
+						{#if myFlows}
 							<h3 id="shared-title">{m.home_shared()}</h3>
 							<ul class="cloud-list" aria-labelledby="shared-title">
-								{#each home.myFlows.shared as c (c.id)}
+								{#each myFlows.shared as c (c.id)}
 									<li>
 										<button type="button" class="recent-open" onclick={() => editor.file.openCloud(c.id)}>
 											<span class="recent-name">{c.name}</span>
@@ -1577,8 +1591,8 @@
 													? m.home_shared_meta_disabled({ owner: c.ownerName, time: draftTime(new Date(c.updatedAt)) })
 													: m.home_shared_meta({ owner: c.ownerName, role: ROLE_NAMES[c.role], time: draftTime(new Date(c.updatedAt)) })}</span
 											>
-											{#if home.unsentByFlow[c.id]}<span class="unsent-count">{unsentText(home.unsentByFlow[c.id])}</span>{/if}
-											{#if home.copyIds.has(c.id)}<span class="copy-tag">{m.home_offline_ok()}</span>{/if}
+											{#if unsentByFlow[c.id]}<span class="unsent-count">{unsentText(unsentByFlow[c.id])}</span>{/if}
+											{#if copyIds.has(c.id)}<span class="copy-tag">{m.home_offline_ok()}</span>{/if}
 										</button>
 									</li>
 								{:else}
@@ -1611,7 +1625,7 @@
 			<div class="home-top">
 				<LanguagePicker />
 				<a class="btn home-guide" href={guideHref} target="_blank" rel="noopener"><Icon name="help" />{m.editor_guide()}</a>
-				{#if home.account === null && !OLD_SITE}
+				{#if account === null && !OLD_SITE}
 					<a class="btn" href={resolve('/login')}>{m.home_login()}</a>
 				{/if}
 			</div>
@@ -1707,8 +1721,8 @@
 		{/snippet}
 	</Modal>
 {/if}
-{#if home.unsentAtLogout}
-	<UnsentLogout flows={home.unsentAtLogout} onstay={() => home.stay()} ondiscard={() => home.signOut(true)} />
+{#if unsentAtLogout}
+	<UnsentLogout flows={unsentAtLogout} onstay={() => home.stay()} ondiscard={() => home.signOut(true)} />
 {/if}
 {#if leavingUnsent}
 	{@const n = leavingUnsent}
