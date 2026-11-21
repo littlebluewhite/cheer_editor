@@ -32,7 +32,7 @@ import {
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import { flowOf } from '#lib/test-flows.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
 import { m } from '#lib/paraglide/messages.js';
 import { Editor, type EditorAdapters } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES } from '#lib/music-library.svelte.js';
@@ -1252,6 +1252,40 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 		flow
 	);
 	return { editor, session: editor.session, saves, videoSaves, videoEncoder };
+}
+
+/**
+ * 在 Node（不畫編輯頁）打開一支雲端流程（#310）：假伺服器上林教練登入，打開他的「測試」（c1，預設 libSample），
+ * 王教練是編輯者（還沒打開；要他在別的地方打開就 `joinAs('c1', wang.email)`）。
+ * 回假伺服器的全部把手（state.flows[0].flow 是伺服器上的樣子）、編輯器 module、session、林教練的房間（room）、兩個人。
+ * cloud 換掉那支流程的其他欄位（例：records、people）；adapters 跟 testEditor 一樣（server 用這個假伺服器）。
+ */
+export async function cloudEditor(cloud: Partial<FakeCloudFlow> = {}, adapters: Partial<EditorAdapters> = {}) {
+	const pw = '我們這一隊今年一定會贏 go go';
+	const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: pw };
+	const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: pw };
+	const fake = fakeServer({
+		users: [lin, wang],
+		signedIn: lin.email,
+		flows: [
+			{
+				id: 'c1',
+				owner: lin.email,
+				flow: libSample(),
+				updatedAt: new Date(2026, 10, 7).toISOString(),
+				people: { [wang.email]: 'editor' },
+				...cloud
+			}
+		]
+	});
+	const open = fake.server.openRoom.bind(fake.server);
+	let room: FlowRoom | null = null;
+	fake.server.openRoom = (id) => (room ??= open(id));
+	const t = testEditor(null, { ...adapters, server: fake.server });
+	await t.editor.file.openCloud('c1');
+	await flush();
+	fake.server.openRoom = open;
+	return { ...fake, ...t, room: room!, lin, wang };
 }
 
 /** 等 async 的存檔、開檔跑完。 */
