@@ -1,5 +1,5 @@
 // 雲端流程一步一步存（#248，ADR 0010、0014）：流程檔打開雲端流程時建一個，換流程就關掉。
-// 連這支流程的房間，先打招呼（指紋、分頁 id、上次看到第幾步、在編輯還是檢視）。session 改好的一步交給它（session.onstep）：
+// 連這支流程的房間，先打招呼（指紋、分頁 id、上次看到第幾步、在編輯還是檢視）。session 改好的一步交給它（雲端的復原紀錄 undoLog 送來）：
 // 畫面先改、不等伺服器；一次送一步，伺服器收了才送下一步。
 // 被退回：還沒送的步一起不要，畫面換成伺服器的樣子，原因放進提示。指紋不一樣：有新版，請重新整理，先不能改。
 // 權限（#250）：記錄者、檢視者只能看；被降級馬上換檢視模式、還沒送到的步不算並提示；被收回叫 onrevoked（回首頁）。
@@ -12,7 +12,8 @@
 // 伺服器先補上斷線期間別人的改動（補不上就給現在的樣子），再說可以送步，這時把還沒送到的步再送（步驟 id 擋重複）。
 // 每一步帶它做的時候看到第幾步：補上的別人的改動不會讓伺服器以為我看過了。
 // 復原、重做（#256）：session 交來的復原也是一步（送要放回去的樣子），照順序送；被退回時伺服器說完整的原因
-// （例：「王教練後來改過，這步不能復原」）。被退回、沒送到的步從復原、重做紀錄拿掉（session.dropSteps）。
+// （例：「王教練後來改過，這步不能復原」）。被退回、沒送到的步從復原、重做紀錄拿掉（undoLog.drop）。
+// 復原紀錄（#308 階段 2，undoLog）是這裡的：打開時交給 session，關掉時換回本機的。
 // 成功率紀錄（#257，ADR 0011）：記一次（session 的「記」交給 onrecord）把新的那幾次送進同一個房間，不算一步。
 // 伺服器回收了的（換成伺服器存的樣子）和沒存進去的（從畫面拿掉，列進紅條的表，按「知道了」才清）；
 // 別人記的馬上放進畫面，記號後面寫名字。檢視者不能記。
@@ -52,7 +53,9 @@ import {
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import { joinSentences, type AlreadyRecorded, type CloudStep, type DroppedRecord, type EditorSession } from '#lib/editor-session.svelte.js';
+import { CloudUndo, type CloudStep } from '#lib/cloud-undo-log.svelte.js';
+import { joinSentences, type AlreadyRecorded, type DroppedRecord, type EditorSession } from '#lib/editor-session.svelte.js';
+import { LocalUndo } from '#lib/undo-log.svelte.js';
 import { canEdit, ROLE_NAMES } from '#lib/role-names.js';
 import { m as t } from '#lib/paraglide/messages.js';
 import { reasonText, whyText } from '#lib/reason-text.js';
@@ -108,6 +111,13 @@ export class CloudSteps {
 	readonly #session: EditorSession;
 	/** 這支流程的練習的權限（打開時交給 session）。 */
 	readonly practice = new CloudPractice();
+	/**
+	 * 這支流程的復原紀錄（打開時交給 session）：改好的一步、復原、重做交來排隊送。
+	 * 指令裡可能有畫面上的狀態（例：動作表單的人）：排進去時拿掉 $state，收了前一步重跑時 structuredClone 才不會出錯。
+	 */
+	readonly undoLog = new CloudUndo((s, label, before, after) =>
+		this.#push({ ...($state.snapshot(s) as CloudStep), label, seen: this.#seen, before, after })
+	);
 	/** 還沒被伺服器收的步和它改了什麼、改之前、改之後（第一個送出去了，等它回答）。 */
 	#queue = $state.raw<Queued[]>([]);
 	/** 伺服器說可以送步了（指紋對）。 */
@@ -186,6 +196,7 @@ export class CloudSteps {
 		this.role = role;
 		this.#keep = keep;
 		session.practice = this.practice;
+		session.undoLog = this.undoLog;
 		this.#lock();
 		if (keep?.saved) {
 			for (const u of keep.saved.records) this.#unsent.set(u.record.attempt.id, u);
@@ -198,9 +209,6 @@ export class CloudSteps {
 		room.onconnection = (connected, why) => (connected ? this.#hello() : this.#lost(why ?? 'offline'));
 		this.#editing = !session.viewing && canEdit(role);
 		this.#hello();
-		// 指令裡可能有畫面上的狀態（例：動作表單的人）：排進去時拿掉 $state，收了前一步重跑時 structuredClone 才不會出錯
-		session.onstep = (s, label, before, after) =>
-			this.#push({ ...($state.snapshot(s) as CloudStep), label, seen: this.#seen, before, after });
 		session.onrecord = (before, after) => this.#recorded(before, after);
 	}
 
@@ -355,10 +363,10 @@ export class CloudSteps {
 		this.#room.onmessage = () => {};
 		this.#room.onconnection = () => {};
 		this.#room.close();
-		this.#session.onstep = null;
 		this.#session.onrecord = null;
 		this.#session.readOnly = '';
 		if (this.#session.practice === this.practice) this.#session.practice = ALL_ALLOWED;
+		if (this.#session.undoLog === this.undoLog) this.#session.undoLog = new LocalUndo();
 		this.synced.clear();
 	}
 
@@ -508,7 +516,7 @@ export class CloudSteps {
 			if (m.change === undefined) this.#server = null;
 			else {
 				this.#heardChange(m.step, m.change as RemoteChange);
-				this.#session.acceptedAs(m.stepId, m.change as RemoteChange);
+				this.undoLog.acceptedAs(m.stepId, m.change as RemoteChange);
 				this.#settle = true;
 			}
 			this.#saw(m.step);
@@ -573,7 +581,7 @@ export class CloudSteps {
 	/** 還沒被伺服器收的步都不算：清掉，也從復原、重做紀錄拿掉。回傳清掉的步。 */
 	#dropQueue(): Queued[] {
 		const dropped = this.#queue;
-		this.#session.dropSteps(dropped.map((s) => s.id));
+		this.undoLog.drop(dropped.map((s) => s.id));
 		this.#queue = [];
 		return dropped;
 	}
