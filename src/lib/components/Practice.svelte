@@ -42,11 +42,11 @@
 		{ key: 'summary', label: t.practice_page_summary() }
 	] as const);
 	/** 不能記（雲端流程的檢視者）只有總表。 */
-	const PAGES = $derived(session.cannotRecord ? ALL_PAGES.filter((p) => p.key === 'summary') : ALL_PAGES);
+	const PAGES = $derived(session.practice.cannotRecord ? ALL_PAGES.filter((p) => p.key === 'summary') : ALL_PAGES);
 	/** 在哪一頁：放在 session，切到編排再回來還是這一頁（不能記的只有總表）。 */
 	const page = $derived(PAGES.some((p) => p.key === session.view.practicePage) ? session.view.practicePage : PAGES[0].key);
 	/** 沒存進去的紀錄（雲端流程）。 */
-	const dropped = $derived(session.droppedRecords);
+	const dropped = $derived(session.practice.droppedRecords);
 
 	/** 最晚選到今天（未來還沒練）。 */
 	const today = localDate();
@@ -71,7 +71,7 @@
 		</div>
 		<label class="date">{t.practice_date()}<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
-	{#if cloud && (!session.cannotRecord || unsent)}
+	{#if cloud && (!session.practice.cannotRecord || unsent)}
 		{#if cloud.link === 'offline'}
 			<p class="bar warn" role="status">
 				{unsent ? (unsent === 1 ? t.practice_offline_unsent_one : t.practice_offline_unsent)({ n: unsent }) : t.practice_offline()}
@@ -110,7 +110,7 @@
 						>
 					</p>
 				{/if}
-				<button type="button" onclick={() => (cloud ? cloud.dismissDropped() : (session.droppedRecords = []))}>{t.practice_got_it()}</button>
+				<button type="button" onclick={() => cloud?.dismissDropped()}>{t.practice_got_it()}</button>
 			</div>
 			<table>
 				<thead
