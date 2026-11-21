@@ -67,3 +67,10 @@ describe('鍵盤路由只有一份定義（G）', () => {
 		expect(linesMatching(/closest\(\s*['"`]\s*(input|textarea|select)\b/)).toEqual([]);
 	});
 });
+
+describe('書籤的畫面不自己比秒數（#308 階段 3）', () => {
+	it('Bookmarks.svelte 沒有自己寫的誤差數字、不自己換秒數來比：問播放 module 和流程核心', () => {
+		const file = [join(SRC, 'lib/components/Bookmarks.svelte')];
+		expect(linesMatching(/\d+e-\d+|0\.0\d|Math\.abs|toSeconds/, file)).toEqual([]);
+	});
+});

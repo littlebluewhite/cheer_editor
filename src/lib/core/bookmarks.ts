@@ -10,15 +10,18 @@ import {
 	BOOKMARK_EDGES,
 	canonical,
 	onGrid,
+	REPEAT_EDGES,
 	samePairs,
 	samePlace,
+	type AnchoredRange,
 	type RangeSeconds
 } from './anchored-range';
+import type { Action } from './action-types';
 import { same as sameContent, type Flow } from './flow';
 import { newId } from './ids';
 import { blocked, ok, type CommandResult } from './result';
 import { tooLong } from './text-length';
-import type { TimePosition } from './time';
+import { EPS, toSeconds, type TimePosition } from './time';
 import { said, type Why } from './why';
 
 export interface Bookmark {
@@ -51,6 +54,18 @@ export function bookmarkSeconds(flow: Flow, bm: Pick<Bookmark, 'a' | 'b'>): Rang
 /** 在同一個地方（A、B 照秒數比）的書籤，一對一對，照清單的先後。 */
 export function sameBookmarks(flow: Flow): [Bookmark, Bookmark][] {
 	return samePairs(flow, bookmarksOf(flow), BOOKMARK_EDGES);
+}
+
+/** 跟重複範圍在同一個地方（A、B 照秒數比）的書籤：播放 module 問「哪個書籤正在播」用。範圍不完整（只有 A）就沒有。 */
+export function bookmarkOfRange(flow: Flow, range: AnchoredRange): Bookmark | undefined {
+	if (!range.b) return undefined;
+	return samePlace(flow, bookmarksOf(flow), range, BOOKMARK_EDGES, REPEAT_EDGES);
+}
+
+/** 開始剛好在 a 的動作（照秒數比，交界兩種寫法都算）：存書籤時名字先填它的名字。 */
+export function bookmarkAction(flow: Flow, a: TimePosition): Action | undefined {
+	const sec = toSeconds(flow, a);
+	return flow.actions.find((x) => Math.abs(toSeconds(flow, { segmentId: x.segmentId, at: x.start }) - sec) < EPS);
 }
 
 /**

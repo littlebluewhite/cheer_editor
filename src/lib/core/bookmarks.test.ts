@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+	addAction,
 	addBookmark,
+	addMembers,
 	addSegment,
+	bookmarkAction,
 	bookmarkSeconds,
 	checkFlowDocument,
 	createFlow,
@@ -88,6 +91,26 @@ describe('addBookmark', () => {
 		expect(addBookmark(flow, '開場 2', at('s1', 0), null)).toMatchObject({ kind: 'blocked' });
 		// A 一樣、B 不一樣：可以
 		expect(addBookmark(flow, '前半', at('s1', 0), at('s1', 16)).kind).toBe('ok');
+	});
+
+	it('要存的段不見了（打名字時被刪）：擋下，不帶別的書籤的 id（段不見時秒數不會算成 0 撞到開頭的書籤）', () => {
+		const flow = flowOf(addBookmark(sample(), '開頭', at('s1', 0), null));
+		const r = addBookmark(flow, '第三段', at('s3', 0), null);
+		expect(r.kind).toBe('blocked');
+		expect(r).not.toHaveProperty('bookmarkId');
+	});
+});
+
+describe('bookmarkAction', () => {
+	it('A 剛好是動作的開頭（交界兩種寫法都算）：是那個動作；半拍也比得到；不是就沒有', () => {
+		let flow = flowOf(addMembers(sample(), [{ name: '小A', gender: 'F', globalRole: 'top' }]));
+		const members = [{ memberId: 'm1', role: '騰翻' }];
+		flow = flowOf(addAction(flow, { segmentId: 's2', category: 'tumbling', name: '後空翻', start: 0, length: 8, note: '', members }));
+		flow = flowOf(addAction(flow, { segmentId: 's1', category: 'dance', name: '半拍', start: 9, length: 3, note: '', members }));
+		expect(bookmarkAction(flow, at('s2', 0))?.name).toBe('後空翻');
+		expect(bookmarkAction(flow, at('s1', 32))?.name).toBe('後空翻');
+		expect(bookmarkAction(flow, at('s1', 9))?.name).toBe('半拍');
+		expect(bookmarkAction(flow, at('s1', 8))).toBeUndefined();
 	});
 });
 

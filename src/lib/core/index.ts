@@ -274,12 +274,15 @@ export {
 	anchoredSeconds,
 	BOOKMARK_EDGES,
 	REPEAT_EDGES,
+	samePosition,
 	type AnchoredRange,
 	type AnchorEdges,
 	type RangeSeconds
 } from './anchored-range';
 export {
 	addBookmark,
+	bookmarkAction,
+	bookmarkOfRange,
 	bookmarkSeconds,
 	bookmarksOf,
 	deleteBookmark,

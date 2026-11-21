@@ -86,15 +86,24 @@ export function canonical<T extends AnchoredRange>(flow: Flow, range: T): T {
 	return { ...range, a, b };
 }
 
-/** list 裡跟 range 在同一個地方（A、B 照秒數比）的第一個；range 放不下就沒有。 */
+/**
+ * list 裡跟 range 在同一個地方（A、B 照秒數比）的第一個；range 放不下就沒有。
+ * rangeEdges：range 跟 list 不是同一種時（例：拿重複範圍找書籤），range 的邊界照它。
+ */
 export function samePlace<T extends AnchoredRange>(
 	flow: Flow,
 	list: T[],
 	range: AnchoredRange,
-	edges: AnchorEdges
+	edges: AnchorEdges,
+	rangeEdges: AnchorEdges = edges
 ): T | undefined {
-	const s = anchoredSeconds(flow, range, edges);
+	const s = anchoredSeconds(flow, range, rangeEdges);
 	return s ? list.find((x) => sameSeconds(anchoredSeconds(flow, x, edges), s)) : undefined;
+}
+
+/** 兩頭寫的是不是同一格（同一段、同一個格數；不是照秒數比，交界的兩種寫法算不一樣）。有一個沒有就不是。 */
+export function samePosition(p: TimePosition | null | undefined, q: TimePosition | null | undefined): boolean {
+	return !!p && !!q && p.segmentId === q.segmentId && Math.abs(p.at - q.at) < EPS;
 }
 
 /** list 裡在同一個地方的，一對一對，照清單的先後；放不下的不算。 */
