@@ -339,12 +339,12 @@ mod tests {
                 whole
             );
 
-            /// 跑 3 次暖身、再跑 15 次：中位數、最慢（毫秒）。
-            fn timed(mut once: impl FnMut()) -> (f64, f64) {
+            /// 跑 3 次暖身、再跑 25 次：最快、中位數、最慢（毫秒）。
+            fn timed(mut once: impl FnMut()) -> (f64, f64, f64) {
                 for _ in 0..3 {
                     once();
                 }
-                let mut ms: Vec<f64> = (0..15)
+                let mut ms: Vec<f64> = (0..25)
                     .map(|_| {
                         let start = Instant::now();
                         once();
@@ -352,7 +352,26 @@ mod tests {
                     })
                     .collect();
                 ms.sort_by(f64::total_cmp);
-                (ms[ms.len() / 2], ms[ms.len() - 1])
+                (ms[0], ms[ms.len() / 2], ms[ms.len() - 1])
+            }
+
+            // 量尺：ADR 0013 量的做法（整支含紀錄的流程跑 runCommandsJson），當時本機 rename 23 ms、insertBeats 52 ms。
+            // 這台機器現在忙不忙，看這兩個數字比當時多幾倍。
+            let whole_flow: String = ctx
+                .eval("JSON.stringify(C.putRecords(big.flow, big.records))")
+                .unwrap();
+            for kind in ["rename", "insertBeats"] {
+                let commands: String = ctx
+                    .eval(format!("JSON.stringify(COMMANDS.{kind})"))
+                    .unwrap();
+                let (min, median, max) = timed(|| {
+                    let args = (whole_flow.clone(), commands.clone(), "new".to_owned());
+                    let out = call(&ctx, "runCommandsJson", args).unwrap();
+                    assert!(out.starts_with(r#"{"kind":"ok""#));
+                });
+                println!(
+                    "量尺 runCommands（ADR 0013 的做法）{kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms"
+                );
             }
 
             // 現在伺服器做的：runStepJson（復原是 runUndoJson），再 remoteChangeJson（兩次進出 QuickJS）。
@@ -362,7 +381,7 @@ mod tests {
                 let commands: String = ctx
                     .eval(format!("JSON.stringify(COMMANDS.{kind} ?? null)"))
                     .unwrap();
-                let (median, max) = timed(|| {
+                let (min, median, max) = timed(|| {
                     let (before, out) = if kind == "undo" {
                         let out = call(&ctx, "runUndoJson", (renamed.clone(), records.clone(), undo.clone()));
                         (&renamed, out.unwrap())
@@ -380,7 +399,9 @@ mod tests {
                     let after: Outcome = serde_json::from_str(&out).unwrap();
                     call(&ctx, "remoteChangeJson", (before.clone(), after.flow.get().to_owned())).unwrap();
                 });
-                println!("現在 runStep+remoteChange {kind}: 中位數 {median:.1} ms，最慢 {max:.1} ms");
+                println!(
+                    "現在 runStep+remoteChange {kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms"
+                );
             }
 
             for n in [0, 100, 1_000, 5_000] {
@@ -389,12 +410,12 @@ mod tests {
                         continue;
                     }
                     let ask: String = ctx.eval(format!("ask({n}, '{kind}')")).unwrap();
-                    let (median, max) = timed(|| {
+                    let (min, median, max) = timed(|| {
                         let out = call(&ctx, "takeStepJson", (ask.clone(),)).unwrap();
                         assert!(out.starts_with(r#"{"kind":"accepted""#), "{}", &out[..300.min(out.len())]);
                     });
                     println!(
-                        "takeStep 步驟紀錄 {n} 筆（{} bytes）{kind}: 中位數 {median:.1} ms，最慢 {max:.1} ms",
+                        "takeStep 步驟紀錄 {n} 筆（{} bytes）{kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms",
                         ask.len()
                     );
                 }
