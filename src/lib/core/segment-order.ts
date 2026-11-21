@@ -4,7 +4,8 @@
 // 沒有的話開頭那張自己搬過去：換順序時整張搬，刪段時位置換成那一刻大家所在的地方。站位不會變多。
 
 import { actionWhy } from './action-types';
-import { bookmarksIn, bookmarksOf } from './bookmarks';
+import { afterSplit } from './anchored-range';
+import { bookmarkSeconds, bookmarksOf } from './bookmarks';
 import type { Flow } from './flow';
 import { positionsAt, withWalks, type Formation } from './formation';
 import { newId } from './ids';
@@ -27,7 +28,9 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 	const droppedFormations = flow.formations.filter(
 		(f, i) => f.segmentId === segmentId && !(i === 0 && !takenOver)
 	);
-	const droppedBookmarks = bookmarksIn(flow, segmentId);
+	// 書籤：段拿掉之後放不下的（A 或 B 在這段）
+	const segments = flow.segments.toSpliced(index, 1);
+	const droppedBookmarks = bookmarksOf(flow).filter((b) => !bookmarkSeconds({ ...flow, segments }, b));
 	if (!answered(option) && (droppedActions.length || droppedFormations.length || droppedBookmarks.length)) {
 		const records = recordCount(droppedActions);
 		const label = labelWhy(segmentSpans(flow)[index]);
@@ -41,7 +44,6 @@ export function deleteSegment(flow: Flow, segmentId: string, option: ConfirmOpti
 			...droppedBookmarks.map((b): Why => ({ code: 'segment_order_item_bookmark', name: b.name }))
 		]);
 	}
-	const segments = flow.segments.toSpliced(index, 1);
 	const actions = flow.actions.filter((a) => a.segmentId !== segmentId);
 	const used = new Set(segments.map((s) => (s.kind === 'music' ? s.audioId : null)));
 	const audio = flow.audio.filter((a) => used.has(a.id));
@@ -97,11 +99,7 @@ export function splitSegment(flow: Flow, segmentId: string, sec: number): Comman
 		a.segmentId === segmentId && a.start >= cut ? { ...a, segmentId: id, start: a.start - cut } : a
 	);
 	// 書籤：開始在切點以後的搬過去；結尾剛好在切點的是前一段的段尾，留著
-	const bookmarks = flow.bookmarks?.map((bm) => ({
-		...bm,
-		a: moved(bm.a),
-		b: bm.b && bm.b.at > cut ? moved(bm.b) : bm.b
-	}));
+	const bookmarks = flow.bookmarks?.map((bm) => afterSplit(bm, segmentId, cut, id));
 	return ok({ ...flow, segments, formations, actions, ...(bookmarks && { bookmarks }) });
 }
 

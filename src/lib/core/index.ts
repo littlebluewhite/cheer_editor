@@ -271,9 +271,16 @@ export { deleteSegment, moveSegment, splitSegment } from './segment-order';
 
 export { insertBeats } from './insert-beats';
 export {
+	anchoredSeconds,
+	BOOKMARK_EDGES,
+	REPEAT_EDGES,
+	type AnchoredRange,
+	type AnchorEdges,
+	type RangeSeconds
+} from './anchored-range';
+export {
 	addBookmark,
 	bookmarkSeconds,
-	bookmarksIn,
 	bookmarksOf,
 	deleteBookmark,
 	renameBookmark,

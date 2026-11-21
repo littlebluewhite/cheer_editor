@@ -6,8 +6,11 @@ import { said, zh, type Said, type Why, type WhyParam } from './why';
 export type CommandResult<Extra extends object = object> =
 	/** 成功：新的流程。有些指令多帶一點結果（例：新加的那一筆的 id），寫在 Extra。 */
 	| ({ kind: 'ok'; flow: Flow } & Extra)
-	/** 被擋：流程沒變，message 是給教練看的原因（改成代號的多帶 why，見 why.ts）。 */
-	| ({ kind: 'blocked' } & Said)
+	/**
+	 * 被擋：流程沒變，message 是給教練看的原因（改成代號的多帶 why，見 why.ts）。
+	 * bookmarkId：新增書籤撞到同一個地方已經有的書籤時，是那個書籤的 id（資料，不是字）。
+	 */
+	| ({ kind: 'blocked'; bookmarkId?: string } & Said)
 	/**
 	 * 要確認：這樣改會連帶刪掉別的東西（段縮短、刪人）。流程沒變；
 	 * 給教練看 message 和 items（會被刪掉的清單），按確定就帶 { confirmed: true } 再送一次同一個指令。
