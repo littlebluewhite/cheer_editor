@@ -227,8 +227,8 @@
 					<ol class="marks">
 						{#each day.marks as m, i (i)}
 							<li class:run={m.runThrough} title={m.mark.includes(NOT_YET_MARK) ? whyText(NOT_YET_TITLE) : undefined}>
-								{m.mark}{#if m.runThrough}<small>{t.practice_full_out()}</small>{/if}{#if session.recordedBy[m.id]}<small class="by"
-										>{session.recordedBy[m.id]}</small
+								{m.mark}{#if m.runThrough}<small>{t.practice_full_out()}</small>{/if}{#if session.practice.recordedBy[m.id]}<small class="by"
+										>{session.practice.recordedBy[m.id]}</small
 									>{/if}
 							</li>
 						{/each}

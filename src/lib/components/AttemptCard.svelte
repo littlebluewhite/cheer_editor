@@ -192,12 +192,12 @@
 		);
 	}
 
-	/** 自己記的（本機流程全是自己的；雲端流程別人記的、沒有記的人的在 session.recordedBy 裡）。 */
-	const mine = (r: Attempt) => !(r.id in session.recordedBy);
+	/** 自己記的（本機流程全是自己的；雲端流程別人記的、沒有記的人的在 session.practice.recordedBy 裡）。 */
+	const mine = (r: Attempt) => !(r.id in session.practice.recordedBy);
 	/** 「刪掉（我的）上一次」刪的那一次：這天自己最後記的一次分段練。 */
 	const lastMine = $derived(today.findLast((r) => r.practice === 'drill' && mine(r)));
 	/** 記錄者點到別人記的那一次：不能改、刪，寫是誰記的。 */
-	const othersOnly = $derived(edited && session.ownRecordsOnly && !mine(edited) ? edited : null);
+	const othersOnly = $derived(edited && session.practice.ownRecordsOnly && !mine(edited) ? edited : null);
 
 	function removeLast() {
 		const last = lastMine!;
@@ -289,7 +289,7 @@
 							aria-expanded={editing === r.id}
 							aria-label={t.practice_edit_rep_kind({ n: i + 1, kind, marks: text })}
 							onclick={() => openEdit(r)}>{text}</button
-						>{#if session.recordedBy[r.id]}<small class="by">{session.recordedBy[r.id]}</small>{/if}{#if session.unsentRecords.has(r.id)}<small
+						>{#if session.practice.recordedBy[r.id]}<small class="by">{session.practice.recordedBy[r.id]}</small>{/if}{#if session.practice.unsentRecords.has(r.id)}<small
 								class="unsent">{t.practice_unsent()}</small
 							>{/if}
 					</li>
@@ -302,8 +302,8 @@
 			type="button"
 			class="undo-last"
 			disabled={!lastMine}
-			title={session.sharedRecords ? t.practice_remove_mine_title() : t.practice_remove_last_title()}
-			onclick={removeLast}>{session.sharedRecords ? t.practice_remove_mine() : t.practice_remove_last()}</button
+			title={session.practice.sharedRecords ? t.practice_remove_mine_title() : t.practice_remove_last_title()}
+			onclick={removeLast}>{session.practice.sharedRecords ? t.practice_remove_mine() : t.practice_remove_last()}</button
 		>
 	</footer>
 	{#if edited}
@@ -328,7 +328,7 @@
 				</div>
 			{/each}
 			{#if othersOnly}
-				{@const by = session.recordedBy[othersOnly.id]}
+				{@const by = session.practice.recordedBy[othersOnly.id]}
 				<p class="hint">{by ? t.practice_recorded_by({ name: by }) : t.practice_recorded_from_file()}</p>
 			{/if}
 			<div class="edit-row">

@@ -31,7 +31,7 @@
 	const online = $derived(!!cloud && cloud.link === 'online' && !cloud.offline);
 	/** 有人在記、自己不在表裡的全上。 */
 	const others = $derived(
-		session.cannotRecord ? [] : (cloud?.runs ?? []).filter((r) => r.people.length && !r.people.some((p) => p.me))
+		session.practice.cannotRecord ? [] : (cloud?.runs ?? []).filter((r) => r.people.length && !r.people.some((p) => p.me))
 	);
 	/** 按了「＋ 記一次全上」、有人在記：問加入還是開新的。 */
 	let asking = $state<RunView | null>(null);
@@ -72,10 +72,10 @@
 
 	/** 記錄者（雲端流程）：這天自己記過的最後一次全上是第幾次、自己在那次記的那幾次的 id；沒有是 null。 */
 	const myLastRun = $derived.by(() => {
-		if (!session.ownRecordsOnly) return null;
+		if (!session.practice.ownRecordsOnly) return null;
 		const runs = runThroughsOn(flow, date);
 		const mine = flow.actions.flatMap(
-			(a) => a.successRate?.records.filter((r) => r.date === date && r.runThroughId && !(r.id in session.recordedBy)) ?? []
+			(a) => a.successRate?.records.filter((r) => r.date === date && r.runThroughId && !(r.id in session.practice.recordedBy)) ?? []
 		);
 		for (let n = runs.length - 1; n >= 0; n--) {
 			const ids = mine.filter((r) => r.runThroughId === runs[n]).map((r) => r.id);
@@ -123,7 +123,7 @@
 {/if}
 <div class="run">
 	<button type="button" class="primary" onclick={record}>{t.run_through_record_button()}</button>
-	{#if session.ownRecordsOnly}
+	{#if session.practice.ownRecordsOnly}
 		<button type="button" disabled={!myLastRun} title={t.run_through_remove_mine_title()} onclick={removeMyRun}
 			>{t.run_through_remove_mine()}</button
 		>
