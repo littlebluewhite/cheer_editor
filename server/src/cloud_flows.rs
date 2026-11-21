@@ -76,7 +76,7 @@ pub struct CloudFlow {
 
 /// 流程核心不收時（422）的原因：中文，和代號（流程核心的 Why，ADR 0017；還沒改成代號的原因沒有）。
 /// 一步被退回（flow_room 的 SentBack）也用它帶流程核心的原因。
-#[derive(Serialize, TS, Debug)]
+#[derive(Serialize, Deserialize, TS, Debug)]
 #[ts(export)]
 pub struct FlowBlocked {
     pub message: String,

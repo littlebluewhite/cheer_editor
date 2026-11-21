@@ -77,6 +77,7 @@ export function uploadFlowJson(doc: string): string {
 /**
  * 雲端流程的復原、重做（#256）：flow 是現在的樣子、records 是分開存的紀錄（StoredAttempt[] 的 JSON）、
  * change 是要放回去的樣子（RemoteChange 的 JSON）。回 runUndo 的結果的 JSON（跟 runStepJson 一樣的樣子）。
+ * 伺服器收步改叫 takeStepJson 之後（ADR 0018）只剩 flow_core.rs 的 room_step_timing 用它量 #323 以前的做法。
  */
 export function runUndoJson(flow: string, records: string, change: string): string {
 	return JSON.stringify(

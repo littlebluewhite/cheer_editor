@@ -1,4 +1,4 @@
-// 「這一步收不收」（#315，ADR 0010、0014、0007）：跟 Rust 伺服器 flow_room.rs 的 take_step 同一套規則。
+// 「這一步收不收」（#315，ADR 0010、0014、0007、0018）：假伺服器和 Rust 伺服器都叫它，規則只有這一份。
 import { describe, expect, it } from 'vitest';
 import {
 	addBookmark,

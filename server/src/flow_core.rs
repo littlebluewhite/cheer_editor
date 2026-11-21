@@ -158,16 +158,14 @@ impl FlowCore {
         async move { result.await? }
     }
 
-    /// 雲端流程的復原、重做（`runUndoJson`，#256）：records 同 run_step，change 是要放回去的樣子（RemoteChange 的 JSON）。
-    /// 放回去之後跑整份流程檢查；回的 JSON 跟 run_step 一樣（不合規則是 blocked 和原因）。
-    pub fn run_undo(
+    /// 這一步收不收（`takeStepJson`，ADR 0018）：ask 是流程核心 StepAsk 的 JSON（現在的編排、第幾步、紀錄、
+    /// 步驟紀錄、現在、送的人、送來的步），回 StepVerdict 的 JSON（收過、退回和原因，或收了和要存的）。
+    pub fn take_step(
         &self,
-        flow: String,
-        records: String,
-        change: String,
+        ask: String,
     ) -> impl Future<Output = Result<String, CoreError>> + use<> {
         let result = self.submit(move |ctx| {
-            call(ctx, "runUndoJson", (flow, records, change))
+            call(ctx, "takeStepJson", (ask,))
                 .catch(ctx)
                 .map_err(|e| CoreError::Js(e.to_string()))
         });
@@ -283,7 +281,7 @@ mod tests {
         }
     }
 
-    /// 量「這一步收不收」（takeStepJson，#315）在 QuickJS 一步要多久，跟現在伺服器做的（runStepJson + remoteChangeJson）比。
+    /// 量「這一步收不收」（takeStepJson，#315）在 QuickJS 一步要多久，跟 #323 以前伺服器做的（runStepJson + remoteChangeJson）比。
     /// 約 1 MB 的流程（tests/fixtures/big-flow.js），步驟紀錄 0、100、1,000、5,000 筆。只印數字、不比時間（機器不同），
     /// 所以平常不跑：`cargo test --release --lib -- --ignored --nocapture room_step_timing`。結果寫在 ADR 0018。
     #[test]
@@ -374,7 +372,7 @@ mod tests {
                 );
             }
 
-            // 現在伺服器做的：runStepJson（復原是 runUndoJson），再 remoteChangeJson（兩次進出 QuickJS）。
+            // #323 以前伺服器做的：runStepJson（復原是 runUndoJson），再 remoteChangeJson（兩次進出 QuickJS）。
             let renamed: String = ctx.globals().get("RENAMED").unwrap();
             let undo: String = ctx.eval("JSON.stringify(UNDO)").unwrap();
             for kind in ["rename", "insertBeats", "undo"] {
@@ -400,7 +398,7 @@ mod tests {
                     call(&ctx, "remoteChangeJson", (before.clone(), after.flow.get().to_owned())).unwrap();
                 });
                 println!(
-                    "現在 runStep+remoteChange {kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms"
+                    "#323 以前 runStep+remoteChange {kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms"
                 );
             }
 
