@@ -208,9 +208,11 @@ describe('編輯 session：流程和復原', () => {
 
 	it('換一支流程：記錄頁每張卡選的「這次練」清掉，不會套到新流程裡 id 一樣的動作', () => {
 		const s = new EditorSession(sampleFlow());
-		s.drillScopes['x1'] = { whole: false, picked: ['p1'] };
+		const card = () => s.drill.card(s.flow!.actions[0], 'g1', '2026-11-05', s.recordAsk());
+		card().pick('p1', true);
+		expect(card().picked).toEqual(['p1']);
 		s.open(sampleFlow());
-		expect(s.drillScopes).toEqual({});
+		expect(card().picked).toEqual([]);
 	});
 });
 

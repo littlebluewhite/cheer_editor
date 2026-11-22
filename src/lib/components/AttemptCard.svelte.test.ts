@@ -199,7 +199,7 @@ describe('記錄頁的卡', () => {
 		const flow = ratedSample();
 		const { session, name } = setup(flow, 1);
 		const { who } = attemptWhos(flow, flow.actions[1])[0];
-		session.drillScopes[`${flow.actions[1].id} ${who}`] = { whole: false, picked: [] };
+		session.drill.card(flow.actions[1], who, DATE, session.recordAsk()).setWhole(false);
 		await tap(name, '翻法 騰翻', '成功');
 		expect(records(session, 1).map((r) => r.whole)).toEqual([true]);
 	});
@@ -497,6 +497,33 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		await tap(name, '中段 B', '失敗');
 		await tap(name, '中段 C', '失敗');
 		expect(records(session, 1)).toEqual([]);
+		await tap(name, '中段 D', '成功');
+		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✗', p6: '✓', p7: '✗' }]);
+	});
+
+	it('B ✗ 再 C ✗ 之後換頁再回來：照舊只等跟 C 佔同樣拍的 D，打完 D 就存', async () => {
+		const members = [
+			{ memberId: 'm1', role: '上層' },
+			{ memberId: 'm2', role: '主底' }
+		];
+		let flow = flowOf(
+			addAction(libSample(), { segmentId: 's1', category: 'pyramid', name: '金字塔', start: 32, length: 32, note: '', members })
+		);
+		for (const [name, at, len] of [['A', 0, 4], ['B', 2, 10], ['D', 4, 4], ['C', 6, 8]] as const) {
+			flow = flowOf(addPhase(flow, 'x2', { kind: 'hold', name, beats: { at, len } }));
+		}
+		const { editor, session } = testEditor(flow);
+		const action = flow.actions[1];
+		const { who, name: label, people } = attemptWhos(flow, action)[0];
+		const name = whyText(label);
+		const props = { editor, component: AttemptCard, props: { action, who, name, people, date: DATE } };
+		const first = render(TestSession, { props });
+		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
+		for (const n of ['A', 'B', 'D', 'C']) await fireEvent.click(screen.getByRole('checkbox', { name: `中段 ${n}` }));
+		await tap(name, '中段 B', '失敗');
+		await tap(name, '中段 C', '失敗');
+		first.unmount();
+		render(TestSession, { props: { ...props, props: { ...props.props, action: session.flow!.actions[1] } } });
 		await tap(name, '中段 D', '成功');
 		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✗', p6: '✓', p7: '✗' }]);
 	});
