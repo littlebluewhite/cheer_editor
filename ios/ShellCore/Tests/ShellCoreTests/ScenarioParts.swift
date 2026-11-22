@@ -45,6 +45,7 @@ final class ScenarioShell {
             DraftsPart(folder: drafts, outbox: outbox),
 
             // #380
+            SitePart(site: SiteAddress.production),
 
             // #389
             nowPlaying,

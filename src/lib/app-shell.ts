@@ -3,6 +3,7 @@
 
 import { swapHost, type Shell } from '#lib/host.js';
 import { DRAFTS_FEATURE, shellDraftStore } from '#lib/shell-drafts.js';
+import { appSite } from '#lib/app-site.js';
 
 /**
  * 殼一開始塞的：殼的版本、建置號（網頁的清單的 minShellBuild 比這個）、會什麼（「問殼」can() 的名字）。
@@ -52,5 +53,6 @@ export function useShellIfInApp(): (() => void) | undefined {
 		...(bridge.boot.features.includes(DRAFTS_FEATURE) && { createDraftStore: () => shellDraftStore(appShell(bridge)) }),
 
 		// #380（網站網址）
+		...appSite(bridge.boot),
 	});
 }

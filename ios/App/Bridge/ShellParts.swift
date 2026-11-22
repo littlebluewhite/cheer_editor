@@ -15,6 +15,7 @@ enum ShellParts {
             DraftsPart.inApp(outbox: context.outbox),
 
             // #380
+            SitePart(site: AppSite.current),
 
             // #389
             NowPlayingPart.onLockScreen(context.outbox),

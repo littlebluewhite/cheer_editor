@@ -1,0 +1,10 @@
+{
+	"about": "殼代網頁上網（#380，ADR 0023）：網頁照舊 fetch('/api/…')，殼從自訂網址轉到自己的網站，登入 cookie 留在殼裡。轉送不經過橋，所以這裡只有一開始塞的網站網址（分享連結、雲端流程用）。",
+	"scenarios": [
+		{
+			"name": "一開始告訴網頁殼轉到哪個網站",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": [], "siteUrl": "https://littlebluewhite.com/" },
+			"steps": [{ "from": "web", "name": "ready", "reply": null }]
+		}
+	]
+}
