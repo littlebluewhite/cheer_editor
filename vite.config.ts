@@ -4,6 +4,7 @@ import { withPwa } from '@vite-pwa/sveltekit';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { bundleCore } from './scripts/core-bundle.mjs';
+import { sourceVersion } from './scripts/web-bundle.mjs';
 import { thirdPartyLicenses } from './scripts/third-party-licenses.ts';
 
 export default defineConfig({
@@ -38,7 +39,9 @@ export default defineConfig({
 				// 200.html：沒有預先建好的路徑，Rust 伺服器回這頁，讓前端自己處理路由（server/src/lib.rs）。
 				adapter: adapter({ fallback: '200.html' }),
 				// GitHub Pages 放在 /cheer_editor/ 底下；部署時由 BASE_PATH 帶入，本機開發是 /。
-				paths: { base: base() }
+				paths: { base: base() },
+				// 版本名字用原始碼的指紋，不用建置當下的時間：同一個 commit 建兩次，網頁的清單一樣（scripts/web-bundle.mjs）。
+				version: { name: sourceVersion() }
 			},
 			{
 				// 新版部署後，使用者重新整理：新 service worker 裝好就自動再載入一次，拿到新版。

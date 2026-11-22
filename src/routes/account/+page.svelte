@@ -8,7 +8,8 @@
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
-	import { createIndexedDbOfflineStore, unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
+	import { host } from '#lib/host.js';
+	import { unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
 	import {
 		httpServer,
 		tooManyTriesText,
@@ -27,7 +28,7 @@
 		/** 離線存放（#260）：登出前看這台還有沒有沒傳的紀錄；測試放假的。 */
 		offline?: OfflineStore;
 	}
-	let { server = httpServer(), go = (url) => location.assign(url), offline = createIndexedDbOfflineStore() }: Props = $props();
+	let { server = httpServer(), go = (url) => location.assign(url), offline = host().createOfflineStore() }: Props = $props();
 
 	/** 跟伺服器一樣：至少 15 個看得到的字。 */
 	const MIN = 15;
