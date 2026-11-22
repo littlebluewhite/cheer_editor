@@ -547,12 +547,13 @@ async fn a_joined_undo_ignores_a_joined_step_already_undone(db: sqlx::PgPool) {
     assert_accepted(&step(&mut a, "rename-1", 1, rename("決賽")).await);
     // 復原改名字（記下復原了 rename-1），再自己改短一次
     assert_accepted(&undo(&mut a, "undo-1", 2, "rename-1", false, name_back(LONG)).await);
-    let undid: Option<Vec<String>> =
-        sqlx::query_scalar("SELECT undid FROM flow_steps WHERE flow_id = $1 AND step_id = 'undo-1'")
-            .bind(&id)
-            .fetch_one(&s.state.db)
-            .await
-            .unwrap();
+    let undid: Option<Vec<String>> = sqlx::query_scalar(
+        "SELECT undid FROM flow_steps WHERE flow_id = $1 AND step_id = 'undo-1'",
+    )
+    .bind(&id)
+    .fetch_one(&s.state.db)
+    .await
+    .unwrap();
     assert_eq!(undid, Some(vec!["rename-1".to_string()]));
     assert_accepted(&step(&mut a, "rename-2", 3, rename("決賽")).await);
     let after = s.flow(&wang, &id).await["flow"].clone();
