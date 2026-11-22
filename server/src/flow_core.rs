@@ -144,6 +144,7 @@ impl FlowCore {
 
     /// 雲端流程跑一步（`runStepJson`，ADR 0011）：records 是分開存的紀錄（StoredAttempt[] 的 JSON），
     /// 先放回 flow 再跑 commands，跑完拿出來。成功時結果的 flow 不帶紀錄，records 是跑完還在的紀錄。
+    /// 伺服器的改、刪、救回現在叫 amend_records（#351）；這個只留給 `records_timing.rs` 量 #351 以前的做法。
     pub fn run_step(
         &self,
         flow: String,
@@ -187,6 +188,17 @@ impl FlowCore {
                 .map_err(|e| CoreError::Js(e.to_string()))
         });
         async move { result.await? }
+    }
+
+    /// 改、刪、救回（`amendRecordsJson`，#351，ADR 0018）：flow 是現在的編排的 JSON（存著的原樣），
+    /// ask 是流程核心 AmendAsk 其他欄位的 JSON（第幾步、權限、送的人、送來的、那幾次），
+    /// 回 AmendOutcome 的 JSON（清掉、改成、救回成的、用手動過的、要告訴別人的）。
+    pub fn amend_records(
+        &self,
+        flow: String,
+        ask: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        self.call_two("amendRecordsJson", flow, ask)
     }
 
     /// 收紀錄時照「記一次」的規則檢查（`checkRecordsJson`）：records 是 StoredAttempt[] 的 JSON，

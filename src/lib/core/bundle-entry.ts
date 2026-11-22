@@ -49,6 +49,7 @@ export function applyRemoteChangeJson(flow: string, change: string): string {
  * 雲端流程跑一步（ADR 0011）：先把分開存的紀錄（records，StoredAttempt[] 的 JSON）放回編排，跑完再拿出來。
  * 成功時結果的 flow 是不帶紀錄的編排，多一個 records：跑完還在的紀錄（清掉的不在、記號可能少了），
  * 和 keys、watch：這一步記下的鍵、要查別的分頁改過沒有的鍵（stepKeys，#254）。
+ * #351 以前伺服器的改、刪、救回每筆叫它一次；現在伺服器叫 amendRecordsJson，這個只留給伺服器量時間比以前的做法。
  */
 export function runStepJson(flow: string, records: string, commands: string, stepId: string): string {
 	const before = JSON.parse(flow) as Flow;
@@ -108,9 +109,10 @@ export function receiveRecordsJson(flow: string, ask: string): string {
 }
 
 /**
- * 改、刪、救回（#350）：ask 是 AmendAsk 的 JSON（現在的編排、第幾步、送的人的權限、他是誰、要改刪救回的、伺服器上那幾次），
+ * 改、刪、救回（#350、#351）：flow 是現在的編排的 JSON（伺服器存著的原樣，另外一個參數，跟 receiveRecordsJson 一樣），
+ * ask 是 AmendAsk 其他欄位的 JSON（第幾步、送的人的權限、他是誰、要改刪救回的、伺服器上那幾次），
  * 回 amendRecords 的結果（AmendOutcome）的 JSON。
  */
-export function amendRecordsJson(ask: string): string {
-	return JSON.stringify(amendRecords(JSON.parse(ask) as AmendAsk));
+export function amendRecordsJson(flow: string, ask: string): string {
+	return JSON.stringify(amendRecords({ ...(JSON.parse(ask) as Omit<AmendAsk, 'flow'>), flow: JSON.parse(flow) as Flow }));
 }
