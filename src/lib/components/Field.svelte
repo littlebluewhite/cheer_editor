@@ -87,7 +87,7 @@
 		tapped = null,
 		ontap,
 		playing = false,
-		people = null
+		peopleBounds = null
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -131,7 +131,7 @@
 		/** 正在播放：只能看的場地放大了又標了「我」，畫面跟著「我」。 */
 		playing?: boolean;
 		/** 整支流程大家站過的地方（見 eightCountView）：只能看的場地沒放大時多一顆「只看有人的地方」，放大到這裡（四周留 CROP_MARGIN）。 */
-		people?: Rect | null;
+		peopleBounds?: Rect | null;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -198,6 +198,12 @@
 	let zoom = $state(1);
 	/** 放大時畫面中心（公尺）；null = 整個場地的中心。 */
 	let center = $state<Position | null>(null);
+	/**
+	 * 這次放大跟著「我」（#331）。開關只在這幾個地方：setZoom（從整個場地放大打開、回整個場地關掉）、
+	 * fitPeople（「只看有人的地方」不跟）、使用者自己移動畫面就關掉（panTo、onwheel 平移、兩根手指），
+	 * 兩根手指放開時比按下時放大了（endPinch）是又放大一次，打開。
+	 */
+	let follow = $state(false);
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
 	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
@@ -207,6 +213,8 @@
 		const m = CROP_MARGIN;
 		return { x: r.x - m, y: r.y - m, width: r.width + 2 * m, height: r.height + 2 * m };
 	};
+	/** 一個畫面：放大幾倍、中心在哪（公尺）。 */
+	type ZoomView = { zoom: number; center: Position };
 	const view = $derived.by(() => {
 		if (crop) return padded(crop);
 		const width = full.width / zoom;
@@ -216,6 +224,7 @@
 		const y = clamp(cy - height / 2, full.y, full.y + full.height - height);
 		return { x, y, width, height };
 	});
+	const viewCenter = $derived<Position>([view.x + view.width / 2, view.y + view.height / 2]);
 
 	/**
 	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
@@ -394,10 +403,10 @@
 
 	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
-		// 從整個場地放大：這次放大跟著「我」；回整個場地就關掉，下次放大再打開。
-		if (zoom === 1 && z > 1) follow = true;
+		// 從整個場地放大：這次放大跟著「我」（兩根手指捏的放開時才算，見 endPinch）；回整個場地就關掉，下次放大再打開。
+		if (zoom === 1 && z > 1 && !pinching) follow = true;
 		if (z === 1) follow = false;
-		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
+		const c = viewCenter;
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
 			? [anchor[0] + ((c[0] - anchor[0]) * zoom) / z, anchor[1] + ((c[1] - anchor[1]) * zoom) / z]
@@ -419,9 +428,9 @@
 	 * 「只看有人的地方」：放大幾倍、中心在哪，剛好包住大家站過的地方（超出整個場地的部分不算）。
 	 * 沒有人站好、或放大不了（範圍沒有比整個場地小）是 null，不出現這顆。
 	 */
-	const peopleFit = $derived.by(() => {
-		if (!people) return null;
-		const r = padded(people);
+	const peopleFit = $derived.by((): ZoomView | null => {
+		if (!peopleBounds) return null;
+		const r = padded(peopleBounds);
 		const x0 = Math.max(r.x, full.x);
 		const y0 = Math.max(r.y, full.y);
 		const x1 = Math.min(r.x + r.width, full.x + full.width);
@@ -431,15 +440,12 @@
 	});
 
 	/** 放大到「只看有人的地方」：這個畫面本來就包住大家走過的地方，不跟著「我」。 */
-	function fitPeople(fit: { zoom: number; center: Position }) {
-		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
-		setZoom(fit.zoom, undefined, [c[0] - fit.center[0], c[1] - fit.center[1]]);
+	function fitPeople(fit: ZoomView) {
+		setZoom(fit.zoom, undefined, [viewCenter[0] - fit.center[0], viewCenter[1] - fit.center[1]]);
 		follow = false;
 	}
 
 	// ---------- 放大後播放，畫面跟著「我」（只能看的場地） ----------
-	/** 這次放大跟著「我」：從整個場地放大時打開，用手指（滑鼠、觸控板）移動畫面就關掉（setZoom 管開關）。 */
-	let follow = $state(false);
 	/** 「我」離畫面邊緣不到畫面寬（高）的這麼多，畫面才跟過去：不必每一拍都把他放正中間。 */
 	const FOLLOW_EDGE = 0.2;
 	/** 標的「我」（只標一個人才算）。 */
@@ -455,9 +461,10 @@
 	 */
 	function keepInView([px, py]: Position) {
 		const { x, y, width: w, height: h } = view;
-		const over = (p: number, lo: number, size: number) =>
+		/** 超出離邊緣 FOLLOW_EDGE 那條線多少（公尺，往小的那邊是負的；在線裡面是 0）。 */
+		const pastEdge = (p: number, lo: number, size: number) =>
 			Math.min(p - (lo + size * FOLLOW_EDGE), 0) + Math.max(p - (lo + size * (1 - FOLLOW_EDGE)), 0);
-		const [dx, dy] = [over(px, x, w), over(py, y, h)];
+		const [dx, dy] = [pastEdge(px, x, w), pastEdge(py, y, h)];
 		if (dx || dy) setZoom(zoom, undefined, [-dx, -dy]);
 	}
 
@@ -492,6 +499,10 @@
 	const fingers = new Map<number, [number, number]>();
 	/** 兩指操作中；放開到一根也不接著拖人，要全部放開。 */
 	let pinching = false;
+	/** 兩指按下時放大幾倍：放開時比這大，是又放大一次（endPinch）。 */
+	let pinchFrom = 1;
+	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
+	const PINCH_ZOOMED = 1.1;
 
 	function midAndSpan(): { mid: [number, number]; span: number } {
 		const [[ax, ay], [bx, by]] = [...fingers.values()];
@@ -514,7 +525,15 @@
 
 	function liftFinger(e: PointerEvent) {
 		fingers.delete(e.pointerId);
-		if (fingers.size === 0) pinching = false;
+		if (fingers.size === 0 && pinching) {
+			pinching = false;
+			endPinch();
+		}
+	}
+
+	/** 兩根手指都放開：從整個場地放大、或比按下時放大了，是又放大一次，跟著「我」；只移動畫面（倍數差不多）就不跟。 */
+	function endPinch() {
+		follow = zoom > 1 && (pinchFrom === 1 || zoom >= pinchFrom * PINCH_ZOOMED);
 	}
 
 	/** 螢幕 1 px 是幾公尺（現在的倍數）。 */
@@ -652,8 +671,9 @@
 		if (e.pointerType === 'touch' && (controls || look)) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
-				// 第二根手指：不拖人、不框選，改成捏合。已經放大了，兩指是自己動畫面：這次放大不再跟著「我」。
-				if (zoom > 1) follow = false;
+				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
+				if (!pinching) pinchFrom = zoom;
+				follow = false;
 				pinching = true;
 				drag = null;
 				box = null;

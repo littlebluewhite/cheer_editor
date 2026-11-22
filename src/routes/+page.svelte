@@ -268,7 +268,7 @@
 	/** 手機的檢視畫面場地外圍框外的號碼條留多寬（公尺）：比電腦的窄，場地畫得比較大；站在外圍邊上的人會蓋到條號、格號。 */
 	const PHONE_NUMBER_BAND = 0.7;
 	/** 整支流程大家站過的地方：只能看的場地的「只看有人的地方」放大到這裡。只跟著流程重算，播放時範圍不變。 */
-	const peopleView = $derived(flow ? eightCountView(flow) : null);
+	const peopleBounds = $derived(flow ? eightCountView(flow) : null);
 	/** 手機的檢視畫面點到的人：場地左下角寫他的名字和這個八拍做什麼。點空白處、切到練習、換流程、換版面就收掉。 */
 	let tappedId = $state<string | null>(null);
 	/** 點到的人的八拍表：只跟著流程和點到誰重算，播放頭動不用重算。 */
@@ -1140,7 +1140,7 @@
 							tapped={tappedWho ? tappedId : null}
 							ontap={(id) => (tappedId = id)}
 							playing={playback.playing}
-							people={peopleView}
+							{peopleBounds}
 							ghosts={trail.ghosts}
 							walks={trail.walks}
 							clashes={trail.clashes}
@@ -1202,7 +1202,7 @@
 					rail={session.editable}
 					marked={!session.editable && myId ? [myId] : []}
 					playing={playback.playing}
-					people={peopleView}
+					{peopleBounds}
 					ghosts={trail.ghosts}
 					walks={trail.walks}
 					clashes={trail.clashes}
