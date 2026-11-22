@@ -497,17 +497,22 @@ pub async fn record(
         .await
     {
         Ok(json) => serde_json::from_str(&json)?,
-        // 流程核心自己出錯（不是 receiveRecords 不收的）：送來的每筆都當看不懂
+        // 流程核心自己出錯（不是 receiveRecords 不收的）：收過的照樣回存著的那一筆（收過、後來清掉的兩邊都不放），
+        // 新的都當看不懂；同一批重複的 id 只算第一筆
         Err(err) => {
-            tracing::warn!(error = %err, "流程核心跑 receiveRecords 出錯，當看不懂這一串");
-            let dropped = ids
-                .iter()
-                .map(|id| RecordRefusal::NotUnderstood.dropped((*id).to_owned()))
-                .collect();
-            return Ok(RoomMessage::RecordsSaved {
-                saved: vec![],
-                dropped,
-            });
+            tracing::warn!(error = %err, "流程核心跑 receiveRecords 出錯，新的當看不懂");
+            let mut seen = HashSet::new();
+            ids.iter()
+                .filter(|id| seen.insert(**id))
+                .map(|id| match known.iter().find(|k| k.id() == *id) {
+                    Some(k) if !k.gone => RecordVerdict::Again { id: (*id).into() },
+                    Some(_) => RecordVerdict::Skipped,
+                    None => RecordVerdict::Refused {
+                        id: (*id).into(),
+                        why: RecordRefusal::NotUnderstood,
+                    },
+                })
+                .collect()
         }
     };
 
@@ -798,3 +803,7 @@ async fn insert(
 #[cfg(test)]
 #[path = "records_timing.rs"]
 mod timing;
+
+#[cfg(test)]
+#[path = "records_tests.rs"]
+mod tests;
