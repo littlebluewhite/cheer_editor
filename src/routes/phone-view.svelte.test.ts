@@ -447,6 +447,54 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		expect(await playThrough(opened)).not.toContain(false);
 	});
 
+	/** 兩根手指：一根按在 (0, 0)，另一根從 (100, 0) 移到 (x, 0)，再一起放開（放大 x / 100 倍）。 */
+	async function pinchTo(x: number) {
+		const two = (id: number, cx: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: cx, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(2, x));
+		await fireEvent.pointerUp(stage(), two(2, x));
+		await fireEvent.pointerUp(stage(), two(1, 0));
+	}
+
+	it('從整個場地用兩根手指放大、播放：跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await pinchTo(300);
+		const before = viewBox();
+		await playThrough(opened);
+		expect(viewBox()).not.toEqual(before);
+	});
+
+	it('從整個場地用兩根手指放大一點點（不到 1.1 倍）、播放：照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await pinchTo(105);
+		const before = viewBox();
+		await playThrough(opened);
+		expect(viewBox()).not.toEqual(before);
+	});
+
+	it('跟著的時候用兩根手指縮小一點（還沒回整個場地）、播放：不跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await pinchTo(80);
+		const before = viewBox();
+		await playThrough(opened);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('拖過之後用兩根手指縮回整個場地，再點兩下放大、播放：又會跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await drag();
+		await pinchTo(10);
+		await zoomIn();
+		expect(await playThrough(opened)).not.toContain(false);
+	});
+
 	it('沒選「我」放大播放：畫面不動', async () => {
 		const opened = await openOnPhone(walkingFlow());
 		await zoomIn();

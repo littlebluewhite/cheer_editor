@@ -198,15 +198,17 @@
 	let zoom = $state(1);
 	/** 放大時畫面中心（公尺）；null = 整個場地的中心。 */
 	let center = $state<Position | null>(null);
+	/** 這次放大後使用者自己移動過畫面（拖、滾輪平移、兩根手指只移動或縮小）。回整個場地才清掉。 */
+	let movedByHand = $state(false);
+	/** 正在看「只看有人的地方」，還沒在裡面再放大。回整個場地、在裡面兩根手指再放大（endPinch）清掉。 */
+	let fitted = $state(false);
+	/** 兩根手指按著：捏的時候畫面不跟，放開再看。放開到一根也不接著拖人，要全部放開。 */
+	let pinching = $state(false);
 	/**
-	 * 這次放大跟著「我」（#331）。開關只在這幾個地方：setZoom（從整個場地放大打開、回整個場地關掉）、
-	 * fitPeople（「只看有人的地方」不跟）、使用者自己移動畫面就關掉（panTo、onwheel 平移、兩根手指），
-	 * 兩根手指放開時比按下時放大了（endPinch）：原本就在跟、或在沒動過的「只看有人的地方」裡，是又放大一次，打開；
-	 * 自己移動過畫面就不再打開，要回整個場地再放大。
+	 * 這次放大跟著「我」（#331）：只看這幾件事，不在別的地方開關。
+	 * 放大了、沒在捏、這次放大沒自己移動過畫面、不是還沒在裡面再放大的「只看有人的地方」。
 	 */
-	let follow = $state(false);
-	/** 正在看「只看有人的地方」，還沒自己移動過、放大過畫面：在裡面兩根手指再放大才跟（endPinch）。 */
-	let fitted = false;
+	const follow = $derived(zoom > 1 && !pinching && !movedByHand && !fitted);
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
 	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
@@ -406,9 +408,8 @@
 
 	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
-		// 從整個場地放大：這次放大跟著「我」（兩根手指捏的放開時才算，見 endPinch）；回整個場地就關掉，下次放大再打開。
-		if (zoom === 1 && z > 1 && !pinching) follow = true;
-		if (z === 1) follow = fitted = false;
+		// 回整個場地：這次放大的事都清掉，下次放大重新跟著「我」。
+		if (z === 1) movedByHand = fitted = false;
 		const c = viewCenter;
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
@@ -445,7 +446,6 @@
 	/** 放大到「只看有人的地方」：這個畫面本來就包住大家走過的地方，不跟著「我」。 */
 	function fitPeople(fit: ZoomView) {
 		setZoom(fit.zoom, undefined, [viewCenter[0] - fit.center[0], viewCenter[1] - fit.center[1]]);
-		follow = false;
 		fitted = true;
 	}
 
@@ -485,7 +485,7 @@
 	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
 	function panTo(e: PointerEvent) {
 		// 真的拖了才不再跟著「我」：點一下看是誰時手抖幾 px 不算。
-		if (!press || !still(e, press.client)) follow = fitted = false;
+		if (!press || !still(e, press.client)) movedByHand = true;
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
 		pan = [e.clientX, e.clientY];
@@ -501,12 +501,8 @@
 	// ---------- 兩根手指：捏合放大縮小、一起拖移動畫面（iPad）。只有一根時照舊點人、拖人、框選。 ----------
 	/** 按在場上的每根手指（pointerId → 螢幕座標）。 */
 	const fingers = new Map<number, [number, number]>();
-	/** 兩指操作中；放開到一根也不接著拖人，要全部放開。 */
-	let pinching = false;
 	/** 兩指按下時放大幾倍：放開時比這大，是又放大一次（endPinch）。 */
 	let pinchFrom = 1;
-	/** 兩指按下時這次放大在跟著「我」嗎（捏的時候先關掉，放開再看）。 */
-	let pinchFollowed = false;
 	/** 兩指按下後手指動過嗎：沒動過就放開，是放上去而已，照原樣（拖走再拖回原處也算動過）。 */
 	let pinchMoved = false;
 	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
@@ -541,17 +537,13 @@
 	}
 
 	/**
-	 * 兩根手指都放開：從整個場地放大是又放大一次，跟著「我」；已經放大時比按下時放大了，原本在跟、或在沒動過的
-	 * 「只看有人的地方」裡才跟（自己移動過畫面就不跟）。只移動畫面（倍數差不多）就不跟。
+	 * 兩根手指都放開：從整個場地放大、或比按下時放大了，是又放大一次（在「只看有人的地方」裡就開始跟）；
+	 * 只移動畫面、縮小，算自己移動過畫面。放上去沒動、縮回整個場地（已經清掉）：照原樣。
 	 */
 	function endPinch() {
-		if (!pinchMoved) {
-			follow = pinchFollowed;
-			return;
-		}
-		const zoomedIn = zoom >= pinchFrom * PINCH_ZOOMED;
-		follow = zoom > 1 && (pinchFrom === 1 || (zoomedIn && (pinchFollowed || fitted)));
-		fitted = false;
+		if (!pinchMoved || zoom === 1) return;
+		if (pinchFrom === 1 || zoom >= pinchFrom * PINCH_ZOOMED) fitted = false;
+		else movedByHand = true;
 	}
 
 	/** 螢幕 1 px 是幾公尺（現在的倍數）。 */
@@ -580,7 +572,7 @@
 		}
 		if (zoom <= 1) return;
 		e.preventDefault();
-		follow = fitted = false;
+		movedByHand = true;
 		const [px, py] = e.shiftKey && !dx ? [dy, 0] : [dx, dy];
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [-px * perPx, -py * perPx]);
@@ -714,8 +706,7 @@
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
 				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
-				if (!pinching) [pinchFrom, pinchFollowed, pinchMoved] = [zoom, follow, false];
-				follow = false;
+				if (!pinching) [pinchFrom, pinchMoved] = [zoom, false];
 				pinching = true;
 				drag = null;
 				box = null;
