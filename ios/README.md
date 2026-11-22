@@ -88,7 +88,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`cloudMusic`（殼代傳雲端流程的音樂，#382；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 

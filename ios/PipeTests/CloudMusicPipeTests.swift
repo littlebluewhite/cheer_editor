@@ -16,6 +16,9 @@ final class FakeR2Site: @unchecked Sendable {
     private var started = false
     private(set) var port: UInt16 = 0
     private var stored: [String: Data] = [:]
+    private var seenList: [(target: String, headers: [String])] = []
+    /// 收到的每個請求：原封不動的路徑和查詢字串、標頭（小寫）。
+    var seen: [(target: String, headers: [String])] { queue.sync { seenList } }
 
     init() async throws {
         listener = try NWListener(using: .tcp, on: .any)
@@ -57,6 +60,7 @@ final class FakeR2Site: @unchecked Sendable {
             let body = got.count - split.upperBound
             if method == "PUT" && path.hasPrefix("/drop") && body > 0 { c.cancel(); return }
             if body < length, !end { self.read(c, got); return }
+            self.seenList.append((target: String(parts[1]), headers: lines.dropFirst().map { $0.lowercased() }))
             self.answer(c, method: method, path: path, body: Data(got[split.upperBound...]))
         }
     }
@@ -112,6 +116,10 @@ struct CloudMusicPipeTests {
         #expect(got.first as? Int == 200)
         #expect(got.dropFirst().first as? Int == size)
         #expect(got.dropFirst(2).first as? Bool == true)
+        // 預簽網址一個字不差到 R2（簽名靠它）；不帶 cookie、網頁的網址
+        let seen = r2.seen
+        #expect(seen.map(\.target) == Array(repeating: "/music/flows/f%2F1/a1.mp3?X-Amz-Signature=ab%2Bcd", count: 2))
+        #expect(!seen.flatMap(\.headers).contains { $0.hasPrefix("cookie:") || $0.hasPrefix("origin:") || $0.hasPrefix("referer:") })
         print("#382 60 MB 經過殼（模擬器、本機假 R2）：上傳 \(got.dropFirst(3).first ?? "?") ms，下載 \(got.dropFirst(4).first ?? "?") ms")
     }
 

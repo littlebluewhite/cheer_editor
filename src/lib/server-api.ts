@@ -223,12 +223,15 @@ function noServer(): ServerAdapter {
 	return new Proxy(known, { get: (t, k) => t[k as keyof ServerAdapter] ?? unreachable }) as ServerAdapter;
 }
 
+/** 殼會代傳雲端流程的音樂（情境 bridge-scenarios/current/cloudMusic.json）。 */
+export const CLOUD_MUSIC_FEATURE = 'cloudMusic';
+
 /**
  * 從 R2 拿、傳到 R2（預簽網址；file 有給是傳）。R2 只放行網站的網址：App 裡（殼會 cloudMusic）交給殼的 /cloud-music
  * （#382，ios/ShellCore/Sources/ShellCore/Forward/CloudMusic.swift），File 的內容進不了殼，先轉成 ArrayBuffer。
  */
 async function r2Fetch(url: string, file?: File): Promise<Response> {
-	if (!host().shell.can('cloudMusic')) return fetch(url, file ? { method: 'PUT', body: file } : { mode: 'cors' });
+	if (!host().shell.can(CLOUD_MUSIC_FEATURE)) return fetch(url, file ? { method: 'PUT', body: file } : { mode: 'cors' });
 	const viaShell = `/cloud-music?url=${encodeURIComponent(url)}`;
 	return fetch(viaShell, file ? { method: 'PUT', body: await file.arrayBuffer() } : undefined);
 }
