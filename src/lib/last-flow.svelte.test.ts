@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { useShellIfInApp } from '#lib/app-shell.js';
 import { scenarioShell } from '#lib/scenario-shell.js';
 import { createFlow, writeFlowFile } from '#lib/core';
-import { fakeDraftStore, fakeHost, fakeSettings, fakeShell, flush, testEditor } from '#lib/test-fakes.js';
-import { flowOf } from '#lib/test-flows.js';
+import { cloudEditor, fakeDraftStore, fakeHost, fakeOfflineStore, fakeSettings, fakeShell, flush, testEditor } from '#lib/test-fakes.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
+import { localDate } from '#lib/local-date.js';
 
 afterEach(() => {
 	delete window.__cheerShell;
@@ -116,6 +117,142 @@ describe('打開 App 回上次那支', () => {
 		expect(session.flow).toBeNull();
 		goAway();
 		expect(saved.get('cheer-editor:lastFlow')).toBe('n1');
+		disconnect();
+	});
+});
+
+// 上次那支是雲端流程（#383）：先開這台的離線副本（只能看、能記），連上了自動換成最新的、可以改。
+const LIN = 'lin@example.com';
+const WANG = 'wang@example.com';
+
+/** 林教練在 App 裡打開過 c1（留了離線副本）、回首頁；cloud 換掉 c1 的權限。 */
+async function openedBefore(cloud: Parameters<typeof cloudEditor>[0] = {}) {
+	const offline = fakeOfflineStore();
+	const s = await cloudEditor(cloud, { offline: offline.store });
+	await s.editor.file.leaveToHome();
+	await flush();
+	return { ...s, offline };
+}
+
+/** 關掉再開 App：上次那支記著 last，新的編輯器用同一個伺服器和離線存放，打開頁面。 */
+function reopenApp(s: Awaited<ReturnType<typeof openedBefore>>, last = 'cloud:c1') {
+	const { settings } = fakeSettings({ 'cheer-editor:lastFlow': last });
+	fakeHost({ shell: shellThatGoesAway().shell, settings });
+	const t = testEditor(null, { server: s.server, offline: s.offline.store });
+	const disconnect = t.editor.file.connect();
+	onTestFinished(disconnect);
+	return t;
+}
+
+/** 用「記」的問題記一次（第 1 組上法）：回被擋的原因（空字串是記了）。 */
+function record(session: ReturnType<typeof testEditor>['session']) {
+	const ask = session.recordAsk();
+	ask.send({ name: 'recordAttempt', args: ['x1', { date: localDate(), who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } }] });
+	return ask.error;
+}
+
+const settle = async (times = 6) => {
+	for (let i = 0; i < times; i++) await flush();
+};
+
+describe('上次那支是雲端流程', () => {
+	it('在雲端流程裡切到背景：記那支（雲端流程的 id）', async () => {
+		const { shell, goAway } = shellThatGoesAway();
+		const { settings, saved } = fakeSettings({ 'cheer-editor:lastFlow': 'n1' });
+		const s = await openedBefore();
+		fakeHost({ shell, settings });
+		await s.editor.file.openCloud('c1');
+		await flush();
+		const disconnect = s.editor.file.connect();
+		await flush();
+		goAway();
+		expect(saved.get('cheer-editor:lastFlow')).toBe('cloud:c1');
+		disconnect();
+	});
+
+	it('有離線副本：打開馬上是離線副本（不等伺服器），只能看、能記；連上了自動換成最新的、可以改', async () => {
+		const s = await openedBefore();
+		s.state.holdRoom = true;
+		const { editor, session } = reopenApp(s);
+		expect(editor.file.reopening).toBe(true);
+		await settle(2);
+		expect(editor.file.reopening).toBe(false);
+		expect(session.flow?.name).toBe(libSample().name);
+		expect(editor.file.source.kind).toBe('offline');
+		expect(editor.file.can(true).edit.ok).toBe(false);
+		expect(editor.file.can(true).record.ok).toBe(true);
+
+		s.releaseRoom();
+		await settle();
+		expect(editor.file.source.kind).toBe('cloud');
+		expect(editor.file.can(true).edit.ok).toBe(true);
+	});
+
+	it('換成最新的時：離線副本裡有的音樂不再下載', async () => {
+		const flow = libSample();
+		flow.audio = [{ id: 'a1', file: 'audio/a1.mp3', name: 'song.mp3' }];
+		const s = await openedBefore({ flow, audio: { a1: new Uint8Array([1, 2, 3]) } });
+		const downloads: string[] = [];
+		const get = s.server.audioBytes.bind(s.server);
+		s.server.audioBytes = (flowId, audioId) => (downloads.push(audioId), get(flowId, audioId));
+		const { editor } = reopenApp(s);
+		await settle(10);
+		expect(editor.file.source.kind).toBe('cloud');
+		expect(downloads).toEqual([]);
+		expect([...(editor.music.bytes(editor.session.flow!).a1 ?? [])]).toEqual([1, 2, 3]);
+		expect([...(s.offline.audioOf('c1')?.a1 ?? [])]).toEqual([1, 2, 3]);
+	});
+
+	it('還沒連上那一下記的：連上後傳上去，只有一筆', async () => {
+		const s = await openedBefore();
+		s.state.holdRoom = true;
+		const { editor, session } = reopenApp(s);
+		await settle(2);
+		expect(record(session)).toBe('');
+		await flush();
+		s.releaseRoom();
+		await settle(10);
+		expect(editor.file.source.kind).toBe('cloud');
+		expect(s.state.flows[0].records ?? []).toHaveLength(1);
+		expect(session.flow!.actions.flatMap((a) => a.successRate?.records ?? [])).toHaveLength(1);
+		expect(editor.file.cloud!.unsentCount).toBe(0);
+	});
+
+	it('分享被收回：先開離線副本，連上時回首頁說原因，離線副本刪掉', async () => {
+		const s = await openedBefore({ owner: WANG, people: { [LIN]: 'editor' } });
+		s.changeRole('c1', LIN, null);
+		const { editor, session } = reopenApp(s);
+		await settle();
+		expect(session.flow).toBeNull();
+		expect(editor.file.revoked).toContain('不能打開');
+		expect(s.offline.copy('c1')).toBeNull();
+	});
+
+	it('流程被刪了：回首頁', async () => {
+		const s = await openedBefore();
+		s.deleteFlow('c1');
+		const { session } = reopenApp(s);
+		await settle();
+		expect(session.flow).toBeNull();
+	});
+
+	it('沒有離線副本：照現在等伺服器打開', async () => {
+		const s = await openedBefore();
+		await s.offline.store.dropCopy('c1');
+		const { editor } = reopenApp(s);
+		await settle();
+		expect(editor.file.source.kind).toBe('cloud');
+		expect(editor.file.can(true).edit.ok).toBe(true);
+	});
+
+	it('網頁版：記著雲端流程也不開，停在首頁', async () => {
+		const s = await openedBefore();
+		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': 'cloud:c1' });
+		fakeHost({ settings });
+		const { editor, session } = testEditor(null, { server: s.server, offline: s.offline.store });
+		const disconnect = editor.file.connect();
+		await settle();
+		expect(session.flow).toBeNull();
 		disconnect();
 	});
 });

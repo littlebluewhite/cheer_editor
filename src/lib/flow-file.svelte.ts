@@ -51,6 +51,9 @@ function copyOf(found: CloudFlow, name: string): Omit<OfflineCopy, 'savedAt' | '
 	return { flowId: found.id, name, role: found.role, step: found.step, flow: found.flow, records: found.records };
 }
 
+/** 上次那支是雲端流程時，記的是這個加流程的 id（#383；草稿 id 不會有冒號）。 */
+const CLOUD_LAST = 'cloud:';
+
 /** 停手多久才存草稿。 */
 const DRAFT_DELAY_MS = 1000;
 /** 問別的分頁有沒有在編一支流程，等它回答多久。 */
@@ -125,7 +128,7 @@ export class FlowFile {
 	/**
 	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁開著的就是那支流程，就回答「正在編」），讀草稿；
 	 * App 裡聽殼說要切到背景（WKWebView 不一定發 visibilitychange），跟分頁藏起來一樣馬上存（#377），
-	 * 也記下上次那支：開著本機流程就是它，在首頁（或雲端流程，#383 再接）就清掉（#378）。
+	 * 也記下上次那支：開著本機流程、雲端流程（含離線副本，#383）就是它，在首頁、分享連結（沒有權限）就清掉（#378）。
 	 * App 裡只有一個視窗，不會有別的分頁：不開分頁頻道，「另一個分頁正在編」不會出現（#392）。
 	 * 回傳頁面關掉時要做的：關掉分頁頻道、不聽殼了、還在等停手 1 秒的草稿不存了。
 	 */
@@ -148,7 +151,7 @@ export class FlowFile {
 		void this.#checkDraft();
 		const stopHearing = host().shell.on('background', () => {
 			this.pageHidden();
-			if (host().shell.can(SETTINGS_FEATURE)) saveLastFlow(this.#editor.session.flow && this.#source.kind === 'local' ? this.#draftId : '');
+			if (host().shell.can(SETTINGS_FEATURE)) saveLastFlow(this.#lastFlow());
 		});
 		return () => {
 			stopHearing();
@@ -336,21 +339,22 @@ export class FlowFile {
 	 * 打開了就在這台留一份離線副本（#261，含音樂），只留最近打開的 5 支。連不上伺服器、這台有離線副本：打開那份
 	 * （斷線的樣子：只能看、能記），連上了就換成最新的（refresh：換的時候不關練習畫面、對話框）。
 	 * still：拿完了要換上之前再問一次還要不要（傳上雲端時又改了就不換）。
+	 * first：先開這份離線副本，不先問伺服器（App 打開上次那支，#383）：先當斷著（只能看、能記），連上了就換成最新的。
 	 */
-	async openCloud(id: string, refresh = false, still = () => true) {
+	async openCloud(id: string, refresh = false, still = () => true, first: OfflineCopy | null = null) {
 		const { server, offline: store } = this.#editor.adapters;
-		let found: CloudFlow | null;
-		let copy: OfflineCopy | null = null;
+		let found: CloudFlow | null = null;
+		let copy: OfflineCopy | null = first;
 		try {
-			found = await server.cloudFlow(id);
+			if (!copy) found = await server.cloudFlow(id);
 		} catch {
 			copy = (await store.copies()).find((c) => c.flowId === id) ?? null;
 			if (!copy) {
 				if (!refresh) this.#openError = m.file_cloud_open_unreachable();
 				return;
 			}
-			found = { id, flow: copy.flow, step: copy.step, updatedAt: '', role: copy.role, records: copy.records };
 		}
+		if (copy) found = { id, flow: copy.flow, step: copy.step, updatedAt: '', role: copy.role, records: copy.records };
 		if (!found) {
 			this.#openError = m.file_cloud_gone();
 			return;
@@ -360,13 +364,21 @@ export class FlowFile {
 		const saved = (await store.unsent()).find((u) => u.flowId === id);
 		const fromServer = putRecords(found.flow as Flow, records);
 		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
-		const audio = copy ? await store.copyAudio(id) : await this.#cloudAudio(flow, (audioId) => server.audioBytes(id, audioId));
+		// 從離線副本換成最新的（#383 每次打開 App 都會）：手上已經有的音樂不再下載（音樂 id 換了檔就換）
+		const shown = this.#editor.session.flow;
+		const fromCopy = refresh && this.#source.kind === 'offline' && this.#source.id === id && shown;
+		const have = fromCopy ? this.#editor.music.bytes(shown) : {};
+		const audio = copy
+			? await store.copyAudio(id)
+			: await this.#cloudAudio(flow, (audioId) => (have[audioId] ? Promise.resolve(have[audioId]) : server.audioBytes(id, audioId)));
+		// 音樂跟離線副本存著的一樣：存離線副本時音樂不動
+		const sameAudio = !!fromCopy && !copy && flow.audio.length === Object.keys(have).length && flow.audio.every((a) => a.id in have);
 		const music = await this.#editor.readMusic(audio);
 		if (!still()) return;
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music, null, !refresh);
 		const room = server.openRoom(id);
-		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved });
+		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved }, !!first);
 		this.#source = copy ? { kind: 'offline', id, steps: cloud, savedAt: copy.savedAt } : { kind: 'cloud', id, steps: cloud };
 		cloud.practice.recordedBy = Object.fromEntries(
 			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
@@ -403,7 +415,12 @@ export class FlowFile {
 			await this.openCloud(id, true);
 			if (lost) this.#editor.session.notice = (lost === 1 ? m.cloud_replaced_lost_one : m.cloud_replaced_lost)({ count: lost });
 		};
-		await this.#keepCopy(copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 }, copy ? undefined : audio);
+		await this.#keepCopy(
+			copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 },
+			copy || sameAudio ? undefined : audio,
+			() => this.cloud === cloud
+		);
+		if (sameAudio) this.#copyAudioIds = Object.keys(audio).sort().join();
 	}
 
 	/** 離線副本存進這台（打開時、開著時換成最新的）時，存的那幾個音樂檔：換了才再存音樂。 */
@@ -411,10 +428,14 @@ export class FlowFile {
 	/** 開著時換成最新的：停手 1 秒才存。 */
 	#copyTimer: ReturnType<typeof setTimeout> | undefined;
 
-	/** 存一份離線副本（這次打開：最近打開的時間換成現在），再刪掉超過 5 支的（有沒傳紀錄的不刪）。 */
-	async #keepCopy(copy: OfflineCopy, audio?: AudioBytes) {
+	/**
+	 * 存一份離線副本（這次打開：最近打開的時間換成現在），再刪掉超過 5 支的（有沒傳紀錄的不刪）。
+	 * still：讀完這台的離線副本後還開著它（剛打開就被收回、被刪掉回首頁時，刪掉的那份不再存回來）。
+	 */
+	async #keepCopy(copy: OfflineCopy, audio: AudioBytes | undefined, still: () => boolean) {
 		const store = this.#editor.adapters.offline;
 		const copies = await store.copies();
+		if (!still()) return;
 		const openedAt = Math.max(Date.now(), ...copies.filter((c) => c.flowId !== copy.flowId).map((c) => c.openedAt + 1));
 		await store.saveCopy({ ...copy, openedAt }, audio);
 		if (audio) this.#copyAudioIds = Object.keys(audio).sort().join();
@@ -886,6 +907,25 @@ export class FlowFile {
 		return true;
 	}
 
+	/** 離開 App 時要記的上次那支：本機流程是草稿 id，雲端流程（含離線副本）是 CLOUD_LAST 加流程 id，在首頁、分享連結是空的。 */
+	#lastFlow(): string {
+		if (!this.#editor.session.flow) return '';
+		const source = this.#source;
+		if (source.kind === 'local') return this.#draftId;
+		return source.kind === 'link' ? '' : CLOUD_LAST + source.id;
+	}
+
+	/**
+	 * App 打開時回上次那支雲端流程（#383）：這台有離線副本就先開它（只能看、能記），房間連上了自動換成最新的；
+	 * 被收回、被刪掉照房間說的回首頁。沒有離線副本就照現在等伺服器（等的時候先畫首頁，不藏著）。
+	 */
+	async #reopenCloud(id: string) {
+		const copy = (await this.#editor.adapters.offline.copies()).find((c) => c.flowId === id);
+		if (copy) return this.openCloud(id, false, () => true, copy);
+		this.#reopening = false;
+		await this.openCloud(id);
+	}
+
 	/** App 打開時正在回上次那支（還沒開好、還沒確定不見了）。 */
 	get reopening(): boolean {
 		return this.#reopening;
@@ -930,7 +970,10 @@ export class FlowFile {
 	 * 那支不見了（草稿沒了、打不開）就停在首頁，不說錯。讀完了才開始自動存。
 	 */
 	async #checkDraft() {
-		if (!(this.#reopening && (await this.#openDraft(loadLastFlow())) && this.#editor.session.flow)) await this.#readRecent();
+		const last = this.#reopening ? loadLastFlow() : '';
+		if (last.startsWith(CLOUD_LAST)) await this.#reopenCloud(last.slice(CLOUD_LAST.length));
+		else if (last) await this.#openDraft(last);
+		if (!this.#editor.session.flow) await this.#readRecent();
 		this.#reopening = false;
 		this.#draftChecked = true;
 		this.#saveDraftLater();

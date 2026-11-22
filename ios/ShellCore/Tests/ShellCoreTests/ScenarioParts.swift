@@ -29,6 +29,9 @@ final class ScenarioShell {
     private(set) lazy var cloudRoom = CloudRoomPart(
         site: SiteAddress.production, cookie: { "__Host-id=abc" }, outbox: outbox, connect: roomSockets.connect)
 
+    // #383
+    let offline = OfflineFolder.forScenario()
+
     // #389
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
@@ -67,6 +70,9 @@ final class ScenarioShell {
 
             // #382
             CloudMusicPart(),
+
+            // #383
+            OfflinePart(folder: offline),
 
             // #389
             nowPlaying,

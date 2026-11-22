@@ -194,14 +194,16 @@ export class CloudSteps {
 	/**
 	 * 連 room（這支流程的房間），從第 step 步開始，我的權限是 role；session 改好的步交給它。
 	 * keep：還沒傳的存在這台（打開時這台已經存著的接著傳；流程裡已經放進去了，見 withUnsent）。
+	 * waiting：先當斷著（App 打開上次那支時先開的離線副本，#383）：只能看、能記，伺服器說可以送步時算連回來（onback）。
 	 */
-	constructor(room: FlowRoom, step: number, session: EditorSession, role: Role = 'owner', keep: KeepUnsent | null = null) {
+	constructor(room: FlowRoom, step: number, session: EditorSession, role: Role = 'owner', keep: KeepUnsent | null = null, waiting = false) {
 		this.#room = room;
 		this.#session = session;
 		this.#seen = step;
 		this.#server = session.flow ? { flow: session.flow, step } : null;
 		this.role = role;
 		this.#keep = keep;
+		this.offline = waiting;
 		session.practice = this.practice;
 		session.undoLog = this.undoLog;
 		this.#lock();
