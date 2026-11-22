@@ -1,0 +1,10 @@
+{
+	"about": "網頁畫面出來以後跟殼說「好了」（#375）。殼換上新網頁後 10 秒內沒收到就退回原本那包（ADR 0025）。",
+	"scenarios": [
+		{
+			"name": "網頁畫面出來以後跟殼說好了",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": [] },
+			"steps": [{ "from": "web", "name": "ready", "reply": null }]
+		}
+	]
+}

@@ -1,0 +1,15 @@
+{
+	"about": "殼一開始塞給網頁的：殼的版本、建置號、會什麼（#375）。殼不認得的話回錯誤，網頁才不會一直等（新網頁跑在舊殼上，ADR 0025）。",
+	"scenarios": [
+		{
+			"name": "一開始塞殼的版本、建置號、會什麼",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": [] },
+			"steps": []
+		},
+		{
+			"name": "殼不認得的話回錯誤",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": [] },
+			"steps": [{ "from": "web", "name": "noSuchThing", "body": { "any": 1 }, "error": "unknown" }]
+		}
+	]
+}

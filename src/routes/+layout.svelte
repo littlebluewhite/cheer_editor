@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getLocale } from '#lib/paraglide/runtime.js';
+	import { host } from '#lib/host.js';
 	import '../app.css';
 
 	let { children } = $props();
@@ -10,6 +11,10 @@
 	onMount(() => {
 		getLocale();
 		delete document.documentElement.dataset.localePending;
+	});
+	// App：網頁畫面出來了，跟殼說「好了」（殼換上新網頁後靠這句判斷打不打得開，ADR 0025）
+	onMount(() => {
+		if (host().shell.inApp) host().shell.send('ready').catch(() => {});
 	});
 </script>
 

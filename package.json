@@ -17,6 +17,7 @@
 		"check:layout": "node scripts/check-layout.mjs",
 		"check:sw": "node scripts/check-sw.mjs",
 		"check:live": "node scripts/check-live.mjs",
+		"ios:web": "node scripts/ios-web.mjs",
 		"test:server": "bash scripts/test-server.sh"
 	},
 	"devDependencies": {
