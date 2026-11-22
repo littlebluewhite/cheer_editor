@@ -1317,3 +1317,7 @@ async fn logged_steps(
 fn cannot(redo: bool) -> &'static str {
     if redo { "不能重做" } else { "不能復原" }
 }
+
+#[cfg(test)]
+#[path = "flow_room_tests.rs"]
+mod tests;

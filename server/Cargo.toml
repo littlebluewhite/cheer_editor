@@ -38,6 +38,8 @@ futures-util = "0.3.34"
 http-body-util = "0.1.5"
 serde_json = { version = "1", features = ["raw_value"] }
 tempfile = "3"
+# 暫停的時鐘（#[tokio::test(start_paused = true)]）：斷線 1 分鐘後再說一次，不用真的等。
+tokio = { version = "1.54.1", features = ["test-util"] }
 tokio-tungstenite = "0.29.0"
 tower = { version = "0.5.3", features = ["util"] }
 
