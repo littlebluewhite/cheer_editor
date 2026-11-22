@@ -45,7 +45,7 @@
   </defs>
   <rect data-graph-role="background" width="960.0" height="520.0" fill="#ffffff"/>
   <text x="480.0" y="56" text-anchor="middle" class="title">存檔、草稿、分享</text>
-  <text x="480.0" y="82" text-anchor="middle" class="subtitle">存檔得到流程檔；草稿是這台電腦自動留的備份，不是流程檔</text>
+  <text x="480.0" y="82" text-anchor="middle" class="subtitle">存檔得到流程檔；草稿是這台裝置自動留的備份，不是流程檔</text>
   <path id="e-d" data-graph-role="edge" data-edge-id="e-d" data-source="edit" data-target="draft" data-edge-kind="flow" data-topic-id="" data-flow="feedback" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="1" data-route-stretch="1.0" data-bridges="" d="M 125,220 L 125,145 L 300,145" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowG)" stroke-dasharray="6,4"/>
   <path id="e-f" data-graph-role="edge" data-edge-id="e-f" data-source="edit" data-target="file" data-edge-kind="flow" data-topic-id="" data-flow="data" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 220,255 L 300,255" fill="none" stroke="#f97316" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowE)"/>
   <path id="e-s" data-graph-role="edge" data-edge-id="e-s" data-source="edit" data-target="sheet" data-edge-kind="flow" data-topic-id="" data-flow="control" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="1" data-route-stretch="1.0" data-bridges="" d="M 125,290 L 125,365 L 300,365" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
@@ -60,7 +60,7 @@
   <g id="node-draft" data-graph-role="node" data-node-id="draft" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="300,110,520,180">
   <rect x="300.0" y="110.0" width="220.0" height="70.0" rx="10.0" fill="#fefce8" stroke="#eab308" stroke-width="1.8"/>
   <text data-text-role="title" data-full-text="草稿" data-text-max-width="196.0" x="410.0" y="145.0" text-anchor="middle" class="node-title" font-size="18">草稿</text>
-  <text data-text-role="subtitle" data-full-text="停手 1 秒自動存在這台電腦" data-text-max-width="196.0" x="410.0" y="167.0" text-anchor="middle" class="node-sub" font-size="12">停手 1 秒自動存在這台電腦</text>
+  <text data-text-role="subtitle" data-full-text="停手 1 秒自動存在這台裝置" data-text-max-width="196.0" x="410.0" y="167.0" text-anchor="middle" class="node-sub" font-size="12">停手 1 秒自動存在這台裝置</text>
   </g>
   <g id="node-file" data-graph-role="node" data-node-id="file" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="300,220,520,290">
   <rect x="300.0" y="220.0" width="220.0" height="70.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>
