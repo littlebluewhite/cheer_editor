@@ -38,7 +38,7 @@ describe('手機的檢視模式', () => {
 		const { engine, frames } = await openOnPhone();
 		// 不停在被擋住的編排畫面
 		expect(screen.queryByRole('region', { name: '視窗太窄了' })).toBeNull();
-		expect(screen.getByRole('group', { name: '場地' })).toBeTruthy();
+		expect(screen.getByLabelText('場地')).toBeTruthy();
 		expect(row().textContent).toContain('Lib');
 		// 手機放不下七列：只有這個八拍和下一個
 		expect([...row().querySelectorAll('[data-slot]')].map((s) => s.getAttribute('data-slot'))).toEqual(['1', '2']);
@@ -143,7 +143,8 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		await fireEvent.pointerDown(el, { button: 0, clientX: x, clientY: y });
 		await fireEvent.pointerUp(el, { button: 0, clientX: x, clientY: y });
 	};
-	const field = () => screen.getByRole('group', { name: '場地' });
+	/** 場地（用名字找，不管是 img 還是 group）。 */
+	const field = () => screen.getByLabelText('場地');
 
 	it('點小A：左下角寫他的名字和這個八拍做什麼，他圈起來；點空白處變回現在的站位', async () => {
 		const { session } = await openOnPhone();
@@ -176,6 +177,9 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 
 	it('鍵盤、讀螢幕軟體：場上每個人是 Tab 停得到的按鈕，念得出名字', async () => {
 		await openOnPhone();
+		// 場地是一群（group）隊員，不是圖片：圖片裡面的人讀螢幕軟體讀不到
+		expect(screen.queryByRole('img', { name: '場地' })).toBeNull();
+		expect(screen.getByRole('group', { name: '場地' })).toBe(field());
 		const dots = within(field()).getAllByRole('button', { name: /^(小美|小A|小B|小芳)/ });
 		expect(dots).toHaveLength(4);
 		for (const d of dots) expect(d.getAttribute('tabindex')).toBe('0');
