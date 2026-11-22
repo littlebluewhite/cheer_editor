@@ -1,0 +1,28 @@
+diff --git a/src/routes/+page.svelte b/src/routes/+page.svelte
+index 21c97515..89074b65 100644
+--- a/src/routes/+page.svelte
++++ b/src/routes/+page.svelte
+@@ -126,6 +126,23 @@
+ 	}
+ 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
+ 	onMount(() => editor.file.connect());
++	// 小樣（#300，比完就丟，不進 main）：給 app 殼用。殼收到流程檔時叫 __appOpenFlow；在殼裡打開時直接開最近的流程。
++	onMount(() => {
++		const w = window as unknown as { __appOpenFlow?: (name: string, url: string) => void; __appShell?: boolean };
++		w.__appOpenFlow = async (name, url) => {
++			const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
++			await editor.file.open(new File([bytes], name));
++		};
++		if (!w.__appShell) return;
++		const t0 = performance.now();
++		const tryResume = () => {
++			if (session.flow) return;
++			const first = editor.file.recent[0];
++			if (first) return void editor.file.openRecent(first.id);
++			if (performance.now() - t0 < 3000) setTimeout(tryResume, 30);
++		};
++		tryResume();
++	});
+ 
+ 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
+ 	const home = editor.home;
