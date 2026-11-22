@@ -3,11 +3,11 @@
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { insertFormation, readFlowFile, setPositions, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { editorPage, flush, fromMenu, manualFrames, openFile } from '#lib/test-fakes.js';
-import { libSample, ratedSample } from '#lib/test-flows.js';
+import { flowOf, libSample, ratedSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 Element.prototype.scrollIntoView = () => {};
@@ -185,6 +185,99 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		await flush();
 		await openFile(writeFlowFile({ ...libSample(), name: '別支' }, {}));
 		expect(corner()).toBe('站位 1');
+	});
+});
+
+describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () => {
+	/** 範例流程在第 3 個八拍（8 秒）加一張站位：小A 從 (0, 1.83) 走到右下 (7, 6)。 */
+	function walkingFlow(): Flow {
+		const flow = libSample();
+		const added = flowOf(insertFormation(flow, 8));
+		const formation = added.formations.find((f) => !flow.formations.some((o) => o.id === f.id))!;
+		return flowOf(setPositions(added, formation.id, { m2: [7, 6] }));
+	}
+	const stage = () => screen.getByRole('img', { name: '場地' });
+	/** 場地看到的範圍（公尺）：x y 寬 高。 */
+	const viewBox = () => stage().getAttribute('viewBox')!.split(' ').map(Number);
+	const inView = (id: string) => {
+		const [x, y] = dot(id).getAttribute('transform')!.match(/translate\(([^,]+),([^)]+)\)/)!.slice(1).map(Number);
+		const [vx, vy, w, h] = viewBox();
+		return x >= vx && x <= vx + w && y >= vy && y <= vy + h;
+	};
+	const finger = (x: number, y: number) => ({ pointerType: 'touch', pointerId: 1, button: 0, clientX: x, clientY: y });
+	/** 在小A站的地方（0, 1.83 公尺；1 px = 1 cm）很快點兩下：放大 ×2。 */
+	async function zoomIn() {
+		for (let i = 0; i < 2; i++) {
+			await fireEvent.pointerDown(dot('m2'), finger(0, 183));
+			await fireEvent.pointerUp(dot('m2'), finger(0, 183));
+		}
+	}
+	/** 一根手指往左上拖一下：移動畫面。 */
+	async function drag() {
+		await fireEvent.pointerDown(stage(), finger(0, 0));
+		await fireEvent.pointerMove(stage(), finger(-50, -50));
+		await fireEvent.pointerUp(stage(), finger(-50, -50));
+	}
+	/** 按播放，聲音每次走半秒、走到第 4 個八拍（14 秒）；每一步都記下小A在不在畫面裡。 */
+	async function playThrough({ engine, frames }: Awaited<ReturnType<typeof openOnPhone>>) {
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const seen: boolean[] = [];
+		const start = engine.time;
+		for (let s = 0.5; s <= 14; s += 0.5) {
+			engine.audible = start + 0.1 + s;
+			frames.step();
+			await flush();
+			seen.push(inView('m2'));
+		}
+		return seen;
+	}
+
+	it('選了「我」是小A、放大、播放：小A走出畫面之前畫面跟過去，一直在畫面裡', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const before = viewBox();
+		expect(await playThrough(opened)).not.toContain(false);
+		expect(viewBox()).not.toEqual(before);
+	});
+
+	it('先用手指拖一下畫面再播放：畫面不動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await drag();
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('拖過之後按「整個場地」，再放大、播放：又會跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await drag();
+		await fireEvent.click(screen.getByRole('button', { name: '整個場地' }));
+		await zoomIn();
+		expect(await playThrough(opened)).not.toContain(false);
+	});
+
+	it('沒選「我」放大播放：畫面不動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await zoomIn();
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('停著不播放（按下一個八拍跳過去）：畫面不動', async () => {
+		await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const before = viewBox();
+		for (let i = 0; i < 3; i++) await fireEvent.click(screen.getByRole('button', { name: '下一個八拍' }));
+		await flush();
+		expect(inView('m2')).toBe(false);
+		expect(viewBox()).toEqual(before);
 	});
 });
 

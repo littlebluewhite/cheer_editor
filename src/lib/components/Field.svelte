@@ -85,7 +85,8 @@
 		crop = null,
 		numberBand = NUMBER_BAND,
 		tapped = null,
-		ontap
+		ontap,
+		playing = false
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -126,6 +127,8 @@
 		tapped?: string | null;
 		/** 沒有編輯器時（手機的檢視畫面）點一下：點到誰（點空白處是 null）。點兩下的第二下是放大，不叫。 */
 		ontap?: (memberId: string | null) => void;
+		/** 正在播放：只能看的場地放大了又標了「我」，畫面跟著「我」。 */
+		playing?: boolean;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -384,6 +387,9 @@
 
 	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
+		// 從整個場地放大：這次放大跟著「我」；回整個場地就關掉，下次放大再打開。
+		if (zoom === 1 && z > 1) follow = true;
+		if (z === 1) follow = false;
 		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
@@ -402,6 +408,30 @@
 		}
 	}
 
+	// ---------- 放大後播放，畫面跟著「我」（只能看的場地） ----------
+	/** 這次放大跟著「我」：從整個場地放大時打開，用手指（滑鼠、觸控板）移動畫面就關掉（setZoom 管開關）。 */
+	let follow = $state(false);
+	/** 「我」離畫面邊緣不到畫面寬（高）的這麼多，畫面才跟過去：不必每一拍都把他放正中間。 */
+	const FOLLOW_EDGE = 0.2;
+	/** 標的「我」（只標一個人才算）。 */
+	const followed = $derived(viewOnly && follow && playing && zoom > 1 && marked.length === 1 ? positions[marked[0]] : undefined);
+	$effect(() => {
+		const p = followed;
+		if (p) untrack(() => keepInView(p));
+	});
+
+	/**
+	 * 「我」快走出畫面：畫面挪剛好讓他回到離邊緣 FOLLOW_EDGE 的地方。每一格播放都挪一點點，看起來是順的；
+	 * 每次位置一換就挪好，不靠動畫，下一格之前「我」一定在畫面裡。
+	 */
+	function keepInView([px, py]: Position) {
+		const { x, y, width: w, height: h } = view;
+		const over = (p: number, lo: number, size: number) =>
+			Math.min(p - (lo + size * FOLLOW_EDGE), 0) + Math.max(p - (lo + size * (1 - FOLLOW_EDGE)), 0);
+		const [dx, dy] = [over(px, x, w), over(py, y, h)];
+		if (dx || dy) setZoom(zoom, undefined, [-dx, -dy]);
+	}
+
 	// ---------- ✋ 平移：放大後拖空白處移動畫面（不框選）。按 ✋ 切換，或按住 H 暫時用。 ----------
 	/** ✋ 按下去了（縮回整個場地就放掉）。 */
 	let handTool = $state(false);
@@ -414,6 +444,8 @@
 
 	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
 	function panTo(e: PointerEvent) {
+		// 真的拖了才不再跟著「我」：點一下看是誰時手抖幾 px 不算。
+		if (!press || !still(e, press.client)) follow = false;
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
 		pan = [e.clientX, e.clientY];
@@ -482,6 +514,7 @@
 		}
 		if (zoom <= 1) return;
 		e.preventDefault();
+		follow = false;
 		const [px, py] = e.shiftKey && !dx ? [dy, 0] : [dx, dy];
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [-px * perPx, -py * perPx]);
