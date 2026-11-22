@@ -41,6 +41,7 @@ import type { Measure } from '#lib/video/layout.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
+import type { NetworkAdapter } from '#lib/network.js';
 import {
 	isEmptyUnsent,
 	readCopy,
@@ -1151,6 +1152,27 @@ export function manualFrames() {
 	};
 }
 
+/** 假的網路 adapter：一開始有沒有網路（預設有），set() 切（變了才通知）。 */
+export function fakeNetwork(online = true) {
+	let now = online;
+	const listeners = new Set<() => void>();
+	const network: NetworkAdapter = {
+		online: () => now,
+		onChange(changed) {
+			listeners.add(changed);
+			return () => listeners.delete(changed);
+		}
+	};
+	return {
+		network,
+		set(online: boolean) {
+			if (online === now) return;
+			now = online;
+			for (const changed of [...listeners]) changed();
+		}
+	};
+}
+
 /**
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
@@ -1158,9 +1180,11 @@ export function manualFrames() {
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  * 伺服器預設是沒人登入的假伺服器（fakeServer）。
+ * 網路預設有（fakeNetwork）：net.set(false) 斷網（換掉 network 就用自己的把手）。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
+	const net = fakeNetwork();
 	const videoSaves: { bytes: Uint8Array; fileName: string }[] = [];
 	const videoEncoder = createFakeVideoEncoder();
 	const editor = new Editor(
@@ -1175,6 +1199,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			nextFrame: manualFrames().nextFrame,
 			server: fakeServer().server,
 			offline: fakeOfflineStore().store,
+			network: net.network,
 			video: {
 				encoder: videoEncoder,
 				save: async (bytes, fileName) => {
@@ -1186,7 +1211,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 		},
 		flow
 	);
-	return { editor, session: editor.session, saves, videoSaves, videoEncoder };
+	return { editor, session: editor.session, saves, videoSaves, videoEncoder, net };
 }
 
 /**
