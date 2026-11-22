@@ -79,4 +79,20 @@ describe('切到背景時雲端流程斷線（#381）', () => {
 		expect(t.editor.file.cloud?.offline).toBe(true);
 		expect(t.editor.playback.playing).toBe(true);
 	});
+
+	it('連回來補上斷線時別人的改動：音樂照樣播', async () => {
+		const t = await cloudEditor({}, { nextFrame: manualFrames().nextFrame });
+		t.editor.playback.play();
+		t.disconnect();
+		await flush();
+		const w = t.joinAs('c1', t.wang.email);
+		await flush();
+		w.step({ name: 'renameFlow', args: ['區賽'] });
+		await flush();
+		t.reconnect();
+		await flush();
+		expect(t.editor.session.flow?.name).toBe('區賽');
+		expect(t.editor.file.cloud?.offline).toBe(false);
+		expect(t.editor.playback.playing).toBe(true);
+	});
 });
