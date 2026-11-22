@@ -1710,7 +1710,7 @@ const fitSpot = (host) =>
 const NEAR_BASES = `flow = core.setPositions(flow, flow.formations[0].id, { m1: [-4, -3], m2: [-0.45, 2], m3: [0.45, 2], m4: [4, -3] }).flow;`;
 
 // 390×664 是 iPhone 用 Safari 開（網址列佔掉一塊），390×844 是加到主畫面全螢幕開
-for (const [w, h, least] of [[360, 640, null], [375, 667, null], [390, 664, 13], [390, 844, 18.5]]) {
+for (const [w, h, least] of [[320, 640, null], [360, 640, null], [375, 667, null], [390, 664, 13], [390, 844, 18.5]]) {
 	await check(`${w}×${h}（觸控）手機的檢視畫面：上方列一排（只有選單、名字、「編排｜練習」）、播放列一排，每顆點得到${least ? `；場地一公尺至少畫 ${least} px` : ''}`, async () => {
 		await setTouchViewport(w, h);
 		await openSample();
@@ -1722,6 +1722,7 @@ for (const [w, h, least] of [[360, 640, null], [375, 667, null], [390, 664, 13],
 				return !!t && el.contains(t) && r.left >= 0 && r.right <= innerWidth; };
 			return { 上方列每個的中線: mids('.topbar .menu, .topbar .title b, .topbar .view'), 上方列有: seen('.topbar :is(button, a)').map((el) => el.textContent.trim()),
 				播放列每個的中線: mids('.phone-view .transport > *'),
+				時間框被切掉: ((b) => b.scrollWidth > b.clientWidth)(document.querySelector('.phone-view .transport .board')),
 				播放列點不到的: seen('.phone-view .transport > :is(button, select)').filter((el) => !hit(el)).map((el) => el.getAttribute('aria-label')),
 				名字寬: Math.round(document.querySelector('.topbar .title b').getBoundingClientRect().width) };`);
 		const oneRow = (ys) => ys.length > 0 && Math.max(...ys) - Math.min(...ys) <= 2;
@@ -1729,7 +1730,7 @@ for (const [w, h, least] of [[360, 640, null], [375, 667, null], [390, 664, 13],
 		const field = await fieldNow('.phone-field');
 		const o = await overflow();
 		const ok = oneRow(rows.上方列每個的中線) && rows.上方列有.join() === '選單,編排,練習' && rows.名字寬 > 0 && hits.length === 0
-			&& oneRow(rows.播放列每個的中線) && rows.播放列每個的中線.length === 6 && rows.播放列點不到的.length === 0
+			&& oneRow(rows.播放列每個的中線) && rows.播放列每個的中線.length === 6 && rows.播放列點不到的.length === 0 && !rows.時間框被切掉
 			&& noOverflow(o) && (!least || field.一公尺幾px >= least);
 		return { ok, value: { ...rows, 上方列點錯的: hits, ...field, ...o } };
 	});
