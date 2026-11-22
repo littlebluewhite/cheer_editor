@@ -14,7 +14,10 @@ enum AppSite {
         #endif
     }()
 
-    /// 殼的 cookie 罐子：一個網站一份，存在 Application Support（不進備份以外的地方，網頁碰不到）。
+    /// 殼轉送用的 cookie 罐子，只有這一個（雲端流程的連線 #381 也用它帶 cookie）。
+    static let cookies = jar(site: current)
+
+    /// 殼的 cookie 罐子：一個網站一份，存在 Application Support（網頁碰不到）。
     static func jar(site: URL) -> CookieJar {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let host = site.host ?? "site"
@@ -30,8 +33,8 @@ enum AppSite {
 struct ForwardRoute: SchemeRoute {
     let forwarder: Forwarder
 
-    init(site: URL = AppSite.current, jar: CookieJar? = nil) {
-        forwarder = Forwarder(site: site, jar: jar ?? AppSite.jar(site: site), send: ForwardRoute.send)
+    init(site: URL = AppSite.current, jar: CookieJar = AppSite.cookies) {
+        forwarder = Forwarder(site: site, jar: jar, send: ForwardRoute.send)
     }
 
     func handles(_ request: URLRequest) -> Bool { Forwarder.handles(request) }
