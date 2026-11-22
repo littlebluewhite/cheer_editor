@@ -10,6 +10,8 @@ import {
 	putRecords,
 	receiveRecords,
 	remoteChange,
+	runTogether,
+	runViews,
 	runCommands,
 	runUndo,
 	said,
@@ -21,6 +23,8 @@ import {
 	type Flow,
 	type RecordsAsk,
 	type RemoteChange,
+	type RunEvent,
+	type RunsTogether,
 	type StepAsk,
 	type StoredAttempt
 } from './index';
@@ -115,4 +119,15 @@ export function receiveRecordsJson(flow: string, ask: string): string {
  */
 export function amendRecordsJson(flow: string, ask: string): string {
 	return JSON.stringify(amendRecords({ ...(JSON.parse(ask) as Omit<AmendAsk, 'flow'>), flow: JSON.parse(flow) as Flow }));
+}
+
+/**
+ * 一起記全上的表（#352，ADR 0020）：runs 是現在的表（RunsTogether 的 JSON，沒有就是 []），event 是 RunEvent 的 JSON
+ * 多帶 now（毫秒）和 viewers（要給哪些人看的使用者 id）。一次回 runTogether 的結果，加上 views：照 viewers 的順序，
+ * 每個人看到的每次全上（runViews）。一次進出 QuickJS 就做完一件事和給大家看的樣子。
+ */
+export function runTogetherJson(runs: string, event: string): string {
+	const { now, viewers, ...e } = JSON.parse(event) as RunEvent & { now: number; viewers: number[] };
+	const out = runTogether(JSON.parse(runs) as RunsTogether, e as RunEvent, now);
+	return JSON.stringify({ ...out, views: viewers.map((v) => runViews(out.runs, v, now)) });
 }
