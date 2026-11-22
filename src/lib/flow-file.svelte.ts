@@ -126,10 +126,11 @@ export class FlowFile {
 	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁開著的就是那支流程，就回答「正在編」），讀草稿；
 	 * App 裡聽殼說要切到背景（WKWebView 不一定發 visibilitychange），跟分頁藏起來一樣馬上存（#377），
 	 * 也記下上次那支：開著本機流程就是它，在首頁（或雲端流程，#383 再接）就清掉（#378）。
+	 * App 裡只有一個視窗，不會有別的分頁：不開分頁頻道，「另一個分頁正在編」不會出現（#392）。
 	 * 回傳頁面關掉時要做的：關掉分頁頻道、不聽殼了、還在等停手 1 秒的草稿不存了。
 	 */
 	connect(): () => void {
-		const channel = this.#editor.adapters.openTabChannel?.() ?? null;
+		const channel = host().shell.inApp ? null : (this.#editor.adapters.openTabChannel?.() ?? null);
 		this.#channel = channel;
 		channel?.listen((message) => {
 			if (message.kind === 'editing?' && this.#editor.session.flow && message.id === this.#draftId) {
@@ -195,7 +196,8 @@ export class FlowFile {
 			if (oldId !== this.#draftId) void this.#dropDraft(oldId);
 			this.#announce();
 			this.#saveDraftLater();
-			const saved = savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch);
+			// App 裡沒有電腦的 Chrome、Edge 可以換（接了觸控板的 iPad 也是），跟觸控螢幕一樣只說原本的檔沒改（#392）
+			const saved = savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch || host().shell.inApp);
 			session.notice = missing
 				? joinNotes([saved, (missing === 1 ? m.file_saved_missing_audio_one : m.file_saved_missing_audio)({ count: missing })])
 				: saved;
@@ -275,7 +277,7 @@ export class FlowFile {
 			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名。開檔時拿掉的書籤、排好的站位（手改過的檔）接在後面說
 			const parts: (string | false)[] = r.missingSegmentIds.length
 				? [missingAudioText(fileName ?? m.file_draft(), missingAudioNames(r.flow, r.missingSegmentIds))]
-				: [fileName !== null && m.file_opened({ name: fileName }), music.hasBroken && m.file_broken_audio()];
+				: [fileName !== null && m.file_opened({ name: fileName }), music.hasBroken && (host().shell.inApp ? m.file_broken_audio_app() : m.file_broken_audio())];
 			if (r.droppedBookmarks.length) parts.push(droppedBookmarksText(r.droppedBookmarks));
 			if (r.sortedFormations) parts.push(m.file_sorted_formations());
 			const said = parts.filter((x): x is string => !!x);

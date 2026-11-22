@@ -9,6 +9,8 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import { httpServer, type LinkInfo, type PasswordProblem, type ServerAdapter } from '#lib/server-api.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { host } from '#lib/host.js';
+	import { appDevice } from '#lib/app-shell.js';
 	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
@@ -68,7 +70,7 @@
 	{:else if link}
 		<form onsubmit={submit}>
 			<h1>{link.purpose === 'reset' ? m.account_set_new_password() : m.account_set_password()}</h1>
-			<p class="lead">{link.purpose === 'reset' ? m.account_reset_lead() : m.account_welcome({ name: link.name })}</p>
+			<p class="lead">{link.purpose === 'reset' ? (host().shell.inApp ? m.account_reset_lead_app({ device: appDevice() }) : m.account_reset_lead()) : m.account_welcome({ name: link.name })}</p>
 			<!-- email 顯示但不能改：讓密碼管理器知道是哪個帳號 -->
 			<label class="field">
 				<span>Email</span>

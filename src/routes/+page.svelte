@@ -42,6 +42,7 @@
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
+	import { tellShellScreen } from '#lib/shell-screen.svelte.js';
 	import { ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
@@ -77,6 +78,7 @@
 	import type { OfflineCopy } from '#lib/offline-store.js';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
 	import { host } from '#lib/host.js';
+	import { appDevice } from '#lib/app-shell.js';
 	import { followWebUpdate } from '#lib/web-update.js';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
@@ -118,6 +120,8 @@
 	const guideHref = `${resolve('/guide')}?from=editor`;
 
 	const flow = $derived(session.flow);
+	// App：打開了流程就是編輯畫面，殼讓整頁不回彈（#376）
+	tellShellScreen(() => flow !== null);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
 	setUnsavedCheck(() => editor.hasUnsavedWork);
 	/**
@@ -196,6 +200,7 @@
 	let videoOpen = $state(false);
 	/** 觸控螢幕（iPad）：沒有 Shift、Esc，場地左邊才放「多選」「取消選取」（docs/adr/0005-ipad-touch.md）。 */
 	const touchScreen = isTouchScreen();
+	const inApp = host().shell.inApp;
 
 	// ---------- 窄螢幕（手機、直拿的 iPad）：一律檢視模式，編排換成手機的檢視畫面（docs/adr/0005-ipad-touch.md） ----------
 	const narrowQuery = typeof matchMedia === 'function' ? matchMedia(NARROW_SCREEN) : null;
@@ -996,8 +1001,8 @@
 							{/if}
 							{#if view === 'edit'}
 								<hr />
-								<!-- 輸出影片只在電腦：觸控螢幕（iPad）不出現。檢視模式也能輸出（不改流程） -->
-								{#if !touchScreen}
+								<!-- 輸出影片只在電腦：觸控螢幕（iPad）不出現，App 裡一律不出現（接了觸控板的 iPad 也是，#392）。檢視模式也能輸出（不改流程） -->
+								{#if !touchScreen && !inApp}
 									<button
 										type="button"
 										title={flow.segments.length ? m.editor_export_video() : m.editor_add_segment_first()}
@@ -1541,7 +1546,7 @@
 					>
 				</li>
 			{:else}
-				<li class="empty">{m.home_none_yet()}</li>
+				<li class="empty">{inApp ? m.home_none_yet_app() : m.home_none_yet()}</li>
 			{/each}
 		</ul>
 		{#if editor.file.unsavedOverLimit}
@@ -1549,7 +1554,8 @@
 				{(editor.file.unsavedOverLimit === 1 ? m.home_unsaved_over_limit_one : m.home_unsaved_over_limit)({ n: editor.file.unsavedOverLimit })}
 			</p>
 		{/if}
-		<p class="recent-note">{m.home_draft_note()}</p>
+		<!-- App 裡不寫「這個瀏覽器」，多一句同一台的 App 和瀏覽器各存各的（#392） -->
+		<p class="recent-note">{inApp ? m.home_draft_note_app({ device: appDevice() }) : m.home_draft_note()}</p>
 	{/snippet}
 	{#if editor.file.reopening}
 		<!-- App 打開時正在回上次那支（#378）：不先畫首頁 -->

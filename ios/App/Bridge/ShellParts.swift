@@ -10,6 +10,7 @@ enum ShellParts {
         [
             ReadyPart(onReady: { Logger.shell.info("網頁說好了"); context.webUpdates.updater.webSaidReady() }),  // #393：換上新網頁後靠它判斷打不打得開
             // #376
+            ScreenPart(onScreen: { ScreenFeelView.around(context.webView)?.kind = $0 }),
 
             // #377
             DraftsPart.inApp(outbox: context.outbox),
@@ -19,6 +20,9 @@ enum ShellParts {
 
             // #380
             SitePart(site: AppSite.current),
+
+            // #381
+            CloudRoomPart.inApp(outbox: context.outbox),
 
             // #389
             NowPlayingPart.onLockScreen(context.outbox),

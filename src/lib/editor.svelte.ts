@@ -62,8 +62,7 @@ export function browserAdapters(): EditorAdapters {
 		pickFlowFile: browserFilePicker(),
 		decode: decodeAudio,
 		draftStore: host().createDraftStore(),
-		// App 只開一個視窗（#305），沒有別的分頁要問；不開就不用等它們回答（#378 打開就回上次那支）
-		openTabChannel: host().shell.inApp ? null : browserTabChannel(),
+		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame,
 		server: httpServer(),

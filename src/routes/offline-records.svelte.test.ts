@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { StoredAttempt } from '#lib/core';
 import { localDate } from '#lib/local-date.js';
 import type { UnsentRecords } from '#lib/offline-store.js';
-import { editorPage, fakeOfflineStore, fakeServer, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
+import { editorPage, fakeHost, fakeOfflineStore, fakeServer, fakeShell, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
@@ -360,6 +360,14 @@ describe('iPhone、iPad 的 Safari：提醒加到主畫面', () => {
 		await settle();
 		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
 		await recordOne();
+		expect(hint()).toBeNull();
+	});
+
+	it('App 裡（#392）：殼的資料不會被清，不提醒加到主畫面', async () => {
+		fakeHost({ shell: fakeShell() });
+		await open(wangsFlow(), fakeOfflineStore({ volatile: true }));
+		await recordOne();
+		expect(dayRow('第 1 組 小美')).toEqual(['✓··']);
 		expect(hint()).toBeNull();
 	});
 

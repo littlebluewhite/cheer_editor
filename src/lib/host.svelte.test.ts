@@ -79,12 +79,6 @@ describe('換成假的', () => {
 		expect(host().shell.can('video')).toBe(false);
 	});
 
-	it('App 只有一個視窗：不開分頁頻道（打開流程不用等別的分頁回答，#378 回上次那支要快）；網頁版照開', () => {
-		expect(browserAdapters().openTabChannel).not.toBeNull();
-		fakeHost({ shell: fakeShell() });
-		expect(browserAdapters().openTabChannel).toBeNull();
-	});
-
 	it('離線存放：編輯器、登入頁沒給的時候都用換上的', async () => {
 		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
 		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
