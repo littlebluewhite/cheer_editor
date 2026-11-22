@@ -175,7 +175,7 @@ describe('輸出影片', () => {
 
 	it('存檔失敗：空間不夠', async () => {
 		await saveFails(new DOMException('', 'QuotaExceededError'));
-		expect(await within(dialog()).findByText('沒存成：電腦的空間不夠，清出空間再存一次')).toBeTruthy();
+		expect(await within(dialog()).findByText('沒存成：裝置的空間不夠，清出空間再存一次')).toBeTruthy();
 		expect(dialog().querySelector('.detail')).toBeNull();
 	});
 
