@@ -162,8 +162,9 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 在 iOS 27.2 模擬器上看到的（2026-11-22，`PipeTests/PrintPipeTests.swift`）：
 
 - iPad、iPhone 都叫得出列印畫面，右上角有「分享」，預覽是八拍表的列印樣子（A4、1 頁、小站位圖有顏色、表頭白底）。
-- **iPad 上列印畫面不從按鈕跳出來**：iOS 27 的列印畫面是置中的大卡片，系統記錄 `presentFromRect… called on iPhone`。程式照樣傳按鈕的位置（18.4 上應該是從按鈕跳出的小視窗，沒試過）。
-- 剛用程式收起列印畫面就馬上再叫，系統不理（測試裡等 1 秒）。程式收起時不會通知 delegate。
+- 記一次全上表、總表的「列印」也叫得出列印畫面（`practice-flow.zip` 是 `src/lib/test-flows.ts` 的 `libSample()` 寫成的流程檔）。
+- **iPad 上列印畫面不從按鈕跳出來**：iOS 27 的列印畫面是視窗正中間的大卡片，不是指著按鈕的小視窗，系統還記錄 `presentFromRect… called on iPhone`（iPad 模擬器上也是）。程式照樣傳按鈕的位置（18.4 上照文件應該從按鈕跳出來，沒試過）。
+- 列印畫面還沒收完就再叫，系統不理。程式收起時也不會通知 delegate（測試看畫面上還有沒有蓋著的東西）。
 - 真的按鍵盤的 ⌘P 沒試過：模擬器沒開視窗，送不了按鍵。測試是從網頁畫面裡的 `WKContentView` 送 `printContent`。
 - 按「分享」→ 存成 PDF 沒試過（測試按不到系統的列印畫面）。
 

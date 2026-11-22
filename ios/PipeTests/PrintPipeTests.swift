@@ -26,14 +26,7 @@ struct PrintPipeTests {
             .appendingPathComponent("../../docs/samples/sample-flow.zip")
         let zip = try Data(contentsOf: sample).base64EncodedString()
         let print = try String(contentsOf: fixtures.appendingPathComponent("print-eight-sheet.js"), encoding: .utf8)
-        let h = Harness(siteRoot: site,
-                        parts: { context in [PrintPart(onPrint: { Printer.present(context.webView, from: $0) })] },
-                        size: CGSize(width: 1194, height: 834))
-        // 列印畫面要從一個有 view controller 的視窗跳出來（App 裡是 ShellViewController）
-        let host = UIViewController()
-        h.window.rootViewController = host
-        host.view.addSubview(h.shell.webView)
-        h.window.makeKeyAndVisible()
+        let h = Self.printHarness(site)
         let spy = PrintSpy()
         UIPrintInteractionController.shared.delegate = spy
         defer {
@@ -57,8 +50,52 @@ struct PrintPipeTests {
         if let hold = ProcessInfo.processInfo.environment["PRINT_HOLD"].flatMap(Double.init) {
             try await Task.sleep(for: .seconds(hold))
         }
-        // 收乾淨再換下一個測試（剛收就再叫，系統不理；程式收起來不會通知 delegate，只好等一下）
+        try await Self.dismiss()
+    }
+
+    @Test func 真的那包網頁_總表_記一次全上表按列印_也請殼印() async throws {
+        let site = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
+        let zip = try Data(contentsOf: fixtures.appendingPathComponent("practice-flow.zip")).base64EncodedString()
+        let script = try String(contentsOf: fixtures.appendingPathComponent("print-practice.js"), encoding: .utf8)
+        let h = Self.printHarness(site)
+        try await h.load("")
+        try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
+        // 同一個 delegate 第二次叫出來時不一定再通知，所以看視窗上有沒有蓋著列印畫面
+        let sheetUp = { h.window.rootViewController?.presentedViewController != nil }
+
+        #expect(try await h.js(script, ["zip": zip, "step": "summary"]) as? String == "ok")
+        try await h.waitUntil("總表：列印畫面出來") { sheetUp() }
+        #expect((UIPrintInteractionController.shared.printFormatter as? UIViewPrintFormatter)?.view === h.shell.webView)
+        try await Self.dismiss()
+
+        #expect(try await h.js(script, ["zip": zip, "step": "runThrough"]) as? String == "ok")
+        try await h.waitUntil("記一次全上表：列印畫面出來") { sheetUp() }
+        try await Self.dismiss()
+    }
+
+    /// 印的測試用的殼：iPad 橫拿的大小，放進 App 的那個 scene、有 view controller 的視窗（列印畫面要從這裡跳出來），蓋在 App 自己的畫面上面。
+    /// 草稿跟 App 一樣存在殼（暫存資料夾），不留在網頁的 IndexedDB（DraftsPipeTests 會看那裡是空的）。
+    static func printHarness(_ site: URL) -> Harness {
+        let drafts = DraftFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("print-drafts-\(UUID().uuidString)"))
+        let h = Harness(siteRoot: site,
+                        parts: { context in [
+                            PrintPart(onPrint: { Printer.present(context.webView, from: $0) }),
+                            DraftsPart.inApp(outbox: context.outbox, folder: drafts),
+                        ] },
+                        size: CGSize(width: 1194, height: 834))
+        h.window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let host = UIViewController()
+        h.window.rootViewController = host
+        host.view.addSubview(h.shell.webView)
+        h.window.makeKeyAndVisible()
+        return h
+    }
+
+    /// 收乾淨再叫下一次（還沒收完就再叫，系統不理；程式收起來不會通知 delegate，所以看畫面上還有沒有蓋著的東西）。
+    static func dismiss() async throws {
         UIPrintInteractionController.shared.dismiss(animated: false)
+        let windows = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows }.joined()
+        try await waitUntil { windows.allSatisfy { $0.rootViewController?.presentedViewController == nil } }
         try await Task.sleep(for: .seconds(1))
     }
 
