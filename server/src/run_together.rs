@@ -18,6 +18,10 @@ use crate::flow_core::FlowCore;
 /// 沒有開著的全上時的表。
 pub const EMPTY: &str = "[]";
 
+/// 斷線多久就當他離開那張表：跟流程核心的 `GONE_MS`（`src/lib/core/run-together.ts`）是同一個，改一邊要改另一邊。
+/// 這裡只拿來決定斷線後多久再說一次（算不算離開是流程核心算的）。
+pub const GONE_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// 誰送的：哪個人、哪個連線、叫什麼。
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +44,7 @@ pub struct Report {
     pub joining: bool,
 }
 
-/// 用戶端送的一起記全上的事（RoomRequest 裡的幾種）。from：送的人看到誰拿著。
+/// 手機從房間送來的一起記全上的事（RoomRequest 裡的幾種）。from：送的人看到誰拿著。
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Ask {

@@ -345,7 +345,7 @@ export type {
 	RecordsAsk,
 	RecordVerdict
 } from './room-records';
-export { runTogether, runViews } from './run-together';
+export { GONE_MS, runTogether, runViews } from './run-together';
 export type {
 	RunAnswer,
 	RunAsk,

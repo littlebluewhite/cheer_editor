@@ -8,8 +8,8 @@
 // 真正擋住「一組記兩次」（存紀錄，room-records.ts）。現在幾點由叫的人給（毫秒）。
 // 不用 structuredClone（伺服器的 QuickJS 沒有），也不改傳進來的東西。
 
-/** 斷線多久就當他離開那張表（毫秒）。 */
-const GONE_MS = 60_000;
+/** 斷線多久就當他離開那張表（毫秒）。伺服器的 run_together.rs GONE_AFTER 是同一個，改一邊要改另一邊。 */
+export const GONE_MS = 60_000;
 
 /** 一支流程開著的全上（照開的先後）。只是 JSON，叫的人原樣存著、下次再傳進來。 */
 export type RunsTogether = TogetherRun[];

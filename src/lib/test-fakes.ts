@@ -14,6 +14,7 @@ import {
 	addPhase,
 	checkFlowDocument,
 	flowProblem,
+	GONE_MS,
 	recordAttempt,
 	receiveRecords,
 	runTogether,
@@ -508,7 +509,7 @@ export function fakeServer(
 		runs.set(r.flowId, out.runs);
 		if (out.changed) {
 			tellRuns(r.flowId);
-			setTimeout(() => tellRuns(r.flowId), 61_000);
+			setTimeout(() => tellRuns(r.flowId), GONE_MS + 1_000);
 		}
 		if (!rooms.some((o) => o.flowId === r.flowId && o.room !== r.room && !down.has(o.room))) runs.delete(r.flowId);
 	};
