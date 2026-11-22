@@ -95,6 +95,16 @@ describe('分段練正在記的一次', () => {
 		expect(card().shut).toEqual([]);
 	});
 
+	it('金字塔「跳過了前面的環節」：只有 ✗ 之前的沒打才說，佔同樣拍的沒打不說；存下來空著的照拍算', () => {
+		const { card, records } = setup(pyramidSample(), 1);
+		card().tap('p6', '✗');
+		expect(card().skipping).toBe(true);
+		card().tap('p4', '✓');
+		expect(card().skipping).toBe(false);
+		card().save();
+		expect(records()).toEqual([[true, { p4: '✓', p6: '✗' }, ['p5', 'p7', 'p8']]]);
+	});
+
 	it('全部 ✓ 存：點了的照點的，還能打、沒打的補 ✓，按不了的空著', () => {
 		const { s, card, records } = setup(pyramidSample(), 1);
 		card().tap('p6', '✗');
