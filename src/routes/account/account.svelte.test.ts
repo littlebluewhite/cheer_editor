@@ -164,27 +164,96 @@ describe('我的帳號頁', () => {
 		expect(screen.getByRole('alert').textContent).toBe('要有網路才能要求刪除帳號。連上網路再試。');
 	});
 
-	it('要求刪除帳號：這台還有沒傳的紀錄，先跳小框；「先不要登出」什麼都不做，「丟掉，登出」才送出要求', async () => {
+	it('要求刪除帳號：這台還有沒傳的紀錄，先傳上去再送出要求（不跳小框）', async () => {
 		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
 		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
 		const { state, went, offline } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(state.flows[0].records?.map((r) => r.attempt.id)).toEqual(['tabc123def456']);
+		expect(screen.queryByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' })).toBeNull();
+		expect(state.users[0].disabled).toBe(true);
+		expect(went).toEqual(['/']);
+		expect(await offline.store.unsent()).toEqual([]);
+	});
+
+	it('要求刪除帳號：沒傳的紀錄傳不上去（例：流程已經不在了），先不刪，跳小框說傳不上去；「先不要登出」什麼都不做，「丟掉，登出」才送出要求', async () => {
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const { state, went, offline } = await accountPage(lin.email, [{ flowId: 'gone', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
 		const confirm = async (button: string) => {
 			await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
 			await flush();
 			await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '要求刪除帳號' }));
 			await flush();
-			await fireEvent.click(within(screen.getByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' })).getByRole('button', { name: button }));
+			const box = screen.getByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' });
+			expect(within(box).getByText('這幾筆傳不上去，帳號還沒要求刪除。要留著就先不要刪；丟掉就送出要求。')).toBeTruthy();
+			await fireEvent.click(within(box).getByRole('button', { name: button }));
 			await flush();
 		};
 		await confirm('先不要登出');
 		expect(screen.queryByRole('dialog')).toBeNull();
 		expect(state.users[0].disabled).toBeFalsy();
 		expect(state.signedIn).toBe(lin.email);
+		expect(await offline.store.unsent()).toHaveLength(1);
 
 		await confirm('丟掉，登出');
 		expect(state.users[0].disabled).toBe(true);
 		expect(went).toEqual(['/']);
 		expect(await offline.store.unsent()).toEqual([]);
+	});
+
+	it('要求刪除帳號：按下去時斷網了，沒傳的傳不上去，跳小框、帳號不變', async () => {
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const { state, network } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		network('offline');
+		await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(screen.getByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' })).toBeTruthy();
+		expect(state.flows[0].records ?? []).toEqual([]);
+		expect(state.users[0].disabled).toBeFalsy();
+	});
+
+	it('要求刪除帳號：這台刪了、還沒送到的紀錄也先送上去', async () => {
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const amend = { ids: ['tabc123def456'], request: { kind: 'deleteRecords' as const, ids: ['tabc123def456'] } };
+		const { state, went } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [], amends: [amend], dropped: [] }]);
+		state.flows[0].records = [{ ...record, by: lin.email }];
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(state.flows[0].records?.[0].gone).toBe(true);
+		expect(screen.queryByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' })).toBeNull();
+		expect(state.users[0].disabled).toBe(true);
+		expect(went).toEqual(['/']);
+	});
+
+	it('要求刪除帳號：在傳沒傳的紀錄時按「取消」，傳完也不送出要求', async () => {
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const { state, went, releaseRoom } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		state.holdRoom = true;
+		const box = screen.getByRole('dialog', { name: '要求刪除帳號？' });
+		await fireEvent.click(within(box).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		await fireEvent.click(within(box).getByRole('button', { name: '取消' }));
+		releaseRoom();
+		await flush();
+		releaseRoom();
+		await flush();
+		expect(state.flows[0].records?.map((r) => r.attempt.id)).toEqual(['tabc123def456']);
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(state.users[0].disabled).toBeFalsy();
+		expect(went).toEqual([]);
+		expect(screen.getByRole('button', { name: '要求刪除帳號' }).hasAttribute('disabled')).toBe(false);
 	});
 
 	it('要求刪除帳號：今天寄不出信，確認框裡說明天再試，帳號不變', async () => {

@@ -642,6 +642,7 @@
 	"account_unsent_title_one": "還有 {n} 筆成功率紀錄沒傳",
 	"account_unsent_title": "還有 {n} 筆成功率紀錄沒傳",
 	"account_unsent_lead": "登出就丟掉，別人看不到。先連上網路，等它傳完再登出。",
+	"account_unsent_failed": "這幾筆傳不上去，帳號還沒要求刪除。要留著就先不要刪；丟掉就送出要求。",
 	"account_unsent_count_one": "{n} 筆",
 	"account_unsent_count": "{n} 筆",
 	"account_unsent_discard": "丟掉，登出",
