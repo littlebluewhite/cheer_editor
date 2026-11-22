@@ -38,7 +38,7 @@ describe('手機的檢視模式', () => {
 		const { engine, frames } = await openOnPhone();
 		// 不停在被擋住的編排畫面
 		expect(screen.queryByRole('region', { name: '視窗太窄了' })).toBeNull();
-		expect(screen.getByRole('img', { name: '場地' })).toBeTruthy();
+		expect(screen.getByLabelText('場地')).toBeTruthy();
 		expect(row().textContent).toContain('Lib');
 		// 手機放不下七列：只有這個八拍和下一個
 		expect([...row().querySelectorAll('[data-slot]')].map((s) => s.getAttribute('data-slot'))).toEqual(['1', '2']);
@@ -143,7 +143,8 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		await fireEvent.pointerDown(el, { button: 0, clientX: x, clientY: y });
 		await fireEvent.pointerUp(el, { button: 0, clientX: x, clientY: y });
 	};
-	const field = () => screen.getByRole('img', { name: '場地' });
+	/** 場地（用名字找，不管是 img 還是 group）。 */
+	const field = () => screen.getByLabelText('場地');
 
 	it('點小A：左下角寫他的名字和這個八拍做什麼，他圈起來；點空白處變回現在的站位', async () => {
 		const { session } = await openOnPhone();
@@ -172,6 +173,46 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		expect(dimmed()).toEqual(['m1', 'm3', 'm4']);
 		await tap(dot('m1'), 100, 100);
 		expect(dimmed()).toEqual(['m3', 'm4']);
+	});
+
+	it('鍵盤、讀螢幕軟體：場上每個人是 Tab 停得到的按鈕，念得出名字', async () => {
+		await openOnPhone();
+		// 場地是一群（group）隊員，不是圖片：圖片裡面的人讀螢幕軟體讀不到
+		expect(screen.queryByRole('img', { name: '場地' })).toBeNull();
+		expect(screen.getByRole('group', { name: '場地' })).toBe(field());
+		const dots = within(field()).getAllByRole('button', { name: /^(小美|小A|小B|小芳)/ });
+		expect(dots).toHaveLength(4);
+		for (const d of dots) expect(d.getAttribute('tabindex')).toBe('0');
+		expect(dot('m2').getAttribute('aria-label')).toMatch(/^小A/);
+	});
+
+	it('停在小A按 Enter：跟用手指點一下一樣，左下角寫他的名字和這個八拍做什麼', async () => {
+		const { session } = await openOnPhone();
+		await fireEvent.keyDown(dot('m2'), { key: 'Enter' });
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+		expect(dot('m2').classList.contains('selected')).toBe(true);
+		expect(session.unsaved).toBe(false);
+	});
+
+	it('停在人身上按空白鍵：照樣播放／暫停', async () => {
+		const { editor } = await openOnPhone();
+		expect(editor.playback.playing).toBe(false);
+		await fireEvent.keyDown(dot('m1'), { key: ' ' });
+		expect(editor.playback.playing).toBe(true);
+		await fireEvent.keyDown(dot('m1'), { key: ' ' });
+		expect(editor.playback.playing).toBe(false);
+	});
+
+	it('停在人身上按方向鍵（加不加 Shift）：人不動，流程沒有被改', async () => {
+		const { session } = await openOnPhone();
+		const at = ['m1', 'm2'].map((id) => dot(id).getAttribute('transform'));
+		for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+			await fireEvent.keyDown(dot('m1'), { key });
+			await fireEvent.keyDown(dot('m1'), { key, shiftKey: true });
+		}
+		expect(['m1', 'm2'].map((id) => dot(id).getAttribute('transform'))).toEqual(at);
+		expect(dot('m2').classList.contains('selected')).toBe(false);
+		expect(session.unsaved).toBe(false);
 	});
 
 	it('選了「我」是小A，再點小美：兩個人的走位線都畫', async () => {
@@ -222,6 +263,124 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		await flush();
 		await openFile(writeFlowFile({ ...libSample(), name: '別支' }, {}));
 		expect(corner()).toBe('站位 1');
+	});
+});
+
+describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () => {
+	/** 範例流程在第 3 個八拍（8 秒）加一張站位：小A 從 (0, 1.83) 走到右下 (7, 6)。 */
+	function walkingFlow(): Flow {
+		const flow = libSample();
+		const added = flowOf(insertFormation(flow, 8));
+		const formation = added.formations.find((f) => !flow.formations.some((o) => o.id === f.id))!;
+		return flowOf(setPositions(added, formation.id, { m2: [7, 6] }));
+	}
+	const stage = () => screen.getByLabelText('場地');
+	/** 場地看到的範圍（公尺）：x y 寬 高。 */
+	const viewBox = () => stage().getAttribute('viewBox')!.split(' ').map(Number);
+	const inView = (id: string) => {
+		const [x, y] = dot(id).getAttribute('transform')!.match(/translate\(([^,]+),([^)]+)\)/)!.slice(1).map(Number);
+		const [vx, vy, w, h] = viewBox();
+		return x >= vx && x <= vx + w && y >= vy && y <= vy + h;
+	};
+	const finger = (x: number, y: number) => ({ pointerType: 'touch', pointerId: 1, button: 0, clientX: x, clientY: y });
+	/** 在小A站的地方（0, 1.83 公尺；1 px = 1 cm）很快點兩下：放大 ×2。 */
+	async function zoomIn() {
+		for (let i = 0; i < 2; i++) {
+			await fireEvent.pointerDown(dot('m2'), finger(0, 183));
+			await fireEvent.pointerUp(dot('m2'), finger(0, 183));
+		}
+	}
+	/** 一根手指往左上拖一下：移動畫面。 */
+	async function drag() {
+		await fireEvent.pointerDown(stage(), finger(0, 0));
+		await fireEvent.pointerMove(stage(), finger(-50, -50));
+		await fireEvent.pointerUp(stage(), finger(-50, -50));
+	}
+	/** 按播放，聲音每次走半秒、走到第 4 個八拍（14 秒）；每一步都記下小A在不在畫面裡。 */
+	async function playThrough({ engine, frames }: Awaited<ReturnType<typeof openOnPhone>>) {
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const seen: boolean[] = [];
+		const start = engine.time;
+		for (let s = 0.5; s <= 14; s += 0.5) {
+			engine.audible = start + 0.1 + s;
+			frames.step();
+			await flush();
+			seen.push(inView('m2'));
+		}
+		return seen;
+	}
+
+	it('選了「我」是小A、放大、播放：小A走出畫面之前畫面跟過去，一直在畫面裡', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const before = viewBox();
+		expect(await playThrough(opened)).not.toContain(false);
+		expect(viewBox()).not.toEqual(before);
+	});
+
+	it('先用手指拖一下畫面再播放：畫面不動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await drag();
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('放大後用兩根手指移動畫面再播放：畫面也不動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const two = (id: number, x: number, y: number) => ({ ...finger(x, y), pointerId: id });
+		await fireEvent.pointerDown(stage(), two(1, 0, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100, 0));
+		await fireEvent.pointerMove(stage(), two(2, 80, -60));
+		await fireEvent.pointerUp(stage(), two(2, 80, -60));
+		await fireEvent.pointerUp(stage(), two(1, 0, 0));
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('放大後點小美一下（手抖了幾 px）看是誰：不算拖，播放照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await fireEvent.pointerDown(dot('m1'), finger(0, 0));
+		await fireEvent.pointerMove(dot('m1'), finger(3, 2));
+		await fireEvent.pointerUp(dot('m1'), finger(3, 2));
+		expect(await playThrough(opened)).not.toContain(false);
+	});
+
+	it('拖過之後按「整個場地」，再放大、播放：又會跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await drag();
+		await fireEvent.click(screen.getByRole('button', { name: '整個場地' }));
+		await zoomIn();
+		expect(await playThrough(opened)).not.toContain(false);
+	});
+
+	it('沒選「我」放大播放：畫面不動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await zoomIn();
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('停著不播放（按下一個八拍跳過去）：畫面不動', async () => {
+		await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const before = viewBox();
+		for (let i = 0; i < 3; i++) await fireEvent.click(screen.getByRole('button', { name: '下一個八拍' }));
+		await flush();
+		expect(inView('m2')).toBe(false);
+		expect(viewBox()).toEqual(before);
 	});
 });
 

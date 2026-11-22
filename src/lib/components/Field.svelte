@@ -85,7 +85,8 @@
 		crop = null,
 		numberBand = NUMBER_BAND,
 		tapped = null,
-		ontap
+		ontap,
+		playing = false
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -126,6 +127,8 @@
 		tapped?: string | null;
 		/** 沒有編輯器時（手機的檢視畫面）點一下：點到誰（點空白處是 null）。點兩下的第二下是放大，不叫。 */
 		ontap?: (memberId: string | null) => void;
+		/** 正在播放：只能看的場地放大了又標了「我」，畫面跟著「我」。 */
+		playing?: boolean;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -155,6 +158,8 @@
 	 * 沒有編輯器時看有沒有給 ontap：八拍表的小站位圖沒給（沒人排上場時也不裁）。
 	 */
 	const viewOnly = $derived(!crop && (session ? !session.editable : !!ontap));
+	/** 點得到人的場地（編輯頁、手機的檢視畫面）：每個圓點是 Tab 停得到的按鈕，Enter 跟點一下一樣。八拍表的小站位圖不算。 */
+	const pickable = $derived(!!session || (!crop && !!ontap));
 	/** 標了「我」：別人畫淡一點（「我」和圈起來的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
 	const dim = (id: string) => !crop && marked.length > 0 && !marked.includes(id) && !lit.includes(id);
 
@@ -384,6 +389,9 @@
 
 	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
+		// 從整個場地放大：這次放大跟著「我」；回整個場地就關掉，下次放大再打開。
+		if (zoom === 1 && z > 1) follow = true;
+		if (z === 1) follow = false;
 		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
@@ -402,6 +410,30 @@
 		}
 	}
 
+	// ---------- 放大後播放，畫面跟著「我」（只能看的場地） ----------
+	/** 這次放大跟著「我」：從整個場地放大時打開，用手指（滑鼠、觸控板）移動畫面就關掉（setZoom 管開關）。 */
+	let follow = $state(false);
+	/** 「我」離畫面邊緣不到畫面寬（高）的這麼多，畫面才跟過去：不必每一拍都把他放正中間。 */
+	const FOLLOW_EDGE = 0.2;
+	/** 標的「我」（只標一個人才算）。 */
+	const followed = $derived(viewOnly && follow && playing && zoom > 1 && marked.length === 1 ? positions[marked[0]] : undefined);
+	$effect(() => {
+		const p = followed;
+		if (p) untrack(() => keepInView(p));
+	});
+
+	/**
+	 * 「我」快走出畫面：畫面挪剛好讓他回到離邊緣 FOLLOW_EDGE 的地方。每一格播放都挪一點點，看起來是順的；
+	 * 每次位置一換就挪好，不靠動畫，下一格之前「我」一定在畫面裡。
+	 */
+	function keepInView([px, py]: Position) {
+		const { x, y, width: w, height: h } = view;
+		const over = (p: number, lo: number, size: number) =>
+			Math.min(p - (lo + size * FOLLOW_EDGE), 0) + Math.max(p - (lo + size * (1 - FOLLOW_EDGE)), 0);
+		const [dx, dy] = [over(px, x, w), over(py, y, h)];
+		if (dx || dy) setZoom(zoom, undefined, [-dx, -dy]);
+	}
+
 	// ---------- ✋ 平移：放大後拖空白處移動畫面（不框選）。按 ✋ 切換，或按住 H 暫時用。 ----------
 	/** ✋ 按下去了（縮回整個場地就放掉）。 */
 	let handTool = $state(false);
@@ -414,6 +446,8 @@
 
 	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
 	function panTo(e: PointerEvent) {
+		// 真的拖了才不再跟著「我」：點一下看是誰時手抖幾 px 不算。
+		if (!press || !still(e, press.client)) follow = false;
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
 		pan = [e.clientX, e.clientY];
@@ -482,6 +516,7 @@
 		}
 		if (zoom <= 1) return;
 		e.preventDefault();
+		follow = false;
 		const [px, py] = e.shiftKey && !dx ? [dy, 0] : [dx, dy];
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [-px * perPx, -py * perPx]);
@@ -590,7 +625,8 @@
 		if (e.pointerType === 'touch' && (controls || look)) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
-				// 第二根手指：不拖人、不框選，改成捏合。
+				// 第二根手指：不拖人、不框選，改成捏合。已經放大了，兩指是自己動畫面：這次放大不再跟著「我」。
+				if (zoom > 1) follow = false;
 				pinching = true;
 				drag = null;
 				box = null;
@@ -743,9 +779,16 @@
 	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把方向鍵當移播放頭。
 	 * 空白鍵往外傳：焦點在人身上時，空白鍵跟頁面其他地方一樣是播放／暫停。
 	 * 檢視模式不能移人：方向鍵也往外傳，跟頁面其他地方一樣移播放頭。
+	 * 手機的檢視畫面（沒有編輯器）：只有 Enter，跟手指點一下一樣。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
-		if (!session) return;
+		if (!session) {
+			if (e.key !== 'Enter' || !pickable) return;
+			e.preventDefault();
+			e.stopPropagation();
+			ontap?.(id);
+			return;
+		}
 		if (e.key === 'Enter') {
 			e.preventDefault();
 			e.stopPropagation();
@@ -855,7 +898,7 @@
 		<div class="rail-fade" aria-hidden="true" hidden={!rail || !railMore}></div>
 	{/if}
 	<div class="stage" class:band {@attach watchStage}>
-	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
+	<!-- 能點人時（編輯頁、手機的檢視畫面）是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
 		class="field"
@@ -864,7 +907,7 @@
 		class:panning={!!pan}
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
-		role={session ? 'group' : 'img'}
+		role={pickable ? 'group' : 'img'}
 		aria-label={t.field_view_surface()}
 		{onwheel}
 		onpointerdown={down}
@@ -928,20 +971,20 @@
 				data-member-id={m.id}
 				data-keep-visible
 				role="button"
-				tabindex={session ? 0 : undefined}
-				aria-label={session ? whereText(m, p) : m.name}
-				aria-pressed={session ? sel : undefined}
+				tabindex={pickable ? 0 : undefined}
+				aria-label={pickable ? whereText(m, p) : m.name}
+				aria-pressed={pickable ? sel : undefined}
 				onkeydown={(e) => dotKey(e, m.id)}
 				transform="translate({p[0]},{p[1]})"
 			>
-				<title>{session ? whereText(m, p) : m.name}</title>
+				<title>{pickable ? whereText(m, p) : m.name}</title>
 				<g transform="scale({dotScale})">
 					{#if pill}
-						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
+						{#if pickable}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
 						<rect class={m.globalRole} x={-pill / 2} y={-DOT_R} width={pill} height={DOT_R * 2} rx={DOT_R} />
 					{:else}
-						{#if session}<circle class="focus-ring" r="0.54" />{/if}
+						{#if pickable}<circle class="focus-ring" r="0.54" />{/if}
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}

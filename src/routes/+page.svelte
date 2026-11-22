@@ -1136,6 +1136,7 @@
 							marked={myId ? [myId] : []}
 							tapped={tappedWho ? tappedId : null}
 							ontap={(id) => (tappedId = id)}
+							playing={playback.playing}
 							ghosts={trail.ghosts}
 							walks={trail.walks}
 							clashes={trail.clashes}
@@ -1196,6 +1197,7 @@
 					{toMeters}
 					rail={session.editable}
 					marked={!session.editable && myId ? [myId] : []}
+					playing={playback.playing}
 					ghosts={trail.ghosts}
 					walks={trail.walks}
 					clashes={trail.clashes}
