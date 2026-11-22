@@ -5,6 +5,7 @@ import { fireEvent, screen, within } from '@testing-library/svelte';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
+	amendRecords,
 	charCount,
 	addMembers,
 	addSegment,
@@ -13,15 +14,14 @@ import {
 	addPhase,
 	checkFlowDocument,
 	flowProblem,
-	putRecords,
 	recordAttempt,
 	receiveRecords,
-	runCommands,
 	said,
 	takeRecords,
 	takeStep,
 	setSquad,
 	updateSegment,
+	type AmendSent,
 	type Command,
 	type Flow,
 	type LoggedStep,
@@ -326,8 +326,6 @@ export function fakeServer(
 	};
 	/** 收過的步（每支流程）：步驟紀錄（流程核心的 LoggedStep），加上那一步改好之後的東西（重送、補步用）。 */
 	const stepLog = new Map<string, (LoggedStep & { change: RemoteChange })[]>();
-	const sameRecord = (a: StoredAttempt, b: StoredAttempt) =>
-		JSON.stringify({ actionId: a.actionId, attempt: a.attempt }) === JSON.stringify({ actionId: b.actionId, attempt: b.attempt });
 	/**
 	 * 房間收到一步：「這一步收不收」交給流程核心（takeStep，跟真的伺服器同一套規則）。canEdit 照送來那時的權限
 	 * （先留著不處理時，之後才改的權限不算到這一步上）。這裡只管存、送：
@@ -575,53 +573,41 @@ export function fakeServer(
 		const records = (f.records ?? []).filter((r) => !r.gone && changed.includes(r.attempt.id));
 		return structuredClone({ kind: 'recordsChanged', changed: records.map((r) => cloudRecord(r, viewer)), deleted });
 	};
-	/** 用流程核心對一次跑改記號、救回（跟真的伺服器一樣）：收了回跑完的那一次，被擋是 undefined。 */
-	const runOne = (f: FakeCloudFlow, records: StoredAttempt[], command: Command) => {
-		const r = runCommands(putRecords(structuredClone(f.flow), structuredClone(records)), [command], '');
-		return r.kind === 'ok' ? takeRecords(r.flow).records[0] : undefined;
-	};
-	/** 同一次全上的同一個動作、同一組，別的一筆已經存了（沒清掉的）：那一筆（#262）。 */
-	const firstInRun = (f: FakeCloudFlow, r: StoredAttempt) =>
-		(f.records ?? []).find(
-			(o) =>
-				!o.gone &&
-				o.attempt.id !== r.attempt.id &&
-				r.attempt.runThroughId !== undefined &&
-				o.attempt.runThroughId === r.attempt.runThroughId &&
-				o.actionId === r.actionId &&
-				o.attempt.who === r.attempt.who
-		);
 	/**
-	 * 這個人改、刪、救回幾次（#258）：記錄者只能動自己記的，擁有者、編輯者都能；刪掉的改、刪都不算，救回才拿回來。
-	 * 回那幾次現在的樣子（還在的），告訴別的房間。
+	 * 這個人改、刪、救回幾次（#258）：「改、刪、救回」交給流程核心（amendRecords，跟真的伺服器同一套規則）。
+	 * 這裡只管存、送：照結果存起來，回那幾次現在的樣子（還在的），告訴別的房間。
 	 */
 	const amend = (f: FakeCloudFlow, email: string, request: AmendRequest, from?: FlowRoom): RoomMessage => {
-		const role = roleOf(f, email);
-		const may = (r: { by?: string }) => role === 'owner' || role === 'editor' || (role === 'recorder' && !!r.by && same(r.by, email));
-		const sent = request.kind === 'changeRecords' ? (request.attempts as StoredAttempt[]) : [];
-		const asked = request.kind === 'changeRecords' ? sent.map((s) => s.attempt.id) : request.ids;
-		const changed: string[] = [];
-		const deleted: string[] = [];
+		const sent: AmendSent =
+			request.kind === 'changeRecords'
+				? { kind: 'change', attempts: structuredClone(request.attempts as StoredAttempt[]) }
+				: { kind: request.kind === 'deleteRecords' ? 'delete' : 'restore', ids: [...request.ids] };
+		const asked = sent.kind === 'change' ? sent.attempts.map((s) => s.attempt?.id) : sent.ids;
+		const step = f.step ?? 0;
+		const outcome = amendRecords({
+			flow: structuredClone(f.flow),
+			step,
+			role: roleOf(f, email) ?? 'viewer',
+			by: email.trim().toLowerCase(),
+			sent,
+			records: (f.records ?? []).map(({ actionId, attempt, gone, by }) => ({
+				actionId,
+				attempt: structuredClone(attempt),
+				...(gone && { gone }),
+				...(by && { by: by.trim().toLowerCase() })
+			}))
+		});
+		const now = new Map([...outcome.changed, ...outcome.restored].map((r) => [r.attempt.id, r]));
+		const amended = new Map(outcome.amended.map((a) => [a.id, a.step]));
 		f.records = (f.records ?? []).map((r) => {
 			const id = r.attempt.id;
-			if (!asked.includes(id) || !may(r)) return r;
-			if (request.kind === 'deleteRecords' && !r.gone) {
-				deleted.push(id);
-				return { ...r, gone: true, amendedStep: f.step ?? 0 };
-			}
-			const marks = sent.find((s) => s.attempt.id === id)?.attempt.marks ?? {};
-			const after =
-				request.kind === 'changeRecords' && !r.gone
-					? runOne(f, [r], { name: 'changeAttempt', args: [r.actionId, id, marks] })
-					: request.kind === 'restoreRecords' && r.gone && !firstInRun(f, r)
-						? runOne(f, [], { name: 'restoreAttempt', args: [r.actionId, r.attempt, 0] })
-						: undefined;
-			if (!after) return r;
-			changed.push(id);
-			// 再送一次一樣的記號（回答沒收到）不算用手動過（跟真的伺服器一樣）。
-			const amendedStep = r.gone || !sameRecord(r, after) ? (f.step ?? 0) : r.amendedStep;
-			return { ...r, ...after, gone: false, amendedStep };
+			const after = now.get(id);
+			const amendedStep = amended.get(id) ?? r.amendedStep;
+			if (after) return { ...r, ...after, gone: false, amendedStep };
+			return outcome.deleted.includes(id) ? { ...r, gone: true, amendedStep } : r;
 		});
+		const changed = outcome.told;
+		const deleted = outcome.deleted;
 		tellRecords(f, changed, deleted, from);
 		const saved = f.records.filter((r) => !r.gone && asked.includes(r.attempt.id)).map((r) => cloudRecord(r, email));
 		return { kind: 'recordsSaved', saved, dropped: [] };

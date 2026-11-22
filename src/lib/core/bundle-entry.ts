@@ -2,6 +2,7 @@
 // 進出伺服器的都是 JSON 字串，所以多一個收 JSON、回 JSON 的版本。
 
 import {
+	amendRecords,
 	applyRemoteChange,
 	checkFlowDocument,
 	checkRecord,
@@ -15,6 +16,7 @@ import {
 	stepKeys,
 	takeRecords,
 	takeStep,
+	type AmendAsk,
 	type Command,
 	type Flow,
 	type RecordsAsk,
@@ -101,4 +103,12 @@ export function takeStepJson(ask: string): string {
  */
 export function receiveRecordsJson(ask: string): string {
 	return JSON.stringify(receiveRecords(JSON.parse(ask) as RecordsAsk));
+}
+
+/**
+ * 改、刪、救回（#350）：ask 是 AmendAsk 的 JSON（現在的編排、第幾步、送的人的權限、他是誰、要改刪救回的、伺服器上那幾次），
+ * 回 amendRecords 的結果（AmendOutcome）的 JSON。
+ */
+export function amendRecordsJson(ask: string): string {
+	return JSON.stringify(amendRecords(JSON.parse(ask) as AmendAsk));
 }
