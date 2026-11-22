@@ -201,6 +201,18 @@ impl FlowCore {
         self.call_two("amendRecordsJson", flow, ask)
     }
 
+    /// 一起記全上的表做一件事（`runTogetherJson`，#352，ADR 0020）：runs 是現在的表的 JSON，event 是 RunEvent 的 JSON
+    /// 多帶 now、viewers，回新的表、回答、變了沒、給每個看的人的樣子的 JSON。伺服器還沒叫（ADR 0020 決定下一張走哪條路），
+    /// 現在只給 `run_together_timing` 量時間。
+    #[cfg(test)]
+    pub(crate) fn run_together(
+        &self,
+        runs: String,
+        event: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        self.call_two("runTogetherJson", runs, event)
+    }
+
     /// 收紀錄時照「記一次」的規則檢查（`checkRecordsJson`）：records 是 StoredAttempt[] 的 JSON，
     /// 回每一次的結果（照收，或整筆不存和原因）的 JSON，順序一樣。伺服器現在叫 receive_records（#349）；
     /// 這個只留給 `records_timing.rs` 量 #349 以前的做法。
@@ -526,6 +538,128 @@ mod tests {
                 );
             }
         });
+    }
+
+    /// 一起記全上的表（#352，ADR 0020）兩個門檻：
+    /// 1. 自己的時間：10 個人、40 組的表，「拿一組」加上給 10 個人看的樣子（`runTogetherJson` 一次做完），中位數 2 毫秒以內。
+    /// 2. 排隊的時間：跑流程核心的執行緒只有一條，前面排著一個約 1 MB 流程的插入八拍（`takeStepJson`）時，
+    ///    拿一組從交出去到拿回來多久，中位數 250 毫秒以內。
+    /// 只印數字、不比時間（機器不同），所以平常不跑：
+    /// `cd server && cargo test --release --lib run_together_timing -- --ignored --nocapture`。結果寫在 ADR 0020。
+    #[tokio::test]
+    #[ignore = "量時間用，手動跑"]
+    async fn run_together_timing() {
+        fn summary(mut ms: Vec<f64>) -> (f64, f64, f64) {
+            ms.sort_by(f64::total_cmp);
+            (ms[0], ms[ms.len() / 2], ms[ms.len() - 1])
+        }
+        let core = FlowCore::start().unwrap();
+        // 10 個人在表裡（第 1 個開、其他加入），每人拿 4 組、點過前 2 組；第 40 組沒人拿著，第 10 個人拿它。
+        let setup = core
+            .eval(
+                r#"
+                let runs = [];
+                for (let u = 1; u <= 10; u++) {
+                    const keys = [1, 2, 3, 4].map((j) => 'n:' + ((u - 1) * 4 + j)).filter((k) => k !== 'n:40');
+                    const report = { id: 'rrunbench0001', date: '2026-11-22', startedAt: 1795300000000, keys, touched: keys.slice(0, 2), joining: u > 1 };
+                    runs = flowCore.runTogether(runs, { kind: 'report', who: { userId: u, conn: 100 + u, name: '教練' + u }, report }, 1795300000000).runs;
+                }
+                const event = { kind: 'ask', who: { userId: 10, conn: 110, name: '教練10' }, run: 'rrunbench0001',
+                    ask: { kind: 'claim', key: 'n:40', from: null }, now: 1795300060000, viewers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] };
+                JSON.stringify([JSON.stringify(runs), JSON.stringify(event)])
+                "#
+                .to_owned(),
+            )
+            .await
+            .unwrap();
+        let (runs, event): (String, String) = serde_json::from_str(&setup).unwrap();
+        let claimed = |out: &str| {
+            let out: serde_json::Value = serde_json::from_str(out).unwrap();
+            assert_eq!(out["answer"]["kind"], "done", "拿一組沒拿到");
+            assert_eq!(out["views"].as_array().map(Vec::len), Some(10));
+            assert_eq!(out["views"][9][0]["keys"].as_array().map(Vec::len), Some(40), "表裡不是 40 組");
+            assert_eq!(out["views"][9][0]["people"].as_array().map(Vec::len), Some(10));
+        };
+        println!("表 {} bytes、拿一組的事 {} bytes", runs.len(), event.len());
+
+        // 1. 自己的時間：在流程核心的執行緒裡量（JSON 進出包含在內，不算排隊、不算換執行緒）。
+        let own = core
+            .submit({
+                let (runs, event) = (runs.clone(), event.clone());
+                move |ctx| {
+                    let mut ms = vec![];
+                    for i in 0..1_003 {
+                        let start = Instant::now();
+                        call(ctx, "runTogetherJson", (runs.clone(), event.clone())).unwrap();
+                        if i >= 3 {
+                            ms.push(start.elapsed().as_secs_f64() * 1000.0);
+                        }
+                    }
+                    ms
+                }
+            })
+            .await
+            .unwrap();
+        claimed(&core.run_together(runs.clone(), event.clone()).await.unwrap());
+        let (min, median, max) = summary(own);
+        println!("自己的時間（1,000 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms（門檻 2）");
+
+        // 從交出去到拿回來（前面沒有排別的）：多了換執行緒。
+        let mut alone = vec![];
+        for i in 0..203 {
+            let start = Instant::now();
+            let out = core.run_together(runs.clone(), event.clone()).await.unwrap();
+            if i >= 3 {
+                alone.push(start.elapsed().as_secs_f64() * 1000.0);
+                claimed(&out);
+            }
+        }
+        let (min, median, max) = summary(alone);
+        println!("拿一組，前面沒排別的（200 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms");
+
+        // 2. 排隊的時間：約 1 MB 的流程（tests/fixtures/big-flow.js）在最前面插入一個八拍，步驟紀錄 0 筆（room_step_timing 的那一種）。
+        let ask = core
+            .eval(format!(
+                "{}\n{}",
+                include_str!("../tests/fixtures/big-flow.js"),
+                r#"
+                const big = bigFlow();
+                const seg = big.flow.segments[0].id;
+                JSON.stringify({ flow: big.flow, step: 0, log: [], now: Date.UTC(2026, 10, 21), records: big.records,
+                    canEdit: true, tab: 'mine', by: '李教練',
+                    sent: { stepId: 'new', seen: 0, commands: [{ name: 'insertBeats', args: [{ segmentId: seg, at: 0 }, 1, 'eight'] }] } })
+                "#
+            ))
+            .await
+            .unwrap();
+        let accepted = |out: &str| assert!(out.starts_with(r#"{"kind":"accepted""#), "{}", &out[..300.min(out.len())]);
+        // 量尺：插入一個八拍自己（交出去到拿回來）。
+        let mut step_alone = vec![];
+        for i in 0..28 {
+            let start = Instant::now();
+            let out = core.take_step(ask.clone()).await.unwrap();
+            accepted(&out);
+            if i >= 3 {
+                step_alone.push(start.elapsed().as_secs_f64() * 1000.0);
+            }
+        }
+        let (min, median, max) = summary(step_alone);
+        println!("量尺：插入一個八拍自己（25 次）: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms");
+        // 先交插入一個八拍（一叫就排進隊伍），馬上交拿一組，量拿一組從交出去到拿回來。
+        let mut queued = vec![];
+        for i in 0..28 {
+            let step = core.take_step(ask.clone());
+            let start = Instant::now();
+            let out = core.run_together(runs.clone(), event.clone()).await.unwrap();
+            let took = start.elapsed().as_secs_f64() * 1000.0;
+            claimed(&out);
+            accepted(&step.await.unwrap());
+            if i >= 3 {
+                queued.push(took);
+            }
+        }
+        let (min, median, max) = summary(queued);
+        println!("排隊的時間：前面排著插入一個八拍（25 次）: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms（門檻 250）");
     }
 
     #[test]
