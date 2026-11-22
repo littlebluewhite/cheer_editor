@@ -72,7 +72,11 @@
 		<label class="date">{t.practice_date()}<input type="date" value={date} max={today} onchange={(e) => changeDate(e.currentTarget)} /></label>
 	</header>
 	{#if cloud && (!session.practice.cannotRecord || unsent)}
-		{#if cloud.link === 'offline'}
+		{#if cloud.newVersion}
+			<p class="bar warn" role="status">
+				{unsent ? (unsent === 1 ? t.practice_new_version_unsent_one : t.practice_new_version_unsent)({ n: unsent }) : t.practice_new_version()}
+			</p>
+		{:else if cloud.link === 'offline'}
 			<p class="bar warn" role="status">
 				{unsent ? (unsent === 1 ? t.practice_offline_unsent_one : t.practice_offline_unsent)({ n: unsent }) : t.practice_offline()}
 			</p>

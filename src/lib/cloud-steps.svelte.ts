@@ -1,7 +1,8 @@
 // 雲端流程一步一步存（#248，ADR 0010、0014）：流程檔打開雲端流程時建一個，換流程就關掉。
 // 連這支流程的房間，先打招呼（指紋、分頁 id、上次看到第幾步、在編輯還是檢視）。session 改好的一步交給它（雲端的復原紀錄 undoLog 送來）：
 // 畫面先改、不等伺服器；一次送一步，伺服器收了才送下一步。
-// 被退回：還沒送的步一起不要，畫面換成伺服器的樣子，原因放進提示。指紋不一樣：有新版，請重新整理，先不能改。
+// 被退回：還沒送的步一起不要，畫面換成伺服器的樣子，原因放進提示。指紋不一樣：有新版，請重新整理，先不能改（#368：
+// 能記，存著當沒傳的，更新後再傳；斷線連回來才被擋的，流程檔換成伺服器上最新的）。
 // 權限（#250）：記錄者、檢視者只能看；被降級馬上換檢視模式、還沒送到的步不算並提示；被收回叫 onrevoked（回首頁）。
 // 別人的改動（#253）：伺服器送來改好的東西，套在自己的畫面上（session.applyRemote），不關掉開著的表單。
 // 誰開著（#253）：伺服器說的在場名單（自己不列）；換編輯、檢視模式就告訴伺服器（setEditing）。
@@ -183,6 +184,11 @@ export class CloudSteps {
 	runRefused = $state.raw<RunRefused | null>(null);
 	/** 斷線後又連上了（伺服器說可以送步，#261）：從離線副本打開的，流程檔接上換成最新的。 */
 	onback: () => void = () => {};
+	/**
+	 * 斷線後連回來才知道有新版（#368）：畫面可能是舊的（離線副本、斷線前的樣子），流程檔接上換成伺服器上最新的。
+	 * lost 是沒送到、不算了的步有幾步（換的時候提示）。
+	 */
+	onstale: (lost: number) => void = () => {};
 
 	/**
 	 * 連 room（這支流程的房間），從第 step 步開始，我的權限是 role；session 改好的步交給它。
@@ -405,12 +411,13 @@ export class CloudSteps {
 		});
 	}
 
-	/** 不能改的原因放進 session、不能記的原因放進練習的權限：有新版優先，再來是斷線。記錄者只能改、刪自己記的。 */
+	/** 不能改的原因放進 session（有新版優先，再來是斷線）、不能記的原因放進練習的權限（檢視者）。記錄者只能改、刪自己記的。 */
 	#lock() {
 		const newVersion = t.cloud_new_version();
 		const block = this.editBlock;
 		this.#session.readOnly = block === 'new_version' ? newVersion : block === 'disconnected' ? t.cloud_offline() : block ? t.cloud_only_view() : '';
-		this.practice.cannotRecord = this.newVersion ? newVersion : this.role === 'viewer' ? t.cloud_only_view() : '';
+		// 有新版照樣能記（#368）：存著當沒傳的，更新後連上再傳
+		this.practice.cannotRecord = this.role === 'viewer' ? t.cloud_only_view() : '';
 		this.practice.ownRecordsOnly = this.role === 'recorder';
 	}
 
@@ -470,11 +477,15 @@ export class CloudSteps {
 			this.#touch();
 			if (back) this.onback();
 		} else if (m.kind === 'newVersion') {
+			// 斷線連回來才被擋：畫面是斷線前、離線副本的樣子，還沒送到的步不會送了
+			const stale = this.offline;
+			const lost = this.#dropQueue().length;
 			this.newVersion = true;
 			this.offline = false;
 			this.#lock();
 			// 伺服器不收步了：不再重連
 			this.#room.close();
+			if (stale) this.onstale(lost);
 		} else if (m.kind === 'current') {
 			// 補不上（斷線太久）：換成伺服器的樣子，還沒送到的步不算；連回來時跟「連上了。」一起說
 			const dropped = this.#dropQueue();
