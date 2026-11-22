@@ -12,25 +12,29 @@ final class TinyRoom: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "tiny-room")
     private var started = false
-    private var _handshakes: [[String: String]] = []
+    private final class Handshakes { var list: [[String: String]] = [] }
+    private let seen: Handshakes
     private var _ended = 0
     private var connections: [NWConnection] = []
     private(set) var port: UInt16 = 0
     var site: URL { URL(string: "http://127.0.0.1:\(port)/")! }
-    var handshakes: [[String: String]] { queue.sync { _handshakes } }
+    var handshakes: [[String: String]] { queue.sync { seen.list } }
     var ended: Int { queue.sync { _ended } }
 
     init() async throws {
+        // 握手的標頭：要在選項放進 parameters 之前接上（之後接的不會叫）
+        let seen = Handshakes()
+        self.seen = seen
         let ws = NWProtocolWebSocket.Options()
+        ws.setClientRequestHandler(queue) { _, headers in
+            var got: [String: String] = [:]
+            for (name, value) in headers { got[name.lowercased()] = value }
+            seen.list.append(got)
+            return NWProtocolWebSocket.Response(status: .accept, subprotocol: nil)
+        }
         let parameters = NWParameters.tcp
         parameters.defaultProtocolStack.applicationProtocols.insert(ws, at: 0)
         listener = try NWListener(using: parameters, on: .any)
-        ws.setClientRequestHandler(queue) { [weak self] _, headers in
-            var got: [String: String] = [:]
-            for (name, value) in headers { got[name.lowercased()] = value }
-            self?._handshakes.append(got)
-            return NWProtocolWebSocket.Response(status: .accept, subprotocol: nil)
-        }
         listener.newConnectionHandler = { [weak self] c in
             guard let self else { return }
             c.stateUpdateHandler = { [weak self] state in
