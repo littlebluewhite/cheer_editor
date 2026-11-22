@@ -16,19 +16,21 @@ final class FakeSite {
     @discardableResult
     func publish(_ bundle: [String: String], minShellBuild: Int? = nil) -> String {
         files = bundle.mapValues { Data($0.utf8) }
-        let manifest = Self.manifest(bundle)
+        let manifest = Self.manifest(bundle, minShellBuild: minShellBuild)
         files["web-bundle.json"] = Data(manifest.json.utf8)
         return manifest.id
     }
 
-    static func manifest(_ bundle: [String: String]) -> (id: String, json: String) {
+    static func manifest(_ bundle: [String: String], minShellBuild: Int? = nil) -> (id: String, json: String) {
         let sorted = bundle.keys.sorted()
         let entries = sorted.map { path -> JSONValue in
             let data = Data(bundle[path]!.utf8)
             return ["path": .string(path), "size": .number(Double(data.count)), "sha256": .string(sha(data))]
         }
         let id = sha(Data(sorted.map { "\(sha(Data(bundle[$0]!.utf8)))  \($0)\n" }.joined().utf8))
-        return (id, JSONValue.object(["id": .string(id), "files": .array(entries)]).jsonString)
+        var list: [String: JSONValue] = ["id": .string(id), "files": .array(entries)]
+        if let minShellBuild { list["minShellBuild"] = .number(Double(minShellBuild)) }
+        return (id, JSONValue.object(list).jsonString)
     }
 
     static func sha(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
@@ -57,7 +59,11 @@ final class Updater {
     var rolledBack = 0
     private(set) var updater: WebUpdater!
 
-    init(trialTimeout: Duration = .seconds(10)) throws {
+    /// shellBuild：殼的建置號（比清單的 minShellBuild）。
+    let shellBuild: Int
+
+    init(trialTimeout: Duration = .seconds(10), shellBuild: Int = 1) throws {
+        self.shellBuild = shellBuild
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("web-updater-\(UUID().uuidString)")
         bundled = tmp.appendingPathComponent("Web.bundle")
         root = tmp.appendingPathComponent("WebBundles")
@@ -73,7 +79,7 @@ final class Updater {
 
     /// 把 App 關掉再打開（存的東西還在）。
     func restart(trialTimeout: Duration = .seconds(10)) {
-        updater = WebUpdater(site: FakeSite.base, root: root, bundled: bundled, fetch: { [site] in try await site.fetch($0) },
+        updater = WebUpdater(site: FakeSite.base, root: root, bundled: bundled, shellBuild: shellBuild, fetch: { [site] in try await site.fetch($0) },
                              trialTimeout: trialTimeout, rolledBack: { [unowned self] in self.rolledBack += 1 })
         updater.launch()
     }
@@ -316,6 +322,43 @@ struct WebUpdaterTests {
         let results = await [a, b]
         #expect(results.filter { $0 == .busy }.count == 1)
         #expect(results.contains(.downloaded(id)))
+    }
+
+    @Test func 清單要比自己新的殼_太舊就不換_只抓清單() async throws {
+        let u = try Updater(shellBuild: 3)
+        let id = u.site.publish(newFiles, minShellBuild: 4)
+        #expect(await u.updater.check() == .tooOld(id))
+        #expect(u.site.asked.map(\.path) == ["/web-bundle.json"])
+        #expect(!u.updater.useNew())
+        u.restart()
+        #expect(u.showing == "附的那包")
+    }
+
+    @Test(arguments: [3, 2, nil] as [Int?])
+    func 清單要的殼不比自己新_照常換(_ min: Int?) async throws {
+        let u = try Updater(shellBuild: 3)
+        let id = u.site.publish(newFiles, minShellBuild: min)
+        #expect(await u.updater.check() == .downloaded(id))
+        #expect(u.updater.useNew())
+        #expect(u.showing == "新的那包")
+    }
+
+    @Test func 下載好了還沒換_網站換成要新殼的那包_不換() async throws {
+        let u = try Updater(shellBuild: 3)
+        u.site.publish(newFiles)
+        _ = await u.updater.check()
+        let id = u.site.publish(otherFiles, minShellBuild: 4)
+        #expect(await u.updater.check() == .tooOld(id))
+        #expect(!u.updater.useNew())
+    }
+
+    @Test func 正在檢查時再問_等那次檢查的結果() async throws {
+        let u = try Updater()
+        let id = u.site.publish(newFiles)
+        async let a = u.updater.check()
+        async let b = u.updater.latest()
+        let results = await [a, b]
+        #expect(results == [.downloaded(id), .downloaded(id)])
     }
 
     @Test func 網站的檔名有空白中文_照樣抓得到() async throws {

@@ -324,7 +324,7 @@ App 的殼照這份清單從網站抓新版網頁換上（ADR 0025）。網址�
 
 - `id`：每個檔一行「SHA-256、兩個空白、路徑」，照路徑排好接起來，再算一次 SHA-256。任何一個檔改了，代號就不一樣。殼比的是「跟網站上的一不一樣」，不比新舊。
 - `files`：建置結果（`build/`）的每個檔，路徑相對網站根目錄、用 `/` 分開、照字元排好；大小是 bytes。**不列**：清單自己、`sw.js`、`workbox-*.js`、`manifest.webmanifest`、`pwa-*.png`（殼用不到 service worker 和 PWA 的檔）。`apple-touch-icon.png`、`favicon.*` 照列（網頁的 HTML 用到）。
-- `minShellBuild`：要第幾版以上的殼（比建置號）。**平常不寫**；新網頁真的沒辦法在舊殼上跑才在 `scripts/web-bundle.mjs` 的 `MIN_SHELL_BUILD` 填上。
+- `minShellBuild`：要第幾版以上的殼（比建置號）。**平常不寫**；新網頁真的沒辦法在舊殼上跑才在 `scripts/web-bundle.mjs` 的 `MIN_SHELL_BUILD` 填上。比它舊的殼不換網頁、照樣被擋，被擋的畫面寫「這版 App 太舊，請到 App Store 更新」（#394，ios/README.md「殼自己更新網頁」）。
 - 不另外簽名：只從自己的網站（HTTPS）抓，每個檔比 SHA-256。
 
 同一個 commit 建兩次，清單一樣：SvelteKit 的版本名字（`version.name`，每頁 HTML 都帶著）預設是建置當下的時間，`vite.config.ts` 改成原始碼的 SHA-256（`scripts/web-bundle.mjs` 的 `sourceVersion`：`src`（不含產生出來的 `src/lib/paraglide`）、`static`、`messages`、`scripts`、`package.json`、`package-lock.json`、`vite.config.ts`、`project.inlang/settings.json`）。映像檔裡沒有 `.git`，所以不用 commit 的代號。
