@@ -6,6 +6,10 @@ import { EditorSession } from '#lib/editor-session.svelte.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import RunThroughSheet from './RunThroughSheet.svelte';
+import { printPage } from '#lib/print.js';
+
+// jsdom 沒有列印：換成假的列印接口，看有沒有叫到。
+vi.mock('#lib/print.js', () => ({ printPage: vi.fn() }));
 
 const DATE = '2026-11-01';
 
@@ -33,6 +37,15 @@ const tapSlot = async (who: string, phase: string, times = 1) => {
 };
 
 describe('記一次全上的表', () => {
+	it('按「列印」叫出列印，不存也不關掉', async () => {
+		vi.mocked(printPage).mockClear();
+		const { session, onclose } = setup();
+		await fireEvent.click(screen.getByRole('button', { name: '列印' }));
+		expect(printPage).toHaveBeenCalledOnce();
+		expect(onclose).not.toHaveBeenCalled();
+		expect(records(session, 0)).toEqual([]);
+	});
+
 	it('每個要記的動作照流程順序一塊，一欄一組，每格先是 ✓；讀屏讀得出誰、環節、記號', () => {
 		setup();
 		const sheet = within(screen.getByRole('region', { name: '記一次全上' }));
