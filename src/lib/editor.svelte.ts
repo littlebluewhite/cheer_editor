@@ -7,6 +7,7 @@
 // 每個 adapter 都有真的（browserAdapters）和假的（testEditor）兩種；加一個 adapter 時兩邊都加。
 
 import { createContext } from 'svelte';
+import { createSubscriber } from 'svelte/reactivity';
 import { actionSeconds, type AudioBytes, type Flow } from '#lib/core';
 import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
@@ -23,6 +24,7 @@ import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.j
 import { browserTabChannel, type OpenTabChannel } from '#lib/tab-channel.js';
 import { httpServer, type ServerAdapter } from '#lib/server-api.js';
 import { createIndexedDbOfflineStore, type OfflineStore } from '#lib/offline-store.js';
+import { browserNetwork, type NetworkAdapter } from '#lib/network.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -46,11 +48,13 @@ export interface EditorAdapters {
 	server: ServerAdapter;
 	/** 離線存放（#260）：雲端流程還沒傳的紀錄、沒存進去的清單存在這台。 */
 	offline: OfflineStore;
+	/** 有沒有網路（瀏覽器說的）：編輯器 module 的 online 從這裡來。 */
+	network: NetworkAdapter;
 	/** 流程影片：編碼，和存成 流程名.mp4（跟流程檔的存檔是兩套）。 */
 	video: { encoder: VideoEncoderAdapter; save: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome> };
 }
 
-/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB（草稿、離線存放）、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch。 */
+/** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB（草稿、離線存放）、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch、navigator.onLine。 */
 export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
@@ -63,6 +67,7 @@ export function browserAdapters(): EditorAdapters {
 		nextFrame: animationFrame,
 		server: httpServer(),
 		offline: createIndexedDbOfflineStore(),
+		network: browserNetwork(),
 		video: { encoder: browserVideoEncoder(), save: saveVideo }
 	};
 }
@@ -83,6 +88,8 @@ export class Editor {
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出。 */
 	readonly home: Home;
 	#music: MusicLibrary;
+	/** 畫面讀 online 時才聽網路變了沒（沒人在看就不聽）。 */
+	readonly #watchNetwork = createSubscriber((update) => this.adapters.network.onChange(update));
 
 	/** 給的流程算存過的（跟從檔案開的一樣）；它的音樂都還沒載入。 */
 	constructor(adapters: EditorAdapters, flow: Flow | null = null) {
@@ -101,6 +108,12 @@ export class Editor {
 		this.file = new FlowFile(this);
 		this.home = new Home(this);
 		this.actionDraft = new ActionDraft(this.session, this.playback);
+	}
+
+	/** 有沒有網路（瀏覽器說的）：每次讀都是現在的；畫面讀它，網路變了就跟著畫。 */
+	get online(): boolean {
+		this.#watchNetwork();
+		return this.adapters.network.online();
 	}
 
 	/** 音樂檔庫：這支流程用到的音樂檔。一支流程一個，換流程就換一個新的（switchMusic）。 */
