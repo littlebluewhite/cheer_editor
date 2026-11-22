@@ -154,10 +154,17 @@ describe('runTogether：表格（時間用給的）', () => {
 			answer: { kind: 'done' },
 			holders: [['n:2', '王教練', false, false]]
 		},
-		{
-			name: '沒有這次全上：拿、放掉、點了、離開都說不能加入',
-			steps: [[sec(0), claim(LIN, 'n:1', null)]],
+		...[claim(LIN, 'n:1', null), release(LIN, 'n:1'), touch(LIN, 'n:1'), leave(LIN)].map((event) => ({
+			name: `沒有這次全上：${event.kind === 'ask' ? event.ask.kind : ''} 說不能加入`,
+			steps: [[sec(0), event]] as [number, RunEvent][],
 			answer: { kind: 'closed' }
+		})),
+		{
+			name: '點了、放掉不會把人加進表裡（只有報、拿會）',
+			steps: [[sec(0), report(WANG, ['n:1'])], [sec(1), touch(LIN, 'n:2')], [sec(2), release(MEI, 'n:1')]],
+			answer: { kind: 'done' },
+			holders: [['n:1', '王教練', false, false], ['n:2', '', true, true]],
+			people: ['王教練']
 		}
 	];
 	it.each(cases)('$name', ({ steps, answer, holders: want, people: who }) => {

@@ -72,4 +72,23 @@ describe('假伺服器：一起記全上斷線 1 分鐘', () => {
 		expect(holders(coach.heard)).toEqual([['n:1', '王教練', true, false]]);
 		expect(people(coach.heard)).toEqual(['王教練']);
 	});
+
+	it('表沒變不告訴大家（拿自己拿著的）', async () => {
+		const { coach, phone } = await wangOpensLinJoins();
+		const told = phone.heard.length;
+		coach.room.send({ kind: 'claim', run: RUN, key: 'n:1', from: null });
+		await settle();
+		expect(phone.heard.length).toBe(told);
+	});
+
+	it('這支流程沒有連著的房間了，表就沒了：再連上加入不了', async () => {
+		const { s } = await wangOpensLinJoins();
+		s.disconnect(wang.email);
+		s.disconnect(lin.email);
+		const tablet = s.joinAs('c1', lin.email);
+		await settle();
+		tablet.room.send({ kind: 'runThrough', id: RUN, date: '2026-11-22', startedAt: Date.now(), keys: [], touched: [], joining: true });
+		await settle();
+		expect(tablet.heard.at(-1)).toEqual({ kind: 'runClosed', run: RUN });
+	});
 });

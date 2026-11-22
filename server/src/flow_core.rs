@@ -590,9 +590,12 @@ mod tests {
                     let mut ms = vec![];
                     for i in 0..1_003 {
                         let start = Instant::now();
-                        call(ctx, "runTogetherJson", (runs.clone(), event.clone())).unwrap();
+                        let out = call(ctx, "runTogetherJson", (runs.clone(), event.clone())).unwrap();
+                        let took = start.elapsed().as_secs_f64() * 1000.0;
+                        // 計時外確認拿到了（拿不到的回得比較快）；回的樣子在下面 claimed 整個查一次
+                        assert!(out.contains(r#""answer":{"kind":"done"}"#), "拿一組沒拿到");
                         if i >= 3 {
-                            ms.push(start.elapsed().as_secs_f64() * 1000.0);
+                            ms.push(took);
                         }
                     }
                     ms
