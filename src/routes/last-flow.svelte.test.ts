@@ -19,7 +19,7 @@ describe('打開 App 回上次那支', () => {
 	it('中間不畫首頁，開好了就是那支流程的場地', async () => {
 		const drafts = fakeDraftStore();
 		await drafts.store.save('n1', writeFlowFile(flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } })), {}));
-		fakeHost({ shell: fakeShell(), settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
+		fakeHost({ shell: fakeShell(['settings']), settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
 		document.documentElement.dataset.reopening = '';
 		render(Page, editorPage(null, { draftStore: drafts.store }).props);
 		expect(screen.queryByLabelText('流程名字')).toBeNull();
@@ -31,7 +31,7 @@ describe('打開 App 回上次那支', () => {
 	});
 
 	it('上次那支不見了：停在首頁，畫面也接手', async () => {
-		fakeHost({ shell: fakeShell(), settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
+		fakeHost({ shell: fakeShell(['settings']), settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
 		document.documentElement.dataset.reopening = '';
 		render(Page, editorPage(null).props);
 		await flush();

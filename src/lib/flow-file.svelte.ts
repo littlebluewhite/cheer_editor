@@ -38,6 +38,7 @@ import type { DroppedRecord } from '#lib/practice-rights.js';
 import type { TabChannel } from '#lib/tab-channel.js';
 import { host } from '#lib/host.js';
 import { loadLastFlow, saveLastFlow } from '#lib/local-settings.js';
+import { SETTINGS_FEATURE } from '#lib/shell-settings.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 被收回回首頁時，黃條說的。 */
@@ -101,8 +102,8 @@ export class FlowFile {
 	#tooBig = $state.raw<AudioTooBig | null>(null);
 	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
 	#announced: string | null = null;
-	/** App 打開時正在回上次那支（#378）：還沒開好、也還沒確定不見了之前，頁面不先畫首頁。網頁版不回。 */
-	#reopening = $state(host().shell.inApp && loadLastFlow() !== '');
+	/** App 打開時正在回上次那支（#378）：還沒開好、也還沒確定不見了之前，頁面不先畫首頁。殼會存小設定才回（網頁版不回）。 */
+	#reopening = $state(host().shell.can(SETTINGS_FEATURE) && loadLastFlow() !== '');
 
 	/** 給編輯器的流程算從檔案開的。 */
 	constructor(editor: Editor) {
@@ -146,7 +147,7 @@ export class FlowFile {
 		void this.#checkDraft();
 		const stopHearing = host().shell.on('background', () => {
 			this.pageHidden();
-			saveLastFlow(this.#editor.session.flow && this.#source.kind === 'local' ? this.#draftId : '');
+			if (host().shell.can(SETTINGS_FEATURE)) saveLastFlow(this.#editor.session.flow && this.#source.kind === 'local' ? this.#draftId : '');
 		});
 		return () => {
 			stopHearing();

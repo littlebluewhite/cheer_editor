@@ -6,7 +6,7 @@ import UIKit
 @testable import CheerEditor
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct SettingsPipeTests {
     func tempSettings() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("settings-\(UUID().uuidString)/settings.json")
@@ -57,6 +57,8 @@ struct SettingsPipeTests {
         do {
             let h = try app(drafts, settings)
             try await h.load("")
+            // 網頁程式接手前點新建，會變成表單真的送出（整頁換掉）
+            try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
             let script = try String(contentsOf: fixtures.appendingPathComponent("new-flow-play.js"), encoding: .utf8)
             #expect(try await h.js(script) as? String == "新建了、放了音樂、在播")
             // 離開 App（滑到 App 切換器）：網頁記下上次那支

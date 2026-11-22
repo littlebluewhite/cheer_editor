@@ -1,10 +1,10 @@
 // 打開 App 就回上次那支（#378，規格 #360「用起來更順」第 1 條）：網頁記、網頁開，殼只存（小設定的 cheer-editor:lastFlow）。
 // 離開 App（殼說 background）時在本機流程裡就記那支，在首頁就清掉；打開時有記就直接開那支，不見了就停在首頁。網頁版不記也不開。
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { appShell, useShellIfInApp } from '#lib/app-shell.js';
+import { useShellIfInApp } from '#lib/app-shell.js';
 import { scenarioShell } from '#lib/scenario-shell.js';
 import { createFlow, writeFlowFile } from '#lib/core';
-import { fakeDraftStore, fakeHost, fakeSettings, flush, testEditor } from '#lib/test-fakes.js';
+import { fakeDraftStore, fakeHost, fakeSettings, fakeShell, flush, testEditor } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 
 afterEach(() => {
@@ -13,10 +13,10 @@ afterEach(() => {
 
 const contest = () => flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));
 
-/** 殼說要切到背景（App 裡才會說）。 */
-function shellThatGoesAway() {
+/** 會存小設定的殼，說要切到背景（App 裡才會說）。features 換掉殼會的。 */
+function shellThatGoesAway(features = ['settings']) {
 	let listener: (() => void) | null = null;
-	const shell = { ...appShell(scenarioShell('shell.json', '一開始塞殼的版本、建置號、會什麼').bridge) };
+	const shell = { ...fakeShell(features) };
 	shell.on = (name, fn) => {
 		if (name === 'background') listener = () => fn(null);
 		return () => (listener = null);
@@ -99,6 +99,23 @@ describe('打開 App 回上次那支', () => {
 		await flush();
 		expect(session.flow).toBeNull();
 		expect(editor.file.recent.map((f) => f.name)).toEqual(['全國賽']);
+		disconnect();
+	});
+
+	it('殼不會存小設定（小設定還在網頁裡）：不記也不開，停在首頁', async () => {
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(contest(), {}));
+		const { settings, saved } = fakeSettings({ 'cheer-editor:lastFlow': 'n1' });
+		const { shell, goAway } = shellThatGoesAway(['drafts']);
+		fakeHost({ shell, settings });
+		const { editor, session } = testEditor(null, { draftStore: drafts.store });
+		expect(editor.file.reopening).toBe(false);
+		const disconnect = editor.file.connect();
+		await flush();
+		await flush();
+		expect(session.flow).toBeNull();
+		goAway();
+		expect(saved.get('cheer-editor:lastFlow')).toBe('n1');
 		disconnect();
 	});
 });
