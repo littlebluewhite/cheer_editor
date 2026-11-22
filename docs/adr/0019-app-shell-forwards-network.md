@@ -23,4 +23,4 @@ app 裡的網頁是包在 app 裡的，用自訂網址（ADR 0018）。伺服器
 - 分享連結在 app 裡要用網站的網址做。現在 `src/lib/share-link.ts` 照 `location.href`，在 app 裡會做出 `app://` 開頭、別人打不開的連結。
 - app 切到背景、鎖螢幕就關掉雲端流程的連線，回來自己連上、補齊。只有 app 這樣；Safari（手機、電腦）照現在，不改。iPhone 的 Safari 本來就有「分頁被凍住、伺服器以為人還在」的問題，不在這次處理。這樣 app 不用管 iOS 在背景怎麼處理連線（查不到）。一起記全上的 60 秒規則照舊。
 - 還沒驗：`WKURLSchemeHandler` 收不收得到 POST 和上傳的內容。收不到就改走 `messageHandlers`，還是殼送；上傳音樂改由殼自己讀檔。
-- 自動填密碼用 Associated Domains，伺服器要送出 `apple-app-site-association` 這個檔（伺服器唯一要加的東西）。檔裡有 Apple 開發者團隊編號，所以部署時才做出來，編號放在 Fly 的秘密設定，不進 repo。包在 app 裡會不會出現自動填，還沒驗；驗不過就拿掉。
+- 自動填密碼用 Associated Domains，伺服器要送出 `apple-app-site-association` 這個檔（伺服器唯一要加的東西）。檔裡有 Apple 開發者團隊編號（Team ID），這個檔直接放進 repo，專案檔的 `DEVELOPMENT_TEAM` 也一樣：網站本來就要公開送出這個檔，裝了 app 的人也看得到，不算秘密（#340）。伺服器怎麼送出、檔案類型對不對，開工時驗。包在 app 裡會不會出現自動填，還沒驗；驗不過就拿掉。
