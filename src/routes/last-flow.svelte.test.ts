@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFlow, writeFlowFile } from '#lib/core';
-import { editorPage, fakeDraftStore, fakeHost, fakeSettings, fakeShell, flush } from '#lib/test-fakes.js';
+import { cloudEditor, editorPage, fakeDraftStore, fakeHost, fakeSettings, fakeShell, flush } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 import html from '../app.html?raw';
 import Page from './+page.svelte';
@@ -38,6 +38,24 @@ describe('打開 App 回上次那支', () => {
 		await flush();
 		expect(screen.getByLabelText('流程名字')).toBeTruthy();
 		expect('reopening' in document.documentElement.dataset).toBe(false);
+	});
+
+	it('App 換上新網頁回到雲端流程（?cloud=c1）、上次那支記著別支：開 c1，不開那支（#394）', async () => {
+		const s = await cloudEditor();
+		await s.editor.file.leaveToHome();
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } })), {}));
+		fakeHost({ shell: fakeShell(['settings', 'webUpdate']), settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
+		// 草稿讀得比伺服器慢：兩個一起開時，後開好的不能蓋掉 c1
+		const load = drafts.store.load.bind(drafts.store);
+		drafts.store.load = async (id) => (await new Promise((r) => setTimeout(r, 30)), load(id));
+		history.replaceState(null, '', '/?cloud=c1');
+		const page = editorPage(null, { server: s.server, draftStore: drafts.store });
+		render(Page, page.props);
+		await new Promise((r) => setTimeout(r, 60));
+		for (let i = 0; i < 10; i++) await flush();
+		expect(page.editor.file.cloudId).toBe('c1');
+		expect(page.session.flow?.name).not.toBe('全國賽');
 	});
 });
 

@@ -55,6 +55,22 @@ describe('離開 App 時記下上次那支', () => {
 		expect(saved.get('cheer-editor:lastFlow')).toBe([...drafts.all.keys()][0]);
 		disconnect();
 	});
+
+	it('打開流程就記、回首頁就清（不等切到背景）：在首頁換上新網頁、重新載入，回首頁', async () => {
+		const { settings, saved } = fakeSettings({ 'cheer-editor:lastFlow': 'old' });
+		fakeHost({ shell: shellThatGoesAway().shell, settings });
+		const drafts = fakeDraftStore();
+		const { editor } = testEditor(null, { draftStore: drafts.store });
+		const disconnect = editor.file.connect();
+		await flush();
+		editor.file.create(contest());
+		await flush();
+		expect(saved.get('cheer-editor:lastFlow')).toBe([...drafts.all.keys()][0]);
+		await editor.file.leaveToHome();
+		await flush();
+		expect(saved.has('cheer-editor:lastFlow')).toBe(false);
+		disconnect();
+	});
 });
 
 describe('打開 App 回上次那支', () => {
@@ -166,6 +182,18 @@ describe('上次那支是雲端流程', () => {
 		const disconnect = s.editor.file.connect();
 		await flush();
 		goAway();
+		expect(saved.get('cheer-editor:lastFlow')).toBe('cloud:c1');
+		disconnect();
+	});
+
+	it('打開雲端流程就記那支（不等切到背景）', async () => {
+		const { settings, saved } = fakeSettings();
+		const s = await openedBefore();
+		fakeHost({ shell: shellThatGoesAway().shell, settings });
+		const disconnect = s.editor.file.connect();
+		await flush();
+		await s.editor.file.openCloud('c1');
+		await flush();
 		expect(saved.get('cheer-editor:lastFlow')).toBe('cloud:c1');
 		disconnect();
 	});

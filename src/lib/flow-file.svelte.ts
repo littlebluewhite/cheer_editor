@@ -118,6 +118,7 @@ export class FlowFile {
 			this.#saveCopyLater();
 			this.#dropMissingNotice();
 			this.#announce();
+			this.#rememberLast();
 			if (!editor.session.flow) {
 				this.#closeCloud();
 				void this.#readRecent();
@@ -128,11 +129,12 @@ export class FlowFile {
 	/**
 	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁開著的就是那支流程，就回答「正在編」），讀草稿；
 	 * App 裡聽殼說要切到背景（WKWebView 不一定發 visibilitychange），跟分頁藏起來一樣馬上存（#377），
-	 * 也記下上次那支：開著本機流程、雲端流程（含離線副本，#383）就是它，在首頁、分享連結（沒有權限）就清掉（#378）。
+	 * 也再記一次上次那支（#378；打開、離開流程時就記了，見 #rememberLast）。
+	 * reopen：App 換上新網頁回來要打開的雲端流程（網址 ?cloud=，#394）：開它，不回上次那支（兩個一起開，後開好的會蓋掉）。
 	 * App 裡只有一個視窗，不會有別的分頁：不開分頁頻道，「另一個分頁正在編」不會出現（#392）。
 	 * 回傳頁面關掉時要做的：關掉分頁頻道、不聽殼了、還在等停手 1 秒的草稿不存了。
 	 */
-	connect(): () => void {
+	connect(reopen: string | null = null): () => void {
 		const channel = host().shell.inApp ? null : (this.#editor.adapters.openTabChannel?.() ?? null);
 		this.#channel = channel;
 		channel?.listen((message) => {
@@ -148,10 +150,10 @@ export class FlowFile {
 			}
 		});
 		this.#announce();
-		void this.#checkDraft();
+		void this.#checkDraft(reopen);
 		const stopHearing = host().shell.on('background', () => {
 			this.pageHidden();
-			if (host().shell.can(SETTINGS_FEATURE)) saveLastFlow(this.#lastFlow());
+			this.#rememberLast();
 		});
 		return () => {
 			stopHearing();
@@ -380,6 +382,7 @@ export class FlowFile {
 		const room = server.openRoom(id);
 		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved }, !!first);
 		this.#source = copy ? { kind: 'offline', id, steps: cloud, savedAt: copy.savedAt } : { kind: 'cloud', id, steps: cloud };
+		this.#rememberLast();
 		cloud.practice.recordedBy = Object.fromEntries(
 			found.records.flatMap((r) => (r.mine ? [] : [[(r.attempt as Attempt).id, r.by ?? '']]))
 		);
@@ -505,6 +508,7 @@ export class FlowFile {
 		const music = await this.#editor.readMusic(await this.#cloudAudio(flow, (audioId) => server.linkAudioBytes(token, audioId)));
 		this.#start(flow, 'cloud', newDraftId(), music);
 		this.#source = { kind: 'link', id: found.id };
+		this.#rememberLast();
 		this.#editor.session.readOnly = m.cloud_only_view();
 	}
 
@@ -907,6 +911,14 @@ export class FlowFile {
 		return true;
 	}
 
+	/**
+	 * 記下上次那支（#378）：開著本機流程、雲端流程（含離線副本，#383）就是它，在首頁、分享連結（沒有權限）就清掉。
+	 * 打開、離開流程時就記（不只切到背景）：殼每次重新載入（在首頁換上新網頁 #393、退回舊網頁）都照這個開，要跟教練在哪一樣。
+	 */
+	#rememberLast() {
+		if (host().shell.can(SETTINGS_FEATURE)) saveLastFlow(this.#lastFlow());
+	}
+
 	/** 離開 App 時要記的上次那支：本機流程是草稿 id，雲端流程（含離線副本）是 CLOUD_LAST 加流程 id，在首頁、分享連結是空的。 */
 	#lastFlow(): string {
 		if (!this.#editor.session.flow) return '';
@@ -969,9 +981,10 @@ export class FlowFile {
 	 * 打開時讀草稿，列成最近的流程；App 裡記著上次那支就直接開它（#378），不先讀每份草稿列最近的流程（要 1 秒內看到場地）。
 	 * 那支不見了（草稿沒了、打不開）就停在首頁，不說錯。讀完了才開始自動存。
 	 */
-	async #checkDraft() {
+	async #checkDraft(reopen: string | null) {
 		const last = this.#reopening ? loadLastFlow() : '';
-		if (last.startsWith(CLOUD_LAST)) await this.#reopenCloud(last.slice(CLOUD_LAST.length));
+		if (reopen) await this.openCloud(reopen);
+		else if (last.startsWith(CLOUD_LAST)) await this.#reopenCloud(last.slice(CLOUD_LAST.length));
 		else if (last) await this.#openDraft(last);
 		if (!this.#editor.session.flow) await this.#readRecent();
 		this.#reopening = false;
