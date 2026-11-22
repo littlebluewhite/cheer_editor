@@ -1838,7 +1838,7 @@
 		animation-name: drop-in;
 	}
 	/* 手機的播放列：一排（播放、‹、時間、›、速度、⋯），場地才有地方畫大；時間那一格吃剩下的寬。
-	   320px 的手機縮間距擠回一排（下面 max-width: 349px）；再窄才換行 */
+	   320px 的手機縮間距擠回一排（下面 max-width: 349px）；比 231px 還窄才換行 */
 	.phone-view .transport {
 		flex-wrap: wrap;
 		justify-content: center;
@@ -1875,16 +1875,28 @@
 		flex: none;
 		padding-inline: 3px;
 	}
-	/* 320px 量過（#329）：五顆按鈕 199px，時間那一格裡最寬的是「0:00.0 / 0:09.0」79px。
-	   間距 6→4、左右邊 8→6、時間框左右 8→4，時間框剛好放得下 */
+	/* 320px 量過（#329）：五顆按鈕 199px，時間那一格（或打字的欄位）只剩 89px；
+	   時鐘「1:03.6 / 1:04.0」79px，兩位數的八拍「音樂 1 12-8」92px。
+	   間距 6→4、左右邊 8→6、時間框左右 8→4 擠回一排；段名太長時段名變「…」，大字的八拍整個看得到 */
 	@media (max-width: 349px) {
 		.phone-view .transport {
 			gap: 4px;
 			padding-inline: 6px;
 		}
-		.phone-view .board {
+		.phone-view .board,
+		.jump-to {
 			flex-basis: 0;
+		}
+		.phone-view .board {
 			padding-inline: 4px;
+		}
+		.phone-view .pos {
+			min-width: 0;
+		}
+		.phone-view .pos-seg {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 	}
 	.phone-view .more {
