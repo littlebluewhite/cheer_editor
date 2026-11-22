@@ -16,6 +16,7 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fakeHost, fakeShell } from '#lib/test-fakes.js';
 import PrintSheet from './PrintSheet.svelte';
 
 /** 音樂 1（150 BPM、8 個八拍），第 2 個八拍有一張站位；第 1 個八拍 小A 上層、小B 主底做 Lib，第 3 拍後半拍 小C 跳。 */
@@ -295,6 +296,18 @@ describe('八拍表列印', () => {
 		expect(print).toHaveBeenCalledOnce();
 		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
 		expect(onclose).toHaveBeenCalledOnce();
+	});
+
+	it('提示：網頁版說用瀏覽器列印', () => {
+		render(PrintSheet, { flow: sample(), onclose: () => {}, print: vi.fn() });
+		expect(screen.getByText(/^用瀏覽器列印（.+），也可以存成 PDF。$/)).toBeTruthy();
+	});
+
+	it('提示：App 裡（殼會印）說按「列印」、存 PDF 或傳給別人按「分享」，不提快捷鍵', () => {
+		fakeHost({ shell: fakeShell(['print']) });
+		render(PrintSheet, { flow: sample(), onclose: () => {}, print: vi.fn() });
+		expect(screen.getByText('按「列印」。要存成 PDF 或傳給別人，在列印畫面按「分享」。')).toBeTruthy();
+		expect(screen.queryByText(/瀏覽器/)).toBeNull();
 	});
 
 	describe('印誰', () => {

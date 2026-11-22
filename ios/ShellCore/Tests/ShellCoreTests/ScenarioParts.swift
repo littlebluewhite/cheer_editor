@@ -31,6 +31,7 @@ final class ScenarioShell {
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
     // #391
+    private(set) var printedFrom: [PrintButton?] = []
 
     // #393
     /// 假網站和殼自己更新網頁的那一塊（WebUpdaterTests 的 Updater）。
@@ -69,6 +70,7 @@ final class ScenarioShell {
             nowPlaying,
 
             // #391
+            PrintPart(onPrint: { self.printedFrom.append($0) }),
 
             // #393
             webUpdate,

@@ -88,7 +88,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`cloudMusic`（殼代傳雲端流程的音樂，#382；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`print`（列印，#391）、`cloudMusic`（殼代傳雲端流程的音樂，#382）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -148,6 +148,25 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 | XHR 送 Blob | **收不到** |
 
 **結論**：自訂網址收得到 POST 的內容，但 Blob／File 做的內容會被丟掉。之後經過殼的請求（#380 轉送、上傳音樂）：網頁把檔案先轉成 ArrayBuffer 再送，或改走 `messageHandlers`。這兩條都還沒在真機試過；速度也沒量。WebKit 哪天改了，這個測試會紅，要回來改這張表。
+
+## 列印（#391）
+
+網頁裡 `window.print()` 在 App 裡什麼都不會發生（docs/research/app-print.md），所以八拍表、記一次全上表、總表的「列印」改請殼印：
+
+- 網頁：`src/lib/print.ts` 的 `printPage(event)`。殼會 `print` 就 `send('print', { button })`（按的那顆鈕的 `getBoundingClientRect`），不然照舊 `window.print()`。情境 `bridge-scenarios/current/print.json`。
+- 殼：`ShellCore/Parts/PrintPart.swift`（拆出按鈕的位置）→ `App/Shell/Printer.swift`：`UIPrintInteractionController` 加 `webView.viewPrintFormatter()`，iPad 用 `present(from:in:)`、iPhone 用 `present(animated:)`。背景色用預設（不印）。
+- ⌘P：`Info.plist` 的 `UIApplicationSupportsPrintCommand`，加上 `Printer.swift` 裡 `ShellViewController` 的 `printContent(_:)`。WebKit 不接 `printContent`，從網頁畫面裡往上找會找到 `ShellViewController`。
+- 存成 PDF、傳給別人：用列印畫面右上角的「分享」，不另外做按鈕。
+- App 裡八拍表的提示換成 `print_hint_app`（`PrintSheet.svelte` 用 `host().shell.can('print')` 判斷）。
+
+在 iOS 27.2 模擬器上看到的（2026-11-22，`PipeTests/PrintPipeTests.swift`）：
+
+- iPad、iPhone 都叫得出列印畫面，右上角有「分享」，預覽是八拍表的列印樣子（A4、1 頁、小站位圖有顏色、表頭白底）。
+- 記一次全上表、總表的「列印」也叫得出列印畫面（`practice-flow.zip` 是 `src/lib/test-flows.ts` 的 `libSample()` 寫成的流程檔）。
+- **iPad 上列印畫面不從按鈕跳出來**：iOS 27 的列印畫面是視窗正中間的大卡片，不是指著按鈕的小視窗，系統還記錄 `presentFromRect… called on iPhone`（iPad 模擬器上也是）。程式照樣傳按鈕的位置（18.4 上照文件應該從按鈕跳出來，沒試過）。
+- 列印畫面還沒收完就再叫，系統不理。程式收起時也不會通知 delegate（測試看畫面上還有沒有蓋著的東西）。
+- 真的按鍵盤的 ⌘P 沒試過：模擬器沒開視窗，送不了按鍵。測試是從網頁畫面裡的 `WKContentView` 送 `printContent`。
+- 按「分享」→ 存成 PDF 沒試過（測試按不到系統的列印畫面）。
 
 ## 殼代網頁上網（#380，ADR 0023）
 
@@ -223,6 +242,6 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 ## 還沒做的（後面的票）
 
-App 圖示、其他資料搬到殼（離線副本、沒傳的紀錄 #383 等）、列印（#391）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
+App 圖示、其他資料搬到殼（離線副本、沒傳的紀錄 #383 等）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
 
 已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。
