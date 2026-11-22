@@ -321,3 +321,42 @@ describe('登出、被收回、被刪掉', () => {
 		expect(screen.getByRole('alert').textContent).toContain('你已經不能打開「王教練的流程」。這台留著的那份也刪掉了。');
 	});
 });
+
+describe('記的人刪除帳號了（#369）：這台的離線副本下次連上就不寫他的名字', () => {
+	const huang = { email: 'huang@example.com', name: '黃教練', isAdmin: false, password: pw };
+
+	/** 王教練的流程，林教練是記錄者；黃教練在上面記過一次。林教練打開過（這台留一份），回首頁。 */
+	async function openedWithHuangsRecord() {
+		const flow = cloudFlow('c2', '王教練的流程', 'recorder');
+		const record: StoredAttempt = { actionId: 'x1', attempt: { id: 'thuang0000001', date: '2026-11-06', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } };
+		flow.records = [{ ...record, by: huang.email }];
+		const s = home([flow], fakeOfflineStore(), fakeServer({ users: [lin, wang, huang], signedIn: lin.email, flows: [flow] }));
+		await settle();
+		await openFromHome('王教練的流程');
+		await goHome();
+		expect(s.offline.copy('c2')!.records.map((r) => r.by)).toEqual(['黃教練']);
+		return s;
+	}
+
+	/** 管理員刪掉黃教練（伺服器上他記的紀錄不寫是誰）。 */
+	function deleteHuang(s: { state: { users: { email: string }[]; flows: FakeCloudFlow[] } }) {
+		s.state.users = s.state.users.filter((u) => u.email !== huang.email);
+		for (const r of s.state.flows[0].records ?? []) delete r.by;
+	}
+
+	it('斷網打開的離線副本還寫他；連上網路換成最新的，那份重存成沒有名字', async () => {
+		const o = await reloadOffline(await openedWithHuangsRecord());
+		deleteHuang(o);
+		await openFromHome('王教練的流程');
+		expect(o.offline.copy('c2')!.records.map((r) => r.by)).toEqual(['黃教練']);
+		await network(o, 'online');
+		expect(o.offline.copy('c2')!.records.map((r) => [(r.attempt as { id: string }).id, r.by])).toEqual([['thuang0000001', null]]);
+	});
+
+	it('有網路時打開：那份馬上重存成沒有名字，紀錄還在', async () => {
+		const s = await openedWithHuangsRecord();
+		deleteHuang(s);
+		await openFromHome('王教練的流程');
+		expect(s.offline.copy('c2')!.records.map((r) => [(r.attempt as { id: string }).id, r.by])).toEqual([['thuang0000001', null]]);
+	});
+});

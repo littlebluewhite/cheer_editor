@@ -271,6 +271,7 @@ export interface FakeCloudFlow {
  * 步驟紀錄的時間用 Date.now()（測試可以用假時鐘撥）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
+ * 刪除帳號（#369）：只有已停用的人；他擁有的流程照刪流程刪、別人流程上的權限拿掉、記的紀錄不寫是誰。users 裡拿掉他，後面的人 id 少 1。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
  * deleteFlow(flowId)：擁有者（在別的地方）刪了這支，開著的房間都馬上知道。
  * 分享連結（#251）照真的規則：只有擁有者能開、關（關掉再打開是新的一條），有權限的人看得到；用連結打開不用登入、
@@ -830,6 +831,18 @@ export function fakeServer(
 			return adminDoes(id, false, (u) => {
 				u.disabled = false;
 			});
+		},
+		async deleteUser(id) {
+			const r = adminDoes(id, true, (u) => (u.disabled && u !== signedInUser() ? undefined : { kind: 'notAllowed' }));
+			if (r !== 'ok') return r;
+			const gone = state.users[id - 1];
+			for (const f of state.flows.filter((f) => same(f.owner, gone.email))) deleteFlow(f.id);
+			for (const f of state.flows) {
+				for (const email of Object.keys(f.people ?? {})) if (same(email, gone.email)) delete f.people![email];
+				for (const r of f.records ?? []) if (r.by && same(r.by, gone.email)) delete r.by;
+			}
+			state.users = state.users.filter((u) => u !== gone);
+			return 'ok';
 		},
 		async adminHandOver(id, email) {
 			const r = adminDoes(id, false, (u) => (u.disabled ? undefined : { kind: 'notAllowed' }));

@@ -697,6 +697,29 @@ async fn mail_service_429_comes_back_as_cannot_send_today_and_changes_nothing(db
         StatusCode::NO_CONTENT,
         "email 沒改"
     );
+
+    // 刪除帳號（#369）：「刪好了」寄不出去就沒刪
+    let (status, _) = q
+        .post(
+            &format!("/api/admin/users/{wang}/disable"),
+            json!({}),
+            &admin,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let deleted = q
+        .post(
+            &format!("/api/admin/users/{wang}/delete"),
+            json!({}),
+            &admin,
+        )
+        .await;
+    assert_eq!(deleted, quota);
+    assert_eq!(
+        q.row(&admin, "wang@example.com").await["status"]["kind"],
+        "disabled",
+        "沒刪"
+    );
 }
 
 #[sqlx::test]

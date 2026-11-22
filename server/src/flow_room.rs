@@ -470,7 +470,11 @@ impl SentBack {
             Self::TooOld => TOO_OLD.into(),
             Self::UndoTooOld { redo } => format!("太久以前的，{}", cannot(*redo)),
             Self::NotUnderstood => "沒存進去：伺服器看不懂這一步".into(),
-            Self::UndoChangedLater { by, redo } => format!("{by}後來改過，這步{}", cannot(*redo)),
+            // 刪除帳號的人改的步不寫是誰（by 是空的）。
+            Self::UndoChangedLater { by, redo } => {
+                let by = if by.is_empty() { "別人" } else { by };
+                format!("{by}後來改過，這步{}", cannot(*redo))
+            }
             Self::UndoBlocked { redo, reason } => {
                 format!("這步{}：{}", cannot(*redo), reason.message)
             }
@@ -873,7 +877,7 @@ async fn catch_up(
         return Ok(Vec::new());
     }
     let missed: Vec<(i64, String, Option<String>, String)> = sqlx::query_as(
-        "SELECT s.step, s.tab_id, s.change::text, u.name FROM flow_steps s JOIN users u ON u.id = s.user_id
+        "SELECT s.step, s.tab_id, s.change::text, COALESCE(u.name, '') FROM flow_steps s LEFT JOIN users u ON u.id = s.user_id
          WHERE s.flow_id = $1 AND s.step > $2 AND s.step <= $3 ORDER BY s.step",
     )
     .bind(flow_id)
@@ -1268,8 +1272,8 @@ async fn logged_steps(
         Option<Vec<String>>,
         Option<Vec<String>>,
     )> = sqlx::query_as(
-        "SELECT s.step, s.step_id, s.tab_id, u.name, s.created_at, s.keys, s.cleared::text, s.cured, s.undid
-         FROM flow_steps s JOIN users u ON u.id = s.user_id
+        "SELECT s.step, s.step_id, s.tab_id, COALESCE(u.name, ''), s.created_at, s.keys, s.cleared::text, s.cured, s.undid
+         FROM flow_steps s LEFT JOIN users u ON u.id = s.user_id
          WHERE s.flow_id = $1
            AND (s.step > $2 OR s.step >= (SELECT step FROM flow_steps WHERE flow_id = $1 AND step_id = $3))
          ORDER BY s.step",

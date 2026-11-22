@@ -493,7 +493,7 @@ export class CloudSteps {
 		} else if (m.kind === 'present') {
 			this.present = m.people;
 		} else if (m.kind === 'changed') {
-			this.#session.applyRemote(m.change as RemoteChange, m.by);
+			this.#session.applyRemote(m.change as RemoteChange, nameOr(m.by));
 			this.#heardChange(m.step, m.change as RemoteChange);
 			this.#saw(m.step);
 			this.#settleScreen();
@@ -783,7 +783,8 @@ export type Rejected = Omit<Extract<RoomMessage, { kind: 'rejected' }>, 'why'> &
  * 我的一步被退回的提示：伺服器送原因的代號（why），這裡照使用者的語言寫成句子（ADR 0017）。label 是那一步的名字；
  * by 是在我上次看到之後最後改的人（別人改了同一個地方、或改了流程之後被規則擋下）。
  */
-export function sentBack({ why, by, message }: Rejected, label: string): string {
+export function sentBack({ why, by: sentBy, message }: Rejected, label: string): string {
+	const by = sentBy === undefined ? undefined : nameOr(sentBy);
 	switch (why?.code) {
 		case 'viewOnly':
 			return t.rejected_view_only();
@@ -801,7 +802,7 @@ export function sentBack({ why, by, message }: Rejected, label: string): string 
 		case 'undoTooOld':
 			return why.redo ? t.redo_too_old() : t.undo_too_old();
 		case 'undoChangedLater':
-			return (why.redo ? t.redo_changed_later : t.undo_changed_later)({ by: why.by });
+			return (why.redo ? t.redo_changed_later : t.undo_changed_later)({ by: nameOr(why.by) });
 		case 'undoBlocked':
 			return (why.redo ? t.redo_blocked : t.undo_blocked)({ reason: reasonText(why.reason) });
 		default:
@@ -810,6 +811,11 @@ export function sentBack({ why, by, message }: Rejected, label: string): string 
 			if (by === undefined) return message;
 			return message ? t.rejected_blocked_by({ by, label, reason: message }) : t.rejected_same_thing({ by, label });
 	}
+}
+
+/** 改那一步的人的名字；刪除帳號的人改的步伺服器送空的（#369），寫「別人」。 */
+function nameOr(by: string): string {
+	return by || t.cloud_someone_else();
 }
 
 /** 同一次全上的同一組別人先存了（#262）：誰、哪一組（畫面用 droppedNote 寫成「王教練已經記了這次全上的第 2 組」）。 */

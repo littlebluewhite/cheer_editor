@@ -1,8 +1,9 @@
 <script lang="ts">
 	// 管理使用者（#245，#190 的 A）：只有管理員看得到，一頁一張表。字照 #190 的結論留言。
 	// 寄重設密碼信、重寄邀請、恢復：按了直接做，表上面綠色一行說做了什麼。加使用者、改 email、停用：跳對話框。
-	// 只有停用，沒有刪除使用者。被停用又有流程的寫「已停用・他有 N 支流程」，多［移交 N 支流程］（#252）：
+	// 被停用又有流程的寫「已停用・他有 N 支流程」，多［移交 N 支流程］（#252）：
 	// 對話框輸入接手的人的 email，全部交給同一個人；管理員只看到支數，看不到流程名字。
+	// 已停用的人（不是自己）多［刪除］（#369）：跳確認框寫清楚會刪掉什麼，刪了不能恢復。
 	import { onMount } from 'svelte';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -36,7 +37,8 @@
 		| { kind: 'add' }
 		| { kind: 'email'; user: UserRow }
 		| { kind: 'disable'; user: UserRow }
-		| { kind: 'handOver'; user: UserRow; flows: number };
+		| { kind: 'handOver'; user: UserRow; flows: number }
+		| { kind: 'delete'; user: UserRow; flows: number };
 	let dialog = $state.raw<Dialog | null>(null);
 	let dialogError = $state('');
 	let email = $state('');
@@ -136,6 +138,9 @@
 				return 'flows' in r ? 'ok' : r;
 			});
 			message = (d.flows === 1 ? m.users_handed_over_one : m.users_handed_over)({ name: d.user.name, n: d.flows, email: to });
+		} else if (d.kind === 'delete') {
+			problem = await run(() => server.deleteUser(d.user.id));
+			message = m.users_deleted_done({ name: d.user.name });
 		} else {
 			problem = await run(() => server.disableUser(d.user.id));
 			message = m.users_disabled_done({ name: d.user.name });
@@ -196,7 +201,10 @@
 										>
 									{/if}
 									<button type="button" onclick={() => open({ kind: 'email', user: u })}>{m.users_change_email()}</button>
-									{#if u.status.kind !== 'disabled' && !u.me}
+									{#if u.status.kind === 'disabled' && !u.me}
+										{@const flows = u.status.flows}
+										<button type="button" class="danger" onclick={() => open({ kind: 'delete', user: u, flows })}>{m.users_delete()}</button>
+									{:else if !u.me}
 										<button type="button" class="danger" onclick={() => open({ kind: 'disable', user: u })}>{m.users_disable()}</button>
 									{/if}
 								</td>
@@ -218,7 +226,9 @@
 				? m.users_change_email_title({ name: d.user.name })
 				: d.kind === 'handOver'
 					? m.users_hand_over_title({ name: d.user.name })
-					: m.users_disable_title({ name: d.user.name })}
+					: d.kind === 'delete'
+						? m.users_delete_title({ name: d.user.name })
+						: m.users_disable_title({ name: d.user.name })}
 	<Modal label={title} class="dialog admin-dialog" onclose={() => (dialog = null)}>
 		{#snippet children(close)}
 			<header class="dialog-head">
@@ -245,6 +255,13 @@
 						/></label
 					>
 					<p class="hint">{m.users_hand_over_hint({ name: d.user.name })}</p>
+				{:else if d.kind === 'delete'}
+					<ul>
+						<li>{m.users_delete_gone()}</li>
+						{#if d.flows}<li>{(d.flows === 1 ? m.users_delete_flows_one : m.users_delete_flows)({ n: d.flows })}</li>{/if}
+						<li>{m.users_delete_keeps()}</li>
+						<li>{m.users_delete_mail()}</li>
+					</ul>
 				{:else}
 					<ul>
 						<li>{m.users_disable_signs_out()}</li>
@@ -254,15 +271,17 @@
 				{/if}
 				{#if dialogError}<p class="error" {@attach revealAlert()}>{dialogError}</p>{/if}
 				<div class="buttons">
-					<button type="button" data-autofocus={d.kind === 'disable' || undefined} onclick={close}>{m.account_cancel()}</button>
-					<button type="submit" class={d.kind === 'disable' ? 'danger' : 'primary'} disabled={busy}>
+					<button type="button" data-autofocus={d.kind === 'disable' || d.kind === 'delete' || undefined} onclick={close}>{m.account_cancel()}</button>
+					<button type="submit" class={d.kind === 'disable' || d.kind === 'delete' ? 'danger' : 'primary'} disabled={busy}>
 						{d.kind === 'add'
 							? m.users_send_invite()
 							: d.kind === 'email'
 								? m.users_change_email()
 								: d.kind === 'handOver'
 									? (d.flows === 1 ? m.users_hand_over_button_one : m.users_hand_over_button)({ n: d.flows })
-									: m.users_disable()}
+									: d.kind === 'delete'
+										? m.users_delete_submit()
+										: m.users_disable()}
 					</button>
 				</div>
 			</form>
