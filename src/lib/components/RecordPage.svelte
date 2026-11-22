@@ -79,7 +79,7 @@
 	}
 	/** 這天有哪張卡點了記號還沒存：清單上標「還沒存」，換到別的動作也看得出來。 */
 	function unsaved(a: Action): boolean {
-		return attemptWhos(flow, a).some(({ who }) => Object.keys(session.unsavedMarks(a, who, date)).length > 0);
+		return attemptWhos(flow, a).some(({ who }) => session.drill.hasUnsaved(a, who, date));
 	}
 </script>
 
