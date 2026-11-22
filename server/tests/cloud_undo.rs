@@ -416,3 +416,210 @@ async fn a_step_older_than_30_days_cannot_be_undone(db: sqlx::PgPool) {
     );
     assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "區賽");
 }
+
+/// 超過 40 個字的流程名字（舊檔）。
+const LONG: &str =
+    "流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流流";
+
+/// 王教練建好範例流程，把它的流程名字改成 45 個字（舊檔：讓它留著的毛病），傳上雲端。回新的那支的 id（第 0 步）。
+async fn long_named(s: &Server, wang: &User, lin: &User) -> String {
+    let sample = s.sample(wang, lin).await;
+    let mut flow = s.flow(wang, &sample).await["flow"].clone();
+    flow["name"] = json!(LONG);
+    let doc = json!({ "formatVersion": 16, "flow": flow });
+    let (status, made) = s
+        .send("POST", "/api/flows/upload", Some(doc), &wang.cookie)
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    made["id"].as_str().unwrap().to_owned()
+}
+
+/// 存著的：這支流程記著的毛病和記的時候流程核心的指紋。
+async fn held(s: &Server, id: &str) -> (Option<Vec<String>>, Option<String>) {
+    sqlx::query_as("SELECT held, held_core FROM flows WHERE id = $1")
+        .bind(id)
+        .fetch_one(&s.state.db)
+        .await
+        .unwrap()
+}
+
+/// 存著的：那一步記的治好的毛病。
+async fn cured(s: &Server, id: &str, step_id: &str) -> Option<Vec<String>> {
+    sqlx::query_scalar("SELECT cured FROM flow_steps WHERE flow_id = $1 AND step_id = $2")
+        .bind(id)
+        .bind(step_id)
+        .fetch_one(&s.state.db)
+        .await
+        .unwrap()
+}
+
+async fn sql(s: &Server, query: &'static str, id: &str) {
+    sqlx::query(query)
+        .bind(id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+}
+
+fn assert_undo_blocked(reply: &Value) {
+    assert_eq!(reply["kind"], "rejected", "{reply}");
+    assert_eq!(reply["why"]["code"], "undoBlocked", "{reply}");
+}
+
+#[sqlx::test]
+async fn an_old_problem_cured_by_a_step_comes_back_on_undo(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    // 傳上雲端時記下讓它留著的毛病，配上這版流程核心
+    let flow_name = || Some(vec!["flowName".to_owned()]);
+    assert_eq!(held(&s, &id).await, (flow_name(), Some(FINGERPRINT.into())));
+    let mut a = s.join(&wang, &id, "tab-a").await;
+
+    // 改短：這一步記下治好了流程名字
+    assert_accepted(&step(&mut a, "rename-1", 0, rename("決賽")).await);
+    assert_eq!(cured(&s, &id, "rename-1").await, flow_name());
+    assert_eq!(
+        held(&s, &id).await,
+        (Some(vec![]), Some(FINGERPRINT.into()))
+    );
+
+    // 復原、重做、再復原：都收
+    assert_accepted(&undo(&mut a, "undo-1", 1, "rename-1", false, name_back(LONG)).await);
+    assert_eq!(s.flow(&wang, &id).await["flow"]["name"], LONG);
+    assert_eq!(held(&s, &id).await.0, flow_name());
+    assert_accepted(&undo(&mut a, "redo-1", 2, "undo-1", true, name_back("決賽")).await);
+    assert_eq!(cured(&s, &id, "redo-1").await, flow_name());
+    assert_accepted(&undo(&mut a, "undo-2", 3, "redo-1", false, name_back(LONG)).await);
+    assert_eq!(s.flow(&wang, &id).await["flow"]["name"], LONG);
+}
+
+#[sqlx::test]
+async fn a_joined_undo_counts_what_every_joined_step_cured(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+    let before = s.flow(&wang, &id).await["flow"].clone();
+    // 合成的一步：第一步沒治好什麼（加一段），第二步治好了流程名字
+    let segment = json!([{ "name": "addSegment", "args": ["chant"] }]);
+    assert_accepted(&step(&mut a, "segment-1", 0, segment).await);
+    assert_accepted(&step(&mut a, "rename-1", 1, rename("決賽")).await);
+    let after = s.flow(&wang, &id).await["flow"].clone();
+    let change = s
+        .state
+        .core
+        .remote_change(after.to_string(), before.to_string())
+        .await
+        .unwrap();
+    let change: Value = serde_json::from_str(&change).unwrap();
+    let ask = |step_id: &str, joined: Option<Value>| {
+        let mut ask = json!({ "kind": "undo", "stepId": step_id, "seen": 2, "of": "segment-1", "redo": false, "change": change });
+        if let Some(joined) = joined {
+            ask["joined"] = joined;
+        }
+        ask
+    };
+
+    // 部署前開著的分頁只送第一步：只算第一步治好的，擋下
+    say(&mut a, ask("undo-old", None)).await;
+    assert_undo_blocked(&hear(&mut a).await);
+    // 送了合了哪幾步：收了
+    say(&mut a, ask("undo-1", Some(json!(["rename-1"])))).await;
+    assert_accepted(&hear(&mut a).await);
+    let flow = &s.flow(&wang, &id).await["flow"];
+    assert_eq!(flow["name"], LONG);
+    assert_eq!(flow["segments"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn a_step_logged_before_deploy_compares_the_old_way(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+    assert_accepted(&step(&mut a, "rename-1", 0, rename("決賽")).await);
+    // 部署前收的步沒有那一欄
+    sql(
+        &s,
+        "UPDATE flow_steps SET cured = NULL WHERE flow_id = $1",
+        &id,
+    )
+    .await;
+
+    assert_undo_blocked(&undo(&mut a, "undo-1", 1, "rename-1", false, name_back(LONG)).await);
+    assert_eq!(s.flow(&wang, &id).await["flow"]["name"], "決賽");
+}
+
+#[sqlx::test]
+async fn held_problems_from_another_core_version_are_recounted(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    // 舊版流程核心記的
+    sql(
+        &s,
+        "UPDATE flows SET held_core = 'old-core' WHERE id = $1",
+        &id,
+    )
+    .await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+
+    // 過期了：這一步記成沒治好什麼，重算記著的
+    assert_accepted(&step(&mut a, "rename-1", 0, rename("決賽")).await);
+    assert_eq!(cured(&s, &id, "rename-1").await, Some(vec![]));
+    assert_eq!(
+        held(&s, &id).await,
+        (Some(vec![]), Some(FINGERPRINT.into()))
+    );
+    assert_undo_blocked(&undo(&mut a, "undo-1", 1, "rename-1", false, name_back(LONG)).await);
+}
+
+#[sqlx::test]
+async fn held_problems_never_counted_are_counted_on_the_next_step(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    // 部署前就在雲端的流程：沒記過
+    sql(
+        &s,
+        "UPDATE flows SET held = NULL, held_core = NULL WHERE id = $1",
+        &id,
+    )
+    .await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+
+    let segment = json!([{ "name": "addSegment", "args": ["chant"] }]);
+    assert_accepted(&step(&mut a, "segment-1", 0, segment).await);
+    assert_eq!(cured(&s, &id, "segment-1").await, Some(vec![]));
+    assert_eq!(
+        held(&s, &id).await,
+        (Some(vec!["flowName".into()]), Some(FINGERPRINT.into()))
+    );
+    // 記過了：下一步治好的照記
+    assert_accepted(&step(&mut a, "rename-1", 1, rename("決賽")).await);
+    assert_eq!(
+        cured(&s, &id, "rename-1").await,
+        Some(vec!["flowName".into()])
+    );
+}
+
+#[sqlx::test]
+async fn held_problems_written_wrong_do_not_let_a_new_problem_through(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    // 記著的寫錯了：少了流程名字
+    sql(&s, "UPDATE flows SET held = '{}' WHERE id = $1", &id).await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+
+    assert_accepted(&step(&mut a, "rename-1", 0, rename("決賽")).await);
+    assert_eq!(cured(&s, &id, "rename-1").await, Some(vec![]));
+    assert_undo_blocked(&undo(&mut a, "undo-1", 1, "rename-1", false, name_back(LONG)).await);
+}

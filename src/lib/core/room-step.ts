@@ -1,9 +1,9 @@
 // 這一步收不收（#315，ADR 0010、0011、0014、0007）：雲端流程的房間收到一步（或復原、重做），照伺服器的規則決定收了還是退回。
 // 假伺服器和 Rust 伺服器（flow_room.rs 的 take_step 用 QuickJS 叫 takeStepJson，ADR 0018）都叫它，規則只有這一份：
 // 收過的步驟 id 回原本的結果；不能改的退回；前一步被退回還沒換上就送的退回；上次看到之後的步沒留了退回；
-// 復原那一步沒留或超過 30 天退回；那一步之後別的分頁改過那些東西退回；放回去整份檢查不合退回；
+// 復原那一步沒留或超過 30 天退回；那一步之後別的分頁改過那些東西退回；放回去整份檢查不合退回（現在就有的、那一步治好的不算，ADR 0020）；
 // 被規則擋下、要問而沒問退回（寫上次看到之後最後改過的人）；這一步改到的東西上次看到之後被別的分頁改過退回（寫最後改到的人）。
-// 收了回改好的編排、要送給別人的改動、紀錄要改的和要清的、要記的步驟紀錄。
+// 收了回改好的編排、要送給別人的改動、紀錄要改的和要清的、要記的步驟紀錄（連這一步治好的毛病）、要記著的毛病。
 //
 // 管：上面這些規則，和收了之後紀錄怎麼跟著變（清掉、改掉、復原加回來；同一次全上的同一組撞在一起只算先存的）。
 // 不管：從哪裡挑出步驟紀錄、存、鎖、送給房間裡的人、流程被刪了、權限被收回、退回的中文句子、現在幾點（都是呼叫的人給或做）。
@@ -13,6 +13,7 @@ import type { Command } from './commands';
 import { runCommands } from './commands';
 import { runUndo } from './cloud-undo';
 import type { Flow } from './flow';
+import { problemKeys } from './flow-check';
 import { remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
 import { putRecords, takeRecords, type StoredAttempt } from './stored-records';
@@ -28,7 +29,10 @@ export interface ClearedRecord {
 	now: StoredAttempt | null;
 }
 
-/** 步驟紀錄的一筆：第幾步、步驟 id、哪個分頁送的、送的人的名字、什麼時候收的（毫秒）、改到的東西、清掉改掉的紀錄。 */
+/**
+ * 步驟紀錄的一筆：第幾步、步驟 id、哪個分頁送的、送的人的名字、什麼時候收的（毫秒）、改到的東西、清掉改掉的紀錄、
+ * 這一步治好的毛病（整份流程檢查的鍵，ADR 0020；部署前收的步沒有，當沒治好什麼）。
+ */
 export interface LoggedStep {
 	step: number;
 	id: string;
@@ -37,6 +41,7 @@ export interface LoggedStep {
 	at: number;
 	keys: string[];
 	cleared: ClearedRecord[];
+	cured?: string[];
 }
 
 /** 伺服器上的一次：連清掉的（gone）也要；amendedStep 是最後一次用手改、刪、救回時流程是第幾步。 */
@@ -45,10 +50,13 @@ export interface RoomRecord extends StoredAttempt {
 	amendedStep?: number;
 }
 
-/** 送來的一步：跑一串指令，或復原、重做 of 那一步（change 是要放回去的樣子）。 */
+/**
+ * 送來的一步：跑一串指令，或復原、重做 of 那一步（change 是要放回去的樣子）。
+ * joined：方向鍵連按合成的一步裡 of 之後的其他步（步驟 id）；部署前開著的分頁不送，只算 of 那一步治好的。
+ */
 export type SentStep =
 	| { stepId: string; seen: number; commands: Command[] }
-	| { stepId: string; seen: number; undo: { of: string; redo: boolean; change: RemoteChange } };
+	| { stepId: string; seen: number; undo: { of: string; redo: boolean; change: RemoteChange; joined?: string[] } };
 
 /**
  * 決定一步要的東西。
@@ -57,6 +65,8 @@ export type SentStep =
  * 不用先挑分頁、改到的東西（這裡挑）。now：現在（毫秒）。canEdit：送的人是擁有者、編輯者。
  * tab、by：送的分頁、送的人的名字。sentBack：這個連線上次被退回時伺服器在第幾步。
  * taken：這個步驟 id 已經收過了：那時第幾步、那一步的改動（舊的步沒記是 null）。
+ * core：現在流程核心的版本（指紋）。held：伺服器記著的這支流程現在讓它留著的毛病（整份流程檢查的鍵）和記的時候流程核心的版本；
+ * 沒記過、版本不一樣（過期了）就這一步記成沒治好什麼，重算（ADR 0020）。
  */
 export interface StepAsk {
 	flow: Flow;
@@ -69,6 +79,8 @@ export interface StepAsk {
 	by: string;
 	sentBack?: number;
 	taken?: { step: number; change: RemoteChange | null };
+	core: string;
+	held?: { keys: string[]; core: string } | null;
 	sent: SentStep;
 }
 
@@ -86,7 +98,8 @@ export type StepRefusal =
 
 /**
  * 結果。again：步驟 id 收過了，回原本的。rejected：退回（by 是最後改到的人，或被擋下時上次看到之後最後改過的人）。
- * accepted：改好的編排、要送給別人的改動（RemoteChange）、紀錄改好的（存成這樣、沒清掉）、要清掉的 id、要記的步驟紀錄（第 step + 1 步）。
+ * accepted：改好的編排、要送給別人的改動（RemoteChange）、紀錄改好的（存成這樣、沒清掉）、要清掉的 id、要記的步驟紀錄（第 step + 1 步）、
+ * 要記著的這支流程現在讓它留著的毛病（held，配上現在流程核心的版本存）。
  */
 export type StepVerdict =
 	| { kind: 'again'; step: number; change: RemoteChange | null }
@@ -98,11 +111,15 @@ export type StepVerdict =
 			changed: StoredAttempt[];
 			deleted: string[];
 			logged: LoggedStep;
+			held: string[];
 	  };
 
-/** 跑完的結果：成功帶不帶紀錄的編排、跑完還在的紀錄、記下的鍵、要查的鍵；沒成功帶原因（ask：是要問而沒問）。 */
+/**
+ * 跑完的結果：成功帶不帶紀錄的編排、跑完還在的紀錄、記下的鍵、要查的鍵、治好的毛病、要記著的毛病；
+ * 沒成功帶原因（ask：是要問而沒問）。
+ */
 type Ran =
-	| { kind: 'ok'; flow: Flow; records: StoredAttempt[]; keys: string[]; watch: string[] }
+	| { kind: 'ok'; flow: Flow; records: StoredAttempt[]; keys: string[]; watch: string[]; cured: string[]; held: string[] }
 	| { kind: 'no'; reason: Said; ask: boolean };
 
 /** 決定這一步收不收（見檔頭）。 */
@@ -129,7 +146,10 @@ export function takeStep(ask: StepAsk): StepVerdict {
 			if (!of) return rejected({ code: 'undoTooOld', redo });
 			const back = broughtBack(ask.records, of, live);
 			revived = back.revived;
-			const u = runUndo(flow, back.records, change);
+			// 那一步（方向鍵合成的：中間每一步）治好的可以帶回來（ADR 0020）
+			const joined = new Set(sent.undo.joined ?? []);
+			const cured = [of, ...log.filter((l) => joined.has(l.id) && l.id !== id)].flatMap((l) => l.cured ?? []);
+			const u = runUndo(flow, back.records, change, cured);
 			ran = u.kind === 'ok' ? u : { kind: 'no', reason: reasonOf(u), ask: false };
 			const touched = [...of.keys, ...(ran.kind === 'ok' ? ran.watch : [])];
 			const by = lastOther(of.step, touched);
@@ -139,7 +159,8 @@ export function takeStep(ask: StepAsk): StepVerdict {
 			const r = runCommands(putRecords(flow, live), sent.commands, stepId);
 			if (r.kind === 'ok') {
 				const taken = takeRecords(r.flow);
-				ran = { kind: 'ok', ...taken, ...stepKeys(flow, taken.flow) };
+				const held = ask.held && ask.held.core === ask.core ? ask.held.keys : undefined;
+				ran = { kind: 'ok', ...taken, ...stepKeys(flow, taken.flow), ...curedBy(flow, taken.flow, held) };
 			} else ran = { kind: 'no', reason: reasonOf(r), ask: r.kind !== 'blocked' };
 		}
 	} catch {
@@ -156,8 +177,25 @@ export function takeStep(ask: StepAsk): StepVerdict {
 		change: remoteChange(flow, ran.flow),
 		changed: records.changed,
 		deleted: records.deleted,
-		logged: { step: step + 1, id: stepId, tab, by: ask.by, at: now, keys: ran.keys, cleared: records.cleared }
+		logged: { step: step + 1, id: stepId, tab, by: ask.by, at: now, keys: ran.keys, cleared: records.cleared, cured: ran.cured },
+		held: ran.held
 	};
+}
+
+/**
+ * 一般的一步治好了哪些毛病、之後要記著哪些（ADR 0020）。held：記著的 before 的毛病，不知道（沒記過、過期了）是 undefined。
+ * 記著沒有的（幾乎每支流程）不多做事。不知道的記成沒治好什麼，重算 after 的。
+ * 記著的只當提示：after 沒有了的，再看 before 真的有才算治好（記著的寫錯了也不會放過新的毛病）。
+ */
+function curedBy(before: Flow, after: Flow, held: string[] | undefined): { cured: string[]; held: string[] } {
+	if (held === undefined) return { cured: [], held: problemKeys(after) };
+	if (!held.length) return { cured: [], held: [] };
+	const next = problemKeys(after);
+	const left = new Set(next);
+	const gone = held.filter((k) => !left.has(k));
+	if (!gone.length) return { cured: [], held: next };
+	const was = new Set(problemKeys(before));
+	return { cured: gone.filter((k) => was.has(k)), held: next };
 }
 
 /** 被擋的原因：有代號才帶 why。 */

@@ -315,4 +315,13 @@ describe('整份流程檢查的原因帶代號（ADR 0017）', () => {
 			why: { code: 'segment_file_music_range', max: MAX_EIGHTS }
 		});
 	});
+
+	it('傳上雲端收了：帶讓它留著的毛病的鍵給伺服器記著（ADR 0020）', () => {
+		const good = ratedSample();
+		const flow = { ...good, name: '流'.repeat(45) };
+		const r = JSON.parse(uploadFlowJson(JSON.stringify({ formatVersion: FORMAT_VERSION, flow })));
+		expect(r.kind).toBe('ok');
+		expect(r.held).toEqual(['flowName']);
+		expect(JSON.parse(uploadFlowJson(JSON.stringify({ formatVersion: FORMAT_VERSION, flow: good }))).held).toEqual([]);
+	});
 });

@@ -37,8 +37,25 @@ export function flowProblem(flow: Flow, before: Flow = flow): string | Why | nul
 	// 開檔就擋：型別、參照、拍點、成功率設定、開頭那張站位（isFlow），段的長度。
 	const broken = structureProblem(flow) ?? segmentLengthProblem(flow);
 	if (broken) return broken;
-	const old = new Set(violations(before).map((v) => v.key));
+	const old = new Set(problemKeys(before));
 	return violations(flow).find((v) => !old.has(v.key))?.message ?? null;
+}
+
+/** 「讓它留著」的毛病的鍵（伺服器記著每支流程現在有哪些，ADR 0020）。 */
+export function problemKeys(flow: Flow): string[] {
+	return violations(flow).map((v) => v.key);
+}
+
+/**
+ * 復原、重做的整份流程檢查（ADR 0020）：開檔就擋的一定擋；讓它留著的只擋這兩種以外的：
+ * now（伺服器現在的樣子）就有的、cured（要復原的那一步治好的）。回原因（合規則是 null）和 flow 的鍵（開檔就擋時是空的）。
+ */
+export function undoProblem(flow: Flow, now: string[], cured: string[]): { problem: string | Why | null; keys: string[] } {
+	const broken = structureProblem(flow) ?? segmentLengthProblem(flow);
+	if (broken) return { problem: broken, keys: [] };
+	const allowed = new Set([...now, ...cured]);
+	const found = violations(flow);
+	return { problem: found.find((v) => !allowed.has(v.key))?.message ?? null, keys: found.map((v) => v.key) };
 }
 
 /** 「讓它留著」的規則，流程裡所有的毛病。 */

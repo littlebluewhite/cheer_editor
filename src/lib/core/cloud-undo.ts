@@ -1,8 +1,8 @@
 // 雲端流程的復原、重做（#256，ADR 0014）：不能整份換回去（會蓋掉別人的改動）。復原堆疊存每一步改到的東西
 // 改之前、改之後的樣子（比對前後，diff.ts），復原是送改之前的樣子（重做送改之後的），用 applyRemoteChange 套上去。
-// 伺服器放回去之後跑整份流程檢查（flowProblem），不合就擋下；那些東西後來有沒有被別的分頁改過由伺服器查。
+// 伺服器放回去之後跑整份流程檢查，不合就擋下（現在就有的、那一步治好的毛病不算，ADR 0020）；那些東西後來有沒有被別的分頁改過由伺服器查。
 
-import { flowProblem } from './flow-check';
+import { problemKeys, undoProblem } from './flow-check';
 import type { Flow } from './flow';
 import { sortFormations } from './formation';
 import { carryRecords } from './records';
@@ -52,24 +52,30 @@ function fitted(flow: Flow): Flow {
 	return actions.every((a, i) => a === flow.actions[i]) ? flow : { ...flow, actions };
 }
 
-/** 伺服器跑復原、重做的結果：跟一般的一步一樣（runStepJson），不合規則是 blocked。 */
+/**
+ * 伺服器跑復原、重做的結果：跟一般的一步一樣（runStepJson），不合規則是 blocked。
+ * 合規則多帶 held：放回去之後讓它留著的毛病的鍵（伺服器記著）；cured：這次治好的（現在有、放回去之後沒有的，ADR 0020）。
+ */
 export type UndoOutcome =
-	| { kind: 'ok'; flow: Flow; records: StoredAttempt[]; keys: string[]; watch: string[] }
+	| { kind: 'ok'; flow: Flow; records: StoredAttempt[]; keys: string[]; watch: string[]; held: string[]; cured: string[] }
 	| ({ kind: 'blocked' } & Said);
 
 /**
  * 伺服器跑復原、重做：flow 是現在的樣子（不帶紀錄）、records 是分開存的紀錄（ADR 0011）。
- * 套上去之後整份檢查（現在已經有的毛病不算）；合規則回不帶紀錄的流程、跑完還在的紀錄、這一步記下的鍵和要查的鍵。
+ * 套上去之後整份檢查：現在已經有的毛病、要復原的那一步治好的（cured，ADR 0020）不算；
+ * 合規則回不帶紀錄的流程、跑完還在的紀錄、這一步記下的鍵和要查的鍵、放回去之後的毛病和這次治好的。
  */
-export function runUndo(flow: Flow, records: StoredAttempt[], change: RemoteChange): UndoOutcome {
+export function runUndo(flow: Flow, records: StoredAttempt[], change: RemoteChange, cured: string[] = []): UndoOutcome {
 	const now = putRecords(flow, records);
 	// 現在放不進去的（動作不在、不記成功率了，例：伺服器加回來的刪動作清掉的紀錄）：放回去之後再放進復原回來的動作
 	const placed = new Set(takeRecords(now).records.map((r) => r.attempt.id));
 	const waiting = records.filter((r) => !placed.has(r.attempt.id));
 	const back = undone(now, change);
 	const after = waiting.length ? fitted(putRecords(back, [...takeRecords(back).records, ...waiting])) : back;
-	const problem = flowProblem(after, now);
+	const old = problemKeys(now);
+	const { problem, keys } = undoProblem(after, old, cured);
 	if (problem) return { kind: 'blocked', ...said(problem) };
+	const held = new Set(keys);
 	const taken = takeRecords(after);
-	return { kind: 'ok', flow: taken.flow, records: taken.records, ...stepKeys(flow, taken.flow) };
+	return { kind: 'ok', flow: taken.flow, records: taken.records, ...stepKeys(flow, taken.flow), held: keys, cured: old.filter((k) => !held.has(k)) };
 }
