@@ -2,7 +2,8 @@
 	// 我的帳號（#190）：名字（自己改）、Email 只顯示、改密碼（現在的密碼、新密碼）、「登出這台裝置」。
 	// 這台還有沒傳的成功率紀錄時，登出先跳小框（#260）。
 	// 「登出這台裝置」旁邊「要求刪除帳號」（#370）：要有網路；確認框寫會刪什麼、流程幾支幾支有分享。確認後帳號停用，
-	// 這台照登出做（沒傳的紀錄先跳同一個小框）。管理員沒有這顆鈕，改寫一行怎麼辦。
+	// 這台照登出做。這台還有沒傳的紀錄先傳上去；傳不上去（斷網、流程不在了）就先不送，跳登出那個小框說傳不上去（先不要、丟掉再送）。
+	// 管理員沒有這顆鈕，改寫一行怎麼辦。
 	// 沒登入就到登入頁。
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -14,6 +15,7 @@
 	import { host } from '#lib/host.js';
 	import { appDevice } from '#lib/app-shell.js';
 	import { unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
+	import { sendUnsent } from '#lib/send-unsent.js';
 	import {
 		httpServer,
 		tooManyTriesText,
@@ -101,7 +103,7 @@
 	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
 	let unsentAtLogout = $state.raw<UnsentRecords[] | null>(null);
 	/** 那個小框是要求刪除帳號跳的（#370）：「丟掉」之後送出要求，不是登出。 */
-	let unsentForDelete = false;
+	let unsentForDelete = $state(false);
 	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
 	async function logout() {
 		const left = await unsentFlows(offline);
@@ -136,9 +138,12 @@
 			deleteError = m.account_delete_offline();
 		}
 	}
-	/** 確認框按「要求刪除帳號」：這台還有沒傳的紀錄就先跳小框，沒有就送出。 */
+	/** 確認框按「要求刪除帳號」：這台還有沒傳的紀錄先傳上去；都傳了就送出，還有傳不上去的就跳小框。 */
 	async function confirmDelete(e: SubmitEvent) {
 		e.preventDefault();
+		busy = true;
+		await sendUnsent(server, offline);
+		busy = false;
 		const left = await unsentFlows(offline);
 		if (!left.length) return requestDelete();
 		unsentForDelete = true;
@@ -253,6 +258,7 @@
 {#if unsentAtLogout}
 	<UnsentLogout
 		flows={unsentAtLogout}
+		failed={unsentForDelete}
 		onstay={() => {
 			unsentAtLogout = deleting = null;
 			unsentForDelete = false;

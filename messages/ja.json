@@ -642,6 +642,7 @@
 	"account_unsent_title_one": "未送信の成功率の記録が {n} 件あります",
 	"account_unsent_title": "未送信の成功率の記録が {n} 件あります",
 	"account_unsent_lead": "ログアウトすると破棄され、ほかの人には見えません。先にネットにつないで、送信が終わってからログアウトしてください。",
+	"account_unsent_failed": "これらは送信できなかったため、アカウントの削除はまだリクエストしていません。残すならまだ削除しないでください。破棄するとリクエストを送信します。",
 	"account_unsent_count_one": "{n} 件",
 	"account_unsent_count": "{n} 件",
 	"account_unsent_discard": "破棄してログアウト",

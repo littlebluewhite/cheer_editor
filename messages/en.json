@@ -642,6 +642,7 @@
 	"account_unsent_title_one": "{n} rep not uploaded yet",
 	"account_unsent_title": "{n} reps not uploaded yet",
 	"account_unsent_lead": "Signing out discards them, and no one else will see them. Get online first and sign out once they finish uploading.",
+	"account_unsent_failed": "These couldn't be uploaded, so your account deletion hasn't been requested yet. To keep them, don't delete yet; discard them to send the request.",
 	"account_unsent_count_one": "{n} rep",
 	"account_unsent_count": "{n} reps",
 	"account_unsent_discard": "Discard and sign out",
