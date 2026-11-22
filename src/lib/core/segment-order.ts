@@ -104,6 +104,15 @@ export function splitSegment(flow: Flow, segmentId: string, sec: number): Comman
 }
 
 /**
+ * 開頭那張不在第一段（例：雲端復原調段順序時，原本的開頭那張被別的分頁刪了，#346）：照調段順序的規則跟著第一段。
+ * 本來就跟著的原樣回。
+ */
+export function openingFollowsFirst(flow: Flow): Flow {
+	if (flow.formations[0].segmentId === (flow.segments[0]?.id ?? null)) return flow;
+	return { ...flow, formations: reorder(flow, flow.segments) };
+}
+
+/**
  * 段換成 segments（刪了或換了順序）之後的站位：刪掉的段裡的站位拿掉、指到刪掉的段的走位設定拿掉，
  * 照新的段順序排，開頭那張跟著新的第一段。
  */

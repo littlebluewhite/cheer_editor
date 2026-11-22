@@ -8,6 +8,7 @@ import { sortFormations } from './formation';
 import { carryRecords } from './records';
 import { applyRemoteChange, remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
+import { openingFollowsFirst } from './segment-order';
 import { putRecords, takeRecords, type StoredAttempt } from './stored-records';
 import { fitRecords } from './success-rate';
 import { said, type Said } from './why';
@@ -41,9 +42,10 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  * 把復原、重做的改動套上去：沒改到的保持現在的樣子，紀錄帶現在的（對不上的丟掉，跟本機的復原一樣）。
  * 記號打在不在的環節上的拿掉、拿光了整筆拿掉（例：重做刪環節，復原時加回來的記號再清一次，ADR 0007）。
  * 站位一律照時間排（ADR 0020）：放回去的站位不用找位置，本來就沒照時間排的（手改過的舊檔）也順便排好。
+ * 開頭那張跟著第一段（#346）：放回去的段順序跟現在的站位對不上時，照調段順序的規則補。
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	return fitted(carryRecords(sortFormations(applyRemoteChange(flow, change)), flow));
+	return fitted(carryRecords(openingFollowsFirst(sortFormations(applyRemoteChange(flow, change))), flow));
 }
 
 /** 每個動作的紀錄對上它現在的環節、組（對不上的記號拿掉，拿光了整筆拿掉）。 */
