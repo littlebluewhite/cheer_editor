@@ -19,6 +19,9 @@ final class ScenarioShell {
     // #377
     let drafts = DraftFolder.forScenario()
 
+    // #378
+    let settings = SettingsFile.forScenario()
+
     // #380
 
     // #381
@@ -30,6 +33,7 @@ final class ScenarioShell {
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
     // #391
+    private(set) var printedFrom: [PrintButton?] = []
 
     // #393
     /// 假網站和殼自己更新網頁的那一塊（WebUpdaterTests 的 Updater）。
@@ -52,16 +56,23 @@ final class ScenarioShell {
             // #377
             DraftsPart(folder: drafts, outbox: outbox),
 
+            // #378
+            SettingsPart(file: settings),
+
             // #380
             SitePart(site: SiteAddress.production),
 
             // #381
             cloudRoom,
 
+            // #382
+            CloudMusicPart(),
+
             // #389
             nowPlaying,
 
             // #391
+            PrintPart(onPrint: { self.printedFrom.append($0) }),
 
             // #393
             webUpdate,

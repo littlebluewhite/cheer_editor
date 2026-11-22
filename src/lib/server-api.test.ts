@@ -1,9 +1,12 @@
 // 連伺服器的 adapter（真的，fetch、WebSocket 換成假的）：傳上雲端的流程太大（伺服器收 16 MB 以下）；
-// 房間連不上時分得出被收回、被刪掉（不一直重連）。
+// 房間連不上時分得出被收回、被刪掉（不一直重連）；App 裡的雲端音樂經過殼（#382）。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FORMAT_VERSION, type Flow } from '#lib/core';
 import { ServerUnreachable, httpServer } from '#lib/server-api.js';
 import { m } from '#lib/paraglide/messages.js';
+import { appShell } from '#lib/app-shell.js';
+import { scenarioShell } from '#lib/scenario-shell.js';
+import { fakeHost } from '#lib/test-fakes.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -91,4 +94,66 @@ describe('登出', () => {
 			await expect(httpServer().logout()).rejects.toThrow(ServerUnreachable);
 		});
 	}
+});
+
+describe('App 裡的雲端音樂經過殼（#382，情境 cloudMusic.json）', () => {
+	const r2 = 'https://abc.r2.cloudflarestorage.com/music/flows/f1/a1.mp3?X-Amz-Credential=k%2F20261123&X-Amz-Signature=ab%2Bcd';
+	const viaShell = `/cloud-music?url=${encodeURIComponent(r2)}`;
+	const song = () => new File([new Uint8Array([1, 2, 3])], 'song.mp3');
+
+	/** 伺服器（/api/）照常回預簽網址；其他網址（R2 或殼的 /cloud-music）交給 storage。回 fetch 被叫的每一次。 */
+	function stubFetch(storage: () => Promise<Response>) {
+		const calls: { url: string; init?: RequestInit }[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				calls.push({ url, init });
+				if (url.endsWith('/done')) return new Response(null, { status: 204 });
+				if (url.startsWith('/api/')) return Response.json({ url: r2 });
+				return storage();
+			})
+		);
+		return calls;
+	}
+
+	const inApp = () => fakeHost({ shell: appShell(scenarioShell('cloudMusic.json', '一開始告訴網頁殼會代傳音樂').bridge) });
+
+	it('上傳：送到殼的 /cloud-music，內容是 ArrayBuffer（File 的內容進不了殼）', async () => {
+		inApp();
+		const calls = stubFetch(async () => new Response(null, { status: 200 }));
+		expect(await httpServer().uploadAudio('f1', 'a1', song())).toBe('ok');
+		const put = calls.find((c) => c.init?.method === 'PUT');
+		expect(put?.url).toBe(viaShell);
+		expect(put?.init?.body).toBeInstanceOf(ArrayBuffer);
+		expect([...new Uint8Array(put?.init?.body as ArrayBuffer)]).toEqual([1, 2, 3]);
+	});
+
+	it('下載（雲端流程、分享連結）：從殼的 /cloud-music 拿', async () => {
+		inApp();
+		const calls = stubFetch(async () => new Response(new Uint8Array([9, 8])));
+		expect([...((await httpServer().audioBytes('f1', 'a1')) ?? [])]).toEqual([9, 8]);
+		expect(calls.at(-1)?.url).toBe(viaShell);
+		expect([...((await httpServer().linkAudioBytes('t0k', 'a1')) ?? [])]).toEqual([9, 8]);
+		expect(calls.at(-1)?.url).toBe(viaShell);
+	});
+
+	it('傳到一半斷線（殼那邊失敗，fetch 丟錯）：上傳、下載都是連不上', async () => {
+		inApp();
+		stubFetch(async () => {
+			throw new TypeError('Load failed');
+		});
+		await expect(httpServer().uploadAudio('f1', 'a1', song())).rejects.toThrow(ServerUnreachable);
+		await expect(httpServer().audioBytes('f1', 'a1')).rejects.toThrow(ServerUnreachable);
+	});
+
+	it('網頁版（或還不會的舊殼）照舊直接連 R2，傳 File', async () => {
+		const calls = stubFetch(async () => new Response(new Uint8Array([5])));
+		const file = song();
+		await httpServer().uploadAudio('f1', 'a1', file);
+		const put = calls.find((c) => c.init?.method === 'PUT');
+		expect(put?.url).toBe(r2);
+		expect(put?.init?.body).toBe(file);
+		await httpServer().audioBytes('f1', 'a1');
+		expect(calls.at(-1)?.url).toBe(r2);
+	});
 });

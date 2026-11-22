@@ -15,16 +15,23 @@ enum ShellParts {
             // #377
             DraftsPart.inApp(outbox: context.outbox),
 
+            // #378
+            SettingsPart(file: .inApplicationSupport()),
+
             // #380
             SitePart(site: AppSite.current),
 
             // #381
             CloudRoomPart.inApp(outbox: context.outbox),
 
+            // #382
+            CloudMusicPart(),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 
             // #391
+            PrintPart(onPrint: { Printer.present(context.webView, from: $0) }),
 
             // #393
             context.webUpdates.part,

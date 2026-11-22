@@ -12,6 +12,13 @@
 		<script>
 			if (location.hash.startsWith('#share=')) document.documentElement.dataset.openingLink = '';
 		</script>
+		<!-- App 回上次那支（#378）：殼塞的小設定記著上次那支，首頁先藏起畫面，不先閃一下首頁（+page.svelte 接手） -->
+		<script>
+			(function () {
+				var saved = window.__cheerShell && window.__cheerShell.boot.settings;
+				if (saved && saved['cheer-editor:lastFlow'] && location.pathname.endsWith('/')) document.documentElement.dataset.reopening = '';
+			})();
+		</script>
 		<!-- 語言（ADR 0017）：照 Paraglide 的順序挑（存的 → 瀏覽器語言 → 中文），先改 lang；
 		     不是中文就先藏起畫面，不先閃一下中文（+layout.svelte 接手）。locales 要跟 project.inlang 一樣（有測試） -->
 		<script>
@@ -43,7 +50,8 @@
 		</script>
 		<style>
 			html[data-locale-pending] body,
-			html[data-opening-link] body {
+			html[data-opening-link] body,
+			html[data-reopening] body {
 				visibility: hidden;
 			}
 		</style>

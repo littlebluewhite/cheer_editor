@@ -88,7 +88,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`print`（列印，#391）、`cloudMusic`（殼代傳雲端流程的音樂，#382）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -148,6 +148,25 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 | XHR 送 Blob | **收不到** |
 
 **結論**：自訂網址收得到 POST 的內容，但 Blob／File 做的內容會被丟掉。之後經過殼的請求（#380 轉送、上傳音樂）：網頁把檔案先轉成 ArrayBuffer 再送，或改走 `messageHandlers`。這兩條都還沒在真機試過；速度也沒量。WebKit 哪天改了，這個測試會紅，要回來改這張表。
+
+## 列印（#391）
+
+網頁裡 `window.print()` 在 App 裡什麼都不會發生（docs/research/app-print.md），所以八拍表、記一次全上表、總表的「列印」改請殼印：
+
+- 網頁：`src/lib/print.ts` 的 `printPage(event)`。殼會 `print` 就 `send('print', { button })`（按的那顆鈕的 `getBoundingClientRect`），不然照舊 `window.print()`。情境 `bridge-scenarios/current/print.json`。
+- 殼：`ShellCore/Parts/PrintPart.swift`（拆出按鈕的位置）→ `App/Shell/Printer.swift`：`UIPrintInteractionController` 加 `webView.viewPrintFormatter()`，iPad 用 `present(from:in:)`、iPhone 用 `present(animated:)`。背景色用預設（不印）。
+- ⌘P：`Info.plist` 的 `UIApplicationSupportsPrintCommand`，加上 `Printer.swift` 裡 `ShellViewController` 的 `printContent(_:)`。WebKit 不接 `printContent`，從網頁畫面裡往上找會找到 `ShellViewController`。
+- 存成 PDF、傳給別人：用列印畫面右上角的「分享」，不另外做按鈕。
+- App 裡八拍表的提示換成 `print_hint_app`（`PrintSheet.svelte` 用 `host().shell.can('print')` 判斷）。
+
+在 iOS 27.2 模擬器上看到的（2026-11-22，`PipeTests/PrintPipeTests.swift`）：
+
+- iPad、iPhone 都叫得出列印畫面，右上角有「分享」，預覽是八拍表的列印樣子（A4、1 頁、小站位圖有顏色、表頭白底）。
+- 記一次全上表、總表的「列印」也叫得出列印畫面（`practice-flow.zip` 是 `src/lib/test-flows.ts` 的 `libSample()` 寫成的流程檔）。
+- **iPad 上列印畫面不從按鈕跳出來**：iOS 27 的列印畫面是視窗正中間的大卡片，不是指著按鈕的小視窗，系統還記錄 `presentFromRect… called on iPhone`（iPad 模擬器上也是）。程式照樣傳按鈕的位置（18.4 上照文件應該從按鈕跳出來，沒試過）。
+- 列印畫面還沒收完就再叫，系統不理。程式收起時也不會通知 delegate（測試看畫面上還有沒有蓋著的東西）。
+- 真的按鍵盤的 ⌘P 沒試過：模擬器沒開視窗，送不了按鍵。測試是從網頁畫面裡的 `WKContentView` 送 `printContent`。
+- 按「分享」→ 存成 PDF 沒試過（測試按不到系統的列印畫面）。
 
 ## 殼代網頁上網（#380，ADR 0023）
 
@@ -221,8 +240,28 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
   - 管子測試（`真的那包網頁_改一下馬上要切到背景_不等停手1秒就存進殼`）是測試自己發通知：從改到存好約 50 毫秒。
   - 另外在模擬器上真的切到背景試過一次（打開「設定」把 App 擠到背景，一直改讓停手 1 秒的存不會跑）：iOS 有發 willDeactivate，草稿接著就存好；那段時間網頁沒收到 `visibilitychange`。只試一次，不是自動測試。真機滑掉 App 在 #379。
 
+## 小設定、上次那支（#378）
+
+「我」、印誰、停下回起播點、圖例、分隔線大小存在殼：`Application Support/settings.json`（一個 JSON，key 跟網頁版 localStorage 的一樣；key 裡有流程名字，不拿來當檔名；會進 iCloud 備份）。延遲校正的 key 也走這裡，殼讀喇叭延遲是 #388。語言、使用說明的打勾照舊存在網頁裡。
+
+- 殼：`ShellCore/Sources/ShellCore/Parts/SettingsPart.swift`（`settings`）。網頁：`src/lib/shell-settings.ts`，殼會 `settings` 才換（`Host.settings`）。說的話：`bridge-scenarios/current/settings.json`。
+- **怎麼拿**：document start 塞一份（boot 的 `settings`），網頁建編輯器時照舊同步讀；改了網頁先改自己記憶體裡那份，再馬上 `settingSet`／`settingRemove` 寫回殼。
+- **一開始塞的每次換頁前重做**（`WebShell` 的 `refreshBoot`；別人加的 user script 放回去）：殼換上新網頁、網頁行程當掉後重新載入，用的是同一個網頁畫面；不重做的話塞的是 App 打開時的小設定、上次那支。
+- **上次那支**：就是小設定裡的 `cheer-editor:lastFlow`（本機流程的草稿 id），網頁記、網頁開。殼說 `background`（#377 那句）時，開著本機流程就記它，在首頁（和雲端流程，#383 再接）就清掉。打開時記著就直接讀那份草稿開它，不先讀每份草稿列最近的流程；`app.html` 看殼塞的有記，首頁先藏起畫面，開好了或那份草稿沒了才給看（沒了就停在首頁，不說錯）。網頁版不記、不開。
+- **多久**：模擬器上從載入首頁到看到上次那支的場地約 0.7 秒（2026-11-23，iOS 27.2 iPad Pro 11 模擬器；跟別的管子測試一起跑時 0.7–1.7 秒；App 裡不開分頁頻道（#392），打開時不用等別的分頁回答；`PipeTests` 的 `真的那包網頁_在流程裡關掉再開_直接進那支流程_中間不停在首頁`；是新的網頁畫面、App 已經開著，不是冷開 App，只當參考）。真機在 #379。
+
+## 雲端流程的音樂（#382）
+
+音樂放在 R2，R2 只放行網站的網址（CORS），`app://local` 的網頁直接 `fetch` 過不了；R2 的設定、伺服器都不改。網頁照舊跟伺服器（`/api/`，上面的轉送）拿預簽網址，再 `fetch('/cloud-music?url=<預簽網址>')`，`App/Shell/CloudMusicRoute.swift` 照那個網址直接送到 R2（規則在 `ShellCore/Sources/ShellCore/Forward/CloudMusic.swift`）：
+
+- 只送到 `https://*.r2.cloudflarestorage.com`，只有 GET、PUT；Debug 版也准 `http://127.0.0.1`（管子測試的假 R2）。不帶網頁的標頭、不帶殼的 cookie（預簽網址只簽了 host），不跟轉址；回給網頁的只留狀態、內容、`Content-Type`。
+- 上傳：`File` 的內容進不了殼（上面「POST 進不進得了殼」），網頁先 `await file.arrayBuffer()` 再送。網頁版照舊直接連 R2、送 `File`（`src/lib/server-api.ts` 的 `r2Fetch`）。
+- 殼會 `cloudMusic`（`CloudMusicPart`，情境 `bridge-scenarios/current/cloudMusic.json`，只有一開始塞的）網頁才走 `/cloud-music`；網站更新的新網頁碰上還不會的舊殼，照網頁版直接連（過不了，說連不上）。
+- 傳到一半斷線：殼丟錯誤，網頁的 `fetch` 失敗（`ServerUnreachable`），畫面照網頁版說傳不上、拿不到；再選一次音樂檔、再打開就是再試。
+- **快不快**（2026-11-23，只在 iOS 27.2 模擬器上、本機的假 R2，不是真的 R2、不是真的網路；`PipeTests/CloudMusicPipeTests.swift` 的 `六十MB的音樂傳上去再拿回來`）：60 MB 上傳約 0.19 秒（含網頁轉 ArrayBuffer）、下載約 0.06 秒，只量了一次。真的 R2 還沒接上（docs/deploy.md、#263），真機沒量（#379）。
+
 ## 還沒做的（後面的票）
 
-App 圖示、其他資料搬到殼（小設定 #378 等）、列印（#391）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
+App 圖示、其他資料搬到殼（離線副本、沒傳的紀錄 #383 等）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
 
 已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。

@@ -557,6 +557,7 @@
 	"print_title": "8-count sheet",
 	"print_who": "Print for",
 	"print_hint": "Print from the browser ({keys}) or save as PDF.",
+	"print_hint_app": "Tap “Print”. To save as PDF or send it to someone, tap “Share” on the print screen.",
 	"print_print": "Print",
 	"print_close": "Close",
 	"print_heading": "{routine} · 8-count sheet · {who}",
