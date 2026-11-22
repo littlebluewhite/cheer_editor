@@ -3,7 +3,11 @@
 
 import { swapHost, type Shell } from '#lib/host.js';
 
-/** 殼一開始塞的：殼的版本、建置號（網頁的清單的 minShellBuild 比這個）、會什麼（「問殼」can() 的名字）。 */
+/**
+ * 殼一開始塞的：殼的版本、建置號（網頁的清單的 minShellBuild 比這個）、會什麼（「問殼」can() 的名字）。
+ * 一塊要多塞東西時，在自己的檔裡補欄位，不改這裡：
+ *   declare module '#lib/app-shell.js' { interface ShellBoot { settings?: Record<string, string> } }
+ */
 export interface ShellBoot {
 	shellVersion: string;
 	shellBuild: number;
@@ -34,9 +38,17 @@ export function appShell(bridge: ShellBridge): Shell {
 	};
 }
 
-/** 在 App 裡就換上殼的「問殼」，回傳換回去的函式；網頁版回 undefined。程式一開始叫一次（src/hooks.client.ts）。 */
+/**
+ * 在 App 裡就換上殼的版本，回傳換回去的函式；網頁版回 undefined。程式一開始叫一次（src/hooks.client.ts）。
+ * 一張票一格，各改自己那一格（中間空一行，幾張票同時加也合得起來，ios/README.md）。
+ */
 export function useShellIfInApp(): (() => void) | undefined {
 	const bridge = window.__cheerShell;
 	if (!bridge) return undefined;
-	return swapHost({ shell: appShell(bridge) });
+	return swapHost({
+		shell: appShell(bridge),
+		// #377（小設定、離線存放）
+
+		// #380（網站網址）
+	});
 }

@@ -21,6 +21,12 @@ struct BootScriptTests {
             == #"{"features":["print"],"shellBuild":3,"shellVersion":"1.0"}"#)
     }
 
+    @Test func 塞的字裡有換行_引號_行分隔字元也照樣到() {
+        let tricky = "第一行\n\"引號\"\u{2028}</script>"
+        let js = run(boot: ["name": .string(tricky)])
+        #expect(js.evaluateScript("window.__cheerShell.boot.name").toString() == tricky)
+    }
+
     @Test func 網頁送一句_殼收到的是JSON字串_回的值拆開給網頁() {
         let js = run(boot: [:], answer: #"{"reply":{"ok":true}}"#)
         js.evaluateScript("var got; window.__cheerShell.send('ready').then(function (r) { got = r; });")

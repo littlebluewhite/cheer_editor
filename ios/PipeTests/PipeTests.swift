@@ -44,14 +44,23 @@ final class Harness {
     var readyCount = 0
     let window: UIWindow
 
-    init(siteRoot: URL, extraParts: [any BridgePart] = []) {
+    let context = ShellContext()
+
+    /// 跟 App 一樣接：parts、routes 從 ShellContext 建，網頁畫面建好再接上 context。
+    init(
+        siteRoot: URL,
+        parts: (ShellContext) -> [any BridgePart] = { _ in [] },
+        routes: (ShellContext) -> [any SchemeRoute] = { _ in [ProbeRoute()] },
+        size: CGSize = CGSize(width: 400, height: 800)
+    ) {
         var ready: (() -> Void)?
-        let parts: [any BridgePart] = [ReadyPart(onReady: { ready?() }), EchoPart()] + extraParts
-        let bridge = Bridge(shellVersion: "9.9.9", shellBuild: 99, parts: parts)
+        let bridge = Bridge(shellVersion: "9.9.9", shellBuild: 99,
+                            parts: [ReadyPart(onReady: { ready?() }), EchoPart()] + parts(context))
         var opened: ((URL) -> Void)?
-        shell = WebShell(siteRoot: siteRoot, bridge: bridge, routes: [ProbeRoute()], openOutside: { opened?($0) })
+        shell = WebShell(siteRoot: siteRoot, bridge: bridge, routes: routes(context), openOutside: { opened?($0) })
+        context.attach(shell)
         // 放進視窗：不在畫面上的 WKWebView，計時器、畫面更新會被放慢
-        window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.addSubview(shell.webView)
         shell.webView.frame = window.bounds
         window.isHidden = false
@@ -109,7 +118,7 @@ struct PipeTests {
         let h = Harness(siteRoot: fixtures)
         try await h.load("pipe.html")
         _ = try await h.js("window.heard = []; window.__cheerShell.on('ping', (b) => window.heard.push(b.n)); return null")
-        h.shell.emit("ping", ["n": 2])
+        h.context.outbox.emit("ping", ["n": 2])  // 跟 App 裡的一塊一樣，從 ShellContext 的 outbox 說
         try await h.waitUntil("網頁收到 ping") { (try? await h.js("return window.heard.length")) as? Int == 1 }
         #expect(try await h.js("return window.heard[0]") as? Int == 2)
     }
@@ -143,6 +152,16 @@ struct PipeTests {
         let got = try await h.js("return await (await \(request)).text()") as? String ?? "（沒回）"
         print("POST 進不進得了殼｜\(name)｜\(got)")
         #expect(got.split(separator: " ").prefix(2).joined(separator: " ") == want, "\(name)：\(got)")
+    }
+
+    @Test func 真的那包網頁_新建本機流程_放音樂_播放() async throws {
+        let site = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
+        let script = try String(contentsOf: fixtures.appendingPathComponent("new-flow-play.js"), encoding: .utf8)
+        // iPad 橫拿的大小（手機是檢視模式，不能新建）
+        let h = Harness(siteRoot: site, size: CGSize(width: 1194, height: 834))
+        try await h.load("")
+        try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
+        #expect(try await h.js(script) as? String == "新建了、放了音樂、在播")
     }
 
     @Test func 真的那包網頁打得開_也跟殼說好了() async throws {

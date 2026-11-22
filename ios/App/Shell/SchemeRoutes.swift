@@ -3,7 +3,7 @@
 
 @MainActor
 enum SchemeRoutes {
-    static func all() -> [any SchemeRoute] {
+    static func all(_ context: ShellContext) -> [any SchemeRoute] {
         [
             // #377
 

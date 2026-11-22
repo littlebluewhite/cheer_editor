@@ -25,11 +25,12 @@ ios/
     AppDelegate.swift、SceneDelegate.swift   scene 生命週期；只有一個視窗
     Info.plist            UIApplicationSupportsMultipleScenes = false（iPad 只開一個視窗）、UILaunchScreen（啟動畫面）
     Shell/WebShell.swift  WKWebView 和橋怎麼接
+    Shell/ShellContext.swift   每一塊、每一條路拿得到的東西（outbox、webView）
     Shell/SchemeHandler.swift   app://local/ 送 App 裡那包網頁
     Shell/SchemeRoutes.swift    ★ app://local/ 上別的路（登記）
     Bridge/ShellParts.swift     ★ 橋上的每一塊（登記）
     Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
-  PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）
+  PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
   ShellCore/              殼的規則：Swift 套件，不碰畫面。swift test 在 Mac 上跑
     Sources/ShellCore/Bridge/     橋：Bridge、BridgePart、JSONValue、BootScript
     Sources/ShellCore/Parts/      橋上的每一塊，一件事一個檔（ReadyPart.swift）
@@ -37,6 +38,7 @@ ios/
     Sources/ShellCore/Resources/bridge.js   document start 塞進網頁的 JS
     Tests/ShellCoreTests/ScenarioParts.swift   ★ 情境測試用的每一塊（登記）
 bridge-scenarios/current/ 共用的情境檔，一件事一個檔（repo 根目錄；網頁、殼兩邊都讀）
+src/lib/app-shell.ts      網頁這邊：讀 window.__cheerShell，useShellIfInApp ★ 換上殼的版本（登記）
 ```
 
 ★ 的檔是「登記表」：一張票一格，**只改自己那一格**。格子中間空一行，幾張票同時加也合得起來（試過）。
@@ -88,10 +90,20 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 加一塊（一件事）
 
-1. `ShellCore/Sources/ShellCore/Parts/<件事>Part.swift`：實作 `BridgePart`（`feature`、`messages`、`boot`、`handle`）。規則寫在這裡；要碰畫面、系統的（列印、播放鍵）從 init 傳進來（看 `ReadyPart` 的 `onReady`）。
-2. 在 `App/Bridge/ShellParts.swift` 自己那一格登記（傳真的），`ShellCore/Tests/ShellCoreTests/ScenarioParts.swift` 自己那一格登記（傳假的）。
-3. `bridge-scenarios/current/<件事>.json` 寫情境；網頁那邊照情境寫測試（下一節）。
-4. 要在 `app://local/` 上接請求（例：#380 轉送 `/api/`）：`App/Shell/<名字>Route.swift` 實作 `SchemeRoute`，在 `SchemeRoutes.swift` 自己那一格登記。
+殼這邊：
+
+1. `ShellCore/Sources/ShellCore/Parts/<件事>Part.swift`：實作 `BridgePart`（`feature`、`messages`、`boot`、`handle`）。規則寫在這裡；要碰畫面、系統的（列印、播放鍵）從 init 傳進來（看 `ReadyPart` 的 `onReady`）。要主動跟網頁說話的，init 收一個 `ShellOutbox`，`outbox.emit(name, body)`。
+2. 在 `App/Bridge/ShellParts.swift` 自己那一格登記。`ShellParts.all(context)` 收 `ShellContext`（`App/Shell/ShellContext.swift`）：`context.outbox` 傳給要說話的那一塊；`context.webView` 是網頁畫面（列印、重新載入；網頁畫面比橋晚建好，所以要用的時候再拿，不要在 init 裡拿）。
+3. `ShellCore/Tests/ShellCoreTests/ScenarioParts.swift` 自己那幾格登記：假的東西（`ScenarioShell` 的屬性）、那一塊（用 `outbox` 和假的東西建）、情境裡殼主動說的話怎麼觸發（`triggers`）。
+4. 要在 `app://local/` 上接請求（例：#380 轉送 `/api/`）：`App/Shell/<名字>Route.swift` 實作 `SchemeRoute`，在 `SchemeRoutes.swift` 自己那一格登記（一樣收 `ShellContext`）。
+
+兩邊共用：`bridge-scenarios/current/<件事>.json` 寫情境（下一節）。
+
+網頁這邊：
+
+1. 換掉的接口（小設定、網站網址、離線存放…）：在 `src/lib/app-shell.ts` 的 `useShellIfInApp` 自己那一格加；實作放自己的檔。
+2. 一開始多塞的東西：在自己的檔裡補 `ShellBoot` 的欄位（`declare module '#lib/app-shell.js' { interface ShellBoot { … } }`），不改 `app-shell.ts`。
+3. 測試照情境寫（下一節的 `scenarioShell`）。殼會不會用 `host().shell.can('<feature>')` 問，不會就不顯示。
 
 ## 情境檔（`bridge-scenarios/`）
 
@@ -116,7 +128,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 - 情境只寫「說了什麼話」，不管底下怎麼傳。`reply` 沒寫等於 `null`。
 - **殼這邊**（`ScenarioTests.swift`）：每個情境自動跑。`boot` 裡寫的每一樣要跟真的殼一樣（`shellVersion`、`shellBuild` 拿情境的當輸入）；`features` 是「殼至少會這些」。`from: web` 的每一句餵給真的 `Bridge`，回的要一樣。
 - **網頁這邊**：測試用 `scenarioShell('<檔名>', '<情境名>')`（`src/lib/scenario-shell.ts`）拿到照情境演的假殼，接到網頁上（`fakeHost({ shell: appShell(fake.bridge) })` 或 `window.__cheerShell = fake.bridge`），讓網頁做事，最後 `fake.done()`：網頁該說的都說了、順序和內容都對。
-- **還沒有 `from: shell`（殼主動說的話）**。第一張要用的票：殼這邊在 `ScenarioTests.swift` 接上觸發（現在遇到會失敗），網頁這邊在 `scenarioShell` 加一個送出下一句的方法。
+- **殼主動說的話**（`{ "from": "shell", "name": "routeChanged", "body": … }`）：殼這邊照 `ScenarioParts.swift` 的 `triggers[name]` 觸發，殼要剛好說出這一句（沒登記觸發的方法會失敗）；網頁這邊測試叫 `fake.say()`，把這句送給網頁用 `on(name)` 聽的人。現在的情境檔裡還沒有這種，兩邊的跑法各有一個只在測試裡的例子（`ScenarioTests.swift`、`src/lib/scenario-shell.test.ts`）。
 - **凍的情境**（ADR 0025）：每出一版殼，把 `current/` 複製成 `1.x/`（還沒有）。殼這邊已經讀 `bridge-scenarios/` 底下每個資料夾；網頁這邊到時候把 `scenario-shell.ts` 的 glob 改成也讀凍的那幾份。
 
 ## POST 進不進得了殼（開工先驗，2026-11-22，只在 iOS 27.2 模擬器上）
@@ -138,3 +150,5 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 ## 還沒做的（後面的票）
 
 App 圖示、資料搬到殼（#377）、殼代網頁上網（#380）、鎖定畫面的播放鍵（#389）、列印（#391）、殼自己更新網頁（#393）、手感（#376）、出版指令（#340）。
+
+已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。

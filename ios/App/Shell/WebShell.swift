@@ -17,7 +17,7 @@ final class WebShell: NSObject {
     init(
         siteRoot: URL,
         bridge: Bridge,
-        routes: [any SchemeRoute] = SchemeRoutes.all(),
+        routes: [any SchemeRoute],
         openOutside: @escaping (URL) -> Void = { UIApplication.shared.open($0) }
     ) {
         self.bridge = bridge

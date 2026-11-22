@@ -44,6 +44,45 @@ func allScenarios() throws -> [Scenario] {
     return out
 }
 
+/// 照情境演一次：一開始塞的對得上；網頁說的每一句，殼回的對得上；殼主動說的話，用 triggers 觸發後殼真的說了。
+@MainActor
+func play(_ scenario: Scenario, on shell: ScenarioShell) async {
+    guard case .string(let version) = scenario.boot["shellVersion"],
+          case .number(let build) = scenario.boot["shellBuild"] else {
+        Issue.record("情境的 boot 要有 shellVersion、shellBuild"); return
+    }
+    var said: [JSONValue] = []
+    shell.outbox.deliver = { name, body in said.append(["name": .string(name), "body": body]) }
+    let bridge = Bridge(shellVersion: version, shellBuild: Int(build), parts: shell.parts)
+
+    // 一開始塞的：情境寫的每一樣都要一樣；features 是「殼至少會這些」（新殼可以多會幾件）
+    for (key, want) in scenario.boot {
+        if key == "features", case .array(let want) = want, case .array(let have)? = bridge.boot[key] {
+            #expect(Set(want).isSubset(of: Set(have)), "殼不會情境要的：\(want)")
+        } else {
+            #expect(bridge.boot[key] == want, "一開始塞的 \(key)")
+        }
+    }
+
+    for step in scenario.steps {
+        switch step.from {
+        case "web":
+            let answer = await bridge.handle(name: step.name, body: step.body ?? .null)
+            let want: BridgeAnswer = step.error.map(BridgeAnswer.error) ?? .reply(step.reply ?? .null)
+            #expect(answer == want, "網頁說 \(step.name)")
+        case "shell":
+            guard let trigger = shell.triggers[step.name] else {
+                Issue.record("ScenarioParts.swift 的 triggers 沒有「\(step.name)」：不知道怎麼讓殼說這句"); continue
+            }
+            said.removeAll()
+            await trigger()
+            #expect(said == [["name": .string(step.name), "body": step.body ?? .null]], "殼主動說 \(step.name)")
+        default:
+            Issue.record("情境的 from 只能是 web 或 shell：\(step.from)")
+        }
+    }
+}
+
 @MainActor
 struct ScenarioTests {
     @Test func 情境檔讀得到() throws {
@@ -51,30 +90,30 @@ struct ScenarioTests {
     }
 
     @Test(arguments: try allScenarios())
-    func 殼照情境說話(_ scenario: Scenario) async throws {
-        guard case .string(let version) = scenario.boot["shellVersion"],
-              case .number(let build) = scenario.boot["shellBuild"] else {
-            Issue.record("情境的 boot 要有 shellVersion、shellBuild"); return
-        }
-        let bridge = Bridge(shellVersion: version, shellBuild: Int(build), parts: ScenarioParts.all())
+    func 殼照情境說話(_ scenario: Scenario) async {
+        await play(scenario, on: ScenarioShell())
+    }
 
-        // 一開始塞的：情境寫的每一樣都要一樣；features 是「殼至少會這些」（新殼可以多會幾件）
-        for (key, want) in scenario.boot {
-            if key == "features", case .array(let want) = want, case .array(let have)? = bridge.boot[key] {
-                #expect(Set(want).isSubset(of: Set(have)), "殼不會情境要的：\(want)")
-            } else {
-                #expect(bridge.boot[key] == want, "一開始塞的 \(key)")
-            }
-        }
+    /// 跑法本身：用一塊只在這裡的「ping」，網頁問、殼主動說都走一次。
+    struct PingPart: BridgePart {
+        let outbox: ShellOutbox
+        var feature: String? { "ping" }
+        var messages: Set<String> { ["ping"] }
+        func handle(name: String, body: JSONValue) async throws -> JSONValue { "pong" }
+        func knock() { outbox.emit("knocked", ["times": 2]) }
+    }
 
-        for step in scenario.steps {
-            guard step.from == "web" else {
-                // 殼主動說的話：第一次有這種情境的票，在這裡接上觸發的方法（ios/README.md「情境檔」）
-                Issue.record("還不會演殼主動說的話：\(step.name)"); continue
-            }
-            let answer = await bridge.handle(name: step.name, body: step.body ?? .null)
-            let want: BridgeAnswer = step.error.map(BridgeAnswer.error) ?? .reply(step.reply ?? .null)
-            #expect(answer == want, "網頁說 \(step.name)")
-        }
+    @Test func 情境的跑法_網頁問和殼主動說都對得上() async throws {
+        let scenario = try JSONDecoder().decode(Scenario.self, from: Data("""
+            {"name": "ping", "boot": {"shellVersion": "1", "shellBuild": 1, "features": ["ping"]},
+             "steps": [{"from": "web", "name": "ping", "reply": "pong"}, {"from": "shell", "name": "knocked", "body": {"times": 2}}]}
+            """.utf8))
+        let outbox = ShellOutbox()
+        let part = PingPart(outbox: outbox)
+        let shell = ScenarioShell(parts: [part], triggers: ["knocked": { part.knock() }])
+        // 這塊說的話轉到 ScenarioShell 的 outbox（play 在那裡記）
+        outbox.deliver = { shell.outbox.emit($0, $1) }
+        await play(scenario, on: shell)
     }
 }
+

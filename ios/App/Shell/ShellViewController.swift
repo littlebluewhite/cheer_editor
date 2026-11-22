@@ -19,12 +19,14 @@ final class ShellViewController: UIViewController {
             return
         }
         let info = Bundle.main.infoDictionary ?? [:]
+        let context = ShellContext()
         let bridge = Bridge(
             shellVersion: info["CFBundleShortVersionString"] as? String ?? "0",
             shellBuild: Int(info["CFBundleVersion"] as? String ?? "") ?? 0,
-            parts: ShellParts.all()
+            parts: ShellParts.all(context)
         )
-        let shell = WebShell(siteRoot: site, bridge: bridge)
+        let shell = WebShell(siteRoot: site, bridge: bridge, routes: SchemeRoutes.all(context))
+        context.attach(shell)
         shell.webView.frame = view.bounds
         shell.webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(shell.webView)

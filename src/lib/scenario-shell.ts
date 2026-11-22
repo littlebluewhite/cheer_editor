@@ -3,7 +3,8 @@
 //   const fake = scenarioShell('ready.json', '網頁畫面出來以後跟殼說好了');
 //   window.__cheerShell = fake.bridge;   // 或 fakeHost({ shell: appShell(fake.bridge) })
 //   …讓網頁做事…
-//   fake.done();                         // 情境裡網頁該說的話都說了
+//   fake.say();                          // 情境下一句是殼主動說的：送給網頁
+//   fake.done();                         // 情境裡的話都說了
 import { expect } from 'vitest';
 import type { ShellBoot, ShellBridge } from '#lib/app-shell.js';
 
@@ -32,20 +33,27 @@ export function scenario(file: string, name: string): Scenario {
 	return found;
 }
 
+/** 情境檔裡叫 name 的那個情境，演成假殼（playScenario）。 */
+export function scenarioShell(file: string, name: string) {
+	return playScenario(scenario(file, name));
+}
+
 /**
  * 照情境演的殼：一開始塞情境的 boot；網頁說的每一句要照情境的順序、內容一樣，回情境寫的 reply 或 error。
+ * 情境下一句是殼主動說的（from: shell），測試叫 say() 把它送給網頁用 on() 聽的人。
  * 說錯、說多了，那一句的 Promise 會 reject，done() 也會失敗。
  */
-export function scenarioShell(file: string, name: string) {
-	const { boot, steps } = scenario(file, name);
+export function playScenario({ boot, steps }: Scenario) {
 	let next = 0;
 	const problems: string[] = [];
+	const listeners = new Map<string, Set<(body: unknown) => void>>();
+	const describe = (step: ScenarioStep | undefined) => (step ? `${step.from}「${step.name}」` : '（沒有了）');
 	const bridge: ShellBridge = {
 		boot,
 		async send(name, body) {
 			const step = steps[next];
 			if (!step || step.from !== 'web' || step.name !== name) {
-				problems.push(`網頁說了「${name}」，情境下一句是 ${step ? `${step.from}「${step.name}」` : '（沒有了）'}`);
+				problems.push(`網頁說了「${name}」，情境下一句是 ${describe(step)}`);
 				throw new Error('情境沒有這句');
 			}
 			next++;
@@ -53,14 +61,26 @@ export function scenarioShell(file: string, name: string) {
 			if (step.error !== undefined) throw new Error(step.error);
 			return step.reply ?? null;
 		},
-		on: () => () => {}
+		on(name, listener) {
+			if (!listeners.has(name)) listeners.set(name, new Set());
+			listeners.get(name)!.add(listener);
+			return () => void listeners.get(name)?.delete(listener);
+		}
 	};
 	return {
 		bridge,
+		/** 殼主動說情境的下一句（要是 from: shell）。 */
+		say() {
+			const step = steps[next];
+			if (!step || step.from !== 'shell') throw new Error(`情境下一句不是殼說的：${describe(step)}`);
+			next++;
+			for (const listener of [...(listeners.get(step.name) ?? [])]) listener(step.body ?? null);
+		},
 		/** 情境裡的話都說完了，也沒說錯。 */
 		done() {
 			expect(problems).toEqual([]);
-			expect(steps.slice(next).map((s) => `${s.from}「${s.name}」`), '還沒說的話').toEqual([]);
+			expect(steps.slice(next).map(describe), '還沒說的話').toEqual([]);
 		}
 	};
 }
+

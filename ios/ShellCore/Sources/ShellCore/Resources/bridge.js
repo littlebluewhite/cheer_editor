@@ -1,4 +1,4 @@
-// 殼在 document start 塞進網頁的（ShellCore/Bridge/BootScript.swift 把 __BOOT__ 換成一開始塞的那份）。
+// 殼在 document start 塞進網頁的（ShellCore/Bridge/BootScript.swift 把下面 var boot 的佔位字換成一開始塞的那份）。
 // 網頁只認 window.__cheerShell（src/lib/app-shell.ts）：怎麼傳只有這裡和 App 的 WebShell 知道。
 (function () {
 	var boot = __BOOT__;
