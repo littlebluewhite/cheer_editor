@@ -121,8 +121,9 @@ describe('receiveRecords：不改傳進來的東西', () => {
 });
 
 describe('receiveRecordsJson', () => {
-	it('收 JSON、回 JSON（跟 receiveRecords 一樣）', () => {
+	it('收 JSON、回 JSON（跟 receiveRecords 一樣）：編排另外一個參數', () => {
 		const a = ask({ sent: [rec('tnew000000001'), rec('tnew000000001')] });
-		expect(JSON.parse(receiveRecordsJson(JSON.stringify(a)))).toEqual(receiveRecords(a));
+		const { flow, ...rest } = a;
+		expect(JSON.parse(receiveRecordsJson(JSON.stringify(flow), JSON.stringify(rest)))).toEqual(receiveRecords(a));
 	});
 });

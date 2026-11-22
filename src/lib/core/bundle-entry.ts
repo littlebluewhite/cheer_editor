@@ -96,9 +96,10 @@ export function takeStepJson(ask: string): string {
 }
 
 /**
- * 這串紀錄收不收（#348）：ask 是 RecordsAsk 的 JSON（現在的編排、送的人能不能記、名字、送來的一串、有關的紀錄），
- * 回 receiveRecords 的結果（RecordVerdict[]）的 JSON。
+ * 這串紀錄收不收（#348）：flow 是現在的編排的 JSON（伺服器存的原樣；整批都收過時是 null），ask 是 RecordsAsk 其他欄位的 JSON
+ * （送的人能不能記、名字、送來的一串、有關的紀錄），回 receiveRecords 的結果（RecordVerdict[]）的 JSON。
+ * 編排分開傳：Rust 不用為了包進 ask 先檢查一遍約 140 KB 的 JSON（#349 量過，一次送 1 筆時看得出來）。
  */
-export function receiveRecordsJson(ask: string): string {
-	return JSON.stringify(receiveRecords(JSON.parse(ask) as RecordsAsk));
+export function receiveRecordsJson(flow: string, ask: string): string {
+	return JSON.stringify(receiveRecords({ ...(JSON.parse(ask) as Omit<RecordsAsk, 'flow'>), flow: JSON.parse(flow) as Flow }));
 }

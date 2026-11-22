@@ -173,8 +173,25 @@ impl FlowCore {
         async move { result.await? }
     }
 
+    /// 這串紀錄收不收（`receiveRecordsJson`，ADR 0018）：flow 是現在的編排的 JSON（整批都收過時是 `null`），
+    /// ask 是流程核心 RecordsAsk 其他欄位的 JSON（能不能記、送的人的名字、送來的、有關的紀錄），
+    /// 回 RecordVerdict[] 的 JSON（照送來的順序）。
+    pub fn receive_records(
+        &self,
+        flow: String,
+        ask: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            call(ctx, "receiveRecordsJson", (flow, ask))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
+
     /// 收紀錄時照「記一次」的規則檢查（`checkRecordsJson`）：records 是 StoredAttempt[] 的 JSON，
-    /// 回每一次的結果（照收，或整筆不存和原因）的 JSON，順序一樣。
+    /// 回每一次的結果（照收，或整筆不存和原因）的 JSON，順序一樣。伺服器現在叫 receive_records（#349）；
+    /// 這個只留給 `records_timing.rs` 量 #349 以前的做法。
     pub fn check_records(
         &self,
         flow: String,
@@ -196,6 +213,20 @@ impl FlowCore {
     ) -> impl Future<Output = Result<String, CoreError>> + use<> {
         let result = self.submit(move |ctx| {
             call(ctx, "uploadFlowJson", (doc,))
+                .catch(ctx)
+                .map_err(|e| CoreError::Js(e.to_string()))
+        });
+        async move { result.await? }
+    }
+
+    /// 在流程核心裡跑一段 JS（最後的值要是字串）：只給量時間的測試做大流程。
+    #[cfg(test)]
+    pub(crate) fn eval(
+        &self,
+        code: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        let result = self.submit(move |ctx| {
+            ctx.eval::<String, _>(code)
                 .catch(ctx)
                 .map_err(|e| CoreError::Js(e.to_string()))
         });
@@ -429,6 +460,58 @@ mod tests {
                         ask.len()
                     );
                 }
+            }
+
+            // 收紀錄（#349）在 QuickJS 裡的那一段：#349 以前的 checkRecordsJson（只給新的）跟 receiveRecordsJson 交錯量。
+            // 整批收過的重送 #349 以前不進 QuickJS。連 PostgreSQL 的整段比較在 records_timing.rs（決定看那個）。
+            ctx.eval::<(), _>(
+                r#"
+                const sent = (n, run) => big.records.slice(0, n).map((r, i) => ({ actionId: r.actionId, attempt: {
+                    ...r.attempt, id: 'b' + String(i).padStart(12, '0'),
+                    ...(run ? { practice: 'runThrough', runThroughId: 'rrunbench0001', runThroughStartedAt: 1794036000000 } : {}) } }));
+                const recAsk = (s, known) => JSON.stringify({ canRecord: true, by: '李教練', sent: s,
+                    records: known ? s.map((r) => ({ ...r, by: '李教練' })) : [] });
+                globalThis.REC = {
+                    one: { sent: JSON.stringify(sent(1, false)), ask: recAsk(sent(1, false), false) },
+                    forty: { sent: JSON.stringify(sent(40, true)), ask: recAsk(sent(40, true), false) },
+                    resend: { sent: null, ask: recAsk(sent(40, true), true) },
+                };
+                "#,
+            )
+            .unwrap();
+            for kind in ["one", "forty", "resend"] {
+                let sent: Option<String> = ctx.eval(format!("REC.{kind}.sent")).unwrap();
+                let ask: String = ctx.eval(format!("REC.{kind}.ask")).unwrap();
+                let (mut before, mut after) = (vec![], vec![]);
+                for i in 0..64 {
+                    let mut pair = [0.0; 2];
+                    for which in if i % 2 == 0 { [0, 1] } else { [1, 0] } {
+                        let start = Instant::now();
+                        if which == 0 {
+                            if let Some(sent) = &sent {
+                                let out = call(&ctx, "checkRecordsJson", (flow.clone(), sent.clone())).unwrap();
+                                assert!(!out.contains("dropped"), "{out}");
+                            }
+                        } else {
+                            let current = if sent.is_some() { flow.clone() } else { "null".to_owned() };
+                            let out = call(&ctx, "receiveRecordsJson", (current, ask.clone())).unwrap();
+                            let want = if sent.is_some() { "accepted" } else { "again" };
+                            assert!(!out.contains("refused") && out.contains(want), "{}", &out[..300.min(out.len())]);
+                        }
+                        pair[which] = start.elapsed().as_secs_f64() * 1000.0;
+                    }
+                    if i >= 3 {
+                        before.push(pair[0]);
+                        after.push(pair[1]);
+                    }
+                }
+                before.sort_by(f64::total_cmp);
+                after.sort_by(f64::total_cmp);
+                println!(
+                    "收紀錄 {kind}（QuickJS 裡）: #349 以前 checkRecords 中位數 {:.2}、receiveRecords 中位數 {:.2} ms",
+                    before[before.len() / 2],
+                    after[after.len() / 2]
+                );
             }
         });
     }

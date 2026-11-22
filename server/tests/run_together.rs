@@ -427,6 +427,27 @@ async fn the_same_squad_in_the_same_run_through_keeps_only_the_first_saved(db: s
 }
 
 #[sqlx::test]
+async fn the_same_squad_twice_in_one_batch_keeps_the_first_and_names_the_sender(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let mut coach = s.join(&wang, &id).await;
+
+    say(
+        &mut coach,
+        json!({ "kind": "record", "attempts": [entry("twang11111110", SQUAD_2), entry("twang22222220", SQUAD_2)] }),
+    )
+    .await;
+    let reply = until(&mut coach, "recordsSaved").await;
+    assert_eq!(reply["saved"].as_array().unwrap().len(), 1);
+    assert_eq!(reply["saved"][0]["attempt"]["id"], "twang11111110");
+    assert_eq!(
+        reply["dropped"],
+        json!([{ "id": "twang22222220", "message": "王教練已經記了這次全上的這一組", "by": "王教練" }])
+    );
+}
+
+#[sqlx::test]
 async fn a_squad_first_recorded_by_nobody_says_someone_so_the_screen_can_write_it_in_its_language(
     db: sqlx::PgPool,
 ) {
