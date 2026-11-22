@@ -138,12 +138,16 @@
 			deleteError = m.account_delete_offline();
 		}
 	}
-	/** 確認框按「要求刪除帳號」：這台還有沒傳的紀錄先傳上去；都傳了就送出，還有傳不上去的就跳小框。 */
+	/** 確認框按「要求刪除帳號」：這台還有沒傳的紀錄先傳上去；都傳了就送出，還有傳不上去的就跳小框。傳的時候按了取消：不送。 */
 	async function confirmDelete(e: SubmitEvent) {
 		e.preventDefault();
 		busy = true;
-		await sendUnsent(server, offline);
-		busy = false;
+		try {
+			await sendUnsent(server, offline);
+		} finally {
+			busy = false;
+		}
+		if (!deleting) return;
 		const left = await unsentFlows(offline);
 		if (!left.length) return requestDelete();
 		unsentForDelete = true;

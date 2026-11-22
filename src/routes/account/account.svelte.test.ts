@@ -219,6 +219,43 @@ describe('我的帳號頁', () => {
 		expect(state.users[0].disabled).toBeFalsy();
 	});
 
+	it('要求刪除帳號：這台刪了、還沒送到的紀錄也先送上去', async () => {
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const amend = { ids: ['tabc123def456'], request: { kind: 'deleteRecords' as const, ids: ['tabc123def456'] } };
+		const { state, went } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [], amends: [amend], dropped: [] }]);
+		state.flows[0].records = [{ ...record, by: lin.email }];
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(state.flows[0].records?.[0].gone).toBe(true);
+		expect(screen.queryByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' })).toBeNull();
+		expect(state.users[0].disabled).toBe(true);
+		expect(went).toEqual(['/']);
+	});
+
+	it('要求刪除帳號：在傳沒傳的紀錄時按「取消」，傳完也不送出要求', async () => {
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const { state, went, releaseRoom } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		state.holdRoom = true;
+		const box = screen.getByRole('dialog', { name: '要求刪除帳號？' });
+		await fireEvent.click(within(box).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		await fireEvent.click(within(box).getByRole('button', { name: '取消' }));
+		releaseRoom();
+		await flush();
+		releaseRoom();
+		await flush();
+		expect(state.flows[0].records?.map((r) => r.attempt.id)).toEqual(['tabc123def456']);
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(state.users[0].disabled).toBeFalsy();
+		expect(went).toEqual([]);
+		expect(screen.getByRole('button', { name: '要求刪除帳號' }).hasAttribute('disabled')).toBe(false);
+	});
+
 	it('要求刪除帳號：今天寄不出信，確認框裡說明天再試，帳號不變', async () => {
 		const { state } = await accountPage();
 		state.mailQuota = true;
