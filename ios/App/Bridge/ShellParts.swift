@@ -14,6 +14,7 @@ enum ShellParts {
             // #377
 
             // #380
+            SitePart(site: AppSite.current),
 
             // #389
 

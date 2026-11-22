@@ -7,7 +7,8 @@ import WebKit
 @MainActor
 protocol SchemeRoute {
     func handles(_ request: URLRequest) -> Bool
-    func respond(to request: URLRequest) async -> (HTTPURLResponse, Data)
+    /// 丟錯誤：網頁的 fetch 失敗（例：#380 轉送時連不上網站）。
+    func respond(to request: URLRequest) async throws -> (HTTPURLResponse, Data)
 }
 
 @MainActor
@@ -26,11 +27,16 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         let request = task.request
         let id = ObjectIdentifier(task)
         Task { @MainActor in
-            let (response, data) = await self.respond(to: request)
-            guard !self.stopped.contains(id) else { self.stopped.remove(id); return }
-            task.didReceive(response)
-            task.didReceive(data)
-            task.didFinish()
+            do {
+                let (response, data) = try await self.respond(to: request)
+                guard !self.stopped.contains(id) else { self.stopped.remove(id); return }
+                task.didReceive(response)
+                task.didReceive(data)
+                task.didFinish()
+            } catch {
+                guard !self.stopped.contains(id) else { self.stopped.remove(id); return }
+                task.didFailWithError(error)
+            }
         }
     }
 
@@ -38,8 +44,8 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         stopped.insert(ObjectIdentifier(task))
     }
 
-    private func respond(to request: URLRequest) async -> (HTTPURLResponse, Data) {
-        if let route = routes.first(where: { $0.handles(request) }) { return await route.respond(to: request) }
+    private func respond(to request: URLRequest) async throws -> (HTTPURLResponse, Data) {
+        if let route = routes.first(where: { $0.handles(request) }) { return try await route.respond(to: request) }
         let url = request.url ?? BundledSite.home
         let fm = FileManager.default
         let file = BundledSite.file(forPath: url.path) { fm.fileExists(atPath: siteRoot.appendingPathComponent($0).path) }

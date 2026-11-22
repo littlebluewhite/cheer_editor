@@ -2,6 +2,7 @@
 // 有就換上殼的「問殼」（#lib/host.js）；網頁版沒有，照舊。網頁和殼之間說的話寫在 repo 根目錄的 bridge-scenarios/。
 
 import { swapHost, type Shell } from '#lib/host.js';
+import { appSite } from '#lib/app-site.js';
 
 /**
  * 殼一開始塞的：殼的版本、建置號（網頁的清單的 minShellBuild 比這個）、會什麼（「問殼」can() 的名字）。
@@ -50,5 +51,6 @@ export function useShellIfInApp(): (() => void) | undefined {
 		// #377（小設定、離線存放）
 
 		// #380（網站網址）
+		...appSite(bridge.boot),
 	});
 }

@@ -8,6 +8,7 @@ enum SchemeRoutes {
             // #377
 
             // #380
+            ForwardRoute(),
 
             // #393
         ]

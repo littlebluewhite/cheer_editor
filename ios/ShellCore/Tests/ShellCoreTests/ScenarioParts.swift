@@ -39,6 +39,7 @@ final class ScenarioShell {
             // #377
 
             // #380
+            SitePart(site: SiteAddress.production),
 
             // #389
 
