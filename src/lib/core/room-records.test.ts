@@ -1,7 +1,7 @@
 // 「這串紀錄收不收」（#348，ADR 0011、0015、0018）：規則的先後照真的伺服器（records.rs 的 record）。
 import { describe, expect, it } from 'vitest';
-import { receiveRecords, type KnownRecord, type RecordsAsk, type StoredAttempt } from './index';
-import { receiveRecordsJson } from './bundle-entry';
+import { amendRecords, receiveRecords, type AmendAsk, type AmendRecord, type KnownRecord, type RecordsAsk, type StoredAttempt } from './index';
+import { amendRecordsJson, receiveRecordsJson } from './bundle-entry';
 import { libSample } from '../test-flows';
 
 const RUN = 'rabc123def456';
@@ -124,5 +124,133 @@ describe('receiveRecordsJson', () => {
 	it('收 JSON、回 JSON（跟 receiveRecords 一樣）', () => {
 		const a = ask({ sent: [rec('tnew000000001'), rec('tnew000000001')] });
 		expect(JSON.parse(receiveRecordsJson(JSON.stringify(a)))).toEqual(receiveRecords(a));
+	});
+});
+
+// 「改、刪、救回」（#350，ADR 0007、0015、0018）：規則照真的伺服器（records.rs 的 amend）。
+describe('amendRecords', () => {
+	/** x1 第 who 組分段練只練上法的一次：記號 mark。 */
+	const drill = (id: string, mark: '✓' | '△' | '✗' = '✓', who = 'g1'): StoredAttempt => ({
+		actionId: 'x1',
+		attempt: { id, date: '2026-11-22', who, practice: 'drill', whole: false, marks: { p1: mark } }
+	});
+	/** x1 第 1 組 RUN 那一次全上的一次（整個做、都 ✓）。 */
+	const run = (id: string, by: string, gone?: boolean): AmendRecord => ({
+		actionId: 'x1',
+		attempt: { id, date: '2026-11-22', who: 'g1', practice: 'runThrough', runThroughId: RUN, whole: true, marks: { p1: '✓', p2: '✓', p3: '✓' } },
+		by,
+		...(gone && { gone })
+	});
+	/** 李（送的人）記的、王記的。 */
+	const mine: AmendRecord = { ...drill('tmine00000001'), by: 'u-li' };
+	const theirs: AmendRecord = { ...drill('ttheirs000001'), by: 'u-wang' };
+	const amendAsk = (over: Partial<AmendAsk> = {}): AmendAsk => ({
+		flow: libSample(),
+		step: 7,
+		role: 'recorder',
+		by: 'u-li',
+		sent: { kind: 'delete', ids: [] },
+		records: [mine, theirs],
+		...over
+	});
+	const nothing = { deleted: [], changed: [], restored: [], amended: [], told: [] };
+
+	describe('每一種權限乘上改、刪、救回', () => {
+		const roles: { name: string; role: AmendAsk['role']; target: AmendRecord; may: boolean }[] = [
+			{ name: '擁有者', role: 'owner', target: theirs, may: true },
+			{ name: '編輯者', role: 'editor', target: theirs, may: true },
+			{ name: '記錄者動自己記的', role: 'recorder', target: mine, may: true },
+			{ name: '記錄者動別人記的', role: 'recorder', target: theirs, may: false },
+			{ name: '檢視者（他自己記的也一樣）', role: 'viewer', target: mine, may: false }
+		];
+		for (const { name, role, target, may } of roles) {
+			const id = target.attempt.id;
+			it(`${name}：改記號${may ? '' : '不算'}`, () => {
+				const out = amendRecords(amendAsk({ role, sent: { kind: 'change', attempts: [drill(id, '✗')] } }));
+				expect(out).toEqual(may ? { ...nothing, changed: [drill(id, '✗')], amended: [{ id, step: 7 }], told: [id] } : nothing);
+			});
+			it(`${name}：刪${may ? '' : '不算'}`, () => {
+				const out = amendRecords(amendAsk({ role, sent: { kind: 'delete', ids: [id] } }));
+				expect(out).toEqual(may ? { ...nothing, deleted: [id], amended: [{ id, step: 7 }] } : nothing);
+			});
+			it(`${name}：救回${may ? '' : '不算'}`, () => {
+				const records = [mine, theirs].map((r) => (r === target ? { ...r, gone: true } : r));
+				const out = amendRecords(amendAsk({ role, records, sent: { kind: 'restore', ids: [id] } }));
+				expect(out).toEqual(may ? { ...nothing, restored: [drill(id)], amended: [{ id, step: 7 }], told: [id] } : nothing);
+			});
+		}
+	});
+
+	describe('規則', () => {
+		const goneMine: AmendRecord = { ...mine, gone: true };
+		it('清掉的不能改', () => {
+			const out = amendRecords(amendAsk({ records: [goneMine], sent: { kind: 'change', attempts: [drill('tmine00000001', '✗')] } }));
+			expect(out).toEqual(nothing);
+		});
+		it('清掉的不能再刪', () => {
+			expect(amendRecords(amendAsk({ records: [goneMine], sent: { kind: 'delete', ids: ['tmine00000001'] } }))).toEqual(nothing);
+		});
+		it('還在的不能救回', () => {
+			expect(amendRecords(amendAsk({ sent: { kind: 'restore', ids: ['tmine00000001'] } }))).toEqual(nothing);
+		});
+		it('伺服器上沒有的 id 不算', () => {
+			expect(amendRecords(amendAsk({ sent: { kind: 'delete', ids: ['tnone00000001'] } }))).toEqual(nothing);
+		});
+		it('救回時同一次全上的同一組別人已經記了：不救', () => {
+			const records = [run('tmine00000001', 'u-li', true), run('ttheirs000001', 'u-wang')];
+			expect(amendRecords(amendAsk({ records, sent: { kind: 'restore', ids: ['tmine00000001'] } }))).toEqual(nothing);
+		});
+		it('一次救回同一次全上的同一組兩筆：照送來的先後，只救前面那筆', () => {
+			const records = [run('tfirst0000001', 'u-li', true), run('tsecond000001', 'u-li', true)];
+			const out = amendRecords(amendAsk({ records, sent: { kind: 'restore', ids: ['tsecond000001', 'tfirst0000001'] } }));
+			const { by: _, gone: __, ...second } = run('tsecond000001', 'u-li');
+			expect(out).toEqual({ ...nothing, restored: [second], amended: [{ id: 'tsecond000001', step: 7 }], told: ['tsecond000001'] });
+		});
+		it('再送一次一樣的記號：照樣改好（告訴別人），不算用手動過', () => {
+			const out = amendRecords(amendAsk({ sent: { kind: 'change', attempts: [drill('tmine00000001', '✓')] } }));
+			expect(out).toEqual({ ...nothing, changed: [drill('tmine00000001')], told: ['tmine00000001'] });
+		});
+		it('改記號照「改一次」的規則留：被擋下的不算', () => {
+			// p9 不是這個動作的環節：記號丟光了，「改一次」擋下來
+			const sent = { actionId: 'x1', attempt: { ...drill('tmine00000001').attempt, marks: { p9: '✓' } } } as StoredAttempt;
+			expect(amendRecords(amendAsk({ sent: { kind: 'change', attempts: [sent] } }))).toEqual(nothing);
+		});
+		it('一次改好幾筆照先後做：同一筆改兩次，後到的贏', () => {
+			const attempts = [drill('ttheirs000001', '✗'), drill('tmine00000001', '△'), drill('ttheirs000001', '△')];
+			const out = amendRecords(amendAsk({ role: 'editor', sent: { kind: 'change', attempts } }));
+			expect(out).toEqual({
+				...nothing,
+				changed: [drill('ttheirs000001', '△'), drill('tmine00000001', '△')],
+				amended: [
+					{ id: 'ttheirs000001', step: 7 },
+					{ id: 'tmine00000001', step: 7 }
+				],
+				told: ['ttheirs000001', 'tmine00000001']
+			});
+		});
+		it('一次刪好幾筆照先後做；重複的只算一次', () => {
+			const out = amendRecords(amendAsk({ role: 'owner', sent: { kind: 'delete', ids: ['ttheirs000001', 'tmine00000001', 'ttheirs000001'] } }));
+			expect(out).toEqual({
+				...nothing,
+				deleted: ['ttheirs000001', 'tmine00000001'],
+				amended: [
+					{ id: 'ttheirs000001', step: 7 },
+					{ id: 'tmine00000001', step: 7 }
+				]
+			});
+		});
+	});
+
+	it('不改傳進來的東西', () => {
+		const a = amendAsk({ role: 'owner', sent: { kind: 'change', attempts: [drill('tmine00000001', '✗')] } });
+		Object.freeze(a.records);
+		const before = JSON.stringify(a);
+		amendRecords(a);
+		expect(JSON.stringify(a)).toBe(before);
+	});
+
+	it('amendRecordsJson：收 JSON、回 JSON（跟 amendRecords 一樣）', () => {
+		const a = amendAsk({ sent: { kind: 'restore', ids: ['tmine00000001'] }, records: [{ ...mine, gone: true }] });
+		expect(JSON.parse(amendRecordsJson(JSON.stringify(a)))).toEqual(amendRecords(a));
 	});
 });
