@@ -261,3 +261,148 @@ fn runs_every_day_at_5am_taiwan_time() {
     assert_eq!(daily::next_run(nov(7, 21, 0)), nov(8, 21, 0));
     assert_eq!(daily::next_run(nov(7, 22, 0)), nov(8, 21, 0));
 }
+
+// ---------- 過期的登入、設密碼連結、猜錯密碼的紀錄、「被擁有者刪掉了」的紀錄（#371） ----------
+// 隱私權政策寫每種資料留多久，所以這四種也要清。
+
+/// 加一個使用者，回他的 id。
+async fn user(db: &sqlx::PgPool, email: &str) -> i64 {
+    let (id,): (i64,) =
+        sqlx::query_as("INSERT INTO users (email, name) VALUES ($1, 'x') RETURNING id")
+            .bind(email)
+            .fetch_one(db)
+            .await
+            .unwrap();
+    id
+}
+
+#[sqlx::test]
+async fn expired_sessions_are_deleted(db: sqlx::PgPool) {
+    let site = Site::new(db).await;
+    let db = &site.state.db;
+    let id = user(db, "a@example.com").await;
+    for (token, expires) in [
+        (b"old".as_slice(), site.now),
+        (b"new".as_slice(), site.now + Duration::seconds(1)),
+    ] {
+        sqlx::query(
+            "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(token)
+        .bind(id)
+        .bind(expires - Duration::days(30))
+        .bind(expires)
+        .execute(db)
+        .await
+        .unwrap();
+    }
+
+    site.run().await;
+
+    let left: Vec<(Vec<u8>,)> =
+        sqlx::query_as("SELECT token_hash FROM sessions WHERE user_id = $1")
+            .bind(id)
+            .fetch_all(db)
+            .await
+            .unwrap();
+    assert_eq!(left, [(b"new".to_vec(),)]);
+}
+
+#[sqlx::test]
+async fn expired_password_links_are_deleted(db: sqlx::PgPool) {
+    let site = Site::new(db).await;
+    let db = &site.state.db;
+    let id = user(db, "a@example.com").await;
+    for (token, purpose, expires) in [
+        (b"old".as_slice(), "invite", site.now),
+        (b"new".as_slice(), "reset", site.now + Duration::seconds(1)),
+    ] {
+        sqlx::query(
+            "INSERT INTO password_links (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(token)
+        .bind(id)
+        .bind(purpose)
+        .bind(expires)
+        .execute(db)
+        .await
+        .unwrap();
+    }
+
+    site.run().await;
+
+    let left: Vec<(Vec<u8>,)> =
+        sqlx::query_as("SELECT token_hash FROM password_links WHERE user_id = $1")
+            .bind(id)
+            .fetch_all(db)
+            .await
+            .unwrap();
+    assert_eq!(left, [(b"new".to_vec(),)]);
+}
+
+#[sqlx::test]
+async fn login_failures_30_days_old_are_deleted_unless_the_password_is_stopped(db: sqlx::PgPool) {
+    let site = Site::new(db).await;
+    let db = &site.state.db;
+    user(db, "Stopped@Example.com").await;
+    user(db, "old@example.com").await;
+    let max = cheer_server::lockout::MAX_FAILURES;
+    for (email, failures, days) in [
+        // 30 天沒再猜錯：清。
+        ("old@example.com", 7, 30),
+        // 30 天內還猜錯過：留著，還在鎖的人不會提早解開。
+        ("recent@example.com", 12, 29),
+        // 猜到上限、密碼停掉了，有帳號：留到重設。
+        ("stopped@example.com", max, 300),
+        // 猜到上限但沒有這個帳號：永遠等不到重設，照 30 天清。
+        ("nobody@example.com", max, 30),
+    ] {
+        sqlx::query(
+            "INSERT INTO login_failures (email, failures, last_failed_at) VALUES ($1, $2, $3)",
+        )
+        .bind(email)
+        .bind(failures)
+        .bind(site.now - Duration::days(days))
+        .execute(db)
+        .await
+        .unwrap();
+    }
+
+    site.run().await;
+
+    let left: Vec<(String,)> = sqlx::query_as("SELECT email FROM login_failures ORDER BY email")
+        .fetch_all(db)
+        .await
+        .unwrap();
+    assert_eq!(
+        left,
+        [
+            ("recent@example.com".to_owned(),),
+            ("stopped@example.com".to_owned(),)
+        ]
+    );
+}
+
+#[sqlx::test]
+async fn deleted_flow_notes_are_deleted_after_30_days(db: sqlx::PgPool) {
+    let site = Site::new(db).await;
+    let db = &site.state.db;
+    let id = user(db, "a@example.com").await;
+    for (flow, days) in [("f-old", 30), ("f-new", 29)] {
+        sqlx::query("INSERT INTO deleted_flows (flow_id, user_id, deleted_at) VALUES ($1, $2, $3)")
+            .bind(flow)
+            .bind(id)
+            .bind(site.now - Duration::days(days))
+            .execute(db)
+            .await
+            .unwrap();
+    }
+
+    site.run().await;
+
+    let left: Vec<(String,)> = sqlx::query_as("SELECT flow_id FROM deleted_flows")
+        .fetch_all(db)
+        .await
+        .unwrap();
+    assert_eq!(left, [("f-new".to_owned(),)]);
+}

@@ -1,6 +1,7 @@
 //! 每天的工作（#266，#194）：台灣時間早上 5 點（凌晨 4 點備份之後）跑一次。
 //! - 不用了 30 天的音樂從 R2 真的刪掉（倒回 30 天內的備份時音樂還在）。
 //! - 30 天前的步驟紀錄刪掉。
+//! - 過期的登入、設密碼連結，舊的猜錯密碼紀錄、「被擁有者刪掉了」刪掉（#371，隱私權政策寫的留多久）。
 //! - 算免費額度用了多少，有一項到 8 成就寄信給網站主人（管理員）：各家免費版都不會先提醒。
 
 use std::sync::{Arc, Mutex};
@@ -9,9 +10,10 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 
 use crate::AppState;
 use crate::clock::TAIWAN;
+use crate::lockout;
 use crate::mail::Mail;
 
-/// 音樂、步驟紀錄留多久。
+/// 音樂、步驟紀錄、猜錯密碼的紀錄、「被擁有者刪掉了」留多久。
 const KEEP: Duration = Duration::days(30);
 
 /// 每次查資料庫後，Neon 算醒著多久（5 分鐘沒查詢才睡）。
@@ -67,10 +69,39 @@ pub async fn run(state: &AppState, awake: &AwakeMeter) -> anyhow::Result<()> {
         .bind(now - KEEP)
         .execute(&state.db)
         .await?;
+    remove_expired(state, now).await?;
     let items = usage(state, awake, now).await?;
     if items.iter().any(Item::near) {
         mail_owner(state, &items).await?;
     }
+    Ok(())
+}
+
+/// 隱私權政策寫了留多久的（#371）：過期的登入、過期的設密碼連結、
+/// 30 天沒再猜錯的猜錯密碼紀錄、30 天前的「被擁有者刪掉了」（跟那支的音樂同一天）。
+/// 猜到上限、密碼停掉的留到重設；但那個 email 沒有帳號就永遠等不到重設，照 30 天清。
+/// 30 天內還猜錯過的不清，最多等一小時的鎖不會因此提早解開。
+async fn remove_expired(state: &AppState, now: DateTime<Utc>) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM sessions WHERE expires_at <= $1")
+        .bind(now)
+        .execute(&state.db)
+        .await?;
+    sqlx::query("DELETE FROM password_links WHERE expires_at <= $1")
+        .bind(now)
+        .execute(&state.db)
+        .await?;
+    sqlx::query(
+        "DELETE FROM login_failures f WHERE last_failed_at <= $1
+         AND (failures < $2 OR NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = f.email))",
+    )
+    .bind(now - KEEP)
+    .bind(lockout::MAX_FAILURES)
+    .execute(&state.db)
+    .await?;
+    sqlx::query("DELETE FROM deleted_flows WHERE deleted_at <= $1")
+        .bind(now - KEEP)
+        .execute(&state.db)
+        .await?;
     Ok(())
 }
 
