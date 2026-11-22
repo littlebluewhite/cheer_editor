@@ -59,7 +59,8 @@ export function runStepJson(flow: string, records: string, commands: string, ste
 	return JSON.stringify({ ...r, flow: taken.flow, records: taken.records, ...stepKeys(before, taken.flow) });
 }
 
-/** 伺服器收一串紀錄（StoredAttempt[] 的 JSON）：每一次照「記一次」的規則檢查（checkRecord），回結果的 JSON（一樣的順序）。 */
+/** 收一串紀錄（StoredAttempt[] 的 JSON）：每一次照「記一次」的規則檢查（checkRecord），回結果的 JSON（一樣的順序）。
+ * #349 以前伺服器叫它；現在伺服器叫 receiveRecordsJson，這個只留給伺服器量時間比以前的做法。 */
 export function checkRecordsJson(flow: string, records: string): string {
 	const f = JSON.parse(flow) as Flow;
 	return JSON.stringify((JSON.parse(records) as StoredAttempt[]).map((r) => checkRecord(f, r)));
@@ -98,11 +99,12 @@ export function takeStepJson(ask: string): string {
 }
 
 /**
- * 這串紀錄收不收（#348）：ask 是 RecordsAsk 的 JSON（現在的編排、送的人能不能記、名字、送來的一串、有關的紀錄），
- * 回 receiveRecords 的結果（RecordVerdict[]）的 JSON。
+ * 這串紀錄收不收（#348）：flow 是現在的編排的 JSON（伺服器存的原樣；整批都收過時是 null），ask 是 RecordsAsk 其他欄位的 JSON
+ * （送的人能不能記、名字、送來的一串、有關的紀錄），回 receiveRecords 的結果（RecordVerdict[]）的 JSON。
+ * 編排分開傳：Rust 不用為了包進 ask 先檢查一遍約 140 KB 的 JSON（#349 量過，一次送 1 筆時看得出來）。
  */
-export function receiveRecordsJson(ask: string): string {
-	return JSON.stringify(receiveRecords(JSON.parse(ask) as RecordsAsk));
+export function receiveRecordsJson(flow: string, ask: string): string {
+	return JSON.stringify(receiveRecords({ ...(JSON.parse(ask) as Omit<RecordsAsk, 'flow'>), flow: JSON.parse(flow) as Flow }));
 }
 
 /**
