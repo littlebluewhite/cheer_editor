@@ -631,6 +631,28 @@ fn marks_of<'a>(records: &'a Value, phase: &str) -> Vec<&'a Value> {
         .collect()
 }
 
+/// 接線：沒有記的人（recorded_by 是 NULL）傳給流程核心是沒帶 by，回給前端的 by 是 null（規則的表格在 room-records.test.ts）。
+#[sqlx::test]
+async fn only_editors_and_the_owner_can_touch_records_with_no_recorder(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
+    let filed = drill("tfile33333330", SQUAD_2, json!({ LOAD: "✓" }));
+    from_file(&s, &id, &filed).await;
+
+    let (mut phone, _) = s.join(&rec, &id).await;
+    delete(&mut phone, json!(["tfile33333330"])).await;
+    assert_eq!(s.records(&wang, &id).await.len(), 1);
+
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let reply = change(&mut coach, json!([remarked(&filed, json!({ LOAD: "△" }))])).await;
+    assert_eq!(reply["saved"][0]["attempt"]["marks"], json!({ LOAD: "△" }));
+    assert_eq!(reply["saved"][0]["by"], Value::Null);
+    delete(&mut coach, json!(["tfile33333330"])).await;
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+}
+
 #[sqlx::test]
 async fn a_recorder_cannot_change_or_delete_others_records_but_an_editor_can(db: sqlx::PgPool) {
     let s = Server::new(db).await;
