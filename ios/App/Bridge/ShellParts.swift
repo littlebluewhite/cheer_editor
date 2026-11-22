@@ -16,6 +16,7 @@ enum ShellParts {
             // #380
 
             // #389
+            NowPlayingPart.onLockScreen(context.outbox),
 
             // #391
 
