@@ -6,7 +6,7 @@
 	// 「只練幾個環節」點到最後一個要練的環節、或點了 ✗ 就自動存（卡上寫一行怎麼用；點環節那一列的空白處也能勾），
 	// 還在等同時在做的環節時，卡上多一顆「存這一次」、提示寫為什麼在等。換動作、換頁再回來還在，卡上標「還沒存」。
 	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來，雲端流程還沒傳上去的後面黃色「沒傳」（#260）；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次；提示走編輯器唯一的提示，不在卡上）。
-	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
+	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號（改到一半的記號、按不了的環節問 session.drill 給的那一份），或只刪掉那一次（也可以救回）。
 	// 雲端流程別人記的那一次，記號後面小字寫名字（自己記的不寫，#257）。
 	// 雲端流程（#258）：「刪掉上一次」寫成「刪掉我的上一次」，只刪自己記的（編輯者也是）；記錄者點別人記的那一次只看得到是誰記的，不能改、刪。
 	import {
@@ -14,15 +14,14 @@
 		NOT_YET_MARK,
 		NOT_YET_TITLE,
 		attemptText,
-		blankPhases,
 		phaseColor,
 		phaseWhy,
 		type Action,
 		type Attempt,
-		type Mark,
 		type Phase
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import type { AttemptEdit } from '#lib/drill-attempts.svelte.js';
 	import { whyText, joinText } from '#lib/reason-text.js';
 	import { m as t } from '#lib/paraglide/messages.js';
 	import { removeWithRestore } from './record-notice';
@@ -70,49 +69,13 @@
 		drill.pick(id, !picked.includes(id));
 	}
 
-	/** 點了這天的哪一次在改（id）；沒有是 null。 */
-	let editing = $state<string | null>(null);
-	/** 改的那一次現在的記號（還沒存）。 */
-	let draft = $state<Record<string, Mark>>({});
+	/** 正在改的這一次（session.drill 給的一份，卡片握著；收起來、換頁、換動作就丟，不存）；沒在改是 null。 */
+	let edit = $state<AttemptEdit | null>(null);
 	/** 改的那一次（紀錄被別的地方拿掉了就收起來）。 */
-	const edited = $derived(today.find((r) => r.id === editing));
+	const edited = $derived(edit && today.find((r) => r.id === edit!.id));
 
 	function openEdit(attempt: Attempt) {
-		editing = editing === attempt.id ? null : attempt.id;
-		draft = { ...attempt.marks };
-	}
-
-	/**
-	 * 改的時候算 ✗ 的規則用的動作：整個做的一次只有那時就有的環節（打了記號的加上空著的，跟核心 changedAttempt 一樣），
-	 * 之後才加的不算進去，免得它的 ✗ 清掉存著的記號。
-	 */
-	const editAction = $derived.by(() => {
-		const rate = action.successRate;
-		if (!edited?.whole || !rate) return action;
-		const then = rate.phases.filter((p) => edited.marks[p.id] || edited.blanks?.includes(p.id));
-		return { ...action, successRate: { ...rate, phases: then } };
-	});
-	/** 改的時候按不了的環節：之後才加的，和跟記一次一樣 ✗ 做完之後才開始的（問核心 blankPhases）。 */
-	const editShut = $derived([
-		...phases.filter((p) => !editAction.successRate?.phases.includes(p)).map((p) => p.id),
-		...blankPhases(editAction, false, draft).shut
-	]);
-
-	/** 改的時候點記號：再點一次點著的那顆就變空的。點了 ✗，按不了的環節點過的記號不留（跟記一次一樣）。 */
-	function retap(phaseId: string, mark: Mark) {
-		if (draft[phaseId] === mark) {
-			const { [phaseId]: _, ...rest } = draft;
-			draft = rest;
-		} else draft = blankPhases(editAction, false, { ...draft, [phaseId]: mark }).marks;
-	}
-
-	function saveEdit(attempt: Attempt) {
-		ask.send({ name: 'changeAttempt', args: [action.id, attempt.id, draft] }, {
-			done: () => {
-				editing = null;
-				session.notice = t.practice_changed();
-			}
-		});
+		edit = edit?.id === attempt.id ? null : session.drill.edit(() => action, attempt.id, ask);
 	}
 
 	/** 刪掉這天的某一次的提示，例：已刪掉 ·✓（第 4 次）。 */
@@ -122,7 +85,7 @@
 	const phaseText = (p: Phase) => whyText(phaseWhy(p));
 
 	function removeEdited(attempt: Attempt) {
-		editing = null;
+		edit = null;
 		removeWithRestore(
 			ask,
 			session,
@@ -226,7 +189,7 @@
 					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? t.practice_kind_note({ kind, note: whyText(NOT_YET_TITLE) }) : kind}>
 						<button
 							type="button"
-							aria-expanded={editing === r.id}
+							aria-expanded={edit?.id === r.id}
 							aria-label={t.practice_edit_rep_kind({ n: i + 1, kind, marks: text })}
 							onclick={() => openEdit(r)}>{text}</button
 						>{#if session.practice.recordedBy[r.id]}<small class="by">{session.practice.recordedBy[r.id]}</small>{/if}{#if session.practice.unsentRecords.has(r.id)}<small
@@ -259,9 +222,9 @@
 								type="button"
 								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
 								aria-label={t.practice_rep_phase_mark({ n, phase: phaseText(p), mark: whyText(m.label) })}
-								aria-pressed={draft[p.id] === m.key}
-								disabled={editShut.includes(p.id)}
-								onclick={() => retap(p.id, m.key)}>{m.key}</button
+								aria-pressed={edit!.marks[p.id] === m.key}
+								disabled={edit!.shut.includes(p.id)}
+								onclick={() => edit!.tap(p.id, m.key)}>{m.key}</button
 							>
 						{/each}
 					</div>
@@ -273,8 +236,8 @@
 			{/if}
 			<div class="edit-row">
 				{#if !othersOnly}<button type="button" class="danger" onclick={() => removeEdited(edited)}>{t.practice_delete_rep()}</button>{/if}
-				<button type="button" onclick={() => (editing = null)}>{othersOnly ? t.practice_close_edit() : t.practice_cancel_edit()}</button>
-				{#if !othersOnly}<button type="button" class="primary" onclick={() => saveEdit(edited)}>{t.practice_save_edit()}</button>{/if}
+				<button type="button" onclick={() => (edit = null)}>{othersOnly ? t.practice_close_edit() : t.practice_cancel_edit()}</button>
+				{#if !othersOnly}<button type="button" class="primary" onclick={() => edit!.save(() => (edit = null))}>{t.practice_save_edit()}</button>{/if}
 			</div>
 		</div>
 	{/if}
