@@ -110,6 +110,40 @@ describe('被新版擋住時能看最新的', () => {
 		expect(s.page.editor.file.cloud!.unsent).toBe(0);
 	});
 
+	it('打開後、伺服器說有新版前改了：換回伺服器上的，說那一步沒存進去', async () => {
+		const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows: [linsFlow()] });
+		fake.state.fingerprint = 'newer-core';
+		fake.state.holdRoom = true;
+		const s = await open(fakeOfflineStore(), fake);
+		await fromMenu('流程設定');
+		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '我改的名字' } });
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await settle();
+		s.releaseRoom();
+		await settle();
+		expect(s.page.session.flow!.name).toBe('測試');
+		expect(s.page.session.notice).toContain('還沒送到的 1 步沒存進去');
+		expect(s.page.editor.file.cloud!.unsent).toBe(0);
+	});
+
+	it('練習頁點了記號還沒存，斷線連回來被擋：點的還在，存了算沒傳的', async () => {
+		const offline = fakeOfflineStore();
+		const s = await open(offline);
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		await fireEvent.click(screen.getByRole('button', { name: '第 1 組 小美 上法 成功' }));
+		s.disconnect();
+		await settle();
+		s.state.fingerprint = 'newer-core';
+		s.reconnect();
+		await settle();
+		expect(s.page.editor.file.cloud!.newVersion).toBe(true);
+		const card = within(screen.getByRole('region', { name: '第 1 組 小美' }));
+		await fireEvent.click(card.getByRole('button', { name: '存這一次' }));
+		await settle();
+		expect(offline.of('c1')!.records.map((r) => r.record.attempt.marks)).toEqual([{ p1: '✓' }]);
+		expect(stored(s)).toEqual([]);
+	});
+
 	it('從離線副本打開，連上時被擋：換成伺服器上最新的', async () => {
 		const offline = fakeOfflineStore();
 		const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows: [linsFlow()] });

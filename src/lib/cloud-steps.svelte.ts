@@ -185,7 +185,7 @@ export class CloudSteps {
 	/** 斷線後又連上了（伺服器說可以送步，#261）：從離線副本打開的，流程檔接上換成最新的。 */
 	onback: () => void = () => {};
 	/**
-	 * 斷線後連回來才知道有新版（#368）：畫面可能是舊的（離線副本、斷線前的樣子），流程檔接上換成伺服器上最新的。
+	 * 斷線後連回來才知道有新版、或伺服器回答前改了（#368）：畫面可能是舊的（離線副本、斷線前的樣子）或有沒存的改動，流程檔接上換成伺服器上最新的。
 	 * lost 是沒送到、不算了的步有幾步（換的時候提示）。
 	 */
 	onstale: (lost: number) => void = () => {};
@@ -477,7 +477,7 @@ export class CloudSteps {
 			this.#touch();
 			if (back) this.onback();
 		} else if (m.kind === 'newVersion') {
-			// 斷線連回來才被擋：畫面是斷線前、離線副本的樣子，還沒送到的步不會送了
+			// 斷線連回來才被擋（畫面是斷線前、離線副本的樣子），或打開後、伺服器回答前改了（還沒送到的步不會送了）：換成最新的
 			const stale = this.offline;
 			const lost = this.#dropQueue().length;
 			this.newVersion = true;
@@ -485,7 +485,7 @@ export class CloudSteps {
 			this.#lock();
 			// 伺服器不收步了：不再重連
 			this.#room.close();
-			if (stale) this.onstale(lost);
+			if (stale || lost) this.onstale(lost);
 		} else if (m.kind === 'current') {
 			// 補不上（斷線太久）：換成伺服器的樣子，還沒送到的步不算；連回來時跟「連上了。」一起說
 			const dropped = this.#dropQueue();
