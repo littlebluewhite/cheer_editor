@@ -187,7 +187,11 @@
 	let narrow = $state(narrowQuery?.matches ?? false);
 	onMount(() => {
 		if (!narrowQuery?.addEventListener) return;
-		const changed = () => (narrow = narrowQuery.matches);
+		// 換版面（手機版面 ↔ 一般版面，例：iPad 轉橫再轉直）就收掉剛剛點的人（#329）
+		const changed = () => {
+			narrow = narrowQuery.matches;
+			tappedId = null;
+		};
 		narrowQuery.addEventListener('change', changed);
 		return () => narrowQuery.removeEventListener('change', changed);
 	});
@@ -259,7 +263,7 @@
 		if (flow) saveFlowSetting('me', flow.name, id);	}
 	/** 手機的檢視畫面場地外圍框外的號碼條留多寬（公尺）：比電腦的窄，場地畫得比較大；站在外圍邊上的人會蓋到條號、格號。 */
 	const PHONE_NUMBER_BAND = 0.7;
-	/** 手機的檢視畫面點到的人：場地左下角寫他的名字和這個八拍做什麼。點空白處、切到練習、換流程就收掉。 */
+	/** 手機的檢視畫面點到的人：場地左下角寫他的名字和這個八拍做什麼。點空白處、切到練習、換流程、換版面就收掉。 */
 	let tappedId = $state<string | null>(null);
 	/** 點到的人的八拍表：只跟著流程和點到誰重算，播放頭動不用重算。 */
 	const tappedRows = $derived(flow && tappedId ? eightCountRows(flow, tappedId, false) : []);
@@ -1834,7 +1838,7 @@
 		animation-name: drop-in;
 	}
 	/* 手機的播放列：一排（播放、‹、時間、›、速度、⋯），場地才有地方畫大；時間那一格吃剩下的寬。
-	   比 350px 還窄的手機放不下一排，才換行 */
+	   320px 的手機縮間距擠回一排（下面 max-width: 349px）；比 231px 還窄才換行 */
 	.phone-view .transport {
 		flex-wrap: wrap;
 		justify-content: center;
@@ -1870,6 +1874,30 @@
 	.phone-view .speed {
 		flex: none;
 		padding-inline: 3px;
+	}
+	/* 320px 量過（#329）：五顆按鈕 199px，時間那一格（或打字的欄位）只剩 89px；
+	   時鐘「1:03.6 / 1:04.0」79px，兩位數的八拍「音樂 1 12-8」92px。
+	   間距 6→4、左右邊 8→6、時間框左右 8→4 擠回一排；段名太長時段名變「…」，大字的八拍整個看得到 */
+	@media (max-width: 349px) {
+		.phone-view .transport {
+			gap: 4px;
+			padding-inline: 6px;
+		}
+		.phone-view .board,
+		.jump-to {
+			flex-basis: 0;
+		}
+		.phone-view .board {
+			padding-inline: 4px;
+		}
+		.phone-view .pos {
+			min-width: 0;
+		}
+		.phone-view .pos-seg {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
 	}
 	.phone-view .more {
 		flex: none;

@@ -3,11 +3,11 @@
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFlowFile, writeFlowFile, type Flow } from '#lib/core';
+import { insertFormation, readFlowFile, setPositions, stepPlayhead, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { editorPage, flush, fromMenu, manualFrames, openFile } from '#lib/test-fakes.js';
-import { libSample, ratedSample } from '#lib/test-flows.js';
+import { flowOf, libSample, ratedSample } from '#lib/test-flows.js';
 import Page from './+page.svelte';
 
 Element.prototype.scrollIntoView = () => {};
@@ -213,6 +213,43 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		expect(['m1', 'm2'].map((id) => dot(id).getAttribute('transform'))).toEqual(at);
 		expect(dot('m2').classList.contains('selected')).toBe(false);
 		expect(session.unsaved).toBe(false);
+	});
+
+	it('選了「我」是小A，再點小美：兩個人的走位線都畫', async () => {
+		// 「下一個八拍」跳到的那一拍多一張站位，小美、小A 都換位置
+		const two = flowOf(insertFormation(libSample(), stepPlayhead(libSample(), 0, 1, true)));
+		const flow = flowOf(setPositions(two, two.formations[1].id, { m1: [2, 2], m2: [-2, 2] }));
+		await openOnPhone(flow);
+		const lines = () => [...document.querySelectorAll('[data-walk-line]')].map((el) => el.getAttribute('data-walk-line')).sort();
+		await fireEvent.click(screen.getByRole('button', { name: '下一個八拍' }));
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		expect(lines()).toEqual(['m2']);
+		await tap(dot('m1'), 100, 100);
+		expect(lines()).toEqual(['m1', 'm2']);
+	});
+
+	it('點了小A，換成一般版面再換回手機版面（iPad 轉橫再轉直）：不再寫剛剛點的人', async () => {
+		// 會換的媒體查詢：記住頁面掛上的 change 監聽，換版面時叫它
+		const query = { matches: true, listeners: [] as (() => void)[] };
+		vi.stubGlobal('matchMedia', (q: string) =>
+			q === NARROW_SCREEN
+				? Object.assign(query, {
+						addEventListener: (_: string, f: () => void) => query.listeners.push(f),
+						removeEventListener: () => {}
+					})
+				: { matches: false }
+		);
+		const turn = async (narrow: boolean) => {
+			query.matches = narrow;
+			query.listeners.forEach((f) => f());
+			await flush();
+		};
+		await openOnPhone();
+		await tap(dot('m2'), 100, 100);
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+		await turn(false);
+		await turn(true);
+		expect(corner()).toBe('站位 1');
 	});
 
 	it('切到「練習」再回來、開別支流程：不再寫剛剛點的人', async () => {
