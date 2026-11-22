@@ -1,0 +1,18 @@
+{
+	"about": "殼自己從網站更新網頁（#393、ADR 0025）：殼下載好新網頁就說 webBundleReady；網頁回到首頁時說 useNewWebBundle，殼換上、重新載入（回 true；沒有下載好的回 false）。#394 的「更新」按鈕也說 useNewWebBundle。",
+	"scenarios": [
+		{
+			"name": "新網頁下載好了，回到首頁時請殼換上",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [
+				{ "from": "shell", "name": "webBundleReady" },
+				{ "from": "web", "name": "useNewWebBundle", "reply": true }
+			]
+		},
+		{
+			"name": "沒有下載好的新網頁：殼不換",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [{ "from": "web", "name": "useNewWebBundle", "reply": false }]
+		}
+	]
+}
