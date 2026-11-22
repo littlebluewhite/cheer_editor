@@ -84,6 +84,17 @@ describe('分段練正在記的一次', () => {
 		expect(records()).toEqual([[true, { p1: '✓', p2: '✗' }, ['p3']]]);
 	});
 
+	it('金字塔 ✗ 之後才開始的按不了，佔同樣拍的還可以按；取消 ✗ 或改成 ✓ 又可以按', () => {
+		const { card } = setup(pyramidSample(), 1);
+		card().tap('p6', '✗');
+		expect(card().shut).toEqual(['p7', 'p8']);
+		card().tap('p6', '✓');
+		expect(card().shut).toEqual([]);
+		card().tap('p6', '✗');
+		card().tap('p6', '✗');
+		expect(card().shut).toEqual([]);
+	});
+
 	it('全部 ✓ 存：點了的照點的，還能打、沒打的補 ✓，按不了的空著', () => {
 		const { s, card, records } = setup(pyramidSample(), 1);
 		card().tap('p6', '✗');
@@ -94,6 +105,9 @@ describe('分段練正在記的一次', () => {
 
 	it('整個做跳過了前面的環節：存之前就說；存成只練幾個環節', () => {
 		const { card, records } = setup();
+		card().tap('p1', '✓');
+		expect(card().skipping).toBe(false);
+		card().tap('p1', '✓');
 		card().tap('p3', '✓');
 		expect(card().skipping).toBe(true);
 		card().tap('p1', '✓');

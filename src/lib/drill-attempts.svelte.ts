@@ -26,28 +26,41 @@ interface Pending {
 const WHOLE: Scope = { whole: true, picked: [] };
 
 export class DrillAttempts {
-	/** 每張卡上次選的這次練，key 是「動作 id 組或隊員 id」。換動作、切頁再回來還是它。 */
-	#scopes = $state<Record<string, Scope>>({});
-	/** 每張卡每一天點了還沒存的，key 是這次練的 key 加上日期。換動作、切頁再回來還在。 */
-	#pending = $state<Record<string, Pending>>({});
-	readonly #notify: (text: string) => void;
+	readonly #store: Store;
 
 	/** notify：寫提示（編輯器唯一的提示；空的是收掉）。 */
 	constructor(notify: (text: string) => void) {
-		this.#notify = notify;
+		this.#store = new Store(notify);
 	}
 
 	/** 一張卡（動作、組或隊員 who、哪一天）；存的時候用 ask 送（被擋的原因留在 ask 上）。動作改了要重拿一張。 */
 	card(action: Action, who: string, date: string, ask: Ask): DrillCard {
-		return new DrillCard(this, action, who, date, ask);
+		return new DrillCard(this.#store, action, who, date, ask);
 	}
 
 	/** 這張卡這一天有沒有點了還沒存的（不是這次要練的環節的記號不算）。左邊動作清單也問它。 */
 	hasUnsaved(action: Action, who: string, date: string): boolean {
-		return Object.keys(this.unsaved(action, who, date)).length > 0;
+		return Object.keys(this.#store.unsaved(action, who, date)).length > 0;
 	}
 
 	/** 換一支流程：全部清掉（id 會跟上一支重複）。 */
+	clear() {
+		this.#store.clear();
+	}
+}
+
+/** 握著的狀態（不給 module 外面）：每張卡的這次練、每張卡每一天點了還沒存的。 */
+class Store {
+	/** 每張卡上次選的這次練，key 是「動作 id 組或隊員 id」。換動作、切頁再回來還是它。 */
+	#scopes = $state<Record<string, Scope>>({});
+	/** 每張卡每一天點了還沒存的，key 是這次練的 key 加上日期。換動作、切頁再回來還在。 */
+	#pending = $state<Record<string, Pending>>({});
+	readonly notify: (text: string) => void;
+
+	constructor(notify: (text: string) => void) {
+		this.notify = notify;
+	}
+
 	clear() {
 		this.#scopes = {};
 		this.#pending = {};
@@ -57,6 +70,7 @@ export class DrillAttempts {
 		return this.#scopes[`${action.id} ${who}`] ?? WHOLE;
 	}
 
+	/** 換這次練：這一天點到一半的清掉。 */
 	setScope(action: Action, who: string, date: string, scope: Scope) {
 		this.#scopes[`${action.id} ${who}`] = scope;
 		this.setPending(action, who, date, { marks: {} });
@@ -77,10 +91,6 @@ export class DrillAttempts {
 		const { marks } = this.pending(action, who, date);
 		return Object.fromEntries(Object.entries(marks).filter(([id]) => planned.some((p) => p.id === id)));
 	}
-
-	notify(text: string) {
-		this.#notify(text);
-	}
 }
 
 /** 只有一個環節就是整個做（之前選的不算）。 */
@@ -93,13 +103,13 @@ function plannedPhases(action: Action, scope: Scope): Phase[] {
 
 /** 記錄頁一張卡正在記的一次：卡片只畫它、把點的傳進來。 */
 export class DrillCard {
-	readonly #all: DrillAttempts;
+	readonly #all: Store;
 	readonly #action: Action;
 	readonly #who: string;
 	readonly #date: string;
 	readonly #ask: Ask;
 
-	constructor(all: DrillAttempts, action: Action, who: string, date: string, ask: Ask) {
+	constructor(all: Store, action: Action, who: string, date: string, ask: Ask) {
 		this.#all = all;
 		this.#action = action;
 		this.#who = who;
