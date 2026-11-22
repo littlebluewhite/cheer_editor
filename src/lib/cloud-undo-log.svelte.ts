@@ -12,9 +12,10 @@ import { UndoStacks, type NewStep, type UndoLog } from '#lib/undo-log.svelte.js'
 
 /**
  * 雲端流程送伺服器的一步：一串指令，或復原、重做（#256）：
- * of 是要復原的那一步的步驟 id（重做是復原那一步的），change 是要放回去的樣子。
+ * of 是要復原的那一步的步驟 id（重做是復原那一步的），change 是要放回去的樣子；
+ * joined 是方向鍵合成的一步裡 of 之後的其他步（伺服器才知道中間每一步治好的舊毛病都可以帶回來，ADR 0020）。
  */
-export type CloudStep = SentStep | { id: string; undo: { of: string; redo: boolean; change: RemoteChange } };
+export type CloudStep = SentStep | { id: string; undo: { of: string; redo: boolean; change: RemoteChange; joined?: string[] } };
 
 /**
  * 雲端流程的一步：那一步改到的東西改之前、改之後的樣子（changes）和送出去的步驟 id（ids）；
@@ -51,7 +52,7 @@ export class CloudUndo extends UndoStacks<CloudUndoStep> implements UndoLog {
 
 	/**
 	 * 把那一步改到的東西放回改之前（重做是改之後）的樣子，畫面先改，再當成新的一步送伺服器
-	 * （of 是那一步的步驟 id，方向鍵合成的是第一個）；另一邊記下這次送的步驟 id。
+	 * （of 是那一步的步驟 id，方向鍵合成的是第一個，其他的放 joined）；另一邊記下這次送的步驟 id。
 	 */
 	protected move(before: Flow, step: CloudUndoStep, redo: boolean) {
 		const id = newStepId();
@@ -61,7 +62,8 @@ export class CloudUndo extends UndoStacks<CloudUndoStep> implements UndoLog {
 		// 復原：記下復原前畫面上的順序（重做時加回來的照這裡的位置放）
 		if (!redo) back.shown = Object.fromEntries(Object.keys(again.orders).map((list) => [list, idsOf(before, list)]));
 		const flow = undone(before, change);
-		this.#send({ id, undo: { of: step.ids[0], redo, change } }, step.label, before, flow);
+		const [of, ...joined] = step.ids;
+		this.#send({ id, undo: { of, redo, change, ...(joined.length && { joined }) } }, step.label, before, flow);
 		return { flow, back };
 	}
 

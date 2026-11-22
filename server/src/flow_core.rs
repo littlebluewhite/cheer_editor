@@ -284,7 +284,7 @@ mod tests {
 
     /// 量「這一步收不收」（takeStepJson，#315）在 QuickJS 一步要多久，跟 #323 以前伺服器做的（runStepJson + remoteChangeJson）比。
     /// 約 1 MB 的流程（tests/fixtures/big-flow.js），步驟紀錄 0、100、1,000、5,000 筆；restore 是復原一次加回 5,500 次。只印數字、不比時間（機器不同），
-    /// 所以平常不跑：`cargo test --release --lib -- --ignored --nocapture room_step_timing`。結果寫在 ADR 0018。
+    /// 所以平常不跑：`cargo test --release --lib -- --ignored --nocapture room_step_timing`。結果寫在 ADR 0018、0020。
     #[test]
     #[ignore = "量時間用，手動跑"]
     fn room_step_timing() {
@@ -308,7 +308,11 @@ mod tests {
                 globalThis.RENAMED = JSON.stringify(renamed.flow);
                 globalThis.UNDO = C.undoChanges(big.flow, renamed.flow).undo;
                 // 步驟紀錄 n 筆：第 1 到 n 步，別的分頁、改到別的東西（隊員），復原時第 1 步是要復原的那一步（我改名字）。
-                globalThis.ask = (n, kind) => {
+                // held：記著的讓它留著的毛病（ADR 0020）。沒給是大流程（沒有舊毛病）記著沒有；'unknown' 是沒記過（重算）；
+                // 'old' 是舊檔（第一個隊員的名字 25 個字）記著這個這一步沒碰到的毛病（多跑一次整份流程檢查）。
+                const [first, ...rest] = big.flow.members;
+                const OLD = { ...big.flow, members: [{ ...first, name: '名'.repeat(25) }, ...rest] };
+                globalThis.ask = (n, kind, held) => {
                     const step = n;
                     const log = [];
                     for (let i = 1; i <= n; i++) {
@@ -324,9 +328,10 @@ mod tests {
                         ? { stepId: 'new', seen: step, undo: { of: 'renamed', redo: false, change: UNDO } }
                         : { stepId: 'new', seen: n > 0 ? 1 : 0, commands: COMMANDS[kind] };
                     return JSON.stringify({
-                        flow: undo ? JSON.parse(RENAMED) : big.flow, step, log, now: Date.UTC(2026, 10, 21),
+                        flow: undo ? JSON.parse(RENAMED) : held === 'old' ? OLD : big.flow, step, log, now: Date.UTC(2026, 10, 21),
                         records: restore ? big.records.map((r) => ({ ...r, gone: true })) : big.records,
-                        canEdit: true, tab: 'mine', by: '李教練', sent,
+                        canEdit: true, tab: 'mine', by: '李教練', sent, core: 'core',
+                        ...(held === 'unknown' ? {} : { held: { keys: held === 'old' ? ['memberName:' + first.id] : [], core: 'core' } }),
                     });
                 };
                 "#,
@@ -377,6 +382,19 @@ mod tests {
                 );
             }
 
+            // 整份流程檢查（ADR 0020）：flowProblem 是開檔就擋的一次、讓它留著的兩次（之前、之後）；
+            // problemKeys 是讓它留著的一次（伺服器記毛病時多跑的）。不含 JSON 進出。
+            let (min, median, max) = timed(|| {
+                let none: bool = ctx.eval("C.flowProblem(big.flow) === null").unwrap();
+                assert!(none);
+            });
+            println!("整份流程檢查 flowProblem: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms");
+            let (min, median, max) = timed(|| {
+                let none: bool = ctx.eval("C.problemKeys(big.flow).length === 0").unwrap();
+                assert!(none);
+            });
+            println!("讓它留著的毛病一次 problemKeys: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms");
+
             // #323 以前伺服器做的：runStepJson（復原是 runUndoJson），再 remoteChangeJson（兩次進出 QuickJS）。
             let renamed: String = ctx.globals().get("RENAMED").unwrap();
             let undo: String = ctx.eval("JSON.stringify(UNDO)").unwrap();
@@ -405,6 +423,18 @@ mod tests {
                 println!(
                     "#323 以前 runStep+remoteChange {kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms"
                 );
+            }
+
+            // 有舊毛病（記著一個）、沒記過（重算）的流程，一般的步多跑一次整份流程檢查（ADR 0020）。
+            for held in ["old", "unknown"] {
+                for kind in ["rename", "insertBeats"] {
+                    let ask: String = ctx.eval(format!("ask(100, '{kind}', '{held}')")).unwrap();
+                    let (min, median, max) = timed(|| {
+                        let out = call(&ctx, "takeStepJson", (ask.clone(),)).unwrap();
+                        assert!(out.starts_with(r#"{"kind":"accepted""#), "{}", &out[..300.min(out.len())]);
+                    });
+                    println!("takeStep 步驟紀錄 100 筆、記著的毛病 {held} {kind}: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms");
+                }
             }
 
             for n in [0, 100, 1_000, 5_000] {

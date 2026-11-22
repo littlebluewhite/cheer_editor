@@ -18,6 +18,7 @@ import {
 } from '#lib/core';
 import { undoChanges } from '#lib/core/cloud-undo.js';
 import type { RoomMessage } from '#lib/api-types/RoomMessage.js';
+import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { cloudEditor, fakeServer, flush, testEditor, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { flowOf, libSample, ratedSample } from '#lib/test-flows.js';
 import { LocalUndo } from './undo-log.svelte.js';
@@ -236,6 +237,23 @@ describe('方向鍵連按', () => {
 		s.session.redo();
 		await flush();
 		expect(s.state.flows[0].flow.formations[0].pos.m1).toEqual([2, 0]);
+	});
+
+	it('合成一步裡治好舊毛病的是後面那一按：復原送合了哪幾步，伺服器收了（ADR 0020）', async () => {
+		const old = libSample();
+		const [first] = old.formations;
+		const flow: Flow = { ...old, formations: [{ ...first, pos: { ...first.pos, m1: [-10, 0] } }, ...old.formations.slice(1)] };
+		const s = await cloudEditor({ flow, held: { keys: [`pos:${first.id}:m1`], core: CORE_FINGERPRINT } });
+		s.session.nudge('k', { name: 'setPositions', args: [first.id, { m2: [1, 1] }] });
+		await flush();
+		s.session.nudge('k', { name: 'setPositions', args: [first.id, { m1: [-9, 0] }] });
+		await flush();
+		expect(s.state.flows[0].step).toBe(2);
+
+		s.session.undo();
+		await flush();
+		expect(s.session.notice).toBe('已復原：改站位 1');
+		expect(s.state.flows[0].flow.formations[0].pos.m1).toEqual([-10, 0]);
 	});
 });
 

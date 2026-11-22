@@ -130,8 +130,8 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old2', 'old1', 'new', 'old3']);
 	});
 
-	// 同一拍兩張是舊檔的毛病，刪一張剛好治好，復原帶回來就被當成新的毛病：#343 才讓它收（ADR 0020 決定 1）
-	it('匯入的舊檔（0、16、24、8、24 拍）：刪第一個 24 馬上復原，排好之後兩張 24 同一拍：還是擋下（#343 才收）', () => {
+	// 同一拍兩張是舊檔的毛病，刪一張剛好治好：那一步治好的可以帶回來（ADR 0020 決定 1，#343）；沒說治好了什麼照樣擋下
+	it('匯入的舊檔（0、16、24、8、24 拍）：刪第一個 24 馬上復原，排好之後兩張 24 同一拍：那一步治好了同一拍就收，沒說就擋下', () => {
 		const sample = ratedSample();
 		const pos = sample.formations[0].pos;
 		const start: Flow = {
@@ -143,8 +143,14 @@ describe('runUndo（伺服器跑復原）', () => {
 		};
 		const gone = flowOf(deleteFormation(start, 'old2'));
 		const server = takeRecords(gone);
-		const r = runUndo(server.flow, server.records, undoChanges(start, gone).undo);
-		expect(r).toEqual({
+		const { undo } = undoChanges(start, gone);
+		const r = runUndo(server.flow, server.records, undo, ['formationBeat:old2:old4']);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old3', 'old1', 'old2', 'old4']);
+		expect(r.held).toEqual(['formationBeat:old2:old4']);
+		expect(r.cured).toEqual(['formationOrder']);
+		expect(runUndo(server.flow, server.records, undo)).toEqual({
 			kind: 'blocked',
 			message: '站位 5 和站位 4 在同一拍',
 			why: { code: 'flow_check_formation_same_beat', n: 5, other: 4 }

@@ -170,14 +170,18 @@ pub async fn upload(
     let id = random_id(FLOW_ID_LEN)?;
     let now = state.clock.now();
     let mut tx = state.db.begin().await?;
+    // 記著讓它留著的毛病，配上這版流程核心的指紋（ADR 0020）。
     let (name,): (String,) = sqlx::query_as(
-        "INSERT INTO flows (id, owner_id, content, updated_at) VALUES ($1, $2, $3::json, $4)
+        "INSERT INTO flows (id, owner_id, content, updated_at, held, held_core)
+         VALUES ($1, $2, $3::json, $4, $5, $6)
          RETURNING content->>'name'",
     )
     .bind(&id)
     .bind(user_id)
     .bind(flow.get())
     .bind(now)
+    .bind(&uploaded.held)
+    .bind(crate::flow_core::FINGERPRINT)
     .fetch_one(&mut *tx)
     .await?;
     records::from_file(&mut tx, &id, &records, now).await?;
@@ -197,6 +201,9 @@ struct Uploaded<'a> {
     #[serde(borrow)]
     flow: Option<&'a RawValue>,
     records: Option<Vec<Stored>>,
+    /// 收了：讓它留著的毛病的鍵（ADR 0020）。
+    #[serde(default)]
+    held: Vec<String>,
     message: Option<String>,
     why: Option<serde_json::Value>,
 }

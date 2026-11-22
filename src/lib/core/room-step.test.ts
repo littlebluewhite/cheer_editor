@@ -2,13 +2,18 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
 	addBookmark,
+	addMembers,
 	deleteBookmark,
+	joinUndo,
 	deletePhase,
+	problemKeys,
 	renameFlow,
 	takeRecords,
 	takeStep,
 	undoChanges,
+	type Command,
 	type Flow,
+	type RemoteChange,
 	type LoggedStep,
 	type StepAsk,
 	type StepRefusal,
@@ -41,6 +46,7 @@ function ask(over: Partial<StepAsk> = {}): StepAsk {
 		canEdit: true,
 		tab: 'mine',
 		by: '李教練',
+		core: 'core',
 		sent: { stepId: 'new', seen: 3, commands: [{ name: 'renameFlow', args: ['決賽'] }] },
 		...over
 	};
@@ -56,7 +62,7 @@ describe('takeStep：收了', () => {
 		if (r.kind !== 'accepted') return;
 		expect(r.flow.name).toBe('決賽');
 		expect(r.change).toEqual({ things: [{ key: 'name', after: '決賽' }], orders: {} });
-		expect(r.logged).toEqual({ step: 4, id: 'new', tab: 'mine', by: '李教練', at: NOW, keys: ['name'], cleared: [] });
+		expect(r.logged).toEqual({ step: 4, id: 'new', tab: 'mine', by: '李教練', at: NOW, keys: ['name'], cleared: [], cured: [] });
 		expect(r.changed).toEqual([]);
 		expect(r.deleted).toEqual([]);
 		expect(flowOf(renameFlow(server().flow, '決賽'))).toEqual(r.flow);
@@ -330,4 +336,218 @@ describe('takeStep：紀錄跟著變（ADR 0007）', () => {
 		expect(r.changed).toEqual([]);
 		expect(r.logged.cleared).toEqual([]);
 	});
+});
+
+describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）', () => {
+	const CORE = 'core-now';
+	type Sent = StepAsk['sent'];
+
+	/**
+	 * 一支雲端流程（第 0 步），像伺服器一樣照 takeStep 收步、存起來：編排、第幾步、步驟紀錄、記著的毛病。
+	 * held 預設是傳上雲端時記的（problemKeys）；給了就用給的（故意寫錯、流程核心換版）。
+	 */
+	function cloud(start: Flow, held: StepAsk['held'] = { keys: problemKeys(start), core: CORE }) {
+		const s = { flow: start, step: 0, log: [] as LoggedStep[], held, flows: [start] };
+		let n = 0;
+		const send = (sent: Sent, tab: string) => {
+			const r = takeStep({ flow: s.flow, step: s.step, records: [], log: s.log, now: NOW, canEdit: true, tab, by: tab, core: CORE, held: s.held, sent });
+			if (r.kind === 'accepted') {
+				s.flow = r.flow;
+				s.step = r.logged.step;
+				s.log = [...s.log, r.logged];
+				s.held = { keys: r.held, core: CORE };
+				s.flows.push(r.flow);
+			}
+			return r;
+		};
+		const id = () => `step${++n}`;
+		return {
+			s,
+			/** 跑一串指令，回步驟 id（被擋就讓測試失敗）。 */
+			run(commands: Command[], tab = 'mine'): string {
+				const stepId = id();
+				const r = send({ stepId, seen: s.step, commands }, tab);
+				if (r.kind !== 'accepted') throw new Error(JSON.stringify(r));
+				return stepId;
+			},
+			/** 復原（重做）步驟 id 是 of 的那一步：放回去的是 change；joined 是方向鍵合成的其他步。 */
+			undo(of: string, change: RemoteChange, redo = false, joined?: string[]) {
+				const stepId = id();
+				return { stepId, r: send({ stepId, seen: s.step, undo: { of, redo, change, ...(joined && { joined }) } }, 'mine') };
+			}
+		};
+	}
+	/** 第 i 步（第 0 步是傳上雲端時）的復原、重做要送的。 */
+	const changesOf = (c: ReturnType<typeof cloud>, i: number) => undoChanges(c.s.flows[i - 1], c.s.flows[i]);
+
+	it('舊檔動作名字 25 個字，改短，復原：收了，名字回到 25 個字', () => {
+		const long = '一二三四五六七八九十一二三四五六七八九十一二三四五';
+		const old = server().flow;
+		const c = cloud({ ...old, actions: old.actions.map((a, i) => (i === 0 ? { ...a, name: long } : a)) });
+		const id = c.run([{ name: 'updateAction', args: [old.actions[0].id, { name: '短' }] }]);
+		const { r } = c.undo(id, changesOf(c, 1).undo);
+		expect(r.kind).toBe('accepted');
+		expect(c.s.flow.actions[0].name).toBe(long);
+	});
+
+	it('舊檔流程名字 45 個字，改短，復原：收了，名字回到 45 個字', () => {
+		const long = '流'.repeat(45);
+		const c = cloud({ ...server().flow, name: long });
+		const id = c.run([{ name: 'renameFlow', args: ['決賽'] }]);
+		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('accepted');
+		expect(c.s.flow.name).toBe(long);
+	});
+
+	it('舊檔 41 人，刪 1 人，復原：收了', () => {
+		const c = cloud(fortyOne());
+		const id = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }]);
+		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('accepted');
+		expect(c.s.flow.members).toHaveLength(41);
+	});
+
+	it('舊檔同一拍兩張站位，刪一張，復原：收了', () => {
+		const c = cloud(withFormations([[16, 'a'], [16, 'b']]));
+		const id = c.run([{ name: 'deleteFormation', args: ['a'] }]);
+		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('accepted');
+		expect(c.s.flow.formations.map((f) => f.id).slice(1)).toEqual(['a', 'b']);
+	});
+
+	it('#290 的 [0, 20, 16a, 8, 16b]：刪 16a 馬上復原：收了，站位照時間排', () => {
+		const c = cloud(withFormations([[20, 'f20'], [16, 'a'], [8, 'f8'], [16, 'b']]));
+		const id = c.run([{ name: 'deleteFormation', args: ['a'] }]);
+		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('accepted');
+		expect(c.s.flow.formations.map((f) => f.id).slice(1)).toEqual(['f8', 'a', 'b', 'f20']);
+	});
+
+	it('匯入的舊檔（0、16、24、8、24 拍）：刪第一個 24 馬上復原：收了（#342 時擋下）', () => {
+		const c = cloud(withFormations([[16, 'old1'], [24, 'old2'], [8, 'old3'], [24, 'old4']]));
+		const id = c.run([{ name: 'deleteFormation', args: ['old2'] }]);
+		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('accepted');
+		expect(c.s.flow.formations.map((f) => f.id).slice(1)).toEqual(['old3', 'old1', 'old2', 'old4']);
+	});
+
+	it('復原、重做、再復原：都收', () => {
+		const c = cloud(fortyOne());
+		const id = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }]);
+		const { undo, redo } = changesOf(c, 1);
+		const back = c.undo(id, undo);
+		expect(back.r.kind).toBe('accepted');
+		const again = c.undo(back.stepId, redo, true);
+		expect(again.r.kind).toBe('accepted');
+		expect(c.s.flow.members).toHaveLength(40);
+		expect(c.undo(again.stepId, undo).r.kind).toBe('accepted');
+		expect(c.s.flow.members).toHaveLength(41);
+	});
+
+	it('方向鍵連按，把舊檔裡站在場外的人一格一格挪回場內，復原（合成一步）：收了，回到場外', () => {
+		const old = server().flow;
+		const [first] = old.formations;
+		const c = cloud({ ...old, formations: [{ ...first, pos: { ...first.pos, m1: [-10, 0] } }, ...old.formations.slice(1)] });
+		const press = (x: number) => c.run([{ name: 'moveMembers', args: [0, { m1: [x, 0] }] }]);
+		const ids = [press(-9), press(-8.5), press(-8)];
+		const joined = [1, 2, 3].map((i) => changesOf(c, i)).reduce((a, b) => joinUndo(a, b));
+		expect(c.undo(ids[0], joined.undo, false, ids.slice(1)).r.kind).toBe('accepted');
+		expect(c.s.flow.formations[0].pos.m1).toEqual([-10, 0]);
+	});
+
+	/** 合成一步：第一步挪別人（沒治好什麼），第二步把站在場外的小美挪回場內（治好）。回兩步的步驟 id 和合起來的復原。 */
+	function curedOnSecond() {
+		const old = server().flow;
+		const [first] = old.formations;
+		const c = cloud({ ...old, formations: [{ ...first, pos: { ...first.pos, m1: [-10, 0] } }, ...old.formations.slice(1)] });
+		const ids = [c.run([{ name: 'setPositions', args: [first.id, { m2: [1, 1] }] }]), c.run([{ name: 'setPositions', args: [first.id, { m1: [-9, 0] }] }])];
+		return { c, ids, undo: joinUndo(changesOf(c, 1), changesOf(c, 2)).undo };
+	}
+
+	it('合成一步，治好的是中間的一步：送了合了哪幾步就收', () => {
+		const { c, ids, undo } = curedOnSecond();
+		expect(c.undo(ids[0], undo, false, ids.slice(1)).r.kind).toBe('accepted');
+	});
+
+	it('合成一步，部署前開著的分頁只送第一步：只算第一步治好的，擋下', () => {
+		const { c, ids, undo } = curedOnSecond();
+		expect(c.undo(ids[0], undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
+	});
+
+	it.each(['other', 'mine'])('joined 寫了要復原那一步之前的步（%s 分頁）：那一步治好的不算，擋下', (tab) => {
+		const c = cloud(fortyOne());
+		const earlier = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }], tab);
+		const mine = c.run([{ name: 'renameFlow', args: ['決賽'] }]);
+		// 放回去的樣子連前一步一起（41 人）：只有 mine 治好的（沒有）可以帶回來
+		const undo = undoChanges(c.s.flows[0], c.s.flows[2]).undo;
+		expect(c.undo(mine, undo, false, [earlier]).r).toMatchObject({
+			kind: 'rejected',
+			why: { code: 'undoBlocked', reason: { why: { code: 'flow_check_max_members' } } }
+		});
+	});
+
+	it('照樣擋下：你刪了 5 個人（35），別人加了 5 個（40），你復原變 45 人', () => {
+		const c = cloud(full(40));
+		const gone = c.s.flow.members.slice(-5).map((m) => m.id);
+		const id = c.run(gone.map((m): Command => ({ name: 'deleteMember', args: [m], options: { confirmed: true } })));
+		const five = Array.from({ length: 5 }, (_, i) => ({ name: `新${i}`, gender: 'M' as const, globalRole: 'base' as const }));
+		c.run([{ name: 'addMembers', args: [five] }], 'other');
+		expect(c.undo(id, changesOf(c, 1).undo).r).toMatchObject({
+			kind: 'rejected',
+			why: { code: 'undoBlocked', reason: { why: { code: 'flow_check_max_members' } } }
+		});
+	});
+
+	it('部署前收的步（沒有 cured）：照以前的比法，擋下', () => {
+		const c = cloud(fortyOne());
+		const id = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }]);
+		c.s.log = c.s.log.map(({ cured: _, ...l }) => l);
+		expect(c.undo(id, changesOf(c, 1).undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
+	});
+
+	it('記著的毛病故意寫錯（少了）：那一步記成沒治好什麼，復原擋下', () => {
+		const c = cloud(fortyOne(), { keys: [], core: CORE });
+		const id = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }]);
+		expect(c.s.log[0].cured).toEqual([]);
+		expect(c.undo(id, changesOf(c, 1).undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
+	});
+
+	it('記著的毛病故意寫錯（多了「超過 40 人」）：刪 5 人、別人加 5 人、復原變 45 人，照樣擋下', () => {
+		const c = cloud(full(40), { keys: ['members'], core: CORE });
+		const gone = c.s.flow.members.slice(-5).map((m) => m.id);
+		const id = c.run(gone.map((m): Command => ({ name: 'deleteMember', args: [m], options: { confirmed: true } })));
+		expect(c.s.log[0].cured).toEqual([]);
+		const five = Array.from({ length: 5 }, (_, i) => ({ name: `新${i}`, gender: 'M' as const, globalRole: 'base' as const }));
+		c.run([{ name: 'addMembers', args: [five] }], 'other');
+		expect(c.undo(id, changesOf(c, 1).undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
+	});
+
+	it('記著的是舊版流程核心算的（過期了）：那一步記成沒治好什麼，復原擋下；重算記著的', () => {
+		const c = cloud(fortyOne(), { keys: problemKeys(fortyOne()), core: 'core-old' });
+		const id = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }]);
+		expect(c.s.log[0].cured).toEqual([]);
+		expect(c.s.held).toEqual({ keys: [], core: CORE });
+		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('rejected');
+	});
+
+	it('記著沒有毛病的流程：一般的步不算（不多跑整份流程檢查），還是記著沒有', () => {
+		const c = cloud(server().flow);
+		expect(c.s.held).toEqual({ keys: [], core: CORE });
+		c.run([{ name: 'renameFlow', args: ['決賽'] }]);
+		expect(c.s.log[0].cured).toEqual([]);
+		expect(c.s.held).toEqual({ keys: [], core: CORE });
+	});
+
+	/** n 個人的流程。 */
+	function full(n: number): Flow {
+		const base = server().flow;
+		const more = Array.from({ length: n - base.members.length }, (_, i) => ({ name: `隊員${i}`, gender: 'F' as const, globalRole: 'base' as const }));
+		return flowOf(addMembers(base, more));
+	}
+	/** 舊檔：41 人（第 41 個是 extra，addMembers 加不進去，手改的）。 */
+	function fortyOne(): Flow {
+		const f = full(40);
+		return { ...f, members: [...f.members, { ...f.members[0], id: 'extra', name: '多一個' }] };
+	}
+	/** 舊檔：開頭那張之後照給的順序放這幾張站位（第一段的第幾拍、id），不照時間排。 */
+	function withFormations(list: [number, string][]): Flow {
+		const old = server().flow;
+		const pos = old.formations[0].pos;
+		return { ...old, formations: [old.formations[0], ...list.map(([at, id]) => ({ id, segmentId: 's1', at, pos }))] };
+	}
 });

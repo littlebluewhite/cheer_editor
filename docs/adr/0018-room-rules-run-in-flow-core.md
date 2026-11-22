@@ -62,6 +62,7 @@
   - 權限（能不能改）、這個分頁、送的人的名字、這個連線上次被退回時第幾步、現在的時間。
 - 結果照 `kind`：收過的回 `Accepted`；退回的原因（代號）原樣變成 `SentBack`，Rust 寫上中文句子（`message`）；收了的存起來：編排、第幾步、步驟紀錄（改到的東西、改動、清掉改掉的紀錄），紀錄照 `takeStep` 給的先後清掉、改掉（`records.rs` 的 `store_step`），再記下音樂哪天不用了。
 - 留在 Rust 的：用 SQL 挑步驟紀錄和紀錄、存、鎖、流程被刪了、權限被收回、退回的中文句子、音樂哪天不用了、送給房間裡的人。房間的訊息、`src/lib/api-types/`、migration 都沒變。
+- ADR 0020（#343）之後多傳現在的指紋（`core`）、記著的毛病（`flows.held`、`held_core`），步驟紀錄多帶 `cured`；收了多存 `held`（`flows`）和 `cured`（`flow_steps`，遷移 0019）。復原、重做的訊息多一個 `joined`。
 - 改房間規則只改 `takeStep`（和 `room-step.test.ts`）。Rust 的情境測試（`server/tests/` 的 `flow_steps`、`cloud_undo`、`same_thing`、`records`、`room_live`）照舊跑真的伺服器，管挑資料、存、鎖、傳有沒有接對。
 - 流程核心自己丟例外（不是 `takeStep` 退回的）：Rust 當「伺服器看不懂這一步」退回，並記一行 warn。
 - `runUndoJson` 伺服器不再叫，只留給 `room_step_timing` 量 #323 以前的做法。以後流程核心變慢、或流程變大，用同一個測試再量，跟上表比。
