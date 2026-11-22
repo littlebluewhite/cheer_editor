@@ -545,6 +545,16 @@ describe('流程檔：打開時讀草稿', () => {
 		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
 	});
 
+	it('草稿裡站位沒照時間排（舊版編輯器存的）：打開時排好（#342）', async () => {
+		const flow = flowOf(addSegment(newFlow('練習用'), 'chant'));
+		const seg = flow.segments[0].id;
+		const pos = flow.formations[0].pos;
+		const formations = [flow.formations[0], { id: 'k1', segmentId: seg, at: 20, pos }, { id: 'k2', segmentId: seg, at: 10, pos }];
+		const { editor, session } = await connected(writeFlowFile({ ...flow, formations }, {}));
+		await editor.file.openRecent('current');
+		expect(session.flow!.formations.map((f) => f.id)).toEqual([flow.formations[0].id, 'k2', 'k1']);
+	});
+
 	it('沒有草稿、讀不到草稿（私密視窗）、草稿打不開：都不列', async () => {
 		expect((await connected()).editor.file.recent).toEqual([]);
 		expect((await connected(new TextEncoder().encode('不是 zip'))).editor.file.recent).toEqual([]);
