@@ -1854,13 +1854,17 @@
 		max-width: 100%;
 		animation-name: drop-in;
 	}
-	/* 手機的播放列：一排（播放、‹、時間、›、速度、⋯），場地才有地方畫大；時間那一格吃剩下的寬。
-	   比 350px 還窄的手機放不下一排，才換行 */
-	/* 進度條和播放列一起是深底的一塊 */
+	/* 進度條和播放列一起是深底的一塊；進度條只多佔 4px 高（播放列上面的空白給它用），場地才不被擠小 */
 	.phone-play {
-		padding-top: 6px;
+		position: relative;
+		z-index: 1;
 		background: var(--ink);
 	}
+	.phone-view .phone-play .transport {
+		padding-top: 0;
+	}
+	/* 手機的播放列：一排（播放、‹、時間、›、速度、⋯），場地才有地方畫大；時間那一格吃剩下的寬。
+	   比 350px 還窄的手機放不下一排，才換行 */
 	.phone-view .transport {
 		flex-wrap: wrap;
 		justify-content: center;

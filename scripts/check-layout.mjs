@@ -1827,6 +1827,27 @@ await check('390×664（觸控）手機的檢視畫面：點場上的人，左�
 	return { ok, value: { 一開始: start, 點了小芳: who, 點空白處: back, 還沒選我時每個人多不透明: plain, 選了我是小美之後: faded } };
 });
 
+// 進度條（#330）：手機在播放列上面、橫拿的 iPad 的檢視模式在場地下面。範例 4 個八拍：手指拖到 65% 放開，停在 4-1（離 3-1 遠）
+for (const [w, h, host] of [[390, 664, '.phone-play'], [1180, 820, '.view-scrub']]) {
+	await check(`${w}×${h}（觸控）${host === '.phone-play' ? '手機的檢視畫面' : '橫拿的 iPad 檢視模式'}的進度條：整條在畫面裡、點得到；一根手指拖到 65% 放開，播放頭停在八拍開頭（4-1）`, async () => {
+		await setTouchViewport(w, h);
+		await openPracticeFlow();
+		if (host === '.view-scrub') {
+			await js(`document.querySelector('[aria-label="編輯｜檢視"] button[title^="檢視模式"]').click()`);
+			await sleep(400);
+		}
+		const bar = await js(`const el = document.querySelector('${host} [role=slider]');
+			if (!el) return null;
+			const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+			return { left: r.left, right: r.right, y: r.top + r.height / 2, 點得到: !!t && el.contains(t) && r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };`);
+		if (!bar) return { ok: false, value: '沒有進度條' };
+		await swipe({ x: bar.left + 4, y: bar.y }, { x: bar.left + (bar.right - bar.left) * 0.65, y: bar.y });
+		const at = await js(`return document.querySelector('.pos').textContent.trim()`);
+		const o = await overflow();
+		return { ok: bar.點得到 && at === '音樂 1 4-1' && noOverflow(o), value: { ...bar, 放開後: at, ...o } };
+	});
+}
+
 await check('1180×820（觸控，橫拿的 iPad）檢視模式：圓點是 22 px（編輯時 32 px）；沒放大時一根手指拖空白處是框選；點兩下空白處放大兩倍、圓點不跟著變大，放大後一根手指拖是移動畫面；右下角「整個場地」點了回到整個場地', async () => {
 	await setTouchViewport(1180, 820);
 	await openPracticeFlow(NEAR_BASES);

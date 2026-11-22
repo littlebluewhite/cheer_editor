@@ -71,19 +71,25 @@
 >
 
 <style>
-	/* 摸得到的一條 24px 高，畫出來的條只有 4px；左右留一點，頭（圓點）在兩端也整個看得到 */
+	/* 佔的高度只有 10px（手機直拿時場地的高度很緊，見 check-layout 的「一公尺至少畫 13 px」）；摸得到的範圍往上多 10px，
+	   蓋在場地框外圍的空白上（::before），一共 20px。畫出來的條只有 4px；左右留一點，頭（圓點）在兩端也整個看得到 */
 	.scrub {
 		position: relative;
-		height: 24px;
+		height: 10px;
 		margin-inline: 14px;
 		touch-action: none;
 		cursor: pointer;
+	}
+	.scrub::before {
+		content: '';
+		position: absolute;
+		inset: -10px 0 0;
 	}
 	.track {
 		position: absolute;
 		left: 0;
 		right: 0;
-		top: 10px;
+		top: 3px;
 		height: 4px;
 		border-radius: 2px;
 		background: #36425f;
@@ -97,11 +103,11 @@
 	}
 	.thumb {
 		position: absolute;
-		top: 5px;
+		top: -1px;
 		left: var(--at);
-		width: 14px;
-		height: 14px;
-		margin-left: -7px;
+		width: 12px;
+		height: 12px;
+		margin-left: -6px;
 		border-radius: 50%;
 		background: #fff;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -114,7 +120,7 @@
 	/* 拖的時候：指頭上面寫第幾個八拍，手指不會蓋住 */
 	.tip {
 		position: absolute;
-		bottom: calc(100% + 4px);
+		bottom: calc(100% + 8px);
 		left: var(--at);
 		transform: translateX(-50%);
 		padding: 2px 8px;
