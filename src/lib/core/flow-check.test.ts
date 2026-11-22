@@ -205,6 +205,12 @@ const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
 		'flow_check_formation_opening'
 	],
 	[
+		'開頭那張在第一段、不在時間 0（#346）',
+		(f) => ({ ...f, formations: [{ ...f.formations[0], at: 1 }, ...f.formations.slice(1)] }),
+		'開頭那張站位要在流程開頭',
+		'flow_check_formation_opening'
+	],
+	[
 		'站位沒照時間排',
 		(f) => ({
 			...f,
