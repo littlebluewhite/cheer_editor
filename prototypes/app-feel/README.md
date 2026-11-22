@@ -18,7 +18,7 @@ B 要的兩個掛鉤（`__appOpenFlow`、在殼裡打開就回最近的流程）
 免費帳號：**裝到 2026-11-28 下午 2 點多（台灣時間）就打不開**，要重建重裝：
 
 ```sh
-cd .claude/worktrees/app-feel   # 這個分支的 worktree
+# 在 repo 根目錄
 npm ci && npm run i18n          # 第一次才要
 cd prototypes/app-feel && ./build.sh native both && ./build.sh web both
 ```

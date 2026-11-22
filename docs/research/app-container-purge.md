@@ -322,4 +322,4 @@ Apple 文件（已確認）：
 
 **前一份筆記**
 
-- [PREV] Issue #294 的〈把網頁包進 app 後，比 Safari 多了什麼、少了什麼〉：本機分支 `research/app-webview-shell`，檔案 `docs/research/app-webview-shell.md`，commit `4a6ecf7`（還沒進 `main`）。第 1.2 節（7 天規則）、1.3 節（空間上限）、1.4 節（空間不夠時會不會被清、存在磁碟哪裡）。
+- [PREV] Issue #294 的〈把網頁包進 app 後，比 Safari 多了什麼、少了什麼〉：`docs/research/app-webview-shell.md`（寫這份時讀的是 commit `4a6ecf7`）。第 1.2 節（7 天規則）、1.3 節（空間上限）、1.4 節（空間不夠時會不會被清、存在磁碟哪裡）。
