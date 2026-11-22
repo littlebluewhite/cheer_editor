@@ -251,6 +251,31 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		expect(viewBox()).toEqual(before);
 	});
 
+	it('放大後用兩根手指移動畫面再播放：畫面也不動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const two = (id: number, x: number, y: number) => ({ ...finger(x, y), pointerId: id });
+		await fireEvent.pointerDown(stage(), two(1, 0, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100, 0));
+		await fireEvent.pointerMove(stage(), two(2, 80, -60));
+		await fireEvent.pointerUp(stage(), two(2, 80, -60));
+		await fireEvent.pointerUp(stage(), two(1, 0, 0));
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('放大後點小美一下（手抖了幾 px）看是誰：不算拖，播放照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await fireEvent.pointerDown(dot('m1'), finger(0, 0));
+		await fireEvent.pointerMove(dot('m1'), finger(3, 2));
+		await fireEvent.pointerUp(dot('m1'), finger(3, 2));
+		expect(await playThrough(opened)).not.toContain(false);
+	});
+
 	it('拖過之後按「整個場地」，再放大、播放：又會跟', async () => {
 		const opened = await openOnPhone(walkingFlow());
 		await fireEvent.change(me(), { target: { value: 'm2' } });

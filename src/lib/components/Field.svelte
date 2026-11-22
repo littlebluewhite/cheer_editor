@@ -623,7 +623,8 @@
 		if (e.pointerType === 'touch' && (controls || look)) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
-				// 第二根手指：不拖人、不框選，改成捏合。
+				// 第二根手指：不拖人、不框選，改成捏合。已經放大了，兩指是自己動畫面：這次放大不再跟著「我」。
+				if (zoom > 1) follow = false;
 				pinching = true;
 				drag = null;
 				box = null;
