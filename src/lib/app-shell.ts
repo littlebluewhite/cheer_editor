@@ -41,6 +41,14 @@ export function appShell(bridge: ShellBridge): Shell {
 }
 
 /**
+ * App 裡那一句「同一台 iPad 上，App 和瀏覽器各存各的、各登各的」寫哪種裝置（#392）。在不在 App 裡照樣問殼，這裡只挑字：
+ * iPhone 的 WKWebView 寫 iPhone；iPad 的是電腦版（寫 Macintosh），其餘都當 iPad。
+ */
+export function appDevice(): 'iPhone' | 'iPad' {
+	return /iPhone/.test(navigator.userAgent) ? 'iPhone' : 'iPad';
+}
+
+/**
  * 在 App 裡就換上殼的版本，回傳換回去的函式；網頁版回 undefined。程式一開始叫一次（src/hooks.client.ts）。
  * 一張票一格，各改自己那一格（中間空一行，幾張票同時加也合得起來，ios/README.md）。
  */

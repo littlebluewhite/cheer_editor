@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fakeServer, flush } from '#lib/test-fakes.js';
+import { fakeHost, fakeServer, fakeShell, flush } from '#lib/test-fakes.js';
 import SetPassword from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
@@ -48,6 +48,12 @@ describe('設密碼頁', () => {
 		await openLink('tok1', 'reset');
 		expect(screen.getByRole('heading', { name: '設新密碼' })).toBeTruthy();
 		expect(screen.getByText('設好後，你在其他裝置都會登出。')).toBeTruthy();
+	});
+
+	it('App 裡（#392）重設密碼：說同一台的瀏覽器也會登出', async () => {
+		fakeHost({ shell: fakeShell() });
+		await openLink('tok1', 'reset');
+		expect(screen.getByText('設好後，你在其他裝置都會登出。同一台 iPad 上，App 和瀏覽器各存各的、各登各的：這台的瀏覽器也會登出。')).toBeTruthy();
 	});
 
 	it('密碼只打一次，旁邊「顯示」', async () => {

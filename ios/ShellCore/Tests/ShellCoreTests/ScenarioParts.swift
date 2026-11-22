@@ -19,6 +19,11 @@ final class ScenarioShell {
 
     // #380
 
+    // #381
+    let roomSockets = FakeRoomSockets()
+    private(set) lazy var cloudRoom = CloudRoomPart(
+        site: SiteAddress.production, cookie: { "__Host-id=abc" }, outbox: outbox, connect: roomSockets.connect)
+
     // #389
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
@@ -49,6 +54,9 @@ final class ScenarioShell {
             // #380
             SitePart(site: SiteAddress.production),
 
+            // #381
+            cloudRoom,
+
             // #389
             nowPlaying,
 
@@ -66,6 +74,12 @@ final class ScenarioShell {
             ("background", { DraftsPart(folder: self.drafts, outbox: self.outbox).appGoingAway() }),
 
             // #380
+
+            // #381：伺服器接受了最後開的那條、說了一句；切到背景；回到前景
+            ("socketOpened", { self.roomSockets.last?.open() }),
+            ("socketMessage", { self.roomSockets.last?.say("{\"kind\":\"ready\"}") }),
+            ("socketClosed", { self.cloudRoom.enterBackground() }),
+            ("foreground", { self.cloudRoom.enterForeground() }),
 
             // #389
             ("remote", { self.nowPlaying.press(.togglePlayPause) }),

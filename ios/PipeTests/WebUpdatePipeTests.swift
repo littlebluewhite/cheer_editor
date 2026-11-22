@@ -91,6 +91,51 @@ func manifestJSON(_ files: [String: String]) -> String {
     return JSONValue.object(["id": .string(id), "files": .array(list)]).jsonString
 }
 
+/// 跟 ShellViewController 一樣接：橋從 ShellParts、自訂網址的路從 SchemeRoutes 來（草稿在殼裡、ReadyPart 接到 WebUpdates），
+/// 只是 WebUpdates 先放接本機小網站、下載放暫存資料夾的那個。iPad 橫拿的大小。
+@MainActor
+final class AppWired {
+    let context = ShellContext()
+    let updates: WebUpdates
+    let shell: WebShell
+    private let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1194, height: 834))
+
+    init(site: URL, bundled: URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("web-bundles-\(UUID().uuidString)")
+        updates = WebUpdates(context: context, site: site, root: root, bundled: bundled, autoCheck: false)
+        WebUpdates.byContext[ObjectIdentifier(context)] = updates
+        let bridge = Bridge(shellVersion: "9.9.9", shellBuild: 99, parts: ShellParts.all(context))
+        shell = WebShell(siteRoot: bundled, bridge: bridge, routes: SchemeRoutes.all(context), openOutside: { _ in })
+        context.attach(shell)
+        window.addSubview(shell.webView)
+        shell.webView.frame = window.bounds
+        window.isHidden = false
+    }
+
+    func close() { WebUpdates.byContext[ObjectIdentifier(context)] = nil }
+
+    /// 開首頁，等到換成這包網頁、橋也塞好了（剛開始是空白頁，about:blank 也是 complete）。
+    func open() async throws {
+        shell.webView.load(URLRequest(url: BundledSite.home))
+        try await waitUntil("首頁出來") {
+            (try? await self.js("return location.href + ' ' + document.readyState + ' ' + !!window.__cheerShell")) as? String == "app://local/ complete true"
+        }
+    }
+
+    func js(_ body: String, _ args: [String: Any] = [:]) async throws -> Any? {
+        try await shell.webView.callAsyncJavaScript(body, arguments: args, contentWorld: .page)
+    }
+
+    func waitUntil(_ what: String, seconds: Double = 10, _ check: () async -> Bool) async throws {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if await check() { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        Issue.record("等不到：\(what)")
+    }
+}
+
 extension PipeTests {
     /// 跟 App 一樣接（WebUpdates），只是網站換成本機的小網站、放下載的資料夾換成暫存的。
     @MainActor
@@ -107,48 +152,63 @@ extension PipeTests {
     @Test func 殼自己更新網頁_回到首頁後換上新的_草稿小設定都還在() async throws {
         let bundled = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
         let local = try LocalSite(files: newerWebBundle(from: bundled))
-        let site = try await local.start()
-        defer { local.stop() }
-        let (h, updates) = updatingHarness(site: site, bundled: bundled)
-        try await h.load("")
-        try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
+        let app = AppWired(site: try await local.start(), bundled: bundled)
+        defer { local.stop(); app.close() }
+        try await app.open()
         let marker = "return document.querySelector('meta[name=x-web-bundle]') ? 'new' : 'old'"
-        #expect(try await h.js(marker) as? String == "old")
-        _ = try await h.js("localStorage.setItem('web-update-test', 'kept'); return null")
+        #expect(try await app.js(marker) as? String == "old")
+        _ = try await app.js("localStorage.setItem('web-update-test', 'kept'); return null")
 
-        // 新建一支本機流程（編輯中），這時殼抓到新網頁
-        _ = try await h.js("""
+        // 草稿要在首頁「最近的流程」裡：用開過的流程檔（沒改過，回首頁也留一份）。剛新建沒改的流程，按「新建」回首頁時草稿照規則丟掉（#393 第一版的測試就是走這條，才會紅）。
+        // 名字每次不一樣：模擬器是共用的，上次留下的草稿不會讓這個測試假裝過。草稿在殼裡（#377，橋上的 draftList、draftLoad）。
+        let name = "換網頁測試-\(UUID().uuidString.prefix(6))"
+        let js = """
             const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
-            let name; while (!(name = document.querySelector('form.new-flow input:not([type=radio])'))) await sleep(50);
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(name, '換網頁測試');
-            name.dispatchEvent(new Event('input', { bubbles: true }));
+            const until = async (what, find) => { for (let i = 0; i < 200; i++) { const f = await find(); if (f) return f; await sleep(50); } throw new Error('等不到：' + what); };
+            const byText = (s, t) => [...document.querySelectorAll(s)].find((el) => el.textContent.includes(t));
+            const draftIds = async () => (await window.__cheerShell.send('draftList')).map((d) => d.id);
+            const toHome = async () => {
+              document.querySelector('button[aria-haspopup=dialog]').click();
+              (await until('選單的「新建」', () => byText('[role=dialog] button', '新建'))).click();
+              await until('首頁', () => document.querySelector('form.new-flow'));
+            };
+            """
+        // 1. 新建一支流程，從殼拿它的草稿（就是流程檔的位元組），回首頁；2. 首頁開這個流程檔（編輯中）
+        _ = try await app.js(js + """
+            const before = await draftIds();
+            const input = await until('新建流程的名字欄', () => document.querySelector('form.new-flow input:not([type=radio])'));
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, name);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
             document.querySelector('form.new-flow button[type=submit]').click();
-            while (!document.querySelector('[aria-label="在最後加一段"]')) await sleep(50);
+            await until('編輯畫面', () => document.querySelector('[aria-label="在最後加一段"]'));
+            const id = await until('新建的流程存了草稿', async () => (await draftIds()).find((d) => !before.includes(d)));
+            const bytes = Uint8Array.fromBase64((await window.__cheerShell.send('draftLoad', { id })).bytes);
+            await toHome();
+            const files = new DataTransfer();
+            files.items.add(new File([bytes], name + '.zip'));
+            const open = document.querySelector('label.open input[type=file]');
+            open.files = files.files;
+            open.dispatchEvent(new Event('change', { bubbles: true }));
+            await until('開好流程檔', () => document.querySelector('[aria-label="在最後加一段"]'));
             return null
-            """)
-        await updates().part.check()
+            """, ["name": name])
+        // 編輯中殼抓到新網頁：不換
+        await app.updates.part.check()
         #expect(local.asked.contains("web-bundle.json") && local.asked.contains("index.html"))
         try await Task.sleep(for: .seconds(2))
-        #expect(try await h.js(marker) as? String == "old", "還在編，不換")
-        #expect(updates().updater.servingRoot == nil)
+        #expect(try await app.js(marker) as? String == "old", "還在編，不換")
+        #expect(app.updates.updater.servingRoot == nil)
 
-        // 回到首頁（選單的「新建」）→ 網頁請殼換上 → 重新載入新的那包
-        _ = try await h.js("""
-            const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
-            const byText = (s, t) => [...document.querySelectorAll(s)].find((el) => el.textContent.includes(t));
-            document.querySelector('button[aria-haspopup=dialog]').click();
-            let item; while (!(item = byText('[role=dialog] button', '新建'))) await sleep(50);
-            item.click();
-            return null
-            """)
-        try await h.waitUntil("換上新的那包", seconds: 15) { (try? await h.js(marker)) as? String == "new" }
-        try await h.waitUntil("新的那包說好了") { h.readyCount >= 2 }
-        // Harness 的 ReadyPart 只數次數；App 裡 ShellParts.swift 的 ReadyPart 會叫這個
-        updates().updater.webSaidReady()
-        #expect(updates().updater.servingRoot != nil)
-        #expect(try await h.js("return localStorage.getItem('web-update-test')") as? String == "kept")
-        try await h.waitUntil("草稿還在：首頁的最近的流程有它") {
-            ((try? await h.js("return document.body.innerText")) as? String ?? "").contains("換網頁測試")
+        // 回到首頁 → 網頁請殼換上 → 重新載入新的那包
+        _ = try await app.js(js + "await toHome(); return null")
+        try await app.waitUntil("換上新的那包", seconds: 15) { (try? await app.js(marker)) as? String == "new" }
+        try await app.waitUntil("新的那包說好了（ShellParts 的 ReadyPart 接到 WebUpdates）") { !app.updates.updater.waitingForReady }
+        #expect(app.updates.updater.servingRoot != nil)
+        #expect(try await app.js("return localStorage.getItem('web-update-test')") as? String == "kept")
+        // 用 textContent：這裡的 innerText 常常只拿到「使用說明」（原因沒查；元素看得到、有高度）
+        try await app.waitUntil("草稿還在：首頁的最近的流程有它") {
+            let recent = "return [...document.querySelectorAll('li')].map((li) => li.textContent).join('\\n')"
+            return ((try? await app.js(recent)) as? String ?? "").contains(name)
         }
     }
 
@@ -159,32 +219,15 @@ extension PipeTests {
     @Test func 殼自己更新網頁_跟App一樣接_換上的網頁說好了就留著() async throws {
         let bundled = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
         let local = try LocalSite(files: newerWebBundle(from: bundled))
-        let site = try await local.start()
-        defer { local.stop() }
-        // 跟 ShellViewController 一樣：橋和自訂網址的路都從 ShellParts、SchemeRoutes 來；WebUpdates 先放接本機小網站的
-        let context = ShellContext()
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("web-bundles-\(UUID().uuidString)")
-        let updates = WebUpdates(context: context, site: site, root: root, bundled: bundled, autoCheck: false)
-        WebUpdates.byContext[ObjectIdentifier(context)] = updates
-        defer { WebUpdates.byContext[ObjectIdentifier(context)] = nil }
-        let bridge = Bridge(shellVersion: "9.9.9", shellBuild: 99, parts: ShellParts.all(context))
-        let shell = WebShell(siteRoot: bundled, bridge: bridge, routes: SchemeRoutes.all(context), openOutside: { _ in })
-        context.attach(shell)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1194, height: 834))
-        window.addSubview(shell.webView)
-        shell.webView.frame = window.bounds
-        window.isHidden = false
-        let js = { (body: String) in try? await shell.webView.callAsyncJavaScript(body, arguments: [:], contentWorld: .page) }
+        let app = AppWired(site: try await local.start(), bundled: bundled)
+        defer { local.stop(); app.close() }
+        try await app.open()
         let marker = "return document.querySelector('meta[name=x-web-bundle]') ? 'new' : 'old'"
-        shell.webView.load(URLRequest(url: BundledSite.home))
-        let h = Harness(siteRoot: bundled)  // 只借它的 waitUntil
-        try await h.waitUntil("首頁出來") { await js("return document.readyState") as? String == "complete" }
-        await updates.part.check()
-        #expect(await js("return await window.__cheerShell.send('useNewWebBundle')") as? Bool == true)
-        try await h.waitUntil("換上新的那包", seconds: 15) { await js(marker) as? String == "new" }
-        try await h.waitUntil("新的那包說好了（ShellParts 的 ReadyPart 接到 WebUpdates）") { !updates.updater.waitingForReady }
-        #expect(updates.updater.servingRoot != nil)
-        withExtendedLifetime(window) {}
+        await app.updates.part.check()
+        #expect(try await app.js("return await window.__cheerShell.send('useNewWebBundle')") as? Bool == true)
+        try await app.waitUntil("換上新的那包", seconds: 15) { (try? await app.js(marker)) as? String == "new" }
+        try await app.waitUntil("新的那包說好了（ShellParts 的 ReadyPart 接到 WebUpdates）") { !app.updates.updater.waitingForReady }
+        #expect(app.updates.updater.servingRoot != nil)
     }
 
     @Test func 殼自己更新網頁_網站轉到別的網站就不跟_整包丟掉() async throws {

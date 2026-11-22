@@ -18,6 +18,9 @@ enum ShellParts {
             // #380
             SitePart(site: AppSite.current),
 
+            // #381
+            CloudRoomPart.inApp(outbox: context.outbox),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 
