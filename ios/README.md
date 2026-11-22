@@ -88,7 +88,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`cloudMusic`（殼代傳雲端流程的音樂，#382；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -207,9 +207,19 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 - 殼：`ShellCore/Sources/ShellCore/Parts/SettingsPart.swift`（`settings`）。網頁：`src/lib/shell-settings.ts`，殼會 `settings` 才換（`Host.settings`）。說的話：`bridge-scenarios/current/settings.json`。
 - **怎麼拿**：document start 塞一份（boot 的 `settings`），網頁建編輯器時照舊同步讀；改了網頁先改自己記憶體裡那份，再馬上 `settingSet`／`settingRemove` 寫回殼。
-- **一開始塞的每次換頁前重做**（`WebShell` 的 `refreshBoot`）：殼換上新網頁、網頁行程當掉後重新載入，用的是同一個網頁畫面；不重做的話塞的是 App 打開時的小設定、上次那支。
+- **一開始塞的每次換頁前重做**（`WebShell` 的 `refreshBoot`；別人加的 user script 放回去）：殼換上新網頁、網頁行程當掉後重新載入，用的是同一個網頁畫面；不重做的話塞的是 App 打開時的小設定、上次那支。
 - **上次那支**：就是小設定裡的 `cheer-editor:lastFlow`（本機流程的草稿 id），網頁記、網頁開。殼說 `background`（#377 那句）時，開著本機流程就記它，在首頁（和雲端流程，#383 再接）就清掉。打開時記著就直接讀那份草稿開它，不先讀每份草稿列最近的流程；`app.html` 看殼塞的有記，首頁先藏起畫面，開好了或那份草稿沒了才給看（沒了就停在首頁，不說錯）。網頁版不記、不開。
 - **多久**：模擬器上從載入首頁到看到上次那支的場地約 0.7 秒（2026-11-23，iOS 27.2 iPad Pro 11 模擬器；跟別的管子測試一起跑時 0.7–1.7 秒；App 裡不開分頁頻道（#392），打開時不用等別的分頁回答；`PipeTests` 的 `真的那包網頁_在流程裡關掉再開_直接進那支流程_中間不停在首頁`；是新的網頁畫面、App 已經開著，不是冷開 App，只當參考）。真機在 #379。
+
+## 雲端流程的音樂（#382）
+
+音樂放在 R2，R2 只放行網站的網址（CORS），`app://local` 的網頁直接 `fetch` 過不了；R2 的設定、伺服器都不改。網頁照舊跟伺服器（`/api/`，上面的轉送）拿預簽網址，再 `fetch('/cloud-music?url=<預簽網址>')`，`App/Shell/CloudMusicRoute.swift` 照那個網址直接送到 R2（規則在 `ShellCore/Sources/ShellCore/Forward/CloudMusic.swift`）：
+
+- 只送到 `https://*.r2.cloudflarestorage.com`，只有 GET、PUT；Debug 版也准 `http://127.0.0.1`（管子測試的假 R2）。不帶網頁的標頭、不帶殼的 cookie（預簽網址只簽了 host），不跟轉址；回給網頁的只留狀態、內容、`Content-Type`。
+- 上傳：`File` 的內容進不了殼（上面「POST 進不進得了殼」），網頁先 `await file.arrayBuffer()` 再送。網頁版照舊直接連 R2、送 `File`（`src/lib/server-api.ts` 的 `r2Fetch`）。
+- 殼會 `cloudMusic`（`CloudMusicPart`，情境 `bridge-scenarios/current/cloudMusic.json`，只有一開始塞的）網頁才走 `/cloud-music`；網站更新的新網頁碰上還不會的舊殼，照網頁版直接連（過不了，說連不上）。
+- 傳到一半斷線：殼丟錯誤，網頁的 `fetch` 失敗（`ServerUnreachable`），畫面照網頁版說傳不上、拿不到；再選一次音樂檔、再打開就是再試。
+- **快不快**（2026-11-23，只在 iOS 27.2 模擬器上、本機的假 R2，不是真的 R2、不是真的網路；`PipeTests/CloudMusicPipeTests.swift` 的 `六十MB的音樂傳上去再拿回來`）：60 MB 上傳約 0.19 秒（含網頁轉 ArrayBuffer）、下載約 0.06 秒，只量了一次。真的 R2 還沒接上（docs/deploy.md、#263），真機沒量（#379）。
 
 ## 還沒做的（後面的票）
 

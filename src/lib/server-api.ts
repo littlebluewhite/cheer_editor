@@ -227,6 +227,19 @@ function noServer(): ServerAdapter {
 	return new Proxy(known, { get: (t, k) => t[k as keyof ServerAdapter] ?? unreachable }) as ServerAdapter;
 }
 
+/** 殼會代傳雲端流程的音樂（情境 bridge-scenarios/current/cloudMusic.json）。 */
+export const CLOUD_MUSIC_FEATURE = 'cloudMusic';
+
+/**
+ * 從 R2 拿、傳到 R2（預簽網址；file 有給是傳）。R2 只放行網站的網址：App 裡（殼會 cloudMusic）交給殼的 /cloud-music
+ * （#382，ios/ShellCore/Sources/ShellCore/Forward/CloudMusic.swift），File 的內容進不了殼，先轉成 ArrayBuffer。
+ */
+async function r2Fetch(url: string, file?: File): Promise<Response> {
+	if (!host().shell.can(CLOUD_MUSIC_FEATURE)) return fetch(url, file ? { method: 'PUT', body: file } : { mode: 'cors' });
+	const viaShell = `/cloud-music?url=${encodeURIComponent(url)}`;
+	return fetch(viaShell, file ? { method: 'PUT', body: await file.arrayBuffer() } : undefined);
+}
+
 /** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。舊網址版不連（noServer）。 */
 export function httpServer(base = ''): ServerAdapter {
 	if (OLD_SITE) return noServer();
@@ -264,8 +277,8 @@ export function httpServer(base = ''): ServerAdapter {
 		if (!res.ok) throw new ServerUnreachable();
 		const { url } = (await res.json()) as Presigned;
 		try {
-			// 從 R2 拿（別的網址）：R2 bucket 的 CORS 要准這個網站（docs/deploy.md）。
-			const file = await fetch(url, { mode: 'cors' });
+			// 從 R2 拿（別的網址）：R2 bucket 的 CORS 要准這個網站（docs/deploy.md）；App 裡經過殼。
+			const file = await r2Fetch(url);
 			if (!file.ok) throw new ServerUnreachable();
 			return new Uint8Array(await file.arrayBuffer());
 		} catch {
@@ -514,7 +527,7 @@ export function httpServer(base = ''): ServerAdapter {
 			if (!start.ok) throw new ServerUnreachable();
 			const { url } = (await start.json()) as Presigned;
 			try {
-				const put = await fetch(url, { method: 'PUT', body: file });
+				const put = await r2Fetch(url, file);
 				if (!put.ok) throw new ServerUnreachable();
 			} catch {
 				throw new ServerUnreachable();

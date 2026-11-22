@@ -62,6 +62,9 @@ final class ScenarioShell {
             // #381
             cloudRoom,
 
+            // #382
+            CloudMusicPart(),
+
             // #389
             nowPlaying,
 
