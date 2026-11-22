@@ -60,6 +60,11 @@ describe('receiveRecords：表格（一條規則一列）', () => {
 			expected: [{ kind: 'refused', id: 'tnew000000001', why: { code: 'blocked', reason: { message: '這一組沒有人了' } } }]
 		},
 		{
+			name: '分段練（不是全上）同一組別人先記了：照收，兩個人的都算',
+			ask: { sent: [rec('tnew000000001')], records: [{ ...rec('tfirst0000001'), by: '王教練' }] },
+			expected: [{ kind: 'accepted', id: 'tnew000000001', record: rec('tnew000000001') }]
+		},
+		{
 			name: '同一次全上的同一組，別人先存了：寫是誰',
 			ask: { sent: [rec('tnew000000001', 'g1', RUN)], records: [{ ...rec('tfirst0000001', 'g1', RUN), by: '王教練' }] },
 			expected: [{ kind: 'refused', id: 'tnew000000001', why: { code: 'takenInRun', by: '王教練' } }]
@@ -145,13 +150,15 @@ describe('amendRecords', () => {
 	/** 李（送的人）記的、王記的。 */
 	const mine: AmendRecord = { ...drill('tmine00000001'), by: 'u-li' };
 	const theirs: AmendRecord = { ...drill('ttheirs000001'), by: 'u-wang' };
+	/** 從流程檔傳上來的：沒有記的人。 */
+	const filed: AmendRecord = drill('tfiled0000001');
 	const amendAsk = (over: Partial<AmendAsk> = {}): AmendAsk => ({
 		flow: libSample(),
 		step: 7,
 		role: 'recorder',
 		by: 'u-li',
 		sent: { kind: 'delete', ids: [] },
-		records: [mine, theirs],
+		records: [mine, theirs, filed],
 		...over
 	});
 	const nothing = { deleted: [], changed: [], restored: [], amended: [], told: [] };
@@ -162,7 +169,10 @@ describe('amendRecords', () => {
 			{ name: '編輯者', role: 'editor', target: theirs, may: true },
 			{ name: '記錄者動自己記的', role: 'recorder', target: mine, may: true },
 			{ name: '記錄者動別人記的', role: 'recorder', target: theirs, may: false },
-			{ name: '檢視者（他自己記的也一樣）', role: 'viewer', target: mine, may: false }
+			{ name: '檢視者（他自己記的也一樣）', role: 'viewer', target: mine, may: false },
+			{ name: '擁有者動沒有記的人的（從流程檔來的）', role: 'owner', target: filed, may: true },
+			{ name: '編輯者動沒有記的人的', role: 'editor', target: filed, may: true },
+			{ name: '記錄者動沒有記的人的', role: 'recorder', target: filed, may: false }
 		];
 		for (const { name, role, target, may } of roles) {
 			const id = target.attempt.id;
@@ -175,7 +185,7 @@ describe('amendRecords', () => {
 				expect(out).toEqual(may ? { ...nothing, deleted: [id], amended: [{ id, step: 7 }] } : nothing);
 			});
 			it(`${name}：救回${may ? '' : '不算'}`, () => {
-				const records = [mine, theirs].map((r) => (r === target ? { ...r, gone: true } : r));
+				const records = [mine, theirs, filed].map((r) => (r === target ? { ...r, gone: true } : r));
 				const out = amendRecords(amendAsk({ role, records, sent: { kind: 'restore', ids: [id] } }));
 				expect(out).toEqual(may ? { ...nothing, restored: [drill(id)], amended: [{ id, step: 7 }], told: [id] } : nothing);
 			});
