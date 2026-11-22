@@ -33,7 +33,7 @@ describe('登入頁', () => {
 		expect(screen.getByLabelText('Email').getAttribute('autocomplete')).toBe('username');
 		expect(screen.getByLabelText('密碼').getAttribute('autocomplete')).toBe('current-password');
 		expect(screen.getByText('沒有帳號？請管理員加你。')).toBeTruthy();
-		expect(screen.getByText(/不登入也能用：/).textContent).toBe('不登入也能用：回首頁，流程只存在這台電腦。');
+		expect(screen.getByText(/不登入也能用：/).textContent).toBe('不登入也能用：回首頁，流程只存在這台裝置。');
 		const home = screen.getAllByRole('link', { name: '回首頁' });
 		expect(home.every((a) => a.getAttribute('href') === '/')).toBe(true);
 	});
