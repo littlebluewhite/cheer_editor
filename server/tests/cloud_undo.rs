@@ -535,6 +535,45 @@ async fn a_joined_undo_counts_what_every_joined_step_cured(db: sqlx::PgPool) {
 }
 
 #[sqlx::test]
+async fn a_joined_undo_ignores_a_joined_step_already_undone(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let id = long_named(&s, &wang, &lin).await;
+    let mut a = s.join(&wang, &id, "tab-a").await;
+    let before = s.flow(&wang, &id).await["flow"].clone();
+    let segment = json!([{ "name": "addSegment", "args": ["chant"] }]);
+    assert_accepted(&step(&mut a, "segment-1", 0, segment).await);
+    assert_accepted(&step(&mut a, "rename-1", 1, rename("決賽")).await);
+    // 復原改名字（記下復原了 rename-1），再自己改短一次
+    assert_accepted(&undo(&mut a, "undo-1", 2, "rename-1", false, name_back(LONG)).await);
+    let undid: Option<Vec<String>> =
+        sqlx::query_scalar("SELECT undid FROM flow_steps WHERE flow_id = $1 AND step_id = 'undo-1'")
+            .bind(&id)
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap();
+    assert_eq!(undid, Some(vec!["rename-1".to_string()]));
+    assert_accepted(&step(&mut a, "rename-2", 3, rename("決賽")).await);
+    let after = s.flow(&wang, &id).await["flow"].clone();
+    let change = s
+        .state
+        .core
+        .remote_change(after.to_string(), before.to_string())
+        .await
+        .unwrap();
+    let change: Value = serde_json::from_str(&change).unwrap();
+
+    // joined 寫了已經復原過的 rename-1：它治好的不算，擋下
+    say(
+        &mut a,
+        json!({ "kind": "undo", "stepId": "undo-2", "seen": 4, "of": "segment-1", "redo": false, "change": change, "joined": ["rename-1"] }),
+    )
+    .await;
+    assert_undo_blocked(&hear(&mut a).await);
+}
+
+#[sqlx::test]
 async fn a_step_logged_before_deploy_compares_the_old_way(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;

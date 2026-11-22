@@ -996,7 +996,8 @@ struct TakenBefore {
 }
 
 /// 步驟紀錄的一筆（流程核心的 LoggedStep）：第幾步、步驟 id、分頁、送的人的名字、什麼時候收的（毫秒）、
-/// 改到的東西、清掉改掉的紀錄（flow_steps.cleared 原樣，沒有是 []）、治好的毛病（flow_steps.cured，部署前收的步沒有）。
+/// 改到的東西、清掉改掉的紀錄（flow_steps.cleared 原樣，沒有是 []）、治好的毛病（flow_steps.cured，部署前收的步沒有）、
+/// 復原、重做的步復原了哪幾步（flow_steps.undid，一般的步、遷移 0020 之前收的步沒有）。
 #[derive(Serialize)]
 struct LoggedStep {
     step: i64,
@@ -1008,6 +1009,8 @@ struct LoggedStep {
     cleared: Box<RawValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cured: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    undid: Option<Vec<String>>,
 }
 
 /// takeStep 的結果（StepVerdict）。kind 是 again、rejected、accepted；其他欄位照 kind 有沒有。
@@ -1032,12 +1035,13 @@ struct Verdict<'a> {
     held: Option<Vec<String>>,
 }
 
-/// 收了的這一步要記的：改到的東西、清掉改掉的紀錄（照流程核心做的先後）、治好的毛病。
+/// 收了的這一步要記的：改到的東西、清掉改掉的紀錄（照流程核心做的先後）、治好的毛病、復原了哪幾步（復原、重做才有）。
 #[derive(Deserialize)]
 struct Logged {
     keys: Vec<String>,
     cleared: Vec<records::Cleared>,
     cured: Vec<String>,
+    undid: Option<Vec<String>>,
 }
 
 /// 收一步（ADR 0018）。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted、被收回回 Revoked；
@@ -1213,8 +1217,8 @@ async fn take_step(
         .then(|| serde_json::to_string(&logged.cleared))
         .transpose()?;
     sqlx::query(
-        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change, cleared, cured)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json, $9::json, $10)",
+        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change, cleared, cured, undid)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json, $9::json, $10, $11)",
     )
     .bind(flow_id)
     .bind(step)
@@ -1226,6 +1230,7 @@ async fn take_step(
     .bind(&change)
     .bind(cleared)
     .bind(&logged.cured)
+    .bind(&logged.undid)
     .execute(&mut *tx)
     .await?;
     let records_change =
@@ -1261,8 +1266,9 @@ async fn logged_steps(
         Vec<String>,
         Option<String>,
         Option<Vec<String>>,
+        Option<Vec<String>>,
     )> = sqlx::query_as(
-        "SELECT s.step, s.step_id, s.tab_id, u.name, s.created_at, s.keys, s.cleared::text, s.cured
+        "SELECT s.step, s.step_id, s.tab_id, u.name, s.created_at, s.keys, s.cleared::text, s.cured, s.undid
          FROM flow_steps s JOIN users u ON u.id = s.user_id
          WHERE s.flow_id = $1
            AND (s.step > $2 OR s.step >= (SELECT step FROM flow_steps WHERE flow_id = $1 AND step_id = $3))
@@ -1275,7 +1281,7 @@ async fn logged_steps(
     .await?;
     found
         .into_iter()
-        .map(|(step, id, tab, by, at, keys, cleared, cured)| {
+        .map(|(step, id, tab, by, at, keys, cleared, cured, undid)| {
             Ok(LoggedStep {
                 step,
                 id,
@@ -1285,6 +1291,7 @@ async fn logged_steps(
                 keys,
                 cleared: RawValue::from_string(cleared.unwrap_or_else(|| "[]".into()))?,
                 cured,
+                undid,
             })
         })
         .collect()
