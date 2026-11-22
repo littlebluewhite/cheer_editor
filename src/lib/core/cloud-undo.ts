@@ -4,7 +4,7 @@
 
 import { flowProblem } from './flow-check';
 import type { Flow } from './flow';
-import { formationSec } from './formation';
+import { sortFormations } from './formation';
 import { carryRecords } from './records';
 import { applyRemoteChange, remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
@@ -40,43 +40,10 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
 /**
  * 把復原、重做的改動套上去：沒改到的保持現在的樣子，紀錄帶現在的（對不上的丟掉，跟本機的復原一樣）。
  * 記號打在不在的環節上的拿掉、拿光了整筆拿掉（例：重做刪環節，復原時加回來的記號再清一次，ADR 0007）。
+ * 站位一律照時間排（ADR 0020）：放回去的站位不用找位置，本來就沒照時間排的（手改過的舊檔）也順便排好。
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	const after = applyRemoteChange(flow, change);
-	return fitted(carryRecords(inTimeOrder(flow) ? byTime(after) : unsorted(after, flow), flow));
-}
-
-/** 沒照時間排的流程：放在原來的位置沒冒出新的毛病就放那裡，不然把放回去的站位挪過擋住它的。 */
-const unsorted = (after: Flow, flow: Flow) => (flowProblem(after, flow) ? pastEarlier(after, flow) : after);
-
-const inTimeOrder = (flow: Flow) =>
-	flow.formations.every((f, i) => i === 0 || formationSec(flow, f) >= formationSec(flow, flow.formations[i - 1]));
-
-/**
- * 站位照時間排：放回去的站位接在它前一個的後面，別人後來在中間加了站位就排錯了。
- * 本來就沒照時間排的（匯入的舊檔）不排，排了會冒出新的毛病、整步被擋。
- */
-function byTime(flow: Flow): Flow {
-	const sorted = [...flow.formations].sort((a, b) => formationSec(flow, a) - formationSec(flow, b));
-	return sorted.every((f, i) => f === flow.formations[i]) ? flow : { ...flow, formations: sorted };
-}
-
-/**
- * 放回去的站位往後挪過後面時間比它早的（例：0、16、8 加回 32，別人後來加了 24，32 放 24 後面），
- * 往前挪過前面時間比它晚的（例：0、8、32、24 加回 16，別人把 8 挪到 20，16 放 20 前面），
- * 不然放回去的那張和旁邊那張多一個新的毛病、整步被擋；其他站位照現在的順序不動。
- */
-function pastEarlier(after: Flow, flow: Flow): Flow {
-	const had = new Set(flow.formations.map((f) => f.id));
-	const list = [...after.formations];
-	const sec = (k: number) => formationSec(after, list[k]);
-	const swap = (k: number) => ([list[k], list[k + 1]] = [list[k + 1], list[k]]);
-	for (const back of after.formations.filter((f) => !had.has(f.id)).reverse()) {
-		let j = list.indexOf(back);
-		while (j + 1 < list.length && sec(j + 1) < sec(j)) swap(j++);
-		while (j > 0 && sec(j - 1) > sec(j)) swap(--j);
-	}
-	return list.every((f, i) => f === after.formations[i]) ? after : { ...after, formations: list };
+	return fitted(carryRecords(sortFormations(applyRemoteChange(flow, change)), flow));
 }
 
 /** 每個動作的紀錄對上它現在的環節、組（對不上的記號拿掉，拿光了整筆拿掉）。 */

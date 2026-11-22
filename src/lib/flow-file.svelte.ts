@@ -265,11 +265,12 @@ export class FlowFile {
 				this.#fileBytes = bytes;
 				if (this.#draftChecked) void this.#saveDraft(bytes);
 			}
-			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名。開檔時拿掉的書籤（手改過的檔）接在後面說
+			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名。開檔時拿掉的書籤、排好的站位（手改過的檔）接在後面說
 			const parts: (string | false)[] = r.missingSegmentIds.length
 				? [missingAudioText(fileName ?? m.file_draft(), missingAudioNames(r.flow, r.missingSegmentIds))]
 				: [fileName !== null && m.file_opened({ name: fileName }), music.hasBroken && m.file_broken_audio()];
 			if (r.droppedBookmarks.length) parts.push(droppedBookmarksText(r.droppedBookmarks));
+			if (r.sortedFormations) parts.push(m.file_sorted_formations());
 			const said = parts.filter((x): x is string => !!x);
 			session.notice = said.length ? joinNotes(said) : '';
 			if (r.missingSegmentIds.length) this.#noteMissing();

@@ -93,15 +93,31 @@ function violations(flow: Flow): Violation[] {
 	});
 
 	// 站位：站在場地外 1 m 以內（setPositions）；照時間排、同一拍只有一張、在段裡（insertFormation、moveFormation）。
+	// 鍵不看清單的位置（ADR 0020）：排了站位，同一個毛病還是同一個鍵，排序本身不算新的毛病。
 	flow.formations.forEach((f, i) => {
 		for (const [id, p] of Object.entries(f.pos)) {
 			const who = flow.members.find((m) => m.id === id)?.name ?? '';
 			const off: Why = { code: 'flow_check_off_field', member: who, reason: OFF_FIELD };
 			add(`pos:${f.id}:${id}`, onField(flow.field, p) ? null : inFormation(i, off));
 		}
-		if (i === 0) return;
-		const inOrder = inGrid(flow, f as TimePosition) && formationSec(flow, f) > formationSec(flow, flow.formations[i - 1]) + EPS;
-		add(`formationTime:${f.id}`, inOrder ? null : { code: 'flow_check_formation_order', n: i + 1, before: i });
+	});
+	// 沒照時間排：整支流程一個鍵（第一張比前一張早的那張）。
+	const early = flow.formations.findIndex((f, i) => i > 0 && formationSec(flow, f) < formationSec(flow, flow.formations[i - 1]));
+	add('formationOrder', early === -1 ? null : { code: 'flow_check_formation_order', n: early + 1, before: early });
+	// 同一拍兩張：照那一拍（段和拍），說第二張是跟哪一張同一拍。
+	const beats = new Map<string, number>();
+	flow.formations.forEach((f, i) => {
+		const beat = `${f.segmentId}:${f.at}`;
+		const other = beats.get(beat);
+		if (other === undefined) beats.set(beat, i);
+		else if (other !== -1) {
+			add(`formationBeat:${beat}`, { code: 'flow_check_formation_same_beat', n: i + 1, other: other + 1 });
+			beats.set(beat, -1);
+		}
+	});
+	// 不在段裡：照那一張（開頭那張不看）。
+	flow.formations.forEach((f, i) => {
+		if (i > 0) add(`formationGrid:${f.id}`, inGrid(flow, f as TimePosition) ? null : inFormation(i, { code: 'flow_check_formation_off_grid' }));
 	});
 
 	// 動作：時間在段裡、至少一個人（addAction、updateAction）；人不重複、任務角色在、同一個人不在兩個同時的動作裡。
