@@ -7,6 +7,8 @@ final class ShellViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // 網頁沒有深色模式：邊邊一直是淺的底色，狀態列的字也一直用深色（#376）
+        overrideUserInterfaceStyle = .light
         view.backgroundColor = .systemBackground
         guard let site = Bundle.main.url(forResource: "Web", withExtension: "bundle") else {
             // 建置前沒跑 npm run ios:web（ios/README.md）
@@ -27,9 +29,11 @@ final class ShellViewController: UIViewController {
         )
         let shell = WebShell(siteRoot: site, bridge: bridge, routes: SchemeRoutes.all(context))
         context.attach(shell)
-        shell.webView.frame = view.bounds
-        shell.webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(shell.webView)
+        // 網頁放在不會被擋的範圍裡，邊邊塗網頁的底色（#376）
+        let feel = ScreenFeelView(webView: shell.webView)
+        feel.frame = view.bounds
+        feel.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(feel)
         shell.webView.load(URLRequest(url: BundledSite.home))
         self.shell = shell
     }

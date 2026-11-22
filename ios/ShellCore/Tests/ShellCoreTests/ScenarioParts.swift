@@ -40,6 +40,7 @@ final class ScenarioShell {
         parts = [
             ReadyPart(onReady: {}),
             // #376
+            ScreenPart(onScreen: { _ in }),
 
             // #377
             DraftsPart(folder: drafts, outbox: outbox),
