@@ -32,6 +32,11 @@ describe('receiveRecords：表格（一條規則一列）', () => {
 			expected: [{ kind: 'accepted', id: 'tnew000000001', record: rec('tnew000000001') }, { kind: 'skipped' }]
 		},
 		{
+			name: '沒有 id 的：兩邊都不放（伺服器挑掉）',
+			ask: { sent: [{ actionId: 'x1', attempt: { ...rec('x').attempt, id: 3 } } as unknown as StoredAttempt, rec('tnew000000001')] },
+			expected: [{ kind: 'skipped' }, { kind: 'accepted', id: 'tnew000000001', record: rec('tnew000000001') }]
+		},
+		{
 			name: '收過的 id：回存著的那一筆（不再檢查）',
 			ask: { sent: [{ ...rec('told000000001', 'g2') }], records: [stored] },
 			expected: [{ kind: 'again', id: 'told000000001', record: stored }]
