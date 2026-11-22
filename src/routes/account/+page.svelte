@@ -1,12 +1,15 @@
 <script lang="ts">
 	// 我的帳號（#190）：名字（自己改）、Email 只顯示、改密碼（現在的密碼、新密碼）、「登出這台裝置」。
 	// 這台還有沒傳的成功率紀錄時，登出先跳小框（#260）。
+	// 「登出這台裝置」旁邊「要求刪除帳號」（#370）：要有網路；確認框寫會刪什麼、流程幾支幾支有分享。確認後帳號停用，
+	// 這台照登出做（沒傳的紀錄先跳同一個小框）。管理員沒有這顆鈕，改寫一行怎麼辦。
 	// 沒登入就到登入頁。
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { charCount } from '#lib/core';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import Modal from '#lib/components/Modal.svelte';
 	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
 	import { host } from '#lib/host.js';
 	import { unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
@@ -14,6 +17,7 @@
 		httpServer,
 		tooManyTriesText,
 		type ChangePasswordResult,
+		type DeleteSummary,
 		type Me,
 		type ServerAdapter
 	} from '#lib/server-api.js';
@@ -93,6 +97,8 @@
 
 	/** 登出前發現這台還有沒傳的紀錄（#260）：小框列每支流程幾筆；沒有是 null。 */
 	let unsentAtLogout = $state.raw<UnsentRecords[] | null>(null);
+	/** 那個小框是要求刪除帳號跳的（#370）：「丟掉」之後送出要求，不是登出。 */
+	let unsentForDelete = false;
 	/** 按登出：這台還有沒傳的紀錄就先問（小框），沒有就登出。 */
 	async function logout() {
 		const left = await unsentFlows(offline);
@@ -110,6 +116,48 @@
 			go(resolve('/'));
 		} catch {
 			// 沒登出成功：什麼都不變
+		}
+	}
+
+	/** 要求刪除帳號的確認框（#370）：我擁有幾支流程、幾支有分享；沒開是 null。 */
+	let deleting = $state.raw<DeleteSummary | null>(null);
+	let deleteError = $state('');
+	/** 按「要求刪除帳號」：先問伺服器流程幾支（要有網路），再跳確認框。 */
+	async function askDelete() {
+		deleteError = '';
+		try {
+			const summary = await server.deleteSummary();
+			if (!summary) return go(resolve('/login'));
+			deleting = summary;
+		} catch {
+			deleteError = m.account_delete_offline();
+		}
+	}
+	/** 確認框按「要求刪除帳號」：這台還有沒傳的紀錄就先跳小框，沒有就送出。 */
+	async function confirmDelete(e: SubmitEvent) {
+		e.preventDefault();
+		const left = await unsentFlows(offline);
+		if (!left.length) return requestDelete();
+		unsentForDelete = true;
+		unsentAtLogout = left;
+	}
+	/** 送出要求：帳號停用；這台照登出做（discard：丟掉沒傳的紀錄，離線副本、登入資料清掉），回首頁。 */
+	async function requestDelete(discard = false) {
+		unsentAtLogout = null;
+		unsentForDelete = false;
+		busy = true;
+		try {
+			if ((await server.requestDelete()) === 'mailQuota') {
+				deleteError = m.users_mail_quota();
+				return;
+			}
+			if (discard) await offline.clearUnsent();
+			await offline.clearCopies();
+			go(resolve('/'));
+		} catch {
+			deleteError = m.account_delete_offline();
+		} finally {
+			busy = false;
 		}
 	}
 </script>
@@ -164,11 +212,48 @@
 			</section>
 
 			<button type="button" class="btn wide" onclick={logout}>{m.account_log_out_device()}</button>
+			{#if me.isAdmin}
+				<p class="hint">{m.account_delete_admin()}</p>
+			{:else}
+				<button type="button" class="btn wide danger" disabled={busy} onclick={askDelete}>{m.account_request_delete()}</button>
+				{#if deleteError && !deleting}<p class="error" {@attach revealAlert()}>{deleteError}</p>{/if}
+			{/if}
 		</div>
 	{/if}
 </AccountCard>
+{#if deleting && !unsentAtLogout}
+	{@const d = deleting}
+	<Modal label={m.account_delete_title()} class="dialog delete-account" onclose={() => (deleting = null)}>
+		{#snippet children(close)}
+			<form class="box" onsubmit={confirmDelete}>
+				<h2>{m.account_delete_title()}</h2>
+				<ul>
+					<li>{m.account_delete_disables()}</li>
+					{#if d.flows}
+						<li>{m.account_delete_flows({ n: d.flows, shared: d.shared })}</li>
+						<li>{m.account_delete_flows_go()}</li>
+					{/if}
+					<li>{m.account_delete_keeps()}</li>
+					<li>{m.account_delete_undo()}</li>
+				</ul>
+				{#if deleteError}<p class="error" {@attach revealAlert()}>{deleteError}</p>{/if}
+				<div class="buttons">
+					<button type="button" data-autofocus onclick={close}>{m.account_cancel()}</button>
+					<button type="submit" class="danger" disabled={busy}>{m.account_request_delete()}</button>
+				</div>
+			</form>
+		{/snippet}
+	</Modal>
+{/if}
 {#if unsentAtLogout}
-	<UnsentLogout flows={unsentAtLogout} onstay={() => (unsentAtLogout = null)} ondiscard={() => signOut(true)} />
+	<UnsentLogout
+		flows={unsentAtLogout}
+		onstay={() => {
+			unsentAtLogout = deleting = null;
+			unsentForDelete = false;
+		}}
+		ondiscard={() => (unsentForDelete ? requestDelete(true) : signOut(true))}
+	/>
 {/if}
 
 <style>
@@ -193,5 +278,28 @@
 	}
 	.count.enough {
 		color: #2b7a2f;
+	}
+	:global(.delete-account) {
+		width: min(420px, 100%);
+	}
+	.box {
+		display: grid;
+		gap: 10px;
+		padding: 18px;
+	}
+	.box h2 {
+		margin: 0;
+		font-size: 17px;
+	}
+	ul {
+		margin: 0;
+		padding-left: 20px;
+		display: grid;
+		gap: 4px;
+	}
+	.buttons {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
 	}
 </style>

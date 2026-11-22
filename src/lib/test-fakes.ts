@@ -250,10 +250,11 @@ export function fakePendingInput(): PendingInput & { pending: boolean; onflush: 
 	};
 }
 
-/** 假的伺服器上的一個使用者：設好密碼的才有 password；被停用的 disabled。 */
+/** 假的伺服器上的一個使用者：設好密碼的才有 password；被停用的 disabled；自己要求刪除帳號的（#370）帶要求的時間（ISO）。 */
 export interface FakeUser extends Me {
 	password?: string;
 	disabled?: boolean;
+	deleteRequested?: string;
 }
 
 /** 假的設密碼連結：誰的、哪一種；邀請還有幾小時過期（沒寫是 24）。 */
@@ -299,6 +300,7 @@ export interface FakeCloudFlow {
  * 步驟紀錄的時間用 Date.now()（測試可以用假時鐘撥）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
  * changeRole(flowId, email, role)：擁有者（在別的地方）改了這個人的權限（null 是收回），他開著的房間馬上知道。
+ * 要求刪除帳號（#370）：管理員不能要求；停用、記下時間（Date）、登出；mailQuota 時什麼都不改。管理員不能移交他的流程，恢復就取消要求。
  * 刪除帳號（#369）：只有已停用的人；他擁有的流程照刪流程刪、別人流程上的權限拿掉、記的紀錄不寫是誰。users 裡拿掉他，後面的人 id 少 1。
  * 移交、刪流程（#252）照真的規則：只能移交給名單上沒被停用的人，原擁有者變編輯者；管理員只能移交被停用的人的流程。
  * deleteFlow(flowId)：擁有者（在別的地方）刪了這支，開著的房間都馬上知道。
@@ -759,7 +761,10 @@ export function fakeServer(
 		state.links[`fake-token-${nextToken++}`] = { email, purpose };
 	};
 	const status = (u: FakeUser): UserStatus => {
-		if (u.disabled) return { kind: 'disabled', flows: state.flows.filter((f) => same(f.owner, u.email)).length };
+		if (u.disabled) {
+			const flows = state.flows.filter((f) => same(f.owner, u.email)).length;
+			return u.deleteRequested ? { kind: 'disabled', flows, deleteRequested: u.deleteRequested } : { kind: 'disabled', flows };
+		}
 		if (u.password) return { kind: 'active' };
 		const invite = linksOf(u.email).find(([, l]) => l.purpose === 'invite')?.[1];
 		return invite ? { kind: 'invited', hoursLeft: invite.hoursLeft ?? 24 } : { kind: 'inviteExpired' };
@@ -858,6 +863,7 @@ export function fakeServer(
 		async enableUser(id) {
 			return adminDoes(id, false, (u) => {
 				u.disabled = false;
+				delete u.deleteRequested;
 			});
 		},
 		async deleteUser(id) {
@@ -873,7 +879,7 @@ export function fakeServer(
 			return 'ok';
 		},
 		async adminHandOver(id, email) {
-			const r = adminDoes(id, false, (u) => (u.disabled ? undefined : { kind: 'notAllowed' }));
+			const r = adminDoes(id, false, (u) => (u.disabled && !u.deleteRequested ? undefined : { kind: 'notAllowed' }));
 			if (r !== 'ok') return r;
 			const from = state.users[id - 1];
 			const to = find(email);
@@ -1106,6 +1112,24 @@ export function fakeServer(
 			if (state.breached.includes(password)) return { kind: 'breached' };
 			u.password = password;
 			state.otherDevices = 0;
+			return 'ok';
+		},
+		async deleteSummary() {
+			reachable();
+			const u = signedInUser();
+			if (!u || u.disabled) return null;
+			const mine = state.flows.filter((f) => same(f.owner, u.email));
+			return { flows: mine.length, shared: mine.filter((f) => Object.keys(f.people ?? {}).length).length };
+		},
+		async requestDelete() {
+			reachable();
+			const u = signedInUser();
+			if (!u || u.disabled || u.isAdmin) throw new ServerUnreachable();
+			if (state.mailQuota) return 'mailQuota';
+			u.disabled = true;
+			u.deleteRequested = new Date().toISOString();
+			for (const [token] of linksOf(u.email)) delete state.links[token];
+			state.signedIn = null;
 			return 'ok';
 		}
 	};
