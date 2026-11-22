@@ -11,7 +11,7 @@ import { actionSeconds, type AudioBytes, type Flow } from '#lib/core';
 import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
-import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
+import type { DraftStore } from '#lib/file/draft.js';
 import { browserFilePicker, createBrowserSaver, downloadFile, saveVideo, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import { EditorSession, setEditorSession, type UpdateReason } from '#lib/editor-session.svelte.js';
 import { FlowFile } from '#lib/flow-file.svelte.js';
@@ -61,7 +61,7 @@ export function browserAdapters(): EditorAdapters {
 		download: downloadFile,
 		pickFlowFile: browserFilePicker(),
 		decode: decodeAudio,
-		draftStore: createIndexedDbDraftStore(),
+		draftStore: host().createDraftStore(),
 		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame,
