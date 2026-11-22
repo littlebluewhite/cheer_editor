@@ -131,3 +131,13 @@ export function runTogetherJson(runs: string, event: string): string {
 	const out = runTogether(JSON.parse(runs) as RunsTogether, e as RunEvent, now);
 	return JSON.stringify({ ...out, views: viewers.map((v) => runViews(out.runs, v, now)) });
 }
+
+/**
+ * 只要樣子、沒有事的時候（#353：打招呼時先給一次、斷線 1 分鐘後再說一次）：runs 同 runTogetherJson，
+ * ask 是 { now, viewers } 的 JSON。回照 viewers 的順序、每個人看到的每次全上（runViews）的 JSON。
+ */
+export function runViewsJson(runs: string, ask: string): string {
+	const { now, viewers } = JSON.parse(ask) as { now: number; viewers: number[] };
+	const table = JSON.parse(runs) as RunsTogether;
+	return JSON.stringify(viewers.map((v) => runViews(table, v, now)));
+}

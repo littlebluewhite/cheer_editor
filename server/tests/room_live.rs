@@ -675,9 +675,10 @@ async fn a_slow_viewer_that_misses_the_logout_is_still_closed(db: sqlx::PgPool) 
     let (status, _) = s.send("POST", "/api/logout", None, &lin.cookie).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     for _ in 0..300 {
-        s.state
-            .rooms
-            .tell(&id, cheer_server::flow_room::RoomEvent::Runs);
+        s.state.rooms.tell(
+            &id,
+            cheer_server::flow_room::RoomEvent::Runs(Default::default()),
+        );
     }
     blocker.rollback().await.unwrap();
 
