@@ -182,12 +182,7 @@ impl FlowCore {
         flow: String,
         ask: String,
     ) -> impl Future<Output = Result<String, CoreError>> + use<> {
-        let result = self.submit(move |ctx| {
-            call(ctx, "receiveRecordsJson", (flow, ask))
-                .catch(ctx)
-                .map_err(|e| CoreError::Js(e.to_string()))
-        });
-        async move { result.await? }
+        self.call_two("receiveRecordsJson", flow, ask)
     }
 
     /// 改、刪、救回（`amendRecordsJson`，#351，ADR 0018）：flow 是現在的編排的 JSON（存著的原樣），
@@ -308,6 +303,13 @@ fn load() -> Result<Context, CoreError> {
     Ok(context)
 }
 
+/// 量時間的測試共用：最快、中位數、最慢（毫秒）。
+#[cfg(test)]
+pub(crate) fn summary(mut ms: Vec<f64>) -> (f64, f64, f64) {
+    ms.sort_by(f64::total_cmp);
+    (ms[0], ms[ms.len() / 2], ms[ms.len() - 1])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,15 +412,15 @@ mod tests {
                 for _ in 0..3 {
                     once();
                 }
-                let mut ms: Vec<f64> = (0..25)
-                    .map(|_| {
-                        let start = Instant::now();
-                        once();
-                        start.elapsed().as_secs_f64() * 1000.0
-                    })
-                    .collect();
-                ms.sort_by(f64::total_cmp);
-                (ms[0], ms[ms.len() / 2], ms[ms.len() - 1])
+                summary(
+                    (0..25)
+                        .map(|_| {
+                            let start = Instant::now();
+                            once();
+                            start.elapsed().as_secs_f64() * 1000.0
+                        })
+                        .collect(),
+                )
             }
 
             // 量尺：ADR 0013 量的做法（整支含紀錄的流程跑 runCommandsJson），當時本機 rename 23 ms、insertBeats 52 ms。
@@ -537,12 +539,10 @@ mod tests {
                         after.push(pair[1]);
                     }
                 }
-                before.sort_by(f64::total_cmp);
-                after.sort_by(f64::total_cmp);
                 println!(
                     "收紀錄 {kind}（QuickJS 裡）: #349 以前 checkRecords 中位數 {:.2}、receiveRecords 中位數 {:.2} ms",
-                    before[before.len() / 2],
-                    after[after.len() / 2]
+                    summary(before).1,
+                    summary(after).1
                 );
             }
         });
@@ -557,10 +557,6 @@ mod tests {
     #[tokio::test]
     #[ignore = "量時間用，手動跑"]
     async fn run_together_timing() {
-        fn summary(mut ms: Vec<f64>) -> (f64, f64, f64) {
-            ms.sort_by(f64::total_cmp);
-            (ms[0], ms[ms.len() / 2], ms[ms.len() - 1])
-        }
         let core = FlowCore::start().unwrap();
         // 10 個人在表裡（第 1 個開、其他加入），每人拿 4 組、點過前 2 組；第 40 組沒人拿著，第 10 個人拿它。
         let setup = core
