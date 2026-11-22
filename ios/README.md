@@ -86,7 +86,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在一個都沒有（`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -149,6 +149,6 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ## 還沒做的（後面的票）
 
-App 圖示、資料搬到殼（#377）、殼代網頁上網（#380）、鎖定畫面的播放鍵（#389）、列印（#391）、殼自己更新網頁（#393）、手感（#376）、出版指令（#340）。
+App 圖示、資料搬到殼（#377）、殼代網頁上網（#380）、列印（#391）、殼自己更新網頁（#393）、手感（#376）、出版指令（#340）。
 
 已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。
