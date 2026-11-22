@@ -199,15 +199,35 @@ App 裡的網頁不自己開 WebSocket：`src/lib/shell-socket.ts` 給房間（`
 - 網頁版照舊用瀏覽器的 WebSocket，切分頁、縮小視窗不斷線。
 - 管子測試 `PipeTests/CloudRoomPipeTests.swift` 在模擬器裡自己開一台小 WebSocket 伺服器（`TinyRoom`），看握手的標頭、背景關掉、前景再開；沒有跑真的伺服器的同網址檢查（`server/src/csrf.rs`）。
 
-## 殼自己更新網頁（#393、ADR 0025）
+## 殼自己更新網頁（#393、#394、ADR 0025）
 
-- **什麼時候看**：App 打開、回到前景（`App/Update/WebUpdates.swift`），抓 `https://littlebluewhite.com/web-bundle.json`（docs/deploy.md「網頁的清單」）。網站寫死在 `WebUpdates.site`；開發版改抓 Mac 上的小網站是 #394。App 被 PipeTests 帶起來時不自己看，免得測試連到正式站。
+- **什麼時候看**：App 打開、回到前景（`App/Update/WebUpdates.swift`），抓 `https://littlebluewhite.com/web-bundle.json`（docs/deploy.md「網頁的清單」）。上架版網站寫死在 `WebUpdates.site`；開發版見下面「Mac 上的小網站」。App 被 PipeTests 帶起來時不自己看，免得測試連到正式站。
 - **規則**（`ShellCore/Sources/ShellCore/Update/WebUpdater.swift`，`swift test` 的 `WebUpdaterTests` 一條一個）：清單的代號跟現在開的那包一樣就不動；不一樣就整包下載到 `staging/`，每個檔比大小和 SHA-256，都對了才搬到 `bundles/<代號>/`；一個檔對不上（拿到 `200.html`、部署換手）、斷線就整包丟掉。網站倒回 App 裡附的那包就直接換回去，不用下載。清單裡的路徑不是這個網站底下的相對路徑，整包不收；網站轉到別的地方也不跟（`SiteFetcher`）。
-- **什麼時候換**：殼下載好了跟網頁說 `webBundleReady`；網頁回到首頁（等 1 秒讓草稿寫完、沒有沒存的東西）才說 `useNewWebBundle`，殼換上、同一個網頁畫面重新載入首頁（`src/lib/web-update.ts`，情境 `bridge-scenarios/current/web-update.json`）。沒換的話下次打開 App 換。#394 的「更新」按鈕也說 `useNewWebBundle`。
+- **什麼時候換**：殼下載好了跟網頁說 `webBundleReady`；網頁回到首頁（等 1 秒讓草稿寫完、沒有沒存的東西）才說 `useNewWebBundle`，殼換上、同一個網頁畫面重新載入首頁（`src/lib/web-update.ts`，情境 `bridge-scenarios/current/web-update.json`）。沒換的話下次打開 App 換。
 - **打不開就退回**：換上以後 10 秒內網頁沒說「好了」（`ShellParts.swift` 的 `ReadyPart`），或網頁的行程當掉（`WebShell` 的 `webViewWebContentProcessDidTerminate`，寫在 `WebUpdates.swift`），退回上一包打得開的（沒有就是附的那包），這包記成壞的、不再抓。換上後還沒說「好了」就被關掉，下次打開再等 10 秒。
 - 下載的放 `Application Support/WebBundles/`，不進 iCloud 備份；只留現在開的、等著換的、退路那包。換上的那包由 `WebBundleRoute`（`SchemeRoutes.swift`）送，排在 `/api/` 那幾條後面。來源一樣是 `app://local`，草稿、小設定都在。
-- 清單的 `minShellBuild`（要第幾版以上的殼）還沒看，#394 接。
-- **Debug 版也會換**：自己建的 App 打開後會抓正式站的那包，回首頁就換掉剛放進去的 `Web.bundle`。（正式站還沒有這份清單時抓不到，不會換。）要一直用自己建的那包，等 #394 的開發版設定。
+- **太舊就不換**（#394）：清單的 `minShellBuild` 比殼的建置號（`CFBundleVersion`）大，不下載、不換（`WebUpdater.check` 回 `tooOld`），網頁照樣被擋。
+- **雲端流程被擋時的「更新」**（#394，`src/lib/app-update.svelte.ts`、`AppUpdateNote.svelte`）：被擋時網頁先問 `checkWebBundle`（`ready`／`tooOld`／`none`）。`tooOld` 寫「這版 App 太舊，請到 App Store 更新」加開 App Store 的按鈕（網址 `APP_STORE_URL` 上架後才有，現在按不下去）；不然寫「有新版」加「更新」。按了說 `updateWebBundle {flow}`：還沒下載就先抓，抓好馬上換（回 `updated`），重新載入到 `app://local/?cloud=<代號>`，網頁打開同一支、把代號從網址拿掉；被擋時記的照 #368 自動傳。網頁版、殼不會時字照舊（「有新版，請重新整理」）。
+- **Debug 版也會換**：自己建的 App 打開後抓 `AppSite.current`（沒設 `CHEER_SITE_URL` 就是正式站）的那包，回首頁就換掉剛放進去的 `Web.bundle`。（正式站還沒有這份清單時抓不到，不會換。）
+
+### Mac 上的小網站（#394，沒有測試站時怎麼測更新）
+
+Debug 版可以用環境變數 `CHEER_WEB_BUNDLE_URL` 改去 Mac 上的小網站抓網頁（只換抓網頁的地方，`/api/` 照 `CHEER_SITE_URL`）。Release 版不讀這個設定（`WebUpdates.site` 的 `#if DEBUG`，上架前的檢查在 #396）。
+
+```sh
+npm run ios:web                                   # 小網站從 ios/App/Web.bundle 做出四種
+node scripts/web-bundle-test-site.mjs [new|mismatch|broken|tooOld]   # 按 Enter 換下一種
+SIMCTL_CHILD_CHEER_WEB_BUNDLE_URL=http://127.0.0.1:8787/ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
+```
+
+| 放的 | 殼該怎麼做 | 看哪裡 |
+|---|---|---|
+| `new` 新的一包 | 下載；回到首頁換上 | 小網站的 log 抓了每個檔；App 容器 `Library/Application Support/WebBundles/state.json` 的 `active` |
+| `mismatch` 有一個檔對不上 | 整包丟掉，照舊 | `state.json` 沒有 `staged`，`bundles/` 沒有它 |
+| `broken` 壞掉的一包 | 換上後 10 秒退回，記成壞的 | `state.json` 的 `bad` 有它，`active` 回到上一包 |
+| `tooOld` 要新版殼 | 只抓清單，不下載、不換 | 小網站的 log 只有 `web-bundle.json` |
+
+真機用 Mac 的區網 IP（小網站聽 `0.0.0.0`）。App 容器：`xcrun simctl get_app_container <UDID> com.littlebluewhite.cheereditor.temporary data`。
 
 ## 草稿（#377）
 

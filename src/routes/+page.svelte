@@ -80,6 +80,8 @@
 	import { host } from '#lib/host.js';
 	import { appDevice } from '#lib/app-shell.js';
 	import { followWebUpdate } from '#lib/web-update.js';
+	import { appUpdateFor, reopenAfterUpdate } from '#lib/app-update.svelte.js';
+	import AppUpdateNote from '#lib/components/AppUpdateNote.svelte';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
 	import SquadBar from '#lib/components/SquadBar.svelte';
@@ -217,6 +219,8 @@
 	});
 	/** 開著的雲端流程：每一步送伺服器存（名字旁「存中…」「✓ 已存」）；本機流程是 null。 */
 	const cloud = $derived(editor.file.cloud);
+	/** App 裡雲端流程被新版擋住時的「更新」（#394）；網頁版、殼不會、沒被擋是 null。 */
+	const appUpdate = $derived(appUpdateFor(cloud, host().shell));
 	/** 這支流程能做什麼（流程來源算的，每一項附原因）：窄、寬兩個選單、上方列都照這個畫。 */
 	const can = $derived(editor.file.can(!!account));
 	/** 只能看：雲端流程有新版、斷線了、我是記錄者或檢視者、用分享連結看的。只在變了的時候算（存中、未存換了不重鎖）。 */
@@ -254,6 +258,9 @@
 	onMount(() => {
 		// app.html 在程式跑起來之前先把畫面藏起來（免得閃一下首頁），這裡接手
 		delete document.documentElement.dataset.openingLink;
+		// App 換上新網頁回來（被擋時按「更新」，#394）：打開同一支雲端流程
+		const reopen = reopenAfterUpdate(host().shell);
+		if (reopen) void editor.file.openCloud(reopen);
 		const token = shareTokenIn(location.hash);
 		if (!token) return;
 		openingLink = true;
@@ -1199,7 +1206,7 @@
 					</div>
 					<!-- 跟電腦的檢視模式同一個叫法；括號裡是為什麼不能編（雲端流程有新版、斷線時寫那個） -->
 					<p class="phone-why">
-						<Icon name="eye" />{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.cloud_offline() : whyViewOnly ? m.editor_view_only_why({ why: whyViewOnly }) : m.editor_view_only()}
+						<Icon name="eye" />{#if appUpdate}<AppUpdateNote update={appUpdate} flowId={editor.file.cloudId ?? ''} />{:else}{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.cloud_offline() : whyViewOnly ? m.editor_view_only_why({ why: whyViewOnly }) : m.editor_view_only()}{/if}
 					</p>
 					<!-- 提示浮在畫面最下面，不疊在場地上：手機的場地沒有空的地方，放哪都會蓋到條號或「正面／裁判」（N52） -->
 					<div class="phone-toasts">{@render noticeToast()}</div>
@@ -1212,7 +1219,7 @@
 					<div class="formation-now">{whyText(formationNowWhy(flow, playback.sec))}</div>
 					<!-- 場地框一圈黃色，右上角寫清楚：像 Notion 鎖住頁面時名字旁邊的「Locked」 -->
 					<div class="view-badge">
-						<Icon name="eye" />{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.editor_disconnected_view() : m.editor_view_only()}
+						<Icon name="eye" />{#if appUpdate}<AppUpdateNote update={appUpdate} flowId={editor.file.cloudId ?? ''} />{:else}{cloud?.newVersion ? m.cloud_new_version() : cloud?.offline ? m.editor_disconnected_view() : m.editor_view_only()}{/if}
 					</div>
 				{/if}
 				<Field

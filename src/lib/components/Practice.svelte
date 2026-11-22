@@ -12,6 +12,9 @@
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { localDate } from '#lib/local-date.js';
 	import { m as t } from '#lib/paraglide/messages.js';
+	import { appUpdateFor } from '#lib/app-update.svelte.js';
+	import { host } from '#lib/host.js';
+	import AppUpdateNote from './AppUpdateNote.svelte';
 	import HomeScreenHint from './HomeScreenHint.svelte';
 	import RecordPage from './RecordPage.svelte';
 	import SummaryPage from './SummaryPage.svelte';
@@ -32,6 +35,8 @@
 	const cloud = $derived(getEditor().file.cloud);
 	/** 還有幾筆沒傳。 */
 	const unsent = $derived(cloud?.unsentCount ?? 0);
+	/** App 裡被新版擋住時的「更新」（#394）；網頁版是 null。 */
+	const appUpdate = $derived(appUpdateFor(cloud, host().shell));
 	/** 加到主畫面的提醒有多高：練習畫面下面留這麼多。 */
 	let hintHeight = $state(0);
 	/** 有沒有要記的動作（有記成功率、有環節）；沒有就兩頁都只寫怎麼加環節，不給記一次全上。 */
@@ -73,8 +78,9 @@
 	</header>
 	{#if cloud && (!session.practice.cannotRecord || unsent)}
 		{#if cloud.newVersion}
+			{@const why = unsent ? (unsent === 1 ? t.practice_new_version_unsent_one : t.practice_new_version_unsent)({ n: unsent }) : t.practice_new_version()}
 			<p class="bar warn" role="status">
-				{unsent ? (unsent === 1 ? t.practice_new_version_unsent_one : t.practice_new_version_unsent)({ n: unsent }) : t.practice_new_version()}
+				{#if appUpdate}<AppUpdateNote update={appUpdate} flowId={getEditor().file.cloudId ?? ''} text={why} />{:else}{why}{/if}
 			</p>
 		{:else if cloud.link === 'offline'}
 			<p class="bar warn" role="status">

@@ -4,7 +4,7 @@
 // - 比的是「跟網站上的一不一樣」，不比新舊：網站倒回舊的也跟著換回去。
 // - App 裡附的那包（Web.bundle）永遠留著當退路，不刪；下載的放 root/bundles/<代號>/。
 // - 只從 site 抓：清單裡的路徑一定要是這個網站底下的相對路徑，不然整包不收。
-// - 清單的 minShellBuild（要第幾版以上的殼）這裡不看，#394 接。
+// - 清單的 minShellBuild（要第幾版以上的殼，比建置號）比自己新：不換、不下載（#394，網頁照樣被擋，寫「這版 App 太舊」）。
 import CryptoKit
 import Foundation
 
@@ -36,6 +36,8 @@ public final class WebUpdater {
         case busy
         /// 清單抓不到、看不懂、不是這個網站的檔。
         case failed
+        /// 網站上的那包要比自己新的殼（minShellBuild）：不換、不下載（#394）。
+        case tooOld(String)
     }
 
     /// 存在 root/state.json 的。
@@ -58,20 +60,23 @@ public final class WebUpdater {
     private let trialTimeout: Duration
     private let rolledBack: @MainActor () -> Void
     private let bundledID: String?
+    private let shellBuild: Int
     private var state: State
-    private var checking = false
+    private var checking: Task<CheckResult, Never>?
     private var timer: Task<Void, Never>?
     private let fm = FileManager.default
 
     /// - site：自己的網站（上架版寫死）。root：放下載的網頁的資料夾。bundled：App 裡附的那包（Web.bundle）。
+    /// - shellBuild：殼的建置號（CFBundleVersion），比清單的 minShellBuild。
     /// - rolledBack：退回了，App 重新載入網頁。
-    public init(site: URL, root: URL, bundled: URL, fetch: @escaping (URL) async throws -> Data,
+    public init(site: URL, root: URL, bundled: URL, shellBuild: Int, fetch: @escaping (URL) async throws -> Data,
                 trialTimeout: Duration = .seconds(10), rolledBack: @escaping @MainActor () -> Void) {
         self.site = site
         self.root = root
         self.fetch = fetch
         self.trialTimeout = trialTimeout
         self.rolledBack = rolledBack
+        self.shellBuild = shellBuild
         bundledID = (try? Data(contentsOf: bundled.appendingPathComponent(WebBundleManifest.fileName)))
             .flatMap { try? JSONDecoder().decode(WebBundleManifest.self, from: $0) }?.id
         state = (try? Data(contentsOf: root.appendingPathComponent("state.json")))
@@ -97,14 +102,29 @@ public final class WebUpdater {
 
     /// 去網站看有沒有不一樣的；不一樣就整包下載。打開、回到前景時叫。
     public func check() async -> CheckResult {
-        guard !checking else { return .busy }
-        checking = true
-        defer { checking = false }
+        guard checking == nil else { return .busy }
+        let task = Task { await run() }
+        checking = task
+        defer { checking = nil }
+        return await task.value
+    }
+
+    /// 現在網站上的結果：正在檢查就等那次的，沒有就檢查一次（「更新」按鈕、被擋時問殼太不太舊，#394）。
+    public func latest() async -> CheckResult {
+        if let checking { return await checking.value }
+        return await check()
+    }
+
+    private func run() async -> CheckResult {
         guard let manifest = await manifest() else { return .failed }
         let id = manifest.id
         if id == (state.active ?? bundledID) {
             if state.staged != nil { state.staged = nil; save(); prune() }
             return .same
+        }
+        if let min = manifest.minShellBuild, min > shellBuild {
+            if state.staged != nil { state.staged = nil; save(); prune() }
+            return .tooOld(id)
         }
         if id == state.staged { return .downloaded(id) }
         if state.bad.contains(id) { return .bad(id) }
