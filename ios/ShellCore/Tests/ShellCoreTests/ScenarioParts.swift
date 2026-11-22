@@ -20,6 +20,7 @@ final class ScenarioShell {
     // #380
 
     // #389
+    lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
     // #391
 
@@ -43,6 +44,7 @@ final class ScenarioShell {
             // #380
 
             // #389
+            nowPlaying,
 
             // #391
 
@@ -58,6 +60,7 @@ final class ScenarioShell {
             // #380
 
             // #389
+            ("remote", { self.nowPlaying.press(.togglePlayPause) }),
 
             // #391
 

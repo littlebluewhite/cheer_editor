@@ -23,6 +23,7 @@
 		type Position
 	} from '#lib/core';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
+	import { lockScreen } from '#lib/lock-screen.svelte.js';
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
 	import { flushSync, onMount, tick, untrack, type ComponentProps } from 'svelte';
@@ -126,6 +127,8 @@
 	}
 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
 	onMount(() => editor.file.connect());
+	// App 裡：鎖定畫面的播放鍵（#389）
+	onMount(() => lockScreen(editor));
 
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
