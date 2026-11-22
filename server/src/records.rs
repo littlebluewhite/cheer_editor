@@ -129,6 +129,16 @@ async fn rows<'e>(
     flow_id: &str,
     with_gone: bool,
 ) -> anyhow::Result<Vec<Kept>> {
+    rows_of(db, flow_id, with_gone, None).await
+}
+
+/// 同 rows；ids 有給就只拿這幾個 id 的（不讀整份）。
+async fn rows_of<'e>(
+    db: impl sqlx::PgExecutor<'e>,
+    flow_id: &str,
+    with_gone: bool,
+    ids: Option<&[String]>,
+) -> anyhow::Result<Vec<Kept>> {
     #[allow(clippy::type_complexity)]
     let found: Vec<(
         String,
@@ -151,10 +161,12 @@ async fn rows<'e>(
          FROM flow_records r
          LEFT JOIN flow_run_throughs t ON t.flow_id = r.flow_id AND t.id = r.run_through_id
          LEFT JOIN users u ON u.id = r.recorded_by
-         WHERE r.flow_id = $1 AND (r.deleted_at IS NULL OR $2) ORDER BY r.seq",
+         WHERE r.flow_id = $1 AND (r.deleted_at IS NULL OR $2) AND ($3::text[] IS NULL OR r.id = ANY($3))
+         ORDER BY r.seq",
     )
     .bind(flow_id)
     .bind(with_gone)
+    .bind(ids)
     .fetch_all(db)
     .await?;
     found
@@ -400,29 +412,15 @@ pub async fn record(
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
         return Ok(RoomMessage::Revoked);
     };
-    // 收過的 id（斷線重送）：沒清掉的回存著的那一筆。
+    // 收過的 id（斷線重送）：沒清掉的回存著的那一筆，清掉的兩邊都不放。只讀送來的這幾筆（鎖著流程，別人在等）。
     let ids: Vec<String> = incoming.iter().map(|(id, _)| id.clone()).collect();
-    let taken: HashSet<String> = sqlx::query_as::<_, (String,)>(
-        "SELECT id FROM flow_records WHERE flow_id = $1 AND id = ANY($2)",
-    )
-    .bind(flow_id)
-    .bind(&ids)
-    .fetch_all(&mut *tx)
-    .await?
-    .into_iter()
-    .map(|(id,)| id)
-    .collect();
-    // 沒有收過的就不讀整份紀錄（鎖著流程，別人在等）
-    let mut saved: Vec<CloudRecord> = if taken.is_empty() {
-        vec![]
-    } else {
-        rows(&mut *tx, flow_id, false)
-            .await?
-            .iter()
-            .filter(|r| taken.contains(r.id()))
-            .map(|r| r.seen_by(user_id))
-            .collect()
-    };
+    let resent = rows_of(&mut *tx, flow_id, true, Some(&ids)).await?;
+    let taken: HashSet<String> = resent.iter().map(|r| r.id().to_owned()).collect();
+    let mut saved: Vec<CloudRecord> = resent
+        .iter()
+        .filter(|r| !r.gone)
+        .map(|r| r.seen_by(user_id))
+        .collect();
 
     let fresh: Vec<(String, Stored)> = incoming
         .into_iter()

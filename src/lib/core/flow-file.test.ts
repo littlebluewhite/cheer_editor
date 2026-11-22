@@ -32,7 +32,7 @@ import {
 	type FlowDocument,
 	type NewAttempt
 } from './index';
-import { flowOf, squadNumbers } from '../test-flows';
+import { flowOf, ratedSample, squadNumbers } from '../test-flows';
 import {
 	attemptWhos,
 	perPerson,
@@ -131,7 +131,7 @@ describe('流程檔：存了再開', () => {
 		const flow = sample();
 		const audio = { a1: bytes(1, 2, 3), a2: bytes(9, 8, 7, 6) };
 		const r = readFlowFile(writeFlowFile(flow, audio));
-		expect(r).toEqual({ kind: 'ok', flow, audio, missingSegmentIds: [], droppedBookmarks: [] });
+		expect(r).toEqual({ kind: 'ok', flow, audio, missingSegmentIds: [], droppedBookmarks: [], sortedFormations: false });
 	});
 
 	it('出發和到達設定存了再開也一樣', () => {
@@ -826,7 +826,8 @@ describe('流程檔：版本', () => {
 			flow: { ...v0Flow, customRoles: [], actions: [] },
 			audio: { a1: bytes(5) },
 			missingSegmentIds: ['s3'],
-			droppedBookmarks: []
+			droppedBookmarks: [],
+			sortedFormations: false
 		});
 	});
 
@@ -962,7 +963,7 @@ describe('流程檔：缺音樂檔', () => {
 	it('照開，標出缺音樂的段；動作和站位都還在', () => {
 		const flow = sample();
 		const r = readFlowFile(writeFlowFile(flow, { a2: bytes(4) }));
-		expect(r).toEqual({ kind: 'ok', flow, audio: { a2: bytes(4) }, missingSegmentIds: ['s1'], droppedBookmarks: [] });
+		expect(r).toEqual({ kind: 'ok', flow, audio: { a2: bytes(4) }, missingSegmentIds: ['s1'], droppedBookmarks: [], sortedFormations: false });
 	});
 
 	it('兩個音樂段用同一個缺的檔，兩段都標出來', () => {
@@ -996,5 +997,44 @@ describe('repo 裡的範例流程檔（docs/samples/sample-flow.zip）', () => {
 	it('只用假名', () => {
 		const r = readFlowFile(file);
 		expect(r.kind === 'ok' && r.flow.members.map((m) => m.name)).toEqual(['小A', '小B', '小C']);
+	});
+});
+
+describe('流程檔：站位照時間排（ADR 0020）', () => {
+	/** ratedSample 的站位換成開頭那張加上這幾張（s1 的 at；id 是 k1、k2…）。 */
+	const withFormations = (...ats: number[]): Flow => {
+		const f = ratedSample();
+		const pos = f.formations[0].pos;
+		return { ...f, formations: [f.formations[0], ...ats.map((at, i) => ({ id: `k${i + 1}`, segmentId: 's1', at, pos }))] };
+	};
+	const ats = (flow: Flow) => flow.formations.map((f) => f.at);
+
+	it('站位沒照時間排（0、16、8、32）：開檔排好（0、8、16、32），回報排過', () => {
+		const r = readFlowFile(writeFlowFile(withFormations(16, 8, 32), {}));
+		expect(r.kind === 'ok' && ats(r.flow)).toEqual([0, 8, 16, 32]);
+		expect(r.kind === 'ok' && r.sortedFormations).toBe(true);
+	});
+
+	it('本來就排好的檔：不回報', () => {
+		const r = readFlowFile(writeFlowFile(withFormations(8, 16, 32), {}));
+		expect(r.kind === 'ok' && r.sortedFormations).toBe(false);
+	});
+
+	it('開頭那張不動：比它早、帶走法的站位不會排到最前面，檔還開得了', () => {
+		const flow = withFormations(24, 8);
+		const walk = { depart: { segmentId: 's1', at: 4 }, arrive: { segmentId: 's1', at: 8 } };
+		const handEdited: Flow = {
+			...flow,
+			formations: [{ ...flow.formations[0], at: 16 }, flow.formations[1], { ...flow.formations[2], walks: { m1: walk } }]
+		};
+		const r = readFlowFile(writeFlowFile(handEdited, {}));
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => f.id)).toEqual([flow.formations[0].id, 'k2', 'k1']);
+	});
+
+	it('同一拍兩張、不在段裡的站位：只排順序，都還在', () => {
+		const r = readFlowFile(writeFlowFile(withFormations(999, 16, 8, 16), {}));
+		expect(r.kind === 'ok' && r.flow.formations.map((f) => f.id)).toEqual(['f1', 'k3', 'k2', 'k4', 'k1']);
 	});
 });

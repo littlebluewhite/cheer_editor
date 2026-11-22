@@ -7,7 +7,7 @@ import type { Action } from './action-types';
 import type { Bookmark } from './bookmarks';
 import { diffFlows } from './diff';
 import type { Flow } from './flow';
-import type { Formation, Position, Walk } from './formation';
+import { sortFormations, type Formation, type Position, type Walk } from './formation';
 
 /** 有 id 的清單。 */
 const LISTS = ['segments', 'members', 'formations', 'customRoles', 'audio', 'actions'] as const;
@@ -49,7 +49,8 @@ export function remoteChange(before: Flow, after: Flow): RemoteChange {
 
 /**
  * 把別人的改動套在我這邊的流程上：改到的換成新的樣子、刪掉的拿掉，其他的保持我這邊的樣子。
- * 動作的紀錄留我這邊的（改動裡沒有紀錄）。我這邊有、伺服器還不知道的（還沒送到的步加的）留著，放在我這邊它前一個的後面。
+ * 動作的紀錄留我這邊的（改動裡沒有紀錄）。我這邊有、伺服器還不知道的（還沒送到的步加的）留著，放在我這邊它前一個的後面；
+ * 別人加、刪、挪了站位時，站位整份照時間排。
  */
 export function applyRemoteChange(flow: Flow, change: RemoteChange): Flow {
 	const next: Flow = { ...flow };
@@ -118,6 +119,10 @@ export function applyRemoteChange(flow: Flow, change: RemoteChange): Flow {
 		const order = change.orders[list];
 		const ids = order ? merged(order, flow[list].map((x) => x.id), map, deleted) : [...map.keys()];
 		(next as unknown as Record<string, unknown>)[list] = ids.map((id) => map.get(id));
+	}
+	// 站位照時間排（ADR 0020）：我這邊才有的接在它前一張後面，別人在中間加了、挪了站位就會排錯
+	if (change.orders.formations || change.things.some((t) => t.key.startsWith('formation:'))) {
+		next.formations = sortFormations(next).formations;
 	}
 	// 本來沒有書籤欄位、也沒有加書籤：不多出欄位
 	if (flow.bookmarks || bookmarks.size) next.bookmarks = [...bookmarks.values()];
