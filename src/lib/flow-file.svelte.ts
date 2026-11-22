@@ -36,6 +36,7 @@ import type { CloudFlow } from '#lib/server-api.js';
 import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-source.js';
 import type { DroppedRecord } from '#lib/practice-rights.js';
 import type { TabChannel } from '#lib/tab-channel.js';
+import { host } from '#lib/host.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 被收回回首頁時，黃條說的。 */
@@ -118,8 +119,9 @@ export class FlowFile {
 	}
 
 	/**
-	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁開著的就是那支流程，就回答「正在編」），讀草稿。
-	 * 回傳頁面關掉時要做的：關掉分頁頻道、還在等停手 1 秒的草稿不存了。
+	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁開著的就是那支流程，就回答「正在編」），讀草稿；
+	 * App 裡聽殼說要切到背景（WKWebView 不一定發 visibilitychange），跟分頁藏起來一樣馬上存（#377）。
+	 * 回傳頁面關掉時要做的：關掉分頁頻道、不聽殼了、還在等停手 1 秒的草稿不存了。
 	 */
 	connect(): () => void {
 		const channel = this.#editor.adapters.openTabChannel?.() ?? null;
@@ -138,7 +140,9 @@ export class FlowFile {
 		});
 		this.#announce();
 		void this.#checkDraft();
+		const stopHearing = host().shell.on('background', () => this.pageHidden());
 		return () => {
+			stopHearing();
 			this.pageClosed();
 			channel?.close();
 			this.#channel = null;

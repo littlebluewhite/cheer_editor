@@ -15,6 +15,7 @@ final class ScenarioShell {
     // #376
 
     // #377
+    let drafts = DraftFolder.forScenario()
 
     // #380
 
@@ -41,6 +42,7 @@ final class ScenarioShell {
             // #376
 
             // #377
+            DraftsPart(folder: drafts, outbox: outbox),
 
             // #380
 
@@ -57,6 +59,7 @@ final class ScenarioShell {
             // #376
 
             // #377
+            ("background", { DraftsPart(folder: self.drafts, outbox: self.outbox).appGoingAway() }),
 
             // #380
 
