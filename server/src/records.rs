@@ -1,12 +1,12 @@
 //! 雲端流程的成功率紀錄（#257，ADR 0011）：跟編排分開存，一次一筆（資料表 flow_records、flow_run_throughs）。
-//! 記一次從房間送來（同一條 WebSocket），伺服器照流程核心的「記一次」規則檢查：打在不在的環節上的記號丟掉；
-//! 丟光了、或動作、組、隊員不在了，整筆不存並說原因。同一個 id 重送不會變兩筆。記下誰記的。
-//! 擁有者、編輯者、記錄者能記；檢視者不能（伺服器擋）。收了馬上告訴房間裡別人。
+//! 記一次從房間送來（同一條 WebSocket），收不收照流程核心的 receiveRecords（#349，ADR 0018）：打在不在的環節上的記號丟掉；
+//! 丟光了、或動作、組、隊員不在了，整筆不存並說原因。同一個 id 重送不會變兩筆；檢視者不能記。這裡只挑有關的紀錄傳進去、
+//! 照結果存、記下誰記的、寫沒收的中文句子。收了馬上告訴房間裡別人。
 //! 跑一步時把紀錄放回流程再跑，跑完照結果清掉（留墓碑）、改掉該改的（例：清掉重算、刪掉環節），也告訴房間裡別人。
 //! 每一步記下清掉、改掉了哪些（遷移 0017）：復原時這一步清掉的加回來，重做再清一次（ADR 0007）。
 //! 改、刪、救回（#258）：記錄者只能動自己記的；擁有者、編輯者能動任何人的（沒有記的人的只有他們能動）。
 //! 同一筆兩個人都改，照收到的先後，後到的贏（不退回）。刪掉的留墓碑：晚到的新增、改都不算，只有「救回」拿得回來。
-//! 一起記全上（#262，ADR 0015）：同一次全上的同一個動作、同一組只算先存的：存、救回都先查，資料庫也擋（遷移 0014）。
+//! 一起記全上（#262，ADR 0015）：同一次全上的同一個動作、同一組只算先存的：存（receiveRecords）、救回都先查，資料庫也擋（遷移 0014）。
 
 use std::collections::{HashMap, HashSet};
 
@@ -123,88 +123,103 @@ impl RecordsChange {
     }
 }
 
+/// 存著的一次的欄位（rows、related 共用 kept_select!）。
+type KeptRow = (
+    String,
+    String,
+    String,
+    String,
+    bool,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+    bool,
+    Option<String>,
+    Option<i64>,
+);
+
+macro_rules! kept_select {
+    () => {
+        "SELECT r.id, r.action_id, r.who, r.marks::text, r.whole, r.date, r.run_through_id,
+                t.started_at, r.recorded_by, u.name, r.deleted_at IS NOT NULL, r.blanks::text,
+                r.amended_step
+         FROM flow_records r
+         LEFT JOIN flow_run_throughs t ON t.flow_id = r.flow_id AND t.id = r.run_through_id
+         LEFT JOIN users u ON u.id = r.recorded_by"
+    };
+}
+
 /// 這支流程的紀錄，照收到的先後；with_gone 連清掉的也拿。
 async fn rows<'e>(
     db: impl sqlx::PgExecutor<'e>,
     flow_id: &str,
     with_gone: bool,
 ) -> anyhow::Result<Vec<Kept>> {
-    #[allow(clippy::type_complexity)]
-    let found: Vec<(
-        String,
-        String,
-        String,
-        String,
-        bool,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<i64>,
-        Option<String>,
-        bool,
-        Option<String>,
-        Option<i64>,
-    )> = sqlx::query_as(
-        "SELECT r.id, r.action_id, r.who, r.marks::text, r.whole, r.date, r.run_through_id,
-                t.started_at, r.recorded_by, u.name, r.deleted_at IS NOT NULL, r.blanks::text,
-                r.amended_step
-         FROM flow_records r
-         LEFT JOIN flow_run_throughs t ON t.flow_id = r.flow_id AND t.id = r.run_through_id
-         LEFT JOIN users u ON u.id = r.recorded_by
-         WHERE r.flow_id = $1 AND (r.deleted_at IS NULL OR $2) ORDER BY r.seq",
-    )
+    let found: Vec<KeptRow> = sqlx::query_as(concat!(
+        kept_select!(),
+        " WHERE r.flow_id = $1 AND (r.deleted_at IS NULL OR $2) ORDER BY r.seq"
+    ))
     .bind(flow_id)
     .bind(with_gone)
     .fetch_all(db)
     .await?;
-    found
-        .into_iter()
-        .map(
-            |(
-                id,
-                action_id,
-                who,
-                marks,
-                whole,
-                date,
-                run,
-                started,
-                by,
-                name,
-                gone,
-                blanks,
-                amended,
-            )| {
-                let mut a = serde_json::Map::new();
-                a.insert("id".into(), id.into());
-                a.insert("date".into(), date.into());
-                a.insert("who".into(), who.into());
-                let practice = if run.is_some() { "runThrough" } else { "drill" };
-                a.insert("practice".into(), practice.into());
-                if let Some(run) = run {
-                    a.insert("runThroughId".into(), run.into());
-                }
-                if let Some(at) = started {
-                    a.insert("runThroughStartedAt".into(), at.into());
-                }
-                a.insert("whole".into(), whole.into());
-                a.insert("marks".into(), serde_json::from_str(&marks)?);
-                if let Some(blanks) = blanks {
-                    a.insert("blanks".into(), serde_json::from_str(&blanks)?);
-                }
-                Ok(Kept {
-                    stored: Stored {
-                        action_id,
-                        attempt: Value::Object(a),
-                    },
-                    recorded_by: by,
-                    recorder: name,
-                    gone,
-                    amended_step: amended,
-                })
-            },
-        )
-        .collect()
+    found.into_iter().map(kept).collect()
+}
+
+/// 收一串紀錄時跟它們有關的（照收到的先後）：同樣 id 的（連清掉的），和同一次全上還在的（流程核心再挑同一個動作、同一組）。
+/// 不讀整份紀錄（鎖著流程，別人在等）。
+async fn related(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    ids: &[&str],
+    runs: &[&str],
+) -> anyhow::Result<Vec<Kept>> {
+    let found: Vec<KeptRow> = sqlx::query_as(concat!(
+        kept_select!(),
+        " WHERE r.flow_id = $1
+           AND (r.id = ANY($2) OR (r.run_through_id = ANY($3) AND r.deleted_at IS NULL))
+         ORDER BY r.seq"
+    ))
+    .bind(flow_id)
+    .bind(ids)
+    .bind(runs)
+    .fetch_all(&mut *tx)
+    .await?;
+    found.into_iter().map(kept).collect()
+}
+
+fn kept(
+    (id, action_id, who, marks, whole, date, run, started, by, name, gone, blanks, amended): KeptRow,
+) -> anyhow::Result<Kept> {
+    let mut a = serde_json::Map::new();
+    a.insert("id".into(), id.into());
+    a.insert("date".into(), date.into());
+    a.insert("who".into(), who.into());
+    let practice = if run.is_some() { "runThrough" } else { "drill" };
+    a.insert("practice".into(), practice.into());
+    if let Some(run) = run {
+        a.insert("runThroughId".into(), run.into());
+    }
+    if let Some(at) = started {
+        a.insert("runThroughStartedAt".into(), at.into());
+    }
+    a.insert("whole".into(), whole.into());
+    a.insert("marks".into(), serde_json::from_str(&marks)?);
+    if let Some(blanks) = blanks {
+        a.insert("blanks".into(), serde_json::from_str(&blanks)?);
+    }
+    Ok(Kept {
+        stored: Stored {
+            action_id,
+            attempt: Value::Object(a),
+        },
+        recorded_by: by,
+        recorder: name,
+        gone,
+        amended_step: amended,
+    })
 }
 
 /// 打開一支流程時拿的紀錄：viewer 是誰在看（自己記的不寫名字）。
@@ -360,17 +375,82 @@ async fn amended(
     Ok(())
 }
 
-/// 檢查的結果（`checkRecordsJson` 的一筆）。
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-enum Checked {
-    Ok { record: Stored },
-    Dropped { message: String },
+/// 給流程核心 receiveRecords 的一次（KnownRecord）：清掉的帶 gone；by 是記的人的名字（沒有記的人不帶）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct KnownRecord<'a> {
+    #[serde(flatten)]
+    stored: &'a Stored,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    gone: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    by: Option<&'a str>,
 }
 
-/// 收房間送來的一串紀錄：流程被刪了回 Deleted（#252）；先查權限（被收回回 Revoked；檢視者每筆都不收），照規則檢查、存起來，
-/// 回「收了哪些、哪些沒存進去」。收過的 id 回存著的那一筆（不變兩筆）；收過、後來被清掉的兩邊都不放。
-/// 同一支流程跟收步一樣鎖著那一列：檢查和存之間流程不會被改。收了的告訴房間裡別人（from 是這個連線）。
+/// 給流程核心 receiveRecords 的（RecordsAsk），編排以外的；編排另外傳（存著的原樣，不用先檢查一遍）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordsAsk<'a> {
+    can_record: bool,
+    by: &'a str,
+    sent: &'a [Stored],
+    records: Vec<KnownRecord<'a>>,
+}
+
+/// receiveRecords 的一筆（RecordVerdict）。收過的（again）照 Rust 挑的那一筆回，不讀這裡的 record。
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum RecordVerdict {
+    Again { id: String },
+    Skipped,
+    Refused { id: String, why: RecordRefusal },
+    Accepted { record: Stored },
+}
+
+/// 不收的原因（代號）；Rust 照它寫中文句子。
+#[derive(Deserialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+enum RecordRefusal {
+    ViewOnly,
+    TakenInRun { by: Option<String> },
+    Blocked { reason: Said },
+    NotUnderstood,
+}
+
+/// 流程核心給的原因（只用中文句子）。
+#[derive(Deserialize)]
+struct Said {
+    message: String,
+}
+
+const NOT_UNDERSTOOD: &str = "伺服器看不懂這一筆";
+
+impl RecordRefusal {
+    /// 沒存進去的一次，寫上中文句子。
+    fn dropped(self, id: String) -> DroppedRecord {
+        let (message, by, someone) = match self {
+            Self::ViewOnly => (VIEW_ONLY.into(), None, None),
+            Self::TakenInRun { by } => {
+                let someone = by.is_none().then_some(true);
+                let by = by.unwrap_or_else(|| "別人".into());
+                (format!("{by}已經記了這次全上的這一組"), Some(by), someone)
+            }
+            Self::Blocked { reason } => (reason.message, None, None),
+            Self::NotUnderstood => (NOT_UNDERSTOOD.into(), None, None),
+        };
+        DroppedRecord {
+            id,
+            message,
+            by,
+            someone,
+        }
+    }
+}
+
+/// 收房間送來的一串紀錄：流程被刪了回 Deleted（#252）；被收回回 Revoked。收不收照流程核心的 receiveRecords（ADR 0018）：
+/// Rust 用 SQL 只挑有關的紀錄（同樣 id 的連清掉的、同一次全上還在的）傳進去，照結果存、寫沒收的中文句子，
+/// 回「收了哪些、哪些沒存進去」。同一支流程跟收步一樣鎖著那一列：檢查和存之間流程不會被改。
+/// 收了的告訴房間裡別人（from 是這個連線）。
 pub async fn record(
     state: &AppState,
     flow_id: &str,
@@ -378,14 +458,14 @@ pub async fn record(
     from: u64,
     attempts: Value,
 ) -> anyhow::Result<RoomMessage> {
-    let incoming: Vec<Stored> = serde_json::from_value(attempts).unwrap_or_default();
-    let mut seen = HashSet::new();
-    let incoming: Vec<(String, Stored)> = incoming
-        .into_iter()
-        .filter_map(|s| {
-            let id = s.attempt.get("id")?.as_str()?.to_owned();
-            seen.insert(id.clone()).then_some((id, s))
-        })
+    let sent: Vec<Stored> = serde_json::from_value(attempts).unwrap_or_default();
+    let ids: Vec<&str> = sent
+        .iter()
+        .filter_map(|s| s.attempt.get("id")?.as_str())
+        .collect();
+    let runs: Vec<&str> = sent
+        .iter()
+        .filter_map(|s| s.attempt.get("runThroughId")?.as_str())
         .collect();
 
     let mut tx = state.db.begin().await?;
@@ -400,101 +480,73 @@ pub async fn record(
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
         return Ok(RoomMessage::Revoked);
     };
-    // 收過的 id（斷線重送）：沒清掉的回存著的那一筆。
-    let ids: Vec<String> = incoming.iter().map(|(id, _)| id.clone()).collect();
-    let taken: HashSet<String> = sqlx::query_as::<_, (String,)>(
-        "SELECT id FROM flow_records WHERE flow_id = $1 AND id = ANY($2)",
-    )
-    .bind(flow_id)
-    .bind(&ids)
-    .fetch_all(&mut *tx)
-    .await?
-    .into_iter()
-    .map(|(id,)| id)
-    .collect();
-    // 沒有收過的就不讀整份紀錄（鎖著流程，別人在等）
-    let mut saved: Vec<CloudRecord> = if taken.is_empty() {
-        vec![]
-    } else {
-        rows(&mut *tx, flow_id, false)
-            .await?
+    let known = related(&mut tx, flow_id, &ids, &runs).await?;
+    let (name,): (String,) = sqlx::query_as("SELECT name FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    // 整批都收過（斷線重送）：沒有新的要檢查，編排給空的
+    let all_taken = ids.iter().all(|id| known.iter().any(|k| k.id() == *id));
+    let flow = if all_taken { "null".into() } else { content };
+    let ask = RecordsAsk {
+        can_record: role.can_record(),
+        by: &name,
+        sent: &sent,
+        records: known
             .iter()
-            .filter(|r| taken.contains(r.id()))
-            .map(|r| r.seen_by(user_id))
-            .collect()
+            .map(|k| KnownRecord {
+                stored: &k.stored,
+                gone: k.gone,
+                by: k.recorder.as_deref(),
+            })
+            .collect(),
+    };
+    let verdicts: Vec<RecordVerdict> = match state
+        .core
+        .receive_records(flow, serde_json::to_string(&ask)?)
+        .await
+    {
+        Ok(json) => serde_json::from_str(&json)?,
+        // 流程核心自己出錯（不是 receiveRecords 不收的）：送來的每筆都當看不懂
+        Err(err) => {
+            tracing::warn!(error = %err, "流程核心跑 receiveRecords 出錯，當看不懂這一串");
+            let dropped = ids
+                .iter()
+                .map(|id| RecordRefusal::NotUnderstood.dropped((*id).to_owned()))
+                .collect();
+            return Ok(RoomMessage::RecordsSaved {
+                saved: vec![],
+                dropped,
+            });
+        }
     };
 
-    let fresh: Vec<(String, Stored)> = incoming
-        .into_iter()
-        .filter(|(id, _)| !taken.contains(id))
-        .collect();
-    // 只能看的：新的不收；收過的（收了才降成只能看，重送）照樣回存著的那一筆，不然手機當成沒存
-    if !role.can_record() {
-        let dropped = fresh
-            .into_iter()
-            .map(|(id, _)| DroppedRecord {
-                id,
-                message: VIEW_ONLY.into(),
-                by: None,
-                someone: None,
-            })
-            .collect();
-        return Ok(RoomMessage::RecordsSaved { saved, dropped });
-    }
+    let now = state.clock.now();
+    let mut again = HashSet::new();
     let mut dropped = vec![];
     let mut added = vec![];
-    if !fresh.is_empty() {
-        let records: Vec<&Stored> = fresh.iter().map(|(_, s)| s).collect();
-        let checked = state
-            .core
-            .check_records(content, serde_json::to_string(&records)?)
-            .await;
-        let checked: Vec<Checked> = match checked {
-            Ok(json) => serde_json::from_str(&json)?,
-            // 流程核心看不懂（例：記號不是物件）：每筆都不收。
-            Err(_) => fresh
-                .iter()
-                .map(|_| Checked::Dropped {
-                    message: "伺服器看不懂這一筆".into(),
-                })
-                .collect(),
-        };
-        let now = state.clock.now();
-        for ((id, _), result) in fresh.into_iter().zip(checked) {
-            match result {
-                Checked::Dropped { message } => dropped.push(DroppedRecord {
-                    id,
-                    message,
-                    by: None,
-                    someone: None,
-                }),
-                Checked::Ok { record } => {
-                    // 同一次全上的同一個動作、同一組只收先存的（ADR 0015）。
-                    if let Some(name) = recorded_in_run(&mut tx, flow_id, &record, &id).await? {
-                        let someone = name.is_none().then_some(true);
-                        let by = name.unwrap_or_else(|| "別人".into());
-                        let message = format!("{by}已經記了這次全上的這一組");
-                        dropped.push(DroppedRecord {
-                            id,
-                            message,
-                            by: Some(by),
-                            someone,
-                        });
-                        continue;
-                    }
-                    insert(&mut tx, flow_id, Some(user_id), &record, now).await?;
-                    added.push(record);
-                }
+    for verdict in verdicts {
+        match verdict {
+            RecordVerdict::Again { id } => {
+                again.insert(id);
+            }
+            RecordVerdict::Skipped => {}
+            RecordVerdict::Refused { id, why } => dropped.push(why.dropped(id)),
+            RecordVerdict::Accepted { record } => {
+                insert(&mut tx, flow_id, Some(user_id), &record, now).await?;
+                added.push(record);
             }
         }
     }
     tx.commit().await?;
 
+    // 收過的照存的先後在前，剛收的照送來的先後在後
+    let mut saved: Vec<CloudRecord> = known
+        .iter()
+        .filter(|k| again.contains(k.id()))
+        .map(|k| k.seen_by(user_id))
+        .collect();
     if !added.is_empty() {
-        let (name,): (String,) = sqlx::query_as("SELECT name FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_one(&state.db)
-            .await?;
         state.rooms.tell(
             flow_id,
             RoomEvent::Recorded {
@@ -752,3 +804,7 @@ async fn insert(
     .await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "records_timing.rs"]
+mod timing;
