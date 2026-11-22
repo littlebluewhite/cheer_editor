@@ -321,6 +321,8 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 	/** 場地看到的範圍（公尺）：x y 寬 高。 */
 	const viewBox = () => stage().getAttribute('viewBox')!.split(' ').map(Number);
 	const inView = (id: string) => dotInView(id, viewBox());
+	/** 整個場地的範圍（公尺）：x y 寬 高（場地 19.8592 × 16.5016，中心 (0, 0.15)）。 */
+	const full = () => [-9.9296, -8.1008, 19.8592, 16.5016];
 	const finger = (x: number, y: number) => ({ pointerType: 'touch', pointerId: 1, button: 0, clientX: x, clientY: y });
 	/** 在小A站的地方（0, 1.83 公尺；1 px = 1 cm）很快點兩下：放大 ×2。 */
 	async function zoomIn() {
@@ -480,6 +482,7 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		await fireEvent.change(me(), { target: { value: 'm2' } });
 		await zoomIn();
 		await pinchTo(80);
+		expect(viewBox()[2]).toBeCloseTo(full()[2] / 1.6);
 		const before = viewBox();
 		await playThrough(opened);
 		expect(viewBox()).toEqual(before);
@@ -491,8 +494,50 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		await zoomIn();
 		await drag();
 		await pinchTo(10);
+		expect(viewBox()).toEqual(full());
 		await zoomIn();
+		expect(viewBox()[2]).toBeCloseTo(full()[2] / 2);
 		expect(await playThrough(opened)).not.toContain(false);
+	});
+
+	it('拖過之後兩根手指一起移動（中途兩指變近，一下子縮到整個場地又放大回來）、播放：還是不跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await pinchTo(105);
+		await drag();
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(1, 15));
+		await fireEvent.pointerMove(stage(), two(2, 115));
+		await fireEvent.pointerUp(stage(), two(2, 115));
+		await fireEvent.pointerUp(stage(), two(1, 15));
+		expect(viewBox()[2]).toBeLessThan(full()[2]);
+		const before = viewBox();
+		await playThrough(opened);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('放到最大、靠在左邊，兩根手指再張開（畫面放不大也移不動）、播放：照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		const left = full()[0] * 100;
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		const spread = async (a: number, b: number, to: number) => {
+			await fireEvent.pointerDown(stage(), two(1, a));
+			await fireEvent.pointerDown(stage(), two(2, b));
+			await fireEvent.pointerMove(stage(), two(2, to));
+			await fireEvent.pointerUp(stage(), two(2, to));
+			await fireEvent.pointerUp(stage(), two(1, a));
+		};
+		await spread(left, left + 100, left + 2000);
+		const maxed = viewBox();
+		expect(maxed[2]).toBeCloseTo(full()[2] / 8);
+		expect(maxed[0]).toBeCloseTo(full()[0]);
+		await spread(0, 100, 300);
+		expect(viewBox()).toEqual(maxed);
+		await playThrough(opened);
+		expect(viewBox()).not.toEqual(maxed);
 	});
 
 	it('沒選「我」放大播放：畫面不動', async () => {

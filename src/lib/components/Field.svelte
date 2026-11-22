@@ -408,8 +408,8 @@
 
 	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
-		// 回整個場地：這次放大的事都清掉，下次放大重新跟著「我」。
-		if (z === 1) movedByHand = fitted = false;
+		// 回整個場地：這次放大的事都清掉，下次放大重新跟著「我」。捏到一半經過整個場地不算，放開時停在整個場地才算（endPinch）。
+		if (z === 1 && !pinching) movedByHand = fitted = false;
 		const c = viewCenter;
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
@@ -503,7 +503,7 @@
 	const fingers = new Map<number, [number, number]>();
 	/** 兩指按下時放大幾倍：放開時比這大，是又放大一次（endPinch）。 */
 	let pinchFrom = 1;
-	/** 兩指按下後手指動過嗎：沒動過就放開，是放上去而已，照原樣（拖走再拖回原處也算動過）。 */
+	/** 兩指按下後畫面動過嗎：沒動過就放開，是放上去而已、或放不大也移不動，照原樣（拖走再拖回原處也算動過）。 */
 	let pinchMoved = false;
 	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
 	const PINCH_ZOOMED = 1.1;
@@ -519,13 +519,14 @@
 		fingers.set(e.pointerId, [e.clientX, e.clientY]);
 		const after = midAndSpan();
 		if (before.span === 0) return;
-		if (after.span !== before.span || after.mid[0] !== before.mid[0] || after.mid[1] !== before.mid[1]) pinchMoved = true;
 		const anchor = toMeters({ clientX: before.mid[0], clientY: before.mid[1] }, svg);
 		const next = clamp((zoom * after.span) / before.span, 1, MAX_ZOOM);
 		// 螢幕 1 px 是幾公尺（縮放後）。
 		const [x1] = toMeters({ clientX: before.mid[0] + 1, clientY: before.mid[1] }, svg);
 		const perPx = ((x1 - anchor[0]) * zoom) / next;
+		const [z0, [cx, cy]] = [zoom, viewCenter];
 		setZoom(next, anchor, [(after.mid[0] - before.mid[0]) * perPx, (after.mid[1] - before.mid[1]) * perPx]);
+		if (zoom !== z0 || viewCenter[0] !== cx || viewCenter[1] !== cy) pinchMoved = true;
 	}
 
 	function liftFinger(e: PointerEvent) {
@@ -538,9 +539,10 @@
 
 	/**
 	 * 兩根手指都放開：從整個場地放大、或比按下時放大了，是又放大一次（在「只看有人的地方」裡就開始跟）；
-	 * 只移動畫面、縮小，算自己移動過畫面。放上去沒動、縮回整個場地（已經清掉）：照原樣。
+	 * 只移動畫面、縮小，算自己移動過畫面。停在整個場地：這次放大的事都清掉。畫面沒動過：照原樣。
 	 */
 	function endPinch() {
+		if (zoom === 1) movedByHand = fitted = false;
 		if (!pinchMoved || zoom === 1) return;
 		if (pinchFrom === 1 || zoom >= pinchFrom * PINCH_ZOOMED) fitted = false;
 		else movedByHand = true;
