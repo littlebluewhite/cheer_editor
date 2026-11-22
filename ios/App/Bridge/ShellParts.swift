@@ -14,6 +14,9 @@ enum ShellParts {
             // #377
             DraftsPart.inApp(outbox: context.outbox),
 
+            // #378
+            SettingsPart(file: .inApplicationSupport()),
+
             // #380
             SitePart(site: AppSite.current),
 

@@ -257,6 +257,10 @@
 			.then(() => (fromLink = true))
 			.finally(() => (openingLink = false));
 	});
+	// App 回上次那支（#378）：app.html 在程式跑起來之前先把畫面藏起來（免得閃一下首頁），開好了或不見了就接手
+	$effect(() => {
+		if (!editor.file.reopening) delete document.documentElement.dataset.reopening;
+	});
 	$effect(() => {
 		if (!fromLink || flow) return;
 		history.replaceState(history.state, '', location.pathname + location.search);
@@ -1547,7 +1551,9 @@
 		{/if}
 		<p class="recent-note">{m.home_draft_note()}</p>
 	{/snippet}
-	{#if openingLink}
+	{#if editor.file.reopening}
+		<!-- App 打開時正在回上次那支（#378）：不先畫首頁 -->
+	{:else if openingLink}
 		<p class="opening-link" role="status">{m.home_opening_link()}</p>
 	{:else if account}
 		<!-- 登入後：兩欄，左邊清單（雲端、這台電腦），右邊新建、開啟流程檔；手機一欄，清單在上 -->

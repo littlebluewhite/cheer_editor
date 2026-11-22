@@ -1,0 +1,46 @@
+{
+	"about": "小設定存在殼裡（#378）：「我」、印誰、停下回起播點、圖例、分隔線大小，加上「上次那支」（App 打開時回哪支流程；網頁記、網頁開，殼只存）。殼存在 App 自己的 Application Support/settings.json，會進 iCloud 備份。網頁建編輯器時就同步讀，所以殼在 document start 塞一份 settings（key → 字串，key 跟網頁版 localStorage 的一樣）；改了網頁馬上 settingSet、settingRemove 寫回殼，自己記憶體裡也留一份。語言、使用說明的打勾不在這裡，照舊存在網頁裡。情境裡殼一開始存著的是 returnOnStop 0、上次那支 f3-abc。",
+	"scenarios": [
+		{
+			"name": "一開始塞存著的小設定和上次那支",
+			"boot": {
+				"shellVersion": "0.1.0",
+				"shellBuild": 1,
+				"features": ["settings"],
+				"settings": { "cheer-editor:returnOnStop": "0", "cheer-editor:lastFlow": "f3-abc" }
+			},
+			"steps": []
+		},
+		{
+			"name": "改了馬上寫回殼",
+			"boot": {
+				"shellVersion": "0.1.0",
+				"shellBuild": 1,
+				"features": ["settings"],
+				"settings": { "cheer-editor:returnOnStop": "0", "cheer-editor:lastFlow": "f3-abc" }
+			},
+			"steps": [
+				{ "from": "web", "name": "settingSet", "body": { "key": "cheer-editor:legendOpen", "value": "0" }, "reply": null },
+				{ "from": "web", "name": "settingRemove", "body": { "key": "cheer-editor:returnOnStop" }, "reply": null }
+			]
+		},
+		{
+			"name": "在首頁切到背景：上次那支清掉，下次打開停在首頁",
+			"boot": {
+				"shellVersion": "0.1.0",
+				"shellBuild": 1,
+				"features": ["settings"],
+				"settings": { "cheer-editor:returnOnStop": "0", "cheer-editor:lastFlow": "f3-abc" }
+			},
+			"steps": [
+				{ "from": "shell", "name": "background" },
+				{ "from": "web", "name": "settingRemove", "body": { "key": "cheer-editor:lastFlow" }, "reply": null }
+			]
+		},
+		{
+			"name": "key、value 不是字串的不存",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["settings"] },
+			"steps": [{ "from": "web", "name": "settingSet", "body": { "key": "cheer-editor:legendOpen", "value": 0 }, "error": "failed" }]
+		}
+	]
+}

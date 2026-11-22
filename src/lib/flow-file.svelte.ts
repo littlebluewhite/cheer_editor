@@ -37,6 +37,7 @@ import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-sou
 import type { DroppedRecord } from '#lib/practice-rights.js';
 import type { TabChannel } from '#lib/tab-channel.js';
 import { host } from '#lib/host.js';
+import { loadLastFlow, saveLastFlow } from '#lib/local-settings.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 被收回回首頁時，黃條說的。 */
@@ -100,6 +101,8 @@ export class FlowFile {
 	#tooBig = $state.raw<AudioTooBig | null>(null);
 	/** 跟別的分頁說過「正在編」的草稿 id（沒開流程是 null）：換了就先說「不編了」。 */
 	#announced: string | null = null;
+	/** App 打開時正在回上次那支（#378）：還沒開好、也還沒確定不見了之前，頁面不先畫首頁。網頁版不回。 */
+	#reopening = $state(host().shell.inApp && loadLastFlow() !== '');
 
 	/** 給編輯器的流程算從檔案開的。 */
 	constructor(editor: Editor) {
@@ -120,7 +123,8 @@ export class FlowFile {
 
 	/**
 	 * 頁面打開了：開分頁頻道（別的分頁來問，這個分頁開著的就是那支流程，就回答「正在編」），讀草稿；
-	 * App 裡聽殼說要切到背景（WKWebView 不一定發 visibilitychange），跟分頁藏起來一樣馬上存（#377）。
+	 * App 裡聽殼說要切到背景（WKWebView 不一定發 visibilitychange），跟分頁藏起來一樣馬上存（#377），
+	 * 也記下上次那支：開著本機流程就是它，在首頁（或雲端流程，#383 再接）就清掉（#378）。
 	 * 回傳頁面關掉時要做的：關掉分頁頻道、不聽殼了、還在等停手 1 秒的草稿不存了。
 	 */
 	connect(): () => void {
@@ -140,7 +144,10 @@ export class FlowFile {
 		});
 		this.#announce();
 		void this.#checkDraft();
-		const stopHearing = host().shell.on('background', () => this.pageHidden());
+		const stopHearing = host().shell.on('background', () => {
+			this.pageHidden();
+			saveLastFlow(this.#editor.session.flow && this.#source.kind === 'local' ? this.#draftId : '');
+		});
 		return () => {
 			stopHearing();
 			this.pageClosed();
@@ -858,6 +865,11 @@ export class FlowFile {
 	 * 另一個分頁正在編它就不開，首頁說原因。
 	 */
 	async openRecent(id: string) {
+		if (!(await this.#openDraft(id))) this.#openError = m.file_draft_unreadable();
+	}
+
+	/** 打開一份草稿（openRecent 那樣）；草稿沒了、打不開回 false。 */
+	async #openDraft(id: string): Promise<boolean> {
 		let draft = null;
 		try {
 			draft = await this.#editor.adapters.draftStore.load(id);
@@ -865,12 +877,15 @@ export class FlowFile {
 			// 讀不到就當作沒有
 		}
 		const r = draft && readFlowFile(draft.bytes);
-		if (!draft || !r || r.kind !== 'ok') {
-			this.#openError = m.file_draft_unreadable();
-			return;
-		}
+		if (!draft || !r || r.kind !== 'ok') return false;
 		const unchanged = fileDraftId(draft.bytes) === id;
 		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, null, id);
+		return true;
+	}
+
+	/** App 打開時正在回上次那支（還沒開好、還沒確定不見了）。 */
+	get reopening(): boolean {
+		return this.#reopening;
 	}
 
 	/**
@@ -907,9 +922,13 @@ export class FlowFile {
 		});
 	}
 
-	/** 打開時讀草稿，列成最近的流程。讀完了才開始自動存。 */
+	/**
+	 * 打開時讀草稿，列成最近的流程；App 裡記著上次那支就直接開它（#378），不先讀每份草稿列最近的流程（要 1 秒內看到場地）。
+	 * 那支不見了（草稿沒了、打不開）就停在首頁，不說錯。讀完了才開始自動存。
+	 */
 	async #checkDraft() {
-		await this.#readRecent();
+		if (!(this.#reopening && (await this.#openDraft(loadLastFlow())) && this.#editor.session.flow)) await this.#readRecent();
+		this.#reopening = false;
 		this.#draftChecked = true;
 		this.#saveDraftLater();
 	}
