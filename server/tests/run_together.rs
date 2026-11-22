@@ -683,6 +683,55 @@ async fn a_revoked_recorder_is_kicked_out_and_his_squads_are_freed(db: sqlx::PgP
     assert_eq!(holders(&after), vec![hold("n:1", "王教練", false, false)]);
 }
 
+#[sqlx::test]
+async fn two_people_grabbing_the_same_free_squads_at_once_each_squad_goes_to_one_and_the_other_is_refused(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut coach = s.join(&wang, &id).await;
+    let mut phone = s.join(&lin, &id).await;
+    say(&mut coach, report("2026-11-07", &[], &[], false)).await;
+    until(&mut phone, "runThroughs").await;
+    say(&mut phone, report("2026-11-07", &[], &[], true)).await;
+    until_with(&mut coach, |m| people(m).len() == 2).await;
+
+    // 兩個人一起搶 20 組沒人拿著的（不等回答）：每組只給一個人，另一個人一定退回。
+    let keys: Vec<String> = (10..30).map(|n| format!("n:{n}")).collect();
+    for key in &keys {
+        let claim = json!({ "kind": "claim", "run": RUN, "key": key, "from": null });
+        say(&mut coach, claim.clone()).await;
+        say(&mut phone, claim).await;
+    }
+    // 兩邊收到的都讀完（一陣子沒有新的），記下退回和最後的表。
+    let mut refused = vec![];
+    let mut table = Value::Null;
+    for socket in [&mut coach, &mut phone] {
+        while let Ok(Some(Ok(Message::Text(text)))) =
+            tokio::time::timeout(Duration::from_millis(1000), socket.next()).await
+        {
+            let m: Value = serde_json::from_str(&text).unwrap();
+            if m["kind"] == "claimRefused" {
+                refused.push((
+                    m["key"].as_str().unwrap().to_owned(),
+                    m["by"].as_str().unwrap().to_owned(),
+                ));
+            } else if m["kind"] == "runThroughs" {
+                table = m;
+            }
+        }
+    }
+    let held: std::collections::HashMap<String, String> =
+        holders(&table).into_iter().map(|h| (h.0, h.1)).collect();
+    assert_eq!(held.len(), keys.len());
+    refused.sort();
+    let mut want: Vec<_> = held.into_iter().collect();
+    want.sort();
+    assert_eq!(refused, want, "每組退回一個人，退回時說的是拿到的人");
+}
+
 async fn say(socket: &mut Socket, message: Value) {
     socket
         .send(Message::Text(message.to_string().into()))

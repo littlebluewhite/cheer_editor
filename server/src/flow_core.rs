@@ -201,16 +201,24 @@ impl FlowCore {
         self.call_two("amendRecordsJson", flow, ask)
     }
 
-    /// 一起記全上的表做一件事（`runTogetherJson`，#352，ADR 0020）：runs 是現在的表的 JSON，event 是 RunEvent 的 JSON
-    /// 多帶 now、viewers，回新的表、回答、變了沒、給每個看的人的樣子的 JSON。伺服器還沒叫（ADR 0020 決定下一張走哪條路），
-    /// 現在只給 `run_together_timing` 量時間。
-    #[cfg(test)]
-    pub(crate) fn run_together(
+    /// 一起記全上的表做一件事（`runTogetherJson`，#352、#353，ADR 0020）：runs 是現在的表的 JSON，event 是 RunEvent 的 JSON
+    /// 多帶 now、viewers，回新的表、回答、變了沒、給每個看的人的樣子的 JSON（#353 起房間的每件事都叫它，見 run_together.rs）。
+    pub fn run_together(
         &self,
         runs: String,
         event: String,
     ) -> impl Future<Output = Result<String, CoreError>> + use<> {
         self.call_two("runTogetherJson", runs, event)
+    }
+
+    /// 一起記全上只要樣子（`runViewsJson`，#353）：runs 同上，ask 是 `{ now, viewers }` 的 JSON，
+    /// 回照 viewers 的順序、每個人看到的每次全上的 JSON。打招呼、斷線 1 分鐘後再說一次時叫。
+    pub fn run_views(
+        &self,
+        runs: String,
+        ask: String,
+    ) -> impl Future<Output = Result<String, CoreError>> + use<> {
+        self.call_two("runViewsJson", runs, ask)
     }
 
     /// 收紀錄時照「記一次」的規則檢查（`checkRecordsJson`）：records 是 StoredAttempt[] 的 JSON，
@@ -577,8 +585,15 @@ mod tests {
             let out: serde_json::Value = serde_json::from_str(out).unwrap();
             assert_eq!(out["answer"]["kind"], "done", "拿一組沒拿到");
             assert_eq!(out["views"].as_array().map(Vec::len), Some(10));
-            assert_eq!(out["views"][9][0]["keys"].as_array().map(Vec::len), Some(40), "表裡不是 40 組");
-            assert_eq!(out["views"][9][0]["people"].as_array().map(Vec::len), Some(10));
+            assert_eq!(
+                out["views"][9][0]["keys"].as_array().map(Vec::len),
+                Some(40),
+                "表裡不是 40 組"
+            );
+            assert_eq!(
+                out["views"][9][0]["people"].as_array().map(Vec::len),
+                Some(10)
+            );
         };
         println!("表 {} bytes、拿一組的事 {} bytes", runs.len(), event.len());
 
@@ -590,7 +605,8 @@ mod tests {
                     let mut ms = vec![];
                     for i in 0..1_003 {
                         let start = Instant::now();
-                        let out = call(ctx, "runTogetherJson", (runs.clone(), event.clone())).unwrap();
+                        let out =
+                            call(ctx, "runTogetherJson", (runs.clone(), event.clone())).unwrap();
                         let took = start.elapsed().as_secs_f64() * 1000.0;
                         // 計時外確認拿到了（拿不到的回得比較快）；回的樣子在下面 claimed 整個查一次
                         assert!(out.contains(r#""answer":{"kind":"done"}"#), "拿一組沒拿到");
@@ -603,22 +619,83 @@ mod tests {
             })
             .await
             .unwrap();
-        claimed(&core.run_together(runs.clone(), event.clone()).await.unwrap());
+        claimed(
+            &core
+                .run_together(runs.clone(), event.clone())
+                .await
+                .unwrap(),
+        );
         let (min, median, max) = summary(own);
-        println!("自己的時間（1,000 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms（門檻 2）");
+        println!(
+            "自己的時間（1,000 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms（門檻 2）"
+        );
 
         // 從交出去到拿回來（前面沒有排別的）：多了換執行緒。
         let mut alone = vec![];
         for i in 0..203 {
             let start = Instant::now();
-            let out = core.run_together(runs.clone(), event.clone()).await.unwrap();
+            let out = core
+                .run_together(runs.clone(), event.clone())
+                .await
+                .unwrap();
             if i >= 3 {
                 alone.push(start.elapsed().as_secs_f64() * 1000.0);
                 claimed(&out);
             }
         }
         let (min, median, max) = summary(alone);
-        println!("拿一組，前面沒排別的（200 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms");
+        println!(
+            "拿一組，前面沒排別的（200 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms"
+        );
+
+        // 只要樣子（`runViewsJson`，#353：打招呼、斷線 1 分鐘後再說一次）：同一張表、給 10 個人看。
+        let ask = r#"{"now":1795300060000,"viewers":[1,2,3,4,5,6,7,8,9,10]}"#.to_owned();
+        let seen = |out: &str| {
+            let out: serde_json::Value = serde_json::from_str(out).unwrap();
+            assert_eq!(out.as_array().map(Vec::len), Some(10));
+            assert_eq!(
+                out[9][0]["keys"].as_array().map(Vec::len),
+                Some(39),
+                "表裡不是 39 組"
+            );
+        };
+        let views_own = core
+            .submit({
+                let (runs, ask) = (runs.clone(), ask.clone());
+                move |ctx| {
+                    let mut ms = vec![];
+                    for i in 0..1_003 {
+                        let start = Instant::now();
+                        let out = call(ctx, "runViewsJson", (runs.clone(), ask.clone())).unwrap();
+                        let took = start.elapsed().as_secs_f64() * 1000.0;
+                        assert!(out.starts_with("[[{"), "沒有樣子");
+                        if i >= 3 {
+                            ms.push(took);
+                        }
+                    }
+                    ms
+                }
+            })
+            .await
+            .unwrap();
+        seen(&core.run_views(runs.clone(), ask.clone()).await.unwrap());
+        let (min, median, max) = summary(views_own);
+        println!(
+            "只要樣子，自己的時間（1,000 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms"
+        );
+        let mut views_alone = vec![];
+        for i in 0..203 {
+            let start = Instant::now();
+            let out = core.run_views(runs.clone(), ask.clone()).await.unwrap();
+            if i >= 3 {
+                views_alone.push(start.elapsed().as_secs_f64() * 1000.0);
+                seen(&out);
+            }
+        }
+        let (min, median, max) = summary(views_alone);
+        println!(
+            "只要樣子，前面沒排別的（200 次）: 最快 {min:.3}、中位數 {median:.3}、最慢 {max:.3} ms"
+        );
 
         // 2. 排隊的時間：約 1 MB 的流程（tests/fixtures/big-flow.js）在最前面插入一個八拍，步驟紀錄 0 筆（room_step_timing 的那一種）。
         let ask = core
@@ -635,7 +712,13 @@ mod tests {
             ))
             .await
             .unwrap();
-        let accepted = |out: &str| assert!(out.starts_with(r#"{"kind":"accepted""#), "{}", &out[..300.min(out.len())]);
+        let accepted = |out: &str| {
+            assert!(
+                out.starts_with(r#"{"kind":"accepted""#),
+                "{}",
+                &out[..300.min(out.len())]
+            )
+        };
         // 量尺：插入一個八拍自己（交出去到拿回來）。
         let mut step_alone = vec![];
         for i in 0..28 {
@@ -647,13 +730,18 @@ mod tests {
             }
         }
         let (min, median, max) = summary(step_alone);
-        println!("量尺：插入一個八拍自己（25 次）: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms");
+        println!(
+            "量尺：插入一個八拍自己（25 次）: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms"
+        );
         // 先交插入一個八拍（一叫就排進隊伍），馬上交拿一組，量拿一組從交出去到拿回來。
         let mut queued = vec![];
         for i in 0..28 {
             let step = core.take_step(ask.clone());
             let start = Instant::now();
-            let out = core.run_together(runs.clone(), event.clone()).await.unwrap();
+            let out = core
+                .run_together(runs.clone(), event.clone())
+                .await
+                .unwrap();
             let took = start.elapsed().as_secs_f64() * 1000.0;
             claimed(&out);
             accepted(&step.await.unwrap());
@@ -662,7 +750,9 @@ mod tests {
             }
         }
         let (min, median, max) = summary(queued);
-        println!("排隊的時間：前面排著插入一個八拍（25 次）: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms（門檻 250）");
+        println!(
+            "排隊的時間：前面排著插入一個八拍（25 次）: 最快 {min:.1}、中位數 {median:.1}、最慢 {max:.1} ms（門檻 250）"
+        );
     }
 
     #[test]

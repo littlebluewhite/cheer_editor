@@ -21,8 +21,9 @@
 //! 再說可以送步；補不上（步驟紀錄沒留、之前的步沒存改好的東西）就給伺服器現在的樣子。
 //! 連回來的打招呼也要紀錄：可以送步之前先給現在的紀錄（斷線時別人記的、改的、刪的）。
 //! 漏聽了房間裡的事（落後超過 256 件）也照這樣從資料庫補。
-//! 一起記全上（#262，ADR 0015）：誰在表裡、誰拿著哪幾組放在房間裡（見 run_together.rs），變了就告訴能記的人
-//! （檢視者不說）；連線斷了記下時間，1 分鐘後再說一次（當他離開）；被收回、降成檢視者踢出表。
+//! 一起記全上（#262，ADR 0015、0020）：誰在表裡、誰拿著哪幾組放在房間裡（流程核心給的 JSON，見 run_together.rs），
+//! 每件事一個一個叫流程核心，變了就把每個人看到的樣子告訴能記的人（檢視者不說）；連線斷了記下時間，
+//! 1 分鐘後再說一次（當他離開）；被收回、降成檢視者踢出表。
 //! 登入狀態不算了（被停用、改密碼、重設密碼、30 天到期、登出）：連線關掉，送來的不收（見 serve）。
 
 use std::collections::HashMap;
@@ -39,11 +40,12 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{AppError, SignedIn, session, signed_in};
+use crate::clock::Clock;
 use crate::cloud_flows::FlowBlocked;
 use crate::csrf::from_this_site;
-use crate::flow_core::FINGERPRINT;
+use crate::flow_core::{FINGERPRINT, FlowCore};
 use crate::records::{self, Amend, CloudRecord, DroppedRecord, RecordsChange, Stored};
-use crate::run_together::{Answer, Ask, Report, RunView, Runs, Who};
+use crate::run_together::{self, Answer, Ask, Event, Report, RunView, Who};
 use crate::sharing::{Role, VIEW_ONLY, no_access, role_of};
 
 /// 前一步被退回、還沒換成伺服器的樣子就送的步：退回的原因。
@@ -81,8 +83,8 @@ pub enum RoomEvent {
         from: u64,
         change: Arc<RecordsChange>,
     },
-    /// 一起記全上的人、組變了（#262）：能記的人照自己看到的樣子送。
-    Runs,
+    /// 一起記全上的人、組變了（#262）：每個人看到的樣子（使用者 id → 每次全上），能記的人送自己的。
+    Runs(Arc<HashMap<i64, Vec<RunView>>>),
 }
 
 /// 開著這支流程的一個連線：誰、在編輯還是檢視。
@@ -102,8 +104,15 @@ struct Room {
     steps: Arc<tokio::sync::Mutex<()>>,
     /// 開著的連線，照進來的先後。
     here: Vec<Here>,
-    /// 一起記全上（#262）：只放記憶體。
-    runs: Runs,
+    /// 一起記全上（#262）：只放記憶體，流程核心給的表的 JSON。一件一件改：讀、叫流程核心、存回去、告訴大家都在鎖裡。
+    runs: Arc<tokio::sync::Mutex<String>>,
+}
+
+/// 一支流程的一起記全上的表、發給連線的頻道、要給哪些人看（開著這支流程的每個人，不分權限）。
+struct RunTable {
+    runs: Arc<tokio::sync::Mutex<String>>,
+    events: tokio::sync::broadcast::Sender<RoomEvent>,
+    viewers: Vec<i64>,
 }
 
 /// 開著的房間：流程 id → 那支流程的房間。
@@ -126,7 +135,7 @@ impl Rooms {
                 events: tokio::sync::broadcast::channel(256).0,
                 steps: Default::default(),
                 here: Vec::new(),
-                runs: Runs::default(),
+                runs: Arc::new(tokio::sync::Mutex::new(run_together::EMPTY.to_owned())),
             })
             .events
             .subscribe()
@@ -183,52 +192,97 @@ impl Rooms {
         });
     }
 
-    /// 改一起記全上的人、組；變了就告訴每個連線（能記的人自己照 run_views 拿）。
-    fn runs<R>(&self, flow_id: &str, change: impl FnOnce(&mut Runs) -> R) -> Option<R> {
-        let mut rooms = self.lock();
-        let room = rooms.get_mut(flow_id)?;
-        let before = room.runs.clone();
-        let answer = change(&mut room.runs);
-        if room.runs != before {
-            let _ = room.events.send(RoomEvent::Runs);
-        }
-        Some(answer)
+    /// 這支流程的一起記全上的表（沒人開著是 None）。
+    fn run_table(&self, flow_id: &str) -> Option<RunTable> {
+        let rooms = self.lock();
+        let room = rooms.get(flow_id)?;
+        let mut viewers: Vec<i64> = room.here.iter().map(|h| h.user_id).collect();
+        viewers.sort_unstable();
+        viewers.dedup();
+        Some(RunTable {
+            runs: room.runs.clone(),
+            events: room.events.clone(),
+            viewers,
+        })
     }
 
-    /// viewer 看到的一起記全上。
-    fn run_views(
+    /// 一起記全上的一件事（ADR 0020）：叫一次流程核心，存回新的表；變了就把每個人看到的樣子告訴每個連線。
+    /// 回要跟送的人說的、表變了沒。沒人開著，或流程核心出錯（表不變、記一行 warn）時是 None。
+    async fn run_event(
         &self,
+        core: &FlowCore,
+        clock: &Clock,
+        flow_id: &str,
+        event: Event<'_>,
+    ) -> Option<(Answer, bool)> {
+        let table = self.run_table(flow_id)?;
+        let mut runs = table.runs.lock().await;
+        let now = clock.now().timestamp_millis();
+        match run_together::happen(core, &runs, event, now, &table.viewers).await {
+            Ok(done) => {
+                if done.changed {
+                    *runs = done.runs;
+                    let _ = table.events.send(RoomEvent::Runs(Arc::new(done.views)));
+                }
+                Some((done.answer, done.changed))
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "流程核心跑 runTogether 出錯，表不變");
+                None
+            }
+        }
+    }
+
+    /// viewer 看到的一起記全上（打招呼時、收到的樣子裡沒有他時）。流程核心出錯時記一行 warn、當沒有。
+    async fn run_views(
+        &self,
+        core: &FlowCore,
+        clock: &Clock,
         flow_id: &str,
         viewer: i64,
-        now: chrono::DateTime<chrono::Utc>,
     ) -> Vec<RunView> {
-        self.lock()
-            .get(flow_id)
-            .map(|room| room.runs.view(viewer, now))
-            .unwrap_or_default()
+        let Some(table) = self.run_table(flow_id) else {
+            return vec![];
+        };
+        let runs = table.runs.lock().await;
+        let now = clock.now().timestamp_millis();
+        match run_together::views(core, &runs, now, &[viewer]).await {
+            Ok(mut views) => views.remove(&viewer).unwrap_or_default(),
+            Err(err) => {
+                tracing::warn!(error = %err, "流程核心跑 runViews 出錯，當沒有");
+                vec![]
+            }
+        }
     }
 
     /// 一個連線斷了（#262）：在表上的記下斷線的時間、告訴別人；1 分鐘後再說一次（當他離開）。
-    fn run_disconnect(&self, flow_id: &str, conn: u64, now: chrono::DateTime<chrono::Utc>) {
-        let changed = {
-            let mut rooms = self.lock();
-            let Some(room) = rooms.get_mut(flow_id) else {
+    async fn run_disconnect(&self, core: &FlowCore, clock: &Clock, flow_id: &str, conn: u64) {
+        let Some((_, true)) = self
+            .run_event(core, clock, flow_id, Event::Disconnect { conn })
+            .await
+        else {
+            return;
+        };
+        let (rooms, core, clock, flow_id) = (
+            self.clone(),
+            core.clone(),
+            clock.clone(),
+            flow_id.to_owned(),
+        );
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(61)).await;
+            let Some(table) = rooms.run_table(&flow_id) else {
                 return;
             };
-            let changed = room.runs.disconnect(conn, now);
-            if changed {
-                let _ = room.events.send(RoomEvent::Runs);
+            let runs = table.runs.lock().await;
+            let now = clock.now().timestamp_millis();
+            match run_together::views(&core, &runs, now, &table.viewers).await {
+                Ok(views) => {
+                    let _ = table.events.send(RoomEvent::Runs(Arc::new(views)));
+                }
+                Err(err) => tracing::warn!(error = %err, "流程核心跑 runViews 出錯，不再說一次"),
             }
-            changed
-        };
-        if changed {
-            let rooms = self.clone();
-            let flow_id = flow_id.to_owned();
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(61)).await;
-                rooms.tell(&flow_id, RoomEvent::Runs);
-            });
-        }
+        });
     }
 
     /// 一個連線走了：從在場名單拿掉；沒人開著就拿掉這支的房間。
@@ -540,6 +594,7 @@ pub async fn join(
     Ok(ws.on_upgrade(move |socket| async move {
         let rooms = state.rooms.clone();
         let clock = state.clock.clone();
+        let core = state.core.clone();
         let conn = rooms.next_conn.fetch_add(1, Ordering::Relaxed);
         let who = Connected {
             user_id,
@@ -550,7 +605,7 @@ pub async fn join(
         if let Err(e) = serve(state, socket, &id, who).await {
             tracing::error!(err = %e, "房間出錯");
         }
-        rooms.run_disconnect(&id, conn, clock.now());
+        rooms.run_disconnect(&core, &clock, &id, conn).await;
         rooms.leave(&id, conn);
     }))
 }
@@ -632,9 +687,14 @@ async fn serve(
         editing: editing && role.can_edit(),
     };
     state.rooms.update_here(flow_id, |list| list.push(here));
-    let views = state.rooms.run_views(flow_id, user_id, state.clock.now());
-    if role.can_record() && !views.is_empty() {
-        tell(&mut socket, &RoomMessage::RunThroughs { runs: views }).await?;
+    if role.can_record() {
+        let views = state
+            .rooms
+            .run_views(&state.core, &state.clock, flow_id, user_id)
+            .await;
+        if !views.is_empty() {
+            tell(&mut socket, &RoomMessage::RunThroughs { runs: views }).await?;
+        }
     }
     let who = Who {
         user_id,
@@ -715,9 +775,9 @@ async fn serve(
                         continue;
                     }
                     let report = Report { id: id.clone(), date, started_at, keys, touched, joining };
-                    let now = state.clock.now();
-                    let answer = state.rooms.runs(flow_id, |runs| runs.report(&who, report, now));
-                    match told_run(id, None, answer) {
+                    let event = Event::Report { who, report };
+                    let answer = state.rooms.run_event(&state.core, &state.clock, flow_id, event).await;
+                    match told_run(id, None, answer.map(|(answer, _)| answer)) {
                         Some(message) => message,
                         None => continue,
                     }
@@ -733,9 +793,9 @@ async fn serve(
                         RoomRequest::LeaveRun { run } => (run, None, Ask::Leave),
                         _ => unreachable!(),
                     };
-                    let now = state.clock.now();
-                    let answer = state.rooms.runs(flow_id, |runs| runs.ask(&who, &run, ask, now));
-                    match told_run(run, key, answer) {
+                    let event = Event::Ask { who, run: run.clone(), ask };
+                    let answer = state.rooms.run_event(&state.core, &state.clock, flow_id, event).await;
+                    match told_run(run, key, answer.map(|(answer, _)| answer)) {
                         Some(message) => message,
                         None => continue,
                     }
@@ -750,8 +810,8 @@ async fn serve(
                 Ok(RoomEvent::Permission { user_id: who, role: changed }) if who == user_id => {
                     // 被收回、降成檢視者：踢出表，拿著的組放掉（#262）。
                     if !changed.is_some_and(|r| r.can_record()) {
-                        let now = state.clock.now();
-                        state.rooms.runs(flow_id, |runs| runs.kick(user_id, now));
+                        let event = Event::Kick { user_id };
+                        state.rooms.run_event(&state.core, &state.clock, flow_id, event).await;
                     }
                     if let Some(r) = changed {
                         role = r;
@@ -772,8 +832,12 @@ async fn serve(
                     known = step;
                     RoomMessage::Changed { step, by, change: RawValue::from_string(change.to_string())? }
                 }
-                Ok(RoomEvent::Runs) if role.can_record() => RoomMessage::RunThroughs {
-                    runs: state.rooms.run_views(flow_id, user_id, state.clock.now()),
+                Ok(RoomEvent::Runs(views)) if role.can_record() => RoomMessage::RunThroughs {
+                    // 算樣子時還沒在在場名單裡（剛連上）：自己再拿一次。
+                    runs: match views.get(&user_id) {
+                        Some(mine) => mine.clone(),
+                        None => state.rooms.run_views(&state.core, &state.clock, flow_id, user_id).await,
+                    },
                 },
                 Ok(RoomEvent::Present(here)) => RoomMessage::Present { people: present_for(&here, user_id) },
                 Ok(RoomEvent::Recorded { from, user_id: by, name, records }) if from != conn => {

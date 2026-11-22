@@ -1,7 +1,7 @@
-// 一起記全上的表（#352，ADR 0015、0020）：規則照真的伺服器（server/src/run_together.rs）。時間用給的。
+// 一起記全上的表（#352、#353，ADR 0015、0020）：規則只在流程核心這裡，真的伺服器（server/src/run_together.rs）和假伺服器都叫它。時間用給的。
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { runTogether, runViews, type RunEvent, type RunsTogether, type RunTogetherView } from './index';
-import { runTogetherJson } from './bundle-entry';
+import { runTogetherJson, runViewsJson } from './bundle-entry';
 import type { RunView } from '../api-types/RunView';
 
 // 給能記的人看的一次全上跟伺服器的 RunView（src/lib/api-types/）各寫一次：兩邊不一樣時 npm run check 會錯。
@@ -219,5 +219,22 @@ describe('runTogether：changed、不改傳進來的', () => {
 		const out = JSON.parse(runTogetherJson(JSON.stringify(a.runs), JSON.stringify({ ...claim(LIN, 'n:2', null), now: sec(2), viewers: [1, 2] })));
 		const want = runTogether(a.runs, claim(LIN, 'n:2', null), sec(2));
 		expect(out).toEqual({ ...want, views: [runViews(want.runs, 1, sec(2)), runViews(want.runs, 2, sec(2))] });
+	});
+	it('JSON 版只要樣子（打招呼、斷線 1 分鐘後再說一次）：照 viewers 的順序，表不變', () => {
+		const a = play([[sec(0), report(WANG, ['n:1'], ['n:1'])], [sec(1), report(LIN, ['n:2'], [], true)], [sec(2), { kind: 'disconnect', conn: LIN.conn }]]);
+		const runs = JSON.stringify(a.runs);
+		const out = JSON.parse(runViewsJson(runs, JSON.stringify({ now: sec(70), viewers: [2, 1] })));
+		const run = (me: number) => ({
+			id: RUN,
+			date: '2026-11-22',
+			startedAt: T0,
+			people: [{ name: '王教練', me: me === 1, away: false }],
+			keys: [
+				{ key: 'n:1', userId: 1, name: '王教練', mine: me === 1, touched: true, away: false },
+				{ key: 'n:2', userId: 2, name: '林教練', mine: me === 2, touched: false, away: true }
+			]
+		});
+		expect(out).toEqual([[run(2)], [run(1)]]);
+		expect(JSON.parse(runViewsJson('[]', JSON.stringify({ now: sec(70), viewers: [1] })))).toEqual([[]]);
 	});
 });
