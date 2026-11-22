@@ -14,6 +14,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{LinkPurpose, SignedIn, new_link, password_mail, signed_in, signed_out};
+use crate::cloud_flows::iso;
 use crate::flow_room::RoomEvent;
 use crate::mail::{Mail, MailError};
 use crate::sharing::{delete_flow, hand_over_flows, tell_new_owner};
@@ -49,7 +50,13 @@ pub enum UserStatus {
     /// 邀請過期，他還沒設密碼。
     InviteExpired,
     /// 已停用：他擁有幾支流程（有的話寫「已停用・他有 N 支流程」，可以移交）。
-    Disabled { flows: u32 },
+    /// 他自己要求刪除帳號的（#370）帶要求的時間（ISO 8601，UTC）：寫「要求刪除・日期」，不給移交。
+    Disabled {
+        flows: u32,
+        #[serde(rename = "deleteRequested", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        delete_requested: Option<String>,
+    },
 }
 
 #[derive(Deserialize, TS)]
@@ -130,6 +137,8 @@ struct StoredUser {
     invite_until: Option<DateTime<Utc>>,
     /// 他擁有幾支流程。
     flows: i64,
+    /// 他自己要求刪除帳號的時間（#370）。
+    delete_requested_at: Option<DateTime<Utc>>,
 }
 
 /// 所有使用者（照加進來的順序）。
@@ -142,7 +151,8 @@ pub async fn list(
                 u.disabled_at IS NOT NULL AS disabled,
                 (SELECT max(l.expires_at) FROM password_links l
                  WHERE l.user_id = u.id AND l.purpose = 'invite') AS invite_until,
-                (SELECT count(*) FROM flows f WHERE f.owner_id = u.id) AS flows
+                (SELECT count(*) FROM flows f WHERE f.owner_id = u.id) AS flows,
+                u.delete_requested_at
          FROM users u ORDER BY u.id",
     )
     .fetch_all(&state.db)
@@ -165,6 +175,7 @@ fn status(now: DateTime<Utc>, u: &StoredUser) -> UserStatus {
     if u.disabled {
         return UserStatus::Disabled {
             flows: u.flows as u32,
+            delete_requested: u.delete_requested_at.map(iso),
         };
     }
     if u.has_password {
@@ -328,7 +339,7 @@ pub async fn disable(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// 恢復：他用原本的密碼就能登入（停用前還沒設密碼的，要重寄邀請）。
+/// 恢復：他用原本的密碼就能登入（停用前還沒設密碼的，要重寄邀請）。他要求過刪除帳號的，要求一起取消（#370）。
 pub async fn enable(
     Admin(_): Admin,
     State(state): State<AppState>,
@@ -336,7 +347,7 @@ pub async fn enable(
 ) -> Result<Response, AdminError> {
     let mut tx = state.db.begin().await?;
     let done = sqlx::query(
-        "UPDATE users SET disabled_at = NULL WHERE id = $1 AND disabled_at IS NOT NULL",
+        "UPDATE users SET disabled_at = NULL, delete_requested_at = NULL WHERE id = $1 AND disabled_at IS NOT NULL",
     )
     .bind(id)
     .execute(&mut *tx)
@@ -348,7 +359,7 @@ pub async fn enable(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// 移交：只有被停用的人（不然 409 notAllowed）。他擁有的流程全部交給 email 那個人，他變這些流程的編輯者。
+/// 移交：只有被停用、不是自己要求刪除帳號的人（不然 409 notAllowed，#370）。他擁有的流程全部交給 email 那個人，他變這些流程的編輯者。
 /// 擋：沒帳號、交給他自己、接手的人被停用。回交出去幾支。
 pub async fn hand_over(
     Admin(_): Admin,
@@ -360,7 +371,12 @@ pub async fn hand_over(
     let Some((_, _, _, disabled)) = user(&mut tx, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    if !disabled {
+    let requested: bool =
+        sqlx::query_scalar("SELECT delete_requested_at IS NOT NULL FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !disabled || requested {
         return Err(AdminProblem::NotAllowed.into());
     }
     let to: Option<(i64, String, bool)> = sqlx::query_as(

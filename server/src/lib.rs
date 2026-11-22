@@ -141,6 +141,10 @@ pub fn app(state: AppState, site: &Path) -> Router {
         .route("/api/forgot-password", post(my_account::forgot_password))
         .route("/api/account/name", post(my_account::change_name))
         .route("/api/account/password", post(my_account::change_password))
+        .route(
+            "/api/account/delete",
+            get(my_account::delete_summary).post(my_account::request_delete),
+        )
         // 建置把每頁存成 <名字>.html（例：/guide → guide.html），重新整理才打得開。
         // 找不到的路徑回前端的入口頁，讓前端自己處理路由。
         .fallback_service(

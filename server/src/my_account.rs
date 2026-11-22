@@ -1,22 +1,24 @@
 //! 忘記密碼、我的帳號（改名字、改密碼）（#246）。字和規矩照 #183、#190 的結論留言。
+//! 要求刪除帳號（#370，照 #325 的結論）：馬上停用，寄他和管理員各一封信；真的刪由管理員做（admin.rs 的 delete）。
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{
-    AppError, LinkPurpose, Me, SignedIn, hash_password, new_link, password_mail, password_problem,
-    signed_in, signed_out, verify_password,
+    AppError, LinkPurpose, Me, SignedIn, cleared_cookie, hash_password, new_link, password_mail,
+    password_problem, signed_in, signed_out, verify_password,
 };
 use crate::lockout;
+use crate::mail::{Mail, MailError};
 
 /// 同一個 email 的忘記密碼信，一小時最多寄 3 封（OWASP：每個帳號限制重設請求的次數）。
 /// 超過的照樣回一樣的話，只是不寄。只記在記憶體：伺服器重開就歸零，擋的只是一直寄信煩人。
@@ -50,6 +52,14 @@ pub struct ChangePasswordRequest {
     pub current: String,
     /// 新密碼。
     pub password: String,
+}
+
+/// 要求刪除帳號的確認框：我擁有幾支流程、其中幾支有分享給別人（有別人的權限）。
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct DeleteSummary {
+    pub flows: u32,
+    pub shared: u32,
 }
 
 /// 忘記密碼：一律馬上回 204，有沒有帳號、有沒有被停用都一樣。查人、寄信都在背景做，回應一樣快。
@@ -180,4 +190,96 @@ pub async fn change_password(
     tx.commit().await?;
     signed_out(&state, user_id);
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// 要求刪除帳號的確認框要的數字。沒登入 401。
+pub async fn delete_summary(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let Some(me) = signed_in(&state, &headers).await? else {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    };
+    let (flows, shared): (i64, i64) = sqlx::query_as(
+        "SELECT count(*),
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM flow_permissions p WHERE p.flow_id = f.id))
+         FROM flows f WHERE f.owner_id = $1",
+    )
+    .bind(me.user_id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(DeleteSummary {
+        flows: flows as u32,
+        shared: shared as u32,
+    })
+    .into_response())
+}
+
+/// 要求刪除帳號：帳號馬上停用（跟管理員停用一樣：每台裝置登出、連結作廢），記下要求的時間，
+/// 這台的 cookie 清掉。寄他「收到了」、寄管理員「某某要求刪除帳號」；信寄不出去就什麼都不改
+/// （今天的額度用完回 503）。管理員不能要求（409：要先用伺服器指令換別人當管理員）。沒登入 401。
+pub async fn request_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let Some(SignedIn { user_id, me, .. }) = signed_in(&state, &headers).await? else {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    };
+    if me.is_admin {
+        return Ok(StatusCode::CONFLICT.into_response());
+    }
+    let mut tx = state.db.begin().await?;
+    let done = sqlx::query(
+        "UPDATE users SET disabled_at = $1, delete_requested_at = $1 WHERE id = $2 AND disabled_at IS NULL",
+    )
+    .bind(state.clock.now())
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    if done.rows_affected() == 0 {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    for sql in [
+        "DELETE FROM sessions WHERE user_id = $1",
+        "DELETE FROM password_links WHERE user_id = $1",
+    ] {
+        sqlx::query(sql).bind(user_id).execute(&mut *tx).await?;
+    }
+    let admins: Vec<String> = sqlx::query_scalar("SELECT email FROM users WHERE is_admin")
+        .fetch_all(&mut *tx)
+        .await?;
+    let name = &me.name;
+    let mut mails = vec![Mail {
+        to: me.email.clone(),
+        subject: "收到你要求刪除帳號：競技啦啦隊流程編輯器".into(),
+        text: format!(
+            "{name}，你好：\n\n收到你要求刪除競技啦啦隊流程編輯器的帳號。你的帳號已經停用，每台裝置都登出了，30 天內會刪好，刪好會再寄信告訴你。\n\n你擁有的流程會一起刪掉；在刪掉之前，有權限的人還能照常用。\n\n不想刪了，回這封信。\n"
+        ),
+    }];
+    for to in admins {
+        mails.push(Mail {
+            to,
+            subject: format!("{name}要求刪除帳號：競技啦啦隊流程編輯器"),
+            text: format!(
+                "{name}（{}）在帳號頁要求刪除帳號，他的帳號已經停用。\n\n請在 30 天內到「管理使用者」頁刪除；他回信說不想刪了，就按「恢復」。\n",
+                me.email
+            ),
+        });
+    }
+    for mail in mails {
+        match state.mailer.send(mail).await {
+            Ok(()) => {}
+            Err(MailError::OverQuota) => {
+                return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+    tx.commit().await?;
+    signed_out(&state, user_id);
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, cleared_cookie())],
+    )
+        .into_response())
 }

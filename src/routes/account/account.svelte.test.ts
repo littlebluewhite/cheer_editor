@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import type { UnsentRecords } from '#lib/offline-store.js';
-import { fakeOfflineStore, fakeServer, flush } from '#lib/test-fakes.js';
+import { fakeOfflineStore, fakeServer, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
+import { libSample } from '#lib/test-flows.js';
 import Account from './+page.svelte';
 
 // jsdom 沒有 scrollIntoView（錯誤訊息出現時捲過去，reveal.ts）。
@@ -12,8 +13,13 @@ const NEWER = '換一句新的話當密碼也很好記得住吧';
 const LEAKED = 'correct horse battery staple';
 
 /** 我的帳號頁；went 是換頁去的網址。unsent：這台還沒傳的成功率紀錄（離線存放，#260）。 */
-async function accountPage(signedIn: string | null = lin.email, unsent: UnsentRecords[] = []) {
-	const fake = fakeServer({ users: [{ ...lin }], signedIn, breached: [LEAKED] });
+async function accountPage(signedIn: string | null = lin.email, unsent: UnsentRecords[] = [], isAdmin = false) {
+	const wang = { email: 'wang@example.com', name: '王教練', isAdmin: !isAdmin };
+	const flows: FakeCloudFlow[] = [
+		{ id: 'c1', owner: lin.email, flow: libSample(), updatedAt: '2026-11-07T00:00:00Z', people: { [wang.email]: 'editor' } },
+		{ id: 'c2', owner: lin.email, flow: libSample(), updatedAt: '2026-11-07T00:00:00Z' }
+	];
+	const fake = fakeServer({ users: [{ ...lin, isAdmin }, wang], signedIn, breached: [LEAKED], flows });
 	const offline = fakeOfflineStore({ unsent });
 	const went: string[] = [];
 	render(Account, { server: fake.server, go: (url: string) => went.push(url), offline: offline.store });
@@ -120,5 +126,82 @@ describe('我的帳號頁', () => {
 		expect(state.signedIn).toBeNull();
 		expect(went).toEqual(['/']);
 		expect(await offline.store.unsent()).toEqual([]);
+	});
+
+	it('要求刪除帳號（#370）：確認框寫會刪什麼、流程幾支幾支有分享；確認後帳號停用、這台登出、離線副本清掉，同一組帳密登不進來', async () => {
+		const { state, server, went, offline } = await accountPage();
+		await offline.store.saveCopy({ flowId: 'c1', name: '流程', savedAt: 1, openedAt: 1, role: 'owner', step: 0, flow: {}, records: [] });
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		const box = screen.getByRole('dialog', { name: '要求刪除帳號？' });
+		expect(within(box).getByText('你有 2 支流程，1 支有分享；要留給隊上，先移交。')).toBeTruthy();
+		expect(within(box).getByText('不想刪了：回「收到了」那封信，管理員會恢復你的帳號。')).toBeTruthy();
+		await fireEvent.click(within(box).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(state.users[0].disabled).toBe(true);
+		expect(state.signedIn).toBeNull();
+		expect(went).toEqual(['/']);
+		expect(offline.copyIds()).toEqual([]);
+		expect(await server.login(lin.email, lin.password)).toBe('wrong');
+	});
+
+	it('要求刪除帳號：按「取消」什麼都不變', async () => {
+		const { state, went } = await accountPage();
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(state.users[0].disabled).toBeFalsy();
+		expect(went).toEqual([]);
+	});
+
+	it('要求刪除帳號：沒網路時說要有網路，不跳確認框', async () => {
+		const { state } = await accountPage();
+		state.unreachable = true;
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.getByRole('alert').textContent).toBe('要有網路才能要求刪除帳號。連上網路再試。');
+	});
+
+	it('要求刪除帳號：這台還有沒傳的紀錄，先跳小框；「先不要登出」什麼都不做，「丟掉，登出」才送出要求', async () => {
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const { state, went, offline } = await accountPage(lin.email, [{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
+		const confirm = async (button: string) => {
+			await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+			await flush();
+			await fireEvent.click(within(screen.getByRole('dialog', { name: '要求刪除帳號？' })).getByRole('button', { name: '要求刪除帳號' }));
+			await flush();
+			await fireEvent.click(within(screen.getByRole('dialog', { name: '還有 1 筆成功率紀錄沒傳' })).getByRole('button', { name: button }));
+			await flush();
+		};
+		await confirm('先不要登出');
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(state.users[0].disabled).toBeFalsy();
+		expect(state.signedIn).toBe(lin.email);
+
+		await confirm('丟掉，登出');
+		expect(state.users[0].disabled).toBe(true);
+		expect(went).toEqual(['/']);
+		expect(await offline.store.unsent()).toEqual([]);
+	});
+
+	it('要求刪除帳號：今天寄不出信，確認框裡說明天再試，帳號不變', async () => {
+		const { state } = await accountPage();
+		state.mailQuota = true;
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		const box = screen.getByRole('dialog', { name: '要求刪除帳號？' });
+		await fireEvent.click(within(box).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(within(box).getByRole('alert').textContent).toBe('今天寄不出去，明天再試。');
+		expect(state.users[0].disabled).toBeFalsy();
+	});
+
+	it('管理員：沒有「要求刪除帳號」，寫一行怎麼辦', async () => {
+		await accountPage(lin.email, [], true);
+		expect(screen.queryByRole('button', { name: '要求刪除帳號' })).toBeNull();
+		expect(screen.getByText('你是管理員。要刪，先用伺服器指令換別人當管理員。')).toBeTruthy();
 	});
 });
