@@ -17,6 +17,7 @@
 	import { whyText } from '#lib/reason-text.js';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
+	import { printPage } from '#lib/print.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine from './EightCountCueLine.svelte';
 	import Field from './Field.svelte';
@@ -32,7 +33,7 @@
 		print?: () => void;
 	}
 
-	let { flow, onclose, selected = null, print = () => window.print() }: Props = $props();
+	let { flow, onclose, selected = null, print = printPage }: Props = $props();
 
 	/** 有隊員是這個全局角色才給選。 */
 	const roleChoices = $derived(
