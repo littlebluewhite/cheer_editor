@@ -13,7 +13,7 @@ Android 和電腦繼續用網站（`docs/flow-file-format.md`、`src/lib/file/sa
 - **原始碼**：WebKit、Chromium、Android 開放原始碼在某個 tag 寫的內容。程式碼怎麼寫是已確認的；出貨的版本是不是照這份編，查不到。所以從原始碼推出來的行為一律算推論。
 - **本機**：在這台 Mac（macOS 26.7.3）讀系統檔、跑 Swift 查到的。
 - **模擬器**：在 Xcode 27.2 的 iOS 18.1、iOS 27.2 模擬器裡跑小程式查到的。真機是不是一樣，是推論。
-- **真機**：站主 2026-11-22 用 `prototype/app-feel` 的小樣在真機上試的結果（轉述，不是我跑的）。
+- **真機**：站主 2026-11-22 用 `prototypes/app-feel/` 的小樣在真機上試的結果（轉述，不是我跑的）。
 - **推論**：我自己推的，沒有一手來源直接寫。
 - **查不到**：找過，沒有一手來源。
 - **沒查**：這次沒去找。
@@ -481,7 +481,7 @@ Android 的存檔（推論，步驟 G）：
 
 ## 查不到、要真機驗
 
-要真機才知道的。步驟都可以用小樣（`prototype/app-feel` 那支，`.cheerb` 是 Owner、`public.zip-archive` 是 Alternate、`LSSupportsOpeningDocumentsInPlace = YES`）直接跑。範例檔用 `docs/samples/sample-flow.zip`（只有假名），另外複製一份改名成 `sample-flow.cheerb`。每一項都記下 iOS 版本、LINE 版本（LINE 的「設定＞關於LINE」）。
+要真機才知道的。步驟都可以用小樣（`prototypes/app-feel/` 那支，`.cheerb` 是 Owner、`public.zip-archive` 是 Alternate、`LSSupportsOpeningDocumentsInPlace = YES`）直接跑。範例檔用 `docs/samples/sample-flow.zip`（只有假名），另外複製一份改名成 `sample-flow.cheerb`。每一項都記下 iOS 版本、LINE 版本（LINE 的「設定＞關於LINE」）。
 
 **A. 「檔案」App 點 `.zip`**（Alternate 那一半站主已經試過：解開，沒開 app）
 
@@ -579,7 +579,7 @@ Android 的存檔（推論，步驟 G）：
 
 **真機**
 
-- [DEVICE] 站主 2026-11-22 用 `prototype/app-feel` 的兩支小樣在 iPhone 上試的結果，經協調的代理分兩次轉述：「檔案」App 點 `app-feel-test.zip` 解成資料夾、沒開 app；Mac 電腦版 LINE 傳 `app-feel-test.cheerb`，iPhone 收到 `app-feel-test.zip`，存到「檔案」點開解出 `app-feel-test.cheerb`；iPhone 版 LINE 分享 `.cheerb` 顯示「不支援這種檔案」；LINE 傳 `app-feel-test.zip`「差不多」（細節不明）。LINE、iOS 的版本號沒有轉述。
+- [DEVICE] 站主 2026-11-22 用 `prototypes/app-feel/` 的兩支小樣在 iPhone 上試的結果，經協調的代理分兩次轉述：「檔案」App 點 `app-feel-test.zip` 解成資料夾、沒開 app；Mac 電腦版 LINE 傳 `app-feel-test.cheerb`，iPhone 收到 `app-feel-test.zip`，存到「檔案」點開解出 `app-feel-test.cheerb`；iPhone 版 LINE 分享 `.cheerb` 顯示「不支援這種檔案」；LINE 傳 `app-feel-test.zip`「差不多」（細節不明）。LINE、iOS 的版本號沒有轉述。
 
 **Apple**
 

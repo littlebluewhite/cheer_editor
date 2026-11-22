@@ -13,12 +13,12 @@ iPhone、iPad app 第一版的畫面就是現在的網頁，整包放進 app 裡
 - **用 Tauri 做殼**：預設沒開 scene 生命週期（用 iOS 27 SDK 建的 app 一定要開），合不合 Apple 的新規定沒測；iOS 的外掛只支援一部分。
 - **流程核心改寫成 Swift**：app 就多一份規則，會跟網頁、伺服器走偏；連雲端流程時伺服器還會比對流程核心的指紋。
 
-研究筆記在本機分支 `research/app-approaches`、`research/app-webview-shell`、`research/app-shared-core`、`research/app-audio-sync`、`research/app-store-rules`、`research/app-container-purge`；小樣和量到的數字在本機分支 `prototype/app-feel`。決定的細節在 #301，小樣比的結果在 #300，「用起來更順」的標準在 #299。
+研究筆記在 `docs/research/` 的 `app-approaches.md`、`app-webview-shell.md`、`app-shared-core.md`、`app-audio-sync.md`、`app-store-rules.md`、`app-container-purge.md`；小樣和量到的數字在 `prototypes/app-feel/`。決定的細節在 #301，小樣比的結果在 #300，「用起來更順」的標準在 #299。
 
 ## Consequences
 
-- 網頁在 app 裡用的是自訂網址，伺服器設的登入 cookie 變成第三方，預設被擋。ADR 0012 讓網頁和伺服器用同一個網址，就是為了躲這個。所以 app 裡的網頁不自己上網，由殼帶自己的 cookie 轉送（ADR 0019）。
-- 網頁改了，殼自己去網站抓新版換上，不用等新版 app；伺服器照樣只認同一份流程核心（ADR 0021）。只有殼改了，才要出新版 app、等審查。
+- 網頁在 app 裡用的是自訂網址，伺服器設的登入 cookie 變成第三方，預設被擋。ADR 0012 讓網頁和伺服器用同一個網址，就是為了躲這個。所以 app 裡的網頁不自己上網，由殼帶自己的 cookie 轉送（ADR 0023）。
+- 網頁改了，殼自己去網站抓新版換上，不用等新版 app；伺服器照樣只認同一份流程核心（ADR 0025）。只有殼改了，才要出新版 app、等審查。
 - 存在網頁裡（IndexedDB）的東西 WebKit 可能會清，所以草稿、離線副本、還沒傳的紀錄這些要改存到殼裡。
 - 網頁一秒最多約 60 格，app 沒有公開的方法解開；低耗電模式是 30 格（網站主人看了說可以）。
 - 音樂照網頁的方式播（Web Audio），不改由殼播。接藍牙喇叭量過（#303）：原生和網頁扣掉系統說的輸出延遲以後，畫面都還比聲音早約 105 ms（這台喇叭真的慢約 215 ms，系統只報 112 ms），兩邊差不到一格，殼播沒有幫助。所以 app 裡的畫面自動扣掉系統說的輸出延遲，再加上延遲校正，延遲校正每個喇叭各記一個；Safari、電腦照現在，不自動扣，只有延遲校正。「聲音最多早 40 毫秒、晚 60 毫秒」那條（#299）改成：內建喇叭、有線耳機要自動對準，藍牙喇叭、AirPods 手動調一次延遲校正後要對準（#309）。
