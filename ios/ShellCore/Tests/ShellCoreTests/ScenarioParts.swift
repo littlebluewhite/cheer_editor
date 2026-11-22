@@ -17,6 +17,9 @@ final class ScenarioShell {
     // #377
     let drafts = DraftFolder.forScenario()
 
+    // #378
+    let settings = SettingsFile.forScenario()
+
     // #380
 
     // #381
@@ -49,6 +52,9 @@ final class ScenarioShell {
 
             // #377
             DraftsPart(folder: drafts, outbox: outbox),
+
+            // #378
+            SettingsPart(file: settings),
 
             // #380
             SitePart(site: SiteAddress.production),

@@ -1,7 +1,7 @@
 // 網頁畫面（WKWebView）和橋怎麼接（#375）。規則在 ShellCore（BundledSite、NavigationPolicy、Bridge）；這裡只接 WebKit。
 //
 // - 自訂網址 app://local/ 由 SchemeHandler 送 App 裡那包網頁（不連到網站，不設 App-Bound Domains）。
-// - document start 塞 BootScript（window.__cheerShell）。
+// - document start 塞 BootScript（window.__cheerShell）。每次換頁前照現在的重做（小設定、上次那支會變，#378）。
 // - 網頁 → 殼：messageHandlers.shell（有回覆），只收這包網頁送的。殼 → 網頁：emit。
 // - 網頁畫面只開這包網頁；外面的連結交給 Safari（NavigationPolicy）。
 import ShellCore
@@ -13,6 +13,8 @@ final class WebShell: NSObject {
     let webView: WKWebView
     let bridge: Bridge
     private let openOutside: (URL) -> Void
+    /// 現在塞的那份（換頁前換掉，別人加的 user script 留著）。
+    private var boot: WKUserScript
 
     init(
         siteRoot: URL,
@@ -27,8 +29,8 @@ final class WebShell: NSObject {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.limitsNavigationsToAppBoundDomains = false
-        config.userContentController.addUserScript(WKUserScript(
-            source: BootScript.source(boot: bridge.boot), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        boot = Self.bootScript(bridge)
+        config.userContentController.addUserScript(boot)
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         config.userContentController.addScriptMessageHandler(MessageRelay(shell: self), contentWorld: .page, name: "shell")
@@ -37,6 +39,21 @@ final class WebShell: NSObject {
         #if DEBUG
         webView.isInspectable = true
         #endif
+    }
+
+    private static func bootScript(_ bridge: Bridge) -> WKUserScript {
+        WKUserScript(source: BootScript.source(boot: bridge.boot), injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
+    /// 網頁要整頁換（重新載入、換上新網頁）：一開始塞的照現在的重做，不然塞的是 App 打開時的小設定、上次那支。
+    /// WebKit 只能全部拿掉：別的 user script（例：ScreenFeelView 的）放回去，塞的那份還是排第一個。
+    private func refreshBoot() {
+        let scripts = webView.configuration.userContentController
+        let others = scripts.userScripts.filter { $0 !== boot }
+        scripts.removeAllUserScripts()
+        boot = Self.bootScript(bridge)
+        scripts.addUserScript(boot)
+        others.forEach(scripts.addUserScript)
     }
 
     /// 殼主動跟網頁說一句（網頁用 __cheerShell.on(name, fn) 收）。
@@ -77,7 +94,9 @@ private final class MessageRelay: NSObject, WKScriptMessageHandlerWithReply {
 
 extension WebShell: WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-        decide(action.request.url) ? .allow : .cancel
+        guard decide(action.request.url) else { return .cancel }
+        if action.targetFrame?.isMainFrame == true { refreshBoot() }
+        return .allow
     }
 
     /// target=_blank、window.open：App 只有一個畫面，自己的頁面就在原地開，外面的交給 Safari。

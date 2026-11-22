@@ -66,6 +66,27 @@ export function saveLegendOpen(open: boolean): void {
 	}
 }
 
+const LAST_FLOW_KEY = 'cheer-editor:lastFlow';
+
+/** 上次那支（#378）：App 打開時回哪支本機流程（它的草稿 id）；沒記（上次停在首頁）是 ''。網頁版不記。 */
+export function loadLastFlow(): string {
+	try {
+		return host().settings.get(LAST_FLOW_KEY) ?? '';
+	} catch {
+		return '';
+	}
+}
+
+/** 存 ''（停在首頁）就刪掉。 */
+export function saveLastFlow(draftId: string): void {
+	try {
+		if (draftId) host().settings.set(LAST_FLOW_KEY, draftId);
+		else host().settings.remove(LAST_FLOW_KEY);
+	} catch {
+		// 存不了就下次停在首頁
+	}
+}
+
 /** 拖分界改的大小：時間軸的高度（px）、右邊欄的寬度（視窗寬的比例）。存在 `cheer-editor:<名字>`。 */
 export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthRatio';
 
