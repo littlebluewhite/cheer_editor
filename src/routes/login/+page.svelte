@@ -7,7 +7,8 @@
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import { httpServer, tooManyTriesText, type ServerAdapter, type TooManyTries } from '#lib/server-api.js';
-	import { createIndexedDbOfflineStore, unsentCount, type OfflineStore } from '#lib/offline-store.js';
+	import { host } from '#lib/host.js';
+	import { unsentCount, type OfflineStore } from '#lib/offline-store.js';
 	import { revealAlert } from '#lib/components/reveal.js';
 	import { m } from '#lib/paraglide/messages.js';
 
@@ -19,7 +20,7 @@
 		/** 離線存放（#260）：這台還有幾筆沒傳；測試放假的。 */
 		offline?: OfflineStore;
 	}
-	let { server = httpServer(), go = (url) => location.assign(url), offline = createIndexedDbOfflineStore() }: Props = $props();
+	let { server = httpServer(), go = (url) => location.assign(url), offline = host().createOfflineStore() }: Props = $props();
 
 	let email = $state('');
 	let password = $state('');

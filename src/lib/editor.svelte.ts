@@ -22,7 +22,8 @@ import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame, Playback, type NextFrame } from '#lib/playback.svelte.js';
 import { browserTabChannel, type OpenTabChannel } from '#lib/tab-channel.js';
 import { httpServer, type ServerAdapter } from '#lib/server-api.js';
-import { createIndexedDbOfflineStore, type OfflineStore } from '#lib/offline-store.js';
+import type { OfflineStore } from '#lib/offline-store.js';
+import { host } from '#lib/host.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
@@ -65,7 +66,7 @@ export function browserAdapters(): EditorAdapters {
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame,
 		server: httpServer(),
-		offline: createIndexedDbOfflineStore(),
+		offline: host().createOfflineStore(),
 		video: { encoder: browserVideoEncoder(), save: saveVideo }
 	};
 }
