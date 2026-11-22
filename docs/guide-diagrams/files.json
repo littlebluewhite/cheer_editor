@@ -6,7 +6,7 @@
   "mode": "data-flow",
   "height": 520,
   "title": "存檔、草稿、分享",
-  "subtitle": "存檔得到流程檔；草稿是這台電腦自動留的備份，不是流程檔",
+  "subtitle": "存檔得到流程檔；草稿是這台裝置自動留的備份，不是流程檔",
   "nodes": [
     {
       "id": "edit",
@@ -32,7 +32,7 @@
       "fill": "#fefce8",
       "stroke": "#eab308",
       "flat": true,
-      "sublabel": "停手 1 秒自動存在這台電腦"
+      "sublabel": "停手 1 秒自動存在這台裝置"
     },
     {
       "id": "file",

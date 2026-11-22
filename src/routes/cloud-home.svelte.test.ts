@@ -65,7 +65,7 @@ describe('登入後的首頁', () => {
 			'校慶表演 11/6 15:20 改過',
 			'全國賽 11/5 09:03 改過'
 		]);
-		const here = screen.getByRole('region', { name: '這台電腦' });
+		const here = screen.getByRole('region', { name: '這台裝置' });
 		expect(within(here).getByRole('list', { name: '最近的流程' }).textContent).toContain('隊內練習');
 		expect(screen.getByRole('button', { name: '建立' })).toBeTruthy();
 		expect(screen.getByLabelText('開啟流程檔')).toBeTruthy();
@@ -95,8 +95,8 @@ describe('新建表單：存在雲端／這台', () => {
 		await flush();
 		const where = screen.getByRole('group', { name: '存在' });
 		expect((within(where).getByRole('radio', { name: /^雲端/ }) as HTMLInputElement).checked).toBe(true);
-		expect(within(where).getByText('換台電腦也打得開，可以分享')).toBeTruthy();
-		expect(within(where).getByText('只在這台電腦，靠草稿和流程檔留著')).toBeTruthy();
+		expect(within(where).getByText('換台裝置也打得開，可以分享')).toBeTruthy();
+		expect(within(where).getByText('只在這台裝置，靠草稿和流程檔留著')).toBeTruthy();
 	});
 
 	it('沒網路：雲端選不了、說原因、自動選這台；網路回來又能選', async () => {
