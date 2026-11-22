@@ -200,14 +200,14 @@ describe('能做什麼跟著變', () => {
 		expect(can(s.editor)).toEqual({ ...OWNER, edit: no('disconnected'), status: 'disconnected' });
 	});
 
-	it('雲端流程有新版：不能改、存檔狀態沒有字', async () => {
+	it('雲端流程有新版：不能改、不能下載、存檔狀態沒有字；照樣能記（#368）', async () => {
 		const s = await cloudEditor();
 		s.disconnect();
 		await flush();
 		s.state.fingerprint = 'newer';
 		s.reconnect();
 		await flush();
-		expect(can(s.editor)).toEqual({ ...OWNER, edit: no('new_version'), record: no('practice_rights'), status: null });
+		expect(can(s.editor)).toEqual({ ...OWNER, edit: no('new_version'), download: no('new_version'), status: null });
 	});
 
 	it('開著時權限改了：編輯者 → 記錄者 → 檢視者', async () => {

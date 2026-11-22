@@ -546,8 +546,11 @@ export class EditorSession {
 			this.practice = ALL_ALLOWED;
 			this.#copied = null;
 			this.clearSelection();
-			this.drillMarks = {};
-			this.drillScopes = {};
+			// 同一支換成最新的（離線副本、被新版擋住時，#368）：記錄頁點了還沒存的記號、練哪幾個環節留著
+			if (swap.switched || !flow) {
+				this.drillMarks = {};
+				this.drillScopes = {};
+			}
 			this.view = freshView();
 			this.notice = '';
 			this.#clearAsks();

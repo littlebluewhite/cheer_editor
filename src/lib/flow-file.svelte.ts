@@ -383,6 +383,12 @@ export class FlowFile {
 		cloud.onback = () => {
 			if (this.#source.kind === 'offline' && this.cloud === cloud) void this.openCloud(id, true);
 		};
+		// 斷線連回來才知道有新版、或伺服器回答前改了（#368）：照樣換成最新的（換上的那支打招呼也被擋，但沒斷過線、沒有沒送的步，不會再換）
+		cloud.onstale = async (lost) => {
+			if (this.cloud !== cloud) return;
+			await this.openCloud(id, true);
+			if (lost) this.#editor.session.notice = (lost === 1 ? m.cloud_replaced_lost_one : m.cloud_replaced_lost)({ count: lost });
+		};
 		await this.#keepCopy(copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 }, copy ? undefined : audio);
 	}
 
