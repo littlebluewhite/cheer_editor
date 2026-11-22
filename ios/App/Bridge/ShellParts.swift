@@ -12,6 +12,7 @@ enum ShellParts {
             // #376
 
             // #377
+            DraftsPart.inApp(outbox: context.outbox),
 
             // #380
 
