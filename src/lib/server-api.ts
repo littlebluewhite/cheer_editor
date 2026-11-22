@@ -2,6 +2,7 @@
 // 真的是 httpServer；假的是 #lib/test-fakes.js 的 fakeServer（前端測試不開真的伺服器）。
 // 訊息的型別從 Rust 產生（src/lib/api-types/，見 docs/deploy.md），對不上就編譯不過。
 import type { FlowDocument, NewFlowInput } from '#lib/core';
+import { host } from '#lib/host.js';
 import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
 import type { FlowBlocked } from '#lib/api-types/FlowBlocked.js';
 import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
@@ -393,7 +394,7 @@ export function httpServer(base = ''): ServerAdapter {
 			if (!res.ok) throw new ServerUnreachable();
 		},
 		openRoom(flowId) {
-			const url = new URL(`${base}/api/flows/${encodeURIComponent(flowId)}/room`, location.href);
+			const url = new URL(`${base}/api/flows/${encodeURIComponent(flowId)}/room`, host().siteUrl());
 			url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 			const waiting: string[] = [];
 			/** 連著（或第一次還在連）；斷線後到連回來之前是 false。 */

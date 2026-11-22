@@ -77,7 +77,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-  # 部署完看正式站那條路：/health，和音樂的 R2 bucket 准網站 PUT、GET（CORS）。伺服器的測試用假的 R2，看不到這個。
+  # 部署完看正式站那條路：/health，網頁的清單和清單裡每個檔的指紋（/web-bundle.json），和音樂的 R2 bucket 准網站 PUT、GET（CORS）。伺服器的測試用假的 R2，看不到這個。
   # 沒過不會倒回，只會在 Actions 頁變紅。R2_MUSIC_BUCKET_URL 是 repo 的 variable（不是金鑰）。
   check-live:
     needs: deploy

@@ -132,7 +132,8 @@ export function whatCanDo(source: FlowSource, signedIn: boolean, unsaved: boolea
 		newFlow: not,
 		save: not,
 		upload: not,
-		download: role,
+		// 有新版不能下載（#368）：會把新內容標成舊的格式版本
+		download: steps.newVersion ? no('new_version') : role,
 		share: yes(kind),
 		practice: yes(kind),
 		record: record(kind),

@@ -11,7 +11,7 @@ Fly app `littlebluewhite`，新加坡 `sin`，一台 shared-cpu-1x 512 MB，一�
 2. 全過才 `flyctl deploy --ha=false`（只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0015）：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
 3. `fly.toml` 的 `release_command` 在一台臨時機器上跑 `/app/cheer-server migrate`（資料表遷移）。**沒跑成就不部署**，舊版照常接流量。
 4. `bluegreen`：在旁邊開一台新的，`/health` 過了才切過去，不停機。切的時候 WebSocket 會斷，前端自己重連。
-5. 部署完跑 `npm run check:live`（`scripts/check-live.mjs`）：`/health` 回 `ok`，音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。
+5. 部署完跑 `npm run check:live`（`scripts/check-live.mjs`）：`/health` 回 `ok`；網頁的清單（下面「網頁的清單」）抓得到，清單裡每個檔抓下來大小和 SHA-256 都對得上；音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。
    伺服器的測試用假的 R2，看不到 CORS。沒過不會倒回，只會變紅。bucket 的網址放 repo 的 variable `R2_MUSIC_BUCKET_URL`
    （`https://<帳號 id>.r2.cloudflarestorage.com/<bucket>`，不是金鑰）。本機也能跑：`R2_MUSIC_BUCKET_URL=… npm run check:live`。
 
@@ -307,6 +307,31 @@ iPhone／iPad 主畫面的 `apple-touch-icon.png`、PWA manifest 的 `pwa-192x19
 ```sh
 sh scripts/app-icons.sh
 ```
+
+## 網頁的清單
+
+App 的殼照這份清單從網站抓新版網頁換上（ADR 0025）。網址固定是 **`/web-bundle.json`**（正式站 `https://littlebluewhite.com/web-bundle.json`）。
+
+`npm run build` 建完網頁後跑 `node scripts/web-bundle.mjs build`，寫出 `build/web-bundle.json`，跟網頁一起進映像檔；Dockerfile、部署流程、伺服器程式都沒改。`npm run dev` 底下沒有這個檔（只跑 `vite build` 的 `check:sw` 也沒有）。內容：
+
+```json
+{
+	"id": "整包網頁的代號（64 個 16 進位字）",
+	"files": [{ "path": "index.html", "size": 3591, "sha256": "64 個 16 進位字" }],
+	"minShellBuild": 42
+}
+```
+
+- `id`：每個檔一行「SHA-256、兩個空白、路徑」，照路徑排好接起來，再算一次 SHA-256。任何一個檔改了，代號就不一樣。殼比的是「跟網站上的一不一樣」，不比新舊。
+- `files`：建置結果（`build/`）的每個檔，路徑相對網站根目錄、用 `/` 分開、照字元排好；大小是 bytes。**不列**：清單自己、`sw.js`、`workbox-*.js`、`manifest.webmanifest`、`pwa-*.png`（殼用不到 service worker 和 PWA 的檔）。`apple-touch-icon.png`、`favicon.*` 照列（網頁的 HTML 用到）。
+- `minShellBuild`：要第幾版以上的殼（比建置號）。**平常不寫**；新網頁真的沒辦法在舊殼上跑才在 `scripts/web-bundle.mjs` 的 `MIN_SHELL_BUILD` 填上。
+- 不另外簽名：只從自己的網站（HTTPS）抓，每個檔比 SHA-256。
+
+同一個 commit 建兩次，清單一樣：SvelteKit 的版本名字（`version.name`，每頁 HTML 都帶著）預設是建置當下的時間，`vite.config.ts` 改成原始碼的 SHA-256（`scripts/web-bundle.mjs` 的 `sourceVersion`：`src`（不含產生出來的 `src/lib/paraglide`）、`static`、`messages`、`scripts`、`package.json`、`package-lock.json`、`vite.config.ts`、`project.inlang/settings.json`）。映像檔裡沒有 `.git`，所以不用 commit 的代號。
+
+找不到的路徑伺服器回 `200.html`、狀態還是 200，所以殼和 `check:live` 都不看狀態碼：清單要是看得懂的 JSON，每個檔的大小、SHA-256 都要對得上。部署時新舊兩台換手的那一下，可能拿到新清單、舊檔，殼就整包丟掉、下次再抓。
+
+本機試線上檢查：`npm run build`，用一個送 `build/`、找不到就回 `200.html` 的小伺服器（或 `cargo run`）開起來，`SITE_URL=http://127.0.0.1:8080 npm run check:live`（沒設 `R2_MUSIC_BUCKET_URL` 那條會紅，正常）。
 
 ## 第三方套件授權
 

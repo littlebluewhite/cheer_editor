@@ -1,7 +1,9 @@
-// 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算、連伺服器（jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標，前端測試不開真的伺服器），
+// 測試共用的假 adapter：存檔、草稿、分頁頻道、解碼、座標換算、連伺服器、網頁跑在哪裡（fakeHost：小設定、網站網址、問殼、離線存放；jsdom 沒有檔案系統、IndexedDB、Web Audio、SVG 座標，前端測試不開真的伺服器），
 // 一行建好帶假 adapter 的編輯器 module（testEditor，Node 也能用）、放好流程的編輯頁、開檔這些小工具，
 // 和頁面測試常用的範例流程。flowOf 用測試共用那份（#lib/test-flows.js）。只給測試用，頁面不 import。
 import { fireEvent, screen, within } from '@testing-library/svelte';
+import { onTestFinished } from 'vitest';
+import { swapHost, type Host, type SettingsStore, type Shell } from '#lib/host.js';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
@@ -110,6 +112,27 @@ export function fakeDraftStore(initial: Uint8Array | null = null, savedAt: Date 
 	};
 	const latest = () => [...all.values()].at(-1)?.bytes ?? null;
 	return { store, all, latest };
+}
+
+/** 換掉網頁跑在哪裡的其中幾樣（#373），這個測試跑完換回網頁版。 */
+export function fakeHost(changes: Partial<Host>): void {
+	onTestFinished(swapHost(changes));
+}
+
+/** 假的小設定：存在記憶體（saved：key → 存的字），一開始可以先放幾筆。 */
+export function fakeSettings(init: Record<string, string> = {}) {
+	const saved = new Map(Object.entries(init));
+	const settings: SettingsStore = {
+		get: (key) => saved.get(key) ?? null,
+		set: (key, value) => void saved.set(key, value),
+		remove: (key) => void saved.delete(key)
+	};
+	return { settings, saved };
+}
+
+/** 假的「問殼」：在 App 裡，會的是 features 那幾件。 */
+export function fakeShell(features: string[] = []): Shell {
+	return { inApp: true, can: (feature) => features.includes(feature) };
 }
 
 /**
