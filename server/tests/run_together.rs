@@ -765,17 +765,32 @@ async fn a_second_connection_of_the_same_person_never_shows_an_older_table_than_
 
     // 平板打招呼：一連上就是三組，之後收到的不會又變回比較舊的。
     hello(&mut tablet, &lin).await;
-    let mut seen = vec![];
-    while let Ok(Some(Ok(Message::Text(text)))) =
-        tokio::time::timeout(Duration::from_millis(1000), tablet.next()).await
-    {
-        let m: Value = serde_json::from_str(&text).unwrap();
-        if m["kind"] == "runThroughs" {
-            seen.push(holders(&m).len());
-        }
-    }
+    let seen: Vec<usize> = runs_until_present(&mut tablet)
+        .await
+        .iter()
+        .map(|m| holders(m).len())
+        .collect();
     assert_eq!(seen.first(), Some(&3));
     assert!(seen.iter().all(|n| *n == 3), "平板收到的組數：{seen:?}");
+}
+
+/// 打招呼之後、到自己進來的 present 為止收到的每個 runThroughs（連上到打招呼之間排著的都在 present 之前）。
+async fn runs_until_present(socket: &mut Socket) -> Vec<Value> {
+    let mut seen = vec![];
+    loop {
+        let m = tokio::time::timeout(Duration::from_secs(5), socket.next())
+            .await
+            .expect("伺服器一直沒說 present");
+        let Some(Ok(Message::Text(text))) = m else {
+            panic!("房間關了：{m:?}");
+        };
+        let m: Value = serde_json::from_str(&text).unwrap();
+        match m["kind"].as_str() {
+            Some("present") => return seen,
+            Some("runThroughs") => seen.push(m),
+            _ => {}
+        }
+    }
 }
 
 async fn say(socket: &mut Socket, message: Value) {

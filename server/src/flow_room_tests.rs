@@ -97,6 +97,7 @@ async fn a_minute_after_someone_disconnects_the_others_are_told_again_that_he_le
     while events.try_recv().is_ok() {}
 
     // 王教練斷線：馬上說他斷線了，還在表裡。
+    let disconnected = state.clock.now();
     run_disconnect(&state, FLOW, 1).await;
     state.rooms.leave(FLOW, 1);
     let away = next_runs(&mut events).await;
@@ -107,8 +108,10 @@ async fn a_minute_after_someone_disconnects_the_others_are_told_again_that_he_le
     assert_eq!(people(&gone), vec![("林教練", false)]);
     let wang_key = gone[0].keys.iter().find(|k| k.key == "n:1").unwrap();
     assert_eq!((wang_key.user_id, wang_key.away), (WANG, true));
+    // 是斷線後 61 秒那次說的（不是更晚才說）。
+    let after = state.clock.now() - disconnected;
     assert!(
-        state.clock.now() - chrono::Utc.with_ymd_and_hms(2026, 11, 7, 9, 0, 0).unwrap()
-            > chrono::Duration::seconds(60)
+        after >= chrono::Duration::seconds(61) && after < chrono::Duration::seconds(62),
+        "斷線後 {after} 才說"
     );
 }
