@@ -88,7 +88,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`cloudMusic`（殼代傳雲端流程的音樂，#382；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -208,7 +208,7 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - 殼：`ShellCore/Sources/ShellCore/Parts/SettingsPart.swift`（`settings`）。網頁：`src/lib/shell-settings.ts`，殼會 `settings` 才換（`Host.settings`）。說的話：`bridge-scenarios/current/settings.json`。
 - **怎麼拿**：document start 塞一份（boot 的 `settings`），網頁建編輯器時照舊同步讀；改了網頁先改自己記憶體裡那份，再馬上 `settingSet`／`settingRemove` 寫回殼。
 - **一開始塞的每次換頁前重做**（`WebShell` 的 `refreshBoot`；別人加的 user script 放回去）：殼換上新網頁、網頁行程當掉後重新載入，用的是同一個網頁畫面；不重做的話塞的是 App 打開時的小設定、上次那支。
-- **上次那支**：就是小設定裡的 `cheer-editor:lastFlow`（本機流程的草稿 id），網頁記、網頁開。殼說 `background`（#377 那句）時，開著本機流程就記它，在首頁（和雲端流程，#383 再接）就清掉。打開時記著就直接讀那份草稿開它，不先讀每份草稿列最近的流程；`app.html` 看殼塞的有記，首頁先藏起畫面，開好了或那份草稿沒了才給看（沒了就停在首頁，不說錯）。網頁版不記、不開。
+- **上次那支**：就是小設定裡的 `cheer-editor:lastFlow`（本機流程的草稿 id），網頁記、網頁開。殼說 `background`（#377 那句）時，開著本機流程就記它，在首頁、分享連結（沒有權限）就清掉；開著雲端流程記 `cloud:<流程 id>`（#383，下一節）。打開時記著就直接讀那份草稿開它，不先讀每份草稿列最近的流程；`app.html` 看殼塞的有記，首頁先藏起畫面，開好了或那份草稿沒了才給看（沒了就停在首頁，不說錯）。網頁版不記、不開。
 - **多久**：模擬器上從載入首頁到看到上次那支的場地約 0.7 秒（2026-11-23，iOS 27.2 iPad Pro 11 模擬器；跟別的管子測試一起跑時 0.7–1.7 秒；App 裡不開分頁頻道（#392），打開時不用等別的分頁回答；`PipeTests` 的 `真的那包網頁_在流程裡關掉再開_直接進那支流程_中間不停在首頁`；是新的網頁畫面、App 已經開著，不是冷開 App，只當參考）。真機在 #379。
 
 ## 雲端流程的音樂（#382）
@@ -221,8 +221,18 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - 傳到一半斷線：殼丟錯誤，網頁的 `fetch` 失敗（`ServerUnreachable`），畫面照網頁版說傳不上、拿不到；再選一次音樂檔、再打開就是再試。
 - **快不快**（2026-11-23，只在 iOS 27.2 模擬器上、本機的假 R2，不是真的 R2、不是真的網路；`PipeTests/CloudMusicPipeTests.swift` 的 `六十MB的音樂傳上去再拿回來`）：60 MB 上傳約 0.19 秒（含網頁轉 ArrayBuffer）、下載約 0.06 秒，只量了一次。真的 R2 還沒接上（docs/deploy.md、#263），真機沒量（#379）。
 
+## 離線存放（#383）
+
+雲端流程還沒傳的紀錄、離線副本（含音樂）、這台登入的是誰（斷網時首頁用的 `SignedInHere`）存在殼：`Application Support/Offline/`，**整個資料夾標成不進 iCloud 備份**（`isExcludedFromBackup`；還原時可能把舊的改動再送一次，離線副本很大、能再下載）。草稿、小設定照舊會進備份。標在資料夾上，不標在檔上：整個寫好才換上去（`.atomic`）的檔是新的檔，檔上的標記會不見；每次寫都再標一次。
+
+- 殼：`ShellCore/Sources/ShellCore/Parts/OfflinePart.swift`（`offline`）。網頁：`src/lib/shell-offline.ts`，殼會 `offline` 才換（`Host.createOfflineStore`，編輯器、登入頁、帳號頁三個地方都經過它）。說的話：`bridge-scenarios/current/offline.json`。
+- 存的樣子由網頁決定（帶版號，`src/lib/offline-store.ts` 讀），殼原樣存、原樣回：`unsent/<流程 id>.json`、`copies/<流程 id>.json`、`audio/<流程 id>/<音樂 id>`、`signedIn.json`。列離線副本不帶音樂；音樂一個檔一句（base64）。流程 id、音樂 id 只收英數字、`-`、`_`。
+- 留幾支、登出清什麼照網頁版（登出清離線副本、音樂、這台登入的是誰，沒傳的紀錄不動）。殼代網頁上網用的 cookie 罐子（`cookies-<host>-<port>.json`，#380）不在這個資料夾，照舊會進備份；登出時伺服器叫它清空。
+- **上次那支是雲端流程**：網頁記 `cloud:<流程 id>`。打開時這台有那支的離線副本就先開它（不先問伺服器；先當斷著：只能看、能記，名字旁寫「⚠ 離線」），房間連上（伺服器說可以送步）就自動換成最新的、可以改，中間記的跟斷線時記的一樣當沒傳的紀錄，連上就送（同一個 id 伺服器不記兩筆）；連上時畫面說「連上了。」。換成最新的時，離線副本裡有的音樂不再下載。被收回、被刪掉照房間說的回首頁（黃條說原因，離線副本刪掉）。沒有離線副本就照現在等伺服器（等的時候先畫首頁）。網頁版不記、不開。
+- 只在模擬器、Vitest 上試過（`src/lib/last-flow.svelte.test.ts`、`PipeTests/OfflinePipeTests.swift` 看存在哪、標成不備份）；真的關網路再開 App、iCloud 備份還原沒試（#379）。
+
 ## 還沒做的（後面的票）
 
-App 圖示、其他資料搬到殼（離線副本、沒傳的紀錄 #383 等）、列印（#391）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
+App 圖示、列印（#391）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
 
 已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。

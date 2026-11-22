@@ -5,6 +5,7 @@ import { swapHost, type Shell } from '#lib/host.js';
 import { DRAFTS_FEATURE, shellDraftStore } from '#lib/shell-drafts.js';
 import { appSite } from '#lib/app-site.js';
 import { SETTINGS_FEATURE, shellSettings } from '#lib/shell-settings.js';
+import { OFFLINE_FEATURE, shellOfflineStore } from '#lib/shell-offline.js';
 
 /**
  * 殼一開始塞的：殼的版本、建置號（網頁的清單的 minShellBuild 比這個）、會什麼（「問殼」can() 的名字）。
@@ -66,5 +67,8 @@ export function useShellIfInApp(): (() => void) | undefined {
 
 		// #380（網站網址）
 		...appSite(bridge.boot),
+
+		// #383（離線存放）
+		...(bridge.boot.features.includes(OFFLINE_FEATURE) && { createOfflineStore: () => shellOfflineStore(appShell(bridge)) }),
 	});
 }

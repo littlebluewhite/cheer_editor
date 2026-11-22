@@ -27,6 +27,9 @@ enum ShellParts {
             // #382
             CloudMusicPart(),
 
+            // #383
+            OfflinePart(folder: .inApplicationSupport()),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 

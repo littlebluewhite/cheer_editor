@@ -1,0 +1,112 @@
+{
+	"about": "離線存放存在殼裡（#383）：App 裡的離線存放（src/lib/shell-offline.ts）問殼，殼存在 App 自己的 Application Support/Offline，標成不進 iCloud 備份（還原時可能把舊的改動再送一次；離線副本能再下載）。存三樣：雲端流程還沒傳的紀錄（unsent）、離線副本（copy，音樂一個檔一句另外存）、這台登入的是誰（signedIn）。存的樣子由網頁決定（帶版號 v，src/lib/offline-store.ts 讀），殼原樣存、原樣回；清單照流程 id 排。留幾支、登出清什麼照網頁版，殼不管。流程 id、音樂 id 當檔名用，只收英數字、-、_。",
+	"scenarios": [
+		{
+			"name": "沒傳的紀錄存了讀得回來、刪得掉、全部丟掉",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["offline"] },
+			"steps": [
+				{ "from": "web", "name": "unsentList", "reply": [] },
+				{
+					"from": "web",
+					"name": "unsentSave",
+					"body": { "flowId": "c1", "value": { "v": 1, "flowId": "c1", "flowName": "全國賽", "records": [], "amends": [], "dropped": [{ "id": "t1" }] } },
+					"reply": null
+				},
+				{
+					"from": "web",
+					"name": "unsentList",
+					"reply": [{ "v": 1, "flowId": "c1", "flowName": "全國賽", "records": [], "amends": [], "dropped": [{ "id": "t1" }] }]
+				},
+				{ "from": "web", "name": "unsentDrop", "body": { "flowId": "c1" }, "reply": null },
+				{ "from": "web", "name": "unsentList", "reply": [] },
+				{
+					"from": "web",
+					"name": "unsentSave",
+					"body": { "flowId": "c2", "value": { "v": 1, "flowId": "c2", "flowName": "練習", "records": [], "amends": [], "dropped": [{ "id": "t2" }] } },
+					"reply": null
+				},
+				{ "from": "web", "name": "unsentClear", "reply": null },
+				{ "from": "web", "name": "unsentList", "reply": [] }
+			]
+		},
+		{
+			"name": "離線副本存了列得出來、音樂另外一個一個拿、刪得掉",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["offline"] },
+			"steps": [
+				{
+					"from": "web",
+					"name": "copySave",
+					"body": { "flowId": "c1", "value": { "v": 1, "flowId": "c1", "name": "全國賽", "savedAt": 1767225600000, "openedAt": 1767225600000, "role": "owner", "step": 3, "flow": { "name": "全國賽" }, "records": [] } },
+					"reply": null
+				},
+				{ "from": "web", "name": "copyAudioKeep", "body": { "flowId": "c1", "ids": ["a1"] }, "reply": null },
+				{ "from": "web", "name": "copyAudioSave", "body": { "flowId": "c1", "audioId": "a1", "bytes": "AQID" }, "reply": null },
+				{
+					"from": "web",
+					"name": "copyList",
+					"reply": [{ "v": 1, "flowId": "c1", "name": "全國賽", "savedAt": 1767225600000, "openedAt": 1767225600000, "role": "owner", "step": 3, "flow": { "name": "全國賽" }, "records": [] }]
+				},
+				{ "from": "web", "name": "copyAudioList", "body": { "flowId": "c1" }, "reply": ["a1"] },
+				{ "from": "web", "name": "copyAudioLoad", "body": { "flowId": "c1", "audioId": "a1" }, "reply": "AQID" },
+				{
+					"from": "web",
+					"name": "copySave",
+					"body": { "flowId": "c1", "value": { "v": 1, "flowId": "c1", "name": "全國賽", "savedAt": 1767225700000, "openedAt": 1767225700000, "role": "owner", "step": 4, "flow": { "name": "全國賽" }, "records": [] } },
+					"reply": null
+				},
+				{ "from": "web", "name": "copyAudioList", "body": { "flowId": "c1" }, "reply": ["a1"] },
+				{ "from": "web", "name": "copyAudioLoad", "body": { "flowId": "c1", "audioId": "a1" }, "reply": "AQID" },
+				{ "from": "web", "name": "copyDrop", "body": { "flowId": "c1" }, "reply": null },
+				{ "from": "web", "name": "copyList", "reply": [] },
+				{ "from": "web", "name": "copyAudioList", "body": { "flowId": "c1" }, "reply": [] }
+			]
+		},
+		{
+			"name": "登出：離線副本和這台登入的是誰清掉，沒傳的紀錄留著",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["offline"] },
+			"steps": [
+				{ "from": "web", "name": "signedInLoad", "reply": null },
+				{
+					"from": "web",
+					"name": "signedInSave",
+					"body": { "value": { "me": { "email": "lin@example.com", "name": "林教練", "isAdmin": false }, "cloudIds": ["c1"] } },
+					"reply": null
+				},
+				{
+					"from": "web",
+					"name": "signedInLoad",
+					"reply": { "me": { "email": "lin@example.com", "name": "林教練", "isAdmin": false }, "cloudIds": ["c1"] }
+				},
+				{
+					"from": "web",
+					"name": "copySave",
+					"body": { "flowId": "c1", "value": { "v": 1, "flowId": "c1", "name": "全國賽", "savedAt": 1767225600000, "openedAt": 1767225600000, "role": "owner", "step": 3, "flow": { "name": "全國賽" }, "records": [] } },
+					"reply": null
+				},
+				{
+					"from": "web",
+					"name": "unsentSave",
+					"body": { "flowId": "c1", "value": { "v": 1, "flowId": "c1", "flowName": "全國賽", "records": [], "amends": [], "dropped": [{ "id": "t1" }] } },
+					"reply": null
+				},
+				{ "from": "web", "name": "copiesClear", "reply": null },
+				{ "from": "web", "name": "copyList", "reply": [] },
+				{ "from": "web", "name": "signedInLoad", "reply": null },
+				{
+					"from": "web",
+					"name": "unsentList",
+					"reply": [{ "v": 1, "flowId": "c1", "flowName": "全國賽", "records": [], "amends": [], "dropped": [{ "id": "t1" }] }]
+				}
+			]
+		},
+		{
+			"name": "不像流程 id、音樂 id 的不存",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["offline"] },
+			"steps": [
+				{ "from": "web", "name": "copySave", "body": { "flowId": "../x", "value": { "v": 1, "flowId": "../x" } }, "error": "failed" },
+				{ "from": "web", "name": "copyAudioSave", "body": { "flowId": "c1", "audioId": "a/1", "bytes": "AQID" }, "error": "failed" },
+				{ "from": "web", "name": "copyList", "reply": [] }
+			]
+		}
+	]
+}
