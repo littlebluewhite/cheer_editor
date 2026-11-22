@@ -1,8 +1,9 @@
 // 網頁跑在哪裡（#373）：網頁版（瀏覽器）或 App（Swift 殼，ADR 0022）。兩邊不一樣、又不屬於編輯器的四樣收在這裡，換一處就全換：
-// 小設定存在哪、網站網址、「問殼」、離線存放怎麼建。
+// 小設定存在哪、網站網址、「問殼」、離線存放和草稿存放怎麼建。
 // 網頁版是 browserHost；App 一開始照殼塞的那份換上殼的版本（swapHost），測試用 #lib/test-fakes.js 的 fakeHost 換假的。
-// 編輯器收的其他 adapter（草稿、連伺服器…）還是走 EditorAdapters。
+// 編輯器收的其他 adapter（連伺服器…）還是走 EditorAdapters；草稿存放由 browserAdapters 照這裡建。
 
+import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { createIndexedDbOfflineStore, type OfflineStore } from '#lib/offline-store.js';
 
 /** 小設定存放（#lib/local-settings.js 用）：一開始就要同步讀得到，改了馬上寫。存的是字串。 */
@@ -31,9 +32,11 @@ export interface Host {
 	shell: Shell;
 	/** 建一個離線存放（編輯器、登入頁、帳號頁各建一個）。 */
 	createOfflineStore: () => OfflineStore;
+	/** 建一個草稿存放（編輯器建一個）。 */
+	createDraftStore: () => DraftStore;
 }
 
-/** 網頁版：瀏覽器的儲存（每次讀寫才碰 localStorage）、頁面自己的網址、不在 App 裡、IndexedDB。 */
+/** 網頁版：瀏覽器的儲存（每次讀寫才碰 localStorage）、頁面自己的網址、不在 App 裡、IndexedDB（離線存放、草稿）。 */
 export const browserHost: Host = {
 	settings: {
 		get: (key) => localStorage.getItem(key),
@@ -47,7 +50,8 @@ export const browserHost: Host = {
 		send: () => Promise.reject(new Error('不在 App 裡')),
 		on: () => () => {}
 	},
-	createOfflineStore: createIndexedDbOfflineStore
+	createOfflineStore: createIndexedDbOfflineStore,
+	createDraftStore: createIndexedDbDraftStore
 };
 
 let current: Host = browserHost;

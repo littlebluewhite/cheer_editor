@@ -3,4 +3,4 @@
 /**
  * 這個人卡在哪裡。
  */
-export type UserStatus = { "kind": "active" } | { "kind": "invited", hoursLeft: number, } | { "kind": "inviteExpired" } | { "kind": "disabled", flows: number, };
+export type UserStatus = { "kind": "active" } | { "kind": "invited", hoursLeft: number, } | { "kind": "inviteExpired" } | { "kind": "disabled", flows: number, deleteRequested?: string, };

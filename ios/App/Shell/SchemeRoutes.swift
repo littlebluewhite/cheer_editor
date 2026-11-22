@@ -10,6 +10,7 @@ enum SchemeRoutes {
             // #380
 
             // #393
+            context.webUpdates.route,
         ]
     }
 }

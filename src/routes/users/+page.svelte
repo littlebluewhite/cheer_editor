@@ -4,6 +4,7 @@
 	// 被停用又有流程的寫「已停用・他有 N 支流程」，多［移交 N 支流程］（#252）：
 	// 對話框輸入接手的人的 email，全部交給同一個人；管理員只看到支數，看不到流程名字。
 	// 已停用的人（不是自己）多［刪除］（#369）：跳確認框寫清楚會刪掉什麼，刪了不能恢復。
+	// 他自己要求刪除帳號的（#370）寫「要求刪除・日期」，不給移交；按［恢復］就取消要求。
 	import { onMount } from 'svelte';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -17,6 +18,7 @@
 		type UserStatus
 	} from '#lib/server-api.js';
 	import { revealAlert } from '#lib/components/reveal.js';
+	import { localDate } from '#lib/local-date.js';
 	import { m } from '#lib/paraglide/messages.js';
 
 	interface Props {
@@ -63,6 +65,7 @@
 			case 'inviteExpired':
 				return m.users_status_invite_expired();
 			case 'disabled':
+				if (s.deleteRequested) return m.users_status_delete_requested({ date: localDate(new Date(s.deleteRequested)) });
 				if (!s.flows) return m.users_status_disabled();
 				return (s.flows === 1 ? m.users_status_disabled_flows_one : m.users_status_disabled_flows)({ n: s.flows });
 		}
@@ -190,7 +193,7 @@
 										<button type="button" disabled={busy} onclick={() => now(() => server.enableUser(u.id), m.users_enabled({ name: u.name }))}
 											>{m.users_enable()}</button
 										>
-										{#if flows}
+										{#if flows && !u.status.deleteRequested}
 											<button type="button" onclick={() => open({ kind: 'handOver', user: u, flows })}>{(flows === 1 ? m.users_hand_over_button_one : m.users_hand_over_button)({ n: flows })}</button>
 										{/if}
 									{:else}

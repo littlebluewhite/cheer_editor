@@ -391,8 +391,16 @@ pub async fn logout(
             signed_out(&state, user_id);
         }
     }
-    let cleared = format!("{SESSION_COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax");
-    Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cleared)]).into_response())
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, cleared_cookie())],
+    )
+        .into_response())
+}
+
+/// 清掉這台登入用的 cookie（登出、要求刪除帳號）。
+pub(crate) fn cleared_cookie() -> String {
+    format!("{SESSION_COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax")
 }
 
 /// 帶著的 cookie 是誰（還沒到期、沒被停用）。

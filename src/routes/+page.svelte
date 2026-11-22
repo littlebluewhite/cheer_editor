@@ -23,6 +23,7 @@
 		type Position
 	} from '#lib/core';
 	import { browserAdapters, Editor, setEditor } from '#lib/editor.svelte.js';
+	import { lockScreen } from '#lib/lock-screen.svelte.js';
 	import { draftTime, type RecentFlow } from '#lib/flow-file.svelte.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
 	import { flushSync, onMount, tick, untrack, type ComponentProps } from 'svelte';
@@ -76,6 +77,8 @@
 	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
 	import type { OfflineCopy } from '#lib/offline-store.js';
 	import PrintSheet from '#lib/components/PrintSheet.svelte';
+	import { host } from '#lib/host.js';
+	import { followWebUpdate } from '#lib/web-update.js';
 	import SegmentSettings from '#lib/components/SegmentSettings.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
 	import SquadBar from '#lib/components/SquadBar.svelte';
@@ -129,10 +132,18 @@
 	}
 	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
 	onMount(() => editor.file.connect());
+	// App 裡：鎖定畫面的播放鍵（#389）
+	onMount(() => lockScreen(editor));
 
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
 	onMount(() => void home.load(isOnline));
+	/** App：殼下載好新網頁後，回到首頁才換上（#lib/web-update.js）。 */
+	const webUpdate = followWebUpdate(host().shell, () => !session.flow && !editor.hasUnsavedWork);
+	onMount(() => webUpdate.stop);
+	$effect(() => {
+		if (!flow) untrack(() => webUpdate.cameHome());
+	});
 	/** 登入的是誰：還沒問到是 undefined（右上角先不放「登入」，免得閃一下），沒登入是 null。 */
 	const account = $derived(home.account);
 	/** 登入後首頁「雲端」的「我的流程」「分享給我的」：還沒拿到是 null；連不上伺服器 cloudError。 */

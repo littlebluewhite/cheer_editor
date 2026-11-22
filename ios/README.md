@@ -29,12 +29,14 @@ ios/
     Shell/SchemeHandler.swift   app://local/ 送 App 裡那包網頁
     Shell/SchemeRoutes.swift    ★ app://local/ 上別的路（登記）
     Bridge/ShellParts.swift     ★ 橋上的每一塊（登記）
+    Update/WebUpdates.swift     殼自己更新網頁：App 這邊怎麼接（#393，下面「殼自己更新網頁」）
     Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
   PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
   ShellCore/              殼的規則：Swift 套件，不碰畫面。swift test 在 Mac 上跑
     Sources/ShellCore/Bridge/     橋：Bridge、BridgePart、JSONValue、BootScript
     Sources/ShellCore/Parts/      橋上的每一塊，一件事一個檔（ReadyPart.swift）
     Sources/ShellCore/Site/       BundledSite（網址對到哪個檔）、NavigationPolicy（只開這包網頁）
+    Sources/ShellCore/Update/     殼自己更新網頁的規則：WebUpdater、SiteFetcher、WebUpdatePart（#393）
     Sources/ShellCore/Resources/bridge.js   document start 塞進網頁的 JS
     Tests/ShellCoreTests/ScenarioParts.swift   ★ 情境測試用的每一塊（登記）
 bridge-scenarios/current/ 共用的情境檔，一件事一個檔（repo 根目錄；網頁、殼兩邊都讀）
@@ -86,7 +88,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在一個都沒有（`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389；`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -157,8 +159,29 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 - **不用 `pageZoom`**（#336 原本定的）：網頁有 `width=device-width` 時，`pageZoom` 只讓 `innerWidth`、媒體查詢變小，版面不重排，字變大後右邊整排跑出畫面。殼改成改網頁的 `<meta name="viewport">`（`width=寬÷倍數, initial-scale=倍數`），量過會照放大後的寬重排。
 - 長按連結不預覽（`allowsLinkPreview = false`）。鍵盤照 Safari：殼不在鍵盤出來時縮小網頁。
 
+## 殼自己更新網頁（#393、ADR 0025）
+
+- **什麼時候看**：App 打開、回到前景（`App/Update/WebUpdates.swift`），抓 `https://littlebluewhite.com/web-bundle.json`（docs/deploy.md「網頁的清單」）。網站寫死在 `WebUpdates.site`；開發版改抓 Mac 上的小網站是 #394。App 被 PipeTests 帶起來時不自己看，免得測試連到正式站。
+- **規則**（`ShellCore/Sources/ShellCore/Update/WebUpdater.swift`，`swift test` 的 `WebUpdaterTests` 一條一個）：清單的代號跟現在開的那包一樣就不動；不一樣就整包下載到 `staging/`，每個檔比大小和 SHA-256，都對了才搬到 `bundles/<代號>/`；一個檔對不上（拿到 `200.html`、部署換手）、斷線就整包丟掉。網站倒回 App 裡附的那包就直接換回去，不用下載。清單裡的路徑不是這個網站底下的相對路徑，整包不收；網站轉到別的地方也不跟（`SiteFetcher`）。
+- **什麼時候換**：殼下載好了跟網頁說 `webBundleReady`；網頁回到首頁（等 1 秒讓草稿寫完、沒有沒存的東西）才說 `useNewWebBundle`，殼換上、同一個網頁畫面重新載入首頁（`src/lib/web-update.ts`，情境 `bridge-scenarios/current/web-update.json`）。沒換的話下次打開 App 換。#394 的「更新」按鈕也說 `useNewWebBundle`。
+- **打不開就退回**：換上以後 10 秒內網頁沒說「好了」（`ShellParts.swift` 的 `ReadyPart`），或網頁的行程當掉（`WebShell` 的 `webViewWebContentProcessDidTerminate`，寫在 `WebUpdates.swift`），退回上一包打得開的（沒有就是附的那包），這包記成壞的、不再抓。換上後還沒說「好了」就被關掉，下次打開再等 10 秒。
+- 下載的放 `Application Support/WebBundles/`，不進 iCloud 備份；只留現在開的、等著換的、退路那包。換上的那包由 `WebBundleRoute`（`SchemeRoutes.swift`）送，排在 `/api/` 那幾條後面。來源一樣是 `app://local`，草稿、小設定都在。
+- 清單的 `minShellBuild`（要第幾版以上的殼）還沒看，#394 接。
+- **Debug 版也會換**：自己建的 App 打開後會抓正式站的那包，回首頁就換掉剛放進去的 `Web.bundle`。（正式站還沒有這份清單時抓不到，不會換。）要一直用自己建的那包，等 #394 的開發版設定。
+
+## 草稿（#377）
+
+App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/Drafts/<草稿 id>.zip`（整包流程檔，含音樂；不標成不備份，會進 iCloud 備份）。存的時間記成檔的修改時間（iCloud 還原後修改時間還在不在沒驗）。
+
+- 殼：`ShellCore/Sources/ShellCore/Parts/DraftsPart.swift`（`drafts`）；App 裡的資料夾、背景時間在 `App/Bridge/AppDrafts.swift`。網頁：`src/lib/shell-drafts.ts`，殼會 `drafts` 才換（`Host.createDraftStore`）。說的話：`bridge-scenarios/current/drafts.json`。留幾支照網頁版，殼不管。
+- **怎麼傳**：走橋（`messageHandlers`），位元組用 base64 放在 JSON 裡；這樣存、讀草稿都寫得進情境檔。自訂網址（`fetch` 送 ArrayBuffer）比較快，但假殼看不到，沒用。
+- **快不快**（開工先驗，2026-11-22，只在 iOS 27.2 模擬器上，Mac 的 CPU；`PipeTests` 的 `量_60MB的草稿存一次讀一次多久`）：60 MB 存一次約 0.15–0.22 秒、讀一次約 0.3–0.37 秒；首頁列最近的流程時每份都整包讀，5 份 60 MB 一份一份讀約 1.4–1.6 秒（網頁其實是同時讀，記憶體沒量）。同樣 60 MB 走自訂網址：存 0.08 秒、讀 0.04 秒。**這是只量傳的那段**：網頁把流程打包成流程檔（`writeFlowFile`）的時間沒算進去。沒用退路（音樂分開存、殼直接回名字）。真機沒量（#379）。
+- **趕不趕得及**：殼在 scene 不在前景時（`UIScene.willDeactivateNotification`，滑到 App 切換器就會；拉下控制中心也會，多存一次沒關係）主動說 `background`，網頁跟關分頁一樣馬上存，不等停手 1 秒；殼收到草稿時跟系統要背景時間（只包到寫檔那段，網頁打包、傳的那段不在裡面），檔整個寫好才換上去。
+  - 管子測試（`真的那包網頁_改一下馬上要切到背景_不等停手1秒就存進殼`）是測試自己發通知：從改到存好約 50 毫秒。
+  - 另外在模擬器上真的切到背景試過一次（打開「設定」把 App 擠到背景，一直改讓停手 1 秒的存不會跑）：iOS 有發 willDeactivate，草稿接著就存好；那段時間網頁沒收到 `visibilitychange`。只試一次，不是自動測試。真機滑掉 App 在 #379。
+
 ## 還沒做的（後面的票）
 
-App 圖示、資料搬到殼（#377）、殼代網頁上網（#380）、鎖定畫面的播放鍵（#389）、列印（#391）、殼自己更新網頁（#393）、出版指令（#340）。
+App 圖示、其他資料搬到殼（小設定 #378 等）、殼代網頁上網（#380）、列印（#391）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
 
 已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。
