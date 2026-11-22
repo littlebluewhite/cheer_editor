@@ -1,0 +1,140 @@
+# App 的殼（iPhone、iPad）
+
+畫面就是網頁，包在 App 裡；外面這層 Swift 殼只做網頁做不好的事（ADR 0022–0025，規格 #360）。這份寫：檔案放哪、怎麼建、怎麼測、要加東西時改哪裡。
+
+終端機跑 `xcodebuild`、`xcrun`、`swift` 前先設（這台 Mac 的 `xcode-select` 還指著 Command Line Tools）：
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+```
+
+## 版本（2026-11-22 查）
+
+| 東西 | 版本 | 來源 |
+|---|---|---|
+| Xcode | 27.2（27B52），2026-10-29 出的正式版；比它新的只有 27.3 beta 2（2026-11-16），不用 | https://developer.apple.com/news/releases/ ；本機 `xcodebuild -version` |
+| Swift | 6.4.2（跟 Xcode 27.2 一起裝的） | 本機 `swift --version`；swift.org 的 Previous Releases 表最上面是 6.4.2（2026-10-29）。Apple 的 Xcode 27.2 版本說明頁這次抓不到內容，沒從那裡確認 |
+| 模擬器 | iOS 27.2 | 這台 Mac 只裝了 17.2、18.1、27.2，**沒有 18.4**：最低版本 18.4 上沒跑過 |
+
+## 檔案放哪
+
+```
+ios/
+  CheerEditor.xcodeproj   手寫的專案；App/、PipeTests/ 是「同步資料夾」：放進去的檔自動算進去，不用改專案檔
+  App/                    App（target CheerEditor）：只接 UIKit、WebKit
+    AppDelegate.swift、SceneDelegate.swift   scene 生命週期；只有一個視窗
+    Info.plist            UIApplicationSupportsMultipleScenes = false（iPad 只開一個視窗）、UILaunchScreen（啟動畫面）
+    Shell/WebShell.swift  WKWebView 和橋怎麼接
+    Shell/SchemeHandler.swift   app://local/ 送 App 裡那包網頁
+    Shell/SchemeRoutes.swift    ★ app://local/ 上別的路（登記）
+    Bridge/ShellParts.swift     ★ 橋上的每一塊（登記）
+    Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
+  PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）
+  ShellCore/              殼的規則：Swift 套件，不碰畫面。swift test 在 Mac 上跑
+    Sources/ShellCore/Bridge/     橋：Bridge、BridgePart、JSONValue、BootScript
+    Sources/ShellCore/Parts/      橋上的每一塊，一件事一個檔（ReadyPart.swift）
+    Sources/ShellCore/Site/       BundledSite（網址對到哪個檔）、NavigationPolicy（只開這包網頁）
+    Sources/ShellCore/Resources/bridge.js   document start 塞進網頁的 JS
+    Tests/ShellCoreTests/ScenarioParts.swift   ★ 情境測試用的每一塊（登記）
+bridge-scenarios/current/ 共用的情境檔，一件事一個檔（repo 根目錄；網頁、殼兩邊都讀）
+```
+
+★ 的檔是「登記表」：一張票一格，**只改自己那一格**。格子中間空一行，幾張票同時加也合得起來（試過）。
+
+- **bundle ID 是暫時的**：`com.littlebluewhite.cheereditor.temporary`（專案檔的 `PRODUCT_BUNDLE_IDENTIFIER`）。#362（網站主人加入 Apple Developer Program）留言定了以後要換。
+- **簽章**：自動簽章，沒有 Team（`DEVELOPMENT_TEAM` 不設）。現在只建模擬器版。簽章金鑰、Apple 帳號、裝置識別資料不進 repo。
+- **自訂網址 `app://local/` 不要改**：這個來源是網頁存資料（IndexedDB、localStorage）的地方，換了就找不回來。
+- 版本：`MARKETING_VERSION`（0.1.0）、`CURRENT_PROJECT_VERSION`（建置號 1）。建置號就是網頁的清單 `minShellBuild` 比的那個（docs/deploy.md「網頁的清單」），殼一開始塞給網頁的 `shellBuild` 也是它。
+
+## 怎麼建、怎麼跑
+
+```sh
+npm run ios:web     # 建好網頁、放進殼（ios/App/Web.bundle）。要先跑，不然 App 打開只有一行字
+cd ios
+xcodebuild -project CheerEditor.xcodeproj -scheme CheerEditor \
+  -destination 'platform=iOS Simulator,id=<模擬器 UDID>' -derivedDataPath .dd build
+xcrun simctl install <UDID> .dd/Build/Products/Debug-iphonesimulator/CheerEditor.app
+xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
+```
+
+- `npm run ios:web` 放的是網頁的清單（`build/web-bundle.json`）列的檔加清單自己：跟網站部署的同一包，不另外建 App 版。清單本來就不列 service worker、Workbox、`manifest.webmanifest`、PWA 圖示。
+- `-derivedDataPath` 一定放自己的 worktree 裡（`ios/.dd`，不進 git），不要用共用的預設位置；一次只建一個模擬器。
+- 模擬器用 `xcrun simctl list devices available` 找 UDID，**指定 UDID，不要用 `booted`**（別人可能開著別的）。
+- Debug 版的網頁可以用 Mac 的 Safari →「開發」→ 模擬器檢查（`isInspectable`）。
+
+## 怎麼測
+
+| 測什麼 | 怎麼跑 | 要模擬器嗎 |
+|---|---|---|
+| 殼的規則＋殼這邊的情境 | `cd ios/ShellCore && swift test` | 不用 |
+| 網頁這邊的情境（假殼） | `npm test`（`src/lib/app-shell.svelte.test.ts`、`src/hooks.client.svelte.test.ts`） | 不用 |
+| 管子（真的 WKWebView） | `npm run ios:web`，再 `cd ios && xcodebuild -project CheerEditor.xcodeproj -scheme CheerEditor -destination 'platform=iOS Simulator,id=<UDID>' -derivedDataPath .dd test` | 要 |
+
+改到 `ios/` 或 `bridge-scenarios/` 時三種都跑（GitHub 沒有 macOS 的工作，只在 Mac 上跑）。
+
+## 橋：網頁和殼之間怎麼說話
+
+網頁只認殼在 document start 塞的 `window.__cheerShell`（`ShellCore/Resources/bridge.js`；網頁那邊是 `src/lib/app-shell.ts`，「問殼」在 `src/lib/host.ts`）：
+
+- **一開始塞的**（boot）：`{ shellVersion, shellBuild, features, …每一塊自己要塞的 }`。網頁用 `host().shell.inApp`（有塞就在 App 裡）、`host().shell.can('<feature>')` 問。`features` 是每一塊的 `feature` 合起來，不用另外列。
+- **網頁 → 殼**：`host().shell.send(name, body)`，回 Promise。底下走 `messageHandlers.shell`，傳的是 JSON 字串 `{"name","body"}`；殼回 `{"reply": 值}` 或 `{"error": "unknown" | "failed" | "bad message"}`（reject）。殼只收 `app://local` 這包網頁送的。
+- **殼 → 網頁**：Swift 叫 `WebShell.emit(name, body)`，網頁用 `host().shell.on(name, fn)` 收。
+- **好了**：網頁畫面出來以後（`+layout.svelte` 的 onMount）送 `ready`。ADR 0025 用它判斷新網頁打不打得開。
+- 網頁在 App 裡不註冊 service worker（`src/hooks.client.ts`）。
+
+### 「問殼」的名字
+
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在一個都沒有（`ready` 是底層的管子，不算）。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+
+### 加一塊（一件事）
+
+1. `ShellCore/Sources/ShellCore/Parts/<件事>Part.swift`：實作 `BridgePart`（`feature`、`messages`、`boot`、`handle`）。規則寫在這裡；要碰畫面、系統的（列印、播放鍵）從 init 傳進來（看 `ReadyPart` 的 `onReady`）。
+2. 在 `App/Bridge/ShellParts.swift` 自己那一格登記（傳真的），`ShellCore/Tests/ShellCoreTests/ScenarioParts.swift` 自己那一格登記（傳假的）。
+3. `bridge-scenarios/current/<件事>.json` 寫情境；網頁那邊照情境寫測試（下一節）。
+4. 要在 `app://local/` 上接請求（例：#380 轉送 `/api/`）：`App/Shell/<名字>Route.swift` 實作 `SchemeRoute`，在 `SchemeRoutes.swift` 自己那一格登記。
+
+## 情境檔（`bridge-scenarios/`）
+
+一件事一個檔，兩邊的測試都把資料夾裡的每個檔讀進來，加檔不用改別的地方：
+
+```json
+{
+  "about": "這件事是什麼",
+  "scenarios": [
+    {
+      "name": "情境的名字（網頁的測試用它找）",
+      "boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": [] },
+      "steps": [
+        { "from": "web", "name": "ready", "reply": null },
+        { "from": "web", "name": "noSuchThing", "body": { "any": 1 }, "error": "unknown" }
+      ]
+    }
+  ]
+}
+```
+
+- 情境只寫「說了什麼話」，不管底下怎麼傳。`reply` 沒寫等於 `null`。
+- **殼這邊**（`ScenarioTests.swift`）：每個情境自動跑。`boot` 裡寫的每一樣要跟真的殼一樣（`shellVersion`、`shellBuild` 拿情境的當輸入）；`features` 是「殼至少會這些」。`from: web` 的每一句餵給真的 `Bridge`，回的要一樣。
+- **網頁這邊**：測試用 `scenarioShell('<檔名>', '<情境名>')`（`src/lib/scenario-shell.ts`）拿到照情境演的假殼，接到網頁上（`fakeHost({ shell: appShell(fake.bridge) })` 或 `window.__cheerShell = fake.bridge`），讓網頁做事，最後 `fake.done()`：網頁該說的都說了、順序和內容都對。
+- **還沒有 `from: shell`（殼主動說的話）**。第一張要用的票：殼這邊在 `ScenarioTests.swift` 接上觸發（現在遇到會失敗），網頁這邊在 `scenarioShell` 加一個送出下一句的方法。
+- **凍的情境**（ADR 0025）：每出一版殼，把 `current/` 複製成 `1.x/`（還沒有）。殼這邊已經讀 `bridge-scenarios/` 底下每個資料夾；網頁這邊到時候把 `scenario-shell.ts` 的 glob 改成也讀凍的那幾份。
+
+## POST 進不進得了殼（開工先驗，2026-11-22，只在 iOS 27.2 模擬器上）
+
+`PipeTests` 的 `POST的內容進不進得了殼`：網頁 `fetch` POST 到 `app://local/probe`，看 `WKURLSchemeHandler` 收到的 `URLRequest`。
+
+| 送的內容 | 殼收到 |
+|---|---|
+| 字串 | 收到（`httpBody`） |
+| ArrayBuffer、Uint8Array | 收到（`httpBody`），20 MB 也收到 |
+| 只有字的 FormData | 收到（`httpBody`，multipart） |
+| File 先 `await file.arrayBuffer()` 再送 | 收到 |
+| Blob、File | **收不到**（`httpBody`、`httpBodyStream` 都是空的） |
+| 帶檔案的 FormData | **收不到** |
+| XHR 送 Blob | **收不到** |
+
+**結論**：自訂網址收得到 POST 的內容，但 Blob／File 做的內容會被丟掉。之後經過殼的請求（#380 轉送、上傳音樂）：網頁把檔案先轉成 ArrayBuffer 再送，或改走 `messageHandlers`。這兩條都還沒在真機試過；速度也沒量。WebKit 哪天改了，這個測試會紅，要回來改這張表。
+
+## 還沒做的（後面的票）
+
+App 圖示、資料搬到殼（#377）、殼代網頁上網（#380）、鎖定畫面的播放鍵（#389）、列印（#391）、殼自己更新網頁（#393）、手感（#376）、出版指令（#340）。

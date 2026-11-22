@@ -130,9 +130,14 @@ export function fakeSettings(init: Record<string, string> = {}) {
 	return { settings, saved };
 }
 
-/** 假的「問殼」：在 App 裡，會的是 features 那幾件。 */
+/** 假的「問殼」：在 App 裡，會的是 features 那幾件；說什麼都回 unknown。要照情境說話用 #lib/scenario-shell.js。 */
 export function fakeShell(features: string[] = []): Shell {
-	return { inApp: true, can: (feature) => features.includes(feature) };
+	return {
+		inApp: true,
+		can: (feature) => features.includes(feature),
+		send: () => Promise.reject(new Error('unknown')),
+		on: () => () => {}
+	};
 }
 
 /**

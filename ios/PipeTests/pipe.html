@@ -1,0 +1,14 @@
+<!doctype html>
+<!-- 管子測試的小網頁（PipeTests.swift）：每條管子走一次，結果放 window.results 給測試讀。 -->
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<script>
+			// 頁面的第一段程式：殼在 document start 塞的那份這時候就要在了
+			window.results = { bootAtFirstScript: window.__cheerShell ? window.__cheerShell.boot : null };
+		</script>
+	</head>
+	<body>
+		<p>pipe</p>
+	</body>
+</html>

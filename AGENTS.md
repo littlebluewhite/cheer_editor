@@ -18,3 +18,4 @@ Single-context: `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
 - **使用說明** (`src/routes/guide/`) and its diagrams; an editor UI change also retakes the guide screenshots: `docs/guide-diagrams/README.md`.
 - `server/` (run, test, `server/migrations/`, generated `src/lib/api-types/`, logs), deploy, secrets, rollback, R2 music, link or asset paths (`BASE_PATH`), offline, app icons, licences: `docs/deploy.md`.
 - Research behind a decision: cheerleading facts (rules, roles, floor sizes, beat cues), backend choices (hosting, auth, sharing, concurrent edits, ops), browser limits, UX findings: `docs/research/`.
+- App shell (`ios/`: Swift shell, bridge, shared `bridge-scenarios/`, build, tests, where parallel tickets register their parts): `ios/README.md`.

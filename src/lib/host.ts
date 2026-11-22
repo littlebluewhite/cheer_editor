@@ -12,10 +12,14 @@ export interface SettingsStore {
 	remove(key: string): void;
 }
 
-/** 「問殼」：在不在 App 裡、殼會不會某件事。 */
+/** 「問殼」：在不在 App 裡、殼會不會某件事；跟殼說話（#lib/app-shell.js，說的話寫在 bridge-scenarios/）。 */
 export interface Shell {
 	readonly inApp: boolean;
 	can(feature: string): boolean;
+	/** 跟殼說一句，殼回的值。殼回錯誤（不認得是 'unknown'）或不在 App 裡時 reject。 */
+	send(name: string, body?: unknown): Promise<unknown>;
+	/** 聽殼主動說的話；回傳「不聽了」的函式。不在 App 裡永遠聽不到。 */
+	on(name: string, listener: (body: unknown) => void): () => void;
 }
 
 export interface Host {
@@ -37,7 +41,12 @@ export const browserHost: Host = {
 		remove: (key) => localStorage.removeItem(key)
 	},
 	siteUrl: () => location.href,
-	shell: { inApp: false, can: () => false },
+	shell: {
+		inApp: false,
+		can: () => false,
+		send: () => Promise.reject(new Error('不在 App 裡')),
+		on: () => () => {}
+	},
 	createOfflineStore: createIndexedDbOfflineStore
 };
 
