@@ -1059,7 +1059,7 @@
 			class:fit={zoom > 1}
 			class:people={zoom === 1}
 			onclick={() => (zoom > 1 || !peopleFit ? setZoom(1) : fitPeople(peopleFit))}
-			><Icon name={zoom > 1 ? 'fit' : 'people'} />{zoom > 1 ? t.field_view_fit() : t.field_view_people()}</button
+			>{#if zoom > 1}<Icon name="fit" />{t.field_view_fit()}{:else}{t.field_view_people()}{/if}</button
 		>
 	{/if}
 	{#if session?.editable}
@@ -1529,6 +1529,11 @@
 		border-radius: 999px;
 		font-weight: 600;
 		box-shadow: 0 2px 8px rgba(22, 33, 58, 0.15);
+	}
+	/* 沒放大時同一顆是「只看有人的地方」：字比較多，不畫圖示、字小一點，320px 的手機也不蓋到中間的「正面／裁判」 */
+	.people {
+		padding: 4px 6px;
+		font-size: 12px;
 	}
 	@media (pointer: coarse) {
 		.fit,

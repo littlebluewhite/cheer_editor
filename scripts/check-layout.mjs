@@ -1821,7 +1821,7 @@ await check('390×664（觸控）手機的檢視畫面放大場地：點兩下�
 });
 
 for (const [w, h] of [[320, 640], [390, 664]]) {
-	await check(`${w}×${h}（觸控）手機的檢視畫面「只看有人的地方」（#333）：沒放大時在右下角、點得到、不蓋到左下角的字；按了看到的範圍包住大家（四周留 1 公尺），換成「整個場地」，按了回到整個場地`, async () => {
+	await check(`${w}×${h}（觸控）手機的檢視畫面「只看有人的地方」（#333）：沒放大時在右下角、點得到、不蓋到左下角的字和中間的「正面／裁判」；按了看到的範圍包住大家（四周留 1 公尺），換成「整個場地」，按了回到整個場地`, async () => {
 		await setTouchViewport(w, h);
 		// 小芳改成很長的名字：點她，左下角的字長到要換行
 		await openPracticeFlow(NEAR_BASES + `flow = { ...flow, members: flow.members.map((m) => (m.id === 'm4' ? { ...m, name: '歐陽小芳芳芳芳芳芳芳芳' } : m)) };`);
@@ -1837,6 +1837,8 @@ for (const [w, h] of [[320, 640], [390, 664]]) {
 		const m4 = await rectOf(`${host} [data-member-id="m4"] :is(circle, rect):is(.base, .top)`);
 		await tap(m4.x, m4.y);
 		const cornerRight = await js(`return document.querySelector('${host} .formation-now').getBoundingClientRect().right`);
+		// 下面正中間的「正面／裁判」也不能蓋到（N52）
+		const frontRight = await js(`return document.querySelector('${host} text.front').getBoundingClientRect().right`);
 		const people = before.只看有人的地方鈕;
 		if (people?.self) await tap(people.x, people.y);
 		const fitted = { ...(await fieldNow(host)), 只看有人的地方鈕: await spot(), 整個場地鈕: await fitSpot(host) };
@@ -1846,10 +1848,10 @@ for (const [w, h] of [[320, 640], [390, 664]]) {
 		// NEAR_BASES：x −4～4、y −3～2，四周留 1 公尺
 		const [vx, vy, vw, vh] = fitted.範圍;
 		const covers = vx <= -5 + 0.01 && vy <= -4 + 0.01 && vx + vw >= 5 - 0.01 && vy + vh >= 3 - 0.01;
-		const ok = !!people?.self && people.h >= 40 && cornerRight <= people.left && before.整個場地鈕 === null
+		const ok = !!people?.self && people.h >= 40 && cornerRight <= people.left && frontRight <= people.left && before.整個場地鈕 === null
 			&& covers && vw < before.範圍[2] - 1 && fitted.只看有人的地方鈕 === null && !!fit?.self
 			&& String(after.範圍) === String(before.範圍) && !!after.只看有人的地方鈕;
-		return { ok, value: { 沒放大: before, 左下角的字右緣: Math.round(cornerRight), 按了之後: fitted, 按整個場地後: after } };
+		return { ok, value: { 沒放大: before, 左下角的字右緣: Math.round(cornerRight), 正面裁判右緣: Math.round(frontRight), 按了之後: fitted, 按整個場地後: after } };
 	});
 }
 

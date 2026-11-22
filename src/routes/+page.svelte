@@ -2731,13 +2731,9 @@
 		overflow-wrap: anywhere;
 		border-radius: 12px;
 	}
-	/* 放大了，右下角有「整個場地」：字只寫到它左邊 */
-	.phone-field:has(:global(.fit)) .formation-now {
+	/* 右下角有「整個場地」（沒放大時同一顆是「只看有人的地方」）：字只寫到它左邊 */
+	.phone-field:has(:global(.fit), :global(.people)) .formation-now {
 		max-width: calc(100% - 140px);
-	}
-	/* 沒放大時同一個位置是「只看有人的地方」，比較寬（量過約 147px） */
-	.phone-field:has(:global(.people)) .formation-now {
-		max-width: calc(100% - 170px);
 	}
 	.view-badge {
 		position: absolute;
