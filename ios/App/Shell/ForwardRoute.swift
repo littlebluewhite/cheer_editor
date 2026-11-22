@@ -6,11 +6,14 @@ import ShellCore
 @MainActor
 enum AppSite {
     /// 殼轉到哪個網站。Debug 版可以用環境變數 CHEER_SITE_URL 連本機的伺服器；上架版一定是自己的網站。
+    /// App 被 PipeTests 帶起來時，打開的首頁也會打 /api/me：轉到沒人聽的本機埠（網頁當成離線），不連正式站。
     static let current: URL = {
         #if DEBUG
-        SiteAddress.pick(debug: true, override: ProcessInfo.processInfo.environment["CHEER_SITE_URL"])
+        let env = ProcessInfo.processInfo.environment
+        if env["XCTestConfigurationFilePath"] != nil { return URL(string: "http://127.0.0.1:9/")! }
+        return SiteAddress.pick(debug: true, override: env["CHEER_SITE_URL"])
         #else
-        SiteAddress.pick(debug: false, override: nil)
+        return SiteAddress.pick(debug: false, override: nil)
         #endif
     }()
 
