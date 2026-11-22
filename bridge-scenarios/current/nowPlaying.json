@@ -1,0 +1,24 @@
+{
+	"about": "鎖定畫面的播放鍵（#389）：網頁說現在播什麼（流程的名字、在不在播；沒東西播是 null），殼顯示在鎖定畫面。鎖定畫面、耳機按了播放、暫停，殼說 remote（command: play / pause），網頁播、停，再說一次現在播什麼。網頁播第一次之前不說；只送名字和在不在播，不送秒數。",
+	"scenarios": [
+		{
+			"name": "鎖定畫面按暫停、再按播放",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["nowPlaying"] },
+			"steps": [
+				{ "from": "web", "name": "nowPlaying", "body": { "title": "全國賽", "playing": true }, "reply": null },
+				{ "from": "shell", "name": "remote", "body": { "command": "pause" } },
+				{ "from": "web", "name": "nowPlaying", "body": { "title": "全國賽", "playing": false }, "reply": null },
+				{ "from": "shell", "name": "remote", "body": { "command": "play" } },
+				{ "from": "web", "name": "nowPlaying", "body": { "title": "全國賽", "playing": true }, "reply": null }
+			]
+		},
+		{
+			"name": "回首頁收掉鎖定畫面",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["nowPlaying"] },
+			"steps": [
+				{ "from": "web", "name": "nowPlaying", "body": { "title": "全國賽", "playing": true }, "reply": null },
+				{ "from": "web", "name": "nowPlaying", "body": null, "reply": null }
+			]
+		}
+	]
+}

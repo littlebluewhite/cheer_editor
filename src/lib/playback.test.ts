@@ -1,5 +1,5 @@
 // 播放（編輯器 module 的 playback）：在 Node 測，音訊引擎是假的、畫面時鐘手動撥一格。
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
@@ -18,6 +18,7 @@ import {
 import { whyText } from '#lib/reason-text.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { manualFrames, testEditor } from '#lib/test-fakes.js';
+import { animationFrame } from '#lib/playback.svelte.js';
 
 /** 音樂 1（150 BPM、8 個八拍 = 25.6 秒）→ 口號 1（10 秒）→ 音樂 2（25.6 秒）。 */
 function sample(): Flow {
@@ -55,6 +56,64 @@ describe('播放：畫面時鐘', () => {
 			for (const f of run) f();
 		}
 		expect(queued.map((q) => q.length)).toEqual([1, 1, 1, 1]);
+	});
+});
+
+describe('播放：真的畫面時鐘（#389）', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.useRealTimers();
+	});
+
+	it('畫面不來（App 鎖螢幕、切到別的 App）：0.25 秒後照樣跑一次，重複的下一圈才排得上', () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('requestAnimationFrame', () => 1);
+		vi.stubGlobal('cancelAnimationFrame', () => {});
+		let runs = 0;
+		animationFrame(() => runs++);
+		vi.advanceTimersByTime(249);
+		expect(runs).toBe(0);
+		vi.advanceTimersByTime(1);
+		expect(runs).toBe(1);
+	});
+
+	it('畫面先來：只跑一次', () => {
+		vi.useFakeTimers();
+		let frame: () => void = () => {};
+		vi.stubGlobal('requestAnimationFrame', (f: () => void) => ((frame = f), 1));
+		vi.stubGlobal('cancelAnimationFrame', () => {});
+		let runs = 0;
+		animationFrame(() => runs++);
+		frame();
+		vi.advanceTimersByTime(1000);
+		expect(runs).toBe(1);
+	});
+});
+
+describe('播放：畫面停著時（App 鎖螢幕、切到別的 App，#389）', () => {
+	it('按暫停：播放頭停在喇叭播到的地方，不是畫面最後一格；再按播放從那裡接著播', () => {
+		const { playback, engine, frames } = setup();
+		playback.play();
+		const t0 = engine.clicks[0].when;
+		engine.audible = t0 + 1;
+		frames.step();
+		// 鎖螢幕 20 秒：畫面沒在走，聲音照播
+		engine.audible = t0 + 21;
+		engine.time = t0 + 21;
+		playback.pause();
+		expect(playback.sec).toBeCloseTo(21, 6);
+		playback.play();
+		// 21 秒在音樂 1 的 6-6&：下一拍 21.2 秒，0.2 秒後（加上起播留的 0.1 秒）響
+		expect(engine.clicks[0].when - engine.time).toBeCloseTo(0.3, 6);
+	});
+
+	it('鎖著的時候播完了：按暫停停在結尾', () => {
+		const { playback, engine } = setup();
+		playback.play();
+		engine.audible = engine.clicks[0].when + 100;
+		playback.pause();
+		expect(playback.sec).toBeCloseTo(61.2, 6);
+		expect(playback.playing).toBe(false);
 	});
 });
 
