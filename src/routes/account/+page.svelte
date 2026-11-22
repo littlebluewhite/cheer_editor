@@ -12,6 +12,7 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
 	import { host } from '#lib/host.js';
+	import { appDevice } from '#lib/app-shell.js';
 	import { unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
 	import {
 		httpServer,
@@ -36,6 +37,8 @@
 
 	/** 跟伺服器一樣：至少 15 個看得到的字。 */
 	const MIN = 15;
+	/** App 裡多說一句同一台的 App 和瀏覽器各登各的（#392）。 */
+	const inApp = host().shell.inApp;
 
 	/** 登入的是誰：還在問是 undefined。 */
 	let me = $state.raw<Me | null | undefined>(undefined);
@@ -201,7 +204,8 @@
 						<button type="button" class="btn ghost" aria-pressed={showNew} onclick={() => (showNew = !showNew)}><Icon name="eye" size={14} />{m.account_show()}</button>
 					</span>
 					<p class="count" class:enough={count >= MIN}>{m.account_password_count({ count, min: MIN })}</p>
-					<p class="hint">{m.account_password_signs_out()}</p>
+					<!-- App 裡多說同一台的瀏覽器也會登出（#392） -->
+					<p class="hint">{inApp ? m.account_password_signs_out_app({ device: appDevice() }) : m.account_password_signs_out()}</p>
 					{#if passwordResult === 'ok'}
 						<p class="ok" role="status">{m.account_password_saved()}</p>
 					{:else if passwordResult}
@@ -212,6 +216,7 @@
 			</section>
 
 			<button type="button" class="btn wide" onclick={logout}>{m.account_log_out_device()}</button>
+			{#if inApp}<p class="hint">{m.account_log_out_device_app({ device: appDevice() })}</p>{/if}
 			{#if me.isAdmin}
 				<p class="hint">{m.account_delete_admin()}</p>
 			{:else}

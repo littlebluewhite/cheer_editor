@@ -53,6 +53,7 @@ import {
 	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
+import { host } from '#lib/host.js';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { CloudUndo, type CloudStep } from '#lib/cloud-undo-log.svelte.js';
 import { joinSentences, type EditorSession } from '#lib/editor-session.svelte.js';
@@ -656,7 +657,8 @@ export class CloudSteps {
 		if (restored.length) this.#send(restored, { kind: 'restoreRecords', ids: restored });
 		if (added.length && !this.#recordedOnce) {
 			this.#recordedOnce = true;
-			if (this.#keep?.store.needsHomeScreen()) this.homeHint = true;
+			// App 裡殼存的不會被清，不提醒（#392）
+			if (!host().shell.inApp && this.#keep?.store.needsHomeScreen()) this.homeHint = true;
 		}
 		this.#touch();
 	}

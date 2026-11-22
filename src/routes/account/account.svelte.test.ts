@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import type { UnsentRecords } from '#lib/offline-store.js';
-import { fakeOfflineStore, fakeServer, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
+import { fakeHost, fakeOfflineStore, fakeServer, fakeShell, flush, type FakeCloudFlow } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Account from './+page.svelte';
 
@@ -203,5 +203,22 @@ describe('我的帳號頁', () => {
 		await accountPage(lin.email, [], true);
 		expect(screen.queryByRole('button', { name: '要求刪除帳號' })).toBeNull();
 		expect(screen.getByText('你是管理員。要刪，先用伺服器指令換別人當管理員。')).toBeTruthy();
+	});
+});
+
+describe('App 裡（#392）：同一台的 App 和瀏覽器各登各的', () => {
+	it('「登出這台裝置」下面說只登出 App，同一台的瀏覽器還登著；改密碼說同一台的瀏覽器也會登出', async () => {
+		fakeHost({ shell: fakeShell() });
+		await accountPage();
+		expect(screen.getByText('只登出 App。同一台 iPad 上，App 和瀏覽器各存各的、各登各的：這台的瀏覽器還登著。')).toBeTruthy();
+		expect(
+			within(section('改密碼')).getByText('改好後，你在其他裝置都會登出。同一台 iPad 上，App 和瀏覽器各存各的、各登各的：這台的瀏覽器也會登出')
+		).toBeTruthy();
+	});
+
+	it('網頁版：照舊，沒有那一句', async () => {
+		await accountPage();
+		expect(within(section('改密碼')).getByText('改好後，你在其他裝置都會登出')).toBeTruthy();
+		expect(document.body.textContent).not.toContain('各登各的');
 	});
 });
