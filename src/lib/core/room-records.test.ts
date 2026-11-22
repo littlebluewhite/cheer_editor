@@ -1,6 +1,6 @@
 // 「這串紀錄收不收」（#348，ADR 0011、0015、0018）：規則的先後照真的伺服器（records.rs 的 record）。
 import { describe, expect, it } from 'vitest';
-import { amendRecords, receiveRecords, type AmendAsk, type AmendRecord, type KnownRecord, type RecordsAsk, type StoredAttempt } from './index';
+import { amendRecords, receiveRecords, type AmendAsk, type KnownRecord, type RecordsAsk, type StoredAttempt } from './index';
 import { amendRecordsJson, receiveRecordsJson } from './bundle-entry';
 import { libSample } from '../test-flows';
 
@@ -141,17 +141,17 @@ describe('amendRecords', () => {
 		attempt: { id, date: '2026-11-22', who, practice: 'drill', whole: false, marks: { p1: mark } }
 	});
 	/** x1 第 1 組 RUN 那一次全上的一次（整個做、都 ✓）。 */
-	const run = (id: string, by: string, gone?: boolean): AmendRecord => ({
+	const run = (id: string, by: string, gone?: boolean): KnownRecord => ({
 		actionId: 'x1',
 		attempt: { id, date: '2026-11-22', who: 'g1', practice: 'runThrough', runThroughId: RUN, whole: true, marks: { p1: '✓', p2: '✓', p3: '✓' } },
 		by,
 		...(gone && { gone })
 	});
 	/** 李（送的人）記的、王記的。 */
-	const mine: AmendRecord = { ...drill('tmine00000001'), by: 'u-li' };
-	const theirs: AmendRecord = { ...drill('ttheirs000001'), by: 'u-wang' };
+	const mine: KnownRecord = { ...drill('tmine00000001'), by: 'u-li' };
+	const theirs: KnownRecord = { ...drill('ttheirs000001'), by: 'u-wang' };
 	/** 從流程檔傳上來的：沒有記的人。 */
-	const filed: AmendRecord = drill('tfiled0000001');
+	const filed: KnownRecord = drill('tfiled0000001');
 	const amendAsk = (over: Partial<AmendAsk> = {}): AmendAsk => ({
 		flow: libSample(),
 		step: 7,
@@ -164,7 +164,7 @@ describe('amendRecords', () => {
 	const nothing = { deleted: [], changed: [], restored: [], amended: [], told: [] };
 
 	describe('每一種權限乘上改、刪、救回', () => {
-		const roles: { name: string; role: AmendAsk['role']; target: AmendRecord; may: boolean }[] = [
+		const roles: { name: string; role: AmendAsk['role']; target: KnownRecord; may: boolean }[] = [
 			{ name: '擁有者', role: 'owner', target: theirs, may: true },
 			{ name: '編輯者', role: 'editor', target: theirs, may: true },
 			{ name: '記錄者動自己記的', role: 'recorder', target: mine, may: true },
@@ -193,7 +193,7 @@ describe('amendRecords', () => {
 	});
 
 	describe('規則', () => {
-		const goneMine: AmendRecord = { ...mine, gone: true };
+		const goneMine: KnownRecord = { ...mine, gone: true };
 		it('清掉的不能改', () => {
 			const out = amendRecords(amendAsk({ records: [goneMine], sent: { kind: 'change', attempts: [drill('tmine00000001', '✗')] } }));
 			expect(out).toEqual(nothing);

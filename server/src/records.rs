@@ -365,7 +365,8 @@ async fn amended(
     Ok(())
 }
 
-/// 給流程核心 receiveRecords 的一次（KnownRecord）：清掉的帶 gone；by 是記的人的名字（沒有記的人不帶）。
+/// 給流程核心的一次（KnownRecord，receiveRecords、amendRecords 都用）：清掉的帶 gone；by 是記的人，
+/// receiveRecords 給名字，amendRecords 給 id（寫成字，只拿來比「是不是他記的」）；沒有記的人不帶。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct KnownRecord<'a> {
@@ -374,7 +375,7 @@ struct KnownRecord<'a> {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     gone: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    by: Option<&'a str>,
+    by: Option<String>,
 }
 
 /// 給流程核心 receiveRecords 的（RecordsAsk），編排以外的；編排另外傳（存著的原樣，不用先檢查一遍）。
@@ -487,7 +488,7 @@ pub async fn record(
             .map(|k| KnownRecord {
                 stored: &k.stored,
                 gone: k.gone,
-                by: k.recorder.as_deref(),
+                by: k.recorder.clone(),
             })
             .collect(),
     };
@@ -497,17 +498,22 @@ pub async fn record(
         .await
     {
         Ok(json) => serde_json::from_str(&json)?,
-        // 流程核心自己出錯（不是 receiveRecords 不收的）：送來的每筆都當看不懂
+        // 流程核心自己出錯（不是 receiveRecords 不收的）：收過的照樣回存著的那一筆（收過、後來清掉的兩邊都不放），
+        // 新的都當看不懂；同一批重複的 id 只算第一筆
         Err(err) => {
-            tracing::warn!(error = %err, "流程核心跑 receiveRecords 出錯，當看不懂這一串");
-            let dropped = ids
-                .iter()
-                .map(|id| RecordRefusal::NotUnderstood.dropped((*id).to_owned()))
-                .collect();
-            return Ok(RoomMessage::RecordsSaved {
-                saved: vec![],
-                dropped,
-            });
+            tracing::warn!(error = %err, "流程核心跑 receiveRecords 出錯，新的當看不懂");
+            let mut seen = HashSet::new();
+            ids.iter()
+                .filter(|id| seen.insert(**id))
+                .map(|id| match known.iter().find(|k| k.id() == *id) {
+                    Some(k) if !k.gone => RecordVerdict::Again { id: (*id).into() },
+                    Some(_) => RecordVerdict::Skipped,
+                    None => RecordVerdict::Refused {
+                        id: (*id).into(),
+                        why: RecordRefusal::NotUnderstood,
+                    },
+                })
+                .collect()
         }
     };
 
@@ -563,19 +569,6 @@ pub enum Amend {
     Restore(Vec<String>),
 }
 
-/// 給流程核心 amendRecords 的一次（AmendRecord）：清掉的帶 gone；by 是記的人的 id（寫成字，只拿來比「是不是他記的」；
-/// 沒有記的人不帶）。
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AmendRecord<'a> {
-    #[serde(flatten)]
-    stored: &'a Stored,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    gone: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    by: Option<String>,
-}
-
 /// 給流程核心 amendRecords 的「送來的」（AmendSent）。
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -593,7 +586,7 @@ struct AmendAsk<'a> {
     role: Role,
     by: String,
     sent: AmendSent<'a>,
-    records: Vec<AmendRecord<'a>>,
+    records: Vec<KnownRecord<'a>>,
 }
 
 /// amendRecords 的結果（AmendOutcome，都照送來的先後）：清掉的 id、改成的、救回成的、要記「用手動過」的、
@@ -679,7 +672,7 @@ pub async fn amend(
         sent,
         records: known
             .iter()
-            .map(|k| AmendRecord {
+            .map(|k| KnownRecord {
                 stored: &k.stored,
                 gone: k.gone,
                 by: k.recorded_by.map(|id| id.to_string()),
@@ -798,3 +791,7 @@ async fn insert(
 #[cfg(test)]
 #[path = "records_timing.rs"]
 mod timing;
+
+#[cfg(test)]
+#[path = "records_tests.rs"]
+mod tests;

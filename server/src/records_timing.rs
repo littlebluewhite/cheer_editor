@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use super::*;
 use crate::breach::BreachCheck;
 use crate::clock::Clock;
-use crate::flow_core::FlowCore;
+use crate::flow_core::{FlowCore, summary};
 use crate::mail::Mailer;
 use serde_json::json;
 
@@ -361,11 +361,6 @@ fn counts(reply: RoomMessage) -> (usize, usize) {
     }
 }
 
-fn median(ms: &mut [f64]) -> f64 {
-    ms.sort_by(f64::total_cmp);
-    ms[ms.len() / 2]
-}
-
 fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
@@ -507,13 +502,13 @@ async fn record_timing(db: sqlx::PgPool) {
                 after.push(pair[1]);
             }
         }
-        let mut diff: Vec<f64> = after.iter().zip(&before).map(|(a, b)| a - b).collect();
+        let diff: Vec<f64> = after.iter().zip(&before).map(|(a, b)| a - b).collect();
         let faster = diff.iter().filter(|d| **d <= 0.0).count();
         println!(
             "{name}：#349 以前 中位數 {:.2} ms、改叫流程核心 中位數 {:.2} ms、每對相減（改叫 − 以前）中位數 {:+.2} ms、{faster}/{pairs} 對不比以前慢",
-            median(&mut before),
-            median(&mut after),
-            median(&mut diff),
+            summary(before).1,
+            summary(after).1,
+            summary(diff).1,
         );
     }
 
@@ -576,13 +571,13 @@ async fn record_timing(db: sqlx::PgPool) {
                 after.push(pair[1]);
             }
         }
-        let mut diff: Vec<f64> = after.iter().zip(&before).map(|(a, b)| a - b).collect();
+        let diff: Vec<f64> = after.iter().zip(&before).map(|(a, b)| a - b).collect();
         let faster = diff.iter().filter(|d| **d <= 0.0).count();
         println!(
             "{name}：#351 以前 中位數 {:.2} ms、改叫流程核心 中位數 {:.2} ms、每對相減（改叫 − 以前）中位數 {:+.2} ms、{faster}/{pairs} 對不比以前慢",
-            median(&mut before),
-            median(&mut after),
-            median(&mut diff),
+            summary(before).1,
+            summary(after).1,
+            summary(diff).1,
         );
     }
 }
