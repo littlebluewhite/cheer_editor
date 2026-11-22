@@ -971,7 +971,7 @@ export function fakeServer(
 						open.editing = request.editing && editor;
 						tellPresent(flowId);
 						const views = runViews(flowId, email);
-						if (role !== 'viewer' && views.length) deliver(room, () => ({ kind: 'runThroughs', runs: views }));
+						if (role !== 'viewer') deliver(room, () => ({ kind: 'runThroughs', runs: views }));
 					} else if (request.kind === 'mode') {
 						open.editing = request.editing && editor;
 						tellPresent(flowId);

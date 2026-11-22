@@ -274,16 +274,16 @@ async fn with_views<R>(
     }
 }
 
-/// viewer 看到的一起記全上（打招呼時、收到的樣子裡沒有他時）和第幾次算的。流程核心出錯時當沒有（第 0 次）。
-async fn run_views(state: &AppState, flow_id: &str, viewer: i64) -> (u64, Vec<RunView>) {
+/// viewer 看到的一起記全上（打招呼時、收到的樣子裡沒有他時）和第幾次算的；還沒有表是空的（第 0 次）。
+/// 流程核心出錯時是 None。
+async fn run_views(state: &AppState, flow_id: &str, viewer: i64) -> Option<(u64, Vec<RunView>)> {
     let Some(table) = state.rooms.run_table(flow_id) else {
-        return (0, vec![]);
+        return Some((0, vec![]));
     };
     with_views(state, &table, &[viewer], |told, mut views| {
         (told, views.remove(&viewer).unwrap_or_default())
     })
     .await
-    .unwrap_or_default()
 }
 
 /// 一個連線斷了（#262）：在表上的記下斷線的時間、告訴別人；1 分鐘後再說一次（當他離開）。
@@ -694,12 +694,12 @@ async fn serve(
     state.rooms.update_here(flow_id, |list| list.push(here));
     // 送過第幾次算的一起記全上：頻道裡還沒收的比這舊，不送。
     let mut shown = 0;
-    if role.can_record() {
-        let (told, views) = run_views(&state, flow_id, user_id).await;
+    // 沒有全上也說（空的）：斷線時全上結束了，連回來的畫面才不會留著舊的。
+    if role.can_record()
+        && let Some((told, views)) = run_views(&state, flow_id, user_id).await
+    {
         shown = told;
-        if !views.is_empty() {
-            tell(&mut socket, &RoomMessage::RunThroughs { runs: views }).await?;
-        }
+        tell(&mut socket, &RoomMessage::RunThroughs { runs: views }).await?;
     }
     let who = Who {
         user_id,
@@ -842,7 +842,7 @@ async fn serve(
                     // 算樣子時還沒在在場名單裡（剛連上）：自己再拿一次。
                     let (told, runs) = match views.get(&user_id) {
                         Some(mine) => (told, mine.clone()),
-                        None => run_views(&state, flow_id, user_id).await,
+                        None => run_views(&state, flow_id, user_id).await.unwrap_or_default(),
                     };
                     shown = shown.max(told);
                     RoomMessage::RunThroughs { runs }

@@ -213,11 +213,11 @@ async fn hear(socket: &mut Socket) -> Value {
     next.await.expect("伺服器一直沒說話")
 }
 
-/// 伺服器說的下一句，「誰開著」的跳過。
+/// 伺服器說的下一句，「誰開著」和一起記全上的跳過。
 async fn reply(socket: &mut Socket) -> Value {
     loop {
         let message = hear(socket).await;
-        if message["kind"] != "present" {
+        if message["kind"] != "present" && message["kind"] != "runThroughs" {
             return message;
         }
     }

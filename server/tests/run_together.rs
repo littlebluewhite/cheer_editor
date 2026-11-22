@@ -139,10 +139,11 @@ impl Server {
         User { cookie, email }
     }
 
-    /// 連上、打招呼，回房間（伺服器說了可以送步）。
+    /// 連上、打招呼，回房間（伺服器說了可以送步、自己進來了；打招呼時說的全上已經讀掉）。
     async fn join(&self, who: &User, id: &str) -> Socket {
         let mut socket = self.connect(who, id).await;
         hello(&mut socket, who).await;
+        runs_until_present(&mut socket).await;
         socket
     }
 
@@ -286,8 +287,9 @@ async fn an_opened_run_through_reaches_recorders_not_viewers_and_joining_uses_it
     assert!(quiet(&mut viewer).await, "檢視者不該收到");
 
     // 後來才連上的能記的人一連上就看到。
-    let mut again = s.join(&lin, &id).await;
-    assert_eq!(people(&until(&mut again, "runThroughs").await).len(), 2);
+    let mut again = s.connect(&lin, &id).await;
+    hello(&mut again, &lin).await;
+    assert_eq!(people(&runs_until_present(&mut again).await[0]).len(), 2);
 }
 
 #[sqlx::test]
@@ -645,8 +647,9 @@ async fn coming_back_within_a_minute_keeps_the_squads_and_reports_refill_a_resta
     until(&mut coach, "runThroughs").await;
     say(&mut phone, report("2026-11-07", &["n:2"], &[], false)).await;
     until(&mut phone, "runThroughs").await;
-    let mut tablet = s2.join(&mei, &id).await;
-    let seen = until(&mut tablet, "runThroughs").await;
+    let mut tablet = s2.connect(&mei, &id).await;
+    hello(&mut tablet, &mei).await;
+    let seen = runs_until_present(&mut tablet).await.remove(0);
     assert_eq!(people(&seen), vec!["王教練", "林教練"]);
     assert_eq!(
         holders(&seen),
@@ -772,6 +775,31 @@ async fn a_second_connection_of_the_same_person_never_shows_an_older_table_than_
         .collect();
     assert_eq!(seen.first(), Some(&3));
     assert!(seen.iter().all(|n| *n == 3), "平板收到的組數：{seen:?}");
+}
+
+#[sqlx::test]
+async fn coming_back_after_the_run_through_ended_while_offline_is_told_there_is_none(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut coach = s.join(&wang, &id).await;
+    let mut phone = s.join(&lin, &id).await;
+    say(&mut coach, report("2026-11-07", &["n:1"], &[], false)).await;
+    until(&mut phone, "runThroughs").await;
+
+    // 林教練的手機斷線，斷線時王教練存好離開：表裡沒人了。
+    drop(phone);
+    say(&mut coach, json!({ "kind": "leaveRun", "run": RUN })).await;
+    until_with(&mut coach, |m| m["runs"] == json!([])).await;
+
+    // 手機連回來：伺服器一定說現在沒有全上，畫面不會留著舊的。
+    let mut phone = s.connect(&lin, &id).await;
+    hello(&mut phone, &lin).await;
+    let seen = runs_until_present(&mut phone).await;
+    assert_eq!(seen, vec![json!({ "kind": "runThroughs", "runs": [] })]);
 }
 
 /// 打招呼之後、到自己進來的 present 為止收到的每個 runThroughs（連上到打招呼之間排著的都在 present 之前）。

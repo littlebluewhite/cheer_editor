@@ -81,6 +81,18 @@ describe('假伺服器：一起記全上斷線 1 分鐘', () => {
 		expect(phone.heard.length).toBe(told);
 	});
 
+	it('斷線時全上結束了：連回來一定說現在沒有全上（空的），畫面不會留著舊的', async () => {
+		const { s, coach } = await wangOpensLinJoins();
+		coach.room.send({ kind: 'leaveRun', run: RUN });
+		await settle();
+		s.disconnect(lin.email);
+		vi.advanceTimersByTime(61_000);
+		await settle();
+		const phone = s.joinAs('c1', lin.email);
+		await settle();
+		expect(phone.heard.filter((m) => m.kind === 'runThroughs')).toEqual([{ kind: 'runThroughs', runs: [] }]);
+	});
+
 	it('這支流程沒有連著的房間了，表就沒了：再連上加入不了', async () => {
 		const { s } = await wangOpensLinJoins();
 		s.disconnect(wang.email);
