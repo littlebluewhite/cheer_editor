@@ -12,12 +12,14 @@
 // 同一個檔也放「改、刪、救回」（amendRecords，#350，管什麼、不管什麼寫在函式開頭）：「同一次全上的同一組有沒有人先存了」兩個共用。
 
 import { runCommands, type Command } from './commands';
-import type { Flow } from './flow';
-import { sameJson } from './room-step';
-import { checkRecord, putRecords, takeRecords, type StoredAttempt } from './stored-records';
+import { same, type Flow } from './flow';
+import { checkRecord, putRecords, stored, takeRecords, type StoredAttempt } from './stored-records';
 import type { Said } from './why';
 
-/** 伺服器上跟送來的有關的一次：gone 是清掉了；by 是記的人的名字（沒有記的人，例：從流程檔來的，就不帶）。 */
+/**
+ * 伺服器上的一次（收、改、刪、救回都用）：gone 是清掉了；by 是記的人，跟 ask 的 by 同一種寫法：receiveRecords 是名字，
+ * amendRecords 是使用者 id（只拿來比「是不是他記的」）。沒有記的人（例：從流程檔來的）就不帶。
+ */
 export interface KnownRecord extends StoredAttempt {
 	gone?: boolean;
 	by?: string;
@@ -108,12 +110,6 @@ export function receiveRecords(ask: RecordsAsk): RecordVerdict[] {
 /** 送的人的權限（擁有者、編輯者、記錄者、檢視者）。 */
 export type AmendRole = 'owner' | 'editor' | 'recorder' | 'viewer';
 
-/** 伺服器上那幾次的一筆：gone 是清掉了；by 是記的人（跟 AmendAsk.by 同一種寫法，只拿來比；沒有記的人就不帶）。 */
-export interface AmendRecord extends StoredAttempt {
-	gone?: boolean;
-	by?: string;
-}
-
 /** 送來的：改記號（每一次只拿 id 和記號）、刪、救回哪幾次。 */
 export type AmendSent =
 	| { kind: 'change'; attempts: StoredAttempt[] }
@@ -131,7 +127,7 @@ export interface AmendAsk {
 	role: AmendRole;
 	by: string;
 	sent: AmendSent;
-	records: AmendRecord[];
+	records: KnownRecord[];
 }
 
 /**
@@ -160,8 +156,8 @@ export interface AmendOutcome {
  */
 export function amendRecords(ask: AmendAsk): AmendOutcome {
 	const { flow, step, role, by, sent } = ask;
-	const may = (r: AmendRecord) => role === 'owner' || role === 'editor' || (role === 'recorder' && r.by !== undefined && r.by === by);
-	const targets = new Map<string, AmendRecord>();
+	const may = (r: KnownRecord) => role === 'owner' || role === 'editor' || (role === 'recorder' && r.by !== undefined && r.by === by);
+	const targets = new Map<string, KnownRecord>();
 	for (const r of ask.records) if (!targets.has(r.attempt.id) && may(r)) targets.set(r.attempt.id, r);
 	const out: AmendOutcome = { deleted: [], changed: [], restored: [], amended: [], told: [] };
 	const amended = (id: string) => {
@@ -193,7 +189,7 @@ export function amendRecords(ask: AmendAsk): AmendOutcome {
 			const after = runOne(r, { name: 'changeAttempt', args: [r.actionId, r.attempt.id, s.attempt.marks ?? null] } as Command);
 			if (!after) continue;
 			// 再送一次一樣的（回答沒收到）不算用手動過，不然之後復原、重做會照現在的留著
-			if (!sameJson(after.attempt, r.attempt)) amended(r.attempt.id);
+			if (!same(after.attempt, r.attempt)) amended(r.attempt.id);
 			now.set(r.attempt.id, after);
 		}
 	} else {
@@ -213,11 +209,6 @@ export function amendRecords(ask: AmendAsk): AmendOutcome {
 	if (sent.kind === 'restore') out.restored = kept;
 	out.told = [...now.keys()];
 	return out;
-}
-
-/** 只留動作和那一次（多帶的拿掉）。 */
-function stored({ actionId, attempt }: StoredAttempt): StoredAttempt {
-	return { actionId, attempt };
 }
 
 /** 同一次全上、同一個動作、同一組（騰翻、跳躍是同一個人）已經存了的別的一筆（還在的）。 */

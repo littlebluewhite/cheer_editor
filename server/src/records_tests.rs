@@ -18,12 +18,14 @@ async fn setup(db: sqlx::PgPool) -> (AppState, i64) {
     .fetch_one(&db)
     .await
     .unwrap();
-    sqlx::query("INSERT INTO flows (id, owner_id, content, updated_at) VALUES ($1, $2, '{}', now())")
-        .bind(FLOW)
-        .bind(user_id)
-        .execute(&db)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO flows (id, owner_id, content, updated_at) VALUES ($1, $2, '{}', now())",
+    )
+    .bind(FLOW)
+    .bind(user_id)
+    .execute(&db)
+    .await
+    .unwrap();
     let state = AppState {
         db,
         mailer: Mailer::memory(),
@@ -82,7 +84,9 @@ async fn fake_receive(state: &AppState, body: &str) {
 }
 
 fn ids(of: &[Value]) -> Vec<&str> {
-    of.iter().map(|r| r["attempt"]["id"].as_str().unwrap()).collect()
+    of.iter()
+        .map(|r| r["attempt"]["id"].as_str().unwrap())
+        .collect()
 }
 
 #[sqlx::test]
@@ -103,7 +107,10 @@ async fn when_the_flow_core_breaks_stored_ones_still_come_back_and_only_new_ones
     let reply = serde_json::to_value(reply).unwrap();
 
     // 收過的照樣回存著的那一筆；收過、後來清掉的兩邊都不放；只有新的寫看不懂
-    assert_eq!(ids(reply["saved"].as_array().unwrap()), vec!["tkept11111110"]);
+    assert_eq!(
+        ids(reply["saved"].as_array().unwrap()),
+        vec!["tkept11111110"]
+    );
     assert_eq!(reply["saved"][0]["mine"], true);
     assert_eq!(
         reply["dropped"],

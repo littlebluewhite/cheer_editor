@@ -41,6 +41,11 @@ export function takeRecords(flow: Flow): { flow: Flow; records: StoredAttempt[] 
 	return { flow: putRecords(flow, []), records };
 }
 
+/** 只留動作和那一次（伺服器上的一次多帶的拿掉，例：gone、by）。 */
+export function stored({ actionId, attempt }: StoredAttempt): StoredAttempt {
+	return { actionId, attempt };
+}
+
 /**
  * 伺服器收一次時的檢查（照記一次的規則）：打在不在的環節上的記號丟掉；丟光了、或動作、組、隊員不在了，整筆不存。
  * 一次的 id、全上 id 是手機發的亂數（ADR 0011、0014）。

@@ -338,7 +338,6 @@ export { amendRecords, receiveRecords } from './room-records';
 export type {
 	AmendAsk,
 	AmendOutcome,
-	AmendRecord,
 	AmendRole,
 	AmendSent,
 	KnownRecord,
