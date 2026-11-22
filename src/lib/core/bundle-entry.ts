@@ -7,6 +7,7 @@ import {
 	checkRecord,
 	flowProblem,
 	putRecords,
+	receiveRecords,
 	remoteChange,
 	runCommands,
 	runUndo,
@@ -16,6 +17,7 @@ import {
 	takeStep,
 	type Command,
 	type Flow,
+	type RecordsAsk,
 	type RemoteChange,
 	type StepAsk,
 	type StoredAttempt
@@ -91,4 +93,12 @@ export function runUndoJson(flow: string, records: string, change: string): stri
  */
 export function takeStepJson(ask: string): string {
 	return JSON.stringify(takeStep(JSON.parse(ask) as StepAsk));
+}
+
+/**
+ * 這串紀錄收不收（#348）：ask 是 RecordsAsk 的 JSON（現在的編排、送的人能不能記、名字、送來的一串、有關的紀錄），
+ * 回 receiveRecords 的結果（RecordVerdict[]）的 JSON。
+ */
+export function receiveRecordsJson(ask: string): string {
+	return JSON.stringify(receiveRecords(JSON.parse(ask) as RecordsAsk));
 }
