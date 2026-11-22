@@ -43,7 +43,7 @@ describe('管理使用者頁', () => {
 		expect(within(row('王教練')).getByText('wang@example.com')).toBeTruthy();
 	});
 
-	it('每種狀態的字和按鈕；自己那列沒有「停用」', async () => {
+	it('每種狀態的字和按鈕；自己那列沒有「停用」；只有已停用的人有「刪除」', async () => {
 		await usersPage();
 		expect(within(row('王教練')).getByText('可以登入')).toBeTruthy();
 		expect(buttons('王教練')).toEqual(['寄重設密碼信', '改 email', '停用']);
@@ -52,7 +52,7 @@ describe('管理使用者頁', () => {
 		expect(within(row('李小芳')).getByText('邀請過期，他還沒設密碼')).toBeTruthy();
 		expect(buttons('李小芳')).toEqual(['重寄邀請', '改 email', '停用']);
 		expect(within(row('黃教練')).getByText('已停用')).toBeTruthy();
-		expect(buttons('黃教練')).toEqual(['恢復', '改 email']);
+		expect(buttons('黃教練')).toEqual(['恢復', '改 email', '刪除']);
 		expect(within(row('林教練')).getByText('可以登入')).toBeTruthy();
 		expect(buttons('林教練')).toEqual(['寄重設密碼信', '改 email']);
 	});
@@ -194,9 +194,9 @@ describe('管理員移交（#252）', () => {
 	it('被停用又有流程：「已停用・他有 N 支流程」和［移交 N 支流程］；沒流程的只有「已停用」', async () => {
 		await withFlows();
 		expect(within(row('黃教練')).getByText('已停用・他有 2 支流程')).toBeTruthy();
-		expect(buttons('黃教練')).toEqual(['恢復', '移交 2 支流程', '改 email']);
+		expect(buttons('黃教練')).toEqual(['恢復', '移交 2 支流程', '改 email', '刪除']);
 		expect(within(row('陳小美')).getByText('已停用')).toBeTruthy();
-		expect(buttons('陳小美')).toEqual(['恢復', '改 email']);
+		expect(buttons('陳小美')).toEqual(['恢復', '改 email', '刪除']);
 	});
 
 	it('對話框輸入接手的人的 email；擋沒帳號、交給他自己、接手的人被停用；全部交給同一個人', async () => {
@@ -226,6 +226,74 @@ describe('管理員移交（#252）', () => {
 			[wang.email, { [huang.email]: 'editor' }]
 		]);
 		expect(within(row('黃教練')).getByText('已停用')).toBeTruthy();
-		expect(buttons('黃教練')).toEqual(['恢復', '改 email']);
+		expect(buttons('黃教練')).toEqual(['恢復', '改 email', '刪除']);
+	});
+});
+
+describe('刪除帳號（#369）', () => {
+	/** 黃教練（被停用）有 2 支流程，一支分享給王教練；林教練的流程分享給黃教練。 */
+	async function withFlows() {
+		const flow = (id: string, owner: string, people: FakeCloudFlow['people'] = {}): FakeCloudFlow => ({
+			id,
+			owner,
+			flow: libSample(),
+			updatedAt: new Date(2026, 10, 6).toISOString(),
+			people
+		});
+		const fake = fakeServer({
+			users: [lin, wang, mei, fang, huang].map((u) => ({ ...u })),
+			signedIn: lin.email,
+			flows: [flow('c1', huang.email, { [wang.email]: 'viewer' }), flow('c2', huang.email), flow('c3', lin.email, { [huang.email]: 'editor' })]
+		});
+		render(Users, { server: fake.server });
+		await flush();
+		return fake;
+	}
+
+	it('確認框寫清楚會刪掉什麼；取消什麼都不做', async () => {
+		const { state } = await withFlows();
+		await fireEvent.click(within(row('黃教練')).getByRole('button', { name: '刪除' }));
+		const dialog = screen.getByRole('dialog', { name: '刪除黃教練的帳號？' });
+		for (const line of [
+			'他的 email、名字、密碼都刪掉，不能恢復。',
+			'他擁有的 2 支流程一起刪掉，有權限的人會看到「被擁有者刪掉了」。',
+			'他在別人流程上的權限拿掉；他記的紀錄、改過的地方留著，但不寫是誰。',
+			'會寄信告訴他刪好了。之後同一個 email 可以再邀請，是新的帳號。'
+		]) {
+			expect(within(dialog).getByText(line)).toBeTruthy();
+		}
+		await fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(state.users.some((u) => u.email === huang.email)).toBe(true);
+	});
+
+	it('刪掉：表上沒有他，他的流程不見了，別人的流程名單上沒有他', async () => {
+		const { state } = await withFlows();
+		await fireEvent.click(within(row('黃教練')).getByRole('button', { name: '刪除' }));
+		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '刪除帳號' }));
+		await flush();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(green()).toBe('刪掉了黃教練的帳號，寄了信告訴他。');
+		expect(screen.queryByText('黃教練')).toBeNull();
+		expect(state.users.some((u) => u.email === huang.email)).toBe(false);
+		expect(state.flows.map((f) => [f.id, f.people])).toEqual([['c3', {}]]);
+	});
+
+	it('沒有流程的人：確認框不提流程', async () => {
+		await usersPage();
+		await fireEvent.click(within(row('黃教練')).getByRole('button', { name: '刪除' }));
+		const dialog = screen.getByRole('dialog', { name: '刪除黃教練的帳號？' });
+		expect(within(dialog).queryByText(/支流程/)).toBeNull();
+	});
+
+	it('寄信服務今天的額度用完了：沒刪，對話框留著說原因', async () => {
+		const { state } = await usersPage();
+		state.mailQuota = true;
+		await fireEvent.click(within(row('黃教練')).getByRole('button', { name: '刪除' }));
+		const dialog = screen.getByRole('dialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '刪除帳號' }));
+		await flush();
+		expect(within(dialog).getByRole('alert').textContent).toBe('今天寄不出去，明天再試。');
+		expect(state.users.some((u) => u.email === huang.email)).toBe(true);
 	});
 });

@@ -136,6 +136,8 @@ export interface ServerAdapter {
 	disableUser(id: number): Promise<AdminResult>;
 	/** 恢復：用原本的密碼就能登入。 */
 	enableUser(id: number): Promise<AdminResult>;
+	/** 刪除帳號（#369）：只有已停用的人，不能恢復；他擁有的流程一起刪，他收到「刪好了」的信。 */
+	deleteUser(id: number): Promise<AdminResult>;
 	/** 移交（#252）：被停用的人擁有的流程全部交給 email 那個人；回交出去幾支，或做不成的原因。 */
 	adminHandOver(id: number, email: string): Promise<HandedOver | AdminProblem>;
 
@@ -326,6 +328,7 @@ export function httpServer(base = ''): ServerAdapter {
 		changeEmail: (id, email) => admin(`/${id}/email`, { email }),
 		disableUser: (id) => admin(`/${id}/disable`),
 		enableUser: (id) => admin(`/${id}/enable`),
+		deleteUser: (id) => admin(`/${id}/delete`),
 		async adminHandOver(id, email) {
 			const res = await post(`admin/users/${id}/transfer`, { email });
 			if (res.ok || res.status === 409) return (await res.json()) as HandedOver | AdminProblem;

@@ -61,3 +61,21 @@ describe('沒存進去那一列（存起來的是代號，畫面照現在的語�
 		expect(droppedTexts({ ...row, why: { ...why, note: { by: null, which: null } } }).note).toBe('別人已經記了這次全上的這一組');
 	});
 });
+
+describe('刪除帳號的人改的步（#369）：伺服器送的名字是空的，寫「別人」', () => {
+	it('後來改過、改了同一個地方、改了流程被擋下', () => {
+		localStorage.setItem(localStorageKey, 'zh-TW');
+		const undo: Rejected = { ...rejected('別人後來改過，這步不能復原'), why: { code: 'undoChangedLater', by: '', redo: false } };
+		expect(sentBack(undo, '改名')).toBe('別人後來改過，這步不能復原');
+		const same: Rejected = { ...rejected('', ''), why: { code: 'sameThing' } };
+		expect(sentBack(same, '改名')).toBe('別人剛改了同一個地方，你的「改名」沒改成');
+		expect(sentBack(rejected('這一拍已經有站位', ''), '加站位')).toBe('別人剛改了流程，你的「加站位」沒改成：這一拍已經有站位');
+	});
+
+	it('英文：Someone else', () => {
+		localStorage.setItem(localStorageKey, 'en');
+		const undo: Rejected = { ...rejected('別人後來改過，這步不能復原'), why: { code: 'undoChangedLater', by: '', redo: true } };
+		expect(sentBack(undo, '改名')).toMatch(/^Someone else /);
+		localStorage.setItem(localStorageKey, 'zh-TW');
+	});
+});

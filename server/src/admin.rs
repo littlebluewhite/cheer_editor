@@ -1,6 +1,6 @@
 //! 管理使用者（#245）：只有管理員能叫。名單、加使用者、重寄邀請、寄重設密碼信、改 email、停用、恢復。
 //! 移交（#252）：只有使用者被停用時，把他擁有的流程全部交給同一個人；管理員只看到支數，看不到流程名字。
-//! 只有停用，沒有刪除使用者。管理員不能幫人決定密碼（只能寄信讓他自己設）。
+//! 刪除帳號（#369）：只有已停用的人，不能恢復；管理員刪不了自己。管理員不能幫人決定密碼（只能寄信讓他自己設）。
 //! 要寄信的事，信寄不出去就什麼都不改（信在交易裡寄，寄不出去就退回）。
 
 use axum::Json;
@@ -14,8 +14,9 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::accounts::{LinkPurpose, SignedIn, new_link, password_mail, signed_in, signed_out};
+use crate::flow_room::RoomEvent;
 use crate::mail::{Mail, MailError};
-use crate::sharing::{hand_over_flows, tell_new_owner};
+use crate::sharing::{delete_flow, hand_over_flows, tell_new_owner};
 
 // ---------- 前後端共用的訊息 ----------
 
@@ -381,6 +382,130 @@ pub async fn hand_over(
         flows: moved.len() as u32,
     })
     .into_response())
+}
+
+/// 刪除帳號：只有已停用的人（不然 409 notAllowed），管理員刪不了自己（409 notAllowed）。照 [`delete_account`] 刪，
+/// 寄他一封「刪好了」（寄不出去就什麼都不刪）。
+pub async fn delete(
+    Admin(me): Admin,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Response, AdminError> {
+    if id == me {
+        return Err(AdminProblem::NotAllowed.into());
+    }
+    let mut tx = state.db.begin().await?;
+    let disabled: Option<bool> =
+        sqlx::query_scalar("SELECT disabled_at IS NOT NULL FROM users WHERE id = $1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    match disabled {
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+        Some(false) => return Err(AdminProblem::NotAllowed.into()),
+        Some(true) => {}
+    }
+    let deleted = delete_account(&mut tx, id, state.clock.now()).await?;
+    state
+        .mailer
+        .send(Mail {
+            to: deleted.email.clone(),
+            subject: "你的帳號刪好了：競技啦啦隊流程編輯器".into(),
+            text: format!(
+                "{}，你好：\n\n你在競技啦啦隊流程編輯器的帳號刪好了。你的 email、名字、密碼都不在了；你擁有的流程也一起刪了。\n\n你在別人流程裡記的成功率紀錄、改過的地方還留著，但不寫是誰。\n\n之後要再用，請找管理員重新邀請你，會是一個新的帳號。\n",
+                deleted.name
+            ),
+        })
+        .await?;
+    tx.commit().await?;
+    deleted.tell_rooms(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// 刪掉的那個人：email、名字（寄「刪好了」用），他擁有、刪掉的流程，他原本有權限的別人的流程。
+pub(crate) struct DeletedAccount {
+    pub user_id: i64,
+    pub email: String,
+    pub name: String,
+    pub flows: Vec<String>,
+    pub shared: Vec<String>,
+}
+
+impl DeletedAccount {
+    /// commit 之後：他擁有的流程開著的房間說被刪了，別人的流程房間說他沒權限了，他自己每個連線都關掉。
+    pub(crate) fn tell_rooms(&self, state: &AppState) {
+        for flow in &self.flows {
+            state.rooms.tell(flow, RoomEvent::Deleted);
+        }
+        for flow in &self.shared {
+            state.rooms.tell(
+                flow,
+                RoomEvent::Permission {
+                    user_id: self.user_id,
+                    role: None,
+                },
+            );
+        }
+        signed_out(state, self.user_id);
+    }
+}
+
+/// 刪除帳號（#369，#325 的結論）：在 tx 裡把這個人從伺服器上拿掉。不檢查能不能刪（呼叫的人先查、先鎖住他那一列）。
+/// - 他擁有的流程：跟擁有者刪流程一樣（[`delete_flow`]），有權限的人之後看到「被擁有者刪掉了」，音樂 30 天後刪。
+/// - 他在別人流程上的權限、登入、設密碼連結、他的「被擁有者刪掉了」、用 email 記的猜錯密碼紀錄：刪掉。
+/// - 他在別人流程裡記的紀錄、改過的步：留著，記的人、改的人變 NULL（跟從流程檔傳上來的紀錄一樣不寫是誰）。
+///
+/// 之後同一個 email 可以再被邀請，是新的使用者。commit 之後叫 [`DeletedAccount::tell_rooms`]。
+pub(crate) async fn delete_account(
+    tx: &mut sqlx::PgConnection,
+    id: i64,
+    now: DateTime<Utc>,
+) -> anyhow::Result<DeletedAccount> {
+    let (email, name): (String, String) =
+        sqlx::query_as("SELECT email, name FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let flows: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM flows WHERE owner_id = $1 ORDER BY id FOR UPDATE")
+            .bind(id)
+            .fetch_all(&mut *tx)
+            .await?;
+    for flow in &flows {
+        delete_flow(tx, flow, now).await?;
+    }
+    let shared: Vec<String> =
+        sqlx::query_scalar("DELETE FROM flow_permissions WHERE user_id = $1 RETURNING flow_id")
+            .bind(id)
+            .fetch_all(&mut *tx)
+            .await?;
+    for sql in [
+        "DELETE FROM sessions WHERE user_id = $1",
+        "DELETE FROM password_links WHERE user_id = $1",
+        "DELETE FROM deleted_flows WHERE user_id = $1",
+    ] {
+        sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+    }
+    crate::lockout::clear(&mut *tx, &email).await?;
+    sqlx::query("UPDATE flow_records SET recorded_by = NULL WHERE recorded_by = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE flow_steps SET user_id = NULL WHERE user_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    Ok(DeletedAccount {
+        user_id: id,
+        email,
+        name,
+        flows,
+        shared,
+    })
 }
 
 // ---------- 小工具 ----------
