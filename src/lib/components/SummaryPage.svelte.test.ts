@@ -1,13 +1,17 @@
 // 總表：放一個帶好紀錄的 session 進去，點按鈕、格子，讀畫面和 session 的流程。
 // 篩選、顏色、明細的基本行為在整頁測試（routes/practice.svelte.test.ts 的「練習：總表」）。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { printPage } from '#lib/print.js';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
 import { recordAttempt, recordRunThrough, type Flow } from '#lib/core';
 import { flowOf, ratedSample } from '#lib/test-flows.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import SummaryPage from './SummaryPage.svelte';
+
+// jsdom 沒有列印：換成假的列印接口，看有沒有叫到。
+vi.mock('#lib/print.js', () => ({ printPage: vi.fn() }));
 
 const DATE = '2026-11-04';
 
@@ -62,6 +66,17 @@ describe('總表', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '救回' }));
 		expect(runs()).toHaveLength(2);
 		expect(screen.getByRole('status').textContent).toBe('已救回');
+	});
+
+	it('按「列印」叫出列印；記全上的表上也有「列印」', async () => {
+		vi.mocked(printPage).mockClear();
+		setup();
+		await fireEvent.click(screen.getByRole('button', { name: '列印' }));
+		expect(printPage).toHaveBeenCalledOnce();
+
+		await fireEvent.click(screen.getByRole('button', { name: '＋ 記一次全上' }));
+		await fireEvent.click(screen.getByRole('button', { name: '列印' }));
+		expect(printPage).toHaveBeenCalledTimes(2);
 	});
 
 	it('顏色有圖例；「最近 7 天」寫出是哪幾天', () => {
