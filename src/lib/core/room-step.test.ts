@@ -579,16 +579,18 @@ describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）
 		const f = full(40);
 		return { ...f, members: [...f.members, { ...f.members[0], id: 'extra', name: '多一個' }] };
 	}
-	it('#346：調段順序、別的分頁刪了原本的開頭那張、復原調段順序：收了，開頭那張跟著第一段', () => {
+	it('#346：調段順序、別的分頁刪了原本的開頭那張、復原調段順序：擋下（開頭那張會不在流程開頭）', () => {
 		const old = server().flow;
 		const [f1] = old.formations;
 		const c = cloud({ ...old, segments: [...old.segments, { ...old.segments[0], id: 's2' }], formations: [f1, { ...f1, id: 'f2', segmentId: 's2' }] });
 		const id = c.run([{ name: 'moveSegment', args: ['s2', -1] }]);
 		expect(c.s.flow.formations.map((f) => f.id)).toEqual(['f2', 'f1']);
 		c.run([{ name: 'deleteFormation', args: ['f1'] }], 'other');
-		expect(c.undo(id, changesOf(c, 1).undo).r.kind).toBe('accepted');
-		expect(c.s.flow.segments.map((s) => s.id)).toEqual(['s1', 's2']);
-		expect(c.s.flow.formations.map((f) => [f.id, f.segmentId, f.at])).toEqual([['f2', 's1', 0]]);
+		expect(c.undo(id, changesOf(c, 1).undo).r).toMatchObject({
+			kind: 'rejected',
+			why: { code: 'undoBlocked', reason: { why: { code: 'flow_check_formation_opening' } } }
+		});
+		expect(c.s.flow.segments.map((s) => s.id)).toEqual(['s2', 's1']);
 	});
 
 	/** 舊檔：開頭那張之後照給的順序放這幾張站位（第一段的第幾拍、id），不照時間排。 */

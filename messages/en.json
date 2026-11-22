@@ -42,6 +42,7 @@
 	"flow_check_formation_order": "Formation {n} must come after formation {before}",
 	"flow_check_formation_same_beat": "Formations {n} and {other} are on the same beat",
 	"flow_check_formation_off_grid": "must be within a segment's time",
+	"flow_check_formation_opening": "The first formation must be at the start of the routine",
 	"flow_check_twice": "Each athlete can only be added once",
 	"flow_check_no_role": "There's no position called “{role}”",
 	"flow_check_clash": "{member} is in both “{first}” and “{second}” at the same time",

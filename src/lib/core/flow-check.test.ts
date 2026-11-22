@@ -195,6 +195,16 @@ const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
 		'flow_check_formation_same_beat'
 	],
 	[
+		'開頭那張不在流程開頭（#346）',
+		(f) => ({
+			...f,
+			segments: [...f.segments, { ...f.segments[0], id: 's9' }],
+			formations: [{ ...f.formations[0], segmentId: 's9' }, ...f.formations.slice(1)]
+		}),
+		'開頭那張站位要在流程開頭',
+		'flow_check_formation_opening'
+	],
+	[
 		'站位沒照時間排',
 		(f) => ({
 			...f,
