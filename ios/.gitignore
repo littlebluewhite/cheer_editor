@@ -1,0 +1,7 @@
+# 建出來的（ios/README.md）
+App/Web.bundle/
+.dd/
+ShellCore/.build/
+ShellCore/.swiftpm/
+xcuserdata/
+*.xcuserstate

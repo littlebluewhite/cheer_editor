@@ -8,7 +8,7 @@ import vitest from '@vitest/eslint-plugin';
 const IME = '輸入法選字要用 src/lib/ime.ts 的 composing(e)，不要自己判斷 isComposing / keyCode（Safari 選字時 isComposing 是 false）。';
 
 export default defineConfig(
-	{ ignores: ['.svelte-kit/', 'build/', 'node_modules/', 'prototypes/', 'static/', 'src/lib/paraglide/'] },
+	{ ignores: ['.svelte-kit/', 'build/', 'node_modules/', 'prototypes/', 'static/', 'src/lib/paraglide/', 'ios/'] },
 	{ files: ['**/*.ts'], languageOptions: { parser: ts.parser } },
 	...svelte.configs.base,
 	{ files: ['**/*.svelte', '**/*.svelte.ts'], languageOptions: { parserOptions: { parser: ts.parser } } },
