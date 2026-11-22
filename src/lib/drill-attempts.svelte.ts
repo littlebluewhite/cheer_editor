@@ -7,8 +7,25 @@
 // 改某一次：給卡片一份「正在改的這一次」（AttemptEdit），卡片握著它，收起來就丟（不放進下面的 Store，換頁、換動作不留）。
 // 不管：一次的規則（在流程核心，這裡只問它）；存好之外的提示、刪掉上一次、救回、這天每一次的那一排、點哪一次在改（卡片管）；
 //   練習的權限（送的 ask 自己擋）。不存進流程檔。
+// 全上表（session.drill.runThrough → RunThroughTable）：這張表正在記的，只活在表開著的時候（表握著它，關掉就沒了）。
+//   管點過的格子、按了沒做的動作、每一欄會存下來的樣子、有沒有改過、要存的是哪些；
+//   不管一起記全上誰拿著哪幾組、存（表照舊用自己的 ask 送）。哪一欄是我記的由表告訴它（mine）。
 
-import { attemptEdit, blankPhases, fillOk, keptAttempt, pickedAutoSave, type Action, type Attempt, type Mark, type Phase } from '#lib/core';
+import {
+	attemptEdit,
+	attemptWhos,
+	blankPhases,
+	fillOk,
+	keptAttempt,
+	pickedAutoSave,
+	recordableActions,
+	type Action,
+	type Attempt,
+	type Flow,
+	type Mark,
+	type Phase,
+	type RunThroughMarks
+} from '#lib/core';
 import type { Ask } from '#lib/ask.svelte.js';
 import { m } from '#lib/paraglide/messages.js';
 
@@ -47,6 +64,11 @@ export class DrillAttempts {
 	/** 改 attemptId 那一次：一開始亮著原本的記號。action 給現在的動作（流程變了照現在的算，改到一半的記號不重來）。 */
 	edit(action: () => Action, attemptId: string, ask: Ask): AttemptEdit {
 		return new AttemptEdit(action, attemptId, ask, this.#store.notify);
+	}
+
+	/** 一張新的全上表：flow 拿現在的流程，mine 說哪一欄是我記的。每次拿都是空的（表握著它）。 */
+	runThrough(flow: () => Flow, mine: (action: Action, who: string) => boolean): RunThroughTable {
+		return new RunThroughTable(flow, mine);
 	}
 
 	/** 換一支流程：全部清掉（id 會跟上一支重複）。 */
@@ -275,5 +297,98 @@ export class AttemptEdit {
 				this.#notify(m.practice_changed());
 			}
 		});
+	}
+}
+
+const NEXT: Record<Mark, Mark> = { '✓': '△', '△': '✗', '✗': '✓' };
+
+/**
+ * 全上表正在記的：每格先是 ✓，點一格 ✓ → △ → ✗ → ✓；一格變 ✗，同一組按不了的環節（✗ 做完之後才開始的）點過的清掉，
+ * 佔同樣拍的留著，改回來是 ✓。「這個沒做」整個動作不存；「後面都沒做」這個和後面的都不存，再按一次都回來。
+ */
+export class RunThroughTable {
+	readonly #flow: () => Flow;
+	readonly #mine: (action: Action, who: string) => boolean;
+	/** 點過的格子（key：動作|誰|環節）；沒點過的是 ✓。 */
+	#picked = $state<Record<string, Mark>>({});
+	/** 按了「這個沒做」的動作 id。 */
+	#skipped = $state<string[]>([]);
+
+	constructor(flow: () => Flow, mine: (action: Action, who: string) => boolean) {
+		this.#flow = flow;
+		this.#mine = mine;
+	}
+
+	/** 要記的動作照流程順序，每個動作的每一欄（組或隊員）。 */
+	get blocks(): { action: Action; whos: ReturnType<typeof attemptWhos> }[] {
+		const flow = this.#flow();
+		return recordableActions(flow).map((action) => ({ action, whos: attemptWhos(flow, action) }));
+	}
+
+	/** 一欄每個環節點的記號（沒點過的是 ✓）。 */
+	#tapped(action: Action, who: string): Record<string, Mark> {
+		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, this.#picked[`${action.id}|${who}|${p.id}`] ?? '✓']));
+	}
+
+	/** 一欄照環節順序，是會存下來的樣子：按不了的環節、沒做的動作是空的（null）。 */
+	column(action: Action, who: string): (Mark | null)[] {
+		const ids = action.successRate!.phases.map((p) => p.id);
+		if (this.skipped(action.id)) return ids.map(() => null);
+		const kept = keptAttempt(action, true, this.#tapped(action, who)).marks;
+		return ids.map((id) => kept[id] ?? null);
+	}
+
+	/** 點一格換下一個記號（空的格子點了沒用）；變 ✗ 就把同一組按不了的環節點過的清掉。 */
+	tap(action: Action, who: string, phaseId: string) {
+		const i = action.successRate!.phases.findIndex((p) => p.id === phaseId);
+		const mark = this.column(action, who)[i];
+		if (!mark) return;
+		const next = NEXT[mark];
+		this.#picked[`${action.id}|${who}|${phaseId}`] = next;
+		if (next !== '✗') return;
+		for (const id of blankPhases(action, true, this.#tapped(action, who)).shut) delete this.#picked[`${action.id}|${who}|${id}`];
+	}
+
+	/** 這個動作按了沒做。 */
+	skipped(actionId: string): boolean {
+		return this.#skipped.includes(actionId);
+	}
+
+	/** 「這個沒做」：按一次沒做，再按一次回來。 */
+	toggleSkip(actionId: string) {
+		this.#skipped = this.skipped(actionId) ? this.#skipped.filter((id) => id !== actionId) : [...this.#skipped, actionId];
+	}
+
+	/** 這個和後面的動作 id。 */
+	#rest(actionId: string): string[] {
+		const ids = this.blocks.map((b) => b.action.id);
+		return ids.slice(ids.indexOf(actionId));
+	}
+
+	/** 這個和後面的動作都按了沒做。 */
+	restSkipped(actionId: string): boolean {
+		return this.#rest(actionId).every((id) => this.skipped(id));
+	}
+
+	/** 「後面都沒做」：這個和後面的都變沒做；已經都沒做就都回來。 */
+	toggleRest(actionId: string) {
+		const rest = this.#rest(actionId);
+		this.#skipped = this.restSkipped(actionId)
+			? this.#skipped.filter((id) => !rest.includes(id))
+			: [...this.#skipped, ...rest.filter((id) => !this.#skipped.includes(id))];
+	}
+
+	/** 改過格子、按過沒做：取消、切頁要先問。 */
+	get dirty(): boolean {
+		return this.#skipped.length > 0 || Object.values(this.#picked).some((m) => m !== '✓');
+	}
+
+	/** 要存的：沒按沒做的動作裡、我記的欄。 */
+	get entries(): RunThroughMarks[] {
+		return this.blocks
+			.filter(({ action }) => !this.skipped(action.id))
+			.flatMap(({ action, whos }) =>
+				whos.filter(({ who }) => this.#mine(action, who)).map(({ who }) => ({ actionId: action.id, who, marks: this.#tapped(action, who) }))
+			);
 	}
 }
