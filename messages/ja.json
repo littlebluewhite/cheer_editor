@@ -557,6 +557,7 @@
 	"print_title": "エイトカウント表",
 	"print_who": "印刷する人",
 	"print_hint": "ブラウザで印刷します（{keys}）。PDF にも保存できます。",
+	"print_hint_app": "「印刷」を押します。PDF に保存したり誰かに送ったりするときは、印刷画面で「共有」を押します。",
 	"print_print": "印刷",
 	"print_close": "閉じる",
 	"print_heading": "{routine}　エイトカウント表　{who}",

@@ -21,6 +21,7 @@ final class ScenarioShell {
     // #389
 
     // #391
+    private(set) var printedFrom: [PrintButton?] = []
 
     // #393
 
@@ -43,6 +44,7 @@ final class ScenarioShell {
             // #389
 
             // #391
+            PrintPart(onPrint: { self.printedFrom.append($0) }),
 
             // #393
         ]

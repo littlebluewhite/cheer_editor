@@ -18,6 +18,7 @@ enum ShellParts {
             // #389
 
             // #391
+            PrintPart(onPrint: { Printer.present(context.webView, from: $0) }),
 
             // #393
         ]

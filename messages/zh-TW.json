@@ -557,6 +557,7 @@
 	"print_title": "八拍表",
 	"print_who": "印誰",
 	"print_hint": "用瀏覽器列印（{keys}），也可以存成 PDF。",
+	"print_hint_app": "按「列印」。要存成 PDF 或傳給別人，在列印畫面按「分享」。",
 	"print_print": "列印",
 	"print_close": "關閉",
 	"print_heading": "{routine}　八拍表　{who}",

@@ -1,0 +1,17 @@
+{
+	"about": "列印（#391）：八拍表、記一次全上表、總表的「列印」請殼叫出系統的列印畫面。button 是按的那顆鈕在網頁畫面上的位置（CSS px，跟 getBoundingClientRect 一樣），iPad 上列印畫面從那裡跳出來；沒給就從畫面中間。殼叫出畫面就回，不等印完。⌘P 殼自己接，不經過網頁。",
+	"scenarios": [
+		{
+			"name": "按列印請殼印，說按鈕在哪",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["print"] },
+			"steps": [
+				{ "from": "web", "name": "print", "body": { "button": { "x": 10, "y": 20, "width": 80, "height": 32 } }, "reply": null }
+			]
+		},
+		{
+			"name": "沒說按鈕在哪也印",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["print"] },
+			"steps": [{ "from": "web", "name": "print", "reply": null }]
+		}
+	]
+}

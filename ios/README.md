@@ -147,6 +147,24 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 **結論**：自訂網址收得到 POST 的內容，但 Blob／File 做的內容會被丟掉。之後經過殼的請求（#380 轉送、上傳音樂）：網頁把檔案先轉成 ArrayBuffer 再送，或改走 `messageHandlers`。這兩條都還沒在真機試過；速度也沒量。WebKit 哪天改了，這個測試會紅，要回來改這張表。
 
+## 列印（#391）
+
+網頁裡 `window.print()` 在 App 裡什麼都不會發生（docs/research/app-print.md），所以八拍表、記一次全上表、總表的「列印」改請殼印：
+
+- 網頁：`src/lib/print.ts` 的 `printPage(event)`。殼會 `print` 就 `send('print', { button })`（按的那顆鈕的 `getBoundingClientRect`），不然照舊 `window.print()`。情境 `bridge-scenarios/current/print.json`。
+- 殼：`ShellCore/Parts/PrintPart.swift`（拆出按鈕的位置）→ `App/Shell/Printer.swift`：`UIPrintInteractionController` 加 `webView.viewPrintFormatter()`，iPad 用 `present(from:in:)`、iPhone 用 `present(animated:)`。背景色用預設（不印）。
+- ⌘P：`Info.plist` 的 `UIApplicationSupportsPrintCommand`，加上 `Printer.swift` 裡 `ShellViewController` 的 `printContent(_:)`。WebKit 不接 `printContent`，從網頁畫面裡往上找會找到 `ShellViewController`。
+- 存成 PDF、傳給別人：用列印畫面右上角的「分享」，不另外做按鈕。
+- App 裡八拍表的提示換成 `print_hint_app`（`PrintSheet.svelte` 用 `host().shell.can('print')` 判斷）。
+
+在 iOS 27.2 模擬器上看到的（2026-11-22，`PipeTests/PrintPipeTests.swift`）：
+
+- iPad、iPhone 都叫得出列印畫面，右上角有「分享」，預覽是八拍表的列印樣子（A4、1 頁、小站位圖有顏色、表頭白底）。
+- **iPad 上列印畫面不從按鈕跳出來**：iOS 27 的列印畫面是置中的大卡片，系統記錄 `presentFromRect… called on iPhone`。程式照樣傳按鈕的位置（18.4 上應該是從按鈕跳出的小視窗，沒試過）。
+- 剛用程式收起列印畫面就馬上再叫，系統不理（測試裡等 1 秒）。程式收起時不會通知 delegate。
+- 真的按鍵盤的 ⌘P 沒試過：模擬器沒開視窗，送不了按鍵。測試是從網頁畫面裡的 `WKContentView` 送 `printContent`。
+- 按「分享」→ 存成 PDF 沒試過（測試按不到系統的列印畫面）。
+
 ## 還沒做的（後面的票）
 
 App 圖示、資料搬到殼（#377）、殼代網頁上網（#380）、鎖定畫面的播放鍵（#389）、列印（#391）、殼自己更新網頁（#393）、手感（#376）、出版指令（#340）。
