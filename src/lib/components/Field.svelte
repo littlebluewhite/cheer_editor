@@ -86,7 +86,8 @@
 		numberBand = NUMBER_BAND,
 		tapped = null,
 		ontap,
-		playing = false
+		playing = false,
+		people = null
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -129,6 +130,8 @@
 		ontap?: (memberId: string | null) => void;
 		/** 正在播放：只能看的場地放大了又標了「我」，畫面跟著「我」。 */
 		playing?: boolean;
+		/** 整支流程大家站過的地方（見 eightCountView）：只能看的場地沒放大時多一顆「只看有人的地方」，放大到這裡（四周留 CROP_MARGIN）。 */
+		people?: Rect | null;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -197,11 +200,13 @@
 	const CROP_MARGIN = 1;
 	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
 	const MINI_DOTS_ACROSS = 12;
+	/** 一塊範圍四周留 CROP_MARGIN（八拍表的小站位圖、「只看有人的地方」同一個留法）。 */
+	const padded = (r: Rect): Rect => {
+		const m = CROP_MARGIN;
+		return { x: r.x - m, y: r.y - m, width: r.width + 2 * m, height: r.height + 2 * m };
+	};
 	const view = $derived.by(() => {
-		if (crop) {
-			const m = CROP_MARGIN;
-			return { x: crop.x - m, y: crop.y - m, width: crop.width + 2 * m, height: crop.height + 2 * m };
-		}
+		if (crop) return padded(crop);
 		const width = full.width / zoom;
 		const height = full.height / zoom;
 		const [cx, cy] = center ?? [full.x + full.width / 2, full.y + full.height / 2];
@@ -406,6 +411,28 @@
 			center = null;
 			handTool = false;
 		}
+	}
+
+	/**
+	 * 「只看有人的地方」：放大幾倍、中心在哪，剛好包住大家站過的地方（超出整個場地的部分不算）。
+	 * 沒有人站好、或放大不了（範圍沒有比整個場地小）是 null，不出現這顆。
+	 */
+	const peopleFit = $derived.by(() => {
+		if (!people) return null;
+		const r = padded(people);
+		const x0 = Math.max(r.x, full.x);
+		const y0 = Math.max(r.y, full.y);
+		const x1 = Math.min(r.x + r.width, full.x + full.width);
+		const y1 = Math.min(r.y + r.height, full.y + full.height);
+		const z = Math.min(MAX_ZOOM, full.width / (x1 - x0), full.height / (y1 - y0));
+		return z > 1 ? { zoom: z, center: [(x0 + x1) / 2, (y0 + y1) / 2] as Position } : null;
+	});
+
+	/** 放大到「只看有人的地方」：這個畫面本來就包住大家走過的地方，不跟著「我」。 */
+	function fitPeople(fit: { zoom: number; center: Position }) {
+		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
+		setZoom(fit.zoom, undefined, [c[0] - fit.center[0], c[1] - fit.center[1]]);
+		follow = false;
 	}
 
 	// ---------- 放大後播放，畫面跟著「我」（只能看的場地） ----------
@@ -1018,6 +1045,9 @@
 	<!-- 只能看、沒有左欄的放大縮小（手機的檢視畫面、檢視模式）：放大了，右下角一顆回整個場地 -->
 	{#if viewOnly && zoom > 1 && !(controls && rail)}
 		<button type="button" class="fit" onclick={() => setZoom(1)}><Icon name="fit" />{t.field_view_fit()}</button>
+	{:else if viewOnly && peopleFit && !(controls && rail)}
+		<!-- 沒放大時同一個位置是「只看有人的地方」 -->
+		<button type="button" class="people" onclick={() => fitPeople(peopleFit)}><Icon name="people" />{t.field_view_people()}</button>
 	{/if}
 	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
@@ -1477,7 +1507,8 @@
 		pointer-events: none;
 	}
 	/* 只能看時放大了：右下角的「整個場地」（左下角是站位名稱、選到的人，中間是「正面／裁判」）。白底的膠囊，手指至少 40px 高 */
-	.fit {
+	.fit,
+	.people {
 		position: absolute;
 		right: 4px;
 		bottom: 4px;
@@ -1487,7 +1518,8 @@
 		box-shadow: 0 2px 8px rgba(22, 33, 58, 0.15);
 	}
 	@media (pointer: coarse) {
-		.fit {
+		.fit,
+		.people {
 			min-height: 40px;
 		}
 	}

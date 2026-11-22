@@ -1,6 +1,7 @@
 // 頁面：場地放大縮小和平移（#151）。
 // 縮放到上下限時按鈕停用、圓點照倍數開根號放大、放大後滾輪是平移（Ctrl／⌘＋滾輪才縮放）、條號固定在畫面邊上。
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { editorPage, teamFlow } from '#lib/test-fakes.js';
 import Page from './+page.svelte';
@@ -169,5 +170,21 @@ describe('✋ 平移（#227）', () => {
 		await fireEvent.keyDown(input, { key: 'h' });
 		expect(await dragEmpty(-100, 0)).toBe(true);
 		input.remove();
+	});
+});
+
+describe('檢視模式（橫拿的 iPad）：只看有人的地方（#333）', () => {
+	it('編輯時沒有；換成檢視模式，右下角有「只看有人的地方」，按了放大，換成「整個場地」', async () => {
+		const page = editorPage(teamFlow());
+		render(Page, page.props);
+		const people = () => screen.queryByRole('button', { name: '只看有人的地方' });
+		expect(people()).toBeNull();
+		page.session.viewing = true;
+		await tick();
+		const full = viewBox();
+		await fireEvent.click(people()!);
+		expect(viewBox()[2]).toBeLessThan(full[2]);
+		expect(people()).toBeNull();
+		expect(document.querySelector('.field-host button.fit')!.textContent).toBe('整個場地');
 	});
 });

@@ -1820,6 +1820,38 @@ await check('390×664（觸控）手機的檢視畫面放大場地：點兩下�
 	return { ok, value: { 放大前: before, 點兩下後: zoomed, 左下角的字右緣: Math.round(cornerRight), 拖了之後: panned, 張開之後: pinched, 頁面: page, 按整個場地後: after } };
 });
 
+for (const [w, h] of [[320, 640], [390, 664]]) {
+	await check(`${w}×${h}（觸控）手機的檢視畫面「只看有人的地方」（#333）：沒放大時在右下角、點得到、不蓋到左下角的字；按了看到的範圍包住大家（四周留 1 公尺），換成「整個場地」，按了回到整個場地`, async () => {
+		await setTouchViewport(w, h);
+		await openPracticeFlow(NEAR_BASES);
+		const host = '.phone-field';
+		const spot = () =>
+			js(`const b = document.querySelector('${host} button.people');
+				if (!b) return null;
+				const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: Math.round(r.height), left: r.left,
+					self: !!t && b.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
+		const before = { ...(await fieldNow(host)), 只看有人的地方鈕: await spot(), 整個場地鈕: await fitSpot(host) };
+		// 點小芳：左下角寫長一點的「小芳　技巧·Lib 上層」，也不蓋到這顆
+		const m4 = await rectOf(`${host} [data-member-id="m4"] :is(circle, rect):is(.base, .top)`);
+		await tap(m4.x, m4.y);
+		const cornerRight = await js(`return document.querySelector('${host} .formation-now').getBoundingClientRect().right`);
+		const people = before.只看有人的地方鈕;
+		if (people?.self) await tap(people.x, people.y);
+		const fitted = { ...(await fieldNow(host)), 只看有人的地方鈕: await spot(), 整個場地鈕: await fitSpot(host) };
+		const fit = fitted.整個場地鈕;
+		if (fit?.self) await tap(fit.x, fit.y);
+		const after = { ...(await fieldNow(host)), 只看有人的地方鈕: await spot() };
+		// NEAR_BASES：x −4～4、y −3～2，四周留 1 公尺
+		const [vx, vy, vw, vh] = fitted.範圍;
+		const covers = vx <= -5 + 0.01 && vy <= -4 + 0.01 && vx + vw >= 5 - 0.01 && vy + vh >= 3 - 0.01;
+		const ok = !!people?.self && people.h >= 40 && cornerRight <= people.left && before.整個場地鈕 === null
+			&& covers && vw < before.範圍[2] - 1 && fitted.只看有人的地方鈕 === null && !!fit?.self
+			&& String(after.範圍) === String(before.範圍) && !!after.只看有人的地方鈕;
+		return { ok, value: { 沒放大: before, 左下角的字右緣: Math.round(cornerRight), 按了之後: fitted, 按整個場地後: after } };
+	});
+}
+
 await check('390×664（觸控）手機的檢視畫面：點場上的人，左下角寫他的名字和這個八拍做什麼，整塊在場地那一格裡；點空白處換回站位名稱；「我」選了人，別人畫淡、我不淡', async () => {
 	await setTouchViewport(390, 664);
 	await openPracticeFlow(NEAR_BASES);

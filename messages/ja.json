@@ -574,6 +574,7 @@
 	"field_view_zoom_out": "縮小",
 	"field_view_zoom_in": "拡大",
 	"field_view_fit": "全体を表示",
+	"field_view_people": "人のいる所だけ表示",
 	"field_view_pan": "表示を移動",
 	"field_view_pan_hint": "オンのときは空いている所をドラッグすると表示が動きます。もう一度押すと範囲選択に戻ります（H を押しながらドラッグしても動きます）",
 	"field_view_tiring_hint": "隊形移動が毎秒 {tiring} m を超え {fast} m 未満：間に合うがきつい",

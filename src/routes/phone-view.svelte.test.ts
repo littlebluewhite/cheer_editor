@@ -3,7 +3,7 @@
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { insertFormation, readFlowFile, setPositions, stepPlayhead, writeFlowFile, type Flow } from '#lib/core';
+import { fieldGeometry, insertFormation, readFlowFile, setPositions, stepPlayhead, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { editorPage, flush, fromMenu, manualFrames, openFile } from '#lib/test-fakes.js';
@@ -340,6 +340,102 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		await flush();
 		expect(inView('m2')).toBe(false);
 		expect(viewBox()).toEqual(before);
+	});
+});
+
+describe('手機的檢視畫面：只看有人的地方', () => {
+	/** 範例流程在第 3 個八拍（8 秒）加一張站位：小A 從 (0, 1.83) 走到 (7, 6)。大家站過的地方：x −1.83～7、y 0～6（−1.83 其實是 6 呎 −1.8288）。 */
+	function walkingFlow(): Flow {
+		const flow = libSample();
+		const added = flowOf(insertFormation(flow, 8));
+		const formation = added.formations.find((f) => !flow.formations.some((o) => o.id === f.id))!;
+		return flowOf(setPositions(added, formation.id, { m2: [7, 6] }));
+	}
+	const stage = () => document.querySelector('.phone-field svg.field')!;
+	/** 場地看到的範圍（公尺）：x y 寬 高。 */
+	const viewBox = () => stage().getAttribute('viewBox')!.split(' ').map(Number);
+	/** 看到的範圍包住 x0～x1、y0～y1。 */
+	const covers = ([x0, y0, x1, y1]: number[]) => {
+		const [vx, vy, w, h] = viewBox();
+		return vx <= x0 + 1e-9 && vy <= y0 + 1e-9 && vx + w >= x1 - 1e-9 && vy + h >= y1 - 1e-9;
+	};
+	const people = () => screen.queryByRole('button', { name: '只看有人的地方' });
+
+	it('按「只看有人的地方」：放大到整支流程大家站過的地方，四周留 1 公尺', async () => {
+		await openOnPhone(walkingFlow());
+		const full = viewBox();
+		await fireEvent.click(people()!);
+		expect(viewBox()[2]).toBeLessThan(full[2]);
+		expect(covers([-2.82, -1, 8, 7])).toBe(true);
+	});
+
+	/** 按播放，聲音每次走半秒、走到第 4 個八拍（14 秒）；每一步都記下看到的範圍。 */
+	async function playThrough({ engine, frames }: Awaited<ReturnType<typeof openOnPhone>>) {
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		const seen: string[] = [];
+		const start = engine.time;
+		for (let s = 0.5; s <= 14; s += 0.5) {
+			engine.audible = start + 0.1 + s;
+			frames.step();
+			await flush();
+			seen.push(viewBox().join(' '));
+		}
+		return seen;
+	}
+
+	it('播放到後面（小A走到右下）：範圍不變', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.click(people()!);
+		const fitted = viewBox().join(' ');
+		expect(new Set(await playThrough(opened))).toEqual(new Set([fitted]));
+	});
+
+	it('選了「我」是小A，在這個畫面播放：畫面不跟著小A動', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await fireEvent.click(people()!);
+		const fitted = viewBox().join(' ');
+		expect(new Set(await playThrough(opened))).toEqual(new Set([fitted]));
+	});
+
+	it('在這個畫面照樣點得到人、捏合得了', async () => {
+		await openOnPhone(walkingFlow());
+		await fireEvent.click(people()!);
+		await fireEvent.pointerDown(dot('m2'), { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 183 });
+		await fireEvent.pointerUp(dot('m2'), { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 183 });
+		expect(document.querySelector('.phone-field .formation-now')!.textContent).toBe('小A　技巧·Lib 主底');
+		const fitted = viewBox();
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(2, 200));
+		await fireEvent.pointerUp(stage(), two(2, 200));
+		await fireEvent.pointerUp(stage(), two(1, 0));
+		expect(viewBox()[2]).toBeLessThan(fitted[2]);
+	});
+
+	it('按「整個場地」回到整個場地，又是「只看有人的地方」', async () => {
+		await openOnPhone(walkingFlow());
+		const full = viewBox();
+		await fireEvent.click(people()!);
+		expect(people()).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '整個場地' }));
+		expect(viewBox()).toEqual(full);
+		expect(people()).not.toBeNull();
+	});
+
+	it('流程裡沒有人站好：沒有這顆', async () => {
+		const flow = libSample();
+		await openOnPhone({ ...flow, formations: flow.formations.map((f) => ({ ...f, pos: {} })) });
+		expect(people()).toBeNull();
+	});
+
+	it('大家站滿整個場地（四個人站在外圍框的四個角）：沒有這顆', async () => {
+		const flow = libSample();
+		const { outer } = fieldGeometry(flow.field);
+		const [l, t, r, b] = [outer.x, outer.y, outer.x + outer.width, outer.y + outer.height];
+		await openOnPhone(flowOf(setPositions(flow, flow.formations[0].id, { m1: [l, t], m2: [r, t], m3: [l, b], m4: [r, b] })));
+		expect(people()).toBeNull();
 	});
 });
 

@@ -574,6 +574,7 @@
 	"field_view_zoom_out": "Zoom out",
 	"field_view_zoom_in": "Zoom in",
 	"field_view_fit": "Fit to view",
+	"field_view_people": "Fit to people",
 	"field_view_pan": "Pan",
 	"field_view_pan_hint": "When on, dragging empty space moves the view; press again to go back to box select (or hold H and drag)",
 	"field_view_tiring_hint": "Formation change over {tiring} m/s but under {fast} m/s: doable but tiring",

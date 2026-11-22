@@ -574,6 +574,7 @@
 	"field_view_zoom_out": "縮小",
 	"field_view_zoom_in": "放大",
 	"field_view_fit": "整個場地",
+	"field_view_people": "只看有人的地方",
 	"field_view_pan": "平移",
 	"field_view_pan_hint": "按下去以後拖空白處是移動畫面，再按一次變回框選（按住 H 拖也可以）",
 	"field_view_tiring_hint": "走位每秒超過 {tiring} 公尺、沒到 {fast} 公尺：跑得到但很喘",
