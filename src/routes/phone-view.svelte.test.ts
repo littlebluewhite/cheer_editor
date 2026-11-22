@@ -274,7 +274,7 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		const formation = added.formations.find((f) => !flow.formations.some((o) => o.id === f.id))!;
 		return flowOf(setPositions(added, formation.id, { m2: [7, 6] }));
 	}
-	const stage = () => screen.getByRole('img', { name: '場地' });
+	const stage = () => screen.getByLabelText('場地');
 	/** 場地看到的範圍（公尺）：x y 寬 高。 */
 	const viewBox = () => stage().getAttribute('viewBox')!.split(' ').map(Number);
 	const inView = (id: string) => {
