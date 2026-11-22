@@ -192,6 +192,16 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
   - 管子測試（`真的那包網頁_改一下馬上要切到背景_不等停手1秒就存進殼`）是測試自己發通知：從改到存好約 50 毫秒。
   - 另外在模擬器上真的切到背景試過一次（打開「設定」把 App 擠到背景，一直改讓停手 1 秒的存不會跑）：iOS 有發 willDeactivate，草稿接著就存好；那段時間網頁沒收到 `visibilitychange`。只試一次，不是自動測試。真機滑掉 App 在 #379。
 
+## 雲端流程的音樂（#382）
+
+音樂放在 R2，R2 只放行網站的網址（CORS），`app://local` 的網頁直接 `fetch` 過不了；R2 的設定、伺服器都不改。網頁照舊跟伺服器（`/api/`，上面的轉送）拿預簽網址，再 `fetch('/cloud-music?url=<預簽網址>')`，`App/Shell/CloudMusicRoute.swift` 照那個網址直接送到 R2（規則在 `ShellCore/Sources/ShellCore/Forward/CloudMusic.swift`）：
+
+- 只送到 `https://*.r2.cloudflarestorage.com`，只有 GET、PUT；Debug 版也准 `http://127.0.0.1`（管子測試的假 R2）。不帶網頁的標頭、不帶殼的 cookie（預簽網址只簽了 host），不跟轉址；回給網頁的只留狀態、內容、`Content-Type`。
+- 上傳：`File` 的內容進不了殼（上面「POST 進不進得了殼」），網頁先 `await file.arrayBuffer()` 再送。網頁版照舊直接連 R2、送 `File`（`src/lib/server-api.ts` 的 `r2Fetch`）。
+- 殼會 `cloudMusic`（`CloudMusicPart`，情境 `bridge-scenarios/current/cloudMusic.json`，只有一開始塞的）網頁才走 `/cloud-music`；網站更新的新網頁碰上還不會的舊殼，照網頁版直接連（過不了，說連不上）。
+- 傳到一半斷線：殼丟錯誤，網頁的 `fetch` 失敗（`ServerUnreachable`），畫面照網頁版說傳不上、拿不到；再選一次音樂檔、再打開就是再試。
+- **快不快**（2026-11-23，只在 iOS 27.2 模擬器上、本機的假 R2，不是真的 R2、不是真的網路；`PipeTests/CloudMusicPipeTests.swift` 的 `六十MB的音樂傳上去再拿回來`）：60 MB 上傳約 0.19 秒（含網頁轉 ArrayBuffer）、下載約 0.06 秒，只量了一次。真的 R2 還沒接上（docs/deploy.md、#263），真機沒量（#379）。
+
 ## 還沒做的（後面的票）
 
 App 圖示、其他資料搬到殼（小設定 #378 等）、列印（#391）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。

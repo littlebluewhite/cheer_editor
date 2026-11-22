@@ -48,6 +48,9 @@ final class ScenarioShell {
             // #380
             SitePart(site: SiteAddress.production),
 
+            // #382
+            CloudMusicPart(),
+
             // #389
             nowPlaying,
 
