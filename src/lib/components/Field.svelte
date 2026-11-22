@@ -501,11 +501,13 @@
 	// ---------- 兩根手指：捏合放大縮小、一起拖移動畫面（iPad）。只有一根時照舊點人、拖人、框選。 ----------
 	/** 按在場上的每根手指（pointerId → 螢幕座標）。 */
 	const fingers = new Map<number, [number, number]>();
-	/** 兩指按下時放大幾倍：放開時比這大，是又放大一次（endPinch）。 */
+	/** 兩指按下時放大幾倍：從整個場地捏，放大了就是又放大一次（endPinch）。 */
 	let pinchFrom = 1;
+	/** 兩指按下後，兩指距離一共變成幾倍：看手指本身，畫面卡在整個場地或最大時照算（endPinch 用它分張開、一起拖）。 */
+	let pinchSpread = 1;
 	/** 兩指按下後畫面動過嗎：沒動過就放開，是放上去而已、或放不大也移不動，照原樣（拖走再拖回原處也算動過）。 */
 	let pinchMoved = false;
-	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
+	/** 兩根手指放開時，兩指距離張開不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
 	const PINCH_ZOOMED = 1.1;
 
 	function midAndSpan(): { mid: [number, number]; span: number } {
@@ -518,7 +520,9 @@
 		const before = midAndSpan();
 		fingers.set(e.pointerId, [e.clientX, e.clientY]);
 		const after = midAndSpan();
-		if (before.span === 0) return;
+		// 手指沒動（送了位置一樣的移動）：不重算，免得 1.2 × 109 ÷ 109 這種小數誤差也算動過畫面。
+		if (before.span === 0 || (after.span === before.span && after.mid[0] === before.mid[0] && after.mid[1] === before.mid[1])) return;
+		pinchSpread *= after.span / before.span;
 		const anchor = toMeters({ clientX: before.mid[0], clientY: before.mid[1] }, svg);
 		const next = clamp((zoom * after.span) / before.span, 1, MAX_ZOOM);
 		// 螢幕 1 px 是幾公尺（縮放後）。
@@ -538,13 +542,13 @@
 	}
 
 	/**
-	 * 兩根手指都放開：從整個場地放大、或比按下時放大了，是又放大一次（在「只看有人的地方」裡就開始跟）；
+	 * 兩根手指都放開：從整個場地放大、或兩指張開了，是又放大一次（在「只看有人的地方」裡就開始跟）；
 	 * 只移動畫面、縮小，算自己移動過畫面。停在整個場地：這次放大的事都清掉。畫面沒動過：照原樣。
 	 */
 	function endPinch() {
 		if (zoom === 1) movedByHand = fitted = false;
 		if (!pinchMoved || zoom === 1) return;
-		if (pinchFrom === 1 || zoom >= pinchFrom * PINCH_ZOOMED) fitted = false;
+		if (pinchFrom === 1 || pinchSpread >= PINCH_ZOOMED) fitted = false;
 		else movedByHand = true;
 	}
 
@@ -708,7 +712,7 @@
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
 				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
-				if (!pinching) [pinchFrom, pinchMoved] = [zoom, false];
+				if (!pinching) [pinchFrom, pinchSpread, pinchMoved] = [zoom, 1, false];
 				pinching = true;
 				drag = null;
 				box = null;

@@ -472,6 +472,7 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		const opened = await openOnPhone(walkingFlow());
 		await fireEvent.change(me(), { target: { value: 'm2' } });
 		await pinchTo(105);
+		expect(viewBox()[2]).toBeCloseTo(full()[2] / 1.05);
 		const before = viewBox();
 		await playThrough(opened);
 		expect(viewBox()).not.toEqual(before);
@@ -538,6 +539,24 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		expect(viewBox()).toEqual(maxed);
 		await playThrough(opened);
 		expect(viewBox()).not.toEqual(maxed);
+	});
+
+	it('放大到 1.2 倍，兩根手指放上去、送了一個位置沒變的移動就放開、播放：照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await pinchTo(120);
+		expect(viewBox()[2]).toBeCloseTo(full()[2] / 1.2);
+		const before = viewBox();
+		// 1.2 × 109 ÷ 109 在 JavaScript 是 1.1999999999999997
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 109));
+		await fireEvent.pointerMove(stage(), two(2, 109));
+		await fireEvent.pointerUp(stage(), two(2, 109));
+		await fireEvent.pointerUp(stage(), two(1, 0));
+		expect(viewBox()).toEqual(before);
+		await playThrough(opened);
+		expect(viewBox()).not.toEqual(before);
 	});
 
 	it('沒選「我」放大播放：畫面不動', async () => {
@@ -641,7 +660,7 @@ describe('手機的檢視畫面：只看有人的地方', () => {
 		expect(people()).not.toBeNull();
 	});
 
-	// 在裡面再放大照 #331 的規則：兩根手指放開時比按下時放大了，是又放大一次，跟著「我」；只移動畫面（倍數不變）就不跟。
+	// 在裡面再放大照 #331 的規則：兩根手指放開時比按下時張開了，是又放大一次，跟著「我」；只移動畫面（兩指距離不變）就不跟。
 	// 點兩下跟別的放大一樣回到整個場地
 	/** 兩根手指：一根按在 (0, 0)，另一根從 (100, 0) 移到 to，再一起放開。 */
 	async function twoFingers(to: [number, number]) {
@@ -682,6 +701,22 @@ describe('手機的檢視畫面：只看有人的地方', () => {
 		await twoFingers([80, -60]);
 		const moved = viewBox();
 		expect(moved[2]).toBeCloseTo(fitted[2]);
+		expect(new Set(await playThrough(opened))).toEqual(new Set([moved.join(' ')]));
+	});
+
+	it('選了「我」是小A，在這個畫面兩根手指一起移動（中途兩指變近，一下子縮到整個場地又放大回來）、播放：畫面不跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await fireEvent.click(people()!);
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(1, 60));
+		await fireEvent.pointerMove(stage(), two(2, 160));
+		await fireEvent.pointerUp(stage(), two(2, 160));
+		await fireEvent.pointerUp(stage(), two(1, 60));
+		const moved = viewBox();
+		expect(people()).toBeNull();
 		expect(new Set(await playThrough(opened))).toEqual(new Set([moved.join(' ')]));
 	});
 
