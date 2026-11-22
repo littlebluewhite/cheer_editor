@@ -25,8 +25,10 @@
 	import { whyText } from '#lib/reason-text.js';
 	import { runKey, runKeyLabel, runKeys, runNumber } from '#lib/run-keys.js';
 	import { m as t } from '#lib/paraglide/messages.js';
+	import { printPage } from '#lib/print.js';
 	import type { RunView } from '#lib/server-api.js';
 	import ConfirmList from './ConfirmList.svelte';
+	import Icon from './Icon.svelte';
 	import { actionColor } from './category-colors';
 	import { revealAlert } from './reveal';
 
@@ -334,6 +336,7 @@
 					: t.run_through_save()}</button
 			>
 			<button type="button" onclick={cancel}>{t.practice_cancel()}</button>
+			<button type="button" onclick={printPage}><Icon name="print" />{t.print_print()}</button>
 		</footer>
 	{/if}
 </section>

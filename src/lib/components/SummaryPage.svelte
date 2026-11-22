@@ -28,9 +28,11 @@
 	import { whyText, joinText } from '#lib/reason-text.js';
 	import { m as t } from '#lib/paraglide/messages.js';
 	import { localDate } from '#lib/local-date.js';
+	import { printPage } from '#lib/print.js';
 	import { actionColor } from './category-colors';
 	import RunThroughSheet from './RunThroughSheet.svelte';
 	import RunThroughBar from './RunThroughBar.svelte';
+	import Icon from './Icon.svelte';
 	import type { RunView } from '#lib/server-api.js';
 
 	interface Props {
@@ -158,6 +160,7 @@
 					<button type="button" aria-pressed={picks.rate === r.key} onclick={() => (picks.rate = r.key)}>{r.label}</button>
 				{/each}
 			</div>
+			<button type="button" onclick={printPage}><Icon name="print" />{t.print_print()}</button>
 		</div>
 		<ul class="legend" aria-label={t.summary_legend()}>
 			<li><span class="good"></span>{t.summary_legend_good()}</li>
