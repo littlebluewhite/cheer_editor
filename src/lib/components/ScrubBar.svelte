@@ -14,11 +14,14 @@
 		/** 拖的時候浮在指頭上面的字（「3-1」）。 */
 		tip: string;
 		onseek: (sec: number) => void;
+		/** 正在播放嗎：按下時在播、按著的時候播完停了，放開要接著播（onplay）。 */
+		playing: boolean;
+		onplay: () => void;
 		/** 指標位置換成進度條的幾分之幾（0 到 1）：預設用瀏覽器算；jsdom 不算版面，測試換成假的（ADR 0002）。 */
 		fractionAt?: (bar: HTMLElement, clientX: number) => number;
 	}
 
-	let { flow, sec, valuetext, tip, onseek, fractionAt = fromRect }: Props = $props();
+	let { flow, sec, valuetext, tip, onseek, playing, onplay, fractionAt = fromRect }: Props = $props();
 
 	/** 拖的時候最多到結尾前幾秒（比播放算「到結尾了」的誤差大）。 */
 	const BEFORE_END_SEC = 0.1;
@@ -38,9 +41,12 @@
 		// 拖到最右邊停在結尾前一點點：跳到結尾算播完，播放中會停下（放開反正對齊八拍開頭，不會停在那裡）
 		const toSec = (ev: PointerEvent) => Math.min(Math.max(fractionAt(bar, ev.clientX), 0) * total, total - BEFORE_END_SEC);
 		let at = toSec(e);
+		// 按著不放時播到結尾會停：放開照樣接著播（播放中拖完照樣在播）
+		const wasPlaying = playing;
 		const done = () => {
 			dragging = false;
 			onseek(nearestEightStart(flow, at));
+			if (wasPlaying && !playing) onplay();
 		};
 		dragging = true;
 		onseek(at);

@@ -737,6 +737,8 @@
 				valuetext={position ? `${position.segment}${position.at ? ` ${position.at}` : ''}` : m.editor_no_segments()}
 				tip={position?.at || position?.segment || ''}
 				onseek={(s) => playback.seek(s)}
+				playing={playback.playing}
+				onplay={() => playback.play()}
 				fractionAt={scrubAt}
 			/>
 		{/snippet}

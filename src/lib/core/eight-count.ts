@@ -276,7 +276,7 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 
 /**
  * 手機的進度條放開時停在哪：離 sec 最近的八拍開頭，跟點前後八拍的一列跳到的地方一樣
- * （口號段整段一列，停在段的開頭；流程結尾不算）。流程沒有段是 0。
+ * （口號段整段一列：放在段裡停在段的開頭，或下一段的開頭，看哪個近；流程結尾不算）。流程沒有段是 0。
  */
 export function nearestEightStart(flow: Flow, sec: number): number {
 	const starts = eightCountRows(flow, null, false).map((r) => r.startSec);

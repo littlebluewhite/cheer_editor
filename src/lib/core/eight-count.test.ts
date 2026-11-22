@@ -85,6 +85,13 @@ describe('放開進度條：對齊最近的八拍開頭', () => {
 		expect(nearestEightStart(sample(), 17.9)).toBeCloseTo(8, 6);
 		expect(nearestEightStart(sample(), 18)).toBeCloseTo(8, 6);
 	});
+
+	it('口號段後面還有音樂段：口號段整段算一個八拍，放在段的後半離下一段的開頭比較近，就停在下一段的開頭', () => {
+		// 口號 1 從 8 秒到 18 秒，後面接音樂 2（18 秒開始）
+		const flow = flowOf(addSegment(sample(), 'music'));
+		expect(nearestEightStart(flow, 12.9)).toBeCloseTo(8, 6);
+		expect(nearestEightStart(flow, 16)).toBeCloseTo(18, 6);
+	});
 });
 
 describe('八拍表的列：全隊', () => {

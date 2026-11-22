@@ -169,7 +169,7 @@ describe('使用說明', () => {
 		expect(row('上方列')).toContain('播放區上面有一條進度條');
 		expect(row('編輯、檢視模式')).toContain('場地下面有一條進度條');
 		const viewers = document.getElementById('viewers')!.textContent!;
-		for (const words of ['按住播放區上面的進度條拖', '放開停在最近的八拍開頭', '口號段停在段的開頭', '播放中照樣接著播']) {
+		for (const words of ['按住播放區上面的進度條拖', '放開停在最近的八拍開頭', '口號段整段算一個八拍', '播放中照樣接著播']) {
 			expect(viewers, words).toContain(words);
 		}
 	});

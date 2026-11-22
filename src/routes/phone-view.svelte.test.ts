@@ -199,6 +199,25 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		expect(session.unsaved).toBe(false);
 	});
 
+	it('讀螢幕軟體按小A（只送 click，沒有手指的事件）：跟用手指點一下一樣', async () => {
+		await openOnPhone();
+		await fireEvent.click(dot('m2'));
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+	});
+
+	it('手指點兩下（瀏覽器在每次放開後補一個 click）：照樣放大，click 不再多算一次', async () => {
+		await openOnPhone();
+		const before = screen.getByLabelText('場地').getAttribute('viewBox');
+		const at = { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 183 };
+		for (let i = 0; i < 2; i++) {
+			await fireEvent.pointerDown(dot('m2'), at);
+			await fireEvent.pointerUp(dot('m2'), at);
+			await fireEvent.click(dot('m2'));
+		}
+		expect(screen.getByLabelText('場地').getAttribute('viewBox')).not.toBe(before);
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+	});
+
 	it('停在人身上按空白鍵：照樣播放／暫停', async () => {
 		const { editor } = await openOnPhone();
 		expect(editor.playback.playing).toBe(false);
@@ -340,6 +359,22 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		await fireEvent.pointerMove(stage(), two(2, 80, -60));
 		await fireEvent.pointerUp(stage(), two(2, 80, -60));
 		await fireEvent.pointerUp(stage(), two(1, 0, 0));
+		const before = viewBox();
+		expect(await playThrough(opened)).toContain(false);
+		expect(viewBox()).toEqual(before);
+	});
+
+	it('先用手指拖一下畫面，再用兩根手指放大：還是不跟（拖過了這次放大就不跟）', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		await drag();
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(2, 150));
+		await fireEvent.pointerUp(stage(), two(2, 150));
+		await fireEvent.pointerUp(stage(), two(1, 0));
 		const before = viewBox();
 		expect(await playThrough(opened)).toContain(false);
 		expect(viewBox()).toEqual(before);
@@ -602,6 +637,20 @@ describe('手機的進度條', () => {
 		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
 		await fireEvent.pointerUp(window, { clientX: 120 });
 		// 流程結尾不算八拍開頭：停在最後一個八拍的開頭
+		expect(where()).toBe('音樂 1 4-1');
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+	});
+
+	it('播放中按住在最右邊不放、播到結尾：放開照樣在播（按著的時候播完不算停）', async () => {
+		const { engine, frames } = await openOnPhone();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		await fireEvent.pointerDown(bar(), { clientX: 10, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 120 });
+		// 按著一秒：播放頭從結尾前 0.1 秒播到結尾
+		engine.audible = engine.time + 0.1 + 1;
+		frames.step();
+		await flush();
+		await fireEvent.pointerUp(window, { clientX: 120 });
 		expect(where()).toBe('音樂 1 4-1');
 		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
 	});

@@ -201,9 +201,12 @@
 	/**
 	 * 這次放大跟著「我」（#331）。開關只在這幾個地方：setZoom（從整個場地放大打開、回整個場地關掉）、
 	 * fitPeople（「只看有人的地方」不跟）、使用者自己移動畫面就關掉（panTo、onwheel 平移、兩根手指），
-	 * 兩根手指放開時比按下時放大了（endPinch）是又放大一次，打開。
+	 * 兩根手指放開時比按下時放大了（endPinch）：原本就在跟、或在沒動過的「只看有人的地方」裡，是又放大一次，打開；
+	 * 自己移動過畫面就不再打開，要回整個場地再放大。
 	 */
 	let follow = $state(false);
+	/** 正在看「只看有人的地方」，還沒自己移動過、放大過畫面：在裡面兩根手指再放大才跟（endPinch）。 */
+	let fitted = false;
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
 	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
@@ -405,7 +408,7 @@
 		const z = clamp(next, 1, MAX_ZOOM);
 		// 從整個場地放大：這次放大跟著「我」（兩根手指捏的放開時才算，見 endPinch）；回整個場地就關掉，下次放大再打開。
 		if (zoom === 1 && z > 1 && !pinching) follow = true;
-		if (z === 1) follow = false;
+		if (z === 1) follow = fitted = false;
 		const c = viewCenter;
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
@@ -443,6 +446,7 @@
 	function fitPeople(fit: ZoomView) {
 		setZoom(fit.zoom, undefined, [viewCenter[0] - fit.center[0], viewCenter[1] - fit.center[1]]);
 		follow = false;
+		fitted = true;
 	}
 
 	// ---------- 放大後播放，畫面跟著「我」（只能看的場地） ----------
@@ -481,7 +485,7 @@
 	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
 	function panTo(e: PointerEvent) {
 		// 真的拖了才不再跟著「我」：點一下看是誰時手抖幾 px 不算。
-		if (!press || !still(e, press.client)) follow = false;
+		if (!press || !still(e, press.client)) follow = fitted = false;
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
 		pan = [e.clientX, e.clientY];
@@ -501,6 +505,8 @@
 	let pinching = false;
 	/** 兩指按下時放大幾倍：放開時比這大，是又放大一次（endPinch）。 */
 	let pinchFrom = 1;
+	/** 兩指按下時這次放大在跟著「我」嗎（捏的時候先關掉，放開再看）。 */
+	let pinchFollowed = false;
 	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
 	const PINCH_ZOOMED = 1.1;
 
@@ -531,9 +537,14 @@
 		}
 	}
 
-	/** 兩根手指都放開：從整個場地放大、或比按下時放大了，是又放大一次，跟著「我」；只移動畫面（倍數差不多）就不跟。 */
+	/**
+	 * 兩根手指都放開：從整個場地放大是又放大一次，跟著「我」；已經放大時比按下時放大了，原本在跟、或在沒動過的
+	 * 「只看有人的地方」裡才跟（自己移動過畫面就不跟）。只移動畫面（倍數差不多）就不跟。
+	 */
 	function endPinch() {
-		follow = zoom > 1 && (pinchFrom === 1 || zoom >= pinchFrom * PINCH_ZOOMED);
+		const zoomedIn = zoom >= pinchFrom * PINCH_ZOOMED;
+		follow = zoom > 1 && (pinchFrom === 1 || (zoomedIn && (pinchFollowed || fitted)));
+		fitted = false;
 	}
 
 	/** 螢幕 1 px 是幾公尺（現在的倍數）。 */
@@ -562,7 +573,7 @@
 		}
 		if (zoom <= 1) return;
 		e.preventDefault();
-		follow = false;
+		follow = fitted = false;
 		const [px, py] = e.shiftKey && !dx ? [dy, 0] : [dx, dy];
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [-px * perPx, -py * perPx]);
@@ -664,7 +675,29 @@
 		return false;
 	}
 
+	/** 按過指標還沒等到它的 click（clickDot）：手指、滑鼠按的人在指標事件裡已經處理過了。 */
+	let pointerPressed = false;
+
+	/**
+	 * 在場上 click：讀螢幕軟體（例：VoiceOver）按人只送 click、沒有指標事件，跟 Enter 一樣選他。
+	 * 手指、滑鼠按完瀏覽器也補一個 click，那個不再算一次。
+	 */
+	function clickDot(e: MouseEvent) {
+		const fromPointer = pointerPressed;
+		pointerPressed = false;
+		const id = (e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id');
+		if (fromPointer || !id || !pickable) return;
+		pick(id, e.shiftKey);
+	}
+
+	/** 鍵盤、讀螢幕軟體選人：跟手指點一下一樣（手機的檢視畫面告訴外面點到誰）。 */
+	function pick(id: string, shift: boolean) {
+		if (session) session.pickMember(id, shift);
+		else ontap?.(id);
+	}
+
 	function down(e: PointerEvent) {
+		pointerPressed = true;
 		// Mac 的 Control＋點是右鍵：不選人、不拖（交給 contextMenu）
 		if (e.button !== 0 || (e.ctrlKey && e.pointerType === 'mouse')) return;
 		const look = looking(e);
@@ -672,7 +705,7 @@
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
 				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
-				if (!pinching) pinchFrom = zoom;
+				if (!pinching) [pinchFrom, pinchFollowed] = [zoom, follow];
 				follow = false;
 				pinching = true;
 				drag = null;
@@ -829,19 +862,13 @@
 	 * 手機的檢視畫面（沒有編輯器）：只有 Enter，跟手指點一下一樣。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
-		if (!session) {
-			if (e.key !== 'Enter' || !pickable) return;
+		if (e.key === 'Enter' && pickable) {
 			e.preventDefault();
 			e.stopPropagation();
-			ontap?.(id);
+			pick(id, e.shiftKey);
 			return;
 		}
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			e.stopPropagation();
-			session.pickMember(id, e.shiftKey);
-			return;
-		}
+		if (!session) return;
 		if (!session.editable) return;
 		const dir = ARROWS[e.key];
 		if (!dir || e.ctrlKey || e.metaKey || e.altKey || !positions[id]) return;
@@ -958,6 +985,7 @@
 		aria-label={t.field_view_surface()}
 		{onwheel}
 		onpointerdown={down}
+		onclick={clickDot}
 		onpointermove={move}
 		onpointerup={up}
 		oncontextmenu={contextMenu}
