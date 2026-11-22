@@ -455,11 +455,24 @@ pub async fn delete(
         Some(_) => return Ok(StatusCode::FORBIDDEN.into_response()),
         None => return Ok(StatusCode::NOT_FOUND.into_response()),
     }
+    delete_flow(&mut tx, &id, state.clock.now()).await?;
+    tx.commit().await?;
+    state.rooms.tell(&id, RoomEvent::Deleted);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// 刪一支流程（擁有者刪、刪除帳號時刪他擁有的）：音樂記下哪天不用了，刪的時候有權限的人記在 deleted_flows，
+/// 流程跟著步驟紀錄、權限一起刪。呼叫的人要先鎖住那一列；commit 之後告訴開著的房間（RoomEvent::Deleted）。
+pub(crate) async fn delete_flow(
+    tx: &mut sqlx::PgConnection,
+    id: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> sqlx::Result<()> {
     sqlx::query(
         "UPDATE flow_audio SET unused_since = COALESCE(unused_since, $2) WHERE flow_id = $1",
     )
-    .bind(&id)
-    .bind(state.clock.now())
+    .bind(id)
+    .bind(now)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
@@ -468,17 +481,15 @@ pub async fn delete(
          UNION SELECT flow_id, user_id, $2 FROM flow_permissions WHERE flow_id = $1
          ON CONFLICT DO NOTHING",
     )
-    .bind(&id)
-    .bind(state.clock.now())
+    .bind(id)
+    .bind(now)
     .execute(&mut *tx)
     .await?;
     sqlx::query("DELETE FROM flows WHERE id = $1")
-        .bind(&id)
+        .bind(id)
         .execute(&mut *tx)
         .await?;
-    tx.commit().await?;
-    state.rooms.tell(&id, RoomEvent::Deleted);
-    Ok(StatusCode::NO_CONTENT.into_response())
+    Ok(())
 }
 
 /// 把一個人從名單拿掉，告訴他開著的房間。名單上本來就沒有他回 false。

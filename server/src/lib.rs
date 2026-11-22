@@ -93,6 +93,7 @@ pub fn app(state: AppState, site: &Path) -> Router {
         .route("/api/admin/users/{id}/disable", post(admin::disable))
         .route("/api/admin/users/{id}/enable", post(admin::enable))
         .route("/api/admin/users/{id}/transfer", post(admin::hand_over))
+        .route("/api/admin/users/{id}/delete", post(admin::delete))
         .route(
             "/api/flows",
             get(cloud_flows::mine).post(cloud_flows::create),
