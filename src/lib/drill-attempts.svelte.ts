@@ -4,13 +4,15 @@
 //   點一顆記號之後的整串事（留哪些記號、要不要記時機點、現在要不要存）；存（送「記一次」）、「全部 ✓ 存」；
 //   換整個／只練幾個環節、改勾的環節時把點到一半的清掉；換一支流程時全部清掉（session 叫 clear）。
 // 回答：卡上亮哪些記號、哪些按不了、是不是跳過了前面的環節、在等哪些、這張卡這一天有沒有還沒存的。
-// 不管：一次的規則（在流程核心，這裡只問它）；存好之外的提示、刪掉上一次、救回、這天每一次的那一排、改某一次（卡片管）；
+// 改某一次：給卡片一份「正在改的這一次」（AttemptEdit），卡片握著它，收起來就丟（不放進下面的 Store，換頁、換動作不留）。
+// 不管：一次的規則（在流程核心，這裡只問它）；存好之外的提示、刪掉上一次、救回、這天每一次的那一排、點哪一次在改（卡片管）；
 //   練習的權限（送的 ask 自己擋）。不存進流程檔。
 // 全上表（session.drill.runThrough → RunThroughTable）：這張表正在記的，只活在表開著的時候（表握著它，關掉就沒了）。
 //   管點過的格子、按了沒做的動作、每一欄會存下來的樣子、有沒有改過、要存的是哪些；
 //   不管一起記全上誰拿著哪幾組、存（表照舊用自己的 ask 送）。哪一欄是我記的由表告訴它（mine）。
 
 import {
+	attemptEdit,
 	attemptWhos,
 	blankPhases,
 	fillOk,
@@ -18,6 +20,7 @@ import {
 	pickedAutoSave,
 	recordableActions,
 	type Action,
+	type Attempt,
 	type Flow,
 	type Mark,
 	type Phase,
@@ -56,6 +59,11 @@ export class DrillAttempts {
 	/** 這張卡這一天有沒有點了還沒存的（不是這次要練的環節的記號不算）。左邊動作清單也問它。 */
 	hasUnsaved(action: Action, who: string, date: string): boolean {
 		return Object.keys(this.#store.unsaved(action, who, date)).length > 0;
+	}
+
+	/** 改 attemptId 那一次：一開始亮著原本的記號。action 給現在的動作（流程變了照現在的算，改到一半的記號不重來）。 */
+	edit(action: () => Action, attemptId: string, ask: Ask): AttemptEdit {
+		return new AttemptEdit(action, attemptId, ask, this.#store.notify);
 	}
 
 	/** 一張新的全上表：flow 拿現在的流程，mine 說哪一欄是我記的。每次拿都是空的（表握著它）。 */
@@ -233,6 +241,62 @@ export class DrillCard {
 		this.#set({ marks: {} });
 		const attempt = { date: this.#date, who: this.#who, practice: 'drill', whole: this.whole, marks } as const;
 		this.#ask.send({ name: 'recordAttempt', args: [this.#action.id, attempt] }, { done: () => this.#all.notify(m.practice_saved()) });
+	}
+}
+
+/**
+ * 改某一次（卡片上點這天的第 n 次）：改到一半的記號。卡片打開時拿一份、握著，收起來就丟（換頁、換動作卡片重畫，跟著丟、不存）。
+ * 亮哪些、哪些按不了、點了之後留哪些都問流程核心（attemptEdit），亮著的就是會存下來的。
+ */
+export class AttemptEdit {
+	/** 改的那一次的 id。 */
+	readonly id: string;
+	readonly #action: () => Action;
+	readonly #ask: Ask;
+	readonly #notify: (text: string) => void;
+	#marks = $state<Record<string, Mark>>({});
+
+	constructor(action: () => Action, id: string, ask: Ask, notify: (text: string) => void) {
+		this.#action = action;
+		this.id = id;
+		this.#ask = ask;
+		this.#notify = notify;
+		this.#marks = { ...this.attempt?.marks };
+	}
+
+	/** 改的那一次；被別的地方拿掉了是 undefined（卡片收起來）。 */
+	get attempt(): Attempt | undefined {
+		return this.#action().successRate?.records.find((r) => r.id === this.id);
+	}
+	get #seen() {
+		const attempt = this.attempt;
+		return attempt ? attemptEdit(this.#action(), attempt, this.#marks) : { marks: {}, shut: [] };
+	}
+	/** 亮著的記號（會存下來的）。 */
+	get marks(): Record<string, Mark> {
+		return this.#seen.marks;
+	}
+	/** 按不了的環節：之後才加的、✗ 的環節刪掉之後原本空著的、✗ 做完之後才開始的。 */
+	get shut(): string[] {
+		return this.#seen.shut;
+	}
+
+	/** 點一個記號；再點一次點著的那顆就變空的。點了 ✗，按不了的環節點過的記號不留（跟記一次一樣）。 */
+	tap(phaseId: string, mark: Mark) {
+		const attempt = this.attempt;
+		if (!attempt) return;
+		const { [phaseId]: was, ...rest } = this.marks;
+		this.#marks = was === mark ? rest : attemptEdit(this.#action(), attempt, { ...rest, [phaseId]: mark }).marks;
+	}
+
+	/** 存修改：照亮著的存；存好寫「已改」、叫 done（卡片收起來）。被擋的原因留在 ask 上。 */
+	save(done: () => void) {
+		this.#ask.send({ name: 'changeAttempt', args: [this.#action().id, this.id, this.marks] }, {
+			done: () => {
+				done();
+				this.#notify(m.practice_changed());
+			}
+		});
 	}
 }
 

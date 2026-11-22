@@ -415,13 +415,12 @@ export function changedAttempt(
 	const rate = action.successRate;
 	if (!attempt.whole || !rate) return keptAttempt(action, attempt.whole, marks);
 	const blanks = attempt.blanks ?? [];
-	const phasesThen = rate.phases.filter((p) => attempt.marks[p.id] || blanks.includes(p.id));
-	const failGone = blanks.length > 0 && !phasesThen.some((p) => attempt.marks[p.id] === '✗');
-	const explained = blankPhases({ ...action, successRate: { ...rate, phases: phasesThen } }, true, attempt.marks).blanks;
+	const { then, failGone } = attemptThen(rate.phases, attempt);
+	const explained = blankPhases({ ...action, successRate: { ...rate, phases: then } }, true, attempt.marks).blanks;
 	/** 現在的環節照原本的記號算已經不空著的（刪掉別的環節後拍不再疊）：原本空著、這次也沒打的照樣空著。 */
 	const orphans = blanks.filter((id) => !explained.includes(id) && !marks[id]);
 	const stillBlank = failGone ? blanks : orphans;
-	const open = phasesThen.filter((p) => !stillBlank.includes(p.id));
+	const open = then.filter((p) => !stillBlank.includes(p.id));
 	const shut = new Set(rate.phases.filter((p) => !open.includes(p)).map((p) => p.id));
 	const kept = keptAttempt(
 		{ ...action, successRate: { ...rate, phases: open } },
@@ -429,8 +428,45 @@ export function changedAttempt(
 		Object.fromEntries(Object.entries(marks).filter(([id]) => !shut.has(id)))
 	);
 	if (!stillBlank.length || !kept.whole) return kept;
-	const empty = phasesThen.filter((p) => stillBlank.includes(p.id) || kept.blanks?.includes(p.id)).map((p) => p.id);
+	const empty = then.filter((p) => stillBlank.includes(p.id) || kept.blanks?.includes(p.id)).map((p) => p.id);
 	return { ...kept, blanks: empty };
+}
+
+/**
+ * 改某一次（卡片上點這天的第 n 次來改記號）：給動作、原本的那一次、改到一半的記號，回亮著的記號（會存下來的才亮）、
+ * 按不了的環節、會存下來的樣子（changedAttempt）。點一顆之後記號變怎樣：把點的那顆加進記號再問一次，用回的 marks。
+ * 按不了的：整個做的一次當時還沒有的環節（之後才加的）、✗ 的環節刪掉之後原本空著的、跟記一次一樣 ✗ 做完之後才開始的。
+ * 按得了的打了就存，按不了的打了也不存（attempt-edit.test.ts 對照「改一次」真的存下來的）。
+ */
+export function attemptEdit(
+	action: Action,
+	attempt: Attempt,
+	marks: Record<string, Mark>
+): { marks: Record<string, Mark>; shut: string[]; saved: { whole: boolean; marks: Record<string, Mark>; blanks?: string[] } } {
+	const rate = action.successRate;
+	const phases = rate?.phases ?? [];
+	const editable = attempt.whole && rate ? attemptThen(phases, attempt).editable : phases;
+	const ids = new Set(editable.map((p) => p.id));
+	const narrowed = rate ? { ...action, successRate: { ...rate, phases: editable } } : action;
+	const kept = blankPhases(narrowed, false, Object.fromEntries(Object.entries(marks).filter(([id]) => ids.has(id))));
+	const shut = phases.filter((p) => !ids.has(p.id) || kept.shut.includes(p.id)).map((p) => p.id);
+	return { marks: kept.marks, shut, saved: changedAttempt(action, attempt, marks) };
+}
+
+/** 那一次當時就有、現在還在的環節：打了記號的，加上空著的（blanks）。成功率的整次也照這個算。 */
+export function phasesThen(phases: readonly Phase[], attempt: Pick<Attempt, 'marks' | 'blanks'>): Phase[] {
+	return phases.filter((p) => attempt.marks[p.id] || attempt.blanks?.includes(p.id));
+}
+
+/**
+ * 整個做的一次改的時候看的環節（改一次和 attemptEdit 共用，只在這裡算）：then 當時就有、現在還在的；
+ * failGone ✗ 的環節已經刪掉了；editable 能打記號的（✗ 的環節刪掉了，原本空著的照樣空著，不算進去）。
+ */
+function attemptThen(phases: readonly Phase[], attempt: Attempt): { then: Phase[]; failGone: boolean; editable: Phase[] } {
+	const then = phasesThen(phases, attempt);
+	const blanks = attempt.blanks ?? [];
+	const failGone = blanks.length > 0 && !then.some((p) => attempt.marks[p.id] === '✗');
+	return { then, failGone, editable: failGone ? then.filter((p) => !blanks.includes(p.id)) : then };
 }
 
 /**
