@@ -34,11 +34,7 @@ interface Violation {
  *   沒給 before 就都不算，所以開得了的流程檔一定傳得上雲端。
  */
 export function flowProblem(flow: Flow, before: Flow = flow): string | Why | null {
-	// 開檔就擋：型別、參照、拍點、成功率設定、開頭那張站位（isFlow），段的長度。
-	const broken = structureProblem(flow) ?? segmentLengthProblem(flow);
-	if (broken) return broken;
-	const old = new Set(problemKeys(before));
-	return violations(flow).find((v) => !old.has(v.key))?.message ?? null;
+	return checked(flow, () => problemKeys(before)).problem;
 }
 
 /** 「讓它留著」的毛病的鍵（伺服器記著每支流程現在有哪些，ADR 0020）。 */
@@ -51,11 +47,19 @@ export function problemKeys(flow: Flow): string[] {
  * now（伺服器現在的樣子）就有的、cured（要復原的那一步治好的）。回原因（合規則是 null）和 flow 的鍵（開檔就擋時是空的）。
  */
 export function undoProblem(flow: Flow, now: string[], cured: string[]): { problem: string | Why | null; keys: string[] } {
+	return checked(flow, () => [...now, ...cured]);
+}
+
+/**
+ * 整份流程檢查：開檔就擋的一定擋（型別、參照、拍點、成功率設定、開頭那張站位（isFlow），段的長度）；
+ * 讓它留著的只擋 allowed 以外的（開檔就擋的過了才算 allowed）。回原因（合規則是 null）和 flow 的鍵（開檔就擋時是空的）。
+ */
+function checked(flow: Flow, allowed: () => string[]): { problem: string | Why | null; keys: string[] } {
 	const broken = structureProblem(flow) ?? segmentLengthProblem(flow);
 	if (broken) return { problem: broken, keys: [] };
-	const allowed = new Set([...now, ...cured]);
+	const ok = new Set(allowed());
 	const found = violations(flow);
-	return { problem: found.find((v) => !allowed.has(v.key))?.message ?? null, keys: found.map((v) => v.key) };
+	return { problem: found.find((v) => !ok.has(v.key))?.message ?? null, keys: found.map((v) => v.key) };
 }
 
 /** 「讓它留著」的規則，流程裡所有的毛病。 */
