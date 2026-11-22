@@ -66,9 +66,8 @@ async function goHome() {
 	await settle();
 }
 
-/** 換網路：瀏覽器說的（編輯頁的網路 adapter）和假伺服器一起換。 */
-async function network(s: Pick<ReturnType<typeof home>, 'network' | 'page'>, status: 'online' | 'offline') {
-	s.page.net.set(status === 'online');
+/** 換網路（假伺服器的開關，瀏覽器說的跟著換），等跑完。 */
+async function network(s: Pick<ReturnType<typeof home>, 'network'>, status: 'online' | 'offline') {
 	s.network(status);
 	await settle();
 }
@@ -164,7 +163,6 @@ async function reloadOffline(s: Awaited<ReturnType<typeof openedTwo>>) {
 	s.view.unmount();
 	s.network('offline');
 	const page = editorPage(null, { server: s.server, offline: s.offline.store });
-	page.net.set(false);
 	const view = render(Page, page.props);
 	await settle();
 	return { ...s, page, view };
@@ -253,7 +251,6 @@ describe('斷網打開離線副本', () => {
 		o.view.unmount();
 		vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === NARROW_SCREEN }));
 		const page = editorPage(null, { server: o.server, offline: o.offline.store });
-		page.net.set(false);
 		render(Page, page.props);
 		await settle();
 		await openFromHome('流程1');

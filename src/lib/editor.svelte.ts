@@ -56,6 +56,7 @@ export interface EditorAdapters {
 
 /** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB（草稿、離線存放）、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch、navigator.onLine。 */
 export function browserAdapters(): EditorAdapters {
+	const network = browserNetwork();
 	return {
 		createEngine: createWebAudioEngine,
 		createSaver: () => createBrowserSaver(),
@@ -65,9 +66,9 @@ export function browserAdapters(): EditorAdapters {
 		openTabChannel: browserTabChannel(),
 		pendingInput: domPendingInput,
 		nextFrame: animationFrame,
-		server: httpServer(),
+		server: httpServer('', network),
 		offline: createIndexedDbOfflineStore(),
-		network: browserNetwork(),
+		network,
 		video: { encoder: browserVideoEncoder(), save: saveVideo }
 	};
 }

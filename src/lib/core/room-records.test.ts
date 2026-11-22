@@ -128,7 +128,7 @@ describe('receiveRecordsJson', () => {
 	});
 });
 
-// 「改、刪、救回」（#350，ADR 0007、0015、0018）：規則照真的伺服器（records.rs 的 amend）。
+// 「改、刪、救回」（#350，ADR 0007、0015、0018）：規則照 #351 以前真的伺服器（records.rs 的 amend，現在照抄在 records_timing.rs）。
 describe('amendRecords', () => {
 	/** x1 第 who 組分段練只練上法的一次：記號 mark。 */
 	const drill = (id: string, mark: '✓' | '△' | '✗' = '✓', who = 'g1'): StoredAttempt => ({
@@ -250,8 +250,9 @@ describe('amendRecords', () => {
 		expect(JSON.stringify(a)).toBe(before);
 	});
 
-	it('amendRecordsJson：收 JSON、回 JSON（跟 amendRecords 一樣）', () => {
+	it('amendRecordsJson：收 JSON、回 JSON（跟 amendRecords 一樣）：編排另外一個參數', () => {
 		const a = amendAsk({ sent: { kind: 'restore', ids: ['tmine00000001'] }, records: [{ ...mine, gone: true }] });
-		expect(JSON.parse(amendRecordsJson(JSON.stringify(a)))).toEqual(amendRecords(a));
+		const { flow, ...rest } = a;
+		expect(JSON.parse(amendRecordsJson(JSON.stringify(flow), JSON.stringify(rest)))).toEqual(amendRecords(a));
 	});
 });
