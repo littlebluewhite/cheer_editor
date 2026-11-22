@@ -1,7 +1,7 @@
 // 網頁跑在哪裡（#373）：小設定、網站網址、「問殼」、離線存放四樣都換得掉；網頁版照舊（瀏覽器的儲存、頁面自己的網址、不在 App 裡、IndexedDB）。
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import { host } from '#lib/host.js';
+import { browserHost, host } from '#lib/host.js';
 import { loadFlowSetting, loadLatencyMs, loadLayoutPx, loadLegendOpen, loadReturnOnStop, saveFlowSetting, saveLayoutPx, saveLegendOpen } from '#lib/local-settings.js';
 import { shareUrl } from '#lib/share-link.js';
 import { httpServer } from '#lib/server-api.js';
@@ -91,5 +91,31 @@ describe('換成假的', () => {
 		render(Login, { server: fake.server, go: () => {} });
 		await flush();
 		expect(screen.getByRole('status').textContent!.trim()).toBe('登入超過 30 天了，請再登入一次。這台還有 1 筆成功率紀錄沒傳，登入後會自動傳。');
+	});
+});
+
+describe('換了會換回網頁版', () => {
+	it('一個測試換兩次', () => {
+		fakeHost({ shell: fakeShell() });
+		fakeHost({ siteUrl: () => 'https://cheer.example/' });
+		expect(host().shell.inApp).toBe(true);
+	});
+
+	it('下一個測試又是網頁版', () => {
+		expect(host()).toBe(browserHost);
+	});
+});
+
+describe('在 beforeEach 換', () => {
+	beforeEach(() => fakeHost({ shell: fakeShell() }));
+
+	it('換得上', () => {
+		expect(host().shell.inApp).toBe(true);
+	});
+});
+
+describe('beforeEach 換的也會換回來', () => {
+	it('網頁版', () => {
+		expect(host()).toBe(browserHost);
 	});
 });
