@@ -469,6 +469,18 @@ describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）
 		expect(c.undo(ids[0], undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
 	});
 
+	it.each(['other', 'mine'])('joined 寫了要復原那一步之前的步（%s 分頁）：那一步治好的不算，擋下', (tab) => {
+		const c = cloud(fortyOne());
+		const earlier = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }], tab);
+		const mine = c.run([{ name: 'renameFlow', args: ['決賽'] }]);
+		// 放回去的樣子連前一步一起（41 人）：只有 mine 治好的（沒有）可以帶回來
+		const undo = undoChanges(c.s.flows[0], c.s.flows[2]).undo;
+		expect(c.undo(mine, undo, false, [earlier]).r).toMatchObject({
+			kind: 'rejected',
+			why: { code: 'undoBlocked', reason: { why: { code: 'flow_check_max_members' } } }
+		});
+	});
+
 	it('照樣擋下：你刪了 5 個人（35），別人加了 5 個（40），你復原變 45 人', () => {
 		const c = cloud(full(40));
 		const gone = c.s.flow.members.slice(-5).map((m) => m.id);
@@ -505,7 +517,7 @@ describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）
 		expect(c.undo(id, changesOf(c, 1).undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
 	});
 
-	it('記著的是舊版流程核心算的（過期了）：那一步記成沒治好什麼，復原擋下；重算之後下一步照常記', () => {
+	it('記著的是舊版流程核心算的（過期了）：那一步記成沒治好什麼，復原擋下；重算記著的', () => {
 		const c = cloud(fortyOne(), { keys: problemKeys(fortyOne()), core: 'core-old' });
 		const id = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }]);
 		expect(c.s.log[0].cured).toEqual([]);

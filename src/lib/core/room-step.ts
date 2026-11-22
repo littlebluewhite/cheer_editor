@@ -52,7 +52,7 @@ export interface RoomRecord extends StoredAttempt {
 
 /**
  * 送來的一步：跑一串指令，或復原、重做 of 那一步（change 是要放回去的樣子）。
- * joined：方向鍵連按合成的一步裡 of 之後的其他步（步驟 id）；部署前開著的分頁不送，只算 of 那一步治好的。
+ * joined：方向鍵連按合成的一步裡 of 之後的其他步（步驟 id，只算 of 之後、跟 of 同一個分頁的）；部署前開著的分頁不送，只算 of 那一步治好的。
  */
 export type SentStep =
 	| { stepId: string; seen: number; commands: Command[] }
@@ -146,9 +146,10 @@ export function takeStep(ask: StepAsk): StepVerdict {
 			if (!of) return rejected({ code: 'undoTooOld', redo });
 			const back = broughtBack(ask.records, of, live);
 			revived = back.revived;
-			// 那一步（方向鍵合成的：中間每一步）治好的可以帶回來（ADR 0020）
+			// 那一步（方向鍵合成的：中間每一步）治好的可以帶回來（ADR 0020）。合進來的只算那一步之後、同一個分頁的
 			const joined = new Set(sent.undo.joined ?? []);
-			const cured = [of, ...log.filter((l) => joined.has(l.id) && l.id !== id)].flatMap((l) => l.cured ?? []);
+			const more = log.filter((l) => joined.has(l.id) && l.step > of.step && l.tab === of.tab);
+			const cured = [of, ...more].flatMap((l) => l.cured ?? []);
 			const u = runUndo(flow, back.records, change, cured);
 			ran = u.kind === 'ok' ? u : { kind: 'no', reason: reasonOf(u), ask: false };
 			const touched = [...of.keys, ...(ran.kind === 'ok' ? ran.watch : [])];
