@@ -10,6 +10,7 @@ import {
 	deleteFormation,
 	deleteMember,
 	deletePhase,
+	insertBeats,
 	renameFlow,
 	setPositions,
 	takeRecords,
@@ -147,6 +148,24 @@ describe('runUndo（伺服器跑復原）', () => {
 			kind: 'blocked',
 			message: '站位 5 和站位 4 在同一拍',
 			why: { code: 'flow_check_formation_same_beat', n: 5, other: 4 }
+		});
+	});
+
+	// 同一拍的鍵照那一拍（段、拍）：插拍讓那一拍變了，復原回到原來那一拍，鍵不一樣，算新的毛病。#343 才讓它收
+	it('同一拍兩張（16、16），前面插 8 拍（變 24、24），復原：擋下（#343 才收）', () => {
+		const sample = libSample();
+		const pos = sample.formations[0].pos;
+		const start: Flow = {
+			...sample,
+			formations: [sample.formations[0], ...['a', 'b'].map((id) => ({ id, segmentId: 's1', at: 16, pos }))]
+		};
+		const later = flowOf(insertBeats(start, { segmentId: 's1', at: 8 }, 8));
+		const server = takeRecords(later);
+		const r = runUndo(server.flow, server.records, undoChanges(start, later).undo);
+		expect(r).toEqual({
+			kind: 'blocked',
+			message: '站位 3 和站位 2 在同一拍',
+			why: { code: 'flow_check_formation_same_beat', n: 3, other: 2 }
 		});
 	});
 
