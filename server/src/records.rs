@@ -4,14 +4,16 @@
 //! 照結果存、記下誰記的、寫沒收的中文句子。收了馬上告訴房間裡別人。
 //! 跑一步時把紀錄放回流程再跑，跑完照結果清掉（留墓碑）、改掉該改的（例：清掉重算、刪掉環節），也告訴房間裡別人。
 //! 每一步記下清掉、改掉了哪些（遷移 0017）：復原時這一步清掉的加回來，重做再清一次（ADR 0007）。
-//! 改、刪、救回（#258）：記錄者只能動自己記的；擁有者、編輯者能動任何人的（沒有記的人的只有他們能動）。
-//! 同一筆兩個人都改，照收到的先後，後到的贏（不退回）。刪掉的留墓碑：晚到的新增、改都不算，只有「救回」拿得回來。
-//! 一起記全上（#262，ADR 0015）：同一次全上的同一個動作、同一組只算先存的：存（receiveRecords）、救回都先查，資料庫也擋（遷移 0014）。
+//! 改、刪、救回（#258）照流程核心的 amendRecords（#351，ADR 0018）：記錄者只能動自己記的；擁有者、編輯者能動任何人的
+//! （沒有記的人的只有他們能動）。同一筆兩個人都改，照收到的先後，後到的贏（不退回）。刪掉的留墓碑：晚到的新增、改都不算，
+//! 只有「救回」拿得回來。這裡只挑送來的那幾次傳進去、照結果存。
+//! 一起記全上（#262，ADR 0015）：同一次全上的同一個動作、同一組只算先存的：存（receiveRecords）、救回（amendRecords）都先查，
+//! 資料庫也擋（遷移 0014）。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use ts_rs::TS;
 
 use crate::AppState;
@@ -102,11 +104,6 @@ impl Kept {
             by: self.recorder.clone().filter(|_| !mine),
             mine,
         }
-    }
-
-    /// 這個權限的人能不能改、刪、救回這一次：擁有者、編輯者都能；記錄者只能動自己記的。
-    fn touchable_by(&self, role: Role, user_id: i64) -> bool {
-        role.can_edit() || (role.can_record() && self.recorded_by == Some(user_id))
     }
 }
 
@@ -261,13 +258,6 @@ pub async fn for_room(
             amended_step: r.amended_step,
         })
         .collect())
-}
-
-/// 跑一個紀錄的指令的結果（`runStepJson`）：成功（ok）帶跑完還在的紀錄。
-#[derive(Deserialize)]
-struct StepOutcome {
-    kind: String,
-    records: Option<Vec<Stored>>,
 }
 
 /// 一步清掉、改掉的一次（ADR 0007，存在 flow_steps.cleared；流程核心的 ClearedRecord）：改之前的樣子
@@ -566,33 +556,6 @@ pub async fn record(
     Ok(RoomMessage::RecordsSaved { saved, dropped })
 }
 
-/// 這一次是全上的：同一次全上的同一個動作、同一組（騰翻、跳躍是同一個人）已經存了別的一筆（沒清掉的，id 不是 own），
-/// 回先記的人的名字（沒有記的人的是 None）。資料庫也擋（遷移 0014）：存、救回、改之前先查，不會撞到。
-async fn recorded_in_run(
-    tx: &mut sqlx::PgConnection,
-    flow_id: &str,
-    record: &Stored,
-    own: &str,
-) -> anyhow::Result<Option<Option<String>>> {
-    let Some(run) = record.attempt.get("runThroughId").and_then(Value::as_str) else {
-        return Ok(None);
-    };
-    let who = record.attempt.get("who").and_then(Value::as_str);
-    let found: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT u.name FROM flow_records r LEFT JOIN users u ON u.id = r.recorded_by
-         WHERE r.flow_id = $1 AND r.run_through_id = $2 AND r.action_id = $3 AND r.who = $4
-           AND r.id <> $5 AND r.deleted_at IS NULL LIMIT 1",
-    )
-    .bind(flow_id)
-    .bind(run)
-    .bind(&record.action_id)
-    .bind(who)
-    .bind(own)
-    .fetch_optional(&mut *tx)
-    .await?;
-    Ok(found.map(|(name,)| name))
-}
-
 /// 改、刪、救回幾次（#258）。改只拿記號（照流程核心的「改某一次的記號」規則留）；救回照「救回」的規則檢查。
 pub enum Amend {
     Change(Vec<Stored>),
@@ -600,8 +563,83 @@ pub enum Amend {
     Restore(Vec<String>),
 }
 
-/// 收房間送來的改、刪、救回：流程被刪了回 Deleted；被收回回 Revoked。不能動的（記錄者動別人的、檢視者）、
-/// 已經清掉的（改、刪）、還在的（救回）都不算，不退回。照收到的先後做（鎖著那一列），後到的改贏。
+/// 給流程核心 amendRecords 的一次（AmendRecord）：清掉的帶 gone；by 是記的人的 id（寫成字，只拿來比「是不是他記的」；
+/// 沒有記的人不帶）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AmendRecord<'a> {
+    #[serde(flatten)]
+    stored: &'a Stored,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    gone: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    by: Option<String>,
+}
+
+/// 給流程核心 amendRecords 的「送來的」（AmendSent）。
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum AmendSent<'a> {
+    Change { attempts: &'a [Stored] },
+    Delete { ids: &'a [String] },
+    Restore { ids: &'a [String] },
+}
+
+/// 給流程核心 amendRecords 的（AmendAsk），編排以外的；編排另外傳（存著的原樣）。by 是送的人的 id（寫成字）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AmendAsk<'a> {
+    step: i64,
+    role: Role,
+    by: String,
+    sent: AmendSent<'a>,
+    records: Vec<AmendRecord<'a>>,
+}
+
+/// amendRecords 的結果（AmendOutcome，都照送來的先後）：清掉的 id、改成的、救回成的、要記「用手動過」的、
+/// 改好救回的 id（告訴房間裡別人）。
+#[derive(Deserialize, Default)]
+struct AmendOutcome {
+    deleted: Vec<String>,
+    changed: Vec<Stored>,
+    restored: Vec<Stored>,
+    amended: Vec<Amended>,
+    told: Vec<String>,
+}
+
+/// 要記「用手動過」的一次：id 和那時流程第幾步。
+#[derive(Deserialize)]
+struct Amended {
+    id: String,
+    step: i64,
+}
+
+/// 改、刪、救回時要的那幾次（照收到的先後）：送來的 id（連清掉的）；run_mates 時再加同一次全上還在的
+/// （救回要比，流程核心再挑同一個動作、同一組）。不讀整份紀錄（鎖著流程，別人在等）。
+async fn asked(
+    tx: &mut sqlx::PgConnection,
+    flow_id: &str,
+    ids: &[String],
+    run_mates: bool,
+) -> anyhow::Result<Vec<Kept>> {
+    let found: Vec<KeptRow> = sqlx::query_as(concat!(
+        kept_select!(),
+        " WHERE r.flow_id = $1
+           AND (r.id = ANY($2) OR ($3 AND r.deleted_at IS NULL AND r.run_through_id IN
+                (SELECT run_through_id FROM flow_records WHERE flow_id = $1 AND id = ANY($2))))
+         ORDER BY r.seq"
+    ))
+    .bind(flow_id)
+    .bind(ids)
+    .bind(run_mates)
+    .fetch_all(&mut *tx)
+    .await?;
+    found.into_iter().map(kept).collect()
+}
+
+/// 收房間送來的改、刪、救回：流程被刪了回 Deleted；被收回回 Revoked。誰能動哪一筆、改成什麼、救不救回照流程核心的
+/// amendRecords（#351，ADR 0018）：Rust 用 SQL 只挑送來的那幾次（救回再加同一次全上還在的）傳進去，照結果存
+/// （清掉的留墓碑、改好救回的存成新的樣子、記下用手動過時第幾步）。不能動的不算，不退回。鎖著那一列：照收到的先後做。
 /// 回這幾次現在在伺服器上的樣子（還在的；送的人換上它），改到的告訴房間裡別人（from 是這個連線）。
 pub async fn amend(
     state: &AppState,
@@ -622,90 +660,70 @@ pub async fn amend(
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
         return Ok(RoomMessage::Revoked);
     };
-    let asked: HashSet<String> = match &amend {
-        Amend::Change(attempts) => attempts
-            .iter()
-            .filter_map(|s| Some(s.attempt.get("id")?.as_str()?.to_owned()))
-            .collect(),
-        Amend::Delete(ids) | Amend::Restore(ids) => ids.iter().cloned().collect(),
+    let (ids, sent): (Vec<String>, AmendSent) = match &amend {
+        Amend::Change(attempts) => (
+            attempts
+                .iter()
+                .filter_map(|s| Some(s.attempt.get("id")?.as_str()?.to_owned()))
+                .collect(),
+            AmendSent::Change { attempts },
+        ),
+        Amend::Delete(ids) => (ids.clone(), AmendSent::Delete { ids }),
+        Amend::Restore(ids) => (ids.clone(), AmendSent::Restore { ids }),
     };
-    let targets: HashMap<String, Kept> = rows(&mut *tx, flow_id, true)
-        .await?
-        .into_iter()
-        .filter(|r| asked.contains(r.id()) && r.touchable_by(role, user_id))
-        .map(|r| (r.id().to_owned(), r))
-        .collect();
+    let known = asked(&mut tx, flow_id, &ids, matches!(amend, Amend::Restore(_))).await?;
+    let ask = AmendAsk {
+        step,
+        role,
+        by: user_id.to_string(),
+        sent,
+        records: known
+            .iter()
+            .map(|k| AmendRecord {
+                stored: &k.stored,
+                gone: k.gone,
+                by: k.recorded_by.map(|id| id.to_string()),
+            })
+            .collect(),
+    };
+    let outcome: AmendOutcome = match state
+        .core
+        .amend_records(content, serde_json::to_string(&ask)?)
+        .await
+    {
+        Ok(json) => serde_json::from_str(&json)?,
+        // 流程核心自己出錯（不是 amendRecords 不算的）：這一串都不動
+        Err(err) => {
+            tracing::warn!(error = %err, "流程核心跑 amendRecords 出錯，這一串都不動");
+            AmendOutcome::default()
+        }
+    };
 
     let now = state.clock.now();
-    let mut change = RecordsChange::default();
-    let mut changed = HashSet::new();
-    match amend {
-        Amend::Delete(ids) => {
-            for id in ids {
-                if targets.get(&id).is_some_and(|r| !r.gone) && !change.deleted.contains(&id) {
-                    bury(&mut tx, flow_id, &id, now).await?;
-                    amended(&mut tx, flow_id, &id, step).await?;
-                    change.deleted.push(id);
-                }
-            }
-        }
-        Amend::Change(attempts) => {
-            for s in attempts {
-                let Some(r) = s
-                    .attempt
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .and_then(|id| targets.get(id))
-                    .filter(|r| !r.gone)
-                else {
-                    continue;
-                };
-                let marks = s.attempt.get("marks").cloned().unwrap_or(Value::Null);
-                let command =
-                    json!({ "name": "changeAttempt", "args": [r.stored.action_id, r.id(), marks] });
-                if let Some(new) = run_one(state, &content, Some(&r.stored), command).await? {
-                    update(&mut tx, flow_id, &new, now).await?;
-                    // 再送一次一樣的（回答沒收到）不算用手動過，不然之後復原、重做會照現在的留著。
-                    if new.attempt != r.stored.attempt {
-                        amended(&mut tx, flow_id, r.id(), step).await?;
-                    }
-                    changed.insert(r.id().to_owned());
-                }
-            }
-        }
-        Amend::Restore(ids) => {
-            for id in ids {
-                let Some(r) = targets.get(&id).filter(|r| r.gone) else {
-                    continue;
-                };
-                // 刪掉之後同一次全上的這一組別人記了：只算先存的，不救回來。
-                if recorded_in_run(&mut tx, flow_id, &r.stored, &id)
-                    .await?
-                    .is_some()
-                {
-                    continue;
-                }
-                let command = json!({ "name": "restoreAttempt", "args": [r.stored.action_id, r.stored.attempt, 0] });
-                if let Some(new) = run_one(state, &content, None, command).await? {
-                    update(&mut tx, flow_id, &new, now).await?;
-                    amended(&mut tx, flow_id, &id, step).await?;
-                    changed.insert(id);
-                }
-            }
-        }
+    for id in &outcome.deleted {
+        bury(&mut tx, flow_id, id, now).await?;
     }
-
-    let now_kept = rows(&mut *tx, flow_id, false).await?;
-    tx.commit().await?;
-    let saved = now_kept
-        .iter()
-        .filter(|r| asked.contains(r.id()))
-        .map(|r| r.seen_by(user_id))
-        .collect();
-    change.changed = now_kept
+    for new in outcome.changed.iter().chain(&outcome.restored) {
+        update(&mut tx, flow_id, new, now).await?;
+    }
+    for Amended { id, step } in &outcome.amended {
+        amended(&mut tx, flow_id, id, *step).await?;
+    }
+    let now_kept: Vec<Kept> = asked(&mut tx, flow_id, &ids, false)
+        .await?
         .into_iter()
-        .filter(|r| changed.contains(r.id()))
+        .filter(|r| !r.gone)
         .collect();
+    tx.commit().await?;
+    let saved = now_kept.iter().map(|r| r.seen_by(user_id)).collect();
+    let told: HashSet<String> = outcome.told.into_iter().collect();
+    let change = RecordsChange {
+        changed: now_kept
+            .into_iter()
+            .filter(|r| told.contains(r.id()))
+            .collect(),
+        deleted: outcome.deleted,
+    };
     if !change.is_empty() {
         state.rooms.tell(
             flow_id,
@@ -719,34 +737,6 @@ pub async fn amend(
         saved,
         dropped: vec![],
     })
-}
-
-/// 用流程核心對一次跑一個紀錄的指令（改記號、救回）：放回流程的只有 record（救回是沒有）。
-/// 收了回跑完的那一次；被擋、看不懂、跑完不在了是 None。
-async fn run_one(
-    state: &AppState,
-    content: &str,
-    record: Option<&Stored>,
-    command: Value,
-) -> anyhow::Result<Option<Stored>> {
-    let records = serde_json::to_string(&record.into_iter().collect::<Vec<_>>())?;
-    let Ok(result) = state
-        .core
-        .run_step(
-            content.to_owned(),
-            records,
-            json!([command]).to_string(),
-            String::new(),
-        )
-        .await
-    else {
-        return Ok(None);
-    };
-    let outcome: StepOutcome = serde_json::from_str(&result)?;
-    if outcome.kind != "ok" {
-        return Ok(None);
-    }
-    Ok(outcome.records.unwrap_or_default().into_iter().next())
 }
 
 /// 傳上雲端（#259）：流程檔裡的紀錄（整份流程檢查過的）一次一筆存起來，沒有記的人。
