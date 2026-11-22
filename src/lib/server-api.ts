@@ -7,6 +7,7 @@ import type { CloudFlow } from '#lib/api-types/CloudFlow.js';
 import type { FlowBlocked } from '#lib/api-types/FlowBlocked.js';
 import type { CloudFlowSummary } from '#lib/api-types/CloudFlowSummary.js';
 import type { CloudRecord } from '#lib/api-types/CloudRecord.js';
+import type { DeleteSummary } from '#lib/api-types/DeleteSummary.js';
 import type { LinkInfo } from '#lib/api-types/LinkInfo.js';
 import type { LinkedFlow } from '#lib/api-types/LinkedFlow.js';
 import type { Me } from '#lib/api-types/Me.js';
@@ -39,6 +40,7 @@ export type {
 	CloudFlow,
 	CloudFlowSummary,
 	CloudRecord,
+	DeleteSummary,
 	LinkInfo,
 	LinkedFlow,
 	Me,
@@ -197,6 +199,13 @@ export interface ServerAdapter {
 	changeName(name: string): Promise<Me | null>;
 	/** 改密碼（要對現在的密碼）；改好後其他裝置都登出，這台還登入著。 */
 	changePassword(current: string, password: string): Promise<ChangePasswordResult>;
+	/** 要求刪除帳號的確認框（#370）：我擁有幾支流程、幾支有分享；沒登入是 null。 */
+	deleteSummary(): Promise<DeleteSummary | null>;
+	/**
+	 * 要求刪除帳號（#370）：帳號馬上停用（每台裝置登出），寄我和管理員各一封信。
+	 * 寄信服務今天的額度用完是 'mailQuota'（什麼都沒改）；其他做不成丟 ServerUnreachable。
+	 */
+	requestDelete(): Promise<'ok' | 'mailQuota'>;
 }
 
 /**
@@ -533,6 +542,18 @@ export function httpServer(base = ''): ServerAdapter {
 			if (res.status === 403) return 'wrong';
 			if (res.status === 429) return (await res.json()) as TooManyTries;
 			if (res.status === 422) return (await res.json()) as PasswordProblem;
+			throw new ServerUnreachable();
+		},
+		async deleteSummary() {
+			const res = await get('account/delete');
+			if (res.ok) return (await res.json()) as DeleteSummary;
+			if (res.status === 401) return null;
+			throw new ServerUnreachable();
+		},
+		async requestDelete() {
+			const res = await post('account/delete', {});
+			if (res.ok) return 'ok';
+			if (res.status === 503) return 'mailQuota';
 			throw new ServerUnreachable();
 		}
 	};

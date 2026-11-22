@@ -1,0 +1,34 @@
+{
+	"about": "草稿存在殼裡（#377）：App 裡的草稿存放（src/lib/shell-drafts.ts）問殼，殼存在 App 自己的 Application Support/Drafts，會進 iCloud 備份。草稿是整包流程檔（含音樂），bytes 是 base64；savedAt 是殼存的時間（毫秒，情境裡殼的時鐘停在 2026-01-01）。留幾支照網頁版，殼不管。WKWebView 在 App 要切到背景（滑到 App 切換器）時不一定發 visibilitychange，所以殼主動說 background，網頁跟關分頁一樣馬上存（不等停手 1 秒）。",
+	"scenarios": [
+		{
+			"name": "存了草稿列得出來、讀得回來、蓋得掉、清得掉",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["drafts"] },
+			"steps": [
+				{ "from": "web", "name": "draftList", "reply": [] },
+				{ "from": "web", "name": "draftSave", "body": { "id": "n1", "bytes": "AQID" }, "reply": null },
+				{ "from": "web", "name": "draftList", "reply": [{ "id": "n1", "savedAt": 1767225600000 }] },
+				{ "from": "web", "name": "draftLoad", "body": { "id": "n1" }, "reply": { "bytes": "AQID", "savedAt": 1767225600000 } },
+				{ "from": "web", "name": "draftSave", "body": { "id": "n1", "bytes": "BAU=" }, "reply": null },
+				{ "from": "web", "name": "draftLoad", "body": { "id": "n1" }, "reply": { "bytes": "BAU=", "savedAt": 1767225600000 } },
+				{ "from": "web", "name": "draftClear", "body": { "id": "n1" }, "reply": null },
+				{ "from": "web", "name": "draftLoad", "body": { "id": "n1" }, "reply": null },
+				{ "from": "web", "name": "draftList", "reply": [] }
+			]
+		},
+		{
+			"name": "要切到背景時殼說一聲，網頁馬上把還沒進草稿的改動存起來",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["drafts"] },
+			"steps": [{ "from": "shell", "name": "background" }]
+		},
+		{
+			"name": "沒有的草稿讀到 null；不像草稿 id 的不存",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["drafts"] },
+			"steps": [
+				{ "from": "web", "name": "draftLoad", "body": { "id": "current" }, "reply": null },
+				{ "from": "web", "name": "draftSave", "body": { "id": "../x", "bytes": "AQID" }, "error": "failed" },
+				{ "from": "web", "name": "draftList", "reply": [] }
+			]
+		}
+	]
+}

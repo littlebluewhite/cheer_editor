@@ -39,8 +39,23 @@ export const SPEEDS = [1, 0.75, 0.5] as const;
 /** 畫面時鐘：下一格畫面時叫 run 一次。 */
 export type NextFrame = (run: () => void) => void;
 
-/** 真的畫面時鐘：requestAnimationFrame。 */
-export const animationFrame: NextFrame = (run) => void requestAnimationFrame(() => run());
+/** 畫面不來時最多等多久（毫秒）：比重複提早排下一圈的 0.5 秒短。 */
+const FRAME_FALLBACK_MS = 250;
+
+/**
+ * 真的畫面時鐘：requestAnimationFrame。App 鎖螢幕、切到別的 App 時畫面不來，聲音照播（#389）：
+ * 等 0.25 秒還沒來就用計時器跑，重複的下一圈才排得上、播完才停得下。先來的那個跑，另一個取消。
+ */
+export const animationFrame: NextFrame = (run) => {
+	const timer = setTimeout(() => {
+		cancelAnimationFrame(frame);
+		run();
+	}, FRAME_FALLBACK_MS);
+	const frame = requestAnimationFrame(() => {
+		clearTimeout(timer);
+		run();
+	});
+};
 
 export class Playback implements SessionPlayback {
 	readonly #flow: () => Flow | null;
@@ -186,7 +201,14 @@ export class Playback implements SessionPlayback {
 		}
 	}
 
+	/** 停下。播放頭先照喇叭撥到現在：App 鎖螢幕、切到別的 App 時畫面沒在走，播放頭還停在那一刻（#389）。 */
 	pause() {
+		if (this.#playing && this.#player) this.#sec = this.#player.tick(this.#latencyMs);
+		this.#stop();
+	}
+
+	/** 停下，播放頭不動（跳到結尾、換流程：播放頭已經放好了）。 */
+	#stop() {
 		this.#playing = false;
 		this.#previewing = false;
 		this.#player?.stop();
@@ -243,7 +265,7 @@ export class Playback implements SessionPlayback {
 		const { sec: at, ended } = resumeSec(f, sec);
 		this.#sec = at;
 		if (!this.#playing) return;
-		if (ended && !this.#activeRange()) this.pause();
+		if (ended && !this.#activeRange()) this.#stop();
 		else this.play();
 	}
 
@@ -268,7 +290,7 @@ export class Playback implements SessionPlayback {
 	preview(segmentId: string) {
 		const f = this.#flow();
 		if (!f) return;
-		this.pause();
+		this.#stop();
 		this.#getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
 		this.#previewing = true;
 		this.#nextFrame(this.#previewFrame);
@@ -449,7 +471,7 @@ export class Playback implements SessionPlayback {
 
 	/** 換一支流程（開檔、新建、救回草稿、回首頁）：播放、試聽停下，播放頭回到開頭，重複範圍拿掉（段的 id 會跟上一支重複）。 */
 	opened() {
-		this.pause();
+		this.#stop();
 		this.#sec = 0;
 		this.#range = null;
 		this.#repeat = false;
@@ -480,7 +502,7 @@ export class Playback implements SessionPlayback {
 		const { sec, ended } = resumeSec(f, this.#sec);
 		this.#sec = sec;
 		if (!this.#playing) return;
-		if (ended) this.pause();
+		if (ended) this.#stop();
 		else this.#run();
 	}
 
