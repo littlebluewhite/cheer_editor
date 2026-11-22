@@ -465,6 +465,13 @@ describe('手機的檢視畫面：只看有人的地方', () => {
 		expect(people()).not.toBeNull();
 	});
 
+	it('用鍵盤按「只看有人的地方」：焦點留在同一個位置的「整個場地」上', async () => {
+		await openOnPhone(walkingFlow());
+		people()!.focus();
+		await fireEvent.click(people()!);
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: '整個場地' }));
+	});
+
 	it('流程裡沒有人站好：沒有這顆', async () => {
 		const flow = libSample();
 		await openOnPhone({ ...flow, formations: flow.formations.map((f) => ({ ...f, pos: {} })) });

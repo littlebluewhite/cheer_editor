@@ -1052,11 +1052,15 @@
 	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
 	{#if picked}<div class="picked" data-keep-visible role="note" aria-label={t.field_view_picked()}>{picked}</div>{/if}
 	<!-- 只能看、沒有左欄的放大縮小（手機的檢視畫面、檢視模式）：放大了，右下角一顆回整個場地 -->
-	{#if viewOnly && zoom > 1 && !(controls && rail)}
-		<button type="button" class="fit" onclick={() => setZoom(1)}><Icon name="fit" />{t.field_view_fit()}</button>
-	{:else if viewOnly && peopleFit && !(controls && rail)}
-		<!-- 沒放大時同一個位置是「只看有人的地方」 -->
-		<button type="button" class="people" onclick={() => fitPeople(peopleFit)}><Icon name="people" />{t.field_view_people()}</button>
+	{#if viewOnly && (zoom > 1 || peopleFit) && !(controls && rail)}
+		<!-- 放大了是「整個場地」，沒放大時同一顆是「只看有人的地方」：同一個按鈕，用鍵盤按了焦點還在上面 -->
+		<button
+			type="button"
+			class:fit={zoom > 1}
+			class:people={zoom === 1}
+			onclick={() => (zoom > 1 || !peopleFit ? setZoom(1) : fitPeople(peopleFit))}
+			><Icon name={zoom > 1 ? 'fit' : 'people'} />{zoom > 1 ? t.field_view_fit() : t.field_view_people()}</button
+		>
 	{/if}
 	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
