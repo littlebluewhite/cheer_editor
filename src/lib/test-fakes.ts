@@ -12,10 +12,10 @@ import {
 	loadSegmentAudio,
 	addPhase,
 	checkFlowDocument,
-	checkRecord,
 	flowProblem,
 	putRecords,
 	recordAttempt,
+	receiveRecords,
 	runCommands,
 	said,
 	takeRecords,
@@ -26,6 +26,7 @@ import {
 	type Flow,
 	type LoggedStep,
 	type Position,
+	type RecordRefusal,
 	type RemoteChange,
 	type StoredAttempt
 } from '#lib/core';
@@ -625,42 +626,42 @@ export function fakeServer(
 		const saved = f.records.filter((r) => !r.gone && asked.includes(r.attempt.id)).map((r) => cloudRecord(r, email));
 		return { kind: 'recordsSaved', saved, dropped: [] };
 	};
-	/** 這個人記了幾次：照記一次的規則檢查、存起來，告訴這支流程開著的別的房間（from 是送來的房間）。 */
+	/**
+	 * 這個人記了幾次：「這串紀錄收不收」交給流程核心（receiveRecords，跟真的伺服器同一套規則）。這裡只管存、送：
+	 * 收了的存起來，告訴這支流程開著的別的房間（from 是送來的房間）；沒收的照真的伺服器寫中文句子。
+	 */
 	const store = (f: FakeCloudFlow, email: string, incoming: StoredAttempt[], from?: FlowRoom): RoomMessage => {
-		const role = roleOf(f, email);
-		if (role === 'viewer') {
-			return { kind: 'recordsSaved', saved: [], dropped: incoming.map((r) => ({ id: r.attempt.id, message: '你只能看這支流程' })) };
-		}
-		const saved: ReturnType<typeof cloudRecord>[] = [];
-		const dropped: { id: string; message: string; by?: string; someone?: boolean }[] = [];
-		const added: StoredAttempt[] = [];
-		for (const r of structuredClone(incoming)) {
-			// 同一次全上的同一組只收先存的（#262）
-			const first = firstInRun(f, r);
-			if (first) {
-				const by = first.by ? nameOf(first.by) : '別人';
-				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by, ...(first.by ? {} : { someone: true }) });
-				continue;
-			}
-			const had = (f.records ?? []).find((o) => o.attempt.id === r.attempt.id);
-			if (had) {
-				if (!had.gone) saved.push(cloudRecord(had, email));
-				continue;
-			}
-			const checked = checkRecord(f.flow, r);
-			if (checked.kind === 'dropped') {
-				dropped.push({ id: r.attempt.id, message: checked.message });
-				continue;
-			}
-			f.records = [...(f.records ?? []), { ...checked.record, by: email }];
-			added.push(checked.record);
-			saved.push(cloudRecord(checked.record, email));
-		}
+		const verdicts = receiveRecords({
+			flow: structuredClone(f.flow),
+			canRecord: roleOf(f, email) !== 'viewer',
+			by: nameOf(email),
+			sent: structuredClone(incoming),
+			records: (f.records ?? []).map(({ actionId, attempt, gone, by }) => ({
+				actionId,
+				attempt: structuredClone(attempt),
+				...(gone && { gone }),
+				...(by && { by: nameOf(by) })
+			}))
+		});
+		const again = new Set(verdicts.flatMap((v) => (v.kind === 'again' ? [v.id] : [])));
+		const added = verdicts.flatMap((v) => (v.kind === 'accepted' ? [{ ...v.record, by: email }] : []));
+		const dropped = verdicts.flatMap((v) => (v.kind === 'refused' ? [droppedRecord(v.id, v.why)] : []));
+		// 跟真的伺服器一樣：收過的照存的先後，接著剛收的
+		const saved = [...(f.records ?? []).filter((r) => !r.gone && again.has(r.attempt.id)), ...added].map((r) => cloudRecord(r, email));
+		if (added.length) f.records = [...(f.records ?? []), ...added];
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.room !== from)) {
-			const records = added.map((r) => cloudRecord({ ...r, by: email }, other.email));
+			const records = added.map((r) => cloudRecord(r, other.email));
 			if (records.length) deliver(other.room, () => ({ kind: 'newRecords', records }));
 		}
 		return { kind: 'recordsSaved', saved, dropped };
+	};
+	/** 沒收的那一筆，句子跟真的伺服器一樣（records.rs）。 */
+	const droppedRecord = (id: string, why: RecordRefusal): { id: string; message: string; by?: string; someone?: boolean } => {
+		if (why.code === 'viewOnly') return { id, message: '你只能看這支流程' };
+		if (why.code === 'blocked') return { id, message: why.reason.message };
+		if (why.code === 'notUnderstood') return { id, message: '伺服器看不懂這一筆' };
+		const by = why.by ?? '別人';
+		return { id, message: `${by}已經記了這次全上的這一組`, by, ...(why.by === undefined && { someone: true }) };
 	};
 	/** 這個人（在別的地方）記了：存起來，開著的房間馬上收到。 */
 	const recordAs = (flowId: string, email: string, records: StoredAttempt[]) => {
