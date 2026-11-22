@@ -34,6 +34,7 @@ enum ShellParts {
             NowPlayingPart.onLockScreen(context.outbox),
 
             // #391
+            PrintPart(onPrint: { Printer.present(context.webView, from: $0) }),
 
             // #393
             context.webUpdates.part,

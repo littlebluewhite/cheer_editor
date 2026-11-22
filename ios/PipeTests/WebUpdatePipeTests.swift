@@ -230,6 +230,23 @@ extension PipeTests {
         #expect(app.updates.updater.servingRoot != nil)
     }
 
+    @Test func 雲端流程被擋_按更新馬上換_重新載入到同一支流程的網址() async throws {
+        let bundled = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
+        let local = try LocalSite(files: newerWebBundle(from: bundled))
+        let app = AppWired(site: try await local.start(), bundled: bundled)
+        defer { local.stop(); app.close() }
+        try await app.open()
+        let marker = "return document.querySelector('meta[name=x-web-bundle]') ? 'new' : 'old'"
+        // 還沒下載：按了殼先抓再換（#394）
+        #expect(try await app.js("return await window.__cheerShell.send('checkWebBundle')") as? String == "ready")
+        #expect(try await app.js("return await window.__cheerShell.send('updateWebBundle', { flow: 'c1' })") as? String == "updated")
+        try await app.waitUntil("換上新的那包", seconds: 15) { (try? await app.js(marker)) as? String == "new" }
+        #expect(app.shell.webView.backForwardList.currentItem?.initialURL.absoluteString == "app://local/?cloud=c1")
+        // 網頁把代號從網址拿掉（重新整理不會又打開）
+        try await app.waitUntil("網址的 ?cloud= 拿掉") { (try? await app.js("return location.href")) as? String == "app://local/" }
+        try await app.waitUntil("新的那包說好了") { !app.updates.updater.waitingForReady }
+    }
+
     @Test func 殼自己更新網頁_網站轉到別的網站就不跟_整包丟掉() async throws {
         let files = ["index.html": "新的那包"]
         let other = try LocalSite(files: ["index.html": Data("新的那包".utf8)])
@@ -242,7 +259,7 @@ extension PipeTests {
         defer { local.stop() }
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("web-update-\(UUID().uuidString)")
         let updater = WebUpdater(site: site, root: tmp.appendingPathComponent("root"), bundled: tmp.appendingPathComponent("none"),
-                                 fetch: SiteFetcher(site: site).get, rolledBack: {})
+                                 shellBuild: 1, fetch: SiteFetcher(site: site).get, rolledBack: {})
         #expect(await updater.check() == .discarded)
         #expect(local.asked.contains("index.html"))
         #expect(other.asked.isEmpty)

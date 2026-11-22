@@ -2,15 +2,29 @@
 // - App 打開、回到前景時去網站看（WebUpdatePart.check）；
 // - 換上的那包由 WebBundleRoute 送（登記在 SchemeRoutes.swift，排在 /api/ 那幾條後面）；
 // - 網頁說「好了」（ShellParts.swift 的 ReadyPart）、網頁的行程當掉，交給 WebUpdater 決定留著還是退回；
-// - 換上、退回都是同一個網頁畫面重新載入首頁：來源還是 app://local，網頁存的東西（草稿、小設定）都在。
+// - 換上、退回都是同一個網頁畫面重新載入：來源還是 app://local，網頁存的東西（草稿、小設定）都在。
+//   雲端流程被擋時按「更新」（#394）載入首頁 ?cloud=<代號>，網頁打開同一支；其他都回首頁。
+// - 清單要比這個殼新的殼（minShellBuild 比 CFBundleVersion 大）就不換（#394）。
 import ShellCore
 import UIKit
 import WebKit
 
 @MainActor
 final class WebUpdates {
-    /// 上架版只從自己的網站抓（寫死）。開發版改抓 Mac 上的小網站是 #394。
-    static let site = URL(string: "https://littlebluewhite.com")!
+    /// 從哪個網站抓網頁：上架版只從自己的網站（寫死）。開發版（Debug）可以用環境變數 CHEER_WEB_BUNDLE_URL
+    /// 改去 Mac 上的小網站抓（#394，scripts/web-bundle-test-site.mjs），沒設就跟殼轉送的網站一樣（AppSite.current）。
+    /// 上架前的檢查在 #396。
+    static let site: URL = {
+        #if DEBUG
+        let env = ProcessInfo.processInfo.environment["CHEER_WEB_BUNDLE_URL"]
+        return env == nil ? AppSite.current : SiteAddress.pick(debug: true, override: env)
+        #else
+        return SiteAddress.production
+        #endif
+    }()
+
+    /// 殼的建置號（比清單的 minShellBuild）。
+    static var shellBuild: Int { Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0 }
 
     let updater: WebUpdater
     let part: WebUpdatePart
@@ -19,12 +33,13 @@ final class WebUpdates {
 
     /// autoCheck：打開、回到前景時自己去網站看。測試裡（App 被 PipeTests 帶起來時）不看，免得連到正式站。
     init(context: ShellContext, site: URL = WebUpdates.site, root: URL = WebUpdates.defaultRoot,
-         bundled: URL, autoCheck: Bool = !WebUpdates.underTest) {
-        let reload: @MainActor () -> Void = { [weak context] in
+         bundled: URL, shellBuild: Int = WebUpdates.shellBuild, autoCheck: Bool = !WebUpdates.underTest) {
+        let reload: @MainActor (URL) -> Void = { [weak context] url in
             // 先讓橋把這句的回覆送回去，再換頁
-            DispatchQueue.main.async { context?.webView?.load(URLRequest(url: BundledSite.home)) }
+            DispatchQueue.main.async { context?.webView?.load(URLRequest(url: url)) }
         }
-        updater = WebUpdater(site: site, root: root, bundled: bundled, fetch: SiteFetcher(site: site).get, rolledBack: reload)
+        updater = WebUpdater(site: site, root: root, bundled: bundled, shellBuild: shellBuild,
+                             fetch: SiteFetcher(site: site).get, rolledBack: { reload(BundledSite.home) })
         part = WebUpdatePart(updater: updater, outbox: context.outbox, reload: reload)
         route = WebBundleRoute(updater: updater)
         updater.launch()

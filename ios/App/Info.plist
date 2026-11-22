@@ -39,6 +39,8 @@
 			</array>
 		</dict>
 	</dict>
+	<key>UIApplicationSupportsPrintCommand</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

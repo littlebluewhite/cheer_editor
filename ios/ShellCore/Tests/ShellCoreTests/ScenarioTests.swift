@@ -64,6 +64,9 @@ func play(_ scenario: Scenario, on shell: ScenarioShell) async {
         }
     }
 
+    // 殼這邊先準備好的（例：假網站放好一包新網頁），ScenarioParts.swift 的 setups 照情境名字登記
+    await shell.setups[scenario.name]?()
+
     for step in scenario.steps {
         switch step.from {
         case "web":
