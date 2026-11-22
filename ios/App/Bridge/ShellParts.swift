@@ -10,6 +10,7 @@ enum ShellParts {
         [
             ReadyPart(onReady: { Logger.shell.info("網頁說好了") }),
             // #376
+            ScreenPart(onScreen: { ScreenFeelView.around(context.webView)?.kind = $0 }),
 
             // #377
 

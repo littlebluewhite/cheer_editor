@@ -41,6 +41,7 @@
 	} from '#lib/editor-layout.js';
 	import { Divider } from '#lib/divider.svelte.js';
 	import { setUnsavedCheck } from '#lib/unsaved.js';
+	import { tellShellScreen } from '#lib/shell-screen.svelte.js';
 	import { ROLE_NAMES } from '#lib/role-names.js';
 	import { shareTokenIn } from '#lib/share-link.js';
 	import { localDate } from '#lib/local-date.js';
@@ -115,6 +116,8 @@
 	const guideHref = `${resolve('/guide')}?from=editor`;
 
 	const flow = $derived(session.flow);
+	// App：打開了流程就是編輯畫面，殼讓整頁不回彈（#376）
+	tellShellScreen(() => flow !== null);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
 	setUnsavedCheck(() => editor.hasUnsavedWork);
 	/**
