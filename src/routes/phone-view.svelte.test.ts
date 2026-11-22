@@ -559,6 +559,40 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		expect(viewBox()).not.toEqual(before);
 	});
 
+	it('跟著的時候兩根手指張開，中途一下子兩指碰在一起、播放：照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 100));
+		await fireEvent.pointerDown(stage(), two(2, 150));
+		await fireEvent.pointerMove(stage(), two(1, 150));
+		await fireEvent.pointerMove(stage(), two(2, 180));
+		await fireEvent.pointerMove(stage(), two(2, 250));
+		await fireEvent.pointerUp(stage(), two(2, 250));
+		await fireEvent.pointerUp(stage(), two(1, 150));
+		const before = viewBox();
+		await playThrough(opened);
+		expect(viewBox()).not.toEqual(before);
+	});
+
+	it('跟著的時候兩根手指剛好張開 1.1 倍（中間多送一次移動）、播放：照樣跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(2, 102));
+		await fireEvent.pointerMove(stage(), two(2, 110));
+		await fireEvent.pointerUp(stage(), two(2, 110));
+		await fireEvent.pointerUp(stage(), two(1, 0));
+		expect(viewBox()[2]).toBeCloseTo(full()[2] / 2.2);
+		const before = viewBox();
+		await playThrough(opened);
+		expect(viewBox()).not.toEqual(before);
+	});
+
 	it('沒選「我」放大播放：畫面不動', async () => {
 		const opened = await openOnPhone(walkingFlow());
 		await zoomIn();
