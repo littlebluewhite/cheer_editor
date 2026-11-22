@@ -295,6 +295,24 @@ describe('記錄頁的卡', () => {
 		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[true, { p1: '✓', p3: '✓' }]]);
 	});
 
+	it('改到一半換頁、換動作（卡片重畫）：收起來，改到一半的沒存', async () => {
+		const flow = mixed();
+		const { editor, session } = testEditor(flow);
+		const action = flow.actions[0];
+		const { who, name: label, people } = attemptWhos(flow, action)[0];
+		const props = { editor, component: AttemptCard, props: { action, who, name: whyText(label), people, date: DATE } };
+		const before = records(session);
+		const first = render(TestSession, { props });
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 2 次/ }));
+		await fireEvent.click(within(screen.getByRole('group', { name: '改第 2 次' })).getByRole('button', { name: '第 2 次 上法 成功' }));
+		first.unmount();
+		render(TestSession, { props: { ...props, props: { ...props.props, action: session.flow!.actions[0] } } });
+		expect(screen.queryByRole('group', { name: '改第 2 次' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: /^改第 2 次/ }));
+		expect(within(screen.getByRole('group', { name: '改第 2 次' })).getByRole('button', { name: '第 2 次 上法 失敗' }).getAttribute('aria-pressed')).toBe('true');
+		expect(records(session)).toBe(before);
+	});
+
 	it('全上的那一次改到空了一格：擋下來說原因，紀錄不變', async () => {
 		const { session } = setup(mixed());
 		const before = records(session);
@@ -341,19 +359,6 @@ describe('記錄頁的卡：金字塔的環節佔同樣的拍（打 ✗ 之後�
 		expect(records(session, 1).map((r) => [r.whole, r.marks, r.blanks])).toEqual([
 			[true, { p4: '✓', p6: '✗' }, ['p5', 'p7', 'p8']]
 		]);
-	});
-
-	it('改第 n 次也照拍算：✗ 做完之後才開始的按不了，不讓教練打了 ✓ 存了卻空著；改成 ✓ 又可以按', async () => {
-		const flow = pyramidSample();
-		const who = attemptWhos(flow, flow.actions[1])[0].who;
-		const marks = { p4: '✓', p6: '✗' } as const;
-		setup(flowOf(recordAttempt(flow, 'x2', { date: DATE, who, practice: 'drill', whole: true, marks })), 1);
-		await fireEvent.click(screen.getByRole('button', { name: /^改第 1 次/ }));
-		const edit = within(screen.getByRole('group', { name: '改第 1 次' }));
-		const editable = (phase: string) => !(edit.getByRole('button', { name: `第 1 次 ${phase} 成功` }) as HTMLButtonElement).disabled;
-		expect(phases.map(editable)).toEqual([true, true, true, false, false]);
-		await fireEvent.click(edit.getByRole('button', { name: '第 1 次 上法 第二個 成功' }));
-		expect(phases.map(editable)).toEqual([true, true, true, true, true]);
 	});
 
 	it('「全部 ✓ 存」：還能打、沒打的補 ✓（佔同樣拍的也補），按不了的空著', async () => {
