@@ -205,6 +205,16 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		expect(corner()).toBe('小A　技巧·Lib 主底');
 	});
 
+	it('手指點小美（瀏覽器補了 click），緊接著讀螢幕軟體按小A：選到小A', async () => {
+		await openOnPhone();
+		const at = { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 0 };
+		await fireEvent.pointerDown(dot('m1'), at);
+		await fireEvent.pointerUp(dot('m1'), at);
+		await fireEvent.click(dot('m1'));
+		await fireEvent.click(dot('m2'));
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+	});
+
 	it('手指按下去被取消（沒有 click），之後讀螢幕軟體按小A：照樣選得到', async () => {
 		await openOnPhone();
 		const at = { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 0 };
@@ -399,6 +409,22 @@ describe('手機的檢視畫面：放大後播放，畫面跟著「我」', () =
 		await fireEvent.pointerUp(stage(), two(2, 100));
 		await fireEvent.pointerUp(stage(), two(1, 0));
 		expect(await playThrough(opened)).not.toContain(false);
+	});
+
+	it('放大後兩根手指拖走再拖回原處：移動過畫面，不再跟', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await zoomIn();
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(2, 150));
+		await fireEvent.pointerMove(stage(), two(1, 50));
+		await fireEvent.pointerMove(stage(), two(1, 0));
+		await fireEvent.pointerMove(stage(), two(2, 100));
+		await fireEvent.pointerUp(stage(), two(2, 100));
+		await fireEvent.pointerUp(stage(), two(1, 0));
+		expect(await playThrough(opened)).toContain(false);
 	});
 
 	it('放大後點小美一下（手抖了幾 px）看是誰：不算拖，播放照樣跟', async () => {

@@ -37,6 +37,27 @@ function setup(flow: Flow = sample()) {
 	return { session, playback, engine, frames, position };
 }
 
+describe('播放：畫面時鐘', () => {
+	it('一格之內按停再按播（例：很快點一下進度條）：每一格還是只排一次，不會越排越多', () => {
+		const engine = createFakeEngine();
+		const queued: (() => void)[][] = [[]];
+		const nextFrame = (run: () => void) => void queued[queued.length - 1].push(run);
+		const { editor } = testEditor(sample(), { createEngine: () => engine, nextFrame });
+		const { playback } = editor;
+		playback.play();
+		for (let i = 0; i < 3; i++) {
+			playback.pause();
+			playback.play();
+		}
+		for (let i = 0; i < 3; i++) {
+			const run = queued[queued.length - 1];
+			queued.push([]);
+			for (const f of run) f();
+		}
+		expect(queued.map((q) => q.length)).toEqual([1, 1, 1, 1]);
+	});
+});
+
 describe('播放：播放中改了流程', () => {
 	it('改人、改動作（沒動到段）：聲音不重排，不會中斷', () => {
 		const { session, playback, engine } = setup();

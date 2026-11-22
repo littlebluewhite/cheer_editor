@@ -507,8 +507,8 @@
 	let pinchFrom = 1;
 	/** 兩指按下時這次放大在跟著「我」嗎（捏的時候先關掉，放開再看）。 */
 	let pinchFollowed = false;
-	/** 兩指按下時的畫面中心：放開時倍數、中心都沒變，是放上去沒動，照原樣。 */
-	let pinchCenter: Position = [0, 0];
+	/** 兩指按下後手指動過嗎：沒動過就放開，是放上去而已，照原樣（拖走再拖回原處也算動過）。 */
+	let pinchMoved = false;
 	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
 	const PINCH_ZOOMED = 1.1;
 
@@ -523,6 +523,7 @@
 		fingers.set(e.pointerId, [e.clientX, e.clientY]);
 		const after = midAndSpan();
 		if (before.span === 0) return;
+		if (after.span !== before.span || after.mid[0] !== before.mid[0] || after.mid[1] !== before.mid[1]) pinchMoved = true;
 		const anchor = toMeters({ clientX: before.mid[0], clientY: before.mid[1] }, svg);
 		const next = clamp((zoom * after.span) / before.span, 1, MAX_ZOOM);
 		// 螢幕 1 px 是幾公尺（縮放後）。
@@ -544,7 +545,7 @@
 	 * 「只看有人的地方」裡才跟（自己移動過畫面就不跟）。只移動畫面（倍數差不多）就不跟。
 	 */
 	function endPinch() {
-		if (zoom === pinchFrom && viewCenter[0] === pinchCenter[0] && viewCenter[1] === pinchCenter[1]) {
+		if (!pinchMoved) {
 			follow = pinchFollowed;
 			return;
 		}
@@ -692,6 +693,8 @@
 	 */
 	function clickDot(e: MouseEvent) {
 		const fromPointer = e.timeStamp - pointerUpAt < CLICK_AFTER_UP_MS;
+		// 補的 click 只有一個：用掉了，緊接著讀螢幕軟體按別人照樣算
+		pointerUpAt = -Infinity;
 		const id = (e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id');
 		if (fromPointer || !id || !pickable) return;
 		pick(id, e.shiftKey);
@@ -711,7 +714,7 @@
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
 				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
-				if (!pinching) [pinchFrom, pinchFollowed, pinchCenter] = [zoom, follow, viewCenter];
+				if (!pinching) [pinchFrom, pinchFollowed, pinchMoved] = [zoom, follow, false];
 				follow = false;
 				pinching = true;
 				drag = null;

@@ -557,10 +557,15 @@ describe('八拍表的小站位圖範圍', () => {
 		expect(eightCountView(flow)).toBeNull();
 	});
 
-	it('站位很多（一共十幾萬個位置）：照樣算得出來，不會因為一次傳太多參數出錯', () => {
-		const pos = Object.fromEntries(Array.from({ length: 200_000 }, (_, i) => [`m${i}`, [i % 7, -(i % 5)] as [number, number]]));
-		const flow = { ...sample(), formations: [{ ...sample().formations[0], pos }] };
-		expect(eightCountView(flow)).toEqual({ x: 0, y: -4, width: 6, height: 4 });
+	it('站位很多（5000 張、每張 40 人，一共 20 萬個位置）：照樣算得出來，不會因為一次傳太多參數出錯', () => {
+		const base = sample().formations[0];
+		// 最左、最右、最上、最下分在不同張
+		const formations = Array.from({ length: 5000 }, (_, f) => ({
+			...base,
+			id: `f${f}`,
+			pos: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`m${i}`, [f === 1 ? -3 : f === 2 ? 6 : i % 5, f === 3 ? -4 : f === 4 ? 2 : 0] as [number, number]]))
+		}));
+		expect(eightCountView({ ...sample(), formations })).toEqual({ x: -3, y: -4, width: 9, height: 6 });
 	});
 });
 
