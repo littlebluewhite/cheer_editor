@@ -13,6 +13,8 @@ final class WebShell: NSObject {
     let webView: WKWebView
     let bridge: Bridge
     private let openOutside: (URL) -> Void
+    /// 現在塞的那份（換頁前換掉，別人加的 user script 留著）。
+    private var boot: WKUserScript
 
     init(
         siteRoot: URL,
@@ -27,7 +29,8 @@ final class WebShell: NSObject {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.limitsNavigationsToAppBoundDomains = false
-        config.userContentController.addUserScript(Self.bootScript(bridge))
+        boot = Self.bootScript(bridge)
+        config.userContentController.addUserScript(boot)
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         config.userContentController.addScriptMessageHandler(MessageRelay(shell: self), contentWorld: .page, name: "shell")
@@ -43,10 +46,14 @@ final class WebShell: NSObject {
     }
 
     /// 網頁要整頁換（重新載入、換上新網頁）：一開始塞的照現在的重做，不然塞的是 App 打開時的小設定、上次那支。
+    /// WebKit 只能全部拿掉：別的 user script（例：ScreenFeelView 的）放回去，塞的那份還是排第一個。
     private func refreshBoot() {
         let scripts = webView.configuration.userContentController
+        let others = scripts.userScripts.filter { $0 !== boot }
         scripts.removeAllUserScripts()
-        scripts.addUserScript(Self.bootScript(bridge))
+        boot = Self.bootScript(bridge)
+        scripts.addUserScript(boot)
+        others.forEach(scripts.addUserScript)
     }
 
     /// 殼主動跟網頁說一句（網頁用 __cheerShell.on(name, fn) 收）。
