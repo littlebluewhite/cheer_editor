@@ -1,5 +1,7 @@
-// 本機設定：跟著這台電腦的瀏覽器存（localStorage），不進流程檔。
+// 本機設定（小設定）：跟著這台裝置存，不進流程檔。存在哪看 #lib/host.js（網頁版是瀏覽器的 localStorage）。
 // 私密視窗、封鎖網站資料時 localStorage 可能讀寫失敗，那就用預設值、不存。
+
+import { host } from '#lib/host.js';
 
 const LATENCY_KEY = 'cheer-editor:latencyMs';
 
@@ -9,7 +11,7 @@ export const MAX_LATENCY_MS = 1000;
 /** 延遲校正（毫秒），預設 0；存的值超出 ±1000 也當 0。 */
 export function loadLatencyMs(): number {
 	try {
-		const ms = Number(localStorage.getItem(LATENCY_KEY) ?? 0);
+		const ms = Number(host().settings.get(LATENCY_KEY) ?? 0);
 		return Math.abs(ms) <= MAX_LATENCY_MS ? ms : 0;
 	} catch {
 		return 0;
@@ -18,7 +20,7 @@ export function loadLatencyMs(): number {
 
 export function saveLatencyMs(ms: number): void {
 	try {
-		localStorage.setItem(LATENCY_KEY, String(ms));
+		host().settings.set(LATENCY_KEY, String(ms));
 	} catch {
 		// 存不了就只在這次用
 	}
@@ -29,7 +31,7 @@ const RETURN_ON_STOP_KEY = 'cheer-editor:returnOnStop';
 /** 停下來回到起播點，預設開著。 */
 export function loadReturnOnStop(): boolean {
 	try {
-		return localStorage.getItem(RETURN_ON_STOP_KEY) !== '0';
+		return host().settings.get(RETURN_ON_STOP_KEY) !== '0';
 	} catch {
 		return true;
 	}
@@ -37,7 +39,7 @@ export function loadReturnOnStop(): boolean {
 
 export function saveReturnOnStop(on: boolean): void {
 	try {
-		localStorage.setItem(RETURN_ON_STOP_KEY, on ? '1' : '0');
+		host().settings.set(RETURN_ON_STOP_KEY, on ? '1' : '0');
 	} catch {
 		// 存不了就只在這次用
 	}
@@ -48,7 +50,7 @@ const LEGEND_KEY = 'cheer-editor:legendOpen';
 /** 場地左下的圖例開著嗎；沒按過「圖例」是 fallback（觸控又矮的螢幕收著，其他開著，N58）。 */
 export function loadLegendOpen(fallback = true): boolean {
 	try {
-		const v = localStorage.getItem(LEGEND_KEY);
+		const v = host().settings.get(LEGEND_KEY);
 		return v === null ? fallback : v !== '0';
 	} catch {
 		return fallback;
@@ -58,7 +60,7 @@ export function loadLegendOpen(fallback = true): boolean {
 /** 按過「圖例」就記下開或關（預設看螢幕，所以開著也要記）。 */
 export function saveLegendOpen(open: boolean): void {
 	try {
-		localStorage.setItem(LEGEND_KEY, open ? '1' : '0');
+		host().settings.set(LEGEND_KEY, open ? '1' : '0');
 	} catch {
 		// 存不了就只在這次用
 	}
@@ -70,7 +72,7 @@ export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthRatio';
 /** 拖分界改的大小；null = 預設（沒拖過，或雙擊回去了）。 */
 export function loadLayoutPx(name: LayoutSize): number | null {
 	try {
-		const px = Number(localStorage.getItem(`cheer-editor:${name}`));
+		const px = Number(host().settings.get(`cheer-editor:${name}`));
 		return Number.isFinite(px) && px > 0 ? px : null;
 	} catch {
 		return null;
@@ -79,8 +81,8 @@ export function loadLayoutPx(name: LayoutSize): number | null {
 
 export function saveLayoutPx(name: LayoutSize, px: number | null): void {
 	try {
-		if (px === null) localStorage.removeItem(`cheer-editor:${name}`);
-		else localStorage.setItem(`cheer-editor:${name}`, String(px));
+		if (px === null) host().settings.remove(`cheer-editor:${name}`);
+		else host().settings.set(`cheer-editor:${name}`, String(px));
 	} catch {
 		// 存不了就只在這次用
 	}
@@ -95,7 +97,7 @@ export type FlowSetting = 'me' | 'print';
 
 export function loadFlowSetting(kind: FlowSetting, flowName: string): string {
 	try {
-		return localStorage.getItem(`cheer-editor:${kind}:${flowName}`) ?? '';
+		return host().settings.get(`cheer-editor:${kind}:${flowName}`) ?? '';
 	} catch {
 		return '';
 	}
@@ -104,8 +106,8 @@ export function loadFlowSetting(kind: FlowSetting, flowName: string): string {
 /** 存 ''（沒選）就刪掉那一筆。 */
 export function saveFlowSetting(kind: FlowSetting, flowName: string, value: string): void {
 	try {
-		if (value) localStorage.setItem(`cheer-editor:${kind}:${flowName}`, value);
-		else localStorage.removeItem(`cheer-editor:${kind}:${flowName}`);
+		if (value) host().settings.set(`cheer-editor:${kind}:${flowName}`, value);
+		else host().settings.remove(`cheer-editor:${kind}:${flowName}`);
 	} catch {
 		// 存不了就只在這次用
 	}
