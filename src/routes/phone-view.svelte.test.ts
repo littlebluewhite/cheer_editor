@@ -465,6 +465,32 @@ describe('手機的檢視畫面：只看有人的地方', () => {
 		expect(people()).not.toBeNull();
 	});
 
+	// 在裡面再放大照 #331 的規則：已經放大了，兩根手指動畫面就不跟；點兩下跟別的放大一樣回到整個場地
+	it('選了「我」是小A，在這個畫面捏合再放大、播放：畫面不跟（兩根手指動過畫面）', async () => {
+		const opened = await openOnPhone(walkingFlow());
+		await fireEvent.change(me(), { target: { value: 'm2' } });
+		await fireEvent.click(people()!);
+		const two = (id: number, x: number) => ({ pointerType: 'touch', pointerId: id, button: 0, clientX: x, clientY: 0 });
+		await fireEvent.pointerDown(stage(), two(1, 0));
+		await fireEvent.pointerDown(stage(), two(2, 100));
+		await fireEvent.pointerMove(stage(), two(2, 200));
+		await fireEvent.pointerUp(stage(), two(2, 200));
+		await fireEvent.pointerUp(stage(), two(1, 0));
+		const pinched = viewBox().join(' ');
+		expect(new Set(await playThrough(opened))).toEqual(new Set([pinched]));
+	});
+
+	it('在這個畫面很快點兩下：回到整個場地', async () => {
+		await openOnPhone(walkingFlow());
+		const full = viewBox();
+		await fireEvent.click(people()!);
+		for (let i = 0; i < 2; i++) {
+			await fireEvent.pointerDown(stage(), { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 0 });
+			await fireEvent.pointerUp(stage(), { pointerType: 'touch', pointerId: 1, button: 0, clientX: 0, clientY: 0 });
+		}
+		expect(viewBox()).toEqual(full);
+	});
+
 	it('用鍵盤按「只看有人的地方」：焦點留在同一個位置的「整個場地」上', async () => {
 		await openOnPhone(walkingFlow());
 		people()!.focus();

@@ -1823,7 +1823,8 @@ await check('390×664（觸控）手機的檢視畫面放大場地：點兩下�
 for (const [w, h] of [[320, 640], [390, 664]]) {
 	await check(`${w}×${h}（觸控）手機的檢視畫面「只看有人的地方」（#333）：沒放大時在右下角、點得到、不蓋到左下角的字；按了看到的範圍包住大家（四周留 1 公尺），換成「整個場地」，按了回到整個場地`, async () => {
 		await setTouchViewport(w, h);
-		await openPracticeFlow(NEAR_BASES);
+		// 小芳改成很長的名字：點她，左下角的字長到要換行
+		await openPracticeFlow(NEAR_BASES + `flow = { ...flow, members: flow.members.map((m) => (m.id === 'm4' ? { ...m, name: '歐陽小芳芳芳芳芳芳芳芳' } : m)) };`);
 		const host = '.phone-field';
 		const spot = () =>
 			js(`const b = document.querySelector('${host} button.people');
@@ -1832,7 +1833,7 @@ for (const [w, h] of [[320, 640], [390, 664]]) {
 				return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: Math.round(r.height), left: r.left,
 					self: !!t && b.contains(t) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };`);
 		const before = { ...(await fieldNow(host)), 只看有人的地方鈕: await spot(), 整個場地鈕: await fitSpot(host) };
-		// 點小芳：左下角寫長一點的「小芳　技巧·Lib 上層」，也不蓋到這顆
+		// 點小芳：左下角寫很長的「歐陽小芳…　技巧·Lib 上層」，也不蓋到這顆
 		const m4 = await rectOf(`${host} [data-member-id="m4"] :is(circle, rect):is(.base, .top)`);
 		await tap(m4.x, m4.y);
 		const cornerRight = await js(`return document.querySelector('${host} .formation-now').getBoundingClientRect().right`);

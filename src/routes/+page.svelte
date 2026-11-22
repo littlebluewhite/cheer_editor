@@ -2690,6 +2690,10 @@
 	.phone-field:has(:global(.fit)) .formation-now {
 		max-width: calc(100% - 140px);
 	}
+	/* 沒放大時同一個位置是「只看有人的地方」，比較寬（量過約 147px） */
+	.phone-field:has(:global(.people)) .formation-now {
+		max-width: calc(100% - 170px);
+	}
 	.view-badge {
 		position: absolute;
 		top: 18px;
