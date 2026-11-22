@@ -1861,7 +1861,8 @@
 	/* 進度條和播放列一起是深底的一塊；進度條只多佔 4px 高（播放列上面的空白給它用），場地才不被擠小 */
 	.phone-play {
 		position: relative;
-		z-index: 1;
+		/* 拖的時候寫第幾個八拍的小框浮在場地上：疊在場地裡的字和按鈕（最高 6）上面，提示（10）下面 */
+		z-index: 7;
 		background: var(--ink);
 	}
 	.phone-view .phone-play .transport {
@@ -2684,6 +2685,8 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 	.view-scrub {
+		position: relative;
+		z-index: 7;
 		margin-top: 8px;
 		padding-block: 4px;
 		border-radius: 999px;

@@ -3,7 +3,7 @@
 // 窄不窄是媒體查詢（NARROW_SCREEN）的事：jsdom 沒有 matchMedia，換一個假的說「窄」。
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { insertFormation, readFlowFile, setPositions, stepPlayhead, writeFlowFile, type Flow } from '#lib/core';
+import { addSegment, insertFormation, readFlowFile, setPositions, stepPlayhead, updateSegment, writeFlowFile, type Flow } from '#lib/core';
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import { NARROW_SCREEN } from '#lib/editor-layout.js';
 import { editorPage, flush, fromMenu, manualFrames, openFile } from '#lib/test-fakes.js';
@@ -294,6 +294,17 @@ describe('手機的進度條', () => {
 		await fireEvent.pointerUp(window, { clientX: 30 });
 		expect(where()).toBe('音樂 1 2-1');
 		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+	});
+
+	it('流程最後是口號段：拖進口號段裡，播放頭跟著手指在段裡跑；放開回到口號段的開頭', async () => {
+		// 音樂 1 16 秒後面接口號 1：拖到 80% 在口號 1 的中間（不是開頭）
+		const flow = flowOf(updateSegment(flowOf(addSegment(libSample(), 'chant')), 's2', { seconds: 10 }));
+		await openOnPhone(flow);
+		await fireEvent.pointerDown(bar(), { clientX: 10, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 80 });
+		expect(where()).toMatch(/^口號 1 [1-9]\.\d 秒$/);
+		await fireEvent.pointerUp(window, { clientX: 80 });
+		expect(where()).toBe('口號 1 0.0 秒');
 	});
 
 	it('橫拿的 iPad（一般版面）：檢視模式也有進度條，拖了一樣對齊八拍開頭；編輯時沒有', async () => {

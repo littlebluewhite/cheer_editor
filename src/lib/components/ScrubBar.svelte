@@ -20,6 +20,9 @@
 
 	let { flow, sec, valuetext, tip, onseek, fractionAt = fromRect }: Props = $props();
 
+	/** 拖的時候最多到結尾前幾秒（比播放算「到結尾了」的誤差大）。 */
+	const BEFORE_END_SEC = 0.1;
+
 	let bar: HTMLElement;
 	let dragging = $state(false);
 	const total = $derived(totalSeconds(flow));
@@ -32,9 +35,8 @@
 	function start(e: PointerEvent) {
 		if (e.button !== 0 || !total) return;
 		e.preventDefault();
-		// 拖到最右邊也只到最後一個八拍的開頭：放開不會停在那裡，播放中跳到結尾還會停下
-		const last = nearestEightStart(flow, total);
-		const toSec = (ev: PointerEvent) => Math.min(Math.max(fractionAt(bar, ev.clientX), 0) * total, last);
+		// 拖到最右邊停在結尾前一點點：跳到結尾算播完，播放中會停下（放開反正對齊八拍開頭，不會停在那裡）
+		const toSec = (ev: PointerEvent) => Math.min(Math.max(fractionAt(bar, ev.clientX), 0) * total, total - BEFORE_END_SEC);
 		let at = toSec(e);
 		const done = () => {
 			dragging = false;
@@ -121,7 +123,8 @@
 	.tip {
 		position: absolute;
 		bottom: calc(100% + 8px);
-		left: var(--at);
+		/* 拖到兩端時小框不出畫面 */
+		left: clamp(20px, var(--at), calc(100% - 20px));
 		transform: translateX(-50%);
 		padding: 2px 8px;
 		border-radius: 6px;
