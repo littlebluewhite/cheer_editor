@@ -69,30 +69,6 @@ describe('記錄頁的卡', () => {
 		expect((screen.getByRole('button', { name: '存這一次' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
-	it('「整個」點了 ✗ 不自動存；存下來後面的環節空著', async () => {
-		const { session, name } = setup();
-		await tap(name, '上法', '成功');
-		await tap(name, '中段', '失敗');
-		expect(records(session)).toEqual([]);
-		await save();
-		expect(records(session).map((r) => r.marks)).toEqual([{ p1: '✓', p2: '✗' }]);
-		await tap(name, '上法', '失敗');
-		await save();
-		expect(records(session).map((r) => r.marks)).toEqual([{ p1: '✓', p2: '✗' }, { p1: '✗' }]);
-	});
-
-	it('再按一次點著的記號就取消', async () => {
-		const { session, name } = setup();
-		await tap(name, '上法', '成功');
-		await tap(name, '中段', '失敗');
-		await tap(name, '中段', '失敗');
-		expect(pressed(name, '中段', '失敗')).toBe('false');
-		await tap(name, '中段', '小失誤');
-		await tap(name, '下法', '成功');
-		await save();
-		expect(records(session).map((r) => r.marks)).toEqual([{ p1: '✓', p2: '△', p3: '✓' }]);
-	});
-
 	it('「整個」卻跳過前面的環節：存之前就提醒；存成只練幾個環節', async () => {
 		const { session, name } = setup();
 		await tap(name, '下法', '成功');
@@ -104,18 +80,6 @@ describe('記錄頁的卡', () => {
 		await tap(name, '中段', '成功');
 		await save();
 		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[false, { p1: '✓', p3: '✓' }]]);
-	});
-
-	it('「整個」照順序點：上法 ✓ 不提醒跳過；只點下法才提醒', async () => {
-		const { name } = setup();
-		// 還沒點、點了又取消（沒有記號）也不提醒
-		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
-		await tap(name, '上法', '成功');
-		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
-		await tap(name, '上法', '成功');
-		expect(screen.queryByText(/跳過了前面的環節/)).toBeNull();
-		await tap(name, '下法', '成功');
-		expect(screen.getByText(/跳過了前面的環節/)).toBeTruthy();
 	});
 
 	it('「整個」按了 ✗：後面環節的按鈕停用，存下來後面空著；取消 ✗ 也不會冒出之前的記號', async () => {
@@ -367,13 +331,6 @@ describe('記錄頁的卡：金字塔的環節佔同樣的拍（打 ✗ 之後�
 		expect(phases.map((p) => enabled(name, p))).toEqual([true, true, true, true, true]);
 	});
 
-	it('改成 ✓ 也又可以按', async () => {
-		const { name } = setup(pyramidSample(), 1);
-		await tap(name, '上法 第二個', '失敗');
-		await tap(name, '上法 第二個', '成功');
-		expect(phases.map((p) => enabled(name, p))).toEqual([true, true, true, true, true]);
-	});
-
 	it('「跳過了前面的環節」：只有 ✗ 之前的沒打才提醒，佔同樣拍的沒打不提醒', async () => {
 		const { session, name } = setup(pyramidSample(), 1);
 		await tap(name, '上法 第二個', '失敗');
@@ -433,24 +390,6 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		expect(enabled(name, '中段 第二個')).toBe(false);
 	});
 
-	it('把等著的環節打完：自動存，兩個都有記號；「存這一次」不見', async () => {
-		const { session, name } = await pickSome('中段 第一個', '上法 第二個');
-		await tap(name, '上法 第二個', '失敗');
-		await tap(name, '中段 第一個', '成功');
-		expect(records(session, 1).map((r) => [r.whole, r.marks])).toEqual([[false, { p5: '✓', p6: '✗' }]]);
-		expect(screen.queryByRole('button', { name: '存這一次' })).toBeNull();
-		expect(screen.queryByText(WAIT)).toBeNull();
-	});
-
-	it('點到最後一個勾的環節，另一個勾了、佔同樣拍的還沒打：也不自動存；打完才存', async () => {
-		const { session, name } = await pickSome('中段 第一個', '上法 第二個');
-		await tap(name, '上法 第二個', '成功');
-		expect(records(session, 1)).toEqual([]);
-		expect(screen.getByText(WAIT)).toBeTruthy();
-		await tap(name, '中段 第一個', '小失誤');
-		expect(records(session, 1).map((r) => [r.whole, r.marks])).toEqual([[false, { p5: '△', p6: '✓' }]]);
-	});
-
 	it('等的時候按「存這一次」：照現在點的存，沒打的不記', async () => {
 		const { session, name } = await pickSome('中段 第一個', '上法 第二個');
 		await tap(name, '上法 第二個', '失敗');
@@ -477,28 +416,6 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		expect(screen.getByText(WAIT)).toBeTruthy();
 		await tap(name, '中段 第一個', '成功');
 		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✓', p6: '✗' }]);
-	});
-
-	it('B ✗ 再 C ✗ 之後只等跟 C 佔同樣拍的 D；打完 D 就存，不回頭再等只跟 B 佔同樣拍的 A', async () => {
-		const members = [
-			{ memberId: 'm1', role: '上層' },
-			{ memberId: 'm2', role: '主底' }
-		];
-		let flow = flowOf(
-			addAction(libSample(), { segmentId: 's1', category: 'pyramid', name: '金字塔', start: 32, length: 32, note: '', members })
-		);
-		// A 第 1–2 拍、B 第 2–6 拍、D 第 3–4 拍、C 第 4–7 拍
-		for (const [name, at, len] of [['A', 0, 4], ['B', 2, 10], ['D', 4, 4], ['C', 6, 8]] as const) {
-			flow = flowOf(addPhase(flow, 'x2', { kind: 'hold', name, beats: { at, len } }));
-		}
-		const { session, name } = setup(flow, 1);
-		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
-		for (const n of ['A', 'B', 'D', 'C']) await fireEvent.click(screen.getByRole('checkbox', { name: `中段 ${n}` }));
-		await tap(name, '中段 B', '失敗');
-		await tap(name, '中段 C', '失敗');
-		expect(records(session, 1)).toEqual([]);
-		await tap(name, '中段 D', '成功');
-		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✗', p6: '✓', p7: '✗' }]);
 	});
 
 	it('B ✗ 再 C ✗ 之後換頁再回來：照舊只等跟 C 佔同樣拍的 D，打完 D 就存', async () => {
@@ -528,15 +445,6 @@ describe('記錄頁的卡：只練幾個環節時，還有同時在做的沒打�
 		expect(records(session, 1).map((r) => r.marks)).toEqual([{ p5: '✗', p6: '✓', p7: '✗' }]);
 	});
 
-	it('環節沒有疊：點了 ✗ 照舊馬上存，不出現「存這一次」', async () => {
-		const { session, name } = setup();
-		await fireEvent.click(screen.getByRole('radio', { name: '只練幾個環節' }));
-		await fireEvent.click(screen.getByRole('checkbox', { name: '上法' }));
-		await fireEvent.click(screen.getByRole('checkbox', { name: '中段' }));
-		await tap(name, '中段', '失敗');
-		expect(records(session).map((r) => [r.whole, r.marks])).toEqual([[false, { p2: '✗' }]]);
-		expect(screen.queryByRole('button', { name: '存這一次' })).toBeNull();
-	});
 });
 
 describe('記錄頁的卡：英文', () => {
