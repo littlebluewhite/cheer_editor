@@ -161,6 +161,8 @@
 	 * 沒有編輯器時看有沒有給 ontap：八拍表的小站位圖沒給（沒人排上場時也不裁）。
 	 */
 	const viewOnly = $derived(!crop && (session ? !session.editable : !!ontap));
+	/** 點得到人的場地（編輯頁、手機的檢視畫面）：每個圓點是 Tab 停得到的按鈕，Enter 跟點一下一樣。八拍表的小站位圖不算。 */
+	const pickable = $derived(!!session || (!crop && !!ontap));
 	/** 標了「我」：別人畫淡一點（「我」和圈起來的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
 	const dim = (id: string) => !crop && marked.length > 0 && !marked.includes(id) && !lit.includes(id);
 
@@ -804,9 +806,16 @@
 	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把方向鍵當移播放頭。
 	 * 空白鍵往外傳：焦點在人身上時，空白鍵跟頁面其他地方一樣是播放／暫停。
 	 * 檢視模式不能移人：方向鍵也往外傳，跟頁面其他地方一樣移播放頭。
+	 * 手機的檢視畫面（沒有編輯器）：只有 Enter，跟手指點一下一樣。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
-		if (!session) return;
+		if (!session) {
+			if (e.key !== 'Enter' || !pickable) return;
+			e.preventDefault();
+			e.stopPropagation();
+			ontap?.(id);
+			return;
+		}
 		if (e.key === 'Enter') {
 			e.preventDefault();
 			e.stopPropagation();
@@ -916,7 +925,7 @@
 		<div class="rail-fade" aria-hidden="true" hidden={!rail || !railMore}></div>
 	{/if}
 	<div class="stage" class:band {@attach watchStage}>
-	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
+	<!-- 能點人時（編輯頁、手機的檢視畫面）是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
 		class="field"
@@ -925,7 +934,7 @@
 		class:panning={!!pan}
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
-		role={session ? 'group' : 'img'}
+		role={pickable ? 'group' : 'img'}
 		aria-label={t.field_view_surface()}
 		{onwheel}
 		onpointerdown={down}
@@ -989,20 +998,20 @@
 				data-member-id={m.id}
 				data-keep-visible
 				role="button"
-				tabindex={session ? 0 : undefined}
-				aria-label={session ? whereText(m, p) : m.name}
-				aria-pressed={session ? sel : undefined}
+				tabindex={pickable ? 0 : undefined}
+				aria-label={pickable ? whereText(m, p) : m.name}
+				aria-pressed={pickable ? sel : undefined}
 				onkeydown={(e) => dotKey(e, m.id)}
 				transform="translate({p[0]},{p[1]})"
 			>
-				<title>{session ? whereText(m, p) : m.name}</title>
+				<title>{pickable ? whereText(m, p) : m.name}</title>
 				<g transform="scale({dotScale})">
 					{#if pill}
-						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
+						{#if pickable}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
 						<rect class={m.globalRole} x={-pill / 2} y={-DOT_R} width={pill} height={DOT_R * 2} rx={DOT_R} />
 					{:else}
-						{#if session}<circle class="focus-ring" r="0.54" />{/if}
+						{#if pickable}<circle class="focus-ring" r="0.54" />{/if}
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}
