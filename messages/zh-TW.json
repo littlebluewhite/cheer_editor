@@ -1015,6 +1015,7 @@
 	"editor_jump": "跳到哪裡",
 	"editor_jump_title": "點一下，打 3-1 跳到第 3 個八拍",
 	"editor_jump_placeholder": "例：3-1",
+	"editor_scrub": "進度條",
 	"editor_speed": "播放速度",
 	"editor_speed_title": "慢速播放，音高不變",
 	"editor_more_playback": "更多播放選項",

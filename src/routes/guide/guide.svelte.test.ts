@@ -162,6 +162,18 @@ describe('使用說明', () => {
 		expect(document.body.textContent).not.toContain('「‹ 八拍」');
 	});
 
+	it('進度條（#330）：手機播放區上面、檢視模式場地下面一條，拖了放開停在最近的八拍開頭，播放中照樣播', () => {
+		render(Guide);
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
+		expect(row('上方列')).toContain('播放區上面有一條進度條');
+		expect(row('編輯、檢視模式')).toContain('場地下面有一條進度條');
+		const viewers = document.getElementById('viewers')!.textContent!;
+		for (const words of ['按住播放區上面的進度條拖', '放開停在最近的八拍開頭', '口號段停在段的開頭', '播放中照樣接著播']) {
+			expect(viewers, words).toContain(words);
+		}
+	});
+
 	it('有一節講雲端：登入、雲端流程和本機流程、傳上雲端、下載、分享和權限、分享連結、移交、一起改、一起記成功率、離線副本', () => {
 		render(Guide);
 		const toc = screen.getByRole('navigation', { name: '目錄' });

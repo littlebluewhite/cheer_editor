@@ -1015,6 +1015,7 @@
 	"editor_jump": "Jump to",
 	"editor_jump_title": "Tap, then type 3-1 to jump to 8-count 3",
 	"editor_jump_placeholder": "e.g. 3-1",
+	"editor_scrub": "Progress bar",
 	"editor_speed": "Playback speed",
 	"editor_speed_title": "Slow playback keeps the pitch",
 	"editor_more_playback": "More playback options",
