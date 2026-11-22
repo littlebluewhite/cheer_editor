@@ -8,7 +8,7 @@ import ShellCore
 enum ShellParts {
     static func all(_ context: ShellContext) -> [any BridgePart] {
         [
-            ReadyPart(onReady: { Logger.shell.info("網頁說好了"); context.webUpdates.updater.webSaidReady() }),  // #393：換上新網頁後靠它判斷打不打得開
+            ReadyPart(onReady: { Logger.shell.info("網頁說好了"); context.webSaidReady() }),
             // #376
             ScreenPart(onScreen: { ScreenFeelView.around(context.webView)?.kind = $0 }),
 
@@ -36,8 +36,8 @@ enum ShellParts {
             // #391
             PrintPart(onPrint: { Printer.present(context.webView, from: $0) }),
 
-            // #393
-            context.webUpdates.part,
+            // #393（網頁說好了也交給它：換上新網頁後靠它判斷打不打得開）
+            context.webUpdates.hearingReady(context).part,
         ]
     }
 }

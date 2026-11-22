@@ -1,7 +1,7 @@
 // App 這邊接「殼自己從網站更新網頁」（#393、ADR 0025）。規則在 ShellCore 的 WebUpdater；這裡只接 UIKit、WebKit：
 // - App 打開、回到前景時去網站看（WebUpdatePart.check）；
 // - 換上的那包由 WebBundleRoute 送（登記在 SchemeRoutes.swift，排在 /api/ 那幾條後面）；
-// - 網頁說「好了」（ShellParts.swift 的 ReadyPart）、網頁的行程當掉，交給 WebUpdater 決定留著還是退回；
+// - 網頁說「好了」（ShellParts.swift 的 #393 那一格接上 ReadyPart，hearingReady）、網頁的行程當掉，交給 WebUpdater 決定留著還是退回；
 // - 換上、退回都是同一個網頁畫面重新載入：來源還是 app://local，網頁存的東西（草稿、小設定）都在。
 //   雲端流程被擋時按「更新」（#394）載入首頁 ?cloud=<代號>，網頁打開同一支；其他都回首頁。
 // - 清單要比這個殼新的殼（minShellBuild 比 CFBundleVersion 大）就不換（#394）。
@@ -60,6 +60,12 @@ final class WebUpdates {
             MainActor.assumeIsolated { self?.check() }
         })
         check()
+    }
+
+    /// 網頁說「好了」時交給 WebUpdater（換上新網頁後 10 秒內沒說就退回，ADR 0025）。ShellParts.swift 的 #393 那一格叫。
+    func hearingReady(_ context: ShellContext) -> WebUpdates {
+        context.onReady.append { [weak updater] in updater?.webSaidReady() }
+        return self
     }
 
     func check() {

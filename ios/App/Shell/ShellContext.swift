@@ -12,6 +12,13 @@ final class ShellContext {
     /// 網頁畫面（列印、重新載入要用）。接上之前是 nil。
     var webView: WKWebView? { webShell?.webView }
 
+    /// 網頁說「好了」（ReadyPart）時要叫的：要聽的那一塊在 ShellParts.swift 自己那一格加。
+    var onReady: [@MainActor () -> Void] = []
+
+    func webSaidReady() {
+        onReady.forEach { $0() }
+    }
+
     func attach(_ shell: WebShell) {
         webShell = shell
         outbox.deliver = { [weak shell] name, body in shell?.emit(name, body) }
