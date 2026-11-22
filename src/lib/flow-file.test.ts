@@ -15,7 +15,7 @@ import {
 import type { SaveOutcome } from '#lib/file/save.js';
 import type { OpenTabChannel } from '#lib/tab-channel.js';
 import { flowOf } from '#lib/test-flows.js';
-import { audioFlow, fakeDraftStore, fakePendingInput, fakeSaver, fakeTabs, recordedFlow, testEditor } from '#lib/test-fakes.js';
+import { audioFlow, fakeDraftStore, fakeHost, fakePendingInput, fakeSaver, fakeShell, fakeTabs, recordedFlow, testEditor } from '#lib/test-fakes.js';
 
 // 畫面送的每一步都帶亂數的步驟 id，新東西的 id 是亂數（ADR 0014）。這個檔的測試照舊用編號的 id（m1、x1…）找東西，
 // 所以不算步驟 id：新東西照舊發下一個編號。亂數的 id 在核心測試（commands、flow-file）和 ask-ids.test.ts 測。
@@ -206,6 +206,15 @@ describe('流程檔：存檔', () => {
 		);
 		await editor.file.save();
 		expect(session.notice).toBe('已下載新的「練習用.zip」');
+	});
+
+	it('App 裡（#392）下載新檔，接了觸控板也一樣：不叫教練用電腦的 Chrome、Edge，只說原本的檔沒改', async () => {
+		fakeHost({ shell: fakeShell() });
+		const made = savers('downloaded');
+		const { editor, session } = testEditor(null, { createSaver: made.create });
+		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([1]) }));
+		await editor.file.save();
+		expect(session.notice).toBe('已下載新的「練習用.zip」；原本開的檔沒有改');
 	});
 
 	it('手機、平板下載新檔：不叫教練換瀏覽器，只說原本的檔沒改', async () => {
@@ -422,6 +431,14 @@ describe('流程檔：缺音樂、壞音樂', () => {
 		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([1]) }));
 		expect(session.flow!.name).toBe('練習用');
 		expect(session.notice).toBe('已開啟「練習用.zip」；有音樂檔這個瀏覽器讀不出來，播放時會沒有聲音');
+	});
+
+	it('App 裡（#392）音樂檔解不開：不寫「這個瀏覽器」', async () => {
+		fakeHost({ shell: fakeShell() });
+		const decode = () => Promise.reject(new Error('壞檔'));
+		const { editor, session } = testEditor(null, { decode });
+		await editor.file.open(zip(audioFlow(), { a1: new Uint8Array([1]) }));
+		expect(session.notice).toBe('已開啟「練習用.zip」；有音樂檔讀不出來，播放時會沒有聲音');
 	});
 });
 
