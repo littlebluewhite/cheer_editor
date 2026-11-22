@@ -1,6 +1,6 @@
 //! 量收紀錄要多久（#349，ADR 0018）：現在的 `record`（叫流程核心的 receiveRecords）跟 #349 以前的（Rust 自己的規則，
 //! 照抄在下面，只給這裡比）在同一次跑裡交錯量，連 PostgreSQL。約 1 MB 的流程（tests/fixtures/big-flow.js，5,500 次紀錄）。
-//! 三種：一次送 1 筆、一次送 40 筆（一次全上）、整批 40 筆都是收過的重送。只印數字、不比時間，所以平常不跑：
+//! 三種：一次送 1 筆（1,001 對）、一次送 40 筆（一次全上）、整批 40 筆都是收過的重送（各 61 對）。只印數字、不比時間，所以平常不跑：
 //! `npm run test:server -- --release --lib record_timing -- --ignored --nocapture`。結果寫在 ADR 0018。
 
 use std::time::{Duration, Instant};
@@ -179,7 +179,6 @@ fn ms(d: Duration) -> f64 {
 #[sqlx::test]
 #[ignore = "量時間用，手動跑"]
 async fn record_timing(db: sqlx::PgPool) {
-    const PAIRS: usize = 61;
     let core = FlowCore::start().unwrap();
     let made = core
         .eval(format!(
@@ -273,10 +272,11 @@ async fn record_timing(db: sqlx::PgPool) {
             .unwrap();
     };
 
-    for (name, sent, resend) in [
-        ("送 1 筆", &single, false),
-        ("送 40 筆（一次全上）", &forty, false),
-        ("整批 40 筆收過的重送", &forty, true),
+    // 送 1 筆兩邊差不到 0.2 ms，要多跑幾對才看得出來
+    for (name, sent, resend, pairs) in [
+        ("送 1 筆", &single, false, 1001),
+        ("送 40 筆（一次全上）", &forty, false, 61),
+        ("整批 40 筆收過的重送", &forty, true, 61),
     ] {
         let n = sent.as_array().unwrap().len();
         if resend {
@@ -292,7 +292,7 @@ async fn record_timing(db: sqlx::PgPool) {
         let mut before = vec![];
         let mut after = vec![];
         // 3 對暖身不算；之後交錯，每一對輪流先跑哪一個
-        for i in 0..PAIRS + 3 {
+        for i in 0..pairs + 3 {
             let mut pair = [0.0; 2];
             for which in if i % 2 == 0 { [0, 1] } else { [1, 0] } {
                 let start = Instant::now();
@@ -316,7 +316,7 @@ async fn record_timing(db: sqlx::PgPool) {
         let mut diff: Vec<f64> = after.iter().zip(&before).map(|(a, b)| a - b).collect();
         let faster = diff.iter().filter(|d| **d <= 0.0).count();
         println!(
-            "{name}：#349 以前 中位數 {:.2} ms、改叫流程核心 中位數 {:.2} ms、每對相減（改叫 − 以前）中位數 {:+.2} ms、{faster}/{PAIRS} 對不比以前慢",
+            "{name}：#349 以前 中位數 {:.2} ms、改叫流程核心 中位數 {:.2} ms、每對相減（改叫 − 以前）中位數 {:+.2} ms、{faster}/{pairs} 對不比以前慢",
             median(&mut before),
             median(&mut after),
             median(&mut diff),

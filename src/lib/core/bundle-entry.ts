@@ -59,7 +59,8 @@ export function runStepJson(flow: string, records: string, commands: string, ste
 	return JSON.stringify({ ...r, flow: taken.flow, records: taken.records, ...stepKeys(before, taken.flow) });
 }
 
-/** 伺服器收一串紀錄（StoredAttempt[] 的 JSON）：每一次照「記一次」的規則檢查（checkRecord），回結果的 JSON（一樣的順序）。 */
+/** 收一串紀錄（StoredAttempt[] 的 JSON）：每一次照「記一次」的規則檢查（checkRecord），回結果的 JSON（一樣的順序）。
+ * #349 以前伺服器叫它；現在伺服器叫 receiveRecordsJson，這個只留給伺服器量時間比以前的做法。 */
 export function checkRecordsJson(flow: string, records: string): string {
 	const f = JSON.parse(flow) as Flow;
 	return JSON.stringify((JSON.parse(records) as StoredAttempt[]).map((r) => checkRecord(f, r)));
