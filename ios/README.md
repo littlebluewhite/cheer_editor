@@ -171,6 +171,15 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 - **不用 `pageZoom`**（#336 原本定的）：網頁有 `width=device-width` 時，`pageZoom` 只讓 `innerWidth`、媒體查詢變小，版面不重排，字變大後右邊整排跑出畫面。殼改成改網頁的 `<meta name="viewport">`（`width=寬÷倍數, initial-scale=倍數`），量過會照放大後的寬重排。
 - 長按連結不預覽（`allowsLinkPreview = false`）。鍵盤照 Safari：殼不在鍵盤出來時縮小網頁。
 
+## 雲端流程的連線（#381）
+
+App 裡的網頁不自己開 WebSocket：`src/lib/shell-socket.ts` 給房間（`server-api.ts` 的 `openRoom`）一個跟 WebSocket 一樣的東西，殼會 `cloudRoom` 才用；連線由殼開（`ShellCore/Sources/ShellCore/Parts/CloudRoomPart.swift`，App 那層 `App/Bridge/AppCloudRoom.swift` 用 `URLSessionWebSocketTask`）。說的話：`bridge-scenarios/current/cloudRoom.json`。
+
+- 握手帶殼罐子裡的 cookie（`AppSite.cookies`）、`Origin` 是網站的網址（`Forwarder.origin(of:)`），伺服器沒改。只開自己網站底下 `/api/` 的連線，不跟轉址。
+- **切到背景、鎖螢幕**（`UIScene.didEnterBackgroundNotification`）：殼關掉每一條，說 `socketClosed`（`background: true`）；在背景時網頁要開也馬上關。網頁不問伺服器為什麼、不自己重連（放音樂時網頁在背景照樣跑）。**回到前景**（`willEnterForeground`）殼說 `foreground`，網頁馬上重連、補齊，連上前不能改。拉下控制中心（`willDeactivate`）不斷線。
+- 網頁版照舊用瀏覽器的 WebSocket，切分頁、縮小視窗不斷線。
+- 管子測試 `PipeTests/CloudRoomPipeTests.swift` 在模擬器裡自己開一台小 WebSocket 伺服器（`TinyRoom`），看握手的標頭、背景關掉、前景再開；沒有跑真的伺服器的同網址檢查（`server/src/csrf.rs`）。
+
 ## 殼自己更新網頁（#393、ADR 0025）
 
 - **什麼時候看**：App 打開、回到前景（`App/Update/WebUpdates.swift`），抓 `https://littlebluewhite.com/web-bundle.json`（docs/deploy.md「網頁的清單」）。網站寫死在 `WebUpdates.site`；開發版改抓 Mac 上的小網站是 #394。App 被 PipeTests 帶起來時不自己看，免得測試連到正式站。

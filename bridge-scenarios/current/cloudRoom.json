@@ -1,0 +1,37 @@
+{
+	"about": "雲端流程的連線（#381，#304 的結論）：App 裡的網頁不自己開 WebSocket，殼給一個跟 WebSocket 一樣的介面，連線由殼開（帶殼自己的登入 cookie、標上網站的網址）。網址是網站網址（siteUrl）底下的 /api/…，別的殼不開。id 是網頁自己數的（1、2、3…）。App 切到背景、鎖螢幕：殼關掉每一條連線，說 socketClosed（background: true），在背景時網頁要開也馬上關；網頁不問為什麼、不自己重連。回到前景殼說 foreground，網頁馬上重連、補齊（這段時間不能改）。網頁版不變。",
+	"scenarios": [
+		{
+			"name": "雲端流程的連線由殼開",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["cloudRoom"], "siteUrl": "https://littlebluewhite.com/" },
+			"steps": [
+				{ "from": "web", "name": "socketOpen", "body": { "id": 1, "url": "wss://littlebluewhite.com/api/flows/c1/room" }, "reply": null },
+				{ "from": "shell", "name": "socketOpened", "body": { "id": 1 } },
+				{ "from": "web", "name": "socketSend", "body": { "id": 1, "text": "{\"kind\":\"mode\",\"editing\":true}" }, "reply": null },
+				{ "from": "shell", "name": "socketMessage", "body": { "id": 1, "text": "{\"kind\":\"ready\"}" } },
+				{ "from": "web", "name": "socketClose", "body": { "id": 1 }, "reply": null }
+			]
+		},
+		{
+			"name": "切到背景",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["cloudRoom"], "siteUrl": "https://littlebluewhite.com/" },
+			"steps": [
+				{ "from": "web", "name": "socketOpen", "body": { "id": 1, "url": "wss://littlebluewhite.com/api/flows/c1/room" }, "reply": null },
+				{ "from": "shell", "name": "socketOpened", "body": { "id": 1 } },
+				{ "from": "shell", "name": "socketClosed", "body": { "id": 1, "background": true } }
+			]
+		},
+		{
+			"name": "回到前景",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["cloudRoom"], "siteUrl": "https://littlebluewhite.com/" },
+			"steps": [
+				{ "from": "web", "name": "socketOpen", "body": { "id": 1, "url": "wss://littlebluewhite.com/api/flows/c1/room" }, "reply": null },
+				{ "from": "shell", "name": "socketOpened", "body": { "id": 1 } },
+				{ "from": "shell", "name": "socketClosed", "body": { "id": 1, "background": true } },
+				{ "from": "shell", "name": "foreground" },
+				{ "from": "web", "name": "socketOpen", "body": { "id": 2, "url": "wss://littlebluewhite.com/api/flows/c1/room" }, "reply": null },
+				{ "from": "shell", "name": "socketOpened", "body": { "id": 2 } }
+			]
+		}
+	]
+}

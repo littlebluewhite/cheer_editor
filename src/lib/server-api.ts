@@ -32,6 +32,7 @@ import type { HandedOver } from '#lib/api-types/HandedOver.js';
 import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
 import { OLD_SITE } from '#lib/old-site.js';
+import { ASLEEP_CODE, CLOUD_ROOM_FEATURE, shellSocket, type RoomSocket } from '#lib/shell-socket.js';
 import { m } from '#lib/paraglide/messages.js';
 
 export type {
@@ -85,6 +86,9 @@ export const MAX_CLOUD_FLOW_BYTES = 16 * 1024 * 1024;
 
 /** 斷線後隔多久重連（伺服器沒回應時也是多久自動再試一次，#260）：1、2、4、8 秒，之後每 10 秒。 */
 const RECONNECT_MS = [1000, 2000, 4000, 8000, 10000];
+
+/** WebSocket 連上了的 readyState。 */
+const OPEN = 1;
 
 /** 管理的事的結果：做好了，或做不成的原因（email 撞到別人、今天寄不出去、這個人現在不能這樣做）。 */
 export type AdminResult = 'ok' | AdminProblem;
@@ -413,13 +417,13 @@ export function httpServer(base = ''): ServerAdapter {
 			/** 上次說的斷線原因（變了才再說）。 */
 			let lastWhy: RoomDown | null = null;
 			let timer: ReturnType<typeof setTimeout> | undefined;
-			let socket: WebSocket | null = null;
+			let socket: RoomSocket | null = null;
 			const room: FlowRoom = {
 				onmessage: () => {},
 				onconnection: () => {},
 				send(request) {
 					const text = JSON.stringify(request);
-					if (socket?.readyState === WebSocket.OPEN) socket.send(text);
+					if (socket?.readyState === OPEN) socket.send(text);
 					else if (up) waiting.push(text);
 				},
 				retry() {
@@ -432,6 +436,7 @@ export function httpServer(base = ''): ServerAdapter {
 					clearTimeout(timer);
 					window.removeEventListener('online', online);
 					window.removeEventListener('offline', offline);
+					stopWaking();
 					socket?.close();
 				}
 			};
@@ -441,6 +446,8 @@ export function httpServer(base = ''): ServerAdapter {
 			const offline = () => socket?.close();
 			window.addEventListener('online', online);
 			window.addEventListener('offline', offline);
+			// App 回到前景（#381）：切到背景時殼關掉的連線馬上連回來
+			const stopWaking = host().shell.on('foreground', () => room.retry());
 			/** 斷了：問問看為什麼（斷網、登入過期、被收回、流程被刪了（410）、伺服器沒回應）。 */
 			const why = async (): Promise<RoomDown | 'revoked' | 'deleted'> => {
 				if (!navigator.onLine) return 'offline';
@@ -458,7 +465,9 @@ export function httpServer(base = ''): ServerAdapter {
 			const connect = () => {
 				if (closed) return;
 				clearTimeout(timer);
-				const s = new WebSocket(url);
+				// App 裡連線由殼開（#381）；網頁版照舊
+				const shell = host().shell;
+				const s: RoomSocket = shell.can(CLOUD_ROOM_FEATURE) ? shellSocket(shell, url.href) : new WebSocket(url);
 				socket = s;
 				s.onopen = () => {
 					tries = 0;
@@ -471,11 +480,18 @@ export function httpServer(base = ''): ServerAdapter {
 					room.onconnection(true);
 				};
 				s.onmessage = (e) => room.onmessage(JSON.parse(e.data as string) as RoomMessage);
-				s.onclose = () => {
+				s.onclose = (e) => {
 					if (closed || socket !== s) return;
 					socket = null;
 					waiting.length = 0;
 					up = false;
+					// App 切到背景，殼關掉的（#381）：不能改，不問為什麼、不自己重連，等回到前景
+					if (e?.code === ASLEEP_CODE) {
+						clearTimeout(timer);
+						if (lastWhy !== 'offline') room.onconnection(false, 'offline');
+						lastWhy = 'offline';
+						return;
+					}
 					void why().then((reason) => {
 						if (closed || socket) return;
 						// 被收回、流程被刪了：房間連不上了，回首頁說原因
