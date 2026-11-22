@@ -7,9 +7,12 @@
 import { host, type Shell } from '#lib/host.js';
 import type { Editor } from '#lib/editor.svelte.js';
 
+/** 殼會鎖定畫面的播放鍵（「問殼」的名字）。 */
+export const NOW_PLAYING_FEATURE = 'nowPlaying';
+
 /** 接上鎖定畫面；回傳「拆掉」的函式。編輯頁一開始叫一次。 */
 export function lockScreen(editor: Pick<Editor, 'session' | 'playback'>, shell: Shell = host().shell): () => void {
-	if (!shell.can('nowPlaying')) return () => {};
+	if (!shell.can(NOW_PLAYING_FEATURE)) return () => {};
 	const { session, playback } = editor;
 	const off = shell.on('remote', (body) => {
 		const command = (body as { command?: unknown } | null)?.command;

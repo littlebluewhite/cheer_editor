@@ -133,8 +133,8 @@
 	function onbeforeunload(e: BeforeUnloadEvent) {
 		if (editor.hasUnsavedWork) e.preventDefault();
 	}
-	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。
-	onMount(() => editor.file.connect());
+	// 草稿：頁面打開了才讀、才開分頁頻道，關掉時停。App 換上新網頁回來（被擋時按「更新」，#394）：打開同一支雲端流程（不回上次那支）
+	onMount(() => editor.file.connect(reopenAfterUpdate(host().shell)));
 	// App 裡：鎖定畫面的播放鍵（#389）
 	onMount(() => lockScreen(editor));
 
@@ -258,9 +258,6 @@
 	onMount(() => {
 		// app.html 在程式跑起來之前先把畫面藏起來（免得閃一下首頁），這裡接手
 		delete document.documentElement.dataset.openingLink;
-		// App 換上新網頁回來（被擋時按「更新」，#394）：打開同一支雲端流程
-		const reopen = reopenAfterUpdate(host().shell);
-		if (reopen) void editor.file.openCloud(reopen);
 		const token = shareTokenIn(location.hash);
 		if (!token) return;
 		openingLink = true;

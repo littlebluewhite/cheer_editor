@@ -19,9 +19,7 @@ public struct OfflineFolder: Sendable {
     }
 
     /// 流程 id、音樂 id 當檔名用：只收英數字、-、_。
-    static func isId(_ id: String) -> Bool {
-        (1...100).contains(id.count) && id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
-    }
+    static func isId(_ id: String) -> Bool { PartFiles.isSafeName(id) }
 
     func dir(_ name: String) -> URL { root.appendingPathComponent(name, isDirectory: true) }
 
@@ -51,9 +49,7 @@ public struct OfflineFolder: Sendable {
         try data.write(to: url, options: .atomic)
     }
 
-    func remove(_ url: URL) throws {
-        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
-    }
+    func remove(_ url: URL) throws { try PartFiles.remove(url) }
 
     func names(in folder: URL) -> [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).sorted()
@@ -131,8 +127,7 @@ public struct OfflinePart: BridgePart {
     }
 
     static func string(_ body: JSONValue, _ key: String) throws -> String {
-        guard case .object(let o) = body, case .string(let s)? = o[key] else { throw OfflineError.badBody }
-        return s
+        try PartFiles.string(body, key, or: OfflineError.badBody)
     }
 
     static func value(_ body: JSONValue) throws -> JSONValue {

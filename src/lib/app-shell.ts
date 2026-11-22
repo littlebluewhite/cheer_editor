@@ -57,18 +57,19 @@ export function appDevice(): 'iPhone' | 'iPad' {
 export function useShellIfInApp(): (() => void) | undefined {
 	const bridge = window.__cheerShell;
 	if (!bridge) return undefined;
+	const shell = appShell(bridge);
 	return swapHost({
-		shell: appShell(bridge),
-		// #377（小設定、離線存放）
-		...(bridge.boot.features.includes(DRAFTS_FEATURE) && { createDraftStore: () => shellDraftStore(appShell(bridge)) }),
+		shell,
+		// #377（草稿）
+		...(shell.can(DRAFTS_FEATURE) && { createDraftStore: () => shellDraftStore(shell) }),
 
 		// #378（小設定）
-		...(bridge.boot.features.includes(SETTINGS_FEATURE) && { settings: shellSettings(appShell(bridge), bridge.boot.settings) }),
+		...(shell.can(SETTINGS_FEATURE) && { settings: shellSettings(shell, bridge.boot.settings) }),
 
 		// #380（網站網址）
 		...appSite(bridge.boot),
 
 		// #383（離線存放）
-		...(bridge.boot.features.includes(OFFLINE_FEATURE) && { createOfflineStore: () => shellOfflineStore(appShell(bridge)) }),
+		...(shell.can(OFFLINE_FEATURE) && { createOfflineStore: () => shellOfflineStore(shell) }),
 	});
 }

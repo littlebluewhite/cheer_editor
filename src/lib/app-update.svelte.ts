@@ -5,6 +5,7 @@
 
 import type { CloudSteps } from '#lib/cloud-steps.svelte.js';
 import type { Shell } from '#lib/host.js';
+import { WEB_UPDATE_FEATURE } from '#lib/web-update.js';
 
 /**
  * App Store 上這個 App 的網址。上架後才有（網站主人填），先留這裡；沒有時按鈕按不下去。
@@ -44,7 +45,7 @@ const byCloud = new WeakMap<CloudSteps, AppUpdate>();
 
 /** 這支雲端流程被擋時的更新（同一支只問殼一次）；沒被擋、不在 App 裡、殼不會是 null。 */
 export function appUpdateFor(cloud: CloudSteps | null, shell: Shell): AppUpdate | null {
-	if (!cloud?.newVersion || !shell.can('webUpdate')) return null;
+	if (!cloud?.newVersion || !shell.can(WEB_UPDATE_FEATURE)) return null;
 	let found = byCloud.get(cloud);
 	if (!found) byCloud.set(cloud, (found = new AppUpdate(shell)));
 	return found;

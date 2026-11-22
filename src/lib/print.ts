@@ -1,5 +1,8 @@
 import { host } from '#lib/host.js';
 
+/** 殼會叫出系統的列印畫面（「問殼」的名字）。 */
+export const PRINT_FEATURE = 'print';
+
 /**
  * 列印的接口：八拍表、記一次全上表、總表的「列印」都叫這個（onclick 直接給它，event 是按的那下）。
  * 網頁版用瀏覽器列印；App 裡請殼叫出系統的列印畫面（#391，情境 bridge-scenarios/current/print.json），
@@ -8,7 +11,7 @@ import { host } from '#lib/host.js';
  */
 export function printPage(event?: Event): void {
 	const shell = host().shell;
-	if (!shell.can('print')) {
+	if (!shell.can(PRINT_FEATURE)) {
 		window.print();
 		return;
 	}

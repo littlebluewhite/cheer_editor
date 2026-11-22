@@ -34,7 +34,9 @@ ios/
   PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
   ShellCore/              殼的規則：Swift 套件，不碰畫面。swift test 在 Mac 上跑
     Sources/ShellCore/Bridge/     橋：Bridge、BridgePart、JSONValue、BootScript
-    Sources/ShellCore/Parts/      橋上的每一塊，一件事一個檔（ReadyPart.swift）
+    Sources/ShellCore/Parts/      橋上的每一塊，一件事一個檔（ReadyPart.swift）；跟別的檔一起做一件事的放那件事的資料夾（CloudMusicPart 在 Forward/、WebUpdatePart 在 Update/）
+    Sources/ShellCore/Forward/    殼代網頁上網（#380 轉送 /api/、cookie 罐子、網站網址；#382 雲端流程的音樂 CloudMusicPart）
+    Sources/ShellCore/Feel/       殼的手感（#376：邊邊、回彈；App 照它調 WKWebView）
     Sources/ShellCore/Site/       BundledSite（網址對到哪個檔）、NavigationPolicy（只開這包網頁）
     Sources/ShellCore/Update/     殼自己更新網頁的規則：WebUpdater、SiteFetcher、WebUpdatePart（#393）
     Sources/ShellCore/Resources/bridge.js   document start 塞進網頁的 JS
@@ -88,14 +90,14 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `nowPlaying`（鎖定畫面的播放鍵，#389）、`print`（列印，#391）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
 殼這邊：
 
-1. `ShellCore/Sources/ShellCore/Parts/<件事>Part.swift`：實作 `BridgePart`（`feature`、`messages`、`boot`、`handle`）。規則寫在這裡；要碰畫面、系統的（列印、播放鍵）從 init 傳進來（看 `ReadyPart` 的 `onReady`）。要主動跟網頁說話的，init 收一個 `ShellOutbox`，`outbox.emit(name, body)`。
-2. 在 `App/Bridge/ShellParts.swift` 自己那一格登記。`ShellParts.all(context)` 收 `ShellContext`（`App/Shell/ShellContext.swift`）：`context.outbox` 傳給要說話的那一塊；`context.webView` 是網頁畫面（列印、重新載入；網頁畫面比橋晚建好，所以要用的時候再拿，不要在 init 裡拿）。
+1. `ShellCore/Sources/ShellCore/Parts/<件事>Part.swift`（那件事有好幾個檔就放那件事的資料夾，例：`Forward/CloudMusic.swift`）：實作 `BridgePart`（`feature`、`messages`、`boot`、`handle`）。規則寫在這裡；要碰畫面、系統的（列印、播放鍵）從 init 傳進來（看 `ReadyPart` 的 `onReady`）。要主動跟網頁說話的，init 收一個 `ShellOutbox`，`outbox.emit(name, body)`。
+2. 在 `App/Bridge/ShellParts.swift` 自己那一格登記。`ShellParts.all(context)` 收 `ShellContext`（`App/Shell/ShellContext.swift`）：`context.outbox` 傳給要說話的那一塊；`context.webView` 是網頁畫面（列印、重新載入；網頁畫面比橋晚建好，所以要用的時候再拿，不要在 init 裡拿）；要聽網頁說「好了」的加到 `context.onReady`（看 #393 那一格）。
 3. `ShellCore/Tests/ShellCoreTests/ScenarioParts.swift` 自己那幾格登記：假的東西（`ScenarioShell` 的屬性）、那一塊（用 `outbox` 和假的東西建）、情境裡殼主動說的話怎麼觸發（`triggers`）。
 4. 要在 `app://local/` 上接請求（例：#380 轉送 `/api/`）：`App/Shell/<名字>Route.swift` 實作 `SchemeRoute`，在 `SchemeRoutes.swift` 自己那一格登記（一樣收 `ShellContext`）。
 

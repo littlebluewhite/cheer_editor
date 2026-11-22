@@ -54,6 +54,7 @@ import {
 	type StoredAttempt
 } from '#lib/core';
 import { host } from '#lib/host.js';
+import { WEB_UPDATE_FEATURE } from '#lib/web-update.js';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
 import { CloudUndo, type CloudStep } from '#lib/cloud-undo-log.svelte.js';
 import { joinSentences, type EditorSession } from '#lib/editor-session.svelte.js';
@@ -417,7 +418,7 @@ export class CloudSteps {
 	/** 不能改的原因放進 session（有新版優先，再來是斷線）、不能記的原因放進練習的權限（檢視者）。記錄者只能改、刪自己記的。 */
 	#lock() {
 		// App 裡沒有重新整理，按畫面上的「更新」（#394）
-		const newVersion = host().shell.can('webUpdate') ? t.app_new_version_press_update() : t.cloud_new_version();
+		const newVersion = host().shell.can(WEB_UPDATE_FEATURE) ? t.app_new_version_press_update() : t.cloud_new_version();
 		const block = this.editBlock;
 		this.#session.readOnly = block === 'new_version' ? newVersion : block === 'disconnected' ? t.cloud_offline() : block ? t.cloud_only_view() : '';
 		// 有新版照樣能記（#368）：存著當沒傳的，更新後連上再傳

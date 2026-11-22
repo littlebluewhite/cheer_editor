@@ -21,9 +21,7 @@ public struct DraftFolder: Sendable {
     }
 
     /// 草稿 id 當檔名用：只收網頁做得出來的那種（n…、f…-…、舊版的 current）。
-    static func isDraftId(_ id: String) -> Bool {
-        (1...100).contains(id.count) && id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
-    }
+    static func isDraftId(_ id: String) -> Bool { PartFiles.isSafeName(id) }
 
     func file(_ id: String) throws -> URL {
         guard Self.isDraftId(id) else { throw DraftError.badId }
@@ -55,8 +53,7 @@ public struct DraftFolder: Sendable {
     }
 
     func clear(_ id: String) throws {
-        let url = try file(id)
-        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        try PartFiles.remove(try file(id))
     }
 
     private func savedAt(_ url: URL) throws -> Date {
@@ -107,8 +104,7 @@ public struct DraftsPart: BridgePart {
     }
 
     static func string(_ body: JSONValue, _ key: String) throws -> String {
-        guard case .object(let o) = body, case .string(let s)? = o[key] else { throw DraftError.badBody }
-        return s
+        try PartFiles.string(body, key, or: DraftError.badBody)
     }
 
     static func millis(_ date: Date) -> JSONValue {

@@ -247,7 +247,7 @@ async fn password_link_for(
     purpose: LinkPurpose,
 ) -> Result<Response, AdminError> {
     let mut tx = state.db.begin().await?;
-    let Some((email, name, has_password, disabled)) = user(&mut tx, id).await? else {
+    let Some((email, name, has_password, disabled, _)) = user(&mut tx, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     let fits = match purpose {
@@ -276,7 +276,7 @@ pub async fn change_email(
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
     let mut tx = state.db.begin().await?;
-    let Some((old, name, _, _)) = user(&mut tx, id).await? else {
+    let Some((old, name, ..)) = user(&mut tx, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     sqlx::query("UPDATE users SET email = $1 WHERE id = $2")
@@ -368,14 +368,9 @@ pub async fn hand_over(
     Json(req): Json<HandOverRequest>,
 ) -> Result<Response, AdminError> {
     let mut tx = state.db.begin().await?;
-    let Some((_, _, _, disabled)) = user(&mut tx, id).await? else {
+    let Some((_, _, _, disabled, requested)) = user(&mut tx, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let requested: bool =
-        sqlx::query_scalar("SELECT delete_requested_at IS NOT NULL FROM users WHERE id = $1")
-            .bind(id)
-            .fetch_one(&mut *tx)
-            .await?;
     if !disabled || requested {
         return Err(AdminProblem::NotAllowed.into());
     }
@@ -526,14 +521,15 @@ pub(crate) async fn delete_account(
 
 // ---------- 小工具 ----------
 
-/// email、名字、設過密碼沒、停用了沒。鎖住這一列到 commit：寄設密碼信和改 email 一次一個，
+/// email、名字、設過密碼沒、停用了沒、要求刪除帳號了沒。鎖住這一列到 commit：寄設密碼信和改 email 一次一個，
 /// 不會照改之前的 email 寄出改之後才建的連結。
 async fn user(
     tx: &mut sqlx::PgConnection,
     id: i64,
-) -> sqlx::Result<Option<(String, String, bool, bool)>> {
+) -> sqlx::Result<Option<(String, String, bool, bool, bool)>> {
     sqlx::query_as(
-        "SELECT email, name, password_hash IS NOT NULL, disabled_at IS NOT NULL FROM users WHERE id = $1 FOR NO KEY UPDATE",
+        "SELECT email, name, password_hash IS NOT NULL, disabled_at IS NOT NULL, delete_requested_at IS NOT NULL
+         FROM users WHERE id = $1 FOR NO KEY UPDATE",
     )
     .bind(id)
     .fetch_optional(&mut *tx)
