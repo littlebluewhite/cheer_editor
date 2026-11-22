@@ -1776,9 +1776,10 @@ describe('播放', () => {
 		localStorage.clear();
 	});
 
-	it('延遲校正欄位：存在這台電腦；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
+	it('延遲校正欄位：存在這台裝置；清空時欄位回到現在的值，超出範圍夾到邊上；存的值超出範圍當 0', async () => {
 		await sample();
 		const field = await latencyField();
+		expect(screen.getByText('用藍牙喇叭或耳機時，畫面比聲音快就調大。存在這台裝置，不進流程檔。')).toBeTruthy();
 		expect(field.value).toBe('0');
 		await fireEvent.change(field, { target: { value: '200' } });
 		await fireEvent.change(field, { target: { value: '' } });

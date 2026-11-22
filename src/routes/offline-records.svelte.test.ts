@@ -267,7 +267,7 @@ describe('被收回時還有沒傳的', () => {
 		await settle();
 
 		const box = screen.getByRole('dialog', { name: '擁有者收回了你的權限，這 1 筆沒存進去' });
-		expect(box.textContent).toContain('這幾筆只在這台手機上，按「知道了」就刪掉。要的話，先抄下來再補記。');
+		expect(box.textContent).toContain('這幾筆只在這台裝置上，按「知道了」就刪掉。要的話，先抄下來再補記。');
 		const row = within(box).getAllByRole('row')[1];
 		expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual([localDate(), '技巧·Lib', '第 1 組 小美', '✓··']);
 		expect(s.offline.of('c1')).not.toBeNull();

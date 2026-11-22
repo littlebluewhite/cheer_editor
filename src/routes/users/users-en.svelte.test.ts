@@ -148,7 +148,7 @@ describe('登入頁（英文）', () => {
 		const fake = fakeServer({ users: [lin] });
 		render(Login, { server: fake.server, go: () => {} });
 		expect(screen.getByText(/without signing in/).textContent).toBe(
-			'You can also use it without signing in: back to home. Routines are then saved on this computer only.'
+			'You can also use it without signing in: back to home. Routines are then saved on this device only.'
 		);
 		expect(screen.getByRole('link', { name: 'back to home' }).getAttribute('href')).toBe('/');
 		fake.state.retryAfter = 61;
