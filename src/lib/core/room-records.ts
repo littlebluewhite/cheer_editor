@@ -8,6 +8,8 @@
 // 不管：從哪裡挑出有關的紀錄、存、鎖、告訴房間裡的人、流程被刪了、權限被收回、沒收的中文句子、
 // 給每個人看的樣子（誰記的、是不是我的）（都是呼叫的人做）。
 // 不用 structuredClone（伺服器的 QuickJS 沒有），也不改傳進來的東西。
+//
+// 同一個檔也放「改、刪、救回」（amendRecords，#350，管什麼、不管什麼寫在函式開頭）：「同一次全上的同一組有沒有人先存了」兩個共用。
 
 import { runCommands, type Command } from './commands';
 import type { Flow } from './flow';
