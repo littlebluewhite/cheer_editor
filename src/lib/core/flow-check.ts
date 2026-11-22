@@ -104,17 +104,18 @@ function violations(flow: Flow): Violation[] {
 	// 沒照時間排：整支流程一個鍵（第一張比前一張早的那張）。
 	const early = flow.formations.findIndex((f, i) => i > 0 && formationSec(flow, f) < formationSec(flow, flow.formations[i - 1]));
 	add('formationOrder', early === -1 ? null : { code: 'flow_check_formation_order', n: early + 1, before: early });
-	// 同一拍兩張：照那一拍（段和拍），說第二張是跟哪一張同一拍。
-	const beats = new Map<string, number>();
+	// 同一拍兩張以上：一組一個鍵，照那幾張的 id（照 id 排），插拍、改段讓那一拍變了還是同一個鍵；
+	// 多一張加進來是新的鍵。原因說第二張是跟哪一張同一拍。
+	const beats = new Map<string, number[]>();
 	flow.formations.forEach((f, i) => {
 		const beat = `${f.segmentId}:${f.at}`;
-		const other = beats.get(beat);
-		if (other === undefined) beats.set(beat, i);
-		else if (other !== -1) {
-			add(`formationBeat:${beat}`, { code: 'flow_check_formation_same_beat', n: i + 1, other: other + 1 });
-			beats.set(beat, -1);
-		}
+		beats.set(beat, [...(beats.get(beat) ?? []), i]);
 	});
+	for (const group of beats.values()) {
+		if (group.length < 2) continue;
+		const ids = group.map((i) => flow.formations[i].id).sort();
+		add(`formationBeat:${ids.join(':')}`, { code: 'flow_check_formation_same_beat', n: group[1] + 1, other: group[0] + 1 });
+	}
 	// 不在段裡：照那一張（開頭那張不看）。
 	flow.formations.forEach((f, i) => {
 		if (i > 0) add(`formationGrid:${f.id}`, inGrid(flow, f as TimePosition) ? null : inFormation(i, { code: 'flow_check_formation_off_grid' }));

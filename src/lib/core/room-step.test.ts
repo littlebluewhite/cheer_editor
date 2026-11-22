@@ -61,6 +61,17 @@ describe('takeStep：收了', () => {
 		expect(r.deleted).toEqual([]);
 		expect(flowOf(renameFlow(server().flow, '決賽'))).toEqual(r.flow);
 	});
+
+	it('舊檔有同一拍兩張站位（16、16），一般的一步在前面插 8 拍：收（一般的步不跑整份流程檢查），兩張變 24、24', () => {
+		const old = server().flow;
+		const pos = old.formations[0].pos;
+		const flow: Flow = { ...old, formations: [old.formations[0], ...['a', 'b'].map((id) => ({ id, segmentId: 's1', at: 16, pos }))] };
+		const commands = [{ name: 'insertBeats' as const, args: [{ segmentId: 's1', at: 8 }, 8] as [{ segmentId: string; at: number }, number] }];
+		const r = takeStep(ask({ flow, sent: { stepId: 'new', seen: 3, commands } }));
+		expect(r.kind).toBe('accepted');
+		if (r.kind !== 'accepted') return;
+		expect(r.flow.formations.map((f) => f.at)).toEqual([0, 24, 24]);
+	});
 });
 
 describe('takeStep：表格', () => {

@@ -267,6 +267,13 @@ describe('整份流程檢查：站位的鍵不看清單的位置（ADR 0020）',
 		expect(flowProblem(order(unsorted, ['k2', 'k1', 'k3']), unsorted)).toBeNull();
 	});
 
+	it('同一拍三張是一個毛病；第三張加進原本兩張的那一拍：擋下（新的一組）', () => {
+		const two = withFormations(16, 16);
+		const three = withFormations(16, 16, 16);
+		expect(flowProblem(order(three, ['k3', 'k1', 'k2']), three)).toBeNull();
+		expect(flowProblem(three, two)).toEqual({ code: 'flow_check_formation_same_beat', n: 3, other: 2 });
+	});
+
 	it('排好的流程換成沒照時間排：擋下', () => {
 		const sorted = withFormations(8, 16);
 		expect(flowProblem(order(sorted, ['k2', 'k1']), sorted)).toEqual({ code: 'flow_check_formation_order', n: 3, before: 2 });

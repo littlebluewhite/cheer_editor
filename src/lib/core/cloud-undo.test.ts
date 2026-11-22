@@ -151,8 +151,8 @@ describe('runUndo（伺服器跑復原）', () => {
 		});
 	});
 
-	// 同一拍的鍵照那一拍（段、拍）：插拍讓那一拍變了，復原回到原來那一拍，鍵不一樣，算新的毛病。#343 才讓它收
-	it('同一拍兩張（16、16），前面插 8 拍（變 24、24），復原：擋下（#343 才收）', () => {
+	// 同一拍的鍵照那幾張的 id：插拍讓那一拍變了，還是同一個毛病
+	it('同一拍兩張（16、16），前面插 8 拍（變 24、24），復原：收了，回到 16、16', () => {
 		const sample = libSample();
 		const pos = sample.formations[0].pos;
 		const start: Flow = {
@@ -160,13 +160,12 @@ describe('runUndo（伺服器跑復原）', () => {
 			formations: [sample.formations[0], ...['a', 'b'].map((id) => ({ id, segmentId: 's1', at: 16, pos }))]
 		};
 		const later = flowOf(insertBeats(start, { segmentId: 's1', at: 8 }, 8));
+		expect(later.formations.map((f) => f.at)).toEqual([0, 24, 24]);
 		const server = takeRecords(later);
 		const r = runUndo(server.flow, server.records, undoChanges(start, later).undo);
-		expect(r).toEqual({
-			kind: 'blocked',
-			message: '站位 3 和站位 2 在同一拍',
-			why: { code: 'flow_check_formation_same_beat', n: 3, other: 2 }
-		});
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => [f.id, f.at])).toEqual([[start.formations[0].id, 0], ['a', 16], ['b', 16]]);
 	});
 
 	it('匯入的舊檔（0、8、16、32、24 拍）：刪 16、別人把 8 挪到 20，復原：收了，站位照時間排（0、16、20、24、32）', () => {
