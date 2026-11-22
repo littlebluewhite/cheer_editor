@@ -171,7 +171,7 @@ function stored({ actionId, attempt }: StoredAttempt): StoredAttempt {
 }
 
 /** 兩個 JSON 值一樣（物件不管鍵的先後，跟伺服器比 JSON 一樣）。 */
-function sameJson(a: unknown, b: unknown): boolean {
+export function sameJson(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
 	if (Array.isArray(a) !== Array.isArray(b)) return false;
