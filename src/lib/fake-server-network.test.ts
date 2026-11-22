@@ -12,6 +12,7 @@ describe('假伺服器換網路：瀏覽器那一邊', () => {
 		it(`${status}：瀏覽器說${online ? '有' : '沒'}網路`, () => {
 			const fake = fakeServer();
 			const { editor } = testEditor(null, { server: fake.server });
+			fake.network('offline');
 			fake.network(status);
 			expect(editor.online).toBe(online);
 		});
