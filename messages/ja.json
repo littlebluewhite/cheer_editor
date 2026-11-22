@@ -1514,7 +1514,6 @@
 	"file_uploading": "クラウドにアップロード中…",
 	"file_upload_refused": "アップロードできません：{reason}",
 	"file_download_failed": "ダウンロードに失敗しました。もう一度お試しください",
-	"file_download_emptied": "{text}。選んだ「{name}」は空のファイルになりました。もう一度ダウンロードしてください",
 	"file_download_unreachable": "サーバーに接続できず、ダウンロードしませんでした",
 	"file_unanswered": "まだ答えていない質問があります。答えてから保存してください",
 	"file_draft_unreadable": "この下書きは読み込めません",

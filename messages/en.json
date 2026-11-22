@@ -1514,7 +1514,6 @@
 	"file_uploading": "Uploading to the cloud…",
 	"file_upload_refused": "Couldn't upload: {reason}",
 	"file_download_failed": "Download failed; please try again",
-	"file_download_emptied": "{text}; the file you chose, “{name}”, is now empty, so please download again",
 	"file_download_unreachable": "Couldn't reach the server, so nothing was downloaded",
 	"file_unanswered": "There's still a question to answer: answer it before saving",
 	"file_draft_unreadable": "Can't read this draft",

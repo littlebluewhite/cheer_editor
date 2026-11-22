@@ -1155,7 +1155,7 @@ export function manualFrames() {
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
  * videoSaves 是預設的假影片存檔存下來的（位元組和檔名）；videoEncoder 是預設的假編碼器（release()、drawn、aborted）。
- * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
+ * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有），預設的假下載（雲端流程「⤓ 下載」）也放這裡。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  * 伺服器預設是沒人登入的假伺服器（fakeServer）。
  */
@@ -1167,6 +1167,10 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 		{
 			createEngine: () => createFakeEngine(),
 			createSaver: () => saver,
+			download: async (bytes) => {
+				saves.push(bytes);
+				return 'downloaded';
+			},
 			pickFlowFile: null,
 			decode: fakeDecode,
 			draftStore: fakeDraftStore().store,

@@ -1514,7 +1514,6 @@
 	"file_uploading": "傳上雲端中…",
 	"file_upload_refused": "傳不上去：{reason}",
 	"file_download_failed": "下載失敗，請再試一次",
-	"file_download_emptied": "{text}；選的「{name}」已經變成空的檔案，請再下載一次",
 	"file_download_unreachable": "連不上伺服器，沒下載",
 	"file_unanswered": "還有問題沒回答：先回答了再存檔",
 	"file_draft_unreadable": "這份草稿讀不出來",
