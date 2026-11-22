@@ -5,7 +5,7 @@ import Testing
 import ShellCore
 
 @MainActor
-final class FakeSite {
+final class FakeApiSite {
     var sent: [URLRequest] = []
     var answers: [(status: Int, headers: [String: String], body: String)] = []
     var down = false
@@ -52,7 +52,7 @@ struct ForwarderTests {
     }
 
     @Test func 轉到網站同一個路徑_方法內容照舊_標上網站的網址() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         let f = fake.forwarder()
         _ = try await f.forward(web("/api/flows/a%2Fb?x=1%202", method: "POST", body: #"{"a":1}"#,
                                     headers: ["Content-Type": "application/json", "Origin": "app://local",
@@ -69,14 +69,14 @@ struct ForwarderTests {
     }
 
     @Test func 本機的伺服器_網址帶埠號() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         _ = try await fake.forwarder(site: "http://127.0.0.1:8080/").forward(web("/api/logout", method: "POST", body: "{}"))
         #expect(fake.sent.first?.url?.absoluteString == "http://127.0.0.1:8080/api/logout")
         #expect(fake.sent.first?.value(forHTTPHeaderField: "Origin") == "http://127.0.0.1:8080")
     }
 
     @Test func 登入的cookie留在殼裡_網頁拿不到_之後的請求殼自己帶() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         let f = fake.forwarder()
         fake.answers = [(204, ["Set-Cookie": login], ""), (200, ["Content-Type": "application/json"], #"{"name":"林"}"#)]
         let (loginResponse, _) = try await f.forward(web("/api/login", method: "POST", body: "{}"))
@@ -92,7 +92,7 @@ struct ForwarderTests {
     }
 
     @Test func 本機的伺服器是http_Secure的cookie照樣留著() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         let f = fake.forwarder(site: "http://127.0.0.1:8080/")
         fake.answers = [(204, ["Set-Cookie": login], "")]
         _ = try await f.forward(web("/api/login", method: "POST", body: "{}"))
@@ -101,7 +101,7 @@ struct ForwarderTests {
     }
 
     @Test func App關掉再開還登著() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         fake.answers = [(204, ["Set-Cookie": login], "")]
         _ = try await fake.forwarder().forward(web("/api/login", method: "POST", body: "{}"))
         let reopened = fake.forwarder()  // 新的罐子，從存起來的讀
@@ -110,7 +110,7 @@ struct ForwarderTests {
     }
 
     @Test func 登出後登入資料清掉() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         let f = fake.forwarder()
         fake.answers = [(204, ["Set-Cookie": login], ""), (204, ["Set-Cookie": logout], "")]
         _ = try await f.forward(web("/api/login", method: "POST", body: "{}"))
@@ -122,7 +122,7 @@ struct ForwarderTests {
     }
 
     @Test func 回應的錯誤碼和內容照樣交給網頁() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         fake.answers = [(429, ["Content-Type": "application/json"], #"{"retryAfterSeconds":60}"#)]
         let (r, body) = try await fake.forwarder().forward(web("/api/login", method: "POST", body: "{}"))
         #expect(r.statusCode == 429)
@@ -130,7 +130,7 @@ struct ForwarderTests {
     }
 
     @Test func 已經解壓的內容不再說有壓縮_長度照實際的() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         fake.answers = [(200, ["Content-Encoding": "gzip", "Content-Length": "5"], "0123456789")]
         let (r, _) = try await fake.forwarder().forward(web("/api/me"))
         #expect(r.value(forHTTPHeaderField: "Content-Encoding") == nil)
@@ -138,13 +138,13 @@ struct ForwarderTests {
     }
 
     @Test func 連不上網站_丟錯誤讓網頁的fetch失敗() async throws {
-        let fake = FakeSite()
+        let fake = FakeApiSite()
         fake.down = true
         await #expect(throws: (any Error).self) { try await fake.forwarder().forward(web("/api/me")) }
     }
 
     @Test func 別的網站的cookie不收() async throws {
-        let jar = FakeSite().jar()
+        let jar = FakeApiSite().jar()
         jar.take(setCookie: ["Set-Cookie": "x=1; Domain=evil.example; Path=/"])
         #expect(jar.header() == nil)
     }

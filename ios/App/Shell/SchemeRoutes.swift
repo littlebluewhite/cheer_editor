@@ -11,6 +11,7 @@ enum SchemeRoutes {
             ForwardRoute(),
 
             // #393
+            context.webUpdates.route,
         ]
     }
 }

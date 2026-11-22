@@ -19,10 +19,14 @@ final class ScenarioShell {
     // #380
 
     // #389
+    lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
     // #391
 
     // #393
+    /// 假網站和殼自己更新網頁的那一塊（WebUpdaterTests 的 Updater）。
+    let webSite = try! Updater()
+    private(set) lazy var webUpdate = WebUpdatePart(updater: webSite.updater, outbox: outbox, reload: {})
 
     /// 測試自己建的殼（ScenarioTests 測情境的跑法用）。
     init(parts: [any BridgePart], triggers: [String: @MainActor () async -> Void]) {
@@ -42,10 +46,12 @@ final class ScenarioShell {
             SitePart(site: SiteAddress.production),
 
             // #389
+            nowPlaying,
 
             // #391
 
             // #393
+            webUpdate,
         ]
         let triggerList: [(String, @MainActor () async -> Void)] = [
             // 例：("routeChanged", { self.route.change(to: .bluetooth) }),
@@ -56,10 +62,12 @@ final class ScenarioShell {
             // #380
 
             // #389
+            ("remote", { self.nowPlaying.press(.togglePlayPause) }),
 
             // #391
 
             // #393
+            ("webBundleReady", { self.webSite.site.publish(newFiles); await self.webUpdate.check() }),
         ]
         triggers = Dictionary(uniqueKeysWithValues: triggerList)
     }

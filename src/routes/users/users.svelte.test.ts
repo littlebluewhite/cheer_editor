@@ -297,3 +297,24 @@ describe('刪除帳號（#369）', () => {
 		expect(state.users.some((u) => u.email === huang.email)).toBe(true);
 	});
 });
+
+describe('要求刪除帳號（#370）', () => {
+	it('他自己要求刪的：寫「要求刪除・日期」，有流程也沒有「移交」；「恢復」之後他又登得進來', async () => {
+		const requested: FakeUser = { ...huang, deleteRequested: new Date(2026, 10, 7, 12).toISOString() };
+		const fake = fakeServer({
+			users: [lin, wang, requested].map((u) => ({ ...u })),
+			signedIn: lin.email,
+			flows: [{ id: 'c1', owner: huang.email, flow: libSample(), updatedAt: new Date(2026, 10, 6).toISOString() }]
+		});
+		render(Users, { server: fake.server });
+		await flush();
+		expect(within(row('黃教練')).getByText('要求刪除・2026-11-07')).toBeTruthy();
+		expect(buttons('黃教練')).toEqual(['恢復', '改 email', '刪除']);
+
+		await fireEvent.click(within(row('黃教練')).getByRole('button', { name: '恢復' }));
+		await flush();
+		expect(within(row('黃教練')).getByText('可以登入')).toBeTruthy();
+		fake.state.signedIn = null;
+		expect(await fake.server.login(huang.email, PW)).toBe('ok');
+	});
+});
