@@ -507,6 +507,8 @@
 	let pinchFrom = 1;
 	/** 兩指按下時這次放大在跟著「我」嗎（捏的時候先關掉，放開再看）。 */
 	let pinchFollowed = false;
+	/** 兩指按下時的畫面中心：放開時倍數、中心都沒變，是放上去沒動，照原樣。 */
+	let pinchCenter: Position = [0, 0];
 	/** 兩根手指放開時放大不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
 	const PINCH_ZOOMED = 1.1;
 
@@ -542,6 +544,10 @@
 	 * 「只看有人的地方」裡才跟（自己移動過畫面就不跟）。只移動畫面（倍數差不多）就不跟。
 	 */
 	function endPinch() {
+		if (zoom === pinchFrom && viewCenter[0] === pinchCenter[0] && viewCenter[1] === pinchCenter[1]) {
+			follow = pinchFollowed;
+			return;
+		}
 		const zoomedIn = zoom >= pinchFrom * PINCH_ZOOMED;
 		follow = zoom > 1 && (pinchFrom === 1 || (zoomedIn && (pinchFollowed || fitted)));
 		fitted = false;
@@ -675,16 +681,17 @@
 		return false;
 	}
 
-	/** 按過指標還沒等到它的 click（clickDot）：手指、滑鼠按的人在指標事件裡已經處理過了。 */
-	let pointerPressed = false;
+	/** 上一次指標放開的時間：緊接著的 click 是瀏覽器補的（clickDot），按的人在指標事件裡已經處理過了。 */
+	let pointerUpAt = -Infinity;
+	/** 指標放開後這麼久（毫秒）以內的 click 算是它補的。 */
+	const CLICK_AFTER_UP_MS = 500;
 
 	/**
 	 * 在場上 click：讀螢幕軟體（例：VoiceOver）按人只送 click、沒有指標事件，跟 Enter 一樣選他。
 	 * 手指、滑鼠按完瀏覽器也補一個 click，那個不再算一次。
 	 */
 	function clickDot(e: MouseEvent) {
-		const fromPointer = pointerPressed;
-		pointerPressed = false;
+		const fromPointer = e.timeStamp - pointerUpAt < CLICK_AFTER_UP_MS;
 		const id = (e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id');
 		if (fromPointer || !id || !pickable) return;
 		pick(id, e.shiftKey);
@@ -697,7 +704,6 @@
 	}
 
 	function down(e: PointerEvent) {
-		pointerPressed = true;
 		// Mac 的 Control＋點是右鍵：不選人、不拖（交給 contextMenu）
 		if (e.button !== 0 || (e.ctrlKey && e.pointerType === 'mouse')) return;
 		const look = looking(e);
@@ -705,7 +711,7 @@
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
 				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
-				if (!pinching) [pinchFrom, pinchFollowed] = [zoom, follow];
+				if (!pinching) [pinchFrom, pinchFollowed, pinchCenter] = [zoom, follow, viewCenter];
 				follow = false;
 				pinching = true;
 				drag = null;
@@ -987,7 +993,10 @@
 		onpointerdown={down}
 		onclick={clickDot}
 		onpointermove={move}
-		onpointerup={up}
+		onpointerup={(e) => {
+			pointerUpAt = e.timeStamp;
+			up(e);
+		}}
 		oncontextmenu={contextMenu}
 		onpointercancel={(e) => {
 			liftFinger(e);

@@ -389,13 +389,14 @@ function memberWho(flow: Flow, action: Action, memberId: string): WhyParam {
  * 哪一張都沒有人是 null（畫整個場地）。
  */
 export function eightCountView(flow: Flow): Rect | null {
-	const placed = flow.formations.flatMap((f) => Object.values(f.pos));
-	if (!placed.length) return null;
-	const xs = placed.map(([x]) => x);
-	const ys = placed.map(([, y]) => y);
-	const x = Math.min(...xs);
-	const y = Math.min(...ys);
-	return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+	// 一個一個比，不用 Math.min(...xs)：站位很多時一次傳十幾萬個參數，瀏覽器會出錯
+	let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+	for (const f of flow.formations) {
+		for (const [x, y] of Object.values(f.pos)) {
+			[x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+		}
+	}
+	return x0 === Infinity ? null : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 /** 八拍表的站位說明（見 EightCountFormation.caption）：「站位 2 金字塔・2-5（2-1 出發）」。 */

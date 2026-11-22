@@ -556,6 +556,12 @@ describe('八拍表的小站位圖範圍', () => {
 		flow = flowOf(addSegment(flow, 'music'));
 		expect(eightCountView(flow)).toBeNull();
 	});
+
+	it('站位很多（一共十幾萬個位置）：照樣算得出來，不會因為一次傳太多參數出錯', () => {
+		const pos = Object.fromEntries(Array.from({ length: 200_000 }, (_, i) => [`m${i}`, [i % 7, -(i % 5)] as [number, number]]));
+		const flow = { ...sample(), formations: [{ ...sample().formations[0], pos }] };
+		expect(eightCountView(flow)).toEqual({ x: 0, y: -4, width: 6, height: 4 });
+	});
 });
 
 describe('前後八拍：檢視模式跟著播放頭看前三個、這個、後三個八拍', () => {

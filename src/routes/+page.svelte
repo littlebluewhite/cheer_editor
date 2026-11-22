@@ -739,6 +739,7 @@
 				onseek={(s) => playback.seek(s)}
 				playing={playback.playing}
 				onplay={() => playback.play()}
+				onpause={() => playback.pause()}
 				fractionAt={scrubAt}
 			/>
 		{/snippet}
