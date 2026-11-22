@@ -3,9 +3,12 @@
 // 所以只有進出編輯畫面時要說。網頁版、不會分畫面的舊殼不說。
 import { host } from '#lib/host.js';
 
+/** 殼會分畫面調手感（「問殼」的名字）。 */
+export const SCREEN_FEATURE = 'screen';
+
 function tell(kind: 'editor' | 'page') {
 	const { shell } = host();
-	if (shell.inApp && shell.can('screen')) shell.send('screen', { kind }).catch(() => {});
+	if (shell.can(SCREEN_FEATURE)) shell.send('screen', { kind }).catch(() => {});
 }
 
 /** 在元件初始化時叫：onEditor() 變成 true 時說是編輯畫面，變回 false 或元件拿掉時說是會捲的頁。 */

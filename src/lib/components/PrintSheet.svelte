@@ -17,7 +17,7 @@
 	import { whyText } from '#lib/reason-text.js';
 	import { loadFlowSetting, saveFlowSetting } from '#lib/local-settings.js';
 	import { both, KEYS } from '#lib/shortcuts.js';
-	import { printPage } from '#lib/print.js';
+	import { printPage, PRINT_FEATURE } from '#lib/print.js';
 	import { host } from '#lib/host.js';
 	import { untrack } from 'svelte';
 	import EightCountCueLine from './EightCountCueLine.svelte';
@@ -36,7 +36,7 @@
 
 	let { flow, onclose, selected = null, print = printPage }: Props = $props();
 	/** App 裡（殼會印）：提示說按「列印」、存 PDF 走列印畫面的「分享」，沒有快捷鍵可說（#391）。 */
-	const inApp = host().shell.can('print');
+	const shellPrints = host().shell.can(PRINT_FEATURE);
 
 	/** 有隊員是這個全局角色才給選。 */
 	const roleChoices = $derived(
@@ -113,7 +113,7 @@
 					{/each}
 				</select>
 			</label>
-			<span class="muted">{inApp ? t.print_hint_app() : t.print_hint({ keys: both(KEYS.print) })}</span>
+			<span class="muted">{shellPrints ? t.print_hint_app() : t.print_hint({ keys: both(KEYS.print) })}</span>
 			<span class="grow"></span>
 			<button type="button" class="primary" onclick={print}><Icon name="print" />{t.print_print()}</button>
 			<button type="button" onclick={close}>{t.print_close()}</button>

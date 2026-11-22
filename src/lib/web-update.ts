@@ -4,6 +4,9 @@
 
 import type { Shell } from '#lib/host.js';
 
+/** 殼會自己更新網頁（「問殼」的名字）。 */
+export const WEB_UPDATE_FEATURE = 'webUpdate';
+
 /**
  * 回到首頁後等多久才換：離開流程時草稿是回到首頁以後才寫進去的（flow-file 的 leaveToHome），
  * 先讓它寫完，重新載入才不會把正在寫的草稿弄丟。
@@ -16,7 +19,7 @@ export const SETTLE_MS = 1000;
  * 殼不會（舊殼、網頁版）就什麼都不做。
  */
 export function followWebUpdate(shell: Shell, idleAtHome: () => boolean) {
-	if (!shell.can('webUpdate')) return { cameHome() {}, stop() {} };
+	if (!shell.can(WEB_UPDATE_FEATURE)) return { cameHome() {}, stop() {} };
 	let downloaded = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const stopListening = shell.on('webBundleReady', () => (downloaded = true));
