@@ -276,7 +276,8 @@ pub enum RoomRequest {
         commands: serde_json::Value,
     },
     /// 復原（redo 是重做，#256）：步驟 id、上次看到第幾步、要復原的那一步的步驟 id（重做是復原那一步的）、
-    /// 要放回去的樣子（流程核心的 RemoteChange：那一步改到的東西改之前的樣子，重做是改之後的）。
+    /// 要放回去的樣子（流程核心的 RemoteChange：那一步改到的東西改之前的樣子，重做是改之後的）、
+    /// 方向鍵連按合成的一步裡 of 之後的其他步（步驟 id，ADR 0020；部署前開著的分頁不送）。
     Undo {
         step_id: String,
         #[ts(type = "number")]
@@ -285,6 +286,9 @@ pub enum RoomRequest {
         redo: bool,
         #[ts(type = "unknown")]
         change: serde_json::Value,
+        #[serde(default)]
+        #[ts(optional)]
+        joined: Option<Vec<String>>,
     },
     /// 換成編輯或檢視模式（在場名單用）。
     Mode { editing: bool },
@@ -666,8 +670,8 @@ async fn serve(
                     let steps = state.rooms.steps(flow_id);
                     let _one_at_a_time = steps.lock().await;
                     let (step_id, seen, work) = match request {
-                        RoomRequest::Undo { step_id, seen, of, redo, change } => {
-                            (step_id, seen, Work::Undo { of, redo, change })
+                        RoomRequest::Undo { step_id, seen, of, redo, change, joined } => {
+                            (step_id, seen, Work::Undo { of, redo, change, joined })
                         }
                         RoomRequest::Step { step_id, seen, commands } => (step_id, seen, Work::Commands(commands)),
                         _ => unreachable!(),
@@ -950,6 +954,7 @@ enum Work {
         of: String,
         redo: bool,
         change: serde_json::Value,
+        joined: Option<Vec<String>>,
     },
 }
 
@@ -969,7 +974,18 @@ struct StepAsk<'a> {
     sent_back: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     taken: Option<TakenBefore>,
+    /// 現在流程核心的指紋，和記著的這支流程讓它留著的毛病（沒記過沒有，ADR 0020）。
+    core: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    held: Option<Held>,
     sent: serde_json::Value,
+}
+
+/// 記著的讓它留著的毛病（flows.held）和記的時候流程核心的指紋（flows.held_core）。
+#[derive(Serialize)]
+struct Held {
+    keys: Vec<String>,
+    core: String,
 }
 
 /// 這個步驟 id 收過了：那時第幾步、那一步的改動（舊的步沒記是 null）。
@@ -980,7 +996,8 @@ struct TakenBefore {
 }
 
 /// 步驟紀錄的一筆（流程核心的 LoggedStep）：第幾步、步驟 id、分頁、送的人的名字、什麼時候收的（毫秒）、
-/// 改到的東西、清掉改掉的紀錄（flow_steps.cleared 原樣，沒有是 []）。
+/// 改到的東西、清掉改掉的紀錄（flow_steps.cleared 原樣，沒有是 []）、治好的毛病（flow_steps.cured，部署前收的步沒有）、
+/// 復原、重做的步復原了哪幾步（flow_steps.undid，一般的步、遷移 0020 之前收的步沒有）。
 #[derive(Serialize)]
 struct LoggedStep {
     step: i64,
@@ -990,6 +1007,10 @@ struct LoggedStep {
     at: i64,
     keys: Vec<String>,
     cleared: Box<RawValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cured: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    undid: Option<Vec<String>>,
 }
 
 /// takeStep 的結果（StepVerdict）。kind 是 again、rejected、accepted；其他欄位照 kind 有沒有。
@@ -1010,13 +1031,17 @@ struct Verdict<'a> {
     #[serde(default)]
     deleted: Vec<String>,
     logged: Option<Logged>,
+    /// accepted：要記著的這支流程現在讓它留著的毛病（ADR 0020）。
+    held: Option<Vec<String>>,
 }
 
-/// 收了的這一步要記的：改到的東西、清掉改掉的紀錄（照流程核心做的先後）。
+/// 收了的這一步要記的：改到的東西、清掉改掉的紀錄（照流程核心做的先後）、治好的毛病、復原了哪幾步（復原、重做才有）。
 #[derive(Deserialize)]
 struct Logged {
     keys: Vec<String>,
     cleared: Vec<records::Cleared>,
+    cured: Vec<String>,
+    undid: Option<Vec<String>>,
 }
 
 /// 收一步（ADR 0018）。同一支流程的步鎖著那一列一步一步來。流程被刪了回 Deleted、被收回回 Revoked；
@@ -1037,14 +1062,22 @@ async fn take_step(
         sent_back,
     } = sent;
     let mut tx = state.db.begin().await?;
-    let Some((content, step)): Option<(String, i64)> =
-        sqlx::query_as("SELECT content::text, step FROM flows WHERE id = $1 FOR UPDATE")
-            .bind(flow_id)
-            .fetch_optional(&mut *tx)
-            .await?
+    #[allow(clippy::type_complexity)]
+    let Some((content, step, held, held_core)): Option<(
+        String,
+        i64,
+        Option<Vec<String>>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT content::text, step, held, held_core FROM flows WHERE id = $1 FOR UPDATE",
+    )
+    .bind(flow_id)
+    .fetch_optional(&mut *tx)
+    .await?
     else {
         return Ok((RoomMessage::Deleted, None));
     };
+    let held = held.zip(held_core).map(|(keys, core)| Held { keys, core });
     let Some(role) = role_of(&mut *tx, flow_id, user_id).await? else {
         return Ok((RoomMessage::Revoked, None));
     };
@@ -1067,8 +1100,16 @@ async fn take_step(
             None,
             serde_json::json!({ "stepId": step_id, "seen": seen, "commands": commands }),
         ),
-        Work::Undo { of, redo, change } => {
-            let undo = serde_json::json!({ "of": of, "redo": redo, "change": change });
+        Work::Undo {
+            of,
+            redo,
+            change,
+            joined,
+        } => {
+            let mut undo = serde_json::json!({ "of": of, "redo": redo, "change": change });
+            if let Some(joined) = joined {
+                undo["joined"] = serde_json::json!(joined);
+            }
             (
                 Some(of),
                 serde_json::json!({ "stepId": step_id, "seen": seen, "undo": undo }),
@@ -1097,6 +1138,8 @@ async fn take_step(
         by,
         sent_back,
         taken,
+        core: FINGERPRINT,
+        held,
         sent: sent_step,
     };
     let result = state.core.take_step(serde_json::to_string(&ask)?).await;
@@ -1131,6 +1174,7 @@ async fn take_step(
         flow,
         deleted,
         logged,
+        held,
     } = serde_json::from_str(&result)?;
     // 收過的步驟 id（斷線重送）：回原本的結果。
     if let (Some(step), "again") = (taken_step, kind.as_str()) {
@@ -1149,26 +1193,32 @@ async fn take_step(
     if let Some(why) = why {
         return rejected(why, last);
     }
-    let (Some(flow), Some(change), Some(logged)) = (flow, change, logged) else {
+    let (Some(flow), Some(change), Some(logged), Some(held)) = (flow, change, logged, held) else {
         anyhow::bail!("流程核心回了看不懂的結果：{kind}");
     };
     let change = change.get().to_owned();
 
     let step = step + 1;
-    sqlx::query("UPDATE flows SET content = $2::json, step = $3, updated_at = $4 WHERE id = $1")
-        .bind(flow_id)
-        .bind(flow.get())
-        .bind(step)
-        .bind(now)
-        .execute(&mut *tx)
-        .await?;
+    // 記著讓它留著的毛病，配上這版流程核心的指紋（換版就重算，ADR 0020）。
+    sqlx::query(
+        "UPDATE flows SET content = $2::json, step = $3, updated_at = $4, held = $5, held_core = $6
+         WHERE id = $1",
+    )
+    .bind(flow_id)
+    .bind(flow.get())
+    .bind(step)
+    .bind(now)
+    .bind(&held)
+    .bind(FINGERPRINT)
+    .execute(&mut *tx)
+    .await?;
     // 清掉改掉的紀錄記在這一步（復原時加回來，ADR 0007）；沒有是 NULL。
     let cleared = (!logged.cleared.is_empty())
         .then(|| serde_json::to_string(&logged.cleared))
         .transpose()?;
     sqlx::query(
-        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change, cleared)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json, $9::json)",
+        "INSERT INTO flow_steps (flow_id, step, step_id, tab_id, user_id, created_at, keys, change, cleared, cured, undid)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::json, $9::json, $10, $11)",
     )
     .bind(flow_id)
     .bind(step)
@@ -1179,6 +1229,8 @@ async fn take_step(
     .bind(&logged.keys)
     .bind(&change)
     .bind(cleared)
+    .bind(&logged.cured)
+    .bind(&logged.undid)
     .execute(&mut *tx)
     .await?;
     let records_change =
@@ -1213,8 +1265,10 @@ async fn logged_steps(
         chrono::DateTime<chrono::Utc>,
         Vec<String>,
         Option<String>,
+        Option<Vec<String>>,
+        Option<Vec<String>>,
     )> = sqlx::query_as(
-        "SELECT s.step, s.step_id, s.tab_id, u.name, s.created_at, s.keys, s.cleared::text
+        "SELECT s.step, s.step_id, s.tab_id, u.name, s.created_at, s.keys, s.cleared::text, s.cured, s.undid
          FROM flow_steps s JOIN users u ON u.id = s.user_id
          WHERE s.flow_id = $1
            AND (s.step > $2 OR s.step >= (SELECT step FROM flow_steps WHERE flow_id = $1 AND step_id = $3))
@@ -1227,7 +1281,7 @@ async fn logged_steps(
     .await?;
     found
         .into_iter()
-        .map(|(step, id, tab, by, at, keys, cleared)| {
+        .map(|(step, id, tab, by, at, keys, cleared, cured, undid)| {
             Ok(LoggedStep {
                 step,
                 id,
@@ -1236,6 +1290,8 @@ async fn logged_steps(
                 at: at.timestamp_millis(),
                 keys,
                 cleared: RawValue::from_string(cleared.unwrap_or_else(|| "[]".into()))?,
+                cured,
+                undid,
             })
         })
         .collect()

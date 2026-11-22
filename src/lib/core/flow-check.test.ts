@@ -185,13 +185,22 @@ const kept: [string, (flow: Flow) => Flow, string, WhyCode?][] = [
 	[
 		'站位不在段裡',
 		(f) => ({ ...f, formations: [...f.formations, { id: 'f9', segmentId: 's1', at: 999, pos: f.formations[0].pos }] }),
-		'站位 2 要在站位 1 之後、段的時間裡',
-		'flow_check_formation_order'
+		'站位 2：要在段的時間裡',
+		'flow_check_in_formation'
 	],
 	[
 		'兩張站位同一拍',
 		(f) => ({ ...f, formations: [...f.formations, { id: 'f9', segmentId: 's1', at: 0, pos: f.formations[0].pos }] }),
-		'站位 2 要在站位 1 之後、段的時間裡',
+		'站位 2 和站位 1 在同一拍',
+		'flow_check_formation_same_beat'
+	],
+	[
+		'站位沒照時間排',
+		(f) => ({
+			...f,
+			formations: [...f.formations, ...[16, 8].map((at) => ({ id: `f${at}`, segmentId: 's1', at, pos: f.formations[0].pos }))]
+		}),
+		'站位 3 要在站位 2 之後',
 		'flow_check_formation_order'
 	],
 	[
@@ -241,6 +250,36 @@ describe('整份流程檢查：讓它留著的規則', () => {
 	});
 });
 
+describe('整份流程檢查：站位的鍵不看清單的位置（ADR 0020）', () => {
+	/** ratedSample 再直接加幾張站位（拍：s1 的 at）。 */
+	const withFormations = (...ats: number[]): Flow => {
+		const f = ratedSample();
+		const pos = f.formations[0].pos;
+		return { ...f, formations: [f.formations[0], ...ats.map((at, i) => ({ id: `k${i + 1}`, segmentId: 's1', at, pos }))] };
+	};
+	const order = (flow: Flow, ids: string[]): Flow => ({
+		...flow,
+		formations: [flow.formations[0], ...ids.map((id) => flow.formations.find((f) => f.id === id)!)]
+	});
+
+	it('沒照時間排的排好（0、16、8、16 → 0、8、16、16）：同一拍的兩張還是同一個毛病，排序本身不算新的毛病', () => {
+		const unsorted = withFormations(16, 8, 16);
+		expect(flowProblem(order(unsorted, ['k2', 'k1', 'k3']), unsorted)).toBeNull();
+	});
+
+	it('同一拍三張是一個毛病；第三張加進原本兩張的那一拍：擋下（新的一組）', () => {
+		const two = withFormations(16, 16);
+		const three = withFormations(16, 16, 16);
+		expect(flowProblem(order(three, ['k3', 'k1', 'k2']), three)).toBeNull();
+		expect(flowProblem(three, two)).toEqual({ code: 'flow_check_formation_same_beat', n: 3, other: 2 });
+	});
+
+	it('排好的流程換成沒照時間排：擋下', () => {
+		const sorted = withFormations(8, 16);
+		expect(flowProblem(order(sorted, ['k2', 'k1']), sorted)).toEqual({ code: 'flow_check_formation_order', n: 3, before: 2 });
+	});
+});
+
 describe('整份流程檢查：開得了的流程檔都過得了（傳上雲端）', () => {
 	it('舊檔帶著每一種讓它留著的毛病：開得了，也過得了', () => {
 		const old = kept.reduce((flow, [, spoil]) => spoil(flow), forceMembers(withMembers(ratedSample(), MAX_MEMBERS), 5));
@@ -275,5 +314,14 @@ describe('整份流程檢查的原因帶代號（ADR 0017）', () => {
 			message: `音樂段要在 1 到 ${MAX_EIGHTS} 個八拍之間`,
 			why: { code: 'segment_file_music_range', max: MAX_EIGHTS }
 		});
+	});
+
+	it('傳上雲端收了：帶讓它留著的毛病的鍵給伺服器記著（ADR 0020）', () => {
+		const good = ratedSample();
+		const flow = { ...good, name: '流'.repeat(45) };
+		const r = JSON.parse(uploadFlowJson(JSON.stringify({ formatVersion: FORMAT_VERSION, flow })));
+		expect(r.kind).toBe('ok');
+		expect(r.held).toEqual(['flowName']);
+		expect(JSON.parse(uploadFlowJson(JSON.stringify({ formatVersion: FORMAT_VERSION, flow: good }))).held).toEqual([]);
 	});
 });

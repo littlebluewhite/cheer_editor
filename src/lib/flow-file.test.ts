@@ -362,6 +362,19 @@ describe('流程檔：放不下的書籤', () => {
 	});
 });
 
+describe('流程檔：站位沒照時間排（ADR 0020）', () => {
+	it('開檔時站位沒照時間排（手改過的檔）：照開，排好，提示說排過了', async () => {
+		const flow = flowOf(addSegment(newFlow('練習用'), 'chant'));
+		const seg = flow.segments[0].id;
+		const pos = flow.formations[0].pos;
+		const formations = [flow.formations[0], { id: 'k1', segmentId: seg, at: 20, pos }, { id: 'k2', segmentId: seg, at: 10, pos }];
+		const { editor, session } = testEditor();
+		await editor.file.open(zip({ ...flow, formations }));
+		expect(session.flow!.formations.map((f) => f.id)).toEqual([flow.formations[0].id, 'k2', 'k1']);
+		expect(session.notice).toBe('已開啟「練習用.zip」；站位沒照時間排，排好了');
+	});
+});
+
 describe('流程檔：缺音樂、壞音樂', () => {
 	const mp3 = () => new File([new Uint8Array([1, 2])], '主歌.mp3', { type: 'audio/mpeg' });
 
@@ -530,6 +543,16 @@ describe('流程檔：打開時讀草稿', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect([...drafts.all.keys()]).toEqual(['current']);
 		expect(draftFlow(drafts.latest()).segments).toHaveLength(2);
+	});
+
+	it('草稿裡站位沒照時間排（舊版編輯器存的）：打開時排好（#342）', async () => {
+		const flow = flowOf(addSegment(newFlow('練習用'), 'chant'));
+		const seg = flow.segments[0].id;
+		const pos = flow.formations[0].pos;
+		const formations = [flow.formations[0], { id: 'k1', segmentId: seg, at: 20, pos }, { id: 'k2', segmentId: seg, at: 10, pos }];
+		const { editor, session } = await connected(writeFlowFile({ ...flow, formations }, {}));
+		await editor.file.openRecent('current');
+		expect(session.flow!.formations.map((f) => f.id)).toEqual([flow.formations[0].id, 'k2', 'k1']);
 	});
 
 	it('沒有草稿、讀不到草稿（私密視窗）、草稿打不開：都不列', async () => {

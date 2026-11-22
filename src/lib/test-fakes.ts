@@ -14,6 +14,7 @@ import {
 	checkFlowDocument,
 	checkRecord,
 	flowProblem,
+	problemKeys,
 	putRecords,
 	recordAttempt,
 	runCommands,
@@ -252,6 +253,8 @@ export interface FakeCloudFlow {
 	audio?: Record<string, Uint8Array>;
 	records?: (StoredAttempt & { by?: string; gone?: boolean; amendedStep?: number })[];
 	link?: string | null;
+	/** 記著的讓它留著的毛病和記的時候流程核心的指紋（ADR 0020）；沒記過是 undefined。 */
+	held?: { keys: string[]; core: string };
 }
 
 /**
@@ -334,7 +337,7 @@ export function fakeServer(
 	 */
 	const serveStep = (
 		f: FakeCloudFlow,
-		sent: { stepId: string; seen: number; commands?: Command[]; undo?: { of: string; redo: boolean; change: RemoteChange } },
+		sent: { stepId: string; seen: number; commands?: Command[]; undo?: { of: string; redo: boolean; change: RemoteChange; joined?: string[] } },
 		from: OpenRoom,
 		canEdit: boolean
 	): RoomMessage | RoomMessage[] => {
@@ -353,6 +356,8 @@ export function fakeServer(
 			by: find(from.email)?.name ?? '',
 			sentBack: from.sentBack,
 			taken: takenAt === undefined ? undefined : { step: takenAt, change: structuredClone(log.find((l) => l.id === stepId)?.change ?? null) },
+			core: CORE_FINGERPRINT,
+			held: structuredClone(f.held),
 			sent: undo ? { stepId, seen, undo: structuredClone(undo) } : { stepId, seen, commands: structuredClone(commands ?? []) }
 		});
 		if (verdict.kind === 'again') {
@@ -384,6 +389,7 @@ export function fakeServer(
 		const own = changed.length || deleted.length ? [recordsChanged(f, changed, deleted, from.email)] : [];
 		stepLog.set(f.id, [...log, { ...logged, change }]);
 		f.flow = flow;
+		f.held = { keys: verdict.held, core: CORE_FINGERPRINT };
 		f.step = logged.step;
 		f.stepIds = { ...f.stepIds, [stepId]: f.step };
 		f.updatedAt = new Date().toISOString();
@@ -864,7 +870,8 @@ export function fakeServer(
 			const problem = flowProblem(checked.flow);
 			if (problem) return said(problem);
 			const { flow, records } = takeRecords(checked.flow);
-			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow, updatedAt: new Date().toISOString(), records };
+			const held = { keys: problemKeys(checked.flow), core: CORE_FINGERPRINT };
+			const made: FakeCloudFlow = { id: `c${state.flows.length + 1}`, owner: state.signedIn!, flow, updatedAt: new Date().toISOString(), records, held };
 			state.flows.push(made);
 			return { id: made.id, name: made.flow.name, updatedAt: made.updatedAt };
 		},
@@ -999,8 +1006,8 @@ export function fakeServer(
 					) {
 						if (role !== 'viewer') deliver(room, () => (ready ? runAsk(f, email, request) : null));
 					} else if (request.kind === 'undo') {
-						const { stepId, seen, of, redo, change } = request;
-						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange } };
+						const { stepId, seen, of, redo, change, joined } = request;
+						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange, ...(joined && { joined }) } };
 						deliver(room, () => (ready ? serveStep(f, sent, open, editor) : null));
 					} else {
 						const sent = { ...request, commands: request.commands as Command[] };
@@ -1155,7 +1162,7 @@ export function manualFrames() {
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
  * videoSaves 是預設的假影片存檔存下來的（位元組和檔名）；videoEncoder 是預設的假編碼器（release()、drawn、aborted）。
- * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
+ * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有），預設的假下載（雲端流程「⤓ 下載」）也放這裡。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  * 伺服器預設是沒人登入的假伺服器（fakeServer）。
  */
@@ -1167,6 +1174,10 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 		{
 			createEngine: () => createFakeEngine(),
 			createSaver: () => saver,
+			download: async (bytes) => {
+				saves.push(bytes);
+				return 'downloaded';
+			},
 			pickFlowFile: null,
 			decode: fakeDecode,
 			draftStore: fakeDraftStore().store,

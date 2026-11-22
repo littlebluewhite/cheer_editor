@@ -27,7 +27,7 @@ export {
 } from './flow-file';
 export type { AudioBytes, CheckFlowDocumentResult, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
 
-export { flowProblem } from './flow-check';
+export { flowProblem, problemKeys } from './flow-check';
 
 export {
 	GENDERS,

@@ -318,3 +318,35 @@ async fn uploading_needs_signing_in(db: sqlx::PgPool) {
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[sqlx::test]
+async fn an_uploaded_flow_whose_formations_are_out_of_time_order_is_stored_sorted(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db);
+    let lin = s.signed_in("lin@example.com", "林教練").await;
+    let mut flow = sample_flow(&s.state.core, json!([])).await;
+
+    // 手改過的檔：站位 0、16、8、32（半拍）。開頭那張以外照時間排（ADR 0020）。
+    let first = flow["formations"][0].clone();
+    let segment = flow["segments"][0]["id"].clone();
+    let mut formations = vec![first.clone()];
+    for (id, at) in [("k1", 16), ("k2", 8), ("k3", 32)] {
+        formations.push(json!({ "id": id, "segmentId": segment, "at": at, "pos": first["pos"] }));
+    }
+    flow["formations"] = json!(formations);
+
+    let (status, made) = s.upload(&lin, doc(&flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let id = made["id"].as_str().unwrap();
+    let (_, got) = s
+        .send("GET", &format!("/api/flows/{id}"), None, Some(&lin))
+        .await;
+    let ids: Vec<&str> = got["flow"]["formations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [first["id"].as_str().unwrap(), "k2", "k1", "k3"]);
+}
