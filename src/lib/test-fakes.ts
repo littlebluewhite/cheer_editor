@@ -16,6 +16,8 @@ import {
 	flowProblem,
 	recordAttempt,
 	receiveRecords,
+	runTogether,
+	runViews as runViewsOf,
 	said,
 	takeRecords,
 	takeStep,
@@ -28,6 +30,8 @@ import {
 	type Position,
 	type RecordRefusal,
 	type RemoteChange,
+	type RunEvent,
+	type RunsTogether,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -66,7 +70,6 @@ import {
 	type Role,
 	type RoomMessage,
 	type RoomRequest,
-	type RunView,
 	type SentBack,
 	type ServerAdapter,
 	type UserStatus
@@ -282,7 +285,7 @@ export interface FakeCloudFlow {
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
  * 跑一步時紀錄放回流程再跑、跑完清掉該清的；收了告訴同一支流程開著的別的房間（別人記的帶名字）。
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
- * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆（斷線 1 分鐘當他離開沒做）。
+ * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆；表怎麼變交給流程核心的 runTogether（斷線 1 分鐘當他離開、被收回請出表）。
  * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
  * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，
  * 要紀錄的再給現在的紀錄，再說可以送步。
@@ -436,6 +439,7 @@ export function fakeServer(
 	};
 	/** 開著的房間。 */
 	const rooms: OpenRoom[] = [];
+	let nextConn = 1;
 	/** 告訴這支流程每個打過招呼的房間現在誰開著（自己不列，同一個人只列一次）。 */
 	const tellPresent = (flowId: string) => {
 		const here = rooms.filter((r) => r.flowId === flowId && r.here);
@@ -451,73 +455,62 @@ export function fakeServer(
 			deliver(r.room, () => ({ kind: 'present', people }));
 		}
 	};
-	/** 一起記全上（#262）：每支流程開著的全上（只在記憶體）：表裡的人（email）、誰拿著哪一組、點過沒。 */
-	const runs = new Map<string, FakeRun[]>();
+	/**
+	 * 一起記全上（#262、#352）：每支流程開著的全上的表（只在記憶體，ADR 0015）。表怎麼變交給流程核心的 runTogether（跟真的伺服器
+	 * 同一套規則，斷線 1 分鐘當他離開）；時間用 Date.now()（測試可以用假時鐘撥）。這支流程沒有連著的房間了，表就沒了（跟真的一樣）。
+	 */
+	const runs = new Map<string, RunsTogether>();
 	const userIdOf = (email: string) => state.users.findIndex((u) => same(u.email, email)) + 1;
 	const nameOf = (email: string) => find(email)?.name ?? '';
 	/** 告訴這支流程打過招呼、能記的房間現在的全上（照看的人寫哪些是他的）。 */
-	const tellRuns = (f: FakeCloudFlow) => {
-		for (const o of rooms.filter((o) => o.flowId === f.id && o.here && roleOf(f, o.email) !== 'viewer')) {
-			deliver(o.room, () => ({ kind: 'runThroughs', runs: runViews(f.id, o.email) }));
+	const tellRuns = (flowId: string) => {
+		const f = state.flows.find((g) => g.id === flowId);
+		if (!f) return;
+		for (const o of rooms.filter((o) => o.flowId === flowId && o.here && roleOf(f, o.email) !== 'viewer')) {
+			deliver(o.room, () => ({ kind: 'runThroughs', runs: runViews(flowId, o.email) }));
 		}
 	};
-	const runViews = (flowId: string, viewer: string): RunView[] =>
-		(runs.get(flowId) ?? []).map((r) => ({
-			id: r.id,
-			date: r.date,
-			startedAt: r.startedAt,
-			people: r.people.map((email) => ({ name: nameOf(email), me: same(email, viewer), away: false })),
-			keys: r.keys.map((k) => ({
-				key: k.key,
-				userId: userIdOf(k.email),
-				name: nameOf(k.email),
-				mine: same(k.email, viewer),
-				touched: k.touched,
-				away: false
-			}))
-		}));
-	/**
-	 * 一起記全上的事（照真的規則，斷線 1 分鐘當他離開沒做）：開、加入、重報；拿一組（沒人拿著、還沒點過的給他，
-	 * 點過的、別人先拿了退回）、放掉、點了、離開。回要跟送的人說的（拿不到、加入不了），別的房間照新的樣子。
-	 */
-	const runAsk = (f: FakeCloudFlow, email: string, request: RunRequest): RoomMessage | null => {
-		const list = runs.get(f.id) ?? [];
-		runs.set(f.id, list);
-		const runId = request.kind === 'runThrough' ? request.id : request.run;
-		let run = list.find((r) => r.id === runId);
-		if (!run) {
-			if (request.kind !== 'runThrough' || request.joining) return { kind: 'runClosed', run: runId };
-			run = { id: request.id, date: request.date, startedAt: request.startedAt, people: [], keys: [] };
-			list.push(run);
+	const runViews = (flowId: string, viewer: string) => runViewsOf(runs.get(flowId) ?? [], userIdOf(viewer), Date.now());
+	/** 表做一件事：存新的表，變了告訴能記的房間；回要跟送的人說的。 */
+	const runEvent = (flowId: string, event: RunEvent) => {
+		const out = runTogether(runs.get(flowId) ?? [], event, Date.now());
+		runs.set(flowId, out.runs);
+		if (out.changed) tellRuns(flowId);
+		return out.answer;
+	};
+	/** 一起記全上的事：開、加入、重報；拿一組、放掉、點了、離開。回要跟送的人說的（拿不到、加入不了）。 */
+	const runAsk = (from: OpenRoom, request: RunRequest): RoomMessage | null => {
+		const who = { userId: userIdOf(from.email), conn: from.conn, name: nameOf(from.email) };
+		const { kind } = request;
+		const run = kind === 'runThrough' ? request.id : request.run;
+		const answer = runEvent(
+			from.flowId,
+			kind === 'runThrough'
+				? { kind: 'report', who, report: { id: request.id, date: request.date, startedAt: request.startedAt, keys: request.keys, touched: request.touched, joining: request.joining } }
+				: {
+						kind: 'ask',
+						who,
+						run,
+						ask:
+							kind === 'claim'
+								? { kind, key: request.key, from: request.from }
+								: kind === 'leaveRun'
+									? { kind: 'leave' }
+									: { kind, key: request.key }
+					}
+		);
+		if (answer.kind === 'refused') return { kind: 'claimRefused', run, key: 'key' in request ? request.key : '', by: answer.by, touched: answer.touched };
+		return answer.kind === 'closed' ? { kind: 'runClosed', run } : null;
+	};
+	/** 一個房間的連線斷了（斷線、關掉）：表上記下斷線的時間，1 分鐘後再說一次（當他離開）；這支流程沒有連著的房間就拿掉表。 */
+	const runDisconnect = (r: OpenRoom) => {
+		const out = runTogether(runs.get(r.flowId) ?? [], { kind: 'disconnect', conn: r.conn }, Date.now());
+		runs.set(r.flowId, out.runs);
+		if (out.changed) {
+			tellRuns(r.flowId);
+			setTimeout(() => tellRuns(r.flowId), 61_000);
 		}
-		if (request.kind !== 'leaveRun' && !run.people.some((e) => same(e, email))) run.people.push(email);
-		let answer: RoomMessage | null = null;
-		if (request.kind === 'runThrough') {
-			run.keys = run.keys.filter((k) => !same(k.email, email) || request.keys.includes(k.key));
-			for (const key of request.keys) {
-				const held = run.keys.find((k) => k.key === key);
-				if (!held) run.keys.push({ key, email, touched: request.touched.includes(key) });
-				else if (same(held.email, email)) held.touched ||= request.touched.includes(key);
-			}
-		} else if (request.kind === 'leaveRun') {
-			run.people = run.people.filter((e) => !same(e, email));
-			run.keys = run.keys.filter((k) => !same(k.email, email));
-			if (!run.people.length) list.splice(list.indexOf(run), 1);
-		} else if (request.kind === 'release') {
-			run.keys = run.keys.filter((k) => k.key !== request.key || !same(k.email, email));
-		} else {
-			const held = run.keys.find((k) => k.key === request.key);
-			const touch = request.kind === 'touch';
-			const from = request.kind === 'claim' ? request.from : null;
-			if (!held) run.keys.push({ key: request.key, email, touched: touch });
-			else if (same(held.email, email)) held.touched ||= touch;
-			else if (touch || from !== userIdOf(held.email) || held.touched) {
-				const touched = held.touched && (touch || from === userIdOf(held.email));
-				answer = { kind: 'claimRefused', run: run.id, key: request.key, by: nameOf(held.email), touched };
-			} else Object.assign(held, { email, touched: false });
-		}
-		tellRuns(f);
-		return answer;
+		if (!rooms.some((o) => o.flowId === r.flowId && o.room !== r.room && !down.has(o.room))) runs.delete(r.flowId);
 	};
 	/** 打招呼帶上次看到第 seen 步：之後別的分頁收了的步照順序補給他；中間的步沒留就給伺服器現在的樣子。 */
 	const catchUp = (f: FakeCloudFlow, seen: number, to: OpenRoom) => {
@@ -540,6 +533,7 @@ export function fakeServer(
 		}
 		down.add(r.room);
 		r.here = false;
+		runDisconnect(r);
 		r.room.onconnection(false, why);
 		tellPresent(r.flowId);
 		held = held.filter((h) => !down.has(h.room));
@@ -547,6 +541,7 @@ export function fakeServer(
 	/** 斷線的房間連回來（房間重新打招呼）。 */
 	const bringBack = (r: OpenRoom) => {
 		if (!down.delete(r.room)) return;
+		r.conn = nextConn++;
 		r.room.onconnection(true);
 	};
 	/** 斷掉這個人開著的房間。 */
@@ -671,6 +666,9 @@ export function fakeServer(
 			);
 			if (role !== 'editor') r.editing = false;
 		}
+		// 被收回、降成檢視者：開著的房間把他請出每張表，拿著的組放掉（#262；真的伺服器在他連著的連線上做）
+		const live = rooms.some((r) => r.flowId === flowId && same(r.email, email) && !down.has(r.room));
+		if (live && (role === null || role === 'viewer')) runEvent(flowId, { kind: 'kick', userId: userIdOf(email) });
 		tellPresent(flowId);
 	};
 	/** 把 from 擁有的流程（only：只交這幾支）交給 to，from 變編輯者；告訴兩個人開著的房間。回交出去幾支。 */
@@ -988,7 +986,7 @@ export function fakeServer(
 						request.kind === 'touch' ||
 						request.kind === 'leaveRun'
 					) {
-						if (role !== 'viewer') deliver(room, () => (ready ? runAsk(f, email, request) : null));
+						if (role !== 'viewer') deliver(room, () => (ready ? runAsk(open, request) : null));
 					} else if (request.kind === 'undo') {
 						const { stepId, seen, of, redo, change } = request;
 						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange } };
@@ -1000,11 +998,12 @@ export function fakeServer(
 				},
 				close() {
 					const i = rooms.findIndex((r) => r.room === room);
+					if (i >= 0 && !down.has(room)) runDisconnect(rooms[i]);
 					if (i >= 0) rooms.splice(i, 1);
 					tellPresent(flowId);
 				}
 			};
-			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '' };
+			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '', conn: nextConn++ };
 			rooms.push(open);
 			// 斷著時開的房間：馬上連不上，等下一個 microtask 才說（跟真的一樣，說的時候房間已經接好了）
 			if (state.link !== 'online') {
@@ -1105,15 +1104,6 @@ export function fakeServer(
 /** 房間收到的一起記全上的事（#262）。 */
 type RunRequest = Extract<RoomRequest, { kind: 'runThrough' | 'claim' | 'release' | 'touch' | 'leaveRun' }>;
 
-/** 假的伺服器上開著的一次全上（#262）：表裡的人（email，照進來的先後）、誰拿著哪一組、點過沒。 */
-interface FakeRun {
-	id: string;
-	date: string;
-	startedAt: number;
-	people: string[];
-	keys: { key: string; email: string; touched: boolean }[];
-}
-
 /** 房間收到的改、刪、救回紀錄（#258）。 */
 type AmendRequest = Extract<RoomRequest, { kind: 'changeRecords' | 'deleteRecords' | 'restoreRecords' }>;
 
@@ -1129,6 +1119,8 @@ interface OpenRoom {
 	editing: boolean;
 	tab: string;
 	sentBack?: number;
+	/** 這個連線的號碼（一起記全上的表記誰連著）：斷線連回來換一個新的（跟真的一樣是新的連線）。 */
+	conn: number;
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */

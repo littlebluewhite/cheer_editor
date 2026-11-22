@@ -346,4 +346,18 @@ export type {
 	RecordsAsk,
 	RecordVerdict
 } from './room-records';
+export { runTogether, runViews } from './run-together';
+export type {
+	RunAnswer,
+	RunAsk,
+	RunEvent,
+	RunOutcome,
+	RunReport,
+	RunsTogether,
+	RunTogetherView,
+	RunWho,
+	TogetherHold,
+	TogetherPerson,
+	TogetherRun
+} from './run-together';
 export { travelChange, travelOrder } from './undo-order';
