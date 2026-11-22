@@ -110,3 +110,35 @@ async fn when_the_flow_core_breaks_stored_ones_still_come_back_and_only_new_ones
         json!([{ "id": "tnew333333330", "message": "伺服器看不懂這一筆" }])
     );
 }
+
+#[sqlx::test]
+async fn while_the_flow_is_locked_only_related_records_are_read_for_the_flow_core(
+    db: sqlx::PgPool,
+) {
+    let (state, wang) = setup(db).await;
+    let resent = one("tresent111110", Some("rrun000000001"));
+    for (record, gone) in [
+        (one("tother0000010", None), false),
+        (resent.clone(), true),
+        (one("tmate00000010", Some("rrun000000001")), false),
+        (one("tmategone0010", Some("rrun000000001")), true),
+        (one("telse00000010", Some("rrun000000002")), false),
+    ] {
+        stored(&state, Some(wang), &record, gone).await;
+    }
+    fake_receive(&state, "globalThis.ASKED = JSON.parse(ask); return '[]';").await;
+
+    let new = one("tnew000000010", Some("rrun000000001"));
+    record(&state, FLOW, wang, 1, json!([resent, new]))
+        .await
+        .unwrap();
+
+    // 傳進去的只有同樣 id 的（連清掉的）和同一次全上還在的；不讀整份紀錄
+    let asked = state
+        .core
+        .eval("JSON.stringify(ASKED.records.map((r) => r.attempt.id))".into())
+        .await
+        .unwrap();
+    let asked: Vec<String> = serde_json::from_str(&asked).unwrap();
+    assert_eq!(asked, vec!["tresent111110", "tmate00000010"]);
+}
