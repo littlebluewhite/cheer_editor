@@ -31,7 +31,8 @@ export interface ClearedRecord {
 
 /**
  * 步驟紀錄的一筆：第幾步、步驟 id、哪個分頁送的、送的人的名字、什麼時候收的（毫秒）、改到的東西、清掉改掉的紀錄、
- * 這一步治好的毛病（整份流程檢查的鍵，ADR 0020；部署前收的步沒有，當沒治好什麼）。
+ * 這一步治好的毛病（整份流程檢查的鍵，ADR 0020；部署前收的步沒有，當沒治好什麼）、
+ * 復原、重做的這一步把哪幾步復原了（of 和算進來的 joined；一般的步、這個欄位之前收的步沒有）。
  */
 export interface LoggedStep {
 	step: number;
@@ -42,6 +43,7 @@ export interface LoggedStep {
 	keys: string[];
 	cleared: ClearedRecord[];
 	cured?: string[];
+	undid?: string[];
 }
 
 /** 伺服器上的一次：連清掉的（gone）也要；amendedStep 是最後一次用手改、刪、救回時流程是第幾步。 */
@@ -52,7 +54,8 @@ export interface RoomRecord extends StoredAttempt {
 
 /**
  * 送來的一步：跑一串指令，或復原、重做 of 那一步（change 是要放回去的樣子）。
- * joined：方向鍵連按合成的一步裡 of 之後的其他步（步驟 id，只算 of 之後、跟 of 同一個分頁的）；部署前開著的分頁不送，只算 of 那一步治好的。
+ * joined：方向鍵連按合成的一步裡 of 之後的其他步（步驟 id，照順序）：要是 of 之後同一個分頁接下來的那幾步、都還沒被復原過，
+ * 不是就整串不算；部署前開著的分頁不送，只算 of 那一步治好的。
  */
 export type SentStep =
 	| { stepId: string; seen: number; commands: Command[] }
@@ -139,6 +142,7 @@ export function takeStep(ask: StepAsk): StepVerdict {
 	const live = ask.records.filter((r) => !r.gone).map(stored);
 	let ran: Ran;
 	let revived: string[] = [];
+	let undid: string[] | undefined;
 	try {
 		if ('undo' in sent) {
 			const { of: id, redo, change } = sent.undo;
@@ -146,9 +150,15 @@ export function takeStep(ask: StepAsk): StepVerdict {
 			if (!of) return rejected({ code: 'undoTooOld', redo });
 			const back = broughtBack(ask.records, of, live);
 			revived = back.revived;
-			// 那一步（方向鍵合成的：中間每一步）治好的可以帶回來（ADR 0020）。合進來的只算那一步之後、同一個分頁的
-			const joined = new Set(sent.undo.joined ?? []);
-			const more = log.filter((l) => joined.has(l.id) && l.step > of.step && l.tab === of.tab);
+			// 那一步（方向鍵合成的：中間每一步）治好的可以帶回來（ADR 0020）。合進來的要跟那一步連著：
+			// 照順序是那一步之後同一個分頁接下來的那幾步（別的分頁的步可以夾在中間），也都還沒被復原過；
+			// 不是就整串不算，只算那一步
+			const joined = sent.undo.joined ?? [];
+			const run = log.filter((l) => l.step > of.step && l.tab === of.tab).slice(0, joined.length);
+			const done = new Set(log.flatMap((l) => (l.step > of.step ? (l.undid ?? []) : [])));
+			const fits = run.length === joined.length && run.every((l, i) => l.id === joined[i] && !done.has(l.id));
+			const more = fits ? run : [];
+			undid = [of.id, ...more.map((l) => l.id)];
 			const cured = [of, ...more].flatMap((l) => l.cured ?? []);
 			const u = runUndo(flow, back.records, change, cured);
 			ran = u.kind === 'ok' ? u : { kind: 'no', reason: reasonOf(u), ask: false };
@@ -178,7 +188,7 @@ export function takeStep(ask: StepAsk): StepVerdict {
 		change: remoteChange(flow, ran.flow),
 		changed: records.changed,
 		deleted: records.deleted,
-		logged: { step: step + 1, id: stepId, tab, by: ask.by, at: now, keys: ran.keys, cleared: records.cleared, cured: ran.cured },
+		logged: { step: step + 1, id: stepId, tab, by: ask.by, at: now, keys: ran.keys, cleared: records.cleared, cured: ran.cured, ...(undid && { undid }) },
 		held: ran.held
 	};
 }

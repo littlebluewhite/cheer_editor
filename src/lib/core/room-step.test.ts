@@ -469,6 +469,41 @@ describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）
 		expect(c.undo(ids[0], undo).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
 	});
 
+	/** 站在場外的小美（第一張站位 m1 在 [-10, 0]）的雲端流程。 */
+	function outside() {
+		const old = server().flow;
+		const [first] = old.formations;
+		const c = cloud({ ...old, formations: [{ ...first, pos: { ...first.pos, m1: [-10, 0] } }, ...old.formations.slice(1)] });
+		const set = (pos: Record<string, [number, number]>, tab = 'mine') => c.run([{ name: 'setPositions', args: [first.id, pos] }], tab);
+		return { c, set };
+	}
+
+	it('joined 中間跳過自己分頁的一步：整串不算，只算第一步治好的，擋下', () => {
+		const { c, set } = outside();
+		const ids = [set({ m2: [1, 1] }), set({ m1: [-9, 0] }), c.run([{ name: 'renameFlow', args: ['決賽'] }]), set({ m3: [2, 2] })];
+		// 送的 joined 是第二步（跟第一步連著、治好的）和第四步（中間隔著改名字）
+		const undo = [1, 2, 4].map((i) => changesOf(c, i)).reduce((a, b) => joinUndo(a, b)).undo;
+		expect(c.undo(ids[0], undo, false, [ids[1], ids[3]]).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
+	});
+
+	it('joined 寫了已經復原過的步：那一步治好的不算，擋下', () => {
+		const { c, set } = outside();
+		const ids = [set({ m2: [1, 1] }), set({ m1: [-9, 0] })];
+		// 復原第二步（小美回場外，收了），自己再把她挪進場內
+		expect(c.undo(ids[1], changesOf(c, 2).undo).r.kind).toBe('accepted');
+		set({ m1: [-9, 0] });
+		const undo = undoChanges(c.s.flows[0], c.s.flows[4]).undo;
+		expect(c.undo(ids[0], undo, false, [ids[1]]).r).toMatchObject({ kind: 'rejected', why: { code: 'undoBlocked' } });
+	});
+
+	it('合成一步中間夾著別的分頁的步：還是連著，治好的算，收了', () => {
+		const { c, set } = outside();
+		const ids = [set({ m2: [1, 1] }), c.run([{ name: 'renameFlow', args: ['決賽'] }], 'other'), set({ m1: [-9, 0] })];
+		const undo = joinUndo(changesOf(c, 1), changesOf(c, 3)).undo;
+		expect(c.undo(ids[0], undo, false, [ids[2]]).r.kind).toBe('accepted');
+		expect(c.s.flow.formations[0].pos.m1).toEqual([-10, 0]);
+	});
+
 	it.each(['other', 'mine'])('joined 寫了要復原那一步之前的步（%s 分頁）：那一步治好的不算，擋下', (tab) => {
 		const c = cloud(fortyOne());
 		const earlier = c.run([{ name: 'deleteMember', args: ['extra'], options: { confirmed: true } }], tab);
