@@ -32,8 +32,9 @@ final class WebUpdates {
         observers.append(NotificationCenter.default.addObserver(
             forName: WebShell.webContentProcessDidTerminate, object: nil, queue: .main
         ) { [weak self, weak context] note in
+            let crashed = (note.object as AnyObject?).map(ObjectIdentifier.init)
             MainActor.assumeIsolated {
-                guard let webView = note.object as? WKWebView, webView === context?.webView else { return }
+                guard let webView = context?.webView, crashed == ObjectIdentifier(webView) else { return }
                 _ = self?.updater.webCrashed()  // 退回的話 rolledBack 會重新載入
             }
         })

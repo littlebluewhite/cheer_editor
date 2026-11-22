@@ -26,12 +26,13 @@ final class LocalSite: @unchecked Sendable {
     func start() async throws -> URL {
         listener.newConnectionHandler = { [weak self] in self?.serve($0) }
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
-            var resumed = false
+            final class Once: @unchecked Sendable { var resumed = false }  // 只在 queue 上碰
+            let once = Once()
             listener.stateUpdateHandler = { state in
-                guard !resumed else { return }
+                guard !once.resumed else { return }
                 switch state {
-                case .ready: resumed = true; done.resume()
-                case .failed(let e): resumed = true; done.resume(throwing: e)
+                case .ready: once.resumed = true; done.resume()
+                case .failed(let e): once.resumed = true; done.resume(throwing: e)
                 default: break
                 }
             }
@@ -118,7 +119,7 @@ extension PipeTests {
         _ = try await h.js("""
             const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
             const byText = (s, t) => [...document.querySelectorAll(s)].find((el) => el.textContent.includes(t));
-            document.querySelector('button[aria-label="選單"]').click();
+            document.querySelector('button[aria-haspopup=dialog]').click();
             let item; while (!(item = byText('[role=dialog] button', '新建'))) await sleep(50);
             item.click();
             return null
