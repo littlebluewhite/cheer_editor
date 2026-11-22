@@ -51,6 +51,8 @@ describe('檢視模式：畫面能不能改只看 session.editable（D）', () =
 			'routes/+page.svelte: onclick={() => (session.viewing = true)}><Icon name="eye" /><span class="tight-hide">{m.editor_view()}</span></button',
 			// 檢視模式的標示：場地框黃色、角落寫「檢視模式・只能看」
 			"routes/+page.svelte: <main class=\"field-host\" class:viewing={session.viewing} hidden={view === 'practice'} {@attach watchFieldHostH}>",
+			'routes/+page.svelte: {#if session.viewing}',
+			// 檢視模式是看的版面：場地下面多一條進度條（#330）
 			'routes/+page.svelte: {#if session.viewing}'
 		]);
 	});

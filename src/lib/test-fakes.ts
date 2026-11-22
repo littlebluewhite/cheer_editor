@@ -1257,11 +1257,14 @@ export async function fromMenu(name: string) {
  */
 export function editorPage(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const t = testEditor(flow, { pendingInput: domPendingInput, nextFrame: animationFrame, ...adapters });
-	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt, measure: fakeMeasure } };
+	return { ...t, props: { editor: t.editor, toMeters: fakeToMeters, cellAt: fakeCellAt, measure: fakeMeasure, scrubAt: fakeScrubAt } };
 }
 
 /** 假的量字（流程影片的版面；jsdom 沒有 Canvas，見 ADR 0002）：英數字 0.6 個字高寬，其他（中文、全形符號）1 個字高寬。 */
 export const fakeMeasure: Measure = (t, px) => [...t].reduce((w, c) => w + (/[\x00-\x7f]/.test(c) ? 0.6 : 1) * px, 0);
+
+/** 假的座標換算：檢視畫面的進度條，clientX 就是整支流程的百分之幾（見 ADR 0002）。 */
+export const fakeScrubAt = (_bar: HTMLElement, clientX: number): number => clientX / 100;
 
 /** 假的座標換算：場地的螢幕換公尺換成 1 px = 1 cm（見 ADR 0002）。 */
 export const fakeToMeters = (e: { clientX: number; clientY: number }): Position => [e.clientX / 100, e.clientY / 100];

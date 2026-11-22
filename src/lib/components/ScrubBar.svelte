@@ -1,0 +1,129 @@
+<script lang="ts">
+	// 檢視畫面的進度條（#330）：一條細條代表整支流程，手指按住拖移動播放頭，放開對齊最近的八拍開頭。
+	// 只是看：不改流程。跳轉走 onseek（頁面給 playback.seek，播放中照樣播、停著照樣停）。
+	import { nearestEightStart, totalSeconds, type Flow } from '#lib/core';
+	import { m } from '#lib/paraglide/messages.js';
+	import { followPointer } from './pointer.js';
+
+	interface Props {
+		flow: Flow;
+		/** 播放頭在第幾秒。 */
+		sec: number;
+		/** 讀螢幕軟體念的位置（跟「目前位置」一樣：段名和「3-1」）。 */
+		valuetext: string;
+		/** 拖的時候浮在指頭上面的字（「3-1」）。 */
+		tip: string;
+		onseek: (sec: number) => void;
+		/** 指標位置換成進度條的幾分之幾（0 到 1）：預設用瀏覽器算；jsdom 不算版面，測試換成假的（ADR 0002）。 */
+		fractionAt?: (bar: HTMLElement, clientX: number) => number;
+	}
+
+	let { flow, sec, valuetext, tip, onseek, fractionAt = fromRect }: Props = $props();
+
+	let bar: HTMLElement;
+	let dragging = $state(false);
+	const total = $derived(totalSeconds(flow));
+
+	function fromRect(el: HTMLElement, clientX: number): number {
+		const r = el.getBoundingClientRect();
+		return r.width ? (clientX - r.left) / r.width : 0;
+	}
+
+	function start(e: PointerEvent) {
+		if (e.button !== 0 || !total) return;
+		e.preventDefault();
+		// 拖到最右邊也只到最後一個八拍的開頭：放開不會停在那裡，播放中跳到結尾還會停下
+		const last = nearestEightStart(flow, total);
+		const toSec = (ev: PointerEvent) => Math.min(Math.max(fractionAt(bar, ev.clientX), 0) * total, last);
+		let at = toSec(e);
+		const done = () => {
+			dragging = false;
+			onseek(nearestEightStart(flow, at));
+		};
+		dragging = true;
+		onseek(at);
+		followPointer(
+			e,
+			(ev) => {
+				at = toSec(ev);
+				onseek(at);
+			},
+			done,
+			done
+		);
+	}
+</script>
+
+<!-- 方向鍵移播放頭是頁面的快捷鍵（一拍，Shift 一個八拍）：停在進度條上照樣能用，這裡不另外接 -->
+<div
+	class="scrub"
+	role="slider"
+	tabindex="0"
+	aria-label={m.editor_scrub()}
+	aria-valuemin={0}
+	aria-valuemax={Math.round(total * 10) / 10}
+	aria-valuenow={Math.round(sec * 10) / 10}
+	aria-valuetext={valuetext}
+	style:--at="{total ? (Math.min(sec, total) / total) * 100 : 0}%"
+	bind:this={bar}
+	onpointerdown={start}
+	><span class="track"><span class="fill"></span></span><span class="thumb"></span>{#if dragging}<span class="tip">{tip}</span>{/if}</div
+>
+
+<style>
+	/* 摸得到的一條 24px 高，畫出來的條只有 4px；左右留一點，頭（圓點）在兩端也整個看得到 */
+	.scrub {
+		position: relative;
+		height: 24px;
+		margin-inline: 14px;
+		touch-action: none;
+		cursor: pointer;
+	}
+	.track {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 10px;
+		height: 4px;
+		border-radius: 2px;
+		background: #36425f;
+		overflow: hidden;
+	}
+	.fill {
+		display: block;
+		width: var(--at);
+		height: 100%;
+		background: var(--now);
+	}
+	.thumb {
+		position: absolute;
+		top: 5px;
+		left: var(--at);
+		width: 14px;
+		height: 14px;
+		margin-left: -7px;
+		border-radius: 50%;
+		background: #fff;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+	}
+	.scrub:focus-visible {
+		outline: 2px solid #fff;
+		outline-offset: 2px;
+		border-radius: 4px;
+	}
+	/* 拖的時候：指頭上面寫第幾個八拍，手指不會蓋住 */
+	.tip {
+		position: absolute;
+		bottom: calc(100% + 4px);
+		left: var(--at);
+		transform: translateX(-50%);
+		padding: 2px 8px;
+		border-radius: 6px;
+		background: #fff;
+		color: var(--ink);
+		font-size: 14px;
+		font-weight: 700;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+</style>

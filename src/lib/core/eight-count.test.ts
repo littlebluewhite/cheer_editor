@@ -7,6 +7,7 @@ import {
 	eightCountRows as rowsOf,
 	eightCountView,
 	nearbyEights as nearbyOf,
+	nearestEightStart,
 	formationNowWhy,
 	memberNowWhy,
 	clearPhaseBeats,
@@ -68,6 +69,22 @@ const action = (overrides: Partial<NewActionInput>): NewActionInput => ({
 		{ memberId: 'm2', role: '主底' }
 	],
 	...overrides
+});
+
+describe('放開進度條：對齊最近的八拍開頭', () => {
+	it('音樂段對齊最近的八拍開頭；最後不滿一個八拍的也算一個', () => {
+		// sample 的八拍從 0、3.2、6.4 秒開始，口號 1 從 8 秒開始
+		expect(nearestEightStart(sample(), 1.5)).toBeCloseTo(0, 6);
+		expect(nearestEightStart(sample(), 4)).toBeCloseTo(3.2, 6);
+		expect(nearestEightStart(sample(), 5)).toBeCloseTo(6.4, 6);
+		expect(nearestEightStart(sample(), 7)).toBeCloseTo(6.4, 6);
+	});
+
+	it('口號段整段算一個：放在口號段裡（快到結尾也是）回到口號段的開頭，不是每 5 秒一停、不跳到流程結尾', () => {
+		expect(nearestEightStart(sample(), 13)).toBeCloseTo(8, 6);
+		expect(nearestEightStart(sample(), 17.9)).toBeCloseTo(8, 6);
+		expect(nearestEightStart(sample(), 18)).toBeCloseTo(8, 6);
+	});
 });
 
 describe('八拍表的列：全隊', () => {

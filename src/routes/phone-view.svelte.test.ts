@@ -217,6 +217,60 @@ describe('手機的播放列：一排', () => {
 	});
 });
 
+describe('手機的進度條', () => {
+	// 假的座標換算（editorPage）：手指在 clientX 就是整支流程的 clientX%（範例 4 個八拍 16 秒，66 是 10.56 秒，在 3-6）
+	const bar = () => screen.getByRole('slider', { name: '進度條' });
+	const where = () => screen.getByLabelText('目前位置').textContent;
+
+	it('拖到中間：播放頭跟著手指，看得到第幾個八拍；放開對齊最近的八拍開頭，前後八拍跟著換；不算改流程', async () => {
+		const { session } = await openOnPhone();
+		expect(bar().getAttribute('aria-valuetext')).toBe('音樂 1 1-1');
+		await fireEvent.pointerDown(bar(), { clientX: 40, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 66 });
+		// 拖的時候還沒對齊：在 3-6，進度條上寫「3-6」
+		expect(where()).toBe('音樂 1 3-6');
+		expect(bar().textContent).toBe('3-6');
+		await fireEvent.pointerUp(window, { clientX: 66 });
+		// 10.56 秒離 4-1（12 秒）比 3-1（8 秒）近
+		expect(where()).toBe('音樂 1 4-1');
+		expect(bar().getAttribute('aria-valuetext')).toBe('音樂 1 4-1');
+		expect(bar().textContent).toBe('');
+		expect([...row().querySelectorAll('[data-slot]')].map((s) => s.getAttribute('data-slot'))).toEqual(['4', '']);
+		expect(session.unsaved).toBe(false);
+	});
+
+	it('播放中拖（拖過最右邊也一樣）：放開照樣在播，從對齊的八拍開頭接著播', async () => {
+		await openOnPhone();
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		await fireEvent.pointerDown(bar(), { clientX: 10, button: 0 });
+		await fireEvent.pointerMove(window, { clientX: 120 });
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+		await fireEvent.pointerUp(window, { clientX: 120 });
+		// 流程結尾不算八拍開頭：停在最後一個八拍的開頭
+		expect(where()).toBe('音樂 1 4-1');
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+	});
+
+	it('停著拖：放開照樣停著', async () => {
+		await openOnPhone();
+		await fireEvent.pointerDown(bar(), { clientX: 30, button: 0 });
+		await fireEvent.pointerUp(window, { clientX: 30 });
+		expect(where()).toBe('音樂 1 2-1');
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+	});
+
+	it('橫拿的 iPad（一般版面）：檢視模式也有進度條，拖了一樣對齊八拍開頭；編輯時沒有', async () => {
+		vi.stubGlobal('matchMedia', () => ({ matches: false }));
+		const { session } = await openOnPhone();
+		expect(screen.queryByRole('slider', { name: '進度條' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '檢視' }));
+		await fireEvent.pointerDown(bar(), { clientX: 30, button: 0 });
+		await fireEvent.pointerUp(window, { clientX: 30 });
+		expect(where()).toBe('音樂 1 2-1');
+		expect(session.unsaved).toBe(false);
+	});
+});
+
 describe('手機的練習頁', () => {
 	/** 範例流程拿掉環節：沒有要記的動作。 */
 	function noPhases(): Flow {

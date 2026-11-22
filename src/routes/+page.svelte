@@ -69,6 +69,7 @@
 	import NewFlowForm from '#lib/components/NewFlowForm.svelte';
 	import NoticeToast from '#lib/components/NoticeToast.svelte';
 	import NowEightCount from '#lib/components/NowEightCount.svelte';
+	import ScrubBar from '#lib/components/ScrubBar.svelte';
 	import Practice from '#lib/components/Practice.svelte';
 	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
 	import type { OfflineCopy } from '#lib/offline-store.js';
@@ -96,9 +97,11 @@
 		waveXToSec?: ComponentProps<typeof SegmentSettings>['waveXToSec'];
 		/** 流程影片的量字：預設用 Canvas 量；jsdom 沒有 Canvas，測試換成假的。 */
 		measure?: ComponentProps<typeof VideoExport>['measure'];
+		/** 檢視畫面的進度條：指標位置換成進度條的幾分之幾。 */
+		scrubAt?: ComponentProps<typeof ScrubBar>['fractionAt'];
 	}
 
-	let { editor: given, toMeters, cellAt, waveXToSec, measure }: Props = $props();
+	let { editor: given, toMeters, cellAt, waveXToSec, measure, scrubAt }: Props = $props();
 	// 編輯器 module 一開始給了就不換：放進 context 的就是這一個。
 	// svelte-ignore state_referenced_locally
 	const editor = given ?? new Editor(browserAdapters());
@@ -719,6 +722,17 @@
 				{/each}
 			</select>
 		{/snippet}
+		<!-- 檢視畫面的進度條（#330）：手機在播放列上面，橫拿的 iPad（一般版面）的檢視模式在場地下面 -->
+		{#snippet scrubBar()}
+			<ScrubBar
+				{flow}
+				sec={playback.sec}
+				valuetext={position ? `${position.segment}${position.at ? ` ${position.at}` : ''}` : m.editor_no_segments()}
+				tip={position?.at || position?.segment || ''}
+				onseek={(s) => playback.seek(s)}
+				fractionAt={scrubAt}
+			/>
+		{/snippet}
 		{#snippet transport()}
 			<div class="transport" hidden={view === 'practice'}>
 				<button
@@ -1123,7 +1137,11 @@
 							clashes={trail.clashes}
 						/>
 					</div>
-					{@render transport()}
+					<!-- 進度條和播放列算同一格：手機的格子（直拿、橫拿）不用多一列 -->
+					<div class="phone-play">
+						{@render scrubBar()}
+						{@render transport()}
+					</div>
 					<!-- 書籤那排一定佔一格（沒有書籤就是 0 高），「我」、前後八拍才不會被擠到別格 -->
 					<div class="phone-marks"><Bookmarks place="phone" /></div>
 					<div class="phone-me">
@@ -1273,6 +1291,9 @@
 					{@render noticeToast()}
 				</div>
 				</Field>
+				{#if session.viewing}
+					<div class="view-scrub">{@render scrubBar()}</div>
+				{/if}
 			</main>
 
 			<aside class="inspector" class:viewing={!session.editable} aria-label={m.editor_sidebar()} hidden={view === 'practice'}>
@@ -1835,6 +1856,11 @@
 	}
 	/* 手機的播放列：一排（播放、‹、時間、›、速度、⋯），場地才有地方畫大；時間那一格吃剩下的寬。
 	   比 350px 還窄的手機放不下一排，才換行 */
+	/* 進度條和播放列一起是深底的一塊 */
+	.phone-play {
+		padding-top: 6px;
+		background: var(--ink);
+	}
 	.phone-view .transport {
 		flex-wrap: wrap;
 		justify-content: center;
@@ -2618,6 +2644,18 @@
 	}
 	.field-host.viewing {
 		box-shadow: inset 0 0 0 4px #ffc53d;
+	}
+	/* 檢視模式：場地下面一條進度條（#330），場地吃剩下的高度（練習時藏著：[hidden] 不能被 display 蓋掉） */
+	.field-host.viewing:not([hidden]) {
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.view-scrub {
+		margin-top: 8px;
+		padding-block: 4px;
+		border-radius: 999px;
+		background: var(--ink);
 	}
 	/* 檢視模式的站位名稱：場地左上角，白底深字 */
 	.formation-now {

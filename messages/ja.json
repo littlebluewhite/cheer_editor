@@ -1014,6 +1014,7 @@
 	"editor_jump": "ジャンプ先",
 	"editor_jump_title": "タップして 3-1 と入力すると3つ目のエイトカウントへ移動",
 	"editor_jump_placeholder": "例：3-1",
+	"editor_scrub": "シークバー",
 	"editor_speed": "再生速度",
 	"editor_speed_title": "スロー再生でも音程はそのまま",
 	"editor_more_playback": "その他の再生オプション",

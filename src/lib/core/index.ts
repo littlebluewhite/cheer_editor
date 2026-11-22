@@ -136,7 +136,7 @@ export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, 
 export { actionEights, beatSpanWhy, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows, eightCountView, formationNowWhy, memberNowWhy, nearbyEights, teamWho } from './eight-count';
+export { eightCountRows, eightCountView, formationNowWhy, memberNowWhy, nearbyEights, nearestEightStart, teamWho } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,

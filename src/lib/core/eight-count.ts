@@ -274,6 +274,18 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 	return rows;
 }
 
+/**
+ * 手機的進度條放開時停在哪：離 sec 最近的八拍開頭，跟點前後八拍的一列跳到的地方一樣
+ * （口號段整段一列，停在段的開頭；流程結尾不算）。流程沒有段是 0。
+ */
+export function nearestEightStart(flow: Flow, sec: number): number {
+	const starts = eightCountRows(flow, null, false).map((r) => r.startSec);
+	// 放開的地方在哪一列（口號段裡、或最後一列後面都算那一列），再看下一列的開頭是不是比較近
+	const i = Math.max(starts.findLastIndex((s) => s <= sec + EPS), 0);
+	const next = starts[i + 1];
+	return next !== undefined && next - sec < sec - starts[i] ? next : (starts[i] ?? 0);
+}
+
 /** 前後八拍：播放頭那個八拍和它前後幾個八拍（見 nearbyEights）。 */
 export interface NearbyEights {
 	/** before ＋ 1 ＋ after 格，播放頭那個八拍在第 before 格；流程開頭、結尾不夠的格是 null。 */
