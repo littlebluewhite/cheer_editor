@@ -4,11 +4,10 @@
 
 import { problemKeys, undoProblem } from './flow-check';
 import type { Flow } from './flow';
-import { sortFormations } from './formation';
+import { sortFormations, withWalks, type Formation } from './formation';
 import { carryRecords } from './records';
 import { applyRemoteChange, remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
-import { openingFollowsFirst } from './segment-order';
 import { putRecords, takeRecords, type StoredAttempt } from './stored-records';
 import { fitRecords } from './success-rate';
 import { said, type Said } from './why';
@@ -45,7 +44,23 @@ function join(first: RemoteChange, second: RemoteChange): RemoteChange {
  * 開頭那張跟著第一段（#346）：放回去的段順序跟現在的站位對不上時，照調段順序的規則補。
  */
 export function undone(flow: Flow, change: RemoteChange): Flow {
-	return fitted(carryRecords(openingFollowsFirst(sortFormations(applyRemoteChange(flow, change))), flow));
+	return fitted(carryRecords(openingFollowsFirst(flow, sortFormations(applyRemoteChange(flow, change))), flow));
+}
+
+/** 這張站位在不在流程開頭（第一段的開頭；沒有段時是不在段裡的時間 0）。 */
+const atStart = (flow: Flow, f: Formation | undefined) => f?.segmentId === (flow.segments[0]?.id ?? null) && f.at === 0;
+
+/**
+ * 放回去之後開頭那張不在流程開頭（例：復原調段順序時，原本的開頭那張被別的分頁刪了，#346）：
+ * 第一段開頭有站位就由它接手，沒有就把現在（now）的開頭那張搬過去（整張搬，位置不變）；其他站位不刪、不搬，照時間排。
+ * 現在就不在開頭的（手改過的舊檔）、一張都沒有的不動，留給整份檢查。
+ */
+function openingFollowsFirst(now: Flow, flow: Flow): Flow {
+	if (!atStart(now, now.formations[0]) || !flow.formations.length || atStart(flow, flow.formations[0])) return flow;
+	const pick =
+		flow.formations.find((f) => atStart(flow, f)) ?? flow.formations.find((f) => f.id === now.formations[0].id) ?? flow.formations[0];
+	const opening = { ...withWalks(pick, {}), segmentId: flow.segments[0]?.id ?? null, at: 0 };
+	return sortFormations({ ...flow, formations: [opening, ...flow.formations.filter((f) => f !== pick)] });
 }
 
 /** 每個動作的紀錄對上它現在的環節、組（對不上的記號拿掉，拿光了整筆拿掉）。 */

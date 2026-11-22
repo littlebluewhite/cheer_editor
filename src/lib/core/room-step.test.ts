@@ -579,7 +579,6 @@ describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）
 		const f = full(40);
 		return { ...f, members: [...f.members, { ...f.members[0], id: 'extra', name: '多一個' }] };
 	}
-	/** 舊檔：開頭那張之後照給的順序放這幾張站位（第一段的第幾拍、id），不照時間排。 */
 	it('#346：調段順序、別的分頁刪了原本的開頭那張、復原調段順序：收了，開頭那張跟著第一段', () => {
 		const old = server().flow;
 		const [f1] = old.formations;
@@ -592,6 +591,7 @@ describe('takeStep：復原可以帶回那一步治好的舊毛病（ADR 0020）
 		expect(c.s.flow.formations.map((f) => [f.id, f.segmentId, f.at])).toEqual([['f2', 's1', 0]]);
 	});
 
+	/** 舊檔：開頭那張之後照給的順序放這幾張站位（第一段的第幾拍、id），不照時間排。 */
 	function withFormations(list: [number, string][]): Flow {
 		const old = server().flow;
 		const pos = old.formations[0].pos;

@@ -53,6 +53,39 @@ describe('undoChanges、undone', () => {
 	});
 });
 
+describe('undone：開頭那張跟著第一段（#346）', () => {
+	/** 兩段（s1、s2）的流程，站位照給的（[id, 段, 拍]）。 */
+	function twoSegments(list: [string, string | null, number][]): Flow {
+		const old = takeRecords(ratedSample()).flow;
+		const [f1] = old.formations;
+		const segments = [...old.segments, { ...old.segments[0], id: 's2' }];
+		return { ...old, segments, formations: list.map(([id, segmentId, at]) => ({ ...f1, id, segmentId, at })) };
+	}
+	const places = (flow: Flow) => flow.formations.map((f) => [f.id, f.segmentId, f.at]);
+
+	it('放回去之後開頭那張在第一段的第 8 拍：現在的開頭那張搬到第一段開頭，第 8 拍那張不動', () => {
+		const now = twoSegments([['f2', 's2', 0], ['f3', 's1', 8]]);
+		const swapped = { ...now, segments: now.segments.toReversed() };
+		const back = { ...now, formations: [now.formations[1], now.formations[0]] };
+		const change = undoChanges(back, { ...swapped, formations: now.formations }).undo;
+		const after = undone({ ...swapped, formations: now.formations }, change);
+		expect(places(after)).toEqual([['f2', 's1', 0], ['f3', 's1', 8]]);
+	});
+
+	it('放回去之後一張站位都沒有：不出錯，留給整份檢查擋', () => {
+		const now = twoSegments([['f2', 's2', 0]]);
+		const change = undoChanges({ ...now, formations: [] }, now).undo;
+		expect(() => undone(now, change)).not.toThrow();
+	});
+
+	it('手改過的舊檔（開頭那張本來就不在第一段開頭、有一張不在段裡）：復原改名字不動站位', () => {
+		const now = twoSegments([['fA', 's2', 0], ['fN', null, 0]]);
+		const renamed = flowOf(renameFlow(now, '決賽'));
+		const after = undone(renamed, undoChanges(now, renamed).undo);
+		expect(places(after)).toEqual(places(now));
+	});
+});
+
 describe('joinUndo（方向鍵連按合成一步）', () => {
 	it('復原回到第一按之前，重做到最後一按之後', () => {
 		const start = ratedSample();
