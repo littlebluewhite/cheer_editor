@@ -21,7 +21,12 @@ extension NowPlayingPart {
             command.removeTarget(nil)
             command.isEnabled = true
             command.addTarget { _ in
-                MainActor.assumeIsolated { part.press(button) } ? .success : .noActionableNowPlayingItem
+                // 文件沒寫一定在主執行緒叫：不在就丟回主執行緒按，先回成功
+                guard Thread.isMainThread else {
+                    DispatchQueue.main.async { part.press(button) }
+                    return .success
+                }
+                return MainActor.assumeIsolated { part.press(button) } ? .success : .noActionableNowPlayingItem
             }
         }
         return part
