@@ -100,8 +100,7 @@ describe('首頁和帳號（Node）', () => {
 		await s.offline.store.saveCopy(copyOf('c2', '春季盃'));
 
 		const t = testEditor(null, { server: s.server, offline: s.offline.store });
-		s.state.unreachable = true;
-		t.net.set(false);
+		s.network('offline');
 		await t.editor.home.load();
 		expect(t.editor.home.account?.name).toBe('林教練');
 		t.editor.home.refresh();
@@ -119,9 +118,9 @@ describe('首頁和帳號（Node）', () => {
 		await flush();
 
 		const t = testEditor(null, { server: s.server, offline: s.offline.store });
-		s.state.unreachable = true;
+		s.network('unreachable');
 		const asked = t.editor.home.load();
-		t.net.set(false);
+		s.network('offline');
 		await asked;
 		expect(t.editor.home.account?.name).toBe('林教練');
 	});
@@ -133,10 +132,9 @@ describe('首頁和帳號（Node）', () => {
 		await flush();
 
 		const t = testEditor(null, { server: s.server, offline: s.offline.store });
-		s.state.unreachable = true;
-		t.net.set(false);
+		s.network('offline');
 		const asked = t.editor.home.load();
-		t.net.set(true);
+		s.network('online');
 		await asked;
 		expect(t.editor.home.account?.name).toBe('林教練');
 	});
@@ -149,9 +147,11 @@ describe('首頁和帳號（Node）', () => {
 
 		const t = testEditor(null, { server: s.server, offline: s.offline.store });
 		s.state.signedIn = null;
-		t.net.set(false);
+		// 瀏覽器說斷網，可是這一次問得到伺服器
+		s.network('offline');
+		s.state.unreachable = false;
 		const asked = t.editor.home.load();
-		t.net.set(true);
+		s.network('online');
 		await asked;
 		expect(t.editor.home.account).toBeNull();
 	});
@@ -165,8 +165,7 @@ describe('首頁和帳號（Node）', () => {
 
 		const t = testEditor(null, { server: s.server, offline: s.offline.store });
 		await t.editor.home.load();
-		s.state.unreachable = true;
-		t.net.set(false);
+		s.network('offline');
 		let leave = t.editor.home.refresh();
 		await flush();
 		expect(t.editor.home.knownCloudIds).toEqual(['c1', 'c2']);
@@ -174,8 +173,7 @@ describe('首頁和帳號（Node）', () => {
 		expect(t.editor.home.myFlows).toBeNull();
 
 		leave();
-		s.state.unreachable = false;
-		t.net.set(true);
+		s.network('online');
 		leave = t.editor.home.refresh();
 		await flush();
 		expect(t.editor.home.myFlows?.mine.map((f) => f.name)).toEqual(['測試']);
