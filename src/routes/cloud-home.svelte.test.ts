@@ -15,10 +15,9 @@ const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, pas
 const newFlowOf = (name: string) => flowOf(createFlow({ name, field: { strips: 9, layout: 'vertical' } }));
 const at = (month: number, day: number, h: number, m: number) => new Date(2026, month - 1, day, h, m).toISOString();
 
-function signedIn(flows: FakeCloudFlow[] = [], drafts = fakeDraftStore(), online = true) {
+function signedIn(flows: FakeCloudFlow[] = [], drafts = fakeDraftStore()) {
 	const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows });
 	const page = editorPage(null, { server: fake.server, draftStore: drafts.store });
-	page.net.set(online);
 	render(Page, page.props);
 	return { ...fake, page, drafts };
 }
@@ -96,7 +95,9 @@ describe('新建表單：存在雲端／這台', () => {
 	});
 
 	it('沒網路：雲端選不了、說原因、自動選這台；網路回來又能選', async () => {
-		const s = signedIn([], fakeDraftStore(), false);
+		const s = signedIn();
+		await flush();
+		s.network('offline');
 		await flush();
 		const where = screen.getByRole('group', { name: '存在' });
 		const cloud = within(where).getByRole('radio', { name: /^雲端/ }) as HTMLInputElement;
@@ -105,7 +106,7 @@ describe('新建表單：存在雲端／這台', () => {
 		expect((within(where).getByRole('radio', { name: /^這台/ }) as HTMLInputElement).checked).toBe(true);
 		expect(within(where).getByText('沒有網路，現在不能存在雲端')).toBeTruthy();
 
-		s.page.net.set(true);
+		s.network('online');
 		await flush();
 		expect(cloud.disabled).toBe(false);
 	});

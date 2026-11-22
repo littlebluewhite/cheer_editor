@@ -266,6 +266,7 @@ export interface FakeCloudFlow {
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
  * 網路（#260）：network() 讓開著的房間斷網、伺服器沒回應、登入過期（斷線帶原因），或又連上（重新打招呼）。
+ * 它帶著自己的假網路 adapter 一起換（斷網沒網路，其他瀏覽器都說有網路）；testEditor 拿這個伺服器就接上那個網路 adapter。
  * 一步收不收（改到同一個東西 #254、復原重做 #256、權限、步驟 id 收過、30 天）交給流程核心的 takeStep，跟真的伺服器同一套規則；
  * 步驟紀錄的時間用 Date.now()（測試可以用假時鐘撥）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
@@ -313,6 +314,8 @@ export function fakeServer(
 		/** 房間連得上嗎（#260）：network() 換；直接改它不會通知房間（等房間自己再試，例：按「現在再試」）。 */
 		link: 'online' as 'online' | RoomDown
 	};
+	/** 瀏覽器說有沒有網路：跟著 network() 換。 */
+	const net = fakeNetwork();
 	/** 留著還沒處理的（holdRoom 時）。 */
 	let held: { room: FlowRoom; send: () => void }[] = [];
 	/** 斷線的房間：送來的不收，還沒送到的回答不見。 */
@@ -1052,6 +1055,7 @@ export function fakeServer(
 	/**
 	 * 網路換了（#260）：斷網（'offline'）、伺服器沒回應（'unreachable'，HTTP 也連不上）、登入超過 30 天（'expired'，登出了），
 	 * 開著的房間都斷線（帶原因）；'online' 是又連上了，斷線的房間馬上連回來（跟真的自己重連一樣）。
+	 * 瀏覽器那一邊（假網路 adapter）跟著換：斷網沒網路；連上、伺服器沒回應、登入過期瀏覽器都說有網路。
 	 * 直接改 state.link 不會通知房間：等房間自己再試（例：按「現在再試」）。
 	 */
 	const network = (status: 'online' | RoomDown) => {
@@ -1061,6 +1065,7 @@ export function fakeServer(
 			state.expired = true;
 			state.signedIn = null;
 		}
+		net.set(status !== 'offline');
 		for (const open of [...rooms]) {
 			if (status === 'online') bringBack(open);
 			else cut(open, status);
@@ -1093,6 +1098,7 @@ export function fakeServer(
 			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
 		};
 	};
+	pairedNetwork.set(server, net.network);
 	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs, disconnect, reconnect, network };
 }
 
@@ -1139,6 +1145,9 @@ export function manualFrames() {
 	};
 }
 
+/** 假伺服器帶著的假網路 adapter（testEditor 拿那個伺服器就用它）。 */
+const pairedNetwork = new WeakMap<ServerAdapter, NetworkAdapter>();
+
 /** 假的網路 adapter：一開始有沒有網路（預設有），set() 切（變了才通知）。 */
 export function fakeNetwork(online = true) {
 	let now = online;
@@ -1167,11 +1176,12 @@ export function fakeNetwork(online = true) {
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有）。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  * 伺服器預設是沒人登入的假伺服器（fakeServer）。
- * 網路預設有（fakeNetwork）：net.set(false) 斷網（換掉 network 就用自己的把手）。
+ * 網路接的是那個假伺服器帶著的（換網路叫假伺服器的 network()）；給的伺服器不是假伺服器就一直有網路。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
-	const net = fakeNetwork();
+	const server = adapters.server ?? fakeServer().server;
+	const network = pairedNetwork.get(server) ?? fakeNetwork().network;
 	const videoSaves: { bytes: Uint8Array; fileName: string }[] = [];
 	const videoEncoder = createFakeVideoEncoder();
 	const editor = new Editor(
@@ -1184,9 +1194,9 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			openTabChannel: null,
 			pendingInput: fakePendingInput(),
 			nextFrame: manualFrames().nextFrame,
-			server: fakeServer().server,
+			server,
 			offline: fakeOfflineStore().store,
-			network: net.network,
+			network,
 			video: {
 				encoder: videoEncoder,
 				save: async (bytes, fileName) => {
@@ -1198,7 +1208,7 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 		},
 		flow
 	);
-	return { editor, session: editor.session, saves, videoSaves, videoEncoder, net };
+	return { editor, session: editor.session, saves, videoSaves, videoEncoder };
 }
 
 /**
