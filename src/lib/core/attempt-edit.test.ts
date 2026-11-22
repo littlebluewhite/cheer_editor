@@ -1,7 +1,7 @@
 // 改某一次的查詢（attemptEdit）：按得了、亮著的，就是「改一次」真的存下來的（#357）。
 // 對照的是 changeAttempt 存進流程的那一筆，不是 attemptEdit 自己回的 saved。
 import { describe, expect, it } from 'vitest';
-import { addAction, addPhase, attemptEdit, changeAttempt, deletePhase, recordAttempt, type Flow, type Mark, type NewAttempt } from './index';
+import { addAction, addPhase, attemptEdit, changeAttempt, deletePhase, markPhaseBeats, recordAttempt, type Flow, type Mark, type NewAttempt } from './index';
 import { flowOf, libSample, pyramidSample, ratedSample } from '../test-flows';
 
 const MARK_KEYS: Mark[] = ['✓', '△', '✗'];
@@ -44,6 +44,7 @@ function expectSeenIsStored(flow: Flow, actionId: string, attemptId: string, mar
 	const seen = attemptEdit(action, attempt, marks);
 	const now = stored(flow, actionId, attemptId, marks);
 	if (now) expect(seen.marks, 'lit vs stored').toEqual(now);
+	if (now) expect(seen.saved.marks, 'saved vs stored').toEqual(now);
 	for (const p of action.successRate!.phases) {
 		for (const mark of MARK_KEYS) {
 			const label = `${p.id} ${mark}`;
@@ -124,6 +125,17 @@ describe('改某一次：按得了、亮著的，跟存下來的一樣', () => {
 		expect(expectSeenIsStored(flow, 'x2', 't1', { p4: '✓', p6: '✗' }).shut).toEqual(['p7', 'p8']);
 		expect(expectSeenIsStored(flow, 'x2', 't1', { p4: '✓', p5: '△', p6: '✗' }).shut).toEqual(['p7', 'p8']);
 		expect(expectSeenIsStored(flow, 'x2', 't1', { p4: '✓', p6: '✓' }).shut).toEqual([]);
+	});
+
+	it('標拍改了，存著的記號落在現在按不了的環節：打開時不亮（存的時候也不留）', () => {
+		// 上法「第二個」p6 原本跟 ✗ 的中段「第一個」p5 佔同樣的拍，記了 ✓；之後 p6 的拍改到 p5 做完之後
+		let flow = flowOf(recordAttempt(pyramidSample(), 'x2', drill('g3', { p4: '✓', p5: '✗', p6: '✓' })));
+		flow = flowOf(markPhaseBeats(flow, 'x2', 'p6', 24, 8));
+		const opened = attemptOf(flow, 'x2', 't1').marks;
+		expect(opened).toEqual({ p4: '✓', p5: '✗', p6: '✓' });
+		const seen = expectSeenIsStored(flow, 'x2', 't1', opened);
+		expect(seen.marks).toEqual({ p4: '✓', p5: '✗' });
+		expect(seen.shut).toEqual(['p6', 'p8']);
 	});
 
 	it('點了 ✗，按不了的環節點過的記號不留；取消 ✗ 也不會再冒出來', () => {
