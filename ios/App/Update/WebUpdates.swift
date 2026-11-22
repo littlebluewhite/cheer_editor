@@ -63,8 +63,8 @@ final class WebUpdates {
 
     static var underTest: Bool { ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil }
 
-    // 一個 ShellContext 一個（ShellParts、SchemeRoutes 各自拿同一個）
-    private static var byContext: [ObjectIdentifier: WebUpdates] = [:]
+    // 一個 ShellContext 一個（ShellParts、SchemeRoutes 各自拿同一個）。測試先放自己建的（接本機的小網站）
+    static var byContext: [ObjectIdentifier: WebUpdates] = [:]
 
     static func of(_ context: ShellContext) -> WebUpdates {
         if let found = byContext[ObjectIdentifier(context)] { return found }

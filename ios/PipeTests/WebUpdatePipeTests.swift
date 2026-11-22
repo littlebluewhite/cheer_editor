@@ -13,10 +13,13 @@ final class LocalSite: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "local-site")
     private let files: [String: Data]
+    private let redirects: [String: URL]
     private(set) var asked: [String] = []
 
-    init(files: [String: Data]) throws {
+    /// redirects：這些路徑回 302 轉到別的網址。
+    init(files: [String: Data], redirects: [String: URL] = [:]) throws {
         self.files = files
+        self.redirects = redirects
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: params)
@@ -50,6 +53,11 @@ final class LocalSite: @unchecked Sendable {
             let target = head.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
             let path = String((target.removingPercentEncoding ?? target).dropFirst())
             self.asked.append(path)
+            if let to = self.redirects[path] {
+                let out = Data("HTTP/1.1 302 Found\r\nLocation: \(to.absoluteString)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+                c.send(content: out, completion: .contentProcessed { _ in c.cancel() })
+                return
+            }
             let body = self.files[path] ?? self.files["200.html"] ?? Data()
             var out = Data("HTTP/1.1 200 OK\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
             out.append(body)
@@ -72,6 +80,15 @@ func newerWebBundle(from site: URL) throws -> [String: Data] {
     let list = paths.map { JSONValue.object(["path": .string($0), "size": .number(Double(files[$0]!.count)), "sha256": .string(sha(files[$0]!))]) }
     files["web-bundle.json"] = Data(JSONValue.object(["id": .string(id), "files": .array(list)]).jsonString.utf8)
     return files
+}
+
+/// 清單（照 scripts/web-bundle.mjs 的算法）。
+func manifestJSON(_ files: [String: String]) -> String {
+    let sha = { (d: Data) in SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
+    let paths = files.keys.sorted()
+    let id = sha(Data(paths.map { "\(sha(Data(files[$0]!.utf8)))  \($0)\n" }.joined().utf8))
+    let list = paths.map { JSONValue.object(["path": .string($0), "size": .number(Double(Data(files[$0]!.utf8).count)), "sha256": .string(sha(Data(files[$0]!.utf8)))]) }
+    return JSONValue.object(["id": .string(id), "files": .array(list)]).jsonString
 }
 
 extension PipeTests {
@@ -133,6 +150,59 @@ extension PipeTests {
         try await h.waitUntil("草稿還在：首頁的最近的流程有它") {
             ((try? await h.js("return document.body.innerText")) as? String ?? "").contains("換網頁測試")
         }
+    }
+
+    @Test func 測試裡App自己不去正式站看() {
+        #expect(WebUpdates.underTest)
+    }
+
+    @Test func 殼自己更新網頁_跟App一樣接_換上的網頁說好了就留著() async throws {
+        let bundled = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
+        let local = try LocalSite(files: newerWebBundle(from: bundled))
+        let site = try await local.start()
+        defer { local.stop() }
+        // 跟 ShellViewController 一樣：橋和自訂網址的路都從 ShellParts、SchemeRoutes 來；WebUpdates 先放接本機小網站的
+        let context = ShellContext()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("web-bundles-\(UUID().uuidString)")
+        let updates = WebUpdates(context: context, site: site, root: root, bundled: bundled, autoCheck: false)
+        WebUpdates.byContext[ObjectIdentifier(context)] = updates
+        defer { WebUpdates.byContext[ObjectIdentifier(context)] = nil }
+        let bridge = Bridge(shellVersion: "9.9.9", shellBuild: 99, parts: ShellParts.all(context))
+        let shell = WebShell(siteRoot: bundled, bridge: bridge, routes: SchemeRoutes.all(context), openOutside: { _ in })
+        context.attach(shell)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1194, height: 834))
+        window.addSubview(shell.webView)
+        shell.webView.frame = window.bounds
+        window.isHidden = false
+        let js = { (body: String) in try? await shell.webView.callAsyncJavaScript(body, arguments: [:], contentWorld: .page) }
+        let marker = "return document.querySelector('meta[name=x-web-bundle]') ? 'new' : 'old'"
+        shell.webView.load(URLRequest(url: BundledSite.home))
+        let h = Harness(siteRoot: bundled)  // 只借它的 waitUntil
+        try await h.waitUntil("首頁出來") { await js("return document.readyState") as? String == "complete" }
+        await updates.part.check()
+        #expect(await js("return await window.__cheerShell.send('useNewWebBundle')") as? Bool == true)
+        try await h.waitUntil("換上新的那包", seconds: 15) { await js(marker) as? String == "new" }
+        try await h.waitUntil("新的那包說好了（ShellParts 的 ReadyPart 接到 WebUpdates）") { !updates.updater.waitingForReady }
+        #expect(updates.updater.servingRoot != nil)
+        withExtendedLifetime(window) {}
+    }
+
+    @Test func 殼自己更新網頁_網站轉到別的網站就不跟_整包丟掉() async throws {
+        let files = ["index.html": "新的那包"]
+        let other = try LocalSite(files: ["index.html": Data("新的那包".utf8)])
+        let otherURL = try await other.start()
+        defer { other.stop() }
+        var served = files.mapValues { Data($0.utf8) }
+        served["web-bundle.json"] = Data(manifestJSON(files).utf8)
+        let local = try LocalSite(files: served, redirects: ["index.html": otherURL.appendingPathComponent("index.html")])
+        let site = try await local.start()
+        defer { local.stop() }
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("web-update-\(UUID().uuidString)")
+        let updater = WebUpdater(site: site, root: tmp.appendingPathComponent("root"), bundled: tmp.appendingPathComponent("none"),
+                                 fetch: SiteFetcher(site: site).get, rolledBack: {})
+        #expect(await updater.check() == .discarded)
+        #expect(local.asked.contains("index.html"))
+        #expect(other.asked.isEmpty)
     }
 
     @Test func 殼自己更新網頁_換上後網頁當掉就退回原本那包() async throws {

@@ -81,6 +81,9 @@ public final class WebUpdater {
     /// 網頁要從哪個資料夾送；nil 是 App 裡附的那包。
     public var servingRoot: URL? { state.active.map(folder) }
 
+    /// 換上了，還在等網頁說「好了」。
+    public var waitingForReady: Bool { state.trial }
+
     /// App 打開時（第一次載入網頁之前）叫：下載好的換上；上次換上還沒說「好了」就被關掉的，再等一次。
     public func launch() {
         try? fm.removeItem(at: staging)
