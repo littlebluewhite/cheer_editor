@@ -479,13 +479,12 @@ pub(crate) async fn delete_account(
             .bind(id)
             .fetch_all(&mut *tx)
             .await?;
-    for table in ["sessions", "password_links", "deleted_flows"] {
-        sqlx::query(sqlx::AssertSqlSafe(format!(
-            "DELETE FROM {table} WHERE user_id = $1"
-        )))
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+    for sql in [
+        "DELETE FROM sessions WHERE user_id = $1",
+        "DELETE FROM password_links WHERE user_id = $1",
+        "DELETE FROM deleted_flows WHERE user_id = $1",
+    ] {
+        sqlx::query(sql).bind(id).execute(&mut *tx).await?;
     }
     crate::lockout::clear(&mut *tx, &email).await?;
     sqlx::query("UPDATE flow_records SET recorded_by = NULL WHERE recorded_by = $1")

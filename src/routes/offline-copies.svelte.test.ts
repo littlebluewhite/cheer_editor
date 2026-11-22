@@ -353,6 +353,23 @@ describe('記的人刪除帳號了（#369）：這台的離線副本下次連上
 		expect(o.offline.copy('c2')!.records.map((r) => [(r.attempt as { id: string }).id, r.by])).toEqual([['thuang0000001', null]]);
 	});
 
+	it('刪的時候正開著：流程有變動時重存的那份還寫他（名字記在開著的畫面裡），下次打開才沒有名字', async () => {
+		const s = await openedWithHuangsRecord();
+		await openFromHome('王教練的流程');
+		deleteHuang(s);
+		vi.useFakeTimers();
+		s.joinAs('c2', wang.email).step({ name: 'renameFlow', args: ['全國賽'] });
+		await vi.advanceTimersByTimeAsync(1100);
+		vi.useRealTimers();
+		await settle();
+		const copy = s.offline.copy('c2')!;
+		expect(copy.name).toBe('全國賽');
+		expect(copy.records.map((r) => r.by)).toEqual(['黃教練']);
+		await goHome();
+		await openFromHome('全國賽');
+		expect(s.offline.copy('c2')!.records.map((r) => r.by)).toEqual([null]);
+	});
+
 	it('有網路時打開：那份馬上重存成沒有名字，紀錄還在', async () => {
 		const s = await openedWithHuangsRecord();
 		deleteHuang(s);

@@ -488,6 +488,13 @@ async fn his_steps_still_count_for_undo_and_catching_up(db: sqlx::PgPool) {
         json!({ "code": "undoChangedLater", "by": "", "redo": false })
     );
     assert_eq!(reply["message"], "別人後來改過，這步不能復原");
+
+    // 還沒看到他那步就改同一個地方：照樣擋下，不寫是誰
+    let (mut d, _) = s.join(&lin, &id, "tab-d", 7).await;
+    let reply = step(&mut d, "rename-3", 7, rename("複賽")).await;
+    assert_eq!(reply["kind"], "rejected", "{reply}");
+    assert_eq!(reply["why"], json!({ "code": "sameThing" }));
+    assert_eq!(reply["by"], "");
 }
 
 #[sqlx::test]
