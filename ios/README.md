@@ -153,8 +153,10 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 - 殼：`ShellCore/Sources/ShellCore/Parts/DraftsPart.swift`（`drafts`）；App 裡的資料夾、背景時間在 `App/Bridge/AppDrafts.swift`。網頁：`src/lib/shell-drafts.ts`，殼會 `drafts` 才換（`Host.createDraftStore`）。說的話：`bridge-scenarios/current/drafts.json`。留幾支照網頁版，殼不管。
 - **怎麼傳**：走橋（`messageHandlers`），位元組用 base64 放在 JSON 裡；這樣存、讀草稿都寫得進情境檔。自訂網址（`fetch` 送 ArrayBuffer）比較快，但假殼看不到，沒用。
-- **快不快**（開工先驗，2026-11-22，只在 iOS 27.2 模擬器上，Mac 的 CPU；`PipeTests` 的 `量_60MB的草稿存一次讀一次多久`）：60 MB 存一次約 0.15–0.22 秒、讀一次約 0.3 秒；首頁列最近的流程時每份都整包讀，5 份 60 MB 約 1.4–1.5 秒。同樣 60 MB 走自訂網址：存 0.08 秒、讀 0.04 秒。沒用退路（音樂分開存、殼直接回名字）。真機沒量（#379）。
-- **趕不趕得及**：WKWebView 在 App 要切到背景時沒發 `visibilitychange`（模擬器上試過），所以殼在 scene 不在前景時（`UIScene.willDeactivateNotification`，滑到 App 切換器就會）主動說 `background`，網頁跟關分頁一樣馬上存，不等停手 1 秒；殼存的時候跟系統要背景時間，檔整個寫好才換上去。模擬器上從改到存好約 50 毫秒（`真的那包網頁_改一下馬上要切到背景_不等停手1秒就存進殼`）。真機滑掉 App 在 #379。
+- **快不快**（開工先驗，2026-11-22，只在 iOS 27.2 模擬器上，Mac 的 CPU；`PipeTests` 的 `量_60MB的草稿存一次讀一次多久`）：60 MB 存一次約 0.15–0.22 秒、讀一次約 0.3–0.37 秒；首頁列最近的流程時每份都整包讀，5 份 60 MB 一份一份讀約 1.4–1.6 秒（網頁其實是同時讀，記憶體沒量）。同樣 60 MB 走自訂網址：存 0.08 秒、讀 0.04 秒。**這是只量傳的那段**：網頁把流程打包成流程檔（`writeFlowFile`）的時間沒算進去。沒用退路（音樂分開存、殼直接回名字）。真機沒量（#379）。
+- **趕不趕得及**：殼在 scene 不在前景時（`UIScene.willDeactivateNotification`，滑到 App 切換器就會；拉下控制中心也會，多存一次沒關係）主動說 `background`，網頁跟關分頁一樣馬上存，不等停手 1 秒；殼收到草稿時跟系統要背景時間（只包到寫檔那段，網頁打包、傳的那段不在裡面），檔整個寫好才換上去。
+  - 管子測試（`真的那包網頁_改一下馬上要切到背景_不等停手1秒就存進殼`）是測試自己發通知：從改到存好約 50 毫秒。
+  - 另外在模擬器上真的切到背景試過一次（打開「設定」把 App 擠到背景，一直改讓停手 1 秒的存不會跑）：iOS 有發 willDeactivate，草稿接著就存好；那段時間網頁沒收到 `visibilitychange`。只試一次，不是自動測試。真機滑掉 App 在 #379。
 
 ## 還沒做的（後面的票）
 

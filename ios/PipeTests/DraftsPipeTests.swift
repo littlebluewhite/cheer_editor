@@ -108,6 +108,8 @@ struct DraftsPipeTests {
         let folder = tempFolder()
         let h = try await editor(folder)
         try await newFlowWithMusic(h, folder)
+        // 放音樂那幾下的草稿等它存好（停手 1 秒），等一下檔變了才只會是這次改的
+        try await Task.sleep(for: .seconds(1.5))
         let file = folder.root.appendingPathComponent(files(folder)[0])
         let before = try Data(contentsOf: file)
 

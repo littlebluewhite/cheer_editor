@@ -3,7 +3,7 @@
 // App 裡的資料夾是 Application Support/Drafts（不標成不備份，會進 iCloud 備份）；說的話在 bridge-scenarios/current/drafts.json。
 // 留幾支、丟哪支照網頁版（src/lib/flow-file.svelte.ts），殼只存、讀、列、清。
 //
-// 怎麼傳：base64 放在橋的 JSON 裡（messageHandlers）。iOS 27.2 模擬器上 60 MB 存一次約 0.2 秒、讀一次約 0.3 秒（ios/README.md「草稿」）。
+// 怎麼傳：base64 放在橋的 JSON 裡（messageHandlers）。iOS 27.2 模擬器上 60 MB 傳過來存一次約 0.2 秒、讀一次約 0.3 秒（不含網頁打包；ios/README.md「草稿」）。
 import Foundation
 
 public struct DraftFolder: Sendable {
@@ -79,7 +79,7 @@ public struct DraftsPart: BridgePart {
     }
 
     /// App 要切到背景（滑到 App 切換器、接著可能被滑掉）：跟網頁說，網頁馬上把還沒進草稿的改動存起來。
-    /// WKWebView 這時不一定發 visibilitychange（iOS 27.2 模擬器上 PipeTests 量過沒發）。
+    /// WKWebView 這時不一定發 visibilitychange（iOS 27.2 模擬器上真的切到背景試過一次，網頁沒收到；ios/README.md「草稿」）。
     public func appGoingAway() {
         outbox.emit("background", nil)
     }
